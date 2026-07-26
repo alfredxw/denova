@@ -338,7 +338,8 @@ func newRunControlTwoPhaseRunner(t *testing.T, chatModel agent.BaseChatModel) *a
 		Tools: []agent.ToolDefinition{{
 			Tool: runControlTestTool{},
 			Descriptor: agent.ToolDescriptor{
-				Source: agent.ToolSourceOther, Execution: agent.ToolExecutionWorkspaceExclusive,
+				Source: agent.ToolSourceOther, Execution: agent.ToolExecutionParallelRead,
+				MutationScope: agent.ToolMutationNone, PostCheck: agent.ToolPostCheckNone,
 				Recovery: agent.ToolRecoveryIdempotent, ResultProjection: agent.ToolResultBoundedModelContext,
 				Steering: agent.SteeringFinishCurrent, MaxResultBytes: 64 * 1024,
 			},

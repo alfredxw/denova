@@ -78,6 +78,7 @@ const enUS = {
   ...messages,
   ...onboarding,
   ...changes,
+  'agents.tool.availability.runtimeCheck': 'Runtime check',
 } as const
 
 export default enUS

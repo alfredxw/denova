@@ -74,6 +74,11 @@ func (e *StreamEncoder) WriteEvent(ev appsvc.AgentEvent) error {
 			return e.writeData(DataTypeInteractiveImage, eventID(data, "interactive-image"), data)
 		}
 		return nil
+	case "ask_pending", "ask_resolved":
+		if err := e.closeOpenContent(); err != nil {
+			return err
+		}
+		return e.writeData(DataTypeAsk, eventID(data, "ask"), data)
 	case "workspace_change":
 		if err := e.closeOpenContent(); err != nil {
 			return err
@@ -311,11 +316,28 @@ func (e *StreamEncoder) writeToolResult(data map[string]any, providerMetadata ma
 		return err
 	}
 	output := readString(data, "content")
+	status := strings.ToLower(strings.TrimSpace(readString(data, "status")))
 	chunk := map[string]any{
-		"type":       "tool-output-available",
 		"toolCallId": toolID,
-		"output":     output,
 		"dynamic":    true,
+	}
+	switch status {
+	case "", "success":
+		chunk["type"] = "tool-output-available"
+		chunk["output"] = output
+	case "error", "blocked", "skipped":
+		chunk["type"] = "tool-output-error"
+		chunk["errorText"] = firstNonEmpty(
+			output,
+			readString(data, "synthetic_reason"),
+			"Tool execution did not complete / 工具执行未完成",
+		)
+	default:
+		chunk["type"] = "tool-output-error"
+		chunk["errorText"] = firstNonEmpty(
+			output,
+			"Unknown tool result status: "+status+" / 未知工具结果状态："+status,
+		)
 	}
 	if len(providerMetadata) > 0 {
 		chunk["providerMetadata"] = providerMetadata
@@ -349,9 +371,9 @@ func (e *StreamEncoder) settlePendingTools() error {
 			return err
 		}
 		if err := e.writeChunk(map[string]any{
-			"type":       "tool-output-available",
+			"type":       "tool-output-error",
 			"toolCallId": toolID,
-			"output":     "",
+			"errorText":  "Tool stream ended before a result was received / 工具流结束时尚未收到结果",
 			"dynamic":    true,
 		}); err != nil {
 			return err
@@ -424,6 +446,7 @@ func messageMetadataFromData(data map[string]any) map[string]any {
 		"subagent",
 		"subagent_session_id",
 		"subagent_type",
+		"provider_call_id",
 		"sse_hidden_fields",
 		"sse_hidden_reason",
 		"sse_display_notice",

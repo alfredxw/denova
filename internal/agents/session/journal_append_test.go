@@ -70,7 +70,7 @@ func TestDisplayUpdateAppendsPatchAndReloadsMaterializedState(t *testing.T) {
 		t.Fatal(err)
 	}
 	if err := sess.AppendDisplayEvent(DisplayEvent{
-		ID: "call-1", Role: "tool_call", Name: "read_file", Status: "running",
+		ID: "call-1", Role: "tool_call", Name: "read", Status: "running",
 	}); err != nil {
 		t.Fatal(err)
 	}
@@ -80,7 +80,7 @@ func TestDisplayUpdateAppendsPatchAndReloadsMaterializedState(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	if err := sess.UpdateDisplayToolResult("call-1", "read_file", "success", "章节内容"); err != nil {
+	if err := sess.UpdateDisplayToolResult("call-1", "read", "success", "章节内容"); err != nil {
 		t.Fatal(err)
 	}
 	after, err := os.ReadFile(path)
@@ -113,7 +113,7 @@ func TestLegacyDisplayRecordCanBePatchedAndReloaded(t *testing.T) {
 	path := filepath.Join(dir, "legacy.jsonl")
 	legacy := []byte(strings.Join([]string{
 		`{"type":"session","id":"legacy","created_at":"2026-01-01T00:00:00Z"}`,
-		`{"type":"display","id":"call-1","role":"tool_call","name":"read_file","status":"running"}`,
+		`{"type":"display","id":"call-1","role":"tool_call","name":"read","status":"running"}`,
 		"",
 	}, "\n"))
 	if err := os.WriteFile(path, legacy, 0o644); err != nil {
@@ -127,7 +127,7 @@ func TestLegacyDisplayRecordCanBePatchedAndReloaded(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := sess.UpdateDisplayToolResult("call-1", "read_file", "success", "旧记录结果"); err != nil {
+	if err := sess.UpdateDisplayToolResult("call-1", "read", "success", "旧记录结果"); err != nil {
 		t.Fatal(err)
 	}
 	after, err := os.ReadFile(path)
@@ -413,13 +413,13 @@ func TestFailedDisplayPatchDoesNotMutateSessionMemory(t *testing.T) {
 		t.Fatal(err)
 	}
 	if err := sess.AppendDisplayEvent(DisplayEvent{
-		ID: "call-1", Role: "tool_call", Name: "write_file", Status: "running",
+		ID: "call-1", Role: "tool_call", Name: "write", Status: "running",
 	}); err != nil {
 		t.Fatal(err)
 	}
 	beforeUpdated := sess.UpdatedAt
 	restore := blockSessionJournal(t, filepath.Join(dir, "default.jsonl"))
-	if err := sess.UpdateDisplayToolResult("call-1", "write_file", "success", "不应进入内存"); err == nil {
+	if err := sess.UpdateDisplayToolResult("call-1", "write", "success", "不应进入内存"); err == nil {
 		restore()
 		t.Fatal("display patch should fail while journal path is blocked")
 	}

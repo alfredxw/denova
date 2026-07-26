@@ -484,8 +484,8 @@ func TestHarnessEngineMapsDescriptorRecoveryToRetrySafety(t *testing.T) {
 		recovery ToolRecoveryClass
 		want     runstate.RetrySafety
 	}{
-		{name: "read_file", recovery: ToolRecoveryReadOnly, want: runstate.RetrySafe},
-		{name: "write_file", recovery: ToolRecoveryReconcilable, want: runstate.RetryUnknown},
+		{name: "read", recovery: ToolRecoveryReadOnly, want: runstate.RetrySafe},
+		{name: "write", recovery: ToolRecoveryReconcilable, want: runstate.RetryUnknown},
 		{name: "bash", recovery: ToolRecoveryNonIdempotent, want: runstate.RetryUnsafe},
 		{name: "missing_descriptor", want: runstate.RetryUnknown},
 	}

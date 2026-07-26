@@ -107,7 +107,7 @@ func TestAppUpdateWorkspaceSettingsOnlyPersistsAgentOverrides(t *testing.T) {
 	in := config.Settings{
 		OpenAIModel: "ignored-new-model",
 		AgentTools: config.AgentToolSettings{
-			IDE: config.AgentToolOverride{ShellExecute: &enabled},
+			IDE: config.AgentToolOverride{config.AgentToolShell: enabled},
 		},
 	}
 	layered, err := a.UpdateWorkspaceSettings(in)
@@ -121,7 +121,7 @@ func TestAppUpdateWorkspaceSettingsOnlyPersistsAgentOverrides(t *testing.T) {
 	if out.OpenAIModel != "legacy-workspace-model" {
 		t.Fatalf("legacy workspace general setting should be preserved: %s", out.OpenAIModel)
 	}
-	if out.AgentTools.IDE.ShellExecute == nil || *out.AgentTools.IDE.ShellExecute {
+	if enabled, present := out.AgentTools.IDE[config.AgentToolShell]; !present || enabled {
 		t.Fatalf("workspace Agent override not persisted: %#v", out.AgentTools.IDE)
 	}
 	if layered.Workspace.OpenAIModel != "" || layered.Effective.OpenAIModel == "ignored-new-model" {

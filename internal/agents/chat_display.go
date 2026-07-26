@@ -17,10 +17,17 @@ const displaySegmentIDEventKey = "display_segment_id"
 // appendAssistantIfAny persists generated output and returns the persistence
 // error to the run loop. A completed stream must never hide a failed commit.
 func appendAssistantIfAny(conversation Conversation, content, thinking *strings.Builder, metadata session.MessageMetadata) (string, error) {
-	if content == nil || content.Len() == 0 {
+	structuralCommit := false
+	if pending, ok := conversation.(interface{ HasPendingContextOperations() bool }); ok {
+		structuralCommit = pending.HasPendingContextOperations()
+	}
+	if (content == nil || content.Len() == 0) && !structuralCommit {
 		return "", nil
 	}
-	generated := content.String()
+	generated := ""
+	if content != nil {
+		generated = content.String()
+	}
 	reasoning := ""
 	if thinking != nil && thinking.Len() > 0 {
 		reasoning = thinking.String()
@@ -42,7 +49,9 @@ func appendAssistantIfAny(conversation Conversation, content, thinking *strings.
 		return generated, persistErr
 	}
 	log.Printf("[agent-run] persisted assistant message bytes=%d thinking_bytes=%d", len(generated), len(reasoning))
-	content.Reset()
+	if content != nil {
+		content.Reset()
+	}
 	if thinking != nil {
 		thinking.Reset()
 	}

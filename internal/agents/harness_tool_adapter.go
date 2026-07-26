@@ -37,7 +37,7 @@ func (o harnessToolLifecycleObserver) BeforeTool(_ context.Context, decision Too
 		return fmt.Errorf("agent harness tool lifecycle sink is nil")
 	}
 	return o.sink.send(runstate.EngineToolStarted{
-		CallID:    decision.ToolCallID,
+		CallID:    decision.ExecutionID,
 		Name:      decision.ToolName,
 		Arguments: json.RawMessage(append([]byte(nil), arguments...)),
 	})
@@ -52,7 +52,7 @@ func (o harnessToolLifecycleObserver) AfterTool(_ context.Context, record ToolEx
 		return err
 	}
 	finished := runstate.EngineToolFinished{
-		CallID:      record.ToolCallID,
+		CallID:      record.ExecutionID,
 		Name:        record.ToolName,
 		Result:      record.Result,
 		IsError:     !strings.EqualFold(strings.TrimSpace(record.Status), "success"),

@@ -10,10 +10,11 @@ type ToolCallEndpoint func(context.Context, string, ...ToolOption) (ToolResult, 
 
 // ToolContext identifies one concrete tool call.
 type ToolContext struct {
-	Index      int
-	Name       string
-	CallID     string
-	Definition ToolDefinitionSnapshot
+	Index          int
+	Name           string
+	ExecutionID    string
+	ProviderCallID string
+	Definition     ToolDefinitionSnapshot
 }
 
 // ModelContext contains read-only metadata for a model invocation.

@@ -49,6 +49,9 @@ type chatRun struct {
 	resumeInterruption *session.Interruption
 	fullContent        strings.Builder
 	fullThinking       strings.Builder
+	effectiveContent   strings.Builder
+	effectiveThinking  strings.Builder
+	effectiveOutputSet bool
 	capturedContent    string
 	capturedThinking   string
 }
@@ -387,12 +390,16 @@ func (r *chatRun) finish(status, reason string, generatedBytes int) {
 }
 
 func (r *chatRun) snapshotOutput() (string, string) {
-	r.capturedContent = r.fullContent.String()
-	r.capturedThinking = r.fullThinking.String()
+	content, thinking := r.effectiveAssistantOutput()
+	r.capturedContent = content
+	r.capturedThinking = thinking
 	return r.capturedContent, r.capturedThinking
 }
 
 func (r *chatRun) currentOutput() (string, string) {
+	if r.effectiveOutputSet {
+		return r.effectiveAssistantOutput()
+	}
 	if r.fullContent.Len() > 0 || r.fullThinking.Len() > 0 {
 		return r.fullContent.String(), r.fullThinking.String()
 	}
@@ -401,7 +408,7 @@ func (r *chatRun) currentOutput() (string, string) {
 
 func (r *chatRun) outcomeFor(status RunOutcomeStatus, err error, reason string) RunOutcome {
 	content, thinking := r.currentOutput()
-	if r.fullContent.Len() > 0 || r.fullThinking.Len() > 0 {
+	if r.effectiveOutputSet || r.fullContent.Len() > 0 || r.fullThinking.Len() > 0 {
 		content, thinking = r.snapshotOutput()
 	}
 	return outcomeFromOutput(status, err, reason, content, thinking)

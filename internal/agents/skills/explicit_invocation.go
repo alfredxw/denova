@@ -57,7 +57,10 @@ func (b *Backend) ResolveExplicitInvocations(ctx context.Context, message string
 // limit covers the complete formatted result, not only the SKILL.md body.
 func FormatForModel(skill Skill, maxBytes int) string {
 	content := strings.TrimSpace(skill.Content)
-	prefix := fmt.Sprintf("# Skill: %s\n\nDescription: %s\nContext mode: %s\n\n", skill.Name, skill.Description, skill.Context)
+	prefix := fmt.Sprintf(
+		"# Skill: %s\n\nDescription: %s\nContext mode: %s\nReference root: skill://%s/references/\n\n",
+		skill.Name, skill.Description, skill.Context, skill.Name,
+	)
 	formatted := prefix + content
 	if maxBytes <= 0 || len(formatted) <= maxBytes {
 		return formatted

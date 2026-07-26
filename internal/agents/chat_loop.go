@@ -6,6 +6,8 @@ import (
 	"log/slog"
 
 	agent "github.com/alfredxw/denova/agent"
+
+	producttools "denova/internal/agents/tools"
 )
 
 type chatLoopAction uint8
@@ -33,6 +35,15 @@ type chatAgentLoop struct {
 
 func newChatAgentLoop(run *chatRun, history []*agent.Message, agentMessage string) *chatAgentLoop {
 	runCtx, cancelRun := context.WithCancel(contextWithCompactionController(ContextWithRunObserver(run.traceCtx, run.observer), run.conversation))
+	if _, bound := agent.InvocationIdentityFromContext(runCtx); !bound {
+		runCtx = agent.ContextWithInvocationIdentity(runCtx, agent.InvocationIdentity{RunID: run.runID})
+	}
+	if controller := newRunContextWindowController(run.conversation, run.options.AgentKind); controller != nil {
+		runCtx = agent.ContextWithContextWindowController(runCtx, controller)
+	}
+	if interaction := newRunAskInteraction(run.conversation, run.options, run.emit); interaction != nil {
+		runCtx = producttools.ContextWithAskInteraction(runCtx, interaction)
+	}
 	cancelOption, cancelAgent := agent.WithCancel()
 	runOptions := []agent.AgentRunOption{cancelOption}
 	protocolCancel := run.control.wrapProtocolCancel(cancelAgent)
@@ -100,6 +111,12 @@ func (l *chatAgentLoop) next() chatLoopResult {
 	}
 	if event.Action != nil && event.Action.Interrupted != nil {
 		return l.runnerFailed(event.Action.Interrupted)
+	}
+	if event.Action != nil {
+		if _, ok := event.Action.CustomizedAction.(agent.ContextWindowRewrite); ok {
+			run.resetEffectiveAssistantOutput()
+			return chatLoopResult{action: chatLoopContinue}
+		}
 	}
 	if event.Err != nil {
 		return l.runnerFailed(event.Err)
@@ -178,7 +195,7 @@ func (l *chatAgentLoop) controlled(control RunControl) chatLoopResult {
 	finalContent, finalThinking := run.snapshotOutput()
 	switch control.Kind {
 	case RunControlPreempt:
-		if _, persistErr := appendAssistantIfAny(run.conversation, &run.fullContent, &run.fullThinking, run.assistantMetadata); persistErr != nil {
+		if _, persistErr := appendAssistantIfAny(run.conversation, &run.effectiveContent, &run.effectiveThinking, run.assistantMetadata); persistErr != nil {
 			run.logger.Error("persist_controlled_assistant_failed", slog.Any("error", persistErr), slog.String("control", string(control.Kind)))
 			run.finish("error", persistErr.Error(), generatedBytes)
 			run.emit(Event{Type: "error", Data: map[string]string{"message": fmt.Sprintf("生成结果持久化失败: %v", persistErr)}})
@@ -200,7 +217,7 @@ func (l *chatAgentLoop) complete() RunOutcome {
 	l.flushPlanOutput()
 	generatedBytes := run.fullContent.Len()
 	finalContent, finalThinking := run.snapshotOutput()
-	if _, persistErr := appendAssistantIfAny(run.conversation, &run.fullContent, &run.fullThinking, run.assistantMetadata); persistErr != nil {
+	if _, persistErr := appendAssistantIfAny(run.conversation, &run.effectiveContent, &run.effectiveThinking, run.assistantMetadata); persistErr != nil {
 		run.logger.Error("persist_assistant_failed", slog.Any("error", persistErr), slog.Int("generated_bytes", generatedBytes))
 		run.finish("error", persistErr.Error(), generatedBytes)
 		run.emit(Event{Type: "run_state", Data: map[string]string{
@@ -250,6 +267,8 @@ func (l *chatAgentLoop) complete() RunOutcome {
 }
 
 func (l *chatAgentLoop) flushPlanOutput() {
+	before := l.run.fullAssistantOutputSnapshot()
 	flushPlanProtocolParser(l.planParser, &l.run.fullContent, l.run.emit)
 	discardPlanAssistantContentIfNeeded(l.run.req.PlanMode, l.planParser, &l.run.fullContent, &l.run.fullThinking)
+	l.run.captureEffectiveAssistantDelta(before)
 }

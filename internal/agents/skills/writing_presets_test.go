@@ -40,14 +40,19 @@ func TestBuiltinWritingPresetInstructionsCoverRequiredTools(t *testing.T) {
 	for _, name := range []string{"novel-lite", "novel-standard", "novel-heavy"} {
 		content := readBuiltinWritingPreset(t, name)
 		for _, required := range []string{
-			"read_file",
-			"write_file",
-			"edit_file",
+			"`read`",
+			"`write`",
+			"`edit`",
 			"[tool error]",
 			"不得宣称已完成",
 		} {
 			if !strings.Contains(content, required) {
 				t.Fatalf("%s missing required tool instruction %q", name, required)
+			}
+		}
+		for _, obsolete := range []string{"read_file", "write_file", "edit_file"} {
+			if strings.Contains(content, obsolete) {
+				t.Fatalf("%s contains obsolete tool name %q", name, obsolete)
 			}
 		}
 	}

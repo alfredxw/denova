@@ -21,12 +21,12 @@ type recordingToolLifecycleObserver struct {
 }
 
 func (o *recordingToolLifecycleObserver) BeforeTool(_ context.Context, decision ToolDecision, arguments string) error {
-	o.record("start:" + decision.ToolCallID + ":" + arguments)
+	o.record("start:" + decision.ExecutionID + ":" + arguments)
 	return o.beforeErr
 }
 
 func (o *recordingToolLifecycleObserver) AfterTool(_ context.Context, result ToolExecutionRecord) error {
-	o.record("finish:" + result.ToolCallID + ":" + result.Status)
+	o.record("finish:" + result.ExecutionID + ":" + result.Status)
 	return o.afterErr
 }
 
@@ -51,7 +51,7 @@ func TestToolLifecycleStartIsRecordedBeforeInvokableEffect(t *testing.T) {
 			observer.record("effect")
 			return "ok", nil
 		},
-		testToolContext("write_file", "call-1"),
+		testToolContext("write", "call-1"),
 	)
 	if err != nil {
 		t.Fatal(err)
@@ -79,7 +79,7 @@ func TestToolLifecycleStartFailurePreventsEffect(t *testing.T) {
 			called = true
 			return "ok", nil
 		},
-		testToolContext("write_file", "call-1"),
+		testToolContext("write", "call-1"),
 	)
 	if err != nil {
 		t.Fatal(err)
@@ -89,6 +89,27 @@ func TestToolLifecycleStartFailurePreventsEffect(t *testing.T) {
 	}
 	if called {
 		t.Fatal("tool effect ran without a durable start record")
+	}
+}
+
+func TestNestedProviderCallIDsReceiveDistinctDurableExecutionIDs(t *testing.T) {
+	middleware := &toolOrchestratorMiddleware{agentKind: AgentKindIDE}
+	rootCtx := agent.ContextWithToolCall(context.Background(), "call-1", "task")
+	rootDecision := middleware.buildToolDecision(rootCtx, testToolContext("write", "call-1"), `{}`)
+	childCtx, finishChild, err := agent.BeginChildInvocation(rootCtx, "researcher")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = finishChild() }()
+	childDecision := middleware.buildToolDecision(childCtx, testToolContext("write", "call-1"), `{}`)
+	if rootDecision.ProviderCallID != "call-1" || childDecision.ProviderCallID != "call-1" {
+		t.Fatalf("provider call IDs root=%q child=%q", rootDecision.ProviderCallID, childDecision.ProviderCallID)
+	}
+	if rootDecision.ExecutionID != "call-1" || childDecision.ExecutionID == "call-1" || childDecision.ExecutionID == rootDecision.ExecutionID {
+		t.Fatalf("execution IDs root=%q child=%q", rootDecision.ExecutionID, childDecision.ExecutionID)
+	}
+	if again := middleware.buildToolDecision(childCtx, testToolContext("write", "call-1"), `{}`).ExecutionID; again != childDecision.ExecutionID {
+		t.Fatalf("child execution ID is not deterministic: first=%q again=%q", childDecision.ExecutionID, again)
 	}
 }
 
@@ -119,7 +140,7 @@ func TestCommittedToolMutationRemainsRuntimeOwnedUntilOutputCommit(t *testing.T)
 		sink: sink, binding: ref, operationID: "operation-1", cycle: 1, options: options,
 	}
 	if err := observer.AfterTool(context.Background(), ToolExecutionRecord{
-		ToolName: "write_file", ToolCallID: "call-committed", Status: "success",
+		ToolName: "write", ExecutionID: "call-committed", Status: "success",
 		Workspace: "/workspace/book-a", Target: "chapters/one.md",
 	}); err != nil {
 		t.Fatal(err)
@@ -132,7 +153,7 @@ func TestCommittedToolMutationRemainsRuntimeOwnedUntilOutputCommit(t *testing.T)
 
 func TestToolExecutionRecordBuildsCompleteMutationReceiptFromRawResult(t *testing.T) {
 	workspaceReceipt := `{"schema":"workspace_change.tool_result.v1","status":"applied","workspace":"/workspace/book-a","change_group_id":"group-1","review_thread_id":"review-1","change_set_id":"change-1","path":"chapters/ch01.md","base_revision":"sha256:before","revision":"sha256:after","review_status":"pending","apply_state":"applied"}`
-	record := ToolExecutionRecord{ToolName: "write_file", ToolCallID: "write-call", Status: "success", Descriptor: producttools.WorkspaceWriteDescriptor(agent.ToolSourceWrite, config.AgentToolFileWrite, agent.ToolRecoveryReconcilable)}
+	record := ToolExecutionRecord{ToolName: "write", ExecutionID: "write-call", Status: "success", Descriptor: producttools.WorkspaceWriteDescriptor(agent.ToolSourceWrite, config.AgentToolWorkspaceWrite, agent.ToolRecoveryReconcilable)}
 	applyToolMutationReceiptToExecutionRecord(&record, agent.ToolResult{Details: []byte(workspaceReceipt)})
 	mutation, ok := toolMutationFromExecutionRecord(record)
 	if !ok {
@@ -145,7 +166,7 @@ func TestToolExecutionRecordBuildsCompleteMutationReceiptFromRawResult(t *testin
 		t.Fatalf("workspace mutation receipt = %#v", mutation)
 	}
 
-	loreRecord := ToolExecutionRecord{ToolName: "write_lore_items", ToolCallID: "lore-call", Status: "success", Descriptor: producttools.WorkspaceWriteDescriptor(ToolSourceLore, config.AgentToolLoreWrite, agent.ToolRecoveryReconcilable)}
+	loreRecord := ToolExecutionRecord{ToolName: "write_lore_items", ExecutionID: "lore-call", Status: "success", Descriptor: producttools.WorkspaceWriteDescriptor(ToolSourceLore, config.AgentToolLoreWrite, agent.ToolRecoveryReconcilable)}
 	applyToolMutationReceiptToExecutionRecord(&loreRecord, agent.ToolResult{Details: []byte(`{"item_ids":["hero","hero","world"],"deleted_ids":["old"]}`)})
 	loreMutation, ok := toolMutationFromExecutionRecord(loreRecord)
 	if !ok {

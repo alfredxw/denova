@@ -10,12 +10,12 @@ agent: ide,interactive_story
 
 ## 工作流程
 
-1. 使用 read_file 读取 `setting/outline.md` 确认长期方向
-2. 使用 read_file 读取 `setting/progress.md` 获取最近章节摘要，并读取 `setting/character-states.md` 确认角色当前位置、身体、心理、目标、持有物和关系等当前状态
+1. 使用 read 读取 `setting/outline.md` 确认长期方向
+2. 使用 read 读取 `setting/progress.md` 获取最近章节摘要，并读取 `setting/character-states.md` 确认角色当前位置、身体、心理、目标、持有物和关系等当前状态
 3. 如 `setting/chapter-groups/` 下存在当前章节组细纲，优先读取对应细纲，确认本章在组内的作用、冲突、信息揭示和钩子
 4. 必须读取前面至少 2 章实际正文，确保本章与前文自然衔接
 5. 根据大纲方向、章节组细纲、角色当前状态、资料库长期设定和前文正文创作本章内容；如本轮涉及资料库索引中的相关自动加载条目（基于简介判断），先用 read_lore_items 读取完整资料
-6. 使用 write_file 将章节写入 `chapters/` 下符合系统提示章节文件名模板的位置；章节状态只用于 UI 编辑标记，不影响后续章节判断或状态同步
+6. 使用 write 将章节写入 `chapters/` 下符合系统提示章节文件名模板的位置；章节状态只用于 UI 编辑标记，不影响后续章节判断或状态同步
 7. 不更改 `setting/outline.md`
 8. 完成正文自检和本轮最后修订后，在同一轮更新 `setting/progress.md`（当前进度 + 本章摘要）和 `setting/character-states.md`（角色当前状态），不等待作者另行确认成章；只有长期设定发生明确变化时，才使用 write_lore_items 批量同步资料库条目
 

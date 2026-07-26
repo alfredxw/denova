@@ -47,6 +47,7 @@ describe('AgentPanel', () => {
         writing_skill_default: 'novel-lite',
         ...settings,
       },
+      resolved_agent_tool_manifests: {},
       revisions: { user: 'r2' },
       paths: { denova_dir: '', nova_dir: '', user_config: '', workspace_config: '' },
     }))
@@ -121,7 +122,7 @@ describe('AgentPanel', () => {
         role: 'assistant',
         parts: [
           { type: 'reasoning', text: '读取章节上下文' },
-          { type: 'dynamic-tool', toolName: 'read_file', toolCallId: 'tool-1', state: 'output-available', input: { path: 'chapters/ch01.md' }, output: 'ok' },
+          { type: 'dynamic-tool', toolName: 'read', toolCallId: 'tool-1', state: 'output-available', input: { path: 'chapters/ch01.md' }, output: 'ok' },
           { type: 'text', text: '已完成续写。' },
         ],
       }],
@@ -129,12 +130,12 @@ describe('AgentPanel', () => {
 
     expect(screen.getByRole('button', { name: /思考过程.*1 次工具调用/ })).toBeInTheDocument()
     expect(screen.queryByText('读取章节上下文')).not.toBeInTheDocument()
-    expect(screen.queryByText('read_file')).not.toBeInTheDocument()
+    expect(screen.queryByText('read')).not.toBeInTheDocument()
     expect(screen.getByText('已完成续写。')).toBeInTheDocument()
 
     await user.click(screen.getByRole('button', { name: /思考过程.*1 次工具调用/ }))
     expect(screen.getByText('读取章节上下文')).toBeInTheDocument()
-    expect(screen.getByText('read_file')).toBeInTheDocument()
+    expect(screen.getByText('read')).toBeInTheDocument()
   })
 
   it('创作 Agent 运行中自动展开思考过程', () => {

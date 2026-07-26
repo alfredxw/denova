@@ -126,6 +126,10 @@ func cloneHistoryRecordForTailReplay(record historyRecord) historyRecord {
 		}
 		clone.interruption = &interruption
 	}
+	if record.ask != nil {
+		interaction := cloneAskInteraction(*record.ask)
+		clone.ask = &interaction
+	}
 	if record.compaction != nil {
 		compaction := *record.compaction
 		clone.compaction = &compaction

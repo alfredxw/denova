@@ -27,7 +27,7 @@ func TestBuildInteractiveStoryInstructionIsIsolatedFromIDEPrompt(t *testing.T) {
 			t.Fatalf("interactive story instruction should not contain IDE-only prompt %q:\n%s", forbidden, instruction)
 		}
 	}
-	for _, required := range []string{"游戏模式", "互动文字冒险", "只输出本回合可展示在故事舞台上的故事正文", "隐藏状态块", "快捷选择块", "禁止使用写文件工具", "write_todos", "<invoke>", "文字小说 RPG", "回合裁定循环", "可选择", "一致性自检", "list_lore_items", "read_lore_items", "search_story_history"} {
+	for _, required := range []string{"游戏模式", "互动文字冒险", "只输出本回合可展示在故事舞台上的故事正文", "隐藏状态块", "快捷选择块", "禁止使用 write、edit", "todo", "<invoke>", "文字小说 RPG", "回合裁定循环", "可选择", "一致性自检", "list_lore_items", "read_lore_items", "search_story_history"} {
 		if !strings.Contains(instruction, required) {
 			t.Fatalf("interactive story instruction should contain %q:\n%s", required, instruction)
 		}
@@ -112,12 +112,12 @@ func TestBuildConfigManagerInstructionIncludesResourceSkills(t *testing.T) {
 
 	state := book.NewState(t.TempDir())
 	composition := BuildConfigManagerInstructionComposition(&config.Config{Workspace: state.Workspace()}, state, ConfigManagerResourceSkill{
-		Name:        "automation-config",
-		Description: "Automation schema guide",
-		Content:     "Use write_mode values read_only, confirm_write, or auto_write.",
+		Name:        "config-manager",
+		Description: "All configuration resource routing",
+		Content:     "Read skill://config-manager/references/automation.md for automation details.",
 	})
 	instruction := composition.Instruction()
-	for _, want := range []string{"本轮自动加载的配置 Skills", "/automation-config", "write_mode values read_only"} {
+	for _, want := range []string{"配置管理 Skill", "/config-manager", "skill://config-manager/references/automation.md"} {
 		if !strings.Contains(instruction, want) {
 			t.Fatalf("config manager instruction missing %q:\n%s", want, instruction)
 		}
@@ -125,7 +125,7 @@ func TestBuildConfigManagerInstructionIncludesResourceSkills(t *testing.T) {
 
 	composition.logForRun(RunOptions{TaskID: "task-1", SessionID: "session-1"})
 	got := buf.String()
-	for _, want := range []string{"配置 Skill", "/automation-config", "task_id=task-1"} {
+	for _, want := range []string{"配置 Skill", "/config-manager", "task_id=task-1"} {
 		if !strings.Contains(got, want) {
 			t.Fatalf("composition log missing %q:\n%s", want, got)
 		}
@@ -135,7 +135,7 @@ func TestBuildConfigManagerInstructionIncludesResourceSkills(t *testing.T) {
 func TestBuildConfigManagerInstructionAllowsAgentConfigTools(t *testing.T) {
 	state := book.NewState(t.TempDir())
 	instruction := BuildConfigManagerInstruction(&config.Config{Workspace: state.Workspace()}, state)
-	for _, want := range []string{"list_agent_configs", "write_agent_configs", "不要通过文件工具直接改", "Agent 配置"} {
+	for _, want := range []string{"config_read", "config_apply", "resource=agent_profile", "不要通过文件工具直接改", "Agent 配置"} {
 		if !strings.Contains(instruction, want) {
 			t.Fatalf("config manager instruction missing %q:\n%s", want, instruction)
 		}

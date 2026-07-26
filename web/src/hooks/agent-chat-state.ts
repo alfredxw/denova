@@ -68,12 +68,13 @@ export function appendDataMessage(
   type: `data-agent-${string}`,
   data: Record<string, unknown>,
 ) {
+	const dataID = typeof data.id === 'string' && data.id.trim() ? data.id.trim() : `${type}-${Date.now()}`
   setUIMessages(messages => [
     ...messages,
     {
       id: `${type}-${Date.now()}-${messages.length}`,
       role: 'assistant',
-      parts: [{ type, data, id: `${type}-${Date.now()}` } as AgentUIMessage['parts'][number]],
+      parts: [{ type, data, id: dataID } as AgentUIMessage['parts'][number]],
     } as AgentUIMessage,
   ])
 }

@@ -143,6 +143,44 @@ func TestReadAndSaveSkillFile(t *testing.T) {
 	}
 }
 
+func TestCreateUpdateAndDeleteSkillReferenceWithRevision(t *testing.T) {
+	ctx := context.Background()
+	user := filepath.Join(t.TempDir(), "skills")
+	dirs := []Directory{{Scope: ScopeUser, Path: user, Writable: true}}
+	writeSkillFile(t, user, "outline", "outline", "user desc")
+
+	created, err := CreateSkillFile(ctx, dirs, ScopeUser, "outline", "references/style.md", "# Style\n")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if created.Revision == "" || created.File.Path != "references/style.md" {
+		t.Fatalf("created reference = %#v", created)
+	}
+	if _, err := CreateSkillFile(ctx, dirs, ScopeUser, "outline", "references/style.md", "overwrite"); err == nil {
+		t.Fatal("reference create overwrote an existing file")
+	}
+	updated, err := SaveSkillFileIfRevision(ctx, dirs, ScopeUser, "outline", "references/style.md", "# Updated\n", created.Revision)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if updated.Revision == created.Revision {
+		t.Fatal("reference update did not advance revision")
+	}
+	if _, err := DeleteSkillFileIfRevision(ctx, dirs, ScopeUser, "outline", "references/style.md", created.Revision); !errors.Is(err, ErrRevisionConflict) {
+		t.Fatalf("stale delete error = %v", err)
+	}
+	deleted, err := DeleteSkillFileIfRevision(ctx, dirs, ScopeUser, "outline", "references/style.md", updated.Revision)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if deleted.Path != "references/style.md" || deleted.Revision != updated.Revision {
+		t.Fatalf("delete receipt = %#v", deleted)
+	}
+	if _, err := ReadSkillFile(ctx, dirs, ScopeUser, "outline", "references/style.md"); !os.IsNotExist(err) {
+		t.Fatalf("deleted reference read error = %v", err)
+	}
+}
+
 func TestSaveDocumentIfRevisionRejectsExternalUpdate(t *testing.T) {
 	ctx := context.Background()
 	user := filepath.Join(t.TempDir(), "skills")
@@ -319,6 +357,26 @@ Use numbered beats.
 	}
 }
 
+func TestCreateDocumentWithContentNeverOverwritesExistingSkill(t *testing.T) {
+	ctx := context.Background()
+	user := filepath.Join(t.TempDir(), "skills")
+	dirs := []Directory{{Scope: ScopeUser, Path: user, Writable: true}}
+	content := DefaultContent("beats", "first")
+	if _, err := CreateDocumentWithContent(ctx, dirs, ScopeUser, "beats", content); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := CreateDocumentWithContent(ctx, dirs, ScopeUser, "beats", DefaultContent("beats", "second")); err == nil {
+		t.Fatal("custom document create overwrote an existing Skill")
+	}
+	doc, err := ReadDocument(ctx, dirs, ScopeUser, "beats")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if doc.Description != "first" {
+		t.Fatalf("existing Skill changed: %#v", doc)
+	}
+}
+
 func TestSaveDocumentCreatesWorkspaceOverrideForBuiltinSkill(t *testing.T) {
 	ctx := context.Background()
 	root := t.TempDir()
@@ -474,15 +532,14 @@ func TestAgentBackendFiltersByAgentFrontmatterAndOverrides(t *testing.T) {
 	}
 }
 
-func TestAgentBackendExposesConfigManagerBuiltinSkills(t *testing.T) {
+func TestAgentBackendExposesSingleConfigManagerSkill(t *testing.T) {
 	ctx := context.Background()
 	root := t.TempDir()
 	builtin := filepath.Join(root, "builtin")
 	workspace := filepath.Join(root, "workspace")
-	writeSkillFileForAgents(t, builtin, "automation-config", "automation-config", "automation config", "config_manager")
-	writeSkillFileForAgents(t, builtin, "story-director-config", "story-director-config", "story director config", "config_manager")
+	writeSkillFileForAgents(t, builtin, "config-manager", "config-manager", "all config resources", "config_manager")
 	writeSkillFileForAgents(t, builtin, "ide-only", "ide-only", "ide only", "ide")
-	writeSkillFileForAgents(t, workspace, "automation-config", "automation-config", "workspace automation config", "config_manager")
+	writeSkillFileForAgents(t, workspace, "config-manager", "config-manager", "workspace config routing", "config_manager")
 
 	backend := NewAgentBackend([]Directory{
 		{Scope: ScopeBuiltin, Path: builtin},
@@ -493,26 +550,26 @@ func TestAgentBackendExposesConfigManagerBuiltinSkills(t *testing.T) {
 		t.Fatalf("List() error = %v", err)
 	}
 	got := skillNames(list)
-	if len(got) != 2 || !got["automation-config"] || !got["story-director-config"] || got["ide-only"] {
+	if len(got) != 1 || !got["config-manager"] || got["ide-only"] {
 		t.Fatalf("config_manager skills = %#v", got)
 	}
-	skill, err := backend.Get(ctx, "automation-config")
+	skill, err := backend.Get(ctx, "config-manager")
 	if err != nil {
-		t.Fatalf("Get(automation-config) error = %v", err)
+		t.Fatalf("Get(config-manager) error = %v", err)
 	}
-	if skill.Description != "workspace automation config" {
-		t.Fatalf("active automation-config description = %q, want workspace override", skill.Description)
+	if skill.Description != "workspace config routing" {
+		t.Fatalf("active config-manager description = %q, want workspace override", skill.Description)
 	}
 
 	overrideBackend := NewAgentBackend([]Directory{{Scope: ScopeBuiltin, Path: builtin}}, "config_manager", map[string]bool{
-		"automation-config": false,
+		"config-manager": false,
 	})
 	overrideList, err := overrideBackend.List(ctx)
 	if err != nil {
 		t.Fatalf("override List() error = %v", err)
 	}
 	overrideGot := skillNames(overrideList)
-	if overrideGot["automation-config"] || !overrideGot["story-director-config"] {
+	if len(overrideGot) != 0 {
 		t.Fatalf("override config_manager skills = %#v", overrideGot)
 	}
 }

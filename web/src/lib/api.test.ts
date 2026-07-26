@@ -1,6 +1,8 @@
 import { http, HttpResponse } from 'msw'
 import { describe, expect, it } from 'vitest'
 import {
+  answerSessionAsk,
+  cancelSessionAsk,
   createSession,
   deleteSession,
   executeCommand,
@@ -18,6 +20,28 @@ import {
 import { server } from '@/test/msw/server'
 
 describe('api', () => {
+  it('answers and cancels only the exact session Ask identity', async () => {
+    const requests: Array<{ path: string; body: unknown }> = []
+    server.use(
+      http.post('/api/session/asks/:askID/answer', async ({ request }) => {
+        requests.push({ path: new URL(request.url).pathname, body: await request.json() })
+        return HttpResponse.json({ schema: 'ask.result.v1', id: 'ask/1', status: 'answered' })
+      }),
+      http.post('/api/session/asks/:askID/cancel', async ({ request }) => {
+        requests.push({ path: new URL(request.url).pathname, body: await request.json() })
+        return HttpResponse.json({ schema: 'ask.result.v1', id: 'ask/1', status: 'cancelled' })
+      }),
+    )
+
+    await answerSessionAsk('session-a', 'ask/1', [{ question_id: 'q1', selected_option_ids: ['safe'] }])
+    await cancelSessionAsk('session-a', 'ask/1')
+
+    expect(requests).toEqual([
+      { path: '/api/session/asks/ask%2F1/answer', body: { session_id: 'session-a', answers: [{ question_id: 'q1', selected_option_ids: ['safe'] }] } },
+      { path: '/api/session/asks/ask%2F1/cancel', body: { session_id: 'session-a', reason: 'user_cancelled' } },
+    ])
+  })
+
   it('作品统计接口将空章节列表标准化为空数组', async () => {
     server.use(
       http.get('/api/workspace/summary', () =>

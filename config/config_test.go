@@ -105,7 +105,7 @@ func TestLoadWithWorkspaceUsesUserSettingsAndWorkspaceAgentOverrides(t *testing.
 			Language:            "en-US",
 			WritingSkillDefault: "novel-heavy",
 			IDEImagePresetID:    "2d-illustration",
-			AgentTools:          AgentToolSettings{IDE: AgentToolOverride{ShellExecute: boolPtr(false)}},
+			AgentTools:          AgentToolSettings{IDE: AgentToolOverride{AgentToolShell: false}},
 		}); err != nil {
 		t.Fatal(err)
 	}
@@ -132,7 +132,7 @@ func TestLoadWithWorkspaceUsesUserSettingsAndWorkspaceAgentOverrides(t *testing.
 	if layered.Workspace.OpenAIModel != "" || layered.Workspace.Language != "" || layered.Workspace.WritingSkillDefault != "" {
 		t.Fatalf("workspace general settings should be filtered: %#v", layered.Workspace)
 	}
-	if cfg.AgentTools.IDE.ShellExecute == nil || *cfg.AgentTools.IDE.ShellExecute {
+	if enabled, present := cfg.AgentTools.IDE[AgentToolShell]; !present || enabled {
 		t.Fatalf("workspace Agent override should remain effective: %#v", cfg.AgentTools.IDE)
 	}
 }

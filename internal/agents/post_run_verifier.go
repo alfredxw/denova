@@ -40,7 +40,14 @@ func VerifyPostRunMutations(bookService *book.Service, mutations []ToolMutation)
 		return result
 	}
 	for _, mutation := range mutations {
+		if mutation.PostCheck != ToolPostCheckWorkspaceChange {
+			continue
+		}
 		result.Checks = append(result.Checks, verifyMutation(bookService, mutation)...)
+	}
+	if len(result.Checks) == 0 {
+		result.Checks = append(result.Checks, PostRunVerificationCheck{Type: "mutation_scan", Status: "skipped", Message: "no workspace mutation requested post-check verification"})
+		return result
 	}
 	result.Status = "ok"
 	for _, check := range result.Checks {

@@ -550,6 +550,7 @@ function layered(settings: Settings): LayeredSettings {
     user: settings,
     workspace: {},
     effective: settings,
+    resolved_agent_tool_manifests: {},
     paths: {
       denova_dir: '',
       nova_dir: '',

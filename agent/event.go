@@ -99,6 +99,14 @@ type MessageVariant struct {
 	MessageStream *StreamReader[*Message]
 	Role          RoleType
 	ToolName      string
+	// ExecutionID correlates a tool result with lifecycle/display state while
+	// ProviderCallID remains the model transcript pairing identity.
+	ExecutionID    string
+	ProviderCallID string
+	// Assistant tool calls derive their execution IDs from this immutable model
+	// response identity plus their source ordinal.
+	ToolExecutionNamespace string
+	ModelResponseOrdinal   int
 	// ToolInfos is the validated registry snapshot for model events. It is
 	// transport metadata, not part of the emitted transcript Message.
 	ToolInfos       []*ToolInfo
@@ -135,13 +143,23 @@ const (
 // ToolExecutionEvent is a real-time, non-transcript tool notification. Finished
 // events follow completion order; tool messages remain source ordered.
 type ToolExecutionEvent struct {
-	Phase      ToolExecutionPhase
-	Index      int
-	CallID     string
-	ToolName   string
-	Definition ToolDefinitionSnapshot
-	Delta      string
-	Result     *ToolResult
+	Phase          ToolExecutionPhase
+	Index          int
+	ExecutionID    string
+	ProviderCallID string
+	ToolName       string
+	Definition     ToolDefinitionSnapshot
+	Delta          string
+	Result         *ToolResult
+}
+
+// ToolExecutionID returns the durable display/lifecycle identity for one
+// assistant tool ordinal. The provider call ID must remain transcript-only.
+func (variant *MessageVariant) ToolExecutionID(toolOrdinal int) string {
+	if variant == nil || variant.ModelResponseOrdinal <= 0 || toolOrdinal < 0 || variant.ToolExecutionNamespace == "" {
+		return ""
+	}
+	return executionIDForNamespace(variant.ToolExecutionNamespace, variant.ModelResponseOrdinal, toolOrdinal)
 }
 
 // AgentAction is reserved for transport-neutral host control actions.

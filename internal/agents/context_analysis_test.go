@@ -304,11 +304,11 @@ func TestIDEContextAnalysisShowsExactModelVisibleToolContext(t *testing.T) {
 				ID:   "call-read",
 				Type: "function",
 				Function: agent.FunctionCall{
-					Name:      "read_file",
+					Name:      "read",
 					Arguments: `{"path":"chapters/1.md"}`,
 				},
 			}}),
-			agent.ToolMessage(agent.TextToolResult(result), "call-read", agent.WithToolName("read_file")),
+			agent.ToolMessage(agent.TextToolResult(result), "call-read", agent.WithToolName("read")),
 			agent.AssistantMessage("已读取", nil),
 		},
 		nil,
@@ -320,12 +320,12 @@ func TestIDEContextAnalysisShowsExactModelVisibleToolContext(t *testing.T) {
 		switch part.Kind {
 		case "tool_call":
 			sawToolCall = true
-			if part.ToolName != "read_file" || !strings.Contains(part.Content, `{"path":"chapters/1.md"}`) {
+			if part.ToolName != "read" || !strings.Contains(part.Content, `{"path":"chapters/1.md"}`) {
 				t.Fatalf("tool call part should include tool name and args: %#v", part)
 			}
 		case "tool_result":
 			sawToolResult = true
-			if part.ToolName != "read_file" || part.Content != result {
+			if part.ToolName != "read" || part.Content != result {
 				t.Fatalf("tool result part should match the model-visible message: %#v", part)
 			}
 		}

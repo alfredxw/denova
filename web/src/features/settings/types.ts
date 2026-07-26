@@ -173,18 +173,51 @@ interface AgentGeneralSubAgentSettings {
   automation?: boolean | null
 }
 
-export interface AgentToolOverride {
-  file_read?: boolean | null
-  file_write?: boolean | null
-  shell_execute?: boolean | null
-  skills?: boolean | null
-  lore_read?: boolean | null
-  lore_write?: boolean | null
-  todo?: boolean | null
-  web_search?: boolean | null
-  image_generation?: boolean | null
-  agent_config_read?: boolean | null
-  agent_config_write?: boolean | null
+export type AgentToolCapability =
+  | 'workspace_read'
+  | 'workspace_write'
+  | 'shell'
+  | 'web_search'
+  | 'web_fetch'
+  | 'browser'
+  | 'ask'
+  | 'todo'
+  | 'skills'
+  | 'delegation'
+  | 'config_read'
+  | 'config_apply'
+  | 'event_read'
+  | 'lore_read'
+  | 'lore_write'
+  | 'image_generation'
+  | 'context_rewind'
+
+export type AgentToolOverride = Partial<Record<AgentToolCapability, boolean>>
+
+export interface AgentToolDescriptorSummary {
+  execution: string
+  mutation_scope: string
+  post_check: string
+  recovery: string
+  result_projection: string
+  steering: string
+}
+
+export interface AgentToolCapabilityCatalogEntry {
+  capability: AgentToolCapability
+  title_key: string
+  description_key: string
+  tool_names: string[]
+  descriptor: AgentToolDescriptorSummary
+  available_to_subagents: boolean
+}
+
+export type AgentToolAvailability = 'available' | 'runtime_check' | 'unavailable'
+
+export interface ResolvedAgentToolCapability extends AgentToolCapabilityCatalogEntry {
+  allowed: boolean
+  availability: AgentToolAvailability
+  unavailable_reason_key?: string
 }
 
 export interface SubAgentConfig {
@@ -296,6 +329,8 @@ export interface LayeredSettings {
   builtin_agent_prompts?: AgentPromptSettings
   builtin_agent_prompt_blocks?: AgentPromptBlockSettings
   builtin_agent_prompt_sources?: AgentPromptSourceSettings
+  agent_tool_capabilities?: AgentToolCapabilityCatalogEntry[]
+  resolved_agent_tool_manifests: Partial<Record<Exclude<keyof AgentModelSettings, 'default'>, ResolvedAgentToolCapability[]>>
 }
 
 export type SettingsLayer = 'user' | 'workspace'

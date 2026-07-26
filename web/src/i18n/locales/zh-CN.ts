@@ -78,6 +78,7 @@ const zhCN = {
   ...messages,
   ...onboarding,
   ...changes,
+  'agents.tool.availability.runtimeCheck': '运行时检查',
 } as const
 
 export default zhCN

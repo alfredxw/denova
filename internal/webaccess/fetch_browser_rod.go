@@ -28,10 +28,13 @@ type rodBrowserRenderer struct {
 	maxResponseBytes int64
 	publicClient     *http.Client
 
+	lifecycleMu  sync.RWMutex
 	initializeMu sync.Mutex
 	browser      *rod.Browser
 	launcher     *launcher.Launcher
 	denyProxy    *http.Server
+	closed       bool
+	closeErr     error
 }
 
 type browserNavigationState struct {
@@ -51,6 +54,11 @@ func newRodBrowserRenderer(maxResponseBytes int64) browserRenderer {
 }
 
 func (renderer *rodBrowserRenderer) Render(ctx context.Context, target *url.URL) (renderedPage, error) {
+	renderer.lifecycleMu.RLock()
+	defer renderer.lifecycleMu.RUnlock()
+	if renderer.closed {
+		return renderedPage{}, errors.New("browser renderer is closed")
+	}
 	browser, err := renderer.ensureBrowser(ctx)
 	if err != nil {
 		return renderedPage{}, err
@@ -76,6 +84,49 @@ func (renderer *rodBrowserRenderer) Render(ctx context.Context, target *url.URL)
 	}
 	standardPage.StealthFallbackError = stealthErr
 	return standardPage, nil
+}
+
+// Close is the single owner of the browser process, deny proxy, and temporary
+// launcher profile. It waits for in-flight renders, is idempotent, and returns
+// the real cleanup error to the Agent invocation finisher.
+func (renderer *rodBrowserRenderer) Close(context.Context) error {
+	if renderer == nil {
+		return nil
+	}
+	renderer.lifecycleMu.Lock()
+	defer renderer.lifecycleMu.Unlock()
+	if renderer.closed {
+		return renderer.closeErr
+	}
+	renderer.closed = true
+
+	var closeErrors []error
+	var browserCloseErr error
+	if renderer.browser != nil {
+		browserCloseErr = renderer.browser.Close()
+		if browserCloseErr != nil {
+			closeErrors = append(closeErrors, fmt.Errorf("close web fetch browser: %w", browserCloseErr))
+		}
+	}
+	if renderer.launcher != nil {
+		if browserCloseErr != nil {
+			renderer.launcher.Kill()
+		}
+		renderer.launcher.Cleanup()
+	}
+	if renderer.denyProxy != nil {
+		if err := renderer.denyProxy.Close(); err != nil && !errors.Is(err, http.ErrServerClosed) {
+			closeErrors = append(closeErrors, fmt.Errorf("close web fetch deny proxy: %w", err))
+		}
+	}
+	if renderer.publicClient != nil {
+		renderer.publicClient.CloseIdleConnections()
+	}
+	renderer.browser = nil
+	renderer.launcher = nil
+	renderer.denyProxy = nil
+	renderer.closeErr = errors.Join(closeErrors...)
+	return renderer.closeErr
 }
 
 func (renderer *rodBrowserRenderer) renderAttempt(ctx context.Context, browser *rod.Browser, target *url.URL, mode browserRenderMode) (renderedPage, error) {
@@ -181,6 +232,9 @@ func browserPageNeedsStealth(page renderedPage) bool {
 func (renderer *rodBrowserRenderer) ensureBrowser(ctx context.Context) (*rod.Browser, error) {
 	renderer.initializeMu.Lock()
 	defer renderer.initializeMu.Unlock()
+	if renderer.closed {
+		return nil, errors.New("browser renderer is closed")
+	}
 	if renderer.browser != nil {
 		return renderer.browser, nil
 	}
@@ -215,11 +269,13 @@ func (renderer *rodBrowserRenderer) ensureBrowser(ctx context.Context) (*rod.Bro
 	controlURL, err := launch.Launch()
 	if err != nil {
 		_ = denyProxy.Close()
+		launch.Cleanup()
 		return nil, fmt.Errorf("launch installed browser %q: %w", binary, err)
 	}
 	browser := rod.New().ControlURL(controlURL)
 	if err := browser.Connect(); err != nil {
 		launch.Kill()
+		launch.Cleanup()
 		_ = denyProxy.Close()
 		return nil, fmt.Errorf("connect to installed browser: %w", err)
 	}

@@ -67,38 +67,65 @@ func NewSkill(ctx context.Context, backend *novaskills.Backend, maxBytes int) (a
 	return newSkillTool(ctx, backend, maxBytes)
 }
 
-type todoItem struct {
-	Content    string `json:"content"`
-	ActiveForm string `json:"activeForm"`
-	Status     string `json:"status" jsonschema:"enum=pending,enum=in_progress,enum=completed"`
+const todoPlanSchema = "todo.plan.v1"
+
+type todoPlanItem struct {
+	Step   string `json:"step" jsonschema:"required" jsonschema_description:"Concise task step."`
+	Status string `json:"status" jsonschema:"required,enum=pending,enum=in_progress,enum=completed" jsonschema_description:"Current step status: pending, in_progress, or completed."`
 }
 
-type writeTodosInput struct {
-	Todos []todoItem `json:"todos"`
+type todoInput struct {
+	Plan []todoPlanItem `json:"plan" jsonschema:"required" jsonschema_description:"Complete replacement plan in display order; an empty array clears the plan."`
 }
 
-func newWriteTodosTool() (agent.ToolDefinition, error) {
-	tool, err := agent.InferTool("write_todos", "Replace the current run's complete todo list. Send every item on each update; status must be pending, in_progress, or completed.", func(_ context.Context, input writeTodosInput) (string, error) {
-		payload, err := json.Marshal(input.Todos)
-		if err != nil {
-			return "", err
+type todoPlanResult struct {
+	Schema string         `json:"schema"`
+	Plan   []todoPlanItem `json:"plan"`
+}
+
+func newTodoTool() (agent.ToolDefinition, error) {
+	tool, err := agent.InferTool("todo", "Replace the current run's complete plan. Send every step on each update in display order. Use at most one in_progress step; an empty plan clears it.", func(_ context.Context, input todoInput) (agent.ToolResult, error) {
+		inProgress := 0
+		for index := range input.Plan {
+			input.Plan[index].Step = strings.TrimSpace(input.Plan[index].Step)
+			if input.Plan[index].Step == "" {
+				return agent.ToolResult{}, fmt.Errorf("plan[%d].step is required", index)
+			}
+			if input.Plan[index].Status == "in_progress" {
+				inProgress++
+			}
 		}
-		return "Updated todo list to " + string(payload), nil
+		if inProgress > 1 {
+			return agent.ToolResult{}, errors.New("plan may contain at most one in_progress step")
+		}
+		if input.Plan == nil {
+			input.Plan = []todoPlanItem{}
+		}
+		payload, err := json.Marshal(todoPlanResult{Schema: todoPlanSchema, Plan: input.Plan})
+		if err != nil {
+			return agent.ToolResult{}, err
+		}
+		result := agent.TextToolResult(string(payload))
+		result.Details = json.RawMessage(payload)
+		return result, nil
 	})
 	if err != nil {
 		return agent.ToolDefinition{}, err
 	}
 	return defineTool(tool, agent.ToolDescriptor{
 		Source: agent.ToolSourceOther, Capability: config.AgentToolTodo,
-		Execution: agent.ToolExecutionWorkspaceExclusive, Recovery: agent.ToolRecoveryIdempotent,
+		Execution:        agent.ToolExecutionSessionExclusive,
+		MutationScope:    agent.ToolMutationSession,
+		PostCheck:        agent.ToolPostCheckSessionState,
+		Recovery:         agent.ToolRecoveryIdempotent,
 		Steering:         agent.SteeringFinishCurrent,
 		ResultProjection: agent.ToolResultBoundedModelContext, MaxResultBytes: defaultToolResultMaxBytes,
 	})
 }
 
-// NewWriteTodos builds the run-local todo tool.
-func NewWriteTodos() (agent.ToolDefinition, error) {
-	return newWriteTodosTool()
+// NewTodo builds the run-local complete-plan replacement tool.
+func NewTodo() (agent.ToolDefinition, error) {
+	return newTodoTool()
 }
 
 type taskToolInput struct {
@@ -146,7 +173,8 @@ func newTaskTool(ctx context.Context, subAgents []agent.Runnable) (agent.ToolDef
 		return agent.ToolDefinition{}, err
 	}
 	return defineTool(tool, agent.ToolDescriptor{
-		Source: agent.ToolSourceOther, Execution: agent.ToolExecutionChild,
+		Source: agent.ToolSourceOther, Capability: config.AgentToolDelegation, Execution: agent.ToolExecutionChild,
+		MutationScope: agent.ToolMutationNone, PostCheck: agent.ToolPostCheckNone,
 		Recovery: agent.ToolRecoveryNonIdempotent, ResultProjection: agent.ToolResultBoundedModelContext,
 		Steering:       agent.SteeringFinishCurrent,
 		MaxResultBytes: defaultToolResultMaxBytes,
@@ -159,8 +187,18 @@ func NewTask(ctx context.Context, subAgents []agent.Runnable) (agent.ToolDefinit
 	return newTaskTool(ctx, subAgents)
 }
 
-func runSubAgent(ctx context.Context, child agent.Runnable, request string) (string, error) {
-	events := child.Run(ctx, &agent.AgentInput{
+func runSubAgent(ctx context.Context, child agent.Runnable, request string) (response string, returnErr error) {
+	childName := strings.TrimSpace(child.Name(ctx))
+	childCtx, finishInvocation, err := agent.BeginChildInvocation(ctx, childName)
+	if err != nil {
+		return "", err
+	}
+	defer func() {
+		if err := finishInvocation(); err != nil {
+			returnErr = errors.Join(returnErr, err)
+		}
+	}()
+	events := child.Run(childCtx, &agent.AgentInput{
 		Messages:        []*agent.Message{agent.UserMessage(request)},
 		EnableStreaming: true,
 	})
@@ -174,11 +212,11 @@ func runSubAgent(ctx context.Context, child agent.Runnable, request string) (str
 			continue
 		}
 		if event.Err != nil {
-			agent.EmitEvent(ctx, event)
+			agent.EmitEvent(childCtx, event)
 			return "", event.Err
 		}
 		if event.Output == nil || event.Output.MessageOutput == nil {
-			agent.EmitEvent(ctx, event)
+			agent.EmitEvent(childCtx, event)
 			continue
 		}
 		message, err := event.Output.MessageOutput.GetMessage()
@@ -186,7 +224,7 @@ func runSubAgent(ctx context.Context, child agent.Runnable, request string) (str
 			return "", err
 		}
 		forwarded := *event
-		forwarded.RunPath = append([]agent.RunStep(nil), event.RunPath...)
+		forwarded.RunPath = invocationRunPath(childCtx, event.RunPath)
 		forwardedOutput := *event.Output
 		forwardedVariant := *event.Output.MessageOutput
 		forwardedVariant.IsStreaming = false
@@ -194,7 +232,7 @@ func runSubAgent(ctx context.Context, child agent.Runnable, request string) (str
 		forwardedVariant.Message = message.Clone()
 		forwardedOutput.MessageOutput = &forwardedVariant
 		forwarded.Output = &forwardedOutput
-		agent.EmitEvent(ctx, &forwarded)
+		agent.EmitEvent(childCtx, &forwarded)
 		if message != nil && message.Role == agent.Assistant {
 			final = message
 		}
@@ -203,4 +241,21 @@ func runSubAgent(ctx context.Context, child agent.Runnable, request string) (str
 		return "", errors.New("subagent completed without an assistant response")
 	}
 	return final.Content, nil
+}
+
+func invocationRunPath(ctx context.Context, local []agent.RunStep) []agent.RunStep {
+	scope, ok := agent.InvocationScopeFromContext(ctx)
+	if !ok || len(scope.RunPath) == 0 {
+		return append([]agent.RunStep(nil), local...)
+	}
+	prefix := scope.RunPath
+	if len(local) > 0 && local[0].String() == prefix[len(prefix)-1] {
+		prefix = prefix[:len(prefix)-1]
+	}
+	path := make([]agent.RunStep, 0, len(prefix)+len(local))
+	for _, name := range prefix {
+		path = append(path, agent.NewRunStep(name))
+	}
+	path = append(path, local...)
+	return path
 }

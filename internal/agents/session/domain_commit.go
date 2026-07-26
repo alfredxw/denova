@@ -45,6 +45,7 @@ type ContextSnapshot struct {
 	EffectiveMessages []*agent.Message
 	Cursor            ContextCursor
 	Compaction        *ContextCompaction
+	ContextWindow     *ContextWindowProjection
 }
 
 // DomainCommitIntent is staged by a conversation and authorized by the
@@ -225,11 +226,12 @@ func (s *Session) GetEffectiveMessagesWithCursor() ([]*agent.Message, ContextCur
 	return s.effectiveTranscriptMessagesLocked(), s.contextCursorLocked()
 }
 
-// SnapshotContext captures effective messages, active compaction, and their
-// shared revision under one lock.
-func (s *Session) SnapshotContext(agentKind string) ContextSnapshot {
+// SnapshotContext captures effective messages, structural projections, and
+// their shared revision under one lock. Corrupt durable projections are an
+// error so callers cannot silently fall back to discarded raw transcript.
+func (s *Session) SnapshotContext(agentKind string) (ContextSnapshot, error) {
 	if s == nil {
-		return ContextSnapshot{}
+		return ContextSnapshot{}, nil
 	}
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -255,7 +257,10 @@ func (s *Session) SnapshotContextForDomainCommit(
 	}
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	snapshot := s.snapshotContextLocked(agentKind)
+	snapshot, err := s.snapshotContextLocked(agentKind)
+	if err != nil {
+		return ContextSnapshot{}, 0, false, err
+	}
 	messageIndex, receipt, found, err := s.findDomainCommitMessageIndexLocked(identity, role, strings.TrimSpace(hash))
 	if err != nil || !found {
 		return snapshot, 0, false, err
@@ -271,12 +276,19 @@ func (s *Session) SnapshotContextForDomainCommit(
 	return snapshot, effectiveIndex, true, nil
 }
 
-func (s *Session) snapshotContextLocked(agentKind string) ContextSnapshot {
+func (s *Session) snapshotContextLocked(agentKind string) (ContextSnapshot, error) {
 	snapshot := ContextSnapshot{EffectiveMessages: s.effectiveTranscriptMessagesLocked(), Cursor: s.contextCursorLocked()}
 	if compaction, ok := s.latestActiveContextCompactionLocked(agentKind); ok {
 		snapshot.Compaction = &compaction
 	}
-	return snapshot
+	projection, ok, err := s.latestContextWindowProjectionLocked(agentKind)
+	if err != nil {
+		return ContextSnapshot{}, err
+	}
+	if ok {
+		snapshot.ContextWindow = &projection
+	}
+	return snapshot, nil
 }
 
 func (s *Session) AppendContextMessageAt(expected ContextCursor, msg *agent.Message) error {
@@ -520,6 +532,7 @@ func domainMessageHash(message agent.Message, metadata MessageMetadata) (string,
 			SubAgentSessionID string                 `json:"subagent_session_id,omitempty"`
 			SubAgentType      string                 `json:"subagent_type,omitempty"`
 			UserReferences    []UserMessageReference `json:"user_references,omitempty"`
+			ContextOperations []ContextOperation     `json:"context_operations,omitempty"`
 		} `json:"metadata"`
 	}{Message: message}
 	payload.Metadata.RunID = metadata.RunID
@@ -531,6 +544,7 @@ func domainMessageHash(message agent.Message, metadata MessageMetadata) (string,
 	payload.Metadata.SubAgentSessionID = metadata.SubAgentSessionID
 	payload.Metadata.SubAgentType = metadata.SubAgentType
 	payload.Metadata.UserReferences = append([]UserMessageReference(nil), metadata.UserReferences...)
+	payload.Metadata.ContextOperations = append([]ContextOperation(nil), metadata.ContextOperations...)
 	data, err := json.Marshal(payload)
 	if err != nil {
 		return "", fmt.Errorf("hash domain message: %w", err)

@@ -8,6 +8,7 @@ import (
 	"strings"
 
 	agents "denova/internal/agents"
+	"denova/internal/agents/session"
 )
 
 // ConfigManagerAgentActiveView binds a reconnectable display Task and the
@@ -18,6 +19,7 @@ type ConfigManagerAgentActiveView struct {
 	StreamAttached      bool
 	Runtime             agents.RuntimeStatus
 	RuntimeProjectionOK bool
+	PendingAsk          *session.AskInteraction
 }
 
 func configManagerRunOptions(workspace, sessionID string) agents.RunOptions {
@@ -79,10 +81,26 @@ func (s *ConfigManagerAppService) ActiveView(ctx context.Context, req ConfigMana
 		snapshot := record.Task.Snapshot()
 		taskSnapshot = &snapshot
 	}
+	var pendingAsk *session.AskInteraction
+	if store := s.sessionStore(); store != nil {
+		if sess, loadErr := store.Get(sessionID); loadErr == nil {
+			if projected {
+				reconciled, reconcileErr := reconcileColdPendingAsk(operation.Context(), sess, runtimeSnapshot)
+				if reconcileErr != nil {
+					log.Printf("[agent-ask-recovery] reconcile Config Manager Ask failed workspace=%s session_id=%s operation_id=%s cycle=%d err=%v", workspace, sessionID, runtimeSnapshot.ActiveOperation, runtimeSnapshot.ActiveCycle, reconcileErr)
+				} else if reconciled {
+					log.Printf("[agent-ask-recovery] cancelled orphaned Config Manager Ask workspace=%s session_id=%s operation_id=%s cycle=%d", workspace, sessionID, runtimeSnapshot.ActiveOperation, runtimeSnapshot.ActiveCycle)
+				}
+			}
+			// Never project a cold durable Ask as answerable unless this process
+			// owns the waiter that resumes the exact model continuation.
+			pendingAsk = sess.LivePendingAsk("")
+		}
+	}
 	return ConfigManagerAgentActiveView{
 		Task: taskSnapshot, CommandID: record.CommandID,
 		StreamAttached: configManagerDisplayOwnsRuntime(record, runtimeSnapshot),
-		Runtime:        runtimeSnapshot, RuntimeProjectionOK: projected,
+		Runtime:        runtimeSnapshot, RuntimeProjectionOK: projected, PendingAsk: pendingAsk,
 	}
 }
 
@@ -367,6 +385,10 @@ func (s *ConfigManagerAppService) RecoverAgentRuntime(
 	if err := validateSelectedRecoveryAction(recovery.InitialStatus(), request.Action); err != nil {
 		recovery.Close()
 		return AgentRuntimeRecoveryResult{}, err
+	}
+	if _, err := reconcileColdPendingAsk(operation.Context(), sess, recovery.InitialStatus()); err != nil {
+		recovery.Close()
+		return AgentRuntimeRecoveryResult{}, fmt.Errorf("reconcile orphaned Ask before Config Manager recovery: %w", err)
 	}
 	structural, isStructural := recoveryStructuralAction(request.Action.Kind)
 	run := &configManagerRecoveryRun{

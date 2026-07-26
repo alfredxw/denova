@@ -70,6 +70,9 @@ func (h *Handlers) HandleConfigManagerActive(ctx context.Context, c *app.Request
 	}
 	view := h.app.ConfigManagerAgentActiveView(ctx, configManagerRequestFromQuery(c))
 	response := map[string]any{"active": false}
+	if view.PendingAsk != nil {
+		response["pending_ask"] = view.PendingAsk
+	}
 	if view.Task != nil {
 		response["active"] = !view.Task.Finished
 		response["status"] = view.Task.Status

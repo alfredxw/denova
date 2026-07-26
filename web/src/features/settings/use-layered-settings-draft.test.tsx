@@ -420,6 +420,7 @@ function snapshot(patch: Partial<LayeredSettings>): LayeredSettings {
     user: {},
     workspace: {},
     effective: {},
+    resolved_agent_tool_manifests: {},
     paths: {
       denova_dir: '',
       nova_dir: '',

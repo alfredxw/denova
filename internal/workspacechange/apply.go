@@ -10,6 +10,14 @@ import (
 	"time"
 )
 
+const (
+	maxWorkspaceMutationFileBytes     = 16 * 1024 * 1024
+	maxWorkspaceMutationFragmentBytes = 4 * 1024 * 1024
+	maxWorkspaceMutationEdits         = 256
+	maxWorkspaceMutationReplacements  = 10_000
+	maxWorkspaceMutationScanBytes     = 64 * 1024 * 1024
+)
+
 type plannedSpan struct {
 	editIndex  int
 	start      int
@@ -70,6 +78,11 @@ func (s *Service) ReplaceFile(ctx context.Context, req ReplaceFileRequest) (Chan
 	defer s.mu.Unlock()
 	if err := s.contextError(ctx); err != nil {
 		return ChangeSet{}, err
+	}
+	if len(req.Content) > maxWorkspaceMutationFileBytes {
+		return ChangeSet{}, newError(ErrorCodeInvalidEdit, "replacement exceeds the workspace mutation file limit", map[string]any{
+			"max_bytes": maxWorkspaceMutationFileBytes,
+		})
 	}
 	if err := s.reconcilePendingDurabilityLocked(); err != nil {
 		return ChangeSet{}, err
@@ -169,6 +182,16 @@ func planTextEdits(path, base string, requested []TextEdit, autoAccept bool) (st
 	if len(requested) == 0 {
 		return "", nil, newError(ErrorCodeInvalidEdit, "at least one edit is required", map[string]any{"path": path})
 	}
+	if len(base) > maxWorkspaceMutationFileBytes {
+		return "", nil, newError(ErrorCodeInvalidEdit, "workspace file exceeds the mutation limit", map[string]any{
+			"path": path, "max_bytes": maxWorkspaceMutationFileBytes,
+		})
+	}
+	if len(requested) > maxWorkspaceMutationEdits {
+		return "", nil, newError(ErrorCodeInvalidEdit, "too many edits in one mutation", map[string]any{
+			"path": path, "max_edits": maxWorkspaceMutationEdits,
+		})
+	}
 	reviewStatus := ReviewStatusPending
 	if autoAccept {
 		reviewStatus = ReviewStatusAccepted
@@ -176,6 +199,7 @@ func planTextEdits(path, base string, requested []TextEdit, autoAccept bool) (st
 	applied := make([]AppliedEdit, len(requested))
 	spans := make([]plannedSpan, 0, len(requested))
 	seenIDs := map[string]bool{}
+	scannedBytes := 0
 	for index, edit := range requested {
 		editID := strings.TrimSpace(edit.ID)
 		if editID == "" {
@@ -191,12 +215,32 @@ func planTextEdits(path, base string, requested []TextEdit, autoAccept bool) (st
 		if edit.OldString == edit.NewString {
 			return "", nil, invalidEdit(path, index, editID, "new_string must differ from old_string", nil)
 		}
-		matches := literalMatches(base, edit.OldString)
+		if len(edit.OldString) > maxWorkspaceMutationFragmentBytes || len(edit.NewString) > maxWorkspaceMutationFragmentBytes {
+			return "", nil, invalidEdit(path, index, editID, "edit text exceeds the mutation fragment limit", map[string]any{
+				"max_bytes": maxWorkspaceMutationFragmentBytes,
+			})
+		}
+		if len(base) > maxWorkspaceMutationScanBytes-scannedBytes {
+			return "", nil, invalidEdit(path, index, editID, "combined edit search exceeds the mutation scan limit", map[string]any{
+				"max_scan_bytes": maxWorkspaceMutationScanBytes,
+			})
+		}
+		scannedBytes += len(base)
+		matchLimit := 2
+		if edit.ReplaceAll {
+			matchLimit = maxWorkspaceMutationReplacements + 1
+		}
+		matches := literalMatches(base, edit.OldString, matchLimit)
 		if len(matches) == 0 {
 			return "", nil, invalidEdit(path, index, editID, "old_string was not found", map[string]any{"match_count": 0})
 		}
 		if len(matches) > 1 && !edit.ReplaceAll {
-			return "", nil, invalidEdit(path, index, editID, "old_string is not unique", map[string]any{"match_count": len(matches)})
+			return "", nil, invalidEdit(path, index, editID, "old_string is not unique", map[string]any{"match_count_at_least": 2})
+		}
+		if edit.ReplaceAll && len(matches) > maxWorkspaceMutationReplacements {
+			return "", nil, invalidEdit(path, index, editID, "replace_all exceeds the replacement limit", map[string]any{
+				"max_replacements": maxWorkspaceMutationReplacements,
+			})
 		}
 		if !edit.ReplaceAll {
 			matches = matches[:1]
@@ -209,6 +253,11 @@ func planTextEdits(path, base string, requested []TextEdit, autoAccept bool) (st
 			ReviewStatus: reviewStatus,
 		}
 		for _, start := range matches {
+			if len(spans) >= maxWorkspaceMutationReplacements {
+				return "", nil, invalidEdit(path, index, editID, "mutation exceeds the total replacement limit", map[string]any{
+					"max_replacements": maxWorkspaceMutationReplacements,
+				})
+			}
 			spans = append(spans, plannedSpan{editIndex: index, start: start, end: start + len(edit.OldString)})
 		}
 	}
@@ -228,13 +277,21 @@ func planTextEdits(path, base string, requested []TextEdit, autoAccept bool) (st
 			})
 		}
 	}
-	delta := 0
+	resultBytes := int64(len(base))
+	delta := int64(0)
 	for index := range spans {
 		span := &spans[index]
 		newText := applied[span.editIndex].NewString
-		span.afterStart = span.start + delta
+		change := int64(len(newText) - (span.end - span.start))
+		resultBytes += change
+		if resultBytes < 0 || resultBytes > maxWorkspaceMutationFileBytes {
+			return "", nil, newError(ErrorCodeInvalidEdit, "edited file exceeds the workspace mutation file limit", map[string]any{
+				"path": path, "max_bytes": maxWorkspaceMutationFileBytes,
+			})
+		}
+		span.afterStart = span.start + int(delta)
 		span.afterEnd = span.afterStart + len(newText)
-		delta += len(newText) - (span.end - span.start)
+		delta += change
 		applied[span.editIndex].Hunks = append(applied[span.editIndex].Hunks, Hunk{
 			ID:          newID("hunk"),
 			BeforeStart: span.start,
@@ -243,16 +300,20 @@ func planTextEdits(path, base string, requested []TextEdit, autoAccept bool) (st
 			AfterEnd:    span.afterEnd,
 		})
 	}
-	result := base
-	for index := len(spans) - 1; index >= 0; index-- {
-		span := spans[index]
-		result = result[:span.start] + applied[span.editIndex].NewString + result[span.end:]
+	var result strings.Builder
+	result.Grow(int(resultBytes))
+	cursor := 0
+	for _, span := range spans {
+		result.WriteString(base[cursor:span.start])
+		result.WriteString(applied[span.editIndex].NewString)
+		cursor = span.end
 	}
-	return result, applied, nil
+	result.WriteString(base[cursor:])
+	return result.String(), applied, nil
 }
 
-func literalMatches(content, needle string) []int {
-	var matches []int
+func literalMatches(content, needle string, limit int) []int {
+	matches := make([]int, 0, min(limit, 2))
 	for offset := 0; offset <= len(content)-len(needle); {
 		index := strings.Index(content[offset:], needle)
 		if index < 0 {
@@ -260,6 +321,9 @@ func literalMatches(content, needle string) []int {
 		}
 		start := offset + index
 		matches = append(matches, start)
+		if len(matches) >= limit {
+			break
+		}
 		offset = start + len(needle)
 	}
 	return matches

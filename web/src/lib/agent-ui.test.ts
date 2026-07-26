@@ -180,7 +180,7 @@ describe('agent-ui', () => {
           { type: 'text', text: '正文', state: 'done' },
           {
             type: 'dynamic-tool',
-            toolName: 'read_file',
+            toolName: 'read',
             toolCallId: 'tool-1',
             state: 'output-available',
             input: { path: 'a.md' },
@@ -245,7 +245,7 @@ describe('agent-ui', () => {
     })
     expect(converted[3]).toMatchObject({
       id: 'tool-1',
-      name: 'read_file',
+      name: 'read',
       status: 'success',
       result: 'ok',
     })
@@ -265,6 +265,34 @@ describe('agent-ui', () => {
       name: 'generate_interactive_image',
       interactive_image_status: 'success',
       interactive_image: { image_path: 'assets/interactive/images/scene.png' },
+    })
+  })
+
+  it('Ask 只渲染持久化交互 part，并让 resolved 状态覆盖 pending 投影', () => {
+    const pending = {
+      schema: 'ask.pending.v1', id: 'ask-1', tool_call_id: 'ask-1', agent_kind: 'ide', status: 'pending',
+      questions: [{ id: 'q1', question: '选择方向？', options: [{ id: 'a', label: 'A' }, { id: 'b', label: 'B' }] }],
+    }
+    const resolved = {
+      ...pending,
+      status: 'answered',
+      answers: [{ question_id: 'q1', question: '选择方向？', selected_options: [{ id: 'a', label: 'A' }] }],
+    }
+    const normalized = normalizeAgentUIMessages([
+      {
+        id: 'stream-pending', role: 'assistant', parts: [
+          { type: 'dynamic-tool', toolName: 'ask', toolCallId: 'ask-1', state: 'input-available', input: { questions: pending.questions } },
+          { type: 'data-agent-ask', id: 'ask-1', data: pending },
+        ],
+      },
+      { id: 'stream-resolved', role: 'assistant', parts: [{ type: 'data-agent-ask', id: 'ask-1', data: resolved }] },
+    ] as AgentUIMessage[])
+
+    const views = buildAgentMessageViews(normalized)
+    expect(views).toHaveLength(1)
+    expect(views[0]).toMatchObject({ kind: 'ask', streaming: false, data: { id: 'ask-1', status: 'answered' } })
+    expect(agentViewToRenderMessage(views[0])).toMatchObject({
+      id: 'ask-1', role: 'ask', ask: { id: 'ask-1', status: 'answered', questions: pending.questions },
     })
   })
 
@@ -424,7 +452,7 @@ describe('agent-ui', () => {
         parts: [
           {
             type: 'dynamic-tool',
-            toolName: 'read_file',
+            toolName: 'read',
             toolCallId: 'tool-1',
             state: 'output-available',
             input: { path: 'a.md' },
@@ -462,7 +490,7 @@ describe('agent-ui', () => {
           },
           {
             type: 'dynamic-tool',
-            toolName: 'read_file',
+            toolName: 'read',
             toolCallId: 'tool-1',
             state: 'input-streaming',
             input: { path: 'a.md' },
@@ -509,7 +537,7 @@ describe('agent-ui', () => {
         parts: [
           {
             type: 'dynamic-tool',
-            toolName: 'read_file',
+            toolName: 'read',
             toolCallId: 'tool-1',
             state: 'input-available',
             input: { path: 'a.md' },
@@ -523,7 +551,7 @@ describe('agent-ui', () => {
         parts: [
           {
             type: 'dynamic-tool',
-            toolName: 'read_file',
+            toolName: 'read',
             toolCallId: 'tool-1',
             state: 'output-available',
             input: { path: 'a.md' },

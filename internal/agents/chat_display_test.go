@@ -46,7 +46,7 @@ func TestDisplayRecorderKeepsWriteFileContentArgs(t *testing.T) {
 	recorder.Record(Event{Type: "tool_call", Data: map[string]interface{}{
 		"agent_kind": AgentKindIDE,
 		"id":         "call-1",
-		"name":       "write_file",
+		"name":       "write",
 		"args":       wantArgs,
 	}})
 
@@ -95,8 +95,8 @@ func TestDisplayRecorderPreservesAlternatingThinkingAndAssistantSegments(t *test
 		{Type: "thinking", Data: map[string]interface{}{"run_id": "run-order", "content": "先分析。"}},
 		{Type: "chunk", Data: map[string]interface{}{"run_id": "run-order", "content": "第一段"}},
 		{Type: "chunk", Data: map[string]interface{}{"run_id": "run-order", "content": "正文。"}},
-		{Type: "tool_call", Data: map[string]interface{}{"run_id": "run-order", "id": "call-1", "name": "read_file", "args": `{"path":"outline.md"}`}},
-		{Type: "tool_result", Data: map[string]interface{}{"run_id": "run-order", "id": "call-1", "name": "read_file", "content": "读取完成"}},
+		{Type: "tool_call", Data: map[string]interface{}{"run_id": "run-order", "id": "call-1", "name": "read", "args": `{"path":"outline.md"}`}},
+		{Type: "tool_result", Data: map[string]interface{}{"run_id": "run-order", "id": "call-1", "name": "read", "content": "读取完成"}},
 		{Type: "thinking", Data: map[string]interface{}{"run_id": "run-order", "content": "再检查。"}},
 		{Type: "chunk", Data: map[string]interface{}{"run_id": "run-order", "content": "第二段正文。"}},
 		{Type: "done", Data: map[string]string{}},
@@ -107,7 +107,7 @@ func TestDisplayRecorderPreservesAlternatingThinkingAndAssistantSegments(t *test
 	want := []session.DisplayEvent{
 		{Role: "thinking", Content: "先分析。"},
 		{Role: "assistant", Content: "第一段正文。"},
-		{Role: "tool_call", Content: "read_file"},
+		{Role: "tool_call", Content: "read"},
 		{Role: "thinking", Content: "再检查。"},
 		{Role: "assistant", Content: "第二段正文。"},
 	}
@@ -254,19 +254,19 @@ func TestDisplayRecorderAppendsStreamingWriteFileContent(t *testing.T) {
 	recorder.Record(Event{Type: "tool_call", Data: map[string]interface{}{
 		"agent_kind": AgentKindIDE,
 		"id":         "call-1",
-		"name":       "write_file",
+		"name":       "write",
 		"args":       "",
 	}})
 	recorder.Record(Event{Type: "tool_args_delta", Data: map[string]interface{}{
 		"agent_kind": AgentKindIDE,
 		"id":         "call-1",
-		"name":       "write_file",
+		"name":       "write",
 		"delta":      `{"file_path":"chapters/ch02.md","content":"第一行`,
 	}})
 	recorder.Record(Event{Type: "tool_args_delta", Data: map[string]interface{}{
 		"agent_kind": AgentKindIDE,
 		"id":         "call-1",
-		"name":       "write_file",
+		"name":       "write",
 		"delta":      `\n第二行\n第三行"}`,
 	}})
 
@@ -292,7 +292,7 @@ func TestDisplayRecorderKeepsNonIDEWriteFileArgs(t *testing.T) {
 	recorder.Record(Event{Type: "tool_call", Data: map[string]interface{}{
 		"agent_kind": AgentKindConfigManager,
 		"id":         "call-1",
-		"name":       "write_file",
+		"name":       "write",
 		"args":       args,
 	}})
 
@@ -315,7 +315,7 @@ func TestDisplayRecorderKeepsIDEEditFileChapterArgs(t *testing.T) {
 	recorder.Record(Event{Type: "tool_call", Data: map[string]interface{}{
 		"agent_kind": AgentKindIDE,
 		"id":         "call-1",
-		"name":       "edit_file",
+		"name":       "edit",
 		"args":       args,
 	}})
 
@@ -323,7 +323,7 @@ func TestDisplayRecorderKeepsIDEEditFileChapterArgs(t *testing.T) {
 		t.Fatalf("events = %d, want 1", len(appender.events))
 	}
 	if appender.events[0].Args != args {
-		t.Fatalf("edit_file args should stay unchanged: %q", appender.events[0].Args)
+		t.Fatalf("edit args should stay unchanged: %q", appender.events[0].Args)
 	}
 }
 
@@ -366,7 +366,7 @@ func TestDisplayRecorderMarksPendingToolsSuccessOnDone(t *testing.T) {
 	recorder.Record(Event{Type: "tool_call", Data: map[string]interface{}{
 		"agent_kind": AgentKindIDE,
 		"id":         "call-execute",
-		"name":       "execute",
+		"name":       "bash",
 		"args":       `{"command":"pwd"}`,
 	}})
 	recorder.Record(Event{Type: "done", Data: map[string]string{}})

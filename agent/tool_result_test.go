@@ -10,6 +10,7 @@ import (
 func resultTestDescriptor(limit int) ToolDescriptor {
 	return ToolDescriptor{
 		Source: ToolSourceRead, Execution: ToolExecutionParallelRead,
+		MutationScope: ToolMutationNone, PostCheck: ToolPostCheckNone,
 		Recovery: ToolRecoveryReadOnly, ResultProjection: ToolResultBoundedModelContext,
 		Steering: SteeringFinishCurrent, MaxResultBytes: limit,
 	}
@@ -44,7 +45,7 @@ func TestNormalizeToolResultKeepsModelDisplayAndDetailsIsolated(t *testing.T) {
 	if string(normalized.Details) != string(details) || normalized.Metadata.Target != "chapters/one.md" || normalized.Metadata.IdempotencyKey != "call-1" {
 		t.Fatalf("details or durable metadata changed: %#v", normalized)
 	}
-	message := ToolMessage(normalized, "call-1", WithToolName("read_file"))
+	message := ToolMessage(normalized, "call-1", WithToolName("read"))
 	encoded, err := json.Marshal(message)
 	if err != nil {
 		t.Fatal(err)

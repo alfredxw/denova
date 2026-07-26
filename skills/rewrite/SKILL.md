@@ -9,9 +9,9 @@ agent: ide
 根据作者要求修改已有的章节内容。
 
 ## 工作流程
-1. 使用 read_file 读取 `setting/outline.md`、`setting/progress.md` 和 `setting/character-states.md`，并结合常驻资料库和资料库索引了解上下文；如修改内容属于当前章节组，也读取 `setting/chapter-groups/` 下对应细纲
+1. 使用 read 读取 `setting/outline.md`、`setting/progress.md` 和 `setting/character-states.md`，并结合常驻资料库和资料库索引了解上下文；如修改内容属于当前章节组，也读取 `setting/chapter-groups/` 下对应细纲
 2. 根据作者要求进行修改，完全重写，只需要考虑前面和后面章节的连贯性
-3. 使用 write_file 写回修改后的章节
+3. 局部修改使用 edit 做精确替换；只有明确要重写整章时才使用 write 覆盖文件
 4. 更新 `setting/progress.md` 中的章节摘要和最近事件，并更新 `setting/character-states.md` 中的角色当前状态
 5. 如果角色身份、人设、长期关系、能力体系、世界规则等稳定设定有变化，使用 write_lore_items 批量同步资料库对应条目
 6. 除非作者明确要求调整大纲，不更新 `setting/outline.md`

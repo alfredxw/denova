@@ -16,10 +16,11 @@ func TestVerifyPostRunMutationsAcceptsIllustrationMetaWrite(t *testing.T) {
 		t.Fatalf("write meta: %v", err)
 	}
 	result := VerifyPostRunMutations(bookService, []ToolMutation{{
-		ToolName:          producttools.GenerateImageToolName,
-		Target:            "assets/illustrations/ch01/run/meta.json",
-		Source:            ToolSourceImage,
-		RequiresPostCheck: true,
+		ToolName:      producttools.GenerateImageToolName,
+		Target:        "assets/illustrations/ch01/run/meta.json",
+		Source:        ToolSourceImage,
+		MutationScope: ToolMutationWorkspace,
+		PostCheck:     ToolPostCheckWorkspaceChange,
 	}})
 	if result.Status != "ok" {
 		t.Fatalf("verification status = %s checks=%#v warnings=%#v", result.Status, result.Checks, result.Warnings)
@@ -36,10 +37,11 @@ func TestVerifyPostRunMutationsAcceptsAbsolutePathInsideWorkspace(t *testing.T) 
 
 	absoluteTarget := filepath.Join(workspace, filepath.FromSlash(relativeTarget))
 	result := VerifyPostRunMutations(bookService, []ToolMutation{{
-		ToolName:          "write_file",
-		Target:            absoluteTarget,
-		Source:            ToolSourceWrite,
-		RequiresPostCheck: true,
+		ToolName:      "write",
+		Target:        absoluteTarget,
+		Source:        ToolSourceWrite,
+		MutationScope: ToolMutationWorkspace,
+		PostCheck:     ToolPostCheckWorkspaceChange,
 	}})
 
 	if result.Status != "ok" {
@@ -56,10 +58,11 @@ func TestVerifyPostRunMutationsRejectsAbsolutePathOutsideWorkspace(t *testing.T)
 	outsideTarget := filepath.Join(workspace+"-outside", "director.md")
 
 	result := VerifyPostRunMutations(bookService, []ToolMutation{{
-		ToolName:          "write_file",
-		Target:            outsideTarget,
-		Source:            ToolSourceWrite,
-		RequiresPostCheck: true,
+		ToolName:      "write",
+		Target:        outsideTarget,
+		Source:        ToolSourceWrite,
+		MutationScope: ToolMutationWorkspace,
+		PostCheck:     ToolPostCheckWorkspaceChange,
 	}})
 
 	if result.Status != "warning" || len(result.Checks) != 1 || result.Checks[0].Type != "path" {

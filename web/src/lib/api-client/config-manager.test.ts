@@ -1,6 +1,8 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { APIError } from './client'
 import {
+  answerConfigManagerAsk,
+  cancelConfigManagerAsk,
   clearConfigManagerSession,
   getActiveConfigManagerTask,
   reconnectConfigManagerStream,
@@ -48,6 +50,25 @@ describe('Config Manager durable runtime API', () => {
     ])
     expect(calls[1][1]?.method).toBeUndefined()
     expect(calls[2][1]?.method).toBe('POST')
+  })
+
+  it('keeps Ask answer and cancellation inside the exact Config Manager scope', async () => {
+    const fetchMock = vi.fn(async () => new Response(JSON.stringify({ schema: 'ask.result.v1', id: 'ask/1', status: 'answered' }), {
+      status: 200,
+      headers: { 'Content-Type': 'application/json' },
+    }))
+    vi.stubGlobal('fetch', fetchMock)
+
+    await answerConfigManagerAsk(scope, 'ask/1', [{ question_id: 'q1', custom_input: 'answer' }])
+    await cancelConfigManagerAsk(scope, 'ask/1')
+
+    const calls = fetchMock.mock.calls as unknown as Array<[string, RequestInit]>
+    expect(calls.map(([url]) => url)).toEqual([
+      '/api/config-manager/asks/ask%2F1/answer?origin=agent+settings&resource_id=resource%2F1&story_id=story+1&branch_id=branch%2Fmain',
+      '/api/config-manager/asks/ask%2F1/cancel?origin=agent+settings&resource_id=resource%2F1&story_id=story+1&branch_id=branch%2Fmain',
+    ])
+    expect(JSON.parse(String(calls[0][1].body))).toEqual({ answers: [{ question_id: 'q1', custom_input: 'answer' }] })
+    expect(JSON.parse(String(calls[1][1].body))).toEqual({ reason: 'user_cancelled' })
   })
 
   it('posts only the server-projected recovery identity', async () => {

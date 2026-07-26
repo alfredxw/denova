@@ -84,14 +84,14 @@ func (g *toolExecutionGate) weightedAdmission() *semaphore.Weighted {
 
 func executionModeForTool(manifest ToolManifest) toolExecutionMode {
 	switch manifest.Execution {
-	case ToolExecutionChild:
+	case ToolExecutionChild, ToolExecutionInteractiveWait:
 		// task is an orchestration boundary. Holding the workspace lock while
 		// its subagent runs would deadlock when that subagent invokes a gated
 		// file tool; the nested tools acquire their own shared-workspace leases.
 		return toolExecutionUncoordinated
 	case ToolExecutionParallelRead:
 		return toolExecutionParallelRead
-	case ToolExecutionWorkspaceExclusive:
+	case ToolExecutionWorkspaceExclusive, ToolExecutionSessionExclusive, ToolExecutionConfigExclusive:
 		return toolExecutionExclusive
 	default:
 		// Only tools classified by a stable manifest are allowed to share the

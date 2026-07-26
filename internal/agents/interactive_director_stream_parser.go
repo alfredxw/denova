@@ -179,7 +179,7 @@ func jsonStringValueOffset(data, key string) (int, bool) {
 
 func directorToolGeneratedTextKeys(name string) []string {
 	switch strings.TrimSpace(name) {
-	case "edit_file":
+	case "edit":
 		return []string{"new_string", "content"}
 	case submitDirectorPlanUpdateToolName:
 		return []string{"plan", "agent_brief", "lore_context"}

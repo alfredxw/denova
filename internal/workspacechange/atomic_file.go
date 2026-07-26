@@ -11,7 +11,7 @@ import (
 
 func (s *Service) atomicWriteVisibleFile(rel string, content []byte) (mutationResult, error) {
 	result := mutationResult{Stage: mutationStageUnchanged, ParentRel: visibleParentRel(rel)}
-	root, err := os.OpenRoot(s.workspace)
+	root, err := s.openWorkspaceRoot()
 	if err != nil {
 		return result, err
 	}
@@ -71,7 +71,7 @@ func (s *Service) atomicWriteVisibleFile(rel string, content []byte) (mutationRe
 
 func (s *Service) atomicRemoveVisibleFile(rel string) (mutationResult, error) {
 	result := mutationResult{Stage: mutationStageUnchanged, ParentRel: visibleParentRel(rel)}
-	root, err := os.OpenRoot(s.workspace)
+	root, err := s.openWorkspaceRoot()
 	if err != nil {
 		return result, err
 	}

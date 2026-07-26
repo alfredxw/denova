@@ -9,6 +9,7 @@ const (
 	historyTypeSessionPatch      = "session_patch"
 	historyTypeDisplayPatch      = "display_patch"
 	historyTypeInterruptionPatch = "interruption_patch"
+	historyTypeAskPatch          = "ask_patch"
 )
 
 // sessionHeader is immutable journal metadata. Mutable session attributes are
@@ -32,6 +33,11 @@ type clearRecord struct {
 type interruptionRecord struct {
 	Type string `json:"type"`
 	Interruption
+}
+
+type askRecord struct {
+	Type string `json:"type"`
+	AskInteraction
 }
 
 // displayRecord carries an internal immutable identifier. DisplayEvent.ID is a
@@ -67,4 +73,14 @@ type interruptionPatchRecord struct {
 	Status     string     `json:"status"`
 	ResolvedAt *time.Time `json:"resolved_at,omitempty"`
 	UpdatedAt  time.Time  `json:"updated_at"`
+}
+
+type askPatchRecord struct {
+	Type         string            `json:"type"`
+	TargetID     string            `json:"target_id"`
+	Status       string            `json:"status"`
+	Answers      []AskAnswerResult `json:"answers,omitempty"`
+	CancelReason string            `json:"cancel_reason,omitempty"`
+	ResolvedAt   time.Time         `json:"resolved_at"`
+	UpdatedAt    time.Time         `json:"updated_at"`
 }

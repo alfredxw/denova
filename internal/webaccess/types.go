@@ -4,6 +4,7 @@
 package webaccess
 
 import (
+	"context"
 	"fmt"
 	"log"
 	"net/http"
@@ -15,6 +16,9 @@ const (
 	ProviderDuckDuckGo = "duckduckgo"
 	ProviderBing       = "bing"
 	ProviderSearXNG    = "searxng"
+
+	SearchResponseSchema = "web_search.v1"
+	FetchResponseSchema  = "web_fetch.v1"
 )
 
 // SearchStatus separates a successful query, a reachable-but-empty query, and
@@ -73,6 +77,7 @@ type SearchResult struct {
 }
 
 type SearchResponse struct {
+	Schema          string              `json:"schema"`
 	Query           string              `json:"query"`
 	Status          SearchStatus        `json:"status"`
 	Provider        string              `json:"provider,omitempty"`
@@ -142,6 +147,7 @@ type FetchRequest struct {
 }
 
 type FetchResponse struct {
+	Schema          string             `json:"schema"`
 	Status          FetchStatus        `json:"status"`
 	FetchMethod     FetchMethod        `json:"fetch_method,omitempty"`
 	Attempts        []FetchAttempt     `json:"attempts"`
@@ -188,6 +194,21 @@ type dependencies struct {
 
 func New(config Config) (*Client, error) {
 	return newClient(config, dependencies{})
+}
+
+// Close releases stateful acquisition backends. Direct HTTP/search clients do
+// not own background processes, while the optional Rod renderer does. The
+// method is intentionally explicit so an Agent invocation can make that
+// renderer a run-owned resource instead of leaking it across rebuilt Agents.
+func (client *Client) Close(ctx context.Context) error {
+	if client == nil || client.browserRenderer == nil {
+		return nil
+	}
+	closer, ok := client.browserRenderer.(browserRendererCloser)
+	if !ok {
+		return nil
+	}
+	return closer.Close(ctx)
 }
 
 func newClient(config Config, deps dependencies) (*Client, error) {

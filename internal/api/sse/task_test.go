@@ -32,7 +32,7 @@ func TestSSEWriteHandlerAppliesMiddlewareChainBeforeWriteWhenEnabled(t *testing.
 	writeChapterBodySSEEvents(t, writeSSE)
 
 	got := buf.String()
-	if !strings.Contains(got, `"delta":"{\"file_path\":\"chapters/ch02.md\"}"`) {
+	if !strings.Contains(got, `"delta":"{\"path\":\"chapters/ch02.md\"}"`) {
 		t.Fatalf("filtered SSE output should include path-only delta, got %q", got)
 	}
 	if strings.Contains(got, "第一行") || strings.Contains(got, "第二行") || strings.Contains(got, `\"content\"`) || strings.Contains(got, "...") {
@@ -184,7 +184,7 @@ func writeChapterBodySSEEvents(t *testing.T, writeSSE func(novaApp.TaskEvent) er
 	if err := write(1, agents.Event{Type: "tool_call", Data: map[string]interface{}{
 		"agent_kind": agents.AgentKindIDE,
 		"id":         "call-1",
-		"name":       "write_file",
+		"name":       "write",
 		"args":       "",
 	}}); err != nil {
 		t.Fatalf("write tool_call failed: %v", err)
@@ -192,22 +192,22 @@ func writeChapterBodySSEEvents(t *testing.T, writeSSE func(novaApp.TaskEvent) er
 	if err := write(2, agents.Event{Type: "tool_args_delta", Data: map[string]interface{}{
 		"agent_kind": agents.AgentKindIDE,
 		"id":         "call-1",
-		"name":       "write_file",
-		"delta":      `{"file_path":"chapters/ch02.md","content":"第一行`,
+		"name":       "write",
+		"delta":      `{"path":"chapters/ch02.md","content":"第一行`,
 	}}); err != nil {
 		t.Fatalf("write first delta failed: %v", err)
 	}
 	if err := write(3, agents.Event{Type: "tool_args_delta", Data: map[string]interface{}{
 		"agent_kind": agents.AgentKindIDE,
 		"id":         "call-1",
-		"name":       "write_file",
+		"name":       "write",
 		"delta":      `\n第二行"}`,
 	}}); err != nil {
 		t.Fatalf("write suppressed delta failed: %v", err)
 	}
 	if err := write(4, agents.Event{Type: "tool_result", Data: map[string]interface{}{
 		"id":      "call-1",
-		"name":    "write_file",
+		"name":    "write",
 		"content": "Updated file chapters/ch02.md",
 	}}); err != nil {
 		t.Fatalf("write tool_result failed: %v", err)

@@ -292,7 +292,7 @@ describe('Agent MessageList', () => {
             role: 'assistant',
             parts: [
               { type: 'reasoning', id: 'reason-1', text: '内部思考' },
-              { type: 'dynamic-tool', toolName: 'read_file', toolCallId: 'tool-1', state: 'output-available', input: { path: 'a.md' }, output: 'ok' },
+              { type: 'dynamic-tool', toolName: 'read', toolCallId: 'tool-1', state: 'output-available', input: { path: 'a.md' }, output: 'ok' },
               { type: 'text', id: 'text-1', text: '可见正文' },
             ],
           },
@@ -351,7 +351,7 @@ describe('Agent MessageList', () => {
             role: 'assistant',
             parts: [
               { type: 'reasoning', id: 'reason-running', text: '正在检查资料', state: 'streaming' },
-              { type: 'dynamic-tool', toolName: 'read_file', toolCallId: 'tool-running', state: 'input-streaming', input: { path: 'a.md' } },
+              { type: 'dynamic-tool', toolName: 'read', toolCallId: 'tool-running', state: 'input-streaming', input: { path: 'a.md' } },
             ],
           },
         ] as AgentUIMessage[]}
@@ -361,12 +361,12 @@ describe('Agent MessageList', () => {
     const traceButton = screen.getByRole('button', { name: /思考过程.*1 次工具调用/ })
     expect(traceButton).toHaveAttribute('aria-expanded', 'false')
     expect(screen.queryByText('正在检查资料')).not.toBeInTheDocument()
-    expect(screen.queryByText('read_file')).not.toBeInTheDocument()
+    expect(screen.queryByText('read')).not.toBeInTheDocument()
 
     fireEvent.click(traceButton)
     expect(traceButton).toHaveAttribute('aria-expanded', 'true')
     expect(screen.getByText('正在检查资料')).toBeInTheDocument()
-    expect(screen.getByText('read_file')).toBeInTheDocument()
+    expect(screen.getByText('read')).toBeInTheDocument()
 
     rerender(
       <VirtuosoMockContext.Provider value={{ viewportHeight: 180, itemHeight: 52 }}>
@@ -381,7 +381,7 @@ describe('Agent MessageList', () => {
               role: 'assistant',
               parts: [
                 { type: 'reasoning', id: 'reason-running', text: '正在检查资料' },
-                { type: 'dynamic-tool', toolName: 'read_file', toolCallId: 'tool-running', state: 'output-available', input: { path: 'a.md' }, output: 'ok' },
+                { type: 'dynamic-tool', toolName: 'read', toolCallId: 'tool-running', state: 'output-available', input: { path: 'a.md' }, output: 'ok' },
               ],
             },
           ] as AgentUIMessage[]}
@@ -390,7 +390,7 @@ describe('Agent MessageList', () => {
     )
 
     expect(screen.getByText('正在检查资料')).toBeInTheDocument()
-    expect(screen.getByText('read_file')).toBeInTheDocument()
+    expect(screen.getByText('read')).toBeInTheDocument()
 
     rerender(
       <VirtuosoMockContext.Provider value={{ viewportHeight: 180, itemHeight: 52 }}>
@@ -405,7 +405,7 @@ describe('Agent MessageList', () => {
               role: 'assistant',
               parts: [
                 { type: 'reasoning', id: 'reason-running', text: '正在检查资料' },
-                { type: 'dynamic-tool', toolName: 'read_file', toolCallId: 'tool-running', state: 'output-available', input: { path: 'a.md' }, output: 'ok' },
+                { type: 'dynamic-tool', toolName: 'read', toolCallId: 'tool-running', state: 'output-available', input: { path: 'a.md' }, output: 'ok' },
                 { type: 'text', id: 'text-running', text: '资料检查完成。' },
               ],
             },
@@ -450,7 +450,7 @@ describe('Agent MessageList', () => {
           role: 'assistant',
           parts: [{
             type: 'dynamic-tool',
-            toolName: 'read_file',
+            toolName: 'read',
             toolCallId: 'tool-output',
             state: 'output-available',
             input: { path: 'large.md' },
@@ -522,7 +522,7 @@ function traceHistoryMessages(withNewUser: boolean): AgentUIMessage[] {
       role: 'assistant',
       parts: [
         { type: 'reasoning', id: 'reason-old', text: '上一轮思考' },
-        { type: 'dynamic-tool', toolName: 'read_file', toolCallId: 'tool-old', state: 'output-available', input: { path: 'old.md' }, output: 'ok' },
+        { type: 'dynamic-tool', toolName: 'read', toolCallId: 'tool-old', state: 'output-available', input: { path: 'old.md' }, output: 'ok' },
         { type: 'text', id: 'text-old', text: '上一轮正文。' },
       ],
     },

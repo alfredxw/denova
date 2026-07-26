@@ -33,7 +33,7 @@ func TestToolOrchestratorBoundsEndpointErrorsForModelDisplayAndPersistence(t *te
 		func(context.Context, string, ...agent.ToolOption) (agent.ToolResult, error) {
 			return agent.ToolResult{}, hugeError
 		},
-		testToolContext("read_file", "call-error"),
+		testToolContext("read", "call-error"),
 	)
 	if err != nil {
 		t.Fatal(err)
@@ -72,7 +72,7 @@ func TestToolOrchestratorNormalizesInvalidUTF8InEndpointErrors(t *testing.T) {
 		func(context.Context, string, ...agent.ToolOption) (agent.ToolResult, error) {
 			return agent.ToolResult{}, invalidError
 		},
-		testToolContext("read_file", "call-invalid-utf8-error"),
+		testToolContext("read", "call-invalid-utf8-error"),
 	)
 	if err != nil {
 		t.Fatal(err)
@@ -97,7 +97,7 @@ func TestToolOrchestratorUsesDetailsForMutationReceiptWhenModelContentIsTruncate
 			result.Details = []byte(receipt)
 			return result, nil
 		},
-		testToolContext("write_file", "call-details-receipt"),
+		testToolContext("write", "call-details-receipt"),
 	)
 	if err != nil {
 		t.Fatal(err)
@@ -125,7 +125,7 @@ func TestToolOrchestratorTurnsInvalidDetailsIntoStructuredToolError(t *testing.T
 			result.Details = []byte(`{"broken"`)
 			return result, nil
 		},
-		testToolContext("read_file", "call-invalid-details"),
+		testToolContext("read", "call-invalid-details"),
 	)
 	if err != nil {
 		t.Fatal(err)

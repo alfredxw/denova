@@ -22,13 +22,13 @@ context-planner -> writer -> reviewer -> fixer -> final-gate -> memory-patcher -
 
 ## 工具使用要求
 
-- 写作前使用 `read_file` 读取必要上下文：`CREATOR.md`、`setting/outline.md`、`setting/progress.md`、`setting/character-states.md`、相关章节组细纲和最近章节；涉及资料库条目时先用 `list_lore_items` 判断，再用 `read_lore_items` 读取相关完整资料。
+- 写作前使用 `read` 读取必要上下文：`CREATOR.md`、`setting/outline.md`、`setting/progress.md`、`setting/character-states.md`、相关章节组细纲和最近章节；涉及资料库条目时先用 `list_lore_items` 判断，再用 `read_lore_items` 读取相关完整资料。
 - 所有角色 subagent 都必须通过 `task` 工具委派。每次调用 `task` 时，在 description 中写清角色名、用户目标、必要上下文来源、文件路径、允许/禁止写入、期望输出格式和交付物。
 - `context-planner`、`reviewer`、`final-gate`、`memory-patcher` 默认只返回计划、审稿、检查或 patch，不直接改文件；`writer` 和 `fixer` 是否写文件由主 Agent 的委派说明决定。主 Agent 对最终落盘结果负责。
-- 创建新章节、写入整章初稿、覆盖整章修订稿时使用 `write_file`；局部修改已有章节或状态文件时使用 `edit_file`，并确保 `old_string` 来自最近一次 `read_file` 的实际内容且不包含行号前缀。
-- 写入 `setting/progress.md` 和 `setting/character-states.md` 时，优先用 `edit_file` 更新对应条目；只有文件不存在、结构严重不匹配或需要全量重排时才用 `write_file`。
-- 每次调用 `write_file` 或 `edit_file` 后都要检查工具结果。若结果包含 `[tool error]`、参数 JSON 错误、`string not found`、路径错误或截断提示，不得宣称已完成；应重新读取目标文件、修正参数后重试，或明确告诉用户未写入成功。
-- Final Gate 通过后，使用 `read_file` 读回最终章节关键片段；如果写入了状态文件，也读回对应关键片段，确认内容已经落盘。
+- 创建新章节、写入整章初稿、覆盖整章修订稿时使用 `write`；局部修改已有章节或状态文件时使用 `edit`，并确保 `old_string` 在当前文件中精确且唯一匹配、不包含 read 返回的行号前缀。
+- 写入 `setting/progress.md` 和 `setting/character-states.md` 时，优先用 `edit` 更新对应条目；只有文件不存在、结构严重不匹配或需要全量重排时才用 `write`。
+- 每次调用 `write` 或 `edit` 后都要检查工具结果。若结果包含 `[tool error]`、参数 JSON 错误、`string not found`、匹配不唯一、路径错误或截断提示，不得宣称已完成；应重新读取目标文件、修正参数后重试，或明确告诉用户未写入成功。
+- Final Gate 通过后，使用 `read` 读回最终章节关键片段；如果写入了状态文件，也读回对应关键片段，确认内容已经落盘。
 
 如果这些角色 subagent 可用，请按顺序使用：
 
@@ -103,7 +103,7 @@ reviewer 必须返回结构化问题，每项包含：
 
 完整章节写入或实质性剧情改写完成后，状态更新必须在同一轮基于最终正文落盘，不等待作者另行确认成章；章节状态只用于 UI 编辑标记。纯错字、标点或措辞润色没有改变叙事事实时无需生成状态更新。
 
-写入状态更新时必须使用文件工具：局部更新用 `edit_file`，全量重写用 `write_file`；写入后用 `read_file` 验证关键条目已经存在。
+写入状态更新时必须使用文件工具：局部更新用 `edit`，全量重写用 `write`；写入后用 `read` 验证关键条目已经存在。
 
 长期稳定资料库不同于 progress 和 character-state：
 

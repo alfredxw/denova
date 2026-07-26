@@ -44,7 +44,7 @@ func TestFormatForModelBoundsTheCompleteUTF8Result(t *testing.T) {
 	if !utf8.ValidString(formatted) {
 		t.Fatalf("formatted Skill is not valid UTF-8: %q", formatted)
 	}
-	if !strings.HasPrefix(formatted, "# Skill: alpha") || !strings.Contains(formatted, "instructions truncated") {
+	if !strings.HasPrefix(formatted, "# Skill: alpha") || !strings.Contains(formatted, "Reference root: skill://alpha/references/") || !strings.Contains(formatted, "instructions truncated") {
 		t.Fatalf("formatted Skill = %q", formatted)
 	}
 }

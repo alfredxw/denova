@@ -214,19 +214,15 @@ func ResolveSubAgentModel(cfg *Config, parentKind string, sub SubAgentConfig) Re
 }
 
 func ResolveSubAgentTools(parent ResolvedAgentToolSettings, override AgentToolOverride) ResolvedAgentToolSettings {
-	return ResolvedAgentToolSettings{
-		FileRead:         parent.FileRead && boolValue(override.FileRead, parent.FileRead),
-		FileWrite:        parent.FileWrite && boolValue(override.FileWrite, parent.FileWrite),
-		ShellExecute:     parent.ShellExecute && boolValue(override.ShellExecute, parent.ShellExecute),
-		Skills:           parent.Skills && boolValue(override.Skills, parent.Skills),
-		LoreRead:         parent.LoreRead && boolValue(override.LoreRead, parent.LoreRead),
-		LoreWrite:        parent.LoreWrite && boolValue(override.LoreWrite, parent.LoreWrite),
-		Todo:             parent.Todo && boolValue(override.Todo, parent.Todo),
-		WebSearch:        parent.WebSearch && boolValue(override.WebSearch, parent.WebSearch),
-		ImageGeneration:  parent.ImageGeneration && boolValue(override.ImageGeneration, parent.ImageGeneration),
-		AgentConfigRead:  parent.AgentConfigRead && boolValue(override.AgentConfigRead, parent.AgentConfigRead),
-		AgentConfigWrite: parent.AgentConfigWrite && boolValue(override.AgentConfigWrite, parent.AgentConfigWrite),
+	resolved := make(ResolvedAgentToolSettings, len(agentToolCapabilities))
+	for _, capability := range agentToolCapabilities {
+		allowed := parent.Allows(capability.Source)
+		if explicit, ok := override[capability.Source]; ok {
+			allowed = allowed && explicit
+		}
+		resolved[capability.Source] = allowed
 	}
+	return resolved
 }
 
 func mergeSubAgent(parent, child SubAgentConfig) SubAgentConfig {

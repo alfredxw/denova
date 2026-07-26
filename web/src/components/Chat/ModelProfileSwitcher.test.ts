@@ -54,6 +54,7 @@ function settingsSnapshot(patch: Partial<LayeredSettings>): LayeredSettings {
     builtin_agent_prompts: {},
     builtin_agent_prompt_blocks: {},
     builtin_agent_prompt_sources: {},
+    resolved_agent_tool_manifests: {},
     ...patch,
   }
 }

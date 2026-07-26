@@ -34,6 +34,40 @@ func TestDiscoverForExecutableLeavesMissingRipgrepUnset(t *testing.T) {
 	}
 }
 
+func TestDiscoverForExecutableResolvesShellsFromPATH(t *testing.T) {
+	toolsDir := t.TempDir()
+	bashName := "bash"
+	pwshName := "pwsh"
+	if runtime.GOOS == "windows" {
+		bashName += ".exe"
+		pwshName += ".exe"
+	}
+	bashPath := filepath.Join(toolsDir, bashName)
+	pwshPath := filepath.Join(toolsDir, pwshName)
+	for _, path := range []string{bashPath, pwshPath} {
+		if err := os.WriteFile(path, []byte("runtime tool"), 0o755); err != nil {
+			t.Fatal(err)
+		}
+	}
+	t.Setenv("PATH", toolsDir)
+
+	got := DiscoverForExecutable("")
+	if got.Bash != bashPath {
+		t.Fatalf("Bash = %q, want %q", got.Bash, bashPath)
+	}
+	if got.Pwsh != pwshPath {
+		t.Fatalf("Pwsh = %q, want %q", got.Pwsh, pwshPath)
+	}
+}
+
+func TestDiscoverForExecutableLeavesMissingShellsUnset(t *testing.T) {
+	t.Setenv("PATH", t.TempDir())
+	got := DiscoverForExecutable("")
+	if got.Bash != "" || got.Pwsh != "" {
+		t.Fatalf("missing shells = Bash:%q Pwsh:%q, want empty", got.Bash, got.Pwsh)
+	}
+}
+
 func denovaExecutableName() string {
 	if runtime.GOOS == "windows" {
 		return "denova.exe"

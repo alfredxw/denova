@@ -40,7 +40,7 @@ func recordToolStart(ctx context.Context, decision ToolDecision, arguments strin
 	if observer == nil {
 		return nil
 	}
-	if strings.TrimSpace(decision.ToolCallID) == "" {
+	if strings.TrimSpace(decision.ExecutionID) == "" {
 		return agent.MarkToolControlError(fmt.Errorf("record durable tool start for %q: missing tool call id", decision.ToolName))
 	}
 	if err := observer.BeforeTool(ctx, decision, arguments); err != nil {

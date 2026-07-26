@@ -13,6 +13,7 @@ type InteractiveContext struct {
 	Store                     *interactive.Store
 	StoryID                   string
 	BranchID                  string
+	TurnID                    string
 	MaintenanceTask           string
 	OnLoreItemsRead           func([]string)
 	SubmitStateSchemaBatch    func(context.Context, interactive.ActorStateSchemaBatch) (interactive.ActorStateSchemaBatchResult, error)

@@ -56,11 +56,12 @@ type ledgerEvent struct {
 }
 
 type eventStore struct {
-	dir        string
-	ledgerPath string
-	blobDir    string
-	durability *durabilityOps
-	root       *os.Root
+	dir               string
+	ledgerPath        string
+	blobDir           string
+	durability        *durabilityOps
+	root              *os.Root
+	workspaceIdentity os.FileInfo
 }
 
 func newEventStore(workspace string, durability *durabilityOps) (*eventStore, error) {
@@ -75,6 +76,10 @@ func newEventStore(workspace string, durability *durabilityOps) (*eventStore, er
 		return nil, err
 	}
 	defer root.Close()
+	workspaceIdentity, err := root.Stat(".")
+	if err != nil {
+		return nil, err
+	}
 	if err := mkdirAllRootDurable(root, blobRel, 0o700, durability); err != nil {
 		return nil, err
 	}
@@ -91,10 +96,11 @@ func newEventStore(workspace string, durability *durabilityOps) (*eventStore, er
 		return nil, newError(ErrorCodeConflict, "workspace change storage resolved outside the workspace", map[string]any{"path": blobDir})
 	}
 	store := &eventStore{
-		dir:        dir,
-		ledgerPath: filepath.Join(dir, "ledger.jsonl"),
-		blobDir:    blobDir,
-		durability: durability,
+		dir:               dir,
+		ledgerPath:        filepath.Join(dir, "ledger.jsonl"),
+		blobDir:           blobDir,
+		durability:        durability,
+		workspaceIdentity: workspaceIdentity,
 	}
 	// Make the ledger inode and its directory entry durable before append ever
 	// relies on it. Later appends only extend this existing file.

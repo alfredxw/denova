@@ -313,9 +313,9 @@ describe('StoryStage streaming rendering', () => {
         {
           id: 'director-write',
           role: 'tool_call' as const,
-          name: 'write_file',
-          content: 'write_file',
-          args: '{"file_path":"director.md"}',
+          name: 'write',
+          content: 'write',
+          args: '{"path":"director.md"}',
           status: 'success',
           agent_kind: 'interactive_director',
         },
@@ -343,7 +343,7 @@ describe('StoryStage streaming rendering', () => {
     expect(screen.getByText('正在判断石门后的威胁。')).toBeInTheDocument()
     expect(screen.getByText('list_lore_items')).toBeInTheDocument()
     expect(screen.queryByText('正在重新安排后续分支。')).not.toBeInTheDocument()
-    expect(screen.queryByText('write_file')).not.toBeInTheDocument()
+    expect(screen.queryByText('write')).not.toBeInTheDocument()
   })
 
   it('folds submission tool cards after the narrative into one collapsed trace group when the turn has a narrative anchor', async () => {
@@ -485,14 +485,14 @@ describe('StoryStage streaming rendering', () => {
       await waitFor(() => expect(sendInteractiveMessageMock).toHaveBeenCalled())
 
       act(() => {
-        stream.enqueue({ event: 'tool_call', data: JSON.stringify({ index: 0, name: 'execute', args: '' }) })
-        stream.enqueue({ event: 'tool_args_delta', data: JSON.stringify({ id: 'call-execute', index: 0, name: 'execute', delta: completeArgs }) })
-        stream.enqueue({ event: 'tool_result', data: JSON.stringify({ id: 'call-execute', index: 0, name: 'execute', content: 'command done' }) })
+        stream.enqueue({ event: 'tool_call', data: JSON.stringify({ index: 0, name: 'bash', args: '' }) })
+        stream.enqueue({ event: 'tool_args_delta', data: JSON.stringify({ id: 'call-execute', index: 0, name: 'bash', delta: completeArgs }) })
+        stream.enqueue({ event: 'tool_result', data: JSON.stringify({ id: 'call-execute', index: 0, name: 'bash', content: 'command done' }) })
       })
 
       await waitFor(() => {
         const liveMessages = useInteractiveStore.getState().storyStageRuns['/tmp/book:story-1:main']?.liveMessages || []
-        const executeMessages = liveMessages.filter((message) => message.role === 'tool_call' && message.name === 'execute')
+        const executeMessages = liveMessages.filter((message) => message.role === 'tool_call' && message.name === 'bash')
         expect(executeMessages).toHaveLength(1)
         expect(executeMessages[0]).toMatchObject({
           args: completeArgs,
@@ -519,7 +519,7 @@ describe('StoryStage streaming rendering', () => {
       await user.click(screen.getByRole('button', { name: '发送' }))
       await waitFor(() => expect(sendInteractiveMessageMock).toHaveBeenCalled())
       act(() => {
-        stream.enqueue({ event: 'tool_call', data: JSON.stringify({ id: 'call-execute', name: 'execute', args: '' }) })
+        stream.enqueue({ event: 'tool_call', data: JSON.stringify({ id: 'call-execute', name: 'bash', args: '' }) })
       })
       await waitFor(() => {
         const messages = useInteractiveStore.getState().storyStageRuns['/tmp/book:story-1:main']?.liveMessages || []
@@ -534,8 +534,8 @@ describe('StoryStage streaming rendering', () => {
       unsubscribe = useInteractiveStore.subscribe(() => { storeUpdates += 1 })
 
       await act(async () => {
-        stream.enqueue({ event: 'tool_args_delta', data: JSON.stringify({ id: 'call-execute', name: 'execute', delta: 'first' }) })
-        stream.enqueue({ event: 'tool_args_delta', data: JSON.stringify({ id: 'call-execute', name: 'execute', delta: '-last' }) })
+        stream.enqueue({ event: 'tool_args_delta', data: JSON.stringify({ id: 'call-execute', name: 'bash', delta: 'first' }) })
+        stream.enqueue({ event: 'tool_args_delta', data: JSON.stringify({ id: 'call-execute', name: 'bash', delta: '-last' }) })
         await Promise.resolve()
         await Promise.resolve()
       })

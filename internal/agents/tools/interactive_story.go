@@ -120,7 +120,7 @@ func newInteractiveTurnTools(ctx InteractiveContext) ([]agent.ToolDefinition, er
 		if err != nil {
 			return nil, err
 		}
-		definedPrepareTool, err := defineTool(prepareTool, workspaceWriteDescriptor(ToolSourceHistory, "", agent.ToolRecoveryReconcilable))
+		definedPrepareTool, err := defineTool(prepareTool, interactiveStoryWorkflowDescriptor())
 		if err != nil {
 			return nil, err
 		}
@@ -142,7 +142,7 @@ func newInteractiveTurnTools(ctx InteractiveContext) ([]agent.ToolDefinition, er
 		if err != nil {
 			return nil, err
 		}
-		definedSubmitTool, err := defineTool(submitTool, workspaceWriteDescriptor(ToolSourceHistory, "", agent.ToolRecoveryReconcilable))
+		definedSubmitTool, err := defineTool(submitTool, interactiveStoryWorkflowDescriptor())
 		if err != nil {
 			return nil, err
 		}

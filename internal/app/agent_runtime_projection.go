@@ -7,6 +7,7 @@ import (
 	"strings"
 
 	agents "denova/internal/agents"
+	"denova/internal/agents/session"
 	"denova/internal/interactive"
 )
 
@@ -14,6 +15,7 @@ type WritingAgentActiveView struct {
 	Task                *TaskStateSnapshot
 	Runtime             agents.RuntimeStatus
 	RuntimeProjectionOK bool
+	PendingAsk          *session.AskInteraction
 	// RecoveryActions can contain a process-local projection refresh action
 	// after the durable runtime has already settled to Idle.
 	RecoveryActions []agents.RuntimeRecoveryAction
@@ -72,6 +74,20 @@ func (a *App) WritingAgentActiveView(ctx context.Context) WritingAgentActiveView
 		runtimeSnapshot.RecoveryPaused = true
 		projected = true
 	}
+	var pendingAsk *session.AskInteraction
+	if selectedSession != nil {
+		if projected {
+			reconciled, reconcileErr := reconcileColdPendingAsk(operation.Context(), selectedSession, runtimeSnapshot)
+			if reconcileErr != nil {
+				log.Printf("[agent-ask-recovery] reconcile writing Ask failed workspace=%s session_id=%s operation_id=%s cycle=%d err=%v", workspace, sessionID, runtimeSnapshot.ActiveOperation, runtimeSnapshot.ActiveCycle, reconcileErr)
+			} else if reconciled {
+				log.Printf("[agent-ask-recovery] cancelled orphaned writing Ask workspace=%s session_id=%s operation_id=%s cycle=%d", workspace, sessionID, runtimeSnapshot.ActiveOperation, runtimeSnapshot.ActiveCycle)
+			}
+		}
+		// A durable pending Ask is displayable only when this process owns the
+		// waiter that can deliver its answer back to the model continuation.
+		pendingAsk = selectedSession.LivePendingAsk("")
+	}
 
 	a.mu.RLock()
 	if lifecycleWorkspaceKey(a.workspace) != lifecycleWorkspaceKey(workspace) || a.chatService != chatService || a.session != selectedSession || activeWritingTaskLocked(a) != task {
@@ -86,7 +102,7 @@ func (a *App) WritingAgentActiveView(ctx context.Context) WritingAgentActiveView
 	a.mu.RUnlock()
 	return WritingAgentActiveView{
 		Task: taskSnapshot, Runtime: runtimeSnapshot, RuntimeProjectionOK: projected,
-		RecoveryActions: recoveryActions,
+		RecoveryActions: recoveryActions, PendingAsk: pendingAsk,
 	}
 }
 

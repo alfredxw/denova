@@ -12,7 +12,7 @@ import (
 )
 
 func TestToolDescriptorDeclaresExecutionAndRecoveryPolicy(t *testing.T) {
-	definition, err := newToolCatalog(nil).WriteTodos()
+	definition, err := newToolCatalog(nil).Todo()
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -21,13 +21,13 @@ func TestToolDescriptorDeclaresExecutionAndRecoveryPolicy(t *testing.T) {
 		t.Fatal(err)
 	}
 	descriptor := definition.Descriptor
-	if info.Name != "write_todos" || descriptor.Capability != config.AgentToolTodo ||
-		descriptor.Execution != agent.ToolExecutionWorkspaceExclusive ||
+	if info.Name != "todo" || descriptor.Capability != config.AgentToolTodo ||
+		descriptor.Execution != agent.ToolExecutionSessionExclusive ||
 		descriptor.Recovery != agent.ToolRecoveryIdempotent {
 		t.Fatalf("todo definition = info=%+v descriptor=%+v", info, descriptor)
 	}
-	if descriptor.MutatesWorkspace || descriptor.RequiresPostCheck {
-		t.Fatalf("write_todos must remain session-local: %+v", descriptor)
+	if descriptor.MutationScope != agent.ToolMutationSession || descriptor.PostCheck != agent.ToolPostCheckSessionState {
+		t.Fatalf("todo must remain session-local: %+v", descriptor)
 	}
 }
 
@@ -36,6 +36,7 @@ func TestUnknownToolManifestIsConservativeWithoutNameInference(t *testing.T) {
 		descriptor := unknownToolManifest(name)
 		if descriptor.Source != ToolSourceOther || descriptor.Capability != "" ||
 			descriptor.Execution != ToolExecutionWorkspaceExclusive ||
+			descriptor.MutationScope != ToolMutationExternal ||
 			descriptor.Recovery != ToolRecoveryNonIdempotent {
 			t.Fatalf("unknown %q manifest = %+v", name, descriptor)
 		}
@@ -43,8 +44,8 @@ func TestUnknownToolManifestIsConservativeWithoutNameInference(t *testing.T) {
 }
 
 func TestStructuredToolResultKeepsRecoveryContractOutOfModelText(t *testing.T) {
-	descriptor := producttools.WorkspaceWriteDescriptor(agent.ToolSourceWrite, config.AgentToolFileWrite, agent.ToolRecoveryReconcilable)
-	filtered := filterToolResultForModelWithDescriptor("write_file", descriptor, `{"path":"chapters/ch01.md"}`, "ok", 0)
+	descriptor := producttools.WorkspaceWriteDescriptor(agent.ToolSourceWrite, config.AgentToolWorkspaceWrite, agent.ToolRecoveryReconcilable)
+	filtered := filterToolResultForModelWithDescriptor("write", descriptor, `{"path":"chapters/ch01.md"}`, "ok", 0)
 	if filtered.Content != "ok" || filtered.Result.ModelContent != "ok" {
 		t.Fatalf("model content was polluted: %#v", filtered)
 	}
@@ -61,17 +62,35 @@ func TestStructuredToolResultKeepsRecoveryContractOutOfModelText(t *testing.T) {
 	}
 }
 
+func TestStructuredToolResultPreservesEndpointTargetWithoutPathArgument(t *testing.T) {
+	descriptor := agent.ToolDescriptor{
+		Source: agent.ToolSourceWeb, Capability: config.AgentToolBrowser,
+		Execution: agent.ToolExecutionSessionExclusive, MutationScope: agent.ToolMutationExternal,
+		PostCheck: agent.ToolPostCheckExternalReceipt, Recovery: agent.ToolRecoveryNonIdempotent,
+		ResultProjection: agent.ToolResultBoundedModelContext, Steering: agent.SteeringFinishCurrent,
+		MaxResultBytes: defaultToolResultMaxBytes,
+	}
+	result := agent.TextToolResult(`{"schema":"browser.result.v1"}`)
+	result.Metadata.Target = "https://example.com/docs"
+	filtered := filterStructuredToolResultWithDescriptor(
+		"browser", descriptor, `{"action":"run","tab":"docs","command":"observe"}`, result, 0,
+	)
+	if filtered.Result.Metadata.Target != "https://example.com/docs" {
+		t.Fatalf("browser endpoint target = %q", filtered.Result.Metadata.Target)
+	}
+}
+
 func TestRegistryRejectsUnclassifiedAndDuplicateTools(t *testing.T) {
 	undeclared := agent.ToolDefinition{Tool: descriptorTestTool{name: "write_custom_plugin_state"}}
 	if _, err := agent.NewRegistry(context.Background(), undeclared); err == nil || !strings.Contains(err.Error(), "descriptor") {
 		t.Fatalf("expected unclassified definition error, got %v", err)
 	}
 
-	first, err := producttools.Define(descriptorTestTool{name: "read_file"}, producttools.BoundedReadDescriptor(agent.ToolSourceRead, config.AgentToolFileRead))
+	first, err := producttools.Define(descriptorTestTool{name: "read"}, producttools.BoundedReadDescriptor(agent.ToolSourceRead, config.AgentToolWorkspaceRead))
 	if err != nil {
 		t.Fatal(err)
 	}
-	second, err := producttools.Define(descriptorTestTool{name: "read_file"}, producttools.BoundedReadDescriptor(agent.ToolSourceRead, config.AgentToolFileRead))
+	second, err := producttools.Define(descriptorTestTool{name: "read"}, producttools.BoundedReadDescriptor(agent.ToolSourceRead, config.AgentToolWorkspaceRead))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -81,7 +100,7 @@ func TestRegistryRejectsUnclassifiedAndDuplicateTools(t *testing.T) {
 }
 
 func TestRegistrySnapshotCarriesDescriptorWithoutToolInfoExtra(t *testing.T) {
-	definition, err := producttools.Define(descriptorTestTool{name: "read_file"}, producttools.BoundedReadDescriptor(agent.ToolSourceRead, config.AgentToolFileRead))
+	definition, err := producttools.Define(descriptorTestTool{name: "read"}, producttools.BoundedReadDescriptor(agent.ToolSourceRead, config.AgentToolWorkspaceRead))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -89,7 +108,7 @@ func TestRegistrySnapshotCarriesDescriptorWithoutToolInfoExtra(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	snapshot, ok := registry.Snapshot("read_file")
+	snapshot, ok := registry.Snapshot("read")
 	if !ok || snapshot.Info == nil || snapshot.Descriptor.Execution != agent.ToolExecutionParallelRead {
 		t.Fatalf("snapshot = %#v ok=%t", snapshot, ok)
 	}
@@ -111,20 +130,26 @@ func (descriptorTestTool) Run(context.Context, string, ...agent.ToolOption) (age
 func testToolContext(name, callID string) *agent.ToolContext {
 	var descriptor agent.ToolDescriptor
 	switch name {
-	case "read_file", "grep", "search_story_history":
-		descriptor = producttools.BoundedReadDescriptor(agent.ToolSourceRead, config.AgentToolFileRead)
+	case "read", "grep", "search_story_history":
+		descriptor = producttools.BoundedReadDescriptor(agent.ToolSourceRead, config.AgentToolWorkspaceRead)
 		if name == "search_story_history" {
 			descriptor = producttools.BoundedReadDescriptor(ToolSourceHistory, "")
 		}
-	case "write_file", "edit_file":
-		descriptor = producttools.WorkspaceWriteDescriptor(agent.ToolSourceWrite, config.AgentToolFileWrite, agent.ToolRecoveryReconcilable)
-	case "execute", "execute_shell":
-		descriptor = producttools.WorkspaceWriteDescriptor(agent.ToolSourceShell, config.AgentToolShellExecute, agent.ToolRecoveryNonIdempotent)
+	case "write", "edit":
+		descriptor = producttools.WorkspaceWriteDescriptor(agent.ToolSourceWrite, config.AgentToolWorkspaceWrite, agent.ToolRecoveryReconcilable)
+	case "bash", "pwsh":
+		descriptor = agent.ToolDescriptor{
+			Source: agent.ToolSourceShell, Capability: config.AgentToolShell,
+			Execution: agent.ToolExecutionWorkspaceExclusive, MutationScope: agent.ToolMutationExternal,
+			PostCheck: agent.ToolPostCheckExternalReceipt, Recovery: agent.ToolRecoveryNonIdempotent,
+			ResultProjection: agent.ToolResultBoundedModelContext, Steering: agent.SteeringFinishCurrent,
+			MaxResultBytes: defaultToolResultMaxBytes,
+		}
 	default:
-		return &agent.ToolContext{Name: name, CallID: callID}
+		return &agent.ToolContext{Name: name, ProviderCallID: callID}
 	}
 	return &agent.ToolContext{
-		Name: name, CallID: callID,
+		Name: name, ProviderCallID: callID,
 		Definition: agent.ToolDefinitionSnapshot{
 			Info:       &agent.ToolInfo{Name: name},
 			Descriptor: descriptor,

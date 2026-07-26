@@ -399,7 +399,7 @@ const settingPanel = {
   'settingPanel.orchestration.pacingCurve': 'Pacing Curve',
   'settingPanel.orchestration.eventPackages': 'Event Packages',
   'settingPanel.orchestration.generateEventPackage': 'AI Generate Pack',
-  'settingPanel.orchestration.generateEventPackageInstruction': 'Use the teller-config skill: read the current teller first, call list_lore_items to inspect the lore index, then read_lore_items for only a small relevant set. Generate 12-24 event cards grounded in lore and my next instructions, and write them to event_packages[].events. Every card must include type_name, description_markdown, and scheduling metadata; description_markdown must cover trigger scene, background fusion, arc, payoff/consequences, rewards/costs, and anti-forcing constraints.',
+  'settingPanel.orchestration.generateEventPackageInstruction': 'Use the event-package reference in the config-manager skill: read the current event_package with config_read, inspect lore with list_lore_items, then read only a small relevant lore set. Generate 12-24 event cards grounded in lore and my next instructions, and update the event_package with config_apply. Every card must include type_name, description_markdown, and scheduling metadata; description_markdown must cover trigger scene, background fusion, arc, payoff/consequences, rewards/costs, and anti-forcing constraints.',
   'settingPanel.orchestration.generateEventPackageAgentOpened': 'Config Agent opened. Add event-pack requirements in the input.',
   'settingPanel.orchestration.addPackage': 'Add Package',
   'settingPanel.orchestration.deletePackage': 'Delete event package',

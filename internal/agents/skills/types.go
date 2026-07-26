@@ -36,6 +36,16 @@ type Skill struct {
 	BaseDirectory string
 }
 
+// ReferenceRead is one bounded, model-facing selection from a Skill reference.
+// URI is canonical and never exposes the underlying user, workspace, or built-in path.
+type ReferenceRead struct {
+	URI     string
+	Content string
+	Offset  int
+	Limit   int
+	Total   int
+}
+
 // Scope identifies where a skill definition is stored.
 type Scope string
 
@@ -95,5 +105,14 @@ type FileDocument struct {
 	Skill    SkillSummary `json:"skill"`
 	File     SkillFile    `json:"file"`
 	Content  string       `json:"content"`
+	Revision string       `json:"revision"`
+}
+
+// DeletedFile is the immutable receipt for removing one supporting Skill
+// file. The content is omitted, but its pre-delete revision makes the audited
+// mutation exact.
+type DeletedFile struct {
+	Skill    SkillSummary `json:"skill"`
+	Path     string       `json:"path"`
 	Revision string       `json:"revision"`
 }

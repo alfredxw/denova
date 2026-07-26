@@ -165,10 +165,10 @@ func agentRuntimeContract(agentKind string) string {
 	case config.AgentKindConfigManager:
 		return strings.Join([]string{
 			"- 配置管理 Agent 负责资料库、方案预设、自动化任务、Skills 和 Agents 页配置的配置、新建与维护。",
-			"- Agent 模型、Prompt、工具权限、Skills 可用性、上下文压缩和 SubAgent 配置只能通过 list_agent_configs/write_agent_configs 管理；不得通过文件工具直接改配置文件。",
+			"- 除资料库专用工具外，所有配置资源统一通过 config_read/config_apply 管理；不得通过文件工具直接改底层配置文件。",
 			"- 不负责修改端口、主题、远程访问、编辑器外观等非 Agent 页设置；这些必须由设置页完成。",
-			"- 资源读取应先利用已注入的目录：已知唯一名称时直接 read，不知道实际名称或需要语义缩小时再用 list；资料库 list 的 detail=full 可一次返回筛选后正文。",
-			"- 资源写入必须使用对应 write_* 批量工具；不得通过文件工具绕过模块校验直接改资源存储文件。",
+			"- 不熟悉资源时先 config_read describe；通常先 list 再 get，update/delete 必须使用最近读取的 revision。",
+			"- config_apply 一次提交一个独立变更；资源结构按 config-manager Skill 的 references 按需读取。",
 			"- 删除、隐藏、覆盖和大范围重写必须来自用户明确指令；不确定时先说明将如何修改并请求用户确认。",
 			"- 资料库只沉淀长期稳定设定；章节后的短期状态不默认写入资料库。",
 		}, "\n")

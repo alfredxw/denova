@@ -5,16 +5,17 @@ import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, 
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { Input } from '@/components/ui/input'
 import { Select, SelectContent, SelectGroup, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
+import { Switch } from '@/components/ui/switch'
 import { Textarea } from '@/components/ui/textarea'
 import type { AgentModelOverride, AgentToolOverride, LayeredSettings, Settings, SettingsLayer, SubAgentConfig } from '@/features/settings/types'
-import { toolRowsForAgent } from './agent-configuration-sections'
 import { Field, SectionTitle, SwitchWithInheritance, ToggleSwitch, thinkingDisplayValue, thinkingStatusLabel } from './agent-form-controls'
-import { SUB_AGENT_PARENT_KEYS, TOOL_ROWS } from './agent-registry'
-import type { SubAgentParentKey, ToolKey, VisibleAgentKey } from './agent-registry'
+import { SUB_AGENT_PARENT_KEYS } from './agent-registry'
+import type { AgentToolDefinition, SubAgentParentKey, ToolKey, VisibleAgentKey } from './agent-registry'
 
-export function AgentSubAgentSection({ agent, inheritedModel, generalSettings, effectiveGeneralSettings, subAgents, effectiveSubAgents, profiles, onGeneralChange, onChange }: {
+export function AgentSubAgentSection({ agent, inheritedModel, toolRows, generalSettings, effectiveGeneralSettings, subAgents, effectiveSubAgents, profiles, onGeneralChange, onChange }: {
   agent: SubAgentParentKey
   inheritedModel: AgentModelOverride
+  toolRows: AgentToolDefinition[]
   generalSettings: Settings['general_sub_agents']
   effectiveGeneralSettings: Settings['general_sub_agents']
   subAgents: SubAgentConfig[]
@@ -26,6 +27,7 @@ export function AgentSubAgentSection({ agent, inheritedModel, generalSettings, e
   const { t } = useTranslation()
   const [deleteTarget, setDeleteTarget] = useState<SubAgentConfig | null>(null)
   const [editingSubAgent, setEditingSubAgent] = useState<{ id: string; value: SubAgentConfig } | null>(null)
+  const availableToolRows = toolRows.filter((tool) => tool.availableToSubAgents)
   const visibleSubAgents = useMemo(() => mergeVisibleSubAgents(effectiveSubAgents, subAgents)
     .filter((subAgent) => effectiveSubAgentParents(subAgent).includes(agent)), [agent, effectiveSubAgents, subAgents])
   const generalExplicit = generalSettings?.[agent]
@@ -176,6 +178,7 @@ export function AgentSubAgentSection({ agent, inheritedModel, generalSettings, e
                 agent={agent}
                 subAgent={editingSubAgent.value}
                 inheritedModel={inheritedModel}
+                toolRows={availableToolRows}
                 profiles={profiles}
                 onChange={updateEditingSubAgent}
               />
@@ -219,7 +222,7 @@ function SubAgentRow({ agent, subAgent, onToggle, onEdit, onDelete }: {
   const availableForCurrent = parents.includes(agent)
   const enabled = (subAgent.enabled ?? true) && availableForCurrent
   return (
-    <div className="flex min-w-0 items-center gap-2 rounded-[var(--nova-radius)] border border-[var(--nova-border)] bg-[var(--nova-surface)] px-3 py-2">
+    <div data-subagent-id={subAgent.id} className="flex min-w-0 items-center gap-2 rounded-[var(--nova-radius)] border border-[var(--nova-border)] bg-[var(--nova-surface)] px-3 py-2">
       <Bot className="h-4 w-4 shrink-0 text-[var(--nova-text-muted)]" />
       <div className="min-w-0 flex-1">
         <div className="flex min-w-0 items-center gap-2">
@@ -252,11 +255,12 @@ function SubAgentRow({ agent, subAgent, onToggle, onEdit, onDelete }: {
   )
 }
 
-function SubAgentEditor({ id, agent, subAgent, inheritedModel, profiles, onChange }: {
+function SubAgentEditor({ id, agent, subAgent, inheritedModel, toolRows, profiles, onChange }: {
   id: string
   agent: SubAgentParentKey
   subAgent: SubAgentConfig
   inheritedModel: AgentModelOverride
+  toolRows: AgentToolDefinition[]
   profiles: Array<{ id: string; label: string }>
   onChange: (id: string, patch: Partial<SubAgentConfig>) => void
 }) {
@@ -264,15 +268,15 @@ function SubAgentEditor({ id, agent, subAgent, inheritedModel, profiles, onChang
   const parents = effectiveSubAgentParents(subAgent)
   const parentSet = new Set(parents)
   const tools = subAgent.tools ?? {}
-  const rows = toolRowsForAgent(agent)
   const model = subAgent.model ?? {}
   const hasThinking = model.enable_thinking !== undefined && model.enable_thinking !== null
   const effectiveThinking = hasThinking ? model.enable_thinking : inheritedModel.enable_thinking
 
   const setModel = (patch: Partial<AgentModelOverride>) => onChange(id, { model: { ...model, ...patch } })
   const setTool = (key: ToolKey, value: boolean | null) => {
-    const nextTools = { ...tools, [key]: value }
+    const nextTools: AgentToolOverride = { ...tools }
     if (value === null) delete nextTools[key]
+    else nextTools[key] = value
     onChange(id, { tools: nextTools })
   }
   const setParent = (parent: SubAgentParentKey, checked: boolean) => {
@@ -375,18 +379,43 @@ function SubAgentEditor({ id, agent, subAgent, inheritedModel, profiles, onChang
       <div>
         <div className="mb-1.5 text-[var(--nova-text-muted)]">{t('agents.subAgents.tools')}</div>
         <div className="grid gap-2 md:grid-cols-2">
-          {rows.map((tool) => (
-            <div key={tool.key} className="flex min-w-0 items-center gap-2 rounded-[var(--nova-radius)] border border-[var(--nova-border)] bg-[var(--nova-surface-2)] px-2 py-1.5">
-              <span className="min-w-0 flex-1 truncate text-[11px]">{t(tool.titleKey)}</span>
-              <SwitchWithInheritance
-                checked={tools[tool.key] ?? true}
-                onChange={(checked) => setTool(tool.key, checked)}
-                ariaLabel={t(tool.titleKey)}
-                inherited={tools[tool.key] === undefined || tools[tool.key] === null}
-                onReset={tools[tool.key] !== undefined && tools[tool.key] !== null ? () => setTool(tool.key, null) : undefined}
-              />
-            </div>
-          ))}
+          {toolRows.map((tool) => {
+            const explicit = tools[tool.key]
+            const inherited = explicit === undefined || explicit === null
+            const parentAllows = tool.allowed && tool.availability !== 'unavailable'
+            const effective = parentAllows && (inherited || explicit)
+            const unavailableReason = tool.unavailableReasonKey ? t(tool.unavailableReasonKey) : t('agents.subAgents.note')
+            return (
+              <div key={tool.key} className="flex min-w-0 items-center gap-2 rounded-[var(--nova-radius)] border border-[var(--nova-border)] bg-[var(--nova-surface-2)] px-2 py-1.5">
+                <span className="min-w-0 flex-1 truncate text-[11px]">{t(tool.titleKey)}</span>
+                {!parentAllows && (
+                  <span className="shrink-0 rounded bg-[var(--nova-danger-bg)] px-1.5 py-0.5 text-[10px] text-[var(--nova-danger)]" title={unavailableReason}>
+                    {t('agents.skills.unavailable')}
+                  </span>
+                )}
+                {parentAllows ? (
+                  <SwitchWithInheritance
+                    checked={Boolean(effective)}
+                    onChange={(checked) => setTool(tool.key, checked)}
+                    ariaLabel={t(tool.titleKey)}
+                    inherited={inherited}
+                    onReset={!inherited ? () => setTool(tool.key, null) : undefined}
+                  />
+                ) : (
+                  <span className="inline-flex shrink-0 items-center gap-1.5" title={unavailableReason}>
+                    <Switch checked={false} disabled aria-label={t(tool.titleKey)} />
+                    {inherited ? (
+                      <span className="w-7 text-center text-[10px] leading-none text-[var(--nova-text-faint)]">{t('agents.badge.inherited')}</span>
+                    ) : (
+                      <button type="button" onClick={() => setTool(tool.key, null)} className="w-7 text-center text-[10px] leading-none text-[var(--nova-text-muted)] hover:text-[var(--nova-text)]">
+                        {t('agents.badge.overridden')}
+                      </button>
+                    )}
+                  </span>
+                )}
+              </div>
+            )
+          })}
         </div>
       </div>
     </div>
@@ -429,9 +458,9 @@ function resolveGeneralSubAgentEnabled(settings: Settings['general_sub_agents'],
 }
 
 function subAgentToolSummary(t: (key: string, options?: Record<string, unknown>) => string, tools?: AgentToolOverride) {
-  const overrides = TOOL_ROWS.filter((tool) => tools?.[tool.key] !== undefined && tools?.[tool.key] !== null)
-  if (overrides.length === 0) return t('agents.subAgents.toolsInherited')
-  return t('agents.subAgents.toolsRestricted', { count: overrides.length })
+  const restrictionCount = Object.values(tools ?? {}).filter((value) => value === false).length
+  if (restrictionCount === 0) return t('agents.subAgents.toolsInherited')
+  return t('agents.subAgents.toolsRestricted', { count: restrictionCount })
 }
 
 function nextSubAgentID(current: SubAgentConfig[]) {

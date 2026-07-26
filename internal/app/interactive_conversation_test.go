@@ -174,10 +174,10 @@ func TestDirectorContextBudgetFollowsModelWindowAndCapsEachSource(t *testing.T) 
 
 func TestInteractiveConversationToolResultFallsBackToNameWhenIDMissing(t *testing.T) {
 	conversation := &interactiveConversation{}
-	if err := conversation.AppendDisplayEvent(session.DisplayEvent{ID: "call-execute", Role: "tool_call", Name: "execute", Content: "execute", Status: "running"}); err != nil {
+	if err := conversation.AppendDisplayEvent(session.DisplayEvent{ID: "call-execute", Role: "tool_call", Name: "bash", Content: "bash", Status: "running"}); err != nil {
 		t.Fatal(err)
 	}
-	if err := conversation.UpdateDisplayToolResult("", "execute", "success", "command done"); err != nil {
+	if err := conversation.UpdateDisplayToolResult("", "bash", "success", "command done"); err != nil {
 		t.Fatal(err)
 	}
 
@@ -192,10 +192,10 @@ func TestInteractiveConversationToolResultFallsBackToNameWhenIDMissing(t *testin
 
 func TestInteractiveConversationToolResultDoesNotFallbackWhenIDDiffers(t *testing.T) {
 	conversation := &interactiveConversation{}
-	if err := conversation.AppendDisplayEvent(session.DisplayEvent{ID: "call-execute", Role: "tool_call", Name: "execute", Content: "execute", Status: "running"}); err != nil {
+	if err := conversation.AppendDisplayEvent(session.DisplayEvent{ID: "call-execute", Role: "tool_call", Name: "bash", Content: "bash", Status: "running"}); err != nil {
 		t.Fatal(err)
 	}
-	if err := conversation.UpdateDisplayToolResult("stale-id", "execute", "success", "stale result"); err != nil {
+	if err := conversation.UpdateDisplayToolResult("stale-id", "bash", "success", "stale result"); err != nil {
 		t.Fatal(err)
 	}
 
@@ -210,13 +210,13 @@ func TestInteractiveConversationToolResultDoesNotFallbackWhenIDDiffers(t *testin
 
 func TestInteractiveConversationToolResultDoesNotFallbackWhenNameIsAmbiguous(t *testing.T) {
 	conversation := &interactiveConversation{}
-	if err := conversation.AppendDisplayEvent(session.DisplayEvent{ID: "execute-1", Role: "tool_call", Name: "execute", Content: "execute", Status: "running"}); err != nil {
+	if err := conversation.AppendDisplayEvent(session.DisplayEvent{ID: "execute-1", Role: "tool_call", Name: "bash", Content: "bash", Status: "running"}); err != nil {
 		t.Fatal(err)
 	}
-	if err := conversation.AppendDisplayEvent(session.DisplayEvent{ID: "execute-2", Role: "tool_call", Name: "execute", Content: "execute", Status: "running"}); err != nil {
+	if err := conversation.AppendDisplayEvent(session.DisplayEvent{ID: "execute-2", Role: "tool_call", Name: "bash", Content: "bash", Status: "running"}); err != nil {
 		t.Fatal(err)
 	}
-	if err := conversation.UpdateDisplayToolResult("stale-id", "execute", "success", "ambiguous result"); err != nil {
+	if err := conversation.UpdateDisplayToolResult("stale-id", "bash", "success", "ambiguous result"); err != nil {
 		t.Fatal(err)
 	}
 

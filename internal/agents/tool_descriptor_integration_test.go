@@ -16,7 +16,7 @@ import (
 func TestNativeAgentBuiltInToolsPassDescriptorGuard(t *testing.T) {
 	ctx := context.Background()
 	chatModel := &descriptorGuardProbeModel{}
-	todoTool, err := newToolCatalog(nil).WriteTodos()
+	todoTool, err := newToolCatalog(nil).Todo()
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -55,7 +55,7 @@ func TestNativeAgentBuiltInToolsPassDescriptorGuard(t *testing.T) {
 			toolNames[info.Name] = true
 		}
 	}
-	for _, name := range []string{"write_todos", "task"} {
+	for _, name := range []string{"todo", "task"} {
 		if !toolNames[name] {
 			t.Fatalf("native Agent provider tool surface missing %q: %v", name, toolNames)
 		}
@@ -93,7 +93,7 @@ func TestWritingAgentFinalRuntimeToolSurfacePassesDescriptorGuard(t *testing.T) 
 	if err != nil {
 		t.Fatal(err)
 	}
-	todoTool, err := newToolCatalog(cfg).WriteTodos()
+	todoTool, err := newToolCatalog(cfg).Todo()
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -135,8 +135,8 @@ func TestWritingAgentFinalRuntimeToolSurfacePassesDescriptorGuard(t *testing.T) 
 		}
 	}
 	for _, name := range []string{
-		"write_todos", "task", "skill",
-		"ls", "read_file", "glob", "grep", "write_file", "edit_file", "execute",
+		"todo", "task", "skill",
+		"read", "glob", "grep", "write", "edit", "bash",
 		"list_lore_items", "read_lore_items", "write_lore_items", "generate_image", "web_search", "web_fetch",
 	} {
 		if !toolNames[name] {
@@ -169,7 +169,9 @@ func TestProductToolFactoriesDeclareEveryConcreteTool(t *testing.T) {
 		},
 	}
 	directorContext := storyContext
-	directorContext.MaintenanceTask = "director_plan_update"
+	// Descriptor validation does not need a persisted story. Event-card scope
+	// construction is covered separately with a real event catalog.
+	directorContext.MaintenanceTask = ""
 
 	tests := []struct {
 		name  string
@@ -211,7 +213,9 @@ func TestProductToolFactoriesDeclareEveryConcreteTool(t *testing.T) {
 				return newToolCatalog(cfg).Lore(false)(config.ResolveAgentTools(cfg, config.AgentKindAutomation))
 			},
 		},
-		{name: "web access", build: newToolCatalog(cfg).WebAccess},
+		{name: "web access", build: func() ([]agent.ToolDefinition, error) {
+			return newToolCatalog(cfg).WebAccess(config.ResolveAgentTools(cfg, config.AgentKindIDE))
+		}},
 	}
 
 	for _, tt := range tests {
@@ -225,6 +229,81 @@ func TestProductToolFactoriesDeclareEveryConcreteTool(t *testing.T) {
 			}
 			if err := producttools.Validate(ctx, tools); err != nil {
 				t.Fatalf("tool factory exposed an undeclared tool: %v", err)
+			}
+		})
+	}
+}
+
+func TestRestrictedAgentOverridesDoNotReachGenericToolCatalog(t *testing.T) {
+	forcedDirectorTools := config.AgentToolOverride{
+		config.AgentToolWorkspaceRead:  true,
+		config.AgentToolWorkspaceWrite: true,
+		config.AgentToolShell:          true,
+		config.AgentToolWebSearch:      true,
+		config.AgentToolWebFetch:       true,
+		config.AgentToolBrowser:        true,
+	}
+	cfg := &config.Config{
+		Workspace: t.TempDir(),
+		AgentTools: config.AgentToolSettings{
+			InteractiveStory: config.AgentToolOverride{
+				config.AgentToolWorkspaceWrite: true,
+				config.AgentToolShell:          true,
+			},
+			InteractiveDirector: forcedDirectorTools,
+		},
+	}
+	catalog := newToolCatalog(cfg)
+
+	tests := []struct {
+		kind             string
+		workspaceReadOK  bool
+		forcedCapability []string
+	}{
+		{
+			kind:             config.AgentKindInteractiveStory,
+			workspaceReadOK:  true,
+			forcedCapability: []string{config.AgentToolWorkspaceWrite, config.AgentToolShell},
+		},
+		{
+			kind: config.AgentKindInteractiveDirector,
+			forcedCapability: []string{
+				config.AgentToolWorkspaceRead, config.AgentToolWorkspaceWrite, config.AgentToolShell,
+				config.AgentToolWebSearch, config.AgentToolWebFetch, config.AgentToolBrowser,
+			},
+		},
+	}
+	for _, test := range tests {
+		t.Run(test.kind, func(t *testing.T) {
+			settings := config.ResolveAgentTools(cfg, test.kind)
+			for _, capability := range test.forcedCapability {
+				if settings.Allows(capability) {
+					t.Fatalf("forced capability %s escaped the %s ceiling", capability, test.kind)
+				}
+			}
+
+			definitions, err := catalog.Workspace(settings)
+			if err != nil {
+				t.Fatal(err)
+			}
+			web, err := catalog.WebAccess(settings)
+			if err != nil {
+				t.Fatal(err)
+			}
+			definitions = append(definitions, web...)
+			browser, err := catalog.Browser(context.Background(), settings)
+			if err != nil {
+				t.Fatal(err)
+			}
+			definitions = append(definitions, browser...)
+			names := toolNameSet(t, definitions)
+			if got := names["read"]; got != test.workspaceReadOK {
+				t.Fatalf("%s workspace read registration = %t, want %t; names=%v", test.kind, got, test.workspaceReadOK, names)
+			}
+			for _, name := range []string{"write", "edit", "bash", "pwsh", "web_search", "web_fetch", "browser"} {
+				if names[name] {
+					t.Fatalf("%s registered forbidden generic tool %s after a forced override: %v", test.kind, name, names)
+				}
 			}
 		})
 	}

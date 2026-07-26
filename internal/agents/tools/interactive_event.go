@@ -3,53 +3,153 @@ package tools
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
+	"net/url"
 	"strings"
+	"sync"
 
-	agent "github.com/alfredxw/denova/agent"
+	agenttools "github.com/alfredxw/denova/agent/tools"
 
+	"denova/config"
 	"denova/internal/interactive"
 )
 
-type readInteractiveEventCardsInput struct {
-	EventRefs []string `json:"event_refs" jsonschema:"description=要读取的事件卡 event_ref 列表，格式为 package_id/card_id；一次最多 8 张"`
+const maxDirectorRunEventCards = 8
+
+type eventCardReadInput struct {
+	Path string `json:"path" jsonschema_description:"Frozen event-card URI from the current Director opportunity index, in the form event://package/card."`
 }
 
-func newInteractiveEventTools(ctx InteractiveContext) ([]agent.ToolDefinition, error) {
+type eventCardReadScope struct {
+	mu      sync.Mutex
+	storyID string
+	turnID  string
+	cards   map[string]interactive.DirectorEvent
+	read    map[string]struct{}
+}
+
+// newEventCardReadAdapter freezes the due/new opportunity and selected Story
+// Director catalog for one Agent construction. Its unique-card budget is
+// shared by every parallel read call made during that run.
+func newEventCardReadAdapter(ctx InteractiveContext) (agenttools.ReadAdapter, error) {
 	ctx.StoryID = strings.TrimSpace(ctx.StoryID)
 	if ctx.Store == nil || ctx.StoryID == "" {
 		return nil, nil
 	}
-	readTool, err := agent.InferTool("read_event_cards", "按 event_ref 读取当前故事导演显式选择的事件包卡片详情。仅在 EventOpportunity.kind=new 时按紧凑索引读取真正相关的少量卡片；一次最多读取 8 张，不能读取未选择事件包或默认回退卡片。", func(callCtx context.Context, input readInteractiveEventCardsInput) (string, error) {
-		_ = callCtx
-		if len(input.EventRefs) == 0 {
-			return "", fmt.Errorf("event_refs 不能为空")
-		}
-		cards, err := ctx.Store.ReadDirectorEventCards(ctx.StoryID, input.EventRefs)
-		if err != nil {
-			return "", err
-		}
-		payload := struct {
-			Source map[string]string           `json:"source"`
-			Limits map[string]int              `json:"limits"`
-			Cards  []interactive.DirectorEvent `json:"cards"`
-		}{
-			Source: map[string]string{"kind": "selected_story_director_event_cards", "story_id": ctx.StoryID},
-			Limits: map[string]int{"max_items": 8, "returned_items": len(cards)},
-			Cards:  cards,
-		}
-		data, err := json.MarshalIndent(payload, "", "  ")
-		if err != nil {
-			return "", err
-		}
-		return string(data), nil
-	})
+	ctx.TurnID = strings.TrimSpace(ctx.TurnID)
+	cards, err := ctx.Store.DirectorEventCardReadScope(ctx.StoryID, strings.TrimSpace(ctx.BranchID), ctx.TurnID)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("freeze Director event-card read scope: %w", err)
 	}
-	definedReadTool, err := defineTool(readTool, boundedReadDescriptor(ToolSourceHistory, ""))
+	if len(cards) == 0 {
+		return nil, nil
+	}
+	scope := &eventCardReadScope{
+		storyID: ctx.StoryID,
+		turnID:  ctx.TurnID,
+		cards:   make(map[string]interactive.DirectorEvent, len(cards)),
+		read:    make(map[string]struct{}, maxDirectorRunEventCards),
+	}
+	for _, card := range cards {
+		if ref := strings.Trim(strings.TrimSpace(card.ID), "/"); ref != "" && card.Enabled {
+			scope.cards[ref] = card
+		}
+	}
+	if len(scope.cards) == 0 {
+		return nil, nil
+	}
+	return agenttools.NewReadAdapter("event_card", matchEventCardURI, scope.readCard)
+}
+
+func interactiveDirectorReadAdapterFactory(toolContext InteractiveContext) ReadAdapterFactory {
+	return func(settings config.ResolvedAgentToolSettings) ([]ReadAdapterBinding, error) {
+		if !settings.Allows(config.AgentToolEventRead) {
+			return nil, nil
+		}
+		switch strings.TrimSpace(toolContext.MaintenanceTask) {
+		case "director_plan_update", "opening_plan":
+		default:
+			return nil, nil
+		}
+		adapter, err := newEventCardReadAdapter(toolContext)
+		if err != nil {
+			return nil, err
+		}
+		if adapter == nil {
+			return nil, nil
+		}
+		binding, err := newReadAdapterBinding(config.AgentToolEventRead, adapter)
+		if err != nil {
+			return nil, err
+		}
+		return []ReadAdapterBinding{binding}, nil
+	}
+}
+
+func matchEventCardURI(_ context.Context, path string) (bool, error) {
+	parsed, err := url.Parse(strings.TrimSpace(path))
 	if err != nil {
-		return nil, err
+		return false, err
 	}
-	return []agent.ToolDefinition{definedReadTool}, nil
+	return strings.EqualFold(parsed.Scheme, "event"), nil
+}
+
+func (scope *eventCardReadScope) readCard(_ context.Context, input eventCardReadInput) (agenttools.ReadResult, error) {
+	ref, canonical, err := parseEventCardURI(input.Path)
+	if err != nil {
+		return agenttools.ReadResult{}, err
+	}
+	scope.mu.Lock()
+	card, allowed := scope.cards[ref]
+	if !allowed {
+		scope.mu.Unlock()
+		return agenttools.ReadResult{}, fmt.Errorf("event card is outside the frozen Director opportunity: %s", ref)
+	}
+	if _, alreadyRead := scope.read[ref]; !alreadyRead {
+		if len(scope.read) >= maxDirectorRunEventCards {
+			scope.mu.Unlock()
+			return agenttools.ReadResult{}, fmt.Errorf("this Director run may read at most %d unique event cards", maxDirectorRunEventCards)
+		}
+		scope.read[ref] = struct{}{}
+	}
+	readCount := len(scope.read)
+	scope.mu.Unlock()
+
+	payload := struct {
+		Schema string                    `json:"schema"`
+		Source map[string]string         `json:"source"`
+		Limits map[string]int            `json:"limits"`
+		Card   interactive.DirectorEvent `json:"card"`
+	}{
+		Schema: "interactive.event_card.read.v1",
+		Source: map[string]string{
+			"kind": "selected_story_director_event_card", "story_id": scope.storyID,
+			"source_turn_id": scope.turnID, "event_ref": ref,
+		},
+		Limits: map[string]int{"max_unique_per_run": maxDirectorRunEventCards, "unique_read": readCount},
+		Card:   card,
+	}
+	encoded, err := json.MarshalIndent(payload, "", "  ")
+	if err != nil {
+		return agenttools.ReadResult{}, fmt.Errorf("encode event card: %w", err)
+	}
+	return agenttools.ReadResult{Path: canonical, Kind: "event_card", Content: string(encoded)}, nil
+}
+
+func parseEventCardURI(value string) (ref, canonical string, err error) {
+	parsed, err := url.Parse(strings.TrimSpace(value))
+	if err != nil {
+		return "", "", err
+	}
+	if !strings.EqualFold(parsed.Scheme, "event") || parsed.User != nil || parsed.RawQuery != "" || parsed.Fragment != "" {
+		return "", "", errors.New("event card path must be event://package/card without query, fragment, or user info")
+	}
+	packageID := strings.Trim(strings.TrimSpace(parsed.Host), "/")
+	cardID := strings.Trim(strings.TrimSpace(parsed.Path), "/")
+	if packageID == "" || cardID == "" || strings.Contains(cardID, "/") {
+		return "", "", errors.New("event card path must contain exactly one package and one card segment")
+	}
+	ref = packageID + "/" + cardID
+	return ref, "event://" + ref, nil
 }

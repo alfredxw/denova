@@ -331,7 +331,7 @@ func TestAutomationMutationCallbackDoesNotEvaluateBeforeDurableHostEffect(t *tes
 
 	callback := app.automationMutationCallback("agent_test")
 	callback(context.Background(), []agents.ToolMutation{{
-		ToolName: "write_file",
+		ToolName: "write",
 		Target:   filepath.Join(workspace, "chapters", "ch01.md"),
 	}}, agents.PostRunVerification{Status: "ok", Mutations: 1})
 
@@ -519,28 +519,28 @@ func TestUserAutomationTriggerStateAndInboxAreWorkspaceScoped(t *testing.T) {
 func TestAutomationWriteModeToolConstraints(t *testing.T) {
 	readOnly := constrainAutomationTools(config.Config{}, automation.WriteModeReadOnly, automation.WriteScopeNone)
 	readOnlyTools := config.ResolveAgentTools(&readOnly, config.AgentKindAutomation)
-	if readOnlyTools.FileWrite || readOnlyTools.LoreWrite {
+	if readOnlyTools.Allows(config.AgentToolWorkspaceWrite) || readOnlyTools.Allows(config.AgentToolLoreWrite) {
 		t.Fatalf("read_only should disable writes: %#v", readOnlyTools)
 	}
 
 	fileOnly := constrainAutomationTools(config.Config{}, automation.WriteModeAutoWrite, automation.WriteScopeFile)
 	fileOnlyTools := config.ResolveAgentTools(&fileOnly, config.AgentKindAutomation)
-	if !fileOnlyTools.FileWrite || fileOnlyTools.LoreWrite {
+	if !fileOnlyTools.Allows(config.AgentToolWorkspaceWrite) || fileOnlyTools.Allows(config.AgentToolLoreWrite) {
 		t.Fatalf("file scope tools = %#v, want file write only", fileOnlyTools)
 	}
 
 	loreAndFile := constrainAutomationTools(config.Config{}, automation.WriteModeAutoWrite, automation.WriteScopeLoreAndFile)
 	loreAndFileTools := config.ResolveAgentTools(&loreAndFile, config.AgentKindAutomation)
-	if !loreAndFileTools.FileWrite || !loreAndFileTools.LoreWrite {
+	if !loreAndFileTools.Allows(config.AgentToolWorkspaceWrite) || !loreAndFileTools.Allows(config.AgentToolLoreWrite) {
 		t.Fatalf("lore_and_file tools = %#v, want both write tools", loreAndFileTools)
 	}
 
 	global := constrainGlobalAutomationTools(config.Config{})
 	globalTools := config.ResolveAgentTools(&global, config.AgentKindAutomation)
-	if globalTools.FileRead || globalTools.FileWrite || globalTools.ShellExecute || globalTools.LoreRead || globalTools.LoreWrite {
+	if globalTools.Allows(config.AgentToolWorkspaceRead) || globalTools.Allows(config.AgentToolWorkspaceWrite) || globalTools.Allows(config.AgentToolShell) || globalTools.Allows(config.AgentToolLoreRead) || globalTools.Allows(config.AgentToolLoreWrite) {
 		t.Fatalf("global automation exposed workspace tools: %#v", globalTools)
 	}
-	if !globalTools.Skills || !globalTools.Todo || !globalTools.WebSearch {
+	if !globalTools.Allows(config.AgentToolSkills) || !globalTools.Allows(config.AgentToolTodo) || !globalTools.Allows(config.AgentToolWebSearch) {
 		t.Fatalf("global automation omitted user-level tools: %#v", globalTools)
 	}
 

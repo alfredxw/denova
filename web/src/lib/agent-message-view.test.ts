@@ -47,7 +47,7 @@ describe('agent-message-view', () => {
         parts: [
           { type: 'reasoning', id: 'reason-1', text: '先分析', state: 'streaming' },
           { type: 'text', id: 'text-1', text: '正文', state: 'done' },
-          { type: 'dynamic-tool', toolName: 'read_file', toolCallId: 'tool-1', state: 'output-available', input: { path: 'a.md' }, output: 'ok' },
+          { type: 'dynamic-tool', toolName: 'read', toolCallId: 'tool-1', state: 'output-available', input: { path: 'a.md' }, output: 'ok' },
           { type: 'data-agent-context-compaction', id: 'compact-1', data: { content: '压缩上下文', status: 'running', tokens_before: 100 } },
           { type: 'data-agent-plan-question', id: 'question-1', data: { content: '选择方向', status: 'running' } },
           { type: 'data-agent-proposed-plan', id: 'plan-1', data: { content: '# Plan', status: 'success' } },
@@ -86,8 +86,84 @@ describe('agent-message-view', () => {
     ])
     expect(views[0]).toMatchObject({ messageId: 'user-1', content: '写下一章', metadata: { turn_id: 'turn-1' } })
     expect(views[1]).toMatchObject({ partId: 'reason-1', streaming: true, metadata: { run_id: 'run-1' } })
-    expect(views[3]).toMatchObject({ partId: 'tool-1', toolName: 'read_file', status: 'success' })
+    expect(views[3]).toMatchObject({ partId: 'tool-1', toolName: 'read', status: 'success' })
     expect(views[5].ref).toEqual({ messageId: 'assistant-1', partId: 'question-1', partIndex: 4, type: 'data-agent-plan-question' })
+  })
+
+  it('todo 在同一 run 内替换旧计划，空计划会清除当前卡片', () => {
+    const plan = (id: string, step: string, outputPlan: Array<{ step: string; status: string }>) => ({
+      id,
+      role: 'assistant' as const,
+      metadata: { run_id: 'run-todo' },
+      parts: [{
+        type: 'dynamic-tool', toolName: 'todo', toolCallId: id, state: 'output-available',
+        input: { plan: [{ step, status: 'pending' }] },
+        output: { schema: 'todo.plan.v1', plan: outputPlan },
+      }],
+    })
+
+    const replaced = buildAgentMessageViews([
+      plan('todo-1', '旧计划', [{ step: '旧计划', status: 'pending' }]),
+      plan('todo-2', '新计划', [{ step: '新计划', status: 'in_progress' }]),
+    ] as AgentUIMessage[])
+    expect(replaced.filter((view) => view.toolName === 'todo')).toHaveLength(1)
+    expect(replaced.find((view) => view.toolName === 'todo')?.partId).toBe('todo-2')
+
+    const cleared = buildAgentMessageViews([
+      plan('todo-1', '旧计划', [{ step: '旧计划', status: 'pending' }]),
+      plan('todo-clear', '', []),
+    ] as AgentUIMessage[])
+    expect(cleared.some((view) => view.toolName === 'todo')).toBe(false)
+  })
+
+  it('todo 计划按 root/subagent run 隔离替换状态', () => {
+    const messages = [
+      {
+        id: 'root-plan', role: 'assistant', metadata: { run_id: 'run-1', run_path: ['root'] },
+        parts: [{ type: 'dynamic-tool', toolName: 'todo', toolCallId: 'root-todo', state: 'output-available', input: { plan: [] }, output: { schema: 'todo.plan.v1', plan: [{ step: 'root', status: 'pending' }] } }],
+      },
+      {
+        id: 'child-plan', role: 'assistant', metadata: { run_id: 'run-1', run_path: ['root', 'child'], subagent: true },
+        parts: [{ type: 'dynamic-tool', toolName: 'todo', toolCallId: 'child-todo', state: 'output-available', input: { plan: [] }, output: { schema: 'todo.plan.v1', plan: [{ step: 'child', status: 'pending' }] } }],
+      },
+    ] as AgentUIMessage[]
+    expect(buildAgentMessageViews(messages).filter((view) => view.toolName === 'todo')).toHaveLength(2)
+  })
+
+  it('todo 失败调用保留诊断且不覆盖同一 run 的已提交计划', () => {
+    const views = buildAgentMessageViews([
+      {
+        id: 'todo-committed',
+        role: 'assistant',
+        metadata: { run_id: 'run-todo-error' },
+        parts: [{
+          type: 'dynamic-tool',
+          toolName: 'todo',
+          toolCallId: 'todo-committed',
+          state: 'output-available',
+          input: { plan: [{ step: '保留计划', status: 'in_progress' }] },
+          output: { schema: 'todo.plan.v1', plan: [{ step: '保留计划', status: 'in_progress' }] },
+        }],
+      },
+      {
+        id: 'todo-rejected',
+        role: 'assistant',
+        metadata: { run_id: 'run-todo-error' },
+        parts: [{
+          type: 'dynamic-tool',
+          toolName: 'todo',
+          toolCallId: 'todo-rejected',
+          state: 'output-error',
+          input: { plan: [{ step: '不应覆盖', status: 'pending' }] },
+          errorText: 'todo plan must contain at most one in_progress item',
+        }],
+      },
+    ] as AgentUIMessage[])
+
+    expect(views.filter((view) => view.toolName === 'todo')).toEqual(expect.arrayContaining([
+      expect.objectContaining({ partId: 'todo-committed', status: 'success' }),
+      expect.objectContaining({ partId: 'todo-rejected', status: 'error' }),
+    ]))
   })
 
   it('提取 token usage records 供输入区统计使用', () => {

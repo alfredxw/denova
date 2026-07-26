@@ -252,6 +252,11 @@ export function useAgentChat(options: ChatOptions = {}) {
   const activityContent = recoveryPending ? t('chat.activity.recovering') : status === 'submitted' ? t('chat.activity.thinking') : ''
 
   useEffect(() => {
+    if (!runtimeProjection?.pending_ask) return
+    appendDataMessage(setUIMessages, 'data-agent-ask', { ...runtimeProjection.pending_ask })
+  }, [runtimeProjection?.pending_ask, setUIMessages])
+
+  useEffect(() => {
     const operationID = runtimeProjection?.active_operation_id?.trim() || ''
     if (projectedOperationIDRef.current && projectedOperationIDRef.current !== operationID) {
       setAbortPending(false)

@@ -46,7 +46,7 @@ func TestLogFullModelInputWritesUntruncatedMessages(t *testing.T) {
 		},
 		Tools: []*agent.ToolInfo{
 			{
-				Name: "read_file",
+				Name: "read",
 				Desc: "Read a file",
 				ParamsOneOf: agent.NewParamsOneOfByParams(map[string]*agent.ParameterInfo{
 					"path": {Type: agent.String, Desc: "File path", Required: true},
@@ -77,10 +77,10 @@ func TestLogFullModelInputWritesUntruncatedMessages(t *testing.T) {
 	if record.Cache.MessageFingerprint == "" || record.Cache.ToolSchemaFingerprint == "" || record.Cache.SystemPromptFingerprint == "" {
 		t.Fatalf("cache attribution should include message/system/tool fingerprints: %#v", record.Cache)
 	}
-	if len(record.Cache.ToolNames) != 1 || record.Cache.ToolNames[0] != "read_file" {
+	if len(record.Cache.ToolNames) != 1 || record.Cache.ToolNames[0] != "read" {
 		t.Fatalf("cache attribution tool names = %#v", record.Cache.ToolNames)
 	}
-	if len(record.Cache.ToolFingerprints) != 1 || record.Cache.ToolFingerprints[0].Name != "read_file" || record.Cache.ToolFingerprints[0].Fingerprint == "" {
+	if len(record.Cache.ToolFingerprints) != 1 || record.Cache.ToolFingerprints[0].Name != "read" || record.Cache.ToolFingerprints[0].Fingerprint == "" {
 		t.Fatalf("cache attribution tool fingerprints = %#v", record.Cache.ToolFingerprints)
 	}
 	if record.Tools[0].Parameters == nil {
@@ -101,7 +101,7 @@ func TestModelInputLogCacheAttributionFingerprintsToolSchema(t *testing.T) {
 	}
 	tools := []*agent.ToolInfo{
 		{
-			Name: "read_file",
+			Name: "read",
 			Desc: "Read a file",
 			ParamsOneOf: agent.NewParamsOneOfByParams(map[string]*agent.ParameterInfo{
 				"path": {Type: agent.String, Desc: "File path", Required: true},
@@ -114,7 +114,7 @@ func TestModelInputLogCacheAttributionFingerprintsToolSchema(t *testing.T) {
 	if first.MessageFingerprint == "" || first.ToolSchemaFingerprint == "" {
 		t.Fatalf("fingerprints should be populated: %#v", first)
 	}
-	if len(first.ToolFingerprints) != 1 || first.ToolFingerprints[0].Name != "read_file" || first.ToolFingerprints[0].Fingerprint == "" {
+	if len(first.ToolFingerprints) != 1 || first.ToolFingerprints[0].Name != "read" || first.ToolFingerprints[0].Fingerprint == "" {
 		t.Fatalf("per-tool fingerprints should be populated without schema details: %#v", first.ToolFingerprints)
 	}
 	cachePayload, err := json.Marshal(first)
@@ -130,7 +130,7 @@ func TestModelInputLogCacheAttributionFingerprintsToolSchema(t *testing.T) {
 
 	changedTools := modelInputLogTools([]*agent.ToolInfo{
 		{
-			Name: "read_file",
+			Name: "read",
 			Desc: "Read a file with line offsets",
 			ParamsOneOf: agent.NewParamsOneOfByParams(map[string]*agent.ParameterInfo{
 				"path":   {Type: agent.String, Desc: "File path", Required: true},
@@ -150,7 +150,7 @@ func TestModelInputLogCacheAttributionFingerprintsToolSchema(t *testing.T) {
 func TestModelInputLoggingUsesStableToolSnapshot(t *testing.T) {
 	originalTools := []*agent.ToolInfo{
 		{
-			Name:  "read_file",
+			Name:  "read",
 			Desc:  "Read a file",
 			Extra: map[string]any{"capability": "file_read"},
 			ParamsOneOf: agent.NewParamsOneOfByParams(map[string]*agent.ParameterInfo{

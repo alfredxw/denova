@@ -7,7 +7,7 @@ import { Textarea } from '@/components/ui/textarea'
 import type { AgentContextOverride, AgentModelOverride, AgentPromptBlocks, AgentPromptOverride, AgentPromptSource, AgentSkillOverride, AgentToolOverride, Settings } from '@/features/settings/types'
 import type { SkillSummary } from '@/lib/api'
 import { Field, SectionTitle, SwitchWithInheritance, thinkingDisplayValue, thinkingStatusLabel } from './agent-form-controls'
-import { TOOL_ROWS, skillAgentFieldMatches, skillAvailableForAgent } from './agent-registry'
+import { skillAgentFieldMatches, skillAvailableForAgent } from './agent-registry'
 import type { AgentToolDefinition, ToolKey, VisibleAgentKey } from './agent-registry'
 
 export function AgentModelSection({ value, inherited, profiles, onChange }: {
@@ -214,31 +214,52 @@ function promptSourceTitle(t: ReturnType<typeof useTranslation>['t'], source: Ag
   return translated === key ? source.title : translated
 }
 
-export function AgentToolSection({ agent, value, effective, onChange }: {
-  agent: VisibleAgentKey
+export function AgentToolSection({ value, rows, onChange }: {
   value: AgentToolOverride
-  effective: Required<AgentToolOverride>
+  rows: AgentToolDefinition[]
   onChange: (key: ToolKey, value: boolean | null) => void
 }) {
   const { t } = useTranslation()
-  const rows = toolRowsForAgent(agent)
   return (
     <section className="flex flex-col gap-3 border-b border-[var(--nova-border)] pb-5">
       <SectionTitle icon={Wrench} title={t('agents.section.tools')} />
-      <div className="grid gap-2 lg:grid-cols-2">
+      {rows.length === 0 ? (
+        <div className="rounded-[var(--nova-radius)] border border-dashed border-[var(--nova-border)] bg-[var(--nova-surface-2)] px-3 py-3 text-[11px] text-[var(--nova-text-faint)]">—</div>
+      ) : <div className="grid gap-2 lg:grid-cols-2">
         {rows.map((tool) => {
           const Icon = tool.icon
           const explicit = value[tool.key]
-          const inherited = explicit === undefined || explicit === null
-          const current = inherited ? effective[tool.key] : explicit
+          const inherited = explicit === undefined
+          const current = inherited ? tool.allowed : Boolean(explicit)
+          const isRuntimeCheck = tool.availability === 'runtime_check'
+          const isUnavailable = tool.availability === 'unavailable'
+          const availabilityLabel = isRuntimeCheck
+            ? t('agents.tool.availability.runtimeCheck')
+            : (isUnavailable ? t('agents.skills.unavailable') : '')
+          const availabilityHint = isUnavailable && tool.unavailableReasonKey
+            ? t(tool.unavailableReasonKey)
+            : availabilityLabel
           return (
             <div key={tool.key} className="flex min-h-16 min-w-0 flex-col items-stretch gap-3 rounded-[var(--nova-radius)] border border-[var(--nova-border)] bg-[var(--nova-surface)] px-3 py-2 sm:flex-row sm:items-center">
               <Icon className="h-4 w-4 shrink-0 text-[var(--nova-text-muted)]" />
               <div className="min-w-0 flex-1">
-                <div className="truncate font-medium">{t(tool.titleKey)}</div>
-                <div className="mt-0.5 truncate text-[11px] text-[var(--nova-text-faint)]">
-                  {t(toolSubtitleKey(tool, agent))}
+                <div className="flex min-w-0 items-center gap-2">
+                  <span className="min-w-0 truncate font-medium">{t(tool.titleKey)}</span>
+                  {(isRuntimeCheck || isUnavailable) && (
+                    <span
+                      className={`shrink-0 rounded px-1.5 py-0.5 text-[10px] ${isUnavailable ? 'bg-[var(--nova-danger-bg)] text-[var(--nova-danger)]' : 'bg-[var(--nova-warning-bg)] text-[var(--nova-warning)]'}`}
+                      title={availabilityHint}
+                    >
+                      {availabilityLabel}
+                    </span>
+                  )}
                 </div>
+                <div className="mt-0.5 truncate text-[11px] text-[var(--nova-text-faint)]">
+                  {tool.toolNames.length > 0 ? tool.toolNames.join(' / ') : t(tool.subtitleKey)}
+                </div>
+                {isUnavailable && availabilityHint && (
+                  <div className="mt-0.5 truncate text-[10px] text-[var(--nova-danger)]" title={availabilityHint}>{availabilityHint}</div>
+                )}
               </div>
               <SwitchWithInheritance
                 checked={Boolean(current)}
@@ -250,21 +271,9 @@ export function AgentToolSection({ agent, value, effective, onChange }: {
             </div>
           )
         })}
-      </div>
+      </div>}
     </section>
   )
-}
-
-function toolSubtitleKey(tool: AgentToolDefinition, agent: VisibleAgentKey) {
-  if (agent === 'interactive_story' && tool.key === 'lore_read') {
-    return 'agents.tool.loreRead.interactiveSubtitle'
-  }
-  return tool.subtitleKey
-}
-
-export function toolRowsForAgent(agent: VisibleAgentKey) {
-  if (agent === 'config_manager') return TOOL_ROWS
-  return TOOL_ROWS.filter((tool) => tool.key !== 'agent_config_read' && tool.key !== 'agent_config_write')
 }
 
 export function AgentSkillSection({ agent, skills, value, effective, onChange }: {

@@ -17,7 +17,7 @@ import (
 
 func TestToolExecutionGateAllowsReadOnlyCallsInParallel(t *testing.T) {
 	middleware := &toolOrchestratorMiddleware{
-		toolSettings:        config.ResolvedAgentToolSettings{FileRead: true},
+		toolSettings:        config.ResolvedAgentToolSettings{config.AgentToolWorkspaceRead: true},
 		enforceToolSettings: true,
 		executionGate:       &toolExecutionGate{},
 	}
@@ -32,7 +32,7 @@ func TestToolExecutionGateAllowsReadOnlyCallsInParallel(t *testing.T) {
 			return "", ctx.Err()
 		}
 	}
-	readFile := mustWrapGateTestEndpoint(t, middleware, "read_file", endpoint)
+	readFile := mustWrapGateTestEndpoint(t, middleware, "read", endpoint)
 	grep := mustWrapGateTestEndpoint(t, middleware, "grep", endpoint)
 
 	errs := make(chan error, 2)
@@ -50,7 +50,7 @@ func TestToolExecutionGateSerializesWritesAcrossMiddlewareInstances(t *testing.T
 	if gateA != gateB {
 		t.Fatal("same workspace should reuse one execution gate")
 	}
-	settings := config.ResolvedAgentToolSettings{FileWrite: true}
+	settings := config.ResolvedAgentToolSettings{config.AgentToolWorkspaceWrite: true}
 	firstMiddleware := &toolOrchestratorMiddleware{toolSettings: settings, enforceToolSettings: true, executionGate: gateA}
 	secondMiddleware := &toolOrchestratorMiddleware{toolSettings: settings, enforceToolSettings: true, executionGate: gateB}
 
@@ -76,8 +76,8 @@ func TestToolExecutionGateSerializesWritesAcrossMiddlewareInstances(t *testing.T
 			return "", ctx.Err()
 		}
 	}
-	edit := mustWrapGateTestEndpoint(t, firstMiddleware, "edit_file", endpoint)
-	write := mustWrapGateTestEndpoint(t, secondMiddleware, "write_file", endpoint)
+	edit := mustWrapGateTestEndpoint(t, firstMiddleware, "edit", endpoint)
+	write := mustWrapGateTestEndpoint(t, secondMiddleware, "write", endpoint)
 
 	errs := make(chan error, 2)
 	go invokeGateTestEndpoint(edit, `{"file_path":"a.md","edits":[]}`, errs)
@@ -162,19 +162,19 @@ func TestToolExecutionGateCanonicalizesWorkspaceSymlink(t *testing.T) {
 func TestToolExecutionGateHoldsExclusiveLockUntilToolRunReturns(t *testing.T) {
 	gate := &toolExecutionGate{}
 	middleware := &toolOrchestratorMiddleware{
-		toolSettings:        config.ResolvedAgentToolSettings{FileWrite: true, ShellExecute: true},
+		toolSettings:        config.ResolvedAgentToolSettings{config.AgentToolWorkspaceWrite: true, config.AgentToolShell: true},
 		enforceToolSettings: true,
 		executionGate:       gate,
 	}
 	entered := make(chan string, 2)
 	releaseExecute := make(chan struct{})
-	execute := mustWrapGateTestEndpoint(t, middleware, "execute", func(context.Context, string, ...agent.ToolOption) (string, error) {
-		entered <- "execute"
+	execute := mustWrapGateTestEndpoint(t, middleware, "bash", func(context.Context, string, ...agent.ToolOption) (string, error) {
+		entered <- "bash"
 		<-releaseExecute
 		return "done", nil
 	})
 	releaseWrite := make(chan struct{})
-	edit := mustWrapGateTestEndpoint(t, middleware, "edit_file", func(ctx context.Context, _ string, _ ...agent.ToolOption) (string, error) {
+	edit := mustWrapGateTestEndpoint(t, middleware, "edit", func(ctx context.Context, _ string, _ ...agent.ToolOption) (string, error) {
 		entered <- "edit"
 		select {
 		case <-releaseWrite:
@@ -185,7 +185,7 @@ func TestToolExecutionGateHoldsExclusiveLockUntilToolRunReturns(t *testing.T) {
 	})
 	errs := make(chan error, 2)
 	go invokeGateTestEndpoint(execute, `{"command":"touch a.md"}`, errs)
-	if got := waitForGateTestEntry(t, entered); got != "execute" {
+	if got := waitForGateTestEntry(t, entered); got != "bash" {
 		t.Fatalf("first entry = %q", got)
 	}
 	go invokeGateTestEndpoint(edit, `{"file_path":"a.md","edits":[]}`, errs)
@@ -201,14 +201,14 @@ func TestToolExecutionGateHoldsExclusiveLockUntilToolRunReturns(t *testing.T) {
 func TestToolExecutionGateKeepsLockAfterCancelUntilNonCooperativeToolReturns(t *testing.T) {
 	gate := &toolExecutionGate{}
 	middleware := &toolOrchestratorMiddleware{
-		toolSettings:        config.ResolvedAgentToolSettings{FileWrite: true, ShellExecute: true},
+		toolSettings:        config.ResolvedAgentToolSettings{config.AgentToolWorkspaceWrite: true, config.AgentToolShell: true},
 		enforceToolSettings: true,
 		executionGate:       gate,
 	}
 	entered := make(chan string, 2)
 	releaseExecute := make(chan struct{})
-	execute := mustWrapGateTestEndpoint(t, middleware, "execute", func(context.Context, string, ...agent.ToolOption) (string, error) {
-		entered <- "execute"
+	execute := mustWrapGateTestEndpoint(t, middleware, "bash", func(context.Context, string, ...agent.ToolOption) (string, error) {
+		entered <- "bash"
 		<-releaseExecute
 		return "done", nil
 	})
@@ -223,11 +223,11 @@ func TestToolExecutionGateKeepsLockAfterCancelUntilNonCooperativeToolReturns(t *
 		_, runErr := execute(executeCtx, `{"command":"long-running"}`)
 		executeResult <- runErr
 	}()
-	if got := waitForGateTestEntry(t, entered); got != "execute" {
+	if got := waitForGateTestEntry(t, entered); got != "bash" {
 		t.Fatalf("first entry = %q", got)
 	}
 	releaseWrite := make(chan struct{})
-	edit := mustWrapGateTestEndpoint(t, middleware, "edit_file", func(ctx context.Context, _ string, _ ...agent.ToolOption) (string, error) {
+	edit := mustWrapGateTestEndpoint(t, middleware, "edit", func(ctx context.Context, _ string, _ ...agent.ToolOption) (string, error) {
 		entered <- "edit"
 		select {
 		case <-releaseWrite:

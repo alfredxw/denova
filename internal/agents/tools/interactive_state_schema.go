@@ -120,7 +120,7 @@ func newInteractiveOpeningStateSchemaTools(ctx InteractiveContext) ([]agent.Tool
 	if err != nil {
 		return nil, err
 	}
-	definedSubmitTool, err := defineTool(submitTool, workspaceWriteDescriptor(ToolSourceHistory, "", agent.ToolRecoveryReconcilable))
+	definedSubmitTool, err := defineTool(submitTool, interactiveStoryWorkflowDescriptor())
 	if err != nil {
 		return nil, err
 	}

@@ -40,17 +40,17 @@ func TestContextLedgerRecordsBoundedSources(t *testing.T) {
 func TestFilterToolResultKeepsContentBelowHighDefaultLimit(t *testing.T) {
 	content := strings.Repeat("章节正文", 4096)
 	filtered := filterToolResultForModelWithDescriptor(
-		"write_file",
-		producttools.WorkspaceWriteDescriptor(ToolSourceWrite, config.AgentToolFileWrite, ToolRecoveryReconcilable),
+		"write",
+		producttools.WorkspaceWriteDescriptor(ToolSourceWrite, config.AgentToolWorkspaceWrite, ToolRecoveryReconcilable),
 		`{"path":"chapters/ch00001.md"}`,
 		content,
 		0,
 	)
-	if filtered.Manifest.Source != ToolSourceWrite || !filtered.Manifest.MutatesWorkspace || !filtered.Manifest.RequiresPostCheck {
-		t.Fatalf("write_file should be classified as workspace mutation: %#v", filtered.Manifest)
+	if filtered.Manifest.Source != ToolSourceWrite || filtered.Manifest.MutationScope != ToolMutationWorkspace || filtered.Manifest.PostCheck != ToolPostCheckWorkspaceChange {
+		t.Fatalf("write should be classified as workspace mutation: %#v", filtered.Manifest)
 	}
-	if filtered.Manifest.Capability != "file_write" {
-		t.Fatalf("write_file capability = %q, want file_write", filtered.Manifest.Capability)
+	if filtered.Manifest.Capability != config.AgentToolWorkspaceWrite {
+		t.Fatalf("write capability = %q, want %s", filtered.Manifest.Capability, config.AgentToolWorkspaceWrite)
 	}
 	if filtered.Truncated {
 		t.Fatalf("tool result below the high default limit should not truncate")
@@ -59,17 +59,17 @@ func TestFilterToolResultKeepsContentBelowHighDefaultLimit(t *testing.T) {
 		t.Fatalf("model content below the limit changed")
 	}
 	if filtered.Result.Metadata.Target != "chapters/ch00001.md" ||
-		!strings.HasPrefix(filtered.Result.Metadata.IdempotencyKey, "write_file:") {
+		!strings.HasPrefix(filtered.Result.Metadata.IdempotencyKey, "write:") {
 		t.Fatalf("structured result metadata = %#v", filtered.Result.Metadata)
 	}
-	if strings.Contains(filtered.Content, "tool_result.v1") || strings.Contains(filtered.Content, "mutates_workspace") {
+	if strings.Contains(filtered.Content, "tool_result.v1") || strings.Contains(filtered.Content, "mutation_scope") {
 		t.Fatalf("execution metadata leaked into model content: %s", filtered.Content)
 	}
 }
 
 func TestFilterToolResultBoundsOutputAboveHighDefaultLimit(t *testing.T) {
 	content := strings.Repeat("x", defaultToolResultMaxBytes+1024)
-	filtered := FilterToolResultForModel("read_file", `{"path":"references/large.txt"}`, content)
+	filtered := FilterToolResultForModel("read", `{"path":"references/large.txt"}`, content)
 	if !filtered.Truncated || filtered.Manifest.MaxResultBytes != defaultToolResultMaxBytes {
 		t.Fatalf("default tool result safety cap was not enforced: %#v", filtered)
 	}
@@ -80,7 +80,7 @@ func TestFilterToolResultBoundsOutputAboveHighDefaultLimit(t *testing.T) {
 
 func TestFilterToolResultBoundsOutputWhenLimitConfigured(t *testing.T) {
 	content := strings.Repeat("章节正文", 4096)
-	filtered := FilterToolResultForModelWithLimit("write_file", `{"path":"chapters/ch00001.md"}`, content, 8*1024)
+	filtered := FilterToolResultForModelWithLimit("write", `{"path":"chapters/ch00001.md"}`, content, 8*1024)
 	if !filtered.Truncated {
 		t.Fatalf("expected long result to be truncated when limit is configured")
 	}
@@ -108,17 +108,21 @@ func TestPostRunVerifierChecksLoreWriteResult(t *testing.T) {
 		t.Fatal(err)
 	}
 	result := VerifyPostRunMutations(book.NewService(workspace), []ToolMutation{{
-		ToolName:    "write_lore_items",
-		Source:      ToolSourceLore,
-		LoreItemIDs: []string{item.ID},
+		ToolName:      "write_lore_items",
+		Source:        ToolSourceLore,
+		MutationScope: ToolMutationWorkspace,
+		PostCheck:     ToolPostCheckWorkspaceChange,
+		LoreItemIDs:   []string{item.ID},
 	}})
 	if result.Status != "ok" {
 		t.Fatalf("created lore item should pass verification after default brief generation: %#v", result)
 	}
 	result = VerifyPostRunMutations(book.NewService(workspace), []ToolMutation{{
-		ToolName:    "write_lore_items",
-		Source:      ToolSourceLore,
-		LoreItemIDs: []string{"missing-id"},
+		ToolName:      "write_lore_items",
+		Source:        ToolSourceLore,
+		MutationScope: ToolMutationWorkspace,
+		PostCheck:     ToolPostCheckWorkspaceChange,
+		LoreItemIDs:   []string{"missing-id"},
 	}})
 	if result.Status != "warning" {
 		t.Fatalf("missing changed lore item should warn: %#v", result)
@@ -154,24 +158,24 @@ func TestRunTraceReaderSummarizesLedger(t *testing.T) {
 	}
 	if err := ledger.RecordEvent(Event{Type: "tool_result", Data: map[string]interface{}{
 		"id":      "call-1",
-		"name":    "write_file",
+		"name":    "write",
 		"content": "写入成功",
 	}}); err != nil {
 		t.Fatal(err)
 	}
 	if err := ledger.RecordToolDecision(ToolDecision{
-		ToolName:   "write_file",
-		ToolCallID: "call-1",
-		Source:     ToolSourceWrite,
-		Capability: "file_write",
-		Action:     "allowed",
-		Target:     "chapters/ch01.md",
+		ToolName:    "write",
+		ExecutionID: "call-1",
+		Source:      ToolSourceWrite,
+		Capability:  "file_write",
+		Action:      "allowed",
+		Target:      "chapters/ch01.md",
 	}); err != nil {
 		t.Fatal(err)
 	}
 	if err := ledger.RecordToolExecution(ToolExecutionRecord{
 		ToolName:              "submit_interactive_turn",
-		ToolCallID:            "call-1",
+		ExecutionID:           "call-1",
 		Status:                "success",
 		DomainStatus:          "rejected",
 		DomainDiagnosticCount: 2,
@@ -184,25 +188,25 @@ func TestRunTraceReaderSummarizesLedger(t *testing.T) {
 		t.Fatal(err)
 	}
 	if err := ledger.RecordToolDecision(ToolDecision{
-		ToolName:   "write_file",
-		ToolCallID: "call-2",
-		Source:     ToolSourceWrite,
-		Capability: "file_write",
-		Action:     "blocked",
-		Reason:     "参数不是完整 JSON 对象",
+		ToolName:    "write",
+		ExecutionID: "call-2",
+		Source:      ToolSourceWrite,
+		Capability:  "file_write",
+		Action:      "blocked",
+		Reason:      "参数不是完整 JSON 对象",
 	}); err != nil {
 		t.Fatal(err)
 	}
 	if err := ledger.RecordToolExecution(ToolExecutionRecord{
-		ToolName:   "write_file",
-		ToolCallID: "call-2",
-		Status:     "blocked",
-		Capability: "file_write",
-		Error:      "参数不是完整 JSON 对象",
+		ToolName:    "write",
+		ExecutionID: "call-2",
+		Status:      "blocked",
+		Capability:  "file_write",
+		Error:       "参数不是完整 JSON 对象",
 	}); err != nil {
 		t.Fatal(err)
 	}
-	if err := ledger.RecordMutations([]ToolMutation{{ToolName: "write_file", Source: ToolSourceWrite, Target: "chapters/ch01.md"}}); err != nil {
+	if err := ledger.RecordMutations([]ToolMutation{{ToolName: "write", Source: ToolSourceWrite, Target: "chapters/ch01.md"}}); err != nil {
 		t.Fatal(err)
 	}
 	if err := ledger.RecordVerification(PostRunVerification{Status: "ok", Mutations: 1}); err != nil {
@@ -281,16 +285,16 @@ func TestRunLedgerRecordsStructuredTraceSpans(t *testing.T) {
 		"total_tokens":         18,
 	})
 	RunObserverFromContext(ctx).RecordToolDecision(ToolDecision{
-		ToolName:   "read_file",
-		ToolCallID: "tool-1",
-		Source:     ToolSourceRead,
-		Capability: "file_read",
-		Action:     "allowed",
-		Target:     "chapters/ch01.md",
+		ToolName:    "read",
+		ExecutionID: "tool-1",
+		Source:      ToolSourceRead,
+		Capability:  "file_read",
+		Action:      "allowed",
+		Target:      "chapters/ch01.md",
 	})
 	RunObserverFromContext(ctx).RecordToolExecution(ToolExecutionRecord{
-		ToolName:      "read_file",
-		ToolCallID:    "tool-1",
+		ToolName:      "read",
+		ExecutionID:   "tool-1",
 		Status:        "success",
 		Capability:    "file_read",
 		OriginalBytes: 4096,
@@ -447,7 +451,7 @@ func TestRunLedgerWritesBoundedJSONLTrace(t *testing.T) {
 	}
 	if err := ledger.RecordEvent(Event{Type: "tool_result", Data: map[string]interface{}{
 		"id":      "call-1",
-		"name":    "read_file",
+		"name":    "read",
 		"content": "这里是一段很长很长的工具返回内容，需要被截断保存",
 	}}); err != nil {
 		t.Fatal(err)
@@ -504,7 +508,7 @@ func TestRunLedgerSkipsTransportStreamEvents(t *testing.T) {
 	}
 	if err := ledger.RecordEvent(Event{Type: "tool_call", Data: map[string]interface{}{
 		"id":   "call-1",
-		"name": "write_file",
+		"name": "write",
 		"args": `{"path":"chapters/ch01.md"}`,
 	}}); err != nil {
 		t.Fatal(err)

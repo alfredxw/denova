@@ -664,7 +664,7 @@ describe('useAgentChat', () => {
           { type: 'text' as const, text: 'hello', state: 'done' as const },
           {
             type: 'dynamic-tool' as const,
-            toolName: 'write_file',
+            toolName: 'write',
             toolCallId: 'tool-9',
             state: 'output-available' as const,
             input: { path: 'chapter.md', content: '完整参数' },

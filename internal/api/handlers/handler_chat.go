@@ -171,6 +171,9 @@ func (h *Handlers) HandleChatActive(ctx context.Context, c *app.RequestContext) 
 		response := map[string]interface{}{
 			"active": false,
 		}
+		if view.PendingAsk != nil {
+			response["pending_ask"] = view.PendingAsk
+		}
 		addAgentRuntimeProjection(response, view.Runtime, agentRuntimeProjectionOptions{
 			Available: view.RuntimeProjectionOK, RecoveryActions: view.RecoveryActions,
 		})
@@ -182,6 +185,9 @@ func (h *Handlers) HandleChatActive(ctx context.Context, c *app.RequestContext) 
 		"status":        view.Task.Status,
 		"task_id":       view.Task.ID,
 		"stream_cursor": view.Task.Cursor,
+	}
+	if view.PendingAsk != nil {
+		response["pending_ask"] = view.PendingAsk
 	}
 	addAgentRuntimeProjection(response, view.Runtime, agentRuntimeProjectionOptions{
 		Available: view.RuntimeProjectionOK, StreamAttached: true, RecoveryActions: view.RecoveryActions,

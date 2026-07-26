@@ -26,6 +26,7 @@ func (tool *schedulerTool) Run(ctx context.Context, arguments string, _ ...ToolO
 func schedulerReadDescriptor(steering SteeringPolicy) ToolDescriptor {
 	return ToolDescriptor{
 		Source: ToolSourceRead, Execution: ToolExecutionParallelRead,
+		MutationScope: ToolMutationNone, PostCheck: ToolPostCheckNone,
 		Recovery: ToolRecoveryReadOnly, ResultProjection: ToolResultBoundedModelContext,
 		Steering: steering, MaxResultBytes: 4096,
 	}
@@ -34,15 +35,16 @@ func schedulerReadDescriptor(steering SteeringPolicy) ToolDescriptor {
 func schedulerWriteDescriptor() ToolDescriptor {
 	return ToolDescriptor{
 		Source: ToolSourceWrite, Execution: ToolExecutionWorkspaceExclusive,
+		MutationScope: ToolMutationWorkspace, PostCheck: ToolPostCheckWorkspaceChange,
 		Recovery: ToolRecoveryReconcilable, ResultProjection: ToolResultBoundedModelContext,
-		Steering: SteeringFinishCurrent, MutatesWorkspace: true,
-		RequiresPostCheck: true, MaxResultBytes: 4096,
+		Steering: SteeringFinishCurrent, MaxResultBytes: 4096,
 	}
 }
 
 func schedulerChildDescriptor() ToolDescriptor {
 	return ToolDescriptor{
 		Source: ToolSourceOther, Execution: ToolExecutionChild,
+		MutationScope: ToolMutationNone, PostCheck: ToolPostCheckNone,
 		Recovery: ToolRecoveryReadOnly, ResultProjection: ToolResultBoundedModelContext,
 		Steering: SteeringFinishCurrent, MaxResultBytes: 4096,
 	}

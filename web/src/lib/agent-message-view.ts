@@ -1,4 +1,4 @@
-import type { ChapterIllustration, ChatMessage, InteractiveImage, InteractiveImageError, PublicRuleRoll, TokenUsageCall } from './api-client/types'
+import type { AgentAskInteraction, ChapterIllustration, ChatMessage, InteractiveImage, InteractiveImageError, PublicRuleRoll, TokenUsageCall } from './api-client/types'
 import type { AgentMessageMetadata, AgentUIMessage } from './agent-ui'
 
 export type AgentMessageViewKind =
@@ -7,6 +7,7 @@ export type AgentMessageViewKind =
   | 'reasoning'
   | 'tool'
   | 'tool-result'
+  | 'ask'
   | 'rule-roll'
   | 'context-compaction'
   | 'token-usage'
@@ -86,7 +87,51 @@ export function buildAgentMessageViews(messages: AgentUIMessage[]): AgentMessage
     messageViewsCache.set(message, messageViews)
     views.push(...messageViews)
   })
-  return views
+  return projectCurrentTodoPlans(views)
+}
+
+// todo is a run-local replacement state, not an append-only activity feed.
+// Keep only the latest pending/successful plan for each root/subagent run; a
+// successful empty plan clears the card while failed calls remain visible as
+// diagnostics without erasing the last committed plan.
+function projectCurrentTodoPlans(views: AgentMessageView[]): AgentMessageView[] {
+  const selected = new Map<string, number | null>()
+  const projected = new Set<number>()
+  views.forEach((view, index) => {
+    if (view.kind !== 'tool' || view.toolName !== 'todo' || view.status === 'error') return
+    projected.add(index)
+    const scope = todoPlanScope(view)
+    if (view.status === 'success' && todoPlanIsEmpty(view)) {
+      selected.set(scope, null)
+      return
+    }
+    selected.set(scope, index)
+  })
+  if (projected.size === 0) return views
+  const visible = new Set(Array.from(selected.values()).filter((index): index is number => index !== null))
+  return views.filter((_, index) => !projected.has(index) || visible.has(index))
+}
+
+function todoPlanScope(view: AgentMessageView) {
+  const subagent = agentSubAgentSessionKey(view)
+  return `${view.metadata.run_id || 'unscoped'}\u001f${subagent}`
+}
+
+function todoPlanIsEmpty(view: AgentMessageView) {
+  const output = parseStructuredValue(view.output)
+  if (output && output.schema === 'todo.plan.v1' && Array.isArray(output.plan)) return output.plan.length === 0
+  return false
+}
+
+function parseStructuredValue(value: unknown): Record<string, unknown> | null {
+  if (value && typeof value === 'object' && !Array.isArray(value)) return value as Record<string, unknown>
+  if (typeof value !== 'string' || !value.trim()) return null
+  try {
+    const parsed = JSON.parse(value)
+    return parsed && typeof parsed === 'object' && !Array.isArray(parsed) ? parsed as Record<string, unknown> : null
+  } catch {
+    return null
+  }
 }
 
 export function selectAgentTokenUsageRecords(messages: AgentUIMessage[]): AgentTokenUsageRecord[] {
@@ -180,6 +225,16 @@ export function agentViewToRenderMessage(view: AgentMessageView, options: { forc
         ...meta,
       }
     }
+    case 'ask':
+      return {
+        id,
+        role: 'ask',
+        content: view.content,
+        status,
+        streaming,
+        ask: readAskInteraction(data),
+        ...meta,
+      }
     case 'tool-result':
       return {
         id,
@@ -274,6 +329,9 @@ function buildAgentMessageView(message: AgentUIMessage, part: AgentUIMessage['pa
 
   if (type === 'dynamic-tool' || type.startsWith('tool-')) {
     const toolName = type === 'dynamic-tool' ? firstNonEmpty(readString(raw.toolName), 'unknown_tool') : type.replace(/^tool-/, '')
+    // ask has a dedicated durable data part emitted only after pending state is
+    // committed. Hiding the speculative model tool frame avoids duplicate UI.
+    if (toolName === 'ask') return null
     const status = toolStatus(readString(raw.state))
     return {
       ...base,
@@ -296,6 +354,8 @@ function buildAgentMessageView(message: AgentUIMessage, part: AgentUIMessage['pa
   switch (type) {
     case 'data-agent-clear':
       return { ...base, kind: 'clear', data, content: '', streaming: false }
+    case 'data-agent-ask':
+      return { ...base, kind: 'ask', data, content: firstAskQuestion(data), status, streaming: readString(data.status) === 'pending' }
     case 'data-agent-context-compaction':
       return { ...base, kind: 'context-compaction', data, content, status, streaming }
     case 'data-agent-token-usage':
@@ -670,6 +730,22 @@ function readTurnVersions(value: unknown): AgentMessageMetadata['turn_versions']
     })
     .filter((item): item is NonNullable<typeof item> => Boolean(item))
   return versions.length ? versions : undefined
+}
+
+function firstAskQuestion(data: Record<string, unknown>) {
+  const questions = Array.isArray(data.questions) ? data.questions : []
+  return readString(objectData(questions[0]).question)
+}
+
+function readAskInteraction(data: Record<string, unknown>): AgentAskInteraction | undefined {
+  const id = readString(data.id)
+  const toolCallID = readString(data.tool_call_id)
+  const agentKind = readString(data.agent_kind)
+  const status = readString(data.status)
+  if (!id || !toolCallID || !agentKind || !['pending', 'answered', 'cancelled'].includes(status) || !Array.isArray(data.questions)) {
+    return undefined
+  }
+  return data as unknown as AgentAskInteraction
 }
 
 function toolStatus(state: string | undefined): AgentMessageView['status'] {

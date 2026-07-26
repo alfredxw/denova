@@ -2,6 +2,7 @@ package agents
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"strings"
@@ -346,6 +347,18 @@ func (e *harnessEngine) run(
 	// Deferred cycles replace process-local Options during preparation. Build
 	// the durable tool-effect adapter only after that replacement so its payload
 	// carries the restored stable task/run identity.
+	bindingIdentity, marshalErr := json.Marshal(request.Binding)
+	if marshalErr != nil {
+		return runstate.EngineResult{}, fmt.Errorf("encode Agent invocation binding: %w", marshalErr)
+	}
+	// Runtime never re-enters a crashed Running cycle: recovery pauses it and a
+	// later Steer/FollowUp starts cycle+1. The in-cycle model-response ordinal can
+	// therefore restart only for an exact explicit replay, where the same ordinal
+	// intentionally derives the same ExecutionID. Future same-cycle resumption
+	// must first persist and restore that ordinal at the runtime boundary.
+	runCtx = agent.ContextWithInvocationIdentity(runCtx, agent.InvocationIdentity{
+		Scope: string(bindingIdentity), OperationID: string(request.Snapshot.OperationID), Cycle: request.Snapshot.Cycle,
+	})
 	var toolObserver ToolLifecycleObserver = harnessToolLifecycleObserver{
 		sink: sink, binding: request.Binding, operationID: request.Snapshot.OperationID,
 		cycle: request.Snapshot.Cycle, options: spec.Options,

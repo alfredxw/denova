@@ -16,7 +16,7 @@ import (
 func TestMergeToolCalls(t *testing.T) {
 	idx := 0
 	calls := mergeToolCalls(nil, []agent.ToolCall{
-		{Index: &idx, Function: agent.FunctionCall{Name: "write_file", Arguments: `{"path":`}},
+		{Index: &idx, Function: agent.FunctionCall{Name: "write", Arguments: `{"path":`}},
 	})
 	calls = mergeToolCalls(calls, []agent.ToolCall{
 		{Index: &idx, Function: agent.FunctionCall{Arguments: `"chapters/ch01.md"}`}},
@@ -25,7 +25,7 @@ func TestMergeToolCalls(t *testing.T) {
 	if len(calls) != 1 {
 		t.Fatalf("期望 1 个 tool call，实际: %d", len(calls))
 	}
-	if calls[0].Function.Name != "write_file" {
+	if calls[0].Function.Name != "write" {
 		t.Fatalf("工具名称未合并: %s", calls[0].Function.Name)
 	}
 	if calls[0].Function.Arguments != `{"path":"chapters/ch01.md"}` {
@@ -36,7 +36,7 @@ func TestMergeToolCalls(t *testing.T) {
 func TestMergeToolCallsHandlesSparseIndexes(t *testing.T) {
 	idx := 2
 	calls := mergeToolCalls(nil, []agent.ToolCall{
-		{Index: &idx, ID: "call-2", Function: agent.FunctionCall{Name: "edit_file", Arguments: `{"path":`}},
+		{Index: &idx, ID: "call-2", Function: agent.FunctionCall{Name: "edit", Arguments: `{"path":`}},
 	})
 	calls = mergeToolCalls(calls, []agent.ToolCall{
 		{Index: &idx, Function: agent.FunctionCall{Arguments: `"chapters/ch02.md"}`}},
@@ -45,7 +45,7 @@ func TestMergeToolCallsHandlesSparseIndexes(t *testing.T) {
 	if len(calls) != 3 {
 		t.Fatalf("稀疏 index 应补齐切片长度，实际: %d", len(calls))
 	}
-	if calls[2].ID != "call-2" || calls[2].Function.Name != "edit_file" {
+	if calls[2].ID != "call-2" || calls[2].Function.Name != "edit" {
 		t.Fatalf("工具元信息未按 index 保留: %#v", calls[2])
 	}
 	if calls[2].Function.Arguments != `{"path":"chapters/ch02.md"}` {
@@ -178,11 +178,11 @@ func TestStyleRulesSystemInstructionEmitsSceneAndStyles(t *testing.T) {
 	assertContains(t, got, "温吞对白")
 	assertContains(t, got, "全局文风参考默认适用于所有正文生成")
 	assertContains(t, got, "互动故事下一回合正文生成时")
-	assertContains(t, got, "编制故事正文前必须先用 read_file 读取这些全局参考文件")
+	assertContains(t, got, "编制故事正文前必须先用 read 读取这些全局参考文件")
 	assertContains(t, got, "分场景文风参考仍根据当前章节内容、互动场景或本轮 # 场景选择")
 	assertContains(t, got, "不要强行选择分场景参考")
 	assertContains(t, got, "完全忽略以上参考")
-	assertContains(t, got, "read_file")
+	assertContains(t, got, "read")
 	if strings.Contains(got, "无效内容") {
 		t.Fatalf("空 scene 的规则应被跳过，但仍包含无效内容：\n%s", got)
 	}

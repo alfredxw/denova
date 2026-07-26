@@ -25,7 +25,7 @@ type workspaceChangeToolReceipt struct {
 }
 
 // WorkspaceChangeReceipt is the durable, bounded receipt returned by
-// edit_file and write_file.
+// edit and write.
 type WorkspaceChangeReceipt = workspaceChangeToolReceipt
 
 type workspaceChangeEditReceipt struct {
@@ -34,15 +34,16 @@ type workspaceChangeEditReceipt struct {
 }
 
 type workspaceChangeToolModelReceipt struct {
-	Schema         string `json:"schema"`
-	Status         string `json:"status"`
-	Workspace      string `json:"workspace"`
-	ChangeGroupID  string `json:"change_group_id"`
-	ReviewThreadID string `json:"review_thread_id,omitempty"`
-	ChangeSetID    string `json:"change_set_id"`
-	Path           string `json:"path"`
-	ReviewStatus   string `json:"review_status"`
-	ApplyState     string `json:"apply_state"`
+	Schema         string                       `json:"schema"`
+	Status         string                       `json:"status"`
+	Workspace      string                       `json:"workspace"`
+	ChangeGroupID  string                       `json:"change_group_id"`
+	ReviewThreadID string                       `json:"review_thread_id,omitempty"`
+	ChangeSetID    string                       `json:"change_set_id"`
+	Path           string                       `json:"path"`
+	ReviewStatus   string                       `json:"review_status"`
+	ApplyState     string                       `json:"apply_state"`
+	Edits          []workspaceChangeEditReceipt `json:"edits,omitempty"`
 }
 
 func workspaceChangeToolResultForModel(toolName, content string) string {
@@ -60,6 +61,7 @@ func workspaceChangeToolResultForModel(toolName, content string) string {
 		Path:           receipt.Path,
 		ReviewStatus:   receipt.ReviewStatus,
 		ApplyState:     receipt.ApplyState,
+		Edits:          receipt.Edits,
 	})
 	if err != nil {
 		return content
@@ -115,7 +117,7 @@ func toolResultBody(content string) string {
 
 func isWorkspaceChangeReceiptTool(toolName string) bool {
 	switch normalizeToolName(toolName) {
-	case "edit_file", "write_file":
+	case "edit", "write":
 		return true
 	default:
 		return false

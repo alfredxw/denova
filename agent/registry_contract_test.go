@@ -92,7 +92,7 @@ func TestRegistryRejectsDuplicateAndInvalidDescriptors(t *testing.T) {
 		t.Fatalf("duplicate error = %v", err)
 	}
 	invalid := definition
-	invalid.Descriptor.MutatesWorkspace = true
+	invalid.Descriptor.MutationScope = ToolMutationWorkspace
 	if _, err := NewRegistry(context.Background(), invalid); err == nil || !strings.Contains(err.Error(), "parallel read") {
 		t.Fatalf("invalid descriptor error = %v", err)
 	}

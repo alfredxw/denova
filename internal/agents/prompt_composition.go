@@ -169,7 +169,7 @@ func ComposeConfigManagerInstruction(cfg *config.Config, state *book.State, reso
 			skillContent.WriteString("\n\n")
 		}
 		skillContent.WriteString(content)
-		prefix := "\n\n## 本轮自动加载的配置 Skills\n\n以下内容来自当前生效的 Denova Skills，用于在调用复杂 write_* 配置工具前确认 JSON 结构、枚举、默认值和安全流程；若与运行时契约或后端校验冲突，以运行时契约和后端校验为准。\n\n"
+		prefix := "\n\n## 配置管理 Skill\n\n以下内容来自当前生效的 config-manager Skill。资源细节位于 references；按需使用 read 读取，不要把全部参考一次性注入上下文。若与运行时契约或后端校验冲突，以运行时契约和后端校验为准。\n\n"
 		if skillOrdinal > 1 {
 			prefix = "\n"
 		}

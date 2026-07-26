@@ -13,7 +13,7 @@ agent: ide
 1. 理解作者的故事构思（题材、主题、核心冲突、人物关系）
 2. 设计故事结构（起承转合、卷/章节划分）
 3. 为每章生成标题和一句话摘要
-4. 使用 write_file 将大纲写入 `setting/outline.md`
+4. 使用 write 将大纲写入 `setting/outline.md`
 5. 提取主要角色、世界观、地点、势力、规则和物品等长期设定，使用 write_lore_items 批量整理到资料库；不要再生成 `setting/characters.md` 或 `setting/world-building.md`
 6. 初始化 `setting/progress.md`（当前进度：尚未开始）和 `setting/character-states.md`（主要角色状态占位）
 

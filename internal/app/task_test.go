@@ -325,7 +325,7 @@ func TestTaskDisplayCheckpointReplaysFinishedTaskAndAssemblesToolArguments(t *te
 		emit(agents.Event{Type: "agent_cycle_started", Data: map[string]any{
 			"command_id": "command-1", "delivery": "start_turn", "message": "读取", "operation_id": "operation-1", "cycle": 1,
 		}})
-		emit(agents.Event{Type: "tool_call", Data: map[string]any{"id": "call-1", "name": "read_file", "args": "", "run_id": "run-1"}})
+		emit(agents.Event{Type: "tool_call", Data: map[string]any{"id": "call-1", "name": "read", "args": "", "run_id": "run-1"}})
 		for _, delta := range []string{`{"path"`, `:"chapter.md"`, `}`} {
 			// Some providers omit the repeated tool name on delta frames.
 			emit(agents.Event{Type: "tool_args_delta", Data: map[string]any{"id": "call-1", "delta": delta, "run_id": "run-1"}})

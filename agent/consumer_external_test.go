@@ -97,6 +97,8 @@ func TestExternalConsumerComposesReusableAgent(t *testing.T) {
 			Source:           agent.ToolSourceRead,
 			Capability:       "knowledge.read",
 			Execution:        agent.ToolExecutionParallelRead,
+			MutationScope:    agent.ToolMutationNone,
+			PostCheck:        agent.ToolPostCheckNone,
 			Recovery:         agent.ToolRecoveryReadOnly,
 			ResultProjection: agent.ToolResultBoundedModelContext,
 			Steering:         agent.SteeringFinishCurrent,

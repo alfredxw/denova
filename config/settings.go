@@ -353,18 +353,20 @@ const (
 
 // LayeredSettings 暴露默认、全局、用户与工作区 Agent 定制快照及合并后的 effective 值。
 type LayeredSettings struct {
-	Default                   Settings                  `json:"default"`
-	Global                    Settings                  `json:"global"`
-	User                      Settings                  `json:"user"`
-	Workspace                 Settings                  `json:"workspace"`
-	Effective                 Settings                  `json:"effective"`
-	Paths                     SettingsPaths             `json:"paths"`
-	Revisions                 SettingsRevisions         `json:"revisions"`
-	Access                    SettingsAccess            `json:"access"`
-	Runtime                   SettingsRuntime           `json:"runtime"`
-	BuiltinAgentPrompts       AgentPromptSettings       `json:"builtin_agent_prompts,omitempty"`
-	BuiltinAgentPromptBlocks  AgentPromptBlockSettings  `json:"builtin_agent_prompt_blocks,omitempty"`
-	BuiltinAgentPromptSources AgentPromptSourceSettings `json:"builtin_agent_prompt_sources,omitempty"`
+	Default                    Settings                                 `json:"default"`
+	Global                     Settings                                 `json:"global"`
+	User                       Settings                                 `json:"user"`
+	Workspace                  Settings                                 `json:"workspace"`
+	Effective                  Settings                                 `json:"effective"`
+	Paths                      SettingsPaths                            `json:"paths"`
+	Revisions                  SettingsRevisions                        `json:"revisions"`
+	Access                     SettingsAccess                           `json:"access"`
+	Runtime                    SettingsRuntime                          `json:"runtime"`
+	BuiltinAgentPrompts        AgentPromptSettings                      `json:"builtin_agent_prompts,omitempty"`
+	BuiltinAgentPromptBlocks   AgentPromptBlockSettings                 `json:"builtin_agent_prompt_blocks,omitempty"`
+	BuiltinAgentPromptSources  AgentPromptSourceSettings                `json:"builtin_agent_prompt_sources,omitempty"`
+	AgentToolCapabilities      []AgentToolCapabilityCatalogEntry        `json:"agent_tool_capabilities"`
+	ResolvedAgentToolManifests map[string][]ResolvedAgentToolCapability `json:"resolved_agent_tool_manifests"`
 }
 
 var ErrSettingsRevisionConflict = errors.New("配置已被其他操作更新，请重新加载后再保存")
@@ -548,6 +550,7 @@ func LoadLayeredWithGlobal(novaDir, workspace string, global Settings) (LayeredS
 		global.NovaDir = globalDir
 	}
 	eff := Merge(Merge(Merge(def, global), user), ws)
+	toolConfig := &Config{AgentTools: eff.AgentTools}
 	backendPort := settingsInt(eff.BackendPort, 8080)
 	revisions := SettingsRevisions{}
 	userConfigPath := UserConfigPath(novaDir)
@@ -581,7 +584,9 @@ func LoadLayeredWithGlobal(novaDir, workspace string, global Settings) (LayeredS
 			LocalURL: LocalHTTPURL(backendPort),
 			LANURL:   LANHTTPURL(backendPort),
 		},
-		Runtime: SettingsRuntime{GOOS: runtime.GOOS},
+		Runtime:                    SettingsRuntime{GOOS: runtime.GOOS},
+		AgentToolCapabilities:      AgentToolCapabilityCatalogForGOOS(runtime.GOOS),
+		ResolvedAgentToolManifests: ResolveAgentToolManifestsForGOOS(toolConfig, runtime.GOOS),
 	}, nil
 }
 

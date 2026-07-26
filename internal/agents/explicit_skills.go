@@ -33,7 +33,7 @@ func ResolveExplicitSkillInvocations(ctx context.Context, cfg *config.Config, ag
 	if err := ctx.Err(); err != nil {
 		return nil, err
 	}
-	if cfg == nil || !config.ResolveAgentTools(cfg, agentKind).Skills {
+	if cfg == nil || !config.ResolveAgentTools(cfg, agentKind).Allows(config.AgentToolSkills) {
 		return nil, nil
 	}
 	backend := novaskills.NewAgentBackend(

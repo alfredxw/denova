@@ -87,7 +87,7 @@ func automationBaseInstruction(workspace string) string {
 		sb.WriteString("- 只使用本轮实际启用的用户级 Skills、待办或网页搜索能力完成任务。\n")
 	} else {
 		sb.WriteString("- 你可以根据任务目标自行使用已启用工具读取所需文件、资料库和项目状态，不需要用户预先选择上下文来源。\n")
-		sb.WriteString("- 读取内容时要先用 `ls`、`glob`、`grep` 或资料库索引定位相关范围，再按需读取；不要无目的读取整本书或大型无关文件。\n")
+		sb.WriteString("- 读取内容时要先用 `glob`、`grep` 或资料库索引定位相关范围，再按需使用 `read`；不要无目的读取整本书或大型无关文件。\n")
 	}
 	sb.WriteString("- 所有写入必须遵守本轮执行模式、写入范围和实际启用工具。没有写权限时，只输出建议和补丁计划，不要声称已经修改。\n")
 	sb.WriteString("- `read_only` 模式只能输出 review、建议或方案；`confirm_write` 的首轮也是只读方案；`auto_write` 或用户确认后的写入 run 才能在写入范围内实际修改。\n")

@@ -62,7 +62,7 @@ func TestSearchUsesConfiguredPrimaryBeforeFallbacks(t *testing.T) {
 	if fallbackCalled {
 		t.Fatal("free fallback ran even though configured SearXNG returned results")
 	}
-	if response.Provider != ProviderSearXNG || len(response.Results) != 1 {
+	if response.Schema != SearchResponseSchema || response.Provider != ProviderSearXNG || len(response.Results) != 1 {
 		t.Fatalf("unexpected response: %+v", response)
 	}
 }
@@ -203,7 +203,7 @@ func TestSearchRejectsBingResultMatchingOnlyYearQualifier(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if response.Status != SearchStatusNoResults || len(response.Results) != 0 {
+	if response.Schema != SearchResponseSchema || response.Status != SearchStatusNoResults || len(response.Results) != 0 {
 		t.Fatalf("a year-only match must not validate an unrelated topic: %+v", response)
 	}
 }
@@ -584,7 +584,7 @@ func TestSearchReturnsActionableResponseWhenAllProvidersFail(t *testing.T) {
 	if err != nil {
 		t.Fatalf("provider availability should be a structured search response: %v", err)
 	}
-	if response.Status != SearchStatusProvidersUnavailable || response.RetryStrategy != SearchRetryWaitOrReconfigure {
+	if response.Schema != SearchResponseSchema || response.Status != SearchStatusProvidersUnavailable || response.RetryStrategy != SearchRetryWaitOrReconfigure {
 		t.Fatalf("unexpected recovery metadata: %+v", response)
 	}
 	if len(response.Warnings) != 2 || !strings.Contains(response.SuggestedAction, "Do not immediately repeat") || !strings.Contains(response.SuggestedAction, "不要立即重复") {

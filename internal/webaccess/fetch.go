@@ -79,6 +79,7 @@ func (client *Client) Fetch(ctx context.Context, request FetchRequest) (FetchRes
 
 func blockedFetchResponse(target *url.URL, attempts []FetchAttempt) FetchResponse {
 	return FetchResponse{
+		Schema:          FetchResponseSchema,
 		Status:          FetchStatusBlocked,
 		Attempts:        append([]FetchAttempt(nil), attempts...),
 		RetryStrategy:   FetchRetryUseAlternateSource,
@@ -90,6 +91,7 @@ func blockedFetchResponse(target *url.URL, attempts []FetchAttempt) FetchRespons
 
 func providersUnavailableFetchResponse(target *url.URL, attempts []FetchAttempt) FetchResponse {
 	return FetchResponse{
+		Schema:          FetchResponseSchema,
 		Status:          FetchStatusProvidersUnavailable,
 		Attempts:        append([]FetchAttempt(nil), attempts...),
 		RetryStrategy:   FetchRetryWaitOrUseAlternateSource,
@@ -200,6 +202,7 @@ func buildFetchResponse(target *url.URL, request FetchRequest, maxChars int, met
 
 	log.Printf("[webaccess] fetched public page method=%s final_url=%s response_bytes=%d content_chars=%d returned_chars=%d", method, safeURLForLog(document.finalURL), document.responseSize, len(characters), len([]rune(fragment)))
 	return FetchResponse{
+		Schema:         FetchResponseSchema,
 		Status:         FetchStatusSuccess,
 		FetchMethod:    method,
 		Attempts:       append([]FetchAttempt(nil), attempts...),

@@ -6,6 +6,7 @@ import (
 	"encoding/hex"
 	"errors"
 	"fmt"
+	"io"
 	"os"
 	"path/filepath"
 	"sort"
@@ -200,16 +201,58 @@ func (s *Service) visibleRelPath(input string) (string, error) {
 }
 
 func (s *Service) readVisibleFile(rel string) ([]byte, error) {
-	root, err := os.OpenRoot(s.workspace)
+	root, err := s.openWorkspaceRoot()
 	if err != nil {
 		return nil, err
 	}
 	defer root.Close()
-	data, err := root.ReadFile(filepath.FromSlash(rel))
+	file, err := root.Open(filepath.FromSlash(rel))
 	if errors.Is(err, os.ErrNotExist) {
 		return nil, newError(ErrorCodeNotFound, "workspace file not found", map[string]any{"path": rel})
 	}
-	return data, err
+	if err != nil {
+		return nil, err
+	}
+	defer file.Close()
+	info, err := file.Stat()
+	if err != nil {
+		return nil, err
+	}
+	if !info.Mode().IsRegular() {
+		return nil, newError(ErrorCodeConflict, "workspace mutation only supports regular files", map[string]any{"path": rel})
+	}
+	data, err := io.ReadAll(io.LimitReader(file, maxWorkspaceMutationFileBytes+1))
+	if err != nil {
+		return nil, err
+	}
+	if len(data) > maxWorkspaceMutationFileBytes {
+		return nil, newError(ErrorCodeConflict, "workspace file exceeds the mutation limit", map[string]any{
+			"path": rel, "max_bytes": maxWorkspaceMutationFileBytes,
+		})
+	}
+	return data, nil
+}
+
+func (s *Service) openWorkspaceRoot() (*os.Root, error) {
+	if s == nil || s.store == nil || s.store.workspaceIdentity == nil {
+		return nil, newError(ErrorCodeConflict, "workspace service identity is unavailable", nil)
+	}
+	root, err := os.OpenRoot(s.workspace)
+	if err != nil {
+		return nil, err
+	}
+	info, err := root.Stat(".")
+	if err != nil {
+		root.Close()
+		return nil, err
+	}
+	if !os.SameFile(s.store.workspaceIdentity, info) {
+		root.Close()
+		return nil, newError(ErrorCodeConflict, "workspace root identity changed; reopen the workspace", map[string]any{
+			"workspace": s.workspace,
+		})
+	}
+	return root, nil
 }
 
 func (s *Service) appendAndApply(event ledgerEvent) error {

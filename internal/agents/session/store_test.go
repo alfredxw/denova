@@ -30,7 +30,7 @@ func TestAgentMessageWireRoundTripsAllStableFields(t *testing.T) {
 		UserInputMultiContent:    []json.RawMessage{json.RawMessage(`{"type":"input_text","text":"input"}`)},
 		AssistantGenMultiContent: []json.RawMessage{json.RawMessage(`{"type":"output_text","text":"output"}`)},
 		Name:                     "writer",
-		ToolCalls:                []agent.ToolCall{{Index: &callIndex, ID: "call-1", Type: "function", Function: agent.FunctionCall{Name: "read_file", Arguments: `{"path":"chapter.md"}`}, Extra: map[string]any{"provider": "test"}}},
+		ToolCalls:                []agent.ToolCall{{Index: &callIndex, ID: "call-1", Type: "function", Function: agent.FunctionCall{Name: "read", Arguments: `{"path":"chapter.md"}`}, Extra: map[string]any{"provider": "test"}}},
 		ToolCallID:               "parent-call",
 		ToolName:                 "task",
 		ReasoningContent:         "bounded reasoning",
@@ -229,13 +229,13 @@ func TestDisplayEventsPersistOutsideEffectiveContext(t *testing.T) {
 	if err := sess.AppendDisplayEvent(DisplayEvent{Role: "thinking", Content: "先分析角色动机"}); err != nil {
 		t.Fatal(err)
 	}
-	if err := sess.AppendDisplayEvent(DisplayEvent{ID: "call-1", Role: "tool_call", Name: "read_file", Content: "read_file", Status: "running"}); err != nil {
+	if err := sess.AppendDisplayEvent(DisplayEvent{ID: "call-1", Role: "tool_call", Name: "read", Content: "read", Status: "running"}); err != nil {
 		t.Fatal(err)
 	}
-	if err := sess.AppendDisplayToolArgs("call-1", "read_file", `{"path":"chapters/1.md"}`); err != nil {
+	if err := sess.AppendDisplayToolArgs("call-1", "read", `{"path":"chapters/1.md"}`); err != nil {
 		t.Fatal(err)
 	}
-	if err := sess.UpdateDisplayToolResult("call-1", "read_file", "success", "章节内容"); err != nil {
+	if err := sess.UpdateDisplayToolResult("call-1", "read", "success", "章节内容"); err != nil {
 		t.Fatal(err)
 	}
 	if err := sess.Append(agent.AssistantMessage("规划完成", nil)); err != nil {
@@ -261,7 +261,7 @@ func TestDisplayEventsPersistOutsideEffectiveContext(t *testing.T) {
 	if history[1].Role != "thinking" || history[1].Content != "先分析角色动机" {
 		t.Fatalf("thinking 展示事件未恢复: %#v", history[1])
 	}
-	if history[2].Role != "tool_call" || history[2].Name != "read_file" || history[2].Status != "success" {
+	if history[2].Role != "tool_call" || history[2].Name != "read" || history[2].Status != "success" {
 		t.Fatalf("工具卡片展示状态未恢复: %#v", history[2])
 	}
 	if history[2].Args != `{"path":"chapters/1.md"}` || history[2].Result != "章节内容" {
@@ -365,13 +365,13 @@ func TestContextMessagesPersistInEffectiveContextButNotHistory(t *testing.T) {
 		ID:   "call-read",
 		Type: "function",
 		Function: agent.FunctionCall{
-			Name:      "read_file",
+			Name:      "read",
 			Arguments: `{"path":"chapters/1.md"}`,
 		},
 	}})); err != nil {
 		t.Fatal(err)
 	}
-	if err := sess.AppendContextMessage(agent.ToolMessage(agent.TextToolResult("第一章内容"), "call-read", agent.WithToolName("read_file"))); err != nil {
+	if err := sess.AppendContextMessage(agent.ToolMessage(agent.TextToolResult("第一章内容"), "call-read", agent.WithToolName("read"))); err != nil {
 		t.Fatal(err)
 	}
 	if err := sess.Append(agent.AssistantMessage("已读取", nil)); err != nil {
@@ -415,8 +415,8 @@ func TestHistoryNormalizesRunningToolAfterSameRunTokenUsage(t *testing.T) {
 	if err := sess.AppendDisplayEvent(DisplayEvent{
 		ID:      "call-execute",
 		Role:    "tool_call",
-		Name:    "execute",
-		Content: "execute",
+		Name:    "bash",
+		Content: "bash",
 		Status:  "running",
 		RunID:   "run-1",
 	}); err != nil {
@@ -425,8 +425,8 @@ func TestHistoryNormalizesRunningToolAfterSameRunTokenUsage(t *testing.T) {
 	if err := sess.AppendDisplayEvent(DisplayEvent{
 		ID:      "run-2",
 		Role:    "tool_call",
-		Name:    "execute",
-		Content: "execute",
+		Name:    "bash",
+		Content: "bash",
 		Status:  "running",
 		RunID:   "run-2",
 	}); err != nil {
@@ -518,11 +518,11 @@ func TestDisplayToolArgsDeltasAreBatchedAndFlushedOnFinalResult(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := sess.AppendDisplayEvent(DisplayEvent{ID: "call-1", Role: "tool_call", Name: "write_file", Content: "write_file", Status: "running"}); err != nil {
+	if err := sess.AppendDisplayEvent(DisplayEvent{ID: "call-1", Role: "tool_call", Name: "write", Content: "write", Status: "running"}); err != nil {
 		t.Fatal(err)
 	}
 	smallArgs := `{"path":"chapters/ch01.md","content":"draft"}`
-	if err := sess.AppendDisplayToolArgs("call-1", "write_file", smallArgs); err != nil {
+	if err := sess.AppendDisplayToolArgs("call-1", "write", smallArgs); err != nil {
 		t.Fatal(err)
 	}
 	if history := sess.History(); len(history) != 1 || history[0].Args != smallArgs {
@@ -541,7 +541,7 @@ func TestDisplayToolArgsDeltasAreBatchedAndFlushedOnFinalResult(t *testing.T) {
 		t.Fatalf("小块流式参数应等待工具终态批量落盘: %#v", history)
 	}
 
-	if err := sess.UpdateDisplayToolResult("call-1", "write_file", "success", "ok"); err != nil {
+	if err := sess.UpdateDisplayToolResult("call-1", "write", "success", "ok"); err != nil {
 		t.Fatal(err)
 	}
 	reloadedAfterResult, err := NewStore(dir)
@@ -568,14 +568,14 @@ func TestDisplayToolArgsArePersistedWithoutTruncation(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := sess.AppendDisplayEvent(DisplayEvent{ID: "call-1", Role: "tool_call", Name: "write_file", Content: "write_file", Status: "running"}); err != nil {
+	if err := sess.AppendDisplayEvent(DisplayEvent{ID: "call-1", Role: "tool_call", Name: "write", Content: "write", Status: "running"}); err != nil {
 		t.Fatal(err)
 	}
 	largeArgs := `{"path":"chapters/ch01.md","content":"` + strings.Repeat("长内容", 20*1024) + `工具输入尾部必须完整恢复"}`
-	if err := sess.AppendDisplayToolArgs("call-1", "write_file", largeArgs); err != nil {
+	if err := sess.AppendDisplayToolArgs("call-1", "write", largeArgs); err != nil {
 		t.Fatal(err)
 	}
-	if err := sess.UpdateDisplayToolResult("call-1", "write_file", "success", "ok"); err != nil {
+	if err := sess.UpdateDisplayToolResult("call-1", "write", "success", "ok"); err != nil {
 		t.Fatal(err)
 	}
 
@@ -605,10 +605,10 @@ func TestUpdateDisplayToolResultFallsBackToNameWhenIDMissing(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := sess.AppendDisplayEvent(DisplayEvent{ID: "call-execute", Role: "tool_call", Name: "execute", Content: "execute", Status: "running"}); err != nil {
+	if err := sess.AppendDisplayEvent(DisplayEvent{ID: "call-execute", Role: "tool_call", Name: "bash", Content: "bash", Status: "running"}); err != nil {
 		t.Fatal(err)
 	}
-	if err := sess.UpdateDisplayToolResult("", "execute", "success", "command done"); err != nil {
+	if err := sess.UpdateDisplayToolResult("", "bash", "success", "command done"); err != nil {
 		t.Fatal(err)
 	}
 
@@ -630,10 +630,10 @@ func TestUpdateDisplayToolResultDoesNotFallbackWhenIDDiffers(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := sess.AppendDisplayEvent(DisplayEvent{ID: "call-execute", Role: "tool_call", Name: "execute", Content: "execute", Status: "running"}); err != nil {
+	if err := sess.AppendDisplayEvent(DisplayEvent{ID: "call-execute", Role: "tool_call", Name: "bash", Content: "bash", Status: "running"}); err != nil {
 		t.Fatal(err)
 	}
-	if err := sess.UpdateDisplayToolResult("stale-id", "execute", "success", "stale result"); err != nil {
+	if err := sess.UpdateDisplayToolResult("stale-id", "bash", "success", "stale result"); err != nil {
 		t.Fatal(err)
 	}
 
@@ -655,13 +655,13 @@ func TestUpdateDisplayToolResultDoesNotFallbackWhenNameIsAmbiguous(t *testing.T)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := sess.AppendDisplayEvent(DisplayEvent{ID: "execute-1", Role: "tool_call", Name: "execute", Content: "execute", Status: "running"}); err != nil {
+	if err := sess.AppendDisplayEvent(DisplayEvent{ID: "execute-1", Role: "tool_call", Name: "bash", Content: "bash", Status: "running"}); err != nil {
 		t.Fatal(err)
 	}
-	if err := sess.AppendDisplayEvent(DisplayEvent{ID: "execute-2", Role: "tool_call", Name: "execute", Content: "execute", Status: "running"}); err != nil {
+	if err := sess.AppendDisplayEvent(DisplayEvent{ID: "execute-2", Role: "tool_call", Name: "bash", Content: "bash", Status: "running"}); err != nil {
 		t.Fatal(err)
 	}
-	if err := sess.UpdateDisplayToolResult("stale-id", "execute", "success", "ambiguous result"); err != nil {
+	if err := sess.UpdateDisplayToolResult("stale-id", "bash", "success", "ambiguous result"); err != nil {
 		t.Fatal(err)
 	}
 

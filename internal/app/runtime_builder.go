@@ -116,7 +116,7 @@ func buildAgentRunnerWithComposition(ctx context.Context, cfg *config.Config, st
 	if len(tellers) > 0 {
 		teller = tellers[0]
 	}
-	builtAgent, composition, err := agents.BuildWithComposition(ctx, cfg, state, teller)
+	builtAgent, composition, err := agents.BuildWithCompositionForHost(ctx, cfg, state, teller, agents.AgentHostCapabilities{Interactive: true})
 	if err != nil {
 		return nil, agents.SystemPromptComposition{}, fmt.Errorf("构建 Agent 失败: %w", err)
 	}
@@ -175,7 +175,7 @@ func buildConfigManagerRunner(ctx context.Context, cfg *config.Config, state *bo
 }
 
 func buildConfigManagerRunnerWithComposition(ctx context.Context, cfg *config.Config, state *book.State, resourceSkills ...agents.ConfigManagerResourceSkill) (*agents.Runner, agents.SystemPromptComposition, error) {
-	builtAgent, composition, err := agents.BuildConfigManagerAgentWithComposition(ctx, cfg, state, resourceSkills...)
+	builtAgent, composition, err := agents.BuildConfigManagerAgentWithCompositionForHost(ctx, cfg, state, agents.AgentHostCapabilities{Interactive: true}, resourceSkills...)
 	if err != nil {
 		return nil, agents.SystemPromptComposition{}, fmt.Errorf("构建配置管理 Agent 失败: %w", err)
 	}

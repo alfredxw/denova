@@ -13,7 +13,7 @@ func NewSSEEventMiddlewareChain(options ...SSEEventMiddlewareChainOption) *SSEEv
 	opts := applySSEEventMiddlewareChainOptions(options...)
 	middlewares := make([]SSEEventMiddleware, 0, 1)
 	if opts.HideChapterBodyLiveOutput {
-		middlewares = append(middlewares, newWriteFileChapterBodySSEMiddleware())
+		middlewares = append(middlewares, newWriteChapterBodySSEMiddleware())
 	}
 	return newSSEEventMiddlewareChainWithMiddlewares(middlewares...)
 }

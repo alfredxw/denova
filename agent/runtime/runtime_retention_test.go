@@ -157,8 +157,8 @@ func TestFileJournalStoresToolPayloadDescriptorsInsteadOfRawContent(t *testing.T
 	const argumentSecret = "argument-secret-must-not-be-journaled"
 	const resultSecret = "result-secret-must-not-be-journaled"
 	engine := runstate.NewScriptedEngine(runstate.EngineScript{Events: []runstate.EngineEvent{
-		runstate.EngineToolStarted{CallID: "call", Name: "write_file", Arguments: json.RawMessage(`{"secret":"` + argumentSecret + `"}`)},
-		runstate.EngineToolFinished{CallID: "call", Name: "write_file", Result: resultSecret, RetrySafety: runstate.RetryUnsafe},
+		runstate.EngineToolStarted{CallID: "call", Name: "write", Arguments: json.RawMessage(`{"secret":"` + argumentSecret + `"}`)},
+		runstate.EngineToolFinished{CallID: "call", Name: "write", Result: resultSecret, RetrySafety: runstate.RetryUnsafe},
 		runstate.EngineAssistantFinal{Content: "done"},
 	}})
 	runtime, err := runstate.NewRuntime(engine, store, runstate.RuntimeConfig{})

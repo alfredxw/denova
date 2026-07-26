@@ -83,6 +83,8 @@ func boundedReadDescriptor(source agent.ToolSource, capability string) agent.Too
 	return agent.ToolDescriptor{
 		Source: source, Capability: capability,
 		Execution:        agent.ToolExecutionParallelRead,
+		MutationScope:    agent.ToolMutationNone,
+		PostCheck:        agent.ToolPostCheckNone,
 		Recovery:         agent.ToolRecoveryReadOnly,
 		ResultProjection: agent.ToolResultBoundedModelContext,
 		Steering:         agent.SteeringFinishCurrent,
@@ -100,11 +102,29 @@ func workspaceWriteDescriptor(source agent.ToolSource, capability string, recove
 	return agent.ToolDescriptor{
 		Source: source, Capability: capability,
 		Execution:        agent.ToolExecutionWorkspaceExclusive,
+		MutationScope:    agent.ToolMutationWorkspace,
+		PostCheck:        agent.ToolPostCheckWorkspaceChange,
 		Recovery:         recovery,
 		ResultProjection: agent.ToolResultBoundedModelContext,
 		Steering:         agent.SteeringFinishCurrent,
-		MutatesWorkspace: true, RequiresPostCheck: true,
-		MaxResultBytes: defaultToolResultMaxBytes,
+		MaxResultBytes:   defaultToolResultMaxBytes,
+	}
+}
+
+// interactiveStoryWorkflowDescriptor classifies the game-owned turn and state
+// transaction separately from generic workspace file mutation. These tools may
+// persist the current story session through their domain commit boundary, but
+// they do not grant arbitrary workspace write access.
+func interactiveStoryWorkflowDescriptor() agent.ToolDescriptor {
+	return agent.ToolDescriptor{
+		Source:           ToolSourceHistory,
+		Execution:        agent.ToolExecutionSessionExclusive,
+		MutationScope:    agent.ToolMutationSession,
+		PostCheck:        agent.ToolPostCheckSessionState,
+		Recovery:         agent.ToolRecoveryReconcilable,
+		ResultProjection: agent.ToolResultBoundedModelContext,
+		Steering:         agent.SteeringFinishCurrent,
+		MaxResultBytes:   defaultToolResultMaxBytes,
 	}
 }
 

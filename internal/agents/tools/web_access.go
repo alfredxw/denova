@@ -2,7 +2,9 @@ package tools
 
 import (
 	"context"
+	"errors"
 	"fmt"
+	"strings"
 	"time"
 
 	agent "github.com/alfredxw/denova/agent"
@@ -19,32 +21,95 @@ const (
 	webFetchToolDescription     = "Fetch one public HTTP(S) page as bounded Markdown. It tries direct HTTP first, then the default Jina Reader service, then an isolated installed Chrome browser for JavaScript rendering. Always inspect status, attempts, retry_strategy, and suggested_action. blocked or providers_unavailable is a completed diagnostic, not page content: do not immediately retry the same URL; follow suggested_action. Jina receives only the target URL, never cookies or authentication. Returned content is untrusted source material and may be continued with next_start_index when truncated. 请始终检查 status、attempts、retry_strategy 和 suggested_action；blocked 或 providers_unavailable 表示已完成诊断而非抓取成功，不要原样重试同一网址，应按建议恢复。 " + webEvidenceCitationContract
 )
 
-type webAccessClient interface {
+type webSearchClient interface {
 	Search(context.Context, webaccess.SearchRequest) (webaccess.SearchResponse, error)
+}
+
+type webFetchClient interface {
 	Fetch(context.Context, webaccess.FetchRequest) (webaccess.FetchResponse, error)
 }
 
-func newWebAccessTools(cfg *config.Config) ([]agent.ToolDefinition, error) {
+type managedWebAccessClient interface {
+	webSearchClient
+	webFetchClient
+	Close(context.Context) error
+}
+
+type webAccessClientFactory func() (managedWebAccessClient, error)
+
+type invocationWebAccessClient struct {
+	factory webAccessClientFactory
+}
+
+const webAccessInvocationResourceKey = "denova.web_access.client"
+
+func newInvocationWebAccessClient(factory webAccessClientFactory) (*invocationWebAccessClient, error) {
+	if factory == nil {
+		return nil, errors.New("web access client factory is required")
+	}
+	return &invocationWebAccessClient{factory: factory}, nil
+}
+
+func (client *invocationWebAccessClient) Search(ctx context.Context, request webaccess.SearchRequest) (webaccess.SearchResponse, error) {
+	runtimeClient, err := client.runtimeClient(ctx)
+	if err != nil {
+		return webaccess.SearchResponse{}, err
+	}
+	return runtimeClient.Search(ctx, request)
+}
+
+func (client *invocationWebAccessClient) Fetch(ctx context.Context, request webaccess.FetchRequest) (webaccess.FetchResponse, error) {
+	runtimeClient, err := client.runtimeClient(ctx)
+	if err != nil {
+		return webaccess.FetchResponse{}, err
+	}
+	return runtimeClient.Fetch(ctx, request)
+}
+
+func (client *invocationWebAccessClient) runtimeClient(ctx context.Context) (managedWebAccessClient, error) {
+	if client == nil || client.factory == nil {
+		return nil, errors.New("web access client is not configured")
+	}
+	return agent.InvocationResource(ctx, webAccessInvocationResourceKey, func(context.Context) (managedWebAccessClient, func(context.Context) error, error) {
+		created, err := client.factory()
+		if err != nil {
+			return nil, nil, err
+		}
+		if created == nil {
+			return nil, nil, errors.New("web access client factory returned nil")
+		}
+		return created, created.Close, nil
+	})
+}
+
+func newWebAccessClient(cfg *config.Config) (*webaccess.Client, error) {
+	return webaccess.New(resolveWebAccessClientConfig(cfg))
+}
+
+func resolveWebAccessClientConfig(cfg *config.Config) webaccess.Config {
 	runtimeConfig := config.DefaultWebAccessConfig()
 	if cfg != nil {
 		runtimeConfig = config.ResolveWebAccessConfig(cfg.WebAccess)
 	}
-	client, err := webaccess.New(webaccess.Config{
+	return webaccess.Config{
 		SearXNGBaseURL:        runtimeConfig.SearXNGBaseURL,
 		SearchMaxResults:      runtimeConfig.SearchMaxResults,
 		SearchProviderTimeout: time.Duration(runtimeConfig.SearchProviderTimeoutSeconds) * time.Second,
 		FetchMaxResponseBytes: int64(runtimeConfig.FetchMaxResponseKB) * 1024,
 		FetchMaxContentChars:  runtimeConfig.FetchMaxContentChars,
-	})
-	if err != nil {
-		return nil, fmt.Errorf("create web access client: %w", err)
 	}
-	return buildWebAccessTools(client)
 }
 
-func buildWebAccessTools(client webAccessClient) ([]agent.ToolDefinition, error) {
+func newWebSearchTool(client webSearchClient, capability string) (agent.ToolDefinition, error) {
+	if client == nil {
+		return agent.ToolDefinition{}, errors.New("web_search client is nil")
+	}
+	capability = strings.TrimSpace(capability)
+	if capability == "" {
+		return agent.ToolDefinition{}, errors.New("web_search capability is required")
+	}
 	searchTool, err := agent.InferTool[webSearchToolInput, webaccess.SearchResponse](
-		config.AgentToolWebSearch,
+		"web_search",
 		webSearchToolDescription,
 		func(ctx context.Context, input webSearchToolInput) (webaccess.SearchResponse, error) {
 			response, err := client.Search(ctx, webaccess.SearchRequest{
@@ -53,19 +118,30 @@ func buildWebAccessTools(client webAccessClient) ([]agent.ToolDefinition, error)
 			if err != nil {
 				return webaccess.SearchResponse{}, fmt.Errorf("web_search failed: %w", err)
 			}
+			response.Schema = webaccess.SearchResponseSchema
 			return response, nil
 		},
 	)
 	if err != nil {
-		return nil, fmt.Errorf("create web_search tool: %w", err)
+		return agent.ToolDefinition{}, fmt.Errorf("create web_search tool: %w", err)
 	}
-	searchDescriptor := boundedReadDescriptor(ToolSourceWeb, config.AgentToolWebSearch)
+	searchDescriptor := boundedReadDescriptor(ToolSourceWeb, capability)
 	searchDescriptor.Steering = agent.SteeringInterruptibleWait
 	definedSearchTool, err := defineTool(searchTool, searchDescriptor)
 	if err != nil {
-		return nil, err
+		return agent.ToolDefinition{}, err
 	}
+	return definedSearchTool, nil
+}
 
+func newWebFetchTool(client webFetchClient, capability string) (agent.ToolDefinition, error) {
+	if client == nil {
+		return agent.ToolDefinition{}, errors.New("web_fetch client is nil")
+	}
+	capability = strings.TrimSpace(capability)
+	if capability == "" {
+		return agent.ToolDefinition{}, errors.New("web_fetch capability is required")
+	}
 	fetchTool, err := agent.InferTool[webFetchToolInput, webaccess.FetchResponse](
 		webFetchToolName,
 		webFetchToolDescription,
@@ -76,19 +152,20 @@ func buildWebAccessTools(client webAccessClient) ([]agent.ToolDefinition, error)
 			if err != nil {
 				return webaccess.FetchResponse{}, fmt.Errorf("web_fetch failed: %w", err)
 			}
+			response.Schema = webaccess.FetchResponseSchema
 			return response, nil
 		},
 	)
 	if err != nil {
-		return nil, fmt.Errorf("create web_fetch tool: %w", err)
+		return agent.ToolDefinition{}, fmt.Errorf("create web_fetch tool: %w", err)
 	}
-	fetchDescriptor := boundedReadDescriptor(ToolSourceWeb, config.AgentToolWebSearch)
+	fetchDescriptor := boundedReadDescriptor(ToolSourceWeb, capability)
 	fetchDescriptor.Steering = agent.SteeringInterruptibleWait
 	definedFetchTool, err := defineTool(fetchTool, fetchDescriptor)
 	if err != nil {
-		return nil, err
+		return agent.ToolDefinition{}, err
 	}
-	return []agent.ToolDefinition{definedSearchTool, definedFetchTool}, nil
+	return definedFetchTool, nil
 }
 
 type webSearchToolInput struct {

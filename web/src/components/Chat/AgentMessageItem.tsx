@@ -1,6 +1,6 @@
 import { memo } from 'react'
 import type { CSSProperties } from 'react'
-import type { ChapterIllustration } from '@/lib/api'
+import type { AgentAskAnswer, AgentAskResolution, ChapterIllustration } from '@/lib/api'
 import { agentViewToRenderMessage, type AgentMessageView, type AgentPartRef } from '@/lib/agent-message-view'
 import { MessageItem } from './MessageItem'
 
@@ -24,6 +24,7 @@ interface AgentMessageItemProps {
   onExitPlanMode?: () => void
   onOpenTrace?: (runID: string) => void
   onPlanCardLayoutChange?: () => void
+  onResolveAsk?: (view: AgentMessageView, action: { status: 'answered'; answers: AgentAskAnswer[] } | { status: 'cancelled' }) => Promise<AgentAskResolution>
 }
 
 export const AgentMessageItem = memo(function AgentMessageItem({
@@ -46,6 +47,7 @@ export const AgentMessageItem = memo(function AgentMessageItem({
   onExitPlanMode,
   onOpenTrace,
   onPlanCardLayoutChange,
+  onResolveAsk,
 }: AgentMessageItemProps) {
   const message = agentViewToRenderMessage(view)
   if (!message) return null
@@ -70,6 +72,7 @@ export const AgentMessageItem = memo(function AgentMessageItem({
       onExitPlanMode={onExitPlanMode}
       onOpenTrace={onOpenTrace}
       onPlanCardLayoutChange={onPlanCardLayoutChange}
+      onResolveAsk={onResolveAsk ? (_message, action) => onResolveAsk(view, action) : undefined}
     />
   )
 })

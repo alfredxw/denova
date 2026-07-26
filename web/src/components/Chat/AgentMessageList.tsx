@@ -5,7 +5,7 @@ import { useTranslation } from 'react-i18next'
 import { motion } from 'motion/react'
 import { Virtuoso } from 'react-virtuoso'
 import type { Components, ContextProp, ListItem, ListRange } from 'react-virtuoso'
-import type { ChapterIllustration, ChatMessage } from '@/lib/api'
+import type { AgentAskAnswer, AgentAskResolution, ChapterIllustration, ChatMessage } from '@/lib/api'
 import type { AgentUIMessage } from '@/lib/agent-ui'
 import {
   agentSubAgentSessionKey,
@@ -63,6 +63,7 @@ interface MessageListProps {
   onContinuePlan?: (view: AgentMessageView) => void
   onExitPlanMode?: () => void
   onOpenTrace?: (runID: string) => void
+  onResolveAsk?: (view: AgentMessageView, action: { status: 'answered'; answers: AgentAskAnswer[] } | { status: 'cancelled' }) => Promise<AgentAskResolution>
   turnScrollRequest?: TurnScrollRequest
   onVisibleTurnAnchorChange?: (anchorId: string) => void
 }
@@ -106,7 +107,7 @@ interface MessageListVirtuosoContext {
   onLoadEarlierMessages?: () => void | Promise<void>
 }
 
-export function MessageList({ messages, isStreaming, activityContent, highlightDialogue = false, scrollResetKey, bottomPaddingClassName = '', bottomPaddingPx, afterContent, hasEarlierMessages = false, isLoadingEarlierMessages = false, onLoadEarlierMessages, timelineAttachments = [], messageStyle, collapseTraceGroups = false, activeTraceDisplay = 'expanded', canMutateMessage, onEditMessage, onEditAssistantReply, onRegenerateMessage, onSwitchMessageVersion, onOpenSubAgentSession, onInsertIllustration, onGenerateInteractiveImage, generatingInteractiveImageTurnId, activeSubAgentSessionKey, onSubmitPlanQuestion, onApprovePlan, onContinuePlan, onExitPlanMode, onOpenTrace, turnScrollRequest, onVisibleTurnAnchorChange }: MessageListProps) {
+export function MessageList({ messages, isStreaming, activityContent, highlightDialogue = false, scrollResetKey, bottomPaddingClassName = '', bottomPaddingPx, afterContent, hasEarlierMessages = false, isLoadingEarlierMessages = false, onLoadEarlierMessages, timelineAttachments = [], messageStyle, collapseTraceGroups = false, activeTraceDisplay = 'expanded', canMutateMessage, onEditMessage, onEditAssistantReply, onRegenerateMessage, onSwitchMessageVersion, onOpenSubAgentSession, onInsertIllustration, onGenerateInteractiveImage, generatingInteractiveImageTurnId, activeSubAgentSessionKey, onSubmitPlanQuestion, onApprovePlan, onContinuePlan, onExitPlanMode, onOpenTrace, onResolveAsk, turnScrollRequest, onVisibleTurnAnchorChange }: MessageListProps) {
   const { t } = useTranslation()
   const containerRef = useRef<HTMLDivElement | null>(null)
   const lastVisibleTurnAnchorRef = useRef('')
@@ -249,12 +250,13 @@ export function MessageList({ messages, isStreaming, activityContent, highlightD
         onContinuePlan={onContinuePlan}
         onExitPlanMode={onExitPlanMode}
         onOpenTrace={onOpenTrace}
+        onResolveAsk={onResolveAsk}
         onPlanCardLayoutChange={anchorLatestPlanCardBottom}
         streamingRowRef={isStreaming ? scrollLock.streamingRowRef : undefined}
         syncStreamingRowHeight={isStreaming ? scrollLock.syncStreamingRowHeight : undefined}
       />
     )
-  }, [activeSubAgentSessionKey, activeTraceDisplay, anchorLatestPlanCardBottom, canMutateMessage, firstItemIndex, generatingInteractiveImageTurnId, highlightDialogue, isStreaming, listItems, messageStyle, onApprovePlan, onContinuePlan, onEditAssistantReply, onEditMessage, onExitPlanMode, onGenerateInteractiveImage, onInsertIllustration, onOpenSubAgentSession, onOpenTrace, onRegenerateMessage, onSubmitPlanQuestion, onSwitchMessageVersion, scrollLock.streamingRowRef, scrollLock.syncStreamingRowHeight])
+  }, [activeSubAgentSessionKey, activeTraceDisplay, anchorLatestPlanCardBottom, canMutateMessage, firstItemIndex, generatingInteractiveImageTurnId, highlightDialogue, isStreaming, listItems, messageStyle, onApprovePlan, onContinuePlan, onEditAssistantReply, onEditMessage, onExitPlanMode, onGenerateInteractiveImage, onInsertIllustration, onOpenSubAgentSession, onOpenTrace, onRegenerateMessage, onResolveAsk, onSubmitPlanQuestion, onSwitchMessageVersion, scrollLock.streamingRowRef, scrollLock.syncStreamingRowHeight])
 
   return (
     <div ref={containerRef} className="relative flex min-h-0 flex-1 flex-col">
@@ -364,7 +366,7 @@ function MessageListFooter({ context }: ContextProp<MessageListVirtuosoContext>)
   )
 }
 
-function AgentChatListRow({ item, isLast, isStreaming, activeTraceDisplay, highlightDialogue, messageStyle, canMutateMessage, onEditMessage, onEditAssistantReply, onRegenerateMessage, onSwitchMessageVersion, onOpenSubAgentSession, onInsertIllustration, onGenerateInteractiveImage, generatingInteractiveImageTurnId, activeSubAgentSessionKey, onSubmitPlanQuestion, onApprovePlan, onContinuePlan, onExitPlanMode, onOpenTrace, onPlanCardLayoutChange, streamingRowRef, syncStreamingRowHeight }: {
+function AgentChatListRow({ item, isLast, isStreaming, activeTraceDisplay, highlightDialogue, messageStyle, canMutateMessage, onEditMessage, onEditAssistantReply, onRegenerateMessage, onSwitchMessageVersion, onOpenSubAgentSession, onInsertIllustration, onGenerateInteractiveImage, generatingInteractiveImageTurnId, activeSubAgentSessionKey, onSubmitPlanQuestion, onApprovePlan, onContinuePlan, onExitPlanMode, onOpenTrace, onResolveAsk, onPlanCardLayoutChange, streamingRowRef, syncStreamingRowHeight }: {
   item: AgentChatListItem
   isLast: boolean
   isStreaming: boolean
@@ -386,6 +388,7 @@ function AgentChatListRow({ item, isLast, isStreaming, activeTraceDisplay, highl
   onContinuePlan?: (view: AgentMessageView) => void
   onExitPlanMode?: () => void
   onOpenTrace?: (runID: string) => void
+  onResolveAsk?: (view: AgentMessageView, action: { status: 'answered'; answers: AgentAskAnswer[] } | { status: 'cancelled' }) => Promise<AgentAskResolution>
   onPlanCardLayoutChange?: () => void
   streamingRowRef?: RefCallback<HTMLDivElement>
   syncStreamingRowHeight?: () => void
@@ -466,6 +469,7 @@ function AgentChatListRow({ item, isLast, isStreaming, activeTraceDisplay, highl
           onContinuePlan={isStreaming ? undefined : onContinuePlan}
           onExitPlanMode={isStreaming ? undefined : onExitPlanMode}
           onOpenTrace={onOpenTrace}
+          onResolveAsk={onResolveAsk}
           onPlanCardLayoutChange={onPlanCardLayoutChange}
         />
       )}

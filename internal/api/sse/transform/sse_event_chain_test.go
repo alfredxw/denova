@@ -60,8 +60,8 @@ func TestSSEEventMiddlewareChainDoesNotFilterChapterBodyByDefault(t *testing.T) 
 	if err := handler(agents.Event{Type: "tool_args_delta", Data: map[string]interface{}{
 		"agent_kind": agents.AgentKindIDE,
 		"id":         "call-1",
-		"name":       "write_file",
-		"delta":      `{"file_path":"chapters/ch02.md","content":"正文"}`,
+		"name":       "write",
+		"delta":      `{"path":"chapters/ch02.md","content":"正文"}`,
 	}}); err != nil {
 		t.Fatalf("handler failed: %v", err)
 	}
@@ -80,8 +80,8 @@ func TestSSEEventMiddlewareChainAppliesOptions(t *testing.T) {
 	if err := handler(agents.Event{Type: "tool_args_delta", Data: map[string]interface{}{
 		"agent_kind": agents.AgentKindIDE,
 		"id":         "call-1",
-		"name":       "write_file",
-		"delta":      `{"file_path":"chapters/ch02.md","content":"正文"}`,
+		"name":       "write",
+		"delta":      `{"path":"chapters/ch02.md","content":"正文"}`,
 	}}); err != nil {
 		t.Fatalf("handler failed: %v", err)
 	}
@@ -89,7 +89,7 @@ func TestSSEEventMiddlewareChainAppliesOptions(t *testing.T) {
 		t.Fatalf("forwarded events = %d, want 1", len(collector.events))
 	}
 	got := collector.events[0].Data
-	if delta := eventDataString(got, "delta"); delta != `{"file_path":"chapters/ch02.md"}` {
+	if delta := eventDataString(got, "delta"); delta != `{"path":"chapters/ch02.md"}` {
 		t.Fatalf("filtered delta = %q, want path-only args", delta)
 	}
 	if gotReason := eventDataString(got, "sse_hidden_reason"); gotReason != chapterBodyHiddenReason {

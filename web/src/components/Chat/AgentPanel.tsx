@@ -1,12 +1,12 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 import { Activity, Bot, FileText, PenLine, Plus, SearchCheck, Sparkles, WandSparkles, X } from 'lucide-react'
 import { Group, Panel, Separator } from 'react-resizable-panels'
 import { createPortal } from 'react-dom'
 import { useTranslation } from 'react-i18next'
 import { createStablePortalHost, StablePortalSlot } from '@/components/layout/stable-portal-slot'
 import type { ImagePreset, Teller } from '@/features/interactive/types'
-import { removeChatContextCompaction } from '@/lib/api'
-import type { ActiveChatTask, AgentRuntimeQueuedCommand, ChapterIllustration, ChapterSummary, ContextAnalysis, IDEContext, SessionSummary, TextSelection } from '@/lib/api'
+import { answerSessionAsk, cancelSessionAsk, removeChatContextCompaction } from '@/lib/api'
+import type { ActiveChatTask, AgentAskAnswer, AgentRuntimeQueuedCommand, ChapterIllustration, ChapterSummary, ContextAnalysis, IDEContext, SessionSummary, TextSelection } from '@/lib/api'
 import type { AgentUIMessage } from '@/lib/agent-ui'
 import { agentSubAgentSessionKey, agentViewContent, buildAgentMessageViews, selectAgentTokenUsageRecords, type AgentMessageView, type AgentPartRef } from '@/lib/agent-message-view'
 import { useSkillCommands } from '@/hooks/useSkillCommands'
@@ -181,7 +181,7 @@ export function AgentPanel({
   const ideTellerId = persistedSettings.values.ide_story_teller_id
   const imagePresetId = persistedSettings.values.ide_image_preset_id
   const writingSkill = persistedSettings.values.writing_skill_default
-  const skillCommands = useSkillCommands({ agentKey: 'ide', workspace, fallbackEnabled: true })
+  const skillCommands = useSkillCommands({ agentKey: 'ide', workspace })
   const writingSkillOptions = useWritingSkillOptions(workspace)
   const changeGroupsQuery = useWorkspaceChangeGroups(activeSessionId ? workspace : '', { sessionID: activeSessionId })
   const tokenUsageMessages = useMemo(
@@ -346,6 +346,13 @@ export function AgentPanel({
   const emptyChatContent = messages.length === 0 && !isStreaming ? (
     <AgentQuickActions chapter={currentChapter} selectedFile={selectedFile} onSend={sendWithWritingSkill} />
   ) : null
+  const resolveAsk = useCallback(async (view: AgentMessageView, action: { status: 'answered'; answers: AgentAskAnswer[] } | { status: 'cancelled' }) => {
+    const askID = typeof view.data.id === 'string' ? view.data.id.trim() : ''
+    if (!activeSessionId || !askID) throw new Error('Cannot resolve an Ask without its Session and interaction IDs')
+    return action.status === 'answered'
+      ? answerSessionAsk(activeSessionId, askID, action.answers)
+      : cancelSessionAsk(activeSessionId, askID)
+  }, [activeSessionId])
   const messageListProps = {
     messages,
     isStreaming,
@@ -369,6 +376,7 @@ export function AgentPanel({
     onContinuePlan: continuePlanDiscussion,
     onExitPlanMode,
     onOpenTrace: openTraceRun,
+    onResolveAsk: resolveAsk,
   }
   const inputAreaProps = {
     onSend: sendWithWritingSkill,

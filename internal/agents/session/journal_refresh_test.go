@@ -78,9 +78,9 @@ func TestRefreshCanonicalAppliesDisplayPatchToIsolatedSnapshot(t *testing.T) {
 		t.Fatal(err)
 	}
 	if err := writer.AppendDisplayEvent(DisplayEvent{
-		ID: "call-1", Role: "tool_call", Name: "read_file", Status: "running",
+		ID: "call-1", Role: "tool_call", Name: "read", Status: "running",
 		RunPath:    []string{"root", "researcher"},
-		UsageCalls: []TokenUsageCall{{RequestedTools: []string{"read_file"}}},
+		UsageCalls: []TokenUsageCall{{RequestedTools: []string{"read"}}},
 	}); err != nil {
 		t.Fatal(err)
 	}
@@ -90,7 +90,7 @@ func TestRefreshCanonicalAppliesDisplayPatchToIsolatedSnapshot(t *testing.T) {
 	}
 	previousDisplay := reader.records[0].display
 
-	if err := writer.UpdateDisplayToolResult("call-1", "read_file", "success", "chapter"); err != nil {
+	if err := writer.UpdateDisplayToolResult("call-1", "read", "success", "chapter"); err != nil {
 		t.Fatal(err)
 	}
 	if err := reader.RefreshCanonical(context.Background()); err != nil {
@@ -110,7 +110,7 @@ func TestRefreshCanonicalAppliesDisplayPatchToIsolatedSnapshot(t *testing.T) {
 	previousDisplay.RunPath[0] = "mutated"
 	previousDisplay.UsageCalls[0].RequestedTools[0] = "mutated"
 	readerHistory := reader.History()
-	if readerHistory[0].RunPath[0] != "root" || readerHistory[0].UsageCalls[0].RequestedTools[0] != "read_file" {
+	if readerHistory[0].RunPath[0] != "root" || readerHistory[0].UsageCalls[0].RequestedTools[0] != "read" {
 		t.Fatalf("incremental snapshot aliases prior state: %#v", readerHistory[0])
 	}
 }

@@ -341,7 +341,7 @@ func TestSessionConversationUsesCompactionSummaryRetainedTailAndAppendedMessages
 	if len(history) != 6 {
 		t.Fatalf("history length = %d, want 6: %#v", len(history), history)
 	}
-	if !isContextCompactionMessage(history[0]) || history[0].Role != agent.User {
+	if !isContextCompactionMessage(history[0]) || history[0].Role != agent.Assistant {
 		t.Fatalf("first message should be compaction summary: %#v", history[0])
 	}
 	if history[1].Content != "user 1" || history[2].Content != "assistant 1" || history[3].Content != "user 2" || history[4].Content != "assistant 2" || history[5].Content != "agent user 3" {

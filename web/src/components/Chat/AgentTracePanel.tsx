@@ -432,7 +432,7 @@ function recordChips(record: AgentRunTraceRecord, t: ReturnType<typeof useTransl
   const providerRequestID = readString(attrs.provider_request_id) || readString(data.provider_request_id)
   const callID = readString(attrs.call_id) || readString(data.call_id)
   const finishReason = readString(attrs.finish_reason) || readString(data.finish_reason)
-  const toolCallID = readString(attrs.tool_call_id) || readString(data.tool_call_id)
+  const toolCallID = readString(attrs.execution_id) || readString(data.execution_id) || readString(attrs.provider_call_id) || readString(data.provider_call_id) || readString(attrs.tool_call_id) || readString(data.tool_call_id)
   const target = readString(attrs.mutation_target) || readString(attrs.target) || readString(data.target)
   const totalTokens = numberOrZero(attrs.total_tokens || data.total_tokens)
   const promptTokens = numberOrZero(attrs.prompt_tokens || data.prompt_tokens)

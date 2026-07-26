@@ -3,6 +3,7 @@ package agents
 import (
 	"context"
 	"errors"
+	"fmt"
 	"io"
 	"log"
 	"strings"
@@ -22,7 +23,8 @@ func processStreamingEvent(ctx context.Context, mv *agent.MessageVariant, fullCo
 	defer mv.MessageStream.Close()
 	var accumulatedToolCalls []agent.ToolCall
 	emittedTools := make(map[int]bool) // 按 index 记录已 emit tool_call 的工具
-	lastArgsLen := make(map[int]int)   // 记录上次已发送的参数长度
+	executionIDs := make(map[int]string)
+	lastArgsLen := make(map[int]int) // 记录上次已发送的参数长度
 	loggedToolPaths := make(map[int]bool)
 	var chunks []*agent.Message
 	var interactiveContent strings.Builder
@@ -106,11 +108,15 @@ func processStreamingEvent(ctx context.Context, mv *agent.MessageVariant, fullCo
 						emitPlanProtocolToolRunning(tc.Function.Name, meta, emit)
 						continue
 					}
-					logToolCall(tc.Function.Name, tc.ID, len(tc.Function.Arguments), "streaming")
+					executionID := strings.TrimSpace(mv.ToolExecutionID(i))
+					if executionID == "" {
+						return nil, fmt.Errorf("assistant tool %q at ordinal %d is missing an execution ID", tc.Function.Name, i)
+					}
+					executionIDs[i] = executionID
+					logToolCall(tc.Function.Name, executionID, len(tc.Function.Arguments), "streaming")
 					data := meta.appendTo(map[string]interface{}{
-						"id":   tc.ID,
-						"name": tc.Function.Name,
-						"args": "",
+						"id": executionID, "provider_call_id": tc.ID,
+						"name": tc.Function.Name, "args": "",
 					})
 					appendToolDescriptorEventData(data, mv.ToolDefinitions, tc.Function.Name, toolResultMaxBytes)
 					if tc.Index != nil {
@@ -129,19 +135,23 @@ func processStreamingEvent(ctx context.Context, mv *agent.MessageVariant, fullCo
 					lastArgsLen[i] = currentLen
 					if !loggedToolPaths[i] {
 						if path := toolPathFromArgs(tc.Function.Arguments); path != "" {
-							logToolPath(tc.Function.Name, tc.ID, path)
+							executionID := executionIDs[i]
+							logToolPath(tc.Function.Name, executionID, path)
 							loggedToolPaths[i] = true
 							emit(Event{Type: "tool_target", Data: meta.appendTo(map[string]interface{}{
-								"id":     tc.ID,
-								"name":   tc.Function.Name,
-								"target": path,
+								"id":               executionID,
+								"provider_call_id": tc.ID,
+								"name":             tc.Function.Name,
+								"target":           path,
 							})})
 						}
 					}
+					executionID := executionIDs[i]
 					data := meta.appendTo(map[string]interface{}{
-						"id":    tc.ID,
-						"name":  tc.Function.Name,
-						"delta": delta,
+						"id":               executionID,
+						"provider_call_id": tc.ID,
+						"name":             tc.Function.Name,
+						"delta":            delta,
 					})
 					if tc.Index != nil {
 						data["index"] = *tc.Index
@@ -221,7 +231,7 @@ func concatStreamingChunks(chunks []*agent.Message) (*agent.Message, error) {
 }
 
 // processNonStreamingEvent 处理非流式助手消息，输出领域事件。
-func processNonStreamingEvent(mv *agent.MessageVariant, fullContent, fullThinking *strings.Builder, toolResultMaxBytes int, meta agentEventMetadata, planParser *planProtocolParser, emit func(Event)) {
+func processNonStreamingEvent(mv *agent.MessageVariant, fullContent, fullThinking *strings.Builder, toolResultMaxBytes int, meta agentEventMetadata, planParser *planProtocolParser, emit func(Event)) error {
 	if mv.Message.ReasoningContent != "" {
 		emitThinkingContent(fullThinking, mv.Message.ReasoningContent, meta, "thinking", emit)
 	}
@@ -243,7 +253,7 @@ func processNonStreamingEvent(mv *agent.MessageVariant, fullContent, fullThinkin
 			}
 		}
 	}
-	for _, tc := range mv.Message.ToolCalls {
+	for ordinal, tc := range mv.Message.ToolCalls {
 		name := tc.Function.Name
 		if name == "" {
 			continue
@@ -255,15 +265,18 @@ func processNonStreamingEvent(mv *agent.MessageVariant, fullContent, fullThinkin
 			}
 			continue
 		}
-		logToolCall(name, tc.ID, len(args), "non_streaming")
+		executionID := strings.TrimSpace(mv.ToolExecutionID(ordinal))
+		if executionID == "" {
+			return fmt.Errorf("assistant tool %q at ordinal %d is missing an execution ID", name, ordinal)
+		}
+		logToolCall(name, executionID, len(args), "non_streaming")
 		target := toolPathFromArgs(args)
 		if path := toolPathFromArgs(args); path != "" {
-			logToolPath(name, tc.ID, path)
+			logToolPath(name, executionID, path)
 		}
 		data := meta.appendTo(map[string]interface{}{
-			"id":   tc.ID,
-			"name": name,
-			"args": args,
+			"id": executionID, "provider_call_id": tc.ID,
+			"name": name, "args": args,
 		})
 		appendToolDescriptorEventData(data, mv.ToolDefinitions, tc.Function.Name, toolResultMaxBytes)
 		if target != "" {
@@ -274,6 +287,7 @@ func processNonStreamingEvent(mv *agent.MessageVariant, fullContent, fullThinkin
 		}
 		emit(Event{Type: "tool_call", Data: data})
 	}
+	return nil
 }
 
 func appendToolDescriptorEventData(data map[string]interface{}, definitions []agent.ToolDefinitionSnapshot, name string, maxResultBytes int) {
@@ -288,8 +302,8 @@ func appendToolDescriptorEventData(data map[string]interface{}, definitions []ag
 		return
 	}
 	data["source"] = string(descriptor.Source)
-	data["mutates_workspace"] = descriptor.MutatesWorkspace
-	data["requires_post_check"] = descriptor.RequiresPostCheck
+	data["mutation_scope"] = string(descriptor.MutationScope)
+	data["post_check"] = string(descriptor.PostCheck)
 	data["max_result_bytes"] = normalizeToolResultLimitBytes(maxResultBytes)
 }
 

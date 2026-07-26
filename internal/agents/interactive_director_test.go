@@ -20,8 +20,8 @@ func TestInteractiveDirectorDisplayHidesDirectorPlanWriteInput(t *testing.T) {
 	if err := conversation.AppendDisplayEvent(session.DisplayEvent{
 		ID:     "call-1",
 		Role:   "tool_call",
-		Name:   "write_file",
-		Args:   `{"file_path":"/tmp/work/.denova/interactive/stories/story-1/director/main/director.md","content":"一二三"}`,
+		Name:   "write",
+		Args:   `{"path":"/tmp/work/.denova/interactive/stories/story-1/director/main/director.md","content":"一二三"}`,
 		Status: "running",
 	}); err != nil {
 		t.Fatal(err)
@@ -31,7 +31,7 @@ func TestInteractiveDirectorDisplayHidesDirectorPlanWriteInput(t *testing.T) {
 	if got.AgentKind != config.AgentKindInteractiveDirector {
 		t.Fatalf("agent kind = %q, want interactive director", got.AgentKind)
 	}
-	if got.Args != `{"file_path":"director.md"}` {
+	if got.Args != `{"path":"director.md"}` {
 		t.Fatalf("director write args should hide content, got %q", got.Args)
 	}
 	if got.SSEDisplayNotice != directorPlanHiddenNotice || got.SSEHiddenReason != directorPlanHiddenReason {
@@ -50,23 +50,23 @@ func TestInteractiveDirectorDisplayStreamsHiddenDirectorPlanCharCount(t *testing
 		directorTools:         map[string]*directorToolDisplayState{},
 	}
 
-	if err := conversation.AppendDisplayEvent(session.DisplayEvent{ID: "call-1", Role: "tool_call", Name: "write_file", Status: "running"}); err != nil {
+	if err := conversation.AppendDisplayEvent(session.DisplayEvent{ID: "call-1", Role: "tool_call", Name: "write", Status: "running"}); err != nil {
 		t.Fatal(err)
 	}
-	if err := conversation.AppendDisplayToolArgs("call-1", "write_file", `{"file_path":"director.md","content":"`+strings.Repeat("字", 101)); err != nil {
+	if err := conversation.AppendDisplayToolArgs("call-1", "write", `{"path":"director.md","content":"`+strings.Repeat("字", 101)); err != nil {
 		t.Fatal(err)
 	}
 	running := display.latest()
-	if running.Args != `{"file_path":"director.md"}` || strings.Contains(running.Args, "字") {
+	if running.Args != `{"path":"director.md"}` || strings.Contains(running.Args, "字") {
 		t.Fatalf("streaming director args should only expose path, got %q", running.Args)
 	}
 	if running.SSEGeneratedChars != 101 {
 		t.Fatalf("running generated chars = %d, want 101", running.SSEGeneratedChars)
 	}
-	if err := conversation.AppendDisplayToolArgs("call-1", "write_file", `尾"}`); err != nil {
+	if err := conversation.AppendDisplayToolArgs("call-1", "write", `尾"}`); err != nil {
 		t.Fatal(err)
 	}
-	if err := conversation.UpdateDisplayToolResult("call-1", "write_file", "success", "ok"); err != nil {
+	if err := conversation.UpdateDisplayToolResult("call-1", "write", "success", "ok"); err != nil {
 		t.Fatal(err)
 	}
 

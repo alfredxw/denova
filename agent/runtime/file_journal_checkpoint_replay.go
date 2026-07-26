@@ -7,7 +7,6 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"log"
 	"os"
 	"path/filepath"
 )
@@ -23,8 +22,9 @@ type generationTailReplay struct {
 }
 
 // ReplayHarnessState restores a checksummed reducer checkpoint and streams
-// only its bounded generation tail. If the active generation is corrupt, each
-// previous durable candidate is tried from a fresh reducer state.
+// only its bounded canonical tail. A previous generation may reconstruct a
+// corrupt active snapshot, but it can never replace the active generation:
+// publishing recovered state always requires a complete active-tail replay.
 func (j *fileJournal) ReplayHarnessState(ctx context.Context, target *harnessState) (JournalReplayStats, error) {
 	if err := ctx.Err(); err != nil {
 		return JournalReplayStats{}, err
@@ -41,119 +41,168 @@ func (j *fileJournal) ReplayHarnessState(ctx context.Context, target *harnessSta
 }
 
 func (j *fileJournal) replayHarnessStateLocked(ctx context.Context, target *harnessState) (JournalReplayStats, error) {
-	var failures error
-	for index, generation := range j.generationCandidates {
-		candidate := freshCheckpointTarget(target)
-		var checkpoint *harnessCheckpoint
-		var stats JournalReplayStats
-		if generation.SnapshotFile != "" {
-			snapshotPath, err := j.resolveGenerationFile(generation.SnapshotFile)
-			if err != nil {
-				failures = errors.Join(failures, err)
-				continue
-			}
-			encoded, err := os.ReadFile(snapshotPath)
-			stats.BytesRead += int64(len(encoded))
-			stats.SnapshotBytesRead += int64(len(encoded))
-			if err != nil {
-				failures = errors.Join(failures, fmt.Errorf("read generation %d snapshot: %w", generation.Generation, err))
-				continue
-			}
-			loaded, err := decodeFileJournalSnapshot(bytes.TrimSpace(encoded), generation)
-			if err != nil {
-				failures = errors.Join(failures, fmt.Errorf("decode generation %d snapshot: %w", generation.Generation, err))
-				continue
-			}
-			if err := restoreHarnessCheckpoint(&candidate, loaded); err != nil {
-				failures = errors.Join(failures, fmt.Errorf("restore generation %d snapshot: %w", generation.Generation, err))
-				continue
-			}
-			checkpoint = &loaded
-			stats.SnapshotGeneration = generation.Generation
-		}
-		tailPath, err := j.resolveGenerationFile(generation.TailFile)
+	if len(j.generationCandidates) == 0 {
+		return JournalReplayStats{}, fmt.Errorf("file journal has no active generation")
+	}
+	// A failed validation must invalidate any earlier in-memory replay. Cursor is
+	// deliberately left untouched for diagnostics, but Append will be forced
+	// through this canonical replay again before it can write.
+	j.initialized = false
+	j.indexReady = false
+	active := j.generationCandidates[0]
+	activeState, activeCheckpoint, stats, snapshotErr := j.restoreGenerationSnapshotLocked(target, active)
+	if snapshotErr == nil {
+		activeTailPath, err := j.resolveGenerationFile(active.TailFile)
 		if err != nil {
-			failures = errors.Join(failures, err)
-			continue
+			return stats, err
 		}
-		replay, err := j.scanGenerationTailLocked(ctx, tailPath, candidate.cursor, generation.SnapshotFile != "", index == 0, func(event Event) error {
-			return candidate.reduce(event)
+		activeTail, err := j.scanGenerationTailLocked(ctx, activeTailPath, activeState.cursor, active.SnapshotFile != "", true, func(event Event) error {
+			return activeState.reduce(event)
 		})
-		stats.BytesRead += replay.stats.BytesRead
-		stats.TailBytesRead += replay.stats.BytesRead
-		stats.RecordsRead += replay.stats.RecordsRead
-		stats.EventsRead += replay.stats.EventsRead
+		addGenerationTailStats(&stats, activeTail)
 		if err != nil {
-			failures = errors.Join(failures, fmt.Errorf("replay generation %d tail: %w", generation.Generation, err))
-			continue
+			return stats, fmt.Errorf("replay canonical active generation %d tail: %w", active.Generation, err)
 		}
-		selectedGeneration := generation
-		selectedTailPath := tailPath
-		selectedReplay := replay
-		continuedIntoActiveTail := false
-		// If the active snapshot is corrupt, its previous generation is still a
-		// complete base for the active checkpoint: the frozen previous tail ends
-		// exactly at Active.CheckpointCursor. Continue with the current active
-		// tail so transactions committed after that checkpoint are not lost.
-		if index > 0 && len(j.generationCandidates) > 0 {
-			active := j.generationCandidates[0]
-			if active.Generation > generation.Generation && replay.cursor == active.CheckpointCursor {
-				activeTailPath, resolveErr := j.resolveGenerationFile(active.TailFile)
-				if resolveErr == nil {
-					continued := freshCheckpointTarget(target)
-					base, checkpointErr := candidate.checkpoint()
-					if checkpointErr == nil {
-						checkpointErr = restoreHarnessCheckpoint(&continued, base)
-					}
-					if checkpointErr == nil {
-						continuation, continuationErr := j.scanGenerationTailLocked(ctx, activeTailPath, active.CheckpointCursor, true, true, func(event Event) error {
-							return continued.reduce(event)
-						})
-						stats.BytesRead += continuation.stats.BytesRead
-						stats.TailBytesRead += continuation.stats.BytesRead
-						stats.RecordsRead += continuation.stats.RecordsRead
-						stats.EventsRead += continuation.stats.EventsRead
-						if continuationErr == nil {
-							candidate = continued
-							selectedGeneration = active
-							selectedTailPath = activeTailPath
-							selectedReplay = continuation
-							continuedIntoActiveTail = true
-						} else {
-							failures = errors.Join(failures, fmt.Errorf("continue generation %d tail from previous snapshot: %w", active.Generation, continuationErr))
-						}
-					} else {
-						failures = errors.Join(failures, fmt.Errorf("clone previous generation recovery state: %w", checkpointErr))
-					}
-				} else {
-					failures = errors.Join(failures, resolveErr)
-				}
-			}
-		}
-		*target = candidate
-		j.initialized = true
-		j.cursor = selectedReplay.cursor
-		j.needsNewline = selectedReplay.needsNewline
-		j.lastTailHash = selectedReplay.tailHash
-		j.tailBytes, j.tailRecords = selectedReplay.bytes, selectedReplay.records
-		j.lastReplay = stats
-		j.tailPath = selectedTailPath
-		j.activeGeneration = selectedGeneration
-		j.checkpoint = checkpoint
-		j.commandIndex = selectedReplay.commands
-		j.indexReady = selectedGeneration.SnapshotFile == ""
-		if index > 0 {
-			log.Printf("[agent-runtime] fell back to previous journal generation=%d binding=%+v", generation.Generation, j.binding)
-			if !continuedIntoActiveTail {
-				j.generationCandidates = append([]fileJournalGeneration{generation}, j.generationCandidates[index+1:]...)
-			}
-		}
+		j.publishGenerationReplayLocked(target, activeState, active, activeTailPath, activeTail, stats, activeCheckpoint)
 		return stats, nil
 	}
-	if failures == nil {
-		failures = fmt.Errorf("file journal has no recoverable generation")
+
+	// A previous generation is allowed to replace only the unreadable snapshot
+	// bytes. Its fully replayed state must land exactly on the active checkpoint,
+	// after which the canonical active tail is mandatory.
+	if active.SnapshotFile == "" || len(j.generationCandidates) < 2 {
+		return stats, fmt.Errorf("restore canonical active generation %d snapshot: %w", active.Generation, snapshotErr)
 	}
-	return JournalReplayStats{}, failures
+	previous := j.generationCandidates[1]
+	previousState, _, previousStats, previousSnapshotErr := j.restoreGenerationSnapshotLocked(target, previous)
+	addJournalReplayStats(&stats, previousStats)
+	if previousSnapshotErr != nil {
+		return stats, errors.Join(
+			fmt.Errorf("restore canonical active generation %d snapshot: %w", active.Generation, snapshotErr),
+			fmt.Errorf("restore previous generation %d snapshot: %w", previous.Generation, previousSnapshotErr),
+		)
+	}
+	previousTailPath, err := j.resolveGenerationFile(previous.TailFile)
+	if err != nil {
+		return stats, errors.Join(snapshotErr, err)
+	}
+	previousTail, err := j.scanGenerationTailLocked(ctx, previousTailPath, previousState.cursor, true, false, func(event Event) error {
+		return previousState.reduce(event)
+	})
+	addGenerationTailStats(&stats, previousTail)
+	if err != nil {
+		return stats, errors.Join(
+			fmt.Errorf("restore canonical active generation %d snapshot: %w", active.Generation, snapshotErr),
+			fmt.Errorf("rebuild active checkpoint from previous generation %d tail: %w", previous.Generation, err),
+		)
+	}
+	if previousTail.cursor != active.CheckpointCursor {
+		return stats, errors.Join(
+			fmt.Errorf("restore canonical active generation %d snapshot: %w", active.Generation, snapshotErr),
+			fmt.Errorf("previous generation %d rebuilt cursor %d, want active checkpoint cursor %d", previous.Generation, previousTail.cursor, active.CheckpointCursor),
+		)
+	}
+	reconstructed, err := previousState.checkpoint()
+	if err != nil {
+		return stats, errors.Join(snapshotErr, fmt.Errorf("checkpoint reconstructed generation %d state: %w", previous.Generation, err))
+	}
+	continued := freshCheckpointTarget(target)
+	if err := restoreHarnessCheckpoint(&continued, reconstructed); err != nil {
+		return stats, errors.Join(snapshotErr, fmt.Errorf("restore reconstructed active checkpoint: %w", err))
+	}
+	activeTailPath, err := j.resolveGenerationFile(active.TailFile)
+	if err != nil {
+		return stats, errors.Join(snapshotErr, err)
+	}
+	activeTail, err := j.scanGenerationTailLocked(ctx, activeTailPath, active.CheckpointCursor, true, true, func(event Event) error {
+		return continued.reduce(event)
+	})
+	addGenerationTailStats(&stats, activeTail)
+	if err != nil {
+		return stats, errors.Join(
+			fmt.Errorf("restore canonical active generation %d snapshot: %w", active.Generation, snapshotErr),
+			fmt.Errorf("replay canonical active generation %d tail after snapshot reconstruction: %w", active.Generation, err),
+		)
+	}
+	j.publishGenerationReplayLocked(target, continued, active, activeTailPath, activeTail, stats, &reconstructed)
+	return stats, nil
+}
+
+func (j *fileJournal) restoreGenerationSnapshotLocked(
+	template *harnessState,
+	generation fileJournalGeneration,
+) (harnessState, *harnessCheckpoint, JournalReplayStats, error) {
+	candidate := freshCheckpointTarget(template)
+	var stats JournalReplayStats
+	if generation.SnapshotFile == "" {
+		return candidate, nil, stats, nil
+	}
+	snapshotPath, err := j.resolveGenerationFile(generation.SnapshotFile)
+	if err != nil {
+		return candidate, nil, stats, err
+	}
+	encoded, err := os.ReadFile(snapshotPath)
+	stats.BytesRead = int64(len(encoded))
+	stats.SnapshotBytesRead = int64(len(encoded))
+	if err != nil {
+		return candidate, nil, stats, fmt.Errorf("read generation %d snapshot: %w", generation.Generation, err)
+	}
+	loaded, err := decodeFileJournalSnapshot(bytes.TrimSpace(encoded), generation)
+	if err != nil {
+		return candidate, nil, stats, fmt.Errorf("decode generation %d snapshot: %w", generation.Generation, err)
+	}
+	if err := restoreHarnessCheckpoint(&candidate, loaded); err != nil {
+		return candidate, nil, stats, fmt.Errorf("restore generation %d snapshot: %w", generation.Generation, err)
+	}
+	stats.SnapshotGeneration = generation.Generation
+	return candidate, &loaded, stats, nil
+}
+
+func addGenerationTailStats(stats *JournalReplayStats, replay generationTailReplay) {
+	if stats == nil {
+		return
+	}
+	stats.BytesRead += replay.stats.BytesRead
+	stats.TailBytesRead += replay.stats.BytesRead
+	stats.RecordsRead += replay.stats.RecordsRead
+	stats.EventsRead += replay.stats.EventsRead
+}
+
+func addJournalReplayStats(target *JournalReplayStats, addition JournalReplayStats) {
+	if target == nil {
+		return
+	}
+	target.BytesRead += addition.BytesRead
+	target.SnapshotBytesRead += addition.SnapshotBytesRead
+	target.TailBytesRead += addition.TailBytesRead
+	target.RecordsRead += addition.RecordsRead
+	target.EventsRead += addition.EventsRead
+	if addition.SnapshotGeneration != 0 {
+		target.SnapshotGeneration = addition.SnapshotGeneration
+	}
+}
+
+func (j *fileJournal) publishGenerationReplayLocked(
+	target *harnessState,
+	state harnessState,
+	active fileJournalGeneration,
+	tailPath string,
+	replay generationTailReplay,
+	stats JournalReplayStats,
+	checkpoint *harnessCheckpoint,
+) {
+	*target = state
+	j.initialized = true
+	j.cursor = replay.cursor
+	j.needsNewline = replay.needsNewline
+	j.lastTailHash = replay.tailHash
+	j.tailBytes, j.tailRecords = replay.bytes, replay.records
+	j.lastReplay = stats
+	j.tailPath = tailPath
+	j.activeGeneration = active
+	j.checkpoint = checkpoint
+	j.commandIndex = replay.commands
+	j.indexReady = active.SnapshotFile == ""
 }
 
 func freshCheckpointTarget(template *harnessState) harnessState {

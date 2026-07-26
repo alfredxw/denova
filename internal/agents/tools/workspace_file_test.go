@@ -2,14 +2,13 @@ package tools
 
 import (
 	"context"
-	"encoding/json"
-	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
 
 	agent "github.com/alfredxw/denova/agent"
+	agenttools "github.com/alfredxw/denova/agent/tools"
 
 	"denova/internal/workspacechange"
 )
@@ -28,389 +27,199 @@ type recordingWorkspaceChangeService struct {
 	err            error
 }
 
-func (s *recordingWorkspaceChangeService) Workspace() string {
-	return s.workspace
-}
+func (service *recordingWorkspaceChangeService) Workspace() string { return service.workspace }
 
-func (s *recordingWorkspaceChangeService) ReadFile(path string) (string, string, error) {
-	s.readCalls++
-	s.readPath = path
-	if s.readErr != nil {
-		return "", "", s.readErr
+func (service *recordingWorkspaceChangeService) ReadFile(path string) (string, string, error) {
+	service.readCalls++
+	service.readPath = path
+	if service.readErr != nil {
+		return "", "", service.readErr
 	}
-	revision := s.readRevision
+	revision := service.readRevision
 	if revision == "" {
 		revision = "sha256:current"
 	}
 	return "", revision, nil
 }
 
-func (s *recordingWorkspaceChangeService) ApplyEdits(_ context.Context, request workspacechange.ApplyEditsRequest) (workspacechange.ChangeSet, error) {
-	s.applyCalls++
-	s.applyRequest = request
-	return s.changeSet, s.err
+func (service *recordingWorkspaceChangeService) ApplyEdits(_ context.Context, request workspacechange.ApplyEditsRequest) (workspacechange.ChangeSet, error) {
+	service.applyCalls++
+	service.applyRequest = request
+	return service.changeSet, service.err
 }
 
-func (s *recordingWorkspaceChangeService) ReplaceFile(_ context.Context, request workspacechange.ReplaceFileRequest) (workspacechange.ChangeSet, error) {
-	s.replaceCalls++
-	s.replaceRequest = request
-	return s.changeSet, s.err
+func (service *recordingWorkspaceChangeService) ReplaceFile(_ context.Context, request workspacechange.ReplaceFileRequest) (workspacechange.ChangeSet, error) {
+	service.replaceCalls++
+	service.replaceRequest = request
+	return service.changeSet, service.err
 }
 
-func TestWorkspaceEditFileToolBatchesOneFileAndReturnsBoundedReceipt(t *testing.T) {
-	service := &recordingWorkspaceChangeService{workspace: t.TempDir(), readRevision: "sha256:before", changeSet: workspacechange.ChangeSet{
-		ID:            "change-1",
-		GroupID:       "run-1",
-		Path:          "chapters/ch01.md",
-		BaseRevision:  "sha256:before",
-		Revision:      "sha256:after",
-		BeforeContent: strings.Repeat("before", 100),
-		AfterContent:  strings.Repeat("after", 100),
-		ReviewStatus:  workspacechange.ReviewStatusPending,
-		ApplyState:    workspacechange.ApplyStateApplied,
-		Edits: []workspacechange.AppliedEdit{
-			{ID: "opening", Hunks: []workspacechange.Hunk{{ID: "h1"}}},
-			{ID: "ending", Hunks: []workspacechange.Hunk{{ID: "h2"}, {ID: "h3"}}},
+func TestWorkspaceMutationAdapterMapsSingleExactEditAndReturnsReviewReceipt(t *testing.T) {
+	service := &recordingWorkspaceChangeService{
+		workspace: t.TempDir(), readRevision: "sha256:before",
+		changeSet: workspacechange.ChangeSet{
+			ID: "change-1", GroupID: "run-1", ReviewThreadID: "review-1",
+			Path: "chapters/ch01.md", BaseRevision: "sha256:before", Revision: "sha256:after",
+			BeforeContent: strings.Repeat("secret-before", 100), AfterContent: strings.Repeat("secret-after", 100),
+			Edits:        []workspacechange.AppliedEdit{{ID: "edit-1", Hunks: []workspacechange.Hunk{{ID: "one"}, {ID: "two"}}}},
+			ReviewStatus: workspacechange.ReviewStatusPending, ApplyState: workspacechange.ApplyStateApplied,
 		},
-	}}
-	for index := 0; index < 10_000; index++ {
-		service.changeSet.Edits = append(service.changeSet.Edits, workspacechange.AppliedEdit{
-			ID:    fmt.Sprintf("bulk-%d", index),
-			Hunks: []workspacechange.Hunk{{ID: fmt.Sprintf("bulk-hunk-%d", index)}},
-		})
 	}
-	base, err := newWorkspaceEditFileTool(service, func(context.Context) workspacechange.ChangeMetadata {
-		return workspacechange.ChangeMetadata{
-			Origin:        workspacechange.OriginAgent,
-			ChangeGroupID: "run-1",
-			RunID:         "run-1",
-		}
+	adapter, err := newWorkspaceMutationAdapter(service, func(context.Context) workspacechange.ChangeMetadata {
+		return workspacechange.ChangeMetadata{Origin: workspacechange.OriginAgent, ChangeGroupID: "run-1", RunID: "run-1"}
 	})
 	if err != nil {
 		t.Fatal(err)
 	}
-	result, err := runToolForTest(context.Background(), base, `{
-        "file_path":"chapters/ch01.md",
-        "edits":[
-          {"id":"opening","old_string":"old 1","new_string":"new 1"},
-          {"id":"ending","old_string":"old 2","new_string":"new 2","replace_all":true}
-        ]
-      }`)
+	result, err := adapter.Edit(context.Background(), agenttools.EditRequest{
+		Path: "chapters/ch01.md", OldString: "old", NewString: "new", ReplaceAll: true,
+	})
 	if err != nil {
 		t.Fatal(err)
 	}
-	if service.readCalls != 1 || service.readPath != "chapters/ch01.md" || service.applyRequest.Path != "chapters/ch01.md" || service.applyRequest.BaseRevision != "sha256:before" {
-		t.Fatalf("unexpected request: %#v", service.applyRequest)
+	if service.readCalls != 1 || service.readPath != "chapters/ch01.md" || service.applyRequest.BaseRevision != "sha256:before" {
+		t.Fatalf("unexpected revision lookup/request: %#v", service.applyRequest)
 	}
-	if len(service.applyRequest.Edits) != 2 || !service.applyRequest.Edits[1].ReplaceAll {
-		t.Fatalf("batch edits were not preserved: %#v", service.applyRequest.Edits)
+	if len(service.applyRequest.Edits) != 1 || service.applyRequest.Edits[0].OldString != "old" ||
+		service.applyRequest.Edits[0].NewString != "new" || !service.applyRequest.Edits[0].ReplaceAll {
+		t.Fatalf("exact edit was not preserved: %#v", service.applyRequest.Edits)
 	}
-	if service.applyRequest.Metadata.Origin != workspacechange.OriginAgent ||
-		service.applyRequest.Metadata.RunID != "run-1" ||
-		service.applyRequest.Metadata.ChangeGroupID != "run-1" {
-		t.Fatalf("unexpected metadata: %#v", service.applyRequest.Metadata)
+	if service.applyRequest.Metadata.RunID != "run-1" {
+		t.Fatalf("metadata = %#v", service.applyRequest.Metadata)
 	}
-	var receipt workspaceChangeToolReceipt
-	if err := json.Unmarshal([]byte(result), &receipt); err != nil {
-		t.Fatal(err)
-	}
-	if receipt.Schema != workspaceChangeToolResultSchema || receipt.Workspace != service.workspace || receipt.ChangeSetID != "change-1" || len(receipt.Edits) != 0 {
-		t.Fatalf("unexpected receipt: %#v", receipt)
-	}
-	if strings.Contains(result, `"edits"`) || len(result) > 4096 {
-		t.Fatalf("receipt grew with per-edit details: bytes=%d result=%s", len(result), result)
-	}
-	if strings.Contains(result, "beforebefore") || strings.Contains(result, "afterafter") {
-		t.Fatalf("receipt leaked file content: %s", result)
+	if !strings.Contains(result.ModelContent, `"change_set_id":"change-1"`) ||
+		!strings.Contains(result.ModelContent, `"replacements":2`) ||
+		strings.Contains(result.ModelContent, "secret-before") || len(result.ModelContent) > 4096 {
+		t.Fatalf("receipt = %s", result.ModelContent)
 	}
 }
 
-func TestWorkspaceEditFileUsesCurrentRevisionWithoutReadDependency(t *testing.T) {
+func TestWorkspaceEditUsesCurrentContentAfterEarlierExternalChange(t *testing.T) {
 	workspace := t.TempDir()
 	path := filepath.Join(workspace, "ideas.md")
 	if err := os.WriteFile(path, []byte("original"), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.WriteFile(path, []byte("manual update"), 0o644); err != nil {
+	// This simulates a user edit after the Agent's earlier read but before the
+	// edit tool call. The Adapter deliberately resolves the revision now.
+	if err := os.WriteFile(path, []byte("unrelated\nmanual update"), 0o644); err != nil {
 		t.Fatal(err)
 	}
 	service, err := workspacechange.NewService(workspace)
 	if err != nil {
 		t.Fatal(err)
 	}
-	editTool, err := newWorkspaceEditFileTool(service)
+	adapter, err := newWorkspaceMutationAdapter(service)
 	if err != nil {
 		t.Fatal(err)
 	}
-	_, err = runToolForTest(context.Background(), editTool, `{"file_path":"ideas.md","edits":[{"old_string":"manual update","new_string":"agent update"}]}`)
+	definition, err := agenttools.Edit(adapter)
 	if err != nil {
 		t.Fatal(err)
 	}
-	content, readErr := os.ReadFile(path)
-	if readErr != nil {
-		t.Fatal(readErr)
+	if _, err := definition.Tool.Run(context.Background(), `{"path":"ideas.md","old_string":"manual update","new_string":"agent update"}`); err != nil {
+		t.Fatal(err)
 	}
-	if string(content) != "agent update" {
-		t.Fatalf("edit_file did not apply against its current snapshot: %q", content)
+	content, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(content) != "unrelated\nagent update" {
+		t.Fatalf("edit did not preserve unrelated current content: %q", content)
 	}
 }
 
-func TestWorkspaceChangeMetadataUsesNativeAgentToolCallIdentity(t *testing.T) {
-	ctx := agent.ContextWithToolCall(context.Background(), "call-native", "edit_file")
+func TestWorkspaceEditRejectsAmbiguousAndNoOpWithoutMutation(t *testing.T) {
+	workspace := t.TempDir()
+	path := filepath.Join(workspace, "ideas.md")
+	if err := os.WriteFile(path, []byte("same same"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	service, err := workspacechange.NewService(workspace)
+	if err != nil {
+		t.Fatal(err)
+	}
+	adapter, err := newWorkspaceMutationAdapter(service)
+	if err != nil {
+		t.Fatal(err)
+	}
+	definition, err := agenttools.Edit(adapter)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := definition.Tool.Run(context.Background(), `{"path":"ideas.md","old_string":"same","new_string":"new"}`); err == nil {
+		t.Fatal("ambiguous edit succeeded")
+	}
+	if _, err := definition.Tool.Run(context.Background(), `{"path":"ideas.md","old_string":"same","new_string":"same"}`); err == nil {
+		t.Fatal("no-op edit succeeded")
+	}
+	content, err := os.ReadFile(path)
+	if err != nil || string(content) != "same same" {
+		t.Fatalf("failed edit mutated file: %q err=%v", content, err)
+	}
+}
+
+func TestWorkspaceWriteDerivesCurrentOrMissingRevisionInternally(t *testing.T) {
+	service := &recordingWorkspaceChangeService{
+		workspace: t.TempDir(), readRevision: "sha256:current",
+		changeSet: workspacechange.ChangeSet{ID: "write-1", GroupID: "group-1", Path: "ideas.md"},
+	}
+	adapter, err := newWorkspaceMutationAdapter(service)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := adapter.Write(context.Background(), agenttools.WriteRequest{Path: "ideas.md", Content: "new"}); err != nil {
+		t.Fatal(err)
+	}
+	if service.replaceRequest.BaseRevision != "sha256:current" || service.replaceRequest.Content != "new" {
+		t.Fatalf("replace request = %#v", service.replaceRequest)
+	}
+
+	service.readErr = &workspacechange.Error{Code: workspacechange.ErrorCodeNotFound, Message: "not found"}
+	service.changeSet = workspacechange.ChangeSet{ID: "write-2", GroupID: "group-2", Path: "new.md"}
+	if _, err := adapter.Write(context.Background(), agenttools.WriteRequest{Path: "new.md", Content: "created"}); err != nil {
+		t.Fatal(err)
+	}
+	if service.replaceRequest.BaseRevision != "missing" {
+		t.Fatalf("missing revision = %#v", service.replaceRequest)
+	}
+}
+
+func TestWorkspaceChangeMetadataUsesNativeToolIdentity(t *testing.T) {
+	ctx := agent.ContextWithToolCall(context.Background(), "call-native", "edit")
 	metadata := workspaceChangeMetadata(ctx, nil)
 	if metadata.ToolCallID != "call-native" || metadata.ChangeGroupID != "call-native" {
-		t.Fatalf("native tool call identity was not propagated: %#v", metadata)
+		t.Fatalf("metadata = %#v", metadata)
 	}
 }
 
-func TestWorkspaceEditFileToolPublishesBatchSchema(t *testing.T) {
-	base, err := newWorkspaceEditFileTool(&recordingWorkspaceChangeService{workspace: t.TempDir()})
-	if err != nil {
-		t.Fatal(err)
-	}
-	info, err := base.Info(context.Background())
-	if err != nil {
-		t.Fatal(err)
-	}
-	data, err := json.Marshal(info)
-	if err != nil {
-		t.Fatal(err)
-	}
-	var encoded struct {
-		JSONSchema struct {
-			Properties map[string]json.RawMessage `json:"properties"`
-			Required   []string                   `json:"required"`
-		} `json:"json_schema"`
-	}
-	if err := json.Unmarshal(data, &encoded); err != nil {
-		t.Fatal(err)
-	}
-	for _, name := range []string{"file_path", "edits"} {
-		if _, ok := encoded.JSONSchema.Properties[name]; !ok {
-			t.Fatalf("batch edit schema is missing root property %q: %s", name, data)
-		}
-	}
-	if _, ok := encoded.JSONSchema.Properties["base_revision"]; ok || containsStringValue(encoded.JSONSchema.Required, "base_revision") {
-		t.Fatalf("batch edit schema exposes internal base_revision: %s", data)
-	}
-	for _, legacy := range []string{"old_string", "new_string", "replace_all"} {
-		if _, ok := encoded.JSONSchema.Properties[legacy]; ok {
-			t.Fatalf("legacy single-edit property %q remains at schema root: %s", legacy, data)
-		}
-	}
-}
-
-func containsStringValue(values []string, target string) bool {
-	for _, value := range values {
-		if value == target {
-			return true
-		}
-	}
-	return false
-}
-
-func TestWorkspaceWriteFileToolUsesChangeService(t *testing.T) {
-	service := &recordingWorkspaceChangeService{workspace: t.TempDir(), readRevision: "sha256:before", changeSet: workspacechange.ChangeSet{
-		ID:           "change-write",
-		GroupID:      "group-write",
-		Path:         "ideas.md",
-		BaseRevision: "sha256:before",
-		Revision:     "sha256:after",
-		ReviewStatus: workspacechange.ReviewStatusPending,
-		ApplyState:   workspacechange.ApplyStateApplied,
-	}}
-	base, err := newWorkspaceWriteFileTool(service)
-	if err != nil {
-		t.Fatal(err)
-	}
-	result, err := runToolForTest(context.Background(), base, `{"file_path":"ideas.md","content":"new"}`)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if service.readCalls != 1 || service.readPath != "ideas.md" || service.replaceRequest.Path != "ideas.md" || service.replaceRequest.Content != "new" || service.replaceRequest.BaseRevision != "sha256:before" {
-		t.Fatalf("unexpected replace request: %#v", service.replaceRequest)
-	}
-	if !strings.Contains(result, `"change_set_id":"change-write"`) {
-		t.Fatalf("unexpected write receipt: %s", result)
-	}
-}
-
-func TestWorkspaceWriteFileToolHidesBaseRevisionFromSchema(t *testing.T) {
-	base, err := newWorkspaceWriteFileTool(&recordingWorkspaceChangeService{workspace: t.TempDir()})
-	if err != nil {
-		t.Fatal(err)
-	}
-	info, err := base.Info(context.Background())
-	if err != nil {
-		t.Fatal(err)
-	}
-	data, err := json.Marshal(info)
-	if err != nil {
-		t.Fatal(err)
-	}
-	var encoded struct {
-		JSONSchema struct {
-			Properties map[string]json.RawMessage `json:"properties"`
-			Required   []string                   `json:"required"`
-		} `json:"json_schema"`
-	}
-	if err := json.Unmarshal(data, &encoded); err != nil {
-		t.Fatal(err)
-	}
-	if _, ok := encoded.JSONSchema.Properties["base_revision"]; ok || containsStringValue(encoded.JSONSchema.Required, "base_revision") {
-		t.Fatalf("write schema exposes internal base_revision: %s", data)
-	}
-}
-
-func TestWorkspaceEditFileToolLeavesFileUntouchedWhenOneBatchEditFails(t *testing.T) {
-	workspace := t.TempDir()
-	chapterDir := filepath.Join(workspace, "chapters")
-	if err := os.MkdirAll(chapterDir, 0o755); err != nil {
-		t.Fatal(err)
-	}
-	path := filepath.Join(chapterDir, "ch01.md")
-	original := "opening\n\nmiddle\n\nending"
-	if err := os.WriteFile(path, []byte(original), 0o644); err != nil {
-		t.Fatal(err)
-	}
-	service, err := workspacechange.NewService(workspace)
-	if err != nil {
-		t.Fatal(err)
-	}
-	base, err := newWorkspaceEditFileTool(service)
-	if err != nil {
-		t.Fatal(err)
-	}
-	_, err = runToolForTest(context.Background(), base, `{
-	        "file_path":"chapters/ch01.md",
-	        "edits":[
-          {"id":"valid","old_string":"opening","new_string":"new opening"},
-          {"id":"missing","old_string":"not present","new_string":"replacement"}
-        ]
-      }`)
-	if err == nil {
-		t.Fatal("batch with a missing anchor should fail")
-	}
-	content, readErr := os.ReadFile(path)
-	if readErr != nil {
-		t.Fatal(readErr)
-	}
-	if string(content) != original {
-		t.Fatalf("failed batch changed file: %q", content)
-	}
-	groups, listErr := service.ListGroups(context.Background(), workspacechange.ChangeFilter{})
-	if listErr != nil {
-		t.Fatal(listErr)
-	}
-	if len(groups) != 0 {
-		t.Fatalf("failed batch created review history: %#v", groups)
-	}
-}
-
-func TestWorkspaceChangeErrorBecomesStructuredToolError(t *testing.T) {
+func TestWorkspaceChangeErrorIsStructuredAndHidesRevisions(t *testing.T) {
 	err := &workspacechange.Error{
-		Code:    workspacechange.ErrorCodeInvalidEdit,
-		Message: "old_string appears more than once",
-		Details: map[string]any{"edit_index": 1, "match_count": 2},
-	}
-	message, ok := formatWorkspaceChangeToolError("edit_file", err)
-	if !ok {
-		t.Fatal("workspace change error should be recognized")
-	}
-	if !strings.HasPrefix(message, "[tool error]\n") ||
-		!strings.Contains(message, `"code":"invalid_edit"`) ||
-		!strings.Contains(message, `"workspace_mutated":false`) ||
-		!strings.Contains(message, `"retryable":true`) {
-		t.Fatalf("unexpected structured error: %s", message)
-	}
-}
-
-func TestDurabilityPendingToolErrorIsRetryableAndReportsVisibleMutation(t *testing.T) {
-	err := &workspacechange.Error{
-		Code:    workspacechange.ErrorCodeDurabilityPending,
-		Message: "workspace mutation durability is pending",
-		Details: map[string]any{"path": "chapters/ch01.md", "workspace_mutated": true},
-	}
-	message, ok := formatWorkspaceChangeToolError("edit_file", err)
-	if !ok ||
-		!strings.Contains(message, `"code":"durability_pending"`) ||
-		!strings.Contains(message, `"workspace_mutated":true`) ||
-		!strings.Contains(message, `"retryable":true`) {
-		t.Fatalf("unexpected durability receipt: %s", message)
-	}
-}
-
-func TestWorkspaceFileToolsResolveCurrentRevisionWithoutModelInput(t *testing.T) {
-	service := &recordingWorkspaceChangeService{workspace: t.TempDir(), readRevision: "sha256:current"}
-	edit, err := newWorkspaceEditFileTool(service)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if _, err := runToolForTest(context.Background(), edit, `{"file_path":"ideas.md","edits":[{"old_string":"a","new_string":"b"}]}`); err != nil {
-		t.Fatal(err)
-	}
-	if service.applyCalls != 1 || service.applyRequest.BaseRevision != "sha256:current" {
-		t.Fatalf("edit_file did not resolve the current revision: %#v", service.applyRequest)
-	}
-
-	write, err := newWorkspaceWriteFileTool(service)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if _, err := runToolForTest(context.Background(), write, `{"file_path":"ideas.md","content":"new"}`); err != nil {
-		t.Fatal(err)
-	}
-	if service.replaceCalls != 1 || service.replaceRequest.BaseRevision != "sha256:current" || service.readCalls != 2 {
-		t.Fatalf("write_file did not resolve the current revision: %#v", service.replaceRequest)
-	}
-}
-
-func TestWorkspaceWriteFileToolDetectsMissingFileInternally(t *testing.T) {
-	service := &recordingWorkspaceChangeService{workspace: t.TempDir(), readErr: &workspacechange.Error{
-		Code: workspacechange.ErrorCodeNotFound, Message: "workspace file not found",
-	}, changeSet: workspacechange.ChangeSet{
-		ID: "created", GroupID: "group", Path: "new.md", BaseRevision: "missing", Revision: "sha256:after",
-	}}
-	write, err := newWorkspaceWriteFileTool(service)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if _, err := runToolForTest(context.Background(), write, `{"file_path":"new.md","content":"new"}`); err != nil {
-		t.Fatal(err)
-	}
-	if service.replaceCalls != 1 || service.replaceRequest.BaseRevision != "missing" {
-		t.Fatalf("create did not derive missing CAS internally: %#v", service.replaceRequest)
-	}
-}
-
-func TestWorkspaceChangeErrorHidesInternalRevisionsFromAgent(t *testing.T) {
-	err := &workspacechange.Error{
-		Code:    workspacechange.ErrorCodeRevisionConflict,
-		Message: "workspace file revision changed",
+		Code: workspacechange.ErrorCodeRevisionConflict, Message: "workspace file revision changed",
 		Details: map[string]any{
-			"path":              "chapters/ch01.md",
-			"expected_revision": "sha256:before",
-			"actual_revision":   "sha256:after",
+			"path": "chapters/ch01.md", "expected_revision": "sha256:before",
+			"actual_revision": "sha256:after", "workspace_mutated": false,
 		},
 	}
-	message, ok := formatWorkspaceChangeToolError("edit_file", err)
-	if !ok {
-		t.Fatal("workspace change error should be recognized")
-	}
-	if strings.Contains(message, "expected_revision") || strings.Contains(message, "actual_revision") || strings.Contains(message, "sha256:") {
-		t.Fatalf("tool error exposed internal revisions: %s", message)
+	message, ok := formatWorkspaceChangeToolError("edit", err)
+	if !ok || !strings.Contains(message, `"code":"revision_conflict"`) ||
+		!strings.Contains(message, `"retryable":true`) ||
+		strings.Contains(message, "expected_revision") || strings.Contains(message, "sha256:") {
+		t.Fatalf("structured error = %s", message)
 	}
 }
 
-func TestWorkspaceChangeReceiptIsTrustedOnlyForWorkspaceFileTools(t *testing.T) {
+func TestWorkspaceChangeReceiptTrustsOnlyNewMutationToolNames(t *testing.T) {
 	content := `{"schema":"workspace_change.tool_result.v1","status":"applied","workspace":"/workspace/book-a","change_group_id":"group-1","change_set_id":"change-1","path":"chapters/ch01.md","base_revision":"sha256:before","revision":"sha256:after","review_status":"pending","apply_state":"applied"}`
-	for _, toolName := range []string{"read_file", "execute", "grep"} {
+	for _, toolName := range []string{"read", "grep", "read_file", "write_file", "edit_file", "execute"} {
 		if _, ok := parseWorkspaceChangeToolReceipt(toolName, content); ok {
 			t.Fatalf("untrusted tool %q forged a workspace change receipt", toolName)
 		}
 	}
-	receipt, ok := parseWorkspaceChangeToolReceipt("edit_file", content)
-	if !ok || receipt.Workspace != "/workspace/book-a" || receipt.ChangeSetID != "change-1" {
-		t.Fatalf("trusted receipt was not parsed: %#v ok=%t", receipt, ok)
+	for _, toolName := range []string{"write", "edit"} {
+		receipt, ok := parseWorkspaceChangeToolReceipt(toolName, content)
+		if !ok || receipt.ChangeSetID != "change-1" {
+			t.Fatalf("receipt for %s = %#v ok=%t", toolName, receipt, ok)
+		}
 	}
 }

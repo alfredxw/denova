@@ -55,13 +55,17 @@ func (c *SessionConversation) AssembleModelContext(ctx context.Context, _ string
 		// Context analysis deliberately has no durable cycle identity. It may
 		// reuse the exact pure assembly path, but CommitModelInput below remains
 		// fail-closed so production cannot cross the provider boundary this way.
-		snapshot = c.session.SnapshotContext(c.agentKind)
+		snapshot, err = c.session.SnapshotContext(c.agentKind)
+		if err != nil {
+			return ModelContextResult{}, fmt.Errorf("snapshot session model context: %w", err)
+		}
 	}
 	fragments := make([]agentcontext.Fragment, 0, len(input.Fragments)+2)
 	fragments = append(fragments, input.Fragments...)
 	fragments = append(fragments, c.runtimeContextFragments()...)
+	canonicalMessages := c.modelMessagesWithAcceptedInput(snapshot, inputIndex, materialized, input.UserMessage)
 	assembled, err := agentcontext.NewAssembler(input.Budget).Assemble(ctx, agentcontext.AssembleRequest{
-		Messages:  c.modelMessagesWithAcceptedInput(snapshot, inputIndex, materialized, input.UserMessage),
+		Messages:  canonicalMessages,
 		Fragments: fragments,
 	})
 	if err != nil {
@@ -69,14 +73,20 @@ func (c *SessionConversation) AssembleModelContext(ctx context.Context, _ string
 	}
 	return ModelContextResult{
 		Messages: assembled.Messages, Context: assembled,
-		CommitState: sessionModelContextCommitState{cursor: snapshot.Cursor, input: intent, durable: durableInput},
+		CommitState: sessionModelContextCommitState{
+			cursor: snapshot.Cursor, input: intent, durable: durableInput,
+			canonicalMessages: cloneContextMessages(canonicalMessages),
+			effectiveMessages: cloneContextMessages(assembled.Messages),
+		},
 	}, nil
 }
 
 type sessionModelContextCommitState struct {
-	cursor  session.ContextCursor
-	input   session.DomainCommitIntent
-	durable bool
+	cursor            session.ContextCursor
+	input             session.DomainCommitIntent
+	durable           bool
+	canonicalMessages []*agent.Message
+	effectiveMessages []*agent.Message
 }
 
 func (c *SessionConversation) CommitModelInput(ctx context.Context, _ string, assembled ModelContextResult) error {
@@ -109,6 +119,7 @@ func (c *SessionConversation) CommitModelInput(ctx context.Context, _ string, as
 	if appendErr != nil {
 		return appendErr
 	}
+	c.rememberContextWindowModelBase(state.canonicalMessages, state.effectiveMessages)
 	c.rememberContextAssembly(assembled.Context)
 	return nil
 }
@@ -141,10 +152,13 @@ func (c *SessionConversation) modelMessagesWithAcceptedInput(
 func (c *SessionConversation) modelHistory(snapshot session.ContextSnapshot) []*agent.Message {
 	history := append([]*agent.Message(nil), snapshot.EffectiveMessages...)
 	policy := c.compactionPolicy()
-	if snapshot.Compaction != nil && strings.TrimSpace(snapshot.Compaction.Summary) != "" {
+	effectiveStart := snapshot.Cursor.MessageCount - len(history)
+	useRewind := snapshot.ContextWindow != nil &&
+		(snapshot.Compaction == nil || snapshot.ContextWindow.ContextRevision > snapshot.Compaction.ContextRevision)
+	if useRewind {
+		history = applyContextWindowProjection(history, effectiveStart, *snapshot.ContextWindow)
+	} else if snapshot.Compaction != nil && strings.TrimSpace(snapshot.Compaction.Summary) != "" {
 		compaction := *snapshot.Compaction
-		total := snapshot.Cursor.MessageCount
-		effectiveStart := total - len(history)
 		retainedTurns := compaction.RetainedTurns
 		if retainedTurns <= 0 {
 			retainedTurns = policy.RetainedTurns

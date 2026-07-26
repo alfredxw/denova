@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"math/big"
 	"reflect"
 	"regexp"
 	"sort"
@@ -526,6 +527,12 @@ func validateJSONValue(path string, value any, schema *jsonschema.Schema) error 
 	if schema == nil {
 		return nil
 	}
+	if allowed, boolean := jsonSchemaBoolean(schema); boolean {
+		if allowed {
+			return nil
+		}
+		return fmt.Errorf("%s is not allowed by schema", path)
+	}
 	if len(schema.OneOf) != 0 {
 		matches := 0
 		for _, candidate := range schema.OneOf {
@@ -571,13 +578,31 @@ func validateJSONValue(path string, value any, schema *jsonschema.Schema) error 
 				return fmt.Errorf("%s.%s is required", path, required)
 			}
 		}
-		if schema.Properties != nil {
-			for key, child := range typed {
-				property, exists := schema.Properties.Get(key)
-				if exists {
+		for key, child := range typed {
+			matched := false
+			if schema.Properties != nil {
+				if property, exists := schema.Properties.Get(key); exists {
+					matched = true
 					if err := validateJSONValue(path+"."+key, child, property); err != nil {
 						return err
 					}
+				}
+			}
+			for pattern, property := range schema.PatternProperties {
+				compiled, err := regexp.Compile(pattern)
+				if err != nil {
+					return fmt.Errorf("%s has invalid property pattern %q: %w", path, pattern, err)
+				}
+				if compiled.MatchString(key) {
+					matched = true
+					if err := validateJSONValue(path+"."+key, child, property); err != nil {
+						return err
+					}
+				}
+			}
+			if !matched && schema.AdditionalProperties != nil {
+				if err := validateJSONValue(path+"."+key, child, schema.AdditionalProperties); err != nil {
+					return fmt.Errorf("%s contains unsupported property %q: %w", path, key, err)
 				}
 			}
 		}
@@ -603,8 +628,79 @@ func validateJSONValue(path string, value any, schema *jsonschema.Schema) error 
 		if schema.MaxLength != nil && length > *schema.MaxLength {
 			return fmt.Errorf("%s has length %d, want at most %d", path, length, *schema.MaxLength)
 		}
+		if schema.Pattern != "" {
+			pattern, err := regexp.Compile(schema.Pattern)
+			if err != nil {
+				return fmt.Errorf("%s has invalid string pattern %q: %w", path, schema.Pattern, err)
+			}
+			if !pattern.MatchString(typed) {
+				return fmt.Errorf("%s does not match required pattern %q", path, schema.Pattern)
+			}
+		}
+	case json.Number:
+		if err := validateJSONNumber(path, typed, schema); err != nil {
+			return err
+		}
 	}
 	return nil
+}
+
+func validateJSONNumber(path string, value json.Number, schema *jsonschema.Schema) error {
+	number, ok := new(big.Rat).SetString(value.String())
+	if !ok {
+		return fmt.Errorf("%s contains invalid JSON number %q", path, value)
+	}
+	constraints := []struct {
+		name      string
+		value     json.Number
+		acceptCmp func(int) bool
+	}{
+		{name: "minimum", value: schema.Minimum, acceptCmp: func(cmp int) bool { return cmp >= 0 }},
+		{name: "exclusive minimum", value: schema.ExclusiveMinimum, acceptCmp: func(cmp int) bool { return cmp > 0 }},
+		{name: "maximum", value: schema.Maximum, acceptCmp: func(cmp int) bool { return cmp <= 0 }},
+		{name: "exclusive maximum", value: schema.ExclusiveMaximum, acceptCmp: func(cmp int) bool { return cmp < 0 }},
+	}
+	for _, constraint := range constraints {
+		if constraint.value == "" {
+			continue
+		}
+		boundary, valid := new(big.Rat).SetString(constraint.value.String())
+		if !valid {
+			return fmt.Errorf("%s schema has invalid %s %q", path, constraint.name, constraint.value)
+		}
+		if !constraint.acceptCmp(number.Cmp(boundary)) {
+			return fmt.Errorf("%s value %s violates %s %s", path, value, constraint.name, constraint.value)
+		}
+	}
+	if schema.MultipleOf != "" {
+		multiple, valid := new(big.Rat).SetString(schema.MultipleOf.String())
+		if !valid || multiple.Sign() <= 0 {
+			return fmt.Errorf("%s schema has invalid multipleOf %q", path, schema.MultipleOf)
+		}
+		quotient := new(big.Rat).Quo(number, multiple)
+		if quotient.Denom().Cmp(big.NewInt(1)) != 0 {
+			return fmt.Errorf("%s value %s is not a multiple of %s", path, value, schema.MultipleOf)
+		}
+	}
+	return nil
+}
+
+// jsonschema represents boolean schemas through an internal field. Marshaling
+// is the package-supported way to preserve that representation across cloned
+// schemas, so argument validation recognizes both `true` and `false` here.
+func jsonSchemaBoolean(schema *jsonschema.Schema) (bool, bool) {
+	encoded, err := json.Marshal(schema)
+	if err != nil {
+		return false, false
+	}
+	switch string(encoded) {
+	case "true":
+		return true, true
+	case "false":
+		return false, true
+	default:
+		return false, false
+	}
 }
 
 func matchesJSONType(value any, expected string) bool {
@@ -626,7 +722,11 @@ func matchesJSONType(value any, expected string) bool {
 		return ok
 	case "integer":
 		number, ok := value.(json.Number)
-		return ok && !strings.ContainsAny(number.String(), ".eE")
+		if !ok {
+			return false
+		}
+		parsed, valid := new(big.Rat).SetString(number.String())
+		return valid && parsed.Denom().Cmp(big.NewInt(1)) == 0
 	case "null":
 		return value == nil
 	default:
@@ -750,22 +850,34 @@ func cloneJSONSchema(schema *jsonschema.Schema) *jsonschema.Schema {
 type toolCallContextKey struct{}
 
 type toolCallContext struct {
-	id   string
-	name string
+	providerCallID string
+	executionID    string
+	name           string
 }
 
-// ContextWithToolCall records stable call metadata for tools and middleware.
+// ContextWithToolCall records provider transcript metadata for direct tool
+// callers. Native Agent execution additionally binds a durable execution ID.
 func ContextWithToolCall(ctx context.Context, callID, name string) context.Context {
 	if ctx == nil {
 		ctx = context.Background()
 	}
-	return context.WithValue(ctx, toolCallContextKey{}, toolCallContext{id: callID, name: name})
+	return context.WithValue(ctx, toolCallContextKey{}, toolCallContext{providerCallID: callID, name: name})
 }
 
-// ToolCallID returns the current tool call ID, or an empty string outside a call.
+func contextWithToolExecution(ctx context.Context, executionID, providerCallID, name string) context.Context {
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	return context.WithValue(ctx, toolCallContextKey{}, toolCallContext{
+		executionID: executionID, providerCallID: providerCallID, name: name,
+	})
+}
+
+// ToolCallID returns the provider transcript call ID. Durable lifecycle and
+// host correlation must use CurrentToolExecutionID instead.
 func ToolCallID(ctx context.Context) string {
 	metadata, _ := toolCallMetadata(ctx)
-	return metadata.id
+	return metadata.providerCallID
 }
 
 // ToolName returns the current tool name, or an empty string outside a call.

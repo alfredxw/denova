@@ -4,6 +4,8 @@ import type { UIMessageChunk } from 'ai'
 import { InputArea } from './InputArea'
 import { MessageList } from './MessageList'
 import {
+  answerConfigManagerAsk,
+  cancelConfigManagerAsk,
   clearConfigManagerSession,
   createAgentCommandID,
   getActiveConfigManagerTask,
@@ -12,7 +14,7 @@ import {
   recoverConfigManagerRuntime,
   runConfigManagerStream,
 } from '@/lib/api'
-import type { ActiveChatTask, AgentRuntimeRecoveryAction, ConfigManagerRunRequest } from '@/lib/api'
+import type { ActiveChatTask, AgentAskAnswer, AgentRuntimeRecoveryAction, ConfigManagerRunRequest } from '@/lib/api'
 import { useSkillCommands } from '@/hooks/useSkillCommands'
 import { selectAgentTokenUsageRecords, type AgentMessageView } from '@/lib/agent-message-view'
 import { createAgentDataMessage, createAgentTextMessage, useAgentUIMessageStream } from '@/hooks/useAgentUIMessageStream'
@@ -49,7 +51,7 @@ export function ConfigManagerChat({ workspace = '', origin, resourceId, storyId,
   const [hasEarlierMessages, setHasEarlierMessages] = useState(false)
   const [historyLoading, setHistoryLoading] = useState(false)
   const [inputAreaHeight, setInputAreaHeight] = useState(0)
-  const skills = useSkillCommands({ agentKey: 'config_manager', workspace, fallbackEnabled: true })
+  const skills = useSkillCommands({ agentKey: 'config_manager', workspace })
   const scope = useMemo(() => ({
     origin,
     resource_id: resourceId,
@@ -136,11 +138,17 @@ export function ConfigManagerChat({ workspace = '', origin, resourceId, storyId,
   const setRuntimeProjection = useCallback((projection: ActiveChatTask | null) => {
     runtimeProjectionRef.current = projection
     setRuntimeProjectionState(projection)
+    if (projection?.pending_ask) {
+      setMessages((current) => normalizeAgentUIMessages([
+        ...current,
+        createAgentDataMessage('agent-ask', { ...projection.pending_ask }),
+      ]))
+    }
     setRecoveryPending(Boolean(
       projection?.runtime_recoverable
       || (projection?.active && attachedTaskIDRef.current === ''),
     ))
-  }, [])
+  }, [setMessages])
 
   const finishScopedStream = useCallback(async (key: string, taskID: string) => {
     if (attachedTaskIDRef.current === taskID) attachedTaskIDRef.current = ''
@@ -392,6 +400,13 @@ export function ConfigManagerChat({ workspace = '', origin, resourceId, storyId,
 
   const runtimeBusy = running || recoveryPending
   const canAbortRecovery = runtimeProjection?.recovery_actions?.some((action) => action.kind === 'abort') === true
+  const resolveAsk = useCallback(async (view: AgentMessageView, action: { status: 'answered'; answers: AgentAskAnswer[] } | { status: 'cancelled' }) => {
+    const askID = typeof view.data.id === 'string' ? view.data.id.trim() : ''
+    if (!askID) throw new Error('Cannot resolve an Ask without its interaction ID')
+    return action.status === 'answered'
+      ? answerConfigManagerAsk(scope, askID, action.answers)
+      : cancelConfigManagerAsk(scope, askID)
+  }, [scope])
 
   return (
     <div className={`relative flex h-full min-h-0 flex-col overflow-hidden ${className}`}>
@@ -407,6 +422,7 @@ export function ConfigManagerChat({ workspace = '', origin, resourceId, storyId,
         isLoadingEarlierMessages={historyLoading}
         onLoadEarlierMessages={loadEarlierMessages}
         collapseTraceGroups
+        onResolveAsk={resolveAsk}
       />
       <InputArea
         onSend={(value) => void send(value)}

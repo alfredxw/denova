@@ -10,7 +10,7 @@ import { MobilePaneTrigger } from '@/components/layout/mobile-pane-trigger'
 import { SectionedNavigation } from '@/components/navigation/sectioned-navigation'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
-import type { AgentContextOverride, AgentModelOverride, AgentPromptOverride, AgentSkillOverride, LayeredSettings, ModelProfileSettings, Settings, SettingsLayer, SubAgentConfig } from '@/features/settings/types'
+import type { AgentContextOverride, AgentModelOverride, AgentPromptOverride, AgentSkillOverride, AgentToolOverride, LayeredSettings, ModelProfileSettings, Settings, SettingsLayer, SubAgentConfig } from '@/features/settings/types'
 import { modelProfileID, modelProfileLabel, modelProfilesWithDefault } from '@/features/settings/model-profiles'
 import { useLayeredSettingsDraft } from '@/features/settings/use-layered-settings-draft'
 import { getSkills } from '@/lib/api'
@@ -18,7 +18,7 @@ import type { SkillSummary } from '@/lib/api'
 import { AgentRuntimeContextSection } from './AgentRuntimeContextSection'
 import { AgentBuiltInCapabilitySection, AgentContextSection, AgentModelOnlySection, AgentModelSection, AgentPromptSection, AgentSkillSection, AgentToolSection, mergeAgentContextOverride, mergeAgentModelOverride, mergeAgentPromptOverride } from './agent-configuration-sections'
 import { AgentSubAgentSection, isSubAgentParent, previewGeneralSubAgentSettings } from './agent-subagent-section'
-import { AGENTS, FALLBACK_AGENT_TOOL_VALUES, resolveEffectiveTools } from './agent-registry'
+import { AGENTS, toolDefinitionsFromManifest } from './agent-registry'
 import type { AgentViewDefinition, SubAgentParentKey, ToolKey, VisibleAgentKey } from './agent-registry'
 
 const tabCls = 'nova-nav-item rounded-[var(--nova-radius)] px-2.5 py-1 text-xs'
@@ -64,8 +64,9 @@ export function AgentsView({ onClose }: { onClose?: () => void }) {
   const builtinBlocks = layered?.builtin_agent_prompt_blocks?.[activeAgent]
   const promptSources = layered?.builtin_agent_prompt_sources?.[activeAgent]?.sources
   const toolValue = draft.agent_tools?.[activeAgent] ?? {}
-  const inheritedTools = effective.agent_tools?.[activeAgent] ?? FALLBACK_AGENT_TOOL_VALUES[activeAgent]
-  const effectiveTools = resolveEffectiveTools(effective.agent_tools?.default ?? {}, inheritedTools)
+  const resolvedToolManifest = layered?.resolved_agent_tool_manifests?.[activeAgent]
+  const toolRows = useMemo(() => toolDefinitionsFromManifest(resolvedToolManifest), [resolvedToolManifest])
+  const skillsAllowed = Boolean(toolValue.skills ?? toolRows.find((tool) => tool.key === 'skills')?.allowed ?? false)
   const skillValue = draft.agent_skills?.[activeAgent] ?? {}
   const contextValue = draft.agent_context?.[activeAgent] ?? {}
   const inheritedContext = mergeAgentContextOverride(effective.agent_context?.default ?? {}, effective.agent_context?.[activeAgent] ?? {})
@@ -112,13 +113,14 @@ export function AgentsView({ onClose }: { onClose?: () => void }) {
   }
 
   const setAgentTool = (key: ToolKey, value: boolean | null) => {
-    setDraft((current) => ({
-      ...current,
-      agent_tools: {
-        ...(current.agent_tools ?? {}),
-        [activeAgent]: { ...(current.agent_tools?.[activeAgent] ?? {}), [key]: value },
-      },
-    }))
+    setDraft((current) => {
+      const nextAgentTools = { ...(current.agent_tools ?? {}) }
+      const nextOverrides: AgentToolOverride = { ...(nextAgentTools[activeAgent] ?? {}) }
+      if (value === null) delete nextOverrides[key]
+      else nextOverrides[key] = value
+      nextAgentTools[activeAgent] = nextOverrides
+      return { ...current, agent_tools: nextAgentTools }
+    })
   }
 
   const setAgentPrompt = (patch: Partial<AgentPromptOverride>) => {
@@ -310,15 +312,15 @@ export function AgentsView({ onClose }: { onClose?: () => void }) {
               {selected.capabilityMode === 'tools' ? (
                 <>
                   <AgentToolSection
-                    agent={activeAgent}
                     value={toolValue}
-                    effective={effectiveTools}
+                    rows={toolRows}
                     onChange={setAgentTool}
                   />
                   {isSubAgentParent(activeAgent) && (
                     <AgentSubAgentSection
                       agent={activeAgent}
                       inheritedModel={inheritedModel}
+                      toolRows={toolRows}
                       generalSettings={generalSubAgents}
                       effectiveGeneralSettings={previewGeneralSubAgents}
                       subAgents={subAgents}
@@ -328,7 +330,7 @@ export function AgentsView({ onClose }: { onClose?: () => void }) {
                       onChange={setSubAgents}
                     />
                   )}
-                  {effectiveTools.skills && (
+                  {skillsAllowed && (
                     <AgentSkillSection
                       agent={activeAgent}
                       skills={skills}

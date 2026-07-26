@@ -125,6 +125,16 @@ func (l *Library) Resolve(paths []string) []Reference {
 }
 
 func (l *Library) Write(req WriteRequest) (Reference, error) {
+	return l.write(req, false)
+}
+
+// Create writes a new style reference and fails if the normalized target
+// already exists. Write retains the UI's intentional replace semantics.
+func (l *Library) Create(req WriteRequest) (Reference, error) {
+	return l.write(req, true)
+}
+
+func (l *Library) write(req WriteRequest, exclusive bool) (Reference, error) {
 	if l == nil || strings.TrimSpace(l.novaDir) == "" {
 		return Reference{}, fmt.Errorf("nova_dir 不可用，无法写入文风参考")
 	}
@@ -139,7 +149,14 @@ func (l *Library) Write(req WriteRequest) (Reference, error) {
 	}
 	filename := filenameForWrite(req.Filename, req.Name)
 	path := filepath.Join(l.dir(), filename)
-	if err := os.WriteFile(path, []byte(ensureTrailingNewline(content)), 0o644); err != nil {
+	data := []byte(ensureTrailingNewline(content))
+	var err error
+	if exclusive {
+		err = createReferenceFile(l.dir(), filename, data)
+	} else {
+		err = os.WriteFile(path, data, 0o644)
+	}
+	if err != nil {
 		return Reference{}, err
 	}
 	ref, err := l.referenceFromFile(path)
@@ -153,6 +170,37 @@ func (l *Library) Write(req WriteRequest) (Reference, error) {
 		ref.Description = truncateRunes(strings.TrimSpace(req.Description), MaxDescriptionSize)
 	}
 	return ref, nil
+}
+
+func createReferenceFile(dir, filename string, data []byte) error {
+	temp, err := os.CreateTemp(dir, "."+filename+".denova-*")
+	if err != nil {
+		return err
+	}
+	tempPath := temp.Name()
+	defer os.Remove(tempPath)
+	if err := temp.Chmod(0o644); err != nil {
+		temp.Close()
+		return err
+	}
+	if _, err := temp.Write(data); err != nil {
+		temp.Close()
+		return err
+	}
+	if err := temp.Sync(); err != nil {
+		temp.Close()
+		return err
+	}
+	if err := temp.Close(); err != nil {
+		return err
+	}
+	if err := os.Link(tempPath, filepath.Join(dir, filename)); err != nil {
+		if os.IsExist(err) {
+			return fmt.Errorf("文风参考已存在: %s", StoragePath(filename))
+		}
+		return err
+	}
+	return nil
 }
 
 func (l *Library) Read(path string) (FileDocument, error) {

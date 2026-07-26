@@ -95,7 +95,6 @@ export function StoryStage({ workspace, styleSceneSuggestions = [], stories = []
   const skillCommands = useSkillCommands({
     agentKey: 'interactive_story',
     workspace,
-    fallbackEnabled: true,
   })
   const snapshotKey = storyStageSnapshotKey(storyId, branchId, snapshot)
   const stageKey = `${workspace || 'current'}:${storyId || 'none'}:${branchId || snapshot?.branch_id || 'main'}`

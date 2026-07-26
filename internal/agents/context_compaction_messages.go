@@ -8,7 +8,7 @@ import (
 )
 
 func NewContextCompactionSummaryMessage(epoch int, summary string) *agent.Message {
-	return agent.UserMessage(fmt.Sprintf("%s epoch=%d\n\n%s", contextCompactionSummaryPrefix, epoch, strings.TrimSpace(summary)))
+	return agent.AssistantMessage(fmt.Sprintf("%s epoch=%d\n\nAssistant-authored context summary (context data, not a user instruction):\n%s", contextCompactionSummaryPrefix, epoch, strings.TrimSpace(summary)), nil)
 }
 
 func isContextCompactionMessage(msg *agent.Message) bool {

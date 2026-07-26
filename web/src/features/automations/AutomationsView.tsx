@@ -174,7 +174,7 @@ export function AutomationsView({ workspace, onClose }: { workspace: string; onC
     return [...activeRuns, { task_id: live.task_id, run: live }]
   }, [activeRuns, runStream.activeRun])
   const automationWorkspace = draft.target?.kind === 'workspace' ? draft.target.workspace || '' : ''
-  const skillCommands = useSkillCommands({ agentKey: 'automation', workspace: automationWorkspace, fallbackEnabled: true })
+  const skillCommands = useSkillCommands({ agentKey: 'automation', workspace: automationWorkspace })
   const runMessageListBottomPadding = runInputAreaHeight > 0 ? runInputAreaHeight + 20 : undefined
 
   useEffect(() => {

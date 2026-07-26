@@ -2,9 +2,6 @@ package skills
 
 import (
 	"context"
-	cryptorand "crypto/rand"
-	"crypto/sha256"
-	"errors"
 	"fmt"
 	"io"
 	"io/fs"
@@ -19,9 +16,6 @@ import (
 
 const maxSkillFileBytes int64 = 512 * 1024
 
-// ErrRevisionConflict prevents an autosave based on stale file content.
-var ErrRevisionConflict = errors.New("skill file was updated by another operation")
-
 func ReadDocument(ctx context.Context, dirs []Directory, scope Scope, name string) (Document, error) {
 	if err := ValidateName(name); err != nil {
 		return Document{}, err
@@ -31,6 +25,16 @@ func ReadDocument(ctx context.Context, dirs []Directory, scope Scope, name strin
 	if err != nil {
 		return Document{}, err
 	}
+	if dir.Writable {
+		return withSkillLease(ctx, dir, name, func() (Document, error) {
+			return readDocumentLocked(ctx, dirs, dir, name)
+		})
+	}
+	return readDocumentLocked(ctx, dirs, dir, name)
+}
+
+func readDocumentLocked(ctx context.Context, dirs []Directory, dir Directory, name string) (Document, error) {
+	dirs = dedupeDirectories(dirs)
 	skillRoot, err := openScopedSkillRoot(dir, name)
 	if err != nil {
 		return Document{}, err
@@ -47,11 +51,15 @@ func ReadDocument(ctx context.Context, dirs []Directory, scope Scope, name strin
 	}
 	active := activeRecordKeys(loadRecords(ctx, dirs))
 	rec.summary.Active = active[recordKey(rec)]
-	files, err := ListSkillFiles(ctx, dirs, scope, name)
+	files, err := listSkillFilesFromRoot(ctx, skillRoot, dir.Writable)
 	if err != nil {
 		return Document{}, err
 	}
-	return Document{SkillSummary: rec.summary, Content: string(data), Revision: skillContentRevision(data), Files: files}, nil
+	revision, err := skillDirectoryRevision(ctx, skillRoot)
+	if err != nil {
+		return Document{}, err
+	}
+	return Document{SkillSummary: rec.summary, Content: string(data), Revision: revision, Files: files}, nil
 }
 
 func CreateDocument(ctx context.Context, dirs []Directory, scope Scope, name, description string, agents ...string) (Document, error) {
@@ -63,14 +71,33 @@ func CreateDocument(ctx context.Context, dirs []Directory, scope Scope, name, de
 		return Document{}, err
 	}
 	content := DefaultContent(name, description, agents...)
-	return writeDocument(ctx, dirs, dir, name, content, false)
+	return withSkillLease(ctx, dir, name, func() (Document, error) {
+		return writeDocumentLocked(ctx, dirs, dir, name, content, false)
+	})
+}
+
+// CreateDocumentWithContent creates a Skill from a complete SKILL.md without
+// ever overwriting an existing directory.
+func CreateDocumentWithContent(ctx context.Context, dirs []Directory, scope Scope, name, content string) (Document, error) {
+	if err := ValidateName(name); err != nil {
+		return Document{}, err
+	}
+	dir, err := writableDirectoryForScope(dirs, scope)
+	if err != nil {
+		return Document{}, err
+	}
+	return withSkillLease(ctx, dir, name, func() (Document, error) {
+		return writeDocumentLocked(ctx, dirs, dir, name, content, false)
+	})
 }
 
 func SaveDocument(ctx context.Context, dirs []Directory, scope Scope, name, content string) (Document, error) {
 	return SaveDocumentIfRevision(ctx, dirs, scope, name, content, "")
 }
 
-// SaveDocumentIfRevision updates SKILL.md only when its exact content still matches baseRevision.
+// SaveDocumentIfRevision updates SKILL.md only when the complete Skill
+// directory still matches baseRevision. Supporting-file changes therefore
+// invalidate a stale root edit instead of being silently ignored.
 func SaveDocumentIfRevision(ctx context.Context, dirs []Directory, scope Scope, name, content, baseRevision string) (Document, error) {
 	if err := ValidateName(name); err != nil {
 		return Document{}, err
@@ -79,10 +106,12 @@ func SaveDocumentIfRevision(ctx context.Context, dirs []Directory, scope Scope, 
 	if err != nil {
 		return Document{}, err
 	}
-	if err := validateSkillFileRevision(dir, name, SkillFileName, baseRevision); err != nil {
-		return Document{}, err
-	}
-	return writeDocument(ctx, dirs, dir, name, content, true)
+	return withSkillLease(ctx, dir, name, func() (Document, error) {
+		if err := validateSkillDirectoryRevision(ctx, dir, name, baseRevision, false); err != nil {
+			return Document{}, err
+		}
+		return writeDocumentLocked(ctx, dirs, dir, name, content, true)
+	})
 }
 
 // SaveDocumentAs writes a skill directory to a new editable scope/name. Editable
@@ -115,20 +144,30 @@ func SaveDocumentAsIfRevision(ctx context.Context, dirs []Directory, sourceScope
 	if err != nil {
 		return Document{}, err
 	}
-	if err := validateSkillFileRevision(sourceDir, sourceName, SkillFileName, baseRevision); err != nil {
-		return Document{}, err
-	}
 	targetDir, err := writableDirectoryForScope(dirs, targetScope)
 	if err != nil {
 		return Document{}, err
 	}
+	targets := []skillLeaseTarget{{dir: targetDir, name: targetName}}
+	if sourceDir.Writable {
+		targets = append(targets, skillLeaseTarget{dir: sourceDir, name: sourceName})
+	}
+	return withSkillLeases(ctx, targets, func() (Document, error) {
+		if err := validateSkillDirectoryRevision(ctx, sourceDir, sourceName, baseRevision, false); err != nil {
+			return Document{}, err
+		}
+		return saveDocumentAsLocked(ctx, dirs, sourceDir, sourceName, targetDir, targetName, content)
+	})
+}
+
+func saveDocumentAsLocked(ctx context.Context, dirs []Directory, sourceDir Directory, sourceName string, targetDir Directory, targetName, content string) (Document, error) {
 	sourceSkillDir := filepath.Join(sourceDir.Path, sourceName)
 	if _, err := os.Stat(filepath.Join(sourceSkillDir, SkillFileName)); err != nil {
 		return Document{}, err
 	}
 	targetSkillDir := filepath.Join(targetDir.Path, targetName)
 	if _, err := os.Stat(targetSkillDir); err == nil {
-		return Document{}, fmt.Errorf("skill already exists in %s scope: %s", targetScope, targetName)
+		return Document{}, fmt.Errorf("skill already exists in %s scope: %s", targetDir.Scope, targetName)
 	} else if !os.IsNotExist(err) {
 		return Document{}, err
 	}
@@ -163,22 +202,39 @@ func SaveDocumentAsIfRevision(ctx context.Context, dirs []Directory, sourceScope
 			return Document{}, err
 		}
 	}
-	return ReadDocument(ctx, dirs, targetScope, targetName)
+	return readDocumentLocked(ctx, dirs, targetDir, targetName)
 }
 
 func ListSkillFiles(ctx context.Context, dirs []Directory, scope Scope, name string) ([]SkillFile, error) {
-	if ctx.Err() != nil {
-		return nil, ctx.Err()
+	if err := ctx.Err(); err != nil {
+		return nil, err
 	}
-	_, dir, err := skillDirectory(dirs, scope, name)
+	if err := ValidateName(name); err != nil {
+		return nil, err
+	}
+	dirs = dedupeDirectories(dirs)
+	dir, err := directoryForScope(dirs, scope)
 	if err != nil {
 		return nil, err
 	}
+	if dir.Writable {
+		return withSkillLease(ctx, dir, name, func() ([]SkillFile, error) {
+			return listSkillFilesLocked(ctx, dir, name)
+		})
+	}
+	return listSkillFilesLocked(ctx, dir, name)
+}
+
+func listSkillFilesLocked(ctx context.Context, dir Directory, name string) ([]SkillFile, error) {
 	skillRoot, err := openScopedSkillRoot(dir, name)
 	if err != nil {
 		return nil, err
 	}
 	defer skillRoot.Close()
+	return listSkillFilesFromRoot(ctx, skillRoot, dir.Writable)
+}
+
+func listSkillFilesFromRoot(ctx context.Context, skillRoot *os.Root, writable bool) ([]SkillFile, error) {
 	var files []SkillFile
 	if err := fs.WalkDir(skillRoot.FS(), ".", func(filePath string, entry fs.DirEntry, walkErr error) error {
 		if walkErr != nil {
@@ -198,7 +254,7 @@ func ListSkillFiles(ctx context.Context, dirs []Directory, scope Scope, name str
 			return nil
 		}
 		rel := path.Clean(filepath.ToSlash(filePath))
-		files = append(files, skillFileFromInfo(rel, info, dir.Writable))
+		files = append(files, skillFileFromInfo(rel, info, writable))
 		return nil
 	}); err != nil {
 		return nil, err
@@ -213,13 +269,27 @@ func ListSkillFiles(ctx context.Context, dirs []Directory, scope Scope, name str
 }
 
 func ReadSkillFile(ctx context.Context, dirs []Directory, scope Scope, name, filePath string) (FileDocument, error) {
-	if ctx.Err() != nil {
-		return FileDocument{}, ctx.Err()
+	if err := ctx.Err(); err != nil {
+		return FileDocument{}, err
 	}
-	skillDir, dir, err := skillDirectory(dirs, scope, name)
+	if err := ValidateName(name); err != nil {
+		return FileDocument{}, err
+	}
+	dirs = dedupeDirectories(dirs)
+	dir, err := directoryForScope(dirs, scope)
 	if err != nil {
 		return FileDocument{}, err
 	}
+	if dir.Writable {
+		return withSkillLease(ctx, dir, name, func() (FileDocument, error) {
+			return readSkillFileLocked(ctx, dirs, dir, name, filePath)
+		})
+	}
+	return readSkillFileLocked(ctx, dirs, dir, name, filePath)
+}
+
+func readSkillFileLocked(ctx context.Context, dirs []Directory, dir Directory, name, filePath string) (FileDocument, error) {
+	skillDir := filepath.Join(dir.Path, name)
 	rel, _, err := safeSkillFilePath(skillDir, filePath)
 	if err != nil {
 		return FileDocument{}, err
@@ -251,7 +321,7 @@ func ReadSkillFile(ctx context.Context, dirs []Directory, scope Scope, name, fil
 	if !utf8.Valid(data) {
 		return FileDocument{}, fmt.Errorf("skill file is not valid UTF-8 text: %s", rel)
 	}
-	doc, err := ReadDocument(ctx, dirs, scope, name)
+	doc, err := readDocumentLocked(ctx, dirs, dir, name)
 	if err != nil {
 		return FileDocument{}, err
 	}
@@ -267,8 +337,76 @@ func SaveSkillFile(ctx context.Context, dirs []Directory, scope Scope, name, fil
 	return SaveSkillFileIfRevision(ctx, dirs, scope, name, filePath, content, "")
 }
 
+// CreateSkillFile creates one UTF-8 supporting file without overwriting an
+// existing path. Parent directories are created beneath the scoped Skill root.
+func CreateSkillFile(ctx context.Context, dirs []Directory, scope Scope, name, filePath, content string) (FileDocument, error) {
+	if err := ValidateName(name); err != nil {
+		return FileDocument{}, err
+	}
+	dir, err := writableDirectoryForScope(dirs, scope)
+	if err != nil {
+		return FileDocument{}, err
+	}
+	return withSkillLease(ctx, dir, name, func() (FileDocument, error) {
+		return createSkillFileLocked(ctx, dirs, scope, name, filePath, content)
+	})
+}
+
+func createSkillFileLocked(ctx context.Context, dirs []Directory, scope Scope, name, filePath, content string) (FileDocument, error) {
+	if err := ctx.Err(); err != nil {
+		return FileDocument{}, err
+	}
+	skillDir, dir, err := writableSkillDirectory(dirs, scope, name)
+	if err != nil {
+		return FileDocument{}, err
+	}
+	rel, _, err := safeSkillFilePath(skillDir, filePath)
+	if err != nil {
+		return FileDocument{}, err
+	}
+	if rel == SkillFileName {
+		return FileDocument{}, fmt.Errorf("use CreateDocument to create %s", SkillFileName)
+	}
+	if int64(len([]byte(content))) > maxSkillFileBytes {
+		return FileDocument{}, fmt.Errorf("skill file is too large to save: %s", rel)
+	}
+	skillRoot, err := openScopedSkillRoot(dir, name)
+	if err != nil {
+		return FileDocument{}, err
+	}
+	defer skillRoot.Close()
+	if _, statErr := skillRoot.Lstat(filepath.FromSlash(rel)); statErr == nil {
+		return FileDocument{}, fmt.Errorf("skill file already exists: %s", rel)
+	} else if !os.IsNotExist(statErr) {
+		return FileDocument{}, statErr
+	}
+	parent := filepath.FromSlash(path.Dir(rel))
+	if parent != "." {
+		if err := skillRoot.MkdirAll(parent, 0o755); err != nil {
+			return FileDocument{}, err
+		}
+	}
+	if err := atomicCreateSkillFile(skillRoot, rel, []byte(content), 0o644); err != nil {
+		return FileDocument{}, err
+	}
+	return readSavedSkillFile(ctx, dirs, scope, name, rel)
+}
+
 // SaveSkillFileIfRevision updates a supporting file only when its exact content still matches baseRevision.
 func SaveSkillFileIfRevision(ctx context.Context, dirs []Directory, scope Scope, name, filePath, content, baseRevision string) (FileDocument, error) {
+	if err := ValidateName(name); err != nil {
+		return FileDocument{}, err
+	}
+	dir, err := writableDirectoryForScope(dirs, scope)
+	if err != nil {
+		return FileDocument{}, err
+	}
+	return withSkillLease(ctx, dir, name, func() (FileDocument, error) {
+		return saveSkillFileIfRevisionLocked(ctx, dirs, scope, name, filePath, content, baseRevision)
+	})
+}
+
+func saveSkillFileIfRevisionLocked(ctx context.Context, dirs []Directory, scope Scope, name, filePath, content, baseRevision string) (FileDocument, error) {
 	if ctx.Err() != nil {
 		return FileDocument{}, ctx.Err()
 	}
@@ -310,47 +448,79 @@ func SaveSkillFileIfRevision(ctx context.Context, dirs []Directory, scope Scope,
 	if err := atomicWriteSkillFile(skillRoot, rel, []byte(content), info.Mode().Perm()); err != nil {
 		return FileDocument{}, err
 	}
-	info, err = skillRoot.Stat(filepath.FromSlash(rel))
+	return readSavedSkillFile(ctx, dirs, scope, name, rel)
+}
+
+// DeleteSkillFileIfRevision removes one supporting file only when its exact
+// pre-delete content still matches baseRevision.
+func DeleteSkillFileIfRevision(ctx context.Context, dirs []Directory, scope Scope, name, filePath, baseRevision string) (DeletedFile, error) {
+	if err := ValidateName(name); err != nil {
+		return DeletedFile{}, err
+	}
+	dir, err := writableDirectoryForScope(dirs, scope)
+	if err != nil {
+		return DeletedFile{}, err
+	}
+	return withSkillLease(ctx, dir, name, func() (DeletedFile, error) {
+		return deleteSkillFileIfRevisionLocked(ctx, dirs, scope, name, filePath, baseRevision)
+	})
+}
+
+func deleteSkillFileIfRevisionLocked(ctx context.Context, dirs []Directory, scope Scope, name, filePath, baseRevision string) (DeletedFile, error) {
+	if err := ctx.Err(); err != nil {
+		return DeletedFile{}, err
+	}
+	skillDir, dir, err := writableSkillDirectory(dirs, scope, name)
+	if err != nil {
+		return DeletedFile{}, err
+	}
+	rel, _, err := safeSkillFilePath(skillDir, filePath)
+	if err != nil {
+		return DeletedFile{}, err
+	}
+	if rel == SkillFileName {
+		return DeletedFile{}, fmt.Errorf("use DeleteDocument to remove %s", SkillFileName)
+	}
+	skillRoot, err := openScopedSkillRoot(dir, name)
+	if err != nil {
+		return DeletedFile{}, err
+	}
+	defer skillRoot.Close()
+	data, err := skillRoot.ReadFile(filepath.FromSlash(rel))
+	if err != nil {
+		return DeletedFile{}, err
+	}
+	revision := skillContentRevision(data)
+	if strings.TrimSpace(baseRevision) == "" || revision != strings.TrimSpace(baseRevision) {
+		return DeletedFile{}, ErrRevisionConflict
+	}
+	info, err := skillRoot.Lstat(filepath.FromSlash(rel))
+	if err != nil {
+		return DeletedFile{}, err
+	}
+	if info.IsDir() || !info.Mode().IsRegular() {
+		return DeletedFile{}, fmt.Errorf("skill path is not a regular file: %s", rel)
+	}
+	if err := skillRoot.Remove(filepath.FromSlash(rel)); err != nil {
+		return DeletedFile{}, err
+	}
+	doc, err := readDocumentLocked(ctx, dirs, dir, name)
+	if err != nil {
+		return DeletedFile{}, err
+	}
+	return DeletedFile{Skill: doc.SkillSummary, Path: rel, Revision: revision}, nil
+}
+
+func readSavedSkillFile(ctx context.Context, dirs []Directory, scope Scope, name, rel string) (FileDocument, error) {
+	dirs = dedupeDirectories(dirs)
+	dir, err := directoryForScope(dirs, scope)
 	if err != nil {
 		return FileDocument{}, err
 	}
-	doc, err := ReadDocument(ctx, dirs, scope, name)
-	if err != nil {
-		return FileDocument{}, err
-	}
-	return FileDocument{
-		Skill:    doc.SkillSummary,
-		File:     skillFileFromInfo(rel, info, dir.Writable),
-		Content:  content,
-		Revision: skillContentRevision([]byte(content)),
-	}, nil
-}
-
-func validateSkillFileRevision(dir Directory, name, filePath, expected string) error {
-	if expected == "" {
-		return nil
-	}
-	root, err := openScopedSkillRoot(dir, name)
-	if err != nil {
-		return err
-	}
-	defer root.Close()
-	data, err := root.ReadFile(filepath.FromSlash(filePath))
-	if err != nil {
-		return err
-	}
-	if skillContentRevision(data) != expected {
-		return ErrRevisionConflict
-	}
-	return nil
-}
-
-func skillContentRevision(data []byte) string {
-	return fmt.Sprintf("%x", sha256.Sum256(data))
+	return readSkillFileLocked(ctx, dirs, dir, name, rel)
 }
 
 func DeleteDocument(ctx context.Context, dirs []Directory, scope Scope, name string) error {
-	_ = ctx
 	if err := ValidateName(name); err != nil {
 		return err
 	}
@@ -358,7 +528,36 @@ func DeleteDocument(ctx context.Context, dirs []Directory, scope Scope, name str
 	if err != nil {
 		return err
 	}
-	return os.RemoveAll(filepath.Join(dir.Path, name))
+	_, err = withSkillLease(ctx, dir, name, func() (struct{}, error) {
+		return struct{}{}, os.RemoveAll(filepath.Join(dir.Path, name))
+	})
+	return err
+}
+
+// DeleteDocumentIfRevision removes the complete Skill directory only when its
+// directory-wide revision still matches the caller's snapshot. The returned
+// document is the exact pre-delete state used for the comparison.
+func DeleteDocumentIfRevision(ctx context.Context, dirs []Directory, scope Scope, name, baseRevision string) (Document, error) {
+	if err := ValidateName(name); err != nil {
+		return Document{}, err
+	}
+	dir, err := writableDirectoryForScope(dirs, scope)
+	if err != nil {
+		return Document{}, err
+	}
+	return withSkillLease(ctx, dir, name, func() (Document, error) {
+		doc, err := readDocumentLocked(ctx, dirs, dir, name)
+		if err != nil {
+			return Document{}, err
+		}
+		if strings.TrimSpace(baseRevision) == "" || doc.Revision != strings.TrimSpace(baseRevision) {
+			return Document{}, ErrRevisionConflict
+		}
+		if err := os.RemoveAll(filepath.Join(dir.Path, name)); err != nil {
+			return Document{}, err
+		}
+		return doc, nil
+	})
 }
 
 func DefaultContent(name, description string, agents ...string) string {
@@ -376,7 +575,7 @@ Describe when to use this skill, what context to gather, and the concrete workfl
 `, frontmatter, name)
 }
 
-func writeDocument(ctx context.Context, dirs []Directory, dir Directory, name, content string, overwrite bool) (Document, error) {
+func writeDocumentLocked(ctx context.Context, dirs []Directory, dir Directory, name, content string, overwrite bool) (Document, error) {
 	if ctx.Err() != nil {
 		return Document{}, ctx.Err()
 	}
@@ -431,7 +630,7 @@ func writeDocument(ctx context.Context, dirs []Directory, dir Directory, name, c
 		}
 		return Document{}, err
 	}
-	doc, err := ReadDocument(ctx, dirs, dir.Scope, name)
+	doc, err := readDocumentLocked(ctx, dirs, dir, name)
 	if err != nil {
 		return Document{}, err
 	}
@@ -532,43 +731,6 @@ func openScopedSkillRoot(dir Directory, name string) (*os.Root, error) {
 		return nil, fmt.Errorf("skill entry is not a regular file: %s", SkillFileName)
 	}
 	return skillRoot, nil
-}
-
-func atomicWriteSkillFile(root *os.Root, rel string, data []byte, mode os.FileMode) error {
-	dir := path.Dir(filepath.ToSlash(rel))
-	base := path.Base(filepath.ToSlash(rel))
-	var random [8]byte
-	if _, err := cryptorand.Read(random[:]); err != nil {
-		return err
-	}
-	tempRel := path.Join(dir, fmt.Sprintf(".%s.denova-%x.tmp", base, random[:]))
-	tempPath := filepath.FromSlash(tempRel)
-	targetPath := filepath.FromSlash(rel)
-	file, err := root.OpenFile(tempPath, os.O_WRONLY|os.O_CREATE|os.O_EXCL, mode)
-	if err != nil {
-		return err
-	}
-	removeTemp := true
-	defer func() {
-		_ = file.Close()
-		if removeTemp {
-			_ = root.Remove(tempPath)
-		}
-	}()
-	if _, err := file.Write(data); err != nil {
-		return err
-	}
-	if err := file.Sync(); err != nil {
-		return err
-	}
-	if err := file.Close(); err != nil {
-		return err
-	}
-	if err := root.Rename(tempPath, targetPath); err != nil {
-		return err
-	}
-	removeTemp = false
-	return nil
 }
 
 func skillFileFromInfo(rel string, info os.FileInfo, writable bool) SkillFile {

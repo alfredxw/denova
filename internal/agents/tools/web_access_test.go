@@ -3,35 +3,94 @@ package tools
 import (
 	"context"
 	"encoding/json"
+	"errors"
+	"fmt"
 	"strings"
+	"sync"
 	"testing"
+
+	agent "github.com/alfredxw/denova/agent"
 
 	"denova/config"
 	"denova/internal/webaccess"
 )
 
 type stubWebAccessClient struct {
-	fetchResponse webaccess.FetchResponse
+	searchResponse webaccess.SearchResponse
+	fetchResponse  webaccess.FetchResponse
+}
+
+type managedWebAccessProbe struct {
+	mu      sync.Mutex
+	created int
+	closed  int
+}
+
+type managedWebAccessStub struct{ probe *managedWebAccessProbe }
+
+func (*managedWebAccessStub) Search(context.Context, webaccess.SearchRequest) (webaccess.SearchResponse, error) {
+	return webaccess.SearchResponse{Schema: webaccess.SearchResponseSchema, Status: webaccess.SearchStatusNoResults}, nil
+}
+
+func (*managedWebAccessStub) Fetch(_ context.Context, request webaccess.FetchRequest) (webaccess.FetchResponse, error) {
+	return webaccess.FetchResponse{
+		Schema: webaccess.FetchResponseSchema, Status: webaccess.FetchStatusSuccess,
+		FetchMethod: webaccess.FetchMethodDirectHTTP, URL: request.URL, FinalURL: request.URL,
+		Content: "ok",
+	}, nil
+}
+
+func (client *managedWebAccessStub) Close(context.Context) error {
+	client.probe.mu.Lock()
+	client.probe.closed++
+	client.probe.mu.Unlock()
+	return nil
+}
+
+type webAccessLifecycleModel struct {
+	mu    sync.Mutex
+	calls int
+}
+
+func (model *webAccessLifecycleModel) Generate(context.Context, []*agent.Message, ...agent.ModelOption) (*agent.Message, error) {
+	model.mu.Lock()
+	model.calls++
+	call := model.calls
+	model.mu.Unlock()
+	if call%2 == 1 {
+		return agent.AssistantMessage("", []agent.ToolCall{{
+			ID: fmt.Sprintf("fetch-%d", call), Type: "function",
+			Function: agent.FunctionCall{Name: webFetchToolName, Arguments: `{"url":"https://example.com"}`},
+		}}), nil
+	}
+	return agent.AssistantMessage("done", nil), nil
+}
+
+func (*webAccessLifecycleModel) Stream(context.Context, []*agent.Message, ...agent.ModelOption) (*agent.StreamReader[*agent.Message], error) {
+	return nil, errors.New("stream is not used")
 }
 
 func (stub stubWebAccessClient) Search(context.Context, webaccess.SearchRequest) (webaccess.SearchResponse, error) {
-	return webaccess.SearchResponse{}, nil
+	return stub.searchResponse, nil
 }
 
 func (stub stubWebAccessClient) Fetch(context.Context, webaccess.FetchRequest) (webaccess.FetchResponse, error) {
 	return stub.fetchResponse, nil
 }
 
-func TestNewWebAccessToolsRegistersSearchAndFetch(t *testing.T) {
-	registered, err := newWebAccessTools(&config.Config{WebAccess: config.DefaultWebAccessConfig()})
+func TestWebAccessToolsAreConstructedWithIndependentCapabilities(t *testing.T) {
+	client := stubWebAccessClient{}
+	search, err := newWebSearchTool(client, "web_search_capability")
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(registered) != 2 {
-		t.Fatalf("expected web_search and web_fetch, got %d tools", len(registered))
+	fetch, err := newWebFetchTool(client, "web_fetch_capability")
+	if err != nil {
+		t.Fatal(err)
 	}
 	wantNames := []string{config.AgentToolWebSearch, webFetchToolName}
-	for index, tool := range registered {
+	wantCapabilities := []string{"web_search_capability", "web_fetch_capability"}
+	for index, tool := range []agent.ToolDefinition{search, fetch} {
 		info, err := tool.Tool.Info(context.Background())
 		if err != nil {
 			t.Fatal(err)
@@ -39,25 +98,74 @@ func TestNewWebAccessToolsRegistersSearchAndFetch(t *testing.T) {
 		if info.Name != wantNames[index] {
 			t.Fatalf("tool %d name = %q, want %q", index, info.Name, wantNames[index])
 		}
+		if tool.Descriptor.Capability != wantCapabilities[index] {
+			t.Fatalf("tool %s capability = %q, want %q", info.Name, tool.Descriptor.Capability, wantCapabilities[index])
+		}
 	}
 }
 
-func TestNewWebAccessToolsFillsOmittedRuntimeLimits(t *testing.T) {
-	registered, err := newWebAccessTools(&config.Config{})
+func TestNewWebAccessClientFillsOmittedRuntimeLimits(t *testing.T) {
+	client, err := newWebAccessClient(&config.Config{})
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(registered) != 2 {
-		t.Fatalf("expected two web tools, got %d", len(registered))
+	if client == nil {
+		t.Fatal("web access client is nil")
+	}
+}
+
+func TestInvocationWebAccessClientClosesOneRuntimePerAgentRun(t *testing.T) {
+	probe := &managedWebAccessProbe{}
+	client, err := newInvocationWebAccessClient(func() (managedWebAccessClient, error) {
+		probe.mu.Lock()
+		probe.created++
+		probe.mu.Unlock()
+		return &managedWebAccessStub{probe: probe}, nil
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	fetch, err := newWebFetchTool(client, config.AgentToolWebFetch)
+	if err != nil {
+		t.Fatal(err)
+	}
+	native, err := agent.NewAgent(context.Background(), agent.AgentConfig{
+		Name: "web-access-lifecycle", Model: &webAccessLifecycleModel{}, Tools: []agent.ToolDefinition{fetch},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	for run := 0; run < 2; run++ {
+		events := agent.NewRunner(agent.RunnerConfig{Agent: native}).Query(context.Background(), "fetch")
+		for {
+			event, ok := events.Next()
+			if !ok {
+				break
+			}
+			if event != nil && event.Err != nil {
+				t.Fatal(event.Err)
+			}
+		}
+	}
+	probe.mu.Lock()
+	created, closed := probe.created, probe.closed
+	probe.mu.Unlock()
+	if created != 2 || closed != 2 {
+		t.Fatalf("managed web clients created=%d closed=%d, want 2/2", created, closed)
 	}
 }
 
 func TestWebAccessToolsExposeEvidenceCitationContract(t *testing.T) {
-	registered, err := buildWebAccessTools(stubWebAccessClient{})
+	client := stubWebAccessClient{}
+	search, err := newWebSearchTool(client, "web_search")
 	if err != nil {
 		t.Fatal(err)
 	}
-	for _, tool := range registered {
+	fetch, err := newWebFetchTool(client, "web_fetch")
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, tool := range []agent.ToolDefinition{search, fetch} {
 		info, err := tool.Tool.Info(context.Background())
 		if err != nil {
 			t.Fatal(err)
@@ -86,11 +194,10 @@ func TestWebFetchToolReturnsStructuredRecoveryResult(t *testing.T) {
 		URL:             "https://example.com/article",
 		FinalURL:        "https://example.com/article",
 	}
-	registered, err := buildWebAccessTools(stubWebAccessClient{fetchResponse: want})
+	fetchTool, err := newWebFetchTool(stubWebAccessClient{fetchResponse: want}, "web_fetch")
 	if err != nil {
 		t.Fatal(err)
 	}
-	fetchTool := registered[1]
 	info, err := fetchTool.Tool.Info(context.Background())
 	if err != nil {
 		t.Fatal(err)
@@ -108,12 +215,33 @@ func TestWebFetchToolReturnsStructuredRecoveryResult(t *testing.T) {
 	if err := json.Unmarshal([]byte(output), &got); err != nil {
 		t.Fatalf("web_fetch output is not JSON: %v\n%s", err, output)
 	}
-	if got.Status != want.Status || got.RetryStrategy != want.RetryStrategy || got.SuggestedAction != want.SuggestedAction || len(got.Attempts) != 1 {
+	if got.Schema != webaccess.FetchResponseSchema || got.Status != want.Status || got.RetryStrategy != want.RetryStrategy || got.SuggestedAction != want.SuggestedAction || len(got.Attempts) != 1 {
 		t.Fatalf("web_fetch recovery output = %+v, want %+v", got, want)
 	}
 	for _, successOnlyField := range []string{`"fetch_method"`, `"content_type"`, `"content"`, `"start_index"`, `"warning"`} {
 		if strings.Contains(output, successOnlyField) {
 			t.Fatalf("blocked web_fetch output should omit success-only field %s: %s", successOnlyField, output)
 		}
+	}
+}
+
+func TestWebSearchToolReturnsVersionedResult(t *testing.T) {
+	searchTool, err := newWebSearchTool(stubWebAccessClient{searchResponse: webaccess.SearchResponse{
+		Status: webaccess.SearchStatusNoResults,
+		Query:  "denova",
+	}}, "web_search")
+	if err != nil {
+		t.Fatal(err)
+	}
+	output, err := runToolForTest(context.Background(), searchTool, `{"query":"denova"}`)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var got webaccess.SearchResponse
+	if err := json.Unmarshal([]byte(output), &got); err != nil {
+		t.Fatal(err)
+	}
+	if got.Schema != webaccess.SearchResponseSchema || got.Status != webaccess.SearchStatusNoResults {
+		t.Fatalf("web_search result = %+v", got)
 	}
 }

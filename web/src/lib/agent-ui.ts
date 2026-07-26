@@ -33,6 +33,7 @@ type AgentDataPayload = Record<string, unknown>
 
 export type AgentDataParts = {
   'agent-activity': AgentDataPayload
+  'agent-ask': AgentDataPayload
   'agent-clear': AgentDataPayload
   'agent-context-compaction': AgentDataPayload
   'agent-error': AgentDataPayload
@@ -453,8 +454,8 @@ function toolPartStateRank(state: string) {
 }
 
 function dataPartStatusRank(status: string) {
-  if (status === 'success' || status === 'error') return 2
-  if (status === 'running') return 1
+  if (status === 'success' || status === 'error' || status === 'answered' || status === 'cancelled') return 2
+  if (status === 'running' || status === 'pending') return 1
   return 0
 }
 

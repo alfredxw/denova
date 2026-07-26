@@ -11,22 +11,23 @@ import (
 )
 
 type ToolMutation struct {
-	ToolName           string     `json:"tool_name"`
-	ToolCallID         string     `json:"tool_call_id,omitempty"`
-	Workspace          string     `json:"workspace,omitempty"`
-	Target             string     `json:"target,omitempty"`
-	Source             ToolSource `json:"source"`
-	RequiresPostCheck  bool       `json:"requires_post_check"`
-	IdempotencyKey     string     `json:"idempotency_key,omitempty"`
-	LoreItemIDs        []string   `json:"lore_item_ids,omitempty"`
-	DeletedLoreItemIDs []string   `json:"deleted_lore_item_ids,omitempty"`
-	ChangeGroupID      string     `json:"change_group_id,omitempty"`
-	ReviewThreadID     string     `json:"review_thread_id,omitempty"`
-	ChangeSetID        string     `json:"change_set_id,omitempty"`
-	BaseRevision       string     `json:"base_revision,omitempty"`
-	Revision           string     `json:"revision,omitempty"`
-	ReviewStatus       string     `json:"review_status,omitempty"`
-	ApplyState         string     `json:"apply_state,omitempty"`
+	ToolName           string              `json:"tool_name"`
+	ToolCallID         string              `json:"tool_call_id,omitempty"`
+	Workspace          string              `json:"workspace,omitempty"`
+	Target             string              `json:"target,omitempty"`
+	Source             ToolSource          `json:"source"`
+	MutationScope      ToolMutationScope   `json:"mutation_scope"`
+	PostCheck          ToolPostCheckPolicy `json:"post_check"`
+	IdempotencyKey     string              `json:"idempotency_key,omitempty"`
+	LoreItemIDs        []string            `json:"lore_item_ids,omitempty"`
+	DeletedLoreItemIDs []string            `json:"deleted_lore_item_ids,omitempty"`
+	ChangeGroupID      string              `json:"change_group_id,omitempty"`
+	ReviewThreadID     string              `json:"review_thread_id,omitempty"`
+	ChangeSetID        string              `json:"change_set_id,omitempty"`
+	BaseRevision       string              `json:"base_revision,omitempty"`
+	Revision           string              `json:"revision,omitempty"`
+	ReviewStatus       string              `json:"review_status,omitempty"`
+	ApplyState         string              `json:"apply_state,omitempty"`
 }
 
 type mutationTracker struct {
@@ -36,16 +37,16 @@ type mutationTracker struct {
 }
 
 type trackedToolCall struct {
-	id                string
-	name              string
-	args              strings.Builder
-	target            string
-	itemIDs           []string
-	deleteID          []string
-	change            producttools.WorkspaceChangeReceipt
-	source            ToolSource
-	mutatesWorkspace  bool
-	requiresPostCheck bool
+	id            string
+	name          string
+	args          strings.Builder
+	target        string
+	itemIDs       []string
+	deleteID      []string
+	change        producttools.WorkspaceChangeReceipt
+	source        ToolSource
+	mutationScope ToolMutationScope
+	postCheck     ToolPostCheckPolicy
 }
 
 func newMutationTracker() *mutationTracker {
@@ -80,7 +81,7 @@ func (t *mutationTracker) Mutations() []ToolMutation {
 		if call == nil {
 			continue
 		}
-		if !call.mutatesWorkspace {
+		if call.mutationScope != ToolMutationWorkspace {
 			continue
 		}
 		args := call.args.String()
@@ -94,7 +95,8 @@ func (t *mutationTracker) Mutations() []ToolMutation {
 			Workspace:          call.change.Workspace,
 			Target:             filepath.ToSlash(strings.TrimSpace(target)),
 			Source:             call.source,
-			RequiresPostCheck:  call.requiresPostCheck,
+			MutationScope:      call.mutationScope,
+			PostCheck:          call.postCheck,
 			IdempotencyKey:     toolIdempotencyKey(call.name, args),
 			LoreItemIDs:        uniqueStrings(call.itemIDs),
 			DeletedLoreItemIDs: uniqueStrings(call.deleteID),
@@ -120,8 +122,8 @@ func (t *mutationTracker) observeToolCall(data any) {
 	defer t.mu.Unlock()
 	call := t.ensureCallLocked(id, name)
 	call.source = ToolSource(eventDataString(data, "source"))
-	call.mutatesWorkspace = eventDataBool(data, "mutates_workspace")
-	call.requiresPostCheck = eventDataBool(data, "requires_post_check")
+	call.mutationScope = ToolMutationScope(eventDataString(data, "mutation_scope"))
+	call.postCheck = ToolPostCheckPolicy(eventDataString(data, "post_check"))
 	if args := eventDataString(data, "args"); args != "" {
 		call.args.WriteString(args)
 	}
@@ -170,13 +172,17 @@ func (t *mutationTracker) observeToolResult(data any) {
 	call := t.ensureCallLocked(id, name)
 	if source := eventDataString(data, "source"); source != "" {
 		call.source = ToolSource(source)
-		call.mutatesWorkspace = eventDataBool(data, "mutates_workspace")
-		call.requiresPostCheck = eventDataBool(data, "requires_post_check")
+	}
+	if scope := eventDataString(data, "mutation_scope"); scope != "" {
+		call.mutationScope = ToolMutationScope(scope)
+	}
+	if policy := eventDataString(data, "post_check"); policy != "" {
+		call.postCheck = ToolPostCheckPolicy(policy)
 	}
 	if manifest, ok := parseToolResultManifest(call.name, eventDataString(data, "content")); ok {
 		call.source = manifest.Source
-		call.mutatesWorkspace = manifest.MutatesWorkspace
-		call.requiresPostCheck = manifest.RequiresPostCheck
+		call.mutationScope = manifest.MutationScope
+		call.postCheck = manifest.PostCheck
 	}
 	if target := eventDataString(data, "target"); target != "" {
 		call.target = target
@@ -221,13 +227,13 @@ func workspaceChangeReceiptFromEventData(data any) (producttools.WorkspaceChange
 
 func toolMutationFromExecutionRecord(record ToolExecutionRecord) (ToolMutation, bool) {
 	manifest := manifestForDefinition(record.ToolName, record.Descriptor)
-	if !manifest.MutatesWorkspace || !strings.EqualFold(strings.TrimSpace(record.Status), "success") {
+	if manifest.MutationScope != ToolMutationWorkspace || !strings.EqualFold(strings.TrimSpace(record.Status), "success") {
 		return ToolMutation{}, false
 	}
 	mutation := ToolMutation{
-		ToolName: manifest.Name, ToolCallID: strings.TrimSpace(record.ToolCallID),
+		ToolName: manifest.Name, ToolCallID: strings.TrimSpace(record.ExecutionID),
 		Workspace: strings.TrimSpace(record.Workspace), Target: filepath.ToSlash(strings.TrimSpace(record.Target)),
-		Source: manifest.Source, RequiresPostCheck: manifest.RequiresPostCheck,
+		Source: manifest.Source, MutationScope: manifest.MutationScope, PostCheck: manifest.PostCheck,
 		IdempotencyKey: strings.TrimSpace(record.IdempotencyKey),
 		ChangeGroupID:  strings.TrimSpace(record.ChangeGroupID), ReviewThreadID: strings.TrimSpace(record.ReviewThreadID),
 		ChangeSetID: strings.TrimSpace(record.ChangeSetID), BaseRevision: strings.TrimSpace(record.BaseRevision),

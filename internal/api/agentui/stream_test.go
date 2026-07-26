@@ -25,9 +25,9 @@ func TestStreamEncoderMapsAgentEventsToUIStream(t *testing.T) {
 			"turn_version_index": 0,
 		}},
 		{Type: "chunk", Data: map[string]any{"content": "正文", "run_id": "run-1"}},
-		{Type: "tool_call", Data: map[string]any{"id": "tool-1", "name": "read_file", "args": `{"path"`}},
+		{Type: "tool_call", Data: map[string]any{"id": "tool-1", "name": "read", "args": `{"path"`}},
 		{Type: "tool_args_delta", Data: map[string]any{"id": "tool-1", "delta": `:"a.md"}`}},
-		{Type: "tool_result", Data: map[string]any{"id": "tool-1", "name": "read_file", "content": "ok"}},
+		{Type: "tool_result", Data: map[string]any{"id": "tool-1", "name": "read", "content": "ok"}},
 		{Type: "workspace_change", Data: map[string]any{
 			"id":              "tool-change-1",
 			"change_group_id": "run-1",
@@ -38,6 +38,7 @@ func TestStreamEncoderMapsAgentEventsToUIStream(t *testing.T) {
 		{Type: "context_compaction", Data: map[string]any{"id": "ctx-1", "content": "压缩完成"}},
 		{Type: "token_usage", Data: map[string]any{"id": "usage-1", "total_tokens": 42}},
 		{Type: "plan_question", Data: map[string]any{"id": "question-1", "content": "选择方向"}},
+		{Type: "ask_pending", Data: map[string]any{"schema": "ask.pending.v1", "id": "ask-1", "tool_call_id": "ask-1", "status": "pending", "questions": []map[string]any{{"id": "q1", "question": "选择方向"}}}},
 		{Type: "proposed_plan", Data: map[string]any{"id": "plan-1", "content": "执行计划"}},
 		{Type: "rule_roll", Data: map[string]any{"id": "roll-1", "rule_roll": map[string]any{"label": "检定"}}},
 		{Type: "tool_result", Data: map[string]any{
@@ -82,6 +83,7 @@ func TestStreamEncoderMapsAgentEventsToUIStream(t *testing.T) {
 		DataTypeContextCompaction,
 		DataTypeTokenUsage,
 		DataTypePlanQuestion,
+		DataTypeAsk,
 		DataTypeProposedPlan,
 		DataTypeRuleRoll,
 		"tool-input-start",
@@ -99,6 +101,7 @@ func TestStreamEncoderMapsAgentEventsToUIStream(t *testing.T) {
 	assertChunk(t, chunks, DataTypeInteractiveImage, "id", "tool-2")
 	assertChunk(t, chunks, DataTypeWorkspaceChange, "id", "tool-change-1")
 	assertChunk(t, chunks, DataTypeRuleRoll, "id", "roll-1")
+	assertChunk(t, chunks, DataTypeAsk, "id", "ask-1")
 	assertChunk(t, chunks, "tool-input-available", "toolCallId", "tool-1")
 	assertStartMetadata(t, chunks[0])
 }
@@ -122,6 +125,56 @@ func TestStreamEncoderUsesPersistedDisplaySegmentIDs(t *testing.T) {
 	assertChunk(t, chunks, "reasoning-start", "id", "run-order-display-002-thinking")
 	assertChunkAgentMetadata(t, chunks, "text-start", "display_segment_id", "run-order-display-001-assistant")
 	assertChunkAgentMetadata(t, chunks, "reasoning-start", "display_segment_id", "run-order-display-002-thinking")
+}
+
+func TestStreamEncoderPreservesFailedAndIncompleteToolStates(t *testing.T) {
+	var out bytes.Buffer
+	encoder := NewStreamEncoder(&out)
+
+	failedIDs := []string{"failed-tool-1", "failed-tool-2", "failed-tool-3"}
+	for index, status := range []string{"error", "blocked", "skipped"} {
+		id := failedIDs[index]
+		if err := encoder.WriteEvent(agents.Event{Type: "tool_call", Data: map[string]any{
+			"id": id, "name": "todo", "args": `{"plan":[]}`,
+		}}); err != nil {
+			t.Fatal(err)
+		}
+		if err := encoder.WriteEvent(agents.Event{Type: "tool_result", Data: map[string]any{
+			"id": id, "name": "todo", "status": status, "content": "did not apply",
+		}}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := encoder.WriteEvent(agents.Event{Type: "tool_call", Data: map[string]any{
+		"id": "unfinished-tool", "name": "read", "args": `{"path":"draft.md"}`,
+	}}); err != nil {
+		t.Fatal(err)
+	}
+	if err := encoder.Finish("stop"); err != nil {
+		t.Fatal(err)
+	}
+
+	chunks, done := parseUIStreamChunks(t, out.String())
+	if !done {
+		t.Fatal("stream did not finish")
+	}
+	errorChunks := 0
+	for _, chunk := range chunks {
+		if chunk["type"] != "tool-output-error" {
+			continue
+		}
+		errorChunks++
+		errorText, _ := chunk["errorText"].(string)
+		if strings.TrimSpace(errorText) == "" {
+			t.Fatalf("tool error chunk omitted errorText: %#v", chunk)
+		}
+	}
+	if errorChunks != 4 {
+		t.Fatalf("tool-output-error chunks = %d, want 4: %#v", errorChunks, chunks)
+	}
+	for _, id := range []string{"failed-tool-1", "failed-tool-2", "failed-tool-3", "unfinished-tool"} {
+		assertChunk(t, chunks, "tool-output-error", "toolCallId", id)
+	}
 }
 
 func parseUIStreamChunks(t *testing.T, raw string) ([]map[string]any, bool) {

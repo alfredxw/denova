@@ -1,6 +1,7 @@
 package runtime
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
@@ -111,7 +112,7 @@ func TestFileJournalCheckpointRestoresAllPendingObligations(t *testing.T) {
 	}
 }
 
-func TestFileJournalCheckpointCorruptionFallsBackToPreviousGeneration(t *testing.T) {
+func TestFileJournalCorruptActiveSnapshotReconstructsCanonicalCheckpointFromPrevious(t *testing.T) {
 	root := t.TempDir()
 	ref := checkpointTestBinding("checkpoint-fallback")
 	_, journal := openCheckpointTestJournal(t, root, ref, FileJournalOptions{CheckpointTailRecords: 1, CheckpointTailBytes: 1 << 20})
@@ -200,10 +201,104 @@ func TestFileJournalCorruptActiveSnapshotReplaysCurrentGenerationTailFromPreviou
 	}
 }
 
-func TestFileJournalCorruptNewestManifestFallsBackToPriorManifest(t *testing.T) {
+func TestFileJournalColdReplayRejectsCorruptCanonicalActiveTail(t *testing.T) {
+	for _, corruptActiveSnapshot := range []bool{false, true} {
+		name := "active_snapshot_valid"
+		if corruptActiveSnapshot {
+			name = "active_snapshot_reconstructed"
+		}
+		t.Run(name, func(t *testing.T) {
+			root := t.TempDir()
+			ref := checkpointTestBinding("canonical-tail-corruption-" + name)
+			store, journal := openCheckpointTestJournal(t, root, ref, FileJournalOptions{CheckpointTailRecords: 1, CheckpointTailBytes: 1 << 20})
+			state := newHarnessState(ref)
+			for _, id := range []CommandID{"one", "two"} {
+				appendAndReduceCheckpointEvents(t, journal, &state, []EventPayload{
+					CommandAcceptedEvent{CommandID: id, CommandKind: "test", OperationID: OperationID(id), Fingerprint: string(id)},
+				})
+				if err := journal.MaybeCheckpoint(context.Background(), &state); err != nil {
+					t.Fatal(err)
+				}
+			}
+			appendAndReduceCheckpointEvents(t, journal, &state, []EventPayload{
+				CommandAcceptedEvent{CommandID: "confirmed-active-tail", CommandKind: "test", OperationID: "confirmed-active-tail", Fingerprint: "confirmed-active-tail"},
+			})
+			confirmedCursor := state.cursor
+			activeTailPath := journal.tailPath
+			appendChecksumInvalidCompleteTransaction(t, activeTailPath, confirmedCursor+1, CommandAcceptedEvent{
+				CommandID: "corrupt-active-tail", CommandKind: "test", OperationID: "corrupt-active-tail", Fingerprint: "corrupt-active-tail",
+			})
+			if corruptActiveSnapshot {
+				activeSnapshot, err := journal.resolveGenerationFile(journal.activeGeneration.SnapshotFile)
+				if err != nil {
+					t.Fatal(err)
+				}
+				if err := os.WriteFile(activeSnapshot, []byte(`{"corrupt":true}`), 0o600); err != nil {
+					t.Fatal(err)
+				}
+			}
+			corruptTail, err := os.ReadFile(activeTailPath)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if err := journal.Close(); err != nil {
+				t.Fatal(err)
+			}
+
+			opened, err := store.OpenJournal(context.Background(), bindingJournalKey(ref))
+			if err != nil {
+				t.Fatal(err)
+			}
+			reopened := opened.(*fileJournal)
+			restored := newHarnessState(ref)
+			restored.cursor = confirmedCursor + 1000
+			stats, replayErr := reopened.ReplayHarnessState(context.Background(), &restored)
+			if replayErr == nil || !strings.Contains(replayErr.Error(), "checksum mismatch") {
+				t.Fatalf("cold replay error = %v, want canonical active-tail checksum failure", replayErr)
+			}
+			if stats.RecordsRead == 0 {
+				t.Fatalf("cold replay stats = %#v, want confirmed active-tail prefix to be scanned", stats)
+			}
+			if restored.cursor != confirmedCursor+1000 {
+				t.Fatalf("failed replay published downgraded cursor %d, want untouched sentinel %d", restored.cursor, confirmedCursor+1000)
+			}
+			if reopened.initialized || reopened.cursor != 0 {
+				t.Fatalf("failed replay made journal writable: initialized=%v cursor=%d", reopened.initialized, reopened.cursor)
+			}
+			if _, appendErr := reopened.Append(context.Background(), confirmedCursor, []EventPayload{CommandAcceptedEvent{
+				CommandID: "must-not-append", CommandKind: "test", OperationID: "must-not-append", Fingerprint: "must-not-append",
+			}}); appendErr == nil || !strings.Contains(appendErr.Error(), "checksum mismatch") {
+				t.Fatalf("append after corrupt cold replay error = %v, want fail-closed checksum error", appendErr)
+			}
+			assertFileBytesEqual(t, activeTailPath, corruptTail)
+			assertNoRecoveryBackup(t, activeTailPath)
+			if err := reopened.Close(); err != nil {
+				t.Fatal(err)
+			}
+
+			engine := NewScriptedEngine(EngineScript{})
+			recoveryRuntime, err := NewRuntime(engine, store, RuntimeConfig{})
+			if err != nil {
+				t.Fatal(err)
+			}
+			if _, openErr := recoveryRuntime.Open(context.Background(), ref); openErr == nil || !strings.Contains(openErr.Error(), "checksum mismatch") {
+				t.Fatalf("runtime cold open error = %v, want canonical active-tail checksum failure", openErr)
+			}
+			if len(engine.Requests()) != 0 {
+				t.Fatalf("engine restarted after corrupt cold replay: %#v", engine.Requests())
+			}
+			assertFileBytesEqual(t, activeTailPath, corruptTail)
+			if err := recoveryRuntime.Close(context.Background()); err != nil {
+				t.Fatal(err)
+			}
+		})
+	}
+}
+
+func TestFileJournalRejectsCorruptNewestManifestAfterActiveTailAppend(t *testing.T) {
 	root := t.TempDir()
 	ref := checkpointTestBinding("manifest-fallback")
-	_, journal := openCheckpointTestJournal(t, root, ref, FileJournalOptions{CheckpointTailRecords: 1, CheckpointTailBytes: 1 << 20})
+	store, journal := openCheckpointTestJournal(t, root, ref, FileJournalOptions{CheckpointTailRecords: 1, CheckpointTailBytes: 1 << 20})
 	state := newHarnessState(ref)
 	appendAndReduceCheckpointEvents(t, journal, &state, []EventPayload{CommandAcceptedEvent{CommandID: "one", CommandKind: "test", OperationID: "one", Fingerprint: "one"}})
 	if err := journal.MaybeCheckpoint(context.Background(), &state); err != nil {
@@ -211,6 +306,14 @@ func TestFileJournalCorruptNewestManifestFallsBackToPriorManifest(t *testing.T) 
 	}
 	appendAndReduceCheckpointEvents(t, journal, &state, []EventPayload{CommandAcceptedEvent{CommandID: "two", CommandKind: "test", OperationID: "two", Fingerprint: "two"}})
 	if err := journal.MaybeCheckpoint(context.Background(), &state); err != nil {
+		t.Fatal(err)
+	}
+	appendAndReduceCheckpointEvents(t, journal, &state, []EventPayload{
+		CommandAcceptedEvent{CommandID: "after-newest-activation", CommandKind: "test", OperationID: "after-newest-activation", Fingerprint: "after-newest-activation"},
+	})
+	activeTailPath := journal.tailPath
+	activeTail, err := os.ReadFile(activeTailPath)
+	if err != nil {
 		t.Fatal(err)
 	}
 	newestManifest := journal.generationManifestPath(journal.manifestSequence)
@@ -221,14 +324,55 @@ func TestFileJournalCorruptNewestManifestFallsBackToPriorManifest(t *testing.T) 
 		t.Fatal(err)
 	}
 
-	_, reopened := openCheckpointTestJournal(t, root, ref, FileJournalOptions{})
-	t.Cleanup(func() { _ = reopened.Close() })
-	restored := newHarnessState(ref)
-	if _, err := reopened.ReplayHarnessState(context.Background(), &restored); err != nil {
+	engine := NewScriptedEngine(EngineScript{})
+	recoveryRuntime, err := NewRuntime(engine, store, RuntimeConfig{})
+	if err != nil {
 		t.Fatal(err)
 	}
-	if restored.cursor != state.cursor {
-		t.Fatalf("prior manifest replay cursor = %d, want %d", restored.cursor, state.cursor)
+	if _, openErr := recoveryRuntime.Open(context.Background(), ref); openErr == nil ||
+		!strings.Contains(openErr.Error(), "newest file journal generation manifest") {
+		t.Fatalf("runtime cold open error = %v, want newest manifest corruption", openErr)
+	}
+	if len(engine.Requests()) != 0 {
+		t.Fatalf("engine restarted after newest manifest corruption: %#v", engine.Requests())
+	}
+	assertFileBytesEqual(t, activeTailPath, activeTail)
+	if err := recoveryRuntime.Close(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func appendChecksumInvalidCompleteTransaction(t *testing.T, path string, cursor Cursor, payload EventPayload) {
+	t.Helper()
+	diskEvent, err := encodeDurableEvent(Event{Cursor: cursor, Durability: EventDurable, Payload: payload})
+	if err != nil {
+		t.Fatal(err)
+	}
+	encoded, err := json.Marshal(journalTransaction{
+		Version: fileJournalVersion, Start: cursor, End: cursor, Events: []encodedEvent{diskEvent},
+		Checksum: strings.Repeat("0", sha256HexLength),
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	existing, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	corrupt := append(append(existing[:len(existing):len(existing)], encoded...), '\n')
+	if err := os.WriteFile(path, corrupt, 0o600); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func assertFileBytesEqual(t *testing.T, path string, want []byte) {
+	t.Helper()
+	got, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !bytes.Equal(got, want) {
+		t.Fatalf("file %s changed after fail-closed replay\n got: %q\nwant: %q", filepath.Base(path), got, want)
 	}
 }
 

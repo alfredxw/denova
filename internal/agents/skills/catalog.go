@@ -14,8 +14,9 @@ import (
 )
 
 type record struct {
-	skill   Skill
-	summary SkillSummary
+	skill     Skill
+	summary   SkillSummary
+	directory Directory
 }
 
 func SnapshotFor(ctx context.Context, dirs []Directory) (Snapshot, error) {
@@ -170,6 +171,7 @@ func parseRecord(ctx context.Context, dir Directory, path, data string) (record,
 			Content:       strings.TrimSpace(body),
 			BaseDirectory: baseDir,
 		},
+		directory: dir,
 		summary: SkillSummary{
 			Name:        fm.Name,
 			Description: fm.Description,

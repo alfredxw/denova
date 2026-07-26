@@ -119,8 +119,10 @@ func TestResolveExplicitSkillInvocationsSupportsInteractiveStoryAndToolPolicy(t 
 		t.Fatalf("interactive story skills = %#v", resolved)
 	}
 
-	disabled := false
-	cfg.AgentTools.InteractiveStory.Skills = &disabled
+	if cfg.AgentTools.InteractiveStory == nil {
+		cfg.AgentTools.InteractiveStory = config.AgentToolOverride{}
+	}
+	cfg.AgentTools.InteractiveStory[config.AgentToolSkills] = false
 	resolved, err = ResolveExplicitSkillInvocations(context.Background(), cfg, config.AgentKindInteractiveStory, "/scene-tone")
 	if err != nil {
 		t.Fatal(err)

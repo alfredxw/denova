@@ -275,6 +275,35 @@ func directorEventCardIndex(catalog []DirectorEvent) []DirectorEventCardIndex {
 func (s *Store) DirectorEventContext(storyID, branchID, sourceTurnID string) (EventOpportunity, DirectorEventRuntime, []DirectorEventCardIndex, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
+	opportunity, runtime, catalog, err := s.directorEventContextLocked(storyID, branchID, sourceTurnID)
+	if err != nil {
+		return EventOpportunity{}, DirectorEventRuntime{}, nil, err
+	}
+	var index []DirectorEventCardIndex
+	if opportunity.Due && opportunity.Kind == "new" {
+		index = directorEventCardIndex(catalog)
+	}
+	return opportunity, runtime, index, nil
+}
+
+// DirectorEventCardReadScope freezes the cards eligible for progressive
+// disclosure at the start of one Director run. The returned copy remains the
+// Adapter's authority even if story configuration changes while that run is
+// still executing.
+func (s *Store) DirectorEventCardReadScope(storyID, branchID, sourceTurnID string) ([]DirectorEvent, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	opportunity, _, catalog, err := s.directorEventContextLocked(storyID, branchID, sourceTurnID)
+	if err != nil {
+		return nil, err
+	}
+	if !opportunity.Due || opportunity.Kind != "new" {
+		return nil, nil
+	}
+	return append([]DirectorEvent(nil), catalog...), nil
+}
+
+func (s *Store) directorEventContextLocked(storyID, branchID, sourceTurnID string) (EventOpportunity, DirectorEventRuntime, []DirectorEvent, error) {
 	meta, snapshot, err := s.boundedStorySnapshotWithLimitLocked(storyID, branchID, maxStoryHistoryPageTurns)
 	if err != nil {
 		return EventOpportunity{}, DirectorEventRuntime{}, nil, err
@@ -295,41 +324,5 @@ func (s *Store) DirectorEventContext(storyID, branchID, sourceTurnID string) (Ev
 	if plan.Metadata.LastRun != nil && plan.Metadata.LastRun.SourceTurnID == sourceTurnID {
 		opportunity = plan.Metadata.LastRun.EventOpportunity
 	}
-	var index []DirectorEventCardIndex
-	if opportunity.Due && opportunity.Kind == "new" {
-		index = directorEventCardIndex(catalog)
-	}
-	return opportunity, runtime, index, nil
-}
-
-func (s *Store) ReadDirectorEventCards(storyID string, eventRefs []string) ([]DirectorEvent, error) {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	if len(eventRefs) > 8 {
-		return nil, fmt.Errorf("一次最多读取 8 张事件卡")
-	}
-	meta, _, err := s.boundedStorySnapshotWithLimitLocked(storyID, "", 1)
-	if err != nil {
-		return nil, err
-	}
-	catalog := DirectorEventCatalogFromStoryDirector(s.storyDirectorForMeta(meta))
-	byRef := make(map[string]DirectorEvent, len(catalog))
-	for _, event := range catalog {
-		byRef[event.ID] = event
-	}
-	result := make([]DirectorEvent, 0, len(eventRefs))
-	seen := map[string]bool{}
-	for _, ref := range eventRefs {
-		ref = strings.TrimSpace(ref)
-		if ref == "" || seen[ref] {
-			continue
-		}
-		event, ok := byRef[ref]
-		if !ok {
-			return nil, fmt.Errorf("事件卡不存在或不属于当前故事导演: %s", ref)
-		}
-		seen[ref] = true
-		result = append(result, event)
-	}
-	return result, nil
+	return opportunity, runtime, catalog, nil
 }

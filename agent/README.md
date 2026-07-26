@@ -25,7 +25,7 @@
 | `agent` | `Message`、`BaseChatModel`、`Tool`、`ToolDefinition`、唯一 `Registry`、native loop、middleware、typed event、runner 与 Agent/Host registry |
 | `agent/context` | 将带 `source`、`purpose` 和 byte limit 的片段增量装配为模型输入 |
 | `agent/session` | append-only transcript、`/clear` marker、revision/CAS store；不保存 UI 日志或领域状态 |
-| `agent/tools` | 基础 `read_file` / `grep` / `ls` / `glob` / `write_file` / `edit_file` / `execute` 实现、workspace adapter 和 definition factory；不维护第二份 registry |
+| `agent/tools` | 基础 `read` / `glob` / `grep` / `write` / `edit` / `bash` / `pwsh`、可扩展读取 adapter 和 definition factory；不维护第二份 registry |
 | `agent/runtime` | durable command journal、binding、恢复、input materialization、domain commit barrier 和 host-effect reconciliation |
 
 `agent/tools.OpenWorkspace` 默认从 PATH 查找 ripgrep。需要可重复分发的宿主可用 `OpenWorkspaceWithOptions` 注入固定 `RipgrepExecutable`；Denova Release 用该 seam 指向安装目录中的内置版本。

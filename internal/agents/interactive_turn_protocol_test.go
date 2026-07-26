@@ -97,7 +97,7 @@ func TestInteractiveTurnProtocolMiddlewareKeepsStableToolsAndForbidsCallsAfterSu
 	}
 	state.Messages = append(state.Messages, agent.AssistantMessage("", []agent.ToolCall{{
 		ID:       "unexpected-call",
-		Function: agent.FunctionCall{Name: "read_file", Arguments: `{}`},
+		Function: agent.FunctionCall{Name: "read", Arguments: `{}`},
 	}}))
 	if _, _, err := middleware.AfterModelRewriteState(context.Background(), state, &agent.ModelContext{}); err == nil {
 		t.Fatal("backend guard must reject a provider that ignores tool_choice=none")

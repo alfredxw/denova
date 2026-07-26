@@ -291,7 +291,7 @@ func (s *directorToolDisplayState) projectDisplayArgs() (string, bool) {
 	if !ok || !isDirectorPlanPath(preview.path) {
 		return "", false
 	}
-	return `{"file_path":"director.md"}`, true
+	return `{"path":"director.md"}`, true
 }
 
 func (s *directorToolDisplayState) syncDecodedGeneratedChars() {
@@ -359,7 +359,7 @@ func markDirectorPlanInputHidden(event *session.DisplayEvent, generatedChars int
 
 func directorPlanWriteTool(name string) bool {
 	switch strings.TrimSpace(name) {
-	case "write_file", "edit_file", submitDirectorPlanUpdateToolName:
+	case "write", "edit", submitDirectorPlanUpdateToolName:
 		return true
 	default:
 		return false

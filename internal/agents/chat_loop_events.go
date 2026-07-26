@@ -43,7 +43,12 @@ func (l *chatAgentLoop) handleToolOutput(messageOutput *agent.MessageVariant, ev
 		content = "(无返回内容)"
 	}
 	message := messageOutput.Message
-	completionKey := completedToolKey(eventMeta, message.ToolName, message.ToolCallID)
+	executionID := strings.TrimSpace(messageOutput.ExecutionID)
+	if executionID == "" {
+		return l.toolDrainFailed(errors.New("tool result is missing an execution ID"))
+	}
+	providerCallID := firstNonEmpty(messageOutput.ProviderCallID, message.ToolCallID)
+	completionKey := completedToolKey(eventMeta, message.ToolName, executionID)
 	if _, completed := l.finishedTools[completionKey]; completed {
 		// Typed completion already updated display in real completion order. The
 		// source-ordered tool message is still the only cross-turn transcript input.
@@ -51,13 +56,23 @@ func (l *chatAgentLoop) handleToolOutput(messageOutput *agent.MessageVariant, ev
 		delete(l.finishedTools, completionKey)
 		return chatLoopResult{action: chatLoopContinue}
 	}
-	logToolResult(message.ToolName, message.ToolCallID, content)
+	logToolResult(message.ToolName, executionID, content)
 	run.usage.NoteToolResult(message.ToolName)
 	data := eventMeta.appendTo(map[string]interface{}{
-		"id":      message.ToolCallID,
-		"name":    message.ToolName,
-		"content": content,
+		"id":               executionID,
+		"provider_call_id": providerCallID,
+		"name":             message.ToolName,
+		"content":          content,
 	})
+	if message.ToolResult != nil {
+		data["status"] = string(message.ToolResult.Status)
+		data["synthetic_reason"] = string(message.ToolResult.SyntheticReason)
+	} else {
+		// Legacy/custom tool messages without the structured summary predate
+		// typed execution events. Preserve their historical success semantics;
+		// native tools always carry an explicit status.
+		data["status"] = string(agent.ToolResultSuccess)
+	}
 	if itemIDs, deletedIDs := parseWriteLoreItemsToolResult(message.ToolName, fullToolContent); len(itemIDs) > 0 || len(deletedIDs) > 0 {
 		data["item_ids"] = itemIDs
 		data["deleted_ids"] = deletedIDs
@@ -104,13 +119,14 @@ func (l *chatAgentLoop) handleToolExecution(event *agent.AgentEvent) chatLoopRes
 	eventMeta := run.subAgentSessions.decorate(metadataForAgentEvent(event, run.options.RootAgentName))
 	eventMeta.AgentKind = run.options.AgentKind
 	data := eventMeta.appendTo(map[string]interface{}{
-		"id": execution.CallID, "name": execution.ToolName, "index": execution.Index,
+		"id": execution.ExecutionID, "provider_call_id": execution.ProviderCallID,
+		"name": execution.ToolName, "index": execution.Index,
 	})
 	descriptor := execution.Definition.Descriptor
 	if descriptor.Execution != "" {
 		data["source"] = string(descriptor.Source)
-		data["mutates_workspace"] = descriptor.MutatesWorkspace
-		data["requires_post_check"] = descriptor.RequiresPostCheck
+		data["mutation_scope"] = string(descriptor.MutationScope)
+		data["post_check"] = string(descriptor.PostCheck)
 		data["max_result_bytes"] = descriptor.MaxResultBytes
 	}
 	switch execution.Phase {
@@ -143,9 +159,9 @@ func (l *chatAgentLoop) handleToolExecution(event *agent.AgentEvent) chatLoopRes
 		}
 		populateToolResultDomainData(run, execution.ToolName, payload, eventMeta, data)
 		run.usage.NoteToolResult(execution.ToolName)
-		logToolResult(execution.ToolName, execution.CallID, content)
-		if execution.CallID != "" {
-			l.finishedTools[completedToolKey(eventMeta, execution.ToolName, execution.CallID)] = struct{}{}
+		logToolResult(execution.ToolName, execution.ExecutionID, content)
+		if execution.ExecutionID != "" {
+			l.finishedTools[completedToolKey(eventMeta, execution.ToolName, execution.ExecutionID)] = struct{}{}
 		}
 		run.emit(Event{Type: "tool_result", Data: data})
 	}
@@ -199,7 +215,9 @@ func populateToolResultDomainData(run *chatRun, toolName, payload string, eventM
 
 func (l *chatAgentLoop) toolDrainFailed(drainErr error) chatLoopResult {
 	run := l.run
+	before := run.fullAssistantOutputSnapshot()
 	discardPlanAssistantContentIfNeeded(run.req.PlanMode, l.planParser, &run.fullContent, &run.fullThinking)
+	run.captureEffectiveAssistantDelta(before)
 	terminalContent, terminalThinking := run.snapshotOutput()
 	if run.ctx.Err() != nil {
 		err := run.ctx.Err()
@@ -219,7 +237,9 @@ func (l *chatAgentLoop) toolDrainFailed(drainErr error) chatLoopResult {
 func (l *chatAgentLoop) handleAssistantOutput(messageOutput *agent.MessageVariant, eventMeta agentEventMetadata) chatLoopResult {
 	run := l.run
 	if messageOutput.IsStreaming && messageOutput.MessageStream != nil {
+		before := run.fullAssistantOutputSnapshot()
 		msg, streamErr := processStreamingEvent(l.ctx, messageOutput, &run.fullContent, &run.fullThinking, run.options.IdleTimeout, run.options.ToolResultMaxBytes, eventMeta, l.planParser, run.emit)
+		run.captureEffectiveAssistantDelta(before)
 		if streamErr != nil {
 			// Completion-guard retries arrive after response frames. Preserve the
 			// rejected call's provider usage even though its prose is discarded.
@@ -244,7 +264,12 @@ func (l *chatAgentLoop) handleAssistantOutput(messageOutput *agent.MessageVarian
 	if messageOutput.Message == nil {
 		return chatLoopResult{action: chatLoopContinue}
 	}
-	processNonStreamingEvent(messageOutput, &run.fullContent, &run.fullThinking, run.options.ToolResultMaxBytes, eventMeta, l.planParser, run.emit)
+	before := run.fullAssistantOutputSnapshot()
+	processErr := processNonStreamingEvent(messageOutput, &run.fullContent, &run.fullThinking, run.options.ToolResultMaxBytes, eventMeta, l.planParser, run.emit)
+	run.captureEffectiveAssistantDelta(before)
+	if processErr != nil {
+		return l.assistantStreamFailed(processErr)
+	}
 	run.toolContext.RecordAssistantToolCalls(messageOutput.Message, eventMeta)
 	run.usage.AddMessage(messageOutput.Message)
 	if run.req.PlanMode && l.planParser != nil && l.planParser.HasSuccessfulBlock() {

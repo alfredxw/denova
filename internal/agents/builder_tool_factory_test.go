@@ -24,7 +24,7 @@ func TestLoreToolsFactoryOmitsDisabledLoreSchemas(t *testing.T) {
 func TestLoreToolsFactoryHonorsResolvedWriteCapability(t *testing.T) {
 	factory := newToolCatalog(&config.Config{Workspace: t.TempDir()}).Lore(false)
 
-	readOnlyTools, err := factory(config.ResolvedAgentToolSettings{LoreRead: true})
+	readOnlyTools, err := factory(config.ResolvedAgentToolSettings{config.AgentToolLoreRead: true})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -33,7 +33,7 @@ func TestLoreToolsFactoryHonorsResolvedWriteCapability(t *testing.T) {
 		t.Fatalf("read-only lore capability should not expose write schemas: %v", readOnlyNames)
 	}
 
-	writableTools, err := factory(config.ResolvedAgentToolSettings{LoreRead: true, LoreWrite: true})
+	writableTools, err := factory(config.ResolvedAgentToolSettings{config.AgentToolLoreRead: true, config.AgentToolLoreWrite: true})
 	if err != nil {
 		t.Fatal(err)
 	}

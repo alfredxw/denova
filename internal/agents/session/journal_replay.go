@@ -97,6 +97,19 @@ func loadSession(filePath string) (*Session, error) {
 			}
 		}
 	}
+	if projection.PendingAsk != nil && projection.PendingAskCursor < startCursor {
+		pendingRecords, readErr := journal.ReadRange(context.Background(), conversationjournal.Range{
+			After: projection.PendingAskCursor - 1, Through: projection.PendingAskCursor,
+		})
+		if readErr != nil {
+			return nil, fmt.Errorf("read pending ask %s: %w", filePath, readErr)
+		}
+		for _, record := range pendingRecords {
+			if err := appendConversationRecord(sess, record); err != nil {
+				return nil, fmt.Errorf("restore pending ask %s: %w", filePath, err)
+			}
+		}
+	}
 	records, err := journal.ReadRange(context.Background(), conversationjournal.Range{After: startCursor - 1})
 	if err != nil {
 		return nil, fmt.Errorf("读取会话最近窗口失败 %s: %w", filePath, err)
@@ -180,6 +193,8 @@ func appendRecordLine(sess *Session, line []byte, lineNumber int) error {
 		return appendClearRecordLine(sess, line)
 	case historyTypeInterrupt:
 		return appendInterruptionRecordLine(sess, line, lineNumber)
+	case historyTypeAsk:
+		return appendAskRecordLine(sess, line)
 	case historyTypeCompaction:
 		return appendCompactionRecordLine(sess, line, lineNumber)
 	case historyTypeCompactionRemoved:
@@ -194,6 +209,8 @@ func appendRecordLine(sess *Session, line []byte, lineNumber int) error {
 		return applyDisplayPatchLine(sess, line)
 	case historyTypeInterruptionPatch:
 		return applyInterruptionPatchLine(sess, line)
+	case historyTypeAskPatch:
+		return applyAskPatchLine(sess, line)
 	case "":
 		return appendLegacyMessageLine(sess, line)
 	case "session":

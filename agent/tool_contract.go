@@ -37,7 +37,36 @@ type ToolExecutionClass string
 const (
 	ToolExecutionParallelRead       ToolExecutionClass = "parallel_read"
 	ToolExecutionWorkspaceExclusive ToolExecutionClass = "workspace_exclusive"
+	ToolExecutionSessionExclusive   ToolExecutionClass = "session_exclusive"
+	ToolExecutionConfigExclusive    ToolExecutionClass = "config_exclusive"
+	ToolExecutionInteractiveWait    ToolExecutionClass = "interactive_wait"
 	ToolExecutionChild              ToolExecutionClass = "child"
+)
+
+// ToolMutationScope identifies the state domain a successful call may
+// change. It is deliberately independent from Source: a shell call reads and
+// writes through one execution surface, while config and session mutations do
+// not belong to the workspace mutation pipeline.
+type ToolMutationScope string
+
+const (
+	ToolMutationNone      ToolMutationScope = "none"
+	ToolMutationWorkspace ToolMutationScope = "workspace"
+	ToolMutationSession   ToolMutationScope = "session"
+	ToolMutationConfig    ToolMutationScope = "config"
+	ToolMutationExternal  ToolMutationScope = "external"
+)
+
+// ToolPostCheckPolicy selects the domain-specific verification performed
+// after a successful mutation. The policy must match MutationScope.
+type ToolPostCheckPolicy string
+
+const (
+	ToolPostCheckNone            ToolPostCheckPolicy = "none"
+	ToolPostCheckWorkspaceChange ToolPostCheckPolicy = "workspace_change"
+	ToolPostCheckSessionState    ToolPostCheckPolicy = "session_state"
+	ToolPostCheckConfigRevision  ToolPostCheckPolicy = "config_revision"
+	ToolPostCheckExternalReceipt ToolPostCheckPolicy = "external_receipt"
 )
 
 // ToolRecoveryClass describes what is safe after a durable start without a
@@ -68,15 +97,15 @@ const (
 // ToolDescriptor is the complete execution, recovery, and context contract for
 // one model-visible tool.
 type ToolDescriptor struct {
-	Source            ToolSource           `json:"source"`
-	Capability        string               `json:"capability,omitempty"`
-	Execution         ToolExecutionClass   `json:"execution"`
-	Recovery          ToolRecoveryClass    `json:"recovery"`
-	ResultProjection  ToolResultProjection `json:"result_projection"`
-	Steering          SteeringPolicy       `json:"steering"`
-	MutatesWorkspace  bool                 `json:"mutates_workspace"`
-	MaxResultBytes    int                  `json:"max_result_bytes"`
-	RequiresPostCheck bool                 `json:"requires_post_check"`
+	Source           ToolSource           `json:"source"`
+	Capability       string               `json:"capability,omitempty"`
+	Execution        ToolExecutionClass   `json:"execution"`
+	MutationScope    ToolMutationScope    `json:"mutation_scope"`
+	PostCheck        ToolPostCheckPolicy  `json:"post_check"`
+	Recovery         ToolRecoveryClass    `json:"recovery"`
+	ResultProjection ToolResultProjection `json:"result_projection"`
+	Steering         SteeringPolicy       `json:"steering"`
+	MaxResultBytes   int                  `json:"max_result_bytes"`
 }
 
 // Validate rejects incomplete descriptors and inconsistent safety claims.
@@ -88,9 +117,21 @@ func (descriptor ToolDescriptor) Validate() error {
 		return fmt.Errorf("invalid tool source %q", descriptor.Source)
 	}
 	switch descriptor.Execution {
-	case ToolExecutionParallelRead, ToolExecutionWorkspaceExclusive, ToolExecutionChild:
+	case ToolExecutionParallelRead, ToolExecutionWorkspaceExclusive, ToolExecutionSessionExclusive,
+		ToolExecutionConfigExclusive, ToolExecutionInteractiveWait, ToolExecutionChild:
 	default:
 		return fmt.Errorf("invalid tool execution class %q", descriptor.Execution)
+	}
+	switch descriptor.MutationScope {
+	case ToolMutationNone, ToolMutationWorkspace, ToolMutationSession, ToolMutationConfig, ToolMutationExternal:
+	default:
+		return fmt.Errorf("invalid tool mutation scope %q", descriptor.MutationScope)
+	}
+	switch descriptor.PostCheck {
+	case ToolPostCheckNone, ToolPostCheckWorkspaceChange, ToolPostCheckSessionState,
+		ToolPostCheckConfigRevision, ToolPostCheckExternalReceipt:
+	default:
+		return fmt.Errorf("invalid tool post-check policy %q", descriptor.PostCheck)
 	}
 	switch descriptor.Recovery {
 	case ToolRecoveryReadOnly, ToolRecoveryIdempotent, ToolRecoveryReconcilable, ToolRecoveryNonIdempotent:
@@ -108,18 +149,65 @@ func (descriptor ToolDescriptor) Validate() error {
 	if descriptor.MaxResultBytes <= 0 {
 		return errors.New("tool result limit must be positive")
 	}
-	if descriptor.Execution == ToolExecutionParallelRead && descriptor.MutatesWorkspace {
-		return errors.New("parallel read tool cannot mutate workspace")
+	if descriptor.Execution == ToolExecutionParallelRead && descriptor.MutationScope != ToolMutationNone {
+		return errors.New("parallel read tool cannot mutate state")
 	}
-	if descriptor.Source == ToolSourceWrite && !descriptor.MutatesWorkspace {
-		return errors.New("write-source tool must declare workspace mutation")
+	if descriptor.Source == ToolSourceWrite && descriptor.MutationScope == ToolMutationNone {
+		return errors.New("write-source tool must declare a mutation scope")
 	}
-	if descriptor.RequiresPostCheck && !descriptor.MutatesWorkspace {
-		return errors.New("post-check requires workspace mutation")
+	if err := validateToolExecutionMutation(descriptor.Execution, descriptor.MutationScope); err != nil {
+		return err
+	}
+	if err := validateToolPostCheck(descriptor.MutationScope, descriptor.PostCheck); err != nil {
+		return err
 	}
 	if descriptor.Steering == SteeringInterruptibleWait &&
-		(descriptor.MutatesWorkspace || descriptor.Recovery != ToolRecoveryReadOnly) {
+		(descriptor.MutationScope != ToolMutationNone || descriptor.Recovery != ToolRecoveryReadOnly) {
 		return errors.New("interruptible wait must be read-only and non-mutating")
+	}
+	return nil
+}
+
+func validateToolExecutionMutation(execution ToolExecutionClass, scope ToolMutationScope) error {
+	switch execution {
+	case ToolExecutionParallelRead, ToolExecutionChild:
+		if scope != ToolMutationNone {
+			return fmt.Errorf("execution class %q requires mutation scope %q", execution, ToolMutationNone)
+		}
+	case ToolExecutionWorkspaceExclusive:
+		if scope != ToolMutationWorkspace && scope != ToolMutationExternal {
+			return fmt.Errorf("execution class %q requires workspace or external mutation", execution)
+		}
+	case ToolExecutionSessionExclusive:
+		if scope != ToolMutationSession && scope != ToolMutationExternal {
+			return fmt.Errorf("execution class %q requires session or external mutation", execution)
+		}
+	case ToolExecutionConfigExclusive:
+		if scope != ToolMutationConfig {
+			return fmt.Errorf("execution class %q requires mutation scope %q", execution, ToolMutationConfig)
+		}
+	case ToolExecutionInteractiveWait:
+		if scope != ToolMutationNone && scope != ToolMutationSession {
+			return fmt.Errorf("execution class %q requires no mutation or a session mutation", execution)
+		}
+	}
+	return nil
+}
+
+func validateToolPostCheck(scope ToolMutationScope, policy ToolPostCheckPolicy) error {
+	want := ToolPostCheckNone
+	switch scope {
+	case ToolMutationWorkspace:
+		want = ToolPostCheckWorkspaceChange
+	case ToolMutationSession:
+		want = ToolPostCheckSessionState
+	case ToolMutationConfig:
+		want = ToolPostCheckConfigRevision
+	case ToolMutationExternal:
+		want = ToolPostCheckExternalReceipt
+	}
+	if policy != ToolPostCheckNone && policy != want {
+		return fmt.Errorf("post-check policy %q does not match mutation scope %q", policy, scope)
 	}
 	return nil
 }

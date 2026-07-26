@@ -1,22 +1,20 @@
 import { useEffect, useState } from 'react'
 import { fetchSettings } from '@/features/settings/api'
-import type { AgentToolOverride, AgentToolSettings } from '@/features/settings/types'
+import type { AgentModelSettings, ResolvedAgentToolCapability } from '@/features/settings/types'
 import { getSkills } from '@/lib/api'
 import type { SkillSummary } from '@/lib/api'
 import { skillAvailableForAgent } from '@/features/agents/agent-registry'
 
-type SkillAgentKey = Exclude<keyof AgentToolSettings, 'default'>
+type SkillAgentKey = Exclude<keyof AgentModelSettings, 'default'>
 
 interface UseSkillCommandsOptions {
   agentKey: SkillAgentKey
   workspace?: string
-  fallbackEnabled?: boolean
 }
 
 export function useSkillCommands({
   agentKey,
   workspace,
-  fallbackEnabled = false,
 }: UseSkillCommandsOptions): Array<Pick<SkillSummary, 'name' | 'description'>> {
   const [skillCommands, setSkillCommands] = useState<Array<Pick<SkillSummary, 'name' | 'description'>>>([])
 
@@ -28,7 +26,7 @@ export function useSkillCommands({
       Promise.all([getSkills(), fetchSettings()])
         .then(([data, settings]) => {
           if (cancelled || requestId !== requestSeq) return
-          if (!agentSkillsEnabled(settings.effective?.agent_tools, agentKey, fallbackEnabled)) {
+          if (!agentSkillsEnabled(settings.resolved_agent_tool_manifests[agentKey])) {
             setSkillCommands([])
             return
           }
@@ -50,13 +48,12 @@ export function useSkillCommands({
       window.removeEventListener('nova:skills-updated', loadSkills)
       window.removeEventListener('nova:settings-updated', loadSkills)
     }
-  }, [agentKey, fallbackEnabled, workspace])
+  }, [agentKey, workspace])
 
   return skillCommands
 }
 
-function agentSkillsEnabled(settings: AgentToolSettings | undefined, agentKey: SkillAgentKey, fallbackEnabled: boolean) {
-  const defaultTools: AgentToolOverride = settings?.default ?? {}
-  const agentTools: AgentToolOverride = settings?.[agentKey] ?? {}
-  return agentTools.skills ?? defaultTools.skills ?? fallbackEnabled
+function agentSkillsEnabled(manifest: ResolvedAgentToolCapability[] | undefined) {
+  const capability = manifest?.find((entry) => entry.capability === 'skills')
+  return capability?.allowed === true && capability.availability !== 'unavailable'
 }

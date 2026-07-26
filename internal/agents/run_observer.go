@@ -131,15 +131,16 @@ func (o *RunObserver) RecordToolDecision(decision ToolDecision) {
 	defer o.mu.Unlock()
 	_ = o.ledger.RecordToolDecision(decision)
 	attrs := map[string]any{
-		"tool_name":           decision.ToolName,
-		"tool_call_id":        decision.ToolCallID,
-		"source":              decision.Source,
-		"capability":          decision.Capability,
-		"action":              decision.Action,
-		"reason":              decision.Reason,
-		"mutates_workspace":   decision.MutatesWorkspace,
-		"requires_post_check": decision.RequiresPostCheck,
-		"target":              decision.Target,
+		"tool_name":        decision.ToolName,
+		"execution_id":     decision.ExecutionID,
+		"provider_call_id": decision.ProviderCallID,
+		"source":           decision.Source,
+		"capability":       decision.Capability,
+		"action":           decision.Action,
+		"reason":           decision.Reason,
+		"mutation_scope":   decision.MutationScope,
+		"post_check":       decision.PostCheck,
+		"target":           decision.Target,
 	}
 	if decision.ArgsBytes > 0 {
 		attrs["args_bytes"] = decision.ArgsBytes
@@ -150,7 +151,7 @@ func (o *RunObserver) RecordToolDecision(decision ToolDecision) {
 	if decision.ModelFinishReason != "" {
 		attrs["model_finish_reason"] = decision.ModelFinishReason
 	}
-	o.pendingTools[o.toolKey(decision.ToolCallID, decision.ToolName)] = newTraceSpanHandle(o.ledger.ID(), o.ledger, o.parentSpanID(), "tool_call", attrs)
+	o.pendingTools[o.toolKey(decision.ExecutionID, decision.ToolName)] = newTraceSpanHandle(o.ledger.ID(), o.ledger, o.parentSpanID(), "tool_call", attrs)
 }
 
 func (o *RunObserver) RecordToolExecution(result ToolExecutionRecord) {
@@ -160,13 +161,14 @@ func (o *RunObserver) RecordToolExecution(result ToolExecutionRecord) {
 	o.mu.Lock()
 	defer o.mu.Unlock()
 	_ = o.ledger.RecordToolExecution(result)
-	key := o.toolKey(result.ToolCallID, result.ToolName)
+	key := o.toolKey(result.ExecutionID, result.ToolName)
 	span := o.pendingTools[key]
 	delete(o.pendingTools, key)
 	if span == nil {
 		span = newTraceSpanHandle(o.ledger.ID(), o.ledger, o.parentSpanID(), "tool_call", map[string]any{
-			"tool_name":    result.ToolName,
-			"tool_call_id": result.ToolCallID,
+			"tool_name":        result.ToolName,
+			"execution_id":     result.ExecutionID,
+			"provider_call_id": result.ProviderCallID,
 		})
 	}
 	status := result.Status
@@ -174,16 +176,17 @@ func (o *RunObserver) RecordToolExecution(result ToolExecutionRecord) {
 		status = "success"
 	}
 	attrs := map[string]any{
-		"tool_name":       result.ToolName,
-		"tool_call_id":    result.ToolCallID,
-		"capability":      result.Capability,
-		"original_bytes":  result.OriginalBytes,
-		"returned_bytes":  result.ReturnedBytes,
-		"truncated":       result.Truncated,
-		"target":          result.Target,
-		"idempotency_key": result.IdempotencyKey,
-		"error":           result.Error,
-		"recorded_at":     time.Now().UTC().Format(time.RFC3339Nano),
+		"tool_name":        result.ToolName,
+		"execution_id":     result.ExecutionID,
+		"provider_call_id": result.ProviderCallID,
+		"capability":       result.Capability,
+		"original_bytes":   result.OriginalBytes,
+		"returned_bytes":   result.ReturnedBytes,
+		"truncated":        result.Truncated,
+		"target":           result.Target,
+		"idempotency_key":  result.IdempotencyKey,
+		"error":            result.Error,
+		"recorded_at":      time.Now().UTC().Format(time.RFC3339Nano),
 	}
 	if result.DomainStatus != "" {
 		attrs["domain_status"] = result.DomainStatus

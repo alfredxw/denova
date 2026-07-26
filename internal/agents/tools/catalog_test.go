@@ -8,6 +8,7 @@ import (
 	"testing"
 
 	agent "github.com/alfredxw/denova/agent"
+	agenttools "github.com/alfredxw/denova/agent/tools"
 
 	"denova/config"
 )
@@ -26,7 +27,120 @@ func TestMain(m *testing.M) {
 	os.Exit(m.Run())
 }
 
-func TestCatalogFilesystemUsesHostRipgrepExecutable(t *testing.T) {
+func TestCatalogReadCapabilityFollowsTheBroadestRegisteredAdapter(t *testing.T) {
+	type referenceInput struct {
+		Path string `json:"path"`
+	}
+	reference, err := agenttools.NewReadAdapter(
+		"reference",
+		func(_ context.Context, path string) (bool, error) { return strings.HasPrefix(path, "skill://"), nil },
+		func(_ context.Context, input referenceInput) (agenttools.ReadResult, error) {
+			return agenttools.ReadResult{Path: input.Path, Content: "reference"}, nil
+		},
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	referenceBinding, err := newReadAdapterBinding(config.AgentToolSkills, reference)
+	if err != nil {
+		t.Fatal(err)
+	}
+	catalog := NewCatalog(&config.Config{Workspace: t.TempDir()}, nil, RuntimeExecutables{})
+
+	combined, err := catalog.Workspace(config.ResolvedAgentToolSettings{
+		config.AgentToolWorkspaceRead: true,
+		config.AgentToolSkills:        true,
+	}, referenceBinding)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if capability := descriptorCapabilityForTool(t, combined, "read"); capability != config.AgentToolWorkspaceRead {
+		t.Fatalf("combined read capability = %q, want %q", capability, config.AgentToolWorkspaceRead)
+	}
+
+	referenceOnly, err := catalog.Workspace(config.ResolvedAgentToolSettings{config.AgentToolSkills: true}, referenceBinding)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if capability := descriptorCapabilityForTool(t, referenceOnly, "read"); capability != config.AgentToolSkills {
+		t.Fatalf("reference-only read capability = %q, want %q", capability, config.AgentToolSkills)
+	}
+
+	disabled, err := catalog.Workspace(config.ResolvedAgentToolSettings{}, referenceBinding)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(disabled) != 0 {
+		t.Fatalf("disabled adapter capability exposed tools: %#v", disabled)
+	}
+}
+
+func TestCatalogWorkspaceBindsProductResultLimitToDefinitionsAndAdapters(t *testing.T) {
+	workspace := t.TempDir()
+	content := strings.Repeat("a bounded line of workspace content\n", 200)
+	if err := os.WriteFile(workspace+string(os.PathSeparator)+"large.txt", []byte(content), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	catalog := NewCatalog(
+		&config.Config{Workspace: workspace, AgentToolResultLimitKB: 1},
+		nil,
+		RuntimeExecutables{},
+	)
+	definitions, err := catalog.Workspace(config.ResolvedAgentToolSettings{
+		config.AgentToolWorkspaceRead:  true,
+		config.AgentToolWorkspaceWrite: true,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	wantNames := map[string]bool{"read": true, "glob": true, "grep": true, "write": true, "edit": true}
+	var readDefinition *agent.ToolDefinition
+	for index := range definitions {
+		definition := &definitions[index]
+		info, infoErr := definition.Tool.Info(context.Background())
+		if infoErr != nil {
+			t.Fatal(infoErr)
+		}
+		if !wantNames[info.Name] {
+			continue
+		}
+		delete(wantNames, info.Name)
+		if definition.Descriptor.MaxResultBytes != 1024 {
+			t.Fatalf("%s max result bytes = %d", info.Name, definition.Descriptor.MaxResultBytes)
+		}
+		if info.Name == "read" {
+			readDefinition = definition
+		}
+	}
+	if len(wantNames) != 0 || readDefinition == nil {
+		t.Fatalf("missing bounded workspace tools: %#v", wantNames)
+	}
+	result, err := runToolForTest(context.Background(), readDefinition, `{"path":"large.txt"}`)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(result, `"status":"partial"`) || !strings.Contains(result, `"truncated":true`) ||
+		!strings.Contains(result, `"next_offset"`) {
+		t.Fatalf("read did not expose product-limit continuation: %q", result)
+	}
+}
+
+func descriptorCapabilityForTool(t *testing.T, definitions []agent.ToolDefinition, name string) string {
+	t.Helper()
+	for _, definition := range definitions {
+		info, err := definition.Tool.Info(context.Background())
+		if err != nil {
+			t.Fatal(err)
+		}
+		if info.Name == name {
+			return definition.Descriptor.Capability
+		}
+	}
+	t.Fatalf("tool %q not found", name)
+	return ""
+}
+
+func TestCatalogWorkspaceUsesHostRipgrepExecutable(t *testing.T) {
 	t.Setenv("PATH", t.TempDir())
 	t.Setenv("DENOVA_TEST_CATALOG_RIPGREP_HELPER", "1")
 	catalog := NewCatalog(
@@ -34,7 +148,7 @@ func TestCatalogFilesystemUsesHostRipgrepExecutable(t *testing.T) {
 		nil,
 		RuntimeExecutables{Ripgrep: os.Args[0]},
 	)
-	filesystemTools, err := catalog.Filesystem(config.ResolvedAgentToolSettings{FileRead: true})
+	filesystemTools, err := catalog.Workspace(config.ResolvedAgentToolSettings{config.AgentToolWorkspaceRead: true})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -57,7 +171,38 @@ func TestCatalogFilesystemUsesHostRipgrepExecutable(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if strings.TrimSpace(result) != "chapters/one.md" {
+	if !strings.Contains(result, `"schema":"workspace.search.v1"`) || !strings.Contains(result, "chapters/one.md") {
 		t.Fatalf("grep result = %q", result)
+	}
+}
+
+func TestCatalogContextWindowRegistersCheckpointAndRewindAsOneCapability(t *testing.T) {
+	catalog := NewCatalog(nil, nil, RuntimeExecutables{})
+	disabled, err := catalog.ContextWindow(config.ResolvedAgentToolSettings{})
+	if err != nil || len(disabled) != 0 {
+		t.Fatalf("disabled context tools = %#v error=%v", disabled, err)
+	}
+	definitions, err := catalog.ContextWindow(config.ResolvedAgentToolSettings{config.AgentToolContextRewind: true})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(definitions) != 2 {
+		t.Fatalf("context tool count = %d", len(definitions))
+	}
+	names := make([]string, 0, len(definitions))
+	for _, definition := range definitions {
+		info, infoErr := definition.Tool.Info(context.Background())
+		if infoErr != nil {
+			t.Fatal(infoErr)
+		}
+		names = append(names, info.Name)
+		if definition.Descriptor.Capability != config.AgentToolContextRewind ||
+			definition.Descriptor.Execution != agent.ToolExecutionSessionExclusive ||
+			definition.Descriptor.MutationScope != agent.ToolMutationSession {
+			t.Fatalf("descriptor for %s = %#v", info.Name, definition.Descriptor)
+		}
+	}
+	if strings.Join(names, ",") != "checkpoint,rewind" {
+		t.Fatalf("context tool names = %v", names)
 	}
 }

@@ -44,7 +44,7 @@ func TestProcessNonStreamingEventPreservesToolArgumentsVerbatim(t *testing.T) {
 	message := &agent.Message{Role: agent.Assistant, ToolCalls: []agent.ToolCall{{
 		ID: "call-write",
 		Function: agent.FunctionCall{
-			Name:      "write_file",
+			Name:      "write",
 			Arguments: rawArgs,
 		},
 	}}}
@@ -52,21 +52,65 @@ func TestProcessNonStreamingEventPreservesToolArgumentsVerbatim(t *testing.T) {
 	var thinking strings.Builder
 	var events []Event
 
-	processNonStreamingEvent(
-		&agent.MessageVariant{Message: message, Role: agent.Assistant},
+	if err := processNonStreamingEvent(
+		&agent.MessageVariant{
+			Message: message, Role: agent.Assistant,
+			ToolExecutionNamespace: "test-non-streaming", ModelResponseOrdinal: 1,
+		},
 		&content,
 		&thinking,
 		0,
 		agentEventMetadata{},
 		nil,
 		func(event Event) { events = append(events, event) },
-	)
+	); err != nil {
+		t.Fatal(err)
+	}
 
 	if len(events) != 1 || events[0].Type != "tool_call" {
 		t.Fatalf("tool call event = %#v", events)
 	}
 	if got := eventDataString(events[0].Data, "args"); got != rawArgs {
 		t.Fatalf("tool arguments were changed: got_bytes=%d want_bytes=%d\ngot=%q", len(got), len(rawArgs), got)
+	}
+}
+
+func TestStreamingToolEventsUseExecutionIDAndRetainProviderID(t *testing.T) {
+	reader, writer := agent.Pipe[*agent.Message](1)
+	writer.Send(&agent.Message{Role: agent.Assistant, ToolCalls: []agent.ToolCall{{
+		ID: "provider-reused", Type: "function",
+		Function: agent.FunctionCall{Name: "read", Arguments: `{"path":"draft.md"}`},
+	}}}, nil)
+	writer.Close()
+	variant := &agent.MessageVariant{
+		IsStreaming: true, MessageStream: reader, Role: agent.Assistant,
+		ToolExecutionNamespace: "invocation-stable", ModelResponseOrdinal: 2,
+	}
+	wantExecutionID := variant.ToolExecutionID(0)
+	var content, thinking strings.Builder
+	var events []Event
+	if _, err := processStreamingEvent(context.Background(), variant, &content, &thinking, 0, 0, agentEventMetadata{}, nil, func(event Event) {
+		events = append(events, event)
+	}); err != nil {
+		t.Fatal(err)
+	}
+	seen := map[string]bool{}
+	for _, event := range events {
+		if event.Type != "tool_call" && event.Type != "tool_args_delta" && event.Type != "tool_target" {
+			continue
+		}
+		seen[event.Type] = true
+		if got := eventDataString(event.Data, "id"); got != wantExecutionID {
+			t.Fatalf("%s correlation id = %q, want %q", event.Type, got, wantExecutionID)
+		}
+		if got := eventDataString(event.Data, "provider_call_id"); got != "provider-reused" {
+			t.Fatalf("%s provider id = %q", event.Type, got)
+		}
+	}
+	for _, eventType := range []string{"tool_call", "tool_args_delta", "tool_target"} {
+		if !seen[eventType] {
+			t.Fatalf("missing %s event: %#v", eventType, events)
+		}
 	}
 }
 
@@ -87,7 +131,10 @@ func TestProcessStreamingEventReclassifiesInteractiveToolPreambleAsThinking(t *t
 	var events []Event
 	_, err := processStreamingEvent(
 		context.Background(),
-		&agent.MessageVariant{IsStreaming: true, MessageStream: reader, Role: agent.Assistant},
+		&agent.MessageVariant{
+			IsStreaming: true, MessageStream: reader, Role: agent.Assistant,
+			ToolExecutionNamespace: "test-reclassification", ModelResponseOrdinal: 1,
+		},
 		&content,
 		&thinking,
 		0,
@@ -265,7 +312,10 @@ func TestProcessStreamingEventKeepsContentBeforeSubmitAsNarrative(t *testing.T) 
 	var events []Event
 	_, err := processStreamingEvent(
 		context.Background(),
-		&agent.MessageVariant{IsStreaming: true, MessageStream: reader, Role: agent.Assistant},
+		&agent.MessageVariant{
+			IsStreaming: true, MessageStream: reader, Role: agent.Assistant,
+			ToolExecutionNamespace: "test-submit", ModelResponseOrdinal: 1,
+		},
 		&content,
 		&thinking,
 		0,

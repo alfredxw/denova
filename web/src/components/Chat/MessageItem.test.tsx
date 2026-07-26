@@ -279,8 +279,8 @@ describe('MessageItem', () => {
       <MessageItem
         message={{
           role: 'tool_call',
-          content: 'write_file\n{"path":"chapters/ch01.md"}',
-          name: 'write_file',
+          content: 'write\n{"path":"chapters/ch01.md"}',
+          name: 'write',
           args: '{"path":"chapters/ch01.md"}',
           status: 'success',
           result: '写入完成',
@@ -289,7 +289,7 @@ describe('MessageItem', () => {
     )
 
     expect(screen.getByText('调用工具')).toBeInTheDocument()
-    expect(screen.getByText('write_file')).toBeInTheDocument()
+    expect(screen.getByText('write')).toBeInTheDocument()
     expect(screen.getByText('写入完成')).toBeInTheDocument()
   })
 
@@ -310,9 +310,72 @@ describe('MessageItem', () => {
     expect(screen.getByText('web_fetch failed: target URL is invalid')).toBeInTheDocument()
   })
 
+  it('shell 生命周期成功时仍按 process envelope 显示命令失败', () => {
+    const result = `${JSON.stringify({
+      schema: 'process.result.v1',
+      status: 'failed',
+      exit_code: 2,
+      output_truncated: false,
+      recovery: { retryable: true, suggestion: '检查输出并修正命令。' },
+    })}\ncommand not found`
+    render(
+      <MessageItem
+        message={{
+          role: 'tool_call',
+          content: 'bash\n{"command":"missing-command"}',
+          name: 'bash',
+          args: '{"command":"missing-command"}',
+          status: 'success',
+          result,
+        }}
+      />,
+    )
+
+    expect(screen.getByText('命令执行失败（退出码 2） · 检查输出并修正命令。')).toHaveClass('text-[var(--nova-danger)]')
+  })
+
+  it('read 部分结果直接展示 continuation 与恢复建议', () => {
+    const result = `${JSON.stringify({
+      schema: 'resource.read.v1',
+      status: 'partial',
+      limits: { returned: 80, truncated: true, next_offset: 80 },
+      recovery: { retryable: true, suggestion: '使用 offset 继续读取。' },
+    })}\npartial content`
+    render(
+      <MessageItem
+        message={{
+          role: 'tool_call',
+          content: 'read\n{"path":"chapters/long.md"}',
+          name: 'read',
+          args: '{"path":"chapters/long.md"}',
+          status: 'success',
+          result,
+        }}
+      />,
+    )
+
+    expect(screen.getByText('结果不完整 · 继续读取：offset=80 · 使用 offset 继续读取。')).toHaveClass('text-[var(--nova-warning)]')
+  })
+
+  it('独立工具结果卡按 canonical envelope 呈现 domain failure', () => {
+    render(
+      <MessageItem
+        message={{
+          role: 'tool_result',
+          content: `${JSON.stringify({ schema: 'process.result.v1', status: 'failed', exit_code: 1 })}\nstderr`,
+        }}
+      />,
+    )
+
+    expect(screen.getByText('工具执行失败')).toBeInTheDocument()
+    expect(screen.getByText('error')).toBeInTheDocument()
+    expect(screen.queryByText('success')).not.toBeInTheDocument()
+  })
+
   it('网页工具卡片把结构化恢复状态显示为可读摘要', async () => {
     const user = userEvent.setup()
     const resultBody = JSON.stringify({
+      schema: 'web_fetch.v1',
       status: 'blocked',
       attempts: [
         { method: 'direct_http', outcome: 'access_denied', http_status: 403 },
@@ -364,30 +427,28 @@ describe('MessageItem', () => {
     expect(screen.getByText('# Skill: alpha ALPHA_BODY')).toBeInTheDocument()
   })
 
-  it('批量 edit_file 显示改动数量且不流式展开 new_string', () => {
+  it('edit 单次精确替换时流式展示 new_string', () => {
     const args = JSON.stringify({
-      file_path: 'chapters/ch01.md',
-      edits: [
-        { id: 'intro', old_string: '旧开场', new_string: '新的开场正文' },
-        { id: 'ending', old_string: '旧结尾', new_string: '新的结尾正文' },
-      ],
+      path: 'chapters/ch01.md',
+      old_string: '旧开场',
+      new_string: '新的开场正文。'.repeat(8),
     })
     const { container } = render(
       <MessageItem
         message={{
           id: 'tool-batch-edit',
           role: 'tool_call',
-          content: 'edit_file',
-          name: 'edit_file',
+          content: 'edit',
+          name: 'edit',
           args,
           status: 'running',
         }}
       />,
     )
 
-    expect(screen.getByText('chapters/ch01.md · 编辑 2 处')).toBeInTheDocument()
-    expect(container.querySelector('[data-nova-scroll-lock="tool-stream-preview"]')).not.toBeInTheDocument()
-    expect(screen.queryByText(/新的开场正文/)).not.toBeInTheDocument()
+    const preview = container.querySelector('[data-nova-scroll-lock="tool-stream-preview"]')
+    expect(preview).toBeInTheDocument()
+    expect(preview).toHaveTextContent('新的开场正文')
   })
 
   it('隐藏章节正文的工具卡片展示写入状态和说明详情', async () => {
@@ -398,9 +459,9 @@ describe('MessageItem', () => {
       <MessageItem
         message={{
           role: 'tool_call',
-          content: `write_file\n{"file_path":"${path}"}`,
-          name: 'write_file',
-          args: `{"file_path":"${path}"}`,
+          content: `write\n{"path":"${path}"}`,
+          name: 'write',
+          args: `{"path":"${path}"}`,
           status: 'running',
           sse_hidden_fields: ['content'],
           sse_hidden_reason: 'novel_chapter_body',
@@ -633,8 +694,8 @@ describe('MessageItem', () => {
         message={{
           id: 'tool-write',
           role: 'tool_call',
-          content: 'write_file',
-          name: 'write_file',
+          content: 'write',
+          name: 'write',
           args: initialArgs,
           status: 'running',
         }}
@@ -654,8 +715,8 @@ describe('MessageItem', () => {
         message={{
           id: 'tool-write',
           role: 'tool_call',
-          content: 'write_file',
-          name: 'write_file',
+          content: 'write',
+          name: 'write',
           args: nextArgs,
           status: 'running',
         }}
@@ -666,12 +727,18 @@ describe('MessageItem', () => {
     expect(preview.textContent).toBe(nextContent)
   })
 
-  it('write_todos 工具卡片渲染为待办列表，并显示进度', () => {
+  it('todo 工具卡片以成功结果为真源，并显示进度', () => {
     const args = JSON.stringify({
-      todos: [
-        { content: '梳理需求', activeForm: '梳理需求中', status: 'completed' },
-        { content: '实现接口', activeForm: '实现接口中', status: 'in_progress' },
-        { content: '补充测试', activeForm: '补充测试中', status: 'pending' },
+      plan: [
+        { step: '过时步骤', status: 'pending' },
+      ],
+    })
+    const result = JSON.stringify({
+      schema: 'todo.plan.v1',
+      plan: [
+        { step: '梳理需求', status: 'completed' },
+        { step: '实现接口', status: 'in_progress' },
+        { step: '补充测试', status: 'pending' },
       ],
     })
 
@@ -679,10 +746,11 @@ describe('MessageItem', () => {
       <MessageItem
         message={{
           role: 'tool_call',
-          content: 'write_todos',
-          name: 'write_todos',
+          content: 'todo',
+          name: 'todo',
           args,
-          status: 'running',
+          status: 'success',
+          result,
         }}
       />,
     )
@@ -690,19 +758,20 @@ describe('MessageItem', () => {
     expect(screen.getByText('待办列表')).toBeInTheDocument()
     expect(screen.getByText('1/3')).toBeInTheDocument()
     expect(screen.getByText('梳理需求')).toBeInTheDocument()
-    expect(screen.getAllByText('实现接口中').length).toBeGreaterThan(0)
+    expect(screen.getAllByText('实现接口').length).toBeGreaterThan(0)
     expect(screen.getByText('补充测试')).toBeInTheDocument()
+    expect(screen.queryByText('过时步骤')).not.toBeInTheDocument()
   })
 
-  it('write_todos 工具卡片在流式不完整 JSON 时仍能渲染已完整的 todo 项', () => {
-    const partial = '{"todos":[{"content":"第一项","activeForm":"做第一项","status":"completed"},{"content":"第二项","activeForm":"做第二项","stat'
+  it('todo 工具卡片在流式不完整 JSON 时仍能渲染已完整的步骤', () => {
+    const partial = '{"plan":[{"step":"第一项","status":"completed"},{"step":"第二项","stat'
 
     render(
       <MessageItem
         message={{
           role: 'tool_call',
-          content: 'write_todos',
-          name: 'write_todos',
+          content: 'todo',
+          name: 'todo',
           args: partial,
           status: 'running',
         }}
@@ -961,5 +1030,94 @@ describe('MessageItem', () => {
     if (action === 'approve') expect(handleApprove).toHaveBeenCalledTimes(1)
     if (action === 'continue') expect(handleContinue).toHaveBeenCalledTimes(1)
     if (action === 'exit') expect(handleExit).toHaveBeenCalledTimes(1)
+  })
+
+  it('Ask 单选题展示推荐项、自动 Other，并提交结构化答案', async () => {
+    const user = userEvent.setup()
+    const onResolve = vi.fn().mockResolvedValue({
+      schema: 'ask.result.v1', id: 'ask-1', status: 'answered',
+      answers: [{ question_id: 'strategy', question: '采用哪种方案？', selected_options: [{ id: 'safe', label: '稳妥方案' }] }],
+    })
+    render(
+      <MessageItem
+        message={{
+          id: 'ask-1', role: 'ask', ask: {
+            schema: 'ask.pending.v1', id: 'ask-1', tool_call_id: 'ask-1', agent_kind: 'ide', status: 'pending',
+            questions: [{
+              id: 'strategy', question: '采用哪种方案？', recommended_option_id: 'safe',
+              options: [{ id: 'safe', label: '稳妥方案', description: '风险较低' }, { id: 'fast', label: '快速方案' }],
+            }],
+          },
+        }}
+        onResolveAsk={onResolve}
+      />,
+    )
+
+    expect(screen.getByText('推荐')).toBeInTheDocument()
+    expect(screen.getByRole('radio', { name: /其他/ })).toBeInTheDocument()
+    await user.click(screen.getByRole('radio', { name: /稳妥方案/ }))
+    await user.click(screen.getByRole('button', { name: '提交' }))
+
+    await waitFor(() => expect(onResolve).toHaveBeenCalledWith(
+      expect.objectContaining({ id: 'ask-1' }),
+      { status: 'answered', answers: [{ question_id: 'strategy', selected_option_ids: ['safe'] }] },
+    ))
+    expect(screen.getByText('已回答')).toBeInTheDocument()
+  })
+
+  it('Ask 多题保留返回导航状态，支持多选与 Other 自由输入', async () => {
+    const user = userEvent.setup()
+    const onResolve = vi.fn().mockResolvedValue({ schema: 'ask.result.v1', id: 'ask-2', status: 'answered', answers: [] })
+    render(
+      <MessageItem
+        message={{
+          id: 'ask-2', role: 'ask', ask: {
+            schema: 'ask.pending.v1', id: 'ask-2', tool_call_id: 'ask-2', agent_kind: 'config_manager', status: 'pending',
+            questions: [
+              { id: 'scope', question: '修改范围？', options: [{ id: 'one', label: '当前项' }, { id: 'all', label: '全部' }] },
+              { id: 'checks', question: '需要哪些检查？', multi_select: true, options: [{ id: 'schema', label: 'Schema' }, { id: 'links', label: '引用' }] },
+            ],
+          },
+        }}
+        onResolveAsk={onResolve}
+      />,
+    )
+
+    await user.click(screen.getByRole('radio', { name: '当前项' }))
+    await user.click(screen.getByRole('button', { name: '下一步' }))
+    await user.click(screen.getByRole('checkbox', { name: 'Schema' }))
+    await user.click(screen.getByRole('checkbox', { name: '其他' }))
+    await user.type(screen.getByRole('textbox', { name: '其他' }), '并发回归')
+    await user.click(screen.getByRole('button', { name: '上一步' }))
+    expect(screen.getByRole('radio', { name: '当前项' })).toBeChecked()
+    await user.click(screen.getByRole('button', { name: '下一步' }))
+    await user.click(screen.getByRole('button', { name: '提交' }))
+
+    await waitFor(() => expect(onResolve).toHaveBeenCalledWith(
+      expect.anything(),
+      { status: 'answered', answers: [
+        { question_id: 'scope', selected_option_ids: ['one'] },
+        { question_id: 'checks', selected_option_ids: ['schema', 'other'], custom_input: '并发回归' },
+      ] },
+    ))
+  })
+
+  it('Ask 可结构化取消，并可直接从刷新后的 pending 状态重新渲染', async () => {
+    const user = userEvent.setup()
+    const onResolve = vi.fn().mockResolvedValue({ schema: 'ask.result.v1', id: 'ask-refresh', status: 'cancelled', cancel_reason: 'user_cancelled' })
+    const message = {
+      id: 'ask-refresh', role: 'ask' as const, ask: {
+        schema: 'ask.pending.v1', id: 'ask-refresh', tool_call_id: 'ask-refresh', agent_kind: 'ide', status: 'pending' as const,
+        questions: [{ id: 'detail', question: '补充说明？' }],
+      },
+    }
+    const { unmount } = render(<MessageItem message={message} onResolveAsk={onResolve} />)
+    expect(screen.getByRole('textbox', { name: '补充说明？' })).toBeInTheDocument()
+    unmount()
+
+    render(<MessageItem message={message} onResolveAsk={onResolve} />)
+    await user.click(screen.getByRole('button', { name: '取消' }))
+    await waitFor(() => expect(onResolve).toHaveBeenCalledWith(expect.anything(), { status: 'cancelled' }))
+    expect(screen.getByText('已取消')).toBeInTheDocument()
   })
 })

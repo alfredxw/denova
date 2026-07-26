@@ -481,8 +481,8 @@ func appendConfigManagerResourceSkills(builtIn string, resourceSkills []ConfigMa
 			continue
 		}
 		if sb.Len() == 0 {
-			sb.WriteString("\n\n## 本轮自动加载的配置 Skills\n\n")
-			sb.WriteString("以下内容来自当前生效的 Denova Skills，用于在调用复杂 write_* 配置工具前确认 JSON 结构、枚举、默认值和安全流程；若与运行时契约或后端校验冲突，以运行时契约和后端校验为准。\n")
+			sb.WriteString("\n\n## 配置管理 Skill\n\n")
+			sb.WriteString("以下内容来自当前生效的 config-manager Skill。资源细节位于 references；按需使用 read 读取，不要把全部参考一次性注入上下文。若与运行时契约或后端校验冲突，以运行时契约和后端校验为准。\n")
 		}
 		sb.WriteString("\n### /")
 		sb.WriteString(name)
@@ -536,10 +536,11 @@ func configManagerFlowInstructionFor(workspace, creator string) string {
 	}
 	sb.WriteString(strings.Join([]string{
 		"## 工作方式",
-		"- 根据用户所在模块和当前资源上下文，优先使用对应模块工具完成管理任务。",
-		"- 每个模块先用 list 工具查看索引；需要详情时再用 read 工具批量读取。",
-		"- 增删改统一使用对应 write 工具批量完成，写入后用简短中文总结实际变更。",
-		"- Agent 页配置使用 list_agent_configs 一次读取全量配置，再用 write_agent_configs 写入；写入必须显式指定 scope=user 或 scope=workspace。",
+		"- 配置资源只有两个入口：config_read 负责 describe/list/get，config_apply 负责一次 create/update/delete。",
+		"- 遇到不熟悉的 resource，先调用 config_read operation=describe，再按 config-manager Skill 中对应 reference 的结构操作。",
+		"- 读取先 list 缩小范围，再按精确 ID get；update/delete 必须携带最近一次 config_read 返回的 revision。",
+		"- config_apply 一次只提交一个独立资源变更；成功后根据回执中的新 revision 继续，禁止拿旧 revision 覆盖并发修改。",
+		"- Agent 页配置使用 resource=agent_profile，必须显式指定 scope=user 或 scope=workspace。",
 		"- 不要修改端口、主题、远程访问、编辑器外观等非 Agent 页设置。",
 		"- 不要通过文件工具直接改资料库、方案预设、自动化、Skills 或 Agent 配置的底层存储文件。",
 		"- 删除、隐藏、覆盖、大范围重写必须有用户明确指令；缺少明确指令时先询问。",
@@ -548,7 +549,7 @@ func configManagerFlowInstructionFor(workspace, creator string) string {
 		"- 资料库记录长期稳定设定；游戏模式中已发生事实进入 Turn 历史，当前位置、伤势、关系、资源和规则值进入 Actor State，不默认写资料库。",
 		"- 叙事风格只维护文风、提示词槽位、场景风格和上下文策略；故事导演维护编排策略，并通过 module_refs 可插拔组合叙事风格、多个事件包、TRPG 检定、状态系统和图像方案；事件包只维护事件卡列表；每个 TRPG 检定资源代表一种 DM 检定风格，检定固定使用 d20，并可通过 state_bindings 绑定状态系统字段；状态系统是结构化状态、开局词条、当前时间地点、当前事件、可计算字段和规则消费字段的唯一真源，模板只是状态表 schema，可表示故事上下文、主角、重要角色、敌人、世界、故事倒计时、特定角色、势力、基地或副本等任意状态对象；图像方案只维护视觉风格、媒介、构图、限制和避免项。",
 		"- 新故事的状态结构策略由开局页面按故事配置；动态模式由前台 Game Agent 在首回合原子提交前完成结构草案，固定模式只更新状态值。故事导演不拥有或修改状态结构。",
-		"- Skills 写入 SKILL.md 文档，必须说明适用场景、上下文获取和具体工作流；内置预制 Skill 只能通过工作区同名覆盖修改，不得写入内置 Skills 目录。",
+		"- resource=skill 写入 SKILL.md 文档，必须说明适用场景、上下文获取和具体工作流；内置预制 Skill 只能通过工作区同名覆盖修改，不得写入内置 Skills 目录。",
 		"- 自动化任务必须保持触发条件、通知/执行策略和写入权限清晰。",
 	}, "\n"))
 	return sb.String()

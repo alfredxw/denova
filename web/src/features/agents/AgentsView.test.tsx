@@ -3,7 +3,7 @@ import userEvent from '@testing-library/user-event'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { getSkills } from '@/lib/api'
 import { fetchSettings, updateUserSettings, updateWorkspaceSettings } from '@/features/settings/api'
-import type { LayeredSettings } from '@/features/settings/types'
+import type { AgentToolCapability, LayeredSettings, ResolvedAgentToolCapability } from '@/features/settings/types'
 import { AgentsView } from './AgentsView'
 
 const { configManagerChatProps } = vi.hoisted(() => ({
@@ -120,19 +120,115 @@ describe('AgentsView', () => {
     expect(screen.getByRole('spinbutton', { name: '来源元数据上限 (KB)' })).toHaveValue(4)
   })
 
-  it('keeps execute configurable on Windows runtimes', async () => {
+  it('keeps the shell capability configurable on Windows runtimes', async () => {
     vi.mocked(fetchSettings).mockResolvedValue(settingsSnapshot({
       runtime: { goos: 'windows' },
+      resolved_agent_tool_manifests: {
+        ide: [resolvedTool('shell', 'agents.tool.shell.title', ['pwsh'])],
+      },
     }))
 
     render(<AgentsView />)
 
-    const title = await screen.findByText('命令执行')
-    const row = title.parentElement?.parentElement
-    const toggle = row ? within(row).getByRole('switch', { name: '命令执行' }) : null
-    expect(screen.queryByText('Windows 暂不支持 execute')).not.toBeInTheDocument()
+    const title = await screen.findByText('Shell 命令')
+    const row = title.closest<HTMLElement>('.min-h-16')
+    const toggle = row ? within(row).getByRole('switch', { name: 'Shell 命令' }) : null
     expect(toggle).toBeTruthy()
     expect(toggle).not.toBeDisabled()
+    expect(row ? within(row).getByText('pwsh') : null).toBeTruthy()
+    expect(row ? within(row).queryByText('bash') : null).toBeNull()
+  })
+
+  it('uses backend manifest order and resolved allowed values without a frontend fallback matrix', async () => {
+    vi.mocked(fetchSettings).mockResolvedValue(settingsSnapshot({
+      resolved_agent_tool_manifests: {
+        ide: [
+          resolvedTool('todo', 'agents.tool.todo.title', ['todo']),
+          resolvedTool('shell', 'agents.tool.shell.title', ['bash'], false),
+        ],
+      },
+    }))
+
+    render(<AgentsView />)
+
+    const todo = await screen.findByText('任务清单')
+    const shell = screen.getByText('Shell 命令')
+    expect(todo.compareDocumentPosition(shell) & Node.DOCUMENT_POSITION_FOLLOWING).not.toBe(0)
+    expect(screen.getByRole('switch', { name: 'Shell 命令' })).not.toBeChecked()
+  })
+
+  it('shows runtime-check and unavailable manifest states without disabling policy configuration', async () => {
+    vi.mocked(fetchSettings).mockResolvedValue(settingsSnapshot({
+      resolved_agent_tool_manifests: {
+        ide: [
+          resolvedTool('web_search', 'agents.tool.webSearch.title', ['web_search'], true, true, 'runtime_check'),
+          resolvedTool('shell', 'agents.tool.shell.title', ['bash'], false, true, 'unavailable'),
+        ],
+      },
+    }))
+
+    render(<AgentsView />)
+
+    expect(await screen.findByText('运行时检查')).toBeInTheDocument()
+    expect(screen.getByText('不可用')).toBeInTheDocument()
+    expect(screen.getByText('当前 Agent 的工具策略已禁用此能力。')).toBeInTheDocument()
+    expect(screen.getByRole('switch', { name: '网页搜索' })).not.toBeDisabled()
+    expect(screen.getByRole('switch', { name: 'Shell 命令' })).not.toBeDisabled()
+  })
+
+  it('renders the Director-only event read capability from the backend manifest', async () => {
+    const user = userEvent.setup()
+    vi.mocked(fetchSettings).mockResolvedValue(settingsSnapshot({
+      resolved_agent_tool_manifests: {
+        interactive_director: [
+          resolvedTool('event_read', 'agents.tool.eventRead.title', ['read'], true, false, 'runtime_check'),
+        ],
+      },
+    }))
+
+    render(<AgentsView />)
+
+    await user.click(await screen.findByRole('button', { name: /后台导演 Agent/ }))
+    expect(await screen.findByText('读取事件卡')).toBeInTheDocument()
+    expect(screen.getByText('read')).toBeInTheDocument()
+  })
+
+  it('deletes a reset Agent tool override before persisting it', async () => {
+    const user = userEvent.setup()
+    vi.mocked(fetchSettings).mockResolvedValue(settingsSnapshot({
+      user: { agent_tools: { ide: { shell: false } } },
+      effective: { agent_tools: { ide: { shell: false } } },
+      resolved_agent_tool_manifests: {
+        ide: [resolvedTool('shell', 'agents.tool.shell.title', ['bash'])],
+      },
+    }))
+
+    render(<AgentsView />)
+
+    const title = await screen.findByText('Shell 命令')
+    const row = title.closest<HTMLElement>('.min-h-16')
+    expect(row).toBeTruthy()
+    expect(within(row as HTMLElement).getByRole('switch', { name: 'Shell 命令' })).not.toBeChecked()
+    await user.click(within(row as HTMLElement).getByRole('button', { name: '覆盖' }))
+    expect(within(row as HTMLElement).getByText('继承')).toBeInTheDocument()
+    flushAgentsAutosave()
+
+    await waitFor(() => expect(vi.mocked(updateUserSettings)).toHaveBeenCalled())
+    const submitted = vi.mocked(updateUserSettings).mock.calls.at(-1)?.[0]
+    expect(submitted?.agent_tools?.ide).toEqual({})
+    expect(JSON.stringify(submitted)).not.toContain('"shell":null')
+  })
+
+  it('keeps the tool section empty until the backend manifest is loaded', async () => {
+    vi.mocked(fetchSettings).mockResolvedValue(settingsSnapshot({
+      resolved_agent_tool_manifests: undefined,
+    }))
+
+    render(<AgentsView />)
+
+    await screen.findByText('模型与思考')
+    expect(screen.queryByText('Shell 命令')).not.toBeInTheDocument()
+    expect(screen.queryByText('任务清单')).not.toBeInTheDocument()
   })
 
   it('shows inherited empty thinking as the default state', async () => {
@@ -176,6 +272,48 @@ describe('AgentsView', () => {
     const dialog = screen.getByRole('dialog')
     expect(within(dialog).getByRole('switch', { name: '思考开关' })).toBeChecked()
     expect(within(dialog).getAllByText('继承').length).toBeGreaterThan(0)
+  })
+
+  it('shows SubAgent tools capped by the parent manifest and counts only explicit restrictions', async () => {
+    const user = userEvent.setup()
+    vi.mocked(fetchSettings).mockResolvedValue(settingsSnapshot({
+      resolved_agent_tool_manifests: {
+        ide: [
+          resolvedTool('workspace_read', 'agents.tool.workspaceRead.title', ['read', 'glob', 'grep'], false),
+          resolvedTool('shell', 'agents.tool.shell.title', ['bash']),
+        ],
+      },
+      effective: {
+        sub_agents: [{
+          id: 'reviewer',
+          name: 'Reviewer',
+          description: 'Reviews drafts.',
+          system_prompt: 'Review only.',
+          parents: ['ide'],
+          enabled: true,
+          tools: {
+            workspace_read: true,
+            shell: false,
+          },
+        }],
+      },
+    }))
+
+    render(<AgentsView />)
+
+    const reviewer = await screen.findByText('Reviewer')
+    const row = reviewer.closest('[data-subagent-id]')
+    expect(row).toBeTruthy()
+    expect(within(row as HTMLElement).getByText('已限制 1 项工具')).toBeInTheDocument()
+    await user.click(within(row as HTMLElement).getByRole('button', { name: '编辑 SubAgent' }))
+
+    const dialog = screen.getByRole('dialog')
+    const parentDenied = within(dialog).getByRole('switch', { name: '读取与搜索工作区' })
+    expect(parentDenied).not.toBeChecked()
+    expect(parentDenied).toBeDisabled()
+    const explicitRestriction = within(dialog).getByRole('switch', { name: 'Shell 命令' })
+    expect(explicitRestriction).not.toBeChecked()
+    expect(explicitRestriction).not.toBeDisabled()
   })
 
   it('adds and edits custom SubAgents in user settings by default', async () => {
@@ -535,6 +673,61 @@ function settingsSnapshot(patch: Partial<LayeredSettings>): LayeredSettings {
     builtin_agent_prompts: {},
     builtin_agent_prompt_blocks: {},
     builtin_agent_prompt_sources: {},
+    resolved_agent_tool_manifests: defaultToolManifests(),
     ...patch,
+  }
+}
+
+function defaultToolManifests(): NonNullable<LayeredSettings['resolved_agent_tool_manifests']> {
+  return {
+    ide: [
+      resolvedTool('workspace_read', 'agents.tool.workspaceRead.title', ['read', 'glob', 'grep']),
+      resolvedTool('shell', 'agents.tool.shell.title', ['bash']),
+      resolvedTool('todo', 'agents.tool.todo.title', ['todo'], true, false),
+      resolvedTool('skills', 'agents.tool.skills.title', ['skill', 'read']),
+    ],
+    interactive_story: [
+      resolvedTool('workspace_read', 'agents.tool.workspaceRead.title', ['read', 'glob', 'grep']),
+      resolvedTool('skills', 'agents.tool.skills.title', ['skill', 'read']),
+    ],
+    interactive_director: [
+      resolvedTool('event_read', 'agents.tool.eventRead.title', ['read'], true, false, 'runtime_check'),
+    ],
+    config_manager: [
+      resolvedTool('workspace_read', 'agents.tool.workspaceRead.title', ['read', 'glob', 'grep']),
+      resolvedTool('skills', 'agents.tool.skills.title', ['skill', 'read']),
+    ],
+    automation: [
+      resolvedTool('workspace_read', 'agents.tool.workspaceRead.title', ['read', 'glob', 'grep']),
+      resolvedTool('skills', 'agents.tool.skills.title', ['skill', 'read']),
+    ],
+  }
+}
+
+function resolvedTool(
+  capability: AgentToolCapability,
+  titleKey: string,
+  toolNames: string[],
+  allowed = true,
+  availableToSubAgents = true,
+  availability: ResolvedAgentToolCapability['availability'] = allowed ? 'available' : 'unavailable',
+): ResolvedAgentToolCapability {
+  return {
+    capability,
+    title_key: titleKey,
+    description_key: `${titleKey.replace(/\.title$/, '')}.subtitle`,
+    tool_names: toolNames,
+    allowed,
+    availability,
+    unavailable_reason_key: availability === 'unavailable' ? 'agents.tool.unavailable.disabledByPolicy' : undefined,
+    available_to_subagents: availableToSubAgents,
+    descriptor: {
+      execution: 'parallel_read',
+      mutation_scope: 'none',
+      post_check: 'none',
+      recovery: 'read_only',
+      result_projection: 'bounded_model_context',
+      steering: 'finish_current',
+    },
   }
 }

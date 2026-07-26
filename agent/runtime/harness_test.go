@@ -652,7 +652,7 @@ func TestRecoveryNeverRetriesAnUnfinishedToolEffect(t *testing.T) {
 		}},
 		runstate.CycleStartedEvent{OperationID: operationID, Cycle: 1, SnapshotID: "snapshot-recover"},
 		runstate.ToolCallStartedEvent{Call: runstate.ToolCallState{
-			CallID: "tool-1", Name: "write_file", Arguments: []byte(`{"path":"chapter.md"}`),
+			CallID: "tool-1", Name: "write", Arguments: []byte(`{"path":"chapter.md"}`),
 			OperationID: operationID, Cycle: 1,
 		}},
 	}); err != nil {

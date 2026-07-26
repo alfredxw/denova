@@ -83,6 +83,8 @@ type SessionConversation struct {
 	lastCommitReceipts map[HarnessDomainCommitStage]*session.DomainCommitReceipt
 	inputCommit        func() error
 	pendingCompaction  *preparedSessionContextCompaction
+	pendingContextOps  []session.ContextOperation
+	contextWindowBase  *contextWindowModelBase
 }
 
 func (c *SessionConversation) BindHarnessAgentKind(agentKind string) {
@@ -399,6 +401,12 @@ func (c *SessionConversation) AppendAssistantWithMetadata(content, _ string, met
 	if !validHarnessCycleIdentity(identity) {
 		return ErrMissingAgentCycleIdentity
 	}
+	c.cycleMu.Lock()
+	metadata.ContextOperations = append(
+		append([]session.ContextOperation(nil), metadata.ContextOperations...),
+		c.pendingContextOps...,
+	)
+	c.cycleMu.Unlock()
 	intent, err := session.NewDomainCommitIntent(session.DomainCommitIdentity{
 		CommandID: string(identity.CommandID), OperationID: string(identity.OperationID), Cycle: identity.Cycle,
 	}, agent.AssistantMessage(content, nil), metadata)
@@ -431,7 +439,56 @@ func (c *SessionConversation) BindAgentCycleIdentity(identity HarnessCycleIdenti
 	c.pendingCommits = make(map[HarnessDomainCommitStage]*session.DomainCommitIntent)
 	c.lastCommitReceipts = make(map[HarnessDomainCommitStage]*session.DomainCommitReceipt)
 	c.inputCommit = nil
+	c.pendingContextOps = nil
+	c.contextWindowBase = nil
 	c.cycleMu.Unlock()
+}
+
+func (c *SessionConversation) ActiveContextCheckpoints(agentKind string) ([]session.ContextOperation, error) {
+	if c == nil || c.session == nil {
+		return nil, nil
+	}
+	return c.session.ActiveContextCheckpoints(agentKind)
+}
+
+// StageContextOperation keeps structural context metadata process-local until
+// the assistant output is authorized and committed by the durable harness.
+func (c *SessionConversation) StageContextOperation(operation session.ContextOperation) error {
+	if c == nil || c.session == nil {
+		return fmt.Errorf("会话不存在")
+	}
+	c.cycleMu.Lock()
+	defer c.cycleMu.Unlock()
+	if !validHarnessCycleIdentity(c.cycleIdentity) {
+		return ErrMissingAgentCycleIdentity
+	}
+	// Mutation observations enrich the active checkpoint while the run is
+	// still process-local. Replace that staged checkpoint so a preempted output
+	// commits the latest bounded receipts instead of an obsolete empty marker.
+	if operation.Kind == session.ContextOperationCheckpoint {
+		for index, pending := range c.pendingContextOps {
+			if pending.Kind == operation.Kind && pending.AgentKind == operation.AgentKind && pending.CheckpointID == operation.CheckpointID {
+				c.pendingContextOps[index] = operation
+				return nil
+			}
+		}
+	}
+	if len(c.pendingContextOps) >= 16 {
+		return fmt.Errorf("too many context operations in one agent cycle")
+	}
+	c.pendingContextOps = append(c.pendingContextOps, operation)
+	return nil
+}
+
+// HasPendingContextOperations reports whether an otherwise empty assistant
+// commit is still required to durably publish structural context metadata.
+func (c *SessionConversation) HasPendingContextOperations() bool {
+	if c == nil {
+		return false
+	}
+	c.cycleMu.Lock()
+	defer c.cycleMu.Unlock()
+	return len(c.pendingContextOps) > 0
 }
 
 func (c *SessionConversation) BindAgentCycleInputCommit(commit func() error) {

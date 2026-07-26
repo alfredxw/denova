@@ -19,11 +19,15 @@ const (
 	historyTypeDisplay             = "display"
 	historyTypeClear               = "clear"
 	historyTypeInterrupt           = "interrupt"
+	historyTypeAsk                 = "ask"
 	historyTypeCompaction          = "context_compaction"
 	historyTypeCompactionRemoved   = "context_compaction_removed"
 
 	InterruptionPending  = "pending"
 	InterruptionResolved = "resolved"
+	AskPending           = "pending"
+	AskAnswered          = "answered"
+	AskCancelled         = "cancelled"
 )
 
 // HistoryEntry 表示用于前端展示的会话历史记录。
@@ -40,6 +44,7 @@ type HistoryEntry struct {
 	Status           string               `json:"status,omitempty"`
 	Result           string               `json:"result,omitempty"`
 	Illustration     *ChapterIllustration `json:"illustration,omitempty"`
+	Ask              *AskInteraction      `json:"ask,omitempty"`
 	Message          *agent.Message       `json:"-"`
 	CreatedAt        time.Time            `json:"created_at,omitempty"`
 
@@ -102,6 +107,62 @@ type MessageMetadata struct {
 	SubAgentSessionID string                 `json:"subagent_session_id,omitempty"`
 	SubAgentType      string                 `json:"subagent_type,omitempty"`
 	UserReferences    []UserMessageReference `json:"user_references,omitempty"`
+	ContextOperations []ContextOperation     `json:"context_operations,omitempty"`
+}
+
+const (
+	ContextOperationCheckpoint = "checkpoint"
+	ContextOperationRewind     = "rewind"
+)
+
+// ContextOperation is committed atomically with one assistant message. It is
+// model-invisible metadata used to project future context without deleting the
+// canonical/display transcript.
+type ContextOperation struct {
+	Kind             string                     `json:"kind"`
+	AgentKind        string                     `json:"agent_kind"`
+	CheckpointID     string                     `json:"checkpoint_id"`
+	Purpose          string                     `json:"purpose,omitempty"`
+	MessageCount     int                        `json:"message_count,omitempty"`
+	Boundary         *ContextCheckpointBoundary `json:"boundary,omitempty"`
+	Report           string                     `json:"report,omitempty"`
+	MutationReceipts []ContextMutationReceipt   `json:"mutation_receipts,omitempty"`
+}
+
+const ContextCheckpointBoundarySchema = "denova.context-checkpoint-boundary.v1"
+
+// ContextCheckpointBoundary is the immutable model-context projection captured
+// synchronously before a model call. EffectivePrefix resumes the current Agent
+// run, while CanonicalPrefix excludes turn-scoped prompt fragments so future
+// turns can assemble fresh runtime context without duplicating stale inputs.
+type ContextCheckpointBoundary struct {
+	Schema          string           `json:"schema"`
+	Cursor          ContextCursor    `json:"cursor"`
+	LimitBytes      int              `json:"limit_bytes"`
+	EffectiveSource string           `json:"effective_source"`
+	CanonicalSource string           `json:"canonical_source"`
+	EffectivePrefix []*agent.Message `json:"effective_prefix"`
+	CanonicalPrefix []*agent.Message `json:"canonical_prefix"`
+	EffectiveBytes  int              `json:"effective_bytes"`
+	CanonicalBytes  int              `json:"canonical_bytes"`
+	EffectiveSHA256 string           `json:"effective_sha256"`
+	CanonicalSHA256 string           `json:"canonical_sha256"`
+}
+
+// ContextMutationReceipt preserves the fact of a committed side effect across
+// rewind. Rewind changes model context only and never reverts external state.
+type ContextMutationReceipt struct {
+	Tool    string `json:"tool"`
+	CallID  string `json:"call_id,omitempty"`
+	Scope   string `json:"scope"`
+	Summary string `json:"summary"`
+}
+
+type ContextWindowProjection struct {
+	Checkpoint       ContextOperation `json:"checkpoint"`
+	Rewind           ContextOperation `json:"rewind"`
+	RewindAfterIndex int              `json:"rewind_after_index"`
+	ContextRevision  uint64           `json:"context_revision"`
 }
 
 type historyRecord struct {
@@ -111,6 +172,7 @@ type historyRecord struct {
 	messageMetadata              MessageMetadata
 	display                      *DisplayEvent
 	interruption                 *Interruption
+	ask                          *AskInteraction
 	compaction                   *ContextCompaction
 	compactionRemoval            *ContextCompactionRemoval
 	createdAt                    time.Time
@@ -206,6 +268,88 @@ type Interruption struct {
 	ResolvedAt       *time.Time `json:"resolved_at,omitempty"`
 }
 
+// AskOption is one model-provided choice. "Other" is deliberately absent:
+// every interactive host adds that localized choice itself.
+type AskOption struct {
+	ID          string `json:"id"`
+	Label       string `json:"label"`
+	Description string `json:"description,omitempty"`
+}
+
+// AskQuestion is a stable, recoverable question shown by an interactive host.
+// Empty Options means free text. MultiSelect is meaningful only with options.
+type AskQuestion struct {
+	ID                  string      `json:"id"`
+	Question            string      `json:"question"`
+	Options             []AskOption `json:"options,omitempty"`
+	MultiSelect         bool        `json:"multi_select,omitempty"`
+	RecommendedOptionID string      `json:"recommended_option_id,omitempty"`
+}
+
+// AskAnswer is accepted from the UI. Option IDs are checked against the
+// persisted question before the answer becomes a model-visible result.
+type AskAnswer struct {
+	QuestionID        string   `json:"question_id"`
+	SelectedOptionIDs []string `json:"selected_option_ids,omitempty"`
+	CustomInput       string   `json:"custom_input,omitempty"`
+}
+
+type AskSelectedOption struct {
+	ID    string `json:"id"`
+	Label string `json:"label"`
+}
+
+type AskAnswerResult struct {
+	QuestionID      string              `json:"question_id"`
+	Question        string              `json:"question"`
+	SelectedOptions []AskSelectedOption `json:"selected_options,omitempty"`
+	CustomInput     string              `json:"custom_input,omitempty"`
+}
+
+// AskInteraction is append-only session state for one blocking ask call. The
+// ordinary tool call/result remains the model and display representation.
+type AskInteraction struct {
+	Schema string `json:"schema"`
+	ID     string `json:"id"`
+	// ToolCallID is the durable execution ID used by lifecycle and display
+	// correlation. ProviderCallID is transcript-only diagnostic metadata.
+	ToolCallID     string `json:"tool_call_id"`
+	ProviderCallID string `json:"provider_call_id,omitempty"`
+	TaskID         string `json:"task_id,omitempty"`
+	AgentKind      string `json:"agent_kind"`
+	// AgentCommandID, AgentOperationID, and AgentCycle bind the blocking
+	// interaction to the durable coordinator cycle that owned its tool call.
+	// They are optional only for journals written before this correlation was
+	// introduced.
+	AgentCommandID   string            `json:"agent_command_id,omitempty"`
+	AgentOperationID string            `json:"agent_operation_id,omitempty"`
+	AgentCycle       int               `json:"agent_cycle,omitempty"`
+	Status           string            `json:"status"`
+	Questions        []AskQuestion     `json:"questions,omitempty"`
+	Answers          []AskAnswerResult `json:"answers,omitempty"`
+	CancelReason     string            `json:"cancel_reason,omitempty"`
+	CreatedAt        time.Time         `json:"created_at"`
+	ResolvedAt       *time.Time        `json:"resolved_at,omitempty"`
+}
+
+// AskCycleIdentity is the narrow runtime identity Session needs to reconcile a
+// pending Ask after the process-local model continuation has been lost.
+type AskCycleIdentity struct {
+	CommandID   string
+	OperationID string
+	Cycle       int
+}
+
+// AskResolution is a normal structured result. Cancellation is not an error
+// and must never be represented as an abnormal Agent interruption.
+type AskResolution struct {
+	Schema       string            `json:"schema"`
+	ID           string            `json:"id"`
+	Status       string            `json:"status"`
+	Answers      []AskAnswerResult `json:"answers,omitempty"`
+	CancelReason string            `json:"cancel_reason,omitempty"`
+}
+
 // ContextCompaction records a model-visible summary epoch without modifying the
 // raw user-facing transcript.
 type ContextCompaction struct {
@@ -277,6 +421,7 @@ type Session struct {
 	mu                     sync.Mutex
 	messages               []*agent.Message
 	records                []historyRecord
+	askWaiters             map[string]chan AskResolution
 }
 
 // SessionMeta 是会话列表摘要。

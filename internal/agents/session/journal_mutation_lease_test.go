@@ -244,7 +244,7 @@ func TestCanonicalRefreshKeepsLocalDisplayTailPending(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := localWriter.AppendDisplayEvent(DisplayEvent{ID: "call-1", Role: "tool_call", Name: "read_file", Status: "running"}); err != nil {
+	if err := localWriter.AppendDisplayEvent(DisplayEvent{ID: "call-1", Role: "tool_call", Name: "read", Status: "running"}); err != nil {
 		t.Fatal(err)
 	}
 	remoteWriter, err := loadSession(localWriter.filePath)
@@ -252,16 +252,16 @@ func TestCanonicalRefreshKeepsLocalDisplayTailPending(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	if err := localWriter.AppendDisplayToolArgs("call-1", "read_file", `{"local":true}`); err != nil {
+	if err := localWriter.AppendDisplayToolArgs("call-1", "read", `{"local":true}`); err != nil {
 		t.Fatal(err)
 	}
-	if err := remoteWriter.AppendDisplayToolArgs("call-1", "read_file", `{"remote":true}`); err != nil {
+	if err := remoteWriter.AppendDisplayToolArgs("call-1", "read", `{"remote":true}`); err != nil {
 		t.Fatal(err)
 	}
-	if err := remoteWriter.UpdateDisplayToolStatus("call-1", "read_file", "running"); err != nil {
+	if err := remoteWriter.UpdateDisplayToolStatus("call-1", "read", "running"); err != nil {
 		t.Fatal(err)
 	}
-	if err := localWriter.UpdateDisplayToolResult("call-1", "read_file", "success", "ok"); err != nil {
+	if err := localWriter.UpdateDisplayToolResult("call-1", "read", "success", "ok"); err != nil {
 		t.Fatal(err)
 	}
 

@@ -228,7 +228,12 @@ func TestInteractiveContextLedgerUsesFinalCompactedMessages(t *testing.T) {
 		case part.Source == "ActorState":
 			sawActorState = part.Included && part.Limit > 0
 		case part.Source == "ContextCompaction":
-			compaction = part.Included && strings.Contains(part.Preview, "压缩")
+			// The checkpoint prefix deliberately labels the summary as
+			// assistant-authored context data. The bounded preview may end
+			// before the summary body, so assert the structural ledger contract
+			// instead of depending on one summary word appearing in the preview.
+			compaction = part.Included && part.Purpose == "model-visible history checkpoint" &&
+				strings.Contains(part.Note, "final_message=true")
 		case part.Source == "历史回合" && strings.HasPrefix(part.Title, "第 1 回合"):
 			removedOld = !part.Included && part.Truncated && strings.Contains(part.Note, "not_present_after_final_compaction")
 		case part.Source == "历史回合" && strings.HasPrefix(part.Title, "第 2 回合"):

@@ -68,8 +68,8 @@ func (s *AutomationAppService) writeOptionalOutput(snap *automationWorkspaceSnap
 	if !automationTaskAllowsFileWrite(writeMode, writeScope) {
 		return "", fmt.Errorf("task write mode/scope does not allow file output")
 	}
-	if !config.ResolveAgentTools(&cfg, config.AgentKindAutomation).FileWrite {
-		return "", fmt.Errorf("Automation Agent file_write tool is disabled")
+	if !config.ResolveAgentTools(&cfg, config.AgentKindAutomation).Allows(config.AgentToolWorkspaceWrite) {
+		return "", fmt.Errorf("Automation Agent workspace_write capability is disabled")
 	}
 	bookService := snap.bookService
 	if bookService == nil {
@@ -128,31 +128,26 @@ func automationTaskAllowsLoreWrite(writeMode, writeScope string) bool {
 
 func constrainAutomationTools(cfg config.Config, writeMode, writeScope string) config.Config {
 	resolved := config.ResolveAgentTools(&cfg, config.AgentKindAutomation)
-	cfg.AgentTools.Automation = config.AgentToolOverride{
-		FileRead:     boolPointer(resolved.FileRead),
-		FileWrite:    boolPointer(resolved.FileWrite && automationTaskAllowsFileWrite(writeMode, writeScope)),
-		ShellExecute: boolPointer(resolved.ShellExecute),
-		Skills:       boolPointer(resolved.Skills),
-		LoreRead:     boolPointer(resolved.LoreRead),
-		LoreWrite:    boolPointer(resolved.LoreWrite && automationTaskAllowsLoreWrite(writeMode, writeScope)),
-		Todo:         boolPointer(resolved.Todo),
-		WebSearch:    boolPointer(resolved.WebSearch),
+	override := make(config.AgentToolOverride, len(config.AgentToolCapabilities()))
+	for _, capability := range config.AgentToolCapabilities() {
+		override[capability.Source] = resolved.Allows(capability.Source)
 	}
+	override[config.AgentToolWorkspaceWrite] = resolved.Allows(config.AgentToolWorkspaceWrite) && automationTaskAllowsFileWrite(writeMode, writeScope)
+	override[config.AgentToolLoreWrite] = resolved.Allows(config.AgentToolLoreWrite) && automationTaskAllowsLoreWrite(writeMode, writeScope)
+	cfg.AgentTools.Automation = override
 	return cfg
 }
 
 func constrainGlobalAutomationTools(cfg config.Config) config.Config {
 	resolved := config.ResolveAgentTools(&cfg, config.AgentKindAutomation)
-	cfg.AgentTools.Automation = config.AgentToolOverride{
-		FileRead:     boolPointer(false),
-		FileWrite:    boolPointer(false),
-		ShellExecute: boolPointer(false),
-		Skills:       boolPointer(resolved.Skills),
-		LoreRead:     boolPointer(false),
-		LoreWrite:    boolPointer(false),
-		Todo:         boolPointer(resolved.Todo),
-		WebSearch:    boolPointer(resolved.WebSearch),
+	override := make(config.AgentToolOverride, len(config.AgentToolCapabilities()))
+	for _, capability := range config.AgentToolCapabilities() {
+		override[capability.Source] = false
 	}
+	for _, capability := range []string{config.AgentToolSkills, config.AgentToolTodo, config.AgentToolWebSearch, config.AgentToolWebFetch} {
+		override[capability] = resolved.Allows(capability)
+	}
+	cfg.AgentTools.Automation = override
 	return cfg
 }
 
@@ -161,12 +156,10 @@ func automationToolManifest(cfg *config.Config) []automation.ToolManifestItem {
 	capabilities := config.ResolveAgentToolManifest(tools)
 	result := make([]automation.ToolManifestItem, 0, len(capabilities))
 	for _, capability := range capabilities {
-		result = append(result, automation.ToolManifestItem{Source: capability.Source, Allowed: capability.Allowed})
+		result = append(result, automation.ToolManifestItem{Source: capability.Capability, Allowed: capability.Allowed})
 	}
 	return result
 }
-
-func boolPointer(value bool) *bool { return &value }
 
 func eventMessage(data interface{}) string {
 	switch typed := data.(type) {

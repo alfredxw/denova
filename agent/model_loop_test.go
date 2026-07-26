@@ -16,6 +16,7 @@ type failingPublicStreamModel struct {
 type retryBeforeFirstChunkModel struct {
 	calls atomic.Int32
 	err   error
+	tool  bool
 }
 
 func (*retryBeforeFirstChunkModel) Generate(context.Context, []*Message, ...ModelOption) (*Message, error) {
@@ -23,11 +24,18 @@ func (*retryBeforeFirstChunkModel) Generate(context.Context, []*Message, ...Mode
 }
 
 func (model *retryBeforeFirstChunkModel) Stream(context.Context, []*Message, ...ModelOption) (*StreamReader[*Message], error) {
-	if model.calls.Add(1) == 1 {
+	call := model.calls.Add(1)
+	if call == 1 {
 		reader, writer := Pipe[*Message](-1)
 		writer.Send(nil, model.err)
 		writer.Close()
 		return reader, nil
+	}
+	if model.tool && call == 2 {
+		return StreamReaderFromArray([]*Message{AssistantMessage("", []ToolCall{{
+			ID: "provider-reused", Type: "function",
+			Function: FunctionCall{Name: "echo", Arguments: `{}`},
+		}})}), nil
 	}
 	return StreamReaderFromArray([]*Message{AssistantMessage("recovered", nil)}), nil
 }
@@ -61,6 +69,70 @@ func TestNativeLoopRetriesStreamErrorBeforeFirstChunk(t *testing.T) {
 	}
 	if calls := model.calls.Load(); calls != 2 {
 		t.Fatalf("model stream calls = %d, want 2", calls)
+	}
+}
+
+func TestNativeLoopRetryBeforeFirstChunkKeepsToolExecutionIdentityAligned(t *testing.T) {
+	model := &retryBeforeFirstChunkModel{err: errors.New("stream failed before first chunk"), tool: true}
+	echo := testToolDefinition(&functionTool{name: "echo", run: func(context.Context, string) (string, error) {
+		return "ok", nil
+	}})
+	native, err := NewAgent(context.Background(), AgentConfig{
+		Name: "stream-retry-tool-identity", Model: model, Tools: []ToolDefinition{echo},
+		Retry: &RetryConfig{MaxRetries: 1, IsRetryable: func(context.Context, error) bool { return true }},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	iterator := NewRunner(RunnerConfig{Agent: native, EnableStreaming: true}).Query(context.Background(), "go")
+	var displayedID string
+	var lifecycleIDs []string
+	var transcriptID string
+	for {
+		event, ok := iterator.Next()
+		if !ok {
+			break
+		}
+		if event == nil {
+			continue
+		}
+		if event.Err != nil {
+			t.Fatal(event.Err)
+		}
+		if event.Output != nil && event.Output.ToolExecution != nil {
+			lifecycleIDs = append(lifecycleIDs, event.Output.ToolExecution.ExecutionID)
+		}
+		if event.Output == nil || event.Output.MessageOutput == nil {
+			continue
+		}
+		variant := event.Output.MessageOutput
+		if variant.Role == Assistant {
+			message, messageErr := variant.GetMessage()
+			if messageErr != nil {
+				t.Fatal(messageErr)
+			}
+			if len(message.ToolCalls) > 0 {
+				displayedID = variant.ToolExecutionID(0)
+			}
+		}
+		if variant.Role == ToolRole {
+			transcriptID = variant.ExecutionID
+		}
+	}
+	if displayedID == "" || transcriptID == "" {
+		t.Fatalf("displayed execution id=%q transcript execution id=%q", displayedID, transcriptID)
+	}
+	if len(lifecycleIDs) < 2 {
+		t.Fatalf("tool lifecycle ids = %v", lifecycleIDs)
+	}
+	for _, executionID := range append(lifecycleIDs, transcriptID) {
+		if executionID != displayedID {
+			t.Fatalf("tool execution identity diverged: display=%q lifecycle/transcript=%q all=%v", displayedID, executionID, lifecycleIDs)
+		}
+	}
+	if calls := model.calls.Load(); calls != 3 {
+		t.Fatalf("model stream calls = %d, want 3", calls)
 	}
 }
 

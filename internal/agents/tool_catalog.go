@@ -25,6 +25,8 @@ func newToolCatalog(cfg *config.Config) *producttools.Catalog {
 	discovered := runtimetools.DiscoverForExecutable(executablePath)
 	return producttools.NewCatalog(cfg, agentWorkspaceChangeMetadata, producttools.RuntimeExecutables{
 		Ripgrep: discovered.Ripgrep,
+		Bash:    discovered.Bash,
+		Pwsh:    discovered.Pwsh,
 	})
 }
 
@@ -37,6 +39,7 @@ func projectInteractiveToolContext(contexts ...InteractiveStoryToolContext) prod
 		Store:                     source.Store,
 		StoryID:                   source.StoryID,
 		BranchID:                  source.BranchID,
+		TurnID:                    source.TurnID,
 		MaintenanceTask:           source.MaintenanceTask,
 		OnLoreItemsRead:           source.OnLoreItemsRead,
 		SubmitStateSchemaBatch:    source.SubmitStateSchemaBatch,
@@ -49,7 +52,8 @@ func projectInteractiveToolContext(contexts ...InteractiveStoryToolContext) prod
 }
 
 func agentWorkspaceChangeMetadata(ctx context.Context) workspacechange.ChangeMetadata {
-	callID := strings.TrimSpace(agent.ToolCallID(ctx))
+	providerCallID := strings.TrimSpace(agent.ToolCallID(ctx))
+	executionID := agent.ToolExecutionID(ctx, providerCallID)
 	runID := ""
 	sessionID := ""
 	reviewThreadID := ""
@@ -60,7 +64,7 @@ func agentWorkspaceChangeMetadata(ctx context.Context) workspacechange.ChangeMet
 	}
 	groupID := runID
 	if groupID == "" {
-		groupID = callID
+		groupID = executionID
 	}
 	return workspacechange.ChangeMetadata{
 		Origin:         workspacechange.OriginAgent,
@@ -68,7 +72,7 @@ func agentWorkspaceChangeMetadata(ctx context.Context) workspacechange.ChangeMet
 		RunID:          runID,
 		SessionID:      sessionID,
 		ReviewThreadID: reviewThreadID,
-		ToolCallID:     callID,
+		ToolCallID:     executionID,
 	}
 }
 

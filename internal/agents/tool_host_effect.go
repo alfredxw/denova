@@ -83,7 +83,7 @@ func newCommittedToolMutationHostEffect(
 		return runstate.HostEffect{}, false, fmt.Errorf("encode committed tool mutation: %w", err)
 	}
 	effect, err := runstate.NewToolHostEffect(
-		binding, operationID, cycle, record.ToolCallID, 0,
+		binding, operationID, cycle, record.ExecutionID, 0,
 		runstate.HostEffectToolMutationCommitted, payload,
 	)
 	if err != nil {

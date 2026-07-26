@@ -62,7 +62,7 @@ func (middleware *receiptProbeMiddleware) WrapToolCall(
 ) (ToolCallEndpoint, error) {
 	return func(ctx context.Context, arguments string, options ...ToolOption) (ToolResult, error) {
 		middleware.mu.Lock()
-		middleware.events = append(middleware.events, "start:"+toolCtx.CallID)
+		middleware.events = append(middleware.events, "start:"+toolCtx.ExecutionID)
 		middleware.mu.Unlock()
 		result, err := endpoint(ctx, arguments, options...)
 		status := "success"
@@ -70,7 +70,7 @@ func (middleware *receiptProbeMiddleware) WrapToolCall(
 			status = "error"
 		}
 		middleware.mu.Lock()
-		middleware.events = append(middleware.events, "finish:"+toolCtx.CallID+":"+status)
+		middleware.events = append(middleware.events, "finish:"+toolCtx.ExecutionID+":"+status)
 		middleware.mu.Unlock()
 		return result, err
 	}, nil
@@ -112,8 +112,10 @@ func TestConcreteToolPanicCrossesLifecycleWrapperAsPairedError(t *testing.T) {
 			result = event.Output.MessageOutput.Message
 		}
 	}
-	if got := fmt.Sprint(receipts.snapshot()); got != fmt.Sprint([]string{"start:panic-call", "finish:panic-call:error"}) {
-		t.Fatalf("lifecycle receipts = %s", got)
+	lifecycle := receipts.snapshot()
+	if len(lifecycle) != 2 || !strings.HasPrefix(lifecycle[0], "start:tool-") ||
+		lifecycle[1] != "finish:"+strings.TrimPrefix(lifecycle[0], "start:")+":error" {
+		t.Fatalf("lifecycle receipts = %v", lifecycle)
 	}
 	if result == nil || result.ToolResult == nil || result.ToolResult.Status != ToolResultError || !strings.Contains(result.Content, "panic recovered: effect panic") {
 		t.Fatalf("paired panic result = %#v", result)
@@ -252,5 +254,60 @@ func TestProgressCollectorBuildsMissingFinalContent(t *testing.T) {
 	}
 	if progress.String() != "first second" || result == nil || result.Content != "first second" {
 		t.Fatalf("progress=%q result=%#v", progress.String(), result)
+	}
+}
+
+type overflowingProgressTool struct{}
+
+func (*overflowingProgressTool) Info(context.Context) (*ToolInfo, error) {
+	return GoStruct2ToolInfo[struct{}]("overflowing_progress", "")
+}
+
+func (*overflowingProgressTool) Run(ctx context.Context, _ string, _ ...ToolOption) (ToolResult, error) {
+	for range 100 {
+		EmitToolProgress(ctx, "0123456789")
+	}
+	return ToolResult{Status: ToolResultSuccess}, nil
+}
+
+func TestProgressCollectorEmitsOneBoundedTruncationAndStops(t *testing.T) {
+	model := &scriptedModel{responses: []scriptedModelResponse{
+		{message: AssistantMessage("", []ToolCall{{ID: "p", Type: "function", Function: FunctionCall{Name: "overflowing_progress", Arguments: `{}`}}})},
+		{message: AssistantMessage("done", nil)},
+	}}
+	definition := testToolDefinition(&overflowingProgressTool{})
+	definition.Descriptor.MaxResultBytes = 64
+	native, err := NewAgent(context.Background(), AgentConfig{Name: "progress", Model: model, Tools: []ToolDefinition{definition}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	events := NewRunner(RunnerConfig{Agent: native}).Query(context.Background(), "go")
+	var progress strings.Builder
+	progressEvents := 0
+	var result *Message
+	for {
+		event, ok := events.Next()
+		if !ok {
+			break
+		}
+		if event.Output != nil && event.Output.ToolExecution != nil && event.Output.ToolExecution.Phase == ToolExecutionProgress {
+			progress.WriteString(event.Output.ToolExecution.Delta)
+			progressEvents++
+		}
+		if event.Output != nil && event.Output.MessageOutput != nil && event.Output.MessageOutput.Role == ToolRole {
+			result = event.Output.MessageOutput.Message
+		}
+	}
+	if progress.Len() > definition.Descriptor.MaxResultBytes+len(toolProgressTruncatedMarker) {
+		t.Fatalf("progress has %d bytes: %q", progress.Len(), progress.String())
+	}
+	if strings.Count(progress.String(), toolProgressTruncatedMarker) != 1 || !strings.HasSuffix(progress.String(), toolProgressTruncatedMarker) {
+		t.Fatalf("progress truncation = %q", progress.String())
+	}
+	if progressEvents >= 100 {
+		t.Fatalf("progress continued after truncation: events=%d", progressEvents)
+	}
+	if result == nil || len(result.Content) > definition.Descriptor.MaxResultBytes || !strings.HasSuffix(result.Content, toolProgressTruncatedMarker) {
+		t.Fatalf("bounded final progress result = %#v", result)
 	}
 }

@@ -7,6 +7,7 @@ import { MarkdownRenderer, type MarkdownRendererComponents } from '@/components/
 import { workspaceAssetURL, type ChapterIllustration, type ChatMessage, type InteractiveImage, type InteractiveImageError } from '@/lib/api'
 import type { UserMessageReference } from '@/lib/api-client/types'
 import { findDialogueHighlightRanges } from '@/lib/dialogue-highlight'
+import { decodeToolResultEnvelope, type ToolResultEnvelope } from '@/lib/tool-result-envelope'
 import { isWorkspaceImagePath } from '@/lib/workspace-file-kind'
 import { useBottomScrollLock } from '@/hooks/useBottomScrollLock'
 import { TooltipIconButton } from '@/components/common/tooltip-icon-button'
@@ -22,6 +23,7 @@ import { Plan, PlanContent, PlanHeader } from '@/components/ai-elements/plan'
 import { Tool, ToolContent } from '@/components/ai-elements/tool'
 import { Shimmer } from '@/components/ai-elements/shimmer'
 import { StreamingContentStage } from './StreamingContentStage'
+import { AskInteractionCard, type AskInteractionResolver } from './AskInteractionCard'
 
 interface MessageItemProps {
   message: ChatMessage
@@ -43,6 +45,7 @@ interface MessageItemProps {
   onExitPlanMode?: () => void
   onOpenTrace?: (runID: string) => void
   onPlanCardLayoutChange?: () => void
+  onResolveAsk?: AskInteractionResolver
 }
 
 const copyFeedbackDurationMs = 1200
@@ -52,7 +55,7 @@ const messageActionTooltipSideOffset = 3
 const planThinkingPreviewStaleMs = 3500
 
 /** 单条消息组件，根据 role 渲染不同样式 */
-export const MessageItem = memo(function MessageItem({ message, highlightDialogue = false, messageStyle, onEdit, onEditAssistantReply, onRegenerate, onSwitchVersion, onOpenSubAgentSession, onInsertIllustration, onGenerateInteractiveImage, generatingInteractiveImageTurnId, activeSubAgentSessionKey, subAgentPresentation = 'card', onSubmitPlanQuestion, onApprovePlan, onContinuePlan, onExitPlanMode, onOpenTrace, onPlanCardLayoutChange }: MessageItemProps) {
+export const MessageItem = memo(function MessageItem({ message, highlightDialogue = false, messageStyle, onEdit, onEditAssistantReply, onRegenerate, onSwitchVersion, onOpenSubAgentSession, onInsertIllustration, onGenerateInteractiveImage, generatingInteractiveImageTurnId, activeSubAgentSessionKey, subAgentPresentation = 'card', onSubmitPlanQuestion, onApprovePlan, onContinuePlan, onExitPlanMode, onOpenTrace, onPlanCardLayoutChange, onResolveAsk }: MessageItemProps) {
   const { role, content = '' } = message
   const canEdit = role === 'user' && Boolean(message.turn_id) && Boolean(onEdit)
   const canEditAssistantReply = role === 'assistant' && !message.subagent && Boolean(message.turn_id) && Boolean(onEditAssistantReply) && !message.streaming
@@ -142,10 +145,16 @@ export const MessageItem = memo(function MessageItem({ message, highlightDialogu
       if (['generate_image', 'generate_chapter_illustration'].includes(message.name || '') && message.illustration) {
         return <ChapterIllustrationBlock message={message} onInsert={onInsertIllustration} />
       }
-      if ((message.name || '') === 'write_todos') {
+      if ((message.name || '') === 'todo') {
         return <TodoListBlock message={message} />
       }
+      if ((message.name || '') === 'ask') {
+        return <AskInteractionCard message={message} onResolve={onResolveAsk} />
+      }
       return <ToolExecutionBlock message={message} />
+
+    case 'ask':
+      return <AskInteractionCard message={message} onResolve={onResolveAsk} />
 
     case 'rule_roll':
       return <RuleRollBlock message={message} />
@@ -270,8 +279,8 @@ function RuleRollBlock({ message }: { message: ChatMessage }) {
         {stateChanges.length ? (
           <div className="mt-1 flex flex-wrap gap-1">
             {stateChanges.map((change, index) => (
-				<span key={`${change.actor_id}:${change.field_id}:${index}`} className="rounded border border-[var(--nova-border)] bg-[var(--nova-surface-2)] px-1.5 py-0.5 text-[10px] text-[var(--nova-text-muted)]">
-					{change.actor_id} / {change.field_id} {formatSignedRuleRollNumber(change.change)}
+              <span key={`${change.actor_id}:${change.field_id}:${index}`} className="rounded border border-[var(--nova-border)] bg-[var(--nova-surface-2)] px-1.5 py-0.5 text-[10px] text-[var(--nova-text-muted)]">
+                {change.actor_id} / {change.field_id} {formatSignedRuleRollNumber(change.change)}
               </span>
             ))}
           </div>
@@ -945,30 +954,27 @@ function ToolExecutionBlock({ message }: { message: ChatMessage }) {
   const displayName = isDelegationTool ? t('chat.subagent.taskLabel') : name
   const detailArgs = isDelegationTool ? formatTaskDelegationArgs(rawArgs) : (isChapterBodyHidden ? '' : args)
   const hasResult = status === 'success'
-  const batchEditCount = name === 'edit_file' ? extractBatchEditCount(rawArgs) : 0
-  const batchEditSummary = batchEditCount > 0
-    ? [extractToolArgPath(rawArgs), t('chat.tool.batchEdits', { count: batchEditCount })].filter(Boolean).join(' · ')
-    : ''
-  const isStreamingContent = !isChapterBodyHidden && batchEditCount === 0 && status === 'running' && isContentTool(name) && rawArgs.length > 50
+  const isStreamingContent = !isChapterBodyHidden && status === 'running' && isContentTool(name) && rawArgs.length > 50
   const streamPreview = isStreamingContent ? extractStreamingContent(rawArgs) : ''
   // 内容工具运行中但不展示流式预览时（流式为 off / 参数较短），展示"正在写入文件"的 Loading 文案
-  const isContentToolLoading = !isChapterBodyHidden && !isStreamingContent && status === 'running' && isContentTool(name) && batchEditCount === 0
+  const isContentToolLoading = !isChapterBodyHidden && !isStreamingContent && status === 'running' && isContentTool(name)
   const contentToolChars = isContentToolLoading && typeof message.sse_generated_chars === 'number' ? message.sse_generated_chars : undefined
   const summary = taskSubAgent
     ? t('chat.subagent.delegating', { name: taskSubAgent })
     : buildToolArgSummary(args) || (isStreamingContent ? t('chat.tool.writing') : t('chat.tool.preparing'))
   const resultBody = stripToolResultMetadata(result)
-  const webAccessResult = parseRecoverableWebAccessResult(name, resultBody)
-  const showReadableOutcome = Boolean(webAccessResult) || status === 'error'
-  const resultPreview = webAccessResult
-    ? buildWebAccessResultSummary(t, webAccessResult)
+  const resultEnvelope = decodeToolResultEnvelope(resultBody)
+  const resultSeverity = status === 'error' ? 'error' : resultEnvelope?.severity || 'success'
+  const showReadableOutcome = resultSeverity !== 'success'
+  const resultPreview = resultEnvelope
+    ? buildToolResultEnvelopeSummary(t, resultEnvelope)
     : buildPreview(resultBody, 80)
-  const detailResult = webAccessResult ? formatMaybeJSON(resultBody) : result
+  const detailResult = resultEnvelope ? formatMaybeJSON(resultBody) : result
   const displaySummary = isChapterBodyHidden
     ? chapterGeneratedChars !== undefined
       ? t(isDirectorPlanHidden ? (hasResult ? 'chat.tool.fileWrittenWithCount' : 'chat.tool.fileWritingWithCount') : (hasResult ? 'chat.tool.chapterWrittenWithCount' : 'chat.tool.chapterWritingWithCount'), { count: chapterGeneratedChars })
       : (isDirectorPlanHidden ? (hasResult ? t('chat.tool.fileWritten') : t('chat.tool.fileWriting')) : (hasResult ? t('chat.tool.chapterWritten') : t('chat.tool.chapterWriting')))
-    : batchEditSummary || (hasResult
+    : (hasResult
       ? resultPreview || t('chat.tool.done')
       : status === 'error'
         ? buildPreview(resultBody, 160) || t('chat.tool.failed')
@@ -986,7 +992,7 @@ function ToolExecutionBlock({ message }: { message: ChatMessage }) {
     <div className="flex justify-start">
       <Tool open={expanded} onOpenChange={setExpanded} className="mb-0 w-full overflow-hidden rounded-lg border border-[var(--nova-border)] bg-[var(--nova-surface)] text-xs shadow-[var(--nova-shadow)]">
         <div className={`flex min-h-10 min-w-0 items-center gap-2 px-3 py-2 ${showReadableOutcome ? 'flex-wrap' : ''}`}>
-          <ToolStatusIcon status={status} warning={Boolean(webAccessResult)} />
+          <ToolStatusIcon status={resultSeverity === 'error' ? 'error' : status} warning={resultSeverity === 'warning'} />
           <span className="shrink-0 font-medium text-[var(--nova-text)]">{t('chat.tool.calling')}</span>
           <code className="shrink-0 rounded border border-[var(--nova-border)] bg-[var(--nova-surface-2)] px-1.5 py-0.5 font-mono text-[11px] text-[var(--nova-text-muted)]">
             {displayName}
@@ -998,7 +1004,7 @@ function ToolExecutionBlock({ message }: { message: ChatMessage }) {
           )}
           {message.subagent && <AgentSourceBadge message={message} compact />}
           <span className={showReadableOutcome
-            ? `order-last basis-full whitespace-normal pl-7 pt-1 leading-4 ${webAccessResult ? 'text-[var(--nova-warning)]' : 'text-[var(--nova-danger)]'}`
+            ? `order-last basis-full whitespace-normal pl-7 pt-1 leading-4 ${resultSeverity === 'warning' ? 'text-[var(--nova-warning)]' : 'text-[var(--nova-danger)]'}`
             : 'min-w-0 flex-1 truncate text-[var(--nova-text-faint)]'}>
             {displaySummary}
           </span>
@@ -1045,7 +1051,7 @@ function ToolExecutionBlock({ message }: { message: ChatMessage }) {
             )}
             {detailArgs && <pre className="whitespace-pre-wrap">{detailArgs}</pre>}
             {taskSubAgent && result && <div className="text-[var(--nova-text-muted)]">{t('chat.subagent.result')}</div>}
-            {result && <pre className={`whitespace-pre-wrap ${webAccessResult ? 'text-[var(--nova-warning)]' : 'text-[var(--nova-accent-green)]'}`}>{detailResult}</pre>}
+            {result && <pre className={`whitespace-pre-wrap ${resultSeverity === 'error' ? 'text-[var(--nova-danger)]' : resultSeverity === 'warning' ? 'text-[var(--nova-warning)]' : 'text-[var(--nova-accent-green)]'}`}>{detailResult}</pre>}
           </ToolContent>
         )}
       </Tool>
@@ -1259,21 +1265,21 @@ function isMarkdownPath(path?: string) {
 }
 
 interface TodoItem {
-  content: string
-  activeForm?: string
+  step: string
   status: 'pending' | 'in_progress' | 'completed' | string
 }
 
-/** Agentic Loop write_todos 工具卡片：渲染为可读的待办列表，兼容流式不完整 args */
+/** todo 工具卡片：运行时容错解析流式参数，完成后以结构化结果为真源。 */
 function TodoListBlock({ message }: { message: ChatMessage }) {
   const { t } = useTranslation()
   const args = message.args || ''
-  const todos = parseTodosFromArgs(args)
   const status = message.status || 'running'
+  const resultPlan = status === 'success' ? parseTodoPlanResult(stripToolResultMetadata(message.result || '')) : null
+  const todos = resultPlan ?? parseTodoPlanFromArgs(args)
   const total = todos.length
   const completed = todos.filter(t => t.status === 'completed').length
   const inProgress = todos.find(t => t.status === 'in_progress')
-  const headline = inProgress?.activeForm || inProgress?.content || (status === 'success' ? t('chat.todo.updated') : t('chat.todo.updating'))
+  const headline = inProgress?.step || (status === 'success' ? t('chat.todo.updated') : t('chat.todo.updating'))
 
   return (
     <div className="flex justify-start">
@@ -1308,7 +1314,7 @@ function TodoListBlock({ message }: { message: ChatMessage }) {
 }
 
 function TodoListItem({ todo }: { todo: TodoItem }) {
-  const text = todo.status === 'in_progress' && todo.activeForm ? todo.activeForm : todo.content
+  const text = todo.step
   if (todo.status === 'completed') {
     return (
       <li className="flex items-start gap-2 rounded-md px-2 py-1.5 leading-5">
@@ -1333,20 +1339,31 @@ function TodoListItem({ todo }: { todo: TodoItem }) {
   )
 }
 
-/** 解析 write_todos 工具参数，对流式中可能不完整的 JSON 做容错 */
-function parseTodosFromArgs(args: string): TodoItem[] {
+function parseTodoPlanResult(result: string): TodoItem[] | null {
+  if (!result) return null
+  try {
+    const data = JSON.parse(result) as { schema?: string; plan?: TodoItem[] }
+    if (data.schema === 'todo.plan.v1' && Array.isArray(data.plan)) return data.plan
+  } catch {
+    // 非结构化或不完整结果不作为成功状态真源。
+  }
+  return null
+}
+
+/** 解析 todo 参数，对流式中可能不完整的 JSON 做容错。 */
+function parseTodoPlanFromArgs(args: string): TodoItem[] {
   if (!args) return []
   const trimmed = args.trim()
   if (!trimmed) return []
   // 优先尝试完整 JSON
   try {
-    const data = JSON.parse(trimmed) as { todos?: TodoItem[] }
-    if (Array.isArray(data?.todos)) return data.todos
+    const data = JSON.parse(trimmed) as { plan?: TodoItem[] }
+    if (Array.isArray(data?.plan)) return data.plan
   } catch {
     // 流式中常见：args 不完整或被截断
   }
-  // 回退：从 todos 数组中提取已经完整的对象
-  const arrayMatch = trimmed.match(/"todos"\s*:\s*\[([\s\S]*)$/)
+  // 回退：从 plan 数组中提取已经完整的对象
+  const arrayMatch = trimmed.match(/"plan"\s*:\s*\[([\s\S]*)$/)
   if (!arrayMatch) return []
   const body = arrayMatch[1]
   const items: TodoItem[] = []
@@ -1404,21 +1421,34 @@ function ToolStatusIcon({ status, warning = false }: { status: ChatMessage['stat
 function ToolResultBlock({ content }: { content: string }) {
   const { t } = useTranslation()
   const [expanded, setExpanded] = useState(false)
-  const preview = buildPreview(content, 160)
+  const envelope = decodeToolResultEnvelope(stripToolResultMetadata(content))
+  const severity = envelope?.severity || 'success'
+  const preview = envelope ? buildToolResultEnvelopeSummary(t, envelope) : buildPreview(content, 160)
   const canExpand = content.trim().replace(/\s+/g, ' ').length > 160
+  const tone = severity === 'error'
+    ? 'border-[var(--nova-danger-border)] bg-[var(--nova-danger-bg)] text-[var(--nova-danger)]'
+    : severity === 'warning'
+      ? 'border-[var(--nova-warning)]/40 bg-[var(--nova-warning-bg)] text-[var(--nova-warning)]'
+      : 'border-[var(--nova-accent-green)]/35 bg-[var(--nova-accent-green)]/10 text-[var(--nova-accent-green)]'
 
   return (
     <div className="flex justify-start">
       <div className="w-full overflow-hidden rounded-lg border border-[var(--nova-border)] bg-[var(--nova-surface)] text-xs shadow-[var(--nova-shadow)]">
         <div className="flex items-start gap-3 px-3 py-2.5">
-          <span className="mt-0.5 flex h-7 w-7 shrink-0 items-center justify-center rounded-md border border-[var(--nova-accent-green)]/35 bg-[var(--nova-accent-green)]/10 text-[var(--nova-accent-green)]">
-            <CheckCircle2 className="h-3.5 w-3.5" />
+          <span className={`mt-0.5 flex h-7 w-7 shrink-0 items-center justify-center rounded-md border ${tone}`}>
+            {severity === 'error'
+              ? <span className="text-xs font-semibold">!</span>
+              : severity === 'warning'
+                ? <AlertTriangle className="h-3.5 w-3.5" />
+                : <CheckCircle2 className="h-3.5 w-3.5" />}
           </span>
           <div className="min-w-0 flex-1">
             <div className="flex flex-wrap items-center gap-2">
-              <span className="font-medium text-[var(--nova-text)]">{t('chat.tool.resultDone')}</span>
-              <span className="rounded-full border border-[var(--nova-accent-green)]/35 bg-[var(--nova-accent-green)]/10 px-2 py-0.5 text-[11px] text-[var(--nova-accent-green)]">
-                success
+              <span className="font-medium text-[var(--nova-text)]">
+                {t(severity === 'error' ? 'chat.tool.resultFailed' : severity === 'warning' ? 'chat.tool.resultPartial' : 'chat.tool.resultDone')}
+              </span>
+              <span className={`rounded-full border px-2 py-0.5 text-[11px] ${tone}`}>
+                {severity}
               </span>
             </div>
             <div className="mt-1 flex min-w-0 items-center gap-2 text-[var(--nova-text-faint)]">
@@ -1480,26 +1510,6 @@ function formatTaskDelegationArgs(args: string) {
   }
 }
 
-interface RecoverableWebAccessResult {
-  status: string
-  retry_strategy?: string
-}
-
-function parseRecoverableWebAccessResult(toolName: string, result: string): RecoverableWebAccessResult | null {
-  if ((toolName !== 'web_fetch' && toolName !== 'web_search') || !result) return null
-  try {
-    const parsed = JSON.parse(result) as Record<string, unknown>
-    const status = typeof parsed.status === 'string' ? parsed.status : ''
-    if (!status || status === 'success') return null
-    return {
-      status,
-      retry_strategy: typeof parsed.retry_strategy === 'string' ? parsed.retry_strategy : undefined,
-    }
-  } catch {
-    return null
-  }
-}
-
 function stripToolResultMetadata(result: string) {
   for (const separator of ['\n\n[Denova tool result metadata]', '\n[Denova tool result metadata]']) {
     const markerIndex = result.lastIndexOf(separator)
@@ -1508,21 +1518,46 @@ function stripToolResultMetadata(result: string) {
   return result
 }
 
-function buildWebAccessResultSummary(t: ReturnType<typeof useTranslation>['t'], result: RecoverableWebAccessResult) {
-  const statusKey = {
+function buildToolResultEnvelopeSummary(t: ReturnType<typeof useTranslation>['t'], result: ToolResultEnvelope) {
+  const isWebAccess = result.schema === 'web_fetch.v1' || result.schema === 'web_search.v1'
+  const webStatusKey = isWebAccess ? {
     blocked: 'chat.tool.webAccess.blocked',
     no_results: 'chat.tool.webAccess.noResults',
     providers_unavailable: 'chat.tool.webAccess.providersUnavailable',
-  }[result.status]
-  const retryKey = result.retry_strategy ? {
+  }[result.status] : undefined
+  const webRetryKey = isWebAccess && result.retryStrategy ? {
     change_query: 'chat.tool.webAccess.changeQuery',
     use_alternate_source: 'chat.tool.webAccess.useAlternateSource',
     wait_or_reconfigure: 'chat.tool.webAccess.waitOrReconfigure',
     wait_or_use_alternate_source: 'chat.tool.webAccess.waitOrUseAlternateSource',
-  }[result.retry_strategy] : undefined
-  const status = statusKey ? t(statusKey) : result.status
-  const retry = retryKey ? t(retryKey) : ''
-  return [status, retry].filter(Boolean).join(' · ')
+  }[result.retryStrategy] : undefined
+
+  let headline = webStatusKey ? t(webStatusKey) : ''
+  if (!headline && result.schema === 'process.result.v1') {
+    if (result.status === 'failed') {
+      headline = result.exitCode === undefined
+        ? t('chat.tool.result.commandFailed')
+        : t('chat.tool.result.commandFailedWithCode', { code: result.exitCode })
+    } else if (result.status === 'timed_out') {
+      headline = t('chat.tool.result.timedOut')
+    } else if (result.status === 'cancelled') {
+      headline = t('chat.tool.result.cancelled')
+    }
+  }
+  if (!headline && (result.status === 'partial' || result.truncated)) {
+    headline = t(result.status === 'partial' ? 'chat.tool.result.partial' : 'chat.tool.result.truncated')
+  }
+  if (!headline && result.severity !== 'success') headline = result.status
+
+  const continuation = result.continuation
+    ? t(result.continuation.kind === 'offset' ? 'chat.tool.result.continueOffset' : 'chat.tool.result.continueCursor', {
+        value: result.continuation.kind === 'cursor' ? buildPreview(result.continuation.value, 72) : result.continuation.value,
+      })
+    : ''
+  // Web recovery strategies already have localized, actionable labels. Avoid
+  // duplicating the provider's often bilingual suggested_action beside them.
+  const recovery = !isWebAccess && result.recovery ? result.recovery : ''
+  return [headline, webRetryKey ? t(webRetryKey) : '', continuation, recovery].filter(Boolean).join(' · ')
 }
 
 function formatMaybeJSON(value: string) {
@@ -1544,23 +1579,6 @@ function buildToolArgSummary(args: string) {
     // 非 JSON 参数使用通用预览。
   }
   return buildPreview(args, 120)
-}
-
-/** edit_file 的 edits 数组是结构化批量改动，不把 new_string 当成流式正文展开。 */
-function extractBatchEditCount(args: string): number {
-  if (!args || !/"edits"\s*:/.test(args)) return 0
-  try {
-    const data = JSON.parse(args) as { edits?: unknown[] }
-    return Array.isArray(data.edits) ? data.edits.length : 0
-  } catch {
-    const editsStart = args.search(/"edits"\s*:\s*\[/)
-    if (editsStart < 0) return 0
-    const partialEdits = args.slice(editsStart)
-    return Math.max(
-      (partialEdits.match(/"old_string"\s*:/g) || []).length,
-      (partialEdits.match(/"new_string"\s*:/g) || []).length,
-    )
-  }
 }
 
 function extractToolArgPath(args: string) {
@@ -1590,7 +1608,7 @@ function buildMarkdownPreview(content: string, maxLength: number) {
 
 /** 判断是否为会产生大量内容参数的工具（适合流式预览） */
 function isContentTool(name: string): boolean {
-  return ['write_file', 'edit_file'].includes(name)
+  return ['write', 'edit'].includes(name)
 }
 
 /** 从不完整的 JSON args 中提取 content/new_string 字段的流式文本 */

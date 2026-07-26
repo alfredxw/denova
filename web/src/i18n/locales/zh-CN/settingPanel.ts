@@ -399,7 +399,7 @@ const settingPanel = {
   'settingPanel.orchestration.pacingCurve': '节奏曲线',
   'settingPanel.orchestration.eventPackages': '事件包',
   'settingPanel.orchestration.generateEventPackage': 'AI 生成事件包',
-  'settingPanel.orchestration.generateEventPackageInstruction': '请使用 teller-config skill：先读取当前 teller，再 list_lore_items 查看资料库索引，按需 read_lore_items 读取少量相关资料；基于资料库和我的后续输入生成 12-24 张事件卡，写入 event_packages[].events。每张卡必须有 type_name、description_markdown 和调度元数据，description_markdown 包含触发场景、背景融合、起承转合、回收/后果、奖励/代价、避免生硬约束。',
+  'settingPanel.orchestration.generateEventPackageInstruction': '请使用 config-manager skill 的 event-package reference：先用 config_read 读取当前 event_package，再 list_lore_items 查看资料库索引，按需 read_lore_items 读取少量相关资料；基于资料库和我的后续输入生成 12-24 张事件卡，并用 config_apply 更新 event_package。每张卡必须有 type_name、description_markdown 和调度元数据，description_markdown 包含触发场景、背景融合、起承转合、回收/后果、奖励/代价、避免生硬约束。',
   'settingPanel.orchestration.generateEventPackageAgentOpened': '已打开配置 Agent，可继续输入事件包要求。',
   'settingPanel.orchestration.addPackage': '新增事件包',
   'settingPanel.orchestration.deletePackage': '删除事件包',

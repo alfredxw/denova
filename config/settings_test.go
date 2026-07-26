@@ -547,7 +547,7 @@ func TestLoadLayeredKeepsGeneralSettingsUserScopedAndAppliesWorkspaceAgentOverri
 	wsCfg := Settings{
 		OpenAIModel: "ws-model",
 		AgentTools: AgentToolSettings{
-			IDE: AgentToolOverride{ShellExecute: boolPtr(false)},
+			IDE: AgentToolOverride{AgentToolShell: false},
 		},
 	}
 	if err := WriteSettingsFile(filepath.Join(home, "config.toml"), user); err != nil {
@@ -573,8 +573,46 @@ func TestLoadLayeredKeepsGeneralSettingsUserScopedAndAppliesWorkspaceAgentOverri
 	if layered.Workspace.OpenAIModel != "" {
 		t.Fatalf("workspace general setting should be filtered: %s", layered.Workspace.OpenAIModel)
 	}
-	if layered.Effective.AgentTools.IDE.ShellExecute == nil || *layered.Effective.AgentTools.IDE.ShellExecute {
+	if enabled, present := layered.Effective.AgentTools.IDE[AgentToolShell]; !present || enabled {
 		t.Fatalf("workspace Agent override should remain effective: %#v", layered.Effective.AgentTools.IDE)
+	}
+}
+
+func TestLoadLayeredPublishesResolvedAgentToolCatalogAndManifests(t *testing.T) {
+	novaDir := t.TempDir()
+	if err := WriteSettingsFile(UserConfigPath(novaDir), Settings{
+		AgentTools: AgentToolSettings{IDE: AgentToolOverride{AgentToolShell: false}},
+	}); err != nil {
+		t.Fatal(err)
+	}
+	layered, err := LoadLayered(novaDir, "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(layered.AgentToolCapabilities) != len(AgentToolCapabilities()) {
+		t.Fatalf("tool capability catalog length = %d, want %d", len(layered.AgentToolCapabilities), len(AgentToolCapabilities()))
+	}
+	ide, found := layered.ResolvedAgentToolManifests[AgentKindIDE]
+	if !found || len(ide) == 0 {
+		t.Fatalf("resolved IDE manifest is missing: %#v", layered.ResolvedAgentToolManifests)
+	}
+	shell, found := resolvedManifestCapability(ide, AgentToolShell)
+	if !found || shell.Allowed || shell.Availability != AgentToolAvailabilityUnavailable ||
+		shell.UnavailableReasonKey != AgentToolUnavailableDisabledByPolicy {
+		t.Fatalf("resolved IDE shell = %#v", shell)
+	}
+	wantShell := "bash"
+	if layered.Runtime.GOOS == "windows" {
+		wantShell = "pwsh"
+	}
+	if len(shell.ToolNames) != 1 || shell.ToolNames[0] != wantShell {
+		t.Fatalf("resolved shell tools = %#v, want [%s]", shell.ToolNames, wantShell)
+	}
+	for _, kind := range []string{AgentKindVersionSummary, AgentKindToolAgent, AgentKindContextCompaction} {
+		manifest, present := layered.ResolvedAgentToolManifests[kind]
+		if !present || manifest == nil || len(manifest) != 0 {
+			t.Fatalf("model-only manifest %q = %#v, present=%v", kind, manifest, present)
+		}
 	}
 }
 
@@ -610,7 +648,7 @@ func TestPrepareWorkspaceAgentSettingsForWritePreservesLegacyGeneralValues(t *te
 	existing := Settings{
 		OpenAIModel: "legacy-workspace-model",
 		AgentTools: AgentToolSettings{
-			IDE: AgentToolOverride{ShellExecute: boolPtr(true)},
+			IDE: AgentToolOverride{AgentToolShell: true},
 		},
 	}
 	incoming := Settings{
@@ -619,7 +657,7 @@ func TestPrepareWorkspaceAgentSettingsForWritePreservesLegacyGeneralValues(t *te
 			IDE: AgentModelOverride{ProfileID: "ignored-workspace-profile"},
 		},
 		AgentTools: AgentToolSettings{
-			IDE: AgentToolOverride{ShellExecute: boolPtr(false)},
+			IDE: AgentToolOverride{AgentToolShell: false},
 		},
 	}
 
@@ -630,7 +668,7 @@ func TestPrepareWorkspaceAgentSettingsForWritePreservesLegacyGeneralValues(t *te
 	if prepared.AgentModels.IDE.ProfileID != "" {
 		t.Fatalf("workspace model selection must remain user-scoped: %#v", prepared.AgentModels)
 	}
-	if prepared.AgentTools.IDE.ShellExecute == nil || *prepared.AgentTools.IDE.ShellExecute {
+	if enabled, present := prepared.AgentTools.IDE[AgentToolShell]; !present || enabled {
 		t.Fatalf("workspace Agent override should be replaced: %#v", prepared.AgentTools.IDE)
 	}
 }

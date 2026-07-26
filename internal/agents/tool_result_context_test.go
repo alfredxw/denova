@@ -22,9 +22,9 @@ func TestApplyToolResultContextPolicyPreservesToolExchangeExactly(t *testing.T) 
 		agent.UserMessage("读取资料"),
 		agent.AssistantMessage("", []agent.ToolCall{{
 			ID: "call-large", Type: "function",
-			Function: agent.FunctionCall{Name: "read_file", Arguments: arguments},
+			Function: agent.FunctionCall{Name: "read", Arguments: arguments},
 		}}),
-		agent.ToolMessage(agent.TextToolResult(content), "call-large", agent.WithToolName("read_file")),
+		agent.ToolMessage(agent.TextToolResult(content), "call-large", agent.WithToolName("read")),
 		agent.UserMessage("继续"),
 	}
 
@@ -49,9 +49,9 @@ func TestOpenAIRequestAssemblyKeepsToolContentAsString(t *testing.T) {
 	messages := applyToolResultContextPolicy([]*agent.Message{
 		agent.AssistantMessage("", []agent.ToolCall{{
 			ID: "call-json", Type: "function",
-			Function: agent.FunctionCall{Name: "read_file", Arguments: arguments},
+			Function: agent.FunctionCall{Name: "read", Arguments: arguments},
 		}}),
-		agent.ToolMessage(agent.TextToolResult(content), "call-json", agent.WithToolName("read_file")),
+		agent.ToolMessage(agent.TextToolResult(content), "call-json", agent.WithToolName("read")),
 		agent.UserMessage("基于结果继续"),
 	}, ToolResultContextPolicy{Enabled: true})
 
@@ -114,8 +114,8 @@ func TestOpenAIRequestAssemblyKeepsToolContentAsString(t *testing.T) {
 func TestApplyToolResultContextPolicyDisabledRemovesToolContext(t *testing.T) {
 	messages := []*agent.Message{
 		agent.UserMessage("查资料"),
-		agent.AssistantMessage("", []agent.ToolCall{{ID: "call-1", Type: "function", Function: agent.FunctionCall{Name: "read_file", Arguments: `{}`}}}),
-		agent.ToolMessage(agent.TextToolResult("result"), "call-1", agent.WithToolName("read_file")),
+		agent.AssistantMessage("", []agent.ToolCall{{ID: "call-1", Type: "function", Function: agent.FunctionCall{Name: "read", Arguments: `{}`}}}),
+		agent.ToolMessage(agent.TextToolResult("result"), "call-1", agent.WithToolName("read")),
 		agent.AssistantMessage("完成", nil),
 	}
 
@@ -130,10 +130,10 @@ func TestToolResultContextRecorderPersistsAlreadyBoundedResultExactly(t *testing
 	recorder := newToolResultContextRecorder(conversation)
 	arguments := `{"path":"chapter.md"}`
 	recorder.RecordAssistantToolCalls(agent.AssistantMessage("", []agent.ToolCall{{
-		ID: "call-1", Type: "function", Function: agent.FunctionCall{Name: "read_file", Arguments: arguments},
+		ID: "call-1", Type: "function", Function: agent.FunctionCall{Name: "read", Arguments: arguments},
 	}}), agentEventMetadata{})
-	bounded := FilterToolResultForModelWithLimit("read_file", arguments, strings.Repeat("正文", 500), 256)
-	recorder.RecordToolResult(agent.ToolMessage(bounded.Result, "call-1", agent.WithToolName("read_file")), agentEventMetadata{})
+	bounded := FilterToolResultForModelWithLimit("read", arguments, strings.Repeat("正文", 500), 256)
+	recorder.RecordToolResult(agent.ToolMessage(bounded.Result, "call-1", agent.WithToolName("read")), agentEventMetadata{})
 
 	if len(conversation.messages) != 2 {
 		t.Fatalf("recorded messages = %#v", conversation.messages)
@@ -156,9 +156,9 @@ func TestToolResultContextRecorderSkipsMalformedCallAndResult(t *testing.T) {
 	recorder := newToolResultContextRecorder(conversation)
 	recorder.RecordAssistantToolCalls(agent.AssistantMessage("", []agent.ToolCall{{
 		ID: "call-invalid", Type: "function",
-		Function: agent.FunctionCall{Name: "write_file", Arguments: `{"content":`},
+		Function: agent.FunctionCall{Name: "write", Arguments: `{"content":`},
 	}}), agentEventMetadata{})
-	recorder.RecordToolResult(agent.ToolMessage(agent.TextToolResult("invalid arguments"), "call-invalid", agent.WithToolName("write_file")), agentEventMetadata{})
+	recorder.RecordToolResult(agent.ToolMessage(agent.TextToolResult("invalid arguments"), "call-invalid", agent.WithToolName("write")), agentEventMetadata{})
 	if len(conversation.messages) != 0 {
 		t.Fatalf("malformed tool call and result must not persist: %#v", conversation.messages)
 	}
@@ -167,11 +167,11 @@ func TestToolResultContextRecorderSkipsMalformedCallAndResult(t *testing.T) {
 func TestApplyToolResultContextPolicyDropsMalformedAndOrphanedPairsAndCompletesMissingResult(t *testing.T) {
 	messages := []*agent.Message{
 		agent.AssistantMessage("useful narration", []agent.ToolCall{
-			{ID: "invalid", Type: "function", Function: agent.FunctionCall{Name: "read_file", Arguments: `{"path":`}},
-			{ID: "missing", Type: "function", Function: agent.FunctionCall{Name: "read_file", Arguments: `{}`}},
+			{ID: "invalid", Type: "function", Function: agent.FunctionCall{Name: "read", Arguments: `{"path":`}},
+			{ID: "missing", Type: "function", Function: agent.FunctionCall{Name: "read", Arguments: `{}`}},
 		}),
-		agent.ToolMessage(agent.TextToolResult("invalid arguments"), "invalid", agent.WithToolName("read_file")),
-		agent.ToolMessage(agent.TextToolResult("orphan result"), "unknown", agent.WithToolName("read_file")),
+		agent.ToolMessage(agent.TextToolResult("invalid arguments"), "invalid", agent.WithToolName("read")),
+		agent.ToolMessage(agent.TextToolResult("orphan result"), "unknown", agent.WithToolName("read")),
 		agent.UserMessage("继续"),
 	}
 	filtered := applyToolResultContextPolicy(messages, ToolResultContextPolicy{Enabled: true})
@@ -211,11 +211,11 @@ func TestInteractiveStoryToolContextKeepsOnlySemanticReadReceipts(t *testing.T) 
 	messages := []*agent.Message{
 		agent.AssistantMessage("", []agent.ToolCall{
 			{ID: "prepare", Type: "function", Function: agent.FunctionCall{Name: "prepare_interactive_turn", Arguments: `{}`}},
-			{ID: "file", Type: "function", Function: agent.FunctionCall{Name: "read_file", Arguments: `{}`}},
+			{ID: "file", Type: "function", Function: agent.FunctionCall{Name: "read", Arguments: `{}`}},
 			{ID: "lore", Type: "function", Function: agent.FunctionCall{Name: "read_lore_items", Arguments: `{}`}},
 		}),
 		agent.ToolMessage(agent.TextToolResult(`{"outcome":"success"}`), "prepare", agent.WithToolName("prepare_interactive_turn")),
-		agent.ToolMessage(agent.TextToolResult("文风正文"), "file", agent.WithToolName("read_file")),
+		agent.ToolMessage(agent.TextToolResult("文风正文"), "file", agent.WithToolName("read")),
 		agent.ToolMessage(agent.TextToolResult("# 资料库条目\n\n## 酒馆\nID：lore-tavern\n\n秘密正文"), "lore", agent.WithToolName("read_lore_items")),
 	}
 	filtered := applyToolResultContextPolicy(messages, ToolResultContextPolicy{AgentKind: config.AgentKindInteractiveStory, Enabled: true})
@@ -245,7 +245,7 @@ func TestApplyToolResultContextPolicyPairsByCallIDWhenResultToolNameMissing(t *t
 func TestApplyToolResultContextPolicyDropsAmbiguousDuplicatePair(t *testing.T) {
 	messages := []*agent.Message{
 		agent.AssistantMessage("", []agent.ToolCall{
-			{ID: "duplicate", Type: "function", Function: agent.FunctionCall{Name: "read_file", Arguments: `{}`}},
+			{ID: "duplicate", Type: "function", Function: agent.FunctionCall{Name: "read", Arguments: `{}`}},
 			{ID: "duplicate", Type: "function", Function: agent.FunctionCall{Name: "read_lore_items", Arguments: `{}`}},
 		}),
 		agent.ToolMessage(agent.TextToolResult("ambiguous"), "duplicate"),

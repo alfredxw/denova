@@ -94,11 +94,12 @@ export function createAgentTextMessage(role: 'user' | 'system' | 'assistant', co
 
 export function createAgentDataMessage(type: keyof AgentDataParts, data: Record<string, unknown>, metadata?: AgentMessageMetadata): AgentUIMessage {
   const partType = `data-${type}` as const
+  const dataID = typeof data.id === 'string' && data.id.trim() ? data.id.trim() : localAgentMessageID(type)
   return {
     id: localAgentMessageID(type),
     role: 'assistant',
     metadata,
-    parts: [{ type: partType, id: localAgentMessageID(type), data }],
+    parts: [{ type: partType, id: dataID, data }],
   } as AgentUIMessage
 }
 

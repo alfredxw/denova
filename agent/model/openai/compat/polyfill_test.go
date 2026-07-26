@@ -145,7 +145,7 @@ func TestWrap_NonStandardProvider_RepairsToolCallAndThink(t *testing.T) {
 }
 
 func TestTextToolCallIDsRemainUniqueAcrossResponses(t *testing.T) {
-	const content = `<tool_call><invoke name="read_file"><path>chapter.md</path></invoke></tool_call>`
+	const content = `<tool_call><invoke name="read"><path>chapter.md</path></invoke></tool_call>`
 	seen := make(map[string]bool)
 	for range 4 {
 		message := &agent.Message{Role: agent.Assistant, Content: content}
@@ -171,14 +171,14 @@ func TestWrap_NonStandardProvider_PreservesNativeToolCalls(t *testing.T) {
 		Content: "正文",
 		ToolCalls: []agent.ToolCall{{
 			Index: &idx, ID: "x", Type: "function",
-			Function: agent.FunctionCall{Name: "read_file", Arguments: "{}"},
+			Function: agent.FunctionCall{Name: "read", Arguments: "{}"},
 		}},
 	}}
 	out, err := Wrap(inner, nonStandardProviderCfg).Generate(context.Background(), nil)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(out.ToolCalls) != 1 || out.ToolCalls[0].Function.Name != "read_file" {
+	if len(out.ToolCalls) != 1 || out.ToolCalls[0].Function.Name != "read" {
 		t.Fatalf("native tool calls altered: %#v", out.ToolCalls)
 	}
 }
@@ -254,7 +254,7 @@ func TestWrap_NonStandardProvider_StreamParsesTextToolCallAfterStreamingPrelude(
 	upstream := agent.StreamReaderFromArray([]*agent.Message{
 		{Role: agent.Assistant, Content: "先说明"},
 		{Role: agent.Assistant, Content: "<tool_"},
-		{Role: agent.Assistant, Content: "call><invoke name=\"read_file\"><path>chapters/ch01.md</path></invoke></tool_call>"},
+		{Role: agent.Assistant, Content: "call><invoke name=\"read\"><path>chapters/ch01.md</path></invoke></tool_call>"},
 	})
 	wrapped := Wrap(&fakeChatModel{stream: upstream}, nonStandardProviderCfg)
 	stream, err := wrapped.Stream(context.Background(), nil)
@@ -274,7 +274,7 @@ func TestWrap_NonStandardProvider_StreamParsesTextToolCallAfterStreamingPrelude(
 	if err != nil {
 		t.Fatalf("recv tool frame: %v", err)
 	}
-	if len(toolFrame.ToolCalls) != 1 || toolFrame.ToolCalls[0].Function.Name != "read_file" {
+	if len(toolFrame.ToolCalls) != 1 || toolFrame.ToolCalls[0].Function.Name != "read" {
 		t.Fatalf("tool frame not parsed: %#v", toolFrame.ToolCalls)
 	}
 	if toolFrame.ToolCalls[0].Function.Arguments != `{"path":"chapters/ch01.md"}` {

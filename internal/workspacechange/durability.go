@@ -114,7 +114,7 @@ func (s *Service) ensureVisibleParentDurable(root *os.Root, parent string) error
 }
 
 func (s *Service) syncVisibleParent(rel string) error {
-	root, err := os.OpenRoot(s.workspace)
+	root, err := s.openWorkspaceRoot()
 	if err != nil {
 		return err
 	}
@@ -138,7 +138,7 @@ func (s *Service) syncPendingParentsLocked() error {
 	if len(parents) == 0 {
 		return nil
 	}
-	root, err := os.OpenRoot(s.workspace)
+	root, err := s.openWorkspaceRoot()
 	if err != nil {
 		parent := parents[0]
 		return durabilityPendingError(s.pendingParentSync[parent], "", "", mutationResult{

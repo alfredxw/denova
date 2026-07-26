@@ -1,6 +1,7 @@
 import type { UIMessageChunk } from 'ai'
 import { fetchAPI, jsonHeaders, parseUIMessageStream, requestJSON, responseAPIError } from './client'
 import type { ActiveChatTask, AgentRuntimeRecoveryAction, AgentRuntimeRecoveryReceipt } from './chat'
+import type { AgentAskAnswer, AgentAskResolution } from './types'
 import type { AgentUIMessage } from '@/lib/agent-ui'
 
 export interface ConfigManagerRunRequest {
@@ -98,6 +99,22 @@ export function recoverConfigManagerRuntime(
 
 export async function clearConfigManagerSession(scope: ConfigManagerScope = {}): Promise<void> {
   await requestJSON(`/api/config-manager/clear${configManagerScopeQuery(scope)}`, { method: 'POST' })
+}
+
+export function answerConfigManagerAsk(scope: ConfigManagerScope, askId: string, answers: AgentAskAnswer[]): Promise<AgentAskResolution> {
+  return requestJSON(`/api/config-manager/asks/${encodeURIComponent(askId)}/answer${configManagerScopeQuery(scope)}`, {
+    method: 'POST',
+    headers: jsonHeaders,
+    body: JSON.stringify({ answers }),
+  })
+}
+
+export function cancelConfigManagerAsk(scope: ConfigManagerScope, askId: string): Promise<AgentAskResolution> {
+  return requestJSON(`/api/config-manager/asks/${encodeURIComponent(askId)}/cancel${configManagerScopeQuery(scope)}`, {
+    method: 'POST',
+    headers: jsonHeaders,
+    body: JSON.stringify({ reason: 'user_cancelled' }),
+  })
 }
 
 function configManagerScopeQuery(scope: ConfigManagerScope): string {

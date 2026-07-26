@@ -1,6 +1,6 @@
 import type { UIMessageChunk } from 'ai'
 import { fetchAPI, jsonHeaders, parseUIMessageStream, readErrorMessage, requestJSON } from './client'
-import type { AgentRunTrace, AgentRunTraceSummary, ContextAnalysis, IDEContext, SessionSummary, TextSelection } from './types'
+import type { AgentAskAnswer, AgentAskInteraction, AgentAskResolution, AgentRunTrace, AgentRunTraceSummary, ContextAnalysis, IDEContext, SessionSummary, TextSelection } from './types'
 import type { AgentUIMessage } from '@/lib/agent-ui'
 import { isKnownAgentCommandOutcome } from '@/lib/agent-command'
 
@@ -182,6 +182,8 @@ export interface ActiveChatTask {
   queue?: AgentRuntimeQueuedCommand[]
   open_tools?: AgentRuntimeOpenTool[]
   last_operation?: AgentRuntimeOperation
+  /** Durable interaction shown even when the display stream must be reattached. */
+  pending_ask?: AgentAskInteraction
 }
 
 export interface AgentCommandReceipt {
@@ -207,6 +209,22 @@ export function createAgentCommandID(): string {
 
 export async function getActiveChatTask(): Promise<ActiveChatTask> {
   return requestJSON('/api/chat/active')
+}
+
+export function answerSessionAsk(sessionId: string, askId: string, answers: AgentAskAnswer[]): Promise<AgentAskResolution> {
+  return requestJSON(`/api/session/asks/${encodeURIComponent(askId)}/answer`, {
+    method: 'POST',
+    headers: jsonHeaders,
+    body: JSON.stringify({ session_id: sessionId, answers }),
+  })
+}
+
+export function cancelSessionAsk(sessionId: string, askId: string): Promise<AgentAskResolution> {
+  return requestJSON(`/api/session/asks/${encodeURIComponent(askId)}/cancel`, {
+    method: 'POST',
+    headers: jsonHeaders,
+    body: JSON.stringify({ session_id: sessionId, reason: 'user_cancelled' }),
+  })
 }
 
 /** Resume only the exact payload-free action selected by the backend. */

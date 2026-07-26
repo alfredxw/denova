@@ -17,6 +17,8 @@ import (
 
 type ToolSource = agent.ToolSource
 type ToolExecutionClass = agent.ToolExecutionClass
+type ToolMutationScope = agent.ToolMutationScope
+type ToolPostCheckPolicy = agent.ToolPostCheckPolicy
 type ToolRecoveryClass = agent.ToolRecoveryClass
 
 const (
@@ -33,7 +35,26 @@ const (
 const (
 	ToolExecutionParallelRead       = agent.ToolExecutionParallelRead
 	ToolExecutionWorkspaceExclusive = agent.ToolExecutionWorkspaceExclusive
+	ToolExecutionSessionExclusive   = agent.ToolExecutionSessionExclusive
+	ToolExecutionConfigExclusive    = agent.ToolExecutionConfigExclusive
+	ToolExecutionInteractiveWait    = agent.ToolExecutionInteractiveWait
 	ToolExecutionChild              = agent.ToolExecutionChild
+)
+
+const (
+	ToolMutationNone      = agent.ToolMutationNone
+	ToolMutationWorkspace = agent.ToolMutationWorkspace
+	ToolMutationSession   = agent.ToolMutationSession
+	ToolMutationConfig    = agent.ToolMutationConfig
+	ToolMutationExternal  = agent.ToolMutationExternal
+)
+
+const (
+	ToolPostCheckNone            = agent.ToolPostCheckNone
+	ToolPostCheckWorkspaceChange = agent.ToolPostCheckWorkspaceChange
+	ToolPostCheckSessionState    = agent.ToolPostCheckSessionState
+	ToolPostCheckConfigRevision  = agent.ToolPostCheckConfigRevision
+	ToolPostCheckExternalReceipt = agent.ToolPostCheckExternalReceipt
 )
 
 const (
@@ -61,6 +82,7 @@ func unknownToolManifest(name string) ToolManifest {
 		Name: normalized,
 		ToolDescriptor: agent.ToolDescriptor{
 			Source: ToolSourceOther, Execution: ToolExecutionWorkspaceExclusive,
+			MutationScope: ToolMutationExternal, PostCheck: ToolPostCheckNone,
 			Recovery: ToolRecoveryNonIdempotent, ResultProjection: ToolResultBoundedModelContext,
 			Steering: agent.SteeringFinishCurrent, MaxResultBytes: defaultToolResultMaxBytes,
 		},
@@ -110,7 +132,11 @@ func filterStructuredToolResultWithDescriptor(toolName string, descriptor agent.
 func filterStructuredToolResultWithManifest(manifest ToolManifest, args string, result agent.ToolResult, maxBytes int) FilteredToolResult {
 	manifest.MaxResultBytes = normalizeToolResultLimitBytes(firstPositive(maxBytes, manifest.MaxResultBytes))
 	result.ModelContent = producttools.WorkspaceChangeResultForModel(manifest.Name, result.ModelContent)
-	result.Metadata.Target = filepath.ToSlash(strings.TrimSpace(toolPathFromArgs(args)))
+	if argumentTarget := strings.TrimSpace(toolPathFromArgs(args)); argumentTarget != "" {
+		result.Metadata.Target = filepath.ToSlash(argumentTarget)
+	} else {
+		result.Metadata.Target = filepath.ToSlash(strings.TrimSpace(result.Metadata.Target))
+	}
 	result.Metadata.IdempotencyKey = toolIdempotencyKey(manifest.Name, args)
 
 	normalized, err := agent.NormalizeToolResult(result, manifest.ToolDescriptor)
@@ -191,11 +217,19 @@ func parseToolResultManifest(name, content string) (ToolManifest, bool) {
 	maxBytes, _ := strconv.Atoi(values["max_result_bytes"])
 	mutates, _ := strconv.ParseBool(values["mutates_workspace"])
 	postCheck, _ := strconv.ParseBool(values["requires_post_check"])
+	mutationScope := agent.ToolMutationNone
+	postCheckPolicy := agent.ToolPostCheckNone
+	if mutates {
+		mutationScope = agent.ToolMutationWorkspace
+		if postCheck {
+			postCheckPolicy = agent.ToolPostCheckWorkspaceChange
+		}
+	}
 	return manifestForDefinition(name, agent.ToolDescriptor{
 		Source: agent.ToolSource(values["source"]), Capability: values["capability"],
 		Execution: agent.ToolExecutionClass(values["execution"]), Recovery: agent.ToolRecoveryClass(values["recovery"]),
 		ResultProjection: agent.ToolResultProjection(values["result_projection"]),
 		Steering:         agent.SteeringFinishCurrent,
-		MutatesWorkspace: mutates, MaxResultBytes: maxBytes, RequiresPostCheck: postCheck,
+		MutationScope:    mutationScope, PostCheck: postCheckPolicy, MaxResultBytes: maxBytes,
 	}), true
 }

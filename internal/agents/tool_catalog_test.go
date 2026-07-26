@@ -16,3 +16,12 @@ func TestAgentWorkspaceChangeMetadataUsesStableRunIdentityWithoutLedger(t *testi
 		t.Fatalf("review linkage metadata was lost: %#v", metadata)
 	}
 }
+
+func TestProjectInteractiveToolContextPreservesSourceTurn(t *testing.T) {
+	projected := projectInteractiveToolContext(InteractiveStoryToolContext{
+		StoryID: "story-1", BranchID: "main", TurnID: "turn-source",
+	})
+	if projected.StoryID != "story-1" || projected.BranchID != "main" || projected.TurnID != "turn-source" {
+		t.Fatalf("interactive tool context projection = %#v", projected)
+	}
+}

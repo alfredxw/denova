@@ -1,0 +1,190 @@
+package tools
+
+import (
+	"context"
+	"encoding/json"
+	"errors"
+	"fmt"
+	"io"
+	"strings"
+	"unicode/utf8"
+
+	agent "github.com/alfredxw/denova/agent"
+)
+
+const (
+	defaultReadLines         = 2000
+	defaultDirectoryDepth    = 1
+	defaultDirectoryItems    = 200
+	defaultMaxDirectoryDepth = 64
+	defaultResultBytes       = 1024 * 1024
+	defaultResultEntries     = 10_000
+	maxConfiguredResultBytes = 64 * 1024 * 1024
+	maxConfiguredEntries     = 100_000
+	maxSearchPaths           = 256
+	maxWorkspaceScanEntries  = 100_000
+	maxWorkspaceIgnoreBytes  = 1024 * 1024
+	maxWorkspaceIgnoreRules  = 10_000
+	maxMutationFileBytes     = 16 * 1024 * 1024
+	maxMutationFragmentBytes = 4 * 1024 * 1024
+	resultTruncatedMarker    = "[workspace result truncated at the 1 MiB safety limit; narrow path or pattern]"
+	processTruncatedMarker   = "[process output truncated; inspect a narrower command]"
+)
+
+// DefinitionOption customizes a general tool's runtime contract without
+// changing its model-visible Interface.
+type DefinitionOption func(*agent.ToolDescriptor)
+
+// WithCapability associates a product-defined authorization capability.
+func WithCapability(capability string) DefinitionOption {
+	return func(descriptor *agent.ToolDescriptor) { descriptor.Capability = capability }
+}
+
+// WithMaxResultBytes overrides the model-context result ceiling.
+func WithMaxResultBytes(limit int) DefinitionOption {
+	return func(descriptor *agent.ToolDescriptor) { descriptor.MaxResultBytes = limit }
+}
+
+func applyDefinitionOptions(descriptor agent.ToolDescriptor, options []DefinitionOption) agent.ToolDescriptor {
+	for _, option := range options {
+		if option != nil {
+			option(&descriptor)
+		}
+	}
+	return descriptor
+}
+
+func readDescriptor(options ...DefinitionOption) agent.ToolDescriptor {
+	return applyDefinitionOptions(agent.ToolDescriptor{
+		Source:           agent.ToolSourceRead,
+		Execution:        agent.ToolExecutionParallelRead,
+		MutationScope:    agent.ToolMutationNone,
+		PostCheck:        agent.ToolPostCheckNone,
+		Recovery:         agent.ToolRecoveryReadOnly,
+		ResultProjection: agent.ToolResultBoundedModelContext,
+		Steering:         agent.SteeringFinishCurrent,
+		MaxResultBytes:   defaultResultBytes,
+	}, options)
+}
+
+func writeDescriptor(options ...DefinitionOption) agent.ToolDescriptor {
+	return applyDefinitionOptions(agent.ToolDescriptor{
+		Source:           agent.ToolSourceWrite,
+		Execution:        agent.ToolExecutionWorkspaceExclusive,
+		MutationScope:    agent.ToolMutationWorkspace,
+		PostCheck:        agent.ToolPostCheckWorkspaceChange,
+		Recovery:         agent.ToolRecoveryReconcilable,
+		ResultProjection: agent.ToolResultBoundedModelContext,
+		Steering:         agent.SteeringFinishCurrent,
+		MaxResultBytes:   defaultResultBytes,
+	}, options)
+}
+
+func shellDescriptor(options ...DefinitionOption) agent.ToolDescriptor {
+	return applyDefinitionOptions(agent.ToolDescriptor{
+		Source:    agent.ToolSourceShell,
+		Execution: agent.ToolExecutionWorkspaceExclusive,
+		// A workspace cwd is not an OS sandbox: a command can change host state,
+		// access the network, and spawn descendants outside the workspace. Keep
+		// the workspace-exclusive execution lane for editor coordination, but do
+		// not misrepresent the command's mutation boundary or recovery receipt.
+		MutationScope:    agent.ToolMutationExternal,
+		PostCheck:        agent.ToolPostCheckExternalReceipt,
+		Recovery:         agent.ToolRecoveryNonIdempotent,
+		ResultProjection: agent.ToolResultBoundedModelContext,
+		Steering:         agent.SteeringFinishCurrent,
+		MaxResultBytes:   defaultResultBytes,
+	}, options)
+}
+
+func strictDecode[T any](arguments string) (T, error) {
+	var input T
+	info, err := agent.GoStruct2ToolInfo[T]("arguments", "")
+	if err != nil {
+		return input, err
+	}
+	if err := agent.ValidateToolArguments(info, arguments); err != nil {
+		return input, err
+	}
+	decoder := json.NewDecoder(strings.NewReader(arguments))
+	decoder.DisallowUnknownFields()
+	if err := decoder.Decode(&input); err != nil {
+		return input, err
+	}
+	var trailing any
+	if err := decoder.Decode(&trailing); err == nil {
+		return input, fmt.Errorf("multiple JSON values are not allowed")
+	} else if !errors.Is(err, io.EOF) {
+		return input, fmt.Errorf("invalid trailing JSON: %w", err)
+	}
+	return input, nil
+}
+
+func lineNumbers(content string, start int) string {
+	if content == "" {
+		return ""
+	}
+	lines := strings.Split(content, "\n")
+	if lines[len(lines)-1] == "" {
+		lines = lines[:len(lines)-1]
+	}
+	var result strings.Builder
+	for index, line := range lines {
+		fmt.Fprintf(&result, "%6d\t%s", start+index, line)
+		if index < len(lines)-1 || strings.HasSuffix(content, "\n") {
+			result.WriteByte('\n')
+		}
+	}
+	return result.String()
+}
+
+func joinedResult(entries []string, empty string) string {
+	if len(entries) == 0 {
+		return empty
+	}
+	return boundedString(strings.Join(entries, "\n"), defaultResultBytes)
+}
+
+func boundedString(content string, limit int) string {
+	if len(content) <= limit {
+		return content
+	}
+	truncated, _ := truncateUTF8WithMarker(content, "\n"+resultTruncatedMarker, limit)
+	return truncated
+}
+
+func truncateUTF8(content string, limit int) string {
+	if limit <= 0 {
+		return ""
+	}
+	if len(content) <= limit {
+		return content
+	}
+	end := limit
+	for end > 0 && !utf8.RuneStart(content[end]) {
+		end--
+	}
+	return content[:end]
+}
+
+func truncateUTF8WithMarker(content, marker string, limit int) (string, bool) {
+	if len(content) <= limit {
+		return content, false
+	}
+	if limit <= 0 {
+		return "", true
+	}
+	if len(marker) >= limit {
+		return truncateUTF8(marker, limit), true
+	}
+	prefixLimit := limit - len(marker)
+	prefix := truncateUTF8(content, prefixLimit)
+	return prefix + marker, true
+}
+
+func contextError(ctx context.Context) error {
+	if ctx == nil {
+		return nil
+	}
+	return ctx.Err()
+}

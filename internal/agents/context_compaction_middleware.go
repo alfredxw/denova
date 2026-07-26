@@ -17,7 +17,7 @@ type contextCompactionMiddleware struct {
 }
 
 func (m *contextCompactionMiddleware) BeforeModelRewriteState(ctx context.Context, state *agent.RunState, _ *agent.ModelContext) (context.Context, *agent.RunState, error) {
-	if state == nil {
+	if state == nil || !agent.IsRootInvocation(ctx) {
 		return ctx, state, nil
 	}
 	controller := compactionControllerFromContext(ctx)

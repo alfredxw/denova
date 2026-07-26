@@ -9,33 +9,10 @@ import (
 	"strings"
 
 	agent "github.com/alfredxw/denova/agent"
+	agenttools "github.com/alfredxw/denova/agent/tools"
 
 	"denova/internal/workspacechange"
 )
-
-var workspaceEditFileToolDescription = strings.TrimSpace(`Apply one or more exact text edits to a single workspace file as one reviewed change.
-- file_path must identify one file inside the current workspace.
-- Every item in edits is matched against the same original file snapshot, not against the result of an earlier item.
-- Keep edits non-overlapping. Use replace_all only when every exact occurrence should change.
-- Put dependent changes to the same file in one call. Independent files may use separate edit_file calls in the same assistant response.
-- The tool captures and protects the current file snapshot internally when the call starts.
-
-将一个或多个精确文本修改作为一次可审阅变更应用到同一个 workspace 文件。
-- file_path 必须指向当前 workspace 内的单个文件。
-- edits 中的每一项都基于同一份原始文件快照匹配，不基于前一项修改后的结果。
-- 各修改区间不得重叠；只有确实需要替换全部精确匹配时才使用 replace_all。
-- 同一文件内相互依赖的修改必须放在一次调用中；不同文件的独立修改可以在同一轮分别调用 edit_file。
-- 工具会在调用开始时自行获取并保护当前文件快照。`)
-
-var workspaceWriteFileToolDescription = strings.TrimSpace(`Replace the complete content of one workspace file as a reviewed change.
-- Use edit_file for localized changes; use write_file only for a new file or an intentional full rewrite.
-- file_path must identify one file inside the current workspace.
-- The tool detects whether the file exists and protects its current snapshot internally.
-
-将一个 workspace 文件的完整内容替换为新内容，并记录为可审阅变更。
-- 局部修改使用 edit_file；只有新建文件或明确需要整体重写时才使用 write_file。
-- file_path 必须指向当前 workspace 内的单个文件。
-- 工具会自行判断文件是否存在并保护当前快照。`)
 
 type workspaceChangeService interface {
 	Workspace() string
@@ -44,91 +21,17 @@ type workspaceChangeService interface {
 	ReplaceFile(context.Context, workspacechange.ReplaceFileRequest) (workspacechange.ChangeSet, error)
 }
 
-// disabledWorkspaceChangeService publishes the stable write/edit schemas for a
-// read-only Agent without initializing workspace mutation storage. The tool
-// orchestrator blocks these calls first; this adapter is a second fail-closed
-// boundary if a caller constructs the tools without the policy middleware.
-type disabledWorkspaceChangeService struct {
-	workspace string
-}
-
-func (service disabledWorkspaceChangeService) Workspace() string {
-	return service.workspace
-}
-
-func (disabledWorkspaceChangeService) ReadFile(string) (string, string, error) {
-	return "", "", fmt.Errorf("file_write capability is disabled")
-}
-
-func (disabledWorkspaceChangeService) ApplyEdits(context.Context, workspacechange.ApplyEditsRequest) (workspacechange.ChangeSet, error) {
-	return workspacechange.ChangeSet{}, fmt.Errorf("file_write capability is disabled")
-}
-
-func (disabledWorkspaceChangeService) ReplaceFile(context.Context, workspacechange.ReplaceFileRequest) (workspacechange.ChangeSet, error) {
-	return workspacechange.ChangeSet{}, fmt.Errorf("file_write capability is disabled")
-}
-
-type workspaceEditFileInput struct {
-	FilePath string                      `json:"file_path" jsonschema_description:"Absolute or workspace-relative path of the single file to edit."`
-	Edits    []workspaceEditFileTextEdit `json:"edits" jsonschema:"minItems=1" jsonschema_description:"One or more non-overlapping exact replacements evaluated against the same original file snapshot."`
-}
-
-type workspaceEditFileTextEdit struct {
-	ID         string `json:"id,omitempty" jsonschema_description:"Optional stable identifier used to associate review comments with this edit."`
-	OldString  string `json:"old_string" jsonschema_description:"Exact non-empty text to replace in the original file snapshot."`
-	NewString  string `json:"new_string" jsonschema_description:"Replacement text; an empty string deletes the matched text."`
-	ReplaceAll bool   `json:"replace_all,omitempty" jsonschema_description:"Replace every exact occurrence of old_string; defaults to false."`
-}
-
-type workspaceWriteFileInput struct {
-	FilePath string `json:"file_path" jsonschema_description:"Absolute or workspace-relative path of the file to replace."`
-	Content  string `json:"content" jsonschema_description:"Complete new file content."`
-}
-
 type WorkspaceMetadataProvider func(context.Context) workspacechange.ChangeMetadata
 
-func newWorkspaceEditFileTool(changes workspaceChangeService, metadataProviders ...WorkspaceMetadataProvider) (agent.Tool, error) {
-	if changes == nil {
-		return nil, fmt.Errorf("workspace change service is nil")
-	}
-	workspace, err := canonicalChangeWorkspace(changes)
-	if err != nil {
-		return nil, err
-	}
-	return agent.InferTool("edit_file", workspaceEditFileToolDescription, func(ctx context.Context, input workspaceEditFileInput) (agent.ToolResult, error) {
-		if strings.TrimSpace(input.FilePath) == "" {
-			return agent.ToolResult{}, fmt.Errorf("file_path is required")
-		}
-		if len(input.Edits) == 0 {
-			return agent.ToolResult{}, fmt.Errorf("at least one edit is required")
-		}
-		baseRevision, err := currentWorkspaceBaseRevision(changes, input.FilePath)
-		if err != nil {
-			return agent.ToolResult{}, err
-		}
-		edits := make([]workspacechange.TextEdit, 0, len(input.Edits))
-		for _, edit := range input.Edits {
-			edits = append(edits, workspacechange.TextEdit{
-				ID:         edit.ID,
-				OldString:  edit.OldString,
-				NewString:  edit.NewString,
-				ReplaceAll: edit.ReplaceAll,
-			})
-		}
-		changeSet, err := changes.ApplyEdits(ctx, workspacechange.ApplyEditsRequest{
-			Path:         input.FilePath,
-			BaseRevision: baseRevision,
-			Edits:        edits,
-			Metadata:     workspaceChangeMetadata(ctx, firstWorkspaceMetadataProvider(metadataProviders)),
-		})
-		if err != nil {
-			return agent.ToolResult{}, err
-		}
-		return workspaceChangeToolResult(workspace, changeSet)
-	})
+type workspaceMutationAdapter struct {
+	changes   workspaceChangeService
+	workspace string
+	metadata  WorkspaceMetadataProvider
 }
 
-func newWorkspaceWriteFileTool(changes workspaceChangeService, metadataProviders ...WorkspaceMetadataProvider) (agent.Tool, error) {
+// newWorkspaceMutationAdapter bridges the reusable write/edit Interface to
+// Denova's durable review and optimistic-concurrency implementation.
+func newWorkspaceMutationAdapter(changes workspaceChangeService, metadataProviders ...WorkspaceMetadataProvider) (agenttools.MutationAdapter, error) {
 	if changes == nil {
 		return nil, fmt.Errorf("workspace change service is nil")
 	}
@@ -136,25 +39,49 @@ func newWorkspaceWriteFileTool(changes workspaceChangeService, metadataProviders
 	if err != nil {
 		return nil, err
 	}
-	return agent.InferTool("write_file", workspaceWriteFileToolDescription, func(ctx context.Context, input workspaceWriteFileInput) (agent.ToolResult, error) {
-		if strings.TrimSpace(input.FilePath) == "" {
-			return agent.ToolResult{}, fmt.Errorf("file_path is required")
-		}
-		baseRevision, err := currentWorkspaceBaseRevisionOrMissing(changes, input.FilePath)
-		if err != nil {
-			return agent.ToolResult{}, err
-		}
-		changeSet, err := changes.ReplaceFile(ctx, workspacechange.ReplaceFileRequest{
-			Path:         input.FilePath,
-			Content:      input.Content,
-			BaseRevision: baseRevision,
-			Metadata:     workspaceChangeMetadata(ctx, firstWorkspaceMetadataProvider(metadataProviders)),
-		})
-		if err != nil {
-			return agent.ToolResult{}, err
-		}
-		return workspaceChangeToolResult(workspace, changeSet)
+	return &workspaceMutationAdapter{
+		changes: changes, workspace: workspace,
+		metadata: firstWorkspaceMetadataProvider(metadataProviders),
+	}, nil
+}
+
+func (adapter *workspaceMutationAdapter) Edit(ctx context.Context, request agenttools.EditRequest) (agent.ToolResult, error) {
+	if adapter == nil || adapter.changes == nil {
+		return agent.ToolResult{}, fmt.Errorf("workspace mutation adapter is not configured")
+	}
+	baseRevision, err := currentWorkspaceBaseRevision(adapter.changes, request.Path)
+	if err != nil {
+		return agent.ToolResult{}, err
+	}
+	changeSet, err := adapter.changes.ApplyEdits(ctx, workspacechange.ApplyEditsRequest{
+		Path: request.Path, BaseRevision: baseRevision,
+		Edits: []workspacechange.TextEdit{{
+			OldString: request.OldString, NewString: request.NewString, ReplaceAll: request.ReplaceAll,
+		}},
+		Metadata: workspaceChangeMetadata(ctx, adapter.metadata),
 	})
+	if err != nil {
+		return agent.ToolResult{}, err
+	}
+	return workspaceChangeToolResult(adapter.workspace, changeSet)
+}
+
+func (adapter *workspaceMutationAdapter) Write(ctx context.Context, request agenttools.WriteRequest) (agent.ToolResult, error) {
+	if adapter == nil || adapter.changes == nil {
+		return agent.ToolResult{}, fmt.Errorf("workspace mutation adapter is not configured")
+	}
+	baseRevision, err := currentWorkspaceBaseRevisionOrMissing(adapter.changes, request.Path)
+	if err != nil {
+		return agent.ToolResult{}, err
+	}
+	changeSet, err := adapter.changes.ReplaceFile(ctx, workspacechange.ReplaceFileRequest{
+		Path: request.Path, Content: request.Content, BaseRevision: baseRevision,
+		Metadata: workspaceChangeMetadata(ctx, adapter.metadata),
+	})
+	if err != nil {
+		return agent.ToolResult{}, err
+	}
+	return workspaceChangeToolResult(adapter.workspace, changeSet)
 }
 
 func canonicalChangeWorkspace(changes workspaceChangeService) (string, error) {
@@ -207,7 +134,7 @@ func workspaceChangeMetadata(ctx context.Context, provider WorkspaceMetadataProv
 	if provider != nil {
 		return provider(ctx)
 	}
-	callID := strings.TrimSpace(agent.ToolCallID(ctx))
+	callID := agent.ToolExecutionID(ctx, strings.TrimSpace(agent.ToolCallID(ctx)))
 	return workspacechange.ChangeMetadata{
 		Origin:        workspacechange.OriginAgent,
 		ChangeGroupID: callID,
@@ -216,6 +143,12 @@ func workspaceChangeMetadata(ctx context.Context, provider WorkspaceMetadataProv
 }
 
 func marshalWorkspaceChangeToolReceipt(workspace string, changeSet workspacechange.ChangeSet) (string, error) {
+	edits := make([]workspaceChangeEditReceipt, 0, len(changeSet.Edits))
+	for _, edit := range changeSet.Edits {
+		edits = append(edits, workspaceChangeEditReceipt{
+			ID: edit.ID, Replacements: len(edit.Hunks),
+		})
+	}
 	receipt := workspaceChangeToolReceipt{
 		Schema:         workspaceChangeToolResultSchema,
 		Status:         workspaceChangeReceiptStatus(changeSet),
@@ -228,6 +161,7 @@ func marshalWorkspaceChangeToolReceipt(workspace string, changeSet workspacechan
 		Revision:       changeSet.Revision,
 		ReviewStatus:   changeSet.ReviewStatus,
 		ApplyState:     changeSet.ApplyState,
+		Edits:          edits,
 	}
 	data, err := json.Marshal(receipt)
 	if err != nil {

@@ -17,7 +17,7 @@ import (
 )
 
 const (
-	sessionProjectionVersion      = 4
+	sessionProjectionVersion      = 7
 	sessionRecentTransactionLimit = 200
 	sessionRecentCommitLimit      = 200
 	sessionStructuralRecordLimit  = 64
@@ -81,16 +81,20 @@ type sessionJournalProjection struct {
 	ClearCursor         conversationjournal.Cursor `json:"clear_cursor,omitempty"`
 	ContextRevision     uint64                     `json:"context_revision"`
 
-	RecentCursors          []conversationjournal.Cursor `json:"recent_cursors,omitempty"`
-	MessageLocators        []messageLocator             `json:"message_locators,omitempty"`
-	MessageAnchors         []messageLocator             `json:"message_anchors,omitempty"`
-	HistoryAnchors         []historyAnchor              `json:"history_anchors,omitempty"`
-	RecentCommits          []domainCommitLocator        `json:"recent_commits,omitempty"`
-	Structural             []structuralProjectionRecord `json:"structural,omitempty"`
-	PendingInterrupt       *Interruption                `json:"pending_interrupt,omitempty"`
-	PendingInterruptCursor conversationjournal.Cursor   `json:"pending_interrupt_cursor,omitempty"`
-	AssistantRuns          []assistantRunCheckpoint     `json:"active_assistant_runs,omitempty"`
-	AssistantTargets       []assistantTargetCheckpoint  `json:"active_assistant_targets,omitempty"`
+	RecentCursors                  []conversationjournal.Cursor   `json:"recent_cursors,omitempty"`
+	MessageLocators                []messageLocator               `json:"message_locators,omitempty"`
+	MessageAnchors                 []messageLocator               `json:"message_anchors,omitempty"`
+	HistoryAnchors                 []historyAnchor                `json:"history_anchors,omitempty"`
+	RecentCommits                  []domainCommitLocator          `json:"recent_commits,omitempty"`
+	Structural                     []structuralProjectionRecord   `json:"structural,omitempty"`
+	PendingInterrupt               *Interruption                  `json:"pending_interrupt,omitempty"`
+	PendingInterruptCursor         conversationjournal.Cursor     `json:"pending_interrupt_cursor,omitempty"`
+	PendingAsk                     *AskInteraction                `json:"pending_ask,omitempty"`
+	PendingAskCursor               conversationjournal.Cursor     `json:"pending_ask_cursor,omitempty"`
+	ContextWindows                 []agentContextWindowProjection `json:"context_windows,omitempty"`
+	ContextWindowProjectionInvalid bool                           `json:"context_window_projection_invalid,omitempty"`
+	AssistantRuns                  []assistantRunCheckpoint       `json:"active_assistant_runs,omitempty"`
+	AssistantTargets               []assistantTargetCheckpoint    `json:"active_assistant_targets,omitempty"`
 
 	expectedID         string
 	expectedGeneration string
@@ -131,17 +135,23 @@ func (projection *sessionJournalProjection) Restore(data json.RawMessage) error 
 	}
 	restored.expectedID = expectedID
 	restored.expectedGeneration = expectedGeneration
-	if err := restored.restoreAssistantDigests(); err != nil {
-		return err
-	}
 	if len(restored.RecentCursors) > 0 {
 		restored.lastCursor = restored.RecentCursors[len(restored.RecentCursors)-1]
+	}
+	if err := restored.validateContextWindows(); err != nil {
+		return fmt.Errorf("restore context window projection: %w", err)
+	}
+	if err := restored.restoreAssistantDigests(); err != nil {
+		return err
 	}
 	*projection = restored
 	return nil
 }
 
 func (projection *sessionJournalProjection) Checkpoint() (json.RawMessage, error) {
+	if err := projection.validateContextWindows(); err != nil {
+		return nil, fmt.Errorf("checkpoint context window projection: %w", err)
+	}
 	checkpoint := *projection
 	if err := checkpoint.captureAssistantDigests(); err != nil {
 		return nil, err
@@ -152,6 +162,14 @@ func (projection *sessionJournalProjection) Checkpoint() (json.RawMessage, error
 		pending.AssistantContent = ""
 		pending.Reason = ""
 		checkpoint.PendingInterrupt = &pending
+	}
+	if projection.PendingAsk != nil {
+		pending := cloneAskInteraction(*projection.PendingAsk)
+		// The canonical journal owns model-generated question text. The sidecar
+		// needs only enough identity to locate that pending record during reload.
+		pending.Questions = nil
+		pending.Answers = nil
+		checkpoint.PendingAsk = &pending
 	}
 	return json.Marshal(&checkpoint)
 }
@@ -185,6 +203,7 @@ func (projection *sessionJournalProjection) Apply(record conversationjournal.Rec
 		projection.advanceUpdatedAt(marker.CreatedAt)
 		// A checkpoint before /clear cannot affect the new effective context.
 		projection.Structural = nil
+		projection.resetContextWindows()
 		return nil
 	case historyTypeDisplay:
 		var display displayRecord
@@ -248,6 +267,32 @@ func (projection *sessionJournalProjection) Apply(record conversationjournal.Rec
 				projection.PendingInterruptCursor = 0
 			}
 		}
+		projection.advanceUpdatedAt(patch.UpdatedAt)
+		return nil
+	case historyTypeAsk:
+		var marker askRecord
+		if err := json.Unmarshal(record.Payload, &marker); err != nil {
+			return err
+		}
+		interaction, err := normalizeAskInteraction(marker.AskInteraction)
+		if err != nil {
+			return err
+		}
+		projection.PendingAsk = &interaction
+		projection.PendingAskCursor = record.Location.Cursor
+		projection.rememberHistoryRow(record.Location.Cursor, false)
+		projection.advanceUpdatedAt(interaction.CreatedAt)
+		return nil
+	case historyTypeAskPatch:
+		var patch askPatchRecord
+		if err := json.Unmarshal(record.Payload, &patch); err != nil {
+			return err
+		}
+		if projection.PendingAsk == nil || projection.PendingAsk.ID != patch.TargetID {
+			return fmt.Errorf("ask patch target does not match the pending interaction: %s", patch.TargetID)
+		}
+		projection.PendingAsk = nil
+		projection.PendingAskCursor = 0
 		projection.advanceUpdatedAt(patch.UpdatedAt)
 		return nil
 	case historyTypeCompaction:
@@ -318,7 +363,9 @@ func (projection *sessionJournalProjection) applyMessage(record conversationjour
 		return fmt.Errorf("message record is empty")
 	}
 	metadata := sanitizeMessageMetadata(message.MessageMetadata)
+	messageIndex := projection.MessageCount
 	projection.rememberMessage(record.Location.Cursor, message.Message.Role, metadata)
+	projection.rememberContextOperations(record.Location, messageIndex, metadata.ContextRevision, metadata.ContextOperations)
 	if kind == historyTypeMessage {
 		projection.VisibleMessageCount++
 		visible := true

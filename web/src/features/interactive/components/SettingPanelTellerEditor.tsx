@@ -914,9 +914,9 @@ function buildStyleExtractionInstruction(draft: StyleUploadDraft) {
 3. 不出现现实作者名、作品名或来源说明。
 4. 不要直接保存原文，不要堆砌华丽辞藻，不要写成口号。
 5. 参考结构可以包含「总体原则」「场景/心理/对白/感情/战斗/日常/出场/转折/结尾」等小节，但只保留源文件能支持的内容。
-6. 必须调用 write_style_references，写入 filename="${draft.filename}"，name="${draft.name}"，description="${draft.description}"，content 为最终提炼后的 Markdown。
-7. 不要调用 write_tellers 或其他叙事风格写入工具；本次只处理共享文风参考文件。
-8. 如果 write_style_references 工具不可用，才输出以下 XML 标签包裹的 Markdown 作为回退，不要在标签外写解释：
+6. 必须调用 config_apply，参数为 operation="create"、resource="style_reference"，value 中写入 filename="${draft.filename}"、name="${draft.name}"、description="${draft.description}"，content 为最终提炼后的 Markdown。
+7. 不要修改 narrative_style 或其他配置资源；本次只处理 style_reference。
+8. 如果 config_apply 工具不可用，才输出以下 XML 标签包裹的 Markdown 作为回退，不要在标签外写解释：
 
 <${STYLE_MARKDOWN_TAG}>
 # ${draft.name}
@@ -937,7 +937,7 @@ function readString(value: unknown) {
 
 function extractStyleReferenceMarkdownFromToolArgs(toolArgsByKey: Record<string, { name: string; args: string }>) {
   for (const call of Object.values(toolArgsByKey)) {
-    if (call.name !== 'write_style_references') continue
+    if (call.name !== 'config_apply') continue
     const content = extractFirstStyleReferenceContent(call.args)
     if (content) return content
   }
@@ -949,15 +949,10 @@ function extractFirstStyleReferenceContent(rawArgs: string) {
   try {
     const data = JSON.parse(rawArgs) as unknown
     if (!data || typeof data !== 'object' || Array.isArray(data)) return ''
-    const operations = (data as { operations?: unknown }).operations
-    if (!Array.isArray(operations)) return ''
-    for (const operation of operations) {
-      if (!operation || typeof operation !== 'object' || Array.isArray(operation)) continue
-      const reference = (operation as { reference?: unknown }).reference
-      if (!reference || typeof reference !== 'object' || Array.isArray(reference)) continue
-      const content = readString((reference as { content?: unknown }).content)
-      if (content.trim()) return content
-    }
+		const input = data as { operation?: unknown; resource?: unknown; value?: unknown }
+		if (input.operation !== 'create' || input.resource !== 'style_reference') return ''
+		if (!input.value || typeof input.value !== 'object' || Array.isArray(input.value)) return ''
+		return readString((input.value as { content?: unknown }).content)
   } catch {
     return ''
   }

@@ -18,15 +18,8 @@ const (
 	// the system-prompt composer so it can emit a visible truncation marker and
 	// an original/included provenance receipt from the same source.
 	configManagerResourceSkillMaxSourceBytes      = 512 * 1024
-	configManagerResourceSkillMaxTotalSourceBytes = 3 * configManagerResourceSkillMaxSourceBytes
-
-	configManagerAutomationSkill    = "automation-config"
-	configManagerTellerSkill        = "teller-config"
-	configManagerStoryDirectorSkill = "story-director-config"
-	configManagerImagePresetSkill   = "image-preset-config"
-	configManagerSkillsSkill        = "skills-creator"
-	configManagerAgentConfigSkill   = "agent-config"
-	configManagerLoreSkill          = "lore"
+	configManagerResourceSkillMaxTotalSourceBytes = configManagerResourceSkillMaxSourceBytes
+	configManagerSkillName                        = "config-manager"
 )
 
 func loadConfigManagerResourceSkills(ctx context.Context, cfg *config.Config, req ConfigManagerRequest) ([]agents.ConfigManagerResourceSkill, error) {
@@ -85,82 +78,8 @@ func loadConfigManagerResourceSkills(ctx context.Context, cfg *config.Config, re
 }
 
 func configManagerResourceSkillNames(req ConfigManagerRequest) []string {
-	var out []string
-	add := func(name string) {
-		name = strings.TrimSpace(name)
-		if name == "" {
-			return
-		}
-		for _, existing := range out {
-			if existing == name {
-				return
-			}
-		}
-		out = append(out, name)
-	}
-
-	origin := normalizeConfigManagerSignal(req.Origin)
-	switch origin {
-	case "lore":
-		add(configManagerLoreSkill)
-	case "automation", "automations":
-		add(configManagerAutomationSkill)
-	case "teller", "tellers", "narrative", "style", "styles", "director", "story_director", "story-director", "story_directors", "story-directors", "actor_state", "actor-state", "actor_states", "actor-states":
-		add(configManagerTellerSkill)
-		add(configManagerStoryDirectorSkill)
-		add(configManagerImagePresetSkill)
-	case "image_preset", "image_preset_config", "image_presets", "image-preset", "image-presets", "preset", "presets":
-		add(configManagerTellerSkill)
-		add(configManagerImagePresetSkill)
-	case "skills", "skill":
-		add(configManagerSkillsSkill)
-	case "agents", "agent":
-		add(configManagerAgentConfigSkill)
-	}
-
-	signals := []string{req.Origin, req.ResourceID, req.StoryID, req.BranchID}
-	for _, ref := range req.References {
-		signals = append(signals, ref)
-	}
-	for key, value := range req.Context {
-		signals = append(signals, key, value)
-	}
-	text := normalizeConfigManagerSignal(strings.Join(signals, " "))
-	switch {
-	case strings.Contains(text, "write_lore_items") || strings.Contains(text, "lore_item") || strings.Contains(text, "selected_lore") || strings.Contains(text, "资料库"):
-		add(configManagerLoreSkill)
-	}
-	switch {
-	case strings.Contains(text, "automation") || strings.Contains(text, "write_automations") || strings.Contains(text, "active_automation"):
-		add(configManagerAutomationSkill)
-	}
-	switch {
-	case strings.Contains(text, "teller") || strings.Contains(text, "narrative") || strings.Contains(text, "叙事风格"):
-		add(configManagerTellerSkill)
-	}
-	switch {
-	case strings.Contains(text, "story_director") || strings.Contains(text, "write_story_directors") || strings.Contains(text, "event_package") || strings.Contains(text, "event-packages") || strings.Contains(text, "actor_state") || strings.Contains(text, "actor_states") || strings.Contains(text, "故事导演") || strings.Contains(text, "导演策略") || strings.Contains(text, "事件包") || strings.Contains(text, "事件系统") || strings.Contains(text, "状态系统") || strings.Contains(text, "结构化状态") || strings.Contains(text, "trpg"):
-		add(configManagerStoryDirectorSkill)
-	}
-	switch {
-	case strings.Contains(text, "image_preset") || strings.Contains(text, "image_presets") || strings.Contains(text, "图像方案") || strings.Contains(text, "方案预设") || strings.Contains(text, "preset"):
-		add(configManagerImagePresetSkill)
-	}
-	switch {
-	case strings.Contains(text, "skills") || strings.Contains(text, "skill"):
-		add(configManagerSkillsSkill)
-	}
-	switch {
-	case strings.Contains(text, "agents") || strings.Contains(text, "agent_config") || strings.Contains(text, "subagent") || strings.Contains(text, "sub_agent"):
-		add(configManagerAgentConfigSkill)
-	}
-	return out
-}
-
-func normalizeConfigManagerSignal(value string) string {
-	value = strings.ToLower(strings.TrimSpace(value))
-	value = strings.ReplaceAll(value, "-", "_")
-	return value
+	_ = req
+	return []string{configManagerSkillName}
 }
 
 func trimStringToUTF8Bytes(value string, limit int) (string, bool) {

@@ -39,7 +39,7 @@ func TestAutomationHostEffectBridgeSurvivesRunMaterializationGap(t *testing.T) {
 			AutomationTaskID: taskDef.ID, Workspace: workspace, Mode: "automation",
 		},
 		Mutation: agents.ToolMutation{
-			ToolName: "write_file", ToolCallID: "tool-call-1", Workspace: workspace, Target: "chapters/late.md",
+			ToolName: "write", ToolCallID: "tool-call-1", Workspace: workspace, Target: "chapters/late.md",
 		},
 	}
 	if err := application.reconcileHarnessHostEffect(context.Background(), committed); err != nil {
@@ -145,7 +145,7 @@ func TestAutomationSuccessorFenceRejectsTransferFailureAndRecoversWithoutChangin
 			SessionID: run.SessionID, Workspace: workspace, Mode: "automation",
 		},
 		Mutation: agents.ToolMutation{
-			ToolName: "write_file", ToolCallID: "tool-call-before-failed-successor",
+			ToolName: "write", ToolCallID: "tool-call-before-failed-successor",
 			Workspace: workspace, Target: "notes/not-a-chapter.md",
 		},
 	}
@@ -219,7 +219,7 @@ func TestCommittedAutomationHostEffectEnablesOneTriggerPassAcrossRedelivery(t *t
 			SessionID: run.SessionID, Workspace: workspace, Mode: "automation",
 		},
 		Mutation: agents.ToolMutation{
-			ToolName: "write_file", ToolCallID: "tool-call-exact-output-receipt",
+			ToolName: "write", ToolCallID: "tool-call-exact-output-receipt",
 			Workspace: workspace, Target: "chapters/one.md",
 		},
 	}

@@ -3,6 +3,7 @@ package agents
 import (
 	"context"
 	"strings"
+	"sync"
 	"testing"
 
 	"denova/config"
@@ -20,8 +21,98 @@ func TestConfigMaxIterationDefaultsToNativeUnlimited(t *testing.T) {
 	}
 }
 
+func TestTaskAndChildWriteWithSameProviderIDHaveDistinctExecutionIDs(t *testing.T) {
+	child := executionIdentityChild{}
+	task, err := producttools.NewTask(context.Background(), []agent.Runnable{child})
+	if err != nil {
+		t.Fatal(err)
+	}
+	root, err := agent.NewAgent(context.Background(), agent.AgentConfig{
+		Name: "root", Model: &taskExecutionIdentityModel{}, Tools: []agent.ToolDefinition{task},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	ctx := agent.ContextWithInvocationIdentity(context.Background(), agent.InvocationIdentity{
+		Scope: "workspace:identity", OperationID: "operation-task-child", Cycle: 1,
+	})
+	events := root.Run(ctx, &agent.AgentInput{Messages: []*agent.Message{agent.UserMessage("delegate")}})
+	executionIDs := map[string]string{}
+	providerIDs := map[string]string{}
+	for {
+		event, ok := events.Next()
+		if !ok {
+			break
+		}
+		if event.Err != nil {
+			t.Fatal(event.Err)
+		}
+		if event.Output == nil || event.Output.ToolExecution == nil || event.Output.ToolExecution.Phase != agent.ToolExecutionStarted {
+			continue
+		}
+		execution := event.Output.ToolExecution
+		executionIDs[execution.ToolName] = execution.ExecutionID
+		providerIDs[execution.ToolName] = execution.ProviderCallID
+	}
+	if providerIDs["task"] != "provider-same" || providerIDs["write"] != "provider-same" ||
+		executionIDs["task"] == "" || executionIDs["write"] == "" || executionIDs["task"] == executionIDs["write"] {
+		t.Fatalf("execution IDs=%v provider IDs=%v", executionIDs, providerIDs)
+	}
+}
+
+type taskExecutionIdentityModel struct {
+	mu    sync.Mutex
+	calls int
+}
+
+func (model *taskExecutionIdentityModel) Generate(context.Context, []*agent.Message, ...agent.ModelOption) (*agent.Message, error) {
+	model.mu.Lock()
+	defer model.mu.Unlock()
+	model.calls++
+	if model.calls == 1 {
+		return agent.AssistantMessage("", []agent.ToolCall{{
+			ID: "provider-same", Type: "function",
+			Function: agent.FunctionCall{Name: "task", Arguments: `{"subagent_type":"writer","description":"write"}`},
+		}}), nil
+	}
+	return agent.AssistantMessage("done", nil), nil
+}
+
+func (model *taskExecutionIdentityModel) Stream(ctx context.Context, messages []*agent.Message, options ...agent.ModelOption) (*agent.StreamReader[*agent.Message], error) {
+	message, err := model.Generate(ctx, messages, options...)
+	if err != nil {
+		return nil, err
+	}
+	reader, writer := agent.Pipe[*agent.Message](1)
+	writer.Send(message, nil)
+	writer.Close()
+	return reader, nil
+}
+
+type executionIdentityChild struct{}
+
+func (executionIdentityChild) Name(context.Context) string        { return "writer" }
+func (executionIdentityChild) Description(context.Context) string { return "Writes one bounded file." }
+func (executionIdentityChild) Run(ctx context.Context, _ *agent.AgentInput, _ ...agent.AgentRunOption) *agent.AsyncIterator[*agent.AgentEvent] {
+	iterator, generator := agent.NewAsyncIteratorPair[*agent.AgentEvent]()
+	generator.Send(&agent.AgentEvent{
+		AgentName: "writer", RunPath: []agent.RunStep{agent.NewRunStep("writer")},
+		Output: &agent.AgentOutput{ToolExecution: &agent.ToolExecutionEvent{
+			Phase: agent.ToolExecutionStarted, Index: 0,
+			ExecutionID: agent.ToolExecutionIDForOrdinal(ctx, 1, 0), ProviderCallID: "provider-same", ToolName: "write",
+		}},
+	})
+	generator.Send(&agent.AgentEvent{
+		AgentName: "writer", RunPath: []agent.RunStep{agent.NewRunStep("writer")},
+		Output: &agent.AgentOutput{MessageOutput: &agent.MessageVariant{
+			Message: agent.AssistantMessage("written", nil), Role: agent.Assistant,
+		}},
+	})
+	generator.Close()
+	return iterator
+}
+
 func TestBuildAgentExposesGeneralAndConfiguredSubAgentsThroughTask(t *testing.T) {
-	off := false
 	var captured []agent.AgentConfig
 	previous := newNativeAgent
 	newNativeAgent = func(_ context.Context, cfg agent.AgentConfig) (agent.Runnable, error) {
@@ -35,14 +126,15 @@ func TestBuildAgentExposesGeneralAndConfiguredSubAgentsThroughTask(t *testing.T)
 		OpenAIModel:   "test-model",
 		AgentTools: config.AgentToolSettings{
 			Default: config.AgentToolOverride{
-				FileRead:     &off,
-				FileWrite:    &off,
-				ShellExecute: &off,
-				Skills:       &off,
-				LoreRead:     &off,
-				LoreWrite:    &off,
-				Todo:         &off,
-				WebSearch:    &off,
+				config.AgentToolWorkspaceRead:  false,
+				config.AgentToolWorkspaceWrite: false,
+				config.AgentToolShell:          false,
+				config.AgentToolSkills:         false,
+				config.AgentToolLoreRead:       false,
+				config.AgentToolLoreWrite:      false,
+				config.AgentToolTodo:           false,
+				config.AgentToolWebSearch:      false,
+				config.AgentToolWebFetch:       false,
 			},
 		},
 		SubAgents: []config.SubAgentConfig{{
@@ -66,6 +158,23 @@ func TestBuildAgentExposesGeneralAndConfiguredSubAgentsThroughTask(t *testing.T)
 	}
 	if captured[0].Name != "researcher" || captured[1].Name != producttools.GeneralSubAgentName || captured[2].Name != "DenovaAgent" {
 		t.Fatalf("unexpected native Agent construction order: %q %q %q", captured[0].Name, captured[1].Name, captured[2].Name)
+	}
+	var generalOrchestrator, rootOrchestrator *toolOrchestratorMiddleware
+	for _, middleware := range captured[1].Middlewares {
+		if _, ok := middleware.(*contextCompactionMiddleware); ok {
+			t.Fatal("general subagent must not inherit root context compaction middleware")
+		}
+		if current, ok := middleware.(*toolOrchestratorMiddleware); ok {
+			generalOrchestrator = current
+		}
+	}
+	for _, middleware := range captured[2].Middlewares {
+		if current, ok := middleware.(*toolOrchestratorMiddleware); ok {
+			rootOrchestrator = current
+		}
+	}
+	if generalOrchestrator == nil || rootOrchestrator == nil || generalOrchestrator == rootOrchestrator {
+		t.Fatalf("general/root orchestrators must be independent: general=%p root=%p", generalOrchestrator, rootOrchestrator)
 	}
 	rootTools := toolNamesForTest(t, captured[2].Tools)
 	if !rootTools["task"] {
@@ -147,14 +256,16 @@ func TestBuildAgentCanDisableGeneralSubAgent(t *testing.T) {
 		},
 		AgentTools: config.AgentToolSettings{
 			Default: config.AgentToolOverride{
-				FileRead:     &off,
-				FileWrite:    &off,
-				ShellExecute: &off,
-				Skills:       &off,
-				LoreRead:     &off,
-				LoreWrite:    &off,
-				Todo:         &off,
-				WebSearch:    &off,
+				config.AgentToolWorkspaceRead:  false,
+				config.AgentToolWorkspaceWrite: false,
+				config.AgentToolShell:          false,
+				config.AgentToolSkills:         false,
+				config.AgentToolLoreRead:       false,
+				config.AgentToolLoreWrite:      false,
+				config.AgentToolTodo:           false,
+				config.AgentToolWebSearch:      false,
+				config.AgentToolWebFetch:       false,
+				config.AgentToolDelegation:     false,
 			},
 		},
 	}, agentBuildSpec{
@@ -176,18 +287,9 @@ func TestBuildAgentCanDisableGeneralSubAgent(t *testing.T) {
 
 func TestSubAgentAssemblyUsesParentToolPolicyKind(t *testing.T) {
 	assembly, err := buildChatModelAgentAssembly(context.Background(), &config.Config{}, chatModelAgentAssemblySpec{
-		Kind:           "researcher",
-		ToolPolicyKind: config.AgentKindInteractiveStory,
-		ToolSettings: config.ResolvedAgentToolSettings{
-			FileRead:     false,
-			FileWrite:    false,
-			ShellExecute: false,
-			Skills:       false,
-			LoreRead:     false,
-			LoreWrite:    false,
-			Todo:         false,
-			WebSearch:    false,
-		},
+		Kind:              "researcher",
+		ToolPolicyKind:    config.AgentKindInteractiveStory,
+		ToolSettings:      config.ResolvedAgentToolSettings{},
 		IncludeCompaction: false,
 	})
 	if err != nil {
@@ -210,17 +312,8 @@ func TestSubAgentAssemblyUsesParentToolPolicyKind(t *testing.T) {
 
 func TestBuildChatModelAgentAssemblyPassesToolResultLimit(t *testing.T) {
 	assembly, err := buildChatModelAgentAssembly(context.Background(), &config.Config{AgentToolResultLimitKB: 64}, chatModelAgentAssemblySpec{
-		Kind: config.AgentKindIDE,
-		ToolSettings: config.ResolvedAgentToolSettings{
-			FileRead:     false,
-			FileWrite:    false,
-			ShellExecute: false,
-			Skills:       false,
-			LoreRead:     false,
-			LoreWrite:    false,
-			Todo:         false,
-			WebSearch:    false,
-		},
+		Kind:              config.AgentKindIDE,
+		ToolSettings:      config.ResolvedAgentToolSettings{},
 		IncludeCompaction: false,
 	})
 	if err != nil {
@@ -292,28 +385,28 @@ func TestDisplayRecorderPersistsSubAgentAssistantChunks(t *testing.T) {
 
 func TestSubAgentWriteToolResultStillTracksMutation(t *testing.T) {
 	tracker := newMutationTracker()
-	filtered := filterToolResultForModelWithDescriptor("write_file", producttools.WorkspaceWriteDescriptor(agent.ToolSourceWrite, config.AgentToolFileWrite, agent.ToolRecoveryReconcilable), `{"file_path":"chapters/ch01.md","content":"new"}`, "ok", 0)
+	filtered := filterToolResultForModelWithDescriptor("write", producttools.WorkspaceWriteDescriptor(agent.ToolSourceWrite, config.AgentToolWorkspaceWrite, agent.ToolRecoveryReconcilable), `{"file_path":"chapters/ch01.md","content":"new"}`, "ok", 0)
 	tracker.Observe(Event{Type: "tool_call", Data: map[string]interface{}{
 		"id":       "call-write",
-		"name":     "write_file",
+		"name":     "write",
 		"args":     `{"file_path":"chapters/ch01.md","content":"new"}`,
 		"subagent": true,
 	}})
 	tracker.Observe(Event{Type: "tool_result", Data: map[string]interface{}{
-		"id":                  "call-write",
-		"name":                "write_file",
-		"content":             filtered.Content,
-		"source":              string(filtered.Manifest.Source),
-		"mutates_workspace":   filtered.Manifest.MutatesWorkspace,
-		"requires_post_check": filtered.Manifest.RequiresPostCheck,
-		"target":              filtered.Result.Metadata.Target,
-		"subagent":            true,
+		"id":             "call-write",
+		"name":           "write",
+		"content":        filtered.Content,
+		"source":         string(filtered.Manifest.Source),
+		"mutation_scope": string(filtered.Manifest.MutationScope),
+		"post_check":     string(filtered.Manifest.PostCheck),
+		"target":         filtered.Result.Metadata.Target,
+		"subagent":       true,
 	}})
 	mutations := tracker.Mutations()
 	if len(mutations) != 1 {
 		t.Fatalf("expected subagent write tool to be tracked, got %#v", mutations)
 	}
-	if mutations[0].Target != "chapters/ch01.md" || !mutations[0].RequiresPostCheck {
+	if mutations[0].Target != "chapters/ch01.md" || mutations[0].PostCheck != ToolPostCheckWorkspaceChange {
 		t.Fatalf("unexpected mutation: %#v", mutations[0])
 	}
 }
@@ -363,7 +456,9 @@ func (a *fakeDisplayAppender) AppendDisplayEventContent(id, role, delta string) 
 func TestRunSubAgentForwardsDrainedChildEvents(t *testing.T) {
 	child := &streamingSubAgent{}
 	var forwarded []*agent.AgentEvent
-	ctx := agent.ContextWithEventSink(context.Background(), func(event *agent.AgentEvent) {
+	controller := &subagentContextController{}
+	ctx := agent.ContextWithContextWindowController(context.Background(), controller)
+	ctx = agent.ContextWithEventSink(ctx, func(event *agent.AgentEvent) {
 		forwarded = append(forwarded, event)
 	})
 
@@ -382,6 +477,9 @@ func TestRunSubAgentForwardsDrainedChildEvents(t *testing.T) {
 	if len(forwarded) != 1 || forwarded[0].AgentName != "reviewer" || len(forwarded[0].RunPath) != 1 {
 		t.Fatalf("forwarded events = %#v", forwarded)
 	}
+	if child.scope.Depth != 1 || child.hasRewriter || !child.hasMutationObserver {
+		t.Fatalf("child scope=%#v rewriter=%t mutation_observer=%t", child.scope, child.hasRewriter, child.hasMutationObserver)
+	}
 	variant := forwarded[0].Output.MessageOutput
 	if variant == nil || variant.IsStreaming || variant.MessageStream != nil || variant.Message == nil || variant.Message.Content != "child result" {
 		t.Fatalf("forwarded child stream must become one reusable complete message: %#v", variant)
@@ -389,12 +487,18 @@ func TestRunSubAgentForwardsDrainedChildEvents(t *testing.T) {
 }
 
 type streamingSubAgent struct {
-	request string
+	request             string
+	scope               agent.InvocationScope
+	hasRewriter         bool
+	hasMutationObserver bool
 }
 
 func (*streamingSubAgent) Name(context.Context) string        { return "reviewer" }
 func (*streamingSubAgent) Description(context.Context) string { return "Reviews delegated work." }
-func (child *streamingSubAgent) Run(_ context.Context, input *agent.AgentInput, _ ...agent.AgentRunOption) *agent.AsyncIterator[*agent.AgentEvent] {
+func (child *streamingSubAgent) Run(ctx context.Context, input *agent.AgentInput, _ ...agent.AgentRunOption) *agent.AsyncIterator[*agent.AgentEvent] {
+	child.scope, _ = agent.InvocationScopeFromContext(ctx)
+	_, child.hasRewriter = agent.ContextWindowControllerFromContext(ctx)
+	_, child.hasMutationObserver = agent.ContextMutationObserverFromContext(ctx)
 	if input != nil && len(input.Messages) > 0 && input.Messages[0] != nil {
 		child.request = input.Messages[0].Content
 	}
@@ -412,6 +516,22 @@ func (child *streamingSubAgent) Run(_ context.Context, input *agent.AgentInput, 
 	generator.Close()
 	return iterator
 }
+
+type subagentContextController struct{}
+
+func (*subagentContextController) BeforeModel(_ context.Context, messages []*agent.Message) ([]*agent.Message, error) {
+	return messages, nil
+}
+func (*subagentContextController) BeforeComplete(_ context.Context, messages []*agent.Message) ([]*agent.Message, bool, error) {
+	return messages, false, nil
+}
+func (*subagentContextController) Checkpoint(context.Context, agent.ContextCheckpointRequest) (agent.ContextCheckpointResult, error) {
+	return agent.ContextCheckpointResult{}, nil
+}
+func (*subagentContextController) Rewind(context.Context, agent.ContextRewindRequest) (agent.ContextRewindResult, error) {
+	return agent.ContextRewindResult{}, nil
+}
+func (*subagentContextController) ObserveTool(context.Context, agent.ContextToolObservation) {}
 
 type fakeAgent struct {
 	name        string

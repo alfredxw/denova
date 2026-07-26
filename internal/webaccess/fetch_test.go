@@ -18,6 +18,20 @@ func (render browserRendererFunc) Render(ctx context.Context, target *url.URL) (
 	return render(ctx, target)
 }
 
+type closeTrackingBrowserRenderer struct {
+	closed int
+	err    error
+}
+
+func (*closeTrackingBrowserRenderer) Render(context.Context, *url.URL) (renderedPage, error) {
+	return renderedPage{}, errors.New("not used")
+}
+
+func (renderer *closeTrackingBrowserRenderer) Close(context.Context) error {
+	renderer.closed++
+	return renderer.err
+}
+
 type roundTripFunc func(*http.Request) (*http.Response, error)
 
 func (roundTrip roundTripFunc) RoundTrip(request *http.Request) (*http.Response, error) {
@@ -31,6 +45,21 @@ func clientForFetchTest(t *testing.T, server *httptest.Server, config Config) *C
 		t.Fatal(err)
 	}
 	return client
+}
+
+func TestClientCloseDelegatesToStatefulBrowserRenderer(t *testing.T) {
+	wantErr := errors.New("cleanup failed")
+	renderer := &closeTrackingBrowserRenderer{err: wantErr}
+	client, err := newClient(testWebAccessConfig(), dependencies{browserRenderer: renderer})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if closeErr := client.Close(context.Background()); !errors.Is(closeErr, wantErr) {
+		t.Fatalf("Close() error = %v, want %v", closeErr, wantErr)
+	}
+	if renderer.closed != 1 {
+		t.Fatalf("browser renderer close calls = %d, want 1", renderer.closed)
+	}
 }
 
 func TestFetchReportsDirectHTTPSuccess(t *testing.T) {
@@ -51,7 +80,7 @@ func TestFetchReportsDirectHTTPSuccess(t *testing.T) {
 		Attempts:      []FetchAttempt{{Method: FetchMethodDirectHTTP, Outcome: FetchAttemptSuccess, HTTPStatus: http.StatusOK}},
 		RetryStrategy: FetchRetryNone,
 	}
-	if response.Status != want.Status || response.FetchMethod != want.FetchMethod ||
+	if response.Schema != FetchResponseSchema || response.Status != want.Status || response.FetchMethod != want.FetchMethod ||
 		!reflect.DeepEqual(response.Attempts, want.Attempts) || response.RetryStrategy != want.RetryStrategy {
 		t.Fatalf("fetch recovery metadata = %+v, want %+v", response, want)
 	}

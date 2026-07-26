@@ -10,15 +10,20 @@ import (
 	"unicode/utf8"
 )
 
+const toolProgressTruncatedMarker = "\n[tool progress truncated]"
+
 type toolExecutionResult struct {
-	message *Message
-	result  ToolResult
-	err     error
+	message        *Message
+	result         ToolResult
+	executionID    string
+	providerCallID string
+	err            error
 }
 
 type preparedToolCall struct {
 	index       int
 	call        ToolCall
+	executionID string
 	definition  ToolDefinition
 	snapshot    ToolDefinitionSnapshot
 	precomputed *toolExecutionResult
@@ -33,6 +38,7 @@ const fallbackToolResultMaxBytes = 128 * 1024
 
 var fallbackToolResultDescriptor = ToolDescriptor{
 	Source: ToolSourceOther, Execution: ToolExecutionParallelRead,
+	MutationScope: ToolMutationNone, PostCheck: ToolPostCheckNone,
 	Recovery: ToolRecoveryReadOnly, ResultProjection: ToolResultBoundedModelContext,
 	Steering: SteeringFinishCurrent, MaxResultBytes: fallbackToolResultMaxBytes,
 }
@@ -43,13 +49,14 @@ func (agent *Agent) executeToolBatch(
 	ctx context.Context,
 	registry *Registry,
 	calls []ToolCall,
+	modelResponseOrdinal int,
 	events *AsyncGenerator[*AgentEvent],
 	cancel *cancelControl,
 ) ([]toolExecutionResult, error) {
 	if ctx == nil {
 		ctx = context.Background()
 	}
-	prepared := agent.prepareToolCalls(registry, calls)
+	prepared := agent.prepareToolCalls(ctx, registry, calls, modelResponseOrdinal)
 	results := make([]toolExecutionResult, len(calls))
 
 	for index := 0; index < len(prepared); {
@@ -107,11 +114,14 @@ func (agent *Agent) executeToolBatch(
 	return results, nil
 }
 
-func (agent *Agent) prepareToolCalls(registry *Registry, calls []ToolCall) []preparedToolCall {
+func (agent *Agent) prepareToolCalls(ctx context.Context, registry *Registry, calls []ToolCall, modelResponseOrdinal int) []preparedToolCall {
 	prepared := make([]preparedToolCall, len(calls))
 	for index, call := range calls {
 		call = cloneToolCalls([]ToolCall{call})[0]
-		item := preparedToolCall{index: index, call: call}
+		item := preparedToolCall{
+			index: index, call: call,
+			executionID: ToolExecutionIDForOrdinal(ctx, modelResponseOrdinal, index),
+		}
 		name := call.Function.Name
 		switch {
 		case call.Type != "" && call.Type != "function":
@@ -139,6 +149,7 @@ func (agent *Agent) prepareToolCalls(registry *Registry, calls []ToolCall) []pre
 			}
 		}
 		if item.precomputed != nil {
+			bindToolExecutionIdentity(item.precomputed, item)
 			descriptor := fallbackToolResultDescriptor
 			if item.snapshot.Info != nil {
 				descriptor = item.snapshot.Descriptor
@@ -186,7 +197,9 @@ func (agent *Agent) runParallelToolStage(
 			result := <-output
 			completed <- indexedToolExecutionResult{index: index, result: result}
 		}, func(err error) {
-			completed <- indexedToolExecutionResult{index: index, result: toolFailureResult(call.call, err)}
+			result := toolFailureResult(call.call, err)
+			bindToolExecutionIdentity(&result, call)
+			completed <- indexedToolExecutionResult{index: index, result: result}
 		})
 		started++
 		running++
@@ -225,6 +238,7 @@ func (agent *Agent) launchToolCall(
 		completed <- agent.executePreparedTool(ctx, call, events, cancel)
 	}, func(err error) {
 		result := toolFailureResultForDescriptor(call.call, call.snapshot.Descriptor, err)
+		bindToolExecutionIdentity(&result, call)
 		agent.emitToolFinished(events, call, result.result)
 		completed <- result
 	})
@@ -236,7 +250,7 @@ func (agent *Agent) executePreparedTool(
 	events *AsyncGenerator[*AgentEvent],
 	cancel *cancelControl,
 ) toolExecutionResult {
-	callCtx := ContextWithToolCall(ctx, prepared.call.ID, prepared.call.Function.Name)
+	callCtx := contextWithToolExecution(ctx, prepared.executionID, prepared.call.ID, prepared.call.Function.Name)
 	callCtx = ContextWithEventSink(callCtx, func(event *AgentEvent) {
 		if event != nil {
 			events.Send(event)
@@ -249,22 +263,34 @@ func (agent *Agent) executePreparedTool(
 
 	var progressMu sync.Mutex
 	var progress strings.Builder
+	progressTruncated := false
 	limit := prepared.snapshot.Descriptor.MaxResultBytes
 	callCtx = contextWithToolProgress(callCtx, func(delta string) {
 		delta = strings.ToValidUTF8(delta, "\uFFFD")
 		progressMu.Lock()
-		if progress.Len() < limit {
-			remaining := limit - progress.Len()
-			if len(delta) > remaining {
-				delta = delta[:remaining]
-				for len(delta) > 0 && !utf8.ValidString(delta) {
-					delta = delta[:len(delta)-1]
-				}
-			}
-			progress.WriteString(delta)
+		if progressTruncated {
+			progressMu.Unlock()
+			return
 		}
+		remaining := max(0, limit-progress.Len())
+		emitted := delta
+		if len(emitted) > remaining {
+			emitted = emitted[:remaining]
+			for len(emitted) > 0 && !utf8.ValidString(emitted) {
+				emitted = emitted[:len(emitted)-1]
+			}
+			emitted += toolProgressTruncatedMarker
+			progressTruncated = true
+		}
+		content := emitted
+		if progressTruncated {
+			content = strings.TrimSuffix(emitted, toolProgressTruncatedMarker)
+		}
+		progress.WriteString(content)
 		progressMu.Unlock()
-		events.Send(agent.toolExecutionEvent(prepared, ToolExecutionProgress, delta, nil))
+		if emitted != "" {
+			events.Send(agent.toolExecutionEvent(prepared, ToolExecutionProgress, emitted, nil))
+		}
 	})
 
 	if prepared.snapshot.Descriptor.Steering == SteeringInterruptibleWait {
@@ -296,6 +322,21 @@ func (agent *Agent) executePreparedTool(
 		if err == nil && result.ModelContent == "" && result.DisplayContent == "" {
 			progressMu.Lock()
 			progressContent := progress.String()
+			if progressTruncated {
+				marker := toolProgressTruncatedMarker
+				if len(marker) >= limit {
+					progressContent = marker[:limit]
+				} else {
+					end := limit - len(marker)
+					if len(progressContent) > end {
+						progressContent = progressContent[:end]
+						for len(progressContent) > 0 && !utf8.ValidString(progressContent) {
+							progressContent = progressContent[:len(progressContent)-1]
+						}
+					}
+					progressContent += marker
+				}
+			}
 			progressMu.Unlock()
 			if progressContent != "" {
 				result.ModelContent = progressContent
@@ -305,18 +346,21 @@ func (agent *Agent) executePreparedTool(
 		return result, err
 	})
 	toolContext := &ToolContext{
-		Index: prepared.index, Name: prepared.call.Function.Name, CallID: prepared.call.ID,
+		Index: prepared.index, Name: prepared.call.Function.Name,
+		ExecutionID: prepared.executionID, ProviderCallID: prepared.call.ID,
 		Definition: prepared.snapshot,
 	}
 	for index := len(agent.middlewares) - 1; index >= 0; index-- {
 		wrapped, err := agent.middlewares[index].WrapToolCall(callCtx, endpoint, toolContext)
 		if err != nil {
 			result := toolFailureResult(prepared.call, fmt.Errorf("wrap tool %q: %w", prepared.call.Function.Name, err))
+			bindToolExecutionIdentity(&result, prepared)
 			agent.emitToolFinished(events, prepared, result.result)
 			return result
 		}
 		if wrapped == nil {
 			result := toolFailureResult(prepared.call, fmt.Errorf("wrap tool %q returned nil endpoint", prepared.call.Function.Name))
+			bindToolExecutionIdentity(&result, prepared)
 			agent.emitToolFinished(events, prepared, result.result)
 			return result
 		}
@@ -344,7 +388,7 @@ func (agent *Agent) executePreparedTool(
 			}
 			err = nil
 		} else if ctx.Err() != nil {
-			return toolExecutionResult{err: err}
+			return toolExecutionResult{executionID: prepared.executionID, providerCallID: prepared.call.ID, err: err}
 		} else {
 			result = ToolErrorResult(toolErrorContent(prepared.call, err), err.Error())
 			err = nil
@@ -361,9 +405,8 @@ func (agent *Agent) executePreparedTool(
 		)
 	}
 	completion := toolExecutionResult{
-		result:  normalized,
-		message: ToolMessage(normalized, prepared.call.ID, WithToolName(prepared.call.Function.Name)),
-		err:     terminalErr,
+		result: normalized, message: ToolMessage(normalized, prepared.call.ID, WithToolName(prepared.call.Function.Name)),
+		executionID: prepared.executionID, providerCallID: prepared.call.ID, err: terminalErr,
 	}
 	agent.emitToolFinished(events, prepared, normalized)
 	return completion
@@ -402,6 +445,7 @@ func (agent *Agent) fillSteeringSkipped(
 			result.result = normalized
 			result.message = ToolMessage(normalized, prepared.call.ID, WithToolName(prepared.call.Function.Name))
 		}
+		bindToolExecutionIdentity(&result, prepared)
 		results[prepared.index] = result
 		agent.emitToolFinished(events, prepared, result.result)
 	}
@@ -425,6 +469,7 @@ func (agent *Agent) fillPolicySkipped(
 			result.result = normalized
 			result.message = ToolMessage(normalized, prepared.call.ID, WithToolName(prepared.call.Function.Name))
 		}
+		bindToolExecutionIdentity(&result, prepared)
 		results[prepared.index] = result
 		agent.emitToolFinished(events, prepared, result.result)
 	}
@@ -450,8 +495,9 @@ func (agent *Agent) toolExecutionEvent(
 		AgentName: agent.name,
 		RunPath:   []RunStep{NewRunStep(agent.name)},
 		Output: &AgentOutput{ToolExecution: &ToolExecutionEvent{
-			Phase: phase, Index: prepared.index, CallID: prepared.call.ID,
-			ToolName: prepared.call.Function.Name, Definition: prepared.snapshot,
+			Phase: phase, Index: prepared.index, ExecutionID: prepared.executionID,
+			ProviderCallID: prepared.call.ID,
+			ToolName:       prepared.call.Function.Name, Definition: prepared.snapshot,
 			Delta: delta, Result: cloned,
 		}},
 	}
@@ -503,6 +549,14 @@ func normalizeToolExecutionResult(result *toolExecutionResult, descriptor ToolDe
 	result.message = ToolMessage(normalized, toolCallID, WithToolName(toolName))
 }
 
+func bindToolExecutionIdentity(result *toolExecutionResult, prepared preparedToolCall) {
+	if result == nil {
+		return
+	}
+	result.executionID = prepared.executionID
+	result.providerCallID = prepared.call.ID
+}
+
 func toolErrorContent(call ToolCall, err error) string {
 	message := "tool execution failed"
 	if err != nil {
@@ -517,10 +571,10 @@ func toolErrorContent(call ToolCall, err error) string {
 	return string(payload)
 }
 
-func (agent *Agent) lengthToolResults(calls []ToolCall, registry *Registry, events *AsyncGenerator[*AgentEvent]) []toolExecutionResult {
+func (agent *Agent) lengthToolResults(ctx context.Context, calls []ToolCall, registry *Registry, modelResponseOrdinal int, events *AsyncGenerator[*AgentEvent]) []toolExecutionResult {
 	results := make([]toolExecutionResult, len(calls))
 	for index, call := range calls {
-		prepared := preparedToolCall{index: index, call: call}
+		prepared := preparedToolCall{index: index, call: call, executionID: ToolExecutionIDForOrdinal(ctx, modelResponseOrdinal, index)}
 		result := syntheticCallResult(call, ToolResultSkipped, ToolSyntheticModelIncomplete,
 			"tool call was not executed because the model response ended with finish_reason length; arguments may be incomplete")
 		if snapshot, ok := registry.Snapshot(call.Function.Name); ok {
@@ -529,6 +583,7 @@ func (agent *Agent) lengthToolResults(calls []ToolCall, registry *Registry, even
 		} else {
 			normalizeToolExecutionResult(&result, fallbackToolResultDescriptor)
 		}
+		bindToolExecutionIdentity(&result, prepared)
 		results[index] = result
 		agent.emitToolFinished(events, prepared, result.result)
 	}

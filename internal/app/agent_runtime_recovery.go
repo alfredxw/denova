@@ -111,6 +111,10 @@ func (s *ChatAppService) RecoverAgentRuntime(ctx context.Context, request AgentR
 		recovery.Close()
 		return AgentRuntimeRecoveryResult{}, err
 	}
+	if _, err := reconcileColdPendingAsk(operation.Context(), sess, recovery.InitialStatus()); err != nil {
+		recovery.Close()
+		return AgentRuntimeRecoveryResult{}, fmt.Errorf("reconcile orphaned Ask before writing recovery: %w", err)
+	}
 	runtime := ideChatRuntime{app: a, sess: sess, bookService: bookService, chatService: chatService, workspace: workspace}
 	key := recoveryActionKey(request.Action)
 	structural, isStructural := recoveryStructuralAction(request.Action.Kind)

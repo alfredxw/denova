@@ -12,9 +12,9 @@ import (
 	"denova/config"
 )
 
-func TestFilesystemToolsFactoryBuildsStableNativeSurfaceWithoutReadOnlyMutationStore(t *testing.T) {
+func TestWorkspaceToolsFactoryBuildsOnlyEnabledReadSurface(t *testing.T) {
 	workspace := t.TempDir()
-	tools, err := newToolCatalog(&config.Config{Workspace: workspace}).Filesystem(config.ResolvedAgentToolSettings{FileRead: true})
+	tools, err := newToolCatalog(&config.Config{Workspace: workspace}).Workspace(config.ResolvedAgentToolSettings{config.AgentToolWorkspaceRead: true})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -27,7 +27,7 @@ func TestFilesystemToolsFactoryBuildsStableNativeSurfaceWithoutReadOnlyMutationS
 		names = append(names, info.Name)
 	}
 	sort.Strings(names)
-	want := []string{"edit_file", "execute", "glob", "grep", "ls", "read_file", "write_file"}
+	want := []string{"glob", "grep", "read"}
 	if strings.Join(names, ",") != strings.Join(want, ",") {
 		t.Fatalf("filesystem tool names = %v, want %v", names, want)
 	}

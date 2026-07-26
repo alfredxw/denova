@@ -83,51 +83,41 @@ func (j *fileJournal) resolveGenerationFile(name string) (string, error) {
 	return filepath.Join(filepath.Dir(j.path), name), nil
 }
 
-// loadGenerationLayoutLocked scans immutable checksummed manifests newest
-// first. A corrupt newest manifest is ignored in favor of the preceding one;
-// the selected manifest itself retains both active and previous generations.
+// loadGenerationLayoutLocked treats the newest immutable manifest as the
+// canonical activation record. Once a manifest path exists, falling back to an
+// older manifest could discard transactions durably appended to the newly
+// activated tail, so complete corruption of the newest manifest is fatal.
+// The previous generation named by that manifest is recovery material only.
 func (j *fileJournal) loadGenerationLayoutLocked() error {
 	paths, err := filepath.Glob(j.path + ".generations.*.json")
 	if err != nil {
 		return fmt.Errorf("list file journal generation manifests: %w", err)
 	}
 	sort.Sort(sort.Reverse(sort.StringSlice(paths)))
-	candidates := make([]fileJournalGeneration, 0, 3)
-	seen := make(map[string]struct{})
-	var sequence uint64
-	validManifests := 0
-	for _, path := range paths {
-		manifest, err := readGenerationManifest(path, j.keySHA256)
-		if err != nil {
-			log.Printf("[agent-runtime] ignoring invalid generation manifest file=%s error=%v", filepath.Base(path), err)
-			continue
-		}
-		validManifests++
-		if manifest.Sequence > sequence {
-			sequence = manifest.Sequence
-		}
-		for _, generation := range generationPair(manifest.Active, manifest.Previous) {
-			identity := fmt.Sprintf("%d|%s|%s", generation.Generation, generation.SnapshotFile, generation.TailFile)
-			if _, duplicate := seen[identity]; duplicate {
-				continue
-			}
-			seen[identity] = struct{}{}
-			candidates = append(candidates, generation)
-		}
+	if len(paths) == 0 {
+		legacy := j.legacyGeneration()
+		j.generationCandidates = []fileJournalGeneration{legacy}
+		j.activeGeneration = legacy
+		j.manifestSequence = 0
+		j.tailPath = j.path
+		return nil
 	}
-	if len(paths) > 0 && validManifests == 0 {
-		return fmt.Errorf("all file journal generation manifests are invalid")
+	newestPath := paths[0]
+	manifest, err := readGenerationManifest(newestPath, j.keySHA256)
+	if err != nil {
+		return fmt.Errorf("read newest file journal generation manifest %s: %w", filepath.Base(newestPath), err)
 	}
-	if len(candidates) == 0 {
-		candidates = append(candidates, j.legacyGeneration())
+	if got, want := filepath.Base(newestPath), filepath.Base(j.generationManifestPath(manifest.Sequence)); got != want {
+		return fmt.Errorf("newest file journal generation manifest sequence mismatch: file=%s manifest=%s", got, want)
 	}
-	tailPath, err := j.resolveGenerationFile(candidates[0].TailFile)
+	candidates := generationPair(manifest.Active, manifest.Previous)
+	tailPath, err := j.resolveGenerationFile(manifest.Active.TailFile)
 	if err != nil {
 		return err
 	}
 	j.generationCandidates = candidates
-	j.activeGeneration = candidates[0]
-	j.manifestSequence = sequence
+	j.activeGeneration = manifest.Active
+	j.manifestSequence = manifest.Sequence
 	j.tailPath = tailPath
 	return nil
 }

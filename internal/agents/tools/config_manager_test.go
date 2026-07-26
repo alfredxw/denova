@@ -3,623 +3,724 @@ package tools
 import (
 	"context"
 	"encoding/json"
-	"fmt"
+	"os"
 	"path/filepath"
 	"strings"
-	"sync"
 	"testing"
 
 	agent "github.com/alfredxw/denova/agent"
 
 	"denova/config"
-	"denova/internal/automation"
+	"denova/internal/workspacepath"
 )
 
-func TestConfigManagerToolsExposeStableSchema(t *testing.T) {
-	tools, err := newConfigManagerTools(&config.Config{}, config.ResolvedAgentToolSettings{})
+func TestConfigManagerExposesOnlyRegistryTools(t *testing.T) {
+	definitions, err := newConfigManagerTools(&config.Config{NovaDir: t.TempDir(), Workspace: t.TempDir()}, config.ResolvedAgentToolSettings{})
 	if err != nil {
 		t.Fatal(err)
 	}
-	names := configManagerToolNameSet(t, tools)
-
-	for _, name := range []string{"list_style_references", "write_style_references", "list_tellers", "read_tellers", "write_tellers", "list_actor_states", "read_actor_states", "write_actor_states", "list_image_presets", "read_image_presets", "write_image_presets", "list_lore_items", "read_lore_items", "write_lore_items", "list_skills", "read_skills", "write_skills", "list_automations", "read_automations", "write_automations", "list_agent_configs", "write_agent_configs"} {
-		if !names[name] {
-			t.Fatalf("stable config manager schema should expose %s, names=%v", name, names)
-		}
+	if got := configManagerToolNameSet(t, definitions); len(got) != 2 || !got["config_read"] || !got["config_apply"] {
+		t.Fatalf("config manager tools = %v, want only config_read/config_apply", got)
 	}
-
-	for _, tc := range []struct {
-		name       string
-		capability string
-	}{
-		{name: "list_tellers", capability: config.AgentToolLoreRead},
-		{name: "write_tellers", capability: config.AgentToolLoreWrite},
-		{name: "list_style_references", capability: config.AgentToolLoreRead},
-		{name: "write_style_references", capability: config.AgentToolLoreWrite},
-		{name: "list_actor_states", capability: config.AgentToolLoreRead},
-		{name: "write_actor_states", capability: config.AgentToolLoreWrite},
-		{name: "list_automations", capability: config.AgentToolTodo},
-		{name: "write_skills", capability: config.AgentToolSkills},
-		{name: "list_agent_configs", capability: config.AgentToolAgentConfigRead},
-		{name: "write_agent_configs", capability: config.AgentToolAgentConfigWrite},
-		{name: "write_lore_items", capability: config.AgentToolLoreWrite},
-	} {
-		var selected *agent.ToolDefinition
-		for _, tool := range tools {
-			info, infoErr := tool.Tool.Info(context.Background())
-			if infoErr == nil && info != nil && info.Name == tc.name {
-				value := tool
-				selected = &value
-				break
+	for _, definition := range definitions {
+		info, infoErr := definition.Tool.Info(context.Background())
+		if infoErr != nil {
+			t.Fatal(infoErr)
+		}
+		switch info.Name {
+		case "config_read":
+			if definition.Descriptor.Capability != config.AgentToolConfigRead || definition.Descriptor.Execution != agent.ToolExecutionParallelRead || definition.Descriptor.MutationScope != agent.ToolMutationNone {
+				t.Fatalf("config_read descriptor = %#v", definition.Descriptor)
 			}
-		}
-		if selected == nil {
-			t.Fatalf("tool %q not found", tc.name)
-		}
-		descriptor := selected.Descriptor
-		if got := descriptor.Capability; got != tc.capability {
-			t.Fatalf("%s capability = %q, want %q", tc.name, got, tc.capability)
+		case "config_apply":
+			if definition.Descriptor.Capability != config.AgentToolConfigApply || definition.Descriptor.Execution != agent.ToolExecutionConfigExclusive || definition.Descriptor.MutationScope != agent.ToolMutationConfig || definition.Descriptor.PostCheck != agent.ToolPostCheckConfigRevision {
+				t.Fatalf("config_apply descriptor = %#v", definition.Descriptor)
+			}
 		}
 	}
 }
 
-func TestListAutomationsToolUsesTheUserCatalogAcrossWorkspaces(t *testing.T) {
-	novaDir := filepath.Join(t.TempDir(), "user")
-	workspaceA := filepath.Join(t.TempDir(), "book-a")
-	workspaceB := filepath.Join(t.TempDir(), "book-b")
-	if _, err := automation.NewStore(novaDir, workspaceA).Create(automation.Task{Scope: automation.ScopeWorkspace, Name: "Task A", Template: automation.TemplateReview}); err != nil {
-		t.Fatal(err)
-	}
-	if _, err := automation.NewStore(novaDir, workspaceB).Create(automation.Task{Scope: automation.ScopeWorkspace, Name: "Task B", Template: automation.TemplateReview}); err != nil {
-		t.Fatal(err)
-	}
-
-	listTool, err := newListAutomationsTool(novaDir, workspaceA, []string{workspaceA, workspaceB})
+func TestConfigApplySchemaDocumentsAgentProfileRevisionAndDeleteKind(t *testing.T) {
+	definition := configManagerDefinitionByName(t, &config.Config{NovaDir: t.TempDir(), Workspace: t.TempDir()}, "config_apply")
+	info, err := definition.Tool.Info(context.Background())
 	if err != nil {
 		t.Fatal(err)
 	}
-	output, err := runToolForTest(context.Background(), listTool, `{}`)
-	if err != nil {
-		t.Fatal(err)
-	}
-	for _, required := range []string{"Task A", "Task B", "catalog_id:", "target: workspace"} {
-		if !strings.Contains(output, required) {
-			t.Fatalf("global automation catalog missing %q:\n%s", required, output)
-		}
-	}
-}
-
-func TestConfigManagerSubAgentToolsAreCappedBySubAgentOverride(t *testing.T) {
-	off := false
-	parentTools := config.ResolvedAgentToolSettings{
-		FileRead:     true,
-		FileWrite:    true,
-		ShellExecute: true,
-		Skills:       true,
-		LoreRead:     true,
-		LoreWrite:    true,
-		Todo:         true,
-		WebSearch:    true,
-	}
-	subTools := config.ResolveSubAgentTools(parentTools, config.AgentToolOverride{
-		FileRead:     &off,
-		FileWrite:    &off,
-		ShellExecute: &off,
-		Skills:       &off,
-		LoreRead:     &off,
-		LoreWrite:    &off,
-		Todo:         &off,
-		WebSearch:    &off,
-	})
-	tools, err := configManagerToolsFactory(&config.Config{})(subTools)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if len(tools) != 0 {
-		t.Fatalf("subagent with all tools disabled should keep no extra factory schema, got %v", configManagerToolNameSet(t, tools))
-	}
-}
-
-func TestPresetConfigManagerToolIndexesDescribeFixedModuleOwnership(t *testing.T) {
-	novaDir := t.TempDir()
-	for _, tc := range []struct {
-		name     string
-		build    func(string) (agent.Tool, error)
-		required []string
-	}{
-		{
-			name:     "tellers",
-			build:    newListTellersTool,
-			required: []string{"适用: 共享模块（写作模式 / 游戏模式）"},
-		},
-		{
-			name:     "image presets",
-			build:    newListImagePresetsTool,
-			required: []string{"适用: 共享模块（写作模式 / 游戏模式）"},
-		},
-		{
-			name:     "story directors",
-			build:    newListStoryDirectorsTool,
-			required: []string{"适用: 游戏模式"},
-		},
-		{
-			name:     "actor states",
-			build:    newListActorStatesTool,
-			required: []string{"适用: 游戏模式"},
-		},
-	} {
-		t.Run(tc.name, func(t *testing.T) {
-			base, err := tc.build(novaDir)
-			if err != nil {
-				t.Fatal(err)
-			}
-			output, err := runToolForTest(context.Background(), base, `{}`)
-			if err != nil {
-				t.Fatal(err)
-			}
-			for _, required := range tc.required {
-				if !strings.Contains(output, required) {
-					t.Fatalf("tool output missing %q:\n%s", required, output)
-				}
-			}
-			forbidden := []string{"mode_scope", "可配置模式"}
-			for _, item := range forbidden {
-				if strings.Contains(output, item) {
-					t.Fatalf("tool output should not expose per-resource mode field %q:\n%s", item, output)
-				}
-			}
-		})
-	}
-}
-
-func TestListAgentConfigsReturnsAllLayersWithoutAPIKeys(t *testing.T) {
-	novaDir := t.TempDir()
-	workspace := t.TempDir()
-	if err := config.WriteSettingsFile(config.UserConfigPath(novaDir), config.Settings{
-		OpenAIAPIKey: "user-secret",
-		ModelProfiles: []config.ModelProfileSettings{{
-			ID:           "deepseek",
-			OpenAIAPIKey: "profile-secret",
-			OpenAIModel:  "deepseek-v3",
-		}},
-	}); err != nil {
-		t.Fatal(err)
-	}
-	if err := config.WriteSettingsFile(config.WorkspaceConfigPath(workspace), config.Settings{
-		SubAgents: []config.SubAgentConfig{{
-			ID:           "workspace-researcher",
-			Name:         "Workspace Researcher",
-			Description:  "Reads workspace context.",
-			SystemPrompt: "Return concise findings.",
-		}},
-	}); err != nil {
-		t.Fatal(err)
-	}
-
-	listTool, err := newListAgentConfigsTool(&config.Config{NovaDir: novaDir, Workspace: workspace})
-	if err != nil {
-		t.Fatal(err)
-	}
-	output, err := runToolForTest(context.Background(), listTool, `{}`)
-	if err != nil {
-		t.Fatal(err)
-	}
-	for _, forbidden := range []string{"user-secret", "profile-secret", "openai_api_key"} {
-		if strings.Contains(output, forbidden) {
-			t.Fatalf("list_agent_configs should not expose %q:\n%s", forbidden, output)
-		}
-	}
-	for _, required := range []string{"\"user\"", "\"workspace\"", "\"effective\"", "workspace-researcher", "agent_config_read", "deepseek-v3"} {
-		if !strings.Contains(output, required) {
-			t.Fatalf("list_agent_configs missing %q:\n%s", required, output)
-		}
-	}
-}
-
-func TestWriteAgentConfigsRequiresExplicitScopeAndWorkspace(t *testing.T) {
-	writeTool, err := newWriteAgentConfigsTool(&config.Config{NovaDir: t.TempDir()})
-	if err != nil {
-		t.Fatal(err)
-	}
-	if _, err := runToolForTest(context.Background(), writeTool, `{"operations":[]}`); err == nil {
-		t.Fatalf("write_agent_configs should require explicit scope")
-	}
-	if _, err := runToolForTest(context.Background(), writeTool, `{"scope":"workspace","operations":[]}`); err == nil {
-		t.Fatalf("write_agent_configs should reject workspace scope without workspace")
-	}
-
-	writeTool, err = newWriteAgentConfigsTool(&config.Config{NovaDir: t.TempDir(), Workspace: t.TempDir()})
-	if err != nil {
-		t.Fatal(err)
-	}
-	if _, err := runToolForTest(context.Background(), writeTool, `{"scope":"workspace","operations":[{"op":"set_agent_override","agent":"ide","model":{"profile_id":"workspace-model"}}]}`); err == nil {
-		t.Fatalf("write_agent_configs should keep model selection user-scoped")
-	}
-}
-
-func TestWriteAgentConfigsPreservesUnrelatedSettings(t *testing.T) {
-	novaDir := t.TempDir()
-	path := config.UserConfigPath(novaDir)
-	off := false
-	if err := config.WriteSettingsFile(path, config.Settings{
-		Theme:                    "light",
-		RemoteAccessPasswordHash: "hash-value",
-		AgentTools: config.AgentToolSettings{
-			IDE: config.AgentToolOverride{FileRead: &off},
-		},
-	}); err != nil {
-		t.Fatal(err)
-	}
-	writeTool, err := newWriteAgentConfigsTool(&config.Config{NovaDir: novaDir, Workspace: filepath.Join(t.TempDir(), "workspace")})
-	if err != nil {
-		t.Fatal(err)
-	}
-	input := agentConfigWriteInput{
-		Scope:   "user",
-		Message: "更新 Agent 配置",
-		Operations: []agentConfigWriteOperation{
-			{
-				Op:    "set_agent_override",
-				Agent: config.AgentKindIDE,
-				Tools: &config.AgentToolOverride{FileWrite: &off},
-			},
-			{
-				Op: "upsert_sub_agent",
-				SubAgent: config.SubAgentConfig{
-					ID:           "researcher",
-					Name:         "Researcher",
-					Description:  "Researches delegated context.",
-					SystemPrompt: "Return concise findings.",
-					Parents:      []string{config.AgentKindIDE},
-				},
-			},
-		},
-	}
-	data, err := json.Marshal(input)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if _, err := runToolForTest(context.Background(), writeTool, string(data)); err != nil {
-		t.Fatal(err)
-	}
-	read, err := config.ReadSettingsFile(path)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if read.Theme != "light" || read.RemoteAccessPasswordHash != "hash-value" {
-		t.Fatalf("unrelated settings should be preserved: %#v", read)
-	}
-	if read.AgentTools.IDE.FileRead != nil {
-		t.Fatalf("set_agent_override should replace the target override, got %#v", read.AgentTools.IDE)
-	}
-	if read.AgentTools.IDE.FileWrite == nil || *read.AgentTools.IDE.FileWrite {
-		t.Fatalf("expected IDE file_write override false, got %#v", read.AgentTools.IDE)
-	}
-	if len(read.SubAgents) != 1 || read.SubAgents[0].ID != "researcher" {
-		t.Fatalf("expected upserted SubAgent, got %#v", read.SubAgents)
-	}
-}
-
-func TestMutateAgentConfigsPreservesAConcurrentSettingsMutation(t *testing.T) {
-	novaDir := t.TempDir()
-	workspace := t.TempDir()
-	path := config.UserConfigPath(novaDir)
-	if err := config.WriteSettingsFile(path, config.Settings{Theme: "dark"}); err != nil {
-		t.Fatal(err)
-	}
-	layered, err := config.LoadLayeredWithStartupConfig(novaDir, workspace)
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	firstEntered := make(chan struct{})
-	releaseFirst := make(chan struct{})
-	secondStarted := make(chan struct{})
-	errs := make([]error, 2)
-	var wg sync.WaitGroup
-	wg.Add(2)
-	go func() {
-		defer wg.Done()
-		defer func() {
-			if recovered := recover(); recovered != nil {
-				errs[0] = fmt.Errorf("concurrent settings mutation panic: %v", recovered)
-			}
-		}()
-		_, errs[0] = config.MutateSettingsFile(path, "", func(current config.Settings) (config.Settings, error) {
-			close(firstEntered)
-			<-releaseFirst
-			current.AgentPrompts.ConfigManager.SystemPrompt = "concurrent prompt"
-			return current, nil
-		})
-	}()
-	<-firstEntered
-	off := false
-	go func() {
-		defer wg.Done()
-		defer func() {
-			if recovered := recover(); recovered != nil {
-				errs[1] = fmt.Errorf("agent settings mutation panic: %v", recovered)
-			}
-		}()
-		close(secondStarted)
-		_, errs[1] = mutateAgentConfigSettings(path, "user", layered, []agentConfigWriteOperation{{
-			Op:    "set_agent_override",
-			Agent: config.AgentKindIDE,
-			Tools: &config.AgentToolOverride{FileWrite: &off},
-		}})
-	}()
-	<-secondStarted
-	close(releaseFirst)
-	wg.Wait()
-	for _, err := range errs {
-		if err != nil {
-			t.Fatalf("concurrent mutation failed: %v", err)
-		}
-	}
-
-	persisted, err := config.ReadSettingsFile(path)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if persisted.AgentPrompts.ConfigManager.SystemPrompt != "concurrent prompt" {
-		t.Fatalf("Agent write lost the concurrent prompt: %#v", persisted.AgentPrompts.ConfigManager)
-	}
-	if persisted.AgentTools.IDE.FileWrite == nil || *persisted.AgentTools.IDE.FileWrite {
-		t.Fatalf("Agent tool override was not persisted: %#v", persisted.AgentTools.IDE)
-	}
-}
-
-func TestWriteAutomationsRequiresExplicitCreateTarget(t *testing.T) {
-	writeTool, err := newWriteAutomationsTool(t.TempDir(), t.TempDir(), nil)
-	if err != nil {
-		t.Fatal(err)
-	}
-	_, err = runToolForTest(context.Background(), writeTool, `{
-		"operations": [{
-			"op": "create",
-			"task": {
-				"name": "Missing target",
-				"template": "custom_prompt",
-				"prompt": "Run without an implicit workspace",
-				"write_mode": "read_only",
-				"write_scope": "none",
-				"output_policy": "run_record_only"
-			}
-		}]
-	}`)
-	if err == nil || !strings.Contains(err.Error(), "target") {
-		t.Fatalf("automation create should require an explicit target, got %v", err)
-	}
-}
-
-func TestConfigManagerWriteSchemasKeepConditionalFieldsOptional(t *testing.T) {
-	novaDir := t.TempDir()
-	cfg := &config.Config{NovaDir: novaDir, Workspace: t.TempDir()}
-	tests := []struct {
-		name              string
-		build             func() (agent.Tool, error)
-		optionalOperation []string
-		requiredOperation []string
-	}{
-		{name: "style references", build: func() (agent.Tool, error) { return newWriteStyleReferencesTool(novaDir) }, optionalOperation: []string{"path", "reference"}},
-		{name: "tellers", build: func() (agent.Tool, error) { return newWriteTellersTool(novaDir) }, optionalOperation: []string{"id", "teller"}},
-		{name: "story directors", build: func() (agent.Tool, error) { return newWriteStoryDirectorsTool(novaDir) }, optionalOperation: []string{"id", "director"}},
-		{name: "event packages", build: func() (agent.Tool, error) { return newWriteEventPackagesTool(novaDir) }, optionalOperation: []string{"id", "package"}},
-		{name: "actor states", build: func() (agent.Tool, error) { return newWriteActorStatesTool(novaDir) }, optionalOperation: []string{"id", "actor_state"}},
-		{name: "image presets", build: func() (agent.Tool, error) { return newWriteImagePresetsTool(novaDir) }, optionalOperation: []string{"id", "preset"}},
-		{name: "automations", build: func() (agent.Tool, error) { return newWriteAutomationsTool(novaDir, cfg.Workspace, nil) }, optionalOperation: []string{"id", "task"}},
-		{name: "skills", build: func() (agent.Tool, error) { return newWriteSkillsTool(cfg) }, optionalOperation: []string{"description", "agents", "content"}, requiredOperation: []string{"scope", "name"}},
-	}
-	for _, test := range tests {
-		t.Run(test.name, func(t *testing.T) {
-			base, err := test.build()
-			if err != nil {
-				t.Fatal(err)
-			}
-			info, err := base.Info(context.Background())
-			if err != nil {
-				t.Fatal(err)
-			}
-			schema, err := info.ToJSONSchema()
-			if err != nil {
-				t.Fatal(err)
-			}
-			if !configManagerSchemaRequires(schema.Required, "operations") || configManagerSchemaRequires(schema.Required, "message") {
-				t.Fatalf("top-level required fields = %v, want operations without message", schema.Required)
-			}
-			operations, ok := schema.Properties.Get("operations")
-			if !ok || operations.Items == nil {
-				t.Fatalf("operations schema missing: %#v", operations)
-			}
-			if operations.MinItems == nil || *operations.MinItems != 1 {
-				t.Fatalf("operations minItems = %v, want 1", operations.MinItems)
-			}
-			operation := operations.Items
-			if !configManagerSchemaRequires(operation.Required, "op") {
-				t.Fatalf("operation required fields = %v, want op", operation.Required)
-			}
-			for _, field := range test.optionalOperation {
-				if configManagerSchemaRequires(operation.Required, field) {
-					t.Fatalf("operation field %q must be conditional, required=%v", field, operation.Required)
-				}
-			}
-			for _, field := range test.requiredOperation {
-				if !configManagerSchemaRequires(operation.Required, field) {
-					t.Fatalf("operation field %q must be required, required=%v", field, operation.Required)
-				}
-			}
-		})
-	}
-}
-
-func TestWriteAutomationsSchemaOnlyExposesEditableDefinition(t *testing.T) {
-	base, err := newWriteAutomationsTool(t.TempDir(), t.TempDir(), nil)
-	if err != nil {
-		t.Fatal(err)
-	}
-	info, err := base.Info(context.Background())
-	if err != nil {
-		t.Fatal(err)
+	if !strings.Contains(info.Desc, "agent_profile SubAgent creates require the latest revision") ||
+		!strings.Contains(info.Desc, "agent_profile deletes require value.kind") {
+		t.Fatalf("config_apply description does not document resource-specific contracts: %q", info.Desc)
 	}
 	schema, err := info.ToJSONSchema()
 	if err != nil {
 		t.Fatal(err)
 	}
-	operations, _ := schema.Properties.Get("operations")
-	operation := operations.Items
-	task, ok := operation.Properties.Get("task")
-	if !ok {
-		t.Fatal("write_automations schema is missing task")
+	revision, ok := schema.Properties.Get("revision")
+	if !ok || !strings.Contains(revision.Description, "agent_profile SubAgent create") || !strings.Contains(revision.Description, "exact-scope revision") {
+		t.Fatalf("config_apply revision schema = %#v", revision)
 	}
-	if len(task.Required) != 0 {
-		t.Fatalf("automation definition fields are action-dependent or defaulted, required=%v", task.Required)
+	value, ok := schema.Properties.Get("value")
+	if !ok || !strings.Contains(value.Description, "agent_profile delete requires value.kind") {
+		t.Fatalf("config_apply value schema = %#v", value)
 	}
-	for _, field := range []string{"revision", "target", "enabled", "name", "template", "prompt", "model_profile_id", "schedule", "triggers", "write_mode", "write_scope", "output_policy", "output_path"} {
-		if _, exists := task.Properties.Get(field); !exists {
-			t.Fatalf("editable automation field %q is missing", field)
-		}
+
+	referencePath := filepath.Join("..", "..", "..", "skills", "config-manager", "references", "agent-profile.md")
+	reference, err := os.ReadFile(referencePath)
+	if err != nil {
+		t.Fatalf("read agent-profile reference: %v", err)
 	}
-	for _, field := range []string{"id", "catalog_id", "scope", "default_action_policy", "trigger_state", "last_run", "recent_runs", "created_at", "updated_at", "archived_at"} {
-		if _, exists := task.Properties.Get(field); exists {
-			t.Fatalf("runtime or derived automation field %q leaked into write schema", field)
-		}
-	}
-	target, _ := task.Properties.Get("target")
-	if !configManagerSchemaRequires(target.Required, "kind") || configManagerSchemaRequires(target.Required, "workspace") {
-		t.Fatalf("target required fields = %v, want only kind", target.Required)
-	}
-	schedule, _ := task.Properties.Get("schedule")
-	if len(schedule.Required) != 0 {
-		t.Fatalf("defaulted schedule fields must be optional, required=%v", schedule.Required)
-	}
-	if _, exists := schedule.Properties.Get("cron"); exists {
-		t.Fatal("derived cron field leaked into write schema")
+	if text := string(reference); !strings.Contains(text, "SubAgent create require the latest revision for the exact target scope") ||
+		!strings.Contains(text, "Every delete must include `value.kind`") {
+		t.Fatalf("agent-profile reference does not document revision/delete routing contracts:\n%s", text)
 	}
 }
 
-func TestWriteAutomationsAcceptsMinimalDefinitionAndRejectsUnknownFields(t *testing.T) {
-	novaDir := t.TempDir()
-	workspace := t.TempDir()
-	writeTool, err := newWriteAutomationsTool(novaDir, workspace, nil)
+func TestConfigReadDescribesEveryResourceIncludingRuleSystem(t *testing.T) {
+	readTool := configManagerToolByName(t, &config.Config{NovaDir: t.TempDir(), Workspace: t.TempDir()}, "config_read")
+	output, err := runToolForTest(context.Background(), readTool, `{"operation":"describe"}`)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err := runToolForTest(context.Background(), writeTool, `{
-		"operations": [{"op": "create", "task": {"target": {"kind": "user"}, "name": "Minimal"}}]
-	}`); err != nil {
-		t.Fatalf("minimal automation definition should use backend defaults: %v", err)
+	for _, name := range []string{
+		"style_reference", "narrative_style", "story_director", "event_package", "rule_system",
+		"state_system", "image_preset", "automation", "skill", "agent_profile",
+	} {
+		if !strings.Contains(output, `"name": "`+name+`"`) {
+			t.Fatalf("config_read describe missing %s:\n%s", name, output)
+		}
 	}
-	tasks, err := configManagerAutomationStore(novaDir, workspace, nil).List()
+	if strings.Contains(output, "list_tellers") || strings.Contains(output, "write_agent_configs") {
+		t.Fatalf("legacy tool names leaked into resource registry:\n%s", output)
+	}
+}
+
+func TestConfigApplyUsesReadRevisionForStyleReference(t *testing.T) {
+	cfg := &config.Config{NovaDir: t.TempDir(), Workspace: t.TempDir()}
+	applyTool := configManagerToolByName(t, cfg, "config_apply")
+
+	createdOutput, err := runToolForTest(context.Background(), applyTool, `{
+		"operation":"create",
+		"resource":"style_reference",
+		"value":{"name":"Noir","filename":"noir.md","content":"# Noir\n\nShort sentences."}
+	}`)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(tasks) != 1 {
-		t.Fatalf("created tasks = %d, want 1", len(tasks))
+	created := decodeConfigMutationReceipt(t, createdOutput)
+	if created.ID != ".denova/styles/noir.md" || created.Revision == "" {
+		t.Fatalf("create receipt = %#v", created)
 	}
-	created := tasks[0]
-	if created.Template != automation.TemplateCustomPrompt || created.WriteMode != automation.WriteModeReadOnly || created.OutputPolicy != automation.OutputPolicyRunRecordOnly {
-		t.Fatalf("minimal definition did not receive defaults: %#v", created)
+	if _, err := runToolForTest(context.Background(), applyTool, `{
+		"operation":"create",
+		"resource":"style_reference",
+		"value":{"name":"Noir","filename":"noir.md","content":"must not overwrite"}
+	}`); err == nil {
+		t.Fatal("style_reference create overwrote an existing resource")
 	}
-	_, err = runToolForTest(context.Background(), writeTool, `{
-		"operations": [{"op": "create", "task": {"target": {"kind": "user"}, "created_at": "2026-01-01T00:00:00Z"}}]
+
+	updateInput := map[string]any{
+		"operation": "update", "resource": "style_reference", "id": created.ID,
+		"revision": created.Revision, "value": map[string]any{"content": "# Noir\n\nSharper sentences."},
+	}
+	updatedOutput, err := runToolForTest(context.Background(), applyTool, mustJSON(t, updateInput))
+	if err != nil {
+		t.Fatal(err)
+	}
+	updated := decodeConfigMutationReceipt(t, updatedOutput)
+	if updated.Revision == "" || updated.Revision == created.Revision {
+		t.Fatalf("update revision = %q, previous %q", updated.Revision, created.Revision)
+	}
+	if _, err := runToolForTest(context.Background(), applyTool, mustJSON(t, updateInput)); err == nil {
+		t.Fatal("stale config_apply update unexpectedly succeeded")
+	}
+
+	deleteInput := map[string]any{
+		"operation": "delete", "resource": "style_reference", "id": created.ID, "revision": updated.Revision,
+	}
+	if _, err := runToolForTest(context.Background(), applyTool, mustJSON(t, deleteInput)); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestConfigApplyReturnsBoundedStructuredReceiptDetails(t *testing.T) {
+	definition := configManagerDefinitionByName(t, &config.Config{NovaDir: t.TempDir(), Workspace: t.TempDir()}, "config_apply")
+	result, err := definition.Tool.Run(context.Background(), `{
+		"operation":"create",
+		"resource":"style_reference",
+		"value":{"name":"Receipt","filename":"receipt.md","content":"# Receipt"}
+	}`)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var details configApplyReceiptDetails
+	if err := json.Unmarshal(result.Details, &details); err != nil {
+		t.Fatal(err)
+	}
+	if details.Schema != "config.mutation_receipt.v1" || details.Status != "applied" ||
+		details.Resource != "style_reference" || details.Operation != "create" || details.ID == "" || details.Revision == "" {
+		t.Fatalf("config receipt details = %#v", details)
+	}
+	if result.Metadata.Target != details.ID {
+		t.Fatalf("result target = %q, want %q", result.Metadata.Target, details.ID)
+	}
+}
+
+func TestConfigApplyRejectsUnknownResourceValueFields(t *testing.T) {
+	applyTool := configManagerToolByName(t, &config.Config{NovaDir: t.TempDir(), Workspace: t.TempDir()}, "config_apply")
+	_, err := runToolForTest(context.Background(), applyTool, `{
+		"operation":"create",
+		"resource":"automation",
+		"value":{"target":{"kind":"user"},"name":"Review","created_at":"2026-01-01T00:00:00Z"}
 	}`)
 	if err == nil || !strings.Contains(err.Error(), "unknown field") {
-		t.Fatalf("runtime and unknown fields must remain rejected, got %v", err)
+		t.Fatalf("unknown automation fields should be rejected, got %v", err)
 	}
 }
 
-func TestWriteAutomationsPartialUpdatePreservesOmittedDefinitionFields(t *testing.T) {
+func TestConfigAutomationResourceUsesDefinitionRevisionForCRUD(t *testing.T) {
+	cfg := &config.Config{NovaDir: t.TempDir(), Workspace: t.TempDir()}
+	applyTool := configManagerToolByName(t, cfg, "config_apply")
+	readTool := configManagerToolByName(t, cfg, "config_read")
+	createdOutput, err := runToolForTest(context.Background(), applyTool, mustJSON(t, map[string]any{
+		"operation": "create", "resource": "automation", "scope": "user",
+		"value": map[string]any{
+			"target": map[string]any{"kind": "user"}, "name": "Contract automation",
+			"template": "custom_prompt", "prompt": "Review the current project.",
+		},
+	}))
+	if err != nil {
+		t.Fatal(err)
+	}
+	created := decodeConfigMutationReceipt(t, createdOutput)
+	if created.ID == "" || created.Revision == "" {
+		t.Fatalf("create receipt = %#v", created)
+	}
+	if output, readErr := runToolForTest(context.Background(), readTool, mustJSON(t, map[string]any{
+		"operation": "get", "resource": "automation", "ids": []string{created.ID}, "scope": "user",
+	})); readErr != nil || !strings.Contains(output, "Contract automation") {
+		t.Fatalf("get output=%s error=%v", output, readErr)
+	}
+	updatedOutput, err := runToolForTest(context.Background(), applyTool, mustJSON(t, map[string]any{
+		"operation": "update", "resource": "automation", "id": created.ID, "scope": "user", "revision": created.Revision,
+		"value": map[string]any{"name": "Updated automation"},
+	}))
+	if err != nil {
+		t.Fatal(err)
+	}
+	updated := decodeConfigMutationReceipt(t, updatedOutput)
+	if updated.Revision == "" || updated.Revision == created.Revision {
+		t.Fatalf("update receipt = %#v", updated)
+	}
+	if _, err := runToolForTest(context.Background(), applyTool, mustJSON(t, map[string]any{
+		"operation": "delete", "resource": "automation", "id": updated.ID, "scope": "user", "revision": updated.Revision,
+	})); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestConfigAutomationResourceEnforcesScopeAndServerOwnedWorkspace(t *testing.T) {
+	novaDir := t.TempDir()
+	workspace := filepath.Join(t.TempDir(), "current-workspace")
+	outside := filepath.Join(t.TempDir(), "outside-workspace")
+	cfg := &config.Config{NovaDir: novaDir, Workspace: workspace, AutomationWorkspaces: []string{outside}}
+	applyTool := configManagerToolByName(t, cfg, "config_apply")
+	readTool := configManagerToolByName(t, cfg, "config_read")
+
+	userOutput, err := runToolForTest(context.Background(), applyTool, mustJSON(t, map[string]any{
+		"operation": "create", "resource": "automation", "scope": "user",
+		"value": map[string]any{
+			"target": map[string]any{"kind": "user"}, "name": "User-only automation",
+			"template": "custom_prompt", "prompt": "Review user configuration.",
+		},
+	}))
+	if err != nil {
+		t.Fatal(err)
+	}
+	userReceipt := decodeConfigMutationReceipt(t, userOutput)
+
+	workspaceOutput, err := runToolForTest(context.Background(), applyTool, mustJSON(t, map[string]any{
+		"operation": "create", "resource": "automation", "scope": "workspace",
+		"value": map[string]any{
+			"target": map[string]any{"kind": "workspace", "workspace": outside}, "name": "Current workspace automation",
+			"template": "custom_prompt", "prompt": "Review this workspace.",
+		},
+	}))
+	if err != nil {
+		t.Fatal(err)
+	}
+	workspaceReceipt := decodeConfigMutationReceipt(t, workspaceOutput)
+	if _, err := os.Stat(workspacepath.Path(workspace, "automations", "tasks.json")); err != nil {
+		t.Fatalf("workspace-scoped automation was not stored in the active workspace: %v", err)
+	}
+	if _, err := os.Stat(workspacepath.Path(outside, "automations", "tasks.json")); !os.IsNotExist(err) {
+		t.Fatalf("untrusted value.target.workspace was written: %v", err)
+	}
+
+	userList, err := runToolForTest(context.Background(), readTool, `{"operation":"list","resource":"automation","scope":"user"}`)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(userList, "User-only automation") || strings.Contains(userList, "Current workspace automation") {
+		t.Fatalf("user automation list crossed scope: %s", userList)
+	}
+	for _, runtimeField := range []string{"trigger_state", "last_run", "recent_runs", "runtime_command_id"} {
+		if strings.Contains(userList, `"`+runtimeField+`"`) {
+			t.Fatalf("automation definition projection leaked runtime field %q: %s", runtimeField, userList)
+		}
+	}
+	workspaceList, err := runToolForTest(context.Background(), readTool, `{"operation":"list","resource":"automation","scope":"workspace"}`)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(workspaceList, "Current workspace automation") || strings.Contains(workspaceList, "User-only automation") || strings.Contains(workspaceList, outside) {
+		t.Fatalf("workspace automation list crossed scope or exposed an untrusted path: %s", workspaceList)
+	}
+
+	if _, err := runToolForTest(context.Background(), readTool, mustJSON(t, map[string]any{
+		"operation": "get", "resource": "automation", "scope": "user", "ids": []string{workspaceReceipt.ID},
+	})); err == nil {
+		t.Fatal("user-scoped get resolved a workspace automation")
+	}
+	if _, err := runToolForTest(context.Background(), applyTool, mustJSON(t, map[string]any{
+		"operation": "update", "resource": "automation", "scope": "user", "id": workspaceReceipt.ID,
+		"revision": workspaceReceipt.Revision, "value": map[string]any{"name": "scope escape"},
+	})); err == nil {
+		t.Fatal("user-scoped update mutated a workspace automation")
+	}
+	if _, err := runToolForTest(context.Background(), applyTool, mustJSON(t, map[string]any{
+		"operation": "delete", "resource": "automation", "scope": "workspace", "id": userReceipt.ID,
+		"revision": userReceipt.Revision,
+	})); err == nil {
+		t.Fatal("workspace-scoped delete removed a user automation")
+	}
+	if _, err := runToolForTest(context.Background(), readTool, `{"operation":"list","resource":"automation"}`); err == nil {
+		t.Fatal("automation list accepted an omitted scope")
+	}
+}
+
+func TestAgentProfileReadNeverReturnsSecrets(t *testing.T) {
 	novaDir := t.TempDir()
 	workspace := t.TempDir()
-	store := automation.NewStore(novaDir, workspace)
-	created, err := store.Create(automation.Task{
-		Target:   automation.ExecutionTarget{Kind: automation.TargetKindWorkspace, Workspace: workspace},
-		Enabled:  true,
-		Name:     "Before",
-		Template: automation.TemplateReview,
-		Prompt:   "keep this prompt",
-	})
+	if err := config.WriteSettingsFile(config.UserConfigPath(novaDir), config.Settings{
+		OpenAIAPIKey:  "top-secret",
+		ModelProfiles: []config.ModelProfileSettings{{ID: "model", OpenAIAPIKey: "profile-secret", OpenAIModel: "model-v1"}},
+	}); err != nil {
+		t.Fatal(err)
+	}
+	readTool := configManagerToolByName(t, &config.Config{NovaDir: novaDir, Workspace: workspace}, "config_read")
+	output, err := runToolForTest(context.Background(), readTool, `{"operation":"list","resource":"agent_profile"}`)
 	if err != nil {
 		t.Fatal(err)
 	}
-	name := "After"
-	payload, err := json.Marshal(automationWriteInput{Operations: []automationWriteOperation{{
-		Op: "update",
-		ID: created.CatalogID,
-		Task: &automationTaskWriteInput{
-			Revision: created.Revision,
-			Name:     &name,
-		},
-	}}})
-	if err != nil {
-		t.Fatal(err)
+	for _, secret := range []string{"top-secret", "profile-secret", "openai_api_key"} {
+		if strings.Contains(output, secret) {
+			t.Fatalf("agent_profile leaked %q:\n%s", secret, output)
+		}
 	}
-	writeTool, err := newWriteAutomationsTool(novaDir, workspace, nil)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if _, err := runToolForTest(context.Background(), writeTool, string(payload)); err != nil {
-		t.Fatal(err)
-	}
-	updated, err := store.Get(created.ID)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if updated.Name != name || !updated.Enabled || updated.Template != automation.TemplateReview || updated.Prompt != "keep this prompt" {
-		t.Fatalf("partial update lost omitted definition fields: %#v", updated)
+	if !strings.Contains(output, "model-v1") || !strings.Contains(output, `"revisions"`) {
+		t.Fatalf("agent_profile response missing safe data or revisions:\n%s", output)
 	}
 }
 
-func TestWriteAutomationsRejectsAStaleAgentDefinition(t *testing.T) {
-	novaDir := filepath.Join(t.TempDir(), "user")
-	workspace := filepath.Join(t.TempDir(), "book")
-	store := automation.NewStore(novaDir, workspace)
-	created, err := store.Create(automation.Task{
-		Scope:    automation.ScopeWorkspace,
-		Name:     "Original",
-		Template: automation.TemplateReview,
-		Prompt:   "original prompt",
-	})
+func TestAgentProfileGetUsesExactSingletonSnapshotContract(t *testing.T) {
+	readTool := configManagerToolByName(t, &config.Config{NovaDir: t.TempDir(), Workspace: t.TempDir()}, "config_read")
+	output, err := runToolForTest(context.Background(), readTool, `{"operation":"get","resource":"agent_profile","ids":["registry"]}`)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err := store.UpdateIfRevision(created.ID, automation.Task{Prompt: "user autosave"}, created.Revision); err != nil {
+	var result agentProfileReadResult
+	if err := json.Unmarshal([]byte(output), &result); err != nil {
 		t.Fatal(err)
 	}
-	staleAgentName := "stale Agent name"
-	payload, err := json.Marshal(automationWriteInput{Operations: []automationWriteOperation{{
-		Op: "update",
-		ID: created.CatalogID,
-		Task: &automationTaskWriteInput{
-			Revision: created.Revision,
-			Name:     &staleAgentName,
+	if result.ID != agentProfileSnapshotID {
+		t.Fatalf("agent_profile snapshot id = %q, want %q", result.ID, agentProfileSnapshotID)
+	}
+	for _, arguments := range []string{
+		`{"operation":"get","resource":"agent_profile","ids":["ide"]}`,
+		`{"operation":"get","resource":"agent_profile","ids":["registry"],"scope":"user"}`,
+		`{"operation":"list","resource":"agent_profile","ids":["registry"]}`,
+	} {
+		if _, err := runToolForTest(context.Background(), readTool, arguments); err == nil {
+			t.Fatalf("agent_profile accepted invalid read contract: %s", arguments)
+		}
+	}
+}
+
+func TestConfigApplyAgentProfileHonorsSettingsRevision(t *testing.T) {
+	novaDir := t.TempDir()
+	workspace := filepath.Join(t.TempDir(), "workspace")
+	cfg := &config.Config{NovaDir: novaDir, Workspace: workspace}
+	readTool := configManagerToolByName(t, cfg, "config_read")
+	applyTool := configManagerToolByName(t, cfg, "config_apply")
+	output, err := runToolForTest(context.Background(), readTool, `{"operation":"list","resource":"agent_profile"}`)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var read struct {
+		Revisions config.SettingsRevisions `json:"revisions"`
+	}
+	if err := json.Unmarshal([]byte(output), &read); err != nil {
+		t.Fatal(err)
+	}
+	input := map[string]any{
+		"operation": "update", "resource": "agent_profile", "id": config.AgentKindIDE,
+		"scope": "user", "revision": read.Revisions.User,
+		"value": map[string]any{"kind": "agent", "prompt": map[string]any{"system_prompt": "Keep answers concise."}},
+	}
+	if _, err := runToolForTest(context.Background(), applyTool, mustJSON(t, input)); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := runToolForTest(context.Background(), applyTool, mustJSON(t, input)); err == nil {
+		t.Fatal("stale agent_profile revision unexpectedly succeeded")
+	}
+}
+
+func TestConfigApplyAgentProfileCreateCannotBypassScopeRevision(t *testing.T) {
+	novaDir := t.TempDir()
+	workspace := filepath.Join(t.TempDir(), "workspace")
+	cfg := &config.Config{NovaDir: novaDir, Workspace: workspace}
+	readTool := configManagerToolByName(t, cfg, "config_read")
+	applyTool := configManagerToolByName(t, cfg, "config_apply")
+
+	if _, err := runToolForTest(context.Background(), applyTool, mustJSON(t, map[string]any{
+		"operation": "create", "resource": "agent_profile", "scope": "user", "id": config.AgentKindIDE,
+		"value": map[string]any{"kind": "agent", "prompt": map[string]any{"system_prompt": "blind overwrite"}},
+	})); err == nil {
+		t.Fatal("agent_profile create bypassed the settings revision")
+	}
+
+	output, err := runToolForTest(context.Background(), readTool, `{"operation":"list","resource":"agent_profile"}`)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var read struct {
+		Revisions config.SettingsRevisions `json:"revisions"`
+	}
+	if err := json.Unmarshal([]byte(output), &read); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := runToolForTest(context.Background(), applyTool, mustJSON(t, map[string]any{
+		"operation": "create", "resource": "agent_profile", "scope": "user", "id": config.AgentKindIDE,
+		"revision": read.Revisions.User,
+		"value":    map[string]any{"kind": "agent", "prompt": map[string]any{"system_prompt": "still not a new profile"}},
+	})); err == nil {
+		t.Fatal("agent_profile create overwrote a fixed Agent profile")
+	}
+	createdOutput, err := runToolForTest(context.Background(), applyTool, mustJSON(t, map[string]any{
+		"operation": "create", "resource": "agent_profile", "scope": "user", "revision": read.Revisions.User,
+		"value": map[string]any{"kind": "sub_agent", "sub_agent": map[string]any{
+			"id": "researcher", "description": "Research bounded sources.", "system_prompt": "Return concise findings.",
+		}},
+	}))
+	if err != nil {
+		t.Fatalf("revision-protected SubAgent create failed: %v", err)
+	}
+	if receipt := decodeConfigMutationReceipt(t, createdOutput); receipt.ID != "researcher" {
+		t.Fatalf("SubAgent create receipt id = %q, want researcher", receipt.ID)
+	}
+}
+
+func TestConfigApplyAgentProfileDeleteRequiresKindAndRoutesByKind(t *testing.T) {
+	novaDir := t.TempDir()
+	workspace := filepath.Join(t.TempDir(), "workspace")
+	disabled := false
+	userPath := config.UserConfigPath(novaDir)
+	if err := config.WriteSettingsFile(userPath, config.Settings{
+		AgentPrompts:     config.AgentPromptSettings{IDE: config.AgentPromptOverride{SystemPrompt: "preserve this Agent prompt"}},
+		GeneralSubAgents: config.AgentGeneralSubAgentSettings{IDE: &disabled},
+		SubAgents: []config.SubAgentConfig{{
+			ID: "researcher", Description: "Research bounded sources.", SystemPrompt: "Return concise findings.",
+		}},
+	}); err != nil {
+		t.Fatal(err)
+	}
+	cfg := &config.Config{NovaDir: novaDir, Workspace: workspace}
+	applyTool := configManagerToolByName(t, cfg, "config_apply")
+	revision, err := config.SettingsFileRevision(userPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if _, err := runToolForTest(context.Background(), applyTool, mustJSON(t, map[string]any{
+		"operation": "delete", "resource": "agent_profile", "scope": "user", "id": config.AgentKindIDE,
+		"revision": revision,
+	})); err == nil || !strings.Contains(err.Error(), "value.kind") {
+		t.Fatalf("agent_profile delete without value.kind should fail, got %v", err)
+	}
+	if got, err := config.SettingsFileRevision(userPath); err != nil || got != revision {
+		t.Fatalf("rejected ambiguous delete changed revision: got=%q want=%q err=%v", got, revision, err)
+	}
+
+	generalOutput, err := runToolForTest(context.Background(), applyTool, mustJSON(t, map[string]any{
+		"operation": "delete", "resource": "agent_profile", "scope": "user", "id": config.AgentKindIDE,
+		"revision": revision, "value": map[string]any{"kind": "general_sub_agent"},
+	}))
+	if err != nil {
+		t.Fatalf("delete General SubAgent override: %v", err)
+	}
+	generalReceipt := decodeConfigMutationReceipt(t, generalOutput)
+	afterGeneral, err := config.ReadSettingsFile(userPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if afterGeneral.GeneralSubAgents.IDE != nil {
+		t.Fatalf("General SubAgent override was not deleted: %#v", afterGeneral.GeneralSubAgents.IDE)
+	}
+	if afterGeneral.AgentPrompts.IDE.SystemPrompt != "preserve this Agent prompt" {
+		t.Fatalf("General SubAgent delete was misrouted to Agent profile: %#v", afterGeneral.AgentPrompts.IDE)
+	}
+	if _, exists := findSubAgentByID(afterGeneral.SubAgents, "researcher"); !exists {
+		t.Fatal("General SubAgent delete removed a custom SubAgent")
+	}
+
+	if _, err := runToolForTest(context.Background(), applyTool, mustJSON(t, map[string]any{
+		"operation": "delete", "resource": "agent_profile", "scope": "user", "id": "researcher",
+		"revision": generalReceipt.Revision, "value": map[string]any{"kind": "sub_agent"},
+	})); err != nil {
+		t.Fatalf("delete custom SubAgent: %v", err)
+	}
+	afterSubAgent, err := config.ReadSettingsFile(userPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, exists := findSubAgentByID(afterSubAgent.SubAgents, "researcher"); exists {
+		t.Fatal("custom SubAgent was not deleted")
+	}
+}
+
+func TestConfigApplyAgentProfileEnforcesConfigManagerToolCeiling(t *testing.T) {
+	novaDir := t.TempDir()
+	workspace := filepath.Join(t.TempDir(), "workspace")
+	cfg := &config.Config{NovaDir: novaDir, Workspace: workspace}
+	readTool := configManagerToolByName(t, cfg, "config_read")
+	applyTool := configManagerToolByName(t, cfg, "config_apply")
+
+	readRevision := func(scope string) string {
+		t.Helper()
+		output, err := runToolForTest(context.Background(), readTool, `{"operation":"list","resource":"agent_profile"}`)
+		if err != nil {
+			t.Fatal(err)
+		}
+		var read struct {
+			Revisions config.SettingsRevisions `json:"revisions"`
+		}
+		if err := json.Unmarshal([]byte(output), &read); err != nil {
+			t.Fatal(err)
+		}
+		if scope == "workspace" {
+			return read.Revisions.Workspace
+		}
+		return read.Revisions.User
+	}
+
+	userRevision := readRevision("user")
+	if _, err := runToolForTest(context.Background(), applyTool, mustJSON(t, map[string]any{
+		"operation": "update", "resource": "agent_profile", "scope": "user", "id": config.AgentKindConfigManager,
+		"revision": userRevision, "value": map[string]any{"kind": "agent", "tools": map[string]any{config.AgentToolShell: true}},
+	})); err == nil || !strings.Contains(err.Error(), config.AgentToolShell) {
+		t.Fatalf("Config Manager self-escalation should be rejected, got %v", err)
+	}
+	if got, err := config.SettingsFileRevision(config.UserConfigPath(novaDir)); err != nil || got != userRevision {
+		t.Fatalf("rejected self-escalation changed user settings revision: got=%q want=%q err=%v", got, userRevision, err)
+	}
+
+	if _, err := runToolForTest(context.Background(), applyTool, mustJSON(t, map[string]any{
+		"operation": "update", "resource": "agent_profile", "scope": "user", "id": config.AgentKindConfigManager,
+		"revision": userRevision, "value": map[string]any{"kind": "agent", "tools": map[string]any{"future_sensitive_capability": true}},
+	})); err == nil || !strings.Contains(err.Error(), "future_sensitive_capability") {
+		t.Fatalf("Config Manager should reject unknown enabled capabilities, got %v", err)
+	}
+
+	if _, err := runToolForTest(context.Background(), applyTool, mustJSON(t, map[string]any{
+		"operation": "update", "resource": "agent_profile", "scope": "user", "id": config.AgentKindConfigManager,
+		"revision": userRevision, "value": map[string]any{"kind": "agent", "tools": map[string]any{
+			config.AgentToolWorkspaceRead: true, config.AgentToolAsk: false, config.AgentToolSkills: true,
+			config.AgentToolConfigRead: true, config.AgentToolConfigApply: true,
+		}},
+	})); err != nil {
+		t.Fatalf("safe Config Manager tool override failed: %v", err)
+	}
+
+	if err := config.WriteSettingsFile(config.UserConfigPath(novaDir), config.Settings{
+		AgentTools: config.AgentToolSettings{ConfigManager: config.AgentToolOverride{config.AgentToolShell: true}},
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if err := config.WriteSettingsFile(config.WorkspaceConfigPath(workspace), config.Settings{
+		AgentTools: config.AgentToolSettings{ConfigManager: config.AgentToolOverride{config.AgentToolShell: false}},
+	}); err != nil {
+		t.Fatal(err)
+	}
+	workspaceRevision := readRevision("workspace")
+	if _, err := runToolForTest(context.Background(), applyTool, mustJSON(t, map[string]any{
+		"operation": "delete", "resource": "agent_profile", "scope": "workspace", "id": config.AgentKindConfigManager,
+		"revision": workspaceRevision, "value": map[string]any{"kind": "agent"},
+	})); err == nil || !strings.Contains(err.Error(), config.AgentToolShell) {
+		t.Fatalf("deleting a restrictive layer should not reveal inherited shell access, got %v", err)
+	}
+	if got, err := config.SettingsFileRevision(config.WorkspaceConfigPath(workspace)); err != nil || got != workspaceRevision {
+		t.Fatalf("rejected ceiling bypass changed workspace revision: got=%q want=%q err=%v", got, workspaceRevision, err)
+	}
+}
+
+func TestConfigSkillResourceMutatesOneReferencePerRevision(t *testing.T) {
+	cfg := &config.Config{NovaDir: t.TempDir(), Workspace: t.TempDir()}
+	applyTool := configManagerToolByName(t, cfg, "config_apply")
+	readTool := configManagerToolByName(t, cfg, "config_read")
+	rootContent := "---\nname: research\ndescription: Research sources.\n---\n\n# Research\n"
+	if _, err := runToolForTest(context.Background(), applyTool, mustJSON(t, map[string]any{
+		"operation": "create", "resource": "skill", "scope": "user",
+		"value": map[string]any{"name": "research", "content": rootContent},
+	})); err != nil {
+		t.Fatal(err)
+	}
+	createdOutput, err := runToolForTest(context.Background(), applyTool, mustJSON(t, map[string]any{
+		"operation": "create", "resource": "skill", "scope": "user", "id": "research/references/sources.md",
+		"value": map[string]any{"content": "# Sources\n"},
+	}))
+	if err != nil {
+		t.Fatal(err)
+	}
+	created := decodeConfigMutationReceipt(t, createdOutput)
+	if created.ID != "research/references/sources.md" || created.Revision == "" {
+		t.Fatalf("reference create receipt = %#v", created)
+	}
+	readOutput, err := runToolForTest(context.Background(), readTool, mustJSON(t, map[string]any{
+		"operation": "get", "resource": "skill", "scope": "user", "ids": []string{created.ID},
+	}))
+	if err != nil || !strings.Contains(readOutput, "# Sources") || !strings.Contains(readOutput, created.Revision) {
+		t.Fatalf("reference get output=%s error=%v", readOutput, err)
+	}
+	updatedOutput, err := runToolForTest(context.Background(), applyTool, mustJSON(t, map[string]any{
+		"operation": "update", "resource": "skill", "scope": "user", "id": created.ID,
+		"revision": created.Revision, "value": map[string]any{"content": "# Verified sources\n"},
+	}))
+	if err != nil {
+		t.Fatal(err)
+	}
+	updated := decodeConfigMutationReceipt(t, updatedOutput)
+	if updated.Revision == "" || updated.Revision == created.Revision {
+		t.Fatalf("reference update receipt = %#v", updated)
+	}
+	if _, err := runToolForTest(context.Background(), applyTool, mustJSON(t, map[string]any{
+		"operation": "delete", "resource": "skill", "scope": "user", "id": created.ID, "revision": updated.Revision,
+	})); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestConfigResourceAdaptersShareCRUDAndRevisionContract(t *testing.T) {
+	tests := []struct {
+		resource string
+		id       string
+		create   map[string]any
+		update   map[string]any
+	}{
+		{
+			resource: "narrative_style", id: "contract-narrative",
+			create: map[string]any{"id": "contract-narrative", "name": "Contract narrative", "slots": []any{map[string]any{"id": "identity", "name": "Identity", "target": "system", "enabled": true, "content": "Stay coherent."}}},
+			update: map[string]any{"id": "contract-narrative", "name": "Updated narrative", "slots": []any{map[string]any{"id": "identity", "name": "Identity", "target": "system", "enabled": true, "content": "Stay concise."}}},
 		},
-	}}})
+		{
+			resource: "story_director", id: "contract-director",
+			create: map[string]any{"id": "contract-director", "name": "Contract director"},
+			update: map[string]any{"id": "contract-director", "name": "Updated director"},
+		},
+		{
+			resource: "event_package", id: "contract-events",
+			create: map[string]any{"id": "contract-events", "name": "Contract events", "events": []any{}},
+			update: map[string]any{"id": "contract-events", "name": "Updated events", "events": []any{}},
+		},
+		{
+			resource: "rule_system", id: "contract-rules",
+			create: map[string]any{"id": "contract-rules", "name": "Contract rules", "trpg_system": map[string]any{"rule_templates": []any{}}},
+			update: map[string]any{"id": "contract-rules", "name": "Updated rules", "trpg_system": map[string]any{"rule_templates": []any{}}},
+		},
+		{
+			resource: "state_system", id: "contract-state",
+			create: map[string]any{"id": "contract-state", "name": "Contract state", "actor_state": map[string]any{"templates": []any{map[string]any{"id": "protagonist", "name": "Protagonist"}}}},
+			update: map[string]any{"id": "contract-state", "name": "Updated state", "actor_state": map[string]any{"templates": []any{map[string]any{"id": "protagonist", "name": "Protagonist"}}}},
+		},
+		{
+			resource: "image_preset", id: "contract-image",
+			create: map[string]any{"id": "contract-image", "name": "Contract image", "prompt": "soft light"},
+			update: map[string]any{"id": "contract-image", "name": "Updated image", "prompt": "hard light"},
+		},
+	}
+	for _, test := range tests {
+		t.Run(test.resource, func(t *testing.T) {
+			cfg := &config.Config{NovaDir: t.TempDir(), Workspace: t.TempDir()}
+			applyTool := configManagerToolByName(t, cfg, "config_apply")
+			readTool := configManagerToolByName(t, cfg, "config_read")
+
+			createdOutput, err := runToolForTest(context.Background(), applyTool, mustJSON(t, map[string]any{
+				"operation": "create", "resource": test.resource, "value": test.create,
+			}))
+			if err != nil {
+				t.Fatal(err)
+			}
+			created := decodeConfigMutationReceipt(t, createdOutput)
+			if created.ID != test.id || created.Revision == "" {
+				t.Fatalf("create receipt = %#v", created)
+			}
+			if output, readErr := runToolForTest(context.Background(), readTool, mustJSON(t, map[string]any{
+				"operation": "get", "resource": test.resource, "ids": []string{created.ID},
+			})); readErr != nil || !strings.Contains(output, created.ID) {
+				t.Fatalf("get output=%s error=%v", output, readErr)
+			}
+
+			updateInput := map[string]any{
+				"operation": "update", "resource": test.resource, "id": created.ID,
+				"revision": created.Revision, "value": test.update,
+			}
+			updatedOutput, err := runToolForTest(context.Background(), applyTool, mustJSON(t, updateInput))
+			if err != nil {
+				t.Fatal(err)
+			}
+			updated := decodeConfigMutationReceipt(t, updatedOutput)
+			if updated.ID != created.ID || updated.Revision == "" || updated.Revision == created.Revision {
+				t.Fatalf("update receipt = %#v, created = %#v", updated, created)
+			}
+			if _, err := runToolForTest(context.Background(), applyTool, mustJSON(t, updateInput)); err == nil {
+				t.Fatal("stale update unexpectedly succeeded")
+			}
+			if _, err := runToolForTest(context.Background(), applyTool, mustJSON(t, map[string]any{
+				"operation": "delete", "resource": test.resource, "id": updated.ID, "revision": updated.Revision,
+			})); err != nil {
+				t.Fatal(err)
+			}
+		})
+	}
+}
+
+func configManagerToolByName(t *testing.T, cfg *config.Config, name string) agent.Tool {
+	t.Helper()
+	return configManagerDefinitionByName(t, cfg, name).Tool
+}
+
+func configManagerDefinitionByName(t *testing.T, cfg *config.Config, name string) agent.ToolDefinition {
+	t.Helper()
+	definitions, err := newConfigManagerTools(cfg, config.ResolvedAgentToolSettings{})
 	if err != nil {
 		t.Fatal(err)
 	}
-	writeTool, err := newWriteAutomationsTool(novaDir, workspace, nil)
-	if err != nil {
-		t.Fatal(err)
+	for _, definition := range definitions {
+		info, infoErr := definition.Tool.Info(context.Background())
+		if infoErr != nil {
+			t.Fatal(infoErr)
+		}
+		if info.Name == name {
+			return definition
+		}
 	}
-	_, err = runToolForTest(context.Background(), writeTool, string(payload))
-	if err == nil || !strings.Contains(err.Error(), "revision conflict") {
-		t.Fatalf("stale Agent update should fail with revision conflict, got %v", err)
-	}
-	latest, err := store.Get(created.ID)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if latest.Prompt != "user autosave" || latest.Name == "stale Agent name" {
-		t.Fatalf("stale Agent update overwrote user definition: %#v", latest)
-	}
+	t.Fatalf("tool %s not found", name)
+	return agent.ToolDefinition{}
 }
 
 func configManagerToolNameSet(t *testing.T, tools []agent.ToolDefinition) map[string]bool {
 	t.Helper()
-	names := make(map[string]bool, len(tools))
-	for _, item := range tools {
-		info, err := item.Tool.Info(context.Background())
+	names := map[string]bool{}
+	for _, tool := range tools {
+		info, err := tool.Tool.Info(context.Background())
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -628,11 +729,20 @@ func configManagerToolNameSet(t *testing.T, tools []agent.ToolDefinition) map[st
 	return names
 }
 
-func configManagerSchemaRequires(required []string, field string) bool {
-	for _, item := range required {
-		if item == field {
-			return true
-		}
+func mustJSON(t *testing.T, value any) string {
+	t.Helper()
+	data, err := json.Marshal(value)
+	if err != nil {
+		t.Fatal(err)
 	}
-	return false
+	return string(data)
+}
+
+func decodeConfigMutationReceipt(t *testing.T, output string) configMutationReceipt {
+	t.Helper()
+	var receipt configMutationReceipt
+	if err := json.Unmarshal([]byte(output), &receipt); err != nil {
+		t.Fatal(err)
+	}
+	return receipt
 }

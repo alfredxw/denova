@@ -116,7 +116,6 @@ func TestAgentBuildFailsClosedBeforeModelConstructionOnPromptAdmission(t *testin
 }
 
 func TestBuildWithCompositionReturnsExactRunnerInstructionArtifact(t *testing.T) {
-	off := false
 	var captured string
 	previous := newNativeAgent
 	newNativeAgent = func(_ context.Context, cfg agent.AgentConfig) (agent.Runnable, error) {
@@ -129,8 +128,11 @@ func TestBuildWithCompositionReturnsExactRunnerInstructionArtifact(t *testing.T)
 	cfg := &config.Config{
 		OpenAIBaseURL: "https://example.invalid", OpenAIModel: "test-model",
 		AgentTools: config.AgentToolSettings{Default: config.AgentToolOverride{
-			FileRead: &off, FileWrite: &off, ShellExecute: &off, Skills: &off,
-			LoreRead: &off, LoreWrite: &off, Todo: &off, WebSearch: &off,
+			config.AgentToolWorkspaceRead: false, config.AgentToolWorkspaceWrite: false,
+			config.AgentToolShell: false, config.AgentToolSkills: false,
+			config.AgentToolLoreRead: false, config.AgentToolLoreWrite: false,
+			config.AgentToolTodo: false, config.AgentToolWebSearch: false,
+			config.AgentToolWebFetch: false, config.AgentToolDelegation: false,
 		}},
 	}
 	_, composition, err := BuildWithComposition(context.Background(), cfg, nil, IDEStoryTeller{})

@@ -81,6 +81,7 @@ func (client *Client) Search(ctx context.Context, request SearchRequest) (Search
 	}
 	if hadReachableProvider {
 		return SearchResponse{
+			Schema:          SearchResponseSchema,
 			Query:           query,
 			Status:          SearchStatusNoResults,
 			Message:         "No usable web search results were found. 未找到可用的网页搜索结果。",
@@ -93,6 +94,7 @@ func (client *Client) Search(ctx context.Context, request SearchRequest) (Search
 		failures = append(failures, fmt.Errorf("web search has no configured providers"))
 	}
 	return SearchResponse{
+		Schema:          SearchResponseSchema,
 		Query:           query,
 		Status:          SearchStatusProvidersUnavailable,
 		Message:         "All web search providers are unavailable. 所有网页搜索提供方当前均不可用。",
@@ -105,6 +107,7 @@ func (client *Client) Search(ctx context.Context, request SearchRequest) (Search
 func successfulSearchResponse(query, provider string, results []SearchResult, maximum int, warnings []error) SearchResponse {
 	results = sanitizeSearchResults(results, provider, maximum)
 	return SearchResponse{
+		Schema:        SearchResponseSchema,
 		Query:         query,
 		Status:        SearchStatusSuccess,
 		Provider:      provider,

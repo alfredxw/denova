@@ -2,7 +2,7 @@
 // this shape remains for the render adapter and local legacy interactive state.
 export interface ChatMessage {
   type?: 'message' | 'clear'
-  role?: 'user' | 'assistant' | 'thinking' | 'tool_call' | 'tool_result' | 'rule_roll' | 'context_compaction' | 'token_usage' | 'plan_question' | 'proposed_plan' | 'system' | 'error'
+  role?: 'user' | 'assistant' | 'thinking' | 'tool_call' | 'tool_result' | 'ask' | 'rule_roll' | 'context_compaction' | 'token_usage' | 'plan_question' | 'proposed_plan' | 'system' | 'error'
   content?: string
   id?: string
   render_key?: string
@@ -13,6 +13,7 @@ export interface ChatMessage {
   args?: string
   status?: 'running' | 'success' | 'error'
   result?: string
+  ask?: AgentAskInteraction
   illustration?: ChapterIllustration
   interactive_image?: InteractiveImage
   interactive_images?: InteractiveImage[]
@@ -64,6 +65,60 @@ export interface ChatMessage {
   turn_versions?: { turn_id: string; ts: string; current?: boolean }[]
   turn_version_index?: number
   user_references?: UserMessageReference[]
+}
+
+export interface AgentAskOption {
+  id: string
+  label: string
+  description?: string
+}
+
+export interface AgentAskQuestion {
+  id: string
+  question: string
+  options?: AgentAskOption[]
+  multi_select?: boolean
+  recommended_option_id?: string
+}
+
+export interface AgentAskAnswer {
+  question_id: string
+  selected_option_ids?: string[]
+  custom_input?: string
+}
+
+export interface AgentAskSelectedOption {
+  id: string
+  label: string
+}
+
+export interface AgentAskAnswerResult {
+  question_id: string
+  question: string
+  selected_options?: AgentAskSelectedOption[]
+  custom_input?: string
+}
+
+export interface AgentAskInteraction {
+  schema: 'ask.pending.v1' | string
+  id: string
+  tool_call_id: string
+  task_id?: string
+  agent_kind: string
+  status: 'pending' | 'answered' | 'cancelled'
+  questions: AgentAskQuestion[]
+  answers?: AgentAskAnswerResult[]
+  cancel_reason?: string
+  created_at?: string
+  resolved_at?: string
+}
+
+export interface AgentAskResolution {
+  schema: 'ask.result.v1'
+  id: string
+  status: 'answered' | 'cancelled'
+  answers?: AgentAskAnswerResult[]
+  cancel_reason?: string
 }
 
 export interface UserMessageReference {

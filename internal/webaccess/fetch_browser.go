@@ -17,6 +17,10 @@ type browserRenderer interface {
 	Render(context.Context, *url.URL) (renderedPage, error)
 }
 
+type browserRendererCloser interface {
+	Close(context.Context) error
+}
+
 type browserRenderMode string
 
 const (

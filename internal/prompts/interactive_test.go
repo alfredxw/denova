@@ -261,7 +261,7 @@ func TestInteractiveStoryPromptRequiresGlobalStyleReferenceRead(t *testing.T) {
 		"全局文风参考：所有正文生成默认生效",
 		"path: /tmp/.denova/styles/global.md",
 		"互动故事下一回合正文生成时",
-		"编制故事正文前必须先用 read_file 读取这些全局参考文件",
+		"编制故事正文前必须先用 read 读取这些全局参考文件",
 		"分场景文风参考仍根据当前章节内容、互动场景或本轮 # 场景选择",
 		"不要强行选择分场景参考",
 		"不要照搬其中的人物、情节或设定",

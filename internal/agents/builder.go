@@ -29,6 +29,22 @@ func Build(ctx context.Context, cfg *config.Config, state *book.State, teller ID
 // BuildWithComposition returns the exact admitted prompt artifact consumed by
 // the constructed Agent so RunOptions never needs to rebuild mutable sources.
 func BuildWithComposition(ctx context.Context, cfg *config.Config, state *book.State, teller IDEStoryTeller) (agent.Runnable, SystemPromptComposition, error) {
+	return buildWithCompositionForHost(ctx, cfg, state, teller, AgentHostCapabilities{})
+}
+
+// AgentHostCapabilities are runtime surfaces supplied by the caller. Tool
+// settings authorize a capability; they cannot manufacture an interactive UI.
+type AgentHostCapabilities struct {
+	Interactive bool
+}
+
+// BuildWithCompositionForHost builds the top-level IDE Agent for a concrete
+// host. Headless callers should keep using BuildWithComposition.
+func BuildWithCompositionForHost(ctx context.Context, cfg *config.Config, state *book.State, teller IDEStoryTeller, host AgentHostCapabilities) (agent.Runnable, SystemPromptComposition, error) {
+	return buildWithCompositionForHost(ctx, cfg, state, teller, host)
+}
+
+func buildWithCompositionForHost(ctx context.Context, cfg *config.Config, state *book.State, teller IDEStoryTeller, host AgentHostCapabilities) (agent.Runnable, SystemPromptComposition, error) {
 	composition, err := ComposeInstruction(cfg, state, teller)
 	if err != nil {
 		return nil, SystemPromptComposition{}, err
@@ -39,6 +55,7 @@ func BuildWithComposition(ctx context.Context, cfg *config.Config, state *book.S
 		Description:       "AI 小说创作助手",
 		Composition:       composition,
 		EnableSkills:      true,
+		InteractiveHost:   host.Interactive,
 		ExtraToolsFactory: newToolCatalog(cfg).IDE(),
 	})
 	return built, composition, err
@@ -85,15 +102,17 @@ func BuildInteractiveDirectorWithComposition(ctx context.Context, cfg *config.Co
 	if err != nil {
 		return nil, SystemPromptComposition{}, err
 	}
+	toolContext := projectInteractiveToolContext(toolContexts...)
 	built, err := buildAgent(ctx, cfg, agentBuildSpec{
-		Kind:              config.AgentKindInteractiveDirector,
-		Name:              "DenovaInteractiveDirectorAgent",
-		Description:       "AI 互动故事后台导演",
-		Composition:       composition,
-		EnableSkills:      false,
-		DisableWriteTodos: true,
-		ExtraMiddlewares:  []agent.Middleware{newInteractiveDirectorPlanFileMiddleware()},
-		ExtraToolsFactory: newToolCatalog(cfg).InteractiveDirector(projectInteractiveToolContext(toolContexts...)),
+		Kind:                config.AgentKindInteractiveDirector,
+		Name:                "DenovaInteractiveDirectorAgent",
+		Description:         "AI 互动故事后台导演",
+		Composition:         composition,
+		EnableSkills:        false,
+		DisableWriteTodos:   true,
+		ExtraMiddlewares:    []agent.Middleware{newInteractiveDirectorPlanFileMiddleware()},
+		ReadAdaptersFactory: newToolCatalog(cfg).InteractiveDirectorRead(toolContext),
+		ExtraToolsFactory:   newToolCatalog(cfg).InteractiveDirector(toolContext),
 	})
 	return built, composition, err
 }
@@ -105,6 +124,14 @@ func BuildConfigManagerAgent(ctx context.Context, cfg *config.Config, state *boo
 }
 
 func BuildConfigManagerAgentWithComposition(ctx context.Context, cfg *config.Config, state *book.State, resourceSkills ...ConfigManagerResourceSkill) (agent.Runnable, SystemPromptComposition, error) {
+	return buildConfigManagerAgentWithCompositionForHost(ctx, cfg, state, AgentHostCapabilities{}, resourceSkills...)
+}
+
+func BuildConfigManagerAgentWithCompositionForHost(ctx context.Context, cfg *config.Config, state *book.State, host AgentHostCapabilities, resourceSkills ...ConfigManagerResourceSkill) (agent.Runnable, SystemPromptComposition, error) {
+	return buildConfigManagerAgentWithCompositionForHost(ctx, cfg, state, host, resourceSkills...)
+}
+
+func buildConfigManagerAgentWithCompositionForHost(ctx context.Context, cfg *config.Config, state *book.State, host AgentHostCapabilities, resourceSkills ...ConfigManagerResourceSkill) (agent.Runnable, SystemPromptComposition, error) {
 	composition, err := ComposeConfigManagerInstruction(cfg, state, resourceSkills...)
 	if err != nil {
 		return nil, SystemPromptComposition{}, err
@@ -115,6 +142,7 @@ func BuildConfigManagerAgentWithComposition(ctx context.Context, cfg *config.Con
 		Description:       "AI 配置与资源管理助手",
 		Composition:       composition,
 		EnableSkills:      true,
+		InteractiveHost:   host.Interactive,
 		ExtraToolsFactory: newToolCatalog(cfg).ConfigManager(),
 	})
 	return built, composition, err
@@ -166,17 +194,19 @@ func BuildImageAgentWithComposition(ctx context.Context, cfg *config.Config, sta
 }
 
 type agentBuildSpec struct {
-	Kind              string
-	Name              string
-	Description       string
-	Instruction       string
-	Composition       SystemPromptComposition
-	EnableSkills      bool
-	DisableWriteTodos bool
-	ExtraMiddlewares  []agent.Middleware
-	ExtraTools        []agent.ToolDefinition
-	ExtraToolsFactory func(config.ResolvedAgentToolSettings) ([]agent.ToolDefinition, error)
-	ModelOutputGuard  func(context.Context, *agent.RetryContext) *agent.RetryDecision
+	Kind                string
+	Name                string
+	Description         string
+	Instruction         string
+	Composition         SystemPromptComposition
+	EnableSkills        bool
+	InteractiveHost     bool
+	DisableWriteTodos   bool
+	ExtraMiddlewares    []agent.Middleware
+	ExtraTools          []agent.ToolDefinition
+	ReadAdaptersFactory producttools.ReadAdapterFactory
+	ExtraToolsFactory   func(config.ResolvedAgentToolSettings) ([]agent.ToolDefinition, error)
+	ModelOutputGuard    func(context.Context, *agent.RetryContext) *agent.RetryDecision
 }
 
 func buildAgent(ctx context.Context, cfg *config.Config, spec agentBuildSpec) (agent.Runnable, error) {
@@ -202,6 +232,7 @@ func buildAgent(ctx context.Context, cfg *config.Config, spec agentBuildSpec) (a
 		EnableSkills:          spec.EnableSkills,
 		ExtraMiddlewares:      spec.ExtraMiddlewares,
 		ExtraTools:            spec.ExtraTools,
+		ReadAdaptersFactory:   spec.ReadAdaptersFactory,
 		ExtraToolsFactory:     spec.ExtraToolsFactory,
 		IncludeCompaction:     true,
 		ContextWindowTokens:   config.ResolveAgentModel(cfg, spec.Kind).ContextWindowTokens,
@@ -210,42 +241,74 @@ func buildAgent(ctx context.Context, cfg *config.Config, spec agentBuildSpec) (a
 	if err != nil {
 		return nil, err
 	}
-	configuredSubAgents, err := buildConfiguredSubAgents(ctx, cfg, spec, toolSettings)
-	if err != nil {
-		return nil, err
-	}
-
-	taskAgents := append([]agent.Runnable(nil), configuredSubAgents...)
-	if config.GeneralSubAgentEnabled(cfg, spec.Kind) {
-		general, err := newNativeAgent(ctx, agent.AgentConfig{
-			Name:            producttools.GeneralSubAgentName,
-			Description:     "通用子 Agent，用于研究复杂问题、搜索代码和执行独立的多步骤任务。",
-			Instruction:     composition.Instruction(),
-			Model:           chatModel,
-			Tools:           assembly.Tools,
-			Middlewares:     assembly.Middlewares,
-			MaxIterations:   configMaxIteration(cfg),
-			ToolParallelism: configToolParallelism(cfg),
-			Retry:           modelRetryConfig(cfg, nil),
-		})
+	var taskAgents []agent.Runnable
+	if toolSettings.Allows(config.AgentToolDelegation) {
+		configuredSubAgents, err := buildConfiguredSubAgents(ctx, cfg, spec, toolSettings)
 		if err != nil {
-			return nil, fmt.Errorf("创建通用子 Agent 失败: %w", err)
+			return nil, err
 		}
-		taskAgents = append([]agent.Runnable{general}, taskAgents...)
+		taskAgents = append(taskAgents, configuredSubAgents...)
+		if config.GeneralSubAgentEnabled(cfg, spec.Kind) {
+			generalAssembly, err := buildChatModelAgentAssembly(ctx, cfg, chatModelAgentAssemblySpec{
+				Kind:                  producttools.GeneralSubAgentName,
+				ToolPolicyKind:        spec.Kind,
+				ModelCfg:              modelCfg,
+				ToolSettings:          toolSettings,
+				EnableSkills:          spec.EnableSkills,
+				ExtraToolsFactory:     spec.ExtraToolsFactory,
+				IncludeCompaction:     false,
+				ContextWindowTokens:   config.ResolveAgentModel(cfg, spec.Kind).ContextWindowTokens,
+				ProviderInputMaxBytes: config.ResolveAgentContext(cfg, spec.Kind).MaxProviderInputBytes,
+			})
+			if err != nil {
+				return nil, fmt.Errorf("创建通用子 Agent 工具装配失败: %w", err)
+			}
+			general, err := newNativeAgent(ctx, agent.AgentConfig{
+				Name:            producttools.GeneralSubAgentName,
+				Description:     "通用子 Agent，用于研究复杂问题、搜索代码和执行独立的多步骤任务。",
+				Instruction:     composition.Instruction(),
+				Model:           chatModel,
+				Tools:           generalAssembly.Tools,
+				Middlewares:     generalAssembly.Middlewares,
+				MaxIterations:   configMaxIteration(cfg),
+				ToolParallelism: configToolParallelism(cfg),
+				Retry:           modelRetryConfig(cfg, nil),
+			})
+			if err != nil {
+				return nil, fmt.Errorf("创建通用子 Agent 失败: %w", err)
+			}
+			taskAgents = append([]agent.Runnable{general}, taskAgents...)
+		}
 	}
 
 	tools := append([]agent.ToolDefinition(nil), assembly.Tools...)
-	if !spec.DisableWriteTodos && toolSettings.Todo {
-		todoTool, err := toolCatalog.WriteTodos()
+	if spec.Kind == config.AgentKindIDE || spec.Kind == config.AgentKindConfigManager {
+		contextTools, err := toolCatalog.ContextWindow(toolSettings)
 		if err != nil {
-			return nil, fmt.Errorf("创建 write_todos 工具失败: %w", err)
+			return nil, fmt.Errorf("创建上下文 checkpoint/rewind 工具失败: %w", err)
+		}
+		tools = append(tools, contextTools...)
+	}
+	if !spec.DisableWriteTodos && toolSettings.Allows(config.AgentToolTodo) {
+		todoTool, err := toolCatalog.Todo()
+		if err != nil {
+			return nil, fmt.Errorf("创建 todo 工具失败: %w", err)
 		}
 		tools = append(tools, todoTool)
 	}
-	if taskTool, err := toolCatalog.Task(ctx, taskAgents); err != nil {
-		return nil, fmt.Errorf("创建 task 工具失败: %w", err)
-	} else if taskTool.Tool != nil {
-		tools = append(tools, taskTool)
+	if spec.InteractiveHost && toolSettings.Allows(config.AgentToolAsk) && (spec.Kind == config.AgentKindIDE || spec.Kind == config.AgentKindConfigManager) {
+		askTool, err := toolCatalog.Ask()
+		if err != nil {
+			return nil, fmt.Errorf("创建 ask 工具失败: %w", err)
+		}
+		tools = append(tools, askTool)
+	}
+	if toolSettings.Allows(config.AgentToolDelegation) {
+		if taskTool, err := toolCatalog.Task(ctx, taskAgents); err != nil {
+			return nil, fmt.Errorf("创建 task 工具失败: %w", err)
+		} else if taskTool.Tool != nil {
+			tools = append(tools, taskTool)
+		}
 	}
 	if err := producttools.Validate(ctx, tools); err != nil {
 		return nil, err
@@ -307,6 +370,7 @@ type chatModelAgentAssemblySpec struct {
 	EnableSkills          bool
 	ExtraMiddlewares      []agent.Middleware
 	ExtraTools            []agent.ToolDefinition
+	ReadAdaptersFactory   producttools.ReadAdapterFactory
 	ExtraToolsFactory     func(config.ResolvedAgentToolSettings) ([]agent.ToolDefinition, error)
 	IncludeCompaction     bool
 	ContextWindowTokens   int
@@ -351,20 +415,23 @@ func buildChatModelAgentAssembly(ctx context.Context, cfg *config.Config, spec c
 		},
 	)
 	tools := append([]agent.ToolDefinition(nil), spec.ExtraTools...)
-	if settings.FileRead || settings.FileWrite || settings.ShellExecute {
-		filesystemTools, err := toolCatalog.Filesystem(settings)
+	skillTools, readAdapters, err := buildSkillTools(ctx, cfg, spec.Kind, spec.EnableSkills, settings)
+	if err != nil {
+		return chatModelAgentAssembly{}, err
+	}
+	if spec.ReadAdaptersFactory != nil {
+		extraReadAdapters, err := spec.ReadAdaptersFactory(settings)
 		if err != nil {
 			return chatModelAgentAssembly{}, err
 		}
-		tools = append(tools, filesystemTools...)
+		readAdapters = append(readAdapters, extraReadAdapters...)
 	}
-	if settings.Skills {
-		skillTools, err := buildSkillTools(ctx, cfg, spec.Kind, spec.EnableSkills, settings)
-		if err != nil {
-			return chatModelAgentAssembly{}, err
-		}
-		tools = append(tools, skillTools...)
+	workspaceTools, err := toolCatalog.Workspace(settings, readAdapters...)
+	if err != nil {
+		return chatModelAgentAssembly{}, err
 	}
+	tools = append(tools, workspaceTools...)
+	tools = append(tools, skillTools...)
 	if spec.ExtraToolsFactory != nil {
 		extraTools, err := spec.ExtraToolsFactory(settings)
 		if err != nil {
@@ -372,22 +439,25 @@ func buildChatModelAgentAssembly(ctx context.Context, cfg *config.Config, spec c
 		}
 		tools = append(tools, extraTools...)
 	}
-	if toolCatalog.WebAccessEnabled(firstNonEmpty(spec.ToolPolicyKind, spec.Kind), settings) {
-		webTools, err := toolCatalog.WebAccess()
-		if err != nil {
-			return chatModelAgentAssembly{}, err
-		}
-		tools = append(tools, webTools...)
+	webTools, err := toolCatalog.WebAccess(settings)
+	if err != nil {
+		return chatModelAgentAssembly{}, err
 	}
+	tools = append(tools, webTools...)
+	browserTools, err := toolCatalog.Browser(ctx, settings)
+	if err != nil {
+		return chatModelAgentAssembly{}, err
+	}
+	tools = append(tools, browserTools...)
 	if err := producttools.Validate(ctx, tools); err != nil {
 		return chatModelAgentAssembly{}, err
 	}
 	return chatModelAgentAssembly{Tools: tools, Middlewares: middlewares}, nil
 }
 
-func buildSkillTools(ctx context.Context, cfg *config.Config, agentKind string, enabled bool, settings config.ResolvedAgentToolSettings) ([]agent.ToolDefinition, error) {
-	if !enabled || !settings.Skills || cfg == nil {
-		return nil, nil
+func buildSkillTools(ctx context.Context, cfg *config.Config, agentKind string, enabled bool, settings config.ResolvedAgentToolSettings) ([]agent.ToolDefinition, []producttools.ReadAdapterBinding, error) {
+	if !enabled || !settings.Allows(config.AgentToolSkills) || cfg == nil {
+		return nil, nil, nil
 	}
 	skillBackend := novaskills.NewAgentBackend(
 		novaskills.NewDirectories(cfg.SkillsDir, cfg.DataDir(), cfg.Workspace),
@@ -396,12 +466,16 @@ func buildSkillTools(ctx context.Context, cfg *config.Config, agentKind string, 
 	)
 	skillTool, err := newToolCatalog(cfg).Skill(ctx, skillBackend, config.ResolveAgentContext(cfg, agentKind).MaxFragmentBytes)
 	if err != nil {
-		return nil, fmt.Errorf("创建 Skill 工具失败 agent=%s: %w", agentKind, err)
+		return nil, nil, fmt.Errorf("创建 Skill 工具失败 agent=%s: %w", agentKind, err)
 	}
 	if skillTool.Tool == nil {
-		return nil, nil
+		return nil, nil, nil
 	}
-	return []agent.ToolDefinition{skillTool}, nil
+	referenceAdapter, err := newToolCatalog(cfg).SkillReference(skillBackend)
+	if err != nil {
+		return nil, nil, fmt.Errorf("创建 Skill reference Adapter 失败 agent=%s: %w", agentKind, err)
+	}
+	return []agent.ToolDefinition{skillTool}, []producttools.ReadAdapterBinding{referenceAdapter}, nil
 }
 
 func buildConfiguredSubAgents(ctx context.Context, cfg *config.Config, parent agentBuildSpec, parentTools config.ResolvedAgentToolSettings) ([]agent.Runnable, error) {

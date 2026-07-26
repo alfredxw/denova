@@ -39,7 +39,7 @@ func (agent *Agent) callModelWithRetry(
 	streaming bool,
 	events *AsyncGenerator[*AgentEvent],
 	cancel *cancelControl,
-) (*Message, error) {
+) (*Message, int, error) {
 	currentMessages := messages
 	currentOptions := modelOptions
 	var streamOutput *modelStreamOutput
@@ -52,31 +52,38 @@ func (agent *Agent) callModelWithRetry(
 		maxRetries = agent.retry.MaxRetries
 	}
 	for attempt := 0; ; attempt++ {
-		message, err, deliveredOnStream := agent.callModel(ctx, model, registry, currentMessages, currentOptions, streaming, events, cancel, streamOutput)
+		responseOrdinal := 0
+		if streamOutput != nil {
+			responseOrdinal = streamOutput.openResponseOrdinal()
+		}
+		if responseOrdinal == 0 {
+			responseOrdinal = nextModelResponseOrdinal(ctx)
+		}
+		message, err, deliveredOnStream := agent.callModel(ctx, model, registry, currentMessages, currentOptions, streaming, events, cancel, streamOutput, responseOrdinal)
 		if contextErr := agent.contextError(ctx, cancel); contextErr != nil {
 			if streamOutput != nil && !deliveredOnStream {
 				streamOutput.sendError(publicStreamError(contextErr, cancel))
 			}
-			return nil, contextErr
+			return nil, 0, contextErr
 		}
 		if err != nil && deliveredOnStream {
-			return nil, err
+			return nil, 0, err
 		}
 		decision := agent.retryDecision(ctx, attempt, currentMessages, currentOptions, message, err)
 		if decision == nil || !decision.Retry {
 			if err != nil && streamOutput != nil {
 				streamOutput.sendError(err)
 			}
-			return message, err
+			return message, responseOrdinal, err
 		}
 		if attempt >= maxRetries {
 			if err != nil {
 				if streamOutput != nil {
 					streamOutput.sendError(err)
 				}
-				return nil, err
+				return nil, 0, err
 			}
-			return nil, fmt.Errorf("model output rejected after %d retries", maxRetries)
+			return nil, 0, fmt.Errorf("model output rejected after %d retries", maxRetries)
 		}
 		if deliveredOnStream && streamOutput != nil {
 			// A completed response rejected by policy remains one visible stream;
@@ -99,28 +106,49 @@ func (agent *Agent) callModelWithRetry(
 				if streamOutput != nil {
 					streamOutput.sendError(publicStreamError(err, cancel))
 				}
-				return nil, err
+				return nil, 0, err
 			}
 		}
 	}
 }
 
 type modelStreamOutput struct {
-	agent    *Agent
-	events   *AsyncGenerator[*AgentEvent]
-	writer   *StreamWriter[*Message]
-	registry *Registry
+	agent                  *Agent
+	events                 *AsyncGenerator[*AgentEvent]
+	writer                 *StreamWriter[*Message]
+	registry               *Registry
+	toolExecutionNamespace string
+	modelResponseOrdinal   int
 }
 
-func (output *modelStreamOutput) expose() {
+// openResponseOrdinal returns the identity of the one stream already exposed
+// to consumers. A provider failure before the first chunk is retried inside
+// that same still-open stream, so the successful retry must keep this ordinal
+// for its tool cards, lifecycle events, transcript result, and durable host
+// effects. Once a delivered response is closed, the next attempt receives a
+// fresh ordinal.
+func (output *modelStreamOutput) openResponseOrdinal() int {
+	if output == nil || output.writer == nil {
+		return 0
+	}
+	return output.modelResponseOrdinal
+}
+
+func (output *modelStreamOutput) expose(ctx context.Context, responseOrdinal int) {
 	if output == nil || output.writer != nil {
 		return
+	}
+	output.modelResponseOrdinal = responseOrdinal
+	if scope, ok := InvocationScopeFromContext(ctx); ok {
+		output.toolExecutionNamespace = scope.ToolNamespace
 	}
 	stream, writer := Pipe[*Message](-1)
 	output.writer = writer
 	event := output.agent.messageEvent(nil, stream, Assistant, "")
 	event.Output.MessageOutput.ToolInfos = output.registry.Schemas()
 	event.Output.MessageOutput.ToolDefinitions = output.registry.Snapshots()
+	event.Output.MessageOutput.ToolExecutionNamespace = output.toolExecutionNamespace
+	event.Output.MessageOutput.ModelResponseOrdinal = output.modelResponseOrdinal
 	output.events.Send(event)
 }
 
@@ -191,6 +219,7 @@ func (agent *Agent) callModel(
 	events *AsyncGenerator[*AgentEvent],
 	cancel *cancelControl,
 	streamOutput *modelStreamOutput,
+	responseOrdinal int,
 ) (*Message, error, bool) {
 	if !streaming {
 		message, err := awaitContextCall(ctx, func() (*Message, error) {
@@ -212,6 +241,10 @@ func (agent *Agent) callModel(
 		event := agent.messageEvent(message.Clone(), nil, Assistant, "")
 		event.Output.MessageOutput.ToolInfos = registry.Schemas()
 		event.Output.MessageOutput.ToolDefinitions = registry.Snapshots()
+		if scope, ok := InvocationScopeFromContext(ctx); ok {
+			event.Output.MessageOutput.ToolExecutionNamespace = scope.ToolNamespace
+		}
+		event.Output.MessageOutput.ModelResponseOrdinal = responseOrdinal
 		events.Send(event)
 		return message, nil, false
 	}
@@ -240,7 +273,7 @@ func (agent *Agent) callModel(
 		}
 		safeGo(modelStream.Close, func(error) {})
 	}()
-	streamOutput.expose()
+	streamOutput.expose(ctx, responseOrdinal)
 	chunks := make([]*Message, 0, 16)
 	for {
 		chunk, recvErr := awaitContextCall(ctx, modelStream.Recv, modelStream.Close, nil)

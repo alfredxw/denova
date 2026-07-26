@@ -51,17 +51,23 @@ func (m *interactiveDirectorPlanFileMiddleware) WrapToolCall(
 	}, nil
 }
 
-func (m *interactiveDirectorPlanFileMiddleware) blockedDirectorToolMessage(name, _ string) string {
+func (m *interactiveDirectorPlanFileMiddleware) blockedDirectorToolMessage(name, args string) string {
 	name = strings.ToLower(strings.TrimSpace(name))
 	switch name {
-	case "read_event_cards", "list_lore_items", "read_lore_items", "search_story_history", submitDirectorPlanUpdateToolName:
+	case "read":
+		path := strings.ToLower(strings.TrimSpace(toolPathFromArgs(args)))
+		if strings.HasPrefix(path, "event://") {
+			return ""
+		}
+		return fmt.Sprintf("[tool error] Director 的 read 仅允许当前机会索引中的 event:// 事件卡；规划文档已在上下文中完整提供，请用 %s 提交带 base_hash 的 Markdown Patch。", submitDirectorPlanUpdateToolName)
+	case "list_lore_items", "read_lore_items", "search_story_history", submitDirectorPlanUpdateToolName:
 		return ""
-	case "read_file", "write_file", "edit_file":
+	case "write", "edit":
 		return fmt.Sprintf("[tool error] Director 规划文档已在上下文中完整提供；请用 %s 提交带 base_hash 的 Markdown Patch，拒绝工具: %s", submitDirectorPlanUpdateToolName, name)
 	case "apply_actor_state_patch":
 		return fmt.Sprintf("[tool error] Director 只维护 ArcPlan，不能写 Actor State，拒绝工具: %s", name)
 	default:
-		return fmt.Sprintf("[tool error] Director 只能使用 %s、历史检索、资料库只读和事件卡工具，拒绝工具: %s", submitDirectorPlanUpdateToolName, name)
+		return fmt.Sprintf("[tool error] Director 只能使用 %s、历史检索、资料库只读和 read(event://...)，拒绝工具: %s", submitDirectorPlanUpdateToolName, name)
 	}
 }
 
@@ -71,7 +77,7 @@ func (m *interactiveStoryToolMiddleware) WrapToolCall(
 	toolCtx *agent.ToolContext,
 ) (agent.ToolCallEndpoint, error) {
 	return func(ctx context.Context, args string, opts ...agent.ToolOption) (agent.ToolResult, error) {
-		if isInteractiveStoryWriteTool(toolName(toolCtx)) {
+		if isInteractiveStoryForbiddenMutation(toolCtx) {
 			return agent.SyntheticToolResult(agent.ToolResultBlocked, agent.ToolSyntheticPolicyBlocked, interactiveStoryWriteToolBlockedMessage(toolName(toolCtx))), nil
 		}
 		return endpoint(ctx, args, opts...)
@@ -85,10 +91,20 @@ func toolName(toolCtx *agent.ToolContext) string {
 	return toolCtx.Name
 }
 
+func isInteractiveStoryForbiddenMutation(toolCtx *agent.ToolContext) bool {
+	if toolCtx != nil {
+		descriptor := toolCtx.Definition.Descriptor
+		if descriptor.Capability == config.AgentToolShell || descriptor.MutationScope == agent.ToolMutationWorkspace {
+			return true
+		}
+	}
+	return isInteractiveStoryWriteTool(toolName(toolCtx))
+}
+
 func isInteractiveStoryWriteTool(name string) bool {
 	name = strings.ToLower(strings.TrimSpace(name))
 	switch name {
-	case "write_file", "edit_file", "delete_file", "create_file", "move_file", "copy_file", "rename_file", "mkdir", "remove_file":
+	case "write", "edit", "bash", "pwsh", "delete_file", "create_file", "move_file", "copy_file", "rename_file", "mkdir", "remove_file":
 		return true
 	}
 	return strings.HasPrefix(name, "write_") || strings.HasPrefix(name, "edit_") ||
@@ -98,18 +114,19 @@ func isInteractiveStoryWriteTool(name string) bool {
 }
 
 func interactiveStoryWriteToolBlockedMessage(name string) string {
-	return fmt.Sprintf("[tool error] 游戏模式禁止使用写文件工具 %q。请不要修改 workspace 文件；先直接输出完整故事正文，再用 submit_interactive_turn 提交一致的隐藏回合结果。", name)
+	return fmt.Sprintf("[tool error] 游戏模式禁止使用可能产生 workspace 或宿主副作用的工具 %q。请先直接输出完整故事正文，再用 submit_interactive_turn 提交一致的隐藏回合结果。 / Interactive story mode blocks tool %q because it may mutate the workspace or host. Output the complete story first, then submit the matching hidden turn result.", name, name)
 }
 
 type ToolDecision struct {
 	ToolName          string               `json:"tool_name"`
-	ToolCallID        string               `json:"tool_call_id,omitempty"`
+	ProviderCallID    string               `json:"provider_call_id,omitempty"`
+	ExecutionID       string               `json:"execution_id,omitempty"`
 	Source            ToolSource           `json:"source"`
 	Capability        string               `json:"capability,omitempty"`
 	Action            string               `json:"action"`
 	Reason            string               `json:"reason,omitempty"`
-	MutatesWorkspace  bool                 `json:"mutates_workspace"`
-	RequiresPostCheck bool                 `json:"requires_post_check"`
+	MutationScope     ToolMutationScope    `json:"mutation_scope"`
+	PostCheck         ToolPostCheckPolicy  `json:"post_check"`
 	Target            string               `json:"target,omitempty"`
 	ArgsBytes         int                  `json:"args_bytes,omitempty"`
 	ArgsComplete      *bool                `json:"args_complete,omitempty"`
@@ -121,7 +138,8 @@ type ToolDecision struct {
 // runtime. DisplayContent and Details deliberately do not live here.
 type ToolExecutionRecord struct {
 	ToolName              string               `json:"tool_name"`
-	ToolCallID            string               `json:"tool_call_id,omitempty"`
+	ProviderCallID        string               `json:"provider_call_id,omitempty"`
+	ExecutionID           string               `json:"execution_id,omitempty"`
 	Workspace             string               `json:"workspace,omitempty"`
 	Status                string               `json:"status"`
 	Result                string               `json:"result,omitempty"`
@@ -156,7 +174,7 @@ func (m *toolOrchestratorMiddleware) WrapToolCall(
 	toolCtx *agent.ToolContext,
 ) (agent.ToolCallEndpoint, error) {
 	return func(ctx context.Context, args string, opts ...agent.ToolOption) (agent.ToolResult, error) {
-		decision := m.buildToolDecision(toolCtx, args)
+		decision := m.buildToolDecision(ctx, toolCtx, args)
 		observer := RunObserverFromContext(ctx)
 		outcome := LLMOutcome{}
 		if observer != nil {
@@ -248,7 +266,8 @@ func projectToolError(decision ToolDecision, args string, err error, maxBytes in
 
 func toolExecutionRecordFromFiltered(decision ToolDecision, filtered FilteredToolResult, status string) ToolExecutionRecord {
 	return ToolExecutionRecord{
-		ToolName: filtered.Manifest.Name, ToolCallID: decision.ToolCallID, Status: status,
+		ToolName: filtered.Manifest.Name, ProviderCallID: decision.ProviderCallID,
+		ExecutionID: decision.ExecutionID, Status: status,
 		Capability:     filtered.Manifest.Capability,
 		OriginalBytes:  filtered.Result.Metadata.OriginalModelBytes,
 		ReturnedBytes:  filtered.Result.Metadata.ReturnedModelBytes,
@@ -289,7 +308,8 @@ func (m *toolOrchestratorMiddleware) acquireToolExecution(ctx context.Context, d
 
 func blockedToolExecutionRecord(decision ToolDecision, message string) ToolExecutionRecord {
 	return ToolExecutionRecord{
-		ToolName: decision.ToolName, ToolCallID: decision.ToolCallID, Status: "blocked",
+		ToolName: decision.ToolName, ProviderCallID: decision.ProviderCallID,
+		ExecutionID: decision.ExecutionID, Status: "blocked",
 		Capability: decision.Capability, Target: decision.Target, Error: message,
 		ArgsBytes: decision.ArgsBytes, ArgsComplete: decision.ArgsComplete,
 		ModelFinishReason: decision.ModelFinishReason, Descriptor: decision.Descriptor,
@@ -303,21 +323,30 @@ func (m *toolOrchestratorMiddleware) toolResultLimitBytes() int {
 	return normalizeToolResultLimitBytes(m.toolResultMaxBytes)
 }
 
-func (m *toolOrchestratorMiddleware) buildToolDecision(toolCtx *agent.ToolContext, args string) ToolDecision {
+func (m *toolOrchestratorMiddleware) buildToolDecision(ctx context.Context, toolCtx *agent.ToolContext, args string) ToolDecision {
 	name := toolName(toolCtx)
 	manifest := unknownToolManifest(name)
 	declared := toolCtx != nil && toolCtx.Definition.Info != nil
 	if declared {
 		manifest = manifestForDefinition(name, toolCtx.Definition.Descriptor)
 	}
-	decision := ToolDecision{
-		ToolName: manifest.Name, ToolCallID: toolCallID(toolCtx), Source: manifest.Source,
-		Capability: manifest.Capability, Action: "allowed",
-		MutatesWorkspace:  manifest.MutatesWorkspace,
-		RequiresPostCheck: manifest.RequiresPostCheck,
-		Target:            toolPathFromArgs(args), ArgsBytes: len(args), Descriptor: manifest.ToolDescriptor,
+	providerCallID := toolCallID(toolCtx)
+	executionID := ""
+	if toolCtx != nil {
+		executionID = strings.TrimSpace(toolCtx.ExecutionID)
 	}
-	if m != nil && m.effectivePolicyKind() == AgentKindInteractiveStory && isInteractiveStoryWriteTool(name) {
+	if executionID == "" {
+		executionID = agent.ToolExecutionID(ctx, providerCallID)
+	}
+	decision := ToolDecision{
+		ToolName: manifest.Name, ProviderCallID: providerCallID,
+		ExecutionID: executionID, Source: manifest.Source,
+		Capability: manifest.Capability, Action: "allowed",
+		MutationScope: manifest.MutationScope,
+		PostCheck:     manifest.PostCheck,
+		Target:        toolPathFromArgs(args), ArgsBytes: len(args), Descriptor: manifest.ToolDescriptor,
+	}
+	if m != nil && m.effectivePolicyKind() == AgentKindInteractiveStory && isInteractiveStoryForbiddenMutation(toolCtx) {
 		decision.Action = "blocked"
 		decision.Reason = interactiveStoryWriteToolBlockedMessage(name)
 		return decision
@@ -352,5 +381,5 @@ func toolCallID(toolCtx *agent.ToolContext) string {
 	if toolCtx == nil {
 		return ""
 	}
-	return toolCtx.CallID
+	return strings.TrimSpace(toolCtx.ProviderCallID)
 }

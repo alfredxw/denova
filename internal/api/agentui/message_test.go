@@ -13,11 +13,15 @@ func TestMessagesFromHistoryConvertsLegacyEntries(t *testing.T) {
 		{ID: "user-1", Role: "user", Content: "你好", CreatedAt: createdAt, UserReferences: []session.UserMessageReference{{Kind: "file", Label: "chapters/ch01.md"}}},
 		{ID: "assistant-1", Role: "assistant", Content: "回复", RunID: "run-1"},
 		{ID: "thinking-1", Role: "thinking", Content: "思考"},
-		{ID: "tool-1", Role: "tool_call", Name: "read_file", Args: `{"path":"a.md"}`, Status: "success", Result: "ok"},
-		{ID: "tool-result-1", Role: "tool_result", Name: "read_file", Content: "ok"},
+		{ID: "tool-1", Role: "tool_call", Name: "read", Args: `{"path":"a.md"}`, Status: "success", Result: "ok"},
+		{ID: "tool-result-1", Role: "tool_result", Name: "read", Content: "ok"},
 		{ID: "ctx-1", Role: "context_compaction", Content: "压缩"},
 		{ID: "usage-1", Role: "token_usage", Content: "用量", TotalTokens: 12},
 		{ID: "question-1", Role: "plan_question", Content: "问题"},
+		{ID: "ask-1", Role: "ask", Content: "选择方向", Status: session.AskPending, Ask: &session.AskInteraction{
+			Schema: "ask.pending.v1", ID: "ask-1", ToolCallID: "ask-1", AgentKind: "ide", Status: session.AskPending,
+			Questions: []session.AskQuestion{{ID: "q1", Question: "选择方向"}},
+		}},
 		{ID: "plan-1", Role: "proposed_plan", Content: "计划"},
 		{ID: "roll-1", Role: "rule_roll", Content: "检定"},
 		{ID: "image-1", Role: "interactive_image", Content: "图像"},
@@ -39,12 +43,13 @@ func TestMessagesFromHistoryConvertsLegacyEntries(t *testing.T) {
 	assertMessagePartType(t, messages[5], "assistant", DataTypeContextCompaction)
 	assertMessagePartType(t, messages[6], "assistant", DataTypeTokenUsage)
 	assertMessagePartType(t, messages[7], "assistant", DataTypePlanQuestion)
-	assertMessagePartType(t, messages[8], "assistant", DataTypeProposedPlan)
-	assertMessagePartType(t, messages[9], "assistant", DataTypeRuleRoll)
-	assertMessagePartType(t, messages[10], "assistant", DataTypeInteractiveImage)
-	assertMessagePartType(t, messages[11], "assistant", DataTypeSystem)
-	assertMessagePartType(t, messages[12], "assistant", DataTypeError)
-	assertMessagePartType(t, messages[13], "assistant", DataTypeClear)
+	assertMessagePartType(t, messages[8], "assistant", DataTypeAsk)
+	assertMessagePartType(t, messages[9], "assistant", DataTypeProposedPlan)
+	assertMessagePartType(t, messages[10], "assistant", DataTypeRuleRoll)
+	assertMessagePartType(t, messages[11], "assistant", DataTypeInteractiveImage)
+	assertMessagePartType(t, messages[12], "assistant", DataTypeSystem)
+	assertMessagePartType(t, messages[13], "assistant", DataTypeError)
+	assertMessagePartType(t, messages[14], "assistant", DataTypeClear)
 
 	if messages[1].Metadata["run_id"] != "run-1" {
 		t.Fatalf("expected run metadata to be preserved, got %#v", messages[1].Metadata)
@@ -55,6 +60,9 @@ func TestMessagesFromHistoryConvertsLegacyEntries(t *testing.T) {
 	}
 	if messages[6].Parts[0]["data"].(map[string]any)["total_tokens"] != 12 {
 		t.Fatalf("expected token usage payload, got %#v", messages[6].Parts[0]["data"])
+	}
+	if messages[8].Parts[0]["data"].(map[string]any)["id"] != "ask-1" {
+		t.Fatalf("expected Ask payload, got %#v", messages[8].Parts[0]["data"])
 	}
 }
 

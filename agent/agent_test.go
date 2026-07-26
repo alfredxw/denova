@@ -95,6 +95,7 @@ func (tool *functionTool) Run(ctx context.Context, arguments string, _ ...ToolOp
 func testToolDefinition(tool Tool) ToolDefinition {
 	return ToolDefinition{Tool: tool, Descriptor: ToolDescriptor{
 		Source: ToolSourceRead, Execution: ToolExecutionParallelRead,
+		MutationScope: ToolMutationNone, PostCheck: ToolPostCheckNone,
 		Recovery: ToolRecoveryReadOnly, ResultProjection: ToolResultBoundedModelContext,
 		Steering: SteeringFinishCurrent, MaxResultBytes: 1 << 20,
 	}}

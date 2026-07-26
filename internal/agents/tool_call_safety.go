@@ -107,7 +107,7 @@ func invalidToolArgumentsMessage(decision ToolDecision, args string, err error, 
 func isContentFilterInterruptedArguments(err error, decision ToolDecision, outcome LLMOutcome) bool {
 	return isIncompleteJSONArgumentsError(err) &&
 		strings.EqualFold(strings.TrimSpace(outcome.FinishReason), "content_filter") &&
-		(decision.MutatesWorkspace || decision.Source == ToolSourceWrite)
+		(decision.MutationScope != ToolMutationNone || decision.Source == ToolSourceWrite)
 }
 
 func isIncompleteJSONArgumentsError(err error) bool {
