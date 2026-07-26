@@ -5,6 +5,8 @@ import { useTranslation } from 'react-i18next'
 import { motion } from 'motion/react'
 import { novaEase, subtlePresence } from '@/features/motion/motion-tokens'
 
+const DEFAULT_SIDEBAR_PERCENTAGE = 20
+
 interface WorkspaceLayoutProps {
   activityBar: ReactNode
   topBar?: ReactNode
@@ -42,7 +44,7 @@ export function WorkspaceLayout({
   const rightPanelElementRef = useRef<HTMLDivElement | null>(null)
   const layoutBeforeEmphasisRef = useRef<Layout | null>(null)
   const lastNormalLayoutRef = useRef<Layout | null>(readStoredLayoutForWorkspace('nova-workspace-horizontal', ['sidebar', 'center', 'right']) ?? null)
-  const lastSidebarPercentageRef = useRef(lastNormalLayoutRef.current?.sidebar ?? 20)
+  const lastSidebarPercentageRef = useRef(lastNormalLayoutRef.current?.sidebar ?? DEFAULT_SIDEBAR_PERCENTAGE)
   const lastRightPanelPixelsRef = useRef<number | null>(null)
   const centerWidthReadyRef = useRef(false)
   const previousEmphasisRef = useRef<'normal' | 'right' | 'center'>('normal')
@@ -284,10 +286,18 @@ export function readStoredLayoutForWorkspace(key: string, panelOrder?: string[])
   try {
     const layout = JSON.parse(value) as Layout
     if (!panelOrder) return layout
-    return panelOrder.reduce<Layout>((ordered, panelId) => {
-      if (typeof layout[panelId] === 'number') ordered[panelId] = layout[panelId]
-      return ordered
+    const ordered = panelOrder.reduce<Layout>((result, panelId) => {
+      if (typeof layout[panelId] === 'number') result[panelId] = layout[panelId]
+      return result
     }, {})
+    if (key === 'nova-workspace-horizontal' && typeof ordered.sidebar === 'number' && ordered.sidebar <= 0) {
+      const right = typeof ordered.right === 'number' ? ordered.right : 0
+      ordered.sidebar = DEFAULT_SIDEBAR_PERCENTAGE
+      if (typeof ordered.center === 'number') {
+        ordered.center = Math.max(100 - DEFAULT_SIDEBAR_PERCENTAGE - right, 0)
+      }
+    }
+    return ordered
   } catch {
     return undefined
   }

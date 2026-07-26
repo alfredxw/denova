@@ -15,8 +15,12 @@ import (
 )
 
 const (
-	visualGuidanceSourceMaxChars = 16000
+	visualGuidanceSourceMaxChars = 160000
 	maxPresetGuidanceChars       = 8000
+	maxVisualGuidanceNameChars   = 2000
+	maxVisualGuidanceTypeChars   = 100
+	maxVisualGuidanceListItems   = 256
+	maxVisualGuidanceListChars   = 12000
 )
 
 type modelVisualGuidanceRefiner struct{}
@@ -46,21 +50,18 @@ func (modelVisualGuidanceRefiner) Refine(ctx context.Context, cfg *config.Config
 	}
 	item := request.Item
 	input := visualGuidanceInput{
-		Type:             strings.TrimSpace(item.Type),
-		Name:             strings.TrimSpace(item.Name),
+		Type:             item.Type,
+		Name:             item.Name,
 		Tags:             item.Tags,
 		Keywords:         item.Keywords,
-		BriefDescription: trimRunes(item.BriefDescription, maxBriefChars),
-		Content:          trimRunes(item.Content, maxContentChars),
-		ImagePreset:      trimRunes(request.ImagePresetGuidance, maxPresetGuidanceChars),
-		UserInstruction:  trimRunes(request.Instruction, maxInstructionChars),
+		BriefDescription: item.BriefDescription,
+		Content:          item.Content,
+		ImagePreset:      request.ImagePresetGuidance,
+		UserInstruction:  request.Instruction,
 	}
-	data, err := json.Marshal(input)
+	data, err := marshalVisualGuidanceInput(input)
 	if err != nil {
 		return "", err
-	}
-	if len([]rune(string(data))) > visualGuidanceSourceMaxChars {
-		return "", fmt.Errorf("资料内容超过 %d 字符上限", visualGuidanceSourceMaxChars)
 	}
 
 	modelCfg := visualGuidanceModelConfig(cfg)
@@ -146,7 +147,7 @@ func generateVisualGuidance(ctx context.Context, modelCfg openai.ChatModelConfig
 func visualGuidanceSystemPrompt() string {
 	return `你是资料库图像生成前的视觉指导设计师。请把输入资料转换成可直接指导图像模型绘制单张设定图的详细、具体、可执行的视觉描述。
 
-必须遵守 image_preset 中的画风、媒介、写实程度、镜头、构图、光影、色彩、材质和避免项。user_instruction 用于补充本次画面要求；不得让它覆盖资料中的身份事实或与图像方案冲突。最终指导应自然融合图像方案，而不是简单复述方案文字。
+必须遵守 image_preset 中的画风、媒介、写实程度、镜头、构图、光影、色彩、材质和避免项。user_instruction 用于补充本次画面要求；不得让它覆盖资料中的身份事实或与图像方案冲突。最终指导应自然融合图像方案和所有不冲突的用户要求，而不是简单复述输入文字。
 
 按资料类型选择重点：
 - character：外貌、年龄感、性别呈现、体型、发型发色、五官、肤色、服装配饰，以及能通过表情、姿态和气质表现的性格；
@@ -186,4 +187,86 @@ func parseVisualGuidance(content string) (string, error) {
 		return "", fmt.Errorf("资料视觉指导提炼结果没有可用内容")
 	}
 	return trimRunes(guidance, maxVisualGuidance), nil
+}
+
+func marshalVisualGuidanceInput(input visualGuidanceInput) ([]byte, error) {
+	input.Type = trimRunes(input.Type, maxVisualGuidanceTypeChars)
+	input.Name = trimRunes(input.Name, maxVisualGuidanceNameChars)
+	input.Tags = trimVisualGuidanceList(input.Tags, maxVisualGuidanceListItems, maxVisualGuidanceListChars)
+	input.Keywords = trimVisualGuidanceList(input.Keywords, maxVisualGuidanceListItems, maxVisualGuidanceListChars)
+	input.BriefDescription = trimRunes(input.BriefDescription, maxBriefChars)
+	input.Content = trimRunes(input.Content, maxContentChars)
+	input.ImagePreset = trimRunes(input.ImagePreset, maxPresetGuidanceChars)
+	input.UserInstruction = trimRunes(input.UserInstruction, maxInstructionChars)
+
+	for {
+		data, err := json.Marshal(input)
+		if err != nil {
+			return nil, err
+		}
+		if len([]rune(string(data))) <= visualGuidanceSourceMaxChars {
+			return data, nil
+		}
+		if !shrinkVisualGuidanceInput(&input) {
+			return nil, fmt.Errorf("资料视觉指导输入无法压缩到 %d 字符上限", visualGuidanceSourceMaxChars)
+		}
+	}
+}
+
+func trimVisualGuidanceList(values []string, maxItems, maxChars int) []string {
+	if maxItems <= 0 || maxChars <= 0 {
+		return nil
+	}
+	result := make([]string, 0, min(len(values), maxItems))
+	remaining := maxChars
+	for _, value := range values {
+		if len(result) >= maxItems || remaining <= 0 {
+			break
+		}
+		value = trimRunes(value, remaining)
+		if value == "" {
+			continue
+		}
+		result = append(result, value)
+		remaining -= len([]rune(value))
+	}
+	return result
+}
+
+func shrinkVisualGuidanceInput(input *visualGuidanceInput) bool {
+	if input == nil {
+		return false
+	}
+	if chars := visualGuidanceListChars(input.Tags); chars > 0 {
+		input.Tags = trimVisualGuidanceList(input.Tags, maxVisualGuidanceListItems, chars/2)
+		return true
+	}
+	if chars := visualGuidanceListChars(input.Keywords); chars > 0 {
+		input.Keywords = trimVisualGuidanceList(input.Keywords, maxVisualGuidanceListItems, chars/2)
+		return true
+	}
+	for _, field := range []*string{
+		&input.BriefDescription,
+		&input.Content,
+		&input.Name,
+		&input.ImagePreset,
+		&input.UserInstruction,
+		&input.Type,
+	} {
+		chars := len([]rune(*field))
+		if chars == 0 {
+			continue
+		}
+		*field = trimRunes(*field, chars/2)
+		return true
+	}
+	return false
+}
+
+func visualGuidanceListChars(values []string) int {
+	total := 0
+	for _, value := range values {
+		total += len([]rune(value))
+	}
+	return total
 }

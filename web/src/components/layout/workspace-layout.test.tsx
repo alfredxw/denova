@@ -91,6 +91,14 @@ describe('WorkspaceLayout', () => {
     expect(Object.keys(layout || {})).toEqual(['sidebar', 'center', 'right'])
     expect(layout).toEqual({ sidebar: 20, center: 46, right: 34 })
   })
+
+  it('repairs a persisted zero-width sidebar before restoring the workspace layout', () => {
+    window.localStorage.setItem('nova-workspace-horizontal', JSON.stringify({ sidebar: 0, center: 66, right: 34 }))
+
+    const layout = readStoredLayoutForWorkspace('nova-workspace-horizontal', ['sidebar', 'center', 'right'])
+
+    expect(layout).toEqual({ sidebar: 20, center: 46, right: 34 })
+  })
 })
 
 function renderWorkspaceLayout(sidebarVisible: boolean) {

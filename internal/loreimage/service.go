@@ -233,7 +233,6 @@ func (s *Service) Generate(ctx context.Context, cfg *config.Config, bookService 
 func BuildPrompt(request GenerateRequest) string {
 	item := request.Item
 	preset := sanitizePromptText(trimRunes(request.ImagePresetPrompt, maxPresetChars))
-	instruction := sanitizePromptText(trimRunes(request.Instruction, maxInstructionChars))
 	visualGuidance := sanitizePromptText(trimRunes(request.visualGuidance, maxVisualGuidance))
 	var sb strings.Builder
 	if preset != "" {
@@ -248,11 +247,6 @@ func BuildPrompt(request GenerateRequest) string {
 	if visualGuidance != "" {
 		sb.WriteString("\n## 视觉绘制指导\n\n")
 		sb.WriteString(visualGuidance)
-		sb.WriteString("\n")
-	}
-	if instruction != "" {
-		sb.WriteString("\n## 用户补充要求\n\n")
-		sb.WriteString(instruction)
 		sb.WriteString("\n")
 	}
 	return sanitizePromptText(strings.TrimSpace(sb.String()))

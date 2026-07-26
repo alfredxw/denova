@@ -125,7 +125,7 @@ func newLoreImageTestApplication(t *testing.T) (*runtimeapp.App, *httptest.Serve
 					"index": 0,
 					"message": map[string]any{
 						"role":    "assistant",
-						"content": `{"visual_guidance":"黑色短发、灰色眼睛，神情谨慎沉静，穿深色风衣；半身三分之二侧身站姿，双手自然放松，柔和侧逆光勾勒轮廓，自然肌肤毛孔与血色，浅景深；潮湿石砌街巷笼罩薄雾，暖黄路灯形成视觉焦点。"}`,
+						"content": `{"visual_guidance":"黑色短发、灰色眼睛，神情谨慎沉静，穿深色风衣；夜色氛围下采用半身三分之二侧身站姿，双手自然放松，柔和侧逆光勾勒轮廓，自然肌肤毛孔与血色，浅景深；潮湿石砌街巷笼罩薄雾，暖黄路灯形成视觉焦点。"}`,
 					},
 					"finish_reason": "stop",
 				}},
@@ -138,7 +138,7 @@ func newLoreImageTestApplication(t *testing.T) (*runtimeapp.App, *httptest.Serve
 			}
 			prompt, _ := body["prompt"].(string)
 			if strings.Contains(prompt, "资料类型：角色") {
-				for _, want := range []string{"黑色短发", "谨慎沉静", "深色风衣", "侧身站姿", "侧逆光", "肌肤毛孔"} {
+				for _, want := range []string{"黑色短发", "谨慎沉静", "深色风衣", "夜色氛围", "侧身站姿", "侧逆光", "肌肤毛孔"} {
 					if !strings.Contains(prompt, want) {
 						t.Fatalf("character image prompt missing refined guidance %q: %s", want, prompt)
 					}

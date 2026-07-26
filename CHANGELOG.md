@@ -8,6 +8,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Fixed
 
+- 资料库生图的用户补充要求现在只在图像方案约束下经过语言模型提炼后进入最终 Prompt，不再以原文重复追加并覆盖所选风格；超长名称、标签或关键词会按总输入预算安全压缩，不再直接中断单张或批量生成。
+- Lore-image user instructions now enter the final prompt only after language-model refinement under the selected image preset, instead of being appended verbatim and potentially overriding its style. Oversized names, tags, or keywords are safely compacted to the total input budget rather than aborting single or batch generation.
+- 已被旧版本保存为零宽度的作品目录会在加载布局时自动恢复为有效默认宽度并重新平衡工作区，不再继续保持“按钮显示展开、目录实际隐藏”的损坏状态。
+- Project outlines previously persisted at zero width are now repaired to a valid default width while loading and the workspace is rebalanced, instead of retaining a broken “toggle expanded, outline hidden” state.
 - 修复从书籍管理、方案预设等共享界面首次点击资料库时只返回写作界面、需要再次点击才能打开资料库的问题；隐藏的写作面板现在会直接恢复并打开所选面板。
 - Fixed the first Lore click from shared views such as Book Management or Presets only returning to Writing and requiring a second click. Hidden Writing panels now restore and open the requested panel directly.
 - 修复从资料库或方案预设返回写作界面并同时恢复创作 Agent 时，作品目录实际折叠但控制按钮仍显示为展开的问题；目录现在会恢复最后一个有效宽度，且瞬时零宽度不会覆盖已保存布局。
