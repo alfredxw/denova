@@ -1,6 +1,6 @@
 import { fireEvent, render, screen } from '@testing-library/react'
 import { describe, expect, it, vi } from 'vitest'
-import { TabController, type Tab } from './TabController'
+import { persistTabsFor, readTabsFor, TabController, type Tab } from './TabController'
 
 const tabs: Tab[] = [
   { kind: 'file', path: 'chapters/alpha.md' },
@@ -8,6 +8,24 @@ const tabs: Tab[] = [
 ]
 
 describe('TabController', () => {
+  it('persists Lore as a singleton workspace tab and renders its dedicated label', () => {
+    window.localStorage.clear()
+    persistTabsFor('/books/demo', [tabs[0], { kind: 'lore' }, { kind: 'lore' }])
+    const restored = readTabsFor('/books/demo')
+
+    expect(restored).toEqual([tabs[0], { kind: 'lore' }])
+    render(
+      <TabController
+        tabs={restored}
+        activeTabKey="lore"
+        summary={null}
+        onActivateTab={vi.fn()}
+        onCloseTab={vi.fn()}
+      />,
+    )
+    expect(screen.getByRole('tab', { name: /设定/ })).toHaveAttribute('title', '作品资料设定')
+  })
+
   it('activates a tab when clicking the tab surface outside the label text', () => {
     const onActivateTab = vi.fn()
 

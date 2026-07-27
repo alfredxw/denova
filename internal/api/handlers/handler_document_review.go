@@ -9,7 +9,6 @@ import (
 	"github.com/cloudwego/hertz/pkg/protocol/consts"
 
 	denovaapp "denova/internal/app"
-	"denova/internal/book"
 	"denova/internal/documentreview"
 )
 
@@ -19,7 +18,7 @@ func (h *Handlers) HandleDocumentReview(ctx context.Context, c *app.RequestConte
 		return
 	}
 	var thread documentreview.Thread
-	workspace, ok := h.withDocumentReviewService(c, func(service *documentreview.Service, _ *book.Service) error {
+	workspace, ok := h.withDocumentReviewService(c, func(service *documentreview.Service, _ documentreview.SnapshotResolver) error {
 		var err error
 		thread, err = service.CurrentThread(ctx)
 		return err
@@ -41,12 +40,13 @@ func (h *Handlers) HandleDocumentCommentCreate(ctx context.Context, c *app.Reque
 	}
 	var thread documentreview.Thread
 	var comment documentreview.Comment
-	workspace, ok := h.withDocumentReviewService(c, func(service *documentreview.Service, files *book.Service) error {
-		content, revision, err := files.ReadFileWithRevision(req.Path)
+	workspace, ok := h.withDocumentReviewService(c, func(service *documentreview.Service, resolver documentreview.SnapshotResolver) error {
+		resolved, err := resolver.ResolveReviewTarget(ctx, req.Target)
 		if err != nil {
 			return err
 		}
-		thread, comment, err = service.AddComment(ctx, req, documentreview.Snapshot{Content: content, Revision: revision})
+		req.Target = resolved.Target
+		thread, comment, err = service.AddComment(ctx, req, resolved.Snapshot)
 		return err
 	})
 	if !ok {
@@ -67,7 +67,7 @@ func (h *Handlers) HandleDocumentCommentUpdate(ctx context.Context, c *app.Reque
 	req.ID = c.Param("id")
 	var thread documentreview.Thread
 	var comment documentreview.Comment
-	workspace, ok := h.withDocumentReviewService(c, func(service *documentreview.Service, _ *book.Service) error {
+	workspace, ok := h.withDocumentReviewService(c, func(service *documentreview.Service, _ documentreview.SnapshotResolver) error {
 		var err error
 		thread, comment, err = service.UpdateComment(ctx, req)
 		return err
@@ -84,7 +84,7 @@ func (h *Handlers) HandleDocumentCommentDelete(ctx context.Context, c *app.Reque
 	}
 	var thread documentreview.Thread
 	var comment documentreview.Comment
-	workspace, ok := h.withDocumentReviewService(c, func(service *documentreview.Service, _ *book.Service) error {
+	workspace, ok := h.withDocumentReviewService(c, func(service *documentreview.Service, _ documentreview.SnapshotResolver) error {
 		var err error
 		thread, comment, err = service.DeleteComment(ctx, documentreview.DeleteCommentRequest{ID: c.Param("id")})
 		return err
@@ -95,7 +95,7 @@ func (h *Handlers) HandleDocumentCommentDelete(ctx context.Context, c *app.Reque
 	writeJSON(c, consts.StatusOK, map[string]any{"workspace": workspace, "review_thread": thread, "comment": comment})
 }
 
-func (h *Handlers) withDocumentReviewService(c *app.RequestContext, action func(*documentreview.Service, *book.Service) error) (string, bool) {
+func (h *Handlers) withDocumentReviewService(c *app.RequestContext, action func(*documentreview.Service, documentreview.SnapshotResolver) error) (string, bool) {
 	expectedWorkspace := workspaceChangeExpectedWorkspace(c)
 	workspace, err := h.app.WithDocumentReviewService(expectedWorkspace, action)
 	if err != nil {

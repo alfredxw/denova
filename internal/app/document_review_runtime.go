@@ -6,16 +6,15 @@ import (
 	"path/filepath"
 	"strings"
 
-	"denova/internal/book"
 	"denova/internal/documentreview"
 )
 
-// WithDocumentReviewService keeps the workspace identity, manuscript reader,
+// WithDocumentReviewService keeps the workspace identity, resource resolver,
 // and comment ledger under one runtime lease. This prevents a workspace switch
 // from binding a comment to a snapshot from another book.
 func (a *App) WithDocumentReviewService(
 	expectedWorkspace string,
-	action func(*documentreview.Service, *book.Service) error,
+	action func(*documentreview.Service, documentreview.SnapshotResolver) error,
 ) (string, error) {
 	if action == nil {
 		return "", errors.New("document review action is nil")
@@ -35,7 +34,8 @@ func (a *App) WithDocumentReviewService(
 	if err != nil {
 		return "", err
 	}
-	if err := action(service, a.bookService); err != nil {
+	resolver := newDocumentReviewTargetResolver(actualWorkspace, a.bookService)
+	if err := action(service, resolver); err != nil {
 		return "", err
 	}
 	return actualWorkspace, nil

@@ -1,4 +1,4 @@
-import { X } from 'lucide-react'
+import { BookMarked, X } from 'lucide-react'
 import type { ReactNode } from 'react'
 import { useTranslation } from 'react-i18next'
 import type { WorkspaceSummary } from '@/lib/api'
@@ -6,12 +6,19 @@ import type { WorkspaceSummary } from '@/lib/api'
 const TABS_STORAGE_PREFIX = 'nova.layout.tabs:'
 const ACTIVE_TAB_STORAGE_PREFIX = 'nova.layout.activeTab:'
 
-/** 编辑区 Tab：承载已打开文件。 */
-export type Tab = { kind: 'file'; path: string }
+/** 编辑区 Tab：文件与工作区级工具共享同一套生命周期和持久化规则。 */
+export type Tab =
+  | { kind: 'file'; path: string }
+  | { kind: 'lore' }
 
 /** Tab 唯一标识，用于 React key 与持久化匹配 */
 export function tabKey(tab: Tab): string {
-  return `file:${tab.path}`
+  switch (tab.kind) {
+    case 'file':
+      return `file:${tab.path}`
+    case 'lore':
+      return 'lore'
+  }
 }
 
 /** 在 tabs 中挑选最久未激活、且不等于 protectedKey 的 tab key（LRU 淘汰目标）。 */
@@ -59,10 +66,11 @@ export function enforceTabLimit(tabs: Tab[], protectedKey: string | null, max: n
 
 /** Tab 显示标题 */
 function tabLabel(tab: Tab): string {
-  return tab.path.split('/').pop() || tab.path
+  return tab.kind === 'file' ? tab.path.split('/').pop() || tab.path : ''
 }
 
-function formatChapterTabLabel(tab: Tab, summary: WorkspaceSummary | null): string {
+function formatChapterTabLabel(tab: Tab, summary: WorkspaceSummary | null, loreLabel: string): string {
+  if (tab.kind === 'lore') return loreLabel
   return (summary?.chapters || []).find((chapter) => chapter.path === tab.path)?.display_title || tabLabel(tab)
 }
 
@@ -77,6 +85,7 @@ export function readTabsFor(workspace: string): Tab[] {
     const tabs = parsed.flatMap((item): Tab[] => {
       if (item && typeof item === 'object') {
         if (item.kind === 'file' && typeof item.path === 'string') return [{ kind: 'file', path: item.path }]
+        if (item.kind === 'lore') return [{ kind: 'lore' }]
       }
       // 兼容旧版本（仅文件路径字符串）
       if (typeof item === 'string') return [{ kind: 'file', path: item }]
@@ -135,7 +144,7 @@ export function TabController({
           tabs.map((tab) => {
             const key = tabKey(tab)
             const isActive = key === activeTabKey
-            const label = formatChapterTabLabel(tab, summary)
+            const label = formatChapterTabLabel(tab, summary, t('tab.lore'))
             const activate = () => {
               if (!isActive) onActivateTab(tab)
             }
@@ -157,9 +166,10 @@ export function TabController({
                     ? 'bg-[var(--nova-active)] text-[var(--nova-text)]'
                     : 'cursor-pointer text-[var(--nova-text-muted)] hover:bg-[var(--nova-hover)]'
                 }`}
-                title={tab.path}
+                title={tab.kind === 'file' ? tab.path : t('tab.loreTitle')}
               >
                 {isActive && <span className="absolute inset-x-0 top-0 h-0.5 bg-[var(--nova-text-faint)]" />}
+                {tab.kind === 'lore' ? <BookMarked className="relative z-10 h-3.5 w-3.5 text-emerald-500" /> : null}
                 <span className="relative z-10 max-w-[220px] truncate text-left">
                   {label}
                 </span>

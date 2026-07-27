@@ -19,12 +19,13 @@ func TestLoreItemImageGenerateAPIUpdatesItem(t *testing.T) {
 	application, imageServer := newLoreImageTestApplication(t)
 	defer imageServer.Close()
 	server := NewServer(application, "0")
+	workspace := application.Workspace()
 	item, err := application.CreateLoreItem(book.LoreItemInput{ID: "hero", Type: "character", Name: "林川", Importance: "major", Content: "谨慎。"})
 	if err != nil {
 		t.Fatal(err)
 	}
 
-	resp := performJSONRequest(t, server, http.MethodPost, "/api/lore/items/"+item.ID+"/image/generate", map[string]string{
+	resp := performWorkspaceChangeRequest(t, server, http.MethodPost, "/api/lore/items/"+item.ID+"/image/generate", workspace, map[string]string{
 		"instruction": "夜色氛围",
 	})
 	if resp.Code != http.StatusOK {
@@ -47,6 +48,7 @@ func TestLoreImagesGenerateStreamSkipsExistingByDefault(t *testing.T) {
 	application, imageServer := newLoreImageTestApplication(t)
 	defer imageServer.Close()
 	server := NewServer(application, "0")
+	workspace := application.Workspace()
 	withImage, err := application.CreateLoreItem(book.LoreItemInput{ID: "with-image", Type: "character", Name: "已有图", Importance: "major", Content: "已有。"})
 	if err != nil {
 		t.Fatal(err)
@@ -66,7 +68,7 @@ func TestLoreImagesGenerateStreamSkipsExistingByDefault(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	resp := performJSONRequest(t, server, http.MethodPost, "/api/lore/images/generate/stream", map[string]any{
+	resp := performWorkspaceChangeRequest(t, server, http.MethodPost, "/api/lore/images/generate/stream", workspace, map[string]any{
 		"item_ids": []string{withImage.ID, withoutImage.ID},
 	})
 	if resp.Code != http.StatusOK {

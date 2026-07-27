@@ -16,6 +16,12 @@ export interface ReviewFeedbackComment {
   id: string
   body: string
   path?: string
+  target?: {
+    kind: 'workspace_file' | 'lore_item'
+    id: string
+    field?: string
+    name?: string
+  }
   group_id?: string
   change_set_id?: string
   edit_id?: string
@@ -108,7 +114,7 @@ function reviewFeedbackCommentLabel(
   t: ReturnType<typeof useTranslation>['t'],
 ): string {
   const source = t(selection.source === 'document' ? 'changes.feedback.source.document' : 'changes.feedback.source.diff')
-  const target = comment.review_path || comment.path || comment.change_set_id || t('changes.comment')
+  const target = comment.target?.name || comment.target?.id || comment.review_path || comment.path || comment.change_set_id || t('changes.comment')
   const line = comment.review_line !== undefined ? ` · ${t('changes.feedback.line', { line: comment.review_line })}` : ''
   return `${source} · ${target}${line} — ${comment.body}`
 }
@@ -125,6 +131,7 @@ export function reviewFeedbackContextBytes(feedback: ReviewFeedbackBatch): numbe
       ...(comment.edit_id ? { edit_id: comment.edit_id } : {}),
       ...(comment.hunk_id ? { hunk_id: comment.hunk_id } : {}),
       ...(comment.review_path || comment.path ? { path: comment.review_path || comment.path } : {}),
+      ...(comment.target ? { target: comment.target } : {}),
       body: comment.body,
       anchor: compactAnchor(comment.anchor),
     })),

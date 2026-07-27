@@ -1440,7 +1440,7 @@ describe('MarkdownEditor', () => {
     const comment = {
       id: 'comment-1',
       thread_id: 'review-1',
-      path: 'chapters/ch01.md',
+      target: { kind: 'workspace_file' as const, id: 'chapters/ch01.md' },
       body: '调整这里',
       created_at: '',
       updated_at: '',

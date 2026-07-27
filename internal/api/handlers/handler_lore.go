@@ -16,9 +16,13 @@ func (h *Handlers) HandleLoreItems(ctx context.Context, c *app.RequestContext) {
 	if !h.requireWorkspace(c) {
 		return
 	}
-	items, err := h.app.LoreItems()
-	if err != nil {
-		writeError(c, consts.StatusInternalServerError, err.Error())
+	var items []book.LoreItem
+	_, ok := h.withLoreStore(c, func(store *book.LoreStore) error {
+		var err error
+		items, err = store.ListAll()
+		return err
+	})
+	if !ok {
 		return
 	}
 	writeJSON(c, consts.StatusOK, map[string]any{"items": items})
@@ -33,9 +37,13 @@ func (h *Handlers) HandleLoreItemCreate(ctx context.Context, c *app.RequestConte
 		writeErrorKey(c, consts.StatusBadRequest, "api.common.invalidRequestWithDetail", "detail", err.Error())
 		return
 	}
-	item, err := h.app.CreateLoreItem(body)
-	if err != nil {
-		writeError(c, consts.StatusBadRequest, err.Error())
+	var item book.LoreItem
+	_, ok := h.withLoreStore(c, func(store *book.LoreStore) error {
+		var err error
+		item, err = store.Create(body)
+		return err
+	})
+	if !ok {
 		return
 	}
 	writeJSON(c, consts.StatusOK, item)
@@ -50,8 +58,17 @@ func (h *Handlers) HandleLoreItemUpdate(ctx context.Context, c *app.RequestConte
 		writeErrorKey(c, consts.StatusBadRequest, "api.common.invalidRequestWithDetail", "detail", err.Error())
 		return
 	}
-	item, err := h.app.UpdateLoreItem(c.Param("id"), body)
+	var item book.LoreItem
+	_, err := h.app.WithLoreStore(workspaceChangeExpectedWorkspace(c), func(store *book.LoreStore) error {
+		var updateErr error
+		item, updateErr = store.Update(c.Param("id"), body)
+		return updateErr
+	})
 	if err != nil {
+		if errors.Is(err, novaApp.ErrWorkspaceChanged) || errors.Is(err, novaApp.ErrNoWorkspace) {
+			h.writeWorkspaceChangeLeaseError(c, workspaceChangeExpectedWorkspace(c), err)
+			return
+		}
 		if errors.Is(err, book.ErrLoreRevisionConflict) {
 			writeErrorKey(c, consts.StatusConflict, "api.resource.revisionConflict")
 			return
@@ -66,8 +83,8 @@ func (h *Handlers) HandleLoreItemDelete(ctx context.Context, c *app.RequestConte
 	if !h.requireWorkspace(c) {
 		return
 	}
-	if err := h.app.DeleteLoreItem(c.Param("id")); err != nil {
-		writeError(c, consts.StatusBadRequest, err.Error())
+	_, ok := h.withLoreStore(c, func(store *book.LoreStore) error { return store.Delete(c.Param("id")) })
+	if !ok {
 		return
 	}
 	writeJSON(c, consts.StatusOK, map[string]string{"status": "ok"})
@@ -82,8 +99,13 @@ func (h *Handlers) HandleLoreClassificationPreview(ctx context.Context, c *app.R
 		writeErrorKey(c, consts.StatusBadRequest, "api.common.invalidRequestWithDetail", "detail", err.Error())
 		return
 	}
-	preview, err := h.app.PreviewLoreClassification(ctx, body)
+	expectedWorkspace := workspaceChangeExpectedWorkspace(c)
+	preview, err := h.app.PreviewLoreClassificationForWorkspace(ctx, expectedWorkspace, body)
 	if err != nil {
+		if errors.Is(err, novaApp.ErrWorkspaceChanged) || errors.Is(err, novaApp.ErrNoWorkspace) || errors.Is(err, novaApp.ErrWorkspaceTransition) {
+			h.writeWorkspaceChangeLeaseError(c, expectedWorkspace, err)
+			return
+		}
 		writeError(c, consts.StatusBadRequest, err.Error())
 		return
 	}
@@ -99,8 +121,17 @@ func (h *Handlers) HandleLoreClassificationApply(ctx context.Context, c *app.Req
 		writeErrorKey(c, consts.StatusBadRequest, "api.common.invalidRequestWithDetail", "detail", err.Error())
 		return
 	}
-	result, err := h.app.ApplyLoreClassification(body)
+	var result book.LoreTypeApplyResult
+	_, err := h.app.WithLoreStore(workspaceChangeExpectedWorkspace(c), func(store *book.LoreStore) error {
+		var applyErr error
+		result, applyErr = store.ApplyTypeChanges(body.Revision, body.Changes)
+		return applyErr
+	})
 	if err != nil {
+		if errors.Is(err, novaApp.ErrWorkspaceChanged) || errors.Is(err, novaApp.ErrNoWorkspace) {
+			h.writeWorkspaceChangeLeaseError(c, workspaceChangeExpectedWorkspace(c), err)
+			return
+		}
 		if errors.Is(err, book.ErrLoreRevisionConflict) {
 			writeErrorKey(c, consts.StatusConflict, "api.resource.revisionConflict")
 			return
@@ -120,10 +151,11 @@ func (h *Handlers) HandleLoreItemImageGenerate(ctx context.Context, c *app.Reque
 		writeErrorKey(c, consts.StatusBadRequest, "api.common.invalidRequestWithDetail", "detail", err.Error())
 		return
 	}
-	item, err := h.app.GenerateLoreItemImage(ctx, c.Param("id"), body)
+	expectedWorkspace := workspaceChangeExpectedWorkspace(c)
+	item, err := h.app.GenerateLoreItemImageForWorkspace(ctx, expectedWorkspace, c.Param("id"), body)
 	if err != nil {
-		if err == novaApp.ErrNoWorkspace {
-			writeErrorKey(c, consts.StatusBadRequest, "api.settings.workspaceMissing")
+		if errors.Is(err, novaApp.ErrWorkspaceChanged) || errors.Is(err, novaApp.ErrNoWorkspace) || errors.Is(err, novaApp.ErrWorkspaceTransition) {
+			h.writeWorkspaceChangeLeaseError(c, expectedWorkspace, err)
 			return
 		}
 		writeError(c, consts.StatusBadRequest, err.Error())
@@ -141,8 +173,13 @@ func (h *Handlers) HandleLoreImagesGenerateStream(ctx context.Context, c *app.Re
 		writeErrorKey(c, consts.StatusBadRequest, "api.common.invalidRequestWithDetail", "detail", err.Error())
 		return
 	}
-	task, err := h.app.StartLoreImagesGenerateTask(body)
+	expectedWorkspace := workspaceChangeExpectedWorkspace(c)
+	task, err := h.app.StartLoreImagesGenerateTaskForWorkspace(expectedWorkspace, body)
 	if err != nil {
+		if errors.Is(err, novaApp.ErrWorkspaceChanged) || errors.Is(err, novaApp.ErrNoWorkspace) || errors.Is(err, novaApp.ErrWorkspaceTransition) {
+			h.writeWorkspaceChangeLeaseError(c, expectedWorkspace, err)
+			return
+		}
 		if errors.Is(err, novaApp.ErrLoreImageTaskRunning) {
 			writeError(c, consts.StatusConflict, err.Error())
 			return
@@ -154,7 +191,15 @@ func (h *Handlers) HandleLoreImagesGenerateStream(ctx context.Context, c *app.Re
 }
 
 func (h *Handlers) HandleLoreImagesGenerateAbort(ctx context.Context, c *app.RequestContext) {
-	h.app.AbortLoreImagesGenerateTask()
+	expectedWorkspace := workspaceChangeExpectedWorkspace(c)
+	if err := h.app.AbortLoreImagesGenerateTaskForWorkspace(expectedWorkspace); err != nil {
+		if errors.Is(err, novaApp.ErrWorkspaceChanged) || errors.Is(err, novaApp.ErrNoWorkspace) {
+			h.writeWorkspaceChangeLeaseError(c, expectedWorkspace, err)
+			return
+		}
+		writeError(c, consts.StatusBadRequest, err.Error())
+		return
+	}
 	writeJSON(c, consts.StatusOK, map[string]string{"status": "ok"})
 }
 
@@ -162,10 +207,28 @@ func (h *Handlers) HandleLoreItemImageDelete(ctx context.Context, c *app.Request
 	if !h.requireWorkspace(c) {
 		return
 	}
-	item, err := h.app.ClearLoreItemImage(c.Param("id"))
-	if err != nil {
-		writeError(c, consts.StatusBadRequest, err.Error())
+	var item book.LoreItem
+	_, ok := h.withLoreStore(c, func(store *book.LoreStore) error {
+		var err error
+		item, err = store.SetImage(c.Param("id"), nil)
+		return err
+	})
+	if !ok {
 		return
 	}
 	writeJSON(c, consts.StatusOK, item)
+}
+
+func (h *Handlers) withLoreStore(c *app.RequestContext, action func(*book.LoreStore) error) (string, bool) {
+	expectedWorkspace := workspaceChangeExpectedWorkspace(c)
+	workspace, err := h.app.WithLoreStore(expectedWorkspace, action)
+	if err != nil {
+		if errors.Is(err, novaApp.ErrWorkspaceChanged) || errors.Is(err, novaApp.ErrNoWorkspace) {
+			h.writeWorkspaceChangeLeaseError(c, expectedWorkspace, err)
+		} else {
+			writeError(c, consts.StatusBadRequest, err.Error())
+		}
+		return "", false
+	}
+	return workspace, true
 }

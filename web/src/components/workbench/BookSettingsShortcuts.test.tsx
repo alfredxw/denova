@@ -6,8 +6,9 @@ import { BookSettingsShortcuts } from './BookSettingsShortcuts'
 describe('BookSettingsShortcuts', () => {
   beforeEach(() => window.localStorage.clear())
 
-  it('默认 Pin 五个自适应快捷入口，并可 Pin 动态发现的 Markdown 文件', async () => {
+  it('默认 Pin 设定工作区与五个文件入口，并可 Pin 动态发现的 Markdown 文件', async () => {
     const user = userEvent.setup()
+    const onOpenLoreTab = vi.fn()
     render(
       <BookSettingsShortcuts
         workspace="/books/demo"
@@ -25,6 +26,7 @@ describe('BookSettingsShortcuts', () => {
         selectedFile={null}
         headerPinned
         onSelectFile={vi.fn()}
+        onOpenLoreTab={onOpenLoreTab}
         onToggleHeaderPinned={vi.fn()}
       />,
     )
@@ -33,9 +35,13 @@ describe('BookSettingsShortcuts', () => {
     expect(screen.getByRole('button', { name: '规则' })).toBeInTheDocument()
     expect(screen.getByRole('button', { name: '进度' })).toBeInTheDocument()
     expect(screen.getByRole('button', { name: /^灵感尚未创建/ })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: '设定' })).toBeInTheDocument()
     expect(screen.getByRole('button', { name: /^状态尚未创建/ })).toBeInTheDocument()
     expect(screen.getByTestId('book-setting-shortcuts')).toHaveClass('grid-cols-[repeat(auto-fill,minmax(4rem,1fr))]')
     expect(screen.queryByRole('button', { name: '人物关系' })).not.toBeInTheDocument()
+
+    await user.click(screen.getByRole('button', { name: '设定' }))
+    expect(onOpenLoreTab).toHaveBeenCalledTimes(1)
 
     await user.click(screen.getByRole('button', { name: '管理' }))
     expect(screen.getByText('setting/人物关系.md')).toBeInTheDocument()
@@ -64,11 +70,12 @@ describe('BookSettingsShortcuts', () => {
     expect(screen.getAllByRole('button').filter((button) => ['灵感', '规则'].includes(button.textContent || '')).map((button) => button.textContent)).toEqual(['灵感', '规则'])
   })
 
-  it('把旧版未自定义的默认三项迁移为新的默认五项', () => {
+  it('把旧版未自定义的默认三项迁移为包含设定工作区的新默认项', () => {
     window.localStorage.setItem('nova.outline.pinned-settings:/books/demo', JSON.stringify(['setting/outline.md', 'CREATOR.md', 'setting/progress.md']))
     render(<BookSettingsShortcuts workspace="/books/demo" tree={[]} chapterPlans={[]} selectedFile={null} headerPinned onSelectFile={vi.fn()} onToggleHeaderPinned={vi.fn()} />)
 
     expect(screen.getByRole('button', { name: /^灵感尚未创建/ })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: '设定' })).toBeInTheDocument()
     expect(screen.getByRole('button', { name: /^状态尚未创建/ })).toBeInTheDocument()
   })
 

@@ -20,8 +20,10 @@ interface ChapterOutlineProps {
   outline?: DocumentPreview
   chapterPlans: DocumentPreview[]
   selectedFile: string | null
+  loreTabActive?: boolean
   revealRequest?: OutlineRevealRequest | null
   onSelectFile: (path: string) => void | Promise<void>
+  onOpenLoreTab?: () => void | Promise<boolean | void>
   onReferenceFile?: (path: string) => void
   onRevealFile?: (path: string) => void | Promise<void>
   onRenameItem?: (path: string, newName: string) => Promise<void>
@@ -48,8 +50,10 @@ export function ChapterOutline({
   outline,
   chapterPlans,
   selectedFile,
+  loreTabActive,
   revealRequest,
   onSelectFile,
+  onOpenLoreTab,
   onReferenceFile,
   onRevealFile,
   onRenameItem,
@@ -190,8 +194,10 @@ export function ChapterOutline({
         ideas={ideas}
         chapterPlans={chapterPlans}
         selectedFile={selectedFile}
+        loreTabActive={loreTabActive}
         headerPinned={headerPinned}
         onSelectFile={handleSelectFileFromPanel}
+        onOpenLoreTab={onOpenLoreTab}
         latestChapterAvailable={Boolean(latestChapterPath)}
         backToTopAvailable={backToTopVisible}
         onLocateLatestChapter={() => { if (latestChapterPath) locateChapter(latestChapterPath, 'smooth') }}

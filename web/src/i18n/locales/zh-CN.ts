@@ -15,6 +15,7 @@ import novelImport from './zh-CN/novelImport'
 import router from './zh-CN/router'
 import planning from './zh-CN/planning'
 import lore from './zh-CN/lore'
+import loreWorkspace from './zh-CN/loreWorkspace'
 import locale from './zh-CN/locale'
 import layout from './zh-CN/layout'
 import agents from './zh-CN/agents'
@@ -58,6 +59,7 @@ const zhCN = {
   ...router,
   ...planning,
   ...lore,
+  ...loreWorkspace,
   ...locale,
   ...layout,
   ...agents,

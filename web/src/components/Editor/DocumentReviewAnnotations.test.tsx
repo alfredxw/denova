@@ -34,7 +34,7 @@ describe('DocumentReviewAnnotations', () => {
     const initialComment: DocumentReviewComment = {
       id: 'comment-alpha',
       thread_id: 'document-thread',
-      path: 'chapters/ch01.md',
+      target: { kind: 'workspace_file', id: 'chapters/ch01.md' },
       body: 'Alpha comment',
       created_at: '2026-07-18T00:00:00Z',
       updated_at: '2026-07-18T00:00:00Z',
@@ -63,7 +63,7 @@ describe('DocumentReviewAnnotations', () => {
         const created: DocumentReviewComment = {
           id: 'comment-beta',
           thread_id: 'document-thread',
-          path: request.path,
+          target: request.target,
           body: request.body,
           anchor: request.anchor,
           created_at: '2026-07-18T00:01:00Z',
@@ -80,7 +80,8 @@ describe('DocumentReviewAnnotations', () => {
           <DocumentReviewAnnotations
             ref={(handle) => { annotationRef.current = handle }}
             editor={editor!}
-            fileName="chapters/ch01.md"
+            target={{ kind: 'workspace_file', id: 'chapters/ch01.md' }}
+            resourceLabel="chapters/ch01.md"
             containerRef={containerRef}
             comments={comments}
             decorationStateRef={decorationStateRef}
@@ -151,7 +152,8 @@ describe('DocumentReviewAnnotations', () => {
           <DocumentReviewAnnotations
             ref={(handle) => { annotationRef.current = handle }}
             editor={editor!}
-            fileName="chapters/ch01.md"
+            target={{ kind: 'workspace_file', id: 'chapters/ch01.md' }}
+            resourceLabel="chapters/ch01.md"
             containerRef={containerRef}
             comments={[comment]}
             decorationStateRef={decorationStateRef}
@@ -219,7 +221,8 @@ describe('DocumentReviewAnnotations', () => {
           <DocumentReviewAnnotations
             ref={(handle) => { annotationRef.current = handle }}
             editor={editor!}
-            fileName="chapters/ch01.md"
+            target={{ kind: 'workspace_file', id: 'chapters/ch01.md' }}
+            resourceLabel="chapters/ch01.md"
             containerRef={containerRef}
             comments={comments}
             decorationStateRef={decorationStateRef}
@@ -268,7 +271,7 @@ function reviewComment(
   return {
     id,
     thread_id: 'document-thread',
-    path: 'chapters/ch01.md',
+    target: { kind: 'workspace_file', id: 'chapters/ch01.md' },
     body,
     created_at: '2026-07-18T00:00:00Z',
     updated_at: '2026-07-18T00:00:00Z',

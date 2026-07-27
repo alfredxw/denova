@@ -16,7 +16,6 @@ import (
 
 const (
 	maxCommentBodyBytes = 64 * 1024
-	maxPathBytes        = 16 * 1024
 )
 
 var workspaceServices = struct {
@@ -33,9 +32,9 @@ type eventLog interface {
 	close()
 }
 
-// Service owns one workspace's durable author-created document comments.
-// Content mutations remain owned by workspacechange; this service records only
-// review metadata and never rewrites manuscript files.
+// Service owns one workspace's durable author-created text-resource comments.
+// Resource stores retain mutation ownership; this service records review
+// metadata only and never rewrites manuscripts or lore entries.
 type Service struct {
 	workspace string
 	store     eventLog
@@ -135,7 +134,7 @@ func (s *Service) Workspace() string {
 
 func (s *Service) CurrentThread(ctx context.Context) (Thread, error) {
 	if s == nil {
-		return Thread{}, newError(ErrorCodeConflict, "document review service is nil", nil)
+		return Thread{}, newError(ErrorCodeConflict, "text review service is nil", nil)
 	}
 	s.mu.RLock()
 	defer s.mu.RUnlock()
@@ -147,15 +146,15 @@ func (s *Service) CurrentThread(ctx context.Context) (Thread, error) {
 
 func (s *Service) AddComment(ctx context.Context, req AddCommentRequest, snapshot Snapshot) (Thread, Comment, error) {
 	if s == nil {
-		return Thread{}, Comment{}, newError(ErrorCodeConflict, "document review service is nil", nil)
+		return Thread{}, Comment{}, newError(ErrorCodeConflict, "text review service is nil", nil)
 	}
-	path := strings.TrimSpace(req.Path)
-	body, err := validateBody(req.Body)
+	target, err := NormalizeTarget(req.Target)
 	if err != nil {
 		return Thread{}, Comment{}, err
 	}
-	if path == "" || len(path) > maxPathBytes {
-		return Thread{}, Comment{}, newError(ErrorCodeInvalid, "document comment path is invalid", nil)
+	body, err := validateBody(req.Body)
+	if err != nil {
+		return Thread{}, Comment{}, err
 	}
 	req.Anchor = normalizeAnchor(req.Anchor)
 	if err := ValidateAnchor(snapshot, req.Anchor); err != nil {
@@ -178,7 +177,7 @@ func (s *Service) AddComment(ctx context.Context, req AddCommentRequest, snapsho
 	comment := Comment{
 		ID:        newID("document-comment"),
 		ThreadID:  thread.ID,
-		Path:      filepath.ToSlash(filepath.Clean(filepath.FromSlash(path))),
+		Target:    target,
 		Body:      body,
 		Anchor:    req.Anchor,
 		CreatedAt: now,
@@ -187,7 +186,7 @@ func (s *Service) AddComment(ctx context.Context, req AddCommentRequest, snapsho
 	if err := s.appendAndApply(ledgerEvent{Type: eventCommentsUpserted, CreatedAt: now, Comments: []Comment{comment}}); err != nil {
 		return Thread{}, Comment{}, err
 	}
-	log.Printf("[document-review] comment created workspace=%q path=%q thread_id=%s comment_id=%s", s.workspace, comment.Path, comment.ThreadID, comment.ID)
+	log.Printf("[document-review] comment created workspace=%q target_kind=%q target_id=%q target_field=%q thread_id=%s comment_id=%s", s.workspace, comment.Target.Kind, comment.Target.ID, comment.Target.Field, comment.ThreadID, comment.ID)
 	return s.currentThreadLocked(), comment, nil
 }
 
@@ -211,7 +210,7 @@ func (s *Service) UpdateComment(ctx context.Context, req UpdateCommentRequest) (
 	if err := s.appendAndApply(ledgerEvent{Type: eventCommentsUpserted, CreatedAt: next.UpdatedAt, Comments: []Comment{next}}); err != nil {
 		return Thread{}, Comment{}, err
 	}
-	log.Printf("[document-review] comment updated workspace=%q path=%q thread_id=%s comment_id=%s", s.workspace, next.Path, next.ThreadID, next.ID)
+	log.Printf("[document-review] comment updated workspace=%q target_kind=%q target_id=%q thread_id=%s comment_id=%s", s.workspace, next.Target.Kind, next.Target.ID, next.ThreadID, next.ID)
 	return s.currentThreadLocked(), next, nil
 }
 
@@ -231,7 +230,7 @@ func (s *Service) DeleteComment(ctx context.Context, req DeleteCommentRequest) (
 	if err := s.appendAndApply(ledgerEvent{Type: eventCommentsUpserted, CreatedAt: next.UpdatedAt, Comments: []Comment{next}}); err != nil {
 		return Thread{}, Comment{}, err
 	}
-	log.Printf("[document-review] comment deleted workspace=%q path=%q thread_id=%s comment_id=%s", s.workspace, next.Path, next.ThreadID, next.ID)
+	log.Printf("[document-review] comment deleted workspace=%q target_kind=%q target_id=%q thread_id=%s comment_id=%s", s.workspace, next.Target.Kind, next.Target.ID, next.ThreadID, next.ID)
 	return s.currentThreadLocked(), next, nil
 }
 

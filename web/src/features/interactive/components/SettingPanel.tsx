@@ -29,14 +29,15 @@ import type { ImagePreset, StoryDirector, Teller } from '../types'
 import { CreatorDirectory, CreatorEditor } from './setting-panel/CreatorEditor'
 import { LoreEditor } from './setting-panel/LoreEditor'
 import { OpeningPresetEditor } from './setting-panel/OpeningPresetEditor'
-import { loreImportanceLabel, loreLoadModeLabel, loreTypeLabel } from './setting-panel/editor-shared'
+import { loreImportanceLabel, loreLoadModeLabel, loreTypeLabel } from '@/features/lore/options'
 import { LoreClassificationDialog } from './LoreClassificationDialog'
 import { presetActionButtonClassName as actionButtonClassName, presetIconActionClassName as iconActionClassName } from './preset-config/editor-styles'
 import { PresetSettingsPanel } from './setting-panel/PresetSettingsPanel'
-import { loreAutosaveDraft, useLoreItemAutosave, type LoreAutosaveDraft } from './setting-panel/use-lore-item-autosave'
+import { loreAutosaveDraft, useLoreItemAutosave, type LoreAutosaveDraft } from '@/features/lore/use-lore-item-autosave'
+import { LORE_UPDATED_EVENT, notifyLoreUpdated, type LoreUpdatedDetail } from '@/features/lore/events'
 import { useWorkspaceFileAutosave } from './setting-panel/use-workspace-file-autosave'
 import { EMPTY_IMAGE_PRESETS, EMPTY_STORY_DIRECTORS, EMPTY_TELLERS } from './setting-panel/presetResources'
-import { firstVisibleLoreItemId, KNOWLEDGE_SECTIONS, sectionItems, type KnowledgeSection, type LoreLoadModeFilter, type LoreType } from './setting-panel/knowledge-sections'
+import { firstVisibleLoreItemId, KNOWLEDGE_SECTIONS, sectionItems, type KnowledgeSection, type LoreLoadModeFilter, type LoreType } from '@/features/lore/knowledge-sections'
 
 const CREATOR_PATH = 'CREATOR.md'
 const CREATOR_ENTRY_ID = '__creator__'
@@ -59,6 +60,7 @@ interface SettingPanelProps {
   onImagePresetsChange?: (presets: ImagePreset[]) => void
   embedded?: boolean
   onClose?: () => void
+  onFlushHandlerChange?: (handler: (() => Promise<boolean>) | null) => void
 }
 
 export function SettingPanel({
@@ -73,6 +75,7 @@ export function SettingPanel({
   onImagePresetsChange,
   embedded = false,
   onClose,
+  onFlushHandlerChange,
 }: SettingPanelProps) {
   const activeMode = mode || 'lore'
   if (activeMode === 'teller') {
@@ -91,7 +94,7 @@ export function SettingPanel({
       />
     )
   }
-  return <LoreSettingPanel mode={activeMode} workspace={workspace} imagePresets={imagePresets} onImagePresetsChange={onImagePresetsChange} embedded={embedded} onClose={onClose} />
+  return <LoreSettingPanel mode={activeMode} workspace={workspace} imagePresets={imagePresets} onImagePresetsChange={onImagePresetsChange} embedded={embedded} onClose={onClose} onFlushHandlerChange={onFlushHandlerChange} />
 }
 
 function LoreSettingPanel({
@@ -101,6 +104,7 @@ function LoreSettingPanel({
   onImagePresetsChange,
   embedded,
   onClose,
+  onFlushHandlerChange,
 }: {
   mode: Exclude<SettingPanelMode, 'teller'>
   workspace: string
@@ -108,6 +112,7 @@ function LoreSettingPanel({
   onImagePresetsChange?: (presets: ImagePreset[]) => void
   embedded: boolean
   onClose?: () => void
+  onFlushHandlerChange?: (handler: (() => Promise<boolean>) | null) => void
 }) {
   const { t } = useTranslation()
   const activeMode = mode
@@ -312,7 +317,7 @@ function LoreSettingPanel({
     setLoading(true)
     setLoadError(null)
     try {
-      const data = await getLoreItems()
+      const data = await getLoreItems(workspace)
       setItems(data)
       // 默认落地到第一个可见资料条目；全库为空时交由空态引导（activeId 置空）
       setActiveId(firstVisibleLoreItemId(data) ?? '')
@@ -346,6 +351,23 @@ function LoreSettingPanel({
       ? { ...currentDraft, tags: [...(currentDraft.tags || [])], tag_draft: loreTagDraftRef.current }
       : null
     void (async () => {
+      if (
+        currentDraft
+        && previousBaseline?.id === currentDraft.id
+        && !items.some((entry) => entry.id === currentDraft.id)
+      ) {
+        await rebaseJSONWithRecovery<LoreAutosaveDraft | null>({
+          resource: 'lore_item',
+          scope: workspace,
+          id: currentDraft.id,
+          baseline: { revision: previousBaseline.updated_at, value: previousBaseline },
+          local: {
+            revision: previousBaseline.updated_at,
+            value: { ...currentDraft, tags: [...(currentDraft.tags || [])], tag_draft: loreTagDraftRef.current },
+          },
+          external: { revision: 'deleted', value: null },
+        })
+      }
       let rebasedFromDraft = currentDraft
       let rebasedFromTagDraft = loreTagDraftRef.current
       let rebasedFromAutosaveDraft = currentAutosaveDraft
@@ -567,26 +589,26 @@ function LoreSettingPanel({
     })
   }, [externalImagePresets, workspace])
 
-  const refreshItems = async (nextActiveId?: string) => {
-    const data = await getLoreItems()
+  const refreshItems = useCallback(async (nextActiveId?: string) => {
+    const data = await getLoreItems(workspace)
     setItems(data)
     // 缺省保持当前选中（仍存在则保留，含伪条目）；否则选中第一个可见条目，全库为空时置空走空态
     setActiveId((current) => {
-      if (nextActiveId) return nextActiveId
+      if (nextActiveId && data.some((item) => item.id === nextActiveId)) return nextActiveId
       if (current === CREATOR_ENTRY_ID || current === INTERACTIVE_OPENING_PRESET_ENTRY_ID || current === LORE_CONFIG_AGENT_ENTRY_ID) return current
       if (current && data.some((item) => item.id === current)) return current
       return firstVisibleLoreItemId(data) ?? ''
     })
-  }
+  }, [workspace])
 
   useEffect(() => {
     const onLoreUpdated = (event: Event) => {
-      const detail = (event as CustomEvent<{ item_ids?: string[] }>).detail
-      void refreshItems(detail?.item_ids?.[0])
+      const detail = (event as CustomEvent<LoreUpdatedDetail>).detail
+      void refreshItems(detail?.ids?.[0] || detail?.item_ids?.[0])
     }
-    window.addEventListener('nova:lore-updated', onLoreUpdated)
-    return () => window.removeEventListener('nova:lore-updated', onLoreUpdated)
-  }, [])
+    window.addEventListener(LORE_UPDATED_EVENT, onLoreUpdated)
+    return () => window.removeEventListener(LORE_UPDATED_EVENT, onLoreUpdated)
+  }, [refreshItems])
 
   const mergeSavedLoreItem = (item: LoreItem) => {
     setItems((current) => current.map((entry) => (entry.id === item.id ? item : entry)))
@@ -602,7 +624,7 @@ function LoreSettingPanel({
     setSaving(true)
     try {
       const createName = t(section.createNameKey)
-      const item = await createLoreItem({
+      const item = await createLoreItem(workspace, {
         enabled: true,
         type: section.createType,
         name: createName,
@@ -613,7 +635,7 @@ function LoreSettingPanel({
         content: `## ${createName}\n\n`,
       })
       await refreshItems(item.id)
-      notifyLoreUpdated([item.id])
+      notifyLoreUpdated({ ids: [item.id] })
     } finally {
       setSaving(false)
     }
@@ -630,23 +652,23 @@ function LoreSettingPanel({
     try {
       await flushLoreAutosave()
       loreAutosave.cancelPending()
-      await deleteLoreItem(deleteLoreTarget.id)
+      await deleteLoreItem(workspace, deleteLoreTarget.id)
       await refreshItems()
-      notifyLoreUpdated([deleteLoreTarget.id])
+      notifyLoreUpdated({ ids: [deleteLoreTarget.id] })
       setDeleteLoreTarget(null)
     } finally {
       setSaving(false)
     }
   }
 
-  const flushLoreAutosave = async (force = false) => {
+  const flushLoreAutosave = useCallback(async (force = false) => {
     const pending = loreAutosave.flushPending()
     if (pending) return pending
     if (force || loreAutosave.status === 'error') return loreAutosave.saveNow(force ? 'manual' : 'auto')
     return null
-  }
+  }, [loreAutosave.flushPending, loreAutosave.saveNow, loreAutosave.status])
 
-  const flushActiveAutosave = async () => {
+  const flushActiveAutosave = useCallback(async () => {
     try {
       if (activeMode === 'creator' || (activeMode === 'lore' && activeId === CREATOR_ENTRY_ID)) {
         await (creatorAutosave.flushPending() ?? creatorAutosave.saveNow('manual'))
@@ -658,14 +680,28 @@ function LoreSettingPanel({
       }
       const item = await flushLoreAutosave()
       if (item) {
-        notifyLoreUpdated([item.id])
+        notifyLoreUpdated({ ids: [item.id] })
       }
       return true
     } catch (err) {
       toast.error((err as Error).message || t('editor.saveFailed'))
       return false
     }
-  }
+  }, [
+    activeId,
+    activeMode,
+    creatorAutosave.flushPending,
+    creatorAutosave.saveNow,
+    flushLoreAutosave,
+    openingPresetAutosave.flushPending,
+    openingPresetAutosave.saveNow,
+    t,
+  ])
+
+  useEffect(() => {
+    onFlushHandlerChange?.(flushActiveAutosave)
+    return () => onFlushHandlerChange?.(null)
+  }, [flushActiveAutosave, onFlushHandlerChange])
 
   const closePanel = async () => {
     if (!onClose || !(await flushActiveAutosave())) return
@@ -697,12 +733,12 @@ function LoreSettingPanel({
     try {
       const saved = await flushLoreAutosave()
       const target = saved || loreDraftRef.current || draft
-      const item = await generateLoreItemImage(target.id, {
+      const item = await generateLoreItemImage(workspace, target.id, {
         instruction: loreImageInstruction,
         image_preset_id: selectedLoreImagePresetId(),
       })
       mergeSavedLoreItem(item)
-      notifyLoreUpdated([item.id])
+      notifyLoreUpdated({ ids: [item.id] })
       toast.success(t('settingPanel.loreImage.generated'))
     } catch (err) {
       toast.error((err as Error).message || t('settingPanel.loreImage.failed'))
@@ -717,9 +753,9 @@ function LoreSettingPanel({
     try {
       const saved = await flushLoreAutosave()
       const target = saved || loreDraftRef.current || draft
-      const item = await clearLoreItemImage(target.id)
+      const item = await clearLoreItemImage(workspace, target.id)
       mergeSavedLoreItem(item)
-      notifyLoreUpdated([item.id])
+      notifyLoreUpdated({ ids: [item.id] })
       toast.success(t('settingPanel.loreImage.cleared'))
     } catch (err) {
       toast.error((err as Error).message || t('settingPanel.loreImage.failed'))
@@ -745,7 +781,7 @@ function LoreSettingPanel({
     setLoreImageBatchRunning(true)
     setLoreImageBatchProgress({})
     try {
-      const stream = await streamLoreImagesGenerate({
+      const stream = await streamLoreImagesGenerate(workspace, {
         item_ids: loreImageBatchSelectedIds,
         instruction: loreImageBatchInstruction,
         overwrite_existing: loreImageBatchOverwrite,
@@ -796,7 +832,7 @@ function LoreSettingPanel({
   }
 
   const handleAbortLoreImageBatch = () => {
-    void abortLoreImagesGenerate().catch((err) => {
+    void abortLoreImagesGenerate(workspace).catch((err) => {
       console.warn('[lore-image] 中止批量生成请求失败', err)
     })
     loreImageBatchAbortRef.current?.abort()
@@ -1014,12 +1050,13 @@ function LoreSettingPanel({
       </AdaptiveSurface>
       <LoreClassificationDialog
         open={loreClassificationOpen}
+        workspace={workspace}
         onOpenChange={setLoreClassificationOpen}
         onApplied={(nextItems) => {
           setItems(nextItems)
           const selectedItem = nextItems.find((item) => item.id === activeId)
           if (selectedItem) mergeSavedLoreItem(selectedItem)
-          notifyLoreUpdated(selectedItem ? [selectedItem.id] : [])
+          notifyLoreUpdated({ ids: selectedItem ? [selectedItem.id] : [] })
         }}
       />
       <LoreImageBatchDialog
@@ -1312,11 +1349,6 @@ function parseSSEData<T>(event: SSEEvent): T | null {
 function isAbortError(err: unknown) {
   if (typeof DOMException !== 'undefined' && err instanceof DOMException && err.name === 'AbortError') return true
   return err instanceof Error && err.name === 'AbortError'
-}
-
-function notifyLoreUpdated(itemIds: string[] = []) {
-  if (typeof window === 'undefined') return
-  window.dispatchEvent(new CustomEvent('nova:lore-updated', { detail: { item_ids: itemIds } }))
 }
 
 function notifyOpeningPresetUpdated() {

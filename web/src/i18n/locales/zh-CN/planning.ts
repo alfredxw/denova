@@ -20,6 +20,7 @@ const planning = {
   'planning.reorderBookSetting': '拖拽排序 {{title}}',
   'planning.otherBookSettings': '其他设定',
   'planning.ideas': '灵感',
+  'planning.loreSettings': '设定',
   'planning.ideasEmpty': 'ideas.md 尚未生成',
   'planning.outline': '大纲',
   'planning.outlineTab': '大纲',

@@ -336,7 +336,7 @@ describe('AgentPanel', () => {
     expect(handleSubmissionFailed).toHaveBeenCalledTimes(1)
   })
 
-  it('同时提交正文与 Diff 审阅意见并保留各自来源', async () => {
+  it('同时提交批注与 Diff 审阅意见并保留各自来源', async () => {
     const user = userEvent.setup()
     const handleSend = vi.fn().mockResolvedValue(true)
     renderAgentPanel({
@@ -357,7 +357,7 @@ describe('AgentPanel', () => {
     })
 
     expect(screen.getByTitle('调整 Diff 里的转场')).toHaveTextContent('Diff · chapters/ch01.md')
-    expect(screen.getByTitle('正文这里需要更克制')).toHaveTextContent('正文 · chapters/ch02.md')
+    expect(screen.getByTitle('正文这里需要更克制')).toHaveTextContent('批注 · chapters/ch02.md')
     await user.click(screen.getByRole('button', { name: '发送' }))
 
     await waitFor(() => expect(handleSend).toHaveBeenCalledWith(
@@ -371,7 +371,7 @@ describe('AgentPanel', () => {
     ))
   })
 
-  it('将正文审阅引用点击交给工作台导航', async () => {
+  it('将批注引用点击交给工作台导航', async () => {
     const user = userEvent.setup()
     const handleOpen = vi.fn()
     const selection = {
@@ -385,7 +385,7 @@ describe('AgentPanel', () => {
       reviewFeedback: [selection],
     })
 
-    await user.click(screen.getByRole('button', { name: /正文 · chapters\/ch02\.md · 第 111 行 — 正文这里需要更克制/ }))
+    await user.click(screen.getByRole('button', { name: /批注 · chapters\/ch02\.md · 第 111 行 — 正文这里需要更克制/ }))
 
     expect(handleOpen).toHaveBeenCalledWith(selection, selection.comments[0])
   })

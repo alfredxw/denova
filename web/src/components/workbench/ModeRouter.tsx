@@ -8,7 +8,7 @@ import { FileTree } from '@/components/Sidebar/FileTree'
 import { SearchPanel } from '@/components/Sidebar/SearchPanel'
 import { AgentPanel, WRITING_COMPOSER_SETTING_DEFAULTS } from '@/components/Chat/AgentPanel'
 import { FilePreview } from '@/components/workbench/FilePreview'
-import { MarkdownEditor, type DocumentReviewNavigationIntent, type EditorFlushHandler } from '@/components/Editor/MarkdownEditor'
+import { MarkdownEditor, type EditorFlushHandler } from '@/components/Editor/MarkdownEditor'
 import { ChapterOutline, type OutlineRevealRequest } from '@/components/workbench/outline/ChapterOutline'
 import { getImagePresets, getInteractiveTellers } from '@/features/interactive/api'
 import { useInteractiveStore } from '@/features/interactive/stores/interactive-store'
@@ -25,8 +25,9 @@ import type { RightPanel, WorkspaceMode } from '@/stores/workspace-store'
 import { workspaceFileKind } from '@/lib/workspace-file-kind'
 import { workspaceParentPaths } from '@/lib/workspace-path'
 import { useWritingChangeReview } from '@/features/changes/use-writing-change-review'
-import type { ReviewFeedbackBatch, ReviewFeedbackComment, ReviewFeedbackSelection } from '@/features/changes/agent/ReviewFeedbackTray'
+import type { ReviewFeedbackBatch, ReviewFeedbackSelection } from '@/features/changes/agent/ReviewFeedbackTray'
 import { useDocumentReview } from '@/features/document-review/use-document-review'
+import { loreImportanceLabel, loreLoadModeLabel, loreTypeLabel } from '@/features/lore/options'
 import { ChangeReviewWorkspace } from '@/features/changes/review/ChangeReviewWorkspace'
 import type { WorkbenchNotice } from '@/features/notices/use-workbench-notice'
 import { createStablePortalHost, StablePortalSlot } from '@/components/layout/stable-portal-slot'
@@ -34,6 +35,7 @@ import type { Tab } from './TabController'
 import { TabController, tabKey } from './TabController'
 import { WorkbenchShell, type WorkbenchPresentedLayout } from './WorkbenchShell'
 import { flattenFileTree } from './workbench-utils'
+import { useReviewFeedbackNavigation } from './use-review-feedback-navigation'
 
 const WRITING_AGENT_INIT_EVENT = 'nova:writing-agent-init'
 const InteractiveLayout = memo(lazy(() => import('@/features/interactive/components/InteractiveLayout').then((module) => ({ default: module.InteractiveLayout }))))
@@ -45,6 +47,7 @@ const AutomationsView = memo(lazy(() => import('@/features/automations/Automatio
 const SkillsView = memo(lazy(() => import('@/features/skills/SkillsView').then((module) => ({ default: module.SkillsView }))))
 const SettingsView = memo(lazy(() => import('@/features/settings/SettingsView').then((module) => ({ default: module.SettingsView }))))
 const AgentChatRoute = memo(lazy(() => import('@/features/agent-chat/AgentChatRoute').then((module) => ({ default: module.AgentChatRoute }))))
+const LoreWorkspaceTab = memo(lazy(() => import('@/features/lore/LoreWorkspaceTab').then((module) => ({ default: module.LoreWorkspaceTab }))))
 const StableFileTree = memo(FileTree)
 const StableSearchPanel = memo(SearchPanel)
 const StableChapterOutline = memo(ChapterOutline)
@@ -147,6 +150,7 @@ interface ModeRouterProps {
   onMoveItem: (from: string, to: string) => Promise<void>
   onActivateTab: (tab: Tab) => void
   onCloseTab: (tab: Tab) => void
+  onOpenLoreTab: () => Promise<boolean>
   onSaveCurrentFile: (path: string, content: string, baseRevision: string) => Promise<{ revision?: string }>
   onEditorFlushHandlerChange: (handler: EditorFlushHandler | null) => void
   onWorkspaceChanged: (paths: string[]) => void | Promise<void>
@@ -251,6 +255,7 @@ export function ModeRouter(props: ModeRouterProps) {
     onMoveItem,
     onActivateTab,
     onCloseTab,
+    onOpenLoreTab,
     onSaveCurrentFile,
     onEditorFlushHandlerChange,
     onWorkspaceChanged,
@@ -305,7 +310,7 @@ export function ModeRouter(props: ModeRouterProps) {
   const activeFileKind = selectedFile ? workspaceFileKind(selectedFile) : null
   const ideContext = useMemo(() => ({
     currentFile: selectedFile || undefined,
-    openFiles: openTabs.map((tab) => tab.path),
+    openFiles: openTabs.flatMap((tab) => tab.kind === 'file' ? [tab.path] : []),
   }), [openTabs, selectedFile])
   const versionsVisible = rightPanel === 'versions'
   const agentsVisible = mode === 'agents'
@@ -320,12 +325,10 @@ export function ModeRouter(props: ModeRouterProps) {
   const [agentSubAgentDetailsOpen, setAgentSubAgentDetailsOpen] = useState(false)
   const [agentPanelHost] = useState(() => createStablePortalHost('h-full min-h-0 w-full min-w-0 overflow-hidden'))
   const [illustrationInsertSignal, setIllustrationInsertSignal] = useState<{ illustration: ChapterIllustration; nonce: number } | null>(null)
-  const [documentReviewNavigationTarget, setDocumentReviewNavigationTarget] = useState<(DocumentReviewNavigationIntent & { path: string }) | null>(null)
   const [outlineRevealRequest, setOutlineRevealRequest] = useState<OutlineRevealRequest | null>(null)
   const [projectRevealPath, setProjectRevealPath] = useState('')
+  const loreLibraryFlushHandlerRef = useRef<EditorFlushHandler | null>(null)
   const projectRevealParents = useMemo(() => workspaceParentPaths(projectRevealPath), [projectRevealPath])
-  const documentReviewNavigationRequestRef = useRef(0)
-  const documentReviewNavigationNonceRef = useRef(0)
   const [editorLine, setEditorLine] = useState(1)
   // The router is the lifecycle owner: the settings lane survives AgentPanel close/unmount.
   const composerSettings = usePersistedUserSettings({ workspace, defaults: WRITING_COMPOSER_SETTING_DEFAULTS })
@@ -345,23 +348,31 @@ export function ModeRouter(props: ModeRouterProps) {
     })
   }, [flushComposerSettings, t])
 
+  const flushLoreLibraryDraft = useCallback(async (): Promise<boolean> => {
+    const handler = loreLibraryFlushHandlerRef.current
+    return handler ? handler() : true
+  }, [])
+  const handleLoreLibraryFlushHandlerChange = useCallback((handler: EditorFlushHandler | null) => {
+    loreLibraryFlushHandlerRef.current = handler
+  }, [])
+
   const flushBeforeWorkspaceSwitch = useCallback(async (): Promise<boolean> => {
     flushComposerSettingsBestEffort()
+    if (!(await flushLoreLibraryDraft())) return false
     return onBeforeWorkspaceSwitch()
-  }, [flushComposerSettingsBestEffort, onBeforeWorkspaceSwitch])
+  }, [flushComposerSettingsBestEffort, flushLoreLibraryDraft, onBeforeWorkspaceSwitch])
 
   const quickSwitchBook = useCallback(async (path: string): Promise<boolean> => {
     flushComposerSettingsBestEffort()
+    if (!(await flushLoreLibraryDraft())) return false
     return onQuickSwitchBook(path)
-  }, [flushComposerSettingsBestEffort, onQuickSwitchBook])
+  }, [flushComposerSettingsBestEffort, flushLoreLibraryDraft, onQuickSwitchBook])
 
   useEffect(() => {
     setEditorLine(1)
   }, [selectedFile])
 
   useEffect(() => {
-    documentReviewNavigationRequestRef.current += 1
-    setDocumentReviewNavigationTarget(null)
     setOutlineRevealRequest(null)
     setProjectRevealPath('')
   }, [workspace])
@@ -525,38 +536,16 @@ export function ModeRouter(props: ModeRouterProps) {
       else restoreReviewFeedback(selection)
     }
   }, [documentReview.restoreFeedback, restoreReviewFeedback])
-  const openActiveReviewFeedback = useCallback((selection: ReviewFeedbackSelection, comment: ReviewFeedbackComment) => {
-    if (selection.source !== 'document') {
-      void openChangeReview(selection.reviewThreadId, comment.group_id || '')
-      return
-    }
-    const targetPath = comment.path
-    if (!targetPath) return
-
-    const requestID = ++documentReviewNavigationRequestRef.current
-    const reveal = () => {
-      if (documentReviewNavigationRequestRef.current !== requestID) return
-      documentReviewNavigationNonceRef.current += 1
-      setDocumentReviewNavigationTarget({
-        path: targetPath,
-        commentID: comment.id,
-        nonce: documentReviewNavigationNonceRef.current,
-      })
-    }
-    if (selectedFile === targetPath) {
-      reveal()
-      return
-    }
-    void Promise.resolve(onSelectFile(targetPath)).then((navigated) => {
-      if (navigated !== false) reveal()
-    }).catch((error) => {
-      console.error('[ModeRouter.tsx] failed to open document review target', {
-        commentID: comment.id,
-        path: targetPath,
-        error,
-      })
-    })
-  }, [onSelectFile, openChangeReview, selectedFile])
+  const {
+    target: documentReviewNavigationTarget,
+    open: openActiveReviewFeedback,
+  } = useReviewFeedbackNavigation({
+    workspace,
+    selectedFile,
+    onSelectFile,
+    onOpenLoreTab,
+    onOpenChangeReview: openChangeReview,
+  })
   const reviewVisible = Boolean(activeReviewThreadID)
   const closeBooks = useCallback(() => {
     if (booksReturnMode === 'interactive') {
@@ -571,6 +560,15 @@ export function ModeRouter(props: ModeRouterProps) {
   const closeIdeWorkspacePanel = useCallback(() => onSetRightPanel(null), [onSetRightPanel])
   const returnToContentMode = useCallback(() => onSetMode(booksReturnMode), [booksReturnMode, onSetMode])
   const selectOutlineFile = useCallback((path: string) => { void onSelectFile(path) }, [onSelectFile])
+  const openLoreLibrary = useCallback(() => {
+    void flushBeforeWorkspaceSwitch().then((saved) => {
+      if (saved) onSetRightPanel('lore')
+    })
+  }, [flushBeforeWorkspaceSwitch, onSetRightPanel])
+  const referenceLoreFromWorkspace = useCallback((id: string) => {
+    onLoreReferenceAdd(id)
+    onSetRightPanel('ai')
+  }, [onLoreReferenceAdd, onSetRightPanel])
   const requestBookSettingCreate = useCallback((item: { path: string; title: string }) => {
     requestSkillsAgent(t('planning.bookSettingCreatePrompt', item))
   }, [requestSkillsAgent, t])
@@ -769,8 +767,10 @@ export function ModeRouter(props: ModeRouterProps) {
             outline={summary?.outline}
             chapterPlans={summary?.chapter_plans ?? EMPTY_CHAPTER_PLANS}
             selectedFile={selectedFile}
+            loreTabActive={activeTab?.kind === 'lore'}
             revealRequest={outlineRevealRequest}
             onSelectFile={selectOutlineFile}
+            onOpenLoreTab={onOpenLoreTab}
             onReferenceFile={onReferenceFile}
             onRevealFile={revealFileInProject}
             onRenameItem={onRenameItem}
@@ -839,7 +839,16 @@ export function ModeRouter(props: ModeRouterProps) {
             />
             <div className="flex min-h-0 flex-1 flex-col">
               {activeTab ? (
-                activeFileKind === 'image' || activeFileKind === 'json' || activeFileKind === 'jsonl' ? (
+                activeTab.kind === 'lore' ? (
+                  <LoreWorkspaceTab
+                    workspace={workspace}
+                    documentReview={documentReviewController}
+                    navigationIntent={documentReviewNavigationTarget?.target.kind === 'lore_item' ? documentReviewNavigationTarget : null}
+                    onEditorFlushHandlerChange={onEditorFlushHandlerChange}
+                    onOpenLibrary={openLoreLibrary}
+                    onReferenceItem={referenceLoreFromWorkspace}
+                  />
+                ) : activeFileKind === 'image' || activeFileKind === 'json' || activeFileKind === 'jsonl' ? (
                   <StableFilePreview path={selectedFile || activeTab.path} content={fileContent} revision={fileRevision} />
                 ) : (
                   <StableMarkdownEditor
@@ -861,7 +870,7 @@ export function ModeRouter(props: ModeRouterProps) {
                     onLineChange={setEditorLine}
                     onFlushHandlerChange={onEditorFlushHandlerChange}
                     documentReview={documentReviewController}
-                    documentReviewNavigationIntent={documentReviewNavigationTarget?.path === selectedFile ? documentReviewNavigationTarget : null}
+                    documentReviewNavigationIntent={documentReviewNavigationTarget?.target.kind === 'workspace_file' && documentReviewNavigationTarget.target.id === selectedFile ? documentReviewNavigationTarget : null}
                     readingTypography={readingTypography}
                   />
                 )
@@ -915,7 +924,12 @@ export function ModeRouter(props: ModeRouterProps) {
       )}
       {renderedRoutes.has('ide-lore') && (
         <MainRouteLayer visible={presentedMainRoute === 'ide-lore'} loadingLabel={t('router.loading')}>
-          <SettingPanel mode="lore" workspace={workspace} onClose={closeIdeWorkspacePanel} />
+          <SettingPanel
+            mode="lore"
+            workspace={workspace}
+            onClose={closeIdeWorkspacePanel}
+            onFlushHandlerChange={handleLoreLibraryFlushHandlerChange}
+          />
         </MainRouteLayer>
       )}
       {renderedRoutes.has('ide-teller') && (
@@ -1103,22 +1117,4 @@ function EmptyLoreGuide({
       </div>
     </div>
   )
-}
-
-function loreTypeLabel(type: LoreItem['type'], t: (key: string) => string) {
-  const key = `lore.type.${type}`
-  const label = t(key)
-  return label === key ? t('lore.type.default') : label
-}
-
-function loreImportanceLabel(importance: LoreItem['importance'], t: (key: string) => string) {
-  const key = `lore.importance.${importance}`
-  const label = t(key)
-  return label === key ? t('lore.importance.default') : label
-}
-
-function loreLoadModeLabel(loadMode: LoreItem['load_mode'], t: (key: string) => string) {
-  const key = `lore.loadMode.${loadMode}`
-  const label = t(key)
-  return label === key ? t('lore.loadMode.default') : label
 }

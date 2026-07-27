@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from 'react'
 import { DndContext, PointerSensor, closestCenter, useSensor, useSensors, type DragEndEvent } from '@dnd-kit/core'
 import { SortableContext, arrayMove, useSortable, verticalListSortingStrategy } from '@dnd-kit/sortable'
 import { CSS } from '@dnd-kit/utilities'
-import { ArrowDownToLine, ArrowUp, CircleDashed, GripVertical, MessageCircle, Pin, PinOff, Search, Settings2 } from 'lucide-react'
+import { ArrowDownToLine, ArrowUp, BookMarked, CircleDashed, GripVertical, MessageCircle, Pin, PinOff, Search, Settings2 } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import type { FileNode } from '@/hooks/useWorkspace'
 import type { DocumentPreview } from '@/lib/api'
@@ -14,17 +14,29 @@ import { OutlineFileActions } from './outline/OutlineFileActions'
 import { flattenFileTree } from './workbench-utils'
 
 const STORAGE_PREFIX = 'nova.outline.pinned-settings:'
-const PINNED_STORAGE_VERSION = 2
+const PINNED_STORAGE_VERSION = 3
 const LEGACY_DEFAULT_PINNED_PATHS = ['setting/outline.md', 'CREATOR.md', 'setting/progress.md']
-const DEFAULT_PINNED_PATHS = [...LEGACY_DEFAULT_PINNED_PATHS, 'ideas.md', 'setting/character-states.md']
+const LORE_TAB_PIN_KEY = '@lore-tab'
+const DEFAULT_PINNED_PATHS = [...LEGACY_DEFAULT_PINNED_PATHS, 'ideas.md', LORE_TAB_PIN_KEY, 'setting/character-states.md']
 const CURRENT_CHAPTER_PLAN_PIN_KEY = '@current-chapter-plan'
 
-interface BookSettingItem {
+interface BookSettingFileItem {
+  kind: 'file'
   path: string
   title: string
   exists: boolean
   pinKey?: string
 }
+
+interface BookSettingLoreItem {
+  kind: 'lore'
+  title: string
+  exists: true
+  pinKey: typeof LORE_TAB_PIN_KEY
+  description: string
+}
+
+type BookSettingItem = BookSettingFileItem | BookSettingLoreItem
 
 interface BookSettingsShortcutsProps {
   workspace: string
@@ -35,6 +47,8 @@ interface BookSettingsShortcutsProps {
   selectedFile: string | null
   headerPinned: boolean
   onSelectFile: (path: string) => void | Promise<void>
+  onOpenLoreTab?: () => void | Promise<boolean | void>
+  loreTabActive?: boolean
   onToggleHeaderPinned: () => void
   latestChapterAvailable?: boolean
   backToTopAvailable?: boolean
@@ -57,6 +71,8 @@ export function BookSettingsShortcuts({
   selectedFile,
   headerPinned,
   onSelectFile,
+  onOpenLoreTab,
+  loreTabActive = false,
   onToggleHeaderPinned,
   latestChapterAvailable = false,
   backToTopAvailable = false,
@@ -74,9 +90,11 @@ export function BookSettingsShortcuts({
   const [missingItem, setMissingItem] = useState<BookSettingItem | null>(null)
   const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 6 } }))
   const candidates = useMemo(() => discoverBookSettings({ tree, outline, ideas, chapterPlans, t }), [chapterPlans, ideas, outline, t, tree])
-  const candidatesByPath = useMemo(() => new Map(candidates.map((item) => [item.path, item])), [candidates])
   const candidatesByPinKey = useMemo(() => new Map(candidates.map((item) => [bookSettingPinKey(item), item])), [candidates])
-  const visibleMissingItem = missingItem && !candidatesByPath.get(missingItem.path)?.exists ? missingItem : null
+  const visibleMissingItem = missingItem?.kind === 'file'
+    && !candidatesByPinKey.get(bookSettingPinKey(missingItem))?.exists
+    ? missingItem
+    : null
 
   useEffect(() => {
     setPinnedPaths(readPinnedPaths(workspace))
@@ -92,7 +110,7 @@ export function BookSettingsShortcuts({
   const orderedCandidates = [...pinnedItems, ...candidates.filter((item) => !pinnedPaths.includes(bookSettingPinKey(item)))]
   const normalizedQuery = query.trim().toLocaleLowerCase()
   const filteredCandidates = normalizedQuery
-    ? orderedCandidates.filter((item) => `${item.title} ${item.path}`.toLocaleLowerCase().includes(normalizedQuery))
+    ? orderedCandidates.filter((item) => bookSettingSearchText(item).toLocaleLowerCase().includes(normalizedQuery))
     : orderedCandidates
 
   const togglePinned = (path: string) => {
@@ -100,6 +118,11 @@ export function BookSettingsShortcuts({
   }
 
   const selectItem = (item: BookSettingItem) => {
+    if (item.kind === 'lore') {
+      setMissingItem(null)
+      void onOpenLoreTab?.()
+      return
+    }
     if (!item.exists) {
       setMissingItem(item)
       return
@@ -181,7 +204,7 @@ export function BookSettingsShortcuts({
                           key={bookSettingPinKey(item)}
                           item={item}
                           pinned={pinnedPaths.includes(bookSettingPinKey(item))}
-                          selected={item.exists && selectedFile === item.path}
+                          selected={isBookSettingSelected(item, selectedFile, loreTabActive)}
                           onSelect={selectItem}
                           onTogglePinned={togglePinned}
                         />
@@ -199,29 +222,39 @@ export function BookSettingsShortcuts({
       </div>
       {pinnedItems.length > 0 ? (
         <div data-testid="book-setting-shortcuts" className="grid grid-cols-[repeat(auto-fill,minmax(4rem,1fr))] gap-1">
-          {pinnedItems.map((item) => (
-            <OutlineFileActions
-              key={bookSettingPinKey(item)}
-              path={item.path}
-              showTrigger={false}
-              onReferenceFile={item.exists ? onReferenceFile : undefined}
-              onRevealFile={item.exists ? onRevealFile : undefined}
-              onRenameItem={item.exists ? onRenameItem : undefined}
-              onDeleteItem={item.exists ? onDeleteItem : undefined}
-            >
+          {pinnedItems.map((item) => {
+            const selected = isBookSettingSelected(item, selectedFile, loreTabActive)
+            const shortcut = (
               <button
                 type="button"
                 data-book-setting-state={item.exists ? 'ready' : 'missing'}
-                aria-label={item.exists ? undefined : t('planning.bookSettingMissingTooltip', { title: item.title, path: item.path })}
-                className={`nova-nav-item relative w-full max-w-full px-2.5 py-1 text-center text-[11px] font-medium ${item.exists && selectedFile === item.path ? 'is-active' : item.exists ? 'bg-[var(--nova-surface-2)] text-[var(--nova-text-muted)]' : 'border border-dashed border-[color-mix(in_srgb,var(--nova-warning)_45%,var(--nova-border))] bg-[color-mix(in_srgb,var(--nova-warning-bg)_42%,var(--nova-surface-2))] text-[var(--nova-text-muted)] hover:border-[var(--nova-warning)] hover:bg-[var(--nova-warning-bg)]'}`}
-                title={item.exists ? item.title : t('planning.bookSettingMissingTooltip', { title: item.title, path: item.path })}
+                aria-label={item.kind === 'file' && !item.exists ? t('planning.bookSettingMissingTooltip', { title: item.title, path: item.path }) : undefined}
+                className={`nova-nav-item relative w-full max-w-full px-2.5 py-1 text-center text-[11px] font-medium ${selected ? 'is-active' : item.exists ? 'bg-[var(--nova-surface-2)] text-[var(--nova-text-muted)]' : 'border border-dashed border-[color-mix(in_srgb,var(--nova-warning)_45%,var(--nova-border))] bg-[color-mix(in_srgb,var(--nova-warning-bg)_42%,var(--nova-surface-2))] text-[var(--nova-text-muted)] hover:border-[var(--nova-warning)] hover:bg-[var(--nova-warning-bg)]'}`}
+                title={item.kind === 'file' && !item.exists ? t('planning.bookSettingMissingTooltip', { title: item.title, path: item.path }) : item.title}
                 onClick={() => selectItem(item)}
               >
-                <span className="block truncate">{item.title}</span>
+                <span className="flex items-center justify-center gap-1 truncate">
+                  {item.kind === 'lore' ? <BookMarked aria-hidden="true" className="h-3 w-3 shrink-0 text-emerald-500" /> : null}
+                  <span className="truncate">{item.title}</span>
+                </span>
                 {!item.exists ? <CircleDashed aria-hidden="true" className="absolute right-1.5 top-1/2 h-3 w-3 -translate-y-1/2 text-[color-mix(in_srgb,var(--nova-warning)_68%,var(--nova-text-faint))]" /> : null}
               </button>
-            </OutlineFileActions>
-          ))}
+            )
+            if (item.kind === 'lore') return <div key={bookSettingPinKey(item)}>{shortcut}</div>
+            return (
+              <OutlineFileActions
+                key={bookSettingPinKey(item)}
+                path={item.path}
+                showTrigger={false}
+                onReferenceFile={item.exists ? onReferenceFile : undefined}
+                onRevealFile={item.exists ? onRevealFile : undefined}
+                onRenameItem={item.exists ? onRenameItem : undefined}
+                onDeleteItem={item.exists ? onDeleteItem : undefined}
+              >
+                {shortcut}
+              </OutlineFileActions>
+            )
+          })}
         </div>
       ) : (
         <div className="rounded border border-dashed border-[var(--nova-border)] px-2 py-2 text-center text-[10px] text-[var(--nova-text-faint)]">
@@ -254,17 +287,22 @@ function SortableSettingRow({ item, pinned, selected, onSelect, onTogglePinned }
   const { t } = useTranslation()
   const pinKey = bookSettingPinKey(item)
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id: pinKey, disabled: !pinned })
-  const missingTooltip = t('planning.bookSettingMissingTooltip', { title: item.title, path: item.path })
+  const missingTooltip = item.kind === 'file'
+    ? t('planning.bookSettingMissingTooltip', { title: item.title, path: item.path })
+    : undefined
   return (
     <div ref={setNodeRef} style={{ transform: CSS.Transform.toString(transform), transition }} className={`flex items-center gap-1 rounded-md border px-1 py-1 ${selected ? 'border-[var(--nova-border)] bg-[var(--nova-active)]' : item.exists ? 'border-transparent bg-[var(--nova-surface)]' : 'border-dashed border-[color-mix(in_srgb,var(--nova-warning)_45%,var(--nova-border))] bg-[color-mix(in_srgb,var(--nova-warning-bg)_32%,var(--nova-surface))]'} ${isDragging ? 'z-10 opacity-70 shadow-lg' : ''}`}>
       <button type="button" disabled={!pinned} aria-label={t('planning.reorderBookSetting', { title: item.title })} className="cursor-grab p-1 text-[var(--nova-text-faint)] disabled:cursor-default disabled:opacity-20" {...attributes} {...listeners}>
         <GripVertical className="h-3.5 w-3.5" />
       </button>
       <button type="button" data-book-setting-state={item.exists ? 'ready' : 'missing'} aria-label={item.exists ? undefined : missingTooltip} title={item.exists ? undefined : missingTooltip} className="min-w-0 flex-1 px-1 text-left" onClick={() => onSelect(item)}>
-        <span className="block truncate text-xs text-[var(--nova-text)]">{item.title}</span>
+        <span className="flex items-center gap-1 truncate text-xs text-[var(--nova-text)]">
+          {item.kind === 'lore' ? <BookMarked aria-hidden="true" className="h-3 w-3 shrink-0 text-emerald-500" /> : null}
+          <span className="truncate">{item.title}</span>
+        </span>
         <span className="flex min-w-0 items-center gap-1 truncate text-[10px] text-[var(--nova-text-faint)]">
           {!item.exists ? <CircleDashed aria-hidden="true" className="h-3 w-3 shrink-0 text-[color-mix(in_srgb,var(--nova-warning)_68%,var(--nova-text-faint))]" /> : null}
-          <span className="truncate">{item.path}</span>
+          <span className="truncate">{item.kind === 'file' ? item.path : item.description}</span>
         </span>
       </button>
       <button type="button" aria-label={pinned ? t('planning.unpinBookSetting', { title: item.title }) : t('planning.pinBookSetting', { title: item.title })} className="rounded p-1.5 text-[var(--nova-text-muted)] hover:bg-[var(--nova-hover)] hover:text-[var(--nova-text)]" onClick={() => onTogglePinned(pinKey)}>
@@ -287,14 +325,16 @@ function discoverBookSettings({ tree, outline, ideas, chapterPlans, t }: {
   const ideasPath = ideas?.path ?? 'ideas.md'
   const latestChapterPlan = chapterPlans[chapterPlans.length - 1]
   const known = new Map<string, BookSettingItem>([
-    [outlinePath, { path: outlinePath, title: t('planning.outlineTab'), exists: Boolean(outline) || existingPaths.has(outlinePath) }],
-    ['CREATOR.md', { path: 'CREATOR.md', title: t('planning.creatorRulesTab'), exists: existingPaths.has('CREATOR.md') }],
-    ['setting/progress.md', { path: 'setting/progress.md', title: t('planning.writingProgressTab'), exists: existingPaths.has('setting/progress.md') }],
-    [ideasPath, { path: ideasPath, title: t('planning.ideas'), exists: Boolean(ideas) || existingPaths.has(ideasPath) }],
-    ['setting/character-states.md', { path: 'setting/character-states.md', title: t('planning.characterStates'), exists: existingPaths.has('setting/character-states.md') }],
+    [outlinePath, { kind: 'file', path: outlinePath, title: t('planning.outlineTab'), exists: Boolean(outline) || existingPaths.has(outlinePath) }],
+    ['CREATOR.md', { kind: 'file', path: 'CREATOR.md', title: t('planning.creatorRulesTab'), exists: existingPaths.has('CREATOR.md') }],
+    ['setting/progress.md', { kind: 'file', path: 'setting/progress.md', title: t('planning.writingProgressTab'), exists: existingPaths.has('setting/progress.md') }],
+    [ideasPath, { kind: 'file', path: ideasPath, title: t('planning.ideas'), exists: Boolean(ideas) || existingPaths.has(ideasPath) }],
+    [LORE_TAB_PIN_KEY, { kind: 'lore', title: t('planning.loreSettings'), exists: true, pinKey: LORE_TAB_PIN_KEY, description: t('tab.loreTitle') }],
+    ['setting/character-states.md', { kind: 'file', path: 'setting/character-states.md', title: t('planning.characterStates'), exists: existingPaths.has('setting/character-states.md') }],
   ])
   if (latestChapterPlan) {
     known.set(CURRENT_CHAPTER_PLAN_PIN_KEY, {
+      kind: 'file',
       path: latestChapterPlan.path,
       title: t('planning.currentChapterPlan'),
       exists: true,
@@ -305,7 +345,7 @@ function discoverBookSettings({ tree, outline, ideas, chapterPlans, t }: {
   for (const path of paths) {
     if (!isBookSettingPath(path, chapterPlanPaths)) continue
     const current = known.get(path)
-    known.set(path, current ? { ...current, exists: true } : { path, title: titleFromPath(path), exists: true })
+    known.set(path, current ? { ...current, exists: true } : { kind: 'file', path, title: titleFromPath(path), exists: true })
   }
   return [...known.values()]
 }
@@ -326,23 +366,45 @@ function titleFromPath(path: string) {
 }
 
 function bookSettingPinKey(item: BookSettingItem) {
-  return item.pinKey ?? item.path
+  return item.kind === 'lore' ? item.pinKey : item.pinKey ?? item.path
+}
+
+function bookSettingSearchText(item: BookSettingItem) {
+  return item.kind === 'file' ? `${item.title} ${item.path}` : `${item.title} ${item.description}`
+}
+
+function isBookSettingSelected(item: BookSettingItem, selectedFile: string | null, loreTabActive: boolean) {
+  return item.kind === 'lore' ? loreTabActive : item.exists && selectedFile === item.path
 }
 
 function readPinnedPaths(workspace: string) {
   if (!workspace) return DEFAULT_PINNED_PATHS
   try {
     const parsed = JSON.parse(window.localStorage.getItem(STORAGE_PREFIX + workspace) || 'null')
-    if (parsed?.version === PINNED_STORAGE_VERSION && Array.isArray(parsed.paths) && parsed.paths.every((item: unknown) => typeof item === 'string')) {
+    if (parsed?.version === PINNED_STORAGE_VERSION && isStringArray(parsed.paths)) {
       return parsed.paths
     }
-    if (Array.isArray(parsed) && parsed.every((item) => typeof item === 'string')) {
-      return samePaths(parsed, LEGACY_DEFAULT_PINNED_PATHS) ? DEFAULT_PINNED_PATHS : parsed
+    if (parsed?.version === 2 && isStringArray(parsed.paths)) {
+      return withLoreTab(parsed.paths)
+    }
+    if (isStringArray(parsed)) {
+      return samePaths(parsed, LEGACY_DEFAULT_PINNED_PATHS) ? DEFAULT_PINNED_PATHS : withLoreTab(parsed)
     }
     return DEFAULT_PINNED_PATHS
   } catch {
     return DEFAULT_PINNED_PATHS
   }
+}
+
+function isStringArray(value: unknown): value is string[] {
+  return Array.isArray(value) && value.every((item) => typeof item === 'string')
+}
+
+function withLoreTab(paths: string[]) {
+  if (paths.includes(LORE_TAB_PIN_KEY)) return paths
+  const ideasIndex = paths.indexOf('ideas.md')
+  const insertAt = ideasIndex < 0 ? paths.length : ideasIndex + 1
+  return [...paths.slice(0, insertAt), LORE_TAB_PIN_KEY, ...paths.slice(insertAt)]
 }
 
 function samePaths(left: string[], right: string[]) {

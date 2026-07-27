@@ -47,6 +47,21 @@ func (a *App) PreviewLoreClassification(ctx context.Context, request LoreClassif
 	return a.lore().PreviewLoreClassification(ctx, request)
 }
 
+// PreviewLoreClassificationForWorkspace keeps the catalog snapshot, optional
+// semantic model call, and Agent-call history bound to one workspace
+// generation. A switch cancels the operation and waits for its release.
+func (a *App) PreviewLoreClassificationForWorkspace(ctx context.Context, expectedWorkspace string, request LoreClassificationPreviewRequest) (LoreClassificationPreview, error) {
+	if err := a.ValidateWorkspaceIdentity(expectedWorkspace); err != nil {
+		return LoreClassificationPreview{}, err
+	}
+	operation, err := a.acquireWorkspaceOperation(ctx, expectedWorkspace, true)
+	if err != nil {
+		return LoreClassificationPreview{}, err
+	}
+	defer operation.Release()
+	return a.lore().PreviewLoreClassification(operation.Context(), request)
+}
+
 func (s *LoreAppService) PreviewLoreClassification(ctx context.Context, request LoreClassificationPreviewRequest) (LoreClassificationPreview, error) {
 	state := s.bookState()
 	if state == nil {

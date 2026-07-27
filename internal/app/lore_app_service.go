@@ -93,11 +93,16 @@ func (s *LoreAppService) DeleteLoreItem(id string) error {
 }
 
 func (a *App) GenerateLoreItemImage(ctx context.Context, id string, request LoreItemImageGenerateRequest) (book.LoreItem, error) {
-	return a.lore().GenerateLoreItemImage(ctx, id, request)
+	return a.lore().generateLoreItemImage(ctx, "", id, request)
 }
 
-func (s *LoreAppService) GenerateLoreItemImage(ctx context.Context, id string, request LoreItemImageGenerateRequest) (book.LoreItem, error) {
-	return s.generateLoreItemImage(ctx, id, request)
+// GenerateLoreItemImageForWorkspace prevents a request prepared for one book
+// from following a concurrent workspace switch into another book.
+func (a *App) GenerateLoreItemImageForWorkspace(ctx context.Context, expectedWorkspace, id string, request LoreItemImageGenerateRequest) (book.LoreItem, error) {
+	if err := a.ValidateWorkspaceIdentity(expectedWorkspace); err != nil {
+		return book.LoreItem{}, err
+	}
+	return a.lore().generateLoreItemImage(ctx, expectedWorkspace, id, request)
 }
 
 func (a *App) ClearLoreItemImage(id string) (book.LoreItem, error) {
@@ -113,10 +118,19 @@ func (s *LoreAppService) ClearLoreItemImage(id string) (book.LoreItem, error) {
 }
 
 func (a *App) StartLoreImagesGenerateTask(request LoreImagesGenerateRequest) (*Task, error) {
-	return a.lore().StartLoreImagesGenerateTask(request)
+	return a.lore().startLoreImagesGenerateTask("", request)
 }
 
-func (s *LoreAppService) StartLoreImagesGenerateTask(request LoreImagesGenerateRequest) (*Task, error) {
+// StartLoreImagesGenerateTaskForWorkspace binds the background task to the
+// workspace identity carried by the initiating HTTP request.
+func (a *App) StartLoreImagesGenerateTaskForWorkspace(expectedWorkspace string, request LoreImagesGenerateRequest) (*Task, error) {
+	if err := a.ValidateWorkspaceIdentity(expectedWorkspace); err != nil {
+		return nil, err
+	}
+	return a.lore().startLoreImagesGenerateTask(expectedWorkspace, request)
+}
+
+func (s *LoreAppService) startLoreImagesGenerateTask(expectedWorkspace string, request LoreImagesGenerateRequest) (*Task, error) {
 	request.ItemIDs = dedupeLoreImageItemIDs(request.ItemIDs)
 	if len(request.ItemIDs) == 0 {
 		return nil, fmt.Errorf("请选择需要生成图片的资料项")
@@ -127,6 +141,11 @@ func (s *LoreAppService) StartLoreImagesGenerateTask(request LoreImagesGenerateR
 		a.mu.Unlock()
 		return nil, ErrWorkspaceTransition
 	}
+	workspace := a.workspace
+	if strings.TrimSpace(expectedWorkspace) != "" && lifecycleWorkspaceKey(expectedWorkspace) != lifecycleWorkspaceKey(workspace) {
+		a.mu.Unlock()
+		return nil, fmt.Errorf("%w: expected=%q actual=%q", ErrWorkspaceChanged, expectedWorkspace, workspace)
+	}
 	if a.activeLoreImageTask != nil {
 		if !a.activeLoreImageTask.Finished() {
 			a.mu.Unlock()
@@ -134,7 +153,6 @@ func (s *LoreAppService) StartLoreImagesGenerateTask(request LoreImagesGenerateR
 		}
 		a.activeLoreImageTask = nil
 	}
-	workspace := a.workspace
 	a.mu.Unlock()
 
 	task, err := NewRegisteredTask(func(task *Task) error {
@@ -152,7 +170,7 @@ func (s *LoreAppService) StartLoreImagesGenerateTask(request LoreImagesGenerateR
 		defer s.clearLoreImageTask(task)
 		log.Printf("[lore-image] batch begin task_id=%s items=%d overwrite=%v", task.ID(), len(request.ItemIDs), request.OverwriteExisting)
 		emit(agents.Event{Type: "thinking", Data: map[string]string{"content": "正在准备批量生成资料项图片。"}})
-		generated, skipped, failed := s.runLoreImagesGenerateBatch(ctx, request, emit)
+		generated, skipped, failed := s.runLoreImagesGenerateBatch(ctx, workspace, request, emit)
 		if ctx.Err() != nil {
 			emit(agents.Event{Type: "aborted", Data: map[string]string{"message": "资料项图片生成已中止"}})
 			return
@@ -182,23 +200,36 @@ func (s *LoreAppService) clearLoreImageTask(task *Task) {
 	a.mu.Unlock()
 }
 
-func (a *App) AbortLoreImagesGenerateTask() {
+// AbortLoreImagesGenerateTaskForWorkspace atomically binds an abort command to
+// the workspace that issued it. Holding the App read lock through Abort keeps a
+// concurrent workspace switch or replacement task from slipping between the
+// identity check and the command.
+func (a *App) AbortLoreImagesGenerateTaskForWorkspace(expectedWorkspace string) error {
 	a.mu.RLock()
-	task := a.activeLoreImageTask
-	a.mu.RUnlock()
-	if task != nil {
-		task.Abort()
+	defer a.mu.RUnlock()
+
+	actualWorkspace := strings.TrimSpace(a.workspace)
+	expectedWorkspace = strings.TrimSpace(expectedWorkspace)
+	if actualWorkspace == "" {
+		return ErrNoWorkspace
 	}
+	if expectedWorkspace == "" || lifecycleWorkspaceKey(expectedWorkspace) != lifecycleWorkspaceKey(actualWorkspace) {
+		return fmt.Errorf("%w: expected=%q actual=%q", ErrWorkspaceChanged, expectedWorkspace, actualWorkspace)
+	}
+	if a.activeLoreImageTask != nil {
+		a.activeLoreImageTask.Abort()
+	}
+	return nil
 }
 
-func (s *LoreAppService) runLoreImagesGenerateBatch(ctx context.Context, request LoreImagesGenerateRequest, emit func(agents.Event)) (generated, skipped, failed int) {
+func (s *LoreAppService) runLoreImagesGenerateBatch(ctx context.Context, workspace string, request LoreImagesGenerateRequest, emit func(agents.Event)) (generated, skipped, failed int) {
 	ids := request.ItemIDs
 	total := len(ids)
 	if total == 0 {
 		emit(agents.Event{Type: "error", Data: map[string]string{"message": "请选择需要生成图片的资料项"}})
 		return 0, 0, 1
 	}
-	store, _, _, err := s.loreImageRuntimeSnapshot()
+	store, _, _, err := s.loreImageRuntimeSnapshot(workspace)
 	if err != nil {
 		emit(agents.Event{Type: "error", Data: map[string]string{"message": err.Error()}})
 		return 0, 0, total
@@ -220,7 +251,7 @@ func (s *LoreAppService) runLoreImagesGenerateBatch(ctx context.Context, request
 			continue
 		}
 		emitLoreImageProgress(emit, item.ID, position, total, "running", "正在生成图片", &item)
-		updated, err := s.generateLoreItemImage(ctx, item.ID, LoreItemImageGenerateRequest{
+		updated, err := s.generateLoreItemImage(ctx, workspace, item.ID, LoreItemImageGenerateRequest{
 			Instruction:   request.Instruction,
 			ImagePresetID: request.ImagePresetID,
 			ProfileID:     request.ProfileID,
@@ -237,8 +268,8 @@ func (s *LoreAppService) runLoreImagesGenerateBatch(ctx context.Context, request
 	return generated, skipped, failed
 }
 
-func (s *LoreAppService) generateLoreItemImage(ctx context.Context, id string, request LoreItemImageGenerateRequest) (book.LoreItem, error) {
-	runtime, err := s.app.images().acquireWorkspaceRuntime(ctx)
+func (s *LoreAppService) generateLoreItemImage(ctx context.Context, expectedWorkspace, id string, request LoreItemImageGenerateRequest) (book.LoreItem, error) {
+	runtime, err := s.app.images().acquireWorkspaceRuntimeFor(ctx, expectedWorkspace)
 	if err != nil {
 		return book.LoreItem{}, err
 	}
@@ -279,7 +310,7 @@ func (s *LoreAppService) generateLoreItemImage(ctx context.Context, id string, r
 	return updated, nil
 }
 
-func (s *LoreAppService) loreImageRuntimeSnapshot() (*book.LoreStore, config.Config, *book.Service, error) {
+func (s *LoreAppService) loreImageRuntimeSnapshot(expectedWorkspace string) (*book.LoreStore, config.Config, *book.Service, error) {
 	a := s.app
 	a.mu.RLock()
 	if a.workspace == "" || a.bookService == nil || a.bookState == nil {
@@ -292,6 +323,10 @@ func (s *LoreAppService) loreImageRuntimeSnapshot() (*book.LoreStore, config.Con
 	}
 	cfg := *a.cfg
 	workspace := a.workspace
+	if strings.TrimSpace(expectedWorkspace) != "" && lifecycleWorkspaceKey(expectedWorkspace) != lifecycleWorkspaceKey(workspace) {
+		a.mu.RUnlock()
+		return nil, config.Config{}, nil, fmt.Errorf("%w: expected=%q actual=%q", ErrWorkspaceChanged, expectedWorkspace, workspace)
+	}
 	bookService := a.bookService
 	novaDir := cfg.DataDir()
 	a.mu.RUnlock()

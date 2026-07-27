@@ -8,6 +8,7 @@ import { ModeRouter } from './ModeRouter'
 const toastMock = vi.hoisted(() => ({ warning: vi.fn() }))
 const useDocumentReviewMock = vi.hoisted(() => vi.fn())
 const agentPanelLifecycle = vi.hoisted(() => ({ mounts: 0, unmounts: 0, renders: 0 }))
+const loreLibraryFlushMock = vi.hoisted(() => vi.fn(async () => true))
 
 vi.mock('sonner', () => ({ toast: toastMock }))
 
@@ -51,6 +52,28 @@ vi.mock('@/components/Chat/AgentPanel', () => ({
 
 vi.mock('@/features/agent-chat/AgentChatRoute', () => ({
   AgentChatRoute: () => <div data-testid="agent-chat-route">project-scoped agent route</div>,
+}))
+
+vi.mock('@/features/lore/LoreWorkspaceTab', () => ({
+  LoreWorkspaceTab: ({ navigationIntent }: {
+    navigationIntent?: { commentID: string; nonce: number } | null
+  }) => (
+    <div data-testid="lore-workspace-navigation">
+      {navigationIntent?.commentID || 'none'}|{navigationIntent?.nonce || 0}
+    </div>
+  ),
+}))
+
+vi.mock('@/features/interactive/components/SettingPanel', () => ({
+  SettingPanel: ({ onFlushHandlerChange }: {
+    onFlushHandlerChange?: (handler: (() => Promise<boolean>) | null) => void
+  }) => {
+    useEffect(() => {
+      onFlushHandlerChange?.(loreLibraryFlushMock)
+      return () => onFlushHandlerChange?.(null)
+    }, [onFlushHandlerChange])
+    return <div data-testid="full-lore-library">full lore library</div>
+  },
 }))
 
 vi.mock('@/components/Editor/MarkdownEditor', () => ({
@@ -122,6 +145,8 @@ describe('ModeRouter autosave navigation policy', () => {
   beforeEach(() => {
     toastMock.warning.mockReset()
     useDocumentReviewMock.mockReset()
+    loreLibraryFlushMock.mockReset()
+    loreLibraryFlushMock.mockResolvedValue(true)
     agentPanelLifecycle.mounts = 0
     agentPanelLifecycle.unmounts = 0
     agentPanelLifecycle.renders = 0
@@ -190,12 +215,25 @@ describe('ModeRouter autosave navigation policy', () => {
     await waitFor(() => expect(toastMock.warning).toHaveBeenCalled())
   })
 
+  it('flushes the retained full Lore library before switching workspaces', async () => {
+    const user = userEvent.setup()
+    const onQuickSwitchBook = vi.fn(async () => true)
+    loreLibraryFlushMock.mockResolvedValue(false)
+    render(<ModeRouter {...modeRouterProps({ rightPanel: 'lore', onQuickSwitchBook })} />)
+    await screen.findByTestId('full-lore-library')
+
+    await user.click(screen.getByRole('button', { name: 'quick switch' }))
+
+    await waitFor(() => expect(loreLibraryFlushMock).toHaveBeenCalledTimes(1))
+    expect(onQuickSwitchBook).not.toHaveBeenCalled()
+  })
+
   it('opens the referenced chapter before revealing its document review comment', async () => {
     const user = userEvent.setup()
     const comment = {
       id: 'document-comment',
       thread_id: 'document-thread',
-      path: 'chapters/ch02.md',
+      target: { kind: 'workspace_file' as const, id: 'chapters/ch02.md' },
       body: '正文这里需要更克制',
       created_at: '',
       updated_at: '',
@@ -240,16 +278,70 @@ describe('ModeRouter autosave navigation policy', () => {
     render(<Harness />)
     await user.click(screen.getByRole('button', { name: 'open document feedback' }))
 
-    await waitFor(() => expect(handleSelectFile).toHaveBeenCalledWith(comment.path))
+    await waitFor(() => expect(handleSelectFile).toHaveBeenCalledWith(comment.target.id))
     await waitFor(() => expect(screen.getByTestId('markdown-editor-navigation')).toHaveTextContent(
-      `${comment.path}|${comment.id}|1`,
+      `${comment.target.id}|${comment.id}|1`,
     ))
 
     await user.click(screen.getByRole('button', { name: 'open document feedback' }))
     await waitFor(() => expect(screen.getByTestId('markdown-editor-navigation')).toHaveTextContent(
-      `${comment.path}|${comment.id}|2`,
+      `${comment.target.id}|${comment.id}|2`,
     ))
     expect(handleSelectFile).toHaveBeenCalledTimes(1)
+  })
+
+  it('opens the Lore tab before revealing feedback for a lore item', async () => {
+    const user = userEvent.setup()
+    const comment = {
+      id: 'lore-comment',
+      thread_id: 'document-thread',
+      target: { kind: 'lore_item' as const, id: 'lin-chuan', field: 'content' as const },
+      body: '补足人物动机',
+      created_at: '',
+      updated_at: '',
+      review_line: 12,
+    }
+    useDocumentReviewMock.mockReturnValue({
+      feedback: {
+        source: 'document' as const,
+        reviewThreadId: 'document-thread',
+        comments: [comment],
+      },
+      thread: { comments: [comment] },
+      addComment: vi.fn(),
+      editComment: vi.fn(),
+      removeComment: vi.fn(),
+      removeFeedback: vi.fn(),
+      submitFeedback: vi.fn(),
+      restoreFeedback: vi.fn(),
+    })
+    const openLoreTab = vi.fn(async () => true)
+
+    function Harness() {
+      const [loreOpen, setLoreOpen] = useState(false)
+      return (
+        <ModeRouter
+          {...modeRouterProps({
+            rightPanel: 'ai',
+            openTabs: loreOpen ? [{ kind: 'lore' }] : [],
+            activeTabKey: loreOpen ? 'lore' : null,
+            onOpenLoreTab: async () => {
+              const opened = await openLoreTab()
+              if (opened) setLoreOpen(true)
+              return opened
+            },
+          })}
+        />
+      )
+    }
+
+    render(<Harness />)
+    await user.click(screen.getByRole('button', { name: 'open document feedback' }))
+
+    await waitFor(() => expect(openLoreTab).toHaveBeenCalledTimes(1))
+    await waitFor(() => expect(screen.getByTestId('lore-workspace-navigation')).toHaveTextContent(
+      `${comment.id}|1`,
+    ))
   })
 
   it('opens the project sidebar and switches to the outline before locating the editor chapter', async () => {
@@ -376,6 +468,7 @@ function modeRouterProps(
     onMoveItem: vi.fn(),
     onActivateTab: vi.fn(),
     onCloseTab: vi.fn(),
+    onOpenLoreTab: vi.fn(async () => true),
     onSaveCurrentFile: vi.fn(),
     onEditorFlushHandlerChange: vi.fn(),
     onWorkspaceChanged: vi.fn(),

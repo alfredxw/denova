@@ -5,7 +5,7 @@ import type { Editor } from '@tiptap/react'
 import { useTranslation } from 'react-i18next'
 import { toast } from 'sonner'
 import { InlineCommentThread } from '@/components/review/InlineCommentThread'
-import type { CreateDocumentCommentRequest, DocumentReviewAnchor, DocumentReviewComment } from '@/features/document-review/types'
+import type { CreateDocumentCommentRequest, DocumentReviewAnchor, DocumentReviewComment, DocumentReviewTarget } from '@/features/document-review/types'
 import {
   captureDocumentReviewSelection,
   commentWidgetPosition,
@@ -23,7 +23,8 @@ export interface DocumentReviewAnnotationsHandle {
 
 interface DocumentReviewAnnotationsProps {
   editor: Editor
-  fileName: string
+  target: DocumentReviewTarget
+  resourceLabel: string
   containerRef: RefObject<HTMLDivElement | null>
   comments: DocumentReviewComment[]
   decorationStateRef: { current: DocumentReviewDecorationState }
@@ -54,7 +55,8 @@ interface AnnotationGroup {
 /** Renders durable comments into ProseMirror widget hosts without changing Markdown. */
 export const DocumentReviewAnnotations = forwardRef<DocumentReviewAnnotationsHandle, DocumentReviewAnnotationsProps>(function DocumentReviewAnnotations({
   editor,
-  fileName,
+  target,
+  resourceLabel,
   containerRef,
   comments,
   decorationStateRef,
@@ -78,7 +80,7 @@ export const DocumentReviewAnnotations = forwardRef<DocumentReviewAnnotationsHan
     if (preparing) return
     const request = ++preparationRequestRef.current
     console.debug('[DocumentReviewAnnotations.startDraft] preparing document comment anchor', {
-      fileName,
+      target,
       kind: range.kind,
       editorFrom: range.from,
       editorTo: range.to,
@@ -91,7 +93,7 @@ export const DocumentReviewAnnotations = forwardRef<DocumentReviewAnnotationsHan
       if (request !== preparationRequestRef.current) return
       const anchor = createDocumentReviewAnchor(editor, snapshot, selection)
       console.debug('[DocumentReviewAnnotations.startDraft] document comment anchor prepared', {
-        fileName,
+        target,
         revision: anchor.revision,
         byteStart: anchor.start,
         byteEnd: anchor.end,
@@ -100,12 +102,12 @@ export const DocumentReviewAnnotations = forwardRef<DocumentReviewAnnotationsHan
       setDraft({ ...range, anchor, key: documentCommentAnchorKey(anchor), body: '', submitting: false })
     } catch (error) {
       if (request !== preparationRequestRef.current) return
-      console.error('准备正文审阅评论失败:', error instanceof Error ? error.message : String(error), { fileName, error })
+      console.error('准备文本资源审阅评论失败:', error instanceof Error ? error.message : String(error), { target, error })
       toast.error(t('editor.review.prepareFailed'))
     } finally {
       if (request === preparationRequestRef.current) setPreparing(false)
     }
-  }, [editor, fileName, onPrepareSnapshot, preparing, t])
+  }, [editor, onPrepareSnapshot, preparing, t, target])
 
   const startSelectionComment = useCallback(() => {
     const { from, to } = editor.state.selection
@@ -138,7 +140,7 @@ export const DocumentReviewAnnotations = forwardRef<DocumentReviewAnnotationsHan
     return () => {
       preparationRequestRef.current += 1
     }
-  }, [fileName])
+  }, [target.kind, target.id, target.kind === 'lore_item' ? target.field : ''])
 
   const toggleExpandedComments = useCallback((keys: readonly string[]) => {
     setExpandedKeys((current) => {
@@ -281,11 +283,11 @@ export const DocumentReviewAnnotations = forwardRef<DocumentReviewAnnotationsHan
     if (!draft || !draft.body.trim()) return
     setDraft((current) => current ? { ...current, submitting: true } : current)
     try {
-      const created = await onCreate({ path: fileName, body: draft.body.trim(), anchor: draft.anchor })
+      const created = await onCreate({ target, body: draft.body.trim(), anchor: draft.anchor })
       setExpandedKeys((current) => new Set(current).add(documentCommentGroupKey(created)))
       setDraft(null)
     } catch (error) {
-      console.error('创建正文审阅评论失败', { fileName, error })
+      console.error('创建文本资源审阅评论失败', { target, error })
       toast.error(t('editor.review.createFailed'))
       setDraft((current) => current ? { ...current, submitting: false } : current)
     }
@@ -329,14 +331,14 @@ export const DocumentReviewAnnotations = forwardRef<DocumentReviewAnnotationsHan
               } : undefined}
               onUpdate={async (comment, body) => {
                 try { await onUpdate(comment, body) } catch (error) {
-                  console.error('更新正文审阅评论失败', { fileName, commentID: comment.id, error })
+                  console.error('更新文本资源审阅评论失败', { target, resourceLabel, commentID: comment.id, error })
                   toast.error(t('editor.review.updateFailed'))
                   throw error
                 }
               }}
               onDelete={async (comment) => {
                 try { await onDelete(comment) } catch (error) {
-                  console.error('删除正文审阅评论失败', { fileName, commentID: comment.id, error })
+                  console.error('删除文本资源审阅评论失败', { target, resourceLabel, commentID: comment.id, error })
                   toast.error(t('editor.review.deleteFailed'))
                   throw error
                 }

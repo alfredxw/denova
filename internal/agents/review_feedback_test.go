@@ -36,6 +36,13 @@ func TestTurnInputProjectionInjectsOnlyResolvedReviewFeedbackWithSource(t *testi
 			ReviewThreadID: "document-thread",
 			Comments: []ReviewFeedbackComment{{
 				ID: "document-comment", Path: "chapters/ch02.md", Body: "Make the image more concrete.",
+			}, {
+				ID: "lore-comment",
+				Target: &ReviewFeedbackTarget{
+					Kind: "lore_item", ID: "hero", Field: "content", Name: "Lin Chuan",
+					Snapshot: &ReviewFeedbackSnapshot{Revision: "lore-r2", Content: "Canonical lore body."},
+				},
+				Body: "Explain the event behind this fear.",
 			}},
 		}},
 	}
@@ -53,6 +60,10 @@ func TestTurnInputProjectionInjectsOnlyResolvedReviewFeedbackWithSource(t *testi
 		`"source":"document"`,
 		`"review_thread_id":"document-thread"`,
 		"Make the image more concrete.",
+		`"target":{"kind":"lore_item","id":"hero","field":"content","name":"Lin Chuan","snapshot":{"revision":"lore-r2","content":"Canonical lore body."}}`,
+		"Explain the event behind this fear.",
+		"`read_lore_items` and `write_lore_items`",
+		"If `target.snapshot` is present",
 	} {
 		if !strings.Contains(modelMessage, expected) {
 			t.Fatalf("agent message is missing %q: %s", expected, modelMessage)

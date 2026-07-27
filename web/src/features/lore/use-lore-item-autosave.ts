@@ -10,7 +10,10 @@ export interface LoreAutosaveDraft extends LoreItem {
   tag_draft: string
 }
 
-type LoreAutosavePayload = Omit<LoreItem, 'created_at' | 'updated_at' | 'provenance'>
+type LoreAutosavePayload = Omit<
+  LoreItem,
+  'created_at' | 'updated_at' | 'provenance'
+>
 
 interface LoreItemAutosaveOptions {
   draft: LoreItem | null
@@ -32,22 +35,40 @@ export function useLoreItemAutosave({
   onSaved,
   onAutoSaveError,
 }: LoreItemAutosaveOptions) {
-  const autosaveDraft = useMemo<LoreAutosaveDraft | null>(() => draft ? {
-    ...draft,
-    tag_draft: tagDraft,
-  } : null, [draft, tagDraft])
+  const autosaveDraft = useMemo<LoreAutosaveDraft | null>(
+    () =>
+      draft
+        ? {
+            ...draft,
+            tag_draft: tagDraft,
+          }
+        : null,
+    [draft, tagDraft],
+  )
 
-  const autosave = useResourceAutosave<LoreAutosaveDraft, LoreAutosavePayload, LoreItem>({
+  const autosave = useResourceAutosave<
+    LoreAutosaveDraft,
+    LoreAutosavePayload,
+    LoreItem
+  >({
     draft: autosaveDraft,
     active,
     scopeKey: workspace,
     makePayload: loreAutosavePayload,
     baselineFromSaved: (saved) => loreAutosaveDraft(saved),
     signature: loreResourceSignature,
-    save: updateLoreItem,
-    resolveConflict: async ({ error, baseline: previous, draft: submitted, baseRevision }) => {
+    save: (id, payload, baseRevision) =>
+      updateLoreItem(workspace, id, payload, baseRevision),
+    resolveConflict: async ({
+      error,
+      baseline: previous,
+      draft: submitted,
+      baseRevision,
+    }) => {
       if (!isRevisionConflict(error)) return null
-      const latest = (await getLoreItems()).find((item) => item.id === submitted.id)
+      const latest = (await getLoreItems(workspace)).find(
+        (item) => item.id === submitted.id,
+      )
       if (!latest) throw new Error(`Lore item ${submitted.id} no longer exists`)
       const latestDraft = loreAutosaveDraft(latest)
       const rebased = await rebaseJSONWithRecovery({
@@ -83,7 +104,9 @@ export function useLoreItemAutosave({
   return autosave
 }
 
-export function loreAutosavePayload(draft: LoreAutosaveDraft): LoreAutosavePayload {
+export function loreAutosavePayload(
+  draft: LoreAutosaveDraft,
+): LoreAutosavePayload {
   const {
     tag_draft: tagDraft,
     created_at: _createdAt,
@@ -108,7 +131,9 @@ export function loreAutosaveDraft(item: LoreItem): LoreAutosaveDraft {
   }
 }
 
-export function loreResourceSignature(value: Partial<LoreAutosaveDraft> | Partial<LoreItem>) {
+export function loreResourceSignature(
+  value: Partial<LoreAutosaveDraft> | Partial<LoreItem>,
+) {
   const {
     tag_draft: tagDraft,
     created_at: _createdAt,
@@ -118,8 +143,11 @@ export function loreResourceSignature(value: Partial<LoreAutosaveDraft> | Partia
   } = value as Partial<LoreAutosaveDraft>
   return JSON.stringify({
     ...item,
-    content: typeof item.content === 'string' ? normalizeEditorText(item.content) : item.content,
-    tags: tagDraft === undefined ? (item.tags || []) : splitLoreTags(tagDraft),
+    content:
+      typeof item.content === 'string'
+        ? normalizeEditorText(item.content)
+        : item.content,
+    tags: tagDraft === undefined ? item.tags || [] : splitLoreTags(tagDraft),
   })
 }
 

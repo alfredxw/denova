@@ -200,6 +200,26 @@ func (s *LoreStore) ListAll() ([]LoreItem, error) {
 	return s.list(true)
 }
 
+// Get resolves one lore item by stable ID, including disabled items. Review
+// comments and editor tabs bind to identity, so visibility must not make an
+// existing item appear deleted.
+func (s *LoreStore) Get(id string) (LoreItem, error) {
+	id = strings.TrimSpace(id)
+	if id == "" {
+		return LoreItem{}, fmt.Errorf("资料 ID 不能为空: %w", os.ErrNotExist)
+	}
+	collection, err := s.loadOrCreate()
+	if err != nil {
+		return LoreItem{}, err
+	}
+	for _, item := range collection.Items {
+		if item.ID == id {
+			return item, nil
+		}
+	}
+	return LoreItem{}, fmt.Errorf("资料不存在: %s: %w", id, os.ErrNotExist)
+}
+
 // Revision identifies the current enabled lore catalog for incremental
 // Director review. It changes when a name, summary, body or enabled state
 // changes, without exposing the full collection to metadata consumers.

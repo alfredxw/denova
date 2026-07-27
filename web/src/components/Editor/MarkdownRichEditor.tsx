@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { EditorContent, useEditor } from '@tiptap/react'
 import StarterKit from '@tiptap/starter-kit'
 import { TableKit } from '@tiptap/extension-table'
@@ -6,6 +6,8 @@ import { Markdown } from '@tiptap/markdown'
 
 import { isSaveShortcut } from '@/lib/keyboard'
 import { cn } from '@/lib/utils'
+import type { DocumentReviewController, DocumentReviewNavigationIntent } from '@/features/document-review/controller'
+import { sameDocumentReviewTarget, type DocumentReviewTarget } from '@/features/document-review/types'
 import {
   createSearchHighlightExtension,
   findSearchMatches,
@@ -13,6 +15,10 @@ import {
   selectSearchMatch,
 } from './editorDecorations'
 import type { SearchState } from './editorDecorations'
+import { SelectionToolbar } from './SelectionToolbar'
+import { DocumentReviewAnnotations, type DocumentReviewAnnotationsHandle } from './DocumentReviewAnnotations'
+import type { DocumentReviewSnapshot } from './documentReviewAnchors'
+import { createDocumentReviewExtension, type DocumentReviewDecorationState, type DocumentReviewPortalTarget } from './documentReviewDecorations'
 import {
   createIndentedHardBreakExtension,
   createWorkspaceImageExtension,
@@ -20,6 +26,14 @@ import {
   placeEditorCaretAtClick,
   replaceEditorDocument,
 } from './editorDocument'
+
+export interface MarkdownRichEditorReview {
+  target: DocumentReviewTarget
+  resourceLabel: string
+  controller: DocumentReviewController
+  prepareSnapshot: () => Promise<DocumentReviewSnapshot>
+  navigationIntent?: DocumentReviewNavigationIntent | null
+}
 
 interface MarkdownRichEditorProps {
   /**
@@ -32,6 +46,7 @@ interface MarkdownRichEditorProps {
   highlightQuery?: string
   /** Cmd/Ctrl+S 触发，对齐原 textarea 编辑器的保存快捷键行为。 */
   onSaveShortcut?: () => void
+  review?: MarkdownRichEditorReview
   'aria-label'?: string
   className?: string
 }
@@ -48,10 +63,19 @@ export function MarkdownRichEditor({
   onChange,
   highlightQuery,
   onSaveShortcut,
+  review,
   className,
   'aria-label': ariaLabel,
 }: MarkdownRichEditorProps) {
   const searchStateRef = useRef<SearchState>({ query: '', index: 0, useRegex: false })
+  const [hasSelection, setHasSelection] = useState(false)
+  const [reviewPortalTargets, setReviewPortalTargets] = useState<DocumentReviewPortalTarget[]>([])
+  const containerRef = useRef<HTMLDivElement>(null)
+  const reviewAnnotationsRef = useRef<DocumentReviewAnnotationsHandle>(null)
+  const reviewDecorationStateRef = useRef<DocumentReviewDecorationState>({ enabled: false, decorations: [] })
+  const lastReviewNavigationNonceRef = useRef<number | null>(null)
+  const reviewRef = useRef(review)
+  reviewRef.current = review
   // 记录编辑器最近发出/接收的内容：onChange 回灌的 value 不再写回文档，真正的外部变更才 setContent。
   const lastEmittedRef = useRef<string>(value)
   const onChangeRef = useRef(onChange)
@@ -63,6 +87,10 @@ export function MarkdownRichEditor({
 
   const searchExtension = useMemo(() => createSearchHighlightExtension(searchStateRef), [])
   const workspaceImageExtension = useMemo(() => createWorkspaceImageExtension(), [])
+  const updateReviewPortalTargets = useCallback((targets: DocumentReviewPortalTarget[]) => {
+    setReviewPortalTargets((current) => sameReviewPortalTargets(current, targets) ? current : targets)
+  }, [])
+  const reviewExtension = useMemo(() => createDocumentReviewExtension(reviewDecorationStateRef, updateReviewPortalTargets), [updateReviewPortalTargets])
 
   const editor = useEditor({
     extensions: [
@@ -70,6 +98,7 @@ export function MarkdownRichEditor({
       createIndentedHardBreakExtension(),
       searchExtension,
       workspaceImageExtension,
+      reviewExtension,
       TableKit.configure({
         table: { resizable: false },
       }),
@@ -86,6 +115,12 @@ export function MarkdownRichEditor({
         ...(ariaLabel ? { 'aria-label': ariaLabel } : {}),
       },
       handleKeyDown: (_view, event) => {
+        if ((event.metaKey || event.ctrlKey) && event.shiftKey && event.key.toLowerCase() === 'l' && reviewRef.current) {
+          event.preventDefault()
+          event.stopPropagation()
+          reviewAnnotationsRef.current?.startSelectionComment()
+          return true
+        }
         if (!isSaveShortcut(event)) return false
         event.preventDefault()
         event.stopPropagation()
@@ -100,6 +135,25 @@ export function MarkdownRichEditor({
       onChangeRef.current(markdown)
     },
   })
+
+  useEffect(() => {
+    if (!editor) return
+    const updateSelection = () => setHasSelection(editor.state.selection.from !== editor.state.selection.to)
+    updateSelection()
+    editor.on('selectionUpdate', updateSelection)
+    editor.on('update', updateSelection)
+    return () => {
+      editor.off('selectionUpdate', updateSelection)
+      editor.off('update', updateSelection)
+    }
+  }, [editor])
+
+  useEffect(() => {
+    const intent = review?.navigationIntent
+    if (!intent || lastReviewNavigationNonceRef.current === intent.nonce) return
+    const revealed = reviewAnnotationsRef.current?.revealComment(intent.commentID)
+    if (revealed) lastReviewNavigationNonceRef.current = intent.nonce
+  }, [review?.controller.comments, review?.navigationIntent])
 
   // 外部内容变更（Agent 写入、重新加载等）时回灌文档；自己输入产生的回灌跳过。
   useEffect(() => {
@@ -125,10 +179,39 @@ export function MarkdownRichEditor({
     if (matches.length > 0) selectSearchMatch(editor, matches[0])
   }, [editor, highlightQuery])
 
+  const reviewComments = review
+    ? review.controller.comments.filter((comment) => sameDocumentReviewTarget(comment.target, review.target))
+    : []
+
   return (
-    <EditorContent
-      editor={editor}
-      className={cn('nova-rich-markdown chat-agent-message min-w-0 text-[var(--nova-text)]', className)}
-    />
+    <div ref={containerRef} className={cn('relative min-h-0 min-w-0', className)}>
+      <EditorContent
+        editor={editor}
+        className="nova-rich-markdown chat-agent-message min-w-0 text-[var(--nova-text)]"
+      />
+      {editor && review ? (
+        <DocumentReviewAnnotations
+          ref={reviewAnnotationsRef}
+          editor={editor}
+          target={review.target}
+          resourceLabel={review.resourceLabel}
+          containerRef={containerRef}
+          comments={reviewComments}
+          decorationStateRef={reviewDecorationStateRef}
+          portalTargets={reviewPortalTargets}
+          onPrepareSnapshot={review.prepareSnapshot}
+          onCreate={review.controller.onCreate}
+          onUpdate={review.controller.onUpdate}
+          onDelete={review.controller.onDelete}
+        />
+      ) : null}
+      {editor && review && hasSelection ? (
+        <SelectionToolbar editor={editor} mode="comment" onAction={() => reviewAnnotationsRef.current?.startSelectionComment()} />
+      ) : null}
+    </div>
   )
+}
+
+function sameReviewPortalTargets(current: DocumentReviewPortalTarget[], next: DocumentReviewPortalTarget[]): boolean {
+  return current.length === next.length && current.every((target, index) => target.key === next[index]?.key && target.element === next[index]?.element)
 }

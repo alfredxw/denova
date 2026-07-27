@@ -28,7 +28,7 @@ describe('useDocumentReview', () => {
   })
 
   it('queues every created comment for the next Agent turn and restores failed submissions', async () => {
-    const comment = { id: 'comment-1', thread_id: 'thread-1', path: 'chapters/a.md', body: '修改这里', anchor, created_at: '', updated_at: '' }
+    const comment = { id: 'comment-1', thread_id: 'thread-1', target: { kind: 'workspace_file' as const, id: 'chapters/a.md' }, body: '修改这里', anchor, created_at: '', updated_at: '' }
     const thread = { id: 'thread-1', comments: [comment] }
     apiMocks.createDocumentComment.mockResolvedValue({ workspace: '/book', reviewThread: thread, comment })
     const showAgent = vi.fn()
@@ -36,7 +36,7 @@ describe('useDocumentReview', () => {
     await waitFor(() => expect(apiMocks.getDocumentReview).toHaveBeenCalledWith('/book'))
 
     await act(async () => {
-      await result.current.addComment({ path: comment.path, body: comment.body, anchor })
+      await result.current.addComment({ target: comment.target, body: comment.body, anchor })
     })
     expect(showAgent).toHaveBeenCalledTimes(1)
     expect(result.current.feedback).toMatchObject({ source: 'document', reviewThreadId: 'thread-1', comments: [{ id: 'comment-1' }] })

@@ -242,3 +242,39 @@ func TestLoreReadPolicyTracksVisibleItemsAndEnforcesHardBounds(t *testing.T) {
 		t.Fatalf("rejected lore content must not be recorded as model-reviewed: %v", reviewed)
 	}
 }
+
+func TestBuildWriteLoreOperationsUpdatesDisabledKnownID(t *testing.T) {
+	workspace := t.TempDir()
+	store := book.NewLoreStore(workspace)
+	disabled := false
+	item, err := store.Create(book.LoreItemInput{
+		ID: "archived-hero", Enabled: &disabled, Type: "character", Name: "封存角色", Content: "旧正文",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	ops, err := buildWriteLoreOperations(store, writeLoreItemsInput{
+		Message: "落实作者对停用设定的评论",
+		Items:   []writeLoreItemInput{{ID: item.ID, Content: "新正文"}},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(ops) != 1 || ops[0].Op != "update" {
+		t.Fatalf("disabled item operation = %#v, want one update", ops)
+	}
+	if _, err := store.ApplyOperations("落实评论", ops); err != nil {
+		t.Fatal(err)
+	}
+	updated, err := store.Get(item.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if updated.Enabled || updated.Content != "新正文" {
+		t.Fatalf("disabled item was not safely updated: %#v", updated)
+	}
+	if visible, err := store.List(); err != nil || len(visible) != 0 {
+		t.Fatalf("disabled item leaked into normal model-visible Lore: %#v err=%v", visible, err)
+	}
+}

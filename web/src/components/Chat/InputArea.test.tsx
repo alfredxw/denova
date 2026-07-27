@@ -163,7 +163,7 @@ describe('InputArea command menu', () => {
     )
 
     expect(screen.getByText(/把这一段写得更克制/)).toBeInTheDocument()
-    await user.click(screen.getByRole('button', { name: /正文 · chapters\/ch01\.md.*把这一段写得更克制/ }))
+    await user.click(screen.getByRole('button', { name: /批注 · chapters\/ch01\.md.*把这一段写得更克制/ }))
     expect(handleOpen).toHaveBeenCalledWith(feedback, feedback.comments[0])
 
     await user.click(screen.getByRole('button', { name: '发送' }))

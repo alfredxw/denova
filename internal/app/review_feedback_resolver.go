@@ -6,13 +6,12 @@ import (
 	"fmt"
 
 	agents "denova/internal/agents"
-	"denova/internal/book"
 	"denova/internal/documentreview"
 	"denova/internal/workspacechange"
 )
 
 // reviewFeedbackResolver abstracts one review-feedback source (workspace-change
-// diffs, author document comments, ...) behind a single seam. The orchestration
+// diffs, author comments on editable text resources, ...) behind a single seam. The orchestration
 // code in ChatAppService only looks up a resolver by source and delegates; it no
 // longer switches on source strings in three places (resolve/consume/rollback).
 //
@@ -31,10 +30,10 @@ type reviewFeedbackResolver interface {
 // per call and reused within a batch; resolvers are stateless.
 type reviewFeedbackResolvers map[string]reviewFeedbackResolver
 
-func newReviewFeedbackResolvers(changes *workspacechange.Service, documents *documentreview.Service, files *book.Service) reviewFeedbackResolvers {
+func newReviewFeedbackResolvers(changes *workspacechange.Service, documents *documentreview.Service, targets documentreview.SnapshotResolver) reviewFeedbackResolvers {
 	return reviewFeedbackResolvers{
 		agents.ReviewFeedbackSourceWorkspaceChange: workspaceChangeReviewFeedbackResolver{changes: changes},
-		agents.ReviewFeedbackSourceDocument:        documentReviewFeedbackResolver{documents: documents, files: files},
+		agents.ReviewFeedbackSourceDocument:        documentReviewFeedbackResolver{documents: documents, targets: targets},
 	}
 }
 
@@ -96,7 +95,7 @@ func (r workspaceChangeReviewFeedbackResolver) Restore(ctx context.Context, sess
 // document comments.
 type documentReviewFeedbackResolver struct {
 	documents *documentreview.Service
-	files     *book.Service
+	targets   documentreview.SnapshotResolver
 }
 
 func (r documentReviewFeedbackResolver) Resolve(ctx context.Context, runtime ideChatRuntime, threadID string, commentIDs []string, feedback *agents.ReviewFeedbackContext) error {
@@ -104,19 +103,31 @@ func (r documentReviewFeedbackResolver) Resolve(ctx context.Context, runtime ide
 	if err != nil {
 		return translateDocumentReviewError(err)
 	}
+	includedSnapshots := make(map[string]bool)
 	for _, comment := range comments {
-		content, revision, readErr := r.files.ReadFileWithRevision(comment.Path)
+		resolved, readErr := r.targets.ResolveReviewTarget(ctx, comment.Target)
 		if readErr != nil {
 			return readErr
 		}
-		anchor, outdated := documentreview.ProjectAnchor(content, revision, comment.Anchor)
+		anchor, outdated := documentreview.ProjectAnchor(resolved.Snapshot.Content, resolved.Snapshot.Revision, comment.Anchor)
 		if outdated {
 			return invalidReviewFeedbackError("a document comment no longer identifies unique source text", map[string]any{
-				"comment_id": comment.ID, "path": comment.Path,
+				"comment_id": comment.ID, "target": comment.Target,
 			})
 		}
+		target := &agents.ReviewFeedbackTarget{
+			Kind: resolved.Target.Kind, ID: resolved.Target.ID, Field: resolved.Target.Field, Name: resolved.Name,
+		}
+		snapshotKey := resolved.Target.Kind + "\x00" + resolved.Target.ID + "\x00" + resolved.Target.Field
+		if resolved.ContextSnapshot != nil && !includedSnapshots[snapshotKey] {
+			target.Snapshot = &agents.ReviewFeedbackSnapshot{
+				Revision: resolved.ContextSnapshot.Revision,
+				Content:  resolved.ContextSnapshot.Content,
+			}
+			includedSnapshots[snapshotKey] = true
+		}
 		feedback.Comments = append(feedback.Comments, agents.ReviewFeedbackComment{
-			ID: comment.ID, Path: comment.Path, Body: comment.Body,
+			ID: comment.ID, Target: target, Body: comment.Body,
 			Anchor: agents.ReviewFeedbackAnchor{
 				Encoding: anchor.Encoding, Kind: anchor.Kind, Revision: anchor.Revision,
 				Start: anchor.Start, End: anchor.End, Quote: anchor.Quote, Prefix: anchor.Prefix,

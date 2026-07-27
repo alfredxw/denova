@@ -80,7 +80,7 @@ const changes = {
   'changes.summary.showLess': '收起文件',
   'changes.feedback.selected': '待提交的审阅意见（{{count}}）',
   'changes.feedback.line': '第 {{line}} 行',
-  'changes.feedback.source.document': '正文',
+  'changes.feedback.source.document': '批注',
   'changes.feedback.source.diff': 'Diff',
   'changes.feedback.remove': '移出本次提交',
   'changes.feedback.defaultMessage': '请处理这 {{count}} 条审阅意见。',

@@ -80,7 +80,7 @@ const changes = {
   'changes.summary.showLess': 'Show fewer files',
   'changes.feedback.selected': 'Review feedback to send ({{count}})',
   'changes.feedback.line': 'line {{line}}',
-  'changes.feedback.source.document': 'Document',
+  'changes.feedback.source.document': 'Inline',
   'changes.feedback.source.diff': 'Diff',
   'changes.feedback.remove': 'Remove from this submission',
   'changes.feedback.defaultMessage': 'Please address these {{count}} review comments.',

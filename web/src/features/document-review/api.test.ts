@@ -12,9 +12,10 @@ describe('document review API', () => {
       quote: '正文', display_quote: '正文', editor_from: 2, editor_to: 4,
     }
     const requests: Array<{ method: string; body?: unknown }> = []
+    const target = { kind: 'workspace_file' as const, id: 'chapters/a.md' }
     const thread = (body: string) => ({
       id: 'review-1',
-      comments: [{ id: 'comment-1', thread_id: 'review-1', path: 'chapters/a.md', body, anchor, created_at: '', updated_at: '' }],
+      comments: [{ id: 'comment-1', thread_id: 'review-1', target, body, anchor, created_at: '', updated_at: '' }],
     })
     server.use(
       http.get('/api/workspace/document-review', ({ request }) => {
@@ -37,11 +38,11 @@ describe('document review API', () => {
     )
 
     await expect(getDocumentReview(workspace)).resolves.toEqual(expect.objectContaining({ id: '', comments: [] }))
-    await expect(createDocumentComment(workspace, { path: 'chapters/a.md', body: '修改这里', anchor })).resolves.toMatchObject({ reviewThread: { id: 'review-1' }, comment: { id: 'comment-1' } })
+    await expect(createDocumentComment(workspace, { target, body: '修改这里', anchor })).resolves.toMatchObject({ reviewThread: { id: 'review-1' }, comment: { id: 'comment-1' } })
     await updateDocumentComment(workspace, 'comment-1', '更新意见')
     await deleteDocumentComment(workspace, 'comment-1')
     expect(requests).toEqual([
-      { method: 'POST', body: { path: 'chapters/a.md', body: '修改这里', anchor } },
+      { method: 'POST', body: { target, body: '修改这里', anchor } },
       { method: 'PATCH', body: { body: '更新意见' } },
       { method: 'DELETE' },
     ])

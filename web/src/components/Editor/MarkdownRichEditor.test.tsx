@@ -14,6 +14,8 @@ const tiptapMock = vi.hoisted(() => {
       setTextSelection: vi.fn(),
     },
     chain: vi.fn(() => chainApi),
+    on: vi.fn(),
+    off: vi.fn(),
     isDestroyed: false,
     getMarkdown: vi.fn(() => tiptapMock.markdown),
     state: {
@@ -34,7 +36,7 @@ const tiptapMock = vi.hoisted(() => {
       attributes?: Record<string, string>
       handleKeyDown?: (
         view: unknown,
-        event: { key: string; metaKey: boolean; ctrlKey: boolean; altKey: boolean; preventDefault?: () => void; stopPropagation?: () => void },
+        event: { key: string; metaKey: boolean; ctrlKey: boolean; altKey: boolean; shiftKey?: boolean; preventDefault?: () => void; stopPropagation?: () => void },
       ) => boolean
       handleClick?: unknown
     }

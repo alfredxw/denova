@@ -332,7 +332,10 @@ func formatLoreItems(items []book.LoreItem) string {
 
 func buildWriteLoreOperations(store *book.LoreStore, input writeLoreItemsInput) ([]book.LoreOperation, error) {
 	itemsByID := map[string]book.LoreItem{}
-	existing, err := store.List()
+	// Explicit write IDs may refer to disabled entries. Those entries stay out
+	// of model read tools, but an author-approved review snapshot can still
+	// safely drive an update without accidentally treating the ID as a create.
+	existing, err := store.ListAll()
 	if err != nil {
 		return nil, err
 	}

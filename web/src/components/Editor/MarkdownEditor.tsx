@@ -43,24 +43,14 @@ import {
 import type { SearchMatch, SearchState } from './editorDecorations'
 import { useEditorDraftPersistence, type EditorFlushHandler } from './useEditorDraftPersistence'
 import { MISSING_WORKSPACE_REVISION, readFile } from '@/lib/api-client/workspace'
-import type { CreateDocumentCommentRequest, DocumentReviewComment } from '@/features/document-review/types'
+import { sameDocumentReviewTarget } from '@/features/document-review/types'
+import type { DocumentReviewController, DocumentReviewNavigationIntent } from '@/features/document-review/controller'
 import { DocumentReviewAnnotations, type DocumentReviewAnnotationsHandle } from './DocumentReviewAnnotations'
 import type { DocumentReviewSnapshot } from './documentReviewAnchors'
 import { createDocumentReviewExtension, type DocumentReviewDecorationState, type DocumentReviewPortalTarget } from './documentReviewDecorations'
 
 export type { EditorFlushHandler } from './useEditorDraftPersistence'
-
-export interface DocumentReviewController {
-  comments: DocumentReviewComment[]
-  onCreate: (request: CreateDocumentCommentRequest) => Promise<DocumentReviewComment>
-  onUpdate: (comment: DocumentReviewComment, body: string) => Promise<DocumentReviewComment>
-  onDelete: (comment: DocumentReviewComment) => Promise<DocumentReviewComment>
-}
-
-export interface DocumentReviewNavigationIntent {
-  commentID: string
-  nonce: number
-}
+export type { DocumentReviewController, DocumentReviewNavigationIntent } from '@/features/document-review/controller'
 
 interface MarkdownEditorProps {
   /** Canonical workspace identity. Save tasks never cross this boundary. */
@@ -142,6 +132,7 @@ export function MarkdownEditor({
   const editorContainerRef = useRef<HTMLDivElement>(null)
   const reviewAnnotationsRef = useRef<DocumentReviewAnnotationsHandle>(null)
   const reviewDecorationStateRef = useRef<DocumentReviewDecorationState>({ enabled: false, decorations: [] })
+  const documentReviewTarget = useMemo(() => fileName ? { kind: 'workspace_file' as const, id: fileName } : null, [fileName])
   const updateReviewPortalTargets = useCallback((targets: DocumentReviewPortalTarget[]) => {
     setReviewPortalTargets((current) => sameReviewPortalTargets(current, targets) ? current : targets)
   }, [])
@@ -553,13 +544,14 @@ export function MarkdownEditor({
         showSelectionToolbar={selectedCharacters > 0 && (documentCommentsAvailable || Boolean(onQuoteSelection))}
         selectionToolbarMode={documentCommentsAvailable ? 'comment' : 'quote'}
         onSelectionAction={documentCommentsAvailable ? commentCurrentSelection : quoteCurrentSelection}
-        reviewAnnotations={editor && fileName && documentReview && documentCommentsAvailable ? (
+        reviewAnnotations={editor && fileName && documentReview && documentReviewTarget && documentCommentsAvailable ? (
           <DocumentReviewAnnotations
             ref={reviewAnnotationsRef}
             editor={editor}
-            fileName={fileName}
+            target={documentReviewTarget}
+            resourceLabel={fileName}
             containerRef={editorContainerRef}
-            comments={documentReview.comments.filter((comment) => comment.path === fileName)}
+            comments={documentReview.comments.filter((comment) => sameDocumentReviewTarget(comment.target, documentReviewTarget))}
             decorationStateRef={reviewDecorationStateRef}
             portalTargets={reviewPortalTargets}
             onPrepareSnapshot={prepareDocumentReviewSnapshot}

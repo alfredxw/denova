@@ -5,6 +5,7 @@ import (
 	"path/filepath"
 	"testing"
 
+	"denova/internal/book"
 	"denova/internal/documentreview"
 	"denova/internal/workspacechange"
 )
@@ -27,7 +28,8 @@ func TestDocumentReviewCommentLifecycleAPI(t *testing.T) {
 	}
 
 	created := performWorkspaceChangeRequest(t, server, http.MethodPost, "/api/workspace/document-comments", workspace, map[string]any{
-		"path": path, "body": "补充人物动机", "anchor": anchor,
+		"target": map[string]any{"kind": documentreview.TargetKindWorkspaceFile, "id": path},
+		"body":   "补充人物动机", "anchor": anchor,
 	})
 	if created.Code != http.StatusCreated {
 		t.Fatalf("create status=%d body=%s", created.Code, created.Body.String())
@@ -70,7 +72,8 @@ func TestDocumentReviewCommentLifecycleAPI(t *testing.T) {
 	}
 
 	forged := performWorkspaceChangeRequest(t, server, http.MethodPost, "/api/workspace/document-comments", workspace, map[string]any{
-		"path": path, "body": "伪造评论", "anchor": map[string]any{
+		"target": map[string]any{"kind": documentreview.TargetKindWorkspaceFile, "id": path},
+		"body":   "伪造评论", "anchor": map[string]any{
 			"kind": documentreview.AnchorKindTextRange, "encoding": documentreview.AnchorEncodingUTF8,
 			"revision": workspacechange.Revision([]byte(content)), "start": start, "end": start + len(quote),
 			"quote": "并不存在的原文", "display_quote": quote, "editor_from": 5, "editor_to": 13,
@@ -78,5 +81,54 @@ func TestDocumentReviewCommentLifecycleAPI(t *testing.T) {
 	})
 	if forged.Code != http.StatusConflict {
 		t.Fatalf("forged anchor status=%d body=%s workspace=%s", forged.Code, forged.Body.String(), filepath.Base(workspace))
+	}
+}
+
+func TestLoreReviewCommentLifecycleAPI(t *testing.T) {
+	application := newTestApplication(t)
+	server := NewServer(application, "0")
+	workspace := application.Workspace()
+	item, err := application.CreateLoreItem(book.LoreItemInput{
+		ID: "gatekeeper", Type: "character", Name: "守门人", Content: "Aldren guards the northern gate.",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	quote := "guards the northern gate"
+	start := len("Aldren ")
+	created := performWorkspaceChangeRequest(t, server, http.MethodPost, "/api/workspace/document-comments", workspace, map[string]any{
+		"target": map[string]any{
+			"kind":  documentreview.TargetKindLoreItem,
+			"id":    item.ID,
+			"field": documentreview.TargetFieldLoreContent,
+		},
+		"body": "Clarify why Aldren is guarding it.",
+		"anchor": map[string]any{
+			"kind": documentreview.AnchorKindTextRange, "encoding": documentreview.AnchorEncodingUTF8,
+			"revision": item.UpdatedAt, "start": start, "end": start + len(quote),
+			"quote": quote, "display_quote": quote, "editor_from": 2, "editor_to": 8,
+		},
+	})
+	if created.Code != http.StatusCreated {
+		t.Fatalf("create lore comment status=%d body=%s", created.Code, created.Body.String())
+	}
+	var createBody struct {
+		Comment documentreview.Comment `json:"comment"`
+	}
+	decodeResponse(t, created.Body.Bytes(), &createBody)
+	if createBody.Comment.Target.Kind != documentreview.TargetKindLoreItem || createBody.Comment.Target.ID != item.ID {
+		t.Fatalf("unexpected lore review target: %#v", createBody.Comment.Target)
+	}
+
+	listed := performWorkspaceChangeRequest(t, server, http.MethodGet, "/api/workspace/document-review", workspace, nil)
+	if listed.Code != http.StatusOK {
+		t.Fatalf("list status=%d body=%s", listed.Code, listed.Body.String())
+	}
+	var listBody struct {
+		ReviewThread documentreview.Thread `json:"review_thread"`
+	}
+	decodeResponse(t, listed.Body.Bytes(), &listBody)
+	if len(listBody.ReviewThread.Comments) != 1 || listBody.ReviewThread.Comments[0].Target.ID != item.ID {
+		t.Fatalf("unexpected lore review thread: %#v", listBody.ReviewThread)
 	}
 }

@@ -2,6 +2,7 @@ package documentreview
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"os"
 	"path/filepath"
@@ -21,7 +22,7 @@ func TestDocumentReviewCommentLifecyclePersistsAndRotatesThread(t *testing.T) {
 	anchor := testAnchor(snapshot, "第二段。")
 
 	thread, comment, err := service.AddComment(context.Background(), AddCommentRequest{
-		Path: "chapters/ch01.md", Body: "这里需要补足动机", Anchor: anchor,
+		Target: fileReviewTarget("chapters/ch01.md"), Body: "这里需要补足动机", Anchor: anchor,
 	}, snapshot)
 	if err != nil {
 		t.Fatalf("add comment: %v", err)
@@ -63,7 +64,7 @@ func TestDocumentReviewCommentLifecyclePersistsAndRotatesThread(t *testing.T) {
 	}
 
 	nextThread, _, err := reloaded.AddComment(context.Background(), AddCommentRequest{
-		Path: "chapters/ch01.md", Body: "新的审阅批次", Anchor: anchor,
+		Target: fileReviewTarget("chapters/ch01.md"), Body: "新的审阅批次", Anchor: anchor,
 	}, snapshot)
 	if err != nil {
 		t.Fatalf("add next comment: %v", err)
@@ -83,7 +84,7 @@ func TestDocumentReviewRejectsStaleAndForgedAnchors(t *testing.T) {
 	anchor := testAnchor(snapshot, "正文")
 	anchor.Revision = "sha256:stale"
 
-	_, _, err = service.AddComment(context.Background(), AddCommentRequest{Path: "chapter.md", Body: "意见", Anchor: anchor}, snapshot)
+	_, _, err = service.AddComment(context.Background(), AddCommentRequest{Target: fileReviewTarget("chapter.md"), Body: "意见", Anchor: anchor}, snapshot)
 	var reviewErr *Error
 	if !errors.As(err, &reviewErr) || reviewErr.Code != ErrorCodeConflict {
 		t.Fatalf("stale anchor error = %v", err)
@@ -91,9 +92,21 @@ func TestDocumentReviewRejectsStaleAndForgedAnchors(t *testing.T) {
 
 	anchor = testAnchor(snapshot, "正文")
 	anchor.Quote = "伪造原文"
-	_, _, err = service.AddComment(context.Background(), AddCommentRequest{Path: "chapter.md", Body: "意见", Anchor: anchor}, snapshot)
+	_, _, err = service.AddComment(context.Background(), AddCommentRequest{Target: fileReviewTarget("chapter.md"), Body: "意见", Anchor: anchor}, snapshot)
 	if !errors.As(err, &reviewErr) || reviewErr.Code != ErrorCodeConflict {
 		t.Fatalf("forged quote error = %v", err)
+	}
+}
+
+func TestNormalizeTargetRejectsWorkspacePathsOutsideTheBook(t *testing.T) {
+	for _, id := range []string{"../other-book.md", "/tmp/outside.md"} {
+		t.Run(id, func(t *testing.T) {
+			_, err := NormalizeTarget(Target{Kind: TargetKindWorkspaceFile, ID: id})
+			var reviewErr *Error
+			if !errors.As(err, &reviewErr) || reviewErr.Code != ErrorCodeInvalid {
+				t.Fatalf("NormalizeTarget(%q) error = %v, want %s", id, err, ErrorCodeInvalid)
+			}
+		})
 	}
 }
 
@@ -119,7 +132,7 @@ func TestDocumentReviewRepairsTornLedgerTail(t *testing.T) {
 	}
 	snapshot := Snapshot{Content: "需要审阅的正文", Revision: workspacechange.Revision([]byte("需要审阅的正文"))}
 	_, comment, err := service.AddComment(context.Background(), AddCommentRequest{
-		Path: "chapters/ch01.md", Body: "补充细节", Anchor: testAnchor(snapshot, "需要审阅"),
+		Target: fileReviewTarget("chapters/ch01.md"), Body: "补充细节", Anchor: testAnchor(snapshot, "需要审阅"),
 	}, snapshot)
 	if err != nil {
 		t.Fatalf("add comment: %v", err)
@@ -170,7 +183,7 @@ func TestDocumentReviewEmitsThreadCreatedEvent(t *testing.T) {
 	anchor := testAnchor(snapshot, "需要审阅")
 
 	thread, _, err := service.AddComment(context.Background(), AddCommentRequest{
-		Path: "chapters/ch01.md", Body: "补充细节", Anchor: anchor,
+		Target: fileReviewTarget("chapters/ch01.md"), Body: "补充细节", Anchor: anchor,
 	}, snapshot)
 	if err != nil {
 		t.Fatalf("add comment: %v", err)
@@ -207,7 +220,7 @@ func TestDocumentReviewIndexSkipsThreadsWithOnlyDeletedComments(t *testing.T) {
 	anchor := testAnchor(snapshot, "需要审阅")
 
 	thread, comment, err := service.AddComment(context.Background(), AddCommentRequest{
-		Path: "chapters/ch01.md", Body: "第一条评论", Anchor: anchor,
+		Target: fileReviewTarget("chapters/ch01.md"), Body: "第一条评论", Anchor: anchor,
 	}, snapshot)
 	if err != nil {
 		t.Fatalf("add comment: %v", err)
@@ -226,7 +239,7 @@ func TestDocumentReviewIndexSkipsThreadsWithOnlyDeletedComments(t *testing.T) {
 
 	// A fresh comment after the thread is emptied rotates to a new thread ID.
 	newThread, _, err := service.AddComment(context.Background(), AddCommentRequest{
-		Path: "chapters/ch01.md", Body: "新的评论", Anchor: anchor,
+		Target: fileReviewTarget("chapters/ch01.md"), Body: "新的评论", Anchor: anchor,
 	}, snapshot)
 	if err != nil {
 		t.Fatalf("add new comment: %v", err)
@@ -247,10 +260,13 @@ func TestDocumentReviewReplaysLegacyThreadEmbeddedInCommentsUpserted(t *testing.
 	}
 	now := time.Now().UTC()
 	legacyThread := Thread{ID: "legacy-thread", CreatedAt: now, UpdatedAt: now, Comments: []Comment{}}
-	legacyComment := Comment{
-		ID: "legacy-comment", ThreadID: "legacy-thread", Path: "chapter.md",
-		Body: "旧格式评论", Anchor: Anchor{Kind: AnchorKindTextRange, Encoding: AnchorEncodingUTF8, Revision: "rev", Start: 0, End: 3},
-		CreatedAt: now, UpdatedAt: now,
+	var legacyComment Comment
+	legacyJSON := []byte(`{"id":"legacy-comment","thread_id":"legacy-thread","path":"chapter.md","body":"旧格式评论","anchor":{"kind":"text-range","encoding":"utf8-bytes-v1","revision":"rev","start":0,"end":3},"created_at":"` + now.Format(time.RFC3339Nano) + `","updated_at":"` + now.Format(time.RFC3339Nano) + `"}`)
+	if err := json.Unmarshal(legacyJSON, &legacyComment); err != nil {
+		t.Fatalf("decode legacy comment: %v", err)
+	}
+	if legacyComment.Target != fileReviewTarget("chapter.md") {
+		t.Fatalf("legacy target = %#v", legacyComment.Target)
 	}
 	// Legacy event smuggles the thread inside comments_upserted via the optional
 	// Thread field. New code must still replay this shape.
@@ -309,6 +325,10 @@ func testAnchor(snapshot Snapshot, quote string) Anchor {
 		Start: start, End: end, Quote: quote, Prefix: snapshot.Content[prefixStart:start], Suffix: snapshot.Content[end:suffixEnd],
 		DisplayQuote: quote, EditorFrom: 1, EditorTo: 2,
 	}
+}
+
+func fileReviewTarget(path string) Target {
+	return Target{Kind: TargetKindWorkspaceFile, ID: path}
 }
 
 func indexOf(content, quote string) int {

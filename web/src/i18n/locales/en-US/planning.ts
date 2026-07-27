@@ -20,6 +20,7 @@ const planning = {
   'planning.reorderBookSetting': 'Reorder {{title}}',
   'planning.otherBookSettings': 'Other Settings',
   'planning.ideas': 'Ideas',
+  'planning.loreSettings': 'Lore',
   'planning.ideasEmpty': 'ideas.md has not been generated',
   'planning.outline': 'Outline',
   'planning.outlineTab': 'Outline',

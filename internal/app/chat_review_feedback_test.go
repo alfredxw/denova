@@ -33,8 +33,8 @@ func TestDocumentReviewFeedbackResolvesCurrentAnchorAndConsumesAfterCommit(t *te
 	}
 	start := len("Alpha ")
 	thread, comment, err := reviews.AddComment(context.Background(), documentreview.AddCommentRequest{
-		Path: path,
-		Body: "Make this image more specific.",
+		Target: documentreview.Target{Kind: documentreview.TargetKindWorkspaceFile, ID: path},
+		Body:   "Make this image more specific.",
 		Anchor: documentreview.Anchor{
 			Kind: documentreview.AnchorKindTextRange, Encoding: documentreview.AnchorEncodingUTF8,
 			Revision: workspacechange.Revision([]byte(before)), Start: start, End: start + len("target"), Quote: "target",
@@ -61,7 +61,7 @@ func TestDocumentReviewFeedbackResolvesCurrentAnchorAndConsumesAfterCommit(t *te
 		t.Fatalf("resolved document feedback = %#v", req.ResolvedReviewFeedback)
 	}
 	resolved := req.ResolvedReviewFeedback[0].Comments[0]
-	if resolved.Path != path || resolved.Body != comment.Body || resolved.Anchor.Revision != workspacechange.Revision([]byte(after)) || resolved.Anchor.Start != len("Intro\nAlpha ") {
+	if resolved.Target == nil || resolved.Target.Kind != documentreview.TargetKindWorkspaceFile || resolved.Target.ID != path || resolved.Body != comment.Body || resolved.Anchor.Revision != workspacechange.Revision([]byte(after)) || resolved.Anchor.Start != len("Intro\nAlpha ") {
 		t.Fatalf("document anchor was not projected from the canonical file: %#v", resolved)
 	}
 	if err := chat.consumeResolvedReviewFeedback(context.Background(), ideChatRuntime{workspace: workspace}, req); err != nil {
@@ -70,6 +70,62 @@ func TestDocumentReviewFeedbackResolvesCurrentAnchorAndConsumesAfterCommit(t *te
 	pending, err := reviews.CurrentThread(context.Background())
 	if err != nil || pending.ID != "" || len(pending.Comments) != 0 {
 		t.Fatalf("document feedback remained pending after commit: %#v err=%v", pending, err)
+	}
+}
+
+func TestLoreReviewFeedbackResolvesStructuredTargetAndCurrentAnchor(t *testing.T) {
+	workspace := t.TempDir()
+	store := book.NewLoreStore(workspace)
+	disabled := false
+	item, err := store.Create(book.LoreItemInput{
+		ID: "hero", Enabled: &disabled, Type: "character", Name: "林川", Content: "谨慎的旅人。\n他害怕失去同伴。",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	quote := "害怕失去同伴"
+	start := len("谨慎的旅人。\n他")
+	reviews, err := documentreview.ForWorkspace(workspace)
+	if err != nil {
+		t.Fatal(err)
+	}
+	thread, comment, err := reviews.AddComment(context.Background(), documentreview.AddCommentRequest{
+		Target: documentreview.Target{Kind: documentreview.TargetKindLoreItem, ID: item.ID, Field: documentreview.TargetFieldLoreContent},
+		Body:   "说明这种恐惧来自哪次事件。",
+		Anchor: documentreview.Anchor{
+			Kind: documentreview.AnchorKindTextRange, Encoding: documentreview.AnchorEncodingUTF8,
+			Revision: item.UpdatedAt, Start: start, End: start + len(quote), Quote: quote,
+			Prefix: "。\n他", Suffix: "。", DisplayQuote: quote,
+		},
+	}, documentreview.Snapshot{Content: item.Content, Revision: item.UpdatedAt})
+	if err != nil {
+		t.Fatal(err)
+	}
+	updatedContent := "角色底色：\n" + item.Content
+	updated, err := store.Update(item.ID, book.LoreItemInput{
+		Type: item.Type, Name: item.Name, Content: updatedContent, BaseRevision: item.UpdatedAt,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	application := &App{workspace: workspace, bookService: book.NewService(workspace)}
+	chat := &ChatAppService{app: application}
+	req := agents.ChatRequest{ReviewFeedback: agents.ReviewFeedbackRefs{{
+		Source: agents.ReviewFeedbackSourceDocument, ReviewThreadID: thread.ID, CommentIDs: []string{comment.ID},
+	}}}
+	if err := chat.resolveReviewFeedback(context.Background(), ideChatRuntime{workspace: workspace}, &req); err != nil {
+		t.Fatal(err)
+	}
+	resolved := req.ResolvedReviewFeedback[0].Comments[0]
+	if resolved.Target == nil || resolved.Target.Kind != documentreview.TargetKindLoreItem || resolved.Target.ID != item.ID || resolved.Target.Field != documentreview.TargetFieldLoreContent || resolved.Target.Name != item.Name {
+		t.Fatalf("resolved lore target = %#v", resolved.Target)
+	}
+	if resolved.Target.Snapshot == nil || resolved.Target.Snapshot.Revision != updated.UpdatedAt || resolved.Target.Snapshot.Content != updatedContent {
+		t.Fatalf("disabled lore target is missing its canonical review snapshot: %#v", resolved.Target)
+	}
+	if resolved.Anchor.Revision != updated.UpdatedAt || resolved.Anchor.Start != len("角色底色：\n")+start || resolved.Body != comment.Body {
+		t.Fatalf("resolved lore feedback = %#v", resolved)
 	}
 }
 
@@ -118,7 +174,7 @@ func TestReviewFeedbackResolvesAndConsumesDocumentAndDiffSelectionsTogether(t *t
 	}
 	documentStart := len("Alpha ")
 	documentThread, documentComment, err := documents.AddComment(context.Background(), documentreview.AddCommentRequest{
-		Path: documentPath, Body: "Make the document image more specific.",
+		Target: documentreview.Target{Kind: documentreview.TargetKindWorkspaceFile, ID: documentPath}, Body: "Make the document image more specific.",
 		Anchor: documentreview.Anchor{
 			Kind: documentreview.AnchorKindTextRange, Encoding: documentreview.AnchorEncodingUTF8,
 			Revision: workspacechange.Revision([]byte(documentContent)), Start: documentStart, End: documentStart + len("target"),
@@ -223,7 +279,7 @@ func assertMixedReviewFeedbackRollback(t *testing.T, order []string, failingLedg
 		t.Fatal(err)
 	}
 	documentThread, documentComment, err := documents.AddComment(context.Background(), documentreview.AddCommentRequest{
-		Path: documentPath, Body: "Keep this document comment pending on failure.",
+		Target: documentreview.Target{Kind: documentreview.TargetKindWorkspaceFile, ID: documentPath}, Body: "Keep this document comment pending on failure.",
 		Anchor: documentreview.Anchor{
 			Kind: documentreview.AnchorKindTextRange, Encoding: documentreview.AnchorEncodingUTF8,
 			Revision: workspacechange.Revision([]byte(documentContent)), Start: len("Alpha "), End: len("Alpha target"),

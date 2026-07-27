@@ -1238,7 +1238,7 @@ describe('SettingPanel', () => {
     await user.click(within(generateDialog).getByRole('button', { name: '生成图片' }))
 
     await waitFor(() => {
-      expect(generateLoreItemImage).toHaveBeenCalledWith('lin-chuan', expect.objectContaining({ image_preset_id: 'game-cg' }))
+      expect(generateLoreItemImage).toHaveBeenCalledWith('/workspace', 'lin-chuan', expect.objectContaining({ image_preset_id: 'game-cg' }))
     })
     await user.click(within(generateDialog).getByRole('button', { name: '关闭' }))
     await waitFor(() => {
@@ -1360,7 +1360,7 @@ describe('SettingPanel', () => {
     vi.mocked(getLoreItems)
       .mockResolvedValueOnce([initial])
       .mockResolvedValueOnce([external])
-    vi.mocked(updateLoreItem).mockImplementation(async (id, input) => ({
+    vi.mocked(updateLoreItem).mockImplementation(async (_workspace, id, input) => ({
       ...external,
       ...input,
       id,
@@ -1378,6 +1378,7 @@ describe('SettingPanel', () => {
     flushSettingPanelAutosave()
 
     await waitFor(() => expect(updateLoreItem).toHaveBeenCalledWith(
+      '/workspace',
       'lin-chuan',
       expect.objectContaining({ name: '本地改名', content: '## 外部正文' }),
       '2026-01-01T00:00:01Z',
@@ -1417,11 +1418,32 @@ describe('SettingPanel', () => {
     expect(name).toHaveValue('归档等待期间的最新改名')
   })
 
+  it('archives a dirty Lore draft before accepting an external deletion', async () => {
+    const initial = loreItem('lin-chuan', '林川')
+    vi.mocked(getLoreItems)
+      .mockResolvedValueOnce([initial])
+      .mockResolvedValueOnce([])
+
+    render(<SettingPanel mode="lore" workspace="/workspace" imagePresets={[]} />)
+
+    const name = await screen.findByRole('textbox', { name: '名称' })
+    fireEvent.change(name, { target: { value: '尚未保存的本地改名' } })
+    act(() => window.dispatchEvent(new CustomEvent('nova:lore-updated', { detail: { ids: ['lin-chuan'] } })))
+
+    await waitFor(() => expect(preserveAutosaveConflict).toHaveBeenCalledWith(expect.objectContaining({
+      resource: 'lore_item',
+      scope: '/workspace',
+      id: 'lin-chuan',
+      external: { revision: 'deleted', value: null },
+    })))
+    expect(updateLoreItem).not.toHaveBeenCalled()
+  })
+
   it('saves lore item enabled status from a switch', async () => {
     const user = userEvent.setup()
     const item = loreItem('lin-chuan', '林川')
     vi.mocked(getLoreItems).mockResolvedValue([item])
-    vi.mocked(updateLoreItem).mockImplementation(async (id, input) => ({
+    vi.mocked(updateLoreItem).mockImplementation(async (_workspace, id, input) => ({
       ...item,
       ...input,
       id,
@@ -1440,6 +1462,7 @@ describe('SettingPanel', () => {
 
     await waitFor(() => expect(updateLoreItem).toHaveBeenCalled())
     expect(updateLoreItem).toHaveBeenCalledWith(
+      '/workspace',
       'lin-chuan',
       expect.objectContaining({ enabled: false }),
       '2026-01-01T00:00:00Z',
@@ -1512,7 +1535,7 @@ describe('SettingPanel', () => {
     await user.click(within(dialog).getByRole('button', { name: '删除' }))
 
     await waitFor(() => {
-      expect(deleteLoreItem).toHaveBeenCalledWith('lin-chuan')
+      expect(deleteLoreItem).toHaveBeenCalledWith('/workspace', 'lin-chuan')
     })
     confirmSpy.mockRestore()
   })
@@ -1574,7 +1597,7 @@ describe('SettingPanel', () => {
     await user.click(screen.getByRole('button', { name: '开始生成' }))
 
     await waitFor(() => {
-      expect(streamLoreImagesGenerate).toHaveBeenCalledWith(expect.objectContaining({
+      expect(streamLoreImagesGenerate).toHaveBeenCalledWith('/workspace', expect.objectContaining({
         item_ids: ['lin-chuan'],
         overwrite_existing: false,
         image_preset_id: 'ink-wash',

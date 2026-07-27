@@ -11,6 +11,7 @@ import (
 func TestLoreClassificationPreviewAndApplyAPI(t *testing.T) {
 	application := newTestApplication(t)
 	server := NewServer(application, "0")
+	workspace := application.Workspace()
 	item, err := application.CreateLoreItem(book.LoreItemInput{
 		ID: "shen", Type: "other", TypeSource: book.LoreTypeSourceHeuristic, Name: "人物详情：沈凝", Content: "沈凝负责见证公开比试。",
 		Provenance: &book.LoreProvenance{Kind: "tavern_worldbook_entry", SourceName: "card.json", SourceRecordID: "1"},
@@ -24,7 +25,7 @@ func TestLoreClassificationPreviewAndApplyAPI(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	previewResp := performJSONRequest(t, server, http.MethodPost, "/api/lore/classification/preview", map[string]any{"mode": "heuristic"})
+	previewResp := performWorkspaceChangeRequest(t, server, http.MethodPost, "/api/lore/classification/preview", workspace, map[string]any{"mode": "heuristic"})
 	if previewResp.Code != http.StatusOK {
 		t.Fatalf("preview status=%d body=%s", previewResp.Code, previewResp.Body.String())
 	}
@@ -38,7 +39,7 @@ func TestLoreClassificationPreviewAndApplyAPI(t *testing.T) {
 		t.Fatalf("unexpected classification preview: %#v", preview)
 	}
 
-	applyResp := performJSONRequest(t, server, http.MethodPost, "/api/lore/classification/apply", runtimeapp.LoreClassificationApplyRequest{
+	applyResp := performWorkspaceChangeRequest(t, server, http.MethodPost, "/api/lore/classification/apply", workspace, runtimeapp.LoreClassificationApplyRequest{
 		Revision: preview.Revision,
 		Changes:  []book.LoreTypeChange{{ID: item.ID, Type: preview.Items[0].SuggestedType}},
 	})
@@ -51,7 +52,7 @@ func TestLoreClassificationPreviewAndApplyAPI(t *testing.T) {
 		t.Fatalf("confirmed classification should persist as manual metadata: %#v", result)
 	}
 
-	staleResp := performJSONRequest(t, server, http.MethodPost, "/api/lore/classification/apply", runtimeapp.LoreClassificationApplyRequest{
+	staleResp := performWorkspaceChangeRequest(t, server, http.MethodPost, "/api/lore/classification/apply", workspace, runtimeapp.LoreClassificationApplyRequest{
 		Revision: preview.Revision,
 		Changes:  []book.LoreTypeChange{{ID: item.ID, Type: "world"}},
 	})

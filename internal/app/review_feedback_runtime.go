@@ -19,7 +19,7 @@ type reviewFeedbackServiceScope struct {
 func (a *App) withReviewFeedbackServices(
 	expectedWorkspace string,
 	scope reviewFeedbackServiceScope,
-	action func(*workspacechange.Service, *documentreview.Service) error,
+	action func(*workspacechange.Service, *documentreview.Service, documentreview.SnapshotResolver) error,
 ) error {
 	a.mu.RLock()
 	defer a.mu.RUnlock()
@@ -43,10 +43,13 @@ func (a *App) withReviewFeedbackServices(
 		}
 	}
 	if scope.documents {
+		if a.bookService == nil {
+			return ErrNoWorkspace
+		}
 		documents, err = documentreview.ForWorkspace(actualWorkspace)
 		if err != nil {
 			return err
 		}
 	}
-	return action(changes, documents)
+	return action(changes, documents, newDocumentReviewTargetResolver(actualWorkspace, a.bookService))
 }

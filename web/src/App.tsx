@@ -42,6 +42,7 @@ import {
   type AutosaveConflictPreservedDetail,
 } from '@/lib/autosave/rebase-with-recovery'
 import { useWorkbenchNotice } from '@/features/notices/use-workbench-notice'
+import { LORE_UPDATED_EVENT, notifyLoreUpdated } from '@/features/lore/events'
 
 const PROJECT_VISIBLE_KEY = 'nova.layout.projectVisible'
 const ACTIVITY_BAR_EXPANDED_KEY = 'nova.layout.activityBarExpanded'
@@ -141,8 +142,14 @@ function App() {
   }, [t])
 
   const handleAgentFileChange = useCallback(async (path?: string) => {
-    await refreshAfterAgentFileChange(path)
-    notifyVersionChange()
+    try {
+      await refreshAfterAgentFileChange(path)
+    } finally {
+      // Lore tools persist outside the workspace file tree, so Agent completion
+      // invalidates Lore projections explicitly as well as file summaries.
+      notifyLoreUpdated({ source: 'writing-agent' })
+      notifyVersionChange()
+    }
   }, [notifyVersionChange, refreshAfterAgentFileChange])
 
   const handleReviewedWorkspaceChange = useCallback(async (paths: string[]) => {
@@ -219,7 +226,7 @@ function App() {
       return
     }
     try {
-      setLoreItems(await getLoreItems())
+      setLoreItems(await getLoreItems(workspace))
     } catch (e) {
       console.warn('加载资料库条目失败', e)
       setLoreItems([])
@@ -229,8 +236,8 @@ function App() {
   useEffect(() => {
     void refreshLoreItems()
     const onLoreUpdated = () => void refreshLoreItems()
-    window.addEventListener('nova:lore-updated', onLoreUpdated)
-    return () => window.removeEventListener('nova:lore-updated', onLoreUpdated)
+    window.addEventListener(LORE_UPDATED_EVENT, onLoreUpdated)
+    return () => window.removeEventListener(LORE_UPDATED_EVENT, onLoreUpdated)
   }, [refreshLoreItems])
 
   const chapterStats: Record<string, ChapterSummary> = Object.fromEntries((summary?.chapters || []).map((chapter) => [chapter.path, chapter]))
@@ -355,7 +362,7 @@ function App() {
     setActiveTabKey(activeKey)
     if (activeKey) {
       const target = tabs.find((tab) => tabKey(tab) === activeKey)
-      if (target) {
+      if (target?.kind === 'file') {
         void selectFile(target.path)
       } else {
         clearSelectedFile()
@@ -430,7 +437,7 @@ function App() {
   const handleDeleteItem = useCallback(async (path: string) => {
     if ((selectedFile === path || selectedFile?.startsWith(`${path}/`)) && !(await flushEditorDraft())) return
     await deleteItem(path)
-    setOpenTabs((prev) => prev.filter((tab) => tab.path !== path && !tab.path.startsWith(`${path}/`)))
+    setOpenTabs((prev) => prev.filter((tab) => tab.kind !== 'file' || (tab.path !== path && !tab.path.startsWith(`${path}/`))))
     notifyVersionChange()
   }, [deleteItem, flushEditorDraft, notifyVersionChange, selectedFile])
 
@@ -440,6 +447,7 @@ function App() {
     const parent = path.replace(/\/[^/]*$/, '')
     const newPath = parent ? `${parent}/${newName}` : newName
     setOpenTabs((prev) => dedupeTabs(prev.map((tab) => {
+      if (tab.kind !== 'file') return tab
       if (tab.path === path) return { kind: 'file', path: newPath }
       if (tab.path.startsWith(`${path}/`)) return { kind: 'file', path: `${newPath}${tab.path.slice(path.length)}` }
       return tab
@@ -456,6 +464,7 @@ function App() {
     if ((selectedFile === from || selectedFile?.startsWith(`${from}/`)) && !(await flushEditorDraft())) return
     await moveItem(from, to)
     setOpenTabs((prev) => dedupeTabs(prev.map((tab) => {
+      if (tab.kind !== 'file') return tab
       if (tab.path === from) return { kind: 'file', path: to }
       if (tab.path.startsWith(`${from}/`)) return { kind: 'file', path: `${to}${tab.path.slice(from.length)}` }
       return tab
@@ -475,6 +484,21 @@ function App() {
     await selectFile(path)
     return true
   }, [flushEditorDraft, limitTabs, selectFile, selectedFile, setSelectedChapterId])
+
+  const handleOpenLoreTab = useCallback(async () => {
+    const key = tabKey({ kind: 'lore' })
+    if (activeTabKey === key) return true
+    if (!(await flushEditorDraft())) return false
+    setOpenTabs((current) => {
+      const next: Tab[] = current.some((tab) => tab.kind === 'lore')
+        ? current
+        : [...current, { kind: 'lore' }]
+      return limitTabs(next, key)
+    })
+    clearSelectedFile()
+    setActiveTabKey(key)
+    return true
+  }, [activeTabKey, clearSelectedFile, flushEditorDraft, limitTabs])
 
   const handleSelectSearchResult = useCallback(async (result: WorkspaceSearchResult, query: string) => {
     setSettingsOpen(false)
@@ -566,7 +590,7 @@ function App() {
       setMode('interactive')
       useInteractiveStore.getState().setSubmode('lore')
       window.setTimeout(() => {
-        window.dispatchEvent(new CustomEvent('nova:lore-updated', { detail: result }))
+        window.dispatchEvent(new CustomEvent(LORE_UPDATED_EVENT, { detail: result }))
       }, 0)
       notifyVersionChange()
       setCharacterCardDialogOpen(false)
@@ -582,12 +606,16 @@ function App() {
 
   const handleActivateTab = useCallback(async (tab: Tab) => {
     const key = tabKey(tab)
+    if (tab.kind === 'lore') {
+      await handleOpenLoreTab()
+      return
+    }
     if (selectedFile === tab.path) {
       setActiveTabKey(key)
       return
     }
     await handleSelectFile(tab.path)
-  }, [handleSelectFile, selectedFile])
+  }, [handleOpenLoreTab, handleSelectFile, selectedFile])
 
   const handleCloseTab = useCallback(async (tab: Tab) => {
     const key = tabKey(tab)
@@ -818,6 +846,7 @@ function App() {
         onMoveItem={handleMoveItem}
         onActivateTab={handleActivateTab}
         onCloseTab={handleCloseTab}
+        onOpenLoreTab={handleOpenLoreTab}
         onSaveCurrentFile={handleSaveCurrentFile}
         onEditorFlushHandlerChange={handleEditorFlushHandlerChange}
         onWorkspaceChanged={handleReviewedWorkspaceChange}

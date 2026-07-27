@@ -13,7 +13,7 @@ interface UseDocumentReviewOptions {
 
 const EMPTY_THREAD: DocumentReviewThread = { id: '', comments: [] }
 
-/** Owns author-created document comments and their one-shot Agent queue. */
+/** Owns author-created text-resource comments and their one-shot Agent queue. */
 export function useDocumentReview({ workspace, agentVisible, onShowAgent }: UseDocumentReviewOptions) {
   const { t } = useTranslation()
   const [thread, setThread] = useState<DocumentReviewThread>(EMPTY_THREAD)
@@ -34,7 +34,7 @@ export function useDocumentReview({ workspace, agentVisible, onShowAgent }: UseD
       }
       return next
     } catch (error) {
-      console.error('加载正文审阅评论失败', { workspace, error })
+      console.error('加载文本资源审阅评论失败', { workspace, error })
       if (requestEpochRef.current === epoch) setThread(EMPTY_THREAD)
       return EMPTY_THREAD
     }
@@ -89,7 +89,7 @@ export function useDocumentReview({ workspace, agentVisible, onShowAgent }: UseD
     const comment = thread.comments.find((item) => item.id === commentID)
     if (!comment) return
     void removeComment(comment).catch((error) => {
-      console.error('删除正文审阅评论失败', { workspace, commentID, error })
+      console.error('删除文本资源审阅评论失败', { workspace, commentID, error })
       toast.error(t('editor.review.deleteFailed'))
     })
   }, [removeComment, t, thread.comments, workspace])

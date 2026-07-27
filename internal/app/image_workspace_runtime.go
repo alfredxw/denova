@@ -40,6 +40,13 @@ func (r *imageWorkspaceRuntime) Release() {
 }
 
 func (s *ImageAppService) acquireWorkspaceRuntime(ctx context.Context) (*imageWorkspaceRuntime, error) {
+	return s.acquireWorkspaceRuntimeFor(ctx, "")
+}
+
+// acquireWorkspaceRuntimeFor atomically binds a UI request to the workspace
+// identity sent by its caller. An empty expectedWorkspace keeps the internal
+// current-workspace behavior used by non-HTTP call sites.
+func (s *ImageAppService) acquireWorkspaceRuntimeFor(ctx context.Context, expectedWorkspace string) (*imageWorkspaceRuntime, error) {
 	if s == nil || s.app == nil {
 		return nil, ErrNoWorkspace
 	}
@@ -49,6 +56,10 @@ func (s *ImageAppService) acquireWorkspaceRuntime(ctx context.Context) (*imageWo
 	if workspace == "" || a.bookService == nil || a.cfg == nil {
 		a.mu.RUnlock()
 		return nil, ErrNoWorkspace
+	}
+	if strings.TrimSpace(expectedWorkspace) != "" && lifecycleWorkspaceKey(expectedWorkspace) != lifecycleWorkspaceKey(workspace) {
+		a.mu.RUnlock()
+		return nil, fmt.Errorf("%w: expected=%q actual=%q", ErrWorkspaceChanged, expectedWorkspace, workspace)
 	}
 	runtime := &imageWorkspaceRuntime{
 		workspace: workspace, cfg: *a.cfg, bookState: a.bookState,

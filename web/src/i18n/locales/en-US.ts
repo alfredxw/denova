@@ -15,6 +15,7 @@ import novelImport from './en-US/novelImport'
 import router from './en-US/router'
 import planning from './en-US/planning'
 import lore from './en-US/lore'
+import loreWorkspace from './en-US/loreWorkspace'
 import locale from './en-US/locale'
 import layout from './en-US/layout'
 import agents from './en-US/agents'
@@ -58,6 +59,7 @@ const enUS = {
   ...router,
   ...planning,
   ...lore,
+  ...loreWorkspace,
   ...locale,
   ...layout,
   ...agents,
