@@ -126,8 +126,9 @@ vi.mock('@/features/document-review/use-document-review', () => ({
 }))
 
 vi.mock('./WorkbenchShell', () => ({
-  WorkbenchShell: ({ onQuickSwitchBook, main, rightPanelContent }: {
+  WorkbenchShell: ({ onQuickSwitchBook, sidebar, main, rightPanelContent }: {
     onQuickSwitchBook: (path: string) => Promise<boolean>
+    sidebar: ReactNode
     main: ReactNode
     rightPanelContent: ReactNode
   }) => (
@@ -135,6 +136,7 @@ vi.mock('./WorkbenchShell', () => ({
       <button type="button" onClick={() => { void onQuickSwitchBook('/book-b') }}>
         quick switch
       </button>
+      {sidebar}
       {main}
       {rightPanelContent}
     </>
@@ -342,6 +344,32 @@ describe('ModeRouter autosave navigation policy', () => {
     await waitFor(() => expect(screen.getByTestId('lore-workspace-navigation')).toHaveTextContent(
       `${comment.id}|1`,
     ))
+  })
+
+  it('routes setting/lore/items.json from the project tree to the Lore tab', async () => {
+    const user = userEvent.setup()
+    const onOpenLoreTab = vi.fn(async () => true)
+    const onSelectFile = vi.fn()
+    render(<ModeRouter {...modeRouterProps({
+      sidebarView: 'files',
+      tree: [{
+        name: 'setting',
+        type: 'dir',
+        children: [{
+          name: 'lore',
+          type: 'dir',
+          children: [{ name: 'items.json', type: 'file' }],
+        }],
+      }],
+      onOpenLoreTab,
+      onSelectFile,
+    })} />)
+
+    await user.click(screen.getByText('lore'))
+    await user.click(screen.getByText('items.json'))
+
+    await waitFor(() => expect(onOpenLoreTab).toHaveBeenCalledTimes(1))
+    expect(onSelectFile).not.toHaveBeenCalled()
   })
 
   it('opens the project sidebar and switches to the outline before locating the editor chapter', async () => {

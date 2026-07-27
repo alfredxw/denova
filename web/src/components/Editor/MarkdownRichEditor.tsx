@@ -127,7 +127,11 @@ export function MarkdownRichEditor({
         onSaveShortcutRef.current?.()
         return true
       },
-      handleClick: placeEditorCaretAtClick,
+      handleClick: (view, position, event) => {
+        placeEditorCaretAtClick(view, position, event)
+        // Keep review-highlight and future extension click handlers in the same event chain.
+        return false
+      },
     },
     onUpdate: ({ editor: instance }) => {
       const markdown = normalizeEditorText(instance.getMarkdown())

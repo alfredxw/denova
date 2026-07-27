@@ -13,8 +13,6 @@ import (
 	"path/filepath"
 	"strings"
 	"unicode"
-
-	"denova/internal/workspacepath"
 )
 
 const tavernCardCoverPath = "assets/image/cover.png"
@@ -851,5 +849,5 @@ func loreEnabledPtr(enabled bool) *bool {
 }
 
 func loreItemsRelPath(workspace string) string {
-	return workspacepath.Rel(workspace, "lore", "items.json")
+	return LoreItemsRelativePath
 }

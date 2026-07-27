@@ -100,6 +100,11 @@ export function useDocumentReview({ workspace, agentVisible, onShowAgent }: UseD
     return comments.length ? { source: 'document', reviewThreadId: thread.id, comments } : null
   }, [hiddenCommentIDs, thread])
 
+  const visibleComments = useMemo(
+    () => thread.comments.filter((comment) => !hiddenCommentIDs.has(comment.id)),
+    [hiddenCommentIDs, thread.comments],
+  )
+
   const submitFeedback = useCallback((selection: ReviewFeedbackSelection) => {
     if (selection.source !== 'document') return
     setHiddenCommentIDs((current) => new Set([...current, ...selection.comments.map((comment) => comment.id)]))
@@ -113,6 +118,7 @@ export function useDocumentReview({ workspace, agentVisible, onShowAgent }: UseD
 
   return {
     thread,
+    visibleComments,
     feedback,
     refresh,
     addComment,

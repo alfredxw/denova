@@ -2,10 +2,9 @@ package skills
 
 import (
 	"fmt"
+	"log"
 	"path/filepath"
 	"strings"
-
-	"denova/internal/workspacepath"
 )
 
 // NewDirectories returns the canonical skill search path for Denova.
@@ -17,7 +16,12 @@ func NewDirectories(builtinDir, novaDir, workspace string) []Directory {
 	if path := normalizePath(filepath.Join(novaDir, "skills")); novaDir != "" && path != "" {
 		dirs = append(dirs, Directory{Scope: ScopeUser, Path: path, Writable: true})
 	}
-	if path := normalizePath(workspacepath.Path(workspace, "skills")); workspace != "" && path != "" {
+	if workspace != "" {
+		if err := MigrateWorkspaceSkills(workspace); err != nil {
+			log.Printf("[skills] migrate legacy workspace Skills failed workspace=%s err=%v", workspace, err)
+		}
+	}
+	if path := normalizePath(filepath.Join(workspace, "skills")); workspace != "" && path != "" {
 		dirs = append(dirs, Directory{Scope: ScopeWorkspace, Path: path, Writable: true})
 	}
 	return dirs

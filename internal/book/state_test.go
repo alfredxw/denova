@@ -7,8 +7,6 @@ import (
 	"strings"
 	"testing"
 	"time"
-
-	"denova/internal/workspacepath"
 )
 
 func TestInitWorkspaceDoesNotCreateCharacterStates(t *testing.T) {
@@ -37,7 +35,7 @@ func TestInitWorkspaceCreatesIdeasMarkdown(t *testing.T) {
 	}
 }
 
-func TestStateInternalDirsUseLegacyTargetsWhenCurrentIsGeneratedEmpty(t *testing.T) {
+func TestInitWorkspaceMigratesLegacyLoreIntoPublicSettingDirectory(t *testing.T) {
 	dir := t.TempDir()
 	currentLore := filepath.Join(dir, ".denova", "lore", "items.json")
 	legacyLore := filepath.Join(dir, ".nova", "lore", "items.json")
@@ -50,13 +48,26 @@ func TestStateInternalDirsUseLegacyTargetsWhenCurrentIsGeneratedEmpty(t *testing
 	if err := os.MkdirAll(filepath.Dir(legacyLore), 0o755); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.WriteFile(legacyLore, []byte(`{"version":1,"items":[{"id":"hero"}]}`), 0o644); err != nil {
+	if err := os.WriteFile(legacyLore, []byte(`{"version":1,"items":[{"id":"hero","name":"林川"}]}`), 0o644); err != nil {
 		t.Fatal(err)
 	}
 
 	state := NewState(dir)
-	if got, want := state.LoreDir(), filepath.Join(dir, ".nova", "lore"); got != want {
-		t.Fatalf("LoreDir should keep using legacy lore target: want=%s got=%s", want, got)
+	if got, want := state.LoreDir(), filepath.Join(dir, "setting", "lore"); got != want {
+		t.Fatalf("LoreDir should use the public setting directory: want=%s got=%s", want, got)
+	}
+	if err := state.InitWorkspace(); err != nil {
+		t.Fatalf("InitWorkspace 失败: %v", err)
+	}
+	data, err := os.ReadFile(LoreItemsPath(dir))
+	if err != nil {
+		t.Fatalf("读取迁移后的 Lore 失败: %v", err)
+	}
+	if !strings.Contains(string(data), `"id": "hero"`) || !strings.Contains(string(data), `"version": 2`) {
+		t.Fatalf("迁移后的 Lore 未保留旧条目或升级格式: %s", data)
+	}
+	if _, err := os.Stat(legacyLore); err != nil {
+		t.Fatalf("旧 Lore 应作为可恢复副本保留: %v", err)
 	}
 }
 
@@ -252,7 +263,7 @@ func TestCompactContextPartsKeepLoreMarkdownAsSingleSource(t *testing.T) {
 	parts := state.CompactContextParts()
 	loreParts := 0
 	for _, part := range parts {
-		if part.Source == workspacepath.Rel(dir, "lore", "items.json") {
+		if part.Source == LoreItemsRelativePath {
 			loreParts++
 			if part.Title != "资料库" {
 				t.Fatalf("资料库来源标题 = %q, want 资料库", part.Title)

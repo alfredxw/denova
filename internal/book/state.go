@@ -52,9 +52,9 @@ func (s *State) BackupDir() string {
 	return workspacepath.Path(s.workspace, "backups")
 }
 
-// LoreDir 返回内部 lore/ 目录路径（结构化资料库）。
+// LoreDir 返回用户可见的 setting/lore/ 目录路径（结构化资料库）。
 func (s *State) LoreDir() string {
-	return workspacepath.Path(s.workspace, "lore")
+	return filepath.Join(s.SettingDir(), "lore")
 }
 
 // SettingDir 返回 setting/ 目录路径（作品设定，用户可查看和编辑）。
@@ -142,7 +142,7 @@ func (s *State) StableContextParts() []CompactContextPart {
 	if loreContext != "" {
 		parts = append(parts, CompactContextPart{
 			ID:      "lore",
-			Source:  workspacepath.Rel(s.workspace, "lore", "items.json"),
+			Source:  LoreItemsRelativePath,
 			Title:   "资料库",
 			Content: loreContext,
 		})

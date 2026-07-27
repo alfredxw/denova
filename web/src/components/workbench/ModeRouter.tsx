@@ -23,7 +23,7 @@ import { applyReadingTypographySettings } from '@/features/settings/font-variabl
 import type { AgentPartRef } from '@/lib/agent-message-view'
 import type { RightPanel, WorkspaceMode } from '@/stores/workspace-store'
 import { workspaceFileKind } from '@/lib/workspace-file-kind'
-import { workspaceParentPaths } from '@/lib/workspace-path'
+import { isLoreItemsPath, workspaceParentPaths } from '@/lib/workspace-path'
 import { useWritingChangeReview } from '@/features/changes/use-writing-change-review'
 import type { ReviewFeedbackBatch, ReviewFeedbackSelection } from '@/features/changes/agent/ReviewFeedbackTray'
 import { useDocumentReview } from '@/features/document-review/use-document-review'
@@ -419,6 +419,18 @@ export function ModeRouter(props: ModeRouterProps) {
   const loreEmpty = Boolean(workspace) && loreItems.length === 0
   const showSidebarLoading = loading && tree.length === 0 && !summary
 
+  const selectWorkspacePath = useCallback((path: string) => {
+    if (isLoreItemsPath(path)) return onOpenLoreTab()
+    return onSelectFile(path)
+  }, [onOpenLoreTab, onSelectFile])
+  const selectWorkspaceSearchResult = useCallback((result: WorkspaceSearchResult, query: string) => {
+    if (isLoreItemsPath(result.path)) {
+      void onOpenLoreTab()
+      return
+    }
+    return onSelectSearchResult(result, query)
+  }, [onOpenLoreTab, onSelectSearchResult])
+
   const requestLoreInit = useCallback(() => {
     onSetMode('interactive')
     setInteractiveSubmode('lore')
@@ -450,8 +462,8 @@ export function ModeRouter(props: ModeRouterProps) {
     if (!projectVisible) onToggleProjectVisible()
     setProjectRevealPath(path)
     onSetSidebarView('files')
-    await Promise.resolve(onSelectFile(path))
-  }, [onSelectFile, onSetSidebarView, onToggleProjectVisible, projectVisible])
+    await Promise.resolve(selectWorkspacePath(path))
+  }, [onSetSidebarView, onToggleProjectVisible, projectVisible, selectWorkspacePath])
   const requestChapterIllustration = useCallback((chapterPath: string) => {
     const target = currentChapter?.path || chapterPath || selectedFile || ''
     if (!target) return
@@ -477,13 +489,13 @@ export function ModeRouter(props: ModeRouterProps) {
       setIllustrationInsertSignal((current) => ({ illustration, nonce: (current?.nonce || 0) + 1 }))
     }
     if (illustration.chapter_path && selectedFile !== illustration.chapter_path) {
-      void Promise.resolve(onSelectFile(illustration.chapter_path)).then((navigated) => {
+      void Promise.resolve(selectWorkspacePath(illustration.chapter_path)).then((navigated) => {
         if (navigated !== false) window.setTimeout(apply, 0)
       })
       return
     }
     apply()
-  }, [onSelectFile, selectedFile])
+  }, [selectWorkspacePath, selectedFile])
   const aiVisible = rightPanel === 'ai'
   const showAgent = useCallback(() => onSetRightPanel('ai'), [onSetRightPanel])
   const {
@@ -515,11 +527,11 @@ export function ModeRouter(props: ModeRouterProps) {
     [changeReviewFeedback, documentReview.feedback].filter((feedback): feedback is ReviewFeedbackSelection => Boolean(feedback))
   ), [changeReviewFeedback, documentReview.feedback])
   const documentReviewController = useMemo(() => ({
-    comments: documentReview.thread.comments,
+    comments: documentReview.visibleComments,
     onCreate: documentReview.addComment,
     onUpdate: documentReview.editComment,
     onDelete: documentReview.removeComment,
-  }), [documentReview.addComment, documentReview.editComment, documentReview.removeComment, documentReview.thread.comments])
+  }), [documentReview.addComment, documentReview.editComment, documentReview.removeComment, documentReview.visibleComments])
   const removeActiveReviewFeedback = useCallback((selection: ReviewFeedbackSelection, commentID: string) => {
     if (selection.source === 'document') documentReview.removeFeedback(commentID)
     else removeReviewFeedback(commentID)
@@ -542,7 +554,7 @@ export function ModeRouter(props: ModeRouterProps) {
   } = useReviewFeedbackNavigation({
     workspace,
     selectedFile,
-    onSelectFile,
+    onSelectFile: selectWorkspacePath,
     onOpenLoreTab,
     onOpenChangeReview: openChangeReview,
   })
@@ -559,7 +571,7 @@ export function ModeRouter(props: ModeRouterProps) {
   const fileSuggestions = useMemo(() => flattenFileTree(tree), [tree])
   const closeIdeWorkspacePanel = useCallback(() => onSetRightPanel(null), [onSetRightPanel])
   const returnToContentMode = useCallback(() => onSetMode(booksReturnMode), [booksReturnMode, onSetMode])
-  const selectOutlineFile = useCallback((path: string) => { void onSelectFile(path) }, [onSelectFile])
+  const selectOutlineFile = useCallback((path: string) => { void selectWorkspacePath(path) }, [selectWorkspacePath])
   const openLoreLibrary = useCallback(() => {
     void flushBeforeWorkspaceSwitch().then((saved) => {
       if (saved) onSetRightPanel('lore')
@@ -582,9 +594,9 @@ export function ModeRouter(props: ModeRouterProps) {
     />
   ), [aiVisible, onToggleProjectVisible, projectVisible, toggleAgent])
   const openReviewFile = useCallback(async (path: string) => {
-    const navigated = await onSelectFile(path)
+    const navigated = await selectWorkspacePath(path)
     if (navigated !== false) closeChangeReview()
-  }, [closeChangeReview, onSelectFile])
+  }, [closeChangeReview, selectWorkspacePath])
   const openAgentChangeReview = useCallback((reviewThreadID: string, groupID: string) => {
     void openChangeReview(reviewThreadID, groupID)
   }, [openChangeReview])
@@ -783,7 +795,7 @@ export function ModeRouter(props: ModeRouterProps) {
             {sidebarView === 'search' ? (
               <StableSearchPanel
                 workspace={workspace}
-                onSelectResult={onSelectSearchResult}
+                onSelectResult={selectWorkspaceSearchResult}
                 onWorkspaceChanged={onWorkspaceChanged}
               />
             ) : tree.length === 0 ? (
@@ -792,7 +804,7 @@ export function ModeRouter(props: ModeRouterProps) {
               <StableFileTree
                 nodes={tree}
                 selectedFile={selectedFile}
-                onSelectFile={onSelectFile}
+                onSelectFile={selectWorkspacePath}
                 onReferenceFile={onReferenceFile}
                 chapterStats={chapterStats}
                 onCreateItem={onCreateItem}
@@ -981,7 +993,7 @@ export function ModeRouter(props: ModeRouterProps) {
             onTellersChange={setTellers}
             onImagePresetsChange={setImagePresets}
             onSaveFile={onSaveCurrentFile}
-            onOpenFile={onSelectFile}
+            onOpenFile={selectWorkspacePath}
           />
         </MainRouteLayer>
       )}

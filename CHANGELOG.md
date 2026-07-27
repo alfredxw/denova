@@ -58,6 +58,18 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - 写作输入区在 Agent 运行时继续可用，新指令发送后统一作为 Follow Up 进入持久化队列，不再要求用户先选 Follow Up 或 Steer；同一运行可连续追加多条指令并按接收顺序逐条执行，正常排队不再触发冲突提示。队列卡片紧贴输入框展示，并可原子地立即转向、删除或返回编辑（当前页面还会恢复本次发送的引用上下文），Stop 与 Send 保持独立；命令提交、恢复和运行错误统一使用可关闭且自动消失的浮动 Toast，不再写入或叠加在消息流中。Beta 不兼容：流式输入工具栏的发送方式选择器已移除。游戏模式保持严格回合制：运行中可预先编辑下一条输入，但需等当前回合结算后发送，运行态仅提供 Stop；游戏直接命令入口不再接受 Follow Up、Steer 或 Next Turn，底层队列投影仅用于恢复已经持久化的运行。
 - The Writing composer remains usable while an Agent runs. New instructions are always accepted into the durable Follow Up queue instead of requiring a Follow Up/Steer choice before sending; multiple instructions can be appended to one run and execute in accepted order without a normal queue-conflict warning. A queue card sits directly above the composer and can atomically steer now, delete, or return the instruction to the editor (restoring its live reference context on the current page), while Stop and Send remain independent. Command submission, recovery, and runtime errors now use closable, auto-expiring floating toasts instead of being written into or accumulated in the message stream. Beta breaking: the streaming delivery selector has been removed from the toolbar. Game mode is strictly turn-based: the next draft remains editable while a turn runs but cannot be sent until settlement, and only Stop is exposed during a run. The direct Game command endpoint no longer accepts Follow Up, Steer, or Next Turn; its underlying queue projection remains only for recovery of already-durable work.
 
+### Changed
+
+- 书籍资料库的单一权威文件从隐藏目录迁至用户可见的 `setting/lore/items.json`，仍保持一个 `items.json` 集中管理全部条目且 JSON 格式不变；打开该文件会直接进入 Lore Tab。工作区初始化会按现有数据优先级读取旧 `.denova/lore/items.json` / `.nova/lore/items.json` 并原子写入新位置，旧文件保留为可恢复副本，后续不再双写。用户或外部工具仍可按普通文件管理它；LoreStore 在加载和保存时校验 JSON 版本、结构、必需身份及重复 ID/名称，发现无效外部改动时明确报错且不会覆盖原文件；资料库继续随整书版本历史恢复。
+- The book Lore library now has one user-visible authoritative file at `setting/lore/items.json`, while retaining the existing single-file JSON format for all entries. Opening that file routes directly to the Lore tab. Workspace initialization reads legacy `.denova/lore/items.json` / `.nova/lore/items.json` by existing data precedence and atomically writes the public copy; legacy files remain recoverable backups and receive no further writes. Users and external tools can still manage it as a normal file. LoreStore validates the JSON version, shape, required identities, and duplicate IDs/names when loading and saving, reports invalid external edits without overwriting them, and remains part of whole-book version restore.
+- 书籍级 Skills 现在以根目录 `skills/<skill>/SKILL.md` 及同目录 supporting files 为权威位置，写作和游戏 Agent 共用；首次解析旧工作区时会把 `.denova/skills` / `.nova/skills` 中缺失的 bundles 原子复制到根目录，根目录内容优先，旧目录保留为备份。此变更让用户可直接查看、版本管理和维护书籍自己的 Skills，用户级与内置 Skills 的作用域不变。
+- Book-scoped Skills now use the public `skills/<skill>/SKILL.md` bundle layout at the book root, shared by Writing and Game agents. On first resolution, missing bundles from `.denova/skills` / `.nova/skills` are atomically copied into the root directory, public bundles win conflicts, and legacy trees remain as backups. Users can therefore inspect, version, and maintain book-owned Skills directly; user and built-in Skill scopes are unchanged.
+
+### Fixed
+
+- 修复新建游戏故事尚无回合时，空回合列表被序列化为 `null`，导致剧情舞台读取最新回合时崩溃的问题；后端现在稳定返回空数组，前端同时兼容已有的空值响应。
+- Fixed a crash in the Game story stage when a new story had no turns and its empty turn list was serialized as `null`; the backend now returns an empty array consistently, while the frontend remains defensive against existing null responses.
+
 ## [v0.3.3] - 2026-07-25
 
 ### Fixed
@@ -171,6 +183,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Fixed
 
+- 修复写作工作区「设定」Tab 的评论没有锚点划线、折叠后无法点击划线重新展开、提交给 Agent 后仍留在编辑器中的问题；资料与正文评论现在共用一致的锚点、悬停、聚焦、折叠展开与评论线程布局，并会在发送成功后立即隐藏，发送失败时恢复。
+- Fixed Lore-tab comments missing their anchored underline, failing to reopen from that underline after collapse, and remaining visible after submission to the Agent. Lore and manuscript comments now share consistent anchor, hover, focus, collapse/reopen, and thread layout behavior, disappear immediately after a successful send, and return if submission fails.
 - 修复 `write_lore_items` 将局部写入参数错误声明为全部必填的问题：创建、更新和删除现在只需提交各自相关字段，更新省略字段会保留原值，纯删除不再需要空 `items`，并拒绝没有实际变化的空更新。
 - Fixed `write_lore_items` incorrectly declaring every sparse-mutation field as required. Create, update, and delete calls now submit only their relevant fields, omitted update fields preserve existing values, delete-only calls no longer require empty `items`, and no-op updates are rejected.
 

@@ -74,7 +74,7 @@ func TestNewLoreToolsUsesListLoreItemsInsteadOfSearch(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	for _, want := range []string{"# 资料名称目录", "source: lore/items.json", "total: 1", "shown: 1", "next_offset: null", "[character/major] 林川"} {
+	for _, want := range []string{"# 资料名称目录", "source: setting/lore/items.json", "total: 1", "shown: 1", "next_offset: null", "[character/major] 林川"} {
 		if !strings.Contains(output, want) {
 			t.Fatalf("list_lore_items output missing %q:\n%s", want, output)
 		}

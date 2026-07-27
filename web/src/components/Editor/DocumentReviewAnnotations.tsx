@@ -15,6 +15,7 @@ import {
 } from './documentReviewAnchors'
 import { documentReviewKeysFromElement, documentReviewPluginKey, type DocumentReviewDecoration, type DocumentReviewDecorationState, type DocumentReviewPortalTarget } from './documentReviewDecorations'
 import { documentReviewRangeAtCoordinates } from './documentReviewHover'
+import './document-review.css'
 
 export interface DocumentReviewAnnotationsHandle {
   startSelectionComment: () => void

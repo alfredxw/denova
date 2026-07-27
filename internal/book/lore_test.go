@@ -547,7 +547,7 @@ func TestLoreStoreCreateUpdateDelete(t *testing.T) {
 	}
 }
 
-func TestLoreStoreReadsLegacyNovaLoreWhenDenovaWasGeneratedEmpty(t *testing.T) {
+func TestLoreStoreMigratesLegacyNovaLoreWhenDenovaWasGeneratedEmpty(t *testing.T) {
 	workspace := t.TempDir()
 	currentLore := filepath.Join(workspace, ".denova", "lore", "items.json")
 	legacyLore := filepath.Join(workspace, ".nova", "lore", "items.json")
@@ -581,12 +581,43 @@ func TestLoreStoreReadsLegacyNovaLoreWhenDenovaWasGeneratedEmpty(t *testing.T) {
 	if _, err := store.Create(LoreItemInput{ID: "base", Type: "location", Name: "黄泉酒馆", Importance: "important", Content: "据点。"}); err != nil {
 		t.Fatal(err)
 	}
-	data, err := os.ReadFile(legacyLore)
+	data, err := os.ReadFile(LoreItemsPath(workspace))
 	if err != nil {
 		t.Fatal(err)
 	}
 	if !strings.Contains(string(data), `"id": "hero"`) || !strings.Contains(string(data), `"id": "base"`) {
-		t.Fatalf("writes should stay with legacy lore file, got:\n%s", data)
+		t.Fatalf("writes should migrate into the canonical Lore file, got:\n%s", data)
+	}
+	legacyData, err := os.ReadFile(legacyLore)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(string(legacyData), `"id": "base"`) {
+		t.Fatalf("legacy Lore must remain an untouched fallback, got:\n%s", legacyData)
+	}
+}
+
+func TestLoreStoreRejectsInvalidExternalEditWithoutOverwritingIt(t *testing.T) {
+	workspace := t.TempDir()
+	path := LoreItemsPath(workspace)
+	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	invalid := []byte(`{"version":2,"items":[{"id":"hero","name":"林川"},{"id":"hero","name":"林海"}]}`)
+	if err := os.WriteFile(path, invalid, 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	store := NewLoreStore(workspace)
+	if _, err := store.ListAll(); err == nil || !strings.Contains(err.Error(), "duplicate Lore id") {
+		t.Fatalf("expected invalid external edit to be rejected, got %v", err)
+	}
+	after, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !bytes.Equal(after, invalid) {
+		t.Fatalf("LoreStore must not overwrite an invalid external edit:\n%s", after)
 	}
 }
 

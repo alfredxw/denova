@@ -337,7 +337,7 @@ export function StoryStage({ workspace, styleSceneSuggestions = [], stories = []
       setHistoryLoading(false)
     }
   }, [branchId, historyLoading, historyWindow.beforeCursor, prependHistoryPage, setStageLiveMessages, snapshot?.branch_id, storyId, t])
-  const latestTurnID = snapshot?.current_turn?.id || snapshot?.turns.at(-1)?.id || ''
+  const latestTurnID = snapshot?.current_turn?.id || snapshot?.turns?.at(-1)?.id || ''
   const canMutateStoryView = useCallback((view: AgentMessageView) => {
     const turnID = agentViewToRenderMessage(view)?.turn_id
     return !turnID || !latestTurnID || turnID === latestTurnID

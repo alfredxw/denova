@@ -27,8 +27,8 @@ describe('useDocumentReview', () => {
     apiMocks.getDocumentReview.mockResolvedValue({ id: '', comments: [] })
   })
 
-  it('queues every created comment for the next Agent turn and restores failed submissions', async () => {
-    const comment = { id: 'comment-1', thread_id: 'thread-1', target: { kind: 'workspace_file' as const, id: 'chapters/a.md' }, body: '修改这里', anchor, created_at: '', updated_at: '' }
+  it('hides a submitted lore comment from both the Agent queue and editor, then restores failed submissions', async () => {
+    const comment = { id: 'comment-1', thread_id: 'thread-1', target: { kind: 'lore_item' as const, id: 'hero', field: 'content' as const }, body: '修改这里', anchor, created_at: '', updated_at: '' }
     const thread = { id: 'thread-1', comments: [comment] }
     apiMocks.createDocumentComment.mockResolvedValue({ workspace: '/book', reviewThread: thread, comment })
     const showAgent = vi.fn()
@@ -40,11 +40,15 @@ describe('useDocumentReview', () => {
     })
     expect(showAgent).toHaveBeenCalledTimes(1)
     expect(result.current.feedback).toMatchObject({ source: 'document', reviewThreadId: 'thread-1', comments: [{ id: 'comment-1' }] })
+    expect(result.current.visibleComments).toEqual([comment])
 
     const selection = result.current.feedback!
     act(() => result.current.submitFeedback(selection))
     expect(result.current.feedback).toBeNull()
+    expect(result.current.visibleComments).toEqual([])
+    expect(result.current.thread.comments).toEqual([comment])
     act(() => result.current.restoreFeedback(selection))
     expect(result.current.feedback?.comments[0].id).toBe('comment-1')
+    expect(result.current.visibleComments).toEqual([comment])
   })
 })

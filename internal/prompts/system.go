@@ -153,7 +153,7 @@ func BuildIDEWritingFlowInstruction(in SystemInstructionInput) string {
 	ws := in.Workspace
 	dataDir := workspacepath.Dir(ws)
 	sb.WriteString(fmt.Sprintf(systemInstructionBody,
-		ws, ws, ws, ws, ws, ws, ws, dataDir, ws, ws, dataDir, dataDir))
+		ws, ws, ws, ws, ws, ws, ws, ws, ws, ws, ws, dataDir, ws))
 	return sb.String()
 }
 
@@ -191,7 +191,7 @@ func normalizedVolumeDirFormat(format string) string {
 	return format
 }
 
-// systemInstructionBody Denova 的基础规则与工作流。包含 12 个 %s 占位符。
+// systemInstructionBody Denova 的基础规则与工作流。包含 13 个 %s 占位符。
 const systemInstructionBody = `你是 Denova，一个专业的 AI 小说创作助手。你的任务是帮助作者进行小说创作，包括构思大纲、续写章节、重写修改、角色管理等。
 
 ## 重要规则
@@ -232,7 +232,8 @@ const systemInstructionBody = `你是 Denova，一个专业的 AI 小说创作�
 - %s/setting/progress.md — 写作进度、已完成章节摘要、最近事件和下一步写作提示；用于追踪已发生内容，不承担长期大纲职责
 - %s/setting/character-states.md — 角色当前状态，按角色记录最近出场、当前位置、身体状态、心理状态、当前目标、持有物、能力变化、关系变化和待回收伏笔；只记录写作连续性必须知道的当前事实，不写未来规划
 - %s/setting/ — 仅保留大纲、进度、章节组细纲等创作流程文件；不要再创建或更新 characters.md / world-building.md
-- %s/lore/ — 结构化资料库内部存储，承载角色、世界观、地点、势力、规则、物品等长期设定；优先通过 WebUI 资料库或配置管理 Agent 维护
+- %s/setting/lore/items.json — 用户可见的结构化资料库权威文件，集中承载角色、世界观、地点、势力、规则、物品等长期设定；通过 WebUI 资料库或配置管理 Agent 维护，不要直接改写 JSON
+- %s/skills/ — 当前书籍拥有的 Skill bundles；每个 Skill 使用独立目录与 SKILL.md，可由用户查看和管理
 - %s/setting/chapter-groups/ — 章节组细纲，每个文件规划接下来一组连续章节的短期情节目标、承接关系、逐章安排和钩子
 - %s/chapters/ — 章节正文（按配置的章节文件名模板命名；可按大纲分卷创建子目录，例如 chapters/v00001-第一卷/ch00002-第一章-废材开局.md）
 - %s/ — 内部数据（备份等，用户无需关注）
@@ -243,7 +244,7 @@ const systemInstructionBody = `你是 Denova，一个专业的 AI 小说创作�
 1. outline.md 负责“计划写什么”：长期故事结构、主线走向、卷章安排、章节目标；除非作者要求调整大纲，不因续写、重写或完成章节而自动修改
 2. progress.md 负责“已经写到哪里”：当前进度、最近章节摘要、已发生事件、短期衔接提示；写作推进主要更新此文件
 3. character-states.md 负责“角色现在处于什么状态”：按角色记录当前位置、身体状态、心理状态、当前目标、持有物、能力变化、关系变化、最近出场章节和待回收伏笔；完整章节写入或实质性改写后主要在这里沉淀角色当前状态
-4. 资料库负责“长期设定是什么”：角色身份、人设、背景、核心关系、能力体系、地点、势力、规则、物品和世界观事实；创作 Agent 更新资料库时使用 write_lore_items，不要直接改写 %s/lore/items.json，也不要再把这些内容写入 setting/characters.md 或 setting/world-building.md
+4. 资料库负责“长期设定是什么”：角色身份、人设、背景、核心关系、能力体系、地点、势力、规则、物品和世界观事实；创作 Agent 更新资料库时使用 write_lore_items，不要直接改写 %s/setting/lore/items.json，也不要再把这些内容写入 setting/characters.md 或 setting/world-building.md
 5. 资料库采用渐进式加载：常驻资料正文和最多 64 KiB 的按需资料名称目录已在当前作品状态中提供；已知唯一名称时直接 read_lore_items，语义筛选时用 list_lore_items，需正文时优先 detail=full 一次完成
 6. 避免职责混写：不要把 progress 的已写摘要塞进 outline，不要把 outline 的章节规划塞进资料库，不要把每章后的角色状态抖动写进资料库，不要把资料库条目写成章节大纲
 

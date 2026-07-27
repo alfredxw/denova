@@ -19,7 +19,6 @@ import (
 	"github.com/lithammer/fuzzysearch/fuzzy"
 
 	"denova/internal/fsdurability"
-	"denova/internal/workspacepath"
 )
 
 const loreItemsVersion = 2
@@ -184,7 +183,7 @@ func NewLoreStore(workspace string) *LoreStore {
 }
 
 func sharedLoreMutationLock(workspace string) *sync.Mutex {
-	path := workspacepath.Path(workspace, "lore", "items.json")
+	path := LoreItemsPath(workspace)
 	if absolute, err := filepath.Abs(path); err == nil {
 		path = absolute
 	}
@@ -812,7 +811,7 @@ func (s *LoreStore) ProgressiveContextMarkdown() (string, error) {
 		sb.WriteString("\n\n")
 	}
 	if catalog != "" {
-		sb.WriteString("## 按需资料名称目录（source: lore/items.json, max 64 KiB）\n\n")
+		fmt.Fprintf(&sb, "## 按需资料名称目录（source: %s, max 64 KiB）\n\n", LoreItemsRelativePath)
 		sb.WriteString(strings.TrimSpace(strings.TrimPrefix(catalog, "# 资料名称目录")))
 		sb.WriteString("\n\n")
 	}
@@ -823,6 +822,7 @@ func (s *LoreStore) Ensure() error {
 	s.mutationMu.Lock()
 	defer s.mutationMu.Unlock()
 
+	sourcePath, legacy := s.readableItemsPath()
 	collection, err := s.loadOrCreate()
 	if err != nil {
 		return err
@@ -832,19 +832,25 @@ func (s *LoreStore) Ensure() error {
 	} else if !os.IsNotExist(err) {
 		return err
 	}
-	return s.save(collection)
+	if err := s.save(collection); err != nil {
+		return err
+	}
+	if legacy {
+		log.Printf("[lore-store] migrated legacy Lore collection source=%s target=%s", sourcePath, s.itemsPath())
+	}
+	return nil
 }
 
 func (s *LoreStore) loadOrCreate() (LoreCollection, error) {
-	path := s.itemsPath()
+	path, _ := s.readableItemsPath()
 	data, err := os.ReadFile(path)
 	if err == nil {
-		var collection LoreCollection
-		if err := json.Unmarshal(data, &collection); err != nil {
-			return LoreCollection{}, fmt.Errorf("解析 lore items 失败: %w", err)
+		// Version 1 remains readable regardless of where a user copied it; every
+		// subsequent typed save upgrades the same collection to version 2.
+		collection, decodeErr := decodeLoreCollectionJSON(data)
+		if decodeErr != nil {
+			return LoreCollection{}, fmt.Errorf("解析 Lore items 失败 path=%s: %w", path, decodeErr)
 		}
-		collection.Version = loreItemsVersion
-		collection.Items = normalizeLoreItems(collection.Items)
 		return collection, nil
 	}
 	if !os.IsNotExist(err) {
@@ -855,7 +861,14 @@ func (s *LoreStore) loadOrCreate() (LoreCollection, error) {
 
 func (s *LoreStore) save(collection LoreCollection) error {
 	collection.Version = loreItemsVersion
-	collection.Items = normalizeLoreItems(collection.Items)
+	normalized := make([]LoreItem, 0, len(collection.Items))
+	for _, item := range collection.Items {
+		normalized = append(normalized, normalizeLoreItem(item))
+	}
+	collection.Items = normalized
+	if err := validateLoreItemIdentities(collection.Items); err != nil {
+		return fmt.Errorf("拒绝保存无效 Lore collection: %w", err)
+	}
 	path := s.itemsPath()
 	dir := filepath.Dir(path)
 	if err := os.MkdirAll(dir, 0o755); err != nil {
@@ -901,7 +914,7 @@ func (s *LoreStore) save(collection LoreCollection) error {
 }
 
 func (s *LoreStore) itemsPath() string {
-	return workspacepath.Path(s.workspace, "lore", "items.json")
+	return LoreItemsPath(s.workspace)
 }
 
 func (s *LoreStore) hasItem(items []LoreItem, id string) bool {

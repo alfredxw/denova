@@ -470,6 +470,40 @@ func TestGoGitVersionRestoreIgnoredLorePath(t *testing.T) {
 	assertChange(t, status.Changes, ".nova/lore/items.json", "modified")
 }
 
+func TestGoGitVersionRestorePublicLorePath(t *testing.T) {
+	dir := t.TempDir()
+	service := NewService(dir)
+	settings := DefaultAutoSettings()
+	const lorePath = "setting/lore/items.json"
+	oldCollection := `{"version":2,"items":[{"id":"hero","name":"林川","enabled":true}]}`
+	newCollection := `{"version":2,"items":[{"id":"hero","name":"林川·改","enabled":true}]}`
+	writeFile(t, dir, lorePath, oldCollection)
+	first, err := service.Create("初始公开资料库", VersionSourceManual, settings)
+	if err != nil {
+		t.Fatalf("Create first failed: %v", err)
+	}
+	writeFile(t, dir, lorePath, newCollection)
+	second, err := service.Create("更新公开资料库", VersionSourceManual, settings)
+	if err != nil {
+		t.Fatalf("Create second failed: %v", err)
+	}
+
+	if _, err := service.RestoreWithPaths(first.Version.ID, []string{lorePath}, settings); err != nil {
+		t.Fatalf("RestoreWithPaths public Lore failed: %v", err)
+	}
+	if got := readFile(t, dir, lorePath); got != oldCollection {
+		t.Fatalf("restored public Lore = %q", got)
+	}
+	status, err := service.Status(settings)
+	if err != nil {
+		t.Fatalf("Status failed: %v", err)
+	}
+	if status.Latest == nil || status.Latest.ID != second.Version.ID {
+		t.Fatalf("public Lore path restore should not move current version: %#v", status.Latest)
+	}
+	assertChange(t, status.Changes, lorePath, "modified")
+}
+
 func TestGoGitVersionRestorePathsRejectsSymlinkEscape(t *testing.T) {
 	dir := t.TempDir()
 	service := NewService(dir)

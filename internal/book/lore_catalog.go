@@ -7,7 +7,7 @@ import (
 )
 
 // LoreNameCatalogOptions controls the compact, model-visible name catalog.
-// The catalog is derived from lore/items.json and is never persisted separately.
+// The catalog is derived from LoreItemsRelativePath and is never persisted separately.
 type LoreNameCatalogOptions struct {
 	Offset          int
 	MaxBytes        int
@@ -78,7 +78,7 @@ func (s *LoreStore) LoreNameCatalogMarkdown(options LoreNameCatalogOptions) (str
 	}
 
 	// Very small caller-provided budgets still receive useful source metadata.
-	minimal := fmt.Sprintf("# 资料名称目录\nsource: lore/items.json\nrevision: %s\ntotal: %d\nshown: 0\nomitted: %d", revision, len(entries), len(entries)-offset)
+	minimal := fmt.Sprintf("# 资料名称目录\nsource: %s\nrevision: %s\ntotal: %d\nshown: 0\nomitted: %d", LoreItemsRelativePath, revision, len(entries), len(entries)-offset)
 	if len([]byte(minimal)) <= maxBytes {
 		return minimal, nil
 	}
@@ -126,7 +126,7 @@ func renderLoreNameCatalogHeader(revision string, total, offset, shown int) stri
 	}
 	var sb strings.Builder
 	sb.WriteString("# 资料名称目录\n")
-	sb.WriteString("source: lore/items.json\n")
+	fmt.Fprintf(&sb, "source: %s\n", LoreItemsRelativePath)
 	fmt.Fprintf(&sb, "revision: %s\n", revision)
 	fmt.Fprintf(&sb, "total: %d\n", total)
 	fmt.Fprintf(&sb, "shown: %d\n", shown)

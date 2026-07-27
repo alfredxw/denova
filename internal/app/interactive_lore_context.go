@@ -108,7 +108,7 @@ func buildInteractiveDirectorLoreContext(workspace string, plan interactive.Dire
 		return "", fmt.Errorf("生成资料名称目录失败: %w", err)
 	}
 	if roster != "" {
-		roster = "## 非驻留资料名称目录（source: lore/items.json, revision-bound, max 64 KiB）\n\n" + roster
+		roster = fmt.Sprintf("## 非驻留资料名称目录（source: %s, revision-bound, max 64 KiB）\n\n%s", book.LoreItemsRelativePath, roster)
 	}
 	currentRevision, err := store.Revision()
 	if err != nil {

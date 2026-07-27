@@ -64,6 +64,10 @@ const decorationsMock = vi.hoisted(() => ({
   selectSearchMatch: vi.fn(),
 }))
 
+const editorDocumentMock = vi.hoisted(() => ({
+  placeEditorCaretAtClick: vi.fn((..._args: unknown[]) => true),
+}))
+
 vi.mock('@tiptap/react', () => ({
   EditorContent: () => <div data-testid="rich-editor-content" />,
   useEditor: (options: unknown) => {
@@ -93,6 +97,7 @@ vi.mock('./editorDocument', async (importOriginal) => {
     ...actual,
     createIndentedHardBreakExtension: () => ({ name: 'hardBreak' }),
     createWorkspaceImageExtension: () => ({ name: 'workspaceImage' }),
+    placeEditorCaretAtClick: (...args: unknown[]) => editorDocumentMock.placeEditorCaretAtClick(...args),
   }
 })
 
@@ -104,6 +109,7 @@ describe('MarkdownRichEditor', () => {
     decorationsMock.findSearchMatches.mockReset()
     decorationsMock.findSearchMatches.mockImplementation(() => decorationsMock.matches)
     decorationsMock.selectSearchMatch.mockClear()
+    editorDocumentMock.placeEditorCaretAtClick.mockClear()
   })
 
   it('以 markdown 形式加载初始内容并暴露可访问名称', () => {
@@ -115,6 +121,15 @@ describe('MarkdownRichEditor', () => {
     expect(options?.editorProps?.attributes?.['aria-label']).toBe('正文')
     expect(options?.editorProps?.attributes?.role).toBe('textbox')
     expect(options?.editorProps?.handleClick).toBeTypeOf('function')
+  })
+
+  it('点击评论划线时保留后续扩展点击处理', () => {
+    render(<MarkdownRichEditor value="资料正文" onChange={vi.fn()} />)
+
+    const handleClick = tiptapMock.useEditorOptions?.editorProps?.handleClick as ((view: unknown, position: number, event: MouseEvent) => boolean) | undefined
+    const event = new MouseEvent('click')
+    expect(handleClick?.(tiptapMock.editor.view, 2, event)).toBe(false)
+    expect(editorDocumentMock.placeEditorCaretAtClick).toHaveBeenCalledWith(tiptapMock.editor.view, 2, event)
   })
 
   it('文档更新时把规范化后的 markdown 传给 onChange', () => {

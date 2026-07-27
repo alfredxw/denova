@@ -9,7 +9,6 @@ import (
 	"denova/internal/agents/session"
 	"denova/internal/book"
 	"denova/internal/prompts"
-	"denova/internal/workspacepath"
 )
 
 type turnInputProjection struct {
@@ -197,11 +196,10 @@ func projectLoreReferenceFragments(bookService *book.Service, references []strin
 	}
 	itemsByID := map[string]book.LoreItem{}
 	loadError := error(nil)
-	sourcePath := "lore/items.json"
+	sourcePath := book.LoreItemsRelativePath
 	if bookService == nil || bookService.Workspace() == "" {
 		loadError = fmt.Errorf("当前 workspace 不可用")
 	} else {
-		sourcePath = workspacepath.Rel(bookService.Workspace(), "lore", "items.json")
 		items, err := book.NewLoreStore(bookService.Workspace()).List()
 		if err != nil {
 			loadError = err
