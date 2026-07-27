@@ -637,9 +637,7 @@ export function InputArea({
             minRows={1}
             maxRows={isMobile ? 5 : 10}
             multilineMode="always"
-            inputMode="text"
             enterKeyHint="send"
-            autoCapitalize="sentences"
             className="nova-agent-composer-textarea nova-agent-token-input min-h-[42px] resize-none border-0 bg-transparent px-1 py-[9px] text-sm leading-6 text-[var(--nova-text)] shadow-none placeholder:text-[var(--nova-text-faint)] focus-visible:border-transparent focus-visible:ring-0 disabled:opacity-50"
           />
         }

@@ -58,6 +58,17 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - 写作输入区在 Agent 运行时继续可用，新指令发送后统一作为 Follow Up 进入持久化队列，不再要求用户先选 Follow Up 或 Steer；同一运行可连续追加多条指令并按接收顺序逐条执行，正常排队不再触发冲突提示。队列卡片紧贴输入框展示，并可原子地立即转向、删除或返回编辑（当前页面还会恢复本次发送的引用上下文），Stop 与 Send 保持独立；命令提交、恢复和运行错误统一使用可关闭且自动消失的浮动 Toast，不再写入或叠加在消息流中。Beta 不兼容：流式输入工具栏的发送方式选择器已移除。游戏模式保持严格回合制：运行中可预先编辑下一条输入，但需等当前回合结算后发送，运行态仅提供 Stop；游戏直接命令入口不再接受 Follow Up、Steer 或 Next Turn，底层队列投影仅用于恢复已经持久化的运行。
 - The Writing composer remains usable while an Agent runs. New instructions are always accepted into the durable Follow Up queue instead of requiring a Follow Up/Steer choice before sending; multiple instructions can be appended to one run and execute in accepted order without a normal queue-conflict warning. A queue card sits directly above the composer and can atomically steer now, delete, or return the instruction to the editor (restoring its live reference context on the current page), while Stop and Send remain independent. Command submission, recovery, and runtime errors now use closable, auto-expiring floating toasts instead of being written into or accumulated in the message stream. Beta breaking: the streaming delivery selector has been removed from the toolbar. Game mode is strictly turn-based: the next draft remains editable while a turn runs but cannot be sent until settlement, and only Stop is exposed during a run. The direct Game command endpoint no longer accepts Follow Up, Steer, or Next Turn; its underlying queue projection remains only for recovery of already-durable work.
 
+## [v0.3.3] - 2026-07-25
+
+### Fixed
+
+- 切换写作界面与对话框时不再强制重置输入法为半角英文；移除聊天输入框的 `inputmode`/`autocapitalize` 属性，保持与写作编辑器一致，避免焦点切换打断中文输入。
+- Switching between the Writing editor and the chat dialog no longer forces the input method back to half-width English. The chat composer's `inputmode`/`autocapitalize` attributes were removed to match the writing editor, so IME composition is no longer interrupted on focus change.
+- 打开多个 md 文件时，Ctrl+Z 撤回不再把其他标签页的文本带回当前文件；每个文件现在挂载独立的编辑器实例，拥有各自独立的撤销历史栈。
+- With multiple md files open, Ctrl+Z no longer pulls text from another tab into the current file. Each file now mounts its own editor instance with an independent undo history stack.
+
+## [v0.3.2] - 2026-07-23
+
 ### Changed
 
 - Agent 对话完成后现在按一次运行统一整理展示：中间进展正文、思考与工具调用收进同一个可展开的「执行过程」，最终或中断时的部分结果保持可见；运行中继续实时展开，历史会话默认折叠。新会话持久化 `candidate/progress/final/partial` 正文阶段，旧历史按同一运行最后一段根级正文兼容恢复，不改变模型上下文或规范会话内容；写作、工作台 AgentChat 与游戏模式共用该投影。
