@@ -30,22 +30,22 @@ type listLoreItemsInput struct {
 }
 
 type writeLoreItemsInput struct {
-	Message   string               `json:"message" jsonschema:"description=本次资料库变更说明，用中文简要概括"`
-	Items     []writeLoreItemInput `json:"items" jsonschema:"description=要创建或更新的完整资料条目列表；已有 ID 的条目会更新，没有 ID 或 ID 不存在的条目会创建"`
-	DeleteIDs []string             `json:"delete_ids" jsonschema:"description=要删除的资料条目 ID 列表；只有作者明确要求删除时才使用"`
+	Message   string               `json:"message,omitempty" jsonschema:"description=可选的本次资料库变更说明，用中文简要概括"`
+	Items     []writeLoreItemInput `json:"items,omitempty" jsonschema:"description=要创建或局部更新的资料条目列表；创建至少填写 name，更新填写已有 id 和实际变化字段，省略字段会保留原值"`
+	DeleteIDs []string             `json:"delete_ids,omitempty" jsonschema:"description=要删除的资料条目 ID 列表；只有作者明确要求删除时才使用"`
 }
 
 type writeLoreItemInput struct {
-	ID               string   `json:"id" jsonschema:"description=资料 ID；更新已有条目时必须填写准确 ID，新建时可留空自动生成"`
+	ID               string   `json:"id,omitempty" jsonschema:"description=资料 ID；更新已有条目时必须填写准确 ID，新建时可留空自动生成"`
 	Enabled          *bool    `json:"enabled,omitempty" jsonschema:"description=是否启用该资料条目；禁用条目会保留在资料库中，但不会进入资料库索引、读取工具或模型上下文；不确定时留空"`
-	Type             string   `json:"type" jsonschema:"description=资料类型：character/world/location/faction/rule/item/other"`
-	Name             string   `json:"name" jsonschema:"description=资料名称"`
-	Importance       string   `json:"importance" jsonschema:"description=重要度：major/important/minor"`
-	Tags             []string `json:"tags" jsonschema:"description=标签列表"`
-	BriefDescription string   `json:"brief_description" jsonschema:"description=资料索引简介；以“类型 名称。”开头，用 3-5 句概括身份、别名、关键事实、适用场景和触发词；若遗漏后端会按正文自动生成"`
-	Keywords         []string `json:"keywords" jsonschema:"description=别名、关键词或触发词列表"`
-	LoadMode         string   `json:"load_mode" jsonschema:"description=加载策略：resident/auto/manual"`
-	Content          string   `json:"content" jsonschema:"description=中文 Markdown 正文，记录长期稳定设定、核心关系、能力体系和需要追踪的设定事实；每章后的当前位置、伤势、心理、目标等当前状态写入 setting/character-states.md，不写入资料库"`
+	Type             string   `json:"type,omitempty" jsonschema:"description=资料类型：character/world/location/faction/rule/item/other；创建时默认 other，更新时省略会保留原值"`
+	Name             string   `json:"name,omitempty" jsonschema:"description=资料名称；创建时必填，更新时省略会保留原值"`
+	Importance       string   `json:"importance,omitempty" jsonschema:"description=重要度：major/important/minor；创建时默认 important，更新时省略会保留原值"`
+	Tags             []string `json:"tags,omitempty" jsonschema:"description=标签列表；更新时省略会保留原值，传空数组会清空"`
+	BriefDescription string   `json:"brief_description,omitempty" jsonschema:"description=资料索引简介；以“类型 名称。”开头，用 3-5 句概括身份、别名、关键事实、适用场景和触发词；创建时省略会按正文自动生成，更新时省略会保留原值"`
+	Keywords         []string `json:"keywords,omitempty" jsonschema:"description=别名、关键词或触发词列表；更新时省略会保留原值，传空数组会清空"`
+	LoadMode         string   `json:"load_mode,omitempty" jsonschema:"description=加载策略：resident/auto/manual；创建时自动推导，更新时省略会保留原值"`
+	Content          string   `json:"content,omitempty" jsonschema:"description=中文 Markdown 正文，记录长期稳定设定、核心关系、能力体系和需要追踪的设定事实；更新时省略会保留原值；每章后的当前位置、伤势、心理、目标等当前状态写入 setting/character-states.md，不写入资料库"`
 }
 
 type loreToolsOptions struct {
@@ -236,7 +236,7 @@ func newLoreTools(workspace string, allowWrite bool, options ...loreToolsOptions
 	if !allowWrite {
 		return tools, nil
 	}
-	writeTool, err := agent.InferTool("write_lore_items", "批量创建、更新或删除资料库条目。用于同步角色身份、人设、长期关系、能力体系、世界规则、地点、势力和物品等稳定设定；章节新增或实质性改写后的当前位置、伤势、心理、目标、持有物等当前角色状态应写入 setting/character-states.md，不要默认写入资料库；每个创建或更新的条目都要填写 brief_description；不要写入章节规划或未来剧情。", func(ctx context.Context, input writeLoreItemsInput) (agent.ToolResult, error) {
+	writeTool, err := agent.InferTool("write_lore_items", "批量创建、局部更新或删除资料库条目。用于同步角色身份、人设、长期关系、能力体系、世界规则、地点、势力和物品等稳定设定；创建至少填写 name，更新填写已有 id 和实际变化字段，省略字段会保留原值；brief_description 创建时可由后端生成。章节新增或实质性改写后的当前位置、伤势、心理、目标、持有物等当前角色状态应写入 setting/character-states.md，不要默认写入资料库；不要写入章节规划或未来剧情。", func(ctx context.Context, input writeLoreItemsInput) (agent.ToolResult, error) {
 		_ = ctx
 		if workspace == "" {
 			return agent.ToolResult{}, fmt.Errorf("当前 workspace 不可用，无法写入资料库")
@@ -344,6 +344,8 @@ func buildWriteLoreOperations(store *book.LoreStore, input writeLoreItemsInput) 
 	}
 	ops := make([]book.LoreOperation, 0, len(input.Items)+len(input.DeleteIDs))
 	for _, item := range input.Items {
+		item.ID = strings.TrimSpace(item.ID)
+		item.Name = strings.TrimSpace(item.Name)
 		loreInput := book.LoreItemInput{
 			ID:               item.ID,
 			Enabled:          item.Enabled,
@@ -357,10 +359,16 @@ func buildWriteLoreOperations(store *book.LoreStore, input writeLoreItemsInput) 
 			Content:          item.Content,
 		}
 		op := "create"
-		if strings.TrimSpace(item.ID) != "" {
-			if _, ok := itemsByID[strings.TrimSpace(item.ID)]; ok {
+		if item.ID != "" {
+			if _, ok := itemsByID[item.ID]; ok {
 				op = "update"
 			}
+		}
+		if op == "create" && item.Name == "" {
+			return nil, fmt.Errorf("创建资料时 name 不能为空")
+		}
+		if op == "update" && !hasWriteLoreItemChanges(item) {
+			return nil, fmt.Errorf("更新资料 %s 时至少提供一个实际变化字段", item.ID)
 		}
 		ops = append(ops, book.LoreOperation{Op: op, ID: item.ID, Item: loreInput})
 	}
@@ -375,6 +383,12 @@ func buildWriteLoreOperations(store *book.LoreStore, input writeLoreItemsInput) 
 		return nil, fmt.Errorf("没有可写入的资料库条目")
 	}
 	return ops, nil
+}
+
+func hasWriteLoreItemChanges(item writeLoreItemInput) bool {
+	return item.Enabled != nil || strings.TrimSpace(item.Type) != "" || strings.TrimSpace(item.Name) != "" ||
+		strings.TrimSpace(item.Importance) != "" || item.Tags != nil || strings.TrimSpace(item.BriefDescription) != "" ||
+		item.Keywords != nil || strings.TrimSpace(item.LoadMode) != "" || strings.TrimSpace(item.Content) != ""
 }
 
 func formatWriteLoreItemsResult(result book.LoreApplyResult) string {

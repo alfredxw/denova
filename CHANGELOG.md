@@ -171,6 +171,9 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Fixed
 
+- 修复 `write_lore_items` 将局部写入参数错误声明为全部必填的问题：创建、更新和删除现在只需提交各自相关字段，更新省略字段会保留原值，纯删除不再需要空 `items`，并拒绝没有实际变化的空更新。
+- Fixed `write_lore_items` incorrectly declaring every sparse-mutation field as required. Create, update, and delete calls now submit only their relevant fields, omitted update fields preserve existing values, delete-only calls no longer require empty `items`, and no-op updates are rejected.
+
 - 修复 Agent Ask 选择答案并提交后，消息 `parts` 被原地追加时仍复用旧去重身份缓存，导致对话页读取 `primaryKey` 崩溃并进入错误边界的问题；缓存现在会识别引用未变但内容已变的 part 数组，并正确以 answered 终态覆盖 pending Ask。
 - Fixed the conversation crash after selecting and submitting an Agent Ask answer. In-place appends to a message's `parts` array no longer reuse stale deduplication identities, so the answered state correctly replaces the pending Ask instead of reading a missing `primaryKey` and entering the error boundary.
 - 工作台双会话分栏现在显示贯穿内容区的细分隔线，并在悬停、键盘聚焦和拖拽时增强反馈；可见线与 8px 拖拽命中区仍属于同一个分隔控件，不会出现手柄与可操作区域分离。

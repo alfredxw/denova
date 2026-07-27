@@ -130,6 +130,97 @@ func TestNewLoreToolsUsesListLoreItemsInsteadOfSearch(t *testing.T) {
 	}
 }
 
+func TestWriteLoreItemsToolSupportsSparseCreateUpdateAndDelete(t *testing.T) {
+	workspace := t.TempDir()
+	definitions, err := newLoreTools(workspace, true)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var writeTool *agent.ToolDefinition
+	for _, definition := range definitions {
+		info, err := definition.Tool.Info(context.Background())
+		if err != nil {
+			t.Fatal(err)
+		}
+		if info.Name == "write_lore_items" {
+			selected := definition
+			writeTool = &selected
+			break
+		}
+	}
+	if writeTool == nil {
+		t.Fatal("write_lore_items tool missing")
+	}
+
+	info, err := writeTool.Tool.Info(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	schema, err := info.ToJSONSchema()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(schema.Required) != 0 {
+		t.Fatalf("write_lore_items root fields should be individually optional: %v", schema.Required)
+	}
+	itemsSchema, ok := schema.Properties.Get("items")
+	if !ok || itemsSchema == nil || itemsSchema.Items == nil {
+		t.Fatalf("write_lore_items items schema missing: %#v", itemsSchema)
+	}
+	if len(itemsSchema.Items.Required) != 0 {
+		t.Fatalf("sparse lore item fields should be optional in schema: %v", itemsSchema.Items.Required)
+	}
+
+	if _, err := runToolForTest(context.Background(), writeTool, `{"items":[{"name":"黄泉酒馆","content":"最初的据点。","tags":["据点"]}]}`); err != nil {
+		t.Fatalf("sparse create failed: %v", err)
+	}
+	store := book.NewLoreStore(workspace)
+	created, err := store.Get("黄泉酒馆")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if created.Name != "黄泉酒馆" || created.Type != "other" || created.Importance != "important" || created.BriefDescription == "" {
+		t.Fatalf("sparse create defaults mismatch: %#v", created)
+	}
+
+	if _, err := runToolForTest(context.Background(), writeTool, `{"items":[{"id":"黄泉酒馆","content":"更新后的据点。"}]}`); err != nil {
+		t.Fatalf("sparse update failed: %v", err)
+	}
+	updated, err := store.Get("黄泉酒馆")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if updated.Content != "更新后的据点。" || updated.Name != created.Name || updated.Type != created.Type || len(updated.Tags) != 1 || updated.Tags[0] != "据点" {
+		t.Fatalf("sparse update did not preserve omitted fields: %#v", updated)
+	}
+	if _, err := runToolForTest(context.Background(), writeTool, `{"items":[{"id":"黄泉酒馆","tags":[]}]}`); err != nil {
+		t.Fatalf("explicit empty tags update failed: %v", err)
+	}
+	cleared, err := store.Get("黄泉酒馆")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(cleared.Tags) != 0 {
+		t.Fatalf("explicit empty tags should clear the list: %#v", cleared.Tags)
+	}
+
+	if _, err := runToolForTest(context.Background(), writeTool, `{"items":[{"id":"黄泉酒馆"}]}`); err == nil || !strings.Contains(err.Error(), "至少提供一个实际变化字段") {
+		t.Fatalf("id-only update should fail clearly, got %v", err)
+	}
+	if _, err := runToolForTest(context.Background(), writeTool, `{"delete_ids":["黄泉酒馆"]}`); err != nil {
+		t.Fatalf("delete-only call failed: %v", err)
+	}
+	if _, err := store.Get("黄泉酒馆"); err == nil {
+		t.Fatal("delete-only call did not remove the lore item")
+	}
+	if _, err := runToolForTest(context.Background(), writeTool, `{}`); err == nil || !strings.Contains(err.Error(), "没有可写入的资料库条目") {
+		t.Fatalf("empty mutation should fail clearly, got %v", err)
+	}
+	if _, err := runToolForTest(context.Background(), writeTool, `{"items":[{"content":"缺少名称"}]}`); err == nil || !strings.Contains(err.Error(), "name 不能为空") {
+		t.Fatalf("create without name should fail clearly, got %v", err)
+	}
+}
+
 func TestListLoreItemsFiltersByResidentLoadMode(t *testing.T) {
 	workspace := t.TempDir()
 	store := book.NewLoreStore(workspace)
