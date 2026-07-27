@@ -1,10 +1,12 @@
-import { useCallback, useEffect, useRef, useState } from 'react'
-import { getMessagesPage, getSessions, type SessionSummary } from '@/lib/api'
+import { useCallback, useRef, useState } from 'react'
+import type { SessionSummary } from '@/lib/api'
 import { normalizeAgentUIMessages, type AgentUIMessage } from '@/lib/agent-ui'
 import { filterInternalPlanUIMessages } from './agent-chat-state'
+import { writingAgentChatClient, type AgentChatClient } from './agent-chat-client'
 
 interface WritingAgentHistoryOptions {
   setMessages: (messages: AgentUIMessage[] | ((messages: AgentUIMessage[]) => AgentUIMessage[])) => void
+  client?: AgentChatClient
 }
 
 /**
@@ -12,9 +14,10 @@ interface WritingAgentHistoryOptions {
  * Authoritative reloads replace provisional stream state; pagination only
  * prepends a page when no newer authoritative reload has superseded it.
  */
-export function useWritingAgentHistory({ setMessages }: WritingAgentHistoryOptions) {
+export function useWritingAgentHistory({ setMessages, client = writingAgentChatClient }: WritingAgentHistoryOptions) {
+  const fixedSessionId = client.fixedSessionId || ''
   const [sessions, setSessions] = useState<SessionSummary[]>([])
-  const [activeSessionId, setActiveSessionId] = useState('')
+  const [activeSessionId, setActiveSessionId] = useState(fixedSessionId)
   const [hasEarlierMessages, setHasEarlierMessages] = useState(false)
   const [isLoadingEarlierHistory, setIsLoadingEarlierHistory] = useState(false)
   const historyRequestGenerationRef = useRef(0)
@@ -31,15 +34,15 @@ export function useWritingAgentHistory({ setMessages }: WritingAgentHistoryOptio
 
   const loadSessions = useCallback(async () => {
     try {
-      const list = await getSessions()
+      const list = await client.getSessions()
       setSessions(list)
-      setActiveSessionId(list.find((item) => item.active)?.id || list[0]?.id || '')
+      setActiveSessionId(fixedSessionId || list.find((item) => item.active)?.id || list[0]?.id || '')
       return list
     } catch (error) {
       console.error('加载会话列表失败', error)
       return []
     }
-  }, [])
+  }, [client, fixedSessionId])
 
   const loadHistoryAuthoritative = useCallback(
     async (sessionId?: string) => {
@@ -49,20 +52,21 @@ export function useWritingAgentHistory({ setMessages }: WritingAgentHistoryOptio
       earlierHistoryLoadingRef.current = false
       setIsLoadingEarlierHistory(false)
 
-      const page = await getMessagesPage(sessionId)
+      const targetSessionId = fixedSessionId || sessionId
+      const page = await client.getMessagesPage(targetSessionId || undefined)
       if (generation !== historyRequestGenerationRef.current) {
         throw new Error('Writing history reload was superseded before it could become authoritative')
       }
 
       historyPageRef.current = {
-        sessionId,
+        sessionId: targetSessionId || undefined,
         nextBefore: page.nextBefore,
         hasMore: page.hasMore,
       }
       setHasEarlierMessages(page.hasMore)
       setMessages(filterInternalPlanUIMessages(page.messages))
     },
-    [setMessages],
+    [client, fixedSessionId, setMessages],
   )
 
   const loadHistory = useCallback(
@@ -87,7 +91,7 @@ export function useWritingAgentHistory({ setMessages }: WritingAgentHistoryOptio
     setIsLoadingEarlierHistory(true)
 
     try {
-      const page = await getMessagesPage(currentPage.sessionId, {
+      const page = await client.getMessagesPage(currentPage.sessionId, {
         before: currentPage.nextBefore,
       })
       if (historyGeneration !== historyRequestGenerationRef.current || requestID !== earlierHistoryRequestRef.current) return
@@ -110,15 +114,7 @@ export function useWritingAgentHistory({ setMessages }: WritingAgentHistoryOptio
         setIsLoadingEarlierHistory(false)
       }
     }
-  }, [setMessages])
-
-  useEffect(
-    () => () => {
-      historyRequestGenerationRef.current += 1
-      earlierHistoryRequestRef.current += 1
-    },
-    [],
-  )
+  }, [client, setMessages])
 
   return {
     activeSessionId,

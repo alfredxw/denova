@@ -644,9 +644,10 @@ function providerAgentMetadata(value: unknown): AgentMessageMetadata {
   const agent = raw.agent && typeof raw.agent === 'object' && !Array.isArray(raw.agent)
     ? raw.agent as Record<string, unknown>
     : raw
-  return {
-    created_at: readString(agent.created_at) || undefined,
-    display_role: readString(agent.display_role) as AgentMessageMetadata['display_role'] || undefined,
+	return {
+		created_at: readString(agent.created_at) || undefined,
+		display_role: readString(agent.display_role) as AgentMessageMetadata['display_role'] || undefined,
+		display_phase: readDisplayPhase(agent.display_phase),
     history_type: readString(agent.history_type) || undefined,
     run_id: readString(agent.run_id) || undefined,
     agent_kind: readString(agent.agent_kind) || undefined,
@@ -668,6 +669,10 @@ function providerAgentMetadata(value: unknown): AgentMessageMetadata {
     turn_version_index: readNumber(agent.turn_version_index),
     user_references: readUserMessageReferences(agent.user_references),
   }
+}
+
+function readDisplayPhase(value: unknown): AgentMessageMetadata['display_phase'] {
+	return value === 'candidate' || value === 'progress' || value === 'final' || value === 'partial' ? value : undefined
 }
 
 function readUserMessageReferences(value: unknown): AgentMessageMetadata['user_references'] {

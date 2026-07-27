@@ -40,6 +40,52 @@ func (s *Session) AppendDisplayEvent(event DisplayEvent) error {
 	})
 }
 
+// FinalizeDisplayAssistantRun classifies only display-only root prose for one
+// completed run. It never mutates the canonical assistant message or model
+// context. All earlier prose becomes progress; the terminal segment remains
+// visible as either the final answer or a partial answer after interruption.
+func (s *Session) FinalizeDisplayAssistantRun(runID, finalSegmentID, terminalPhase string) error {
+	runID = strings.TrimSpace(runID)
+	finalSegmentID = strings.TrimSpace(finalSegmentID)
+	terminalPhase = strings.TrimSpace(terminalPhase)
+	if runID == "" || finalSegmentID == "" {
+		return nil
+	}
+	if terminalPhase != DisplayPhaseFinal && terminalPhase != DisplayPhasePartial {
+		return fmt.Errorf("invalid assistant display terminal phase: %s", terminalPhase)
+	}
+	return s.withCanonicalMutation(context.Background(), "finalize display assistant run", func() error {
+		now := time.Now().UTC()
+		changed := false
+		for index := range s.records {
+			record := &s.records[index]
+			if record.kind != historyTypeDisplay || record.display == nil || record.display.Role != "assistant" || record.display.SubAgent || strings.TrimSpace(record.display.RunID) != runID {
+				continue
+			}
+			phase := DisplayPhaseProgress
+			if record.display.ID == finalSegmentID {
+				phase = terminalPhase
+			}
+			if record.display.DisplayPhase == phase {
+				continue
+			}
+			phaseCopy := phase
+			if err := s.appendJournalRecordLocked(displayPatchRecord{
+				Type: historyTypeDisplayPatch, TargetRecordID: record.journalID,
+				CreatedAt: now, DisplayPhase: &phaseCopy,
+			}); err != nil {
+				return err
+			}
+			record.display.DisplayPhase = phase
+			changed = true
+		}
+		if changed {
+			advanceUpdatedAt(s, now)
+		}
+		return nil
+	})
+}
+
 func (s *Session) trimTokenUsageDisplayEventsLocked(agentKind string) {
 	s.records = trimTokenUsageDisplayEvents(s.records, agentKind)
 }

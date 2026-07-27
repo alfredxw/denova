@@ -38,6 +38,7 @@ import messages from './en-US/messages'
 import onboarding from './en-US/onboarding'
 import changes from './en-US/changes'
 import narrativeStyle from './en-US/narrativeStyle'
+import agentChat from './en-US/agentChat'
 
 const enUS = {
   ...common,
@@ -80,6 +81,7 @@ const enUS = {
   ...onboarding,
   ...changes,
   ...narrativeStyle,
+  ...agentChat,
   'agents.tool.availability.runtimeCheck': 'Runtime check',
 } as const
 

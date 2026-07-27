@@ -49,6 +49,8 @@ vi.mock('sonner', () => ({ toast: toastMock }))
 
 vi.mock('@/lib/api', () => ({
   analyzeChatContext: vi.fn(),
+  answerSessionAsk: vi.fn(),
+  cancelSessionAsk: vi.fn(),
   createAgentCommandID: vi.fn(() => 'command-test'),
   createSession: vi.fn(),
   deleteSession: vi.fn(),
@@ -63,6 +65,7 @@ vi.mock('@/lib/api', () => ({
   getSessions: vi.fn().mockResolvedValue([]),
   renameSession: vi.fn(),
   recoverChatAgentRuntime: vi.fn(),
+  removeChatContextCompaction: vi.fn(),
   submitChatCommand: vi.fn(),
   submitQueuedChatCommand: vi.fn(),
   switchSession: vi.fn(),
@@ -520,6 +523,28 @@ describe('useAgentChat', () => {
       undefined,
       'user_requested',
     )
+  })
+
+  it('does not report an idle recovery inspection as active execution', async () => {
+    let finishInspection!: (projection: { active: false }) => void
+    vi.mocked(getActiveChatTask).mockReturnValue(new Promise((resolve) => {
+      finishInspection = resolve
+    }))
+    const { result } = renderHook(() => useAgentChat())
+
+    let inspection!: Promise<void>
+    act(() => {
+      inspection = result.current.resumeActiveChat()
+    })
+    await waitFor(() => expect(result.current.isStreaming).toBe(true))
+    expect(result.current.isExecutionActive).toBe(false)
+
+    await act(async () => {
+      finishInspection({ active: false })
+      await inspection
+    })
+    expect(result.current.isStreaming).toBe(false)
+    expect(result.current.isExecutionActive).toBe(false)
   })
 
   it('aborts through the typed operation command and keeps observing its settlement', async () => {

@@ -295,6 +295,11 @@ func TestHarnessBindingForProfiles(t *testing.T) {
 			want:    RuntimeBinding{AgentKind: AgentKindIDE, Workspace: "/book", SessionID: "s"},
 		},
 		{
+			name:    "agent_chat",
+			options: RunOptions{AgentKind: AgentKindIDE, Mode: "agent_chat", Workspace: "/book", SessionID: "s"},
+			want:    RuntimeBinding{AgentKind: AgentKindIDE, Mode: "agent_chat", Workspace: "/book", SessionID: "s"},
+		},
+		{
 			name:    "game",
 			options: RunOptions{AgentKind: AgentKindInteractiveStory, Workspace: "/book", StoryID: "story", BranchID: "main"},
 			want:    RuntimeBinding{AgentKind: AgentKindInteractiveStory, Workspace: "/book", StoryID: "story", BranchID: "main"},

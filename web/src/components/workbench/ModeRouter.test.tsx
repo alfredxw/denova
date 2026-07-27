@@ -1,12 +1,13 @@
 import { render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
-import { useState, type ComponentProps, type ReactNode } from 'react'
+import { useEffect, useState, type ComponentProps, type ReactNode } from 'react'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { usePersistedUserSettings } from '@/hooks/usePersistedUserSettings'
 import { ModeRouter } from './ModeRouter'
 
 const toastMock = vi.hoisted(() => ({ warning: vi.fn() }))
 const useDocumentReviewMock = vi.hoisted(() => vi.fn())
+const agentPanelLifecycle = vi.hoisted(() => ({ mounts: 0, unmounts: 0, renders: 0 }))
 
 vi.mock('sonner', () => ({ toast: toastMock }))
 
@@ -25,14 +26,31 @@ vi.mock('@/components/Chat/AgentPanel', () => ({
     reviewFeedback?: Array<{ comments: Array<{ id: string }> }>
     onReviewFeedbackOpen?: (selection: unknown, comment: unknown) => void
   }) => {
+    const [localState, setLocalState] = useState(0)
+    agentPanelLifecycle.renders += 1
+    useEffect(() => {
+      agentPanelLifecycle.mounts += 1
+      return () => {
+        agentPanelLifecycle.unmounts += 1
+      }
+    }, [])
     const selection = reviewFeedback?.[0]
     const comment = selection?.comments[0]
     return (
-      <button type="button" disabled={!selection || !comment} onClick={() => onReviewFeedbackOpen?.(selection, comment)}>
-        open document feedback
-      </button>
+      <>
+        <button type="button" onClick={() => setLocalState((current) => current + 1)}>
+          agent panel state {localState}
+        </button>
+        <button type="button" disabled={!selection || !comment} onClick={() => onReviewFeedbackOpen?.(selection, comment)}>
+          open document feedback
+        </button>
+      </>
     )
   },
+}))
+
+vi.mock('@/features/agent-chat/AgentChatRoute', () => ({
+  AgentChatRoute: () => <div data-testid="agent-chat-route">project-scoped agent route</div>,
 }))
 
 vi.mock('@/components/Editor/MarkdownEditor', () => ({
@@ -104,6 +122,9 @@ describe('ModeRouter autosave navigation policy', () => {
   beforeEach(() => {
     toastMock.warning.mockReset()
     useDocumentReviewMock.mockReset()
+    agentPanelLifecycle.mounts = 0
+    agentPanelLifecycle.unmounts = 0
+    agentPanelLifecycle.renders = 0
     useDocumentReviewMock.mockReturnValue({
       feedback: null,
       thread: { comments: [] },
@@ -262,6 +283,27 @@ describe('ModeRouter autosave navigation policy', () => {
 
     expect(onToggleProjectVisible).toHaveBeenCalledTimes(1)
     expect(onSetSidebarView).toHaveBeenCalledWith('outline')
+  })
+
+  it('keeps the foreground Writing Agent mounted while Workspace owns separate scoped conversations', async () => {
+    const user = userEvent.setup()
+    const baseProps = modeRouterProps({ rightPanel: 'ai' })
+    const { rerender } = render(<ModeRouter {...baseProps} />)
+
+    await user.click(screen.getByRole('button', { name: 'agent panel state 0' }))
+    expect(screen.getByRole('button', { name: 'agent panel state 1' })).toBeInTheDocument()
+    expect(agentPanelLifecycle.mounts).toBe(1)
+
+    rerender(<ModeRouter {...baseProps} mode="agentchat" />)
+    await waitFor(() => expect(screen.getByTestId('agent-chat-route')).toBeInTheDocument())
+    expect(screen.queryByRole('button', { name: 'agent panel state 1' })).not.toBeInTheDocument()
+    expect(agentPanelLifecycle.mounts).toBe(1)
+    expect(agentPanelLifecycle.unmounts).toBe(0)
+
+    rerender(<ModeRouter {...baseProps} mode="ide" />)
+    expect(screen.getByRole('button', { name: 'agent panel state 1' })).toBeInTheDocument()
+    expect(agentPanelLifecycle.mounts).toBe(1)
+    expect(agentPanelLifecycle.unmounts).toBe(0)
   })
 })
 

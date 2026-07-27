@@ -20,6 +20,9 @@ func (a *App) restoreHarnessTurn(_ context.Context, request agents.HarnessTurnRe
 	binding := request.Binding
 	switch binding.AgentKind {
 	case agents.AgentKindIDE:
+		if binding.Mode == agentChatRuntimeMode {
+			return a.agentChat().restoreHarnessTurn(request, binding), nil
+		}
 		return a.restoreWritingHarnessTurn(request, binding), nil
 	case agents.AgentKindInteractiveStory:
 		return a.restoreInteractiveHarnessTurn(request, binding), nil

@@ -36,9 +36,22 @@ func (s *ChatAppService) prepareIDEChatRuntime(ctx context.Context, req agents.C
 	}
 	runtime.cfg.Workspace = runtime.workspace
 	runtime.ideTeller = ideStoryTellerForConfig(&runtime.cfg)
-	novaDir := runtime.cfg.DataDir()
 	a.mu.Unlock()
+	return s.prepareIDEChatRuntimeSnapshot(ctx, runtime, req)
+}
 
+// prepareIDEChatRuntimeSnapshot applies the same request/runtime policy to an
+// explicitly captured project runtime. The foreground Writing workspace and
+// user-level AgentChat both use this path, so prompt, Skills, teller, image,
+// review and resident-lore behavior cannot silently drift between surfaces.
+func (s *ChatAppService) prepareIDEChatRuntimeSnapshot(
+	ctx context.Context,
+	runtime ideChatRuntime,
+	req agents.ChatRequest,
+) (ideChatRuntime, agents.ChatRequest, error) {
+	runtime.cfg.Workspace = runtime.workspace
+	runtime.ideTeller = ideStoryTellerForConfig(&runtime.cfg)
+	novaDir := runtime.cfg.DataDir()
 	if layered, err := config.LoadLayeredWithStartupConfig(novaDir, runtime.workspace); err == nil {
 		applyLayeredSettingsToConfig(&runtime.cfg, layered)
 		applyRequestLocaleToConfig(&runtime.cfg, req.Locale)

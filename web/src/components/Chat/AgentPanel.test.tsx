@@ -118,7 +118,7 @@ describe('AgentPanel', () => {
     expect(handleSend.mock.calls[0][0]).not.toContain('由我在章节列表确认后再标记为成章')
   })
 
-  it('创作 Agent 将思考和工具调用折叠到同一个思考过程', async () => {
+  it('创作 Agent 将思考和工具调用折叠到同一个执行过程', async () => {
     const user = userEvent.setup()
     renderAgentPanel({
       messages: [{
@@ -132,17 +132,17 @@ describe('AgentPanel', () => {
       }],
     })
 
-    expect(screen.getByRole('button', { name: /思考过程.*1 次工具调用/ })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: /执行过程.*1 次工具调用/ })).toBeInTheDocument()
     expect(screen.queryByText('读取章节上下文')).not.toBeInTheDocument()
     expect(screen.queryByText('read')).not.toBeInTheDocument()
     expect(screen.getByText('已完成续写。')).toBeInTheDocument()
 
-    await user.click(screen.getByRole('button', { name: /思考过程.*1 次工具调用/ }))
+    await user.click(screen.getByRole('button', { name: /执行过程.*1 次工具调用/ }))
     expect(screen.getByText('读取章节上下文')).toBeInTheDocument()
     expect(screen.getByText('read')).toBeInTheDocument()
   })
 
-  it('创作 Agent 运行中自动展开思考过程', () => {
+  it('创作 Agent 运行中自动展开执行过程', () => {
     renderAgentPanel({
       isStreaming: true,
       messages: [{
@@ -152,7 +152,7 @@ describe('AgentPanel', () => {
       }],
     })
 
-    expect(screen.getByRole('button', { name: /思考过程/ })).toHaveAttribute('aria-expanded', 'true')
+    expect(screen.getByRole('button', { name: /正在执行/ })).toHaveAttribute('aria-expanded', 'true')
     expect(screen.getByText('正在读取章节上下文')).toBeInTheDocument()
   })
 

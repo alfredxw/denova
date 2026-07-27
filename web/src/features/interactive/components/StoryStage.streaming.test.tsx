@@ -197,14 +197,14 @@ describe('StoryStage streaming rendering', () => {
         const liveMessages = useInteractiveStore.getState().storyStageRuns['/tmp/book:story-1:main']?.liveMessages || []
         expect(liveMessages.some((message) => message.role === 'assistant' && message.streaming_target_content === '我先检查资料，再开始写正文。')).toBe(true)
       })
-      expect(screen.queryByRole('button', { name: /思考过程/ })).not.toBeInTheDocument()
+      expect(screen.queryByRole('button', { name: /执行过程/ })).not.toBeInTheDocument()
 
       act(() => {
         stream.enqueue({ event: 'interactive_content_reclassified', data: JSON.stringify({ content: '我先检查资料，再开始写正文。' }) })
         stream.enqueue({ event: 'tool_call', data: JSON.stringify({ id: 'call-lore', name: 'list_lore_items', args: '{}' }) })
       })
 
-      const trace = await screen.findByRole('button', { name: /思考过程.*1 次工具调用/ })
+      const trace = await screen.findByRole('button', { name: /正在执行.*1 次工具调用/ })
       expect(trace).toBeInTheDocument()
       expect(screen.getAllByText('我先检查资料，再开始写正文。')).toHaveLength(1)
       const liveMessages = useInteractiveStore.getState().storyStageRuns['/tmp/book:story-1:main']?.liveMessages || []
@@ -246,7 +246,7 @@ describe('StoryStage streaming rendering', () => {
         stream.enqueue({ event: 'tool_call', data: JSON.stringify({ id: 'call-lore', name: 'list_lore_items', args: '{}' }) })
       })
 
-      expect(await screen.findByRole('button', { name: /思考过程.*1 次工具调用/ })).toBeInTheDocument()
+      expect(await screen.findByRole('button', { name: /正在执行.*1 次工具调用/ })).toBeInTheDocument()
       expect(screen.getByText('正在检查开场资料。')).toBeInTheDocument()
       expect(screen.getByText('list_lore_items')).toBeInTheDocument()
 
@@ -271,7 +271,7 @@ describe('StoryStage streaming rendering', () => {
       await waitFor(() => expect(screen.queryByText('正在检查开场资料。')).not.toBeInTheDocument())
       expect(screen.queryByText('list_lore_items')).not.toBeInTheDocument()
 
-      await user.click(screen.getByRole('button', { name: /思考过程.*1 次工具调用/ }))
+      await user.click(screen.getByRole('button', { name: /执行过程.*1 次工具调用/ }))
       expect(screen.getByText('正在检查开场资料。')).toBeInTheDocument()
       expect(screen.getByText('list_lore_items')).toBeInTheDocument()
     } finally {
@@ -338,7 +338,7 @@ describe('StoryStage streaming rendering', () => {
     )
 
     expect(screen.getByText('石门后传来锁链拖地的声音。')).toBeInTheDocument()
-    const traceButton = screen.getByRole('button', { name: /思考过程.*1 次工具调用/ })
+    const traceButton = screen.getByRole('button', { name: /执行过程.*1 次工具调用/ })
     await user.click(traceButton)
     expect(screen.getByText('正在判断石门后的威胁。')).toBeInTheDocument()
     expect(screen.getByText('list_lore_items')).toBeInTheDocument()
@@ -405,10 +405,10 @@ describe('StoryStage streaming rendering', () => {
     // 正文之后的提交结果工具统一折叠为一个分组，不再逐张卡片交叉展示
     expect(screen.queryByText('submit_actor_state_patches')).not.toBeInTheDocument()
     expect(screen.queryByText('submit_choices')).not.toBeInTheDocument()
-    const postNarrativeGroup = screen.getByRole('button', { name: /^2 次工具调用$/ })
+    const postNarrativeGroup = screen.getByRole('button', { name: /^执行过程 · 2 次工具调用$/ })
     expect(narrative.compareDocumentPosition(postNarrativeGroup) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
     // 正文前的思考分组只包含思考内容，不吞掉提交结果工具
-    const preNarrativeGroup = screen.getByRole('button', { name: /^思考过程$/ })
+    const preNarrativeGroup = screen.getByRole('button', { name: /^执行过程$/ })
     expect(preNarrativeGroup.compareDocumentPosition(narrative) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
     // 展开正文后的分组可以看到全部提交工具
     await user.click(postNarrativeGroup)
@@ -466,8 +466,8 @@ describe('StoryStage streaming rendering', () => {
     )
 
     expect(screen.getByText('石门后传来锁链拖地的声音。')).toBeInTheDocument()
-    // 旧数据没有锚点：保持旧布局，提交结果工具仍在思考折叠分组内（默认折叠不渲染）
-    expect(screen.getByRole('button', { name: /思考过程.*2 次工具调用/ })).toBeInTheDocument()
+    // 旧数据没有锚点：保持旧布局，提交结果工具仍在执行过程折叠分组内（默认折叠不渲染）
+    expect(screen.getByRole('button', { name: /执行过程.*2 次工具调用/ })).toBeInTheDocument()
     expect(screen.queryByText('submit_choices')).not.toBeInTheDocument()
   })
 

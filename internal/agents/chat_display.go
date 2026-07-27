@@ -13,6 +13,7 @@ import (
 // displaySegmentIDEventKey carries the stable identity shared by the live
 // stream adapter and the persisted display transcript for one contiguous part.
 const displaySegmentIDEventKey = "display_segment_id"
+const displayPhaseEventKey = "display_phase"
 
 // appendAssistantIfAny persists generated output and returns the persistence
 // error to the run loop. A completed stream must never hide a failed commit.
@@ -95,6 +96,10 @@ type displayEventContentFlusher interface {
 	FlushDisplayEventContent(id, role string) error
 }
 
+type displayAssistantRunFinalizer interface {
+	FinalizeDisplayAssistantRun(runID, finalSegmentID, terminalPhase string) error
+}
+
 type displayEventRecorder struct {
 	appender                      displayEventAppender
 	thinking                      strings.Builder
@@ -105,6 +110,8 @@ type displayEventRecorder struct {
 	assistantMeta                 agentEventMetadata
 	assistantPersisted            bool
 	segmentSeq                    int
+	rootRunID                     string
+	rootAssistantSegmentIDs       []string
 	pendingToolIDs                map[string]string
 	suppressRootAssistantSegments bool
 }
@@ -153,8 +160,15 @@ func (r *displayEventRecorder) Record(ev Event) {
 		}
 		if r.assistant.Len() == 0 {
 			r.assistantID = r.nextTextSegmentID(meta, "assistant")
+			if !meta.SubAgent {
+				r.rootRunID = meta.RunID
+				r.rootAssistantSegmentIDs = append(r.rootAssistantSegmentIDs, r.assistantID)
+			}
 		}
 		setEventDataString(ev.Data, displaySegmentIDEventKey, r.assistantID)
+		if !meta.SubAgent {
+			setEventDataString(ev.Data, displayPhaseEventKey, session.DisplayPhaseCandidate)
+		}
 		r.assistantMeta = meta
 		r.assistant.WriteString(content)
 		if r.suppressRootAssistantSegments && !meta.SubAgent {
@@ -324,6 +338,7 @@ func (r *displayEventRecorder) Record(ev Event) {
 	case "error", "aborted":
 		r.flushThinking()
 		r.flushAssistant()
+		r.finalizeRootAssistantSegments(session.DisplayPhasePartial)
 		for id, name := range r.pendingToolIDs {
 			if err := r.appender.UpdateDisplayToolStatus(id, name, "error"); err != nil {
 				log.Printf("[agent-run] persist display tool_error failed name=%s id=%s err=%v", name, id, err)
@@ -333,6 +348,7 @@ func (r *displayEventRecorder) Record(ev Event) {
 	case "done":
 		r.flushThinking()
 		r.flushAssistant()
+		r.finalizeRootAssistantSegments(session.DisplayPhaseFinal)
 		for id, name := range r.pendingToolIDs {
 			if err := r.appender.UpdateDisplayToolStatus(id, name, "success"); err != nil {
 				log.Printf("[agent-run] persist display tool_done failed name=%s id=%s err=%v", name, id, err)
@@ -397,9 +413,14 @@ func (r *displayEventRecorder) flushAssistant() {
 }
 
 func (r *displayEventRecorder) assistantDisplayEvent(content string) session.DisplayEvent {
+	displayPhase := ""
+	if !r.assistantMeta.SubAgent {
+		displayPhase = session.DisplayPhaseCandidate
+	}
 	return session.DisplayEvent{
 		ID:                r.assistantID,
 		Role:              "assistant",
+		DisplayPhase:      displayPhase,
 		Content:           content,
 		RunID:             r.assistantMeta.RunID,
 		AgentKind:         r.assistantMeta.AgentKind,
@@ -409,6 +430,20 @@ func (r *displayEventRecorder) assistantDisplayEvent(content string) session.Dis
 		SubAgent:          r.assistantMeta.SubAgent,
 		SubAgentSessionID: r.assistantMeta.SubAgentSessionID,
 		SubAgentType:      r.assistantMeta.SubAgentType,
+	}
+}
+
+func (r *displayEventRecorder) finalizeRootAssistantSegments(terminalPhase string) {
+	if r == nil || r.appender == nil || len(r.rootAssistantSegmentIDs) == 0 {
+		return
+	}
+	finalizer, ok := r.appender.(displayAssistantRunFinalizer)
+	if !ok {
+		return
+	}
+	finalSegmentID := r.rootAssistantSegmentIDs[len(r.rootAssistantSegmentIDs)-1]
+	if err := finalizer.FinalizeDisplayAssistantRun(r.rootRunID, finalSegmentID, terminalPhase); err != nil {
+		log.Printf("[agent-run] finalize display assistant phases failed run_id=%s final_segment_id=%s phase=%s err=%v", r.rootRunID, finalSegmentID, terminalPhase, err)
 	}
 }
 

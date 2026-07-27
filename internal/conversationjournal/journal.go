@@ -34,6 +34,7 @@ type Journal struct {
 	sparse              []Location
 	recent              []Location
 	dirtyTransactions   int
+	indexDirty          bool
 	stats               ReplayStats
 	closed              bool
 	projectionInvalid   bool
@@ -279,6 +280,7 @@ func (journal *Journal) applyLineLocked(line []byte, offset int64, length int, n
 	journal.needsNewline = !newlineTerminated
 	journal.tornTail = nil
 	journal.stats.TransactionsRead++
+	journal.indexDirty = true
 	return nil
 }
 

@@ -986,6 +986,58 @@ func TestMultipleSessionsAreIsolatedAndActiveSessionPersists(t *testing.T) {
 	}
 }
 
+func TestListUsesProjectionWithoutMaterializingColdSessions(t *testing.T) {
+	dir := t.TempDir()
+	store, err := NewStore(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	sess, err := store.GetOrCreate("default")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := sess.Append(agent.UserMessage("投影列表标题")); err != nil {
+		t.Fatal(err)
+	}
+	if err := sess.AppendContextMessage(agent.ToolMessage(agent.TextToolResult("仅模型上下文"), "projection-list-tool")); err != nil {
+		t.Fatal(err)
+	}
+	if err := sess.Append(agent.AssistantMessage("投影列表回复", nil)); err != nil {
+		t.Fatal(err)
+	}
+	if err := store.Close(); err != nil {
+		t.Fatal(err)
+	}
+
+	reloaded, err := NewStore(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	metas, err := reloaded.List("default")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(metas) != 1 || metas[0].ID != "default" || metas[0].Title != "投影列表标题" {
+		t.Fatalf("unexpected session metadata: %#v", metas)
+	}
+	if !metas[0].Active || metas[0].MessageCount != 2 || metas[0].CreatedAt.IsZero() || metas[0].UpdatedAt.IsZero() {
+		t.Fatalf("incomplete session metadata: %#v", metas[0])
+	}
+	if len(reloaded.cache) != 0 {
+		t.Fatalf("listing materialized cold sessions: cached=%d", len(reloaded.cache))
+	}
+
+	if _, err := reloaded.Get("default"); err != nil {
+		t.Fatal(err)
+	}
+	if len(reloaded.cache) != 1 {
+		t.Fatalf("opening a session should still materialize it: cached=%d", len(reloaded.cache))
+	}
+	if err := reloaded.Close(); err != nil {
+		t.Fatal(err)
+	}
+}
+
 func TestDeleteRejectsOnlySession(t *testing.T) {
 	store, err := NewStore(t.TempDir())
 	if err != nil {

@@ -45,6 +45,9 @@ export default defineConfig({
         target: `http://localhost:${backendPort}`,
         changeOrigin: true,
         xfwd: true,
+        // AgentChat terminals attach over /api/terminal/sessions/:id/attach, so the dev proxy
+        // has to forward WebSocket upgrade requests as well.
+        ws: true,
       },
     },
   },

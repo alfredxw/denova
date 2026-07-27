@@ -437,6 +437,7 @@ func messageMetadataFromData(data map[string]any) map[string]any {
 	keys := []string{
 		"created_at",
 		"display_role",
+		"display_phase",
 		"history_type",
 		"run_id",
 		"agent_kind",

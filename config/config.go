@@ -59,6 +59,12 @@ type Config struct {
 	AgentIdleTimeoutSeconds     int                          `toml:"agent_idle_timeout_seconds"`
 	AgentToolResultLimitKB      int                          `toml:"agent_tool_result_limit_kb"`
 	AgentToolParallelism        int                          `toml:"agent_tool_parallelism"`
+	TerminalEnabled             bool                         `toml:"terminal_enabled"`
+	TerminalShell               string                       `toml:"terminal_shell"`
+	TerminalCodexCommand        string                       `toml:"terminal_codex_command"`
+	TerminalClaudeCommand       string                       `toml:"terminal_claude_command"`
+	TerminalMaxSessions         int                          `toml:"terminal_max_sessions"`
+	TerminalScrollbackKB        int                          `toml:"terminal_scrollback_kb"`
 	ChapterFilenameFormat       string                       `toml:"-"`
 	VolumeDirFormat             string                       `toml:"-"`
 	HideChapterBodyLiveOutput   bool                         `toml:"-"`
@@ -118,6 +124,12 @@ func LoadWithWorkspace(workspace string) (*Config, LayeredSettings, error) {
 		AgentIdleTimeoutSeconds:     settingsAgentIdleTimeoutSeconds(s.AgentIdleTimeoutSeconds),
 		AgentToolResultLimitKB:      settingsAgentToolResultLimitKB(s.AgentToolResultLimitKB),
 		AgentToolParallelism:        settingsAgentToolParallelism(s.AgentToolParallelism),
+		TerminalEnabled:             settingsBool(s.TerminalEnabled, true),
+		TerminalShell:               s.TerminalShell,
+		TerminalCodexCommand:        s.TerminalCodexCommand,
+		TerminalClaudeCommand:       s.TerminalClaudeCommand,
+		TerminalMaxSessions:         settingsTerminalMaxSessions(s.TerminalMaxSessions),
+		TerminalScrollbackKB:        settingsTerminalScrollbackKB(s.TerminalScrollbackKB),
 		LLMInputLogEnabled:          settingsBool(s.LLMInputLogEnabled, false),
 		TraceCaptureLevel:           settingsString(s.TraceCaptureLevel, DefaultTraceCaptureLevel),
 		TraceExporter:               settingsString(s.TraceExporter, DefaultTraceExporter),
@@ -227,6 +239,8 @@ func settingsFromConfig(cfg *Config) Settings {
 		InteractiveStoryTellerID: cfg.InteractiveStoryTellerID,
 		IDEImagePresetID:         cfg.IDEImagePresetID,
 		WritingSkillDefault:      cfg.WritingSkillDefault,
+		TerminalCodexCommand:     cfg.TerminalCodexCommand,
+		TerminalClaudeCommand:    cfg.TerminalClaudeCommand,
 	}
 	if cfg.HideChapterBodyLiveOutput {
 		settings.HideChapterBodyLiveOutput = &cfg.HideChapterBodyLiveOutput
@@ -252,6 +266,15 @@ func settingsFromConfig(cfg *Config) Settings {
 	}
 	if cfg.AgentToolParallelism >= 0 {
 		settings.AgentToolParallelism = &cfg.AgentToolParallelism
+	}
+	if cfg.TerminalMaxSessions > 0 {
+		settings.TerminalMaxSessions = &cfg.TerminalMaxSessions
+	}
+	if cfg.TerminalScrollbackKB > 0 {
+		settings.TerminalScrollbackKB = &cfg.TerminalScrollbackKB
+	}
+	if cfg.TerminalShell != "" {
+		settings.TerminalShell = cfg.TerminalShell
 	}
 	if cfg.LLMInputLogEnabled {
 		settings.LLMInputLogEnabled = &cfg.LLMInputLogEnabled
@@ -322,6 +345,12 @@ func Load() *Config {
 			AgentIdleTimeoutSeconds:     settingsAgentIdleTimeoutSeconds(d.AgentIdleTimeoutSeconds),
 			AgentToolResultLimitKB:      settingsAgentToolResultLimitKB(d.AgentToolResultLimitKB),
 			AgentToolParallelism:        settingsAgentToolParallelism(d.AgentToolParallelism),
+			TerminalEnabled:             settingsBool(d.TerminalEnabled, true),
+			TerminalShell:               d.TerminalShell,
+			TerminalCodexCommand:        d.TerminalCodexCommand,
+			TerminalClaudeCommand:       d.TerminalClaudeCommand,
+			TerminalMaxSessions:         settingsTerminalMaxSessions(d.TerminalMaxSessions),
+			TerminalScrollbackKB:        settingsTerminalScrollbackKB(d.TerminalScrollbackKB),
 			LLMInputLogEnabled:          settingsBool(d.LLMInputLogEnabled, false),
 			TraceCaptureLevel:           settingsString(d.TraceCaptureLevel, DefaultTraceCaptureLevel),
 			TraceExporter:               settingsString(d.TraceExporter, DefaultTraceExporter),
@@ -378,6 +407,29 @@ func settingsAgentToolParallelism(value *int) int {
 	}
 	if *value > MaxAgentToolParallelism {
 		return MaxAgentToolParallelism
+	}
+	return *value
+}
+
+// settingsTerminalMaxSessions clamps the concurrent session count: non-positive values fall back
+// to the default and anything above the hard ceiling is truncated.
+func settingsTerminalMaxSessions(value *int) int {
+	if value == nil || *value <= 0 {
+		return DefaultTerminalMaxSessions
+	}
+	if *value > MaxTerminalSessions {
+		return MaxTerminalSessions
+	}
+	return *value
+}
+
+// settingsTerminalScrollbackKB clamps the scrollback size so memory usage stays bounded.
+func settingsTerminalScrollbackKB(value *int) int {
+	if value == nil || *value <= 0 {
+		return DefaultTerminalScrollbackKB
+	}
+	if *value > MaxTerminalScrollbackKB {
+		return MaxTerminalScrollbackKB
 	}
 	return *value
 }

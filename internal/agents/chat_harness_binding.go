@@ -16,6 +16,7 @@ const (
 	runtimeBindingKindAutomation = "automation"
 
 	runtimeBindingProfileWriting       = "writing"
+	runtimeBindingProfileAgentChat     = "agent_chat"
 	runtimeBindingProfileGame          = "game"
 	runtimeBindingProfileAutomation    = "automation"
 	runtimeBindingProfileConfigManager = "config_manager"
@@ -34,6 +35,10 @@ const (
 // agent/runtime only sees an open, bounded BindingRef.
 type RuntimeBinding struct {
 	AgentKind string
+	// Mode separates products that reuse the IDE Agent implementation but own
+	// different lifecycles. AgentChat conversations are user-level bindings and
+	// must survive switches of the foreground Writing workspace.
+	Mode      string
 	Workspace string
 	SessionID string
 	StoryID   string
@@ -62,7 +67,11 @@ func (binding RuntimeBinding) Ref() (runstate.BindingRef, error) {
 		if labels[runtimeBindingLabelWorkspace] == "" || labels[runtimeBindingLabelSession] == "" || binding.StoryID != "" || binding.BranchID != "" || binding.TaskID != "" {
 			return runstate.BindingRef{}, runstate.ErrInvalidBinding
 		}
-		ref = runstate.BindingRef{Kind: runtimeBindingKindWriting, Profile: runtimeBindingProfileWriting, Key: labels[runtimeBindingLabelSession], Labels: labels}
+		profile := runtimeBindingProfileWriting
+		if strings.TrimSpace(binding.Mode) == runtimeBindingProfileAgentChat {
+			profile = runtimeBindingProfileAgentChat
+		}
+		ref = runstate.BindingRef{Kind: runtimeBindingKindWriting, Profile: profile, Key: labels[runtimeBindingLabelSession], Labels: labels}
 	case AgentKindInteractiveStory:
 		if labels[runtimeBindingLabelWorkspace] == "" || labels[runtimeBindingLabelStory] == "" || labels[runtimeBindingLabelBranch] == "" || binding.TaskID != "" {
 			return runstate.BindingRef{}, runstate.ErrInvalidBinding
@@ -113,6 +122,9 @@ func ParseRuntimeBinding(ref runstate.BindingRef) (RuntimeBinding, error) {
 	switch {
 	case ref.Kind == runtimeBindingKindWriting && ref.Profile == runtimeBindingProfileWriting:
 		binding.AgentKind = AgentKindIDE
+	case ref.Kind == runtimeBindingKindWriting && ref.Profile == runtimeBindingProfileAgentChat:
+		binding.AgentKind = AgentKindIDE
+		binding.Mode = runtimeBindingProfileAgentChat
 	case ref.Kind == runtimeBindingKindGame && ref.Profile == runtimeBindingProfileGame:
 		binding.AgentKind = AgentKindInteractiveStory
 	case ref.Kind == runtimeBindingKindWriting && ref.Profile == runtimeBindingProfileConfigManager:
@@ -212,7 +224,7 @@ func harnessBindingForOptions(options RunOptions) (runstate.BindingRef, error) {
 	options = options.normalized(options.Workspace)
 	switch options.AgentKind {
 	case AgentKindIDE:
-		return (RuntimeBinding{AgentKind: options.AgentKind, Workspace: options.Workspace, SessionID: options.SessionID}).Ref()
+		return (RuntimeBinding{AgentKind: options.AgentKind, Mode: options.Mode, Workspace: options.Workspace, SessionID: options.SessionID}).Ref()
 	case AgentKindInteractiveStory:
 		return (RuntimeBinding{AgentKind: options.AgentKind, Workspace: options.Workspace, StoryID: options.StoryID, BranchID: options.BranchID}).Ref()
 	case AgentKindConfigManager:

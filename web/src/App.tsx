@@ -10,7 +10,7 @@ import { CommandPalette } from '@/components/common/command-palette'
 import { useWorkspace } from '@/hooks/useWorkspace'
 import { useAgentChat } from '@/hooks/useAgentChat'
 import { useWorkspaceHotkeys } from '@/hooks/use-workspace-hotkeys'
-import { useWorkspaceStore, type RightPanel, type WorkspaceMode } from '@/stores/workspace-store'
+import { isSharedWorkspaceMode, useWorkspaceStore, type RightPanel, type WorkspaceMode } from '@/stores/workspace-store'
 import { useInteractiveStore } from '@/features/interactive/stores/interactive-store'
 import type { ChapterSummary } from '@/lib/api'
 import { toast } from 'sonner'
@@ -102,8 +102,13 @@ function App() {
   const setCommandOpen = useWorkspaceStore((state) => state.setCommandOpen)
   const setMode = useWorkspaceStore((state) => state.setMode)
   const setSelectedChapterId = useWorkspaceStore((state) => state.setSelectedChapterId)
+  const toggleActivityBarExpanded = useCallback(() => setActivityBarExpanded((value) => !value), [])
+  const toggleProjectVisible = useCallback(() => setProjectVisible((value) => !value), [])
+  const toggleSettings = useCallback(() => setSettingsOpen((open) => !open), [])
+  const closeSettings = useCallback(() => setSettingsOpen(false), [])
+  const toggleInteractiveRightPanel = useCallback(() => setInteractiveRightVisible((value) => !value), [])
   useEffect(() => {
-    if (mode === 'books' || mode === 'skills' || mode === 'agents' || mode === 'automations') return
+    if (isSharedWorkspaceMode(mode)) return
     const contentMode = mode === 'interactive' ? 'interactive' : 'ide'
     booksReturnModeRef.current = contentMode
     setBooksReturnMode(contentMode)
@@ -607,7 +612,7 @@ function App() {
   }, [isStreaming, send, t])
 
   const handleSetMode = useCallback((nextMode: WorkspaceMode) => {
-    if (nextMode === 'books' || nextMode === 'skills' || nextMode === 'agents' || nextMode === 'automations') {
+    if (isSharedWorkspaceMode(nextMode)) {
       const returnMode = mode === 'ide' || mode === 'interactive' ? mode : booksReturnModeRef.current
       booksReturnModeRef.current = returnMode
       setBooksReturnMode(returnMode)
@@ -788,14 +793,14 @@ function App() {
         hasEarlierMessages={hasEarlierMessages}
         isLoadingEarlierHistory={isLoadingEarlierHistory}
         onSetMode={handleSetMode}
-        onToggleActivityBarExpanded={() => setActivityBarExpanded((value) => !value)}
-        onToggleProjectVisible={() => setProjectVisible((value) => !value)}
+        onToggleActivityBarExpanded={toggleActivityBarExpanded}
+        onToggleProjectVisible={toggleProjectVisible}
         onSetRightPanel={handleSetRightPanel}
-        onToggleSettings={() => setSettingsOpen((open) => !open)}
-        onCloseSettings={() => setSettingsOpen(false)}
+        onToggleSettings={toggleSettings}
+        onCloseSettings={closeSettings}
         notice={notice}
         onDismissNotice={dismissNotice}
-        onToggleInteractiveRightPanel={() => setInteractiveRightVisible((value) => !value)}
+        onToggleInteractiveRightPanel={toggleInteractiveRightPanel}
         onSwitchBook={handleWorkspaceSwitch}
         onQuickSwitchBook={handleQuickWorkspaceSwitch}
         onBeforeWorkspaceSwitch={flushEditorDraft}

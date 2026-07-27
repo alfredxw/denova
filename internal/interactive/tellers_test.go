@@ -26,6 +26,9 @@ func TestTellerLibraryMaterializesBuiltinsAndListsThem(t *testing.T) {
 	if tellers[0].ID == "" || tellers[0].Name == "" {
 		t.Fatalf("teller metadata should be parsed: %#v", tellers[0])
 	}
+	if tellers[0].ID != "rhythm" {
+		t.Fatalf("default narrative style should be listed first, got %q", tellers[0].ID)
+	}
 
 	classicPath := filepath.Join(novaDir, "story-tellers", "classic.json")
 	data, err := os.ReadFile(classicPath)

@@ -38,6 +38,7 @@ import messages from './zh-CN/messages'
 import onboarding from './zh-CN/onboarding'
 import changes from './zh-CN/changes'
 import narrativeStyle from './zh-CN/narrativeStyle'
+import agentChat from './zh-CN/agentChat'
 
 const zhCN = {
   ...common,
@@ -80,6 +81,7 @@ const zhCN = {
   ...onboarding,
   ...changes,
   ...narrativeStyle,
+  ...agentChat,
   'agents.tool.availability.runtimeCheck': '运行时检查',
 } as const
 

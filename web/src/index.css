@@ -881,6 +881,20 @@ html[data-nova-motion="off"] *::after {
   transition-duration: var(--nova-motion-slow) !important;
 }
 
+/* Primary navigation should acknowledge the press immediately. The route itself may contain a
+   large editor or Markdown tree, so its button feedback must not inherit the global 220ms pace. */
+.nova-activity-bar .nova-icon-button,
+.nova-mobile-nav-item {
+  transition-duration: var(--nova-motion-fast);
+}
+
+.nova-activity-bar .nova-icon-button:active,
+.nova-mobile-nav-item:active {
+  background: var(--nova-hover);
+  transform: scale(0.98);
+  transition-duration: 0ms;
+}
+
 .nova-activity-bar-resize-handle {
   position: absolute;
   bottom: 0;
@@ -1547,6 +1561,47 @@ html[data-nova-motion="off"] *::after {
 .nova-resize-handle:hover,
 .nova-resize-handle[data-resize-handle-active] {
   background: color-mix(in srgb, var(--nova-active) 78%, transparent);
+}
+
+/* Keep panel boundaries visible without making the draggable target look wide. The separator
+   remains easy to hit, while only its centered hairline is rendered and emphasized. */
+.nova-resize-divider {
+  background: transparent;
+  outline: none;
+}
+
+.nova-resize-divider::before {
+  position: absolute;
+  content: '';
+  pointer-events: none;
+  background: var(--nova-border);
+  transition: background-color var(--nova-motion-fast) var(--nova-ease);
+}
+
+.nova-resize-divider-vertical::before {
+  inset-block: 0;
+  left: 50%;
+  width: 1px;
+  transform: translateX(-50%);
+}
+
+.nova-resize-divider-horizontal::before {
+  inset-inline: 0;
+  top: 50%;
+  height: 1px;
+  transform: translateY(-50%);
+}
+
+.nova-resize-divider:hover,
+.nova-resize-divider:focus-visible,
+.nova-resize-divider[data-resize-handle-active] {
+  background: transparent;
+}
+
+.nova-resize-divider:hover::before,
+.nova-resize-divider:focus-visible::before,
+.nova-resize-divider[data-resize-handle-active]::before {
+  background: color-mix(in srgb, var(--nova-text-faint) 72%, var(--nova-border));
 }
 
 * {

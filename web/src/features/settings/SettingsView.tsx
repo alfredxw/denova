@@ -29,9 +29,9 @@ import { DEFAULT_MODEL_PROFILE_ID, modelProfileID, modelProfileLabel, modelProfi
 import { DEFAULT_IMAGE_API_BASE_URL, DEFAULT_IMAGE_API_MODEL, DEFAULT_IMAGE_API_PROFILE_ID, DEFAULT_IMAGE_API_PROVIDER, imageAPIProfileID, imageAPIProfileLabel, imageAPIProfilesWithDefault } from './image-profiles'
 import { ONBOARDING_OPEN_EVENT, SETTINGS_SECTION_EVENT, type SettingsSectionRequest } from '@/features/onboarding/events'
 
-type SettingsSectionId = 'model' | 'image' | 'paths' | 'access' | 'appearance' | 'updates' | 'agent' | 'web-access' | 'debug' | 'ide-editor' | 'ide-output' | 'versions' | 'interactive'
+type SettingsSectionId = 'model' | 'image' | 'paths' | 'access' | 'appearance' | 'updates' | 'agent' | 'terminal' | 'web-access' | 'debug' | 'ide-editor' | 'ide-output' | 'versions' | 'interactive'
 
-const SETTINGS_SECTION_IDS: SettingsSectionId[] = ['model', 'image', 'paths', 'access', 'appearance', 'updates', 'agent', 'web-access', 'debug', 'ide-editor', 'ide-output', 'versions', 'interactive']
+const SETTINGS_SECTION_IDS: SettingsSectionId[] = ['model', 'image', 'paths', 'access', 'appearance', 'updates', 'agent', 'terminal', 'web-access', 'debug', 'ide-editor', 'ide-output', 'versions', 'interactive']
 
 type SettingsSection = {
   id: SettingsSectionId
@@ -83,6 +83,7 @@ export function SettingsView({ onClose }: { onClose?: () => void }) {
     appearance: true,
     updates: true,
     agent: true,
+    terminal: true,
     'web-access': true,
     debug: true,
     'ide-editor': true,
@@ -392,6 +393,40 @@ export function SettingsView({ onClose }: { onClose?: () => void }) {
           <Text label={t('settings.agent.writingSkillDefault')} value={draft.writing_skill_default}
                 placeholder={placeholderFor('writing_skill_default')}
                 onChange={(v) => setField('writing_skill_default', v)} />
+        </>
+      ),
+    },
+    {
+      id: 'terminal',
+      group: t('settings.group.common'),
+      title: t('settings.section.terminal'),
+      children: (
+        <>
+          <BoolTri label={t('settings.terminal.enabled')} value={draft.terminal_enabled ?? null}
+                   inherited={inherited.terminal_enabled}
+                   onChange={(v) => setField('terminal_enabled', v)} />
+          <Text label={t('settings.terminal.shell')} value={draft.terminal_shell}
+                placeholder={placeholderFor('terminal_shell')}
+                onChange={(v) => setField('terminal_shell', v)} />
+          <Text label={t('settings.terminal.codexCommand')} value={draft.terminal_codex_command}
+                placeholder={placeholderFor('terminal_codex_command')}
+                onChange={(v) => setField('terminal_codex_command', v)} />
+          <Text label={t('settings.terminal.claudeCommand')} value={draft.terminal_claude_command}
+                placeholder={placeholderFor('terminal_claude_command')}
+                onChange={(v) => setField('terminal_claude_command', v)} />
+          <Num label={t('settings.terminal.maxSessions')} value={draft.terminal_max_sessions ?? null}
+               placeholder={placeholderFor('terminal_max_sessions')}
+               min={1}
+               max={64}
+               onChange={(v) => setField('terminal_max_sessions', v)} />
+          <Num label={t('settings.terminal.scrollbackKB')} value={draft.terminal_scrollback_kb ?? null}
+               placeholder={placeholderFor('terminal_scrollback_kb')}
+               min={1}
+               max={4096}
+               onChange={(v) => setField('terminal_scrollback_kb', v)} />
+          <div className="rounded-[var(--nova-radius)] border border-[var(--nova-border)] bg-[var(--nova-surface-2)] px-3 py-2 text-xs leading-5 text-[var(--nova-text-faint)]">
+            {t('settings.terminal.hint')}
+          </div>
         </>
       ),
     },
@@ -1816,6 +1851,12 @@ function mergeSettingsLayer(parent: Settings, child: Settings): Settings {
   override('agent_idle_timeout_seconds', isNonNull)
   override('agent_tool_result_limit_kb', isNonNull)
   override('agent_tool_parallelism', isNonNull)
+  override('terminal_enabled', isNonNull)
+  override('terminal_shell', isNonEmptyString)
+  override('terminal_codex_command', isNonEmptyString)
+  override('terminal_claude_command', isNonEmptyString)
+  override('terminal_max_sessions', isNonNull)
+  override('terminal_scrollback_kb', isNonNull)
   override('llm_input_log_enabled', isNonNull)
   override('trace_capture_level', isNonEmptyString)
   override('trace_exporter', isNonEmptyString)

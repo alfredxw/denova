@@ -310,7 +310,7 @@ describe('MessageItem', () => {
     expect(screen.getByText('web_fetch failed: target URL is invalid')).toBeInTheDocument()
   })
 
-  it('shell 生命周期成功时仍按 process envelope 显示命令失败', () => {
+  it('shell 生命周期成功且子进程非零退出时显示为注意结果而非工具失败', () => {
     const result = `${JSON.stringify({
       schema: 'process.result.v1',
       status: 'failed',
@@ -331,10 +331,11 @@ describe('MessageItem', () => {
       />,
     )
 
-    expect(screen.getByText('命令执行失败（退出码 2） · 检查输出并修正命令。')).toHaveClass('text-[var(--nova-danger)]')
+    expect(screen.getByText('命令已结束（退出码 2）')).toHaveClass('text-[var(--nova-warning)]')
+    expect(screen.queryByText(/检查输出并修正命令/)).not.toBeInTheDocument()
   })
 
-  it('read 部分结果直接展示 continuation 与恢复建议', () => {
+  it('read 按页返回时以正常完成态展示可选 continuation', () => {
     const result = `${JSON.stringify({
       schema: 'resource.read.v1',
       status: 'partial',
@@ -354,10 +355,11 @@ describe('MessageItem', () => {
       />,
     )
 
-    expect(screen.getByText('结果不完整 · 继续读取：offset=80 · 使用 offset 继续读取。')).toHaveClass('text-[var(--nova-warning)]')
+    expect(screen.getByText('已返回当前批次 · 后续内容可从 offset=80 读取')).toHaveClass('text-[var(--nova-text-faint)]')
+    expect(screen.queryByText(/使用 offset 继续读取/)).not.toBeInTheDocument()
   })
 
-  it('独立工具结果卡按 canonical envelope 呈现 domain failure', () => {
+  it('独立工具结果卡把非零进程退出呈现为需留意的结果', () => {
     render(
       <MessageItem
         message={{
@@ -367,9 +369,10 @@ describe('MessageItem', () => {
       />,
     )
 
-    expect(screen.getByText('工具执行失败')).toBeInTheDocument()
-    expect(screen.getByText('error')).toBeInTheDocument()
-    expect(screen.queryByText('success')).not.toBeInTheDocument()
+    expect(screen.getByText('工具结果需留意')).toBeInTheDocument()
+    expect(screen.getByText('warning')).toBeInTheDocument()
+    expect(screen.getByText('命令已结束（退出码 1）')).toBeInTheDocument()
+    expect(screen.queryByText('工具执行失败')).not.toBeInTheDocument()
   })
 
   it('网页工具卡片把结构化恢复状态显示为可读摘要', async () => {

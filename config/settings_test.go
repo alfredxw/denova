@@ -43,6 +43,9 @@ func TestDefaultSettingsValues(t *testing.T) {
 	if s.AgentToolParallelism == nil || *s.AgentToolParallelism != DefaultAgentToolParallelism {
 		t.Fatalf("AgentToolParallelism default")
 	}
+	if s.TerminalCodexCommand != DefaultTerminalCodexCommand || s.TerminalClaudeCommand != DefaultTerminalClaudeCommand {
+		t.Fatalf("terminal CLI defaults: codex=%q claude=%q", s.TerminalCodexCommand, s.TerminalClaudeCommand)
+	}
 	if s.TraceCaptureLevel != DefaultTraceCaptureLevel || s.TraceExporter != DefaultTraceExporter {
 		t.Fatalf("trace defaults: capture=%q exporter=%q", s.TraceCaptureLevel, s.TraceExporter)
 	}
@@ -272,6 +275,39 @@ func TestMergePointerExplicitOverride(t *testing.T) {
 	out := Merge(parent, child)
 	if out.AutoSaveEnabled == nil || *out.AutoSaveEnabled != false {
 		t.Fatalf("explicit false should override true")
+	}
+}
+
+func TestMergeTerminalLaunchCommands(t *testing.T) {
+	parent := Settings{
+		TerminalCodexCommand:  DefaultTerminalCodexCommand,
+		TerminalClaudeCommand: DefaultTerminalClaudeCommand,
+	}
+	child := Settings{
+		TerminalCodexCommand:  `npx @openai/codex --profile "deep work"`,
+		TerminalClaudeCommand: `"/Applications/Claude Code/claude" --resume`,
+	}
+	out := Merge(parent, child)
+	if out.TerminalCodexCommand != child.TerminalCodexCommand || out.TerminalClaudeCommand != child.TerminalClaudeCommand {
+		t.Fatalf("terminal commands should override: %#v", out)
+	}
+}
+
+func TestWriteSettingsFileTrimsTerminalLaunchCommands(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "config.toml")
+	in := Settings{
+		TerminalCodexCommand:  "  codex --full-auto  ",
+		TerminalClaudeCommand: "  claude --resume  ",
+	}
+	if err := WriteSettingsFile(path, in); err != nil {
+		t.Fatal(err)
+	}
+	out, err := ReadSettingsFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if out.TerminalCodexCommand != "codex --full-auto" || out.TerminalClaudeCommand != "claude --resume" {
+		t.Fatalf("terminal commands should be trimmed: %#v", out)
 	}
 }
 

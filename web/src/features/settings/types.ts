@@ -47,6 +47,12 @@ export interface Settings {
   agent_idle_timeout_seconds?: number | null
   agent_tool_result_limit_kb?: number | null
   agent_tool_parallelism?: number | null
+  terminal_enabled?: boolean | null
+  terminal_shell?: string
+  terminal_codex_command?: string
+  terminal_claude_command?: string
+  terminal_max_sessions?: number | null
+  terminal_scrollback_kb?: number | null
   llm_input_log_enabled?: boolean | null
   trace_capture_level?: string
   trace_exporter?: string

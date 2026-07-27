@@ -57,6 +57,16 @@ func (c *singleInstructionConversation) FlushDisplayEventContent(id, role string
 	return nil
 }
 
+func (c *singleInstructionConversation) FinalizeDisplayAssistantRun(runID, finalSegmentID, terminalPhase string) error {
+	if c == nil {
+		return nil
+	}
+	if finalizer, ok := c.display.(displayAssistantRunFinalizer); ok {
+		return finalizer.FinalizeDisplayAssistantRun(runID, finalSegmentID, terminalPhase)
+	}
+	return nil
+}
+
 func (c *singleInstructionConversation) UpdateDisplayToolStatus(id, name, status string) error {
 	if c == nil {
 		return nil

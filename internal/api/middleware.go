@@ -46,10 +46,29 @@ func corsMiddleware(ctx context.Context, c *app.RequestContext) {
 	c.Next(ctx)
 }
 
+// Marks the terminal WebSocket attach route. Browsers cannot send an Authorization header on a
+// WebSocket handshake, so this route skips Basic Auth and the handler validates the token handed
+// out when the session was created; the create endpoint itself stays authenticated.
+const terminalAttachPathSuffix = "/attach"
+const terminalAttachPathPrefix = "/api/terminal/sessions/"
+
+func isTerminalAttachRequest(c *app.RequestContext) bool {
+	path := string(c.Request.Path())
+	return strings.HasPrefix(path, terminalAttachPathPrefix) && strings.HasSuffix(path, terminalAttachPathSuffix)
+}
+
 func remoteAccessMiddleware(application *novaApp.App) app.HandlerFunc {
 	return func(ctx context.Context, c *app.RequestContext) {
 		clientIP := requestClientIP(c)
 		if isLocalClientIP(clientIP) {
+			c.Next(ctx)
+			return
+		}
+		if isTerminalAttachRequest(c) {
+			if !application.RemoteAccessConfig().AllowLANAccess {
+				abortWithLocalizedError(c, consts.StatusForbidden, "api.access.lanDisabled")
+				return
+			}
 			c.Next(ctx)
 			return
 		}

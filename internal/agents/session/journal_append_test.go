@@ -108,6 +108,43 @@ func TestDisplayUpdateAppendsPatchAndReloadsMaterializedState(t *testing.T) {
 	}
 }
 
+func TestFinalizeDisplayAssistantRunPersistsPresentationPhases(t *testing.T) {
+	dir := t.TempDir()
+	store, err := NewStore(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	sess, err := store.GetOrCreate("display-phases")
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, event := range []DisplayEvent{
+		{ID: "assistant-progress", Role: "assistant", Content: "正在排查。", RunID: "run-phases", DisplayPhase: DisplayPhaseCandidate},
+		{ID: "thinking-1", Role: "thinking", Content: "检查结果。", RunID: "run-phases"},
+		{ID: "assistant-final", Role: "assistant", Content: "问题已修复。", RunID: "run-phases", DisplayPhase: DisplayPhaseCandidate},
+	} {
+		if err := sess.AppendDisplayEvent(event); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := sess.FinalizeDisplayAssistantRun("run-phases", "assistant-final", DisplayPhaseFinal); err != nil {
+		t.Fatal(err)
+	}
+
+	reloadedStore, err := NewStore(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	reloaded, err := reloadedStore.Get("display-phases")
+	if err != nil {
+		t.Fatal(err)
+	}
+	history := reloaded.History()
+	if len(history) != 3 || history[0].DisplayPhase != DisplayPhaseProgress || history[2].DisplayPhase != DisplayPhaseFinal {
+		t.Fatalf("display phases were not restored from append-only patches: %#v", history)
+	}
+}
+
 func TestLegacyDisplayRecordCanBePatchedAndReloaded(t *testing.T) {
 	dir := t.TempDir()
 	path := filepath.Join(dir, "legacy.jsonl")

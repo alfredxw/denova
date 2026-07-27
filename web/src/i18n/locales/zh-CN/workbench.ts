@@ -1,4 +1,5 @@
 const workbench = {
+  'workbench.activity.agentchat': '工作台',
   'workbench.activity.agents': 'Agents',
   'workbench.activity.automations': '自动化',
   'workbench.activity.books': '书籍管理',
@@ -23,6 +24,7 @@ const workbench = {
   'workbench.bookSwitcher.switchError': '切换书籍失败',
   'workbench.bookSwitcher.title': '切换书籍',
   'workbench.bookSwitcher.trigger': '切换书籍，当前：{{title}}',
+  'workbench.mode.agentchat': '工作台',
   'workbench.mode.agents': 'Agents',
   'workbench.mode.automations': '自动化',
   'workbench.mode.books': '书籍管理',

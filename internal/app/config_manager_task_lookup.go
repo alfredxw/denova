@@ -13,7 +13,7 @@ type configManagerTaskRecord struct {
 // latestConfigManagerTask returns the most recently used display Task for an
 // exact workspace/session binding. Config Manager reuses the bounded session
 // start index, but never exposes its request fingerprint to the HTTP layer.
-func (r *writingStartRegistry) latestConfigManagerTask(workspace, sessionID string) configManagerTaskRecord {
+func (r *writingStartRegistry) latestSessionTask(workspace, sessionID string) configManagerTaskRecord {
 	if r == nil {
 		return configManagerTaskRecord{}
 	}
@@ -32,6 +32,10 @@ func (r *writingStartRegistry) latestConfigManagerTask(workspace, sessionID stri
 		return configManagerTaskRecord{CommandID: commandID, Task: record.task}
 	}
 	return configManagerTaskRecord{}
+}
+
+func (r *writingStartRegistry) latestConfigManagerTask(workspace, sessionID string) configManagerTaskRecord {
+	return r.latestSessionTask(workspace, sessionID)
 }
 
 // releaseConfigManagerScope invalidates display-only replay after /clear.

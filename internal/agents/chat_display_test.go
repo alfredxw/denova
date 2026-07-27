@@ -122,6 +122,21 @@ func TestDisplayRecorderPreservesAlternatingThinkingAndAssistantSegments(t *test
 	if appender.events[2].Status != "success" {
 		t.Fatalf("tool result should update the in-order tool card: %#v", appender.events[2])
 	}
+	if appender.events[1].DisplayPhase != session.DisplayPhaseProgress || appender.events[4].DisplayPhase != session.DisplayPhaseFinal {
+		t.Fatalf("completed run must classify intermediate and final prose: %#v", appender.events)
+	}
+}
+
+func TestDisplayRecorderMarksLastAssistantSegmentPartialAfterAbort(t *testing.T) {
+	appender := &displayRecorderTestAppender{}
+	recorder := &displayEventRecorder{appender: appender, pendingToolIDs: map[string]string{}}
+
+	recorder.Record(Event{Type: "chunk", Data: map[string]interface{}{"run_id": "run-aborted", "content": "先完成了一部分。"}})
+	recorder.Record(Event{Type: "aborted", Data: map[string]string{"reason": "stopped"}})
+
+	if len(appender.events) != 1 || appender.events[0].DisplayPhase != session.DisplayPhasePartial {
+		t.Fatalf("aborted run must keep its last prose as a partial result: %#v", appender.events)
+	}
 }
 
 func TestDisplayRecorderPreservesSubAgentSegmentsAroundThinking(t *testing.T) {
@@ -238,6 +253,9 @@ func TestDisplayRecorderAnnotatesStreamingDeltasWithTheirSegmentID(t *testing.T)
 	firstID := eventDataString(first, displaySegmentIDEventKey)
 	if firstID == "" || eventDataString(second, displaySegmentIDEventKey) != firstID {
 		t.Fatalf("adjacent text deltas must share one segment ID: first=%#v second=%#v", first, second)
+	}
+	if eventDataString(first, displayPhaseEventKey) != session.DisplayPhaseCandidate || eventDataString(second, displayPhaseEventKey) != session.DisplayPhaseCandidate {
+		t.Fatalf("live root prose must carry its candidate display phase: first=%#v second=%#v", first, second)
 	}
 	if reasoningID := eventDataString(reasoning, displaySegmentIDEventKey); reasoningID == "" || reasoningID == firstID {
 		t.Fatalf("reasoning must start a different segment: text=%q reasoning=%#v", firstID, reasoning)
@@ -396,6 +414,20 @@ func (a *displayRecorderTestAppender) UpdateDisplayToolStatus(id, name, status s
 		if a.events[i].ID == id || (id == "" && a.events[i].Name == name) {
 			a.events[i].Status = status
 			return nil
+		}
+	}
+	return nil
+}
+
+func (a *displayRecorderTestAppender) FinalizeDisplayAssistantRun(runID, finalSegmentID, terminalPhase string) error {
+	for index := range a.events {
+		event := &a.events[index]
+		if event.Role != "assistant" || event.SubAgent || event.RunID != runID {
+			continue
+		}
+		event.DisplayPhase = session.DisplayPhaseProgress
+		if event.ID == finalSegmentID {
+			event.DisplayPhase = terminalPhase
 		}
 	}
 	return nil

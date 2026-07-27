@@ -158,7 +158,7 @@ export function AdaptiveSurface({
             </Panel>
             <Separator
               aria-label={rightResize.label}
-              className="nova-resize-handle relative z-30 -mx-1 w-2 shrink-0 touch-none cursor-col-resize select-none bg-transparent transition-colors focus-visible:bg-[var(--nova-active)] focus-visible:outline-none"
+              className="nova-resize-handle nova-resize-divider nova-resize-divider-vertical relative z-30 -mx-1 w-2 shrink-0 touch-none cursor-col-resize select-none"
             />
             <Panel
               id="right"

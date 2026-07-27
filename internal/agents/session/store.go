@@ -105,18 +105,11 @@ func (s *Store) List(activeID string) ([]SessionMeta, error) {
 	result := make([]SessionMeta, 0, len(files))
 	for _, file := range files {
 		id := strings.TrimSuffix(filepath.Base(file), ".jsonl")
-		sess, err := s.loadLocked(id)
+		meta, err := s.metadataLocked(id, file, activeID)
 		if err != nil {
 			return nil, err
 		}
-		result = append(result, SessionMeta{
-			ID:           sess.ID,
-			Title:        sess.Title(),
-			CreatedAt:    sess.CreatedAt,
-			UpdatedAt:    sess.UpdatedAt,
-			Active:       sess.ID == activeID,
-			MessageCount: sess.MessageCount(),
-		})
+		result = append(result, meta)
 	}
 	sort.Slice(result, func(i, j int) bool {
 		return result[i].UpdatedAt.After(result[j].UpdatedAt)
@@ -143,18 +136,11 @@ func (s *Store) ListByPrefix(prefix string) ([]SessionMeta, error) {
 		if !strings.HasPrefix(id, prefix) {
 			continue
 		}
-		sess, err := s.loadLocked(id)
+		meta, err := s.metadataLocked(id, file, activeID)
 		if err != nil {
 			return nil, err
 		}
-		result = append(result, SessionMeta{
-			ID:           sess.ID,
-			Title:        sess.Title(),
-			CreatedAt:    sess.CreatedAt,
-			UpdatedAt:    sess.UpdatedAt,
-			Active:       sess.ID == activeID,
-			MessageCount: sess.MessageCount(),
-		})
+		result = append(result, meta)
 	}
 	sort.Slice(result, func(i, j int) bool {
 		return result[i].UpdatedAt.After(result[j].UpdatedAt)

@@ -1,7 +1,8 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
-import { getActiveChatTask, recoverChatAgentRuntime, type ActiveChatTask, type AgentRuntimeRecoveryAction } from '@/lib/api'
+import type { ActiveChatTask, AgentRuntimeRecoveryAction, AgentRuntimeRecoveryReceipt } from '@/lib/api'
 import type { AgentChatTransport } from '@/lib/agent-ui'
 import { isAbortError } from './agent-chat-state'
+import { writingAgentChatClient, type AgentChatClient } from './agent-chat-client'
 
 export interface WritingDisplayRehydrateRequest {
   signal: number
@@ -28,6 +29,7 @@ interface WritingAgentRuntimeRecoveryOptions {
   transportError?: Error
   transportStatus: 'ready' | 'submitted' | 'streaming' | 'error'
   transportStreaming: boolean
+  client?: AgentChatClient
 }
 
 /**
@@ -47,6 +49,7 @@ export function useWritingAgentRuntimeRecovery({
   transportError,
   transportStatus,
   transportStreaming,
+  client = writingAgentChatClient,
 }: WritingAgentRuntimeRecoveryOptions) {
   const [runtimeProjection, setRuntimeProjection] = useState<ActiveChatTask | null>(null)
   const [recoveryPending, setRecoveryPending] = useState(false)
@@ -122,7 +125,7 @@ export function useWritingAgentRuntimeRecovery({
       const inspection = (async () => {
         if (attachStream) setRecoveryPending(true)
         try {
-          let projection = await getActiveChatTask()
+          let projection = await client.getActiveChatTask()
           runtimeProjectionRef.current = projection
           setRuntimeProjection(projection)
           const shouldObserve = Boolean(projection.active || projection.task_id?.trim() || projection.runtime_recoverable)
@@ -138,12 +141,12 @@ export function useWritingAgentRuntimeRecovery({
               return
             }
             try {
-              recovered = await recoverWritingProjection(projection)
+              recovered = await recoverWritingProjection(projection, client.recoverChatAgentRuntime)
               break
             } catch (error) {
               if (attachStream || !isRecoveryProjectionRefreshError(error)) throw error
               failedProjection = projectionFingerprint
-              projection = await getActiveChatTask()
+              projection = await client.getActiveChatTask()
               runtimeProjectionRef.current = projection
               setRuntimeProjection(projection)
             }
@@ -197,7 +200,7 @@ export function useWritingAgentRuntimeRecovery({
         if (checkInFlightRef.current === inspection) checkInFlightRef.current = null
       }
     },
-    [activeSessionId, attachDisplayStream, loadHistoryAuthoritative, transport],
+    [activeSessionId, attachDisplayStream, client, loadHistoryAuthoritative, transport],
   )
 
   useEffect(() => {
@@ -285,7 +288,7 @@ export function useWritingAgentRuntimeRecovery({
       retryNeededRef.current = false
       setRecoveryPending(false)
       let cancelled = false
-      getActiveChatTask()
+      client.getActiveChatTask()
         .then((projection) => {
           if (cancelled) return
           runtimeProjectionRef.current = projection
@@ -303,7 +306,7 @@ export function useWritingAgentRuntimeRecovery({
     }
     if (!wasStreamingRef.current) return
     void inspectAndAttach(true)
-  }, [inspectAndAttach, recoveryAttempt, transport, transportResponseStreaming, transportStreaming])
+  }, [client, inspectAndAttach, recoveryAttempt, transport, transportResponseStreaming, transportStreaming])
 
   useEffect(() => {
     if (runtimeRecoverySignal <= 0) return
@@ -353,7 +356,7 @@ export function useWritingAgentRuntimeRecovery({
     if (recoveryActionInFlightRef.current) return true
     recoveryActionInFlightRef.current = true
     try {
-      const receipt = await recoverChatAgentRuntime(action)
+      const receipt = await client.recoverChatAgentRuntime(action)
       if (!sameRecoveryAction(receipt.recovery_action, action)) {
         throw new Error('The writing Agent recovery action changed while aborting')
       }
@@ -387,7 +390,7 @@ export function useWritingAgentRuntimeRecovery({
     } finally {
       recoveryActionInFlightRef.current = false
     }
-  }, [attachDisplayStream, runtimeProjection, transport, transportStreaming])
+  }, [attachDisplayStream, client, runtimeProjection, transport, transportStreaming])
 
   return {
     abortRecovery,
@@ -398,14 +401,17 @@ export function useWritingAgentRuntimeRecovery({
   }
 }
 
-async function recoverWritingProjection(initial: ActiveChatTask): Promise<{
+async function recoverWritingProjection(
+  initial: ActiveChatTask,
+  recover: (action: AgentRuntimeRecoveryAction) => Promise<AgentRuntimeRecoveryReceipt>,
+): Promise<{
   projection: ActiveChatTask
   taskID: string
 }> {
   let taskID = initial.task_id?.trim() || ''
   const actions = recoveryActionsToSubmit(initial)
   for (const action of actions) {
-    const receipt = await recoverChatAgentRuntime(action)
+    const receipt = await recover(action)
     if (!sameRecoveryAction(receipt.recovery_action, action)) {
       throw new Error('The writing Agent recovery action changed while it was being resumed')
     }

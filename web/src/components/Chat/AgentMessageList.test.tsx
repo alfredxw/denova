@@ -162,7 +162,7 @@ describe('Agent MessageList', () => {
     )
 
     expect(screen.queryByText('正在分析当前剧情。')).not.toBeInTheDocument()
-    expect(screen.getByRole('button', { name: /思考过程/ })).toHaveAttribute('aria-expanded', 'false')
+    expect(screen.getByRole('button', { name: /正在执行/ })).toHaveAttribute('aria-expanded', 'false')
     expect(screen.queryByText('正在思考…')).not.toBeInTheDocument()
   })
 
@@ -301,7 +301,7 @@ describe('Agent MessageList', () => {
     )
 
     expect(screen.queryByText('内部思考')).not.toBeInTheDocument()
-    fireEvent.click(screen.getByRole('button', { name: /思考过程/ }))
+    fireEvent.click(screen.getByRole('button', { name: /执行过程/ }))
     expect(screen.getByText('内部思考')).toBeInTheDocument()
     expect(screen.getByText('可见正文')).toBeInTheDocument()
   })
@@ -330,12 +330,60 @@ describe('Agent MessageList', () => {
     expect(screen.getByText('可见正文')).toBeInTheDocument()
     expect(screen.queryByText('提交前的检查')).not.toBeInTheDocument()
     expect(screen.queryByText('submit_choices')).not.toBeInTheDocument()
-    const traceButtons = screen.getAllByRole('button', { name: /思考过程.*2 次工具调用/ })
+    const traceButtons = screen.getAllByRole('button', { name: /执行过程.*2 次工具调用/ })
     expect(traceButtons).toHaveLength(1)
     fireEvent.click(traceButtons[0])
     expect(screen.getByText('提交前的检查')).toBeInTheDocument()
     expect(screen.getByText('submit_choices')).toBeInTheDocument()
     expect(screen.getByText('submit_actor_state_patches')).toBeInTheDocument()
+  })
+
+  it('把同一次运行的中间正文、思考和工具统一折叠，只保留最终正文', () => {
+    renderMessageList(
+      <MessageList
+        isStreaming={false}
+        activityContent=""
+        collapseTraceGroups
+        messages={[
+          { id: 'reason-1', role: 'assistant', metadata: { run_id: 'run-diagnose' }, parts: [{ type: 'reasoning', id: 'reason-1', text: '先检查故事索引。' }] },
+          { id: 'tool-1', role: 'assistant', metadata: { run_id: 'run-diagnose' }, parts: [{ type: 'dynamic-tool', toolName: 'read', toolCallId: 'tool-1', state: 'output-available', input: { path: 'index.json' }, output: 'invalid json' }] },
+          { id: 'progress-1', role: 'assistant', metadata: { run_id: 'run-diagnose', display_phase: 'progress' }, parts: [{ type: 'text', id: 'progress-1', text: '找到问题了，继续确认错误位置。' }] },
+          { id: 'reason-2', role: 'assistant', metadata: { run_id: 'run-diagnose' }, parts: [{ type: 'reasoning', id: 'reason-2', text: '核对修复结果。' }] },
+          { id: 'tool-2', role: 'assistant', metadata: { run_id: 'run-diagnose' }, parts: [{ type: 'dynamic-tool', toolName: 'bash', toolCallId: 'tool-2', state: 'output-available', input: { command: 'jq empty index.json' }, output: 'ok' }] },
+          { id: 'final-1', role: 'assistant', metadata: { run_id: 'run-diagnose', display_phase: 'final' }, parts: [{ type: 'text', id: 'final-1', text: '问题已排查并修复。' }] },
+        ] as AgentUIMessage[]}
+      />,
+    )
+
+    expect(screen.getByText('问题已排查并修复。')).toBeInTheDocument()
+    expect(screen.queryByText('找到问题了，继续确认错误位置。')).not.toBeInTheDocument()
+    expect(screen.queryByText('先检查故事索引。')).not.toBeInTheDocument()
+    const processButton = screen.getByRole('button', { name: /执行过程.*1 段进展.*2 次工具调用/ })
+
+    fireEvent.click(processButton)
+
+    expect(screen.getByText('找到问题了，继续确认错误位置。')).toBeInTheDocument()
+    expect(screen.getByText('先检查故事索引。')).toBeInTheDocument()
+    expect(screen.getByText('核对修复结果。')).toBeInTheDocument()
+  })
+
+  it('旧历史没有正文阶段时仍把同一运行的最后一段正文作为结果', () => {
+    renderMessageList(
+      <MessageList
+        isStreaming={false}
+        activityContent=""
+        collapseTraceGroups
+        messages={[
+          { id: 'legacy-progress', role: 'assistant', metadata: { run_id: 'run-legacy' }, parts: [{ type: 'text', id: 'legacy-progress', text: '我继续检查一下。' }] },
+          { id: 'legacy-tool', role: 'assistant', metadata: { run_id: 'run-legacy' }, parts: [{ type: 'dynamic-tool', toolName: 'read', toolCallId: 'legacy-tool', state: 'output-available', input: {}, output: 'ok' }] },
+          { id: 'legacy-final', role: 'assistant', metadata: { run_id: 'run-legacy' }, parts: [{ type: 'text', id: 'legacy-final', text: '最终结论。' }] },
+        ] as AgentUIMessage[]}
+      />,
+    )
+
+    expect(screen.getByText('最终结论。')).toBeInTheDocument()
+    expect(screen.queryByText('我继续检查一下。')).not.toBeInTheDocument()
+    expect(screen.getByRole('button', { name: /执行过程.*1 段进展.*1 次工具调用/ })).toBeInTheDocument()
   })
 
   it('运行中的 trace 默认收起，用户展开后在流式更新中保持展开', async () => {
@@ -358,7 +406,7 @@ describe('Agent MessageList', () => {
       />,
     )
 
-    const traceButton = screen.getByRole('button', { name: /思考过程.*1 次工具调用/ })
+    const traceButton = screen.getByRole('button', { name: /正在执行.*1 次工具调用/ })
     expect(traceButton).toHaveAttribute('aria-expanded', 'false')
     expect(screen.queryByText('正在检查资料')).not.toBeInTheDocument()
     expect(screen.queryByText('read')).not.toBeInTheDocument()
@@ -432,7 +480,7 @@ describe('Agent MessageList', () => {
       />,
     )
 
-    expect(screen.getByRole('button', { name: /思考过程/ })).toHaveAttribute('aria-expanded', 'true')
+    expect(screen.getByRole('button', { name: /正在执行/ })).toHaveAttribute('aria-expanded', 'true')
     expect(screen.getByText('正在分析')).toBeInTheDocument()
   })
 

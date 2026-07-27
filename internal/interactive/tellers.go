@@ -121,6 +121,9 @@ func (l *TellerLibrary) List() ([]Teller, error) {
 		tellers = append(tellers, teller)
 	}
 	sort.Slice(tellers, func(i, j int) bool {
+		if (tellers[i].ID == "rhythm") != (tellers[j].ID == "rhythm") {
+			return tellers[i].ID == "rhythm"
+		}
 		if tellers[i].Custom != tellers[j].Custom {
 			return !tellers[i].Custom
 		}

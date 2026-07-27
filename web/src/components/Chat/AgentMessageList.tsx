@@ -1,6 +1,5 @@
-import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef } from 'react'
 import type { CSSProperties, ReactNode, RefCallback } from 'react'
-import { ChevronDown, ChevronRight } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import { motion } from 'motion/react'
 import { Virtuoso } from 'react-virtuoso'
@@ -25,7 +24,8 @@ import { VIRTUOSO_BOTTOM_THRESHOLD, useVirtuosoBottomLock, type ScrollElementBot
 import { ScrollToBottomButton } from './ScrollToBottomButton'
 import { AgentMessageItem } from './AgentMessageItem'
 import { AgentActivityShimmer, MessageItem } from './MessageItem'
-import { StreamingContentStage } from './StreamingContentStage'
+import { AgentExecutionProcess } from './AgentExecutionProcess'
+import { buildAgentRunPresentation } from './agent-run-presentation'
 import { Button } from '@/components/ui/button'
 
 interface MessageListProps {
@@ -43,7 +43,7 @@ interface MessageListProps {
   onLoadEarlierMessages?: () => void | Promise<void>
   timelineAttachments?: AgentTimelineAttachment[]
   messageStyle?: CSSProperties
-  /** 开启后，连续的 thinking/工具调用 trace 统一折叠为一个分组（含正文之后、回合末尾的 trace）。 */
+  /** 开启后，同一次运行的中间正文、thinking 与工具统一折叠，终态正文保持可见。 */
   collapseTraceGroups?: boolean
   /** 运行中的 trace 初始展示方式；用户手动切换后保留其选择。 */
   activeTraceDisplay?: 'expanded' | 'collapsed'
@@ -88,6 +88,7 @@ type AgentChatListItem =
   | { kind: 'message'; key: string; view: AgentMessageView; sourceIndex: number }
   | { kind: 'legacy-message'; key: string; message: ChatMessage; sourceIndex: number; openView?: AgentMessageView }
   | { kind: 'trace'; key: string; views: AgentMessageView[]; activeStreamingTrace: boolean }
+  | { kind: 'run'; key: string; runId: string; processViews: AgentMessageView[]; resultView?: AgentMessageView; active: boolean; sourceIndex: number }
   | { kind: 'attachment'; key: string; runId: string; content: ReactNode }
 
 const MESSAGE_LIST_OVERSCAN = { main: 520, reverse: 260 }
@@ -395,7 +396,32 @@ function AgentChatListRow({ item, isLast, isStreaming, activeTraceDisplay, highl
 }) {
   const { t } = useTranslation()
   const turnAnchor = chatListItemNavigationAnchor(item)
-  const mutationsAllowed = item.kind !== 'message' || canMutateMessage?.(item.view) !== false
+  const renderMessageView = (view: AgentMessageView) => {
+    const mutationsAllowed = canMutateMessage?.(view) !== false
+    return (
+      <AgentMessageItem
+        view={view}
+        highlightDialogue={highlightDialogue}
+        messageStyle={messageStyle}
+        onEditMessage={isStreaming || !mutationsAllowed ? undefined : onEditMessage}
+        onEditAssistantReply={isStreaming || !mutationsAllowed ? undefined : onEditAssistantReply}
+        onRegenerateMessage={isStreaming || !mutationsAllowed ? undefined : onRegenerateMessage}
+        onSwitchMessageVersion={isStreaming || !mutationsAllowed ? undefined : onSwitchMessageVersion}
+        onOpenSubAgentSession={onOpenSubAgentSession}
+        onInsertIllustration={onInsertIllustration}
+        onGenerateInteractiveImage={isStreaming || !mutationsAllowed ? undefined : onGenerateInteractiveImage}
+        generatingInteractiveImageTurnId={generatingInteractiveImageTurnId}
+        activeSubAgentSessionKey={activeSubAgentSessionKey}
+        onSubmitPlanQuestion={isStreaming ? undefined : onSubmitPlanQuestion}
+        onApprovePlan={isStreaming ? undefined : onApprovePlan}
+        onContinuePlan={isStreaming ? undefined : onContinuePlan}
+        onExitPlanMode={isStreaming ? undefined : onExitPlanMode}
+        onOpenTrace={onOpenTrace}
+        onResolveAsk={onResolveAsk}
+        onPlanCardLayoutChange={onPlanCardLayoutChange}
+      />
+    )
+  }
   useLayoutEffect(() => {
     if (isLast && isStreaming) syncStreamingRowHeight?.()
   }, [isLast, isStreaming, item, syncStreamingRowHeight])
@@ -429,16 +455,36 @@ function AgentChatListRow({ item, isLast, isStreaming, activeTraceDisplay, highl
       ) : item.kind === 'clear' ? (
         <ContextClearDivider createdAt={item.createdAt} />
       ) : item.kind === 'trace' ? (
-        <TraceGroup
+        <AgentExecutionProcess
           views={item.views}
-          activeStreamingTrace={item.activeStreamingTrace}
+          active={item.activeStreamingTrace}
+          activeSubAgentSessionKey={activeSubAgentSessionKey}
           activeTraceDisplay={activeTraceDisplay}
           highlightDialogue={highlightDialogue}
           messageStyle={messageStyle}
           onInsertIllustration={onInsertIllustration}
           onGenerateInteractiveImage={onGenerateInteractiveImage}
+          onOpenSubAgentSession={onOpenSubAgentSession}
           onOpenTrace={onOpenTrace}
         />
+      ) : item.kind === 'run' ? (
+        <div className="space-y-2">
+          {item.processViews.length > 0 ? (
+            <AgentExecutionProcess
+              views={item.processViews}
+              active={item.active}
+              activeSubAgentSessionKey={activeSubAgentSessionKey}
+              activeTraceDisplay={activeTraceDisplay}
+              highlightDialogue={highlightDialogue}
+              messageStyle={messageStyle}
+              onInsertIllustration={onInsertIllustration}
+              onGenerateInteractiveImage={onGenerateInteractiveImage}
+              onOpenSubAgentSession={onOpenSubAgentSession}
+              onOpenTrace={onOpenTrace}
+            />
+          ) : null}
+          {item.resultView ? renderMessageView(item.resultView) : null}
+        </div>
       ) : item.kind === 'attachment' ? (
         item.content
       ) : item.kind === 'legacy-message' ? (
@@ -451,27 +497,7 @@ function AgentChatListRow({ item, isLast, isStreaming, activeTraceDisplay, highl
           onOpenTrace={onOpenTrace}
         />
       ) : (
-        <AgentMessageItem
-          view={item.view}
-          highlightDialogue={highlightDialogue}
-          messageStyle={messageStyle}
-          onEditMessage={isStreaming || !mutationsAllowed ? undefined : onEditMessage}
-          onEditAssistantReply={isStreaming || !mutationsAllowed ? undefined : onEditAssistantReply}
-          onRegenerateMessage={isStreaming || !mutationsAllowed ? undefined : onRegenerateMessage}
-          onSwitchMessageVersion={isStreaming || !mutationsAllowed ? undefined : onSwitchMessageVersion}
-          onOpenSubAgentSession={onOpenSubAgentSession}
-          onInsertIllustration={onInsertIllustration}
-          onGenerateInteractiveImage={isStreaming || !mutationsAllowed ? undefined : onGenerateInteractiveImage}
-          generatingInteractiveImageTurnId={generatingInteractiveImageTurnId}
-          activeSubAgentSessionKey={activeSubAgentSessionKey}
-          onSubmitPlanQuestion={isStreaming ? undefined : onSubmitPlanQuestion}
-          onApprovePlan={isStreaming ? undefined : onApprovePlan}
-          onContinuePlan={isStreaming ? undefined : onContinuePlan}
-          onExitPlanMode={isStreaming ? undefined : onExitPlanMode}
-          onOpenTrace={onOpenTrace}
-          onResolveAsk={onResolveAsk}
-          onPlanCardLayoutChange={onPlanCardLayoutChange}
-        />
+        renderMessageView(item.view)
       )}
     </motion.div>
   )
@@ -499,6 +525,22 @@ function buildAgentChatListItems({ views, isStreaming, visibleActivityContent, c
       if (progress) {
         items.push({ kind: 'legacy-message', key: `subagent-${key || index}`, message: progress, sourceIndex: index, openView: group[0] })
         index = nextIndex - 1
+        continue
+      }
+    }
+    if (collapseTraceGroups) {
+      const run = buildAgentRunPresentation(views, index, isStreaming)
+      if (run) {
+        items.push({
+          kind: 'run',
+          key: run.key,
+          runId: run.runID,
+          processViews: run.processViews,
+          resultView: run.resultView,
+          active: run.active,
+          sourceIndex: index,
+        })
+        index = run.nextIndex - 1
         continue
       }
     }
@@ -557,6 +599,7 @@ function buildAgentChatListItems({ views, isStreaming, visibleActivityContent, c
 function chatListItemRunID(item: AgentChatListItem): string {
   if (item.kind === 'message') return item.view.metadata.run_id || ''
   if (item.kind === 'legacy-message') return item.message.run_id || item.openView?.metadata.run_id || ''
+  if (item.kind === 'run') return item.runId
   if (item.kind === 'trace') {
     for (let index = item.views.length - 1; index >= 0; index -= 1) {
       const runID = item.views[index]?.metadata.run_id
@@ -598,6 +641,14 @@ function chatListItemNavigationAnchor(item?: AgentChatListItem) {
   if (!item) return ''
   if (item.kind === 'message') return agentViewNavigationAnchor(item.view)
   if (item.kind === 'legacy-message') return item.message.navigation_turn_id || item.message.turn_id || ''
+  if (item.kind === 'run') {
+    const resultAnchor = item.resultView ? agentViewNavigationAnchor(item.resultView) : ''
+    if (resultAnchor) return resultAnchor
+    for (let index = item.processViews.length - 1; index >= 0; index -= 1) {
+      const anchor = agentViewNavigationAnchor(item.processViews[index])
+      if (anchor) return anchor
+    }
+  }
   return ''
 }
 
@@ -612,81 +663,6 @@ function isActiveStreamingTrace(views: AgentMessageView[], afterTraceIndex: numb
     }
   }
   return true
-}
-
-function TraceGroup({ views, activeStreamingTrace, activeTraceDisplay, highlightDialogue, messageStyle, onInsertIllustration, onGenerateInteractiveImage, onOpenTrace }: { views: AgentMessageView[]; activeStreamingTrace: boolean; activeTraceDisplay: 'expanded' | 'collapsed'; highlightDialogue: boolean; messageStyle?: CSSProperties; onInsertIllustration?: (illustration: ChapterIllustration) => void; onGenerateInteractiveImage?: (view: AgentMessageView) => void; onOpenTrace?: (runID: string) => void }) {
-  const { t } = useTranslation()
-  const active = activeStreamingTrace || views.some((view) => view.streaming || view.status === 'running')
-  const [expanded, setExpanded] = useState(activeTraceDisplay === 'expanded' && active)
-  const userToggledRef = useRef(false)
-  const toolCount = views.filter((view) => view.kind === 'tool').length
-  const thinkingCount = views.filter((view) => view.kind === 'reasoning').length
-  const subAgentCount = views.filter((view) => view.metadata.subagent).length
-  const label = [
-    thinkingCount > 0 ? t('chat.trace.thinking') : '',
-    toolCount > 0 ? t('chat.trace.toolCalls', { count: toolCount }) : '',
-    subAgentCount > 0 ? t('chat.subagent.label') : '',
-  ].filter(Boolean).join(' · ') || t('chat.trace.execution')
-
-  useEffect(() => {
-    if (active) {
-      if (activeTraceDisplay === 'expanded') {
-        userToggledRef.current = false
-        setExpanded(true)
-      }
-      return
-    }
-    if (!userToggledRef.current) setExpanded(false)
-  }, [active, activeTraceDisplay])
-
-  return (
-    <div className="flex justify-start">
-      <div className="w-full">
-        <button
-          type="button"
-          className="flex items-center gap-1 py-1 text-xs text-[var(--nova-text-muted)] hover:text-[var(--nova-text)]"
-          aria-expanded={expanded}
-          onClick={() => {
-            userToggledRef.current = true
-            setExpanded(current => !current)
-          }}
-        >
-          {expanded ? <ChevronDown className="h-3 w-3" /> : <ChevronRight className="h-3 w-3" />}
-          {active ? <span aria-hidden="true" className="h-1.5 w-1.5 animate-pulse rounded-full bg-[var(--nova-text-muted)]" /> : null}
-          {label}
-        </button>
-        {expanded && (
-          <div className="space-y-2 border-l border-[var(--nova-border)] px-3 py-2">
-            {views.map((view, index) => (
-              view.kind === 'reasoning'
-                ? (
-                  <div key={view.partId || index} className="text-xs leading-relaxed text-[var(--nova-text-muted)] whitespace-pre-wrap">
-                    <StreamingContentStage
-                      content={agentViewContent(view)}
-                      targetContent={view.streaming ? view.metadata.streaming_target_content : undefined}
-                      streaming={view.streaming}
-                    >
-                      {(value) => value}
-                    </StreamingContentStage>
-                  </div>
-                )
-                : (
-                  <AgentMessageItem
-                    key={view.partId || index}
-                    view={view}
-                    highlightDialogue={highlightDialogue}
-                    messageStyle={messageStyle}
-                    onInsertIllustration={onInsertIllustration}
-                    onGenerateInteractiveImage={onGenerateInteractiveImage}
-                    onOpenTrace={onOpenTrace}
-                  />
-                )
-            ))}
-          </div>
-        )}
-      </div>
-    </div>
-  )
 }
 
 function ContextClearDivider({ createdAt }: { createdAt?: string }) {

@@ -1425,6 +1425,9 @@ function ToolResultBlock({ content }: { content: string }) {
   const severity = envelope?.severity || 'success'
   const preview = envelope ? buildToolResultEnvelopeSummary(t, envelope) : buildPreview(content, 160)
   const canExpand = content.trim().replace(/\s+/g, ' ').length > 160
+  const isProcessExitWarning = severity === 'warning'
+    && envelope?.schema === 'process.result.v1'
+    && envelope.status === 'failed'
   const tone = severity === 'error'
     ? 'border-[var(--nova-danger-border)] bg-[var(--nova-danger-bg)] text-[var(--nova-danger)]'
     : severity === 'warning'
@@ -1445,7 +1448,13 @@ function ToolResultBlock({ content }: { content: string }) {
           <div className="min-w-0 flex-1">
             <div className="flex flex-wrap items-center gap-2">
               <span className="font-medium text-[var(--nova-text)]">
-                {t(severity === 'error' ? 'chat.tool.resultFailed' : severity === 'warning' ? 'chat.tool.resultPartial' : 'chat.tool.resultDone')}
+                {t(severity === 'error'
+                  ? 'chat.tool.resultFailed'
+                  : isProcessExitWarning
+                    ? 'chat.tool.resultAttention'
+                    : severity === 'warning'
+                      ? 'chat.tool.resultPartial'
+                      : 'chat.tool.resultDone')}
               </span>
               <span className={`rounded-full border px-2 py-0.5 text-[11px] ${tone}`}>
                 {severity}
@@ -1536,27 +1545,39 @@ function buildToolResultEnvelopeSummary(t: ReturnType<typeof useTranslation>['t'
   if (!headline && result.schema === 'process.result.v1') {
     if (result.status === 'failed') {
       headline = result.exitCode === undefined
-        ? t('chat.tool.result.commandFailed')
-        : t('chat.tool.result.commandFailedWithCode', { code: result.exitCode })
+        ? t('chat.tool.result.commandExitedNonZero')
+        : t('chat.tool.result.commandExitedWithCode', { code: result.exitCode })
     } else if (result.status === 'timed_out') {
       headline = t('chat.tool.result.timedOut')
     } else if (result.status === 'cancelled') {
       headline = t('chat.tool.result.cancelled')
     }
   }
-  if (!headline && (result.status === 'partial' || result.truncated)) {
+  const isContinuablePage = result.status === 'partial'
+    && result.continuation !== undefined
+    && (result.schema === 'resource.read.v1' || result.schema === 'workspace.search.v1')
+  if (!headline && isContinuablePage) {
+    headline = t('chat.tool.result.pageReady')
+  } else if (!headline && (result.status === 'partial' || result.truncated)) {
     headline = t(result.status === 'partial' ? 'chat.tool.result.partial' : 'chat.tool.result.truncated')
   }
   if (!headline && result.severity !== 'success') headline = result.status
 
   const continuation = result.continuation
-    ? t(result.continuation.kind === 'offset' ? 'chat.tool.result.continueOffset' : 'chat.tool.result.continueCursor', {
+    ? t(result.continuation.kind === 'offset' ? 'chat.tool.result.moreOffset' : 'chat.tool.result.moreCursor', {
         value: result.continuation.kind === 'cursor' ? buildPreview(result.continuation.value, 72) : result.continuation.value,
       })
     : ''
   // Web recovery strategies already have localized, actionable labels. Avoid
   // duplicating the provider's often bilingual suggested_action beside them.
-  const recovery = !isWebAccess && result.recovery ? result.recovery : ''
+  // Continuations already state the next page, while a process non-zero exit
+  // may be the intended diagnostic result rather than a command to "fix".
+  const recovery = !isWebAccess
+    && !result.continuation
+    && !(result.schema === 'process.result.v1' && result.status === 'failed')
+    && result.recovery
+    ? result.recovery
+    : ''
   return [headline, webRetryKey ? t(webRetryKey) : '', continuation, recovery].filter(Boolean).join(' · ')
 }
 

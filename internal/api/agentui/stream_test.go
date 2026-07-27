@@ -110,7 +110,7 @@ func TestStreamEncoderUsesPersistedDisplaySegmentIDs(t *testing.T) {
 	var out bytes.Buffer
 	encoder := NewStreamEncoder(&out)
 	for _, event := range []agents.Event{
-		{Type: "chunk", Data: map[string]any{"content": "第一", "run_id": "run-order", "display_segment_id": "run-order-display-001-assistant"}},
+		{Type: "chunk", Data: map[string]any{"content": "第一", "run_id": "run-order", "display_segment_id": "run-order-display-001-assistant", "display_phase": "candidate"}},
 		{Type: "chunk", Data: map[string]any{"content": "段", "run_id": "run-order", "display_segment_id": "run-order-display-001-assistant"}},
 		{Type: "thinking", Data: map[string]any{"content": "检查", "run_id": "run-order", "display_segment_id": "run-order-display-002-thinking"}},
 		{Type: "done", Data: map[string]any{}},
@@ -124,6 +124,7 @@ func TestStreamEncoderUsesPersistedDisplaySegmentIDs(t *testing.T) {
 	assertChunk(t, chunks, "text-start", "id", "run-order-display-001-assistant")
 	assertChunk(t, chunks, "reasoning-start", "id", "run-order-display-002-thinking")
 	assertChunkAgentMetadata(t, chunks, "text-start", "display_segment_id", "run-order-display-001-assistant")
+	assertChunkAgentMetadata(t, chunks, "text-start", "display_phase", "candidate")
 	assertChunkAgentMetadata(t, chunks, "reasoning-start", "display_segment_id", "run-order-display-002-thinking")
 }
 

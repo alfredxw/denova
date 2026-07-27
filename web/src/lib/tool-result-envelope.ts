@@ -48,7 +48,7 @@ export function decodeToolResultEnvelope(result: string): ToolResultEnvelope | n
   return {
     schema,
     status,
-    severity: resultSeverity(schema, status, truncated),
+    severity: resultSeverity(schema, status, truncated, continuation !== undefined),
     truncated,
     exitCode: finiteNumber(metadata.exit_code),
     continuation,
@@ -91,18 +91,26 @@ function continuationFrom(limits: Record<string, unknown>): ToolResultContinuati
   return undefined
 }
 
-function resultSeverity(schema: string, status: string, truncated: boolean): ToolResultSeverity {
+function resultSeverity(schema: string, status: string, truncated: boolean, hasContinuation: boolean): ToolResultSeverity {
   if (schema === 'web_fetch.v1' || schema === 'web_search.v1') {
     return status === 'success' && !truncated ? 'success' : 'warning'
   }
   if (schema === 'process.result.v1') {
-    if (status === 'failed' || status === 'timed_out' || status === 'cancelled') return 'error'
+    // A non-zero exit is a completed process outcome, and is often the useful
+    // result of a diagnostic command. Process-start and protocol failures do
+    // not use this envelope and still surface as real tool errors.
+    if (status === 'failed') return 'warning'
+    if (status === 'timed_out' || status === 'cancelled') return 'error'
     return truncated ? 'warning' : 'success'
   }
   if (schema === 'browser.result.v1') {
     return status === 'completed' || status === 'success' ? 'success' : 'error'
   }
   if (status === 'failed' || status === 'error' || status === 'cancelled' || status === 'timed_out') return 'error'
+  // read/search use "partial" for a bounded page even when they returned the
+  // requested range successfully. A continuation is useful metadata, not a
+  // warning; partial results without a continuation still need attention.
+  if (status === 'partial' && hasContinuation && (schema === 'resource.read.v1' || schema === 'workspace.search.v1')) return 'success'
   return status === 'partial' || truncated ? 'warning' : 'success'
 }
 

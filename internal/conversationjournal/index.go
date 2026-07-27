@@ -194,6 +194,7 @@ func (journal *Journal) persistIndexLocked() error {
 		return err
 	}
 	journal.dirtyTransactions = 0
+	journal.indexDirty = false
 	return nil
 }
 

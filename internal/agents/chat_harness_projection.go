@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"strings"
 
 	runstate "github.com/alfredxw/denova/agent/runtime"
 )
@@ -51,6 +52,53 @@ func (s *ChatService) CloseWorkspaceBindings(ctx context.Context, workspace stri
 		return err
 	}
 	return s.closeRuntimeBindings(ctx, selector)
+}
+
+// CloseForegroundWorkspaceBindings evicts bindings owned by the foreground
+// workspace runtime while deliberately preserving user-level AgentChat runs.
+// AgentChat reuses the IDE implementation, but its distinct durable profile is
+// allowed to keep running when the title-bar book selection changes.
+func (s *ChatService) CloseForegroundWorkspaceBindings(ctx context.Context, workspace string) error {
+	workspace = strings.TrimSpace(workspace)
+	if workspace == "" {
+		return runstate.ErrInvalidBinding
+	}
+	profiles := []struct {
+		kind    string
+		profile string
+	}{
+		{runtimeBindingKindWriting, runtimeBindingProfileWriting},
+		{runtimeBindingKindWriting, runtimeBindingProfileConfigManager},
+		{runtimeBindingKindWriting, runtimeBindingProfileImage},
+		{runtimeBindingKindGame, runtimeBindingProfileGame},
+		{runtimeBindingKindGame, runtimeBindingProfileDirector},
+		{runtimeBindingKindAutomation, runtimeBindingProfileAutomation},
+	}
+	for _, candidate := range profiles {
+		if err := s.closeRuntimeBindings(ctx, runstate.BindingSelector{
+			Kind: candidate.kind, Profile: candidate.profile,
+			Labels: map[string]string{runtimeBindingLabelWorkspace: workspace},
+		}); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+// CloseAgentChatSessionBindings evicts one user-level project conversation.
+func (s *ChatService) CloseAgentChatSessionBindings(ctx context.Context, workspace, sessionID string) error {
+	workspace = strings.TrimSpace(workspace)
+	sessionID = strings.TrimSpace(sessionID)
+	if workspace == "" || sessionID == "" {
+		return runstate.ErrInvalidBinding
+	}
+	return s.closeRuntimeBindings(ctx, runstate.BindingSelector{
+		Kind: runtimeBindingKindWriting, Profile: runtimeBindingProfileAgentChat, Key: sessionID,
+		Labels: map[string]string{
+			runtimeBindingLabelWorkspace: workspace,
+			runtimeBindingLabelSession:   sessionID,
+		},
+	})
 }
 
 // CloseSessionBindings evicts one session-backed Agent binding.

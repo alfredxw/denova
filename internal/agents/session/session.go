@@ -304,6 +304,7 @@ func (s *Session) History() []HistoryEntry {
 				Type:                 historyTypeMessage,
 				ID:                   record.display.ID,
 				DisplaySegmentID:     record.display.ID,
+				DisplayPhase:         record.display.DisplayPhase,
 				Role:                 record.display.Role,
 				Content:              record.display.Content,
 				Name:                 record.display.Name,
@@ -438,6 +439,10 @@ func (s *Session) Title() string {
 func (s *Session) MessageCount() int {
 	s.mu.Lock()
 	defer s.mu.Unlock()
+	return s.visibleMessageCountLocked()
+}
+
+func (s *Session) visibleMessageCountLocked() int {
 	if s.projection != nil {
 		return s.projection.VisibleMessageCount
 	}

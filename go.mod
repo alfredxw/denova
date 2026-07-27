@@ -8,12 +8,15 @@ require (
 	github.com/PuerkitoBio/goquery v1.12.0
 	github.com/alfredxw/denova/agent v0.0.0
 	github.com/alfredxw/denova/agent/model/openai v0.0.0
+	github.com/anmitsu/go-shlex v0.0.0-20200514113438-38f4b401e2be
 	github.com/cavaliergopher/grab/v3 v3.0.1
+	github.com/charmbracelet/x/xpty v0.1.3
 	github.com/cloudwego/hertz v0.10.5
 	github.com/fsnotify/fsnotify v1.10.1
 	github.com/go-git/go-git/v5 v5.19.1
 	github.com/go-rod/rod v0.116.2
 	github.com/go-rod/stealth v0.4.9
+	github.com/hertz-contrib/websocket v0.2.0
 	github.com/invopop/jsonschema v0.14.0
 	github.com/lithammer/fuzzysearch v1.1.8
 	github.com/openai/openai-go/v3 v3.41.0
@@ -45,7 +48,6 @@ require (
 	github.com/charmbracelet/x/errors v0.0.0-20240508181413-e8d8b6e2de86 // indirect
 	github.com/charmbracelet/x/term v0.2.1 // indirect
 	github.com/charmbracelet/x/termios v0.1.1 // indirect
-	github.com/charmbracelet/x/xpty v0.1.3 // indirect
 	github.com/cloudflare/circl v1.6.3 // indirect
 	github.com/cloudwego/base64x v0.1.7 // indirect
 	github.com/cloudwego/gopkg v0.2.0 // indirect

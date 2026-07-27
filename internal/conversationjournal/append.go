@@ -147,7 +147,7 @@ func (journal *Journal) RepairTail(ctx context.Context) error {
 			return err
 		}
 	}
-	if journal.dirtyTransactions > 0 {
+	if journal.indexDirty {
 		if err := journal.persistIndexLocked(); err != nil {
 			log.Printf("[conversation-journal] repaired tail but index checkpoint failed path=%s error=%v", journal.indexPath, err)
 		}
@@ -175,5 +175,8 @@ func (journal *Journal) Close() (resultErr error) {
 		return err
 	}
 	journal.closed = true
+	if !journal.indexDirty {
+		return nil
+	}
 	return journal.persistIndexLocked()
 }

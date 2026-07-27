@@ -43,7 +43,7 @@ describe('agent-message-view', () => {
       {
         id: 'assistant-1',
         role: 'assistant',
-        metadata: { run_id: 'run-1' },
+        metadata: { run_id: 'run-1', display_phase: 'final' },
         parts: [
           { type: 'reasoning', id: 'reason-1', text: '先分析', state: 'streaming' },
           { type: 'text', id: 'text-1', text: '正文', state: 'done' },
@@ -86,6 +86,7 @@ describe('agent-message-view', () => {
     ])
     expect(views[0]).toMatchObject({ messageId: 'user-1', content: '写下一章', metadata: { turn_id: 'turn-1' } })
     expect(views[1]).toMatchObject({ partId: 'reason-1', streaming: true, metadata: { run_id: 'run-1' } })
+    expect(views[2]).toMatchObject({ partId: 'text-1', metadata: { run_id: 'run-1', display_phase: 'final' } })
     expect(views[3]).toMatchObject({ partId: 'tool-1', toolName: 'read', status: 'success' })
     expect(views[5].ref).toEqual({ messageId: 'assistant-1', partId: 'question-1', partIndex: 4, type: 'data-agent-plan-question' })
   })

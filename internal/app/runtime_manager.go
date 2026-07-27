@@ -632,6 +632,18 @@ func applyLayeredSettingsToConfig(cfg *config.Config, layered config.LayeredSett
 	if effective.VersionTimedIntervalMinutes != nil {
 		cfg.VersionTimedIntervalMinutes = appSettingsInt(effective.VersionTimedIntervalMinutes, 10)
 	}
+	if effective.TerminalEnabled != nil {
+		cfg.TerminalEnabled = *effective.TerminalEnabled
+	}
+	cfg.TerminalShell = effective.TerminalShell
+	cfg.TerminalCodexCommand = effective.TerminalCodexCommand
+	cfg.TerminalClaudeCommand = effective.TerminalClaudeCommand
+	if effective.TerminalMaxSessions != nil {
+		cfg.TerminalMaxSessions = appSettingsInt(effective.TerminalMaxSessions, config.DefaultTerminalMaxSessions)
+	}
+	if effective.TerminalScrollbackKB != nil {
+		cfg.TerminalScrollbackKB = appSettingsInt(effective.TerminalScrollbackKB, config.DefaultTerminalScrollbackKB)
+	}
 }
 
 func applySettingsLayerToConfig(cfg *config.Config, settings config.Settings) {

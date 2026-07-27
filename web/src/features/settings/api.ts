@@ -2,8 +2,14 @@ import { fetchAPI, jsonHeaders, parseSSEStream, readErrorMessage, requestJSON } 
 import type { LayeredSettings, Settings, UpdateApplyResult, UpdateCheckResult } from './types'
 import type { SSEEvent } from '@/lib/api-client'
 
-export async function fetchSettings(): Promise<LayeredSettings> {
-  return requestJSON('/api/settings')
+let settingsReadInFlight: Promise<LayeredSettings> | null = null
+
+/** Merge concurrent startup consumers without caching across completed reads. */
+export function fetchSettings(): Promise<LayeredSettings> {
+  if (settingsReadInFlight) return settingsReadInFlight
+  settingsReadInFlight = requestJSON<LayeredSettings>('/api/settings')
+    .finally(() => { settingsReadInFlight = null })
+  return settingsReadInFlight
 }
 
 export async function updateUserSettings(s: Settings, baseRevision?: string): Promise<LayeredSettings> {

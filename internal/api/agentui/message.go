@@ -217,6 +217,9 @@ func metadataFromHistoryEntry(entry appsvc.AgentSessionHistoryEntry) map[string]
 }
 
 func addMetadataPayload(target map[string]any, entry appsvc.AgentSessionHistoryEntry) {
+	if entry.DisplayPhase != "" {
+		target["display_phase"] = entry.DisplayPhase
+	}
 	if entry.RunID != "" {
 		target["run_id"] = entry.RunID
 	}

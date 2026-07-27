@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { fetchSettings, updateUserSettings } from '@/features/settings/api'
 import type { LayeredSettings, Settings } from '@/features/settings/types'
 import { useSaveLane } from '@/hooks/use-save-lane'
@@ -251,7 +251,14 @@ export function usePersistedUserSettings<TDefaults extends PersistedStringSettin
     return lane.getSnapshot().status !== 'error'
   }, [lane])
 
-  return { values, loading, isSaving, persist, reload: load, flushPending }
+  return useMemo(() => ({
+    values,
+    loading,
+    isSaving,
+    persist,
+    reload: load,
+    flushPending,
+  }), [flushPending, isSaving, load, loading, persist, values])
 }
 
 function settingKeys<TDefaults extends PersistedStringSettingDefaults>(defaults: TDefaults) {

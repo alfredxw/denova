@@ -2,17 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useChat as useAIChat } from '@ai-sdk/react'
 import { useTranslation } from 'react-i18next'
 import { toast } from 'sonner'
-import {
-  analyzeChatContext,
-  createAgentCommandID,
-  createSession,
-  deleteSession,
-  executeCommand,
-  renameSession,
-  submitChatCommand,
-  submitQueuedChatCommand,
-  switchSession,
-} from '@/lib/api'
+import { createAgentCommandID } from '@/lib/api'
 import type { AgentQueuedCommandAction, AgentRuntimeQueuedCommand, ContextAnalysis, IDEContext, SessionSummary, TextSelection } from '@/lib/api'
 import { fetchSettings } from '@/features/settings/api'
 import { formatApprovedPlanExecutionMessage } from '@/lib/plan-mode'
@@ -41,9 +31,12 @@ import {
   type WritingDisplayRehydrateRequest,
   type WritingTaskStatus,
 } from './use-agent-runtime-recovery'
+import { writingAgentChatClient, type AgentChatClient } from './agent-chat-client'
 
 interface ChatOptions {
   workspace?: string
+  /** Explicit API binding. AgentChat supplies one immutable project/session client per tab. */
+  client?: AgentChatClient
   onAgentFileChange?: (path?: string) => void | Promise<void>
   onWorkspaceChange?: (event: WorkspaceChangeEvent) => void | Promise<void>
 }
@@ -86,8 +79,8 @@ interface QueuedComposerDraft {
 
 export function useAgentChat(options: ChatOptions = {}) {
   const { t } = useTranslation()
-  const { workspace = '', onAgentFileChange, onWorkspaceChange } = options
-  const transport = useMemo(() => new AgentChatTransport(), [])
+  const { workspace = '', client = writingAgentChatClient, onAgentFileChange, onWorkspaceChange } = options
+  const transport = useMemo(() => new AgentChatTransport(client.transportOptions), [client])
   const [runtimeRecoverySignal, setRuntimeRecoverySignal] = useState(0)
   const [displayRehydrateRequest, setDisplayRehydrateRequest] = useState<WritingDisplayRehydrateRequest | null>(null)
   const {
@@ -161,7 +154,7 @@ export function useAgentChat(options: ChatOptions = {}) {
     loadSessions,
     sessions,
     setActiveSessionId,
-  } = useWritingAgentHistory({ setMessages: setUIMessages })
+  } = useWritingAgentHistory({ setMessages: setUIMessages, client })
   const [references, setReferences] = useState<string[]>([])
   const [loreReferences, setLoreReferences] = useState<string[]>([])
   const [styleScenes, setStyleScenes] = useState<string[]>([])
@@ -247,8 +240,13 @@ export function useAgentChat(options: ChatOptions = {}) {
     transportError: error,
     transportStatus: status,
     transportStreaming,
+    client,
   })
   const isStreaming = transportStreaming || recoveryPending
+  // Recovery inspection temporarily sets recoveryPending even for an idle
+  // conversation. Project-level running state must represent real execution,
+  // not that startup probe.
+  const isExecutionActive = transportStreaming || runtimeProjection?.active === true
   const activityContent = recoveryPending ? t('chat.activity.recovering') : status === 'submitted' ? t('chat.activity.thinking') : ''
 
   useEffect(() => {
@@ -337,7 +335,7 @@ export function useAgentChat(options: ChatOptions = {}) {
     async (input: string, sendOptions: ChatSendOptions = {}) => {
       const command = isStreaming ? '' : agentBypassCommand(input)
       if (command) {
-        const result = await executeCommand(command)
+        const result = await client.executeCommand(command)
         if (command === 'clear') {
           await loadHistory()
           await loadSessions()
@@ -400,7 +398,7 @@ export function useAgentChat(options: ChatOptions = {}) {
         commandSubmittingRef.current = true
         setCommandSubmitting(true)
         try {
-          const receipt = await submitChatCommand(delivery, commandID, operationID, body)
+          const receipt = await client.submitChatCommand(delivery, commandID, operationID, body)
           retryCommandIDsRef.current.delete(retryKey)
           queuedComposerDraftsRef.current.set(commandID, {
             message: prepared.message,
@@ -486,6 +484,7 @@ export function useAgentChat(options: ChatOptions = {}) {
     [
       abortPending,
       activePlanMode,
+      client,
       isStreaming,
       loadHistory,
       loadSessions,
@@ -521,7 +520,7 @@ export function useAgentChat(options: ChatOptions = {}) {
       setCommandSubmitting(true)
       setQueueActionPendingCommandID(item.command_id)
       try {
-        const receipt = await submitQueuedChatCommand(action, commandID, operationID, item.command_id, reason)
+        const receipt = await client.submitQueuedChatCommand(action, commandID, operationID, item.command_id, reason)
         retryCommandIDsRef.current.delete(retryKey)
         setRuntimeProjection((current) => {
           if (!current || current.active_operation_id !== operationID) return current
@@ -553,7 +552,7 @@ export function useAgentChat(options: ChatOptions = {}) {
         setQueueActionPendingCommandID('')
       }
     },
-    [abortPending, runtimeProjection, setRuntimeProjection, t],
+    [abortPending, client, runtimeProjection, setRuntimeProjection, t],
   )
 
   const steerQueuedCommand = useCallback(
@@ -586,7 +585,7 @@ export function useAgentChat(options: ChatOptions = {}) {
     async (input: string, sendOptions: ChatSendOptions = {}): Promise<ContextAnalysis> => {
       if (isStreaming) throw new Error(t('chat.contextAnalysis.streamingUnavailable'))
       const prepared = prepareAgentRequest(input)
-      return analyzeChatContext(
+      return client.analyzeChatContext(
         prepared.message,
         prepared.references,
         prepared.loreReferences,
@@ -599,7 +598,7 @@ export function useAgentChat(options: ChatOptions = {}) {
         sendOptions.tellerId,
       )
     },
-    [isStreaming, prepareAgentRequest, t],
+    [client, isStreaming, prepareAgentRequest, t],
   )
 
   const submitPlanQuestion = useCallback(
@@ -648,7 +647,7 @@ export function useAgentChat(options: ChatOptions = {}) {
         reason: 'user_requested',
       })
       const commandID = rememberAgentCommandID(retryCommandIDsRef.current, retryKey, createAgentCommandID)
-      const receipt = await submitChatCommand('abort', commandID, operationID, undefined, 'user_requested')
+      const receipt = await client.submitChatCommand('abort', commandID, operationID, undefined, 'user_requested')
       retryCommandIDsRef.current.delete(retryKey)
       setAbortPending(true)
       setRuntimeProjection((current) =>
@@ -667,16 +666,16 @@ export function useAgentChat(options: ChatOptions = {}) {
       commandSubmittingRef.current = false
       setCommandSubmitting(false)
     }
-  }, [abortPending, abortRecovery, runtimeProjection, t])
+  }, [abortPending, abortRecovery, client, runtimeProjection, t])
 
   const createChatSession = useCallback(
     async (title?: string) => {
-      const session = await createSession(title)
+      const session = await client.createSession(title)
       setActiveSessionId(session.id)
       await Promise.all([loadSessions(), loadHistory(session.id)])
       await resumeActiveChat()
     },
-    [loadHistory, loadSessions, resumeActiveChat],
+    [client, loadHistory, loadSessions, resumeActiveChat],
   )
 
   const switchChatSession = useCallback(
@@ -688,7 +687,7 @@ export function useAgentChat(options: ChatOptions = {}) {
 
       let session: SessionSummary
       try {
-        session = await switchSession(id)
+        session = await client.switchSession(id)
       } catch (error) {
         setActiveSessionId((current) => (current === id ? previousSessionId : current))
         throw error
@@ -698,26 +697,26 @@ export function useAgentChat(options: ChatOptions = {}) {
       await Promise.all([loadSessions(), loadHistory(session.id)])
       await resumeActiveChat()
     },
-    [activeSessionId, isStreaming, loadHistory, loadSessions, resumeActiveChat, stopAIStream],
+    [activeSessionId, client, isStreaming, loadHistory, loadSessions, resumeActiveChat, stopAIStream],
   )
 
   const renameChatSession = useCallback(
     async (id: string, title: string) => {
-      await renameSession(id, title)
+      await client.renameSession(id, title)
       await loadSessions()
     },
-    [loadSessions],
+    [client, loadSessions],
   )
 
   const deleteChatSession = useCallback(
     async (id: string) => {
       stopAIStream()
-      const session = await deleteSession(id)
+      const session = await client.deleteSession(id)
       setActiveSessionId(session.id)
       await Promise.all([loadSessions(), loadHistory(session.id)])
       await resumeActiveChat()
     },
-    [loadHistory, loadSessions, resumeActiveChat, stopAIStream],
+    [client, loadHistory, loadSessions, resumeActiveChat, stopAIStream],
   )
 
   return {
@@ -725,6 +724,7 @@ export function useAgentChat(options: ChatOptions = {}) {
     sessions,
     activeSessionId,
     isStreaming,
+    isExecutionActive,
     runtimeProjection,
     abortPending,
     commandSubmitting,

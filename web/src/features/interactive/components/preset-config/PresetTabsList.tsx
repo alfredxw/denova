@@ -112,7 +112,7 @@ function PresetTabsListItem({
       <button ref={setActivatorNodeRef} type="button" className="flex size-5 shrink-0 cursor-grab items-center justify-center rounded text-[var(--nova-text-faint)] opacity-45 transition-[opacity,color,background] hover:bg-[var(--nova-hover)] hover:text-[var(--nova-text)] hover:opacity-100 focus-visible:opacity-100 active:cursor-grabbing" aria-label={dragLabel} onClick={(event) => event.stopPropagation()} {...attributes} {...listeners}>
         <GripVertical className="size-3" />
       </button>
-      <TabsTrigger value={id} className="h-auto min-h-9 min-w-0 flex-1 justify-start rounded-[8px] border-0 bg-transparent px-1.5 py-1 text-left text-xs font-normal text-inherit shadow-none whitespace-normal transition-none after:hidden data-active:bg-transparent data-active:text-inherit dark:data-active:bg-transparent dark:data-active:text-inherit" data-testid={`${testIdPrefix}-trigger-${id}`}>
+      <TabsTrigger value={id} className="h-auto min-h-9 min-w-0 flex-1 justify-start rounded-[8px] border-0 bg-transparent px-1.5 py-1 text-left text-xs font-normal text-inherit shadow-none whitespace-normal transition-none after:hidden data-[state=active]:bg-transparent data-[state=active]:text-inherit dark:data-[state=active]:bg-transparent dark:data-[state=active]:text-inherit" data-testid={`${testIdPrefix}-trigger-${id}`}>
         <PresetTabsListItemText title={title} subtitle={subtitle} />
       </TabsTrigger>
     </div>

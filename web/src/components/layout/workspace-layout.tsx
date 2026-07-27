@@ -256,8 +256,8 @@ function resizeRightPanel(current: Layout, rightSize: number, sidebarVisible: bo
 
 function WorkspaceResizeHandle({ direction, label }: { direction: 'horizontal' | 'vertical'; label: string }) {
   const className = direction === 'vertical'
-    ? 'nova-resize-handle relative z-30 -mx-1 w-2 shrink-0 touch-none cursor-col-resize select-none bg-transparent transition-colors'
-    : 'nova-resize-handle relative z-30 -my-1 h-2 shrink-0 touch-none cursor-row-resize select-none bg-transparent transition-colors'
+    ? 'nova-resize-handle nova-resize-divider nova-resize-divider-vertical relative z-30 -mx-1 w-2 shrink-0 touch-none cursor-col-resize select-none'
+    : 'nova-resize-handle nova-resize-divider nova-resize-divider-horizontal relative z-30 -my-1 h-2 shrink-0 touch-none cursor-row-resize select-none'
 
   return <Separator aria-label={label} className={className} />
 }

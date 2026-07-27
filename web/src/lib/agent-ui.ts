@@ -4,9 +4,10 @@ import { fetchAPI } from './api-client/client'
 import type { ChatMessage, UserMessageReference } from './api-client/types'
 
 export interface AgentMessageMetadata {
-  created_at?: string
-  display_role?: ChatMessage['role']
-  history_type?: string
+	created_at?: string
+	display_role?: ChatMessage['role']
+	display_phase?: 'candidate' | 'progress' | 'final' | 'partial'
+	history_type?: string
   run_id?: string
   display_segment_id?: string
   agent_kind?: string
@@ -49,6 +50,15 @@ export type AgentDataParts = {
 
 export type AgentUIMessage = UIMessage<AgentMessageMetadata, AgentDataParts>
 
+export interface AgentChatTransportOptions {
+  /** Endpoint that accepts a new turn. */
+  api?: string
+  /** Endpoint used to reconnect to an exact display task. */
+  streamApi?: string
+  /** Immutable server-owned binding echoed on every request and reconnect. */
+  scope?: Record<string, string>
+}
+
 interface AgentChatRequestBody {
   command_id?: string
   references?: string[]
@@ -78,9 +88,14 @@ export class AgentChatTransport implements ChatTransport<AgentUIMessage> {
   private activeStreamAfter = 0
   private readonly initialSubmissionOutcomes = new Map<string, InitialSubmissionOutcome>()
 
-  constructor() {
+  private readonly streamApi: string
+  private readonly scope: Record<string, string>
+
+  constructor(options: AgentChatTransportOptions = {}) {
+    this.streamApi = options.streamApi || '/api/chat/stream'
+    this.scope = { ...(options.scope || {}) }
     this.transport = new DefaultChatTransport<AgentUIMessage>({
-      api: '/api/chat',
+      api: options.api || '/api/chat',
       fetch: async (input, init) => {
         const commandID = initialCommandIDFromRequest(init)
         try {
@@ -96,6 +111,7 @@ export class AgentChatTransport implements ChatTransport<AgentUIMessage> {
         body: {
           ...(body || {}),
           message: bodyMessage(body) || latestUserText(messages),
+          ...this.scope,
         },
       }),
       prepareReconnectToStreamRequest: () => ({ api: this.activeStreamURL() }),
@@ -142,12 +158,13 @@ export class AgentChatTransport implements ChatTransport<AgentUIMessage> {
   private activeStreamURL() {
     if (!this.activeStreamTaskID) throw new Error('Cannot reconnect without an exact Agent stream task')
     const query = new URLSearchParams({ task_id: this.activeStreamTaskID })
+    for (const [key, value] of Object.entries(this.scope)) query.set(key, value)
     if (this.activeStreamAfter > 0) query.set('after', String(this.activeStreamAfter))
     // The recovery cursor is a one-connection hand-off. If that connection is
     // interrupted, the next inspection canonically reloads again before
     // selecting another replay/suffix boundary.
     this.activeStreamAfter = 0
-    return `/api/chat/stream?${query.toString()}`
+    return `${this.streamApi}?${query.toString()}`
   }
 }
 
@@ -247,7 +264,7 @@ const messagePartDedupeIdentitiesCache = new WeakMap<
   AgentUIMessage,
   {
     metadata: AgentUIMessage['metadata']
-    parts: AgentUIMessage['parts']
+    partReferences: AgentUIMessage['parts']
     identities: AgentUIPartDedupeIdentity[]
   }
 >()
@@ -262,7 +279,7 @@ function normalizeRepeatedAgentUIParts(messages: AgentUIMessage[]) {
     const identities = agentUIPartDedupeIdentities(message)
     message.parts.forEach((part, partIndex) => {
       const identity = identities[partIndex]
-      if (!identity.primaryKey) return
+      if (!identity?.primaryKey) return
       let existing = locationByKey.get(identity.primaryKey)
       if (!existing && identity.legacyContentKey) {
         const fallback = contentFallbackByKey.get(identity.legacyContentKey)
@@ -338,11 +355,19 @@ function rememberContentFallback(
 
 function agentUIPartDedupeIdentities(message: AgentUIMessage) {
   const cached = messagePartDedupeIdentitiesCache.get(message)
-  if (cached && cached.metadata === message.metadata && cached.parts === message.parts) return cached.identities
+  if (
+    cached &&
+    cached.metadata === message.metadata &&
+    cached.partReferences.length === message.parts.length &&
+    cached.partReferences.every((part, index) => part === message.parts[index])
+  ) {
+    return cached.identities
+  }
   const identities = message.parts.map((part) => agentUIPartDedupeIdentity(message, part))
   messagePartDedupeIdentitiesCache.set(message, {
     metadata: message.metadata,
-    parts: message.parts,
+    // AI SDK 在持久化交互结算时可能原地追加 part，因此不能只比较数组引用。
+    partReferences: [...message.parts],
     identities,
   })
   return identities
@@ -404,9 +429,10 @@ function agentMetadataFromProvider(metadata: unknown): AgentMessageMetadata {
   const agent = (metadata as Record<string, unknown>).agent
   const raw =
     agent && typeof agent === 'object' && !Array.isArray(agent) ? (agent as Record<string, unknown>) : (metadata as Record<string, unknown>)
-  return {
-    run_id: readString(raw.run_id) || undefined,
-    display_segment_id: readString(raw.display_segment_id) || undefined,
+	return {
+		run_id: readString(raw.run_id) || undefined,
+		display_segment_id: readString(raw.display_segment_id) || undefined,
+		display_phase: readDisplayPhase(raw.display_phase),
     agent_kind: readString(raw.agent_kind) || undefined,
     agent_name: readString(raw.agent_name) || undefined,
     root_agent_name: readString(raw.root_agent_name) || undefined,
@@ -414,6 +440,10 @@ function agentMetadataFromProvider(metadata: unknown): AgentMessageMetadata {
     subagent_session_id: readString(raw.subagent_session_id) || undefined,
     subagent_type: readString(raw.subagent_type) || undefined,
   }
+}
+
+function readDisplayPhase(value: unknown): AgentMessageMetadata['display_phase'] {
+	return value === 'candidate' || value === 'progress' || value === 'final' || value === 'partial' ? value : undefined
 }
 
 function scopedAgentPartKey(runID: string, key: string) {

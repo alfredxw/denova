@@ -78,6 +78,39 @@ describe('agent-ui', () => {
     expect(textReads).toBe(readsAfterFirstNormalization)
   })
 
+  it('重新计算被原地追加 part 的消息身份，避免 Ask 结算刷新崩溃', () => {
+    const pending = {
+      schema: 'ask.pending.v1',
+      id: 'ask-1',
+      tool_call_id: 'ask-1',
+      agent_kind: 'ide',
+      status: 'pending',
+      questions: [{ id: 'q1', question: '选择方向？', options: [{ id: 'a', label: 'A' }] }],
+    }
+    const resolved = {
+      ...pending,
+      status: 'answered',
+      answers: [{ question_id: 'q1', question: '选择方向？', selected_options: [{ id: 'a', label: 'A' }] }],
+    }
+    const message = {
+      id: 'assistant-ask',
+      role: 'assistant',
+      parts: [{ type: 'data-agent-ask', id: 'ask-1', data: pending }],
+    } as AgentUIMessage
+
+    normalizeAgentUIMessages([message])
+    message.parts.push({ type: 'data-agent-ask', id: 'ask-1', data: resolved })
+
+    const normalized = normalizeAgentUIMessages([message])
+
+    expect(normalized).toHaveLength(1)
+    expect(normalized[0].parts).toHaveLength(1)
+    expect(normalized[0].parts[0]).toMatchObject({
+      type: 'data-agent-ask',
+      data: { id: 'ask-1', status: 'answered' },
+    })
+  })
+
   it('保留单轮请求 extras，不回传完整 UI 历史', () => {
     expect(
       buildAgentChatRequestBody({
@@ -339,6 +372,41 @@ describe('agent-ui', () => {
       })
       expect(requestBody).not.toHaveProperty('messages')
       expect(chunks.map((chunk) => chunk.type)).toEqual(['start', 'text-start', 'text-delta', 'text-end', 'finish'])
+    } finally {
+      fetchSpy.mockRestore()
+    }
+  })
+
+  it('project scope overrides caller body and follows the exact task reconnect', async () => {
+    const requests: Array<{ url: string; body?: Record<string, unknown> }> = []
+    const fetchSpy = vi.spyOn(globalThis, 'fetch').mockImplementation(async (input, init) => {
+      requests.push({
+        url: String(input),
+        body: typeof init?.body === 'string' ? JSON.parse(init.body) as Record<string, unknown> : undefined,
+      })
+      return init?.method === 'GET'
+        ? new Response(null, { status: 204 })
+        : fragmentedEventStreamResponse(['data: [DONE]\n\n'])
+    })
+
+    try {
+      const transport = new AgentChatTransport({
+        api: '/api/agent-chat/chat',
+        streamApi: '/api/agent-chat/chat/stream',
+        scope: { workspace: '/books/alpha', session_id: 'session-a' },
+      })
+      await readStream(await transport.sendMessages({
+        ...agentSendOptions(),
+        body: { workspace: '/books/foreign', session_id: 'foreign', message: 'hello' },
+      }))
+      transport.setActiveStreamTarget('task-a')
+      await transport.reconnectToStream({ chatId: 'chat-1' })
+
+      expect(requests[0]).toEqual({
+        url: '/api/agent-chat/chat',
+        body: { workspace: '/books/alpha', session_id: 'session-a', message: 'hello' },
+      })
+      expect(requests[1]?.url).toBe('/api/agent-chat/chat/stream?task_id=task-a&workspace=%2Fbooks%2Falpha&session_id=session-a')
     } finally {
       fetchSpy.mockRestore()
     }

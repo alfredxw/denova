@@ -1,4 +1,5 @@
 const workbench = {
+  'workbench.activity.agentchat': 'Workspace',
   'workbench.activity.agents': 'Agents',
   'workbench.activity.automations': 'Automations',
   'workbench.activity.books': 'Book Management',
@@ -23,6 +24,7 @@ const workbench = {
   'workbench.bookSwitcher.switchError': 'Failed to switch books',
   'workbench.bookSwitcher.title': 'Switch book',
   'workbench.bookSwitcher.trigger': 'Switch book, current: {{title}}',
+  'workbench.mode.agentchat': 'Workspace',
   'workbench.mode.agents': 'Agents',
   'workbench.mode.automations': 'Automations',
   'workbench.mode.books': 'Book Management',

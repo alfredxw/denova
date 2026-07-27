@@ -165,6 +165,9 @@ func applyDisplayPatchLine(sess *Session, line []byte) error {
 	}
 	record := &sess.records[index]
 	event := record.display
+	if patch.DisplayPhase != nil {
+		event.DisplayPhase = *patch.DisplayPhase
+	}
 	if patch.Status != nil {
 		event.Status = *patch.Status
 	}

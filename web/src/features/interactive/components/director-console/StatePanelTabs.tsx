@@ -22,7 +22,7 @@ export function StatePanelTabs({ activeTab, onChange, changesCount, actorsCount,
     <Tabs value={activeTab} onValueChange={(value) => onChange(value as StatePanelTab)} className="shrink-0 gap-0 border-b border-[var(--nova-border)] bg-[var(--director-canvas)]">
       <TabsList variant="line" aria-label={t('directorPanel.stateTab.label')} className="h-10 w-full gap-0 rounded-none px-3">
         {items.map((item) => (
-          <TabsTrigger key={item.id} value={item.id} className="h-full flex-1 gap-1.5 rounded-none px-1 text-xs font-medium text-[var(--nova-text-faint)] after:bottom-0 after:bg-[var(--director-brass)] hover:bg-[var(--nova-hover)] hover:text-[var(--nova-text-muted)] data-active:bg-transparent data-active:text-[var(--nova-text)]">
+          <TabsTrigger key={item.id} value={item.id} className="h-full flex-1 gap-1.5 rounded-none px-1 text-xs font-medium text-[var(--nova-text-faint)] after:bottom-0 after:bg-[var(--director-brass)] hover:bg-[var(--nova-hover)] hover:text-[var(--nova-text-muted)] data-[state=active]:bg-transparent data-[state=active]:text-[var(--nova-text)]">
             {item.icon}
             <span className="min-w-0 truncate">{item.label}</span>
             {item.count > 0 ? <span aria-hidden="true" className="shrink-0 font-mono text-[9px] text-[var(--nova-text-faint)]">{item.count}</span> : null}

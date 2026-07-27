@@ -1,5 +1,5 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { Activity, Bot, FileText, PenLine, Plus, SearchCheck, Sparkles, WandSparkles, X } from 'lucide-react'
+import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { Activity, Bot, ChevronLeft, FileText, PenLine, Plus, SearchCheck, Sparkles, WandSparkles, X } from 'lucide-react'
 import { Group, Panel, Separator } from 'react-resizable-panels'
 import { createPortal } from 'react-dom'
 import { useTranslation } from 'react-i18next'
@@ -7,7 +7,7 @@ import { createStablePortalHost, StablePortalSlot } from '@/components/layout/st
 import type { ImagePreset, Teller } from '@/features/interactive/types'
 import { DEFAULT_NARRATIVE_STYLE_ID, resolveNarrativeStyle } from '@/features/interactive/narrative-style'
 import { answerSessionAsk, cancelSessionAsk, removeChatContextCompaction } from '@/lib/api'
-import type { ActiveChatTask, AgentAskAnswer, AgentRuntimeQueuedCommand, ChapterIllustration, ChapterSummary, ContextAnalysis, IDEContext, SessionSummary, TextSelection } from '@/lib/api'
+import type { ActiveChatTask, AgentAskAnswer, AgentAskResolution, AgentRuntimeQueuedCommand, ChapterIllustration, ChapterSummary, ContextAnalysis, IDEContext, SessionSummary, TextSelection } from '@/lib/api'
 import type { AgentUIMessage } from '@/lib/agent-ui'
 import { agentSubAgentSessionKey, agentViewContent, buildAgentMessageViews, selectAgentTokenUsageRecords, type AgentMessageView, type AgentPartRef } from '@/lib/agent-message-view'
 import { useSkillCommands } from '@/hooks/useSkillCommands'
@@ -29,6 +29,7 @@ import type { ChatSendOptions } from '@/hooks/useAgentChat'
 import { resolveAgentAskAndRefresh } from '@/lib/agent-ask'
 
 type AgentPanelView = 'chat' | 'sessions' | 'traces'
+export type AgentPanelChrome = 'panel' | 'workbench'
 
 const WRITING_AGENT_INIT_EVENT = 'nova:writing-agent-init'
 export const WRITING_COMPOSER_SETTING_DEFAULTS = {
@@ -42,6 +43,13 @@ export type WritingComposerSettingsController = PersistedUserSettingsController<
 
 interface AgentPanelProps {
   workspace: string
+  /** Hidden AgentChat tabs remain mounted for parallel streams but ignore global UI intents. */
+  active?: boolean
+  /**
+   * Frame around the panel. `panel` is the docked IDE sidebar; `workbench` embeds the same
+   * conversation as a full-width surface (AgentChat tab), where the host owns closing.
+   */
+  chrome?: AgentPanelChrome
   /** Owned above the conditional panel so closing the panel cannot discard delayed saves. */
   composerSettings: WritingComposerSettingsController
   currentChapter?: ChapterSummary
@@ -51,6 +59,8 @@ interface AgentPanelProps {
   messages: AgentUIMessage[]
   sessions: SessionSummary[]
   activeSessionId: string
+  /** The composer is usable, but no durable session exists until its first submission. */
+  sessionDraft?: boolean
   isStreaming: boolean
   runtimeProjection?: ActiveChatTask | null
   abortPending?: boolean
@@ -74,6 +84,10 @@ interface AgentPanelProps {
   onDeleteSession: (id: string) => void | Promise<void>
   onLoadEarlierHistory: () => void | Promise<void>
   onRefreshHistory: (sessionId?: string) => void | Promise<void>
+  /** Scoped AgentChat tabs override interaction endpoints so Writing state is never touched. */
+  onAnswerAsk?: (sessionId: string, askId: string, answers: AgentAskAnswer[]) => Promise<AgentAskResolution>
+  onCancelAsk?: (sessionId: string, askId: string) => Promise<AgentAskResolution>
+  onRemoveContextCompaction?: () => Promise<boolean>
   onSend: (message: string, options?: ChatSendOptions) => boolean | Promise<boolean>
   onAnalyzeContext: (message: string, options?: { writingSkill?: string; ideContext?: IDEContext; imagePresetId?: string; tellerId?: string }) => Promise<ContextAnalysis>
   onStop: () => void
@@ -103,9 +117,15 @@ interface AgentPanelProps {
   onSubAgentDetailsChange?: (open: boolean) => void
 }
 
-/** IDE 右侧创作 Agent 面板，内部支持在对话与完整会话管理之间切换。 */
-export function AgentPanel({
+/**
+ * The writing Agent surface, switchable between conversation, session management and traces.
+ * It is docked on the right of the writing workbench and embedded as a tab in AgentChat;
+ * `chrome` selects which frame it renders with.
+ */
+function AgentPanelComponent({
   workspace,
+  active = true,
+  chrome = 'panel',
   composerSettings: persistedSettings,
   currentChapter,
   selectedFile,
@@ -114,6 +134,7 @@ export function AgentPanel({
   messages,
   sessions,
   activeSessionId,
+  sessionDraft = false,
   isStreaming,
   runtimeProjection = null,
   abortPending = false,
@@ -137,6 +158,9 @@ export function AgentPanel({
   onDeleteSession,
   onLoadEarlierHistory,
   onRefreshHistory,
+  onAnswerAsk = answerSessionAsk,
+  onCancelAsk = cancelSessionAsk,
+  onRemoveContextCompaction = removeChatContextCompaction,
   onSend,
   onAnalyzeContext,
   onStop,
@@ -166,6 +190,7 @@ export function AgentPanel({
   onSubAgentDetailsChange,
 }: AgentPanelProps) {
   const { t } = useTranslation()
+  const dockedChrome = chrome === 'panel'
   const [view, setView] = useState<AgentPanelView>('chat')
   const [inputPrefill, setInputPrefill] = useState<{ prompt: string; nonce: number } | null>(null)
   const [contextAnalysisOpen, setContextAnalysisOpen] = useState(false)
@@ -193,7 +218,7 @@ export function AgentPanel({
     () => resolveWritingSkillSelection(configuredWritingSkill, writingSkillOptions),
     [configuredWritingSkill, writingSkillOptions],
   )
-  const changeGroupsQuery = useWorkspaceChangeGroups(activeSessionId ? workspace : '', { sessionID: activeSessionId })
+  const changeGroupsQuery = useWorkspaceChangeGroups(activeSessionId && !sessionDraft ? workspace : '', { sessionID: activeSessionId })
   const tokenUsageMessages = useMemo(
     () => selectAgentTokenUsageRecords(messages),
     [messages],
@@ -213,6 +238,7 @@ export function AgentPanel({
   }, [ideTellerId, tellers])
 
   useEffect(() => {
+    if (!active) return
     const handleWritingInitRequest = (event: Event) => {
       const detail = (event as CustomEvent<{ prompt?: string; autoSend?: boolean }>).detail
       const prompt = detail?.prompt || t('writingAgent.initPrompt')
@@ -229,7 +255,7 @@ export function AgentPanel({
     }
     window.addEventListener(WRITING_AGENT_INIT_EVENT, handleWritingInitRequest)
     return () => window.removeEventListener(WRITING_AGENT_INIT_EVENT, handleWritingInitRequest)
-  }, [ideContext, ideTellerId, imagePresetId, isStreaming, onSend, persistedSettings.loading, t, writingSkill])
+  }, [active, ideContext, ideTellerId, imagePresetId, isStreaming, onSend, persistedSettings.loading, t, writingSkill])
 
   useEffect(() => {
     if (persistedSettings.loading || isStreaming || !pendingWritingInitRef.current) return
@@ -292,7 +318,7 @@ export function AgentPanel({
   }
 
   const removeContextCompaction = async () => {
-    await removeChatContextCompaction()
+    await onRemoveContextCompaction()
     await handleAnalyzeContext(CONTEXT_ANALYSIS_SIMULATED_MESSAGE)
   }
 
@@ -369,17 +395,19 @@ export function AgentPanel({
     setInputPrefill((current) => ({ prompt, nonce: (current?.nonce || 0) + 1 }))
   }
 
-  const emptyChatContent = messages.length === 0 && !isStreaming ? (
+  // Quick actions are writing-workbench affordances tied to the current chapter. The AgentChat
+  // workbench is a general project surface, so it opens on a clean conversation instead.
+  const emptyChatContent = dockedChrome && messages.length === 0 && !isStreaming ? (
     <AgentQuickActions chapter={currentChapter} selectedFile={selectedFile} disabled={persistedSettings.loading} onSend={sendWithWritingSkill} />
   ) : null
   const resolveAsk = useCallback(async (view: AgentMessageView, action: { status: 'answered'; answers: AgentAskAnswer[] } | { status: 'cancelled' }) => {
     const askID = typeof view.data.id === 'string' ? view.data.id.trim() : ''
     if (!activeSessionId || !askID) throw new Error('Cannot resolve an Ask without its Session and interaction IDs')
     return resolveAgentAskAndRefresh(action, {
-      answer: (answers) => answerSessionAsk(activeSessionId, askID, answers),
-      cancel: () => cancelSessionAsk(activeSessionId, askID),
+      answer: (answers) => onAnswerAsk(activeSessionId, askID, answers),
+      cancel: () => onCancelAsk(activeSessionId, askID),
     }, () => onRefreshHistory(activeSessionId))
-  }, [activeSessionId, onRefreshHistory])
+  }, [activeSessionId, onAnswerAsk, onCancelAsk, onRefreshHistory])
   const messageListProps = {
     messages,
     isStreaming,
@@ -422,7 +450,7 @@ export function AgentPanel({
     activeStopDisabled: activeControlsDisabled && !recoveryAbortAvailable,
     planMode,
     onTogglePlanMode: onPlanModeToggle,
-    draftKey: `ide-agent:${workspace || 'global'}`,
+    draftKey: `ide-agent:${workspace || 'global'}:${activeSessionId || 'current'}`,
     inputPrefill,
     onInputPrefillConsumed: () => setInputPrefill(null),
     referencedFiles: references,
@@ -443,7 +471,7 @@ export function AgentPanel({
     onReviewFeedbackOpen,
     onReviewFeedbackRemove,
     skills: skillCommands,
-    onContextAnalyze: openContextAnalysis,
+    onContextAnalyze: sessionDraft ? undefined : openContextAnalysis,
     tokenUsageMessages,
     onOpenTrace: openTraceRun,
     agentKey: 'ide' as const,
@@ -471,6 +499,9 @@ export function AgentPanel({
   }
   const chatPane = (
     <AgentChatPane
+      // The conversation fills whatever pane hosts it. Capping its width inside the AgentChat
+      // workbench left empty bands down both sides of the tab, and the pane is already narrow
+      // once the workbench is split.
       className="min-w-0 flex-1"
       emptyContent={emptyChatContent}
       messageListProps={messageListProps}
@@ -482,7 +513,19 @@ export function AgentPanel({
     : null
 
   return (
-    <aside className="nova-sidebar relative flex h-full min-h-0 flex-col overflow-hidden border-l border-[var(--nova-border)] bg-[var(--nova-surface)] shadow-[-14px_0_30px_-28px_rgba(15,23,42,0.72)]">
+    <aside
+      className={`nova-sidebar relative flex h-full min-h-0 flex-col overflow-hidden ${
+        dockedChrome
+          ? 'border-l border-[var(--nova-border)] bg-[var(--nova-surface)] shadow-[-14px_0_30px_-28px_rgba(15,23,42,0.72)]'
+          : 'bg-[var(--nova-bg)]'
+      }`}
+    >
+      {/*
+        AgentChat supplies its own tab strip, conversation tree and new-chat entry points, so
+        the docked panel's header would only duplicate them. It is rendered for the writing
+        workbench only.
+      */}
+      {dockedChrome && (
       <div className="flex h-10 shrink-0 items-center gap-2 border-b border-[var(--nova-border)] px-3">
         <div className="flex min-w-0 shrink-0 items-center gap-2 text-xs font-medium text-[var(--nova-text)]">
           <Bot className="h-3.5 w-3.5 text-[var(--nova-text-muted)]" />
@@ -534,6 +577,25 @@ export function AgentPanel({
           <X className="h-3.5 w-3.5" />
         </button>
       </div>
+      )}
+
+      {/*
+        Without the docked header there is no view switcher, so a trace opened from a message
+        card needs its own way back to the conversation.
+      */}
+      {!dockedChrome && view !== 'chat' && (
+        <div className="flex h-9 shrink-0 items-center gap-2 border-b border-[var(--nova-border)] px-3">
+          <button
+            type="button"
+            onClick={() => setView('chat')}
+            className="nova-nav-item flex h-7 items-center gap-1.5 rounded border border-[var(--nova-border)] bg-[var(--nova-surface-2)] px-2 text-[11px]"
+          >
+            <ChevronLeft className="h-3 w-3" />
+            {t('chat.view.chat')}
+          </button>
+          <span className="min-w-0 truncate text-[11px] text-[var(--nova-text-faint)]">{t('chat.view.traces')}</span>
+        </div>
+      )}
 
       {view === 'chat' ? (
         <>
@@ -607,6 +669,8 @@ export function AgentPanel({
     </aside>
   )
 }
+
+export const AgentPanel = memo(AgentPanelComponent)
 
 function isGlobalStyleSceneName(scene: string) {
   const normalized = scene.trim().toLowerCase()

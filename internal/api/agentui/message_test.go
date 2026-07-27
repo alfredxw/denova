@@ -69,7 +69,7 @@ func TestMessagesFromHistoryConvertsLegacyEntries(t *testing.T) {
 func TestMessagesFromHistoryPreservesDisplaySegmentIDsInTextMetadata(t *testing.T) {
 	messages := MessagesFromHistory([]session.HistoryEntry{
 		{ID: "run-1-display-001-thinking", DisplaySegmentID: "run-1-display-001-thinking", Role: "thinking", Content: "分析", RunID: "run-1"},
-		{ID: "run-1-display-002-assistant", DisplaySegmentID: "run-1-display-002-assistant", Role: "assistant", Content: "正文", RunID: "run-1"},
+		{ID: "run-1-display-002-assistant", DisplaySegmentID: "run-1-display-002-assistant", DisplayPhase: session.DisplayPhaseFinal, Role: "assistant", Content: "正文", RunID: "run-1"},
 	})
 
 	want := []string{"run-1-display-001-thinking", "run-1-display-002-assistant"}
@@ -80,6 +80,9 @@ func TestMessagesFromHistoryPreservesDisplaySegmentIDsInTextMetadata(t *testing.
 		if messages[index].Metadata["display_segment_id"] != id {
 			t.Fatalf("message %d metadata = %#v, want segment id %q", index, messages[index].Metadata, id)
 		}
+	}
+	if messages[1].Metadata["display_phase"] != session.DisplayPhaseFinal {
+		t.Fatalf("final display phase was not preserved: %#v", messages[1].Metadata)
 	}
 }
 

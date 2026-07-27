@@ -67,6 +67,7 @@ type displayPatchRecord struct {
 	Type           string               `json:"type"`
 	TargetRecordID string               `json:"target_record_id"`
 	CreatedAt      time.Time            `json:"created_at"`
+	DisplayPhase   *string              `json:"display_phase,omitempty"`
 	Status         *string              `json:"status,omitempty"`
 	Result         *string              `json:"result,omitempty"`
 	ArgsAppend     string               `json:"args_append,omitempty"`

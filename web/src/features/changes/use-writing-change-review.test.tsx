@@ -9,7 +9,7 @@ describe('useWritingChangeReview', () => {
       ({ selectedFile }) => useWritingChangeReview({
         workspace: '/book',
         contextKey: 'session-1',
-        ideActive: true,
+        hostActive: true,
         selectedFile,
         agentVisible: true,
         onBeforeOpen: beforeOpen,
@@ -34,7 +34,7 @@ describe('useWritingChangeReview', () => {
     const { result } = renderHook(() => useWritingChangeReview({
       workspace: '/book',
       contextKey: 'session-1',
-      ideActive: true,
+      hostActive: true,
       selectedFile: null,
       agentVisible: false,
       onBeforeOpen: () => true,
@@ -67,7 +67,7 @@ describe('useWritingChangeReview', () => {
       ({ contextKey }) => useWritingChangeReview({
         workspace: '/book',
         contextKey,
-        ideActive: true,
+        hostActive: true,
         selectedFile: null,
         agentVisible: true,
         onBeforeOpen: () => true,
@@ -90,7 +90,7 @@ describe('useWritingChangeReview', () => {
     const { result } = renderHook(() => useWritingChangeReview({
       workspace: '/book',
       contextKey: 'session-1',
-      ideActive: true,
+      hostActive: true,
       selectedFile: null,
       agentVisible: true,
       onBeforeOpen: () => true,
@@ -112,7 +112,7 @@ describe('useWritingChangeReview', () => {
     const { result } = renderHook(() => useWritingChangeReview({
       workspace: '/book',
       contextKey: 'session-1',
-      ideActive: true,
+      hostActive: true,
       selectedFile: null,
       agentVisible: true,
       onBeforeOpen: () => true,

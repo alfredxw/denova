@@ -15,6 +15,7 @@ import (
 	"denova/internal/filewatch"
 	"denova/internal/interactive"
 	"denova/internal/lifecycle"
+	"denova/internal/terminal"
 )
 
 // App 是 API 层使用的应用门面；具体业务由领域应用服务承接。
@@ -63,8 +64,13 @@ type App struct {
 	automationEffectWake            chan struct{}
 	activeTaskReplay                activeTaskReplayAdmission
 
+	// terminals owns the pty sessions behind the AgentChat terminal tabs. They are decoupled from
+	// the workspace: each session keeps its own cwd, so switching books never kills a running command.
+	terminals *terminal.Manager
+
 	runtimeManager *WorkspaceRuntimeManager
 	chatApp        *ChatAppService
+	agentChatApp   *AgentChatAppService
 	interactiveApp *InteractiveAppService
 	loreApp        *LoreAppService
 	configApp      *ConfigManagerAppService
@@ -119,6 +125,7 @@ func New(ctx context.Context, cfg *config.Config) (*App, error) {
 		bookRegistry:         registry,
 		bookMetaStore:        bookMetaStore,
 		workspaceFiles:       filewatch.NewService(),
+		terminals:            terminal.NewManager(terminalConfigFromAppConfig(cfg)),
 		automationEffectWake: make(chan struct{}, 1),
 	}
 	chatService, err := agents.NewDurableChatService(
@@ -206,6 +213,7 @@ func (a *App) ensureServices() {
 		a.automationTriggers = newAutomationTriggerCoordinator()
 		a.runtimeManager = &WorkspaceRuntimeManager{app: a}
 		a.chatApp = &ChatAppService{app: a}
+		a.agentChatApp = newAgentChatAppService(a)
 		a.interactiveApp = &InteractiveAppService{app: a}
 		a.loreApp = &LoreAppService{app: a}
 		a.configApp = &ConfigManagerAppService{app: a}
@@ -223,6 +231,11 @@ func (a *App) runtime() *WorkspaceRuntimeManager {
 func (a *App) chat() *ChatAppService {
 	a.ensureServices()
 	return a.chatApp
+}
+
+func (a *App) agentChat() *AgentChatAppService {
+	a.ensureServices()
+	return a.agentChatApp
 }
 
 func (a *App) interactiveService() *InteractiveAppService {
@@ -340,6 +353,9 @@ func (a *App) Close() {
 		if workspaceFiles != nil {
 			workspaceFiles.Close()
 		}
+		if a.terminals != nil {
+			a.terminals.CloseAll()
+		}
 		// Admission closes before cancellation so no task can slip between the
 		// final registry snapshot and the resource barrier.
 		rootScope.BeginClose()
@@ -348,6 +364,9 @@ func (a *App) Close() {
 		}
 		if a.automationTriggers != nil {
 			a.automationTriggers.Close()
+		}
+		if a.agentChatApp != nil {
+			a.agentChatApp.Close(context.Background())
 		}
 		a.abortOwnedAgentTasks(context.Background())
 		a.stopWorkspaceDirectorTasks()

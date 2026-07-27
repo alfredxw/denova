@@ -9,6 +9,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 )
 
 type countingProjection struct {
@@ -256,10 +257,59 @@ func TestJournalReplaysOnlyCompleteUnindexedTail(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer reopened.Close()
 	stats := reopened.ReplayStats()
 	if !stats.IndexLoaded || stats.IndexRebuilt || stats.TailRecordsRead != 1 || projection.Count != 2 || projection.Sum != 3 {
 		t.Fatalf("stale index tail replay stats=%#v projection=%#v", stats, projection)
+	}
+	if err := reopened.Close(); err != nil {
+		t.Fatal(err)
+	}
+
+	checkpointedProjection := &countingProjection{}
+	checkpointed, err := Open(context.Background(), path, identity, checkpointedProjection, Options{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer checkpointed.Close()
+	checkpointedStats := checkpointed.ReplayStats()
+	if !checkpointedStats.IndexLoaded || checkpointedStats.IndexRebuilt || checkpointedStats.TailRecordsRead != 0 {
+		t.Fatalf("replayed tail was not checkpointed on close: %#v", checkpointedStats)
+	}
+	if checkpointedProjection.Count != 2 || checkpointedProjection.Sum != 3 {
+		t.Fatalf("checkpointed tail projection = %#v", checkpointedProjection)
+	}
+}
+
+func TestJournalCleanCloseDoesNotRewriteIndex(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "session.jsonl")
+	writeLegacyJournal(t, path, 1)
+	identity := Identity{ID: "session-test", Generation: "generation-1"}
+	journal, err := Open(context.Background(), path, identity, &countingProjection{}, Options{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := journal.Close(); err != nil {
+		t.Fatal(err)
+	}
+
+	indexPath := SidecarPath(path)
+	fixedTime := time.Unix(1_700_000_000, 0)
+	if err := os.Chtimes(indexPath, fixedTime, fixedTime); err != nil {
+		t.Fatal(err)
+	}
+	reopened, err := Open(context.Background(), path, identity, &countingProjection{}, Options{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := reopened.Close(); err != nil {
+		t.Fatal(err)
+	}
+	info, err := os.Stat(indexPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !info.ModTime().Equal(fixedTime) {
+		t.Fatalf("clean close rewrote index: got=%s want=%s", info.ModTime(), fixedTime)
 	}
 }
 

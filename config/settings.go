@@ -76,19 +76,29 @@ type Settings struct {
 	UpdateCheckEnabled *bool  `toml:"update_check_enabled,omitempty" json:"update_check_enabled,omitempty"`
 
 	// Agent
-	MaxIteration            *int   `toml:"max_iteration,omitempty" json:"max_iteration,omitempty"`
-	ModelMaxRetries         *int   `toml:"model_max_retries,omitempty" json:"model_max_retries,omitempty"`
-	AgentIdleTimeoutSeconds *int   `toml:"agent_idle_timeout_seconds,omitempty" json:"agent_idle_timeout_seconds,omitempty"`
-	AgentToolResultLimitKB  *int   `toml:"agent_tool_result_limit_kb,omitempty" json:"agent_tool_result_limit_kb,omitempty"`
-	AgentToolParallelism    *int   `toml:"agent_tool_parallelism,omitempty" json:"agent_tool_parallelism,omitempty"`
-	LLMInputLogEnabled      *bool  `toml:"llm_input_log_enabled,omitempty" json:"llm_input_log_enabled,omitempty"`
-	TraceCaptureLevel       string `toml:"trace_capture_level,omitempty" json:"trace_capture_level,omitempty"`
-	TraceExporter           string `toml:"trace_exporter,omitempty" json:"trace_exporter,omitempty"`
-	TraceRetentionRuns      *int   `toml:"trace_retention_runs,omitempty" json:"trace_retention_runs,omitempty"`
-	PlanModeDefault         *bool  `toml:"plan_mode_default,omitempty" json:"plan_mode_default,omitempty"`
-	IDEStoryTellerID        string `toml:"ide_story_teller_id,omitempty" json:"ide_story_teller_id,omitempty"`
-	IDEImagePresetID        string `toml:"ide_image_preset_id,omitempty" json:"ide_image_preset_id,omitempty"`
-	WritingSkillDefault     string `toml:"writing_skill_default,omitempty" json:"writing_skill_default,omitempty"`
+	MaxIteration            *int `toml:"max_iteration,omitempty" json:"max_iteration,omitempty"`
+	ModelMaxRetries         *int `toml:"model_max_retries,omitempty" json:"model_max_retries,omitempty"`
+	AgentIdleTimeoutSeconds *int `toml:"agent_idle_timeout_seconds,omitempty" json:"agent_idle_timeout_seconds,omitempty"`
+	AgentToolResultLimitKB  *int `toml:"agent_tool_result_limit_kb,omitempty" json:"agent_tool_result_limit_kb,omitempty"`
+	AgentToolParallelism    *int `toml:"agent_tool_parallelism,omitempty" json:"agent_tool_parallelism,omitempty"`
+
+	LLMInputLogEnabled  *bool  `toml:"llm_input_log_enabled,omitempty" json:"llm_input_log_enabled,omitempty"`
+	TraceCaptureLevel   string `toml:"trace_capture_level,omitempty" json:"trace_capture_level,omitempty"`
+	TraceExporter       string `toml:"trace_exporter,omitempty" json:"trace_exporter,omitempty"`
+	TraceRetentionRuns  *int   `toml:"trace_retention_runs,omitempty" json:"trace_retention_runs,omitempty"`
+	PlanModeDefault     *bool  `toml:"plan_mode_default,omitempty" json:"plan_mode_default,omitempty"`
+	IDEStoryTellerID    string `toml:"ide_story_teller_id,omitempty" json:"ide_story_teller_id,omitempty"`
+	IDEImagePresetID    string `toml:"ide_image_preset_id,omitempty" json:"ide_image_preset_id,omitempty"`
+	WritingSkillDefault string `toml:"writing_skill_default,omitempty" json:"writing_skill_default,omitempty"`
+
+	// Terminal (the AgentChat terminal tabs). A terminal runs arbitrary commands on this
+	// machine, so `enabled` stays a user-level master switch that a workspace may also turn off.
+	TerminalEnabled       *bool  `toml:"terminal_enabled,omitempty" json:"terminal_enabled,omitempty"`
+	TerminalShell         string `toml:"terminal_shell,omitempty" json:"terminal_shell,omitempty"`
+	TerminalCodexCommand  string `toml:"terminal_codex_command,omitempty" json:"terminal_codex_command,omitempty"`
+	TerminalClaudeCommand string `toml:"terminal_claude_command,omitempty" json:"terminal_claude_command,omitempty"`
+	TerminalMaxSessions   *int   `toml:"terminal_max_sessions,omitempty" json:"terminal_max_sessions,omitempty"`
+	TerminalScrollbackKB  *int   `toml:"terminal_scrollback_kb,omitempty" json:"terminal_scrollback_kb,omitempty"`
 
 	// 游戏模式
 	InteractiveStoryTellerID   string   `toml:"interactive_story_teller_id,omitempty" json:"interactive_story_teller_id,omitempty"`
@@ -110,6 +120,12 @@ const (
 	DefaultTraceCaptureLevel       = "summary"
 	DefaultTraceExporter           = "local"
 	DefaultTraceRetentionRuns      = 100
+	DefaultTerminalCodexCommand    = "codex"
+	DefaultTerminalClaudeCommand   = "claude"
+	DefaultTerminalMaxSessions     = 8
+	MaxTerminalSessions            = 64
+	DefaultTerminalScrollbackKB    = 256
+	MaxTerminalScrollbackKB        = 4096
 )
 
 // DefaultSettings 返回内置默认配置（最低优先级）。
@@ -149,6 +165,11 @@ func DefaultSettings() Settings {
 		AgentIdleTimeoutSeconds:     intPtr(DefaultAgentIdleTimeoutSeconds),
 		AgentToolResultLimitKB:      intPtr(DefaultAgentToolResultLimitKB),
 		AgentToolParallelism:        intPtr(DefaultAgentToolParallelism),
+		TerminalEnabled:             boolPtr(true),
+		TerminalCodexCommand:        DefaultTerminalCodexCommand,
+		TerminalClaudeCommand:       DefaultTerminalClaudeCommand,
+		TerminalMaxSessions:         intPtr(DefaultTerminalMaxSessions),
+		TerminalScrollbackKB:        intPtr(DefaultTerminalScrollbackKB),
 		LLMInputLogEnabled:          boolPtr(false),
 		TraceCaptureLevel:           DefaultTraceCaptureLevel,
 		TraceExporter:               DefaultTraceExporter,
@@ -309,6 +330,24 @@ func Merge(parent, child Settings) Settings {
 	}
 	if child.AgentToolParallelism != nil {
 		out.AgentToolParallelism = child.AgentToolParallelism
+	}
+	if child.TerminalEnabled != nil {
+		out.TerminalEnabled = child.TerminalEnabled
+	}
+	if child.TerminalShell != "" {
+		out.TerminalShell = child.TerminalShell
+	}
+	if child.TerminalCodexCommand != "" {
+		out.TerminalCodexCommand = child.TerminalCodexCommand
+	}
+	if child.TerminalClaudeCommand != "" {
+		out.TerminalClaudeCommand = child.TerminalClaudeCommand
+	}
+	if child.TerminalMaxSessions != nil {
+		out.TerminalMaxSessions = child.TerminalMaxSessions
+	}
+	if child.TerminalScrollbackKB != nil {
+		out.TerminalScrollbackKB = child.TerminalScrollbackKB
 	}
 	if child.LLMInputLogEnabled != nil {
 		out.LLMInputLogEnabled = child.LLMInputLogEnabled
@@ -648,6 +687,11 @@ func sanitizeEditableSettings(s Settings) Settings {
 	s.AgentIdleTimeoutSeconds = normalizeAgentIdleTimeoutSeconds(s.AgentIdleTimeoutSeconds)
 	s.AgentToolResultLimitKB = normalizeAgentToolResultLimitKB(s.AgentToolResultLimitKB)
 	s.AgentToolParallelism = normalizeAgentToolParallelism(s.AgentToolParallelism)
+	s.TerminalShell = strings.TrimSpace(s.TerminalShell)
+	s.TerminalCodexCommand = strings.TrimSpace(s.TerminalCodexCommand)
+	s.TerminalClaudeCommand = strings.TrimSpace(s.TerminalClaudeCommand)
+	s.TerminalMaxSessions = normalizeTerminalMaxSessions(s.TerminalMaxSessions)
+	s.TerminalScrollbackKB = normalizeTerminalScrollbackKB(s.TerminalScrollbackKB)
 	s.WebAccess = sanitizeWebAccessSettings(s.WebAccess)
 	s.ModelProfiles = sanitizeModelProfiles(s.ModelProfiles)
 	s.ImageAPIProfiles = sanitizeImageAPIProfiles(s.ImageAPIProfiles)
@@ -703,6 +747,34 @@ func normalizeAgentToolParallelism(value *int) *int {
 	}
 	if *value > MaxAgentToolParallelism {
 		return intPtr(MaxAgentToolParallelism)
+	}
+	return value
+}
+
+// normalizeTerminalMaxSessions clamps the concurrent session count into [1, MaxTerminalSessions].
+func normalizeTerminalMaxSessions(value *int) *int {
+	if value == nil {
+		return nil
+	}
+	if *value <= 0 {
+		return intPtr(DefaultTerminalMaxSessions)
+	}
+	if *value > MaxTerminalSessions {
+		return intPtr(MaxTerminalSessions)
+	}
+	return value
+}
+
+// normalizeTerminalScrollbackKB clamps the scrollback buffer into [1, MaxTerminalScrollbackKB] KB.
+func normalizeTerminalScrollbackKB(value *int) *int {
+	if value == nil {
+		return nil
+	}
+	if *value <= 0 {
+		return intPtr(DefaultTerminalScrollbackKB)
+	}
+	if *value > MaxTerminalScrollbackKB {
+		return intPtr(MaxTerminalScrollbackKB)
 	}
 	return value
 }

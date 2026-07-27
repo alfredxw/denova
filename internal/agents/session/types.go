@@ -29,6 +29,13 @@ const (
 	AskPending           = "pending"
 	AskAnswered          = "answered"
 	AskCancelled         = "cancelled"
+
+	// Display phases classify root assistant prose without changing the
+	// canonical transcript that is assembled for the model.
+	DisplayPhaseCandidate = "candidate"
+	DisplayPhaseProgress  = "progress"
+	DisplayPhaseFinal     = "final"
+	DisplayPhasePartial   = "partial"
 )
 
 // HistoryEntry 表示用于前端展示的会话历史记录。
@@ -38,6 +45,7 @@ type HistoryEntry struct {
 	// DisplaySegmentID distinguishes display transcript identity from a
 	// canonical message ID when both are projected as ordinary history rows.
 	DisplaySegmentID string               `json:"display_segment_id,omitempty"`
+	DisplayPhase     string               `json:"display_phase,omitempty"`
 	Role             string               `json:"role,omitempty"`
 	Content          string               `json:"content,omitempty"`
 	Name             string               `json:"name,omitempty"`
@@ -201,6 +209,7 @@ type messageRecord struct {
 type DisplayEvent struct {
 	ID           string               `json:"id,omitempty"`
 	Role         string               `json:"role"`
+	DisplayPhase string               `json:"display_phase,omitempty"`
 	Content      string               `json:"content,omitempty"`
 	Name         string               `json:"name,omitempty"`
 	Args         string               `json:"args,omitempty"`

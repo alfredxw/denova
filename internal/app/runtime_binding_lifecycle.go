@@ -5,9 +5,10 @@ import (
 	"strings"
 )
 
-// closeWorkspaceRuntimeBindings evicts durable harness actors only after the
-// App workspace generation has drained. ChatService always owns the durable
-// harness, including for isolated in-memory tests.
+// closeWorkspaceRuntimeBindings evicts foreground-owned harness actors only
+// after the App workspace generation has drained. User-level AgentChat actors
+// deliberately survive because changing the title-bar book does not change
+// their project/session binding.
 func (a *App) closeWorkspaceRuntimeBindings(ctx context.Context, workspaces ...string) error {
 	if a == nil || a.chatService == nil {
 		return nil
@@ -22,7 +23,7 @@ func (a *App) closeWorkspaceRuntimeBindings(ctx context.Context, workspaces ...s
 			continue
 		}
 		seen[workspace] = struct{}{}
-		if err := a.chatService.CloseWorkspaceBindings(ctx, workspace); err != nil {
+		if err := a.chatService.CloseForegroundWorkspaceBindings(ctx, workspace); err != nil {
 			return err
 		}
 	}
