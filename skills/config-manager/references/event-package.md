@@ -11,7 +11,7 @@ This resource uses `user` scope and complete editable-resource replacement. Upda
 | `id` | string | create: recommended | Stable lowercase letters/digits/hyphen ID. |
 | `name` | string | yes | User-visible package name, up to 256 bytes. |
 | `description` | string | no | Package purpose, up to 1024 bytes. |
-| `events` | object[] | no | Complete ordered card list, at most 24 cards. |
+| `events` | object[] | no | Complete ordered card list. The backend does not impose an arbitrary card-count limit. |
 
 Each event card contains:
 
@@ -22,7 +22,7 @@ Each event card contains:
 | `description_markdown` | string | yes | Reusable situation design, at most 8,000 characters. |
 | `enabled` | boolean | yes | Whether the card can be scheduled. |
 | `category` | string | recommended | Grouping label; defaults to `type_name`. |
-| `tags` | string[] | no | Up to 24 distinct search/compatibility tags. |
+| `tags` | string[] | no | Distinct search/compatibility tags; all supplied tags are retained. |
 | `intensity` | string | no | Scheduling hint; defaults to `medium`. Prefer a consistent vocabulary such as `low`, `medium`, `high`. |
 
 `description_markdown` should cover the trigger scene, background fusion, rough beginning/development/turn/payoff, recovery or lasting consequences, reward or cost, and constraints that preserve player choice. Use Lore facts only after reading them. Do not encode a mandatory player decision or fixed future chapter.

@@ -49,7 +49,7 @@ func TestLibraryMaterializesBuiltins(t *testing.T) {
 
 func TestPresetPromptNormalizesAndRoundTrips(t *testing.T) {
 	lib := NewLibrary(t.TempDir())
-	longPrompt := "  " + strings.Repeat("图", MaxPromptChars+20) + "  "
+	longPrompt := "  " + strings.Repeat("图", MaxPromptChars) + "  "
 	created, err := lib.Create(Preset{
 		ID:          "visual",
 		Name:        "视觉方案",
@@ -77,6 +77,19 @@ func TestPresetPromptNormalizesAndRoundTrips(t *testing.T) {
 	}
 	if loaded.PromptForTargets(TargetToolRequest) == "" {
 		t.Fatalf("tool request prompt should be readable: %#v", loaded)
+	}
+}
+
+func TestPresetRejectsOversizedPromptBeforePersisting(t *testing.T) {
+	lib := NewLibrary(t.TempDir())
+	_, err := lib.Create(Preset{
+		ID: "oversized", Name: "超长方案", Prompt: strings.Repeat("图", MaxPromptChars+1),
+	})
+	if err == nil || !strings.Contains(err.Error(), "prompt") {
+		t.Fatalf("oversized prompt error = %v", err)
+	}
+	if _, getErr := lib.Get("oversized"); !os.IsNotExist(getErr) {
+		t.Fatalf("oversized preset must not be persisted: %v", getErr)
 	}
 }
 

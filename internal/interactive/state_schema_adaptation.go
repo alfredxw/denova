@@ -255,9 +255,6 @@ func applyActorStateTemplateSchemaOp(system StoryDirectorActorStateSystem, op Ac
 		if normalizeActorStateID(op.Template.ID) == "" {
 			return system, fmt.Errorf("新增状态模板缺少合法 template.id")
 		}
-		if len(op.Template.Fields) > maxActorStateFields {
-			return system, fmt.Errorf("新增状态模板字段超过上限: template=%s fields=%d limit=%d", op.Template.ID, len(op.Template.Fields), maxActorStateFields)
-		}
 		for _, field := range op.Template.Fields {
 			if err := validateActorStateAdaptationField(field); err != nil {
 				return system, fmt.Errorf("新增状态模板 %s: %w", op.Template.ID, err)
@@ -269,9 +266,6 @@ func applyActorStateTemplateSchemaOp(system StoryDirectorActorStateSystem, op Ac
 		}
 		if actorStateTemplateByID(system, templates[0].ID).ID != "" {
 			return system, fmt.Errorf("新增状态模板已存在: %s", templates[0].ID)
-		}
-		if len(system.Templates) >= maxInteractiveListItems {
-			return system, fmt.Errorf("状态模板数量已达到上限: %d", maxInteractiveListItems)
 		}
 		system.Templates = append(system.Templates, templates[0])
 		return system, nil
@@ -322,9 +316,6 @@ func applyActorStateFieldSchemaOp(template ActorStateTemplate, op ActorStateFiel
 		}
 		if _, ok := actorStateFieldByID(template, actorStateFieldID(fields[0])); ok {
 			return template, fmt.Errorf("新增状态字段已存在: %s", actorStateFieldID(fields[0]))
-		}
-		if len(template.Fields) >= maxActorStateFields {
-			return template, fmt.Errorf("状态字段数量已达到上限: %d", maxActorStateFields)
 		}
 		template.Fields = append(template.Fields, fields[0])
 		template.Fields = normalizeActorStateFields(template.Fields)
@@ -405,9 +396,6 @@ func applyActorStateInitialActorSchemaOp(system StoryDirectorActorStateSystem, o
 		system.InitialActors = append(system.InitialActors[:index], system.InitialActors[index+1:]...)
 	default:
 		return system, fmt.Errorf("初始 Actor 操作无效: %s", op.Op)
-	}
-	if len(system.InitialActors) > maxInteractiveListItems {
-		return system, fmt.Errorf("初始 Actor 数量超过上限: %d", maxInteractiveListItems)
 	}
 	return system, nil
 }

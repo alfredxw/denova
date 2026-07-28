@@ -151,8 +151,8 @@ func TestInteractiveDirectorEventReadUsesIndependentCapabilityWithoutOpeningWork
 	}
 }
 
-func TestEventCardReadScopeLimitsUniqueCardsAcrossParallelReads(t *testing.T) {
-	scope := testEventCardReadScope(maxDirectorRunEventCards + 4)
+func TestEventCardReadScopeAllowsEveryFrozenCardAcrossParallelReads(t *testing.T) {
+	scope := testEventCardReadScope(24)
 	start := make(chan struct{})
 	results := make(chan error, len(scope.cards))
 	var group sync.WaitGroup
@@ -170,26 +170,14 @@ func TestEventCardReadScopeLimitsUniqueCardsAcrossParallelReads(t *testing.T) {
 	close(results)
 
 	succeeded := 0
-	limited := 0
 	for err := range results {
-		switch {
-		case err == nil:
-			succeeded++
-		case strings.Contains(err.Error(), "at most 8 unique event cards"):
-			limited++
-		default:
+		if err != nil {
 			t.Fatalf("unexpected parallel read error: %v", err)
 		}
+		succeeded++
 	}
-	if succeeded != maxDirectorRunEventCards || limited != len(scope.cards)-maxDirectorRunEventCards {
-		t.Fatalf("parallel budget: succeeded=%d limited=%d", succeeded, limited)
-	}
-
-	for ref := range scope.read {
-		if _, err := scope.readCard(context.Background(), eventCardReadInput{Path: "event://" + ref}); err != nil {
-			t.Fatalf("re-reading %q consumed another budget slot: %v", ref, err)
-		}
-		break
+	if succeeded != len(scope.cards) {
+		t.Fatalf("parallel reads: succeeded=%d want=%d", succeeded, len(scope.cards))
 	}
 }
 
@@ -222,6 +210,5 @@ func testEventCardReadScope(count int) *eventCardReadScope {
 		storyID: "story-1",
 		turnID:  "turn-1",
 		cards:   cards,
-		read:    make(map[string]struct{}, maxDirectorRunEventCards),
 	}
 }

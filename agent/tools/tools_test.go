@@ -217,10 +217,34 @@ func TestReadRejectsTraversalEscapingSymlinkOversizeAndBinary(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	for _, arguments := range []string{`{"path":"../escape.txt"}`, `{"path":"long.txt"}`, `{"path":"binary.txt"}`} {
+	for _, arguments := range []string{`{"path":"../escape.txt"}`, `{"path":"binary.txt"}`} {
 		if _, err := definition.Tool.Run(context.Background(), arguments); err == nil {
 			t.Fatalf("unsafe read succeeded: %s", arguments)
 		}
+	}
+	first, err := definition.Tool.Run(context.Background(), `{"path":"long.txt"}`)
+	if err != nil {
+		t.Fatalf("long-line read should return a byte continuation: %v", err)
+	}
+	var firstEnvelope readEnvelope
+	if err := json.Unmarshal(first.Details, &firstEnvelope); err != nil {
+		t.Fatal(err)
+	}
+	if firstEnvelope.Limits.NextOffset != 1 || firstEnvelope.Limits.NextByteOffset <= 0 || !firstEnvelope.Limits.Truncated {
+		t.Fatalf("long-line continuation = %#v", firstEnvelope.Limits)
+	}
+	continued, err := definition.Tool.Run(context.Background(), fmt.Sprintf(
+		`{"path":"long.txt","offset":1,"byte_offset":%d}`, firstEnvelope.Limits.NextByteOffset,
+	))
+	if err != nil {
+		t.Fatalf("continue long line: %v", err)
+	}
+	var continuedEnvelope readEnvelope
+	if err := json.Unmarshal(continued.Details, &continuedEnvelope); err != nil {
+		t.Fatal(err)
+	}
+	if continuedEnvelope.Limits.ByteOffset != firstEnvelope.Limits.NextByteOffset {
+		t.Fatalf("continued byte offset = %#v", continuedEnvelope.Limits)
 	}
 	if runtime.GOOS != "windows" {
 		if _, err := definition.Tool.Run(context.Background(), `{"path":"outside/escape.txt"}`); err == nil {
@@ -316,6 +340,25 @@ func TestLocalWorkspaceGlobAndGrep(t *testing.T) {
 	if err != nil || !containsTestString(ignored.Entries, "chapters/ignored.md") {
 		t.Fatalf("glob without gitignore = %#v, %v", ignored, err)
 	}
+	firstGlobPage, err := workspace.Glob(context.Background(), GlobRequest{
+		Paths: []string{"**/*.md", "empty-*"}, Hidden: true, Gitignore: true, Limit: 1,
+	})
+	if err != nil || len(firstGlobPage.Entries) != 1 || !firstGlobPage.Truncated || firstGlobPage.NextCursor == "" {
+		t.Fatalf("first glob page = %#v, %v", firstGlobPage, err)
+	}
+	secondGlobPage, err := workspace.Glob(context.Background(), GlobRequest{
+		Paths: []string{"**/*.md", "empty-*"}, Hidden: true, Gitignore: true, Limit: 1, Cursor: firstGlobPage.NextCursor,
+	})
+	if err != nil || len(secondGlobPage.Entries) != 1 || secondGlobPage.Entries[0] == firstGlobPage.Entries[0] {
+		t.Fatalf("second glob page = %#v, %v", secondGlobPage, err)
+	}
+	manyPaths := make([]string, 300)
+	for index := range manyPaths {
+		manyPaths[index] = "chapters/one.md"
+	}
+	if result, err := workspace.Glob(context.Background(), GlobRequest{Paths: manyPaths, Hidden: true, Gitignore: true}); err != nil || len(result.Entries) != 1 {
+		t.Fatalf("glob should accept more than 256 requested paths: result=%#v err=%v", result, err)
+	}
 	content, err := workspace.Grep(context.Background(), GrepRequest{
 		Pattern: "dragon", Paths: []string{"chapters/*.md"}, Mode: "content",
 		CaseSensitive: true, Gitignore: true, Limit: 1,
@@ -355,19 +398,18 @@ func TestLocalWorkspaceGrepUsesConfiguredRipgrep(t *testing.T) {
 	}
 }
 
-func TestLocalWorkspaceGrepRejectsOversizedCursorWindow(t *testing.T) {
+func TestGrepCursorSupportsLargeContinuationOffsets(t *testing.T) {
 	request := GrepRequest{
 		Pattern: "dragon", Paths: []string{"."}, Mode: "content",
 		CaseSensitive: true, Gitignore: true, Limit: 10,
 	}
-	cursor, err := encodeGrepCursor(maxGrepCursorOffset+1, request)
+	cursor, err := encodeGrepCursor(50_000, request)
 	if err != nil {
 		t.Fatal(err)
 	}
-	request.Cursor = cursor
-	workspace := mustOpenTestWorkspace(t, t.TempDir())
-	if _, err := workspace.Grep(context.Background(), request); err == nil || !strings.Contains(err.Error(), "pagination window") {
-		t.Fatalf("oversized cursor error = %v", err)
+	offset, err := decodeGrepCursor(cursor, request)
+	if err != nil || offset != 50_000 {
+		t.Fatalf("large continuation cursor offset=%d err=%v", offset, err)
 	}
 }
 

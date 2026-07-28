@@ -1,5 +1,5 @@
 import { BookMarked, Database, LibraryBig } from 'lucide-react'
-import { useEffect, useMemo } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { AdaptiveSurface } from '@/components/layout/adaptive-surface'
 import { ResourceDirectory } from '@/components/resource-directory/ResourceDirectory'
@@ -40,6 +40,7 @@ export function LoreWorkspaceTab({
   onReferenceItem,
 }: LoreWorkspaceTabProps) {
   const { t } = useTranslation()
+  const [searchQuery, setSearchQuery] = useState('')
   const lore = useLoreWorkspace({
     workspace,
     onFlushHandlerChange: onEditorFlushHandlerChange,
@@ -116,6 +117,8 @@ export function LoreWorkspaceTab({
           }}
           saving={lore.autosaveStatus === 'saving'}
           searchPlaceholder={t('loreWorkspace.search')}
+          query={searchQuery}
+          onQueryChange={setSearchQuery}
           emptySectionsLast
           headerContent={
             <div className="grid gap-2">
@@ -172,6 +175,7 @@ export function LoreWorkspaceTab({
         }}
         desktopGridClassName="grid-cols-[15rem_minmax(0,1fr)]"
         collapseAt={720}
+        mobilePaneScope="surface"
       >
         {({ isMobile, openLeft }) =>
           lore.loading && !lore.draft ? (
@@ -195,6 +199,7 @@ export function LoreWorkspaceTab({
               navigationIntent={
                 navigationTargetID === lore.activeId ? navigationIntent : null
               }
+              highlightQuery={searchQuery}
               onDraftChange={lore.setDraft}
               onTagDraftChange={lore.setTagDraft}
               onPrepareSnapshot={lore.prepareSnapshot}

@@ -22,7 +22,7 @@ Each slot contains:
 | `name` | string | User-visible label; defaults to `id`. |
 | `target` | `agent_system` or `tool_request` | Stable Image Agent policy or constraints appended to the generation request. |
 | `enabled` | boolean | Whether the slot contributes. |
-| `content` | string | Reusable visual instruction, at most 4,000 characters per slot. |
+| `content` | string | Reusable visual instruction, at most 4,000 characters per slot. Oversized content rejects the complete mutation before writing. |
 
 Keep slots about medium, composition, lighting, color, texture, mood, and negative visual constraints. Do not include story facts, chapter prose, temporary state, API keys, model selection, tool rules, text/logo requests, watermarks, or future-story spoilers.
 

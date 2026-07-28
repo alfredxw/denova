@@ -15,7 +15,7 @@ const initializeStoryStateSchemaToolName = "initialize_story_state_schema"
 
 type openingStateSchemaBatchToolInput struct {
 	Summary  string                                 `json:"summary,omitempty" jsonschema_description:"本次开局状态结构审查的简短摘要。"`
-	Items    []openingStateSchemaBatchItemToolInput `json:"items" jsonschema:"maxItems=16" jsonschema_description:"本次新增或重试的独立提案项。只重传 rejected/blocked 项；已 accepted 的 item_id 不要重传。"`
+	Items    []openingStateSchemaBatchItemToolInput `json:"items" jsonschema_description:"本次新增或重试的独立提案项。后端会逐项返回 accepted/rejected/blocked；只重传失败项。"`
 	Finalize bool                                   `json:"finalize" jsonschema_description:"本批成功后是否完成草稿。存在 rejected/blocked 项时后端不会 finalize。"`
 }
 

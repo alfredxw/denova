@@ -17,10 +17,7 @@ import (
 
 const (
 	tellerVersion                  = 9
-	MaxStyleRefsPerRule            = 12
-	MaxStyleContentChars           = 8000
 	MaxEventCardDescriptionChars   = 8000
-	maxTellerEventCardsPerPackage  = 24
 	maxEventCardSummaryChars       = 240
 	maxEventCardContextSummaryByte = 900
 )
@@ -362,7 +359,7 @@ func normalizeTeller(teller Teller) Teller {
 	teller.Name = strings.TrimSpace(teller.Name)
 	teller.Description = strings.TrimSpace(teller.Description)
 	teller.Modes = narrativestyle.NormalizeModes(teller.Modes)
-	teller.StyleRefs = normalizeStyleRefs(teller.StyleRefs, MaxStyleRefsPerRule)
+	teller.StyleRefs = normalizeStyleRefs(teller.StyleRefs)
 	teller.StyleRules = normalizeStyleRules(teller.StyleRules)
 	teller.ContextPolicy = normalizeContextPolicy(teller.ContextPolicy)
 	teller.Slots = normalizePromptSlots(teller.Slots)
@@ -376,11 +373,11 @@ func normalizeStyleRules(rules []StyleRule) []StyleRule {
 		if scene == "" {
 			continue
 		}
-		refs := normalizeStyleRefs(rule.StyleRefs, MaxStyleRefsPerRule)
+		refs := normalizeStyleRefs(rule.StyleRefs)
 		contents := make([]string, 0, len(rule.StyleContents))
 		seen := map[string]bool{}
 		for _, content := range rule.StyleContents {
-			content = truncateRunes(strings.TrimSpace(content), MaxStyleContentChars)
+			content = strings.TrimSpace(content)
 			if content == "" || seen[content] {
 				continue
 			}
@@ -395,10 +392,7 @@ func normalizeStyleRules(rules []StyleRule) []StyleRule {
 	return result
 }
 
-func normalizeStyleRefs(input []string, max int) []string {
-	if max <= 0 {
-		return nil
-	}
+func normalizeStyleRefs(input []string) []string {
 	refs := make([]string, 0, len(input))
 	seen := map[string]bool{}
 	for _, ref := range input {
@@ -408,9 +402,6 @@ func normalizeStyleRefs(input []string, max int) []string {
 		}
 		seen[ref] = true
 		refs = append(refs, ref)
-		if len(refs) >= max {
-			break
-		}
 	}
 	return refs
 }
@@ -488,9 +479,6 @@ func normalizeTellerEventPackagesNoDefault(packages []TellerEventPackage) []Tell
 	if packages == nil {
 		return []TellerEventPackage{}
 	}
-	if len(packages) > maxInteractiveListItems {
-		packages = packages[:maxInteractiveListItems]
-	}
 	result := make([]TellerEventPackage, 0, len(packages))
 	seen := map[string]bool{}
 	for _, pkg := range packages {
@@ -513,9 +501,6 @@ func normalizeTellerEventPackagesNoDefault(packages []TellerEventPackage) []Tell
 }
 
 func normalizeTellerEventCards(events []TellerEventCard, packageID string) []TellerEventCard {
-	if len(events) > maxTellerEventCardsPerPackage {
-		events = events[:maxTellerEventCardsPerPackage]
-	}
 	result := make([]TellerEventCard, 0, len(events))
 	seen := map[string]bool{}
 	for _, event := range events {
@@ -527,7 +512,7 @@ func normalizeTellerEventCards(events []TellerEventCard, packageID string) []Tel
 			continue
 		}
 		event.TypeName = strings.TrimSpace(event.TypeName)
-		event.DescriptionMarkdown = truncateRunes(strings.TrimSpace(event.DescriptionMarkdown), MaxEventCardDescriptionChars)
+		event.DescriptionMarkdown = strings.TrimSpace(event.DescriptionMarkdown)
 		if event.TypeName == "" && event.DescriptionMarkdown == "" {
 			continue
 		}
@@ -542,7 +527,7 @@ func normalizeTellerEventCards(events []TellerEventCard, packageID string) []Tel
 		if event.Category == "" {
 			event.Category = event.TypeName
 		}
-		event.Tags = normalizeStringListLimit(event.Tags, maxInteractiveListItems)
+		event.Tags = normalizeStringList(event.Tags)
 		event.Intensity = strings.TrimSpace(event.Intensity)
 		if event.Intensity == "" {
 			event.Intensity = "medium"
@@ -553,7 +538,7 @@ func normalizeTellerEventCards(events []TellerEventCard, packageID string) []Tel
 }
 
 func normalizeRuleChecks(checks []RuleCheck) []RuleCheck {
-	result := make([]RuleCheck, 0, 1)
+	result := make([]RuleCheck, 0, len(checks))
 	for i, check := range checks {
 		if ruleCheckBlank(check) {
 			continue
@@ -563,7 +548,6 @@ func normalizeRuleChecks(checks []RuleCheck) []RuleCheck {
 			continue
 		}
 		result = append(result, check)
-		break
 	}
 	return result
 }
@@ -585,14 +569,11 @@ func ruleCheckBlank(check RuleCheck) bool {
 }
 
 func normalizeStateOps(ops []StateOp) []StateOp {
-	if len(ops) > maxInteractiveListItems {
-		ops = ops[:maxInteractiveListItems]
-	}
 	return normalizeStateOpsUnbounded(ops)
 }
 
-// normalizeStateOpsUnbounded is reserved for already validated operation
-// batches whose public contract intentionally has no item-count limit.
+// normalizeStateOpsUnbounded keeps the explicit name used by public mutation
+// paths while sharing the same lossless item-count semantics.
 func normalizeStateOpsUnbounded(ops []StateOp) []StateOp {
 	result := make([]StateOp, 0, len(ops))
 	for _, op := range ops {

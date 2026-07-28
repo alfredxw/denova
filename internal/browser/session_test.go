@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -12,6 +13,17 @@ import (
 	"sync"
 	"testing"
 )
+
+func TestNormalizeSelectValuesHasNoArbitraryCountLimit(t *testing.T) {
+	values := make([]string, 24)
+	for index := range values {
+		values[index] = fmt.Sprintf("option-%02d", index)
+	}
+	normalized, err := normalizeSelectValues(values)
+	if err != nil || len(normalized) != len(values) {
+		t.Fatalf("normalize select values = %d, %v", len(normalized), err)
+	}
+}
 
 type fakeDriver struct {
 	mu       sync.Mutex

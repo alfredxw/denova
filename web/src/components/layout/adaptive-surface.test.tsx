@@ -67,6 +67,30 @@ describe('AdaptiveSurface', () => {
     expect(screen.getByTestId('right-pane').closest('[data-state="open"]')).toBeTruthy()
   })
 
+  it('can contain a collapsed pane inside the adaptive surface', async () => {
+    setMobileViewport(true)
+    const user = userEvent.setup()
+    const { container } = render(
+      <AdaptiveSurface
+        mobilePaneScope="surface"
+        left={{ id: 'left', title: 'Lore directory', side: 'left', content: <div data-testid="contained-pane">Lore items</div> }}
+      >
+        {({ openLeft }) => <button type="button" onClick={openLeft}>Open contained pane</button>}
+      </AdaptiveSurface>,
+    )
+
+    await user.click(screen.getByRole('button', { name: 'Open contained pane' }))
+
+    const host = container.querySelector('[data-nova-mobile-pane-host="true"]')
+    const drawer = screen.getByTestId('contained-pane').closest('[data-nova-mobile-pane-content="true"]')
+    const overlay = container.querySelector('[data-nova-mobile-pane-overlay="true"]')
+    expect(host as HTMLElement).toContainElement(drawer as HTMLElement)
+    expect(drawer).toHaveClass('absolute')
+    expect(drawer).not.toHaveClass('fixed')
+    expect(overlay).toHaveClass('absolute')
+    expect(overlay).not.toHaveClass('fixed')
+  })
+
   it('collapses panes at its own width on desktop and expands them again', async () => {
     const resize = installResizeObserverHarness()
     const user = userEvent.setup()

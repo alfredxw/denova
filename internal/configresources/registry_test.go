@@ -2,7 +2,10 @@ package configresources
 
 import (
 	"context"
+	"errors"
+	"fmt"
 	"reflect"
+	"strings"
 	"testing"
 )
 
@@ -11,9 +14,11 @@ type testAdapter struct{ name string }
 func (a testAdapter) Descriptor() Descriptor {
 	return Descriptor{Name: a.name, Operations: []string{ReadList, ReadGet, ApplyCreate}}
 }
-func (a testAdapter) List(context.Context, ReadRequest) (any, error) { return []string{"list"}, nil }
-func (a testAdapter) Get(context.Context, ReadRequest) (any, error)  { return []string{"get"}, nil }
-func (a testAdapter) Apply(context.Context, Mutation) (any, error)   { return "applied", nil }
+func (a testAdapter) List(context.Context, ReadRequest) (any, error) {
+	return NewCatalog([]string{"list"}), nil
+}
+func (a testAdapter) Get(context.Context, ReadRequest) (any, error) { return "get", nil }
+func (a testAdapter) Apply(context.Context, Mutation) (any, error)  { return "applied", nil }
 
 func TestRegistryRoutesAndSortsResources(t *testing.T) {
 	registry, err := New(testAdapter{name: "zeta"}, testAdapter{name: "alpha"})
@@ -28,7 +33,11 @@ func TestRegistryRoutesAndSortsResources(t *testing.T) {
 		t.Fatalf("descriptor order = %v", got)
 	}
 	got, err := registry.Read(context.Background(), ReadRequest{Operation: ReadGet, Resource: "alpha", IDs: []string{"one"}})
-	if err != nil || !reflect.DeepEqual(got, []string{"get"}) {
+	want := GetResult{
+		Schema: "config.read.v1", Status: "success", Resource: "alpha",
+		Items: []any{"get"}, Processed: 1, Total: 1,
+	}
+	if err != nil || !reflect.DeepEqual(got, want) {
 		t.Fatalf("Read() = %#v, %v", got, err)
 	}
 }
@@ -84,6 +93,126 @@ func TestRegistryEnforcesDeclaredOperationsAndScopes(t *testing.T) {
 	}
 	if _, err := registry.Read(context.Background(), ReadRequest{Operation: ReadList, Resource: "resource", Scope: "workspace"}); err == nil {
 		t.Fatal("Read accepted an undeclared scope")
+	}
+}
+
+type partialReadAdapter struct {
+	catalog []string
+}
+
+func (adapter *partialReadAdapter) Descriptor() Descriptor {
+	return Descriptor{Name: "partial", Operations: []string{ReadList, ReadGet}}
+}
+func (adapter *partialReadAdapter) List(context.Context, ReadRequest) (any, error) {
+	return NewCatalog(adapter.catalog), nil
+}
+func (adapter *partialReadAdapter) Get(_ context.Context, request ReadRequest) (any, error) {
+	id := request.IDs[0]
+	switch id {
+	case "missing":
+		return nil, Missing(errors.New("not found"))
+	case "broken":
+		return nil, errors.New("storage unavailable")
+	default:
+		return map[string]string{"id": id}, nil
+	}
+}
+func (*partialReadAdapter) Apply(context.Context, Mutation) (any, error) { return nil, nil }
+
+func TestRegistryExactReadHasNoItemCountLimitAndReportsPartialFailures(t *testing.T) {
+	adapter := &partialReadAdapter{}
+	registry, err := New(adapter)
+	if err != nil {
+		t.Fatal(err)
+	}
+	ids := make([]string, 0, 42)
+	for index := 0; index < 40; index++ {
+		ids = append(ids, fmt.Sprintf("item-%02d", index))
+	}
+	ids = append(ids, "missing", "broken")
+	value, err := registry.Read(context.Background(), ReadRequest{Operation: ReadGet, Resource: "partial", IDs: ids})
+	if err != nil {
+		t.Fatal(err)
+	}
+	result := value.(GetResult)
+	if len(result.Items) != 40 || !reflect.DeepEqual(result.MissingIDs, []string{"missing"}) ||
+		len(result.Failures) != 1 || result.Failures[0].ID != "broken" || result.Status != "partial" {
+		t.Fatalf("partial exact read = %#v", result)
+	}
+	if _, err := registry.Read(context.Background(), ReadRequest{
+		Operation: ReadGet, Resource: "partial", IDs: []string{"missing"},
+	}); err == nil {
+		t.Fatal("entirely missing exact read should fail")
+	}
+}
+
+func TestRegistryListCursorIsStableAndDetectsCatalogChanges(t *testing.T) {
+	adapter := &partialReadAdapter{catalog: []string{"one", "two", "three"}}
+	registry, err := New(adapter)
+	if err != nil {
+		t.Fatal(err)
+	}
+	firstValue, err := registry.Read(context.Background(), ReadRequest{
+		Operation: ReadList, Resource: "partial", Limit: 2,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	first := firstValue.(ListResult)
+	if !first.Truncated || first.NextCursor == "" || !reflect.DeepEqual(first.Items, []any{"one", "two"}) {
+		t.Fatalf("first catalog page = %#v", first)
+	}
+	secondValue, err := registry.Read(context.Background(), ReadRequest{
+		Operation: ReadList, Resource: "partial", Limit: 2, Cursor: first.NextCursor,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	second := secondValue.(ListResult)
+	if second.Truncated || !reflect.DeepEqual(second.Items, []any{"three"}) {
+		t.Fatalf("second catalog page = %#v", second)
+	}
+	adapter.catalog = append(adapter.catalog, "four")
+	if _, err := registry.Read(context.Background(), ReadRequest{
+		Operation: ReadList, Resource: "partial", Limit: 2, Cursor: first.NextCursor,
+	}); err == nil || !strings.Contains(err.Error(), "catalog changed") {
+		t.Fatalf("stale catalog cursor error = %v", err)
+	}
+}
+
+func TestRegistryExactReadCursorCarriesPriorSuccessAcrossMissingPage(t *testing.T) {
+	registry, err := New(&partialReadAdapter{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	request := ReadRequest{
+		Operation: ReadGet, Resource: "partial", IDs: []string{"one", "missing", "two"}, Limit: 1,
+	}
+	firstValue, err := registry.Read(context.Background(), request)
+	if err != nil {
+		t.Fatal(err)
+	}
+	first := firstValue.(GetResult)
+	if len(first.Items) != 1 || first.NextCursor == "" {
+		t.Fatalf("first exact page = %#v", first)
+	}
+	request.Cursor = first.NextCursor
+	secondValue, err := registry.Read(context.Background(), request)
+	if err != nil {
+		t.Fatal(err)
+	}
+	second := secondValue.(GetResult)
+	if !reflect.DeepEqual(second.MissingIDs, []string{"missing"}) || second.NextCursor == "" {
+		t.Fatalf("missing exact page = %#v", second)
+	}
+	request.Cursor = second.NextCursor
+	thirdValue, err := registry.Read(context.Background(), request)
+	if err != nil {
+		t.Fatal(err)
+	}
+	third := thirdValue.(GetResult)
+	if len(third.Items) != 1 || third.Truncated || third.NextCursor != "" {
+		t.Fatalf("final exact page = %#v", third)
 	}
 }
 

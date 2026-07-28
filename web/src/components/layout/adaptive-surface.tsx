@@ -36,6 +36,8 @@ interface AdaptiveSurfaceProps {
   rightResize?: AdaptiveSurfaceRightResize
   /** Collapse side panes into drawers when this surface is narrower than the given pixel width. */
   collapseAt?: number
+  /** Whether collapsed panes cover the viewport or stay inside this surface. */
+  mobilePaneScope?: 'viewport' | 'surface'
 }
 
 export interface AdaptiveSurfaceRightResize {
@@ -63,6 +65,7 @@ export function AdaptiveSurface({
   desktopGridClassName,
   rightResize,
   collapseAt,
+  mobilePaneScope = 'viewport',
 }: AdaptiveSurfaceProps) {
   const { t } = useTranslation()
   const viewportMobile = useIsMobile()
@@ -130,6 +133,7 @@ export function AdaptiveSurface({
         className={`relative h-full min-h-0 ${className}`}
         openPaneId={mobileOpenPaneId}
         onOpenPaneChange={setMobileOpenPaneId}
+        paneScope={mobilePaneScope}
       >
         {(controls) => (
           <AdaptiveMobileMainSlot controls={controls} controlsRef={mobileControlsRef}>

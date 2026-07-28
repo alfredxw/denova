@@ -10,6 +10,7 @@ import {
   captureDocumentReviewSelection,
   commentWidgetPosition,
   createDocumentReviewAnchor,
+  documentReviewAnchorKey,
   type DocumentReviewSnapshot,
   type EditorReviewRange,
 } from './documentReviewAnchors'
@@ -100,7 +101,7 @@ export const DocumentReviewAnnotations = forwardRef<DocumentReviewAnnotationsHan
         byteEnd: anchor.end,
       })
       // 草稿与创建后的评论共用同一分组 key：提交时 widget 宿主与 Portal 原地复用，避免闪一下
-      setDraft({ ...range, anchor, key: documentCommentAnchorKey(anchor), body: '', submitting: false })
+      setDraft({ ...range, anchor, key: documentReviewAnchorKey(anchor), body: '', submitting: false })
     } catch (error) {
       if (request !== preparationRequestRef.current) return
       console.error('准备文本资源审阅评论失败:', error instanceof Error ? error.message : String(error), { target, error })
@@ -401,11 +402,7 @@ function buildGroups(editor: Editor, comments: DocumentReviewComment[], draft: D
 }
 
 function documentCommentGroupKey(comment: DocumentReviewComment): string {
-  return documentCommentAnchorKey(comment.anchor)
-}
-
-function documentCommentAnchorKey(anchor: DocumentReviewAnchor): string {
-  return `comment:${anchor.revision}:${anchor.start}:${anchor.end}`
+  return documentReviewAnchorKey(comment.anchor)
 }
 
 function mappedCommentRange(editor: Editor, key: string): { from: number; to: number } | null {

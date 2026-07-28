@@ -431,30 +431,50 @@ func TestCommittedReviewFeedbackPersistsWithUserMessageAndDisappearsAfterReload(
 	}
 	runner := agent.NewRunner(agent.RunnerConfig{Agent: builtAgent, EnableStreaming: true})
 	var callbackSawDurableReference bool
+	var emittedEventTypes []string
+	options := chat.bindReviewFeedbackInputCommit(agents.RunOptions{
+		AgentKind: agents.AgentKindIDE,
+		SessionID: sess.ID,
+		Workspace: workspace,
+	}, runtime, req)
+	consumeFeedback := options.OnUserMessageCommitted
+	options.OnUserMessageCommitted = func(ctx context.Context) error {
+		history := sess.History()
+		if len(history) != 1 || len(history[0].UserReferences) != 1 {
+			return errors.New("review reference was not durable before comment consumption")
+		}
+		callbackSawDurableReference = history[0].UserReferences[0].ID == comment.ID
+		return consumeFeedback(ctx)
+	}
 	agents.NewEphemeralChatService().RunWithOptions(
 		ctx,
 		runner,
 		agents.NewSessionConversation(sess),
 		nil,
 		req,
-		agents.RunOptions{
-			AgentKind:      agents.AgentKindIDE,
-			SessionID:      sess.ID,
-			ReviewThreadID: req.ResolvedReviewFeedback.PrimaryReviewThreadID(),
-			Workspace:      workspace,
-			OnUserMessageCommitted: func(ctx context.Context) error {
-				history := sess.History()
-				if len(history) != 1 || len(history[0].UserReferences) != 1 {
-					return errors.New("review reference was not durable before comment consumption")
-				}
-				callbackSawDurableReference = history[0].UserReferences[0].ID == comment.ID
-				return chat.consumeResolvedReviewFeedback(ctx, runtime, req)
-			},
+		options,
+		func(event agents.Event) {
+			emittedEventTypes = append(emittedEventTypes, event.Type)
 		},
-		func(agents.Event) {},
 	)
 	if !callbackSawDurableReference {
 		t.Fatal("comment consumption ran before the durable user-message reference was visible")
+	}
+	workspaceChangeIndex, doneIndex := -1, -1
+	for index, eventType := range emittedEventTypes {
+		switch eventType {
+		case "workspace_change":
+			if workspaceChangeIndex < 0 {
+				workspaceChangeIndex = index
+			}
+		case "done":
+			if doneIndex < 0 {
+				doneIndex = index
+			}
+		}
+	}
+	if workspaceChangeIndex < 0 || doneIndex < 0 || workspaceChangeIndex >= doneIndex {
+		t.Fatalf("review consumption event must precede terminal done: %v", emittedEventTypes)
 	}
 
 	reloadedStore, err := session.NewStore(sessionDir)

@@ -2,11 +2,16 @@ package tools
 
 import (
 	"encoding/json"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	"denova/config"
+	"denova/internal/book"
 	"denova/internal/illustration"
+	"denova/internal/imagegen"
 )
 
 func TestParseChapterIllustrationToolResult(t *testing.T) {
@@ -78,5 +83,27 @@ func TestMergeImagePresetToolPromptPrependsPreset(t *testing.T) {
 	}
 	if strings.Index(got, "真实光影") > strings.Index(got, "雨夜小巷") {
 		t.Fatalf("preset should be prepended before image request:\n%s", got)
+	}
+}
+
+func TestPersistGeneratedImagesReturnsSuccessfulFilesAndFailures(t *testing.T) {
+	workspace := t.TempDir()
+	createdAt := time.Date(2026, 7, 29, 1, 2, 3, 0, time.UTC)
+	result, err := persistGeneratedImages(book.NewService(workspace), generateImageInput{AltText: "场景"}, imagegen.Result{
+		ProfileID: "profile", Provider: "openai", Model: "image-model", OutputFormat: "png",
+		Images: []imagegen.Image{
+			{Extension: "png"},
+			{Data: []byte("valid-image"), Extension: "png", MIMEType: "image/png"},
+		},
+	}, createdAt)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if result.Status != "partial" || len(result.Images) != 1 || len(result.Failures) != 1 ||
+		result.Failures[0].Index != 0 || result.Failures[0].Code != "empty_image" {
+		t.Fatalf("partial image receipt = %#v", result)
+	}
+	if _, err := os.Stat(filepath.Join(workspace, filepath.FromSlash(result.Images[0].Path))); err != nil {
+		t.Fatalf("successful image was not persisted: %v", err)
 	}
 }

@@ -47,7 +47,11 @@ func newAgentProfileResource(cfg *config.Config) configresources.Adapter {
 			if err := validateAgentProfileReadRequest(request, false); err != nil {
 				return nil, err
 			}
-			return readAgentProfiles(cfg)
+			item, err := readAgentProfiles(cfg)
+			if err != nil {
+				return nil, err
+			}
+			return configresources.NewCatalog([]agentProfileReadResult{item}), nil
 		},
 		get: func(_ context.Context, request configresources.ReadRequest) (any, error) {
 			if err := validateAgentProfileReadRequest(request, true); err != nil {

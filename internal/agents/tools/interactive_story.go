@@ -17,10 +17,11 @@ const submitInteractiveTurnToolName = "submit_interactive_turn"
 const SubmitInteractiveTurnToolName = submitInteractiveTurnToolName
 
 type searchStoryHistoryInput struct {
-	Keywords     []string `json:"keywords,omitempty" jsonschema:"description=要检索的人物、地点、物品、线索或事件关键词；最多 8 个。留空时浏览最近回合。"`
+	Keywords     []string `json:"keywords,omitempty" jsonschema:"description=要检索的人物、地点、物品、线索或事件关键词；所有关键词都会参与匹配。留空时浏览最近回合。"`
 	Match        string   `json:"match,omitempty" jsonschema:"description=关键词匹配方式：any 匹配任一关键词，all 要求全部匹配。默认 any。"`
 	BeforeTurnID string   `json:"before_turn_id,omitempty" jsonschema:"description=只检索该 turn_id 之前的当前分支历史；用于避免把当前回合当作旧事实。"`
-	Limit        int      `json:"limit,omitempty" jsonschema:"description=最多返回多少个历史回合，默认 8，最大 12。"`
+	Limit        int      `json:"limit,omitempty" jsonschema:"minimum=1,description=期望的分页条数，默认 8；实际结果还受共享工具结果字节预算约束。"`
+	Cursor       string   `json:"cursor,omitempty" jsonschema:"description=上一页返回的 opaque next_cursor；仅可用于完全相同的检索。"`
 }
 
 // interactiveTurnCheckToolInput deliberately omits model-authored
@@ -66,6 +67,9 @@ func (input interactiveTurnCheckToolInput) request() interactive.TurnCheckReques
 func newInteractiveHistoryTools(ctx InteractiveContext) ([]agent.ToolDefinition, error) {
 	ctx.StoryID = strings.TrimSpace(ctx.StoryID)
 	ctx.BranchID = strings.TrimSpace(ctx.BranchID)
+	if ctx.MaxResultBytes <= 0 {
+		ctx.MaxResultBytes = defaultToolResultMaxBytes
+	}
 	if ctx.Store == nil || ctx.StoryID == "" {
 		return nil, nil
 	}
@@ -76,17 +80,23 @@ func newInteractiveHistoryTools(ctx InteractiveContext) ([]agent.ToolDefinition,
 			Match:        input.Match,
 			BeforeTurnID: input.BeforeTurnID,
 			Limit:        input.Limit,
+			Cursor:       input.Cursor,
+			MaxBytes:     ctx.MaxResultBytes,
 		})
 		if err != nil {
 			return "", err
 		}
-		data, err := json.MarshalIndent(result, "", "  ")
+		data, err := json.Marshal(result)
 		return string(data), err
 	})
 	if err != nil {
 		return nil, err
 	}
-	definedSearchTool, err := defineTool(searchTool, boundedReadDescriptor(ToolSourceHistory, ""))
+	descriptor := boundedReadDescriptor(ToolSourceHistory, "")
+	if ctx.MaxResultBytes > 0 {
+		descriptor.MaxResultBytes = ctx.MaxResultBytes
+	}
+	definedSearchTool, err := defineTool(searchTool, descriptor)
 	if err != nil {
 		return nil, err
 	}

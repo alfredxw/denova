@@ -12,11 +12,13 @@ Manage every supported configuration resource through the stable `config_read` a
 ## Required workflow
 
 1. For an unfamiliar resource, call `config_read` with `operation=describe`. Omit `resource` to discover all registered kinds, or provide one kind for its contract.
-2. Call `config_read(operation=list)` to resolve the exact ID and scope. Before an update or delete, call `config_read(operation=get)` for the exact ID and retain its latest revision.
+2. Call `config_read(operation=list)` to resolve the exact ID and scope. Catalogs use `items` plus `next_cursor`; continue with the identical request and returned cursor until `truncated=false` when the full catalog matters. Before an update or delete, call `config_read(operation=get)` for the exact ID and retain its latest revision.
 3. Read exactly the relevant reference below with `read({"path":"skill://config-manager/references/<file>.md"})`. Do not infer a value shape from another resource.
 4. Follow that resource's mutation semantics. Call `config_apply` for exactly one create, update, or delete and use only names returned by `describe`.
 5. For update and delete, copy the latest revision from `config_read`; never guess, copy an example placeholder, or reuse a stale revision. Preserve every field or layer section the user did not ask to change.
-6. Read the changed item again and compare the requested fields plus preservation-sensitive fields. Report success only when the effective result matches.
+
+`get` accepts any number of IDs. A mixed batch succeeds with existing `items`, explicit `missing_ids`, and per-ID `failures`; an entirely unsuccessful completed batch fails. Large exact reads also return `next_cursor`. Never treat `truncated=true` as a complete read.
+6. `config_apply` returns only a compact persistence receipt (`resource`, `operation`, `id`, `revision`). Read the changed item again and compare the requested fields plus preservation-sensitive fields. Report success only when the effective result matches.
 
 Deletion must be explicitly requested by the user. If a stale-revision conflict occurs, read the current item again, reconcile the requested change with that value, and retry once with the new revision. Do not silently overwrite concurrent changes.
 

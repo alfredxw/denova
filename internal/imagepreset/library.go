@@ -111,6 +111,9 @@ func (l *Library) Create(preset Preset) (Preset, error) {
 	if err := l.ensureBuiltins(); err != nil {
 		return Preset{}, err
 	}
+	if err := validatePresetWriteBounds(preset); err != nil {
+		return Preset{}, err
+	}
 	preset = normalizePreset(preset)
 	if preset.ID == "" {
 		preset.ID = newPresetID()
@@ -150,6 +153,9 @@ func (l *Library) Update(id string, preset Preset, baseRevision ...string) (Pres
 	}
 	if firstPresetRevision(baseRevision) != "" && current.UpdatedAt != firstPresetRevision(baseRevision) {
 		return Preset{}, ErrPresetRevisionConflict
+	}
+	if err := validatePresetWriteBounds(preset); err != nil {
+		return Preset{}, err
 	}
 	preset.ID = id
 	preset.CreatedAt = current.CreatedAt
@@ -327,6 +333,18 @@ func validatePreset(preset Preset) error {
 	}
 	if !hasEnabledContent {
 		return errors.New("图像方案至少需要一个启用且非空的注入规则")
+	}
+	return nil
+}
+
+func validatePresetWriteBounds(preset Preset) error {
+	if len([]rune(strings.TrimSpace(preset.Prompt))) > MaxPromptChars {
+		return fmt.Errorf("prompt 超过 %d 个字符 / exceeds %d characters", MaxPromptChars, MaxPromptChars)
+	}
+	for index, slot := range preset.Slots {
+		if len([]rune(strings.TrimSpace(slot.Content))) > MaxPromptChars {
+			return fmt.Errorf("slots[%d].content 超过 %d 个字符 / exceeds %d characters", index, MaxPromptChars, MaxPromptChars)
+		}
 	}
 	return nil
 }

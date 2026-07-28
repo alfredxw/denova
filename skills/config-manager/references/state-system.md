@@ -11,15 +11,15 @@ This resource uses `user` scope and complete editable-resource replacement. Upda
 | `id` | string | create: recommended | Stable lowercase letters/digits/hyphen module ID. |
 | `name` | string | yes | User-visible name, up to 256 bytes. |
 | `description` | string | no | Purpose and intended story types, up to 1024 bytes. |
-| `actor_state.templates` | object[] | yes | At least one Actor template; at most 24. |
-| `actor_state.initial_actors` | object[] | no | Initial Actor definitions; at most 24. |
-| `actor_state.trait_pools` | object[] | no | Reusable weighted trait libraries; at most 24. |
+| `actor_state.templates` | object[] | yes | At least one Actor template; no arbitrary collection-count limit. |
+| `actor_state.initial_actors` | object[] | no | Initial Actor definitions; all valid entries are retained. |
+| `actor_state.trait_pools` | object[] | no | Reusable weighted trait libraries; all valid entries are retained. |
 
 Do not send host-owned version, path, ownership/validation fields, or timestamps.
 
 ## Template and field reference
 
-A template has stable ASCII `id`, visible `name`, optional `description`, up to 64 `fields`, and optional `trait_rules`.
+A template has stable ASCII `id`, visible `name`, optional `description`, an ordered `fields` collection, and optional `trait_rules`.
 
 Each field uses `name` as both its model-visible identity and user-visible label. It is an exact key, not a dotted path. It may contain localized text and punctuation but cannot be empty, contain `/`, or case-insensitively duplicate another field in the same template.
 
@@ -29,10 +29,10 @@ Each field uses `name` as both its model-visible identity and user-visible label
 | `type` | `number`, `string`, `bool`, `enum`, `object`, `list` | Value contract. Invalid/missing types normalize to `string`. |
 | `default` | matching JSON value | Initial/fallback value. Use a number, string, boolean, enum string, object, or array matching `type`. |
 | `min`, `max` | number | Number-only clamps. |
-| `options` | string[], max 24 | Legal values for `enum`; the default must be one of them. |
+| `options` | string[] | Legal values for `enum`; the default must be one of them. |
 | `description` | string | What the field means, not when it changes. |
 | `update_instruction` | string | Exact conditions for updating and whether changes are replacement or numeric delta. |
-| `group` | string, max 64 bytes | Optional UI ledger section. |
+| `group` | string | Optional UI ledger section. |
 | `display` | `stat`, `inline`, `block`, `list` | Optional rendering hint; empty lets the UI infer it. |
 
 Do not write legacy `id`, `path`, `legacy_path`, `order`, or `display_groups`; reusable modules persist the current field-name contract and array order.
@@ -50,7 +50,7 @@ Do not write legacy `id`, `path`, `legacy_path`, `order`, or `display_groups`; r
 
 ## Trait pools and rules
 
-A trait pool has stable ASCII `id`, visible `name`, optional `description`, and up to 24 traits. Each trait has stable `id`, `name`, optional `summary` (up to 512 bytes), and positive numeric `weight` (non-positive values normalize to 1).
+A trait pool has stable ASCII `id`, visible `name`, optional `description`, and an ordered trait collection. Each trait has stable `id`, `name`, optional `summary`, and positive numeric `weight` (non-positive values normalize to 1).
 
 A template's `trait_rules` entries contain exact `pool_id` and positive `draw_count`. The pool must exist and be non-empty; `draw_count` cannot exceed the pool size, and the total traits assigned by one template cannot exceed 24. Assigned traits are story snapshots; ordinary numeric or object effects still belong in typed state fields.
 

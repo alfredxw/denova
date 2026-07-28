@@ -149,6 +149,25 @@ func (s *ChatAppService) consumeResolvedReviewFeedback(ctx context.Context, runt
 	})
 }
 
+// bindReviewFeedbackInputCommit makes the durable user-message commit the
+// single boundary for consuming one-shot review comments. The callback runs
+// before the first model request, so navigation, reloads, and long Agent runs
+// cannot make already-submitted comments reappear in another UI surface.
+func (s *ChatAppService) bindReviewFeedbackInputCommit(
+	options agents.RunOptions,
+	runtime ideChatRuntime,
+	req agents.ChatRequest,
+) agents.RunOptions {
+	options.ReviewThreadID = req.ResolvedReviewFeedback.PrimaryReviewThreadID()
+	if req.ResolvedReviewFeedback.Empty() {
+		return options
+	}
+	options.OnUserMessageCommitted = func(ctx context.Context) error {
+		return s.consumeResolvedReviewFeedback(ctx, runtime, req)
+	}
+	return options
+}
+
 func normalizeReviewFeedbackRefs(values agents.ReviewFeedbackRefs) (agents.ReviewFeedbackRefs, error) {
 	result := make(agents.ReviewFeedbackRefs, 0, len(values))
 	indexByKey := make(map[string]int, len(values))

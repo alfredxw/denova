@@ -19,7 +19,6 @@ const (
 	defaultResultEntries     = 10_000
 	maxConfiguredResultBytes = 64 * 1024 * 1024
 	maxConfiguredEntries     = 100_000
-	maxSearchPaths           = 256
 	maxWorkspaceScanEntries  = 100_000
 	maxWorkspaceIgnoreBytes  = 1024 * 1024
 	maxWorkspaceIgnoreRules  = 10_000

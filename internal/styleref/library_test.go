@@ -85,22 +85,18 @@ func TestLibraryWriteAddsHeaderForDirectSourceContent(t *testing.T) {
 	}
 }
 
-func TestLibraryTrimsLargeContentByBytes(t *testing.T) {
+func TestLibraryRejectsLargeContentWithoutCreatingFile(t *testing.T) {
 	lib := NewLibrary(t.TempDir())
-	ref, err := lib.Write(WriteRequest{
+	_, err := lib.Write(WriteRequest{
 		Name:     "长文风",
 		Filename: "long.md",
 		Content:  strings.Repeat("风", MaxContentBytes),
 	})
-	if err != nil {
-		t.Fatal(err)
+	if err == nil || !strings.Contains(err.Error(), "content") {
+		t.Fatalf("oversized content error = %v", err)
 	}
-	data, err := os.ReadFile(ref.Path)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if len(data) > MaxContentBytes+1 {
-		t.Fatalf("content bytes = %d, want <= %d", len(data), MaxContentBytes+1)
+	if _, statErr := os.Stat(lib.AbsPath("long.md")); !os.IsNotExist(statErr) {
+		t.Fatalf("oversized content must not be persisted: %v", statErr)
 	}
 }
 

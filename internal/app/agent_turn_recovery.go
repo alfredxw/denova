@@ -103,26 +103,21 @@ func (s *ChatAppService) prepareWritingHarnessTurn(
 		runtimeContexts.StableTitle, runtimeContexts.Stable,
 		runtimeContexts.DynamicTitle, runtimeContexts.Dynamic,
 	)
-	var onUserMessageCommitted func(context.Context) error
-	if !resolved.ResolvedReviewFeedback.Empty() {
-		onUserMessageCommitted = func(commitCtx context.Context) error {
-			return s.consumeResolvedReviewFeedback(commitCtx, runtime, resolved)
-		}
-	}
+	options := s.bindReviewFeedbackInputCommit(agents.RunOptions{
+		AgentKind:          agents.AgentKindIDE,
+		TaskID:             strings.TrimSpace(taskID),
+		SessionID:          runtime.sess.ID,
+		Workspace:          runtime.workspace,
+		Mode:               "ide",
+		IdleTimeout:        agentIdleTimeout(runtime.cfg),
+		ToolResultMaxBytes: agentToolResultMaxBytes(runtime.cfg),
+		SystemPromptLog:    systemPrompt,
+		OnMutationsVerified: s.app.writingMutationCallback(
+			strings.TrimSpace(taskID), conversation,
+		),
+	}, runtime, resolved)
 	return agents.HarnessTurnExecution{
 		Runner: runner, Conversation: conversation, BookService: runtime.bookService, Request: resolved,
-		Options: agents.RunOptions{
-			AgentKind:              agents.AgentKindIDE,
-			TaskID:                 strings.TrimSpace(taskID),
-			SessionID:              runtime.sess.ID,
-			ReviewThreadID:         resolved.ResolvedReviewFeedback.PrimaryReviewThreadID(),
-			Workspace:              runtime.workspace,
-			Mode:                   "ide",
-			IdleTimeout:            agentIdleTimeout(runtime.cfg),
-			ToolResultMaxBytes:     agentToolResultMaxBytes(runtime.cfg),
-			SystemPromptLog:        systemPrompt,
-			OnMutationsVerified:    s.app.writingMutationCallback(strings.TrimSpace(taskID), conversation),
-			OnUserMessageCommitted: onUserMessageCommitted,
-		},
+		Options: options,
 	}, runtime, nil
 }

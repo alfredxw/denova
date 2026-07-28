@@ -12,12 +12,11 @@ import (
 	"unicode/utf8"
 )
 
-const readWindowExceededError = "selected read window exceeds %d bytes; use a narrower offset/limit or split the long line"
-
 type localTextReadInput struct {
-	Path   string `json:"path" jsonschema_description:"Absolute or workspace-relative path of the UTF-8 text file to read."`
-	Offset int    `json:"offset,omitempty" jsonschema:"minimum=1" jsonschema_description:"One-based first line to return; defaults to 1."`
-	Limit  int    `json:"limit,omitempty" jsonschema:"minimum=1" jsonschema_description:"Maximum selected lines to return; defaults to 2000."`
+	Path       string `json:"path" jsonschema_description:"Absolute or workspace-relative path of the UTF-8 text file to read."`
+	Offset     int    `json:"offset,omitempty" jsonschema:"minimum=1" jsonschema_description:"One-based first line to return; defaults to 1."`
+	ByteOffset int    `json:"byte_offset,omitempty" jsonschema:"minimum=0" jsonschema_description:"Zero-based UTF-8 byte offset within the selected first line, used only with an exact next_byte_offset continuation."`
+	Limit      int    `json:"limit,omitempty" jsonschema:"minimum=1" jsonschema_description:"Maximum selected lines to return; defaults to 2000."`
 }
 
 // LocalTextAdapter reads bounded UTF-8 source windows.
@@ -62,18 +61,18 @@ func (workspace *LocalWorkspace) readText(ctx context.Context, input localTextRe
 		return ReadResult{}, fmt.Errorf("open workspace file %s: %w", relative, err)
 	}
 	defer file.Close()
-	content, returned, truncated, err := selectReadWindow(ctx, file, offset, limit, limits.MaxResultBytes)
+	selection, err := selectReadWindow(ctx, file, offset, input.ByteOffset, limit, limits.MaxResultBytes)
 	if err != nil {
 		return ReadResult{}, err
 	}
-	if !utf8.ValidString(content) {
+	if !utf8.ValidString(selection.content) {
 		return ReadResult{}, fmt.Errorf("read local_text only supports UTF-8 text files: %s", relative)
 	}
-	result := ReadResult{Path: relative, Kind: "local_text", Content: content, Offset: offset, Limit: returned, Truncated: truncated}
-	if truncated && returned > 0 {
-		result.NextOffset = offset + returned
-	}
-	return result, nil
+	return ReadResult{
+		Path: relative, Kind: "local_text", Content: selection.content,
+		Offset: offset, ByteOffset: input.ByteOffset, Limit: selection.returned,
+		Truncated: selection.truncated, NextOffset: selection.nextOffset, NextByteOffset: selection.nextByteOffset,
+	}, nil
 }
 
 type directoryReadInput struct {
@@ -217,35 +216,79 @@ func normalizeReadWindow(offset, limit, defaultLimit int) (int, int) {
 	return offset, limit
 }
 
-func selectReadWindow(ctx context.Context, source io.Reader, offset, limit, maxBytes int) (string, int, bool, error) {
+type readWindowSelection struct {
+	content        string
+	returned       int
+	truncated      bool
+	nextOffset     int
+	nextByteOffset int
+}
+
+func selectReadWindow(ctx context.Context, source io.Reader, offset, byteOffset, limit, maxBytes int) (readWindowSelection, error) {
 	reader := bufio.NewReaderSize(source, 64*1024)
 	var selected strings.Builder
 	line, selectedLines := 1, 0
 	for {
 		if err := contextError(ctx); err != nil {
-			return "", 0, false, err
+			return readWindowSelection{}, err
 		}
 		selecting := line >= offset && selectedLines < limit
 		var current strings.Builder
+		lineBytes := 0
 		for {
 			fragment, err := reader.ReadSlice('\n')
+			fragmentStart := lineBytes
+			lineBytes += len(fragment)
 			if selecting && len(fragment) > 0 {
-				if current.Len()+len(fragment) > maxBytes {
-					if selectedLines == 0 {
-						return "", 0, false, fmt.Errorf(readWindowExceededError, maxBytes)
-					}
-					return selected.String(), selectedLines, true, nil
+				visible := fragment
+				visibleStart := fragmentStart
+				if line == offset && byteOffset > fragmentStart {
+					drop := min(byteOffset-fragmentStart, len(fragment))
+					visible = fragment[drop:]
+					visibleStart += drop
 				}
-				current.Write(fragment)
+				if line == offset && visibleStart == byteOffset && len(visible) > 0 && !utf8.RuneStart(visible[0]) {
+					return readWindowSelection{}, fmt.Errorf("read byte_offset=%d is not on a UTF-8 boundary", byteOffset)
+				}
+				available := maxBytes - selected.Len() - current.Len()
+				if len(visible) > available {
+					combined := current.String() + string(visible)
+					prefixBytes := min(maxBytes-selected.Len(), len(combined))
+					for prefixBytes > 0 && !utf8.ValidString(combined[:prefixBytes]) {
+						prefixBytes--
+					}
+					if prefixBytes == 0 && selectedLines > 0 {
+						return readWindowSelection{
+							content: selected.String(), returned: selectedLines, truncated: true,
+							nextOffset: line,
+						}, nil
+					}
+					if prefixBytes == 0 {
+						return readWindowSelection{}, fmt.Errorf("read result budget %d leaves no room for one UTF-8 character", maxBytes)
+					}
+					lineVisibleStart := 0
+					if line == offset {
+						lineVisibleStart = byteOffset
+					}
+					current.Reset()
+					current.WriteString(combined[:prefixBytes])
+					selected.WriteString(current.String())
+					return readWindowSelection{
+						content: selected.String(), returned: selectedLines + 1, truncated: true,
+						nextOffset: line, nextByteOffset: lineVisibleStart + prefixBytes,
+					}, nil
+				}
+				current.Write(visible)
 			}
 			lineEnded := len(fragment) > 0 && fragment[len(fragment)-1] == '\n'
 			if lineEnded || (errors.Is(err, io.EOF) && len(fragment) > 0) {
 				if selecting {
-					if selected.Len()+current.Len() > maxBytes {
-						if selectedLines == 0 {
-							return "", 0, false, fmt.Errorf(readWindowExceededError, maxBytes)
-						}
-						return selected.String(), selectedLines, true, nil
+					lineContentBytes := lineBytes
+					if lineEnded {
+						lineContentBytes--
+					}
+					if line == offset && byteOffset > lineContentBytes {
+						return readWindowSelection{}, fmt.Errorf("read byte_offset=%d exceeds line %d length", byteOffset, offset)
 					}
 					selected.WriteString(current.String())
 					selectedLines++
@@ -259,16 +302,21 @@ func selectReadWindow(ctx context.Context, source io.Reader, offset, limit, maxB
 				continue
 			}
 			if !errors.Is(err, io.EOF) {
-				return "", 0, false, fmt.Errorf("read workspace file: %w", err)
+				return readWindowSelection{}, fmt.Errorf("read workspace file: %w", err)
 			}
 			if len(fragment) == 0 {
-				return selected.String(), selectedLines, false, nil
+				return readWindowSelection{content: selected.String(), returned: selectedLines}, nil
 			}
 			break
 		}
 		if selectedLines >= limit {
 			_, peekErr := reader.Peek(1)
-			return selected.String(), selectedLines, peekErr == nil, nil
+			truncated := peekErr == nil
+			selection := readWindowSelection{content: selected.String(), returned: selectedLines, truncated: truncated}
+			if truncated {
+				selection.nextOffset = line
+			}
+			return selection, nil
 		}
 	}
 }

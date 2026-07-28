@@ -19,6 +19,7 @@ type GlobRequest struct {
 	Hidden    bool
 	Gitignore bool
 	Limit     int
+	Cursor    string
 }
 
 // GrepRequest describes one bounded ripgrep-compatible content search.
@@ -50,10 +51,11 @@ type Searcher interface {
 }
 
 type globInput struct {
-	Paths     []string `json:"paths,omitempty" jsonschema:"minItems=1,maxItems=256" jsonschema_description:"Workspace-relative files, directories, or glob patterns. Omit to discover from the workspace root."`
+	Paths     []string `json:"paths,omitempty" jsonschema:"minItems=1" jsonschema_description:"Workspace-relative files, directories, or glob patterns. Omit to discover from the workspace root."`
 	Hidden    *bool    `json:"hidden,omitempty" jsonschema_description:"Include dot-prefixed paths; defaults to true."`
 	Gitignore *bool    `json:"gitignore,omitempty" jsonschema_description:"Respect .gitignore rules; defaults to true."`
 	Limit     int      `json:"limit,omitempty" jsonschema:"minimum=1" jsonschema_description:"Maximum returned paths; defaults to the workspace search policy."`
+	Cursor    string   `json:"cursor,omitempty" jsonschema_description:"Opaque continuation cursor returned by an earlier identical glob call."`
 }
 
 // Glob defines multi-path workspace discovery. Directory reading remains the
@@ -66,21 +68,27 @@ func Glob(searcher Searcher, options ...DefinitionOption) (agent.ToolDefinition,
 	tool, err := agent.InferTool("glob", `Find workspace files or directories by path. A call may include several files, directories, or glob patterns; results are de-duplicated and bounded. Use read on a directory when you need its structure.
 
 按路径查找工作区文件或目录。一次可传入多个文件、目录或 glob 模式；结果会去重并受限。需要理解目录结构时请使用 read。`, func(ctx context.Context, input globInput) (agent.ToolResult, error) {
-		result, err := searcher.Glob(ctx, GlobRequest{
+		request := normalizeGlobRequest(GlobRequest{
 			Paths: input.Paths, Hidden: boolDefault(input.Hidden, true),
-			Gitignore: boolDefault(input.Gitignore, true), Limit: input.Limit,
+			Gitignore: boolDefault(input.Gitignore, true), Limit: input.Limit, Cursor: input.Cursor,
 		})
+		result, err := searcher.Glob(ctx, request)
 		if err != nil {
 			return agent.ToolResult{}, err
 		}
-		return searchToolResult("glob", result, descriptor.MaxResultBytes, nil)
+		return searchToolResult("glob", result, descriptor.MaxResultBytes, func(returned int) (string, error) {
+			if returned <= 0 || returned > len(result.Entries) {
+				return "", nil
+			}
+			return encodeGlobCursor(result.Entries[returned-1], request)
+		})
 	})
 	return agent.ToolDefinition{Tool: tool, Descriptor: descriptor}, err
 }
 
 type grepInput struct {
 	Pattern       string   `json:"pattern" jsonschema_description:"Ripgrep regular expression to search for; a newline automatically enables multiline matching."`
-	Paths         []string `json:"paths,omitempty" jsonschema:"minItems=1,maxItems=256" jsonschema_description:"Workspace-relative files, directories, or glob patterns. Omit to search the workspace root."`
+	Paths         []string `json:"paths,omitempty" jsonschema:"minItems=1" jsonschema_description:"Workspace-relative files, directories, or glob patterns. Omit to search the workspace root."`
 	Mode          string   `json:"mode,omitempty" jsonschema:"enum=content,enum=files,enum=count" jsonschema_description:"content, files, or count; defaults to content."`
 	CaseSensitive *bool    `json:"case_sensitive,omitempty" jsonschema_description:"Use case-sensitive matching; defaults to true."`
 	Gitignore     *bool    `json:"gitignore,omitempty" jsonschema_description:"Respect .gitignore rules; defaults to true."`
@@ -237,6 +245,48 @@ type grepCursor struct {
 	Fingerprint string `json:"f"`
 }
 
+type globCursor struct {
+	Version     int    `json:"v"`
+	After       string `json:"after"`
+	Fingerprint string `json:"f"`
+}
+
+func encodeGlobCursor(after string, request GlobRequest) (string, error) {
+	cursor := globCursor{Version: 1, After: after, Fingerprint: globRequestFingerprint(request)}
+	encoded, err := json.Marshal(cursor)
+	if err != nil {
+		return "", err
+	}
+	return base64.RawURLEncoding.EncodeToString(encoded), nil
+}
+
+func decodeGlobCursor(value string, request GlobRequest) (string, error) {
+	value = strings.TrimSpace(value)
+	if value == "" {
+		return "", nil
+	}
+	decoded, err := base64.RawURLEncoding.DecodeString(value)
+	if err != nil {
+		return "", errors.New("glob cursor is invalid / glob 游标无效")
+	}
+	var cursor globCursor
+	if err := json.Unmarshal(decoded, &cursor); err != nil || cursor.Version != 1 || strings.TrimSpace(cursor.After) == "" {
+		return "", errors.New("glob cursor is invalid / glob 游标无效")
+	}
+	if cursor.Fingerprint != globRequestFingerprint(request) {
+		return "", errors.New("glob cursor does not belong to this query / glob 游标不属于当前查询")
+	}
+	return cursor.After, nil
+}
+
+func globRequestFingerprint(request GlobRequest) string {
+	request.Cursor = ""
+	request.Limit = 0
+	encoded, _ := json.Marshal(request)
+	digest := sha256.Sum256(encoded)
+	return hex.EncodeToString(digest[:16])
+}
+
 func encodeGrepCursor(offset int, request GrepRequest) (string, error) {
 	cursor := grepCursor{Version: 1, Offset: offset, Fingerprint: grepRequestFingerprint(request)}
 	encoded, err := json.Marshal(cursor)
@@ -253,14 +303,14 @@ func decodeGrepCursor(value string, request GrepRequest) (int, error) {
 	}
 	decoded, err := base64.RawURLEncoding.DecodeString(value)
 	if err != nil {
-		return 0, errors.New("grep cursor is invalid")
+		return 0, errors.New("grep cursor is invalid / grep 游标无效")
 	}
 	var cursor grepCursor
 	if err := json.Unmarshal(decoded, &cursor); err != nil || cursor.Version != 1 || cursor.Offset < 0 {
-		return 0, errors.New("grep cursor is invalid")
+		return 0, errors.New("grep cursor is invalid / grep 游标无效")
 	}
 	if cursor.Fingerprint != grepRequestFingerprint(request) {
-		return 0, errors.New("grep cursor does not belong to this query")
+		return 0, errors.New("grep cursor does not belong to this query / grep 游标不属于当前查询")
 	}
 	return cursor.Offset, nil
 }

@@ -3,12 +3,16 @@ import {
   AtSign,
   BookMarked,
   ChevronDown,
+  FileCode2,
   LibraryBig,
   SlidersHorizontal,
   Trash2,
+  Type,
 } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import type { LoreItem } from '@/lib/api'
+import { cn } from '@/lib/utils'
+import { SearchHighlightTextarea } from '@/components/common/SearchHighlightTextarea'
 import { Button } from '@/components/ui/button'
 import { ConfirmDialog } from '@/components/common/ConfirmDialog'
 import {
@@ -26,12 +30,12 @@ import {
   SelectValue,
 } from '@/components/ui/select'
 import { Switch } from '@/components/ui/switch'
-import { Textarea } from '@/components/ui/textarea'
 import {
   AutosaveStatusIndicator,
   type AutosaveStatus,
 } from '@/components/forms/autosave-status'
 import { MarkdownRichEditor } from '@/components/Editor/MarkdownRichEditor'
+import { RawDocumentReviewEditor } from '@/components/Editor/RawDocumentReviewEditor'
 import { MobilePaneTrigger } from '@/components/layout/mobile-pane-trigger'
 import type {
   DocumentReviewController,
@@ -53,6 +57,7 @@ interface LoreWorkspaceEditorProps {
   autosaveError: string | null
   documentReview: DocumentReviewController
   navigationIntent?: DocumentReviewNavigationIntent | null
+  highlightQuery?: string
   onDraftChange: (draft: LoreItem) => void
   onTagDraftChange: (value: string) => void
   onPrepareSnapshot: () => Promise<{ content: string; revision: string }>
@@ -71,6 +76,7 @@ export function LoreWorkspaceEditor({
   autosaveError,
   documentReview,
   navigationIntent,
+  highlightQuery,
   onDraftChange,
   onTagDraftChange,
   onPrepareSnapshot,
@@ -82,6 +88,7 @@ export function LoreWorkspaceEditor({
 }: LoreWorkspaceEditorProps) {
   const { t } = useTranslation()
   const [metadataOpen, setMetadataOpen] = useState(false)
+  const [contentMode, setContentMode] = useState<'rich' | 'raw'>('rich')
   const [deleteTarget, setDeleteTarget] = useState<{
     id: string
     name: string
@@ -103,6 +110,7 @@ export function LoreWorkspaceEditor({
             side="left"
             label={t('loreWorkspace.openDirectory')}
             onClick={onOpenDirectory}
+            appearance="compact"
           />
         ) : null}
         <BookMarked className="h-4 w-4 shrink-0 text-[var(--nova-success)]" />
@@ -171,19 +179,25 @@ export function LoreWorkspaceEditor({
         onOpenChange={setMetadataOpen}
         className="shrink-0 border-b border-[var(--nova-border)] bg-[var(--nova-surface-2)]"
       >
-        <CollapsibleTrigger asChild>
-          <button
-            type="button"
-            className="nova-nav-item group flex h-8 w-full items-center gap-2 px-4 text-left text-[11px] text-[var(--nova-text-muted)] hover:bg-[var(--nova-hover)]"
-          >
-            <SlidersHorizontal className="h-3.5 w-3.5" />
-            <span className="flex-1">{t('loreWorkspace.metadata')}</span>
-            <span className="max-w-[45%] truncate text-[var(--nova-text-faint)]">
-              {draft.brief_description || t('loreWorkspace.noBrief')}
-            </span>
-            <ChevronDown className="h-3.5 w-3.5 transition-transform group-data-[state=open]:rotate-180" />
-          </button>
-        </CollapsibleTrigger>
+        <div className="flex min-w-0 items-center">
+          <CollapsibleTrigger asChild>
+            <button
+              type="button"
+              className="nova-nav-item group flex h-8 min-w-0 flex-1 items-center gap-2 px-3 text-left text-[11px] text-[var(--nova-text-muted)] hover:bg-[var(--nova-hover)]"
+            >
+              <SlidersHorizontal className="h-3.5 w-3.5 shrink-0" />
+              <span className="shrink-0">{t('loreWorkspace.metadata')}</span>
+              <span className="hidden min-w-0 flex-1 truncate text-right text-[var(--nova-text-faint)] sm:block">
+                {draft.brief_description || t('loreWorkspace.noBrief')}
+              </span>
+              <ChevronDown className="h-3.5 w-3.5 shrink-0 transition-transform group-data-[state=open]:rotate-180" />
+            </button>
+          </CollapsibleTrigger>
+          <ContentModeToggle
+            value={contentMode}
+            onChange={setContentMode}
+          />
+        </div>
         <CollapsibleContent className="grid min-w-0 gap-2 border-t border-[var(--nova-border)] px-4 py-3 sm:grid-cols-2 xl:grid-cols-4">
           <MetadataField label={t('settingPanel.field.enabled')}>
             <div className="flex h-8 items-center justify-between rounded-md border border-[var(--nova-border)] bg-[var(--nova-surface)] px-2">
@@ -298,9 +312,10 @@ export function LoreWorkspaceEditor({
             label={t('settingPanel.field.brief')}
             className="sm:col-span-2"
           >
-            <Textarea
+            <SearchHighlightTextarea
               aria-label={t('settingPanel.field.brief')}
               autoResize
+              highlightQuery={highlightQuery}
               value={draft.brief_description || ''}
               onChange={(event) =>
                 onDraftChange({
@@ -314,23 +329,48 @@ export function LoreWorkspaceEditor({
         </CollapsibleContent>
       </Collapsible>
 
-      <MarkdownRichEditor
-        key={draft.id}
-        value={draft.content || ''}
-        onChange={(content) => onDraftChange({ ...draft, content })}
-        onSaveShortcut={() => {
-          void onFlush()
-        }}
-        review={{
-          target,
-          resourceLabel: draft.name,
-          controller: documentReview,
-          prepareSnapshot: onPrepareSnapshot,
-          navigationIntent,
-        }}
-        aria-label={t('loreWorkspace.contentLabel', { name: draft.name })}
-        className="flex min-h-0 min-w-0 flex-1 flex-col overflow-y-auto bg-[var(--nova-bg)] text-sm leading-7 [&_.tiptap]:mx-auto [&_.tiptap]:min-h-full [&_.tiptap]:w-full [&_.tiptap]:max-w-[880px] [&_.tiptap]:px-6 [&_.tiptap]:py-8 md:[&_.tiptap]:px-10 md:[&_.tiptap]:py-10"
-      />
+      <div className="flex min-h-0 min-w-0 flex-1 flex-col bg-[var(--nova-bg)]">
+        {contentMode === 'raw' ? (
+          <RawDocumentReviewEditor
+            value={draft.content || ''}
+            onChange={(content) => onDraftChange({ ...draft, content })}
+            onSaveShortcut={() => {
+              void onFlush()
+            }}
+            highlightQuery={highlightQuery}
+            review={{
+              target,
+              resourceLabel: draft.name,
+              controller: documentReview,
+              prepareSnapshot: onPrepareSnapshot,
+              navigationIntent,
+            }}
+            aria-label={t('loreWorkspace.rawContentLabel', {
+              name: draft.name,
+            })}
+            className="min-h-0 min-w-0 flex-1"
+          />
+        ) : (
+          <MarkdownRichEditor
+            key={draft.id}
+            value={draft.content || ''}
+            onChange={(content) => onDraftChange({ ...draft, content })}
+            onSaveShortcut={() => {
+              void onFlush()
+            }}
+            highlightQuery={highlightQuery}
+            review={{
+              target,
+              resourceLabel: draft.name,
+              controller: documentReview,
+              prepareSnapshot: onPrepareSnapshot,
+              navigationIntent,
+            }}
+            aria-label={t('loreWorkspace.contentLabel', { name: draft.name })}
+            className="flex min-h-0 min-w-0 flex-1 flex-col overflow-y-auto bg-[var(--nova-bg)] text-sm leading-7 [&_.tiptap]:mx-auto [&_.tiptap]:min-h-full [&_.tiptap]:w-full [&_.tiptap]:max-w-[880px] [&_.tiptap]:px-6 [&_.tiptap]:py-8 md:[&_.tiptap]:px-10 md:[&_.tiptap]:py-10"
+          />
+        )}
+      </div>
       <ConfirmDialog
         open={Boolean(deleteTarget)}
         onOpenChange={(open) => {
@@ -346,6 +386,48 @@ export function LoreWorkspaceEditor({
           deleteTarget ? onDelete(deleteTarget.id) : false
         }
       />
+    </div>
+  )
+}
+
+function ContentModeToggle({
+  value,
+  onChange,
+}: {
+  value: 'rich' | 'raw'
+  onChange: (value: 'rich' | 'raw') => void
+}) {
+  const { t } = useTranslation()
+  return (
+    <div
+      role="group"
+      aria-label={t('settingPanel.field.content')}
+      className="mr-2 inline-flex shrink-0 overflow-hidden rounded-[var(--nova-radius)] border border-[var(--nova-border)] bg-[var(--nova-surface)] p-0.5"
+    >
+      <button
+        type="button"
+        onClick={() => onChange('rich')}
+        aria-pressed={value === 'rich'}
+        className={cn(
+          'nova-nav-item inline-flex h-5 items-center gap-1 rounded px-1.5 text-[10px]',
+          value === 'rich' ? 'is-active' : 'text-[var(--nova-text-muted)]',
+        )}
+      >
+        <Type className="h-3 w-3" />
+        {t('settingPanel.editor.contentModeRich')}
+      </button>
+      <button
+        type="button"
+        onClick={() => onChange('raw')}
+        aria-pressed={value === 'raw'}
+        className={cn(
+          'nova-nav-item inline-flex h-5 items-center gap-1 rounded px-1.5 text-[10px]',
+          value === 'raw' ? 'is-active' : 'text-[var(--nova-text-muted)]',
+        )}
+      >
+        <FileCode2 className="h-3 w-3" />
+        {t('common.raw')}
+      </button>
     </div>
   )
 }

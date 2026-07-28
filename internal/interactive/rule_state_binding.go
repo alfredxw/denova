@@ -100,17 +100,14 @@ type RuleStateBindingWarning struct {
 }
 
 func normalizeRuleStateBindings(values []RuleStateBinding) []RuleStateBinding {
-	if len(values) > maxRuleStateBindings {
-		values = values[:maxRuleStateBindings]
-	}
 	out := make([]RuleStateBinding, 0, len(values))
 	for i, value := range values {
 		value.ID = normalizeSlotID(value.ID)
 		if value.ID == "" {
 			value.ID = fmt.Sprintf("binding-%d", i+1)
 		}
-		value.Label = trimBytes(firstNonEmptyString(value.Label, value.ID), 256)
-		value.Trigger = trimBytes(value.Trigger, maxInteractiveTextBytes)
+		value.Label = strings.TrimSpace(firstNonEmptyString(value.Label, value.ID))
+		value.Trigger = strings.TrimSpace(value.Trigger)
 		value.ActorTemplateID = normalizeActorStateID(value.ActorTemplateID)
 		value.TargetTemplateID = normalizeActorStateID(value.TargetTemplateID)
 		value.Modifiers = normalizeRuleStateBindingModifiers(value.Modifiers)
@@ -178,9 +175,6 @@ func resolvedRuleStateFieldID(system StoryDirectorActorStateSystem, templateID, 
 }
 
 func normalizeRuleStateBindingModifiers(values []RuleStateBindingModifier) []RuleStateBindingModifier {
-	if len(values) > maxInteractiveListItems {
-		values = values[:maxInteractiveListItems]
-	}
 	out := make([]RuleStateBindingModifier, 0, len(values))
 	for _, value := range values {
 		value.Source = normalizeRuleBindingSource(value.Source)
@@ -204,15 +198,12 @@ func normalizeRuleStateBindingModifiers(values []RuleStateBindingModifier) []Rul
 }
 
 func normalizeRuleNarrativeStateRefs(values []RuleNarrativeStateRef) []RuleNarrativeStateRef {
-	if len(values) > maxInteractiveListItems {
-		values = values[:maxInteractiveListItems]
-	}
 	out := make([]RuleNarrativeStateRef, 0, len(values))
 	for _, value := range values {
 		value.Source = normalizeRuleNarrativeSource(value.Source)
 		value.FieldID = normalizeActorStateFieldName(value.FieldID)
 		value.Usage = normalizeRuleNarrativeUsage(value.Usage)
-		value.Guidance = trimBytes(value.Guidance, maxInteractiveTextBytes)
+		value.Guidance = strings.TrimSpace(value.Guidance)
 		if value.Source == "" || (value.Source != "scene" && value.FieldID == "") {
 			continue
 		}
@@ -225,9 +216,6 @@ func normalizeRuleNarrativeStateRefs(values []RuleNarrativeStateRef) []RuleNarra
 }
 
 func normalizeRuleOutcomeStateChangeBindings(values []RuleOutcomeStateChangeBinding) []RuleOutcomeStateChangeBinding {
-	if len(values) > maxInteractiveListItems {
-		values = values[:maxInteractiveListItems]
-	}
 	out := make([]RuleOutcomeStateChangeBinding, 0, len(values))
 	for _, value := range values {
 		value.Outcome = normalizeRuleOutcomeName(value.Outcome)
@@ -244,15 +232,12 @@ func normalizeRuleOutcomeStateChangeBindings(values []RuleOutcomeStateChangeBind
 }
 
 func normalizeRuleComputedStateChanges(values []RuleComputedStateChange) []RuleComputedStateChange {
-	if len(values) > maxInteractiveListItems {
-		values = values[:maxInteractiveListItems]
-	}
 	out := make([]RuleComputedStateChange, 0, len(values))
 	for _, value := range values {
 		value.Source = normalizeRuleBindingSource(value.Source)
 		value.FieldID = normalizeActorStateFieldName(value.FieldID)
 		value.ChangeFormula = normalizeRuleStateChangeFormula(value.ChangeFormula)
-		value.Reason = trimBytes(value.Reason, 512)
+		value.Reason = strings.TrimSpace(value.Reason)
 		if value.Source == "" || value.FieldID == "" {
 			continue
 		}
@@ -265,9 +250,6 @@ func normalizeRuleComputedStateChanges(values []RuleComputedStateChange) []RuleC
 }
 
 func normalizeRuleStateChangeFormula(value RuleStateChangeFormula) RuleStateChangeFormula {
-	if len(value.Terms) > maxInteractiveListItems {
-		value.Terms = value.Terms[:maxInteractiveListItems]
-	}
 	terms := make([]RuleStateFormulaTerm, 0, len(value.Terms))
 	for _, term := range value.Terms {
 		term.Source = normalizeRuleBindingSource(term.Source)
@@ -645,9 +627,6 @@ func readBindingNumber(state map[string]any, system StoryDirectorActorStateSyste
 }
 
 func normalizeRuleStateValuePath(value []string) []string {
-	if len(value) > maxInteractiveListItems {
-		value = value[:maxInteractiveListItems]
-	}
 	out := make([]string, 0, len(value))
 	for _, segment := range value {
 		segment = normalizeActorStateFieldName(segment)

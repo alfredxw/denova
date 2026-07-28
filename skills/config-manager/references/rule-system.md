@@ -12,7 +12,7 @@ This resource uses `user` scope and complete editable-resource replacement. Upda
 | `name` | string | yes | User-visible name, up to 256 bytes. |
 | `description` | string | no | Adjudication philosophy, up to 1024 bytes. |
 | `actor_state_id` | string | when bindings exist | Exact `state_system` ID whose template and field identities the bindings use. |
-| `trpg_system.rule_templates` | object[] | yes | The runtime keeps the first non-blank rule template. Submit exactly one. |
+| `trpg_system.rule_templates` | object[] | yes | Complete ordered rule-template collection; every valid non-blank template is retained. |
 
 Do not send host-owned version, path, ownership/validation fields, or timestamps.
 
@@ -26,12 +26,12 @@ Do not send host-owned version, path, ownership/validation fields, or timestamps
 | `modifier` | number | Fixed target modifier: positive is harder, negative is easier. |
 | `failure_policy` | `fail_forward`, `success_at_cost`, `blocked`, `hard_failure` | Default failure handling. |
 | `trigger` | string | When a risky action should use this check. |
-| `must_check_examples` | string[], max 8 | Positive boundary examples. |
-| `skip_check_examples` | string[], max 8 | Cases that should be resolved without a roll. |
+| `must_check_examples` | string[] | Positive boundary examples; every distinct non-empty example is retained. |
+| `skip_check_examples` | string[] | Cases that should be resolved without a roll; every distinct non-empty example is retained. |
 | `difficulty_guidance` | string | How runtime facts move difficulty between supported bands. Do not hard-code a single scene's difficulty. |
 | `state_effect_guidance` | string | General consequence guidance; structured recurring effects belong in bindings. |
 | `success_hint`, `failure_hint` | string | Narrative outcome guidance. |
-| `state_bindings` | object[], max 12 | Optional reusable state-driven modifier and outcome rules. |
+| `state_bindings` | object[] | Optional reusable state-driven modifier and outcome rules; every valid binding is retained. |
 
 Runtime advantage/disadvantage, concrete difficulty, and current actor IDs belong to the story Agent's check request, not this preset.
 

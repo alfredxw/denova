@@ -26,22 +26,25 @@ func newAutomationResource(novaDir, workspace string, workspaces []string) confi
 			if err != nil {
 				return nil, err
 			}
-			return automationDefinitions(tasks), nil
+			return configresources.NewCatalog(automationDefinitions(tasks)), nil
 		},
 		get: func(_ context.Context, request configresources.ReadRequest) (any, error) {
 			scope, _, err := automationConfigTarget(request.Scope, workspace)
 			if err != nil {
 				return nil, err
 			}
-			result := make([]automationDefinition, 0, len(request.IDs))
-			for _, id := range normalizeConfigIDs(request.IDs) {
-				task, err := store.GetInScope(scope, id)
-				if err != nil {
-					return nil, err
-				}
-				result = append(result, automationDefinitionFromTask(task))
+			ids := normalizeConfigIDs(request.IDs)
+			if len(ids) != 1 {
+				return nil, fmt.Errorf("automation exact read requires one id")
 			}
-			return result, nil
+			task, err := store.GetInScope(scope, ids[0])
+			if err != nil {
+				if strings.Contains(strings.ToLower(err.Error()), "not found") {
+					return nil, configresources.Missing(err)
+				}
+				return nil, err
+			}
+			return automationDefinitionFromTask(task), nil
 		},
 		apply: func(_ context.Context, mutation configresources.Mutation) (any, error) {
 			switch mutation.Operation {

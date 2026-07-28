@@ -12,8 +12,8 @@ This resource uses `user` scope. Create and update submit a complete editable re
 | `name` | string | yes | User-visible name. |
 | `description` | string | no | Concise catalog description. |
 | `modes` | string[] | no | Any non-empty subset of `writing`, `game`. Missing or unusable values mean both modes for legacy compatibility. |
-| `style_refs` | string[] | no | Global style-reference `display_path` values; at most 12 distinct valid paths. Resolve each with `style_reference` first. |
-| `style_rules` | object[] | no | Scene-specific mappings. Each item has non-empty `scene` and up to 12 `style_refs`. Preserve returned legacy `style_contents`, but do not add new inline excerpts. |
+| `style_refs` | string[] | no | Global style-reference `display_path` values; every distinct valid path is retained. Resolve each with `style_reference` first. |
+| `style_rules` | object[] | no | Scene-specific mappings. Each item has non-empty `scene` and any number of distinct `style_refs`. Preserve returned legacy `style_contents`, but do not add new inline excerpts. |
 | `context_policy` | object | no | Short policy strings `creator`, `lore`, and `runtime_state`. Defaults are `always`, `relevant`, `always`; these are guidance tokens, not arbitrary story content. |
 | `slots` | object[] | yes | Ordered prompt blocks. At least one slot is required. |
 

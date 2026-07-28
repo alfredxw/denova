@@ -16,7 +16,6 @@ const (
 	storyDirectorVersion   = 5
 	DefaultStoryDirectorID = "default"
 
-	maxStoryDirectorRules               = 64
 	MaxStoryDirectorStrategyPromptBytes = DirectorContextMaxBytes
 	DefaultDirectorAgentMode            = DirectorAgentModeTriggered
 	DirectorAgentModeTriggered          = "triggered"
@@ -141,6 +140,9 @@ func (l *StoryDirectorLibrary) Create(director StoryDirector) (StoryDirector, er
 	if err := os.MkdirAll(l.dir(), 0o755); err != nil {
 		return StoryDirector{}, err
 	}
+	if err := validateStoryDirectorWriteBounds(director); err != nil {
+		return StoryDirector{}, err
+	}
 	director = normalizeStoryDirector(director)
 	if director.ID == "" {
 		director.ID = newStoryDirectorID(director.Name)
@@ -180,6 +182,9 @@ func (l *StoryDirectorLibrary) Update(id string, director StoryDirector, baseRev
 	isBuiltin := IsBuiltinStoryDirectorID(id)
 	if strings.TrimSpace(baseRevision) != "" && strings.TrimSpace(current.UpdatedAt) != strings.TrimSpace(baseRevision) {
 		return StoryDirector{}, ErrStoryDirectorRevisionConflict
+	}
+	if err := validateStoryDirectorWriteBounds(director); err != nil {
+		return StoryDirector{}, err
 	}
 	director = normalizeStoryDirector(director)
 	director.ID = id
@@ -386,6 +391,28 @@ func normalizeStoryDirectorStrategy(strategy StoryDirectorStrategy) StoryDirecto
 	strategy.BranchPlanningTurns = NormalizeBranchPlanningTurns(strategy.BranchPlanningTurns)
 	strategy.PlanningTemplates = NormalizeStoryDirectorPlanningTemplates(strategy.PlanningTemplates)
 	return strategy
+}
+
+func validateStoryDirectorWriteBounds(director StoryDirector) error {
+	if len([]byte(strings.TrimSpace(director.Name))) > 256 {
+		return errors.New("name 超过 256 字节 / exceeds 256 bytes")
+	}
+	if len([]byte(strings.TrimSpace(director.Description))) > 1024 {
+		return errors.New("description 超过 1024 字节 / exceeds 1024 bytes")
+	}
+	if len([]byte(strings.TrimSpace(director.Strategy.PromptMarkdown))) > MaxStoryDirectorStrategyPromptBytes {
+		return fmt.Errorf("strategy.prompt_markdown 超过 %d 字节 / exceeds %d bytes", MaxStoryDirectorStrategyPromptBytes, MaxStoryDirectorStrategyPromptBytes)
+	}
+	if len([]byte(strings.TrimSpace(director.Strategy.PlanningTemplates.Plan))) > maxDirectorPlanDocBytes {
+		return fmt.Errorf("strategy.planning_templates.plan 超过 %d 字节 / exceeds %d bytes", maxDirectorPlanDocBytes, maxDirectorPlanDocBytes)
+	}
+	if len([]byte(strings.TrimSpace(director.Strategy.PlanningTemplates.AgentBrief))) > maxDirectorPlanDocBytes {
+		return fmt.Errorf("strategy.planning_templates.agent_brief 超过 %d 字节 / exceeds %d bytes", maxDirectorPlanDocBytes, maxDirectorPlanDocBytes)
+	}
+	if turns := director.Strategy.BranchPlanningTurns; turns < 0 || turns > 12 {
+		return errors.New("strategy.branch_planning_turns 必须在 1 到 12 之间，或省略为 0 / must be between 1 and 12, or omitted as 0")
+	}
+	return nil
 }
 
 func normalizeEventFrequency(value string) string {

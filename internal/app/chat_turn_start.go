@@ -128,25 +128,13 @@ func (s *ChatAppService) StartTaskWithError(ctx context.Context, req agents.Chat
 		defer a.unregisterWorkspaceTask(task)
 		log.Printf("[agent-task] run begin id=%s message_len=%d references=%d lore_references=%d style_scenes=%d style_rules=%d selections=%d plan_mode=%v teller_id=%s writing_skill=%s", task.ID(), len(req.Message), len(req.References), len(req.LoreReferences), len(req.StyleScenes), len(req.StyleRules), len(req.Selections), req.PlanMode, req.TellerID, req.WritingSkill)
 		accepted.Wait(ctx)
-		_, inputCommitted := conversation.LastAgentCycleCommitReceipt(agents.HarnessDomainCommitInput)
 		_, outputCommitted := conversation.LastAgentCycleCommitReceipt(agents.HarnessDomainCommitOutput)
 		postSettlementCtx := ctx
-		if inputCommitted || outputCommitted {
+		if outputCommitted {
 			// A durable domain receipt outlives a late caller cancellation. Keep
 			// its required projections and mutation hooks consistent with the
 			// committed cycle while the workspace task lease is still held.
 			postSettlementCtx = context.WithoutCancel(ctx)
-		}
-		if inputCommitted && !req.ResolvedReviewFeedback.Empty() {
-			if err := s.consumeResolvedReviewFeedback(postSettlementCtx, runtime, req); err != nil {
-				log.Printf("[reviews] Agent input 已提交但消费评审反馈失败 workspace=%s task_id=%s err=%v", runtime.workspace, task.ID(), err)
-				emit(agents.Event{Type: "error", Data: map[string]string{"message": err.Error()}})
-			} else {
-				emit(agents.Event{Type: "workspace_change", Data: map[string]interface{}{
-					"workspace": runtime.workspace, "review_thread_id": req.ResolvedReviewFeedback.PrimaryReviewThreadID(),
-					"action": "review_feedback_consumed",
-				}})
-			}
 		}
 		// The durable runtime owns the canonical precedence rule: once an output
 		// receipt is acknowledged, late adapter/display errors cannot roll it back.
@@ -183,11 +171,10 @@ func (s *ChatAppService) StartTaskWithError(ctx context.Context, req agents.Chat
 		return nil, err
 	}
 	acceptCtx, releaseAcceptance := taskAcceptanceContext(ctx, task)
-	accepted, err = runtime.chatService.StartWithOptions(acceptCtx, runner, conversation, runtime.bookService, req, agents.RunOptions{
+	startOptions := s.bindReviewFeedbackInputCommit(agents.RunOptions{
 		AgentKind:          agents.AgentKindIDE,
 		TaskID:             task.ID(),
 		SessionID:          runtime.sess.ID,
-		ReviewThreadID:     req.ResolvedReviewFeedback.PrimaryReviewThreadID(),
 		Workspace:          runtime.workspace,
 		Mode:               "ide",
 		IdleTimeout:        agentIdleTimeout(runtime.cfg),
@@ -197,7 +184,10 @@ func (s *ChatAppService) StartTaskWithError(ctx context.Context, req agents.Chat
 			verifiedMutations = append([]agents.ToolMutation(nil), mutations...)
 			postRunVerification = verification
 		},
-	}, task.emit)
+	}, runtime, req)
+	accepted, err = runtime.chatService.StartWithOptions(
+		acceptCtx, runner, conversation, runtime.bookService, req, startOptions, task.emit,
+	)
 	releaseAcceptance()
 	if err != nil {
 		task.failBeforeStart(err)

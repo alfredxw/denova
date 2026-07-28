@@ -8,6 +8,7 @@ const loreWorkspace = {
   'loreWorkspace.metadata': '资料属性',
   'loreWorkspace.noBrief': '暂无简介',
   'loreWorkspace.contentLabel': '编辑设定：{{name}}',
+  'loreWorkspace.rawContentLabel': '编辑 Raw 设定：{{name}}',
   'loreWorkspace.search': '搜索名称、标签或正文…',
   'loreWorkspace.createInSection': '新建{{section}}',
   'loreWorkspace.emptyDirectory': '这个分类下还没有资料',

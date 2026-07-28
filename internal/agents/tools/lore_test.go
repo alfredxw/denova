@@ -3,6 +3,7 @@ package tools
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"strings"
 	"testing"
 
@@ -109,9 +110,8 @@ func TestNewLoreToolsUsesListLoreItemsInsteadOfSearch(t *testing.T) {
 		`{"types":["unknown"]}`,
 		`{"detail":"unknown"}`,
 		`{"detail":"full"}`,
-		`{"limit":51}`,
+		`{"limit":-1}`,
 		`{"offset":-1}`,
-		`{"keywords":["1","2","3","4","5","6","7","8","9"]}`,
 	} {
 		if _, err := runToolForTest(context.Background(), listTool, args); err == nil {
 			t.Fatalf("list_lore_items should reject invalid args: %s", args)
@@ -259,23 +259,26 @@ func TestListLoreItemsFiltersByResidentLoadMode(t *testing.T) {
 	}
 }
 
-func TestLoreReadPolicyTracksVisibleItemsAndEnforcesHardBounds(t *testing.T) {
+func TestLoreReadAllowsLargeBatchesAndReportsPartialMisses(t *testing.T) {
 	workspace := t.TempDir()
 	store := book.NewLoreStore(workspace)
-	for _, input := range []book.LoreItemInput{
-		{ID: "rule-a", Type: "rule", Name: "规则甲", LoadMode: book.LoreLoadModeResident, Content: "甲规则正文。"},
-		{ID: "rule-b", Type: "rule", Name: "规则乙", LoadMode: book.LoreLoadModeResident, Content: "乙规则正文。"},
-		{ID: "rule-c", Type: "rule", Name: "规则丙", LoadMode: book.LoreLoadModeResident, Content: "丙规则正文。"},
-	} {
-		if _, err := store.Create(input); err != nil {
+	ids := make([]string, 0, 19)
+	for i := 0; i < 19; i++ {
+		id := fmt.Sprintf("rule-%02d", i)
+		ids = append(ids, id)
+		content := fmt.Sprintf("规则 %02d 正文。", i)
+		if i == 0 {
+			content += strings.Repeat("这是一段很长的资料正文。", 12_000)
+		}
+		if _, err := store.Create(book.LoreItemInput{
+			ID: id, Type: "rule", Name: fmt.Sprintf("规则 %02d", i),
+			LoadMode: book.LoreLoadModeResident, Content: content,
+		}); err != nil {
 			t.Fatal(err)
 		}
 	}
 	var reviewed []string
 	tools, err := newLoreTools(workspace, false, loreToolsOptions{ReadPolicy: &loreReadPolicy{
-		MaxItemsPerCall: 2,
-		MaxResultBytes:  4 * 1024,
-		MaxTotalBytes:   8 * 1024,
 		OnRead: func(ids []string) {
 			reviewed = append(reviewed, ids...)
 		},
@@ -297,40 +300,39 @@ func TestLoreReadPolicyTracksVisibleItemsAndEnforcesHardBounds(t *testing.T) {
 	if readTool == nil {
 		t.Fatal("read_lore_items tool missing")
 	}
-	if _, err := runToolForTest(context.Background(), readTool, `{"ids":["rule-a","rule-b","rule-c"]}`); err == nil {
-		t.Fatal("state-schema lore reads must reject oversized batches")
-	}
-	output, err := runToolForTest(context.Background(), readTool, `{"ids":["rule-a","rule-b"]}`)
+	args, err := json.Marshal(readLoreItemsInput{IDs: ids})
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !strings.Contains(output, "甲规则正文") || !strings.Contains(output, "乙规则正文") || strings.Join(reviewed, ",") != "rule-a,rule-b" {
-		t.Fatalf("visible lore reads should be tracked by returned IDs: reviewed=%v output=%s", reviewed, output)
+	output, err := runToolForTest(context.Background(), readTool, string(args))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(output, "规则 00 正文") || !strings.Contains(output, "规则 18 正文") || strings.Join(reviewed, ",") != strings.Join(ids, ",") {
+		t.Fatalf("all requested lore should be returned and tracked: reviewed=%v output_bytes=%d", reviewed, len(output))
 	}
 
 	reviewed = nil
-	boundedTools, err := newLoreTools(workspace, false, loreToolsOptions{ReadPolicy: &loreReadPolicy{
-		MaxItemsPerCall: 1,
-		MaxResultBytes:  1,
-		MaxTotalBytes:   1,
-		OnRead: func(ids []string) {
-			reviewed = append(reviewed, ids...)
-		},
-	}})
+	output, err = runToolForTest(context.Background(), readTool, `{"names":["规则 00","不存在的规则","规则 18"]}`)
 	if err != nil {
 		t.Fatal(err)
 	}
-	for _, candidate := range boundedTools {
-		info, _ := candidate.Tool.Info(context.Background())
-		if info.Name != "read_lore_items" {
-			continue
-		}
-		if _, err := runToolForTest(context.Background(), candidate, `{"ids":["rule-a"]}`); err == nil {
-			t.Fatal("read result exceeding the context budget must be rejected")
+	for _, want := range []string{"规则 00 正文", "规则 18 正文", "## 未找到的资料", `names: ["不存在的规则"]`} {
+		if !strings.Contains(output, want) {
+			t.Fatalf("partial lore output missing %q:\n%s", want, output)
 		}
 	}
-	if len(reviewed) != 0 {
-		t.Fatalf("rejected lore content must not be recorded as model-reviewed: %v", reviewed)
+	if strings.Join(reviewed, ",") != "rule-00,rule-18" {
+		t.Fatalf("only matched lore should be tracked: %v", reviewed)
+	}
+	if _, err := runToolForTest(context.Background(), readTool, `{"names":["不存在甲","不存在乙"]}`); err == nil || !strings.Contains(err.Error(), "未匹配到任何资料条目") {
+		t.Fatalf("an all-missing batch should return one clear error, got %v", err)
+	}
+}
+
+func TestListLoreItemsAcceptsCallerRequestedLimitWithoutToolCap(t *testing.T) {
+	if err := validateListLoreItemsInput(listLoreItemsInput{Keywords: []string{"a"}, Limit: 500}); err != nil {
+		t.Fatalf("caller-requested lore limit should not be rejected: %v", err)
 	}
 }
 

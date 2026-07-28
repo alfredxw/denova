@@ -3,6 +3,7 @@ package interactive
 import (
 	"encoding/json"
 	"errors"
+	"os"
 	"strings"
 	"testing"
 	"unicode/utf8"
@@ -77,7 +78,7 @@ func TestStoryDirectorLibraryCRUDAndRevisionConflict(t *testing.T) {
 			Enabled:             true,
 			EventFrequency:      EventFrequencyFrequent,
 			DirectorAgentMode:   "unknown",
-			BranchPlanningTurns: 99,
+			BranchPlanningTurns: 12,
 		},
 	})
 	if err != nil {
@@ -130,6 +131,20 @@ func TestStoryDirectorLibraryCRUDAndRevisionConflict(t *testing.T) {
 	}
 	if got.Name != updated.Name {
 		t.Fatalf("stale update should not overwrite story director: %#v", got)
+	}
+}
+
+func TestStoryDirectorCreateRejectsInvalidBranchHorizonBeforePersisting(t *testing.T) {
+	library := NewStoryDirectorLibrary(t.TempDir())
+	_, err := library.Create(StoryDirector{
+		ID: "invalid-horizon", Name: "无效规划范围",
+		Strategy: StoryDirectorStrategy{BranchPlanningTurns: 13},
+	})
+	if err == nil || !strings.Contains(err.Error(), "strategy.branch_planning_turns") {
+		t.Fatalf("invalid branch horizon error = %v", err)
+	}
+	if _, getErr := library.Get("invalid-horizon"); !os.IsNotExist(getErr) {
+		t.Fatalf("invalid director must not be persisted: %v", getErr)
 	}
 }
 
@@ -257,6 +272,20 @@ func TestStoryDirectorStrategyPromptMarkdownNormalizeAndSummaries(t *testing.T) 
 		if !strings.Contains(summary, `"difficulty_guidance"`) || !strings.Contains(summary, `"state_effect_guidance"`) || !strings.Contains(summary, `"must_check_examples"`) || !strings.Contains(summary, `"skip_check_examples"`) || strings.Contains(summary, `"impact"`) {
 			t.Fatalf("%s summary should expose natural-language rule guidance without legacy impact:\n%s", name, summary)
 		}
+	}
+}
+
+func TestStoryDirectorCreateRejectsOversizedPromptBeforePersisting(t *testing.T) {
+	library := NewStoryDirectorLibrary(t.TempDir())
+	_, err := library.Create(StoryDirector{
+		ID: "oversized-prompt", Name: "超长提示导演",
+		Strategy: StoryDirectorStrategy{PromptMarkdown: strings.Repeat("a", MaxStoryDirectorStrategyPromptBytes+1)},
+	})
+	if err == nil || !strings.Contains(err.Error(), "strategy.prompt_markdown") {
+		t.Fatalf("oversized prompt error = %v", err)
+	}
+	if _, getErr := library.Get("oversized-prompt"); !os.IsNotExist(getErr) {
+		t.Fatalf("oversized director must not be persisted: %v", getErr)
 	}
 }
 

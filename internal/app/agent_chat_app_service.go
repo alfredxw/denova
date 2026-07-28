@@ -180,12 +180,17 @@ func (s *AgentChatAppService) StartTask(ctx context.Context, binding AgentChatBi
 	}
 
 	acceptCtx, releaseAcceptance := taskAcceptanceContext(ctx, task)
-	accepted, err = runtime.chatService.StartWithOptions(
-		acceptCtx, runner, conversation, runtime.bookService, req,
+	startOptions := s.app.chat().bindReviewFeedbackInputCommit(
 		agentChatStartOptions(run, req.ResolvedReviewFeedback.PrimaryReviewThreadID(), systemPrompt, func(mutations []agents.ToolMutation, verification agents.PostRunVerification) {
 			verifiedMutations = append([]agents.ToolMutation(nil), mutations...)
 			postRunVerification = verification
 		}),
+		runtime,
+		req,
+	)
+	accepted, err = runtime.chatService.StartWithOptions(
+		acceptCtx, runner, conversation, runtime.bookService, req,
+		startOptions,
 		task.emit,
 	)
 	releaseAcceptance()
@@ -203,22 +208,10 @@ func (s *AgentChatAppService) StartTask(ctx context.Context, binding AgentChatBi
 		defer s.releaseActiveRun(run)
 		log.Printf("[agent-chat-run] begin task_id=%s workspace=%q session_id=%s message_len=%d", task.ID(), binding.Workspace, binding.SessionID, len(req.Message))
 		accepted.Wait(runCtx)
-		_, inputCommitted := conversation.LastAgentCycleCommitReceipt(agents.HarnessDomainCommitInput)
 		_, outputCommitted := conversation.LastAgentCycleCommitReceipt(agents.HarnessDomainCommitOutput)
 		postSettlementCtx := runCtx
-		if inputCommitted || outputCommitted {
+		if outputCommitted {
 			postSettlementCtx = context.WithoutCancel(runCtx)
-		}
-		if inputCommitted && !req.ResolvedReviewFeedback.Empty() {
-			if consumeErr := s.app.chat().consumeResolvedReviewFeedback(postSettlementCtx, runtime, req); consumeErr != nil {
-				log.Printf("[agent-chat-run] consuming review feedback failed task_id=%s workspace=%q session_id=%s err=%v", task.ID(), binding.Workspace, binding.SessionID, consumeErr)
-				emit(agents.Event{Type: "error", Data: map[string]string{"message": consumeErr.Error()}})
-			} else {
-				emit(agents.Event{Type: "workspace_change", Data: map[string]interface{}{
-					"workspace": binding.Workspace, "review_thread_id": req.ResolvedReviewFeedback.PrimaryReviewThreadID(),
-					"action": "review_feedback_consumed",
-				}})
-			}
 		}
 		if outputCommitted && len(verifiedMutations) > 0 {
 			mutationCallback(postSettlementCtx, verifiedMutations, postRunVerification)

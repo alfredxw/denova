@@ -12,7 +12,6 @@ import (
 const (
 	StateOpSourceActorTrait = "actor_trait"
 	maxActorTraitsPerActor  = maxInteractiveListItems
-	maxActorTraitSummary    = 512
 )
 
 type ActorTraitSelection struct {
@@ -46,9 +45,6 @@ func normalizeActorTraitPools(pools []ActorTraitPool) []ActorTraitPool {
 	if pools == nil {
 		return []ActorTraitPool{}
 	}
-	if len(pools) > maxInteractiveListItems {
-		pools = pools[:maxInteractiveListItems]
-	}
 	out := make([]ActorTraitPool, 0, len(pools))
 	seen := map[string]bool{}
 	for _, pool := range pools {
@@ -57,8 +53,8 @@ func normalizeActorTraitPools(pools []ActorTraitPool) []ActorTraitPool {
 			continue
 		}
 		seen[pool.ID] = true
-		pool.Name = trimBytes(firstNonEmptyString(pool.Name, pool.ID), 128)
-		pool.Description = trimBytes(pool.Description, maxInteractiveTextBytes)
+		pool.Name = strings.TrimSpace(firstNonEmptyString(pool.Name, pool.ID))
+		pool.Description = strings.TrimSpace(pool.Description)
 		pool.Traits = normalizeActorTraitDefinitions(pool.Traits)
 		out = append(out, pool)
 	}
@@ -69,9 +65,6 @@ func normalizeActorTraitDefinitions(traits []ActorTraitDefinition) []ActorTraitD
 	if traits == nil {
 		return []ActorTraitDefinition{}
 	}
-	if len(traits) > maxInteractiveListItems {
-		traits = traits[:maxInteractiveListItems]
-	}
 	out := make([]ActorTraitDefinition, 0, len(traits))
 	seen := map[string]bool{}
 	for _, trait := range traits {
@@ -80,8 +73,8 @@ func normalizeActorTraitDefinitions(traits []ActorTraitDefinition) []ActorTraitD
 			continue
 		}
 		seen[trait.ID] = true
-		trait.Name = trimBytes(firstNonEmptyString(trait.Name, trait.ID), 128)
-		trait.Summary = trimBytes(trait.Summary, maxActorTraitSummary)
+		trait.Name = strings.TrimSpace(firstNonEmptyString(trait.Name, trait.ID))
+		trait.Summary = strings.TrimSpace(trait.Summary)
 		if trait.Weight <= 0 {
 			trait.Weight = 1
 		}
@@ -94,9 +87,6 @@ func normalizeActorTraitRules(rules []ActorTraitRule) []ActorTraitRule {
 	if rules == nil {
 		return []ActorTraitRule{}
 	}
-	if len(rules) > maxInteractiveListItems {
-		rules = rules[:maxInteractiveListItems]
-	}
 	out := make([]ActorTraitRule, 0, len(rules))
 	seen := map[string]bool{}
 	for _, rule := range rules {
@@ -107,9 +97,6 @@ func normalizeActorTraitRules(rules []ActorTraitRule) []ActorTraitRule {
 		seen[rule.PoolID] = true
 		if rule.DrawCount <= 0 {
 			rule.DrawCount = 1
-		}
-		if rule.DrawCount > maxActorTraitsPerActor {
-			rule.DrawCount = maxActorTraitsPerActor
 		}
 		out = append(out, rule)
 	}

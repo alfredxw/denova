@@ -2,7 +2,7 @@
 
 Agent profiles manage layered model, capability, prompt, Skill, context, General SubAgent, and custom SubAgent settings in `user` or `workspace` scope.
 
-This resource is a singleton registry snapshot. Reads do not accept `scope`: use `config_read(operation=get, resource=agent_profile, ids=["registry"])`. The result contains valid Agent kinds, SubAgent parents, capability names, safe model-profile IDs, user/workspace/effective layers, and separate revisions for both scopes.
+This resource is a singleton registry snapshot. Reads do not accept `scope`: use `config_read(operation=get, resource=agent_profile, ids=["registry"])`. The singleton snapshot is returned as `items[0]`; it contains valid Agent kinds, SubAgent parents, capability names, safe model-profile IDs, user/workspace/effective layers, and separate revisions for both scopes.
 
 Use the revision for the exact target scope selected by `config_apply`. Model selection is user-scoped only. API keys and other secrets are never returned and cannot be changed through this resource.
 

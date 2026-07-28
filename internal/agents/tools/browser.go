@@ -28,7 +28,7 @@ type browserRunInput struct {
 	Selector       string   `json:"selector,omitempty" jsonschema_description:"CSS selector from observe, a wait condition, or a precise caller-supplied selector."`
 	Text           string   `json:"text,omitempty" jsonschema_description:"Text used by fill or type, or visible page text awaited by wait."`
 	Key            string   `json:"key,omitempty" jsonschema_description:"Key used by press, such as Enter, Escape, Tab, or ArrowDown."`
-	Values         []string `json:"values,omitempty" jsonschema:"maxItems=16" jsonschema_description:"Option values or visible labels used by select."`
+	Values         []string `json:"values,omitempty" jsonschema_description:"Option values or visible labels used by select. Multiple-select controls accept every supplied distinct value."`
 	Expression     string   `json:"expression,omitempty" jsonschema_description:"Bounded JavaScript expression evaluated asynchronously inside the isolated page only."`
 	FullPage       bool     `json:"full_page,omitempty" jsonschema_description:"Capture the full document for screenshot; otherwise capture the viewport."`
 	TimeoutSeconds int      `json:"timeout_seconds,omitempty" jsonschema:"minimum=0" jsonschema_description:"Explicit wait deadline in seconds. Zero or omitted means no tool-imposed timeout."`

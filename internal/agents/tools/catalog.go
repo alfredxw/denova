@@ -270,15 +270,19 @@ func interactiveStoryToolsFactory(cfg *config.Config, toolContexts ...Interactiv
 		if len(toolContexts) == 0 {
 			return definitions, nil
 		}
-		history, err := newInteractiveHistoryTools(toolContexts[0])
+		toolContext := toolContexts[0]
+		if toolContext.MaxResultBytes <= 0 {
+			toolContext.MaxResultBytes = catalogToolResultMaxBytes(cfg)
+		}
+		history, err := newInteractiveHistoryTools(toolContext)
 		if err != nil {
 			return nil, err
 		}
-		stateSchema, err := newInteractiveOpeningStateSchemaTools(toolContexts[0])
+		stateSchema, err := newInteractiveOpeningStateSchemaTools(toolContext)
 		if err != nil {
 			return nil, err
 		}
-		turn, err := newInteractiveTurnTools(toolContexts[0])
+		turn, err := newInteractiveTurnTools(toolContext)
 		if err != nil {
 			return nil, err
 		}
@@ -295,6 +299,9 @@ func interactiveDirectorToolsFactory(cfg *config.Config, toolContexts ...Interac
 		var toolContext InteractiveContext
 		if len(toolContexts) > 0 {
 			toolContext = toolContexts[0]
+			if toolContext.MaxResultBytes <= 0 {
+				toolContext.MaxResultBytes = catalogToolResultMaxBytes(cfg)
+			}
 		}
 		if cfg != nil && settings.Allows(config.AgentToolLoreRead) {
 			var options []loreToolsOptions

@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { toast } from 'sonner'
 import type { ReviewFeedbackSelection } from '@/features/changes/agent/ReviewFeedbackTray'
+import { isWorkspaceChangeForWorkspace, type WorkspaceChangeEvent } from '@/features/changes/types'
 import { createDocumentComment, deleteDocumentComment, getDocumentReview, updateDocumentComment } from './api'
 import type { CreateDocumentCommentRequest, DocumentReviewComment, DocumentReviewThread } from './types'
 
@@ -49,12 +50,13 @@ export function useDocumentReview({ workspace, agentVisible, onShowAgent }: UseD
 
   useEffect(() => {
     const onWorkspaceChange = (event: Event) => {
-      const detail = (event as CustomEvent<{ action?: string }>).detail
-      if (detail?.action === 'review_feedback_consumed') void refresh()
+      const detail = (event as CustomEvent<WorkspaceChangeEvent>).detail
+      if (detail?.action !== 'review_feedback_consumed' || !isWorkspaceChangeForWorkspace(detail, workspace)) return
+      void refresh()
     }
     window.addEventListener('nova:workspace-change', onWorkspaceChange)
     return () => window.removeEventListener('nova:workspace-change', onWorkspaceChange)
-  }, [refresh])
+  }, [refresh, workspace])
 
   const addComment = useCallback(async (request: CreateDocumentCommentRequest) => {
     const result = await createDocumentComment(workspace, request)

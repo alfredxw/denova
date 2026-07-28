@@ -27,6 +27,7 @@ interface MobilePaneHostProps {
   className?: string
   openPaneId?: string | null
   onOpenPaneChange?: (id: string | null) => void
+  paneScope?: 'viewport' | 'surface'
 }
 
 const EDGE_SWIPE_WIDTH = 22
@@ -44,6 +45,7 @@ export function MobilePaneHost({
   className = 'relative h-full min-h-0',
   openPaneId: controlledOpenPaneId,
   onOpenPaneChange,
+  paneScope = 'viewport',
 }: MobilePaneHostProps) {
   const [internalOpenPaneId, setInternalOpenPaneId] = useState<string | null>(null)
   const [dragState, setDragState] = useState<{
@@ -98,6 +100,7 @@ export function MobilePaneHost({
   }, [])
 
   const hostRef = useEdgeSwipe({
+    paneScope,
     leftEnabled: panes.some((pane) => pane.side === 'left'),
     rightEnabled: panes.some((pane) => pane.side === 'right'),
     onDragStart: (side) => {
@@ -144,6 +147,7 @@ export function MobilePaneHost({
           progress={paneProgress}
           dragging={dragState?.dragging ?? false}
           side={paneSide}
+          paneScope={paneScope}
           onClose={() => setOpenPaneId(null)}
         />
       ) : null}
@@ -157,6 +161,7 @@ function MobileDrawer({
   progress,
   dragging,
   side,
+  paneScope,
   onClose,
 }: {
   pane: MobilePane
@@ -164,6 +169,7 @@ function MobileDrawer({
   progress: number
   dragging: boolean
   side: 'left' | 'right'
+  paneScope: 'viewport' | 'surface'
   onClose: () => void
 }) {
   const titleId = `nova-mobile-pane-title-${pane.id}`
@@ -186,7 +192,7 @@ function MobileDrawer({
       <div
         aria-hidden="true"
         data-nova-mobile-pane-overlay="true"
-        className="fixed inset-0 z-50 bg-black"
+        className={`${paneScope === 'surface' ? 'absolute' : 'fixed'} inset-0 z-50 bg-black`}
         style={overlayStyle}
         onClick={onClose}
       />
@@ -197,7 +203,7 @@ function MobileDrawer({
         data-state="open"
         data-nova-mobile-pane-content="true"
         data-side={side}
-        className={`fixed inset-y-0 z-50 flex w-[min(92vw,420px)] max-w-none flex-col gap-0 border-[var(--nova-border)] bg-[var(--nova-surface-2)] p-0 text-[var(--nova-text)] shadow-[var(--nova-shadow)] sm:max-w-none ${sideClassName} ${pane.className || ''}`}
+        className={`${paneScope === 'surface' ? 'absolute' : 'fixed'} inset-y-0 z-50 flex w-[min(92vw,420px)] max-w-none flex-col gap-0 border-[var(--nova-border)] bg-[var(--nova-surface-2)] p-0 text-[var(--nova-text)] shadow-[var(--nova-shadow)] sm:max-w-none ${sideClassName} ${pane.className || ''}`}
         style={drawerStyle}
       >
         <div className="nova-topbar flex h-11 shrink-0 items-center justify-between border-b border-[var(--nova-border)] px-3">
@@ -216,12 +222,14 @@ function MobileDrawer({
 }
 
 function useEdgeSwipe({
+  paneScope,
   leftEnabled,
   rightEnabled,
   onDragStart,
   onDragProgress,
   onDragEnd,
 }: {
+  paneScope: 'viewport' | 'surface'
   leftEnabled: boolean
   rightEnabled: boolean
   onDragStart: (side: 'left' | 'right') => void
@@ -244,8 +252,13 @@ function useEdgeSwipe({
 
     const beginGesture = (clientX: number, clientY: number, target: EventTarget | null, source: 'pointer' | 'mouse' | 'touch', pointerId?: number) => {
       if (shouldIgnoreNestedPaneHost(target, host) || shouldIgnoreSwipeTarget(target)) return
-      const width = window.innerWidth
-      const side = clientX <= EDGE_SWIPE_WIDTH ? 'left' : width - clientX <= EDGE_SWIPE_WIDTH ? 'right' : null
+      const bounds = paneGestureBounds(host, paneScope)
+      const localX = clientX - bounds.left
+      const side = localX >= 0 && localX <= EDGE_SWIPE_WIDTH
+        ? 'left'
+        : localX <= bounds.width && bounds.width - localX <= EDGE_SWIPE_WIDTH
+          ? 'right'
+          : null
       if (!side || (side === 'left' && !leftEnabled) || (side === 'right' && !rightEnabled)) return
       gestureRef.current = { startX: clientX, startY: clientY, side, source, committed: false, pointerId }
     }
@@ -267,7 +280,7 @@ function useEdgeSwipe({
         onDragStart(gesture.side)
       }
       event?.preventDefault()
-      onDragProgress(gesture.side, dragProgressForDistance(distance))
+      onDragProgress(gesture.side, dragProgressForDistance(distance, host, paneScope))
     }
 
     const finishGesture = (clientX: number, clientY: number, source: 'pointer' | 'mouse' | 'touch', pointerId?: number) => {
@@ -277,8 +290,8 @@ function useEdgeSwipe({
       const deltaX = clientX - gesture.startX
       const deltaY = clientY - gesture.startY
       const distance = gesture.side === 'left' ? deltaX : -deltaX
-      const progress = dragProgressForDistance(Math.max(0, distance))
-      const openDistance = Math.max(EDGE_SWIPE_THRESHOLD, drawerGestureWidth() * DRAWER_OPEN_RATIO)
+      const progress = dragProgressForDistance(Math.max(0, distance), host, paneScope)
+      const openDistance = Math.max(EDGE_SWIPE_THRESHOLD, drawerGestureWidth(host, paneScope) * DRAWER_OPEN_RATIO)
       const shouldOpen = distance >= openDistance && distance >= Math.abs(deltaY) * HORIZONTAL_INTENT_RATIO
       if (!gesture.committed && shouldOpen) {
         onDragStart(gesture.side)
@@ -366,17 +379,24 @@ function useEdgeSwipe({
       window.removeEventListener('touchmove', onTouchMove)
       window.removeEventListener('touchcancel', onMouseOrTouchCancel)
     }
-  }, [leftEnabled, onDragEnd, onDragProgress, onDragStart, rightEnabled])
+  }, [leftEnabled, onDragEnd, onDragProgress, onDragStart, paneScope, rightEnabled])
 
   return hostRef
 }
 
-function dragProgressForDistance(distance: number) {
-  return clamp(distance / drawerGestureWidth(), 0, 1)
+function dragProgressForDistance(distance: number, host: HTMLElement, paneScope: 'viewport' | 'surface') {
+  return clamp(distance / drawerGestureWidth(host, paneScope), 0, 1)
 }
 
-function drawerGestureWidth() {
-  return Math.min(window.innerWidth * 0.92, 420)
+function drawerGestureWidth(host: HTMLElement, paneScope: 'viewport' | 'surface') {
+  const width = paneScope === 'surface' ? host.getBoundingClientRect().width : window.innerWidth
+  return Math.min(width * 0.92, 420)
+}
+
+function paneGestureBounds(host: HTMLElement, paneScope: 'viewport' | 'surface') {
+  if (paneScope === 'viewport') return { left: 0, width: window.innerWidth }
+  const bounds = host.getBoundingClientRect()
+  return { left: bounds.left, width: bounds.width }
 }
 
 function clamp(value: number, min: number, max: number) {

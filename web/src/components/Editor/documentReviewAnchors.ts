@@ -23,8 +23,81 @@ export interface DocumentReviewSelectionSnapshot {
   range: EditorReviewRange
 }
 
+export interface RawDocumentReviewSelectionSnapshot {
+  content: string
+  start: number
+  end: number
+}
+
+export interface ResolvedRawDocumentReviewAnchor {
+  start: number
+  end: number
+}
+
 export function captureDocumentReviewSelection(editor: Editor, range: EditorReviewRange): DocumentReviewSelectionSnapshot {
   return { document: editor.state.doc, range }
+}
+
+/** Creates the same durable UTF-8 anchor directly from a Markdown source selection. */
+export function createRawDocumentReviewAnchor(
+  snapshot: DocumentReviewSnapshot,
+  selection: RawDocumentReviewSelectionSnapshot,
+): DocumentReviewAnchor {
+  const revision = snapshot.revision.trim()
+  const { content, start, end } = selection
+  if (!revision) throw new Error('Document revision is unavailable')
+  if (snapshot.content !== content) throw new Error('The editor and workspace snapshots differ')
+  if (start < 0 || end <= start || end > content.length) throw new Error('The selected source range is invalid')
+
+  const quote = content.slice(start, end)
+  const displayQuote = quote.trim()
+  if (!displayQuote) throw new Error('The selected source range is empty')
+  const byteStart = utf8Bytes(content.slice(0, start))
+  return {
+    kind: 'text-range',
+    encoding: 'utf8-bytes-v1',
+    revision,
+    start: byteStart,
+    end: byteStart + utf8Bytes(quote),
+    quote,
+    prefix: boundedSuffix(content.slice(0, start)),
+    suffix: boundedPrefix(content.slice(end)),
+    display_quote: displayQuote,
+    editor_from: start,
+    editor_to: end,
+  }
+}
+
+/** Resolves a stored UTF-8 anchor against the current source without mutating it. */
+export function resolveRawDocumentReviewAnchor(
+  content: string,
+  anchor: DocumentReviewAnchor,
+): ResolvedRawDocumentReviewAnchor | null {
+  const exactStart = utf16OffsetAtByteOffset(content, anchor.start)
+  const exactEnd = utf16OffsetAtByteOffset(content, anchor.end)
+  if (exactStart !== null && exactEnd !== null
+    && content.slice(exactStart, exactEnd) === anchor.quote
+    && rawAnchorContextMatches(content, exactStart, exactEnd, anchor)) {
+    return { start: exactStart, end: exactEnd }
+  }
+  if (!anchor.quote) return null
+
+  let match: ResolvedRawDocumentReviewAnchor | null = null
+  for (let offset = 0; offset <= content.length;) {
+    const start = content.indexOf(anchor.quote, offset)
+    if (start < 0) break
+    const end = start + anchor.quote.length
+    if (rawAnchorContextMatches(content, start, end, anchor)) {
+      if (match) return null
+      match = { start, end }
+    }
+    offset = start + 1
+  }
+  return match
+}
+
+export function documentReviewAnchorKey(anchor: DocumentReviewAnchor): string {
+  return `comment:${anchor.revision}:${anchor.start}:${anchor.end}`
 }
 
 /** Maps a frozen TipTap selection to exact bytes in the revision-bound Markdown source. */
@@ -284,6 +357,37 @@ function uniqueMarker(content: string, base: string): string {
 
 function utf8Bytes(value: string): number {
   return new TextEncoder().encode(value).length
+}
+
+function utf16OffsetAtByteOffset(content: string, byteOffset: number): number | null {
+  if (!Number.isInteger(byteOffset) || byteOffset < 0) return null
+  let bytes = 0
+  for (let offset = 0; offset < content.length;) {
+    if (bytes === byteOffset) return offset
+    const codePoint = content.codePointAt(offset)
+    if (codePoint === undefined) break
+    bytes += utf8Width(codePoint)
+    if (bytes > byteOffset) return null
+    offset += codePoint > 0xffff ? 2 : 1
+  }
+  return bytes === byteOffset ? content.length : null
+}
+
+function utf8Width(codePoint: number): number {
+  if (codePoint <= 0x7f) return 1
+  if (codePoint <= 0x7ff) return 2
+  if (codePoint <= 0xffff) return 3
+  return 4
+}
+
+function rawAnchorContextMatches(
+  content: string,
+  start: number,
+  end: number,
+  anchor: DocumentReviewAnchor,
+): boolean {
+  return (!anchor.prefix || content.slice(Math.max(0, start - anchor.prefix.length), start) === anchor.prefix)
+    && (!anchor.suffix || content.slice(end, end + anchor.suffix.length) === anchor.suffix)
 }
 
 function boundedPrefix(value: string): string {

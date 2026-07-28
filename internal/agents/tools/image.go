@@ -6,6 +6,7 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
+	"log"
 	"path/filepath"
 	"strings"
 	"time"
@@ -47,17 +48,26 @@ type generateImageInput struct {
 }
 
 type generatedImageToolResult struct {
-	Schema       string                    `json:"schema"`
-	Purpose      string                    `json:"purpose,omitempty"`
-	TargetPath   string                    `json:"target_path,omitempty"`
-	ProfileID    string                    `json:"profile_id"`
-	Provider     string                    `json:"provider"`
-	Model        string                    `json:"model"`
-	Size         string                    `json:"size,omitempty"`
-	Quality      string                    `json:"quality,omitempty"`
-	OutputFormat string                    `json:"output_format,omitempty"`
-	CreatedAt    string                    `json:"created_at,omitempty"`
-	Images       []generatedImageToolImage `json:"images"`
+	Schema       string                      `json:"schema"`
+	Status       string                      `json:"status"`
+	Purpose      string                      `json:"purpose,omitempty"`
+	TargetPath   string                      `json:"target_path,omitempty"`
+	ProfileID    string                      `json:"profile_id"`
+	Provider     string                      `json:"provider"`
+	Model        string                      `json:"model"`
+	Size         string                      `json:"size,omitempty"`
+	Quality      string                      `json:"quality,omitempty"`
+	OutputFormat string                      `json:"output_format,omitempty"`
+	CreatedAt    string                      `json:"created_at,omitempty"`
+	Images       []generatedImageToolImage   `json:"images"`
+	Failures     []generatedImageToolFailure `json:"failures,omitempty"`
+}
+
+type generatedImageToolFailure struct {
+	Index   int    `json:"index"`
+	Path    string `json:"path,omitempty"`
+	Code    string `json:"code"`
+	Message string `json:"message"`
 }
 
 type generatedImageToolImage struct {
@@ -162,8 +172,13 @@ func generateGeneralImageForTool(ctx context.Context, cfg *config.Config, bookSe
 		return generatedImageToolResult{}, err
 	}
 	createdAt := time.Now().UTC()
+	return persistGeneratedImages(bookService, input, generated, createdAt)
+}
+
+func persistGeneratedImages(bookService *book.Service, input generateImageInput, generated imagegen.Result, createdAt time.Time) (generatedImageToolResult, error) {
 	result := generatedImageToolResult{
 		Schema:       generatedImageResultSchema,
+		Status:       "success",
 		Purpose:      normalizeGenerateImagePurpose(input.Purpose),
 		TargetPath:   filepath.ToSlash(strings.TrimSpace(input.TargetPath)),
 		ProfileID:    generated.ProfileID,
@@ -177,18 +192,29 @@ func generateGeneralImageForTool(ctx context.Context, cfg *config.Config, bookSe
 	}
 	for index, image := range generated.Images {
 		if len(image.Data) == 0 {
-			return generatedImageToolResult{}, fmt.Errorf("图像模型返回了空图像")
+			result.Failures = append(result.Failures, generatedImageToolFailure{
+				Index: index, Code: "empty_image", Message: "图像模型返回了空图像 / The image provider returned an empty image.",
+			})
+			continue
 		}
 		ext := normalizeGeneratedImageExtension(image.Extension, generated.OutputFormat, input.OutputFormat)
 		if ext == "" {
-			return generatedImageToolResult{}, fmt.Errorf("无法识别图像格式")
+			result.Failures = append(result.Failures, generatedImageToolFailure{
+				Index: index, Code: "unknown_format", Message: "无法识别图像格式 / The generated image format is unknown.",
+			})
+			continue
 		}
 		if result.OutputFormat == "" {
 			result.OutputFormat = ext
 		}
 		imagePath := generatedToolImagePath(createdAt, index, ext)
 		if err := bookService.WriteBinaryFile(imagePath, image.Data); err != nil {
-			return generatedImageToolResult{}, fmt.Errorf("保存生成图像失败: %w", err)
+			message := fmt.Sprintf("保存生成图像失败 / Failed to save generated image: %v", err)
+			result.Failures = append(result.Failures, generatedImageToolFailure{
+				Index: index, Path: imagePath, Code: "save_failed", Message: message,
+			})
+			log.Printf("[image-tool] generated image save failed index=%d path=%s err=%v", index, imagePath, err)
+			continue
 		}
 		altText := strings.TrimSpace(input.AltText)
 		if altText == "" {
@@ -203,9 +229,16 @@ func generateGeneralImageForTool(ctx context.Context, cfg *config.Config, bookSe
 			SizeBytes:     len(image.Data),
 			RevisedPrompt: image.RevisedPrompt,
 		})
+		log.Printf("[image-tool] generated image saved index=%d path=%s bytes=%d", index, imagePath, len(image.Data))
 	}
 	if len(result.Images) == 0 {
-		return generatedImageToolResult{}, fmt.Errorf("图像模型未返回图像")
+		if len(result.Failures) == 0 {
+			return generatedImageToolResult{}, fmt.Errorf("图像模型未返回图像 / The image provider returned no images")
+		}
+		return generatedImageToolResult{}, fmt.Errorf("所有生成图像均保存失败 / All generated images failed: %s", result.Failures[0].Message)
+	}
+	if len(result.Failures) > 0 {
+		result.Status = "partial"
 	}
 	return result, nil
 }

@@ -16,13 +16,13 @@ Shared Markdown prose references are available to Writing and Game modes. They a
 | Field | Type | Required | Meaning |
 | --- | --- | --- | --- |
 | `name` | string | yes | Human-readable reference name and fallback heading. |
-| `description` | string | no | One-line catalog summary, truncated to 240 characters. |
+| `description` | string | no | One-line catalog summary, at most 240 characters; oversized input is rejected before writing. |
 | `filename` | string | no | Requested safe filename. Omit to derive it from `name`; use a Markdown filename when choosing one. |
-| `content` | string | yes | Complete non-empty Markdown, at most 160 KiB. The backend ensures a heading and trailing newline. |
+| `content` | string | yes | Complete non-empty Markdown, at most 160 KiB. Oversized input is rejected before writing; the backend ensures a heading and trailing newline. |
 
 ### Update value
 
-`content` is the only accepted field. It is a complete replacement, must remain non-empty, and is bounded to 160 KiB.
+`content` is the only accepted field. It is a complete replacement, must remain non-empty, and is rejected without changing the file when it exceeds 160 KiB.
 
 ### Returned, host-owned fields
 

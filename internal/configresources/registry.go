@@ -5,10 +5,16 @@ package configresources
 
 import (
 	"context"
+	"crypto/sha256"
+	"encoding/base64"
+	"encoding/hex"
+	"encoding/json"
 	"errors"
 	"fmt"
+	"io/fs"
 	"sort"
 	"strings"
+	"unicode/utf8"
 )
 
 const (
@@ -33,14 +39,80 @@ type Descriptor struct {
 	Reference     string   `json:"reference,omitempty"`
 }
 
-// ReadRequest describes a metadata, catalog, or exact-item read. IDs are
-// intentionally bounded by the tool layer before reaching an Adapter.
+// ReadRequest describes a metadata, catalog, or exact-item read. Cursor and
+// ResultMaxBytes are transport concerns: adapters only own resource access.
 type ReadRequest struct {
-	Operation string
-	Resource  string
-	IDs       []string
-	Scope     string
-	Query     string
+	Operation      string
+	Resource       string
+	IDs            []string
+	Scope          string
+	Query          string
+	Cursor         string
+	Limit          int
+	ResultMaxBytes int
+}
+
+// Catalog is the adapter-neutral input for a paginated list response.
+// Metadata carries small resource-wide context such as editable Skill scopes.
+type Catalog struct {
+	Items    []any
+	Metadata any
+}
+
+// NewCatalog converts a typed resource catalog without forcing adapters to
+// encode and decode their values through JSON.
+func NewCatalog[T any](items []T) Catalog {
+	result := make([]any, len(items))
+	for index := range items {
+		result[index] = items[index]
+	}
+	return Catalog{Items: result}
+}
+
+type ReadFailure struct {
+	ID      string `json:"id"`
+	Message string `json:"message"`
+}
+
+type ListResult struct {
+	Schema     string `json:"schema"`
+	Status     string `json:"status"`
+	Resource   string `json:"resource"`
+	Scope      string `json:"scope,omitempty"`
+	Metadata   any    `json:"metadata,omitempty"`
+	Items      []any  `json:"items"`
+	Returned   int    `json:"returned"`
+	Total      int    `json:"total"`
+	Truncated  bool   `json:"truncated"`
+	NextCursor string `json:"next_cursor,omitempty"`
+}
+
+type GetResult struct {
+	Schema     string        `json:"schema"`
+	Status     string        `json:"status"`
+	Resource   string        `json:"resource"`
+	Scope      string        `json:"scope,omitempty"`
+	Items      []any         `json:"items"`
+	MissingIDs []string      `json:"missing_ids,omitempty"`
+	Failures   []ReadFailure `json:"failures,omitempty"`
+	Processed  int           `json:"processed"`
+	Total      int           `json:"total"`
+	Truncated  bool          `json:"truncated"`
+	NextCursor string        `json:"next_cursor,omitempty"`
+}
+
+type missingResourceError struct{ err error }
+
+func (err missingResourceError) Error() string { return err.err.Error() }
+func (err missingResourceError) Unwrap() error { return err.err }
+
+// Missing marks an adapter error as an exact-ID absence. Storage and decoding
+// failures remain ordinary failures and are never mislabeled as missing.
+func Missing(err error) error {
+	if err == nil {
+		return nil
+	}
+	return missingResourceError{err: err}
 }
 
 // Mutation is one independently committed resource change. A single mutation
@@ -128,6 +200,11 @@ func (r *Registry) Read(ctx context.Context, request ReadRequest) (any, error) {
 	request.Resource = strings.TrimSpace(request.Resource)
 	request.Scope = strings.TrimSpace(request.Scope)
 	request.Query = strings.TrimSpace(request.Query)
+	request.Cursor = strings.TrimSpace(request.Cursor)
+	request.IDs = compactStrings(request.IDs)
+	if request.Limit < 0 {
+		return nil, errors.New("config_read limit cannot be negative")
+	}
 	switch request.Operation {
 	case ReadDescribe:
 		return r.Describe(request.Resource)
@@ -139,7 +216,15 @@ func (r *Registry) Read(ctx context.Context, request ReadRequest) (any, error) {
 		if err := r.validateRequest(request.Resource, request.Operation, request.Scope); err != nil {
 			return nil, err
 		}
-		return adapter.List(ctx, request)
+		catalog, err := adapter.List(ctx, request)
+		if err != nil {
+			return nil, err
+		}
+		value, ok := catalog.(Catalog)
+		if !ok {
+			return nil, fmt.Errorf("config resource %q returned %T from list, want configresources.Catalog", request.Resource, catalog)
+		}
+		return paginateCatalog(value, request)
 	case ReadGet:
 		if len(request.IDs) == 0 {
 			return nil, errors.New("config_read get requires at least one id")
@@ -151,10 +236,240 @@ func (r *Registry) Read(ctx context.Context, request ReadRequest) (any, error) {
 		if err := r.validateRequest(request.Resource, request.Operation, request.Scope); err != nil {
 			return nil, err
 		}
-		return adapter.Get(ctx, request)
+		return r.readExactItems(ctx, adapter, request)
 	default:
 		return nil, fmt.Errorf("unsupported config read operation %q", request.Operation)
 	}
+}
+
+type readCursor struct {
+	Version     int    `json:"v"`
+	Operation   string `json:"op"`
+	Offset      int    `json:"o"`
+	Successes   int    `json:"s,omitempty"`
+	Fingerprint string `json:"f"`
+	CatalogHash string `json:"h,omitempty"`
+}
+
+func paginateCatalog(catalog Catalog, request ReadRequest) (ListResult, error) {
+	catalogHash, err := hashCatalog(catalog)
+	if err != nil {
+		return ListResult{}, fmt.Errorf("hash config catalog: %w", err)
+	}
+	cursor, err := decodeReadCursor(request.Cursor, request, ReadList)
+	if err != nil {
+		return ListResult{}, err
+	}
+	if cursor.CatalogHash != "" && cursor.CatalogHash != catalogHash {
+		return ListResult{}, errors.New("config_read cursor is stale because the catalog changed; restart list from the first page / 配置目录已变化，请从第一页重新读取")
+	}
+	if cursor.Offset > len(catalog.Items) {
+		return ListResult{}, errors.New("config_read cursor is outside the current catalog / config_read 游标超出当前目录范围")
+	}
+
+	result := ListResult{
+		Schema: "config.catalog.v1", Status: "success", Resource: request.Resource,
+		Scope: request.Scope, Metadata: catalog.Metadata, Items: []any{}, Total: len(catalog.Items),
+	}
+	for index := cursor.Offset; index < len(catalog.Items); index++ {
+		if request.Limit > 0 && len(result.Items) >= request.Limit {
+			break
+		}
+		candidate := result
+		candidate.Items = append(append([]any(nil), result.Items...), catalog.Items[index])
+		candidate.Returned = len(candidate.Items)
+		candidate.Truncated = index+1 < len(catalog.Items)
+		if candidate.Truncated {
+			candidate.Status = "partial"
+			candidate.NextCursor, err = encodeReadCursor(readCursor{
+				Version: 1, Operation: ReadList, Offset: index + 1,
+				Fingerprint: readRequestFingerprint(request, ReadList), CatalogHash: catalogHash,
+			})
+			if err != nil {
+				return ListResult{}, err
+			}
+		}
+		if exceedsReadBudget(candidate, request.ResultMaxBytes) {
+			if len(result.Items) == 0 {
+				return ListResult{}, fmt.Errorf("config resource %q contains a catalog item larger than the %d-byte shared result budget / 单项配置超过共享结果预算", request.Resource, request.ResultMaxBytes)
+			}
+			break
+		}
+		result = candidate
+	}
+	result.Returned = len(result.Items)
+	nextOffset := cursor.Offset + result.Returned
+	result.Truncated = nextOffset < len(catalog.Items)
+	if result.Truncated {
+		result.Status = "partial"
+		result.NextCursor, err = encodeReadCursor(readCursor{
+			Version: 1, Operation: ReadList, Offset: nextOffset,
+			Fingerprint: readRequestFingerprint(request, ReadList), CatalogHash: catalogHash,
+		})
+		if err != nil {
+			return ListResult{}, err
+		}
+	} else {
+		result.Status = "success"
+		result.NextCursor = ""
+	}
+	return result, nil
+}
+
+func (r *Registry) readExactItems(ctx context.Context, adapter Adapter, request ReadRequest) (GetResult, error) {
+	cursor, err := decodeReadCursor(request.Cursor, request, ReadGet)
+	if err != nil {
+		return GetResult{}, err
+	}
+	if cursor.Offset > len(request.IDs) {
+		return GetResult{}, errors.New("config_read cursor is outside the requested ids / config_read 游标超出请求 ID 范围")
+	}
+	result := GetResult{
+		Schema: "config.read.v1", Status: "success", Resource: request.Resource,
+		Scope: request.Scope, Items: []any{}, Total: len(request.IDs),
+	}
+	successes := cursor.Successes
+	for index := cursor.Offset; index < len(request.IDs); index++ {
+		if request.Limit > 0 && result.Processed >= request.Limit {
+			break
+		}
+		id := request.IDs[index]
+		exact := request
+		exact.IDs = []string{id}
+		exact.Cursor = ""
+		exact.Limit = 0
+		exact.ResultMaxBytes = 0
+		item, itemErr := adapter.Get(ctx, exact)
+		candidate := result
+		candidate.Items = append([]any(nil), result.Items...)
+		candidate.MissingIDs = append([]string(nil), result.MissingIDs...)
+		candidate.Failures = append([]ReadFailure(nil), result.Failures...)
+		candidate.Processed++
+		candidateSuccesses := successes
+		switch {
+		case itemErr == nil:
+			candidate.Items = append(candidate.Items, item)
+			candidateSuccesses++
+		case isMissing(itemErr):
+			candidate.MissingIDs = append(candidate.MissingIDs, id)
+		default:
+			candidate.Failures = append(candidate.Failures, ReadFailure{ID: id, Message: boundedError(itemErr)})
+		}
+		candidate.Truncated = index+1 < len(request.IDs)
+		if candidate.Truncated {
+			candidate.Status = "partial"
+			candidate.NextCursor, err = encodeReadCursor(readCursor{
+				Version: 1, Operation: ReadGet, Offset: index + 1, Successes: candidateSuccesses,
+				Fingerprint: readRequestFingerprint(request, ReadGet),
+			})
+			if err != nil {
+				return GetResult{}, err
+			}
+		}
+		if exceedsReadBudget(candidate, request.ResultMaxBytes) {
+			if result.Processed == 0 {
+				return GetResult{}, fmt.Errorf("config resource %q item %q is larger than the %d-byte shared result budget / 单项配置超过共享结果预算", request.Resource, id, request.ResultMaxBytes)
+			}
+			break
+		}
+		result = candidate
+		successes = candidateSuccesses
+	}
+	nextOffset := cursor.Offset + result.Processed
+	result.Truncated = nextOffset < len(request.IDs)
+	if result.Truncated {
+		result.Status = "partial"
+		result.NextCursor, err = encodeReadCursor(readCursor{
+			Version: 1, Operation: ReadGet, Offset: nextOffset, Successes: successes,
+			Fingerprint: readRequestFingerprint(request, ReadGet),
+		})
+		if err != nil {
+			return GetResult{}, err
+		}
+	} else {
+		result.NextCursor = ""
+		if len(result.MissingIDs) > 0 || len(result.Failures) > 0 {
+			result.Status = "partial"
+		}
+	}
+	if !result.Truncated && successes == 0 {
+		return GetResult{}, fmt.Errorf("config_read found none of the %d requested %s ids / 请求的 ID 全部未找到或读取失败", len(request.IDs), request.Resource)
+	}
+	return result, nil
+}
+
+func isMissing(err error) bool {
+	var marked missingResourceError
+	return errors.As(err, &marked) || errors.Is(err, fs.ErrNotExist)
+}
+
+func boundedError(err error) string {
+	const maxBytes = 4096
+	message := strings.TrimSpace(err.Error())
+	if len(message) <= maxBytes {
+		return message
+	}
+	message = message[:maxBytes]
+	for len(message) > 0 && !utf8.ValidString(message) {
+		message = message[:len(message)-1]
+	}
+	return message + "…"
+}
+
+func exceedsReadBudget(value any, maxBytes int) bool {
+	if maxBytes <= 0 {
+		return false
+	}
+	encoded, err := json.Marshal(value)
+	return err != nil || len(encoded) > maxBytes
+}
+
+func hashCatalog(catalog Catalog) (string, error) {
+	encoded, err := json.Marshal(catalog)
+	if err != nil {
+		return "", err
+	}
+	digest := sha256.Sum256(encoded)
+	return hex.EncodeToString(digest[:16]), nil
+}
+
+func encodeReadCursor(cursor readCursor) (string, error) {
+	encoded, err := json.Marshal(cursor)
+	if err != nil {
+		return "", err
+	}
+	return base64.RawURLEncoding.EncodeToString(encoded), nil
+}
+
+func decodeReadCursor(value string, request ReadRequest, operation string) (readCursor, error) {
+	if strings.TrimSpace(value) == "" {
+		return readCursor{Version: 1, Operation: operation, Fingerprint: readRequestFingerprint(request, operation)}, nil
+	}
+	decoded, err := base64.RawURLEncoding.DecodeString(value)
+	if err != nil {
+		return readCursor{}, errors.New("config_read cursor is invalid / config_read 游标无效")
+	}
+	var cursor readCursor
+	if err := json.Unmarshal(decoded, &cursor); err != nil || cursor.Version != 1 || cursor.Operation != operation || cursor.Offset < 0 || cursor.Successes < 0 {
+		return readCursor{}, errors.New("config_read cursor is invalid / config_read 游标无效")
+	}
+	if cursor.Fingerprint != readRequestFingerprint(request, operation) {
+		return readCursor{}, errors.New("config_read cursor does not belong to this request / config_read 游标不属于当前请求")
+	}
+	return cursor, nil
+}
+
+func readRequestFingerprint(request ReadRequest, operation string) string {
+	payload := struct {
+		Operation string   `json:"operation"`
+		Resource  string   `json:"resource"`
+		IDs       []string `json:"ids,omitempty"`
+		Scope     string   `json:"scope,omitempty"`
+		Query     string   `json:"query,omitempty"`
+	}{operation, request.Resource, request.IDs, request.Scope, request.Query}
+	encoded, _ := json.Marshal(payload)
+	digest := sha256.Sum256(encoded)
+	return hex.EncodeToString(digest[:16])
 }
 
 func (r *Registry) Apply(ctx context.Context, mutation Mutation) (any, error) {

@@ -259,7 +259,7 @@ func TestTellerLibraryUpdateRejectsStaleRevision(t *testing.T) {
 }
 
 func TestNormalizeStyleRulesStoresRefsAndLegacyContents(t *testing.T) {
-	longContent := strings.Repeat("风", MaxStyleContentChars+20)
+	longContent := strings.Repeat("风", 8020)
 	teller := normalizeTeller(Teller{
 		StyleRefs: []string{" default.md ", ".denova/styles/default.md", "../bad.md"},
 		StyleRules: []StyleRule{
@@ -290,22 +290,22 @@ func TestNormalizeStyleRulesStoresRefsAndLegacyContents(t *testing.T) {
 	if rule.StyleContents[0] != "短句留白" {
 		t.Fatalf("first content = %q", rule.StyleContents[0])
 	}
-	if got := len([]rune(rule.StyleContents[1])); got != MaxStyleContentChars {
-		t.Fatalf("long content chars = %d, want %d", got, MaxStyleContentChars)
+	if got := len([]rune(rule.StyleContents[1])); got != len([]rune(longContent)) {
+		t.Fatalf("long content chars = %d, want %d", got, len([]rune(longContent)))
 	}
 }
 
-func TestNormalizeStyleRulesCapsRefsPerRule(t *testing.T) {
-	refs := make([]string, 0, MaxStyleRefsPerRule+3)
-	for i := 0; i < MaxStyleRefsPerRule+3; i++ {
+func TestNormalizeStyleRulesKeepsAllRefsPerRule(t *testing.T) {
+	refs := make([]string, 0, 27)
+	for i := 0; i < 27; i++ {
 		refs = append(refs, fmt.Sprintf("style-%02d.md", i))
 	}
 	rules := normalizeStyleRules([]StyleRule{{Scene: "日常", StyleRefs: refs}})
 	if len(rules) != 1 {
 		t.Fatalf("rules = %#v", rules)
 	}
-	if len(rules[0].StyleRefs) != MaxStyleRefsPerRule {
-		t.Fatalf("style refs = %d, want %d", len(rules[0].StyleRefs), MaxStyleRefsPerRule)
+	if len(rules[0].StyleRefs) != len(refs) {
+		t.Fatalf("style refs = %d, want %d", len(rules[0].StyleRefs), len(refs))
 	}
 }
 
@@ -366,8 +366,8 @@ func TestEventPackageCardsNormalizeAndBuildDirectorCatalog(t *testing.T) {
 	if len(events) != 3 {
 		t.Fatalf("event cards should be normalized and deduped: %#v", events)
 	}
-	if got := len([]rune(events[2].DescriptionMarkdown)); got != MaxEventCardDescriptionChars {
-		t.Fatalf("event card description chars = %d, want %d", got, MaxEventCardDescriptionChars)
+	if got := len([]rune(events[2].DescriptionMarkdown)); got != len([]rune(longDescription)) {
+		t.Fatalf("event card normalization silently changed description: got=%d want=%d", got, len([]rune(longDescription)))
 	}
 	if len(events[0].Tags) != 2 {
 		t.Fatalf("event card tags should be deduped: %#v", events[0].Tags)

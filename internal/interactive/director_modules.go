@@ -186,6 +186,9 @@ func (l *EventPackageLibrary) Create(item EventPackageModule) (EventPackageModul
 	if err := l.ensureBuiltins(); err != nil {
 		return EventPackageModule{}, err
 	}
+	if err := validateDirectorModuleWriteBounds(item.Name, item.Description); err != nil {
+		return EventPackageModule{}, err
+	}
 	item = normalizeEventPackageModule(item)
 	if item.ID == "" {
 		item.ID = newDirectorModuleID("event-package")
@@ -225,6 +228,9 @@ func (l *EventPackageLibrary) Update(id string, item EventPackageModule, baseRev
 	}
 	if strings.TrimSpace(baseRevision) != "" && strings.TrimSpace(current.UpdatedAt) != strings.TrimSpace(baseRevision) {
 		return EventPackageModule{}, ErrEventPackageRevisionConflict
+	}
+	if err := validateDirectorModuleWriteBounds(item.Name, item.Description); err != nil {
+		return EventPackageModule{}, err
 	}
 	item = normalizeEventPackageModule(item)
 	item.ID = id
@@ -324,6 +330,9 @@ func (l *RuleSystemLibrary) Create(item RuleSystemModule) (RuleSystemModule, err
 	if err := l.ensureBuiltins(); err != nil {
 		return RuleSystemModule{}, err
 	}
+	if err := validateDirectorModuleWriteBounds(item.Name, item.Description); err != nil {
+		return RuleSystemModule{}, err
+	}
 	item = normalizeRuleSystemModule(item)
 	if item.ID == "" {
 		item.ID = newDirectorModuleID("rule-system")
@@ -363,6 +372,9 @@ func (l *RuleSystemLibrary) Update(id string, item RuleSystemModule, baseRevisio
 	}
 	if strings.TrimSpace(baseRevision) != "" && strings.TrimSpace(current.UpdatedAt) != strings.TrimSpace(baseRevision) {
 		return RuleSystemModule{}, ErrRuleSystemRevisionConflict
+	}
+	if err := validateDirectorModuleWriteBounds(item.Name, item.Description); err != nil {
+		return RuleSystemModule{}, err
 	}
 	item = normalizeRuleSystemModule(item)
 	item.ID = id
@@ -914,6 +926,21 @@ func validateEventPackageModule(item EventPackageModule) error {
 	if strings.TrimSpace(item.Name) == "" {
 		return errors.New("事件包名称不能为空")
 	}
+	for index, event := range item.Events {
+		if len([]rune(event.DescriptionMarkdown)) > MaxEventCardDescriptionChars {
+			return fmt.Errorf("events[%d].description_markdown 超过 %d 字符 / exceeds %d characters", index, MaxEventCardDescriptionChars, MaxEventCardDescriptionChars)
+		}
+	}
+	return nil
+}
+
+func validateDirectorModuleWriteBounds(name, description string) error {
+	if len([]byte(strings.TrimSpace(name))) > 256 {
+		return errors.New("name 超过 256 字节 / exceeds 256 bytes")
+	}
+	if len([]byte(strings.TrimSpace(description))) > 1024 {
+		return errors.New("description 超过 1024 字节 / exceeds 1024 bytes")
+	}
 	return nil
 }
 
@@ -1131,9 +1158,6 @@ func normalizeEventPackageIDs(ids []string) []string {
 		}
 		seen[id] = true
 		out = append(out, id)
-		if len(out) >= maxInteractiveListItems {
-			break
-		}
 	}
 	return out
 }

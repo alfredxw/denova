@@ -309,6 +309,9 @@ func TestLoreStoreCompactIndexFuzzyMatchesShortMetadataAndRanksExactFirst(t *tes
 }
 
 func TestLoreStoreCompactIndexPaginatesWithDefaultAndExplicitLimits(t *testing.T) {
+	if got := normalizeLoreIndexLimit(75); got != 75 {
+		t.Fatalf("explicit lore index limit = %d, want 75", got)
+	}
 	store := NewLoreStore(t.TempDir())
 	for i := 0; i < 12; i++ {
 		id := fmt.Sprintf("item_%02d", i)
@@ -330,6 +333,17 @@ func TestLoreStoreCompactIndexPaginatesWithDefaultAndExplicitLimits(t *testing.T
 	}
 	if strings.Count(second, "- id:") != 2 || strings.Contains(second, "下一页使用") {
 		t.Fatalf("explicit final page should return the remaining two entries:\n%s", second)
+	}
+	unbounded, err := store.LoreIndexMarkdown(LoreIndexOptions{
+		Paginate: true,
+		Offset:   1,
+		Limit:    int(^uint(0) >> 1),
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Count(unbounded, "- id:") != 11 || strings.Contains(unbounded, "下一页使用") {
+		t.Fatalf("an arbitrarily large caller limit should return every remaining entry without overflowing:\n%s", unbounded)
 	}
 }
 

@@ -51,4 +51,31 @@ describe('useDocumentReview', () => {
     expect(result.current.feedback?.comments[0].id).toBe('comment-1')
     expect(result.current.visibleComments).toEqual([comment])
   })
+
+  it('removes consumed comments from both the Agent queue and lore editor for the active workspace', async () => {
+    const comment = { id: 'comment-1', thread_id: 'thread-1', target: { kind: 'lore_item' as const, id: 'hero', field: 'content' as const }, body: '修改这里', anchor, created_at: '', updated_at: '' }
+    apiMocks.getDocumentReview
+      .mockResolvedValueOnce({ id: 'thread-1', comments: [comment] })
+      .mockResolvedValueOnce({ id: '', comments: [] })
+
+    const { result } = renderHook(() => useDocumentReview({ workspace: '/book', agentVisible: true, onShowAgent: vi.fn() }))
+    await waitFor(() => expect(result.current.feedback?.comments).toEqual([comment]))
+    expect(result.current.visibleComments).toEqual([comment])
+
+    act(() => {
+      window.dispatchEvent(new CustomEvent('nova:workspace-change', {
+        detail: { workspace: '/another-book', action: 'review_feedback_consumed' },
+      }))
+    })
+    expect(apiMocks.getDocumentReview).toHaveBeenCalledTimes(1)
+
+    act(() => {
+      window.dispatchEvent(new CustomEvent('nova:workspace-change', {
+        detail: { workspace: '/book', action: 'review_feedback_consumed' },
+      }))
+    })
+    await waitFor(() => expect(result.current.feedback).toBeNull())
+    expect(result.current.visibleComments).toEqual([])
+    expect(apiMocks.getDocumentReview).toHaveBeenCalledTimes(2)
+  })
 })

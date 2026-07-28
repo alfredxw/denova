@@ -14,8 +14,6 @@ import (
 	"github.com/bmatcuk/doublestar/v4"
 )
 
-const maxGrepCursorOffset = 10_000
-
 type grepTarget struct {
 	searchPath string
 	glob       string
@@ -38,22 +36,13 @@ func (workspace *LocalWorkspace) Grep(ctx context.Context, request GrepRequest) 
 	if request.ContextBefore < 0 || request.ContextAfter < 0 {
 		return SearchResult{}, errors.New("grep context cannot be negative")
 	}
-	if len(request.Paths) > maxSearchPaths {
-		return SearchResult{}, fmt.Errorf("grep paths cannot exceed %d entries", maxSearchPaths)
-	}
 	limits := workspace.Limits()
 	if request.Limit <= 0 {
 		request.Limit = limits.DefaultDirectoryItems
 	}
-	if request.Limit > limits.MaxResultEntries {
-		return SearchResult{}, fmt.Errorf("grep limit cannot exceed %d", limits.MaxResultEntries)
-	}
 	offset, err := decodeGrepCursor(request.Cursor, request)
 	if err != nil {
 		return SearchResult{}, err
-	}
-	if offset > maxGrepCursorOffset {
-		return SearchResult{}, fmt.Errorf("grep cursor exceeds the %d-entry pagination window; narrow the query", maxGrepCursorOffset)
 	}
 	targets, warnings, err := workspace.grepTargets(request.Paths)
 	if err != nil {
@@ -63,8 +52,12 @@ func (workspace *LocalWorkspace) Grep(ctx context.Context, request GrepRequest) 
 	// Cursor input is model-controlled. Do not let a forged offset turn map
 	// preallocation into an immediate memory spike; entries grow only as rg
 	// actually produces validated output and the pagination window is bounded.
-	seen := make(map[string]struct{}, request.Limit+1)
-	entries := make([]string, 0, request.Limit)
+	capacity := min(request.Limit, limits.MaxResultBytes)
+	if capacity < limits.MaxResultBytes {
+		capacity++
+	}
+	seen := make(map[string]struct{}, capacity)
+	entries := make([]string, 0, min(request.Limit, capacity))
 	eligible, outputBytes := 0, 0
 	truncated := false
 	oversizedEntry := false

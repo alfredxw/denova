@@ -12,14 +12,14 @@ import (
 	"denova/internal/configresources"
 )
 
-const maxConfigReadIDs = 32
-
 type configReadInput struct {
-	Operation string   `json:"operation" jsonschema:"enum=describe,enum=list,enum=get" jsonschema_description:"describe returns resource contracts; list returns a bounded catalog; get reads exact IDs."`
+	Operation string   `json:"operation" jsonschema:"enum=describe,enum=list,enum=get" jsonschema_description:"describe returns resource contracts; list returns a cursor-paginated catalog; get reads exact IDs with partial-success reporting."`
 	Resource  string   `json:"resource,omitempty" jsonschema_description:"Resource kind. Omit only when operation=describe to inspect every available resource."`
-	IDs       []string `json:"ids,omitempty" jsonschema:"maxItems=32" jsonschema_description:"Exact resource IDs for operation=get."`
+	IDs       []string `json:"ids,omitempty" jsonschema_description:"Exact resource IDs for operation=get. There is no arbitrary item-count limit; large responses continue with next_cursor."`
 	Scope     string   `json:"scope,omitempty" jsonschema_description:"Optional resource scope, such as user or workspace."`
-	Query     string   `json:"query,omitempty" jsonschema_description:"Optional adapter-specific bounded catalog filter."`
+	Query     string   `json:"query,omitempty" jsonschema_description:"Optional adapter-specific catalog filter."`
+	Cursor    string   `json:"cursor,omitempty" jsonschema_description:"Opaque continuation cursor returned by an earlier identical list or get request."`
+	Limit     int      `json:"limit,omitempty" jsonschema:"minimum=1" jsonschema_description:"Optional page size. The shared tool-result byte budget may return fewer items with next_cursor."`
 }
 
 type configApplyInput struct {
@@ -39,15 +39,14 @@ func newConfigManagerTools(cfg *config.Config, _ config.ResolvedAgentToolSetting
 	if err != nil {
 		return nil, err
 	}
+	maxResultBytes := catalogToolResultMaxBytes(cfg)
 	readTool, err := agent.InferTool(
 		"config_read",
-		"Inspect, list, or read Denova configuration resources through one typed registry. Call operation=describe before using an unfamiliar resource; use list before get, and keep returned revisions for later mutations.",
+		"Inspect, list, or read Denova configuration resources through one typed registry. List and large exact reads return stable continuation cursors. Exact reads return existing items plus missing_ids/failures; only an entirely unsuccessful completed request fails. Call operation=describe before using an unfamiliar resource and keep returned revisions for later mutations. / 通过统一类型注册表检查、列举或精确读取 Denova 配置；目录和大型精确读取支持稳定续页，部分缺失或故障会逐项返回，只有完整请求全部失败才报错。",
 		func(ctx context.Context, input configReadInput) (string, error) {
-			if len(input.IDs) > maxConfigReadIDs {
-				return "", fmt.Errorf("config_read accepts at most %d ids", maxConfigReadIDs)
-			}
 			value, err := registry.Read(ctx, configresources.ReadRequest{
 				Operation: input.Operation, Resource: input.Resource, IDs: input.IDs, Scope: input.Scope, Query: input.Query,
+				Cursor: input.Cursor, Limit: input.Limit, ResultMaxBytes: maxResultBytes,
 			})
 			if err != nil {
 				return "", err
@@ -60,7 +59,7 @@ func newConfigManagerTools(cfg *config.Config, _ config.ResolvedAgentToolSetting
 	}
 	applyTool, err := agent.InferTool(
 		"config_apply",
-		"Create, update, or delete exactly one Denova configuration resource. Updates, deletes, and agent_profile SubAgent creates require the latest revision from config_read; agent_profile deletes require value.kind. Resource-specific value shapes live in the config-manager Skill references.",
+		"Create, update, or delete exactly one Denova configuration resource. Updates, deletes, and agent_profile SubAgent creates require the latest revision from config_read; agent_profile deletes require value.kind. Resource-specific value shapes live in the config-manager Skill references. / 原子创建、更新或删除一个 Denova 配置资源；需要 revision 的操作必须使用 config_read 返回的最新版，具体 value 结构以 config-manager Skill reference 为准。",
 		func(ctx context.Context, input configApplyInput) (agent.ToolResult, error) {
 			value, err := registry.Apply(ctx, configresources.Mutation{
 				Operation: input.Operation, Resource: input.Resource, ID: input.ID, Scope: input.Scope, Revision: input.Revision, Value: input.Value,
@@ -74,11 +73,11 @@ func newConfigManagerTools(cfg *config.Config, _ config.ResolvedAgentToolSetting
 	if err != nil {
 		return nil, err
 	}
-	readDefinition, err := defineTool(readTool, configReadDescriptor())
+	readDefinition, err := defineTool(readTool, configReadDescriptor(maxResultBytes))
 	if err != nil {
 		return nil, err
 	}
-	applyDefinition, err := defineTool(applyTool, configApplyDescriptor())
+	applyDefinition, err := defineTool(applyTool, configApplyDescriptor(maxResultBytes))
 	if err != nil {
 		return nil, err
 	}
@@ -103,24 +102,32 @@ func newConfigResourceRegistry(cfg *config.Config) (*configresources.Registry, e
 	)
 }
 
-func configReadDescriptor() agent.ToolDescriptor {
+func configReadDescriptor(maxResultBytes ...int) agent.ToolDescriptor {
+	limit := defaultToolResultMaxBytes
+	if len(maxResultBytes) > 0 && maxResultBytes[0] > 0 {
+		limit = maxResultBytes[0]
+	}
 	return agent.ToolDescriptor{
 		Source: agent.ToolSourceRead, Capability: config.AgentToolConfigRead, Execution: agent.ToolExecutionParallelRead,
 		MutationScope: agent.ToolMutationNone, PostCheck: agent.ToolPostCheckNone, Recovery: agent.ToolRecoveryReadOnly,
-		ResultProjection: agent.ToolResultBoundedModelContext, Steering: agent.SteeringFinishCurrent, MaxResultBytes: defaultToolResultMaxBytes,
+		ResultProjection: agent.ToolResultBoundedModelContext, Steering: agent.SteeringFinishCurrent, MaxResultBytes: limit,
 	}
 }
 
-func configApplyDescriptor() agent.ToolDescriptor {
+func configApplyDescriptor(maxResultBytes ...int) agent.ToolDescriptor {
+	limit := defaultToolResultMaxBytes
+	if len(maxResultBytes) > 0 && maxResultBytes[0] > 0 {
+		limit = maxResultBytes[0]
+	}
 	return agent.ToolDescriptor{
 		Source: agent.ToolSourceWrite, Capability: config.AgentToolConfigApply, Execution: agent.ToolExecutionConfigExclusive,
 		MutationScope: agent.ToolMutationConfig, PostCheck: agent.ToolPostCheckConfigRevision, Recovery: agent.ToolRecoveryReconcilable,
-		ResultProjection: agent.ToolResultBoundedModelContext, Steering: agent.SteeringFinishCurrent, MaxResultBytes: defaultToolResultMaxBytes,
+		ResultProjection: agent.ToolResultBoundedModelContext, Steering: agent.SteeringFinishCurrent, MaxResultBytes: limit,
 	}
 }
 
 func marshalConfigResourceResult(value any) (string, error) {
-	data, err := json.MarshalIndent(value, "", "  ")
+	data, err := json.Marshal(value)
 	if err != nil {
 		return "", fmt.Errorf("encode config resource result: %w", err)
 	}
@@ -137,10 +144,6 @@ type configApplyReceiptDetails struct {
 }
 
 func configApplyResult(value any) (agent.ToolResult, error) {
-	content, err := marshalConfigResourceResult(value)
-	if err != nil {
-		return agent.ToolResult{}, err
-	}
 	receipt, ok := value.(configMutationReceipt)
 	if !ok {
 		return agent.ToolResult{}, fmt.Errorf("config resource Adapter returned %T, want configMutationReceipt", value)
@@ -153,7 +156,10 @@ func configApplyResult(value any) (agent.ToolResult, error) {
 	if err != nil {
 		return agent.ToolResult{}, fmt.Errorf("encode config mutation receipt: %w", err)
 	}
-	result := agent.TextToolResult(content)
+	// Mutation output stays receipt-only so a large, successfully persisted
+	// configuration cannot be followed by an invalid or truncated JSON echo.
+	// The Config Manager workflow always verifies the canonical value with get.
+	result := agent.TextToolResult(string(details))
 	result.Details = details
 	result.Metadata.Target = receipt.ID
 	return result, nil

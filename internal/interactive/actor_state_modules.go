@@ -78,6 +78,9 @@ func (l *ActorStateLibrary) Create(item ActorStateModule) (ActorStateModule, err
 	if err := l.ensureBuiltins(); err != nil {
 		return ActorStateModule{}, err
 	}
+	if err := validateDirectorModuleWriteBounds(item.Name, item.Description); err != nil {
+		return ActorStateModule{}, err
+	}
 	item = normalizeActorStateModule(item)
 	if item.ID == "" {
 		item.ID = newDirectorModuleID("actor-state")
@@ -117,6 +120,9 @@ func (l *ActorStateLibrary) Update(id string, item ActorStateModule, baseRevisio
 	}
 	if strings.TrimSpace(baseRevision) != "" && strings.TrimSpace(current.UpdatedAt) != strings.TrimSpace(baseRevision) {
 		return ActorStateModule{}, ErrActorStateRevisionConflict
+	}
+	if err := validateDirectorModuleWriteBounds(item.Name, item.Description); err != nil {
+		return ActorStateModule{}, err
 	}
 	item = normalizeActorStateModule(item)
 	item.ID = id

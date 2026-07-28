@@ -511,8 +511,8 @@ func boundedRequired(field, value string, maximum int) (string, error) {
 }
 
 func normalizeSelectValues(values []string) ([]string, error) {
-	if len(values) == 0 || len(values) > 16 {
-		return nil, errors.New("browser select requires 1 to 16 values")
+	if len(values) == 0 {
+		return nil, errors.New("browser select requires at least one value")
 	}
 	result := make([]string, 0, len(values))
 	seen := make(map[string]struct{}, len(values))

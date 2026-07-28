@@ -1,9 +1,28 @@
 package interactive
 
 import (
+	"fmt"
 	"strings"
 	"testing"
 )
+
+func TestActorStateSchemaBatchProcessesMoreThanSixteenItemsIndependently(t *testing.T) {
+	items := make([]ActorStateSchemaBatchItem, 20)
+	for index := range items {
+		items[index] = ActorStateSchemaBatchItem{ItemID: fmt.Sprintf("item-%02d", index)}
+	}
+	result := NewActorStateSchemaBatchDraft(batchTestActorStateSystem(), StoryDirectorTRPGSystem{}).Submit(
+		ActorStateSchemaBatch{Items: items}, batchTestAudit(),
+	)
+	if len(result.Rejected) != len(items) {
+		t.Fatalf("batch should report every item independently: rejected=%d want=%d result=%#v", len(result.Rejected), len(items), result)
+	}
+	for _, issue := range result.Rejected {
+		if issue.Code == "batch_too_large" {
+			t.Fatalf("batch was rejected before item processing: %#v", result)
+		}
+	}
+}
 
 func TestActorStateSchemaBatchDraftAcceptsValidItemsAndRetriesOnlyFailures(t *testing.T) {
 	draft := NewActorStateSchemaBatchDraft(batchTestActorStateSystem(), StoryDirectorTRPGSystem{})

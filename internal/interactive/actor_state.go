@@ -15,8 +15,7 @@ const (
 	DefaultActorStateModuleID = "default"
 	DefaultActorID            = "protagonist"
 
-	actorStateRoot      = "actors"
-	maxActorStateFields = 64
+	actorStateRoot = "actors"
 )
 
 type StoryDirectorActorStateSystem struct {
@@ -29,7 +28,7 @@ type ActorStateTemplate struct {
 	ID          string            `json:"id" jsonschema_description:"稳定的 ASCII Template ID。"`
 	Name        string            `json:"name" jsonschema_description:"用户可见模板名称。"`
 	Description string            `json:"description,omitempty" jsonschema_description:"模板职责的简短说明。"`
-	Fields      []ActorStateField `json:"fields,omitempty" jsonschema:"maxItems=64" jsonschema_description:"模板字段；只添加确有长期追踪价值的字段。"`
+	Fields      []ActorStateField `json:"fields,omitempty" jsonschema_description:"模板字段；只添加确有长期追踪价值的字段。"`
 	TraitRules  []ActorTraitRule  `json:"trait_rules,omitempty"`
 	// DisplayGroups is retained only for decoding older Beta presets. The stage
 	// ignores it and stores user layout by story + template outside the schema.
@@ -91,7 +90,7 @@ type ActorStateField struct {
 	Default           any      `json:"default,omitempty"`
 	Min               *float64 `json:"min,omitempty"`
 	Max               *float64 `json:"max,omitempty"`
-	Options           []string `json:"options,omitempty" jsonschema:"maxItems=24" jsonschema_description:"type=enum 时的有限合法值。"`
+	Options           []string `json:"options,omitempty" jsonschema_description:"type=enum 时的有限合法值。"`
 	Description       string   `json:"description,omitempty" jsonschema_description:"字段承接的信息及语义。"`
 	UpdateInstruction string   `json:"update_instruction,omitempty" jsonschema_description:"何时更新以及写入完整值还是增量。"`
 	// Order is retained only for decoding older Beta presets. Field array order
@@ -206,9 +205,6 @@ func ValidateActorStatePatchesAgainstState(system StoryDirectorActorStateSystem,
 	if len(patches) == 0 {
 		return ActorStatePatchResult{}, fmt.Errorf("Actor 状态更新不能为空")
 	}
-	if len(patches) > maxInteractiveListItems {
-		patches = patches[:maxInteractiveListItems]
-	}
 	result := ActorStatePatchResult{AppliedActors: []string{}, CreatedActors: []string{}, AssignedTraits: map[string][]ActorTraitInstance{}, Ops: []StateOp{}}
 	workingState := cloneActorStateRoot(currentState)
 	seenActors := map[string]bool{}
@@ -256,9 +252,6 @@ func normalizeActorStateTemplates(templates []ActorStateTemplate) []ActorStateTe
 	if templates == nil {
 		return []ActorStateTemplate{}
 	}
-	if len(templates) > maxInteractiveListItems {
-		templates = templates[:maxInteractiveListItems]
-	}
 	out := make([]ActorStateTemplate, 0, len(templates))
 	seen := map[string]bool{}
 	for _, template := range templates {
@@ -267,8 +260,8 @@ func normalizeActorStateTemplates(templates []ActorStateTemplate) []ActorStateTe
 			continue
 		}
 		seen[template.ID] = true
-		template.Name = trimBytes(firstNonEmptyString(template.Name, template.ID), 128)
-		template.Description = trimBytes(template.Description, maxInteractiveTextBytes)
+		template.Name = strings.TrimSpace(firstNonEmptyString(template.Name, template.ID))
+		template.Description = strings.TrimSpace(template.Description)
 		template.Fields = normalizeActorStateFields(template.Fields)
 		template.TraitRules = normalizeActorTraitRules(template.TraitRules)
 		template.DisplayGroups = nil
@@ -281,9 +274,6 @@ func normalizeActorStateFields(fields []ActorStateField) []ActorStateField {
 	if fields == nil {
 		return []ActorStateField{}
 	}
-	if len(fields) > maxActorStateFields {
-		fields = fields[:maxActorStateFields]
-	}
 	out := make([]ActorStateField, 0, len(fields))
 	for _, field := range fields {
 		field.LegacyPath = strings.TrimSpace(firstNonEmptyString(field.LegacyPath, field.Path))
@@ -294,10 +284,10 @@ func normalizeActorStateFields(fields []ActorStateField) []ActorStateField {
 		}
 		field.ID = field.Name
 		field.Type = normalizeActorStateFieldType(field.Type)
-		field.Description = trimBytes(field.Description, maxInteractiveTextBytes)
-		field.UpdateInstruction = trimBytes(field.UpdateInstruction, maxInteractiveTextBytes)
-		field.Options = normalizeStringListLimit(field.Options, maxInteractiveListItems)
-		field.Group = trimBytes(field.Group, 64)
+		field.Description = strings.TrimSpace(field.Description)
+		field.UpdateInstruction = strings.TrimSpace(field.UpdateInstruction)
+		field.Options = normalizeStringList(field.Options)
+		field.Group = strings.TrimSpace(field.Group)
 		field.Display = normalizeActorStateFieldDisplay(field.Display)
 		field.Order = 0
 		out = append(out, field)
@@ -313,9 +303,6 @@ func normalizeActorStateInitialActors(actors []ActorStateInitialActor, templates
 	for _, template := range templates {
 		templateIDs[template.ID] = true
 	}
-	if len(actors) > maxInteractiveListItems {
-		actors = actors[:maxInteractiveListItems]
-	}
 	out := make([]ActorStateInitialActor, 0, len(actors))
 	seen := map[string]bool{}
 	for _, actor := range actors {
@@ -328,9 +315,9 @@ func normalizeActorStateInitialActors(actors []ActorStateInitialActor, templates
 			continue
 		}
 		seen[actor.ID] = true
-		actor.Name = trimBytes(firstNonEmptyString(actor.Name, actor.ID), 128)
-		actor.Role = trimBytes(firstNonEmptyString(actor.Role, actor.TemplateID), 128)
-		actor.Description = trimBytes(actor.Description, maxInteractiveTextBytes)
+		actor.Name = strings.TrimSpace(firstNonEmptyString(actor.Name, actor.ID))
+		actor.Role = strings.TrimSpace(firstNonEmptyString(actor.Role, actor.TemplateID))
+		actor.Description = strings.TrimSpace(actor.Description)
 		template := actorStateTemplateByID(StoryDirectorActorStateSystem{Templates: templates}, actor.TemplateID)
 		actor.State = normalizeActorStateMapForTemplate(actor.State, template)
 		out = append(out, actor)

@@ -215,13 +215,15 @@ export function LoreEditor({
               </div>
             </div>
             {contentMode === 'raw' ? (
-              <Textarea
+              <SearchHighlightTextarea
+                containerClassName="min-h-0 flex-1"
                 autoResize={false}
                 spellCheck={false}
                 value={draft.content || ''}
+                highlightQuery={searchQuery}
                 onChange={(event) => setDraft({ ...draft, content: event.target.value })}
                 aria-label={t('settingPanel.field.content')}
-                className="min-h-0 min-w-0 flex-1 resize-none rounded-none border-0 bg-transparent px-5 pb-4 pt-2 font-mono text-xs leading-5 text-[var(--nova-text)] shadow-none focus-visible:ring-0 sm:px-6 md:text-xs"
+                className="h-full min-h-0 min-w-0 resize-none rounded-none border-0 bg-transparent px-5 pb-4 pt-2 font-mono text-xs leading-5 text-[var(--nova-text)] shadow-none focus-visible:ring-0 sm:px-6 md:text-xs"
               />
             ) : (
               <MarkdownRichEditor

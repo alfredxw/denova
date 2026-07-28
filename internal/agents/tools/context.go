@@ -15,6 +15,7 @@ type InteractiveContext struct {
 	BranchID                  string
 	TurnID                    string
 	MaintenanceTask           string
+	MaxResultBytes            int
 	OnLoreItemsRead           func([]string)
 	SubmitStateSchemaBatch    func(context.Context, interactive.ActorStateSchemaBatch) (interactive.ActorStateSchemaBatchResult, error)
 	SubmitDirectorPlanUpdate  func(context.Context, interactive.DirectorPlanUpdateSubmission) (interactive.DirectorPlanUpdateReceipt, error)

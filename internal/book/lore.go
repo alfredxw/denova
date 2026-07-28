@@ -36,7 +36,6 @@ const (
 
 	LoreIndexDefaultMaxBytes = 64 * 1024
 	LoreIndexDefaultLimit    = 10
-	LoreIndexMaxLimit        = 50
 
 	LoreIndexMatchAny = "any"
 	LoreIndexMatchAll = "all"
@@ -81,6 +80,14 @@ type LoreItemInput struct {
 	Image            *LoreItemImage  `json:"image,omitempty"`
 	Provenance       *LoreProvenance `json:"provenance,omitempty"`
 	BaseRevision     string          `json:"base_revision,omitempty"`
+}
+
+// LoreReadResult preserves the caller's lookup order while reporting entries
+// that no longer exist. Batch reads are intentionally tolerant so one stale
+// catalog name cannot discard every valid item in the same tool call.
+type LoreReadResult struct {
+	Items   []LoreItem
+	Missing []string
 }
 
 // LoreProvenance records an item's external origin without exposing it in
@@ -611,9 +618,9 @@ func (s *LoreStore) SetImage(id string, image *LoreItemImage) (LoreItem, error) 
 	return LoreItem{}, fmt.Errorf("资料不存在: %s", id)
 }
 
-func (s *LoreStore) ReadMany(ids []string) ([]LoreItem, error) {
+func (s *LoreStore) ReadMany(ids []string) (LoreReadResult, error) {
 	if len(ids) == 0 {
-		return nil, errors.New("资料 ID 列表不能为空")
+		return LoreReadResult{}, errors.New("资料 ID 列表不能为空")
 	}
 	wanted := make([]string, 0, len(ids))
 	seen := make(map[string]bool, len(ids))
@@ -626,41 +633,42 @@ func (s *LoreStore) ReadMany(ids []string) ([]LoreItem, error) {
 		wanted = append(wanted, id)
 	}
 	if len(wanted) == 0 {
-		return nil, errors.New("资料 ID 列表不能为空")
+		return LoreReadResult{}, errors.New("资料 ID 列表不能为空")
 	}
 	items, err := s.List()
 	if err != nil {
-		return nil, err
+		return LoreReadResult{}, err
 	}
 	byID := make(map[string]LoreItem, len(items))
 	for _, item := range items {
 		byID[item.ID] = item
 	}
-	result := make([]LoreItem, 0, len(wanted))
+	result := LoreReadResult{Items: make([]LoreItem, 0, len(wanted))}
 	for _, id := range wanted {
 		item, ok := byID[id]
 		if !ok {
-			return nil, fmt.Errorf("资料不存在: %s", id)
+			result.Missing = append(result.Missing, id)
+			continue
 		}
-		result = append(result, item)
+		result.Items = append(result.Items, item)
 	}
 	return result, nil
 }
 
 // ReadManyNames resolves user-facing unique lore names in request order.
-func (s *LoreStore) ReadManyNames(names []string) ([]LoreItem, error) {
+func (s *LoreStore) ReadManyNames(names []string) (LoreReadResult, error) {
 	if len(names) == 0 {
-		return nil, errors.New("资料名称列表不能为空")
+		return LoreReadResult{}, errors.New("资料名称列表不能为空")
 	}
 	items, err := s.List()
 	if err != nil {
-		return nil, err
+		return LoreReadResult{}, err
 	}
 	byName := make(map[string]LoreItem, len(items))
 	for _, item := range items {
 		byName[loreNameKey(item.Name)] = item
 	}
-	result := make([]LoreItem, 0, len(names))
+	result := LoreReadResult{Items: make([]LoreItem, 0, len(names))}
 	seen := map[string]bool{}
 	for _, name := range names {
 		key := loreNameKey(name)
@@ -670,12 +678,13 @@ func (s *LoreStore) ReadManyNames(names []string) ([]LoreItem, error) {
 		seen[key] = true
 		item, ok := byName[key]
 		if !ok {
-			return nil, fmt.Errorf("资料不存在: %s", strings.TrimSpace(name))
+			result.Missing = append(result.Missing, strings.TrimSpace(name))
+			continue
 		}
-		result = append(result, item)
+		result.Items = append(result.Items, item)
 	}
-	if len(result) == 0 {
-		return nil, errors.New("资料名称列表不能为空")
+	if len(result.Items) == 0 && len(result.Missing) == 0 {
+		return LoreReadResult{}, errors.New("资料名称列表不能为空")
 	}
 	return result, nil
 }
@@ -1435,9 +1444,9 @@ func filterLoreIndexEntries(items []LoreItem, options LoreIndexOptions) ([]loreI
 	if offset >= len(matched) {
 		return nil, matchedTotal, libraryTotal
 	}
-	end := offset + limit
-	if end > len(matched) {
-		end = len(matched)
+	end := len(matched)
+	if limit < len(matched)-offset {
+		end = offset + limit
 	}
 	return matched[offset:end], matchedTotal, libraryTotal
 }
@@ -1634,9 +1643,6 @@ func normalizeLoreIndexLimit(limit int) int {
 	if limit <= 0 {
 		return LoreIndexDefaultLimit
 	}
-	if limit > LoreIndexMaxLimit {
-		return LoreIndexMaxLimit
-	}
 	return limit
 }
 
@@ -1704,7 +1710,7 @@ func writeLoreIndexHeader(sb *strings.Builder, matchedTotal, libraryTotal, retur
 			fmt.Fprintf(sb, "资料库共有 %d 条启用资料；本页返回 %d 条（offset=%d）。", libraryTotal, returned, offset)
 		}
 		if matchedTotal > offset+returned {
-			fmt.Fprintf(sb, " 下一页使用 offset=%d；每页最大 %d。", offset+returned, LoreIndexMaxLimit)
+			fmt.Fprintf(sb, " 下一页使用 offset=%d。", offset+returned)
 		}
 		sb.WriteString("\n\n")
 		return
@@ -1756,7 +1762,7 @@ func compactLoreBrief(brief string, limit int) string {
 func renderBoundedLoreNameIndex(entries []loreIndexEntry, matchedTotal, libraryTotal int, options LoreIndexOptions, maxBytes int) string {
 	var sb strings.Builder
 	writeLoreIndexHeader(&sb, matchedTotal, libraryTotal, len(entries), options)
-	hint := fmt.Sprintf("（索引预算不足，以下仅展示能放入预算的 ID 和名称；未显示条目请用 keywords/types 细查，limit 最大 %d。）\n\n", LoreIndexMaxLimit)
+	hint := "（索引预算不足，以下仅展示能放入预算的 ID 和名称；未显示条目请用 keywords/types 细查。）\n\n"
 	appendLoreContextPart(&sb, hint, maxBytes)
 	omitted := 0
 	for idx, entry := range entries {

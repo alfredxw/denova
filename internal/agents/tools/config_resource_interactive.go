@@ -31,20 +31,20 @@ func (resource jsonConfigResource[T]) adapter() configresources.Adapter {
 		},
 		list: func(ctx context.Context, _ configresources.ReadRequest) (any, error) {
 			return withConfigResourceLease(ctx, resource.leasePath, func() (any, error) {
-				return resource.list()
+				items, err := resource.list()
+				if err != nil {
+					return nil, err
+				}
+				return configresources.NewCatalog(items), nil
 			})
 		},
 		get: func(ctx context.Context, request configresources.ReadRequest) (any, error) {
 			return withConfigResourceLease(ctx, resource.leasePath, func() (any, error) {
-				items := make([]T, 0, len(request.IDs))
-				for _, id := range normalizeConfigIDs(request.IDs) {
-					item, err := resource.get(id)
-					if err != nil {
-						return nil, err
-					}
-					items = append(items, item)
+				ids := normalizeConfigIDs(request.IDs)
+				if len(ids) != 1 {
+					return nil, fmt.Errorf("%s exact read requires one id", resource.name)
 				}
-				return items, nil
+				return resource.get(ids[0])
 			})
 		},
 		apply: func(ctx context.Context, mutation configresources.Mutation) (any, error) {

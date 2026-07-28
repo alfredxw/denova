@@ -8,6 +8,7 @@ const loreWorkspace = {
   'loreWorkspace.metadata': 'Lore properties',
   'loreWorkspace.noBrief': 'No brief yet',
   'loreWorkspace.contentLabel': 'Edit lore: {{name}}',
+  'loreWorkspace.rawContentLabel': 'Edit raw lore: {{name}}',
   'loreWorkspace.search': 'Search names, tags, or content…',
   'loreWorkspace.createInSection': 'Create {{section}}',
   'loreWorkspace.emptyDirectory': 'No lore in this section yet',

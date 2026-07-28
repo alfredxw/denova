@@ -1,7 +1,12 @@
 package interactive
 
 import (
+	"crypto/sha256"
+	"encoding/base64"
+	"encoding/hex"
 	"encoding/json"
+	"errors"
+	"fmt"
 	"sort"
 	"strings"
 	"unicode"
@@ -13,7 +18,7 @@ import (
 
 const (
 	DefaultStoryHistorySearchLimit = 8
-	MaxStoryHistorySearchLimit     = 12
+	DefaultStoryHistoryResultBytes = 1024 * 1024
 	storyHistoryUserExcerptRunes   = 320
 	storyHistoryNarrativeRunes     = 1200
 	storyHistoryStateSummaryRunes  = 480
@@ -27,6 +32,8 @@ type StoryHistorySearchRequest struct {
 	Match        string   `json:"match,omitempty"`
 	BeforeTurnID string   `json:"before_turn_id,omitempty"`
 	Limit        int      `json:"limit,omitempty"`
+	Cursor       string   `json:"cursor,omitempty"`
+	MaxBytes     int      `json:"-"`
 }
 
 // StoryHistoryHit carries the exact Turn source ID so callers can distinguish
@@ -49,12 +56,22 @@ type StoryHistorySearchResult struct {
 	Limit        int               `json:"limit"`
 	ScannedTurns int               `json:"scanned_turns"`
 	Truncated    bool              `json:"truncated"`
+	NextCursor   string            `json:"next_cursor,omitempty"`
 	Hits         []StoryHistoryHit `json:"hits"`
 }
 
 type scoredStoryHistoryHit struct {
 	hit   StoryHistoryHit
 	index int
+}
+
+type storyHistorySearchCursor struct {
+	Version     int    `json:"v"`
+	Fingerprint string `json:"f"`
+	HeadTurnID  string `json:"head"`
+	AfterTurnID string `json:"after_turn"`
+	AfterScore  int    `json:"after_score"`
+	AfterIndex  int    `json:"after_index"`
 }
 
 // SearchStoryHistory searches committed turns on one resolved branch path.
@@ -68,17 +85,36 @@ func (s *Store) SearchStoryHistory(storyID, branchID string, req StoryHistorySea
 	match := normalizeStoryHistoryMatch(req.Match)
 	limit := normalizeStoryHistoryLimit(req.Limit)
 	beforeTurnID := strings.TrimSpace(req.BeforeTurnID)
+	requestFingerprint := storyHistoryRequestFingerprint(storyID, branchID, keywords, match, beforeTurnID)
+	pageCursor, err := decodeStoryHistorySearchCursor(req.Cursor, requestFingerprint)
+	if err != nil {
+		return StoryHistorySearchResult{}, err
+	}
+	if req.MaxBytes <= 0 {
+		req.MaxBytes = DefaultStoryHistoryResultBytes
+	}
+	retainLimit := limit
+	// Each hit has non-empty source fields. This is a memory bound derived
+	// from the one shared result-byte budget, not a product item limit.
+	maxBudgetedHits := req.MaxBytes/64 + 1
+	if retainLimit > maxBudgetedHits {
+		retainLimit = maxBudgetedHits
+	}
+	retainLimit++
 	var (
 		cursor         string
 		resolvedBranch string
-		allTop         = make([]scoredStoryHistoryHit, 0, limit)
-		beforeTop      = make([]scoredStoryHistoryHit, 0, limit)
+		allTop         = make([]scoredStoryHistoryHit, 0, retainLimit)
+		beforeTop      = make([]scoredStoryHistoryHit, 0, retainLimit)
 		allScanned     int
 		beforeScanned  int
 		allMatches     int
 		beforeMatches  int
 		newestIndex    int
 		foundBefore    = beforeTurnID == ""
+		withinSnapshot = pageCursor.HeadTurnID == ""
+		foundHead      = withinSnapshot
+		headTurnID     = pageCursor.HeadTurnID
 	)
 	for {
 		loaded, err := s.readStoryHistoryPageLocked(storyID, branchID, cursor, maxStoryHistoryPageTurns, true)
@@ -92,10 +128,20 @@ func (s *Store) SearchStoryHistory(storyID, branchID string, req StoryHistorySea
 		// before_turn_id can be evaluated while streaming newest to oldest.
 		for index := len(loaded.page.Turns) - 1; index >= 0; index-- {
 			turn := loaded.page.Turns[index]
+			if !withinSnapshot {
+				if turn.ID != pageCursor.HeadTurnID {
+					continue
+				}
+				withinSnapshot = true
+				foundHead = true
+			}
+			if headTurnID == "" {
+				headTurnID = turn.ID
+			}
 			position := -newestIndex
 			newestIndex++
 			allScanned++
-			allTop, allMatches = retainStoryHistorySearchHit(allTop, allMatches, turn, keywords, match, position, limit)
+			allTop, allMatches = retainStoryHistorySearchHit(allTop, allMatches, turn, keywords, match, position, retainLimit, pageCursor)
 			if beforeTurnID != "" && turn.ID == beforeTurnID {
 				foundBefore = true
 				continue
@@ -104,12 +150,15 @@ func (s *Store) SearchStoryHistory(storyID, branchID string, req StoryHistorySea
 				continue
 			}
 			beforeScanned++
-			beforeTop, beforeMatches = retainStoryHistorySearchHit(beforeTop, beforeMatches, turn, keywords, match, position, limit)
+			beforeTop, beforeMatches = retainStoryHistorySearchHit(beforeTop, beforeMatches, turn, keywords, match, position, retainLimit, pageCursor)
 		}
 		if !loaded.page.HasMore || strings.TrimSpace(loaded.page.BeforeCursor) == "" {
 			break
 		}
 		cursor = loaded.page.BeforeCursor
+	}
+	if !foundHead {
+		return StoryHistorySearchResult{}, errors.New("search_story_history cursor is stale because its history head no longer exists / 历史头已变化，请重新检索")
 	}
 
 	scored, scannedTurns, matchedTurns := beforeTop, beforeScanned, beforeMatches
@@ -119,20 +168,53 @@ func (s *Store) SearchStoryHistory(storyID, branchID string, req StoryHistorySea
 		scored, scannedTurns, matchedTurns = allTop, allScanned, allMatches
 	}
 	sortStoryHistoryHits(scored)
-	hits := make([]StoryHistoryHit, 0, len(scored))
-	for _, item := range scored {
-		hits = append(hits, item.hit)
-	}
-	return StoryHistorySearchResult{
+	result := StoryHistorySearchResult{
 		StoryID:      storyID,
 		BranchID:     resolvedBranch,
 		Keywords:     keywords,
 		Match:        match,
 		Limit:        limit,
 		ScannedTurns: scannedTurns,
-		Truncated:    matchedTurns > limit,
-		Hits:         hits,
-	}, nil
+		Hits:         []StoryHistoryHit{},
+	}
+	visibleLimit := min(limit, len(scored))
+	for index := 0; index < visibleLimit; index++ {
+		candidate := result
+		candidate.Hits = append(append([]StoryHistoryHit(nil), result.Hits...), scored[index].hit)
+		candidate.Truncated = matchedTurns > len(candidate.Hits)
+		if candidate.Truncated {
+			candidate.NextCursor, err = encodeStoryHistorySearchCursor(storyHistorySearchCursor{
+				Version: 1, Fingerprint: requestFingerprint, HeadTurnID: headTurnID,
+				AfterTurnID: scored[index].hit.TurnID, AfterScore: scored[index].hit.Score, AfterIndex: scored[index].index,
+			})
+			if err != nil {
+				return StoryHistorySearchResult{}, fmt.Errorf("encode story history cursor: %w", err)
+			}
+		}
+		encoded, encodeErr := json.Marshal(candidate)
+		if encodeErr != nil {
+			return StoryHistorySearchResult{}, encodeErr
+		}
+		if len(encoded) > req.MaxBytes {
+			if len(result.Hits) == 0 {
+				return StoryHistorySearchResult{}, fmt.Errorf("one story history hit exceeds the %d-byte shared result budget / 单条历史命中超过共享结果预算", req.MaxBytes)
+			}
+			break
+		}
+		result = candidate
+	}
+	result.Truncated = matchedTurns > len(result.Hits)
+	if result.Truncated && len(result.Hits) > 0 {
+		last := scored[len(result.Hits)-1]
+		result.NextCursor, err = encodeStoryHistorySearchCursor(storyHistorySearchCursor{
+			Version: 1, Fingerprint: requestFingerprint, HeadTurnID: headTurnID,
+			AfterTurnID: last.hit.TurnID, AfterScore: last.hit.Score, AfterIndex: last.index,
+		})
+		if err != nil {
+			return StoryHistorySearchResult{}, fmt.Errorf("encode story history cursor: %w", err)
+		}
+	}
+	return result, nil
 }
 
 func retainStoryHistorySearchHit(
@@ -143,9 +225,10 @@ func retainStoryHistorySearchHit(
 	match string,
 	position int,
 	limit int,
+	cursor storyHistorySearchCursor,
 ) ([]scoredStoryHistoryHit, int) {
 	score, matched := storyHistoryMatchScore(turn, keywords, match)
-	if !matched {
+	if !matched || !storyHistoryHitAfterCursor(score, position, cursor) {
 		return top, matchedCount
 	}
 	matchedCount++
@@ -187,9 +270,6 @@ func normalizeStoryHistoryKeywords(values []string) []string {
 		}
 		seen[value] = true
 		result = append(result, value)
-		if len(result) == 8 {
-			break
-		}
 	}
 	return result
 }
@@ -205,10 +285,57 @@ func normalizeStoryHistoryLimit(value int) int {
 	if value <= 0 {
 		return DefaultStoryHistorySearchLimit
 	}
-	if value > MaxStoryHistorySearchLimit {
-		return MaxStoryHistorySearchLimit
-	}
 	return value
+}
+
+func storyHistoryHitAfterCursor(score, index int, cursor storyHistorySearchCursor) bool {
+	if cursor.AfterTurnID == "" {
+		return true
+	}
+	if score != cursor.AfterScore {
+		return score < cursor.AfterScore
+	}
+	return index < cursor.AfterIndex
+}
+
+func storyHistoryRequestFingerprint(storyID, branchID string, keywords []string, match, beforeTurnID string) string {
+	payload := struct {
+		StoryID      string   `json:"story_id"`
+		BranchID     string   `json:"branch_id"`
+		Keywords     []string `json:"keywords,omitempty"`
+		Match        string   `json:"match"`
+		BeforeTurnID string   `json:"before_turn_id,omitempty"`
+	}{storyID, branchID, keywords, match, beforeTurnID}
+	encoded, _ := json.Marshal(payload)
+	digest := sha256.Sum256(encoded)
+	return hex.EncodeToString(digest[:16])
+}
+
+func encodeStoryHistorySearchCursor(cursor storyHistorySearchCursor) (string, error) {
+	encoded, err := json.Marshal(cursor)
+	if err != nil {
+		return "", err
+	}
+	return base64.RawURLEncoding.EncodeToString(encoded), nil
+}
+
+func decodeStoryHistorySearchCursor(value, fingerprint string) (storyHistorySearchCursor, error) {
+	value = strings.TrimSpace(value)
+	if value == "" {
+		return storyHistorySearchCursor{Version: 1, Fingerprint: fingerprint}, nil
+	}
+	decoded, err := base64.RawURLEncoding.DecodeString(value)
+	if err != nil {
+		return storyHistorySearchCursor{}, errors.New("search_story_history cursor is invalid / 历史检索游标无效")
+	}
+	var cursor storyHistorySearchCursor
+	if err := json.Unmarshal(decoded, &cursor); err != nil || cursor.Version != 1 || cursor.HeadTurnID == "" || cursor.AfterTurnID == "" {
+		return storyHistorySearchCursor{}, errors.New("search_story_history cursor is invalid / 历史检索游标无效")
+	}
+	if cursor.Fingerprint != fingerprint {
+		return storyHistorySearchCursor{}, errors.New("search_story_history cursor does not belong to this query / 历史检索游标不属于当前查询")
+	}
+	return cursor, nil
 }
 
 func storyHistoryMatchScore(turn TurnEvent, keywords []string, match string) (int, bool) {
@@ -263,9 +390,6 @@ func storyHistoryStateChanges(delta *StateDelta) []string {
 	}
 	for _, op := range delta.ActorOps {
 		changes = append(changes, boundedStoryHistoryText(op.Op+" /"+op.ActorID+"/"+op.FieldID+" "+storyHistoryValue(op.Value)+" "+op.Reason, storyHistoryStateSummaryRunes))
-	}
-	if len(changes) > 12 {
-		changes = append(changes[:12], "…")
 	}
 	return changes
 }

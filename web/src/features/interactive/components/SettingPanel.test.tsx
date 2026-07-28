@@ -1319,6 +1319,10 @@ describe('SettingPanel', () => {
     expect(raw).toHaveClass('font-mono')
     expect(within(editor).getByRole('button', { name: 'Raw' })).toHaveAttribute('aria-pressed', 'true')
 
+    fireEvent.change(screen.getByRole('textbox', { name: '搜索资料' }), { target: { value: '正文内容' } })
+    expect(raw.parentElement?.querySelector('mark')).toHaveTextContent('正文内容')
+    expect(raw).not.toBeDisabled()
+
     fireEvent.change(raw, { target: { value: '## 标题\n\n正文内容\n\n新增一行' } })
 
     // 切回富文本，修改后的内容回灌

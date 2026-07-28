@@ -5,8 +5,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"strings"
-	"sync"
-	"unicode/utf8"
 
 	agent "github.com/alfredxw/denova/agent"
 
@@ -20,12 +18,12 @@ type readLoreItemsInput struct {
 }
 
 type listLoreItemsInput struct {
-	Keywords  []string `json:"keywords,omitempty" jsonschema_description:"可选检索词数组，每项独立匹配 ID、名称、别名、标签、简介和正文；最多 8 项，不要把多个关键词拼成一个字符串。"`
+	Keywords  []string `json:"keywords,omitempty" jsonschema_description:"可选检索词数组，每项独立匹配 ID、名称、别名、标签、简介和正文；不要把多个关键词拼成一个字符串。"`
 	Match     string   `json:"match,omitempty" jsonschema:"enum=any,enum=all" jsonschema_description:"多关键词关系：any 表示命中任意关键词（OR，默认），all 表示命中全部关键词（AND）。"`
 	Types     []string `json:"types,omitempty" jsonschema_description:"可选资料类型数组：character/world/location/faction/rule/item/other。"`
 	LoadModes []string `json:"load_modes,omitempty" jsonschema_description:"可选加载策略数组：resident/auto/manual；状态结构审查优先使用 resident。"`
 	Detail    string   `json:"detail,omitempty" jsonschema:"enum=index,enum=full" jsonschema_description:"返回粒度：index（默认）返回目录/简介；full 在提供筛选条件时直接返回完整正文，避免再调用 read_lore_items。"`
-	Limit     int      `json:"limit,omitempty" jsonschema_description:"筛选结果的本页数量，默认 10，最大 50；空筛选目录由 256 KiB 上限自动分页。"`
+	Limit     int      `json:"limit,omitempty" jsonschema_description:"筛选结果的本页数量，默认 10，可按需提高；空筛选目录由索引字节预算自动分页。"`
 	Offset    int      `json:"offset,omitempty" jsonschema_description:"分页起点，默认 0；根据返回的下一页 offset 继续读取。"`
 }
 
@@ -52,30 +50,15 @@ type loreToolsOptions struct {
 	ReadPolicy *loreReadPolicy
 }
 
-// loreReadPolicy bounds task-specific model context and observes only lore
-// bodies that were successfully returned to the model.
+// loreReadPolicy observes only lore bodies successfully returned to the model.
+// Output sizing belongs to the shared tool-result projection boundary; Lore
+// must not reject an otherwise valid batch using a second, stricter budget.
 type loreReadPolicy struct {
-	MaxItemsPerCall int
-	MaxResultBytes  int
-	MaxTotalBytes   int
-	OnRead          func([]string)
-
-	mu        sync.Mutex
-	usedBytes int
+	OnRead func([]string)
 }
 
-const (
-	defaultLoreReadMaxItems       = 16
-	defaultLoreReadMaxResultBytes = 256 * 1024
-	defaultLoreReadMaxTotalBytes  = 1024 * 1024
-)
-
 func defaultLoreReadPolicy() *loreReadPolicy {
-	return &loreReadPolicy{
-		MaxItemsPerCall: defaultLoreReadMaxItems,
-		MaxResultBytes:  defaultLoreReadMaxResultBytes,
-		MaxTotalBytes:   defaultLoreReadMaxTotalBytes,
-	}
+	return &loreReadPolicy{}
 }
 
 func (p *loreReadPolicy) validateBatch(input readLoreItemsInput) error {
@@ -86,39 +69,12 @@ func (p *loreReadPolicy) validateBatch(input readLoreItemsInput) error {
 	if count == 0 {
 		return fmt.Errorf("至少提供一个资料 ID 或唯一名称")
 	}
-	return p.validateItemCount(count)
-}
-
-func (p *loreReadPolicy) validateItemCount(count int) error {
-	if p == nil || p.MaxItemsPerCall <= 0 {
-		return nil
-	}
-	if count > p.MaxItemsPerCall {
-		return fmt.Errorf("单次最多读取 %d 个资料条目，当前请求 %d 个", p.MaxItemsPerCall, count)
-	}
 	return nil
 }
 
-func (p *loreReadPolicy) accept(output string, items []book.LoreItem) error {
-	if p == nil {
-		return nil
-	}
-	p.mu.Lock()
-	resultBytes := len(output)
-	if p.MaxResultBytes > 0 && resultBytes > p.MaxResultBytes {
-		p.mu.Unlock()
-		return fmt.Errorf("资料正文结果超过单次上下文上限: %d > %d bytes；请减少条目或拆分过长资料", resultBytes, p.MaxResultBytes)
-	}
-	if p.MaxTotalBytes > 0 && p.usedBytes+resultBytes > p.MaxTotalBytes {
-		usedBytes := p.usedBytes
-		p.mu.Unlock()
-		return fmt.Errorf("资料正文累计超过本任务上下文上限: %d + %d > %d bytes", usedBytes, resultBytes, p.MaxTotalBytes)
-	}
-	p.usedBytes += resultBytes
-	p.mu.Unlock()
-
-	if p.OnRead == nil {
-		return nil
+func (p *loreReadPolicy) observe(items []book.LoreItem) {
+	if p == nil || p.OnRead == nil {
+		return
 	}
 	ids := make([]string, 0, len(items))
 	for _, item := range items {
@@ -129,7 +85,6 @@ func (p *loreReadPolicy) accept(output string, items []book.LoreItem) error {
 	if len(ids) > 0 {
 		p.OnRead(ids)
 	}
-	return nil
 }
 
 func newLoreTools(workspace string, allowWrite bool, options ...loreToolsOptions) ([]agent.ToolDefinition, error) {
@@ -150,20 +105,24 @@ func newLoreTools(workspace string, allowWrite bool, options ...loreToolsOptions
 			return "", err
 		}
 		store := book.NewLoreStore(workspace)
-		var items []book.LoreItem
+		var result book.LoreReadResult
 		var err error
+		missingField := "ids"
 		if len(input.Names) > 0 {
-			items, err = store.ReadManyNames(input.Names)
+			result, err = store.ReadManyNames(input.Names)
+			missingField = "names"
 		} else {
-			items, err = store.ReadMany(input.IDs)
+			result, err = store.ReadMany(input.IDs)
 		}
 		if err != nil {
 			return "", err
 		}
-		output := formatLoreItems(items)
-		if err := readPolicy.accept(output, items); err != nil {
-			return "", err
+		if len(result.Items) == 0 {
+			missing, _ := json.Marshal(result.Missing)
+			return "", fmt.Errorf("未匹配到任何资料条目；不存在的 %s: %s", missingField, missing)
 		}
+		output := formatLoreReadResult(result, missingField)
+		readPolicy.observe(result.Items)
 		return output, nil
 	})
 	if err != nil {
@@ -202,13 +161,8 @@ func newLoreTools(workspace string, allowWrite bool, options ...loreToolsOptions
 			if err != nil {
 				return "", err
 			}
-			if err := readPolicy.validateItemCount(len(items)); err != nil {
-				return "", err
-			}
 			output := formatLoreItems(items)
-			if err := readPolicy.accept(output, items); err != nil {
-				return "", err
-			}
+			readPolicy.observe(items)
 			return output, nil
 		}
 		index, err := store.LoreIndexMarkdown(options)
@@ -272,14 +226,6 @@ func newLoreTools(workspace string, allowWrite bool, options ...loreToolsOptions
 }
 
 func validateListLoreItemsInput(input listLoreItemsInput) error {
-	if len(input.Keywords) > 8 {
-		return fmt.Errorf("keywords 最多 8 项")
-	}
-	for _, keyword := range input.Keywords {
-		if utf8.RuneCountInString(strings.TrimSpace(keyword)) > 64 {
-			return fmt.Errorf("单个 keyword 最多 64 个字符")
-		}
-	}
 	match := strings.TrimSpace(input.Match)
 	if match != "" && match != book.LoreIndexMatchAny && match != book.LoreIndexMatchAll {
 		return fmt.Errorf("match 只能是 any 或 all")
@@ -296,8 +242,8 @@ func validateListLoreItemsInput(input listLoreItemsInput) error {
 			return fmt.Errorf("无效资料加载策略: %s", strings.TrimSpace(loadMode))
 		}
 	}
-	if input.Limit < 0 || input.Limit > book.LoreIndexMaxLimit {
-		return fmt.Errorf("limit 必须在 1 到 %d 之间；省略时默认 %d", book.LoreIndexMaxLimit, book.LoreIndexDefaultLimit)
+	if input.Limit < 0 {
+		return fmt.Errorf("limit 不能小于 0；省略时默认 %d", book.LoreIndexDefaultLimit)
 	}
 	if input.Offset < 0 {
 		return fmt.Errorf("offset 不能小于 0")
@@ -328,6 +274,15 @@ func formatLoreItems(items []book.LoreItem) string {
 		fmt.Fprintln(&sb)
 	}
 	return strings.TrimSpace(sb.String())
+}
+
+func formatLoreReadResult(result book.LoreReadResult, missingField string) string {
+	output := formatLoreItems(result.Items)
+	if len(result.Missing) == 0 {
+		return output
+	}
+	missing, _ := json.Marshal(result.Missing)
+	return output + "\n\n## 未找到的资料\n\n" + missingField + ": " + string(missing)
 }
 
 func buildWriteLoreOperations(store *book.LoreStore, input writeLoreItemsInput) ([]book.LoreOperation, error) {

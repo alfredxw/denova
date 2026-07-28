@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"sort"
 	"strings"
+	"unicode/utf8"
 
 	agent "github.com/alfredxw/denova/agent"
 	"github.com/invopop/jsonschema"
@@ -16,14 +17,16 @@ import (
 // Offset is one-based when Content should be rendered with source line numbers;
 // leave it zero for already-structured content such as directories or JSON.
 type ReadResult struct {
-	Path       string
-	Kind       string
-	Content    string
-	Offset     int
-	Limit      int
-	Total      int
-	Truncated  bool
-	NextOffset int
+	Path           string
+	Kind           string
+	Content        string
+	Offset         int
+	ByteOffset     int
+	Limit          int
+	Total          int
+	Truncated      bool
+	NextOffset     int
+	NextByteOffset int
 }
 
 // ReadMatcher decides whether an Adapter owns one resource path. A matcher
@@ -231,10 +234,12 @@ func projectReadResult(result ReadResult, maxResultBytes int) (agent.ToolResult,
 		projected.Content = strings.Join(lines[:visible], "")
 		projected.Limit = visible
 		projected.Truncated = result.Truncated || visible < returned
-		if projected.Truncated && projected.Offset > 0 {
+		if visible < returned && projected.Offset > 0 {
 			projected.NextOffset = projected.Offset + visible
+			projected.NextByteOffset = 0
 		} else if !projected.Truncated {
 			projected.NextOffset = 0
+			projected.NextByteOffset = 0
 		}
 		content := projected.Content
 		if projected.Offset > 0 {
@@ -281,7 +286,64 @@ func projectReadResult(result ReadResult, maxResultBytes int) (agent.ToolResult,
 		return agent.ToolResult{}, fmt.Errorf("read result metadata exceeds the %d-byte result limit", maxResultBytes)
 	}
 	if returned > 0 && bestVisible == 0 {
-		return agent.ToolResult{}, fmt.Errorf("read result leaves no room for one complete line within the %d-byte result limit", maxResultBytes)
+		fragment, err := projectReadLineFragment(result, lines[0], maxResultBytes)
+		if err != nil {
+			return agent.ToolResult{}, err
+		}
+		return fragment, nil
+	}
+	return best, nil
+}
+
+func projectReadLineFragment(result ReadResult, line string, maxResultBytes int) (agent.ToolResult, error) {
+	build := func(visibleBytes int) (agent.ToolResult, error) {
+		content := line[:visibleBytes]
+		projected := result
+		projected.Content = content
+		projected.Limit = 1
+		projected.Truncated = true
+		projected.NextOffset = result.Offset
+		projected.NextByteOffset = result.ByteOffset + visibleBytes
+		metadata := readResultEnvelope(projected)
+		encoded, err := json.Marshal(metadata)
+		if err != nil {
+			return agent.ToolResult{}, fmt.Errorf("serialize read result: %w", err)
+		}
+		modelContent := string(encoded)
+		if content != "" {
+			modelContent += "\n" + lineNumbers(content, projected.Offset)
+		}
+		return agent.ToolResult{
+			ModelContent: modelContent, DisplayContent: modelContent, Details: encoded,
+			Status: agent.ToolResultSuccess,
+		}, nil
+	}
+	low, high := 1, len(line)-1
+	bestBytes := 0
+	var best agent.ToolResult
+	for low <= high {
+		probe := low + (high-low)/2
+		middle := probe
+		for middle > 0 && !utf8.ValidString(line[:middle]) {
+			middle--
+		}
+		if middle == 0 {
+			low = probe + 1
+			continue
+		}
+		candidate, err := build(middle)
+		if err != nil {
+			return agent.ToolResult{}, err
+		}
+		if len(candidate.ModelContent) <= maxResultBytes && len(candidate.Details) <= maxResultBytes {
+			best, bestBytes = candidate, middle
+			low = probe + 1
+		} else {
+			high = probe - 1
+		}
+	}
+	if bestBytes == 0 {
+		return agent.ToolResult{}, fmt.Errorf("read result metadata leaves no room for a UTF-8 line fragment within the %d-byte result limit", maxResultBytes)
 	}
 	return best, nil
 }
@@ -303,11 +365,13 @@ type readSource struct {
 }
 
 type readLimits struct {
-	Offset     int  `json:"offset,omitempty"`
-	Returned   int  `json:"returned,omitempty"`
-	Total      int  `json:"total,omitempty"`
-	Truncated  bool `json:"truncated"`
-	NextOffset int  `json:"next_offset,omitempty"`
+	Offset         int  `json:"offset,omitempty"`
+	ByteOffset     int  `json:"byte_offset,omitempty"`
+	Returned       int  `json:"returned,omitempty"`
+	Total          int  `json:"total,omitempty"`
+	Truncated      bool `json:"truncated"`
+	NextOffset     int  `json:"next_offset,omitempty"`
+	NextByteOffset int  `json:"next_byte_offset,omitempty"`
 }
 
 type readRecovery struct {
@@ -329,7 +393,9 @@ func readResultEnvelope(result ReadResult) readEnvelope {
 	if result.Truncated {
 		status = "partial"
 		suggestion := "Narrow the resource path or requested limit. / 请缩小资源路径或请求范围。"
-		if result.NextOffset > 0 {
+		if result.NextOffset > 0 && result.NextByteOffset > 0 {
+			suggestion = fmt.Sprintf("Continue with offset=%d and byte_offset=%d. / 使用 offset=%d、byte_offset=%d 继续读取。", result.NextOffset, result.NextByteOffset, result.NextOffset, result.NextByteOffset)
+		} else if result.NextOffset > 0 {
 			suggestion = fmt.Sprintf("Continue with offset=%d. / 使用 offset=%d 继续读取。", result.NextOffset, result.NextOffset)
 		}
 		recovery = &readRecovery{Retryable: true, Suggestion: suggestion}
@@ -338,8 +404,8 @@ func readResultEnvelope(result ReadResult) readEnvelope {
 		Schema: "resource.read.v1", Status: status,
 		Source: readSource{Kind: result.Kind, Path: result.Path},
 		Limits: readLimits{
-			Offset: result.Offset, Returned: result.Limit, Total: result.Total,
-			Truncated: result.Truncated, NextOffset: result.NextOffset,
+			Offset: result.Offset, ByteOffset: result.ByteOffset, Returned: result.Limit, Total: result.Total,
+			Truncated: result.Truncated, NextOffset: result.NextOffset, NextByteOffset: result.NextByteOffset,
 		},
 		Recovery: recovery,
 	}

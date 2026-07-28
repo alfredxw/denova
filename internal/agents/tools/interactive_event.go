@@ -7,7 +7,6 @@ import (
 	"fmt"
 	"net/url"
 	"strings"
-	"sync"
 
 	agenttools "github.com/alfredxw/denova/agent/tools"
 
@@ -15,23 +14,19 @@ import (
 	"denova/internal/interactive"
 )
 
-const maxDirectorRunEventCards = 8
-
 type eventCardReadInput struct {
 	Path string `json:"path" jsonschema_description:"Frozen event-card URI from the current Director opportunity index, in the form event://package/card."`
 }
 
 type eventCardReadScope struct {
-	mu      sync.Mutex
 	storyID string
 	turnID  string
 	cards   map[string]interactive.DirectorEvent
-	read    map[string]struct{}
 }
 
 // newEventCardReadAdapter freezes the due/new opportunity and selected Story
-// Director catalog for one Agent construction. Its unique-card budget is
-// shared by every parallel read call made during that run.
+// Director catalog for one Agent construction. The shared read-tool byte
+// budget bounds each result; the catalog itself has no arbitrary card count.
 func newEventCardReadAdapter(ctx InteractiveContext) (agenttools.ReadAdapter, error) {
 	ctx.StoryID = strings.TrimSpace(ctx.StoryID)
 	if ctx.Store == nil || ctx.StoryID == "" {
@@ -49,7 +44,6 @@ func newEventCardReadAdapter(ctx InteractiveContext) (agenttools.ReadAdapter, er
 		storyID: ctx.StoryID,
 		turnID:  ctx.TurnID,
 		cards:   make(map[string]interactive.DirectorEvent, len(cards)),
-		read:    make(map[string]struct{}, maxDirectorRunEventCards),
 	}
 	for _, card := range cards {
 		if ref := strings.Trim(strings.TrimSpace(card.ID), "/"); ref != "" && card.Enabled {
@@ -100,26 +94,14 @@ func (scope *eventCardReadScope) readCard(_ context.Context, input eventCardRead
 	if err != nil {
 		return agenttools.ReadResult{}, err
 	}
-	scope.mu.Lock()
 	card, allowed := scope.cards[ref]
 	if !allowed {
-		scope.mu.Unlock()
 		return agenttools.ReadResult{}, fmt.Errorf("event card is outside the frozen Director opportunity: %s", ref)
 	}
-	if _, alreadyRead := scope.read[ref]; !alreadyRead {
-		if len(scope.read) >= maxDirectorRunEventCards {
-			scope.mu.Unlock()
-			return agenttools.ReadResult{}, fmt.Errorf("this Director run may read at most %d unique event cards", maxDirectorRunEventCards)
-		}
-		scope.read[ref] = struct{}{}
-	}
-	readCount := len(scope.read)
-	scope.mu.Unlock()
 
 	payload := struct {
 		Schema string                    `json:"schema"`
 		Source map[string]string         `json:"source"`
-		Limits map[string]int            `json:"limits"`
 		Card   interactive.DirectorEvent `json:"card"`
 	}{
 		Schema: "interactive.event_card.read.v1",
@@ -127,8 +109,7 @@ func (scope *eventCardReadScope) readCard(_ context.Context, input eventCardRead
 			"kind": "selected_story_director_event_card", "story_id": scope.storyID,
 			"source_turn_id": scope.turnID, "event_ref": ref,
 		},
-		Limits: map[string]int{"max_unique_per_run": maxDirectorRunEventCards, "unique_read": readCount},
-		Card:   card,
+		Card: card,
 	}
 	encoded, err := json.MarshalIndent(payload, "", "  ")
 	if err != nil {

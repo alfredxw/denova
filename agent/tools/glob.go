@@ -37,15 +37,14 @@ func (workspace *LocalWorkspace) Glob(ctx context.Context, request GlobRequest) 
 		return SearchResult{}, errors.New("workspace is not configured")
 	}
 	limits := workspace.Limits()
+	request = normalizeGlobRequest(request)
 	limit := request.Limit
 	if limit <= 0 {
 		limit = limits.DefaultDirectoryItems
 	}
-	if limit > limits.MaxResultEntries {
-		return SearchResult{}, fmt.Errorf("glob limit cannot exceed %d", limits.MaxResultEntries)
-	}
-	if len(request.Paths) > maxSearchPaths {
-		return SearchResult{}, fmt.Errorf("glob paths cannot exceed %d entries", maxSearchPaths)
+	after, err := decodeGlobCursor(request.Cursor, request)
+	if err != nil {
+		return SearchResult{}, err
 	}
 	targets, warnings, err := workspace.globTargets(request.Paths)
 	if err != nil {
@@ -79,31 +78,39 @@ func (workspace *LocalWorkspace) Glob(ctx context.Context, request GlobRequest) 
 	}
 	diagnostics := readProcessDiagnostics(stderr, limits.MaxResultBytes)
 
-	seen := make(map[string]struct{}, limit+1)
-	matches := make([]string, 0, min(limit+1, limits.DefaultDirectoryItems))
-	outputBytes := 0
-	truncated := false
-	oversizedEntry := false
+	capacity := min(limit, limits.MaxResultBytes)
+	if capacity < limits.MaxResultBytes {
+		capacity++
+	}
+	capacity = min(capacity, maxWorkspaceScanEntries)
+	matches := make([]string, 0, min(capacity, limits.DefaultDirectoryItems))
+	seenDirectories := make(map[string]struct{})
+	eligible := 0
 	add := func(candidate string) bool {
-		if _, exists := seen[candidate]; exists {
+		if strings.HasSuffix(candidate, "/") {
+			if _, exists := seenDirectories[candidate]; exists {
+				return true
+			}
+			seenDirectories[candidate] = struct{}{}
+		}
+		if candidate <= after {
 			return true
 		}
-		if len(matches) >= limit {
-			truncated = true
-			return false
+		eligible++
+		index := sort.SearchStrings(matches, candidate)
+		if index < len(matches) && matches[index] == candidate {
+			eligible--
+			return true
 		}
-		additional := len(candidate)
-		if len(matches) > 0 {
-			additional++
+		if index >= capacity {
+			return true
 		}
-		if outputBytes+additional > limits.MaxResultBytes {
-			oversizedEntry = len(matches) == 0
-			truncated = true
-			return false
+		matches = append(matches, "")
+		copy(matches[index+1:], matches[index:])
+		matches[index] = candidate
+		if len(matches) > capacity {
+			matches = matches[:capacity]
 		}
-		seen[candidate] = struct{}{}
-		matches = append(matches, candidate)
-		outputBytes += additional
 		return true
 	}
 
@@ -126,14 +133,9 @@ func (workspace *LocalWorkspace) Glob(ctx context.Context, request GlobRequest) 
 				break
 			}
 			for _, entry := range globCandidatePaths(candidate) {
-				if matchesGlobTargets(entry, targets) && !add(entry) {
-					stoppedEarly = true
-					_ = command.Process.Kill()
-					break
+				if matchesGlobTargets(entry, targets) {
+					add(entry)
 				}
-			}
-			if stoppedEarly {
-				break
 			}
 		}
 		if readErr != nil {
@@ -158,20 +160,42 @@ func (workspace *LocalWorkspace) Glob(ctx context.Context, request GlobRequest) 
 			return SearchResult{}, fmt.Errorf("workspace glob failed: %s", boundedString(diagnostic.content, limits.MaxResultBytes))
 		}
 	}
-	if !stoppedEarly {
-		stoppedEarly, err = workspace.addGlobDirectories(ctx, request, targets, add)
+	stoppedEarly, err = workspace.addGlobDirectories(ctx, request, targets, add)
+	if err != nil {
+		return SearchResult{}, err
+	}
+	if stoppedEarly {
+		return SearchResult{}, errors.New("glob directory scan stopped before producing a stable page / 目录扫描未完成，无法生成稳定分页")
+	}
+	visible := min(limit, len(matches))
+	outputBytes := 0
+	for index := 0; index < visible; index++ {
+		additional := len(matches[index])
+		if index > 0 {
+			additional++
+		}
+		if outputBytes+additional > limits.MaxResultBytes {
+			visible = index
+			break
+		}
+		outputBytes += additional
+	}
+	if visible == 0 && len(matches) > 0 {
+		return SearchResult{}, fmt.Errorf("glob entry exceeds the %d-byte shared result budget", limits.MaxResultBytes)
+	}
+	result := SearchResult{Entries: append([]string(nil), matches[:visible]...), Truncated: eligible > visible, Warnings: warnings}
+	if result.Truncated && visible > 0 {
+		result.NextCursor, err = encodeGlobCursor(result.Entries[visible-1], request)
 		if err != nil {
-			return SearchResult{}, err
-		}
-		if stoppedEarly {
-			truncated = true
+			return SearchResult{}, fmt.Errorf("encode glob cursor: %w", err)
 		}
 	}
-	if oversizedEntry {
-		return SearchResult{}, fmt.Errorf("glob entry exceeds the %d-byte result limit; narrow the path", limits.MaxResultBytes)
-	}
-	sort.Strings(matches)
-	return SearchResult{Entries: matches, Truncated: truncated, Warnings: warnings}, nil
+	return result, nil
+}
+
+func normalizeGlobRequest(request GlobRequest) GlobRequest {
+	request.Paths = normalizeRequestedPaths(request.Paths)
+	return request
 }
 
 func (workspace *LocalWorkspace) globTargets(inputs []string) ([]globTarget, []string, error) {

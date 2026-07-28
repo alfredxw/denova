@@ -3,14 +3,17 @@ package tools
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"os"
 	"path/filepath"
+	"reflect"
 	"strings"
 	"testing"
 
 	agent "github.com/alfredxw/denova/agent"
 
 	"denova/config"
+	"denova/internal/interactive"
 	"denova/internal/workspacepath"
 )
 
@@ -84,12 +87,67 @@ func TestConfigReadDescribesEveryResourceIncludingRuleSystem(t *testing.T) {
 		"style_reference", "narrative_style", "story_director", "event_package", "rule_system",
 		"state_system", "image_preset", "automation", "skill", "agent_profile",
 	} {
-		if !strings.Contains(output, `"name": "`+name+`"`) {
+		if !strings.Contains(output, `"name":"`+name+`"`) {
 			t.Fatalf("config_read describe missing %s:\n%s", name, output)
 		}
 	}
 	if strings.Contains(output, "list_tellers") || strings.Contains(output, "write_agent_configs") {
 		t.Fatalf("legacy tool names leaked into resource registry:\n%s", output)
+	}
+}
+
+func TestConfigReadSchemaHasNoArbitraryIDCountLimit(t *testing.T) {
+	definition := configManagerDefinitionByName(t, &config.Config{NovaDir: t.TempDir(), Workspace: t.TempDir()}, "config_read")
+	info, err := definition.Tool.Info(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	schema, err := info.ToJSONSchema()
+	if err != nil {
+		t.Fatal(err)
+	}
+	encoded, err := json.Marshal(schema)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(string(encoded), `"maxItems":32`) {
+		t.Fatalf("config_read schema still caps exact IDs: %s", encoded)
+	}
+}
+
+func TestConfigReadReturnsExistingItemsAndMissingIDs(t *testing.T) {
+	cfg := &config.Config{NovaDir: t.TempDir(), Workspace: t.TempDir()}
+	applyTool := configManagerToolByName(t, cfg, "config_apply")
+	readTool := configManagerToolByName(t, cfg, "config_read")
+	createdOutput, err := runToolForTest(context.Background(), applyTool, `{
+		"operation":"create","resource":"style_reference",
+		"value":{"name":"Partial","filename":"partial.md","content":"# Partial"}
+	}`)
+	if err != nil {
+		t.Fatal(err)
+	}
+	created := decodeConfigMutationReceipt(t, createdOutput)
+	output, err := runToolForTest(context.Background(), readTool, mustJSON(t, map[string]any{
+		"operation": "get", "resource": "style_reference", "ids": []string{created.ID, ".denova/styles/missing.md"},
+	}))
+	if err != nil {
+		t.Fatal(err)
+	}
+	var result struct {
+		Items      []json.RawMessage `json:"items"`
+		MissingIDs []string          `json:"missing_ids"`
+		Status     string            `json:"status"`
+	}
+	if err := json.Unmarshal([]byte(output), &result); err != nil {
+		t.Fatal(err)
+	}
+	if len(result.Items) != 1 || !reflect.DeepEqual(result.MissingIDs, []string{".denova/styles/missing.md"}) || result.Status != "partial" {
+		t.Fatalf("partial config read = %s", output)
+	}
+	if _, err := runToolForTest(context.Background(), readTool, `{
+		"operation":"get","resource":"style_reference","ids":[".denova/styles/missing.md"]
+	}`); err == nil {
+		t.Fatal("all-missing config read should fail")
 	}
 }
 
@@ -327,10 +385,7 @@ func TestAgentProfileGetUsesExactSingletonSnapshotContract(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	var result agentProfileReadResult
-	if err := json.Unmarshal([]byte(output), &result); err != nil {
-		t.Fatal(err)
-	}
+	result := decodeAgentProfileGetResult(t, output)
 	if result.ID != agentProfileSnapshotID {
 		t.Fatalf("agent_profile snapshot id = %q, want %q", result.ID, agentProfileSnapshotID)
 	}
@@ -355,12 +410,7 @@ func TestConfigApplyAgentProfileHonorsSettingsRevision(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	var read struct {
-		Revisions config.SettingsRevisions `json:"revisions"`
-	}
-	if err := json.Unmarshal([]byte(output), &read); err != nil {
-		t.Fatal(err)
-	}
+	read := decodeAgentProfileListResult(t, output)
 	input := map[string]any{
 		"operation": "update", "resource": "agent_profile", "id": config.AgentKindIDE,
 		"scope": "user", "revision": read.Revisions.User,
@@ -392,12 +442,7 @@ func TestConfigApplyAgentProfileCreateCannotBypassScopeRevision(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	var read struct {
-		Revisions config.SettingsRevisions `json:"revisions"`
-	}
-	if err := json.Unmarshal([]byte(output), &read); err != nil {
-		t.Fatal(err)
-	}
+	read := decodeAgentProfileListResult(t, output)
 	if _, err := runToolForTest(context.Background(), applyTool, mustJSON(t, map[string]any{
 		"operation": "create", "resource": "agent_profile", "scope": "user", "id": config.AgentKindIDE,
 		"revision": read.Revisions.User,
@@ -500,12 +545,7 @@ func TestConfigApplyAgentProfileEnforcesConfigManagerToolCeiling(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		var read struct {
-			Revisions config.SettingsRevisions `json:"revisions"`
-		}
-		if err := json.Unmarshal([]byte(output), &read); err != nil {
-			t.Fatal(err)
-		}
+		read := decodeAgentProfileListResult(t, output)
 		if scope == "workspace" {
 			return read.Revisions.Workspace
 		}
@@ -692,9 +732,178 @@ func TestConfigResourceAdaptersShareCRUDAndRevisionContract(t *testing.T) {
 	}
 }
 
+func TestConfigApplyPreservesLargeGameConfigurationCollections(t *testing.T) {
+	cfg := &config.Config{NovaDir: t.TempDir(), Workspace: t.TempDir()}
+	applyTool := configManagerToolByName(t, cfg, "config_apply")
+	readTool := configManagerToolByName(t, cfg, "config_read")
+
+	events := make([]any, 30)
+	for index := range events {
+		events[index] = map[string]any{
+			"id": fmt.Sprintf("event-%02d", index), "type_name": fmt.Sprintf("Event %02d", index),
+			"description_markdown": fmt.Sprintf("Event body %02d", index), "enabled": true,
+		}
+	}
+	if _, err := runToolForTest(context.Background(), applyTool, mustJSON(t, map[string]any{
+		"operation": "create", "resource": "event_package",
+		"value": map[string]any{"id": "large-events", "name": "Large events", "events": events},
+	})); err != nil {
+		t.Fatal(err)
+	}
+	eventOutput, err := runToolForTest(context.Background(), readTool, `{"operation":"get","resource":"event_package","ids":["large-events"]}`)
+	if err != nil {
+		t.Fatal(err)
+	}
+	eventPackage := decodeConfigGetItem[interactive.EventPackageModule](t, eventOutput)
+	if len(eventPackage.Events) != len(events) {
+		t.Fatalf("persisted event cards = %d, want %d", len(eventPackage.Events), len(events))
+	}
+
+	templates := make([]any, 30)
+	actors := make([]any, 30)
+	for index := range templates {
+		templateID := fmt.Sprintf("template-%02d", index)
+		actorID := fmt.Sprintf("Actor %02d", index)
+		templates[index] = map[string]any{
+			"id": templateID, "name": templateID,
+			"fields": []any{map[string]any{"name": "status", "type": "string"}},
+		}
+		actors[index] = map[string]any{"id": actorID, "template_id": templateID, "name": actorID}
+	}
+	if _, err := runToolForTest(context.Background(), applyTool, mustJSON(t, map[string]any{
+		"operation": "create", "resource": "state_system",
+		"value": map[string]any{
+			"id": "large-state", "name": "Large state",
+			"actor_state": map[string]any{"templates": templates, "initial_actors": actors},
+		},
+	})); err != nil {
+		t.Fatal(err)
+	}
+	stateOutput, err := runToolForTest(context.Background(), readTool, `{"operation":"get","resource":"state_system","ids":["large-state"]}`)
+	if err != nil {
+		t.Fatal(err)
+	}
+	stateSystem := decodeConfigGetItem[interactive.ActorStateModule](t, stateOutput)
+	if len(stateSystem.ActorState.Templates) != len(templates) || len(stateSystem.ActorState.InitialActors) != len(actors) {
+		t.Fatalf("persisted state collections templates=%d actors=%d", len(stateSystem.ActorState.Templates), len(stateSystem.ActorState.InitialActors))
+	}
+
+	rules := make([]any, 30)
+	for index := range rules {
+		rules[index] = map[string]any{
+			"id": fmt.Sprintf("rule-%02d", index), "label": fmt.Sprintf("Rule %02d", index),
+			"dice": "1d20", "failure_policy": "fail_forward",
+			"must_check_examples": []string{fmt.Sprintf("risk-%02d", index)},
+		}
+	}
+	if _, err := runToolForTest(context.Background(), applyTool, mustJSON(t, map[string]any{
+		"operation": "create", "resource": "rule_system",
+		"value": map[string]any{
+			"id": "large-rules", "name": "Large rules",
+			"trpg_system": map[string]any{"rule_templates": rules},
+		},
+	})); err != nil {
+		t.Fatal(err)
+	}
+	ruleOutput, err := runToolForTest(context.Background(), readTool, `{"operation":"get","resource":"rule_system","ids":["large-rules"]}`)
+	if err != nil {
+		t.Fatal(err)
+	}
+	ruleSystem := decodeConfigGetItem[interactive.RuleSystemModule](t, ruleOutput)
+	if len(ruleSystem.TRPGSystem.RuleTemplates) != len(rules) {
+		t.Fatalf("persisted rule templates = %d, want %d", len(ruleSystem.TRPGSystem.RuleTemplates), len(rules))
+	}
+
+	styleRefs := make([]string, 30)
+	for index := range styleRefs {
+		styleRefs[index] = fmt.Sprintf(".denova/styles/style-%02d.md", index)
+	}
+	if _, err := runToolForTest(context.Background(), applyTool, mustJSON(t, map[string]any{
+		"operation": "create", "resource": "narrative_style",
+		"value": map[string]any{
+			"id": "large-style-refs", "name": "Large style refs", "style_refs": styleRefs,
+			"style_rules": []any{map[string]any{"scene": "all", "style_refs": styleRefs}},
+			"slots":       []any{map[string]any{"id": "identity", "name": "Identity", "target": "system", "enabled": true, "content": "Keep every reference."}},
+		},
+	})); err != nil {
+		t.Fatal(err)
+	}
+	styleOutput, err := runToolForTest(context.Background(), readTool, `{"operation":"get","resource":"narrative_style","ids":["large-style-refs"]}`)
+	if err != nil {
+		t.Fatal(err)
+	}
+	style := decodeConfigGetItem[interactive.Teller](t, styleOutput)
+	if len(style.StyleRefs) != len(styleRefs) || len(style.StyleRules) != 1 || len(style.StyleRules[0].StyleRefs) != len(styleRefs) {
+		t.Fatalf("persisted style references global=%d rule=%d", len(style.StyleRefs), len(style.StyleRules[0].StyleRefs))
+	}
+}
+
+func TestConfigApplyRejectsOversizedEventCardWithoutSavingTruncatedData(t *testing.T) {
+	cfg := &config.Config{NovaDir: t.TempDir(), Workspace: t.TempDir()}
+	applyTool := configManagerToolByName(t, cfg, "config_apply")
+	readTool := configManagerToolByName(t, cfg, "config_read")
+	_, err := runToolForTest(context.Background(), applyTool, mustJSON(t, map[string]any{
+		"operation": "create", "resource": "event_package",
+		"value": map[string]any{
+			"id": "oversized-event", "name": "Oversized event",
+			"events": []any{map[string]any{
+				"id": "too-long", "type_name": "Too long", "enabled": true,
+				"description_markdown": strings.Repeat("文", interactive.MaxEventCardDescriptionChars+1),
+			}},
+		},
+	}))
+	if err == nil || !strings.Contains(err.Error(), "events[0].description_markdown") {
+		t.Fatalf("oversized event error = %v", err)
+	}
+	if _, err := runToolForTest(context.Background(), readTool, `{"operation":"get","resource":"event_package","ids":["oversized-event"]}`); err == nil {
+		t.Fatal("rejected event package was persisted")
+	}
+}
+
 func configManagerToolByName(t *testing.T, cfg *config.Config, name string) agent.Tool {
 	t.Helper()
 	return configManagerDefinitionByName(t, cfg, name).Tool
+}
+
+func decodeAgentProfileGetResult(t *testing.T, output string) agentProfileReadResult {
+	t.Helper()
+	var envelope struct {
+		Items []json.RawMessage `json:"items"`
+	}
+	if err := json.Unmarshal([]byte(output), &envelope); err != nil {
+		t.Fatal(err)
+	}
+	if len(envelope.Items) != 1 {
+		t.Fatalf("agent_profile get items = %d, want 1: %s", len(envelope.Items), output)
+	}
+	var result agentProfileReadResult
+	if err := json.Unmarshal(envelope.Items[0], &result); err != nil {
+		t.Fatal(err)
+	}
+	return result
+}
+
+func decodeAgentProfileListResult(t *testing.T, output string) agentProfileReadResult {
+	t.Helper()
+	return decodeAgentProfileGetResult(t, output)
+}
+
+func decodeConfigGetItem[T any](t *testing.T, output string) T {
+	t.Helper()
+	var zero T
+	var envelope struct {
+		Items []json.RawMessage `json:"items"`
+	}
+	if err := json.Unmarshal([]byte(output), &envelope); err != nil {
+		t.Fatal(err)
+	}
+	if len(envelope.Items) != 1 {
+		t.Fatalf("config get items = %d, want 1: %s", len(envelope.Items), output)
+	}
+	if err := json.Unmarshal(envelope.Items[0], &zero); err != nil {
+		t.Fatal(err)
+	}
+	return zero
 }
 
 func configManagerDefinitionByName(t *testing.T, cfg *config.Config, name string) agent.ToolDefinition {

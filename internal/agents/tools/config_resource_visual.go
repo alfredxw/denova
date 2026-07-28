@@ -19,19 +19,21 @@ func newStyleReferenceResource(novaDir string) configresources.Adapter {
 			Scopes: []string{"user"}, Operations: configCRUDOperations(), RevisionField: "revision", Reference: "references/style-reference.md",
 		},
 		list: func(ctx context.Context, _ configresources.ReadRequest) (any, error) {
-			return withConfigResourceLease(ctx, leasePath, func() (any, error) { return lib.List() })
+			return withConfigResourceLease(ctx, leasePath, func() (any, error) {
+				items, err := lib.List()
+				if err != nil {
+					return nil, err
+				}
+				return configresources.NewCatalog(items), nil
+			})
 		},
 		get: func(ctx context.Context, request configresources.ReadRequest) (any, error) {
 			return withConfigResourceLease(ctx, leasePath, func() (any, error) {
-				result := make([]styleref.FileDocument, 0, len(request.IDs))
-				for _, id := range normalizeConfigIDs(request.IDs) {
-					doc, err := lib.Read(id)
-					if err != nil {
-						return nil, err
-					}
-					result = append(result, doc)
+				ids := normalizeConfigIDs(request.IDs)
+				if len(ids) != 1 {
+					return nil, fmt.Errorf("style_reference exact read requires one id")
 				}
-				return result, nil
+				return lib.Read(ids[0])
 			})
 		},
 		apply: func(ctx context.Context, mutation configresources.Mutation) (any, error) {
@@ -96,19 +98,21 @@ func newImagePresetResource(novaDir string) configresources.Adapter {
 			Scopes: []string{"user"}, Operations: configCRUDOperations(), RevisionField: "updated_at", Reference: "references/image-preset.md",
 		},
 		list: func(ctx context.Context, _ configresources.ReadRequest) (any, error) {
-			return withConfigResourceLease(ctx, leasePath, func() (any, error) { return lib.List() })
+			return withConfigResourceLease(ctx, leasePath, func() (any, error) {
+				items, err := lib.List()
+				if err != nil {
+					return nil, err
+				}
+				return configresources.NewCatalog(items), nil
+			})
 		},
 		get: func(ctx context.Context, request configresources.ReadRequest) (any, error) {
 			return withConfigResourceLease(ctx, leasePath, func() (any, error) {
-				result := make([]imagepreset.Preset, 0, len(request.IDs))
-				for _, id := range normalizeConfigIDs(request.IDs) {
-					item, err := lib.Get(id)
-					if err != nil {
-						return nil, err
-					}
-					result = append(result, item)
+				ids := normalizeConfigIDs(request.IDs)
+				if len(ids) != 1 {
+					return nil, fmt.Errorf("image_preset exact read requires one id")
 				}
-				return result, nil
+				return lib.Get(ids[0])
 			})
 		},
 		apply: func(ctx context.Context, mutation configresources.Mutation) (any, error) {

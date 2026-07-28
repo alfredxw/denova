@@ -33,45 +33,37 @@ func newSkillConfigResource(cfg *config.Config) configresources.Adapter {
 			if err != nil {
 				return nil, err
 			}
-			if strings.TrimSpace(request.Scope) == "" {
-				return snapshot, nil
-			}
-			scope := novaskills.Scope(request.Scope)
-			filtered := snapshot.Skills[:0]
-			for _, item := range snapshot.Skills {
-				if item.Scope == scope {
-					filtered = append(filtered, item)
+			if strings.TrimSpace(request.Scope) != "" {
+				scope := novaskills.Scope(request.Scope)
+				filtered := snapshot.Skills[:0]
+				for _, item := range snapshot.Skills {
+					if item.Scope == scope {
+						filtered = append(filtered, item)
+					}
 				}
+				snapshot.Skills = filtered
 			}
-			snapshot.Skills = filtered
-			return snapshot, nil
+			catalog := configresources.NewCatalog(snapshot.Skills)
+			catalog.Metadata = map[string]any{"scopes": snapshot.Scopes}
+			return catalog, nil
 		},
 		get: func(ctx context.Context, request configresources.ReadRequest) (any, error) {
 			scope, err := editableSkillScope(request.Scope)
 			if err != nil {
 				return nil, err
 			}
-			result := make([]any, 0, len(request.IDs))
-			for _, rawID := range normalizeConfigIDs(request.IDs) {
-				id, parseErr := parseSkillResourceID(rawID)
-				if parseErr != nil {
-					return nil, parseErr
-				}
-				if id.Reference != "" {
-					doc, readErr := novaskills.ReadSkillFile(ctx, dirs, scope, id.Name, id.Reference)
-					if readErr != nil {
-						return nil, readErr
-					}
-					result = append(result, doc)
-					continue
-				}
-				doc, readErr := novaskills.ReadDocument(ctx, dirs, scope, id.Name)
-				if readErr != nil {
-					return nil, readErr
-				}
-				result = append(result, doc)
+			ids := normalizeConfigIDs(request.IDs)
+			if len(ids) != 1 {
+				return nil, fmt.Errorf("skill exact read requires one id")
 			}
-			return result, nil
+			id, err := parseSkillResourceID(ids[0])
+			if err != nil {
+				return nil, err
+			}
+			if id.Reference != "" {
+				return novaskills.ReadSkillFile(ctx, dirs, scope, id.Name, id.Reference)
+			}
+			return novaskills.ReadDocument(ctx, dirs, scope, id.Name)
 		},
 		apply: func(ctx context.Context, mutation configresources.Mutation) (any, error) {
 			scope, err := editableSkillScope(mutation.Scope)

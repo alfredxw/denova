@@ -38,7 +38,7 @@ Resolve every non-disabled ID with `config_read` before applying. To disable a m
 | `director_agent_mode` | `triggered`, `every_turn`, `off` | When the Director Agent replans. Default `triggered`. |
 | `rule_state_consumption_mode` | `hybrid_auto`, `director_only` | Whether rule-produced state changes may be applied automatically or only through the Director. |
 | `rule_visibility_mode` | `audit_only`, `public_roll` | Whether checks stay audit-only or expose a public roll. |
-| `prompt_markdown` | string | Additional Director policy. Keep at most 64 KiB for UI compatibility; never place canon or future prose here. |
+| `prompt_markdown` | string | Additional Director policy, at most 256 KiB. Oversized input rejects the complete mutation before writing; never place canon or future prose here. |
 | `branch_planning_turns` | integer 1–12 | Near-term branch horizon; default 5. |
 | `planning_templates` | object | Optional `plan` and `agent_brief` Markdown templates. Omit to use maintained defaults. |
 

@@ -8,10 +8,7 @@ import (
 )
 
 const (
-	actorStateSchemaBatchSourceIDPrefix = "state_schema_batch:"
-	// StateSchemaBatchMaxItems bounds one tool response while allowing the
-	// run-local draft to accumulate several batches.
-	StateSchemaBatchMaxItems             = 16
+	actorStateSchemaBatchSourceIDPrefix  = "state_schema_batch:"
 	maxActorStateSchemaBatchDependencies = 16
 	maxActorStateSchemaBatchItemIDBytes  = 128 - len(actorStateSchemaBatchSourceIDPrefix)
 )
@@ -20,7 +17,7 @@ const (
 // items to one run-local draft. Story state is not modified by this type.
 type ActorStateSchemaBatch struct {
 	Summary  string                      `json:"summary,omitempty" jsonschema:"description=本次审查的简短摘要；后续批次可更新"`
-	Items    []ActorStateSchemaBatchItem `json:"items" jsonschema:"description=本次新增的独立提案项；已 accepted 的 item_id 不要重传，单批最多 16 项"`
+	Items    []ActorStateSchemaBatchItem `json:"items" jsonschema:"description=本次新增的独立提案项；已 accepted 的 item_id 不要重传"`
 	Finalize bool                        `json:"finalize" jsonschema:"description=是否在接收本批成功项后完成草稿；失败或阻塞项存在时不会 finalize"`
 }
 
@@ -121,12 +118,6 @@ func (d *ActorStateSchemaBatchDraft) Submit(batch ActorStateSchemaBatch, audit A
 	}
 	if d == nil {
 		result.Rejected = append(result.Rejected, actorStateSchemaBatchIssue("", "draft_unavailable", "", "状态结构 Batch 草稿不可用"))
-		return result
-	}
-	if len(batch.Items) > StateSchemaBatchMaxItems {
-		result.Rejected = append(result.Rejected, actorStateSchemaBatchIssue("", "batch_too_large", "items", fmt.Sprintf("单批 items 过多: %d > %d", len(batch.Items), StateSchemaBatchMaxItems)))
-		result.DraftAcceptedItems = len(d.order)
-		result.Finalized = d.finalized != nil
 		return result
 	}
 	requestedSummary := trimBytes(batch.Summary, maxInteractiveTextBytes)

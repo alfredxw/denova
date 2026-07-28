@@ -86,21 +86,14 @@ func (s *AgentChatAppService) prepareCommandExecution(
 		runtimeContexts.StableTitle, runtimeContexts.Stable,
 		runtimeContexts.DynamicTitle, runtimeContexts.Dynamic,
 	)
-	var onUserMessageCommitted func(context.Context) error
-	if !resolved.ResolvedReviewFeedback.Empty() {
-		onUserMessageCommitted = func(commitCtx context.Context) error {
-			return s.app.chat().consumeResolvedReviewFeedback(commitCtx, runtime, resolved)
-		}
-	}
 	options := agentChatRunOptions(run.binding, run.task.ID())
-	options.ReviewThreadID = resolved.ResolvedReviewFeedback.PrimaryReviewThreadID()
 	options.IdleTimeout = agentIdleTimeout(runtime.cfg)
 	options.ToolResultMaxBytes = agentToolResultMaxBytes(runtime.cfg)
 	options.SystemPromptLog = systemPrompt
 	options.OnMutationsVerified = s.app.verifiedWorkspaceMutationCallback(
 		"agent_chat_post_run", runtime.versionService, versionAutoSettingsForConfig(&runtime.cfg),
 	)
-	options.OnUserMessageCommitted = onUserMessageCommitted
+	options = s.app.chat().bindReviewFeedbackInputCommit(options, runtime, resolved)
 	return agents.HarnessTurnExecution{
 		Runner: runner, Conversation: conversation, BookService: runtime.bookService,
 		Request: resolved, Options: options,

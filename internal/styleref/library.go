@@ -142,8 +142,14 @@ func (l *Library) write(req WriteRequest, exclusive bool) (Reference, error) {
 	if content == "" {
 		return Reference{}, fmt.Errorf("文风参考内容不能为空")
 	}
+	description := oneLine(req.Description)
+	if utf8.RuneCountInString(description) > MaxDescriptionSize {
+		return Reference{}, fmt.Errorf("description 超过 %d 个字符 / exceeds %d characters", MaxDescriptionSize, MaxDescriptionSize)
+	}
 	content = ensureReferenceHeader(content, req.Name, req.Description)
-	content = trimBytes(content, MaxContentBytes)
+	if len([]byte(content)) > MaxContentBytes {
+		return Reference{}, fmt.Errorf("content 超过 %d 字节 / exceeds %d bytes", MaxContentBytes, MaxContentBytes)
+	}
 	if err := os.MkdirAll(l.dir(), 0o755); err != nil {
 		return Reference{}, err
 	}
@@ -242,9 +248,12 @@ func (l *Library) Update(req UpdateRequest) (FileDocument, error) {
 	if stored == "" {
 		return FileDocument{}, fmt.Errorf("文风参考路径不能为空")
 	}
-	content := trimBytes(req.Content, MaxContentBytes)
+	content := req.Content
 	if strings.TrimSpace(content) == "" {
 		return FileDocument{}, fmt.Errorf("文风参考内容不能为空")
+	}
+	if len([]byte(content)) > MaxContentBytes {
+		return FileDocument{}, fmt.Errorf("content 超过 %d 字节 / exceeds %d bytes", MaxContentBytes, MaxContentBytes)
 	}
 	abs := l.AbsPath(stored)
 	info, err := os.Stat(abs)
@@ -487,26 +496,6 @@ func hasMarkdownH1(content string) bool {
 
 func oneLine(value string) string {
 	return strings.Join(strings.Fields(strings.TrimSpace(value)), " ")
-}
-
-func trimBytes(value string, limit int) string {
-	if limit <= 0 || len([]byte(value)) <= limit {
-		return value
-	}
-	used := 0
-	var out strings.Builder
-	for _, r := range value {
-		size := utf8.RuneLen(r)
-		if size < 0 {
-			size = len(string(r))
-		}
-		if used+size > limit {
-			break
-		}
-		out.WriteRune(r)
-		used += size
-	}
-	return strings.TrimSpace(out.String())
 }
 
 func truncateRunes(value string, limit int) string {

@@ -14,7 +14,6 @@ import (
 const (
 	maxInteractiveTextBytes = 4000
 	maxInteractiveListItems = 24
-	maxRuleStateBindings    = 12
 )
 
 const (
@@ -678,16 +677,16 @@ func normalizeRuleCheck(check RuleCheck, index int) RuleCheck {
 	if check.ID == "" {
 		check.ID = fmt.Sprintf("check_%d", index+1)
 	}
-	check.Label = trimBytes(firstNonEmptyString(check.Label, check.ID), 256)
+	check.Label = strings.TrimSpace(firstNonEmptyString(check.Label, check.ID))
 	check.Dice = normalizeTurnCheckDice(check.Dice)
 	check.FailurePolicy = normalizeRuleCheckFailurePolicy(check.FailurePolicy)
-	check.DifficultyGuidance = trimBytes(check.DifficultyGuidance, maxInteractiveTextBytes)
-	check.StateEffectGuidance = trimBytes(check.StateEffectGuidance, maxInteractiveTextBytes)
-	check.Trigger = trimBytes(check.Trigger, maxInteractiveTextBytes)
-	check.MustCheckExamples = normalizeStringListLimit(check.MustCheckExamples, 8)
-	check.SkipCheckExamples = normalizeStringListLimit(check.SkipCheckExamples, 8)
-	check.SuccessHint = trimBytes(check.SuccessHint, maxInteractiveTextBytes)
-	check.FailureHint = trimBytes(check.FailureHint, maxInteractiveTextBytes)
+	check.DifficultyGuidance = strings.TrimSpace(check.DifficultyGuidance)
+	check.StateEffectGuidance = strings.TrimSpace(check.StateEffectGuidance)
+	check.Trigger = strings.TrimSpace(check.Trigger)
+	check.MustCheckExamples = normalizeStringList(check.MustCheckExamples)
+	check.SkipCheckExamples = normalizeStringList(check.SkipCheckExamples)
+	check.SuccessHint = strings.TrimSpace(check.SuccessHint)
+	check.FailureHint = strings.TrimSpace(check.FailureHint)
 	check.StateBindings = normalizeRuleStateBindings(check.StateBindings)
 	return check
 }
@@ -862,6 +861,23 @@ func normalizeStringListLimit(values []string, limit int) []string {
 		if len(out) >= limit {
 			break
 		}
+	}
+	return out
+}
+
+// normalizeStringList canonicalizes persisted configuration collections
+// without imposing runtime projection limits or truncating user content.
+func normalizeStringList(values []string) []string {
+	out := make([]string, 0, len(values))
+	seen := map[string]bool{}
+	for _, value := range values {
+		value = strings.TrimSpace(value)
+		key := strings.ToLower(value)
+		if value == "" || seen[key] {
+			continue
+		}
+		seen[key] = true
+		out = append(out, value)
 	}
 	return out
 }
