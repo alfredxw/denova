@@ -1,6 +1,8 @@
+import type { ReactNode } from 'react'
 import { render, screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { describe, expect, it, vi } from 'vitest'
+import { TooltipProvider } from '@/components/ui/tooltip'
 import type { AgentChatTab } from './types'
 import { AgentChatTabBar } from './AgentChatTabBar'
 
@@ -9,9 +11,13 @@ const tabs: AgentChatTab[] = [
   { kind: 'page', id: 'skills-tab', workspace: '/books/one', pageId: 'skills' },
 ]
 
+function renderTabBar(ui: ReactNode) {
+  return render(<TooltipProvider delayDuration={0}>{ui}</TooltipProvider>)
+}
+
 describe('AgentChatTabBar', () => {
   it('shows the active workbench tab with its selected fill and accent rule', () => {
-    render(
+    renderTabBar(
       <AgentChatTabBar
         group="primary"
         tabs={tabs}
@@ -33,15 +39,90 @@ describe('AgentChatTabBar', () => {
     const activeTab = screen.getByRole('tab', { name: /Skills tab/ })
     expect(screen.getByRole('tablist')).toHaveClass('!h-full')
     expect(activeTab).toHaveAttribute('aria-selected', 'true')
-    expect(activeTab.className).toContain('aria-[selected=true]:bg-[var(--nova-active)]')
+    expect(activeTab.className).toContain('aria-selected:bg-[var(--nova-active)]')
     expect(activeTab.querySelector('[aria-hidden="true"]')?.className).toContain('group-aria-[selected=true]/tab:opacity-100')
     expect(screen.getByRole('tab', { name: /Reader tab/ })).toHaveAttribute('aria-selected', 'false')
+    expect(activeTab).toHaveClass('min-w-28', 'max-w-40', 'flex-[1_1_10rem]')
+    expect(screen.getByRole('tab', { name: /Reader tab/ })).toHaveClass('min-w-28', 'max-w-40', 'flex-[1_1_10rem]')
+    expect(screen.getByRole('tablist')).toHaveClass('overflow-x-auto', '[&::-webkit-scrollbar]:hidden')
+    expect(screen.getByRole('tablist')).toHaveStyle({ scrollbarWidth: 'none' })
+    expect(screen.getByRole('button', { name: '新建标签页' })).toHaveClass('mx-1', 'h-7', 'w-8', 'rounded-lg')
+  })
+
+  it('reveals a genuinely truncated title below the strip after a deliberate hover delay', async () => {
+    const user = userEvent.setup()
+    const longTitle = 'A deliberately long conversation title that cannot fit in one tab'
+    const clientWidth = vi.spyOn(HTMLElement.prototype, 'clientWidth', 'get').mockReturnValue(100)
+    const scrollWidth = vi.spyOn(HTMLElement.prototype, 'scrollWidth', 'get').mockReturnValue(240)
+    try {
+      renderTabBar(
+        <AgentChatTabBar
+          group="primary"
+          tabs={tabs}
+          activeTabId="reader-tab"
+          tabTitle={(tab) => tab.id === 'reader-tab' ? longTitle : 'Skills'}
+          onActivate={vi.fn()}
+          onClose={vi.fn()}
+          onCloseOthers={vi.fn()}
+          onCloseToRight={vi.fn()}
+          onRename={vi.fn()}
+          onTogglePin={vi.fn()}
+          onMoveTab={vi.fn()}
+          onNewAgentTab={vi.fn()}
+          onNewTerminalTab={vi.fn()}
+          onOpenPage={vi.fn()}
+        />,
+      )
+
+      await user.hover(screen.getByText(longTitle))
+      expect(screen.queryByRole('tooltip')).not.toBeInTheDocument()
+      const tooltip = await screen.findByRole('tooltip')
+      expect(tooltip).toHaveTextContent(longTitle)
+      expect(document.querySelector('[data-slot="tooltip-content"]')).toHaveAttribute('data-side', 'bottom')
+    } finally {
+      clientWidth.mockRestore()
+      scrollWidth.mockRestore()
+    }
+  })
+
+  it('does not create a title tooltip when the full label fits', async () => {
+    const user = userEvent.setup()
+    const clientWidth = vi.spyOn(HTMLElement.prototype, 'clientWidth', 'get').mockReturnValue(240)
+    const scrollWidth = vi.spyOn(HTMLElement.prototype, 'scrollWidth', 'get').mockReturnValue(120)
+    try {
+      renderTabBar(
+        <AgentChatTabBar
+          group="primary"
+          tabs={tabs}
+          activeTabId="reader-tab"
+          tabTitle={(tab) => tab.id === 'reader-tab' ? 'Reader' : 'Skills'}
+          onActivate={vi.fn()}
+          onClose={vi.fn()}
+          onCloseOthers={vi.fn()}
+          onCloseToRight={vi.fn()}
+          onRename={vi.fn()}
+          onTogglePin={vi.fn()}
+          onMoveTab={vi.fn()}
+          onNewAgentTab={vi.fn()}
+          onNewTerminalTab={vi.fn()}
+          onOpenPage={vi.fn()}
+        />,
+      )
+
+      await user.hover(screen.getByText('Reader'))
+      await new Promise((resolve) => window.setTimeout(resolve, 600))
+      expect(screen.queryByRole('tooltip')).not.toBeInTheDocument()
+      expect(document.querySelector('[data-slot="tooltip-content"]')).not.toBeInTheDocument()
+    } finally {
+      clientWidth.mockRestore()
+      scrollWidth.mockRestore()
+    }
   })
 
   it('offers Shell, Codex CLI, and Claude Code directly in the new-tab menu', async () => {
     const user = userEvent.setup()
     const onNewTerminalTab = vi.fn()
-    render(
+    renderTabBar(
       <AgentChatTabBar
         group="primary"
         tabs={tabs}

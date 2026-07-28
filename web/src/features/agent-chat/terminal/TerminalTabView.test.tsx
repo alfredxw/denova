@@ -4,7 +4,7 @@ import userEvent from '@testing-library/user-event'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import type { AgentChatTerminalTab } from '../types'
 import type { TerminalSessionInfo } from './api'
-import { TerminalTabView } from './TerminalTabView'
+import { normalizeTerminalTitle, TerminalTabView } from './TerminalTabView'
 
 const apiMocks = vi.hoisted(() => ({
   closeTerminalSession: vi.fn(),
@@ -16,6 +16,10 @@ const connectionMocks = vi.hoisted(() => ({
   handlers: [] as Array<{
     onControl: (frame: { type: string; code?: number; error?: string }) => void
   }>,
+}))
+
+const terminalMocks = vi.hoisted(() => ({
+  titleHandlers: [] as Array<(title: string) => void>,
 }))
 
 vi.mock('./api', () => ({
@@ -45,7 +49,12 @@ vi.mock('@xterm/xterm', () => ({
     loadAddon() {}
     onData() {}
     onResize() {}
+    onTitleChange(handler: (title: string) => void) {
+      terminalMocks.titleHandlers.push(handler)
+      return { dispose() {} }
+    }
     open() {}
+    refresh() {}
     reset() {}
     write() {}
   },
@@ -104,6 +113,7 @@ describe('TerminalTabView session lifecycle', () => {
     apiMocks.createTerminalSession.mockReset()
     apiMocks.getTerminalRuntimeStatus.mockReset().mockResolvedValue({ sessions: [] })
     connectionMocks.handlers.length = 0
+    terminalMocks.titleHandlers.length = 0
   })
 
   it('creates one backend session under a StrictMode effect replay', async () => {
@@ -113,7 +123,12 @@ describe('TerminalTabView session lifecycle', () => {
 
     render(
       <StrictMode>
-        <TerminalTabView tab={tab} active onSessionEstablished={onSessionEstablished} />
+        <TerminalTabView
+          tab={tab}
+          active
+          onSessionEstablished={onSessionEstablished}
+          onTitleChange={vi.fn()}
+        />
       </StrictMode>,
     )
 
@@ -137,6 +152,7 @@ describe('TerminalTabView session lifecycle', () => {
         tab={{ ...tab, terminalSessionId: persisted.id }}
         active
         onSessionEstablished={onSessionEstablished}
+        onTitleChange={vi.fn()}
       />,
     )
 
@@ -150,7 +166,7 @@ describe('TerminalTabView session lifecycle', () => {
     apiMocks.createTerminalSession.mockReturnValue(creation.promise)
     let owned = true
     const view = render(
-      <TerminalTabView tab={tab} active onSessionEstablished={() => owned} />,
+      <TerminalTabView tab={tab} active onSessionEstablished={() => owned} onTitleChange={vi.fn()} />,
     )
     await waitFor(() => expect(apiMocks.createTerminalSession).toHaveBeenCalledTimes(1))
 
@@ -167,7 +183,7 @@ describe('TerminalTabView session lifecycle', () => {
       .mockResolvedValueOnce(session('session-1'))
       .mockResolvedValueOnce(session('session-2'))
 
-    render(<TerminalTabView tab={tab} active onSessionEstablished={() => true} />)
+    render(<TerminalTabView tab={tab} active onSessionEstablished={() => true} onTitleChange={vi.fn()} />)
     await waitFor(() => expect(connectionMocks.handlers).toHaveLength(1))
     act(() => connectionMocks.handlers[0].onControl({ type: 'exit', code: 0, error: '' }))
 
@@ -176,5 +192,33 @@ describe('TerminalTabView session lifecycle', () => {
     await waitFor(() => expect(apiMocks.closeTerminalSession).toHaveBeenCalledWith('session-1'))
     await waitFor(() => expect(apiMocks.createTerminalSession).toHaveBeenCalledTimes(2))
     expect(apiMocks.createTerminalSession).toHaveBeenLastCalledWith(expect.objectContaining({ owner_tab_id: tab.id }))
+  })
+
+  it('reports a bounded OSC window title for the owning tab', async () => {
+    const onTitleChange = vi.fn()
+    apiMocks.createTerminalSession.mockResolvedValue(session('session-title'))
+
+    render(
+      <TerminalTabView
+        tab={tab}
+        active
+        onSessionEstablished={() => true}
+        onTitleChange={onTitleChange}
+      />,
+    )
+    await waitFor(() => expect(terminalMocks.titleHandlers).toHaveLength(1))
+
+    act(() => terminalMocks.titleHandlers[0]('  Claude\u0007 Code  '))
+
+    expect(onTitleChange).toHaveBeenCalledWith(tab.id, 'claude')
+  })
+})
+
+describe('normalizeTerminalTitle', () => {
+  it('removes control characters and caps the persisted title', () => {
+    expect(normalizeTerminalTitle(`\u001bapp\u0007${'x'.repeat(100)}`)).toBe(`app${'x'.repeat(77)}`)
+    expect(normalizeTerminalTitle('main.ts (~/demo) - VIM')).toBe('vim')
+    expect(normalizeTerminalTitle('✳ Claude Code')).toBe('claude')
+    expect(normalizeTerminalTitle('  ')).toBe('')
   })
 })

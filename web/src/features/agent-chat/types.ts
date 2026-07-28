@@ -1,3 +1,7 @@
+import type { DocumentReviewNavigationIntent } from '@/features/document-review/controller'
+import type { DocumentReviewTarget } from '@/features/document-review/types'
+import type { EditorFlushHandler } from '@/components/Editor/useEditorDraftPersistence'
+
 /**
  * Tab model for the AgentChat workspace.
  *
@@ -12,6 +16,20 @@
 export type AgentChatPageId = 'reader' | 'lore' | 'presets' | 'skills' | 'agents' | 'automations'
 
 export const AGENT_CHAT_PAGE_IDS: readonly AgentChatPageId[] = ['reader', 'lore', 'presets', 'skills', 'agents', 'automations']
+
+/** A persisted review target plus a nonce for revealing it inside an AgentChat project page. */
+export interface AgentChatDocumentReviewNavigation extends DocumentReviewNavigationIntent {
+  workspace: string
+  target: DocumentReviewTarget
+}
+
+/** Capabilities supplied by the workbench to one mounted project-page tab. */
+export interface AgentChatPageRenderContext {
+  navigationIntent: AgentChatDocumentReviewNavigation | null
+  onFlushHandlerChange: (handler: EditorFlushHandler | null) => void
+  openPage: (pageId: AgentChatPageId) => void
+  activateWorkspace: () => Promise<boolean>
+}
 
 /**
  * Terminal launch profiles. `shell` opens the login shell, `codex` / `claude` start the
@@ -67,6 +85,7 @@ export interface AgentChatTerminalTab extends AgentChatTabCommon {
   profileId: TerminalProfileId
   /** Custom command line; only used by the `custom` profile. */
   command?: string
+  /** Latest program-owned OSC window title, or the resolved launch title before one is emitted. */
   title: string
   terminalSessionId?: string
 }

@@ -2,7 +2,7 @@ import { useEffect, useMemo } from 'react'
 import { normalizeEditorText } from '@/components/Editor/editorDocument'
 import { useResourceAutosave } from '@/hooks/use-resource-autosave'
 import { getLoreItems, updateLoreItem } from '@/lib/api'
-import type { LoreItem } from '@/lib/api'
+import type { LoreItem, LoreItemInput } from '@/lib/api'
 import { rebaseJSONWithRecovery } from '@/lib/autosave/rebase-with-recovery'
 import { isRevisionConflict } from '@/lib/revision-conflict'
 
@@ -10,10 +10,7 @@ export interface LoreAutosaveDraft extends LoreItem {
   tag_draft: string
 }
 
-type LoreAutosavePayload = Omit<
-  LoreItem,
-  'created_at' | 'updated_at' | 'provenance'
->
+type LoreAutosavePayload = LoreItemInput
 
 interface LoreItemAutosaveOptions {
   draft: LoreItem | null

@@ -7,6 +7,12 @@ import { AdaptiveSurface } from '@/components/layout/adaptive-surface'
 import { MobilePaneTrigger } from '@/components/layout/mobile-pane-trigger'
 import { EmptyState } from '@/components/common/EmptyState'
 import type { WritingComposerSettingsController } from '@/components/Chat/AgentPanel'
+import type { EditorFlushHandler } from '@/components/Editor/useEditorDraftPersistence'
+import type {
+  ReviewFeedbackBatch,
+  ReviewFeedbackComment,
+  ReviewFeedbackSelection,
+} from '@/features/changes/agent/ReviewFeedbackTray'
 import type { ImagePreset, Teller } from '@/features/interactive/types'
 import {
   deleteAgentChatSession,
@@ -15,8 +21,8 @@ import {
   type AgentChatProject,
   type AgentChatSession,
 } from './api'
-import { AgentChatConversationTab } from './AgentChatConversationTab'
 import { AgentChatSessionSidebar, AgentChatSidebarRail } from './AgentChatSessionSidebar'
+import { AgentChatTabContent } from './AgentChatTabContent'
 import { AgentChatTabBar } from './AgentChatTabBar'
 import {
   appendTab,
@@ -31,18 +37,20 @@ import {
   readStoredWorkbenchState,
   setTabPinned,
   setTabTitle,
+  setTerminalTabTitle,
   tabGroup,
   tabIdsAfter,
   tabsInGroup,
   type AgentChatProjectTabState,
 } from './tab-state'
-import type { TerminalSessionInfo } from './terminal/api'
-import { TerminalTabView, terminalTabLabel } from './terminal/TerminalTabView'
+import { terminalTabLabel } from './terminal/TerminalTabView'
 import { useTerminalSessionLifecycle } from './terminal/use-terminal-session-lifecycle'
 import {
   AGENT_CHAT_GROUP_IDS,
+  type AgentChatDocumentReviewNavigation,
   type AgentChatGroupId,
   type AgentChatPageId,
+  type AgentChatPageRenderContext,
   type AgentChatReviewTab,
   type AgentChatTab,
   type TerminalProfileId,
@@ -53,8 +61,15 @@ interface AgentChatViewProps {
   tellers: Teller[]
   imagePresets: ImagePreset[]
   /** Project pages receive their tab's project, never the foreground Writing book. */
-  renderPage: (workspace: string, pageId: AgentChatPageId) => ReactNode
+  renderPage: (workspace: string, pageId: AgentChatPageId, context: AgentChatPageRenderContext) => ReactNode
   renderReview: (tab: AgentChatReviewTab, close: () => void, disabled: boolean) => ReactNode
+  documentReviewWorkspace?: string
+  documentReviewFeedback?: ReviewFeedbackSelection | null
+  onDocumentReviewFeedbackRemove?: (selection: ReviewFeedbackSelection, commentID: string) => void
+  onDocumentReviewFeedbackSubmitted?: (feedback: ReviewFeedbackBatch) => void
+  onDocumentReviewFeedbackSubmissionFailed?: (feedback: ReviewFeedbackBatch) => void
+  onActivateWorkspace?: (workspace: string) => Promise<boolean>
+  onFlushHandlerChange?: (handler: EditorFlushHandler | null) => void
   onWorkspaceChanged?: (workspace: string, paths: string[]) => void | Promise<void>
 }
 
@@ -84,6 +99,13 @@ export function AgentChatView({
   imagePresets,
   renderPage,
   renderReview,
+  documentReviewWorkspace,
+  documentReviewFeedback,
+  onDocumentReviewFeedbackRemove,
+  onDocumentReviewFeedbackSubmitted,
+  onDocumentReviewFeedbackSubmissionFailed,
+  onActivateWorkspace,
+  onFlushHandlerChange,
   onWorkspaceChanged,
 }: AgentChatViewProps) {
   const { t } = useTranslation()
@@ -91,6 +113,8 @@ export function AgentChatView({
   const [projectsLoading, setProjectsLoading] = useState(true)
   const [projectsError, setProjectsError] = useState('')
   const [workbench, setWorkbench] = useState(() => readStoredWorkbenchState())
+  const workbenchRef = useRef(workbench)
+  workbenchRef.current = workbench
   const [sidebarVisible, setSidebarVisible] = useState(() => readSidebarVisible())
   /** Once mounted, a tab stays mounted so hidden conversations keep receiving their own stream. */
   const [mountedTabKeys, setMountedTabKeys] = useState<ReadonlySet<string>>(() => new Set())
@@ -98,6 +122,9 @@ export function AgentChatView({
   const [liveRunningBindings, setLiveRunningBindings] = useState<ReadonlySet<string>>(() => new Set())
   const liveRunningBindingsRef = useRef<ReadonlySet<string>>(new Set())
   const refreshSequenceRef = useRef(0)
+  const pageFlushHandlersRef = useRef(new Map<string, EditorFlushHandler>())
+  const navigationNonceRef = useRef(0)
+  const [documentReviewNavigation, setDocumentReviewNavigation] = useState<AgentChatDocumentReviewNavigation | null>(null)
   const { bindTerminalSession, markTerminalTabsClosing } = useTerminalSessionLifecycle(
     workbench,
     projectsLoading,
@@ -133,6 +160,30 @@ export function AgentChatView({
   useEffect(() => { void refreshProjects() }, [refreshProjects])
   useEffect(() => { persistWorkbenchState(workbench) }, [workbench])
   useEffect(() => { persistSidebarVisible(sidebarVisible) }, [sidebarVisible])
+
+  const registerPageFlushHandler = useCallback((workspace: string, tabId: string, handler: EditorFlushHandler | null) => {
+    const key = mountedTabKey(workspace, tabId)
+    if (handler) pageFlushHandlersRef.current.set(key, handler)
+    else pageFlushHandlersRef.current.delete(key)
+  }, [])
+
+  const flushPageDrafts = useCallback(async (keys?: ReadonlySet<string>): Promise<boolean> => {
+    for (const [key, flush] of pageFlushHandlersRef.current) {
+      if (keys && !keys.has(key)) continue
+      try {
+        if (!(await flush())) return false
+      } catch (error) {
+        console.error('[features/agent-chat/AgentChatView.tsx] flushing project page failed', { key, error })
+        return false
+      }
+    }
+    return true
+  }, [])
+
+  useEffect(() => {
+    onFlushHandlerChange?.(flushPageDrafts)
+    return () => onFlushHandlerChange?.(null)
+  }, [flushPageDrafts, onFlushHandlerChange])
 
   const activeProjectPath = workbench.activeProjectPath
   const activeProject = projects.find((project) => project.path === activeProjectPath) ?? null
@@ -219,13 +270,13 @@ export function AgentChatView({
     }
   }, [refreshProjects])
 
-  const closeTabs = useCallback((workspace: string, tabIds: string[]) => {
-    if (!tabIds.length) return
-    const state = workbench.projects[workspace]
-    if (!state) return
+  const closeTabs = useCallback(async (workspace: string, tabIds: string[]): Promise<boolean> => {
+    if (!tabIds.length) return true
+    const closingKeys = new Set(tabIds.map((id) => mountedTabKey(workspace, id)))
+    if (!(await flushPageDrafts(closingKeys))) return false
     const closing = new Set(tabIds)
-    const doomed = state.tabs.filter((tab) => closing.has(tab.id))
-    if (!doomed.length) return
+    const doomed = workbenchRef.current.projects[workspace]?.tabs.filter((tab) => closing.has(tab.id)) || []
+    if (!doomed.length) return true
     markTerminalTabsClosing(doomed)
 
     setWorkbench((current) => {
@@ -251,16 +302,16 @@ export function AgentChatView({
         },
       }
     })
-    setMountedTabKeys((current) => new Set(
-      [...current].filter((key) => !tabIds.some((id) => key === mountedTabKey(workspace, id))),
-    ))
-  }, [markTerminalTabsClosing, workbench.projects])
+    for (const key of closingKeys) pageFlushHandlersRef.current.delete(key)
+    setMountedTabKeys((current) => new Set([...current].filter((key) => !closingKeys.has(key))))
+    return true
+  }, [flushPageDrafts, markTerminalTabsClosing])
 
   const deleteSession = useCallback(async (project: AgentChatProject, session: AgentChatSession) => {
     try {
       await deleteAgentChatSession(project.path, session.id)
       const state = workbench.projects[project.path]
-      closeTabs(project.path, state?.tabs
+      await closeTabs(project.path, state?.tabs
         .filter((tab) => tab.kind === 'agent' && tab.sessionId === session.id)
         .map((tab) => tab.id) || [])
       await refreshProjects()
@@ -358,9 +409,69 @@ export function AgentChatView({
       group,
       profileId,
       command,
-      title: profileId === 'custom' ? command || '' : '',
+      title: profileId === 'custom' ? command || '' : profileId === 'shell' ? '' : profileId,
     })
   }, [openTab])
+
+  const updateTerminalTitle = useCallback((workspace: string, tabId: string, title: string) => {
+    setWorkbench((current) => {
+      const state = current.projects[workspace]
+      if (!state) return current
+      const tabs = setTerminalTabTitle(state.tabs, tabId, title)
+      if (tabs.every((tab, index) => tab === state.tabs[index])) return current
+      return {
+        ...current,
+        projects: {
+          ...current.projects,
+          [workspace]: { ...state, tabs },
+        },
+      }
+    })
+  }, [])
+
+  const openProjectPage = useCallback((workspace: string, group: AgentChatGroupId, pageId: AgentChatPageId) => {
+    openTab({
+      kind: 'page',
+      id: createTabId('page'),
+      workspace,
+      group,
+      pageId,
+    })
+  }, [openTab])
+
+  const activateProjectWorkspace = useCallback(async (workspace: string): Promise<boolean> => {
+    if (!(await flushPageDrafts())) return false
+    return onActivateWorkspace ? onActivateWorkspace(workspace) : false
+  }, [flushPageDrafts, onActivateWorkspace])
+
+  const openDocumentReviewFeedback = useCallback((
+    workspace: string,
+    selection: ReviewFeedbackSelection,
+    comment: ReviewFeedbackComment,
+  ) => {
+    const resource = comment.target
+    if (selection.source !== 'document' || workspace !== documentReviewWorkspace || !resource?.id) return
+    const pageId: AgentChatPageId = resource.kind === 'lore_item' ? 'lore' : 'reader'
+    const state = workbenchRef.current.projects[workspace] ?? emptyProjectTabState()
+    const existingPage = state.tabs.find((tab) => tab.kind === 'page' && tab.pageId === pageId)
+    const conversationGroup = AGENT_CHAT_GROUP_IDS.find((group) => {
+      const activeTab = state.tabs.find((tab) => tab.id === state.activeTabIds[group])
+      return activeTab?.kind === 'agent'
+    })
+    const targetGroup = existingPage
+      ? tabGroup(existingPage)
+      : conversationGroup === 'primary' ? 'secondary' : 'primary'
+    openProjectPage(workspace, targetGroup, pageId)
+    navigationNonceRef.current += 1
+    setDocumentReviewNavigation({
+      workspace,
+      target: resource.kind === 'lore_item'
+        ? { kind: 'lore_item', id: resource.id, field: 'content' }
+        : { kind: 'workspace_file', id: resource.id },
+      commentID: comment.id,
+      nonce: navigationNonceRef.current,
+    })
+  }, [documentReviewWorkspace, openProjectPage])
 
   const openChangeReview = useCallback((workspace: string, reviewThreadID: string, groupID: string) => {
     const state = workbench.projects[workspace] ?? emptyProjectTabState()
@@ -473,17 +584,15 @@ export function AgentChatView({
               activeTabId={activeId}
               tabTitle={tabTitle}
               onActivate={(tabId) => activateTab(project.path, group, tabId)}
-              onClose={(tabId) => closeTabs(project.path, [tabId])}
-              onCloseOthers={(tabId) => closeTabs(project.path, otherTabIds(state.tabs, tabId))}
-              onCloseToRight={(tabId) => closeTabs(project.path, tabIdsAfter(state.tabs, tabId))}
+              onClose={(tabId) => { void closeTabs(project.path, [tabId]) }}
+              onCloseOthers={(tabId) => { void closeTabs(project.path, otherTabIds(state.tabs, tabId)) }}
+              onCloseToRight={(tabId) => { void closeTabs(project.path, tabIdsAfter(state.tabs, tabId)) }}
               onRename={(tabId, title) => renameTab(project.path, tabId, title)}
               onTogglePin={(tabId) => togglePinTab(project.path, tabId)}
               onMoveTab={(sourceId, target, beforeId) => relocateTab(project.path, sourceId, target, beforeId)}
               onNewAgentTab={(target) => openDraftSessionInProject(project, target)}
               onNewTerminalTab={(target, profileId, command) => openTerminal(project.path, target, profileId, command)}
-              onOpenPage={(target, pageId) => openTab({
-                kind: 'page', id: createTabId('page'), workspace: project.path, group: target, pageId,
-              })}
+              onOpenPage={(target, pageId) => openProjectPage(project.path, target, pageId)}
             />
           </div>
         </div>
@@ -517,12 +626,22 @@ export function AgentChatView({
                   imagePresets={imagePresets}
                   renderPage={renderPage}
                   renderReview={renderReview}
+                  navigationIntent={documentReviewNavigation?.workspace === tab.workspace ? documentReviewNavigation : null}
+                  documentReviewFeedback={tab.workspace === documentReviewWorkspace ? documentReviewFeedback : null}
+                  onDocumentReviewFeedbackOpen={openDocumentReviewFeedback}
+                  onDocumentReviewFeedbackRemove={onDocumentReviewFeedbackRemove}
+                  onDocumentReviewFeedbackSubmitted={onDocumentReviewFeedbackSubmitted}
+                  onDocumentReviewFeedbackSubmissionFailed={onDocumentReviewFeedbackSubmissionFailed}
+                  onOpenPage={openProjectPage}
+                  onActivateWorkspace={activateProjectWorkspace}
+                  onPageFlushHandlerChange={registerPageFlushHandler}
                   onOpenChangeReview={openChangeReview}
-                  onClose={(tabId) => closeTabs(project.path, [tabId])}
+                  onClose={(tabId) => { void closeTabs(project.path, [tabId]) }}
                   onWorkspaceChanged={onWorkspaceChanged}
                   onRunningChange={handleRunningChange}
                   onDraftCommitted={(message) => commitDraftSession(tab.workspace, tab.id, message)}
                   onTerminalSessionEstablished={(tabId, session) => bindTerminalSession(project.path, tabId, session)}
+                  onTerminalTitleChange={(tabId, title) => updateTerminalTitle(project.path, tabId, title)}
                 />
               </section>
             )
@@ -599,61 +718,4 @@ export function AgentChatView({
       }}
     </AdaptiveSurface>
   )
-}
-
-function AgentChatTabContent({
-  tab,
-  active,
-  running,
-  composerSettings,
-  tellers,
-  imagePresets,
-  renderPage,
-  renderReview,
-  onOpenChangeReview,
-  onClose,
-  onWorkspaceChanged,
-  onRunningChange,
-  onDraftCommitted,
-  onTerminalSessionEstablished,
-}: {
-  tab: AgentChatTab
-  active: boolean
-  running: boolean
-  composerSettings: WritingComposerSettingsController
-  tellers: Teller[]
-  imagePresets: ImagePreset[]
-  renderPage: (workspace: string, pageId: AgentChatPageId) => ReactNode
-  renderReview: (tab: AgentChatReviewTab, close: () => void, disabled: boolean) => ReactNode
-  onOpenChangeReview: (workspace: string, reviewThreadID: string, groupID: string) => void
-  onClose: (tabId: string) => void
-  onWorkspaceChanged?: (workspace: string, paths: string[]) => void | Promise<void>
-  onRunningChange: (workspace: string, sessionId: string, running: boolean | null) => void
-  onDraftCommitted: (message: string) => void
-  onTerminalSessionEstablished: (tabId: string, session: TerminalSessionInfo) => boolean
-}) {
-  switch (tab.kind) {
-    case 'agent':
-      return (
-        <AgentChatConversationTab
-          workspace={tab.workspace}
-          sessionId={tab.sessionId}
-          draft={tab.draft}
-          active={active}
-          composerSettings={composerSettings}
-          tellers={tellers}
-          imagePresets={imagePresets}
-          onOpenChangeReview={(threadID, groupID) => onOpenChangeReview(tab.workspace, threadID, groupID)}
-          onWorkspaceChanged={onWorkspaceChanged}
-          onRunningChange={onRunningChange}
-          onDraftCommitted={onDraftCommitted}
-        />
-      )
-    case 'terminal':
-      return <TerminalTabView tab={tab} active={active} onSessionEstablished={onTerminalSessionEstablished} />
-    case 'page':
-      return <>{renderPage(tab.workspace, tab.pageId)}</>
-    case 'review':
-      return <>{renderReview(tab, () => onClose(tab.id), running)}</>
-  }
 }

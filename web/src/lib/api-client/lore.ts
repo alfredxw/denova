@@ -16,9 +16,10 @@ export async function createLoreItem(workspace: string, item: Partial<LoreItemIn
   })
 }
 
-export async function updateLoreItem(workspace: string, id: string, item: Partial<LoreItemInput>, baseRevision?: string): Promise<LoreItem> {
+/** Replaces all user-editable fields of one Lore item using its current canonical snapshot. */
+export async function updateLoreItem(workspace: string, id: string, item: LoreItemInput, baseRevision?: string): Promise<LoreItem> {
   return requestJSON(`/api/lore/items/${encodeURIComponent(id)}`, {
-    method: 'PATCH',
+    method: 'PUT',
     headers: loreHeaders(workspace, true),
     body: JSON.stringify(baseRevision ? { ...item, base_revision: baseRevision } : item),
   })

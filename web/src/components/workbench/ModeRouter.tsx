@@ -150,6 +150,7 @@ interface ModeRouterProps {
   onMoveItem: (from: string, to: string) => Promise<void>
   onActivateTab: (tab: Tab) => void
   onCloseTab: (tab: Tab) => void
+  onToggleTabPin: (tab: Tab) => void
   onOpenLoreTab: () => Promise<boolean>
   onSaveCurrentFile: (path: string, content: string, baseRevision: string) => Promise<{ revision?: string }>
   onEditorFlushHandlerChange: (handler: EditorFlushHandler | null) => void
@@ -255,6 +256,7 @@ export function ModeRouter(props: ModeRouterProps) {
     onMoveItem,
     onActivateTab,
     onCloseTab,
+    onToggleTabPin,
     onOpenLoreTab,
     onSaveCurrentFile,
     onEditorFlushHandlerChange,
@@ -328,6 +330,7 @@ export function ModeRouter(props: ModeRouterProps) {
   const [outlineRevealRequest, setOutlineRevealRequest] = useState<OutlineRevealRequest | null>(null)
   const [projectRevealPath, setProjectRevealPath] = useState('')
   const loreLibraryFlushHandlerRef = useRef<EditorFlushHandler | null>(null)
+  const agentChatFlushHandlerRef = useRef<EditorFlushHandler | null>(null)
   const projectRevealParents = useMemo(() => workspaceParentPaths(projectRevealPath), [projectRevealPath])
   const [editorLine, setEditorLine] = useState(1)
   // The router is the lifecycle owner: the settings lane survives AgentPanel close/unmount.
@@ -355,18 +358,27 @@ export function ModeRouter(props: ModeRouterProps) {
   const handleLoreLibraryFlushHandlerChange = useCallback((handler: EditorFlushHandler | null) => {
     loreLibraryFlushHandlerRef.current = handler
   }, [])
+  const flushAgentChatDrafts = useCallback(async (): Promise<boolean> => {
+    const handler = agentChatFlushHandlerRef.current
+    return handler ? handler() : true
+  }, [])
+  const handleAgentChatFlushHandlerChange = useCallback((handler: EditorFlushHandler | null) => {
+    agentChatFlushHandlerRef.current = handler
+  }, [])
 
   const flushBeforeWorkspaceSwitch = useCallback(async (): Promise<boolean> => {
     flushComposerSettingsBestEffort()
     if (!(await flushLoreLibraryDraft())) return false
+    if (!(await flushAgentChatDrafts())) return false
     return onBeforeWorkspaceSwitch()
-  }, [flushComposerSettingsBestEffort, flushLoreLibraryDraft, onBeforeWorkspaceSwitch])
+  }, [flushAgentChatDrafts, flushComposerSettingsBestEffort, flushLoreLibraryDraft, onBeforeWorkspaceSwitch])
 
   const quickSwitchBook = useCallback(async (path: string): Promise<boolean> => {
     flushComposerSettingsBestEffort()
     if (!(await flushLoreLibraryDraft())) return false
+    if (!(await flushAgentChatDrafts())) return false
     return onQuickSwitchBook(path)
-  }, [flushComposerSettingsBestEffort, flushLoreLibraryDraft, onQuickSwitchBook])
+  }, [flushAgentChatDrafts, flushComposerSettingsBestEffort, flushLoreLibraryDraft, onQuickSwitchBook])
 
   useEffect(() => {
     setEditorLine(1)
@@ -520,7 +532,9 @@ export function ModeRouter(props: ModeRouterProps) {
   })
   const documentReview = useDocumentReview({
     workspace,
-    agentVisible: aiVisible,
+    // AgentChat owns its own conversation surface. Creating a comment there must not reveal
+    // the hidden foreground Writing Agent panel.
+    agentVisible: aiVisible || mode === 'agentchat',
     onShowAgent: showAgent,
   })
   const reviewFeedback = useMemo<ReviewFeedbackBatch>(() => (
@@ -848,6 +862,7 @@ export function ModeRouter(props: ModeRouterProps) {
               actions={writingInfoActions}
               onActivateTab={onActivateTab}
               onCloseTab={onCloseTab}
+              onTogglePin={onToggleTabPin}
             />
             <div className="flex min-h-0 flex-1 flex-col">
               {activeTab ? (
@@ -986,13 +1001,22 @@ export function ModeRouter(props: ModeRouterProps) {
           <AgentChatRoute
             workspace={workspace}
             composerSettings={composerSettings}
-            chapters={chapters}
+            tree={tree}
+            summary={summary}
             selectedFile={selectedFile}
             tellers={tellers}
             imagePresets={imagePresets}
+            documentReview={documentReviewController}
+            documentReviewFeedback={documentReview.feedback}
+            onDocumentReviewFeedbackRemove={removeActiveReviewFeedback}
+            onDocumentReviewFeedbackSubmitted={submitActiveReviewFeedback}
+            onDocumentReviewFeedbackSubmissionFailed={restoreActiveReviewFeedback}
             onTellersChange={setTellers}
             onImagePresetsChange={setImagePresets}
+            onSetChapterConfirmed={onSetChapterConfirmed}
             onSaveFile={onSaveCurrentFile}
+            onActivateWorkspace={quickSwitchBook}
+            onFlushHandlerChange={handleAgentChatFlushHandlerChange}
             onOpenFile={selectWorkspacePath}
           />
         </MainRouteLayer>

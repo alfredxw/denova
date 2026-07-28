@@ -56,8 +56,8 @@ interface LoreWorkspaceEditorProps {
   onPrepareSnapshot: () => Promise<{ content: string; revision: string }>
   onFlush: () => Promise<boolean>
   onOpenDirectory?: () => void
-  onOpenLibrary: () => void
-  onReferenceItem: (id: string) => void
+  onOpenLibrary?: () => void
+  onReferenceItem?: (id: string) => void
 }
 
 /** Focused lore editor for the writing workspace; bulk/library operations stay on the full page. */
@@ -120,26 +120,30 @@ export function LoreWorkspaceEditor({
           error={autosaveError}
           onRetry={() => void onFlush()}
         />
-        <Button
-          type="button"
-          variant="ghost"
-          size="icon-sm"
-          onClick={() => onReferenceItem(draft.id)}
-          aria-label={t('loreWorkspace.referenceAgent')}
-          title={t('loreWorkspace.referenceAgent')}
-        >
-          <AtSign />
-        </Button>
-        <Button
-          type="button"
-          variant="ghost"
-          size="icon-sm"
-          onClick={onOpenLibrary}
-          aria-label={t('loreWorkspace.openLibrary')}
-          title={t('loreWorkspace.openLibrary')}
-        >
-          <LibraryBig />
-        </Button>
+        {onReferenceItem ? (
+          <Button
+            type="button"
+            variant="ghost"
+            size="icon-sm"
+            onClick={() => onReferenceItem(draft.id)}
+            aria-label={t('loreWorkspace.referenceAgent')}
+            title={t('loreWorkspace.referenceAgent')}
+          >
+            <AtSign />
+          </Button>
+        ) : null}
+        {onOpenLibrary ? (
+          <Button
+            type="button"
+            variant="ghost"
+            size="icon-sm"
+            onClick={onOpenLibrary}
+            aria-label={t('loreWorkspace.openLibrary')}
+            title={t('loreWorkspace.openLibrary')}
+          >
+            <LibraryBig />
+          </Button>
+        ) : null}
       </div>
 
       <Collapsible

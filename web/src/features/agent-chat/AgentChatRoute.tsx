@@ -1,12 +1,22 @@
-import { lazy, memo, Suspense, useCallback, type ReactNode } from 'react'
+import { BookOpen } from 'lucide-react'
+import { lazy, memo, Suspense, useCallback, useState, type ReactNode } from 'react'
 import { useTranslation } from 'react-i18next'
 import type { WritingComposerSettingsController } from '@/components/Chat/AgentPanel'
+import type { EditorFlushHandler } from '@/components/Editor/useEditorDraftPersistence'
+import { EmptyState } from '@/components/common/EmptyState'
+import type {
+  ReviewFeedbackBatch,
+  ReviewFeedbackSelection,
+} from '@/features/changes/agent/ReviewFeedbackTray'
+import type { DocumentReviewController } from '@/features/document-review/controller'
 import type { ImagePreset, Teller } from '@/features/interactive/types'
-import type { ChapterSummary } from '@/lib/api'
+import type { FileNode } from '@/hooks/useWorkspace'
+import type { WorkspaceSummary } from '@/lib/api'
 import { AgentChatReader, type AgentChatSaveFile } from './AgentChatReader'
 import { AgentChatView } from './AgentChatView'
-import type { AgentChatPageId, AgentChatReviewTab } from './types'
+import type { AgentChatPageId, AgentChatPageRenderContext, AgentChatReviewTab } from './types'
 
+const LoreWorkspaceTab = lazy(() => import('@/features/lore/LoreWorkspaceTab').then((module) => ({ default: module.LoreWorkspaceTab })))
 const SettingPanel = lazy(() => import('@/features/interactive/components/SettingPanel').then((module) => ({ default: module.SettingPanel })))
 const SkillsView = lazy(() => import('@/features/skills/SkillsView').then((module) => ({ default: module.SkillsView })))
 const AgentsView = lazy(() => import('@/features/agents/AgentsView').then((module) => ({ default: module.AgentsView })))
@@ -14,54 +24,99 @@ const AutomationsView = lazy(() => import('@/features/automations/AutomationsVie
 const ChangeReviewWorkspace = lazy(() => import('@/features/changes/review/ChangeReviewWorkspace').then((module) => ({ default: module.ChangeReviewWorkspace })))
 
 interface AgentChatRouteProps {
-  /** Foreground Writing book. It is only used when an embedded page targets that same book. */
+  /** Foreground Writing book. Mutable resource pages are deliberately fenced to this workspace. */
   workspace: string
   composerSettings: WritingComposerSettingsController
-  chapters: ChapterSummary[]
+  tree: FileNode[]
+  summary: WorkspaceSummary | null
   selectedFile: string | null
   tellers: Teller[]
   imagePresets: ImagePreset[]
+  documentReview: DocumentReviewController
+  documentReviewFeedback?: ReviewFeedbackSelection | null
+  onDocumentReviewFeedbackRemove?: (selection: ReviewFeedbackSelection, commentID: string) => void
+  onDocumentReviewFeedbackSubmitted?: (feedback: ReviewFeedbackBatch) => void
+  onDocumentReviewFeedbackSubmissionFailed?: (feedback: ReviewFeedbackBatch) => void
   onTellersChange: (tellers: Teller[]) => void
   onImagePresetsChange: (presets: ImagePreset[]) => void
-  /** The writing workbench's save handler, so a chapter tab edits through the same path. */
+  onSetChapterConfirmed: (path: string, confirmed: boolean) => void | Promise<void>
+  /** The writing workbench's save handler, so a manuscript tab edits through the same path. */
   onSaveFile?: AgentChatSaveFile
+  /** Explicitly activates a background project before exposing its mutable resource pages. */
+  onActivateWorkspace: (workspace: string) => Promise<boolean>
+  /** Registers every mounted project-page draft with the workbench navigation guard. */
+  onFlushHandlerChange?: (handler: EditorFlushHandler | null) => void
   /** Opens a file from a diff. The navigation result is ignored; the review tab stays open. */
   onOpenFile?: (path: string) => boolean | void | Promise<boolean | void>
 }
 
 /**
- * Hosts the project pages that AgentChat can open in a tab and hands the tabbed
- * workbench everything it needs. Page composition lives here so the workbench itself
- * stays about tabs, sessions and layout.
+ * Composes AgentChat project pages from the same focused workspaces used by Writing.
+ * AgentChatView remains responsible only for tabs, sessions, feedback routing and layout.
  */
 function AgentChatRouteComponent({
   workspace,
   composerSettings,
-  chapters,
+  tree,
+  summary,
   selectedFile,
   tellers,
   imagePresets,
+  documentReview,
+  documentReviewFeedback,
+  onDocumentReviewFeedbackRemove,
+  onDocumentReviewFeedbackSubmitted,
+  onDocumentReviewFeedbackSubmissionFailed,
   onTellersChange,
   onImagePresetsChange,
+  onSetChapterConfirmed,
   onSaveFile,
+  onActivateWorkspace,
+  onFlushHandlerChange,
   onOpenFile,
 }: AgentChatRouteProps) {
   const { t } = useTranslation()
 
-  const pageContent = useCallback((tabWorkspace: string, pageId: AgentChatPageId): ReactNode => {
+  const pageContent = useCallback((
+    tabWorkspace: string,
+    pageId: AgentChatPageId,
+    context: AgentChatPageRenderContext,
+  ): ReactNode => {
     const foregroundPage = tabWorkspace === workspace
     switch (pageId) {
       case 'reader':
+        if (!foregroundPage) {
+          return <WorkspaceActivationGate workspace={tabWorkspace} activate={context.activateWorkspace} />
+        }
         return (
           <AgentChatReader
+            key={tabWorkspace}
             workspace={tabWorkspace}
-            chapters={foregroundPage ? chapters : []}
-            initialPath={foregroundPage ? selectedFile : null}
-            onSaveFile={foregroundPage ? onSaveFile : undefined}
+            tree={tree}
+            summary={summary}
+            initialPath={selectedFile}
+            onSaveFile={onSaveFile}
+            documentReview={documentReview}
+            navigationIntent={context.navigationIntent?.target.kind === 'workspace_file' ? context.navigationIntent : null}
+            onOpenLoreTab={() => {
+              context.openPage('lore')
+            }}
+            onSetChapterConfirmed={onSetChapterConfirmed}
+            onFlushHandlerChange={context.onFlushHandlerChange}
           />
         )
       case 'lore':
-        return <SettingPanel mode="lore" workspace={tabWorkspace} />
+        if (!foregroundPage) {
+          return <WorkspaceActivationGate workspace={tabWorkspace} activate={context.activateWorkspace} />
+        }
+        return (
+          <LoreWorkspaceTab
+            workspace={tabWorkspace}
+            documentReview={documentReview}
+            navigationIntent={context.navigationIntent?.target.kind === 'lore_item' ? context.navigationIntent : null}
+            onEditorFlushHandlerChange={context.onFlushHandlerChange}
+          />
+        )
       case 'presets':
         return (
           <SettingPanel
@@ -81,23 +136,19 @@ function AgentChatRouteComponent({
       case 'automations':
         return <AutomationsView workspace={tabWorkspace} />
     }
-  }, [chapters, imagePresets, onImagePresetsChange, onSaveFile, onTellersChange, selectedFile, tellers, workspace])
+  }, [documentReview, imagePresets, onImagePresetsChange, onSaveFile, onSetChapterConfirmed, onTellersChange, selectedFile, summary, tellers, tree, workspace])
 
-  /**
-   * Each page suspends inside its own boundary. One boundary around the workbench would swap
-   * the conversation tree, the tab strips and every open terminal for the fallback — and reset
-   * their scroll — for as long as a newly opened page's chunk takes to load.
-   */
-  const renderPage = useCallback((tabWorkspace: string, pageId: AgentChatPageId): ReactNode => (
+  /** Keep each lazy page inside its own boundary so opening it never replaces live conversations. */
+  const renderPage = useCallback((
+    tabWorkspace: string,
+    pageId: AgentChatPageId,
+    context: AgentChatPageRenderContext,
+  ): ReactNode => (
     <Suspense fallback={<div className="flex h-full items-center justify-center text-xs text-[var(--nova-text-muted)]">{t('router.loading')}</div>}>
-      {pageContent(tabWorkspace, pageId)}
+      {pageContent(tabWorkspace, pageId, context)}
     </Suspense>
   ), [pageContent, t])
 
-  /**
-   * The same review surface the writing workbench uses, hosted by a tab. Its close button closes
-   * the tab, so a review is dismissed the same way whichever side of the split it sits on.
-   */
   const renderReview = useCallback((tab: AgentChatReviewTab, close: () => void, disabled: boolean): ReactNode => (
     <Suspense fallback={<div className="flex h-full items-center justify-center text-xs text-[var(--nova-text-muted)]">{t('router.loading')}</div>}>
       <ChangeReviewWorkspace
@@ -119,6 +170,40 @@ function AgentChatRouteComponent({
       imagePresets={imagePresets}
       renderPage={renderPage}
       renderReview={renderReview}
+      documentReviewWorkspace={workspace}
+      documentReviewFeedback={documentReviewFeedback}
+      onDocumentReviewFeedbackRemove={onDocumentReviewFeedbackRemove}
+      onDocumentReviewFeedbackSubmitted={onDocumentReviewFeedbackSubmitted}
+      onDocumentReviewFeedbackSubmissionFailed={onDocumentReviewFeedbackSubmissionFailed}
+      onActivateWorkspace={onActivateWorkspace}
+      onFlushHandlerChange={onFlushHandlerChange}
+    />
+  )
+}
+
+function WorkspaceActivationGate({ workspace, activate }: { workspace: string; activate: () => Promise<boolean> }) {
+  const { t } = useTranslation()
+  const [activating, setActivating] = useState(false)
+  const projectName = workspace.split(/[\\/]/).filter(Boolean).at(-1) || workspace
+  const activateProject = () => {
+    if (activating) return
+    setActivating(true)
+    void activate()
+      .catch((error) => {
+        console.error('[features/agent-chat/AgentChatRoute.tsx] activating project workspace failed', { workspace, error })
+      })
+      .finally(() => setActivating(false))
+  }
+  return (
+    <EmptyState
+      variant="page"
+      icon={BookOpen}
+      title={t('agentChat.resource.inactiveTitle', { name: projectName })}
+      description={t('agentChat.resource.inactiveDescription')}
+      action={{
+        label: t(activating ? 'agentChat.resource.activating' : 'agentChat.resource.activate'),
+        onClick: activateProject,
+      }}
     />
   )
 }

@@ -26,8 +26,8 @@ interface LoreWorkspaceTabProps {
   documentReview: DocumentReviewController
   navigationIntent?: DocumentReviewNavigationIntent | null
   onEditorFlushHandlerChange: (handler: EditorFlushHandler | null) => void
-  onOpenLibrary: () => void
-  onReferenceItem: (id: string) => void
+  onOpenLibrary?: () => void
+  onReferenceItem?: (id: string) => void
 }
 
 /** Writing-side projection of the lore library: quick editing, review and Agent handoff. */
@@ -129,16 +129,18 @@ export function LoreWorkspaceTab({
                     {t('loreWorkspace.directoryDescription')}
                   </div>
                 </div>
-                <Button
-                  type="button"
-                  variant="ghost"
-                  size="icon-sm"
-                  onClick={onOpenLibrary}
-                  aria-label={t('loreWorkspace.openLibrary')}
-                  title={t('loreWorkspace.openLibrary')}
-                >
-                  <LibraryBig />
-                </Button>
+                {onOpenLibrary ? (
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="icon-sm"
+                    onClick={onOpenLibrary}
+                    aria-label={t('loreWorkspace.openLibrary')}
+                    title={t('loreWorkspace.openLibrary')}
+                  >
+                    <LibraryBig />
+                  </Button>
+                ) : null}
               </div>
               {lore.error ? <InlineErrorNotice message={lore.error} /> : null}
             </div>

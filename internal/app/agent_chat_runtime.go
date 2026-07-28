@@ -184,11 +184,15 @@ func (s *AgentChatAppService) resolveAsk(
 	if err != nil {
 		return AgentAskResolution{}, err
 	}
-	run := s.activeRun(binding)
-	if run == nil || run.runtime.sess == nil {
-		return AgentAskResolution{}, ErrAgentAskNotFound
+	project, err := s.projectRuntime(ctx, binding.Workspace)
+	if err != nil {
+		return AgentAskResolution{}, err
 	}
-	return resolveAgentAsk(ctx, run.runtime.sess, askID, status, answers, cancelReason)
+	sess, err := project.store.Get(binding.SessionID)
+	if err != nil {
+		return AgentAskResolution{}, err
+	}
+	return resolveAgentAsk(ctx, sess, askID, status, answers, cancelReason)
 }
 
 // ClearAgentChatSession drains exactly one AgentChat binding and appends the

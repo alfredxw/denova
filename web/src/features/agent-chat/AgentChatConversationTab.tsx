@@ -1,6 +1,11 @@
 import { memo, useCallback, useEffect, useMemo, useRef } from 'react'
 import { AgentPanel, type WritingComposerSettingsController } from '@/components/Chat/AgentPanel'
 import type { ImagePreset, Teller } from '@/features/interactive/types'
+import type {
+  ReviewFeedbackBatch,
+  ReviewFeedbackComment,
+  ReviewFeedbackSelection,
+} from '@/features/changes/agent/ReviewFeedbackTray'
 import { useAgentChat } from '@/hooks/useAgentChat'
 import { createProjectAgentChatClient } from '@/hooks/agent-chat-client'
 
@@ -12,6 +17,11 @@ interface AgentChatConversationTabProps {
   composerSettings: WritingComposerSettingsController
   tellers: Teller[]
   imagePresets: ImagePreset[]
+  reviewFeedback?: ReviewFeedbackBatch | null
+  onReviewFeedbackOpen?: (selection: ReviewFeedbackSelection, comment: ReviewFeedbackComment) => void
+  onReviewFeedbackRemove?: (selection: ReviewFeedbackSelection, commentID: string) => void
+  onReviewFeedbackSubmitted?: (feedback: ReviewFeedbackBatch) => void
+  onReviewFeedbackSubmissionFailed?: (feedback: ReviewFeedbackBatch) => void
   onOpenChangeReview?: (reviewThreadID: string, groupID: string) => void
   onWorkspaceChanged?: (workspace: string, paths: string[]) => void | Promise<void>
   onRunningChange?: (workspace: string, sessionId: string, running: boolean | null) => void
@@ -32,6 +42,11 @@ function AgentChatConversationTabComponent({
   composerSettings,
   tellers,
   imagePresets,
+  reviewFeedback,
+  onReviewFeedbackOpen,
+  onReviewFeedbackRemove,
+  onReviewFeedbackSubmitted,
+  onReviewFeedbackSubmissionFailed,
   onOpenChangeReview,
   onWorkspaceChanged,
   onRunningChange,
@@ -90,6 +105,11 @@ function AgentChatConversationTabComponent({
       selectedFile={null}
       tellers={tellers}
       imagePresets={imagePresets}
+      reviewFeedback={reviewFeedback}
+      onReviewFeedbackOpen={onReviewFeedbackOpen}
+      onReviewFeedbackRemove={onReviewFeedbackRemove}
+      onReviewFeedbackSubmitted={onReviewFeedbackSubmitted}
+      onReviewFeedbackSubmissionFailed={onReviewFeedbackSubmissionFailed}
       messages={chat.messages}
       sessions={chat.sessions}
       activeSessionId={chat.activeSessionId || sessionId}

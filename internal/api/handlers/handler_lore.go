@@ -2,7 +2,9 @@ package handlers
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
+	"strings"
 
 	"github.com/cloudwego/hertz/pkg/app"
 	"github.com/cloudwego/hertz/pkg/protocol/consts"
@@ -49,6 +51,7 @@ func (h *Handlers) HandleLoreItemCreate(ctx context.Context, c *app.RequestConte
 	writeJSON(c, consts.StatusOK, item)
 }
 
+// HandleLoreItemUpdate replaces every user-editable field of one Lore item.
 func (h *Handlers) HandleLoreItemUpdate(ctx context.Context, c *app.RequestContext) {
 	if !h.requireWorkspace(c) {
 		return
@@ -58,10 +61,33 @@ func (h *Handlers) HandleLoreItemUpdate(ctx context.Context, c *app.RequestConte
 		writeErrorKey(c, consts.StatusBadRequest, "api.common.invalidRequestWithDetail", "detail", err.Error())
 		return
 	}
+	var fields map[string]json.RawMessage
+	if err := json.Unmarshal(c.Request.Body(), &fields); err != nil {
+		writeErrorKey(c, consts.StatusBadRequest, "api.common.invalidRequestWithDetail", "detail", err.Error())
+		return
+	}
+	required := [...]string{"enabled", "type", "name", "importance", "tags", "brief_description", "keywords", "load_mode", "content"}
+	missing := make([]string, 0, len(required))
+	for _, field := range required {
+		if _, ok := fields[field]; !ok {
+			missing = append(missing, field)
+		}
+	}
+	if len(missing) > 0 {
+		writeErrorKey(c, consts.StatusBadRequest, "api.common.invalidRequestWithDetail", "detail",
+			"Lore PUT 缺少完整字段 / Lore PUT is missing required fields: "+strings.Join(missing, ", "))
+		return
+	}
+	id := strings.TrimSpace(c.Param("id"))
+	if bodyID := strings.TrimSpace(body.ID); bodyID != "" && bodyID != id {
+		writeErrorKey(c, consts.StatusBadRequest, "api.common.invalidRequestWithDetail", "detail",
+			"Lore 请求正文 ID 与路径不一致 / Lore body ID does not match the resource path")
+		return
+	}
 	var item book.LoreItem
 	_, err := h.app.WithLoreStore(workspaceChangeExpectedWorkspace(c), func(store *book.LoreStore) error {
 		var updateErr error
-		item, updateErr = store.Update(c.Param("id"), body)
+		item, updateErr = store.Update(id, body)
 		return updateErr
 	})
 	if err != nil {

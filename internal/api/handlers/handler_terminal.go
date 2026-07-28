@@ -6,6 +6,7 @@ import (
 	"errors"
 	"log"
 	"strings"
+	"sync"
 	"time"
 
 	hertzapp "github.com/cloudwego/hertz/pkg/app"
@@ -184,6 +185,15 @@ type terminalClientMessage struct {
 	Rows int    `json:"rows,omitempty"`
 }
 
+// terminalSocket is the WebSocket surface owned by the terminal relay. Keeping the boundary
+// private makes the lifecycle testable without changing the wire protocol.
+type terminalSocket interface {
+	Close() error
+	ReadMessage() (messageType int, payload []byte, err error)
+	SetWriteDeadline(time.Time) error
+	WriteMessage(messageType int, payload []byte) error
+}
+
 // serveTerminalSocket relays terminal data in both directions over one WebSocket.
 //
 // Frame contract:
@@ -191,26 +201,29 @@ type terminalClientMessage struct {
 //     messages (ready / exit / error / pong).
 //   - client -> server: binary frames carry raw input, text frames carry JSON control messages
 //     with type input / resize / ping.
-func serveTerminalSocket(session *terminal.Session, conn *websocket.Conn) {
-	// done is closed by the read loop (the connection owner). The writer and the output relay both
-	// use it as their only exit signal, so neither blocks forever when the other finishes first.
+func serveTerminalSocket(session *terminal.Session, conn terminalSocket) {
+	serveTerminalSocketWithSubscriberQueue(session, conn, 0)
+}
+
+func serveTerminalSocketWithSubscriberQueue(session *terminal.Session, conn terminalSocket, subscriberQueue int) {
+	// Any failed relay leg owns the whole transport. Closing through one gate keeps the reader,
+	// writer and output subscription from leaving one another falsely alive.
 	done := make(chan struct{})
-	closeDone := func() {
-		select {
-		case <-done:
-		default:
+	var closeSocketOnce sync.Once
+	closeSocket := func() {
+		closeSocketOnce.Do(func() {
 			close(done)
-		}
+			_ = conn.Close()
+		})
 	}
 	defer func() {
 		if recovered := recover(); recovered != nil {
 			log.Printf("[api/handlers/handler_terminal.go] terminal socket panic recovered id=%s err=%v", session.ID(), recovered)
 		}
-		closeDone()
-		_ = conn.Close()
+		closeSocket()
 	}()
 
-	history, output, detach := session.Attach(0)
+	history, output, detach := session.Attach(subscriberQueue)
 	defer detach()
 
 	writes := make(chan func() error, 64)
@@ -221,8 +234,7 @@ func serveTerminalSocket(session *terminal.Session, conn *websocket.Conn) {
 			if recovered := recover(); recovered != nil {
 				log.Printf("[api/handlers/handler_terminal.go] terminal writer panic recovered id=%s err=%v", session.ID(), recovered)
 			}
-			closeDone()
-			_ = conn.Close()
+			closeSocket()
 		}()
 		for {
 			select {
@@ -281,13 +293,16 @@ func serveTerminalSocket(session *terminal.Session, conn *websocket.Conn) {
 				return
 			case chunk, ok := <-output:
 				if !ok {
-					// The channel closes for two reasons: the process exited, or this connection detached.
-					// Only the former should tell the frontend that the session ended.
+					// A live session only closes this subscription when the client falls behind or
+					// the session is explicitly released. End the owning transport as well: otherwise
+					// the read loop leaves a WebSocket that can accept input but never show output.
 					select {
 					case <-session.Exited():
 						code, message := session.ExitStatus()
 						writeControl(map[string]any{"type": "exit", "code": code, "error": message})
 					default:
+						log.Printf("[api/handlers/handler_terminal.go] terminal output subscription ended, closing socket id=%s", session.ID())
+						closeSocket()
 					}
 					return
 				}

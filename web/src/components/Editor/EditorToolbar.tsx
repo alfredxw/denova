@@ -1,4 +1,4 @@
-import { BookOpen, Check, Crosshair, ImagePlus, Save, Settings } from 'lucide-react'
+import { BookOpen, Check, Crosshair, ImagePlus, PanelLeft, Save, Settings } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 
 import { TooltipIconButton } from '@/components/common/tooltip-icon-button'
@@ -59,6 +59,7 @@ interface EditorToolbarProps {
   settings: EditorSettings
   onSettingsChange: (settings: EditorSettings) => void
   readingTypography?: ReadingTypographySettings
+  onOpenOutline?: () => void
   onGenerateIllustration?: (chapterPath: string) => void
   onRevealChapter?: (chapterPath: string) => void
   generateIllustrationDisabled: boolean
@@ -75,6 +76,7 @@ export function EditorToolbar({
   settings,
   onSettingsChange,
   readingTypography,
+  onOpenOutline,
   onGenerateIllustration,
   onRevealChapter,
   generateIllustrationDisabled,
@@ -87,6 +89,17 @@ export function EditorToolbar({
   return (
     <div className="nova-editor-toolbar flex h-9 shrink-0 items-center justify-between gap-3 overflow-hidden border-b px-3">
       <div className="flex min-w-0 items-center gap-2 text-xs text-[var(--nova-text-muted)]">
+        {onOpenOutline ? (
+          <TooltipIconButton
+            label={t('planning.outlineNavigation')}
+            onClick={onOpenOutline}
+            size="icon-xs"
+            tooltipSide="bottom"
+            className="text-[var(--nova-text-muted)] hover:bg-[var(--nova-hover)] hover:text-[var(--nova-text)]"
+          >
+            <PanelLeft className="h-3.5 w-3.5" />
+          </TooltipIconButton>
+        ) : null}
         <BookOpen className="h-3.5 w-3.5 shrink-0 text-[var(--nova-text-muted)]" />
         <span className="truncate font-medium text-[var(--nova-text)]">{displayTitle || fileName}</span>
       </div>

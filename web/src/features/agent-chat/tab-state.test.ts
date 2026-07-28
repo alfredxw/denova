@@ -11,6 +11,7 @@ import {
   readStoredWorkbenchState,
   setTabPinned,
   setTabTitle,
+  setTerminalTabTitle,
   tabIdsAfter,
   tabsInGroup,
 } from './tab-state'
@@ -178,6 +179,14 @@ describe('agent-chat tab groups', () => {
   it('renames a tab and clears the override when the title is blank', () => {
     expect(setTabTitle(split, 't1', ' Draft ').find((tab) => tab.id === 't1')?.customTitle).toBe('Draft')
     expect(setTabTitle(setTabTitle(split, 't1', 'Draft'), 't1', '  ').find((tab) => tab.id === 't1')?.customTitle).toBeUndefined()
+  })
+
+  it('updates only a terminal runtime title and preserves a manual rename', () => {
+    const renamed = setTabTitle(split, 't1', 'My terminal')
+    const updated = setTerminalTabTitle(renamed, 't1', 'vim')
+
+    expect(updated.find((tab) => tab.id === 't1')).toMatchObject({ title: 'vim', customTitle: 'My terminal' })
+    expect(setTerminalTabTitle(updated, 'missing', 'claude')).toEqual(updated)
   })
 
   it('bulk closes stay inside one strip and spare pinned tabs', () => {

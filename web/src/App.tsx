@@ -23,6 +23,7 @@ import {
   persistTabsFor,
   readActiveTabKeyFor,
   readTabsFor,
+  setTabPinned,
   tabKey,
   type Tab,
 } from '@/components/workbench/TabController'
@@ -448,8 +449,8 @@ function App() {
     const newPath = parent ? `${parent}/${newName}` : newName
     setOpenTabs((prev) => dedupeTabs(prev.map((tab) => {
       if (tab.kind !== 'file') return tab
-      if (tab.path === path) return { kind: 'file', path: newPath }
-      if (tab.path.startsWith(`${path}/`)) return { kind: 'file', path: `${newPath}${tab.path.slice(path.length)}` }
+      if (tab.path === path) return { ...tab, path: newPath }
+      if (tab.path.startsWith(`${path}/`)) return { ...tab, path: `${newPath}${tab.path.slice(path.length)}` }
       return tab
     })))
     notifyVersionChange()
@@ -465,8 +466,8 @@ function App() {
     await moveItem(from, to)
     setOpenTabs((prev) => dedupeTabs(prev.map((tab) => {
       if (tab.kind !== 'file') return tab
-      if (tab.path === from) return { kind: 'file', path: to }
-      if (tab.path.startsWith(`${from}/`)) return { kind: 'file', path: `${to}${tab.path.slice(from.length)}` }
+      if (tab.path === from) return { ...tab, path: to }
+      if (tab.path.startsWith(`${from}/`)) return { ...tab, path: `${to}${tab.path.slice(from.length)}` }
       return tab
     })))
     notifyVersionChange()
@@ -633,6 +634,10 @@ function App() {
     const fallback = next[idx] ?? next[idx - 1] ?? next[0]
     await handleActivateTab(fallback)
   }, [activeTabKey, clearSelectedFile, flushEditorDraft, handleActivateTab, openTabs])
+
+  const handleToggleTabPin = useCallback((tab: Tab) => {
+    setOpenTabs((current) => setTabPinned(current, tabKey(tab), !tab.pinned))
+  }, [])
 
   const triggerSave = useCallback(() => setSaveSignal((value) => value + 1), [])
   const continueWriting = useCallback(() => {
@@ -846,6 +851,7 @@ function App() {
         onMoveItem={handleMoveItem}
         onActivateTab={handleActivateTab}
         onCloseTab={handleCloseTab}
+        onToggleTabPin={handleToggleTabPin}
         onOpenLoreTab={handleOpenLoreTab}
         onSaveCurrentFile={handleSaveCurrentFile}
         onEditorFlushHandlerChange={handleEditorFlushHandlerChange}

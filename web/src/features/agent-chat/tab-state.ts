@@ -326,6 +326,13 @@ export function setTabTitle(tabs: AgentChatTab[], tabId: string, title: string):
   return tabs.map((tab) => (tab.id === tabId ? { ...tab, customTitle: trimmed || undefined } : tab))
 }
 
+/** Update the program-owned title without disturbing an explicit user rename. */
+export function setTerminalTabTitle(tabs: AgentChatTab[], tabId: string, title: string): AgentChatTab[] {
+  return tabs.map((tab) => (
+    tab.id === tabId && tab.kind === 'terminal' && tab.title !== title ? { ...tab, title } : tab
+  ))
+}
+
 /** Ids closed by "close others": the rest of that strip, pinned tabs excepted. */
 export function otherTabIds(tabs: AgentChatTab[], tabId: string): string[] {
   const anchor = tabs.find((tab) => tab.id === tabId)

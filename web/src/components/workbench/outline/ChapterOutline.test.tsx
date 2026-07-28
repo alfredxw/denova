@@ -78,7 +78,7 @@ describe('ChapterOutline', () => {
     expect(screen.getByText('当前细纲')).toBeInTheDocument()
     expect(navigation).toContainElement(latestPlan)
     expect(screen.getByTestId('book-settings-header-frame')).not.toContainElement(latestPlan)
-    expect(latestPlan).toHaveClass('px-2', 'py-1', '!text-[11px]', '!leading-4')
+    expect(latestPlan).toHaveClass('px-2', 'py-1', '!text-sm', '!leading-normal')
     expect(latestPlan).not.toHaveClass('px-3', 'py-2', 'text-xs')
     expect(screen.getAllByText('第 6-10 章细纲')).toHaveLength(1)
     expect(screen.queryByText('主角在城门口遇到旧识。')).not.toBeInTheDocument()

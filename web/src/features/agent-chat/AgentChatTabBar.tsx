@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, type DragEvent, type ReactNode } from 'react'
+import { useState, type DragEvent, type ReactNode } from 'react'
 import { useTranslation } from 'react-i18next'
 import {
   Bot,
@@ -10,7 +10,6 @@ import {
   Pencil,
   Pin,
   PinOff,
-  Plus,
   SlidersHorizontal,
   Sparkles,
   SplitSquareHorizontal,
@@ -41,7 +40,11 @@ import {
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu'
 import { Input } from '@/components/ui/input'
-import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs'
+import {
+  WorkbenchTab,
+  WorkbenchTabAddButton,
+  WorkbenchTabStrip,
+} from '@/components/workbench/WorkbenchTabStrip'
 import {
   AGENT_CHAT_PAGE_IDS,
   type AgentChatGroupId,
@@ -89,22 +92,6 @@ const PAGE_ICONS: Record<AgentChatPageId, ReactNode> = {
   automations: <Clock3 className="size-3.5" />,
 }
 
-/**
- * Editor-style tab chrome on top of the shared Tabs primitive: square tabs divided by a hairline,
- * and the active one painted in the content background so it reads as the front of the pane. The
- * shadcn defaults are overridden rather than avoided — their pill-on-muted look belongs to a
- * segmented control, not to a strip of open documents, and its colours ignore the workbench theme.
- */
-const TAB_TRIGGER_CLASS = [
-  'group/tab relative h-full max-w-56 flex-none justify-start gap-1.5 px-3 text-xs',
-  'rounded-none border-0 border-r border-[var(--nova-border)] after:hidden',
-  'text-[var(--nova-text-muted)] hover:bg-[var(--nova-hover)] hover:text-[var(--nova-text)]',
-  // ContextMenuTrigger also owns `data-state` and overwrites the tab's active/closed value when
-  // composed with asChild. `aria-selected` belongs to the Tabs contract and remains unambiguous.
-  'aria-[selected=true]:bg-[var(--nova-active)] aria-[selected=true]:text-[var(--nova-text)]',
-  'dark:aria-[selected=true]:border-[var(--nova-border)] dark:aria-[selected=true]:bg-[var(--nova-active)] dark:aria-[selected=true]:text-[var(--nova-text)]',
-].join(' ')
-
 /** The group a tab moves to when it is sent across the split. */
 function oppositeGroup(group: AgentChatGroupId): AgentChatGroupId {
   return group === 'primary' ? 'secondary' : 'primary'
@@ -131,20 +118,6 @@ export function AgentChatTabBar({
   const [renaming, setRenaming] = useState<{ id: string; value: string } | null>(null)
   /** Tab the pointer is currently over during a drag, used to draw the insertion marker. */
   const [dropTargetId, setDropTargetId] = useState<string | null>(null)
-  /** True once the strip scrolls, which is what moves the new-tab button to the bar's end. */
-  const [overflowing, setOverflowing] = useState(false)
-  const stripRef = useRef<HTMLDivElement | null>(null)
-
-  useEffect(() => {
-    const strip = stripRef.current
-    if (!strip) return
-    const measure = () => setOverflowing(strip.scrollWidth > strip.clientWidth + 1)
-    measure()
-    const observer = new ResizeObserver(measure)
-    observer.observe(strip)
-    return () => observer.disconnect()
-  }, [tabs])
-
   const tabIcon = (tab: AgentChatTab) => {
     switch (tab.kind) {
       case 'agent':
@@ -201,9 +174,10 @@ export function AgentChatTabBar({
   const newTabMenu = (
     <DropdownMenu>
       <DropdownMenuTrigger asChild>
-        <Button type="button" variant="ghost" size="icon-xs" className="shrink-0" aria-label={t('agentChat.tabs.new')} title={t('agentChat.tabs.new')}>
-          <Plus />
-        </Button>
+        <WorkbenchTabAddButton
+          aria-label={t('agentChat.tabs.new')}
+          title={t('agentChat.tabs.new')}
+        />
       </DropdownMenuTrigger>
       <DropdownMenuContent align="end" className="min-w-48">
           <DropdownMenuItem disabled={newChatDisabled} onSelect={() => onNewAgentTab(group)}>
@@ -234,106 +208,84 @@ export function AgentChatTabBar({
   )
 
   return (
-    <div
-      // Tabs sit flush against the pane edge; only the trailing new-tab button gets breathing room.
-      className="flex h-9 shrink-0 items-center border-b border-[var(--nova-border)] bg-[var(--nova-surface)] pr-1"
-      onDragOver={(event) => { if (acceptsTabDrag(event)) event.preventDefault() }}
-      onDrop={dropOnStrip}
-    >
-      <Tabs
+    <>
+      <WorkbenchTabStrip
         value={activeTabId ?? ''}
         onValueChange={onActivate}
-        className="h-full min-w-0 flex-1 gap-0"
+        flowAction={newTabMenu}
+        // Tabs sit flush against the pane edge; only the trailing new-tab button gets breathing room.
+        className="pr-1"
+        onDragOver={(event) => { if (acceptsTabDrag(event)) event.preventDefault() }}
+        onDrop={dropOnStrip}
       >
-        <TabsList
-          ref={stripRef}
-          // The default variant is kept: its `line` sibling forces a transparent background on the
-          // active trigger, which would erase the highlight below.
-          className="!h-full w-full justify-start gap-0 rounded-none bg-transparent p-0 overflow-x-auto overflow-y-hidden"
-        >
-          {tabs.map((tab) => {
-            const label = tabTitle(tab)
-            return (
-              <ContextMenu key={tab.id}>
-                <ContextMenuTrigger asChild>
-                  <TabsTrigger
-                    value={tab.id}
-                    draggable
-                    title={label}
-                    className={`${TAB_TRIGGER_CLASS} ${dropTargetId === tab.id ? 'shadow-[inset_2px_0_0_0_var(--nova-accent)]' : ''}`}
-                    onDragStart={(event) => startDrag(event, tab)}
-                    onDragOver={(event) => {
-                      if (!acceptsTabDrag(event)) return
-                      event.preventDefault()
-                      event.stopPropagation()
-                      setDropTargetId(tab.id)
-                    }}
-                    onDragLeave={() => setDropTargetId((current) => (current === tab.id ? null : current))}
-                    onDragEnd={() => setDropTargetId(null)}
-                    onDrop={(event) => dropOnTab(event, tab)}
-                    onDoubleClick={() => setRenaming({ id: tab.id, value: label })}
-                  >
-                    {/*
-                      The accent rule is an element rather than a border or a shadow: the base
-                      trigger already styles both, from rules specific enough to win, and this
-                      keeps the marker independent of them.
-                    */}
+        {tabs.map((tab) => {
+          const label = tabTitle(tab)
+          return (
+            <ContextMenu key={tab.id}>
+              <ContextMenuTrigger asChild>
+                <WorkbenchTab
+                  value={tab.id}
+                  label={label}
+                  icon={tabIcon(tab)}
+                  trailing={tab.pinned ? (
+                    <Pin className="size-3 shrink-0 text-[var(--nova-text-faint)]" aria-hidden="true" />
+                  ) : (
                     <span
-                      aria-hidden="true"
-                      className="pointer-events-none absolute inset-x-0 top-0 h-0.5 bg-[var(--nova-accent)] opacity-0 group-aria-[selected=true]/tab:opacity-100"
-                    />
-                    <span className="shrink-0 text-[var(--nova-text-faint)]">{tabIcon(tab)}</span>
-                    <span className="min-w-0 truncate">{label}</span>
-                    {tab.pinned ? (
-                      <Pin className="size-3 shrink-0 text-[var(--nova-text-faint)]" aria-hidden="true" />
-                    ) : (
-                      <span
-                        role="button"
-                        tabIndex={-1}
-                        aria-label={t('agentChat.tabs.close', { title: label })}
-                        className="grid size-4 shrink-0 place-items-center rounded-sm opacity-0 transition-opacity hover:bg-[var(--nova-hover)] group-hover/tab:opacity-100"
-                        // Radix activates a trigger on pointer down, so the close hit area has to
-                        // stop the event or closing a background tab would select it first.
-                        onPointerDown={(event) => event.stopPropagation()}
-                        onClick={(event) => { event.stopPropagation(); onClose(tab.id) }}
-                      >
-                        <X className="size-3" />
-                      </span>
-                    )}
-                  </TabsTrigger>
-                </ContextMenuTrigger>
-                <ContextMenuContent className="min-w-44">
-                  <ContextMenuItem onSelect={() => setRenaming({ id: tab.id, value: label })}>
-                    <Pencil />
-                    {t('agentChat.tabs.rename')}
-                  </ContextMenuItem>
-                  <ContextMenuItem onSelect={() => onTogglePin(tab.id)}>
-                    {tab.pinned ? <PinOff /> : <Pin />}
-                    {tab.pinned ? t('agentChat.tabs.unpin') : t('agentChat.tabs.pin')}
-                  </ContextMenuItem>
-                  <ContextMenuItem onSelect={() => onMoveTab(tab.id, oppositeGroup(group), null)}>
-                    <SplitSquareHorizontal />
-                    {group === 'primary' ? t('agentChat.tabs.moveRight') : t('agentChat.tabs.moveLeft')}
-                  </ContextMenuItem>
-                  <ContextMenuSeparator />
-                  <ContextMenuItem onSelect={() => onClose(tab.id)}>
-                    {t('agentChat.tabs.closeTab')}
-                  </ContextMenuItem>
-                  <ContextMenuItem onSelect={() => onCloseOthers(tab.id)}>
-                    {t('agentChat.tabs.closeOthers')}
-                  </ContextMenuItem>
-                  <ContextMenuItem onSelect={() => onCloseToRight(tab.id)}>
-                    {t('agentChat.tabs.closeToRight')}
-                  </ContextMenuItem>
-                </ContextMenuContent>
-              </ContextMenu>
-            )
-          })}
-          {!overflowing && newTabMenu}
-        </TabsList>
-      </Tabs>
-
-      {overflowing && newTabMenu}
+                      role="button"
+                      tabIndex={-1}
+                      aria-label={t('agentChat.tabs.close', { title: label })}
+                      className="grid size-4 shrink-0 place-items-center rounded-sm opacity-0 transition-opacity hover:bg-[var(--nova-hover)] group-hover/tab:opacity-100"
+                      // Radix activates a trigger on pointer down, so the close hit area has to
+                      // stop the event or closing a background tab would select it first.
+                      onPointerDown={(event) => event.stopPropagation()}
+                      onClick={(event) => { event.stopPropagation(); onClose(tab.id) }}
+                    >
+                      <X className="size-3" />
+                    </span>
+                  )}
+                  draggable
+                  className={dropTargetId === tab.id ? 'shadow-[inset_2px_0_0_0_var(--nova-accent)]' : undefined}
+                  onDragStart={(event) => startDrag(event, tab)}
+                  onDragOver={(event) => {
+                    if (!acceptsTabDrag(event)) return
+                    event.preventDefault()
+                    event.stopPropagation()
+                    setDropTargetId(tab.id)
+                  }}
+                  onDragLeave={() => setDropTargetId((current) => (current === tab.id ? null : current))}
+                  onDragEnd={() => setDropTargetId(null)}
+                  onDrop={(event) => dropOnTab(event, tab)}
+                  onDoubleClick={() => setRenaming({ id: tab.id, value: label })}
+                />
+              </ContextMenuTrigger>
+              <ContextMenuContent className="min-w-44">
+                <ContextMenuItem onSelect={() => setRenaming({ id: tab.id, value: label })}>
+                  <Pencil />
+                  {t('agentChat.tabs.rename')}
+                </ContextMenuItem>
+                <ContextMenuItem onSelect={() => onTogglePin(tab.id)}>
+                  {tab.pinned ? <PinOff /> : <Pin />}
+                  {tab.pinned ? t('agentChat.tabs.unpin') : t('agentChat.tabs.pin')}
+                </ContextMenuItem>
+                <ContextMenuItem onSelect={() => onMoveTab(tab.id, oppositeGroup(group), null)}>
+                  <SplitSquareHorizontal />
+                  {group === 'primary' ? t('agentChat.tabs.moveRight') : t('agentChat.tabs.moveLeft')}
+                </ContextMenuItem>
+                <ContextMenuSeparator />
+                <ContextMenuItem onSelect={() => onClose(tab.id)}>
+                  {t('agentChat.tabs.closeTab')}
+                </ContextMenuItem>
+                <ContextMenuItem onSelect={() => onCloseOthers(tab.id)}>
+                  {t('agentChat.tabs.closeOthers')}
+                </ContextMenuItem>
+                <ContextMenuItem onSelect={() => onCloseToRight(tab.id)}>
+                  {t('agentChat.tabs.closeToRight')}
+                </ContextMenuItem>
+              </ContextMenuContent>
+            </ContextMenu>
+          )
+        })}
+      </WorkbenchTabStrip>
 
       <Dialog open={renaming !== null} onOpenChange={(open) => { if (!open) setRenaming(null) }}>
         <DialogContent className="sm:max-w-md">
@@ -358,6 +310,6 @@ export function AgentChatTabBar({
           </DialogFooter>
         </DialogContent>
       </Dialog>
-    </div>
+    </>
   )
 }

@@ -2,6 +2,7 @@ import { render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { useEffect, useState, type ComponentProps, type ReactNode } from 'react'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { TooltipProvider } from '@/components/ui/tooltip'
 import { usePersistedUserSettings } from '@/hooks/usePersistedUserSettings'
 import { ModeRouter } from './ModeRouter'
 
@@ -9,6 +10,11 @@ const toastMock = vi.hoisted(() => ({ warning: vi.fn() }))
 const useDocumentReviewMock = vi.hoisted(() => vi.fn())
 const agentPanelLifecycle = vi.hoisted(() => ({ mounts: 0, unmounts: 0, renders: 0 }))
 const loreLibraryFlushMock = vi.hoisted(() => vi.fn(async () => true))
+const agentChatFlushMock = vi.hoisted(() => vi.fn(async () => true))
+
+function withAppProviders(ui: ReactNode) {
+  return <TooltipProvider>{ui}</TooltipProvider>
+}
 
 vi.mock('sonner', () => ({ toast: toastMock }))
 
@@ -51,7 +57,15 @@ vi.mock('@/components/Chat/AgentPanel', () => ({
 }))
 
 vi.mock('@/features/agent-chat/AgentChatRoute', () => ({
-  AgentChatRoute: () => <div data-testid="agent-chat-route">project-scoped agent route</div>,
+  AgentChatRoute: ({ onFlushHandlerChange }: {
+    onFlushHandlerChange?: (handler: (() => Promise<boolean>) | null) => void
+  }) => {
+    useEffect(() => {
+      onFlushHandlerChange?.(agentChatFlushMock)
+      return () => onFlushHandlerChange?.(null)
+    }, [onFlushHandlerChange])
+    return <div data-testid="agent-chat-route">project-scoped agent route</div>
+  },
 }))
 
 vi.mock('@/features/lore/LoreWorkspaceTab', () => ({
@@ -149,6 +163,8 @@ describe('ModeRouter autosave navigation policy', () => {
     useDocumentReviewMock.mockReset()
     loreLibraryFlushMock.mockReset()
     loreLibraryFlushMock.mockResolvedValue(true)
+    agentChatFlushMock.mockReset()
+    agentChatFlushMock.mockResolvedValue(true)
     agentPanelLifecycle.mounts = 0
     agentPanelLifecycle.unmounts = 0
     agentPanelLifecycle.renders = 0
@@ -180,7 +196,7 @@ describe('ModeRouter autosave navigation policy', () => {
   it('continues a workspace switch and warns when preference flush remains pending', async () => {
     const user = userEvent.setup()
     const onQuickSwitchBook = vi.fn(async () => true)
-    render(<ModeRouter {...modeRouterProps({ onQuickSwitchBook })} />)
+    render(withAppProviders(<ModeRouter {...modeRouterProps({ onQuickSwitchBook })} />))
 
     await user.click(screen.getByRole('button', { name: 'quick switch' }))
 
@@ -208,7 +224,7 @@ describe('ModeRouter autosave navigation policy', () => {
       flushPending: vi.fn(() => pendingFlush),
     })
     const onQuickSwitchBook = vi.fn(async () => true)
-    render(<ModeRouter {...modeRouterProps({ onQuickSwitchBook })} />)
+    render(withAppProviders(<ModeRouter {...modeRouterProps({ onQuickSwitchBook })} />))
 
     await user.click(screen.getByRole('button', { name: 'quick switch' }))
     expect(onQuickSwitchBook).toHaveBeenCalledWith('/book-b')
@@ -221,12 +237,25 @@ describe('ModeRouter autosave navigation policy', () => {
     const user = userEvent.setup()
     const onQuickSwitchBook = vi.fn(async () => true)
     loreLibraryFlushMock.mockResolvedValue(false)
-    render(<ModeRouter {...modeRouterProps({ rightPanel: 'lore', onQuickSwitchBook })} />)
+    render(withAppProviders(<ModeRouter {...modeRouterProps({ rightPanel: 'lore', onQuickSwitchBook })} />))
     await screen.findByTestId('full-lore-library')
 
     await user.click(screen.getByRole('button', { name: 'quick switch' }))
 
     await waitFor(() => expect(loreLibraryFlushMock).toHaveBeenCalledTimes(1))
+    expect(onQuickSwitchBook).not.toHaveBeenCalled()
+  })
+
+  it('keeps the active book when an AgentChat project page cannot flush', async () => {
+    const user = userEvent.setup()
+    const onQuickSwitchBook = vi.fn(async () => true)
+    agentChatFlushMock.mockResolvedValue(false)
+    render(withAppProviders(<ModeRouter {...modeRouterProps({ mode: 'agentchat', onQuickSwitchBook })} />))
+    await screen.findByTestId('agent-chat-route')
+
+    await user.click(screen.getByRole('button', { name: 'quick switch' }))
+
+    await waitFor(() => expect(agentChatFlushMock).toHaveBeenCalledTimes(1))
     expect(onQuickSwitchBook).not.toHaveBeenCalled()
   })
 
@@ -277,7 +306,7 @@ describe('ModeRouter autosave navigation policy', () => {
       )
     }
 
-    render(<Harness />)
+    render(withAppProviders(<Harness />))
     await user.click(screen.getByRole('button', { name: 'open document feedback' }))
 
     await waitFor(() => expect(handleSelectFile).toHaveBeenCalledWith(comment.target.id))
@@ -337,7 +366,7 @@ describe('ModeRouter autosave navigation policy', () => {
       )
     }
 
-    render(<Harness />)
+    render(withAppProviders(<Harness />))
     await user.click(screen.getByRole('button', { name: 'open document feedback' }))
 
     await waitFor(() => expect(openLoreTab).toHaveBeenCalledTimes(1))
@@ -350,7 +379,7 @@ describe('ModeRouter autosave navigation policy', () => {
     const user = userEvent.setup()
     const onOpenLoreTab = vi.fn(async () => true)
     const onSelectFile = vi.fn()
-    render(<ModeRouter {...modeRouterProps({
+    render(withAppProviders(<ModeRouter {...modeRouterProps({
       sidebarView: 'files',
       tree: [{
         name: 'setting',
@@ -363,7 +392,7 @@ describe('ModeRouter autosave navigation policy', () => {
       }],
       onOpenLoreTab,
       onSelectFile,
-    })} />)
+    })} />))
 
     await user.click(screen.getByText('lore'))
     await user.click(screen.getByText('items.json'))
@@ -389,7 +418,7 @@ describe('ModeRouter autosave navigation policy', () => {
       volume_path: 'chapters/volume-01',
     }
 
-    render(<ModeRouter {...modeRouterProps({
+    render(withAppProviders(<ModeRouter {...modeRouterProps({
       projectVisible: false,
       selectedFile: chapter.path,
       currentChapter: chapter,
@@ -397,7 +426,7 @@ describe('ModeRouter autosave navigation policy', () => {
       activeTabKey: `file:${chapter.path}`,
       onToggleProjectVisible,
       onSetSidebarView,
-    })} />)
+    })} />))
 
     await user.click(screen.getByRole('button', { name: 'reveal chapter in outline' }))
 
@@ -408,19 +437,19 @@ describe('ModeRouter autosave navigation policy', () => {
   it('keeps the foreground Writing Agent mounted while Workspace owns separate scoped conversations', async () => {
     const user = userEvent.setup()
     const baseProps = modeRouterProps({ rightPanel: 'ai' })
-    const { rerender } = render(<ModeRouter {...baseProps} />)
+    const { rerender } = render(withAppProviders(<ModeRouter {...baseProps} />))
 
     await user.click(screen.getByRole('button', { name: 'agent panel state 0' }))
     expect(screen.getByRole('button', { name: 'agent panel state 1' })).toBeInTheDocument()
     expect(agentPanelLifecycle.mounts).toBe(1)
 
-    rerender(<ModeRouter {...baseProps} mode="agentchat" />)
+    rerender(withAppProviders(<ModeRouter {...baseProps} mode="agentchat" />))
     await waitFor(() => expect(screen.getByTestId('agent-chat-route')).toBeInTheDocument())
     expect(screen.queryByRole('button', { name: 'agent panel state 1' })).not.toBeInTheDocument()
     expect(agentPanelLifecycle.mounts).toBe(1)
     expect(agentPanelLifecycle.unmounts).toBe(0)
 
-    rerender(<ModeRouter {...baseProps} mode="ide" />)
+    rerender(withAppProviders(<ModeRouter {...baseProps} mode="ide" />))
     expect(screen.getByRole('button', { name: 'agent panel state 1' })).toBeInTheDocument()
     expect(agentPanelLifecycle.mounts).toBe(1)
     expect(agentPanelLifecycle.unmounts).toBe(0)
@@ -496,6 +525,7 @@ function modeRouterProps(
     onMoveItem: vi.fn(),
     onActivateTab: vi.fn(),
     onCloseTab: vi.fn(),
+    onToggleTabPin: vi.fn(),
     onOpenLoreTab: vi.fn(async () => true),
     onSaveCurrentFile: vi.fn(),
     onEditorFlushHandlerChange: vi.fn(),

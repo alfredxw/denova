@@ -1,6 +1,18 @@
 import { useEffect, useRef, useState } from 'react'
+import {
+  DndContext,
+  KeyboardSensor,
+  MouseSensor,
+  TouchSensor,
+  closestCenter,
+  useSensor,
+  useSensors,
+  type CollisionDetection,
+  type DragEndEvent,
+} from '@dnd-kit/core'
+import { SortableContext, sortableKeyboardCoordinates, verticalListSortingStrategy } from '@dnd-kit/sortable'
 import { useTranslation } from 'react-i18next'
-import { ChevronRight, Edit3, FolderOpen, MessageSquareText, MoreHorizontal, PanelLeft, Plus, Trash2 } from 'lucide-react'
+import { ArrowDownUp, Check, PanelLeft, Plus } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import {
   DropdownMenu,
@@ -10,13 +22,19 @@ import {
 } from '@/components/ui/dropdown-menu'
 import { ConfirmDialog } from '@/components/common/ConfirmDialog'
 import { InlineErrorNotice } from '@/components/common/inline-error-notice'
-import { formatDateTime } from '@/i18n'
 import type { AgentChatProject, AgentChatSession } from './api'
+import {
+  AgentChatSidebarProject,
+  projectSortableID,
+  type AgentChatSidebarDragData,
+} from './AgentChatSidebarProject'
+import {
+  AGENT_CHAT_SIDEBAR_SORT_MODES,
+  useAgentChatSidebarPreferences,
+  type AgentChatSidebarSortMode,
+} from './sidebar-preferences'
 
-/**
- * Conversations shown per project, and how many each "show more" adds. Revealing the list a
- * page at a time keeps a project with hundreds of conversations from burying its neighbours.
- */
+/** Conversations shown initially per project, and how many each reveal action adds. */
 const SESSION_PAGE_SIZE = 5
 
 interface AgentChatSessionSidebarProps {
@@ -34,11 +52,24 @@ interface AgentChatSessionSidebarProps {
   onDeleteSession: (project: AgentChatProject, session: AgentChatSession) => void | Promise<void>
 }
 
+/** Restricts nested project/session sorting to the active hierarchy lane. */
+const sidebarCollisionDetection: CollisionDetection = (args) => {
+  const active = args.active.data.current as AgentChatSidebarDragData | undefined
+  if (!active) return []
+  const droppableContainers = args.droppableContainers.filter((container) => {
+    const candidate = container.data.current as AgentChatSidebarDragData | undefined
+    if (!candidate || candidate.kind !== active.kind) return false
+    return active.kind === 'project'
+      || (candidate.kind === 'session' && candidate.projectPath === active.projectPath)
+  })
+  return closestCenter({ ...args, droppableContainers })
+}
+
 /**
  * Project-grouped conversation tree.
  *
- * Every book is listed regardless of which workspace the backend has open, because AgentChat
- * manages the whole library. Each project row can start its own conversation.
+ * Pin, recent-open and manual order are user-level UI preferences. They never mutate a book or
+ * enter Agent context; server timestamps remain authoritative for the Updated sort.
  */
 export function AgentChatSessionSidebar({
   projects,
@@ -55,22 +86,28 @@ export function AgentChatSessionSidebar({
 }: AgentChatSessionSidebarProps) {
   const { t } = useTranslation()
   const [collapsedProjects, setCollapsedProjects] = useState<ReadonlySet<string>>(() => new Set())
-  /** How many conversations each project currently shows; absent means the first page. */
   const [visibleCounts, setVisibleCounts] = useState<ReadonlyMap<string, number>>(() => new Map())
   const [editing, setEditing] = useState<{ path: string; id: string } | null>(null)
   const [draftTitle, setDraftTitle] = useState('')
   const [pendingDelete, setPendingDelete] = useState<{ project: AgentChatProject; session: AgentChatSession } | null>(null)
+  const preferences = useAgentChatSidebarPreferences(projects)
+  const sensors = useSensors(
+    useSensor(MouseSensor, { activationConstraint: { delay: 180, tolerance: 5 } }),
+    useSensor(TouchSensor, { activationConstraint: { delay: 250, tolerance: 8 } }),
+    useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates }),
+  )
 
-  const toggleProject = (path: string) => {
+  const toggleProject = (project: AgentChatProject) => {
+    preferences.recordProjectOpened(project.path)
+    onSelectProject(project)
     setCollapsedProjects((current) => {
       const next = new Set(current)
-      if (next.has(path)) next.delete(path)
-      else next.add(path)
+      if (next.has(project.path)) next.delete(project.path)
+      else next.add(project.path)
       return next
     })
   }
 
-  /** Grow or shrink one project's list a page at a time, never below the first page. */
   const stepVisibleCount = (path: string, direction: 1 | -1) => {
     setVisibleCounts((current) => {
       const shown = current.get(path) ?? SESSION_PAGE_SIZE
@@ -88,13 +125,27 @@ export function AgentChatSessionSidebar({
     await onRenameSession(project, session, title)
   }
 
+  const handleDragEnd = (event: DragEndEvent) => {
+    const active = event.active.data.current as AgentChatSidebarDragData | undefined
+    const over = event.over?.data.current as AgentChatSidebarDragData | undefined
+    if (!active || !over || active.kind !== over.kind) return
+    if (active.kind === 'project' && over.kind === 'project') {
+      preferences.moveProject(active.projectPath, over.projectPath)
+      return
+    }
+    if (active.kind !== 'session' || over.kind !== 'session' || active.projectPath !== over.projectPath) return
+    const project = projects.find((candidate) => candidate.path === active.projectPath)
+    if (project) preferences.moveSession(project, active.sessionID, over.sessionID)
+  }
+
   return (
     <div className="flex h-full min-h-0 flex-col border-r border-[var(--nova-border)] bg-[var(--nova-surface)]">
       <div className="flex h-9 shrink-0 items-center gap-1 pl-2.5 pr-1">
         <span className="min-w-0 flex-1 truncate text-[10px] font-medium uppercase tracking-wide text-[var(--nova-text-faint)]">
           {t('agentChat.sidebar.projects')}
         </span>
-        {onCollapse && (
+        <SidebarSortMenu sortMode={preferences.sortMode} onSortModeChange={preferences.setSortMode} />
+        {onCollapse ? (
           <Button
             type="button"
             variant="ghost"
@@ -106,118 +157,75 @@ export function AgentChatSessionSidebar({
           >
             <PanelLeft />
           </Button>
-        )}
+        ) : null}
       </div>
 
-      <div className="min-h-0 flex-1 overflow-y-auto p-1.5 pt-0">
-        {error ? <InlineErrorNotice className="mb-2" message={error} title={t('agentChat.sidebar.loadFailed')} /> : null}
-        {loading && projects.length === 0 ? (
-          <p className="px-2 py-3 text-[11px] text-[var(--nova-text-faint)]">{t('router.loading')}</p>
-        ) : projects.length === 0 ? (
-          <p className="px-2 py-3 text-[11px] leading-5 text-[var(--nova-text-faint)]">{t('agentChat.sidebar.noProjects')}</p>
-        ) : (
-          projects.map((project) => {
-            const expanded = !collapsedProjects.has(project.path)
-            const shown = visibleCounts.get(project.path) ?? SESSION_PAGE_SIZE
-            const visibleSessions = project.sessions.slice(0, shown)
-            const hiddenCount = project.total - visibleSessions.length
-            return (
-              <div key={project.path} className="mb-1">
-                <div className={`group flex items-center gap-0.5 rounded-[var(--nova-radius)] pr-0.5 ${
-                  project.path === activeProjectPath ? 'bg-[var(--nova-active)]' : 'hover:bg-[var(--nova-hover)]'
-                }`}>
-                  <button
-                    type="button"
-                    onClick={() => toggleProject(project.path)}
-                    aria-expanded={expanded}
-                    aria-label={expanded ? t('common.collapse') : t('common.expand')}
-                    className="flex size-6 shrink-0 items-center justify-center rounded-[var(--nova-radius)] text-[var(--nova-text-faint)] outline-none hover:text-[var(--nova-text)] focus-visible:ring-1 focus-visible:ring-[var(--nova-accent)]"
-                  >
-                    <ChevronRight className={`size-3 shrink-0 text-[var(--nova-text-faint)] transition-transform ${expanded ? 'rotate-90' : ''}`} />
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => {
-                      onSelectProject(project)
-                      if (!expanded) toggleProject(project.path)
+      <DndContext
+        sensors={sensors}
+        collisionDetection={sidebarCollisionDetection}
+        onDragEnd={handleDragEnd}
+      >
+        <div className="min-h-0 flex-1 overflow-y-auto p-1.5 pt-0">
+          {error ? <InlineErrorNotice className="mb-2" message={error} title={t('agentChat.sidebar.loadFailed')} /> : null}
+          {loading && projects.length === 0 ? (
+            <p className="px-2 py-3 text-[11px] text-[var(--nova-text-faint)]">{t('router.loading')}</p>
+          ) : projects.length === 0 ? (
+            <p className="px-2 py-3 text-[11px] leading-5 text-[var(--nova-text-faint)]">{t('agentChat.sidebar.noProjects')}</p>
+          ) : (
+            <SortableContext
+              items={preferences.orderedProjects.map((project) => projectSortableID(project.path))}
+              strategy={verticalListSortingStrategy}
+            >
+              {preferences.orderedProjects.map((project) => {
+                const expanded = !collapsedProjects.has(project.path)
+                const shown = visibleCounts.get(project.path) ?? SESSION_PAGE_SIZE
+                const orderedSessions = preferences.sessionsForProject(project)
+                const visibleSessions = orderedSessions.slice(0, shown)
+                const hiddenCount = Math.max(0, orderedSessions.length - visibleSessions.length)
+                return (
+                  <AgentChatSidebarProject
+                    key={project.path}
+                    project={project}
+                    active={project.path === activeProjectPath}
+                    expanded={expanded}
+                    manualSorting={preferences.sortMode === 'manual'}
+                    pinned={preferences.isProjectPinned(project.path)}
+                    visibleSessions={visibleSessions}
+                    hiddenCount={hiddenCount}
+                    showMoreCount={Math.min(hiddenCount, SESSION_PAGE_SIZE)}
+                    canShowLess={visibleSessions.length > SESSION_PAGE_SIZE}
+                    isSessionRunning={(session) => isSessionRunning(project, session)}
+                    isSessionPinned={(sessionID) => preferences.isSessionPinned(project.path, sessionID)}
+                    editingSessionID={editing?.path === project.path ? editing.id : null}
+                    draftTitle={draftTitle}
+                    onDraftTitleChange={setDraftTitle}
+                    onToggle={() => toggleProject(project)}
+                    onCreateSession={() => {
+                      preferences.recordProjectOpened(project.path)
+                      onCreateSession(project)
                     }}
-                    aria-current={project.path === activeProjectPath ? 'true' : undefined}
-                    title={project.path}
-                    className="flex min-w-0 flex-1 items-center gap-1.5 rounded-[var(--nova-radius)] py-1.5 pr-1 text-left outline-none focus-visible:ring-1 focus-visible:ring-[var(--nova-accent)]"
-                  >
-                    <FolderOpen className="size-3.5 shrink-0 text-[var(--nova-text-muted)]" />
-                    <span className="min-w-0 flex-1 truncate text-xs text-[var(--nova-text)]">{project.name || project.path}</span>
-                  </button>
-                  <Button
-                    type="button"
-                    variant="ghost"
-                    size="icon-xs"
-                    className="shrink-0 opacity-60 transition-opacity hover:opacity-100 focus-visible:opacity-100"
-                    onClick={() => onCreateSession(project)}
-                    aria-label={t('agentChat.sidebar.newChatIn', { name: project.name || project.path })}
-                    title={t('agentChat.sidebar.newChat')}
-                  >
-                    <Plus />
-                  </Button>
-                </div>
-
-                {expanded && (
-                  <div className="ml-3 border-l border-[var(--nova-border-soft)] pl-1.5">
-                    {project.error ? (
-                      <p className="px-2 py-2 text-[11px] text-[var(--nova-danger)]">{project.error}</p>
-                    ) : project.sessions.length === 0 ? (
-                      <p className="px-2 py-2 text-[11px] text-[var(--nova-text-faint)]">{t('agentChat.sidebar.noSessions')}</p>
-                    ) : (
-                      <>
-                        {visibleSessions.map((session) => (
-                          <SessionRow
-                            key={session.id}
-                            session={session}
-                            running={isSessionRunning(project, session)}
-                            editing={editing?.path === project.path && editing.id === session.id}
-                            draftTitle={draftTitle}
-                            onDraftTitleChange={setDraftTitle}
-                            onOpen={() => onOpenSession(project, session)}
-                            onBeginRename={() => {
-                              setEditing({ path: project.path, id: session.id })
-                              setDraftTitle(session.title || '')
-                            }}
-                            onSubmitRename={() => void submitRename(project, session)}
-                            onCancelRename={() => setEditing(null)}
-                            onRequestDelete={() => setPendingDelete({ project, session })}
-                          />
-                        ))}
-                        {(hiddenCount > 0 || visibleSessions.length > SESSION_PAGE_SIZE) && (
-                          <div className="flex items-center gap-2 px-1.5 py-1 text-[11px]">
-                            {hiddenCount > 0 && (
-                              <button
-                                type="button"
-                                onClick={() => stepVisibleCount(project.path, 1)}
-                                className="rounded-[var(--nova-radius)] px-1 py-0.5 text-[var(--nova-text-faint)] hover:bg-[var(--nova-hover)] hover:text-[var(--nova-text-muted)]"
-                              >
-                                {t('agentChat.sidebar.showMore', { count: Math.min(hiddenCount, SESSION_PAGE_SIZE) })}
-                              </button>
-                            )}
-                            {visibleSessions.length > SESSION_PAGE_SIZE && (
-                              <button
-                                type="button"
-                                onClick={() => stepVisibleCount(project.path, -1)}
-                                className="rounded-[var(--nova-radius)] px-1 py-0.5 text-[var(--nova-text-faint)] hover:bg-[var(--nova-hover)] hover:text-[var(--nova-text-muted)]"
-                              >
-                                {t('agentChat.sidebar.showLess')}
-                              </button>
-                            )}
-                          </div>
-                        )}
-                      </>
-                    )}
-                  </div>
-                )}
-              </div>
-            )
-          })
-        )}
-      </div>
+                    onTogglePinned={() => preferences.toggleProjectPinned(project.path)}
+                    onOpenSession={(session) => {
+                      preferences.recordSessionOpened(project.path, session.id)
+                      onOpenSession(project, session)
+                    }}
+                    onToggleSessionPinned={(sessionID) => preferences.toggleSessionPinned(project.path, sessionID)}
+                    onBeginRename={(session) => {
+                      setEditing({ path: project.path, id: session.id })
+                      setDraftTitle(session.title || '')
+                    }}
+                    onSubmitRename={(session) => { void submitRename(project, session) }}
+                    onCancelRename={() => setEditing(null)}
+                    onRequestDelete={(session) => setPendingDelete({ project, session })}
+                    onShowMore={() => stepVisibleCount(project.path, 1)}
+                    onShowLess={() => stepVisibleCount(project.path, -1)}
+                  />
+                )
+              })}
+            </SortableContext>
+          )}
+        </div>
+      </DndContext>
 
       <ConfirmDialog
         open={Boolean(pendingDelete)}
@@ -238,6 +246,41 @@ export function AgentChatSessionSidebar({
   )
 }
 
+function SidebarSortMenu({
+  sortMode,
+  onSortModeChange,
+}: {
+  sortMode: AgentChatSidebarSortMode
+  onSortModeChange: (mode: AgentChatSidebarSortMode) => void
+}) {
+  const { t } = useTranslation()
+  const label = t(`agentChat.sidebar.sort.${sortMode}`)
+  return (
+    <DropdownMenu>
+      <DropdownMenuTrigger asChild>
+        <Button
+          type="button"
+          variant="ghost"
+          size="icon-xs"
+          className="shrink-0"
+          aria-label={t('agentChat.sidebar.sort.label', { mode: label })}
+          title={t('agentChat.sidebar.sort.label', { mode: label })}
+        >
+          <ArrowDownUp />
+        </Button>
+      </DropdownMenuTrigger>
+      <DropdownMenuContent align="end" className="min-w-40">
+        {AGENT_CHAT_SIDEBAR_SORT_MODES.map((mode) => (
+          <DropdownMenuItem key={mode} onSelect={() => onSortModeChange(mode)} aria-current={mode === sortMode ? 'true' : undefined}>
+            <Check className={mode === sortMode ? '' : 'opacity-0'} />
+            {t(`agentChat.sidebar.sort.${mode}`)}
+          </DropdownMenuItem>
+        ))}
+      </DropdownMenuContent>
+    </DropdownMenu>
+  )
+}
+
 /** Grace period before a peek closes, so crossing the rail's edge diagonally does not dismiss it. */
 const PEEK_CLOSE_DELAY_MS = 160
 
@@ -248,13 +291,7 @@ interface AgentChatSidebarRailProps extends Omit<AgentChatSessionSidebarProps, '
   createDisabled: boolean
 }
 
-/**
- * The tree collapsed to a rail.
- *
- * The rail keeps the two things worth reaching without the tree — reopening it and starting a
- * conversation — and pointing at it peeks the full tree over the workbench, so a collapsed
- * sidebar still answers "what else is open?" without giving the space back permanently.
- */
+/** Compact launcher plus a temporary full conversation-tree peek. */
 export function AgentChatSidebarRail({ onExpand, onCreateDefaultSession, createDisabled, ...tree }: AgentChatSidebarRailProps) {
   const { t } = useTranslation()
   const [peeking, setPeeking] = useState(false)
@@ -265,12 +302,10 @@ export function AgentChatSidebarRail({ onExpand, onCreateDefaultSession, createD
     window.clearTimeout(closeTimerRef.current)
     closeTimerRef.current = null
   }
-
   const openPeek = () => {
     cancelClose()
     setPeeking(true)
   }
-
   const closePeek = () => {
     cancelClose()
     closeTimerRef.current = window.setTimeout(() => {
@@ -311,7 +346,7 @@ export function AgentChatSidebarRail({ onExpand, onCreateDefaultSession, createD
         <Plus />
       </Button>
 
-      {peeking && (
+      {peeking ? (
         <div
           className="absolute left-full top-0 h-full w-[clamp(200px,18vw,280px)] shadow-[8px_0_24px_-18px_rgba(0,0,0,0.8)]"
           onKeyDown={(event) => { if (event.key === 'Escape') setPeeking(false) }}
@@ -324,90 +359,7 @@ export function AgentChatSidebarRail({ onExpand, onCreateDefaultSession, createD
             }}
           />
         </div>
-      )}
-    </div>
-  )
-}
-
-function SessionRow({
-  session,
-  running,
-  editing,
-  draftTitle,
-  onDraftTitleChange,
-  onOpen,
-  onBeginRename,
-  onSubmitRename,
-  onCancelRename,
-  onRequestDelete,
-}: {
-  session: AgentChatSession
-  running: boolean
-  editing: boolean
-  draftTitle: string
-  onDraftTitleChange: (value: string) => void
-  onOpen: () => void
-  onBeginRename: () => void
-  onSubmitRename: () => void
-  onCancelRename: () => void
-  onRequestDelete: () => void
-}) {
-  const { t } = useTranslation()
-  const title = session.title || t('chat.untitledSession')
-
-  if (editing) {
-    return (
-      <div className="px-1 py-1">
-        <input
-          autoFocus
-          value={draftTitle}
-          onChange={(event) => onDraftTitleChange(event.target.value)}
-          onBlur={onSubmitRename}
-          onKeyDown={(event) => {
-            if (event.key === 'Enter') onSubmitRename()
-            if (event.key === 'Escape') onCancelRename()
-          }}
-          className="nova-field h-6 w-full rounded border px-1.5 text-xs outline-none"
-          aria-label={t('chat.sessionTitle')}
-        />
-      </div>
-    )
-  }
-
-  return (
-    <div className="group flex items-center gap-1 rounded-[var(--nova-radius)] pr-0.5 hover:bg-[var(--nova-hover)]">
-      <button
-        type="button"
-        onClick={onOpen}
-        title={`${title} · ${formatDateTime(session.updated_at || session.created_at) || ''}`}
-        className="flex min-w-0 flex-1 items-center gap-1.5 rounded-[var(--nova-radius)] px-1.5 py-1.5 text-left outline-none focus-visible:ring-1 focus-visible:ring-[var(--nova-accent)]"
-      >
-        <MessageSquareText className={`size-3.5 shrink-0 ${running ? 'animate-pulse text-[var(--nova-accent)]' : 'text-[var(--nova-text-faint)]'}`} />
-        <span className="min-w-0 flex-1 truncate text-xs text-[var(--nova-text)]">{title}</span>
-      </button>
-      <DropdownMenu>
-        <DropdownMenuTrigger asChild>
-          <Button
-            type="button"
-            variant="ghost"
-            size="icon-xs"
-            className="shrink-0 opacity-0 transition-opacity group-hover:opacity-100 data-[state=open]:opacity-100"
-            aria-label={t('agentChat.sidebar.sessionActions', { title })}
-          >
-            <MoreHorizontal />
-          </Button>
-        </DropdownMenuTrigger>
-        <DropdownMenuContent align="end" className="min-w-36">
-          <DropdownMenuItem onSelect={onBeginRename}>
-            <Edit3 />
-            {t('common.rename')}
-          </DropdownMenuItem>
-          <DropdownMenuItem variant="destructive" disabled={running} onSelect={onRequestDelete}>
-            <Trash2 />
-            {t('common.delete')}
-          </DropdownMenuItem>
-        </DropdownMenuContent>
-      </DropdownMenu>
+      ) : null}
     </div>
   )
 }

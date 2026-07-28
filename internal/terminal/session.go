@@ -100,7 +100,7 @@ func newSession(id, token string, spec Spec, scrollbackBytes int, onTerminal fun
 
 	cmd := exec.Command(spec.Command, spec.Args...)
 	cmd.Dir = spec.Cwd
-	cmd.Env = append(os.Environ(), spec.Env...)
+	cmd.Env = terminalProcessEnv(os.Environ(), spec.Env)
 
 	if err := terminalPty.Start(cmd); err != nil {
 		_ = terminalPty.Close()
@@ -287,8 +287,8 @@ func (s *Session) broadcast(chunk []byte) {
 		close(sub.out)
 	}
 	s.mu.Unlock()
-	for range lagging {
-		log.Printf("[terminal/session.go] dropped lagging subscriber id=%s queue=%d", s.id, defaultSubscriberQueue)
+	for _, sub := range lagging {
+		log.Printf("[terminal/session.go] dropped lagging subscriber id=%s queue=%d", s.id, cap(sub.out))
 	}
 }
 

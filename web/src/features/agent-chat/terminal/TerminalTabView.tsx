@@ -37,10 +37,12 @@ interface TerminalTabViewProps {
   /** Reports the backend session so the tab can re-attach after a reload. */
   /** Returns false when the tab was closed while its asynchronous creation was still running. */
   onSessionEstablished: (tabId: string, session: TerminalSessionInfo) => boolean
+  /** Receives the standard OSC 0/2 window title emitted by the foreground terminal program. */
+  onTitleChange: (tabId: string, title: string) => void
 }
 
 /** Terminal surface backed by a backend pty session (used to run codex / claude code / any shell). */
-export function TerminalTabView({ tab, active, onSessionEstablished }: TerminalTabViewProps) {
+export function TerminalTabView({ tab, active, onSessionEstablished, onTitleChange }: TerminalTabViewProps) {
   const { t } = useTranslation()
   const { resolvedTheme } = useTheme()
   const dark = resolvedTheme !== 'light'
@@ -49,6 +51,8 @@ export function TerminalTabView({ tab, active, onSessionEstablished }: TerminalT
   const fitRef = useRef<FitAddon | null>(null)
   const webglRef = useRef<WebglAddon | null>(null)
   const connectionRef = useRef<TerminalConnection | null>(null)
+  const onTitleChangeRef = useRef(onTitleChange)
+  onTitleChangeRef.current = onTitleChange
   /** Survives effect re-runs (including StrictMode double-invoke) so one tab never spawns two ptys. */
   const establishedRef = useRef<TerminalSessionInfo | null>(null)
   /** Shares the asynchronous resolution itself; the result ref alone is too late for StrictMode. */
@@ -90,6 +94,10 @@ export function TerminalTabView({ tab, active, onSessionEstablished }: TerminalT
     loadRenderer(terminal, webglRef)
     terminal.onData((data) => connectionRef.current?.send(data))
     terminal.onResize(({ cols, rows }) => connectionRef.current?.resize(cols, rows))
+    terminal.onTitleChange((title) => {
+      const normalized = normalizeTerminalTitle(title)
+      if (normalized) onTitleChangeRef.current(tab.id, normalized)
+    })
     terminalRef.current = terminal
     fitRef.current = fit
 
@@ -106,7 +114,16 @@ export function TerminalTabView({ tab, active, onSessionEstablished }: TerminalT
   }, [fitTerminal])
 
   useEffect(() => {
-    if (terminalRef.current) terminalRef.current.options.theme = terminalTheme(dark)
+    // next-themes commits its data attribute in the same React update. Reading CSS variables
+    // immediately can still see the previous palette, so apply on the next frame after styles
+    // have resolved. This also repaints already-open terminals instead of requiring a restart.
+    const id = window.requestAnimationFrame(() => {
+      const terminal = terminalRef.current
+      if (!terminal) return
+      terminal.options.theme = terminalTheme(dark)
+      terminal.refresh(0, terminal.rows - 1)
+    })
+    return () => window.cancelAnimationFrame(id)
   }, [dark])
 
   useEffect(() => {
@@ -361,4 +378,16 @@ export function terminalTabLabel(tab: AgentChatTerminalTab, t: (key: string) => 
   if (tab.title) return tab.title
   if (tab.profileId === 'custom') return tab.command || t('agentChat.terminal.profile.custom')
   return t(`agentChat.terminal.profile.${tab.profileId}`)
+}
+
+/** Keep terminal-owned titles display-safe and bounded before persisting them as local UI state. */
+export function normalizeTerminalTitle(title: string): string {
+  const printable = title.replace(/[\u0000-\u001f\u007f]/g, '').trim()
+  const application = [
+    { pattern: /\bclaude(?:\s+code)?\b/i, label: 'claude' },
+    { pattern: /\bcodex\b/i, label: 'codex' },
+    { pattern: /\bnvim\b/i, label: 'nvim' },
+    { pattern: /\bvim\b/i, label: 'vim' },
+  ].find(({ pattern }) => pattern.test(printable))
+  return application?.label ?? Array.from(printable).slice(0, 80).join('')
 }

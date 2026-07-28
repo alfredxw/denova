@@ -1,6 +1,9 @@
 const tab = {
   'tab.empty': 'No page is open',
   'tab.close': 'Close {{label}}',
+  'tab.closeCurrent': 'Close',
+  'tab.pin': 'Pin tab',
+  'tab.unpin': 'Unpin',
   'tab.lore': 'Lore',
   'tab.loreTitle': 'Story lore',
 } as const

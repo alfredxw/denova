@@ -76,6 +76,8 @@ interface MarkdownEditorProps {
   documentReview?: DocumentReviewController
   documentReviewNavigationIntent?: DocumentReviewNavigationIntent | null
   readingTypography?: ReadingTypographySettings
+  /** Opens a collapsed writing outline without coupling the editor to a layout implementation. */
+  onOpenOutline?: () => void
 }
 
 interface EditorSearchIntent {
@@ -107,6 +109,7 @@ export function MarkdownEditor({
   documentReview,
   documentReviewNavigationIntent,
   readingTypography,
+  onOpenOutline,
 }: MarkdownEditorProps) {
   const { t } = useTranslation()
   const [settingsOpen, setSettingsOpen] = useState(false)
@@ -488,6 +491,7 @@ export function MarkdownEditor({
         settings={settings}
         onSettingsChange={setSettings}
         readingTypography={readingTypography}
+        onOpenOutline={onOpenOutline}
         onGenerateIllustration={onGenerateIllustration}
         onRevealChapter={onRevealChapter}
         generateIllustrationDisabled={generateIllustrationDisabled}

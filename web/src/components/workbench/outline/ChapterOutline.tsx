@@ -28,7 +28,7 @@ interface ChapterOutlineProps {
   onRevealFile?: (path: string) => void | Promise<void>
   onRenameItem?: (path: string, newName: string) => Promise<void>
   onDeleteItem?: (path: string) => Promise<void>
-  onRequestBookSettingCreate: (item: { path: string; title: string }) => void
+  onRequestBookSettingCreate?: (item: { path: string; title: string }) => void
   onSetChapterConfirmed: (path: string, confirmed: boolean) => void | Promise<void>
 }
 
@@ -370,7 +370,7 @@ function PlanningListItem({
       <button
         type="button"
         title={document.title}
-        className={`nova-nav-item w-full border px-2 py-1 pr-8 text-left !text-[11px] !leading-4 ${
+        className={`nova-nav-item w-full border px-2 py-1 pr-8 text-left !text-sm !leading-normal ${
           selected
             ? 'is-active border-[var(--nova-border)]'
             : 'border-transparent bg-[var(--nova-surface)]'
