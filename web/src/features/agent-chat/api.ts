@@ -51,11 +51,19 @@ export function getAgentChatProjects(): Promise<AgentChatProject[]> {
 
 /** Search complete durable conversation metadata without switching the foreground workspace. */
 export function getAgentChatHistory(
-  options: { query?: string; offset?: number; limit?: number; signal?: AbortSignal } = {},
+  options: {
+    query?: string
+    workspace?: string
+    offset?: number
+    limit?: number
+    signal?: AbortSignal
+  } = {},
 ): Promise<AgentChatHistoryPage> {
   const params = new URLSearchParams()
   const query = options.query?.trim()
+  const workspace = options.workspace?.trim()
   if (query) params.set('query', query)
+  if (workspace) params.set('workspace', workspace)
   if (options.offset) params.set('offset', String(options.offset))
   if (options.limit) params.set('limit', String(options.limit))
   const suffix = params.size > 0 ? `?${params.toString()}` : ''

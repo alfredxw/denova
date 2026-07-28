@@ -29,7 +29,11 @@ type Spec struct {
 	Title     string
 	Command   string
 	Args      []string
-	Cwd       string
+	// StartupCommand is entered once into an interactive shell after it starts. Built-in
+	// Codex/Claude profiles use this instead of replacing the shell process, so leaving the CLI
+	// returns to the same workspace prompt. It is intentionally omitted from Info and logs.
+	StartupCommand string
+	Cwd            string
 	// Env holds KEY=VALUE pairs appended on top of the current process environment.
 	Env  []string
 	Cols int
@@ -86,6 +90,7 @@ type Session struct {
 	exitCode   int
 	exitErr    string
 	closed     bool
+	outputDone bool
 	exitedCh   chan struct{}
 	closeOnce  sync.Once
 	onTerminal func(*Session)
@@ -107,6 +112,16 @@ func newSession(id, token string, spec Spec, scrollbackBytes int, onTerminal fun
 		return nil, fmt.Errorf("start %q: %w", spec.Command, err)
 	}
 	preparePTYAfterStart(terminalPty)
+	if startupCommand := strings.TrimSpace(spec.StartupCommand); startupCommand != "" {
+		if _, err := terminalPty.Write([]byte(startupCommand + "\r")); err != nil {
+			if cmd.Process != nil {
+				_ = cmd.Process.Kill()
+			}
+			_ = cmd.Wait()
+			_ = terminalPty.Close()
+			return nil, fmt.Errorf("enter startup command: %w", err)
+		}
+	}
 
 	s := &Session{
 		id:         id,
@@ -208,7 +223,7 @@ func (s *Session) Attach(queueSize int) (history []byte, out <-chan []byte, deta
 	sub := &subscriber{out: make(chan []byte, queueSize)}
 	s.mu.Lock()
 	history = s.history.snapshot()
-	if s.closed || s.exited {
+	if s.closed || (s.exited && s.outputDone) {
 		s.mu.Unlock()
 		close(sub.out)
 		return history, sub.out, func() {}
@@ -250,6 +265,7 @@ func (s *Session) pumpOutput() {
 		if recovered := recover(); recovered != nil {
 			log.Printf("[terminal/session.go] output pump panic recovered id=%s err=%v", s.id, recovered)
 		}
+		s.finishOutput()
 	}()
 	buf := make([]byte, 32*1024)
 	for {
@@ -265,6 +281,20 @@ func (s *Session) pumpOutput() {
 			return
 		}
 	}
+}
+
+// finishOutput closes attached output streams only after the process exit status is visible.
+// This preserves the final PTY bytes and makes a closed subscription an unambiguous terminal
+// completion signal rather than racing cmd.Wait.
+func (s *Session) finishOutput() {
+	s.mu.Lock()
+	s.outputDone = true
+	var subs []*subscriber
+	if s.exited {
+		subs = s.takeSubscribersLocked()
+	}
+	s.mu.Unlock()
+	closeSubscribers(subs)
 }
 
 func (s *Session) broadcast(chunk []byte) {
@@ -315,10 +345,17 @@ func (s *Session) waitProcess() {
 	s.exited = true
 	s.exitCode = code
 	s.exitErr = message
+	// Attach must never observe exited=true before Exited is closed; the WebSocket relay uses
+	// these two signals together to distinguish natural completion from a dropped subscriber.
+	close(s.exitedCh)
+	var subs []*subscriber
+	if s.outputDone {
+		subs = s.takeSubscribersLocked()
+	}
 	s.mu.Unlock()
+	closeSubscribers(subs)
 	log.Printf("[terminal/session.go] process exited id=%s code=%d err=%q", s.id, code, message)
 	finishPTYAfterWait(s.pty)
-	close(s.exitedCh)
 	if s.onTerminal != nil {
 		s.onTerminal(s)
 	}
@@ -329,11 +366,7 @@ func (s *Session) Close() {
 	s.closeOnce.Do(func() {
 		s.mu.Lock()
 		s.closed = true
-		subs := make([]*subscriber, 0, len(s.subs))
-		for sub := range s.subs {
-			subs = append(subs, sub)
-		}
-		s.subs = map[*subscriber]struct{}{}
+		subs := s.takeSubscribersLocked()
 		exited := s.exited
 		s.mu.Unlock()
 
@@ -345,12 +378,31 @@ func (s *Session) Close() {
 		if err := s.pty.Close(); err != nil {
 			log.Printf("[terminal/session.go] close pty failed id=%s err=%v", s.id, err)
 		}
-		for _, sub := range subs {
-			sub.closed = true
-			close(sub.out)
-		}
+		closeSubscribers(subs)
 		log.Printf("[terminal/session.go] session closed id=%s", s.id)
 	})
+}
+
+// takeSubscribersLocked transfers ownership of every subscriber channel to the caller.
+// Marking and removing them under the session mutex prevents detach, exit and Close from
+// closing the same channel twice.
+func (s *Session) takeSubscribersLocked() []*subscriber {
+	subs := make([]*subscriber, 0, len(s.subs))
+	for sub := range s.subs {
+		if sub.closed {
+			continue
+		}
+		sub.closed = true
+		subs = append(subs, sub)
+	}
+	s.subs = map[*subscriber]struct{}{}
+	return subs
+}
+
+func closeSubscribers(subs []*subscriber) {
+	for _, sub := range subs {
+		close(sub.out)
+	}
 }
 
 func normalizeSize(cols, rows int) (int, int) {

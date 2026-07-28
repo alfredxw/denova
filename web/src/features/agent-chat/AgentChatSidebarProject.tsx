@@ -75,9 +75,14 @@ export function AgentChatSidebarProject({
 
   return (
     <div ref={setNodeRef} style={style} className={`mb-1 ${isDragging ? 'relative z-20 opacity-80' : ''}`}>
-      <div className={`group flex items-center gap-0.5 rounded-[var(--nova-radius)] pr-0.5 ${
-        active ? 'bg-[var(--nova-active)]' : 'hover:bg-[var(--nova-hover)]'
-      }`}>
+      <div className="group relative flex items-center gap-0.5 rounded-[var(--nova-radius)] pr-0.5 transition-colors hover:bg-[var(--nova-hover)]">
+        {active && !expanded ? (
+          <span
+            data-slot="agent-chat-project-active-indicator"
+            aria-hidden="true"
+            className="absolute bottom-2 left-0 top-2 w-px rounded-full bg-[var(--nova-text-faint)]"
+          />
+        ) : null}
         <button
           ref={setActivatorNodeRef}
           type="button"
@@ -85,7 +90,6 @@ export function AgentChatSidebarProject({
           {...(manualSorting ? listeners : {})}
           onClick={onToggle}
           aria-expanded={expanded}
-          aria-current={active ? 'true' : undefined}
           title={manualSorting ? `${project.path} · ${t('agentChat.sidebar.longPressToReorder')}` : project.path}
           className={`flex min-w-0 flex-1 items-center gap-1.5 rounded-[var(--nova-radius)] px-1 py-1.5 text-left outline-none focus-visible:ring-1 focus-visible:ring-[var(--nova-accent)] ${manualSorting ? 'cursor-default' : ''}`}
         >
@@ -130,7 +134,7 @@ export function AgentChatSidebarProject({
       </div>
 
       {expanded && (project.error || activities.length > 0) ? (
-        <div className="ml-3 border-l border-[var(--nova-border-soft)] pl-1.5">
+        <div className="ml-3 mt-1 border-l border-[var(--nova-border-soft)] pl-1.5">
           {project.error ? (
             <p className="px-2 py-2 text-[11px] text-[var(--nova-danger)]">{project.error}</p>
           ) : activities.map((activity) => (

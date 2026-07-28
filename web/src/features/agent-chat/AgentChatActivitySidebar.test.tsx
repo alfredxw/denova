@@ -51,7 +51,13 @@ describe('AgentChatActivitySidebar', () => {
 
   it('shows active work but keeps historical conversations out of the project tree', () => {
     renderSidebar()
-    expect(screen.getByRole('button', { name: /Active chat/ })).toHaveAttribute('aria-current', 'page')
+    const projectButton = screen.getByTitle(project.path)
+    const activityButton = screen.getByRole('button', { name: /Active chat/ })
+
+    expect(projectButton).not.toHaveAttribute('aria-current')
+    expect(projectButton.parentElement).not.toHaveClass('bg-[var(--nova-active)]')
+    expect(activityButton).toHaveAttribute('aria-current', 'page')
+    expect(activityButton).toHaveClass('bg-[var(--nova-active)]')
     expect(screen.queryByText('Historical chat')).not.toBeInTheDocument()
     expect(screen.getByRole('button', { name: '对话历史' })).toBeInTheDocument()
   })
@@ -65,6 +71,7 @@ describe('AgentChatActivitySidebar', () => {
     const projectButton = screen.getByTitle(project.path)
     await user.click(projectButton)
     expect(projectButton).toHaveAttribute('aria-expanded', 'false')
+    expect(projectButton.parentElement?.querySelector('[data-slot="agent-chat-project-active-indicator"]')).not.toBeNull()
     expect(screen.queryByRole('button', { name: /Active chat/ })).not.toBeInTheDocument()
   })
 

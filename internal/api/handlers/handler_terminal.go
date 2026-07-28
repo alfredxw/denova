@@ -102,21 +102,22 @@ func (h *Handlers) HandleTerminalSessionCreate(_ context.Context, c *hertzapp.Re
 		requestedCwd = workspace
 	}
 	profileID := strings.TrimSpace(req.ProfileID)
-	command, args, err := manager.ResolveLaunchProfile(profileID, req.Command, req.Args)
+	launch, err := manager.ResolveLaunchProfile(profileID, req.Command, req.Args)
 	if err != nil {
 		writeTerminalError(c, err)
 		return
 	}
 	spec := terminal.Spec{
-		OwnerTabID: ownerTabID,
-		ProfileID:  profileID,
-		Title:      strings.TrimSpace(req.Title),
-		Command:    command,
-		Args:       args,
-		Cwd:        h.app.ResolveTerminalCwd(requestedCwd),
-		Cols:       req.Cols,
-		Rows:       req.Rows,
-		Workspace:  workspace,
+		OwnerTabID:     ownerTabID,
+		ProfileID:      profileID,
+		Title:          strings.TrimSpace(req.Title),
+		Command:        launch.Command,
+		Args:           launch.Args,
+		StartupCommand: launch.StartupCommand,
+		Cwd:            h.app.ResolveTerminalCwd(requestedCwd),
+		Cols:           req.Cols,
+		Rows:           req.Rows,
+		Workspace:      workspace,
 	}
 	session, err := manager.Create(spec)
 	if err != nil {
@@ -255,6 +256,12 @@ func serveTerminalSocketWithSubscriberQueue(session *terminal.Session, conn term
 			return false
 		case writes <- write:
 			return true
+		default:
+			// The session retains bounded scrollback, so disconnecting a client that cannot drain
+			// its own write queue is recoverable and preferable to blocking every relay goroutine.
+			log.Printf("[api/handlers/handler_terminal.go] terminal write queue saturated, closing socket id=%s", session.ID())
+			closeSocket()
+			return false
 		}
 	}
 	writeBinary := func(payload []byte) bool {

@@ -58,6 +58,14 @@ type AgentChatHistoryPage struct {
 	HasMore bool                   `json:"has_more"`
 }
 
+// AgentChatHistoryQuery keeps project scope, search, and pagination explicit at the app boundary.
+type AgentChatHistoryQuery struct {
+	Workspace string
+	Search    string
+	Offset    int
+	Limit     int
+}
+
 // AgentChatProjects lists every book without changing App.workspace or the
 // foreground Writing session.
 func (a *App) AgentChatProjects() []AgentChatProject {
@@ -145,19 +153,25 @@ func agentChatSessionFromMeta(
 	}
 }
 
-// AgentChatHistory searches the complete conversation library without switching the foreground
-// workspace. Results are globally ordered and paginated so the UI never needs to load an
-// unbounded history merely to render the project activity tree.
-func (a *App) AgentChatHistory(query string, offset, limit int) AgentChatHistoryPage {
-	page := AgentChatHistoryPage{Items: []AgentChatHistoryItem{}, Offset: max(offset, 0)}
-	if a == nil || limit <= 0 {
+// AgentChatHistory searches durable conversation metadata without switching the foreground
+// workspace. An optional workspace scope lets the history browser paginate one project at a time.
+func (a *App) AgentChatHistory(query AgentChatHistoryQuery) AgentChatHistoryPage {
+	page := AgentChatHistoryPage{Items: []AgentChatHistoryItem{}, Offset: max(query.Offset, 0)}
+	if a == nil || query.Limit <= 0 {
 		return page
 	}
 	startedAt := time.Now()
-	normalizedQuery := strings.ToLower(strings.TrimSpace(query))
+	normalizedQuery := strings.ToLower(strings.TrimSpace(query.Search))
+	workspaceKey := ""
+	if workspace := strings.TrimSpace(query.Workspace); workspace != "" {
+		workspaceKey = lifecycleWorkspaceKey(workspace)
+	}
 	runningBindings := a.agentChat().runningBindingKeys()
 	items := make([]AgentChatHistoryItem, 0)
 	for _, record := range a.Books() {
+		if workspaceKey != "" && lifecycleWorkspaceKey(record.Path) != workspaceKey {
+			continue
+		}
 		metas, err := readWorkspaceSessions(record.Path, "")
 		if err != nil {
 			log.Printf("[app/agent_chat_projects.go] reading history failed workspace=%q err=%v", record.Path, err)
@@ -196,7 +210,7 @@ func (a *App) AgentChatHistory(query string, offset, limit int) AgentChatHistory
 	if page.Offset >= page.Total {
 		return page
 	}
-	end := min(page.Offset+limit, page.Total)
+	end := min(page.Offset+query.Limit, page.Total)
 	page.Items = append(page.Items, items[page.Offset:end]...)
 	page.HasMore = end < page.Total
 	log.Printf(

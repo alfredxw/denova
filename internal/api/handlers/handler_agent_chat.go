@@ -77,7 +77,12 @@ func (h *Handlers) HandleAgentChatHistory(_ context.Context, c *app.RequestConte
 		}
 		limit = min(limit, maxAgentChatHistoryPageSize)
 	}
-	writeJSON(c, consts.StatusOK, h.app.AgentChatHistory(c.Query("query"), offset, limit))
+	writeJSON(c, consts.StatusOK, h.app.AgentChatHistory(appsvc.AgentChatHistoryQuery{
+		Workspace: c.Query("workspace"),
+		Search:    c.Query("query"),
+		Offset:    offset,
+		Limit:     limit,
+	}))
 }
 
 func (h *Handlers) HandleAgentChatSessionCreate(_ context.Context, c *app.RequestContext) {

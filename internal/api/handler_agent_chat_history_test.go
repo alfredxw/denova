@@ -49,14 +49,37 @@ func TestAgentChatHistorySearchAndPagination(t *testing.T) {
 	if body.Items[0].Workspace == "" || body.Items[0].Session.Title != "Needle conversation" || body.Offset != 0 || body.HasMore {
 		t.Fatalf("unexpected history item metadata: %#v", body)
 	}
+	historyWorkspace := body.Items[0].Workspace
+
+	otherBook := performJSONRequest(t, server, http.MethodPost, "/api/books/create", map[string]string{"title": "Other History Book"})
+	if otherBook.Code != http.StatusOK {
+		t.Fatalf("create other book status = %d body=%s", otherBook.Code, otherBook.Body.String())
+	}
+	var createdOtherBook struct {
+		Workspace string `json:"workspace"`
+	}
+	decodeResponse(t, otherBook.Body.Bytes(), &createdOtherBook)
+	if _, err := application.CreateProjectSession(createdOtherBook.Workspace, "Newest conversation"); err != nil {
+		t.Fatal(err)
+	}
 
 	paginated := performJSONRequest(t, server, http.MethodGet, "/api/agent-chat/history?query=conversation&limit=1", nil)
 	if paginated.Code != http.StatusOK {
 		t.Fatalf("paginated history status = %d body=%s", paginated.Code, paginated.Body.String())
 	}
 	decodeResponse(t, paginated.Body.Bytes(), &body)
-	if body.Total != 2 || len(body.Items) != 1 || !body.HasMore {
+	if body.Total != 3 || len(body.Items) != 1 || !body.HasMore {
 		t.Fatalf("unexpected paginated history response: %#v", body)
+	}
+
+	filtered := performJSONRequest(t, server, http.MethodGet,
+		"/api/agent-chat/history?query=conversation&workspace="+url.QueryEscape(historyWorkspace)+"&limit=1", nil)
+	if filtered.Code != http.StatusOK {
+		t.Fatalf("filtered history status = %d body=%s", filtered.Code, filtered.Body.String())
+	}
+	decodeResponse(t, filtered.Body.Bytes(), &body)
+	if body.Total != 2 || len(body.Items) != 1 || body.Items[0].Workspace != historyWorkspace || !body.HasMore {
+		t.Fatalf("history was not filtered to the requested project: %#v", body)
 	}
 
 	invalid := performJSONRequest(t, server, http.MethodGet, "/api/agent-chat/history?offset=-1", nil)

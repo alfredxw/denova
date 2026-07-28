@@ -764,6 +764,8 @@ export function AgentChatView({
       </AdaptiveSurface>
       <AgentChatSessionHistoryDialog
         open={historyOpen}
+        projects={projects}
+        currentProjectPath={activeProjectPath}
         onOpenChange={setHistoryOpen}
         onOpenSession={openHistorySession}
         onRenameSession={(item, title) => renameSession(item.workspace, item.session, title)}

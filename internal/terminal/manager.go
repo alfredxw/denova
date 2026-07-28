@@ -56,6 +56,15 @@ var ErrInvalidProfile = errors.New("invalid terminal profile")
 // ErrInvalidLaunchCommand reports a malformed or empty configured CLI command.
 var ErrInvalidLaunchCommand = errors.New("invalid terminal launch command")
 
+// ResolvedLaunchProfile separates the long-lived PTY root from an optional command entered into
+// it. Built-in CLI profiles keep an interactive shell as the root; legacy custom profiles still
+// launch their configured executable directly.
+type ResolvedLaunchProfile struct {
+	Command        string
+	Args           []string
+	StartupCommand string
+}
+
 // Config is the resolved terminal runtime configuration.
 type Config struct {
 	Enabled bool
@@ -151,31 +160,39 @@ func (m *Manager) ResolveShell() string {
 	return resolveShell(configured)
 }
 
-// ResolveLaunchProfile turns the stable profile id into the exact executable and arguments for
-// a new session. Built-in profiles intentionally ignore client-supplied commands: their launch
-// command is a user-level setting and therefore has one authoritative backend resolution path.
-// The custom branch remains only for tabs persisted by earlier beta clients.
-func (m *Manager) ResolveLaunchProfile(profileID, customCommand string, customArgs []string) (string, []string, error) {
+// ResolveLaunchProfile turns the stable profile id into a PTY root plus an optional shell startup
+// command. Built-in profiles intentionally ignore client-supplied commands: their launch command
+// is a user-level setting and therefore has one authoritative backend resolution path. The custom
+// branch remains only for tabs persisted by earlier beta clients.
+func (m *Manager) ResolveLaunchProfile(profileID, customCommand string, customArgs []string) (ResolvedLaunchProfile, error) {
 	m.mu.Lock()
 	cfg := m.cfg
 	m.mu.Unlock()
 
 	switch strings.TrimSpace(profileID) {
 	case "shell":
-		return "", nil, nil
+		return ResolvedLaunchProfile{}, nil
 	case "codex":
-		return parseLaunchCommand(cfg.CodexCommand)
+		return shellLaunchProfile(cfg.CodexCommand)
 	case "claude":
-		return parseLaunchCommand(cfg.ClaudeCommand)
+		return shellLaunchProfile(cfg.ClaudeCommand)
 	case "custom":
 		command := strings.TrimSpace(customCommand)
 		if command == "" {
-			return "", nil, fmt.Errorf("%w: custom command is empty", ErrInvalidLaunchCommand)
+			return ResolvedLaunchProfile{}, fmt.Errorf("%w: custom command is empty", ErrInvalidLaunchCommand)
 		}
-		return command, append([]string(nil), customArgs...), nil
+		return ResolvedLaunchProfile{Command: command, Args: append([]string(nil), customArgs...)}, nil
 	default:
-		return "", nil, fmt.Errorf("%w: %q", ErrInvalidProfile, profileID)
+		return ResolvedLaunchProfile{}, fmt.Errorf("%w: %q", ErrInvalidProfile, profileID)
 	}
+}
+
+func shellLaunchProfile(commandLine string) (ResolvedLaunchProfile, error) {
+	commandLine = strings.TrimSpace(commandLine)
+	if _, _, err := parseLaunchCommand(commandLine); err != nil {
+		return ResolvedLaunchProfile{}, err
+	}
+	return ResolvedLaunchProfile{StartupCommand: commandLine}, nil
 }
 
 func parseLaunchCommand(commandLine string) (string, []string, error) {

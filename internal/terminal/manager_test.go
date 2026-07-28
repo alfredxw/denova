@@ -65,6 +65,89 @@ func TestManagerCreateRunsCommandAndStreamsOutput(t *testing.T) {
 	}
 }
 
+func TestAttachedSessionClosesOutputAfterFinalProcessBytes(t *testing.T) {
+	manager := newTestManager(t)
+	session, err := manager.Create(Spec{
+		Command: "/bin/sh",
+		Args:    []string{"-c", "printf final-output"},
+		Cwd:     t.TempDir(),
+	})
+	if err != nil {
+		t.Fatalf("create session: %v", err)
+	}
+	_, out, detach := session.Attach(16)
+	defer detach()
+
+	type outputResult struct {
+		text string
+	}
+	result := make(chan outputResult, 1)
+	go func() {
+		var builder strings.Builder
+		for chunk := range out {
+			builder.Write(chunk)
+		}
+		result <- outputResult{text: builder.String()}
+	}()
+
+	select {
+	case got := <-result:
+		if !strings.Contains(got.text, "final-output") {
+			t.Fatalf("final output was lost before subscription close: %q", got.text)
+		}
+	case <-time.After(2 * time.Second):
+		t.Fatal("attached output subscription stayed open after process exit")
+	}
+	select {
+	case <-session.Exited():
+	default:
+		t.Fatal("output subscription closed before process exit became observable")
+	}
+}
+
+func TestCLIStartupReturnsToWorkspaceShell(t *testing.T) {
+	manager := NewManager(Config{
+		Enabled:         true,
+		Shell:           "/bin/sh",
+		ClaudeCommand:   "/bin/sh -c 'printf cli-finished'",
+		MaxSessions:     1,
+		ScrollbackBytes: 4096,
+	})
+	t.Cleanup(manager.CloseAll)
+	launch, err := manager.ResolveLaunchProfile("claude", "", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	workspace := t.TempDir()
+	session, err := manager.Create(Spec{
+		ProfileID:      "claude",
+		Command:        launch.Command,
+		Args:           launch.Args,
+		StartupCommand: launch.StartupCommand,
+		Cwd:            workspace,
+	})
+	if err != nil {
+		t.Fatalf("create Claude profile session: %v", err)
+	}
+	_, out, detach := session.Attach(16)
+	defer detach()
+
+	if got := collect(t, session, out, "cli-finished"); !strings.Contains(got, "cli-finished") {
+		t.Fatalf("startup command output = %q", got)
+	}
+	select {
+	case <-session.Exited():
+		t.Fatal("leaving the startup CLI exited the workspace shell")
+	default:
+	}
+	if err := session.Write([]byte("pwd\r")); err != nil {
+		t.Fatalf("write command after CLI exit: %v", err)
+	}
+	if got := collect(t, session, out, workspace); !strings.Contains(got, workspace) {
+		t.Fatalf("CLI did not return to the workspace shell: output=%q workspace=%q", got, workspace)
+	}
+}
+
 func TestSessionAttachReplaysScrollback(t *testing.T) {
 	manager := newTestManager(t)
 	session, err := manager.Create(Spec{Command: "/bin/sh", Args: []string{"-c", "echo replay-marker"}, Cwd: t.TempDir()})
@@ -212,33 +295,33 @@ func TestManagerResolveLaunchProfile(t *testing.T) {
 		ScrollbackBytes: 4096,
 	})
 
-	command, args, err := manager.ResolveLaunchProfile("codex", "ignored", []string{"--ignored"})
+	launch, err := manager.ResolveLaunchProfile("codex", "ignored", []string{"--ignored"})
 	if err != nil {
 		t.Fatal(err)
 	}
-	if command != "npx" || fmt.Sprint(args) != "[@openai/codex --profile deep work]" {
-		t.Fatalf("unexpected Codex launch: command=%q args=%v", command, args)
+	if launch.Command != "" || len(launch.Args) != 0 || launch.StartupCommand != `npx @openai/codex --profile "deep work"` {
+		t.Fatalf("unexpected Codex launch: %#v", launch)
 	}
 
-	command, args, err = manager.ResolveLaunchProfile("claude", "", nil)
+	launch, err = manager.ResolveLaunchProfile("claude", "", nil)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if command != "/Applications/Claude Code/claude" || fmt.Sprint(args) != "[--resume]" {
-		t.Fatalf("unexpected Claude launch: command=%q args=%v", command, args)
+	if launch.Command != "" || len(launch.Args) != 0 || launch.StartupCommand != `"/Applications/Claude Code/claude" --resume` {
+		t.Fatalf("unexpected Claude launch: %#v", launch)
 	}
 
-	command, args, err = manager.ResolveLaunchProfile("shell", "ignored", []string{"--ignored"})
-	if err != nil || command != "" || len(args) != 0 {
-		t.Fatalf("shell should defer to the configured login shell: command=%q args=%v err=%v", command, args, err)
+	launch, err = manager.ResolveLaunchProfile("shell", "ignored", []string{"--ignored"})
+	if err != nil || launch.Command != "" || len(launch.Args) != 0 || launch.StartupCommand != "" {
+		t.Fatalf("shell should defer to the configured login shell: launch=%#v err=%v", launch, err)
 	}
 
-	if _, _, err = manager.ResolveLaunchProfile("unknown", "", nil); !errors.Is(err, ErrInvalidProfile) {
+	if _, err = manager.ResolveLaunchProfile("unknown", "", nil); !errors.Is(err, ErrInvalidProfile) {
 		t.Fatalf("unknown profile should fail with ErrInvalidProfile, got %v", err)
 	}
 
 	manager.SetConfig(Config{Enabled: true, CodexCommand: `"unterminated`, MaxSessions: 2, ScrollbackBytes: 4096})
-	if _, _, err = manager.ResolveLaunchProfile("codex", "", nil); !errors.Is(err, ErrInvalidLaunchCommand) {
+	if _, err = manager.ResolveLaunchProfile("codex", "", nil); !errors.Is(err, ErrInvalidLaunchCommand) {
 		t.Fatalf("malformed command should fail with ErrInvalidLaunchCommand, got %v", err)
 	}
 }

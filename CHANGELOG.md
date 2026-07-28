@@ -60,8 +60,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Changed
 
-- Agent Chat 左侧栏改为跨项目的活动工作导航，只展示已打开的对话、终端和仍在运行的后台会话，并标明运行、连接、退出与异常状态；完整历史迁移到独立的跨项目搜索入口，点击活动项或历史项会直接恢复并聚焦对应工作台标签。
-- The Agent Chat sidebar is now a cross-project active-work navigator for open conversations, terminals, and detached running sessions, with explicit runtime states. Full history moves to a separate cross-project search, and selecting an activity or history result restores and focuses its exact workbench tab.
+- Agent Chat 左侧栏改为跨项目的活动工作导航，只展示已打开的对话、终端和仍在运行的后台会话，并标明运行、连接、退出与异常状态；完整历史迁移到独立的紧凑主从浏览器，左侧可折叠项目导航默认将当前项目置顶，右侧按所选项目搜索和分页展示会话，点击活动项或历史项会直接恢复并聚焦对应工作台标签。展开的项目保持中性，仅当前会话使用整行选中底色；折叠的当前项目改用弱侧线提示，避免项目与会话的父子层级黏连。
+- The Agent Chat sidebar is now a cross-project active-work navigator for open conversations, terminals, and detached running sessions, with explicit runtime states. Full history moves to a compact master-detail browser: a collapsible project navigator places the current project first, while the session list searches and paginates within the selected project. Selecting an activity or history result restores and focuses its exact workbench tab. Expanded projects remain neutral so only the focused activity owns a full-row selection; a collapsed current project uses a subtle side marker instead, keeping parent and child hierarchy visually distinct.
 - 独立 Lore Tab 的资料编辑器补齐删除入口，复用资料库的应用内危险操作确认；删除前会先保存当前草稿，成功后自动切换到下一条资料，避免延迟自动保存重新写回已删除条目。
 - The standalone Lore tab now exposes entry deletion with the library's in-app destructive-action confirmation. It saves the current draft before deletion and selects the next entry afterward, preventing delayed autosave from recreating deleted lore.
 - 工作台变更审阅移除与外层真实标签重复的内部「审阅」标签行，关闭操作统一由工作台标签承担；共享标签栏的新增按钮在标签溢出前后都保持垂直居中。
@@ -87,6 +87,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Fixed
 
+- 修复内置 Claude Code / Codex Terminal 将 CLI 错误作为 PTY 根进程启动的问题；两种 Profile 现在都在 workspace 的交互式 Shell 内启动，退出 CLI 会回到原工作目录。真正退出根 Shell 时会先送完最终 PTY 输出再报告退出状态，写队列拥塞也会触发可恢复断开，不再留下卡死的 Terminal Tab。
+- Fixed the built-in Claude Code and Codex terminals launching the CLI itself as the PTY root process. Both profiles now start inside an interactive shell in the workspace, so leaving the CLI returns to the original working directory. A real root-shell exit drains final PTY output before reporting completion, and write-queue saturation triggers a recoverable disconnect instead of leaving a frozen terminal tab.
 - 修复资料编辑器在切换资料项后仍把 TipTap 的失焦内部选区误认为当前选区、错误显示「添加评论」浮层的问题；选区操作现在只在编辑器保持焦点且确有可见文本选区时出现，点击浮层本身仍会保留原选区。
 - Fixed the Lore editor showing Add Comment after switching entries because TipTap retained an unfocused internal selection. Selection actions now appear only for a visible non-empty selection in the focused editor, while interacting with the toolbar preserves that selection.
 - 修复已打开终端在应用切换 light/dark 主题时仍保留旧背景的问题；xterm 现在会在主题属性和 CSS 变量完成提交后重新解析调色板并重绘现有屏幕。
