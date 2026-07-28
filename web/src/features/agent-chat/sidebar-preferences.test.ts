@@ -2,7 +2,6 @@ import { describe, expect, it } from 'vitest'
 import type { AgentChatProject } from './api'
 import {
   orderAgentChatProjects,
-  orderAgentChatSessions,
   reorderKnownItems,
   type AgentChatSidebarPreferences,
 } from './sidebar-preferences'
@@ -27,47 +26,38 @@ function preferences(overrides: Partial<AgentChatSidebarPreferences> = {}): Agen
   return {
     sortMode: 'updated',
     pinnedProjects: [],
-    pinnedSessions: {},
     manualProjectOrder: [],
-    manualSessionOrder: {},
     projectOpenedAt: {},
-    sessionOpenedAt: {},
     ...overrides,
   }
 }
 
 describe('AgentChat sidebar ordering preferences', () => {
-  it('sorts both levels by server updates while keeping pinned entries first', () => {
+  it('sorts projects by server updates while keeping pinned entries first', () => {
     const value = preferences({
       pinnedProjects: ['/books/a'],
-      pinnedSessions: { '/books/a': ['a-old'] },
     })
 
     expect(orderAgentChatProjects(projects, value).map((project) => project.path)).toEqual(['/books/a', '/books/b'])
-    expect(orderAgentChatSessions(projects[0], value).map((session) => session.id)).toEqual(['a-old', 'a-new'])
   })
 
   it('uses persisted open recency with update time as a deterministic fallback', () => {
     const value = preferences({
       sortMode: 'opened',
       projectOpenedAt: { '/books/a': 200, '/books/b': 100 },
-      sessionOpenedAt: { '/books/a': { 'a-old': 300 } },
     })
 
     expect(orderAgentChatProjects(projects, value).map((project) => project.path)).toEqual(['/books/a', '/books/b'])
-    expect(orderAgentChatSessions(projects[0], value).map((session) => session.id)).toEqual(['a-old', 'a-new'])
   })
 
   it('honours manual order and preserves ids outside the current server window when reordering', () => {
     const value = preferences({
       sortMode: 'manual',
       manualProjectOrder: ['/books/b', '/books/a'],
-      manualSessionOrder: { '/books/a': ['a-new', 'a-old'] },
     })
 
     expect(orderAgentChatProjects(projects, value).map((project) => project.path)).toEqual(['/books/b', '/books/a'])
-    expect(orderAgentChatSessions(projects[0], value).map((session) => session.id)).toEqual(['a-new', 'a-old'])
-    expect(reorderKnownItems(['hidden', 'a-new', 'a-old'], ['a-new', 'a-old'], 'a-old', 'a-new'))
-      .toEqual(['hidden', 'a-old', 'a-new'])
+    expect(reorderKnownItems(['/books/b', '/books/a'], ['/books/b', '/books/a'], '/books/a', '/books/b'))
+      .toEqual(['/books/a', '/books/b'])
   })
 })

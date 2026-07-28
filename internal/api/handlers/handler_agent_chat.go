@@ -51,6 +51,35 @@ func (h *Handlers) HandleAgentChatProjects(_ context.Context, c *app.RequestCont
 	writeJSON(c, consts.StatusOK, map[string]any{"projects": h.app.AgentChatProjects()})
 }
 
+const (
+	defaultAgentChatHistoryPageSize = 80
+	maxAgentChatHistoryPageSize     = 200
+)
+
+// HandleAgentChatHistory searches durable conversations across every registered project without
+// changing the Writing workspace or loading message bodies.
+func (h *Handlers) HandleAgentChatHistory(_ context.Context, c *app.RequestContext) {
+	offset := 0
+	limit := defaultAgentChatHistoryPageSize
+	var err error
+	if raw := strings.TrimSpace(c.Query("offset")); raw != "" {
+		offset, err = strconv.Atoi(raw)
+		if err != nil || offset < 0 {
+			writeErrorKey(c, consts.StatusBadRequest, "api.common.invalidQuery")
+			return
+		}
+	}
+	if raw := strings.TrimSpace(c.Query("limit")); raw != "" {
+		limit, err = strconv.Atoi(raw)
+		if err != nil || limit <= 0 {
+			writeErrorKey(c, consts.StatusBadRequest, "api.common.invalidQuery")
+			return
+		}
+		limit = min(limit, maxAgentChatHistoryPageSize)
+	}
+	writeJSON(c, consts.StatusOK, h.app.AgentChatHistory(c.Query("query"), offset, limit))
+}
+
 func (h *Handlers) HandleAgentChatSessionCreate(_ context.Context, c *app.RequestContext) {
 	var req agentChatSessionCreateRequest
 	if err := c.BindJSON(&req); err != nil {

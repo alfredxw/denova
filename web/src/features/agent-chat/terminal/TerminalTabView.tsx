@@ -20,7 +20,7 @@ import { TerminalConnection } from './connection'
 import { terminalTheme } from './theme'
 
 /** Attach lifecycle for one terminal tab. Every state is rendered explicitly. */
-type TerminalStatus = 'connecting' | 'ready' | 'exited' | 'error'
+export type AgentChatTerminalStatus = 'connecting' | 'ready' | 'exited' | 'error'
 
 /**
  * The stack has to be a literal: the WebGL renderer rasterises glyphs onto a canvas through
@@ -39,10 +39,12 @@ interface TerminalTabViewProps {
   onSessionEstablished: (tabId: string, session: TerminalSessionInfo) => boolean
   /** Receives the standard OSC 0/2 window title emitted by the foreground terminal program. */
   onTitleChange: (tabId: string, title: string) => void
+  /** Projects terminal lifecycle into the cross-project activity navigator. */
+  onStatusChange: (tabId: string, status: AgentChatTerminalStatus | null) => void
 }
 
 /** Terminal surface backed by a backend pty session (used to run codex / claude code / any shell). */
-export function TerminalTabView({ tab, active, onSessionEstablished, onTitleChange }: TerminalTabViewProps) {
+export function TerminalTabView({ tab, active, onSessionEstablished, onTitleChange, onStatusChange }: TerminalTabViewProps) {
   const { t } = useTranslation()
   const { resolvedTheme } = useTheme()
   const dark = resolvedTheme !== 'light'
@@ -58,9 +60,17 @@ export function TerminalTabView({ tab, active, onSessionEstablished, onTitleChan
   /** Shares the asynchronous resolution itself; the result ref alone is too late for StrictMode. */
   const resolvingRef = useRef<Promise<TerminalSessionInfo> | null>(null)
   const releasedSessionIdsRef = useRef(new Set<string>())
-  const [status, setStatus] = useState<TerminalStatus>('connecting')
+  const [status, setStatus] = useState<AgentChatTerminalStatus>('connecting')
   const [statusDetail, setStatusDetail] = useState('')
   const [attempt, setAttempt] = useState(0)
+
+  useEffect(() => {
+    onStatusChange(tab.id, status)
+  }, [onStatusChange, status, tab.id])
+
+  useEffect(() => () => {
+    onStatusChange(tab.id, null)
+  }, [onStatusChange, tab.id])
 
   const fitTerminal = useCallback(() => {
     const terminal = terminalRef.current
@@ -295,7 +305,7 @@ function TerminalStatusBar({
   onRestart,
   onReattach,
 }: {
-  status: TerminalStatus
+  status: AgentChatTerminalStatus
   detail: string
   label: string
   onRestart: () => void

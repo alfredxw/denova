@@ -42,6 +42,22 @@ type AgentChatProject struct {
 	Error    string             `json:"error,omitempty"`
 }
 
+// AgentChatHistoryItem keeps project ownership explicit when conversations from the whole
+// library are searched together.
+type AgentChatHistoryItem struct {
+	Workspace   string           `json:"workspace"`
+	ProjectName string           `json:"project_name"`
+	Session     AgentChatSession `json:"session"`
+}
+
+// AgentChatHistoryPage is bounded independently from the lightweight project activity snapshot.
+type AgentChatHistoryPage struct {
+	Items   []AgentChatHistoryItem `json:"items"`
+	Total   int                    `json:"total"`
+	Offset  int                    `json:"offset"`
+	HasMore bool                   `json:"has_more"`
+}
+
 // AgentChatProjects lists every book without changing App.workspace or the
 // foreground Writing session.
 func (a *App) AgentChatProjects() []AgentChatProject {
@@ -68,25 +84,17 @@ func (a *App) AgentChatProjects() []AgentChatProject {
 			projects = append(projects, project)
 			continue
 		}
-		project.Total = len(metas)
-		if len(metas) > AgentChatProjectSessionsLimit {
-			metas = metas[:AgentChatProjectSessionsLimit]
-		}
 		runningWorkspace := record.Path
 		if len(runningBindings) > 0 {
 			if canonical, canonicalErr := canonicalWorkspacePath(record.Path); canonicalErr == nil {
 				runningWorkspace = canonical
 			}
 		}
+		project.Total = len(metas)
+		metas = visibleAgentChatProjectSessions(metas, runningWorkspace, runningBindings)
 		project.Sessions = make([]AgentChatSession, 0, len(metas))
 		for _, meta := range metas {
-			_, running := runningBindings[agentChatBindingKey(AgentChatBinding{
-				Workspace: runningWorkspace, SessionID: meta.ID,
-			})]
-			project.Sessions = append(project.Sessions, AgentChatSession{
-				ID: meta.ID, Title: meta.Title, CreatedAt: meta.CreatedAt, UpdatedAt: meta.UpdatedAt,
-				MessageCount: meta.MessageCount, Running: running,
-			})
+			project.Sessions = append(project.Sessions, agentChatSessionFromMeta(meta, runningWorkspace, runningBindings))
 		}
 		projects = append(projects, project)
 	}
@@ -99,6 +107,103 @@ func (a *App) AgentChatProjects() []AgentChatProject {
 		len(projects), totalSessions, time.Since(startedAt),
 	)
 	return projects
+}
+
+// Keep the project snapshot cheap without ever hiding a running conversation. Detached tasks
+// must remain reachable from the activity sidebar even when their older metadata falls outside
+// the normal recent-session window.
+func visibleAgentChatProjectSessions(
+	metas []session.SessionMeta,
+	workspace string,
+	runningBindings map[string]struct{},
+) []session.SessionMeta {
+	if len(metas) <= AgentChatProjectSessionsLimit {
+		return metas
+	}
+	visible := append([]session.SessionMeta(nil), metas[:AgentChatProjectSessionsLimit]...)
+	for _, meta := range metas[AgentChatProjectSessionsLimit:] {
+		if agentChatSessionRunning(workspace, meta.ID, runningBindings) {
+			visible = append(visible, meta)
+		}
+	}
+	return visible
+}
+
+func agentChatSessionRunning(workspace, sessionID string, runningBindings map[string]struct{}) bool {
+	_, running := runningBindings[agentChatBindingKey(AgentChatBinding{Workspace: workspace, SessionID: sessionID})]
+	return running
+}
+
+func agentChatSessionFromMeta(
+	meta session.SessionMeta,
+	workspace string,
+	runningBindings map[string]struct{},
+) AgentChatSession {
+	return AgentChatSession{
+		ID: meta.ID, Title: meta.Title, CreatedAt: meta.CreatedAt, UpdatedAt: meta.UpdatedAt,
+		MessageCount: meta.MessageCount, Running: agentChatSessionRunning(workspace, meta.ID, runningBindings),
+	}
+}
+
+// AgentChatHistory searches the complete conversation library without switching the foreground
+// workspace. Results are globally ordered and paginated so the UI never needs to load an
+// unbounded history merely to render the project activity tree.
+func (a *App) AgentChatHistory(query string, offset, limit int) AgentChatHistoryPage {
+	page := AgentChatHistoryPage{Items: []AgentChatHistoryItem{}, Offset: max(offset, 0)}
+	if a == nil || limit <= 0 {
+		return page
+	}
+	startedAt := time.Now()
+	normalizedQuery := strings.ToLower(strings.TrimSpace(query))
+	runningBindings := a.agentChat().runningBindingKeys()
+	items := make([]AgentChatHistoryItem, 0)
+	for _, record := range a.Books() {
+		metas, err := readWorkspaceSessions(record.Path, "")
+		if err != nil {
+			log.Printf("[app/agent_chat_projects.go] reading history failed workspace=%q err=%v", record.Path, err)
+			continue
+		}
+		runningWorkspace := record.Path
+		if len(runningBindings) > 0 {
+			if canonical, canonicalErr := canonicalWorkspacePath(record.Path); canonicalErr == nil {
+				runningWorkspace = canonical
+			}
+		}
+		projectSearchText := strings.ToLower(record.Name + " " + record.Path)
+		for _, meta := range metas {
+			if normalizedQuery != "" {
+				sessionSearchText := strings.ToLower(meta.Title + " " + meta.ID)
+				if !strings.Contains(sessionSearchText, normalizedQuery) && !strings.Contains(projectSearchText, normalizedQuery) {
+					continue
+				}
+			}
+			items = append(items, AgentChatHistoryItem{
+				Workspace: record.Path, ProjectName: record.Name,
+				Session: agentChatSessionFromMeta(meta, runningWorkspace, runningBindings),
+			})
+		}
+	}
+	sort.SliceStable(items, func(i, j int) bool {
+		if !items[i].Session.UpdatedAt.Equal(items[j].Session.UpdatedAt) {
+			return items[i].Session.UpdatedAt.After(items[j].Session.UpdatedAt)
+		}
+		if items[i].Workspace != items[j].Workspace {
+			return items[i].Workspace < items[j].Workspace
+		}
+		return items[i].Session.ID < items[j].Session.ID
+	})
+	page.Total = len(items)
+	if page.Offset >= page.Total {
+		return page
+	}
+	end := min(page.Offset+limit, page.Total)
+	page.Items = append(page.Items, items[page.Offset:end]...)
+	page.HasMore = end < page.Total
+	log.Printf(
+		"[app/agent_chat_projects.go] searched conversation history query_length=%d total=%d offset=%d returned=%d duration=%s",
+		len([]rune(normalizedQuery)), page.Total, page.Offset, len(page.Items), time.Since(startedAt),
+	)
+	return page
 }
 
 func readWorkspaceSessions(workspace, activeID string) ([]session.SessionMeta, error) {

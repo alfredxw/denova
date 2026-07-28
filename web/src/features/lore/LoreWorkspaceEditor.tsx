@@ -5,10 +5,12 @@ import {
   ChevronDown,
   LibraryBig,
   SlidersHorizontal,
+  Trash2,
 } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import type { LoreItem } from '@/lib/api'
 import { Button } from '@/components/ui/button'
+import { ConfirmDialog } from '@/components/common/ConfirmDialog'
 import {
   Collapsible,
   CollapsibleContent,
@@ -55,6 +57,7 @@ interface LoreWorkspaceEditorProps {
   onTagDraftChange: (value: string) => void
   onPrepareSnapshot: () => Promise<{ content: string; revision: string }>
   onFlush: () => Promise<boolean>
+  onDelete: (id: string) => Promise<boolean>
   onOpenDirectory?: () => void
   onOpenLibrary?: () => void
   onReferenceItem?: (id: string) => void
@@ -72,12 +75,17 @@ export function LoreWorkspaceEditor({
   onTagDraftChange,
   onPrepareSnapshot,
   onFlush,
+  onDelete,
   onOpenDirectory,
   onOpenLibrary,
   onReferenceItem,
 }: LoreWorkspaceEditorProps) {
   const { t } = useTranslation()
   const [metadataOpen, setMetadataOpen] = useState(false)
+  const [deleteTarget, setDeleteTarget] = useState<{
+    id: string
+    name: string
+  } | null>(null)
   const target = useMemo(
     () => ({
       kind: 'lore_item' as const,
@@ -144,6 +152,18 @@ export function LoreWorkspaceEditor({
             <LibraryBig />
           </Button>
         ) : null}
+        <Button
+          type="button"
+          variant="ghost"
+          size="icon-sm"
+          disabled={autosaveStatus === 'saving'}
+          onClick={() => setDeleteTarget({ id: draft.id, name: draft.name })}
+          className="text-[var(--nova-text-faint)] hover:bg-[var(--nova-danger-bg)] hover:text-[var(--nova-danger)]"
+          aria-label={t('settingPanel.deleteLore')}
+          title={t('settingPanel.deleteLore')}
+        >
+          <Trash2 />
+        </Button>
       </div>
 
       <Collapsible
@@ -310,6 +330,21 @@ export function LoreWorkspaceEditor({
         }}
         aria-label={t('loreWorkspace.contentLabel', { name: draft.name })}
         className="flex min-h-0 min-w-0 flex-1 flex-col overflow-y-auto bg-[var(--nova-bg)] text-sm leading-7 [&_.tiptap]:mx-auto [&_.tiptap]:min-h-full [&_.tiptap]:w-full [&_.tiptap]:max-w-[880px] [&_.tiptap]:px-6 [&_.tiptap]:py-8 md:[&_.tiptap]:px-10 md:[&_.tiptap]:py-10"
+      />
+      <ConfirmDialog
+        open={Boolean(deleteTarget)}
+        onOpenChange={(open) => {
+          if (!open) setDeleteTarget(null)
+        }}
+        title={t('settingPanel.deleteLore')}
+        description={t('settingPanel.confirmDeleteLore', {
+          name: deleteTarget?.name || '',
+        })}
+        confirmLabel={t('common.delete')}
+        tone="danger"
+        onConfirm={() =>
+          deleteTarget ? onDelete(deleteTarget.id) : false
+        }
       />
     </div>
   )

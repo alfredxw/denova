@@ -3,7 +3,13 @@ import type { Editor } from '@tiptap/react'
 import { MessageSquarePlus, MessageSquareQuote } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 
-/** 选区浮动工具条，定位在光标（选区 head 端）旁边。 */
+/**
+ * 选区浮动工具条，定位在光标（选区 head 端）旁边。
+ *
+ * ProseMirror 在失焦后仍会保留内部选区；只有编辑器保持焦点时，这个选区才是用户
+ * 当前可见、可操作的选区。工具条自身阻止 pointerdown 抢走焦点，确保点击操作仍能
+ * 使用原选区。
+ */
 export function SelectionToolbar({ editor, mode = 'quote', onAction }: { editor: Editor; mode?: 'quote' | 'comment'; onAction: () => void }) {
   const { t } = useTranslation()
   const [coords, setCoords] = useState<{ top: number; left: number } | null>(null)
@@ -12,7 +18,7 @@ export function SelectionToolbar({ editor, mode = 'quote', onAction }: { editor:
   useEffect(() => {
     const updatePosition = () => {
       const { from, to, head } = editor.state.selection
-      if (from === to) {
+      if (!editor.isFocused || from === to) {
         setCoords(null)
         return
       }
@@ -42,8 +48,16 @@ export function SelectionToolbar({ editor, mode = 'quote', onAction }: { editor:
       }
     }
     updatePosition()
+    editor.on('focus', updatePosition)
+    editor.on('blur', updatePosition)
     editor.on('selectionUpdate', updatePosition)
-    return () => { editor.off('selectionUpdate', updatePosition) }
+    editor.on('update', updatePosition)
+    return () => {
+      editor.off('focus', updatePosition)
+      editor.off('blur', updatePosition)
+      editor.off('selectionUpdate', updatePosition)
+      editor.off('update', updatePosition)
+    }
   }, [editor])
 
   if (!coords) return null
@@ -53,6 +67,7 @@ export function SelectionToolbar({ editor, mode = 'quote', onAction }: { editor:
       ref={toolbarRef}
       className="absolute z-30 flex items-center gap-1 rounded-md border border-[var(--nova-border)] bg-[var(--nova-menu-bg)] px-1.5 py-1 shadow-xl backdrop-blur"
       style={{ top: coords.top, left: coords.left }}
+      onPointerDown={(event) => event.preventDefault()}
     >
       <button
         type="button"

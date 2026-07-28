@@ -68,7 +68,6 @@ export function MarkdownRichEditor({
   'aria-label': ariaLabel,
 }: MarkdownRichEditorProps) {
   const searchStateRef = useRef<SearchState>({ query: '', index: 0, useRegex: false })
-  const [hasSelection, setHasSelection] = useState(false)
   const [reviewPortalTargets, setReviewPortalTargets] = useState<DocumentReviewPortalTarget[]>([])
   const containerRef = useRef<HTMLDivElement>(null)
   const reviewAnnotationsRef = useRef<DocumentReviewAnnotationsHandle>(null)
@@ -141,18 +140,6 @@ export function MarkdownRichEditor({
   })
 
   useEffect(() => {
-    if (!editor) return
-    const updateSelection = () => setHasSelection(editor.state.selection.from !== editor.state.selection.to)
-    updateSelection()
-    editor.on('selectionUpdate', updateSelection)
-    editor.on('update', updateSelection)
-    return () => {
-      editor.off('selectionUpdate', updateSelection)
-      editor.off('update', updateSelection)
-    }
-  }, [editor])
-
-  useEffect(() => {
     const intent = review?.navigationIntent
     if (!intent || lastReviewNavigationNonceRef.current === intent.nonce) return
     const revealed = reviewAnnotationsRef.current?.revealComment(intent.commentID)
@@ -209,7 +196,7 @@ export function MarkdownRichEditor({
           onDelete={review.controller.onDelete}
         />
       ) : null}
-      {editor && review && hasSelection ? (
+      {editor && review ? (
         <SelectionToolbar editor={editor} mode="comment" onAction={() => reviewAnnotationsRef.current?.startSelectionComment()} />
       ) : null}
     </div>

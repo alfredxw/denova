@@ -128,6 +128,7 @@ describe('TerminalTabView session lifecycle', () => {
           active
           onSessionEstablished={onSessionEstablished}
           onTitleChange={vi.fn()}
+          onStatusChange={vi.fn()}
         />
       </StrictMode>,
     )
@@ -153,6 +154,7 @@ describe('TerminalTabView session lifecycle', () => {
         active
         onSessionEstablished={onSessionEstablished}
         onTitleChange={vi.fn()}
+        onStatusChange={vi.fn()}
       />,
     )
 
@@ -166,7 +168,7 @@ describe('TerminalTabView session lifecycle', () => {
     apiMocks.createTerminalSession.mockReturnValue(creation.promise)
     let owned = true
     const view = render(
-      <TerminalTabView tab={tab} active onSessionEstablished={() => owned} onTitleChange={vi.fn()} />,
+      <TerminalTabView tab={tab} active onSessionEstablished={() => owned} onTitleChange={vi.fn()} onStatusChange={vi.fn()} />,
     )
     await waitFor(() => expect(apiMocks.createTerminalSession).toHaveBeenCalledTimes(1))
 
@@ -183,7 +185,7 @@ describe('TerminalTabView session lifecycle', () => {
       .mockResolvedValueOnce(session('session-1'))
       .mockResolvedValueOnce(session('session-2'))
 
-    render(<TerminalTabView tab={tab} active onSessionEstablished={() => true} onTitleChange={vi.fn()} />)
+    render(<TerminalTabView tab={tab} active onSessionEstablished={() => true} onTitleChange={vi.fn()} onStatusChange={vi.fn()} />)
     await waitFor(() => expect(connectionMocks.handlers).toHaveLength(1))
     act(() => connectionMocks.handlers[0].onControl({ type: 'exit', code: 0, error: '' }))
 
@@ -204,6 +206,7 @@ describe('TerminalTabView session lifecycle', () => {
         active
         onSessionEstablished={() => true}
         onTitleChange={onTitleChange}
+        onStatusChange={vi.fn()}
       />,
     )
     await waitFor(() => expect(terminalMocks.titleHandlers).toHaveLength(1))

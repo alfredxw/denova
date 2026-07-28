@@ -199,6 +199,7 @@ export function LoreWorkspaceTab({
               onTagDraftChange={lore.setTagDraft}
               onPrepareSnapshot={lore.prepareSnapshot}
               onFlush={lore.flush}
+              onDelete={lore.deleteItem}
               onOpenDirectory={isMobile ? openLeft : undefined}
               onOpenLibrary={onOpenLibrary}
               onReferenceItem={onReferenceItem}

@@ -1,7 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import { useTranslation } from 'react-i18next'
 import { MessageSquareText } from 'lucide-react'
-import { toast } from 'sonner'
 import { Group, Panel, Separator } from 'react-resizable-panels'
 import { AdaptiveSurface } from '@/components/layout/adaptive-surface'
 import { MobilePaneTrigger } from '@/components/layout/mobile-pane-trigger'
@@ -21,9 +20,11 @@ import {
   type AgentChatProject,
   type AgentChatSession,
 } from './api'
-import { AgentChatSessionSidebar, AgentChatSidebarRail } from './AgentChatSessionSidebar'
+import { AgentChatActivitySidebar, AgentChatSidebarRail } from './AgentChatActivitySidebar'
+import { AgentChatSessionHistoryDialog } from './AgentChatSessionHistoryDialog'
 import { AgentChatTabContent } from './AgentChatTabContent'
 import { AgentChatTabBar } from './AgentChatTabBar'
+import { agentChatSessionBindingKey } from './sidebar-activity'
 import {
   appendTab,
   createTabId,
@@ -43,8 +44,9 @@ import {
   tabsInGroup,
   type AgentChatProjectTabState,
 } from './tab-state'
-import { terminalTabLabel } from './terminal/TerminalTabView'
+import { terminalTabLabel, type AgentChatTerminalStatus } from './terminal/TerminalTabView'
 import { useTerminalSessionLifecycle } from './terminal/use-terminal-session-lifecycle'
+import { useAgentChatActivityNavigator } from './use-agent-chat-activity-navigator'
 import {
   AGENT_CHAT_GROUP_IDS,
   type AgentChatDocumentReviewNavigation,
@@ -71,10 +73,6 @@ interface AgentChatViewProps {
   onActivateWorkspace?: (workspace: string) => Promise<boolean>
   onFlushHandlerChange?: (handler: EditorFlushHandler | null) => void
   onWorkspaceChanged?: (workspace: string, paths: string[]) => void | Promise<void>
-}
-
-function bindingKey(workspace: string, sessionId: string) {
-  return `${workspace}\u0000${sessionId}`
 }
 
 function mountedTabKey(workspace: string, tabId: string) {
@@ -116,11 +114,13 @@ export function AgentChatView({
   const workbenchRef = useRef(workbench)
   workbenchRef.current = workbench
   const [sidebarVisible, setSidebarVisible] = useState(() => readSidebarVisible())
+  const [historyOpen, setHistoryOpen] = useState(false)
   /** Once mounted, a tab stays mounted so hidden conversations keep receiving their own stream. */
   const [mountedTabKeys, setMountedTabKeys] = useState<ReadonlySet<string>>(() => new Set())
   /** Optimistic live state reported by mounted hooks, layered over the project snapshot. */
   const [liveRunningBindings, setLiveRunningBindings] = useState<ReadonlySet<string>>(() => new Set())
   const liveRunningBindingsRef = useRef<ReadonlySet<string>>(new Set())
+  const [terminalStatuses, setTerminalStatuses] = useState<ReadonlyMap<string, AgentChatTerminalStatus>>(() => new Map())
   const refreshSequenceRef = useRef(0)
   const pageFlushHandlersRef = useRef(new Map<string, EditorFlushHandler>())
   const navigationNonceRef = useRef(0)
@@ -131,11 +131,11 @@ export function AgentChatView({
     setWorkbench,
   )
 
-  const refreshProjects = useCallback(async () => {
+  const refreshProjects = useCallback(async (): Promise<AgentChatProject[] | null> => {
     const sequence = ++refreshSequenceRef.current
     try {
       const next = await getAgentChatProjects()
-      if (refreshSequenceRef.current !== sequence) return
+      if (refreshSequenceRef.current !== sequence) return null
       setProjects(next)
       setProjectsError('')
       setWorkbench((current) => {
@@ -148,10 +148,27 @@ export function AgentChatView({
           : next.find((project) => project.current)?.path || next[0]?.path || ''
         return { activeProjectPath, projects: projectStates }
       })
+      // Mounted conversations keep their optimistic state until their hook reports a transition.
+      // Detached rows can drop the optimistic binding after this authoritative snapshot arrives;
+      // a still-running task is now represented by `session.running` and remains pollable.
+      const openBindings = new Set<string>()
+      for (const [workspace, state] of Object.entries(workbenchRef.current.projects)) {
+        for (const tab of state.tabs) {
+          if (tab.kind === 'agent') openBindings.add(agentChatSessionBindingKey(workspace, tab.sessionId))
+        }
+      }
+      const currentLive = liveRunningBindingsRef.current
+      const retainedLive = new Set([...currentLive].filter((key) => openBindings.has(key)))
+      if (retainedLive.size !== currentLive.size) {
+        liveRunningBindingsRef.current = retainedLive
+        setLiveRunningBindings(retainedLive)
+      }
+      return next
     } catch (error) {
-      if (refreshSequenceRef.current !== sequence) return
+      if (refreshSequenceRef.current !== sequence) return null
       console.error('[features/agent-chat/AgentChatView.tsx] loading projects failed', { error })
       setProjectsError(error instanceof Error ? error.message : String(error))
+      return null
     } finally {
       if (refreshSequenceRef.current === sequence) setProjectsLoading(false)
     }
@@ -260,13 +277,13 @@ export function AgentChatView({
     void refreshProjects()
   }, [refreshProjects])
 
-  const renameSession = useCallback(async (project: AgentChatProject, session: AgentChatSession, title: string) => {
+  const renameSession = useCallback(async (workspace: string, session: AgentChatSession, title: string) => {
     try {
-      await renameAgentChatSession(project.path, session.id, title)
+      await renameAgentChatSession(workspace, session.id, title)
       await refreshProjects()
     } catch (error) {
       console.error('[features/agent-chat/AgentChatView.tsx] renaming session failed', { sessionId: session.id, error })
-      toast.error(error instanceof Error ? error.message : String(error))
+      throw error
     }
   }, [refreshProjects])
 
@@ -307,17 +324,17 @@ export function AgentChatView({
     return true
   }, [flushPageDrafts, markTerminalTabsClosing])
 
-  const deleteSession = useCallback(async (project: AgentChatProject, session: AgentChatSession) => {
+  const deleteSession = useCallback(async (workspace: string, session: AgentChatSession) => {
     try {
-      await deleteAgentChatSession(project.path, session.id)
-      const state = workbench.projects[project.path]
-      await closeTabs(project.path, state?.tabs
+      await deleteAgentChatSession(workspace, session.id)
+      const state = workbench.projects[workspace]
+      await closeTabs(workspace, state?.tabs
         .filter((tab) => tab.kind === 'agent' && tab.sessionId === session.id)
         .map((tab) => tab.id) || [])
       await refreshProjects()
     } catch (error) {
       console.error('[features/agent-chat/AgentChatView.tsx] deleting session failed', { sessionId: session.id, error })
-      toast.error(error instanceof Error ? error.message : String(error))
+      throw error
     }
   }, [closeTabs, refreshProjects, workbench.projects])
 
@@ -429,6 +446,17 @@ export function AgentChatView({
     })
   }, [])
 
+  const handleTerminalStatusChange = useCallback((tabId: string, status: AgentChatTerminalStatus | null) => {
+    setTerminalStatuses((current) => {
+      if (status === null && !current.has(tabId)) return current
+      if (status !== null && current.get(tabId) === status) return current
+      const next = new Map(current)
+      if (status === null) next.delete(tabId)
+      else next.set(tabId, status)
+      return next
+    })
+  }, [])
+
   const openProjectPage = useCallback((workspace: string, group: AgentChatGroupId, pageId: AgentChatPageId) => {
     openTab({
       kind: 'page',
@@ -490,12 +518,18 @@ export function AgentChatView({
   }, [openTab, workbench.projects])
 
   const handleRunningChange = useCallback((workspace: string, sessionId: string, running: boolean | null) => {
-    const key = bindingKey(workspace, sessionId)
+    const key = agentChatSessionBindingKey(workspace, sessionId)
     const current = liveRunningBindingsRef.current
     const wasRunning = current.has(key)
     console.debug(
       `[features/agent-chat/AgentChatView.tsx] conversation running state changed session=${sessionId} running=${String(running)} was_running=${wasRunning}`,
     )
+    if (running === null) {
+      // Unmount is loss of the local observer, not proof that the backend task stopped. Keep the
+      // optimistic row until an authoritative project snapshot takes over.
+      if (wasRunning) void refreshProjects()
+      return
+    }
     const next = new Set(current)
     if (running) next.add(key)
     else next.delete(key)
@@ -508,14 +542,12 @@ export function AgentChatView({
     if (running === false && wasRunning) void refreshProjects()
   }, [refreshProjects])
 
-  const isSessionRunning = useCallback((project: AgentChatProject, session: AgentChatSession) => (
-    session.running || liveRunningBindings.has(bindingKey(project.path, session.id))
-  ), [liveRunningBindings])
-
   const sessionTitles = useMemo(() => {
     const titles = new Map<string, string>()
     for (const project of projects) {
-      for (const session of project.sessions) titles.set(bindingKey(project.path, session.id), session.title)
+      for (const session of project.sessions) {
+        titles.set(agentChatSessionBindingKey(project.path, session.id), session.title)
+      }
     }
     return titles
   }, [projects])
@@ -524,7 +556,9 @@ export function AgentChatView({
     if (tab.customTitle) return tab.customTitle
     switch (tab.kind) {
       case 'agent':
-        return sessionTitles.get(bindingKey(tab.workspace, tab.sessionId)) || tab.pendingTitle || t('chat.untitledSession')
+        return sessionTitles.get(agentChatSessionBindingKey(tab.workspace, tab.sessionId))
+          || tab.pendingTitle
+          || t('chat.untitledSession')
       case 'terminal':
         return terminalTabLabel(tab, t)
       case 'page':
@@ -534,19 +568,29 @@ export function AgentChatView({
     }
   }, [sessionTitles, t])
 
+  const { activitiesByProject, isSessionRunning, openHistorySession, openSidebarActivity } = useAgentChatActivityNavigator({
+    projects,
+    workbench,
+    liveRunningBindings,
+    terminalStatuses,
+    tabTitle,
+    refreshProjects,
+    activateTab,
+    openSessionTab,
+  })
+
   const treeProps = {
     projects,
+    activitiesByProject,
     loading: projectsLoading,
     error: projectsError,
     activeProjectPath,
-    isSessionRunning,
     onSelectProject: (project: AgentChatProject) => selectProject(project.path),
-    onOpenSession: openSessionTab,
+    onOpenActivity: openSidebarActivity,
     onCreateSession: (project: AgentChatProject) => openDraftSessionInProject(project),
-    onRenameSession: renameSession,
-    onDeleteSession: deleteSession,
+    onOpenHistory: () => setHistoryOpen(true),
   }
-  const sidebar = <AgentChatSessionSidebar {...treeProps} onCollapse={() => setSidebarVisible(false)} />
+  const sidebar = <AgentChatActivitySidebar {...treeProps} onCollapse={() => setSidebarVisible(false)} />
 
   const renderProjectGroup = (
     project: AgentChatProject,
@@ -641,6 +685,7 @@ export function AgentChatView({
                   onDraftCommitted={(message) => commitDraftSession(tab.workspace, tab.id, message)}
                   onTerminalSessionEstablished={(tabId, session) => bindTerminalSession(project.path, tabId, session)}
                   onTerminalTitleChange={(tabId, title) => updateTerminalTitle(project.path, tabId, title)}
+                  onTerminalStatusChange={handleTerminalStatusChange}
                 />
               </section>
             )
@@ -651,22 +696,23 @@ export function AgentChatView({
   }
 
   return (
-    <AdaptiveSurface
-      className="h-full min-h-0"
-      collapseAt={720}
-      desktopGridClassName={sidebarVisible
-        ? 'grid-cols-[clamp(200px,18vw,280px)_minmax(0,1fr)]'
-        : 'grid-cols-[minmax(0,1fr)]'}
-      left={{
-        id: 'agent-chat-sessions',
-        side: 'left',
-        title: t('agentChat.sidebar.projects'),
-        content: sidebar,
-        desktopClassName: 'h-full min-h-0 min-w-0',
-        enabled: sidebarVisible,
-      }}
-    >
-      {(controls) => {
+    <>
+      <AdaptiveSurface
+        className="h-full min-h-0"
+        collapseAt={720}
+        desktopGridClassName={sidebarVisible
+          ? 'grid-cols-[clamp(200px,18vw,280px)_minmax(0,1fr)]'
+          : 'grid-cols-[minmax(0,1fr)]'}
+        left={{
+          id: 'agent-chat-activity',
+          side: 'left',
+          title: t('agentChat.sidebar.projects'),
+          content: sidebar,
+          desktopClassName: 'h-full min-h-0 min-w-0',
+          enabled: sidebarVisible,
+        }}
+      >
+        {(controls) => {
         const projectLayers = projects.map((project) => {
           const state = workbench.projects[project.path] ?? emptyProjectTabState()
           const visible = project.path === activeProjectPath
@@ -714,7 +760,15 @@ export function AgentChatView({
             <div className="min-w-0 flex-1">{workbenchContent}</div>
           </div>
         )
-      }}
-    </AdaptiveSurface>
+        }}
+      </AdaptiveSurface>
+      <AgentChatSessionHistoryDialog
+        open={historyOpen}
+        onOpenChange={setHistoryOpen}
+        onOpenSession={openHistorySession}
+        onRenameSession={(item, title) => renameSession(item.workspace, item.session, title)}
+        onDeleteSession={(item) => deleteSession(item.workspace, item.session)}
+      />
+    </>
   )
 }

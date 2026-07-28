@@ -4,6 +4,7 @@ import { useTranslation } from 'react-i18next'
 import type { EditorFlushHandler } from '@/components/Editor/useEditorDraftPersistence'
 import {
   createLoreItem,
+  deleteLoreItem,
   getLoreItems,
   type LoreItem,
   type LoreItemInput,
@@ -46,10 +47,12 @@ export function useLoreWorkspace({
   const [error, setError] = useState('')
   const requestRef = useRef(0)
   const rebaseSequenceRef = useRef(0)
+  const itemsRef = useRef<LoreItem[]>([])
   const draftRef = useRef<LoreItem | null>(null)
   const tagDraftRef = useRef('')
   const baselineRef = useRef<LoreAutosaveDraft | null>(null)
 
+  itemsRef.current = items
   draftRef.current = draft
   tagDraftRef.current = tagDraft
   baselineRef.current = baseline
@@ -310,6 +313,52 @@ export function useLoreWorkspace({
     [flush, t, workspace],
   )
 
+  const deleteItem = useCallback(
+    async (id: string) => {
+      if (!id || draftRef.current?.id !== id) return false
+      if (!(await flush())) return false
+      if (draftRef.current?.id !== id) return false
+      autosave.cancelPending()
+      try {
+        await deleteLoreItem(workspace, id)
+      } catch (cause) {
+        console.error('[LoreWorkspaceTab] failed to delete lore item', {
+          workspace,
+          itemID: id,
+          cause,
+        })
+        throw cause
+      }
+
+      const nextItems = itemsRef.current.filter((item) => item.id !== id)
+      const nextID = firstVisibleLoreItemId(nextItems) || ''
+      const nextItem = nextItems.find((item) => item.id === nextID) || null
+      const nextBaseline = nextItem ? loreAutosaveDraft(nextItem) : null
+      const nextDraft = nextItem
+        ? { ...nextItem, tags: [...(nextItem.tags || [])] }
+        : null
+      const nextTagDraft = (nextItem?.tags || []).join('，')
+
+      requestRef.current += 1
+      rebaseSequenceRef.current += 1
+      itemsRef.current = nextItems
+      draftRef.current = nextDraft
+      tagDraftRef.current = nextTagDraft
+      baselineRef.current = nextBaseline
+      setItems(nextItems)
+      setLoading(false)
+      setError('')
+      setActiveId(nextID)
+      setDraft(nextDraft)
+      setTagDraft(nextTagDraft)
+      setBaseline(nextBaseline)
+      persistSelectedLoreID(workspace, nextID)
+      notifyLoreUpdated({ ids: [id], source: EVENT_SOURCE })
+      return true
+    },
+    [autosave.cancelPending, flush, workspace],
+  )
+
   const prepareSnapshot =
     useCallback(async (): Promise<DocumentReviewSnapshot> => {
       const itemID = draftRef.current?.id
@@ -343,6 +392,7 @@ export function useLoreWorkspace({
       setTagDraft,
       selectItem,
       createItem,
+      deleteItem,
       prepareSnapshot,
       flush,
       reload,
@@ -352,6 +402,7 @@ export function useLoreWorkspace({
       autosave.error,
       autosave.status,
       createItem,
+      deleteItem,
       draft,
       error,
       flush,

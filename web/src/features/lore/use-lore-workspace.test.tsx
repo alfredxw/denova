@@ -3,6 +3,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { preserveAutosaveConflict } from '@/lib/api-client/autosave-conflicts'
 import {
   createLoreItem,
+  deleteLoreItem,
   getLoreItems,
   updateLoreItem,
   type LoreItem,
@@ -12,6 +13,7 @@ import { useLoreWorkspace } from './use-lore-workspace'
 
 vi.mock('@/lib/api', () => ({
   createLoreItem: vi.fn(),
+  deleteLoreItem: vi.fn(),
   getLoreItems: vi.fn(),
   updateLoreItem: vi.fn(),
 }))
@@ -127,6 +129,76 @@ describe('useLoreWorkspace', () => {
     )
     expect(result.current.items).toEqual([saved, created])
     expect(result.current.draft).toMatchObject({ id: 'lore-2', name: 'New character' })
+  })
+
+  it('flushes the selected item before deleting it and selects the next item', async () => {
+    const initial = loreItem()
+    const next = loreItem({
+      id: 'lore-2',
+      name: 'Next character',
+      created_at: 'r2',
+      updated_at: 'r2',
+    })
+    const saved = loreItem({ name: 'Saved before delete', updated_at: 'r3' })
+    vi.mocked(getLoreItems).mockResolvedValue([initial, next])
+    vi.mocked(updateLoreItem).mockResolvedValue(saved)
+    vi.mocked(deleteLoreItem).mockResolvedValue(undefined)
+
+    const { result } = renderHook(() => useLoreWorkspace({
+      workspace: '/books/demo',
+      onFlushHandlerChange: vi.fn(),
+    }))
+    await waitFor(() => expect(result.current.draft?.id).toBe('lore-1'))
+
+    act(() => {
+      result.current.setDraft({
+        ...result.current.draft!,
+        name: 'Saved before delete',
+      })
+    })
+    await act(async () => {
+      expect(await result.current.deleteItem('lore-1')).toBe(true)
+    })
+
+    expect(updateLoreItem).toHaveBeenCalledWith(
+      '/books/demo',
+      'lore-1',
+      expect.objectContaining({ name: 'Saved before delete' }),
+      'r1',
+    )
+    expect(deleteLoreItem).toHaveBeenCalledWith('/books/demo', 'lore-1')
+    expect(vi.mocked(updateLoreItem).mock.invocationCallOrder[0]).toBeLessThan(
+      vi.mocked(deleteLoreItem).mock.invocationCallOrder[0],
+    )
+    expect(result.current.items).toEqual([next])
+    expect(result.current.activeId).toBe('lore-2')
+    expect(result.current.draft).toMatchObject({
+      id: 'lore-2',
+      name: 'Next character',
+    })
+    expect(window.localStorage.getItem('nova.lore.workspace.selection:/books/demo'))
+      .toBe('lore-2')
+  })
+
+  it('clears the editor after deleting the final lore item', async () => {
+    vi.mocked(getLoreItems).mockResolvedValue([loreItem()])
+    vi.mocked(deleteLoreItem).mockResolvedValue(undefined)
+
+    const { result } = renderHook(() => useLoreWorkspace({
+      workspace: '/books/demo',
+      onFlushHandlerChange: vi.fn(),
+    }))
+    await waitFor(() => expect(result.current.draft?.id).toBe('lore-1'))
+
+    await act(async () => {
+      expect(await result.current.deleteItem('lore-1')).toBe(true)
+    })
+
+    expect(result.current.items).toEqual([])
+    expect(result.current.activeId).toBe('')
+    expect(result.current.draft).toBeNull()
+    expect(window.localStorage.getItem('nova.lore.workspace.selection:/books/demo'))
+      .toBeNull()
   })
 })
 

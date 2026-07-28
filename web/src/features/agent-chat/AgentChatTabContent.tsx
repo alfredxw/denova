@@ -8,7 +8,7 @@ import type {
 } from '@/features/changes/agent/ReviewFeedbackTray'
 import type { ImagePreset, Teller } from '@/features/interactive/types'
 import { AgentChatConversationTab } from './AgentChatConversationTab'
-import { TerminalTabView } from './terminal/TerminalTabView'
+import { TerminalTabView, type AgentChatTerminalStatus } from './terminal/TerminalTabView'
 import type { TerminalSessionInfo } from './terminal/api'
 import { tabGroup } from './tab-state'
 import type {
@@ -44,6 +44,7 @@ interface AgentChatTabContentProps {
   onDraftCommitted: (message: string) => void
   onTerminalSessionEstablished: (tabId: string, session: TerminalSessionInfo) => boolean
   onTerminalTitleChange: (tabId: string, title: string) => void
+  onTerminalStatusChange: (tabId: string, status: AgentChatTerminalStatus | null) => void
 }
 
 /** Maps a tab record onto its independent, persistently mounted runtime surface. */
@@ -71,6 +72,7 @@ export function AgentChatTabContent({
   onDraftCommitted,
   onTerminalSessionEstablished,
   onTerminalTitleChange,
+  onTerminalStatusChange,
 }: AgentChatTabContentProps) {
   const reviewFeedback = useMemo<ReviewFeedbackBatch | null>(
     () => documentReviewFeedback ? [documentReviewFeedback] : null,
@@ -119,6 +121,7 @@ export function AgentChatTabContent({
           active={active}
           onSessionEstablished={onTerminalSessionEstablished}
           onTitleChange={onTerminalTitleChange}
+          onStatusChange={onTerminalStatusChange}
         />
       )
     case 'page':

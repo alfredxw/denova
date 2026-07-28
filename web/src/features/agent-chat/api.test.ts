@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
-import { getAgentChatProjects, type AgentChatProject } from './api'
+import { getAgentChatHistory, getAgentChatProjects, type AgentChatProject } from './api'
 
 const apiClientMocks = vi.hoisted(() => ({ requestJSON: vi.fn() }))
 
@@ -28,5 +28,19 @@ describe('AgentChat project API request coalescing', () => {
     apiClientMocks.requestJSON.mockResolvedValueOnce({ projects: [] })
     await expect(getAgentChatProjects()).resolves.toEqual([])
     expect(apiClientMocks.requestJSON).toHaveBeenCalledTimes(2)
+  })
+})
+
+describe('AgentChat history API', () => {
+  beforeEach(() => apiClientMocks.requestJSON.mockReset())
+
+  it('encodes search parameters and normalizes missing items', async () => {
+    apiClientMocks.requestJSON.mockResolvedValueOnce({ total: 0, offset: 80, has_more: false })
+
+    await expect(getAgentChatHistory({ query: '  plot arc  ', offset: 80, limit: 40 })).resolves.toMatchObject({ items: [] })
+    expect(apiClientMocks.requestJSON).toHaveBeenCalledWith(
+      '/api/agent-chat/history?query=plot+arc&offset=80&limit=40',
+      { signal: undefined },
+    )
   })
 })

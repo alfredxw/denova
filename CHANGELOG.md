@@ -60,6 +60,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Changed
 
+- Agent Chat 左侧栏改为跨项目的活动工作导航，只展示已打开的对话、终端和仍在运行的后台会话，并标明运行、连接、退出与异常状态；完整历史迁移到独立的跨项目搜索入口，点击活动项或历史项会直接恢复并聚焦对应工作台标签。
+- The Agent Chat sidebar is now a cross-project active-work navigator for open conversations, terminals, and detached running sessions, with explicit runtime states. Full history moves to a separate cross-project search, and selecting an activity or history result restores and focuses its exact workbench tab.
+- 独立 Lore Tab 的资料编辑器补齐删除入口，复用资料库的应用内危险操作确认；删除前会先保存当前草稿，成功后自动切换到下一条资料，避免延迟自动保存重新写回已删除条目。
+- The standalone Lore tab now exposes entry deletion with the library's in-app destructive-action confirmation. It saves the current draft before deletion and selects the next entry afterward, preventing delayed autosave from recreating deleted lore.
 - 工作台变更审阅移除与外层真实标签重复的内部「审阅」标签行，关闭操作统一由工作台标签承担；共享标签栏的新增按钮在标签溢出前后都保持垂直居中。
 - Workspace change review no longer renders an internal Review tab row that duplicated the real workbench tab; closing is now owned by the workbench tab. The shared tab-strip add button remains vertically centered before and after tab overflow.
 - 可拖拽排序的侧边列表不再用抓取手型强调低频排序操作；资源目录及工作台项目/会话行在可拖拽和拖动过程中均保持默认箭头光标，拖拽能力与独立拖拽把手的反馈不变。
@@ -83,6 +87,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Fixed
 
+- 修复资料编辑器在切换资料项后仍把 TipTap 的失焦内部选区误认为当前选区、错误显示「添加评论」浮层的问题；选区操作现在只在编辑器保持焦点且确有可见文本选区时出现，点击浮层本身仍会保留原选区。
+- Fixed the Lore editor showing Add Comment after switching entries because TipTap retained an unfocused internal selection. Selection actions now appear only for a visible non-empty selection in the focused editor, while interacting with the toolbar preserves that selection.
 - 修复已打开终端在应用切换 light/dark 主题时仍保留旧背景的问题；xterm 现在会在主题属性和 CSS 变量完成提交后重新解析调色板并重绘现有屏幕。
 - Fixed already-open terminals retaining their previous background after the app switched between light and dark themes. xterm now resolves the palette after the theme attribute and CSS variables commit, then repaints the existing screen.
 - 修复 Denova 宿主进程的 `NO_COLOR` 环境变量泄漏到内置 PTY、导致 Claude Code 等遵循该约定的程序在 light/dark 终端中退化为无彩色界面的问题；终端子进程现在独立声明 `xterm-256color` / truecolor 能力并清理宿主无色标记。

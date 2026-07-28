@@ -3,7 +3,7 @@ import userEvent from '@testing-library/user-event'
 import type { ReactNode } from 'react'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { TooltipProvider } from '@/components/ui/tooltip'
-import { createAgentChatSession, getAgentChatProjects, type AgentChatProject } from './api'
+import { createAgentChatSession, getAgentChatHistory, getAgentChatProjects, type AgentChatProject } from './api'
 import { persistWorkbenchState, readStoredWorkbenchState } from './tab-state'
 import { closeTerminalSession, getTerminalRuntimeStatus, type TerminalSessionInfo } from './terminal/api'
 import { AgentChatView } from './AgentChatView'
@@ -11,6 +11,7 @@ import { AgentChatView } from './AgentChatView'
 vi.mock('./api', () => ({
   createAgentChatSession: vi.fn(),
   deleteAgentChatSession: vi.fn(),
+  getAgentChatHistory: vi.fn(),
   getAgentChatProjects: vi.fn(),
   renameAgentChatSession: vi.fn(),
 }))
@@ -111,6 +112,7 @@ describe('AgentChatView project workbenches', () => {
       project('/books/b', 'Project B', 'session-b', 'Chat B'),
     ])
     vi.mocked(createAgentChatSession).mockReset()
+    vi.mocked(getAgentChatHistory).mockReset().mockResolvedValue({ items: [], total: 0, offset: 0, has_more: false })
     vi.mocked(closeTerminalSession).mockReset().mockResolvedValue()
     vi.mocked(getTerminalRuntimeStatus).mockReset().mockResolvedValue({
       enabled: true,
@@ -124,6 +126,21 @@ describe('AgentChatView project workbenches', () => {
 
   it('keeps a separate tab set and mounted conversation for every selected project', async () => {
     const user = userEvent.setup()
+    persistWorkbenchState({
+      activeProjectPath: '/books/a',
+      projects: {
+        '/books/a': {
+          tabs: [{ kind: 'agent', id: 'tab-a', workspace: '/books/a', sessionId: 'session-a' }],
+          activeTabIds: { primary: 'tab-a', secondary: null },
+          focusedGroup: 'primary',
+        },
+        '/books/b': {
+          tabs: [{ kind: 'agent', id: 'tab-b', workspace: '/books/b', sessionId: 'session-b' }],
+          activeTabIds: { primary: 'tab-b', secondary: null },
+          focusedGroup: 'primary',
+        },
+      },
+    })
     renderView(
       <AgentChatView
         composerSettings={{} as never}
@@ -134,17 +151,17 @@ describe('AgentChatView project workbenches', () => {
       />,
     )
 
-    await user.click(await screen.findByRole('button', { name: 'Chat A' }))
+    await user.click(await screen.findByRole('button', { name: /^Chat A/ }))
     expect(within(screen.getAllByRole('tablist')[0]).getByRole('tab', { name: /Chat A/ })).toBeInTheDocument()
     expect(screen.getByTestId('conversation:/books/a:session-a')).toHaveTextContent('active')
-    expect(screen.getByRole('button', { name: 'Chat A' }).parentElement).not.toHaveClass('bg-[var(--nova-active)]')
+    expect(screen.getByRole('button', { name: /^Chat A/ })).toHaveAttribute('aria-current', 'page')
 
-    await user.click(screen.getByRole('button', { name: 'Chat B' }))
+    await user.click(screen.getByRole('button', { name: /Chat B/ }))
     expect(within(screen.getAllByRole('tablist')[0]).getByRole('tab', { name: /Chat B/ })).toBeInTheDocument()
     expect(screen.getByTestId('conversation:/books/a:session-a')).toHaveTextContent('hidden')
     expect(screen.getByTestId('conversation:/books/b:session-b')).toHaveTextContent('active')
 
-    await user.click(screen.getByRole('button', { name: 'Project A' }))
+    await user.click(screen.getByTitle('/books/a'))
     expect(within(screen.getAllByRole('tablist')[0]).getByRole('tab', { name: /Chat A/ })).toBeInTheDocument()
     expect(screen.getByTestId('conversation:/books/a:session-a')).toHaveTextContent('active')
     expect(screen.getByTestId('conversation:/books/b:session-b')).toHaveTextContent('hidden')
@@ -155,6 +172,30 @@ describe('AgentChatView project workbenches', () => {
       expect(stored.projects['/books/a'].tabs).toHaveLength(1)
       expect(stored.projects['/books/b'].tabs).toHaveLength(1)
     })
+  })
+
+  it('keeps a detached running conversation in the activity list after its tab closes', async () => {
+    const user = userEvent.setup()
+    const runningProject = project('/books/a', 'Project A', 'session-a', 'Chat A')
+    runningProject.sessions[0].running = true
+    vi.mocked(getAgentChatProjects).mockResolvedValue([runningProject])
+
+    renderView(
+      <AgentChatView
+        composerSettings={{} as never}
+        tellers={[]}
+        imagePresets={[]}
+        renderPage={() => null}
+        renderReview={() => null}
+      />,
+    )
+
+    await user.click(await screen.findByRole('button', { name: /Chat A.*运行中/ }))
+    expect(screen.getByTestId('conversation:/books/a:session-a')).toHaveTextContent('active')
+
+    await user.click(await screen.findByRole('button', { name: '关闭 Chat A' }))
+    expect(screen.queryByTestId('conversation:/books/a:session-a')).not.toBeInTheDocument()
+    expect(screen.getByRole('button', { name: /Chat A.*运行中/ })).toBeInTheDocument()
   })
 
   it('opens one local draft without creating a backend conversation', async () => {

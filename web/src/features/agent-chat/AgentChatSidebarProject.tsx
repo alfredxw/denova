@@ -1,10 +1,10 @@
 import type { CSSProperties } from 'react'
-import { SortableContext, useSortable, verticalListSortingStrategy } from '@dnd-kit/sortable'
+import { useSortable } from '@dnd-kit/sortable'
 import { CSS } from '@dnd-kit/utilities'
 import { useTranslation } from 'react-i18next'
 import {
+  CircleAlert,
   ChevronRight,
-  Edit3,
   Folder,
   FolderOpen,
   MessageSquareText,
@@ -12,29 +12,29 @@ import {
   Pin,
   PinOff,
   Plus,
-  Trash2,
+  TerminalSquare,
 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
-  DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu'
-import { formatDateTime } from '@/i18n'
-import type { AgentChatProject, AgentChatSession } from './api'
+import type { AgentChatProject } from './api'
+import {
+  summarizeSidebarActivities,
+  type AgentChatActivityStatus,
+  type AgentChatSidebarActivity,
+} from './sidebar-activity'
 
-export type AgentChatSidebarDragData =
-  | { kind: 'project'; projectPath: string }
-  | { kind: 'session'; projectPath: string; sessionID: string }
+export interface AgentChatSidebarProjectDragData {
+  kind: 'project'
+  projectPath: string
+}
 
 export function projectSortableID(path: string) {
   return `agent-chat-project:${path}`
-}
-
-export function sessionSortableID(path: string, sessionID: string) {
-  return `agent-chat-session:${path}:${sessionID}`
 }
 
 interface AgentChatSidebarProjectProps {
@@ -43,61 +43,32 @@ interface AgentChatSidebarProjectProps {
   expanded: boolean
   manualSorting: boolean
   pinned: boolean
-  visibleSessions: AgentChatSession[]
-  hiddenCount: number
-  showMoreCount: number
-  canShowLess: boolean
-  isSessionRunning: (session: AgentChatSession) => boolean
-  isSessionPinned: (sessionID: string) => boolean
-  editingSessionID: string | null
-  draftTitle: string
-  onDraftTitleChange: (value: string) => void
+  activities: readonly AgentChatSidebarActivity[]
   onToggle: () => void
   onCreateSession: () => void
   onTogglePinned: () => void
-  onOpenSession: (session: AgentChatSession) => void
-  onToggleSessionPinned: (sessionID: string) => void
-  onBeginRename: (session: AgentChatSession) => void
-  onSubmitRename: (session: AgentChatSession) => void
-  onCancelRename: () => void
-  onRequestDelete: (session: AgentChatSession) => void
-  onShowMore: () => void
-  onShowLess: () => void
+  onOpenActivity: (activity: AgentChatSidebarActivity) => void
 }
 
-/** One sortable project group; row actions are isolated from the full-width expand target. */
+/** One sortable project with a read-only projection of its active conversations and terminals. */
 export function AgentChatSidebarProject({
   project,
   active,
   expanded,
   manualSorting,
   pinned,
-  visibleSessions,
-  hiddenCount,
-  showMoreCount,
-  canShowLess,
-  isSessionRunning,
-  isSessionPinned,
-  editingSessionID,
-  draftTitle,
-  onDraftTitleChange,
+  activities,
   onToggle,
   onCreateSession,
   onTogglePinned,
-  onOpenSession,
-  onToggleSessionPinned,
-  onBeginRename,
-  onSubmitRename,
-  onCancelRename,
-  onRequestDelete,
-  onShowMore,
-  onShowLess,
+  onOpenActivity,
 }: AgentChatSidebarProjectProps) {
   const { t } = useTranslation()
   const name = project.name || project.path
+  const summary = summarizeSidebarActivities(activities)
   const { attributes, listeners, setNodeRef, setActivatorNodeRef, transform, transition, isDragging } = useSortable({
     id: projectSortableID(project.path),
-    data: { kind: 'project', projectPath: project.path } satisfies AgentChatSidebarDragData,
+    data: { kind: 'project', projectPath: project.path } satisfies AgentChatSidebarProjectDragData,
     disabled: !manualSorting,
   })
   const style: CSSProperties = { transform: CSS.Transform.toString(transform), transition }
@@ -123,6 +94,7 @@ export function AgentChatSidebarProject({
             ? <FolderOpen className="size-3.5 shrink-0 text-[var(--nova-text-muted)]" />
             : <Folder className="size-3.5 shrink-0 text-[var(--nova-text-muted)]" />}
           <span className="min-w-0 flex-1 truncate text-xs text-[var(--nova-text)]">{name}</span>
+          <ProjectActivitySummary expanded={expanded} summary={summary} />
           {pinned ? <Pin className="size-3 shrink-0 text-[var(--nova-text-faint)]" aria-hidden="true" /> : null}
         </button>
         <Button
@@ -157,174 +129,108 @@ export function AgentChatSidebarProject({
         </DropdownMenu>
       </div>
 
-      {expanded ? (
+      {expanded && (project.error || activities.length > 0) ? (
         <div className="ml-3 border-l border-[var(--nova-border-soft)] pl-1.5">
           {project.error ? (
             <p className="px-2 py-2 text-[11px] text-[var(--nova-danger)]">{project.error}</p>
-          ) : project.sessions.length === 0 ? (
-            <p className="px-2 py-2 text-[11px] text-[var(--nova-text-faint)]">{t('agentChat.sidebar.noSessions')}</p>
-          ) : (
-            <>
-              <SortableContext
-                items={visibleSessions.map((session) => sessionSortableID(project.path, session.id))}
-                strategy={verticalListSortingStrategy}
-              >
-                {visibleSessions.map((session) => (
-                  <SessionRow
-                    key={session.id}
-                    projectPath={project.path}
-                    session={session}
-                    running={isSessionRunning(session)}
-                    pinned={isSessionPinned(session.id)}
-                    manualSorting={manualSorting}
-                    editing={editingSessionID === session.id}
-                    draftTitle={draftTitle}
-                    onDraftTitleChange={onDraftTitleChange}
-                    onOpen={() => onOpenSession(session)}
-                    onTogglePinned={() => onToggleSessionPinned(session.id)}
-                    onBeginRename={() => onBeginRename(session)}
-                    onSubmitRename={() => onSubmitRename(session)}
-                    onCancelRename={onCancelRename}
-                    onRequestDelete={() => onRequestDelete(session)}
-                  />
-                ))}
-              </SortableContext>
-              {(hiddenCount > 0 || canShowLess) ? (
-                <div className="flex items-center gap-2 px-1.5 py-1 text-[11px]">
-                  {hiddenCount > 0 ? (
-                    <button
-                      type="button"
-                      onClick={onShowMore}
-                      className="rounded-[var(--nova-radius)] px-1 py-0.5 text-[var(--nova-text-faint)] hover:bg-[var(--nova-hover)] hover:text-[var(--nova-text-muted)]"
-                    >
-                      {t('agentChat.sidebar.showMore', { count: showMoreCount })}
-                    </button>
-                  ) : null}
-                  {canShowLess ? (
-                    <button
-                      type="button"
-                      onClick={onShowLess}
-                      className="rounded-[var(--nova-radius)] px-1 py-0.5 text-[var(--nova-text-faint)] hover:bg-[var(--nova-hover)] hover:text-[var(--nova-text-muted)]"
-                    >
-                      {t('agentChat.sidebar.showLess')}
-                    </button>
-                  ) : null}
-                </div>
-              ) : null}
-            </>
-          )}
+          ) : activities.map((activity) => (
+            <ActivityRow key={activity.id} activity={activity} onOpen={() => onOpenActivity(activity)} />
+          ))}
         </div>
       ) : null}
     </div>
   )
 }
 
-function SessionRow({
-  projectPath,
-  session,
-  running,
-  pinned,
-  manualSorting,
-  editing,
-  draftTitle,
-  onDraftTitleChange,
-  onOpen,
-  onTogglePinned,
-  onBeginRename,
-  onSubmitRename,
-  onCancelRename,
-  onRequestDelete,
+function ProjectActivitySummary({
+  expanded,
+  summary,
 }: {
-  projectPath: string
-  session: AgentChatSession
-  running: boolean
-  pinned: boolean
-  manualSorting: boolean
-  editing: boolean
-  draftTitle: string
-  onDraftTitleChange: (value: string) => void
-  onOpen: () => void
-  onTogglePinned: () => void
-  onBeginRename: () => void
-  onSubmitRename: () => void
-  onCancelRename: () => void
-  onRequestDelete: () => void
+  expanded: boolean
+  summary: ReturnType<typeof summarizeSidebarActivities>
 }) {
   const { t } = useTranslation()
-  const title = session.title || t('chat.untitledSession')
-  const { attributes, listeners, setNodeRef, setActivatorNodeRef, transform, transition, isDragging } = useSortable({
-    id: sessionSortableID(projectPath, session.id),
-    data: { kind: 'session', projectPath, sessionID: session.id } satisfies AgentChatSidebarDragData,
-    disabled: !manualSorting || editing,
-  })
-  const style: CSSProperties = { transform: CSS.Transform.toString(transform), transition }
-
-  if (editing) {
-    return (
-      <div ref={setNodeRef} style={style} className="px-1 py-1">
-        <input
-          autoFocus
-          value={draftTitle}
-          onChange={(event) => onDraftTitleChange(event.target.value)}
-          onBlur={onSubmitRename}
-          onKeyDown={(event) => {
-            if (event.key === 'Enter') onSubmitRename()
-            if (event.key === 'Escape') onCancelRename()
-          }}
-          className="nova-field h-6 w-full rounded border px-1.5 text-xs outline-none"
-          aria-label={t('chat.sessionTitle')}
-        />
-      </div>
-    )
-  }
-
+  if (summary.total === 0) return null
   return (
-    <div
-      ref={setNodeRef}
-      style={style}
-      className={`group flex items-center gap-0.5 rounded-[var(--nova-radius)] pr-0.5 hover:bg-[var(--nova-hover)] ${isDragging ? 'relative z-20 opacity-80' : ''}`}
-    >
-      <button
-        ref={setActivatorNodeRef}
-        type="button"
-        {...(manualSorting ? attributes : {})}
-        {...(manualSorting ? listeners : {})}
-        onClick={onOpen}
-        title={`${title} · ${formatDateTime(session.updated_at || session.created_at) || ''}${manualSorting ? ` · ${t('agentChat.sidebar.longPressToReorder')}` : ''}`}
-        className={`flex min-w-0 flex-1 items-center gap-1.5 rounded-[var(--nova-radius)] px-1.5 py-1.5 text-left outline-none focus-visible:ring-1 focus-visible:ring-[var(--nova-accent)] ${manualSorting ? 'cursor-default' : ''}`}
-      >
-        <MessageSquareText className={`size-3.5 shrink-0 ${running ? 'animate-pulse text-[var(--nova-accent)]' : 'text-[var(--nova-text-faint)]'}`} />
-        <span className="min-w-0 flex-1 truncate text-xs text-[var(--nova-text)]">{title}</span>
-        {pinned ? <Pin className="size-3 shrink-0 text-[var(--nova-text-faint)]" aria-hidden="true" /> : null}
-      </button>
-      <DropdownMenu>
-        <DropdownMenuTrigger asChild>
-          <Button
-            type="button"
-            variant="ghost"
-            size="icon-xs"
-            className="shrink-0 opacity-0 transition-opacity group-hover:opacity-100 data-[state=open]:opacity-100 focus-visible:opacity-100"
-            aria-label={t('agentChat.sidebar.sessionActions', { title })}
-          >
-            <MoreHorizontal />
-          </Button>
-        </DropdownMenuTrigger>
-        <DropdownMenuContent align="end" className="min-w-36">
-          <DropdownMenuItem onSelect={onTogglePinned}>
-            {pinned ? <PinOff /> : <Pin />}
-            {t(pinned ? 'agentChat.sidebar.unpinSession' : 'agentChat.sidebar.pinSession')}
-          </DropdownMenuItem>
-          <DropdownMenuSeparator />
-          <DropdownMenuItem onSelect={onBeginRename}>
-            <Edit3 />
-            {t('common.rename')}
-          </DropdownMenuItem>
-          <DropdownMenuItem variant="destructive" disabled={running} onSelect={onRequestDelete}>
-            <Trash2 />
-            {t('common.delete')}
-          </DropdownMenuItem>
-        </DropdownMenuContent>
-      </DropdownMenu>
-    </div>
+    <span className="flex shrink-0 items-center gap-1 text-[9px] tabular-nums text-[var(--nova-text-faint)]">
+      {summary.running > 0 ? (
+        <span
+          className="inline-flex items-center gap-0.5 text-[var(--nova-success)]"
+          aria-label={t('agentChat.sidebar.summary.running', { count: summary.running })}
+        >
+          <span aria-hidden="true" className="size-1.5 animate-pulse rounded-full bg-current" />
+          {summary.running}
+        </span>
+      ) : null}
+      {summary.attention > 0 ? (
+        <span
+          className="inline-flex items-center gap-0.5 text-[var(--nova-danger)]"
+          aria-label={t('agentChat.sidebar.summary.attention', { count: summary.attention })}
+        >
+          <CircleAlert aria-hidden="true" className="size-2.5" />
+          {summary.attention}
+        </span>
+      ) : null}
+      {!expanded && summary.running === 0 && summary.attention === 0 ? summary.total : null}
+    </span>
   )
+}
+
+function ActivityRow({ activity, onOpen }: { activity: AgentChatSidebarActivity; onOpen: () => void }) {
+  const { t } = useTranslation()
+  const Icon = activity.kind === 'agent' ? MessageSquareText : TerminalSquare
+  const label = t(`agentChat.sidebar.status.${activity.status}`)
+  return (
+    <button
+      type="button"
+      onClick={onOpen}
+      aria-current={activity.focused ? 'page' : undefined}
+      title={`${activity.title} · ${label}`}
+      className={`group/activity relative flex w-full min-w-0 items-center gap-1.5 rounded-[var(--nova-radius)] px-1.5 py-1.5 text-left outline-none transition-colors focus-visible:ring-1 focus-visible:ring-[var(--nova-accent)] ${
+        activity.focused
+          ? 'bg-[var(--nova-active)] text-[var(--nova-text)]'
+          : 'text-[var(--nova-text-muted)] hover:bg-[var(--nova-hover)] hover:text-[var(--nova-text)]'
+      }`}
+    >
+      <span
+        aria-hidden="true"
+        className={`absolute bottom-1.5 left-0 top-1.5 w-0.5 rounded-full ${
+          activity.focused
+            ? 'bg-[var(--nova-text)]'
+            : activity.paneVisible ? 'bg-[var(--nova-text-faint)]' : 'bg-transparent'
+        }`}
+      />
+      <Icon className="size-3.5 shrink-0 text-[var(--nova-text-faint)] group-hover/activity:text-[var(--nova-text-muted)]" />
+      <span className="min-w-0 flex-1 truncate text-xs">{activity.title}</span>
+      <ActivityStatus status={activity.status} label={label} />
+    </button>
+  )
+}
+
+function ActivityStatus({ status, label }: { status: AgentChatActivityStatus; label: string }) {
+  const tone = activityStatusTone(status)
+  return (
+    <span className={`inline-flex shrink-0 items-center gap-1 text-[9px] ${tone}`}>
+      <span
+        aria-hidden="true"
+        className={`size-1.5 rounded-full bg-current ${status === 'running' || status === 'connecting' ? 'animate-pulse' : ''}`}
+      />
+      <span>{label}</span>
+    </span>
+  )
+}
+
+function activityStatusTone(status: AgentChatActivityStatus): string {
+  switch (status) {
+    case 'running':
+    case 'ready':
+      return 'text-[var(--nova-success)]'
+    case 'connecting':
+      return 'text-[var(--nova-warning)]'
+    case 'error':
+      return 'text-[var(--nova-danger)]'
+    case 'idle':
+    case 'exited':
+      return 'text-[var(--nova-text-faint)]'
+  }
 }

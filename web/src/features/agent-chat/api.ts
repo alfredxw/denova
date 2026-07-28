@@ -25,6 +25,19 @@ export interface AgentChatProject {
   error?: string
 }
 
+export interface AgentChatHistoryItem {
+  workspace: string
+  project_name: string
+  session: AgentChatSession
+}
+
+export interface AgentChatHistoryPage {
+  items: AgentChatHistoryItem[]
+  total: number
+  offset: number
+  has_more: boolean
+}
+
 let projectsReadInFlight: Promise<AgentChatProject[]> | null = null
 
 /** Read every project with its conversations. This never switches the open workspace. */
@@ -34,6 +47,20 @@ export function getAgentChatProjects(): Promise<AgentChatProject[]> {
     .then((data) => (data.projects ?? []).map((project) => ({ ...project, sessions: project.sessions ?? [] })))
     .finally(() => { projectsReadInFlight = null })
   return projectsReadInFlight
+}
+
+/** Search complete durable conversation metadata without switching the foreground workspace. */
+export function getAgentChatHistory(
+  options: { query?: string; offset?: number; limit?: number; signal?: AbortSignal } = {},
+): Promise<AgentChatHistoryPage> {
+  const params = new URLSearchParams()
+  const query = options.query?.trim()
+  if (query) params.set('query', query)
+  if (options.offset) params.set('offset', String(options.offset))
+  if (options.limit) params.set('limit', String(options.limit))
+  const suffix = params.size > 0 ? `?${params.toString()}` : ''
+  return requestJSON<AgentChatHistoryPage>(`/api/agent-chat/history${suffix}`, { signal: options.signal })
+    .then((page) => ({ ...page, items: page.items ?? [] }))
 }
 
 /** Create a conversation inside any project, open or not. */
