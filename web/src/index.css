@@ -55,28 +55,28 @@
 }
 
 [data-theme="light"] .preset-workspace {
-  --preset-canvas: #ffffff;
-  --preset-surface: #ffffff;
-  --preset-raised: #f6f6f3;
-  --preset-line: #d9d9d4;
-  --preset-ink: #181816;
-  --preset-signal: #242421;
-  --preset-signal-soft: rgba(24, 24, 22, 0.055);
+  --preset-canvas: #f5f5f5;
+  --preset-surface: #fafafa;
+  --preset-raised: #ffffff;
+  --preset-line: #d4d4d4;
+  --preset-ink: #181818;
+  --preset-signal: #262626;
+  --preset-signal-soft: rgba(24, 24, 24, 0.055);
   --preset-success: #396a4b;
   --preset-warning: #8a611f;
   --preset-danger: #963f39;
-  --preset-primary-bg: #1d1d1b;
+  --preset-primary-bg: #1f1f1f;
   --preset-primary-ink: #ffffff;
-  --nova-surface-3: #ecece8;
-  --nova-hover: #f0f0ec;
-  --nova-active: #e8e8e3;
-  --nova-border-soft: #e6e6e1;
-  --nova-text-muted: #595954;
-  --nova-text-faint: #777770;
-  --nova-accent-blue: #595954;
+  --nova-surface-3: #ededed;
+  --nova-hover: #f0f0f0;
+  --nova-active: #e3e3e3;
+  --nova-border-soft: #e5e5e5;
+  --nova-text-muted: #595959;
+  --nova-text-faint: #767676;
+  --nova-accent-blue: #595959;
   --nova-accent-green: var(--preset-success);
-  --nova-switch-checked: #3f684c;
-  --nova-switch-checked-border: #3f684c;
+  --nova-switch-checked: #2f2f2f;
+  --nova-switch-checked-border: #2f2f2f;
   --nova-danger: #963f39;
   --nova-danger-bg: rgba(150, 63, 57, 0.09);
   --nova-danger-border: rgba(150, 63, 57, 0.28);
@@ -85,9 +85,9 @@
   --nova-success: #2f6944;
   --nova-success-muted: #487858;
   --nova-success-bg: rgba(57, 106, 75, 0.1);
-  --nova-style-chip-bg: rgba(24, 24, 22, 0.055);
-  --nova-style-chip-hover-bg: rgba(24, 24, 22, 0.085);
-  --nova-style-chip-text: #3c3c38;
+  --nova-style-chip-bg: rgba(24, 24, 24, 0.055);
+  --nova-style-chip-hover-bg: rgba(24, 24, 24, 0.085);
+  --nova-style-chip-text: #3c3c3c;
 }
 
 .preset-workspace .nova-nav-item {
@@ -532,23 +532,29 @@
 }
 
 [data-theme="light"] {
+  /*
+   * Structural light-theme colors stay strictly neutral (R = G = B).
+   * White belongs to content canvases, pale gray to product chrome, and
+   * progressively darker gray to recessed, hover, and selected states.
+   * Chromatic colors are reserved for semantic success, warning, and danger.
+   */
   --nova-bg: #ffffff;
-  --nova-bg-deep: #ffffff;
-  --nova-surface: #ffffff;
-  --nova-surface-2: #f7f7f4;
-  --nova-surface-3: #efefeb;
-  --nova-hover: #f0f0ec;
-  --nova-active: #e7e7e2;
-  --nova-border: #d7d7d2;
-  --nova-border-soft: #e5e5e0;
-  --nova-text: #171715;
-  --nova-text-muted: #565651;
-  --nova-text-faint: #74746e;
-  --nova-accent: #343431;
-  --nova-accent-blue: #8a611f;
+  --nova-bg-deep: #f2f2f2;
+  --nova-surface: #fafafa;
+  --nova-surface-2: #f5f5f5;
+  --nova-surface-3: #ededed;
+  --nova-hover: #eeeeee;
+  --nova-active: #e3e3e3;
+  --nova-border: #d4d4d4;
+  --nova-border-soft: #e5e5e5;
+  --nova-text: #171717;
+  --nova-text-muted: #525252;
+  --nova-text-faint: #737373;
+  --nova-accent: #2f2f2f;
+  --nova-accent-blue: #595959;
   --nova-accent-green: #396a4b;
-  --nova-switch-checked: #3c5d48;
-  --nova-switch-checked-border: #3c5d48;
+  --nova-switch-checked: #2f2f2f;
+  --nova-switch-checked-border: #2f2f2f;
   --nova-switch-thumb: #ffffff;
   --nova-danger: #b42318;
   --nova-danger-foreground: #ffffff;
@@ -559,46 +565,46 @@
   --nova-success: #156f3f;
   --nova-success-muted: #2f6f46;
   --nova-success-bg: rgba(21, 111, 63, 0.12);
-  --nova-field-focus-border: #8f8f88;
+  --nova-field-focus-border: #8a8a8a;
   --nova-app-shell-glow: transparent;
-  --nova-topbar-shadow: rgba(24, 24, 22, 0.08);
-  --nova-control-shadow: rgba(24, 24, 22, 0.055);
-  --nova-shadow: 0 18px 44px rgba(24, 24, 22, 0.14);
-  --nova-user-message-border: #cecec8;
-  --nova-user-message-bg-from: #ecece8;
-  --nova-user-message-bg-to: #e5e5e0;
-  --nova-user-message-text: #171715;
-  --nova-assistant-message-border: #ddddda;
+  --nova-topbar-shadow: rgba(0, 0, 0, 0.07);
+  --nova-control-shadow: rgba(0, 0, 0, 0.05);
+  --nova-shadow: 0 18px 44px rgba(0, 0, 0, 0.14);
+  --nova-user-message-border: #cccccc;
+  --nova-user-message-bg-from: #eeeeee;
+  --nova-user-message-bg-to: #e5e5e5;
+  --nova-user-message-text: #171717;
+  --nova-assistant-message-border: #dddddd;
   --nova-assistant-message-bg: #ffffff;
-  --nova-chat-heading: #242421;
+  --nova-chat-heading: #242424;
   --nova-menu-bg: rgba(255, 255, 255, 0.98);
-  --nova-menu-item-hover-bg: rgba(24, 24, 22, 0.07);
-  --nova-selection-bg: rgba(24, 24, 22, 0.08);
-  --nova-drop-bg: #ecece8;
-  --nova-tree-text: #242421;
-  --nova-tree-icon: #666660;
-  --nova-tree-folder: #4a4a46;
-  --nova-tree-chevron: #777770;
-  --nova-chip-bg: rgba(24, 24, 22, 0.06);
-  --nova-chip-hover-bg: rgba(24, 24, 22, 0.09);
-  --nova-style-chip-bg: rgba(24, 24, 22, 0.055);
-  --nova-style-chip-hover-bg: rgba(24, 24, 22, 0.085);
-  --nova-style-chip-text: #3c3c38;
+  --nova-menu-item-hover-bg: rgba(0, 0, 0, 0.07);
+  --nova-selection-bg: rgba(0, 0, 0, 0.08);
+  --nova-drop-bg: #ececec;
+  --nova-tree-text: #242424;
+  --nova-tree-icon: #666666;
+  --nova-tree-folder: #4a4a4a;
+  --nova-tree-chevron: #777777;
+  --nova-chip-bg: rgba(0, 0, 0, 0.06);
+  --nova-chip-hover-bg: rgba(0, 0, 0, 0.09);
+  --nova-style-chip-bg: rgba(0, 0, 0, 0.055);
+  --nova-style-chip-hover-bg: rgba(0, 0, 0, 0.085);
+  --nova-style-chip-text: #3c3c3c;
   --nova-lore-chip-bg: rgba(57, 106, 75, 0.09);
   --nova-lore-chip-hover-bg: rgba(57, 106, 75, 0.14);
   --nova-lore-chip-text: #315f40;
-  --nova-code-bg: #efefeb;
-  --nova-code-text: #242421;
-  --nova-code-block-bg: #f4f4f1;
-  --nova-table-header-bg: #eeeeea;
-  --nova-markdown-border: #d9d9d4;
+  --nova-code-bg: #eeeeee;
+  --nova-code-text: #242424;
+  --nova-code-block-bg: #f5f5f5;
+  --nova-table-header-bg: #eeeeee;
+  --nova-markdown-border: #d8d8d8;
   --nova-dialogue-highlight: #A04A1A;
-  --nova-scrollbar-track: #f4f4f1;
-  --nova-scrollbar-thumb: #c7c7c1;
-  --nova-scrollbar-thumb-hover: #a5a59e;
+  --nova-scrollbar-track: #f5f5f5;
+  --nova-scrollbar-thumb: #c7c7c7;
+  --nova-scrollbar-thumb-hover: #a3a3a3;
   --nova-editor-ide-bg: #ffffff;
-  --nova-editor-ide-color: #171715;
-  --nova-editor-ide-accent: #e1e1dc;
+  --nova-editor-ide-color: #171717;
+  --nova-editor-ide-accent: #e0e0e0;
   color-scheme: light;
   --background: oklch(1 0 0);
   --foreground: oklch(0.145 0 0);
@@ -637,7 +643,10 @@
   background: var(--nova-bg);
 }
 
-[data-theme="light"] .nova-topbar,
+[data-theme="light"] .nova-topbar {
+  background: var(--nova-bg-deep);
+}
+
 [data-theme="light"] .nova-chat-input-area,
 [data-theme="light"] .nova-editor-toolbar,
 [data-theme="light"] .nova-editor-statusbar {
@@ -650,9 +659,19 @@
 
 [data-theme="light"] .nova-chat-composer,
 [data-theme="light"] .nova-agent-composer {
+  background: var(--nova-surface);
   box-shadow:
-    inset 0 1px 0 var(--nova-control-shadow),
-    0 8px 20px rgba(35, 48, 66, 0.08);
+    inset 0 1px 0 rgba(255, 255, 255, 0.72),
+    0 1px 2px rgba(0, 0, 0, 0.06),
+    0 10px 28px rgba(0, 0, 0, 0.08);
+}
+
+[data-theme="light"] .nova-chat-composer:focus-within,
+[data-theme="light"] .nova-agent-composer:focus-within {
+  background: var(--nova-surface);
+  box-shadow:
+    0 0 0 1px var(--nova-field-focus-border),
+    0 12px 30px rgba(0, 0, 0, 0.1);
 }
 
 [data-theme="light"] .nova-chat-input-area-floating,
@@ -663,8 +682,9 @@
 
 [data-theme="light"] .nova-command-menu,
 [data-theme="light"] .nova-editor-settings-panel {
+  background: var(--nova-menu-bg);
   box-shadow:
-    0 16px 40px rgba(35, 48, 66, 0.14),
+    0 16px 40px rgba(0, 0, 0, 0.14),
     inset 0 1px 0 rgba(255, 255, 255, 0.62);
 }
 
@@ -1536,7 +1556,7 @@ html[data-nova-motion="off"] *::after {
 }
 
 .nova-editor-range:focus-visible {
-  outline: 1px solid rgba(168, 173, 183, 0.45);
+  outline: 1px solid rgba(174, 174, 174, 0.45);
   outline-offset: 3px;
 }
 
@@ -2468,8 +2488,8 @@ html[data-nova-motion="off"] *::after {
 }
 
 [data-theme="light"] .director-console {
-  --director-canvas: #ffffff;
-  --director-panel: #fafaf7;
+  --director-canvas: #f5f5f5;
+  --director-panel: #ffffff;
   --director-brass: #8a611f;
   --director-live: #3f6f4d;
   --director-ember: #963f39;

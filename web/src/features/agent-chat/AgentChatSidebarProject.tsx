@@ -116,7 +116,7 @@ export function AgentChatSidebarProject({
           aria-expanded={expanded}
           aria-current={active ? 'true' : undefined}
           title={manualSorting ? `${project.path} · ${t('agentChat.sidebar.longPressToReorder')}` : project.path}
-          className={`flex min-w-0 flex-1 items-center gap-1.5 rounded-[var(--nova-radius)] px-1 py-1.5 text-left outline-none focus-visible:ring-1 focus-visible:ring-[var(--nova-accent)] ${manualSorting ? 'cursor-grab active:cursor-grabbing' : ''}`}
+          className={`flex min-w-0 flex-1 items-center gap-1.5 rounded-[var(--nova-radius)] px-1 py-1.5 text-left outline-none focus-visible:ring-1 focus-visible:ring-[var(--nova-accent)] ${manualSorting ? 'cursor-default' : ''}`}
         >
           <ChevronRight className={`size-3 shrink-0 text-[var(--nova-text-faint)] transition-transform ${expanded ? 'rotate-90' : ''}`} />
           {expanded
@@ -291,7 +291,7 @@ function SessionRow({
         {...(manualSorting ? listeners : {})}
         onClick={onOpen}
         title={`${title} · ${formatDateTime(session.updated_at || session.created_at) || ''}${manualSorting ? ` · ${t('agentChat.sidebar.longPressToReorder')}` : ''}`}
-        className={`flex min-w-0 flex-1 items-center gap-1.5 rounded-[var(--nova-radius)] px-1.5 py-1.5 text-left outline-none focus-visible:ring-1 focus-visible:ring-[var(--nova-accent)] ${manualSorting ? 'cursor-grab active:cursor-grabbing' : ''}`}
+        className={`flex min-w-0 flex-1 items-center gap-1.5 rounded-[var(--nova-radius)] px-1.5 py-1.5 text-left outline-none focus-visible:ring-1 focus-visible:ring-[var(--nova-accent)] ${manualSorting ? 'cursor-default' : ''}`}
       >
         <MessageSquareText className={`size-3.5 shrink-0 ${running ? 'animate-pulse text-[var(--nova-accent)]' : 'text-[var(--nova-text-faint)]'}`} />
         <span className="min-w-0 flex-1 truncate text-xs text-[var(--nova-text)]">{title}</span>

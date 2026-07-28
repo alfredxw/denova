@@ -112,7 +112,7 @@ describe('ResourceDirectory', () => {
     expect(screen.getByText('艾拉')).toBeInTheDocument()
   })
 
-  it('makes reorderable rows draggable without dedicated drag handles', async () => {
+  it('makes reorderable rows draggable without dedicated handles or a grab cursor', async () => {
     const user = userEvent.setup()
     const onSelect = vi.fn()
     const sections = buildSections()
@@ -120,13 +120,13 @@ describe('ResourceDirectory', () => {
     render(<ResourceDirectory sections={sections} activeId={null} onSelect={onSelect} onReorderItems={() => {}} />)
 
     const row = screen.getByText('艾拉').closest('button')
-    expect(row).toHaveClass('cursor-grab')
+    expect(row).toHaveClass('cursor-default')
     expect(screen.queryByLabelText('拖拽排序')).not.toBeInTheDocument()
     await user.click(row!)
     expect(onSelect).toHaveBeenCalledWith('c1')
 
     await user.type(screen.getByLabelText('搜索'), '艾拉')
-    expect(screen.getByText('艾拉').closest('button')).not.toHaveClass('cursor-grab')
+    expect(screen.getByText('艾拉').closest('button')).not.toHaveClass('cursor-default')
   })
 
   it('renders pinned entries above the groups and selects them', async () => {

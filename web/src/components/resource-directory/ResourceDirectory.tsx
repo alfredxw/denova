@@ -332,7 +332,7 @@ function SortableDirectoryItemRow({ item, active, onSelect }: { item: ResourceDi
       }}
       type="button"
       style={{ transform: CSS.Transform.toString(transform), transition }}
-      className={cn(directoryItemRowClassName(item, active), 'cursor-grab active:cursor-grabbing', isDragging && 'opacity-35')}
+      className={cn(directoryItemRowClassName(item, active), 'cursor-default', isDragging && 'opacity-35')}
       onClick={onSelect}
       aria-current={active ? 'true' : undefined}
       {...attributes}

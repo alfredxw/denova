@@ -21,10 +21,10 @@ const DARK_FALLBACK: TerminalPaletteFallback = {
 }
 
 const LIGHT_FALLBACK: TerminalPaletteFallback = {
-  background: '#fbfbf8',
-  foreground: '#1b1b19',
-  muted: '#595954',
-  border: '#e0e0da',
+  background: '#fafafa',
+  foreground: '#1b1b1b',
+  muted: '#595959',
+  border: '#dedede',
 }
 
 /** ANSI colors tuned for the workbench's muted palette in each theme. */
@@ -37,11 +37,11 @@ const DARK_ANSI = {
 } as const
 
 const LIGHT_ANSI = {
-  black: '#3c3c38', red: '#963f39', green: '#2f6944', yellow: '#8a611f',
-  blue: '#385378', magenta: '#6a4380', cyan: '#26605f', white: '#8c8c85',
-  brightBlack: '#6a6a63', brightRed: '#b4544d', brightGreen: '#417f57',
+  black: '#3c3c3c', red: '#963f39', green: '#2f6944', yellow: '#8a611f',
+  blue: '#385378', magenta: '#6a4380', cyan: '#26605f', white: '#8c8c8c',
+  brightBlack: '#6a6a6a', brightRed: '#b4544d', brightGreen: '#417f57',
   brightYellow: '#a3752b', brightBlue: '#4a6b96', brightMagenta: '#82589a',
-  brightCyan: '#357a78', brightWhite: '#1b1b19',
+  brightCyan: '#357a78', brightWhite: '#1b1b1b',
 } as const
 
 /** Build the xterm theme for the currently applied workbench theme. */

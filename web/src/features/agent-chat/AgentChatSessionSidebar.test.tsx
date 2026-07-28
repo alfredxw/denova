@@ -52,7 +52,7 @@ describe('AgentChatSessionSidebar', () => {
     expect(projectButton).toHaveAttribute('aria-expanded', 'true')
   })
 
-  it('pins projects and conversations and makes the row bodies draggable only in manual mode', async () => {
+  it('pins projects and conversations and keeps a neutral cursor while rows are draggable in manual mode', async () => {
     const user = userEvent.setup()
     renderSidebar()
 
@@ -71,8 +71,8 @@ describe('AgentChatSessionSidebar', () => {
     await user.click(screen.getByRole('button', { name: '排序：最近更新' }))
     const menu = await screen.findByRole('menu')
     await user.click(within(menu).getByRole('menuitem', { name: '手动排序' }))
-    expect(screen.getByRole('button', { name: 'Alpha' })).toHaveClass('cursor-grab')
-    expect(screen.getByRole('button', { name: 'New chat' })).toHaveClass('cursor-grab')
+    expect(screen.getByRole('button', { name: 'Alpha' })).toHaveClass('cursor-default')
+    expect(screen.getByRole('button', { name: 'New chat' })).toHaveClass('cursor-default')
     expect(screen.queryByRole('button', { name: /拖动.*排序/ })).not.toBeInTheDocument()
   })
 })

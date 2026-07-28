@@ -42,7 +42,7 @@ export function AgentQueuedCommandList({
         return (
           <div
             key={item.command_id}
-            className="flex min-w-0 items-center gap-2 rounded-[14px] border border-[var(--nova-border)] bg-[var(--nova-surface-2)] px-2 py-1.5 shadow-[0_8px_24px_-22px_rgba(15,23,42,0.8)]"
+            className="flex min-w-0 items-center gap-2 rounded-[14px] border border-[var(--nova-border)] bg-[var(--nova-surface-2)] px-2 py-1.5 shadow-[0_8px_24px_-22px_rgba(0,0,0,0.72)]"
             aria-busy={actionPending || steering || undefined}
           >
             <div className="flex min-w-0 flex-1 items-center gap-2 px-1">

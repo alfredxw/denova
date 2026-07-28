@@ -286,7 +286,7 @@ export function BranchTimeline({
               className="relative min-w-max"
               style={{ width: layout.width, height: layout.height }}
             >
-              <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_1px_1px,rgba(148,163,184,0.12)_1px,transparent_0)] [background-size:18px_18px]" />
+              <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_1px_1px,rgba(163,163,163,0.12)_1px,transparent_0)] [background-size:18px_18px]" />
               <svg className="pointer-events-none absolute inset-0 overflow-visible" width={layout.width} height={layout.height} aria-hidden="true">
                 {layout.connections.map((connection) => (
                   <path
@@ -313,7 +313,7 @@ export function BranchTimeline({
                     left: x,
                     top: y,
                     width: layout.metrics.nodeCardWidth,
-                    background: node.id === selectedNodeId ? `linear-gradient(180deg, rgba(48,50,56,0.96), ${colorSoft})` : colorSoft,
+                    background: node.id === selectedNodeId ? `linear-gradient(180deg, rgba(50,50,50,0.96), ${colorSoft})` : colorSoft,
                     borderColor: node.id === selectedNodeId || node.current ? color : undefined,
                     boxShadow: node.id === selectedNodeId
                       ? `0 10px 24px rgba(0,0,0,0.28), 0 0 0 1px ${color}33`
@@ -484,7 +484,7 @@ function MiniMap({ layout, scrollRef, ariaLabel }: { layout: GraphLayout; scroll
       }}
       aria-label={ariaLabel}
     >
-      <div className="pointer-events-none absolute inset-0 bg-[linear-gradient(180deg,rgba(255,255,255,0.045),rgba(255,255,255,0)_42%),radial-gradient(circle_at_50%_0%,rgba(180,184,192,0.12),transparent_62%)]" />
+      <div className="pointer-events-none absolute inset-0 bg-[linear-gradient(180deg,rgba(255,255,255,0.045),rgba(255,255,255,0)_42%),radial-gradient(circle_at_50%_0%,rgba(186,186,186,0.12),transparent_62%)]" />
       <div className="pointer-events-none absolute inset-x-0 top-0 h-px bg-white/10" />
       <div className="pointer-events-none absolute inset-y-0 left-0 w-8 bg-gradient-to-r from-[var(--nova-surface-2)] to-transparent" />
       <div className="pointer-events-none absolute inset-y-0 right-0 w-8 bg-gradient-to-l from-[var(--nova-surface-2)] to-transparent" />
@@ -524,7 +524,7 @@ function MiniMap({ layout, scrollRef, ariaLabel }: { layout: GraphLayout; scroll
         ))}
       </svg>
       <div
-        className="absolute rounded-[5px] border border-white/45 bg-white/10 shadow-[0_0_0_1px_rgba(0,0,0,0.35),0_0_18px_rgba(212,215,221,0.16),inset_0_1px_0_rgba(255,255,255,0.22)] transition-all duration-150 group-active:duration-0"
+        className="absolute rounded-[5px] border border-white/45 bg-white/10 shadow-[0_0_0_1px_rgba(0,0,0,0.35),0_0_18px_rgba(216,216,216,0.16),inset_0_1px_0_rgba(255,255,255,0.22)] transition-all duration-150 group-active:duration-0"
         style={{
           left: `${viewport.left}%`,
           top: `${viewport.top}%`,

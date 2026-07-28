@@ -516,7 +516,7 @@ function AgentPanelComponent({
     <aside
       className={`nova-sidebar relative flex h-full min-h-0 flex-col overflow-hidden ${
         dockedChrome
-          ? 'border-l border-[var(--nova-border)] bg-[var(--nova-surface)] shadow-[-14px_0_30px_-28px_rgba(15,23,42,0.72)]'
+          ? 'border-l border-[var(--nova-border)] bg-[var(--nova-surface)] shadow-[-14px_0_30px_-28px_rgba(0,0,0,0.64)]'
           : 'bg-[var(--nova-bg)]'
       }`}
     >

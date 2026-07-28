@@ -60,6 +60,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Changed
 
+- 可拖拽排序的侧边列表不再用抓取手型强调低频排序操作；资源目录及工作台项目/会话行在可拖拽和拖动过程中均保持默认箭头光标，拖拽能力与独立拖拽把手的反馈不变。
+- Draggable sidebar lists no longer use a grab cursor to emphasize low-frequency sorting. Resource-directory rows and Workspace project/conversation rows keep the default arrow before and during dragging, while drag behavior and dedicated-handle feedback remain unchanged.
+- Light mode 重新整理为严格的中性灰阶：内容画布、顶部栏、一级导航、侧栏、聊天工作区、控件与选中态使用明确且 RGB 等通道的分层色板，移除结构性表面和阴影中的暖灰/蓝灰偏色；写作与游戏共用界面、预设工作区、导演台、终端及分支时间线同步采用该体系，彩色仅保留给成功、警告、错误和终端 ANSI 等语义状态。
+- Light mode now uses a strict neutral grayscale hierarchy. Content canvases, the top bar, primary navigation, sidebars, chat workspaces, controls, and selected states have distinct equal-channel RGB surfaces, while warm/cool tints are removed from structural layers and shadows. Shared Writing/Game UI, the preset workspace, Director console, terminal, and branch timeline follow the same system; color remains only for semantic status and terminal ANSI output.
 - 写作工作区的活动标签现在沿用与 AgentChat 一致的明确底色和顶部状态线；文件与设定标签支持右键 Pin / 取消 Pin，固定后移到标签栏前部、显示固定标记、不会被标签数量上限的 LRU 策略淘汰，偏好按作品持久化。重命名或移动已打开文件时会保留固定状态。
 - Active Writing tabs now use the same explicit surface color and top status line as AgentChat. File and Lore tabs support Pin/Unpin from the context menu; pinned tabs move to the front, show a pin marker, survive LRU enforcement of the configured tab limit, and persist per book. Renaming or moving an open file preserves its pinned state.
 - 工作台终端标签会使用内置启动配置名作为初始标题，并跟随前台程序通过标准 OSC 0/2 发出的窗口标题变化；Claude Code、Codex、Vim 与 Neovim 的装饰性窗口标题会收敛为简洁程序名，用户手动重命名仍具有最高优先级。
