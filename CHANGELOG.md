@@ -60,6 +60,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Changed
 
+- 工作台变更审阅移除与外层真实标签重复的内部「审阅」标签行，关闭操作统一由工作台标签承担；共享标签栏的新增按钮在标签溢出前后都保持垂直居中。
+- Workspace change review no longer renders an internal Review tab row that duplicated the real workbench tab; closing is now owned by the workbench tab. The shared tab-strip add button remains vertically centered before and after tab overflow.
 - 可拖拽排序的侧边列表不再用抓取手型强调低频排序操作；资源目录及工作台项目/会话行在可拖拽和拖动过程中均保持默认箭头光标，拖拽能力与独立拖拽把手的反馈不变。
 - Draggable sidebar lists no longer use a grab cursor to emphasize low-frequency sorting. Resource-directory rows and Workspace project/conversation rows keep the default arrow before and during dragging, while drag behavior and dedicated-handle feedback remain unchanged.
 - Light mode 重新整理为严格的中性灰阶：内容画布、顶部栏、一级导航、侧栏、聊天工作区、控件与选中态使用明确且 RGB 等通道的分层色板，移除结构性表面和阴影中的暖灰/蓝灰偏色；写作与游戏共用界面、预设工作区、导演台、终端及分支时间线同步采用该体系，彩色仅保留给成功、警告、错误和终端 ANSI 等语义状态。

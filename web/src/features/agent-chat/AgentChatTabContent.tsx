@@ -28,7 +28,7 @@ interface AgentChatTabContentProps {
   tellers: Teller[]
   imagePresets: ImagePreset[]
   renderPage: (workspace: string, pageId: AgentChatPageId, context: AgentChatPageRenderContext) => ReactNode
-  renderReview: (tab: AgentChatReviewTab, close: () => void, disabled: boolean) => ReactNode
+  renderReview: (tab: AgentChatReviewTab, disabled: boolean) => ReactNode
   navigationIntent: AgentChatDocumentReviewNavigation | null
   documentReviewFeedback?: ReviewFeedbackSelection | null
   onDocumentReviewFeedbackOpen: (workspace: string, selection: ReviewFeedbackSelection, comment: ReviewFeedbackComment) => void
@@ -39,7 +39,6 @@ interface AgentChatTabContentProps {
   onActivateWorkspace: (workspace: string) => Promise<boolean>
   onPageFlushHandlerChange: (workspace: string, tabId: string, handler: EditorFlushHandler | null) => void
   onOpenChangeReview: (workspace: string, reviewThreadID: string, groupID: string) => void
-  onClose: (tabId: string) => void
   onWorkspaceChanged?: (workspace: string, paths: string[]) => void | Promise<void>
   onRunningChange: (workspace: string, sessionId: string, running: boolean | null) => void
   onDraftCommitted: (message: string) => void
@@ -67,7 +66,6 @@ export function AgentChatTabContent({
   onActivateWorkspace,
   onPageFlushHandlerChange,
   onOpenChangeReview,
-  onClose,
   onWorkspaceChanged,
   onRunningChange,
   onDraftCommitted,
@@ -131,6 +129,6 @@ export function AgentChatTabContent({
         activateWorkspace,
       })}</>
     case 'review':
-      return <>{renderReview(tab, () => onClose(tab.id), running)}</>
+      return <>{renderReview(tab, running)}</>
   }
 }

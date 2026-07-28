@@ -46,7 +46,39 @@ describe('AgentChatTabBar', () => {
     expect(screen.getByRole('tab', { name: /Reader tab/ })).toHaveClass('min-w-28', 'max-w-40', 'flex-[1_1_10rem]')
     expect(screen.getByRole('tablist')).toHaveClass('overflow-x-auto', '[&::-webkit-scrollbar]:hidden')
     expect(screen.getByRole('tablist')).toHaveStyle({ scrollbarWidth: 'none' })
-    expect(screen.getByRole('button', { name: '新建标签页' })).toHaveClass('mx-1', 'h-7', 'w-8', 'rounded-lg')
+    expect(screen.getByRole('button', { name: '新建标签页' })).toHaveClass('mx-1', 'h-7', 'w-8', 'self-center', 'rounded-lg')
+  })
+
+  it('keeps Review closing on the real workbench tab', async () => {
+    const user = userEvent.setup()
+    const onClose = vi.fn()
+    const reviewTab: AgentChatTab = {
+      kind: 'review',
+      id: 'review-tab',
+      workspace: '/books/one',
+      threadID: 'review-thread',
+    }
+    renderTabBar(
+      <AgentChatTabBar
+        group="primary"
+        tabs={[reviewTab]}
+        activeTabId="review-tab"
+        tabTitle={() => 'Review'}
+        onActivate={vi.fn()}
+        onClose={onClose}
+        onCloseOthers={vi.fn()}
+        onCloseToRight={vi.fn()}
+        onRename={vi.fn()}
+        onTogglePin={vi.fn()}
+        onMoveTab={vi.fn()}
+        onNewAgentTab={vi.fn()}
+        onNewTerminalTab={vi.fn()}
+        onOpenPage={vi.fn()}
+      />,
+    )
+
+    await user.click(screen.getByRole('button', { name: '关闭 Review' }))
+    expect(onClose).toHaveBeenCalledWith('review-tab')
   })
 
   it('reveals a genuinely truncated title below the strip after a deliberate hover delay', async () => {

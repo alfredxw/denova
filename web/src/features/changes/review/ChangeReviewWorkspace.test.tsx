@@ -98,8 +98,7 @@ describe('ChangeReviewWorkspace', () => {
     expect(onFeedbackCommentsChange).not.toHaveBeenCalledWith('thread-1', [])
   })
 
-  it('keeps the temporary Review tab closable when loading fails', () => {
-    const onClose = vi.fn()
+  it('does not duplicate the workbench Review tab when loading fails', () => {
     queryMocks.useWorkspaceChangeReviewThread.mockReturnValue({
       data: undefined,
       isLoading: false,
@@ -108,8 +107,18 @@ describe('ChangeReviewWorkspace', () => {
       error: new Error('offline'),
       refetch: vi.fn(),
     })
-    renderWorkspace({ onClose })
+    renderWorkspace()
 
+    expect(screen.queryByText(/^(审阅|Review)$/i)).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: /关闭|Close/i })).not.toBeInTheDocument()
+  })
+
+  it('keeps standalone review closing in the existing toolbar', async () => {
+    const onClose = vi.fn()
+    renderWorkspace({ onClose })
+    await screen.findByTestId('review-diff-editor')
+
+    expect(screen.queryByText(/^(审阅|Review)$/i)).not.toBeInTheDocument()
     fireEvent.click(screen.getByRole('button', { name: /关闭|Close/i }))
     expect(onClose).toHaveBeenCalledTimes(1)
   })
@@ -121,7 +130,6 @@ describe('ChangeReviewWorkspace', () => {
     expect(screen.getByRole('button', { name: /接受本轮|Accept run/i })).toBeDisabled()
     expect(screen.getByRole('button', { name: /驳回本轮|Reject run/i })).toBeDisabled()
     expect(screen.getByRole('button', { name: /撤销整组|Undo group/i })).toBeDisabled()
-    expect(screen.getByRole('button', { name: /关闭|Close/i })).toBeEnabled()
   })
 
   it('renders every file in one review scroll while file navigation leaves the selected history scope unchanged', async () => {
@@ -221,16 +229,14 @@ describe('ChangeReviewWorkspace', () => {
   })
 
   it('locks snapshot-changing actions while an inline comment draft is open', async () => {
-    const onClose = vi.fn()
     const onOpenFile = vi.fn()
-    renderWorkspace({ onClose, onOpenFile })
+    renderWorkspace({ onOpenFile })
     await screen.findByTestId('review-diff-editor')
 
     fireEvent.click(screen.getByRole('button', { name: '开始评论草稿' }))
 
     expect(scopeButton()).toBeDisabled()
     expect(screen.getByRole('button', { name: /\u5237\u65b0|Refresh/i })).toBeDisabled()
-    expect(screen.getByRole('button', { name: /\u5173\u95ed|Close/i })).toBeEnabled()
     expect(screen.getByRole('button', { name: /\u6253\u5f00\u6587\u4ef6|Open file/i })).toBeDisabled()
     expect(screen.getByRole('option', { name: /chapters\/ch01\.md/ })).toBeEnabled()
     expect(screen.getByRole('button', { name: /折叠全部 Diff|Collapse all diffs/i })).toBeEnabled()
@@ -244,7 +250,6 @@ describe('ChangeReviewWorkspace', () => {
 
     fireEvent.click(screen.getByRole('button', { name: '取消评论草稿' }))
     expect(scopeButton()).toBeEnabled()
-    expect(screen.getByRole('button', { name: /\u5173\u95ed|Close/i })).toBeEnabled()
   })
 
   it('switches the review surface to a historical Agent run from the scope menu', async () => {
@@ -292,7 +297,6 @@ describe('ChangeReviewWorkspace', () => {
           workspace="/books/demo"
           threadID="thread-1"
           scopeRequest={{ id: 1, threadID: 'thread-1', groupID: 'group-1' }}
-          onClose={vi.fn()}
         />
       </QueryClientProvider>,
     )
@@ -307,7 +311,6 @@ describe('ChangeReviewWorkspace', () => {
           workspace="/books/demo"
           threadID="thread-1"
           scopeRequest={{ id: 2, threadID: 'thread-1', groupID: 'group-2' }}
-          onClose={vi.fn()}
         />
       </QueryClientProvider>,
     )
@@ -393,7 +396,6 @@ function renderWorkspace(overrides: Partial<React.ComponentProps<typeof ChangeRe
       <ChangeReviewWorkspace
         workspace="/books/demo"
         threadID="thread-1"
-        onClose={vi.fn()}
         {...overrides}
       />
     </QueryClientProvider>,

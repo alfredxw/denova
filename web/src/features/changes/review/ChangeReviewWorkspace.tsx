@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useMutation, useQueryClient } from '@tanstack/react-query'
-import { AlertTriangle, Check, FileDiff, Loader2 } from 'lucide-react'
+import { AlertTriangle, Check, FileDiff, Loader2, X } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import { toast } from 'sonner'
 import { Button } from '@/components/ui/button'
@@ -26,7 +26,6 @@ import { invalidateWorkspaceChangeQueries, useWorkspaceChangeGroup, useWorkspace
 import { ReviewFileDiffSection } from './ReviewFileDiffSection'
 import { ReviewFileNavigator } from './ReviewFileNavigator'
 import { ReviewToolbar } from './ReviewToolbar'
-import { ReviewUtilityTab } from './ReviewUtilityTab'
 import type { ReviewDiffLayout } from './monaco/review-editor-adapter'
 import { Utf8OffsetIndex } from './monaco/utf8-offset-index'
 import { projectReviewGroupFiles } from './review-group-projection'
@@ -45,7 +44,8 @@ interface ChangeReviewWorkspaceProps {
   selectedPath?: string | null
   agentVisible?: boolean
   onToggleAgent?: () => void
-  onClose: () => void
+  /** Standalone Writing review closes from its toolbar; workbench review closes from its real tab. */
+  onClose?: () => void
   onOpenFile?: (path: string) => void | Promise<void>
   onWorkspaceChanged?: (paths: string[]) => void | Promise<void>
   onFeedbackCommentsChange?: (threadID: string, comments: WorkspaceChangeComment[]) => void
@@ -550,10 +550,13 @@ function ReviewState({ icon, label, action }: { icon: React.ReactNode; label: st
   )
 }
 
-function ReviewSurfaceState({ onClose, ...state }: { onClose: () => void; icon: React.ReactNode; label: string; action?: React.ReactNode }) {
+function ReviewSurfaceState({ onClose, ...state }: { onClose?: () => void; icon: React.ReactNode; label: string; action?: React.ReactNode }) {
+  const { t } = useTranslation()
   return (
-    <section className="flex h-full min-h-0 flex-col bg-[var(--nova-bg)] text-xs text-[var(--nova-text-muted)]">
-      <ReviewUtilityTab onClose={onClose} />
+    <section className="relative flex h-full min-h-0 flex-col bg-[var(--nova-bg)] text-xs text-[var(--nova-text-muted)]">
+      {onClose ? (
+        <Button type="button" size="icon-xs" variant="ghost" onClick={onClose} className="absolute right-2 top-2 z-10" aria-label={t('common.close')}><X /></Button>
+      ) : null}
       <ReviewState {...state} />
     </section>
   )

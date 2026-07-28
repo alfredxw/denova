@@ -1,4 +1,4 @@
-import { Bot, Check, ChevronDown, ChevronsDownUp, ChevronsUpDown, Columns2, PanelRightClose, PanelRightOpen, RefreshCw, RotateCcw, RotateCw, Rows3, Undo2 } from 'lucide-react'
+import { Bot, Check, ChevronDown, ChevronsDownUp, ChevronsUpDown, Columns2, PanelRightClose, PanelRightOpen, RefreshCw, RotateCcw, RotateCw, Rows3, Undo2, X } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import { Button } from '@/components/ui/button'
 import {
@@ -11,7 +11,6 @@ import {
 } from '@/components/ui/dropdown-menu'
 import type { ReviewThread, WorkspaceChangeGroupSummary } from '../types'
 import type { ReviewDiffLayout } from './monaco/review-editor-adapter'
-import { ReviewUtilityTab } from './ReviewUtilityTab'
 
 interface ReviewToolbarProps {
   thread: ReviewThread
@@ -32,7 +31,7 @@ interface ReviewToolbarProps {
   onToggleAllDiffs: () => void
   onToggleNavigator: () => void
   onToggleAgent?: () => void
-  onClose: () => void
+  onClose?: () => void
 }
 
 export function ReviewToolbar({ thread, selectedGroup, selectedScopeID, fileCount, layout, busy, refreshing, allDiffsCollapsed, navigatorVisible, agentVisible, onLayoutChange, onScopeChange, onReview, onHistory, onRefresh, onToggleAllDiffs, onToggleNavigator, onToggleAgent, onClose }: ReviewToolbarProps) {
@@ -49,7 +48,6 @@ export function ReviewToolbar({ thread, selectedGroup, selectedScopeID, fileCoun
   const historicalGroups = thread.groups.map((group, index) => ({ group, index })).reverse()
   return (
     <header className="shrink-0 border-b border-[var(--nova-border)] bg-[var(--nova-surface)] text-xs text-[var(--nova-text-muted)]">
-      <ReviewUtilityTab onClose={onClose} />
       <div className="flex min-h-10 flex-wrap items-center gap-2 px-3 py-1.5">
         <div className="flex min-w-0 flex-1 items-center gap-2">
           <span className="rounded border border-[var(--nova-border)] bg-[var(--nova-surface-2)] px-1.5 py-0.5 text-[10px]">
@@ -142,6 +140,11 @@ export function ReviewToolbar({ thread, selectedGroup, selectedScopeID, fileCoun
             <Bot />
           </Button>
         )}
+        {onClose ? (
+          <Button type="button" size="icon-xs" variant="ghost" onClick={onClose} aria-label={t('common.close')} title={t('common.close')}>
+            <X />
+          </Button>
+        ) : null}
       </div>
 
       {selectedGroup && (

@@ -62,7 +62,7 @@ interface AgentChatViewProps {
   imagePresets: ImagePreset[]
   /** Project pages receive their tab's project, never the foreground Writing book. */
   renderPage: (workspace: string, pageId: AgentChatPageId, context: AgentChatPageRenderContext) => ReactNode
-  renderReview: (tab: AgentChatReviewTab, close: () => void, disabled: boolean) => ReactNode
+  renderReview: (tab: AgentChatReviewTab, disabled: boolean) => ReactNode
   documentReviewWorkspace?: string
   documentReviewFeedback?: ReviewFeedbackSelection | null
   onDocumentReviewFeedbackRemove?: (selection: ReviewFeedbackSelection, commentID: string) => void
@@ -636,7 +636,6 @@ export function AgentChatView({
                   onActivateWorkspace={activateProjectWorkspace}
                   onPageFlushHandlerChange={registerPageFlushHandler}
                   onOpenChangeReview={openChangeReview}
-                  onClose={(tabId) => { void closeTabs(project.path, [tabId]) }}
                   onWorkspaceChanged={onWorkspaceChanged}
                   onRunningChange={handleRunningChange}
                   onDraftCommitted={(message) => commitDraftSession(tab.workspace, tab.id, message)}

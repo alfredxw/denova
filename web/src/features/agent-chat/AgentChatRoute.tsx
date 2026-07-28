@@ -149,7 +149,7 @@ function AgentChatRouteComponent({
     </Suspense>
   ), [pageContent, t])
 
-  const renderReview = useCallback((tab: AgentChatReviewTab, close: () => void, disabled: boolean): ReactNode => (
+  const renderReview = useCallback((tab: AgentChatReviewTab, disabled: boolean): ReactNode => (
     <Suspense fallback={<div className="flex h-full items-center justify-center text-xs text-[var(--nova-text-muted)]">{t('router.loading')}</div>}>
       <ChangeReviewWorkspace
         workspace={tab.workspace}
@@ -157,7 +157,6 @@ function AgentChatRouteComponent({
         scopeRequest={tab.groupID ? { id: 0, threadID: tab.threadID, groupID: tab.groupID } : null}
         disabled={disabled}
         selectedPath={tab.workspace === workspace ? selectedFile : null}
-        onClose={close}
         onOpenFile={tab.workspace === workspace && onOpenFile ? async (path) => { await onOpenFile(path) } : undefined}
       />
     </Suspense>

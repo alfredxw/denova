@@ -154,7 +154,7 @@ export function WorkbenchTabAddButton({ className, children, ...props }: Compone
       variant="ghost"
       size="icon-xs"
       className={cn(
-        'mx-1 h-7 w-8 shrink-0 rounded-lg border border-[var(--nova-border-soft)] bg-[var(--nova-surface-2)] hover:bg-[var(--nova-hover)]',
+        'mx-1 h-7 w-8 shrink-0 self-center rounded-lg border border-[var(--nova-border-soft)] bg-[var(--nova-surface-2)] hover:bg-[var(--nova-hover)]',
         className,
       )}
       {...props}
