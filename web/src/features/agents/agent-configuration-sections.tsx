@@ -391,7 +391,7 @@ function contextRowsFor(agent: VisibleAgentKey, effective: Settings, t: (key: st
   const context = mergeAgentContextOverride(effective.agent_context?.default ?? {}, effective.agent_context?.[agent] ?? {})
   const compactionContext = mergeAgentContextOverride(effective.agent_context?.default ?? {}, effective.agent_context?.context_compaction ?? {})
   const compactionTurns = compactionContext.compaction_recent_turns ?? 1
-  const threshold = Math.round((context.compaction_threshold ?? 0.9) * 100)
+  const threshold = Math.round((context.compaction_threshold ?? 0.8) * 100)
   const targetMin = Math.round((compactionContext.compaction_target_min_ratio ?? 0.05) * 100)
   const targetMax = Math.round((compactionContext.compaction_target_max_ratio ?? 0.2) * 100)
   if (agent === 'ide') {
@@ -453,7 +453,7 @@ export function mergeAgentPromptOverride(parent: AgentPromptOverride, child: Age
 }
 
 export function mergeAgentContextOverride(parent: AgentContextOverride, child: AgentContextOverride): AgentContextOverride {
-  const compactionThreshold = child.compaction_threshold ?? parent.compaction_threshold ?? 0.9
+  const compactionThreshold = child.compaction_threshold ?? parent.compaction_threshold ?? 0.8
   const compactionRecentTurns = child.compaction_recent_turns ?? parent.compaction_recent_turns ?? 1
   const compactionTargetMin = child.compaction_target_min_ratio ?? parent.compaction_target_min_ratio ?? 0.05
   const compactionTargetMax = child.compaction_target_max_ratio ?? parent.compaction_target_max_ratio ?? 0.2

@@ -132,6 +132,9 @@ func loadSession(filePath string) (*Session, error) {
 	stats := journal.ReplayStats()
 	sess.lastReplayBytes = stats.BytesRead
 	sess.lastReplayRecords = int(stats.TransactionsRead)
+	// A physical transaction may contain many logical context messages. Bound
+	// the resident logical window after replay just as the hot append path does.
+	sess.trimMaterializedWindowLocked()
 	sess.trimTokenUsageDisplayEventsLocked("")
 	cleanup = false
 	return sess, nil

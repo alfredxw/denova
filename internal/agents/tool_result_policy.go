@@ -84,7 +84,8 @@ func unknownToolManifest(name string) ToolManifest {
 			Source: ToolSourceOther, Execution: ToolExecutionWorkspaceExclusive,
 			MutationScope: ToolMutationExternal, PostCheck: ToolPostCheckNone,
 			Recovery: ToolRecoveryNonIdempotent, ResultProjection: ToolResultBoundedModelContext,
-			Steering: agent.SteeringFinishCurrent, MaxResultBytes: defaultToolResultMaxBytes,
+			ContextRetention: agent.ToolContextReceipt,
+			Steering:         agent.SteeringFinishCurrent, MaxResultBytes: defaultToolResultMaxBytes,
 		},
 	}
 }
@@ -144,6 +145,7 @@ func filterStructuredToolResultWithManifest(manifest ToolManifest, args string, 
 		normalized = agent.ToolErrorResult("Invalid structured tool result: "+err.Error(), "Invalid structured tool result: "+err.Error())
 		normalized, _ = agent.NormalizeToolResult(normalized, manifest.ToolDescriptor)
 	}
+	normalized = projectRetainedToolResult(manifest, args, normalized)
 	return FilteredToolResult{
 		Result: normalized, Content: normalized.ModelContent, Manifest: manifest,
 		OriginalBytes: normalized.Metadata.OriginalModelBytes,
@@ -229,6 +231,7 @@ func parseToolResultManifest(name, content string) (ToolManifest, bool) {
 		Source: agent.ToolSource(values["source"]), Capability: values["capability"],
 		Execution: agent.ToolExecutionClass(values["execution"]), Recovery: agent.ToolRecoveryClass(values["recovery"]),
 		ResultProjection: agent.ToolResultProjection(values["result_projection"]),
+		ContextRetention: agent.ToolContextReceipt,
 		Steering:         agent.SteeringFinishCurrent,
 		MutationScope:    mutationScope, PostCheck: postCheckPolicy, MaxResultBytes: maxBytes,
 	}), true

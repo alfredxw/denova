@@ -133,7 +133,7 @@ func TestBuildContextCompactionUsesContextCompactionTargetRange(t *testing.T) {
 	}
 }
 
-func TestBuildContextCompactionTriggersOnProjectedNinetyPercentUsage(t *testing.T) {
+func TestBuildContextCompactionTriggersOnProjectedEightyPercentUsage(t *testing.T) {
 	previous := summarizeContextForCompaction
 	defer func() { summarizeContextForCompaction = previous }()
 	summarizeContextForCompaction = func(_ context.Context, _ *config.Config, _ string, _ string, _ []*agent.Message, _ string, _ int, _ contextCompactionPolicy, _ func(int, string)) (string, int, error) {
@@ -154,11 +154,31 @@ func TestBuildContextCompactionTriggersOnProjectedNinetyPercentUsage(t *testing.
 	if err != nil {
 		t.Fatal(err)
 	}
-	if result.TokensBefore >= 900 {
+	if result.TokensBefore >= 800 {
 		t.Fatalf("raw prompt should be below threshold for this test: %#v", result)
 	}
-	if !result.Triggered || result.ProjectedTokensBefore < 900 {
-		t.Fatalf("projected prompt + completion reserve should trigger at 90%%: %#v", result)
+	if !result.Triggered || result.ProjectedTokensBefore < 800 {
+		t.Fatalf("projected prompt + completion reserve should trigger at 80%%: %#v", result)
+	}
+}
+
+func TestContextTokenProjectionCalibratesFromExactPreviousProviderUsage(t *testing.T) {
+	prior := []*agent.Message{agent.UserMessage(strings.Repeat("calibration ", 80))}
+	priorEstimate := EstimateContextTokens(prior, nil)
+	response := agent.AssistantMessage("tool requested", nil)
+	response.ResponseMeta = &agent.ResponseMeta{Usage: &agent.TokenUsage{PromptTokens: priorEstimate * 2}}
+	messages := append(append([]*agent.Message(nil), prior...), response, agent.ToolMessage(agent.TextToolResult(strings.Repeat("delta ", 40)), "call-1"))
+
+	observed, estimated := latestPromptUsageCalibration(messages, nil)
+	if observed != priorEstimate*2 || estimated != priorEstimate {
+		t.Fatalf("usage calibration pair = observed:%d estimated:%d want %d/%d", observed, estimated, priorEstimate*2, priorEstimate)
+	}
+	local := EstimateContextTokens(messages, nil)
+	calibrated := calibratedContextTokens(local, ContextCompactionInput{
+		ObservedPromptTokens: observed, ObservedEstimateTokens: estimated,
+	})
+	if calibrated != local*2 {
+		t.Fatalf("calibrated current projection = %d, want %d from local=%d", calibrated, local*2, local)
 	}
 }
 
@@ -236,7 +256,7 @@ func TestBuildContextCompactionTranscriptKeepsAllIncrementalMessagesAndReference
 	for i := 1; i <= 40; i++ {
 		messages = append(messages, agent.UserMessage(strings.Repeat("旧消息", 2000)+":"+string(rune('A'+i%26))))
 	}
-	policy := contextCompactionPolicy{TargetMinRatio: 0.10, TargetMaxRatio: 0.25}
+	policy := contextCompactionPolicy{AgentKind: config.AgentKindIDE, TargetMinRatio: 0.10, TargetMaxRatio: 0.25}
 	existing := "既有压缩摘要：主角进入旧城。"
 	reference := "有界参考上下文：关系=信任；任务=寻找钥匙。"
 	inputChars := contextCompactionInputChars(existing, messages, reference)
@@ -247,6 +267,9 @@ func TestBuildContextCompactionTranscriptKeepsAllIncrementalMessagesAndReference
 	}
 	if !strings.Contains(transcript, existing) || !strings.Contains(transcript, reference) {
 		t.Fatalf("transcript should include existing checkpoint and reference context:\n%s", transcript)
+	}
+	if !strings.Contains(transcript, "Source agent kind: ide") {
+		t.Fatalf("transcript missing source mode: %s", transcript[:300])
 	}
 	if !strings.Contains(transcript, "--- message 1 role=user ---") || !strings.Contains(transcript, "--- message 40 role=user ---") {
 		t.Fatalf("transcript should include the full incremental message range")

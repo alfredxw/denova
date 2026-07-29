@@ -195,19 +195,19 @@ var agentToolCapabilities = []AgentToolCapability{
 		agent.ToolExecutionSessionExclusive, agent.ToolMutationExternal, agent.ToolPostCheckExternalReceipt,
 		agent.ToolRecoveryNonIdempotent, agent.SteeringFinishCurrent,
 	)),
-	runtimeSubAgentUnavailableCapabilityDefinition(AgentToolAsk, "agents.tool.ask.title", "agents.tool.ask.subtitle", []string{"ask"}, descriptorSummary(
+	runtimeSubAgentUnavailableCapabilityDefinition(AgentToolAsk, "agents.tool.ask.title", "agents.tool.ask.subtitle", []string{"ask"}, transientDescriptorSummary(descriptorSummary(
 		agent.ToolExecutionInteractiveWait, agent.ToolMutationSession, agent.ToolPostCheckSessionState,
 		agent.ToolRecoveryReconcilable, agent.SteeringFinishCurrent,
-	)),
-	subAgentUnavailableCapabilityDefinition(AgentToolTodo, "agents.tool.todo.title", "agents.tool.todo.subtitle", []string{"todo"}, descriptorSummary(
+	))),
+	subAgentUnavailableCapabilityDefinition(AgentToolTodo, "agents.tool.todo.title", "agents.tool.todo.subtitle", []string{"todo"}, transientDescriptorSummary(descriptorSummary(
 		agent.ToolExecutionSessionExclusive, agent.ToolMutationSession, agent.ToolPostCheckSessionState,
 		agent.ToolRecoveryIdempotent, agent.SteeringFinishCurrent,
-	)),
+	))),
 	runtimeCapabilityDefinition(AgentToolSkills, "agents.tool.skills.title", "agents.tool.skills.subtitle", []string{"skill", "read"}, readOnlyDescriptor()),
-	runtimeSubAgentUnavailableCapabilityDefinition(AgentToolDelegation, "agents.tool.delegation.title", "agents.tool.delegation.subtitle", []string{"task"}, descriptorSummary(
+	runtimeSubAgentUnavailableCapabilityDefinition(AgentToolDelegation, "agents.tool.delegation.title", "agents.tool.delegation.subtitle", []string{"task"}, transientDescriptorSummary(descriptorSummary(
 		agent.ToolExecutionChild, agent.ToolMutationNone, agent.ToolPostCheckNone,
 		agent.ToolRecoveryNonIdempotent, agent.SteeringFinishCurrent,
-	)),
+	))),
 	capabilityDefinition(AgentToolConfigRead, "agents.tool.configRead.title", "agents.tool.configRead.subtitle", []string{"config_read"}, readOnlyDescriptor()),
 	capabilityDefinition(AgentToolConfigApply, "agents.tool.configApply.title", "agents.tool.configApply.subtitle", []string{"config_apply"}, descriptorSummary(
 		agent.ToolExecutionConfigExclusive, agent.ToolMutationConfig, agent.ToolPostCheckConfigRevision,
@@ -217,10 +217,10 @@ var agentToolCapabilities = []AgentToolCapability{
 	capabilityDefinition(AgentToolLoreRead, "agents.tool.loreRead.title", "agents.tool.loreRead.subtitle", []string{"list_lore_items", "read_lore_items"}, readOnlyDescriptor()),
 	capabilityDefinition(AgentToolLoreWrite, "agents.tool.loreWrite.title", "agents.tool.loreWrite.subtitle", []string{"write_lore_items"}, workspaceWriteDescriptor(agent.ToolRecoveryReconcilable)),
 	capabilityDefinition(AgentToolImageGeneration, "agents.tool.imageGeneration.title", "agents.tool.imageGeneration.subtitle", []string{"generate_image"}, workspaceWriteDescriptor(agent.ToolRecoveryNonIdempotent)),
-	subAgentUnavailableCapabilityDefinition(AgentToolContextRewind, "agents.tool.contextRewind.title", "agents.tool.contextRewind.subtitle", []string{"checkpoint", "rewind"}, descriptorSummary(
+	subAgentUnavailableCapabilityDefinition(AgentToolContextRewind, "agents.tool.contextRewind.title", "agents.tool.contextRewind.subtitle", []string{"checkpoint", "rewind"}, transientDescriptorSummary(descriptorSummary(
 		agent.ToolExecutionSessionExclusive, agent.ToolMutationSession, agent.ToolPostCheckSessionState,
 		agent.ToolRecoveryReconcilable, agent.SteeringFinishCurrent,
-	)),
+	))),
 }
 
 func AgentToolCapabilities() []AgentToolCapability {
@@ -239,6 +239,7 @@ type AgentToolDescriptorSummary struct {
 	PostCheck        agent.ToolPostCheckPolicy  `json:"post_check"`
 	Recovery         agent.ToolRecoveryClass    `json:"recovery"`
 	ResultProjection agent.ToolResultProjection `json:"result_projection"`
+	ContextRetention agent.ToolContextRetention `json:"context_retention"`
 	Steering         agent.SteeringPolicy       `json:"steering"`
 }
 
@@ -427,8 +428,14 @@ func runtimeSubAgentUnavailableCapabilityDefinition(source, titleKey, descriptio
 func descriptorSummary(execution agent.ToolExecutionClass, mutation agent.ToolMutationScope, postCheck agent.ToolPostCheckPolicy, recovery agent.ToolRecoveryClass, steering agent.SteeringPolicy) AgentToolDescriptorSummary {
 	return AgentToolDescriptorSummary{
 		Execution: execution, MutationScope: mutation, PostCheck: postCheck,
-		Recovery: recovery, ResultProjection: agent.ToolResultBoundedModelContext, Steering: steering,
+		Recovery: recovery, ResultProjection: agent.ToolResultBoundedModelContext,
+		ContextRetention: agent.ToolContextReceipt, Steering: steering,
 	}
+}
+
+func transientDescriptorSummary(summary AgentToolDescriptorSummary) AgentToolDescriptorSummary {
+	summary.ContextRetention = agent.ToolContextTransient
+	return summary
 }
 
 func readOnlyDescriptor() AgentToolDescriptorSummary {

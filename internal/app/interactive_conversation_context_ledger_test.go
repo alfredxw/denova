@@ -245,7 +245,7 @@ func TestInteractiveContextLedgerUsesFinalCompactedMessages(t *testing.T) {
 			}
 		case part.Source == "历史工具上下文" && strings.HasPrefix(part.Title, "工具结果"):
 			toolResults++
-			if strings.Contains(part.Preview, "完整资料正文") || !strings.Contains(part.Note, "semantic_filtered=true") || !strings.Contains(part.Note, "single_result_limit_bytes=") || part.Limit <= 0 || part.LimitUnit != "bytes" || !part.Truncated {
+			if strings.Contains(part.Preview, "完整资料正文") || !strings.Contains(part.Note, "semantic_filtered=true") || !strings.Contains(part.Note, "single_result_limit_bytes=") || part.Limit <= 0 || part.LimitUnit != "bytes" || part.Truncated {
 				t.Fatalf("tool-result ledger must describe the semantic cross-turn receipt, not the original body: %#v", part)
 			}
 		}

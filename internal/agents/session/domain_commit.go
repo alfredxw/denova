@@ -292,14 +292,21 @@ func (s *Session) snapshotContextLocked(agentKind string) (ContextSnapshot, erro
 }
 
 func (s *Session) AppendContextMessageAt(expected ContextCursor, msg *agent.Message) error {
-	if msg == nil || (msg.Role == "" && strings.TrimSpace(msg.Content) == "" && len(msg.ToolCalls) == 0) {
+	return s.AppendContextMessagesAt(expected, msg)
+}
+
+// AppendContextMessagesAt atomically publishes a context-only protocol batch
+// against the exact model-visible revision used to produce it.
+func (s *Session) AppendContextMessagesAt(expected ContextCursor, messages ...*agent.Message) error {
+	if len(messages) == 0 {
 		return nil
 	}
+	metadata := make([]MessageMetadata, len(messages))
 	return s.withCanonicalMutation(context.Background(), "append context message with revision", func() error {
 		if current := s.contextCursorLocked(); current.Revision != expected.Revision {
 			return fmt.Errorf("%w: expected=%d current=%d", ErrContextRevisionConflict, expected.Revision, current.Revision)
 		}
-		return s.appendMessageLocked(msg, MessageMetadata{}, historyTypeContextMessage)
+		return s.appendMessagesLocked(messages, metadata, historyTypeContextMessage)
 	})
 }
 
@@ -494,6 +501,9 @@ func sameContextCompactionIntent(existing, requested ContextCompaction) bool {
 		existing.Epoch == requested.Epoch && existing.Summary == requested.Summary &&
 		existing.SourceStartIndex == requested.SourceStartIndex && existing.SourceEndIndex == requested.SourceEndIndex &&
 		existing.SourceMessageCount == requested.SourceMessageCount && existing.RetainedTurns == requested.RetainedTurns &&
+		existing.EstimatedTokensBefore == requested.EstimatedTokensBefore &&
+		existing.ObservedPromptTokens == requested.ObservedPromptTokens &&
+		existing.ObservedEstimateTokens == requested.ObservedEstimateTokens &&
 		existing.TokensBefore == requested.TokensBefore && existing.TokensAfter == requested.TokensAfter &&
 		existing.TargetRatio == requested.TargetRatio && existing.ContextWindowTokens == requested.ContextWindowTokens &&
 		existing.Strategy == requested.Strategy && existing.Threshold == requested.Threshold &&

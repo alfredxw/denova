@@ -2,6 +2,7 @@ package agents
 
 import (
 	"encoding/json"
+	"math"
 	"unicode"
 
 	agent "github.com/alfredxw/denova/agent"
@@ -51,6 +52,33 @@ func withDefaultContextProjectionReserves(cfg *config.Config, agentKind string, 
 
 func projectedContextTokens(promptTokens int, input ContextCompactionInput) int {
 	return max(1, promptTokens+max(0, input.ReservedCompletionTokens)+max(0, input.ReservedToolResultTokens))
+}
+
+// calibratedContextTokens uses provider usage only as a ratio measured on the
+// exact previous request. The current assembly is still projected locally, so
+// newly added tool results and completion reserves cannot be mistaken for
+// usage the provider has not observed yet.
+func calibratedContextTokens(estimated int, input ContextCompactionInput) int {
+	estimated = max(1, estimated)
+	if input.ObservedPromptTokens <= 0 || input.ObservedEstimateTokens <= 0 {
+		return estimated
+	}
+	ratio := float64(input.ObservedPromptTokens) / float64(input.ObservedEstimateTokens)
+	if ratio < 0.25 || ratio > 4 {
+		return estimated
+	}
+	return max(1, int(math.Round(float64(estimated)*ratio)))
+}
+
+func latestPromptUsageCalibration(messages []*agent.Message, tools []*agent.ToolInfo) (observed, estimated int) {
+	for index := len(messages) - 1; index >= 0; index-- {
+		message := messages[index]
+		if message == nil || message.ResponseMeta == nil || message.ResponseMeta.Usage == nil || message.ResponseMeta.Usage.PromptTokens <= 0 {
+			continue
+		}
+		return message.ResponseMeta.Usage.PromptTokens, EstimateContextTokens(messages[:index], tools)
+	}
+	return 0, 0
 }
 
 func compactionSourceBaseMessages(input ContextCompactionInput) []*agent.Message {

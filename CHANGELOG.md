@@ -63,6 +63,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Changed
 
+- Agent 工具结果上下文改为明确的双投影：当前 Run 继续使用完整的有界结果，跨用户轮次只保留由工具描述符声明的确定性参数与结构化回执；Shell 完整输出原子外置为会话级 artifact，可按 URI 与 SHA-256 恢复，非幂等图像生成回执会保留全部实际图像与元数据路径，工具调用与回执作为一个 journal 事务提交。所有自定义工具现在必须显式选择 `transient` 或 `receipt`；这是 Beta 阶段的工具描述符不兼容变更。上下文压缩默认在 80% 触发，以前一轮供应商真实 prompt usage 校准当前投影，并按写作/游戏/通用任务生成不同 checkpoint。
+- Agent tool-result context now uses two explicit projections: the current Run keeps the complete bounded result, while later user turns receive only deterministic arguments and a structured receipt selected by the tool descriptor. Complete Shell output is atomically externalized as a session artifact recoverable by URI and SHA-256; non-idempotent image receipts retain every actual image and metadata path; and each retained call/receipt pair is committed in one journal transaction. Every custom tool must now explicitly choose `transient` or `receipt`, a Beta descriptor breaking change. Context compaction defaults to 80%, calibrates the current projection from the provider's exact previous prompt usage, and emits mode-aware checkpoints for Writing, Game, and general tasks.
 - Lore 批量读取不再设置单次 16 条、单次正文大小或任务累计正文大小的专属拒绝上限，资料目录的显式 `limit` 与关键词数量也不再被工具层任意封顶。`read_lore_items` 在部分 ID / 唯一名称不存在时会正常返回已命中的完整资料并附带未找到清单，只有整批均未命中时才报错；进入模型上下文的工具结果仍由统一、可配置的高上限投影边界保护。
 - Lore batch reads no longer impose Lore-specific rejection caps on 16 items, per-call body size, or cumulative body size, and explicit catalogue limits and keyword counts are no longer arbitrarily capped by the tool. `read_lore_items` now returns every matched full entry plus a missing-item list when only some IDs or unique names are stale, and errors only when the entire batch misses; model-context projection remains protected by the shared configurable high ceiling.
 - Beta 不兼容：`config_read` 的 `list` / `get` 统一改为带 `items`、状态、总数和 `next_cursor` 的分页信封，不再限制 32 个 ID。精确读取会逐项返回成功项、`missing_ids` 与非缺失故障，部分失败不再拖垮整批，只有完整请求一个成功项也没有时才报错；目录游标会绑定查询和目录版本，配置变化后明确要求重新分页。`config_apply` 改为返回小型持久化回执，不再回显可能超出共享预算的完整配置，规范值按既有流程用 `get` 验证。
@@ -100,6 +102,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Fixed
 
+- 修复会话 resident window 超过 200 条后，增量压缩只总结内存尾部、在非用户消息边界错误漏掉最新工具结果，以及大型来源直接超过摘要模型限制的问题。压缩现在按精确 journal locator 流式读取完整 canonical 区间，支持分层摘要；展示历史与模型上下文仍保持分离，原 journal 不会因压缩被重写或删除。
+- Fixed incremental compaction summarizing only the in-memory tail after the 200-message resident window, incorrectly dropping the latest tool result at a non-user boundary, and sending oversized sources directly beyond summarizer limits. Compaction now reads the complete canonical range through exact journal locators and supports layered summarization; display history remains separate from model context, and compaction never rewrites or deletes the source journal.
 - 修复 Claude Code 等交互式 CLI 退出后对应终端 Tab 卡死的问题：Unix PTY 根 shell 现在拥有独立 session 和正确的 controlling TTY，前台进程结束后会可靠恢复到原工作目录的 zsh 提示符。
 - Fixed terminal tabs freezing after Claude Code and other interactive CLIs exit. The Unix PTY root shell now owns an independent session and the correct controlling TTY, so foreground-process completion reliably returns to the zsh prompt in the original working directory.
 - Lore Tab 的 Raw 模式改为 TipTap 承载的纯 Markdown 源码文档，与富文本模式共享搜索高亮、选区浮动操作和评论线程；移除 textarea 专用评论实现及光标坐标依赖。Raw 评论现在会把冻结选区安全映射到服务端规范化后的 canonical 正文，修复末尾换行差异导致无法添加评论的问题，并可在富文本与 Raw 之间继续定位唯一的可见文本锚点。

@@ -29,6 +29,10 @@ type ContextSourceReporter interface {
 	ContextSourceSummary() string
 }
 
+type toolArtifactStoreProvider interface {
+	ToolArtifactStore() agent.ToolArtifactStore
+}
+
 // ContextLedgerReporter exposes bounded metadata for the actual domain context
 // fragments assembled by a Conversation. Full fragment content is never
 // persisted by the runtime.
@@ -201,15 +205,22 @@ func (c *SessionConversation) ContextSourceSummary() string {
 
 func (c *SessionConversation) CompactContextIfNeeded(ctx context.Context, input ContextCompactionInput) ([]*agent.Message, ContextCompactionResult, error) {
 	policy := c.compactionPolicy()
+	if input.ContextWindowTokens > 0 {
+		policy.ContextWindowTokens = input.ContextWindowTokens
+	}
 	input = withDefaultContextProjectionReserves(c.cfg, c.agentKind, input, 0)
 	phase := strings.TrimSpace(input.Phase)
 	if phase == "" {
 		phase = contextCompactionPhasePreRun
 	}
-	tokensBefore := EstimateContextTokens(input.Messages, input.Tools)
+	estimatedTokensBefore := EstimateContextTokens(input.Messages, input.Tools)
+	tokensBefore := calibratedContextTokens(estimatedTokensBefore, input)
 	projectedTokensBefore := projectedContextTokens(tokensBefore, input)
 	result := ContextCompactionResult{
 		Phase:                    phase,
+		EstimatedTokensBefore:    estimatedTokensBefore,
+		ObservedPromptTokens:     input.ObservedPromptTokens,
+		ObservedEstimateTokens:   input.ObservedEstimateTokens,
 		TokensBefore:             tokensBefore,
 		ProjectedTokensBefore:    projectedTokensBefore,
 		ReservedCompletionTokens: input.ReservedCompletionTokens,
@@ -225,7 +236,10 @@ func (c *SessionConversation) CompactContextIfNeeded(ctx context.Context, input 
 		result.SkippedReason = skipped
 		return input.Messages, result, nil
 	}
-	source, existingCheckpoint, sourceStart, sourceEnd := c.compactionIncrementalSource(input.KeepLatestUser)
+	source, existingCheckpoint, sourceStart, sourceEnd, err := c.compactionIncrementalSource(ctx, input.KeepLatestUser)
+	if err != nil {
+		return input.Messages, result, fmt.Errorf("read canonical compaction source: %w", err)
+	}
 	if strings.TrimSpace(input.ExistingCheckpoint) != "" {
 		existingCheckpoint = input.ExistingCheckpoint
 	}
@@ -241,7 +255,7 @@ func (c *SessionConversation) CompactContextIfNeeded(ctx context.Context, input 
 	}
 	sourceTokens := EstimateContextTokens(source, nil)
 	emitContextCompactionEvent(input.Emit, phase, "started", result)
-	summary, inputChars, err := summarizeContextForCompaction(ctx, c.cfg, c.agentKind, existingCheckpoint, source, input.ReferenceContext, sourceTokens, policy, func(attempt int, delta string) {
+	summary, inputChars, err := summarizeContextInLayers(ctx, c.cfg, c.agentKind, existingCheckpoint, source, input.ReferenceContext, sourceTokens, policy, func(attempt int, delta string) {
 		emitContextCompactionDeltaEvent(input.Emit, phase, result, attempt, delta)
 	})
 	if err != nil {
@@ -257,7 +271,7 @@ func (c *SessionConversation) CompactContextIfNeeded(ctx context.Context, input 
 	result.Triggered = true
 	result.Epoch = epoch
 	result.Summary = summary
-	result.TokensAfter = EstimateContextTokens(newMessages, input.Tools)
+	result.TokensAfter = calibratedContextTokens(EstimateContextTokens(newMessages, input.Tools), input)
 	result.ProjectedTokensAfter = projectedContextTokens(result.TokensAfter, input)
 	result.TargetRatio = contextCompactionRatio(countRunes(summary), inputChars)
 	result.SourceMessageCount = len(source)
@@ -304,11 +318,11 @@ func (c *SessionConversation) nextCompactionEpoch() int {
 	return c.session.NextContextCompactionEpoch(c.agentKind)
 }
 
-func (c *SessionConversation) compactionIncrementalSource(keepLatestUser bool) ([]*agent.Message, string, int, int) {
+func (c *SessionConversation) compactionIncrementalSource(ctx context.Context, keepLatestUser bool) ([]*agent.Message, string, int, int, error) {
 	if c == nil || c.session == nil {
-		return nil, "", 0, 0
+		return nil, "", 0, 0, nil
 	}
-	messages, messageBase, total := c.session.MessageWindow()
+	total := c.session.MessageCountTotal()
 	sourceStart := total - c.session.MessageCountSinceClear()
 	if sourceStart < 0 {
 		sourceStart = 0
@@ -325,17 +339,23 @@ func (c *SessionConversation) compactionIncrementalSource(keepLatestUser bool) (
 	}
 	sourceEnd := total
 	if !keepLatestUser && sourceEnd > sourceStart {
-		sourceEnd--
+		latest, err := c.session.ReadMessageRange(ctx, sourceEnd-1, sourceEnd)
+		if err != nil {
+			return nil, "", sourceStart, sourceEnd, err
+		}
+		if len(latest) == 1 && latest[0] != nil && latest[0].Role == agent.User {
+			sourceEnd--
+		}
 	}
 	if sourceEnd < sourceStart {
 		sourceEnd = sourceStart
 	}
-	windowStart := max(sourceStart-messageBase, 0)
-	windowEnd := max(sourceEnd-messageBase, 0)
-	windowStart = min(windowStart, len(messages))
-	windowEnd = min(max(windowEnd, windowStart), len(messages))
-	source := compactionSourceMessages(applyToolResultContextPolicy(messages[windowStart:windowEnd], c.ToolResultContextPolicy()), true)
-	return source, existingCheckpoint, sourceStart, sourceEnd
+	messages, err := c.session.ReadMessageRange(ctx, sourceStart, sourceEnd)
+	if err != nil {
+		return nil, "", sourceStart, sourceEnd, err
+	}
+	source := compactionSourceMessages(applyToolResultContextPolicy(messages, c.ToolResultContextPolicy()), true)
+	return source, existingCheckpoint, sourceStart, sourceEnd, nil
 }
 
 func compactionSourceMessages(messages []*agent.Message, keepLatestUser bool) []*agent.Message {
@@ -615,8 +635,18 @@ func (c *SessionConversation) agentCycleCursorSnapshot() session.ContextCursor {
 }
 
 func (c *SessionConversation) AppendContextMessage(msg *agent.Message) error {
+	if msg == nil || (msg.Role == "" && strings.TrimSpace(msg.Content) == "" && len(msg.ToolCalls) == 0) {
+		return nil
+	}
+	return c.AppendContextMessages(msg)
+}
+
+func (c *SessionConversation) AppendContextMessages(messages ...*agent.Message) error {
 	if c == nil || c.session == nil {
 		return fmt.Errorf("会话不存在")
+	}
+	if len(messages) == 0 {
+		return nil
 	}
 	identity := c.agentCycleIdentitySnapshot()
 	c.cycleMu.Lock()
@@ -624,7 +654,7 @@ func (c *SessionConversation) AppendContextMessage(msg *agent.Message) error {
 	c.cycleMu.Unlock()
 	var err error
 	if structural || validHarnessCycleIdentity(identity) {
-		commit := func() error { return c.session.AppendContextMessageAt(c.agentCycleCursorSnapshot(), msg) }
+		commit := func() error { return c.session.AppendContextMessagesAt(c.agentCycleCursorSnapshot(), messages...) }
 		c.cycleMu.Lock()
 		gate := c.structuralCommit
 		c.cycleMu.Unlock()
@@ -652,6 +682,13 @@ func (c *SessionConversation) ToolResultContextPolicy() ToolResultContextPolicy 
 		agentKind = config.AgentKindIDE
 	}
 	return resolveToolResultContextPolicy(c.cfg, agentKind)
+}
+
+func (c *SessionConversation) ToolArtifactStore() agent.ToolArtifactStore {
+	if c == nil || c.session == nil {
+		return nil
+	}
+	return c.session.ToolArtifactStore()
 }
 
 func (c *SessionConversation) AppendDisplayEvent(event session.DisplayEvent) error {

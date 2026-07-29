@@ -214,6 +214,7 @@ export interface AgentToolDescriptorSummary {
   post_check: string
   recovery: string
   result_projection: string
+  context_retention: string
   steering: string
 }
 

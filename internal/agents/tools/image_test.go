@@ -12,6 +12,7 @@ import (
 	"denova/internal/book"
 	"denova/internal/illustration"
 	"denova/internal/imagegen"
+	"denova/internal/interactiveimage"
 )
 
 func TestParseChapterIllustrationToolResult(t *testing.T) {
@@ -71,6 +72,73 @@ func TestParseGeneratedImageToolTarget(t *testing.T) {
 	}
 	if target := parseGeneratedImageToolTarget(generateImageToolName, string(raw)); target != payload.Images[0].Path {
 		t.Fatalf("target = %q", target)
+	}
+}
+
+func TestNewGeneratedImageToolResultRetainsCanonicalPaths(t *testing.T) {
+	value := generatedImageToolResult{
+		Schema: generatedImageResultSchema, Status: "success", Provider: "openai", Model: "image-model",
+		Images: []generatedImageToolImage{
+			{Path: "assets/image/generated/first.png", Markdown: "![first](assets/image/generated/first.png)", RevisedPrompt: "provider-expanded-first"},
+			{Path: "assets/image/generated/second.png", Markdown: "![second](assets/image/generated/second.png)", RevisedPrompt: "provider-expanded-second"},
+		},
+	}
+	result, err := newGeneratedImageToolResult(value)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if result.Metadata.Target != value.Images[0].Path {
+		t.Fatalf("target = %q, want %q", result.Metadata.Target, value.Images[0].Path)
+	}
+	if !strings.Contains(result.ModelContent, "provider-expanded-first") {
+		t.Fatalf("same-turn model result lost provider output: %s", result.ModelContent)
+	}
+	if strings.Contains(string(result.Details), "provider-expanded") {
+		t.Fatalf("retained details should omit provider prompt output: %s", result.Details)
+	}
+	var receipt generatedImageReceiptDetails
+	if err := json.Unmarshal(result.Details, &receipt); err != nil {
+		t.Fatal(err)
+	}
+	if receipt.Schema != generatedImageReceiptSchema || len(receipt.Images) != 2 ||
+		receipt.Images[0].Path != value.Images[0].Path || receipt.Images[1].Path != value.Images[1].Path {
+		t.Fatalf("retained image receipt = %#v", receipt)
+	}
+}
+
+func TestGeneratedImageReceiptUsesMetadataAsMutationTarget(t *testing.T) {
+	tests := []struct {
+		name  string
+		value any
+		want  string
+	}{
+		{
+			name: "chapter illustration",
+			value: illustration.Result{
+				Schema: illustration.ResultSchema, ImagePath: "assets/illustrations/ch01/image.png",
+				MetaPath: "assets/illustrations/ch01/meta.json",
+			},
+			want: "assets/illustrations/ch01/meta.json",
+		},
+		{
+			name: "interactive image",
+			value: interactiveimage.Result{
+				Schema: interactiveimage.ResultSchema, ImagePath: "assets/interactive/images/turn.png",
+				MetaPath: "assets/interactive/images/turn.json",
+			},
+			want: "assets/interactive/images/turn.json",
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			result, err := newGeneratedImageToolResult(tt.value)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if result.Metadata.Target != tt.want {
+				t.Fatalf("target = %q, want %q", result.Metadata.Target, tt.want)
+			}
+		})
 	}
 }
 

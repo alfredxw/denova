@@ -49,7 +49,10 @@ type CommandResult struct {
 	Version         string
 	ExitCode        int
 	Output          string
+	OutputBytes     int64
 	OutputTruncated bool
+	Artifact        *agent.ToolArtifactRef
+	ArtifactError   string
 	Cwd             string
 	PTY             bool
 	TimeoutSeconds  int
@@ -133,17 +136,20 @@ type processRecovery struct {
 }
 
 type processEnvelope struct {
-	Schema          string          `json:"schema"`
-	Status          ProcessStatus   `json:"status"`
-	Shell           ShellKind       `json:"shell"`
-	Engine          string          `json:"engine"`
-	Version         string          `json:"version,omitempty"`
-	ExitCode        int             `json:"exit_code"`
-	Cwd             string          `json:"cwd"`
-	PTY             bool            `json:"pty"`
-	TimeoutSeconds  int             `json:"timeout_seconds"`
-	OutputTruncated bool            `json:"output_truncated"`
-	Recovery        processRecovery `json:"recovery"`
+	Schema          string                 `json:"schema"`
+	Status          ProcessStatus          `json:"status"`
+	Shell           ShellKind              `json:"shell"`
+	Engine          string                 `json:"engine"`
+	Version         string                 `json:"version,omitempty"`
+	ExitCode        int                    `json:"exit_code"`
+	Cwd             string                 `json:"cwd"`
+	PTY             bool                   `json:"pty"`
+	TimeoutSeconds  int                    `json:"timeout_seconds"`
+	OutputTruncated bool                   `json:"output_truncated"`
+	OutputBytes     int64                  `json:"output_bytes"`
+	Artifact        *agent.ToolArtifactRef `json:"artifact,omitempty"`
+	ArtifactError   string                 `json:"artifact_error,omitempty"`
+	Recovery        processRecovery        `json:"recovery"`
 }
 
 func commandToolResult(result CommandResult, maxResultBytes int) (agent.ToolResult, error) {
@@ -170,7 +176,8 @@ func commandToolResult(result CommandResult, maxResultBytes int) (agent.ToolResu
 		Schema: "process.result.v1", Status: result.Status, Shell: result.Shell,
 		Engine: result.Engine, Version: result.Version, ExitCode: result.ExitCode,
 		Cwd: result.Cwd, PTY: result.PTY, TimeoutSeconds: result.TimeoutSeconds,
-		OutputTruncated: result.OutputTruncated, Recovery: recovery,
+		OutputTruncated: result.OutputTruncated, OutputBytes: result.OutputBytes,
+		Artifact: result.Artifact, ArtifactError: result.ArtifactError, Recovery: recovery,
 	}
 	encoded, err := json.Marshal(metadata)
 	if err != nil {
@@ -207,10 +214,14 @@ func commandToolResult(result CommandResult, maxResultBytes int) (agent.ToolResu
 	if projected != "" {
 		content += "\n" + projected
 	}
-	return agent.ToolResult{
+	toolResult := agent.ToolResult{
 		ModelContent: content, DisplayContent: content, Details: encoded,
 		Status: agent.ToolResultSuccess,
-	}, nil
+	}
+	if result.Artifact != nil {
+		toolResult.Artifacts = []agent.ToolArtifactRef{*result.Artifact}
+	}
+	return toolResult, nil
 }
 
 func shellEngine(shell ShellKind, executable string) string {

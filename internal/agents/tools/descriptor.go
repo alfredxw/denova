@@ -87,6 +87,7 @@ func boundedReadDescriptor(source agent.ToolSource, capability string) agent.Too
 		PostCheck:        agent.ToolPostCheckNone,
 		Recovery:         agent.ToolRecoveryReadOnly,
 		ResultProjection: agent.ToolResultBoundedModelContext,
+		ContextRetention: agent.ToolContextReceipt,
 		Steering:         agent.SteeringFinishCurrent,
 		MaxResultBytes:   defaultToolResultMaxBytes,
 	}
@@ -106,6 +107,7 @@ func workspaceWriteDescriptor(source agent.ToolSource, capability string, recove
 		PostCheck:        agent.ToolPostCheckWorkspaceChange,
 		Recovery:         recovery,
 		ResultProjection: agent.ToolResultBoundedModelContext,
+		ContextRetention: agent.ToolContextReceipt,
 		Steering:         agent.SteeringFinishCurrent,
 		MaxResultBytes:   defaultToolResultMaxBytes,
 	}
@@ -123,6 +125,7 @@ func interactiveStoryWorkflowDescriptor() agent.ToolDescriptor {
 		PostCheck:        agent.ToolPostCheckSessionState,
 		Recovery:         agent.ToolRecoveryReconcilable,
 		ResultProjection: agent.ToolResultBoundedModelContext,
+		ContextRetention: agent.ToolContextTransient,
 		Steering:         agent.SteeringFinishCurrent,
 		MaxResultBytes:   defaultToolResultMaxBytes,
 	}

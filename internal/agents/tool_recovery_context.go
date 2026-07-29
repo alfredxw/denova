@@ -52,7 +52,7 @@ func completeUnknownToolResults(messages []*agent.Message) []*agent.Message {
 			if callID == "" || toolName == "" || callCounts[callID] != 1 || resultCounts[callID] != 0 {
 				continue
 			}
-			if _, valid := retainedToolCallArguments(call.Function.Arguments); !valid {
+			if validateToolArgumentsJSON(call.Function.Arguments) != nil {
 				continue
 			}
 			completed = append(completed, agent.ToolMessage(

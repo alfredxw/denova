@@ -10,18 +10,18 @@ import (
 
 const compactionCursorScanBatch = 128
 
-// resolveMessageCursorLocked resolves a legacy zero-based message index from
-// sparse message anchors. It is used only by compaction maintenance and legacy
-// index migration, never by ordinary append or recent-history reads.
-func (s *Session) resolveMessageCursorLocked(ctx context.Context, index int) (conversationjournal.Cursor, error) {
+// resolveMessageLocationLocked resolves a zero-based logical message index
+// from sparse anchors. RecordIndex is part of the identity because one
+// physical journal transaction may contain more than one domain message.
+func (s *Session) resolveMessageLocationLocked(ctx context.Context, index int) (conversationjournal.Location, error) {
 	if index < 0 || s.projection == nil || s.journal == nil {
-		return 0, fmt.Errorf("cannot resolve message cursor at index %d", index)
+		return conversationjournal.Location{}, fmt.Errorf("cannot resolve message location at index %d", index)
 	}
-	if cursor := s.projection.messageCursorAt(index); cursor > 0 {
-		return cursor, nil
+	if location := s.projection.messageLocationAt(index); location.Cursor > 0 {
+		return location, nil
 	}
 	if index >= s.projection.MessageCount {
-		return 0, fmt.Errorf("message index %d exceeds count %d", index, s.projection.MessageCount)
+		return conversationjournal.Location{}, fmt.Errorf("message index %d exceeds count %d", index, s.projection.MessageCount)
 	}
 	anchor := s.projection.messageAnchorAt(index)
 	after := anchor.Cursor - 1
@@ -32,27 +32,37 @@ func (s *Session) resolveMessageCursorLocked(ctx context.Context, index int) (co
 			After: after, Through: through, Limit: compactionCursorScanBatch,
 		})
 		if err != nil {
-			return 0, err
+			return conversationjournal.Location{}, err
 		}
 		if len(records) == 0 {
 			break
 		}
 		for _, record := range records {
+			if record.Location.Cursor == anchor.Cursor && record.Location.RecordIndex < anchor.RecordIndex {
+				continue
+			}
 			message, err := isConversationMessagePayload(record.Payload)
 			if err != nil {
-				return 0, fmt.Errorf("inspect message cursor %d: %w", record.Location.Cursor, err)
+				return conversationjournal.Location{}, fmt.Errorf("inspect message cursor %d: %w", record.Location.Cursor, err)
 			}
 			if !message {
 				continue
 			}
 			if nextIndex == index {
-				return record.Location.Cursor, nil
+				return record.Location, nil
 			}
 			nextIndex++
 		}
 		after = records[len(records)-1].Location.Cursor
 	}
-	return 0, fmt.Errorf("message cursor at index %d was not found", index)
+	return conversationjournal.Location{}, fmt.Errorf("message location at index %d was not found", index)
+}
+
+// resolveMessageCursorLocked preserves the cursor-only compaction record wire
+// format while all logical reads use the precise journal location above.
+func (s *Session) resolveMessageCursorLocked(ctx context.Context, index int) (conversationjournal.Cursor, error) {
+	location, err := s.resolveMessageLocationLocked(ctx, index)
+	return location.Cursor, err
 }
 
 func isConversationMessagePayload(payload json.RawMessage) (bool, error) {

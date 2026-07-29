@@ -16,6 +16,7 @@ import (
 	"time"
 	"unicode/utf8"
 
+	agent "github.com/alfredxw/denova/agent"
 	"github.com/charmbracelet/x/xpty"
 )
 
@@ -127,6 +128,23 @@ func (runner *LocalCommandRunner) runProcess(
 	if err := runner.workspace.verifyRootIdentity(); err != nil {
 		return CommandResult{}, err
 	}
+	var artifactWriter agent.ToolArtifactWriter
+	if store := agent.ToolArtifactStoreFromContext(runCtx); store != nil {
+		writer, beginErr := store.BeginToolArtifact(runCtx, agent.ToolArtifactRequest{
+			ToolName: string(runner.shell), MIMEType: "text/plain; charset=utf-8", Extension: "log",
+			Description: "Complete merged stdout/stderr from one foreground command",
+		})
+		if beginErr != nil {
+			return CommandResult{}, fmt.Errorf("begin command output artifact: %w", beginErr)
+		}
+		artifactWriter = writer
+	}
+	artifactFinalized := false
+	defer func() {
+		if artifactWriter != nil && !artifactFinalized {
+			_ = artifactWriter.Abort()
+		}
+	}()
 
 	reader, ptyHandle, wait, err := startCommand(command, request.PTY)
 	if err != nil {
@@ -167,18 +185,27 @@ func (runner *LocalCommandRunner) runProcess(
 
 	decoder := utf8OutputDecoder{}
 	capture := boundedOutput{limit: runner.workspace.Limits().MaxResultBytes}
+	var outputBytes int64
+	var artifactWriteErr error
+	consumeOutput := func(delta string) {
+		if delta == "" {
+			return
+		}
+		outputBytes += int64(len(delta))
+		if progress != nil {
+			progress(delta)
+		}
+		capture.Write(delta)
+		if artifactWriter != nil && artifactWriteErr == nil {
+			_, artifactWriteErr = io.WriteString(artifactWriter, delta)
+		}
+	}
 	buffer := make([]byte, 32*1024)
 	var readErr error
 	for {
 		count, err := reader.Read(buffer)
 		if count > 0 {
-			delta := decoder.Feed(buffer[:count], false)
-			if delta != "" {
-				if progress != nil {
-					progress(delta)
-				}
-				capture.Write(delta)
-			}
+			consumeOutput(decoder.Feed(buffer[:count], false))
 		}
 		if err != nil {
 			if !errors.Is(err, io.EOF) {
@@ -188,13 +215,26 @@ func (runner *LocalCommandRunner) runProcess(
 		}
 	}
 	if tail := decoder.Feed(nil, true); tail != "" {
-		if progress != nil {
-			progress(tail)
-		}
-		capture.Write(tail)
+		consumeOutput(tail)
 	}
 	close(outputSettled)
 	waitErr := <-waitResult
+	var artifact *agent.ToolArtifactRef
+	artifactError := ""
+	if artifactWriter != nil {
+		if artifactWriteErr != nil {
+			artifactError = boundedString("write command output artifact: "+artifactWriteErr.Error(), 4*1024)
+			_ = artifactWriter.Abort()
+		} else {
+			published, commitErr := artifactWriter.Commit()
+			if commitErr != nil {
+				artifactError = boundedString("commit command output artifact: "+commitErr.Error(), 4*1024)
+			} else {
+				artifact = &published
+			}
+		}
+		artifactFinalized = true
+	}
 	if readErr != nil && runCtx.Err() == nil && !request.PTY {
 		return CommandResult{}, fmt.Errorf("read command output: %w", readErr)
 	}
@@ -208,12 +248,14 @@ func (runner *LocalCommandRunner) runProcess(
 	result := CommandResult{
 		Status: ProcessStatusSuccess, Shell: runner.shell, Engine: runner.engine,
 		Version: runner.version, ExitCode: 0, Output: capture.String(),
-		OutputTruncated: capture.truncated, Cwd: relativeCwd,
+		OutputBytes: outputBytes, OutputTruncated: capture.truncated,
+		Artifact: artifact, ArtifactError: artifactError, Cwd: relativeCwd,
 		PTY: request.PTY, TimeoutSeconds: request.TimeoutSeconds,
 	}
 	if runErr := runCtx.Err(); runErr != nil {
 		interrupted := runner.interruptedResult(request, relativeCwd, runErr)
 		interrupted.Output, interrupted.OutputTruncated = result.Output, result.OutputTruncated
+		interrupted.OutputBytes, interrupted.Artifact, interrupted.ArtifactError = result.OutputBytes, result.Artifact, result.ArtifactError
 		return interrupted, nil
 	}
 	if waitErr != nil {

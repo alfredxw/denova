@@ -200,7 +200,7 @@ describe('SettingsView user scope', () => {
     render(<SettingsView />)
 
     expect(await screen.findByText('CLI 快捷命令')).toBeInTheDocument()
-    expect(screen.getByText('Codex CLI')).toBeInTheDocument()
+    expect(await screen.findByText('Codex CLI')).toBeInTheDocument()
     expect(screen.getByText('Claude Code')).toBeInTheDocument()
     expect(screen.queryByRole('button', { name: '删除“Codex CLI”' })).not.toBeInTheDocument()
 

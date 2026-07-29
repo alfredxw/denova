@@ -199,7 +199,11 @@ func (m *toolOrchestratorMiddleware) WrapToolCall(
 			if decision.ArgsComplete != nil && !*decision.ArgsComplete && decision.ModelFinishReason != "" {
 				reason = agent.ToolSyntheticModelIncomplete
 			}
-			return agent.SyntheticToolResult(agent.ToolResultBlocked, reason, message), nil
+			filtered := filterStructuredToolResultWithDescriptor(
+				decision.ToolName, decision.Descriptor, args,
+				agent.SyntheticToolResult(agent.ToolResultBlocked, reason, message), m.toolResultLimitBytes(),
+			)
+			return filtered.Result, nil
 		}
 
 		release, err := m.acquireToolExecution(ctx, decision)

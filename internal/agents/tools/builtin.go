@@ -119,7 +119,9 @@ func newTodoTool() (agent.ToolDefinition, error) {
 		PostCheck:        agent.ToolPostCheckSessionState,
 		Recovery:         agent.ToolRecoveryIdempotent,
 		Steering:         agent.SteeringFinishCurrent,
-		ResultProjection: agent.ToolResultBoundedModelContext, MaxResultBytes: defaultToolResultMaxBytes,
+		ResultProjection: agent.ToolResultBoundedModelContext,
+		ContextRetention: agent.ToolContextTransient,
+		MaxResultBytes:   defaultToolResultMaxBytes,
 	})
 }
 
@@ -176,8 +178,9 @@ func newTaskTool(ctx context.Context, subAgents []agent.Runnable) (agent.ToolDef
 		Source: agent.ToolSourceOther, Capability: config.AgentToolDelegation, Execution: agent.ToolExecutionChild,
 		MutationScope: agent.ToolMutationNone, PostCheck: agent.ToolPostCheckNone,
 		Recovery: agent.ToolRecoveryNonIdempotent, ResultProjection: agent.ToolResultBoundedModelContext,
-		Steering:       agent.SteeringFinishCurrent,
-		MaxResultBytes: defaultToolResultMaxBytes,
+		ContextRetention: agent.ToolContextTransient,
+		Steering:         agent.SteeringFinishCurrent,
+		MaxResultBytes:   defaultToolResultMaxBytes,
 	})
 }
 

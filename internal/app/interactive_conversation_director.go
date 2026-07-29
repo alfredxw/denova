@@ -196,7 +196,7 @@ func newDirectorContextBudget(cfg *config.Config, task string, stableContext int
 	contextSettings := config.ResolveAgentContext(cfg, config.AgentKindInteractiveDirector)
 	threshold := contextSettings.CompactionThreshold
 	if threshold <= 0 {
-		threshold = 0.90
+		threshold = 0.80
 	}
 	thresholdTokens := int(float64(window) * threshold)
 	composition, err := agents.ComposeInteractiveDirectorInstruction(cfg, nil)

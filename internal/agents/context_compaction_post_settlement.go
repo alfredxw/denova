@@ -162,7 +162,10 @@ func sessionContextCompactionRecord(id, agentKind string, prepared preparedSessi
 		ID: id, AgentKind: agentKind, Epoch: result.Epoch, Summary: result.Summary,
 		SourceStartIndex: prepared.SourceStartIndex, SourceEndIndex: prepared.SourceEndIndex,
 		SourceMessageCount: result.SourceMessageCount, RetainedTurns: result.RetainedTurns,
-		TokensBefore: result.TokensBefore, TokensAfter: result.TokensAfter, TargetRatio: result.TargetRatio,
+		EstimatedTokensBefore:  result.EstimatedTokensBefore,
+		ObservedPromptTokens:   result.ObservedPromptTokens,
+		ObservedEstimateTokens: result.ObservedEstimateTokens,
+		TokensBefore:           result.TokensBefore, TokensAfter: result.TokensAfter, TargetRatio: result.TargetRatio,
 		ContextWindowTokens: result.ContextWindowTokens, Strategy: result.Strategy, Threshold: result.Threshold,
 		Reason: contextCompactionReasonLimit, Phase: result.Phase,
 	}
@@ -170,7 +173,11 @@ func sessionContextCompactionRecord(id, agentKind string, prepared preparedSessi
 
 func contextCompactionResultFromSessionRecord(record session.ContextCompaction) ContextCompactionResult {
 	return ContextCompactionResult{
-		Triggered: true, Phase: record.Phase, TokensBefore: record.TokensBefore, TokensAfter: record.TokensAfter,
+		Triggered: true, Phase: record.Phase,
+		EstimatedTokensBefore:  record.EstimatedTokensBefore,
+		ObservedPromptTokens:   record.ObservedPromptTokens,
+		ObservedEstimateTokens: record.ObservedEstimateTokens,
+		TokensBefore:           record.TokensBefore, TokensAfter: record.TokensAfter,
 		ContextWindowTokens: record.ContextWindowTokens, Strategy: record.Strategy, Threshold: record.Threshold,
 		Epoch: record.Epoch, Summary: record.Summary, TargetRatio: record.TargetRatio,
 		SourceMessageCount: record.SourceMessageCount, RetainedTurns: record.RetainedTurns,

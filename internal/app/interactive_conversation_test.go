@@ -159,8 +159,8 @@ func TestDirectorContextBudgetFollowsModelWindowAndCapsEachSource(t *testing.T) 
 	if err != nil {
 		t.Fatal(err)
 	}
-	if small.thresholdTokens != 115200 || large.thresholdTokens != 360000 {
-		t.Fatalf("threshold tokens should follow the configured 90%% model window: small=%d large=%d", small.thresholdTokens, large.thresholdTokens)
+	if small.thresholdTokens != 102400 || large.thresholdTokens != 320000 {
+		t.Fatalf("threshold tokens should follow the configured 80%% model window: small=%d large=%d", small.thresholdTokens, large.thresholdTokens)
 	}
 	if large.initialTokens <= small.initialTokens {
 		t.Fatalf("larger model window should expose a larger source budget: small=%d large=%d", small.initialTokens, large.initialTokens)

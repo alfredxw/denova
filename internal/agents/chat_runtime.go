@@ -331,10 +331,13 @@ func (r *chatRun) compactContext(history []*agent.Message) ([]*agent.Message, Ru
 	if !result.Triggered {
 		return compactedHistory, RunOutcome{}, false
 	}
-	r.logger.Info("context_compacted", slog.String("phase", result.Phase), slog.Int("epoch", result.Epoch), slog.Int("tokens_before", result.TokensBefore), slog.Int("projected_tokens_before", result.ProjectedTokensBefore), slog.Int("tokens_after", result.TokensAfter), slog.Int("projected_tokens_after", result.ProjectedTokensAfter), slog.Int("context_window_tokens", result.ContextWindowTokens))
+	r.logger.Info("context_compacted", slog.String("phase", result.Phase), slog.Int("epoch", result.Epoch), slog.Int("estimated_tokens_before", result.EstimatedTokensBefore), slog.Int("observed_prompt_tokens", result.ObservedPromptTokens), slog.Int("tokens_before", result.TokensBefore), slog.Int("projected_tokens_before", result.ProjectedTokensBefore), slog.Int("tokens_after", result.TokensAfter), slog.Int("projected_tokens_after", result.ProjectedTokensAfter), slog.Int("context_window_tokens", result.ContextWindowTokens))
 	if err := r.ledger.Record("context_compaction", map[string]any{
 		"phase":                       result.Phase,
 		"epoch":                       result.Epoch,
+		"estimated_tokens_before":     result.EstimatedTokensBefore,
+		"observed_prompt_tokens":      result.ObservedPromptTokens,
+		"observed_estimate_tokens":    result.ObservedEstimateTokens,
 		"tokens_before":               result.TokensBefore,
 		"projected_tokens_before":     result.ProjectedTokensBefore,
 		"reserved_completion_tokens":  result.ReservedCompletionTokens,
@@ -349,6 +352,8 @@ func (r *chatRun) compactContext(history []*agent.Message) ([]*agent.Message, Ru
 	RecordCompletedTraceSpan(r.traceCtx, "context_compaction", compactionStarted, "success", map[string]any{
 		"phase":                   result.Phase,
 		"epoch":                   result.Epoch,
+		"estimated_tokens_before": result.EstimatedTokensBefore,
+		"observed_prompt_tokens":  result.ObservedPromptTokens,
 		"tokens_before":           result.TokensBefore,
 		"projected_tokens_before": result.ProjectedTokensBefore,
 		"tokens_after":            result.TokensAfter,

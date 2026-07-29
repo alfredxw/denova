@@ -241,11 +241,14 @@ func removeSessionJournal(path string) (resultErr error) {
 		return err
 	}
 	defer func() { resultErr = errors.Join(resultErr, release()) }()
-	if err := os.Remove(path); err != nil {
+	if err := os.Remove(path); err != nil && !errors.Is(err, os.ErrNotExist) {
 		return err
 	}
 	if err := os.Remove(conversationjournal.SidecarPath(path)); err != nil && !errors.Is(err, os.ErrNotExist) {
 		return fmt.Errorf("删除会话索引失败: %w", err)
+	}
+	if err := os.RemoveAll(sessionToolArtifactDirectory(path)); err != nil {
+		return fmt.Errorf("删除会话工具产物失败: %w", err)
 	}
 	if err := syncParentDirectory(path); err != nil {
 		return fmt.Errorf("同步会话删除目录失败: %w", err)

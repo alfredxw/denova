@@ -59,6 +59,7 @@ func readDescriptor(options ...DefinitionOption) agent.ToolDescriptor {
 		PostCheck:        agent.ToolPostCheckNone,
 		Recovery:         agent.ToolRecoveryReadOnly,
 		ResultProjection: agent.ToolResultBoundedModelContext,
+		ContextRetention: agent.ToolContextReceipt,
 		Steering:         agent.SteeringFinishCurrent,
 		MaxResultBytes:   defaultResultBytes,
 	}, options)
@@ -72,6 +73,7 @@ func writeDescriptor(options ...DefinitionOption) agent.ToolDescriptor {
 		PostCheck:        agent.ToolPostCheckWorkspaceChange,
 		Recovery:         agent.ToolRecoveryReconcilable,
 		ResultProjection: agent.ToolResultBoundedModelContext,
+		ContextRetention: agent.ToolContextReceipt,
 		Steering:         agent.SteeringFinishCurrent,
 		MaxResultBytes:   defaultResultBytes,
 	}, options)
@@ -89,6 +91,7 @@ func shellDescriptor(options ...DefinitionOption) agent.ToolDescriptor {
 		PostCheck:        agent.ToolPostCheckExternalReceipt,
 		Recovery:         agent.ToolRecoveryNonIdempotent,
 		ResultProjection: agent.ToolResultBoundedModelContext,
+		ContextRetention: agent.ToolContextReceipt,
 		Steering:         agent.SteeringFinishCurrent,
 		MaxResultBytes:   defaultResultBytes,
 	}, options)

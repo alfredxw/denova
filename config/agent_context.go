@@ -76,7 +76,7 @@ func DefaultAgentContextSettings() AgentContextSettings {
 		Default: AgentContextOverride{
 			CompactionEnabled:     boolPtr(true),
 			CompactionStrategy:    stringPtr(AgentContextCompactionStrategySummaryAgent),
-			CompactionThreshold:   floatPtr(0.90),
+			CompactionThreshold:   floatPtr(0.80),
 			CompactionRecentTurns: intPtr(DefaultContextCompactionRetainedTurns),
 			CompactionTargetMin:   floatPtr(0.05),
 			CompactionTargetMax:   floatPtr(0.20),
@@ -118,7 +118,7 @@ func ResolveAgentContext(cfg *Config, agentKind string) ResolvedAgentContextSett
 	if override.CompactionStrategy != nil {
 		compactionStrategy = normalizeCompactionStrategy(*override.CompactionStrategy)
 	}
-	compactionThreshold := 0.90
+	compactionThreshold := 0.80
 	if override.CompactionThreshold != nil {
 		compactionThreshold = *override.CompactionThreshold
 	}

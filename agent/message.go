@@ -79,13 +79,17 @@ type ResponseMeta struct {
 	LogProbs     *LogProbs   `json:"logprobs,omitempty"`
 }
 
-// ToolResultSummary preserves transcript pairing semantics without persisting
-// display content or structured durability details in model history.
+// ToolResultSummary preserves transcript pairing and the bounded cross-turn
+// receipt without persisting display content or the full durability payload.
 type ToolResultSummary struct {
-	Status           ToolResultStatus    `json:"status"`
-	SyntheticReason  ToolSyntheticReason `json:"synthetic_reason,omitempty"`
-	ModelTruncated   bool                `json:"model_truncated,omitempty"`
-	DisplayTruncated bool                `json:"display_truncated,omitempty"`
+	Status            ToolResultStatus     `json:"status"`
+	SyntheticReason   ToolSyntheticReason  `json:"synthetic_reason,omitempty"`
+	ModelTruncated    bool                 `json:"model_truncated,omitempty"`
+	DisplayTruncated  bool                 `json:"display_truncated,omitempty"`
+	ContextRetention  ToolContextRetention `json:"context_retention,omitempty"`
+	RetainedContent   string               `json:"retained_content,omitempty"`
+	RetainedArguments string               `json:"retained_arguments,omitempty"`
+	Artifacts         []ToolArtifactRef    `json:"artifacts,omitempty"`
 }
 
 // Message is the stable session and model wire type.
@@ -165,8 +169,12 @@ func ToolMessage(result ToolResult, toolCallID string, opts ...ToolMessageOption
 		ToolName:   options.toolName,
 		ToolResult: &ToolResultSummary{
 			Status: result.Status, SyntheticReason: result.SyntheticReason,
-			ModelTruncated:   result.Metadata.ModelTruncated,
-			DisplayTruncated: result.Metadata.DisplayTruncated,
+			ModelTruncated:    result.Metadata.ModelTruncated,
+			DisplayTruncated:  result.Metadata.DisplayTruncated,
+			ContextRetention:  result.ContextRetention,
+			RetainedContent:   result.RetainedContent,
+			RetainedArguments: result.RetainedArguments,
+			Artifacts:         append([]ToolArtifactRef(nil), result.Artifacts...),
 		},
 	}
 }
@@ -185,6 +193,10 @@ func (m *Message) EffectiveToolResult() ToolResult {
 		result.SyntheticReason = m.ToolResult.SyntheticReason
 		result.Metadata.ModelTruncated = m.ToolResult.ModelTruncated
 		result.Metadata.DisplayTruncated = m.ToolResult.DisplayTruncated
+		result.ContextRetention = m.ToolResult.ContextRetention
+		result.RetainedContent = m.ToolResult.RetainedContent
+		result.RetainedArguments = m.ToolResult.RetainedArguments
+		result.Artifacts = append([]ToolArtifactRef(nil), m.ToolResult.Artifacts...)
 	}
 	return result
 }
@@ -201,6 +213,7 @@ func (m *Message) Clone() *Message {
 	clone.ToolCalls = cloneToolCalls(m.ToolCalls)
 	if m.ToolResult != nil {
 		result := *m.ToolResult
+		result.Artifacts = append([]ToolArtifactRef(nil), m.ToolResult.Artifacts...)
 		clone.ToolResult = &result
 	}
 	clone.Extra = cloneStringAnyMap(m.Extra)

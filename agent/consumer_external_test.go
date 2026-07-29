@@ -101,6 +101,7 @@ func TestExternalConsumerComposesReusableAgent(t *testing.T) {
 			PostCheck:        agent.ToolPostCheckNone,
 			Recovery:         agent.ToolRecoveryReadOnly,
 			ResultProjection: agent.ToolResultBoundedModelContext,
+			ContextRetention: agent.ToolContextReceipt,
 			Steering:         agent.SteeringFinishCurrent,
 			MaxResultBytes:   4096,
 		},
@@ -194,12 +195,14 @@ func TestExternalConsumerComposesReusableAgent(t *testing.T) {
 		emitted = append(emitted, agent.CloneMessage(message))
 	}
 
+	expectedLookupResult := agent.TextToolResult(`{"value":"portable answer"}`)
+	expectedLookupResult.ContextRetention = agent.ToolContextReceipt
 	expectedEmitted := []*agent.Message{
 		agent.AssistantMessage("", []agent.ToolCall{{
 			ID: "lookup-1", Type: "function",
 			Function: agent.FunctionCall{Name: "lookup", Arguments: `{"key":"answer"}`},
 		}}),
-		agent.ToolMessage(agent.TextToolResult(`{"value":"portable answer"}`), "lookup-1", agent.WithToolName("lookup")),
+		agent.ToolMessage(expectedLookupResult, "lookup-1", agent.WithToolName("lookup")),
 		agent.AssistantMessage("The portable answer is available.", nil),
 	}
 	if !reflect.DeepEqual(emitted, expectedEmitted) {

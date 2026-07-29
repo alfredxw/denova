@@ -2,6 +2,8 @@ package agent
 
 import (
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -85,6 +87,15 @@ type ToolResultProjection string
 
 const ToolResultBoundedModelContext ToolResultProjection = "bounded_model_context"
 
+// ToolContextRetention controls the stable cross-turn projection independently
+// from the rich result used by the next model step in the current run.
+type ToolContextRetention string
+
+const (
+	ToolContextTransient ToolContextRetention = "transient"
+	ToolContextReceipt   ToolContextRetention = "receipt"
+)
+
 // SteeringPolicy controls what a pending safe preemption may do to a call that
 // has already started.
 type SteeringPolicy string
@@ -104,6 +115,7 @@ type ToolDescriptor struct {
 	PostCheck        ToolPostCheckPolicy  `json:"post_check"`
 	Recovery         ToolRecoveryClass    `json:"recovery"`
 	ResultProjection ToolResultProjection `json:"result_projection"`
+	ContextRetention ToolContextRetention `json:"context_retention"`
 	Steering         SteeringPolicy       `json:"steering"`
 	MaxResultBytes   int                  `json:"max_result_bytes"`
 }
@@ -140,6 +152,11 @@ func (descriptor ToolDescriptor) Validate() error {
 	}
 	if descriptor.ResultProjection != ToolResultBoundedModelContext {
 		return fmt.Errorf("invalid tool result projection %q", descriptor.ResultProjection)
+	}
+	switch descriptor.ContextRetention {
+	case ToolContextTransient, ToolContextReceipt:
+	default:
+		return fmt.Errorf("invalid tool context retention %q", descriptor.ContextRetention)
 	}
 	switch descriptor.Steering {
 	case SteeringFinishCurrent, SteeringInterruptibleWait:
@@ -296,15 +313,29 @@ type ToolResultMetadata struct {
 	IdempotencyKey       string `json:"idempotency_key,omitempty"`
 }
 
+// ToolArtifactRef points to a complete immutable tool output held outside
+// model history. URI is intentionally opaque to the core Agent package.
+type ToolArtifactRef struct {
+	ID       string `json:"id"`
+	URI      string `json:"uri"`
+	MIMEType string `json:"mime_type"`
+	ByteSize int64  `json:"byte_size"`
+	SHA256   string `json:"sha256"`
+}
+
 // ToolResult separates bounded model context from display content and
 // structured durability details.
 type ToolResult struct {
-	ModelContent    string              `json:"model_content"`
-	DisplayContent  string              `json:"display_content"`
-	Details         json.RawMessage     `json:"details,omitempty"`
-	Status          ToolResultStatus    `json:"status"`
-	SyntheticReason ToolSyntheticReason `json:"synthetic_reason,omitempty"`
-	Metadata        ToolResultMetadata  `json:"metadata"`
+	ModelContent      string               `json:"model_content"`
+	DisplayContent    string               `json:"display_content"`
+	Details           json.RawMessage      `json:"details,omitempty"`
+	Status            ToolResultStatus     `json:"status"`
+	SyntheticReason   ToolSyntheticReason  `json:"synthetic_reason,omitempty"`
+	Metadata          ToolResultMetadata   `json:"metadata"`
+	ContextRetention  ToolContextRetention `json:"context_retention,omitempty"`
+	RetainedContent   string               `json:"retained_content,omitempty"`
+	RetainedArguments string               `json:"retained_arguments,omitempty"`
+	Artifacts         []ToolArtifactRef    `json:"artifacts,omitempty"`
 }
 
 // TextToolResult constructs the common successful text result.
@@ -353,6 +384,32 @@ func NormalizeToolResult(result ToolResult, descriptor ToolDescriptor) (ToolResu
 	if result.Status == ToolResultSuccess && result.SyntheticReason != "" {
 		return ToolResult{}, errors.New("successful tool result cannot be synthetic")
 	}
+	result.ContextRetention = descriptor.ContextRetention
+	result.RetainedContent = strings.ToValidUTF8(result.RetainedContent, "\uFFFD")
+	result.RetainedArguments = strings.TrimSpace(strings.ToValidUTF8(result.RetainedArguments, "\uFFFD"))
+	if len(result.RetainedContent) > descriptor.MaxResultBytes {
+		return ToolResult{}, fmt.Errorf("retained tool result exceeds %d bytes", descriptor.MaxResultBytes)
+	}
+	if len(result.RetainedArguments) > descriptor.MaxResultBytes {
+		return ToolResult{}, fmt.Errorf("retained tool arguments exceed %d bytes", descriptor.MaxResultBytes)
+	}
+	if result.RetainedArguments != "" && !json.Valid([]byte(result.RetainedArguments)) {
+		return ToolResult{}, errors.New("retained tool arguments must be valid JSON")
+	}
+	for index := range result.Artifacts {
+		artifact := &result.Artifacts[index]
+		artifact.ID = strings.TrimSpace(artifact.ID)
+		artifact.URI = strings.TrimSpace(artifact.URI)
+		artifact.MIMEType = strings.TrimSpace(artifact.MIMEType)
+		artifact.SHA256 = strings.ToLower(strings.TrimSpace(artifact.SHA256))
+		if artifact.ID == "" || artifact.URI == "" || artifact.MIMEType == "" || artifact.ByteSize < 0 {
+			return ToolResult{}, fmt.Errorf("tool artifact %d is invalid", index)
+		}
+		if decoded, err := hex.DecodeString(artifact.SHA256); err != nil || len(decoded) != sha256.Size {
+			return ToolResult{}, fmt.Errorf("tool artifact %d has an invalid SHA-256", index)
+		}
+	}
+	result.Artifacts = append([]ToolArtifactRef(nil), result.Artifacts...)
 	if len(result.Details) != 0 {
 		if !json.Valid(result.Details) {
 			return ToolResult{}, errors.New("tool result details must be valid JSON")

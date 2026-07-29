@@ -537,6 +537,45 @@ func TestBashReturnsOutputExitMetadataAndUsesGuard(t *testing.T) {
 	}
 }
 
+func TestBashStoresCompleteOutputArtifactWhileKeepingBoundedModelProjection(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("Bash process assertion is Unix-specific")
+	}
+	workspace, err := OpenWorkspaceWithOptions(WorkspaceOptions{
+		Root: t.TempDir(), Limits: WorkspaceLimits{MaxResultBytes: 1024},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	runner, err := NewLocalCommandRunner(CommandRunnerOptions{Workspace: workspace, Shell: ShellBash})
+	if err != nil {
+		t.Fatal(err)
+	}
+	artifactStore := &memoryToolArtifactStore{}
+	ctx := agent.ContextWithToolArtifactStore(context.Background(), artifactStore)
+	result, err := runner.Run(ctx, CommandRequest{
+		Command: `for ((i=0;i<200;i++)); do printf 'line-%03d-abcdefghijklmnopqrstuvwxyz\n' "$i"; done`,
+	}, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !result.OutputTruncated || result.Artifact == nil || result.ArtifactError != "" ||
+		result.OutputBytes != int64(len(artifactStore.content.String())) || len(artifactStore.content.String()) <= len(result.Output) {
+		t.Fatalf("command artifact result = %#v artifact_bytes=%d", result, len(artifactStore.content.String()))
+	}
+	if !strings.Contains(artifactStore.content.String(), "line-199-abcdefghijklmnopqrstuvwxyz") {
+		t.Fatalf("complete artifact lost output tail: %q", artifactStore.content.String())
+	}
+	projected, err := commandToolResult(result, 1024)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(projected.ModelContent) > 1024 || len(projected.Artifacts) != 1 ||
+		!strings.Contains(projected.ModelContent, `"artifact"`) || !strings.Contains(projected.ModelContent, processTruncatedMarker) {
+		t.Fatalf("bounded process projection = %#v", projected)
+	}
+}
+
 func TestProcessProjectionKeepsMandatoryMetadataWithinBudget(t *testing.T) {
 	result, err := commandToolResult(CommandResult{
 		Status: ProcessStatusFailed, Shell: ShellBash, Engine: "bash", ExitCode: 7,
@@ -613,6 +652,38 @@ type fakeCommandRunner struct{ result CommandResult }
 
 func (runner fakeCommandRunner) Run(context.Context, CommandRequest, func(string)) (CommandResult, error) {
 	return runner.result, nil
+}
+
+type memoryToolArtifactStore struct{ content strings.Builder }
+
+func (store *memoryToolArtifactStore) BeginToolArtifact(context.Context, agent.ToolArtifactRequest) (agent.ToolArtifactWriter, error) {
+	store.content.Reset()
+	return &memoryToolArtifactWriter{store: store}, nil
+}
+
+type memoryToolArtifactWriter struct {
+	store    *memoryToolArtifactStore
+	terminal bool
+}
+
+func (writer *memoryToolArtifactWriter) Write(data []byte) (int, error) {
+	if writer.terminal {
+		return 0, fmt.Errorf("artifact writer is closed")
+	}
+	return writer.store.content.Write(data)
+}
+
+func (writer *memoryToolArtifactWriter) Commit() (agent.ToolArtifactRef, error) {
+	writer.terminal = true
+	return agent.ToolArtifactRef{
+		ID: "memory-artifact", URI: "memory://artifact", MIMEType: "text/plain; charset=utf-8",
+		ByteSize: int64(writer.store.content.Len()), SHA256: strings.Repeat("0", 64),
+	}, nil
+}
+
+func (writer *memoryToolArtifactWriter) Abort() error {
+	writer.terminal = true
+	return nil
 }
 
 func TestPlatformShellToolsHaveDistinctNames(t *testing.T) {

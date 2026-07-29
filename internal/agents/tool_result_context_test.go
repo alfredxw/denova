@@ -13,18 +13,21 @@ import (
 	"github.com/alfredxw/denova/agent/model/openai"
 
 	"denova/config"
+	producttools "denova/internal/agents/tools"
 )
 
-func TestApplyToolResultContextPolicyPreservesToolExchangeExactly(t *testing.T) {
+func TestApplyToolResultContextPolicyProjectsLargeExchangeToStableReceipt(t *testing.T) {
 	arguments := "  {\"path\":\"chapter.md\",\"selection\":\"" + strings.Repeat("段落", 3000) + "\"}  "
 	content := "{\"items\":[" + strings.Repeat("{\"name\":\"条目\"},", 3000) + "\nnot-valid-inner-json"
+	descriptor := producttools.BoundedReadDescriptor(agent.ToolSourceRead, config.AgentToolWorkspaceRead)
+	projected := filterStructuredToolResultWithDescriptor("read", descriptor, arguments, agent.TextToolResult(content), 0)
 	messages := []*agent.Message{
 		agent.UserMessage("读取资料"),
 		agent.AssistantMessage("", []agent.ToolCall{{
 			ID: "call-large", Type: "function",
 			Function: agent.FunctionCall{Name: "read", Arguments: arguments},
 		}}),
-		agent.ToolMessage(agent.TextToolResult(content), "call-large", agent.WithToolName("read")),
+		agent.ToolMessage(projected.Result, "call-large", agent.WithToolName("read")),
 		agent.UserMessage("继续"),
 	}
 
@@ -32,26 +35,28 @@ func TestApplyToolResultContextPolicyPreservesToolExchangeExactly(t *testing.T) 
 	if len(filtered) != len(messages) {
 		t.Fatalf("complete tool exchange should remain in context: got=%d want=%d", len(filtered), len(messages))
 	}
-	if got := filtered[1].ToolCalls[0].Function.Arguments; got != arguments {
-		t.Fatalf("tool arguments were rewritten: got_bytes=%d want_bytes=%d", len(got), len(arguments))
+	if got := filtered[1].ToolCalls[0].Function.Arguments; got == arguments || !strings.Contains(got, "omitted string") {
+		t.Fatalf("large tool arguments were not reduced deterministically: %s", got)
 	}
-	if got := filtered[2].Content; got != content {
-		t.Fatalf("tool result was rewritten: got_bytes=%d want_bytes=%d", len(got), len(content))
+	if got := filtered[2].Content; got == content || !strings.Contains(got, retainedToolReceiptSchema) || strings.Contains(got, "not-valid-inner-json") {
+		t.Fatalf("cross-turn tool result is not a stable receipt: %s", got)
 	}
-	if strings.Contains(filtered[2].Content, "tool_result.placeholder") || strings.Contains(filtered[1].ToolCalls[0].Function.Arguments, "args_omitted") {
-		t.Fatalf("retained exchanges must not contain synthetic placeholders: %#v", filtered)
+	if projected.Result.ModelContent != content {
+		t.Fatalf("same-run rich result changed: got_bytes=%d want_bytes=%d", len(projected.Result.ModelContent), len(content))
 	}
 }
 
 func TestOpenAIRequestAssemblyKeepsToolContentAsString(t *testing.T) {
 	arguments := `{"path":"chapter.md","offset":1,"limit":200}`
 	content := "{\"items\":[" + strings.Repeat("{\"name\":\"条目\"},", 2000) + "\nnot-valid-inner-json"
+	descriptor := producttools.BoundedReadDescriptor(agent.ToolSourceRead, config.AgentToolWorkspaceRead)
+	projected := filterStructuredToolResultWithDescriptor("read", descriptor, arguments, agent.TextToolResult(content), 0)
 	messages := applyToolResultContextPolicy([]*agent.Message{
 		agent.AssistantMessage("", []agent.ToolCall{{
 			ID: "call-json", Type: "function",
 			Function: agent.FunctionCall{Name: "read", Arguments: arguments},
 		}}),
-		agent.ToolMessage(agent.TextToolResult(content), "call-json", agent.WithToolName("read")),
+		agent.ToolMessage(projected.Result, "call-json", agent.WithToolName("read")),
 		agent.UserMessage("基于结果继续"),
 	}, ToolResultContextPolicy{Enabled: true})
 
@@ -102,11 +107,12 @@ func TestOpenAIRequestAssemblyKeepsToolContentAsString(t *testing.T) {
 	if len(request.Messages) != 3 {
 		t.Fatalf("assembled messages = %#v", request.Messages)
 	}
-	if got := request.Messages[0].ToolCalls[0].Function.Arguments; got != arguments {
-		t.Fatalf("assembled arguments changed: got=%q want=%q", got, arguments)
+	if got := request.Messages[0].ToolCalls[0].Function.Arguments; got != `{"limit":200,"offset":1,"path":"chapter.md"}` {
+		t.Fatalf("assembled arguments are not the deterministic retained projection: %q", got)
 	}
 	toolMessage := request.Messages[1]
-	if toolMessage.Role != "tool" || toolMessage.ToolCallID != "call-json" || toolMessage.Content != content {
+	if toolMessage.Role != "tool" || toolMessage.ToolCallID != "call-json" ||
+		!strings.Contains(toolMessage.Content, retainedToolReceiptSchema) || strings.Contains(toolMessage.Content, "not-valid-inner-json") {
 		t.Fatalf("tool content must be one opaque JSON string, got role=%q id=%q bytes=%d", toolMessage.Role, toolMessage.ToolCallID, len(toolMessage.Content))
 	}
 }
@@ -125,14 +131,48 @@ func TestApplyToolResultContextPolicyDisabledRemovesToolContext(t *testing.T) {
 	}
 }
 
-func TestToolResultContextRecorderPersistsAlreadyBoundedResultExactly(t *testing.T) {
-	conversation := &recordedToolContextConversation{policy: ToolResultContextPolicy{Enabled: true, MaxResultBytes: 256}}
+func TestDescriptorControlsRetentionForFutureToolsAndRedactsSensitiveArguments(t *testing.T) {
+	arguments := `{"query":"stable","access_token":"do-not-retain"}`
+	descriptor := producttools.BoundedReadDescriptor(agent.ToolSourceWeb, "future.read")
+	result := filterStructuredToolResultWithDescriptor(
+		"future_lookup", descriptor, arguments, agent.TextToolResult("large future result"), 0,
+	).Result
+	messages := []*agent.Message{
+		agent.AssistantMessage("", []agent.ToolCall{{
+			ID: "future-call", Type: "function",
+			Function: agent.FunctionCall{Name: "future_lookup", Arguments: arguments},
+		}}),
+		agent.ToolMessage(result, "future-call", agent.WithToolName("future_lookup")),
+	}
+	retained := applyToolResultContextPolicy(messages, ToolResultContextPolicy{
+		AgentKind: config.AgentKindInteractiveStory, Enabled: true,
+	})
+	if len(retained) != 2 || !strings.Contains(retained[1].Content, retainedToolReceiptSchema) {
+		t.Fatalf("descriptor-declared future tool was not retained: %#v", retained)
+	}
+	retainedArguments := retained[0].ToolCalls[0].Function.Arguments
+	if strings.Contains(retainedArguments, "do-not-retain") || !strings.Contains(retainedArguments, "redacted") {
+		t.Fatalf("sensitive retained arguments = %s", retainedArguments)
+	}
+
+	descriptor.ContextRetention = agent.ToolContextTransient
+	transient := filterStructuredToolResultWithDescriptor(
+		"future_lookup", descriptor, arguments, agent.TextToolResult("transient result"), 0,
+	).Result
+	messages[1] = agent.ToolMessage(transient, "future-call", agent.WithToolName("future_lookup"))
+	if filtered := applyToolResultContextPolicy(messages, ToolResultContextPolicy{Enabled: true}); len(filtered) != 0 {
+		t.Fatalf("descriptor-declared transient tool crossed turns: %#v", filtered)
+	}
+}
+
+func TestToolResultContextRecorderPersistsAtomicStableReceiptPair(t *testing.T) {
+	conversation := &recordedToolContextConversation{policy: ToolResultContextPolicy{Enabled: true, MaxResultBytes: 4096}}
 	recorder := newToolResultContextRecorder(conversation)
 	arguments := `{"path":"chapter.md"}`
 	recorder.RecordAssistantToolCalls(agent.AssistantMessage("", []agent.ToolCall{{
 		ID: "call-1", Type: "function", Function: agent.FunctionCall{Name: "read", Arguments: arguments},
 	}}), agentEventMetadata{})
-	bounded := FilterToolResultForModelWithLimit("read", arguments, strings.Repeat("正文", 500), 256)
+	bounded := FilterToolResultForModelWithLimit("read", arguments, strings.Repeat("正文", 5000), 4096)
 	recorder.RecordToolResult(agent.ToolMessage(bounded.Result, "call-1", agent.WithToolName("read")), agentEventMetadata{})
 
 	if len(conversation.messages) != 2 {
@@ -141,13 +181,15 @@ func TestToolResultContextRecorderPersistsAlreadyBoundedResultExactly(t *testing
 	if got := conversation.messages[0].ToolCalls[0].Function.Arguments; got != arguments {
 		t.Fatalf("recorded arguments changed: got=%q want=%q", got, arguments)
 	}
-	if got := conversation.messages[1].Content; got != bounded.Content {
-		t.Fatalf("bounded result was filtered a second time: got_bytes=%d want_bytes=%d", len(got), len(bounded.Content))
+	if conversation.batches != 1 {
+		t.Fatalf("tool exchange batches = %d, want 1", conversation.batches)
 	}
-	if !strings.Contains(conversation.messages[1].Content, "[tool result truncated]") ||
-		conversation.messages[1].ToolResult == nil || !conversation.messages[1].ToolResult.ModelTruncated ||
-		strings.Contains(conversation.messages[1].Content, toolResultMetadataHeader) {
-		t.Fatalf("structured truncation summary should remain intact: %#v", conversation.messages[1])
+	if got := conversation.messages[1].Content; got == bounded.Content || !strings.Contains(got, retainedToolReceiptSchema) {
+		t.Fatalf("recorded result is not the retained receipt: %s", got)
+	}
+	if conversation.messages[1].ToolResult == nil || !conversation.messages[1].ToolResult.ModelTruncated ||
+		conversation.messages[1].ToolResult.RetainedContent != "" {
+		t.Fatalf("stored receipt summary should be stable and non-duplicated: %#v", conversation.messages[1])
 	}
 }
 
@@ -257,8 +299,13 @@ func TestApplyToolResultContextPolicyDropsAmbiguousDuplicatePair(t *testing.T) {
 
 func TestToolResultContextKeepsLoreErrorsInsteadOfPositiveReceipt(t *testing.T) {
 	raw := "读取资料失败：条目不存在"
-	if content := toolResultContextContent("read_lore_items", raw, ToolResultContextPolicy{}); content != raw {
-		t.Fatalf("failed reads should remain errors instead of positive receipts: %q", content)
+	descriptor := producttools.BoundedReadDescriptor(agent.ToolSourceLore, config.AgentToolLoreRead)
+	filtered := filterStructuredToolResultWithDescriptor(
+		"read_lore_items", descriptor, `{}`, agent.ToolErrorResult(raw, raw), 0,
+	)
+	content := filtered.Result.RetainedContent
+	if !strings.Contains(content, `"status":"error"`) || !strings.Contains(content, raw) || strings.Contains(content, `"source_ids"`) {
+		t.Fatalf("failed lore read receipt is misleading: %q", content)
 	}
 }
 
@@ -266,10 +313,12 @@ type recordedToolContextConversation struct {
 	Conversation
 	messages []*agent.Message
 	policy   ToolResultContextPolicy
+	batches  int
 }
 
-func (c *recordedToolContextConversation) AppendContextMessage(msg *agent.Message) error {
-	c.messages = append(c.messages, msg)
+func (c *recordedToolContextConversation) AppendContextMessages(messages ...*agent.Message) error {
+	c.batches++
+	c.messages = append(c.messages, messages...)
 	return nil
 }
 

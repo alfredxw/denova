@@ -40,8 +40,17 @@ func TestMessageFullWireRoundTripAndClone(t *testing.T) {
 			},
 			Extra: map[string]any{"provider": "p"},
 		}},
-		ToolCallID:       "parent-call",
-		ToolName:         "lookup",
+		ToolCallID: "parent-call",
+		ToolName:   "lookup",
+		ToolResult: &ToolResultSummary{
+			Status: ToolResultSuccess, ContextRetention: ToolContextReceipt,
+			RetainedContent:   `{"schema":"tool_result.receipt.v2"}`,
+			RetainedArguments: `{"q":"x"}`,
+			Artifacts: []ToolArtifactRef{{
+				ID: "artifact-1", URI: "/workspace/.denova/sessions/artifact.log",
+				MIMEType: "text/plain", ByteSize: 12, SHA256: strings.Repeat("a", 64),
+			}},
+		},
 		ReasoningContent: "reason",
 		ResponseMeta: &ResponseMeta{
 			FinishReason: "tool_calls",
@@ -69,7 +78,7 @@ func TestMessageFullWireRoundTripAndClone(t *testing.T) {
 	for _, field := range []string{
 		`"role":"assistant"`, `"content":"answer"`, `"multi_content"`,
 		`"user_input_multi_content"`, `"assistant_output_multi_content"`,
-		`"tool_calls"`, `"response_meta"`, `"reasoning_content"`,
+		`"tool_calls"`, `"tool_result"`, `"response_meta"`, `"reasoning_content"`,
 	} {
 		if !strings.Contains(string(encoded), field) {
 			t.Fatalf("full wire omitted %s: %s", field, encoded)
@@ -91,10 +100,12 @@ func TestMessageFullWireRoundTripAndClone(t *testing.T) {
 	clone.MultiContent[0][0] = '['
 	clone.ToolCalls[0].Function.Name = "changed"
 	clone.ToolCalls[0].Extra["provider"] = "changed"
+	clone.ToolResult.Artifacts[0].URI = "changed"
 	clone.Extra["nested"].(map[string]any)["items"].([]any)[0] = "changed"
 	clone.ResponseMeta.Usage.TotalTokens = 99
 	if message.MultiContent[0][0] == '[' || message.ToolCalls[0].Function.Name != "lookup" ||
 		message.ToolCalls[0].Extra["provider"] != "p" ||
+		message.ToolResult.Artifacts[0].URI != "/workspace/.denova/sessions/artifact.log" ||
 		message.Extra["nested"].(map[string]any)["items"].([]any)[0] != "a" ||
 		message.ResponseMeta.Usage.TotalTokens != 13 {
 		t.Fatal("Clone shared mutable storage with the source")

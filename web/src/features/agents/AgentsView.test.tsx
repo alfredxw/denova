@@ -727,6 +727,7 @@ function resolvedTool(
       post_check: 'none',
       recovery: 'read_only',
       result_projection: 'bounded_model_context',
+      context_retention: 'receipt',
       steering: 'finish_current',
     },
   }

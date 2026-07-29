@@ -183,7 +183,8 @@ func TestAgentToolCapabilityCatalogResolvesPlatformNamesAndDescriptors(t *testin
 		}
 		if entry.Descriptor.Execution == "" || entry.Descriptor.MutationScope == "" ||
 			entry.Descriptor.PostCheck == "" || entry.Descriptor.Recovery == "" ||
-			entry.Descriptor.ResultProjection == "" || entry.Descriptor.Steering == "" {
+			entry.Descriptor.ResultProjection == "" || entry.Descriptor.ContextRetention == "" ||
+			entry.Descriptor.Steering == "" {
 			t.Fatalf("catalog capability %q has incomplete descriptor: %#v", entry.Capability, entry.Descriptor)
 		}
 	}

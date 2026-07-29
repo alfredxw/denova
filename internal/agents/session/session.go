@@ -21,33 +21,48 @@ func (s *Session) AppendWithMetadata(msg *agent.Message, metadata MessageMetadat
 }
 
 func (s *Session) appendMessageLocked(msg *agent.Message, metadata MessageMetadata, kind string) error {
-	if msg == nil {
-		return fmt.Errorf("会话消息不能为空")
-	}
-	if msg.Role == "" && strings.TrimSpace(msg.Content) == "" && len(msg.ToolCalls) == 0 {
-		return fmt.Errorf("会话消息缺少 role、content 和 tool_calls")
+	return s.appendMessagesLocked([]*agent.Message{msg}, []MessageMetadata{metadata}, kind)
+}
+
+// appendMessagesLocked publishes one or more logical messages as one physical
+// journal transaction. The batch is the atomicity seam used by paired tool
+// call/result receipts; ordinary single-message appends share the same path.
+func (s *Session) appendMessagesLocked(messages []*agent.Message, metadata []MessageMetadata, kind string) error {
+	if len(messages) == 0 || len(messages) != len(metadata) {
+		return fmt.Errorf("会话消息批次无效")
 	}
 	now := time.Now().UTC()
-	metadata = sanitizeMessageMetadata(metadata)
-	metadata.ContextRevision = s.contextRevision + 1
-	record := messageRecord{
-		Type:            kind,
-		CreatedAt:       now,
-		Message:         *msg,
-		MessageMetadata: metadata,
+	records := make([]any, len(messages))
+	normalizedMetadata := make([]MessageMetadata, len(messages))
+	for index, msg := range messages {
+		if msg == nil {
+			return fmt.Errorf("会话消息 %d 为空", index)
+		}
+		if msg.Role == "" && strings.TrimSpace(msg.Content) == "" && len(msg.ToolCalls) == 0 {
+			return fmt.Errorf("会话消息 %d 缺少 role、content 和 tool_calls", index)
+		}
+		entryMetadata := sanitizeMessageMetadata(metadata[index])
+		entryMetadata.ContextRevision = s.contextRevision + uint64(index) + 1
+		normalizedMetadata[index] = entryMetadata
+		records[index] = messageRecord{
+			Type: kind, CreatedAt: now, Message: *msg, MessageMetadata: entryMetadata,
+		}
 	}
-	if err := s.appendJournalRecordLocked(record); err != nil {
+	if _, err := s.appendJournalRecordsLocked(records...); err != nil {
 		return err
 	}
-	s.contextRevision = metadata.ContextRevision
-	s.messages = append(s.messages, msg)
-	s.messageCount++
-	s.records = append(s.records, historyRecord{kind: kind, message: msg, messageMetadata: metadata, createdAt: now})
-	advanceUpdatedAt(s, now)
-	if s.title == defaultSessionTitle && msg.Role == agent.User && strings.TrimSpace(msg.Content) != "" {
-		s.title = deriveTitle(msg.Content)
+	for index, msg := range messages {
+		s.messages = append(s.messages, msg)
+		s.messageCount++
+		s.records = append(s.records, historyRecord{
+			kind: kind, message: msg, messageMetadata: normalizedMetadata[index], createdAt: now,
+		})
+		if s.title == defaultSessionTitle && msg.Role == agent.User && strings.TrimSpace(msg.Content) != "" {
+			s.title = deriveTitle(msg.Content)
+		}
 	}
-
+	s.contextRevision = normalizedMetadata[len(normalizedMetadata)-1].ContextRevision
+	advanceUpdatedAt(s, now)
 	return nil
 }
 
@@ -170,6 +185,19 @@ func (s *Session) AppendContextMessage(msg *agent.Message) error {
 	}
 	return s.withCanonicalMutation(context.Background(), "append context message", func() error {
 		return s.appendMessageLocked(msg, MessageMetadata{}, historyTypeContextMessage)
+	})
+}
+
+// AppendContextMessages atomically appends a model-visible, UI-hidden message
+// batch. It is primarily used for protocol pairs that must never be durable in
+// a half-written state.
+func (s *Session) AppendContextMessages(messages ...*agent.Message) error {
+	if len(messages) == 0 {
+		return nil
+	}
+	metadata := make([]MessageMetadata, len(messages))
+	return s.withCanonicalMutation(context.Background(), "append context message batch", func() error {
+		return s.appendMessagesLocked(messages, metadata, historyTypeContextMessage)
 	})
 }
 

@@ -37,6 +37,9 @@ type ContextCompactionResult struct {
 	Triggered                bool
 	SkippedReason            string
 	Phase                    string
+	EstimatedTokensBefore    int
+	ObservedPromptTokens     int
+	ObservedEstimateTokens   int
 	TokensBefore             int
 	TokensAfter              int
 	ProjectedTokensBefore    int
@@ -76,6 +79,11 @@ type ContextCompactionInput struct {
 	Force               bool
 	ExistingCheckpoint  string
 	ContextWindowTokens int
+	// ObservedPromptTokens is exact provider usage for the previous request.
+	// ObservedEstimateTokens is the local estimate of that same request; the
+	// pair calibrates, but never replaces, projection of the next request.
+	ObservedPromptTokens   int
+	ObservedEstimateTokens int
 	// ReservedCompletionTokens and ReservedToolResultTokens make compaction
 	// decisions against projected context usage, not only the prompt assembled
 	// before the next model/tool step.
@@ -158,10 +166,14 @@ func PrepareContextCompaction(ctx context.Context, cfg *config.Config, agentKind
 		phase = contextCompactionPhasePreRun
 	}
 	input = withDefaultContextProjectionReserves(cfg, agentKind, input, 0)
-	tokensBefore := EstimateContextTokens(input.Messages, input.Tools)
+	estimatedTokensBefore := EstimateContextTokens(input.Messages, input.Tools)
+	tokensBefore := calibratedContextTokens(estimatedTokensBefore, input)
 	projectedTokensBefore := projectedContextTokens(tokensBefore, input)
 	result := ContextCompactionResult{
 		Phase:                    phase,
+		EstimatedTokensBefore:    estimatedTokensBefore,
+		ObservedPromptTokens:     input.ObservedPromptTokens,
+		ObservedEstimateTokens:   input.ObservedEstimateTokens,
 		TokensBefore:             tokensBefore,
 		ProjectedTokensBefore:    projectedTokensBefore,
 		ReservedCompletionTokens: input.ReservedCompletionTokens,
@@ -198,7 +210,7 @@ func PrepareContextCompaction(ctx context.Context, cfg *config.Config, agentKind
 	result.Triggered = true
 	result.Epoch = epoch
 	result.Summary = summary
-	result.TokensAfter = EstimateContextTokens(newMessages, input.Tools)
+	result.TokensAfter = calibratedContextTokens(EstimateContextTokens(newMessages, input.Tools), input)
 	result.ProjectedTokensAfter = projectedContextTokens(result.TokensAfter, input)
 	result.TargetRatio = contextCompactionRatio(countRunes(summary), inputChars)
 	result.SourceMessageCount = len(source)
@@ -335,62 +347,55 @@ func compactionTargetCharRange(inputChars int, policy contextCompactionPolicy) (
 
 func contextCompactionSystemInstruction() string {
 	return strings.TrimSpace(`
-你是 Denova 的独立“互动小说上下文压缩器”，用于类似酒馆/SillyTavern 的高轮次互动小说和长对话创作场景。
+你是 Denova 的独立“上下文 checkpoint 编译器”。输入会明确给出 source_agent_kind；你必须按来源模式生成可继续工作的增量 checkpoint，而不是写一段泛化摘要。
 
-你的任务是从有界输入生成可重建的“历史上下文 checkpoint”，同时保留所有会对后续剧情、写作任务或用户意图产生长期影响的信息。checkpoint 不是新的事实真源；游戏模式的历史事实仍以带 turn_id 的 Turn 事件为准。
+输入边界：
+1. existing_checkpoint：同一来源链的旧 checkpoint，可能为空。
+2. reference_context：调用点显式提供的有界参考，可能为空。
+3. new_context：旧 checkpoint 之后新增的有效消息与稳定 tool receipt。
+不得假定存在未提供的记忆；checkpoint 不是新的事实真源，原始 journal、工作区文件、Turn、Actor State、Lore、DirectorPlan 与 artifact 仍各自拥有其事实边界。
 
-输入可能包含：
-1. existing_checkpoint：此前已经从同一来源链压缩出的 checkpoint，可能为空。
-2. reference_context：调用点显式提供的有界参考上下文，可能为空；不得假定存在任何额外记忆库。
-3. new_context：上次压缩后新增的原始有效对话链或互动回合链，包括用户行动、用户对白、LLM 剧情推进、NPC 反应、环境变化、任务状态等。
+共同规则：
+- 增量合并三类输入；不要重复旧 checkpoint 已覆盖且未变化的事实。
+- 用户目标、明确约束、已确认决定、未完成事项、失败原因、矛盾、不确定性、不可逆副作用、验证结果和恢复引用必须保留。
+- 新输入只有明确证明旧信息失效、解决或被推翻时，才能更新旧 checkpoint；保留原因与新证据。
+- tool receipt 只提炼其中的状态、结论、证据 ID、artifact URI、文件/版本/Turn 引用和恢复提示；不得把已省略正文重新猜出来。
+- 排除 thinking/reasoning、UI 日志、流式片段、重复工具卡片、无结论探索和传输噪音。
+- 禁止编造；矛盾不得擅自裁决，不确定时明确标记。
+- 目标长度由用户消息给出的范围控制，按三类输入总字符数计算；信息密度高时使用上半区，不得为达成比例丢失关键状态。
 
-处理目标：
-- 将 existing_checkpoint、reference_context 与 new_context 合并，输出一份新的历史 checkpoint。
-- 如果 existing_checkpoint 为空，则从 new_context 初始化；否则增量合并，不要重复记录同一事件。
-- 游戏 Turn 输入包含 source turn_id 时，事件和因果结论必须保留相应 turn_id；无法确定来源时明确标记来源缺失，不得自造 ID。
-- 不要删除旧 checkpoint 中的长期影响信息，除非 new_context 明确说明该信息已经失效、解决或被推翻。
-- 如果出现矛盾，不要自行修正；保留矛盾并标记为“待确认矛盾”。
-- 已完成任务可以压缩，但必须保留最终结果和遗留影响。
-- 未完成任务、伏笔、承诺、债务、秘密、危险不能删除。
-- 如果不确定某信息是否有长期影响，默认保留。
-- 游戏模式的当前 Actor 数值、位置、资源和可计算关系以调用方单独注入的 Actor State 为准；checkpoint 只保留这些变化的历史原因和来源 Turn，不复制一份“当前状态真源”。
-- 未来安排属于 DirectorPlan，稳定世界设定属于 Lore；只记录它们在输入中已经发生的变更或对历史事件的解释，不把计划写成既成事实。
+当 source_agent_kind 是 interactive_story 或 interactive_director 时，使用“叙事/游戏 checkpoint”：
+- 保留事件顺序、用户行动与对白、因果后果、关系变化、任务、秘密、危险、倒计时和长期创作约束。
+- 有 source turn_id 时必须保留；缺失时标记来源缺失，不得自造。
+- 当前 Actor 数值/位置/资源以 Actor State 为准；未来安排以 DirectorPlan 为准；稳定设定以 Lore 为准。checkpoint 只保留历史原因和已发生变更，不复制当前真源，不把计划写成事实。
+- 可以合并纯氛围、重复心理描写、无后果闲聊和修辞。
 
-压缩重点：
-- 必须保留事件时间顺序。
-- 必须保留所有用户消息的核心意图、关键行动、选择、对白、承诺、拒绝、欺骗、威胁、安慰、交易、背叛、失败尝试及其后果。
-- 必须保留行动造成的后果和所有长期影响信息。
-- 必须保留角色关系和状态变化的原因、世界/阵营变化、物品资源变动、能力变化、线索、秘密、伏笔、任务、危险与倒计时；游戏模式的当前值不在 checkpoint 中重复建账。
-- 可以删除或合并氛围描写、重复心理描写、无后果闲聊、纯修辞性文本。
-- 不要写成小说文风；要写成清晰、紧凑、可供后续模型继续创作的事实账本。
-- 排除 thinking/reasoning 内容、传输噪音、展示用日志、重复工具卡片和无结果的实现过程。
-- 必须保留会改变后续行为的工具证据：文件读取/搜索发现、资料库查询结论、工具报错原因、文件/状态写入结果、版本恢复/工作区状态变化，以及后续决策所需的公开回执标识；不要复述仅供 UI 或 durability 使用的内部元数据。
-- 禁止编造事实；不确定时明确标记“不确定”。
-- 目标长度由用户消息配置控制，并按 existing_checkpoint、reference_context 与 new_context 的合计字符数计算，默认是输入字符数的 5%-20%。信息密度高时使用目标范围的上半区，不要为了短而丢长期影响信息。
-
-长期影响信息判定：
-只要某条信息未来可能影响角色反应、剧情分支、世界状态、任务推进、关系变化或玩家可用选择，就必须保留。以下信息一律视为长期影响信息：
-- 用户行动：关键选择、重要话语、承诺/拒绝/欺骗/威胁/安慰/交易/背叛、失败的重要行动、尚未显现的后果。
-- 角色关系：信任、好感、敌意、怀疑、依赖、恐惧、暧昧、愧疚、承诺、误会、秘密、冲突、债务、交易、NPC 间联盟/敌对/背叛/隐瞒。
-- 角色状态：受伤、死亡、失踪、昏迷、被俘、身份暴露、能力觉醒/削弱、诅咒、污染、精神状态变化、已知/未知/误解的信息、目标/动机/立场变化。
-- 世界与阵营状态：地点被破坏/封锁/占领/发现/改变、阵营态度变化、组织行动、通缉、追捕、战争、政治变化、世界规则、禁忌、异常现象、公共事件。
-- 物品、资源与能力：获得、失去、损坏、使用、隐藏的重要物品；金钱、补给、武器、钥匙、信物、证据、药物、装备；技能、权限、身份、通行资格变化。
-- 线索、秘密与伏笔：已发现线索、未解谜团、未兑现威胁、未完成任务、倒计时事件、约定地点/时间/暗号、隐藏身份/目的/计划、叙事确认但角色未必知道的信息。
-- 用户意图与约束：用户明确目标、拒绝、偏好、任务边界、尚未完成的请求和已确认决策。
-
-输出必须使用以下格式：
-
+叙事/游戏输出格式：
 【历史事件时间线】
-- [source turn_id 或消息序号] 谁做了什么，造成了什么长期影响
-
+- [source turn_id 或消息序号] 事件及长期影响
 【历史因果与来源】
-- 结论或变化 ← 原因与 source turn_id；矛盾和不确定性在这里标明
-
+- 结论或变化 ← 原因与来源；含矛盾和不确定性
 【未闭环事项】
-- 伏笔、承诺、债务、秘密、危险、任务、倒计时及其来源
+- 伏笔、承诺、债务、秘密、危险、任务、倒计时及来源
+【用户意图与创作约束】
+- 仍影响后续行为的目标、偏好、拒绝、边界与决定
 
-【用户意图与任务约束】
-- 仍会影响后续行为的目标、偏好、拒绝、边界与已确认决策
+其他 source_agent_kind 使用“工作区任务 checkpoint”，同时适用于写作、配置、图像、自动化和工程任务：
+- 保留用户目标与边界、创作/产品/技术决定及理由、当前实现或作品状态、文件与 artifact 引用、已确认发现、变更与验证、失败和被否决方案、未解决问题及下一步。
+- 文件正文、日志和搜索结果只保留后续决策所需结论及可恢复引用；不要复制大段源内容。
+- 已完成步骤可以合并，但必须保留结果、行为变化、兼容性影响和验证证据。
+
+工作区任务输出格式：
+【任务目标与用户约束】
+- 当前目标、明确边界、偏好和验收条件
+【决定与理由】
+- 已确认的创作/产品/技术决定；被否决方案及原因
+【当前状态】
+- 已完成实现或作品状态、关键文件/版本/数据引用
+【发现、证据与验证】
+- 已确认事实、tool/artifact 引用、测试或检查结果
+【未解决问题与下一步】
+- 阻塞、风险、待验证事项和按依赖排序的下一步
 `)
 }
 
@@ -404,7 +409,8 @@ func buildContextCompactionTranscript(messages []*agent.Message, existingCheckpo
 	}
 	minChars, maxChars := compactionTargetCharRange(inputChars, policy)
 	var sb strings.Builder
-	sb.WriteString("请按系统要求压缩以下 Denova 上下文。基于 existing_checkpoint、reference_context 与 new_context 增量生成新的历史 checkpoint，保留所有会影响后续剧情、任务、关系、世界状态或用户偏好的信息。\n")
+	sb.WriteString("请按系统要求增量编译以下 Denova 上下文 checkpoint。\n")
+	sb.WriteString(fmt.Sprintf("Source agent kind: %s. 必须选择与该来源模式匹配的唯一输出格式。\n", firstNonEmpty(strings.TrimSpace(policy.AgentKind), "unknown")))
 	sb.WriteString(fmt.Sprintf("Estimated new context tokens: %d. Input characters across existing checkpoint, reference context, and new context: %d. Target summary length: %d-%d characters (%s of input characters). 不得低于下限；信息密度高时使用目标范围上半区。\n\n", sourceTokens, inputChars, minChars, maxChars, compactionTargetRange(policy)))
 	sb.WriteString("<existing_checkpoint>\n")
 	if existingCheckpoint = strings.TrimSpace(existingCheckpoint); existingCheckpoint != "" {

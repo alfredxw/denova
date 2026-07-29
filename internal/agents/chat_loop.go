@@ -38,6 +38,9 @@ func newChatAgentLoop(run *chatRun, history []*agent.Message, agentMessage strin
 	if _, bound := agent.InvocationIdentityFromContext(runCtx); !bound {
 		runCtx = agent.ContextWithInvocationIdentity(runCtx, agent.InvocationIdentity{RunID: run.runID})
 	}
+	if provider, ok := run.conversation.(toolArtifactStoreProvider); ok {
+		runCtx = agent.ContextWithToolArtifactStore(runCtx, provider.ToolArtifactStore())
+	}
 	if controller := newRunContextWindowController(run.conversation, run.options.AgentKind); controller != nil {
 		runCtx = agent.ContextWithContextWindowController(runCtx, controller)
 	}

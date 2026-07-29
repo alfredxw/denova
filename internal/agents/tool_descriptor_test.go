@@ -67,7 +67,8 @@ func TestStructuredToolResultPreservesEndpointTargetWithoutPathArgument(t *testi
 		Source: agent.ToolSourceWeb, Capability: config.AgentToolBrowser,
 		Execution: agent.ToolExecutionSessionExclusive, MutationScope: agent.ToolMutationExternal,
 		PostCheck: agent.ToolPostCheckExternalReceipt, Recovery: agent.ToolRecoveryNonIdempotent,
-		ResultProjection: agent.ToolResultBoundedModelContext, Steering: agent.SteeringFinishCurrent,
+		ResultProjection: agent.ToolResultBoundedModelContext, ContextRetention: agent.ToolContextReceipt,
+		Steering:       agent.SteeringFinishCurrent,
 		MaxResultBytes: defaultToolResultMaxBytes,
 	}
 	result := agent.TextToolResult(`{"schema":"browser.result.v1"}`)
@@ -142,7 +143,8 @@ func testToolContext(name, callID string) *agent.ToolContext {
 			Source: agent.ToolSourceShell, Capability: config.AgentToolShell,
 			Execution: agent.ToolExecutionWorkspaceExclusive, MutationScope: agent.ToolMutationExternal,
 			PostCheck: agent.ToolPostCheckExternalReceipt, Recovery: agent.ToolRecoveryNonIdempotent,
-			ResultProjection: agent.ToolResultBoundedModelContext, Steering: agent.SteeringFinishCurrent,
+			ResultProjection: agent.ToolResultBoundedModelContext, ContextRetention: agent.ToolContextReceipt,
+			Steering:       agent.SteeringFinishCurrent,
 			MaxResultBytes: defaultToolResultMaxBytes,
 		}
 	default:

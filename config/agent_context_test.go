@@ -7,8 +7,8 @@ func TestResolveAgentContextCompactionDefaultsAndCaps(t *testing.T) {
 	if !resolved.CompactionEnabled {
 		t.Fatal("context compaction should be enabled by default")
 	}
-	if resolved.CompactionThreshold != 0.90 {
-		t.Fatalf("default compaction threshold = %v, want 0.90", resolved.CompactionThreshold)
+	if resolved.CompactionThreshold != 0.80 {
+		t.Fatalf("default compaction threshold = %v, want 0.80", resolved.CompactionThreshold)
 	}
 	if resolved.CompactionRecentTurns != DefaultContextCompactionRetainedTurns {
 		t.Fatalf("default compaction recent turns = %d, want %d", resolved.CompactionRecentTurns, DefaultContextCompactionRetainedTurns)

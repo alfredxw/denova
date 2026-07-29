@@ -2,6 +2,7 @@ package agents
 
 import (
 	"context"
+	"fmt"
 	"strings"
 	"testing"
 
@@ -10,6 +11,71 @@ import (
 	"denova/config"
 	"denova/internal/agents/session"
 )
+
+func TestCompactionIncrementalSourceReadsCanonicalHistoryBeforeResidentWindow(t *testing.T) {
+	store, err := session.NewStore(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	sess, err := store.GetOrCreate("canonical-compaction-source")
+	if err != nil {
+		t.Fatal(err)
+	}
+	total := 209
+	messages := make([]*agent.Message, total)
+	for index := 0; index < total; index++ {
+		messages[index] = agent.UserMessage(fmt.Sprintf("source-%03d", index))
+	}
+	if err := sess.AppendContextMessages(messages...); err != nil {
+		t.Fatal(err)
+	}
+	conversation := NewSessionConversation(sess)
+	source, checkpoint, start, end, err := conversation.compactionIncrementalSource(context.Background(), true)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if checkpoint != "" || start != 0 || end != total || len(source) != total {
+		t.Fatalf("source = checkpoint:%q range:[%d,%d) len:%d", checkpoint, start, end, len(source))
+	}
+	if source[0].Content != "source-000" || source[len(source)-1].Content != "source-208" {
+		t.Fatalf("canonical compaction endpoints = %q ... %q", source[0].Content, source[len(source)-1].Content)
+	}
+}
+
+func TestCompactionIncrementalSourceExcludesOnlyAnActualLatestUser(t *testing.T) {
+	store, err := session.NewStore(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	sess, err := store.GetOrCreate("compaction-latest-user")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := sess.AppendContextMessages(
+		agent.UserMessage("previous user"),
+		agent.AssistantMessage("assistant result", nil),
+	); err != nil {
+		t.Fatal(err)
+	}
+	conversation := NewSessionConversation(sess)
+	source, _, _, end, err := conversation.compactionIncrementalSource(context.Background(), false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if end != 2 || len(source) != 2 || source[1].Content != "assistant result" {
+		t.Fatalf("assistant tail was mistaken for current user: end=%d source=%#v", end, source)
+	}
+	if err := sess.AppendContextMessage(agent.UserMessage("current user")); err != nil {
+		t.Fatal(err)
+	}
+	source, _, _, end, err = conversation.compactionIncrementalSource(context.Background(), false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if end != 2 || len(source) != 2 || source[1].Content != "assistant result" {
+		t.Fatalf("latest user was not excluded: end=%d source=%#v", end, source)
+	}
+}
 
 func TestSessionConversationKeepsFullEffectiveHistoryBeforeCompaction(t *testing.T) {
 	store, err := session.NewStore(t.TempDir())

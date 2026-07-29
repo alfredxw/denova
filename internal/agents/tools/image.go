@@ -24,6 +24,7 @@ const (
 	generateImageToolName                   = "generate_image"
 	generateChapterIllustrationToolName     = "generate_chapter_illustration"
 	generatedImageResultSchema              = "generated_image.v1"
+	generatedImageReceiptSchema             = "generated_image.receipt.v1"
 	generateImagePurposeChapterIllustration = "chapter_illustration"
 	generateImagePurposeInteractiveImage    = "interactive_image"
 	generateImageSupportedSizeDescription   = "可选图像尺寸，留空时由 Agent 按生成意图决定；仅支持 2K: 2048x2048、2304x1728、1728x2304、2848x1600、1600x2848、2496x1664、1664x2496、3136x1344；3K: 3072x3072、3456x2592、2592x3456、4096x2304、2304x4096、2496x3744、3744x2496、4704x2016；4K: 4096x4096、3520x4704、4704x3520、5504x3040、3040x5504、3328x4992、4992x3328、6240x2656"
@@ -79,26 +80,56 @@ type generatedImageToolImage struct {
 	RevisedPrompt string `json:"revised_prompt,omitempty"`
 }
 
+// generatedImageReceiptDetails is the stable cross-turn projection of a
+// non-idempotent image generation result. Binary data already lives in the
+// workspace, so the receipt retains every canonical path without duplicating
+// prompts or provider output in future model context.
+type generatedImageReceiptDetails struct {
+	Schema       string                      `json:"schema"`
+	ResultSchema string                      `json:"result_schema"`
+	Status       string                      `json:"status"`
+	Purpose      string                      `json:"purpose,omitempty"`
+	TargetPath   string                      `json:"target_path,omitempty"`
+	ChapterPath  string                      `json:"chapter_path,omitempty"`
+	StoryID      string                      `json:"story_id,omitempty"`
+	BranchID     string                      `json:"branch_id,omitempty"`
+	TurnID       string                      `json:"turn_id,omitempty"`
+	ProfileID    string                      `json:"profile_id,omitempty"`
+	Provider     string                      `json:"provider,omitempty"`
+	Model        string                      `json:"model,omitempty"`
+	Size         string                      `json:"size,omitempty"`
+	Quality      string                      `json:"quality,omitempty"`
+	OutputFormat string                      `json:"output_format,omitempty"`
+	CreatedAt    string                      `json:"created_at,omitempty"`
+	Images       []generatedImageReceiptFile `json:"images"`
+	Failures     []generatedImageToolFailure `json:"failures,omitempty"`
+}
+
+type generatedImageReceiptFile struct {
+	Path      string `json:"path"`
+	MetaPath  string `json:"meta_path,omitempty"`
+	Markdown  string `json:"markdown,omitempty"`
+	AltText   string `json:"alt_text,omitempty"`
+	MIMEType  string `json:"mime_type,omitempty"`
+	SizeBytes int    `json:"size_bytes,omitempty"`
+}
+
 func newIllustrationTools(cfg *config.Config) ([]agent.ToolDefinition, error) {
 	if cfg == nil {
 		return nil, nil
 	}
 	workspace := strings.TrimSpace(cfg.Workspace)
 	description := "生成图像并保存到 workspace。普通图像保存到 assets/image/generated/；purpose=chapter_illustration 时基于 target_path 指向的章节生成一张非剧透插画，保存到 assets/illustrations/ 并返回可手动插入正文的 Markdown 图像引用；purpose=interactive_image 时必须填写 story_id、branch_id、turn_id，保存到 assets/interactive/images/。只写图像和元数据，不会自动修改正文。" + generateImageSupportedSizeDescription
-	generateTool, err := agent.InferTool(generateImageToolName, description, func(ctx context.Context, input generateImageInput) (string, error) {
+	generateTool, err := agent.InferTool(generateImageToolName, description, func(ctx context.Context, input generateImageInput) (agent.ToolResult, error) {
 		if workspace == "" {
-			return "", fmt.Errorf("当前 workspace 不可用，无法生成图像")
+			return agent.ToolResult{}, fmt.Errorf("当前 workspace 不可用，无法生成图像")
 		}
 		bookService := book.NewService(workspace)
 		result, err := generateImageForTool(ctx, cfg, bookService, input)
 		if err != nil {
-			return "", err
+			return agent.ToolResult{}, err
 		}
-		data, err := json.Marshal(result)
-		if err != nil {
-			return "", err
-		}
-		return string(data), nil
+		return newGeneratedImageToolResult(result)
 	})
 	if err != nil {
 		return nil, err
@@ -108,6 +139,90 @@ func newIllustrationTools(cfg *config.Config) ([]agent.ToolDefinition, error) {
 		return nil, err
 	}
 	return []agent.ToolDefinition{definedGenerateTool}, nil
+}
+
+func newGeneratedImageToolResult(value any) (agent.ToolResult, error) {
+	content, err := json.Marshal(value)
+	if err != nil {
+		return agent.ToolResult{}, fmt.Errorf("encode generated image result: %w", err)
+	}
+	receipt, target, err := generatedImageReceipt(value)
+	if err != nil {
+		return agent.ToolResult{}, err
+	}
+	details, err := json.Marshal(receipt)
+	if err != nil {
+		return agent.ToolResult{}, fmt.Errorf("encode generated image receipt: %w", err)
+	}
+	result := agent.TextToolResult(string(content))
+	result.Details = details
+	result.Metadata.Target = target
+	return result, nil
+}
+
+func generatedImageReceipt(value any) (generatedImageReceiptDetails, string, error) {
+	receipt := generatedImageReceiptDetails{Schema: generatedImageReceiptSchema, Status: "success"}
+	switch result := value.(type) {
+	case generatedImageToolResult:
+		receipt.ResultSchema = result.Schema
+		receipt.Status = result.Status
+		receipt.Purpose = result.Purpose
+		receipt.TargetPath = result.TargetPath
+		receipt.ProfileID = result.ProfileID
+		receipt.Provider = result.Provider
+		receipt.Model = result.Model
+		receipt.Size = result.Size
+		receipt.Quality = result.Quality
+		receipt.OutputFormat = result.OutputFormat
+		receipt.CreatedAt = result.CreatedAt
+		receipt.Failures = append([]generatedImageToolFailure(nil), result.Failures...)
+		for _, image := range result.Images {
+			receipt.Images = append(receipt.Images, generatedImageReceiptFile{
+				Path: image.Path, Markdown: image.Markdown, AltText: image.AltText,
+				MIMEType: image.MIMEType, SizeBytes: image.SizeBytes,
+			})
+		}
+		if len(receipt.Images) > 0 {
+			return receipt, receipt.Images[0].Path, nil
+		}
+	case illustration.Result:
+		receipt.ResultSchema = result.Schema
+		receipt.Purpose = generateImagePurposeChapterIllustration
+		receipt.ChapterPath = result.ChapterPath
+		receipt.ProfileID = result.ProfileID
+		receipt.Provider = result.Provider
+		receipt.Model = result.Model
+		receipt.Size = result.Size
+		receipt.Quality = result.Quality
+		receipt.OutputFormat = result.OutputFormat
+		receipt.CreatedAt = result.CreatedAt
+		receipt.Images = []generatedImageReceiptFile{{
+			Path: result.ImagePath, MetaPath: result.MetaPath, Markdown: result.Markdown,
+			AltText: result.AltText, MIMEType: result.MIMEType, SizeBytes: result.SizeBytes,
+		}}
+		return receipt, result.MetaPath, nil
+	case interactiveimage.Result:
+		receipt.ResultSchema = result.Schema
+		receipt.Purpose = generateImagePurposeInteractiveImage
+		receipt.StoryID = result.StoryID
+		receipt.BranchID = result.BranchID
+		receipt.TurnID = result.TurnID
+		receipt.ProfileID = result.ProfileID
+		receipt.Provider = result.Provider
+		receipt.Model = result.Model
+		receipt.Size = result.Size
+		receipt.Quality = result.Quality
+		receipt.OutputFormat = result.OutputFormat
+		receipt.CreatedAt = result.CreatedAt
+		receipt.Images = []generatedImageReceiptFile{{
+			Path: result.ImagePath, MetaPath: result.MetaPath, AltText: result.AltText,
+			MIMEType: result.MIMEType, SizeBytes: result.SizeBytes,
+		}}
+		return receipt, result.MetaPath, nil
+	default:
+		return generatedImageReceiptDetails{}, "", fmt.Errorf("unsupported generated image result %T", value)
+	}
+	return receipt, "", nil
 }
 
 func generateImageForTool(ctx context.Context, cfg *config.Config, bookService *book.Service, input generateImageInput) (any, error) {

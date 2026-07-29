@@ -89,6 +89,14 @@ func TestToolDescriptorInterruptibleWaitIsReadOnly(t *testing.T) {
 	}
 }
 
+func TestToolDescriptorRequiresExplicitContextRetention(t *testing.T) {
+	descriptor := validDescriptorForScope(ToolMutationNone)
+	descriptor.ContextRetention = ""
+	if err := descriptor.Validate(); err == nil {
+		t.Fatal("descriptor accepted an implicit cross-turn retention policy")
+	}
+}
+
 func validDescriptorForScope(scope ToolMutationScope) ToolDescriptor {
 	descriptor := ToolDescriptor{
 		Source:           ToolSourceOther,
@@ -97,6 +105,7 @@ func validDescriptorForScope(scope ToolMutationScope) ToolDescriptor {
 		PostCheck:        ToolPostCheckNone,
 		Recovery:         ToolRecoveryReadOnly,
 		ResultProjection: ToolResultBoundedModelContext,
+		ContextRetention: ToolContextReceipt,
 		Steering:         SteeringFinishCurrent,
 		MaxResultBytes:   1024,
 	}

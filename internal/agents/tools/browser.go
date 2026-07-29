@@ -273,6 +273,7 @@ func browserDescriptor() agent.ToolDescriptor {
 		PostCheck:        agent.ToolPostCheckExternalReceipt,
 		Recovery:         agent.ToolRecoveryNonIdempotent,
 		ResultProjection: agent.ToolResultBoundedModelContext,
+		ContextRetention: agent.ToolContextReceipt,
 		Steering:         agent.SteeringFinishCurrent,
 		MaxResultBytes:   defaultToolResultMaxBytes,
 	}

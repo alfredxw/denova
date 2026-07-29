@@ -12,7 +12,8 @@ func resultTestDescriptor(limit int) ToolDescriptor {
 		Source: ToolSourceRead, Execution: ToolExecutionParallelRead,
 		MutationScope: ToolMutationNone, PostCheck: ToolPostCheckNone,
 		Recovery: ToolRecoveryReadOnly, ResultProjection: ToolResultBoundedModelContext,
-		Steering: SteeringFinishCurrent, MaxResultBytes: limit,
+		ContextRetention: ToolContextReceipt,
+		Steering:         SteeringFinishCurrent, MaxResultBytes: limit,
 	}
 }
 
@@ -50,7 +51,7 @@ func TestNormalizeToolResultKeepsModelDisplayAndDetailsIsolated(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if strings.Contains(string(encoded), "receipt") || strings.Contains(message.Content, display) {
+	if strings.Contains(string(encoded), "sha256:after") || strings.Contains(message.Content, display) {
 		t.Fatalf("transcript leaked display/details: %s", encoded)
 	}
 }
@@ -65,6 +66,10 @@ func TestNormalizeToolResultRejectsInvalidStructuredFields(t *testing.T) {
 		{name: "success synthetic", result: ToolResult{Status: ToolResultSuccess, SyntheticReason: ToolSyntheticUnknownTool}},
 		{name: "invalid details", result: ToolResult{Status: ToolResultSuccess, Details: json.RawMessage(`{"broken"`)}},
 		{name: "oversized details", result: ToolResult{Status: ToolResultSuccess, Details: json.RawMessage(`{"value":"0123456789"}`)}},
+		{name: "invalid retained arguments", result: ToolResult{Status: ToolResultSuccess, RetainedArguments: `{"broken"`}},
+		{name: "invalid artifact digest", result: ToolResult{Status: ToolResultSuccess, Artifacts: []ToolArtifactRef{{
+			ID: "artifact", URI: "memory://artifact", MIMEType: "text/plain", ByteSize: 1, SHA256: "invalid",
+		}}}},
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {

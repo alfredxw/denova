@@ -24,7 +24,7 @@ export function AgentRuntimeContextSection({ agent, value, inherited, onChange }
   const hasMaxMetadataFieldBytes = value.max_metadata_field_bytes !== undefined && value.max_metadata_field_bytes !== null
   const hasMaxProviderInputBytes = value.max_provider_input_bytes !== undefined && value.max_provider_input_bytes !== null
   const effectiveCompactionEnabled = hasCompactionEnabled ? value.compaction_enabled : inherited.compaction_enabled ?? true
-  const effectiveCompactionThreshold = hasCompactionThreshold ? value.compaction_threshold : inherited.compaction_threshold ?? 0.9
+  const effectiveCompactionThreshold = hasCompactionThreshold ? value.compaction_threshold : inherited.compaction_threshold ?? 0.8
   const effectiveCompactionRecentTurns = hasCompactionRecentTurns ? value.compaction_recent_turns : inherited.compaction_recent_turns ?? 1
   const effectiveCompactionTargetMin = hasCompactionTargetMin ? value.compaction_target_min_ratio : inherited.compaction_target_min_ratio ?? 0.05
   const effectiveCompactionTargetMax = hasCompactionTargetMax ? value.compaction_target_max_ratio : inherited.compaction_target_max_ratio ?? 0.2
@@ -58,7 +58,7 @@ export function AgentRuntimeContextSection({ agent, value, inherited, onChange }
                 min={50}
                 max={98}
                 step={1}
-                value={Math.round((effectiveCompactionThreshold ?? 0.9) * 100)}
+                value={Math.round((effectiveCompactionThreshold ?? 0.8) * 100)}
                 onChange={(e) => onChange({ compaction_threshold: e.target.value === '' ? null : Number(e.target.value) / 100 })}
                 className="h-7 flex-1 text-xs"
               />

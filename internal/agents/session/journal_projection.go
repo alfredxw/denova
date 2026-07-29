@@ -17,7 +17,7 @@ import (
 )
 
 const (
-	sessionProjectionVersion      = 8
+	sessionProjectionVersion      = 10
 	sessionRecentTransactionLimit = 200
 	sessionRecentCommitLimit      = 200
 	sessionStructuralRecordLimit  = 64
@@ -33,8 +33,9 @@ type historyAnchor struct {
 }
 
 type messageLocator struct {
-	Index  int                        `json:"index"`
-	Cursor conversationjournal.Cursor `json:"cursor"`
+	Index       int                        `json:"index"`
+	Cursor      conversationjournal.Cursor `json:"cursor"`
+	RecordIndex int                        `json:"record_index,omitempty"`
 }
 
 type domainCommitLocator struct {
@@ -83,6 +84,7 @@ type sessionJournalProjection struct {
 
 	RecentCursors                  []conversationjournal.Cursor   `json:"recent_cursors,omitempty"`
 	MessageLocators                []messageLocator               `json:"message_locators,omitempty"`
+	MessageTransactionLocators     []messageLocator               `json:"message_transaction_locators,omitempty"`
 	MessageAnchors                 []messageLocator               `json:"message_anchors,omitempty"`
 	HistoryAnchors                 []historyAnchor                `json:"history_anchors,omitempty"`
 	RecentCommits                  []domainCommitLocator          `json:"recent_commits,omitempty"`
@@ -377,7 +379,7 @@ func (projection *sessionJournalProjection) applyMessage(record conversationjour
 	}
 	metadata := sanitizeMessageMetadata(message.MessageMetadata)
 	messageIndex := projection.MessageCount
-	projection.rememberMessage(record.Location.Cursor, message.Message.Role, metadata)
+	projection.rememberMessage(record.Location, message.Message.Role, metadata)
 	projection.rememberContextOperations(record.Location, messageIndex, metadata.ContextRevision, metadata.ContextOperations)
 	if kind == historyTypeMessage {
 		projection.VisibleMessageCount++
@@ -408,7 +410,7 @@ func (projection *sessionJournalProjection) applyLegacyMessage(record conversati
 	if message.Role == "" && message.Content == "" && len(message.ToolCalls) == 0 {
 		return fmt.Errorf("legacy session message is empty")
 	}
-	projection.rememberMessage(record.Location.Cursor, message.Role, MessageMetadata{})
+	projection.rememberMessage(record.Location, message.Role, MessageMetadata{})
 	projection.VisibleMessageCount++
 	safeBoundary := message.Role == agent.User
 	if safeBoundary {
@@ -433,13 +435,20 @@ func (projection *sessionJournalProjection) rememberCursor(cursor conversationjo
 	}
 }
 
-func (projection *sessionJournalProjection) rememberMessage(cursor conversationjournal.Cursor, role agent.RoleType, metadata MessageMetadata) {
+func (projection *sessionJournalProjection) rememberMessage(location conversationjournal.Location, role agent.RoleType, metadata MessageMetadata) {
 	index := projection.MessageCount
 	projection.MessageCount++
-	if index%sessionHistoryAnchorEvery == 0 {
-		projection.MessageAnchors = append(projection.MessageAnchors, messageLocator{Index: index, Cursor: cursor})
+	locator := messageLocator{Index: index, Cursor: location.Cursor, RecordIndex: location.RecordIndex}
+	if len(projection.MessageTransactionLocators) == 0 || projection.MessageTransactionLocators[len(projection.MessageTransactionLocators)-1].Cursor != location.Cursor {
+		projection.MessageTransactionLocators = append(projection.MessageTransactionLocators, locator)
+		if overflow := len(projection.MessageTransactionLocators) - sessionRecentTransactionLimit; overflow > 0 {
+			projection.MessageTransactionLocators = append([]messageLocator(nil), projection.MessageTransactionLocators[overflow:]...)
+		}
 	}
-	projection.MessageLocators = append(projection.MessageLocators, messageLocator{Index: index, Cursor: cursor})
+	if index%sessionHistoryAnchorEvery == 0 {
+		projection.MessageAnchors = append(projection.MessageAnchors, locator)
+	}
+	projection.MessageLocators = append(projection.MessageLocators, locator)
 	if overflow := len(projection.MessageLocators) - sessionRecentTransactionLimit; overflow > 0 {
 		projection.MessageLocators = append([]messageLocator(nil), projection.MessageLocators[overflow:]...)
 	}
@@ -447,7 +456,7 @@ func (projection *sessionJournalProjection) rememberMessage(cursor conversationj
 		return
 	}
 	projection.RecentCommits = append(projection.RecentCommits, domainCommitLocator{
-		MessageIndex: index, Cursor: cursor, Role: role, Metadata: metadata,
+		MessageIndex: index, Cursor: location.Cursor, Role: role, Metadata: metadata,
 	})
 	if overflow := len(projection.RecentCommits) - sessionRecentCommitLimit; overflow > 0 {
 		projection.RecentCommits = append([]domainCommitLocator(nil), projection.RecentCommits[overflow:]...)
@@ -609,6 +618,14 @@ func (projection *sessionJournalProjection) recentStartCursor() conversationjour
 }
 
 func (projection *sessionJournalProjection) messageBaseForCursor(cursor conversationjournal.Cursor) int {
+	for _, locator := range projection.MessageTransactionLocators {
+		if locator.Cursor >= cursor {
+			return locator.Index
+		}
+	}
+	// Rebuilt projections always carry transaction locators. Keep the older
+	// logical-locator fallback local so an in-memory projection remains
+	// diagnosable if construction stops before its first message transaction.
 	for _, locator := range projection.MessageLocators {
 		if locator.Cursor >= cursor {
 			return locator.Index
@@ -618,17 +635,21 @@ func (projection *sessionJournalProjection) messageBaseForCursor(cursor conversa
 }
 
 func (projection *sessionJournalProjection) messageCursorAt(index int) conversationjournal.Cursor {
+	return projection.messageLocationAt(index).Cursor
+}
+
+func (projection *sessionJournalProjection) messageLocationAt(index int) conversationjournal.Location {
 	for _, locator := range projection.MessageLocators {
 		if locator.Index == index {
-			return locator.Cursor
+			return conversationjournal.Location{Cursor: locator.Cursor, RecordIndex: locator.RecordIndex}
 		}
 	}
 	for _, locator := range projection.MessageAnchors {
 		if locator.Index == index {
-			return locator.Cursor
+			return conversationjournal.Location{Cursor: locator.Cursor, RecordIndex: locator.RecordIndex}
 		}
 	}
-	return 0
+	return conversationjournal.Location{}
 }
 
 func (projection *sessionJournalProjection) messageAnchorAt(index int) messageLocator {
