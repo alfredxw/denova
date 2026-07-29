@@ -2,6 +2,8 @@ package config
 
 import (
 	"encoding/json"
+	"errors"
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
@@ -43,8 +45,10 @@ func TestDefaultSettingsValues(t *testing.T) {
 	if s.AgentToolParallelism == nil || *s.AgentToolParallelism != DefaultAgentToolParallelism {
 		t.Fatalf("AgentToolParallelism default")
 	}
-	if s.TerminalCodexCommand != DefaultTerminalCodexCommand || s.TerminalClaudeCommand != DefaultTerminalClaudeCommand {
-		t.Fatalf("terminal CLI defaults: codex=%q claude=%q", s.TerminalCodexCommand, s.TerminalClaudeCommand)
+	if len(s.TerminalCommands) != 2 ||
+		s.TerminalCommands[0] != (TerminalCommandSettings{ID: "codex", Name: "Codex CLI", Command: DefaultTerminalCodexCommand, Enabled: true}) ||
+		s.TerminalCommands[1] != (TerminalCommandSettings{ID: "claude", Name: "Claude Code", Command: DefaultTerminalClaudeCommand, Enabled: true}) {
+		t.Fatalf("terminal CLI defaults: %#v", s.TerminalCommands)
 	}
 	if s.TraceCaptureLevel != DefaultTraceCaptureLevel || s.TraceExporter != DefaultTraceExporter {
 		t.Fatalf("trace defaults: capture=%q exporter=%q", s.TraceCaptureLevel, s.TraceExporter)
@@ -278,22 +282,19 @@ func TestMergePointerExplicitOverride(t *testing.T) {
 	}
 }
 
-func TestMergeTerminalLaunchCommands(t *testing.T) {
-	parent := Settings{
-		TerminalCodexCommand:  DefaultTerminalCodexCommand,
-		TerminalClaudeCommand: DefaultTerminalClaudeCommand,
-	}
-	child := Settings{
-		TerminalCodexCommand:  `npx @openai/codex --profile "deep work"`,
-		TerminalClaudeCommand: `"/Applications/Claude Code/claude" --resume`,
-	}
+func TestMergeTerminalCommandsReplacesRegistryInConfiguredOrder(t *testing.T) {
+	parent := Settings{TerminalCommands: DefaultTerminalCommands()}
+	child := Settings{TerminalCommands: []TerminalCommandSettings{
+		{ID: "aider", Name: "Aider", Command: "aider --model sonnet", Enabled: true},
+		{ID: "codex", Name: "Codex Nightly", Command: "codex --full-auto", Enabled: false},
+	}}
 	out := Merge(parent, child)
-	if out.TerminalCodexCommand != child.TerminalCodexCommand || out.TerminalClaudeCommand != child.TerminalClaudeCommand {
+	if len(out.TerminalCommands) != 2 || out.TerminalCommands[0] != child.TerminalCommands[0] || out.TerminalCommands[1] != child.TerminalCommands[1] {
 		t.Fatalf("terminal commands should override: %#v", out)
 	}
 }
 
-func TestWriteSettingsFileTrimsTerminalLaunchCommands(t *testing.T) {
+func TestWriteSettingsFileMigratesAndTrimsLegacyTerminalCommands(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "config.toml")
 	in := Settings{
 		TerminalCodexCommand:  "  codex --full-auto  ",
@@ -306,8 +307,57 @@ func TestWriteSettingsFileTrimsTerminalLaunchCommands(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if out.TerminalCodexCommand != "codex --full-auto" || out.TerminalClaudeCommand != "claude --resume" {
-		t.Fatalf("terminal commands should be trimmed: %#v", out)
+	if len(out.TerminalCommands) != 2 || out.TerminalCommands[0].Command != "codex --full-auto" || out.TerminalCommands[1].Command != "claude --resume" {
+		t.Fatalf("legacy terminal commands should migrate and trim: %#v", out.TerminalCommands)
+	}
+	data, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(string(data), "terminal_codex_command") || strings.Contains(string(data), "terminal_claude_command") {
+		t.Fatalf("legacy terminal command keys should not be written back: %s", data)
+	}
+}
+
+func TestPrepareUserSettingsForWriteAcceptsUnboundedTerminalRegistry(t *testing.T) {
+	commands := make([]TerminalCommandSettings, 48)
+	for index := range commands {
+		commands[index] = TerminalCommandSettings{
+			ID:      fmt.Sprintf("cli-%d", index),
+			Name:    fmt.Sprintf("CLI %d", index),
+			Command: fmt.Sprintf("cli-%d --interactive", index),
+			Enabled: true,
+		}
+	}
+	prepared, err := PrepareUserSettingsForWrite(Settings{}, Settings{TerminalCommands: commands})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(prepared.TerminalCommands) != len(commands) {
+		t.Fatalf("terminal registry was truncated: got=%d want=%d", len(prepared.TerminalCommands), len(commands))
+	}
+}
+
+func TestPrepareUserSettingsForWritePreservesTerminalRegistryForOlderClients(t *testing.T) {
+	existing := Settings{TerminalCommands: []TerminalCommandSettings{
+		{ID: "aider", Name: "Aider", Command: "aider", Enabled: true},
+	}}
+	prepared, err := PrepareUserSettingsForWrite(existing, Settings{Language: "en-US"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(prepared.TerminalCommands) != 1 || prepared.TerminalCommands[0] != existing.TerminalCommands[0] {
+		t.Fatalf("older client erased terminal registry: %#v", prepared.TerminalCommands)
+	}
+}
+
+func TestPrepareUserSettingsForWriteRejectsAmbiguousTerminalRegistry(t *testing.T) {
+	_, err := PrepareUserSettingsForWrite(Settings{}, Settings{TerminalCommands: []TerminalCommandSettings{
+		{ID: "aider", Name: "Aider", Command: "aider", Enabled: true},
+		{ID: "aider", Name: "Other", Command: "other", Enabled: true},
+	}})
+	if !errors.Is(err, ErrInvalidTerminalCommand) {
+		t.Fatalf("duplicate terminal IDs should fail with ErrInvalidTerminalCommand, got %v", err)
 	}
 }
 

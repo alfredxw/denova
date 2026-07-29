@@ -31,15 +31,14 @@ export interface AgentChatPageRenderContext {
   activateWorkspace: () => Promise<boolean>
 }
 
-/**
- * Terminal launch profiles. `shell` opens the login shell, `codex` / `claude` start the
- * matching CLI command configured in Settings, and `custom` preserves terminal tabs created
- * by older clients. Built-in commands are resolved by the backend so every client uses the
- * same user-level configuration.
- */
-export type TerminalProfileId = 'shell' | 'codex' | 'claude' | 'custom'
+/** Menu-safe terminal command metadata; executable command lines remain backend-only. */
+export interface TerminalCommandProfile {
+  id: string
+  name: string
+}
 
-export const TERMINAL_PROFILE_IDS: readonly TerminalProfileId[] = ['shell', 'codex', 'claude', 'custom']
+/** `shell` is fixed; every other current ID belongs to a configured command. */
+export type TerminalProfileId = string
 
 /**
  * Side of the split that hosts a tab. Two groups is the whole model: it is enough to talk to
@@ -83,6 +82,8 @@ export interface AgentChatAgentTab extends AgentChatTabCommon {
 export interface AgentChatTerminalTab extends AgentChatTabCommon {
   kind: 'terminal'
   profileId: TerminalProfileId
+  /** Display snapshot used while settings load or after the command is renamed/deleted. */
+  profileName?: string
   /** Custom command line; only used by the `custom` profile. */
   command?: string
   /** Latest program-owned OSC window title, or the resolved launch title before one is emitted. */

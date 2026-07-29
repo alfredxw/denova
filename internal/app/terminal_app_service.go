@@ -18,8 +18,14 @@ func terminalConfigFromAppConfig(cfg *config.Config) terminal.Config {
 	}
 	resolved.Enabled = cfg.TerminalEnabled
 	resolved.Shell = strings.TrimSpace(cfg.TerminalShell)
-	resolved.CodexCommand = strings.TrimSpace(cfg.TerminalCodexCommand)
-	resolved.ClaudeCommand = strings.TrimSpace(cfg.TerminalClaudeCommand)
+	if len(cfg.TerminalCommands) > 0 {
+		resolved.Commands = make([]terminal.CommandProfile, 0, len(cfg.TerminalCommands))
+		for _, command := range cfg.TerminalCommands {
+			resolved.Commands = append(resolved.Commands, terminal.CommandProfile{
+				ID: command.ID, Name: command.Name, Command: command.Command, Enabled: command.Enabled,
+			})
+		}
+	}
 	if cfg.TerminalMaxSessions > 0 {
 		resolved.MaxSessions = cfg.TerminalMaxSessions
 	}

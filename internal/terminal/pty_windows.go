@@ -2,7 +2,14 @@
 
 package terminal
 
-import "github.com/charmbracelet/x/xpty"
+import (
+	"os/exec"
+
+	"github.com/charmbracelet/x/xpty"
+)
+
+// ConPTY owns the Windows process attachment and does not use Unix controlling-terminal flags.
+func prepareCommandForPTY(*exec.Cmd) {}
 
 // preparePTYAfterStart is a no-op on Windows (ConPTY).
 func preparePTYAfterStart(xpty.Pty) {}

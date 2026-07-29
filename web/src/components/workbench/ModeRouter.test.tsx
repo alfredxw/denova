@@ -1,14 +1,16 @@
-import { render, screen, waitFor } from '@testing-library/react'
+import { act, render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { useEffect, useState, type ComponentProps, type ReactNode } from 'react'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { TooltipProvider } from '@/components/ui/tooltip'
 import { usePersistedUserSettings } from '@/hooks/usePersistedUserSettings'
 import { ModeRouter } from './ModeRouter'
+import type { Tab } from './TabController'
 
 const toastMock = vi.hoisted(() => ({ warning: vi.fn() }))
 const useDocumentReviewMock = vi.hoisted(() => vi.fn())
 const agentPanelLifecycle = vi.hoisted(() => ({ mounts: 0, unmounts: 0, renders: 0 }))
+const markdownEditorLifecycle = vi.hoisted(() => ({ mounts: 0, unmounts: 0 }))
 const loreLibraryFlushMock = vi.hoisted(() => vi.fn(async () => true))
 const agentChatFlushMock = vi.hoisted(() => vi.fn(async () => true))
 
@@ -96,16 +98,24 @@ vi.mock('@/components/Editor/MarkdownEditor', () => ({
     chapterSummary?: { path: string }
     onRevealChapter?: (path: string) => void
     documentReviewNavigationIntent?: { commentID: string; nonce: number } | null
-  }) => (
-    <>
-      <div data-testid="markdown-editor-navigation">
-        {fileName || 'none'}|{documentReviewNavigationIntent?.commentID || 'none'}|{documentReviewNavigationIntent?.nonce || 0}
-      </div>
-      {chapterSummary ? (
-        <button type="button" onClick={() => onRevealChapter?.(chapterSummary.path)}>reveal chapter in outline</button>
-      ) : null}
-    </>
-  ),
+  }) => {
+    useEffect(() => {
+      markdownEditorLifecycle.mounts += 1
+      return () => {
+        markdownEditorLifecycle.unmounts += 1
+      }
+    }, [])
+    return (
+      <>
+        <div data-testid="markdown-editor-navigation">
+          {fileName || 'none'}|{documentReviewNavigationIntent?.commentID || 'none'}|{documentReviewNavigationIntent?.nonce || 0}
+        </div>
+        {chapterSummary ? (
+          <button type="button" onClick={() => onRevealChapter?.(chapterSummary.path)}>reveal chapter in outline</button>
+        ) : null}
+      </>
+    )
+  },
 }))
 
 vi.mock('@/features/interactive/api', () => ({
@@ -168,6 +178,8 @@ describe('ModeRouter autosave navigation policy', () => {
     agentPanelLifecycle.mounts = 0
     agentPanelLifecycle.unmounts = 0
     agentPanelLifecycle.renders = 0
+    markdownEditorLifecycle.mounts = 0
+    markdownEditorLifecycle.unmounts = 0
     useDocumentReviewMock.mockReturnValue({
       feedback: null,
       thread: { comments: [] },
@@ -453,6 +465,37 @@ describe('ModeRouter autosave navigation policy', () => {
     expect(screen.getByRole('button', { name: 'agent panel state 1' })).toBeInTheDocument()
     expect(agentPanelLifecycle.mounts).toBe(1)
     expect(agentPanelLifecycle.unmounts).toBe(0)
+  })
+
+  it('keeps the text editor mounted while switching files so per-file view positions survive', async () => {
+    const firstPath = 'chapters/ch01.md'
+    const secondPath = 'chapters/ch02.md'
+    const openTabs: Tab[] = [
+      { kind: 'file', path: firstPath },
+      { kind: 'file', path: secondPath },
+    ]
+    const { rerender } = render(withAppProviders(<ModeRouter {...modeRouterProps({
+      selectedFile: firstPath,
+      fileContent: 'first',
+      openTabs,
+      activeTabKey: `file:${firstPath}`,
+    })} />))
+
+    expect(markdownEditorLifecycle.mounts).toBe(1)
+    expect(markdownEditorLifecycle.unmounts).toBe(0)
+
+    await act(async () => {
+      rerender(withAppProviders(<ModeRouter {...modeRouterProps({
+        selectedFile: secondPath,
+        fileContent: 'second',
+        openTabs,
+        activeTabKey: `file:${secondPath}`,
+      })} />))
+    })
+
+    expect(screen.getByTestId('markdown-editor-navigation')).toHaveTextContent(`${secondPath}|none|0`)
+    expect(markdownEditorLifecycle.mounts).toBe(1)
+    expect(markdownEditorLifecycle.unmounts).toBe(0)
   })
 })
 

@@ -68,6 +68,7 @@ func (h *Handlers) HandleTerminalSessions(_ context.Context, c *hertzapp.Request
 	writeJSON(c, consts.StatusOK, map[string]any{
 		"enabled":       cfg.Enabled,
 		"shell":         manager.ResolveShell(),
+		"commands":      manager.AvailableCommands(),
 		"default_cwd":   h.app.TerminalDefaultCwd(),
 		"max_sessions":  cfg.MaxSessions,
 		"sessions":      sessions,
@@ -367,10 +368,10 @@ func writeTerminalError(c *hertzapp.RequestContext, err error) {
 	case errors.Is(err, terminal.ErrTooManySessions):
 		writeErrorKey(c, consts.StatusTooManyRequests, "api.terminal.tooMany")
 	case errors.Is(err, terminal.ErrInvalidProfile):
-		log.Printf("[api/handlers/handler_terminal.go] invalid terminal profile err=%v", err)
+		log.Printf("[api/handlers/handler_terminal.go] terminal command unavailable err=%v", err)
 		writeErrorKey(c, consts.StatusBadRequest, "api.terminal.invalidProfile")
 	case errors.Is(err, terminal.ErrInvalidLaunchCommand):
-		log.Printf("[api/handlers/handler_terminal.go] invalid terminal launch command err=%v", err)
+		log.Printf("[api/handlers/handler_terminal.go] configured terminal command is invalid err=%v", err)
 		writeErrorKey(c, consts.StatusBadRequest, "api.terminal.invalidLaunchCommand")
 	default:
 		log.Printf("[api/handlers/handler_terminal.go] terminal request failed err=%v", err)

@@ -50,6 +50,7 @@ import {
   type AgentChatGroupId,
   type AgentChatPageId,
   type AgentChatTab,
+  type TerminalCommandProfile,
   type TerminalProfileId,
 } from './types'
 
@@ -69,6 +70,7 @@ interface AgentChatTabBarProps {
   tabTitle: (tab: AgentChatTab) => string
   /** No project means there is nothing to start a conversation in yet. */
   newChatDisabled?: boolean
+  terminalCommands: TerminalCommandProfile[]
   onActivate: (tabId: string) => void
   onClose: (tabId: string) => void
   onCloseOthers: (tabId: string) => void
@@ -78,7 +80,7 @@ interface AgentChatTabBarProps {
   /** Reorder inside the strip, or hand the tab to the other side of the split. */
   onMoveTab: (sourceId: string, group: AgentChatGroupId, beforeId: string | null) => void
   onNewAgentTab: (group: AgentChatGroupId) => void
-  onNewTerminalTab: (group: AgentChatGroupId, profileId: TerminalProfileId, command?: string) => void
+  onNewTerminalTab: (group: AgentChatGroupId, profileId: TerminalProfileId, profileName?: string, command?: string) => void
   onOpenPage: (group: AgentChatGroupId, pageId: AgentChatPageId) => void
 }
 
@@ -103,6 +105,7 @@ export function AgentChatTabBar({
   activeTabId,
   tabTitle,
   newChatDisabled = false,
+  terminalCommands,
   onActivate,
   onClose,
   onCloseOthers,
@@ -188,14 +191,12 @@ export function AgentChatTabBar({
             <TerminalSquare />
             {t('agentChat.tabs.newTerminal')}
           </DropdownMenuItem>
-          <DropdownMenuItem onSelect={() => onNewTerminalTab(group, 'codex')}>
-            <TerminalSquare />
-            {t('agentChat.terminal.profile.codex')}
-          </DropdownMenuItem>
-          <DropdownMenuItem onSelect={() => onNewTerminalTab(group, 'claude')}>
-            <TerminalSquare />
-            {t('agentChat.terminal.profile.claude')}
-          </DropdownMenuItem>
+          {terminalCommands.map((command) => (
+            <DropdownMenuItem key={command.id} onSelect={() => onNewTerminalTab(group, command.id, command.name)}>
+              <TerminalSquare />
+              {command.name}
+            </DropdownMenuItem>
+          ))}
           <DropdownMenuSeparator />
           {AGENT_CHAT_PAGE_IDS.map((pageId) => (
             <DropdownMenuItem key={pageId} onSelect={() => onOpenPage(group, pageId)}>

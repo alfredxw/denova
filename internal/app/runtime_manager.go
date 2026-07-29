@@ -636,8 +636,7 @@ func applyLayeredSettingsToConfig(cfg *config.Config, layered config.LayeredSett
 		cfg.TerminalEnabled = *effective.TerminalEnabled
 	}
 	cfg.TerminalShell = effective.TerminalShell
-	cfg.TerminalCodexCommand = effective.TerminalCodexCommand
-	cfg.TerminalClaudeCommand = effective.TerminalClaudeCommand
+	cfg.TerminalCommands = append([]config.TerminalCommandSettings(nil), effective.TerminalCommands...)
 	if effective.TerminalMaxSessions != nil {
 		cfg.TerminalMaxSessions = appSettingsInt(effective.TerminalMaxSessions, config.DefaultTerminalMaxSessions)
 	}

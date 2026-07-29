@@ -106,6 +106,7 @@ func newSession(id, token string, spec Spec, scrollbackBytes int, onTerminal fun
 	cmd := exec.Command(spec.Command, spec.Args...)
 	cmd.Dir = spec.Cwd
 	cmd.Env = terminalProcessEnv(os.Environ(), spec.Env)
+	prepareCommandForPTY(cmd)
 
 	if err := terminalPty.Start(cmd); err != nil {
 		_ = terminalPty.Close()

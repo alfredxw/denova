@@ -1875,6 +1875,36 @@ html[data-nova-motion="off"] *::after {
   outline-offset: 2px;
 }
 
+/* Literal Markdown remains a TipTap document so selection, search, and review
+   decorations share the visual editor's interaction model. */
+.nova-markdown-editor[data-content-mode="source"] .tiptap {
+  tab-size: 2;
+  font-family: "SFMono-Regular", Consolas, "Liberation Mono", monospace;
+  font-size: 0.75rem;
+  line-height: 1.5rem;
+}
+
+.nova-markdown-editor[data-content-mode="source"] .tiptap pre[data-nova-raw-markdown] {
+  min-height: inherit;
+  margin: 0;
+  overflow: visible;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  padding: 0;
+  color: var(--nova-text);
+  font: inherit;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.nova-markdown-editor[data-content-mode="source"] .tiptap pre[data-nova-raw-markdown] code {
+  background: transparent;
+  padding: 0;
+  color: inherit;
+  font: inherit;
+}
+
 /* AI 对话区 Markdown 输出样式 */
 .chat-agent-message {
   font-size: var(--nova-ui-sm-font-size);

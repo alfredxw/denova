@@ -3,6 +3,7 @@ import { EditorState } from '@tiptap/pm/state'
 import type { Editor } from '@tiptap/react'
 import { diffChars } from 'diff'
 import type { DocumentReviewAnchor, DocumentReviewAnchorKind } from '@/features/document-review/types'
+import { normalizeEditorText } from './editorDocument'
 
 export interface EditorReviewRange {
   from: number
@@ -46,13 +47,24 @@ export function createRawDocumentReviewAnchor(
   const revision = snapshot.revision.trim()
   const { content, start, end } = selection
   if (!revision) throw new Error('Document revision is unavailable')
-  if (snapshot.content !== content) throw new Error('The editor and workspace snapshots differ')
   if (start < 0 || end <= start || end > content.length) throw new Error('The selected source range is invalid')
+  // Lore persistence removes editor-only trailing whitespace before returning the
+  // revision-bound snapshot. Accept only that known normalization, then map the
+  // frozen selection back onto the exact canonical bytes validated by the server.
+  if (normalizeEditorText(snapshot.content) !== normalizeEditorText(content)) {
+    throw new Error('The editor and workspace snapshots differ')
+  }
+  const mapped = content === snapshot.content
+    ? { start, end }
+    : mapAlignedRange(content, snapshot.content, start, end)
+  if (!mapped) throw new Error('The selected source range cannot be mapped to the saved snapshot')
 
-  const quote = content.slice(start, end)
-  const displayQuote = quote.trim()
+  const selectedQuote = content.slice(start, end)
+  const quote = snapshot.content.slice(mapped.start, mapped.end)
+  if (quote !== selectedQuote) throw new Error('The selected source text changed while the snapshot was saved')
+  const displayQuote = selectedQuote.trim()
   if (!displayQuote) throw new Error('The selected source range is empty')
-  const byteStart = utf8Bytes(content.slice(0, start))
+  const byteStart = utf8Bytes(snapshot.content.slice(0, mapped.start))
   return {
     kind: 'text-range',
     encoding: 'utf8-bytes-v1',
@@ -60,8 +72,8 @@ export function createRawDocumentReviewAnchor(
     start: byteStart,
     end: byteStart + utf8Bytes(quote),
     quote,
-    prefix: boundedSuffix(content.slice(0, start)),
-    suffix: boundedPrefix(content.slice(end)),
+    prefix: boundedSuffix(snapshot.content.slice(0, mapped.start)),
+    suffix: boundedPrefix(snapshot.content.slice(mapped.end)),
     display_quote: displayQuote,
     editor_from: start,
     editor_to: end,

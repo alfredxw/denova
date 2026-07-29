@@ -55,7 +55,7 @@ export function AgentChatReader({
   )
   const defaultPath = initialPath || chapters[0]?.path || ''
   const [selectedPath, setSelectedPath] = useState(defaultPath)
-  const [document, setDocument] = useState({ content: '', revision: '' })
+  const [document, setDocument] = useState({ path: '', content: '', revision: '' })
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
   const editorFlushRef = useRef<EditorFlushHandler | null>(null)
@@ -66,7 +66,7 @@ export function AgentChatReader({
 
   useEffect(() => {
     if (!selectedPath) {
-      setDocument({ content: '', revision: '' })
+      setDocument({ path: '', content: '', revision: '' })
       return
     }
     let cancelled = false
@@ -74,7 +74,7 @@ export function AgentChatReader({
     setError('')
     readFile(selectedPath)
       .then((file) => {
-        if (!cancelled) setDocument({ content: file.content, revision: file.revision || '' })
+        if (!cancelled) setDocument({ path: selectedPath, content: file.content, revision: file.revision || '' })
       })
       .catch((cause) => {
         if (cancelled) return
@@ -84,7 +84,7 @@ export function AgentChatReader({
           cause,
         })
         setError(cause instanceof Error ? cause.message : String(cause))
-        setDocument({ content: '', revision: '' })
+        setDocument({ path: '', content: '', revision: '' })
       })
       .finally(() => {
         if (!cancelled) setLoading(false)
@@ -101,6 +101,8 @@ export function AgentChatReader({
     if (!path || path === selectedPath) return true
     const flush = editorFlushRef.current
     if (flush && !(await flush())) return false
+    setLoading(true)
+    setError('')
     setSelectedPath(path)
     return true
   }, [selectedPath])
@@ -120,13 +122,15 @@ export function AgentChatReader({
   const save = useCallback(async (fileName: string, content: string, baseRevision: string) => {
     if (!onSaveFile) return false
     const result = await onSaveFile(fileName, content, baseRevision)
-    if (fileName === selectedPath && result.revision) {
-      setDocument((current) => ({ ...current, revision: result.revision || current.revision }))
+    if (result.revision) {
+      setDocument((current) => fileName === current.path
+        ? { ...current, revision: result.revision || current.revision }
+        : current)
     }
     return result
-  }, [onSaveFile, selectedPath])
+  }, [onSaveFile])
 
-  const selectedChapter = chapters.find((chapter) => chapter.path === selectedPath)
+  const displayedChapter = chapters.find((chapter) => chapter.path === document.path)
   const directory = (
     <div className="nova-sidebar h-full min-h-0 bg-[var(--nova-surface-2)]">
       <ChapterOutline
@@ -169,25 +173,31 @@ export function AgentChatReader({
               <div className="p-3">
                 <InlineErrorNotice message={error} title={t('agentChat.reader.loadFailed')} />
               </div>
-            ) : loading ? (
+            ) : document.path ? (
+              <div className="relative flex min-h-0 flex-1 flex-col">
+                <MarkdownEditor
+                  workspace={workspace}
+                  fileName={document.path}
+                  content={document.content}
+                  revision={document.revision}
+                  chapterSummary={displayedChapter}
+                  autoSaveEnabled={Boolean(onSaveFile)}
+                  onSave={save}
+                  onFlushHandlerChange={handleFlushHandlerChange}
+                  documentReview={documentReview}
+                  documentReviewNavigationIntent={navigationPath === document.path ? navigationIntent : null}
+                  onOpenOutline={isMobile ? openLeft : undefined}
+                />
+                {loading ? (
+                  <div role="status" className="absolute inset-0 z-10 flex items-center justify-center bg-[var(--nova-bg)]/80 text-xs text-[var(--nova-text-faint)] backdrop-blur-[1px]">
+                    {t('router.loading')}
+                  </div>
+                ) : null}
+              </div>
+            ) : selectedPath || loading ? (
               <div role="status" className="flex h-full items-center justify-center text-xs text-[var(--nova-text-faint)]">
                 {t('router.loading')}
               </div>
-            ) : selectedPath ? (
-              <MarkdownEditor
-                key={selectedPath}
-                workspace={workspace}
-                fileName={selectedPath}
-                content={document.content}
-                revision={document.revision}
-                chapterSummary={selectedChapter}
-                autoSaveEnabled={Boolean(onSaveFile)}
-                onSave={save}
-                onFlushHandlerChange={handleFlushHandlerChange}
-                documentReview={documentReview}
-                documentReviewNavigationIntent={navigationPath === selectedPath ? navigationIntent : null}
-                onOpenOutline={isMobile ? openLeft : undefined}
-              />
             ) : (
               <EmptyState variant="page" icon={BookOpen} title={t('agentChat.reader.noSelection')} />
             )}

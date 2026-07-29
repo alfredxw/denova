@@ -45,6 +45,7 @@ import {
   type AgentChatProjectTabState,
 } from './tab-state'
 import { terminalTabLabel, type AgentChatTerminalStatus } from './terminal/TerminalTabView'
+import { getTerminalRuntimeStatus } from './terminal/api'
 import { useTerminalSessionLifecycle } from './terminal/use-terminal-session-lifecycle'
 import { useAgentChatActivityNavigator } from './use-agent-chat-activity-navigator'
 import {
@@ -55,6 +56,7 @@ import {
   type AgentChatPageRenderContext,
   type AgentChatReviewTab,
   type AgentChatTab,
+  type TerminalCommandProfile,
   type TerminalProfileId,
 } from './types'
 
@@ -121,6 +123,7 @@ export function AgentChatView({
   const [liveRunningBindings, setLiveRunningBindings] = useState<ReadonlySet<string>>(() => new Set())
   const liveRunningBindingsRef = useRef<ReadonlySet<string>>(new Set())
   const [terminalStatuses, setTerminalStatuses] = useState<ReadonlyMap<string, AgentChatTerminalStatus>>(() => new Map())
+  const [terminalCommands, setTerminalCommands] = useState<TerminalCommandProfile[]>([])
   const refreshSequenceRef = useRef(0)
   const pageFlushHandlersRef = useRef(new Map<string, EditorFlushHandler>())
   const navigationNonceRef = useRef(0)
@@ -177,6 +180,22 @@ export function AgentChatView({
   useEffect(() => { void refreshProjects() }, [refreshProjects])
   useEffect(() => { persistWorkbenchState(workbench) }, [workbench])
   useEffect(() => { persistSidebarVisible(sidebarVisible) }, [sidebarVisible])
+
+  const refreshTerminalCommands = useCallback(async () => {
+    try {
+      const runtime = await getTerminalRuntimeStatus()
+      setTerminalCommands(runtime.commands ?? [])
+    } catch (error) {
+      console.warn('[features/agent-chat/AgentChatView.tsx] loading terminal commands failed', { error })
+    }
+  }, [])
+
+  useEffect(() => {
+    void refreshTerminalCommands()
+    const onSettingsUpdated = () => { void refreshTerminalCommands() }
+    window.addEventListener('nova:settings-updated', onSettingsUpdated)
+    return () => window.removeEventListener('nova:settings-updated', onSettingsUpdated)
+  }, [refreshTerminalCommands])
 
   const registerPageFlushHandler = useCallback((workspace: string, tabId: string, handler: EditorFlushHandler | null) => {
     const key = mountedTabKey(workspace, tabId)
@@ -418,15 +437,16 @@ export function AgentChatView({
     })
   }, [])
 
-  const openTerminal = useCallback((workspace: string, group: AgentChatGroupId, profileId: TerminalProfileId, command?: string) => {
+  const openTerminal = useCallback((workspace: string, group: AgentChatGroupId, profileId: TerminalProfileId, profileName?: string, command?: string) => {
     openTab({
       kind: 'terminal',
       id: createTabId('terminal'),
       workspace,
       group,
       profileId,
+      profileName,
       command,
-      title: profileId === 'custom' ? command || '' : profileId === 'shell' ? '' : profileId,
+      title: profileId === 'custom' ? command || '' : profileId === 'shell' ? '' : profileName || profileId,
     })
   }, [openTab])
 
@@ -627,6 +647,7 @@ export function AgentChatView({
               tabs={groupTabs}
               activeTabId={activeId}
               tabTitle={tabTitle}
+              terminalCommands={terminalCommands}
               onActivate={(tabId) => activateTab(project.path, group, tabId)}
               onClose={(tabId) => { void closeTabs(project.path, [tabId]) }}
               onCloseOthers={(tabId) => { void closeTabs(project.path, otherTabIds(state.tabs, tabId)) }}
@@ -635,7 +656,7 @@ export function AgentChatView({
               onTogglePin={(tabId) => togglePinTab(project.path, tabId)}
               onMoveTab={(sourceId, target, beforeId) => relocateTab(project.path, sourceId, target, beforeId)}
               onNewAgentTab={(target) => openDraftSessionInProject(project, target)}
-              onNewTerminalTab={(target, profileId, command) => openTerminal(project.path, target, profileId, command)}
+              onNewTerminalTab={(target, profileId, profileName, command) => openTerminal(project.path, target, profileId, profileName, command)}
               onOpenPage={(target, pageId) => openProjectPage(project.path, target, pageId)}
             />
           </div>

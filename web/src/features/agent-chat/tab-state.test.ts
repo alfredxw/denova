@@ -115,6 +115,31 @@ describe('agent-chat tab state', () => {
     })
   })
 
+  it('restores configured terminal command IDs and display names without a hardcoded allowlist', () => {
+    persistWorkbenchState({
+      activeProjectPath: '/books/one',
+      projects: {
+        '/books/one': {
+          tabs: [{
+            kind: 'terminal',
+            id: 'aider-tab',
+            workspace: '/books/one',
+            profileId: 'aider-sonnet',
+            profileName: 'Aider Sonnet',
+            title: '',
+          }],
+          activeTabIds: { primary: 'aider-tab', secondary: null },
+          focusedGroup: 'primary',
+        },
+      },
+    })
+
+    expect(readStoredWorkbenchState().projects['/books/one'].tabs[0]).toMatchObject({
+      profileId: 'aider-sonnet',
+      profileName: 'Aider Sonnet',
+    })
+  })
+
   it('does not persist blank draft conversations', () => {
     persistWorkbenchState({
       activeProjectPath: '/books/one',

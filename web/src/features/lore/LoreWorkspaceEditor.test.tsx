@@ -7,9 +7,26 @@ import type { LoreItem } from '@/lib/api'
 import { LoreWorkspaceEditor } from './LoreWorkspaceEditor'
 
 vi.mock('@/components/Editor/MarkdownRichEditor', () => ({
-  MarkdownRichEditor: (props: { value: string; highlightQuery?: string; 'aria-label'?: string }) => (
-    <div role="textbox" aria-label={props['aria-label']} data-highlight-query={props.highlightQuery ?? ''}>
-      {props.value}
+  MarkdownEditor: (props: {
+    value: string
+    mode: 'rich' | 'source'
+    highlightQuery?: string
+    onChange: (value: string) => void
+    review?: { target: { id: string } }
+    'aria-label'?: string
+  }) => (
+    <div>
+      <textarea
+        aria-label={props['aria-label']}
+        data-content-mode={props.mode}
+        data-highlight-query={props.highlightQuery ?? ''}
+        data-review-target={props.review?.target.id ?? ''}
+        value={props.value}
+        onChange={(event) => props.onChange(event.target.value)}
+      />
+      {props.highlightQuery && props.value.includes(props.highlightQuery)
+        ? <mark>{props.highlightQuery}</mark>
+        : null}
     </div>
   ),
 }))
@@ -39,7 +56,7 @@ describe('LoreWorkspaceEditor', () => {
     )
 
     expect(screen.getByRole('textbox', { name: '编辑设定：Original name' }))
-      .toHaveTextContent('Original body')
+      .toHaveValue('Original body')
     expect(screen.getByRole('textbox', { name: '编辑设定：Original name' }))
       .toHaveAttribute('data-highlight-query', 'body')
 
@@ -66,7 +83,7 @@ describe('LoreWorkspaceEditor', () => {
       .toBeInTheDocument()
   })
 
-  it('creates durable comments from a raw source selection', async () => {
+  it('keeps the document review controller attached in raw mode', async () => {
     const user = userEvent.setup()
     const documentReview = reviewController()
 
@@ -91,31 +108,9 @@ describe('LoreWorkspaceEditor', () => {
     await user.click(screen.getByRole('button', { name: 'Raw' }))
     const rawEditor = screen.getByRole('textbox', {
       name: '编辑 Raw 设定：Original name',
-    }) as HTMLTextAreaElement
-    rawEditor.setSelectionRange(0, 'Original'.length)
-    fireEvent.select(rawEditor)
-
-    await user.click(screen.getByRole('button', { name: '添加评论' }))
-    const commentPanel = screen.getByRole('complementary', { name: '审阅评论' })
-    await user.type(
-      within(commentPanel).getByPlaceholderText('补充审阅背景，或说明希望如何调整…'),
-      'Use the canonical name',
-    )
-    await user.click(within(commentPanel).getByRole('button', { name: '添加评论' }))
-
-    await waitFor(() => expect(documentReview.onCreate).toHaveBeenCalledTimes(1))
-    expect(documentReview.onCreate).toHaveBeenCalledWith({
-      target: { kind: 'lore_item', id: 'lore-1', field: 'content' },
-      body: 'Use the canonical name',
-      anchor: expect.objectContaining({
-        encoding: 'utf8-bytes-v1',
-        revision: 'sha256:raw',
-        start: 0,
-        end: 8,
-        quote: 'Original',
-        display_quote: 'Original',
-      }),
     })
+    expect(rawEditor).toHaveAttribute('data-content-mode', 'source')
+    expect(rawEditor).toHaveAttribute('data-review-target', 'lore-1')
   })
 
   it('confirms before deleting the current lore item', async () => {

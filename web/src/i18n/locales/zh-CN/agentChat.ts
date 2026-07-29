@@ -91,8 +91,6 @@ const agentChat = {
   'agentChat.resource.activate': '切换到此书',
   'agentChat.resource.activating': '正在切换…',
   'agentChat.terminal.profile.shell': 'Shell',
-  'agentChat.terminal.profile.codex': 'Codex CLI',
-  'agentChat.terminal.profile.claude': 'Claude Code',
   'agentChat.terminal.profile.custom': '自定义终端',
   'agentChat.terminal.connecting': '连接中…',
   'agentChat.terminal.running': '运行中',

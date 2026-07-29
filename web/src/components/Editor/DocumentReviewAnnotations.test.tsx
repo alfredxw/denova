@@ -7,7 +7,9 @@ import { Markdown } from '@tiptap/markdown'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import type { CreateDocumentCommentRequest, DocumentReviewComment } from '@/features/document-review/types'
 import { DocumentReviewAnnotations, type DocumentReviewAnnotationsHandle } from './DocumentReviewAnnotations'
+import { sourceMarkdownReviewAdapter } from './documentReviewAdapter'
 import { createDocumentReviewExtension, documentReviewKeysFromElement, type DocumentReviewDecorationState, type DocumentReviewPortalTarget } from './documentReviewDecorations'
+import { createMarkdownSourceDocument, RawMarkdown } from './markdownSourceDocument'
 
 describe('DocumentReviewAnnotations', () => {
   let editor: Editor | null = null
@@ -256,6 +258,88 @@ describe('DocumentReviewAnnotations', () => {
     expect(draft).toBeInTheDocument()
     expect(editor.state.doc.textBetween(selection.from, selection.to, '\n')).toContain('Middle text')
     await waitFor(() => expect(decorationStateRef.current.decorations).toHaveLength(3))
+  })
+
+  it('creates a comment from TipTap source mode against the canonical Lore snapshot', async () => {
+    const user = userEvent.setup()
+    const source = '# 世界观\n\n角色😀设定\n'
+    const canonical = source.trimEnd()
+    const revision = 'sha256:lore-source'
+    const decorationStateRef = { current: { enabled: false, decorations: [] } as DocumentReviewDecorationState }
+    let updatePortalTargets: (targets: DocumentReviewPortalTarget[]) => void = () => undefined
+    editor = new Editor({
+      extensions: [
+        StarterKit,
+        RawMarkdown,
+        Markdown,
+        createDocumentReviewExtension(decorationStateRef, (targets) => updatePortalTargets(targets)),
+      ],
+      content: createMarkdownSourceDocument(source),
+    })
+    const selected = textRange(editor, '角色😀')
+    const annotationRef = { current: null as DocumentReviewAnnotationsHandle | null }
+    const onCreate = vi.fn(async (request: CreateDocumentCommentRequest): Promise<DocumentReviewComment> => ({
+      id: 'comment-source',
+      thread_id: 'document-thread',
+      target: request.target,
+      body: request.body,
+      anchor: request.anchor,
+      created_at: '2026-07-29T00:00:00Z',
+      updated_at: '2026-07-29T00:00:00Z',
+    }))
+
+    function Harness() {
+      const [portalTargets, setPortalTargets] = useState<DocumentReviewPortalTarget[]>([])
+      const containerRef = useRef<HTMLDivElement | null>(null)
+      useLayoutEffect(() => {
+        updatePortalTargets = (targets) => act(() => setPortalTargets(targets))
+        return () => { updatePortalTargets = () => undefined }
+      }, [])
+      return (
+        <div ref={containerRef}>
+          <div ref={(node) => {
+            if (node && editor && editor.view.dom.parentNode !== node) node.append(editor.view.dom)
+          }} />
+          <DocumentReviewAnnotations
+            ref={(handle) => { annotationRef.current = handle }}
+            editor={editor!}
+            target={{ kind: 'lore_item', id: 'lore-1', field: 'content' }}
+            resourceLabel="世界观"
+            containerRef={containerRef}
+            comments={[]}
+            decorationStateRef={decorationStateRef}
+            portalTargets={portalTargets}
+            anchorAdapter={sourceMarkdownReviewAdapter}
+            enableBlockComments={false}
+            onPrepareSnapshot={async () => ({ content: canonical, revision })}
+            onCreate={onCreate}
+            onUpdate={vi.fn()}
+            onDelete={vi.fn()}
+          />
+        </div>
+      )
+    }
+
+    render(<Harness />)
+    act(() => {
+      editor!.commands.setTextSelection(selected)
+      annotationRef.current?.startSelectionComment()
+    })
+    const draft = await screen.findByPlaceholderText('补充审阅背景，或说明希望如何调整…')
+    await user.type(draft, '补充角色真实身份')
+    await user.click(screen.getByRole('button', { name: '添加评论' }))
+
+    await waitFor(() => expect(onCreate).toHaveBeenCalledTimes(1))
+    expect(onCreate).toHaveBeenCalledWith(expect.objectContaining({
+      target: { kind: 'lore_item', id: 'lore-1', field: 'content' },
+      body: '补充角色真实身份',
+      anchor: expect.objectContaining({
+        revision,
+        quote: '角色😀',
+        start: new TextEncoder().encode(canonical.slice(0, canonical.indexOf('角色'))).length,
+        end: new TextEncoder().encode(canonical.slice(0, canonical.indexOf('角色') + '角色😀'.length)).length,
+      }),
+    }))
   })
 })
 

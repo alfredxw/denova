@@ -8,6 +8,9 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Added
 
+- 终端启动命令升级为用户级可排序注册表，可在设置中新增、编辑、启用或停用任意 CLI，并同时作用于写作与游戏模式；Codex CLI 与 Claude Code 作为可编辑预设保留。工作台新建菜单只展示已启用命令，终端会话通过稳定 ID 在后端解析真实命令，运行时菜单接口不再暴露命令行内容。旧版 Codex / Claude 单独配置会自动迁移，既有终端标签仍可恢复。
+- Terminal launch commands are now an ordered user-level registry shared by Writing and Game modes. Settings can add, edit, enable, or disable any CLI, while Codex CLI and Claude Code remain editable presets. The Workspace New menu shows only enabled commands, terminal sessions resolve their stable IDs on the backend, and runtime menu metadata no longer exposes command lines. Legacy standalone Codex / Claude settings migrate automatically, while existing terminal tabs remain recoverable.
+
 - 写作工作区新增独立「设定」Tab，并在左侧作品设定栏与灵感、状态并列提供入口。该 Tab 以适应式分类目录和聚焦编辑器呈现资料库，支持富文本手动编辑、自动保存、元数据维护、引用到创作 Agent、跳转完整资料库，以及与正文一致的选区/行级评论。评论现在绑定通用的 `workspace_file` / `lore_item` 文本资源目标；提交给 Agent 后会携带服务端解析的资料身份、版本与锚点，并明确通过 Lore 工具修改对应条目。Agent 与手动编辑并发时使用三方合并，重叠修改和远端删除会先归档可恢复冲突。Lore API 同步绑定显式 workspace 身份，防止切换作品时把读写或图片任务落入另一部作品。旧版文件评论 ledger 与已保存 Tab / 作品设定 Pin 偏好会自动迁移。
 - Writing now has a dedicated Lore tab, opened from a new Lore shortcut beside Ideas and State in the Book Settings sidebar. Its adaptive categorized directory and focused editor support rich-text editing, autosave, metadata, Writing Agent references, full-library navigation, and the same selection/line comments as manuscripts. Comments now target generic `workspace_file` or `lore_item` text resources; Agent feedback carries server-resolved resource identity, revision, and anchors and explicitly routes Lore edits through Lore tools. Concurrent Agent and manual edits use three-way rebasing, with recoverable conflict archives for overlaps and remote deletion. Lore APIs are bound to an explicit workspace identity so reads, writes, and image tasks cannot follow a book switch into another workspace. Legacy file-comment ledgers and saved tab/Book Settings pin preferences migrate automatically.
 
@@ -97,6 +100,12 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Fixed
 
+- 修复 Claude Code 等交互式 CLI 退出后对应终端 Tab 卡死的问题：Unix PTY 根 shell 现在拥有独立 session 和正确的 controlling TTY，前台进程结束后会可靠恢复到原工作目录的 zsh 提示符。
+- Fixed terminal tabs freezing after Claude Code and other interactive CLIs exit. The Unix PTY root shell now owns an independent session and the correct controlling TTY, so foreground-process completion reliably returns to the zsh prompt in the original working directory.
+- Lore Tab 的 Raw 模式改为 TipTap 承载的纯 Markdown 源码文档，与富文本模式共享搜索高亮、选区浮动操作和评论线程；移除 textarea 专用评论实现及光标坐标依赖。Raw 评论现在会把冻结选区安全映射到服务端规范化后的 canonical 正文，修复末尾换行差异导致无法添加评论的问题，并可在富文本与 Raw 之间继续定位唯一的可见文本锚点。
+- Lore Tab Raw mode now uses a literal Markdown source document hosted by TipTap and shares search highlighting, selection actions, and comment threads with rich mode; the textarea-specific review implementation and caret-coordinate dependency are removed. Frozen Raw selections are safely mapped onto the server-normalized canonical content, fixing comment creation when trailing newlines differ and preserving uniquely resolvable visible anchors across Rich/Raw switches.
+- 修复文本编辑器切换文件后丢失各自阅读位置、返回文件总是跳到顶部的问题；文件切换现在复用稳定的编辑器视图并恢复独立滚动位置，同时继续重建 TipTap 状态以隔离不同文件的撤销历史。
+- Fixed the text editor losing each file's reading position and jumping to the top after file switches. File navigation now keeps a stable editor view and restores independent scroll positions while still rebuilding TipTap state to isolate undo history between files.
 - 修复 `generate_image` 多图生成时，后续图片保存失败会让工具隐藏前面已经落盘图片的问题；现在返回已保存图片与逐项失败回执，只有全部失败时才整体报错。
 - Fixed multi-image `generate_image` calls hiding files already persisted when a later image failed to save. The tool now returns saved images alongside per-item failures and errors the whole call only when every image fails.
 - 修复首轮 Writing / Workspace Agent 对话要等整个 Run 结束才消费已提交评论、页面刷新或流重连后导致输入框与资料 Tab 再次显示评论的问题。首轮、排队后续轮次与恢复轮次现在统一在用户消息及评论引用持久化成功后、首次模型请求前消费一次性反馈，并在终态事件前刷新当前 workspace 的评论状态。

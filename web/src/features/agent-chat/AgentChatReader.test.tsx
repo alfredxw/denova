@@ -7,6 +7,8 @@ import { AgentChatReader } from './AgentChatReader'
 const mocks = vi.hoisted(() => ({
   flush: vi.fn(async () => true),
   readFile: vi.fn(),
+  editorMounts: 0,
+  editorUnmounts: 0,
 }))
 
 vi.mock('@/lib/api', () => ({ readFile: mocks.readFile }))
@@ -50,8 +52,12 @@ vi.mock('@/components/Editor/MarkdownEditor', () => ({
     onFlushHandlerChange?: (handler: (() => Promise<boolean>) | null) => void
   }) => {
     useEffect(() => {
+      mocks.editorMounts += 1
       onFlushHandlerChange?.(mocks.flush)
-      return () => onFlushHandlerChange?.(null)
+      return () => {
+        mocks.editorUnmounts += 1
+        onFlushHandlerChange?.(null)
+      }
     }, [onFlushHandlerChange])
     return (
       <div data-testid="shared-markdown-editor">
@@ -76,6 +82,8 @@ describe('AgentChatReader shared writing surface', () => {
   beforeEach(() => {
     mocks.flush.mockReset().mockResolvedValue(true)
     mocks.readFile.mockReset().mockImplementation(async (path: string) => ({ content: `content:${path}`, revision: `revision:${path}` }))
+    mocks.editorMounts = 0
+    mocks.editorUnmounts = 0
   })
 
   it('uses the writing outline and editor, flushing before local file navigation', async () => {
@@ -101,6 +109,8 @@ describe('AgentChatReader shared writing surface', () => {
     await user.click(screen.getByRole('button', { name: 'open chapter two' }))
     await waitFor(() => expect(mocks.flush).toHaveBeenCalledTimes(1))
     await waitFor(() => expect(screen.getByTestId('shared-markdown-editor')).toHaveTextContent('chapters/ch02.md|1|none'))
+    expect(mocks.editorMounts).toBe(1)
+    expect(mocks.editorUnmounts).toBe(0)
 
     await user.click(screen.getByRole('button', { name: 'open shared lore' }))
     expect(onOpenLoreTab).toHaveBeenCalledTimes(1)

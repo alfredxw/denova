@@ -1,6 +1,6 @@
 import { render } from '@testing-library/react'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
-import { MarkdownRichEditor } from './MarkdownRichEditor'
+import { MarkdownEditor, MarkdownRichEditor } from './MarkdownRichEditor'
 
 const tiptapMock = vi.hoisted(() => {
   const chainApi = {
@@ -30,7 +30,7 @@ const tiptapMock = vi.hoisted(() => {
     },
   }
   interface CapturedOptions {
-    content?: string
+    content?: unknown
     contentType?: string
     editorProps?: {
       attributes?: Record<string, string>
@@ -66,6 +66,7 @@ const decorationsMock = vi.hoisted(() => ({
 
 const editorDocumentMock = vi.hoisted(() => ({
   placeEditorCaretAtClick: vi.fn((..._args: unknown[]) => true),
+  resetEditorStateHistory: vi.fn(),
 }))
 
 vi.mock('@tiptap/react', () => ({
@@ -98,6 +99,7 @@ vi.mock('./editorDocument', async (importOriginal) => {
     createIndentedHardBreakExtension: () => ({ name: 'hardBreak' }),
     createWorkspaceImageExtension: () => ({ name: 'workspaceImage' }),
     placeEditorCaretAtClick: (...args: unknown[]) => editorDocumentMock.placeEditorCaretAtClick(...args),
+    resetEditorStateHistory: (...args: unknown[]) => editorDocumentMock.resetEditorStateHistory(...args),
   }
 })
 
@@ -110,6 +112,7 @@ describe('MarkdownRichEditor', () => {
     decorationsMock.findSearchMatches.mockImplementation(() => decorationsMock.matches)
     decorationsMock.selectSearchMatch.mockClear()
     editorDocumentMock.placeEditorCaretAtClick.mockClear()
+    editorDocumentMock.resetEditorStateHistory.mockClear()
   })
 
   it('以 markdown 形式加载初始内容并暴露可访问名称', () => {
@@ -121,6 +124,36 @@ describe('MarkdownRichEditor', () => {
     expect(options?.editorProps?.attributes?.['aria-label']).toBe('正文')
     expect(options?.editorProps?.attributes?.role).toBe('textbox')
     expect(options?.editorProps?.handleClick).toBeTypeOf('function')
+  })
+
+  it('以 TipTap 纯源码文档加载 Raw 内容而不解析 Markdown 标记', () => {
+    render(<MarkdownEditor mode="source" value="# 世界观" onChange={vi.fn()} aria-label="Raw 正文" />)
+
+    expect(tiptapMock.useEditorOptions?.contentType).toBe('json')
+    expect(tiptapMock.useEditorOptions?.content).toEqual({
+      type: 'doc',
+      content: [{
+        type: 'rawMarkdown',
+        content: [{ type: 'text', text: '# 世界观' }],
+      }],
+    })
+    expect(tiptapMock.useEditorOptions?.editorProps?.attributes?.['aria-label']).toBe('Raw 正文')
+  })
+
+  it('切换到 Raw 时替换文档表示并隔离两种模式的撤销历史', () => {
+    const { rerender } = render(<MarkdownEditor mode="rich" value="# 世界观" onChange={vi.fn()} />)
+    tiptapMock.chainApi.setContent.mockClear()
+
+    rerender(<MarkdownEditor mode="source" value="# 世界观" onChange={vi.fn()} />)
+
+    expect(tiptapMock.chainApi.setContent).toHaveBeenCalledWith({
+      type: 'doc',
+      content: [{
+        type: 'rawMarkdown',
+        content: [{ type: 'text', text: '# 世界观' }],
+      }],
+    }, { emitUpdate: false, contentType: 'json' })
+    expect(editorDocumentMock.resetEditorStateHistory).toHaveBeenCalledWith(tiptapMock.editor)
   })
 
   it('点击评论划线时保留后续扩展点击处理', () => {

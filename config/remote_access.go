@@ -70,7 +70,16 @@ func LANAddress() string {
 // replacing the user-level settings file. Blank password input preserves the
 // existing password hash.
 func PrepareUserSettingsForWrite(existing, incoming Settings) (Settings, error) {
-	out := incoming
+	existing = migrateLegacyTerminalCommands(existing)
+	out := migrateLegacyTerminalCommands(incoming)
+	// Older clients do not know terminal_commands. Preserve the existing
+	// registry instead of treating an omitted field as a request to reset it.
+	if out.TerminalCommands == nil {
+		out.TerminalCommands = append([]TerminalCommandSettings(nil), existing.TerminalCommands...)
+	}
+	if err := validateTerminalCommands(out.TerminalCommands); err != nil {
+		return Settings{}, err
+	}
 	out.RemoteAccessUsername = strings.TrimSpace(out.RemoteAccessUsername)
 	if out.RemoteAccessPassword != "" {
 		hash, err := HashRemoteAccessPassword(out.RemoteAccessPassword)

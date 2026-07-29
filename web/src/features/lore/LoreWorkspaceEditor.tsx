@@ -34,8 +34,7 @@ import {
   AutosaveStatusIndicator,
   type AutosaveStatus,
 } from '@/components/forms/autosave-status'
-import { MarkdownRichEditor } from '@/components/Editor/MarkdownRichEditor'
-import { RawDocumentReviewEditor } from '@/components/Editor/RawDocumentReviewEditor'
+import { MarkdownEditor } from '@/components/Editor/MarkdownRichEditor'
 import { MobilePaneTrigger } from '@/components/layout/mobile-pane-trigger'
 import type {
   DocumentReviewController,
@@ -330,46 +329,27 @@ export function LoreWorkspaceEditor({
       </Collapsible>
 
       <div className="flex min-h-0 min-w-0 flex-1 flex-col bg-[var(--nova-bg)]">
-        {contentMode === 'raw' ? (
-          <RawDocumentReviewEditor
-            value={draft.content || ''}
-            onChange={(content) => onDraftChange({ ...draft, content })}
-            onSaveShortcut={() => {
-              void onFlush()
-            }}
-            highlightQuery={highlightQuery}
-            review={{
-              target,
-              resourceLabel: draft.name,
-              controller: documentReview,
-              prepareSnapshot: onPrepareSnapshot,
-              navigationIntent,
-            }}
-            aria-label={t('loreWorkspace.rawContentLabel', {
-              name: draft.name,
-            })}
-            className="min-h-0 min-w-0 flex-1"
-          />
-        ) : (
-          <MarkdownRichEditor
-            key={draft.id}
-            value={draft.content || ''}
-            onChange={(content) => onDraftChange({ ...draft, content })}
-            onSaveShortcut={() => {
-              void onFlush()
-            }}
-            highlightQuery={highlightQuery}
-            review={{
-              target,
-              resourceLabel: draft.name,
-              controller: documentReview,
-              prepareSnapshot: onPrepareSnapshot,
-              navigationIntent,
-            }}
-            aria-label={t('loreWorkspace.contentLabel', { name: draft.name })}
-            className="flex min-h-0 min-w-0 flex-1 flex-col overflow-y-auto bg-[var(--nova-bg)] text-sm leading-7 [&_.tiptap]:mx-auto [&_.tiptap]:min-h-full [&_.tiptap]:w-full [&_.tiptap]:max-w-[880px] [&_.tiptap]:px-6 [&_.tiptap]:py-8 md:[&_.tiptap]:px-10 md:[&_.tiptap]:py-10"
-          />
-        )}
+        <MarkdownEditor
+          key={draft.id}
+          mode={contentMode === 'raw' ? 'source' : 'rich'}
+          value={draft.content || ''}
+          onChange={(content) => onDraftChange({ ...draft, content })}
+          onSaveShortcut={() => {
+            void onFlush()
+          }}
+          highlightQuery={highlightQuery}
+          review={{
+            target,
+            resourceLabel: draft.name,
+            controller: documentReview,
+            prepareSnapshot: onPrepareSnapshot,
+            navigationIntent,
+          }}
+          aria-label={contentMode === 'raw'
+            ? t('loreWorkspace.rawContentLabel', { name: draft.name })
+            : t('loreWorkspace.contentLabel', { name: draft.name })}
+          className="flex min-h-0 min-w-0 flex-1 flex-col overflow-y-auto bg-[var(--nova-bg)] text-sm leading-7 [&_.tiptap]:mx-auto [&_.tiptap]:min-h-full [&_.tiptap]:w-full [&_.tiptap]:max-w-[880px] [&_.tiptap]:px-6 [&_.tiptap]:py-8 md:[&_.tiptap]:px-10 md:[&_.tiptap]:py-10"
+        />
       </div>
       <ConfirmDialog
         open={Boolean(deleteTarget)}

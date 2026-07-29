@@ -1,4 +1,5 @@
 import { jsonHeaders, requestJSON } from '@/lib/api-client/client'
+import type { TerminalCommandProfile } from '../types'
 
 /** Backend snapshot of one live terminal session. */
 export interface TerminalSessionInfo {
@@ -25,6 +26,7 @@ export interface TerminalSessionInfo {
 export interface TerminalRuntimeStatus {
   enabled: boolean
   shell: string
+  commands: TerminalCommandProfile[]
   default_cwd: string
   max_sessions: number
   scrollback_kb: number

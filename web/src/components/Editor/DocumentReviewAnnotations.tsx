@@ -7,13 +7,12 @@ import { toast } from 'sonner'
 import { InlineCommentThread } from '@/components/review/InlineCommentThread'
 import type { CreateDocumentCommentRequest, DocumentReviewAnchor, DocumentReviewComment, DocumentReviewTarget } from '@/features/document-review/types'
 import {
-  captureDocumentReviewSelection,
   commentWidgetPosition,
-  createDocumentReviewAnchor,
   documentReviewAnchorKey,
   type DocumentReviewSnapshot,
   type EditorReviewRange,
 } from './documentReviewAnchors'
+import { richMarkdownReviewAdapter, type DocumentReviewAnchorAdapter } from './documentReviewAdapter'
 import { documentReviewKeysFromElement, documentReviewPluginKey, type DocumentReviewDecoration, type DocumentReviewDecorationState, type DocumentReviewPortalTarget } from './documentReviewDecorations'
 import { documentReviewRangeAtCoordinates } from './documentReviewHover'
 import './document-review.css'
@@ -31,6 +30,8 @@ interface DocumentReviewAnnotationsProps {
   comments: DocumentReviewComment[]
   decorationStateRef: { current: DocumentReviewDecorationState }
   portalTargets: DocumentReviewPortalTarget[]
+  anchorAdapter?: DocumentReviewAnchorAdapter
+  enableBlockComments?: boolean
   onPrepareSnapshot: () => Promise<DocumentReviewSnapshot>
   onCreate: (request: CreateDocumentCommentRequest) => Promise<DocumentReviewComment>
   onUpdate: (comment: DocumentReviewComment, body: string) => Promise<DocumentReviewComment>
@@ -63,6 +64,8 @@ export const DocumentReviewAnnotations = forwardRef<DocumentReviewAnnotationsHan
   comments,
   decorationStateRef,
   portalTargets,
+  anchorAdapter = richMarkdownReviewAdapter,
+  enableBlockComments = true,
   onPrepareSnapshot,
   onCreate,
   onUpdate,
@@ -90,10 +93,10 @@ export const DocumentReviewAnnotations = forwardRef<DocumentReviewAnnotationsHan
     setPreparing(true)
     setQuickAction(null)
     try {
-      const selection = captureDocumentReviewSelection(editor, range)
+      const selection = anchorAdapter.captureSelection(editor, range)
       const snapshot = await onPrepareSnapshot()
       if (request !== preparationRequestRef.current) return
-      const anchor = createDocumentReviewAnchor(editor, snapshot, selection)
+      const anchor = anchorAdapter.createAnchor(editor, snapshot, selection)
       console.debug('[DocumentReviewAnnotations.startDraft] document comment anchor prepared', {
         target,
         revision: anchor.revision,
@@ -109,7 +112,7 @@ export const DocumentReviewAnnotations = forwardRef<DocumentReviewAnnotationsHan
     } finally {
       if (request === preparationRequestRef.current) setPreparing(false)
     }
-  }, [editor, onPrepareSnapshot, preparing, t, target])
+  }, [anchorAdapter, editor, onPrepareSnapshot, preparing, t, target])
 
   const startSelectionComment = useCallback(() => {
     const { from, to } = editor.state.selection
@@ -142,7 +145,7 @@ export const DocumentReviewAnnotations = forwardRef<DocumentReviewAnnotationsHan
     return () => {
       preparationRequestRef.current += 1
     }
-  }, [target.kind, target.id, target.kind === 'lore_item' ? target.field : ''])
+  }, [anchorAdapter.coordinateSpace, target.kind, target.id, target.kind === 'lore_item' ? target.field : ''])
 
   const toggleExpandedComments = useCallback((keys: readonly string[]) => {
     setExpandedKeys((current) => {
@@ -157,8 +160,12 @@ export const DocumentReviewAnnotations = forwardRef<DocumentReviewAnnotationsHan
       return next
     })
   }, [])
-  const groups = useMemo(() => buildGroups(editor, comments, draft, expandedKeys), [comments, draft, editor, expandedKeys])
+  const groups = useMemo(
+    () => buildGroups(editor, comments, draft, expandedKeys, anchorAdapter),
+    [anchorAdapter, comments, draft, editor, expandedKeys],
+  )
   const decorationLayoutKey = JSON.stringify(groups.map((group) => [
+    anchorAdapter.coordinateSpace,
     group.key,
     group.outdated ? null : group.range.from,
     group.outdated ? null : group.range.to,
@@ -171,6 +178,7 @@ export const DocumentReviewAnnotations = forwardRef<DocumentReviewAnnotationsHan
       key: decorationLayoutKey,
       decorations: groups.map((group) => ({
         key: group.key,
+        coordinateSpace: anchorAdapter.coordinateSpace,
         from: group.outdated ? undefined : group.range.from,
         to: group.outdated ? undefined : group.range.to,
         widgetPos: group.range.widgetPos,
@@ -229,7 +237,10 @@ export const DocumentReviewAnnotations = forwardRef<DocumentReviewAnnotationsHan
   }, [editor, expandedKeys, portalTargets, revealSignal])
 
   useEffect(() => {
-    if (draft || preparing) return
+    if (!enableBlockComments || draft || preparing) {
+      setQuickAction(null)
+      return
+    }
     const container = containerRef.current
     if (!container) return
     const onPointerMove = (event: PointerEvent) => {
@@ -279,7 +290,7 @@ export const DocumentReviewAnnotations = forwardRef<DocumentReviewAnnotationsHan
       document.removeEventListener('pointermove', clearOutsideContainer, true)
       resizeObserver?.disconnect()
     }
-  }, [containerRef, draft, editor, preparing])
+  }, [containerRef, draft, editor, enableBlockComments, preparing])
 
   const submitDraft = async () => {
     if (!draft || !draft.body.trim()) return
@@ -363,13 +374,20 @@ export const DocumentReviewAnnotations = forwardRef<DocumentReviewAnnotationsHan
   )
 })
 
-function buildGroups(editor: Editor, comments: DocumentReviewComment[], draft: DraftComment | null, expandedKeys: ReadonlySet<string>): AnnotationGroup[] {
+function buildGroups(
+  editor: Editor,
+  comments: DocumentReviewComment[],
+  draft: DraftComment | null,
+  expandedKeys: ReadonlySet<string>,
+  anchorAdapter: DocumentReviewAnchorAdapter,
+): AnnotationGroup[] {
   const groups = new Map<string, AnnotationGroup>()
   for (const comment of comments) {
     const key = documentCommentGroupKey(comment)
-    const mappedRange = mappedCommentRange(editor, key)
-    const from = mappedRange?.from ?? comment.anchor.editor_from ?? 0
-    const to = mappedRange?.to ?? comment.anchor.editor_to ?? 0
+    const mappedRange = mappedCommentRange(editor, key, anchorAdapter.coordinateSpace)
+    const resolvedRange = mappedRange ?? anchorAdapter.resolveRange(editor, comment.anchor)
+    const from = resolvedRange?.from ?? 0
+    const to = resolvedRange?.to ?? 0
     const displayQuote = comment.anchor.display_quote || comment.anchor.quote
     const visibleQuote = from > 0 && to > from && to <= editor.state.doc.content.size
       ? editor.state.doc.textBetween(from, to, '\n').trim()
@@ -405,11 +423,14 @@ function documentCommentGroupKey(comment: DocumentReviewComment): string {
   return documentReviewAnchorKey(comment.anchor)
 }
 
-function mappedCommentRange(editor: Editor, key: string): { from: number; to: number } | null {
+function mappedCommentRange(editor: Editor, key: string, coordinateSpace: string): { from: number; to: number } | null {
   const decorations = documentReviewPluginKey.getState(editor.state)?.find(
     0,
     editor.state.doc.content.size,
-    (spec) => Array.isArray(spec.documentReviewKeys) && spec.documentReviewKeys.includes(key) && spec.kind === 'highlight',
+    (spec) => Array.isArray(spec.documentReviewKeys)
+      && spec.documentReviewKeys.includes(key)
+      && spec.documentReviewCoordinateSpace === coordinateSpace
+      && spec.kind === 'highlight',
   )
   const highlights = decorations?.filter((decoration) => decoration.to > decoration.from) ?? []
   if (!highlights.length) return null

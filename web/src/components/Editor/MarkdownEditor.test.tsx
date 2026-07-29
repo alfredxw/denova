@@ -1087,6 +1087,31 @@ describe('MarkdownEditor', () => {
     expect(tiptapMock.editor.commands.setTextSelection).not.toHaveBeenCalled()
   })
 
+  it('切换文件后恢复各自的滚动位置', () => {
+    const animationFrame = vi.spyOn(window, 'requestAnimationFrame').mockImplementation((callback) => {
+      callback(0)
+      return 1
+    })
+    const { rerender } = render(
+      <MarkdownEditor fileName="chapters/ch01.md" content="第一章" onSave={vi.fn()} />,
+    )
+    const scrollContainer = screen.getByTestId('editor-content').parentElement as HTMLDivElement
+    scrollContainer.scrollTop = 360
+
+    rerender(
+      <MarkdownEditor fileName="chapters/ch02.md" content="第二章" onSave={vi.fn()} />,
+    )
+    expect(scrollContainer.scrollTop).toBe(0)
+    scrollContainer.scrollTop = 180
+
+    rerender(
+      <MarkdownEditor fileName="chapters/ch01.md" content="第一章" onSave={vi.fn()} />,
+    )
+    expect(scrollContainer.scrollTop).toBe(360)
+
+    animationFrame.mockRestore()
+  })
+
   it('dirty 草稿收到 Agent 非重叠更新时自然合并，并沿用原用户编辑的 afterDelay', async () => {
     vi.useFakeTimers()
     const onSave = vi.fn().mockResolvedValue({ revision: 'rev-3' })

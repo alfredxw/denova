@@ -22,6 +22,7 @@ describe('AgentChatTabBar', () => {
         group="primary"
         tabs={tabs}
         activeTabId="skills-tab"
+        terminalCommands={[]}
         tabTitle={(tab) => tab.id === 'skills-tab' ? 'Skills tab' : 'Reader tab'}
         onActivate={vi.fn()}
         onClose={vi.fn()}
@@ -63,6 +64,7 @@ describe('AgentChatTabBar', () => {
         group="primary"
         tabs={[reviewTab]}
         activeTabId="review-tab"
+        terminalCommands={[]}
         tabTitle={() => 'Review'}
         onActivate={vi.fn()}
         onClose={onClose}
@@ -92,6 +94,7 @@ describe('AgentChatTabBar', () => {
           group="primary"
           tabs={tabs}
           activeTabId="reader-tab"
+          terminalCommands={[]}
           tabTitle={(tab) => tab.id === 'reader-tab' ? longTitle : 'Skills'}
           onActivate={vi.fn()}
           onClose={vi.fn()}
@@ -127,6 +130,7 @@ describe('AgentChatTabBar', () => {
           group="primary"
           tabs={tabs}
           activeTabId="reader-tab"
+          terminalCommands={[]}
           tabTitle={(tab) => tab.id === 'reader-tab' ? 'Reader' : 'Skills'}
           onActivate={vi.fn()}
           onClose={vi.fn()}
@@ -151,7 +155,7 @@ describe('AgentChatTabBar', () => {
     }
   })
 
-  it('offers Shell, Codex CLI, and Claude Code directly in the new-tab menu', async () => {
+  it('offers Shell and every enabled configured CLI directly in the new-tab menu', async () => {
     const user = userEvent.setup()
     const onNewTerminalTab = vi.fn()
     renderTabBar(
@@ -159,6 +163,11 @@ describe('AgentChatTabBar', () => {
         group="primary"
         tabs={tabs}
         activeTabId="skills-tab"
+        terminalCommands={[
+          { id: 'codex', name: 'Codex CLI' },
+          { id: 'claude', name: 'Claude Code' },
+          { id: 'aider', name: 'Aider' },
+        ]}
         tabTitle={(tab) => tab.id}
         onActivate={vi.fn()}
         onClose={vi.fn()}
@@ -179,15 +188,19 @@ describe('AgentChatTabBar', () => {
     expect(screen.getByRole('menuitem', { name: 'Codex CLI' })).toBeInTheDocument()
     expect(screen.getByRole('menuitem', { name: 'Claude Code' })).toBeInTheDocument()
     expect(screen.queryByRole('menuitem', { name: 'Shell' })).not.toBeInTheDocument()
-    expect(screen.queryByText('自定义命令…')).not.toBeInTheDocument()
+    expect(screen.getByRole('menuitem', { name: 'Aider' })).toBeInTheDocument()
 
     await user.click(screen.getByRole('menuitem', { name: '终端' }))
     expect(onNewTerminalTab).toHaveBeenLastCalledWith('primary', 'shell')
     await openMenu()
     await user.click(await screen.findByRole('menuitem', { name: 'Codex CLI' }))
-    expect(onNewTerminalTab).toHaveBeenLastCalledWith('primary', 'codex')
+    expect(onNewTerminalTab).toHaveBeenLastCalledWith('primary', 'codex', 'Codex CLI')
     await openMenu()
     await user.click(await screen.findByRole('menuitem', { name: 'Claude Code' }))
-    expect(onNewTerminalTab).toHaveBeenLastCalledWith('primary', 'claude')
+    expect(onNewTerminalTab).toHaveBeenLastCalledWith('primary', 'claude', 'Claude Code')
+
+    await openMenu()
+    await user.click(await screen.findByRole('menuitem', { name: 'Aider' }))
+    expect(onNewTerminalTab).toHaveBeenLastCalledWith('primary', 'aider', 'Aider')
   })
 })

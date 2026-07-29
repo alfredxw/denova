@@ -28,6 +28,7 @@ import { scheduleFrontendReloadAfterUpdate } from './update-reload'
 import { DEFAULT_MODEL_PROFILE_ID, modelProfileID, modelProfileLabel, modelProfilesWithDefault } from './model-profiles'
 import { DEFAULT_IMAGE_API_BASE_URL, DEFAULT_IMAGE_API_MODEL, DEFAULT_IMAGE_API_PROFILE_ID, DEFAULT_IMAGE_API_PROVIDER, imageAPIProfileID, imageAPIProfileLabel, imageAPIProfilesWithDefault } from './image-profiles'
 import { ONBOARDING_OPEN_EVENT, SETTINGS_SECTION_EVENT, type SettingsSectionRequest } from '@/features/onboarding/events'
+import { TerminalCommandsEditor, terminalCommandsForEditor } from './TerminalCommandsEditor'
 
 type SettingsSectionId = 'model' | 'image' | 'paths' | 'access' | 'appearance' | 'updates' | 'agent' | 'terminal' | 'web-access' | 'debug' | 'ide-editor' | 'ide-output' | 'versions' | 'interactive'
 
@@ -408,12 +409,10 @@ export function SettingsView({ onClose }: { onClose?: () => void }) {
           <Text label={t('settings.terminal.shell')} value={draft.terminal_shell}
                 placeholder={placeholderFor('terminal_shell')}
                 onChange={(v) => setField('terminal_shell', v)} />
-          <Text label={t('settings.terminal.codexCommand')} value={draft.terminal_codex_command}
-                placeholder={placeholderFor('terminal_codex_command')}
-                onChange={(v) => setField('terminal_codex_command', v)} />
-          <Text label={t('settings.terminal.claudeCommand')} value={draft.terminal_claude_command}
-                placeholder={placeholderFor('terminal_claude_command')}
-                onChange={(v) => setField('terminal_claude_command', v)} />
+          <TerminalCommandsEditor
+            commands={terminalCommandsForEditor(draft, effective)}
+            onChange={(commands) => setField('terminal_commands', commands)}
+          />
           <Num label={t('settings.terminal.maxSessions')} value={draft.terminal_max_sessions ?? null}
                placeholder={placeholderFor('terminal_max_sessions')}
                min={1}
@@ -1853,8 +1852,7 @@ function mergeSettingsLayer(parent: Settings, child: Settings): Settings {
   override('agent_tool_parallelism', isNonNull)
   override('terminal_enabled', isNonNull)
   override('terminal_shell', isNonEmptyString)
-  override('terminal_codex_command', isNonEmptyString)
-  override('terminal_claude_command', isNonEmptyString)
+  if (child.terminal_commands !== undefined) out.terminal_commands = child.terminal_commands
   override('terminal_max_sessions', isNonNull)
   override('terminal_scrollback_kb', isNonNull)
   override('llm_input_log_enabled', isNonNull)

@@ -2,7 +2,7 @@ import { Editor } from '@tiptap/core'
 import StarterKit from '@tiptap/starter-kit'
 import { afterEach, describe, expect, it } from 'vitest'
 
-import { placeEditorCaretAtClick, replaceEditorDocument } from './editorDocument'
+import { placeEditorCaretAtClick, replaceEditorDocument, resetEditorStateHistory } from './editorDocument'
 
 describe('replaceEditorDocument', () => {
   let editor: Editor | null = null
@@ -42,6 +42,29 @@ describe('replaceEditorDocument', () => {
 
     expect(editor.state.selection.from).toBe(2)
     expect(editor.state.selection.to).toBe(2)
+  })
+
+  it('isolates undo history after replacing one file with another', () => {
+    editor = new Editor({
+      extensions: [StarterKit],
+      content: '<p>first file</p>',
+    })
+    editor.commands.setTextSelection(11)
+    editor.commands.insertContent(' draft')
+
+    replaceEditorDocument(editor, '<p>second file</p>', {
+      contentType: 'html',
+      preserveSelection: false,
+    })
+    resetEditorStateHistory(editor)
+    editor.commands.setTextSelection(12)
+    editor.commands.insertContent(' draft')
+
+    expect(editor.getText()).toBe('second file draft')
+    expect(editor.commands.undo()).toBe(true)
+    expect(editor.getText()).toBe('second file')
+    expect(editor.commands.undo()).toBe(false)
+    expect(editor.getText()).toBe('second file')
   })
 
   it('moves a stale end-of-document caret to the clicked document position', () => {

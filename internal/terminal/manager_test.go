@@ -107,9 +107,11 @@ func TestAttachedSessionClosesOutputAfterFinalProcessBytes(t *testing.T) {
 
 func TestCLIStartupReturnsToWorkspaceShell(t *testing.T) {
 	manager := NewManager(Config{
-		Enabled:         true,
-		Shell:           "/bin/sh",
-		ClaudeCommand:   "/bin/sh -c 'printf cli-finished'",
+		Enabled: true,
+		Shell:   "/bin/sh",
+		Commands: []CommandProfile{
+			{ID: "claude", Name: "Claude Code", Command: "/bin/sh -c 'printf cli-finished'", Enabled: true},
+		},
 		MaxSessions:     1,
 		ScrollbackBytes: 4096,
 	})
@@ -288,9 +290,13 @@ func TestManagerCreateIsIdempotentForOneOwnerTab(t *testing.T) {
 
 func TestManagerResolveLaunchProfile(t *testing.T) {
 	manager := NewManager(Config{
-		Enabled:         true,
-		CodexCommand:    `npx @openai/codex --profile "deep work"`,
-		ClaudeCommand:   `"/Applications/Claude Code/claude" --resume`,
+		Enabled: true,
+		Commands: []CommandProfile{
+			{ID: "codex", Name: "Codex CLI", Command: `npx @openai/codex --profile "deep work"`, Enabled: true},
+			{ID: "claude", Name: "Claude Code", Command: `"/Applications/Claude Code/claude" --resume`, Enabled: true},
+			{ID: "aider", Name: "Aider", Command: "aider --model sonnet", Enabled: true},
+			{ID: "disabled", Name: "Disabled", Command: "disabled", Enabled: false},
+		},
 		MaxSessions:     2,
 		ScrollbackBytes: 4096,
 	})
@@ -311,6 +317,14 @@ func TestManagerResolveLaunchProfile(t *testing.T) {
 		t.Fatalf("unexpected Claude launch: %#v", launch)
 	}
 
+	launch, err = manager.ResolveLaunchProfile("aider", "client-controlled", []string{"--ignored"})
+	if err != nil || launch.StartupCommand != "aider --model sonnet" {
+		t.Fatalf("custom configured profile should resolve by backend ID: launch=%#v err=%v", launch, err)
+	}
+	if _, err = manager.ResolveLaunchProfile("disabled", "", nil); !errors.Is(err, ErrInvalidProfile) {
+		t.Fatalf("disabled profile should fail with ErrInvalidProfile, got %v", err)
+	}
+
 	launch, err = manager.ResolveLaunchProfile("shell", "ignored", []string{"--ignored"})
 	if err != nil || launch.Command != "" || len(launch.Args) != 0 || launch.StartupCommand != "" {
 		t.Fatalf("shell should defer to the configured login shell: launch=%#v err=%v", launch, err)
@@ -320,9 +334,35 @@ func TestManagerResolveLaunchProfile(t *testing.T) {
 		t.Fatalf("unknown profile should fail with ErrInvalidProfile, got %v", err)
 	}
 
-	manager.SetConfig(Config{Enabled: true, CodexCommand: `"unterminated`, MaxSessions: 2, ScrollbackBytes: 4096})
+	manager.SetConfig(Config{
+		Enabled: true,
+		Commands: []CommandProfile{
+			{ID: "codex", Name: "Codex CLI", Command: `"unterminated`, Enabled: true},
+		},
+		MaxSessions: 2, ScrollbackBytes: 4096,
+	})
 	if _, err = manager.ResolveLaunchProfile("codex", "", nil); !errors.Is(err, ErrInvalidLaunchCommand) {
 		t.Fatalf("malformed command should fail with ErrInvalidLaunchCommand, got %v", err)
+	}
+}
+
+func TestAvailableCommandsReturnsOnlySafeMenuMetadataInConfiguredOrder(t *testing.T) {
+	manager := NewManager(Config{
+		Enabled: true,
+		Commands: []CommandProfile{
+			{ID: "aider", Name: "Aider", Command: "aider --model sonnet", Enabled: true},
+			{ID: "disabled", Name: "Disabled", Command: "disabled", Enabled: false},
+			{ID: "aider", Name: "Duplicate", Command: "duplicate", Enabled: true},
+			{ID: "goose", Name: "Goose", Command: "goose", Enabled: true},
+		},
+	})
+
+	commands := manager.AvailableCommands()
+	if len(commands) != 2 || commands[0].ID != "aider" || commands[1].ID != "goose" {
+		t.Fatalf("available commands = %#v", commands)
+	}
+	if commands[0].Command != "" || commands[0].Enabled {
+		t.Fatalf("API metadata leaked runtime command fields: %#v", commands[0])
 	}
 }
 

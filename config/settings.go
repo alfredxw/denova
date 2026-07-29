@@ -92,11 +92,14 @@ type Settings struct {
 	WritingSkillDefault string `toml:"writing_skill_default,omitempty" json:"writing_skill_default,omitempty"`
 
 	// Terminal (the AgentChat terminal tabs). A terminal runs arbitrary commands on this
-	// machine, so `enabled` stays a user-level master switch that a workspace may also turn off.
-	TerminalEnabled       *bool  `toml:"terminal_enabled,omitempty" json:"terminal_enabled,omitempty"`
-	TerminalShell         string `toml:"terminal_shell,omitempty" json:"terminal_shell,omitempty"`
-	TerminalCodexCommand  string `toml:"terminal_codex_command,omitempty" json:"terminal_codex_command,omitempty"`
-	TerminalClaudeCommand string `toml:"terminal_claude_command,omitempty" json:"terminal_claude_command,omitempty"`
+	// machine, so this entire section is user-scoped and cannot be overridden by a workspace.
+	TerminalEnabled  *bool                     `toml:"terminal_enabled,omitempty" json:"terminal_enabled,omitempty"`
+	TerminalShell    string                    `toml:"terminal_shell,omitempty" json:"terminal_shell,omitempty"`
+	TerminalCommands []TerminalCommandSettings `toml:"terminal_commands,omitempty" json:"terminal_commands,omitempty"`
+	// Deprecated scalar fields remain TOML-readable for one-way migration into
+	// TerminalCommands. They are never returned by the API or written back.
+	TerminalCodexCommand  string `toml:"terminal_codex_command,omitempty" json:"-"`
+	TerminalClaudeCommand string `toml:"terminal_claude_command,omitempty" json:"-"`
 	TerminalMaxSessions   *int   `toml:"terminal_max_sessions,omitempty" json:"terminal_max_sessions,omitempty"`
 	TerminalScrollbackKB  *int   `toml:"terminal_scrollback_kb,omitempty" json:"terminal_scrollback_kb,omitempty"`
 
@@ -120,8 +123,6 @@ const (
 	DefaultTraceCaptureLevel       = "summary"
 	DefaultTraceExporter           = "local"
 	DefaultTraceRetentionRuns      = 100
-	DefaultTerminalCodexCommand    = "codex"
-	DefaultTerminalClaudeCommand   = "claude"
 	DefaultTerminalMaxSessions     = 8
 	MaxTerminalSessions            = 64
 	DefaultTerminalScrollbackKB    = 256
@@ -166,8 +167,7 @@ func DefaultSettings() Settings {
 		AgentToolResultLimitKB:      intPtr(DefaultAgentToolResultLimitKB),
 		AgentToolParallelism:        intPtr(DefaultAgentToolParallelism),
 		TerminalEnabled:             boolPtr(true),
-		TerminalCodexCommand:        DefaultTerminalCodexCommand,
-		TerminalClaudeCommand:       DefaultTerminalClaudeCommand,
+		TerminalCommands:            DefaultTerminalCommands(),
 		TerminalMaxSessions:         intPtr(DefaultTerminalMaxSessions),
 		TerminalScrollbackKB:        intPtr(DefaultTerminalScrollbackKB),
 		LLMInputLogEnabled:          boolPtr(false),
@@ -200,6 +200,8 @@ func DefaultSettings() Settings {
 // Merge 用 child 的非零字段覆盖 parent 后返回新值。
 // 字符串：空串视为未设置；指针：nil 视为未设置。
 func Merge(parent, child Settings) Settings {
+	parent = migrateLegacyTerminalCommands(parent)
+	child = migrateLegacyTerminalCommands(child)
 	out := parent
 	if child.OpenAIAPIKey != "" {
 		out.OpenAIAPIKey = child.OpenAIAPIKey
@@ -337,11 +339,8 @@ func Merge(parent, child Settings) Settings {
 	if child.TerminalShell != "" {
 		out.TerminalShell = child.TerminalShell
 	}
-	if child.TerminalCodexCommand != "" {
-		out.TerminalCodexCommand = child.TerminalCodexCommand
-	}
-	if child.TerminalClaudeCommand != "" {
-		out.TerminalClaudeCommand = child.TerminalClaudeCommand
+	if child.TerminalCommands != nil {
+		out.TerminalCommands = append([]TerminalCommandSettings(nil), child.TerminalCommands...)
 	}
 	if child.TerminalMaxSessions != nil {
 		out.TerminalMaxSessions = child.TerminalMaxSessions
@@ -665,6 +664,7 @@ func workspaceAgentSettings(settings Settings) Settings {
 }
 
 func sanitizeEditableSettings(s Settings) Settings {
+	s = migrateLegacyTerminalCommands(s)
 	// denova_dir/nova_dir 是启动级定位参数，不能由用户级/工作区级配置反向修改自身位置。
 	s.DenovaDir = ""
 	s.NovaDir = ""
@@ -688,8 +688,7 @@ func sanitizeEditableSettings(s Settings) Settings {
 	s.AgentToolResultLimitKB = normalizeAgentToolResultLimitKB(s.AgentToolResultLimitKB)
 	s.AgentToolParallelism = normalizeAgentToolParallelism(s.AgentToolParallelism)
 	s.TerminalShell = strings.TrimSpace(s.TerminalShell)
-	s.TerminalCodexCommand = strings.TrimSpace(s.TerminalCodexCommand)
-	s.TerminalClaudeCommand = strings.TrimSpace(s.TerminalClaudeCommand)
+	s.TerminalCommands = normalizeTerminalCommands(s.TerminalCommands)
 	s.TerminalMaxSessions = normalizeTerminalMaxSessions(s.TerminalMaxSessions)
 	s.TerminalScrollbackKB = normalizeTerminalScrollbackKB(s.TerminalScrollbackKB)
 	s.WebAccess = sanitizeWebAccessSettings(s.WebAccess)

@@ -56,6 +56,26 @@ describe('document review anchors', () => {
     )).toThrow('The editor and workspace snapshots differ')
   })
 
+  it('maps a raw selection onto Lore canonical content without its editor-only final newline', () => {
+    const editorContent = '# 世界观\n\n角色😀设定\n'
+    const canonical = editorContent.trimEnd()
+    const start = editorContent.indexOf('角色')
+    const end = start + '角色😀'.length
+
+    const anchor = createRawDocumentReviewAnchor(
+      { content: canonical, revision: 'sha256:canonical-lore' },
+      { content: editorContent, start, end },
+    )
+
+    expect(anchor).toMatchObject({
+      revision: 'sha256:canonical-lore',
+      start: new TextEncoder().encode(canonical.slice(0, start)).length,
+      end: new TextEncoder().encode(canonical.slice(0, end)).length,
+      quote: '角色😀',
+      display_quote: '角色😀',
+    })
+  })
+
   it('maps the exact repeated TipTap selection to canonical Markdown UTF-8 bytes', () => {
     const content = '开头 **目标😀** 与目标😀结尾\n'
     editor = new Editor({ extensions: [StarterKit, Markdown], content, contentType: 'markdown' })

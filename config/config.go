@@ -61,6 +61,7 @@ type Config struct {
 	AgentToolParallelism        int                          `toml:"agent_tool_parallelism"`
 	TerminalEnabled             bool                         `toml:"terminal_enabled"`
 	TerminalShell               string                       `toml:"terminal_shell"`
+	TerminalCommands            []TerminalCommandSettings    `toml:"terminal_commands"`
 	TerminalCodexCommand        string                       `toml:"terminal_codex_command"`
 	TerminalClaudeCommand       string                       `toml:"terminal_claude_command"`
 	TerminalMaxSessions         int                          `toml:"terminal_max_sessions"`
@@ -126,8 +127,7 @@ func LoadWithWorkspace(workspace string) (*Config, LayeredSettings, error) {
 		AgentToolParallelism:        settingsAgentToolParallelism(s.AgentToolParallelism),
 		TerminalEnabled:             settingsBool(s.TerminalEnabled, true),
 		TerminalShell:               s.TerminalShell,
-		TerminalCodexCommand:        s.TerminalCodexCommand,
-		TerminalClaudeCommand:       s.TerminalClaudeCommand,
+		TerminalCommands:            append([]TerminalCommandSettings(nil), s.TerminalCommands...),
 		TerminalMaxSessions:         settingsTerminalMaxSessions(s.TerminalMaxSessions),
 		TerminalScrollbackKB:        settingsTerminalScrollbackKB(s.TerminalScrollbackKB),
 		LLMInputLogEnabled:          settingsBool(s.LLMInputLogEnabled, false),
@@ -239,6 +239,7 @@ func settingsFromConfig(cfg *Config) Settings {
 		InteractiveStoryTellerID: cfg.InteractiveStoryTellerID,
 		IDEImagePresetID:         cfg.IDEImagePresetID,
 		WritingSkillDefault:      cfg.WritingSkillDefault,
+		TerminalCommands:         append([]TerminalCommandSettings(nil), cfg.TerminalCommands...),
 		TerminalCodexCommand:     cfg.TerminalCodexCommand,
 		TerminalClaudeCommand:    cfg.TerminalClaudeCommand,
 	}
@@ -291,7 +292,7 @@ func settingsFromConfig(cfg *Config) Settings {
 	if cfg.OpenAIContextWindowTokens > 0 {
 		settings.OpenAIContextWindowTokens = &cfg.OpenAIContextWindowTokens
 	}
-	return settings
+	return migrateLegacyTerminalCommands(settings)
 }
 
 func globalConfigCandidates() []string {
@@ -347,8 +348,7 @@ func Load() *Config {
 			AgentToolParallelism:        settingsAgentToolParallelism(d.AgentToolParallelism),
 			TerminalEnabled:             settingsBool(d.TerminalEnabled, true),
 			TerminalShell:               d.TerminalShell,
-			TerminalCodexCommand:        d.TerminalCodexCommand,
-			TerminalClaudeCommand:       d.TerminalClaudeCommand,
+			TerminalCommands:            append([]TerminalCommandSettings(nil), d.TerminalCommands...),
 			TerminalMaxSessions:         settingsTerminalMaxSessions(d.TerminalMaxSessions),
 			TerminalScrollbackKB:        settingsTerminalScrollbackKB(d.TerminalScrollbackKB),
 			LLMInputLogEnabled:          settingsBool(d.LLMInputLogEnabled, false),

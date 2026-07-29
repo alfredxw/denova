@@ -49,8 +49,7 @@ export interface Settings {
   agent_tool_parallelism?: number | null
   terminal_enabled?: boolean | null
   terminal_shell?: string
-  terminal_codex_command?: string
-  terminal_claude_command?: string
+  terminal_commands?: TerminalCommandSettings[]
   terminal_max_sessions?: number | null
   terminal_scrollback_kb?: number | null
   llm_input_log_enabled?: boolean | null
@@ -64,6 +63,14 @@ export interface Settings {
   writing_skill_default?: string
   interactive_stage_font_size?: number | null
   interactive_stage_line_height?: number | null
+}
+
+/** User-owned terminal shortcut resolved by stable ID on the backend. */
+export interface TerminalCommandSettings {
+  id: string
+  name: string
+  command: string
+  enabled: boolean
 }
 
 export interface WebAccessSettings {

@@ -1,4 +1,4 @@
-import { Node, mergeAttributes } from '@tiptap/core'
+import { Node, mergeAttributes, type Content } from '@tiptap/core'
 import Image from '@tiptap/extension-image'
 import type { Node as ProseMirrorNode } from '@tiptap/pm/model'
 import { EditorState, Selection } from '@tiptap/pm/state'
@@ -99,7 +99,7 @@ export function resetEditorStateHistory(editor: Editor) {
 }
 
 interface ReplaceEditorDocumentOptions {
-  contentType: 'html' | 'markdown'
+  contentType: 'html' | 'markdown' | 'json'
   preserveSelection: boolean
 }
 
@@ -109,7 +109,7 @@ interface ReplaceEditorDocumentOptions {
  */
 export function replaceEditorDocument(
   editor: Editor,
-  content: string,
+  content: Content,
   { contentType, preserveSelection }: ReplaceEditorDocumentOptions,
 ) {
   const previousSelection = preserveSelection

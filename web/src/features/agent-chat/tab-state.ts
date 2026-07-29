@@ -1,11 +1,9 @@
 import {
   AGENT_CHAT_GROUP_IDS,
   AGENT_CHAT_PAGE_IDS,
-  TERMINAL_PROFILE_IDS,
   type AgentChatGroupId,
   type AgentChatPageId,
   type AgentChatTab,
-  type TerminalProfileId,
 } from './types'
 
 /**
@@ -46,8 +44,10 @@ function isPageId(value: unknown): value is AgentChatPageId {
   return typeof value === 'string' && (AGENT_CHAT_PAGE_IDS as readonly string[]).includes(value)
 }
 
-function isTerminalProfileId(value: unknown): value is TerminalProfileId {
-  return typeof value === 'string' && (TERMINAL_PROFILE_IDS as readonly string[]).includes(value)
+function terminalProfileId(value: unknown): string {
+  if (typeof value !== 'string') return ''
+  const normalized = value.trim()
+  return normalized.length <= 128 && /^[a-z0-9][a-z0-9._-]*$/.test(normalized) ? normalized : ''
 }
 
 function isGroupId(value: unknown): value is AgentChatGroupId {
@@ -77,17 +77,20 @@ function parseTab(raw: unknown): AgentChatTab | null {
       return typeof value.sessionId === 'string' && value.sessionId
         ? { kind: 'agent', ...common, sessionId: value.sessionId }
         : null
-    case 'terminal':
-      return isTerminalProfileId(value.profileId)
-        ? {
-          kind: 'terminal',
-          ...common,
-          profileId: value.profileId,
-          command: typeof value.command === 'string' ? value.command : undefined,
-          title: typeof value.title === 'string' ? value.title : '',
-          terminalSessionId: typeof value.terminalSessionId === 'string' ? value.terminalSessionId : undefined,
-        }
-        : null
+    case 'terminal': {
+      const profileId = terminalProfileId(value.profileId)
+      if (!profileId) return null
+      const storedProfileName = typeof value.profileName === 'string' ? value.profileName.trim() : ''
+      return {
+        kind: 'terminal',
+        ...common,
+        profileId,
+        profileName: storedProfileName || legacyTerminalProfileName(profileId),
+        command: typeof value.command === 'string' ? value.command : undefined,
+        title: typeof value.title === 'string' ? value.title : '',
+        terminalSessionId: typeof value.terminalSessionId === 'string' ? value.terminalSessionId : undefined,
+      }
+    }
     case 'page':
       return isPageId(value.pageId) ? { kind: 'page', ...common, pageId: value.pageId } : null
     case 'review':
@@ -102,6 +105,12 @@ function parseTab(raw: unknown): AgentChatTab | null {
     default:
       return null
   }
+}
+
+function legacyTerminalProfileName(profileId: string): string | undefined {
+  if (profileId === 'codex') return 'Codex CLI'
+  if (profileId === 'claude') return 'Claude Code'
+  return undefined
 }
 
 /** The tab each group has in front. Both groups are tracked so a split survives a reload. */

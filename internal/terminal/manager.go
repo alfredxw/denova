@@ -36,9 +36,6 @@ const (
 	MaxScrollbackKB = 4096
 	// MaxSessionsLimit bounds the configurable number of concurrent sessions.
 	MaxSessionsLimit = 64
-
-	defaultCodexCommand  = "codex"
-	defaultClaudeCommand = "claude"
 )
 
 // ErrDisabled reports that the terminal capability is switched off by configuration.
@@ -57,7 +54,7 @@ var ErrInvalidProfile = errors.New("invalid terminal profile")
 var ErrInvalidLaunchCommand = errors.New("invalid terminal launch command")
 
 // ResolvedLaunchProfile separates the long-lived PTY root from an optional command entered into
-// it. Built-in CLI profiles keep an interactive shell as the root; legacy custom profiles still
+// it. Configured CLI profiles keep an interactive shell as the root; legacy custom profiles still
 // launch their configured executable directly.
 type ResolvedLaunchProfile struct {
 	Command        string
@@ -65,13 +62,21 @@ type ResolvedLaunchProfile struct {
 	StartupCommand string
 }
 
+// CommandProfile is one backend-authoritative CLI shortcut. Browser tabs keep
+// only ID and display name; the executable command never enters local storage.
+type CommandProfile struct {
+	ID      string `json:"id"`
+	Name    string `json:"name"`
+	Command string `json:"-"`
+	Enabled bool   `json:"-"`
+}
+
 // Config is the resolved terminal runtime configuration.
 type Config struct {
 	Enabled bool
 	// An empty Shell is inferred from the platform ($SHELL / COMSPEC / platform default).
 	Shell           string
-	CodexCommand    string
-	ClaudeCommand   string
+	Commands        []CommandProfile
 	MaxSessions     int
 	ScrollbackBytes int
 }
@@ -79,9 +84,11 @@ type Config struct {
 // DefaultConfig returns the built-in defaults.
 func DefaultConfig() Config {
 	return Config{
-		Enabled:         true,
-		CodexCommand:    defaultCodexCommand,
-		ClaudeCommand:   defaultClaudeCommand,
+		Enabled: true,
+		Commands: []CommandProfile{
+			{ID: "codex", Name: "Codex CLI", Command: "codex", Enabled: true},
+			{ID: "claude", Name: "Claude Code", Command: "claude", Enabled: true},
+		},
 		MaxSessions:     DefaultMaxSessions,
 		ScrollbackBytes: DefaultScrollbackKB * 1024,
 	}
@@ -102,13 +109,15 @@ func (c Config) normalized() Config {
 		out.ScrollbackBytes = MaxScrollbackKB * 1024
 	}
 	out.Shell = strings.TrimSpace(out.Shell)
-	out.CodexCommand = strings.TrimSpace(out.CodexCommand)
-	if out.CodexCommand == "" {
-		out.CodexCommand = defaultCodexCommand
+	if out.Commands == nil {
+		out.Commands = DefaultConfig().Commands
+	} else {
+		out.Commands = append([]CommandProfile(nil), out.Commands...)
 	}
-	out.ClaudeCommand = strings.TrimSpace(out.ClaudeCommand)
-	if out.ClaudeCommand == "" {
-		out.ClaudeCommand = defaultClaudeCommand
+	for index := range out.Commands {
+		out.Commands[index].ID = strings.TrimSpace(out.Commands[index].ID)
+		out.Commands[index].Name = strings.TrimSpace(out.Commands[index].Name)
+		out.Commands[index].Command = strings.TrimSpace(out.Commands[index].Command)
 	}
 	return out
 }
@@ -149,7 +158,9 @@ func (m *Manager) SetConfig(cfg Config) {
 func (m *Manager) Config() Config {
 	m.mu.Lock()
 	defer m.mu.Unlock()
-	return m.cfg
+	snapshot := m.cfg
+	snapshot.Commands = append([]CommandProfile(nil), m.cfg.Commands...)
+	return snapshot
 }
 
 // ResolveShell returns the default login shell: the configured one, else the platform default.
@@ -161,30 +172,52 @@ func (m *Manager) ResolveShell() string {
 }
 
 // ResolveLaunchProfile turns the stable profile id into a PTY root plus an optional shell startup
-// command. Built-in profiles intentionally ignore client-supplied commands: their launch command
-// is a user-level setting and therefore has one authoritative backend resolution path. The custom
-// branch remains only for tabs persisted by earlier beta clients.
+// command. Configured profiles intentionally ignore client-supplied commands:
+// their launch command is user-level and has one authoritative backend path.
+// The custom branch remains only for tabs persisted by earlier beta clients.
 func (m *Manager) ResolveLaunchProfile(profileID, customCommand string, customArgs []string) (ResolvedLaunchProfile, error) {
 	m.mu.Lock()
 	cfg := m.cfg
 	m.mu.Unlock()
 
-	switch strings.TrimSpace(profileID) {
+	profileID = strings.TrimSpace(profileID)
+	switch profileID {
 	case "shell":
 		return ResolvedLaunchProfile{}, nil
-	case "codex":
-		return shellLaunchProfile(cfg.CodexCommand)
-	case "claude":
-		return shellLaunchProfile(cfg.ClaudeCommand)
 	case "custom":
 		command := strings.TrimSpace(customCommand)
 		if command == "" {
 			return ResolvedLaunchProfile{}, fmt.Errorf("%w: custom command is empty", ErrInvalidLaunchCommand)
 		}
 		return ResolvedLaunchProfile{Command: command, Args: append([]string(nil), customArgs...)}, nil
-	default:
-		return ResolvedLaunchProfile{}, fmt.Errorf("%w: %q", ErrInvalidProfile, profileID)
 	}
+	for _, profile := range cfg.Commands {
+		if profile.Enabled && profile.ID == profileID {
+			return shellLaunchProfile(profile.Command)
+		}
+	}
+	return ResolvedLaunchProfile{}, fmt.Errorf("%w: %q", ErrInvalidProfile, profileID)
+}
+
+// AvailableCommands returns enabled menu metadata in configured order. It
+// deliberately omits executable command lines from the API-facing value.
+func (m *Manager) AvailableCommands() []CommandProfile {
+	m.mu.Lock()
+	commands := append([]CommandProfile(nil), m.cfg.Commands...)
+	m.mu.Unlock()
+	result := make([]CommandProfile, 0, len(commands))
+	seen := make(map[string]struct{}, len(commands))
+	for _, command := range commands {
+		if !command.Enabled || command.ID == "" || command.Name == "" || command.Command == "" {
+			continue
+		}
+		if _, duplicate := seen[command.ID]; duplicate {
+			continue
+		}
+		seen[command.ID] = struct{}{}
+		result = append(result, CommandProfile{ID: command.ID, Name: command.Name})
+	}
+	return result
 }
 
 func shellLaunchProfile(commandLine string) (ResolvedLaunchProfile, error) {

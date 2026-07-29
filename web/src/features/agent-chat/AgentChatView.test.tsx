@@ -117,6 +117,10 @@ describe('AgentChatView project workbenches', () => {
     vi.mocked(getTerminalRuntimeStatus).mockReset().mockResolvedValue({
       enabled: true,
       shell: '/bin/sh',
+      commands: [
+        { id: 'codex', name: 'Codex CLI' },
+        { id: 'claude', name: 'Claude Code' },
+      ],
       default_cwd: '/books/a',
       max_sessions: 8,
       scrollback_kb: 256,
@@ -271,6 +275,10 @@ describe('AgentChatView project workbenches', () => {
     vi.mocked(getTerminalRuntimeStatus).mockResolvedValue({
       enabled: true,
       shell: '/bin/sh',
+      commands: [
+        { id: 'codex', name: 'Codex CLI' },
+        { id: 'claude', name: 'Claude Code' },
+      ],
       default_cwd: '/books/a',
       max_sessions: 8,
       scrollback_kb: 256,

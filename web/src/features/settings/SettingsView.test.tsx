@@ -1,7 +1,8 @@
 import { act, fireEvent, render, screen } from '@testing-library/react'
-import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { fetchSettings, updateUserSettings } from './api'
 import { modelProfilesForEditor, SettingsView, UpdatePanel } from './SettingsView'
+import { terminalCommandsForEditor } from './TerminalCommandsEditor'
 import type { LayeredSettings, UpdateCheckResult, UpdateInstallResult } from './types'
 
 vi.mock('./api', () => ({
@@ -15,6 +16,10 @@ vi.mock('./api', () => ({
 vi.mock('@/features/interactive/api', () => ({
   getInteractiveTellers: vi.fn().mockResolvedValue([]),
 }))
+
+afterEach(() => {
+  vi.useRealTimers()
+})
 
 describe('modelProfilesForEditor', () => {
   it('keeps a newly added blank language model profile visible before the model name is filled', () => {
@@ -43,6 +48,29 @@ describe('modelProfilesForEditor', () => {
 
     expect(profiles).toHaveLength(2)
     expect(profiles[1]).toEqual({ name: 'Draft model', context_window_tokens: 400000 })
+  })
+})
+
+describe('terminalCommandsForEditor', () => {
+  it('uses the effective presets until the user owns a registry, then preserves the user order', () => {
+    const effective = {
+      terminal_commands: [
+        { id: 'codex', name: 'Codex CLI', command: 'codex', enabled: true },
+        { id: 'claude', name: 'Claude Code', command: 'claude', enabled: true },
+      ],
+    }
+    expect(terminalCommandsForEditor({}, effective).map((command) => command.id)).toEqual(['codex', 'claude'])
+
+    const draft = {
+      terminal_commands: [
+        { id: 'aider', name: 'Aider', command: 'aider', enabled: true },
+        { id: 'codex', name: 'Codex CLI', command: 'codex', enabled: false },
+      ],
+    }
+    const commands = terminalCommandsForEditor(draft, effective)
+    expect(commands.map((command) => command.id)).toEqual(['aider', 'codex'])
+    commands[0].name = 'Changed locally'
+    expect(draft.terminal_commands[0].name).toBe('Aider')
   })
 })
 
@@ -163,6 +191,40 @@ describe('SettingsView user scope', () => {
       'user-rev',
     )
   })
+
+  it('edits preset CLI shortcuts and persists new commands through the shared registry', async () => {
+    const settings = layeredSettings({ devMode: false })
+    vi.mocked(fetchSettings).mockResolvedValue(settings)
+    vi.mocked(updateUserSettings).mockResolvedValue(settings)
+
+    render(<SettingsView />)
+
+    expect(await screen.findByText('CLI 快捷命令')).toBeInTheDocument()
+    expect(screen.getByText('Codex CLI')).toBeInTheDocument()
+    expect(screen.getByText('Claude Code')).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: '删除“Codex CLI”' })).not.toBeInTheDocument()
+
+    vi.useFakeTimers()
+    fireEvent.click(screen.getByRole('button', { name: '添加 CLI 快捷命令' }))
+    const nameInputs = screen.getAllByLabelText('显示名称')
+    const commandInputs = screen.getAllByLabelText('启动命令')
+    fireEvent.change(nameInputs.at(-1)!, { target: { value: 'Aider' } })
+    fireEvent.change(commandInputs.at(-1)!, { target: { value: 'aider --model sonnet' } })
+    fireEvent.click(screen.getByRole('switch', { name: '启用或停用“Aider”' }))
+
+    expect(screen.getByRole('button', { name: '删除“Aider”' })).toBeInTheDocument()
+    await act(async () => { await vi.advanceTimersByTimeAsync(1100) })
+
+    expect(updateUserSettings).toHaveBeenCalledWith(
+      expect.objectContaining({
+        terminal_commands: expect.arrayContaining([
+          expect.objectContaining({ name: 'Aider', command: 'aider --model sonnet', enabled: true }),
+        ]),
+      }),
+      'user-rev',
+    )
+    vi.useRealTimers()
+  })
 })
 
 function updateStatus(): UpdateCheckResult {
@@ -196,6 +258,11 @@ function layeredSettings({ devMode }: { devMode: boolean }): LayeredSettings {
     theme: 'dark',
     update_check_enabled: false,
     llm_input_log_enabled: false,
+    terminal_enabled: true,
+    terminal_commands: [
+      { id: 'codex', name: 'Codex CLI', command: 'codex', enabled: true },
+      { id: 'claude', name: 'Claude Code', command: 'claude', enabled: true },
+    ],
   }
   return {
     default: settings,

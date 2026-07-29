@@ -91,8 +91,6 @@ const agentChat = {
   'agentChat.resource.activate': 'Open this book',
   'agentChat.resource.activating': 'Opening…',
   'agentChat.terminal.profile.shell': 'Shell',
-  'agentChat.terminal.profile.codex': 'Codex CLI',
-  'agentChat.terminal.profile.claude': 'Claude Code',
   'agentChat.terminal.profile.custom': 'Custom terminal',
   'agentChat.terminal.connecting': 'Connecting…',
   'agentChat.terminal.running': 'Running',

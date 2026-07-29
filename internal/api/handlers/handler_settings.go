@@ -35,6 +35,10 @@ func (h *Handlers) HandleSettingsUserUpdate(ctx context.Context, c *app.RequestC
 			writeErrorKey(c, consts.StatusConflict, "api.settings.revisionConflict")
 			return
 		}
+		if errors.Is(err, config.ErrInvalidTerminalCommand) {
+			writeErrorKey(c, consts.StatusBadRequest, "api.common.invalidRequestWithDetail", "detail", err.Error())
+			return
+		}
 		if key := settingsErrorKey(err); key != "" {
 			writeErrorKey(c, consts.StatusBadRequest, key)
 			return

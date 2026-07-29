@@ -4,7 +4,7 @@ import userEvent from '@testing-library/user-event'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import type { AgentChatTerminalTab } from '../types'
 import type { TerminalSessionInfo } from './api'
-import { normalizeTerminalTitle, TerminalTabView } from './TerminalTabView'
+import { normalizeTerminalTitle, TerminalTabView, terminalTabLabel } from './TerminalTabView'
 
 const apiMocks = vi.hoisted(() => ({
   closeTerminalSession: vi.fn(),
@@ -141,6 +141,35 @@ describe('TerminalTabView session lifecycle', () => {
     await act(async () => { creation.resolve(session('session-1')); await creation.promise })
     await waitFor(() => expect(onSessionEstablished).toHaveBeenCalled())
     expect(apiMocks.createTerminalSession).toHaveBeenCalledTimes(1)
+  })
+
+  it('starts a configured CLI by stable profile ID without sending its command line', async () => {
+    const configuredTab: AgentChatTerminalTab = {
+      ...tab,
+      profileId: 'aider-sonnet',
+      profileName: 'Aider Sonnet',
+    }
+    apiMocks.createTerminalSession.mockResolvedValue(session('aider-session'))
+
+    render(
+      <TerminalTabView
+        tab={configuredTab}
+        active
+        onSessionEstablished={() => true}
+        onTitleChange={vi.fn()}
+        onStatusChange={vi.fn()}
+      />,
+    )
+
+    await waitFor(() => expect(apiMocks.createTerminalSession).toHaveBeenCalledTimes(1))
+    expect(apiMocks.createTerminalSession).toHaveBeenCalledWith(expect.objectContaining({
+      profile_id: 'aider-sonnet',
+      owner_tab_id: configuredTab.id,
+    }))
+    const request = apiMocks.createTerminalSession.mock.calls[0][0]
+    expect(request).not.toHaveProperty('command')
+    expect(request).not.toHaveProperty('args')
+    expect(terminalTabLabel(configuredTab, (key) => key)).toBe('Aider Sonnet')
   })
 
   it('reattaches a persisted session after reload without creating another process', async () => {
