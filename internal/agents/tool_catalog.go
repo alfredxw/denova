@@ -10,6 +10,7 @@ import (
 	"denova/config"
 	producttools "denova/internal/agents/tools"
 	"denova/internal/runtimetools"
+	"denova/internal/shellenv"
 	"denova/internal/workspacechange"
 )
 
@@ -21,12 +22,45 @@ type submitDirectorPlanUpdateInput = producttools.SubmitDirectorPlanUpdateInput
 // tool construction. Runtime metadata is projected into a narrow callback so
 // the tools package never imports the agents package.
 func newToolCatalog(cfg *config.Config) *producttools.Catalog {
+	return newToolCatalogWithContext(context.Background(), cfg)
+}
+
+func newToolCatalogWithContext(ctx context.Context, cfg *config.Config) *producttools.Catalog {
+	if ctx == nil {
+		ctx = context.Background()
+	}
 	executablePath, _ := os.Executable()
 	discovered := runtimetools.DiscoverForExecutable(executablePath)
 	return producttools.NewCatalog(cfg, agentWorkspaceChangeMetadata, producttools.RuntimeExecutables{
 		Ripgrep: discovered.Ripgrep,
 		Bash:    discovered.Bash,
 		Pwsh:    discovered.Pwsh,
+		ShellRuntime: func() (producttools.ShellRuntime, error) {
+			environment := os.Environ()
+			bashOverride := ""
+			mode := config.ShellEnvironmentProcess
+			shell := ""
+			if cfg != nil {
+				mode = cfg.ShellEnvironmentMode
+				if mode == "" {
+					// Hand-built Config values in focused tests predate this
+					// setting. Loaded application configs always carry Auto.
+					mode = config.ShellEnvironmentProcess
+				}
+				shell = cfg.ShellEnvironmentShell
+				bashOverride = cfg.AgentBashPath
+			}
+			snapshot, err := shellenv.Resolve(ctx, shellenv.Options{Mode: mode, Shell: shell})
+			if err != nil {
+				return producttools.ShellRuntime{}, err
+			}
+			environment = snapshot.Environment
+			resolved := runtimetools.DiscoverForExecutableWithEnvironment(executablePath, environment, bashOverride)
+			return producttools.ShellRuntime{
+				Bash: resolved.Bash, Pwsh: resolved.Pwsh,
+				Environment: append([]string(nil), environment...),
+			}, nil
+		},
 	})
 }
 

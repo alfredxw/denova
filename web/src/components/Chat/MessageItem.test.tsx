@@ -1123,4 +1123,45 @@ describe('MessageItem', () => {
     await waitFor(() => expect(onResolve).toHaveBeenCalledWith(expect.anything(), { status: 'cancelled' }))
     expect(screen.getByText('已取消')).toBeInTheDocument()
   })
+
+  it('工具审批使用专用卡片且只提交 Allow once 或 Deny', async () => {
+    const user = userEvent.setup()
+    const onResolve = vi.fn().mockResolvedValue({
+      schema: 'ask.result.v1', id: 'approval-1', status: 'answered',
+      answers: [{
+        question_id: 'tool-approval', question: 'Allow once?',
+        selected_options: [{ id: 'allow-once', label: 'Allow once' }],
+      }],
+    })
+    render(
+      <MessageItem
+        message={{
+          id: 'approval-1', role: 'ask', ask: {
+            schema: 'ask.pending.v1', id: 'approval-1', kind: 'tool_approval',
+            tool_call_id: 'tool-1', agent_kind: 'ide', status: 'pending',
+            questions: [{
+              id: 'tool-approval', question: 'Allow once?',
+              options: [{ id: 'allow-once', label: 'Allow once' }, { id: 'deny', label: 'Deny' }],
+            }],
+            approval: {
+              mode: 'ask', tool_name: 'bash', command: 'npm test', cwd: '.',
+              details: '{"action":"run"}',
+              risk: 'high', reason: '不在白名单', rule_id: 'bash_unlisted_command', args_hash: 'abc',
+            },
+          },
+        }}
+        onResolveAsk={onResolve}
+      />,
+    )
+
+    expect(screen.getByText('npm test')).toBeInTheDocument()
+    expect(screen.getByText('{"action":"run"}')).toBeInTheDocument()
+    expect(screen.queryByRole('radio', { name: /其他/ })).not.toBeInTheDocument()
+    await user.click(screen.getByRole('button', { name: '仅允许本次' }))
+    await waitFor(() => expect(onResolve).toHaveBeenCalledWith(
+      expect.objectContaining({ id: 'approval-1' }),
+      { status: 'answered', answers: [{ question_id: 'tool-approval', selected_option_ids: ['allow-once'] }] },
+    ))
+    expect(screen.getByText('已允许一次')).toBeInTheDocument()
+  })
 })

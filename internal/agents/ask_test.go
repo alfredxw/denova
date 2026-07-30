@@ -5,7 +5,9 @@ import (
 	"testing"
 	"time"
 
+	"denova/config"
 	"denova/internal/agents/session"
+	"denova/internal/agents/toolapproval"
 )
 
 func TestRunAskInteractionEmitsPendingAndResolvedAroundSameWaiter(t *testing.T) {
@@ -86,6 +88,54 @@ func TestPersistentAskIDIsolatedByTaskAndExecution(t *testing.T) {
 	}
 	if first != persistentAskID("task-1", "tool-same") {
 		t.Fatal("ask identity is not deterministic")
+	}
+}
+
+func TestRunAskInteractionPresentsHostGeneratedToolApproval(t *testing.T) {
+	store, err := session.NewStore(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer store.Close()
+	sess, err := store.GetOrCreate("approval-events")
+	if err != nil {
+		t.Fatal(err)
+	}
+	events := make(chan Event, 2)
+	host := newRunAskInteraction(NewSessionConversation(sess), RunOptions{
+		AgentKind: AgentKindIDE, TaskID: "approval-task",
+	}, func(event Event) { events <- event })
+	result := make(chan bool, 1)
+	errs := make(chan error, 1)
+	go func() {
+		allowed, approveErr := host.ApproveTool(context.Background(), toolApprovalRequest{
+			Mode: config.AgentApprovalAsk, ToolName: "bash",
+			ProviderCallID: "provider-1", ExecutionID: "execution-1",
+			Arguments: `{"command":"npm test"}`,
+			Decision: toolapproval.Decision{
+				Action: toolapproval.ActionPrompt, Risk: toolapproval.RiskHigh,
+				RuleID: "bash_unlisted_command", Reason: "approval required", Command: "npm test",
+			},
+		})
+		result <- allowed
+		errs <- approveErr
+	}()
+	pending := receiveAskEvent(t, events, "ask_pending")
+	if pending.Kind != session.AskKindToolApproval || pending.Approval == nil ||
+		pending.Approval.ToolName != "bash" || pending.Approval.ArgsHash == "" {
+		t.Fatalf("approval pending event = %#v", pending)
+	}
+	if _, err := sess.ResolveAsk(context.Background(), pending.ID, session.AskAnswered, []session.AskAnswer{{
+		QuestionID: toolApprovalQuestionID, SelectedOptionIDs: []string{toolApprovalAllowID},
+	}}, ""); err != nil {
+		t.Fatal(err)
+	}
+	_ = receiveAskEvent(t, events, "ask_resolved")
+	if err := <-errs; err != nil {
+		t.Fatal(err)
+	}
+	if !<-result {
+		t.Fatal("allow-once resolution was not granted")
 	}
 }
 

@@ -40,6 +40,7 @@ import onboarding from './en-US/onboarding'
 import changes from './en-US/changes'
 import narrativeStyle from './en-US/narrativeStyle'
 import agentChat from './en-US/agentChat'
+import agentApproval from './en-US/agentApproval'
 
 const enUS = {
   ...common,
@@ -84,6 +85,7 @@ const enUS = {
   ...changes,
   ...narrativeStyle,
   ...agentChat,
+  ...agentApproval,
   'agents.tool.availability.runtimeCheck': 'Runtime check',
 } as const
 

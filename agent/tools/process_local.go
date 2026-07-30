@@ -32,12 +32,13 @@ var portableEnvironmentName = regexp.MustCompile(`^[A-Za-z_][A-Za-z0-9_]*$`)
 
 // LocalCommandRunner runs one foreground Bash or PowerShell command.
 type LocalCommandRunner struct {
-	workspace  *LocalWorkspace
-	shell      ShellKind
-	executable string
-	engine     string
-	version    string
-	guard      CommandRunGuard
+	workspace       *LocalWorkspace
+	shell           ShellKind
+	executable      string
+	engine          string
+	version         string
+	baseEnvironment []string
+	guard           CommandRunGuard
 }
 
 // NewLocalCommandRunner resolves the requested shell and binds it to a
@@ -53,7 +54,9 @@ func NewLocalCommandRunner(options CommandRunnerOptions) (*LocalCommandRunner, e
 	return &LocalCommandRunner{
 		workspace: options.Workspace, shell: options.Shell,
 		executable: executable, engine: engine,
-		version: detectShellVersion(options.Shell, executable), guard: options.Guard,
+		version:         detectShellVersion(options.Shell, executable),
+		baseEnvironment: normalizeBaseEnvironment(options.BaseEnvironment),
+		guard:           options.Guard,
 	}, nil
 }
 
@@ -81,7 +84,7 @@ func (runner *LocalCommandRunner) Run(ctx context.Context, request CommandReques
 	if err != nil {
 		return CommandResult{}, err
 	}
-	environment, err := commandEnvironment(request.Env, request.PTY)
+	environment, err := commandEnvironment(runner.baseEnvironment, request.Env, request.PTY, absoluteCwd)
 	if err != nil {
 		return CommandResult{}, err
 	}
@@ -334,7 +337,7 @@ func (runner *LocalCommandRunner) resolveCommandDirectory(input string) (string,
 	return filepath.ToSlash(confirmed), canonical, nil
 }
 
-func commandEnvironment(extra map[string]string, pty bool) ([]string, error) {
+func commandEnvironment(base []string, extra map[string]string, pty bool, cwd string) ([]string, error) {
 	if len(extra) > maxCommandEnvironmentEntries {
 		return nil, fmt.Errorf("command env may contain at most %d entries", maxCommandEnvironmentEntries)
 	}
@@ -353,27 +356,59 @@ func commandEnvironment(extra map[string]string, pty bool) ([]string, error) {
 		}
 		keys = append(keys, key)
 	}
-	if pty {
-		if _, exists := extra["TERM"]; !exists && os.Getenv("TERM") == "" {
-			extra = cloneEnvironment(extra)
-			extra["TERM"] = "xterm-256color"
-			keys = append(keys, "TERM")
-		}
+	environment := environmentMap(base)
+	if len(environment) == 0 {
+		environment = environmentMap(os.Environ())
 	}
-	sort.Strings(keys)
-	result := append([]string(nil), os.Environ()...)
+	if strings.TrimSpace(cwd) != "" {
+		environment["PWD"] = cwd
+		delete(environment, "OLDPWD")
+	}
 	for _, key := range keys {
-		result = append(result, key+"="+extra[key])
+		environment[key] = extra[key]
+	}
+	if pty && environment["TERM"] == "" {
+		environment["TERM"] = "xterm-256color"
+	}
+	names := make([]string, 0, len(environment))
+	for name := range environment {
+		names = append(names, name)
+	}
+	sort.Strings(names)
+	result := make([]string, 0, len(names))
+	for _, name := range names {
+		result = append(result, name+"="+environment[name])
 	}
 	return result, nil
 }
 
-func cloneEnvironment(source map[string]string) map[string]string {
-	clone := make(map[string]string, len(source)+1)
-	for key, value := range source {
-		clone[key] = value
+func normalizeBaseEnvironment(source []string) []string {
+	if len(source) == 0 {
+		return nil
 	}
-	return clone
+	environment := environmentMap(source)
+	names := make([]string, 0, len(environment))
+	for name := range environment {
+		names = append(names, name)
+	}
+	sort.Strings(names)
+	result := make([]string, 0, len(names))
+	for _, name := range names {
+		result = append(result, name+"="+environment[name])
+	}
+	return result
+}
+
+func environmentMap(source []string) map[string]string {
+	result := make(map[string]string, len(source))
+	for _, entry := range source {
+		name, value, ok := strings.Cut(entry, "=")
+		if !ok || name == "" || strings.IndexByte(name, 0) >= 0 || strings.IndexByte(value, 0) >= 0 {
+			continue
+		}
+		result[name] = value
+	}
+	return result
 }
 
 func resolveShellExecutable(shell ShellKind, configured string, lookPath func(string) (string, error)) (string, string, error) {

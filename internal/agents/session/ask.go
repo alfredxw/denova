@@ -2,6 +2,8 @@ package session
 
 import (
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -24,7 +26,12 @@ const (
 	maxAskCustomInputBytes    = 64 * 1024
 	maxAskCancelReasonBytes   = 2 * 1024
 	maxAskStableIDBytes       = 256
+	maxApprovalCommandBytes   = 64 * 1024
+	maxApprovalTextBytes      = 8 * 1024
 	reservedAskOtherOptionID  = "other"
+	toolApprovalQuestionID    = "tool-approval"
+	toolApprovalAllowOptionID = "allow-once"
+	toolApprovalDenyOptionID  = "deny"
 )
 
 var (
@@ -290,6 +297,10 @@ func normalizeAskInteraction(interaction AskInteraction) (AskInteraction, error)
 	interaction = cloneAskInteraction(interaction)
 	interaction.Schema = askPendingSchema
 	interaction.ID = strings.TrimSpace(interaction.ID)
+	interaction.Kind = strings.TrimSpace(interaction.Kind)
+	if interaction.Kind == "" {
+		interaction.Kind = AskKindQuestion
+	}
 	interaction.ToolCallID = strings.TrimSpace(interaction.ToolCallID)
 	interaction.ProviderCallID = strings.TrimSpace(interaction.ProviderCallID)
 	interaction.TaskID = strings.TrimSpace(interaction.TaskID)
@@ -374,6 +385,18 @@ func normalizeAskInteraction(interaction AskInteraction) (AskInteraction, error)
 			}
 		}
 	}
+	switch interaction.Kind {
+	case AskKindQuestion:
+		if interaction.Approval != nil {
+			return AskInteraction{}, fmt.Errorf("ordinary ask cannot include tool approval metadata")
+		}
+	case AskKindToolApproval:
+		if err := normalizeToolApprovalInteraction(&interaction); err != nil {
+			return AskInteraction{}, err
+		}
+	default:
+		return AskInteraction{}, fmt.Errorf("unsupported ask kind %q", interaction.Kind)
+	}
 	encoded, err := json.Marshal(interaction.Questions)
 	if err != nil {
 		return AskInteraction{}, err
@@ -383,6 +406,56 @@ func normalizeAskInteraction(interaction AskInteraction) (AskInteraction, error)
 	}
 	interaction.Questions = cloneAskQuestions(interaction.Questions)
 	return interaction, nil
+}
+
+func normalizeToolApprovalInteraction(interaction *AskInteraction) error {
+	if interaction == nil || interaction.Approval == nil {
+		return fmt.Errorf("tool approval metadata is required")
+	}
+	approval := interaction.Approval
+	approval.Mode = strings.TrimSpace(approval.Mode)
+	approval.ToolName = strings.TrimSpace(approval.ToolName)
+	approval.Command = strings.TrimSpace(approval.Command)
+	approval.Cwd = strings.TrimSpace(approval.Cwd)
+	approval.Risk = strings.TrimSpace(approval.Risk)
+	approval.Reason = strings.TrimSpace(approval.Reason)
+	approval.RuleID = strings.TrimSpace(approval.RuleID)
+	approval.ArgsHash = strings.TrimSpace(approval.ArgsHash)
+	if approval.Mode == "" || approval.ToolName == "" || approval.Risk == "" || approval.Reason == "" ||
+		approval.RuleID == "" || approval.ArgsHash == "" {
+		return fmt.Errorf("tool approval metadata is incomplete")
+	}
+	if approval.Mode != "ask" && approval.Mode != "write" && approval.Mode != "yolo" {
+		return fmt.Errorf("tool approval mode %q is invalid", approval.Mode)
+	}
+	if approval.Risk != "low" && approval.Risk != "medium" && approval.Risk != "high" && approval.Risk != "critical" {
+		return fmt.Errorf("tool approval risk %q is invalid", approval.Risk)
+	}
+	approval.Details = strings.TrimSpace(approval.Details)
+	if len(approval.Command) > maxApprovalCommandBytes || len(approval.Details) > maxApprovalCommandBytes ||
+		len(approval.Cwd) > maxApprovalCommandBytes ||
+		len(approval.ToolName) > maxApprovalTextBytes || len(approval.Reason) > maxApprovalTextBytes {
+		return fmt.Errorf("tool approval presentation exceeds its display limit")
+	}
+	if err := validateAskStableID("tool approval rule id", approval.RuleID); err != nil {
+		return err
+	}
+	if len(approval.ArgsHash) != sha256.Size*2 {
+		return fmt.Errorf("tool approval argument hash must contain %d hexadecimal characters", sha256.Size*2)
+	}
+	if _, err := hex.DecodeString(approval.ArgsHash); err != nil {
+		return fmt.Errorf("tool approval argument hash is invalid: %w", err)
+	}
+	if len(interaction.Questions) != 1 {
+		return fmt.Errorf("tool approval requires exactly one decision question")
+	}
+	question := interaction.Questions[0]
+	if question.ID != toolApprovalQuestionID || question.MultiSelect ||
+		len(question.Options) != 2 || question.Options[0].ID != toolApprovalAllowOptionID ||
+		question.Options[1].ID != toolApprovalDenyOptionID {
+		return fmt.Errorf("tool approval decision shape is invalid")
+	}
+	return nil
 }
 
 func buildAskResolution(interaction AskInteraction, status string, answers []AskAnswer, cancelReason string) (AskResolution, error) {
@@ -521,9 +594,26 @@ func askResolutionFromInteraction(interaction AskInteraction) AskResolution {
 
 func sameAskRequest(left, right AskInteraction) bool {
 	return left.ID == right.ID && left.ToolCallID == right.ToolCallID && left.ProviderCallID == right.ProviderCallID &&
+		normalizedAskKind(left.Kind) == normalizedAskKind(right.Kind) &&
 		left.TaskID == right.TaskID && left.AgentKind == right.AgentKind && left.AgentCommandID == right.AgentCommandID &&
 		left.AgentOperationID == right.AgentOperationID && left.AgentCycle == right.AgentCycle &&
+		sameToolApprovalPresentation(left.Approval, right.Approval) &&
 		slices.EqualFunc(left.Questions, right.Questions, sameAskQuestion)
+}
+
+func normalizedAskKind(value string) string {
+	value = strings.TrimSpace(value)
+	if value == "" {
+		return AskKindQuestion
+	}
+	return value
+}
+
+func sameToolApprovalPresentation(left, right *ToolApprovalPresentation) bool {
+	if left == nil || right == nil {
+		return left == right
+	}
+	return *left == *right
 }
 
 func sameAskQuestion(left, right AskQuestion) bool {
@@ -540,6 +630,10 @@ func sameAskResolution(left, right AskResolution) bool {
 func cloneAskInteraction(value AskInteraction) AskInteraction {
 	value.Questions = cloneAskQuestions(value.Questions)
 	value.Answers = cloneAskAnswerResults(value.Answers)
+	if value.Approval != nil {
+		approval := *value.Approval
+		value.Approval = &approval
+	}
 	if value.ResolvedAt != nil {
 		resolvedAt := *value.ResolvedAt
 		value.ResolvedAt = &resolvedAt

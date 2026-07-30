@@ -543,6 +543,36 @@ func TestBashReturnsOutputExitMetadataAndUsesGuard(t *testing.T) {
 	}
 }
 
+func TestBashUsesCapturedBaseEnvironmentAndExplicitOverrides(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("Bash process assertion is Unix-specific")
+	}
+	workspace := mustOpenTestWorkspace(t, t.TempDir())
+	runner, err := NewLocalCommandRunner(CommandRunnerOptions{
+		Workspace: workspace,
+		Shell:     ShellBash,
+		BaseEnvironment: []string{
+			"PATH=" + os.Getenv("PATH"),
+			"DENOVA_PROFILE_VALUE=from-login-shell",
+			"PWD=/stale/profile/directory",
+		},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	result, err := runner.Run(context.Background(), CommandRequest{
+		Command: `printf '%s|%s' "$DENOVA_PROFILE_VALUE" "$PWD"`,
+		Env:     map[string]string{"DENOVA_PROFILE_VALUE": "explicit-override"},
+	}, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := "explicit-override|" + workspace.Root()
+	if result.Output != want {
+		t.Fatalf("output = %q, want %q", result.Output, want)
+	}
+}
+
 func TestBashStoresCompleteOutputArtifactWhileKeepingBoundedModelProjection(t *testing.T) {
 	if runtime.GOOS == "windows" {
 		t.Skip("Bash process assertion is Unix-specific")

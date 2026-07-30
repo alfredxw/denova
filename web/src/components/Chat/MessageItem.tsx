@@ -24,6 +24,7 @@ import { Tool, ToolContent } from '@/components/ai-elements/tool'
 import { Shimmer } from '@/components/ai-elements/shimmer'
 import { StreamingContentStage } from './StreamingContentStage'
 import { AskInteractionCard, type AskInteractionResolver } from './AskInteractionCard'
+import { ToolApprovalCard } from './ToolApprovalCard'
 
 interface MessageItemProps {
   message: ChatMessage
@@ -149,11 +150,13 @@ export const MessageItem = memo(function MessageItem({ message, highlightDialogu
         return <TodoListBlock message={message} />
       }
       if ((message.name || '') === 'ask') {
+        if (message.ask?.kind === 'tool_approval') return <ToolApprovalCard message={message} onResolve={onResolveAsk} />
         return <AskInteractionCard message={message} onResolve={onResolveAsk} />
       }
       return <ToolExecutionBlock message={message} />
 
     case 'ask':
+      if (message.ask?.kind === 'tool_approval') return <ToolApprovalCard message={message} onResolve={onResolveAsk} />
       return <AskInteractionCard message={message} onResolve={onResolveAsk} />
 
     case 'rule_roll':

@@ -21,6 +21,15 @@ vi.mock('@/features/settings/api', () => ({
   updateUserSettings: vi.fn().mockResolvedValue(undefined),
 }))
 
+vi.mock('@/features/agent-approval/AgentApprovalProvider', () => ({
+  useAgentApprovalMode: () => ({
+    mode: 'write',
+    initialized: true,
+    saving: false,
+    setMode: vi.fn().mockResolvedValue(true),
+  }),
+}))
+
 vi.mock('@/hooks/useSkillCommands', () => ({
   useSkillCommands: () => [],
 }))

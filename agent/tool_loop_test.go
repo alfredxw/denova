@@ -170,6 +170,60 @@ func TestNativeLoopChecksContextImmediatelyBeforeToolExecution(t *testing.T) {
 	}
 }
 
+type blockBeforeConcreteExecutionMiddleware struct{ BaseMiddleware }
+
+func (*blockBeforeConcreteExecutionMiddleware) WrapToolCall(
+	_ context.Context,
+	_ ToolCallEndpoint,
+	_ *ToolContext,
+) (ToolCallEndpoint, error) {
+	return func(context.Context, string, ...ToolOption) (ToolResult, error) {
+		return SyntheticToolResult(ToolResultBlocked, ToolSyntheticPolicyBlocked, "approval denied"), nil
+	}, nil
+}
+
+func TestToolStartedEventIsEmittedOnlyAfterMiddlewarePreflight(t *testing.T) {
+	var calls atomic.Int32
+	model := &scriptedModel{responses: []scriptedModelResponse{
+		{message: AssistantMessage("", []ToolCall{{ID: "blocked", Type: "function", Function: FunctionCall{Name: "target", Arguments: `{}`}}})},
+		{message: AssistantMessage("done", nil)},
+	}}
+	definition := testToolDefinition(&functionTool{name: "target", run: func(context.Context, string) (string, error) {
+		calls.Add(1)
+		return "unexpected", nil
+	}})
+	native, err := NewAgent(context.Background(), AgentConfig{
+		Name: "preflight-before-start", Model: model, Tools: []ToolDefinition{definition},
+		Middlewares: []Middleware{&blockBeforeConcreteExecutionMiddleware{}},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	events := NewRunner(RunnerConfig{Agent: native}).Query(context.Background(), "go")
+	var started, finished int
+	for {
+		event, ok := events.Next()
+		if !ok {
+			break
+		}
+		if event.Err != nil {
+			t.Fatal(event.Err)
+		}
+		if event.Output == nil || event.Output.ToolExecution == nil {
+			continue
+		}
+		switch event.Output.ToolExecution.Phase {
+		case ToolExecutionStarted:
+			started++
+		case ToolExecutionFinished:
+			finished++
+		}
+	}
+	if calls.Load() != 0 || started != 0 || finished != 1 {
+		t.Fatalf("calls=%d started=%d finished=%d", calls.Load(), started, finished)
+	}
+}
+
 type rewriteArgumentsMiddleware struct{ BaseMiddleware }
 
 func (*rewriteArgumentsMiddleware) WrapToolCall(_ context.Context, endpoint ToolCallEndpoint, _ *ToolContext) (ToolCallEndpoint, error) {

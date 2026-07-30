@@ -8,7 +8,9 @@ import { rebaseJSONWithRecovery } from '@/lib/autosave/rebase-with-recovery'
 const PERSISTED_USER_SETTINGS_DELAY_MS = 1000
 
 type PersistedStringSettingKey = {
-  [K in keyof Settings]-?: NonNullable<Settings[K]> extends string ? K : never
+  [K in keyof Settings]-?: NonNullable<Settings[K]> extends string
+    ? string extends NonNullable<Settings[K]> ? K : never
+    : never
 }[keyof Settings]
 
 export type PersistedStringSettingDefaults = Partial<Record<PersistedStringSettingKey, string>>

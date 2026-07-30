@@ -5,9 +5,9 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"strings"
+	"sync"
 
 	"denova/internal/agents/session"
-	producttools "denova/internal/agents/tools"
 )
 
 type askConversation interface {
@@ -19,17 +19,19 @@ type runAskInteraction struct {
 	taskID       string
 	agentKind    string
 	emit         func(Event)
+	mu           sync.Mutex
 }
 
 // newRunAskInteraction deliberately accepts only top-level UI-backed Agent
 // kinds. SubAgents and background Agents never inherit the parent's waiter.
-func newRunAskInteraction(conversation Conversation, options RunOptions, emit func(Event)) producttools.AskInteraction {
+func newRunAskInteraction(conversation Conversation, options RunOptions, emit func(Event)) *runAskInteraction {
 	backend, ok := conversation.(askConversation)
 	if !ok || backend == nil {
 		return nil
 	}
 	agentKind := strings.TrimSpace(options.AgentKind)
-	if agentKind != AgentKindGeneral && agentKind != AgentKindIDE && agentKind != AgentKindConfigManager {
+	if agentKind != AgentKindGeneral && agentKind != AgentKindIDE && agentKind != AgentKindConfigManager &&
+		agentKind != AgentKindInteractiveStory && agentKind != AgentKindImage {
 		return nil
 	}
 	return &runAskInteraction{
@@ -41,6 +43,11 @@ func newRunAskInteraction(conversation Conversation, options RunOptions, emit fu
 }
 
 func (interaction *runAskInteraction) Ask(ctx context.Context, request session.AskInteraction) (session.AskResolution, error) {
+	// Session has one durable pending-interaction slot. Tool batches may reach
+	// approval checks concurrently, so serialize only the interactive wait;
+	// ordinary non-interactive tool execution remains parallel.
+	interaction.mu.Lock()
+	defer interaction.mu.Unlock()
 	request.TaskID = interaction.taskID
 	request.AgentKind = interaction.agentKind
 	request.ID = persistentAskID(request.TaskID, request.ToolCallID)

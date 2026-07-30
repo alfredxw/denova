@@ -2,7 +2,8 @@ import { cloneElement, isValidElement, useEffect, useId, useMemo, useRef, useSta
 import type { ReactNode } from 'react'
 import { ChevronDown, ChevronUp, Download, ExternalLink, Loader2, Plus, RefreshCw, Settings as SettingsIcon, Trash2 } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
-import type { ImageAPIProfileSettings, LayeredSettings, ModelProfileSettings, Settings, SettingsLayer, UpdateApplyResult, UpdateCheckResult, UpdateInstallProgress, UpdateInstallResult, WebAccessSettings } from './types'
+import { toast } from 'sonner'
+import type { AgentApprovalMode, ImageAPIProfileSettings, LayeredSettings, ModelProfileSettings, Settings, SettingsLayer, ShellEnvironmentMode, UpdateApplyResult, UpdateCheckResult, UpdateInstallProgress, UpdateInstallResult, WebAccessSettings } from './types'
 import { applyUpdate, checkForUpdate, installUpdateStream } from './api'
 import { FONT_OPTIONS, fontLabelKeyFor } from './font-options'
 import { useLayeredSettingsDraft } from './use-layered-settings-draft'
@@ -29,6 +30,7 @@ import { DEFAULT_MODEL_PROFILE_ID, modelProfileID, modelProfileLabel, modelProfi
 import { DEFAULT_IMAGE_API_BASE_URL, DEFAULT_IMAGE_API_MODEL, DEFAULT_IMAGE_API_PROFILE_ID, DEFAULT_IMAGE_API_PROVIDER, imageAPIProfileID, imageAPIProfileLabel, imageAPIProfilesWithDefault } from './image-profiles'
 import { ONBOARDING_OPEN_EVENT, SETTINGS_SECTION_EVENT, type SettingsSectionRequest } from '@/features/onboarding/events'
 import { TerminalCommandsEditor, terminalCommandsForEditor } from './TerminalCommandsEditor'
+import { useAgentApprovalMode } from '@/features/agent-approval/AgentApprovalProvider'
 
 type SettingsSectionId = 'model' | 'image' | 'paths' | 'access' | 'appearance' | 'updates' | 'agent' | 'terminal' | 'web-access' | 'debug' | 'ide-editor' | 'ide-output' | 'versions' | 'interactive'
 
@@ -62,6 +64,7 @@ const TRACE_EXPORTER_OPTIONS = [
 ] as const
 export function SettingsView({ onClose }: { onClose?: () => void }) {
   const { t } = useTranslation()
+  const approval = useAgentApprovalMode()
   const { layered, draft, setDraft, error, autosaveStatus, autosaveError, saveNow } = useLayeredSettingsDraft({
     layer: 'user',
     sourcePrefix: 'settings-view',
@@ -369,6 +372,15 @@ export function SettingsView({ onClose }: { onClose?: () => void }) {
       title: t('settings.section.agent'),
       children: (
         <>
+          <AgentApprovalModeSelect
+            value={approval.mode}
+            disabled={!approval.initialized || approval.saving}
+            onChange={(value) => {
+              void approval.setMode(value).then((saved) => {
+                if (!saved) toast.error(t('agentApproval.input.changeFailed'))
+              })
+            }}
+          />
           <Num label={t('settings.agent.maxIteration')} value={draft.max_iteration ?? null}
                placeholder={placeholderFor('max_iteration')}
                onChange={(v) => setField('max_iteration', v)} />
@@ -394,6 +406,24 @@ export function SettingsView({ onClose }: { onClose?: () => void }) {
           <Text label={t('settings.agent.writingSkillDefault')} value={draft.writing_skill_default}
                 placeholder={placeholderFor('writing_skill_default')}
                 onChange={(v) => setField('writing_skill_default', v)} />
+          {layered?.runtime?.goos !== 'windows' ? (
+            <>
+              <ShellEnvironmentSelect
+                value={draft.shell_environment_mode}
+                inherited={inherited.shell_environment_mode}
+                onChange={(v) => setField('shell_environment_mode', v)}
+              />
+              <Text label={t('settings.agent.shellEnvironmentShell')} value={draft.shell_environment_shell}
+                    placeholder={placeholderFor('shell_environment_shell')}
+                    onChange={(v) => setField('shell_environment_shell', v)} />
+              <Text label={t('settings.agent.bashPath')} value={draft.agent_bash_path}
+                    placeholder={placeholderFor('agent_bash_path')}
+                    onChange={(v) => setField('agent_bash_path', v)} />
+              <div className="rounded-[var(--nova-radius)] border border-[var(--nova-border)] bg-[var(--nova-surface-2)] px-3 py-2 text-xs leading-5 text-[var(--nova-text-faint)]">
+                {t('settings.agent.shellEnvironmentHint')}
+              </div>
+            </>
+          ) : null}
         </>
       ),
     },
@@ -1101,6 +1131,54 @@ function BoolTri({ label, value, inherited, onChange }: {
             <SelectItem value="true">{t('settings.bool.true')}</SelectItem>
             <SelectItem value="false">{t('settings.bool.false')}</SelectItem>
           </SelectGroup>
+        </SelectContent>
+      </Select>
+    </FieldRow>
+  )
+}
+
+function AgentApprovalModeSelect({ value, disabled, onChange }: {
+  value: AgentApprovalMode
+  disabled?: boolean
+  onChange: (value: AgentApprovalMode) => void
+}) {
+  const { t } = useTranslation()
+  return (
+    <FieldRow label={t('settings.agent.approvalMode')}>
+      <div className="grid gap-1.5">
+        <Select value={value} disabled={disabled} onValueChange={(next) => onChange(next as AgentApprovalMode)}>
+          <SelectTrigger size="sm" className="w-full">
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent className="nova-panel border text-[var(--nova-text)]">
+            <SelectItem value="ask">{t('agentApproval.mode.ask.label')}</SelectItem>
+            <SelectItem value="write">{t('agentApproval.mode.write.label')} · {t('agentApproval.recommended')}</SelectItem>
+            <SelectItem value="yolo">{t('agentApproval.mode.yolo.label')}</SelectItem>
+          </SelectContent>
+        </Select>
+        <span className="text-[11px] leading-4 text-[var(--nova-text-faint)]">{t(`agentApproval.mode.${value}.description`)}</span>
+      </div>
+    </FieldRow>
+  )
+}
+
+function ShellEnvironmentSelect({ value, inherited, onChange }: {
+  value?: ShellEnvironmentMode
+  inherited?: ShellEnvironmentMode
+  onChange: (value: ShellEnvironmentMode | undefined) => void
+}) {
+  const { t } = useTranslation()
+  const inheritedValue = inherited || 'auto'
+  return (
+    <FieldRow label={t('settings.agent.shellEnvironmentMode')}>
+      <Select value={value || FIELD_INHERIT_VALUE} onValueChange={(next) => onChange(next === FIELD_INHERIT_VALUE ? undefined : next as ShellEnvironmentMode)}>
+        <SelectTrigger size="sm" className="w-full">
+          <SelectValue />
+        </SelectTrigger>
+        <SelectContent className="nova-panel border text-[var(--nova-text)]">
+          <SelectItem value={FIELD_INHERIT_VALUE}>{t('common.inherit', { value: t(`settings.agent.shellEnvironment.${inheritedValue}`) })}</SelectItem>
+          <SelectItem value="auto">{t('settings.agent.shellEnvironment.auto')}</SelectItem>
+          <SelectItem value="process">{t('settings.agent.shellEnvironment.process')}</SelectItem>
         </SelectContent>
       </Select>
     </FieldRow>
@@ -1850,6 +1928,10 @@ function mergeSettingsLayer(parent: Settings, child: Settings): Settings {
   override('agent_idle_timeout_seconds', isNonNull)
   override('agent_tool_result_limit_kb', isNonNull)
   override('agent_tool_parallelism', isNonNull)
+  override('agent_approval_mode', isNonEmptyString)
+  override('shell_environment_mode', isNonEmptyString)
+  override('shell_environment_shell', isNonEmptyString)
+  override('agent_bash_path', isNonEmptyString)
   override('terminal_enabled', isNonNull)
   override('terminal_shell', isNonEmptyString)
   if (child.terminal_commands !== undefined) out.terminal_commands = child.terminal_commands

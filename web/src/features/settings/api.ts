@@ -1,5 +1,5 @@
 import { fetchAPI, jsonHeaders, parseSSEStream, readErrorMessage, requestJSON } from '@/lib/api-client'
-import type { LayeredSettings, Settings, UpdateApplyResult, UpdateCheckResult } from './types'
+import type { AgentApprovalMode, LayeredSettings, Settings, UpdateApplyResult, UpdateCheckResult } from './types'
 import type { SSEEvent } from '@/lib/api-client'
 
 let settingsReadInFlight: Promise<LayeredSettings> | null = null
@@ -25,6 +25,14 @@ export async function updateWorkspaceSettings(s: Settings, baseRevision?: string
     method: 'PUT',
     headers: jsonHeaders,
     body: JSON.stringify(settingsUpdateBody(s, baseRevision)),
+  })
+}
+
+export async function updateAgentApprovalMode(mode: AgentApprovalMode): Promise<LayeredSettings> {
+  return requestJSON('/api/settings/agent-approval-mode', {
+    method: 'PUT',
+    headers: jsonHeaders,
+    body: JSON.stringify({ mode }),
   })
 }
 

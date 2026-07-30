@@ -99,14 +99,29 @@ export interface AgentAskAnswerResult {
   custom_input?: string
 }
 
+export interface AgentToolApprovalPresentation {
+  mode: 'ask' | 'write' | 'yolo' | string
+  tool_name: string
+  command?: string
+  details?: string
+  cwd?: string
+  risk: 'low' | 'medium' | 'high' | 'critical' | string
+  reason: string
+  rule_id: string
+  args_hash: string
+}
+
 export interface AgentAskInteraction {
   schema: 'ask.pending.v1' | string
   id: string
+  kind?: 'question' | 'tool_approval' | string
   tool_call_id: string
+  provider_call_id?: string
   task_id?: string
   agent_kind: string
   status: 'pending' | 'answered' | 'cancelled'
   questions: AgentAskQuestion[]
+  approval?: AgentToolApprovalPresentation
   answers?: AgentAskAnswerResult[]
   cancel_reason?: string
   created_at?: string

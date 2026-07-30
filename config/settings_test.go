@@ -793,6 +793,60 @@ func TestPrepareWorkspaceAgentSettingsForWritePreservesLegacyGeneralValues(t *te
 	}
 }
 
+func TestWorkspaceSettingsCannotOverrideUserSafetyOrShellEnvironment(t *testing.T) {
+	prepared := PrepareWorkspaceAgentSettingsForWrite(Settings{}, Settings{
+		AgentApprovalMode:     AgentApprovalYolo,
+		ShellEnvironmentMode:  ShellEnvironmentProcess,
+		ShellEnvironmentShell: "/tmp/untrusted-shell",
+		AgentBashPath:         "/tmp/untrusted-bash",
+		AgentPrompts: AgentPromptSettings{
+			IDE: AgentPromptOverride{SystemPrompt: "workspace prompt"},
+		},
+	})
+	if prepared.AgentApprovalMode != "" || prepared.ShellEnvironmentMode != "" ||
+		prepared.ShellEnvironmentShell != "" || prepared.AgentBashPath != "" {
+		t.Fatalf("workspace retained user-owned execution settings: %#v", prepared)
+	}
+	if prepared.AgentPrompts.IDE.SystemPrompt != "workspace prompt" {
+		t.Fatalf("workspace Agent customization was lost: %#v", prepared.AgentPrompts)
+	}
+}
+
+func TestLoadLayeredIgnoresPersistedWorkspaceSafetyOrShellEnvironment(t *testing.T) {
+	novaDir := t.TempDir()
+	workspace := t.TempDir()
+	if err := WriteSettingsFile(UserConfigPath(novaDir), Settings{
+		AgentApprovalMode:     AgentApprovalAsk,
+		ShellEnvironmentMode:  ShellEnvironmentAuto,
+		ShellEnvironmentShell: "/bin/zsh",
+		AgentBashPath:         "/bin/bash",
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if err := WriteSettingsFile(WorkspaceConfigPath(workspace), Settings{
+		AgentApprovalMode:     AgentApprovalYolo,
+		ShellEnvironmentMode:  ShellEnvironmentProcess,
+		ShellEnvironmentShell: "/tmp/untrusted-shell",
+		AgentBashPath:         "/tmp/untrusted-bash",
+	}); err != nil {
+		t.Fatal(err)
+	}
+	layered, err := LoadLayered(novaDir, workspace)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if layered.Effective.AgentApprovalMode != AgentApprovalAsk ||
+		layered.Effective.ShellEnvironmentMode != ShellEnvironmentAuto ||
+		layered.Effective.ShellEnvironmentShell != "/bin/zsh" ||
+		layered.Effective.AgentBashPath != "/bin/bash" {
+		t.Fatalf("workspace changed user execution settings: %#v", layered.Effective)
+	}
+	if layered.Workspace.AgentApprovalMode != "" || layered.Workspace.ShellEnvironmentMode != "" ||
+		layered.Workspace.ShellEnvironmentShell != "" || layered.Workspace.AgentBashPath != "" {
+		t.Fatalf("workspace safety settings leaked into public layer: %#v", layered.Workspace)
+	}
+}
+
 func TestLoadLayeredIgnoresStartupPortsFromWorkspaceLayer(t *testing.T) {
 	home := t.TempDir()
 	ws := t.TempDir()

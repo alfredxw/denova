@@ -59,6 +59,32 @@ func TestAppUpdateUserSettingsPersists(t *testing.T) {
 	}
 }
 
+func TestAppUpdateAgentApprovalModeMutatesOnlySafetyField(t *testing.T) {
+	ws := t.TempDir()
+	novaDir := t.TempDir()
+	path := filepath.Join(novaDir, "config.toml")
+	if err := config.WriteSettingsFile(path, config.Settings{
+		OpenAIModel: "keep-model", AgentApprovalMode: config.AgentApprovalAsk,
+	}); err != nil {
+		t.Fatal(err)
+	}
+	a := &App{cfg: &config.Config{Workspace: ws, NovaDir: novaDir}, workspace: ws}
+	layered, err := a.UpdateAgentApprovalMode(config.AgentApprovalWrite)
+	if err != nil {
+		t.Fatal(err)
+	}
+	persisted, err := config.ReadSettingsFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if persisted.AgentApprovalMode != config.AgentApprovalWrite || persisted.OpenAIModel != "keep-model" {
+		t.Fatalf("persisted settings = %#v", persisted)
+	}
+	if layered.User.AgentApprovalMode != config.AgentApprovalWrite || a.cfg.AgentApprovalMode != config.AgentApprovalWrite {
+		t.Fatalf("runtime safety mode was not refreshed: layered=%q runtime=%q", layered.User.AgentApprovalMode, a.cfg.AgentApprovalMode)
+	}
+}
+
 func TestAppUpdateUserSettingsReturnsCanonicalAgentContext(t *testing.T) {
 	ws := t.TempDir()
 	novaDir := t.TempDir()

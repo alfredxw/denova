@@ -71,10 +71,11 @@ type CommandRunGuard func(context.Context, func() error) error
 
 // CommandRunnerOptions configure the reusable local Process implementation.
 type CommandRunnerOptions struct {
-	Workspace  *LocalWorkspace
-	Shell      ShellKind
-	Executable string
-	Guard      CommandRunGuard
+	Workspace       *LocalWorkspace
+	Shell           ShellKind
+	Executable      string
+	BaseEnvironment []string
+	Guard           CommandRunGuard
 }
 
 type commandInput struct {

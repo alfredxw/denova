@@ -32,6 +32,8 @@ const (
 	AskPending           = "pending"
 	AskAnswered          = "answered"
 	AskCancelled         = "cancelled"
+	AskKindQuestion      = "question"
+	AskKindToolApproval  = "tool_approval"
 
 	// Display phases classify root assistant prose without changing the
 	// canonical transcript that is assembled for the model.
@@ -330,11 +332,26 @@ type AskAnswerResult struct {
 	CustomInput     string              `json:"custom_input,omitempty"`
 }
 
+// ToolApprovalPresentation is host-generated display metadata. It is never
+// accepted from a model tool schema and never enters model context.
+type ToolApprovalPresentation struct {
+	Mode     string `json:"mode"`
+	ToolName string `json:"tool_name"`
+	Command  string `json:"command,omitempty"`
+	Details  string `json:"details,omitempty"`
+	Cwd      string `json:"cwd,omitempty"`
+	Risk     string `json:"risk"`
+	Reason   string `json:"reason"`
+	RuleID   string `json:"rule_id"`
+	ArgsHash string `json:"args_hash"`
+}
+
 // AskInteraction is append-only session state for one blocking ask call. The
 // ordinary tool call/result remains the model and display representation.
 type AskInteraction struct {
 	Schema string `json:"schema"`
 	ID     string `json:"id"`
+	Kind   string `json:"kind,omitempty"`
 	// ToolCallID is the durable execution ID used by lifecycle and display
 	// correlation. ProviderCallID is transcript-only diagnostic metadata.
 	ToolCallID     string `json:"tool_call_id"`
@@ -345,15 +362,16 @@ type AskInteraction struct {
 	// interaction to the durable coordinator cycle that owned its tool call.
 	// They are optional only for journals written before this correlation was
 	// introduced.
-	AgentCommandID   string            `json:"agent_command_id,omitempty"`
-	AgentOperationID string            `json:"agent_operation_id,omitempty"`
-	AgentCycle       int               `json:"agent_cycle,omitempty"`
-	Status           string            `json:"status"`
-	Questions        []AskQuestion     `json:"questions,omitempty"`
-	Answers          []AskAnswerResult `json:"answers,omitempty"`
-	CancelReason     string            `json:"cancel_reason,omitempty"`
-	CreatedAt        time.Time         `json:"created_at"`
-	ResolvedAt       *time.Time        `json:"resolved_at,omitempty"`
+	AgentCommandID   string                    `json:"agent_command_id,omitempty"`
+	AgentOperationID string                    `json:"agent_operation_id,omitempty"`
+	AgentCycle       int                       `json:"agent_cycle,omitempty"`
+	Status           string                    `json:"status"`
+	Questions        []AskQuestion             `json:"questions,omitempty"`
+	Approval         *ToolApprovalPresentation `json:"approval,omitempty"`
+	Answers          []AskAnswerResult         `json:"answers,omitempty"`
+	CancelReason     string                    `json:"cancel_reason,omitempty"`
+	CreatedAt        time.Time                 `json:"created_at"`
+	ResolvedAt       *time.Time                `json:"resolved_at,omitempty"`
 }
 
 // AskCycleIdentity is the narrow runtime identity Session needs to reconcile a

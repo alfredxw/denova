@@ -17,7 +17,7 @@ func TestAgentCommandRunnerExecutesFromWorkspaceThroughReusableProcessModule(t *
 	if err != nil {
 		t.Fatal(err)
 	}
-	runner, err := newAgentCommandRunner(workspace, agenttools.ShellBash, "", "")
+	runner, err := newAgentCommandRunner(workspace, agenttools.ShellBash, "", nil, "")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -38,7 +38,7 @@ func TestAgentCommandRunnerHonorsCanceledContext(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	runner, err := newAgentCommandRunner(workspace, agenttools.ShellBash, "", "")
+	runner, err := newAgentCommandRunner(workspace, agenttools.ShellBash, "", nil, "")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -51,7 +51,7 @@ func TestAgentCommandRunnerHonorsCanceledContext(t *testing.T) {
 }
 
 func TestAgentCommandRunnerRejectsMissingWorkspace(t *testing.T) {
-	if _, err := newAgentCommandRunner(nil, agenttools.ShellBash, "", ""); err == nil {
+	if _, err := newAgentCommandRunner(nil, agenttools.ShellBash, "", nil, ""); err == nil {
 		t.Fatal("nil workspace was accepted")
 	}
 }

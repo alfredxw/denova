@@ -16,6 +16,7 @@ func newAgentCommandRunner(
 	workspace *agenttools.LocalWorkspace,
 	shell agenttools.ShellKind,
 	executable string,
+	environment []string,
 	projectStateRoot string,
 ) (agenttools.CommandRunner, error) {
 	if workspace == nil || workspace.Root() == "" {
@@ -32,9 +33,10 @@ func newAgentCommandRunner(
 		return nil, fmt.Errorf("coordinate shell workspace: %w", err)
 	}
 	return agenttools.NewLocalCommandRunner(agenttools.CommandRunnerOptions{
-		Workspace:  workspace,
-		Shell:      shell,
-		Executable: executable,
-		Guard:      changes.WithExclusiveWorkspace,
+		Workspace:       workspace,
+		Shell:           shell,
+		Executable:      executable,
+		BaseEnvironment: append([]string(nil), environment...),
+		Guard:           changes.WithExclusiveWorkspace,
 	})
 }

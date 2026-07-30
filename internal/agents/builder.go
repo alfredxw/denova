@@ -229,7 +229,7 @@ type agentBuildSpec struct {
 }
 
 func buildAgent(ctx context.Context, cfg *config.Config, spec agentBuildSpec) (agent.Runnable, error) {
-	toolCatalog := newToolCatalog(cfg)
+	toolCatalog := newToolCatalogWithContext(ctx, cfg)
 	composition, err := resolveAgentSystemPrompt(cfg, spec)
 	if err != nil {
 		return nil, err
@@ -406,8 +406,12 @@ func buildChatModelAgentAssembly(ctx context.Context, cfg *config.Config, spec c
 	if cfg != nil {
 		workspace = cfg.Workspace
 	}
+	approvalMode := config.AgentApprovalAsk
+	if cfg != nil {
+		approvalMode = config.NormalizeAgentApprovalMode(cfg.AgentApprovalMode)
+	}
 	executionGate := sharedToolExecutionGate(workspace)
-	toolCatalog := newToolCatalog(cfg)
+	toolCatalog := newToolCatalogWithContext(ctx, cfg)
 	settings := spec.ToolSettings
 	middlewares := append([]agent.Middleware(nil), spec.ExtraMiddlewares...)
 	middlewares = append(middlewares,
@@ -416,6 +420,9 @@ func buildChatModelAgentAssembly(ctx context.Context, cfg *config.Config, spec c
 			policyKind:               firstNonEmpty(spec.ToolPolicyKind, spec.Kind),
 			toolSettings:             spec.ToolSettings,
 			enforceToolSettings:      true,
+			enforceApprovalPolicy:    true,
+			approvalMode:             approvalMode,
+			workspace:                workspace,
 			toolResultMaxBytes:       configToolResultMaxBytes(cfg),
 			toolResultEagerMinTokens: config.DefaultToolResultEagerMinTokens,
 			contextWindowTokens:      spec.ContextWindowTokens,

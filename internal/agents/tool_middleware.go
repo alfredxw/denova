@@ -9,6 +9,7 @@ import (
 	agent "github.com/alfredxw/denova/agent"
 
 	"denova/config"
+	"denova/internal/agents/toolapproval"
 	producttools "denova/internal/agents/tools"
 )
 
@@ -23,6 +24,9 @@ type toolOrchestratorMiddleware struct {
 	policyKind               string
 	toolSettings             config.ResolvedAgentToolSettings
 	enforceToolSettings      bool
+	enforceApprovalPolicy    bool
+	approvalMode             config.AgentApprovalMode
+	workspace                string
 	toolResultMaxBytes       int
 	toolResultEagerMinTokens int
 	contextWindowTokens      int
@@ -120,20 +124,25 @@ func interactiveStoryWriteToolBlockedMessage(name string) string {
 }
 
 type ToolDecision struct {
-	ToolName          string               `json:"tool_name"`
-	ProviderCallID    string               `json:"provider_call_id,omitempty"`
-	ExecutionID       string               `json:"execution_id,omitempty"`
-	Source            ToolSource           `json:"source"`
-	Capability        string               `json:"capability,omitempty"`
-	Action            string               `json:"action"`
-	Reason            string               `json:"reason,omitempty"`
-	MutationScope     ToolMutationScope    `json:"mutation_scope"`
-	PostCheck         ToolPostCheckPolicy  `json:"post_check"`
-	Target            string               `json:"target,omitempty"`
-	ArgsBytes         int                  `json:"args_bytes,omitempty"`
-	ArgsComplete      *bool                `json:"args_complete,omitempty"`
-	ModelFinishReason string               `json:"model_finish_reason,omitempty"`
-	Descriptor        agent.ToolDescriptor `json:"descriptor"`
+	ToolName          string                   `json:"tool_name"`
+	ProviderCallID    string                   `json:"provider_call_id,omitempty"`
+	ExecutionID       string                   `json:"execution_id,omitempty"`
+	Source            ToolSource               `json:"source"`
+	Capability        string                   `json:"capability,omitempty"`
+	Action            string                   `json:"action"`
+	Reason            string                   `json:"reason,omitempty"`
+	MutationScope     ToolMutationScope        `json:"mutation_scope"`
+	PostCheck         ToolPostCheckPolicy      `json:"post_check"`
+	Target            string                   `json:"target,omitempty"`
+	ArgsBytes         int                      `json:"args_bytes,omitempty"`
+	ArgsComplete      *bool                    `json:"args_complete,omitempty"`
+	ModelFinishReason string                   `json:"model_finish_reason,omitempty"`
+	Descriptor        agent.ToolDescriptor     `json:"descriptor"`
+	ApprovalMode      config.AgentApprovalMode `json:"approval_mode,omitempty"`
+	ApprovalRuleID    string                   `json:"approval_rule_id,omitempty"`
+	ApprovalRisk      toolapproval.Risk        `json:"approval_risk,omitempty"`
+	ApprovalRequired  bool                     `json:"approval_required,omitempty"`
+	ApprovalGranted   *bool                    `json:"approval_granted,omitempty"`
 }
 
 // ToolExecutionRecord is the bounded lifecycle projection stored by durable
@@ -188,6 +197,11 @@ func (m *toolOrchestratorMiddleware) WrapToolCall(
 		}
 		decision = applyModelOutputToolSafety(decision, outcome)
 		decision = applyToolArgumentValidation(decision, args, outcome)
+		var approvalErr error
+		decision, approvalErr = m.applyApprovalPolicy(ctx, decision, args)
+		if approvalErr != nil {
+			return agent.ToolResult{}, approvalErr
+		}
 		if observer != nil {
 			observer.RecordToolDecision(decision)
 		}
@@ -272,6 +286,61 @@ func (m *toolOrchestratorMiddleware) WrapToolCall(
 		}
 		return filtered.Result, nil
 	}, nil
+}
+
+func (m *toolOrchestratorMiddleware) applyApprovalPolicy(
+	ctx context.Context,
+	decision ToolDecision,
+	args string,
+) (ToolDecision, error) {
+	if m == nil || !m.enforceApprovalPolicy || decision.Action == "blocked" {
+		return decision, nil
+	}
+	mode := config.NormalizeAgentApprovalMode(m.approvalMode)
+	policyDecision := toolapproval.Evaluate(toolapproval.Request{
+		Mode: mode, Workspace: m.workspace, ToolName: decision.ToolName,
+		Arguments: args, Descriptor: decision.Descriptor,
+	})
+	if err := policyDecision.Validate(); err != nil {
+		return decision, fmt.Errorf("evaluate tool approval policy: %w", err)
+	}
+	decision.ApprovalMode = mode
+	decision.ApprovalRuleID = policyDecision.RuleID
+	decision.ApprovalRisk = policyDecision.Risk
+	switch policyDecision.Action {
+	case toolapproval.ActionAllow:
+		return decision, nil
+	case toolapproval.ActionDeny:
+		decision.Action = "blocked"
+		decision.Reason = "[tool error] " + policyDecision.Reason
+		return decision, nil
+	case toolapproval.ActionPrompt:
+		decision.ApprovalRequired = true
+		host, ok := toolApprovalHostFromContext(ctx)
+		if !ok {
+			granted := false
+			decision.ApprovalGranted = &granted
+			decision.Action = "blocked"
+			decision.Reason = "[tool error] 此调用需要用户确认，但当前运行没有可恢复的交互主机，已安全阻止。 / This call requires approval, but the run has no recoverable interactive host and was safely blocked."
+			return decision, nil
+		}
+		granted, err := host.ApproveTool(ctx, toolApprovalRequest{
+			Mode: mode, ToolName: decision.ToolName,
+			ProviderCallID: decision.ProviderCallID, ExecutionID: decision.ExecutionID,
+			Arguments: args, Decision: policyDecision,
+		})
+		if err != nil {
+			return decision, fmt.Errorf("await approval for tool %q: %w", decision.ToolName, err)
+		}
+		decision.ApprovalGranted = &granted
+		if !granted {
+			decision.Action = "blocked"
+			decision.Reason = "[tool error] 用户拒绝了本次工具调用。 / The user denied this tool call."
+		}
+		return decision, nil
+	default:
+		return decision, fmt.Errorf("unhandled tool approval action %q", policyDecision.Action)
+	}
 }
 
 func toolEndpointErrorMessage(toolName string, err error) string {

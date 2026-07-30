@@ -49,6 +49,28 @@ func (h *Handlers) HandleSettingsUserUpdate(ctx context.Context, c *app.RequestC
 	writeJSON(c, consts.StatusOK, layered)
 }
 
+// HandleAgentApprovalModeUpdate atomically persists the user-owned safety mode.
+func (h *Handlers) HandleAgentApprovalModeUpdate(ctx context.Context, c *app.RequestContext) {
+	var body struct {
+		Mode string `json:"mode"`
+	}
+	if err := json.Unmarshal(c.Request.Body(), &body); err != nil {
+		writeErrorKey(c, consts.StatusBadRequest, "api.common.invalidRequestWithDetail", "detail", err.Error())
+		return
+	}
+	mode, err := config.ParseAgentApprovalMode(body.Mode)
+	if err != nil {
+		writeErrorKey(c, consts.StatusBadRequest, "api.common.invalidRequestWithDetail", "detail", err.Error())
+		return
+	}
+	layered, err := h.app.UpdateAgentApprovalMode(mode)
+	if err != nil {
+		writeError(c, consts.StatusInternalServerError, err.Error())
+		return
+	}
+	writeJSON(c, consts.StatusOK, layered)
+}
+
 func settingsErrorKey(err error) string {
 	switch {
 	case errors.Is(err, config.ErrRemoteAccessUsernameRequired):

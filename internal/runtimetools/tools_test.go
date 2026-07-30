@@ -68,6 +68,26 @@ func TestDiscoverForExecutableLeavesMissingShellsUnset(t *testing.T) {
 	}
 }
 
+func TestDiscoverForExecutableUsesCapturedEnvironmentAndBashOverride(t *testing.T) {
+	toolsDir := t.TempDir()
+	bashPath := filepath.Join(toolsDir, "custom-bash")
+	pwshName := "pwsh"
+	if runtime.GOOS == "windows" {
+		bashPath += ".exe"
+		pwshName += ".exe"
+	}
+	pwshPath := filepath.Join(toolsDir, pwshName)
+	for _, path := range []string{bashPath, pwshPath} {
+		if err := os.WriteFile(path, []byte("runtime tool"), 0o755); err != nil {
+			t.Fatal(err)
+		}
+	}
+	got := DiscoverForExecutableWithEnvironment("", []string{"PATH=" + toolsDir}, bashPath)
+	if got.Bash != bashPath || got.Pwsh != pwshPath {
+		t.Fatalf("captured environment discovery = %#v", got)
+	}
+}
+
 func denovaExecutableName() string {
 	if runtime.GOOS == "windows" {
 		return "denova.exe"

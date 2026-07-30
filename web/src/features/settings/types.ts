@@ -47,6 +47,10 @@ export interface Settings {
   agent_idle_timeout_seconds?: number | null
   agent_tool_result_limit_kb?: number | null
   agent_tool_parallelism?: number | null
+  agent_approval_mode?: AgentApprovalMode
+  shell_environment_mode?: ShellEnvironmentMode
+  shell_environment_shell?: string
+  agent_bash_path?: string
   terminal_enabled?: boolean | null
   terminal_shell?: string
   terminal_commands?: TerminalCommandSettings[]
@@ -64,6 +68,9 @@ export interface Settings {
   interactive_stage_font_size?: number | null
   interactive_stage_line_height?: number | null
 }
+
+export type AgentApprovalMode = 'ask' | 'write' | 'yolo'
+export type ShellEnvironmentMode = 'auto' | 'process'
 
 /** User-owned terminal shortcut resolved by stable ID on the backend. */
 export interface TerminalCommandSettings {

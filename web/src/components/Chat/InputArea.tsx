@@ -1,7 +1,8 @@
 import { useState, useRef, useEffect, useLayoutEffect, useMemo, useCallback, type ReactNode } from 'react'
 import type { LucideIcon } from 'lucide-react'
-import { Archive, BadgeHelp, BarChart3, ClipboardList, Command as CommandIcon, Eraser, List, ScrollText, Sparkles } from 'lucide-react'
+import { Archive, BadgeHelp, BarChart3, Check, ClipboardList, Command as CommandIcon, Eraser, List, PencilLine, ScrollText, ShieldQuestion, Sparkles, Zap } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
+import { toast } from 'sonner'
 import { FileReferencePicker, type ReferencePickerItem } from './FileReferencePicker'
 import { TokenUsageDialog, type TokenUsageRecord } from './TokenUsagePanel'
 import type { AgentRuntimeQueuedCommand, TextSelection } from '@/lib/api'
@@ -25,6 +26,8 @@ import { useIsMobile } from '@/hooks/useIsMobile'
 import { ReviewFeedbackTray, reviewFeedbackCommentCount, type ReviewFeedbackBatch, type ReviewFeedbackComment, type ReviewFeedbackSelection } from '@/features/changes/agent/ReviewFeedbackTray'
 import { AgentComposerControls } from './AgentComposerControls'
 import { AgentQueuedCommandList } from './AgentQueuedCommandList'
+import { useAgentApprovalMode } from '@/features/agent-approval/AgentApprovalProvider'
+import type { AgentApprovalMode } from '@/features/settings/types'
 
 /** 可用命令列表 */
 const COMMANDS: Array<{ cmd: string; descKey: string; hintKey: string; icon: LucideIcon }> = [
@@ -163,6 +166,7 @@ export function InputArea({
   onHeightChange,
 }: InputAreaProps) {
   const { t } = useTranslation()
+  const approval = useAgentApprovalMode()
   const keyboardInset = useKeyboardInset()
   const isMobile = useIsMobile()
   const [value, setValue] = useState(() => draftKey ? inputDrafts.get(draftKey) || '' : '')
@@ -243,6 +247,11 @@ export function InputArea({
   )
   // Preserve stop controls for legacy callers that still model an active run as `disabled`.
   const isGenerationActive = generationActive ?? Boolean(disabled && onStop)
+  const [displayedApprovalMode, setDisplayedApprovalMode] = useState<AgentApprovalMode>(approval.mode)
+
+  useEffect(() => {
+    if (!isGenerationActive) setDisplayedApprovalMode(approval.mode)
+  }, [approval.mode, isGenerationActive])
 
   useEffect(() => {
     if (!draftKey) return
@@ -418,7 +427,7 @@ export function InputArea({
   /** 发送消息 */
   const handleSend = () => {
     const trimmed = value.trim()
-    if ((!trimmed && !hasReviewFeedback) || disabled || submittingRef.current) return
+    if ((!trimmed && !hasReviewFeedback) || disabled || !approval.initialized || approval.saving || submittingRef.current) return
     const submittedValue = value
     submittingRef.current = true
     setSubmitting(true)
@@ -453,6 +462,13 @@ export function InputArea({
       submittingRef.current = false
       setSubmitting(false)
     }
+  }
+
+  const handleApprovalModeChange = (next: AgentApprovalMode) => {
+    if (isGenerationActive || approval.saving || next === approval.mode) return
+    void approval.setMode(next).then((saved) => {
+      if (!saved) toast.error(t('agentApproval.input.changeFailed'))
+    })
   }
 
   const handleContextAnalyze = () => {
@@ -649,7 +665,7 @@ export function InputArea({
                   type="button"
                   size="icon-sm"
                   className="nova-agent-composer-icon h-8 w-8 shrink-0 rounded-[10px] border border-[var(--nova-border)] bg-[var(--nova-surface)] text-[var(--nova-text-muted)] hover:bg-[var(--nova-hover)] hover:text-[var(--nova-text)] disabled:opacity-45"
-                  disabled={!onTogglePlanMode && !writingSkillControl && !onContextAnalyze && tokenUsageMessages.length === 0}
+                  disabled={!onTogglePlanMode && !writingSkillControl && !onContextAnalyze && tokenUsageMessages.length === 0 && !approval.initialized}
                   aria-label={t('chat.input.actions')}
                   title={t('chat.input.actions')}
                 >
@@ -670,6 +686,31 @@ export function InputArea({
                       <span className="min-w-0 flex-1">{t('chat.plan.short')}</span>
                       <span className="order-3 ml-auto shrink-0 text-[10px] text-[var(--nova-text-faint)]">Shift+Tab</span>
                     </DropdownMenuCheckboxItem>
+                    <DropdownMenuSeparator className="bg-[var(--nova-border-soft)]" />
+                  </>
+                ) : null}
+                {approval.initialized ? (
+                  <>
+                    <div className="px-1.5 pb-1 pt-0.5 text-[10px] font-medium uppercase tracking-[0.12em] text-[var(--nova-text-faint)]">
+                      {t('agentApproval.input.section')}
+                    </div>
+                    {([
+                      ['ask', ShieldQuestion],
+                      ['write', PencilLine],
+                      ['yolo', Zap],
+                    ] as const).map(([mode, Icon]) => (
+                      <DropdownMenuItem
+                        key={mode}
+                        disabled={isGenerationActive || approval.saving}
+                        onSelect={() => handleApprovalModeChange(mode)}
+                        title={isGenerationActive ? t('agentApproval.input.changeBlocked') : undefined}
+                        className="cursor-pointer text-xs focus:bg-[var(--nova-active)] focus:text-[var(--nova-text)]"
+                      >
+                        <Icon className="h-3.5 w-3.5" />
+                        <span className="min-w-0 flex-1">{t(`agentApproval.mode.${mode}.label`)}</span>
+                        {approval.mode === mode && <Check className="h-3.5 w-3.5 text-[var(--nova-text-muted)]" />}
+                      </DropdownMenuItem>
+                    ))}
                     <DropdownMenuSeparator className="bg-[var(--nova-border-soft)]" />
                   </>
                 ) : null}
@@ -703,6 +744,16 @@ export function InputArea({
                 {t('chat.plan.short')}
               </span>
             ) : null}
+            {approval.initialized ? (
+              <span
+                className="inline-flex h-8 shrink-0 items-center gap-1.5 border-l border-[var(--nova-border-soft)] pl-2 text-sm text-[var(--nova-text-muted)]"
+                aria-label={`${t('agentApproval.input.section')}: ${t(`agentApproval.mode.${displayedApprovalMode}.label`)}`}
+                title={isGenerationActive ? t('agentApproval.input.changeBlocked') : t(`agentApproval.mode.${displayedApprovalMode}.description`)}
+              >
+                {displayedApprovalMode === 'ask' ? <ShieldQuestion className="h-3.5 w-3.5" /> : displayedApprovalMode === 'write' ? <PencilLine className="h-3.5 w-3.5" /> : <Zap className="h-3.5 w-3.5" />}
+                {t(`agentApproval.mode.${displayedApprovalMode}.label`)}
+              </span>
+            ) : null}
             <TokenUsageDialog open={tokenUsageOpen} messages={tokenUsageMessages} onOpenChange={setTokenUsageOpen} onOpenTrace={onOpenTrace} />
           </>
         }
@@ -712,7 +763,7 @@ export function InputArea({
             generationActive={isGenerationActive}
             onStop={onStop}
             onSend={handleSend}
-            sendDisabled={sendBlocked || submitting || (!value.trim() && !hasReviewFeedback)}
+            sendDisabled={sendBlocked || !approval.initialized || approval.saving || submitting || (!value.trim() && !hasReviewFeedback)}
             disabled={disabled}
             abortPending={abortPending}
             actionPending={commandSubmitting}

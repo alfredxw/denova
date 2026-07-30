@@ -211,6 +211,7 @@ func (s *Server) registerRoutes(h *hertzserver.Hertz) {
 		api.POST("/sessions/delete", apiHandlers.HandleSessionDelete)
 		api.GET("/settings", apiHandlers.HandleSettingsGet)
 		api.PUT("/settings/user", apiHandlers.HandleSettingsUserUpdate)
+		api.PUT("/settings/agent-approval-mode", apiHandlers.HandleAgentApprovalModeUpdate)
 		api.PUT("/settings/workspace", apiHandlers.HandleSettingsWorkspaceUpdate)
 		api.GET("/update/check", apiHandlers.HandleUpdateCheck)
 		api.POST("/update/install", apiHandlers.HandleUpdateInstall)

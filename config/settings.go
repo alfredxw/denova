@@ -76,11 +76,18 @@ type Settings struct {
 	UpdateCheckEnabled *bool  `toml:"update_check_enabled,omitempty" json:"update_check_enabled,omitempty"`
 
 	// Agent
-	MaxIteration            *int `toml:"max_iteration,omitempty" json:"max_iteration,omitempty"`
-	ModelMaxRetries         *int `toml:"model_max_retries,omitempty" json:"model_max_retries,omitempty"`
-	AgentIdleTimeoutSeconds *int `toml:"agent_idle_timeout_seconds,omitempty" json:"agent_idle_timeout_seconds,omitempty"`
-	AgentToolResultLimitKB  *int `toml:"agent_tool_result_limit_kb,omitempty" json:"agent_tool_result_limit_kb,omitempty"`
-	AgentToolParallelism    *int `toml:"agent_tool_parallelism,omitempty" json:"agent_tool_parallelism,omitempty"`
+	MaxIteration            *int              `toml:"max_iteration,omitempty" json:"max_iteration,omitempty"`
+	ModelMaxRetries         *int              `toml:"model_max_retries,omitempty" json:"model_max_retries,omitempty"`
+	AgentIdleTimeoutSeconds *int              `toml:"agent_idle_timeout_seconds,omitempty" json:"agent_idle_timeout_seconds,omitempty"`
+	AgentToolResultLimitKB  *int              `toml:"agent_tool_result_limit_kb,omitempty" json:"agent_tool_result_limit_kb,omitempty"`
+	AgentToolParallelism    *int              `toml:"agent_tool_parallelism,omitempty" json:"agent_tool_parallelism,omitempty"`
+	AgentApprovalMode       AgentApprovalMode `toml:"agent_approval_mode,omitempty" json:"agent_approval_mode,omitempty"`
+
+	// Agent shell execution is user-scoped. A workspace must not choose which
+	// host profile is loaded or substitute the executable used on the machine.
+	ShellEnvironmentMode  ShellEnvironmentMode `toml:"shell_environment_mode,omitempty" json:"shell_environment_mode,omitempty"`
+	ShellEnvironmentShell string               `toml:"shell_environment_shell,omitempty" json:"shell_environment_shell,omitempty"`
+	AgentBashPath         string               `toml:"agent_bash_path,omitempty" json:"agent_bash_path,omitempty"`
 
 	LLMInputLogEnabled  *bool  `toml:"llm_input_log_enabled,omitempty" json:"llm_input_log_enabled,omitempty"`
 	TraceCaptureLevel   string `toml:"trace_capture_level,omitempty" json:"trace_capture_level,omitempty"`
@@ -166,6 +173,8 @@ func DefaultSettings() Settings {
 		AgentIdleTimeoutSeconds:     intPtr(DefaultAgentIdleTimeoutSeconds),
 		AgentToolResultLimitKB:      intPtr(DefaultAgentToolResultLimitKB),
 		AgentToolParallelism:        intPtr(DefaultAgentToolParallelism),
+		AgentApprovalMode:           AgentApprovalAsk,
+		ShellEnvironmentMode:        ShellEnvironmentAuto,
 		TerminalEnabled:             boolPtr(true),
 		TerminalCommands:            DefaultTerminalCommands(),
 		TerminalMaxSessions:         intPtr(DefaultTerminalMaxSessions),
@@ -332,6 +341,18 @@ func Merge(parent, child Settings) Settings {
 	}
 	if child.AgentToolParallelism != nil {
 		out.AgentToolParallelism = child.AgentToolParallelism
+	}
+	if child.AgentApprovalMode != "" {
+		out.AgentApprovalMode = NormalizeAgentApprovalMode(child.AgentApprovalMode)
+	}
+	if child.ShellEnvironmentMode != "" {
+		out.ShellEnvironmentMode = normalizeShellEnvironmentMode(child.ShellEnvironmentMode)
+	}
+	if child.ShellEnvironmentShell != "" {
+		out.ShellEnvironmentShell = child.ShellEnvironmentShell
+	}
+	if child.AgentBashPath != "" {
+		out.AgentBashPath = child.AgentBashPath
 	}
 	if child.TerminalEnabled != nil {
 		out.TerminalEnabled = child.TerminalEnabled
@@ -710,6 +731,14 @@ func sanitizeEditableSettings(s Settings) Settings {
 	s.AgentIdleTimeoutSeconds = normalizeAgentIdleTimeoutSeconds(s.AgentIdleTimeoutSeconds)
 	s.AgentToolResultLimitKB = normalizeAgentToolResultLimitKB(s.AgentToolResultLimitKB)
 	s.AgentToolParallelism = normalizeAgentToolParallelism(s.AgentToolParallelism)
+	if s.AgentApprovalMode != "" {
+		s.AgentApprovalMode = NormalizeAgentApprovalMode(s.AgentApprovalMode)
+	}
+	if s.ShellEnvironmentMode != "" {
+		s.ShellEnvironmentMode = normalizeShellEnvironmentMode(s.ShellEnvironmentMode)
+	}
+	s.ShellEnvironmentShell = strings.TrimSpace(s.ShellEnvironmentShell)
+	s.AgentBashPath = strings.TrimSpace(s.AgentBashPath)
 	s.TerminalShell = strings.TrimSpace(s.TerminalShell)
 	s.TerminalCommands = normalizeTerminalCommands(s.TerminalCommands)
 	s.TerminalMaxSessions = normalizeTerminalMaxSessions(s.TerminalMaxSessions)

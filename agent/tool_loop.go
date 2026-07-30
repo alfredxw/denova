@@ -312,7 +312,7 @@ func (agent *Agent) executePreparedTool(
 		}
 	}
 
-	events.Send(agent.toolExecutionEvent(prepared, ToolExecutionStarted, "", nil))
+	var started sync.Once
 	endpoint := ToolCallEndpoint(func(runCtx context.Context, arguments string, options ...ToolOption) (ToolResult, error) {
 		if err := runCtx.Err(); err != nil {
 			return ToolResult{}, err
@@ -321,6 +321,12 @@ func (agent *Agent) executePreparedTool(
 		if err != nil {
 			return invalidToolArgumentsToolResult(prepared.call.Function.Name, err), nil
 		}
+		// Product middleware performs policy checks and durable preflight before
+		// it reaches this concrete execution seam. Emit "started" only now so a
+		// pending/denied approval is never presented as an executing process.
+		started.Do(func() {
+			events.Send(agent.toolExecutionEvent(prepared, ToolExecutionStarted, "", nil))
+		})
 		result, err := runToolSafely(prepared.definition.Tool, runCtx, normalizedArguments, options...)
 		if err == nil && result.ModelContent == "" && result.DisplayContent == "" {
 			progressMu.Lock()

@@ -47,6 +47,7 @@ func newChatAgentLoop(run *chatRun, history []*agent.Message, agentMessage strin
 	}
 	if interaction := newRunAskInteraction(run.conversation, run.options, run.emit); interaction != nil {
 		runCtx = producttools.ContextWithAskInteraction(runCtx, interaction)
+		runCtx = contextWithToolApprovalHost(runCtx, interaction)
 	}
 	cancelOption, cancelAgent := agent.WithCancel()
 	runOptions := []agent.AgentRunOption{cancelOption}

@@ -494,6 +494,41 @@ func (s *WorkspaceRuntimeManager) UpdateUserSettings(settings config.Settings, b
 		return config.LayeredSettings{}, err
 	}
 	log.Printf("[settings] 用户配置已保存 path=%s", path)
+	return s.refreshAfterUserSettingsMutation()
+}
+
+// UpdateAgentApprovalMode changes one user-scoped safety field atomically.
+// Composer and onboarding flows use this narrow mutation so they cannot
+// overwrite a concurrent full settings edit with a stale snapshot.
+func (a *App) UpdateAgentApprovalMode(mode config.AgentApprovalMode) (config.LayeredSettings, error) {
+	return a.runtime().UpdateAgentApprovalMode(mode)
+}
+
+func (s *WorkspaceRuntimeManager) UpdateAgentApprovalMode(mode config.AgentApprovalMode) (config.LayeredSettings, error) {
+	parsed, err := config.ParseAgentApprovalMode(string(mode))
+	if err != nil {
+		return config.LayeredSettings{}, err
+	}
+	a := s.app
+	a.mu.RLock()
+	novaDir := ""
+	if a.cfg != nil {
+		novaDir = a.cfg.DataDir()
+	}
+	a.mu.RUnlock()
+	path := config.UserConfigPath(novaDir)
+	if _, err := config.MutateSettingsFile(path, "", func(existing config.Settings) (config.Settings, error) {
+		existing.AgentApprovalMode = parsed
+		return existing, nil
+	}); err != nil {
+		return config.LayeredSettings{}, err
+	}
+	log.Printf("[settings] Agent approval mode saved path=%s mode=%s", path, parsed)
+	return s.refreshAfterUserSettingsMutation()
+}
+
+func (s *WorkspaceRuntimeManager) refreshAfterUserSettingsMutation() (config.LayeredSettings, error) {
+	a := s.app
 	layered, err := s.Settings()
 	if err != nil {
 		return config.LayeredSettings{}, err
@@ -640,6 +675,10 @@ func applyLayeredSettingsToConfig(cfg *config.Config, layered config.LayeredSett
 	if effective.AgentToolParallelism != nil {
 		cfg.AgentToolParallelism = appAgentToolParallelism(effective.AgentToolParallelism)
 	}
+	cfg.AgentApprovalMode = config.NormalizeAgentApprovalMode(effective.AgentApprovalMode)
+	cfg.ShellEnvironmentMode = effective.ShellEnvironmentMode
+	cfg.ShellEnvironmentShell = effective.ShellEnvironmentShell
+	cfg.AgentBashPath = effective.AgentBashPath
 	if effective.LLMInputLogEnabled != nil {
 		cfg.LLMInputLogEnabled = *effective.LLMInputLogEnabled
 	}
@@ -762,6 +801,18 @@ func applySettingsLayerToConfig(cfg *config.Config, settings config.Settings) {
 	}
 	if settings.AgentToolParallelism != nil {
 		cfg.AgentToolParallelism = appAgentToolParallelism(settings.AgentToolParallelism)
+	}
+	if settings.AgentApprovalMode != "" {
+		cfg.AgentApprovalMode = config.NormalizeAgentApprovalMode(settings.AgentApprovalMode)
+	}
+	if settings.ShellEnvironmentMode != "" {
+		cfg.ShellEnvironmentMode = settings.ShellEnvironmentMode
+	}
+	if settings.ShellEnvironmentShell != "" {
+		cfg.ShellEnvironmentShell = settings.ShellEnvironmentShell
+	}
+	if settings.AgentBashPath != "" {
+		cfg.AgentBashPath = settings.AgentBashPath
 	}
 	if settings.LLMInputLogEnabled != nil {
 		cfg.LLMInputLogEnabled = *settings.LLMInputLogEnabled

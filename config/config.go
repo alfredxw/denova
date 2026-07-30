@@ -63,6 +63,10 @@ type Config struct {
 	AgentIdleTimeoutSeconds     int                       `toml:"agent_idle_timeout_seconds"`
 	AgentToolResultLimitKB      int                       `toml:"agent_tool_result_limit_kb"`
 	AgentToolParallelism        int                       `toml:"agent_tool_parallelism"`
+	AgentApprovalMode           AgentApprovalMode         `toml:"agent_approval_mode"`
+	ShellEnvironmentMode        ShellEnvironmentMode      `toml:"shell_environment_mode"`
+	ShellEnvironmentShell       string                    `toml:"shell_environment_shell"`
+	AgentBashPath               string                    `toml:"agent_bash_path"`
 	TerminalEnabled             bool                      `toml:"terminal_enabled"`
 	TerminalShell               string                    `toml:"terminal_shell"`
 	TerminalCommands            []TerminalCommandSettings `toml:"terminal_commands"`
@@ -129,6 +133,10 @@ func LoadWithWorkspace(workspace string) (*Config, LayeredSettings, error) {
 		AgentIdleTimeoutSeconds:     settingsAgentIdleTimeoutSeconds(s.AgentIdleTimeoutSeconds),
 		AgentToolResultLimitKB:      settingsAgentToolResultLimitKB(s.AgentToolResultLimitKB),
 		AgentToolParallelism:        settingsAgentToolParallelism(s.AgentToolParallelism),
+		AgentApprovalMode:           NormalizeAgentApprovalMode(s.AgentApprovalMode),
+		ShellEnvironmentMode:        normalizeShellEnvironmentMode(s.ShellEnvironmentMode),
+		ShellEnvironmentShell:       s.ShellEnvironmentShell,
+		AgentBashPath:               s.AgentBashPath,
 		TerminalEnabled:             settingsBool(s.TerminalEnabled, true),
 		TerminalShell:               s.TerminalShell,
 		TerminalCommands:            append([]TerminalCommandSettings(nil), s.TerminalCommands...),
@@ -252,6 +260,10 @@ func settingsFromConfig(cfg *Config) Settings {
 		TerminalCommands:         append([]TerminalCommandSettings(nil), cfg.TerminalCommands...),
 		TerminalCodexCommand:     cfg.TerminalCodexCommand,
 		TerminalClaudeCommand:    cfg.TerminalClaudeCommand,
+		AgentApprovalMode:        cfg.AgentApprovalMode,
+		ShellEnvironmentMode:     cfg.ShellEnvironmentMode,
+		ShellEnvironmentShell:    cfg.ShellEnvironmentShell,
+		AgentBashPath:            cfg.AgentBashPath,
 	}
 	if cfg.HideChapterBodyLiveOutput {
 		settings.HideChapterBodyLiveOutput = &cfg.HideChapterBodyLiveOutput
@@ -356,6 +368,10 @@ func Load() *Config {
 			AgentIdleTimeoutSeconds:     settingsAgentIdleTimeoutSeconds(d.AgentIdleTimeoutSeconds),
 			AgentToolResultLimitKB:      settingsAgentToolResultLimitKB(d.AgentToolResultLimitKB),
 			AgentToolParallelism:        settingsAgentToolParallelism(d.AgentToolParallelism),
+			AgentApprovalMode:           NormalizeAgentApprovalMode(d.AgentApprovalMode),
+			ShellEnvironmentMode:        normalizeShellEnvironmentMode(d.ShellEnvironmentMode),
+			ShellEnvironmentShell:       d.ShellEnvironmentShell,
+			AgentBashPath:               d.AgentBashPath,
 			TerminalEnabled:             settingsBool(d.TerminalEnabled, true),
 			TerminalShell:               d.TerminalShell,
 			TerminalCommands:            append([]TerminalCommandSettings(nil), d.TerminalCommands...),

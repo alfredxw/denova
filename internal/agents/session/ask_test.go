@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"runtime"
+	"strings"
 	"testing"
 	"time"
 )
@@ -78,6 +79,67 @@ func TestResolveAskReturnsNotFoundForUnknownID(t *testing.T) {
 	}
 	if _, err := sess.ResolveAskFromHost(context.Background(), "missing", AskCancelled, nil, "user_cancelled"); !errors.Is(err, ErrAskNotFound) {
 		t.Fatalf("unknown Ask error = %v, want %v", err, ErrAskNotFound)
+	}
+}
+
+func TestToolApprovalInteractionIsDurableAndStrictlyShaped(t *testing.T) {
+	store, err := NewStore(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer store.Close()
+	sess, err := store.GetOrCreate("tool-approval")
+	if err != nil {
+		t.Fatal(err)
+	}
+	interaction := AskInteraction{
+		ID: "approval-1", Kind: AskKindToolApproval, ToolCallID: "tool-1", AgentKind: "ide",
+		Approval: &ToolApprovalPresentation{
+			Mode: "ask", ToolName: "bash", Command: "npm test", Risk: "high",
+			Reason: "unknown command", RuleID: "bash_unlisted_command", ArgsHash: strings.Repeat("a", 64),
+		},
+		Questions: []AskQuestion{{
+			ID: toolApprovalQuestionID, Question: "Allow once?",
+			Options: []AskOption{{ID: toolApprovalAllowOptionID, Label: "Allow once"}, {ID: toolApprovalDenyOptionID, Label: "Deny"}},
+		}},
+	}
+	result := make(chan AskResolution, 1)
+	go func() {
+		resolution, _ := sess.AwaitAsk(context.Background(), interaction)
+		result <- resolution
+	}()
+	waitForPendingAsk(t, sess, interaction.ID)
+	pending := sess.PendingAsk(interaction.ID)
+	if pending == nil || pending.Kind != AskKindToolApproval || pending.Approval == nil || pending.Approval.Command != "npm test" {
+		t.Fatalf("pending approval = %#v", pending)
+	}
+	// Returned projections must not alias canonical session state.
+	pending.Approval.Command = "changed"
+	if canonical := sess.PendingAsk(interaction.ID); canonical == nil || canonical.Approval.Command != "npm test" {
+		t.Fatalf("approval presentation was aliased: %#v", canonical)
+	}
+	if _, err := sess.ResolveAsk(context.Background(), interaction.ID, AskAnswered, []AskAnswer{{
+		QuestionID: toolApprovalQuestionID, SelectedOptionIDs: []string{toolApprovalAllowOptionID},
+	}}, ""); err != nil {
+		t.Fatal(err)
+	}
+	if resolved := <-result; resolved.Status != AskAnswered || resolved.Answers[0].SelectedOptions[0].ID != toolApprovalAllowOptionID {
+		t.Fatalf("approval resolution = %#v", resolved)
+	}
+}
+
+func TestToolApprovalInteractionRejectsModelLikeQuestionShape(t *testing.T) {
+	_, err := normalizeAskInteraction(AskInteraction{
+		ID: "approval-invalid", Kind: AskKindToolApproval, ToolCallID: "tool-invalid", AgentKind: "ide",
+		Approval: &ToolApprovalPresentation{
+			Mode: "ask", ToolName: "bash", Risk: "high", Reason: "reason", RuleID: "rule", ArgsHash: "hash",
+		},
+		Questions: []AskQuestion{{
+			ID: "arbitrary", Question: "Anything?", Options: []AskOption{{ID: "yes", Label: "Yes"}, {ID: "no", Label: "No"}},
+		}},
+	})
+	if err == nil {
+		t.Fatal("invalid tool approval question shape was accepted")
 	}
 }
 

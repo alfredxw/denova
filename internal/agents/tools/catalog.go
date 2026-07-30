@@ -27,9 +27,19 @@ type Catalog struct {
 // RuntimeExecutables are host-owned dependencies discovered by the
 // application rather than guessed by reusable Agent modules.
 type RuntimeExecutables struct {
-	Ripgrep string
-	Bash    string
-	Pwsh    string
+	Ripgrep      string
+	Bash         string
+	Pwsh         string
+	ShellRuntime func() (ShellRuntime, error)
+}
+
+// ShellRuntime is resolved lazily because most Agent configurations do not
+// enable an arbitrary shell. Environment capture may execute a user's login
+// shell, so it must remain behind the exact capability boundary.
+type ShellRuntime struct {
+	Bash        string
+	Pwsh        string
+	Environment []string
 }
 
 func NewCatalog(cfg *config.Config, workspaceMetadata WorkspaceMetadataProvider, runtimeExecutables RuntimeExecutables) *Catalog {
@@ -462,15 +472,24 @@ func workspaceToolsFactory(workspace, projectStateRoot string, metadata Workspac
 			definitions = append(definitions, writeDefinition, editDefinition)
 		}
 		if shellEnabled {
+			shellRuntime := ShellRuntime{
+				Bash: executables.Bash, Pwsh: executables.Pwsh,
+			}
+			if executables.ShellRuntime != nil {
+				shellRuntime, err = executables.ShellRuntime()
+				if err != nil {
+					return nil, fmt.Errorf("prepare agent shell environment: %w", err)
+				}
+			}
 			shellKind := agenttools.ShellBash
-			executable := executables.Bash
+			executable := shellRuntime.Bash
 			constructor := agenttools.Bash
 			if runtime.GOOS == "windows" {
 				shellKind = agenttools.ShellPwsh
-				executable = executables.Pwsh
+				executable = shellRuntime.Pwsh
 				constructor = agenttools.Pwsh
 			}
-			runner, err := newAgentCommandRunner(backend, shellKind, executable, projectStateRoot)
+			runner, err := newAgentCommandRunner(backend, shellKind, executable, shellRuntime.Environment, projectStateRoot)
 			if err != nil {
 				return nil, fmt.Errorf("create %s runner: %w", shellKind, err)
 			}

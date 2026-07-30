@@ -4,6 +4,15 @@ import { useState } from 'react'
 import { describe, expect, it, vi } from 'vitest'
 import { InputArea } from './InputArea'
 
+vi.mock('@/features/agent-approval/AgentApprovalProvider', () => ({
+  useAgentApprovalMode: () => ({
+    mode: 'write',
+    initialized: true,
+    saving: false,
+    setMode: vi.fn().mockResolvedValue(true),
+  }),
+}))
+
 describe('InputArea command menu', () => {
   it('keeps retired writing actions out of the built-in command list', async () => {
     const user = userEvent.setup()

@@ -75,6 +75,34 @@ func TestCatalogReadCapabilityFollowsTheBroadestRegisteredAdapter(t *testing.T) 
 	}
 }
 
+func TestCatalogResolvesLoginEnvironmentOnlyForEnabledShell(t *testing.T) {
+	resolutions := 0
+	catalog := NewCatalog(
+		&config.Config{Workspace: t.TempDir()},
+		nil,
+		RuntimeExecutables{ShellRuntime: func() (ShellRuntime, error) {
+			resolutions++
+			return ShellRuntime{}, fmt.Errorf("profile failed")
+		}},
+	)
+	if _, err := catalog.Workspace(config.ResolvedAgentToolSettings{
+		config.AgentToolWorkspaceRead: true,
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if resolutions != 0 {
+		t.Fatalf("disabled shell resolved the login environment %d times", resolutions)
+	}
+	if _, err := catalog.Workspace(config.ResolvedAgentToolSettings{
+		config.AgentToolShell: true,
+	}); err == nil || !strings.Contains(err.Error(), "profile failed") {
+		t.Fatalf("enabled shell error = %v", err)
+	}
+	if resolutions != 1 {
+		t.Fatalf("enabled shell resolved the login environment %d times, want 1", resolutions)
+	}
+}
+
 func TestCatalogWorkspaceBindsProductResultLimitToDefinitionsAndAdapters(t *testing.T) {
 	workspace := t.TempDir()
 	content := strings.Repeat("a bounded line of workspace content\n", 200)
