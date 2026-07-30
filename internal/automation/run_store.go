@@ -210,7 +210,7 @@ func (s *Store) listDurableRuns(obligationsOnly bool) ([]DurableRun, error) {
 						return nil, historyErr
 					}
 					if found {
-						if history.TaskCatalogID != task.CatalogID {
+						if !durableRunMatchesTask(history, task) {
 							unlock()
 							return nil, fmt.Errorf("%w: run_id=%s belongs to task %s", ErrRunIdentityConflict, run.ID, history.TaskCatalogID)
 						}
@@ -281,7 +281,7 @@ func (s *Store) appendRun(ctx context.Context, id string, run RunRecord, allowCo
 				}
 				entry, found := authoritativeDurableRun(obligation, obligationFound, history, historyFound)
 				if found {
-					if entry.TaskCatalogID != task.CatalogID {
+					if !durableRunMatchesTask(entry, task) {
 						return Task{}, fmt.Errorf("%w: run_id=%s belongs to task %s", ErrRunIdentityConflict, run.ID, entry.TaskCatalogID)
 					}
 					run = preserveMonotonicRunReceipt(entry.Run, run, allowCompletionReopen)
@@ -486,7 +486,7 @@ func (s *Store) backfillDurableRuns(scope string, task Task) error {
 			return err
 		}
 		if found {
-			if entry.TaskCatalogID != task.CatalogID {
+			if !durableRunMatchesTask(entry, task) {
 				return fmt.Errorf("%w: run_id=%s belongs to task %s", ErrRunIdentityConflict, run.ID, entry.TaskCatalogID)
 			}
 			continue
@@ -509,9 +509,25 @@ func (s *Store) backfillDurableRuns(scope string, task Task) error {
 
 func taskForDurableRun(tasks []Task, entry durableRunFile) (Task, bool) {
 	for _, task := range tasks {
-		if task.CatalogID == entry.TaskCatalogID {
+		if durableRunMatchesTask(entry, task) {
 			return task, true
 		}
 	}
 	return Task{}, false
+}
+
+// durableRunMatchesTask accepts the path-owned locator written before Project
+// IDs existed. The caller has already selected one exact scope/state root, so
+// the immutable local task ID safely disambiguates the legacy prefix. Every
+// subsequent AppendRun persists the current Project catalog locator.
+func durableRunMatchesTask(entry durableRunFile, task Task) bool {
+	if entry.TaskCatalogID == task.CatalogID {
+		return true
+	}
+	localID := strings.TrimSpace(task.ID)
+	if localID == "" || (strings.TrimSpace(entry.Run.TaskID) != "" && strings.TrimSpace(entry.Run.TaskID) != localID) {
+		return false
+	}
+	legacyLocator := strings.TrimSpace(entry.TaskCatalogID)
+	return legacyLocator == localID || strings.HasSuffix(legacyLocator, ":"+localID)
 }

@@ -1,10 +1,6 @@
 import { useCallback, useEffect, useMemo } from 'react'
 import type { AgentChatHistoryItem, AgentChatProject, AgentChatSession } from './api'
-import {
-  agentChatSessionBindingKey,
-  projectSidebarActivities,
-  type AgentChatSidebarActivity,
-} from './sidebar-activity'
+import { agentChatSessionBindingKey, projectSidebarActivities, type AgentChatSidebarActivity } from './sidebar-activity'
 import { emptyProjectTabState, tabGroup, type AgentChatWorkbenchState } from './tab-state'
 import type { AgentChatTerminalStatus } from './terminal/TerminalTabView'
 import type { AgentChatGroupId, AgentChatTab } from './types'
@@ -40,15 +36,16 @@ export function useAgentChatActivityNavigator({
   activateTab,
   openSessionTab,
 }: AgentChatActivityNavigatorOptions) {
-  const isSessionRunning = useCallback((project: AgentChatProject, session: AgentChatSession) => (
-    session.running || liveRunningBindings.has(agentChatSessionBindingKey(project.path, session.id))
-  ), [liveRunningBindings])
+  const isSessionRunning = useCallback(
+    (project: AgentChatProject, session: AgentChatSession) => session.running || liveRunningBindings.has(agentChatSessionBindingKey(project.id, session.id)),
+    [liveRunningBindings],
+  )
 
   const openConversationBindings = useMemo(() => {
     const bindings = new Set<string>()
-    for (const [workspace, state] of Object.entries(workbench.projects)) {
+    for (const [projectID, state] of Object.entries(workbench.projects)) {
       for (const tab of state.tabs) {
-        if (tab.kind === 'agent') bindings.add(agentChatSessionBindingKey(workspace, tab.sessionId))
+        if (tab.kind === 'agent') bindings.add(agentChatSessionBindingKey(projectID, tab.sessionId))
       }
     }
     return bindings
@@ -57,7 +54,7 @@ export function useAgentChatActivityNavigator({
   const hasDetachedRunningActivity = useMemo(() => {
     for (const project of projects) {
       for (const session of project.sessions) {
-        const key = agentChatSessionBindingKey(project.path, session.id)
+        const key = agentChatSessionBindingKey(project.id, session.id)
         if (isSessionRunning(project, session) && !openConversationBindings.has(key)) return true
       }
     }
@@ -66,75 +63,90 @@ export function useAgentChatActivityNavigator({
 
   useEffect(() => {
     if (!hasDetachedRunningActivity) return
-    const interval = window.setInterval(() => { void refreshProjects() }, DETACHED_ACTIVITY_REFRESH_INTERVAL_MS)
+    const interval = window.setInterval(() => {
+      void refreshProjects()
+    }, DETACHED_ACTIVITY_REFRESH_INTERVAL_MS)
     return () => window.clearInterval(interval)
   }, [hasDetachedRunningActivity, refreshProjects])
 
   const activitiesByProject = useMemo(() => {
     const activities = new Map<string, readonly AgentChatSidebarActivity[]>()
     for (const project of projects) {
-      const state = workbench.projects[project.path] ?? emptyProjectTabState()
-      const runningSessionIds = new Set(
-        project.sessions.filter((session) => isSessionRunning(project, session)).map((session) => session.id),
-      )
+      const state = workbench.projects[project.id] ?? emptyProjectTabState()
+      const runningSessionIds = new Set(project.sessions.filter((session) => isSessionRunning(project, session)).map((session) => session.id))
       for (const tab of state.tabs) {
-        if (tab.kind === 'agent' && liveRunningBindings.has(agentChatSessionBindingKey(project.path, tab.sessionId))) {
+        if (tab.kind === 'agent' && liveRunningBindings.has(agentChatSessionBindingKey(project.id, tab.sessionId))) {
           runningSessionIds.add(tab.sessionId)
         }
       }
-      activities.set(project.path, projectSidebarActivities({
-        project,
-        state,
-        activeProjectPath: workbench.activeProjectPath,
-        runningSessionIds,
-        terminalStatuses,
-        tabTitle,
-      }))
+      activities.set(
+        project.id,
+        projectSidebarActivities({
+          project,
+          state,
+          activeProjectId: workbench.activeProjectId,
+          runningSessionIds,
+          terminalStatuses,
+          tabTitle,
+        }),
+      )
     }
     return activities
   }, [isSessionRunning, liveRunningBindings, projects, tabTitle, terminalStatuses, workbench])
 
-  const openSidebarActivity = useCallback((project: AgentChatProject, activity: AgentChatSidebarActivity) => {
-    if (activity.tabId && activity.group) {
-      activateTab(project.path, activity.group, activity.tabId)
-      return
-    }
-    if (activity.kind !== 'agent' || !activity.sessionId) return
-    const session = project.sessions.find((candidate) => candidate.id === activity.sessionId)
-    if (session) {
+  const openSidebarActivity = useCallback(
+    (project: AgentChatProject, activity: AgentChatSidebarActivity) => {
+      if (activity.tabId && activity.group) {
+        activateTab(project.id, activity.group, activity.tabId)
+        return
+      }
+      if (activity.kind !== 'agent' || !activity.sessionId) return
+      const session = project.sessions.find((candidate) => candidate.id === activity.sessionId)
+      if (session) {
+        openSessionTab(project, session)
+        return
+      }
+      console.warn('[features/agent-chat/use-agent-chat-activity-navigator.ts] detached activity session missing from project snapshot', {
+        workspace: project.path,
+        sessionId: activity.sessionId,
+      })
+      void refreshProjects()
+    },
+    [activateTab, openSessionTab, refreshProjects],
+  )
+
+  const openOrActivateSession = useCallback(
+    (project: AgentChatProject, session: AgentChatSession) => {
+      const existing = workbench.projects[project.id]?.tabs.find((tab) => tab.kind === 'agent' && tab.sessionId === session.id)
+      if (existing) {
+        activateTab(project.id, tabGroup(existing), existing.id)
+        return
+      }
       openSessionTab(project, session)
-      return
-    }
-    console.warn('[features/agent-chat/use-agent-chat-activity-navigator.ts] detached activity session missing from project snapshot', {
-      workspace: project.path,
-      sessionId: activity.sessionId,
-    })
-    void refreshProjects()
-  }, [activateTab, openSessionTab, refreshProjects])
+    },
+    [activateTab, openSessionTab, workbench.projects],
+  )
 
-  const openOrActivateSession = useCallback((project: AgentChatProject, session: AgentChatSession) => {
-    const existing = workbench.projects[project.path]?.tabs.find((tab) => (
-      tab.kind === 'agent' && tab.sessionId === session.id
-    ))
-    if (existing) {
-      activateTab(project.path, tabGroup(existing), existing.id)
-      return
-    }
-    openSessionTab(project, session)
-  }, [activateTab, openSessionTab, workbench.projects])
+  const openHistorySession = useCallback(
+    (item: AgentChatHistoryItem) => {
+      const project = projects.find((candidate) => candidate.id === item.project_id)
+      if (project) {
+        openOrActivateSession(project, item.session)
+        return
+      }
+      console.warn('[features/agent-chat/use-agent-chat-activity-navigator.ts] history project no longer registered', {
+        projectId: item.project_id,
+        sessionId: item.session.id,
+      })
+      void refreshProjects()
+    },
+    [openOrActivateSession, projects, refreshProjects],
+  )
 
-  const openHistorySession = useCallback((item: AgentChatHistoryItem) => {
-    const project = projects.find((candidate) => candidate.path === item.workspace)
-    if (project) {
-      openOrActivateSession(project, item.session)
-      return
-    }
-    console.warn('[features/agent-chat/use-agent-chat-activity-navigator.ts] history project no longer registered', {
-      workspace: item.workspace,
-      sessionId: item.session.id,
-    })
-    void refreshProjects()
-  }, [openOrActivateSession, projects, refreshProjects])
-
-  return { activitiesByProject, isSessionRunning, openHistorySession, openSidebarActivity }
+  return {
+    activitiesByProject,
+    isSessionRunning,
+    openHistorySession,
+    openSidebarActivity,
+  }
 }

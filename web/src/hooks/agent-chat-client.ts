@@ -101,8 +101,8 @@ export const writingAgentChatClient: AgentChatClient = {
 }
 
 /** Build an immutable project/session API binding for one AgentChat conversation tab. */
-export function createProjectAgentChatClient(workspace: string, sessionId: string): AgentChatClient {
-  const scope = { workspace, session_id: sessionId }
+export function createProjectAgentChatClient(projectId: string, sessionId: string): AgentChatClient {
+  const scope = { project_id: projectId, session_id: sessionId }
   const unsupportedSessionMutation = async (): Promise<never> => {
     throw new Error('AgentChat 对话由项目侧栏管理 / AgentChat conversations are managed from the project sidebar')
   }
@@ -114,14 +114,16 @@ export function createProjectAgentChatClient(workspace: string, sessionId: strin
       scope,
     },
     fixedSessionId: sessionId,
-    getSessions: async () => [{
-      id: sessionId,
-      title: '',
-      created_at: '',
-      updated_at: '',
-      active: true,
-      message_count: 0,
-    }],
+    getSessions: async () => [
+      {
+        id: sessionId,
+        title: '',
+        created_at: '',
+        updated_at: '',
+        active: true,
+        message_count: 0,
+      },
+    ],
     getMessagesPage: async (_requestedSessionId, options = {}) => {
       const query = new URLSearchParams(scope)
       query.set('limit', String(options.limit || 100))
@@ -138,35 +140,38 @@ export function createProjectAgentChatClient(workspace: string, sessionId: strin
       }
     },
     getActiveChatTask: () => requestJSON(`/api/agent-chat/chat/active?${new URLSearchParams(scope).toString()}`),
-    recoverChatAgentRuntime: (action) => requestJSON('/api/agent-chat/chat/recovery', {
-      method: 'POST',
-      headers: jsonHeaders,
-      body: JSON.stringify({ ...scope, action }),
-    }),
-    submitChatCommand: (type, commandId, targetOperationId, input, reason) => requestJSON('/api/agent-chat/chat/commands', {
-      method: 'POST',
-      headers: jsonHeaders,
-      body: JSON.stringify({
-        ...scope,
-        type,
-        command_id: commandId,
-        target_operation_id: targetOperationId,
-        ...(input ? { input } : {}),
-        ...(reason ? { reason } : {}),
+    recoverChatAgentRuntime: (action) =>
+      requestJSON('/api/agent-chat/chat/recovery', {
+        method: 'POST',
+        headers: jsonHeaders,
+        body: JSON.stringify({ ...scope, action }),
       }),
-    }),
-    submitQueuedChatCommand: (action, commandId, targetOperationId, targetCommandId, reason) => requestJSON('/api/agent-chat/chat/commands', {
-      method: 'POST',
-      headers: jsonHeaders,
-      body: JSON.stringify({
-        ...scope,
-        type: action,
-        command_id: commandId,
-        target_operation_id: targetOperationId,
-        target_command_id: targetCommandId,
-        ...(reason ? { reason } : {}),
+    submitChatCommand: (type, commandId, targetOperationId, input, reason) =>
+      requestJSON('/api/agent-chat/chat/commands', {
+        method: 'POST',
+        headers: jsonHeaders,
+        body: JSON.stringify({
+          ...scope,
+          type,
+          command_id: commandId,
+          target_operation_id: targetOperationId,
+          ...(input ? { input } : {}),
+          ...(reason ? { reason } : {}),
+        }),
       }),
-    }),
+    submitQueuedChatCommand: (action, commandId, targetOperationId, targetCommandId, reason) =>
+      requestJSON('/api/agent-chat/chat/commands', {
+        method: 'POST',
+        headers: jsonHeaders,
+        body: JSON.stringify({
+          ...scope,
+          type: action,
+          command_id: commandId,
+          target_operation_id: targetOperationId,
+          target_command_id: targetCommandId,
+          ...(reason ? { reason } : {}),
+        }),
+      }),
     executeCommand: async (command) => {
       const data = await requestJSON<{ result?: string }>('/api/agent-chat/command', {
         method: 'POST',
@@ -186,28 +191,29 @@ export function createProjectAgentChatClient(workspace: string, sessionId: strin
       ideContext,
       imagePresetId,
       tellerId,
-    ) => requestJSON('/api/agent-chat/chat/context-analysis', {
-      method: 'POST',
-      headers: jsonHeaders,
-      body: JSON.stringify({
-        ...scope,
-        message,
-        references,
-        lore_references: loreReferences,
-        style_scenes: styleScenes,
-        selections: textSelections.map((selection) => ({
-          file_name: selection.fileName,
-          start_line: selection.startLine,
-          end_line: selection.endLine,
-          content: selection.content,
-        })),
-        ide_context: normalizeIDEContext(ideContext),
-        plan_mode: planMode || false,
-        writing_skill: writingSkill || undefined,
-        image_preset_id: imagePresetId || undefined,
-        teller_id: tellerId || undefined,
+    ) =>
+      requestJSON('/api/agent-chat/chat/context-analysis', {
+        method: 'POST',
+        headers: jsonHeaders,
+        body: JSON.stringify({
+          ...scope,
+          message,
+          references,
+          lore_references: loreReferences,
+          style_scenes: styleScenes,
+          selections: textSelections.map((selection) => ({
+            file_name: selection.fileName,
+            start_line: selection.startLine,
+            end_line: selection.endLine,
+            content: selection.content,
+          })),
+          ide_context: normalizeIDEContext(ideContext),
+          plan_mode: planMode || false,
+          writing_skill: writingSkill || undefined,
+          image_preset_id: imagePresetId || undefined,
+          teller_id: tellerId || undefined,
+        }),
       }),
-    }),
     createSession: unsupportedSessionMutation,
     switchSession: async (id) => {
       if (id !== sessionId) return unsupportedSessionMutation()
@@ -222,22 +228,18 @@ export function createProjectAgentChatClient(workspace: string, sessionId: strin
     },
     renameSession: unsupportedSessionMutation,
     deleteSession: unsupportedSessionMutation,
-    answerSessionAsk: (_requestedSessionId, askId, answers) => requestJSON(
-      `/api/agent-chat/session/asks/${encodeURIComponent(askId)}/answer`,
-      {
+    answerSessionAsk: (_requestedSessionId, askId, answers) =>
+      requestJSON(`/api/agent-chat/session/asks/${encodeURIComponent(askId)}/answer`, {
         method: 'POST',
         headers: jsonHeaders,
         body: JSON.stringify({ ...scope, answers }),
-      },
-    ),
-    cancelSessionAsk: (_requestedSessionId, askId) => requestJSON(
-      `/api/agent-chat/session/asks/${encodeURIComponent(askId)}/cancel`,
-      {
+      }),
+    cancelSessionAsk: (_requestedSessionId, askId) =>
+      requestJSON(`/api/agent-chat/session/asks/${encodeURIComponent(askId)}/cancel`, {
         method: 'POST',
         headers: jsonHeaders,
         body: JSON.stringify({ ...scope, reason: 'user_cancelled' }),
-      },
-    ),
+      }),
     // AgentChat currently exposes automatic compaction only. Returning false keeps the
     // analysis intact without accidentally removing foreground Writing compaction state.
     removeContextCompaction: async () => false,

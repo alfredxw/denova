@@ -12,6 +12,7 @@ const imageAgentHarnessSessionID = "image-agent"
 
 const (
 	runtimeBindingKindWriting    = "writing"
+	runtimeBindingKindProject    = "project"
 	runtimeBindingKindGame       = "game"
 	runtimeBindingKindAutomation = "automation"
 
@@ -24,6 +25,8 @@ const (
 	runtimeBindingProfileDirector      = "director"
 
 	runtimeBindingLabelWorkspace = "workspace"
+	runtimeBindingLabelProject   = "project_id"
+	runtimeBindingLabelAgentKind = "agent_kind"
 	runtimeBindingLabelSession   = "session_id"
 	runtimeBindingLabelStory     = "story_id"
 	runtimeBindingLabelBranch    = "branch_id"
@@ -35,6 +38,7 @@ const (
 // agent/runtime only sees an open, bounded BindingRef.
 type RuntimeBinding struct {
 	AgentKind string
+	ProjectID string
 	// Mode separates products that reuse the IDE Agent implementation but own
 	// different lifecycles. AgentChat conversations are user-level bindings and
 	// must survive switches of the foreground Writing workspace.
@@ -49,13 +53,14 @@ type RuntimeBinding struct {
 // Ref validates and encodes a Denova binding as a provider-neutral runtime
 // identity. Its wire kind/profile values intentionally remain stable.
 func (binding RuntimeBinding) Ref() (runstate.BindingRef, error) {
-	labels := make(map[string]string, 5)
+	labels := make(map[string]string, 7)
 	appendLabel := func(name, value string) {
 		if value = strings.TrimSpace(value); value != "" {
 			labels[name] = value
 		}
 	}
 	appendLabel(runtimeBindingLabelWorkspace, binding.Workspace)
+	appendLabel(runtimeBindingLabelProject, binding.ProjectID)
 	appendLabel(runtimeBindingLabelSession, binding.SessionID)
 	appendLabel(runtimeBindingLabelStory, binding.StoryID)
 	appendLabel(runtimeBindingLabelBranch, binding.BranchID)
@@ -64,14 +69,33 @@ func (binding RuntimeBinding) Ref() (runstate.BindingRef, error) {
 	var ref runstate.BindingRef
 	switch strings.TrimSpace(binding.AgentKind) {
 	case AgentKindIDE:
-		if labels[runtimeBindingLabelWorkspace] == "" || labels[runtimeBindingLabelSession] == "" || binding.StoryID != "" || binding.BranchID != "" || binding.TaskID != "" {
+		if labels[runtimeBindingLabelSession] == "" || binding.StoryID != "" || binding.BranchID != "" || binding.TaskID != "" {
 			return runstate.BindingRef{}, runstate.ErrInvalidBinding
 		}
 		profile := runtimeBindingProfileWriting
 		if strings.TrimSpace(binding.Mode) == runtimeBindingProfileAgentChat {
+			if labels[runtimeBindingLabelProject] != "" {
+				// A Project is the durable owner. Its content directory is mutable
+				// metadata resolved by the app at execution time, so it must not
+				// fork the journal when the user relinks the Project.
+				delete(labels, runtimeBindingLabelWorkspace)
+				labels[runtimeBindingLabelAgentKind] = AgentKindIDE
+				ref = runstate.BindingRef{Kind: runtimeBindingKindProject, Profile: runtimeBindingProfileAgentChat, Key: labels[runtimeBindingLabelProject] + ":" + labels[runtimeBindingLabelSession], Labels: labels}
+				break
+			}
 			profile = runtimeBindingProfileAgentChat
 		}
+		if labels[runtimeBindingLabelWorkspace] == "" {
+			return runstate.BindingRef{}, runstate.ErrInvalidBinding
+		}
 		ref = runstate.BindingRef{Kind: runtimeBindingKindWriting, Profile: profile, Key: labels[runtimeBindingLabelSession], Labels: labels}
+	case AgentKindGeneral:
+		if strings.TrimSpace(binding.Mode) != runtimeBindingProfileAgentChat || labels[runtimeBindingLabelProject] == "" || labels[runtimeBindingLabelSession] == "" || binding.StoryID != "" || binding.BranchID != "" || binding.TaskID != "" {
+			return runstate.BindingRef{}, runstate.ErrInvalidBinding
+		}
+		delete(labels, runtimeBindingLabelWorkspace)
+		labels[runtimeBindingLabelAgentKind] = AgentKindGeneral
+		ref = runstate.BindingRef{Kind: runtimeBindingKindProject, Profile: runtimeBindingProfileAgentChat, Key: labels[runtimeBindingLabelProject] + ":" + labels[runtimeBindingLabelSession], Labels: labels}
 	case AgentKindInteractiveStory:
 		if labels[runtimeBindingLabelWorkspace] == "" || labels[runtimeBindingLabelStory] == "" || labels[runtimeBindingLabelBranch] == "" || binding.TaskID != "" {
 			return runstate.BindingRef{}, runstate.ErrInvalidBinding
@@ -91,6 +115,10 @@ func (binding RuntimeBinding) Ref() (runstate.BindingRef, error) {
 		if labels[runtimeBindingLabelSession] == "" || labels[runtimeBindingLabelTask] == "" || binding.StoryID != "" || binding.BranchID != "" {
 			return runstate.BindingRef{}, runstate.ErrInvalidBinding
 		}
+		// Automation journals predate Project IDs and already have durable
+		// workspace/session/task identity. Keep that wire identity readable while
+		// ProjectID owns task/session persistence outside the runtime journal.
+		delete(labels, runtimeBindingLabelProject)
 		ref = runstate.BindingRef{Kind: runtimeBindingKindAutomation, Profile: runtimeBindingProfileAutomation, Key: labels[runtimeBindingLabelSession], Labels: labels}
 	case config.AgentKindInteractiveDirector:
 		if labels[runtimeBindingLabelWorkspace] == "" || labels[runtimeBindingLabelStory] == "" || labels[runtimeBindingLabelBranch] == "" || binding.TaskID != "" {
@@ -113,6 +141,7 @@ func ParseRuntimeBinding(ref runstate.BindingRef) (RuntimeBinding, error) {
 		return RuntimeBinding{}, err
 	}
 	binding := RuntimeBinding{
+		ProjectID: ref.Label(runtimeBindingLabelProject),
 		Workspace: ref.Label(runtimeBindingLabelWorkspace),
 		SessionID: ref.Label(runtimeBindingLabelSession),
 		StoryID:   ref.Label(runtimeBindingLabelStory),
@@ -124,6 +153,12 @@ func ParseRuntimeBinding(ref runstate.BindingRef) (RuntimeBinding, error) {
 		binding.AgentKind = AgentKindIDE
 	case ref.Kind == runtimeBindingKindWriting && ref.Profile == runtimeBindingProfileAgentChat:
 		binding.AgentKind = AgentKindIDE
+		binding.Mode = runtimeBindingProfileAgentChat
+	case ref.Kind == runtimeBindingKindProject && ref.Profile == runtimeBindingProfileAgentChat:
+		binding.AgentKind = ref.Label(runtimeBindingLabelAgentKind)
+		if binding.AgentKind != AgentKindIDE && binding.AgentKind != AgentKindGeneral {
+			return RuntimeBinding{}, fmt.Errorf("%w: unsupported project Agent kind %q", runstate.ErrInvalidBinding, binding.AgentKind)
+		}
 		binding.Mode = runtimeBindingProfileAgentChat
 	case ref.Kind == runtimeBindingKindGame && ref.Profile == runtimeBindingProfileGame:
 		binding.AgentKind = AgentKindInteractiveStory
@@ -154,6 +189,8 @@ func runtimeBindingSelector(agentKind, workspace string) (runstate.BindingSelect
 	}
 	switch strings.TrimSpace(agentKind) {
 	case "":
+	case AgentKindGeneral:
+		selector.Kind, selector.Profile = runtimeBindingKindProject, runtimeBindingProfileAgentChat
 	case AgentKindIDE:
 		selector.Kind, selector.Profile = runtimeBindingKindWriting, runtimeBindingProfileWriting
 	case AgentKindInteractiveStory:
@@ -223,8 +260,10 @@ func runtimeStoryBindingSelector(workspace, storyID, branchID string) (runstate.
 func harnessBindingForOptions(options RunOptions) (runstate.BindingRef, error) {
 	options = options.normalized(options.Workspace)
 	switch options.AgentKind {
+	case AgentKindGeneral:
+		return (RuntimeBinding{AgentKind: options.AgentKind, ProjectID: options.ProjectID, Mode: options.Mode, Workspace: options.Workspace, SessionID: options.SessionID}).Ref()
 	case AgentKindIDE:
-		return (RuntimeBinding{AgentKind: options.AgentKind, Mode: options.Mode, Workspace: options.Workspace, SessionID: options.SessionID}).Ref()
+		return (RuntimeBinding{AgentKind: options.AgentKind, ProjectID: options.ProjectID, Mode: options.Mode, Workspace: options.Workspace, SessionID: options.SessionID}).Ref()
 	case AgentKindInteractiveStory:
 		return (RuntimeBinding{AgentKind: options.AgentKind, Workspace: options.Workspace, StoryID: options.StoryID, BranchID: options.BranchID}).Ref()
 	case AgentKindConfigManager:
@@ -240,7 +279,7 @@ func harnessBindingForOptions(options RunOptions) (runstate.BindingRef, error) {
 		if automationTaskID == "" {
 			automationTaskID = options.TaskID
 		}
-		return (RuntimeBinding{AgentKind: options.AgentKind, Workspace: options.Workspace, SessionID: options.SessionID, TaskID: automationTaskID}).Ref()
+		return (RuntimeBinding{AgentKind: options.AgentKind, ProjectID: options.ProjectID, Workspace: options.Workspace, SessionID: options.SessionID, TaskID: automationTaskID}).Ref()
 	case config.AgentKindInteractiveDirector:
 		return (RuntimeBinding{AgentKind: options.AgentKind, Workspace: options.Workspace, StoryID: options.StoryID, BranchID: options.BranchID}).Ref()
 	default:

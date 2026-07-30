@@ -173,6 +173,7 @@ func (s *ChatAppService) StartTaskWithError(ctx context.Context, req agents.Chat
 	acceptCtx, releaseAcceptance := taskAcceptanceContext(ctx, task)
 	startOptions := s.bindReviewFeedbackInputCommit(agents.RunOptions{
 		AgentKind:          agents.AgentKindIDE,
+		StateRoot:          runtime.projectState,
 		TaskID:             task.ID(),
 		SessionID:          runtime.sess.ID,
 		Workspace:          runtime.workspace,

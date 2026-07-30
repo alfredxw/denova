@@ -77,7 +77,9 @@ func (s *ImageAppService) generateWithAgentUsingHooks(runtime *imageWorkspaceRun
 	}
 	cfg := runtime.cfg
 	novaDir := cfg.DataDir()
-	if layered, loadErr := config.LoadLayeredWithStartupConfig(novaDir, runtime.workspace); loadErr == nil {
+	if layered, loadErr := config.LoadLayeredWithStartupConfigAt(
+		novaDir, runtime.workspace, config.ProjectConfigPath(cfg.ProjectStateDir),
+	); loadErr == nil {
 		applyLayeredSettingsToConfig(&cfg, layered)
 	} else {
 		log.Printf("[image-agent] 加载分层配置失败 workspace=%s err=%v", runtime.workspace, loadErr)
@@ -104,6 +106,7 @@ func (s *ImageAppService) generateWithAgentUsingHooks(runtime *imageWorkspaceRun
 		Message:   conversation.message,
 	}, agents.RunOptions{
 		AgentKind:          config.AgentKindImage,
+		StateRoot:          cfg.ProjectStateDir,
 		Workspace:          runtime.workspace,
 		StoryID:            req.StoryID,
 		BranchID:           req.BranchID,

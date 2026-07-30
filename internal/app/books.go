@@ -9,6 +9,7 @@ import (
 	"strings"
 	"time"
 
+	projectdomain "denova/internal/project"
 	"denova/internal/workspacepath"
 )
 
@@ -47,6 +48,10 @@ type BookRegistry struct {
 	path       string
 	legacyPath string
 	novaDir    string
+	// projects is set in production. The legacy fields remain as a compatibility
+	// adapter for isolated BookRegistry tests and old callers while ProjectRegistry
+	// is the sole production authority.
+	projects *projectdomain.Registry
 }
 
 // NewBookRegistry 创建书籍记录管理器。
@@ -55,11 +60,22 @@ func NewBookRegistry(novaDir string) *BookRegistry {
 		path:       filepath.Join(novaDir, "books.json"),
 		legacyPath: legacyBookRegistryPath(),
 		novaDir:    novaDir,
+		projects:   projectdomain.NewRegistry(novaDir),
 	}
+}
+
+func (r *BookRegistry) ProjectRegistry() *projectdomain.Registry {
+	if r == nil {
+		return nil
+	}
+	return r.projects
 }
 
 // Current 返回上次打开且仍存在的工作目录。
 func (r *BookRegistry) Current() string {
+	if r != nil && r.projects != nil {
+		return r.projects.CurrentBookPath()
+	}
 	data := r.load()
 	if data.Current == "" {
 		return ""
@@ -79,6 +95,23 @@ func (r *BookRegistry) Current() string {
 
 // List 返回当前 Nova 数据目录下实际存在的书籍列表。
 func (r *BookRegistry) List() []BookRecord {
+	if r != nil && r.projects != nil {
+		records, err := r.projects.List(false)
+		if err != nil {
+			return nil
+		}
+		books := make([]BookRecord, 0, len(records))
+		for _, record := range records {
+			if record.Type != projectdomain.TypeBook || record.Status != projectdomain.StatusAvailable {
+				continue
+			}
+			books = append(books, BookRecord{
+				Name: record.Name, Path: record.WorkspacePath,
+				LastOpenedAt: projectTimeString(record.LastOpenedAt),
+			})
+		}
+		return books
+	}
 	data := r.load()
 	if strings.TrimSpace(r.novaDir) == "" {
 		return sortedRegistryBooks(data)
@@ -309,6 +342,10 @@ func isBookWorkspace(path string) bool {
 
 // Touch 记录并置顶一个书籍工作目录。
 func (r *BookRegistry) Touch(path string) error {
+	if r != nil && r.projects != nil {
+		_, err := r.projects.TouchBook(path)
+		return err
+	}
 	absPath, err := filepath.Abs(path)
 	if err != nil {
 		return err
@@ -367,6 +404,17 @@ func (r *BookRegistry) Touch(path string) error {
 
 // Remove 从书架隐藏一个书籍记录，不删除磁盘文件。
 func (r *BookRegistry) Remove(path string) error {
+	if r != nil && r.projects != nil {
+		record, found, err := r.projects.FindByPath(path, false)
+		if err != nil {
+			return err
+		}
+		if !found || record.Type != projectdomain.TypeBook {
+			return nil
+		}
+		_, err = r.projects.Archive(record.ID)
+		return err
+	}
 	absPath, err := filepath.Abs(path)
 	if err != nil {
 		return err
@@ -395,6 +443,43 @@ func (r *BookRegistry) Remove(path string) error {
 
 // Reorder 保存书籍管理页的自定义排序。
 func (r *BookRegistry) Reorder(paths []string) error {
+	if r != nil && r.projects != nil {
+		records, err := r.projects.List(false)
+		if err != nil {
+			return err
+		}
+		bookIDs := make([]string, 0, len(paths))
+		seen := make(map[string]bool, len(paths))
+		for _, path := range paths {
+			record, found, err := r.projects.FindByPath(path, false)
+			if err != nil {
+				return err
+			}
+			if found && record.Type == projectdomain.TypeBook && !seen[record.ID] {
+				seen[record.ID] = true
+				bookIDs = append(bookIDs, record.ID)
+			}
+		}
+		for _, record := range records {
+			if record.Type == projectdomain.TypeBook && !seen[record.ID] {
+				seen[record.ID] = true
+				bookIDs = append(bookIDs, record.ID)
+			}
+		}
+		// The legacy bookshelf can reorder only Books. Replace Book slots in
+		// the unified order while leaving every General Project in place.
+		ids := make([]string, 0, len(records))
+		nextBook := 0
+		for _, record := range records {
+			if record.Type == projectdomain.TypeBook {
+				ids = append(ids, bookIDs[nextBook])
+				nextBook++
+				continue
+			}
+			ids = append(ids, record.ID)
+		}
+		return r.projects.Reorder(ids)
+	}
 	data := r.load()
 	seen := make(map[string]bool, len(paths))
 	order := make([]string, 0, len(paths))
@@ -419,6 +504,12 @@ func (r *BookRegistry) Reorder(paths []string) error {
 // SortMode returns the persisted ordering mode. Legacy registries with an order
 // are treated as manual so an existing user-defined arrangement is preserved.
 func (r *BookRegistry) SortMode() BookSortMode {
+	if r != nil && r.projects != nil {
+		if r.projects.SortMode() == projectdomain.SortManual {
+			return BookSortModeManual
+		}
+		return BookSortModeRecent
+	}
 	data := r.load()
 	return resolveBookSortMode(data.SortMode, len(data.Order) > 0)
 }
@@ -429,6 +520,9 @@ func (r *BookRegistry) SetSortMode(mode BookSortMode) error {
 	if mode != BookSortModeRecent && mode != BookSortModeManual {
 		return errors.New("无效的书籍排序模式")
 	}
+	if r != nil && r.projects != nil {
+		return r.projects.SetSortMode(projectdomain.SortMode(mode))
+	}
 	data := r.load()
 	if mode == BookSortModeManual && len(data.Order) == 0 {
 		for _, book := range r.List() {
@@ -437,6 +531,13 @@ func (r *BookRegistry) SetSortMode(mode BookSortMode) error {
 	}
 	data.SortMode = mode
 	return r.save(data)
+}
+
+func projectTimeString(value time.Time) string {
+	if value.IsZero() {
+		return ""
+	}
+	return value.Format(time.RFC3339Nano)
 }
 
 func appendUniquePath(paths []string, path string) []string {

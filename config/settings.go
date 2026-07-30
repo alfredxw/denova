@@ -555,6 +555,16 @@ func WorkspaceConfigPath(workspace string) string {
 	return workspacepath.Path(workspace, WorkspaceConfigFilename)
 }
 
+// ProjectConfigPath returns the user-owned Agent override file for a Project
+// state root. It intentionally has no dependency on the content directory.
+func ProjectConfigPath(projectStateRoot string) string {
+	projectStateRoot = strings.TrimSpace(projectStateRoot)
+	if projectStateRoot == "" {
+		return ""
+	}
+	return filepath.Join(projectStateRoot, WorkspaceConfigFilename)
+}
+
 // LoadLayered 读取用户设置 + 工作区 Agent 定制并与默认值合并。
 // novaDir 为空时使用默认 ./.denova（后端运行目录下），已有 ./.nova 时兼容沿用。
 func LoadLayered(novaDir, workspace string) (LayeredSettings, error) {
@@ -563,6 +573,13 @@ func LoadLayered(novaDir, workspace string) (LayeredSettings, error) {
 
 // LoadLayeredWithGlobal 读取用户设置 + 工作区 Agent 定制，并加入全局启动配置层。
 func LoadLayeredWithGlobal(novaDir, workspace string, global Settings) (LayeredSettings, error) {
+	return LoadLayeredWithGlobalAt(novaDir, workspace, "", global)
+}
+
+// LoadLayeredWithGlobalAt is the Project-aware settings boundary. The content
+// workspace remains available to runtime consumers while its user-owned Agent
+// configuration is read from projectConfigPath.
+func LoadLayeredWithGlobalAt(novaDir, workspace, projectConfigPath string, global Settings) (LayeredSettings, error) {
 	if strings.TrimSpace(novaDir) == "" {
 		novaDir = normalizePath(defaultNovaDir())
 	} else {
@@ -575,8 +592,12 @@ func LoadLayeredWithGlobal(novaDir, workspace string, global Settings) (LayeredS
 		return LayeredSettings{}, err
 	}
 	var ws Settings
+	workspaceConfigPath := strings.TrimSpace(projectConfigPath)
+	if workspaceConfigPath == "" {
+		workspaceConfigPath = WorkspaceConfigPath(workspace)
+	}
 	if workspace != "" {
-		ws, err = ReadSettingsFile(WorkspaceConfigPath(workspace))
+		ws, err = ReadSettingsFile(workspaceConfigPath)
 		if err != nil {
 			return LayeredSettings{}, err
 		}
@@ -600,7 +621,6 @@ func LoadLayeredWithGlobal(novaDir, workspace string, global Settings) (LayeredS
 	backendPort := settingsInt(eff.BackendPort, 8080)
 	revisions := SettingsRevisions{}
 	userConfigPath := UserConfigPath(novaDir)
-	workspaceConfigPath := WorkspaceConfigPath(workspace)
 	if rev, err := SettingsFileRevision(userConfigPath); err == nil {
 		revisions.User = rev
 	} else {

@@ -19,6 +19,7 @@ func TestAppSettingsReturnsLayered(t *testing.T) {
 		cfg:       &config.Config{Workspace: ws, NovaDir: novaDir, OpenAIModel: "x", RuntimeWebPort: 19091},
 		workspace: ws,
 	}
+	registerBookProjectForTest(t, a, ws)
 	layered, err := a.Settings()
 	if err != nil {
 		t.Fatal(err)
@@ -133,6 +134,7 @@ func TestAppUpdateWorkspaceSettingsOnlyPersistsAgentOverrides(t *testing.T) {
 		cfg:       &config.Config{Workspace: ws, NovaDir: novaDir},
 		workspace: ws,
 	}
+	layout := registerBookProjectForTest(t, a, ws)
 	enabled := false
 	in := config.Settings{
 		OpenAIModel: "ignored-new-model",
@@ -144,7 +146,7 @@ func TestAppUpdateWorkspaceSettingsOnlyPersistsAgentOverrides(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	out, err := config.ReadSettingsFile(config.WorkspaceConfigPath(ws))
+	out, err := config.ReadSettingsFile(layout.ConfigPath())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -167,6 +169,7 @@ func TestAppUpdateWorkspaceSettingsFiltersLLMInputLogSetting(t *testing.T) {
 		cfg:       &config.Config{Workspace: ws, NovaDir: novaDir},
 		workspace: ws,
 	}
+	layout := registerBookProjectForTest(t, a, ws)
 	enabled := true
 	retention := 1
 	if _, err := a.UpdateWorkspaceSettings(config.Settings{
@@ -177,7 +180,7 @@ func TestAppUpdateWorkspaceSettingsFiltersLLMInputLogSetting(t *testing.T) {
 	}); err != nil {
 		t.Fatal(err)
 	}
-	out, err := config.ReadSettingsFile(config.WorkspaceConfigPath(ws))
+	out, err := config.ReadSettingsFile(layout.ConfigPath())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -196,6 +199,7 @@ func TestAppUpdateWorkspaceSettingsRejectsStaleRevision(t *testing.T) {
 		cfg:       &config.Config{Workspace: ws, NovaDir: novaDir},
 		workspace: ws,
 	}
+	layout := registerBookProjectForTest(t, a, ws)
 	layered, err := a.UpdateWorkspaceSettings(config.Settings{OpenAIModel: "front-base"})
 	if err != nil {
 		t.Fatal(err)
@@ -205,7 +209,7 @@ func TestAppUpdateWorkspaceSettingsRejectsStaleRevision(t *testing.T) {
 	}
 
 	time.Sleep(2 * time.Millisecond)
-	path := config.WorkspaceConfigPath(ws)
+	path := layout.ConfigPath()
 	if err := config.WriteSettingsFile(path, config.Settings{OpenAIModel: "agent-model"}); err != nil {
 		t.Fatal(err)
 	}
@@ -253,17 +257,19 @@ func TestAppSettingsConcurrentSameRevisionAllowsOneWriter(t *testing.T) {
 	t.Run("workspace", func(t *testing.T) {
 		ws := t.TempDir()
 		novaDir := t.TempDir()
-		path := config.WorkspaceConfigPath(ws)
-		if err := config.WriteSettingsFile(path, config.Settings{AgentPrompts: config.AgentPromptSettings{
+		legacyPath := config.WorkspaceConfigPath(ws)
+		if err := config.WriteSettingsFile(legacyPath, config.Settings{AgentPrompts: config.AgentPromptSettings{
 			IDE: config.AgentPromptOverride{SystemPrompt: "base"},
 		}}); err != nil {
 			t.Fatal(err)
 		}
+		a := &App{cfg: &config.Config{Workspace: ws, NovaDir: novaDir}, workspace: ws}
+		layout := registerBookProjectForTest(t, a, ws)
+		path := layout.ConfigPath()
 		baseRevision, err := config.SettingsFileRevision(path)
 		if err != nil {
 			t.Fatal(err)
 		}
-		a := &App{cfg: &config.Config{Workspace: ws, NovaDir: novaDir}, workspace: ws}
 		prompts := []string{"first", "second"}
 		errs := concurrentSettingsUpdates(t, len(prompts), func(index int) error {
 			_, updateErr := a.UpdateWorkspaceSettings(config.Settings{AgentPrompts: config.AgentPromptSettings{

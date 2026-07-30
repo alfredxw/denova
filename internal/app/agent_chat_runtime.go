@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"strings"
 
-	"denova/config"
 	agents "denova/internal/agents"
 	"denova/internal/agents/session"
 )
@@ -67,7 +66,7 @@ func (s *AgentChatAppService) DisplayTask(binding AgentChatBinding, taskID strin
 	if run := s.activeRun(binding); run != nil && run.task != nil && run.task.ID() == taskID {
 		return run.task
 	}
-	record := s.starts.latestSessionTask(binding.Workspace, binding.SessionID)
+	record := s.starts.latestSessionTask(binding.ProjectID, binding.SessionID)
 	if record.Task != nil && record.Task.ID() == taskID {
 		return record.Task
 	}
@@ -91,7 +90,7 @@ func (s *AgentChatAppService) MessagesPage(
 	if err != nil {
 		return session.HistoryPage{}, err
 	}
-	project, err := s.projectRuntime(ctx, binding.Workspace)
+	project, err := s.projectRuntime(ctx, binding.ProjectID)
 	if err != nil {
 		return session.HistoryPage{}, err
 	}
@@ -119,7 +118,7 @@ func (s *AgentChatAppService) AnalyzeContext(
 	if err != nil {
 		return agents.ContextAnalysis{}, err
 	}
-	project, err := s.projectRuntime(ctx, binding.Workspace)
+	project, err := s.projectRuntime(ctx, binding.ProjectID)
 	if err != nil {
 		return agents.ContextAnalysis{}, err
 	}
@@ -128,11 +127,12 @@ func (s *AgentChatAppService) AnalyzeContext(
 		return agents.ContextAnalysis{}, err
 	}
 	runtime := ideChatRuntime{
+		projectID: project.projectID, projectType: project.projectType, projectState: project.stateRoot, agentKind: project.agentKind,
 		app: s.app, sess: sess, state: project.state, bookService: project.bookService,
 		chatService: project.chatService, workspace: project.workspace,
 		versionService: project.versionService, cfg: project.cfg,
 	}
-	runtime, req, err = s.app.chat().prepareIDEChatRuntimeSnapshot(ctx, runtime, req)
+	runtime, req, err = s.app.chat().prepareProjectChatRuntimeSnapshot(ctx, runtime, req)
 	if err != nil {
 		return agents.ContextAnalysis{}, err
 	}
@@ -141,15 +141,13 @@ func (s *AgentChatAppService) AnalyzeContext(
 		pending = runtime.sess.PendingInterruption()
 	}
 	var compaction *session.ContextCompaction
-	if record, ok := runtime.sess.LatestContextCompaction(config.AgentKindIDE); ok {
+	if record, ok := runtime.sess.LatestContextCompaction(runtime.agentKind); ok {
 		compaction = &record
 	}
-	runtimeContexts := agents.IDEWorkspaceRuntimeContextsForRequest(runtime.state, req)
-	conversation := agents.NewSessionConversationForAgentWithRuntimeContexts(
-		runtime.sess, &runtime.cfg, config.AgentKindIDE,
-		runtimeContexts.StableTitle, runtimeContexts.Stable,
-		runtimeContexts.DynamicTitle, runtimeContexts.Dynamic,
-	)
+	conversation := projectSessionConversation(runtime, req)
+	if runtime.agentKind == agents.AgentKindGeneral {
+		return agents.BuildGeneralContextAnalysis(&runtime.cfg, runtime.bookService, compaction, pending, req, conversation)
+	}
 	return agents.BuildIDEContextAnalysis(
 		&runtime.cfg, runtime.state, runtime.ideTeller, runtime.bookService,
 		compaction, pending, req, conversation,
@@ -184,7 +182,7 @@ func (s *AgentChatAppService) resolveAsk(
 	if err != nil {
 		return AgentAskResolution{}, err
 	}
-	project, err := s.projectRuntime(ctx, binding.Workspace)
+	project, err := s.projectRuntime(ctx, binding.ProjectID)
 	if err != nil {
 		return AgentAskResolution{}, err
 	}
@@ -211,11 +209,11 @@ func (s *AgentChatAppService) ClearSession(ctx context.Context, binding AgentCha
 	if run := s.activeRun(binding); run != nil && run.task != nil && !run.task.Finished() {
 		return ErrAgentOperationActive
 	}
-	project, err := s.projectRuntime(ctx, binding.Workspace)
+	project, err := s.projectRuntime(ctx, binding.ProjectID)
 	if err != nil {
 		return err
 	}
-	if err := project.chatService.CloseAgentChatSessionBindings(ctx, binding.Workspace, binding.SessionID); err != nil {
+	if err := project.chatService.CloseProjectSessionBindings(ctx, binding.ProjectID, binding.SessionID); err != nil {
 		return err
 	}
 	sess, err := project.store.Get(binding.SessionID)
@@ -225,14 +223,13 @@ func (s *AgentChatAppService) ClearSession(ctx context.Context, binding AgentCha
 	if err := sess.Clear(); err != nil {
 		return err
 	}
-	s.starts.releaseConfigManagerScope(binding.Workspace, binding.SessionID)
+	s.starts.releaseConfigManagerScope(binding.ProjectID, binding.SessionID)
 	return nil
 }
 
 func (s *AgentChatAppService) SessionBusy(binding AgentChatBinding) bool {
-	workspace, err := canonicalWorkspacePath(binding.Workspace)
-	if err == nil {
-		binding.Workspace = workspace
+	if resolved, err := s.resolveBinding(binding); err == nil {
+		binding = resolved
 	}
 	binding.SessionID = strings.TrimSpace(binding.SessionID)
 	run := s.activeRun(binding)

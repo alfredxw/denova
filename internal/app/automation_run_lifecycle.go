@@ -43,7 +43,7 @@ func (s *AutomationAppService) ContinueRun(ctx context.Context, runID, commandID
 	}
 	target := automation.ExecutionTarget{Kind: automation.TargetKindUser}
 	if strings.TrimSpace(run.Workspace) != "" {
-		target = automation.ExecutionTarget{Kind: automation.TargetKindWorkspace, Workspace: run.Workspace}
+		target = automation.ExecutionTarget{Kind: automation.TargetKindWorkspace, WorkspaceID: run.ProjectID, Workspace: run.Workspace}
 	}
 	snap, operation, err := s.acquireTargetRuntime(ctx, target)
 	if err != nil {
@@ -61,7 +61,9 @@ func (s *AutomationAppService) continueRunWithSnapshot(ctx context.Context, snap
 	if strings.TrimSpace(run.SessionID) == "" {
 		return nil, automation.RunRecord{}, fmt.Errorf("automation run %s has no session history", identity.runID)
 	}
-	taskDef, err := storeForSnapshot(snap).Get(automation.CatalogTaskID(run.Scope, run.Workspace, run.TaskID))
+	// The snapshot is already scoped to one exact Project, so the immutable
+	// local task ID also resolves ledgers imported from path-owned catalogs.
+	taskDef, err := storeForSnapshot(snap).Get(run.TaskID)
 	if err != nil {
 		return nil, automation.RunRecord{}, err
 	}
@@ -385,6 +387,8 @@ func (s *AutomationAppService) startAutomationRun(ctx context.Context, snap *aut
 		Message:   s.buildAutomationUserMessage(task, run, writeMode, writeScope),
 	}, agents.RunOptions{
 		AgentKind:          agents.AgentKindAutomation,
+		ProjectID:          snap.projectID,
+		StateRoot:          snap.stateRoot,
 		TaskID:             run.ID,
 		AutomationTaskID:   task.ID,
 		SessionID:          run.SessionID,
@@ -590,6 +594,8 @@ func (s *AutomationAppService) startAutomationFollowUp(ctx context.Context, snap
 	request := agents.ChatRequest{CommandID: commandID, Message: message}
 	options := agents.RunOptions{
 		AgentKind:          agents.AgentKindAutomation,
+		ProjectID:          snap.projectID,
+		StateRoot:          snap.stateRoot,
 		TaskID:             run.ID,
 		AutomationTaskID:   task.ID,
 		SessionID:          run.SessionID,

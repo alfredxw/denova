@@ -53,6 +53,7 @@ const (
 // user-scoped task because content triggers are evaluated per workspace.
 type SemanticTriggerIntent struct {
 	Scope                  string
+	ProjectID              string
 	Workspace              string
 	TaskID                 string
 	TriggerID              string
@@ -70,6 +71,7 @@ type SemanticTriggerIntent struct {
 // action planning never requires re-reading mutable workspace state.
 type MatchedTriggerIntent struct {
 	Scope        string
+	ProjectID    string
 	Workspace    string
 	TaskID       string
 	TriggerID    string
@@ -87,6 +89,7 @@ type TriggerEvaluationRecord struct {
 	IntentHash             string              `json:"intent_hash"`
 	Status                 string              `json:"status"`
 	Scope                  string              `json:"scope"`
+	ProjectID              string              `json:"project_id,omitempty"`
 	Workspace              string              `json:"workspace,omitempty"`
 	TaskID                 string              `json:"task_id"`
 	TriggerID              string              `json:"trigger_id"`
@@ -127,6 +130,7 @@ func NewSemanticTriggerEvaluation(intent SemanticTriggerIntent, now time.Time) (
 	if intent.Scope != ScopeUser && intent.Scope != ScopeWorkspace {
 		return TriggerEvaluationRecord{}, fmt.Errorf("invalid semantic trigger scope %q", intent.Scope)
 	}
+	intent.ProjectID = strings.TrimSpace(intent.ProjectID)
 	intent.Workspace = strings.TrimSpace(intent.Workspace)
 	intent.TaskID = strings.TrimSpace(intent.TaskID)
 	intent.TriggerID = strings.TrimSpace(intent.TriggerID)
@@ -164,14 +168,19 @@ func NewSemanticTriggerEvaluation(intent SemanticTriggerIntent, now time.Time) (
 		now = now.UTC()
 	}
 	canonicalWorkspace := canonicalStoreRoot(intent.Workspace)
+	identityWorkspace := canonicalWorkspace
+	if intent.ProjectID != "" {
+		identityWorkspace = ""
+	}
 	identity := struct {
 		Scope       string `json:"scope"`
+		ProjectID   string `json:"project_id,omitempty"`
 		Workspace   string `json:"workspace,omitempty"`
 		TaskID      string `json:"task_id"`
 		TriggerID   string `json:"trigger_id"`
 		Condition   string `json:"condition"`
 		Observation string `json:"observation"`
-	}{intent.Scope, canonicalWorkspace, intent.TaskID, intent.TriggerID, intent.Condition, intent.ObservationFingerprint}
+	}{intent.Scope, intent.ProjectID, identityWorkspace, intent.TaskID, intent.TriggerID, intent.Condition, intent.ObservationFingerprint}
 	semantic := struct {
 		Identity     any            `json:"identity"`
 		Instruction  string         `json:"instruction"`
@@ -184,6 +193,7 @@ func NewSemanticTriggerEvaluation(intent SemanticTriggerIntent, now time.Time) (
 		IntentHash:             deterministicTriggerHash(semantic),
 		Status:                 TriggerEvaluationStatusClaimed,
 		Scope:                  intent.Scope,
+		ProjectID:              intent.ProjectID,
 		Workspace:              intent.Workspace,
 		TaskID:                 intent.TaskID,
 		TriggerID:              intent.TriggerID,
@@ -204,6 +214,7 @@ func NewSemanticTriggerEvaluation(intent SemanticTriggerIntent, now time.Time) (
 // stored before action identities are decided.
 func NewMatchedTriggerEvaluation(intent MatchedTriggerIntent, now time.Time) (TriggerEvaluationRecord, error) {
 	intent.Scope = strings.TrimSpace(intent.Scope)
+	intent.ProjectID = strings.TrimSpace(intent.ProjectID)
 	intent.Workspace = strings.TrimSpace(intent.Workspace)
 	intent.TaskID = strings.TrimSpace(intent.TaskID)
 	intent.TriggerID = strings.TrimSpace(intent.TriggerID)
@@ -255,14 +266,19 @@ func NewMatchedTriggerEvaluation(intent MatchedTriggerIntent, now time.Time) (Tr
 	} else {
 		now = now.UTC()
 	}
+	identityWorkspace := canonicalStoreRoot(intent.Workspace)
+	if intent.ProjectID != "" {
+		identityWorkspace = ""
+	}
 	identity := struct {
 		Scope       string `json:"scope"`
+		ProjectID   string `json:"project_id,omitempty"`
 		Workspace   string `json:"workspace,omitempty"`
 		TaskID      string `json:"task_id"`
 		TriggerID   string `json:"trigger_id"`
 		TriggerType string `json:"trigger_type"`
 		Observation string `json:"observation"`
-	}{intent.Scope, canonicalStoreRoot(intent.Workspace), intent.TaskID, intent.TriggerID, intent.TriggerType, intent.Match.Fingerprint}
+	}{intent.Scope, intent.ProjectID, identityWorkspace, intent.TaskID, intent.TriggerID, intent.TriggerType, intent.Match.Fingerprint}
 	semantic := struct {
 		Identity     any          `json:"identity"`
 		Match        TriggerMatch `json:"match"`
@@ -275,6 +291,7 @@ func NewMatchedTriggerEvaluation(intent MatchedTriggerIntent, now time.Time) (Tr
 		IntentHash:             deterministicTriggerHash(semantic),
 		Status:                 TriggerEvaluationStatusClaimed,
 		Scope:                  intent.Scope,
+		ProjectID:              intent.ProjectID,
 		Workspace:              intent.Workspace,
 		TaskID:                 intent.TaskID,
 		TriggerID:              intent.TriggerID,

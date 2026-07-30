@@ -22,9 +22,10 @@ type ConfigManagerAgentActiveView struct {
 	PendingAsk          *session.AskInteraction
 }
 
-func configManagerRunOptions(workspace, sessionID string) agents.RunOptions {
+func configManagerRunOptions(workspace, stateRoot, sessionID string) agents.RunOptions {
 	return agents.RunOptions{
 		AgentKind: agents.AgentKindConfigManager,
+		StateRoot: stateRoot,
 		Workspace: workspace,
 		SessionID: sessionID,
 		Mode:      "config_manager",
@@ -49,6 +50,10 @@ func (s *ConfigManagerAppService) ActiveView(ctx context.Context, req ConfigMana
 	a.mu.RLock()
 	workspace := strings.TrimSpace(a.workspace)
 	chatService := a.chatService
+	stateRoot := ""
+	if a.cfg != nil {
+		stateRoot = a.cfg.ProjectStateDir
+	}
 	a.mu.RUnlock()
 	if workspace == "" || chatService == nil {
 		return ConfigManagerAgentActiveView{}
@@ -60,7 +65,7 @@ func (s *ConfigManagerAppService) ActiveView(ctx context.Context, req ConfigMana
 	defer operation.Release()
 
 	runtimeSnapshot, projected := projectConfigManagerRuntime(
-		operation.Context(), chatService, configManagerRunOptions(workspace, sessionID),
+		operation.Context(), chatService, configManagerRunOptions(workspace, stateRoot, sessionID),
 	)
 	record, recoverySelected := selectConfigManagerDisplayRecord(
 		s.starts.latestConfigManagerTask(workspace, sessionID),
@@ -125,6 +130,10 @@ func (s *ConfigManagerAppService) displayTask(ctx context.Context, req ConfigMan
 	a.mu.RLock()
 	workspace := strings.TrimSpace(a.workspace)
 	chatService := a.chatService
+	stateRoot := ""
+	if a.cfg != nil {
+		stateRoot = a.cfg.ProjectStateDir
+	}
 	a.mu.RUnlock()
 	if workspace == "" || chatService == nil {
 		return nil
@@ -135,7 +144,7 @@ func (s *ConfigManagerAppService) displayTask(ctx context.Context, req ConfigMan
 	}
 	defer operation.Release()
 	runtimeSnapshot, projected := projectConfigManagerRuntime(
-		operation.Context(), chatService, configManagerRunOptions(workspace, sessionID),
+		operation.Context(), chatService, configManagerRunOptions(workspace, stateRoot, sessionID),
 	)
 	if !projected {
 		return nil
@@ -344,6 +353,10 @@ func (s *ConfigManagerAppService) RecoverAgentRuntime(
 	workspace := strings.TrimSpace(a.workspace)
 	chatService := a.chatService
 	store := a.sessionStore
+	stateRoot := ""
+	if a.cfg != nil {
+		stateRoot = a.cfg.ProjectStateDir
+	}
 	a.mu.RUnlock()
 	if workspace == "" || chatService == nil || store == nil {
 		return AgentRuntimeRecoveryResult{}, ErrNoWorkspace
@@ -377,7 +390,7 @@ func (s *ConfigManagerAppService) RecoverAgentRuntime(
 		return AgentRuntimeRecoveryResult{}, ErrAgentOperationActive
 	}
 
-	options := configManagerRunOptions(workspace, sessionID)
+	options := configManagerRunOptions(workspace, stateRoot, sessionID)
 	recovery, err := chatService.OpenRecoveryObservation(operation.Context(), options)
 	if err != nil {
 		return AgentRuntimeRecoveryResult{}, err

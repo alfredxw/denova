@@ -21,6 +21,9 @@ import (
 // service a thin facade over the live App and avoids the "two-headed" pattern
 // where one type conditionally behaves like two different objects.
 type automationWorkspaceSnapshot struct {
+	projectID    string
+	projectType  ProjectType
+	stateRoot    string
 	workspace    string
 	novaDir      string
 	cfg          config.Config
@@ -52,11 +55,16 @@ func (s *AutomationAppService) runtimeSnapshot() (*automationWorkspaceSnapshot, 
 	bookService := a.bookService
 	sessionStore := a.sessionStore
 	chatService := a.chatService
+	projectID := cfg.ProjectID
+	stateRoot := cfg.ProjectStateDir
 	a.mu.RUnlock()
 
 	cfg.Workspace = workspace
 	applyAutomationLayeredConfig(&cfg, novaDir, workspace)
 	return &automationWorkspaceSnapshot{
+		projectID:    projectID,
+		projectType:  ProjectTypeBook,
+		stateRoot:    stateRoot,
 		workspace:    workspace,
 		novaDir:      novaDir,
 		cfg:          cfg,
@@ -76,7 +84,16 @@ func applyAutomationLayeredConfig(cfg *config.Config, novaDir, workspace string)
 	if cfg == nil {
 		return
 	}
-	if layered, err := config.LoadLayeredWithStartupConfig(novaDir, workspace); err == nil {
+	var (
+		layered config.LayeredSettings
+		err     error
+	)
+	if strings.TrimSpace(cfg.ProjectStateDir) != "" {
+		layered, err = config.LoadLayeredWithStartupConfigAt(novaDir, workspace, config.ProjectConfigPath(cfg.ProjectStateDir))
+	} else {
+		layered, err = config.LoadLayeredWithStartupConfig(novaDir, workspace)
+	}
+	if err == nil {
 		applyLayeredSettingsToConfig(cfg, layered)
 	} else {
 		log.Printf("[automation] load layered settings failed workspace=%s err=%v", workspace, err)
@@ -97,6 +114,9 @@ func (a *App) automationSnapshotLocked() *automationWorkspaceSnapshot {
 		cfg.Workspace = workspace
 	}
 	return &automationWorkspaceSnapshot{
+		projectID:    cfg.ProjectID,
+		projectType:  ProjectTypeBook,
+		stateRoot:    cfg.ProjectStateDir,
 		workspace:    workspace,
 		novaDir:      cfg.DataDir(),
 		cfg:          cfg,

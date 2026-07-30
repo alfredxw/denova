@@ -23,6 +23,7 @@ var workspaceServices = struct {
 // Service owns one workspace's mutation lock and durable change projection.
 type Service struct {
 	workspace  string
+	stateRoot  string
 	store      *eventStore
 	durability *durabilityOps
 
@@ -62,6 +63,25 @@ type pendingSaveIntent struct {
 // absolute workspace. This is the production constructor: Agent, HTTP, review,
 // and history operations must use the same instance.
 func ForWorkspace(workspace string) (*Service, error) {
+	return forWorkspaceAt(workspace, "")
+}
+
+// ForWorkspaceAt returns the process-wide content mutation service while
+// placing its durable review ledger beneath stateRoot. Conflicting roots are
+// rejected instead of silently writing Project state back into the workspace.
+func ForWorkspaceAt(workspace, stateRoot string) (*Service, error) {
+	stateRoot = strings.TrimSpace(stateRoot)
+	if stateRoot == "" {
+		return nil, newError(ErrorCodeConflict, "project state root is empty", nil)
+	}
+	absoluteStateRoot, err := filepath.Abs(stateRoot)
+	if err != nil {
+		return nil, err
+	}
+	return forWorkspaceAt(workspace, filepath.Clean(absoluteStateRoot))
+}
+
+func forWorkspaceAt(workspace, stateRoot string) (*Service, error) {
 	abs, err := normalizeWorkspace(workspace)
 	if err != nil {
 		return nil, err
@@ -69,9 +89,19 @@ func ForWorkspace(workspace string) (*Service, error) {
 	workspaceServices.Lock()
 	defer workspaceServices.Unlock()
 	if existing := workspaceServices.items[abs]; existing != nil {
+		if stateRoot != "" && filepath.Clean(existing.stateRoot) != stateRoot {
+			return nil, newError(ErrorCodeConflict, "workspace change state root does not match the active Project", map[string]any{
+				"workspace": abs, "expected_state_root": stateRoot, "actual_state_root": existing.stateRoot,
+			})
+		}
 		return existing, nil
 	}
-	service, err := newService(abs)
+	var service *Service
+	if stateRoot == "" {
+		service, err = newService(abs)
+	} else {
+		service, err = newServiceAt(abs, stateRoot)
+	}
 	if err != nil {
 		return nil, err
 	}
@@ -115,16 +145,31 @@ func newService(workspace string) (*Service, error) {
 	return newServiceWithDurability(workspace, defaultDurabilityOps())
 }
 
+func newServiceAt(workspace, stateRoot string) (*Service, error) {
+	return newServiceAtWithDurability(workspace, stateRoot, defaultDurabilityOps())
+}
+
 func newServiceWithDurability(workspace string, durability *durabilityOps) (*Service, error) {
+	return newServiceAtWithDurability(workspace, "", durability)
+}
+
+func newServiceAtWithDurability(workspace, stateRoot string, durability *durabilityOps) (*Service, error) {
 	if durability == nil {
 		durability = defaultDurabilityOps()
 	}
-	store, err := newEventStore(workspace, durability)
+	var store *eventStore
+	var err error
+	if strings.TrimSpace(stateRoot) == "" {
+		store, err = newEventStore(workspace, durability)
+	} else {
+		store, err = newEventStoreAt(workspace, stateRoot, filepath.Join(stateRoot, "changes"), durability)
+	}
 	if err != nil {
 		return nil, err
 	}
 	s := &Service{
 		workspace:          workspace,
+		stateRoot:          filepath.Clean(stateRoot),
 		store:              store,
 		durability:         durability,
 		groups:             map[string]*ChangeGroup{},

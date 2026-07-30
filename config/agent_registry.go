@@ -8,6 +8,7 @@ import (
 
 const (
 	AgentKindIDE                 = "ide"
+	AgentKindGeneral             = "general"
 	AgentKindInteractiveStory    = "interactive_story"
 	AgentKindConfigManager       = "config_manager"
 	AgentKindInteractiveDirector = "interactive_director"
@@ -35,6 +36,20 @@ type AgentKindDefinition struct {
 }
 
 var agentKindRegistry = []AgentKindDefinition{
+	{
+		Kind: AgentKindGeneral,
+		ToolCapabilities: []string{
+			AgentToolWorkspaceRead, AgentToolWorkspaceWrite, AgentToolShell,
+			AgentToolWebSearch, AgentToolWebFetch, AgentToolBrowser,
+			AgentToolAsk, AgentToolTodo, AgentToolSkills, AgentToolDelegation,
+			AgentToolContextRewind,
+		},
+		ModelOverride:   func(settings AgentModelSettings) AgentModelOverride { return settings.General },
+		ToolOverride:    func(settings AgentToolSettings) AgentToolOverride { return settings.General },
+		PromptOverride:  func(settings AgentPromptSettings) AgentPromptOverride { return settings.General },
+		SkillOverride:   func(settings AgentSkillSettings) AgentSkillOverride { return settings.General },
+		ContextOverride: func(settings AgentContextSettings) AgentContextOverride { return settings.General },
+	},
 	{
 		Kind: AgentKindIDE,
 		ToolCapabilities: []string{

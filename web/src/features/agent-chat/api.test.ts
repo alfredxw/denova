@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
-import { getAgentChatHistory, getAgentChatProjects, type AgentChatProject } from './api'
+import { addAgentChatProject, getAgentChatHistory, getAgentChatProjects, selectAgentChatProjectDirectory, type AgentChatProject } from './api'
 
 const apiClientMocks = vi.hoisted(() => ({ requestJSON: vi.fn() }))
 
@@ -13,7 +13,13 @@ describe('AgentChat project API request coalescing', () => {
 
   it('merges Strict Mode startup reads and permits a later refresh', async () => {
     const project = {
-      path: '/books/one', name: 'One', current: false, total: 1,
+      id: 'project-one',
+      type: 'book',
+      status: 'available',
+      path: '/books/one',
+      name: 'One',
+      current: false,
+      total: 1,
       sessions: [],
     } satisfies AgentChatProject
     apiClientMocks.requestJSON.mockResolvedValueOnce({ projects: [project] })
@@ -35,14 +41,47 @@ describe('AgentChat history API', () => {
   beforeEach(() => apiClientMocks.requestJSON.mockReset())
 
   it('encodes search parameters and normalizes missing items', async () => {
-    apiClientMocks.requestJSON.mockResolvedValueOnce({ total: 0, offset: 80, has_more: false })
+    apiClientMocks.requestJSON.mockResolvedValueOnce({
+      total: 0,
+      offset: 80,
+      has_more: false,
+    })
 
-    await expect(getAgentChatHistory({
-      query: '  plot arc  ', workspace: '  /books/one  ', offset: 80, limit: 40,
-    })).resolves.toMatchObject({ items: [] })
-    expect(apiClientMocks.requestJSON).toHaveBeenCalledWith(
-      '/api/agent-chat/history?query=plot+arc&workspace=%2Fbooks%2Fone&offset=80&limit=40',
-      { signal: undefined },
-    )
+    await expect(
+      getAgentChatHistory({
+        query: '  plot arc  ',
+        projectId: '  project-one  ',
+        offset: 80,
+        limit: 40,
+      }),
+    ).resolves.toMatchObject({ items: [] })
+    expect(apiClientMocks.requestJSON).toHaveBeenCalledWith('/api/agent-chat/history?query=plot+arc&project_id=project-one&offset=80&limit=40', {
+      signal: undefined,
+    })
+  })
+})
+
+describe('AgentChat project folder API', () => {
+  beforeEach(() => apiClientMocks.requestJSON.mockReset())
+
+  it('delegates directory selection to the host and creates with path only', async () => {
+    apiClientMocks.requestJSON.mockResolvedValueOnce({ path: '/projects/story', canceled: false })
+    await expect(selectAgentChatProjectDirectory('/projects/old')).resolves.toEqual({
+      path: '/projects/story',
+      canceled: false,
+    })
+    expect(apiClientMocks.requestJSON).toHaveBeenLastCalledWith('/api/host/dialogs/directory', {
+      method: 'POST',
+      headers: {},
+      body: JSON.stringify({ initial_path: '/projects/old' }),
+    })
+
+    apiClientMocks.requestJSON.mockResolvedValueOnce({ id: 'project-story' })
+    await addAgentChatProject('/projects/story')
+    expect(apiClientMocks.requestJSON).toHaveBeenLastCalledWith('/api/agent-chat/projects', {
+      method: 'POST',
+      headers: {},
+      body: JSON.stringify({ path: '/projects/story' }),
+    })
   })
 })

@@ -1,4 +1,4 @@
-import { Folder, PanelLeftClose } from 'lucide-react'
+import { Bot, Folder, PanelLeftClose } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import { Button } from '@/components/ui/button'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
@@ -6,28 +6,26 @@ import type { AgentChatProject } from './api'
 
 interface HistoryProjectNavProps {
   projects: readonly AgentChatProject[]
-  selectedProjectPath: string
-  onSelect: (projectPath: string) => void
+  selectedProjectId: string
+  onSelect: (projectID: string) => void
 }
 
 /** Desktop master pane for choosing the project whose durable conversations are shown. */
 export function AgentChatHistoryProjectSidebar({
   projects,
-  selectedProjectPath,
-  currentProjectPath,
+  selectedProjectId,
+  currentProjectId,
   onSelect,
   onCollapse,
 }: HistoryProjectNavProps & {
-  currentProjectPath: string
+  currentProjectId: string
   onCollapse: () => void
 }) {
   const { t } = useTranslation()
   return (
     <aside className="hidden w-44 shrink-0 flex-col border-r border-[var(--nova-border-soft)] bg-[var(--nova-surface-2)] sm:flex">
       <div className="flex h-10 shrink-0 items-center border-b border-[var(--nova-border-soft)] px-2">
-        <span className="min-w-0 flex-1 truncate text-[10px] font-medium text-[var(--nova-text-muted)]">
-          {t('agentChat.history.projects')}
-        </span>
+        <span className="min-w-0 flex-1 truncate text-[10px] font-medium text-[var(--nova-text-muted)]">{t('agentChat.history.projects')}</span>
         <Button
           type="button"
           variant="ghost"
@@ -42,16 +40,20 @@ export function AgentChatHistoryProjectSidebar({
       </div>
       <nav aria-label={t('agentChat.history.projects')} className="min-h-0 flex-1 space-y-0.5 overflow-y-auto p-1.5">
         {projects.map((project) => {
-          const selected = project.path === selectedProjectPath
-          const current = project.path === currentProjectPath
+          const selected = project.id === selectedProjectId
+          const current = project.id === currentProjectId
           const name = project.name || project.path
+          const Icon = project.type === 'general' ? Bot : Folder
           return (
             <button
-              key={project.path}
+              key={project.id}
               type="button"
-              onClick={() => onSelect(project.path)}
+              onClick={() => onSelect(project.id)}
               aria-current={selected ? 'true' : undefined}
-              aria-label={t('agentChat.history.projectSessionCount', { name, count: project.total })}
+              aria-label={t('agentChat.history.projectSessionCount', {
+                name,
+                count: project.total,
+              })}
               title={project.path}
               className={`relative flex w-full min-w-0 items-center gap-1.5 rounded-[var(--nova-radius)] px-2 py-1.5 text-left outline-none transition-colors focus-visible:ring-1 focus-visible:ring-[var(--nova-accent)] ${
                 selected
@@ -63,7 +65,7 @@ export function AgentChatHistoryProjectSidebar({
                 aria-hidden="true"
                 className={`absolute bottom-1.5 left-0 top-1.5 w-0.5 rounded-full ${selected ? 'bg-[var(--nova-text)]' : 'bg-transparent'}`}
               />
-              <Folder aria-hidden="true" className="size-3.5 shrink-0 text-[var(--nova-text-faint)]" />
+              <Icon aria-hidden="true" className="size-3.5 shrink-0 text-[var(--nova-text-faint)]" />
               <span className="min-w-0 flex-1 truncate text-[11px]">{name}</span>
               {current ? (
                 <span
@@ -82,20 +84,16 @@ export function AgentChatHistoryProjectSidebar({
 }
 
 /** Compact project switcher used when the master pane cannot fit beside the session list. */
-export function AgentChatHistoryProjectSelect({
-  projects,
-  selectedProjectPath,
-  onSelect,
-}: HistoryProjectNavProps) {
+export function AgentChatHistoryProjectSelect({ projects, selectedProjectId, onSelect }: HistoryProjectNavProps) {
   const { t } = useTranslation()
   return (
-    <Select value={selectedProjectPath} onValueChange={onSelect} disabled={projects.length === 0}>
+    <Select value={selectedProjectId} onValueChange={onSelect} disabled={projects.length === 0}>
       <SelectTrigger size="sm" className="h-8 w-full bg-[var(--nova-surface-2)] text-xs" aria-label={t('agentChat.history.selectProject')}>
         <SelectValue placeholder={t('agentChat.history.selectProject')} />
       </SelectTrigger>
       <SelectContent>
         {projects.map((project) => (
-          <SelectItem key={project.path} value={project.path}>
+          <SelectItem key={project.id} value={project.id}>
             {project.name || project.path} · {project.total}
           </SelectItem>
         ))}
@@ -104,12 +102,9 @@ export function AgentChatHistoryProjectSelect({
   )
 }
 
-export function currentProjectFirst(
-  projects: readonly AgentChatProject[],
-  currentProjectPath: string,
-): AgentChatProject[] {
+export function currentProjectFirst(projects: readonly AgentChatProject[], currentProjectId: string): AgentChatProject[] {
   const ordered = [...projects]
-  const currentIndex = ordered.findIndex((project) => project.path === currentProjectPath)
+  const currentIndex = ordered.findIndex((project) => project.id === currentProjectId)
   if (currentIndex <= 0) return ordered
   const [current] = ordered.splice(currentIndex, 1)
   return current ? [current, ...ordered] : ordered

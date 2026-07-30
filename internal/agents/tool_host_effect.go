@@ -16,6 +16,7 @@ const toolMutationHostEffectVersion = 1
 // implementations so a cold Runtime can route the same effect after restart.
 type ToolMutationOrigin struct {
 	AgentKind        string `json:"agent_kind"`
+	ProjectID        string `json:"project_id,omitempty"`
 	TaskID           string `json:"task_id,omitempty"`
 	AutomationTaskID string `json:"automation_task_id,omitempty"`
 	SessionID        string `json:"session_id,omitempty"`
@@ -54,7 +55,8 @@ type toolMutationHostEffectPayload struct {
 func toolMutationOrigin(options RunOptions) ToolMutationOrigin {
 	options = options.normalized(options.Workspace)
 	return ToolMutationOrigin{
-		AgentKind: options.AgentKind, TaskID: options.TaskID, AutomationTaskID: options.AutomationTaskID,
+		AgentKind: options.AgentKind, ProjectID: options.ProjectID,
+		TaskID: options.TaskID, AutomationTaskID: options.AutomationTaskID,
 		SessionID: options.SessionID, ReviewThreadID: options.ReviewThreadID,
 		StoryID: options.StoryID, BranchID: options.BranchID, TurnID: options.TurnID,
 		MaintenanceTask: options.MaintenanceTask, Workspace: options.Workspace, Mode: options.Mode,
@@ -110,7 +112,8 @@ func decodeCommittedToolMutationHostEffect(binding runstate.BindingRef, effect r
 		return CommittedToolMutation{}, fmt.Errorf("committed tool mutation does not match effect call identity")
 	}
 	options := RunOptions{
-		AgentKind: payload.Origin.AgentKind, TaskID: payload.Origin.TaskID,
+		AgentKind: payload.Origin.AgentKind, ProjectID: payload.Origin.ProjectID,
+		TaskID:           payload.Origin.TaskID,
 		AutomationTaskID: payload.Origin.AutomationTaskID, SessionID: payload.Origin.SessionID,
 		ReviewThreadID: payload.Origin.ReviewThreadID, StoryID: payload.Origin.StoryID,
 		BranchID: payload.Origin.BranchID, TurnID: payload.Origin.TurnID,

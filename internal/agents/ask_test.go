@@ -89,6 +89,27 @@ func TestPersistentAskIDIsolatedByTaskAndExecution(t *testing.T) {
 	}
 }
 
+func TestGeneralAgentInstallsSessionBackedAskInteraction(t *testing.T) {
+	t.Parallel()
+	store, err := session.NewStore(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = store.Close() })
+	sess, err := store.GetOrCreate("general-ask")
+	if err != nil {
+		t.Fatal(err)
+	}
+	interaction := newRunAskInteraction(
+		NewSessionConversationForAgent(sess, nil, AgentKindGeneral),
+		RunOptions{AgentKind: AgentKindGeneral, TaskID: "general-task"},
+		nil,
+	)
+	if interaction == nil {
+		t.Fatal("General Agent did not install its interactive Ask host")
+	}
+}
+
 func receiveAskEvent(t *testing.T, events <-chan Event, eventType string) session.AskInteraction {
 	t.Helper()
 	select {

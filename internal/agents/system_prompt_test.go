@@ -82,6 +82,7 @@ func TestSubAgentParentRuntimeContractsIncludeDelegationProtocol(t *testing.T) {
 
 func TestRuntimeContractsCoverAllAgentKinds(t *testing.T) {
 	tests := map[string]string{
+		config.AgentKindGeneral:             "General Agent",
 		config.AgentKindIDE:                 "CREATOR.md",
 		config.AgentKindInteractiveStory:    "只输出本回合可展示在故事舞台上的故事正文",
 		config.AgentKindImage:               "图像 Agent",
@@ -104,6 +105,31 @@ func TestRuntimeContractsCoverAllAgentKinds(t *testing.T) {
 				t.Fatalf("contract for %s should contain %q:\n%s", agentKind, required, instruction)
 			}
 		})
+	}
+}
+
+func TestGeneralAgentInstructionUsesProjectNeutralFilesystemRules(t *testing.T) {
+	composition, err := ComposeGeneralInstruction(&config.Config{Workspace: "/workspace"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	instruction := composition.Instruction()
+	for _, required := range []string{
+		"General Agent",
+		"当前 Project 目录就是工作根目录",
+		"发现与内容搜索默认遵守 .gitignore",
+		"明确指定路径、直接 read/write/edit 的文件不因 .gitignore 被硬屏蔽",
+		"不要自动创建或修改 .gitignore",
+		"Denova 数据目录",
+	} {
+		if !strings.Contains(instruction, required) {
+			t.Fatalf("General Agent instruction missing %q:\n%s", required, instruction)
+		}
+	}
+	for _, forbidden := range []string{"CREATOR.md", "资料库写入", "图像生成"} {
+		if strings.Contains(instruction, forbidden) {
+			t.Fatalf("General Agent instruction leaked writing-only contract %q:\n%s", forbidden, instruction)
+		}
 	}
 }
 

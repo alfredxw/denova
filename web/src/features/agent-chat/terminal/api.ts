@@ -11,6 +11,7 @@ export interface TerminalSessionInfo {
   command: string
   args: string[]
   cwd: string
+  project_id?: string
   workspace: string
   cols: number
   rows: number
@@ -37,6 +38,7 @@ export interface CreateTerminalSessionRequest {
   /** Stable tab identity used by the backend to make creation idempotent. */
   owner_tab_id: string
   /** Project that owns the tab; independent from the foreground Writing book. */
+  project_id: string
   workspace?: string
   profile_id: string
   title?: string
@@ -61,7 +63,9 @@ export async function createTerminalSession(request: CreateTerminalSessionReques
 }
 
 export async function closeTerminalSession(id: string): Promise<void> {
-  await requestJSON(`/api/terminal/sessions/${encodeURIComponent(id)}`, { method: 'DELETE' })
+  await requestJSON(`/api/terminal/sessions/${encodeURIComponent(id)}`, {
+    method: 'DELETE',
+  })
 }
 
 /** Build the attach WebSocket URL, following the page protocol so HTTPS deployments use wss. */

@@ -14,7 +14,9 @@ function readLocale(locale) {
   for (const file of files) {
     const namespace = file.replace(/\.ts$/, '')
     const text = fs.readFileSync(path.join(dir, file), 'utf8')
-    const matches = [...text.matchAll(/^  '([^']+)': /gm)]
+    // Prettier may place long values on the following line, so key discovery
+    // must not depend on a literal space after the colon.
+    const matches = [...text.matchAll(/^  '([^']+)':(?:\s|$)/gm)]
     if (matches.length === 0) {
       errors.push(`${locale}/${file}: namespace has no translation keys`)
       continue

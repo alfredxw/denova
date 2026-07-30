@@ -1,13 +1,37 @@
 import type { LucideIcon } from 'lucide-react'
-import { Archive, BookOpen, Clock, Database, FileText, FolderOpen, Globe2, ImagePlus, ListChecks, MessageSquareText, PenLine, Search, Settings2, Terminal, Wrench } from 'lucide-react'
-import type { AgentModelSettings, AgentSkillSettings, AgentToolAvailability, AgentToolCapability, AgentToolDescriptorSummary, ResolvedAgentToolCapability } from '@/features/settings/types'
+import {
+  Archive,
+  Bot,
+  BookOpen,
+  Clock,
+  Database,
+  FileText,
+  FolderOpen,
+  Globe2,
+  ImagePlus,
+  ListChecks,
+  MessageSquareText,
+  PenLine,
+  Search,
+  Settings2,
+  Terminal,
+  Wrench,
+} from 'lucide-react'
+import type {
+  AgentModelSettings,
+  AgentSkillSettings,
+  AgentToolAvailability,
+  AgentToolCapability,
+  AgentToolDescriptorSummary,
+  ResolvedAgentToolCapability,
+} from '@/features/settings/types'
 import type { SkillSummary } from '@/lib/api'
 
 type AgentKey = keyof AgentModelSettings
 export type VisibleAgentKey = Exclude<AgentKey, 'default'>
 export type ToolKey = AgentToolCapability
 type AgentCapabilityMode = 'tools' | 'built_in' | 'model_only'
-export type SubAgentParentKey = Extract<VisibleAgentKey, 'ide' | 'interactive_story' | 'config_manager' | 'automation'>
+export type SubAgentParentKey = Extract<VisibleAgentKey, 'general' | 'ide' | 'interactive_story' | 'config_manager' | 'automation'>
 
 export interface AgentViewDefinition {
   key: VisibleAgentKey
@@ -32,18 +56,89 @@ export interface AgentToolDefinition {
 }
 
 export const AGENTS: AgentViewDefinition[] = [
-  { key: 'ide', titleKey: 'agents.ide.title', subtitleKey: 'agents.ide.subtitle', groupKey: 'agents.group.writing', capabilityMode: 'tools', icon: PenLine },
-  { key: 'config_manager', titleKey: 'agents.configManager.title', subtitleKey: 'agents.configManager.subtitle', groupKey: 'agents.group.writing', capabilityMode: 'tools', icon: Settings2 },
-  { key: 'interactive_story', titleKey: 'agents.interactiveStory.title', subtitleKey: 'agents.interactiveStory.subtitle', groupKey: 'agents.group.interactive', capabilityMode: 'tools', icon: MessageSquareText },
-  { key: 'interactive_director', titleKey: 'agents.interactiveDirector.title', subtitleKey: 'agents.interactiveDirector.subtitle', groupKey: 'agents.group.interactive', capabilityMode: 'tools', icon: FileText },
-  { key: 'image', titleKey: 'agents.image.title', subtitleKey: 'agents.image.subtitle', groupKey: 'agents.group.utility', capabilityMode: 'tools', icon: ImagePlus },
-  { key: 'version_summary', titleKey: 'agents.versionSummary.title', subtitleKey: 'agents.versionSummary.subtitle', groupKey: 'agents.group.version', capabilityMode: 'model_only', icon: ListChecks },
-  { key: 'tool_agent', titleKey: 'agents.toolAgent.title', subtitleKey: 'agents.toolAgent.subtitle', groupKey: 'agents.group.utility', capabilityMode: 'model_only', icon: Wrench },
-  { key: 'automation', titleKey: 'agents.automation.title', subtitleKey: 'agents.automation.subtitle', groupKey: 'agents.group.utility', capabilityMode: 'tools', icon: Clock },
-  { key: 'context_compaction', titleKey: 'agents.contextCompaction.title', subtitleKey: 'agents.contextCompaction.subtitle', groupKey: 'agents.group.utility', capabilityMode: 'model_only', icon: Archive },
+  {
+    key: 'general',
+    titleKey: 'agents.general.title',
+    subtitleKey: 'agents.general.subtitle',
+    groupKey: 'agents.group.general',
+    capabilityMode: 'tools',
+    icon: Bot,
+  },
+  {
+    key: 'ide',
+    titleKey: 'agents.ide.title',
+    subtitleKey: 'agents.ide.subtitle',
+    groupKey: 'agents.group.writing',
+    capabilityMode: 'tools',
+    icon: PenLine,
+  },
+  {
+    key: 'config_manager',
+    titleKey: 'agents.configManager.title',
+    subtitleKey: 'agents.configManager.subtitle',
+    groupKey: 'agents.group.writing',
+    capabilityMode: 'tools',
+    icon: Settings2,
+  },
+  {
+    key: 'interactive_story',
+    titleKey: 'agents.interactiveStory.title',
+    subtitleKey: 'agents.interactiveStory.subtitle',
+    groupKey: 'agents.group.interactive',
+    capabilityMode: 'tools',
+    icon: MessageSquareText,
+  },
+  {
+    key: 'interactive_director',
+    titleKey: 'agents.interactiveDirector.title',
+    subtitleKey: 'agents.interactiveDirector.subtitle',
+    groupKey: 'agents.group.interactive',
+    capabilityMode: 'tools',
+    icon: FileText,
+  },
+  {
+    key: 'image',
+    titleKey: 'agents.image.title',
+    subtitleKey: 'agents.image.subtitle',
+    groupKey: 'agents.group.utility',
+    capabilityMode: 'tools',
+    icon: ImagePlus,
+  },
+  {
+    key: 'version_summary',
+    titleKey: 'agents.versionSummary.title',
+    subtitleKey: 'agents.versionSummary.subtitle',
+    groupKey: 'agents.group.version',
+    capabilityMode: 'model_only',
+    icon: ListChecks,
+  },
+  {
+    key: 'tool_agent',
+    titleKey: 'agents.toolAgent.title',
+    subtitleKey: 'agents.toolAgent.subtitle',
+    groupKey: 'agents.group.utility',
+    capabilityMode: 'model_only',
+    icon: Wrench,
+  },
+  {
+    key: 'automation',
+    titleKey: 'agents.automation.title',
+    subtitleKey: 'agents.automation.subtitle',
+    groupKey: 'agents.group.utility',
+    capabilityMode: 'tools',
+    icon: Clock,
+  },
+  {
+    key: 'context_compaction',
+    titleKey: 'agents.contextCompaction.title',
+    subtitleKey: 'agents.contextCompaction.subtitle',
+    groupKey: 'agents.group.utility',
+    capabilityMode: 'model_only',
+    icon: Archive,
+  },
 ]
 
-export const SUB_AGENT_PARENT_KEYS: SubAgentParentKey[] = ['ide', 'interactive_story', 'config_manager', 'automation']
+export const SUB_AGENT_PARENT_KEYS: SubAgentParentKey[] = ['general', 'ide', 'interactive_story', 'config_manager', 'automation']
 
 const TOOL_ICONS: Partial<Record<AgentToolCapability, LucideIcon>> = {
   workspace_read: Search,

@@ -1,10 +1,5 @@
-import {
-  AGENT_CHAT_GROUP_IDS,
-  AGENT_CHAT_PAGE_IDS,
-  type AgentChatGroupId,
-  type AgentChatPageId,
-  type AgentChatTab,
-} from './types'
+import { AGENT_CHAT_GROUP_IDS, AGENT_CHAT_PAGE_IDS, type AgentChatGroupId, type AgentChatPageId, type AgentChatTab } from './types'
+import type { AgentChatProject } from './api'
 
 /**
  * Local persistence for AgentChat tabs.
@@ -14,7 +9,8 @@ import {
  * Nothing here lands in workspace files or enters the model context.
  */
 
-const WORKBENCH_STORAGE_KEY = 'nova.agentchat.workbenches.v3'
+const WORKBENCH_STORAGE_KEY = 'nova.agentchat.workbenches.v4'
+const LEGACY_WORKBENCH_STORAGE_KEY = 'nova.agentchat.workbenches.v3'
 const TAB_BAR_EXPANDED_STORAGE_KEY = 'nova.agentchat.tabBarExpanded.v1'
 
 /** Upper bound on open tabs so a long session cannot pile up unbounded panes. */
@@ -57,6 +53,7 @@ function isGroupId(value: unknown): value is AgentChatGroupId {
 /** The fields every persisted tab shares, read back defensively like the rest of the record. */
 function parseCommon(value: Record<string, unknown>) {
   return {
+    projectId: typeof value.projectId === 'string' ? value.projectId.trim() : '',
     workspace: typeof value.workspace === 'string' ? value.workspace.trim() : '',
     customTitle: typeof value.customTitle === 'string' && value.customTitle ? value.customTitle : undefined,
     pinned: value.pinned === true ? true : undefined,
@@ -74,9 +71,7 @@ function parseTab(raw: unknown): AgentChatTab | null {
   const common = { id, ...parseCommon(value) }
   switch (value.kind) {
     case 'agent':
-      return typeof value.sessionId === 'string' && value.sessionId
-        ? { kind: 'agent', ...common, sessionId: value.sessionId }
-        : null
+      return typeof value.sessionId === 'string' && value.sessionId ? { kind: 'agent', ...common, sessionId: value.sessionId } : null
     case 'terminal': {
       const profileId = terminalProfileId(value.profileId)
       if (!profileId) return null
@@ -96,11 +91,11 @@ function parseTab(raw: unknown): AgentChatTab | null {
     case 'review':
       return typeof value.threadID === 'string' && value.threadID
         ? {
-          kind: 'review',
-          ...common,
-          threadID: value.threadID,
-          groupID: typeof value.groupID === 'string' ? value.groupID : undefined,
-        }
+            kind: 'review',
+            ...common,
+            threadID: value.threadID,
+            groupID: typeof value.groupID === 'string' ? value.groupID : undefined,
+          }
         : null
     default:
       return null
@@ -127,7 +122,7 @@ export interface AgentChatProjectTabState {
 
 /** User-level AgentChat state. Project records are deliberately independent. */
 export interface AgentChatWorkbenchState {
-  activeProjectPath: string
+  activeProjectId: string
   projects: Record<string, AgentChatProjectTabState>
 }
 
@@ -139,61 +134,91 @@ export function emptyProjectTabState(): AgentChatProjectTabState {
   }
 }
 
-/** Read v3 state defensively; older global tab storage is intentionally not merged. */
+/** Read v4 state, falling back to v3 path keys for one-time reconciliation. */
 export function readStoredWorkbenchState(): AgentChatWorkbenchState {
-  const raw = readStorage(WORKBENCH_STORAGE_KEY)
-  if (!raw) return { activeProjectPath: '', projects: {} }
+  const current = readStorage(WORKBENCH_STORAGE_KEY)
+  const raw = current ?? readStorage(LEGACY_WORKBENCH_STORAGE_KEY)
+  const legacy = current === null && raw !== null
+  if (!raw) return { activeProjectId: '', projects: {} }
   try {
     const parsed: unknown = JSON.parse(raw)
     if (!parsed || typeof parsed !== 'object') throw new Error('not a record')
     const value = parsed as Record<string, unknown>
-    const storedProjects = value.projects && typeof value.projects === 'object'
-      ? value.projects as Record<string, unknown>
-      : {}
+    const storedProjects = value.projects && typeof value.projects === 'object' ? (value.projects as Record<string, unknown>) : {}
     const projects: Record<string, AgentChatProjectTabState> = {}
     for (const [rawPath, rawState] of Object.entries(storedProjects)) {
       const path = rawPath.trim()
       if (!path || !rawState || typeof rawState !== 'object') continue
       const state = rawState as Record<string, unknown>
       const rawTabs = Array.isArray(state.tabs) ? state.tabs : []
-      const tabs = orderTabs(dedupeTabs(rawTabs
-        .map(parseTab)
-        .filter((tab): tab is AgentChatTab => tab !== null && tab.workspace === path))
-        .slice(0, MAX_AGENT_CHAT_TABS))
-      const active = state.activeTabIds && typeof state.activeTabIds === 'object'
-        ? state.activeTabIds as Record<string, unknown>
-        : {}
+      const tabs = orderTabs(
+        dedupeTabs(
+          rawTabs.map(parseTab).filter((tab): tab is AgentChatTab => tab !== null && (legacy ? tab.workspace === path : tab.projectId === path)),
+        ).slice(0, MAX_AGENT_CHAT_TABS),
+      )
+      const active = state.activeTabIds && typeof state.activeTabIds === 'object' ? (state.activeTabIds as Record<string, unknown>) : {}
       const validActiveID = (group: AgentChatGroupId) => {
         const id = typeof active[group] === 'string' ? active[group] : ''
         return tabs.some((tab) => tab.id === id && tabGroup(tab) === group) ? id : null
       }
       projects[path] = {
         tabs,
-        activeTabIds: { primary: validActiveID('primary'), secondary: validActiveID('secondary') },
+        activeTabIds: {
+          primary: validActiveID('primary'),
+          secondary: validActiveID('secondary'),
+        },
         focusedGroup: isGroupId(state.focusedGroup) ? state.focusedGroup : 'primary',
       }
     }
-    const activeProjectPath = typeof value.activeProjectPath === 'string' && projects[value.activeProjectPath]
-      ? value.activeProjectPath
-      : ''
-    return { activeProjectPath, projects }
+    const storedActive = legacy ? value.activeProjectPath : value.activeProjectId
+    const activeProjectId = typeof storedActive === 'string' && projects[storedActive] ? storedActive : ''
+    return { activeProjectId, projects }
   } catch (error) {
     console.warn('[features/agent-chat/tab-state.ts] parsing local workbench state failed', { error })
-    return { activeProjectPath: '', projects: {} }
+    return { activeProjectId: '', projects: {} }
+  }
+}
+
+/** Convert legacy path-owned workbenches and refresh relinked tab paths. */
+export function reconcileWorkbenchProjects(state: AgentChatWorkbenchState, projects: readonly AgentChatProject[]): AgentChatWorkbenchState {
+  const reconciled: Record<string, AgentChatProjectTabState> = {}
+  for (const project of projects) {
+    const source = state.projects[project.id] ?? state.projects[project.path]
+    if (!source) continue
+    const eligibleTabs = project.type === 'general' ? source.tabs.filter((tab) => tab.kind === 'agent' || tab.kind === 'terminal') : source.tabs
+    const tabs = eligibleTabs.map((tab) => ({
+      ...tab,
+      projectId: project.id,
+      workspace: project.path,
+    }))
+    reconciled[project.id] = {
+      ...source,
+      tabs,
+      activeTabIds: {
+        primary: tabs.some((tab) => tab.id === source.activeTabIds.primary) ? source.activeTabIds.primary : null,
+        secondary: tabs.some((tab) => tab.id === source.activeTabIds.secondary) ? source.activeTabIds.secondary : null,
+      },
+    }
+  }
+  const activeProject = projects.find((project) => project.id === state.activeProjectId || project.path === state.activeProjectId)
+  return {
+    activeProjectId: activeProject?.id ?? '',
+    projects: reconciled,
   }
 }
 
 export function persistWorkbenchState(state: AgentChatWorkbenchState) {
-  const projects = Object.fromEntries(Object.entries(state.projects).map(([workspace, project]) => {
-    // Blank drafts are deliberately ephemeral: a reload or app restart must not turn them into
-    // durable, indistinguishable conversations.
-    const tabs = project.tabs.filter((tab) => tab.kind !== 'agent' || !tab.draft)
-    const activeTabIds = Object.fromEntries(AGENT_CHAT_GROUP_IDS.map((group) => [
-      group,
-      tabs.some((tab) => tab.id === project.activeTabIds[group]) ? project.activeTabIds[group] : null,
-    ])) as ActiveTabIds
-    return [workspace, { ...project, tabs, activeTabIds }]
-  }))
+  const projects = Object.fromEntries(
+    Object.entries(state.projects).map(([projectId, project]) => {
+      // Blank drafts are deliberately ephemeral: a reload or app restart must not turn them into
+      // durable, indistinguishable conversations.
+      const tabs = project.tabs.filter((tab) => tab.kind !== 'agent' || !tab.draft)
+      const activeTabIds = Object.fromEntries(
+        AGENT_CHAT_GROUP_IDS.map((group) => [group, tabs.some((tab) => tab.id === project.activeTabIds[group]) ? project.activeTabIds[group] : null]),
+      ) as ActiveTabIds
+      return [projectId, { ...project, tabs, activeTabIds }]
+    }),
+  )
   writeStorage(WORKBENCH_STORAGE_KEY, JSON.stringify({ ...state, projects }))
 }
 
@@ -301,7 +326,10 @@ export function appendTab(tabs: AgentChatTab[], next: AgentChatTab): { tabs: Age
     return false
   })
   if (existing) return { tabs, activeId: existing.id }
-  return { tabs: orderTabs(trimTabs(dedupeTabs([...tabs, next]))), activeId: next.id }
+  return {
+    tabs: orderTabs(trimTabs(dedupeTabs([...tabs, next]))),
+    activeId: next.id,
+  }
 }
 
 /**
@@ -309,12 +337,7 @@ export function appendTab(tabs: AgentChatTab[], next: AgentChatTab): { tabs: Age
  * `beforeId` is the tab it was dropped onto; dropping on empty strip space passes null and
  * appends to the end of the group.
  */
-export function moveTab(
-  tabs: AgentChatTab[],
-  sourceId: string,
-  group: AgentChatGroupId,
-  beforeId: string | null,
-): AgentChatTab[] {
+export function moveTab(tabs: AgentChatTab[], sourceId: string, group: AgentChatGroupId, beforeId: string | null): AgentChatTab[] {
   const source = tabs.find((tab) => tab.id === sourceId)
   if (!source || sourceId === beforeId) return tabs
   const moved: AgentChatTab = { ...source, group }
@@ -337,9 +360,7 @@ export function setTabTitle(tabs: AgentChatTab[], tabId: string, title: string):
 
 /** Update the program-owned title without disturbing an explicit user rename. */
 export function setTerminalTabTitle(tabs: AgentChatTab[], tabId: string, title: string): AgentChatTab[] {
-  return tabs.map((tab) => (
-    tab.id === tabId && tab.kind === 'terminal' && tab.title !== title ? { ...tab, title } : tab
-  ))
+  return tabs.map((tab) => (tab.id === tabId && tab.kind === 'terminal' && tab.title !== title ? { ...tab, title } : tab))
 }
 
 /** Ids closed by "close others": the rest of that strip, pinned tabs excepted. */
@@ -358,7 +379,10 @@ export function tabIdsAfter(tabs: AgentChatTab[], tabId: string): string[] {
   const group = tabsInGroup(tabs, tabGroup(anchor))
   const index = group.findIndex((tab) => tab.id === tabId)
   if (index === -1) return []
-  return group.slice(index + 1).filter((tab) => !tab.pinned).map((tab) => tab.id)
+  return group
+    .slice(index + 1)
+    .filter((tab) => !tab.pinned)
+    .map((tab) => tab.id)
 }
 
 /** Pick the next active tab after a close: prefer the right neighbour, then the left one. */

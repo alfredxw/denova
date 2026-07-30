@@ -50,7 +50,9 @@ func (a *App) toolAgentConfig() (config.Config, string) {
 	a.mu.RUnlock()
 
 	runtimeCfg.Workspace = workspace
-	if layered, err := config.LoadLayeredWithStartupConfig(novaDir, workspace); err == nil {
+	if layered, err := config.LoadLayeredWithStartupConfigAt(
+		novaDir, workspace, config.ProjectConfigPath(runtimeCfg.ProjectStateDir),
+	); err == nil {
 		applyLayeredSettingsToConfig(&runtimeCfg, layered)
 	} else {
 		log.Printf("[tool-agent] 加载分层配置失败 workspace=%s err=%v", workspace, err)

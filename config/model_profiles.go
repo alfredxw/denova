@@ -19,6 +19,7 @@ type ModelProfileSettings struct {
 
 type AgentModelSettings struct {
 	Default             AgentModelOverride `toml:"default,omitempty" json:"default,omitempty"`
+	General             AgentModelOverride `toml:"general,omitempty" json:"general,omitempty"`
 	IDE                 AgentModelOverride `toml:"ide,omitempty" json:"ide,omitempty"`
 	InteractiveStory    AgentModelOverride `toml:"interactive_story,omitempty" json:"interactive_story,omitempty"`
 	ConfigManager       AgentModelOverride `toml:"config_manager,omitempty" json:"config_manager,omitempty"`
@@ -51,6 +52,7 @@ type ResolvedModelSettings struct {
 func MergeAgentModelSettings(parent, child AgentModelSettings) AgentModelSettings {
 	return AgentModelSettings{
 		Default:             mergeAgentModelOverride(parent.Default, child.Default),
+		General:             mergeAgentModelOverride(parent.General, child.General),
 		IDE:                 mergeAgentModelOverride(parent.IDE, child.IDE),
 		InteractiveStory:    mergeAgentModelOverride(parent.InteractiveStory, child.InteractiveStory),
 		ConfigManager:       mergeAgentModelOverride(parent.ConfigManager, child.ConfigManager),

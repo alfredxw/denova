@@ -36,20 +36,24 @@ export function useTerminalSessionLifecycle(
   const releaseSession = useCallback((sessionId: string, context: Record<string, unknown>) => {
     if (releasingSessionIdsRef.current.has(sessionId)) return
     releasingSessionIdsRef.current.add(sessionId)
-    void closeTerminalSession(sessionId).catch((error) => {
-      console.warn('[features/agent-chat/terminal/use-terminal-session-lifecycle.ts] releasing session failed', {
-        ...context,
-        sessionId,
-        error,
+    void closeTerminalSession(sessionId)
+      .catch((error) => {
+        console.warn('[features/agent-chat/terminal/use-terminal-session-lifecycle.ts] releasing session failed', {
+          ...context,
+          sessionId,
+          error,
+        })
       })
-    }).finally(() => {
-      releasingSessionIdsRef.current.delete(sessionId)
-    })
+      .finally(() => {
+        releasingSessionIdsRef.current.delete(sessionId)
+      })
   }, [])
 
   useEffect(() => {
     viewMountedRef.current = true
-    return () => { viewMountedRef.current = false }
+    return () => {
+      viewMountedRef.current = false
+    }
   }, [])
 
   // Also catches implicit removals such as the open-tab cap and projects disappearing from the
@@ -69,65 +73,82 @@ export function useTerminalSessionLifecycle(
   useEffect(() => {
     if (projectsLoading || reconciledRef.current) return
     reconciledRef.current = true
-    void getTerminalRuntimeStatus().then((runtime) => {
-      // Read storage at response time so another same-origin window's newer tab state is respected.
-      const tabs = terminalTabSessions(readStoredWorkbenchState())
-      const ownedSessionIds = new Set([...tabs.values()].filter((id): id is string => Boolean(id)))
-      const orphaned = runtime.sessions.filter((session) => (
-        session.attached === 0
-        && !ownedSessionIds.has(session.id)
-        && (!session.owner_tab_id || !tabs.has(session.owner_tab_id))
-      ))
-      if (orphaned.length > 0) {
-        console.info('[features/agent-chat/terminal/use-terminal-session-lifecycle.ts] releasing orphaned sessions', {
-          count: orphaned.length,
-          sessionIds: orphaned.map((session) => session.id),
-        })
-      }
-      for (const session of orphaned) {
-        releaseSession(session.id, { ownerTabId: session.owner_tab_id, reason: 'startup_reconciliation' })
-      }
-    }).catch((error) => {
-      console.warn('[features/agent-chat/terminal/use-terminal-session-lifecycle.ts] reconciliation failed', { error })
-    })
+    void getTerminalRuntimeStatus()
+      .then((runtime) => {
+        // Read storage at response time so another same-origin window's newer tab state is respected.
+        const tabs = terminalTabSessions(readStoredWorkbenchState())
+        const ownedSessionIds = new Set([...tabs.values()].filter((id): id is string => Boolean(id)))
+        const orphaned = runtime.sessions.filter(
+          (session) => session.attached === 0 && !ownedSessionIds.has(session.id) && (!session.owner_tab_id || !tabs.has(session.owner_tab_id)),
+        )
+        if (orphaned.length > 0) {
+          console.info('[features/agent-chat/terminal/use-terminal-session-lifecycle.ts] releasing orphaned sessions', {
+            count: orphaned.length,
+            sessionIds: orphaned.map((session) => session.id),
+          })
+        }
+        for (const session of orphaned) {
+          releaseSession(session.id, {
+            ownerTabId: session.owner_tab_id,
+            reason: 'startup_reconciliation',
+          })
+        }
+      })
+      .catch((error) => {
+        console.warn('[features/agent-chat/terminal/use-terminal-session-lifecycle.ts] reconciliation failed', { error })
+      })
   }, [projectsLoading, releaseSession])
 
-  const markTerminalTabsClosing = useCallback((tabs: readonly AgentChatTab[]) => {
-    for (const tab of tabs) {
-      if (tab.kind !== 'terminal') continue
-      closedTabIdsRef.current.add(tab.id)
-      if (tab.terminalSessionId) {
-        releaseSession(tab.terminalSessionId, { tabId: tab.id, reason: 'tab_closed' })
+  const markTerminalTabsClosing = useCallback(
+    (tabs: readonly AgentChatTab[]) => {
+      for (const tab of tabs) {
+        if (tab.kind !== 'terminal') continue
+        closedTabIdsRef.current.add(tab.id)
+        if (tab.terminalSessionId) {
+          releaseSession(tab.terminalSessionId, {
+            tabId: tab.id,
+            reason: 'tab_closed',
+          })
+        }
       }
-    }
-  }, [releaseSession])
+    },
+    [releaseSession],
+  )
 
-  const bindTerminalSession = useCallback((workspace: string, tabId: string, session: TerminalSessionInfo): boolean => {
-    const state = workbenchRef.current.projects[workspace]
-    const owned = !closedTabIdsRef.current.has(tabId)
-      && state?.tabs.some((tab) => tab.kind === 'terminal' && tab.id === tabId)
-    if (!owned) return false
-    // Mode switches may unmount AgentChat while a creation request is resolving. The persisted
-    // tab still owns the pty, but there is no mounted component whose state needs updating.
-    if (!viewMountedRef.current) return true
-    setWorkbench((current) => {
-      const currentState = current.projects[workspace]
-      if (!currentState) return current
-      return {
-        ...current,
-        projects: {
-          ...current.projects,
-          [workspace]: {
-            ...currentState,
-            tabs: currentState.tabs.map((tab) => tab.id === tabId && tab.kind === 'terminal'
-              ? { ...tab, terminalSessionId: session.id, title: tab.title || session.title }
-              : tab),
+  const bindTerminalSession = useCallback(
+    (projectID: string, tabId: string, session: TerminalSessionInfo): boolean => {
+      const state = workbenchRef.current.projects[projectID]
+      const owned = !closedTabIdsRef.current.has(tabId) && state?.tabs.some((tab) => tab.kind === 'terminal' && tab.id === tabId)
+      if (!owned) return false
+      // Mode switches may unmount AgentChat while a creation request is resolving. The persisted
+      // tab still owns the pty, but there is no mounted component whose state needs updating.
+      if (!viewMountedRef.current) return true
+      setWorkbench((current) => {
+        const currentState = current.projects[projectID]
+        if (!currentState) return current
+        return {
+          ...current,
+          projects: {
+            ...current.projects,
+            [projectID]: {
+              ...currentState,
+              tabs: currentState.tabs.map((tab) =>
+                tab.id === tabId && tab.kind === 'terminal'
+                  ? {
+                      ...tab,
+                      terminalSessionId: session.id,
+                      title: tab.title || session.title,
+                    }
+                  : tab,
+              ),
+            },
           },
-        },
-      }
-    })
-    return true
-  }, [setWorkbench])
+        }
+      })
+      return true
+    },
+    [setWorkbench],
+  )
 
   return { bindTerminalSession, markTerminalTabsClosing }
 }

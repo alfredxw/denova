@@ -37,6 +37,7 @@ func TestAgentKindRegistryDefinesUniqueKindsAndConfigAccessors(t *testing.T) {
 	}
 
 	models := AgentModelSettings{
+		General:             AgentModelOverride{ProfileID: AgentKindGeneral},
 		IDE:                 AgentModelOverride{ProfileID: AgentKindIDE},
 		InteractiveStory:    AgentModelOverride{ProfileID: AgentKindInteractiveStory},
 		Image:               AgentModelOverride{ProfileID: AgentKindImage},
@@ -48,6 +49,7 @@ func TestAgentKindRegistryDefinesUniqueKindsAndConfigAccessors(t *testing.T) {
 		ContextCompaction:   AgentModelOverride{ProfileID: AgentKindContextCompaction},
 	}
 	prompts := AgentPromptSettings{
+		General:             AgentPromptOverride{SystemPrompt: AgentKindGeneral},
 		IDE:                 AgentPromptOverride{SystemPrompt: AgentKindIDE},
 		InteractiveStory:    AgentPromptOverride{SystemPrompt: AgentKindInteractiveStory},
 		Image:               AgentPromptOverride{SystemPrompt: AgentKindImage},
@@ -59,6 +61,7 @@ func TestAgentKindRegistryDefinesUniqueKindsAndConfigAccessors(t *testing.T) {
 		ContextCompaction:   AgentPromptOverride{SystemPrompt: AgentKindContextCompaction},
 	}
 	tools := AgentToolSettings{
+		General:             AgentToolOverride{AgentToolWorkspaceRead: true},
 		IDE:                 AgentToolOverride{AgentToolWorkspaceRead: true},
 		InteractiveStory:    AgentToolOverride{AgentToolWorkspaceWrite: true},
 		Image:               AgentToolOverride{AgentToolImageGeneration: true},
@@ -75,6 +78,7 @@ func TestAgentKindRegistryDefinesUniqueKindsAndConfigAccessors(t *testing.T) {
 		thresholds[definition.Kind] = &value
 	}
 	contexts := AgentContextSettings{
+		General:             AgentContextOverride{CompactionThreshold: thresholds[AgentKindGeneral]},
 		IDE:                 AgentContextOverride{CompactionThreshold: thresholds[AgentKindIDE]},
 		InteractiveStory:    AgentContextOverride{CompactionThreshold: thresholds[AgentKindInteractiveStory]},
 		Image:               AgentContextOverride{CompactionThreshold: thresholds[AgentKindImage]},
@@ -107,6 +111,15 @@ func TestRestrictedAgentKindCapabilityCeilings(t *testing.T) {
 		kind string
 		want []string
 	}{
+		{
+			kind: AgentKindGeneral,
+			want: []string{
+				AgentToolWorkspaceRead, AgentToolWorkspaceWrite, AgentToolShell,
+				AgentToolWebSearch, AgentToolWebFetch, AgentToolBrowser,
+				AgentToolAsk, AgentToolTodo, AgentToolSkills, AgentToolDelegation,
+				AgentToolContextRewind,
+			},
+		},
 		{
 			kind: AgentKindInteractiveStory,
 			want: []string{

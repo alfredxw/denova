@@ -20,7 +20,7 @@ func (a *App) PlanHarnessInputMaterialization(
 ) (agents.InputMaterializationPlan, error) {
 	binding := request.Binding
 	switch binding.AgentKind {
-	case agents.AgentKindIDE, agents.AgentKindConfigManager, agents.AgentKindImage, agents.AgentKindAutomation:
+	case agents.AgentKindGeneral, agents.AgentKindIDE, agents.AgentKindConfigManager, agents.AgentKindImage, agents.AgentKindAutomation:
 		intent, err := a.sessionAcceptedInputIntent(ctx, request)
 		if err != nil {
 			return agents.InputMaterializationPlan{}, err
@@ -49,7 +49,7 @@ func (a *App) MaterializeHarnessInput(
 	}
 	binding := request.Binding
 	switch binding.AgentKind {
-	case agents.AgentKindIDE, agents.AgentKindConfigManager, agents.AgentKindImage, agents.AgentKindAutomation:
+	case agents.AgentKindGeneral, agents.AgentKindIDE, agents.AgentKindConfigManager, agents.AgentKindImage, agents.AgentKindAutomation:
 		intent, err := a.sessionAcceptedInputIntent(ctx, request)
 		if err != nil {
 			return agents.InputMaterializationReceipt{}, err
@@ -89,8 +89,16 @@ func (a *App) sessionAcceptedInputIntent(
 	binding := request.Binding
 	resolved := request.Request
 	if len(resolved.ReviewFeedback) > 0 {
+		workspace := strings.TrimSpace(binding.Workspace)
+		if projectID := strings.TrimSpace(binding.ProjectID); projectID != "" {
+			_, layout, err := a.resolveProject(projectID, true)
+			if err != nil {
+				return session.DomainCommitIntent{}, err
+			}
+			workspace = layout.ContentRoot
+		}
 		runtime := ideChatRuntime{
-			workspace: binding.Workspace,
+			workspace: workspace,
 			sess:      &session.Session{ID: binding.SessionID},
 		}
 		if err := (&ChatAppService{app: a}).resolveReviewFeedback(ctx, runtime, &resolved); err != nil {

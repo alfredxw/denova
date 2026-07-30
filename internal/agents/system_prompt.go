@@ -120,6 +120,8 @@ func subAgentDelegationContract() string {
 
 func outputProtocolForAgent(agentKind string) string {
 	switch agentKind {
+	case config.AgentKindGeneral:
+		return "- General Agent 没有固定 JSON 输出协议；所有文件变更必须通过已启用工具执行，并遵守当前 Project 工作根目录边界。"
 	case config.AgentKindInteractiveStory:
 		return strings.Join([]string{
 			"- 必须只输出本回合可展示在故事舞台上的故事正文。",
@@ -151,6 +153,12 @@ func outputProtocolForAgent(agentKind string) string {
 
 func agentRuntimeContract(agentKind string) string {
 	switch agentKind {
+	case config.AgentKindGeneral:
+		return strings.Join([]string{
+			"- General Agent 只在用户显式添加的 Project 根目录内工作；Project 类型不改变文件系统权限，也不对 Denova 数据目录施加隐藏特例。",
+			"- glob 与 grep 等发现操作默认遵守 .gitignore；明确路径的读取和写入不做 .gitignore 硬屏蔽，shell 保持原生命令语义。",
+			"- 不得擅自修改 .gitignore；只有用户明确要求时才可变更。",
+		}, "\n")
 	case config.AgentKindIDE:
 		return "- 写作 Agent 必须遵守文件工具安全边界和作品工作区边界；书籍内容规则仍以 CREATOR.md 和用户本轮明确要求为准。"
 	case config.AgentKindInteractiveStory:

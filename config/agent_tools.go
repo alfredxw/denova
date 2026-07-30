@@ -26,6 +26,7 @@ const (
 // AgentToolSettings stores capability overrides for every Agent kind.
 type AgentToolSettings struct {
 	Default             AgentToolOverride `toml:"default,omitempty" json:"default,omitempty"`
+	General             AgentToolOverride `toml:"general,omitempty" json:"general,omitempty"`
 	IDE                 AgentToolOverride `toml:"ide,omitempty" json:"ide,omitempty"`
 	InteractiveStory    AgentToolOverride `toml:"interactive_story,omitempty" json:"interactive_story,omitempty"`
 	ConfigManager       AgentToolOverride `toml:"config_manager,omitempty" json:"config_manager,omitempty"`
@@ -88,6 +89,9 @@ func DefaultAgentToolSettings() AgentToolSettings {
 
 	return AgentToolSettings{
 		Default: defaults,
+		General: on(
+			AgentToolContextRewind,
+		),
 		IDE: on(
 			AgentToolImageGeneration,
 		),
@@ -149,6 +153,7 @@ func noToolAgentOverride() AgentToolOverride {
 func MergeAgentToolSettings(parent, child AgentToolSettings) AgentToolSettings {
 	return AgentToolSettings{
 		Default:             mergeAgentToolOverride(parent.Default, child.Default),
+		General:             mergeAgentToolOverride(parent.General, child.General),
 		IDE:                 mergeAgentToolOverride(parent.IDE, child.IDE),
 		InteractiveStory:    mergeAgentToolOverride(parent.InteractiveStory, child.InteractiveStory),
 		ConfigManager:       mergeAgentToolOverride(parent.ConfigManager, child.ConfigManager),

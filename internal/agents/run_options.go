@@ -8,6 +8,7 @@ import (
 
 const (
 	AgentKindUnknown          = "unknown"
+	AgentKindGeneral          = "general"
 	AgentKindIDE              = "ide"
 	AgentKindInteractiveStory = "interactive_story"
 	AgentKindConfigManager    = "config_manager"
@@ -20,6 +21,8 @@ const RunWriteModeReadOnly = "read_only"
 // RunOptions identifies one Agent run across runtime, trace, and UI surfaces.
 type RunOptions struct {
 	AgentKind     string
+	ProjectID     string
+	StateRoot     string
 	RootAgentName string
 	TaskID        string
 	// AutomationTaskID is the stable automation definition identity used by
@@ -50,6 +53,8 @@ func (o RunOptions) normalized(defaultWorkspace string) RunOptions {
 		o.AgentKind = AgentKindUnknown
 	}
 	o.RootAgentName = strings.TrimSpace(o.RootAgentName)
+	o.ProjectID = strings.TrimSpace(o.ProjectID)
+	o.StateRoot = strings.TrimSpace(o.StateRoot)
 	if o.RootAgentName == "" {
 		o.RootAgentName = rootAgentNameForKind(o.AgentKind)
 	}
@@ -79,6 +84,8 @@ func (o RunOptions) normalized(defaultWorkspace string) RunOptions {
 
 func rootAgentNameForKind(kind string) string {
 	switch strings.TrimSpace(kind) {
+	case AgentKindGeneral:
+		return "DenovaGeneralAgent"
 	case AgentKindIDE:
 		return "DenovaAgent"
 	case AgentKindInteractiveStory:

@@ -1,50 +1,33 @@
 import { useEffect, useRef, useState } from 'react'
-import {
-  DndContext,
-  KeyboardSensor,
-  MouseSensor,
-  TouchSensor,
-  closestCenter,
-  useSensor,
-  useSensors,
-  type DragEndEvent,
-} from '@dnd-kit/core'
+import { DndContext, KeyboardSensor, MouseSensor, TouchSensor, closestCenter, useSensor, useSensors, type DragEndEvent } from '@dnd-kit/core'
 import { SortableContext, sortableKeyboardCoordinates, verticalListSortingStrategy } from '@dnd-kit/sortable'
 import { useTranslation } from 'react-i18next'
-import { ArrowDownUp, Check, Clock3, PanelLeft, Plus } from 'lucide-react'
+import { ArrowDownUp, Check, Clock3, Loader2, PanelLeft, Plus } from 'lucide-react'
 import { Button } from '@/components/ui/button'
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuTrigger,
-} from '@/components/ui/dropdown-menu'
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu'
 import { InlineErrorNotice } from '@/components/common/inline-error-notice'
 import type { AgentChatProject } from './api'
-import {
-  AgentChatSidebarProject,
-  projectSortableID,
-  type AgentChatSidebarProjectDragData,
-} from './AgentChatSidebarProject'
+import { AgentChatSidebarProject, projectSortableID, type AgentChatSidebarProjectDragData } from './AgentChatSidebarProject'
 import type { AgentChatSidebarActivity } from './sidebar-activity'
-import {
-  AGENT_CHAT_SIDEBAR_SORT_MODES,
-  useAgentChatSidebarPreferences,
-  type AgentChatSidebarSortMode,
-} from './sidebar-preferences'
+import { AGENT_CHAT_SIDEBAR_SORT_MODES, useAgentChatSidebarPreferences, type AgentChatSidebarSortMode } from './sidebar-preferences'
 
 export interface AgentChatActivitySidebarProps {
   projects: AgentChatProject[]
   activitiesByProject: ReadonlyMap<string, readonly AgentChatSidebarActivity[]>
   loading: boolean
   error: string
-  activeProjectPath: string
+  activeProjectId: string
   /** Rendered in the header when the tree can be collapsed to a rail. */
   onCollapse?: () => void
   onSelectProject: (project: AgentChatProject) => void
   onOpenActivity: (project: AgentChatProject, activity: AgentChatSidebarActivity) => void
   onCreateSession: (project: AgentChatProject) => void
   onOpenHistory: () => void
+  onAddProject: () => void
+  projectDirectoryBusy: boolean
+  onRenameProject: (project: AgentChatProject) => void
+  onRelinkProject: (project: AgentChatProject) => void
+  onArchiveProject: (project: AgentChatProject) => void
 }
 
 /** Project tree whose children are live work entry points rather than conversation history. */
@@ -53,32 +36,43 @@ export function AgentChatActivitySidebar({
   activitiesByProject,
   loading,
   error,
-  activeProjectPath,
+  activeProjectId,
   onCollapse,
   onSelectProject,
   onOpenActivity,
   onCreateSession,
   onOpenHistory,
+  onAddProject,
+  projectDirectoryBusy,
+  onRenameProject,
+  onRelinkProject,
+  onArchiveProject,
 }: AgentChatActivitySidebarProps) {
   const { t } = useTranslation()
   const [collapsedProjects, setCollapsedProjects] = useState<ReadonlySet<string>>(() => new Set())
   const preferences = useAgentChatSidebarPreferences(projects)
   const sensors = useSensors(
-    useSensor(MouseSensor, { activationConstraint: { delay: 180, tolerance: 5 } }),
-    useSensor(TouchSensor, { activationConstraint: { delay: 250, tolerance: 8 } }),
-    useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates }),
+    useSensor(MouseSensor, {
+      activationConstraint: { delay: 180, tolerance: 5 },
+    }),
+    useSensor(TouchSensor, {
+      activationConstraint: { delay: 250, tolerance: 8 },
+    }),
+    useSensor(KeyboardSensor, {
+      coordinateGetter: sortableKeyboardCoordinates,
+    }),
   )
   const activityCount = [...activitiesByProject.values()].reduce((total, activities) => total + activities.length, 0)
 
   const toggleProject = (project: AgentChatProject) => {
-    const selecting = project.path !== activeProjectPath
-    preferences.recordProjectOpened(project.path)
+    const selecting = project.id !== activeProjectId
+    preferences.recordProjectOpened(project.id)
     onSelectProject(project)
     setCollapsedProjects((current) => {
       const next = new Set(current)
-      if (selecting) next.delete(project.path)
-      else if (next.has(project.path)) next.delete(project.path)
-      else next.add(project.path)
+      if (selecting) next.delete(project.id)
+      else if (next.has(project.id)) next.delete(project.id)
+      else next.add(project.id)
       return next
     })
   }
@@ -87,7 +81,7 @@ export function AgentChatActivitySidebar({
     const active = event.active.data.current as AgentChatSidebarProjectDragData | undefined
     const over = event.over?.data.current as AgentChatSidebarProjectDragData | undefined
     if (!active || !over || active.kind !== 'project' || over.kind !== 'project') return
-    preferences.moveProject(active.projectPath, over.projectPath)
+    preferences.moveProject(active.projectID, over.projectID)
   }
 
   return (
@@ -96,6 +90,18 @@ export function AgentChatActivitySidebar({
         <span className="min-w-0 flex-1 truncate text-[10px] font-medium uppercase tracking-wide text-[var(--nova-text-faint)]">
           {t('agentChat.sidebar.projects')} · {t('agentChat.sidebar.activeWork')}
         </span>
+        <Button
+          type="button"
+          variant="ghost"
+          size="icon-xs"
+          className="shrink-0"
+          disabled={projectDirectoryBusy}
+          onClick={onAddProject}
+          aria-label={t('agentChat.project.add')}
+          title={t('agentChat.project.add')}
+        >
+          {projectDirectoryBusy ? <Loader2 className="animate-spin" /> : <Plus />}
+        </Button>
         <Button
           type="button"
           variant="ghost"
@@ -132,36 +138,34 @@ export function AgentChatActivitySidebar({
             <p className="px-2 py-3 text-[11px] leading-5 text-[var(--nova-text-faint)]">{t('agentChat.sidebar.noProjects')}</p>
           ) : (
             <>
-              <SortableContext
-                items={preferences.orderedProjects.map((project) => projectSortableID(project.path))}
-                strategy={verticalListSortingStrategy}
-              >
+              <SortableContext items={preferences.orderedProjects.map((project) => projectSortableID(project.id))} strategy={verticalListSortingStrategy}>
                 {preferences.orderedProjects.map((project) => (
                   <AgentChatSidebarProject
-                    key={project.path}
+                    key={project.id}
                     project={project}
-                    active={project.path === activeProjectPath}
-                    expanded={!collapsedProjects.has(project.path)}
+                    active={project.id === activeProjectId}
+                    expanded={!collapsedProjects.has(project.id)}
                     manualSorting={preferences.sortMode === 'manual'}
-                    pinned={preferences.isProjectPinned(project.path)}
-                    activities={activitiesByProject.get(project.path) ?? []}
+                    pinned={preferences.isProjectPinned(project.id)}
+                    activities={activitiesByProject.get(project.id) ?? []}
                     onToggle={() => toggleProject(project)}
                     onCreateSession={() => {
-                      preferences.recordProjectOpened(project.path)
+                      preferences.recordProjectOpened(project.id)
                       onCreateSession(project)
                     }}
-                    onTogglePinned={() => preferences.toggleProjectPinned(project.path)}
+                    onTogglePinned={() => preferences.toggleProjectPinned(project.id)}
+                    onRename={() => onRenameProject(project)}
+                    onRelink={() => onRelinkProject(project)}
+                    onArchive={() => onArchiveProject(project)}
                     onOpenActivity={(activity) => {
-                      preferences.recordProjectOpened(project.path)
+                      preferences.recordProjectOpened(project.id)
                       onOpenActivity(project, activity)
                     }}
                   />
                 ))}
               </SortableContext>
               {activityCount === 0 ? (
-                <p className="px-2 pb-2 pt-1 text-[10px] leading-4 text-[var(--nova-text-faint)]">
-                  {t('agentChat.sidebar.noActiveWork')}
-                </p>
+                <p className="px-2 pb-2 pt-1 text-[10px] leading-4 text-[var(--nova-text-faint)]">{t('agentChat.sidebar.noActiveWork')}</p>
               ) : null}
             </>
           )}
@@ -171,13 +175,7 @@ export function AgentChatActivitySidebar({
   )
 }
 
-function SidebarSortMenu({
-  sortMode,
-  onSortModeChange,
-}: {
-  sortMode: AgentChatSidebarSortMode
-  onSortModeChange: (mode: AgentChatSidebarSortMode) => void
-}) {
+function SidebarSortMenu({ sortMode, onSortModeChange }: { sortMode: AgentChatSidebarSortMode; onSortModeChange: (mode: AgentChatSidebarSortMode) => void }) {
   const { t } = useTranslation()
   const label = t(`agentChat.sidebar.sort.${sortMode}`)
   return (
@@ -249,14 +247,7 @@ export function AgentChatSidebarRail({ onExpand, onCreateDefaultSession, createD
       onFocusCapture={openPeek}
       onBlurCapture={closePeek}
     >
-      <Button
-        type="button"
-        variant="ghost"
-        size="icon-xs"
-        onClick={onExpand}
-        aria-label={t('agentChat.sidebar.show')}
-        title={t('agentChat.sidebar.show')}
-      >
+      <Button type="button" variant="ghost" size="icon-xs" onClick={onExpand} aria-label={t('agentChat.sidebar.show')} title={t('agentChat.sidebar.show')}>
         <PanelLeft className="rotate-180" />
       </Button>
       <Button
@@ -284,7 +275,9 @@ export function AgentChatSidebarRail({ onExpand, onCreateDefaultSession, createD
       {peeking ? (
         <div
           className="absolute left-full top-0 h-full w-[clamp(200px,18vw,280px)] shadow-[8px_0_24px_-18px_rgba(0,0,0,0.8)]"
-          onKeyDown={(event) => { if (event.key === 'Escape') setPeeking(false) }}
+          onKeyDown={(event) => {
+            if (event.key === 'Escape') setPeeking(false)
+          }}
         >
           <AgentChatActivitySidebar
             {...tree}

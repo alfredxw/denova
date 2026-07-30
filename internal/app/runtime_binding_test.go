@@ -34,6 +34,16 @@ func directorRuntimeBindingForTest(workspace, storyID, branchID string) runstate
 	return appRuntimeBindingForTest(agents.RuntimeBinding{AgentKind: config.AgentKindInteractiveDirector, Workspace: workspace, StoryID: storyID, BranchID: branchID})
 }
 
-func automationRuntimeBindingForTest(workspace, sessionID, taskID string) runstate.BindingRef {
-	return appRuntimeBindingForTest(agents.RuntimeBinding{AgentKind: agents.AgentKindAutomation, Workspace: workspace, SessionID: sessionID, TaskID: taskID})
+func automationRuntimeBindingForTest(workspace, sessionID, taskID string, projectIDs ...string) runstate.BindingRef {
+	projectID := ""
+	if len(projectIDs) > 0 {
+		projectID = projectIDs[0]
+	}
+	return appRuntimeBindingForTest(agents.RuntimeBinding{
+		AgentKind: agents.AgentKindAutomation,
+		ProjectID: projectID,
+		Workspace: workspace,
+		SessionID: sessionID,
+		TaskID:    taskID,
+	})
 }

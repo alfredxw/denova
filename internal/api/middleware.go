@@ -88,6 +88,17 @@ func remoteAccessMiddleware(application *novaApp.App) app.HandlerFunc {
 	}
 }
 
+// localHostEffectMiddleware prevents authenticated LAN clients from opening
+// windows on the machine that runs Denova. Remote browsers cannot usefully
+// select a server-local absolute path in any case.
+func localHostEffectMiddleware(ctx context.Context, c *app.RequestContext) {
+	if !isLocalClientIP(requestClientIP(c)) {
+		abortWithLocalizedError(c, consts.StatusForbidden, "api.access.localHostEffect")
+		return
+	}
+	c.Next(ctx)
+}
+
 func abortWithLocalizedError(c *app.RequestContext, status int, key string) {
 	message := i18n.FromHeader(localeHeader(c)).T(key)
 	c.AbortWithStatusJSON(status, map[string]string{"error": message})

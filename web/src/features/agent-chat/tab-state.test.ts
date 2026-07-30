@@ -18,11 +18,24 @@ import {
 import type { AgentChatAgentTab, AgentChatTab } from './types'
 
 function agentTab(id: string, sessionId: string, workspace = '/books/one'): AgentChatAgentTab {
-  return { kind: 'agent', id, workspace, sessionId }
+  return {
+    kind: 'agent',
+    id,
+    projectId: `project-${workspace.split('/').pop()}`,
+    workspace,
+    sessionId,
+  }
 }
 
 function terminalTab(id: string, workspace = '/books/one'): AgentChatTab {
-  return { kind: 'terminal', id, workspace, profileId: 'shell', title: '' }
+  return {
+    kind: 'terminal',
+    id,
+    projectId: `project-${workspace.split('/').pop()}`,
+    workspace,
+    profileId: 'shell',
+    title: '',
+  }
 }
 
 describe('agent-chat tab state', () => {
@@ -32,8 +45,20 @@ describe('agent-chat tab state', () => {
 
   it('keeps one tab per page and per session but allows many terminals', () => {
     const deduped = dedupeTabs([
-      { kind: 'page', id: 'p1', workspace: '/books/one', pageId: 'reader' },
-      { kind: 'page', id: 'p2', workspace: '/books/one', pageId: 'reader' },
+      {
+        kind: 'page',
+        id: 'p1',
+        projectId: 'project-one',
+        workspace: '/books/one',
+        pageId: 'reader',
+      },
+      {
+        kind: 'page',
+        id: 'p2',
+        projectId: 'project-one',
+        workspace: '/books/one',
+        pageId: 'reader',
+      },
       agentTab('a1', 's1'),
       agentTab('a2', 's1'),
       terminalTab('t1'),
@@ -46,9 +71,29 @@ describe('agent-chat tab state', () => {
   it('reuses an existing tab instead of opening a duplicate', () => {
     const tabs = [agentTab('a1', 's1'), terminalTab('t1')]
 
-    expect(appendTab(tabs, agentTab('a2', 's1'))).toEqual({ tabs, activeId: 'a1' })
-    expect(appendTab(tabs, { kind: 'page', id: 'p1', workspace: '/books/one', pageId: 'skills' })).toEqual({
-      tabs: [...tabs, { kind: 'page', id: 'p1', workspace: '/books/one', pageId: 'skills' }],
+    expect(appendTab(tabs, agentTab('a2', 's1'))).toEqual({
+      tabs,
+      activeId: 'a1',
+    })
+    expect(
+      appendTab(tabs, {
+        kind: 'page',
+        id: 'p1',
+        projectId: 'project-one',
+        workspace: '/books/one',
+        pageId: 'skills',
+      }),
+    ).toEqual({
+      tabs: [
+        ...tabs,
+        {
+          kind: 'page',
+          id: 'p1',
+          projectId: 'project-one',
+          workspace: '/books/one',
+          pageId: 'skills',
+        },
+      ],
       activeId: 'p1',
     })
   })
@@ -75,14 +120,14 @@ describe('agent-chat tab state', () => {
 
   it('persists a distinct tab group for each project and drops cross-project records', () => {
     persistWorkbenchState({
-      activeProjectPath: '/books/two',
+      activeProjectId: 'project-two',
       projects: {
-        '/books/one': {
+        'project-one': {
           tabs: [agentTab('a1', 's1'), terminalTab('t1')],
           activeTabIds: { primary: 'a1', secondary: null },
           focusedGroup: 'primary',
         },
-        '/books/two': {
+        'project-two': {
           tabs: [agentTab('a2', 's2', '/books/two'), terminalTab('t2', '/books/two')],
           activeTabIds: { primary: 'a2', secondary: null },
           focusedGroup: 'secondary',
@@ -91,11 +136,12 @@ describe('agent-chat tab state', () => {
     })
 
     const stored = readStoredWorkbenchState()
-    expect(stored.activeProjectPath).toBe('/books/two')
-    expect(stored.projects['/books/one'].tabs.map((tab) => tab.id)).toEqual(['a1', 't1'])
-    expect(stored.projects['/books/two'].tabs.map((tab) => tab.id)).toEqual(['a2', 't2'])
-    expect(stored.projects['/books/two'].focusedGroup).toBe('secondary')
+    expect(stored.activeProjectId).toBe('project-two')
+    expect(stored.projects['project-one'].tabs.map((tab) => tab.id)).toEqual(['a1', 't1'])
+    expect(stored.projects['project-two'].tabs.map((tab) => tab.id)).toEqual(['a2', 't2'])
+    expect(stored.projects['project-two'].focusedGroup).toBe('secondary')
 
+    window.localStorage.removeItem('nova.agentchat.workbenches.v4')
     window.localStorage.setItem(
       'nova.agentchat.workbenches.v3',
       JSON.stringify({
@@ -117,24 +163,27 @@ describe('agent-chat tab state', () => {
 
   it('restores configured terminal command IDs and display names without a hardcoded allowlist', () => {
     persistWorkbenchState({
-      activeProjectPath: '/books/one',
+      activeProjectId: 'project-one',
       projects: {
-        '/books/one': {
-          tabs: [{
-            kind: 'terminal',
-            id: 'aider-tab',
-            workspace: '/books/one',
-            profileId: 'aider-sonnet',
-            profileName: 'Aider Sonnet',
-            title: '',
-          }],
+        'project-one': {
+          tabs: [
+            {
+              kind: 'terminal',
+              id: 'aider-tab',
+              projectId: 'project-one',
+              workspace: '/books/one',
+              profileId: 'aider-sonnet',
+              profileName: 'Aider Sonnet',
+              title: '',
+            },
+          ],
           activeTabIds: { primary: 'aider-tab', secondary: null },
           focusedGroup: 'primary',
         },
       },
     })
 
-    expect(readStoredWorkbenchState().projects['/books/one'].tabs[0]).toMatchObject({
+    expect(readStoredWorkbenchState().projects['project-one'].tabs[0]).toMatchObject({
       profileId: 'aider-sonnet',
       profileName: 'Aider Sonnet',
     })
@@ -142,9 +191,9 @@ describe('agent-chat tab state', () => {
 
   it('does not persist blank draft conversations', () => {
     persistWorkbenchState({
-      activeProjectPath: '/books/one',
+      activeProjectId: 'project-one',
       projects: {
-        '/books/one': {
+        'project-one': {
           tabs: [{ ...agentTab('draft', 's-draft'), draft: true }, agentTab('saved', 's-saved')],
           activeTabIds: { primary: 'draft', secondary: null },
           focusedGroup: 'primary',
@@ -152,7 +201,7 @@ describe('agent-chat tab state', () => {
       },
     })
 
-    expect(readStoredWorkbenchState().projects['/books/one']).toMatchObject({
+    expect(readStoredWorkbenchState().projects['project-one']).toMatchObject({
       tabs: [expect.objectContaining({ id: 'saved' })],
       activeTabIds: { primary: null, secondary: null },
     })
@@ -165,15 +214,10 @@ describe('agent-chat tab state', () => {
     expect(ids[0].startsWith('agent-')).toBe(true)
     expect(ids[2].startsWith('terminal-')).toBe(true)
   })
-
 })
 
 describe('agent-chat tab groups', () => {
-  const split: AgentChatTab[] = [
-    terminalTab('t1'),
-    terminalTab('t2'),
-    { ...terminalTab('t3'), group: 'secondary' },
-  ]
+  const split: AgentChatTab[] = [terminalTab('t1'), terminalTab('t2'), { ...terminalTab('t3'), group: 'secondary' }]
 
   it('treats a tab without a group as belonging to the left side', () => {
     expect(tabsInGroup(split, 'primary').map((tab) => tab.id)).toEqual(['t1', 't2'])
@@ -210,7 +254,10 @@ describe('agent-chat tab groups', () => {
     const renamed = setTabTitle(split, 't1', 'My terminal')
     const updated = setTerminalTabTitle(renamed, 't1', 'vim')
 
-    expect(updated.find((tab) => tab.id === 't1')).toMatchObject({ title: 'vim', customTitle: 'My terminal' })
+    expect(updated.find((tab) => tab.id === 't1')).toMatchObject({
+      title: 'vim',
+      customTitle: 'My terminal',
+    })
     expect(setTerminalTabTitle(updated, 'missing', 'claude')).toEqual(updated)
   })
 

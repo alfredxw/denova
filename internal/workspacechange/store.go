@@ -65,25 +65,41 @@ type eventStore struct {
 }
 
 func newEventStore(workspace string, durability *durabilityOps) (*eventStore, error) {
-	dir := workspacepath.Path(workspace, "changes")
+	return newEventStoreAt(workspace, workspace, workspacepath.Path(workspace, "changes"), durability)
+}
+
+// newEventStoreAt keeps the mutable content root and the user-owned ledger
+// root separate. storageBoundary is normally project-state/<project-id>;
+// legacy callers continue to use the workspace itself as the boundary.
+func newEventStoreAt(workspace, storageBoundary, dir string, durability *durabilityOps) (*eventStore, error) {
+	storageBoundary = filepath.Clean(storageBoundary)
+	dir = filepath.Clean(dir)
 	blobDir := filepath.Join(dir, "blobs")
-	blobRel, err := filepath.Rel(workspace, blobDir)
+	blobRel, err := filepath.Rel(storageBoundary, blobDir)
 	if err != nil || blobRel == "." || blobRel == ".." || strings.HasPrefix(blobRel, ".."+string(filepath.Separator)) {
-		return nil, newError(ErrorCodeConflict, "workspace change storage path escapes the workspace", map[string]any{"path": blobDir})
+		return nil, newError(ErrorCodeConflict, "workspace change storage path escapes its state boundary", map[string]any{"path": blobDir})
 	}
-	root, err := os.OpenRoot(workspace)
+	if err := os.MkdirAll(storageBoundary, 0o700); err != nil {
+		return nil, err
+	}
+	root, err := os.OpenRoot(storageBoundary)
 	if err != nil {
 		return nil, err
 	}
 	defer root.Close()
-	workspaceIdentity, err := root.Stat(".")
+	workspaceRoot, err := os.OpenRoot(workspace)
+	if err != nil {
+		return nil, err
+	}
+	workspaceIdentity, err := workspaceRoot.Stat(".")
+	_ = workspaceRoot.Close()
 	if err != nil {
 		return nil, err
 	}
 	if err := mkdirAllRootDurable(root, blobRel, 0o700, durability); err != nil {
 		return nil, err
 	}
-	canonicalWorkspace, err := filepath.EvalSymlinks(workspace)
+	canonicalBoundary, err := filepath.EvalSymlinks(storageBoundary)
 	if err != nil {
 		return nil, err
 	}
@@ -91,9 +107,9 @@ func newEventStore(workspace string, durability *durabilityOps) (*eventStore, er
 	if err != nil {
 		return nil, err
 	}
-	canonicalRel, err := filepath.Rel(canonicalWorkspace, canonicalBlobDir)
+	canonicalRel, err := filepath.Rel(canonicalBoundary, canonicalBlobDir)
 	if err != nil || canonicalRel == ".." || strings.HasPrefix(canonicalRel, ".."+string(filepath.Separator)) {
-		return nil, newError(ErrorCodeConflict, "workspace change storage resolved outside the workspace", map[string]any{"path": blobDir})
+		return nil, newError(ErrorCodeConflict, "workspace change storage resolved outside its state boundary", map[string]any{"path": blobDir})
 	}
 	store := &eventStore{
 		dir:               dir,
@@ -104,9 +120,9 @@ func newEventStore(workspace string, durability *durabilityOps) (*eventStore, er
 	}
 	// Make the ledger inode and its directory entry durable before append ever
 	// relies on it. Later appends only extend this existing file.
-	dirRel, err := filepath.Rel(workspace, dir)
+	dirRel, err := filepath.Rel(storageBoundary, dir)
 	if err != nil || dirRel == "." || dirRel == ".." || strings.HasPrefix(dirRel, ".."+string(filepath.Separator)) {
-		return nil, newError(ErrorCodeConflict, "workspace change ledger path escapes the workspace", map[string]any{"path": dir})
+		return nil, newError(ErrorCodeConflict, "workspace change ledger path escapes its state boundary", map[string]any{"path": dir})
 	}
 	changesRoot, err := root.OpenRoot(filepath.FromSlash(dirRel))
 	if err != nil {

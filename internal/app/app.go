@@ -15,6 +15,7 @@ import (
 	"denova/internal/filewatch"
 	"denova/internal/interactive"
 	"denova/internal/lifecycle"
+	projectdomain "denova/internal/project"
 	"denova/internal/terminal"
 )
 
@@ -32,6 +33,7 @@ type App struct {
 	interactiveStoryRunner          *agents.Runner
 	chatService                     *agents.ChatService
 	bookRegistry                    *BookRegistry
+	projectRegistry                 *projectdomain.Registry
 	bookMetaStore                   *BookMetaStore
 	versionService                  *book.VersionService
 	activeTask                      *Task
@@ -123,6 +125,7 @@ func New(ctx context.Context, cfg *config.Config) (*App, error) {
 	app := &App{
 		cfg:                  cfg,
 		bookRegistry:         registry,
+		projectRegistry:      registry.ProjectRegistry(),
 		bookMetaStore:        bookMetaStore,
 		workspaceFiles:       filewatch.NewService(),
 		terminals:            terminal.NewManager(terminalConfigFromAppConfig(cfg)),
@@ -164,7 +167,17 @@ func New(ctx context.Context, cfg *config.Config) (*App, error) {
 		return app, nil
 	}
 
-	runtime, err := buildRuntimeExclusively(ctx, cfg, workspace)
+	projectRecord, err := app.projectRegistry.EnsureBook(workspace)
+	if err != nil {
+		app.Close()
+		return nil, err
+	}
+	layout, err := app.projectRegistry.EnsureState(projectRecord)
+	if err != nil {
+		app.Close()
+		return nil, err
+	}
+	runtime, err := buildRuntimeExclusively(ctx, cfg, layout)
 	if err != nil {
 		app.Close()
 		return nil, err
@@ -210,6 +223,9 @@ var ErrAgentContextChanged = errors.New("agent start context changed")
 
 func (a *App) ensureServices() {
 	a.servicesOnce.Do(func() {
+		if a.projectRegistry == nil && a.bookRegistry != nil {
+			a.projectRegistry = a.bookRegistry.ProjectRegistry()
+		}
 		a.automationTriggers = newAutomationTriggerCoordinator()
 		a.runtimeManager = &WorkspaceRuntimeManager{app: a}
 		a.chatApp = &ChatAppService{app: a}
@@ -278,6 +294,10 @@ func (a *App) applyRuntime(runtime *runtimeState) {
 	a.agentRunner = runtime.agentRunner
 	a.interactiveStoryRunner = runtime.interactiveStoryRunner
 	a.versionService = runtime.versionService
+	if a.cfg != nil {
+		a.cfg.ProjectID = runtime.projectID
+		a.cfg.ProjectStateDir = runtime.projectStateRoot
+	}
 	a.activeTask = nil
 	a.activeWritingRun = nil
 	a.activeInteractiveRun = nil
@@ -288,6 +308,8 @@ func (a *App) applyRuntime(runtime *runtimeState) {
 func (a *App) clearRuntime() {
 	a.workspace = ""
 	a.cfg.Workspace = ""
+	a.cfg.ProjectID = ""
+	a.cfg.ProjectStateDir = ""
 	a.bookState = nil
 	a.bookService = nil
 	a.interactive = nil

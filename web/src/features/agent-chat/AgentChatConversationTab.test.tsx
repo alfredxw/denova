@@ -13,7 +13,13 @@ const chat = vi.hoisted(() => ({
 
 vi.mock('@/hooks/useAgentChat', () => ({ useAgentChat: vi.fn() }))
 vi.mock('@/components/Chat/AgentPanel', () => ({
-  AgentPanel: ({ onSend, sessionDraft }: { onSend: (message: string, options: { onSubmissionStart: () => void }) => Promise<boolean>; sessionDraft?: boolean }) => (
+  AgentPanel: ({
+    onSend,
+    sessionDraft,
+  }: {
+    onSend: (message: string, options: { onSubmissionStart: () => void }) => Promise<boolean>
+    sessionDraft?: boolean
+  }) => (
     <button type="button" onClick={() => void onSend('First useful message', { onSubmissionStart: vi.fn() })}>
       {sessionDraft ? 'send draft' : 'send session'}
     </button>
@@ -32,17 +38,43 @@ describe('AgentChatConversationTab draft lifecycle', () => {
     })
     vi.mocked(useAgentChat).mockReturnValue({
       ...chat,
-      messages: [], sessions: [], activeSessionId: '', isStreaming: false,
-      runtimeProjection: null, abortPending: false, commandSubmitting: false,
-      queueActionPendingCommandID: '', activityContent: '', references: [], loreReferences: [],
-      styleScenes: [], textSelections: [], planMode: false, hasEarlierMessages: false,
-      isLoadingEarlierHistory: false, createChatSession: vi.fn(), switchChatSession: vi.fn(),
-      renameChatSession: vi.fn(), deleteChatSession: vi.fn(), loadEarlierHistory: vi.fn(),
-      analyzeContext: vi.fn(), stop: vi.fn(), steerQueuedCommand: vi.fn(), deleteQueuedCommand: vi.fn(),
-      editQueuedCommand: vi.fn(), removeReference: vi.fn(), addLoreReference: vi.fn(),
-      removeLoreReference: vi.fn(), addStyleScene: vi.fn(), removeStyleScene: vi.fn(),
-      removeTextSelection: vi.fn(), setPlanMode: vi.fn(), togglePlanMode: vi.fn(),
-      submitPlanQuestion: vi.fn(), approveProposedPlan: vi.fn(), exitPlanMode: vi.fn(),
+      messages: [],
+      sessions: [],
+      activeSessionId: '',
+      isStreaming: false,
+      runtimeProjection: null,
+      abortPending: false,
+      commandSubmitting: false,
+      queueActionPendingCommandID: '',
+      activityContent: '',
+      references: [],
+      loreReferences: [],
+      styleScenes: [],
+      textSelections: [],
+      planMode: false,
+      hasEarlierMessages: false,
+      isLoadingEarlierHistory: false,
+      createChatSession: vi.fn(),
+      switchChatSession: vi.fn(),
+      renameChatSession: vi.fn(),
+      deleteChatSession: vi.fn(),
+      loadEarlierHistory: vi.fn(),
+      analyzeContext: vi.fn(),
+      stop: vi.fn(),
+      steerQueuedCommand: vi.fn(),
+      deleteQueuedCommand: vi.fn(),
+      editQueuedCommand: vi.fn(),
+      removeReference: vi.fn(),
+      addLoreReference: vi.fn(),
+      removeLoreReference: vi.fn(),
+      addStyleScene: vi.fn(),
+      removeStyleScene: vi.fn(),
+      removeTextSelection: vi.fn(),
+      setPlanMode: vi.fn(),
+      togglePlanMode: vi.fn(),
+      submitPlanQuestion: vi.fn(),
+      approveProposedPlan: vi.fn(),
+      exitPlanMode: vi.fn(),
     } as never)
   })
 
@@ -50,8 +82,16 @@ describe('AgentChatConversationTab draft lifecycle', () => {
     const user = userEvent.setup()
     const onDraftCommitted = vi.fn()
     const props = {
-      workspace: '/books/a', sessionId: 's-local-draft', active: true, draft: true,
-      composerSettings: {} as never, tellers: [], imagePresets: [], onDraftCommitted,
+      projectId: 'project-a',
+      projectType: 'book' as const,
+      workspace: '/books/a',
+      sessionId: 's-local-draft',
+      active: true,
+      draft: true,
+      composerSettings: {} as never,
+      tellers: [],
+      imagePresets: [],
+      onDraftCommitted,
     }
     const { rerender } = render(<AgentChatConversationTab {...props} />)
 

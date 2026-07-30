@@ -70,6 +70,28 @@ func TestHarnessEngineRunCompletesAndConsumesTurnSpec(t *testing.T) {
 	}
 }
 
+func TestPreserveHarnessBindingOptionsResolvesCurrentProjectLocation(t *testing.T) {
+	t.Parallel()
+
+	binding := RunOptions{
+		AgentKind: AgentKindGeneral, ProjectID: "project-1", StateRoot: "/state/old",
+		Workspace: "/workspace/old", SessionID: "session-1", Mode: runtimeBindingProfileAgentChat,
+	}
+	execution := RunOptions{Workspace: "/workspace/current", StateRoot: "/state/current"}
+	resolved := preserveHarnessBindingOptions(binding, execution)
+	if resolved.ProjectID != binding.ProjectID || resolved.SessionID != binding.SessionID ||
+		resolved.Workspace != execution.Workspace || resolved.StateRoot != execution.StateRoot {
+		t.Fatalf("restored Project options = %#v", resolved)
+	}
+
+	legacy := binding
+	legacy.ProjectID = ""
+	legacyResolved := preserveHarnessBindingOptions(legacy, execution)
+	if legacyResolved.Workspace != legacy.Workspace || legacyResolved.StateRoot != execution.StateRoot {
+		t.Fatalf("legacy binding was not kept frozen: %#v", legacyResolved)
+	}
+}
+
 func TestHarnessEngineFactoryRejectsMismatchedBindingBeforeConsumingTurnSpec(t *testing.T) {
 	owner := newHarnessEngine(newTurnExecutor(DefaultLoopPolicy()))
 	if err := registerAcceptedHarnessTurn(owner, "turn-binding-mismatch", HarnessTurnSpec{

@@ -57,7 +57,9 @@ func (s *InteractiveAppService) AnalyzeInteractiveContext(storyID, branchID, mes
 	novaDir := runtimeCfg.DataDir()
 	a.mu.RUnlock()
 
-	if layered, err := config.LoadLayeredWithStartupConfig(novaDir, workspace); err == nil {
+	if layered, err := config.LoadLayeredWithStartupConfigAt(
+		novaDir, workspace, config.ProjectConfigPath(runtimeCfg.ProjectStateDir),
+	); err == nil {
 		applyLayeredSettingsToConfig(&runtimeCfg, layered)
 	} else {
 		log.Printf("[interactive-agent-analysis] load interactive settings failed workspace=%s err=%v", workspace, err)
@@ -106,7 +108,9 @@ func (s *InteractiveAppService) AnalyzeInteractiveDirectorContext(storyID, branc
 	novaDir := runtimeCfg.DataDir()
 	a.mu.RUnlock()
 
-	if layered, err := config.LoadLayeredWithStartupConfig(novaDir, workspace); err == nil {
+	if layered, err := config.LoadLayeredWithStartupConfigAt(
+		novaDir, workspace, config.ProjectConfigPath(runtimeCfg.ProjectStateDir),
+	); err == nil {
 		applyLayeredSettingsToConfig(&runtimeCfg, layered)
 	} else {
 		log.Printf("[interactive-director-analysis] load interactive settings failed workspace=%s err=%v", workspace, err)

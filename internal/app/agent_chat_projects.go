@@ -10,7 +10,6 @@ import (
 	"time"
 
 	"denova/internal/agents/session"
-	"denova/internal/workspacepath"
 )
 
 // AgentChatProjectSessionsLimit bounds how many conversations are read per
@@ -32,8 +31,11 @@ type AgentChatSession struct {
 
 // AgentChatProject is one registered book with its conversations.
 type AgentChatProject struct {
-	Path string `json:"path"`
-	Name string `json:"name"`
+	ID     string        `json:"id"`
+	Type   ProjectType   `json:"type"`
+	Path   string        `json:"path"`
+	Name   string        `json:"name"`
+	Status ProjectStatus `json:"status"`
 	// Current is informational only: AgentChat never changes this foreground
 	// Writing selection when a project or conversation is opened.
 	Current  bool               `json:"current"`
@@ -45,7 +47,7 @@ type AgentChatProject struct {
 // AgentChatHistoryItem keeps project ownership explicit when conversations from the whole
 // library are searched together.
 type AgentChatHistoryItem struct {
-	Workspace   string           `json:"workspace"`
+	ProjectID   string           `json:"project_id"`
 	ProjectName string           `json:"project_name"`
 	Session     AgentChatSession `json:"session"`
 }
@@ -60,7 +62,7 @@ type AgentChatHistoryPage struct {
 
 // AgentChatHistoryQuery keeps project scope, search, and pagination explicit at the app boundary.
 type AgentChatHistoryQuery struct {
-	Workspace string
+	ProjectID string
 	Search    string
 	Offset    int
 	Limit     int
@@ -77,32 +79,36 @@ func (a *App) AgentChatProjects() []AgentChatProject {
 	currentWorkspace := a.workspace
 	a.mu.RUnlock()
 
-	books := a.Books()
+	records, err := a.Projects(false)
+	if err != nil {
+		log.Printf("[app/agent_chat_projects.go] listing projects failed err=%v", err)
+		return []AgentChatProject{}
+	}
 	runningBindings := a.agentChat().runningBindingKeys()
-	projects := make([]AgentChatProject, 0, len(books))
-	for _, record := range books {
+	projects := make([]AgentChatProject, 0, len(records))
+	for _, record := range records {
 		project := AgentChatProject{
-			Path: record.Path, Name: record.Name,
-			Current: lifecycleWorkspaceKey(record.Path) == lifecycleWorkspaceKey(currentWorkspace),
+			ID: record.ID, Type: record.Type, Path: record.WorkspacePath, Name: record.Name, Status: record.Status,
+			Current: record.Type == ProjectTypeBook && lifecycleWorkspaceKey(record.WorkspacePath) == lifecycleWorkspaceKey(currentWorkspace),
 		}
-		metas, err := readWorkspaceSessions(record.Path, "")
+		layout, layoutErr := a.projectRegistry.Layout(record)
+		if layoutErr != nil {
+			project.Error = layoutErr.Error()
+			projects = append(projects, project)
+			continue
+		}
+		metas, err := readProjectSessions(layout.SessionsDir(), "")
 		if err != nil {
-			log.Printf("[app/agent_chat_projects.go] reading sessions failed workspace=%q err=%v", record.Path, err)
+			log.Printf("[app/agent_chat_projects.go] reading sessions failed project_id=%s err=%v", record.ID, err)
 			project.Error = err.Error()
 			projects = append(projects, project)
 			continue
 		}
-		runningWorkspace := record.Path
-		if len(runningBindings) > 0 {
-			if canonical, canonicalErr := canonicalWorkspacePath(record.Path); canonicalErr == nil {
-				runningWorkspace = canonical
-			}
-		}
 		project.Total = len(metas)
-		metas = visibleAgentChatProjectSessions(metas, runningWorkspace, runningBindings)
+		metas = visibleAgentChatProjectSessions(metas, record.ID, runningBindings)
 		project.Sessions = make([]AgentChatSession, 0, len(metas))
 		for _, meta := range metas {
-			project.Sessions = append(project.Sessions, agentChatSessionFromMeta(meta, runningWorkspace, runningBindings))
+			project.Sessions = append(project.Sessions, agentChatSessionFromMeta(meta, record.ID, runningBindings))
 		}
 		projects = append(projects, project)
 	}
@@ -122,7 +128,7 @@ func (a *App) AgentChatProjects() []AgentChatProject {
 // the normal recent-session window.
 func visibleAgentChatProjectSessions(
 	metas []session.SessionMeta,
-	workspace string,
+	projectID string,
 	runningBindings map[string]struct{},
 ) []session.SessionMeta {
 	if len(metas) <= AgentChatProjectSessionsLimit {
@@ -130,31 +136,31 @@ func visibleAgentChatProjectSessions(
 	}
 	visible := append([]session.SessionMeta(nil), metas[:AgentChatProjectSessionsLimit]...)
 	for _, meta := range metas[AgentChatProjectSessionsLimit:] {
-		if agentChatSessionRunning(workspace, meta.ID, runningBindings) {
+		if agentChatSessionRunning(projectID, meta.ID, runningBindings) {
 			visible = append(visible, meta)
 		}
 	}
 	return visible
 }
 
-func agentChatSessionRunning(workspace, sessionID string, runningBindings map[string]struct{}) bool {
-	_, running := runningBindings[agentChatBindingKey(AgentChatBinding{Workspace: workspace, SessionID: sessionID})]
+func agentChatSessionRunning(projectID, sessionID string, runningBindings map[string]struct{}) bool {
+	_, running := runningBindings[agentChatBindingKey(AgentChatBinding{ProjectID: projectID, SessionID: sessionID})]
 	return running
 }
 
 func agentChatSessionFromMeta(
 	meta session.SessionMeta,
-	workspace string,
+	projectID string,
 	runningBindings map[string]struct{},
 ) AgentChatSession {
 	return AgentChatSession{
 		ID: meta.ID, Title: meta.Title, CreatedAt: meta.CreatedAt, UpdatedAt: meta.UpdatedAt,
-		MessageCount: meta.MessageCount, Running: agentChatSessionRunning(workspace, meta.ID, runningBindings),
+		MessageCount: meta.MessageCount, Running: agentChatSessionRunning(projectID, meta.ID, runningBindings),
 	}
 }
 
 // AgentChatHistory searches durable conversation metadata without switching the foreground
-// workspace. An optional workspace scope lets the history browser paginate one project at a time.
+// workspace. An optional stable Project ID lets the history browser paginate one project at a time.
 func (a *App) AgentChatHistory(query AgentChatHistoryQuery) AgentChatHistoryPage {
 	page := AgentChatHistoryPage{Items: []AgentChatHistoryItem{}, Offset: max(query.Offset, 0)}
 	if a == nil || query.Limit <= 0 {
@@ -162,28 +168,24 @@ func (a *App) AgentChatHistory(query AgentChatHistoryQuery) AgentChatHistoryPage
 	}
 	startedAt := time.Now()
 	normalizedQuery := strings.ToLower(strings.TrimSpace(query.Search))
-	workspaceKey := ""
-	if workspace := strings.TrimSpace(query.Workspace); workspace != "" {
-		workspaceKey = lifecycleWorkspaceKey(workspace)
-	}
+	projectID := strings.TrimSpace(query.ProjectID)
 	runningBindings := a.agentChat().runningBindingKeys()
 	items := make([]AgentChatHistoryItem, 0)
-	for _, record := range a.Books() {
-		if workspaceKey != "" && lifecycleWorkspaceKey(record.Path) != workspaceKey {
+	records, _ := a.Projects(false)
+	for _, record := range records {
+		if projectID != "" && record.ID != projectID {
 			continue
 		}
-		metas, err := readWorkspaceSessions(record.Path, "")
+		layout, layoutErr := a.projectRegistry.Layout(record)
+		if layoutErr != nil {
+			continue
+		}
+		metas, err := readProjectSessions(layout.SessionsDir(), "")
 		if err != nil {
-			log.Printf("[app/agent_chat_projects.go] reading history failed workspace=%q err=%v", record.Path, err)
+			log.Printf("[app/agent_chat_projects.go] reading history failed project_id=%s err=%v", record.ID, err)
 			continue
 		}
-		runningWorkspace := record.Path
-		if len(runningBindings) > 0 {
-			if canonical, canonicalErr := canonicalWorkspacePath(record.Path); canonicalErr == nil {
-				runningWorkspace = canonical
-			}
-		}
-		projectSearchText := strings.ToLower(record.Name + " " + record.Path)
+		projectSearchText := strings.ToLower(record.Name + " " + record.WorkspacePath)
 		for _, meta := range metas {
 			if normalizedQuery != "" {
 				sessionSearchText := strings.ToLower(meta.Title + " " + meta.ID)
@@ -192,8 +194,8 @@ func (a *App) AgentChatHistory(query AgentChatHistoryQuery) AgentChatHistoryPage
 				}
 			}
 			items = append(items, AgentChatHistoryItem{
-				Workspace: record.Path, ProjectName: record.Name,
-				Session: agentChatSessionFromMeta(meta, runningWorkspace, runningBindings),
+				ProjectID: record.ID, ProjectName: record.Name,
+				Session: agentChatSessionFromMeta(meta, record.ID, runningBindings),
 			})
 		}
 	}
@@ -201,8 +203,8 @@ func (a *App) AgentChatHistory(query AgentChatHistoryQuery) AgentChatHistoryPage
 		if !items[i].Session.UpdatedAt.Equal(items[j].Session.UpdatedAt) {
 			return items[i].Session.UpdatedAt.After(items[j].Session.UpdatedAt)
 		}
-		if items[i].Workspace != items[j].Workspace {
-			return items[i].Workspace < items[j].Workspace
+		if items[i].ProjectID != items[j].ProjectID {
+			return items[i].ProjectID < items[j].ProjectID
 		}
 		return items[i].Session.ID < items[j].Session.ID
 	})
@@ -220,14 +222,14 @@ func (a *App) AgentChatHistory(query AgentChatHistoryQuery) AgentChatHistoryPage
 	return page
 }
 
-func readWorkspaceSessions(workspace, activeID string) ([]session.SessionMeta, error) {
-	store, err := session.NewStore(workspacepath.Path(workspace, "sessions"))
+func readProjectSessions(sessionsDir, activeID string) ([]session.SessionMeta, error) {
+	store, err := session.NewStore(sessionsDir)
 	if err != nil {
 		return nil, err
 	}
 	defer func() {
 		if closeErr := store.Close(); closeErr != nil {
-			log.Printf("[app/agent_chat_projects.go] closing session store failed workspace=%q err=%v", workspace, closeErr)
+			log.Printf("[app/agent_chat_projects.go] closing session store failed sessions_dir=%q err=%v", sessionsDir, closeErr)
 		}
 	}()
 	metas, err := listUserSessions(store, activeID)
@@ -240,12 +242,12 @@ func readWorkspaceSessions(workspace, activeID string) ([]session.SessionMeta, e
 
 // CreateProjectSession creates a conversation without selecting it in the
 // foreground Writing workspace.
-func (a *App) CreateProjectSession(workspace, title string) (AgentChatSession, error) {
-	canonical, err := a.canonicalAgentChatWorkspace(workspace)
+func (a *App) CreateProjectSession(projectID, title string) (AgentChatSession, error) {
+	binding, err := a.agentChat().resolveBinding(AgentChatBinding{ProjectID: projectID, SessionID: "draft"})
 	if err != nil {
 		return AgentChatSession{}, err
 	}
-	project, err := a.agentChat().projectRuntime(context.Background(), canonical)
+	project, err := a.agentChat().projectRuntime(context.Background(), binding.ProjectID)
 	if err != nil {
 		return AgentChatSession{}, err
 	}
@@ -253,19 +255,19 @@ func (a *App) CreateProjectSession(workspace, title string) (AgentChatSession, e
 	if err != nil {
 		return AgentChatSession{}, err
 	}
-	log.Printf("[app/agent_chat_projects.go] created project session workspace=%q session=%s", canonical, sess.ID)
+	log.Printf("[app/agent_chat_projects.go] created project session project_id=%s workspace=%q session=%s", binding.ProjectID, binding.Workspace, sess.ID)
 	return AgentChatSession{
 		ID: sess.ID, Title: sess.Title(), CreatedAt: sess.CreatedAt, UpdatedAt: sess.UpdatedAt,
 		MessageCount: sess.MessageCount(),
 	}, nil
 }
 
-func (a *App) RenameProjectSession(workspace, sessionID, title string) error {
-	canonical, err := a.canonicalAgentChatWorkspace(workspace)
+func (a *App) RenameProjectSession(projectID, sessionID, title string) error {
+	binding, err := a.agentChat().resolveBinding(AgentChatBinding{ProjectID: projectID, SessionID: sessionID})
 	if err != nil {
 		return err
 	}
-	project, err := a.agentChat().projectRuntime(context.Background(), canonical)
+	project, err := a.agentChat().projectRuntime(context.Background(), binding.ProjectID)
 	if err != nil {
 		return err
 	}
@@ -274,33 +276,31 @@ func (a *App) RenameProjectSession(workspace, sessionID, title string) error {
 
 // DeleteProjectSession refuses to remove a running conversation and never
 // re-points the foreground Writing session.
-func (a *App) DeleteProjectSession(workspace, sessionID string) error {
-	canonical, err := a.canonicalAgentChatWorkspace(workspace)
+func (a *App) DeleteProjectSession(projectID, sessionID string) error {
+	binding, err := a.agentChat().resolveBinding(AgentChatBinding{ProjectID: projectID, SessionID: strings.TrimSpace(sessionID)})
 	if err != nil {
 		return err
 	}
-	binding := AgentChatBinding{Workspace: canonical, SessionID: strings.TrimSpace(sessionID)}
 	service := a.agentChat()
 	if err := service.requireIdle(binding); err != nil {
 		return err
 	}
-	project, err := service.projectRuntime(context.Background(), canonical)
+	project, err := service.projectRuntime(context.Background(), binding.ProjectID)
 	if err != nil {
 		return err
 	}
-	if err := project.chatService.CloseAgentChatSessionBindings(context.Background(), canonical, binding.SessionID); err != nil {
+	if err := project.chatService.CloseProjectSessionBindings(context.Background(), binding.ProjectID, binding.SessionID); err != nil {
 		return err
 	}
 	if err := project.store.Delete(binding.SessionID); err != nil {
 		return err
 	}
-	service.starts.releaseConfigManagerScope(canonical, binding.SessionID)
+	service.starts.releaseConfigManagerScope(binding.ProjectID, binding.SessionID)
 	return nil
 }
 
-// canonicalAgentChatWorkspace accepts only projects registered in the user's
-// library. Explicit project binding therefore cannot become arbitrary
-// filesystem access.
+// canonicalAgentChatWorkspace is retained for the temporary path-based client
+// migration. New callers must bind by stable project ID.
 func (a *App) canonicalAgentChatWorkspace(workspace string) (string, error) {
 	if a == nil {
 		return "", ErrNoWorkspace
@@ -309,17 +309,11 @@ func (a *App) canonicalAgentChatWorkspace(workspace string) (string, error) {
 	if workspace == "" {
 		return "", fmt.Errorf("AgentChat project workspace is required")
 	}
-	requested, err := canonicalWorkspacePath(workspace)
+	_, layout, err := a.resolveProjectByWorkspace(workspace)
 	if err != nil {
-		return "", err
+		return "", fmt.Errorf("AgentChat project is not registered: %s: %w", workspace, err)
 	}
-	for _, record := range a.Books() {
-		candidate, candidateErr := canonicalWorkspacePath(record.Path)
-		if candidateErr == nil && candidate == requested {
-			return requested, nil
-		}
-	}
-	return "", fmt.Errorf("AgentChat project is not registered: %s", workspace)
+	return layout.ContentRoot, nil
 }
 
 func canonicalWorkspacePath(path string) (string, error) {

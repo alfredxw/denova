@@ -9,13 +9,7 @@ import '@xterm/xterm/css/xterm.css'
 import { Button } from '@/components/ui/button'
 import { InlineErrorNotice } from '@/components/common/inline-error-notice'
 import type { AgentChatTerminalTab } from '../types'
-import {
-  closeTerminalSession,
-  createTerminalSession,
-  getTerminalRuntimeStatus,
-  terminalAttachURL,
-  type TerminalSessionInfo,
-} from './api'
+import { closeTerminalSession, createTerminalSession, getTerminalRuntimeStatus, terminalAttachURL, type TerminalSessionInfo } from './api'
 import { TerminalConnection } from './connection'
 import { terminalTheme } from './theme'
 
@@ -27,8 +21,7 @@ export type AgentChatTerminalStatus = 'connecting' | 'ready' | 'exited' | 'error
  * `ctx.font`, and a CSS custom property cannot be resolved in that context — the whole
  * declaration would be dropped and every cell would fall back to the canvas default font.
  */
-const TERMINAL_FONT_FAMILY =
-  'ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, "Liberation Mono", monospace'
+const TERMINAL_FONT_FAMILY = 'ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, "Liberation Mono", monospace'
 
 interface TerminalTabViewProps {
   tab: AgentChatTerminalTab
@@ -68,9 +61,12 @@ export function TerminalTabView({ tab, active, onSessionEstablished, onTitleChan
     onStatusChange(tab.id, status)
   }, [onStatusChange, status, tab.id])
 
-  useEffect(() => () => {
-    onStatusChange(tab.id, null)
-  }, [onStatusChange, tab.id])
+  useEffect(
+    () => () => {
+      onStatusChange(tab.id, null)
+    },
+    [onStatusChange, tab.id],
+  )
 
   const fitTerminal = useCallback(() => {
     const terminal = terminalRef.current
@@ -161,8 +157,7 @@ export function TerminalTabView({ tab, active, onSessionEstablished, onTitleChan
     fitTerminal()
 
     const attach = async () => {
-      const pending = resolvingRef.current
-        ?? resolveSession(tab, establishedRef.current, terminal.cols, terminal.rows)
+      const pending = resolvingRef.current ?? resolveSession(tab, establishedRef.current, terminal.cols, terminal.rows)
       resolvingRef.current = pending
       let session: TerminalSessionInfo
       try {
@@ -262,13 +257,7 @@ export function TerminalTabView({ tab, active, onSessionEstablished, onTitleChan
   return (
     <div className="flex h-full min-h-0 flex-col bg-[var(--nova-bg)]">
       <div ref={containerRef} className="min-h-0 flex-1 overflow-hidden px-2 pt-2" />
-      <TerminalStatusBar
-        status={status}
-        detail={statusDetail}
-        label={terminalTabLabel(tab, t)}
-        onRestart={restart}
-        onReattach={reattach}
-      />
+      <TerminalStatusBar status={status} detail={statusDetail} label={terminalTabLabel(tab, t)} onRestart={restart} onReattach={reattach} />
     </div>
   )
 }
@@ -315,11 +304,7 @@ function TerminalStatusBar({
   if (status === 'error') {
     return (
       <div className="flex shrink-0 items-center gap-2 px-2 pb-2 pt-1">
-        <InlineErrorNotice
-          className="min-w-0 flex-1"
-          message={detail || t('agentChat.terminal.error')}
-          title={t('agentChat.terminal.errorTitle')}
-        />
+        <InlineErrorNotice className="min-w-0 flex-1" message={detail || t('agentChat.terminal.error')} title={t('agentChat.terminal.errorTitle')} />
         <Button type="button" variant="outline" size="xs" className="shrink-0" onClick={onReattach}>
           {t('agentChat.terminal.reattach')}
         </Button>
@@ -354,12 +339,7 @@ function TerminalStatusBar({
  * a session this tab already owns, a session persisted from a previous page load,
  * and finally a brand new pty.
  */
-async function resolveSession(
-  tab: AgentChatTerminalTab,
-  established: TerminalSessionInfo | null,
-  cols: number,
-  rows: number,
-): Promise<TerminalSessionInfo> {
+async function resolveSession(tab: AgentChatTerminalTab, established: TerminalSessionInfo | null, cols: number, rows: number): Promise<TerminalSessionInfo> {
   if (established) return established
   if (tab.terminalSessionId) {
     const runtime = await getTerminalRuntimeStatus()
@@ -368,11 +348,10 @@ async function resolveSession(
   }
   // Configured profiles are deliberately resolved by the backend from user settings. `custom`
   // remains only so terminal tabs persisted by earlier beta builds can still be restored.
-  const legacyCustomLaunch = tab.profileId === 'custom'
-    ? { command: tab.command || '', args: [] }
-    : {}
+  const legacyCustomLaunch = tab.profileId === 'custom' ? { command: tab.command || '', args: [] } : {}
   return createTerminalSession({
     owner_tab_id: tab.id,
+    project_id: tab.projectId,
     workspace: tab.workspace,
     profile_id: tab.profileId,
     title: tab.title,

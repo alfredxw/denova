@@ -101,6 +101,36 @@ func (s *ChatService) CloseAgentChatSessionBindings(ctx context.Context, workspa
 	})
 }
 
+// CloseProjectSessionBindings evicts one stable Project conversation. The
+// project ID remains the durable owner even when its content path is relinked.
+func (s *ChatService) CloseProjectSessionBindings(ctx context.Context, projectID, sessionID string) error {
+	projectID = strings.TrimSpace(projectID)
+	sessionID = strings.TrimSpace(sessionID)
+	if projectID == "" || sessionID == "" {
+		return runstate.ErrInvalidBinding
+	}
+	return s.closeRuntimeBindings(ctx, runstate.BindingSelector{
+		Kind: runtimeBindingKindProject, Profile: runtimeBindingProfileAgentChat,
+		Key: projectID + ":" + sessionID,
+		Labels: map[string]string{
+			runtimeBindingLabelProject: projectID,
+			runtimeBindingLabelSession: sessionID,
+		},
+	})
+}
+
+// CloseProjectBindings evicts all AgentChat runtime actors owned by a Project.
+func (s *ChatService) CloseProjectBindings(ctx context.Context, projectID string) error {
+	projectID = strings.TrimSpace(projectID)
+	if projectID == "" {
+		return runstate.ErrInvalidBinding
+	}
+	return s.closeRuntimeBindings(ctx, runstate.BindingSelector{
+		Kind: runtimeBindingKindProject, Profile: runtimeBindingProfileAgentChat,
+		Labels: map[string]string{runtimeBindingLabelProject: projectID},
+	})
+}
+
 // CloseSessionBindings evicts one session-backed Agent binding.
 func (s *ChatService) CloseSessionBindings(ctx context.Context, agentKind, workspace, sessionID string) error {
 	selector, err := runtimeSessionBindingSelector(agentKind, workspace, sessionID)

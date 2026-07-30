@@ -220,6 +220,7 @@ func ChatRequestSemanticFingerprint(req ChatRequest) string {
 
 type harnessTurnOptionsDescriptor struct {
 	AgentKind          string `json:"agent_kind"`
+	ProjectID          string `json:"project_id,omitempty"`
 	RootAgentName      string `json:"root_agent_name,omitempty"`
 	TaskID             string `json:"task_id,omitempty"`
 	AutomationTaskID   string `json:"automation_task_id,omitempty"`
@@ -239,8 +240,9 @@ type harnessTurnOptionsDescriptor struct {
 
 func describeHarnessTurnOptions(options RunOptions) harnessTurnOptionsDescriptor {
 	return harnessTurnOptionsDescriptor{
-		AgentKind: options.AgentKind, RootAgentName: options.RootAgentName,
-		TaskID: options.TaskID, AutomationTaskID: options.AutomationTaskID,
+		AgentKind: options.AgentKind, ProjectID: options.ProjectID,
+		RootAgentName: options.RootAgentName,
+		TaskID:        options.TaskID, AutomationTaskID: options.AutomationTaskID,
 		SessionID: options.SessionID, ReviewThreadID: options.ReviewThreadID,
 		StoryID: options.StoryID, BranchID: options.BranchID, TurnID: options.TurnID,
 		MaintenanceTask: options.MaintenanceTask, Workspace: options.Workspace,
@@ -272,6 +274,7 @@ func harnessTurnRuntimeSemanticFingerprint(spec HarnessTurnSpec) string {
 		workspace = spec.BookService.Workspace()
 	}
 	options := describeHarnessTurnOptions(spec.Options)
+	options.ProjectID = strings.TrimSpace(options.ProjectID)
 	options.TaskID = ""
 	options.ReviewThreadID = ""
 	options.IdleTimeout = 0

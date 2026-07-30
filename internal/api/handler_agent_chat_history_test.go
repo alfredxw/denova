@@ -18,6 +18,27 @@ func TestAgentChatHistorySearchAndPagination(t *testing.T) {
 	}
 	decodeResponse(t, createBook.Body.Bytes(), &createdBook)
 	workspace := createdBook.Workspace
+	projects := performJSONRequest(t, server, http.MethodGet, "/api/agent-chat/projects", nil)
+	if projects.Code != http.StatusOK {
+		t.Fatalf("projects status = %d body=%s", projects.Code, projects.Body.String())
+	}
+	var projectList struct {
+		Projects []struct {
+			ID   string `json:"id"`
+			Path string `json:"path"`
+		} `json:"projects"`
+	}
+	decodeResponse(t, projects.Body.Bytes(), &projectList)
+	projectID := ""
+	for _, project := range projectList.Projects {
+		if project.Path == workspace {
+			projectID = project.ID
+			break
+		}
+	}
+	if projectID == "" {
+		t.Fatalf("created workspace %q was not registered as a project: %#v", workspace, projectList)
+	}
 	created, err := application.CreateProjectSession(workspace, "Needle conversation")
 	if err != nil {
 		t.Fatal(err)
@@ -32,8 +53,9 @@ func TestAgentChatHistorySearchAndPagination(t *testing.T) {
 	}
 	var body struct {
 		Items []struct {
-			Workspace string `json:"workspace"`
-			Session   struct {
+			ProjectID   string `json:"project_id"`
+			ProjectName string `json:"project_name"`
+			Session     struct {
 				ID    string `json:"id"`
 				Title string `json:"title"`
 			} `json:"session"`
@@ -46,10 +68,10 @@ func TestAgentChatHistorySearchAndPagination(t *testing.T) {
 	if body.Total != 1 || len(body.Items) != 1 || body.Items[0].Session.ID != created.ID {
 		t.Fatalf("unexpected history response: %#v", body)
 	}
-	if body.Items[0].Workspace == "" || body.Items[0].Session.Title != "Needle conversation" || body.Offset != 0 || body.HasMore {
+	if body.Items[0].ProjectID != projectID || body.Items[0].ProjectName != "History Book" ||
+		body.Items[0].Session.Title != "Needle conversation" || body.Offset != 0 || body.HasMore {
 		t.Fatalf("unexpected history item metadata: %#v", body)
 	}
-	historyWorkspace := body.Items[0].Workspace
 
 	otherBook := performJSONRequest(t, server, http.MethodPost, "/api/books/create", map[string]string{"title": "Other History Book"})
 	if otherBook.Code != http.StatusOK {
@@ -73,12 +95,12 @@ func TestAgentChatHistorySearchAndPagination(t *testing.T) {
 	}
 
 	filtered := performJSONRequest(t, server, http.MethodGet,
-		"/api/agent-chat/history?query=conversation&workspace="+url.QueryEscape(historyWorkspace)+"&limit=1", nil)
+		"/api/agent-chat/history?query=conversation&project_id="+url.QueryEscape(projectID)+"&limit=1", nil)
 	if filtered.Code != http.StatusOK {
 		t.Fatalf("filtered history status = %d body=%s", filtered.Code, filtered.Body.String())
 	}
 	decodeResponse(t, filtered.Body.Bytes(), &body)
-	if body.Total != 2 || len(body.Items) != 1 || body.Items[0].Workspace != historyWorkspace || !body.HasMore {
+	if body.Total != 2 || len(body.Items) != 1 || body.Items[0].ProjectID != projectID || !body.HasMore {
 		t.Fatalf("history was not filtered to the requested project: %#v", body)
 	}
 

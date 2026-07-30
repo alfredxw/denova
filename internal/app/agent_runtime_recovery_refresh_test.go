@@ -11,7 +11,6 @@ import (
 	"denova/config"
 	agents "denova/internal/agents"
 	"denova/internal/agents/session"
-	"denova/internal/book"
 )
 
 func TestRecoveredStructuralSessionRefreshRemainsRetryableAfterTerminal(t *testing.T) {
@@ -131,7 +130,12 @@ func TestRecoveredStructuralRefreshKeepsOneObservableTaskUntilExactRetry(t *test
 
 	// Append through another Session instance, as a cold structural restorer
 	// does. The selected in-memory Session intentionally remains stale.
-	externalStore, err := session.NewStore(book.NewState(selectedWorkspace).SessionDir())
+	layout, err := application.projectLayoutForWorkspace(selectedWorkspace)
+	if err != nil {
+		recovery.Close()
+		t.Fatal(err)
+	}
+	externalStore, err := session.NewStore(layout.SessionsDir())
 	if err != nil {
 		recovery.Close()
 		t.Fatal(err)
@@ -443,7 +447,11 @@ func TestFinishedRecoveryTaskCannotBypassPendingSessionRefresh(t *testing.T) {
 		OperationID: "finished-task-operation",
 	})
 
-	selectedPath := filepath.Join(book.NewState(selectedWorkspace).SessionDir(), selected.ID+".jsonl")
+	layout, err := application.projectLayoutForWorkspace(selectedWorkspace)
+	if err != nil {
+		t.Fatal(err)
+	}
+	selectedPath := filepath.Join(layout.SessionsDir(), selected.ID+".jsonl")
 	unavailablePath := selectedPath + ".temporarily-unavailable"
 	if err := os.Rename(selectedPath, unavailablePath); err != nil {
 		t.Fatal(err)

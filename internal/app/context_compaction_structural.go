@@ -175,7 +175,7 @@ func (s *ChatAppService) executeWritingContextCompaction(ctx context.Context, re
 		})
 	result, err := runtime.chatService.ExecuteContextStructuralOperation(ctx, agents.ContextStructuralSpec{
 		CommandID: commandID, Action: agents.ContextStructuralCompact,
-		Ref: ref, Options: agents.RunOptions{AgentKind: agents.AgentKindIDE, Workspace: runtime.workspace, SessionID: runtime.sess.ID, Mode: "ide"},
+		Ref: ref, Options: agents.RunOptions{AgentKind: agents.AgentKindIDE, StateRoot: runtime.projectState, Workspace: runtime.workspace, SessionID: runtime.sess.ID, Mode: "ide"},
 		Operation: operation, RestorePlan: &plan,
 	})
 	if err != nil {
@@ -288,7 +288,7 @@ func (s *ChatAppService) executeWritingContextCompactionRemoval(ctx context.Cont
 		})
 	result, err := fence.chat.ExecuteContextStructuralOperation(ctx, agents.ContextStructuralSpec{
 		CommandID: commandID, Action: agents.ContextStructuralRemove,
-		Ref: ref, Options: agents.RunOptions{AgentKind: agents.AgentKindIDE, Workspace: fence.workspace, SessionID: sess.ID, Mode: "ide"},
+		Ref: ref, Options: agents.RunOptions{AgentKind: agents.AgentKindIDE, StateRoot: fence.stateRoot, Workspace: fence.workspace, SessionID: sess.ID, Mode: "ide"},
 		Operation: operation, RestorePlan: &plan,
 	})
 	return result.Removed, err

@@ -83,3 +83,16 @@ func TestAppRejectsQueuedTurnRecoveryForUnsupportedProfile(t *testing.T) {
 		t.Fatalf("unsupported profile restore error = %v", err)
 	}
 }
+
+func TestAppRoutesGeneralQueuedTurnRecoveryToAgentChat(t *testing.T) {
+	application := &App{}
+	spec, err := application.restoreHarnessTurn(context.Background(), agents.HarnessTurnRestoreRequest{
+		Binding: agents.RuntimeBinding{
+			AgentKind: agents.AgentKindGeneral, ProjectID: "project-1",
+			Mode: "agent_chat", SessionID: "session-1",
+		},
+	})
+	if err != nil || spec.Prepare == nil {
+		t.Fatalf("General queued turn restore spec = %#v err=%v", spec, err)
+	}
+}

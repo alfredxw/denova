@@ -20,6 +20,7 @@ func TestAutomationCheckCreatesRetryableInboxWhenAutoRunCannotStart(t *testing.T
 	root := t.TempDir()
 	workspace := filepath.Join(root, "workspace")
 	app := &App{cfg: &config.Config{NovaDir: filepath.Join(root, "nova"), Workspace: workspace}, workspace: workspace}
+	registerAutomationProjectForTest(t, app, workspace)
 	app.ensureServices()
 
 	now := time.Now()
@@ -65,6 +66,7 @@ func TestAutomationCheckSkipsInboxForSilentScheduleTrigger(t *testing.T) {
 	root := t.TempDir()
 	workspace := filepath.Join(root, "workspace")
 	app := &App{cfg: &config.Config{NovaDir: filepath.Join(root, "nova"), Workspace: workspace}, workspace: workspace}
+	registerAutomationProjectForTest(t, app, workspace)
 	app.ensureServices()
 
 	now := time.Now()
@@ -114,6 +116,7 @@ func TestAutomationChapterBatchTriggerCreatesInboxAtBatchBoundaries(t *testing.T
 		writeTestChapter(t, workspace, i)
 	}
 	app := &App{cfg: &config.Config{NovaDir: filepath.Join(root, "nova"), Workspace: workspace}, workspace: workspace}
+	registerAutomationProjectForTest(t, app, workspace)
 	app.ensureServices()
 	t.Cleanup(app.Close)
 	app.bookService = book.NewService(workspace)
@@ -226,6 +229,7 @@ func TestAutomationMutationCheckRunsOnlyContentTriggersForChapterWrites(t *testi
 	}
 	writeTestChapter(t, workspace, 1)
 	app := &App{cfg: &config.Config{NovaDir: filepath.Join(root, "nova"), Workspace: workspace}, workspace: workspace}
+	registerAutomationProjectForTest(t, app, workspace)
 	app.ensureServices()
 	app.bookService = book.NewService(workspace)
 
@@ -301,6 +305,7 @@ func TestAutomationMutationCallbackDoesNotEvaluateBeforeDurableHostEffect(t *tes
 	}
 	writeTestChapter(t, workspace, 1)
 	app := &App{cfg: &config.Config{NovaDir: filepath.Join(root, "nova"), Workspace: workspace}, workspace: workspace}
+	registerAutomationProjectForTest(t, app, workspace)
 	app.ensureServices()
 	t.Cleanup(app.Close)
 	app.bookService = book.NewService(workspace)
@@ -399,6 +404,7 @@ func TestAutomationMutationChecksCoalesceRapidSavesWithoutDuplicateInbox(t *test
 		workspace:   workspace,
 		bookService: book.NewService(workspace),
 	}
+	registerAutomationProjectForTest(t, application, workspace)
 	application.ensureServices()
 	defer application.Close()
 	task, err := application.CreateAutomation(automation.Task{

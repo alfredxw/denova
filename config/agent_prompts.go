@@ -5,6 +5,7 @@ import "strings"
 // AgentPromptSettings 保存各类 Agent 的自定义系统提示。
 type AgentPromptSettings struct {
 	Default             AgentPromptOverride `toml:"default,omitempty" json:"default,omitempty"`
+	General             AgentPromptOverride `toml:"general,omitempty" json:"general,omitempty"`
 	IDE                 AgentPromptOverride `toml:"ide,omitempty" json:"ide,omitempty"`
 	InteractiveStory    AgentPromptOverride `toml:"interactive_story,omitempty" json:"interactive_story,omitempty"`
 	ConfigManager       AgentPromptOverride `toml:"config_manager,omitempty" json:"config_manager,omitempty"`
@@ -23,6 +24,7 @@ type AgentPromptOverride struct {
 
 type AgentPromptSourceSettings struct {
 	Default             AgentPromptSourceList `json:"default,omitempty"`
+	General             AgentPromptSourceList `json:"general,omitempty"`
 	IDE                 AgentPromptSourceList `json:"ide,omitempty"`
 	InteractiveStory    AgentPromptSourceList `json:"interactive_story,omitempty"`
 	ConfigManager       AgentPromptSourceList `json:"config_manager,omitempty"`
@@ -49,6 +51,7 @@ type AgentPromptSource struct {
 
 type AgentPromptBlockSettings struct {
 	Default             AgentPromptBlocks `json:"default,omitempty"`
+	General             AgentPromptBlocks `json:"general,omitempty"`
 	IDE                 AgentPromptBlocks `json:"ide,omitempty"`
 	InteractiveStory    AgentPromptBlocks `json:"interactive_story,omitempty"`
 	ConfigManager       AgentPromptBlocks `json:"config_manager,omitempty"`
@@ -74,6 +77,7 @@ type ResolvedAgentPromptSettings struct {
 func MergeAgentPromptSettings(parent, child AgentPromptSettings) AgentPromptSettings {
 	return AgentPromptSettings{
 		Default:             mergeAgentPromptOverride(parent.Default, child.Default),
+		General:             mergeAgentPromptOverride(parent.General, child.General),
 		IDE:                 mergeAgentPromptOverride(parent.IDE, child.IDE),
 		InteractiveStory:    mergeAgentPromptOverride(parent.InteractiveStory, child.InteractiveStory),
 		ConfigManager:       mergeAgentPromptOverride(parent.ConfigManager, child.ConfigManager),
@@ -117,6 +121,7 @@ func agentPromptOverrideFor(settings AgentPromptSettings, agentKind string) Agen
 
 func sanitizeAgentPromptSettings(settings AgentPromptSettings) AgentPromptSettings {
 	settings.Default = sanitizeAgentPromptOverride(settings.Default)
+	settings.General = sanitizeAgentPromptOverride(settings.General)
 	settings.IDE = sanitizeAgentPromptOverride(settings.IDE)
 	settings.InteractiveStory = sanitizeAgentPromptOverride(settings.InteractiveStory)
 	settings.ConfigManager = sanitizeAgentPromptOverride(settings.ConfigManager)

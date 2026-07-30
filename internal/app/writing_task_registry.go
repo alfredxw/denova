@@ -298,13 +298,17 @@ func (s *ChatAppService) replayDurableWritingStart(
 	chatService := a.chatService
 	sess := a.session
 	bookService := a.bookService
+	stateRoot := ""
+	if a.cfg != nil {
+		stateRoot = a.cfg.ProjectStateDir
+	}
 	a.mu.RUnlock()
 	if chatService == nil || sess == nil || sess.ID != sessionID {
 		return nil, false, nil
 	}
 	options := agents.RunOptions{
 		AgentKind: agents.AgentKindIDE, SessionID: sessionID,
-		Workspace: workspace, Mode: "ide",
+		StateRoot: stateRoot, Workspace: workspace, Mode: "ide",
 	}
 	status, err := chatService.RuntimeStatusProjection(ctx, options)
 	if err != nil {
@@ -316,7 +320,7 @@ func (s *ChatAppService) replayDurableWritingStart(
 
 	runtime := ideChatRuntime{
 		app: a, sess: sess, bookService: bookService,
-		chatService: chatService, workspace: workspace,
+		chatService: chatService, workspace: workspace, projectState: stateRoot,
 	}
 	var accepted *agents.AcceptedRun
 	task, err := NewDeferredRegisteredTask(func(task *Task) error {

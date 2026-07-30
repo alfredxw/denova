@@ -3,12 +3,15 @@ package app
 import (
 	"context"
 	"fmt"
+	"os"
+	"path/filepath"
 	"testing"
 
 	agents "denova/internal/agents"
 	"denova/internal/agents/session"
 	"denova/internal/book"
 	"denova/internal/interactive"
+	projectdomain "denova/internal/project"
 )
 
 func TestAppRestoresFrozenSessionCompactionForInactiveBinding(t *testing.T) {
@@ -81,6 +84,91 @@ func TestAppRestoresFrozenSessionCompactionForInactiveBinding(t *testing.T) {
 	_, reconciled, found, err := spec.Operation.Reconcile(context.Background())
 	if err != nil || !found || reconciled.Revision != receipt.Revision {
 		t.Fatalf("restored Session reconcile = %#v found=%t err=%v", reconciled, found, err)
+	}
+}
+
+func TestAppRestoresFrozenGeneralProjectCompactionInUserState(t *testing.T) {
+	dataDir := t.TempDir()
+	workspace := filepath.Join(t.TempDir(), "general-project")
+	if err := os.MkdirAll(workspace, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	registry := projectdomain.NewRegistry(dataDir)
+	record, err := registry.Add(workspace, projectdomain.TypeGeneral, "General")
+	if err != nil {
+		t.Fatal(err)
+	}
+	layout, err := registry.EnsureState(record)
+	if err != nil {
+		t.Fatal(err)
+	}
+	store, err := session.NewStore(layout.SessionsDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	sess, err := store.Create("General structural recovery")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := sess.Append(agents.UserMessage("canonical source")); err != nil {
+		t.Fatal(err)
+	}
+	cursor := sess.ContextCursor()
+	binding := agents.RuntimeBinding{
+		AgentKind: agents.AgentKindGeneral, ProjectID: record.ID,
+		Mode: "agent_chat", SessionID: sess.ID,
+	}
+	commandID := agents.CommandID("general-project-compact")
+	recordID := contextStructuralRecordID("cc", string(commandID))
+	result := agents.ContextCompactionResult{
+		Triggered: true, Phase: "mid_run", Epoch: 1, Summary: "bounded General checkpoint",
+		SourceMessageCount: 1, RetainedTurns: 2, TokensBefore: 120, TokensAfter: 24,
+	}
+	compaction := sessionCompactionRecord(recordID, agents.AgentKindGeneral, 0, 1, result)
+	ref := agents.ContextCompactionRef{
+		Source: "session.effective_messages", Purpose: "recover exact General checkpoint", Resource: sess.ID,
+		ExpectedRevision: fmt.Sprintf("session-context:%d", cursor.Revision),
+	}
+	plan, err := newContextStructuralRestorePlan(
+		agents.ContextStructuralDomainSession, agents.ContextStructuralCompact, binding, ref, recordID,
+		agents.ContextStructuralResult{Compaction: result}, compaction,
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	application := &App{projectRegistry: registry}
+	spec, err := application.restoreContextStructuralOperation(context.Background(), agents.HarnessStructuralRestoreRequest{
+		Binding: binding,
+		Snapshot: agents.StructuralOperation{
+			Binding: binding, CommandID: commandID, OperationID: "general-project-operation",
+			Cycle: 1, Kind: agents.StructuralCompactContext, Ref: ref,
+		},
+		Options: agents.RunOptions{
+			AgentKind: agents.AgentKindGeneral, ProjectID: record.ID,
+			SessionID: sess.ID, Mode: "agent_chat",
+		},
+		Plan: plan,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	identity := agents.ContextStructuralIdentity{
+		CommandID: commandID, OperationID: "general-project-operation", Cycle: 1,
+	}
+	intent, err := spec.Operation.Prepare(context.Background(), identity, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	receipt, err := spec.Operation.Commit(context.Background(), identity, intent)
+	if err != nil || receipt.Revision == "" {
+		t.Fatalf("General compaction receipt = %#v err=%v", receipt, err)
+	}
+	got, found, err := session.FindStoredContextCompaction(layout.SessionsDir(), sess.ID, recordID)
+	if err != nil || !found || !sameSessionContextCompactionMutation(got, compaction) {
+		t.Fatalf("restored General checkpoint = %#v found=%t err=%v", got, found, err)
+	}
+	if _, err := os.Stat(book.NewState(workspace).SessionDir()); !os.IsNotExist(err) {
+		t.Fatalf("General compaction wrote workspace-private state, err=%v", err)
 	}
 }
 

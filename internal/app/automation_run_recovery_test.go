@@ -94,6 +94,7 @@ func TestAutomationColdAcceptedRunStaysRecoveryRequiredUntilExplicitAbort(t *tes
 		t.Fatal(err)
 	}
 	t.Cleanup(application.Close)
+	store = appAutomationStoreForTest(t, application, workspace)
 	active := waitForAutomationActiveRun(t, application, runID)
 	if !active.Run.RuntimeRecoveryRequired || active.Run.RuntimeOperationID != string(operationID) || active.Run.RuntimeCommandID != commandID {
 		t.Fatalf("cold active projection = %#v", active)
@@ -167,6 +168,7 @@ func TestAutomationStartupScanFinalizesTerminalRuntimeEffectsExactlyOnce(t *test
 		if openErr != nil {
 			t.Fatal(openErr)
 		}
+		store = appAutomationStoreForTest(t, application, workspace)
 		waitForAutomationRunStatus(t, store, runID, automation.RunStatusSuccess)
 		application.Close()
 	}
@@ -257,6 +259,7 @@ func TestAutomationColdFollowUpPublishesAndAbortsCurrentOperation(t *testing.T) 
 		t.Fatal(err)
 	}
 	t.Cleanup(application.Close)
+	store = appAutomationStoreForTest(t, application, workspace)
 	active := waitForAutomationActiveRun(t, application, runID)
 	if !active.Run.RuntimeRecoveryRequired || active.Run.RuntimeCommandID != currentCommandID || active.Run.RuntimeOperationID != string(currentOperationID) {
 		t.Fatalf("follow-up active projection = %#v", active)
@@ -340,6 +343,7 @@ func TestAutomationPendingFollowUpIntentRecoversActiveSuccessorAfterCrash(t *tes
 		t.Fatal(err)
 	}
 	t.Cleanup(application.Close)
+	store = appAutomationStoreForTest(t, application, workspace)
 	active := waitForAutomationActiveRun(t, application, runID)
 	if active.Run.PendingRuntimeCommandID != "" || active.Run.RuntimeCommandID != successorCommandID ||
 		active.Run.RuntimeOperationID != string(successorOperationID) || !active.Run.RuntimeRecoveryRequired {

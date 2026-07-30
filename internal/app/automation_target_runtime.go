@@ -27,10 +27,12 @@ func (s *AutomationAppService) acquireTargetRuntime(ctx context.Context, target 
 	if target.Kind == automation.TargetKindUser {
 		operation, err = s.app.acquireRootOperation(ctx)
 	} else {
-		workspace := canonicalAutomationWorkspace(target.Workspace)
-		if workspace == "" {
-			return nil, nil, fmt.Errorf("automation workspace target is required")
+		resolved, resolveErr := s.resolveAutomationProjectTarget(target)
+		if resolveErr != nil {
+			return nil, nil, resolveErr
 		}
+		target = resolved
+		workspace := canonicalAutomationWorkspace(resolved.Workspace)
 		operation, err = s.app.acquireWorkspaceOperation(ctx, workspace, false)
 	}
 	if err != nil {
@@ -42,6 +44,25 @@ func (s *AutomationAppService) acquireTargetRuntime(ctx context.Context, target 
 		return nil, nil, err
 	}
 	return snapshot, operation, nil
+}
+
+// resolveAutomationProjectTarget follows the stable Project ID first and uses
+// the stored path only for legacy definitions written before Project existed.
+func (s *AutomationAppService) resolveAutomationProjectTarget(target automation.ExecutionTarget) (automation.ExecutionTarget, error) {
+	if s == nil || s.app == nil {
+		return automation.ExecutionTarget{}, fmt.Errorf("automation app is unavailable")
+	}
+	if projectID := strings.TrimSpace(target.WorkspaceID); projectID != "" {
+		if record, _, err := s.app.resolveProject(projectID, true); err == nil {
+			return automation.ExecutionTarget{Kind: automation.TargetKindWorkspace, WorkspaceID: record.ID, Workspace: record.WorkspacePath}, nil
+		}
+	}
+	record, layout, err := s.app.resolveProjectByWorkspace(target.Workspace)
+	if err != nil {
+		return automation.ExecutionTarget{}, fmt.Errorf("resolve automation project: %w", err)
+	}
+	_ = layout
+	return automation.ExecutionTarget{Kind: automation.TargetKindWorkspace, WorkspaceID: record.ID, Workspace: record.WorkspacePath}, nil
 }
 
 // automationSnapshotForTarget resolves an execution context without changing the
@@ -59,9 +80,17 @@ func (s *AutomationAppService) automationSnapshotForTarget(ctx context.Context, 
 	if workspace == "" {
 		return nil, fmt.Errorf("automation workspace target is required")
 	}
-	if current := s.app.automationSnapshot(); current != nil && canonicalAutomationWorkspace(current.workspace) == workspace {
+	if current := s.app.automationSnapshot(); current != nil && (current.projectID == strings.TrimSpace(target.WorkspaceID) || canonicalAutomationWorkspace(current.workspace) == workspace) {
 		return current, nil
 	}
+	record, layout, err := s.app.resolveProject(strings.TrimSpace(target.WorkspaceID), true)
+	if err != nil {
+		record, layout, err = s.app.resolveProjectByWorkspace(workspace)
+		if err != nil {
+			return nil, fmt.Errorf("resolve automation project: %w", err)
+		}
+	}
+	workspace = canonicalAutomationWorkspace(record.WorkspacePath)
 
 	s.app.mu.RLock()
 	baseCfg := config.Config{}
@@ -71,16 +100,24 @@ func (s *AutomationAppService) automationSnapshotForTarget(ctx context.Context, 
 	chatService := s.app.chatService
 	s.app.mu.RUnlock()
 	baseCfg.Workspace = workspace
+	baseCfg.ProjectID = record.ID
+	baseCfg.ProjectStateDir = layout.StateRoot
 	applyAutomationLayeredConfig(&baseCfg, baseCfg.DataDir(), workspace)
-	state := book.NewState(workspace)
-	if err := state.InitWorkspace(); err != nil {
-		return nil, fmt.Errorf("initialize automation workspace %s: %w", workspace, err)
+	var state *book.State
+	if record.Type == ProjectTypeBook {
+		state = book.NewState(workspace)
+		if err := state.InitWorkspace(); err != nil {
+			return nil, fmt.Errorf("initialize automation workspace %s: %w", workspace, err)
+		}
 	}
-	sessionStore, err := session.NewStore(state.SessionDir())
+	sessionStore, err := session.NewStore(layout.SessionsDir())
 	if err != nil {
 		return nil, fmt.Errorf("open automation sessions for %s: %w", workspace, err)
 	}
 	return &automationWorkspaceSnapshot{
+		projectID:    record.ID,
+		projectType:  record.Type,
+		stateRoot:    layout.StateRoot,
 		workspace:    workspace,
 		novaDir:      baseCfg.DataDir(),
 		cfg:          baseCfg,

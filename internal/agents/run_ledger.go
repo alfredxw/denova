@@ -65,7 +65,11 @@ func newRunLedgerWithOptions(workspace string, policy RunLedgerPolicy, options R
 	id := newRunLedgerID()
 	dir := filepath.Join(workspace, filepath.FromSlash(policy.Directory))
 	if policy.Directory == defaultRunLedgerDirectory {
-		dir = workspacepath.Path(workspace, "runs")
+		if strings.TrimSpace(options.StateRoot) != "" {
+			dir = filepath.Join(options.StateRoot, "runs")
+		} else {
+			dir = workspacepath.Path(workspace, "runs")
+		}
 	}
 	if err := os.MkdirAll(dir, 0o700); err != nil {
 		return nil, fmt.Errorf("create run ledger dir: %w", err)
@@ -85,6 +89,7 @@ func newRunLedgerWithOptions(workspace string, policy RunLedgerPolicy, options R
 	ledger := &RunLedger{id: id, path: path, file: file}
 	if err := ledger.Record("run_created", map[string]any{
 		"path":             path,
+		"project_id":       options.ProjectID,
 		"task_id":          options.TaskID,
 		"agent_kind":       options.AgentKind,
 		"session_id":       options.SessionID,

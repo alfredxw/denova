@@ -79,11 +79,13 @@ type agentConfigSubAgentIndexRow struct {
 func loadAgentConfigLayered(cfg *config.Config) (config.LayeredSettings, error) {
 	novaDir := ""
 	workspace := ""
+	projectConfigPath := ""
 	if cfg != nil {
 		novaDir = cfg.DataDir()
 		workspace = cfg.Workspace
+		projectConfigPath = config.ProjectConfigPath(cfg.ProjectStateDir)
 	}
-	layered, err := config.LoadLayeredWithStartupConfig(novaDir, workspace)
+	layered, err := config.LoadLayeredWithStartupConfigAt(novaDir, workspace, projectConfigPath)
 	if err != nil {
 		return config.LayeredSettings{}, fmt.Errorf("读取 Agent 配置失败: %w", err)
 	}
@@ -101,6 +103,9 @@ func writableAgentConfigPath(cfg *config.Config, scope string) (string, error) {
 	case "user":
 		return config.UserConfigPath(novaDir), nil
 	case "workspace":
+		if cfg != nil && strings.TrimSpace(cfg.ProjectStateDir) != "" {
+			return config.ProjectConfigPath(cfg.ProjectStateDir), nil
+		}
 		if strings.TrimSpace(workspace) == "" {
 			return "", fmt.Errorf("当前没有打开的工作区，无法写入 workspace 配置")
 		}
@@ -225,6 +230,8 @@ func setAgentModelOverride(settings *config.Settings, agent string, value config
 	switch agent {
 	case "default":
 		settings.AgentModels.Default = value
+	case config.AgentKindGeneral:
+		settings.AgentModels.General = value
 	case config.AgentKindIDE:
 		settings.AgentModels.IDE = value
 	case config.AgentKindInteractiveStory:
@@ -250,6 +257,8 @@ func setAgentToolOverride(settings *config.Settings, agent string, value config.
 	switch agent {
 	case "default":
 		settings.AgentTools.Default = value
+	case config.AgentKindGeneral:
+		settings.AgentTools.General = value
 	case config.AgentKindIDE:
 		settings.AgentTools.IDE = value
 	case config.AgentKindInteractiveStory:
@@ -275,6 +284,8 @@ func setAgentPromptOverride(settings *config.Settings, agent string, value confi
 	switch agent {
 	case "default":
 		settings.AgentPrompts.Default = value
+	case config.AgentKindGeneral:
+		settings.AgentPrompts.General = value
 	case config.AgentKindIDE:
 		settings.AgentPrompts.IDE = value
 	case config.AgentKindInteractiveStory:
@@ -300,6 +311,8 @@ func setAgentSkillOverride(settings *config.Settings, agent string, value config
 	switch agent {
 	case "default":
 		settings.AgentSkills.Default = value
+	case config.AgentKindGeneral:
+		settings.AgentSkills.General = value
 	case config.AgentKindIDE:
 		settings.AgentSkills.IDE = value
 	case config.AgentKindInteractiveStory:
@@ -325,6 +338,8 @@ func setAgentContextOverride(settings *config.Settings, agent string, value conf
 	switch agent {
 	case "default":
 		settings.AgentContexts.Default = value
+	case config.AgentKindGeneral:
+		settings.AgentContexts.General = value
 	case config.AgentKindIDE:
 		settings.AgentContexts.IDE = value
 	case config.AgentKindInteractiveStory:
@@ -350,6 +365,8 @@ func setGeneralSubAgentOverride(settings *config.Settings, agent string, value *
 	switch agent {
 	case "default":
 		settings.GeneralSubAgents.Default = value
+	case config.AgentKindGeneral:
+		settings.GeneralSubAgents.General = value
 	case config.AgentKindIDE:
 		settings.GeneralSubAgents.IDE = value
 	case config.AgentKindInteractiveStory:

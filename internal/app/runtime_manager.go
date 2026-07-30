@@ -124,7 +124,19 @@ func (s *WorkspaceRuntimeManager) SwitchWorkspace(ctx context.Context, path stri
 		a.restoreWorkspaceDirectorTasks(currentWorkspace)
 		return "", err
 	}
-	runtime, err := buildRuntimeExclusively(ctx, a.cfg, absPath)
+	projectRecord, err := a.projectRegistry.EnsureBook(absPath)
+	if err != nil {
+		a.restoreWorkspaceGenerationAfterFailedTransition(currentWorkspace, absPath)
+		a.restoreWorkspaceDirectorTasks(currentWorkspace)
+		return "", err
+	}
+	layout, err := a.projectRegistry.EnsureState(projectRecord)
+	if err != nil {
+		a.restoreWorkspaceGenerationAfterFailedTransition(currentWorkspace, absPath)
+		a.restoreWorkspaceDirectorTasks(currentWorkspace)
+		return "", err
+	}
+	runtime, err := buildRuntimeExclusively(ctx, a.cfg, layout)
 	if err != nil {
 		a.restoreWorkspaceGenerationAfterFailedTransition(currentWorkspace, absPath)
 		a.restoreWorkspaceDirectorTasks(currentWorkspace)
@@ -248,7 +260,19 @@ func (s *WorkspaceRuntimeManager) RemoveBook(path string) (string, error) {
 		return "", fmt.Errorf("路径无效: %w", err)
 	}
 	wasCurrent := a.Workspace() == absPath
-	if err := a.bookRegistry.Remove(absPath); err != nil {
+	if a.projectRegistry != nil {
+		record, found, findErr := a.projectRegistry.FindByPath(absPath, false)
+		if findErr != nil {
+			return "", findErr
+		}
+		if found && record.Type == ProjectTypeBook {
+			if _, archiveErr := a.ArchiveProject(record.ID); archiveErr != nil {
+				return "", archiveErr
+			}
+		} else if err := a.bookRegistry.Remove(absPath); err != nil {
+			return "", err
+		}
+	} else if err := a.bookRegistry.Remove(absPath); err != nil {
 		return "", err
 	}
 	if wasCurrent {
@@ -424,7 +448,13 @@ func (s *WorkspaceRuntimeManager) Settings() (config.LayeredSettings, error) {
 	}
 	state := a.bookState
 	a.mu.RUnlock()
-	layered, err := config.LoadLayeredWithStartupConfig(novaDir, workspace)
+	projectConfigPath := config.ProjectConfigPath(cfg.ProjectStateDir)
+	if projectConfigPath == "" {
+		if layout, layoutErr := a.projectLayoutForWorkspace(workspace); layoutErr == nil {
+			projectConfigPath = layout.ConfigPath()
+		}
+	}
+	layered, err := config.LoadLayeredWithStartupConfigAt(novaDir, workspace, projectConfigPath)
 	if err != nil {
 		return config.LayeredSettings{}, err
 	}
@@ -489,11 +519,22 @@ func (s *WorkspaceRuntimeManager) UpdateWorkspaceSettings(settings config.Settin
 	a := s.app
 	a.mu.RLock()
 	workspace := a.workspace
+	projectStateRoot := ""
+	if a.cfg != nil {
+		projectStateRoot = a.cfg.ProjectStateDir
+	}
 	a.mu.RUnlock()
 	if workspace == "" {
 		return config.LayeredSettings{}, ErrNoWorkspaceOpen
 	}
-	path := config.WorkspaceConfigPath(workspace)
+	path := config.ProjectConfigPath(projectStateRoot)
+	if path == "" {
+		layout, err := a.projectLayoutForWorkspace(workspace)
+		if err != nil {
+			return config.LayeredSettings{}, err
+		}
+		path = layout.ConfigPath()
+	}
 	if _, err := config.MutateSettingsFile(path, baseRevision, func(existing config.Settings) (config.Settings, error) {
 		return config.PrepareWorkspaceAgentSettingsForWrite(existing, settings), nil
 	}); err != nil {

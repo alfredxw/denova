@@ -89,9 +89,10 @@ func (s *AutomationAppService) reconcilePersistedAutomationRuns(ctx context.Cont
 	}
 }
 
-func automationRecoveryOptions(task automation.Task, run automation.RunRecord) agents.RunOptions {
+func automationRecoveryOptions(snap *automationWorkspaceSnapshot, task automation.Task, run automation.RunRecord) agents.RunOptions {
 	return agents.RunOptions{
-		AgentKind: agents.AgentKindAutomation, TaskID: run.ID, AutomationTaskID: task.ID,
+		AgentKind: agents.AgentKindAutomation, ProjectID: snap.projectID, StateRoot: snap.stateRoot,
+		TaskID: run.ID, AutomationTaskID: task.ID,
 		SessionID: run.SessionID, Workspace: run.Workspace, Mode: "automation",
 	}
 }
@@ -129,7 +130,7 @@ func (s *AutomationAppService) ensureAutomationRecoveryTask(
 		}
 	}()
 
-	recovery, err := snap.chatService.OpenRecoveryObservation(ctx, automationRecoveryOptions(taskDef, run))
+	recovery, err := snap.chatService.OpenRecoveryObservation(ctx, automationRecoveryOptions(snap, taskDef, run))
 	if err != nil {
 		return nil, automation.RunRecord{}, err
 	}

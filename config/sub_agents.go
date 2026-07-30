@@ -21,6 +21,7 @@ type SubAgentConfig struct {
 // the General SubAgent for writing and automation agents.
 type AgentGeneralSubAgentSettings struct {
 	Default          *bool `toml:"default,omitempty" json:"default,omitempty"`
+	General          *bool `toml:"general,omitempty" json:"general,omitempty"`
 	IDE              *bool `toml:"ide,omitempty" json:"ide,omitempty"`
 	InteractiveStory *bool `toml:"interactive_story,omitempty" json:"interactive_story,omitempty"`
 	ConfigManager    *bool `toml:"config_manager,omitempty" json:"config_manager,omitempty"`
@@ -28,6 +29,7 @@ type AgentGeneralSubAgentSettings struct {
 }
 
 var subAgentParentKinds = []string{
+	AgentKindGeneral,
 	AgentKindIDE,
 	AgentKindInteractiveStory,
 	AgentKindConfigManager,
@@ -54,6 +56,7 @@ func IsSubAgentParentKind(kind string) bool {
 func DefaultAgentGeneralSubAgentSettings() AgentGeneralSubAgentSettings {
 	return AgentGeneralSubAgentSettings{
 		Default:    boolPtr(false),
+		General:    boolPtr(true),
 		IDE:        boolPtr(true),
 		Automation: boolPtr(true),
 	}
@@ -62,6 +65,7 @@ func DefaultAgentGeneralSubAgentSettings() AgentGeneralSubAgentSettings {
 func MergeAgentGeneralSubAgentSettings(parent, child AgentGeneralSubAgentSettings) AgentGeneralSubAgentSettings {
 	return AgentGeneralSubAgentSettings{
 		Default:          mergeBoolOverride(parent.Default, child.Default),
+		General:          mergeBoolOverride(parent.General, child.General),
 		IDE:              mergeBoolOverride(parent.IDE, child.IDE),
 		InteractiveStory: mergeBoolOverride(parent.InteractiveStory, child.InteractiveStory),
 		ConfigManager:    mergeBoolOverride(parent.ConfigManager, child.ConfigManager),
@@ -83,6 +87,8 @@ func GeneralSubAgentEnabled(cfg *Config, parentKind string) bool {
 
 func generalSubAgentOverrideFor(settings AgentGeneralSubAgentSettings, parentKind string) *bool {
 	switch parentKind {
+	case AgentKindGeneral:
+		return settings.General
 	case AgentKindIDE:
 		return settings.IDE
 	case AgentKindInteractiveStory:

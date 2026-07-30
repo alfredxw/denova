@@ -346,7 +346,9 @@ function App() {
     setOpenTabs([])
     setActiveTabKey(null)
     clearSelectedFile()
-    if (mode !== 'books') setMode('books')
+    // User-owned surfaces, especially General Project AgentChat, remain usable
+    // without a foreground Book. Only content modes need the Book picker fallback.
+    if (!isSharedWorkspaceMode(mode)) setMode('books')
   }, [clearSelectedFile, mode, setMode, workspace, workspaceLoaded])
 
   useEffect(() => {

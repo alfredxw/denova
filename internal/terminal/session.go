@@ -40,6 +40,7 @@ type Spec struct {
 	Rows int
 	// Workspace records the workspace bound at creation time so the frontend can group by project.
 	Workspace string
+	ProjectID string
 }
 
 // Info is the read-only session snapshot used by the list and create responses.
@@ -52,6 +53,7 @@ type Info struct {
 	Args       []string  `json:"args"`
 	Cwd        string    `json:"cwd"`
 	Workspace  string    `json:"workspace"`
+	ProjectID  string    `json:"project_id,omitempty"`
 	Cols       int       `json:"cols"`
 	Rows       int       `json:"rows"`
 	CreatedAt  time.Time `json:"created_at"`
@@ -170,6 +172,7 @@ func (s *Session) Info() Info {
 		Args:       append([]string(nil), s.spec.Args...),
 		Cwd:        s.spec.Cwd,
 		Workspace:  s.spec.Workspace,
+		ProjectID:  s.spec.ProjectID,
 		Cols:       s.cols,
 		Rows:       s.rows,
 		CreatedAt:  s.createdAt,

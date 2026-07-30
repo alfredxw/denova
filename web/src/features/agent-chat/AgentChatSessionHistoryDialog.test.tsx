@@ -6,12 +6,12 @@ import { getAgentChatHistory, type AgentChatHistoryItem, type AgentChatProject }
 import { AgentChatSessionHistoryDialog } from './AgentChatSessionHistoryDialog'
 
 vi.mock('./api', async (importOriginal) => ({
-  ...await importOriginal<typeof import('./api')>(),
+  ...(await importOriginal<typeof import('./api')>()),
   getAgentChatHistory: vi.fn(),
 }))
 
 const historyItem: AgentChatHistoryItem = {
-  workspace: '/books/alpha',
+  project_id: 'project-alpha',
   project_name: 'Alpha',
   session: {
     id: 'historical',
@@ -26,21 +26,44 @@ const historyItem: AgentChatHistoryItem = {
 
 const otherProjectItem: AgentChatHistoryItem = {
   ...historyItem,
-  workspace: '/books/beta',
+  project_id: 'project-beta',
   project_name: 'Beta',
   session: { ...historyItem.session, id: 'beta-history', title: 'Beta chat' },
 }
 
 const projects: AgentChatProject[] = [
-  { path: otherProjectItem.workspace, name: 'Beta', current: false, total: 1, sessions: [] },
-  { path: historyItem.workspace, name: 'Alpha', current: true, total: 1, sessions: [] },
+  {
+    id: otherProjectItem.project_id,
+    type: 'book',
+    status: 'available',
+    path: '/books/beta',
+    name: 'Beta',
+    current: false,
+    total: 1,
+    sessions: [],
+  },
+  {
+    id: historyItem.project_id,
+    type: 'book',
+    status: 'available',
+    path: '/books/alpha',
+    name: 'Alpha',
+    current: true,
+    total: 1,
+    sessions: [],
+  },
 ]
 
 describe('AgentChatSessionHistoryDialog', () => {
   beforeEach(() => {
-    vi.mocked(getAgentChatHistory).mockReset().mockResolvedValue({
-      items: [historyItem], total: 1, offset: 0, has_more: false,
-    })
+    vi.mocked(getAgentChatHistory)
+      .mockReset()
+      .mockResolvedValue({
+        items: [historyItem],
+        total: 1,
+        offset: 0,
+        has_more: false,
+      })
   })
 
   it('searches durable history and opens the selected conversation', async () => {
@@ -52,7 +75,7 @@ describe('AgentChatSessionHistoryDialog', () => {
         <AgentChatSessionHistoryDialog
           open
           projects={projects}
-          currentProjectPath={historyItem.workspace}
+          currentProjectId={historyItem.project_id}
           onOpenChange={onOpenChange}
           onOpenSession={onOpenSession}
           onRenameSession={vi.fn()}
@@ -62,9 +85,14 @@ describe('AgentChatSessionHistoryDialog', () => {
     )
 
     await user.type(screen.getByRole('textbox', { name: '搜索对话历史' }), 'plot')
-    await waitFor(() => expect(getAgentChatHistory).toHaveBeenLastCalledWith(expect.objectContaining({
-      query: 'plot', workspace: historyItem.workspace,
-    })))
+    await waitFor(() =>
+      expect(getAgentChatHistory).toHaveBeenLastCalledWith(
+        expect.objectContaining({
+          query: 'plot',
+          projectId: historyItem.project_id,
+        }),
+      ),
+    )
     await user.click(await screen.findByRole('button', { name: '打开 Historical chat' }))
     expect(onOpenSession).toHaveBeenCalledWith(historyItem)
     expect(onOpenChange).toHaveBeenCalledWith(false)
@@ -73,7 +101,7 @@ describe('AgentChatSessionHistoryDialog', () => {
   it('uses a collapsible current-project-first master pane to switch session lists', async () => {
     const user = userEvent.setup()
     vi.mocked(getAgentChatHistory).mockImplementation(async (options = {}) => ({
-      items: options.workspace === otherProjectItem.workspace ? [otherProjectItem] : [historyItem],
+      items: options.projectId === otherProjectItem.project_id ? [otherProjectItem] : [historyItem],
       total: 1,
       offset: 0,
       has_more: false,
@@ -84,7 +112,7 @@ describe('AgentChatSessionHistoryDialog', () => {
         <AgentChatSessionHistoryDialog
           open
           projects={projects}
-          currentProjectPath={historyItem.workspace}
+          currentProjectId={historyItem.project_id}
           onOpenChange={vi.fn()}
           onOpenSession={vi.fn()}
           onRenameSession={vi.fn()}
@@ -96,16 +124,18 @@ describe('AgentChatSessionHistoryDialog', () => {
     await screen.findByRole('button', { name: '打开 Historical chat' })
     const projectNav = screen.getByRole('navigation', { name: '项目' })
     const projectButtons = within(projectNav).getAllByRole('button')
-    expect(projectButtons.map((button) => button.getAttribute('aria-label'))).toEqual([
-      'Alpha，1 个对话', 'Beta，1 个对话',
-    ])
+    expect(projectButtons.map((button) => button.getAttribute('aria-label'))).toEqual(['Alpha，1 个对话', 'Beta，1 个对话'])
     expect(projectButtons[0]).toHaveAttribute('aria-current', 'true')
     expect(screen.getByText('当前项目')).toBeInTheDocument()
 
     await user.click(within(projectNav).getByRole('button', { name: 'Beta，1 个对话' }))
-    await waitFor(() => expect(getAgentChatHistory).toHaveBeenLastCalledWith(expect.objectContaining({
-      workspace: otherProjectItem.workspace,
-    })))
+    await waitFor(() =>
+      expect(getAgentChatHistory).toHaveBeenLastCalledWith(
+        expect.objectContaining({
+          projectId: otherProjectItem.project_id,
+        }),
+      ),
+    )
     expect(await screen.findByRole('button', { name: '打开 Beta chat' })).toBeInTheDocument()
 
     await user.click(screen.getByRole('button', { name: '收起项目列表' }))

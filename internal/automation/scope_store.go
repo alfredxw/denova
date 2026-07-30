@@ -158,7 +158,7 @@ func (s *Store) DeleteInScopeIfRevision(scope, id, expectedRevision string) erro
 				return false, listErr
 			}
 			for _, entry := range entries {
-				if entry.TaskCatalogID == tasks[index].CatalogID && RunHasRuntimeObligation(entry.Run) {
+				if durableRunMatchesTask(entry, tasks[index]) && RunHasRuntimeObligation(entry.Run) {
 					return false, fmt.Errorf("%w: task_id=%s run_id=%s", ErrTaskHasActiveRun, tasks[index].CatalogID, entry.Run.ID)
 				}
 			}
@@ -195,7 +195,7 @@ func (s *Store) exactScopeLocation(scope string) (taskStoreLocation, error) {
 		if workspace == "" {
 			return taskStoreLocation{}, fmt.Errorf("workspace is required for workspace-scoped automation")
 		}
-		return taskStoreLocation{store: NewStore(s.userDir, workspace), scope: ScopeWorkspace}, nil
+		return taskStoreLocation{store: s.storeForWorkspace(workspace), scope: ScopeWorkspace}, nil
 	default:
 		return taskStoreLocation{}, fmt.Errorf("automation scope must be %q or %q", ScopeUser, ScopeWorkspace)
 	}

@@ -33,9 +33,24 @@ func (a *App) ReadWorkspaceFileWithRevision(path string) (content, revision, wor
 // active workspace. Agent tools, review endpoints, and editor saves use the
 // same instance so their read-modify-write transactions cannot race.
 func (a *App) WorkspaceChangeService() (*workspacechange.Service, error) {
-	workspace := a.Workspace()
+	a.mu.RLock()
+	workspace := a.workspace
+	stateRoot := ""
+	if a.cfg != nil {
+		stateRoot = a.cfg.ProjectStateDir
+	}
+	a.mu.RUnlock()
 	if workspace == "" {
 		return nil, ErrNoWorkspace
+	}
+	return workspaceChangeService(workspace, stateRoot)
+}
+
+// workspaceChangeService keeps the visible content root and user-owned ledger
+// root explicit at every mutation boundary.
+func workspaceChangeService(workspace, stateRoot string) (*workspacechange.Service, error) {
+	if strings.TrimSpace(stateRoot) != "" {
+		return workspacechange.ForWorkspaceAt(workspace, stateRoot)
 	}
 	return workspacechange.ForWorkspace(workspace)
 }
@@ -58,7 +73,11 @@ func (a *App) WithWorkspaceChangeService(
 	if expectedWorkspace == "" || filepath.Clean(expectedWorkspace) != filepath.Clean(actualWorkspace) {
 		return fmt.Errorf("%w: expected=%q actual=%q", ErrWorkspaceChanged, expectedWorkspace, actualWorkspace)
 	}
-	service, err := workspacechange.ForWorkspace(actualWorkspace)
+	stateRoot := ""
+	if a.cfg != nil {
+		stateRoot = a.cfg.ProjectStateDir
+	}
+	service, err := workspaceChangeService(actualWorkspace, stateRoot)
 	if err != nil {
 		return err
 	}
@@ -108,9 +127,13 @@ func (a *App) WithWorkspaceChangeMutation(
 	versionService := a.versionService
 	settings := versionAutoSettingsForConfig(a.cfg)
 	automationSnapshot := a.automationSnapshotLocked()
+	stateRoot := ""
+	if a.cfg != nil {
+		stateRoot = a.cfg.ProjectStateDir
+	}
 	a.mu.RUnlock()
 
-	service, err := workspacechange.ForWorkspace(actualWorkspace)
+	service, err := workspaceChangeService(actualWorkspace, stateRoot)
 	if err != nil {
 		return "", err
 	}

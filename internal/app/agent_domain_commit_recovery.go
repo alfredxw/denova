@@ -35,7 +35,7 @@ func (a *App) reconcileHarnessDomainCommit(
 	}
 	binding := request.Binding
 	switch binding.AgentKind {
-	case agents.AgentKindIDE, agents.AgentKindConfigManager, agents.AgentKindImage, agents.AgentKindAutomation:
+	case agents.AgentKindGeneral, agents.AgentKindIDE, agents.AgentKindConfigManager, agents.AgentKindImage, agents.AgentKindAutomation:
 		return a.reconcileSessionDomainCommit(request)
 	case agents.AgentKindInteractiveStory:
 		return reconcileGameDomainCommit(request)
@@ -127,6 +127,32 @@ func (a *App) sessionDirectoryForBinding(binding agents.RuntimeBinding) (string,
 			return "", ErrAgentDataDirRequired
 		}
 		return filepath.Join(dataDir, "automations", "sessions"), nil
+	}
+	if a != nil && a.projectRegistry != nil {
+		if projectID := strings.TrimSpace(binding.ProjectID); projectID != "" {
+			record, err := a.projectRegistry.Get(projectID)
+			if err != nil {
+				return "", err
+			}
+			layout, err := a.projectRegistry.EnsureState(record)
+			if err != nil {
+				return "", err
+			}
+			return layout.SessionsDir(), nil
+		}
+		if workspace := strings.TrimSpace(binding.Workspace); workspace != "" {
+			record, found, err := a.projectRegistry.FindByPath(workspace, true)
+			if err != nil {
+				return "", err
+			}
+			if found {
+				layout, err := a.projectRegistry.EnsureState(record)
+				if err != nil {
+					return "", err
+				}
+				return layout.SessionsDir(), nil
+			}
+		}
 	}
 	workspace := strings.TrimSpace(binding.Workspace)
 	if workspace == "" {

@@ -5,6 +5,7 @@ import "strings"
 // AgentSkillSettings stores per-agent skill availability overrides.
 type AgentSkillSettings struct {
 	Default             AgentSkillOverride `toml:"default,omitempty" json:"default,omitempty"`
+	General             AgentSkillOverride `toml:"general,omitempty" json:"general,omitempty"`
 	IDE                 AgentSkillOverride `toml:"ide,omitempty" json:"ide,omitempty"`
 	InteractiveStory    AgentSkillOverride `toml:"interactive_story,omitempty" json:"interactive_story,omitempty"`
 	ConfigManager       AgentSkillOverride `toml:"config_manager,omitempty" json:"config_manager,omitempty"`
@@ -22,6 +23,7 @@ type AgentSkillOverride map[string]bool
 func MergeAgentSkillSettings(parent, child AgentSkillSettings) AgentSkillSettings {
 	return AgentSkillSettings{
 		Default:             mergeAgentSkillOverride(parent.Default, child.Default),
+		General:             mergeAgentSkillOverride(parent.General, child.General),
 		IDE:                 mergeAgentSkillOverride(parent.IDE, child.IDE),
 		InteractiveStory:    mergeAgentSkillOverride(parent.InteractiveStory, child.InteractiveStory),
 		ConfigManager:       mergeAgentSkillOverride(parent.ConfigManager, child.ConfigManager),

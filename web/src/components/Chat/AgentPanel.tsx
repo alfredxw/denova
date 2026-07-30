@@ -7,9 +7,27 @@ import { createStablePortalHost, StablePortalSlot } from '@/components/layout/st
 import type { ImagePreset, Teller } from '@/features/interactive/types'
 import { DEFAULT_NARRATIVE_STYLE_ID, resolveNarrativeStyle } from '@/features/interactive/narrative-style'
 import { answerSessionAsk, cancelSessionAsk, removeChatContextCompaction } from '@/lib/api'
-import type { ActiveChatTask, AgentAskAnswer, AgentAskResolution, AgentRuntimeQueuedCommand, ChapterIllustration, ChapterSummary, ContextAnalysis, IDEContext, SessionSummary, TextSelection } from '@/lib/api'
+import type {
+  ActiveChatTask,
+  AgentAskAnswer,
+  AgentAskResolution,
+  AgentRuntimeQueuedCommand,
+  ChapterIllustration,
+  ChapterSummary,
+  ContextAnalysis,
+  IDEContext,
+  SessionSummary,
+  TextSelection,
+} from '@/lib/api'
 import type { AgentUIMessage } from '@/lib/agent-ui'
-import { agentSubAgentSessionKey, agentViewContent, buildAgentMessageViews, selectAgentTokenUsageRecords, type AgentMessageView, type AgentPartRef } from '@/lib/agent-message-view'
+import {
+  agentSubAgentSessionKey,
+  agentViewContent,
+  buildAgentMessageViews,
+  selectAgentTokenUsageRecords,
+  type AgentMessageView,
+  type AgentPartRef,
+} from '@/lib/agent-message-view'
 import { useSkillCommands } from '@/hooks/useSkillCommands'
 import { DEFAULT_WRITING_SKILL, resolveWritingSkillSelection, useWritingSkillOptions } from '@/hooks/useWritingSkillOptions'
 import type { PersistedUserSettingsController } from '@/hooks/usePersistedUserSettings'
@@ -23,7 +41,15 @@ import { WritingComposerSettingsMenu } from './WritingComposerSettingsMenu'
 import { formatPlanDiscussionMessage } from '@/lib/plan-mode'
 import { useWorkspaceChangeGroups } from '@/features/changes/use-change-review'
 import { AgentChangeSummaryCard } from '@/features/changes/agent/AgentChangeSummaryCard'
-import { MAX_REVIEW_FEEDBACK_COMMENT_COUNT, MAX_REVIEW_FEEDBACK_CONTEXT_BYTES, reviewFeedbackCommentCount, reviewFeedbackContextBytes, type ReviewFeedbackBatch, type ReviewFeedbackComment, type ReviewFeedbackSelection } from '@/features/changes/agent/ReviewFeedbackTray'
+import {
+  MAX_REVIEW_FEEDBACK_COMMENT_COUNT,
+  MAX_REVIEW_FEEDBACK_CONTEXT_BYTES,
+  reviewFeedbackCommentCount,
+  reviewFeedbackContextBytes,
+  type ReviewFeedbackBatch,
+  type ReviewFeedbackComment,
+  type ReviewFeedbackSelection,
+} from '@/features/changes/agent/ReviewFeedbackTray'
 import { toast } from 'sonner'
 import type { ChatSendOptions } from '@/hooks/useAgentChat'
 import { resolveAgentAskAndRefresh } from '@/lib/agent-ask'
@@ -43,6 +69,8 @@ export type WritingComposerSettingsController = PersistedUserSettingsController<
 
 interface AgentPanelProps {
   workspace: string
+  /** Selects project-neutral controls and the General Agent configuration surface. */
+  agentKind?: 'writing' | 'general'
   /** Hidden AgentChat tabs remain mounted for parallel streams but ignore global UI intents. */
   active?: boolean
   /**
@@ -89,7 +117,15 @@ interface AgentPanelProps {
   onCancelAsk?: (sessionId: string, askId: string) => Promise<AgentAskResolution>
   onRemoveContextCompaction?: () => Promise<boolean>
   onSend: (message: string, options?: ChatSendOptions) => boolean | Promise<boolean>
-  onAnalyzeContext: (message: string, options?: { writingSkill?: string; ideContext?: IDEContext; imagePresetId?: string; tellerId?: string }) => Promise<ContextAnalysis>
+  onAnalyzeContext: (
+    message: string,
+    options?: {
+      writingSkill?: string
+      ideContext?: IDEContext
+      imagePresetId?: string
+      tellerId?: string
+    },
+  ) => Promise<ContextAnalysis>
   onStop: () => void
   onSteerQueuedCommand?: (item: AgentRuntimeQueuedCommand) => boolean | Promise<boolean>
   onDeleteQueuedCommand?: (item: AgentRuntimeQueuedCommand) => boolean | Promise<boolean>
@@ -124,6 +160,7 @@ interface AgentPanelProps {
  */
 function AgentPanelComponent({
   workspace,
+  agentKind = 'writing',
   active = true,
   chrome = 'panel',
   composerSettings: persistedSettings,
@@ -191,8 +228,12 @@ function AgentPanelComponent({
 }: AgentPanelProps) {
   const { t } = useTranslation()
   const dockedChrome = chrome === 'panel'
+  const generalAgent = agentKind === 'general'
   const [view, setView] = useState<AgentPanelView>('chat')
-  const [inputPrefill, setInputPrefill] = useState<{ prompt: string; nonce: number } | null>(null)
+  const [inputPrefill, setInputPrefill] = useState<{
+    prompt: string
+    nonce: number
+  } | null>(null)
   const [contextAnalysisOpen, setContextAnalysisOpen] = useState(false)
   const [contextAnalysisLoading, setContextAnalysisLoading] = useState(false)
   const [contextAnalysisError, setContextAnalysisError] = useState<string | null>(null)
@@ -204,25 +245,24 @@ function AgentPanelComponent({
   const recoveryPaused = Boolean(runtimeProjection?.recovery_paused)
   const runtimeRecovering = Boolean(runtimeProjection?.runtime_recoverable && (!runtimeProjection.stream_attached || recoveryPaused))
   const recoveryAbortAvailable = Boolean(runtimeProjection?.recovery_actions?.some((action) => action.kind === 'abort'))
-  const activeControlsDisabled = isStreaming && (
-    !runtimeProjection?.active_operation_id?.trim() ||
-    Boolean(runtimeProjection?.runtime_recoverable && !runtimeProjection.stream_attached)
-  )
+  const activeControlsDisabled =
+    isStreaming && (!runtimeProjection?.active_operation_id?.trim() || Boolean(runtimeProjection?.runtime_recoverable && !runtimeProjection.stream_attached))
   const [chatPaneHost] = useState(() => createStablePortalHost('relative flex h-full min-h-0 w-full min-w-0 flex-col'))
   const ideTellerId = persistedSettings.values.ide_story_teller_id
   const imagePresetId = persistedSettings.values.ide_image_preset_id
   const configuredWritingSkill = persistedSettings.values.writing_skill_default
-  const skillCommands = useSkillCommands({ agentKey: 'ide', workspace })
+  const skillCommands = useSkillCommands({
+    agentKey: generalAgent ? 'general' : 'ide',
+    workspace,
+  })
   const writingSkillOptions = useWritingSkillOptions(workspace)
-  const writingSkill = useMemo(
-    () => resolveWritingSkillSelection(configuredWritingSkill, writingSkillOptions),
-    [configuredWritingSkill, writingSkillOptions],
-  )
-  const changeGroupsQuery = useWorkspaceChangeGroups(activeSessionId && !sessionDraft ? workspace : '', { sessionID: activeSessionId })
-  const tokenUsageMessages = useMemo(
-    () => selectAgentTokenUsageRecords(messages),
-    [messages],
-  )
+  const writingSkill = useMemo(() => resolveWritingSkillSelection(configuredWritingSkill, writingSkillOptions), [configuredWritingSkill, writingSkillOptions])
+  // Change review is still a Writing Project surface: its undo/version hooks
+  // are bound to the explicitly active Book workspace. General Projects keep
+  // their mutation journal centrally, but must not query or mutate another
+  // foreground Book through that legacy endpoint.
+  const changeGroupsQuery = useWorkspaceChangeGroups(!generalAgent && activeSessionId && !sessionDraft ? workspace : '', { sessionID: activeSessionId })
+  const tokenUsageMessages = useMemo(() => selectAgentTokenUsageRecords(messages), [messages])
   const activeRunID = useMemo(() => {
     if (!isStreaming) return ''
     const views = buildAgentMessageViews(messages)
@@ -238,31 +278,46 @@ function AgentPanelComponent({
   }, [ideTellerId, tellers])
 
   useEffect(() => {
+    if (generalAgent) return
     if (!active) return
     const handleWritingInitRequest = (event: Event) => {
       const detail = (event as CustomEvent<{ prompt?: string; autoSend?: boolean }>).detail
       const prompt = detail?.prompt || t('writingAgent.initPrompt')
       setView('chat')
       if (detail?.autoSend && !isStreaming && !persistedSettings.loading) {
-        onSend(prompt, { writingSkill, ideContext, imagePresetId, tellerId: ideTellerId })
+        onSend(prompt, {
+          writingSkill,
+          ideContext,
+          imagePresetId,
+          tellerId: ideTellerId,
+        })
         return
       }
       if (detail?.autoSend && !isStreaming) {
         pendingWritingInitRef.current = prompt
         return
       }
-      setInputPrefill((current) => ({ prompt, nonce: (current?.nonce || 0) + 1 }))
+      setInputPrefill((current) => ({
+        prompt,
+        nonce: (current?.nonce || 0) + 1,
+      }))
     }
     window.addEventListener(WRITING_AGENT_INIT_EVENT, handleWritingInitRequest)
     return () => window.removeEventListener(WRITING_AGENT_INIT_EVENT, handleWritingInitRequest)
-  }, [active, ideContext, ideTellerId, imagePresetId, isStreaming, onSend, persistedSettings.loading, t, writingSkill])
+  }, [active, generalAgent, ideContext, ideTellerId, imagePresetId, isStreaming, onSend, persistedSettings.loading, t, writingSkill])
 
   useEffect(() => {
+    if (generalAgent) return
     if (persistedSettings.loading || isStreaming || !pendingWritingInitRef.current) return
     const prompt = pendingWritingInitRef.current
     pendingWritingInitRef.current = null
-    onSend(prompt, { writingSkill, ideContext, imagePresetId, tellerId: ideTellerId })
-  }, [ideContext, ideTellerId, imagePresetId, isStreaming, onSend, persistedSettings.loading, writingSkill])
+    onSend(prompt, {
+      writingSkill,
+      ideContext,
+      imagePresetId,
+      tellerId: ideTellerId,
+    })
+  }, [generalAgent, ideContext, ideTellerId, imagePresetId, isStreaming, onSend, persistedSettings.loading, writingSkill])
 
   useEffect(() => {
     pendingWritingInitRef.current = null
@@ -283,7 +338,19 @@ function AgentPanelComponent({
     setContextAnalysisError(null)
     setContextAnalysis(null)
     try {
-      setContextAnalysis(await onAnalyzeContext(message, { writingSkill, ideContext, imagePresetId, tellerId: ideTellerId }))
+      setContextAnalysis(
+        await onAnalyzeContext(
+          message,
+          generalAgent
+            ? undefined
+            : {
+                writingSkill,
+                ideContext,
+                imagePresetId,
+                tellerId: ideTellerId,
+              },
+        ),
+      )
     } catch (e) {
       setContextAnalysis(null)
       setContextAnalysisError((e as Error).message)
@@ -322,39 +389,45 @@ function AgentPanelComponent({
     await handleAnalyzeContext(CONTEXT_ANALYSIS_SIMULATED_MESSAGE)
   }
 
-  const timelineAttachments = useMemo(() => (
-    (changeGroupsQuery.data ?? [])
-      .filter((summary) => Boolean(summary.run_id) && summary.run_id !== activeRunID)
-      .map((summary, index) => ({
-        id: summary.id,
-        runId: summary.run_id || '',
-        content: (
-          <AgentChangeSummaryCard
-            workspace={workspace}
-            summary={summary}
-            disabled={isStreaming}
-            eagerPreload={!isStreaming && index === 0}
-            onReview={(reviewThreadID, groupID) => onOpenChangeReview?.(reviewThreadID, groupID)}
-            onWorkspaceChanged={onWorkspaceChanged}
-          />
-        ),
-      }))
-  ), [activeRunID, changeGroupsQuery.data, isStreaming, onOpenChangeReview, onWorkspaceChanged, workspace])
+  const timelineAttachments = useMemo(
+    () =>
+      (changeGroupsQuery.data ?? [])
+        .filter((summary) => Boolean(summary.run_id) && summary.run_id !== activeRunID)
+        .map((summary, index) => ({
+          id: summary.id,
+          runId: summary.run_id || '',
+          content: (
+            <AgentChangeSummaryCard
+              workspace={workspace}
+              summary={summary}
+              disabled={isStreaming}
+              eagerPreload={!isStreaming && index === 0}
+              onReview={(reviewThreadID, groupID) => onOpenChangeReview?.(reviewThreadID, groupID)}
+              onWorkspaceChanged={onWorkspaceChanged}
+            />
+          ),
+        })),
+    [activeRunID, changeGroupsQuery.data, isStreaming, onOpenChangeReview, onWorkspaceChanged, workspace],
+  )
 
   const sendWithWritingSkill = async (message: string) => {
     if (persistedSettings.loading) return false
     const feedbackSelection = reviewFeedback?.filter((selection) => selection.comments.length) ?? []
-    const feedback = feedbackSelection.length ? feedbackSelection.map((selection) => ({
-      source: selection.source || 'workspace_change' as const,
-      reviewThreadId: selection.reviewThreadId,
-      commentIds: selection.comments.map((comment) => comment.id),
-    })) : undefined
+    const feedback = feedbackSelection.length
+      ? feedbackSelection.map((selection) => ({
+          source: selection.source || ('workspace_change' as const),
+          reviewThreadId: selection.reviewThreadId,
+          commentIds: selection.comments.map((comment) => comment.id),
+        }))
+      : undefined
     const feedbackCount = reviewFeedbackCommentCount(feedbackSelection)
-    const effectiveMessage = message.trim() || (feedback
-      ? t('changes.feedback.defaultMessage', { count: feedbackCount })
-      : message)
+    const effectiveMessage = message.trim() || (feedback ? t('changes.feedback.defaultMessage', { count: feedbackCount }) : message)
     if (feedbackCount > MAX_REVIEW_FEEDBACK_COMMENT_COUNT) {
-      toast.error(t('changes.feedback.tooMany', { maximum: MAX_REVIEW_FEEDBACK_COMMENT_COUNT }))
+      toast.error(
+        t('changes.feedback.tooMany', {
+          maximum: MAX_REVIEW_FEEDBACK_COMMENT_COUNT,
+        }),
+      )
       return false
     }
     if (feedbackSelection.length && reviewFeedbackContextBytes(feedbackSelection) > MAX_REVIEW_FEEDBACK_CONTEXT_BYTES) {
@@ -374,12 +447,13 @@ function AgentPanelComponent({
       onReviewFeedbackSubmissionFailed?.(feedbackSelection)
     }
     const accepted = await onSend(effectiveMessage, {
-      writingSkill,
-      ideContext,
-      imagePresetId,
-      tellerId: ideTellerId,
+      ...(generalAgent ? {} : { writingSkill, ideContext, imagePresetId, tellerId: ideTellerId }),
       reviewFeedback: feedback,
-      reviewFeedbackDisplay: feedbackSelection.length ? { comments: feedbackSelection.flatMap((selection) => selection.comments) } : undefined,
+      reviewFeedbackDisplay: feedbackSelection.length
+        ? {
+            comments: feedbackSelection.flatMap((selection) => selection.comments),
+          }
+        : undefined,
       loreReferenceLabels,
       onSubmissionStart: handleSubmissionStart,
       onSubmissionError: handleSubmissionError,
@@ -392,28 +466,37 @@ function AgentPanelComponent({
   const returnQueuedCommandToEditor = async (item: AgentRuntimeQueuedCommand) => {
     const prompt = await onEditQueuedCommand?.(item)
     if (typeof prompt !== 'string') return
-    setInputPrefill((current) => ({ prompt, nonce: (current?.nonce || 0) + 1 }))
+    setInputPrefill((current) => ({
+      prompt,
+      nonce: (current?.nonce || 0) + 1,
+    }))
   }
 
   // Quick actions are writing-workbench affordances tied to the current chapter. The AgentChat
   // workbench is a general project surface, so it opens on a clean conversation instead.
-  const emptyChatContent = dockedChrome && messages.length === 0 && !isStreaming ? (
-    <AgentQuickActions chapter={currentChapter} selectedFile={selectedFile} disabled={persistedSettings.loading} onSend={sendWithWritingSkill} />
-  ) : null
-  const resolveAsk = useCallback(async (view: AgentMessageView, action: { status: 'answered'; answers: AgentAskAnswer[] } | { status: 'cancelled' }) => {
-    const askID = typeof view.data.id === 'string' ? view.data.id.trim() : ''
-    if (!activeSessionId || !askID) throw new Error('Cannot resolve an Ask without its Session and interaction IDs')
-    return resolveAgentAskAndRefresh(action, {
-      answer: (answers) => onAnswerAsk(activeSessionId, askID, answers),
-      cancel: () => onCancelAsk(activeSessionId, askID),
-    }, () => onRefreshHistory(activeSessionId))
-  }, [activeSessionId, onAnswerAsk, onCancelAsk, onRefreshHistory])
+  const emptyChatContent =
+    dockedChrome && messages.length === 0 && !isStreaming ? (
+      <AgentQuickActions chapter={currentChapter} selectedFile={selectedFile} disabled={persistedSettings.loading} onSend={sendWithWritingSkill} />
+    ) : null
+  const resolveAsk = useCallback(
+    async (view: AgentMessageView, action: { status: 'answered'; answers: AgentAskAnswer[] } | { status: 'cancelled' }) => {
+      const askID = typeof view.data.id === 'string' ? view.data.id.trim() : ''
+      if (!activeSessionId || !askID) throw new Error('Cannot resolve an Ask without its Session and interaction IDs')
+      return resolveAgentAskAndRefresh(
+        action,
+        {
+          answer: (answers) => onAnswerAsk(activeSessionId, askID, answers),
+          cancel: () => onCancelAsk(activeSessionId, askID),
+        },
+        () => onRefreshHistory(activeSessionId),
+      )
+    },
+    [activeSessionId, onAnswerAsk, onCancelAsk, onRefreshHistory],
+  )
   const messageListProps = {
     messages,
     isStreaming,
-    activityContent: runtimeRecovering
-      ? t('chat.activity.recovering')
-      : recoveryPaused ? t('chat.activity.recoveryPaused') : activityContent,
+    activityContent: runtimeRecovering ? t('chat.activity.recovering') : recoveryPaused ? t('chat.activity.recoveryPaused') : activityContent,
     scrollResetKey: `${workspace || 'none'}:${activeSessionId || 'current'}`,
     bottomPaddingClassName: 'pb-36',
     bottomPaddingPx: messageListBottomPadding,
@@ -456,15 +539,15 @@ function AgentPanelComponent({
     referencedFiles: references,
     onReferenceRemove,
     fileSuggestions,
-    loreReferences,
+    loreReferences: generalAgent ? [] : loreReferences,
     loreReferenceLabels,
     onLoreReferenceAdd,
     onLoreReferenceRemove,
-    loreSuggestions,
-    styleScenes,
+    loreSuggestions: generalAgent ? [] : loreSuggestions,
+    styleScenes: generalAgent ? [] : styleScenes,
     onStyleSceneAdd,
     onStyleSceneRemove,
-    styleSceneSuggestions,
+    styleSceneSuggestions: generalAgent ? [] : styleSceneSuggestions,
     textSelections,
     onTextSelectionRemove,
     reviewFeedback,
@@ -474,9 +557,9 @@ function AgentPanelComponent({
     onContextAnalyze: sessionDraft ? undefined : openContextAnalysis,
     tokenUsageMessages,
     onOpenTrace: openTraceRun,
-    agentKey: 'ide' as const,
+    agentKey: generalAgent ? ('general' as const) : ('ide' as const),
     workspace,
-    writingSkillControl: (
+    writingSkillControl: generalAgent ? undefined : (
       <WritingComposerSettingsMenu
         enabled={Boolean(workspace) && !persistedSettings.loading && !isStreaming}
         tellers={tellers}
@@ -508,16 +591,12 @@ function AgentPanelComponent({
       inputAreaProps={inputAreaProps}
     />
   )
-  const chatPanePortal = view === 'chat' && chatPaneHost
-    ? createPortal(chatPane, chatPaneHost, 'agent-chat-pane')
-    : null
+  const chatPanePortal = view === 'chat' && chatPaneHost ? createPortal(chatPane, chatPaneHost, 'agent-chat-pane') : null
 
   return (
     <aside
       className={`nova-sidebar relative flex h-full min-h-0 flex-col overflow-hidden ${
-        dockedChrome
-          ? 'border-l border-[var(--nova-border)] bg-[var(--nova-surface)] shadow-[-14px_0_30px_-28px_rgba(0,0,0,0.64)]'
-          : 'bg-[var(--nova-bg)]'
+        dockedChrome ? 'border-l border-[var(--nova-border)] bg-[var(--nova-surface)] shadow-[-14px_0_30px_-28px_rgba(0,0,0,0.64)]' : 'bg-[var(--nova-bg)]'
       }`}
     >
       {/*
@@ -526,57 +605,54 @@ function AgentPanelComponent({
         workbench only.
       */}
       {dockedChrome && (
-      <div className="flex h-10 shrink-0 items-center gap-2 border-b border-[var(--nova-border)] px-3">
-        <div className="flex min-w-0 shrink-0 items-center gap-2 text-xs font-medium text-[var(--nova-text)]">
-          <Bot className="h-3.5 w-3.5 text-[var(--nova-text-muted)]" />
-          {t('chat.agent')}
+        <div className="flex h-10 shrink-0 items-center gap-2 border-b border-[var(--nova-border)] px-3">
+          <div className="flex min-w-0 shrink-0 items-center gap-2 text-xs font-medium text-[var(--nova-text)]">
+            <Bot className="h-3.5 w-3.5 text-[var(--nova-text-muted)]" />
+            {t('chat.agent')}
+          </div>
+          <div
+            className="flex h-7 min-w-0 shrink-0 items-center rounded-[var(--nova-radius)] border border-[var(--nova-border)] bg-[var(--nova-surface-2)] p-0.5"
+            aria-label={t('chat.panelSwitch')}
+          >
+            <button
+              type="button"
+              onClick={() => setView('chat')}
+              className={`rounded-[6px] px-2 py-0.5 text-[11px] transition-colors ${view === 'chat' ? 'bg-[var(--nova-active)] text-[var(--nova-text)]' : 'text-[var(--nova-text-faint)] hover:text-[var(--nova-text-muted)]'}`}
+            >
+              {t('chat.view.chat')}
+            </button>
+            <button
+              type="button"
+              onClick={() => setView('sessions')}
+              className={`rounded-[6px] px-2 py-0.5 text-[11px] transition-colors ${view === 'sessions' ? 'bg-[var(--nova-active)] text-[var(--nova-text)]' : 'text-[var(--nova-text-faint)] hover:text-[var(--nova-text-muted)]'}`}
+            >
+              {t('chat.view.sessions')}
+            </button>
+            <button
+              type="button"
+              onClick={() => setView('traces')}
+              className={`rounded-[6px] px-1.5 py-0.5 text-[11px] transition-colors ${view === 'traces' ? 'bg-[var(--nova-active)] text-[var(--nova-text)]' : 'text-[var(--nova-text-faint)] hover:text-[var(--nova-text-muted)]'}`}
+              aria-label={t('chat.view.traces')}
+              title={t('chat.view.traces')}
+            >
+              <Activity className="h-3 w-3" />
+            </button>
+          </div>
+          <button
+            type="button"
+            disabled={isStreaming}
+            onClick={() => void onCreateSession()}
+            className="nova-nav-item flex h-7 w-7 shrink-0 items-center justify-center rounded border border-[var(--nova-border)] bg-[var(--nova-surface-2)] disabled:cursor-not-allowed disabled:opacity-45"
+            aria-label={t('chat.newSession')}
+            title={t('chat.newSession')}
+          >
+            <Plus className="h-3.5 w-3.5" />
+          </button>
+          <div className="min-w-0 flex-1" />
+          <button type="button" onClick={onClose} className="nova-nav-item rounded p-1" aria-label={t('chat.closeAgent')} title={t('common.close')}>
+            <X className="h-3.5 w-3.5" />
+          </button>
         </div>
-        <div className="flex h-7 min-w-0 shrink-0 items-center rounded-[var(--nova-radius)] border border-[var(--nova-border)] bg-[var(--nova-surface-2)] p-0.5" aria-label={t('chat.panelSwitch')}>
-          <button
-            type="button"
-            onClick={() => setView('chat')}
-            className={`rounded-[6px] px-2 py-0.5 text-[11px] transition-colors ${view === 'chat' ? 'bg-[var(--nova-active)] text-[var(--nova-text)]' : 'text-[var(--nova-text-faint)] hover:text-[var(--nova-text-muted)]'}`}
-          >
-            {t('chat.view.chat')}
-          </button>
-          <button
-            type="button"
-            onClick={() => setView('sessions')}
-            className={`rounded-[6px] px-2 py-0.5 text-[11px] transition-colors ${view === 'sessions' ? 'bg-[var(--nova-active)] text-[var(--nova-text)]' : 'text-[var(--nova-text-faint)] hover:text-[var(--nova-text-muted)]'}`}
-          >
-            {t('chat.view.sessions')}
-          </button>
-          <button
-            type="button"
-            onClick={() => setView('traces')}
-            className={`rounded-[6px] px-1.5 py-0.5 text-[11px] transition-colors ${view === 'traces' ? 'bg-[var(--nova-active)] text-[var(--nova-text)]' : 'text-[var(--nova-text-faint)] hover:text-[var(--nova-text-muted)]'}`}
-            aria-label={t('chat.view.traces')}
-            title={t('chat.view.traces')}
-          >
-            <Activity className="h-3 w-3" />
-          </button>
-        </div>
-        <button
-          type="button"
-          disabled={isStreaming}
-          onClick={() => void onCreateSession()}
-          className="nova-nav-item flex h-7 w-7 shrink-0 items-center justify-center rounded border border-[var(--nova-border)] bg-[var(--nova-surface-2)] disabled:cursor-not-allowed disabled:opacity-45"
-          aria-label={t('chat.newSession')}
-          title={t('chat.newSession')}
-        >
-          <Plus className="h-3.5 w-3.5" />
-        </button>
-        <div className="min-w-0 flex-1" />
-        <button
-          type="button"
-          onClick={onClose}
-          className="nova-nav-item rounded p-1"
-          aria-label={t('chat.closeAgent')}
-          title={t('common.close')}
-        >
-          <X className="h-3.5 w-3.5" />
-        </button>
-      </div>
       )}
 
       {/*
@@ -601,12 +677,7 @@ function AgentPanelComponent({
         <>
           <div className="relative flex min-h-0 flex-1">
             {!activeSubAgentSessionKey ? (
-              <StablePortalSlot
-                host={chatPaneHost}
-                fallback={chatPane}
-                wrapFallback={false}
-                className="relative flex min-h-0 min-w-0 flex-1 flex-col"
-              />
+              <StablePortalSlot host={chatPaneHost} fallback={chatPane} wrapFallback={false} className="relative flex min-h-0 min-w-0 flex-1 flex-col" />
             ) : (
               <>
                 <Group
@@ -616,28 +687,15 @@ function AgentPanelComponent({
                   className="absolute inset-0 hidden lg:flex"
                 >
                   <Panel id="agent-chat" defaultSize="52%" minSize="300px" className="min-w-[300px]">
-                    <StablePortalSlot
-                      host={chatPaneHost}
-                      fallback={chatPane}
-                      wrapFallback={false}
-                      className="relative flex h-full min-h-0 min-w-0 flex-col"
-                    />
+                    <StablePortalSlot host={chatPaneHost} fallback={chatPane} wrapFallback={false} className="relative flex h-full min-h-0 min-w-0 flex-col" />
                   </Panel>
                   <SubAgentDetailsResizeHandle label={t('chat.subagent.resizeSession')} />
                   <Panel id="subagent-details" defaultSize="48%" minSize="300px" maxSize="68%" className="min-w-[300px]">
-                    <AgentSubAgentSessionPanel
-                      messages={messages}
-                      sessionKey={activeSubAgentSessionKey}
-                      onClose={() => setActiveSubAgentSessionKey('')}
-                    />
+                    <AgentSubAgentSessionPanel messages={messages} sessionKey={activeSubAgentSessionKey} onClose={() => setActiveSubAgentSessionKey('')} />
                   </Panel>
                 </Group>
                 <div className="absolute inset-0 z-30 lg:hidden">
-                  <AgentSubAgentSessionPanel
-                    messages={messages}
-                    sessionKey={activeSubAgentSessionKey}
-                    onClose={() => setActiveSubAgentSessionKey('')}
-                  />
+                  <AgentSubAgentSessionPanel messages={messages} sessionKey={activeSubAgentSessionKey} onClose={() => setActiveSubAgentSessionKey('')} />
                 </div>
               </>
             )}
@@ -678,12 +736,7 @@ function isGlobalStyleSceneName(scene: string) {
 }
 
 function SubAgentDetailsResizeHandle({ label }: { label: string }) {
-  return (
-    <Separator
-      aria-label={label}
-      className="nova-resize-handle z-10 -mx-1 hidden w-2 cursor-col-resize bg-transparent transition-colors lg:block"
-    />
-  )
+  return <Separator aria-label={label} className="nova-resize-handle z-10 -mx-1 hidden w-2 cursor-col-resize bg-transparent transition-colors lg:block" />
 }
 
 function AgentQuickActions({
@@ -698,15 +751,48 @@ function AgentQuickActions({
   onSend: (message: string) => void
 }) {
   const { t } = useTranslation()
-  const target = chapter ? t('chat.quick.targetChapter', { title: chapter.display_title }) : (selectedFile ? t('chat.quick.targetFile', { file: selectedFile }) : t('chat.quick.targetWork'))
-  const actions = useMemo(() => [
-    { label: t('chat.quick.nextGroup'), icon: FileText, prompt: '请基于当前大纲、已有章节正文、setting/progress.md、setting/character-states.md 和资料库长期设定，生成接下来一个短期情节单元的章节组细纲。只规划下一组，不要批量生成很多组；细纲要短而可维护，方便阅读、评论和后续更新，每章只写关键点，不写长篇背景解释；如实际正文已经偏离大纲，请先指出偏差并让我确认是调整大纲还是拉回主线。' },
-    { label: t('chat.quick.writeNextChapter'), icon: PenLine, prompt: '请读取当前章节组细纲、长期大纲、setting/progress.md、setting/character-states.md、资料库长期设定和最近至少两章实际正文，按细纲安排创作下一章。写作前以已有章节路径和非空正文判断下一章编号、标题与所属分卷，setting/progress.md 只作为摘要参考；若属于某一卷，请写入 chapters/<分卷名>/ 下符合章节文件名模板的文件。完成正文自检和本轮最后修订后，在同一轮同步更新 setting/progress.md 与 setting/character-states.md；章节是否标记成章不影响同步。' },
-    { label: t('chat.quick.continueParagraph'), icon: PenLine, prompt: `请基于${target}的上下文，续写下一段正文，保持原有叙事节奏和人物状态。` },
-    { label: t('chat.quick.polishChapter'), icon: WandSparkles, prompt: `请检查并润色${target}，重点优化语句节奏、动作描写和情绪推进，不改变核心剧情。` },
-    { label: t('chat.quick.finalizeState'), icon: FileText, prompt: `请检查${target}与前后文和当前章节组细纲的连续性，并根据当前实际正文重新同步 setting/progress.md 和 setting/character-states.md；只有角色身份、人设、长期关系、能力体系或世界规则等稳定设定发生明确变化时，才更新资料库。章节状态只作为 UI 编辑标记，除非我明确要求，否则不要修改长期大纲。` },
-    { label: t('chat.quick.consistencyCheck'), icon: SearchCheck, prompt: `请对${target}做一致性检查，重点关注人物动机、时间线、道具、地点和前后文冲突。` },
-  ], [target, t])
+  const target = chapter
+    ? t('chat.quick.targetChapter', { title: chapter.display_title })
+    : selectedFile
+      ? t('chat.quick.targetFile', { file: selectedFile })
+      : t('chat.quick.targetWork')
+  const actions = useMemo(
+    () => [
+      {
+        label: t('chat.quick.nextGroup'),
+        icon: FileText,
+        prompt:
+          '请基于当前大纲、已有章节正文、setting/progress.md、setting/character-states.md 和资料库长期设定，生成接下来一个短期情节单元的章节组细纲。只规划下一组，不要批量生成很多组；细纲要短而可维护，方便阅读、评论和后续更新，每章只写关键点，不写长篇背景解释；如实际正文已经偏离大纲，请先指出偏差并让我确认是调整大纲还是拉回主线。',
+      },
+      {
+        label: t('chat.quick.writeNextChapter'),
+        icon: PenLine,
+        prompt:
+          '请读取当前章节组细纲、长期大纲、setting/progress.md、setting/character-states.md、资料库长期设定和最近至少两章实际正文，按细纲安排创作下一章。写作前以已有章节路径和非空正文判断下一章编号、标题与所属分卷，setting/progress.md 只作为摘要参考；若属于某一卷，请写入 chapters/<分卷名>/ 下符合章节文件名模板的文件。完成正文自检和本轮最后修订后，在同一轮同步更新 setting/progress.md 与 setting/character-states.md；章节是否标记成章不影响同步。',
+      },
+      {
+        label: t('chat.quick.continueParagraph'),
+        icon: PenLine,
+        prompt: `请基于${target}的上下文，续写下一段正文，保持原有叙事节奏和人物状态。`,
+      },
+      {
+        label: t('chat.quick.polishChapter'),
+        icon: WandSparkles,
+        prompt: `请检查并润色${target}，重点优化语句节奏、动作描写和情绪推进，不改变核心剧情。`,
+      },
+      {
+        label: t('chat.quick.finalizeState'),
+        icon: FileText,
+        prompt: `请检查${target}与前后文和当前章节组细纲的连续性，并根据当前实际正文重新同步 setting/progress.md 和 setting/character-states.md；只有角色身份、人设、长期关系、能力体系或世界规则等稳定设定发生明确变化时，才更新资料库。章节状态只作为 UI 编辑标记，除非我明确要求，否则不要修改长期大纲。`,
+      },
+      {
+        label: t('chat.quick.consistencyCheck'),
+        icon: SearchCheck,
+        prompt: `请对${target}做一致性检查，重点关注人物动机、时间线、道具、地点和前后文冲突。`,
+      },
+    ],
+    [target, t],
+  )
 
   return (
     <div className="border-b border-[var(--nova-border)] bg-[var(--nova-bg)] p-3">

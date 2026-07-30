@@ -17,6 +17,9 @@ func baseEnv(spec Spec) []string {
 	if spec.Workspace != "" {
 		env = append(env, "DENOVA_WORKSPACE="+spec.Workspace)
 	}
+	if spec.ProjectID != "" {
+		env = append(env, "DENOVA_PROJECT_ID="+spec.ProjectID)
+	}
 	// Interactive CLIs decide whether wide characters are printable from LANG, and that
 	// variable is frequently missing when the backend runs as a service, so default to UTF-8.
 	if os.Getenv("LANG") == "" && runtime.GOOS != "windows" {

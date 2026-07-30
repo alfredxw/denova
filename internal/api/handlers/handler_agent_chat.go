@@ -2,7 +2,9 @@ package handlers
 
 import (
 	"context"
+	"fmt"
 	"log"
+	"path/filepath"
 	"strconv"
 	"strings"
 
@@ -15,40 +17,118 @@ import (
 )
 
 type agentChatSessionCreateRequest struct {
+	ProjectID string `json:"project_id"`
 	Workspace string `json:"workspace"`
 	Title     string `json:"title"`
 }
 
 type agentChatSessionRequest struct {
+	ProjectID string `json:"project_id"`
 	Workspace string `json:"workspace"`
 	SessionID string `json:"session_id"`
 }
 
 type agentChatSessionRenameRequest struct {
+	ProjectID string `json:"project_id"`
 	Workspace string `json:"workspace"`
 	SessionID string `json:"session_id"`
 	Title     string `json:"title"`
 }
 
 type agentChatTurnRequest struct {
+	ProjectID string `json:"project_id"`
 	Workspace string `json:"workspace"`
 	SessionID string `json:"session_id"`
 	appsvc.AgentChatRequest
 }
 
-func agentChatBinding(workspace, sessionID string) appsvc.AgentChatBinding {
+func agentChatBinding(projectID, workspace, sessionID string) appsvc.AgentChatBinding {
 	return appsvc.AgentChatBinding{
-		Workspace: strings.TrimSpace(workspace), SessionID: strings.TrimSpace(sessionID),
+		ProjectID: strings.TrimSpace(projectID), Workspace: strings.TrimSpace(workspace), SessionID: strings.TrimSpace(sessionID),
 	}
 }
 
 func agentChatBindingFromQuery(c *app.RequestContext) appsvc.AgentChatBinding {
-	return agentChatBinding(c.Query("workspace"), c.Query("session_id"))
+	return agentChatBinding(c.Query("project_id"), c.Query("workspace"), c.Query("session_id"))
 }
 
 // HandleAgentChatProjects lists every project and never switches the open book.
 func (h *Handlers) HandleAgentChatProjects(_ context.Context, c *app.RequestContext) {
 	writeJSON(c, consts.StatusOK, map[string]any{"projects": h.app.AgentChatProjects()})
+}
+
+func (h *Handlers) HandleAgentChatProjectCreate(_ context.Context, c *app.RequestContext) {
+	var request struct {
+		Path string `json:"path"`
+	}
+	if err := c.BindJSON(&request); err != nil || !filepath.IsAbs(strings.TrimSpace(request.Path)) {
+		writeError(c, consts.StatusBadRequest, "项目目录无效 / Invalid project directory")
+		return
+	}
+	record, err := h.app.AddProject(request.Path)
+	if err != nil {
+		writeAgentChatProjectError(c, consts.StatusBadRequest, "添加项目失败", "Failed to add project", err)
+		return
+	}
+	writeJSON(c, consts.StatusCreated, record)
+}
+
+func (h *Handlers) HandleAgentChatProjectUpdate(_ context.Context, c *app.RequestContext) {
+	var request struct {
+		Name *string `json:"name"`
+		Path *string `json:"path"`
+	}
+	if err := c.BindJSON(&request); err != nil || (request.Name == nil) == (request.Path == nil) {
+		writeError(c, consts.StatusBadRequest, "每次只能重命名或重新关联目录 / Rename or relink one project field at a time")
+		return
+	}
+	projectID := strings.TrimSpace(c.Param("id"))
+	var (
+		record appsvc.ProjectRecord
+		err    error
+	)
+	if request.Name != nil {
+		record, err = h.app.RenameProject(projectID, *request.Name)
+	} else {
+		if !filepath.IsAbs(strings.TrimSpace(*request.Path)) {
+			writeError(c, consts.StatusBadRequest, "项目目录必须是绝对路径 / Project directory must be an absolute path")
+			return
+		}
+		record, err = h.app.RelinkProject(projectID, *request.Path)
+	}
+	if err != nil {
+		writeAgentChatProjectError(c, consts.StatusConflict, "更新项目失败", "Failed to update project", err)
+		return
+	}
+	writeJSON(c, consts.StatusOK, record)
+}
+
+func (h *Handlers) HandleAgentChatProjectArchive(_ context.Context, c *app.RequestContext) {
+	record, err := h.app.ArchiveProject(strings.TrimSpace(c.Param("id")))
+	if err != nil {
+		writeAgentChatProjectError(c, consts.StatusConflict, "移除项目失败", "Failed to remove project", err)
+		return
+	}
+	writeJSON(c, consts.StatusOK, record)
+}
+
+func (h *Handlers) HandleAgentChatProjectReorder(_ context.Context, c *app.RequestContext) {
+	var request struct {
+		ProjectIDs []string `json:"project_ids"`
+	}
+	if err := c.BindJSON(&request); err != nil || len(request.ProjectIDs) == 0 {
+		writeErrorKey(c, consts.StatusBadRequest, "api.common.invalidBody")
+		return
+	}
+	if err := h.app.ReorderProjects(request.ProjectIDs); err != nil {
+		writeAgentChatProjectError(c, consts.StatusBadRequest, "项目排序失败", "Failed to reorder projects", err)
+		return
+	}
+	writeJSON(c, consts.StatusOK, map[string]any{"project_ids": request.ProjectIDs})
+}
+
+func writeAgentChatProjectError(c *app.RequestContext, status int, chinese, english string, err error) {
+	writeError(c, status, fmt.Sprintf("%s / %s: %v", chinese, english, err))
 }
 
 const (
@@ -78,7 +158,7 @@ func (h *Handlers) HandleAgentChatHistory(_ context.Context, c *app.RequestConte
 		limit = min(limit, maxAgentChatHistoryPageSize)
 	}
 	writeJSON(c, consts.StatusOK, h.app.AgentChatHistory(appsvc.AgentChatHistoryQuery{
-		Workspace: c.Query("workspace"),
+		ProjectID: c.Query("project_id"),
 		Search:    c.Query("query"),
 		Offset:    offset,
 		Limit:     limit,
@@ -91,7 +171,7 @@ func (h *Handlers) HandleAgentChatSessionCreate(_ context.Context, c *app.Reques
 		writeErrorKey(c, consts.StatusBadRequest, "api.common.invalidBody")
 		return
 	}
-	sess, err := h.app.CreateProjectSession(req.Workspace, strings.TrimSpace(req.Title))
+	sess, err := h.app.CreateProjectSession(firstNonEmpty(req.ProjectID, req.Workspace), strings.TrimSpace(req.Title))
 	if err != nil {
 		log.Printf("[api/handlers/handler_agent_chat.go] creating session failed workspace=%q err=%v", req.Workspace, err)
 		writeError(c, consts.StatusBadRequest, err.Error())
@@ -110,7 +190,7 @@ func (h *Handlers) HandleAgentChatSessionRename(_ context.Context, c *app.Reques
 		writeErrorKey(c, consts.StatusBadRequest, "api.common.invalidBody")
 		return
 	}
-	if err := h.app.RenameProjectSession(req.Workspace, req.SessionID, req.Title); err != nil {
+	if err := h.app.RenameProjectSession(firstNonEmpty(req.ProjectID, req.Workspace), req.SessionID, req.Title); err != nil {
 		writeError(c, consts.StatusBadRequest, err.Error())
 		return
 	}
@@ -123,7 +203,7 @@ func (h *Handlers) HandleAgentChatSessionDelete(_ context.Context, c *app.Reques
 		writeErrorKey(c, consts.StatusBadRequest, "api.common.invalidBody")
 		return
 	}
-	if err := h.app.DeleteProjectSession(req.Workspace, req.SessionID); err != nil {
+	if err := h.app.DeleteProjectSession(firstNonEmpty(req.ProjectID, req.Workspace), req.SessionID); err != nil {
 		writeError(c, consts.StatusConflict, err.Error())
 		return
 	}
@@ -147,12 +227,12 @@ func (h *Handlers) HandleAgentChat(ctx context.Context, c *app.RequestContext) {
 		return
 	}
 	req.Locale = requestLocale(c)
-	task, err := h.app.StartAgentChatTask(ctx, agentChatBinding(req.Workspace, req.SessionID), req.AgentChatRequest)
+	task, err := h.app.StartAgentChatTask(ctx, agentChatBinding(req.ProjectID, req.Workspace, req.SessionID), req.AgentChatRequest)
 	if err != nil {
 		h.writeChatPreparationError(c, err)
 		return
 	}
-	log.Printf("[agent-chat-sse] attach new task_id=%s workspace=%q session_id=%s", task.ID(), req.Workspace, req.SessionID)
+	log.Printf("[agent-chat-sse] attach new task_id=%s project_id=%s workspace=%q session_id=%s", task.ID(), req.ProjectID, req.Workspace, req.SessionID)
 	sse.StreamTaskUI(c, task, h.chatSSEStreamOptions()...)
 }
 
@@ -190,6 +270,7 @@ func (h *Handlers) HandleAgentChatActive(ctx context.Context, c *app.RequestCont
 
 func (h *Handlers) HandleAgentChatCommand(ctx context.Context, c *app.RequestContext) {
 	var body struct {
+		ProjectID         string                  `json:"project_id"`
 		Workspace         string                  `json:"workspace"`
 		SessionID         string                  `json:"session_id"`
 		Type              string                  `json:"type"`
@@ -212,7 +293,7 @@ func (h *Handlers) HandleAgentChatCommand(ctx context.Context, c *app.RequestCon
 		return
 	}
 	body.Input.Locale = requestLocale(c)
-	receipt, err := h.app.SubmitAgentChatCommand(ctx, agentChatBinding(body.Workspace, body.SessionID), appsvc.ChatAgentCommand{
+	receipt, err := h.app.SubmitAgentChatCommand(ctx, agentChatBinding(body.ProjectID, body.Workspace, body.SessionID), appsvc.ChatAgentCommand{
 		Kind: kind, CommandID: strings.TrimSpace(body.CommandID),
 		OperationID:     appsvc.AgentOperationID(strings.TrimSpace(body.TargetOperationID)),
 		TargetCommandID: appsvc.AgentCommandID(strings.TrimSpace(body.TargetCommandID)),
@@ -229,6 +310,7 @@ func (h *Handlers) HandleAgentChatCommand(ctx context.Context, c *app.RequestCon
 
 func (h *Handlers) HandleAgentChatRecovery(ctx context.Context, c *app.RequestContext) {
 	var body struct {
+		ProjectID string                     `json:"project_id"`
 		Workspace string                     `json:"workspace"`
 		SessionID string                     `json:"session_id"`
 		Action    agentRecoveryActionRequest `json:"action"`
@@ -247,7 +329,7 @@ func (h *Handlers) HandleAgentChatRecovery(ctx context.Context, c *app.RequestCo
 		return
 	}
 	request := appsvc.AgentRuntimeRecoveryRequest{Action: action}
-	result, err := h.app.RecoverAgentChat(ctx, agentChatBinding(body.Workspace, body.SessionID), request)
+	result, err := h.app.RecoverAgentChat(ctx, agentChatBinding(body.ProjectID, body.Workspace, body.SessionID), request)
 	if err != nil {
 		h.writeAgentRecoveryError(c, err, action)
 		return
@@ -262,7 +344,7 @@ func (h *Handlers) HandleAgentChatContextAnalysis(ctx context.Context, c *app.Re
 		return
 	}
 	req.Locale = requestLocale(c)
-	analysis, err := h.app.AnalyzeAgentChatContext(ctx, agentChatBinding(req.Workspace, req.SessionID), req.AgentChatRequest)
+	analysis, err := h.app.AnalyzeAgentChatContext(ctx, agentChatBinding(req.ProjectID, req.Workspace, req.SessionID), req.AgentChatRequest)
 	if err != nil {
 		h.writeChatPreparationError(c, err)
 		return
@@ -304,6 +386,7 @@ func (h *Handlers) HandleAgentChatMessages(ctx context.Context, c *app.RequestCo
 
 func (h *Handlers) HandleAgentChatAskAnswer(ctx context.Context, c *app.RequestContext) {
 	var request struct {
+		ProjectID string                  `json:"project_id"`
 		Workspace string                  `json:"workspace"`
 		SessionID string                  `json:"session_id"`
 		Answers   []appsvc.AgentAskAnswer `json:"answers"`
@@ -312,7 +395,7 @@ func (h *Handlers) HandleAgentChatAskAnswer(ctx context.Context, c *app.RequestC
 		writeErrorKey(c, consts.StatusBadRequest, "api.common.invalidBody")
 		return
 	}
-	result, err := h.app.AnswerAgentChatAsk(ctx, agentChatBinding(request.Workspace, request.SessionID), strings.TrimSpace(c.Param("ask_id")), request.Answers)
+	result, err := h.app.AnswerAgentChatAsk(ctx, agentChatBinding(request.ProjectID, request.Workspace, request.SessionID), strings.TrimSpace(c.Param("ask_id")), request.Answers)
 	if err != nil {
 		writeAskResolutionError(c, err)
 		return
@@ -322,6 +405,7 @@ func (h *Handlers) HandleAgentChatAskAnswer(ctx context.Context, c *app.RequestC
 
 func (h *Handlers) HandleAgentChatAskCancel(ctx context.Context, c *app.RequestContext) {
 	var request struct {
+		ProjectID string `json:"project_id"`
 		Workspace string `json:"workspace"`
 		SessionID string `json:"session_id"`
 		Reason    string `json:"reason"`
@@ -330,7 +414,7 @@ func (h *Handlers) HandleAgentChatAskCancel(ctx context.Context, c *app.RequestC
 		writeErrorKey(c, consts.StatusBadRequest, "api.common.invalidBody")
 		return
 	}
-	result, err := h.app.CancelAgentChatAsk(ctx, agentChatBinding(request.Workspace, request.SessionID), strings.TrimSpace(c.Param("ask_id")), request.Reason)
+	result, err := h.app.CancelAgentChatAsk(ctx, agentChatBinding(request.ProjectID, request.Workspace, request.SessionID), strings.TrimSpace(c.Param("ask_id")), request.Reason)
 	if err != nil {
 		writeAskResolutionError(c, err)
 		return
@@ -340,6 +424,7 @@ func (h *Handlers) HandleAgentChatAskCancel(ctx context.Context, c *app.RequestC
 
 func (h *Handlers) HandleAgentChatSlashCommand(ctx context.Context, c *app.RequestContext) {
 	var request struct {
+		ProjectID string `json:"project_id"`
 		Workspace string `json:"workspace"`
 		SessionID string `json:"session_id"`
 		Command   string `json:"command"`
@@ -350,13 +435,13 @@ func (h *Handlers) HandleAgentChatSlashCommand(ctx context.Context, c *app.Reque
 	}
 	switch strings.TrimSpace(request.Command) {
 	case "clear":
-		if err := h.app.ClearAgentChatSession(ctx, agentChatBinding(request.Workspace, request.SessionID)); err != nil {
+		if err := h.app.ClearAgentChatSession(ctx, agentChatBinding(request.ProjectID, request.Workspace, request.SessionID)); err != nil {
 			writeError(c, consts.StatusConflict, err.Error())
 			return
 		}
 		writeJSON(c, consts.StatusOK, map[string]string{"result": "会话上下文已清空 / Conversation context cleared"})
 	case "status":
-		view := h.app.AgentChatActiveView(ctx, agentChatBinding(request.Workspace, request.SessionID))
+		view := h.app.AgentChatActiveView(ctx, agentChatBinding(request.ProjectID, request.Workspace, request.SessionID))
 		status := "空闲 / Idle"
 		if view.Task != nil && !view.Task.Finished {
 			status = "运行中 / Running"
@@ -369,4 +454,13 @@ func (h *Handlers) HandleAgentChatSlashCommand(ctx context.Context, c *app.Reque
 	default:
 		writeErrorKey(c, consts.StatusBadRequest, "api.common.invalidBody")
 	}
+}
+
+func firstNonEmpty(values ...string) string {
+	for _, value := range values {
+		if value = strings.TrimSpace(value); value != "" {
+			return value
+		}
+	}
+	return ""
 }

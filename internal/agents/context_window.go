@@ -63,7 +63,7 @@ func newRunContextWindowController(conversation Conversation, agentKind string) 
 		return nil
 	}
 	agentKind = strings.TrimSpace(agentKind)
-	if agentKind != AgentKindIDE && agentKind != AgentKindConfigManager {
+	if agentKind != AgentKindGeneral && agentKind != AgentKindIDE && agentKind != AgentKindConfigManager {
 		return nil
 	}
 	controller := &runContextWindowController{conversation: backend, agentKind: agentKind}

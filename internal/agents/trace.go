@@ -133,6 +133,8 @@ func withStandaloneRunTrace(ctx context.Context, cfg *config.Config, agentKind, 
 	}
 	options := RunOptions{
 		AgentKind: strings.TrimSpace(agentKind),
+		ProjectID: cfg.ProjectID,
+		StateRoot: cfg.ProjectStateDir,
 		Workspace: cfg.Workspace,
 		Mode:      strings.TrimSpace(mode),
 	}

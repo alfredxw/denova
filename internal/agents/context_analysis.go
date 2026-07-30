@@ -257,6 +257,57 @@ func BuildIDEContextAnalysis(cfg *config.Config, state *book.State, teller IDESt
 	}, nil
 }
 
+// BuildGeneralContextAnalysis mirrors the exact General Agent turn assembly
+// without injecting book-only creator, lore, teller, or dynamic writing state.
+func BuildGeneralContextAnalysis(cfg *config.Config, bookService *book.Service, compaction *session.ContextCompaction, pending *session.Interruption, req ChatRequest, conversation Conversation) (ContextAnalysis, error) {
+	composition, err := ComposeGeneralInstruction(cfg)
+	if err != nil {
+		return ContextAnalysis{}, err
+	}
+	systemPrompt := composition.Instruction()
+	policy := DefaultLoopPolicy().normalized()
+	turn, err := prepareTurnContext(context.Background(), turnContextPreparationInput{
+		Conversation: conversation, Request: req, PendingInterruption: pending,
+		BookService: bookService,
+		Environment: newTurnRuntimeEnvironment(contextAnalysisWorkspace(cfg, bookService)),
+	})
+	if err != nil {
+		return ContextAnalysis{}, err
+	}
+	messages := turn.ModelContext.Messages
+	contextMessages := make([]ContextAnalysisPart, 0, len(messages))
+	for index, message := range messages {
+		if message == nil {
+			continue
+		}
+		source := "会话历史"
+		title := fmt.Sprintf("历史消息 %d", index+1)
+		if isContextCompactionMessage(message) {
+			source = "上下文压缩"
+			title = "模型可见历史检查点"
+		} else if index == len(messages)-1 {
+			source = "本轮上下文"
+			title = "本轮发送给 General Agent 的用户消息"
+		}
+		contextMessages = append(contextMessages, contextAnalysisPartFromMessage(
+			fmt.Sprintf("message_%d", index+1), source, title, message,
+		))
+	}
+	usage := analyzeContextUsage(cfg, config.AgentKindGeneral, systemPrompt, messages, 0)
+	return ContextAnalysis{
+		AgentKind: config.AgentKindGeneral, Mode: "general",
+		SystemPrompt: systemPrompt, SystemPromptParts: systemPromptAnalysisParts(composition),
+		ContextParts:    contextBuildLogFromAssembly(policy.ContextLedger, turn.OriginalMessage, turn.ModelContext.Context).FullParts(),
+		ContextMessages: contextMessages, MessageCount: len(contextMessages),
+		TokenEstimate: usage.tokens, ProjectedTokenEstimate: usage.projectedTokens,
+		ReservedCompletionTokens: usage.completionReserve, ReservedToolResultTokens: usage.toolResultReserve,
+		ContextWindowTokens: usage.window, ContextUsageRatio: usage.ratio,
+		CompactionEpoch:  usage.compactionEpoch(compaction),
+		CompactionActive: compaction != nil && strings.TrimSpace(compaction.Summary) != "",
+		WouldCompact:     usage.wouldCompact, Compaction: contextAnalysisCompactionFromSession(compaction),
+	}, nil
+}
+
 func contextAnalysisWorkspace(cfg *config.Config, bookService *book.Service) string {
 	if cfg != nil && strings.TrimSpace(cfg.Workspace) != "" {
 		return cfg.Workspace

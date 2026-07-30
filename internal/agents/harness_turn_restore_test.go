@@ -220,3 +220,46 @@ func TestDecodeHarnessTurnRestoreRequestSupportsTransientQueueCommands(t *testin
 		})
 	}
 }
+
+func TestDecodeHarnessTurnRestoreRequestPreservesProjectIdentity(t *testing.T) {
+	t.Parallel()
+
+	options := RunOptions{
+		AgentKind: AgentKindGeneral, ProjectID: "project-general", StateRoot: "/state/project-general",
+		Workspace: "/workspace/original", SessionID: "general-session", Mode: runtimeBindingProfileAgentChat,
+	}.normalized("")
+	binding, err := harnessBindingForOptions(options)
+	if err != nil {
+		t.Fatal(err)
+	}
+	bindingRef, err := runstate.BindingReference(binding)
+	if err != nil {
+		t.Fatal(err)
+	}
+	spec := AgentCommandSpec{
+		Kind: AgentCommandFollowUp, CommandID: "general-follow-up", OperationID: "general-operation",
+		Request: ChatRequest{Message: "continue"}, Options: options,
+		Prepare: func(context.Context) (HarnessTurnExecution, error) { return HarnessTurnExecution{}, nil },
+	}
+	input := runstate.UserInput{
+		Text: spec.Request.Message,
+		TurnSpecRef: harnessCommandTurnRef(
+			binding, spec.CommandID, harnessTurnSpecSemanticFingerprint(spec),
+		),
+	}
+	input, err = withHarnessInputMaterializationDescriptor(input, spec)
+	if err != nil {
+		t.Fatal(err)
+	}
+	request, err := decodeHarnessTurnRestoreRequest(bindingRef, runstate.QueuedInput{
+		CommandID: runstate.CommandID(spec.CommandID), OperationID: runstate.OperationID(spec.OperationID),
+		Delivery: runstate.DeliveryFollowUp, Input: input,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if request.Binding.ProjectID != options.ProjectID || request.Binding.Workspace != "" ||
+		request.Options.ProjectID != options.ProjectID {
+		t.Fatalf("restored General Project identity = binding %#v options %#v", request.Binding, request.Options)
+	}
+}

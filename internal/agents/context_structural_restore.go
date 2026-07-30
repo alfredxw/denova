@@ -157,15 +157,25 @@ func contextStructuralBindingOptions(binding runstate.BindingRef, options RunOpt
 	if err != nil {
 		return RunOptions{}, err
 	}
-	options.Workspace = productBinding.Workspace
+	options.ProjectID = productBinding.ProjectID
+	if productBinding.ProjectID == "" {
+		options.Workspace = productBinding.Workspace
+	}
 	options.SessionID = productBinding.SessionID
 	options.StoryID = productBinding.StoryID
 	options.BranchID = productBinding.BranchID
 	options.AutomationTaskID = ""
 	switch productBinding.AgentKind {
+	case AgentKindGeneral:
+		options.AgentKind = AgentKindGeneral
+		options.Mode = runtimeBindingProfileAgentChat
 	case AgentKindIDE:
 		options.AgentKind = AgentKindIDE
-		options.Mode = "ide"
+		if productBinding.ProjectID != "" {
+			options.Mode = runtimeBindingProfileAgentChat
+		} else {
+			options.Mode = "ide"
+		}
 	case AgentKindInteractiveStory:
 		options.AgentKind = AgentKindInteractiveStory
 		options.Mode = "interactive"

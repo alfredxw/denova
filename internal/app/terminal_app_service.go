@@ -90,6 +90,29 @@ func (a *App) ResolveTerminalWorkspace(requested string) (string, error) {
 	return workspace, nil
 }
 
+// ResolveTerminalProject resolves the stable owner and content directory for
+// an AgentChat terminal without changing the foreground Book.
+func (a *App) ResolveTerminalProject(projectID, legacyWorkspace string) (string, string, error) {
+	projectID = strings.TrimSpace(projectID)
+	if projectID != "" {
+		record, layout, err := a.resolveProject(projectID, true)
+		if err != nil {
+			return "", "", err
+		}
+		return record.ID, layout.ContentRoot, nil
+	}
+	legacyWorkspace = strings.TrimSpace(legacyWorkspace)
+	if legacyWorkspace != "" {
+		record, layout, err := a.resolveProjectByWorkspace(legacyWorkspace)
+		if err != nil {
+			return "", "", err
+		}
+		return record.ID, layout.ContentRoot, nil
+	}
+	workspace, err := a.ResolveTerminalWorkspace("")
+	return "", workspace, err
+}
+
 // ResolveTerminalCwd validates the working directory sent by the frontend and falls back to the
 // default when it is invalid or missing. The terminal already lets the user run arbitrary
 // commands, so this only checks that the directory exists rather than sandboxing it.

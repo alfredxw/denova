@@ -68,6 +68,10 @@ func (s *ChatAppService) RecoverAgentRuntime(ctx context.Context, request AgentR
 	chatService := a.chatService
 	bookService := a.bookService
 	existing := a.activeWritingRun
+	stateRoot := ""
+	if a.cfg != nil {
+		stateRoot = a.cfg.ProjectStateDir
+	}
 	a.mu.RUnlock()
 	if workspace == "" || sess == nil || chatService == nil {
 		return AgentRuntimeRecoveryResult{}, ErrNoWorkspace
@@ -102,7 +106,7 @@ func (s *ChatAppService) RecoverAgentRuntime(ctx context.Context, request AgentR
 		return AgentRuntimeRecoveryResult{}, ErrAgentOperationActive
 	}
 
-	options := agents.RunOptions{AgentKind: agents.AgentKindIDE, Workspace: workspace, SessionID: sess.ID, Mode: "ide"}
+	options := agents.RunOptions{AgentKind: agents.AgentKindIDE, StateRoot: stateRoot, Workspace: workspace, SessionID: sess.ID, Mode: "ide"}
 	recovery, err := chatService.OpenRecoveryObservation(operation.Context(), options)
 	if err != nil {
 		return AgentRuntimeRecoveryResult{}, err
@@ -115,7 +119,7 @@ func (s *ChatAppService) RecoverAgentRuntime(ctx context.Context, request AgentR
 		recovery.Close()
 		return AgentRuntimeRecoveryResult{}, fmt.Errorf("reconcile orphaned Ask before writing recovery: %w", err)
 	}
-	runtime := ideChatRuntime{app: a, sess: sess, bookService: bookService, chatService: chatService, workspace: workspace}
+	runtime := ideChatRuntime{app: a, sess: sess, bookService: bookService, chatService: chatService, workspace: workspace, projectState: stateRoot}
 	key := recoveryActionKey(request.Action)
 	structural, isStructural := recoveryStructuralAction(request.Action.Kind)
 	var run *writingTaskRun

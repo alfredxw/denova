@@ -27,6 +27,7 @@ func TestAutomationMutationEvaluatorIgnoresRequestCancelAndAppCloseDrains(t *tes
 		workspace:   workspace,
 		bookService: book.NewService(workspace),
 	}
+	registerAutomationProjectForTest(t, application, workspace)
 	application.ensureServices()
 	if _, err := application.CreateAutomation(automation.Task{
 		Scope:      automation.ScopeWorkspace,
@@ -107,6 +108,11 @@ func TestWorkspaceChangeMutationAutomationUsesCapturedWorkspaceAfterSwitch(t *te
 		workspace:   workspace,
 		bookService: book.NewService(workspace),
 	}
+	oldStore := registerAutomationProjectForTest(t, app, workspace)
+	if _, err := app.projectRegistry.EnsureBook(nextWorkspace); err != nil {
+		t.Fatal(err)
+	}
+	nextStore := projectAutomationStoreForTest(t, novaDir, app.projectRegistry, nextWorkspace)
 	app.ensureServices()
 	t.Cleanup(app.Close)
 
@@ -173,7 +179,6 @@ func TestWorkspaceChangeMutationAutomationUsesCapturedWorkspaceAfterSwitch(t *te
 	app.mu.Unlock()
 	close(releaseEvaluation)
 
-	oldStore := automation.NewStore(novaDir, workspace)
 	deadline := time.Now().Add(500 * time.Millisecond)
 	for {
 		inbox, err := oldStore.ListInbox()
@@ -181,7 +186,7 @@ func TestWorkspaceChangeMutationAutomationUsesCapturedWorkspaceAfterSwitch(t *te
 			t.Fatalf("list captured workspace inbox: %v", err)
 		}
 		if len(inbox) == 1 {
-			if inbox[0].Workspace != workspace {
+			if canonicalAutomationWorkspace(inbox[0].Workspace) != canonicalAutomationWorkspace(workspace) {
 				t.Fatalf("inbox workspace=%q want=%q", inbox[0].Workspace, workspace)
 			}
 			break
@@ -191,7 +196,7 @@ func TestWorkspaceChangeMutationAutomationUsesCapturedWorkspaceAfterSwitch(t *te
 		}
 		time.Sleep(5 * time.Millisecond)
 	}
-	newInbox, err := automation.NewStore(novaDir, nextWorkspace).ListInbox()
+	newInbox, err := nextStore.ListInbox()
 	if err != nil {
 		t.Fatalf("list next workspace inbox: %v", err)
 	}
@@ -210,6 +215,7 @@ func TestAutomationSemanticTriggerChecksOnlyCompletedChapterBatches(t *testing.T
 		writeTestChapter(t, workspace, i)
 	}
 	app := &App{cfg: &config.Config{NovaDir: filepath.Join(root, "nova"), Workspace: workspace}, workspace: workspace}
+	registerAutomationProjectForTest(t, app, workspace)
 	app.ensureServices()
 	app.bookService = book.NewService(workspace)
 

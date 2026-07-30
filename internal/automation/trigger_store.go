@@ -102,8 +102,9 @@ func (s *Store) CreateInboxItem(item TriggerInboxItem) (TriggerInboxItem, error)
 	}
 	destination := s
 	if normalized.Scope == ScopeWorkspace && strings.TrimSpace(normalized.Workspace) != "" {
-		destination = NewStore(s.userDir, normalized.Workspace)
+		destination = s.storeForWorkspace(normalized.Workspace)
 	}
+	normalized = destination.bindProjectInboxWorkspace(normalized)
 	path, err := destination.inboxPathForScope(normalized.Scope)
 	if err != nil {
 		return TriggerInboxItem{}, err
@@ -298,6 +299,7 @@ func (s *Store) readInboxScope(scope string) ([]TriggerInboxItem, error) {
 	}
 	out := make([]TriggerInboxItem, 0, len(file.Items))
 	for _, item := range file.Items {
+		item = s.bindProjectInboxWorkspace(item)
 		normalized, err := NormalizeInboxItem(item)
 		if err != nil {
 			return nil, fmt.Errorf("invalid automation inbox item %s: %w", item.ID, err)
@@ -305,6 +307,13 @@ func (s *Store) readInboxScope(scope string) ([]TriggerInboxItem, error) {
 		out = append(out, normalized)
 	}
 	return out, nil
+}
+
+func (s *Store) bindProjectInboxWorkspace(item TriggerInboxItem) TriggerInboxItem {
+	if item.Scope == ScopeWorkspace && strings.TrimSpace(s.workspaceStateRoot) != "" {
+		item.Workspace = s.workspace
+	}
+	return item
 }
 
 func (s *Store) writeInboxScope(scope string, items []TriggerInboxItem) error {
@@ -449,7 +458,7 @@ func (s *Store) inboxLocations() []taskStoreLocation {
 			return
 		}
 		seen[canonical] = true
-		locations = append(locations, taskStoreLocation{store: NewStore(s.userDir, canonical), scope: ScopeWorkspace})
+		locations = append(locations, taskStoreLocation{store: s.storeForWorkspace(canonical), scope: ScopeWorkspace})
 	}
 	appendWorkspace(s.workspace)
 	for _, workspace := range s.knownWorkspaces {
@@ -468,6 +477,9 @@ func (s *Store) inboxPathForScope(scope string) (string, error) {
 	case ScopeWorkspace:
 		if strings.TrimSpace(s.workspace) == "" {
 			return "", fmt.Errorf("workspace is required")
+		}
+		if strings.TrimSpace(s.workspaceStateRoot) != "" {
+			return filepath.Join(s.workspaceStateRoot, "automations", "inbox.json"), nil
 		}
 		return workspacepath.Path(s.workspace, "automations", "inbox.json"), nil
 	default:

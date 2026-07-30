@@ -27,6 +27,10 @@ func (s *ChatAppService) resumeWritingContextStructuralOperation(
 	a.mu.RLock()
 	chat := a.chatService
 	workspace := a.workspace
+	stateRoot := ""
+	if a.cfg != nil {
+		stateRoot = a.cfg.ProjectStateDir
+	}
 	sessionID := ""
 	selected := a.session
 	if a.session != nil {
@@ -37,7 +41,7 @@ func (s *ChatAppService) resumeWritingContextStructuralOperation(
 		return agents.ContextStructuralResult{}, false, nil
 	}
 	result, resumed, err := chat.ResumeRecoveredContextStructuralOperation(ctx, agents.RunOptions{
-		AgentKind: agents.AgentKindIDE, Workspace: workspace, SessionID: sessionID, Mode: "ide",
+		AgentKind: agents.AgentKindIDE, StateRoot: stateRoot, Workspace: workspace, SessionID: sessionID, Mode: "ide",
 	}, action)
 	if !resumed || selected == nil {
 		return result, resumed, err
@@ -139,7 +143,8 @@ func (a *App) restoreSessionContextStructuralOperation(
 	request agents.HarnessStructuralRestoreRequest,
 ) (agents.ContextStructuralOperation, error) {
 	binding := request.Binding
-	if binding.AgentKind != agents.AgentKindIDE ||
+	if (binding.AgentKind != agents.AgentKindGeneral && binding.AgentKind != agents.AgentKindIDE &&
+		binding.AgentKind != agents.AgentKindConfigManager && binding.AgentKind != agents.AgentKindImage) ||
 		strings.TrimSpace(binding.SessionID) == "" || request.Snapshot.Ref.Resource != binding.SessionID {
 		return nil, fmt.Errorf("structural Session restore binding does not match its resource")
 	}

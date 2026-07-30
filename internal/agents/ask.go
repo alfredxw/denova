@@ -29,7 +29,7 @@ func newRunAskInteraction(conversation Conversation, options RunOptions, emit fu
 		return nil
 	}
 	agentKind := strings.TrimSpace(options.AgentKind)
-	if agentKind != AgentKindIDE && agentKind != AgentKindConfigManager {
+	if agentKind != AgentKindGeneral && agentKind != AgentKindIDE && agentKind != AgentKindConfigManager {
 		return nil
 	}
 	return &runAskInteraction{

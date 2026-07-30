@@ -25,9 +25,17 @@ func (s *ConfigManagerAppService) replayDurableStart(
 	if chatService == nil {
 		return nil, false, nil
 	}
+	stateRoot := ""
+	if s != nil && s.app != nil {
+		s.app.mu.RLock()
+		if s.app.cfg != nil {
+			stateRoot = s.app.cfg.ProjectStateDir
+		}
+		s.app.mu.RUnlock()
+	}
 	options := agents.RunOptions{
 		AgentKind: agents.AgentKindConfigManager, SessionID: sessionID,
-		Workspace: workspace, Mode: "config_manager",
+		StateRoot: stateRoot, Workspace: workspace, Mode: "config_manager",
 	}
 	status, err := chatService.RuntimeStatusProjection(ctx, options)
 	if err != nil {

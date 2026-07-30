@@ -220,6 +220,7 @@ type RunRecord struct {
 	ID              string            `json:"id"`
 	TaskID          string            `json:"task_id"`
 	SessionID       string            `json:"session_id,omitempty"`
+	ProjectID       string            `json:"project_id,omitempty"`
 	Scope           string            `json:"scope"`
 	Workspace       string            `json:"workspace,omitempty"`
 	Trigger         string            `json:"trigger"`

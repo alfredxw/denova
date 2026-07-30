@@ -42,7 +42,7 @@ func (s *AgentChatAppService) Recover(
 		return AgentRuntimeRecoveryResult{}, fmt.Errorf("%w: AgentChat has no project structural recovery action", agents.ErrRecoveryActionChanged)
 	}
 
-	project, err := s.projectRuntime(ctx, binding.Workspace)
+	project, err := s.projectRuntime(ctx, binding.ProjectID)
 	if err != nil {
 		return AgentRuntimeRecoveryResult{}, err
 	}
@@ -64,6 +64,7 @@ func (s *AgentChatAppService) Recover(
 		return AgentRuntimeRecoveryResult{}, fmt.Errorf("reconcile orphaned AgentChat Ask before recovery: %w", err)
 	}
 	runtime := ideChatRuntime{
+		projectID: project.projectID, projectType: project.projectType, projectState: project.stateRoot, agentKind: project.agentKind,
 		app: s.app, sess: sess, state: project.state, bookService: project.bookService,
 		chatService: project.chatService, workspace: project.workspace,
 		versionService: project.versionService, cfg: project.cfg,
@@ -93,7 +94,7 @@ func (s *AgentChatAppService) Recover(
 		defer s.releaseActiveRun(run)
 		defer recovery.Close()
 		outcome := recovery.Wait(taskCtx, emit)
-		log.Printf("[agent-chat-recovery] settled task_id=%s workspace=%q session_id=%s action=%s outcome=%s", task.ID(), binding.Workspace, binding.SessionID, request.Action.Kind, outcome.Status)
+		log.Printf("[agent-chat-recovery] settled task_id=%s project_id=%s workspace=%q session_id=%s action=%s outcome=%s", task.ID(), binding.ProjectID, binding.Workspace, binding.SessionID, request.Action.Kind, outcome.Status)
 	}); err != nil {
 		recovery.Close()
 		task.failBeforeStart(err)
@@ -148,8 +149,14 @@ func (s *AgentChatAppService) restoreHarnessTurn(
 		Options: request.Options,
 		Prepare: func(ctx context.Context) (agents.HarnessTurnExecution, error) {
 			scope := AgentChatBinding{
+				ProjectID: strings.TrimSpace(binding.ProjectID),
 				Workspace: strings.TrimSpace(binding.Workspace),
 				SessionID: strings.TrimSpace(binding.SessionID),
+			}
+			var err error
+			scope, err = s.resolveBinding(scope)
+			if err != nil {
+				return agents.HarnessTurnExecution{}, err
 			}
 			run := s.activeRun(scope)
 			if run == nil || run.task == nil || run.task.Finished() {
@@ -159,7 +166,7 @@ func (s *AgentChatAppService) restoreHarnessTurn(
 			if err != nil {
 				return agents.HarnessTurnExecution{}, err
 			}
-			if execution.Options.Mode != agentChatRuntimeMode || execution.Options.Workspace != scope.Workspace || execution.Options.SessionID != scope.SessionID {
+			if execution.Options.Mode != agentChatRuntimeMode || execution.Options.ProjectID != scope.ProjectID || execution.Options.Workspace != scope.Workspace || execution.Options.SessionID != scope.SessionID {
 				return agents.HarnessTurnExecution{}, fmt.Errorf("%w: restored AgentChat runtime does not match durable binding", agents.ErrHarnessTurnRestoreUnavailable)
 			}
 			return execution, nil

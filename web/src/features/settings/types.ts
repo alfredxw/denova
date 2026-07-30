@@ -105,6 +105,7 @@ export interface ImageAPIProfileSettings {
 
 export interface AgentModelSettings {
   default?: AgentModelOverride
+  general?: AgentModelOverride
   ide?: AgentModelOverride
   interactive_story?: AgentModelOverride
   image?: AgentModelOverride
@@ -125,6 +126,7 @@ export interface AgentModelOverride {
 
 export interface AgentToolSettings {
   default?: AgentToolOverride
+  general?: AgentToolOverride
   ide?: AgentToolOverride
   interactive_story?: AgentToolOverride
   image?: AgentToolOverride
@@ -138,6 +140,7 @@ export interface AgentToolSettings {
 
 export interface AgentSkillSettings {
   default?: AgentSkillOverride
+  general?: AgentSkillOverride
   ide?: AgentSkillOverride
   interactive_story?: AgentSkillOverride
   image?: AgentSkillOverride
@@ -153,6 +156,7 @@ export type AgentSkillOverride = Record<string, boolean>
 
 interface AgentContextSettings {
   default?: AgentContextOverride
+  general?: AgentContextOverride
   ide?: AgentContextOverride
   interactive_story?: AgentContextOverride
   image?: AgentContextOverride
@@ -188,6 +192,7 @@ export interface ResolvedAgentContextSettings {
 
 interface AgentGeneralSubAgentSettings {
   default?: boolean | null
+  general?: boolean | null
   ide?: boolean | null
   interactive_story?: boolean | null
   config_manager?: boolean | null
@@ -255,6 +260,7 @@ export interface SubAgentConfig {
 
 interface AgentPromptSettings {
   default?: AgentPromptOverride
+  general?: AgentPromptOverride
   ide?: AgentPromptOverride
   interactive_story?: AgentPromptOverride
   image?: AgentPromptOverride
@@ -286,6 +292,7 @@ interface AgentPromptSourceList {
 
 interface AgentPromptSourceSettings {
   default?: AgentPromptSourceList
+  general?: AgentPromptSourceList
   ide?: AgentPromptSourceList
   interactive_story?: AgentPromptSourceList
   image?: AgentPromptSourceList
@@ -305,6 +312,7 @@ export interface AgentPromptBlocks {
 
 interface AgentPromptBlockSettings {
   default?: AgentPromptBlocks
+  general?: AgentPromptBlocks
   ide?: AgentPromptBlocks
   interactive_story?: AgentPromptBlocks
   image?: AgentPromptBlocks

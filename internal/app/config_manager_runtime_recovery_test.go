@@ -306,7 +306,7 @@ func runConfigManagerRecoveryCrashSeed(t *testing.T) {
 			newInteractiveReplayRunner(t, &interactiveReplayModel{message: agents.AssistantMessage("must not run", nil)}),
 			&interactiveCrashConversation{vanished: reachedContext}, application.bookService,
 			agents.ChatRequest{CommandID: seed.commandID, Message: "persist Config Manager work before crash"},
-			configManagerRunOptions(workspace, sessionID), nil,
+			configManagerRunOptions(workspace, "", sessionID), nil,
 		); err != nil {
 			t.Fatal(err)
 		}

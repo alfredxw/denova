@@ -3,10 +3,13 @@ const agents = {
   'agents.layer.user': 'User Settings',
   'agents.close': 'Close Agents',
   'agents.saveError': 'Failed to save settings',
+  'agents.group.general': 'General',
   'agents.group.writing': 'Writing',
   'agents.group.interactive': 'Game',
   'agents.group.version': 'Versions',
   'agents.group.utility': 'Tools',
+  'agents.general.title': 'General Agent',
+  'agents.general.subtitle': 'General-purpose work across any project directory',
   'agents.ide.title': 'Writing Agent',
   'agents.ide.subtitle': 'Chapter continuation, file edits, setting sync',
   'agents.configManager.title': 'Config Manager Agent',
@@ -88,7 +91,8 @@ const agents = {
   'agents.field.systemPrompt': 'System Prompt',
   'agents.field.editablePrompt': 'Flow and Custom Rules',
   'agents.prompt.placeholder': 'The built-in system prompt is shown by default. Edit it to save an override in this layer.',
-  'agents.prompt.protectedNote': 'Custom prompts take priority over Denova built-in prompts for behavior, creative preferences, strategy, and style, but they cannot override tool permissions, output protocols, interactive no-write boundaries, structured JSON requirements, or backend validation.',
+  'agents.prompt.protectedNote':
+    'Custom prompts take priority over Denova built-in prompts for behavior, creative preferences, strategy, and style, but they cannot override tool permissions, output protocols, interactive no-write boundaries, structured JSON requirements, or backend validation.',
   'agents.prompt.builtinNote': 'Showing Denova’s built-in default system prompt. Edit it to save a custom System Prompt in the current layer.',
   'agents.prompt.runtimeContract': 'Runtime Contract (Read-only)',
   'agents.prompt.outputProtocol': 'Output Format (Read-only)',
@@ -116,16 +120,19 @@ const agents = {
   'agents.skills.unavailable': 'Unavailable',
   'agents.skills.defaultAvailable': 'Default applies to this Agent',
   'agents.skills.defaultUnavailable': 'Default does not apply to this Agent',
-  'agents.skills.note': 'These switches only affect which Skills this Agent can see and invoke. Inherit uses the agent field in SKILL.md frontmatter; an empty field means a general Skill.',
+  'agents.skills.note':
+    'These switches only affect which Skills this Agent can see and invoke. Inherit uses the agent field in SKILL.md frontmatter; an empty field means a general Skill.',
   'agents.subAgents.add': 'Add SubAgent',
   'agents.subAgents.empty': 'No custom SubAgents yet.',
-  'agents.subAgents.note': 'SubAgents handle specialized work delegated by the parent Agent. Tool permissions are capped by the parent Agent, so a SubAgent cannot gain abilities its parent does not have.',
+  'agents.subAgents.note':
+    'SubAgents handle specialized work delegated by the parent Agent. Tool permissions are capped by the parent Agent, so a SubAgent cannot gain abilities its parent does not have.',
   'agents.subAgents.general.title': 'General SubAgent',
   'agents.subAgents.general.enabled': 'General SubAgent enabled state',
   'agents.subAgents.general.description': 'The built-in general-purpose subagent for delegated general subtasks.',
   'agents.subAgents.newName': 'Custom SubAgent',
   'agents.subAgents.newDescription': 'Handles specialized subtasks delegated by the current parent Agent.',
-  'agents.subAgents.newPrompt': 'You are a Denova custom SubAgent. Only handle the task delegated by the parent Agent, keep the result focused and actionable, and do not assume tool capabilities that the parent Agent did not grant.',
+  'agents.subAgents.newPrompt':
+    'You are a Denova custom SubAgent. Only handle the task delegated by the parent Agent, keep the result focused and actionable, and do not assume tool capabilities that the parent Agent did not grant.',
   'agents.subAgents.dialogDescription': 'Edit the name, model, parent Agents, and tool restrictions. Changes autosave to the current settings layer.',
   'agents.subAgents.untitled': 'Untitled SubAgent',
   'agents.subAgents.enabled': 'Enabled',
@@ -136,6 +143,7 @@ const agents = {
   'agents.subAgents.promptPlaceholder': 'Describe this SubAgent’s responsibility, boundaries, and output requirements.',
   'agents.subAgents.parents': 'Available Parents',
   'agents.subAgents.parent.ide': 'Writing',
+  'agents.subAgents.parent.general': 'General',
   'agents.subAgents.parent.interactive_story': 'Interactive Story',
   'agents.subAgents.parent.config_manager': 'Config Manager',
   'agents.subAgents.parent.automation': 'Automation',
@@ -148,22 +156,29 @@ const agents = {
   'agents.subAgents.done': 'Done',
   'agents.subAgents.delete': 'Delete SubAgent',
   'agents.subAgents.deleteTitle': 'Delete SubAgent?',
-  'agents.subAgents.deleteDescription': 'You can hide it only from the current parent Agent, or delete it from the current settings layer everywhere. Existing history messages are not deleted.',
+  'agents.subAgents.deleteDescription':
+    'You can hide it only from the current parent Agent, or delete it from the current settings layer everywhere. Existing history messages are not deleted.',
   'agents.subAgents.deleteCurrentParent': 'Remove from Current Parent',
   'agents.subAgents.deleteEverywhere': 'Delete Everywhere',
   'agents.badge.inherited': 'Inherit',
   'agents.badge.overridden': 'Override',
-  'agents.builtIn.note': 'These write capabilities run at the application layer: the model generates a structured edit plan, then the backend validates and saves it. They are not part of the file, command, or Skills toolchain, so there are no individual tool switches here.',
-  'agents.modelOnly.note': 'This agent is currently model-only. It does not modify files, lore, or presets; only model and thinking parameters are configurable here.',
+  'agents.builtIn.note':
+    'These write capabilities run at the application layer: the model generates a structured edit plan, then the backend validates and saves it. They are not part of the file, command, or Skills toolchain, so there are no individual tool switches here.',
+  'agents.modelOnly.note':
+    'This agent is currently model-only. It does not modify files, lore, or presets; only model and thinking parameters are configurable here.',
   'agents.context.currentBook': 'Current Book',
   'agents.context.defaultTeller': 'Default Narrative',
   'agents.context.sessionContext': 'Session Context',
   'agents.context.sessionContextValue': 'Effective current-session history',
   'agents.context.compactionValue': '{{threshold}}% auto compaction; before compaction, use the current effective transcript.',
-  'agents.context.compactionNote': 'Auto compaction starts at the configured share of the model context window. Denova derives recovery headroom and cache-safe cleanup watermarks as one backend policy.',
-  'agents.context.backendManagedPolicyNote': 'Checkpoint shape, retained raw history, recovery headroom, and failure protection are managed together by the backend to keep prefix caching stable.',
-  'agents.context.toolResultContextNote': 'When enabled, recoverable tool results remain model-visible until backend-managed pressure cleanup replaces eligible old bodies with traceable receipts. Visible tool cards are unchanged.',
-  'agents.context.assemblyBudgetNote': 'Fragment budgets cover only turn injections and never trim display history. The provider hard limit covers complete messages and tool schemas, defaults to 4 MB, cannot be bypassed by disabling semantic compaction, and fails before send; the compactor layers oversized sources.',
+  'agents.context.compactionNote':
+    'Auto compaction starts at the configured share of the model context window. Denova derives recovery headroom and cache-safe cleanup watermarks as one backend policy.',
+  'agents.context.backendManagedPolicyNote':
+    'Checkpoint shape, retained raw history, recovery headroom, and failure protection are managed together by the backend to keep prefix caching stable.',
+  'agents.context.toolResultContextNote':
+    'When enabled, recoverable tool results remain model-visible until backend-managed pressure cleanup replaces eligible old bodies with traceable receipts. Visible tool cards are unchanged.',
+  'agents.context.assemblyBudgetNote':
+    'Fragment budgets cover only turn injections and never trim display history. The provider hard limit covers complete messages and tool schemas, defaults to 4 MB, cannot be bypassed by disabling semantic compaction, and fails before send; the compactor layers oversized sources.',
   'agents.context.storyState': 'Story State',
   'agents.context.teller': 'Narrative',
   'agents.context.currentStoryTeller': 'Current narrative',
@@ -185,7 +200,8 @@ const agents = {
   'agents.builtIn.tellerRead.title': 'Read Presets',
   'agents.builtIn.tellerRead.value': 'Read current narrative styles, story directors, image presets, selected presets, and user-referenced presets.',
   'agents.builtIn.tellerWrite.title': 'Write Presets',
-  'agents.builtIn.tellerWrite.value': 'Generate create / update plans for backend validation and saving as narrative styles, story directors, or image presets.',
+  'agents.builtIn.tellerWrite.value':
+    'Generate create / update plans for backend validation and saving as narrative styles, story directors, or image presets.',
 } as const
 
 export default agents

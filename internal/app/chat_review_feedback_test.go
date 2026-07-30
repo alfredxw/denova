@@ -17,6 +17,14 @@ import (
 	"denova/internal/workspacepath"
 )
 
+func bookReviewRuntime(workspace string, sess *session.Session) ideChatRuntime {
+	return ideChatRuntime{
+		agentKind: agents.AgentKindIDE, projectType: ProjectTypeBook,
+		workspace: workspace, state: book.NewState(workspace),
+		bookService: book.NewService(workspace), sess: sess,
+	}
+}
+
 func TestDocumentReviewFeedbackResolvesCurrentAnchorAndConsumesAfterCommit(t *testing.T) {
 	workspace := t.TempDir()
 	path := "chapters/ch01.md"
@@ -51,10 +59,11 @@ func TestDocumentReviewFeedbackResolvesCurrentAnchorAndConsumesAfterCommit(t *te
 
 	application := &App{workspace: workspace, bookService: book.NewService(workspace)}
 	chat := &ChatAppService{app: application}
+	runtime := bookReviewRuntime(workspace, nil)
 	req := agents.ChatRequest{ReviewFeedback: agents.ReviewFeedbackRefs{{
 		Source: agents.ReviewFeedbackSourceDocument, ReviewThreadID: thread.ID, CommentIDs: []string{comment.ID},
 	}}}
-	if err := chat.resolveReviewFeedback(context.Background(), ideChatRuntime{workspace: workspace}, &req); err != nil {
+	if err := chat.resolveReviewFeedback(context.Background(), runtime, &req); err != nil {
 		t.Fatal(err)
 	}
 	if len(req.ResolvedReviewFeedback) != 1 || req.ResolvedReviewFeedback[0].Source != agents.ReviewFeedbackSourceDocument || len(req.ResolvedReviewFeedback[0].Comments) != 1 {
@@ -64,7 +73,7 @@ func TestDocumentReviewFeedbackResolvesCurrentAnchorAndConsumesAfterCommit(t *te
 	if resolved.Target == nil || resolved.Target.Kind != documentreview.TargetKindWorkspaceFile || resolved.Target.ID != path || resolved.Body != comment.Body || resolved.Anchor.Revision != workspacechange.Revision([]byte(after)) || resolved.Anchor.Start != len("Intro\nAlpha ") {
 		t.Fatalf("document anchor was not projected from the canonical file: %#v", resolved)
 	}
-	if err := chat.consumeResolvedReviewFeedback(context.Background(), ideChatRuntime{workspace: workspace}, req); err != nil {
+	if err := chat.consumeResolvedReviewFeedback(context.Background(), runtime, req); err != nil {
 		t.Fatal(err)
 	}
 	pending, err := reviews.CurrentThread(context.Background())
@@ -111,10 +120,11 @@ func TestLoreReviewFeedbackResolvesStructuredTargetAndCurrentAnchor(t *testing.T
 
 	application := &App{workspace: workspace, bookService: book.NewService(workspace)}
 	chat := &ChatAppService{app: application}
+	runtime := bookReviewRuntime(workspace, nil)
 	req := agents.ChatRequest{ReviewFeedback: agents.ReviewFeedbackRefs{{
 		Source: agents.ReviewFeedbackSourceDocument, ReviewThreadID: thread.ID, CommentIDs: []string{comment.ID},
 	}}}
-	if err := chat.resolveReviewFeedback(context.Background(), ideChatRuntime{workspace: workspace}, &req); err != nil {
+	if err := chat.resolveReviewFeedback(context.Background(), runtime, &req); err != nil {
 		t.Fatal(err)
 	}
 	resolved := req.ResolvedReviewFeedback[0].Comments[0]
@@ -187,7 +197,7 @@ func TestReviewFeedbackResolvesAndConsumesDocumentAndDiffSelectionsTogether(t *t
 
 	application := &App{workspace: workspace, bookService: book.NewService(workspace)}
 	chat := &ChatAppService{app: application}
-	runtime := ideChatRuntime{workspace: workspace, sess: &session.Session{ID: "session-1"}}
+	runtime := bookReviewRuntime(workspace, &session.Session{ID: "session-1"})
 	req := agents.ChatRequest{ReviewFeedback: agents.ReviewFeedbackRefs{
 		{Source: agents.ReviewFeedbackSourceWorkspaceChange, ReviewThreadID: "diff-thread", CommentIDs: []string{diffComment.ID}},
 		{Source: agents.ReviewFeedbackSourceDocument, ReviewThreadID: documentThread.ID, CommentIDs: []string{documentComment.ID}},
@@ -292,7 +302,7 @@ func assertMixedReviewFeedbackRollback(t *testing.T, order []string, failingLedg
 
 	application := &App{workspace: workspace, bookService: book.NewService(workspace)}
 	chat := &ChatAppService{app: application}
-	runtime := ideChatRuntime{workspace: workspace, sess: &session.Session{ID: "session-rollback"}}
+	runtime := bookReviewRuntime(workspace, &session.Session{ID: "session-rollback"})
 	refs := make(agents.ReviewFeedbackRefs, 0, len(order))
 	for _, source := range order {
 		switch source {
@@ -590,7 +600,7 @@ func TestResolveReviewFeedbackUsesCanonicalWorkspaceLedger(t *testing.T) {
 	}
 }
 
-func TestResolveReviewFeedbackRejectsForgedThreadAndStaleWorkspace(t *testing.T) {
+func TestResolveReviewFeedbackRejectsForgedThreadWithinCapturedRuntime(t *testing.T) {
 	workspace := t.TempDir()
 	application := &App{workspace: workspace}
 	chat := &ChatAppService{app: application}
@@ -603,7 +613,7 @@ func TestResolveReviewFeedbackRejectsForgedThreadAndStaleWorkspace(t *testing.T)
 
 	application.workspace = t.TempDir()
 	err := chat.resolveReviewFeedback(context.Background(), ideChatRuntime{workspace: workspace, sess: &session.Session{ID: "session-1"}}, &req)
-	if !errors.Is(err, ErrWorkspaceChanged) {
-		t.Fatalf("stale workspace error=%v", err)
+	if !errors.As(err, &changeErr) || changeErr.Code != workspacechange.ErrorCodeNotFound || errors.Is(err, ErrWorkspaceChanged) {
+		t.Fatalf("captured runtime lookup error=%v", err)
 	}
 }

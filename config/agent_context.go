@@ -44,6 +44,7 @@ const (
 // and Agent kind observes one coherent policy.
 type AgentContextSettings struct {
 	Default             AgentContextOverride `toml:"default,omitempty" json:"default,omitempty"`
+	General             AgentContextOverride `toml:"general,omitempty" json:"general,omitempty"`
 	IDE                 AgentContextOverride `toml:"ide,omitempty" json:"ide,omitempty"`
 	InteractiveStory    AgentContextOverride `toml:"interactive_story,omitempty" json:"interactive_story,omitempty"`
 	ConfigManager       AgentContextOverride `toml:"config_manager,omitempty" json:"config_manager,omitempty"`
@@ -96,6 +97,7 @@ func DefaultAgentContextSettings() AgentContextSettings {
 func MergeAgentContextSettings(parent, child AgentContextSettings) AgentContextSettings {
 	return AgentContextSettings{
 		Default:             mergeAgentContextOverride(parent.Default, child.Default),
+		General:             mergeAgentContextOverride(parent.General, child.General),
 		IDE:                 mergeAgentContextOverride(parent.IDE, child.IDE),
 		InteractiveStory:    mergeAgentContextOverride(parent.InteractiveStory, child.InteractiveStory),
 		ConfigManager:       mergeAgentContextOverride(parent.ConfigManager, child.ConfigManager),
@@ -186,6 +188,7 @@ func agentContextOverrideFor(settings AgentContextSettings, agentKind string) Ag
 
 func sanitizeAgentContextSettings(settings AgentContextSettings) AgentContextSettings {
 	settings.Default = sanitizeAgentContextOverride(settings.Default)
+	settings.General = sanitizeAgentContextOverride(settings.General)
 	settings.IDE = sanitizeAgentContextOverride(settings.IDE)
 	settings.InteractiveStory = sanitizeAgentContextOverride(settings.InteractiveStory)
 	settings.ConfigManager = sanitizeAgentContextOverride(settings.ConfigManager)
@@ -241,7 +244,7 @@ func sanitizePositiveLimit(value *int, fallback, maximum int) {
 
 func defaultToolResultContextEnabled(agentKind string) bool {
 	switch agentKind {
-	case AgentKindIDE, AgentKindInteractiveStory:
+	case AgentKindGeneral, AgentKindIDE, AgentKindInteractiveStory:
 		return true
 	default:
 		return false

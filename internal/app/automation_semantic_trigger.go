@@ -176,6 +176,7 @@ func (s *AutomationAppService) semanticTriggerClaim(snap *automationWorkspaceSna
 	}
 	claim, err := automation.NewSemanticTriggerEvaluation(automation.SemanticTriggerIntent{
 		Scope:                  task.Scope,
+		ProjectID:              snap.projectID,
 		Workspace:              snap.workspace,
 		TaskID:                 task.ID,
 		TriggerID:              trigger.ID,

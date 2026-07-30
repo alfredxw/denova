@@ -343,6 +343,23 @@ func TestRunContextWindowControllerDoesNotPersistToolModelContent(t *testing.T) 
 	}
 }
 
+func TestGeneralAgentInstallsContextWindowController(t *testing.T) {
+	t.Parallel()
+	store, err := session.NewStore(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = store.Close() })
+	sess, err := store.GetOrCreate("general-context-window")
+	if err != nil {
+		t.Fatal(err)
+	}
+	conversation := NewSessionConversationForAgent(sess, nil, AgentKindGeneral)
+	if controller := newRunContextWindowController(conversation, AgentKindGeneral); controller == nil {
+		t.Fatal("General Agent did not install its context-window controller")
+	}
+}
+
 func TestRunContextWindowControllerRemindsOnceBeforeFailingCompletion(t *testing.T) {
 	backend := &contextWindowBackendStub{cursor: session.ContextCursor{MessageCount: 1}}
 	controller := &runContextWindowController{conversation: backend, agentKind: AgentKindIDE}

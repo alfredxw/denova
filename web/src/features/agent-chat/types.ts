@@ -52,7 +52,9 @@ export const AGENT_CHAT_GROUP_IDS: readonly AgentChatGroupId[] = ['primary', 'se
 /** Everything a tab carries regardless of what it hosts. */
 interface AgentChatTabCommon {
   id: string
-  /** Project that owns this tab. Tabs never cross project workbench groups. */
+  /** Stable Project identity. Tabs survive a display rename or directory relink. */
+  projectId: string
+  /** Current content directory, used only as the working root and page context. */
   workspace: string
   /** Title typed by the user; overrides the one derived from the session, profile or page. */
   customTitle?: string

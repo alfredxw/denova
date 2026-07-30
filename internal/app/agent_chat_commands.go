@@ -4,7 +4,6 @@ import (
 	"context"
 	"fmt"
 
-	"denova/config"
 	agents "denova/internal/agents"
 )
 
@@ -72,20 +71,15 @@ func (s *AgentChatAppService) prepareCommandExecution(
 	run *agentChatRun,
 	request agents.ChatRequest,
 ) (agents.HarnessTurnExecution, error) {
-	runtime, resolved, err := s.app.chat().prepareIDEChatRuntimeSnapshot(ctx, run.runtime, request)
+	runtime, resolved, err := s.app.chat().prepareProjectChatRuntimeSnapshot(ctx, run.runtime, request)
 	if err != nil {
 		return agents.HarnessTurnExecution{}, err
 	}
-	runner, systemPrompt, err := buildAgentRunnerWithComposition(ctx, &runtime.cfg, runtime.state, runtime.ideTeller)
+	runner, systemPrompt, err := buildProjectAgentRunnerWithComposition(ctx, runtime)
 	if err != nil {
 		return agents.HarnessTurnExecution{}, err
 	}
-	runtimeContexts := agents.IDEWorkspaceRuntimeContextsForRequest(runtime.state, resolved)
-	conversation := agents.NewSessionConversationForAgentWithRuntimeContexts(
-		runtime.sess, &runtime.cfg, config.AgentKindIDE,
-		runtimeContexts.StableTitle, runtimeContexts.Stable,
-		runtimeContexts.DynamicTitle, runtimeContexts.Dynamic,
-	)
+	conversation := projectSessionConversation(runtime, resolved)
 	options := agentChatRunOptions(run.binding, run.task.ID())
 	options.IdleTimeout = agentIdleTimeout(runtime.cfg)
 	options.ToolResultMaxBytes = agentToolResultMaxBytes(runtime.cfg)

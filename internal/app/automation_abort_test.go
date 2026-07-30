@@ -37,17 +37,22 @@ func TestAutomationAbortReplaysPersistedReceiptAfterRestart(t *testing.T) {
 	const commandID = "abort-command-replay"
 	run := automation.RunRecord{
 		ID: runID, TaskID: taskDef.ID, SessionID: automationRunSessionID(runID),
-		Scope: taskDef.Scope, Workspace: application.Workspace(), Trigger: automation.TriggerManual,
+		ProjectID: taskDef.Target.WorkspaceID,
+		Scope:     taskDef.Scope, Workspace: application.Workspace(), Trigger: automation.TriggerManual,
 		RuntimeCommandID: automationRunAgentCommandID(runID), RuntimeOperationID: string(operationID),
 		RuntimeReceiptCursor: 1, Status: automation.RunStatusAborted,
 		StartedAt: time.Now().UTC(), FinishedAt: time.Now().UTC(),
 	}
-	if _, err := automation.NewStore(root, application.Workspace()).AppendRun(taskDef.ID, run); err != nil {
+	if application.cfg.ProjectID != run.ProjectID {
+		projects, _ := application.Projects(false)
+		t.Fatalf("active Project identity = %q, automation target = %q, projects=%#v", application.cfg.ProjectID, run.ProjectID, projects)
+	}
+	if _, err := application.automation().storeAllWorkspaces().AppendRun(automationTaskStoreID(taskDef), run); err != nil {
 		application.Close()
 		t.Fatal(err)
 	}
 
-	ref := automationRuntimeBindingForTest(run.Workspace, run.SessionID, taskDef.ID)
+	ref := automationRuntimeBindingForTest(run.Workspace, run.SessionID, taskDef.ID, run.ProjectID)
 	key, err := json.Marshal(ref)
 	if err != nil {
 		application.Close()
@@ -87,6 +92,13 @@ func TestAutomationAbortReplaysPersistedReceiptAfterRestart(t *testing.T) {
 		t.Fatal(err)
 	}
 	t.Cleanup(reopened.Close)
+	if reopened.cfg.ProjectID != run.ProjectID {
+		t.Fatalf("reopened Project identity = %q, want %q", reopened.cfg.ProjectID, run.ProjectID)
+	}
+	reopenedRef := automationRuntimeBindingForTest(run.Workspace, run.SessionID, taskDef.ID, reopened.cfg.ProjectID)
+	if !reopenedRef.Equal(ref) {
+		t.Fatalf("reopened runtime binding = %#v, seeded %#v", reopenedRef, ref)
+	}
 	receipt, err := reopened.AbortAutomationRunCommand(context.Background(), runID, commandID, agents.OperationID(operationID), abort.Reason)
 	if err != nil {
 		t.Fatal(err)

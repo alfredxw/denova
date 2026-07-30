@@ -275,7 +275,9 @@ func (s *LoreAppService) generateLoreItemImage(ctx context.Context, expectedWork
 	}
 	defer runtime.Release()
 	cfg := runtime.cfg
-	if layered, loadErr := config.LoadLayeredWithStartupConfig(cfg.DataDir(), runtime.workspace); loadErr == nil {
+	if layered, loadErr := config.LoadLayeredWithStartupConfigAt(
+		cfg.DataDir(), runtime.workspace, config.ProjectConfigPath(cfg.ProjectStateDir),
+	); loadErr == nil {
 		applyLayeredSettingsToConfig(&cfg, layered)
 	} else {
 		log.Printf("[lore-image] 加载分层配置失败 workspace=%s err=%v", runtime.workspace, loadErr)
@@ -332,7 +334,9 @@ func (s *LoreAppService) loreImageRuntimeSnapshot(expectedWorkspace string) (*bo
 	a.mu.RUnlock()
 
 	cfg.Workspace = workspace
-	if layered, err := config.LoadLayeredWithStartupConfig(novaDir, workspace); err == nil {
+	if layered, err := config.LoadLayeredWithStartupConfigAt(
+		novaDir, workspace, config.ProjectConfigPath(cfg.ProjectStateDir),
+	); err == nil {
 		applyLayeredSettingsToConfig(&cfg, layered)
 	} else {
 		log.Printf("[lore-image] 加载分层配置失败 workspace=%s err=%v", workspace, err)

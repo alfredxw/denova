@@ -2,6 +2,7 @@ package app
 
 import (
 	"context"
+	"os"
 	"path/filepath"
 	"testing"
 
@@ -10,6 +11,7 @@ import (
 	"denova/internal/agents/session"
 	"denova/internal/book"
 	"denova/internal/interactive"
+	projectdomain "denova/internal/project"
 )
 
 func TestAppMaterializesAcceptedWritingInputExactlyOnce(t *testing.T) {
@@ -70,6 +72,93 @@ func TestAppMaterializesAcceptedWritingInputExactlyOnce(t *testing.T) {
 	if len(history) != 1 || history[0].Role != "user" || history[0].Content != request.Message ||
 		history[0].AgentCommandID != "writing-command" || len(history[0].UserReferences) != 1 {
 		t.Fatalf("canonical writing input = %#v", history)
+	}
+}
+
+func TestAppMaterializesGeneralProjectInputInUserState(t *testing.T) {
+	t.Parallel()
+
+	dataDir := t.TempDir()
+	workspace := filepath.Join(t.TempDir(), "general-project")
+	if err := os.MkdirAll(workspace, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	registry := projectdomain.NewRegistry(dataDir)
+	record, err := registry.Add(workspace, projectdomain.TypeGeneral, "General")
+	if err != nil {
+		t.Fatal(err)
+	}
+	layout, err := registry.EnsureState(record)
+	if err != nil {
+		t.Fatal(err)
+	}
+	store, err := session.NewStore(layout.SessionsDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := store.GetOrCreate("general-session"); err != nil {
+		t.Fatal(err)
+	}
+	if err := store.Close(); err != nil {
+		t.Fatal(err)
+	}
+
+	request := agents.HarnessInputMaterializationRequest{
+		Binding: agents.RuntimeBinding{
+			AgentKind: agents.AgentKindGeneral, ProjectID: record.ID,
+			Mode: "agent_chat", SessionID: "general-session",
+		},
+		Identity: agents.HarnessCycleIdentity{
+			CommandID: "general-command", OperationID: "general-operation", Cycle: 1,
+		},
+		AgentKind: agents.AgentKindGeneral,
+		Message:   "inspect the repository",
+		Request:   agents.ChatRequest{Message: "inspect the repository"},
+	}
+	application := &App{
+		cfg: &config.Config{NovaDir: dataDir}, projectRegistry: registry,
+	}
+	plan, err := application.PlanHarnessInputMaterialization(context.Background(), request)
+	if err != nil || !plan.Required || plan.Hash == "" {
+		t.Fatalf("General input plan = %#v err=%v", plan, err)
+	}
+	first, err := application.MaterializeHarnessInput(context.Background(), request, plan)
+	if err != nil {
+		t.Fatal(err)
+	}
+	second, err := application.MaterializeHarnessInput(context.Background(), request, plan)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if first.Revision == "" || second != first {
+		t.Fatalf("idempotent General receipts first=%#v second=%#v", first, second)
+	}
+
+	reloaded, err := session.NewStore(layout.SessionsDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = reloaded.Close() })
+	sess, err := reloaded.Get("general-session")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if history := sess.History(); len(history) != 1 || history[0].Content != request.Message {
+		t.Fatalf("General Project history = %#v", history)
+	}
+	if _, err := os.Stat(book.NewState(workspace).SessionDir()); !os.IsNotExist(err) {
+		t.Fatalf("workspace-private session directory should not be created, err=%v", err)
+	}
+
+	result, err := application.reconcileHarnessDomainCommit(
+		context.Background(),
+		domainRecoveryRequest(
+			request.Binding, string(request.Identity.CommandID), string(request.Identity.OperationID),
+			request.Identity.Cycle, agents.DomainCommitInput, plan.Hash,
+		),
+	)
+	if err != nil || !result.Found || result.Revision != first.Revision {
+		t.Fatalf("General Project input reconciliation = %#v err=%v", result, err)
 	}
 }
 

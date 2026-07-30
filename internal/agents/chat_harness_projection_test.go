@@ -24,6 +24,41 @@ func TestDefaultChatServiceUsesDurableMemoryHarness(t *testing.T) {
 	}
 }
 
+func TestProjectRuntimeBindingIdentitySurvivesRelink(t *testing.T) {
+	t.Parallel()
+
+	for _, agentKind := range []string{AgentKindIDE, AgentKindGeneral} {
+		agentKind := agentKind
+		t.Run(agentKind, func(t *testing.T) {
+			t.Parallel()
+			before, err := (RuntimeBinding{
+				AgentKind: agentKind, ProjectID: "project-1", Mode: runtimeBindingProfileAgentChat,
+				Workspace: "/old/location", SessionID: "session-1",
+			}).Ref()
+			if err != nil {
+				t.Fatal(err)
+			}
+			after, err := (RuntimeBinding{
+				AgentKind: agentKind, ProjectID: "project-1", Mode: runtimeBindingProfileAgentChat,
+				Workspace: "/new/location", SessionID: "session-1",
+			}).Ref()
+			if err != nil {
+				t.Fatal(err)
+			}
+			if !before.Equal(after) || before.Label(runtimeBindingLabelWorkspace) != "" {
+				t.Fatalf("Project binding changed after relink: before=%#v after=%#v", before, after)
+			}
+			decoded, err := ParseRuntimeBinding(before)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if decoded.AgentKind != agentKind || decoded.ProjectID != "project-1" || decoded.SessionID != "session-1" || decoded.Workspace != "" {
+				t.Fatalf("decoded stable Project binding = %#v", decoded)
+			}
+		})
+	}
+}
+
 func TestForegroundWorkspaceClosePreservesAgentChatBindings(t *testing.T) {
 	service, err := newHarnessChatService(context.Background(), DefaultLoopPolicy(), runstate.NewMemoryJournalStore())
 	if err != nil {

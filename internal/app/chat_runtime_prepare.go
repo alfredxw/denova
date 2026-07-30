@@ -26,6 +26,10 @@ func (s *ChatAppService) prepareIDEChatRuntime(ctx context.Context, req agents.C
 
 	runtime := ideChatRuntime{
 		app:            a,
+		projectID:      a.cfg.ProjectID,
+		projectType:    ProjectTypeBook,
+		projectState:   a.cfg.ProjectStateDir,
+		agentKind:      agents.AgentKindIDE,
 		sess:           a.session,
 		state:          a.bookState,
 		bookService:    a.bookService,
@@ -40,6 +44,44 @@ func (s *ChatAppService) prepareIDEChatRuntime(ctx context.Context, req agents.C
 	return s.prepareIDEChatRuntimeSnapshot(ctx, runtime, req)
 }
 
+func (s *ChatAppService) prepareProjectChatRuntimeSnapshot(
+	ctx context.Context,
+	runtime ideChatRuntime,
+	req agents.ChatRequest,
+) (ideChatRuntime, agents.ChatRequest, error) {
+	if runtime.projectType == ProjectTypeGeneral {
+		return s.prepareGeneralChatRuntimeSnapshot(ctx, runtime, req)
+	}
+	return s.prepareIDEChatRuntimeSnapshot(ctx, runtime, req)
+}
+
+func (s *ChatAppService) prepareGeneralChatRuntimeSnapshot(
+	ctx context.Context,
+	runtime ideChatRuntime,
+	req agents.ChatRequest,
+) (ideChatRuntime, agents.ChatRequest, error) {
+	if err := ctx.Err(); err != nil {
+		return ideChatRuntime{}, req, err
+	}
+	runtime.cfg.Workspace = runtime.workspace
+	runtime.cfg.ProjectID = runtime.projectID
+	runtime.cfg.ProjectStateDir = runtime.projectState
+	projectConfigPath := config.ProjectConfigPath(runtime.projectState)
+	layered, err := config.LoadLayeredWithStartupConfigAt(runtime.cfg.DataDir(), runtime.workspace, projectConfigPath)
+	if err != nil {
+		return ideChatRuntime{}, req, fmt.Errorf("load General Agent project settings: %w", err)
+	}
+	applyLayeredSettingsToConfig(&runtime.cfg, layered)
+	runtime.cfg.Workspace = runtime.workspace
+	runtime.cfg.ProjectID = runtime.projectID
+	runtime.cfg.ProjectStateDir = runtime.projectState
+	applyRequestLocaleToConfig(&runtime.cfg, req.Locale)
+	if err := s.resolveReviewFeedback(ctx, runtime, &req); err != nil {
+		return ideChatRuntime{}, req, err
+	}
+	return runtime, req, nil
+}
+
 // prepareIDEChatRuntimeSnapshot applies the same request/runtime policy to an
 // explicitly captured project runtime. The foreground Writing workspace and
 // user-level AgentChat both use this path, so prompt, Skills, teller, image,
@@ -52,7 +94,8 @@ func (s *ChatAppService) prepareIDEChatRuntimeSnapshot(
 	runtime.cfg.Workspace = runtime.workspace
 	runtime.ideTeller = ideStoryTellerForConfig(&runtime.cfg)
 	novaDir := runtime.cfg.DataDir()
-	if layered, err := config.LoadLayeredWithStartupConfig(novaDir, runtime.workspace); err == nil {
+	projectConfigPath := config.ProjectConfigPath(runtime.cfg.ProjectStateDir)
+	if layered, err := config.LoadLayeredWithStartupConfigAt(novaDir, runtime.workspace, projectConfigPath); err == nil {
 		applyLayeredSettingsToConfig(&runtime.cfg, layered)
 		applyRequestLocaleToConfig(&runtime.cfg, req.Locale)
 		runtime.cfg.IDEStoryTellerID = layered.Effective.IDEStoryTellerID

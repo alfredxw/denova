@@ -18,9 +18,21 @@ import (
 )
 
 type Store struct {
-	userDir         string
-	workspace       string
-	knownWorkspaces []string
+	userDir            string
+	projectID          string
+	workspace          string
+	workspaceStateRoot string
+	knownWorkspaces    []string
+	projectLocations   map[string]ProjectLocation
+}
+
+// ProjectLocation separates an automation's execution target from its
+// user-owned persistence root. Workspace files remain the target of work;
+// definitions, inbox items, and run obligations live under Denova's data dir.
+type ProjectLocation struct {
+	ProjectID string
+	Workspace string
+	StateRoot string
 }
 
 // ErrRevisionConflict identifies a stale automation definition update.
@@ -65,6 +77,30 @@ func (s *Store) WithWorkspaces(workspaces ...string) *Store {
 	return s
 }
 
+// WithProjects configures every registered Project visible to a user-level
+// catalog. A stable Project ID keeps automation identity intact after relink.
+func (s *Store) WithProjects(projects ...ProjectLocation) *Store {
+	if s == nil {
+		return s
+	}
+	s.knownWorkspaces = s.knownWorkspaces[:0]
+	s.projectLocations = make(map[string]ProjectLocation, len(projects))
+	for _, project := range projects {
+		workspace := canonicalStoreRoot(project.Workspace)
+		if workspace == "" {
+			continue
+		}
+		project.Workspace = workspace
+		project.ProjectID = strings.TrimSpace(project.ProjectID)
+		project.StateRoot = strings.TrimSpace(project.StateRoot)
+		if _, exists := s.projectLocations[workspace]; !exists {
+			s.knownWorkspaces = append(s.knownWorkspaces, workspace)
+		}
+		s.projectLocations[workspace] = project
+	}
+	return s
+}
+
 type storeFile struct {
 	SeedVersion int    `json:"seed_version,omitempty"`
 	Tasks       []Task `json:"tasks"`
@@ -75,6 +111,29 @@ func NewStore(userNovaDir, workspace string) *Store {
 		userDir:   strings.TrimSpace(userNovaDir),
 		workspace: strings.TrimSpace(workspace),
 	}
+}
+
+// NewProjectStore binds one content directory to its central Project state.
+// NewStore remains the legacy path-based constructor for imports and callers
+// that do not yet have a registered Project identity.
+func NewProjectStore(userNovaDir, projectID, workspace, stateRoot string) *Store {
+	return &Store{
+		userDir:            strings.TrimSpace(userNovaDir),
+		projectID:          strings.TrimSpace(projectID),
+		workspace:          canonicalStoreRoot(workspace),
+		workspaceStateRoot: strings.TrimSpace(stateRoot),
+	}
+}
+
+func (s *Store) storeForWorkspace(workspace string) *Store {
+	canonical := canonicalStoreRoot(workspace)
+	if location, ok := s.projectLocations[canonical]; ok {
+		return NewProjectStore(s.userDir, location.ProjectID, location.Workspace, location.StateRoot)
+	}
+	if canonical == canonicalStoreRoot(s.workspace) && strings.TrimSpace(s.workspaceStateRoot) != "" {
+		return NewProjectStore(s.userDir, s.projectID, s.workspace, s.workspaceStateRoot)
+	}
+	return NewStore(s.userDir, canonical)
 }
 
 func (s *Store) List() ([]Task, error) {
@@ -88,7 +147,7 @@ func (s *Store) List() ([]Task, error) {
 		workspaces = []string{s.workspace}
 	}
 	for _, workspace := range workspaces {
-		tasks, readErr := NewStore(s.userDir, workspace).readScopeLocked(ScopeWorkspace)
+		tasks, readErr := s.storeForWorkspace(workspace).readScopeLocked(ScopeWorkspace)
 		if readErr != nil {
 			return nil, readErr
 		}
@@ -188,7 +247,13 @@ func (s *Store) Create(task Task) (Task, error) {
 	}
 	destination := s
 	if normalized.Target.Kind == TargetKindWorkspace {
-		destination = NewStore(s.userDir, normalized.Target.Workspace)
+		destination = s.storeForWorkspace(normalized.Target.Workspace)
+	}
+	// The catalog store resolves the target first; the destination owns the
+	// stable Project identity used by every durable task locator.
+	normalized, err = destination.normalizeTaskTarget(normalized)
+	if err != nil {
+		return Task{}, err
 	}
 	path, err := destination.pathForScope(normalized.Scope)
 	if err != nil {
@@ -303,7 +368,7 @@ func (s *Store) Delete(id string) error {
 					return false, listErr
 				}
 				for _, entry := range entries {
-					if entry.TaskCatalogID == tasks[index].CatalogID && RunHasRuntimeObligation(entry.Run) {
+					if durableRunMatchesTask(entry, tasks[index]) && RunHasRuntimeObligation(entry.Run) {
 						return false, fmt.Errorf("%w: task_id=%s run_id=%s", ErrTaskHasActiveRun, tasks[index].CatalogID, entry.Run.ID)
 					}
 				}
@@ -372,7 +437,7 @@ func (s *Store) taskLocations() []taskStoreLocation {
 			return
 		}
 		seen[canonical] = true
-		locations = append(locations, taskStoreLocation{store: NewStore(s.userDir, canonical), scope: ScopeWorkspace})
+		locations = append(locations, taskStoreLocation{store: s.storeForWorkspace(canonical), scope: ScopeWorkspace})
 	}
 	appendWorkspace(s.workspace)
 	for _, workspace := range s.knownWorkspaces {
@@ -390,7 +455,16 @@ func taskMatchesID(task Task, id string) bool {
 // resolve a task regardless of which form they hold.
 func TaskMatchesID(task Task, id string) bool {
 	id = strings.TrimSpace(id)
-	return id != "" && (task.ID == id || task.CatalogID == id)
+	if id == "" {
+		return false
+	}
+	if task.ID == id || task.CatalogID == id {
+		return true
+	}
+	// Project migration replaces the workspace-hash catalog prefix with a
+	// stable Project ID. Keep the old public locator as a read alias so retries
+	// cannot allocate duplicate tasks or runs after the one-way migration.
+	return task.Scope == ScopeWorkspace && CatalogTaskID(task.Scope, task.Target.Workspace, task.ID) == id
 }
 
 // CatalogTaskID returns the unambiguous persistence locator for a local task
@@ -474,14 +548,22 @@ func (s *Store) normalizeTaskTarget(task Task) (Task, error) {
 		return Task{}, err
 	}
 	if normalized.Target.Kind == TargetKindWorkspace {
-		if strings.TrimSpace(normalized.Target.Workspace) == "" {
+		if strings.TrimSpace(s.workspaceStateRoot) != "" {
+			// The state root owns exactly one registered Project. Its current path
+			// is authoritative even when a persisted task predates a relink.
+			normalized.Target.Workspace = s.workspace
+		} else if strings.TrimSpace(normalized.Target.Workspace) == "" {
 			normalized.Target.Workspace = s.workspace
 		}
 		normalized.Target.Workspace = canonicalStoreRoot(normalized.Target.Workspace)
 		if normalized.Target.Workspace == "" {
 			return Task{}, fmt.Errorf("workspace target is required")
 		}
-		normalized.Target.WorkspaceID = workspaceTargetID(normalized.Target.Workspace)
+		if strings.TrimSpace(s.projectID) != "" {
+			normalized.Target.WorkspaceID = s.projectID
+		} else {
+			normalized.Target.WorkspaceID = workspaceTargetID(normalized.Target.Workspace)
+		}
 		normalized.Scope = ScopeWorkspace
 	} else {
 		normalized.Target = ExecutionTarget{Kind: TargetKindUser}
@@ -590,6 +672,9 @@ func (s *Store) pathForScope(scope string) (string, error) {
 	case ScopeWorkspace:
 		if strings.TrimSpace(s.workspace) == "" {
 			return "", fmt.Errorf("workspace is required")
+		}
+		if strings.TrimSpace(s.workspaceStateRoot) != "" {
+			return filepath.Join(s.workspaceStateRoot, "automations", "tasks.json"), nil
 		}
 		return workspacepath.Path(s.workspace, "automations", "tasks.json"), nil
 	default:

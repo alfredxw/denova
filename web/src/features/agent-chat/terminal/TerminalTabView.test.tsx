@@ -76,6 +76,7 @@ vi.mock('@xterm/addon-webgl', () => ({
 const tab: AgentChatTerminalTab = {
   kind: 'terminal',
   id: 'terminal-tab-1',
+  projectId: 'project-a',
   workspace: '/books/a',
   profileId: 'shell',
   title: '',
@@ -103,7 +104,9 @@ function session(id: string): TerminalSessionInfo {
 
 function deferred<T>() {
   let resolve!: (value: T) => void
-  const promise = new Promise<T>((complete) => { resolve = complete })
+  const promise = new Promise<T>((complete) => {
+    resolve = complete
+  })
   return { promise, resolve }
 }
 
@@ -123,13 +126,7 @@ describe('TerminalTabView session lifecycle', () => {
 
     render(
       <StrictMode>
-        <TerminalTabView
-          tab={tab}
-          active
-          onSessionEstablished={onSessionEstablished}
-          onTitleChange={vi.fn()}
-          onStatusChange={vi.fn()}
-        />
+        <TerminalTabView tab={tab} active onSessionEstablished={onSessionEstablished} onTitleChange={vi.fn()} onStatusChange={vi.fn()} />
       </StrictMode>,
     )
 
@@ -138,7 +135,10 @@ describe('TerminalTabView session lifecycle', () => {
     const request = apiMocks.createTerminalSession.mock.calls[0][0]
     expect(request).not.toHaveProperty('command')
     expect(request).not.toHaveProperty('args')
-    await act(async () => { creation.resolve(session('session-1')); await creation.promise })
+    await act(async () => {
+      creation.resolve(session('session-1'))
+      await creation.promise
+    })
     await waitFor(() => expect(onSessionEstablished).toHaveBeenCalled())
     expect(apiMocks.createTerminalSession).toHaveBeenCalledTimes(1)
   })
@@ -151,21 +151,15 @@ describe('TerminalTabView session lifecycle', () => {
     }
     apiMocks.createTerminalSession.mockResolvedValue(session('aider-session'))
 
-    render(
-      <TerminalTabView
-        tab={configuredTab}
-        active
-        onSessionEstablished={() => true}
-        onTitleChange={vi.fn()}
-        onStatusChange={vi.fn()}
-      />,
-    )
+    render(<TerminalTabView tab={configuredTab} active onSessionEstablished={() => true} onTitleChange={vi.fn()} onStatusChange={vi.fn()} />)
 
     await waitFor(() => expect(apiMocks.createTerminalSession).toHaveBeenCalledTimes(1))
-    expect(apiMocks.createTerminalSession).toHaveBeenCalledWith(expect.objectContaining({
-      profile_id: 'aider-sonnet',
-      owner_tab_id: configuredTab.id,
-    }))
+    expect(apiMocks.createTerminalSession).toHaveBeenCalledWith(
+      expect.objectContaining({
+        profile_id: 'aider-sonnet',
+        owner_tab_id: configuredTab.id,
+      }),
+    )
     const request = apiMocks.createTerminalSession.mock.calls[0][0]
     expect(request).not.toHaveProperty('command')
     expect(request).not.toHaveProperty('args')
@@ -174,7 +168,9 @@ describe('TerminalTabView session lifecycle', () => {
 
   it('reattaches a persisted session after reload without creating another process', async () => {
     const persisted = session('persisted-session')
-    apiMocks.getTerminalRuntimeStatus.mockResolvedValue({ sessions: [persisted] })
+    apiMocks.getTerminalRuntimeStatus.mockResolvedValue({
+      sessions: [persisted],
+    })
     const onSessionEstablished = vi.fn(() => true)
 
     render(
@@ -196,27 +192,32 @@ describe('TerminalTabView session lifecycle', () => {
     const creation = deferred<TerminalSessionInfo>()
     apiMocks.createTerminalSession.mockReturnValue(creation.promise)
     let owned = true
-    const view = render(
-      <TerminalTabView tab={tab} active onSessionEstablished={() => owned} onTitleChange={vi.fn()} onStatusChange={vi.fn()} />,
-    )
+    const view = render(<TerminalTabView tab={tab} active onSessionEstablished={() => owned} onTitleChange={vi.fn()} onStatusChange={vi.fn()} />)
     await waitFor(() => expect(apiMocks.createTerminalSession).toHaveBeenCalledTimes(1))
 
     owned = false
     view.unmount()
-    await act(async () => { creation.resolve(session('abandoned-session')); await creation.promise })
+    await act(async () => {
+      creation.resolve(session('abandoned-session'))
+      await creation.promise
+    })
 
     await waitFor(() => expect(apiMocks.closeTerminalSession).toHaveBeenCalledWith('abandoned-session'))
   })
 
   it('closes the old process before restarting the same terminal tab', async () => {
     const user = userEvent.setup()
-    apiMocks.createTerminalSession
-      .mockResolvedValueOnce(session('session-1'))
-      .mockResolvedValueOnce(session('session-2'))
+    apiMocks.createTerminalSession.mockResolvedValueOnce(session('session-1')).mockResolvedValueOnce(session('session-2'))
 
     render(<TerminalTabView tab={tab} active onSessionEstablished={() => true} onTitleChange={vi.fn()} onStatusChange={vi.fn()} />)
     await waitFor(() => expect(connectionMocks.handlers).toHaveLength(1))
-    act(() => connectionMocks.handlers[0].onControl({ type: 'exit', code: 0, error: '' }))
+    act(() =>
+      connectionMocks.handlers[0].onControl({
+        type: 'exit',
+        code: 0,
+        error: '',
+      }),
+    )
 
     await user.click(await screen.findByRole('button', { name: '重新启动' }))
 
@@ -229,15 +230,7 @@ describe('TerminalTabView session lifecycle', () => {
     const onTitleChange = vi.fn()
     apiMocks.createTerminalSession.mockResolvedValue(session('session-title'))
 
-    render(
-      <TerminalTabView
-        tab={tab}
-        active
-        onSessionEstablished={() => true}
-        onTitleChange={onTitleChange}
-        onStatusChange={vi.fn()}
-      />,
-    )
+    render(<TerminalTabView tab={tab} active onSessionEstablished={() => true} onTitleChange={onTitleChange} onStatusChange={vi.fn()} />)
     await waitFor(() => expect(terminalMocks.titleHandlers).toHaveLength(1))
 
     act(() => terminalMocks.titleHandlers[0]('  Claude\u0007 Code  '))

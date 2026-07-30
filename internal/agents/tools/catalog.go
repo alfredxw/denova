@@ -82,6 +82,12 @@ func (catalog *Catalog) Workspace(settings config.ResolvedAgentToolSettings, rea
 	}
 	return workspaceToolsFactory(
 		workspace,
+		func() string {
+			if cfg == nil {
+				return ""
+			}
+			return cfg.ProjectStateDir
+		}(),
 		metadata,
 		executables,
 		catalogToolResultMaxBytes(cfg),
@@ -354,7 +360,7 @@ func configManagerToolsFactory(cfg *config.Config) Factory {
 // workspaceToolsFactory registers only executable tools. Disabled definitions
 // are never built, so a missing shell or mutation dependency cannot leak a
 // nil endpoint into the model-visible registry.
-func workspaceToolsFactory(workspace string, metadata WorkspaceMetadataProvider, executables RuntimeExecutables, maxResultBytes int, extraReadAdapters ...ReadAdapterBinding) Factory {
+func workspaceToolsFactory(workspace, projectStateRoot string, metadata WorkspaceMetadataProvider, executables RuntimeExecutables, maxResultBytes int, extraReadAdapters ...ReadAdapterBinding) Factory {
 	if maxResultBytes <= 0 {
 		maxResultBytes = defaultToolResultMaxBytes
 	}
@@ -428,7 +434,12 @@ func workspaceToolsFactory(workspace string, metadata WorkspaceMetadataProvider,
 			definitions = append([]agent.ToolDefinition{readDefinition}, definitions...)
 		}
 		if writeEnabled {
-			changes, err := workspacechange.ForWorkspace(backend.Root())
+			var changes *workspacechange.Service
+			if strings.TrimSpace(projectStateRoot) != "" {
+				changes, err = workspacechange.ForWorkspaceAt(backend.Root(), projectStateRoot)
+			} else {
+				changes, err = workspacechange.ForWorkspace(backend.Root())
+			}
 			if err != nil {
 				return nil, fmt.Errorf("create workspace change service: %w", err)
 			}
@@ -459,7 +470,7 @@ func workspaceToolsFactory(workspace string, metadata WorkspaceMetadataProvider,
 				executable = executables.Pwsh
 				constructor = agenttools.Pwsh
 			}
-			runner, err := newAgentCommandRunner(backend, shellKind, executable)
+			runner, err := newAgentCommandRunner(backend, shellKind, executable, projectStateRoot)
 			if err != nil {
 				return nil, fmt.Errorf("create %s runner: %w", shellKind, err)
 			}

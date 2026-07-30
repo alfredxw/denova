@@ -44,6 +44,25 @@ func BuildWithCompositionForHost(ctx context.Context, cfg *config.Config, state 
 	return buildWithCompositionForHost(ctx, cfg, state, teller, host)
 }
 
+// BuildGeneralAgentWithCompositionForHost builds a general-purpose Agent for
+// a user-added Project. It intentionally assembles only generic workspace,
+// web, browser, Skill, planning, ask, delegation and context tools.
+func BuildGeneralAgentWithCompositionForHost(ctx context.Context, cfg *config.Config, host AgentHostCapabilities) (agent.Runnable, SystemPromptComposition, error) {
+	composition, err := ComposeGeneralInstruction(cfg)
+	if err != nil {
+		return nil, SystemPromptComposition{}, err
+	}
+	built, err := buildAgent(ctx, cfg, agentBuildSpec{
+		Kind:            config.AgentKindGeneral,
+		Name:            "DenovaGeneralAgent",
+		Description:     "General-purpose project Agent",
+		Composition:     composition,
+		EnableSkills:    true,
+		InteractiveHost: host.Interactive,
+	})
+	return built, composition, err
+}
+
 func buildWithCompositionForHost(ctx context.Context, cfg *config.Config, state *book.State, teller IDEStoryTeller, host AgentHostCapabilities) (agent.Runnable, SystemPromptComposition, error) {
 	composition, err := ComposeInstruction(cfg, state, teller)
 	if err != nil {
@@ -282,7 +301,7 @@ func buildAgent(ctx context.Context, cfg *config.Config, spec agentBuildSpec) (a
 	}
 
 	tools := append([]agent.ToolDefinition(nil), assembly.Tools...)
-	if spec.Kind == config.AgentKindIDE || spec.Kind == config.AgentKindConfigManager {
+	if spec.Kind == config.AgentKindGeneral || spec.Kind == config.AgentKindIDE || spec.Kind == config.AgentKindConfigManager {
 		contextTools, err := toolCatalog.ContextWindow(toolSettings)
 		if err != nil {
 			return nil, fmt.Errorf("创建上下文 checkpoint/rewind 工具失败: %w", err)
@@ -296,7 +315,7 @@ func buildAgent(ctx context.Context, cfg *config.Config, spec agentBuildSpec) (a
 		}
 		tools = append(tools, todoTool)
 	}
-	if spec.InteractiveHost && toolSettings.Allows(config.AgentToolAsk) && (spec.Kind == config.AgentKindIDE || spec.Kind == config.AgentKindConfigManager) {
+	if spec.InteractiveHost && toolSettings.Allows(config.AgentToolAsk) && (spec.Kind == config.AgentKindGeneral || spec.Kind == config.AgentKindIDE || spec.Kind == config.AgentKindConfigManager) {
 		askTool, err := toolCatalog.Ask()
 		if err != nil {
 			return nil, fmt.Errorf("创建 ask 工具失败: %w", err)

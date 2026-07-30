@@ -516,12 +516,19 @@ func materializeHarnessTurn(ctx context.Context, spec HarnessTurnSpec) (HarnessT
 
 func preserveHarnessBindingOptions(binding, execution RunOptions) RunOptions {
 	execution.AgentKind = binding.AgentKind
+	execution.ProjectID = binding.ProjectID
 	execution.TaskID = binding.TaskID
 	execution.AutomationTaskID = binding.AutomationTaskID
 	execution.SessionID = binding.SessionID
 	execution.StoryID = binding.StoryID
 	execution.BranchID = binding.BranchID
-	execution.Workspace = binding.Workspace
+	// Project content paths may change while a queued command is cold, and the
+	// user-owned state root is always current runtime policy rather than command
+	// semantics. Prepare resolves both. Legacy non-Project bindings still keep
+	// their admitted content workspace.
+	if strings.TrimSpace(binding.ProjectID) == "" {
+		execution.Workspace = binding.Workspace
+	}
 	execution.Mode = binding.Mode
 	execution.WriteMode = binding.WriteMode
 	execution.WriteScope = binding.WriteScope

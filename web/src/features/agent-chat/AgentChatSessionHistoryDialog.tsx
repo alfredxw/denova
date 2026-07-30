@@ -1,30 +1,13 @@
 import { useEffect, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
-import {
-  Clock3,
-  Folder,
-  LoaderCircle,
-  MessageSquareText,
-  PanelLeftOpen,
-  Search,
-} from 'lucide-react'
+import { Clock3, Folder, LoaderCircle, MessageSquareText, PanelLeftOpen, Search } from 'lucide-react'
 import { Button } from '@/components/ui/button'
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogHeader,
-  DialogTitle,
-} from '@/components/ui/dialog'
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { Input } from '@/components/ui/input'
 import { ConfirmDialog } from '@/components/common/ConfirmDialog'
 import { InlineErrorNotice } from '@/components/common/inline-error-notice'
 import { getAgentChatHistory, type AgentChatHistoryItem, type AgentChatProject } from './api'
-import {
-  AgentChatHistoryProjectSelect,
-  AgentChatHistoryProjectSidebar,
-  currentProjectFirst,
-} from './AgentChatHistoryProjectNav'
+import { AgentChatHistoryProjectSelect, AgentChatHistoryProjectSidebar, currentProjectFirst } from './AgentChatHistoryProjectNav'
 import { AgentChatHistoryRow } from './AgentChatHistoryRow'
 
 const HISTORY_PAGE_SIZE = 80
@@ -34,7 +17,7 @@ const HISTORY_SEARCH_MAX_LENGTH = 200
 interface AgentChatSessionHistoryDialogProps {
   open: boolean
   projects: readonly AgentChatProject[]
-  currentProjectPath: string
+  currentProjectId: string
   onOpenChange: (open: boolean) => void
   onOpenSession: (item: AgentChatHistoryItem) => void
   onRenameSession: (item: AgentChatHistoryItem, title: string) => void | Promise<void>
@@ -45,7 +28,7 @@ interface AgentChatSessionHistoryDialogProps {
 export function AgentChatSessionHistoryDialog({
   open,
   projects,
-  currentProjectPath,
+  currentProjectId,
   onOpenChange,
   onOpenSession,
   onRenameSession,
@@ -54,7 +37,7 @@ export function AgentChatSessionHistoryDialog({
   const { t } = useTranslation()
   const [query, setQuery] = useState('')
   const [debouncedQuery, setDebouncedQuery] = useState('')
-  const [selectedProjectPath, setSelectedProjectPath] = useState(currentProjectPath)
+  const [selectedProjectId, setSelectedProjectId] = useState(currentProjectId)
   const [projectsCollapsed, setProjectsCollapsed] = useState(false)
   const [items, setItems] = useState<AgentChatHistoryItem[]>([])
   const [total, setTotal] = useState(0)
@@ -71,18 +54,18 @@ export function AgentChatSessionHistoryDialog({
   const editingRef = useRef<AgentChatHistoryItem | null>(null)
   const renameSubmittingRef = useRef(false)
 
-  const orderedProjects = currentProjectFirst(projects, currentProjectPath)
-  const selectedProject = orderedProjects.find((project) => project.path === selectedProjectPath) ?? null
+  const orderedProjects = currentProjectFirst(projects, currentProjectId)
+  const selectedProject = orderedProjects.find((project) => project.id === selectedProjectId) ?? null
 
   useEffect(() => {
     const opening = open && !wasOpenRef.current
     wasOpenRef.current = open
     if (!open) return
-    const selectionExists = projects.some((project) => project.path === selectedProjectPath)
+    const selectionExists = projects.some((project) => project.id === selectedProjectId)
     if (!opening && selectionExists) return
-    const nextProject = projects.find((project) => project.path === currentProjectPath) ?? projects[0]
-    setSelectedProjectPath(nextProject?.path ?? '')
-  }, [currentProjectPath, open, projects, selectedProjectPath])
+    const nextProject = projects.find((project) => project.id === currentProjectId) ?? projects[0]
+    setSelectedProjectId(nextProject?.id ?? '')
+  }, [currentProjectId, open, projects, selectedProjectId])
 
   useEffect(() => {
     if (!open) return
@@ -100,7 +83,7 @@ export function AgentChatSessionHistoryDialog({
   }, [open])
 
   useEffect(() => {
-    if (!open || !selectedProjectPath) {
+    if (!open || !selectedProjectId) {
       setItems([])
       setTotal(0)
       setHasMore(false)
@@ -116,27 +99,30 @@ export function AgentChatSessionHistoryDialog({
     setError('')
     void getAgentChatHistory({
       query: debouncedQuery,
-      workspace: selectedProjectPath,
+      projectId: selectedProjectId,
       limit: HISTORY_PAGE_SIZE,
       signal: controller.signal,
-    }).then((page) => {
-      if (requestSequenceRef.current !== sequence) return
-      setItems(page.items)
-      setTotal(page.total)
-      setHasMore(page.has_more)
-    }).catch((loadError) => {
-      if (controller.signal.aborted || requestSequenceRef.current !== sequence) return
-      console.error('[features/agent-chat/AgentChatSessionHistoryDialog.tsx] loading history failed', {
-        queryLength: debouncedQuery.length,
-        error: loadError,
-      })
-      setItems([])
-      setError(loadError instanceof Error ? loadError.message : String(loadError))
-    }).finally(() => {
-      if (requestSequenceRef.current === sequence) setLoading(false)
     })
+      .then((page) => {
+        if (requestSequenceRef.current !== sequence) return
+        setItems(page.items)
+        setTotal(page.total)
+        setHasMore(page.has_more)
+      })
+      .catch((loadError) => {
+        if (controller.signal.aborted || requestSequenceRef.current !== sequence) return
+        console.error('[features/agent-chat/AgentChatSessionHistoryDialog.tsx] loading history failed', {
+          queryLength: debouncedQuery.length,
+          error: loadError,
+        })
+        setItems([])
+        setError(loadError instanceof Error ? loadError.message : String(loadError))
+      })
+      .finally(() => {
+        if (requestSequenceRef.current === sequence) setLoading(false)
+      })
     return () => controller.abort()
-  }, [debouncedQuery, open, reloadVersion, selectedProjectPath])
+  }, [debouncedQuery, open, reloadVersion, selectedProjectId])
 
   const loadMore = async () => {
     if (loadingMore || !hasMore) return
@@ -146,7 +132,7 @@ export function AgentChatSessionHistoryDialog({
     try {
       const page = await getAgentChatHistory({
         query: debouncedQuery,
-        workspace: selectedProjectPath,
+        projectId: selectedProjectId,
         offset: items.length,
         limit: HISTORY_PAGE_SIZE,
       })
@@ -200,10 +186,10 @@ export function AgentChatSessionHistoryDialog({
     }
   }
 
-  const selectProject = (projectPath: string) => {
-    if (projectPath === selectedProjectPath) return
+  const selectProject = (projectID: string) => {
+    if (projectID === selectedProjectId) return
     cancelRename()
-    setSelectedProjectPath(projectPath)
+    setSelectedProjectId(projectID)
   }
 
   return (
@@ -215,17 +201,15 @@ export function AgentChatSessionHistoryDialog({
               <Clock3 className="size-4 text-[var(--nova-text-muted)]" />
               {t('agentChat.history.title')}
             </DialogTitle>
-            <DialogDescription className="text-[11px] text-[var(--nova-text-faint)]">
-              {t('agentChat.history.description')}
-            </DialogDescription>
+            <DialogDescription className="text-[11px] text-[var(--nova-text-faint)]">{t('agentChat.history.description')}</DialogDescription>
           </DialogHeader>
 
           <div className="flex min-h-0 flex-1">
             {!projectsCollapsed ? (
               <AgentChatHistoryProjectSidebar
                 projects={orderedProjects}
-                selectedProjectPath={selectedProjectPath}
-                currentProjectPath={currentProjectPath}
+                selectedProjectId={selectedProjectId}
+                currentProjectId={currentProjectId}
                 onSelect={selectProject}
                 onCollapse={() => setProjectsCollapsed(true)}
               />
@@ -251,7 +235,7 @@ export function AgentChatSessionHistoryDialog({
                   <span className="truncate text-xs font-medium text-[var(--nova-text)]">
                     {selectedProject?.name || selectedProject?.path || t('agentChat.history.selectProject')}
                   </span>
-                  {selectedProject?.path === currentProjectPath ? (
+                  {selectedProject?.id === currentProjectId ? (
                     <span className="shrink-0 rounded-full bg-[var(--nova-active)] px-1.5 py-0.5 text-[9px] text-[var(--nova-text-muted)]">
                       {t('agentChat.history.currentProject')}
                     </span>
@@ -259,11 +243,7 @@ export function AgentChatSessionHistoryDialog({
                 </div>
 
                 <div className="min-w-0 flex-1 sm:hidden">
-                  <AgentChatHistoryProjectSelect
-                    projects={orderedProjects}
-                    selectedProjectPath={selectedProjectPath}
-                    onSelect={selectProject}
-                  />
+                  <AgentChatHistoryProjectSelect projects={orderedProjects} selectedProjectId={selectedProjectId} onSelect={selectProject} />
                 </div>
 
                 <div className="relative min-w-0 flex-[1.35] sm:max-w-72">
@@ -308,7 +288,9 @@ export function AgentChatSessionHistoryDialog({
                             autoFocus
                             value={draftTitle}
                             onChange={(event) => setDraftTitle(event.target.value)}
-                            onBlur={() => { void submitRename() }}
+                            onBlur={() => {
+                              void submitRename()
+                            }}
                             onKeyDown={(event) => {
                               if (event.key === 'Enter') {
                                 event.preventDefault()
@@ -338,7 +320,15 @@ export function AgentChatSessionHistoryDialog({
                     })}
                     {hasMore ? (
                       <div className="flex justify-center py-2">
-                        <Button type="button" variant="ghost" size="xs" disabled={loadingMore} onClick={() => { void loadMore() }}>
+                        <Button
+                          type="button"
+                          variant="ghost"
+                          size="xs"
+                          disabled={loadingMore}
+                          onClick={() => {
+                            void loadMore()
+                          }}
+                        >
                           {loadingMore ? <LoaderCircle className="animate-spin" /> : null}
                           {t('agentChat.history.loadMore')}
                         </Button>
@@ -358,7 +348,9 @@ export function AgentChatSessionHistoryDialog({
 
       <ConfirmDialog
         open={Boolean(pendingDelete)}
-        onOpenChange={(nextOpen) => { if (!nextOpen) setPendingDelete(null) }}
+        onOpenChange={(nextOpen) => {
+          if (!nextOpen) setPendingDelete(null)
+        }}
         title={t('agentChat.sidebar.deleteTitle')}
         description={t('agentChat.sidebar.deleteDescription', {
           title: pendingDelete?.session.title || t('chat.untitledSession'),
@@ -377,5 +369,5 @@ export function AgentChatSessionHistoryDialog({
 }
 
 function historyItemKey(item: AgentChatHistoryItem): string {
-  return `${item.workspace}\u0000${item.session.id}`
+  return `${item.project_id}\u0000${item.session.id}`
 }

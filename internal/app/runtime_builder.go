@@ -17,6 +17,8 @@ import (
 )
 
 type runtimeState struct {
+	projectID              string
+	projectStateRoot       string
 	workspace              string
 	bookState              *book.State
 	bookService            *book.Service
@@ -32,21 +34,23 @@ type runtimeState struct {
 // per-workspace mutation boundary used by editors and agents. This matters for
 // inactive automation targets too: selecting that workspace cannot rebuild
 // session/story projections concurrently with a background write.
-func buildRuntimeExclusively(ctx context.Context, cfg *config.Config, workspace string) (*runtimeState, error) {
-	changes, err := workspacechange.ForWorkspace(workspace)
+func buildRuntimeExclusively(ctx context.Context, cfg *config.Config, layout ProjectLayout) (*runtimeState, error) {
+	workspace := layout.ContentRoot
+	changes, err := workspacechange.ForWorkspaceAt(workspace, layout.StateRoot)
 	if err != nil {
 		return nil, err
 	}
 	var runtime *runtimeState
 	err = changes.WithExclusiveWorkspace(ctx, func() error {
 		var buildErr error
-		runtime, buildErr = buildRuntime(ctx, cfg, workspace)
+		runtime, buildErr = buildRuntime(ctx, cfg, layout)
 		return buildErr
 	})
 	return runtime, err
 }
 
-func buildRuntime(ctx context.Context, cfg *config.Config, workspace string) (*runtimeState, error) {
+func buildRuntime(ctx context.Context, cfg *config.Config, layout ProjectLayout) (*runtimeState, error) {
+	workspace := layout.ContentRoot
 	absWorkspace, err := filepath.Abs(workspace)
 	if err != nil {
 		return nil, fmt.Errorf("解析工作目录失败: %w", err)
@@ -65,7 +69,7 @@ func buildRuntime(ctx context.Context, cfg *config.Config, workspace string) (*r
 	if err := state.InitWorkspace(); err != nil {
 		return nil, fmt.Errorf("初始化工作目录失败: %w", err)
 	}
-	store, err := session.NewStore(state.SessionDir())
+	store, err := session.NewStore(layout.SessionsDir())
 	if err != nil {
 		return nil, fmt.Errorf("创建会话存储失败: %w", err)
 	}
@@ -82,6 +86,13 @@ func buildRuntime(ctx context.Context, cfg *config.Config, workspace string) (*r
 
 	runtimeCfg := *cfg
 	runtimeCfg.Workspace = absWorkspace
+	runtimeCfg.ProjectID = layout.ProjectID
+	runtimeCfg.ProjectStateDir = layout.StateRoot
+	if layered, loadErr := config.LoadLayeredWithStartupConfigAt(runtimeCfg.DataDir(), absWorkspace, layout.ConfigPath()); loadErr == nil {
+		applyLayeredSettingsToConfig(&runtimeCfg, layered)
+	} else {
+		return nil, fmt.Errorf("加载 Project 配置失败: %w", loadErr)
+	}
 	agentRunner, err := buildAgentRunner(ctx, &runtimeCfg, state)
 	if err != nil {
 		return nil, err
@@ -93,6 +104,8 @@ func buildRuntime(ctx context.Context, cfg *config.Config, workspace string) (*r
 	interactiveStore := interactive.NewStoreWithNovaDir(absWorkspace, runtimeCfg.DataDir())
 
 	runtime := &runtimeState{
+		projectID:              layout.ProjectID,
+		projectStateRoot:       layout.StateRoot,
 		workspace:              absWorkspace,
 		bookState:              state,
 		bookService:            book.NewService(absWorkspace),
@@ -122,6 +135,44 @@ func buildAgentRunnerWithComposition(ctx context.Context, cfg *config.Config, st
 		return nil, agents.SystemPromptComposition{}, fmt.Errorf("构建 Agent 失败: %w", err)
 	}
 	return agents.NewRunnerWithOptions(ctx, builtAgent, agents.RunOptions{AgentKind: agents.AgentKindIDE, Workspace: cfg.Workspace}), composition, nil
+}
+
+func buildProjectAgentRunnerWithComposition(ctx context.Context, runtime ideChatRuntime) (*agents.Runner, agents.SystemPromptComposition, error) {
+	if runtime.agentKind == agents.AgentKindGeneral {
+		builtAgent, composition, err := agents.BuildGeneralAgentWithCompositionForHost(
+			ctx, &runtime.cfg, agents.AgentHostCapabilities{Interactive: true},
+		)
+		if err != nil {
+			return nil, agents.SystemPromptComposition{}, fmt.Errorf("build General Agent: %w", err)
+		}
+		return agents.NewRunnerWithOptions(ctx, builtAgent, agents.RunOptions{
+			AgentKind: agents.AgentKindGeneral, ProjectID: runtime.projectID,
+			StateRoot: runtime.projectState, Workspace: runtime.workspace,
+		}), composition, nil
+	}
+	builtAgent, composition, err := agents.BuildWithCompositionForHost(
+		ctx, &runtime.cfg, runtime.state, runtime.ideTeller,
+		agents.AgentHostCapabilities{Interactive: true},
+	)
+	if err != nil {
+		return nil, agents.SystemPromptComposition{}, fmt.Errorf("build Writing Agent: %w", err)
+	}
+	return agents.NewRunnerWithOptions(ctx, builtAgent, agents.RunOptions{
+		AgentKind: agents.AgentKindIDE, ProjectID: runtime.projectID,
+		StateRoot: runtime.projectState, Workspace: runtime.workspace,
+	}), composition, nil
+}
+
+func projectSessionConversation(runtime ideChatRuntime, req agents.ChatRequest) *agents.SessionConversation {
+	if runtime.agentKind == agents.AgentKindGeneral {
+		return agents.NewSessionConversationForAgent(runtime.sess, &runtime.cfg, config.AgentKindGeneral)
+	}
+	runtimeContexts := agents.IDEWorkspaceRuntimeContextsForRequest(runtime.state, req)
+	return agents.NewSessionConversationForAgentWithRuntimeContexts(
+		runtime.sess, &runtime.cfg, config.AgentKindIDE,
+		runtimeContexts.StableTitle, runtimeContexts.Stable,
+		runtimeContexts.DynamicTitle, runtimeContexts.Dynamic,
+	)
 }
 
 func ideStoryTellerForConfig(cfg *config.Config) agents.IDEStoryTeller {
@@ -193,7 +244,12 @@ func buildAutomationAgentRunnerWithComposition(ctx context.Context, cfg *config.
 	if err != nil {
 		return nil, agents.SystemPromptComposition{}, fmt.Errorf("构建自动化 Agent 失败: %w", err)
 	}
-	return agents.NewRunnerWithOptions(ctx, builtAgent, agents.RunOptions{AgentKind: agents.AgentKindAutomation, Workspace: cfg.Workspace}), composition, nil
+	return agents.NewRunnerWithOptions(ctx, builtAgent, agents.RunOptions{
+		AgentKind: agents.AgentKindAutomation,
+		ProjectID: cfg.ProjectID,
+		StateRoot: cfg.ProjectStateDir,
+		Workspace: cfg.Workspace,
+	}), composition, nil
 }
 
 func buildImageAgentRunner(ctx context.Context, cfg *config.Config, state *book.State, systemPrompt string) (*agents.Runner, error) {

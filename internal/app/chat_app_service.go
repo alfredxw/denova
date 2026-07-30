@@ -24,6 +24,10 @@ type ChatAppService struct {
 
 type ideChatRuntime struct {
 	app            *App
+	projectID      string
+	projectType    ProjectType
+	projectState   string
+	agentKind      string
 	sess           *session.Session
 	state          *book.State
 	bookService    *book.Service

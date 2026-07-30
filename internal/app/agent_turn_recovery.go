@@ -19,6 +19,8 @@ func (a *App) restoreHarnessTurn(_ context.Context, request agents.HarnessTurnRe
 	}
 	binding := request.Binding
 	switch binding.AgentKind {
+	case agents.AgentKindGeneral:
+		return a.agentChat().restoreHarnessTurn(request, binding), nil
 	case agents.AgentKindIDE:
 		if binding.Mode == agentChatRuntimeMode {
 			return a.agentChat().restoreHarnessTurn(request, binding), nil
@@ -105,6 +107,7 @@ func (s *ChatAppService) prepareWritingHarnessTurn(
 	)
 	options := s.bindReviewFeedbackInputCommit(agents.RunOptions{
 		AgentKind:          agents.AgentKindIDE,
+		StateRoot:          runtime.projectState,
 		TaskID:             strings.TrimSpace(taskID),
 		SessionID:          runtime.sess.ID,
 		Workspace:          runtime.workspace,

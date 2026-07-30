@@ -82,7 +82,11 @@ func (a *App) bookCoverConfig(workspace string) (config.Config, error) {
 		novaDir = a.cfg.DataDir()
 	}
 	a.mu.RUnlock()
-	layered, err := config.LoadLayeredWithStartupConfig(novaDir, workspace)
+	projectConfigPath := ""
+	if layout, layoutErr := a.projectLayoutForWorkspace(workspace); layoutErr == nil {
+		projectConfigPath = layout.ConfigPath()
+	}
+	layered, err := config.LoadLayeredWithStartupConfigAt(novaDir, workspace, projectConfigPath)
 	if err != nil {
 		return config.Config{}, err
 	}

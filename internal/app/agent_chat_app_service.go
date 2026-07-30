@@ -12,6 +12,7 @@ import (
 	agents "denova/internal/agents"
 	"denova/internal/agents/session"
 	"denova/internal/book"
+	projectdomain "denova/internal/project"
 	"denova/internal/workspacechange"
 )
 
@@ -20,11 +21,20 @@ const agentChatRuntimeMode = "agent_chat"
 // AgentChatBinding is the explicit project conversation identity carried by
 // every user-level AgentChat request. It never reads or mutates App.workspace.
 type AgentChatBinding struct {
-	Workspace string `json:"workspace"`
+	ProjectID string `json:"project_id"`
 	SessionID string `json:"session_id"`
+	// Workspace is accepted only as a temporary compatibility input for older
+	// local clients. Resolved bindings always carry ProjectID as their identity.
+	Workspace string `json:"workspace,omitempty"`
+	agentKind string
+	stateRoot string
 }
 
 type agentChatProjectRuntime struct {
+	projectID      string
+	projectType    ProjectType
+	agentKind      string
+	stateRoot      string
 	workspace      string
 	state          *book.State
 	store          *session.Store
@@ -82,13 +92,18 @@ func newAgentChatAppService(app *App) *AgentChatAppService {
 }
 
 func agentChatBindingKey(binding AgentChatBinding) string {
-	return strings.TrimSpace(binding.Workspace) + "\x00" + strings.TrimSpace(binding.SessionID)
+	owner := strings.TrimSpace(binding.ProjectID)
+	if owner == "" {
+		owner = strings.TrimSpace(binding.Workspace)
+	}
+	return owner + "\x00" + strings.TrimSpace(binding.SessionID)
 }
 
 func agentChatRunOptions(binding AgentChatBinding, taskID string) agents.RunOptions {
 	return agents.RunOptions{
-		AgentKind: agents.AgentKindIDE, TaskID: strings.TrimSpace(taskID),
-		SessionID: binding.SessionID, Workspace: binding.Workspace, Mode: agentChatRuntimeMode,
+		AgentKind: binding.agentKind, ProjectID: binding.ProjectID, StateRoot: binding.stateRoot,
+		TaskID: strings.TrimSpace(taskID), SessionID: binding.SessionID,
+		Workspace: binding.Workspace, Mode: agentChatRuntimeMode,
 	}
 }
 
@@ -116,7 +131,7 @@ func (s *AgentChatAppService) StartTask(ctx context.Context, binding AgentChatBi
 	}
 	req = agents.CaptureChatRequestCallerInput(req)
 	fingerprint := agents.ChatRequestSemanticFingerprint(req)
-	if replay, ok, err := s.starts.replay(req.CommandID, binding.Workspace, binding.SessionID, fingerprint); err != nil {
+	if replay, ok, err := s.starts.replay(req.CommandID, binding.ProjectID, binding.SessionID, fingerprint); err != nil {
 		return nil, err
 	} else if ok {
 		return replay, nil
@@ -125,7 +140,7 @@ func (s *AgentChatAppService) StartTask(ctx context.Context, binding AgentChatBi
 		return nil, ErrAgentOperationActive
 	}
 
-	project, err := s.projectRuntime(ctx, binding.Workspace)
+	project, err := s.projectRuntime(ctx, binding.ProjectID)
 	if err != nil {
 		return nil, err
 	}
@@ -136,24 +151,20 @@ func (s *AgentChatAppService) StartTask(ctx context.Context, binding AgentChatBi
 		return nil, err
 	}
 	runtime := ideChatRuntime{
+		projectID: project.projectID, projectType: project.projectType, projectState: project.stateRoot, agentKind: project.agentKind,
 		app: s.app, sess: sess, state: project.state, bookService: project.bookService,
 		chatService: project.chatService, workspace: project.workspace,
 		versionService: project.versionService, cfg: project.cfg,
 	}
-	runtime, req, err = s.app.chat().prepareIDEChatRuntimeSnapshot(ctx, runtime, req)
+	runtime, req, err = s.app.chat().prepareProjectChatRuntimeSnapshot(ctx, runtime, req)
 	if err != nil {
 		return nil, err
 	}
-	runner, systemPrompt, err := buildAgentRunnerWithComposition(ctx, &runtime.cfg, runtime.state, runtime.ideTeller)
+	runner, systemPrompt, err := buildProjectAgentRunnerWithComposition(ctx, runtime)
 	if err != nil {
 		return nil, err
 	}
-	runtimeContexts := agents.IDEWorkspaceRuntimeContextsForRequest(runtime.state, req)
-	conversation := agents.NewSessionConversationForAgentWithRuntimeContexts(
-		runtime.sess, &runtime.cfg, config.AgentKindIDE,
-		runtimeContexts.StableTitle, runtimeContexts.Stable,
-		runtimeContexts.DynamicTitle, runtimeContexts.Dynamic,
-	)
+	conversation := projectSessionConversation(runtime, req)
 
 	var verifiedMutations []agents.ToolMutation
 	var postRunVerification agents.PostRunVerification
@@ -170,7 +181,7 @@ func (s *AgentChatAppService) StartTask(ctx context.Context, binding AgentChatBi
 		return nil, err
 	}
 	reservation, err := s.starts.reserve(writingStartRecord{
-		commandID: req.CommandID, workspace: binding.Workspace, sessionID: binding.SessionID,
+		commandID: req.CommandID, workspace: binding.ProjectID, sessionID: binding.SessionID,
 		fingerprint: fingerprint, task: task,
 	})
 	if err != nil {
@@ -206,7 +217,7 @@ func (s *AgentChatAppService) StartTask(ctx context.Context, binding AgentChatBi
 
 	if err := task.Start(func(runCtx context.Context, task *Task, emit func(agents.Event)) {
 		defer s.releaseActiveRun(run)
-		log.Printf("[agent-chat-run] begin task_id=%s workspace=%q session_id=%s message_len=%d", task.ID(), binding.Workspace, binding.SessionID, len(req.Message))
+		log.Printf("[agent-chat-run] begin task_id=%s project_id=%s workspace=%q session_id=%s message_len=%d", task.ID(), binding.ProjectID, binding.Workspace, binding.SessionID, len(req.Message))
 		accepted.Wait(runCtx)
 		_, outputCommitted := conversation.LastAgentCycleCommitReceipt(agents.HarnessDomainCommitOutput)
 		postSettlementCtx := runCtx
@@ -216,7 +227,7 @@ func (s *AgentChatAppService) StartTask(ctx context.Context, binding AgentChatBi
 		if outputCommitted && len(verifiedMutations) > 0 {
 			mutationCallback(postSettlementCtx, verifiedMutations, postRunVerification)
 		}
-		log.Printf("[agent-chat-run] end task_id=%s workspace=%q session_id=%s status=%s", task.ID(), binding.Workspace, binding.SessionID, task.Status())
+		log.Printf("[agent-chat-run] end task_id=%s project_id=%s workspace=%q session_id=%s status=%s", task.ID(), binding.ProjectID, binding.Workspace, binding.SessionID, task.Status())
 	}); err != nil {
 		reservation.rollback()
 		task.Abort()
@@ -250,11 +261,48 @@ func (s *AgentChatAppService) resolveBinding(binding AgentChatBinding) (AgentCha
 	if s == nil || s.app == nil {
 		return AgentChatBinding{}, ErrNoWorkspace
 	}
-	workspace, err := s.app.canonicalAgentChatWorkspace(binding.Workspace)
+	projectID := strings.TrimSpace(binding.ProjectID)
+	if projectID == "" && strings.TrimSpace(binding.Workspace) != "" {
+		record, _, err := s.app.resolveProjectByWorkspace(binding.Workspace)
+		if err != nil {
+			return AgentChatBinding{}, err
+		}
+		projectID = record.ID
+	}
+	record, layout, err := s.app.resolveProject(projectID, true)
+	if err != nil && strings.TrimSpace(binding.Workspace) == "" && projectID != "" {
+		// Temporary migration path for callers that still pass a directory in
+		// the first argument. The resolved binding is immediately upgraded to ID.
+		record, layout, err = s.app.resolveProjectByWorkspace(projectID)
+	}
 	if err != nil {
 		return AgentChatBinding{}, err
 	}
-	binding.Workspace = workspace
+	binding.ProjectID = record.ID
+	binding.Workspace = layout.ContentRoot
+	binding.stateRoot = layout.StateRoot
+	switch record.Type {
+	case projectdomain.TypeBook:
+		binding.agentKind = agents.AgentKindIDE
+	case projectdomain.TypeGeneral:
+		binding.agentKind = agents.AgentKindGeneral
+	default:
+		return AgentChatBinding{}, fmt.Errorf("unsupported project type %q", record.Type)
+	}
+	// Promote compatibility runtimes installed by older tests/clients under a
+	// path key. Production runtimes are always keyed by stable project ID.
+	s.mu.Lock()
+	if s.projects[binding.ProjectID] == nil {
+		if legacy := s.projects[binding.Workspace]; legacy != nil {
+			legacy.projectID = binding.ProjectID
+			legacy.projectType = record.Type
+			legacy.agentKind = binding.agentKind
+			legacy.stateRoot = binding.stateRoot
+			s.projects[binding.ProjectID] = legacy
+			delete(s.projects, binding.Workspace)
+		}
+	}
+	s.mu.Unlock()
 	binding.SessionID = strings.TrimSpace(binding.SessionID)
 	if binding.SessionID == "" {
 		return AgentChatBinding{}, fmt.Errorf("AgentChat session is required")
@@ -262,11 +310,11 @@ func (s *AgentChatAppService) resolveBinding(binding AgentChatBinding) (AgentCha
 	return binding, nil
 }
 
-func (s *AgentChatAppService) projectRuntime(ctx context.Context, workspace string) (*agentChatProjectRuntime, error) {
+func (s *AgentChatAppService) projectRuntime(ctx context.Context, projectID string) (*agentChatProjectRuntime, error) {
 	s.projectBuild.Lock()
 	defer s.projectBuild.Unlock()
 	s.mu.RLock()
-	project := s.projects[workspace]
+	project := s.projects[projectID]
 	closed := s.closed
 	s.mu.RUnlock()
 	if closed {
@@ -289,22 +337,49 @@ func (s *AgentChatAppService) projectRuntime(ctx context.Context, workspace stri
 	if chatService == nil || strings.TrimSpace(runtimeCfg.DataDir()) == "" {
 		return nil, ErrNoWorkspace
 	}
-	state := book.NewState(workspace)
-	changes, err := workspacechange.ForWorkspace(workspace)
+	record, layout, err := a.resolveProject(projectID, true)
 	if err != nil {
 		return nil, err
 	}
-	if err := changes.WithExclusiveWorkspace(ctx, state.InitWorkspace); err != nil {
+	workspace := layout.ContentRoot
+	changes, err := workspacechange.ForWorkspaceAt(workspace, layout.StateRoot)
+	if err != nil {
 		return nil, err
 	}
-	store, err := session.NewStore(state.SessionDir())
+	var state *book.State
+	var versionService *book.VersionService
+	agentKind := agents.AgentKindGeneral
+	if record.Type == projectdomain.TypeBook {
+		state = book.NewState(workspace)
+		if err := changes.WithExclusiveWorkspace(ctx, state.InitWorkspace); err != nil {
+			return nil, err
+		}
+		versionService = book.NewVersionService(workspace)
+		agentKind = agents.AgentKindIDE
+	}
+	store, err := session.NewStore(layout.SessionsDir())
 	if err != nil {
 		return nil, err
 	}
 	runtimeCfg.Workspace = workspace
+	runtimeCfg.ProjectID = record.ID
+	runtimeCfg.ProjectStateDir = layout.StateRoot
+	if layered, loadErr := config.LoadLayeredWithStartupConfigAt(runtimeCfg.DataDir(), workspace, layout.ConfigPath()); loadErr != nil {
+		store.Close()
+		if versionService != nil {
+			versionService.Close()
+		}
+		return nil, loadErr
+	} else {
+		applyLayeredSettingsToConfig(&runtimeCfg, layered)
+		runtimeCfg.Workspace = workspace
+		runtimeCfg.ProjectID = record.ID
+		runtimeCfg.ProjectStateDir = layout.StateRoot
+	}
 	project = &agentChatProjectRuntime{
+		projectID: record.ID, projectType: record.Type, agentKind: agentKind, stateRoot: layout.StateRoot,
 		workspace: workspace, state: state, store: store, bookService: book.NewService(workspace),
-		versionService: book.NewVersionService(workspace), chatService: chatService, cfg: runtimeCfg,
+		versionService: versionService, chatService: chatService, cfg: runtimeCfg,
 	}
 	s.mu.Lock()
 	if s.closed {
@@ -312,12 +387,12 @@ func (s *AgentChatAppService) projectRuntime(ctx context.Context, workspace stri
 		project.close()
 		return nil, fmt.Errorf("AgentChat service is closed")
 	}
-	if existing := s.projects[workspace]; existing != nil {
+	if existing := s.projects[projectID]; existing != nil {
 		s.mu.Unlock()
 		project.close()
 		return existing, nil
 	}
-	s.projects[workspace] = project
+	s.projects[projectID] = project
 	s.mu.Unlock()
 	return project, nil
 }
@@ -355,6 +430,45 @@ func (s *AgentChatAppService) releaseActiveRun(run *agentChatRun) {
 		delete(s.active, key)
 	}
 	s.mu.Unlock()
+}
+
+// closeProject drains the cached runtime for a project before archive or
+// relink. Active conversations are never aborted implicitly by project
+// management actions.
+func (s *AgentChatAppService) closeProject(ctx context.Context, projectID string) error {
+	if s == nil {
+		return nil
+	}
+	projectID = strings.TrimSpace(projectID)
+	if projectID == "" {
+		return fmt.Errorf("project ID is required")
+	}
+	s.admission.Lock()
+	defer s.admission.Unlock()
+	s.mu.Lock()
+	for _, run := range s.active {
+		if run != nil && run.binding.ProjectID == projectID && run.task != nil && !run.task.Finished() {
+			s.mu.Unlock()
+			return fmt.Errorf("%w: project has a running Agent conversation", ErrAgentOperationActive)
+		}
+	}
+	project := s.projects[projectID]
+	delete(s.projects, projectID)
+	s.mu.Unlock()
+	if project != nil {
+		defer project.close()
+	}
+	if s.app != nil {
+		s.app.mu.RLock()
+		chatService := s.app.chatService
+		s.app.mu.RUnlock()
+		if chatService != nil {
+			if err := chatService.CloseProjectBindings(ctx, projectID); err != nil {
+				return err
+			}
+		}
+	}
+	return nil
 }
 
 // Close aborts every user-level conversation before the shared durable runtime

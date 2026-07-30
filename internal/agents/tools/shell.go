@@ -2,6 +2,7 @@ package tools
 
 import (
 	"fmt"
+	"strings"
 
 	agenttools "github.com/alfredxw/denova/agent/tools"
 
@@ -15,11 +16,18 @@ func newAgentCommandRunner(
 	workspace *agenttools.LocalWorkspace,
 	shell agenttools.ShellKind,
 	executable string,
+	projectStateRoot string,
 ) (agenttools.CommandRunner, error) {
 	if workspace == nil || workspace.Root() == "" {
 		return nil, fmt.Errorf("shell workspace is required")
 	}
-	changes, err := workspacechange.ForWorkspace(workspace.Root())
+	var changes *workspacechange.Service
+	var err error
+	if strings.TrimSpace(projectStateRoot) != "" {
+		changes, err = workspacechange.ForWorkspaceAt(workspace.Root(), projectStateRoot)
+	} else {
+		changes, err = workspacechange.ForWorkspace(workspace.Root())
+	}
 	if err != nil {
 		return nil, fmt.Errorf("coordinate shell workspace: %w", err)
 	}

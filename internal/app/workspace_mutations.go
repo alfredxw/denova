@@ -5,7 +5,6 @@ import (
 	"errors"
 
 	"denova/internal/book"
-	"denova/internal/workspacechange"
 )
 
 // workspaceMutationRuntime is a workspace-scoped snapshot of the services
@@ -30,7 +29,11 @@ func (s *WorkspaceRuntimeManager) withExclusiveWorkspaceMutation(
 	if a.workspace == "" || a.bookService == nil || a.versionService == nil {
 		return ErrNoWorkspace
 	}
-	changeService, err := workspacechange.ForWorkspace(a.workspace)
+	stateRoot := ""
+	if a.cfg != nil {
+		stateRoot = a.cfg.ProjectStateDir
+	}
+	changeService, err := workspaceChangeService(a.workspace, stateRoot)
 	if err != nil {
 		return err
 	}

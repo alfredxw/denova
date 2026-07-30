@@ -7,8 +7,20 @@ import type { AgentChatTab } from './types'
 import { AgentChatTabBar } from './AgentChatTabBar'
 
 const tabs: AgentChatTab[] = [
-  { kind: 'page', id: 'reader-tab', workspace: '/books/one', pageId: 'reader' },
-  { kind: 'page', id: 'skills-tab', workspace: '/books/one', pageId: 'skills' },
+  {
+    kind: 'page',
+    id: 'reader-tab',
+    projectId: 'project-one',
+    workspace: '/books/one',
+    pageId: 'reader',
+  },
+  {
+    kind: 'page',
+    id: 'skills-tab',
+    projectId: 'project-one',
+    workspace: '/books/one',
+    pageId: 'skills',
+  },
 ]
 
 function renderTabBar(ui: ReactNode) {
@@ -23,7 +35,7 @@ describe('AgentChatTabBar', () => {
         tabs={tabs}
         activeTabId="skills-tab"
         terminalCommands={[]}
-        tabTitle={(tab) => tab.id === 'skills-tab' ? 'Skills tab' : 'Reader tab'}
+        tabTitle={(tab) => (tab.id === 'skills-tab' ? 'Skills tab' : 'Reader tab')}
         onActivate={vi.fn()}
         onClose={vi.fn()}
         onCloseOthers={vi.fn()}
@@ -56,6 +68,7 @@ describe('AgentChatTabBar', () => {
     const reviewTab: AgentChatTab = {
       kind: 'review',
       id: 'review-tab',
+      projectId: 'project-one',
       workspace: '/books/one',
       threadID: 'review-thread',
     }
@@ -95,7 +108,7 @@ describe('AgentChatTabBar', () => {
           tabs={tabs}
           activeTabId="reader-tab"
           terminalCommands={[]}
-          tabTitle={(tab) => tab.id === 'reader-tab' ? longTitle : 'Skills'}
+          tabTitle={(tab) => (tab.id === 'reader-tab' ? longTitle : 'Skills')}
           onActivate={vi.fn()}
           onClose={vi.fn()}
           onCloseOthers={vi.fn()}
@@ -131,7 +144,7 @@ describe('AgentChatTabBar', () => {
           tabs={tabs}
           activeTabId="reader-tab"
           terminalCommands={[]}
-          tabTitle={(tab) => tab.id === 'reader-tab' ? 'Reader' : 'Skills'}
+          tabTitle={(tab) => (tab.id === 'reader-tab' ? 'Reader' : 'Skills')}
           onActivate={vi.fn()}
           onClose={vi.fn()}
           onCloseOthers={vi.fn()}

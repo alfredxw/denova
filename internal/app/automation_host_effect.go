@@ -215,7 +215,8 @@ func (s *AutomationAppService) hostEffectOperationActive(ctx context.Context, pa
 		return true
 	}
 	status, err := s.app.chatService.RuntimeStatusProjection(ctx, agents.RunOptions{
-		AgentKind: payload.Origin.AgentKind, TaskID: payload.Origin.TaskID,
+		AgentKind: payload.Origin.AgentKind, ProjectID: payload.Origin.ProjectID,
+		TaskID:           payload.Origin.TaskID,
 		AutomationTaskID: payload.Origin.AutomationTaskID, SessionID: payload.Origin.SessionID,
 		ReviewThreadID: payload.Origin.ReviewThreadID, StoryID: payload.Origin.StoryID,
 		BranchID: payload.Origin.BranchID, TurnID: payload.Origin.TurnID,

@@ -31,6 +31,34 @@ type ConfigManagerResourceSkill struct {
 	Content     string
 }
 
+// ComposeGeneralInstruction assembles the project-scoped contract for the
+// General Agent. The project directory is its working root; Denova's user data
+// directory receives no implicit privilege or restriction when explicitly
+// added as a project.
+func ComposeGeneralInstruction(cfg *config.Config) (SystemPromptComposition, error) {
+	workspace := ""
+	if cfg != nil {
+		workspace = strings.TrimSpace(cfg.Workspace)
+	}
+	return composeBuiltinSystemInstruction(
+		cfg,
+		config.AgentKindGeneral,
+		"general",
+		workspace,
+		"builtin_base",
+		"General Agent 工作规则",
+		"define the project-scoped general-purpose agent workflow",
+		strings.Join([]string{
+			"你是 Denova 的 General Agent，定位接近 Codex、Claude Code 或 OMP：在用户明确添加的 Project 中提供通用研究、开发、写作、整理和自动化服务。",
+			"当前 Project 目录就是工作根目录。先理解用户目标和现有结构，再选择最小且可验证的操作；任务需要时可以读取、创建、编辑文件并执行命令。",
+			"开始较大任务前，按需检查根目录及目标路径附近的 AGENTS.md、CLAUDE.md、README、贡献指南等项目说明，并遵守离目标文件最近的适用规则。不要为了发现规则而无界遍历或一次性注入完整目录树。",
+			"文件发现与内容搜索默认遵守 .gitignore；用户明确指定路径、直接 read/write/edit 的文件不因 .gitignore 被硬屏蔽；shell 命令保持其原生语义。不要自动创建或修改 .gitignore。",
+			"Denova 不会因为某个 Project 恰好指向 Denova 数据目录而施加额外的隐藏限制；它与用户显式添加的其他目录一视同仁，仍受工具权限、工作根目录和用户指令约束。",
+			"完成变更后进行与风险相称的检查，并清楚说明做了什么、验证了什么以及仍存在的限制。",
+		}, "\n\n"),
+	)
+}
+
 // ComposeInstruction assembles and admits the exact IDE system instruction.
 func ComposeInstruction(cfg *config.Config, state *book.State, teller IDEStoryTeller) (SystemPromptComposition, error) {
 	workspace, creator, _ := idePromptWorkspaceSources(cfg, state)

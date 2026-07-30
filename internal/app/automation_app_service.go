@@ -188,6 +188,18 @@ func (s *AutomationAppService) StartTaskCommand(ctx context.Context, id, command
 		return nil, automation.RunRecord{}, err
 	}
 	defer operation.Release()
+	legacyTaskStoreID := automation.CatalogTaskID(task.Scope, task.Target.Workspace, task.ID)
+	if legacyTaskStoreID != taskStoreID {
+		legacyRunID, legacyIDErr := automationManualRunID(legacyTaskStoreID, commandID)
+		if legacyIDErr != nil {
+			return nil, automation.RunRecord{}, legacyIDErr
+		}
+		if _, found, lookupErr := persistedAutomationRunByID(storeForSnapshot(snap), legacyRunID); lookupErr != nil {
+			return nil, automation.RunRecord{}, lookupErr
+		} else if found {
+			runID = legacyRunID
+		}
+	}
 	started, run, err := s.startTaskWithSourceRunID(operation.Context(), snap, taskStoreID, automation.TriggerManual, "", runID, evidence)
 	if err != nil || started != nil {
 		return started, run, err

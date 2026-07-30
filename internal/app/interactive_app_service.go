@@ -513,7 +513,9 @@ func (s *InteractiveAppService) RunInteractiveDirectorPlan(storyID string, req i
 	novaDir := runtimeCfg.DataDir()
 	a.mu.RUnlock()
 
-	if layered, err := config.LoadLayeredWithStartupConfig(novaDir, workspace); err == nil {
+	if layered, err := config.LoadLayeredWithStartupConfigAt(
+		novaDir, workspace, config.ProjectConfigPath(runtimeCfg.ProjectStateDir),
+	); err == nil {
 		applyLayeredSettingsToConfig(&runtimeCfg, layered)
 	} else {
 		log.Printf("[interactive-director-agent] load settings for manual run failed workspace=%s err=%v", workspace, err)
@@ -588,7 +590,9 @@ func (s *InteractiveAppService) interactiveRuntimeConfig() (*interactive.Store, 
 	novaDir := runtimeCfg.DataDir()
 	a.mu.RUnlock()
 
-	if layered, err := config.LoadLayeredWithStartupConfig(novaDir, workspace); err == nil {
+	if layered, err := config.LoadLayeredWithStartupConfigAt(
+		novaDir, workspace, config.ProjectConfigPath(runtimeCfg.ProjectStateDir),
+	); err == nil {
 		applyLayeredSettingsToConfig(&runtimeCfg, layered)
 	} else {
 		log.Printf("[interactive-agent] load layered settings failed workspace=%s err=%v", workspace, err)

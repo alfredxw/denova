@@ -16,6 +16,7 @@ import (
 // caller must validate the fence again under App.mu immediately before write.
 type writingStructuralFence struct {
 	workspace           string
+	stateRoot           string
 	workspaceGeneration uint64
 	store               *session.Store
 	selected            *session.Session
@@ -48,6 +49,9 @@ func (s *ChatAppService) drainWritingBinding(ctx context.Context, sessionID stri
 		selected:            a.session,
 		chat:                a.chatService,
 		sessionID:           sessionID,
+	}
+	if a.cfg != nil {
+		fence.stateRoot = a.cfg.ProjectStateDir
 	}
 	fence.task = writingTaskForSessionLocked(a, fence.workspace, sessionID)
 	a.mu.RUnlock()

@@ -116,7 +116,7 @@ func (s *AutomationAppService) claimOrResumeBuiltInTrigger(
 		return automation.TriggerEvaluationRecord{}, false, err
 	}
 	claim, err := automation.NewMatchedTriggerEvaluation(automation.MatchedTriggerIntent{
-		Scope: task.Scope, Workspace: snap.workspace, TaskID: task.ID,
+		Scope: task.Scope, ProjectID: snap.projectID, Workspace: snap.workspace, TaskID: task.ID,
 		TriggerID: trigger.ID, TriggerType: trigger.Type, Match: match,
 		ActionPolicy: automation.EffectiveActionPolicy(task, trigger),
 		NotifyPolicy: automation.EffectiveNotifyPolicy(task, trigger),

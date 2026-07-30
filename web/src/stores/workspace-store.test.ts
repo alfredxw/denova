@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
-import { useWorkspaceStore } from './workspace-store'
+import { isSharedWorkspaceMode, useWorkspaceStore, type WorkspaceMode } from './workspace-store'
 
 describe('useWorkspaceStore', () => {
   beforeEach(() => {
@@ -35,6 +35,12 @@ describe('useWorkspaceStore', () => {
 
     useWorkspaceStore.getState().setRightPanel(null)
     expect(window.localStorage.getItem('nova:right-panel')).toBeNull()
+  })
+
+  it('classifies AgentChat as a user-owned surface that does not require a foreground Book', () => {
+    const modes: WorkspaceMode[] = ['ide', 'interactive', 'books', 'skills', 'agents', 'automations', 'agentchat']
+
+    expect(modes.filter(isSharedWorkspaceMode)).toEqual(['books', 'skills', 'agents', 'automations', 'agentchat'])
   })
 
   it('migrates the legacy change-review right panel back to the Agent panel', async () => {

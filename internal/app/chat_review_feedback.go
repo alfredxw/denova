@@ -52,7 +52,7 @@ func (s *ChatAppService) resolveReviewFeedback(ctx context.Context, runtime ideC
 	}
 
 	resolved := make(agents.ReviewFeedbackContexts, 0, len(refs))
-	err = s.app.withReviewFeedbackServices(runtime.workspace, scope, func(changes *workspacechange.Service, documents *documentreview.Service, targets documentreview.SnapshotResolver) error {
+	err = withRuntimeReviewFeedbackServices(runtime, scope, func(changes *workspacechange.Service, documents *documentreview.Service, targets documentreview.SnapshotResolver) error {
 		resolvers := newReviewFeedbackResolvers(changes, documents, targets)
 		for _, ref := range refs {
 			resolver := resolvers[ref.Source]
@@ -119,7 +119,7 @@ func (s *ChatAppService) consumeResolvedReviewFeedback(ctx context.Context, runt
 	// they must not be aborted by a client disconnect, while still carrying
 	// trace values.
 	ctx = context.WithoutCancel(ctx)
-	return s.app.withReviewFeedbackServices(runtime.workspace, scope, func(changes *workspacechange.Service, documents *documentreview.Service, targets documentreview.SnapshotResolver) error {
+	return withRuntimeReviewFeedbackServices(runtime, scope, func(changes *workspacechange.Service, documents *documentreview.Service, targets documentreview.SnapshotResolver) error {
 		resolvers := newReviewFeedbackResolvers(changes, documents, targets)
 
 		// Validate every ledger before the first append. Domain services validate

@@ -37,6 +37,7 @@ func (s *ChatAppService) SubmitAgentCommand(ctx context.Context, command ChatAge
 			OperationID: command.OperationID, TargetCommandID: command.TargetCommandID, Reason: command.Reason,
 			Options: agents.RunOptions{
 				AgentKind: agents.AgentKindIDE, TaskID: task.ID(),
+				StateRoot: runtime.projectState,
 				SessionID: runtime.sess.ID, Workspace: runtime.workspace, Mode: "ide",
 			},
 		})
@@ -70,6 +71,7 @@ func (s *ChatAppService) SubmitAgentCommand(ctx context.Context, command ChatAge
 		Request: command.Input, Emit: task.emit, Prepare: prepare,
 		Options: agents.RunOptions{
 			AgentKind: agents.AgentKindIDE,
+			StateRoot: activeRuntime.projectState,
 			TaskID:    task.ID(),
 			SessionID: activeRuntime.sess.ID,
 			Workspace: activeRuntime.workspace,

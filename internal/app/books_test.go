@@ -1,11 +1,63 @@
 package app
 
 import (
+	"context"
 	"encoding/json"
+	"errors"
 	"os"
 	"path/filepath"
 	"testing"
+
+	"denova/config"
+	agents "denova/internal/agents"
+	projectdomain "denova/internal/project"
 )
+
+func TestRemoveBookRejectsArchivingProjectWithRunningAgentChat(t *testing.T) {
+	novaDir := t.TempDir()
+	bookPath := filepath.Join(t.TempDir(), "book")
+	if err := os.MkdirAll(bookPath, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(bookPath, "book.json"), []byte("{}\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	registry := NewBookRegistry(novaDir)
+	application := &App{
+		cfg:             &config.Config{NovaDir: novaDir},
+		bookRegistry:    registry,
+		projectRegistry: registry.ProjectRegistry(),
+	}
+	record, err := application.AddProject(bookPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	application.ensureServices()
+	task := NewTask(func(ctx context.Context, _ *Task, _ func(event agents.Event)) {
+		<-ctx.Done()
+	})
+	defer func() {
+		task.Abort()
+		<-task.Done()
+	}()
+	application.agentChatApp.mu.Lock()
+	application.agentChatApp.active[agentChatBindingKey(AgentChatBinding{ProjectID: record.ID, SessionID: "session"})] = &agentChatRun{
+		binding: AgentChatBinding{ProjectID: record.ID, SessionID: "session"},
+		task:    task,
+	}
+	application.agentChatApp.mu.Unlock()
+
+	if _, err := application.RemoveBook(bookPath); !errors.Is(err, ErrAgentOperationActive) {
+		t.Fatalf("RemoveBook error = %v, want ErrAgentOperationActive", err)
+	}
+	current, err := application.projectRegistry.Get(record.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if current.Status == ProjectStatusArchived {
+		t.Fatalf("running Book project was archived: %#v", current)
+	}
+}
 
 func TestBookRegistryTouchListAndCurrent(t *testing.T) {
 	root := t.TempDir()
@@ -314,6 +366,48 @@ func TestNewBookRegistryUsesNovaDir(t *testing.T) {
 	want := filepath.Join(novaDir, "books.json")
 	if registry.path != want {
 		t.Fatalf("注册表路径不符合预期: want=%s got=%s", want, registry.path)
+	}
+}
+
+func TestBookRegistryReorderPreservesGeneralProjectSlots(t *testing.T) {
+	dataDir := t.TempDir()
+	registry := NewBookRegistry(dataDir)
+	projects := registry.ProjectRegistry()
+	bookAPath := filepath.Join(t.TempDir(), "a-book")
+	generalPath := filepath.Join(t.TempDir(), "b-general")
+	bookBPath := filepath.Join(t.TempDir(), "c-book")
+	for _, path := range []string{bookAPath, generalPath, bookBPath} {
+		if err := os.MkdirAll(path, 0o755); err != nil {
+			t.Fatal(err)
+		}
+	}
+	bookA, err := projects.Add(bookAPath, projectdomain.TypeBook, "A book")
+	if err != nil {
+		t.Fatal(err)
+	}
+	general, err := projects.Add(generalPath, projectdomain.TypeGeneral, "B general")
+	if err != nil {
+		t.Fatal(err)
+	}
+	bookB, err := projects.Add(bookBPath, projectdomain.TypeBook, "C book")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := registry.Reorder([]string{bookBPath, bookAPath}); err != nil {
+		t.Fatal(err)
+	}
+	ordered, err := projects.List(false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := []string{bookB.ID, general.ID, bookA.ID}
+	if len(ordered) != len(want) {
+		t.Fatalf("ordered Projects = %#v", ordered)
+	}
+	for index, id := range want {
+		if ordered[index].ID != id {
+			t.Fatalf("ordered Projects = %#v, want IDs %#v", ordered, want)
+		}
 	}
 }
 

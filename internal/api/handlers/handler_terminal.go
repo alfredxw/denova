@@ -30,6 +30,7 @@ const terminalWriteWait = 30 * time.Second
 
 type terminalCreateRequest struct {
 	OwnerTabID string   `json:"owner_tab_id"`
+	ProjectID  string   `json:"project_id"`
 	Workspace  string   `json:"workspace"`
 	ProfileID  string   `json:"profile_id"`
 	Title      string   `json:"title"`
@@ -93,7 +94,7 @@ func (h *Handlers) HandleTerminalSessionCreate(_ context.Context, c *hertzapp.Re
 		writeErrorKey(c, consts.StatusBadRequest, "api.common.invalidBody")
 		return
 	}
-	workspace, err := h.app.ResolveTerminalWorkspace(req.Workspace)
+	projectID, workspace, err := h.app.ResolveTerminalProject(req.ProjectID, req.Workspace)
 	if err != nil {
 		writeError(c, consts.StatusBadRequest, err.Error())
 		return
@@ -119,6 +120,7 @@ func (h *Handlers) HandleTerminalSessionCreate(_ context.Context, c *hertzapp.Re
 		Cols:           req.Cols,
 		Rows:           req.Rows,
 		Workspace:      workspace,
+		ProjectID:      projectID,
 	}
 	session, err := manager.Create(spec)
 	if err != nil {

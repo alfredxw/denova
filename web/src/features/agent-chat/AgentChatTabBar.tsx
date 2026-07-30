@@ -17,34 +17,11 @@ import {
   X,
 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
-import {
-  ContextMenu,
-  ContextMenuContent,
-  ContextMenuItem,
-  ContextMenuSeparator,
-  ContextMenuTrigger,
-} from '@/components/ui/context-menu'
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-} from '@/components/ui/dialog'
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuSeparator,
-  DropdownMenuTrigger,
-} from '@/components/ui/dropdown-menu'
+import { ContextMenu, ContextMenuContent, ContextMenuItem, ContextMenuSeparator, ContextMenuTrigger } from '@/components/ui/context-menu'
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog'
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from '@/components/ui/dropdown-menu'
 import { Input } from '@/components/ui/input'
-import {
-  WorkbenchTab,
-  WorkbenchTabAddButton,
-  WorkbenchTabStrip,
-} from '@/components/workbench/WorkbenchTabStrip'
+import { WorkbenchTab, WorkbenchTabAddButton, WorkbenchTabStrip } from '@/components/workbench/WorkbenchTabStrip'
 import {
   AGENT_CHAT_PAGE_IDS,
   type AgentChatGroupId,
@@ -71,6 +48,8 @@ interface AgentChatTabBarProps {
   /** No project means there is nothing to start a conversation in yet. */
   newChatDisabled?: boolean
   terminalCommands: TerminalCommandProfile[]
+  /** Writing-only resource pages are not valid inside a General Project. */
+  pagesEnabled?: boolean
   onActivate: (tabId: string) => void
   onClose: (tabId: string) => void
   onCloseOthers: (tabId: string) => void
@@ -106,6 +85,7 @@ export function AgentChatTabBar({
   tabTitle,
   newChatDisabled = false,
   terminalCommands,
+  pagesEnabled = true,
   onActivate,
   onClose,
   onCloseOthers,
@@ -118,7 +98,10 @@ export function AgentChatTabBar({
   onOpenPage,
 }: AgentChatTabBarProps) {
   const { t } = useTranslation()
-  const [renaming, setRenaming] = useState<{ id: string; value: string } | null>(null)
+  const [renaming, setRenaming] = useState<{
+    id: string
+    value: string
+  } | null>(null)
   /** Tab the pointer is currently over during a drag, used to draw the insertion marker. */
   const [dropTargetId, setDropTargetId] = useState<string | null>(null)
   const tabIcon = (tab: AgentChatTab) => {
@@ -158,7 +141,7 @@ export function AgentChatTabBar({
     const rect = event.currentTarget.getBoundingClientRect()
     const index = tabs.findIndex((tab) => tab.id === target.id)
     const after = event.clientX > rect.left + rect.width / 2
-    onMoveTab(sourceId, group, after ? tabs[index + 1]?.id ?? null : target.id)
+    onMoveTab(sourceId, group, after ? (tabs[index + 1]?.id ?? null) : target.id)
   }
 
   /** Drop onto the empty part of the strip: the tab joins this group at the end. */
@@ -177,33 +160,32 @@ export function AgentChatTabBar({
   const newTabMenu = (
     <DropdownMenu>
       <DropdownMenuTrigger asChild>
-        <WorkbenchTabAddButton
-          aria-label={t('agentChat.tabs.new')}
-          title={t('agentChat.tabs.new')}
-        />
+        <WorkbenchTabAddButton aria-label={t('agentChat.tabs.new')} title={t('agentChat.tabs.new')} />
       </DropdownMenuTrigger>
       <DropdownMenuContent align="end" className="min-w-48">
-          <DropdownMenuItem disabled={newChatDisabled} onSelect={() => onNewAgentTab(group)}>
-            <MessageSquareText />
-            {t('agentChat.tabs.newChat')}
-          </DropdownMenuItem>
-          <DropdownMenuItem onSelect={() => onNewTerminalTab(group, 'shell')}>
+        <DropdownMenuItem disabled={newChatDisabled} onSelect={() => onNewAgentTab(group)}>
+          <MessageSquareText />
+          {t('agentChat.tabs.newChat')}
+        </DropdownMenuItem>
+        <DropdownMenuItem onSelect={() => onNewTerminalTab(group, 'shell')}>
+          <TerminalSquare />
+          {t('agentChat.tabs.newTerminal')}
+        </DropdownMenuItem>
+        {terminalCommands.map((command) => (
+          <DropdownMenuItem key={command.id} onSelect={() => onNewTerminalTab(group, command.id, command.name)}>
             <TerminalSquare />
-            {t('agentChat.tabs.newTerminal')}
+            {command.name}
           </DropdownMenuItem>
-          {terminalCommands.map((command) => (
-            <DropdownMenuItem key={command.id} onSelect={() => onNewTerminalTab(group, command.id, command.name)}>
-              <TerminalSquare />
-              {command.name}
-            </DropdownMenuItem>
-          ))}
-          <DropdownMenuSeparator />
-          {AGENT_CHAT_PAGE_IDS.map((pageId) => (
-            <DropdownMenuItem key={pageId} onSelect={() => onOpenPage(group, pageId)}>
-              {PAGE_ICONS[pageId]}
-              {t(`agentChat.page.${pageId}`)}
-            </DropdownMenuItem>
-          ))}
+        ))}
+        {pagesEnabled ? <DropdownMenuSeparator /> : null}
+        {pagesEnabled
+          ? AGENT_CHAT_PAGE_IDS.map((pageId) => (
+              <DropdownMenuItem key={pageId} onSelect={() => onOpenPage(group, pageId)}>
+                {PAGE_ICONS[pageId]}
+                {t(`agentChat.page.${pageId}`)}
+              </DropdownMenuItem>
+            ))
+          : null}
       </DropdownMenuContent>
     </DropdownMenu>
   )
@@ -216,7 +198,9 @@ export function AgentChatTabBar({
         flowAction={newTabMenu}
         // Tabs sit flush against the pane edge; only the trailing new-tab button gets breathing room.
         className="pr-1"
-        onDragOver={(event) => { if (acceptsTabDrag(event)) event.preventDefault() }}
+        onDragOver={(event) => {
+          if (acceptsTabDrag(event)) event.preventDefault()
+        }}
         onDrop={dropOnStrip}
       >
         {tabs.map((tab) => {
@@ -228,22 +212,27 @@ export function AgentChatTabBar({
                   value={tab.id}
                   label={label}
                   icon={tabIcon(tab)}
-                  trailing={tab.pinned ? (
-                    <Pin className="size-3 shrink-0 text-[var(--nova-text-faint)]" aria-hidden="true" />
-                  ) : (
-                    <span
-                      role="button"
-                      tabIndex={-1}
-                      aria-label={t('agentChat.tabs.close', { title: label })}
-                      className="grid size-4 shrink-0 place-items-center rounded-sm opacity-0 transition-opacity hover:bg-[var(--nova-hover)] group-hover/tab:opacity-100"
-                      // Radix activates a trigger on pointer down, so the close hit area has to
-                      // stop the event or closing a background tab would select it first.
-                      onPointerDown={(event) => event.stopPropagation()}
-                      onClick={(event) => { event.stopPropagation(); onClose(tab.id) }}
-                    >
-                      <X className="size-3" />
-                    </span>
-                  )}
+                  trailing={
+                    tab.pinned ? (
+                      <Pin className="size-3 shrink-0 text-[var(--nova-text-faint)]" aria-hidden="true" />
+                    ) : (
+                      <span
+                        role="button"
+                        tabIndex={-1}
+                        aria-label={t('agentChat.tabs.close', { title: label })}
+                        className="grid size-4 shrink-0 place-items-center rounded-sm opacity-0 transition-opacity hover:bg-[var(--nova-hover)] group-hover/tab:opacity-100"
+                        // Radix activates a trigger on pointer down, so the close hit area has to
+                        // stop the event or closing a background tab would select it first.
+                        onPointerDown={(event) => event.stopPropagation()}
+                        onClick={(event) => {
+                          event.stopPropagation()
+                          onClose(tab.id)
+                        }}
+                      >
+                        <X className="size-3" />
+                      </span>
+                    )
+                  }
                   draggable
                   className={dropTargetId === tab.id ? 'shadow-[inset_2px_0_0_0_var(--nova-accent)]' : undefined}
                   onDragStart={(event) => startDrag(event, tab)}
@@ -273,22 +262,21 @@ export function AgentChatTabBar({
                   {group === 'primary' ? t('agentChat.tabs.moveRight') : t('agentChat.tabs.moveLeft')}
                 </ContextMenuItem>
                 <ContextMenuSeparator />
-                <ContextMenuItem onSelect={() => onClose(tab.id)}>
-                  {t('agentChat.tabs.closeTab')}
-                </ContextMenuItem>
-                <ContextMenuItem onSelect={() => onCloseOthers(tab.id)}>
-                  {t('agentChat.tabs.closeOthers')}
-                </ContextMenuItem>
-                <ContextMenuItem onSelect={() => onCloseToRight(tab.id)}>
-                  {t('agentChat.tabs.closeToRight')}
-                </ContextMenuItem>
+                <ContextMenuItem onSelect={() => onClose(tab.id)}>{t('agentChat.tabs.closeTab')}</ContextMenuItem>
+                <ContextMenuItem onSelect={() => onCloseOthers(tab.id)}>{t('agentChat.tabs.closeOthers')}</ContextMenuItem>
+                <ContextMenuItem onSelect={() => onCloseToRight(tab.id)}>{t('agentChat.tabs.closeToRight')}</ContextMenuItem>
               </ContextMenuContent>
             </ContextMenu>
           )
         })}
       </WorkbenchTabStrip>
 
-      <Dialog open={renaming !== null} onOpenChange={(open) => { if (!open) setRenaming(null) }}>
+      <Dialog
+        open={renaming !== null}
+        onOpenChange={(open) => {
+          if (!open) setRenaming(null)
+        }}
+      >
         <DialogContent className="sm:max-w-md">
           <DialogHeader>
             <DialogTitle>{t('agentChat.tabs.renameTitle')}</DialogTitle>
@@ -298,7 +286,9 @@ export function AgentChatTabBar({
             autoFocus
             value={renaming?.value ?? ''}
             onChange={(event) => setRenaming((current) => (current ? { ...current, value: event.target.value } : current))}
-            onKeyDown={(event) => { if (event.key === 'Enter') submitRename() }}
+            onKeyDown={(event) => {
+              if (event.key === 'Enter') submitRename()
+            }}
             aria-label={t('agentChat.tabs.renameTitle')}
           />
           <DialogFooter>

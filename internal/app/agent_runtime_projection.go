@@ -50,6 +50,10 @@ func (a *App) WritingAgentActiveView(ctx context.Context) WritingAgentActiveView
 	a.mu.RLock()
 	chatService := a.chatService
 	selectedSession := a.session
+	stateRoot := ""
+	if a.cfg != nil {
+		stateRoot = a.cfg.ProjectStateDir
+	}
 	task := activeWritingTaskLocked(a)
 	a.mu.RUnlock()
 	sessionID := ""
@@ -61,6 +65,7 @@ func (a *App) WritingAgentActiveView(ctx context.Context) WritingAgentActiveView
 	if sessionID != "" && chatService != nil {
 		runtimeSnapshot, projected = projectAgentRuntime(operation.Context(), chatService, agents.RunOptions{
 			AgentKind: agents.AgentKindIDE,
+			StateRoot: stateRoot,
 			Workspace: workspace,
 			SessionID: sessionID,
 		})

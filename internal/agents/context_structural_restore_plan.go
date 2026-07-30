@@ -333,7 +333,7 @@ func validateContextStructuralRestorePlan(
 	}
 	switch plan.Domain {
 	case ContextStructuralDomainSession:
-		if productBinding.AgentKind != AgentKindIDE && productBinding.AgentKind != AgentKindConfigManager && productBinding.AgentKind != AgentKindImage {
+		if productBinding.AgentKind != AgentKindGeneral && productBinding.AgentKind != AgentKindIDE && productBinding.AgentKind != AgentKindConfigManager && productBinding.AgentKind != AgentKindImage {
 			return ContextStructuralRestorePlan{}, fmt.Errorf("session structural plan does not match %q binding", binding.Kind)
 		}
 	case ContextStructuralDomainStory:

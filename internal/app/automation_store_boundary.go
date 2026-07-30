@@ -53,9 +53,8 @@ func (s *AutomationAppService) runDueWithSnapshot(ctx context.Context, snap *aut
 	return results
 }
 
-// storeAllWorkspaces builds a store that includes all known workspaces (from
-// the book registry plus the current workspace). Used by CRUD operations that
-// need visibility across all books.
+// storeAllWorkspaces builds a user catalog over registered Projects. Project
+// state roots own persistence; workspace paths remain execution targets only.
 func (s *AutomationAppService) storeAllWorkspaces() *automation.Store {
 	a := s.app
 	a.mu.RLock()
@@ -64,27 +63,40 @@ func (s *AutomationAppService) storeAllWorkspaces() *automation.Store {
 		novaDir = a.cfg.DataDir()
 	}
 	workspace := a.workspace
-	registry := a.bookRegistry
+	registry := a.projectRegistry
 	a.mu.RUnlock()
 	store := automation.NewStore(novaDir, workspace)
 	if registry == nil {
 		return store
 	}
-	books := registry.List()
-	workspaces := make([]string, 0, len(books)+1)
-	for _, book := range books {
-		workspaces = append(workspaces, book.Path)
+	records, err := registry.List(false)
+	if err != nil {
+		log.Printf("[automation] list Project catalog failed err=%v", err)
+		return store
 	}
-	if strings.TrimSpace(workspace) != "" {
-		workspaces = append(workspaces, workspace)
+	projects := make([]automation.ProjectLocation, 0, len(records))
+	for _, record := range records {
+		layout, layoutErr := registry.Layout(record)
+		if layoutErr != nil {
+			log.Printf("[automation] resolve Project state failed project_id=%s err=%v", record.ID, layoutErr)
+			continue
+		}
+		projects = append(projects, automation.ProjectLocation{
+			ProjectID: record.ID,
+			Workspace: record.WorkspacePath,
+			StateRoot: layout.StateRoot,
+		})
 	}
-	return store.WithWorkspaces(workspaces...)
+	return store.WithProjects(projects...)
 }
 
 // storeForSnapshot builds a store scoped to the snapshot's workspace.
 func storeForSnapshot(snap *automationWorkspaceSnapshot) *automation.Store {
 	if snap == nil {
 		return automation.NewStore("", "")
+	}
+	if strings.TrimSpace(snap.projectID) != "" && strings.TrimSpace(snap.stateRoot) != "" {
+		return automation.NewProjectStore(snap.novaDir, snap.projectID, snap.workspace, snap.stateRoot)
 	}
 	return automation.NewStore(snap.novaDir, snap.workspace)
 }
@@ -105,7 +117,7 @@ func automationTaskStoreID(task automation.Task) string {
 // workspace, not the definition's global target, owns recovery and control.
 func automationTargetForRun(task automation.Task, run automation.RunRecord) automation.ExecutionTarget {
 	if workspace := strings.TrimSpace(run.Workspace); workspace != "" {
-		return automation.ExecutionTarget{Kind: automation.TargetKindWorkspace, Workspace: workspace}
+		return automation.ExecutionTarget{Kind: automation.TargetKindWorkspace, WorkspaceID: run.ProjectID, Workspace: workspace}
 	}
 	if strings.TrimSpace(task.Target.Kind) != "" {
 		return task.Target
@@ -117,6 +129,7 @@ func (s *AutomationAppService) newRunRecord(snap *automationWorkspaceSnapshot, t
 	run := automation.RunRecord{
 		ID:        automation.NewRunID(),
 		TaskID:    task.ID,
+		ProjectID: snap.projectID,
 		Scope:     task.Scope,
 		Workspace: snap.workspace,
 		Trigger:   normalizeAutomationTrigger(trigger),

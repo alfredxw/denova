@@ -58,6 +58,67 @@ func TestContextStructuralRestorePlanStrictRoundTrip(t *testing.T) {
 	}
 }
 
+func TestContextStructuralBindingOptionsKeepStableProjectIdentity(t *testing.T) {
+	t.Parallel()
+
+	for _, agentKind := range []string{AgentKindGeneral, AgentKindIDE} {
+		agentKind := agentKind
+		t.Run(agentKind, func(t *testing.T) {
+			t.Parallel()
+			ref, err := (RuntimeBinding{
+				AgentKind: agentKind, ProjectID: "project-1", Mode: runtimeBindingProfileAgentChat,
+				Workspace: "/workspace/old", SessionID: "session-1",
+			}).Ref()
+			if err != nil {
+				t.Fatal(err)
+			}
+			options, err := contextStructuralBindingOptions(ref, RunOptions{
+				Workspace: "/workspace/current", StateRoot: "/state/current",
+			})
+			if err != nil {
+				t.Fatal(err)
+			}
+			if options.AgentKind != agentKind || options.ProjectID != "project-1" ||
+				options.SessionID != "session-1" || options.Mode != runtimeBindingProfileAgentChat ||
+				options.Workspace != "/workspace/current" || options.StateRoot != "/state/current" {
+				t.Fatalf("Project structural options = %#v", options)
+			}
+		})
+	}
+}
+
+func TestGeneralProjectStructuralRestorePlanRoundTrip(t *testing.T) {
+	t.Parallel()
+	binding := RuntimeBinding{
+		AgentKind: AgentKindGeneral, ProjectID: "project-1",
+		Mode: runtimeBindingProfileAgentChat, SessionID: "session-1",
+	}
+	mutation := json.RawMessage(`{"id":"cc-general"}`)
+	hash, err := ContextStructuralIntentHash(
+		ContextStructuralCompact, binding, "session-context:1", "cc-general", mutation,
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	plan := ContextStructuralRestorePlan{
+		Version: ContextStructuralRestorePlanVersion, Domain: ContextStructuralDomainSession,
+		Action: ContextStructuralCompact, Commit: true, IntentHash: hash, RecordID: "cc-general",
+		Result:   ContextStructuralResult{Compaction: ContextCompactionResult{Triggered: true}},
+		Mutation: mutation,
+	}
+	descriptor, err := EncodeContextStructuralRestorePlan(plan, binding, "session-context:1")
+	if err != nil {
+		t.Fatal(err)
+	}
+	decoded, err := DecodeContextStructuralRestorePlan(descriptor, binding, "session-context:1")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if decoded.IntentHash != plan.IntentHash || decoded.RecordID != plan.RecordID {
+		t.Fatalf("General structural restore plan = %#v", decoded)
+	}
+}
+
 func TestContextStructuralRestorePlanRejectsInvalidDescriptors(t *testing.T) {
 	binding := RuntimeBinding{AgentKind: AgentKindIDE, Workspace: "/book", SessionID: "invalid-plan"}
 	mutation := json.RawMessage(`{"id":"cc-1"}`)

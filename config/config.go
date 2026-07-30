@@ -14,68 +14,72 @@ import (
 
 // Config 保存 Denova 的全局配置。
 type Config struct {
-	OpenAIAPIKey                string                       `toml:"openai_api_key"`
-	OpenAIBaseURL               string                       `toml:"openai_base_url"`
-	OpenAIModel                 string                       `toml:"openai_model"`
-	OpenAIContextWindowTokens   int                          `toml:"openai_context_window_tokens"`
-	ModelProfiles               []ModelProfileSettings       `toml:"model_profiles"`
-	ImageAPIKey                 string                       `toml:"image_api_key"`
-	ImageAPIBaseURL             string                       `toml:"image_api_base_url"`
-	ImageAPIModel               string                       `toml:"image_api_model"`
-	DefaultImageAPIProfileID    string                       `toml:"default_image_api_profile_id"`
-	ImageAPIProfiles            []ImageAPIProfileSettings    `toml:"image_api_profiles"`
-	AgentModels                 AgentModelSettings           `toml:"agent_models"`
-	AgentTools                  AgentToolSettings            `toml:"agent_tools"`
-	AgentPrompts                AgentPromptSettings          `toml:"agent_prompts"`
-	AgentSkills                 AgentSkillSettings           `toml:"agent_skills"`
-	AgentContexts               AgentContextSettings         `toml:"agent_context"`
-	GeneralSubAgents            AgentGeneralSubAgentSettings `toml:"general_sub_agents"`
-	SubAgents                   []SubAgentConfig             `toml:"sub_agents"`
-	WebAccess                   WebAccessConfig              `toml:"web_access"`
-	SkillsDir                   string                       `toml:"skills_dir"`
-	BackendPort                 int                          `toml:"backend_port"`
-	FrontendPort                int                          `toml:"frontend_port"`
-	AllowLANAccess              bool                         `toml:"allow_lan_access"`
-	RemoteAccessUsername        string                       `toml:"remote_access_username"`
-	RemoteAccessPasswordHash    string                       `toml:"remote_access_password_hash"`
-	Language                    string                       `toml:"language"`
-	DenovaDir                   string                       `toml:"denova_dir"`
-	NovaDir                     string                       `toml:"nova_dir"`
-	Workspace                   string                       `toml:"workspace"`
-	AutomationWorkspaces        []string                     `toml:"-"`
-	RuntimeWebPort              int                          `toml:"-"`
-	DevMode                     bool                         `toml:"-"`
-	LLMInputLogEnabled          bool                         `toml:"llm_input_log_enabled"`
-	TraceCaptureLevel           string                       `toml:"trace_capture_level"`
-	TraceExporter               string                       `toml:"trace_exporter"`
-	TraceRetentionRuns          int                          `toml:"trace_retention_runs"`
-	IDEStoryTellerID            string                       `toml:"-"`
-	InteractiveStoryTellerID    string                       `toml:"-"`
-	IDEImagePresetID            string                       `toml:"-"`
-	ImagePresetToolPrompt       string                       `toml:"-"`
-	WritingSkillDefault         string                       `toml:"writing_skill_default"`
-	MaxIteration                int                          `toml:"max_iteration"`
-	ModelMaxRetries             int                          `toml:"model_max_retries"`
-	AgentIdleTimeoutSeconds     int                          `toml:"agent_idle_timeout_seconds"`
-	AgentToolResultLimitKB      int                          `toml:"agent_tool_result_limit_kb"`
-	AgentToolParallelism        int                          `toml:"agent_tool_parallelism"`
-	TerminalEnabled             bool                         `toml:"terminal_enabled"`
-	TerminalShell               string                       `toml:"terminal_shell"`
-	TerminalCommands            []TerminalCommandSettings    `toml:"terminal_commands"`
-	TerminalCodexCommand        string                       `toml:"terminal_codex_command"`
-	TerminalClaudeCommand       string                       `toml:"terminal_claude_command"`
-	TerminalMaxSessions         int                          `toml:"terminal_max_sessions"`
-	TerminalScrollbackKB        int                          `toml:"terminal_scrollback_kb"`
-	ChapterFilenameFormat       string                       `toml:"-"`
-	VolumeDirFormat             string                       `toml:"-"`
-	HideChapterBodyLiveOutput   bool                         `toml:"-"`
-	ChapterGroupMin             int                          `toml:"-"`
-	ChapterGroupMax             int                          `toml:"-"`
-	VersionTimedEnabled         bool                         `toml:"-"`
-	VersionTimedIntervalMinutes int                          `toml:"-"`
-	InteractiveReplyTargetChars int                          `toml:"-"`
-	ResumeLastWorkspace         bool                         `toml:"-"`
-	UpdateCheckEnabled          bool                         `toml:"-"`
+	OpenAIAPIKey              string                       `toml:"openai_api_key"`
+	OpenAIBaseURL             string                       `toml:"openai_base_url"`
+	OpenAIModel               string                       `toml:"openai_model"`
+	OpenAIContextWindowTokens int                          `toml:"openai_context_window_tokens"`
+	ModelProfiles             []ModelProfileSettings       `toml:"model_profiles"`
+	ImageAPIKey               string                       `toml:"image_api_key"`
+	ImageAPIBaseURL           string                       `toml:"image_api_base_url"`
+	ImageAPIModel             string                       `toml:"image_api_model"`
+	DefaultImageAPIProfileID  string                       `toml:"default_image_api_profile_id"`
+	ImageAPIProfiles          []ImageAPIProfileSettings    `toml:"image_api_profiles"`
+	AgentModels               AgentModelSettings           `toml:"agent_models"`
+	AgentTools                AgentToolSettings            `toml:"agent_tools"`
+	AgentPrompts              AgentPromptSettings          `toml:"agent_prompts"`
+	AgentSkills               AgentSkillSettings           `toml:"agent_skills"`
+	AgentContexts             AgentContextSettings         `toml:"agent_context"`
+	GeneralSubAgents          AgentGeneralSubAgentSettings `toml:"general_sub_agents"`
+	SubAgents                 []SubAgentConfig             `toml:"sub_agents"`
+	WebAccess                 WebAccessConfig              `toml:"web_access"`
+	SkillsDir                 string                       `toml:"skills_dir"`
+	BackendPort               int                          `toml:"backend_port"`
+	FrontendPort              int                          `toml:"frontend_port"`
+	AllowLANAccess            bool                         `toml:"allow_lan_access"`
+	RemoteAccessUsername      string                       `toml:"remote_access_username"`
+	RemoteAccessPasswordHash  string                       `toml:"remote_access_password_hash"`
+	Language                  string                       `toml:"language"`
+	DenovaDir                 string                       `toml:"denova_dir"`
+	NovaDir                   string                       `toml:"nova_dir"`
+	Workspace                 string                       `toml:"workspace"`
+	// ProjectID and ProjectStateDir are runtime-owned bindings. They never
+	// persist into user configuration or enter the content workspace.
+	ProjectID                   string                    `toml:"-"`
+	ProjectStateDir             string                    `toml:"-"`
+	AutomationWorkspaces        []string                  `toml:"-"`
+	RuntimeWebPort              int                       `toml:"-"`
+	DevMode                     bool                      `toml:"-"`
+	LLMInputLogEnabled          bool                      `toml:"llm_input_log_enabled"`
+	TraceCaptureLevel           string                    `toml:"trace_capture_level"`
+	TraceExporter               string                    `toml:"trace_exporter"`
+	TraceRetentionRuns          int                       `toml:"trace_retention_runs"`
+	IDEStoryTellerID            string                    `toml:"-"`
+	InteractiveStoryTellerID    string                    `toml:"-"`
+	IDEImagePresetID            string                    `toml:"-"`
+	ImagePresetToolPrompt       string                    `toml:"-"`
+	WritingSkillDefault         string                    `toml:"writing_skill_default"`
+	MaxIteration                int                       `toml:"max_iteration"`
+	ModelMaxRetries             int                       `toml:"model_max_retries"`
+	AgentIdleTimeoutSeconds     int                       `toml:"agent_idle_timeout_seconds"`
+	AgentToolResultLimitKB      int                       `toml:"agent_tool_result_limit_kb"`
+	AgentToolParallelism        int                       `toml:"agent_tool_parallelism"`
+	TerminalEnabled             bool                      `toml:"terminal_enabled"`
+	TerminalShell               string                    `toml:"terminal_shell"`
+	TerminalCommands            []TerminalCommandSettings `toml:"terminal_commands"`
+	TerminalCodexCommand        string                    `toml:"terminal_codex_command"`
+	TerminalClaudeCommand       string                    `toml:"terminal_claude_command"`
+	TerminalMaxSessions         int                       `toml:"terminal_max_sessions"`
+	TerminalScrollbackKB        int                       `toml:"terminal_scrollback_kb"`
+	ChapterFilenameFormat       string                    `toml:"-"`
+	VolumeDirFormat             string                    `toml:"-"`
+	HideChapterBodyLiveOutput   bool                      `toml:"-"`
+	ChapterGroupMin             int                       `toml:"-"`
+	ChapterGroupMax             int                       `toml:"-"`
+	VersionTimedEnabled         bool                      `toml:"-"`
+	VersionTimedIntervalMinutes int                       `toml:"-"`
+	InteractiveReplyTargetChars int                       `toml:"-"`
+	ResumeLastWorkspace         bool                      `toml:"-"`
+	UpdateCheckEnabled          bool                      `toml:"-"`
 }
 
 // LoadWithWorkspace 在已知 workspace 时读取分层配置（默认 < 用户级 < 工作区级 < 环境变量）。
@@ -164,6 +168,12 @@ func LoadWithWorkspace(workspace string) (*Config, LayeredSettings, error) {
 // LoadLayeredWithStartupConfig reads layered settings with the same global
 // startup config layer used by LoadWithWorkspace.
 func LoadLayeredWithStartupConfig(novaDir, workspace string) (LayeredSettings, error) {
+	return LoadLayeredWithStartupConfigAt(novaDir, workspace, "")
+}
+
+// LoadLayeredWithStartupConfigAt reads the Project layer from an explicit
+// user-state path. An empty path preserves the legacy workspace-local layout.
+func LoadLayeredWithStartupConfigAt(novaDir, workspace, projectConfigPath string) (LayeredSettings, error) {
 	if strings.TrimSpace(novaDir) == "" {
 		novaDir = startupNovaDir()
 	} else {
@@ -172,7 +182,7 @@ func LoadLayeredWithStartupConfig(novaDir, workspace string) (LayeredSettings, e
 	globalSettings := settingsFromConfig(loadGlobalConfig())
 	globalSettings.DenovaDir = novaDir
 	globalSettings.NovaDir = novaDir
-	return LoadLayeredWithGlobal(novaDir, workspace, globalSettings)
+	return LoadLayeredWithGlobalAt(novaDir, workspace, projectConfigPath, globalSettings)
 }
 
 func startupNovaDir() string {

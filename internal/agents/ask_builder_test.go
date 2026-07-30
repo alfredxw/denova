@@ -37,6 +37,9 @@ func TestAskRegistrationRequiresInteractiveTopLevelHost(t *testing.T) {
 	if !build(config.AgentKindIDE, true)["ask"] {
 		t.Fatal("interactive IDE Agent did not register ask")
 	}
+	if !build(config.AgentKindGeneral, true)["ask"] {
+		t.Fatal("interactive General Agent did not register ask")
+	}
 	if !build(config.AgentKindConfigManager, true)["ask"] {
 		t.Fatal("interactive Config Manager Agent did not register ask")
 	}
@@ -60,6 +63,8 @@ func askOnlyAgentConfig(t *testing.T, kind string) *config.Config {
 	override := config.AgentToolOverride{config.AgentToolAsk: true, config.AgentToolImageGeneration: false}
 	settings := config.AgentToolSettings{Default: allOff}
 	switch kind {
+	case config.AgentKindGeneral:
+		settings.General = override
 	case config.AgentKindIDE:
 		settings.IDE = override
 	case config.AgentKindConfigManager:

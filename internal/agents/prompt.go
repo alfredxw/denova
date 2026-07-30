@@ -269,6 +269,7 @@ func BuiltinAgentPrompts(cfg *config.Config, state *book.State, ideTeller IDESto
 		promptCfg = &copy
 	}
 	ide, ideErr := ComposeInstruction(promptCfg, state, ideTeller)
+	general, generalErr := ComposeGeneralInstruction(promptCfg)
 	interactiveStory, interactiveErr := ComposeInteractiveStoryInstruction(promptCfg, state, prompts.InteractiveStorySystemInstructionInput{})
 	configManager, configErr := ComposeConfigManagerInstruction(promptCfg, state)
 	director, directorErr := composeBuiltinSystemInstruction(promptCfg, config.AgentKindInteractiveDirector, "interactive_director", workspaceForPrompt(promptCfg, state), "builtin_base", "后台导演系统规则", "define the interactive director planning workflow", prompts.BuildInteractiveDirectorSystemInstruction())
@@ -278,6 +279,7 @@ func BuiltinAgentPrompts(cfg *config.Config, state *book.State, ideTeller IDESto
 	automationPrompt, automationErr := ComposeAutomationInstruction(promptCfg, state, AutomationTaskInstruction{})
 	compaction, compactionErr := composeBuiltinSystemInstruction(promptCfg, config.AgentKindContextCompaction, "context_compaction", workspaceForPrompt(promptCfg, state), "builtin_base", "上下文压缩规则", "define the bounded context compaction task", contextCompactionSystemInstruction())
 	return config.AgentPromptSettings{
+		General:             config.AgentPromptOverride{SystemPrompt: systemPromptPreview(general, generalErr)},
 		IDE:                 config.AgentPromptOverride{SystemPrompt: systemPromptPreview(ide, ideErr)},
 		InteractiveStory:    config.AgentPromptOverride{SystemPrompt: systemPromptPreview(interactiveStory, interactiveErr)},
 		ConfigManager:       config.AgentPromptOverride{SystemPrompt: systemPromptPreview(configManager, configErr)},
@@ -308,6 +310,7 @@ func BuiltinAgentPromptBlocks(cfg *config.Config, state *book.State, ideTeller I
 	_, interactiveWorkspace, _ := buildInteractiveStoryBuiltinInstruction(promptCfg, state, prompts.InteractiveStorySystemInstructionInput{})
 	configManagerFlow := configManagerFlowInstruction(promptCfg, state)
 	return config.AgentPromptBlockSettings{
+		General:             builtinPromptBlocks(promptCfg, config.AgentKindGeneral, generalAgentFlowInstruction(promptCfg)),
 		IDE:                 builtinPromptBlocks(promptCfg, config.AgentKindIDE, ideFlowInstruction(promptCfg, ideWorkspace)),
 		InteractiveStory:    builtinPromptBlocks(promptCfg, config.AgentKindInteractiveStory, interactiveStoryFlowInstruction(promptCfg, interactiveWorkspace)),
 		ConfigManager:       builtinPromptBlocks(promptCfg, config.AgentKindConfigManager, configManagerFlow),
@@ -335,6 +338,7 @@ func BuiltinAgentPromptSources(cfg *config.Config, state *book.State, ideTeller 
 		configManagerCreator = state.ReadCreatorPrompt()
 	}
 	return config.AgentPromptSourceSettings{
+		General: builtinPromptSourceList(promptCfg, config.AgentKindGeneral, generalAgentFlowInstruction(promptCfg)),
 		IDE: builtinPromptSourceList(promptCfg, config.AgentKindIDE, ideFlowInstruction(promptCfg, ideWorkspace),
 			readonlyPromptSource("creator", "CREATOR.md", "CREATOR.md", ideCreator),
 			readonlyPromptSource("teller", "IDE 默认导演规则", ideTeller.ID, ideTeller.Prompt),
@@ -447,6 +451,19 @@ func ideFlowInstruction(cfg *config.Config, workspace string) string {
 		ChapterGroupMin:       cfg.ChapterGroupMin,
 		ChapterGroupMax:       cfg.ChapterGroupMax,
 	})
+}
+
+func generalAgentFlowInstruction(cfg *config.Config) string {
+	composition, err := ComposeGeneralInstruction(cfg)
+	if err != nil {
+		return ""
+	}
+	for _, fragment := range composition.fragments {
+		if fragment.ID == "builtin_base" {
+			return fragment.Content
+		}
+	}
+	return ""
 }
 
 func interactiveStoryFlowInstruction(cfg *config.Config, workspace string) string {

@@ -226,8 +226,9 @@ func (descriptor harnessTurnRequestDescriptor) chatRequest() ChatRequest {
 
 func (descriptor harnessTurnOptionsDescriptor) runOptions() RunOptions {
 	return RunOptions{
-		AgentKind: descriptor.AgentKind, RootAgentName: descriptor.RootAgentName,
-		TaskID: descriptor.TaskID, AutomationTaskID: descriptor.AutomationTaskID,
+		AgentKind: descriptor.AgentKind, ProjectID: descriptor.ProjectID,
+		RootAgentName: descriptor.RootAgentName,
+		TaskID:        descriptor.TaskID, AutomationTaskID: descriptor.AutomationTaskID,
 		SessionID: descriptor.SessionID, ReviewThreadID: descriptor.ReviewThreadID,
 		StoryID: descriptor.StoryID, BranchID: descriptor.BranchID, TurnID: descriptor.TurnID,
 		MaintenanceTask: descriptor.MaintenanceTask, Workspace: descriptor.Workspace,

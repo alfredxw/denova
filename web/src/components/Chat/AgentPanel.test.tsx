@@ -12,7 +12,10 @@ const useWorkspaceChangeGroupsMock = vi.hoisted(() => vi.fn())
 
 vi.mock('@/features/settings/api', () => ({
   fetchSettings: vi.fn().mockResolvedValue({
-    effective: { ide_story_teller_id: 'classic', writing_skill_default: 'novel-lite' },
+    effective: {
+      ide_story_teller_id: 'classic',
+      writing_skill_default: 'novel-lite',
+    },
     user: {},
   }),
   updateUserSettings: vi.fn().mockResolvedValue(undefined),
@@ -25,11 +28,10 @@ vi.mock('@/hooks/useSkillCommands', () => ({
 vi.mock('@/hooks/useWritingSkillOptions', () => ({
   DEFAULT_WRITING_SKILL: 'novel-lite',
   BUILTIN_WRITING_SKILLS: ['novel-lite', 'novel-standard'],
-  resolveWritingSkillSelection: (configured: string, options: Array<{ name: string }>) => (
+  resolveWritingSkillSelection: (configured: string, options: Array<{ name: string }>) =>
     options.length === 0 || options.some((option) => option.name === configured)
       ? configured || 'novel-lite'
-      : options.find((option) => option.name === 'novel-lite')?.name || options[0].name
-  ),
+      : options.find((option) => option.name === 'novel-lite')?.name || options[0].name,
   useWritingSkillOptions: useWritingSkillOptionsMock,
 }))
 
@@ -55,15 +57,41 @@ describe('AgentPanel', () => {
       resolved_agent_tool_manifests: {},
       resolved_agent_contexts: {},
       revisions: { user: 'r2' },
-      paths: { denova_dir: '', nova_dir: '', user_config: '', workspace_config: '' },
+      paths: {
+        denova_dir: '',
+        nova_dir: '',
+        user_config: '',
+        workspace_config: '',
+      },
     }))
     useWritingSkillOptionsMock.mockReset()
     useWorkspaceChangeGroupsMock.mockReset()
     useWorkspaceChangeGroupsMock.mockReturnValue({ data: [] })
     useWritingSkillOptionsMock.mockReturnValue([
-      { name: 'novel-lite', description: 'Lite', scope: 'builtin', path: '/skills/novel-lite/SKILL.md', active: true, agent: 'ide' },
-      { name: 'novel-standard', description: 'Standard', scope: 'builtin', path: '/skills/novel-standard/SKILL.md', active: true, agent: 'ide' },
-      { name: 'slow-burn', description: '慢热写作', scope: 'workspace', path: '/book/.nova/skills/slow-burn/SKILL.md', active: true, agent: 'ide' },
+      {
+        name: 'novel-lite',
+        description: 'Lite',
+        scope: 'builtin',
+        path: '/skills/novel-lite/SKILL.md',
+        active: true,
+        agent: 'ide',
+      },
+      {
+        name: 'novel-standard',
+        description: 'Standard',
+        scope: 'builtin',
+        path: '/skills/novel-standard/SKILL.md',
+        active: true,
+        agent: 'ide',
+      },
+      {
+        name: 'slow-burn',
+        description: '慢热写作',
+        scope: 'workspace',
+        path: '/book/.nova/skills/slow-burn/SKILL.md',
+        active: true,
+        agent: 'ide',
+      },
     ])
   })
 
@@ -76,7 +104,9 @@ describe('AgentPanel', () => {
     renderAgentPanel()
 
     expect(useWritingSkillOptionsMock).toHaveBeenCalledWith('/workspace')
-    expect(useWorkspaceChangeGroupsMock).toHaveBeenCalledWith('/workspace', { sessionID: 'session-1' })
+    expect(useWorkspaceChangeGroupsMock).toHaveBeenCalledWith('/workspace', {
+      sessionID: 'session-1',
+    })
     expect(screen.getByRole('button', { name: '对话' })).toBeInTheDocument()
     expect(screen.getByRole('button', { name: '会话' })).toBeInTheDocument()
     expect(screen.getByRole('button', { name: '运行追踪' })).toBeInTheDocument()
@@ -86,6 +116,14 @@ describe('AgentPanel', () => {
     expect(screen.getByText('写作 Skill')).toBeInTheDocument()
     expect(screen.getByText(/Lite/)).toBeInTheDocument()
     expect(screen.queryByRole('button', { name: 'Review' })).not.toBeInTheDocument()
+  })
+
+  it('General Agent 不读取前台 Book 的变更审阅范围', () => {
+    renderAgentPanel({ agentKind: 'general' })
+
+    expect(useWorkspaceChangeGroupsMock).toHaveBeenCalledWith('', {
+      sessionID: 'session-1',
+    })
   })
 
   it('将新建会话按钮放在标题切换器旁边并隐藏会话摘要和空闲状态文字', async () => {
@@ -113,7 +151,10 @@ describe('AgentPanel', () => {
 
     expect(handleSend).toHaveBeenCalledWith(
       expect.stringContaining('在同一轮同步更新 setting/progress.md 与 setting/character-states.md'),
-      expect.objectContaining({ writingSkill: 'novel-lite', tellerId: 'classic' }),
+      expect.objectContaining({
+        writingSkill: 'novel-lite',
+        tellerId: 'classic',
+      }),
     )
     expect(handleSend.mock.calls[0][0]).toContain('章节是否标记成章不影响同步')
     expect(handleSend.mock.calls[0][0]).not.toContain('由我在章节列表确认后再标记为成章')
@@ -122,15 +163,24 @@ describe('AgentPanel', () => {
   it('创作 Agent 将思考和工具调用折叠到同一个执行过程', async () => {
     const user = userEvent.setup()
     renderAgentPanel({
-      messages: [{
-        id: 'assistant-trace',
-        role: 'assistant',
-        parts: [
-          { type: 'reasoning', text: '读取章节上下文' },
-          { type: 'dynamic-tool', toolName: 'read', toolCallId: 'tool-1', state: 'output-available', input: { path: 'chapters/ch01.md' }, output: 'ok' },
-          { type: 'text', text: '已完成续写。' },
-        ],
-      }],
+      messages: [
+        {
+          id: 'assistant-trace',
+          role: 'assistant',
+          parts: [
+            { type: 'reasoning', text: '读取章节上下文' },
+            {
+              type: 'dynamic-tool',
+              toolName: 'read',
+              toolCallId: 'tool-1',
+              state: 'output-available',
+              input: { path: 'chapters/ch01.md' },
+              output: 'ok',
+            },
+            { type: 'text', text: '已完成续写。' },
+          ],
+        },
+      ],
     })
 
     expect(screen.getByRole('button', { name: /执行过程.*1 次工具调用/ })).toBeInTheDocument()
@@ -146,11 +196,19 @@ describe('AgentPanel', () => {
   it('创作 Agent 运行中自动展开执行过程', () => {
     renderAgentPanel({
       isStreaming: true,
-      messages: [{
-        id: 'assistant-running-trace',
-        role: 'assistant',
-        parts: [{ type: 'reasoning', text: '正在读取章节上下文', state: 'streaming' }],
-      }],
+      messages: [
+        {
+          id: 'assistant-running-trace',
+          role: 'assistant',
+          parts: [
+            {
+              type: 'reasoning',
+              text: '正在读取章节上下文',
+              state: 'streaming',
+            },
+          ],
+        },
+      ],
     })
 
     expect(screen.getByRole('button', { name: /正在执行/ })).toHaveAttribute('aria-expanded', 'true')
@@ -162,16 +220,18 @@ describe('AgentPanel', () => {
     const handleDetailsChange = vi.fn()
 
     renderAgentPanel({
-      messages: [{
-        id: 'subagent-output-1',
-        role: 'assistant',
-        metadata: {
-          agent_name: 'researcher',
-          subagent: true,
-          subagent_session_id: 'run-1-subagent-01-researcher',
+      messages: [
+        {
+          id: 'subagent-output-1',
+          role: 'assistant',
+          metadata: {
+            agent_name: 'researcher',
+            subagent: true,
+            subagent_session_id: 'run-1-subagent-01-researcher',
+          },
+          parts: [{ type: 'text', text: '调研摘要' }],
         },
-        parts: [{ type: 'text', text: '调研摘要' }],
-      }],
+      ],
       onSubAgentDetailsChange: handleDetailsChange,
     })
 
@@ -189,14 +249,40 @@ describe('AgentPanel', () => {
   it('根据浮动输入区高度为消息列表预留底部空间', async () => {
     const rectSpy = vi.spyOn(HTMLElement.prototype, 'getBoundingClientRect').mockImplementation(function (this: HTMLElement) {
       if (this.classList.contains('nova-chat-input-area-floating')) {
-        return { width: 520, height: 220, top: 500, left: 0, right: 520, bottom: 720, x: 0, y: 500, toJSON: () => ({}) } as DOMRect
+        return {
+          width: 520,
+          height: 220,
+          top: 500,
+          left: 0,
+          right: 520,
+          bottom: 720,
+          x: 0,
+          y: 500,
+          toJSON: () => ({}),
+        } as DOMRect
       }
-      return { width: 0, height: 0, top: 0, left: 0, right: 0, bottom: 0, x: 0, y: 0, toJSON: () => ({}) } as DOMRect
+      return {
+        width: 0,
+        height: 0,
+        top: 0,
+        left: 0,
+        right: 0,
+        bottom: 0,
+        x: 0,
+        y: 0,
+        toJSON: () => ({}),
+      } as DOMRect
     })
 
     try {
       const { container } = renderAgentPanel({
-        messages: [{ id: 'assistant-1', role: 'assistant', parts: [{ type: 'text', text: '最后一行内容' }] }],
+        messages: [
+          {
+            id: 'assistant-1',
+            role: 'assistant',
+            parts: [{ type: 'text', text: '最后一行内容' }],
+          },
+        ],
       })
 
       await waitFor(() => {
@@ -226,14 +312,22 @@ describe('AgentPanel', () => {
       onSend: handleSend,
     })
 
-    window.dispatchEvent(new CustomEvent('nova:writing-agent-init', {
-      detail: { autoSend: true, prompt: '/chapter-illustration\n目标章节 / Target chapter: chapters/ch01.md' },
-    }))
+    window.dispatchEvent(
+      new CustomEvent('nova:writing-agent-init', {
+        detail: {
+          autoSend: true,
+          prompt: '/chapter-illustration\n目标章节 / Target chapter: chapters/ch01.md',
+        },
+      }),
+    )
 
     await waitFor(() => {
       expect(handleSend).toHaveBeenCalledWith(
         expect.stringContaining('/chapter-illustration'),
-        expect.objectContaining({ writingSkill: 'novel-lite', tellerId: 'classic' }),
+        expect.objectContaining({
+          writingSkill: 'novel-lite',
+          tellerId: 'classic',
+        }),
       )
     })
   })
@@ -242,10 +336,7 @@ describe('AgentPanel', () => {
     const user = userEvent.setup()
     const handleSend = vi.fn()
     renderAgentPanel({
-      tellers: [
-        { id: 'classic', name: '默认叙事', style_rules: [] } as any,
-        { id: 'slow-burn', name: '慢热叙事', style_rules: [] } as any,
-      ],
+      tellers: [{ id: 'classic', name: '默认叙事', style_rules: [] } as any, { id: 'slow-burn', name: '慢热叙事', style_rules: [] } as any],
       onSend: handleSend,
     })
 
@@ -254,27 +345,32 @@ describe('AgentPanel', () => {
     const slowBurnItem = await screen.findByText('慢热叙事')
     fireEvent.click(slowBurnItem.closest('[role="menuitem"]') || slowBurnItem)
 
-    window.dispatchEvent(new CustomEvent('nova:writing-agent-init', {
-      detail: { autoSend: true, prompt: '继续写下一段' },
-    }))
+    window.dispatchEvent(
+      new CustomEvent('nova:writing-agent-init', {
+        detail: { autoSend: true, prompt: '继续写下一段' },
+      }),
+    )
 
     await waitFor(() => {
       expect(handleSend).toHaveBeenCalledWith(
         '继续写下一段',
-        expect.objectContaining({ tellerId: 'slow-burn', writingSkill: 'novel-lite' }),
+        expect.objectContaining({
+          tellerId: 'slow-burn',
+          writingSkill: 'novel-lite',
+        }),
       )
     })
   })
 
   it('关闭面板后由稳定 owner 完成仍在 afterDelay 中的偏好保存', async () => {
     const overrides: AgentPanelOverrides = {
-      tellers: [
-        { id: 'classic', name: '默认叙事', style_rules: [] } as any,
-        { id: 'slow-burn', name: '慢热叙事', style_rules: [] } as any,
-      ],
+      tellers: [{ id: 'classic', name: '默认叙事', style_rules: [] } as any, { id: 'slow-burn', name: '慢热叙事', style_rules: [] } as any],
     }
     function Owner({ open }: { open: boolean }) {
-      const composerSettings = usePersistedUserSettings({ workspace: '/workspace', defaults: WRITING_COMPOSER_SETTING_DEFAULTS })
+      const composerSettings = usePersistedUserSettings({
+        workspace: '/workspace',
+        defaults: WRITING_COMPOSER_SETTING_DEFAULTS,
+      })
       return open ? <AgentPanel {...defaultAgentPanelProps(overrides, composerSettings)} /> : null
     }
 
@@ -305,7 +401,8 @@ describe('AgentPanel', () => {
 
   it('发送开始时移走审阅意见，并在请求失败时恢复', async () => {
     const user = userEvent.setup()
-    const handleSend = vi.fn()
+    const handleSend = vi
+      .fn()
       .mockImplementationOnce(async (_message, options) => {
         options?.onSubmissionStart?.()
         options?.onSubmissionError?.()
@@ -321,10 +418,12 @@ describe('AgentPanel', () => {
       onSend: handleSend,
       onReviewFeedbackSubmitted: handleSubmitted,
       onReviewFeedbackSubmissionFailed: handleSubmissionFailed,
-      reviewFeedback: [{
-        reviewThreadId: 'thread-1',
-        comments: [{ id: 'comment-1', group_id: 'group-1', body: '把这里写得更克制' }],
-      }],
+      reviewFeedback: [
+        {
+          reviewThreadId: 'thread-1',
+          comments: [{ id: 'comment-1', group_id: 'group-1', body: '把这里写得更克制' }],
+        },
+      ],
     })
 
     await user.click(screen.getByRole('button', { name: '发送' }))
@@ -347,12 +446,24 @@ describe('AgentPanel', () => {
         {
           source: 'workspace_change',
           reviewThreadId: 'diff-thread',
-          comments: [{ id: 'diff-comment', body: '调整 Diff 里的转场', review_path: 'chapters/ch01.md' }],
+          comments: [
+            {
+              id: 'diff-comment',
+              body: '调整 Diff 里的转场',
+              review_path: 'chapters/ch01.md',
+            },
+          ],
         },
         {
           source: 'document',
           reviewThreadId: 'document-thread',
-          comments: [{ id: 'document-comment', body: '正文这里需要更克制', path: 'chapters/ch02.md' }],
+          comments: [
+            {
+              id: 'document-comment',
+              body: '正文这里需要更克制',
+              path: 'chapters/ch02.md',
+            },
+          ],
         },
       ],
     })
@@ -361,15 +472,25 @@ describe('AgentPanel', () => {
     expect(screen.getByTitle('正文这里需要更克制')).toHaveTextContent('批注 · chapters/ch02.md')
     await user.click(screen.getByRole('button', { name: '发送' }))
 
-    await waitFor(() => expect(handleSend).toHaveBeenCalledWith(
-      '请处理这 2 条审阅意见。',
-      expect.objectContaining({
-        reviewFeedback: [
-          { source: 'workspace_change', reviewThreadId: 'diff-thread', commentIds: ['diff-comment'] },
-          { source: 'document', reviewThreadId: 'document-thread', commentIds: ['document-comment'] },
-        ],
-      }),
-    ))
+    await waitFor(() =>
+      expect(handleSend).toHaveBeenCalledWith(
+        '请处理这 2 条审阅意见。',
+        expect.objectContaining({
+          reviewFeedback: [
+            {
+              source: 'workspace_change',
+              reviewThreadId: 'diff-thread',
+              commentIds: ['diff-comment'],
+            },
+            {
+              source: 'document',
+              reviewThreadId: 'document-thread',
+              commentIds: ['document-comment'],
+            },
+          ],
+        }),
+      ),
+    )
   })
 
   it('将批注引用点击交给工作台导航', async () => {
@@ -378,7 +499,14 @@ describe('AgentPanel', () => {
     const selection = {
       source: 'document' as const,
       reviewThreadId: 'document-thread',
-      comments: [{ id: 'document-comment', body: '正文这里需要更克制', path: 'chapters/ch02.md', review_line: 111 }],
+      comments: [
+        {
+          id: 'document-comment',
+          body: '正文这里需要更克制',
+          path: 'chapters/ch02.md',
+          review_line: 111,
+        },
+      ],
     }
     renderAgentPanel({
       onReviewFeedbackOpen: handleOpen,
@@ -386,7 +514,11 @@ describe('AgentPanel', () => {
       reviewFeedback: [selection],
     })
 
-    await user.click(screen.getByRole('button', { name: /批注 · chapters\/ch02\.md · 第 111 行 — 正文这里需要更克制/ }))
+    await user.click(
+      screen.getByRole('button', {
+        name: /批注 · chapters\/ch02\.md · 第 111 行 — 正文这里需要更克制/,
+      }),
+    )
 
     expect(handleOpen).toHaveBeenCalledWith(selection, selection.comments[0])
   })
@@ -397,14 +529,16 @@ describe('AgentPanel', () => {
     renderAgentPanel({
       onSend: handleSend,
       onReviewFeedbackRemove: vi.fn(),
-      reviewFeedback: [{
-        reviewThreadId: 'thread-1',
-        comments: Array.from({ length: 257 }, (_, index) => ({
-          id: `comment-${index}`,
-          group_id: 'group-1',
-          body: `意见 ${index}`,
-        })),
-      }],
+      reviewFeedback: [
+        {
+          reviewThreadId: 'thread-1',
+          comments: Array.from({ length: 257 }, (_, index) => ({
+            id: `comment-${index}`,
+            group_id: 'group-1',
+            body: `意见 ${index}`,
+          })),
+        },
+      ],
     })
 
     expect(screen.getByRole('alert')).toHaveTextContent('一次最多提交 256 条审阅意见')
@@ -425,11 +559,13 @@ describe('AgentPanel', () => {
         runtime_recoverable: true,
         stream_attached: false,
         active_operation_id: 'operation-recovery',
-        recovery_actions: [{
-          kind: 'abort',
-          command_id: 'recovery-abort-1',
-          operation_id: 'operation-recovery',
-        }],
+        recovery_actions: [
+          {
+            kind: 'abort',
+            command_id: 'recovery-abort-1',
+            operation_id: 'operation-recovery',
+          },
+        ],
       },
     })
 
@@ -454,11 +590,13 @@ describe('AgentPanel', () => {
         runtime_recoverable: true,
         stream_attached: true,
         active_operation_id: 'operation-recovery',
-        recovery_actions: [{
-          kind: 'abort',
-          command_id: 'recovery-abort-1',
-          operation_id: 'operation-recovery',
-        }],
+        recovery_actions: [
+          {
+            kind: 'abort',
+            command_id: 'recovery-abort-1',
+            operation_id: 'operation-recovery',
+          },
+        ],
       },
     })
 
@@ -498,9 +636,11 @@ describe('AgentPanel', () => {
     expect(screen.getByText('第一条排队指令')).toBeInTheDocument()
     expect(screen.getByText('第二条排队指令')).toBeInTheDocument()
     act(() => {
-      window.dispatchEvent(new CustomEvent('nova:writing-agent-init', {
-        detail: { prompt: 'Third queued instruction' },
-      }))
+      window.dispatchEvent(
+        new CustomEvent('nova:writing-agent-init', {
+          detail: { prompt: 'Third queued instruction' },
+        }),
+      )
     })
     await waitFor(() => expect(screen.getByRole('textbox')).toHaveTextContent('Third queued instruction'))
     expect(screen.getByRole('button', { name: '发送' })).toBeEnabled()
@@ -508,7 +648,10 @@ describe('AgentPanel', () => {
     await user.click(screen.getByRole('button', { name: '发送' }))
     expect(handleSend).toHaveBeenCalledWith(
       'Third queued instruction',
-      expect.objectContaining({ writingSkill: 'novel-lite', tellerId: 'classic' }),
+      expect.objectContaining({
+        writingSkill: 'novel-lite',
+        tellerId: 'classic',
+      }),
     )
   })
 })
@@ -530,17 +673,23 @@ function renderAgentPanel(overrides: AgentPanelOverrides = {}) {
   )
 }
 
-function defaultAgentPanelProps(
-  overrides: AgentPanelOverrides,
-  composerSettings: WritingComposerSettingsController,
-): ComponentProps<typeof AgentPanel> {
+function defaultAgentPanelProps(overrides: AgentPanelOverrides, composerSettings: WritingComposerSettingsController): ComponentProps<typeof AgentPanel> {
   return {
     workspace: '/workspace',
     composerSettings,
     selectedFile: null,
     tellers: [{ id: 'classic', name: '默认叙事', style_rules: [] } as any],
     messages: [],
-    sessions: [{ id: 'session-1', title: '当前会话', active: true, message_count: 0, created_at: '', updated_at: '' }],
+    sessions: [
+      {
+        id: 'session-1',
+        title: '当前会话',
+        active: true,
+        message_count: 0,
+        created_at: '',
+        updated_at: '',
+      },
+    ],
     activeSessionId: 'session-1',
     isStreaming: false,
     activityContent: '',

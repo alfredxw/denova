@@ -133,7 +133,9 @@ func (s *ConfigManagerAppService) StartTaskWithError(ctx context.Context, req Co
 			runtimeCfg.AutomationWorkspaces = append(runtimeCfg.AutomationWorkspaces, record.Path)
 		}
 	}
-	if layered, loadErr := config.LoadLayeredWithStartupConfig(runtimeCfg.DataDir(), runtime.workspace); loadErr == nil {
+	if layered, loadErr := config.LoadLayeredWithStartupConfigAt(
+		runtimeCfg.DataDir(), runtime.workspace, config.ProjectConfigPath(runtimeCfg.ProjectStateDir),
+	); loadErr == nil {
 		applyLayeredSettingsToConfig(&runtimeCfg, layered)
 	} else {
 		log.Printf("[config-manager] load layered settings failed workspace=%s err=%v", runtime.workspace, loadErr)
@@ -175,7 +177,8 @@ func (s *ConfigManagerAppService) StartTaskWithError(ctx context.Context, req Co
 	}
 	acceptCtx, releaseAcceptance := taskAcceptanceContext(ctx, task)
 	accepted, err = runtime.chatService.StartWithOptions(acceptCtx, runner, conversation, runtime.bookService, chatReq, agents.RunOptions{
-		AgentKind: agents.AgentKindConfigManager, TaskID: task.ID(), SessionID: sess.ID, Workspace: runtime.workspace,
+		AgentKind: agents.AgentKindConfigManager, StateRoot: runtimeCfg.ProjectStateDir,
+		TaskID: task.ID(), SessionID: sess.ID, Workspace: runtime.workspace,
 		Mode: "config_manager", IdleTimeout: agentIdleTimeout(runtimeCfg), ToolResultMaxBytes: agentToolResultMaxBytes(runtimeCfg),
 		SystemPromptLog: systemPrompt,
 		OnMutationsVerified: a.verifiedWorkspaceMutationCallback(

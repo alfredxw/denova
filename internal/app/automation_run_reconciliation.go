@@ -23,7 +23,8 @@ func (s *AutomationAppService) automationRuntimeProjection(ctx context.Context, 
 		return agents.RuntimeStatus{}, agents.ErrRuntimeProjectionUnavailable
 	}
 	return snap.chatService.RuntimeRecoveryStatusProjection(ctx, agents.RunOptions{
-		AgentKind: agents.AgentKindAutomation, TaskID: run.ID, AutomationTaskID: task.ID,
+		AgentKind: agents.AgentKindAutomation, ProjectID: snap.projectID, StateRoot: snap.stateRoot,
+		TaskID: run.ID, AutomationTaskID: task.ID,
 		SessionID: run.SessionID, Workspace: run.Workspace, Mode: "automation",
 	})
 }

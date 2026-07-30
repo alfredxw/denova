@@ -56,7 +56,8 @@ func (s *WorkspaceRuntimeManager) acquireVersionCreateRuntime(ctx context.Contex
 		return nil, ErrWorkspaceChanged
 	}
 	runtime.cfg.Workspace = workspace
-	if layered, loadErr := config.LoadLayeredWithStartupConfig(runtime.cfg.DataDir(), workspace); loadErr == nil {
+	projectConfigPath := config.ProjectConfigPath(runtime.cfg.ProjectStateDir)
+	if layered, loadErr := config.LoadLayeredWithStartupConfigAt(runtime.cfg.DataDir(), workspace, projectConfigPath); loadErr == nil {
 		applyLayeredSettingsToConfig(&runtime.cfg, layered)
 	} else {
 		log.Printf("[versions] 加载分层配置用于版本说明失败 workspace=%s err=%v", workspace, loadErr)

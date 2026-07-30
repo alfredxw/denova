@@ -3,26 +3,48 @@ import userEvent from '@testing-library/user-event'
 import type { ReactNode } from 'react'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { TooltipProvider } from '@/components/ui/tooltip'
-import { createAgentChatSession, getAgentChatHistory, getAgentChatProjects, type AgentChatProject } from './api'
+import {
+  addAgentChatProject,
+  createAgentChatSession,
+  getAgentChatHistory,
+  getAgentChatProjects,
+  selectAgentChatProjectDirectory,
+  type AgentChatProject,
+} from './api'
 import { persistWorkbenchState, readStoredWorkbenchState } from './tab-state'
 import { closeTerminalSession, getTerminalRuntimeStatus, type TerminalSessionInfo } from './terminal/api'
 import { AgentChatView } from './AgentChatView'
 
 vi.mock('./api', () => ({
+  addAgentChatProject: vi.fn(),
   createAgentChatSession: vi.fn(),
   deleteAgentChatSession: vi.fn(),
   getAgentChatHistory: vi.fn(),
   getAgentChatProjects: vi.fn(),
   renameAgentChatSession: vi.fn(),
+  selectAgentChatProjectDirectory: vi.fn(),
 }))
 
 vi.mock('./AgentChatConversationTab', () => ({
-  AgentChatConversationTab: ({ workspace, sessionId, active, draft, reviewFeedback, onReviewFeedbackOpen }: {
+  AgentChatConversationTab: ({
+    workspace,
+    sessionId,
+    active,
+    draft,
+    reviewFeedback,
+    onReviewFeedbackOpen,
+  }: {
     workspace: string
     sessionId: string
     active: boolean
     draft?: boolean
-    reviewFeedback?: Array<{ comments: Array<{ id: string; body: string; target?: { kind: 'workspace_file' | 'lore_item'; id: string } }> }>
+    reviewFeedback?: Array<{
+      comments: Array<{
+        id: string
+        body: string
+        target?: { kind: 'workspace_file' | 'lore_item'; id: string }
+      }>
+    }>
     onReviewFeedbackOpen?: (selection: unknown, comment: unknown) => void
   }) => {
     const selection = reviewFeedback?.[0]
@@ -55,7 +77,10 @@ vi.mock('./terminal/TerminalTabView', () => ({
 }))
 
 vi.mock('@/components/layout/adaptive-surface', () => ({
-  AdaptiveSurface: ({ left, children }: {
+  AdaptiveSurface: ({
+    left,
+    children,
+  }: {
     left: { enabled?: boolean; content: ReactNode }
     children: ReactNode | ((controls: { isMobile: boolean; openLeft: () => void }) => ReactNode)
   }) => (
@@ -68,19 +93,24 @@ vi.mock('@/components/layout/adaptive-surface', () => ({
 
 function project(path: string, name: string, sessionId: string, title: string): AgentChatProject {
   return {
+    id: `project-${path.split('/').pop()}`,
+    type: 'book',
+    status: 'available',
     path,
     name,
     current: false,
     total: 1,
-    sessions: [{
-      id: sessionId,
-      title,
-      active: false,
-      running: false,
-      message_count: 0,
-      created_at: '2026-07-26T00:00:00Z',
-      updated_at: '2026-07-26T00:00:00Z',
-    }],
+    sessions: [
+      {
+        id: sessionId,
+        title,
+        active: false,
+        running: false,
+        message_count: 0,
+        created_at: '2026-07-26T00:00:00Z',
+        updated_at: '2026-07-26T00:00:00Z',
+      },
+    ],
   }
 }
 
@@ -107,74 +137,117 @@ function terminalSession(id: string, ownerTabId: string | undefined, attached = 
 describe('AgentChatView project workbenches', () => {
   beforeEach(() => {
     window.localStorage.clear()
-    vi.mocked(getAgentChatProjects).mockReset().mockResolvedValue([
-      project('/books/a', 'Project A', 'session-a', 'Chat A'),
-      project('/books/b', 'Project B', 'session-b', 'Chat B'),
-    ])
+    vi.mocked(getAgentChatProjects)
+      .mockReset()
+      .mockResolvedValue([project('/books/a', 'Project A', 'session-a', 'Chat A'), project('/books/b', 'Project B', 'session-b', 'Chat B')])
     vi.mocked(createAgentChatSession).mockReset()
+    vi.mocked(addAgentChatProject).mockReset()
+    vi.mocked(selectAgentChatProjectDirectory).mockReset()
     vi.mocked(getAgentChatHistory).mockReset().mockResolvedValue({ items: [], total: 0, offset: 0, has_more: false })
     vi.mocked(closeTerminalSession).mockReset().mockResolvedValue()
-    vi.mocked(getTerminalRuntimeStatus).mockReset().mockResolvedValue({
-      enabled: true,
-      shell: '/bin/sh',
-      commands: [
-        { id: 'codex', name: 'Codex CLI' },
-        { id: 'claude', name: 'Claude Code' },
-      ],
-      default_cwd: '/books/a',
-      max_sessions: 8,
-      scrollback_kb: 256,
-      sessions: [],
-    })
+    vi.mocked(getTerminalRuntimeStatus)
+      .mockReset()
+      .mockResolvedValue({
+        enabled: true,
+        shell: '/bin/sh',
+        commands: [
+          { id: 'codex', name: 'Codex CLI' },
+          { id: 'claude', name: 'Claude Code' },
+        ],
+        default_cwd: '/books/a',
+        max_sessions: 8,
+        scrollback_kb: 256,
+        sessions: [],
+      })
+  })
+
+  it('adds a selected folder without asking for a name or Agent type', async () => {
+    const user = userEvent.setup()
+    const added = project('/projects/story', 'story', '', '')
+    added.id = 'project-story'
+    added.type = 'general'
+    added.total = 0
+    added.sessions = []
+    vi.mocked(getAgentChatProjects).mockReset().mockResolvedValueOnce([]).mockResolvedValue([added])
+    vi.mocked(selectAgentChatProjectDirectory).mockResolvedValue({ path: '/projects/story', canceled: false })
+    vi.mocked(addAgentChatProject).mockResolvedValue(added)
+
+    renderView(<AgentChatView composerSettings={{} as never} tellers={[]} imagePresets={[]} renderPage={() => null} renderReview={() => null} />)
+
+    await user.click((await screen.findAllByRole('button', { name: '添加项目' }))[0])
+    await waitFor(() => expect(addAgentChatProject).toHaveBeenCalledWith('/projects/story'))
+    expect(selectAgentChatProjectDirectory).toHaveBeenCalledWith(undefined)
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
+    expect(await screen.findByTitle('/projects/story')).toBeInTheDocument()
   })
 
   it('keeps a separate tab set and mounted conversation for every selected project', async () => {
     const user = userEvent.setup()
     persistWorkbenchState({
-      activeProjectPath: '/books/a',
+      activeProjectId: 'project-a',
       projects: {
-        '/books/a': {
-          tabs: [{ kind: 'agent', id: 'tab-a', workspace: '/books/a', sessionId: 'session-a' }],
+        'project-a': {
+          tabs: [
+            {
+              kind: 'agent',
+              id: 'tab-a',
+              projectId: 'project-a',
+              workspace: '/books/a',
+              sessionId: 'session-a',
+            },
+          ],
           activeTabIds: { primary: 'tab-a', secondary: null },
           focusedGroup: 'primary',
         },
-        '/books/b': {
-          tabs: [{ kind: 'agent', id: 'tab-b', workspace: '/books/b', sessionId: 'session-b' }],
+        'project-b': {
+          tabs: [
+            {
+              kind: 'agent',
+              id: 'tab-b',
+              projectId: 'project-b',
+              workspace: '/books/b',
+              sessionId: 'session-b',
+            },
+          ],
           activeTabIds: { primary: 'tab-b', secondary: null },
           focusedGroup: 'primary',
         },
       },
     })
-    renderView(
-      <AgentChatView
-        composerSettings={{} as never}
-        tellers={[]}
-        imagePresets={[]}
-        renderPage={() => null}
-        renderReview={() => null}
-      />,
-    )
+    renderView(<AgentChatView composerSettings={{} as never} tellers={[]} imagePresets={[]} renderPage={() => null} renderReview={() => null} />)
 
     await user.click(await screen.findByRole('button', { name: /^Chat A/ }))
-    expect(within(screen.getAllByRole('tablist')[0]).getByRole('tab', { name: /Chat A/ })).toBeInTheDocument()
+    expect(
+      within(screen.getAllByRole('tablist')[0]).getByRole('tab', {
+        name: /Chat A/,
+      }),
+    ).toBeInTheDocument()
     expect(screen.getByTestId('conversation:/books/a:session-a')).toHaveTextContent('active')
     expect(screen.getByRole('button', { name: /^Chat A/ })).toHaveAttribute('aria-current', 'page')
 
     await user.click(screen.getByRole('button', { name: /Chat B/ }))
-    expect(within(screen.getAllByRole('tablist')[0]).getByRole('tab', { name: /Chat B/ })).toBeInTheDocument()
+    expect(
+      within(screen.getAllByRole('tablist')[0]).getByRole('tab', {
+        name: /Chat B/,
+      }),
+    ).toBeInTheDocument()
     expect(screen.getByTestId('conversation:/books/a:session-a')).toHaveTextContent('hidden')
     expect(screen.getByTestId('conversation:/books/b:session-b')).toHaveTextContent('active')
 
     await user.click(screen.getByTitle('/books/a'))
-    expect(within(screen.getAllByRole('tablist')[0]).getByRole('tab', { name: /Chat A/ })).toBeInTheDocument()
+    expect(
+      within(screen.getAllByRole('tablist')[0]).getByRole('tab', {
+        name: /Chat A/,
+      }),
+    ).toBeInTheDocument()
     expect(screen.getByTestId('conversation:/books/a:session-a')).toHaveTextContent('active')
     expect(screen.getByTestId('conversation:/books/b:session-b')).toHaveTextContent('hidden')
 
     await waitFor(() => {
       const stored = readStoredWorkbenchState()
-      expect(stored.activeProjectPath).toBe('/books/a')
-      expect(stored.projects['/books/a'].tabs).toHaveLength(1)
-      expect(stored.projects['/books/b'].tabs).toHaveLength(1)
+      expect(stored.activeProjectId).toBe('project-a')
+      expect(stored.projects['project-a'].tabs).toHaveLength(1)
+      expect(stored.projects['project-b'].tabs).toHaveLength(1)
     })
   })
 
@@ -184,15 +257,7 @@ describe('AgentChatView project workbenches', () => {
     runningProject.sessions[0].running = true
     vi.mocked(getAgentChatProjects).mockResolvedValue([runningProject])
 
-    renderView(
-      <AgentChatView
-        composerSettings={{} as never}
-        tellers={[]}
-        imagePresets={[]}
-        renderPage={() => null}
-        renderReview={() => null}
-      />,
-    )
+    renderView(<AgentChatView composerSettings={{} as never} tellers={[]} imagePresets={[]} renderPage={() => null} renderReview={() => null} />)
 
     await user.click(await screen.findByRole('button', { name: /Chat A.*运行中/ }))
     expect(screen.getByTestId('conversation:/books/a:session-a')).toHaveTextContent('active')
@@ -204,17 +269,11 @@ describe('AgentChatView project workbenches', () => {
 
   it('opens one local draft without creating a backend conversation', async () => {
     const user = userEvent.setup()
-    renderView(
-      <AgentChatView
-        composerSettings={{} as never}
-        tellers={[]}
-        imagePresets={[]}
-        renderPage={() => null}
-        renderReview={() => null}
-      />,
-    )
+    renderView(<AgentChatView composerSettings={{} as never} tellers={[]} imagePresets={[]} renderPage={() => null} renderReview={() => null} />)
 
-    const createButton = await screen.findByRole('button', { name: '在 Project A 中新建对话' })
+    const createButton = await screen.findByRole('button', {
+      name: '在 Project A 中新建对话',
+    })
     await user.click(createButton)
     await user.click(createButton)
 
@@ -224,12 +283,26 @@ describe('AgentChatView project workbenches', () => {
 
   it('uses the full split separator as one visible resize target', async () => {
     persistWorkbenchState({
-      activeProjectPath: '/books/a',
+      activeProjectId: 'project-a',
       projects: {
-        '/books/a': {
+        'project-a': {
           tabs: [
-            { kind: 'agent', id: 'primary-tab', workspace: '/books/a', group: 'primary', sessionId: 'session-a' },
-            { kind: 'agent', id: 'secondary-tab', workspace: '/books/a', group: 'secondary', sessionId: 'session-secondary' },
+            {
+              kind: 'agent',
+              id: 'primary-tab',
+              projectId: 'project-a',
+              workspace: '/books/a',
+              group: 'primary',
+              sessionId: 'session-a',
+            },
+            {
+              kind: 'agent',
+              id: 'secondary-tab',
+              projectId: 'project-a',
+              workspace: '/books/a',
+              group: 'secondary',
+              sessionId: 'session-secondary',
+            },
           ],
           activeTabIds: { primary: 'primary-tab', secondary: 'secondary-tab' },
           focusedGroup: 'secondary',
@@ -237,30 +310,32 @@ describe('AgentChatView project workbenches', () => {
       },
     })
 
-    renderView(
-      <AgentChatView
-        composerSettings={{} as never}
-        tellers={[]}
-        imagePresets={[]}
-        renderPage={() => null}
-        renderReview={() => null}
-      />,
-    )
+    renderView(<AgentChatView composerSettings={{} as never} tellers={[]} imagePresets={[]} renderPage={() => null} renderReview={() => null} />)
 
-    const separator = await screen.findByRole('separator', { name: '调整分栏宽度' })
+    const separator = await screen.findByRole('separator', {
+      name: '调整分栏宽度',
+    })
     expect(separator).toHaveClass('nova-resize-handle', 'nova-resize-divider', 'nova-resize-divider-vertical', 'w-2')
   })
 
   it('releases only detached terminal sessions that no persisted tab owns', async () => {
     persistWorkbenchState({
-      activeProjectPath: '/books/a',
+      activeProjectId: 'project-a',
       projects: {
-        '/books/a': {
+        'project-a': {
           tabs: [
-            { kind: 'terminal', id: 'owned-by-tab', workspace: '/books/a', profileId: 'shell', title: '' },
+            {
+              kind: 'terminal',
+              id: 'owned-by-tab',
+              projectId: 'project-a',
+              workspace: '/books/a',
+              profileId: 'shell',
+              title: '',
+            },
             {
               kind: 'terminal',
               id: 'legacy-tab',
+              projectId: 'project-a',
               workspace: '/books/a',
               profileId: 'shell',
               title: '',
@@ -290,15 +365,7 @@ describe('AgentChatView project workbenches', () => {
       ],
     })
 
-    renderView(
-      <AgentChatView
-        composerSettings={{} as never}
-        tellers={[]}
-        imagePresets={[]}
-        renderPage={() => null}
-        renderReview={() => null}
-      />,
-    )
+    renderView(<AgentChatView composerSettings={{} as never} tellers={[]} imagePresets={[]} renderPage={() => null} renderReview={() => null} />)
 
     await waitFor(() => expect(closeTerminalSession).toHaveBeenCalledWith('orphan-session'))
     expect(closeTerminalSession).toHaveBeenCalledTimes(1)
@@ -307,10 +374,19 @@ describe('AgentChatView project workbenches', () => {
   it('opens a document comment in the matching shared project page beside its conversation', async () => {
     const user = userEvent.setup()
     persistWorkbenchState({
-      activeProjectPath: '/books/a',
+      activeProjectId: 'project-a',
       projects: {
-        '/books/a': {
-          tabs: [{ kind: 'agent', id: 'agent-tab', workspace: '/books/a', group: 'primary', sessionId: 'session-a' }],
+        'project-a': {
+          tabs: [
+            {
+              kind: 'agent',
+              id: 'agent-tab',
+              projectId: 'project-a',
+              workspace: '/books/a',
+              group: 'primary',
+              sessionId: 'session-a',
+            },
+          ],
           activeTabIds: { primary: 'agent-tab', secondary: null },
           focusedGroup: 'primary',
         },
@@ -319,7 +395,13 @@ describe('AgentChatView project workbenches', () => {
     const feedback = {
       source: 'document' as const,
       reviewThreadId: 'document-thread',
-      comments: [{ id: 'lore-comment', body: '补足人物动机', target: { kind: 'lore_item' as const, id: 'lin-chuan' } }],
+      comments: [
+        {
+          id: 'lore-comment',
+          body: '补足人物动机',
+          target: { kind: 'lore_item' as const, id: 'lin-chuan' },
+        },
+      ],
     }
 
     renderView(
@@ -338,7 +420,11 @@ describe('AgentChatView project workbenches', () => {
       />,
     )
 
-    await user.click(await screen.findByRole('button', { name: 'open pending document feedback' }))
+    await user.click(
+      await screen.findByRole('button', {
+        name: 'open pending document feedback',
+      }),
+    )
     await waitFor(() => expect(screen.getByTestId('review-target-page')).toHaveTextContent('lore|lin-chuan|lore-comment|1'))
     expect(screen.getByRole('separator', { name: '调整分栏宽度' })).toBeInTheDocument()
 

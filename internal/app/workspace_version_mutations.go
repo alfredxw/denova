@@ -5,7 +5,6 @@ import (
 
 	"denova/config"
 	"denova/internal/book"
-	"denova/internal/workspacechange"
 )
 
 // VersionStatus 返回当前书籍 workspace 的本地版本状态。
@@ -58,7 +57,7 @@ func (s *WorkspaceRuntimeManager) CreateVersion(ctx context.Context, message str
 	if !runtime.matches(s.app) {
 		return book.VersionCommandResult{}, ErrWorkspaceChanged
 	}
-	changeService, err := workspacechange.ForWorkspace(runtime.workspace)
+	changeService, err := workspaceChangeService(runtime.workspace, runtime.cfg.ProjectStateDir)
 	if err != nil {
 		return book.VersionCommandResult{}, err
 	}

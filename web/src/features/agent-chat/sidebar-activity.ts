@@ -3,18 +3,12 @@ import { tabGroup, type AgentChatProjectTabState } from './tab-state'
 import type { AgentChatGroupId, AgentChatTab } from './types'
 
 /** Stable identity shared by server snapshots and mounted conversation runtimes. */
-export function agentChatSessionBindingKey(workspace: string, sessionId: string): string {
-  return `${workspace}\u0000${sessionId}`
+export function agentChatSessionBindingKey(projectID: string, sessionId: string): string {
+  return `${projectID}\u0000${sessionId}`
 }
 
 /** Runtime states exposed by the compact cross-project activity navigator. */
-export type AgentChatActivityStatus =
-  | 'idle'
-  | 'running'
-  | 'connecting'
-  | 'ready'
-  | 'exited'
-  | 'error'
+export type AgentChatActivityStatus = 'idle' | 'running' | 'connecting' | 'ready' | 'exited' | 'error'
 
 /**
  * A sidebar activity is a navigation projection, not another tab model.
@@ -25,6 +19,7 @@ export type AgentChatActivityStatus =
  */
 export interface AgentChatSidebarActivity {
   id: string
+  projectId: string
   workspace: string
   kind: 'agent' | 'terminal'
   title: string
@@ -41,7 +36,7 @@ export interface AgentChatSidebarActivity {
 interface ProjectSidebarActivitiesOptions {
   project: AgentChatProject
   state: AgentChatProjectTabState
-  activeProjectPath: string
+  activeProjectId: string
   runningSessionIds: ReadonlySet<string>
   terminalStatuses: ReadonlyMap<string, Exclude<AgentChatActivityStatus, 'idle' | 'running'>>
   tabTitle: (tab: AgentChatTab) => string
@@ -54,12 +49,12 @@ interface ProjectSidebarActivitiesOptions {
 export function projectSidebarActivities({
   project,
   state,
-  activeProjectPath,
+  activeProjectId,
   runningSessionIds,
   terminalStatuses,
   tabTitle,
 }: ProjectSidebarActivitiesOptions): AgentChatSidebarActivity[] {
-  const foreground = project.path === activeProjectPath
+  const foreground = project.id === activeProjectId
   const openSessionIds = new Set<string>()
   const activities: AgentChatSidebarActivity[] = []
 
@@ -68,6 +63,7 @@ export function projectSidebarActivities({
     const group = tabGroup(tab)
     const paneVisible = foreground && state.activeTabIds[group] === tab.id
     const common = {
+      projectId: project.id,
       workspace: project.path,
       title: tabTitle(tab),
       tabId: tab.id,
@@ -98,6 +94,7 @@ export function projectSidebarActivities({
     if (!runningSessionIds.has(session.id) || openSessionIds.has(session.id)) continue
     activities.push({
       id: `agent:${session.id}`,
+      projectId: project.id,
       workspace: project.path,
       kind: 'agent',
       title: session.title,
@@ -118,9 +115,12 @@ export interface AgentChatActivitySummary {
 
 /** Compact project-row summary; exited terminals stay visible but are not treated as failures. */
 export function summarizeSidebarActivities(activities: readonly AgentChatSidebarActivity[]): AgentChatActivitySummary {
-  return activities.reduce<AgentChatActivitySummary>((summary, activity) => ({
-    total: summary.total + 1,
-    running: summary.running + Number(activity.status === 'running' || activity.status === 'connecting'),
-    attention: summary.attention + Number(activity.status === 'error'),
-  }), { total: 0, running: 0, attention: 0 })
+  return activities.reduce<AgentChatActivitySummary>(
+    (summary, activity) => ({
+      total: summary.total + 1,
+      running: summary.running + Number(activity.status === 'running' || activity.status === 'connecting'),
+      attention: summary.attention + Number(activity.status === 'error'),
+    }),
+    { total: 0, running: 0, attention: 0 },
+  )
 }

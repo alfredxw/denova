@@ -209,8 +209,9 @@ func (s *Store) EnsureInboxItem(ctx context.Context, item TriggerInboxItem) (Tri
 	}
 	destination := s
 	if normalized.Scope == ScopeWorkspace && strings.TrimSpace(normalized.Workspace) != "" {
-		destination = NewStore(s.userDir, normalized.Workspace)
+		destination = s.storeForWorkspace(normalized.Workspace)
 	}
+	normalized = destination.bindProjectInboxWorkspace(normalized)
 	path, err := destination.inboxPathForScope(normalized.Scope)
 	if err != nil {
 		return TriggerInboxItem{}, false, err
@@ -307,7 +308,11 @@ func validateTriggerEvaluationClaim(taskID string, claim TriggerEvaluationRecord
 	}
 	localTaskID := strings.TrimSpace(claim.TaskID)
 	taskID = strings.TrimSpace(taskID)
-	if taskID != localTaskID && taskID != CatalogTaskID(claim.Scope, claim.Workspace, localTaskID) {
+	catalogTaskID := CatalogTaskID(claim.Scope, claim.Workspace, localTaskID)
+	if projectID := strings.TrimSpace(claim.ProjectID); claim.Scope == ScopeWorkspace && projectID != "" {
+		catalogTaskID = projectID + ":" + localTaskID
+	}
+	if taskID != localTaskID && taskID != catalogTaskID {
 		return fmt.Errorf("semantic trigger claim belongs to a different task")
 	}
 	if claim.Status != TriggerEvaluationStatusClaimed || claim.ClaimedAt.IsZero() {
