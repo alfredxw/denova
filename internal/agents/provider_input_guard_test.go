@@ -72,7 +72,7 @@ func TestCompactionSummarizerLayersOversizedSourceWithoutDroppingBytes(t *testin
 	messages := []*agent.Message{
 		agent.UserMessage(payload), agent.AssistantMessage(payload, nil), agent.UserMessage(payload),
 	}
-	_, result, err := PrepareContextCompaction(context.Background(), cfg, config.AgentKindIDE, ContextCompactionInput{
+	_, result, err := PrepareContextCompaction(contextCompactionColdTestContext(), cfg, config.AgentKindIDE, ContextCompactionInput{
 		Messages: messages, Force: true, KeepLatestUser: true,
 	}, 1)
 	if err != nil {

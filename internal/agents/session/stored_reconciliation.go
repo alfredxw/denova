@@ -74,6 +74,17 @@ func FindStoredContextCompactionRemoval(dir, sessionID, id string) (ContextCompa
 	return record, found, nil
 }
 
+// FindStoredToolResultCleanup reads one stable cleanup projection by ID.
+func FindStoredToolResultCleanup(dir, sessionID, id string) (ToolResultCleanupRecord, bool, error) {
+	sess, found, err := openStoredSession(context.Background(), dir, sessionID)
+	if err != nil || !found {
+		return ToolResultCleanupRecord{}, false, err
+	}
+	defer sess.Close()
+	record, found := sess.ToolResultCleanupByID(id)
+	return record, found, nil
+}
+
 // CommitStoredContextCompaction publishes one frozen structural mutation for
 // a durable binding that is not necessarily open in the UI process.
 func CommitStoredContextCompaction(
@@ -112,6 +123,26 @@ func CommitStoredContextCompactionRemoval(
 	}
 	defer sess.Close()
 	return sess.CommitContextCompactionRemovalAtContext(ctx, ContextCursor{Revision: expectedRevision}, record)
+}
+
+// CommitStoredToolResultCleanup publishes one frozen cleanup projection for a
+// durable Session binding that is not necessarily open in the UI process.
+func CommitStoredToolResultCleanup(
+	ctx context.Context,
+	dir string,
+	sessionID string,
+	expectedRevision uint64,
+	record ToolResultCleanupRecord,
+) (ToolResultCleanupRecord, error) {
+	sess, found, err := openStoredSession(ctx, dir, sessionID)
+	if err != nil {
+		return ToolResultCleanupRecord{}, err
+	}
+	if !found {
+		return ToolResultCleanupRecord{}, fmt.Errorf("%w: %s", ErrStoredSessionNotFound, sessionID)
+	}
+	defer sess.Close()
+	return sess.AppendToolResultCleanupAtContext(ctx, ContextCursor{Revision: expectedRevision}, record)
 }
 
 func openStoredSession(_ context.Context, dir, sessionID string) (*Session, bool, error) {

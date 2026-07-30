@@ -153,6 +153,9 @@ func (c *SessionConversation) modelHistory(snapshot session.ContextSnapshot) []*
 	history := append([]*agent.Message(nil), snapshot.EffectiveMessages...)
 	policy := c.compactionPolicy()
 	effectiveStart := snapshot.Cursor.MessageCount - len(history)
+	if snapshot.ToolResultCleanup != nil {
+		history = applyToolResultCleanupProjection(history, effectiveStart, *snapshot.ToolResultCleanup)
+	}
 	useRewind := snapshot.ContextWindow != nil &&
 		(snapshot.Compaction == nil || snapshot.ContextWindow.ContextRevision > snapshot.Compaction.ContextRevision)
 	if useRewind {
@@ -163,7 +166,14 @@ func (c *SessionConversation) modelHistory(snapshot session.ContextSnapshot) []*
 		if retainedTurns <= 0 {
 			retainedTurns = policy.RetainedTurns
 		}
-		tail := compactedMessagesAfterSource(history, effectiveStart, compaction.SourceEndIndex, retainedTurns)
+		var tail []*agent.Message
+		if snapshot.ContextWindow != nil && snapshot.ContextWindow.ContextRevision < compaction.ContextRevision {
+			tail = compactedMessagesAfterRewindSource(
+				history, effectiveStart, compaction.SourceEndIndex, retainedTurns, *snapshot.ContextWindow,
+			)
+		} else {
+			tail = compactedMessagesAfterSource(history, effectiveStart, compaction.SourceEndIndex, retainedTurns)
+		}
 		history = make([]*agent.Message, 0, 1+len(tail))
 		history = append(history, NewContextCompactionSummaryMessage(compaction.Epoch, compaction.Summary))
 		history = append(history, tail...)

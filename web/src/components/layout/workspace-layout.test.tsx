@@ -14,7 +14,9 @@ describe('WorkspaceLayout', () => {
 
     expect(container.querySelector('#sidebar')).toHaveAttribute('data-disabled', 'true')
     expect(container.querySelector('#sidebar')).toHaveAttribute('data-nova-user-collapsible', 'true')
-    expect(container.querySelector('#sidebar')).not.toBeVisible()
+    expect(container.querySelector('#sidebar')).toHaveAttribute('data-state', 'closed')
+    expect(container.querySelector('#sidebar')).toHaveAttribute('aria-hidden', 'true')
+    expect(container.querySelector('#sidebar')).toHaveAttribute('inert')
     expect(container.querySelector('#sidebar')).toHaveAttribute('data-nova-collapsible-panel', 'sidebar')
     expect(screen.queryByRole('separator', { name: '调整项目结构宽度' })).not.toBeInTheDocument()
   })
@@ -28,8 +30,22 @@ describe('WorkspaceLayout', () => {
     rerender(workspaceLayoutWithRightPanel(false))
 
     expect(container.querySelector('#right')).toHaveAttribute('data-disabled', 'true')
-    expect(container.querySelector('#right')).not.toBeVisible()
+    expect(container.querySelector('#right')).toHaveAttribute('data-state', 'closed')
+    expect(container.querySelector('#right')).toHaveAttribute('aria-hidden', 'true')
+    expect(container.querySelector('#right')).toHaveAttribute('inert')
     expect(screen.queryByRole('separator', { name: '调整右侧面板宽度' })).not.toBeInTheDocument()
+  })
+
+  it('retains right panel content while a conditional panel animates closed', () => {
+    const { container, rerender } = render(workspaceLayoutWithOptionalRightPanel(true))
+
+    expect(container.querySelector('#right')).toHaveAttribute('data-state', 'open')
+    expect(screen.getByText('创作 Agent')).toBeInTheDocument()
+
+    rerender(workspaceLayoutWithOptionalRightPanel(false))
+
+    expect(container.querySelector('#right')).toHaveAttribute('data-state', 'closed')
+    expect(screen.getByText('创作 Agent')).toBeInTheDocument()
   })
 
   it('marks the right panel wide variant for detail-heavy content', () => {
@@ -116,6 +132,17 @@ function workspaceLayoutWithRightPanel(rightPanelVisible: boolean) {
       activityBar={<nav aria-label="一级菜单栏">菜单</nav>}
       main={<main>正文区域</main>}
       rightPanel={<aside>创作 Agent</aside>}
+      rightPanelVisible={rightPanelVisible}
+    />
+  )
+}
+
+function workspaceLayoutWithOptionalRightPanel(rightPanelVisible: boolean) {
+  return (
+    <WorkspaceLayout
+      activityBar={<nav aria-label="一级菜单栏">菜单</nav>}
+      main={<main>正文区域</main>}
+      rightPanel={rightPanelVisible ? <aside>创作 Agent</aside> : undefined}
       rightPanelVisible={rightPanelVisible}
     />
   )

@@ -1,6 +1,8 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
-import type { CSSProperties, ReactNode } from 'react'
+import type { ReactNode } from 'react'
 import { X } from 'lucide-react'
+import { AnimatePresence, motion, useIsPresent, useReducedMotionConfig } from 'motion/react'
+import { novaEase } from '@/features/motion/motion-tokens'
 
 export interface MobilePane {
   id: string
@@ -35,7 +37,7 @@ const EDGE_SWIPE_THRESHOLD = 48
 const HORIZONTAL_INTENT_RATIO = 1.35
 const HORIZONTAL_COMMIT_RATIO = 1.15
 const DRAG_START_DISTANCE = 8
-const DRAWER_SETTLE_MS = 220
+const DRAWER_SETTLE_MS = 180
 const DRAWER_OPEN_RATIO = 0.18
 
 export function MobilePaneHost({
@@ -140,17 +142,20 @@ export function MobilePaneHost({
   return (
     <div ref={hostRef} className={className} data-nova-mobile-pane-host="true">
       {typeof children === 'function' ? children(controls) : children}
-      {visiblePane && paneSide ? (
-        <MobileDrawer
-          pane={visiblePane}
-          closeLabel={closeLabel}
-          progress={paneProgress}
-          dragging={dragState?.dragging ?? false}
-          side={paneSide}
-          paneScope={paneScope}
-          onClose={() => setOpenPaneId(null)}
-        />
-      ) : null}
+      <AnimatePresence initial={false}>
+        {visiblePane && paneSide ? (
+          <MobileDrawer
+            key={visiblePane.id}
+            pane={visiblePane}
+            closeLabel={closeLabel}
+            progress={paneProgress}
+            dragging={dragState?.dragging ?? false}
+            side={paneSide}
+            paneScope={paneScope}
+            onClose={() => setOpenPaneId(null)}
+          />
+        ) : null}
+      </AnimatePresence>
     </div>
   )
 }
@@ -175,36 +180,45 @@ function MobileDrawer({
   const titleId = `nova-mobile-pane-title-${pane.id}`
   const clampedProgress = clamp(progress, 0, 1)
   const offset = side === 'left' ? (clampedProgress - 1) * 100 : (1 - clampedProgress) * 100
-  const drawerStyle: CSSProperties = {
-    transform: `translate3d(${offset}%, 0, 0)`,
-    transition: dragging ? 'none' : `transform ${DRAWER_SETTLE_MS}ms var(--nova-ease)`,
-  }
-  const overlayStyle: CSSProperties = {
-    opacity: clampedProgress * 0.5,
-    transition: dragging ? 'none' : `opacity ${DRAWER_SETTLE_MS}ms var(--nova-ease)`,
-  }
+  const reducedMotion = useReducedMotionConfig()
+  const isPresent = useIsPresent()
+  const interactive = isPresent && clampedProgress > 0
+  const closedOffset = side === 'left' ? '-100%' : '100%'
+  const transition = dragging || reducedMotion
+    ? { duration: 0 }
+    : { duration: DRAWER_SETTLE_MS / 1000, ease: novaEase }
   const sideClassName = side === 'left'
     ? 'left-0 border-r'
     : 'right-0 border-l'
 
   return (
     <>
-      <div
+      <motion.div
         aria-hidden="true"
         data-nova-mobile-pane-overlay="true"
         className={`${paneScope === 'surface' ? 'absolute' : 'fixed'} inset-0 z-50 bg-black`}
-        style={overlayStyle}
+        initial={{ opacity: 0 }}
+        animate={{ opacity: clampedProgress * 0.5 }}
+        exit={{ opacity: 0 }}
+        transition={transition}
+        style={{ pointerEvents: interactive ? 'auto' : 'none' }}
         onClick={onClose}
       />
-      <section
+      <motion.section
         role="dialog"
-        aria-modal="true"
+        aria-modal={interactive}
         aria-labelledby={titleId}
-        data-state="open"
+        aria-hidden={!interactive}
+        data-state={interactive ? 'open' : 'closed'}
+        data-progress={clampedProgress}
         data-nova-mobile-pane-content="true"
         data-side={side}
         className={`${paneScope === 'surface' ? 'absolute' : 'fixed'} inset-y-0 z-50 flex w-[min(92vw,420px)] max-w-none flex-col gap-0 border-[var(--nova-border)] bg-[var(--nova-surface-2)] p-0 text-[var(--nova-text)] shadow-[var(--nova-shadow)] sm:max-w-none ${sideClassName} ${pane.className || ''}`}
-        style={drawerStyle}
+        initial={{ x: closedOffset }}
+        animate={{ x: `${offset}%` }}
+        exit={{ x: closedOffset }}
+        transition={transition}
+        style={{ pointerEvents: interactive ? 'auto' : 'none' }}
       >
         <div className="nova-topbar flex h-11 shrink-0 items-center justify-between border-b border-[var(--nova-border)] px-3">
           <h2 id={titleId} className="flex min-w-0 items-center gap-2 text-xs font-semibold text-[var(--nova-text)]">
@@ -216,7 +230,7 @@ function MobileDrawer({
           </button>
         </div>
         <div className="min-h-0 flex-1 overflow-hidden">{pane.content}</div>
-      </section>
+      </motion.section>
     </>
   )
 }

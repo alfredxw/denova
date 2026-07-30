@@ -3,11 +3,13 @@ package agents
 import (
 	"context"
 	"fmt"
+	"reflect"
 	"strings"
 	"testing"
 
 	agent "github.com/alfredxw/denova/agent"
 
+	"denova/config"
 	"denova/internal/agents/session"
 )
 
@@ -552,6 +554,132 @@ func TestModelHistoryChoosesNewestStructuralContextProjection(t *testing.T) {
 		if strings.Contains(message.Content, "compaction summary") {
 			t.Fatalf("older compaction leaked into rewound context: %#v", rewound)
 		}
+	}
+}
+
+func TestRewindGrowCompactReloadNeverRestoresDiscardedBranch(t *testing.T) {
+	previous := summarizeContextForCompaction
+	defer func() { summarizeContextForCompaction = previous }()
+	const discarded = "DISCARDED-EXPLORATION-MUST-NEVER-RETURN"
+	summarizeContextForCompaction = func(
+		_ context.Context,
+		_ *config.Config,
+		_ string,
+		_ string,
+		source []*agent.Message,
+		_ string,
+		_ int,
+		_ contextCompactionPolicy,
+		_ func(int, string),
+	) (string, int, error) {
+		joined := joinedContextMessageContent(source)
+		if strings.Contains(joined, discarded) || !strings.Contains(joined, "durable rewind finding") || !strings.Contains(joined, "grown safe turn") {
+			t.Fatalf("compaction did not use the rewind-effective canonical branch: %q", joined)
+		}
+		return "## Current state\nThe rewind finding and grown safe turn are preserved.", 2000, nil
+	}
+
+	directory := t.TempDir()
+	store, err := session.NewStore(directory)
+	if err != nil {
+		t.Fatal(err)
+	}
+	sess, err := store.GetOrCreate("rewind-grow-compact")
+	if err != nil {
+		t.Fatal(err)
+	}
+	prefix := []*agent.Message{
+		agent.UserMessage(strings.Repeat("safe checkpoint request ", 900)),
+		agent.AssistantMessage(strings.Repeat("safe checkpoint answer ", 900), nil),
+	}
+	if err := sess.AppendContextMessages(prefix...); err != nil {
+		t.Fatal(err)
+	}
+	boundary, err := session.NewContextBoundarySnapshot(sess.ContextCursor(), prefix, prefix, 4*1024*1024)
+	if err != nil {
+		t.Fatal(err)
+	}
+	locator, err := sess.StoreContextBoundary("cp-rewind-compact", boundary)
+	if err != nil {
+		t.Fatal(err)
+	}
+	checkpoint := session.ContextOperation{
+		Kind: session.ContextOperationCheckpoint, AgentKind: AgentKindIDE,
+		CheckpointID: "cp-rewind-compact", MessageCount: boundary.Cursor.MessageCount,
+		BoundaryID: "cp-rewind-compact", BoundaryLocator: locator,
+	}
+	if err := sess.AppendWithMetadata(agent.AssistantMessage("checkpoint output", nil), session.MessageMetadata{ContextOperations: []session.ContextOperation{checkpoint}}); err != nil {
+		t.Fatal(err)
+	}
+	if err := sess.AppendContextMessages(
+		agent.UserMessage(discarded+" "+strings.Repeat("discarded prose ", 900)),
+		agent.AssistantMessage(strings.Repeat("discarded answer ", 900), nil),
+	); err != nil {
+		t.Fatal(err)
+	}
+	rewind := session.ContextOperation{
+		Kind: session.ContextOperationRewind, AgentKind: AgentKindIDE,
+		CheckpointID: checkpoint.CheckpointID, MessageCount: checkpoint.MessageCount,
+		BoundaryID: checkpoint.BoundaryID, BoundaryLocator: checkpoint.BoundaryLocator,
+		Report: "durable rewind finding",
+	}
+	if err := sess.AppendWithMetadata(agent.AssistantMessage("answer after durable rewind", nil), session.MessageMetadata{ContextOperations: []session.ContextOperation{rewind}}); err != nil {
+		t.Fatal(err)
+	}
+	if err := sess.AppendContextMessages(
+		agent.UserMessage("grown safe turn "+strings.Repeat("safe growth ", 900)),
+		agent.AssistantMessage(strings.Repeat("grown safe answer ", 900), nil),
+	); err != nil {
+		t.Fatal(err)
+	}
+
+	conversation := NewSessionConversationForAgent(sess, &config.Config{}, AgentKindIDE)
+	projection, err := conversation.SnapshotContextCompaction(context.Background(), true)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if joined := joinedContextMessageContent(projection.Source); strings.Contains(joined, discarded) {
+		t.Fatalf("frozen compaction source contains discarded branch: %q", joined)
+	}
+	transient, result, err := conversation.CompactContextIfNeeded(contextCompactionColdTestContext(), ContextCompactionInput{
+		Messages: projection.Messages, Force: true, KeepLatestUser: true,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !result.Triggered {
+		t.Fatalf("rewind compaction did not trigger: %#v", result)
+	}
+	if _, err := sess.AppendContextCompaction(session.ContextCompaction{
+		AgentKind: AgentKindIDE, Epoch: result.Epoch, Summary: result.Summary,
+		SourceStartIndex: projection.SourceStartIndex, SourceEndIndex: projection.SourceEndIndex,
+		SourceMessageCount: result.SourceMessageCount, RetainedTurns: result.RetainedTurns,
+		TokensBefore: result.TokensBefore, TokensAfter: result.TokensAfter,
+		ContextWindowTokens: result.ContextWindowTokens, Threshold: result.Threshold,
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if err := store.Close(); err != nil {
+		t.Fatal(err)
+	}
+	reloadedStore, err := session.NewStore(directory)
+	if err != nil {
+		t.Fatal(err)
+	}
+	reloaded, err := reloadedStore.GetOrCreate("rewind-grow-compact")
+	if err != nil {
+		t.Fatal(err)
+	}
+	reloadedSnapshot, err := reloaded.SnapshotContext(AgentKindIDE)
+	if err != nil {
+		t.Fatal(err)
+	}
+	durable := NewSessionConversationForAgent(reloaded, &config.Config{}, AgentKindIDE).modelHistory(reloadedSnapshot)
+	if !reflect.DeepEqual(transient, durable) {
+		t.Fatalf("rewind compaction transient/reload projections differ:\ntransient=%#v\ndurable=%#v", transient, durable)
+	}
+	if joined := joinedContextMessageContent(durable); strings.Contains(joined, discarded) {
+		t.Fatalf("discarded rewind branch returned after compaction reload: %q", joined)
 	}
 }
 

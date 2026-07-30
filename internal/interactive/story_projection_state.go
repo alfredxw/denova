@@ -72,6 +72,7 @@ func (s *Store) boundedStorySnapshotWithLimitLocked(storyID, branchID string, li
 	}
 	snapshot.ActorStateSchema = loaded.meta.ActorStateSchema
 	snapshot.StateSchemaInitialization = loaded.meta.StateSchemaInitialization
+	snapshot.ContextRevision = loaded.projection.ContextRevision
 	snapshot.State = cloneStoryState(loaded.projection.State)
 	initializeActors := true
 	if storyStateSchemaPolicyRequiresOpeningDraft(loaded.meta.StateSchemaPolicy) && loaded.meta.StateSchemaInitialization != nil && loaded.meta.StateSchemaInitialization.Status == StateSchemaInitializationWaitingOpening {
@@ -94,6 +95,12 @@ func (s *Store) boundedStorySnapshotWithLimitLocked(storyID, branchID string, li
 		snapshot.ContextCompactionRemoval = &removal
 	} else {
 		snapshot.ContextCompactionRemoval = nil
+	}
+	if loaded.projection.ToolResultCleanup != nil {
+		cleanup := cloneToolResultCleanupEvent(*loaded.projection.ToolResultCleanup)
+		snapshot.ToolResultCleanup = &cleanup
+	} else {
+		snapshot.ToolResultCleanup = nil
 	}
 	snapshot.TurnCount = loaded.totalTurns
 	snapshot.TurnStart = loaded.turnStart

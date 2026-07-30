@@ -17,7 +17,7 @@ import (
 )
 
 const (
-	sessionProjectionVersion      = 10
+	sessionProjectionVersion      = 12
 	sessionRecentTransactionLimit = 200
 	sessionRecentCommitLimit      = 200
 	sessionStructuralRecordLimit  = 64
@@ -49,6 +49,8 @@ type structuralProjectionRecord struct {
 	Cursor     conversationjournal.Cursor `json:"cursor"`
 	Compaction *ContextCompaction         `json:"compaction,omitempty"`
 	Removal    *ContextCompactionRemoval  `json:"removal,omitempty"`
+	Health     *ContextCompactionHealth   `json:"health,omitempty"`
+	Cleanup    *ToolResultCleanupRecord   `json:"cleanup,omitempty"`
 }
 
 // assistantRunCheckpoint stores only a resumable SHA-256 state. It lets an
@@ -335,6 +337,31 @@ func (projection *sessionJournalProjection) Apply(record conversationjournal.Rec
 		projection.rememberStructural(structuralProjectionRecord{Cursor: record.Location.Cursor, Removal: &removal})
 		projection.advanceRevision(removal.ContextRevision)
 		projection.advanceUpdatedAt(removal.CreatedAt)
+		return nil
+	case historyTypeCompactionHealth:
+		var health ContextCompactionHealth
+		if err := json.Unmarshal(record.Payload, &health); err != nil {
+			return err
+		}
+		normalized, err := normalizeContextCompactionHealth(health)
+		if err != nil {
+			return err
+		}
+		projection.rememberStructural(structuralProjectionRecord{Cursor: record.Location.Cursor, Health: &normalized})
+		projection.advanceUpdatedAt(normalized.CreatedAt)
+		return nil
+	case historyTypeToolResultCleanup:
+		var cleanup ToolResultCleanupRecord
+		if err := json.Unmarshal(record.Payload, &cleanup); err != nil {
+			return err
+		}
+		normalized, err := normalizeToolResultCleanupRecord(cleanup)
+		if err != nil {
+			return err
+		}
+		projection.rememberStructural(structuralProjectionRecord{Cursor: record.Location.Cursor, Cleanup: &normalized})
+		projection.advanceRevision(normalized.ContextRevision)
+		projection.advanceUpdatedAt(normalized.CreatedAt)
 		return nil
 	case "session":
 		return fmt.Errorf("session header can only be the first record")

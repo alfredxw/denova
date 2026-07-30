@@ -1,7 +1,6 @@
 package agents
 
 import (
-	"log"
 	"strings"
 
 	agent "github.com/alfredxw/denova/agent"
@@ -9,8 +8,10 @@ import (
 	"denova/config"
 )
 
-// ToolResultContextPolicy controls whether stable tool receipts can cross user
-// turns. Rich result bodies remain available inside the source run only.
+// ToolResultContextPolicy controls whether bounded rich tool exchanges are
+// retained in canonical model history. Pressure-driven cleanup is a separate,
+// append-only projection; merely crossing a user-turn boundary never changes
+// a rich result into a receipt.
 type ToolResultContextPolicy struct {
 	AgentKind      string
 	Enabled        bool
@@ -39,15 +40,16 @@ type toolResultContextConversation interface {
 	ToolResultContextPolicy() ToolResultContextPolicy
 }
 
-type pendingToolContextCall struct {
-	call  agent.ToolCall
-	valid bool
+type pendingToolContextBatch struct {
+	assistant *agent.Message
+	callIndex map[string]int
+	results   []*agent.Message
+	remaining int
 }
 
 type toolResultContextRecorder struct {
 	conversation toolResultContextConversation
-	policy       ToolResultContextPolicy
-	pending      map[string]pendingToolContextCall
+	pending      *pendingToolContextBatch
 }
 
 func newToolResultContextRecorder(conversation Conversation) *toolResultContextRecorder {
@@ -59,108 +61,93 @@ func newToolResultContextRecorder(conversation Conversation) *toolResultContextR
 	if !policy.Enabled {
 		return &toolResultContextRecorder{}
 	}
-	return &toolResultContextRecorder{conversation: contextConversation, policy: policy}
+	return &toolResultContextRecorder{conversation: contextConversation}
 }
 
-// RecordAssistantToolCalls stages calls in memory. A call and its stable result
-// receipt are committed together only after execution reaches a terminal state.
+// RecordAssistantToolCalls stages one provider response in memory. Its calls
+// and bounded rich results are committed as one interaction group only after
+// every execution reaches a terminal state.
 func (r *toolResultContextRecorder) RecordAssistantToolCalls(msg *agent.Message, meta agentEventMetadata) {
 	if r == nil || r.conversation == nil || meta.SubAgent || msg == nil || len(msg.ToolCalls) == 0 {
 		return
 	}
-	if r.pending == nil {
-		r.pending = make(map[string]pendingToolContextCall, len(msg.ToolCalls))
+	// The Agent runtime completes one assistant tool batch before it can start
+	// another. Seeing an overlapping batch is therefore ambiguous; discard both
+	// rather than let a provider-local call ID pair across responses.
+	if r.pending != nil {
+		r.pending = nil
+		return
 	}
-	for _, call := range msg.ToolCalls {
-		callID := strings.TrimSpace(call.ID)
-		if callID == "" || normalizeToolName(call.Function.Name) == "" {
-			continue
+	if (msg.Role != "" && msg.Role != agent.Assistant) || msg.ToolCallID != "" || msg.ToolName != "" || msg.ToolResult != nil {
+		return
+	}
+
+	assistant := msg.Clone()
+	assistant.Role = agent.Assistant
+	// The native run keeps provider reasoning/signatures until the tool loop has
+	// finished. Cross-turn durability is a different boundary: only public
+	// assistant content and the protocol calls belong in future model context.
+	// Usage is recorded by dedicated telemetry, and opaque transport fields may
+	// contain provider-private thinking, so do not duplicate either here.
+	assistant.ReasoningContent = ""
+	assistant.MultiContent = nil
+	assistant.UserInputMultiContent = nil
+	assistant.AssistantGenMultiContent = nil
+	assistant.ResponseMeta = nil
+	assistant.Extra = nil
+	batch := &pendingToolContextBatch{
+		assistant: assistant,
+		callIndex: make(map[string]int, len(msg.ToolCalls)),
+		results:   make([]*agent.Message, len(msg.ToolCalls)),
+		remaining: len(msg.ToolCalls),
+	}
+	for index, call := range msg.ToolCalls {
+		if !validContextToolCall(call) {
+			return
 		}
-		if existing, found := r.pending[callID]; found {
-			existing.valid = false
-			r.pending[callID] = existing
-			continue
+		if _, duplicate := batch.callIndex[call.ID]; duplicate {
+			return
 		}
-		r.pending[callID] = pendingToolContextCall{
-			call: call, valid: validateToolArgumentsJSON(call.Function.Arguments) == nil,
-		}
+		batch.callIndex[call.ID] = index
 	}
+	r.pending = batch
 }
 
-func (r *toolResultContextRecorder) RecordToolResult(message *agent.Message, meta agentEventMetadata) {
-	if r == nil || r.conversation == nil || meta.SubAgent || message == nil {
-		return
-	}
-	callID := strings.TrimSpace(message.ToolCallID)
-	pending, ok := r.pending[callID]
-	delete(r.pending, callID)
-	if !ok || !pending.valid {
-		return
-	}
-	retention := toolMessageRetention(message)
-	if retention == "" {
-		retention = legacyToolContextRetention(pending.call.Function.Name, r.policy)
-	}
-	if isUnknownToolEffectResult(message.Content) {
-		retention = agent.ToolContextReceipt
-	}
-	if retention != agent.ToolContextReceipt {
-		return
-	}
-
-	arguments := retainedArgumentsFromResult(message)
-	if arguments == "" {
-		arguments = projectRetainedToolArguments(pending.call.Function.Arguments, min(r.policy.MaxResultBytes, retainedContextProjectionBytes))
-	}
-	if arguments == "" || validateToolArgumentsJSON(arguments) != nil {
-		return
-	}
-	pending.call.Function.Arguments = arguments
-	result := stableRetainedToolMessage(message, pending.call.Function.Name, r.policy)
-	if result == nil || strings.TrimSpace(result.Content) == "" {
-		return
-	}
-	if err := r.conversation.AppendContextMessages(agent.AssistantMessage("", []agent.ToolCall{pending.call}), result); err != nil {
-		log.Printf("[agent-run] persist tool receipt pair failed tool=%s call_id=%s err=%v", pending.call.Function.Name, callID, err)
-	}
-}
-
-func toolMessageRetention(message *agent.Message) agent.ToolContextRetention {
-	if message == nil || message.ToolResult == nil {
-		return ""
-	}
-	return message.ToolResult.ContextRetention
-}
-
-func retainedArgumentsFromResult(message *agent.Message) string {
-	if message == nil || message.ToolResult == nil {
-		return ""
-	}
-	return strings.TrimSpace(message.ToolResult.RetainedArguments)
-}
-
-func stableRetainedToolMessage(message *agent.Message, toolName string, policy ToolResultContextPolicy) *agent.Message {
-	if message == nil || message.Role != agent.ToolRole {
+func (r *toolResultContextRecorder) RecordToolResult(message *agent.Message, meta agentEventMetadata) error {
+	if r == nil || r.conversation == nil || meta.SubAgent || message == nil || r.pending == nil {
 		return nil
 	}
-	next := message.Clone()
-	next.ToolName = normalizeToolName(toolName)
-	content := ""
-	if isUnknownToolEffectResult(next.Content) {
-		content = next.Content
-	} else if next.ToolResult != nil {
-		content = strings.TrimSpace(next.ToolResult.RetainedContent)
+	callID := strings.TrimSpace(message.ToolCallID)
+	resultIndex, ok := r.pending.callIndex[callID]
+	if !ok {
+		return nil
 	}
-	if content == "" {
-		content = toolResultContextContent(next.ToolName, next.Content, policy)
+	if message.Role != agent.ToolRole || message.ToolCallID != callID || strings.TrimSpace(message.Content) == "" || len(message.ToolCalls) > 0 {
+		r.pending = nil
+		return nil
 	}
-	next.Content = content
-	if next.ToolResult != nil {
-		next.ToolResult.ContextRetention = agent.ToolContextReceipt
-		next.ToolResult.RetainedContent = ""
-		next.ToolResult.RetainedArguments = ""
+	if r.pending.results[resultIndex] != nil {
+		// A duplicate result makes the batch ambiguous until it is published.
+		// Once a complete batch is published, later duplicates see no pending
+		// state and are harmlessly ignored.
+		r.pending = nil
+		return nil
 	}
-	return next
+
+	result := message.Clone()
+	result.ToolName = normalizeToolName(r.pending.assistant.ToolCalls[resultIndex].Function.Name)
+	r.pending.results[resultIndex] = result
+	r.pending.remaining--
+	if r.pending.remaining > 0 {
+		return nil
+	}
+
+	batch := r.pending
+	r.pending = nil
+	messages := make([]*agent.Message, 1, 1+len(batch.results))
+	messages[0] = batch.assistant
+	messages = append(messages, batch.results...)
+	return r.conversation.AppendContextMessages(messages...)
 }
 
 func applyToolResultContextPolicy(messages []*agent.Message, policy ToolResultContextPolicy) []*agent.Message {
@@ -172,21 +159,35 @@ func applyToolResultContextPolicy(messages []*agent.Message, policy ToolResultCo
 
 func filterToolContextMessages(messages []*agent.Message, policy ToolResultContextPolicy) []*agent.Message {
 	type callProjection struct {
-		call      agent.ToolCall
-		valid     bool
-		results   int
-		retain    bool
-		arguments string
-		content   string
+		call        agent.ToolCall
+		valid       bool
+		resultIndex int
+		results     int
 	}
-	calls := make(map[string]callProjection)
-	for _, message := range messages {
-		if message == nil || message.Role != agent.Assistant {
+
+	filtered := make([]*agent.Message, 0, len(messages))
+	for index := 0; index < len(messages); {
+		message := messages[index]
+		if message == nil {
+			index++
 			continue
 		}
+		if message.Role != agent.Assistant || len(message.ToolCalls) == 0 {
+			if message.Role != agent.ToolRole {
+				filtered = append(filtered, message)
+			}
+			index++
+			continue
+		}
+
+		// Provider call IDs identify calls within one assistant response, not
+		// across the transcript. Pair only with its contiguous result run so a
+		// later reused ID cannot invalidate or steal this exchange.
+		batchEnd := toolResultBatchEnd(messages, index)
+		calls := make(map[string]callProjection, len(message.ToolCalls))
 		for _, call := range message.ToolCalls {
 			callID := strings.TrimSpace(call.ID)
-			if callID == "" || normalizeToolName(call.Function.Name) == "" {
+			if callID == "" {
 				continue
 			}
 			if existing, found := calls[callID]; found {
@@ -194,108 +195,73 @@ func filterToolContextMessages(messages []*agent.Message, policy ToolResultConte
 				calls[callID] = existing
 				continue
 			}
-			calls[callID] = callProjection{call: call, valid: validateToolArgumentsJSON(call.Function.Arguments) == nil}
+			calls[callID] = callProjection{call: call, valid: validContextToolCall(call), resultIndex: -1}
 		}
-	}
-	for _, message := range messages {
-		if message == nil || message.Role != agent.ToolRole {
-			continue
+		for resultIndex := index + 1; resultIndex < batchEnd; resultIndex++ {
+			result := messages[resultIndex]
+			if result == nil {
+				continue
+			}
+			callID := strings.TrimSpace(result.ToolCallID)
+			projection, found := calls[callID]
+			if !found {
+				continue
+			}
+			projection.results++
+			if projection.results == 1 {
+				projection.resultIndex = resultIndex
+			}
+			calls[callID] = projection
 		}
-		callID := strings.TrimSpace(message.ToolCallID)
-		projection, found := calls[callID]
-		if !found {
-			continue
-		}
-		projection.results++
-		retention := toolMessageRetention(message)
-		if retention == "" {
-			retention = legacyToolContextRetention(projection.call.Function.Name, policy)
-		}
-		projection.retain = isUnknownToolEffectResult(message.Content) || (policy.Enabled && retention == agent.ToolContextReceipt)
-		projection.arguments = retainedArgumentsFromResult(message)
-		if projection.arguments == "" {
-			projection.arguments = projectRetainedToolArguments(projection.call.Function.Arguments, min(policy.MaxResultBytes, retainedContextProjectionBytes))
-		}
-		if stable := stableRetainedToolMessage(message, projection.call.Function.Name, policy); stable != nil {
-			projection.content = stable.Content
-		}
-		calls[callID] = projection
-	}
 
-	filtered := make([]*agent.Message, 0, len(messages))
-	for _, message := range messages {
-		if message == nil {
-			continue
-		}
-		switch message.Role {
-		case agent.Assistant:
-			if len(message.ToolCalls) == 0 {
-				filtered = append(filtered, message)
+		nextAssistant := message.Clone()
+		nextAssistant.ToolCalls = nil
+		retainedResults := make(map[int]agent.ToolCall, len(message.ToolCalls))
+		for _, call := range message.ToolCalls {
+			callID := strings.TrimSpace(call.ID)
+			projection, found := calls[callID]
+			if !found || !projection.valid || projection.results != 1 {
 				continue
 			}
-			next := message.Clone()
-			next.ToolCalls = nil
-			for _, call := range message.ToolCalls {
-				projection, found := calls[strings.TrimSpace(call.ID)]
-				if !found || !projection.valid || projection.results != 1 || !projection.retain || projection.arguments == "" {
-					continue
-				}
-				call.Function.Arguments = projection.arguments
-				next.ToolCalls = append(next.ToolCalls, call)
-			}
-			if len(next.ToolCalls) > 0 || strings.TrimSpace(next.Content) != "" {
-				filtered = append(filtered, next)
-			}
-		case agent.ToolRole:
-			projection, found := calls[strings.TrimSpace(message.ToolCallID)]
-			if !found || !projection.valid || projection.results != 1 || !projection.retain || strings.TrimSpace(projection.content) == "" {
+			result := messages[projection.resultIndex]
+			if result == nil || result.ToolCallID != callID || strings.TrimSpace(result.Content) == "" ||
+				(!policy.Enabled && !isUnknownToolEffectResult(result.Content)) {
 				continue
 			}
-			next := message.Clone()
-			next.ToolName = normalizeToolName(projection.call.Function.Name)
-			next.Content = projection.content
-			if next.ToolResult != nil {
-				next.ToolResult.RetainedContent = ""
-				next.ToolResult.RetainedArguments = ""
-			}
-			filtered = append(filtered, next)
-		default:
-			filtered = append(filtered, message)
+			nextAssistant.ToolCalls = append(nextAssistant.ToolCalls, call)
+			retainedResults[projection.resultIndex] = projection.call
 		}
+		if len(nextAssistant.ToolCalls) > 0 || contextAssistantHasIndependentContent(nextAssistant) {
+			filtered = append(filtered, nextAssistant)
+		}
+		for resultIndex := index + 1; resultIndex < batchEnd; resultIndex++ {
+			call, retained := retainedResults[resultIndex]
+			if !retained {
+				continue
+			}
+			nextResult := messages[resultIndex].Clone()
+			nextResult.ToolCalls = nil
+			nextResult.ToolName = normalizeToolName(call.Function.Name)
+			filtered = append(filtered, nextResult)
+		}
+		index = batchEnd
 	}
 	return filtered
 }
 
-// legacyToolContextRetention is read-only migration behavior for histories
-// written before ToolDescriptor.ContextRetention existed. New calls never use
-// tool-name whitelists.
-func legacyToolContextRetention(toolName string, policy ToolResultContextPolicy) agent.ToolContextRetention {
-	name := normalizeToolName(toolName)
-	if strings.TrimSpace(policy.AgentKind) == config.AgentKindInteractiveStory {
-		if name == "read_lore_items" {
-			return agent.ToolContextReceipt
+func toolResultBatchEnd(messages []*agent.Message, assistantIndex int) int {
+	end := assistantIndex + 1
+	for end < len(messages) {
+		if messages[end] == nil {
+			end++
+			continue
 		}
-		return agent.ToolContextTransient
+		if messages[end].Role != agent.ToolRole {
+			break
+		}
+		end++
 	}
-	switch name {
-	case "list_lore_items", "search_story_history":
-		return agent.ToolContextTransient
-	default:
-		return agent.ToolContextReceipt
-	}
-}
-
-func toolResultContextContent(toolName, content string, policy ToolResultContextPolicy) string {
-	if isRetainedToolReceipt(content) {
-		return content
-	}
-	manifest := unknownToolManifest(toolName)
-	if normalizeToolName(toolName) == "read_lore_items" {
-		manifest.Source = agent.ToolSourceLore
-	}
-	result := agent.TextToolResult(content)
-	result.Metadata.OriginalModelBytes = len(content)
-	return projectRetainedToolReceipt(manifest, result, min(policy.normalized().MaxResultBytes, retainedContextProjectionBytes))
+	return end
 }
 
 func ApplyToolResultContextPolicyForConversation(messages []*agent.Message, policy ToolResultContextPolicy) []*agent.Message {

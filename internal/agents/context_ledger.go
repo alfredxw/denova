@@ -15,7 +15,11 @@ type ContextLedger struct {
 	parts  []ContextLedgerPart
 }
 
-// ContextLedgerPart is the durable audit shape for one model-visible context source.
+// ContextLedgerPart is the in-memory audit shape for one model-visible context
+// source. RunLedger converts it to a content-free durable projection; Hash,
+// Preview, Title, and Note never reach disk. Normal Agent logs only report the
+// resulting source count, while this in-memory summary keeps semantic titles
+// for diagnostics exposed explicitly by callers.
 type ContextLedgerPart struct {
 	Source    string `json:"source"`
 	Title     string `json:"title"`
@@ -98,7 +102,8 @@ func (l *ContextLedger) Parts() []ContextLedgerPart {
 	return result
 }
 
-// Summary returns a compact log-friendly representation.
+// Summary returns a compact, content-free log representation. Rich fields stay
+// available in memory for context assembly verification only.
 func (l *ContextLedger) Summary() string {
 	if l == nil || len(l.parts) == 0 {
 		return "count=0"
@@ -110,8 +115,6 @@ func (l *ContextLedger) Summary() string {
 			fmt.Sprintf("title=%q", part.Title),
 			"bytes=" + intString(part.Bytes),
 			"chars=" + intString(part.Chars),
-			"hash=" + strconv.Quote(part.Hash),
-			"preview=" + strconv.Quote(part.Preview),
 			"included=" + ledgerBoolString(part.Included),
 		}
 		if part.Purpose != "" {

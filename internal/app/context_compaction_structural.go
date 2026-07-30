@@ -63,35 +63,29 @@ func (s *ChatAppService) executeWritingContextCompaction(ctx context.Context, re
 		}
 		return agents.ContextCompactionResult{}, ErrAgentContextChanged
 	}
-	messages, cursor := runtime.sess.GetEffectiveMessagesWithCursor()
+	runtimeContexts := agents.IDEWorkspaceRuntimeContextsForRequest(runtime.state, agents.ChatRequest{})
+	conversation := agents.NewSessionConversationForAgentWithRuntimeContexts(
+		runtime.sess, &runtime.cfg, config.AgentKindIDE,
+		runtimeContexts.StableTitle, runtimeContexts.Stable,
+		runtimeContexts.DynamicTitle, runtimeContexts.Dynamic,
+	)
+	projection, err := conversation.SnapshotContextCompaction(ctx, true)
+	if err != nil {
+		a.mu.RUnlock()
+		return agents.ContextCompactionResult{}, fmt.Errorf("snapshot writing compaction source: %w", err)
+	}
+	assembled, err := conversation.AssembleModelContext(ctx, "", agents.ModelContextInput{
+		UserMessage: "", Budget: conversation.ModelContextBudget(),
+	})
+	if err != nil {
+		a.mu.RUnlock()
+		return agents.ContextCompactionResult{}, fmt.Errorf("assemble writing compaction context: %w", err)
+	}
+	messages, cursor := assembled.Messages, projection.Cursor
 	a.mu.RUnlock()
-	active, hasActive := runtime.sess.LatestContextCompaction(config.AgentKindIDE)
-	sourceStart := cursor.ClearAfterIndex
-	existingCheckpoint := ""
-	epoch := runtime.sess.NextContextCompactionEpoch(config.AgentKindIDE)
-	if hasActive {
-		existingCheckpoint = active.Summary
-		if active.SourceEndIndex > sourceStart {
-			sourceStart = active.SourceEndIndex
-		}
-	}
-	sourceEnd := cursor.MessageCount
-	effectiveStart := cursor.MessageCount - len(messages)
-	startOffset := sourceStart - effectiveStart
-	endOffset := sourceEnd - effectiveStart
-	if startOffset < 0 {
-		startOffset = 0
-	}
-	if startOffset > len(messages) {
-		startOffset = len(messages)
-	}
-	if endOffset < startOffset {
-		endOffset = startOffset
-	}
-	if endOffset > len(messages) {
-		endOffset = len(messages)
-	}
-	source := append([]*agents.Message(nil), messages[startOffset:endOffset]...)
+	source := projection.Source
+	sourceStart, sourceEnd := projection.SourceStartIndex, projection.SourceEndIndex
+	existingCheckpoint := projection.ExistingCheckpoint
 	commandID, err := resolveContextStructuralCommandID(
 		requestedCommandID,
 		contextStructuralCommandID("writing-compact", runtime.workspace, runtime.sess.ID, fmt.Sprint(cursor.Revision)),
@@ -103,13 +97,34 @@ func (s *ChatAppService) executeWritingContextCompaction(ctx context.Context, re
 	if committed, found := runtime.sess.ContextCompactionByID(recordID); found {
 		return contextCompactionResultFromSession(committed), nil
 	}
+	manualHealthFingerprint := "manual:" + commandID
+	if _, err := runtime.sess.CommitContextCompactionHealthAtContext(ctx, cursor, session.ContextCompactionHealth{
+		ID: contextStructuralRecordID("cch-manual", commandID), AgentKind: config.AgentKindIDE,
+		StructureFingerprint: manualHealthFingerprint, Outcome: "manual_retry",
+	}); err != nil {
+		return agents.ContextCompactionResult{}, fmt.Errorf("reset writing compaction health: %w", err)
+	}
 	if len(source) == 0 {
 		return agents.ContextCompactionResult{Phase: "manual", SkippedReason: "empty_source"}, fmt.Errorf("没有可压缩的上下文")
 	}
-	_, prepared, err := agents.PrepareContextCompaction(ctx, &runtime.cfg, config.AgentKindIDE, agents.ContextCompactionInput{
-		Messages: messages, SourceMessages: source, Phase: "manual", Force: true,
-		ExistingCheckpoint: existingCheckpoint, KeepLatestUser: true,
-	}, epoch)
+	runner, err := buildAgentRunner(ctx, &runtime.cfg, runtime.state, runtime.ideTeller)
+	if err != nil {
+		return agents.ContextCompactionResult{}, fmt.Errorf("assemble writing compaction request: %w", err)
+	}
+	primarySnapshot, err := runner.PrepareModelRequest(ctx, messages)
+	if err != nil {
+		return agents.ContextCompactionResult{}, fmt.Errorf("capture writing compaction request: %w", err)
+	}
+	tools := primarySnapshot.ResolvedOptions().Tools
+	// Manual Writing compaction uses the same SessionConversation path as
+	// automatic maintenance. That path maps canonical source messages to the
+	// normalizer-produced provider projection and validates/re-measures the
+	// compacted candidate before publication. Calling the lower-level helper
+	// here would compare pre-normalizer history with the final request snapshot.
+	_, prepared, err := conversation.CompactContextIfNeeded(ctx, agents.ContextCompactionInput{
+		Messages: messages, Tools: tools, Phase: "manual", Force: true,
+		ExistingCheckpoint: existingCheckpoint, KeepLatestUser: true, PrimaryRequestSnapshot: primarySnapshot,
+	})
 	if err != nil {
 		return prepared, err
 	}
@@ -286,6 +301,7 @@ func sessionCompactionRecord(id, agentKind string, sourceStart, sourceEnd int, r
 		RetainedTurns: result.RetainedTurns, TokensBefore: result.TokensBefore, TokensAfter: result.TokensAfter,
 		TargetRatio: result.TargetRatio, ContextWindowTokens: result.ContextWindowTokens,
 		Strategy: result.Strategy, Threshold: result.Threshold, Reason: "manual", Phase: result.Phase,
+		CandidateFingerprint: result.CandidateFingerprint, CandidateGeneration: result.CandidateGeneration,
 	}
 }
 
@@ -296,6 +312,7 @@ func interactiveCompactionEvent(id, expectedParent string, sourceTurns int, resu
 		TokensBefore: result.TokensBefore, TokensAfter: result.TokensAfter, TargetRatio: result.TargetRatio,
 		ContextWindowTokens: result.ContextWindowTokens, Strategy: result.Strategy, Threshold: result.Threshold,
 		Reason: "manual", Phase: result.Phase, ExpectedParentID: &expectedParent,
+		CandidateFingerprint: result.CandidateFingerprint, CandidateGeneration: result.CandidateGeneration,
 	}
 }
 
@@ -305,6 +322,7 @@ func contextCompactionResultFromSession(record session.ContextCompaction) agents
 		ContextWindowTokens: record.ContextWindowTokens, Strategy: record.Strategy, Threshold: record.Threshold,
 		Epoch: record.Epoch, Summary: record.Summary, TargetRatio: record.TargetRatio,
 		SourceMessageCount: record.SourceMessageCount, RetainedTurns: record.RetainedTurns,
+		CandidateFingerprint: record.CandidateFingerprint, CandidateGeneration: record.CandidateGeneration,
 	}
 }
 
@@ -313,6 +331,7 @@ func contextCompactionResultFromInteractive(event interactive.ContextCompactionE
 		Triggered: true, Phase: event.Phase, TokensBefore: event.TokensBefore, TokensAfter: event.TokensAfter,
 		ContextWindowTokens: event.ContextWindowTokens, Strategy: event.Strategy, Threshold: event.Threshold,
 		Epoch: event.Epoch, Summary: event.Summary, TargetRatio: event.TargetRatio, RetainedTurns: event.RetainedTurns,
+		CandidateFingerprint: event.CandidateFingerprint, CandidateGeneration: event.CandidateGeneration,
 	}
 }
 

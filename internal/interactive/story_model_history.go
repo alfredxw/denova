@@ -19,11 +19,13 @@ type StoryModelHistoryQuery struct {
 // deliberately excludes thinking, display events, state snapshots, versions,
 // and other UI-only or runtime-only fields.
 type StoryModelTurn struct {
-	ID                   string
-	BranchID             string
-	User                 string
-	Narrative            string
-	ModelContextMessages []ModelContextMessage
+	ID                          string
+	BranchID                    string
+	Ts                          string
+	User                        string
+	Narrative                   string
+	ResolvedPlayerInputContexts []ResolvedPlayerInputContext
+	ModelContextMessages        []ModelContextMessage
 }
 
 // StoryModelHistory is an exact, ordered projection of Query's logical range.
@@ -139,9 +141,16 @@ func (s *Store) ReadModelHistory(storyID string, query StoryModelHistoryQuery) (
 	}
 	result.Turns = make([]StoryModelTurn, 0, through-from)
 	for _, turn := range loadedTurns[from:through] {
+		resolved, err := normalizeResolvedPlayerInputContexts(
+			turn.ResolvedPlayerInputContexts, turn.BranchID, turn.PlayerInputID, turn.ConsumedPlayerInputIDs,
+		)
+		if err != nil {
+			return StoryModelHistory{}, err
+		}
 		result.Turns = append(result.Turns, StoryModelTurn{
-			ID: turn.ID, BranchID: turn.BranchID, User: turn.User, Narrative: turn.Narrative,
-			ModelContextMessages: sanitizeModelContextMessages(turn.ModelContextMessages),
+			ID: turn.ID, BranchID: turn.BranchID, Ts: turn.Ts, User: turn.User, Narrative: turn.Narrative,
+			ResolvedPlayerInputContexts: resolved,
+			ModelContextMessages:        sanitizeModelContextMessages(turn.ModelContextMessages),
 		})
 	}
 	return result, nil

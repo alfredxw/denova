@@ -57,6 +57,36 @@ func TestInteractiveConversationPublishesOnlyAuthorizedOutputStage(t *testing.T)
 	}
 }
 
+func TestInteractiveAgentCycleAcceptsMaintenanceOnlyCompletionWithoutTurn(t *testing.T) {
+	workspace := t.TempDir()
+	store := interactive.NewStore(workspace)
+	story, err := store.CreateStory(interactive.CreateStoryRequest{Title: "maintenance checkpoint", StoryTellerID: "classic"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	conversation := newInteractiveConversation(store, t.TempDir(), workspace, story.ID, "main", "pending input", 800, nil)
+	cycle := &interactiveAgentCycle{store: store, storyID: story.ID, branchID: "main", conversation: conversation}
+	cycle.bindCommit(func(agents.Event) {})
+
+	if err := conversation.CommitAgentCycleStage(context.Background(), agents.HarnessDomainCommitOutput, agents.RunOutcome{
+		Status: agents.RunOutcomeCompleted, MaintenanceOnly: true,
+	}); err != nil {
+		t.Fatalf("maintenance-only completion was rejected: %v", err)
+	}
+	snapshot, err := store.Snapshot(story.ID, "main")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(snapshot.Turns) != 0 {
+		t.Fatalf("maintenance-only completion persisted a narrative turn: %#v", snapshot.Turns)
+	}
+	if err := conversation.CommitAgentCycleStage(context.Background(), agents.HarnessDomainCommitOutput, agents.RunOutcome{
+		Status: agents.RunOutcomeCompleted,
+	}); err == nil {
+		t.Fatal("ordinary completed cycle without a turn must still fail closed")
+	}
+}
+
 func TestInteractiveConversationRejectsOutputWithoutDurableCycleIdentity(t *testing.T) {
 	workspace := t.TempDir()
 	store := interactive.NewStore(workspace)

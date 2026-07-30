@@ -23,6 +23,8 @@ const (
 	historyTypeContextBoundary     = "context_boundary"
 	historyTypeCompaction          = "context_compaction"
 	historyTypeCompactionRemoved   = "context_compaction_removed"
+	historyTypeCompactionHealth    = "context_compaction_health"
+	historyTypeToolResultCleanup   = "tool_result_cleanup"
 
 	InterruptionPending  = "pending"
 	InterruptionResolved = "resolved"
@@ -193,6 +195,8 @@ type historyRecord struct {
 	ask                          *AskInteraction
 	compaction                   *ContextCompaction
 	compactionRemoval            *ContextCompactionRemoval
+	compactionHealth             *ContextCompactionHealth
+	toolResultCleanup            *ToolResultCleanupRecord
 	createdAt                    time.Time
 	displayArgsPersistedBytes    int
 	displayContentPersistedBytes int
@@ -396,6 +400,8 @@ type ContextCompaction struct {
 	Threshold              float64                    `json:"threshold"`
 	Reason                 string                     `json:"reason,omitempty"`
 	Phase                  string                     `json:"phase,omitempty"`
+	CandidateFingerprint   string                     `json:"candidate_fingerprint,omitempty"`
+	CandidateGeneration    uint64                     `json:"candidate_generation,omitempty"`
 	CreatedAt              time.Time                  `json:"created_at"`
 	ContextRevision        uint64                     `json:"context_revision,omitempty"`
 }
@@ -414,6 +420,50 @@ type ContextCompactionRemoval struct {
 	Reason            string                     `json:"reason,omitempty"`
 	CreatedAt         time.Time                  `json:"created_at"`
 	ContextRevision   uint64                     `json:"context_revision,omitempty"`
+}
+
+// ContextCompactionHealth durably records the failure fuse for one stable
+// provider-neutral context structure. It is model-invisible and never replaces
+// a successful ContextCompaction checkpoint.
+type ContextCompactionHealth struct {
+	Type                 string    `json:"type"`
+	ID                   string    `json:"id"`
+	AgentKind            string    `json:"agent_kind,omitempty"`
+	BasisRevision        uint64    `json:"basis_revision"`
+	StructureFingerprint string    `json:"structure_fingerprint"`
+	Outcome              string    `json:"outcome"`
+	FailureCode          string    `json:"failure_code,omitempty"`
+	ConsecutiveFailures  int       `json:"consecutive_failures"`
+	CreatedAt            time.Time `json:"created_at"`
+}
+
+// ToolResultReplacement is one frozen model-context substitution. MessageIndex
+// addresses the append-only canonical transcript while ToolCallID prevents a
+// replacement from being applied to a different tool result after recovery.
+// Placeholder is already rendered and must be reused byte-for-byte.
+type ToolResultReplacement struct {
+	MessageIndex int64  `json:"message_index"`
+	ToolCallID   string `json:"tool_call_id"`
+	Placeholder  string `json:"placeholder"`
+}
+
+// ToolResultCleanupRecord records a model-visible projection without changing
+// the canonical rich tool result or the user-facing transcript. SourceEnd is
+// exclusive, matching the Session message range APIs.
+type ToolResultCleanupRecord struct {
+	Type             string                  `json:"type"`
+	ID               string                  `json:"id"`
+	AgentKind        string                  `json:"agent_kind,omitempty"`
+	SourceStart      int64                   `json:"source_start"`
+	SourceEnd        int64                   `json:"source_end"`
+	Replacements     []ToolResultReplacement `json:"replacements"`
+	ReclaimedTokens  int                     `json:"reclaimed_tokens"`
+	TriggeredAtUsage int                     `json:"triggered_at_usage"`
+	EarliestChanged  int64                   `json:"earliest_changed"`
+	WarmSuffixTokens int                     `json:"warm_suffix_tokens"`
+	RendererVersion  string                  `json:"renderer_version"`
+	CreatedAt        time.Time               `json:"created_at"`
+	ContextRevision  uint64                  `json:"context_revision,omitempty"`
 }
 
 // Session 保存单个会话的内存状态。

@@ -79,13 +79,18 @@ type ResponseMeta struct {
 	LogProbs     *LogProbs   `json:"logprobs,omitempty"`
 }
 
-// ToolResultSummary preserves transcript pairing and the bounded cross-turn
-// receipt without persisting display content or the full durability payload.
+// ToolResultSummary preserves transcript pairing and bounded context policy
+// metadata without persisting display content or the full durability payload.
 type ToolResultSummary struct {
-	Status            ToolResultStatus     `json:"status"`
-	SyntheticReason   ToolSyntheticReason  `json:"synthetic_reason,omitempty"`
-	ModelTruncated    bool                 `json:"model_truncated,omitempty"`
-	DisplayTruncated  bool                 `json:"display_truncated,omitempty"`
+	Status              ToolResultStatus            `json:"status"`
+	SyntheticReason     ToolSyntheticReason         `json:"synthetic_reason,omitempty"`
+	ModelTruncated      bool                        `json:"model_truncated,omitempty"`
+	DisplayTruncated    bool                        `json:"display_truncated,omitempty"`
+	ResultRetention     ToolResultRetentionMode     `json:"result_retention,omitempty"`
+	ContextHints        *ToolResultContextHints     `json:"context_hints,omitempty"`
+	ArtifactPersistence *ToolArtifactPersistence    `json:"artifact_persistence,omitempty"`
+	ProtectedReceipt    *ToolResultProtectedReceipt `json:"protected_receipt,omitempty"`
+	// Deprecated replay fields.
 	ContextRetention  ToolContextRetention `json:"context_retention,omitempty"`
 	RetainedContent   string               `json:"retained_content,omitempty"`
 	RetainedArguments string               `json:"retained_arguments,omitempty"`
@@ -169,12 +174,16 @@ func ToolMessage(result ToolResult, toolCallID string, opts ...ToolMessageOption
 		ToolName:   options.toolName,
 		ToolResult: &ToolResultSummary{
 			Status: result.Status, SyntheticReason: result.SyntheticReason,
-			ModelTruncated:    result.Metadata.ModelTruncated,
-			DisplayTruncated:  result.Metadata.DisplayTruncated,
-			ContextRetention:  result.ContextRetention,
-			RetainedContent:   result.RetainedContent,
-			RetainedArguments: result.RetainedArguments,
-			Artifacts:         append([]ToolArtifactRef(nil), result.Artifacts...),
+			ModelTruncated:      result.Metadata.ModelTruncated,
+			DisplayTruncated:    result.Metadata.DisplayTruncated,
+			ResultRetention:     result.ResultRetention,
+			ContextHints:        cloneToolResultContextHints(result.ContextHints),
+			ArtifactPersistence: cloneToolArtifactPersistence(result.Metadata.ArtifactPersistence),
+			ProtectedReceipt:    cloneToolResultProtectedReceipt(result.ProtectedReceipt),
+			ContextRetention:    result.ContextRetention,
+			RetainedContent:     result.RetainedContent,
+			RetainedArguments:   result.RetainedArguments,
+			Artifacts:           append([]ToolArtifactRef(nil), result.Artifacts...),
 		},
 	}
 }
@@ -193,6 +202,10 @@ func (m *Message) EffectiveToolResult() ToolResult {
 		result.SyntheticReason = m.ToolResult.SyntheticReason
 		result.Metadata.ModelTruncated = m.ToolResult.ModelTruncated
 		result.Metadata.DisplayTruncated = m.ToolResult.DisplayTruncated
+		result.ResultRetention = m.ToolResult.ResultRetention
+		result.ContextHints = cloneToolResultContextHints(m.ToolResult.ContextHints)
+		result.Metadata.ArtifactPersistence = cloneToolArtifactPersistence(m.ToolResult.ArtifactPersistence)
+		result.ProtectedReceipt = cloneToolResultProtectedReceipt(m.ToolResult.ProtectedReceipt)
 		result.ContextRetention = m.ToolResult.ContextRetention
 		result.RetainedContent = m.ToolResult.RetainedContent
 		result.RetainedArguments = m.ToolResult.RetainedArguments
@@ -214,10 +227,38 @@ func (m *Message) Clone() *Message {
 	if m.ToolResult != nil {
 		result := *m.ToolResult
 		result.Artifacts = append([]ToolArtifactRef(nil), m.ToolResult.Artifacts...)
+		result.ContextHints = cloneToolResultContextHints(m.ToolResult.ContextHints)
+		result.ArtifactPersistence = cloneToolArtifactPersistence(m.ToolResult.ArtifactPersistence)
+		result.ProtectedReceipt = cloneToolResultProtectedReceipt(m.ToolResult.ProtectedReceipt)
 		clone.ToolResult = &result
 	}
 	clone.Extra = cloneStringAnyMap(m.Extra)
 	clone.ResponseMeta = cloneResponseMeta(m.ResponseMeta)
+	return &clone
+}
+
+func cloneToolResultContextHints(hints *ToolResultContextHints) *ToolResultContextHints {
+	if hints == nil {
+		return nil
+	}
+	clone := *hints
+	clone.Recovery.Reference = cloneStringAnyMap(hints.Recovery.Reference)
+	return &clone
+}
+
+func cloneToolArtifactPersistence(persistence *ToolArtifactPersistence) *ToolArtifactPersistence {
+	if persistence == nil {
+		return nil
+	}
+	clone := *persistence
+	return &clone
+}
+
+func cloneToolResultProtectedReceipt(receipt *ToolResultProtectedReceipt) *ToolResultProtectedReceipt {
+	if receipt == nil {
+		return nil
+	}
+	clone := *receipt
 	return &clone
 }
 

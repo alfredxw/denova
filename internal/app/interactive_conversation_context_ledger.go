@@ -43,28 +43,11 @@ func (c *interactiveConversation) stableLeadingMessageSnapshot() string {
 // the compactable history tail, mirroring the stable-prefix behavior used by
 // writing-mode sessions.
 func preserveInteractiveStableLeadingMessage(messages []*agents.Message, content string) []*agents.Message {
-	content = strings.TrimSpace(content)
-	if content == "" {
-		return messages
-	}
-	result := make([]*agents.Message, 0, len(messages)+1)
-	result = append(result, agents.UserMessage(content))
-	for _, msg := range messages {
-		if msg != nil && msg.Role == agents.RoleUser && strings.TrimSpace(msg.Content) == content {
-			continue
-		}
-		result = append(result, msg)
-	}
-	return result
+	return agents.PreserveModelContextLeadingMessage(messages, content)
 }
 
 func interactiveCompactionResultForMessages(result agents.ContextCompactionResult, messages []*agents.Message, tools []*agents.ToolInfo) agents.ContextCompactionResult {
-	previousTokens := result.TokensAfter
-	result.TokensAfter = agents.EstimateContextTokens(messages, tools)
-	result.ProjectedTokensAfter += result.TokensAfter - previousTokens
-	if result.ProjectedTokensAfter < result.TokensAfter {
-		result.ProjectedTokensAfter = result.TokensAfter
-	}
+	result = agents.RecalculateContextCompactionProjection(result, agents.EstimateContextTokens(messages, tools))
 	result.MessageCountAfter = len(messages)
 	return result
 }
@@ -270,9 +253,9 @@ func addFinalInteractiveMessageContextParts(ledger *agents.ContextLedger, messag
 		if msg.Role == agents.RoleTool {
 			toolName := strings.TrimSpace(msg.ToolName)
 			toolID := strings.TrimSpace(msg.ToolCallID)
-			note := fmt.Sprintf("tool_name=%s; tool_call_id=%s; semantic_filtered=true; single_result_limit_bytes=%d; final_message=true", toolName, toolID, resultLimit)
+			note := fmt.Sprintf("tool_name=%s; tool_call_id=%s; context_policy_applied=true; single_result_limit_bytes=%d; final_message=true", toolName, toolID, resultLimit)
 			ledger.AddPart(
-				"历史工具上下文", interactiveToolContextTitle("工具结果", toolName, toolID), "paired cross-turn tool result",
+				"历史工具上下文", interactiveToolContextTitle("工具结果", toolName, toolID), "paired model-visible tool result",
 				msg.Content, note, true, interactiveToolContextTruncated(msg.Content), resultLimit,
 			)
 		}

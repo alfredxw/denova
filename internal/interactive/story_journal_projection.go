@@ -9,7 +9,7 @@ import (
 )
 
 const (
-	storyProjectionVersion      = 3
+	storyProjectionVersion      = 6
 	storyRecentTransactionLimit = 200
 	storyRecentCommitLimit      = 200
 	storyTurnAnchorEvery        = 256
@@ -33,6 +33,7 @@ type storyCommitLocator struct {
 
 type storyBranchProjection struct {
 	Head               string                         `json:"head"`
+	ContextRevision    uint64                         `json:"context_revision"`
 	LatestTurnID       string                         `json:"latest_turn_id,omitempty"`
 	LatestTurnParentID string                         `json:"latest_turn_parent_id,omitempty"`
 	Depth              int                            `json:"depth"`
@@ -40,12 +41,15 @@ type storyBranchProjection struct {
 	StateBeforeLatest  map[string]any                 `json:"state_before_latest,omitempty"`
 	Compaction         *ContextCompactionEvent        `json:"compaction,omitempty"`
 	CompactionRemoval  *ContextCompactionRemovalEvent `json:"compaction_removal,omitempty"`
+	CompactionHealth   *ContextCompactionHealthEvent  `json:"compaction_health,omitempty"`
+	ToolResultCleanup  *ToolResultCleanupEvent        `json:"tool_result_cleanup,omitempty"`
 	TailCursor         conversationjournal.Cursor     `json:"tail_cursor,omitempty"`
 }
 
 // storyJournalProjection is the bounded game reducer checkpoint. It stores
 // current branch state and sparse locators, never historical narrative,
-// thinking, tool results, or prior state snapshots.
+// thinking, rich tool results, or prior state snapshots. The current cleanup
+// projection stores only already-bounded recovery placeholders.
 type storyJournalProjection struct {
 	Version       int                               `json:"version"`
 	StoryID       string                            `json:"story_id"`
@@ -184,6 +188,10 @@ func (projection *storyJournalProjection) applyMeta(cursor conversationjournal.C
 }
 
 func (projection *storyJournalProjection) applyEvent(cursor conversationjournal.Cursor, record StoryEventRecord) error {
+	changesModelContext, err := storyEventChangesModelContext(record.Envelope.Type)
+	if err != nil {
+		return err
+	}
 	projection.EventCount++
 	branch := projection.branch(record.Envelope.BranchID)
 	branch.TailCursor = cursor
@@ -230,6 +238,8 @@ func (projection *storyJournalProjection) applyEvent(cursor conversationjournal.
 		}
 		branch.Compaction = &event
 		branch.CompactionRemoval = nil
+		branch.CompactionHealth = nil
+		branch.ToolResultCleanup = nil
 		if parentID == branch.Head {
 			branch.Head = event.ID
 		}
@@ -240,8 +250,34 @@ func (projection *storyJournalProjection) applyEvent(cursor conversationjournal.
 		}
 		branch.Compaction = nil
 		branch.CompactionRemoval = &event
+		branch.CompactionHealth = nil
+		branch.ToolResultCleanup = nil
 		if parentID == branch.Head {
 			branch.Head = event.ID
+		}
+	case StoryEventTypeCompactionHealth:
+		var event ContextCompactionHealthEvent
+		if err := mapToStruct(record.Raw, &event); err != nil {
+			return err
+		}
+		normalized, err := normalizeContextCompactionHealthEvent(event)
+		if err != nil {
+			return err
+		}
+		branch.CompactionHealth = &normalized
+	case StoryEventTypeToolResultCleanup:
+		var event ToolResultCleanupEvent
+		if err := mapToStruct(record.Raw, &event); err != nil {
+			return err
+		}
+		normalized, err := normalizeToolResultCleanupEvent(event)
+		if err != nil {
+			return err
+		}
+		branch.ToolResultCleanup = &normalized
+		branch.CompactionHealth = nil
+		if parentID == branch.Head {
+			branch.Head = normalized.ID
 		}
 	case StoryEventTypePlayerInput:
 		var event PlayerInputAcceptedEvent
@@ -249,6 +285,16 @@ func (projection *storyJournalProjection) applyEvent(cursor conversationjournal.
 			return err
 		}
 		projection.rememberCommit(cursor, StoryEventTypePlayerInput, event.ID, event.BranchID, event.AgentCommandID, event.AgentOperationID, event.AgentCycle, event.AgentCommitHash)
+	case StoryEventTypeModelContextBatch:
+		var event ModelContextBatchEvent
+		if err := mapToStruct(record.Raw, &event); err != nil {
+			return err
+		}
+		normalized, err := normalizeModelContextBatchEvent(event)
+		if err != nil {
+			return err
+		}
+		projection.rememberCommit(cursor, StoryEventTypeModelContextBatch, normalized.ID, normalized.BranchID, normalized.AgentCommandID, normalized.AgentOperationID, normalized.AgentCycle, normalized.BatchHash)
 	case StoryEventTypeTurnStateRevised:
 		var revision TurnStateRevisedEvent
 		if err := mapToStruct(record.Raw, &revision); err != nil {
@@ -283,6 +329,8 @@ func (projection *storyJournalProjection) applyEvent(cursor conversationjournal.
 		branch.StateBeforeLatest = nil
 		branch.Compaction = nil
 		branch.CompactionRemoval = nil
+		branch.CompactionHealth = nil
+		branch.ToolResultCleanup = nil
 	case StoryEventTypeTurnVersionSelected:
 		var event TurnVersionSelectionEvent
 		if err := mapToStruct(record.Raw, &event); err != nil {
@@ -297,10 +345,17 @@ func (projection *storyJournalProjection) applyEvent(cursor conversationjournal.
 		branch.StateBeforeLatest = nil
 		branch.Compaction = nil
 		branch.CompactionRemoval = nil
+		branch.CompactionHealth = nil
+		branch.ToolResultCleanup = nil
 	case StoryEventTypeHotChoices,
 		StoryEventTypeTurnNarrativeRevised, StoryEventTypeTurnDisplayAppended,
 		StoryEventTypeStoryConfigUpdated, StoryEventTypeBranchSwitched, StoryEventTypeBranchArchived:
 		// Side/audit records do not independently advance branch state.
+	default:
+		return fmt.Errorf("story projection does not handle persisted event type %q", record.Envelope.Type)
+	}
+	if changesModelContext {
+		branch.ContextRevision++
 	}
 	return nil
 }

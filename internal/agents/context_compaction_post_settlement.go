@@ -167,13 +167,14 @@ func sessionContextCompactionRecord(id, agentKind string, prepared preparedSessi
 		ObservedEstimateTokens: result.ObservedEstimateTokens,
 		TokensBefore:           result.TokensBefore, TokensAfter: result.TokensAfter, TargetRatio: result.TargetRatio,
 		ContextWindowTokens: result.ContextWindowTokens, Strategy: result.Strategy, Threshold: result.Threshold,
-		Reason: contextCompactionReasonLimit, Phase: result.Phase,
+		Reason: contextCompactionTriggerReason(result.TriggerReason, result.Phase), Phase: result.Phase,
+		CandidateFingerprint: result.CandidateFingerprint, CandidateGeneration: result.CandidateGeneration,
 	}
 }
 
 func contextCompactionResultFromSessionRecord(record session.ContextCompaction) ContextCompactionResult {
-	return ContextCompactionResult{
-		Triggered: true, Phase: record.Phase,
+	result := ContextCompactionResult{
+		Triggered: true, Phase: record.Phase, TriggerReason: record.Reason,
 		EstimatedTokensBefore:  record.EstimatedTokensBefore,
 		ObservedPromptTokens:   record.ObservedPromptTokens,
 		ObservedEstimateTokens: record.ObservedEstimateTokens,
@@ -181,7 +182,10 @@ func contextCompactionResultFromSessionRecord(record session.ContextCompaction) 
 		ContextWindowTokens: record.ContextWindowTokens, Strategy: record.Strategy, Threshold: record.Threshold,
 		Epoch: record.Epoch, Summary: record.Summary, TargetRatio: record.TargetRatio,
 		SourceMessageCount: record.SourceMessageCount, RetainedTurns: record.RetainedTurns,
+		CandidateFingerprint: record.CandidateFingerprint, CandidateGeneration: record.CandidateGeneration,
 	}
+	applyContextCompactionRecovery(&result)
+	return result
 }
 
 func postSettlementContextCommandID(prefix string, parts ...string) string {

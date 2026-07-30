@@ -83,6 +83,14 @@ func loadSession(filePath string) (*Session, error) {
 			value := *structural.Removal
 			sess.records = append(sess.records, historyRecord{kind: historyTypeCompactionRemoved, compactionRemoval: &value, createdAt: value.CreatedAt})
 		}
+		if structural.Health != nil {
+			value := *structural.Health
+			sess.records = append(sess.records, historyRecord{kind: historyTypeCompactionHealth, compactionHealth: &value, createdAt: value.CreatedAt})
+		}
+		if structural.Cleanup != nil {
+			value := cloneToolResultCleanupRecord(*structural.Cleanup)
+			sess.records = append(sess.records, historyRecord{kind: historyTypeToolResultCleanup, toolResultCleanup: &value, createdAt: value.CreatedAt})
+		}
 	}
 	if projection.PendingInterrupt != nil && projection.PendingInterruptCursor < startCursor {
 		pendingRecords, readErr := journal.ReadRange(context.Background(), conversationjournal.Range{
@@ -204,6 +212,10 @@ func appendRecordLine(sess *Session, line []byte, lineNumber int) error {
 		return appendCompactionRecordLine(sess, line, lineNumber)
 	case historyTypeCompactionRemoved:
 		return appendCompactionRemovalRecordLine(sess, line, lineNumber)
+	case historyTypeCompactionHealth:
+		return appendCompactionHealthRecordLine(sess, line, lineNumber)
+	case historyTypeToolResultCleanup:
+		return appendToolResultCleanupRecordLine(sess, line, lineNumber)
 	case historyTypeDisplay:
 		return appendDisplayRecordLine(sess, line, lineNumber)
 	case historyTypeMessage, historyTypeContextMessage:

@@ -36,6 +36,12 @@ func snapshotFromLines(storyID, branchID string, meta StoryMeta, lines []StoryEv
 			}
 			turn.DisplayEvents = sanitizeDisplayEvents(turn.DisplayEvents)
 			turn.ModelContextMessages = sanitizeModelContextMessages(turn.ModelContextMessages)
+			turn.ResolvedPlayerInputContexts, err = normalizeResolvedPlayerInputContexts(
+				turn.ResolvedPlayerInputContexts, turn.BranchID, turn.PlayerInputID, turn.ConsumedPlayerInputIDs,
+			)
+			if err != nil {
+				return Snapshot{}, err
+			}
 			versions := turnVersions[turnVersionKey(turn.BranchID, parentIDFromRaw(record.Raw))]
 			if len(versions) > 1 {
 				turn.Versions = versions
@@ -75,6 +81,7 @@ func snapshotFromLines(storyID, branchID string, meta StoryMeta, lines []StoryEv
 				return Snapshot{}, err
 			}
 			snapshot.ContextCompaction = &compaction
+			snapshot.ToolResultCleanup = nil
 		case StoryEventTypeCompactionRemoved:
 			var removal ContextCompactionRemovalEvent
 			if err := mapToStruct(record.Raw, &removal); err != nil {
@@ -82,7 +89,21 @@ func snapshotFromLines(storyID, branchID string, meta StoryMeta, lines []StoryEv
 			}
 			snapshot.ContextCompaction = nil
 			snapshot.ContextCompactionRemoval = &removal
-		case StoryEventTypePlayerInput, StoryEventTypeBranch, StoryEventTypeHotChoices, StoryEventTypeTurnVersionSelected:
+			snapshot.ToolResultCleanup = nil
+		case StoryEventTypeCompactionHealth:
+			// Health is an audit-only branch projection and never part of UI or
+			// model-visible snapshots.
+		case StoryEventTypeToolResultCleanup:
+			var cleanup ToolResultCleanupEvent
+			if err := mapToStruct(record.Raw, &cleanup); err != nil {
+				return Snapshot{}, err
+			}
+			normalized, err := normalizeToolResultCleanupEvent(cleanup)
+			if err != nil {
+				return Snapshot{}, err
+			}
+			snapshot.ToolResultCleanup = &normalized
+		case StoryEventTypePlayerInput, StoryEventTypeModelContextBatch, StoryEventTypeBranch, StoryEventTypeHotChoices, StoryEventTypeTurnVersionSelected:
 			// These are side/audit events. They are projected separately or are
 			// intentionally absent from model-visible turn/state history.
 		}
@@ -112,8 +133,69 @@ func snapshotFromLines(storyID, branchID string, meta StoryMeta, lines []StoryEv
 		return Snapshot{}, err
 	}
 	snapshot.PendingPlayerInputs = pendingInputs
+	pendingBatches, err := pendingModelContextBatchesForBranch(lines, branchID, pathSet, pendingInputs)
+	if err != nil {
+		return Snapshot{}, err
+	}
+	snapshot.PendingModelContextBatches = pendingBatches
 	snapshot.TurnCount = len(snapshot.Turns)
 	return snapshot, nil
+}
+
+func pendingModelContextBatchesForBranch(
+	lines []StoryEventRecord,
+	branchID string,
+	activeAncestry map[string]bool,
+	pendingInputs []PlayerInputAcceptedEvent,
+) ([]ModelContextBatchEvent, error) {
+	inputOrder := make(map[string]int, len(pendingInputs))
+	inputs := make(map[string]PlayerInputAcceptedEvent, len(pendingInputs))
+	for index, input := range pendingInputs {
+		inputOrder[input.ID] = index
+		inputs[input.ID] = input
+	}
+	result := make([]ModelContextBatchEvent, 0)
+	for _, record := range lines {
+		if record.Envelope.Type != StoryEventTypeModelContextBatch || record.Envelope.BranchID != branchID {
+			continue
+		}
+		var event ModelContextBatchEvent
+		if err := mapToStruct(record.Raw, &event); err != nil {
+			return nil, err
+		}
+		normalized, err := normalizeModelContextBatchEvent(event)
+		if err != nil {
+			return nil, err
+		}
+		input, pending := inputs[normalized.PlayerInputID]
+		if !pending {
+			continue
+		}
+		if normalized.AgentCommandID != input.AgentCommandID || normalized.AgentOperationID != input.AgentOperationID ||
+			normalized.AgentCycle != input.AgentCycle {
+			return nil, fmt.Errorf("%w: pending batch does not match accepted player input", ErrModelContextBatchIdentityConflict)
+		}
+		if parentID := strings.TrimSpace(normalized.ParentID); parentID != "" && !activeAncestry[parentID] {
+			continue
+		}
+		result = append(result, normalized)
+	}
+	sort.SliceStable(result, func(i, j int) bool {
+		left, right := inputOrder[result[i].PlayerInputID], inputOrder[result[j].PlayerInputID]
+		if left != right {
+			return left < right
+		}
+		return result[i].BatchOrdinal < result[j].BatchOrdinal
+	})
+	lastOrdinal := make(map[string]int, len(pendingInputs))
+	for _, event := range result {
+		expected := lastOrdinal[event.PlayerInputID]
+		if event.BatchOrdinal != expected {
+			return nil, fmt.Errorf("%w: player input %s has a missing or duplicate pending batch ordinal", ErrModelContextBatchIdentityConflict, event.PlayerInputID)
+		}
+		lastOrdinal[event.PlayerInputID] = expected + 1
+	}
+	return result, nil
 }
 
 func pendingPlayerInputsForBranch(lines []StoryEventRecord, branchID string, activeAncestry map[string]bool) ([]PlayerInputAcceptedEvent, error) {
@@ -128,6 +210,11 @@ func pendingPlayerInputsForBranch(lines []StoryEventRecord, branchID string, act
 		}
 		if strings.TrimSpace(turn.PlayerInputID) != "" {
 			consumed[turn.PlayerInputID] = true
+		}
+		for _, playerInputID := range turn.ConsumedPlayerInputIDs {
+			if playerInputID = strings.TrimSpace(playerInputID); playerInputID != "" {
+				consumed[playerInputID] = true
+			}
 		}
 	}
 	pending := make([]PlayerInputAcceptedEvent, 0)

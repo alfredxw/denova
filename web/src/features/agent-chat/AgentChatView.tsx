@@ -721,16 +721,15 @@ export function AgentChatView({
       <AdaptiveSurface
         className="h-full min-h-0"
         collapseAt={720}
-        desktopGridClassName={sidebarVisible
-          ? 'grid-cols-[clamp(200px,18vw,280px)_minmax(0,1fr)]'
-          : 'grid-cols-[minmax(0,1fr)]'}
+        desktopGridClassName="grid-cols-[auto_minmax(0,1fr)]"
         left={{
           id: 'agent-chat-activity',
           side: 'left',
           title: t('agentChat.sidebar.projects'),
           content: sidebar,
           desktopClassName: 'h-full min-h-0 min-w-0',
-          enabled: sidebarVisible,
+          desktopVisible: sidebarVisible,
+          desktopSize: 'clamp(200px, 18vw, 280px)',
         }}
       >
         {(controls) => {

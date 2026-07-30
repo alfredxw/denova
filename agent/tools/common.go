@@ -42,6 +42,12 @@ func WithMaxResultBytes(limit int) DefinitionOption {
 	return func(descriptor *agent.ToolDescriptor) { descriptor.MaxResultBytes = limit }
 }
 
+// WithResultRecoveryKind declares the exact ordinary capability used to
+// reconstruct a successful result after context-pressure cleanup.
+func WithResultRecoveryKind(kind agent.ToolResultRecoveryKind) DefinitionOption {
+	return func(descriptor *agent.ToolDescriptor) { descriptor.ResultRecoveryKind = kind }
+}
+
 func applyDefinitionOptions(descriptor agent.ToolDescriptor, options []DefinitionOption) agent.ToolDescriptor {
 	for _, option := range options {
 		if option != nil {
@@ -53,15 +59,16 @@ func applyDefinitionOptions(descriptor agent.ToolDescriptor, options []Definitio
 
 func readDescriptor(options ...DefinitionOption) agent.ToolDescriptor {
 	return applyDefinitionOptions(agent.ToolDescriptor{
-		Source:           agent.ToolSourceRead,
-		Execution:        agent.ToolExecutionParallelRead,
-		MutationScope:    agent.ToolMutationNone,
-		PostCheck:        agent.ToolPostCheckNone,
-		Recovery:         agent.ToolRecoveryReadOnly,
-		ResultProjection: agent.ToolResultBoundedModelContext,
-		ContextRetention: agent.ToolContextReceipt,
-		Steering:         agent.SteeringFinishCurrent,
-		MaxResultBytes:   defaultResultBytes,
+		Source:             agent.ToolSourceRead,
+		Execution:          agent.ToolExecutionParallelRead,
+		MutationScope:      agent.ToolMutationNone,
+		PostCheck:          agent.ToolPostCheckNone,
+		Recovery:           agent.ToolRecoveryReadOnly,
+		ResultRecoveryKind: agent.ToolResultRecoveryRead,
+		ResultProjection:   agent.ToolResultBoundedModelContext,
+		ResultRetention:    agent.ToolResultDeferred,
+		Steering:           agent.SteeringFinishCurrent,
+		MaxResultBytes:     defaultResultBytes,
 	}, options)
 }
 
@@ -73,7 +80,7 @@ func writeDescriptor(options ...DefinitionOption) agent.ToolDescriptor {
 		PostCheck:        agent.ToolPostCheckWorkspaceChange,
 		Recovery:         agent.ToolRecoveryReconcilable,
 		ResultProjection: agent.ToolResultBoundedModelContext,
-		ContextRetention: agent.ToolContextReceipt,
+		ResultRetention:  agent.ToolResultProtected,
 		Steering:         agent.SteeringFinishCurrent,
 		MaxResultBytes:   defaultResultBytes,
 	}, options)
@@ -91,7 +98,7 @@ func shellDescriptor(options ...DefinitionOption) agent.ToolDescriptor {
 		PostCheck:        agent.ToolPostCheckExternalReceipt,
 		Recovery:         agent.ToolRecoveryNonIdempotent,
 		ResultProjection: agent.ToolResultBoundedModelContext,
-		ContextRetention: agent.ToolContextReceipt,
+		ResultRetention:  agent.ToolResultProtected,
 		Steering:         agent.SteeringFinishCurrent,
 		MaxResultBytes:   defaultResultBytes,
 	}, options)

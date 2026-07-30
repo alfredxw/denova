@@ -483,6 +483,8 @@
   --nova-motion-fast: 140ms;
   --nova-motion-normal: 220ms;
   --nova-motion-slow: 280ms;
+  --nova-panel-motion-duration: 180ms;
+  --nova-panel-fade-duration: 120ms;
   --nova-shadow: 0 18px 50px rgba(0, 0, 0, 0.36);
   --nova-ui-font-size: 14px;
   --nova-ui-line-height: 20px;
@@ -732,6 +734,13 @@ html[data-nova-motion="off"] {
   --nova-motion-fast: 1ms;
   --nova-motion-normal: 1ms;
   --nova-motion-slow: 1ms;
+  --nova-panel-motion-duration: 1ms;
+  --nova-panel-fade-duration: 1ms;
+}
+
+html[data-nova-motion="reduced"] {
+  --nova-panel-motion-duration: 1ms;
+  --nova-panel-fade-duration: 1ms;
 }
 
 html[data-nova-motion="off"] *,
@@ -1581,6 +1590,108 @@ html[data-nova-motion="off"] *::after {
 .nova-resize-handle:hover,
 .nova-resize-handle[data-resize-handle-active] {
   background: color-mix(in srgb, var(--nova-active) 78%, transparent);
+}
+
+/* Side panes stay mounted so their state and last resized width survive a toggle. The panel's
+   real flex share contracts, which lets the neighbouring workspace reflow continuously. */
+[data-nova-panel-motion-group] > [data-panel] {
+  transition: flex-grow var(--nova-panel-motion-duration) var(--nova-ease);
+}
+
+[data-panel][data-nova-panel-motion="resizable"] {
+  overflow: hidden !important;
+  transition:
+    flex-grow var(--nova-panel-motion-duration) var(--nova-ease),
+    visibility 0s linear 0s;
+}
+
+[data-panel][data-nova-panel-motion="resizable"][data-state="closed"] {
+  flex-grow: 0 !important;
+  visibility: hidden;
+  transition:
+    flex-grow var(--nova-panel-motion-duration) var(--nova-ease),
+    visibility 0s linear var(--nova-panel-motion-duration);
+}
+
+[data-nova-panel-motion="inline"] {
+  width: var(--nova-inline-panel-size);
+  visibility: visible;
+  transition:
+    width var(--nova-panel-motion-duration) var(--nova-ease),
+    visibility 0s linear 0s;
+}
+
+[data-nova-panel-motion="inline"][data-state="closed"] {
+  width: 0;
+  visibility: hidden;
+  transition:
+    width var(--nova-panel-motion-duration) var(--nova-ease),
+    visibility 0s linear var(--nova-panel-motion-duration);
+}
+
+[data-nova-panel-motion="inline"] > [data-nova-panel-motion-content] {
+  width: var(--nova-inline-panel-size);
+  min-width: var(--nova-inline-panel-size);
+}
+
+[data-nova-panel-motion-content] {
+  opacity: 1;
+  transform: translateX(0);
+  transition:
+    opacity var(--nova-panel-fade-duration) ease-out,
+    transform var(--nova-panel-motion-duration) var(--nova-ease);
+  will-change: opacity, transform;
+}
+
+[data-nova-panel-motion-content][data-state="closed"] {
+  opacity: 0;
+  transform: translateX(-6px);
+}
+
+[data-nova-panel-motion-content][data-state="closed"][data-nova-panel-side="right"] {
+  transform: translateX(6px);
+}
+
+[data-nova-panel-motion-separator] {
+  opacity: 1;
+  transition:
+    width var(--nova-panel-motion-duration) var(--nova-ease),
+    height var(--nova-panel-motion-duration) var(--nova-ease),
+    margin var(--nova-panel-motion-duration) var(--nova-ease),
+    opacity var(--nova-panel-fade-duration) ease-out,
+    visibility 0s linear 0s;
+}
+
+[data-nova-panel-motion-separator][data-state="closed"] {
+  margin: 0 !important;
+  opacity: 0;
+  pointer-events: none;
+  visibility: hidden;
+  transition:
+    width var(--nova-panel-motion-duration) var(--nova-ease),
+    height var(--nova-panel-motion-duration) var(--nova-ease),
+    margin var(--nova-panel-motion-duration) var(--nova-ease),
+    opacity var(--nova-panel-fade-duration) ease-out,
+    visibility 0s linear var(--nova-panel-motion-duration);
+}
+
+[data-nova-panel-motion-separator][data-state="closed"][aria-orientation="vertical"] {
+  width: 0 !important;
+}
+
+[data-nova-panel-motion-separator][data-state="closed"][aria-orientation="horizontal"] {
+  height: 0 !important;
+}
+
+[data-nova-panel-motion-group]:has([data-resize-handle-active]) > [data-panel] {
+  transition: none;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  html:not([data-nova-motion="full"]) {
+    --nova-panel-motion-duration: 1ms;
+    --nova-panel-fade-duration: 1ms;
+  }
 }
 
 /* Keep panel boundaries visible without making the draggable target look wide. The separator

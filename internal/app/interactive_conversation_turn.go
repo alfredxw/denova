@@ -111,13 +111,51 @@ func (c *interactiveConversation) CompactContextIfNeeded(ctx context.Context, in
 	if !input.Force && storyCtx.Snapshot.ContextCompactionRemoval != nil && storyCtx.Snapshot.ContextCompactionRemoval.SourceTurnCount >= modelHistory.EndTurn {
 		return input.Messages, agents.ContextCompactionResult{SkippedReason: "removed_same_source"}, nil
 	}
-	source, existingCheckpoint := interactiveCompactionModelHistorySource(modelHistory, activeCompaction)
-	source = agents.ApplyToolResultContextPolicyForConversation(source, c.ToolResultContextPolicy())
+	modelProjection, err := buildInteractiveModelContextProjection(
+		modelHistory, activeCompaction, storyCtx.Snapshot, c.ToolResultContextPolicy(), c.agentCycleIdentitySnapshot(),
+	)
+	if err != nil {
+		return input.Messages, agents.ContextCompactionResult{}, err
+	}
+	source := modelProjection.SourceMessages
+	existingCheckpoint := modelProjection.ExistingCheckpoint
+	input.CandidateFingerprint, input.CandidateGeneration = agents.ContextCompactionCandidateIdentity(input.Messages, 0)
+	healthRevision, health, hasHealth, err := c.store.ContextCompactionHealthState(
+		c.storyID, storyCtx.Snapshot.BranchID, config.AgentKindInteractiveStory,
+	)
+	if err != nil {
+		return input.Messages, agents.ContextCompactionResult{}, err
+	}
+	structureFingerprint, err := c.contextCompactionStructureFingerprint(storyCtx, input)
+	if err != nil {
+		return input.Messages, agents.ContextCompactionResult{}, err
+	}
+	maximumFailures := config.ResolveAgentContext(c.cfg, config.AgentKindInteractiveStory).CompactionMaxConsecutiveFailures
+	if hasHealth && (agents.ContextCompactionFailureState{
+		StructureFingerprint: health.StructureFingerprint,
+		ConsecutiveFailures:  health.ConsecutiveFailures,
+	}).Blocks(structureFingerprint, maximumFailures, input.Automatic) {
+		input.PreflightSkipReason = "consecutive_failure_fuse"
+		input.ConsecutiveFailures = health.ConsecutiveFailures
+		input.FailureFuseOpen = true
+	}
+	if input.Automatic && strings.TrimSpace(input.PreflightSkipReason) == "" && activeCompaction != nil &&
+		agents.ContextCompactionNoProgressLatched(
+			activeCompaction.TokensAfter, activeCompaction.ContextWindowTokens, activeCompaction.Threshold,
+			config.ResolveAgentContext(c.cfg, config.AgentKindInteractiveStory).CompactionRecoveryBand,
+			agents.EstimateContextTokens(source, nil),
+			agents.EffectiveToolResultCleanupMinimum(input.Messages, input.Tools, c.ContextPressurePolicy(input.Messages)),
+			activeCompaction.CandidateFingerprint, activeCompaction.CandidateGeneration,
+			input.CandidateFingerprint, input.CandidateGeneration,
+		) {
+		input.PreflightSkipReason = "degraded_no_progress_latch"
+	}
 	epoch := 1
 	if activeCompaction != nil {
 		epoch = activeCompaction.Epoch + 1
 	}
 	input.SourceMessages = source
+	input.SourceMessagesSet = true
 	if strings.TrimSpace(input.ExistingCheckpoint) == "" {
 		input.ExistingCheckpoint = existingCheckpoint
 	}
@@ -131,14 +169,23 @@ func (c *interactiveConversation) CompactContextIfNeeded(ctx context.Context, in
 		input.ReservedToolResultTokens = toolReserve
 	}
 	newMessages, result, err := agents.PrepareContextCompaction(ctx, c.cfg, config.AgentKindInteractiveStory, input, epoch)
-	if err != nil || !result.Triggered {
+	if err != nil {
+		c.stageInteractiveCompactionHealth(healthRevision, storyCtx.Snapshot.BranchID, structureFingerprint, agents.ContextCompactionHealthFailure, &result)
+		return newMessages, result, err
+	}
+	if !result.Triggered {
 		return newMessages, result, err
 	}
 	newMessages = preserveInteractiveStableLeadingMessage(newMessages, stableLeadingMessage)
-	result = interactiveCompactionResultForMessages(result, newMessages, input.Tools)
-	if !input.Force && (result.Phase == "pre_run" || result.Phase == "mid_run") {
+	newMessages, result, err = validateInteractiveCompactionProjection(input.Messages, newMessages, result, input.Tools)
+	if err != nil {
+		c.stageInteractiveCompactionHealth(healthRevision, storyCtx.Snapshot.BranchID, structureFingerprint, agents.ContextCompactionHealthFailure, &result)
+		return newMessages, result, err
+	}
+	c.stageInteractiveCompactionHealth(healthRevision, storyCtx.Snapshot.BranchID, structureFingerprint, agents.ContextCompactionHealthSuccess, &result)
+	if !input.Force && result.Phase == "model_step" {
 		c.stagePreparedInteractiveCompaction(preparedInteractiveContextCompaction{
-			Result: result, SourceTurnCount: modelHistory.EndTurn,
+			Result: result, SourceTurnCount: modelProjection.SourceTurnCount,
 		})
 	}
 	// Model-cycle compaction remains a transient projection. Canonical story
@@ -148,27 +195,61 @@ func (c *interactiveConversation) CompactContextIfNeeded(ctx context.Context, in
 	return newMessages, result, nil
 }
 
+// validateInteractiveCompactionProjection is the final safety boundary after
+// Game-specific stable context has been re-injected. A candidate that no
+// longer shrinks the true provider-visible context must not replace the live
+// model input or become a durable checkpoint.
+func validateInteractiveCompactionProjection(
+	originalMessages []*agents.Message,
+	compactedMessages []*agents.Message,
+	result agents.ContextCompactionResult,
+	tools []*agents.ToolInfo,
+) ([]*agents.Message, agents.ContextCompactionResult, error) {
+	normalized, err := agents.NormalizeModelContextMessages(compactedMessages)
+	if err != nil {
+		result.Triggered = false
+		result.SkippedReason = "protocol_invalid"
+		return originalMessages, result, err
+	}
+	compactedMessages = normalized
+	result.CandidateFingerprint, result.CandidateGeneration = agents.ContextCompactionCandidateIdentity(compactedMessages, 0)
+	result = interactiveCompactionResultForMessages(result, compactedMessages, tools)
+	if result.RecoveryTargetTokens > 0 {
+		result.RecoveryBandMet = result.TokensAfter <= result.RecoveryTargetTokens
+		result.Degraded = !result.RecoveryBandMet && result.ContextWindowTokens > 0 &&
+			result.TokensAfter < agents.ContextCompactionPublishLimit(result.ContextWindowTokens, result.Threshold)
+	}
+	if err := agents.ValidateContextCompactionResult(result); err != nil {
+		result.Triggered = false
+		result.SkippedReason = "no_progress"
+		return originalMessages, result, err
+	}
+	return compactedMessages, result, nil
+}
+
 func interactiveContextMessageFromSchema(msg *agents.Message) (interactive.ModelContextMessage, bool) {
 	if msg == nil {
 		return interactive.ModelContextMessage{}, false
 	}
-	switch msg.Role {
+	cloned := msg.Clone()
+	switch cloned.Role {
 	case agents.RoleAssistant:
-		calls := interactiveToolCallsFromSchema(msg.ToolCalls)
+		calls := interactiveToolCallsFromSchema(cloned.ToolCalls)
 		if len(calls) == 0 {
 			return interactive.ModelContextMessage{}, false
 		}
-		return interactive.ModelContextMessage{Role: string(agents.RoleAssistant), ToolCalls: calls}, true
+		return interactive.ModelContextMessage{Role: string(agents.RoleAssistant), Content: cloned.Content, ToolCalls: calls}, true
 	case agents.RoleTool:
-		if strings.TrimSpace(msg.ToolCallID) == "" && strings.TrimSpace(msg.ToolName) == "" {
+		if strings.TrimSpace(cloned.ToolCallID) == "" && strings.TrimSpace(cloned.ToolName) == "" {
 			return interactive.ModelContextMessage{}, false
 		}
 		return interactive.ModelContextMessage{
 			Role:       string(agents.RoleTool),
-			Content:    msg.Content,
-			Name:       msg.Name,
-			ToolCallID: msg.ToolCallID,
-			ToolName:   msg.ToolName,
+			Content:    cloned.Content,
+			Name:       cloned.Name,
+			ToolCallID: cloned.ToolCallID,
+			ToolName:   cloned.ToolName,
+			ToolResult: cloned.ToolResult,
 		}, true
 	default:
 		return interactive.ModelContextMessage{}, false
@@ -208,11 +289,18 @@ func schemaMessagesFromInteractiveContext(messages []interactive.ModelContextMes
 		case string(agents.RoleAssistant):
 			calls := schemaToolCallsFromInteractive(msg.ToolCalls)
 			if len(calls) > 0 {
-				result = append(result, agents.AssistantMessage("", calls))
+				result = append(result, agents.AssistantMessage(msg.Content, calls))
 			}
 		case string(agents.RoleTool):
 			if strings.TrimSpace(msg.ToolCallID) != "" || strings.TrimSpace(msg.ToolName) != "" {
-				result = append(result, agents.ToolMessage(agents.TextToolResult(msg.Content), msg.ToolCallID, agents.WithToolName(msg.ToolName)))
+				result = append(result, (&agents.Message{
+					Role:       agents.RoleTool,
+					Content:    msg.Content,
+					Name:       msg.Name,
+					ToolCallID: msg.ToolCallID,
+					ToolName:   msg.ToolName,
+					ToolResult: msg.ToolResult,
+				}).Clone())
 			}
 		}
 	}
@@ -246,22 +334,6 @@ func interactiveCompactionSource(turns []interactive.TurnEvent, compaction *inte
 	return interactiveCompactionWindowSource(turns, 0, compaction)
 }
 
-func interactiveCompactionModelHistorySource(history interactive.StoryModelHistory, compaction *interactive.ContextCompactionEvent) ([]*agents.Message, string) {
-	sourceStart := 0
-	existingCheckpoint := ""
-	if compaction != nil && strings.TrimSpace(compaction.Summary) != "" {
-		existingCheckpoint = compaction.Summary
-		sourceStart = compaction.SourceTurnCount - history.StartTurn
-		if sourceStart < 0 {
-			sourceStart = 0
-		}
-		if sourceStart > len(history.Turns) {
-			sourceStart = len(history.Turns)
-		}
-	}
-	return interactiveCompactionModelTurnMessages(history.Turns[sourceStart:]), existingCheckpoint
-}
-
 func interactiveCompactionWindowSource(turns []interactive.TurnEvent, turnStart int, compaction *interactive.ContextCompactionEvent) ([]*agents.Message, string) {
 	sourceStart := 0
 	existingCheckpoint := ""
@@ -293,36 +365,74 @@ func interactiveCompactionTurnMessages(turns []interactive.TurnEvent) []*agents.
 	return messages
 }
 
-func interactiveCompactionModelTurnMessages(turns []interactive.StoryModelTurn) []*agents.Message {
-	messages := make([]*agents.Message, 0, len(turns)*2)
-	for _, turn := range turns {
-		source := fmt.Sprintf("[source turn_id=%s branch_id=%s]", turn.ID, turn.BranchID)
-		if strings.TrimSpace(turn.User) != "" {
-			messages = append(messages, agents.UserMessage(source+"\n"+turn.User))
-		}
-		messages = append(messages, schemaMessagesFromInteractiveContext(turn.ModelContextMessages)...)
-		if strings.TrimSpace(turn.Narrative) != "" {
-			messages = append(messages, agents.AssistantMessage(source+"\n"+turn.Narrative, nil))
-		}
-	}
-	return messages
-}
-
 func (c *interactiveConversation) AppendAssistant(content string) error {
 	return c.AppendAssistantWithThinking(content, "")
 }
 
 func (c *interactiveConversation) AppendContextMessage(msg *agents.Message) error {
-	if c == nil || msg == nil {
+	return c.AppendContextMessages(msg)
+}
+
+func (c *interactiveConversation) AppendContextMessages(messages ...*agents.Message) error {
+	if c == nil || len(messages) == 0 {
 		return nil
 	}
-	converted, ok := interactiveContextMessageFromSchema(msg)
-	if !ok {
+	converted := make([]interactive.ModelContextMessage, 0, len(messages))
+	for _, message := range messages {
+		if next, ok := interactiveContextMessageFromSchema(message); ok {
+			converted = append(converted, next)
+		}
+	}
+	if len(converted) == 0 {
 		return nil
 	}
+	c.modelContextAppendMu.Lock()
+	defer c.modelContextAppendMu.Unlock()
+
 	c.mu.Lock()
-	defer c.mu.Unlock()
-	c.modelContextMessages = append(c.modelContextMessages, converted)
+	identity := c.agentCycleIdentity
+	ordinal := c.modelContextBatchOrdinal
+	store := c.store
+	storyID := c.storyID
+	branchID := c.branchID
+	c.mu.Unlock()
+	commandID := strings.TrimSpace(string(identity.CommandID))
+	operationID := strings.TrimSpace(string(identity.OperationID))
+	hasIdentity := commandID != "" || operationID != "" || identity.Cycle != 0
+	if hasIdentity && (commandID == "" || operationID == "" || identity.Cycle <= 0) {
+		return fmt.Errorf("model context batch requires a complete durable cycle identity")
+	}
+	if !hasIdentity || store == nil {
+		// Legacy/non-runtime callers have no durable cycle to attach to. Keep the
+		// historical in-memory behavior for those isolated paths only.
+		c.mu.Lock()
+		c.modelContextMessages = append(c.modelContextMessages, interactive.CloneModelContextMessages(converted)...)
+		c.mu.Unlock()
+		return nil
+	}
+	if strings.TrimSpace(branchID) == "" {
+		storyContext, err := store.StoryContext(storyID, "")
+		if err != nil {
+			return err
+		}
+		branchID = storyContext.Snapshot.BranchID
+	}
+	intents, err := interactive.NewModelContextBatchIntents(interactive.DomainCommitIdentity{
+		CommandID: commandID, OperationID: operationID, Cycle: identity.Cycle,
+	}, branchID, ordinal, converted)
+	if err != nil {
+		return err
+	}
+	for _, intent := range intents {
+		receipt, err := store.AppendModelContextBatch(storyID, intent)
+		if err != nil {
+			return err
+		}
+		c.mu.Lock()
+		c.modelContextMessages = append(c.modelContextMessages, interactive.CloneModelContextMessages(receipt.Event.Messages)...)
+		c.modelContextBatchOrdinal = receipt.Event.BatchOrdinal + 1
+		c.mu.Unlock()
+	}
 	return nil
 }
 
@@ -408,9 +518,7 @@ func (c *interactiveConversation) modelContextMessagesSnapshot() []interactive.M
 	if len(c.modelContextMessages) == 0 {
 		return nil
 	}
-	result := make([]interactive.ModelContextMessage, len(c.modelContextMessages))
-	copy(result, c.modelContextMessages)
-	return result
+	return interactive.CloneModelContextMessages(c.modelContextMessages)
 }
 
 func (c *interactiveConversation) ruleResolutionSnapshot() *interactive.RuleResolution {

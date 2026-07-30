@@ -84,8 +84,8 @@ func unknownToolManifest(name string) ToolManifest {
 			Source: ToolSourceOther, Execution: ToolExecutionWorkspaceExclusive,
 			MutationScope: ToolMutationExternal, PostCheck: ToolPostCheckNone,
 			Recovery: ToolRecoveryNonIdempotent, ResultProjection: ToolResultBoundedModelContext,
-			ContextRetention: agent.ToolContextReceipt,
-			Steering:         agent.SteeringFinishCurrent, MaxResultBytes: defaultToolResultMaxBytes,
+			ResultRetention: agent.ToolResultProtected,
+			Steering:        agent.SteeringFinishCurrent, MaxResultBytes: defaultToolResultMaxBytes,
 		},
 	}
 }
@@ -133,19 +133,15 @@ func filterStructuredToolResultWithDescriptor(toolName string, descriptor agent.
 func filterStructuredToolResultWithManifest(manifest ToolManifest, args string, result agent.ToolResult, maxBytes int) FilteredToolResult {
 	manifest.MaxResultBytes = normalizeToolResultLimitBytes(firstPositive(maxBytes, manifest.MaxResultBytes))
 	result.ModelContent = producttools.WorkspaceChangeResultForModel(manifest.Name, result.ModelContent)
-	if argumentTarget := strings.TrimSpace(toolPathFromArgs(args)); argumentTarget != "" {
-		result.Metadata.Target = filepath.ToSlash(argumentTarget)
-	} else {
-		result.Metadata.Target = filepath.ToSlash(strings.TrimSpace(result.Metadata.Target))
-	}
-	result.Metadata.IdempotencyKey = toolIdempotencyKey(manifest.Name, args)
+	prepareToolResultProjectionMetadata(manifest, args, &result)
 
 	normalized, err := agent.NormalizeToolResult(result, manifest.ToolDescriptor)
 	if err != nil {
 		normalized = agent.ToolErrorResult("Invalid structured tool result: "+err.Error(), "Invalid structured tool result: "+err.Error())
+		prepareToolResultProjectionMetadata(manifest, args, &normalized)
 		normalized, _ = agent.NormalizeToolResult(normalized, manifest.ToolDescriptor)
 	}
-	normalized = projectRetainedToolResult(manifest, args, normalized)
+	normalized = projectProtectedToolResultReceipt(manifest, args, normalized)
 	return FilteredToolResult{
 		Result: normalized, Content: normalized.ModelContent, Manifest: manifest,
 		OriginalBytes: normalized.Metadata.OriginalModelBytes,
@@ -153,6 +149,18 @@ func filterStructuredToolResultWithManifest(manifest ToolManifest, args string, 
 		Truncated:     normalized.Metadata.ModelTruncated,
 		Target:        normalized.Metadata.Target, IdempotencyKey: normalized.Metadata.IdempotencyKey,
 	}
+}
+
+func prepareToolResultProjectionMetadata(manifest ToolManifest, args string, result *agent.ToolResult) {
+	if result == nil {
+		return
+	}
+	if argumentTarget := strings.TrimSpace(toolPathFromArgs(args)); argumentTarget != "" {
+		result.Metadata.Target = filepath.ToSlash(argumentTarget)
+	} else {
+		result.Metadata.Target = filepath.ToSlash(strings.TrimSpace(result.Metadata.Target))
+	}
+	result.Metadata.IdempotencyKey = toolIdempotencyKey(manifest.Name, args)
 }
 
 func firstPositive(values ...int) int {
@@ -231,8 +239,15 @@ func parseToolResultManifest(name, content string) (ToolManifest, bool) {
 		Source: agent.ToolSource(values["source"]), Capability: values["capability"],
 		Execution: agent.ToolExecutionClass(values["execution"]), Recovery: agent.ToolRecoveryClass(values["recovery"]),
 		ResultProjection: agent.ToolResultProjection(values["result_projection"]),
-		ContextRetention: agent.ToolContextReceipt,
+		ResultRetention:  legacyParsedResultRetention(mutationScope, agent.ToolRecoveryClass(values["recovery"])),
 		Steering:         agent.SteeringFinishCurrent,
 		MutationScope:    mutationScope, PostCheck: postCheckPolicy, MaxResultBytes: maxBytes,
 	}), true
+}
+
+func legacyParsedResultRetention(mutation agent.ToolMutationScope, recovery agent.ToolRecoveryClass) agent.ToolResultRetentionMode {
+	if mutation != agent.ToolMutationNone || recovery == agent.ToolRecoveryNonIdempotent {
+		return agent.ToolResultProtected
+	}
+	return agent.ToolResultDeferred
 }

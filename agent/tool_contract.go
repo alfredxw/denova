@@ -87,8 +87,19 @@ type ToolResultProjection string
 
 const ToolResultBoundedModelContext ToolResultProjection = "bounded_model_context"
 
-// ToolContextRetention controls the stable cross-turn projection independently
-// from the rich result used by the next model step in the current run.
+// ToolResultRetentionMode declares when a rich result may leave model context.
+// The pressure planner remains the only component allowed to apply cleanup.
+type ToolResultRetentionMode string
+
+const (
+	ToolResultDeferred       ToolResultRetentionMode = "deferred"
+	ToolResultEagerCandidate ToolResultRetentionMode = "eager_candidate"
+	ToolResultProtected      ToolResultRetentionMode = "protected"
+)
+
+// ToolContextRetention is the deprecated immediate-receipt contract kept only
+// so existing descriptors and persisted histories can be replayed. New tools
+// must use ToolDescriptor.ResultRetention.
 type ToolContextRetention string
 
 const (
@@ -108,14 +119,20 @@ const (
 // ToolDescriptor is the complete execution, recovery, and context contract for
 // one model-visible tool.
 type ToolDescriptor struct {
-	Source           ToolSource           `json:"source"`
-	Capability       string               `json:"capability,omitempty"`
-	Execution        ToolExecutionClass   `json:"execution"`
-	MutationScope    ToolMutationScope    `json:"mutation_scope"`
-	PostCheck        ToolPostCheckPolicy  `json:"post_check"`
-	Recovery         ToolRecoveryClass    `json:"recovery"`
-	ResultProjection ToolResultProjection `json:"result_projection"`
-	ContextRetention ToolContextRetention `json:"context_retention"`
+	Source        ToolSource          `json:"source"`
+	Capability    string              `json:"capability,omitempty"`
+	Execution     ToolExecutionClass  `json:"execution"`
+	MutationScope ToolMutationScope   `json:"mutation_scope"`
+	PostCheck     ToolPostCheckPolicy `json:"post_check"`
+	Recovery      ToolRecoveryClass   `json:"recovery"`
+	// ResultRecoveryKind names the ordinary model-visible capability that can
+	// reconstruct a successful result after pressure cleanup. It is distinct
+	// from Recovery, which describes crash/durability semantics.
+	ResultRecoveryKind ToolResultRecoveryKind  `json:"result_recovery_kind,omitempty"`
+	ResultProjection   ToolResultProjection    `json:"result_projection"`
+	ResultRetention    ToolResultRetentionMode `json:"result_retention,omitempty"`
+	// Deprecated: retained for replaying pre-pressure-planner descriptors.
+	ContextRetention ToolContextRetention `json:"context_retention,omitempty"`
 	Steering         SteeringPolicy       `json:"steering"`
 	MaxResultBytes   int                  `json:"max_result_bytes"`
 }
@@ -150,13 +167,35 @@ func (descriptor ToolDescriptor) Validate() error {
 	default:
 		return fmt.Errorf("invalid tool recovery class %q", descriptor.Recovery)
 	}
+	switch descriptor.ResultRecoveryKind {
+	case "", ToolResultRecoveryRead, ToolResultRecoveryRefetch, ToolResultRecoveryRerun:
+	case ToolResultRecoveryArtifact:
+		return errors.New("artifact result recovery is runtime output metadata, not a descriptor capability")
+	default:
+		return fmt.Errorf("invalid tool result recovery kind %q", descriptor.ResultRecoveryKind)
+	}
 	if descriptor.ResultProjection != ToolResultBoundedModelContext {
 		return fmt.Errorf("invalid tool result projection %q", descriptor.ResultProjection)
 	}
-	switch descriptor.ContextRetention {
-	case ToolContextTransient, ToolContextReceipt:
-	default:
-		return fmt.Errorf("invalid tool context retention %q", descriptor.ContextRetention)
+	if descriptor.ResultRetention != "" {
+		switch descriptor.ResultRetention {
+		case ToolResultDeferred, ToolResultEagerCandidate, ToolResultProtected:
+		default:
+			return fmt.Errorf("invalid tool result retention %q", descriptor.ResultRetention)
+		}
+	}
+	if descriptor.ContextRetention != "" {
+		switch descriptor.ContextRetention {
+		case ToolContextTransient, ToolContextReceipt:
+		default:
+			return fmt.Errorf("invalid legacy tool context retention %q", descriptor.ContextRetention)
+		}
+	}
+	if descriptor.ResultRetention == "" && descriptor.ContextRetention == "" {
+		return errors.New("tool result retention must be explicit")
+	}
+	if descriptor.ResultRetention == ToolResultEagerCandidate && descriptor.ResultRecoveryKind == "" {
+		return errors.New("eager tool result requires an explicit result recovery kind")
 	}
 	switch descriptor.Steering {
 	case SteeringFinishCurrent, SteeringInterruptibleWait:
@@ -183,6 +222,21 @@ func (descriptor ToolDescriptor) Validate() error {
 		return errors.New("interruptible wait must be read-only and non-mutating")
 	}
 	return nil
+}
+
+// EffectiveResultRetention returns the stable retention policy. Legacy
+// immediate-receipt descriptors replay as deferred so old history is never
+// made more disposable merely because it predates the pressure planner.
+func (descriptor ToolDescriptor) EffectiveResultRetention() ToolResultRetentionMode {
+	if descriptor.ResultRetention != "" {
+		return descriptor.ResultRetention
+	}
+	switch descriptor.ContextRetention {
+	case ToolContextTransient, ToolContextReceipt:
+		return ToolResultDeferred
+	default:
+		return ""
+	}
 }
 
 func validateToolExecutionMutation(execution ToolExecutionClass, scope ToolMutationScope) error {
@@ -303,35 +357,133 @@ const (
 // ToolResultMetadata is display/durability metadata and never enters model
 // content implicitly.
 type ToolResultMetadata struct {
-	OriginalModelBytes   int    `json:"original_model_bytes"`
-	ReturnedModelBytes   int    `json:"returned_model_bytes"`
-	OriginalDisplayBytes int    `json:"original_display_bytes"`
-	ReturnedDisplayBytes int    `json:"returned_display_bytes"`
-	ModelTruncated       bool   `json:"model_truncated"`
-	DisplayTruncated     bool   `json:"display_truncated"`
-	Target               string `json:"target,omitempty"`
-	IdempotencyKey       string `json:"idempotency_key,omitempty"`
+	OriginalModelBytes   int                      `json:"original_model_bytes"`
+	ReturnedModelBytes   int                      `json:"returned_model_bytes"`
+	OriginalDisplayBytes int                      `json:"original_display_bytes"`
+	ReturnedDisplayBytes int                      `json:"returned_display_bytes"`
+	ModelTruncated       bool                     `json:"model_truncated"`
+	DisplayTruncated     bool                     `json:"display_truncated"`
+	Target               string                   `json:"target,omitempty"`
+	IdempotencyKey       string                   `json:"idempotency_key,omitempty"`
+	ArtifactPersistence  *ToolArtifactPersistence `json:"artifact_persistence,omitempty"`
 }
 
-// ToolArtifactRef points to a complete immutable tool output held outside
-// model history. URI is intentionally opaque to the core Agent package.
+// ToolArtifactPersistence records a bounded outcome for an attempted spill.
+// FailureReason is a safe classification and never contains a raw storage
+// error, path, credential, or tool output.
+type ToolArtifactPersistence struct {
+	Attempted     bool   `json:"attempted"`
+	Complete      bool   `json:"complete"`
+	FailureReason string `json:"failure_reason,omitempty"`
+}
+
+const (
+	ToolArtifactFailureStoreUnavailable = "store_unavailable"
+	ToolArtifactFailureBegin            = "begin_failed"
+	ToolArtifactFailureWrite            = "write_failed"
+	ToolArtifactFailureCommit           = "commit_failed"
+)
+
+// ToolArtifactPurpose identifies what an artifact proves about a tool result.
+type ToolArtifactPurpose string
+
+const (
+	maxToolResultArtifacts             = 64
+	maxToolResultArtifactMetadataBytes = 128 * 1024
+
+	// ToolArtifactPurposeCompleteModelOutput means the artifact contains every
+	// byte of ModelContent before any inline projection or truncation. Only this
+	// purpose can replace an arbitrary rich model projection by itself.
+	ToolArtifactPurposeCompleteModelOutput ToolArtifactPurpose = "complete_model_output"
+	// ToolArtifactPurposeCompleteToolOutput contains the complete primary byte
+	// stream emitted by a tool before Denova adds its bounded result envelope.
+	// The retained envelope plus this artifact is a lossless recovery path for
+	// streaming tools that cannot buffer an exact ModelContent copy in memory.
+	ToolArtifactPurposeCompleteToolOutput ToolArtifactPurpose = "complete_tool_output"
+	// ToolArtifactPurposeAttachment is an auxiliary file associated with the
+	// result. It may be useful evidence, but it is not a lossless ModelContent
+	// replacement and therefore never authorizes context cleanup on its own.
+	ToolArtifactPurposeAttachment ToolArtifactPurpose = "attachment"
+)
+
+// ToolArtifactRef points to immutable tool output held outside model history.
+// ReadablePath must remain inside the host's active session/workspace boundary
+// so the ordinary read capability can apply its normal range and byte limits.
 type ToolArtifactRef struct {
-	ID       string `json:"id"`
-	URI      string `json:"uri"`
-	MIMEType string `json:"mime_type"`
-	ByteSize int64  `json:"byte_size"`
-	SHA256   string `json:"sha256"`
+	ID              string              `json:"id"`
+	Purpose         ToolArtifactPurpose `json:"purpose,omitempty"`
+	ReadablePath    string              `json:"readable_path,omitempty"`
+	ContentType     string              `json:"content_type,omitempty"`
+	EstimatedBytes  int64               `json:"estimated_bytes"`
+	EstimatedTokens int                 `json:"estimated_tokens"`
+	Complete        bool                `json:"complete"`
+	// Deprecated compatibility aliases. New consumers use ReadablePath,
+	// ContentType, and EstimatedBytes. SHA256 is optional diagnostic metadata.
+	URI      string `json:"uri,omitempty"`
+	MIMEType string `json:"mime_type,omitempty"`
+	ByteSize int64  `json:"byte_size,omitempty"`
+	SHA256   string `json:"sha256,omitempty"`
+}
+
+// ToolResultRecoveryKind identifies the ordinary capability that can recover
+// content after a rich result has left model context.
+type ToolResultRecoveryKind string
+
+const (
+	ToolResultRecoveryRead     ToolResultRecoveryKind = "read"
+	ToolResultRecoveryRefetch  ToolResultRecoveryKind = "refetch"
+	ToolResultRecoveryRerun    ToolResultRecoveryKind = "rerun"
+	ToolResultRecoveryArtifact ToolResultRecoveryKind = "artifact"
+)
+
+// ToolResultRecoveryHint is bounded and redacted by NormalizeToolResult before
+// it can be persisted or consumed by context planning.
+type ToolResultRecoveryHint struct {
+	Kind            ToolResultRecoveryKind `json:"kind,omitempty"`
+	Reference       map[string]any         `json:"reference,omitempty"`
+	ArtifactPath    string                 `json:"artifact_path,omitempty"`
+	EstimatedBytes  int64                  `json:"estimated_bytes,omitempty"`
+	EstimatedTokens int                    `json:"estimated_tokens,omitempty"`
+}
+
+type ToolResultContextValue string
+
+const (
+	ToolResultContextNormal      ToolResultContextValue = "normal"
+	ToolResultContextDiscardable ToolResultContextValue = "discardable"
+)
+
+// ToolResultContextHints contains semantic cleanup signals. It does not grant
+// permission to clean a result and does not create a second state machine.
+type ToolResultContextHints struct {
+	Recovery        ToolResultRecoveryHint `json:"recovery,omitempty"`
+	ContextValue    ToolResultContextValue `json:"context_value,omitempty"`
+	SupersessionKey string                 `json:"supersession_key,omitempty"`
+}
+
+// ToolResultProtectedReceipt is the bounded, redacted continuity projection
+// for a protected or unresolved tool outcome. It is carried independently of
+// ModelContent so checkpoint compaction can preserve the operation without
+// copying the raw result body back into model context.
+type ToolResultProtectedReceipt struct {
+	SanitizedArguments string `json:"sanitized_arguments,omitempty"`
+	Outcome            string `json:"outcome,omitempty"`
 }
 
 // ToolResult separates bounded model context from display content and
 // structured durability details.
 type ToolResult struct {
-	ModelContent      string               `json:"model_content"`
-	DisplayContent    string               `json:"display_content"`
-	Details           json.RawMessage      `json:"details,omitempty"`
-	Status            ToolResultStatus     `json:"status"`
-	SyntheticReason   ToolSyntheticReason  `json:"synthetic_reason,omitempty"`
-	Metadata          ToolResultMetadata   `json:"metadata"`
+	ModelContent     string                      `json:"model_content"`
+	DisplayContent   string                      `json:"display_content"`
+	Details          json.RawMessage             `json:"details,omitempty"`
+	Status           ToolResultStatus            `json:"status"`
+	SyntheticReason  ToolSyntheticReason         `json:"synthetic_reason,omitempty"`
+	Metadata         ToolResultMetadata          `json:"metadata"`
+	ResultRetention  ToolResultRetentionMode     `json:"result_retention,omitempty"`
+	ContextHints     *ToolResultContextHints     `json:"context_hints,omitempty"`
+	ProtectedReceipt *ToolResultProtectedReceipt `json:"protected_receipt,omitempty"`
+	// Deprecated replay fields. New context planning uses ResultRetention and
+	// ContextHints without rewriting canonical history.
 	ContextRetention  ToolContextRetention `json:"context_retention,omitempty"`
 	RetainedContent   string               `json:"retained_content,omitempty"`
 	RetainedArguments string               `json:"retained_arguments,omitempty"`
@@ -363,6 +515,20 @@ func SyntheticToolResult(status ToolResultStatus, reason ToolSyntheticReason, co
 // IsError reports the provider/runtime error bit for this outcome.
 func (result ToolResult) IsError() bool { return result.Status != ToolResultSuccess }
 
+// EffectiveResultRetention resolves the new contract while keeping old
+// transcript summaries readable without rewriting them in place.
+func (result ToolResult) EffectiveResultRetention() ToolResultRetentionMode {
+	if result.ResultRetention != "" {
+		return result.ResultRetention
+	}
+	switch result.ContextRetention {
+	case ToolContextTransient, ToolContextReceipt:
+		return ToolResultDeferred
+	default:
+		return ""
+	}
+}
+
 // NormalizeToolResult validates and bounds a result using its descriptor. It is
 // safe to call more than once; metadata is recalculated from visible content.
 func NormalizeToolResult(result ToolResult, descriptor ToolDescriptor) (ToolResult, error) {
@@ -384,7 +550,32 @@ func NormalizeToolResult(result ToolResult, descriptor ToolDescriptor) (ToolResu
 	if result.Status == ToolResultSuccess && result.SyntheticReason != "" {
 		return ToolResult{}, errors.New("successful tool result cannot be synthetic")
 	}
+	result.ResultRetention = descriptor.ResultRetention
 	result.ContextRetention = descriptor.ContextRetention
+	normalizedHints, err := normalizeToolResultContextHints(result.ContextHints)
+	if err != nil {
+		return ToolResult{}, err
+	}
+	result.ContextHints = normalizedHints
+	if result.ProtectedReceipt != nil {
+		receipt := *result.ProtectedReceipt
+		receipt.SanitizedArguments = strings.TrimSpace(strings.ToValidUTF8(receipt.SanitizedArguments, "\uFFFD"))
+		receipt.Outcome = strings.TrimSpace(strings.ToValidUTF8(receipt.Outcome, "\uFFFD"))
+		if len(receipt.SanitizedArguments) > descriptor.MaxResultBytes || len(receipt.Outcome) > descriptor.MaxResultBytes {
+			return ToolResult{}, fmt.Errorf("protected tool receipt exceeds %d bytes", descriptor.MaxResultBytes)
+		}
+		if receipt.SanitizedArguments != "" && !json.Valid([]byte(receipt.SanitizedArguments)) {
+			return ToolResult{}, errors.New("protected tool receipt arguments must be valid JSON")
+		}
+		if receipt.Outcome != "" && !json.Valid([]byte(receipt.Outcome)) {
+			return ToolResult{}, errors.New("protected tool receipt outcome must be valid JSON")
+		}
+		if receipt.SanitizedArguments == "" && receipt.Outcome == "" {
+			result.ProtectedReceipt = nil
+		} else {
+			result.ProtectedReceipt = &receipt
+		}
+	}
 	result.RetainedContent = strings.ToValidUTF8(result.RetainedContent, "\uFFFD")
 	result.RetainedArguments = strings.TrimSpace(strings.ToValidUTF8(result.RetainedArguments, "\uFFFD"))
 	if len(result.RetainedContent) > descriptor.MaxResultBytes {
@@ -396,20 +587,63 @@ func NormalizeToolResult(result ToolResult, descriptor ToolDescriptor) (ToolResu
 	if result.RetainedArguments != "" && !json.Valid([]byte(result.RetainedArguments)) {
 		return ToolResult{}, errors.New("retained tool arguments must be valid JSON")
 	}
+	if len(result.Artifacts) > maxToolResultArtifacts {
+		return ToolResult{}, fmt.Errorf("tool result has %d artifacts; maximum is %d", len(result.Artifacts), maxToolResultArtifacts)
+	}
 	for index := range result.Artifacts {
 		artifact := &result.Artifacts[index]
 		artifact.ID = strings.TrimSpace(artifact.ID)
+		artifact.Purpose = ToolArtifactPurpose(strings.TrimSpace(string(artifact.Purpose)))
+		switch artifact.Purpose {
+		case "", ToolArtifactPurposeCompleteModelOutput, ToolArtifactPurposeCompleteToolOutput, ToolArtifactPurposeAttachment:
+		default:
+			return ToolResult{}, fmt.Errorf("tool artifact %d has invalid purpose %q", index, artifact.Purpose)
+		}
 		artifact.URI = strings.TrimSpace(artifact.URI)
+		artifact.ReadablePath = strings.TrimSpace(strings.ToValidUTF8(artifact.ReadablePath, "\uFFFD"))
+		if artifact.ReadablePath == "" {
+			artifact.ReadablePath = strings.ToValidUTF8(artifact.URI, "\uFFFD")
+		}
+		artifact.URI = artifact.ReadablePath
 		artifact.MIMEType = strings.TrimSpace(artifact.MIMEType)
+		artifact.ContentType = strings.TrimSpace(artifact.ContentType)
+		if artifact.ContentType == "" {
+			artifact.ContentType = artifact.MIMEType
+		}
+		artifact.MIMEType = artifact.ContentType
+		if artifact.EstimatedBytes == 0 && artifact.ByteSize > 0 {
+			artifact.EstimatedBytes = artifact.ByteSize
+		}
+		artifact.ByteSize = artifact.EstimatedBytes
+		if artifact.EstimatedTokens == 0 && artifact.EstimatedBytes > 0 {
+			artifact.EstimatedTokens = estimateToolResultTokens(artifact.EstimatedBytes)
+		}
 		artifact.SHA256 = strings.ToLower(strings.TrimSpace(artifact.SHA256))
-		if artifact.ID == "" || artifact.URI == "" || artifact.MIMEType == "" || artifact.ByteSize < 0 {
+		if artifact.ID == "" || artifact.ReadablePath == "" || artifact.ContentType == "" ||
+			artifact.ByteSize < 0 || artifact.EstimatedBytes < 0 || artifact.EstimatedTokens < 0 ||
+			strings.ContainsRune(artifact.ReadablePath, '\x00') {
 			return ToolResult{}, fmt.Errorf("tool artifact %d is invalid", index)
 		}
-		if decoded, err := hex.DecodeString(artifact.SHA256); err != nil || len(decoded) != sha256.Size {
-			return ToolResult{}, fmt.Errorf("tool artifact %d has an invalid SHA-256", index)
+		if artifact.SHA256 != "" {
+			if decoded, err := hex.DecodeString(artifact.SHA256); err != nil || len(decoded) != sha256.Size {
+				return ToolResult{}, fmt.Errorf("tool artifact %d has an invalid SHA-256", index)
+			}
 		}
 	}
+	artifactMetadataLimit := max(descriptor.MaxResultBytes, maxToolResultArtifactMetadataBytes)
+	if encodedArtifacts, err := json.Marshal(result.Artifacts); err != nil {
+		return ToolResult{}, fmt.Errorf("encode tool artifacts: %w", err)
+	} else if len(encodedArtifacts) > artifactMetadataLimit {
+		return ToolResult{}, fmt.Errorf("tool artifact metadata exceeds %d bytes", artifactMetadataLimit)
+	}
 	result.Artifacts = append([]ToolArtifactRef(nil), result.Artifacts...)
+	if result.Metadata.ArtifactPersistence != nil {
+		persistence := *result.Metadata.ArtifactPersistence
+		if err := validateToolArtifactPersistence(persistence); err != nil {
+			return ToolResult{}, err
+		}
+		result.Metadata.ArtifactPersistence = &persistence
+	}
 	if len(result.Details) != 0 {
 		if !json.Valid(result.Details) {
 			return ToolResult{}, errors.New("tool result details must be valid JSON")

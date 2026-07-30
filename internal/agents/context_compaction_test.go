@@ -3,6 +3,7 @@ package agents
 import (
 	"context"
 	"fmt"
+	"reflect"
 	"strings"
 	"testing"
 
@@ -64,6 +65,8 @@ func TestBuildContextCompactionUsesExplicitSourceTranscript(t *testing.T) {
 	}
 
 	modelMessages := []*agent.Message{
+		agent.UserMessage(strings.Repeat("旧模型历史", 80)),
+		agent.AssistantMessage(strings.Repeat("旧模型结果", 80), nil),
 		agent.UserMessage("当前模型指令"),
 	}
 	sourceMessages := []*agent.Message{
@@ -72,7 +75,7 @@ func TestBuildContextCompactionUsesExplicitSourceTranscript(t *testing.T) {
 	}
 	sourceMessages[1].ReasoningContent = "剧情 thinking 不应进入压缩源"
 
-	newMessages, result, err := PrepareContextCompaction(context.Background(), &config.Config{}, config.AgentKindInteractiveStory, ContextCompactionInput{
+	newMessages, result, err := PrepareContextCompaction(contextCompactionColdTestContext(), &config.Config{}, config.AgentKindInteractiveStory, ContextCompactionInput{
 		Messages:         modelMessages,
 		SourceMessages:   sourceMessages,
 		ReferenceContext: "Lore: plot_summary",
@@ -99,6 +102,88 @@ func TestBuildContextCompactionUsesExplicitSourceTranscript(t *testing.T) {
 	}
 }
 
+func TestContextCompactionExplicitEmptySourceNeverAbsorbsPendingTail(t *testing.T) {
+	previous := summarizeContextForCompaction
+	defer func() { summarizeContextForCompaction = previous }()
+	called := false
+	summarizeContextForCompaction = func(_ context.Context, _ *config.Config, _ string, _ string, _ []*agent.Message, _ string, _ int, _ contextCompactionPolicy, _ func(int, string)) (string, int, error) {
+		called = true
+		return "must not run", 1, nil
+	}
+
+	messages := []*agent.Message{NewContextCompactionSummaryMessage(3, "completed boundary already checkpointed")}
+	for index := 0; index < 4; index++ {
+		messages = append(messages, agent.UserMessage(fmt.Sprintf("pending interrupted input %d", index)))
+		messages = append(messages, largePendingToolBatchForCompactionTest(index)...)
+	}
+	compacted, result, err := PrepareContextCompaction(context.Background(), &config.Config{}, config.AgentKindInteractiveStory, ContextCompactionInput{
+		Messages:           messages,
+		SourceMessages:     nil,
+		SourceMessagesSet:  true,
+		ExistingCheckpoint: "completed boundary already checkpointed",
+		Force:              true,
+		KeepLatestUser:     true,
+	}, 4)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if called || result.Triggered || result.SkippedReason != "empty_source" {
+		t.Fatalf("explicit empty source was not fail-closed: called=%t result=%#v", called, result)
+	}
+	if !reflect.DeepEqual(compacted, messages) {
+		t.Fatalf("pending tail changed on empty-source compaction:\nwant=%#v\ngot=%#v", messages, compacted)
+	}
+}
+
+func TestContextCompactionRejectsPendingDominatedProjectionAboveHardBand(t *testing.T) {
+	previous := summarizeContextForCompaction
+	defer func() { summarizeContextForCompaction = previous }()
+	summarizeContextForCompaction = func(_ context.Context, _ *config.Config, _ string, _ string, _ []*agent.Message, _ string, _ int, _ contextCompactionPolicy, _ func(int, string)) (string, int, error) {
+		return "small completed-history checkpoint", 10_000, nil
+	}
+
+	source := []*agent.Message{
+		agent.UserMessage(strings.Repeat("old removable turn ", 1800)),
+		agent.AssistantMessage(strings.Repeat("old removable answer ", 1800), nil),
+		agent.UserMessage("small retained turn"),
+		agent.AssistantMessage("small retained answer", nil),
+	}
+	messages := append([]*agent.Message(nil), source...)
+	for index := 0; index < 4; index++ {
+		messages = append(messages, agent.UserMessage(fmt.Sprintf("pending interrupted input %d", index)))
+		messages = append(messages, largePendingToolBatchForCompactionTest(index)...)
+	}
+	preview, _ := compactMessagesForModelThroughSource(messages, "small completed-history checkpoint", "", 1, 1, len(source))
+	window := EstimateContextTokens(preview, nil)
+	cfg := &config.Config{OpenAIContextWindowTokens: window}
+
+	compacted, result, err := PrepareContextCompaction(contextCompactionColdTestContext(), cfg, config.AgentKindInteractiveStory, ContextCompactionInput{
+		Messages:          messages,
+		SourceMessages:    source,
+		SourceMessagesSet: true,
+		Force:             true,
+		KeepLatestUser:    true,
+	}, 1)
+	if err == nil || !strings.Contains(err.Error(), "above hard publish band") {
+		t.Fatalf("pending-dominated compaction error = %v, result=%#v", err, result)
+	}
+	if result.Triggered || result.SkippedReason != "no_progress" || result.TokensAfter < int(float64(window)*0.85) {
+		t.Fatalf("pending-dominated candidate was not rejected: %#v", result)
+	}
+	if !reflect.DeepEqual(compacted, messages) {
+		t.Fatalf("rejected compaction replaced the live pending tail")
+	}
+}
+
+func largePendingToolBatchForCompactionTest(index int) []*agent.Message {
+	callID := fmt.Sprintf("pending-call-%d", index)
+	assistant := agent.AssistantMessage("inspect pending evidence", []agent.ToolCall{{
+		ID: callID, Type: "function", Function: agent.FunctionCall{Name: "read", Arguments: fmt.Sprintf(`{"path":"pending/%d.log"}`, index)},
+	}})
+	result := agent.ToolMessage(agent.TextToolResult(strings.Repeat(fmt.Sprintf("pending-result-%d ", index), 1600)), callID)
+	return []*agent.Message{assistant, result}
+}
+
 func TestBuildContextCompactionUsesContextCompactionTargetRange(t *testing.T) {
 	previous := summarizeContextForCompaction
 	defer func() { summarizeContextForCompaction = previous }()
@@ -117,10 +202,11 @@ func TestBuildContextCompactionUsesContextCompactionTargetRange(t *testing.T) {
 			CompactionTargetMax: &maxRatio,
 		},
 	}}
-	_, _, err := PrepareContextCompaction(context.Background(), cfg, config.AgentKindIDE, ContextCompactionInput{
+	_, _, err := PrepareContextCompaction(contextCompactionColdTestContext(), cfg, config.AgentKindIDE, ContextCompactionInput{
 		Messages: []*agent.Message{
-			agent.UserMessage("用户说了很多重要要求"),
-			agent.AssistantMessage("助手完成了一些重要工作", nil),
+			agent.UserMessage(strings.Repeat("用户说了很多重要要求", 80)),
+			agent.AssistantMessage(strings.Repeat("助手完成了一些重要工作", 80), nil),
+			agent.UserMessage("当前请求"),
 		},
 		Force:          true,
 		KeepLatestUser: true,
@@ -142,11 +228,14 @@ func TestBuildContextCompactionTriggersOnProjectedEightyPercentUsage(t *testing.
 
 	cfg := &config.Config{OpenAIContextWindowTokens: 1000}
 	messages := []*agent.Message{
-		agent.UserMessage("上一轮用户行动"),
-		agent.AssistantMessage("上一轮剧情结果", nil),
+		agent.UserMessage(strings.Repeat("上一轮用户行动", 30)),
+		agent.AssistantMessage(strings.Repeat("上一轮剧情结果", 30), nil),
 		agent.UserMessage("当前用户行动"),
 	}
-	_, result, err := PrepareContextCompaction(context.Background(), cfg, config.AgentKindInteractiveStory, ContextCompactionInput{
+	model := &compactionForkCaptureModel{response: agent.AssistantMessage("unused", nil)}
+	call := &agent.ModelCall{Model: model, Messages: messages, Options: []agent.ModelOption{agent.WithTools(nil)}}
+	ctx := contextWithCompactionRequestSnapshot(context.Background(), call.Snapshot())
+	_, result, err := PrepareContextCompaction(ctx, cfg, config.AgentKindInteractiveStory, ContextCompactionInput{
 		Messages:                 messages,
 		ReservedCompletionTokens: 850,
 		KeepLatestUser:           true,
@@ -182,6 +271,24 @@ func TestContextTokenProjectionCalibratesFromExactPreviousProviderUsage(t *testi
 	}
 }
 
+func TestRecalculateContextCompactionProjectionKeepsCalibrationAndReserves(t *testing.T) {
+	result := RecalculateContextCompactionProjection(ContextCompactionResult{
+		ObservedPromptTokens:     840,
+		ObservedEstimateTokens:   450,
+		ReservedCompletionTokens: 20,
+		ReservedToolResultTokens: 30,
+		ContextWindowTokens:      1000,
+		Threshold:                0.85,
+		RecoveryBand:             0.80,
+	}, 450)
+	if result.TokensAfter != 840 || result.ProjectedTokensAfter != 890 {
+		t.Fatalf("recalculated projection = %#v", result)
+	}
+	if result.RecoveryBandMet || !result.Degraded || result.RecoveryTargetTokens != 680 {
+		t.Fatalf("84%% calibrated projection was misclassified: %#v", result)
+	}
+}
+
 func TestBuildContextCompactionEmitsStreamingSummaryDelta(t *testing.T) {
 	previous := summarizeContextForCompaction
 	defer func() { summarizeContextForCompaction = previous }()
@@ -193,10 +300,11 @@ func TestBuildContextCompactionEmitsStreamingSummaryDelta(t *testing.T) {
 	}
 
 	var events []Event
-	_, result, err := PrepareContextCompaction(context.Background(), &config.Config{}, config.AgentKindIDE, ContextCompactionInput{
+	_, result, err := PrepareContextCompaction(contextCompactionColdTestContext(), &config.Config{}, config.AgentKindIDE, ContextCompactionInput{
 		Messages: []*agent.Message{
-			agent.UserMessage("用户提出了一个很长的需求"),
-			agent.AssistantMessage("助手完成了很多上下文相关工作", nil),
+			agent.UserMessage(strings.Repeat("用户提出了一个很长的需求", 80)),
+			agent.AssistantMessage(strings.Repeat("助手完成了很多上下文相关工作", 80), nil),
+			agent.UserMessage("当前请求"),
 		},
 		Force:          true,
 		KeepLatestUser: true,
@@ -228,6 +336,14 @@ func TestBuildContextCompactionEmitsStreamingSummaryDelta(t *testing.T) {
 	}
 }
 
+// contextCompactionColdTestContext isolates tests of the layered summarizer
+// from the production manual-entry invariant. Product manual compaction must
+// supply the final assembled primary request; these fixtures intentionally
+// exercise the exceptional standalone path with a deterministic stub.
+func contextCompactionColdTestContext() context.Context {
+	return contextWithStandaloneCompactionFallback(context.Background(), "test_fixture")
+}
+
 func TestContextCompactionPolicyUsesConfiguredRetainedTurns(t *testing.T) {
 	cfg := &config.Config{}
 
@@ -248,6 +364,52 @@ func TestContextCompactionPolicyUsesConfiguredRetainedTurns(t *testing.T) {
 	}
 	if policy.Strategy != config.AgentContextCompactionStrategySummaryAgent {
 		t.Fatalf("strategy = %q, want summary_agent", policy.Strategy)
+	}
+}
+
+func TestContextCompactionRecoveryBandDistinguishesHealthyAndDegradedResults(t *testing.T) {
+	healthy := ContextCompactionResult{
+		TokensBefore: 900, TokensAfter: 680, ContextWindowTokens: 1000,
+		Threshold: 0.85, RecoveryBand: 0.80,
+	}
+	applyContextCompactionRecovery(&healthy)
+	if healthy.RecoveryTargetTokens != 680 || !healthy.RecoveryBandMet || healthy.Degraded {
+		t.Fatalf("healthy recovery = %#v", healthy)
+	}
+
+	degraded := healthy
+	degraded.TokensAfter = 700
+	applyContextCompactionRecovery(&degraded)
+	if degraded.RecoveryBandMet || !degraded.Degraded {
+		t.Fatalf("degraded recovery = %#v", degraded)
+	}
+	if err := ValidateContextCompactionResult(degraded); err != nil {
+		t.Fatalf("degraded but publishable result was rejected: %v", err)
+	}
+
+	unsafe := degraded
+	unsafe.TokensAfter = 850
+	applyContextCompactionRecovery(&unsafe)
+	if err := ValidateContextCompactionResult(unsafe); err == nil {
+		t.Fatal("post-context at the 85% hard band must be rejected")
+	}
+}
+
+func TestDegradedCompactionRetryLatchRequiresMaterialContextChange(t *testing.T) {
+	if !ContextCompactionNoProgressLatched(700, 1000, 0.85, 0.80, 20, 100, "same", 2, "same", 2) {
+		t.Fatal("degraded checkpoint with an unchanged small tail should be latched")
+	}
+	if ContextCompactionNoProgressLatched(700, 1000, 0.85, 0.80, 100, 100, "same", 2, "same", 2) {
+		t.Fatal("enough new canonical context should release the latch")
+	}
+	if ContextCompactionNoProgressLatched(700, 1000, 0.85, 0.80, 20, 100, "old", 2, "new", 2) {
+		t.Fatal("a materially changed cleanup candidate set should release the latch")
+	}
+	if ContextCompactionNoProgressLatched(700, 1000, 0.85, 0.80, 20, 100, "same", 2, "same", 3) {
+		t.Fatal("a new cleanup candidate generation should release the latch")
+	}
+	if ContextCompactionNoProgressLatched(650, 1000, 0.85, 0.80, 20, 100, "same", 2, "same", 2) {
+		t.Fatal("a healthy checkpoint must not install a degraded latch")
 	}
 }
 

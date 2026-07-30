@@ -218,7 +218,7 @@ func (agent *Agent) run(parent context.Context, input *AgentInput, options *agen
 			}
 		}
 
-		modelContext := &ModelContext{Tools: cloneToolInfos(state.ToolInfos), Retry: agent.retry}
+		modelContext := &ModelContext{Tools: cloneToolInfos(state.ToolInfos), Retry: agent.retry, Iteration: iteration}
 		for _, middleware := range agent.middlewares {
 			ctx, state, err = middleware.BeforeModelRewriteState(ctx, state, modelContext)
 			if err != nil {
@@ -242,13 +242,39 @@ func (agent *Agent) run(parent context.Context, input *AgentInput, options *agen
 			return
 		}
 		modelOptions := []ModelOption{WithTools(state.ToolInfos)}
+		modelCall := &ModelCall{
+			Model: modelForCall, Messages: cloneMessages(state.Messages),
+			Options: modelOptions, Streaming: input.EnableStreaming,
+		}
+		for _, middleware := range agent.middlewares {
+			ctx, modelCall, err = middleware.BeforeModelCall(ctx, modelCall, modelContext)
+			if err != nil {
+				events.Send(agent.errorEvent(fmt.Errorf("before model call middleware: %w", err)))
+				return
+			}
+			if ctx == nil {
+				events.Send(agent.errorEvent(errors.New("before model call middleware returned nil Go context")))
+				return
+			}
+			if modelCall == nil || modelCall.Model == nil {
+				events.Send(agent.errorEvent(errors.New("before model call middleware returned nil model call")))
+				return
+			}
+		}
+		if modelRequestCaptureRequested(ctx) {
+			events.Send(&AgentEvent{AgentName: agent.name, Action: &AgentAction{
+				CustomizedAction: preparedModelRequest{snapshot: modelCall.Snapshot()},
+			}})
+			return
+		}
+		state.Messages = cloneMessages(modelCall.Messages)
 		assistant, modelResponseOrdinal, err := agent.callModelWithRetry(
 			ctx,
-			modelForCall,
+			modelCall.Model,
 			registry,
-			cloneMessages(state.Messages),
-			modelOptions,
-			input.EnableStreaming,
+			cloneMessages(modelCall.Messages),
+			modelCall.Options,
+			modelCall.Streaming,
 			events,
 			options.cancel,
 		)

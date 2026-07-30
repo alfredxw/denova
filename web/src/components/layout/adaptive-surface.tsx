@@ -1,9 +1,10 @@
 import { useEffect, useLayoutEffect, useRef, useState, type ReactNode } from 'react'
 import { createPortal } from 'react-dom'
-import { Group, Panel, Separator, type Layout } from 'react-resizable-panels'
+import { Group, Panel, type Layout } from 'react-resizable-panels'
 import { useTranslation } from 'react-i18next'
 import { useIsMobile } from '@/hooks/useIsMobile'
 import { MobilePaneHost, type MobilePane, type MobilePaneControls } from './mobile-pane-host'
+import { CollapsiblePanelSeparator, CollapsibleResizablePanel, InlineCollapsiblePane } from './panel-motion'
 import { createStablePortalHost, StablePortalSlot } from './stable-portal-slot'
 
 export interface AdaptiveSurfacePane {
@@ -15,6 +16,10 @@ export interface AdaptiveSurfacePane {
   enabled?: boolean
   desktopClassName?: string
   mobileClassName?: string
+  /** Keeps a desktop pane mounted but contracts it to zero when false. */
+  desktopVisible?: boolean
+  /** Stable inline size used when a non-resizable desktop pane can be toggled. */
+  desktopSize?: string
   onOpen?: () => void
   onClose?: () => void
 }
@@ -76,6 +81,8 @@ export function AdaptiveSurface({
   const [mainContentHost] = useState(() => createStablePortalHost('flex h-full min-h-0 w-full min-w-0 flex-col'))
   const [mobileOpenPaneId, setMobileOpenPaneId] = useState<string | null>(null)
   const mobileControlsRef = useRef<MobilePaneControls>(closedControls)
+  const retainedRightPaneRef = useRef<AdaptiveSurfacePane | null>(null)
+  if (right && right.enabled !== false) retainedRightPaneRef.current = right
 
   useEffect(() => {
     if (!isMobile) setMobileOpenPaneId(null)
@@ -145,35 +152,43 @@ export function AdaptiveSurface({
   } else {
     const desktopLeft = left && left.enabled !== false ? left : null
     const desktopRight = right && right.enabled !== false ? right : null
-    if (desktopRight && rightResize) {
+    const retainedDesktopRight = retainedRightPaneRef.current
+    const desktopRightVisible = Boolean(desktopRight && desktopRight.desktopVisible !== false)
+    if (rightResize) {
       surface = (
         <div className={`flex h-full min-h-0 min-w-0 ${className}`} data-nova-adaptive-resizable="true">
-          {desktopLeft ? <div className={desktopLeft.desktopClassName}>{desktopLeft.content}</div> : null}
+          {desktopLeft ? <AdaptiveDesktopPane pane={desktopLeft} /> : null}
           <Group
             id={rightResize.layoutKey}
+            data-nova-panel-motion-group="true"
             orientation="horizontal"
             resizeTargetMinimumSize={{ coarse: 16, fine: 1 }}
             defaultLayout={readStoredLayout(rightResize.layoutKey)}
-            onLayoutChanged={(layout) => storeLayout(rightResize.layoutKey, layout)}
+            onLayoutChanged={(layout) => {
+              if (desktopRightVisible) storeLayout(rightResize.layoutKey, layout)
+            }}
             className="min-h-0 min-w-0 flex-1"
           >
             <Panel id="main" minSize={rightResize.mainMinSize ?? '240px'} className="min-w-0">
               {mainContentSlot}
             </Panel>
-            <Separator
+            <CollapsiblePanelSeparator
+              visible={desktopRightVisible}
               aria-label={rightResize.label}
               className="nova-resize-handle nova-resize-divider nova-resize-divider-vertical relative z-30 -mx-1 w-2 shrink-0 touch-none cursor-col-resize select-none"
             />
-            <Panel
+            <CollapsibleResizablePanel
               id="right"
+              visible={desktopRightVisible}
+              side="right"
               defaultSize={rightResize.defaultSize ?? '420px'}
               minSize={rightResize.minSize ?? '300px'}
               maxSize={rightResize.maxSize ?? '65%'}
               groupResizeBehavior="preserve-pixel-size"
-              className="min-w-0"
+              className={`min-w-0 ${retainedDesktopRight?.desktopClassName ?? ''}`}
             >
-              <div className={`h-full min-h-0 ${desktopRight.desktopClassName ?? ''}`}>{desktopRight.content}</div>
-            </Panel>
+              {retainedDesktopRight?.content ?? null}
+            </CollapsibleResizablePanel>
           </Group>
         </div>
       )
@@ -181,9 +196,9 @@ export function AdaptiveSurface({
       const gridClassName = desktopGridClassName || defaultDesktopGridClassName(Boolean(desktopLeft), Boolean(desktopRight))
       surface = (
         <div className={`grid h-full min-h-0 ${className} ${gridClassName}`}>
-          {desktopLeft ? <div className={desktopLeft.desktopClassName}>{desktopLeft.content}</div> : null}
+          {desktopLeft ? <AdaptiveDesktopPane pane={desktopLeft} /> : null}
           {mainContentSlot}
-          {desktopRight ? <div className={desktopRight.desktopClassName}>{desktopRight.content}</div> : null}
+          {desktopRight ? <AdaptiveDesktopPane pane={desktopRight} /> : null}
         </div>
       )
     }
@@ -200,6 +215,27 @@ export function AdaptiveSurface({
       {renderedSurface}
       {mainContentPortal}
     </>
+  )
+}
+
+function AdaptiveDesktopPane({ pane }: { pane: AdaptiveSurfacePane }) {
+  const visible = pane.desktopVisible !== false
+  if (pane.desktopSize) {
+    return (
+      <InlineCollapsiblePane
+        visible={visible}
+        side={pane.side}
+        size={pane.desktopSize}
+        className={pane.desktopClassName}
+      >
+        {pane.content}
+      </InlineCollapsiblePane>
+    )
+  }
+  return (
+    <div className={pane.desktopClassName} hidden={!visible} aria-hidden={!visible} inert={!visible}>
+      {pane.content}
+    </div>
   )
 }
 

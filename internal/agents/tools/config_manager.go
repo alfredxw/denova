@@ -110,7 +110,8 @@ func configReadDescriptor(maxResultBytes ...int) agent.ToolDescriptor {
 	return agent.ToolDescriptor{
 		Source: agent.ToolSourceRead, Capability: config.AgentToolConfigRead, Execution: agent.ToolExecutionParallelRead,
 		MutationScope: agent.ToolMutationNone, PostCheck: agent.ToolPostCheckNone, Recovery: agent.ToolRecoveryReadOnly,
-		ResultProjection: agent.ToolResultBoundedModelContext, ContextRetention: agent.ToolContextReceipt,
+		ResultRecoveryKind: agent.ToolResultRecoveryRerun,
+		ResultProjection:   agent.ToolResultBoundedModelContext, ResultRetention: agent.ToolResultDeferred,
 		Steering: agent.SteeringFinishCurrent, MaxResultBytes: limit,
 	}
 }
@@ -123,7 +124,7 @@ func configApplyDescriptor(maxResultBytes ...int) agent.ToolDescriptor {
 	return agent.ToolDescriptor{
 		Source: agent.ToolSourceWrite, Capability: config.AgentToolConfigApply, Execution: agent.ToolExecutionConfigExclusive,
 		MutationScope: agent.ToolMutationConfig, PostCheck: agent.ToolPostCheckConfigRevision, Recovery: agent.ToolRecoveryReconcilable,
-		ResultProjection: agent.ToolResultBoundedModelContext, ContextRetention: agent.ToolContextReceipt,
+		ResultProjection: agent.ToolResultBoundedModelContext, ResultRetention: agent.ToolResultProtected,
 		Steering: agent.SteeringFinishCurrent, MaxResultBytes: limit,
 	}
 }

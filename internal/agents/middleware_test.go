@@ -306,6 +306,7 @@ func TestToolOrchestratorKeepsExecutionMetadataOutOfModelResult(t *testing.T) {
 
 func TestToolOrchestratorTruncatesResultWhenLimitConfigured(t *testing.T) {
 	middleware := &toolOrchestratorMiddleware{agentKind: AgentKindIDE, toolResultMaxBytes: 128}
+	ctx := agent.ContextWithToolArtifactStore(context.Background(), &processorArtifactStore{})
 	endpoint, err := wrapTextToolCallForTest(middleware,
 		func(context.Context, string, ...agent.ToolOption) (string, error) {
 			return strings.Repeat("正文", 200), nil
@@ -315,7 +316,7 @@ func TestToolOrchestratorTruncatesResultWhenLimitConfigured(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	result, err := endpoint(context.Background(), `{"path":"chapters/ch01.md"}`)
+	result, err := endpoint(ctx, `{"path":"chapters/ch01.md"}`)
 	if err != nil {
 		t.Fatal(err)
 	}

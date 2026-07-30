@@ -131,11 +131,14 @@ func (runner *LocalCommandRunner) runProcess(
 	var artifactWriter agent.ToolArtifactWriter
 	if store := agent.ToolArtifactStoreFromContext(runCtx); store != nil {
 		writer, beginErr := store.BeginToolArtifact(runCtx, agent.ToolArtifactRequest{
-			ToolName: string(runner.shell), MIMEType: "text/plain; charset=utf-8", Extension: "log",
+			ToolName: string(runner.shell), Purpose: agent.ToolArtifactPurposeCompleteToolOutput,
+			MIMEType: "text/plain; charset=utf-8", Extension: "log",
 			Description: "Complete merged stdout/stderr from one foreground command",
 		})
 		if beginErr != nil {
-			return CommandResult{}, fmt.Errorf("begin command output artifact: %w", beginErr)
+			// The store error may include a host path or credential. The command has
+			// not started yet, so return a stable retryable classification only.
+			return CommandResult{}, fmt.Errorf("begin command output artifact: %s", agent.ToolArtifactFailureBegin)
 		}
 		artifactWriter = writer
 	}
@@ -223,12 +226,13 @@ func (runner *LocalCommandRunner) runProcess(
 	artifactError := ""
 	if artifactWriter != nil {
 		if artifactWriteErr != nil {
-			artifactError = boundedString("write command output artifact: "+artifactWriteErr.Error(), 4*1024)
+			artifactError = agent.ToolArtifactFailureWrite
 			_ = artifactWriter.Abort()
 		} else {
 			published, commitErr := artifactWriter.Commit()
 			if commitErr != nil {
-				artifactError = boundedString("commit command output artifact: "+commitErr.Error(), 4*1024)
+				artifactError = agent.ToolArtifactFailureCommit
+				_ = artifactWriter.Abort()
 			} else {
 				artifact = &published
 			}

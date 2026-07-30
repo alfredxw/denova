@@ -211,10 +211,12 @@ describe('ChangeReviewWorkspace', () => {
 
     const navigator = document.querySelector<HTMLElement>('[data-review-file-navigator]')
     expect(navigator).not.toBeNull()
+    const navigatorMotion = navigator?.closest('[data-nova-panel-motion="inline"]')
     fireEvent.click(within(navigator as HTMLElement).getByRole('button', { name: /收起文件导航|Hide file navigator/i }))
-    expect(document.querySelector('[data-review-file-navigator]')).toBeNull()
+    expect(navigatorMotion).toHaveAttribute('data-state', 'closed')
+    expect(navigatorMotion).toHaveAttribute('aria-hidden', 'true')
     fireEvent.click(screen.getByRole('button', { name: /展开文件导航|Show file navigator/i }))
-    expect(document.querySelector('[data-review-file-navigator]')).not.toBeNull()
+    expect(navigatorMotion).toHaveAttribute('data-state', 'open')
   })
 
   it('keeps an Agent toggle in the Review toolbar after the Agent panel is closed', async () => {

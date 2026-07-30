@@ -364,22 +364,20 @@ func TestBuiltinContextCompactionPromptIsConfigurableInAgentsView(t *testing.T) 
 	if !strings.Contains(builtin.ContextCompaction.SystemPrompt, "上下文 checkpoint 编译器") {
 		t.Fatalf("builtin context compaction prompt missing role:\n%s", builtin.ContextCompaction.SystemPrompt)
 	}
-	for _, required := range []string{
-		"【历史事件时间线】", "【历史因果与来源】", "【未闭环事项】",
-		"【任务目标与用户约束】", "【当前状态】", "【发现、证据与验证】",
-		"source_agent_kind", "目标长度由用户消息给出的范围控制",
-	} {
+	requiredParts := append([]string(nil), contextCompactionCheckpointHeadings...)
+	requiredParts = append(requiredParts, "source_agent_kind", "目标长度由用户消息给出的范围控制")
+	for _, required := range requiredParts {
 		if !strings.Contains(builtin.ContextCompaction.SystemPrompt, required) {
 			t.Fatalf("builtin context compaction prompt missing %q:\n%s", required, builtin.ContextCompaction.SystemPrompt)
 		}
 	}
 	if !strings.Contains(builtin.ContextCompaction.SystemPrompt, "checkpoint 不是新的事实真源") ||
-		!strings.Contains(builtin.ContextCompaction.SystemPrompt, "artifact URI") {
+		!strings.Contains(builtin.ContextCompaction.SystemPrompt, "artifact 可读路径") {
 		t.Fatalf("builtin context compaction prompt should define the checkpoint boundary:\n%s", builtin.ContextCompaction.SystemPrompt)
 	}
 
 	blocks := BuiltinAgentPromptBlocks(cfg, state, IDEStoryTeller{})
-	if !strings.Contains(blocks.ContextCompaction.EditableSystemPrompt, "【历史事件时间线】") {
+	if !strings.Contains(blocks.ContextCompaction.EditableSystemPrompt, contextCompactionCheckpointHeadings[0]) {
 		t.Fatalf("context compaction editable prompt missing target rule:\n%s", blocks.ContextCompaction.EditableSystemPrompt)
 	}
 

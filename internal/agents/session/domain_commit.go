@@ -45,6 +45,7 @@ type ContextSnapshot struct {
 	EffectiveMessages []*agent.Message
 	Cursor            ContextCursor
 	Compaction        *ContextCompaction
+	ToolResultCleanup *ToolResultCleanupRecord
 	ContextWindow     *ContextWindowProjection
 }
 
@@ -280,6 +281,9 @@ func (s *Session) snapshotContextLocked(agentKind string) (ContextSnapshot, erro
 	snapshot := ContextSnapshot{EffectiveMessages: s.effectiveTranscriptMessagesLocked(), Cursor: s.contextCursorLocked()}
 	if compaction, ok := s.latestActiveContextCompactionLocked(agentKind); ok {
 		snapshot.Compaction = &compaction
+	}
+	if cleanup, ok := s.latestActiveToolResultCleanupLocked(agentKind); ok {
+		snapshot.ToolResultCleanup = &cleanup
 	}
 	projection, ok, err := s.latestContextWindowProjectionLocked(agentKind)
 	if err != nil {

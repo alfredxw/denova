@@ -65,6 +65,7 @@ func Glob(searcher Searcher, options ...DefinitionOption) (agent.ToolDefinition,
 		return agent.ToolDefinition{}, errors.New("glob Searcher is nil")
 	}
 	descriptor := readDescriptor(options...)
+	descriptor.ResultRecoveryKind = agent.ToolResultRecoveryRerun
 	tool, err := agent.InferTool("glob", `Find workspace files or directories by path. A call may include several files, directories, or glob patterns; results are de-duplicated and bounded. Use read on a directory when you need its structure.
 
 按路径查找工作区文件或目录。一次可传入多个文件、目录或 glob 模式；结果会去重并受限。需要理解目录结构时请使用 read。`, func(ctx context.Context, input globInput) (agent.ToolResult, error) {
@@ -104,6 +105,7 @@ func Grep(searcher Searcher, options ...DefinitionOption) (agent.ToolDefinition,
 		return agent.ToolDefinition{}, errors.New("grep Searcher is nil")
 	}
 	descriptor := readDescriptor(options...)
+	descriptor.ResultRecoveryKind = agent.ToolResultRecoveryRerun
 	tool, err := agent.InferTool("grep", `Search workspace text with ripgrep regular expressions. Content mode returns copyable paths, stable line numbers, and original context suitable for edit.old_string. A cursor is valid only for the identical query while the workspace remains unchanged; restart from the first page after mutations.
 
 使用 ripgrep 正则搜索工作区文本。content 模式返回可复制路径、稳定行号和原始上下文，可用于 edit.old_string。游标仅适用于工作区未变化时的同一查询；工作区变更后请从第一页重新搜索。`, func(ctx context.Context, input grepInput) (agent.ToolResult, error) {

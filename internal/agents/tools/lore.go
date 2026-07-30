@@ -177,7 +177,7 @@ func newLoreTools(workspace string, allowWrite bool, options ...loreToolsOptions
 	if err != nil {
 		return nil, err
 	}
-	readDescriptor := boundedReadDescriptor(ToolSourceLore, config.AgentToolLoreRead)
+	readDescriptor := boundedReadDescriptor(ToolSourceLore, config.AgentToolLoreRead, agent.ToolResultRecoveryRerun)
 	definedReadTool, err := defineTool(readTool, readDescriptor)
 	if err != nil {
 		return nil, err

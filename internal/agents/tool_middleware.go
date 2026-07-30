@@ -19,12 +19,14 @@ const maxToolErrorDiagnosticBytes = 4 * 1024
 // result projection without owning batch scheduling.
 type toolOrchestratorMiddleware struct {
 	*agent.BaseMiddleware
-	agentKind           string
-	policyKind          string
-	toolSettings        config.ResolvedAgentToolSettings
-	enforceToolSettings bool
-	toolResultMaxBytes  int
-	executionGate       *toolExecutionGate
+	agentKind                string
+	policyKind               string
+	toolSettings             config.ResolvedAgentToolSettings
+	enforceToolSettings      bool
+	toolResultMaxBytes       int
+	toolResultEagerMinTokens int
+	contextWindowTokens      int
+	executionGate            *toolExecutionGate
 }
 
 type interactiveStoryToolMiddleware struct{ *agent.BaseMiddleware }
@@ -137,12 +139,14 @@ type ToolDecision struct {
 // ToolExecutionRecord is the bounded lifecycle projection stored by durable
 // runtime. DisplayContent and Details deliberately do not live here.
 type ToolExecutionRecord struct {
-	ToolName              string               `json:"tool_name"`
-	ProviderCallID        string               `json:"provider_call_id,omitempty"`
-	ExecutionID           string               `json:"execution_id,omitempty"`
-	Workspace             string               `json:"workspace,omitempty"`
-	Status                string               `json:"status"`
-	SyntheticReason       string               `json:"synthetic_reason,omitempty"`
+	ToolName        string `json:"tool_name"`
+	ProviderCallID  string `json:"provider_call_id,omitempty"`
+	ExecutionID     string `json:"execution_id,omitempty"`
+	Workspace       string `json:"workspace,omitempty"`
+	Status          string `json:"status"`
+	SyntheticReason string `json:"synthetic_reason,omitempty"`
+	// Result is the bounded model projection required by the recoverable harness
+	// runtime. RunLedger records only its byte counts and status, never this body.
 	Result                string               `json:"result,omitempty"`
 	DomainStatus          string               `json:"domain_status,omitempty"`
 	DomainDiagnosticCount int                  `json:"domain_diagnostic_count,omitempty"`
@@ -235,10 +239,28 @@ func (m *toolOrchestratorMiddleware) WrapToolCall(
 				if recordErr := recordToolFinish(ctx, record); recordErr != nil {
 					return result, recordErr
 				}
+				if agent.IsToolControlError(err) {
+					return result, err
+				}
 				return result, nil
 			}
 		}
 
+		processed, processErr := processToolResult(ctx, decision, args, result, toolResultProcessingPolicy{
+			MaxBytes: m.toolResultLimitBytes(), EagerMinTokens: m.toolResultEagerMinTokens,
+			ContextWindowTokens: m.contextWindowTokens,
+		})
+		if processErr != nil {
+			projected, record := projectToolError(decision, args, processed, processErr, m.toolResultLimitBytes())
+			if recordErr := recordToolFinish(ctx, record); recordErr != nil {
+				return projected, recordErr
+			}
+			if agent.IsToolControlError(processErr) {
+				return projected, processErr
+			}
+			return projected, nil
+		}
+		result = processed
 		filtered := filterStructuredToolResultWithDescriptor(
 			toolName(toolCtx), decision.Descriptor, args, result, m.toolResultLimitBytes(),
 		)
@@ -268,6 +290,13 @@ func projectToolError(decision ToolDecision, args string, returned agent.ToolRes
 	if len(returned.Details) != 0 {
 		errorResult.Details = append(errorResult.Details[:0], returned.Details...)
 	}
+	errorResult.Artifacts = append([]agent.ToolArtifactRef(nil), returned.Artifacts...)
+	errorResult.ContextHints = returned.ContextHints
+	errorResult.Metadata.OriginalModelBytes = returned.Metadata.OriginalModelBytes
+	errorResult.Metadata.OriginalDisplayBytes = returned.Metadata.OriginalDisplayBytes
+	errorResult.Metadata.ModelTruncated = returned.Metadata.ModelTruncated
+	errorResult.Metadata.DisplayTruncated = returned.Metadata.DisplayTruncated
+	errorResult.Metadata.ArtifactPersistence = returned.Metadata.ArtifactPersistence
 	filtered := filterStructuredToolResultWithDescriptor(
 		decision.ToolName, decision.Descriptor, args,
 		errorResult, maxBytes,

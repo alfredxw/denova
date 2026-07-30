@@ -3,6 +3,7 @@ package agents
 import (
 	"encoding/json"
 	"errors"
+	"fmt"
 	"log/slog"
 	"strings"
 
@@ -52,7 +53,9 @@ func (l *chatAgentLoop) handleToolOutput(messageOutput *agent.MessageVariant, ev
 	if _, completed := l.finishedTools[completionKey]; completed {
 		// Typed completion already updated display in real completion order. The
 		// source-ordered tool message is still the only cross-turn transcript input.
-		run.toolContext.RecordToolResult(message, eventMeta)
+		if err := run.toolContext.RecordToolResult(message, eventMeta); err != nil {
+			return l.toolDrainFailed(fmt.Errorf("persist bounded rich tool batch: %w", err))
+		}
 		delete(l.finishedTools, completionKey)
 		return chatLoopResult{action: chatLoopContinue}
 	}
@@ -78,12 +81,12 @@ func (l *chatAgentLoop) handleToolOutput(messageOutput *agent.MessageVariant, ev
 		data["deleted_ids"] = deletedIDs
 	}
 	if illustrationResult, parseErr := producttools.ParseChapterIllustrationResult(message.ToolName, fullToolContent); parseErr != nil {
-		run.logger.Warn("parse_chapter_illustration_result_failed", slog.String("tool", message.ToolName), slog.Any("error", parseErr))
+		run.logger.Warn("parse_chapter_illustration_result_failed", slog.String("tool", message.ToolName), slog.String("error_class", safeErrorClass(parseErr.Error())))
 	} else if illustrationResult != nil {
 		data["illustration"] = illustrationResult
 		data["target"] = illustrationResult.MetaPath
 	} else if interactiveImageResult, parseErr := producttools.ParseInteractiveImageResult(message.ToolName, fullToolContent); parseErr != nil {
-		run.logger.Warn("parse_interactive_image_result_failed", slog.String("tool", message.ToolName), slog.Any("error", parseErr))
+		run.logger.Warn("parse_interactive_image_result_failed", slog.String("tool", message.ToolName), slog.String("error_class", safeErrorClass(parseErr.Error())))
 	} else if interactiveImageResult != nil {
 		data["interactive_image"] = interactiveImageResult
 		data["target"] = interactiveImageResult.MetaPath
@@ -108,7 +111,9 @@ func (l *chatAgentLoop) handleToolOutput(messageOutput *agent.MessageVariant, ev
 		})
 		run.emit(Event{Type: "workspace_change", Data: workspaceChangeData})
 	}
-	run.toolContext.RecordToolResult(message, eventMeta)
+	if err := run.toolContext.RecordToolResult(message, eventMeta); err != nil {
+		return l.toolDrainFailed(fmt.Errorf("persist bounded rich tool batch: %w", err))
+	}
 	run.emit(Event{Type: "tool_result", Data: data})
 	return chatLoopResult{action: chatLoopContinue}
 }
@@ -153,6 +158,25 @@ func (l *chatAgentLoop) handleToolExecution(event *agent.AgentEvent) chatLoopRes
 		data["model_truncated"] = result.Metadata.ModelTruncated
 		data["display_truncated"] = result.Metadata.DisplayTruncated
 		data["target"] = result.Metadata.Target
+		data["tool_result_original_tokens"] = estimatedToolResultTokens(int64(result.Metadata.OriginalModelBytes))
+		data["tool_result_inline_tokens"] = estimatedToolResultTokens(int64(result.Metadata.ReturnedModelBytes))
+		data["tool_result_retention_mode"] = string(result.ResultRetention)
+		if result.ContextHints != nil {
+			data["tool_result_context_value"] = string(result.ContextHints.ContextValue)
+			data["tool_result_recovery_kind"] = string(result.ContextHints.Recovery.Kind)
+		}
+		data["artifact_count"] = len(result.Artifacts)
+		if persistence := result.Metadata.ArtifactPersistence; persistence != nil {
+			data["artifact_persist_attempted"] = persistence.Attempted
+			data["artifact_persist_complete"] = persistence.Complete
+			data["artifact_persist_failure_reason"] = persistence.FailureReason
+			if persistence.Attempted && !persistence.Complete {
+				data["artifact_persist_failure_count"] = 1
+			}
+		}
+		if result.Status == agent.ToolResultSuccess && isWorkspaceArtifactRead(execution.ToolName, result.Metadata.Target) {
+			data["artifact_reread_count"] = 1
+		}
 		payload := result.ModelContent
 		if len(result.Details) != 0 && json.Valid(result.Details) {
 			payload = string(result.Details)
@@ -166,6 +190,16 @@ func (l *chatAgentLoop) handleToolExecution(event *agent.AgentEvent) chatLoopRes
 		run.emit(Event{Type: "tool_result", Data: data})
 	}
 	return chatLoopResult{action: chatLoopContinue}
+}
+
+func isWorkspaceArtifactRead(toolName, target string) bool {
+	if strings.TrimSpace(toolName) != "read" {
+		return false
+	}
+	path := strings.ToLower(strings.ReplaceAll(strings.TrimSpace(target), "\\", "/"))
+	return strings.HasPrefix(path, ".denova/artifacts/") || strings.HasPrefix(path, ".nova/artifacts/") ||
+		strings.Contains(path, "/.denova/artifacts/") || strings.Contains(path, "/.nova/artifacts/") ||
+		strings.Contains(path, ".jsonl.artifacts/") || strings.Contains(path, "/artifacts/game/")
 }
 
 func completedToolKey(meta agentEventMetadata, toolName, callID string) string {
@@ -187,12 +221,12 @@ func populateToolResultDomainData(run *chatRun, toolName, payload string, eventM
 		data["deleted_ids"] = deletedIDs
 	}
 	if illustrationResult, parseErr := producttools.ParseChapterIllustrationResult(toolName, payload); parseErr != nil {
-		run.logger.Warn("parse_chapter_illustration_result_failed", slog.String("tool", toolName), slog.Any("error", parseErr))
+		run.logger.Warn("parse_chapter_illustration_result_failed", slog.String("tool", toolName), slog.String("error_class", safeErrorClass(parseErr.Error())))
 	} else if illustrationResult != nil {
 		data["illustration"] = illustrationResult
 		data["target"] = illustrationResult.MetaPath
 	} else if interactiveImageResult, parseErr := producttools.ParseInteractiveImageResult(toolName, payload); parseErr != nil {
-		run.logger.Warn("parse_interactive_image_result_failed", slog.String("tool", toolName), slog.Any("error", parseErr))
+		run.logger.Warn("parse_interactive_image_result_failed", slog.String("tool", toolName), slog.String("error_class", safeErrorClass(parseErr.Error())))
 	} else if interactiveImageResult != nil {
 		data["interactive_image"] = interactiveImageResult
 		data["target"] = interactiveImageResult.MetaPath
@@ -221,13 +255,13 @@ func (l *chatAgentLoop) toolDrainFailed(drainErr error) chatLoopResult {
 	terminalContent, terminalThinking := run.snapshotOutput()
 	if run.ctx.Err() != nil {
 		err := run.ctx.Err()
-		run.logger.Warn("run_interrupted", slog.String("reason", "context"), slog.Any("error", err), slog.Int("generated_bytes", len(terminalContent)))
+		run.logger.Warn("run_interrupted", slog.String("reason", "context"), slog.String("error_class", safeErrorClass(err.Error())), slog.Int("generated_bytes", len(terminalContent)))
 		run.finish("aborted", err.Error(), len(terminalContent))
 		run.emit(Event{Type: "aborted", Data: map[string]string{}})
 		return chatLoopResult{action: chatLoopTerminal, outcome: outcomeFromOutput(RunOutcomeAborted, err, err.Error(), terminalContent, terminalThinking)}
 	}
 	l.cancel()
-	run.logger.Error("run_interrupted", slog.String("reason", "tool_result_idle_timeout"), slog.Any("error", drainErr), slog.Int("generated_bytes", len(terminalContent)))
+	run.logger.Error("run_interrupted", slog.String("reason", "tool_result_idle_timeout"), slog.String("error_class", safeErrorClass(drainErr.Error())), slog.Int("generated_bytes", len(terminalContent)))
 	markInterruptionIfNeeded(run.conversation, run.resumeInterruption, run.originalMessage, terminalContent, drainErr.Error())
 	run.finish("error", drainErr.Error(), len(terminalContent))
 	run.emit(Event{Type: "error", Data: map[string]string{"message": drainErr.Error()}})
@@ -285,7 +319,7 @@ func (l *chatAgentLoop) assistantStreamFailed(streamErr error) chatLoopResult {
 	terminalContent, terminalThinking := run.snapshotOutput()
 	if run.ctx.Err() != nil {
 		err := run.ctx.Err()
-		run.logger.Warn("run_interrupted", slog.String("reason", "context"), slog.Any("error", err), slog.Int("generated_bytes", len(terminalContent)))
+		run.logger.Warn("run_interrupted", slog.String("reason", "context"), slog.String("error_class", safeErrorClass(err.Error())), slog.Int("generated_bytes", len(terminalContent)))
 		run.finish("aborted", err.Error(), len(terminalContent))
 		run.emit(Event{Type: "aborted", Data: map[string]string{}})
 		return chatLoopResult{action: chatLoopTerminal, outcome: outcomeFromOutput(RunOutcomeAborted, err, err.Error(), terminalContent, terminalThinking)}

@@ -116,8 +116,8 @@ func interactiveStoryModelTurns(turns []interactive.TurnEvent) []interactive.Sto
 	result := make([]interactive.StoryModelTurn, 0, len(turns))
 	for _, turn := range turns {
 		result = append(result, interactive.StoryModelTurn{
-			ID: turn.ID, BranchID: turn.BranchID, User: turn.User, Narrative: turn.Narrative,
-			ModelContextMessages: append([]interactive.ModelContextMessage(nil), turn.ModelContextMessages...),
+			ID: turn.ID, BranchID: turn.BranchID, Ts: turn.Ts, User: turn.User, Narrative: turn.Narrative,
+			ModelContextMessages: interactive.CloneModelContextMessages(turn.ModelContextMessages),
 		})
 	}
 	return result
@@ -166,7 +166,7 @@ func (c *interactiveConversation) modelHistoryForCycle(storyCtx interactive.Stor
 		branchHead = branch.Head
 	}
 	cacheKey := strings.Join([]string{
-		c.storyID, branchID, branchHead, fmt.Sprint(startTurn), fmt.Sprint(turnCount), compactionID,
+		c.storyID, branchID, branchHead, fmt.Sprint(storyCtx.Snapshot.ContextRevision), fmt.Sprint(startTurn), fmt.Sprint(turnCount), compactionID,
 	}, "\x00")
 	c.mu.Lock()
 	if c.modelHistory != nil && c.modelHistoryKey == cacheKey {

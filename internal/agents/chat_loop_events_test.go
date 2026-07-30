@@ -2,21 +2,25 @@ package agents
 
 import "testing"
 
-func TestCompletedToolKeySeparatesNestedAgentCalls(t *testing.T) {
-	root := agentEventMetadata{
-		RunID: "run-1", RootAgentName: "DenovaAgent", AgentName: "DenovaAgent",
-		RunPath: []string{"DenovaAgent"},
+func TestIsWorkspaceArtifactReadRecognizesEveryArtifactLayout(t *testing.T) {
+	tests := []struct {
+		name   string
+		tool   string
+		target string
+		want   bool
+	}{
+		{name: "legacy relative", tool: "read", target: ".denova/artifacts/tool.txt", want: true},
+		{name: "writing session", tool: "read", target: "/workspace/.denova/sessions/session.jsonl.artifacts/call.txt", want: true},
+		{name: "game branch", tool: "read", target: "/workspace/.denova/artifacts/game/story/branch/call.txt", want: true},
+		{name: "windows separators", tool: "read", target: `C:\\workspace\\session.jsonl.artifacts\\call.txt`, want: true},
+		{name: "ordinary source", tool: "read", target: "/workspace/chapter.md", want: false},
+		{name: "different tool", tool: "web_fetch", target: "/workspace/session.jsonl.artifacts/call.txt", want: false},
 	}
-	child := agentEventMetadata{
-		RunID: "run-1", RootAgentName: "DenovaAgent", AgentName: "researcher",
-		RunPath: []string{"DenovaAgent", "researcher"}, SubAgent: true, SubAgentSessionID: "child-1",
-	}
-	rootKey := completedToolKey(root, "read", "call-1")
-	childKey := completedToolKey(child, "read", "call-1")
-	if rootKey == childKey {
-		t.Fatalf("root and child completion keys collided: %q", rootKey)
-	}
-	if rootKey != completedToolKey(root, "read", "call-1") {
-		t.Fatal("completion key is not stable")
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			if got := isWorkspaceArtifactRead(test.tool, test.target); got != test.want {
+				t.Fatalf("isWorkspaceArtifactRead(%q, %q) = %t, want %t", test.tool, test.target, got, test.want)
+			}
+		})
 	}
 }

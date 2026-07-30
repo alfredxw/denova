@@ -113,7 +113,7 @@ func newAskTool() (agent.ToolDefinition, error) {
 		PostCheck:        agent.ToolPostCheckSessionState,
 		Recovery:         agent.ToolRecoveryReconcilable,
 		ResultProjection: agent.ToolResultBoundedModelContext,
-		ContextRetention: agent.ToolContextTransient,
+		ResultRetention:  agent.ToolResultProtected,
 		Steering:         agent.SteeringFinishCurrent,
 		MaxResultBytes:   defaultToolResultMaxBytes,
 	})

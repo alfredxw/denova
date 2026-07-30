@@ -2,6 +2,7 @@ package agents
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"log/slog"
 
@@ -34,7 +35,7 @@ type chatAgentLoop struct {
 }
 
 func newChatAgentLoop(run *chatRun, history []*agent.Message, agentMessage string) *chatAgentLoop {
-	runCtx, cancelRun := context.WithCancel(contextWithCompactionController(ContextWithRunObserver(run.traceCtx, run.observer), run.conversation))
+	runCtx, cancelRun := context.WithCancel(contextWithCompactionController(ContextWithRunObserver(run.traceCtx, run.observer), run.conversation, run.emit))
 	if _, bound := agent.InvocationIdentityFromContext(runCtx); !bound {
 		runCtx = agent.ContextWithInvocationIdentity(runCtx, agent.InvocationIdentity{RunID: run.runID})
 	}
@@ -136,7 +137,7 @@ func (l *chatAgentLoop) next() chatLoopResult {
 
 func (l *chatAgentLoop) contextCanceled(err error) chatLoopResult {
 	run := l.run
-	run.logger.Warn("run_interrupted", slog.String("reason", "context"), slog.Any("error", err), slog.Int("generated_bytes", run.fullContent.Len()))
+	run.logger.Warn("run_interrupted", slog.String("reason", "context"), slog.String("error_class", safeErrorClass(err.Error())), slog.Int("generated_bytes", run.fullContent.Len()))
 	l.flushPlanOutput()
 	generatedBytes := run.fullContent.Len()
 	terminalOutcome := run.outcomeFor(RunOutcomeAborted, err, err.Error())
@@ -151,13 +152,13 @@ func (l *chatAgentLoop) waitFailed(waitErr error) chatLoopResult {
 	terminalContent, terminalThinking := run.snapshotOutput()
 	if run.ctx.Err() != nil {
 		err := run.ctx.Err()
-		run.logger.Warn("run_interrupted", slog.String("reason", "context"), slog.Any("error", err), slog.Int("generated_bytes", len(terminalContent)))
+		run.logger.Warn("run_interrupted", slog.String("reason", "context"), slog.String("error_class", safeErrorClass(err.Error())), slog.Int("generated_bytes", len(terminalContent)))
 		run.finish("aborted", err.Error(), len(terminalContent))
 		run.emit(Event{Type: "aborted", Data: map[string]string{}})
 		return chatLoopResult{action: chatLoopTerminal, outcome: outcomeFromOutput(RunOutcomeAborted, err, err.Error(), terminalContent, terminalThinking)}
 	}
 	l.cancel()
-	run.logger.Error("run_interrupted", slog.String("reason", "idle_timeout"), slog.Any("error", waitErr), slog.Int("generated_bytes", len(terminalContent)))
+	run.logger.Error("run_interrupted", slog.String("reason", "idle_timeout"), slog.String("error_class", safeErrorClass(waitErr.Error())), slog.Int("generated_bytes", len(terminalContent)))
 	markInterruptionIfNeeded(run.conversation, run.resumeInterruption, run.originalMessage, terminalContent, waitErr.Error())
 	run.finish("error", waitErr.Error(), len(terminalContent))
 	run.emit(Event{Type: "error", Data: map[string]string{"message": waitErr.Error()}})
@@ -166,6 +167,13 @@ func (l *chatAgentLoop) waitFailed(waitErr error) chatLoopResult {
 
 func (l *chatAgentLoop) runnerFailed(runErr error) chatLoopResult {
 	run := l.run
+	if errors.Is(runErr, errAutomaticContextCompactionDeferred) {
+		run.logger.Info("automatic_context_compaction_deferred_primary_model")
+		run.finish("success", "context_maintenance", run.fullContent.Len())
+		outcome := outcomeFromOutput(RunOutcomeCompleted, nil, "context_maintenance", "", "")
+		outcome.MaintenanceOnly = true
+		return chatLoopResult{action: chatLoopTerminal, outcome: outcome}
+	}
 	if run.control.protocolTriggered() && interactiveTurnCompletedByCancel(runErr, run.options.AgentKind, run.conversation, run.fullContent.Len()) {
 		run.logger.Info("interactive_turn_completed_after_submission", slog.Int("generated_bytes", run.fullContent.Len()))
 		return chatLoopResult{action: chatLoopStop}
@@ -182,7 +190,7 @@ func (l *chatAgentLoop) runnerFailed(runErr error) chatLoopResult {
 		return l.controlled(control)
 	}
 
-	run.logger.Error("run_interrupted", slog.String("reason", "runner_error"), slog.Any("error", runErr), slog.Int("generated_bytes", run.fullContent.Len()))
+	run.logger.Error("run_interrupted", slog.String("reason", "runner_error"), slog.String("error_class", safeErrorClass(runErr.Error())), slog.Int("generated_bytes", run.fullContent.Len()))
 	l.flushPlanOutput()
 	terminalContent, terminalThinking := run.snapshotOutput()
 	markInterruptionIfNeeded(run.conversation, run.resumeInterruption, run.originalMessage, terminalContent, runErr.Error())
@@ -199,7 +207,7 @@ func (l *chatAgentLoop) controlled(control RunControl) chatLoopResult {
 	switch control.Kind {
 	case RunControlPreempt:
 		if _, persistErr := appendAssistantIfAny(run.conversation, &run.effectiveContent, &run.effectiveThinking, run.assistantMetadata); persistErr != nil {
-			run.logger.Error("persist_controlled_assistant_failed", slog.Any("error", persistErr), slog.String("control", string(control.Kind)))
+			run.logger.Error("persist_controlled_assistant_failed", slog.String("error_class", safeErrorClass(persistErr.Error())), slog.String("control", string(control.Kind)))
 			run.finish("error", persistErr.Error(), generatedBytes)
 			run.emit(Event{Type: "error", Data: map[string]string{"message": fmt.Sprintf("生成结果持久化失败: %v", persistErr)}})
 			return chatLoopResult{action: chatLoopTerminal, outcome: outcomeFromOutput(RunOutcomeFailed, persistErr, persistErr.Error(), finalContent, finalThinking)}
@@ -221,7 +229,7 @@ func (l *chatAgentLoop) complete() RunOutcome {
 	generatedBytes := run.fullContent.Len()
 	finalContent, finalThinking := run.snapshotOutput()
 	if _, persistErr := appendAssistantIfAny(run.conversation, &run.effectiveContent, &run.effectiveThinking, run.assistantMetadata); persistErr != nil {
-		run.logger.Error("persist_assistant_failed", slog.Any("error", persistErr), slog.Int("generated_bytes", generatedBytes))
+		run.logger.Error("persist_assistant_failed", slog.String("error_class", safeErrorClass(persistErr.Error())), slog.Int("generated_bytes", generatedBytes))
 		run.finish("error", persistErr.Error(), generatedBytes)
 		run.emit(Event{Type: "run_state", Data: map[string]string{
 			"run_id":           run.runID,
@@ -238,7 +246,7 @@ func (l *chatAgentLoop) complete() RunOutcome {
 	}
 	if run.resumeInterruption != nil {
 		if err := run.conversation.ResolveInterruption(run.resumeInterruption.ID); err != nil {
-			run.logger.Error("resolve_interruption_failed", slog.String("interruption_id", run.resumeInterruption.ID), slog.Any("error", err))
+			run.logger.Error("resolve_interruption_failed", slog.String("interruption_id", run.resumeInterruption.ID), slog.String("error_class", safeErrorClass(err.Error())))
 		}
 	}
 	observedMutations, mutationWarnings := run.observer.ResolvedMutations()

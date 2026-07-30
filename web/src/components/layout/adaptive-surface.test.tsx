@@ -45,6 +45,27 @@ describe('AdaptiveSurface', () => {
     expect(screen.getByRole('separator', { name: 'Resize Config Agent' })).toBeVisible()
   })
 
+  it('retains a toggled resizable pane while marking the closed layout inert', async () => {
+    const user = userEvent.setup()
+    const { container } = render(<ToggleResizablePane />)
+    const rightPanel = container.querySelector('#right')
+
+    expect(rightPanel).toHaveAttribute('data-state', 'closed')
+    expect(screen.queryByText('Agent chat')).not.toBeInTheDocument()
+
+    await user.click(screen.getByRole('button', { name: 'Open Agent' }))
+    expect(rightPanel).toHaveAttribute('data-state', 'open')
+    expect(screen.getByRole('separator', { name: 'Resize Agent' })).toBeVisible()
+    expect(screen.getByText('Agent chat')).toBeInTheDocument()
+
+    await user.click(screen.getByRole('button', { name: 'Close Agent' }))
+    expect(rightPanel).toHaveAttribute('data-state', 'closed')
+    expect(rightPanel).toHaveAttribute('aria-hidden', 'true')
+    expect(rightPanel).toHaveAttribute('inert')
+    expect(screen.queryByRole('separator', { name: 'Resize Agent' })).not.toBeInTheDocument()
+    expect(screen.getByText('Agent chat')).toBeInTheDocument()
+  })
+
   it('keeps the main slot height-constrained on desktop', () => {
     render(adaptiveSurface())
 
@@ -208,8 +229,8 @@ describe('AdaptiveSurface', () => {
 
     const drawer = screen.getByTestId('left-pane').closest('[data-nova-mobile-pane-content="true"]') as HTMLElement
     expect(drawer).toBeTruthy()
-    expect(drawer.style.transform).toContain('translate3d(-')
-    expect(drawer.style.transform).not.toBe('translate3d(0%, 0, 0)')
+    expect(Number(drawer.dataset.progress)).toBeGreaterThan(0)
+    expect(Number(drawer.dataset.progress)).toBeLessThan(1)
 
     fireEvent.mouseUp(window, { clientX: 90, clientY: 124 })
     expect(screen.getByTestId('left-pane').closest('[data-state="open"]')).toBeTruthy()
@@ -284,6 +305,18 @@ function StatefulMainPane({ onUnmount }: { onUnmount: () => void }) {
   const [count, setCount] = useState(0)
   useEffect(() => onUnmount, [onUnmount])
   return <button type="button" onClick={() => setCount((current) => current + 1)}>Count {count}</button>
+}
+
+function ToggleResizablePane() {
+  const [open, setOpen] = useState(false)
+  return (
+    <AdaptiveSurface
+      right={open ? { id: 'agent', title: 'Agent', side: 'right', content: <div>Agent chat</div> } : undefined}
+      rightResize={{ layoutKey: 'test-toggle-layout', label: 'Resize Agent' }}
+    >
+      <button type="button" onClick={() => setOpen((current) => !current)}>{open ? 'Close Agent' : 'Open Agent'}</button>
+    </AdaptiveSurface>
+  )
 }
 
 function setMobileViewport(matches: boolean) {

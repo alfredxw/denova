@@ -48,7 +48,18 @@ func (s *InteractiveAppService) executeInteractiveContextCompaction(ctx context.
 	if err != nil {
 		return agents.ContextCompactionResult{}, err
 	}
-	source, existingCheckpoint := interactiveCompactionModelHistorySource(modelHistory, activeCompaction)
+	modelProjection, err := buildInteractiveModelContextProjection(
+		modelHistory,
+		activeCompaction,
+		storyCtx.Snapshot,
+		agents.ResolveToolResultContextPolicyForConversation(&runtimeCfg, config.AgentKindInteractiveStory),
+		agents.HarnessCycleIdentity{},
+	)
+	if err != nil {
+		return agents.ContextCompactionResult{}, err
+	}
+	source := modelProjection.SourceMessages
+	existingCheckpoint := modelProjection.ExistingCheckpoint
 	commandID, err := resolveContextStructuralCommandID(
 		requestedCommandID,
 		contextStructuralCommandID("game-compact", workspace, storyID, branchID, expectedParent),
@@ -65,16 +76,76 @@ func (s *InteractiveAppService) executeInteractiveContextCompaction(ctx context.
 		}
 		return contextCompactionResultFromInteractive(committed), nil
 	}
+	healthRevision, _, _, err := store.ContextCompactionHealthState(storyID, branchID, config.AgentKindInteractiveStory)
+	if err != nil {
+		return agents.ContextCompactionResult{}, err
+	}
+	if _, err := store.AppendContextCompactionHealth(storyID, branchID, interactive.ContextCompactionHealthEvent{
+		ID: contextStructuralRecordID("cch-manual", commandID), AgentKind: config.AgentKindInteractiveStory,
+		StructureFingerprint: "manual:" + commandID, Outcome: interactive.ContextCompactionHealthOutcomeManualRetry,
+		ExpectedContextRevision: healthRevision,
+	}); err != nil {
+		return agents.ContextCompactionResult{}, fmt.Errorf("reset game compaction health: %w", err)
+	}
 	if len(source) == 0 {
 		return agents.ContextCompactionResult{Phase: "manual", SkippedReason: "empty_source"}, fmt.Errorf("没有可压缩的互动上下文")
+	}
+	runtimeCfg.InteractiveReplyTargetChars = storyCtx.Meta.ReplyTargetChars
+	tellerInput := interactiveStoryTellerSystemInput(loadGameTeller(runtimeCfg.DataDir(), storyCtx.Meta.StoryTellerID))
+	tellerInput.ChoiceCount = storyCtx.Meta.ChoiceCount
+	a := s.app
+	a.mu.RLock()
+	state := a.bookState
+	runtimeMatches := a.interactive == store && a.workspace == workspace
+	a.mu.RUnlock()
+	if state == nil || !runtimeMatches {
+		return agents.ContextCompactionResult{}, ErrAgentContextChanged
+	}
+	manualConversation := newInteractiveConversation(
+		store, runtimeCfg.DataDir(), workspace, storyID, branchID, "",
+		runtimeCfg.InteractiveReplyTargetChars, &runtimeCfg,
+	).withBaseParentID(expectedParent).withOpeningStateSchema(storyCtx)
+	var submitOpeningStateSchema func(context.Context, interactive.ActorStateSchemaBatch) (interactive.ActorStateSchemaBatchResult, error)
+	if interactive.StoryStateSchemaPolicyUsesOpeningGameAgent(storyCtx.Meta.StateSchemaPolicy) &&
+		storyCtx.Meta.StateSchemaInitialization != nil &&
+		storyCtx.Meta.StateSchemaInitialization.Status == interactive.StateSchemaInitializationWaitingOpening &&
+		interactiveSnapshotTurnCount(storyCtx.Snapshot) == 0 {
+		submitOpeningStateSchema = manualConversation.SubmitOpeningStateSchemaBatch
+	}
+	assembled, err := manualConversation.AssembleModelContext(ctx, "", agents.ModelContextInput{
+		UserMessage: "", Budget: manualConversation.ModelContextBudget(),
+	})
+	if err != nil {
+		return agents.ContextCompactionResult{}, fmt.Errorf("assemble game compaction context: %w", err)
+	}
+	assemblyState, ok := assembled.CommitState.(interactiveModelContextCommitState)
+	if !ok {
+		return agents.ContextCompactionResult{}, fmt.Errorf("game compaction context is missing its deterministic projection state")
+	}
+	runner, err := buildInteractiveStoryRunner(ctx, &runtimeCfg, state, tellerInput, agents.InteractiveStoryToolContext{
+		Store: store, StoryID: storyID, BranchID: branchID,
+		SubmitStateSchemaBatch: submitOpeningStateSchema,
+		PrepareTurn:            manualConversation.PrepareInteractiveTurn,
+		SubmitTurnResult:       manualConversation.SubmitTurnResult,
+		TurnResultReady:        manualConversation.InteractiveNarrativeReady,
+	})
+	if err != nil {
+		return agents.ContextCompactionResult{}, fmt.Errorf("assemble game compaction request: %w", err)
+	}
+	primarySnapshot, err := runner.PrepareModelRequest(ctx, assembled.Messages)
+	if err != nil {
+		return agents.ContextCompactionResult{}, fmt.Errorf("capture game compaction request: %w", err)
 	}
 	epoch := 1
 	if activeCompaction != nil {
 		epoch = activeCompaction.Epoch + 1
 	}
-	_, prepared, err := agents.PrepareContextCompaction(ctx, &runtimeCfg, config.AgentKindInteractiveStory, agents.ContextCompactionInput{
-		Messages: source, SourceMessages: source, Phase: "manual", Force: true,
-		ExistingCheckpoint: existingCheckpoint, KeepLatestUser: true,
+	tools := primarySnapshot.ResolvedOptions().Tools
+	completionReserve, toolReserve := agents.EstimateContextProjectionReserves(&runtimeCfg, config.AgentKindInteractiveStory, runtimeCfg.InteractiveReplyTargetChars)
+	compactedMessages, prepared, err := agents.PrepareContextCompaction(ctx, &runtimeCfg, config.AgentKindInteractiveStory, agents.ContextCompactionInput{
+		Messages: assembled.Messages, SourceMessages: source, SourceMessagesSet: true, Tools: tools, Phase: "manual", Force: true,
+		ExistingCheckpoint: existingCheckpoint, KeepLatestUser: true, PrimaryRequestSnapshot: primarySnapshot,
+		ReservedCompletionTokens: completionReserve, ReservedToolResultTokens: toolReserve,
 	}, epoch)
 	if err != nil {
 		return prepared, err
@@ -82,7 +153,12 @@ func (s *InteractiveAppService) executeInteractiveContextCompaction(ctx context.
 	if !prepared.Triggered {
 		return prepared, fmt.Errorf("没有可压缩的互动上下文")
 	}
-	event := interactiveCompactionEvent(recordID, expectedParent, modelHistory.EndTurn, prepared)
+	compactedMessages = preserveInteractiveStableLeadingMessage(compactedMessages, assemblyState.stableLeadingMessage)
+	_, prepared, err = validateInteractiveCompactionProjection(assembled.Messages, compactedMessages, prepared, tools)
+	if err != nil {
+		return prepared, err
+	}
+	event := interactiveCompactionEvent(recordID, expectedParent, modelProjection.SourceTurnCount, prepared)
 	ref := agents.ContextCompactionRef{
 		Source: "story.turn_events", Purpose: "persist a bounded model-history checkpoint",
 		Resource: storyID + "/" + branchID, ExpectedRevision: contextStoryRevision(expectedParent), Force: true,
@@ -140,7 +216,7 @@ func (s *InteractiveAppService) executeInteractiveContextCompaction(ctx context.
 	if !result.Compaction.Triggered {
 		return result.Compaction, fmt.Errorf("没有可压缩的互动上下文")
 	}
-	log.Printf("[interactive-agent] durable manual context compaction completed workspace=%s story_id=%s branch_id=%s epoch=%d source_turns=%d", workspace, storyID, branchID, result.Compaction.Epoch, modelHistory.EndTurn)
+	log.Printf("[interactive-agent] durable manual context compaction completed workspace=%s story_id=%s branch_id=%s epoch=%d source_turns=%d", workspace, storyID, branchID, result.Compaction.Epoch, modelProjection.SourceTurnCount)
 	return result.Compaction, nil
 }
 

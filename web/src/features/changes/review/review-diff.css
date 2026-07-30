@@ -30,6 +30,36 @@
     flex-direction: column;
   }
 
+  .nova-review-file-navigator-motion {
+    order: -1;
+    display: grid;
+    width: 100%;
+    grid-template-rows: 1fr;
+    transition:
+      grid-template-rows var(--nova-panel-motion-duration) var(--nova-ease),
+      visibility 0s linear 0s;
+  }
+
+  .nova-review-file-navigator-motion[data-state='closed'] {
+    width: 100%;
+    grid-template-rows: 0fr;
+    transition:
+      grid-template-rows var(--nova-panel-motion-duration) var(--nova-ease),
+      visibility 0s linear var(--nova-panel-motion-duration);
+  }
+
+  .nova-review-file-navigator-motion > [data-nova-panel-motion-content] {
+    width: 100%;
+    min-width: 0;
+    min-height: 0;
+    height: auto;
+    overflow: hidden;
+  }
+
+  .nova-review-file-navigator-motion > [data-nova-panel-motion-content][data-state='closed'] {
+    transform: translateY(-4px);
+  }
+
   .nova-review-file-navigator {
     order: -1;
     width: 100%;

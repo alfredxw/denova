@@ -234,13 +234,13 @@ func AgentToolCapabilities() []AgentToolCapability {
 // AgentToolDescriptorSummary is the stable scheduling and recovery contract
 // shared by every concrete tool represented by one capability family.
 type AgentToolDescriptorSummary struct {
-	Execution        agent.ToolExecutionClass   `json:"execution"`
-	MutationScope    agent.ToolMutationScope    `json:"mutation_scope"`
-	PostCheck        agent.ToolPostCheckPolicy  `json:"post_check"`
-	Recovery         agent.ToolRecoveryClass    `json:"recovery"`
-	ResultProjection agent.ToolResultProjection `json:"result_projection"`
-	ContextRetention agent.ToolContextRetention `json:"context_retention"`
-	Steering         agent.SteeringPolicy       `json:"steering"`
+	Execution        agent.ToolExecutionClass      `json:"execution"`
+	MutationScope    agent.ToolMutationScope       `json:"mutation_scope"`
+	PostCheck        agent.ToolPostCheckPolicy     `json:"post_check"`
+	Recovery         agent.ToolRecoveryClass       `json:"recovery"`
+	ResultProjection agent.ToolResultProjection    `json:"result_projection"`
+	ResultRetention  agent.ToolResultRetentionMode `json:"result_retention"`
+	Steering         agent.SteeringPolicy          `json:"steering"`
 }
 
 // AgentToolCapabilityCatalogEntry is one platform-resolved capability. Its
@@ -426,15 +426,19 @@ func runtimeSubAgentUnavailableCapabilityDefinition(source, titleKey, descriptio
 }
 
 func descriptorSummary(execution agent.ToolExecutionClass, mutation agent.ToolMutationScope, postCheck agent.ToolPostCheckPolicy, recovery agent.ToolRecoveryClass, steering agent.SteeringPolicy) AgentToolDescriptorSummary {
+	retention := agent.ToolResultDeferred
+	if mutation != agent.ToolMutationNone || recovery == agent.ToolRecoveryNonIdempotent {
+		retention = agent.ToolResultProtected
+	}
 	return AgentToolDescriptorSummary{
 		Execution: execution, MutationScope: mutation, PostCheck: postCheck,
 		Recovery: recovery, ResultProjection: agent.ToolResultBoundedModelContext,
-		ContextRetention: agent.ToolContextReceipt, Steering: steering,
+		ResultRetention: retention, Steering: steering,
 	}
 }
 
 func transientDescriptorSummary(summary AgentToolDescriptorSummary) AgentToolDescriptorSummary {
-	summary.ContextRetention = agent.ToolContextTransient
+	summary.ResultRetention = agent.ToolResultDeferred
 	return summary
 }
 

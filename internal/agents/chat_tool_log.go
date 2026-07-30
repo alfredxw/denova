@@ -19,7 +19,10 @@ func logToolPath(name, id, path string) {
 
 func logToolResult(name, id, content string) {
 	if looksLikeToolFailure(content) {
-		log.Printf("[agent-tool] result suspected_failure=true name=%s id=%s bytes=%d preview=%q", name, id, len(content), safeLogPreview(content, 300))
+		// Tool bodies may contain credentials, private file contents, or user
+		// text. Failure logs retain classification and size only; recoverable
+		// diagnostics belong in the bounded result/artifact path, not process logs.
+		log.Printf("[agent-tool] result suspected_failure=true name=%s id=%s bytes=%d", name, id, len(content))
 		return
 	}
 	log.Printf("[agent-tool] result name=%s id=%s bytes=%d", name, id, len(content))

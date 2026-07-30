@@ -7,8 +7,8 @@ func TestResolveAgentContextCompactionDefaultsAndCaps(t *testing.T) {
 	if !resolved.CompactionEnabled {
 		t.Fatal("context compaction should be enabled by default")
 	}
-	if resolved.CompactionThreshold != 0.80 {
-		t.Fatalf("default compaction threshold = %v, want 0.80", resolved.CompactionThreshold)
+	if resolved.CompactionThreshold != DefaultContextCompactionThreshold {
+		t.Fatalf("default compaction threshold = %v, want %v", resolved.CompactionThreshold, DefaultContextCompactionThreshold)
 	}
 	if resolved.CompactionRecentTurns != DefaultContextCompactionRetainedTurns {
 		t.Fatalf("default compaction recent turns = %d, want %d", resolved.CompactionRecentTurns, DefaultContextCompactionRetainedTurns)
@@ -77,6 +77,121 @@ func TestResolveAgentContextCompactionDefaultsAndCaps(t *testing.T) {
 	}
 	if resolved.CompactionStrategy != AgentContextCompactionStrategySummaryAgent {
 		t.Fatalf("unknown compaction strategy should fall back to %q, got %q", AgentContextCompactionStrategySummaryAgent, resolved.CompactionStrategy)
+	}
+}
+
+func TestResolveAgentContextPressurePolicyDefaultsAndCaps(t *testing.T) {
+	resolved := ResolveAgentContext(&Config{}, AgentKindIDE)
+	if resolved.ContextPressureScope != AgentContextPressureScopeBodyAfterPrefix ||
+		resolved.ToolResultCleanupThreshold != 0.70 || resolved.ToolResultCleanupTarget != 0.60 ||
+		resolved.ToolResultCleanupMinTokens != 20_000 || resolved.ToolResultKeepRecent != 3 ||
+		resolved.ToolResultKeepRecentTokens != 16_000 || resolved.ToolResultWarmSuffixTokens != 8_000 ||
+		resolved.ToolResultEagerMinTokens != 32_000 || resolved.CompactionRecoveryBand != 0.80 ||
+		resolved.CompactionMaxConsecutiveFailures != 3 {
+		t.Fatalf("unexpected context pressure defaults: %#v", resolved)
+	}
+
+	unknownScope := "mutable_everything"
+	lowCleanupThreshold := 0.001
+	highCleanupTarget := 2.0
+	negativeTokens := -1
+	highRecent := MaxToolResultKeepRecent + 1
+	highTokens := MaxAgentContextPolicyTokens + 1
+	lowRecoveryBand := 0.01
+	highFailures := MaxContextCompactionConsecutiveFailures + 1
+	cfg := &Config{AgentContexts: AgentContextSettings{IDE: AgentContextOverride{
+		ContextPressureScope:             &unknownScope,
+		ToolResultCleanupThreshold:       &lowCleanupThreshold,
+		ToolResultCleanupTarget:          &highCleanupTarget,
+		ToolResultCleanupMinTokens:       &negativeTokens,
+		ToolResultKeepRecent:             &highRecent,
+		ToolResultKeepRecentTokens:       &highTokens,
+		ToolResultWarmSuffixTokens:       &highTokens,
+		ToolResultEagerMinTokens:         &highTokens,
+		CompactionRecoveryBand:           &lowRecoveryBand,
+		CompactionMaxConsecutiveFailures: &highFailures,
+	}}}
+	resolved = ResolveAgentContext(cfg, AgentKindIDE)
+	if resolved.ContextPressureScope != DefaultAgentContextPressureScope {
+		t.Fatalf("unknown pressure scope = %q, want %q", resolved.ContextPressureScope, DefaultAgentContextPressureScope)
+	}
+	if resolved.ToolResultCleanupThreshold != 0.01 || resolved.ToolResultCleanupTarget != 0.0085 {
+		t.Fatalf("cleanup ratios were not capped coherently: threshold=%v target=%v", resolved.ToolResultCleanupThreshold, resolved.ToolResultCleanupTarget)
+	}
+	if resolved.ToolResultCleanupMinTokens != DefaultToolResultCleanupMinTokens {
+		t.Fatalf("negative cleanup minimum = %d, want default %d", resolved.ToolResultCleanupMinTokens, DefaultToolResultCleanupMinTokens)
+	}
+	if resolved.ToolResultKeepRecent != MaxToolResultKeepRecent ||
+		resolved.ToolResultKeepRecentTokens != MaxAgentContextPolicyTokens ||
+		resolved.ToolResultWarmSuffixTokens != MaxAgentContextPolicyTokens ||
+		resolved.ToolResultEagerMinTokens != MaxAgentContextPolicyTokens {
+		t.Fatalf("pressure policy caps were not applied: %#v", resolved)
+	}
+	if resolved.CompactionRecoveryBand != 0.10 || resolved.CompactionMaxConsecutiveFailures != MaxContextCompactionConsecutiveFailures {
+		t.Fatalf("compaction recovery caps were not applied: band=%v failures=%d", resolved.CompactionRecoveryBand, resolved.CompactionMaxConsecutiveFailures)
+	}
+}
+
+func TestResolveAgentContextPressurePolicyUsesLayeredOverridesAndKeepsLegacySwitch(t *testing.T) {
+	totalScope := AgentContextPressureScopeTotal
+	defaultTarget := 0.55
+	storyTarget := 0.45
+	legacyRetention := false
+	zeroProtectedGroups := 0
+	cfg := &Config{AgentContexts: AgentContextSettings{
+		Default: AgentContextOverride{
+			ContextPressureScope:       &totalScope,
+			ToolResultCleanupTarget:    &defaultTarget,
+			ToolResultRetentionEnabled: &legacyRetention,
+		},
+		InteractiveStory: AgentContextOverride{
+			ToolResultCleanupTarget: &storyTarget,
+			ToolResultKeepRecent:    &zeroProtectedGroups,
+		},
+	}}
+
+	ide := ResolveAgentContext(cfg, AgentKindIDE)
+	story := ResolveAgentContext(cfg, AgentKindInteractiveStory)
+	if ide.ContextPressureScope != AgentContextPressureScopeTotal || ide.ToolResultCleanupTarget != defaultTarget {
+		t.Fatalf("default pressure policy was not inherited: %#v", ide)
+	}
+	if story.ContextPressureScope != AgentContextPressureScopeTotal || story.ToolResultCleanupTarget != storyTarget || story.ToolResultKeepRecent != 0 {
+		t.Fatalf("story pressure policy override was not layered: %#v", story)
+	}
+	if ide.ToolResultRetentionEnabled || story.ToolResultRetentionEnabled {
+		t.Fatal("legacy tool_result_retention_enabled should remain readable")
+	}
+}
+
+func TestSanitizeAgentContextSettingsKeepsCrossLayerPressureOrder(t *testing.T) {
+	defaultCompaction := 0.75
+	defaultCleanup := 0.65
+	defaultTarget := 0.55
+	storyCompaction := 0.60
+	storyCleanup := 0.90
+	storyTarget := 0.80
+
+	sanitized := sanitizeAgentContextSettings(AgentContextSettings{
+		Default: AgentContextOverride{
+			CompactionThreshold: &defaultCompaction, ToolResultCleanupThreshold: &defaultCleanup,
+			ToolResultCleanupTarget: &defaultTarget,
+		},
+		InteractiveStory: AgentContextOverride{
+			CompactionThreshold: &storyCompaction, ToolResultCleanupThreshold: &storyCleanup,
+			ToolResultCleanupTarget: &storyTarget,
+		},
+	})
+	story := sanitized.InteractiveStory
+	wantCleanup := storyCompaction * contextPressureOrderingFallbackRatio
+	wantTarget := wantCleanup * contextPressureOrderingFallbackRatio
+	if story.ToolResultCleanupThreshold == nil || *story.ToolResultCleanupThreshold != wantCleanup ||
+		story.ToolResultCleanupTarget == nil || *story.ToolResultCleanupTarget != wantTarget {
+		t.Fatalf("cross-layer pressure order was not sanitized: %#v", story)
+	}
+	cfg := &Config{AgentContexts: sanitized}
+	resolved := ResolveAgentContext(cfg, AgentKindInteractiveStory)
+	if !(resolved.ToolResultCleanupTarget < resolved.ToolResultCleanupThreshold && resolved.ToolResultCleanupThreshold < resolved.CompactionThreshold) {
+		t.Fatalf("resolved pressure order is inconsistent: %#v", resolved)
 	}
 }
 

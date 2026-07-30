@@ -107,6 +107,49 @@ func appendCompactionRemovalRecordLine(sess *Session, line []byte, lineNumber in
 	return nil
 }
 
+func appendCompactionHealthRecordLine(sess *Session, line []byte, lineNumber int) error {
+	var record ContextCompactionHealth
+	if err := json.Unmarshal(line, &record); err != nil {
+		return err
+	}
+	if strings.TrimSpace(record.ID) == "" {
+		record.ID = legacyJournalRecordID("compaction-health", lineNumber)
+	}
+	if record.CreatedAt.IsZero() {
+		record.CreatedAt = sess.UpdatedAt
+	}
+	normalized, err := normalizeContextCompactionHealth(record)
+	if err != nil {
+		return err
+	}
+	sess.records = append(sess.records, historyRecord{kind: historyTypeCompactionHealth, compactionHealth: &normalized, createdAt: normalized.CreatedAt})
+	advanceUpdatedAt(sess, normalized.CreatedAt)
+	return nil
+}
+
+func appendToolResultCleanupRecordLine(sess *Session, line []byte, lineNumber int) error {
+	var record ToolResultCleanupRecord
+	if err := json.Unmarshal(line, &record); err != nil {
+		return err
+	}
+	if strings.TrimSpace(record.ID) == "" {
+		record.ID = legacyJournalRecordID("tool-result-cleanup", lineNumber)
+	}
+	if record.CreatedAt.IsZero() {
+		record.CreatedAt = sess.UpdatedAt
+	}
+	normalized, err := normalizeToolResultCleanupRecord(record)
+	if err != nil {
+		return err
+	}
+	sess.records = append(sess.records, historyRecord{
+		kind: historyTypeToolResultCleanup, toolResultCleanup: &normalized, createdAt: normalized.CreatedAt,
+	})
+	advanceContextRevision(sess, normalized.ContextRevision)
+	advanceUpdatedAt(sess, normalized.CreatedAt)
+	return nil
+}
+
 func appendDisplayRecordLine(sess *Session, line []byte, lineNumber int) error {
 	var marker displayRecord
 	if err := json.Unmarshal(line, &marker); err != nil {

@@ -92,7 +92,7 @@ func newInteractiveHistoryTools(ctx InteractiveContext) ([]agent.ToolDefinition,
 	if err != nil {
 		return nil, err
 	}
-	descriptor := boundedReadDescriptor(ToolSourceHistory, "")
+	descriptor := boundedReadDescriptor(ToolSourceHistory, "", agent.ToolResultRecoveryRerun)
 	if ctx.MaxResultBytes > 0 {
 		descriptor.MaxResultBytes = ctx.MaxResultBytes
 	}

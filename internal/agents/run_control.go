@@ -45,6 +45,10 @@ type RunOutcome struct {
 	Reason   string
 	Content  string
 	Thinking string
+	// MaintenanceOnly means the model call was intentionally deferred after a
+	// valid structural checkpoint was staged. The accepted input remains
+	// pending and no assistant/domain output is expected from this cycle.
+	MaintenanceOnly bool
 }
 
 func outcomeFromOutput(status RunOutcomeStatus, err error, reason, content, thinking string) RunOutcome {

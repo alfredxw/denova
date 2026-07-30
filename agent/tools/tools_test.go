@@ -48,6 +48,9 @@ func TestReadRoutesLocalTextAndDirectoryWithAdapterSpecificArguments(t *testing.
 	if err != nil {
 		t.Fatal(err)
 	}
+	if definition.Descriptor.ResultRecoveryKind != agent.ToolResultRecoveryRead {
+		t.Fatalf("read result recovery = %q", definition.Descriptor.ResultRecoveryKind)
+	}
 	info, err := definition.Tool.Info(context.Background())
 	if err != nil {
 		t.Fatal(err)
@@ -476,6 +479,9 @@ func TestSearchToolsPublishNewStrictInterfaces(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	if glob.Descriptor.ResultRecoveryKind != agent.ToolResultRecoveryRerun || grep.Descriptor.ResultRecoveryKind != agent.ToolResultRecoveryRerun {
+		t.Fatalf("search result recovery = glob:%q grep:%q", glob.Descriptor.ResultRecoveryKind, grep.Descriptor.ResultRecoveryKind)
+	}
 	if _, err := glob.Tool.Run(context.Background(), `{"paths":["chapters/**/*.md"],"hidden":false,"gitignore":false,"limit":5}`); err != nil {
 		t.Fatal(err)
 	}
@@ -559,7 +565,8 @@ func TestBashStoresCompleteOutputArtifactWhileKeepingBoundedModelProjection(t *t
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !result.OutputTruncated || result.Artifact == nil || result.ArtifactError != "" ||
+	if !result.OutputTruncated || result.Artifact == nil ||
+		result.Artifact.Purpose != agent.ToolArtifactPurposeCompleteToolOutput || result.ArtifactError != "" ||
 		result.OutputBytes != int64(len(artifactStore.content.String())) || len(artifactStore.content.String()) <= len(result.Output) {
 		t.Fatalf("command artifact result = %#v artifact_bytes=%d", result, len(artifactStore.content.String()))
 	}
@@ -571,8 +578,93 @@ func TestBashStoresCompleteOutputArtifactWhileKeepingBoundedModelProjection(t *t
 		t.Fatal(err)
 	}
 	if len(projected.ModelContent) > 1024 || len(projected.Artifacts) != 1 ||
+		projected.Artifacts[0].Purpose != agent.ToolArtifactPurposeCompleteToolOutput ||
 		!strings.Contains(projected.ModelContent, `"artifact"`) || !strings.Contains(projected.ModelContent, processTruncatedMarker) {
 		t.Fatalf("bounded process projection = %#v", projected)
+	}
+	if strings.Contains(projected.ModelContent, result.Artifact.SHA256) || strings.Contains(string(projected.Details), `"sha256"`) ||
+		strings.Contains(string(projected.Details), `"uri"`) || strings.Contains(string(projected.Details), `"byte_size"`) {
+		t.Fatalf("process model projection leaked internal artifact metadata: %s", projected.ModelContent)
+	}
+}
+
+func TestBashReportsSafeArtifactFailureAndLossyProjectionMetadata(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("Bash process assertion is Unix-specific")
+	}
+	for _, test := range []struct {
+		name        string
+		failureMode string
+		wantFailure string
+	}{
+		{name: "write", failureMode: "write", wantFailure: agent.ToolArtifactFailureWrite},
+		{name: "commit", failureMode: "commit", wantFailure: agent.ToolArtifactFailureCommit},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			workspace, err := OpenWorkspaceWithOptions(WorkspaceOptions{
+				Root: t.TempDir(), Limits: WorkspaceLimits{MaxResultBytes: 512},
+			})
+			if err != nil {
+				t.Fatal(err)
+			}
+			runner, err := NewLocalCommandRunner(CommandRunnerOptions{Workspace: workspace, Shell: ShellBash})
+			if err != nil {
+				t.Fatal(err)
+			}
+			store := &failingToolArtifactStore{mode: test.failureMode}
+			ctx := agent.ContextWithToolArtifactStore(context.Background(), store)
+			result, err := runner.Run(ctx, CommandRequest{
+				Command: `for ((i=0;i<200;i++)); do printf 'line-%03d-abcdefghijklmnopqrstuvwxyz\n' "$i"; done`,
+			}, nil)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if !result.OutputTruncated || result.Artifact != nil || result.ArtifactError != test.wantFailure ||
+				result.OutputBytes <= int64(len(result.Output)) || strings.Contains(result.ArtifactError, "credential") {
+				t.Fatalf("lossy command result = %#v", result)
+			}
+
+			projected, err := commandToolResult(result, 1024)
+			if err != nil {
+				t.Fatal(err)
+			}
+			persistence := projected.Metadata.ArtifactPersistence
+			if len(projected.ModelContent) > 1024 || !projected.Metadata.ModelTruncated ||
+				projected.Metadata.OriginalModelBytes <= int(result.OutputBytes) ||
+				persistence == nil || !persistence.Attempted || persistence.Complete ||
+				persistence.FailureReason != test.wantFailure {
+				t.Fatalf("projected artifact failure = %#v", projected)
+			}
+			var envelope processEnvelope
+			if err := json.Unmarshal(projected.Details, &envelope); err != nil {
+				t.Fatal(err)
+			}
+			if envelope.ArtifactError != test.wantFailure || !envelope.OutputTruncated ||
+				strings.Contains(string(projected.Details), "credential") {
+				t.Fatalf("unsafe process envelope = %#v", envelope)
+			}
+		})
+	}
+}
+
+func TestBashDoesNotExposeArtifactBeginFailure(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("Bash process assertion is Unix-specific")
+	}
+	workspace, err := OpenWorkspaceWithOptions(WorkspaceOptions{
+		Root: t.TempDir(), Limits: WorkspaceLimits{MaxResultBytes: 512},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	runner, err := NewLocalCommandRunner(CommandRunnerOptions{Workspace: workspace, Shell: ShellBash})
+	if err != nil {
+		t.Fatal(err)
+	}
+	ctx := agent.ContextWithToolArtifactStore(context.Background(), &failingToolArtifactStore{mode: "begin"})
+	_, err = runner.Run(ctx, CommandRequest{Command: `printf should-not-start`}, nil)
+	if err == nil || !strings.Contains(err.Error(), agent.ToolArtifactFailureBegin) || strings.Contains(err.Error(), "credential") {
+		t.Fatalf("unsafe artifact begin error = %v", err)
 	}
 }
 
@@ -654,10 +746,14 @@ func (runner fakeCommandRunner) Run(context.Context, CommandRequest, func(string
 	return runner.result, nil
 }
 
-type memoryToolArtifactStore struct{ content strings.Builder }
+type memoryToolArtifactStore struct {
+	content strings.Builder
+	purpose agent.ToolArtifactPurpose
+}
 
-func (store *memoryToolArtifactStore) BeginToolArtifact(context.Context, agent.ToolArtifactRequest) (agent.ToolArtifactWriter, error) {
+func (store *memoryToolArtifactStore) BeginToolArtifact(_ context.Context, request agent.ToolArtifactRequest) (agent.ToolArtifactWriter, error) {
 	store.content.Reset()
+	store.purpose = request.Purpose
 	return &memoryToolArtifactWriter{store: store}, nil
 }
 
@@ -676,12 +772,51 @@ func (writer *memoryToolArtifactWriter) Write(data []byte) (int, error) {
 func (writer *memoryToolArtifactWriter) Commit() (agent.ToolArtifactRef, error) {
 	writer.terminal = true
 	return agent.ToolArtifactRef{
-		ID: "memory-artifact", URI: "memory://artifact", MIMEType: "text/plain; charset=utf-8",
-		ByteSize: int64(writer.store.content.Len()), SHA256: strings.Repeat("0", 64),
+		ID: "memory-artifact", Purpose: writer.store.purpose,
+		ReadablePath: ".denova/artifacts/test/memory.log",
+		ContentType:  "text/plain; charset=utf-8", EstimatedBytes: int64(writer.store.content.Len()),
+		EstimatedTokens: (writer.store.content.Len() + 3) / 4, Complete: true, SHA256: strings.Repeat("0", 64),
 	}, nil
 }
 
 func (writer *memoryToolArtifactWriter) Abort() error {
+	writer.terminal = true
+	return nil
+}
+
+type failingToolArtifactStore struct{ mode string }
+
+func (store *failingToolArtifactStore) BeginToolArtifact(context.Context, agent.ToolArtifactRequest) (agent.ToolArtifactWriter, error) {
+	if store.mode == "begin" {
+		return nil, fmt.Errorf("credential=must-not-leak")
+	}
+	return &failingToolArtifactWriter{mode: store.mode}, nil
+}
+
+type failingToolArtifactWriter struct {
+	mode     string
+	terminal bool
+}
+
+func (writer *failingToolArtifactWriter) Write(data []byte) (int, error) {
+	if writer.terminal {
+		return 0, fmt.Errorf("artifact writer is closed")
+	}
+	if writer.mode == "write" {
+		return 0, fmt.Errorf("credential=must-not-leak")
+	}
+	return len(data), nil
+}
+
+func (writer *failingToolArtifactWriter) Commit() (agent.ToolArtifactRef, error) {
+	writer.terminal = true
+	if writer.mode == "commit" {
+		return agent.ToolArtifactRef{}, fmt.Errorf("credential=must-not-leak")
+	}
+	return agent.ToolArtifactRef{}, fmt.Errorf("unexpected commit")
+}
+
+func (writer *failingToolArtifactWriter) Abort() error {
 	writer.terminal = true
 	return nil
 }

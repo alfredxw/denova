@@ -9,7 +9,14 @@ import (
 // model history. Extension is a safe filename hint, not a caller-controlled
 // path.
 type ToolArtifactRequest struct {
-	ToolName    string
+	ToolName string
+	// Purpose declares whether this stream is the complete pre-projection model
+	// output or an auxiliary attachment. Stores default an omitted purpose to the
+	// conservative attachment contract.
+	Purpose ToolArtifactPurpose
+	// ToolCallID is the stable execution/call identity within the current
+	// session. Stores use it for atomic idempotent publication.
+	ToolCallID  string
 	MIMEType    string
 	Extension   string
 	Description string

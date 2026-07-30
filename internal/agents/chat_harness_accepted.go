@@ -70,13 +70,29 @@ func (r *AcceptedRun) Wait(ctx context.Context) RunOutcome {
 		emitReplayedRunOutcome(r.emit, outcome)
 		return outcome
 	}
+	publication := ContextCompactionPublication{}
 	if outcome.Status == RunOutcomeCompleted && !followedSuccessor {
-		r.persistPreparedContextCompaction()
+		publication.Attempted, publication.Err = r.persistPreparedContextCompaction()
+	}
+	if !followedSuccessor {
+		r.persistPreparedContextCompactionHealth(publication)
 	}
 	if outcome.Status == RunOutcomeCompleted && r.emit != nil {
 		r.emit(Event{Type: "done", Data: map[string]string{}})
 	}
 	return outcome
+}
+
+func (r *AcceptedRun) persistPreparedContextCompactionHealth(publication ContextCompactionPublication) {
+	provider, ok := r.conversation.(PostSettlementContextCompactionHealthProvider)
+	if !ok || provider == nil || r.owner == nil {
+		return
+	}
+	if err := provider.CommitPostSettlementContextCompactionHealth(r.owner.lifecycle, OperationID(r.receipt.OperationID), publication); err != nil && r.emit != nil {
+		r.emit(Event{Type: "context_compaction", Data: map[string]any{
+			"phase": "post_settlement", "status": "health_failed", "error": err.Error(),
+		}})
+	}
 }
 
 // emitReplayedRunOutcome reconstructs a bounded terminal display task from the
@@ -111,10 +127,19 @@ func emitReplayedRunOutcome(emit func(Event), outcome RunOutcome) {
 // persistPreparedContextCompaction submits automatic compaction only after the
 // parent turn is durably settled. A checkpoint is an optimization over already
 // canonical history: failure is visible, but cannot roll back a committed turn.
-func (r *AcceptedRun) persistPreparedContextCompaction() {
+func (r *AcceptedRun) persistPreparedContextCompaction() (bool, error) {
+	if cleanup, ok := r.conversation.(PostSettlementToolResultCleanupProvider); ok && cleanup != nil && r.owner != nil {
+		if err := cleanup.CommitPostSettlementToolResultCleanup(r.owner.lifecycle, OperationID(r.receipt.OperationID)); err != nil {
+			if r.emit != nil {
+				r.emit(Event{Type: "context_cleanup", Data: map[string]any{
+					"phase": "post_settlement", "status": "failed", "error": err.Error(),
+				}})
+			}
+		}
+	}
 	provider, ok := r.conversation.(PostSettlementContextStructuralProvider)
 	if !ok || provider == nil || r.owner == nil {
-		return
+		return false, nil
 	}
 	spec, err := provider.PostSettlementContextStructuralSpec(r.owner.lifecycle, OperationID(r.receipt.OperationID), r.options)
 	if err == nil && spec != nil {
@@ -122,11 +147,12 @@ func (r *AcceptedRun) persistPreparedContextCompaction() {
 		_, err = r.owner.executeContextStructuralOperation(r.owner.lifecycle, *spec)
 	}
 	if err == nil {
-		return
+		return spec != nil, nil
 	}
 	if r.emit != nil {
 		r.emit(Event{Type: "context_compaction", Data: map[string]any{
 			"phase": "post_settlement", "status": "failed", "error": err.Error(),
 		}})
 	}
+	return true, err
 }

@@ -159,8 +159,11 @@ func TestDirectorContextBudgetFollowsModelWindowAndCapsEachSource(t *testing.T) 
 	if err != nil {
 		t.Fatal(err)
 	}
-	if small.thresholdTokens != 102400 || large.thresholdTokens != 320000 {
-		t.Fatalf("threshold tokens should follow the configured 80%% model window: small=%d large=%d", small.thresholdTokens, large.thresholdTokens)
+	wantSmall := int(128000 * config.DefaultContextCompactionThreshold)
+	wantLarge := int(400000 * config.DefaultContextCompactionThreshold)
+	if small.thresholdTokens != wantSmall || large.thresholdTokens != wantLarge {
+		t.Fatalf("threshold tokens should follow the configured compaction threshold: small=%d want=%d large=%d want=%d",
+			small.thresholdTokens, wantSmall, large.thresholdTokens, wantLarge)
 	}
 	if large.initialTokens <= small.initialTokens {
 		t.Fatalf("larger model window should expose a larger source budget: small=%d large=%d", small.initialTokens, large.initialTokens)

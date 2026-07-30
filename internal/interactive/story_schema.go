@@ -9,12 +9,15 @@ import (
 const (
 	StoryEventTypeMeta                 = "meta"
 	StoryEventTypePlayerInput          = "player_input_accepted"
+	StoryEventTypeModelContextBatch    = "model_context_batch"
 	StoryEventTypeTurn                 = "turn"
 	StoryEventTypeStateDelta           = "state_delta"
 	StoryEventTypeBranch               = "branch"
 	StoryEventTypeHotChoices           = "hot_choices"
 	StoryEventTypeCompaction           = "context_compaction"
 	StoryEventTypeCompactionRemoved    = "context_compaction_removed"
+	StoryEventTypeCompactionHealth     = "context_compaction_health"
+	StoryEventTypeToolResultCleanup    = "tool_result_cleanup"
 	StoryEventTypeTurnVersionSelected  = "turn_version_selected"
 	StoryEventTypeTurnNarrativeRevised = "turn_narrative_revised"
 	StoryEventTypeTurnDisplayAppended  = "turn_display_appended"
@@ -26,6 +29,38 @@ const (
 
 	stateOpSchemaVersion = 2
 )
+
+// persistedStoryEventModelContextChanges is the single vocabulary for
+// canonical story event rows. Envelope validation and the journal projection
+// both consult this table, so adding an event requires an explicit context decision.
+var persistedStoryEventModelContextChanges = map[string]bool{
+	StoryEventTypePlayerInput:          true,
+	StoryEventTypeModelContextBatch:    true,
+	StoryEventTypeTurn:                 true,
+	StoryEventTypeStateDelta:           true,
+	StoryEventTypeBranch:               true,
+	StoryEventTypeHotChoices:           false,
+	StoryEventTypeCompaction:           true,
+	StoryEventTypeCompactionRemoved:    true,
+	StoryEventTypeCompactionHealth:     false,
+	StoryEventTypeToolResultCleanup:    true,
+	StoryEventTypeTurnVersionSelected:  true,
+	StoryEventTypeTurnNarrativeRevised: true,
+	StoryEventTypeTurnDisplayAppended:  false,
+	StoryEventTypeTurnStateRevised:     true,
+	StoryEventTypeStoryConfigUpdated:   true,
+	StoryEventTypeBranchSwitched:       false,
+	StoryEventTypeBranchArchived:       false,
+	StoryEventTypeBranchHeadMoved:      true,
+}
+
+func storyEventChangesModelContext(eventType string) (bool, error) {
+	changesModelContext, ok := persistedStoryEventModelContextChanges[eventType]
+	if !ok {
+		return false, fmt.Errorf("未知故事事件类型: %q", eventType)
+	}
+	return changesModelContext, nil
+}
 
 // StoryEventEnvelope is the stable schema envelope for every JSONL event row.
 // Payload fields remain event-specific, but routing, graph traversal and
@@ -68,6 +103,11 @@ func mapToStoryEventRecord(raw map[string]any) (StoryEventRecord, error) {
 		if err := mapToStruct(raw, &turn); err != nil {
 			return StoryEventRecord{}, err
 		}
+		if _, err := normalizeResolvedPlayerInputContexts(
+			turn.ResolvedPlayerInputContexts, turn.BranchID, turn.PlayerInputID, turn.ConsumedPlayerInputIDs,
+		); err != nil {
+			return StoryEventRecord{}, err
+		}
 		if turn.StateDelta != nil {
 			if err := validateStateDelta(*turn.StateDelta); err != nil {
 				return StoryEventRecord{}, fmt.Errorf("校验回合状态变化失败: %w", err)
@@ -101,6 +141,42 @@ func mapToStoryEventRecord(raw map[string]any) (StoryEventRecord, error) {
 			if err := validateStateDelta(*revision.StateDelta); err != nil {
 				return StoryEventRecord{}, fmt.Errorf("校验回合状态修订失败: %w", err)
 			}
+		}
+	}
+	if envelope.Type == StoryEventTypeToolResultCleanup {
+		var cleanup ToolResultCleanupEvent
+		if err := mapToStruct(raw, &cleanup); err != nil {
+			return StoryEventRecord{}, err
+		}
+		if _, err := normalizeToolResultCleanupEvent(cleanup); err != nil {
+			return StoryEventRecord{}, err
+		}
+	}
+	if envelope.Type == StoryEventTypeCompactionHealth {
+		var health ContextCompactionHealthEvent
+		if err := mapToStruct(raw, &health); err != nil {
+			return StoryEventRecord{}, err
+		}
+		if _, err := normalizeContextCompactionHealthEvent(health); err != nil {
+			return StoryEventRecord{}, err
+		}
+	}
+	if envelope.Type == StoryEventTypeModelContextBatch {
+		var batch ModelContextBatchEvent
+		if err := mapToStruct(raw, &batch); err != nil {
+			return StoryEventRecord{}, err
+		}
+		if _, err := normalizeModelContextBatchEvent(batch); err != nil {
+			return StoryEventRecord{}, err
+		}
+	}
+	if envelope.Type == StoryEventTypePlayerInput {
+		var input PlayerInputAcceptedEvent
+		if err := mapToStruct(raw, &input); err != nil {
+			return StoryEventRecord{}, err
+		}
+		if _, err := normalizePlayerInputAcceptedEvent(input); err != nil {
+			return StoryEventRecord{}, err
 		}
 	}
 	return StoryEventRecord{Envelope: envelope, Raw: raw}, nil
@@ -207,12 +283,8 @@ func validateStoryEventEnvelope(envelope StoryEventEnvelope) error {
 	if envelope.V <= 0 || envelope.V > schemaVersion {
 		return fmt.Errorf("故事事件 schema 版本不支持: %d", envelope.V)
 	}
-	switch envelope.Type {
-	case StoryEventTypePlayerInput, StoryEventTypeTurn, StoryEventTypeStateDelta, StoryEventTypeBranch, StoryEventTypeHotChoices, StoryEventTypeCompaction, StoryEventTypeCompactionRemoved, StoryEventTypeTurnVersionSelected,
-		StoryEventTypeTurnNarrativeRevised, StoryEventTypeTurnDisplayAppended, StoryEventTypeTurnStateRevised,
-		StoryEventTypeStoryConfigUpdated, StoryEventTypeBranchSwitched, StoryEventTypeBranchArchived, StoryEventTypeBranchHeadMoved:
-	default:
-		return fmt.Errorf("未知故事事件类型: %q", envelope.Type)
+	if _, err := storyEventChangesModelContext(envelope.Type); err != nil {
+		return err
 	}
 	if strings.TrimSpace(envelope.ID) == "" {
 		return fmt.Errorf("故事事件缺少 id: %s", envelope.Type)

@@ -138,6 +138,14 @@ func cloneHistoryRecordForTailReplay(record historyRecord) historyRecord {
 		removal := *record.compactionRemoval
 		clone.compactionRemoval = &removal
 	}
+	if record.compactionHealth != nil {
+		health := *record.compactionHealth
+		clone.compactionHealth = &health
+	}
+	if record.toolResultCleanup != nil {
+		cleanup := cloneToolResultCleanupRecord(*record.toolResultCleanup)
+		clone.toolResultCleanup = &cleanup
+	}
 	return clone
 }
 

@@ -78,6 +78,33 @@ func TestIncompleteParallelToolCallsCompleteOnlyMissingResults(t *testing.T) {
 	}
 }
 
+func TestIncompleteReusedCallIDCompletesOnlyItsAssistantBatch(t *testing.T) {
+	t.Parallel()
+
+	messages := []*agent.Message{
+		agent.AssistantMessage("", []agent.ToolCall{{
+			ID: "provider-local", Type: "function",
+			Function: agent.FunctionCall{Name: "write", Arguments: `{"path":"one.md"}`},
+		}}),
+		agent.UserMessage("next turn"),
+		agent.AssistantMessage("", []agent.ToolCall{{
+			ID: "provider-local", Type: "function",
+			Function: agent.FunctionCall{Name: "read", Arguments: `{"path":"two.md"}`},
+		}}),
+		agent.ToolMessage(agent.TextToolResult("second result"), "provider-local"),
+	}
+
+	got := applyToolResultContextPolicy(messages, ToolResultContextPolicy{Enabled: true})
+	if len(got) != 5 || got[0].Role != agent.Assistant || got[1].ToolCallID != "provider-local" ||
+		!isUnknownToolEffectResult(got[1].Content) || got[2].Role != agent.User ||
+		got[3].Role != agent.Assistant || got[4].Content != "second result" {
+		t.Fatalf("provider-local ID reuse suppressed the missing-result recovery: %#v", got)
+	}
+	if got[1].ToolName != "write" || got[4].ToolName != "read" {
+		t.Fatalf("reused ID results were paired to the wrong assistant batch: %#v", got)
+	}
+}
+
 func TestCanonicalSessionHistoryProjectsUnknownToolEffectIntoNextModelContext(t *testing.T) {
 	t.Parallel()
 

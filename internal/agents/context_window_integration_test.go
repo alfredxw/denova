@@ -79,9 +79,16 @@ func TestContextRewindKeepsExplorationDisplayButCommitsOnlyFinalAnswer(t *testin
 	if err != nil {
 		t.Fatal(err)
 	}
+	// Mid-run tool protocol remains append-only for crash recovery. The durable
+	// rewind projection, rather than physical deletion, keeps discarded
+	// exploration out of every later model input.
 	joinedRaw := joinedContextMessageContent(snapshot.EffectiveMessages)
-	if strings.Contains(joinedRaw, "discarded exploratory prose") || !strings.Contains(joinedRaw, "final answer after rewind") {
-		t.Fatalf("canonical transcript content = %q", joinedRaw)
+	if !strings.Contains(joinedRaw, "discarded exploratory prose") {
+		t.Fatalf("append-only canonical transcript lost exploration evidence: %q", joinedRaw)
+	}
+	projected := joinedContextMessageContent(conversation.modelHistory(snapshot))
+	if strings.Contains(projected, "discarded exploratory prose") || !strings.Contains(projected, "final answer after rewind") {
+		t.Fatalf("rewound model projection = %q", projected)
 	}
 	thirdInput := joinedContextMessageContent(model.input(2))
 	if strings.Contains(thirdInput, "discarded exploratory prose") || !strings.Contains(thirdInput, contextRewindSummaryPrefix) {

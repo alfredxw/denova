@@ -102,6 +102,15 @@ func TestWebAccessToolsAreConstructedWithIndependentCapabilities(t *testing.T) {
 			t.Fatalf("tool %s capability = %q, want %q", info.Name, tool.Descriptor.Capability, wantCapabilities[index])
 		}
 	}
+	if search.Descriptor.ResultRetention != agent.ToolResultDeferred {
+		t.Fatalf("web_search retention = %q, want deferred", search.Descriptor.ResultRetention)
+	}
+	if fetch.Descriptor.ResultRetention != agent.ToolResultEagerCandidate {
+		t.Fatalf("web_fetch retention = %q, want eager candidate", fetch.Descriptor.ResultRetention)
+	}
+	if search.Descriptor.ResultRecoveryKind != agent.ToolResultRecoveryRerun || fetch.Descriptor.ResultRecoveryKind != agent.ToolResultRecoveryRefetch {
+		t.Fatalf("web recovery = search:%q fetch:%q", search.Descriptor.ResultRecoveryKind, fetch.Descriptor.ResultRecoveryKind)
+	}
 }
 
 func TestNewWebAccessClientFillsOmittedRuntimeLimits(t *testing.T) {

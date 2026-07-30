@@ -7,6 +7,10 @@ import agent "github.com/alfredxw/denova/agent"
 // use the same wire without exposing an implementation-specific framework.
 type Message = agent.Message
 
+// ToolArtifactStore is the stable facade used by application conversations
+// without coupling them directly to the underlying Agent module package.
+type ToolArtifactStore = agent.ToolArtifactStore
+
 type Role = agent.RoleType
 type ToolCall = agent.ToolCall
 type FunctionCall = agent.FunctionCall

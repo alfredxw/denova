@@ -17,44 +17,48 @@ import (
 )
 
 type interactiveConversation struct {
-	store                   *interactive.Store
-	novaDir                 string
-	workspace               string
-	cfg                     *config.Config
-	storyID                 string
-	branchID                string
-	user                    string
-	replyTargetChars        int
-	directorTask            string
-	mu                      sync.Mutex
-	lastTurn                *interactive.TurnEvent
-	lastStateReady          bool
-	lastSources             string
-	lastContextSources      []interactiveContextSource
-	lastContextLedgerParts  []agents.ContextLedgerPart
-	stableLeadingMessage    string
-	assistantMetadata       session.MessageMetadata
-	displayEvents           []interactive.DisplayEvent
-	modelContextMessages    []interactive.ModelContextMessage
-	ruleResolution          *interactive.RuleResolution
-	turnProtocol            interactiveTurnProtocol
-	baseParentID            *string
-	replaceTurnID           string
-	pinParentAtExecution    bool
-	directorTasks           *workspaceDirectorTaskGroup
-	directorGenerator       interactiveDirectorGenerator
-	directorChatService     *agents.ChatService
-	customDirectorGenerator bool
-	agentCycleCommit        func(context.Context, agents.RunOutcome) error
-	agentCyclePrepare       func(context.Context) error
-	agentCycleIdentity      agents.HarnessCycleIdentity
-	pendingDomainCommit     *interactive.DomainCommitIntent
-	lastDomainReceipt       *interactive.DomainCommitReceipt
-	pendingCompaction       *preparedInteractiveContextCompaction
-	modelHistoryKey         string
-	modelHistory            *interactive.StoryModelHistory
-	openingStateSchemaDraft *interactive.ActorStateSchemaBatchDraft
-	openingStateSchemaAudit interactive.ActorStateSchemaBatchAudit
+	store                    *interactive.Store
+	novaDir                  string
+	workspace                string
+	cfg                      *config.Config
+	storyID                  string
+	branchID                 string
+	user                     string
+	replyTargetChars         int
+	directorTask             string
+	modelContextAppendMu     sync.Mutex
+	mu                       sync.Mutex
+	lastTurn                 *interactive.TurnEvent
+	lastStateReady           bool
+	lastSources              string
+	lastContextSources       []interactiveContextSource
+	lastContextLedgerParts   []agents.ContextLedgerPart
+	stableLeadingMessage     string
+	assistantMetadata        session.MessageMetadata
+	displayEvents            []interactive.DisplayEvent
+	modelContextMessages     []interactive.ModelContextMessage
+	modelContextBatchOrdinal int
+	ruleResolution           *interactive.RuleResolution
+	turnProtocol             interactiveTurnProtocol
+	baseParentID             *string
+	replaceTurnID            string
+	pinParentAtExecution     bool
+	directorTasks            *workspaceDirectorTaskGroup
+	directorGenerator        interactiveDirectorGenerator
+	directorChatService      *agents.ChatService
+	customDirectorGenerator  bool
+	agentCycleCommit         func(context.Context, agents.RunOutcome) error
+	agentCyclePrepare        func(context.Context) error
+	agentCycleIdentity       agents.HarnessCycleIdentity
+	pendingDomainCommit      *interactive.DomainCommitIntent
+	lastDomainReceipt        *interactive.DomainCommitReceipt
+	pendingCompaction        *preparedInteractiveContextCompaction
+	pendingCompactionHealth  *preparedInteractiveContextCompactionHealth
+	pendingCleanup           *preparedInteractiveToolResultCleanup
+	modelHistoryKey          string
+	modelHistory             *interactive.StoryModelHistory
+	openingStateSchemaDraft  *interactive.ActorStateSchemaBatchDraft
+	openingStateSchemaAudit  interactive.ActorStateSchemaBatchAudit
 }
 
 var _ agents.ExplicitSkillResolver = (*interactiveConversation)(nil)
@@ -83,10 +87,17 @@ func (c *interactiveConversation) BindAgentCycleIdentity(identity agents.Harness
 	if c == nil {
 		return
 	}
+	c.modelContextAppendMu.Lock()
+	defer c.modelContextAppendMu.Unlock()
 	c.mu.Lock()
 	c.agentCycleIdentity = identity
+	c.modelContextMessages = nil
+	c.modelContextBatchOrdinal = 0
 	c.pendingDomainCommit = nil
 	c.lastDomainReceipt = nil
+	c.pendingCompaction = nil
+	c.pendingCompactionHealth = nil
+	c.pendingCleanup = nil
 	c.mu.Unlock()
 }
 
@@ -527,30 +538,15 @@ func (c *interactiveConversation) AssembleModelContext(ctx context.Context, orig
 		PreviousTurnsSummary:        turnHistory.PreviousSummary,
 		LoreContext:                 loreRuntime,
 	})
-	history := make([]*agents.Message, 0, len(turnHistory.Turns)*2+4)
-	if activeCompaction != nil {
-		history = append(history, agents.NewContextCompactionSummaryMessage(activeCompaction.Epoch, activeCompaction.Summary))
-	}
-	for _, turn := range turnHistory.Turns {
-		history = append(history, agents.UserMessage(turn.User))
-		history = append(history, schemaMessagesFromInteractiveContext(turn.ModelContextMessages)...)
-		history = append(history, agents.AssistantMessage(turn.Narrative, nil))
-	}
 	cycleIdentity := c.agentCycleIdentitySnapshot()
-	pendingInputMessages := make([]string, 0, len(storyCtx.Snapshot.PendingPlayerInputs))
-	for _, pending := range storyCtx.Snapshot.PendingPlayerInputs {
-		if pending.AgentCommandID == string(cycleIdentity.CommandID) &&
-			pending.AgentOperationID == string(cycleIdentity.OperationID) && pending.AgentCycle == cycleIdentity.Cycle {
-			// The current accepted input is represented by the final turn
-			// instruction below. Projecting this storage record separately would
-			// duplicate the user's action in the same model request.
-			continue
-		}
-		message := interruptedPlayerInputModelMessage(pending)
-		pendingInputMessages = append(pendingInputMessages, message)
-		history = append(history, agents.UserMessage(message))
+	modelProjection, err := buildInteractiveModelContextProjection(
+		modelHistory, activeCompaction, storyCtx.Snapshot, c.ToolResultContextPolicy(), cycleIdentity,
+	)
+	if err != nil {
+		return agents.ModelContextResult{}, err
 	}
-	history = agents.ApplyToolResultContextPolicyForConversation(history, c.ToolResultContextPolicy())
+	history := modelProjection.Messages
+	pendingInputMessages := modelProjection.PendingInputMessages
 	fragments := append([]agentcontext.Fragment(nil), input.Fragments...)
 	if strings.TrimSpace(residentLore) != "" {
 		fragments = append(fragments, agentcontext.Fragment{

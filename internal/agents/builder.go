@@ -390,21 +390,18 @@ func buildChatModelAgentAssembly(ctx context.Context, cfg *config.Config, spec c
 	executionGate := sharedToolExecutionGate(workspace)
 	toolCatalog := newToolCatalog(cfg)
 	settings := spec.ToolSettings
+	contextSettings := config.ResolveAgentContext(cfg, spec.Kind)
 	middlewares := append([]agent.Middleware(nil), spec.ExtraMiddlewares...)
-	if spec.IncludeCompaction {
-		middlewares = append(middlewares, &contextCompactionMiddleware{
-			BaseMiddleware: &agent.BaseMiddleware{},
-			agentKind:      spec.Kind,
-		})
-	}
 	middlewares = append(middlewares,
 		&toolOrchestratorMiddleware{
-			agentKind:           spec.Kind,
-			policyKind:          firstNonEmpty(spec.ToolPolicyKind, spec.Kind),
-			toolSettings:        spec.ToolSettings,
-			enforceToolSettings: true,
-			toolResultMaxBytes:  configToolResultMaxBytes(cfg),
-			executionGate:       executionGate,
+			agentKind:                spec.Kind,
+			policyKind:               firstNonEmpty(spec.ToolPolicyKind, spec.Kind),
+			toolSettings:             spec.ToolSettings,
+			enforceToolSettings:      true,
+			toolResultMaxBytes:       configToolResultMaxBytes(cfg),
+			toolResultEagerMinTokens: contextSettings.ToolResultEagerMinTokens,
+			contextWindowTokens:      spec.ContextWindowTokens,
+			executionGate:            executionGate,
 		},
 		&modelInputLoggingMiddleware{
 			BaseMiddleware:        &agent.BaseMiddleware{},
@@ -413,7 +410,16 @@ func buildChatModelAgentAssembly(ctx context.Context, cfg *config.Config, spec c
 			contextWindowTokens:   spec.ContextWindowTokens,
 			providerInputMaxBytes: spec.ProviderInputMaxBytes,
 		},
+		&contextNormalizerMiddleware{BaseMiddleware: &agent.BaseMiddleware{}},
 	)
+	if spec.IncludeCompaction {
+		// Context maintenance must observe the final model call after every
+		// mode-specific option and tool decision has been applied.
+		middlewares = append(middlewares, &contextCompactionMiddleware{
+			BaseMiddleware: &agent.BaseMiddleware{},
+			agentKind:      spec.Kind,
+		})
+	}
 	tools := append([]agent.ToolDefinition(nil), spec.ExtraTools...)
 	skillTools, readAdapters, err := buildSkillTools(ctx, cfg, spec.Kind, spec.EnableSkills, settings)
 	if err != nil {

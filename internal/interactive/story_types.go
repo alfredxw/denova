@@ -1,5 +1,7 @@
 package interactive
 
+import agent "github.com/alfredxw/denova/agent"
+
 type CreateStoryRequest struct {
 	Title                     string                            `json:"title"`
 	Origin                    string                            `json:"origin"`
@@ -208,37 +210,48 @@ type StoryMeta struct {
 }
 
 type TurnEvent struct {
-	V                    int                   `json:"v"`
-	Type                 string                `json:"type"`
-	ID                   string                `json:"id"`
-	ParentID             any                   `json:"parent_id"`
-	BranchID             string                `json:"branch_id"`
-	Ts                   string                `json:"ts"`
-	User                 string                `json:"user"`
-	Narrative            string                `json:"narrative"`
-	Thinking             string                `json:"thinking,omitempty"`
-	RunID                string                `json:"run_id,omitempty"`
-	AgentKind            string                `json:"agent_kind,omitempty"`
-	AgentCommandID       string                `json:"agent_command_id,omitempty"`
-	AgentOperationID     string                `json:"agent_operation_id,omitempty"`
-	AgentCycle           int                   `json:"agent_cycle,omitempty"`
-	AgentCommitHash      string                `json:"agent_commit_hash,omitempty"`
-	PlayerInputID        string                `json:"player_input_id,omitempty"`
-	PlayerInputHash      string                `json:"player_input_hash,omitempty"`
-	DisplayEvents        []DisplayEvent        `json:"display_events,omitempty"`
-	ModelContextMessages []ModelContextMessage `json:"model_context_messages,omitempty"`
-	StateDelta           *StateDelta           `json:"state_delta,omitempty"`
-	HotState             *HotState             `json:"hot_state,omitempty"`
-	RuleResolution       *RuleResolution       `json:"rule_resolution,omitempty"`
-	TurnResult           *TurnResult           `json:"turn_result,omitempty"`
-	TerminalOutcome      *TerminalOutcome      `json:"terminal_outcome,omitempty"`
-	StateStatus          string                `json:"state_status,omitempty"`
-	StateError           string                `json:"state_error,omitempty"`
-	Alts                 []TurnAlt             `json:"alts,omitempty"`
-	AltIdx               int                   `json:"alt_idx,omitempty"`
-	Versions             []TurnVersion         `json:"versions,omitempty"`
-	VersionIdx           int                   `json:"version_idx,omitempty"`
-	Flags                map[string]bool       `json:"flags,omitempty"`
+	V                int    `json:"v"`
+	Type             string `json:"type"`
+	ID               string `json:"id"`
+	ParentID         any    `json:"parent_id"`
+	BranchID         string `json:"branch_id"`
+	Ts               string `json:"ts"`
+	User             string `json:"user"`
+	Narrative        string `json:"narrative"`
+	Thinking         string `json:"thinking,omitempty"`
+	RunID            string `json:"run_id,omitempty"`
+	AgentKind        string `json:"agent_kind,omitempty"`
+	AgentCommandID   string `json:"agent_command_id,omitempty"`
+	AgentOperationID string `json:"agent_operation_id,omitempty"`
+	AgentCycle       int    `json:"agent_cycle,omitempty"`
+	AgentCommitHash  string `json:"agent_commit_hash,omitempty"`
+	PlayerInputID    string `json:"player_input_id,omitempty"`
+	PlayerInputHash  string `json:"player_input_hash,omitempty"`
+	// ConsumedPlayerInputIDs closes every reachable accepted input whose intent
+	// was visible to this successful cycle. PlayerInputID remains the exact
+	// current command identity; older interrupted inputs are resolved without
+	// deleting their append-only audit events.
+	ConsumedPlayerInputIDs []string `json:"consumed_player_input_ids,omitempty"`
+	// ResolvedPlayerInputContexts preserves interrupted inputs at their original
+	// acceptance boundary after this Turn closes them. The current Turn's input
+	// remains represented by User and ModelContextMessages; only older pending
+	// inputs belong here, so their model evidence cannot be reordered into this
+	// Turn during a cold model-history projection.
+	ResolvedPlayerInputContexts []ResolvedPlayerInputContext `json:"resolved_player_input_contexts,omitempty"`
+	DisplayEvents               []DisplayEvent               `json:"display_events,omitempty"`
+	ModelContextMessages        []ModelContextMessage        `json:"model_context_messages,omitempty"`
+	StateDelta                  *StateDelta                  `json:"state_delta,omitempty"`
+	HotState                    *HotState                    `json:"hot_state,omitempty"`
+	RuleResolution              *RuleResolution              `json:"rule_resolution,omitempty"`
+	TurnResult                  *TurnResult                  `json:"turn_result,omitempty"`
+	TerminalOutcome             *TerminalOutcome             `json:"terminal_outcome,omitempty"`
+	StateStatus                 string                       `json:"state_status,omitempty"`
+	StateError                  string                       `json:"state_error,omitempty"`
+	Alts                        []TurnAlt                    `json:"alts,omitempty"`
+	AltIdx                      int                          `json:"alt_idx,omitempty"`
+	Versions                    []TurnVersion                `json:"versions,omitempty"`
+	VersionIdx                  int                          `json:"version_idx,omitempty"`
+	Flags                       map[string]bool              `json:"flags,omitempty"`
 }
 
 const TokenUsageEventType = "token_usage"
@@ -279,12 +292,13 @@ type DisplayEvent struct {
 // ModelContextMessage is model-visible turn evidence hidden from the chat UI.
 // It stores only assistant tool calls and tool results, never raw thinking.
 type ModelContextMessage struct {
-	Role       string                 `json:"role"`
-	Content    string                 `json:"content,omitempty"`
-	Name       string                 `json:"name,omitempty"`
-	ToolCalls  []ModelContextToolCall `json:"tool_calls,omitempty"`
-	ToolCallID string                 `json:"tool_call_id,omitempty"`
-	ToolName   string                 `json:"tool_name,omitempty"`
+	Role       string                   `json:"role"`
+	Content    string                   `json:"content,omitempty"`
+	Name       string                   `json:"name,omitempty"`
+	ToolCalls  []ModelContextToolCall   `json:"tool_calls,omitempty"`
+	ToolCallID string                   `json:"tool_call_id,omitempty"`
+	ToolName   string                   `json:"tool_name,omitempty"`
+	ToolResult *agent.ToolResultSummary `json:"tool_result,omitempty"`
 }
 
 type ModelContextToolCall struct {
@@ -380,25 +394,27 @@ type StateDeltaEvent struct {
 }
 
 type ContextCompactionEvent struct {
-	V                   int     `json:"v"`
-	Type                string  `json:"type"`
-	ID                  string  `json:"id"`
-	ParentID            string  `json:"parent_id,omitempty"`
-	BranchID            string  `json:"branch_id"`
-	Ts                  string  `json:"ts"`
-	AgentKind           string  `json:"agent_kind,omitempty"`
-	Epoch               int     `json:"epoch"`
-	Summary             string  `json:"summary"`
-	SourceTurnCount     int     `json:"source_turn_count"`
-	RetainedTurns       int     `json:"retained_turns"`
-	TokensBefore        int     `json:"tokens_before"`
-	TokensAfter         int     `json:"tokens_after"`
-	TargetRatio         float64 `json:"target_ratio,omitempty"`
-	ContextWindowTokens int     `json:"context_window_tokens"`
-	Strategy            string  `json:"strategy,omitempty"`
-	Threshold           float64 `json:"threshold"`
-	Reason              string  `json:"reason,omitempty"`
-	Phase               string  `json:"phase,omitempty"`
+	V                    int     `json:"v"`
+	Type                 string  `json:"type"`
+	ID                   string  `json:"id"`
+	ParentID             string  `json:"parent_id,omitempty"`
+	BranchID             string  `json:"branch_id"`
+	Ts                   string  `json:"ts"`
+	AgentKind            string  `json:"agent_kind,omitempty"`
+	Epoch                int     `json:"epoch"`
+	Summary              string  `json:"summary"`
+	SourceTurnCount      int     `json:"source_turn_count"`
+	RetainedTurns        int     `json:"retained_turns"`
+	TokensBefore         int     `json:"tokens_before"`
+	TokensAfter          int     `json:"tokens_after"`
+	TargetRatio          float64 `json:"target_ratio,omitempty"`
+	ContextWindowTokens  int     `json:"context_window_tokens"`
+	Strategy             string  `json:"strategy,omitempty"`
+	Threshold            float64 `json:"threshold"`
+	Reason               string  `json:"reason,omitempty"`
+	Phase                string  `json:"phase,omitempty"`
+	CandidateFingerprint string  `json:"candidate_fingerprint,omitempty"`
+	CandidateGeneration  uint64  `json:"candidate_generation,omitempty"`
 	// ExpectedParentID is a write-only compare-and-swap guard. It is never
 	// serialized into the story journal; ParentID records the parent that
 	// actually won the commit.
@@ -419,6 +435,56 @@ type ContextCompactionRemovalEvent struct {
 	// ExpectedParentID rejects removal requests prepared from an obsolete
 	// branch snapshot.
 	ExpectedParentID *string `json:"-"`
+}
+
+// ContextCompactionHealthEvent is model-invisible durable failure-fuse state
+// for one stable Game context structure.
+type ContextCompactionHealthEvent struct {
+	V                    int    `json:"v"`
+	Type                 string `json:"type"`
+	ID                   string `json:"id"`
+	ParentID             string `json:"parent_id,omitempty"`
+	BranchID             string `json:"branch_id"`
+	Ts                   string `json:"ts"`
+	AgentKind            string `json:"agent_kind,omitempty"`
+	BasisRevision        uint64 `json:"basis_revision"`
+	StructureFingerprint string `json:"structure_fingerprint"`
+	Outcome              string `json:"outcome"`
+	FailureCode          string `json:"failure_code,omitempty"`
+	ConsecutiveFailures  int    `json:"consecutive_failures"`
+	// ExpectedContextRevision is a write-only CAS guard. Health rows do not
+	// advance the guarded revision or the canonical branch head.
+	ExpectedContextRevision uint64 `json:"-"`
+}
+
+// ToolResultReplacement is one frozen substitution in the flattened
+// model-visible branch history. ToolCallID keeps the locator safe across cold
+// recovery, while Placeholder is reused byte-for-byte.
+type ToolResultReplacement struct {
+	MessageIndex int64  `json:"message_index"`
+	ToolCallID   string `json:"tool_call_id"`
+	Placeholder  string `json:"placeholder"`
+}
+
+// ToolResultCleanupEvent projects bounded placeholders over canonical rich
+// tool results without changing the stored TurnEvent or UI timeline.
+type ToolResultCleanupEvent struct {
+	V                int                     `json:"v"`
+	Type             string                  `json:"type"`
+	ID               string                  `json:"id"`
+	ParentID         string                  `json:"parent_id,omitempty"`
+	BranchID         string                  `json:"branch_id"`
+	Ts               string                  `json:"ts"`
+	AgentKind        string                  `json:"agent_kind,omitempty"`
+	SourceStart      int64                   `json:"source_start"`
+	SourceEnd        int64                   `json:"source_end"`
+	Replacements     []ToolResultReplacement `json:"replacements"`
+	ReclaimedTokens  int                     `json:"reclaimed_tokens"`
+	TriggeredAtUsage int                     `json:"triggered_at_usage"`
+	EarliestChanged  int64                   `json:"earliest_changed"`
+	WarmSuffixTokens int                     `json:"warm_suffix_tokens"`
+	RendererVersion  string                  `json:"renderer_version"`
+	ExpectedParentID *string                 `json:"-"`
 }
 
 // TurnVersionProjection records one immutable event copied from the previous
@@ -476,24 +542,27 @@ type StateOp struct {
 }
 
 type Snapshot struct {
-	StoryID                   string                           `json:"story_id"`
-	BranchID                  string                           `json:"branch_id"`
-	Turns                     []TurnEvent                      `json:"turns"`
-	PendingPlayerInputs       []PlayerInputAcceptedEvent       `json:"pending_player_inputs,omitempty"`
-	CurrentTurn               *TurnEvent                       `json:"current_turn,omitempty"`
-	TokenUsageEvents          []TokenUsageEvent                `json:"token_usage_events,omitempty"`
-	ContextCompaction         *ContextCompactionEvent          `json:"context_compaction,omitempty"`
-	ContextCompactionRemoval  *ContextCompactionRemovalEvent   `json:"context_compaction_removal,omitempty"`
-	DirectorPlan              *DirectorPlan                    `json:"-"`
-	DirectorPlanStatus        *DirectorPlanStatus              `json:"director_plan_status,omitempty"`
-	State                     map[string]any                   `json:"state"`
-	ActorStateSchema          *ActorStateSchemaSnapshot        `json:"actor_state_schema,omitempty"`
-	StateSchemaInitialization *StateSchemaInitializationStatus `json:"state_schema_initialization,omitempty"`
-	Graph                     StoryGraph                       `json:"graph"`
-	TurnCount                 int                              `json:"turn_count"`
-	TurnStart                 int                              `json:"turn_start"`
-	HistoryBeforeCursor       string                           `json:"history_before_cursor,omitempty"`
-	HasEarlierTurns           bool                             `json:"has_earlier_turns"`
+	StoryID                    string                           `json:"story_id"`
+	BranchID                   string                           `json:"branch_id"`
+	ContextRevision            uint64                           `json:"context_revision,omitempty"`
+	Turns                      []TurnEvent                      `json:"turns"`
+	PendingPlayerInputs        []PlayerInputAcceptedEvent       `json:"pending_player_inputs,omitempty"`
+	PendingModelContextBatches []ModelContextBatchEvent         `json:"pending_model_context_batches,omitempty"`
+	CurrentTurn                *TurnEvent                       `json:"current_turn,omitempty"`
+	TokenUsageEvents           []TokenUsageEvent                `json:"token_usage_events,omitempty"`
+	ContextCompaction          *ContextCompactionEvent          `json:"context_compaction,omitempty"`
+	ContextCompactionRemoval   *ContextCompactionRemovalEvent   `json:"context_compaction_removal,omitempty"`
+	ToolResultCleanup          *ToolResultCleanupEvent          `json:"tool_result_cleanup,omitempty"`
+	DirectorPlan               *DirectorPlan                    `json:"-"`
+	DirectorPlanStatus         *DirectorPlanStatus              `json:"director_plan_status,omitempty"`
+	State                      map[string]any                   `json:"state"`
+	ActorStateSchema           *ActorStateSchemaSnapshot        `json:"actor_state_schema,omitempty"`
+	StateSchemaInitialization  *StateSchemaInitializationStatus `json:"state_schema_initialization,omitempty"`
+	Graph                      StoryGraph                       `json:"graph"`
+	TurnCount                  int                              `json:"turn_count"`
+	TurnStart                  int                              `json:"turn_start"`
+	HistoryBeforeCursor        string                           `json:"history_before_cursor,omitempty"`
+	HasEarlierTurns            bool                             `json:"has_earlier_turns"`
 }
 
 // StoryHistoryPage is the bounded UI history projection. BeforeCursor is

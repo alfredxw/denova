@@ -48,3 +48,7 @@ func newContextCompactionID() string {
 func newContextCompactionRemovalID() string {
 	return "ccr-" + strings.TrimPrefix(newSessionID(), "s-")
 }
+
+func newToolResultCleanupID() string {
+	return "trc-" + strings.TrimPrefix(newSessionID(), "s-")
+}

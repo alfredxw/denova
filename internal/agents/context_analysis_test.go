@@ -325,7 +325,7 @@ func TestIDEContextAnalysisShowsExactModelVisibleToolContext(t *testing.T) {
 			}
 		case "tool_result":
 			sawToolResult = true
-			if part.ToolName != "read" || !isRetainedToolReceipt(part.Content) || strings.Contains(part.Content, "第一章内容") {
+			if part.ToolName != "read" || part.Content != result {
 				t.Fatalf("tool result part should match the model-visible message: %#v", part)
 			}
 		}

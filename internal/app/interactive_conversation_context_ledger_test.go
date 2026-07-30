@@ -6,6 +6,9 @@ import (
 	"strings"
 	"testing"
 
+	agent "github.com/alfredxw/denova/agent"
+	modelcontext "github.com/alfredxw/denova/agent/context"
+
 	"denova/config"
 	agents "denova/internal/agents"
 	agentcontext "denova/internal/agents/context"
@@ -72,6 +75,27 @@ func TestInteractiveContextAnalysisUsesPreparedTurnWithoutSideEffects(t *testing
 	}
 	if baseParentID != nil || lastSources != "" || len(contextSources) != 0 || len(contextLedger) != 0 || stableLeadingMessage != "" {
 		t.Fatalf("pure analysis mutated conversation state: parent=%v sources=%q context_sources=%d ledger=%d stable=%q", baseParentID, lastSources, len(contextSources), len(contextLedger), stableLeadingMessage)
+	}
+}
+
+func TestPreserveInteractiveStableLeadingMessageKeepsNativeSystemFirst(t *testing.T) {
+	system := agents.SystemMessage("native system")
+	developer := &agents.Message{Role: agent.RoleType("developer"), Content: "developer policy"}
+	messages := []*agents.Message{system, developer, agents.UserMessage("turn")}
+
+	result := preserveInteractiveStableLeadingMessage(messages, "resident lore")
+	if len(result) != 4 || result[0] != system || result[1] != developer || result[2].Content != "resident lore" || result[3].Content != "turn" {
+		t.Fatalf("stable leading insertion order = %#v", result)
+	}
+	if placement, _ := result[2].Extra[modelcontext.MessageExtraPlacement].(string); placement != string(modelcontext.PlacementLeadingMessage) {
+		t.Fatalf("stable leading placement = %q", placement)
+	}
+	replayed := preserveInteractiveStableLeadingMessage(result, "resident lore")
+	if len(replayed) != len(result) {
+		t.Fatalf("stable leading was duplicated: %#v", replayed)
+	}
+	if _, err := agents.NormalizeModelContextMessages(replayed); err != nil {
+		t.Fatalf("true post-context protocol invalid: %v", err)
 	}
 }
 
@@ -245,8 +269,12 @@ func TestInteractiveContextLedgerUsesFinalCompactedMessages(t *testing.T) {
 			}
 		case part.Source == "历史工具上下文" && strings.HasPrefix(part.Title, "工具结果"):
 			toolResults++
-			if strings.Contains(part.Preview, "完整资料正文") || !strings.Contains(part.Note, "semantic_filtered=true") || !strings.Contains(part.Note, "single_result_limit_bytes=") || part.Limit <= 0 || part.LimitUnit != "bytes" || part.Truncated {
-				t.Fatalf("tool-result ledger must describe the semantic cross-turn receipt, not the original body: %#v", part)
+			if !strings.Contains(part.Preview, "完整资料正文") ||
+				!strings.Contains(part.Note, "context_policy_applied=true") ||
+				!strings.Contains(part.Note, "single_result_limit_bytes=") ||
+				part.Purpose != "paired model-visible tool result" || part.Limit <= 0 ||
+				part.LimitUnit != "bytes" || part.Truncated {
+				t.Fatalf("recent tool-result ledger must describe the exact rich result retained after compaction: %#v", part)
 			}
 		}
 	}

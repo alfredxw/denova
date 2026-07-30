@@ -474,5 +474,15 @@ func (s *Store) DeleteStory(storyID string) error {
 	if err := os.RemoveAll(filepath.Join(s.root, "interactive", "stories", storyID)); err != nil {
 		return err
 	}
-	return s.writeIndexLocked(index)
+	if err := s.writeIndexLocked(index); err != nil {
+		return err
+	}
+	// Artifact removal is post-commit garbage collection. Canonical story and
+	// index references must become unreachable first; otherwise a filesystem
+	// sync failure could leave a live story whose recovery paths were deleted.
+	// A GC failure must not turn an already-committed delete into a false error.
+	if err := s.removeStoryToolArtifacts(storyID); err != nil {
+		log.Printf("[interactive-story] remove deleted story tool artifacts failed story_id=%s error=%v", storyID, err)
+	}
+	return nil
 }

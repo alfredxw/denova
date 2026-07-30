@@ -136,20 +136,32 @@ type processRecovery struct {
 }
 
 type processEnvelope struct {
-	Schema          string                 `json:"schema"`
-	Status          ProcessStatus          `json:"status"`
-	Shell           ShellKind              `json:"shell"`
-	Engine          string                 `json:"engine"`
-	Version         string                 `json:"version,omitempty"`
-	ExitCode        int                    `json:"exit_code"`
-	Cwd             string                 `json:"cwd"`
-	PTY             bool                   `json:"pty"`
-	TimeoutSeconds  int                    `json:"timeout_seconds"`
-	OutputTruncated bool                   `json:"output_truncated"`
-	OutputBytes     int64                  `json:"output_bytes"`
-	Artifact        *agent.ToolArtifactRef `json:"artifact,omitempty"`
-	ArtifactError   string                 `json:"artifact_error,omitempty"`
-	Recovery        processRecovery        `json:"recovery"`
+	Schema          string              `json:"schema"`
+	Status          ProcessStatus       `json:"status"`
+	Shell           ShellKind           `json:"shell"`
+	Engine          string              `json:"engine"`
+	Version         string              `json:"version,omitempty"`
+	ExitCode        int                 `json:"exit_code"`
+	Cwd             string              `json:"cwd"`
+	PTY             bool                `json:"pty"`
+	TimeoutSeconds  int                 `json:"timeout_seconds"`
+	OutputTruncated bool                `json:"output_truncated"`
+	OutputBytes     int64               `json:"output_bytes"`
+	Artifact        *processArtifactRef `json:"artifact,omitempty"`
+	ArtifactError   string              `json:"artifact_error,omitempty"`
+	Recovery        processRecovery     `json:"recovery"`
+}
+
+// processArtifactRef is the only artifact projection placed in normal model
+// context. The host keeps IDs, compatibility aliases, and optional hashes in
+// durable metadata; the model only needs the ordinary-readable path and size.
+type processArtifactRef struct {
+	Purpose         agent.ToolArtifactPurpose `json:"purpose"`
+	ReadablePath    string                    `json:"readable_path"`
+	ContentType     string                    `json:"content_type"`
+	EstimatedBytes  int64                     `json:"estimated_bytes"`
+	EstimatedTokens int                       `json:"estimated_tokens"`
+	Complete        bool                      `json:"complete"`
 }
 
 func commandToolResult(result CommandResult, maxResultBytes int) (agent.ToolResult, error) {
@@ -172,12 +184,26 @@ func commandToolResult(result CommandResult, maxResultBytes int) (agent.ToolResu
 	default:
 		return agent.ToolResult{}, fmt.Errorf("process returned unsupported status %q", result.Status)
 	}
+	artifactFailure, err := commandArtifactFailure(result.ArtifactError)
+	if err != nil {
+		return agent.ToolResult{}, err
+	}
+	if result.Artifact != nil && !completeCommandArtifact(*result.Artifact) {
+		result.Artifact = nil
+		artifactFailure = agent.ToolArtifactFailureCommit
+	}
+	if result.Artifact != nil && artifactFailure != "" {
+		return agent.ToolResult{}, errors.New("process returned both a complete artifact and an artifact failure")
+	}
 	metadata := processEnvelope{
 		Schema: "process.result.v1", Status: result.Status, Shell: result.Shell,
 		Engine: result.Engine, Version: result.Version, ExitCode: result.ExitCode,
 		Cwd: result.Cwd, PTY: result.PTY, TimeoutSeconds: result.TimeoutSeconds,
 		OutputTruncated: result.OutputTruncated, OutputBytes: result.OutputBytes,
-		Artifact: result.Artifact, ArtifactError: result.ArtifactError, Recovery: recovery,
+		Artifact: processModelArtifactRef(result.Artifact), ArtifactError: artifactFailure, Recovery: recovery,
+	}
+	if metadata.OutputTruncated && metadata.Artifact == nil && metadata.ArtifactError == "" {
+		metadata.ArtifactError = agent.ToolArtifactFailureStoreUnavailable
 	}
 	encoded, err := json.Marshal(metadata)
 	if err != nil {
@@ -195,8 +221,11 @@ func commandToolResult(result CommandResult, maxResultBytes int) (agent.ToolResu
 		available-- // newline separating the mandatory envelope from output
 	}
 	projected, truncated := truncateUTF8WithMarker(output, "\n"+processTruncatedMarker, max(0, available))
-	if truncated && !metadata.OutputTruncated {
+	if truncated && (!metadata.OutputTruncated || metadata.Artifact == nil && metadata.ArtifactError == "") {
 		metadata.OutputTruncated = true
+		if metadata.Artifact == nil && metadata.ArtifactError == "" {
+			metadata.ArtifactError = agent.ToolArtifactFailureStoreUnavailable
+		}
 		encoded, err = json.Marshal(metadata)
 		if err != nil {
 			return agent.ToolResult{}, fmt.Errorf("serialize truncated process result: %w", err)
@@ -217,11 +246,92 @@ func commandToolResult(result CommandResult, maxResultBytes int) (agent.ToolResu
 	toolResult := agent.ToolResult{
 		ModelContent: content, DisplayContent: content, Details: encoded,
 		Status: agent.ToolResultSuccess,
+		Metadata: agent.ToolResultMetadata{
+			OriginalModelBytes:   processOriginalResultBytes(len(encoded), output, metadata.OutputBytes),
+			OriginalDisplayBytes: processOriginalResultBytes(len(encoded), output, metadata.OutputBytes),
+			ModelTruncated:       metadata.OutputTruncated,
+			DisplayTruncated:     metadata.OutputTruncated,
+			ArtifactPersistence:  commandArtifactPersistence(metadata),
+		},
 	}
 	if result.Artifact != nil {
 		toolResult.Artifacts = []agent.ToolArtifactRef{*result.Artifact}
 	}
 	return toolResult, nil
+}
+
+func completeCommandArtifact(artifact agent.ToolArtifactRef) bool {
+	path := strings.TrimSpace(artifact.ReadablePath)
+	if path == "" {
+		path = strings.TrimSpace(artifact.URI)
+	}
+	contentType := strings.TrimSpace(artifact.ContentType)
+	if contentType == "" {
+		contentType = strings.TrimSpace(artifact.MIMEType)
+	}
+	return artifact.Complete && artifact.Purpose == agent.ToolArtifactPurposeCompleteToolOutput && path != "" && contentType != ""
+}
+
+func processModelArtifactRef(artifact *agent.ToolArtifactRef) *processArtifactRef {
+	if artifact == nil {
+		return nil
+	}
+	path := strings.TrimSpace(artifact.ReadablePath)
+	if path == "" {
+		path = strings.TrimSpace(artifact.URI)
+	}
+	contentType := strings.TrimSpace(artifact.ContentType)
+	if contentType == "" {
+		contentType = strings.TrimSpace(artifact.MIMEType)
+	}
+	estimatedBytes := artifact.EstimatedBytes
+	if estimatedBytes == 0 {
+		estimatedBytes = artifact.ByteSize
+	}
+	return &processArtifactRef{
+		Purpose: artifact.Purpose, ReadablePath: path, ContentType: contentType,
+		EstimatedBytes: estimatedBytes, EstimatedTokens: artifact.EstimatedTokens, Complete: artifact.Complete,
+	}
+}
+
+func commandArtifactFailure(value string) (string, error) {
+	switch value {
+	case "":
+		return "", nil
+	case agent.ToolArtifactFailureStoreUnavailable, agent.ToolArtifactFailureBegin,
+		agent.ToolArtifactFailureWrite, agent.ToolArtifactFailureCommit:
+		return value, nil
+	default:
+		// CommandResult is an internal boundary, but runners may be supplied by
+		// extensions. Never copy an arbitrary storage error into model-visible
+		// process metadata.
+		return "", errors.New("process returned an unsafe artifact failure classification")
+	}
+}
+
+func commandArtifactPersistence(metadata processEnvelope) *agent.ToolArtifactPersistence {
+	if metadata.Artifact != nil {
+		return &agent.ToolArtifactPersistence{Attempted: true, Complete: true}
+	}
+	if metadata.ArtifactError == "" {
+		return nil
+	}
+	return &agent.ToolArtifactPersistence{
+		Attempted: true, Complete: false, FailureReason: metadata.ArtifactError,
+	}
+}
+
+func processOriginalResultBytes(envelopeBytes int, output string, outputBytes int64) int {
+	fullOutputBytes := max(outputBytes, int64(len(output)))
+	maxInt := int64(^uint(0) >> 1)
+	overhead := int64(envelopeBytes)
+	if fullOutputBytes > 0 {
+		overhead++ // newline between the process envelope and merged output
+	}
+	if fullOutputBytes > maxInt-overhead {
+		return int(maxInt)
+	}
+	return int(fullOutputBytes + overhead)
 }
 
 func shellEngine(shell ShellKind, executable string) string {

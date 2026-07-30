@@ -259,11 +259,15 @@ func TestSessionConversationKeepsStableContextBeforeCompactionSummary(t *testing
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := sess.Append(agent.UserMessage("旧用户请求")); err != nil {
-		t.Fatal(err)
-	}
-	if err := sess.Append(agent.AssistantMessage("旧助手回复", nil)); err != nil {
-		t.Fatal(err)
+	for _, message := range []*agent.Message{
+		agent.UserMessage(strings.Repeat("第一轮旧用户请求 ", 700)),
+		agent.AssistantMessage(strings.Repeat("第一轮旧助手回复 ", 700), nil),
+		agent.UserMessage("第二轮旧用户请求"),
+		agent.AssistantMessage("第二轮旧助手回复", nil),
+	} {
+		if err := sess.Append(message); err != nil {
+			t.Fatal(err)
+		}
 	}
 	conversation := NewSessionConversationForAgentWithRuntimeContexts(
 		sess,
@@ -278,7 +282,7 @@ func TestSessionConversationKeepsStableContextBeforeCompactionSummary(t *testing
 	if err != nil {
 		t.Fatal(err)
 	}
-	compacted, result, err := conversation.CompactContextIfNeeded(context.Background(), ContextCompactionInput{
+	compacted, result, err := conversation.CompactContextIfNeeded(contextCompactionColdTestContext(), ContextCompactionInput{
 		Messages: history,
 		Force:    true,
 	})
@@ -320,8 +324,8 @@ func TestSessionConversationPreparesIncrementalCompactionWithoutAdvancingCanonic
 		t.Fatal(err)
 	}
 	messages := []*agent.Message{
-		agent.UserMessage("已压缩用户 1"),
-		agent.AssistantMessage("已压缩助手 1", nil),
+		agent.UserMessage(strings.Repeat("已压缩用户 1 ", 700)),
+		agent.AssistantMessage(strings.Repeat("已压缩助手 1 ", 700), nil),
 		agent.UserMessage("新增用户 2"),
 		agent.AssistantMessage("新增助手 2", nil),
 	}
@@ -342,7 +346,7 @@ func TestSessionConversationPreparesIncrementalCompactionWithoutAdvancingCanonic
 	}
 
 	conversation := NewSessionConversationForAgent(sess, &config.Config{}, config.AgentKindIDE)
-	_, result, err := conversation.CompactContextIfNeeded(context.Background(), ContextCompactionInput{
+	_, result, err := conversation.CompactContextIfNeeded(contextCompactionColdTestContext(), ContextCompactionInput{
 		Messages:       sess.GetEffectiveMessages(),
 		Force:          true,
 		KeepLatestUser: true,

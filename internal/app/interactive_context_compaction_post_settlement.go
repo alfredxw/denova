@@ -3,6 +3,7 @@ package app
 import (
 	"context"
 	"fmt"
+	"strings"
 
 	"denova/config"
 	agents "denova/internal/agents"
@@ -64,6 +65,10 @@ func (c *interactiveConversation) PostSettlementContextStructuralSpec(
 		fmt.Sprint(prepared.SourceTurnCount), preparedHash,
 	)
 	recordID := contextStructuralRecordID("cc", commandID)
+	reason := strings.TrimSpace(prepared.Result.TriggerReason)
+	if reason == "" {
+		reason = "context_usage_threshold"
+	}
 	event := interactive.ContextCompactionEvent{
 		ID: recordID, AgentKind: config.AgentKindInteractiveStory,
 		Epoch: prepared.Result.Epoch, Summary: prepared.Result.Summary,
@@ -71,8 +76,10 @@ func (c *interactiveConversation) PostSettlementContextStructuralSpec(
 		TokensBefore: prepared.Result.TokensBefore, TokensAfter: prepared.Result.TokensAfter,
 		TargetRatio: prepared.Result.TargetRatio, ContextWindowTokens: prepared.Result.ContextWindowTokens,
 		Strategy: prepared.Result.Strategy, Threshold: prepared.Result.Threshold,
-		Reason: "context_usage_threshold", Phase: prepared.Result.Phase,
-		ExpectedParentID: &expectedParent,
+		Reason: reason, Phase: prepared.Result.Phase,
+		CandidateFingerprint: prepared.Result.CandidateFingerprint,
+		CandidateGeneration:  prepared.Result.CandidateGeneration,
+		ExpectedParentID:     &expectedParent,
 	}
 	options.StoryID = c.storyID
 	options.BranchID = branchID

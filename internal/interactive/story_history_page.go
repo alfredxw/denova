@@ -374,7 +374,7 @@ func storyHistoryProjectionRecords(pathNewestFirst, candidates []locatedStoryRec
 			include = pathIDs[storyRevisionTurnID(record)]
 		case StoryEventTypeHotChoices:
 			include = pathIDs[parentIDFromRaw(record.Raw)]
-		case StoryEventTypePlayerInput:
+		case StoryEventTypePlayerInput, StoryEventTypeModelContextBatch:
 			parentID := parentIDFromRaw(record.Raw)
 			include = parentID == "" || pathIDs[parentID]
 		}
@@ -422,7 +422,7 @@ func storyRevisionTurnID(record StoryEventRecord) string {
 
 func isStoryHistorySideCandidate(eventType string) bool {
 	switch eventType {
-	case StoryEventTypeTurn, StoryEventTypePlayerInput, StoryEventTypeHotChoices,
+	case StoryEventTypeTurn, StoryEventTypePlayerInput, StoryEventTypeModelContextBatch, StoryEventTypeHotChoices,
 		StoryEventTypeTurnNarrativeRevised, StoryEventTypeTurnDisplayAppended, StoryEventTypeTurnStateRevised:
 		return true
 	default:

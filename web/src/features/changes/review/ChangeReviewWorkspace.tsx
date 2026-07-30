@@ -4,6 +4,7 @@ import { AlertTriangle, Check, FileDiff, Loader2, X } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import { toast } from 'sonner'
 import { Button } from '@/components/ui/button'
+import { InlineCollapsiblePane } from '@/components/layout/panel-motion'
 import { ScrollArea } from '@/components/ui/scroll-area'
 import { logWorkspaceChangeError, workspaceChangeErrorMessage } from '../errors'
 import {
@@ -458,14 +459,19 @@ export function ChangeReviewWorkspace({ workspace, threadID, scopeRequest, disab
             <ReviewState icon={<Check className="h-5 w-5 text-[var(--nova-success)]" />} label={t('changes.noPendingTitle')} />
           )}
           </ScrollArea>
-          {navigatorVisible && (
+          <InlineCollapsiblePane
+            visible={navigatorVisible}
+            side="right"
+            size="14rem"
+            className="nova-review-file-navigator-motion"
+          >
             <ReviewFileNavigator
               files={reviewFiles}
               selectedPath={activePath}
               onSelect={jumpToFile}
               onCollapse={() => setNavigatorVisible(false)}
             />
-          )}
+          </InlineCollapsiblePane>
         </div>
       </div>
     </section>

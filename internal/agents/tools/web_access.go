@@ -125,7 +125,7 @@ func newWebSearchTool(client webSearchClient, capability string) (agent.ToolDefi
 	if err != nil {
 		return agent.ToolDefinition{}, fmt.Errorf("create web_search tool: %w", err)
 	}
-	searchDescriptor := boundedReadDescriptor(ToolSourceWeb, capability)
+	searchDescriptor := boundedReadDescriptor(ToolSourceWeb, capability, agent.ToolResultRecoveryRerun)
 	searchDescriptor.Steering = agent.SteeringInterruptibleWait
 	definedSearchTool, err := defineTool(searchTool, searchDescriptor)
 	if err != nil {
@@ -159,7 +159,12 @@ func newWebFetchTool(client webFetchClient, capability string) (agent.ToolDefini
 	if err != nil {
 		return agent.ToolDefinition{}, fmt.Errorf("create web_fetch tool: %w", err)
 	}
-	fetchDescriptor := boundedReadDescriptor(ToolSourceWeb, capability)
+	fetchDescriptor := boundedReadDescriptor(ToolSourceWeb, capability, agent.ToolResultRecoveryRefetch)
+	// A fetched page can be large and is always reproducible from its bounded
+	// URL/range arguments. Keep it rich through the current run, while allowing
+	// the shared pressure planner to replace only exceptionally large, settled
+	// results at the next turn boundary.
+	fetchDescriptor.ResultRetention = agent.ToolResultEagerCandidate
 	fetchDescriptor.Steering = agent.SteeringInterruptibleWait
 	definedFetchTool, err := defineTool(fetchTool, fetchDescriptor)
 	if err != nil {

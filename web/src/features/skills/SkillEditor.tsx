@@ -2,6 +2,7 @@ import { useMemo } from 'react'
 import { Copy, FileCode2, FileText, ListTree, Loader2, Lock, RefreshCw, Settings2, Trash2 } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import { MarkdownEditPreview, MarkdownViewToggle } from '@/components/common/MarkdownEditPreview'
+import { InlineCollapsiblePane } from '@/components/layout/panel-motion'
 import { FileTree } from '@/components/Sidebar/FileTree'
 import type { SkillDocument, SkillFileDocument, SkillScopeInfo, SkillSummary } from '@/lib/api'
 import type { SkillContentViewMode } from './skill-utils'
@@ -161,7 +162,7 @@ export function SkillEditor({
         </div>
       </div>
       <div className="flex min-h-0 flex-1">
-        {fileTreeOpen && (
+        <InlineCollapsiblePane visible={fileTreeOpen} side="left" size="clamp(9rem, 42vw, 15rem)">
           <aside className="flex min-h-0 w-[min(42vw,15rem)] min-w-36 shrink-0 flex-col border-r border-[var(--nova-border)] bg-[var(--nova-surface)]">
             <div className="flex h-9 shrink-0 items-center gap-2 border-b border-[var(--nova-border)] px-3 text-[10px] font-medium uppercase text-[var(--nova-text-faint)]">
               <FileText className="h-3.5 w-3.5" />
@@ -177,7 +178,7 @@ export function SkillEditor({
               />
             </div>
           </aside>
-        )}
+        </InlineCollapsiblePane>
         <div className="min-h-0 min-w-0 flex flex-1 flex-col">
           {fileLoading ? (
             <div className="flex min-h-0 flex-1 items-center justify-center gap-2 text-xs text-[var(--nova-text-faint)]">

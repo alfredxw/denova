@@ -2,7 +2,7 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import { Gauge, GripHorizontal, GripVertical } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import { motion } from 'motion/react'
-import { Group, Panel, Separator } from 'react-resizable-panels'
+import { Group, Panel } from 'react-resizable-panels'
 import type { Layout } from 'react-resizable-panels'
 import { useShallow } from 'zustand/react/shallow'
 import { readFile } from '@/lib/api'
@@ -19,9 +19,10 @@ import {
   writeStoryStateDisplayPreference,
   type StoryStateDisplayPreference,
 } from './story-state/display-preference'
-import { novaEase, panelPresence, subtlePresence } from '@/features/motion/motion-tokens'
+import { novaEase, panelPresence } from '@/features/motion/motion-tokens'
 import { useIsMobile } from '@/hooks/useIsMobile'
 import { MobilePaneHost } from '@/components/layout/mobile-pane-host'
+import { CollapsiblePanelSeparator, CollapsibleResizablePanel } from '@/components/layout/panel-motion'
 import type { ImagePreset, InteractiveTurnPersistedEvent, Snapshot, StoryDirector, StoryImageSettings, StorySummary, Teller } from '../types'
 import { INTERACTIVE_OPENING_PRESET_PATH, INTERACTIVE_OPENING_PRESET_UPDATED_EVENT, LEGACY_INTERACTIVE_OPENING_PRESET_PATH, parseBookOpeningPresets, type BookOpeningPreset, type StoryCreateInput } from '../opening'
 import { DEFAULT_NARRATIVE_STYLE_ID, narrativeStylesForMode, resolveNarrativeStyle } from '../narrative-style'
@@ -436,20 +437,31 @@ export function InteractiveLayout({ workspace, active = true, recentNarrativeSty
                   {storyStage}
                 </MobilePaneHost>
               ) : (
-                <Group id="nova-interactive-horizontal" defaultLayout={readStoredLayout('nova-interactive-horizontal')} onLayoutChanged={(layout) => storeLayout('nova-interactive-horizontal', layout)} orientation="horizontal" className="min-h-0 flex-1">
+                <Group
+                  id="nova-interactive-horizontal"
+                  data-nova-panel-motion-group="true"
+                  defaultLayout={readStoredLayout('nova-interactive-horizontal')}
+                  onLayoutChanged={(layout) => {
+                    if (rightPanelVisible) storeLayout('nova-interactive-horizontal', layout)
+                  }}
+                  orientation="horizontal"
+                  className="min-h-0 flex-1"
+                >
                   <Panel id="story-stage" minSize="240px" className="min-w-0">
                     {storyStage}
                   </Panel>
-                  {rightPanelVisible && (
-                    <>
-                      <InteractiveResizeHandle direction="vertical" label={t('interactiveLayout.resizeDirectorPanel')} />
-                      <Panel id="snapshot" defaultSize="320px" minSize="180px" maxSize="45%" className="min-w-0">
-                        <motion.div className="h-full min-h-0" variants={subtlePresence} initial="initial" animate="animate" transition={{ duration: 0.16, ease: novaEase }}>
-                          <DirectorPanel storyId={currentStoryId} story={currentStory} storyDirectors={storyDirectors} onDirectorChange={handleDirectorChange} onReplyTargetCharsChange={handleReplyTargetCharsChange} branchId={currentBranchId} snapshot={displaySnapshot} stateDisplayPreference={storyStateDisplayPreference} onStateDisplayPreferenceChange={handleStoryStateDisplayPreferenceChange} />
-                        </motion.div>
-                      </Panel>
-                    </>
-                  )}
+                  <InteractiveResizeHandle visible={rightPanelVisible} direction="vertical" label={t('interactiveLayout.resizeDirectorPanel')} />
+                  <CollapsibleResizablePanel
+                    id="snapshot"
+                    visible={rightPanelVisible}
+                    side="right"
+                    defaultSize="320px"
+                    minSize="180px"
+                    maxSize="45%"
+                    className="min-w-[180px]"
+                  >
+                    <DirectorPanel storyId={currentStoryId} story={currentStory} storyDirectors={storyDirectors} onDirectorChange={handleDirectorChange} onReplyTargetCharsChange={handleReplyTargetCharsChange} branchId={currentBranchId} snapshot={displaySnapshot} stateDisplayPreference={storyStateDisplayPreference} onStateDisplayPreferenceChange={handleStoryStateDisplayPreferenceChange} />
+                  </CollapsibleResizablePanel>
                 </Group>
               )}
             </motion.div>
@@ -485,16 +497,16 @@ function mergePreferredStory(stories: StorySummary[], preferredStory?: StorySumm
   return found ? nextStories : [preferredStory, ...nextStories]
 }
 
-function InteractiveResizeHandle({ direction, label, prominent = false }: { direction: 'horizontal' | 'vertical'; label: string; prominent?: boolean }) {
+function InteractiveResizeHandle({ direction, label, prominent = false, visible = true }: { direction: 'horizontal' | 'vertical'; label: string; prominent?: boolean; visible?: boolean }) {
   const Icon = direction === 'vertical' ? GripVertical : GripHorizontal
   const className = direction === 'vertical' ? 'nova-resize-handle group -mx-1 flex w-3 cursor-col-resize items-center justify-center bg-transparent transition-colors' : `nova-resize-handle group ${prominent ? '-my-0.5 h-4' : '-my-1 h-3'} flex cursor-row-resize items-center justify-center bg-transparent transition-colors`
 
   return (
-    <Separator aria-label={label} className={className}>
+    <CollapsiblePanelSeparator visible={visible} aria-label={label} className={className}>
       <span className={`flex items-center justify-center rounded-full border border-[var(--nova-border)] bg-[var(--nova-surface)] text-[var(--nova-text-faint)] shadow-[0_4px_14px_rgba(0,0,0,0.22)] transition-colors group-hover:border-[var(--nova-active)] group-data-[resize-handle-active]:border-[var(--nova-active)] group-data-[resize-handle-active]:text-[var(--nova-text)] ${direction === 'vertical' ? 'h-9 w-2.5' : 'h-2.5 w-16'}`}>
         <Icon className={direction === 'vertical' ? 'h-3.5 w-3.5' : 'h-3 w-3'} aria-hidden="true" />
       </span>
-    </Separator>
+    </CollapsiblePanelSeparator>
   )
 }
 

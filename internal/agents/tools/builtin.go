@@ -59,7 +59,7 @@ func newSkillTool(ctx context.Context, backend *novaskills.Backend, maxBytes int
 	if err != nil {
 		return agent.ToolDefinition{}, err
 	}
-	return defineTool(tool, boundedReadDescriptor(agent.ToolSourceOther, config.AgentToolSkills))
+	return defineTool(tool, boundedReadDescriptor(agent.ToolSourceOther, config.AgentToolSkills, agent.ToolResultRecoveryRerun))
 }
 
 // NewSkill builds the progressive-disclosure Skill tool.
@@ -120,7 +120,7 @@ func newTodoTool() (agent.ToolDefinition, error) {
 		Recovery:         agent.ToolRecoveryIdempotent,
 		Steering:         agent.SteeringFinishCurrent,
 		ResultProjection: agent.ToolResultBoundedModelContext,
-		ContextRetention: agent.ToolContextTransient,
+		ResultRetention:  agent.ToolResultDeferred,
 		MaxResultBytes:   defaultToolResultMaxBytes,
 	})
 }
@@ -178,9 +178,9 @@ func newTaskTool(ctx context.Context, subAgents []agent.Runnable) (agent.ToolDef
 		Source: agent.ToolSourceOther, Capability: config.AgentToolDelegation, Execution: agent.ToolExecutionChild,
 		MutationScope: agent.ToolMutationNone, PostCheck: agent.ToolPostCheckNone,
 		Recovery: agent.ToolRecoveryNonIdempotent, ResultProjection: agent.ToolResultBoundedModelContext,
-		ContextRetention: agent.ToolContextTransient,
-		Steering:         agent.SteeringFinishCurrent,
-		MaxResultBytes:   defaultToolResultMaxBytes,
+		ResultRetention: agent.ToolResultProtected,
+		Steering:        agent.SteeringFinishCurrent,
+		MaxResultBytes:  defaultToolResultMaxBytes,
 	})
 }
 

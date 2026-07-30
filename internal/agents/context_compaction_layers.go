@@ -24,13 +24,43 @@ func summarizeContextInLayers(
 	sourceTokens int,
 	policy contextCompactionPolicy,
 	emitDelta func(attempt int, delta string),
-) (string, int, error) {
+) (string, int, contextCompactionSummaryExecution, error) {
 	inputChars := contextCompactionInputChars(existingCheckpoint, source, referenceContext)
+	if summary, chars, execution, attempted, err := summarizeContextWithPrimaryFork(
+		ctx, cfg, agentKind, existingCheckpoint, source, referenceContext, sourceTokens, policy, emitDelta,
+	); attempted {
+		return summary, chars, execution, err
+	} else {
+		coldExecution := execution
+		coldExecution.Mode = contextCompactionExecutionLayeredCold
+		coldExecution.CacheIdentityStatus = contextCompactionCacheIdentityCold
+		coldExecution.CacheUsageStatus = contextCompactionCacheUsageCold
+		coldExecution.CacheMissReason = strings.TrimSpace(coldExecution.FallbackReason)
+		if coldExecution.CacheMissReason == "" {
+			coldExecution.CacheMissReason = contextCompactionCacheUsageCold
+		}
+		return summarizeContextInColdLayers(ctx, cfg, agentKind, existingCheckpoint, source, referenceContext, sourceTokens, policy, emitDelta, inputChars, coldExecution)
+	}
+}
+
+func summarizeContextInColdLayers(
+	ctx context.Context,
+	cfg *config.Config,
+	agentKind string,
+	existingCheckpoint string,
+	source []*agent.Message,
+	referenceContext string,
+	sourceTokens int,
+	policy contextCompactionPolicy,
+	emitDelta func(attempt int, delta string),
+	inputChars int,
+	execution contextCompactionSummaryExecution,
+) (string, int, contextCompactionSummaryExecution, error) {
 	resolved := config.ResolveAgentContext(cfg, config.AgentKindContextCompaction)
 	maxBytes := resolved.MaxProviderInputBytes
 	composition, err := composeBuiltinSystemInstruction(cfg, config.AgentKindContextCompaction, "context_compaction", workspaceForPrompt(cfg, nil), "builtin_base", "上下文压缩规则", "define the bounded context compaction task", contextCompactionSystemInstruction())
 	if err != nil {
-		return "", inputChars, err
+		return "", inputChars, execution, err
 	}
 	probe := []*agent.Message{
 		agent.SystemMessage(composition.Instruction()),
@@ -38,17 +68,23 @@ func summarizeContextInLayers(
 	}
 	modelWindow := config.ResolveAgentModel(cfg, config.AgentKindContextCompaction).ContextWindowTokens
 	if validateProviderInput(config.AgentKindContextCompaction, probe, nil, maxBytes, modelWindow) == nil {
-		return summarizeContextForCompaction(ctx, cfg, agentKind, existingCheckpoint, source, referenceContext, sourceTokens, policy, emitDelta)
+		summary, chars, err := summarizeContextForCompaction(ctx, cfg, agentKind, existingCheckpoint, source, referenceContext, sourceTokens, policy, emitDelta)
+		execution.LayerCount = 1
+		execution.InputTokens = EstimateContextTokens(probe, nil)
+		execution.PromptTokens = execution.InputTokens
+		return summary, chars, execution, err
 	}
 
 	batches := compactionSourceBatches(existingCheckpoint, referenceContext, source, maxBytes, modelWindow)
 	if len(batches) == 0 {
-		return "", inputChars, fmt.Errorf("context compaction source is empty after layering")
+		return "", inputChars, execution, fmt.Errorf("context compaction source is empty after layering")
 	}
+	execution.LayerCount = len(batches)
+	execution.InputTokens = max(execution.InputTokens, sourceTokens)
 	rolling := ""
 	for index, batch := range batches {
 		if err := ctx.Err(); err != nil {
-			return "", inputChars, err
+			return "", inputChars, execution, err
 		}
 		layerEmit := emitDelta
 		if index < len(batches)-1 {
@@ -58,11 +94,11 @@ func summarizeContextInLayers(
 			ctx, cfg, agentKind, rolling, batch, "", EstimateContextTokens(batch, nil), policy, layerEmit,
 		)
 		if err != nil {
-			return "", inputChars, fmt.Errorf("context compaction layer %d/%d: %w", index+1, len(batches), err)
+			return "", inputChars, execution, fmt.Errorf("context compaction layer %d/%d: %w", index+1, len(batches), err)
 		}
 		rolling = strings.TrimSpace(summary)
 	}
-	return rolling, inputChars, nil
+	return rolling, inputChars, execution, nil
 }
 
 func compactionSourceBatches(existingCheckpoint, referenceContext string, source []*agent.Message, maxProviderBytes, maxProviderTokens int) [][]*agent.Message {

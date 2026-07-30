@@ -11,7 +11,8 @@ func resultTestDescriptor(limit int) ToolDescriptor {
 	return ToolDescriptor{
 		Source: ToolSourceRead, Execution: ToolExecutionParallelRead,
 		MutationScope: ToolMutationNone, PostCheck: ToolPostCheckNone,
-		Recovery: ToolRecoveryReadOnly, ResultProjection: ToolResultBoundedModelContext,
+		Recovery: ToolRecoveryReadOnly, ResultRecoveryKind: ToolResultRecoveryRead,
+		ResultProjection: ToolResultBoundedModelContext,
 		ContextRetention: ToolContextReceipt,
 		Steering:         SteeringFinishCurrent, MaxResultBytes: limit,
 	}
@@ -70,6 +71,10 @@ func TestNormalizeToolResultRejectsInvalidStructuredFields(t *testing.T) {
 		{name: "invalid artifact digest", result: ToolResult{Status: ToolResultSuccess, Artifacts: []ToolArtifactRef{{
 			ID: "artifact", URI: "memory://artifact", MIMEType: "text/plain", ByteSize: 1, SHA256: "invalid",
 		}}}},
+		{name: "invalid artifact purpose", result: ToolResult{Status: ToolResultSuccess, Artifacts: []ToolArtifactRef{{
+			ID: "artifact", Purpose: ToolArtifactPurpose("future"), ReadablePath: ".denova/artifacts/item.log",
+			ContentType: "text/plain", Complete: true,
+		}}}},
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
@@ -77,6 +82,160 @@ func TestNormalizeToolResultRejectsInvalidStructuredFields(t *testing.T) {
 				t.Fatalf("NormalizeToolResult(%#v) succeeded", test.result)
 			}
 		})
+	}
+}
+
+func TestNormalizeToolResultBoundsAndRedactsContextHints(t *testing.T) {
+	descriptor := resultTestDescriptor(16 * 1024)
+	descriptor.ContextRetention = ""
+	descriptor.ResultRetention = ToolResultEagerCandidate
+	reference := map[string]any{
+		"path":          "chapters/one.md",
+		"authorization": "Bearer never-persist-this",
+		"headers": map[string]any{
+			"X-Custom-Auth": "Bearer custom-header-secret",
+		},
+		"env": map[string]any{
+			"MY_CREDENTIAL": "environment-secret",
+			"PRIVATE_KEY":   "private-key-secret",
+			"ACCESS_KEY":    "access-key-secret",
+			"SESSION_KEY":   "session-key-secret",
+		},
+		"opaque_header": "Bearer scalar-secret",
+		"nested": map[string]any{
+			"api_token": "also-secret",
+			"query":     strings.Repeat("x", toolResultHintMaxStringBytes*2),
+		},
+	}
+	result := TextToolResult("result")
+	result.ContextHints = &ToolResultContextHints{
+		Recovery: ToolResultRecoveryHint{
+			Kind: ToolResultRecoveryRead, Reference: reference,
+			EstimatedBytes: 4096, EstimatedTokens: 1024,
+		},
+		ContextValue:    ToolResultContextDiscardable,
+		SupersessionKey: "read:chapters/one.md",
+	}
+
+	normalized, err := NormalizeToolResult(result, descriptor)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if normalized.ResultRetention != ToolResultEagerCandidate || normalized.ContextHints == nil {
+		t.Fatalf("normalized contract = %#v", normalized)
+	}
+	if got := normalized.ContextHints.Recovery.Reference["authorization"]; got != toolResultHintRedactedValue {
+		t.Fatalf("authorization was not redacted: %#v", got)
+	}
+	nested := normalized.ContextHints.Recovery.Reference["nested"].(map[string]any)
+	if got := nested["api_token"]; got != toolResultHintRedactedValue {
+		t.Fatalf("api token was not redacted: %#v", got)
+	}
+	if got := nested["query"].(string); len(got) > toolResultHintMaxStringBytes {
+		t.Fatalf("hint string exceeded bound: %d", len(got))
+	}
+	headers := normalized.ContextHints.Recovery.Reference["headers"].(map[string]any)
+	environment := normalized.ContextHints.Recovery.Reference["env"].(map[string]any)
+	for key, got := range map[string]any{
+		"custom auth": headers["X-Custom-Auth"],
+		"credential":  environment["MY_CREDENTIAL"],
+		"private key": environment["PRIVATE_KEY"],
+		"access key":  environment["ACCESS_KEY"],
+		"session key": environment["SESSION_KEY"],
+		"bare bearer": normalized.ContextHints.Recovery.Reference["opaque_header"],
+	} {
+		if got != toolResultHintRedactedValue {
+			t.Fatalf("%s was not redacted: %#v", key, got)
+		}
+	}
+	if reference["authorization"] != "Bearer never-persist-this" {
+		t.Fatal("normalization mutated the caller's recovery map")
+	}
+	encoded, err := json.Marshal(normalized.ContextHints)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, secret := range []string{
+		"never-persist-this", "also-secret", "custom-header-secret", "environment-secret",
+		"private-key-secret", "access-key-secret", "session-key-secret", "scalar-secret",
+	} {
+		if strings.Contains(string(encoded), secret) {
+			t.Fatalf("unsafe context hints leaked %q: %s", secret, encoded)
+		}
+	}
+	if len(encoded) > toolResultHintMaxBytes {
+		t.Fatalf("unsafe context hints: %s", encoded)
+	}
+}
+
+func TestNormalizeToolResultRejectsUnsafeContextHints(t *testing.T) {
+	descriptor := resultTestDescriptor(1024)
+	descriptor.ContextRetention = ""
+	descriptor.ResultRetention = ToolResultDeferred
+	tests := []ToolResultContextHints{
+		{Recovery: ToolResultRecoveryHint{Kind: ToolResultRecoveryKind("future")}},
+		{Recovery: ToolResultRecoveryHint{Kind: ToolResultRecoveryArtifact}},
+		{Recovery: ToolResultRecoveryHint{Kind: ToolResultRecoveryRead, EstimatedBytes: -1}},
+		{ContextValue: ToolResultContextValue("future")},
+	}
+	for _, hints := range tests {
+		result := TextToolResult("result")
+		result.ContextHints = &hints
+		if _, err := NormalizeToolResult(result, descriptor); err == nil {
+			t.Fatalf("accepted unsafe hints: %#v", hints)
+		}
+	}
+}
+
+func TestNormalizeToolResultArtifactContractDoesNotRequireDigest(t *testing.T) {
+	result := TextToolResult("preview")
+	result.Artifacts = []ToolArtifactRef{{
+		ID: "artifact-1", Purpose: ToolArtifactPurposeAttachment,
+		ReadablePath: ".denova/artifacts/session/call.log",
+		ContentType:  "text/plain; charset=utf-8", EstimatedBytes: 4096,
+		EstimatedTokens: 1024, Complete: true,
+	}}
+	normalized, err := NormalizeToolResult(result, resultTestDescriptor(1024))
+	if err != nil {
+		t.Fatal(err)
+	}
+	artifact := normalized.Artifacts[0]
+	if artifact.Purpose != ToolArtifactPurposeAttachment || artifact.URI != artifact.ReadablePath ||
+		artifact.MIMEType != artifact.ContentType || artifact.ByteSize != artifact.EstimatedBytes || artifact.SHA256 != "" {
+		t.Fatalf("artifact aliases were not normalized: %#v", artifact)
+	}
+}
+
+func TestNormalizeToolResultBoundsArtifactMetadata(t *testing.T) {
+	valid := ToolArtifactRef{
+		ID: "artifact", Purpose: ToolArtifactPurposeAttachment,
+		ReadablePath: ".denova/artifacts/session/item.log", ContentType: "text/plain", Complete: true,
+	}
+	tooMany := TextToolResult("preview")
+	tooMany.Artifacts = make([]ToolArtifactRef, maxToolResultArtifacts+1)
+	for index := range tooMany.Artifacts {
+		tooMany.Artifacts[index] = valid
+		tooMany.Artifacts[index].ID += string(rune('a' + index%26))
+	}
+	if _, err := NormalizeToolResult(tooMany, resultTestDescriptor(1024)); err == nil {
+		t.Fatal("unbounded artifact count was accepted")
+	}
+
+	oversized := TextToolResult("preview")
+	oversized.Artifacts = []ToolArtifactRef{valid}
+	oversized.Artifacts[0].ReadablePath = strings.Repeat("p", maxToolResultArtifactMetadataBytes+1)
+	if _, err := NormalizeToolResult(oversized, resultTestDescriptor(1024)); err == nil {
+		t.Fatal("unbounded artifact metadata was accepted")
+	}
+
+	normal := TextToolResult("preview")
+	normal.Artifacts = []ToolArtifactRef{valid, {
+		ID: "raw-output", Purpose: ToolArtifactPurposeCompleteToolOutput,
+		ReadablePath: ".denova/artifacts/session/raw.log", ContentType: "text/plain", Complete: true,
+	}}
+	normalized, err := NormalizeToolResult(normal, resultTestDescriptor(1024))
+	if err != nil || len(normalized.Artifacts) != 2 || normalized.Artifacts[1].Purpose != ToolArtifactPurposeCompleteToolOutput {
+		t.Fatalf("normal multi-artifact result failed to round-trip: result=%#v err=%v", normalized, err)
 	}
 }
 
@@ -109,5 +268,37 @@ func TestMessageEffectiveToolResultReadsLegacyAndStructuredHistory(t *testing.T)
 	}).EffectiveToolResult()
 	if structured.Status != ToolResultBlocked || structured.SyntheticReason != ToolSyntheticPolicyBlocked || !structured.Metadata.ModelTruncated {
 		t.Fatalf("structured result = %#v", structured)
+	}
+}
+
+func TestToolMessagePersistsNewResultContextContract(t *testing.T) {
+	result := TextToolResult("bounded preview")
+	result.ResultRetention = ToolResultEagerCandidate
+	result.ContextHints = &ToolResultContextHints{
+		Recovery: ToolResultRecoveryHint{
+			Kind: ToolResultRecoveryArtifact, ArtifactPath: ".denova/artifacts/session/call.log",
+			EstimatedBytes: 8192, EstimatedTokens: 2048,
+		},
+		ContextValue: ToolResultContextDiscardable, SupersessionKey: "read:chapter.md",
+	}
+	result.Metadata.ArtifactPersistence = &ToolArtifactPersistence{Attempted: true, Complete: true}
+	result.Artifacts = []ToolArtifactRef{{
+		ID: "artifact", ReadablePath: ".denova/artifacts/session/call.log",
+		ContentType: "text/plain", EstimatedBytes: 8192, EstimatedTokens: 2048, Complete: true,
+	}}
+
+	message := ToolMessage(result, "call-1", WithToolName("read"))
+	result.ContextHints.Recovery.ArtifactPath = "changed"
+	result.Metadata.ArtifactPersistence.Complete = false
+	restored := message.EffectiveToolResult()
+	if restored.ResultRetention != ToolResultEagerCandidate || restored.ContextHints == nil ||
+		restored.ContextHints.Recovery.ArtifactPath != ".denova/artifacts/session/call.log" ||
+		restored.Metadata.ArtifactPersistence == nil || !restored.Metadata.ArtifactPersistence.Complete ||
+		len(restored.Artifacts) != 1 || !restored.Artifacts[0].Complete {
+		t.Fatalf("restored result = %#v", restored)
+	}
+	restored.ContextHints.Recovery.ArtifactPath = "mutated"
+	if message.ToolResult.ContextHints.Recovery.ArtifactPath != ".denova/artifacts/session/call.log" {
+		t.Fatal("EffectiveToolResult shared context hints with persisted message")
 	}
 }

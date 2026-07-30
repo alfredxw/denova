@@ -22,17 +22,23 @@ type PlayerInputIntent struct {
 }
 
 type PlayerInputAcceptedEvent struct {
-	V                int    `json:"v"`
-	Type             string `json:"type"`
-	ID               string `json:"id"`
-	ParentID         string `json:"parent_id,omitempty"`
-	BranchID         string `json:"branch_id"`
-	Ts               string `json:"ts"`
-	Text             string `json:"text"`
-	AgentCommandID   string `json:"agent_command_id"`
-	AgentOperationID string `json:"agent_operation_id"`
-	AgentCycle       int    `json:"agent_cycle"`
-	AgentCommitHash  string `json:"agent_commit_hash"`
+	V        int    `json:"v"`
+	Type     string `json:"type"`
+	ID       string `json:"id"`
+	ParentID string `json:"parent_id,omitempty"`
+	BranchID string `json:"branch_id"`
+	Ts       string `json:"ts"`
+	Text     string `json:"text"`
+	// AcceptedTurnCount is the completed-turn boundary visible when the input
+	// was accepted. Side events do not advance branch.Head, so ParentID alone
+	// cannot place an interrupted input around later turns when its parent is a
+	// structural event. Keeping this logical boundary makes the model projection
+	// stable across settlement and cold reload.
+	AcceptedTurnCount *int   `json:"accepted_turn_count,omitempty"`
+	AgentCommandID    string `json:"agent_command_id"`
+	AgentOperationID  string `json:"agent_operation_id"`
+	AgentCycle        int    `json:"agent_cycle"`
+	AgentCommitHash   string `json:"agent_commit_hash"`
 }
 
 type PlayerInputReceipt struct {
@@ -92,11 +98,16 @@ func (s *Store) CommitPlayerInput(storyID string, intent PlayerInputIntent) (Pla
 	if receipt, found, err := findPlayerInputCommitInLines(lines, canonical.Identity, canonical.BranchID, canonical.Hash); err != nil || found {
 		return receipt, err
 	}
+	projection, err := s.storyBranchProjectionLocked(storyID, canonical.BranchID)
+	if err != nil {
+		return PlayerInputReceipt{}, err
+	}
+	acceptedTurnCount := projection.Depth
 	now := time.Now().UTC().Format(time.RFC3339Nano)
 	event := PlayerInputAcceptedEvent{
 		V: schemaVersion, Type: StoryEventTypePlayerInput,
 		ID: deterministicPlayerInputID(canonical.Identity), ParentID: branch.Head,
-		BranchID: canonical.BranchID, Ts: now, Text: canonical.Text,
+		BranchID: canonical.BranchID, Ts: now, Text: canonical.Text, AcceptedTurnCount: &acceptedTurnCount,
 		AgentCommandID: canonical.Identity.CommandID, AgentOperationID: canonical.Identity.OperationID,
 		AgentCycle: canonical.Identity.Cycle, AgentCommitHash: canonical.Hash,
 	}

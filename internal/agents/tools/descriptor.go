@@ -79,17 +79,22 @@ func Define(tool agent.Tool, descriptor agent.ToolDescriptor) (agent.ToolDefinit
 	return defineTool(tool, descriptor)
 }
 
-func boundedReadDescriptor(source agent.ToolSource, capability string) agent.ToolDescriptor {
+func boundedReadDescriptor(source agent.ToolSource, capability string, recoveryKinds ...agent.ToolResultRecoveryKind) agent.ToolDescriptor {
+	var resultRecovery agent.ToolResultRecoveryKind
+	if len(recoveryKinds) > 0 {
+		resultRecovery = recoveryKinds[0]
+	}
 	return agent.ToolDescriptor{
 		Source: source, Capability: capability,
-		Execution:        agent.ToolExecutionParallelRead,
-		MutationScope:    agent.ToolMutationNone,
-		PostCheck:        agent.ToolPostCheckNone,
-		Recovery:         agent.ToolRecoveryReadOnly,
-		ResultProjection: agent.ToolResultBoundedModelContext,
-		ContextRetention: agent.ToolContextReceipt,
-		Steering:         agent.SteeringFinishCurrent,
-		MaxResultBytes:   defaultToolResultMaxBytes,
+		Execution:          agent.ToolExecutionParallelRead,
+		MutationScope:      agent.ToolMutationNone,
+		PostCheck:          agent.ToolPostCheckNone,
+		Recovery:           agent.ToolRecoveryReadOnly,
+		ResultRecoveryKind: resultRecovery,
+		ResultProjection:   agent.ToolResultBoundedModelContext,
+		ResultRetention:    agent.ToolResultDeferred,
+		Steering:           agent.SteeringFinishCurrent,
+		MaxResultBytes:     defaultToolResultMaxBytes,
 	}
 }
 
@@ -97,6 +102,12 @@ func boundedReadDescriptor(source agent.ToolSource, capability string) agent.Too
 // enter bounded model context.
 func BoundedReadDescriptor(source agent.ToolSource, capability string) agent.ToolDescriptor {
 	return boundedReadDescriptor(source, capability)
+}
+
+// BoundedRecoverableReadDescriptor additionally declares the exact ordinary
+// operation that can reconstruct a pressure-cleaned result.
+func BoundedRecoverableReadDescriptor(source agent.ToolSource, capability string, recoveryKind agent.ToolResultRecoveryKind) agent.ToolDescriptor {
+	return boundedReadDescriptor(source, capability, recoveryKind)
 }
 
 func workspaceWriteDescriptor(source agent.ToolSource, capability string, recovery agent.ToolRecoveryClass) agent.ToolDescriptor {
@@ -107,7 +118,7 @@ func workspaceWriteDescriptor(source agent.ToolSource, capability string, recove
 		PostCheck:        agent.ToolPostCheckWorkspaceChange,
 		Recovery:         recovery,
 		ResultProjection: agent.ToolResultBoundedModelContext,
-		ContextRetention: agent.ToolContextReceipt,
+		ResultRetention:  agent.ToolResultProtected,
 		Steering:         agent.SteeringFinishCurrent,
 		MaxResultBytes:   defaultToolResultMaxBytes,
 	}
@@ -125,7 +136,7 @@ func interactiveStoryWorkflowDescriptor() agent.ToolDescriptor {
 		PostCheck:        agent.ToolPostCheckSessionState,
 		Recovery:         agent.ToolRecoveryReconcilable,
 		ResultProjection: agent.ToolResultBoundedModelContext,
-		ContextRetention: agent.ToolContextTransient,
+		ResultRetention:  agent.ToolResultProtected,
 		Steering:         agent.SteeringFinishCurrent,
 		MaxResultBytes:   defaultToolResultMaxBytes,
 	}

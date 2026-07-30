@@ -213,7 +213,11 @@ func appendModelInputLog(payload []byte) error {
 	modelInputLogMu.Lock()
 	defer modelInputLogMu.Unlock()
 
-	if err := os.MkdirAll(filepath.Dir(modelInputLogPath), 0755); err != nil {
+	dir := filepath.Dir(modelInputLogPath)
+	if err := os.MkdirAll(dir, 0o700); err != nil {
+		return err
+	}
+	if err := os.Chmod(dir, 0o700); err != nil {
 		return err
 	}
 	if len(payload) == 0 || payload[len(payload)-1] != '\n' {
@@ -224,8 +228,13 @@ func appendModelInputLog(payload []byte) error {
 		return err
 	}
 	tmpPath := modelInputLogPath + ".tmp"
-	f, err := os.OpenFile(tmpPath, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, 0644)
+	f, err := os.OpenFile(tmpPath, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, 0o600)
 	if err != nil {
+		return err
+	}
+	if err := f.Chmod(0o600); err != nil {
+		_ = f.Close()
+		_ = os.Remove(tmpPath)
 		return err
 	}
 	if len(previous) > 0 {
@@ -244,7 +253,10 @@ func appendModelInputLog(payload []byte) error {
 		_ = os.Remove(tmpPath)
 		return err
 	}
-	return os.Rename(tmpPath, modelInputLogPath)
+	if err := os.Rename(tmpPath, modelInputLogPath); err != nil {
+		return err
+	}
+	return os.Chmod(modelInputLogPath, 0o600)
 }
 
 func enqueueModelInputLogJob(job modelInputLogJob) bool {
@@ -265,7 +277,7 @@ func enqueueModelInputLogJob(job modelInputLogJob) bool {
 func runModelInputLogWorker(jobs <-chan modelInputLogJob) {
 	defer func() {
 		if recovered := recover(); recovered != nil {
-			log.Printf("[llm-input-log] worker panic recovered err=%v", recovered)
+			log.Printf("[llm-input-log] worker panic recovered error_class=panic")
 		}
 	}()
 	for job := range jobs {
@@ -273,11 +285,11 @@ func runModelInputLogWorker(jobs <-chan modelInputLogJob) {
 			defer modelInputLogWG.Done()
 			defer func() {
 				if recovered := recover(); recovered != nil {
-					log.Printf("[llm-input-log] job panic recovered err=%v", recovered)
+					log.Printf("[llm-input-log] job panic recovered error_class=panic")
 				}
 			}()
 			if err := writeModelInputLogJob(job); err != nil {
-				log.Printf("[llm-input-log] write failed path=%s err=%v", modelInputLogPath, err)
+				log.Printf("[llm-input-log] write failed path=%s error_class=%s", modelInputLogPath, safeErrorClass(err.Error()))
 			}
 		}()
 	}
@@ -562,13 +574,32 @@ type modelInputLoggingChatModel struct {
 	providerInputMaxBytes int
 }
 
+type modelInputTraceSourceKey struct{}
+
+func withContextCompactionTraceSource(ctx context.Context) context.Context {
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	return context.WithValue(ctx, modelInputTraceSourceKey{}, "context_compaction")
+}
+
+func modelInputTraceSource(ctx context.Context) string {
+	if ctx != nil {
+		if source, _ := ctx.Value(modelInputTraceSourceKey{}).(string); strings.TrimSpace(source) != "" {
+			return strings.TrimSpace(source)
+		}
+	}
+	return "agent"
+}
+
 func (m *modelInputLoggingChatModel) Generate(ctx context.Context, input []*agent.Message, opts ...agent.ModelOption) (*agent.Message, error) {
 	if err := validateProviderInput(m.agentKind, input, m.tools, m.providerInputMaxBytes, m.contextWindowTokens); err != nil {
 		return nil, err
 	}
-	span, callID, spanCtx := beginLLMCallTrace(ctx, m.agentKind, "agent", "generate", m.config, input, m.tools, false)
+	source := modelInputTraceSource(ctx)
+	span, callID, spanCtx := beginLLMCallTrace(ctx, m.agentKind, source, "generate", m.config, input, m.tools, false)
 	msg, err := m.inner.Generate(spanCtx, input, stableToolModelOptions(opts, m.tools)...)
-	finishLLMCallTrace(span, callID, m.agentKind, "agent", "generate", m.config.Model, 0, msg, err, nil)
+	finishLLMCallTrace(span, callID, m.agentKind, source, "generate", m.config.Model, 0, msg, err, nil)
 	return msg, err
 }
 
@@ -576,13 +607,14 @@ func (m *modelInputLoggingChatModel) Stream(ctx context.Context, input []*agent.
 	if err := validateProviderInput(m.agentKind, input, m.tools, m.providerInputMaxBytes, m.contextWindowTokens); err != nil {
 		return nil, err
 	}
-	span, callID, spanCtx := beginLLMCallTrace(ctx, m.agentKind, "agent", "stream", m.config, input, m.tools, true)
+	source := modelInputTraceSource(ctx)
+	span, callID, spanCtx := beginLLMCallTrace(ctx, m.agentKind, source, "stream", m.config, input, m.tools, true)
 	started := time.Now()
 	var firstChunk time.Time
 	var chunks []*agent.Message
 	stream, err := m.inner.Stream(spanCtx, input, stableToolModelOptions(opts, m.tools)...)
 	if err != nil {
-		finishLLMCallTrace(span, callID, m.agentKind, "agent", "stream", m.config.Model, 0, nil, err, nil)
+		finishLLMCallTrace(span, callID, m.agentKind, source, "stream", m.config.Model, 0, nil, err, nil)
 		return nil, err
 	}
 	return agent.StreamReaderWithConvert(stream, func(msg *agent.Message) (*agent.Message, error) {
@@ -594,13 +626,13 @@ func (m *modelInputLoggingChatModel) Stream(ctx context.Context, input []*agent.
 		}
 		return msg, nil
 	}, agent.WithErrWrapper(func(err error) error {
-		finishLLMCallTrace(span, callID, m.agentKind, "agent", "stream", m.config.Model, 0, nil, err, map[string]any{
+		finishLLMCallTrace(span, callID, m.agentKind, source, "stream", m.config.Model, 0, nil, err, map[string]any{
 			"ttft_ms": durationMilliseconds(started, firstChunk),
 		})
 		return err
 	}), agent.WithOnEOF(func() (any, error) {
 		msg, concatErr := agent.ConcatMessages(chunks)
-		finishLLMCallTrace(span, callID, m.agentKind, "agent", "stream", m.config.Model, 0, msg, concatErr, map[string]any{
+		finishLLMCallTrace(span, callID, m.agentKind, source, "stream", m.config.Model, 0, msg, concatErr, map[string]any{
 			"ttft_ms": durationMilliseconds(started, firstChunk),
 		})
 		return nil, io.EOF

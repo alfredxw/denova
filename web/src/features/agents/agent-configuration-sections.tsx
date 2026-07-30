@@ -391,7 +391,7 @@ function contextRowsFor(agent: VisibleAgentKey, effective: Settings, t: (key: st
   const context = mergeAgentContextOverride(effective.agent_context?.default ?? {}, effective.agent_context?.[agent] ?? {})
   const compactionContext = mergeAgentContextOverride(effective.agent_context?.default ?? {}, effective.agent_context?.context_compaction ?? {})
   const compactionTurns = compactionContext.compaction_recent_turns ?? 1
-  const threshold = Math.round((context.compaction_threshold ?? 0.8) * 100)
+  const threshold = Math.round((context.compaction_threshold ?? 0.85) * 100)
   const targetMin = Math.round((compactionContext.compaction_target_min_ratio ?? 0.05) * 100)
   const targetMax = Math.round((compactionContext.compaction_target_max_ratio ?? 0.2) * 100)
   if (agent === 'ide') {
@@ -453,17 +453,36 @@ export function mergeAgentPromptOverride(parent: AgentPromptOverride, child: Age
 }
 
 export function mergeAgentContextOverride(parent: AgentContextOverride, child: AgentContextOverride): AgentContextOverride {
-  const compactionThreshold = child.compaction_threshold ?? parent.compaction_threshold ?? 0.8
+  const compactionThreshold = child.compaction_threshold ?? parent.compaction_threshold ?? 0.85
+  const cleanupThreshold = child.tool_result_cleanup_threshold ?? parent.tool_result_cleanup_threshold ?? 0.7
+  const cleanupTarget = child.tool_result_cleanup_target ?? parent.tool_result_cleanup_target ?? 0.6
   const compactionRecentTurns = child.compaction_recent_turns ?? parent.compaction_recent_turns ?? 1
   const compactionTargetMin = child.compaction_target_min_ratio ?? parent.compaction_target_min_ratio ?? 0.05
   const compactionTargetMax = child.compaction_target_max_ratio ?? parent.compaction_target_max_ratio ?? 0.2
+  const pressureScope = child.context_pressure_scope ?? parent.context_pressure_scope
+  const boundedCompactionThreshold = Math.max(0.5, Math.min(0.98, compactionThreshold))
+  const requestedCleanupThreshold = Math.max(0.01, Math.min(0.98, cleanupThreshold))
+  const boundedCleanupThreshold = requestedCleanupThreshold >= boundedCompactionThreshold
+    ? boundedCompactionThreshold * 0.85
+    : requestedCleanupThreshold
+  const boundedCleanupTarget = Math.max(0.001, Math.min(0.98, cleanupTarget))
   return {
     compaction_enabled: child.compaction_enabled ?? parent.compaction_enabled ?? true,
     compaction_strategy: child.compaction_strategy || parent.compaction_strategy || 'summary_agent',
-    compaction_threshold: Math.max(0.5, Math.min(0.98, compactionThreshold)),
+    compaction_threshold: boundedCompactionThreshold,
+    context_pressure_scope: pressureScope === 'total' ? 'total' : 'body_after_prefix',
+    tool_result_cleanup_threshold: boundedCleanupThreshold,
+    tool_result_cleanup_target: boundedCleanupTarget >= boundedCleanupThreshold ? boundedCleanupThreshold * 0.85 : boundedCleanupTarget,
+    tool_result_cleanup_min_tokens: Math.max(0, Math.min(16 * 1024 * 1024, child.tool_result_cleanup_min_tokens ?? parent.tool_result_cleanup_min_tokens ?? 20_000)),
+    tool_result_keep_recent: Math.max(0, Math.min(30, child.tool_result_keep_recent ?? parent.tool_result_keep_recent ?? 3)),
+    tool_result_keep_recent_tokens: Math.max(0, Math.min(16 * 1024 * 1024, child.tool_result_keep_recent_tokens ?? parent.tool_result_keep_recent_tokens ?? 16_000)),
+    tool_result_warm_suffix_tokens: Math.max(0, Math.min(16 * 1024 * 1024, child.tool_result_warm_suffix_tokens ?? parent.tool_result_warm_suffix_tokens ?? 8_000)),
+    tool_result_eager_min_tokens: Math.max(0, Math.min(16 * 1024 * 1024, child.tool_result_eager_min_tokens ?? parent.tool_result_eager_min_tokens ?? 32_000)),
     compaction_recent_turns: Math.max(1, Math.min(30, compactionRecentTurns)),
     compaction_target_min_ratio: Math.max(0.01, Math.min(0.8, compactionTargetMin)),
     compaction_target_max_ratio: Math.max(0.01, Math.min(0.8, Math.max(compactionTargetMin, compactionTargetMax))),
+    compaction_recovery_band: Math.max(0.1, Math.min(1, child.compaction_recovery_band ?? parent.compaction_recovery_band ?? 0.8)),
+    compaction_max_consecutive_failures: Math.max(1, Math.min(100, child.compaction_max_consecutive_failures ?? parent.compaction_max_consecutive_failures ?? 3)),
     tool_result_retention_enabled: child.tool_result_retention_enabled ?? parent.tool_result_retention_enabled,
     max_fragment_bytes: child.max_fragment_bytes ?? parent.max_fragment_bytes ?? 256 * 1024,
     max_total_injected_bytes: child.max_total_injected_bytes ?? parent.max_total_injected_bytes ?? 1024 * 1024,

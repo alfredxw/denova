@@ -126,7 +126,7 @@ func (r *chatRun) emitExplicitSkillLoads(invocations []ExplicitSkillInvocation) 
 	for index, invocation := range invocations {
 		args, err := json.Marshal(map[string]string{"name": invocation.Name})
 		if err != nil {
-			r.logger.Error("explicit_skill_args_failed", slog.String("skill", invocation.Name), slog.Any("error", err))
+			r.logger.Error("explicit_skill_args_failed", slog.String("skill", invocation.Name), slog.String("error_class", safeErrorClass(err.Error())))
 			continue
 		}
 		id := fmt.Sprintf("%s-explicit-skill-%02d", firstNonEmpty(r.runID, "run"), index+1)

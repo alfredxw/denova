@@ -3,6 +3,7 @@ package agents
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"strings"
@@ -15,53 +16,81 @@ import (
 )
 
 const (
-	contextCompactionPhasePreRun = "pre_run"
-	contextCompactionPhaseMidRun = "mid_run"
-	contextCompactionReasonLimit = "context_usage_threshold"
+	contextCompactionPhasePreRun    = "pre_run"
+	contextCompactionPhaseMidRun    = "mid_run"
+	contextCompactionPhaseModelStep = "model_step"
+	contextCompactionReasonLimit    = "context_usage_threshold"
 
 	contextCompactionSummaryPrefix = "[Denova Context Compaction]"
 )
 
 type contextCompactionPolicy struct {
-	AgentKind           string
-	Enabled             bool
-	Strategy            string
-	ContextWindowTokens int
-	Threshold           float64
-	RetainedTurns       int
-	TargetMinRatio      float64
-	TargetMaxRatio      float64
+	AgentKind               string
+	Enabled                 bool
+	Strategy                string
+	ContextWindowTokens     int
+	Threshold               float64
+	RecoveryBand            float64
+	RetainedTurns           int
+	TargetMinRatio          float64
+	TargetMaxRatio          float64
+	MaxConsecutiveFailures  int
+	CheckpointOutputReserve int
 }
 
 type ContextCompactionResult struct {
-	Triggered                bool
-	SkippedReason            string
-	Phase                    string
-	EstimatedTokensBefore    int
-	ObservedPromptTokens     int
-	ObservedEstimateTokens   int
-	TokensBefore             int
-	TokensAfter              int
-	ProjectedTokensBefore    int
-	ProjectedTokensAfter     int
-	ReservedCompletionTokens int
-	ReservedToolResultTokens int
-	ContextWindowTokens      int
-	Strategy                 string
-	Threshold                float64
-	Epoch                    int
-	Summary                  string
-	TargetRatio              float64
-	SourceMessageCount       int
-	MessageCountBefore       int
-	MessageCountAfter        int
-	RetainedTurns            int
+	Triggered                 bool
+	SkippedReason             string
+	Phase                     string
+	EstimatedTokensBefore     int
+	ObservedPromptTokens      int
+	ObservedEstimateTokens    int
+	TokensBefore              int
+	TokensAfter               int
+	ProjectedTokensBefore     int
+	ProjectedTokensAfter      int
+	ReservedCompletionTokens  int
+	ReservedToolResultTokens  int
+	ContextWindowTokens       int
+	Strategy                  string
+	Threshold                 float64
+	TriggerReason             string
+	RecoveryBand              float64
+	RecoveryTargetTokens      int
+	RecoveryBandMet           bool
+	Degraded                  bool
+	Epoch                     int
+	Summary                   string
+	TargetRatio               float64
+	SourceMessageCount        int
+	MessageCountBefore        int
+	MessageCountAfter         int
+	RetainedTurns             int
+	ExecutionMode             string
+	FallbackReason            string
+	CompactionInputTokens     int
+	CompactionPromptTokens    int
+	CheckpointOutputReserve   int
+	SafetyMarginTokens        int
+	CacheExpectedPrefixTokens int
+	CacheReadTokens           int
+	CacheWriteTokens          int
+	CacheWriteTokensKnown     bool
+	CacheIdentityStatus       string
+	CacheUsageStatus          string
+	CacheMissReason           string
+	LayerCount                int
+	CandidateFingerprint      string
+	CandidateGeneration       uint64
+	ConsecutiveFailures       int
+	FailureFuseOpen           bool
 }
 
 type contextCompactionSummaryFunc func(ctx context.Context, cfg *config.Config, agentKind string, existingCheckpoint string, source []*agent.Message, referenceContext string, sourceTokens int, policy contextCompactionPolicy, emitDelta func(attempt int, delta string)) (string, int, error)
 
 type contextCompactionController struct {
 	conversation ContextCompactionConversation
+	emit         func(Event)
 }
 
 // ContextCompactionConversation is implemented by conversations that can
@@ -71,12 +100,22 @@ type ContextCompactionConversation interface {
 }
 
 type ContextCompactionInput struct {
-	Messages            []*agent.Message
-	SourceMessages      []*agent.Message
-	Tools               []*agent.ToolInfo
-	Phase               string
-	Emit                func(Event)
-	Force               bool
+	Messages       []*agent.Message
+	SourceMessages []*agent.Message
+	// SourceMessagesSet distinguishes an intentionally empty canonical source
+	// from the legacy "derive the source from Messages" behavior. Domain
+	// adapters with their own durable boundary must set this even when the
+	// boundary currently contains no messages; otherwise an unsettled suffix
+	// could be mistaken for checkpoint source.
+	SourceMessagesSet bool
+	Tools             []*agent.ToolInfo
+	Phase             string
+	Emit              func(Event)
+	Force             bool
+	// Planned means the unified pressure planner has already selected
+	// compaction over cleanup. It bypasses duplicate threshold evaluation while
+	// remaining an automatic, post-settlement structural operation.
+	Planned             bool
 	ExistingCheckpoint  string
 	ContextWindowTokens int
 	// ObservedPromptTokens is exact provider usage for the previous request.
@@ -91,18 +130,47 @@ type ContextCompactionInput struct {
 	ReservedToolResultTokens int
 	ReferenceContext         string
 	KeepLatestUser           bool
+	// Automatic distinguishes the unified model-step planner from explicit
+	// user compaction. Automatic maintenance may be gated by health latches;
+	// explicit requests always re-evaluate immediately.
+	Automatic bool
+	// CandidateTokens lets a degraded checkpoint retry when the cleanup
+	// candidate set has materially changed, even if canonical tail growth alone
+	// is still small.
+	CandidateTokens int
+	// CandidateFingerprint and CandidateGeneration identify the actual cleanup
+	// candidate set. A non-zero token count alone must not release a degraded
+	// no-progress latch when the candidates are unchanged.
+	CandidateFingerprint string
+	CandidateGeneration  uint64
+	// TriggerReason is selected once by the unified pressure planner and is
+	// persisted/observed with the checkpoint. Manual callers may leave it empty.
+	TriggerReason string
+	// PreflightSkipReason is selected by a durable conversation adapter when a
+	// no-progress latch or consecutive-failure fuse blocks automatic work.
+	PreflightSkipReason string
+	ConsecutiveFailures int
+	FailureFuseOpen     bool
+	// PrimaryRequestSnapshot is supplied by explicit host compaction after it
+	// runs the normal Agent request assembler without invoking the provider.
+	// Automatic model-step compaction receives the same value through context.
+	PrimaryRequestSnapshot *agent.ModelRequestSnapshot
 }
 
 type contextCompactionContextKey struct{}
 
 var summarizeContextForCompaction contextCompactionSummaryFunc = generateContextCompactionSummary
 
-func contextWithCompactionController(ctx context.Context, conversation Conversation) context.Context {
+func contextWithCompactionController(ctx context.Context, conversation Conversation, emit ...func(Event)) context.Context {
 	compaction, ok := conversation.(ContextCompactionConversation)
 	if !ok || compaction == nil {
 		return ctx
 	}
-	return context.WithValue(ctx, contextCompactionContextKey{}, &contextCompactionController{conversation: compaction})
+	controller := &contextCompactionController{conversation: compaction}
+	if len(emit) > 0 {
+		controller.emit = emit[0]
+	}
+	return context.WithValue(ctx, contextCompactionContextKey{}, controller)
 }
 
 func compactionControllerFromContext(ctx context.Context) *contextCompactionController {
@@ -115,14 +183,16 @@ func resolveContextCompactionPolicy(cfg *config.Config, agentKind string) contex
 	compactionSettings := config.ResolveAgentContext(cfg, config.AgentKindContextCompaction)
 	modelSettings := config.ResolveAgentModel(cfg, agentKind)
 	return contextCompactionPolicy{
-		AgentKind:           agentKind,
-		Enabled:             contextSettings.CompactionEnabled,
-		Strategy:            contextSettings.CompactionStrategy,
-		ContextWindowTokens: modelSettings.ContextWindowTokens,
-		Threshold:           contextSettings.CompactionThreshold,
-		RetainedTurns:       compactionSettings.CompactionRecentTurns,
-		TargetMinRatio:      compactionSettings.CompactionTargetMin,
-		TargetMaxRatio:      compactionSettings.CompactionTargetMax,
+		AgentKind:              agentKind,
+		Enabled:                contextSettings.CompactionEnabled,
+		Strategy:               contextSettings.CompactionStrategy,
+		ContextWindowTokens:    modelSettings.ContextWindowTokens,
+		Threshold:              contextSettings.CompactionThreshold,
+		RecoveryBand:           contextSettings.CompactionRecoveryBand,
+		RetainedTurns:          compactionSettings.CompactionRecentTurns,
+		TargetMinRatio:         compactionSettings.CompactionTargetMin,
+		TargetMaxRatio:         compactionSettings.CompactionTargetMax,
+		MaxConsecutiveFailures: contextSettings.CompactionMaxConsecutiveFailures,
 	}
 }
 
@@ -153,6 +223,39 @@ func (p contextCompactionPolicy) shouldCompact(tokens int, force bool) (bool, st
 	return true, ""
 }
 
+// normalizeContextCompactionInput gives every structural entry point the same
+// provider-neutral protocol projection as the normal model middleware. It is
+// intentionally deterministic: cache-safe forks and post-checkpoint token
+// accounting must operate on one exact message shape.
+func normalizeContextCompactionInput(input *ContextCompactionInput) error {
+	if input == nil {
+		return nil
+	}
+	normalizedMessages, err := NormalizeModelContextMessages(input.Messages)
+	if err != nil {
+		return err
+	}
+	normalizedSource := input.SourceMessages
+	if input.SourceMessagesSet || len(input.SourceMessages) > 0 {
+		normalizedSource, err = NormalizeModelContextMessages(input.SourceMessages)
+		if err != nil {
+			return err
+		}
+	}
+	changed := !contextMessagesEqual(input.Messages, normalizedMessages) ||
+		!contextMessagesEqual(input.SourceMessages, normalizedSource)
+	before := len(input.Messages)
+	input.Messages = normalizedMessages
+	input.SourceMessages = normalizedSource
+	if changed && input.Emit != nil {
+		input.Emit(Event{Type: "context_normalizer", Data: map[string]any{
+			"status": "repaired", "context_normalizer_repair_count": 1,
+			"messages_before": before, "messages_after": len(normalizedMessages),
+		}})
+	}
+	return nil
+}
+
 // PrepareContextCompaction performs bounded policy evaluation and summary
 // generation without mutating Session or Story storage. Canonical publication
 // belongs to a durable structural command's Commit phase.
@@ -165,7 +268,14 @@ func PrepareContextCompaction(ctx context.Context, cfg *config.Config, agentKind
 	if phase == "" {
 		phase = contextCompactionPhasePreRun
 	}
+	originalMessages := input.Messages
+	if err := normalizeContextCompactionInput(&input); err != nil {
+		result := ContextCompactionResult{Phase: phase, SkippedReason: "protocol_invalid"}
+		emitContextCompactionEvent(input.Emit, phase, "failed", result)
+		return originalMessages, result, fmt.Errorf("normalize compaction input: %w", err)
+	}
 	input = withDefaultContextProjectionReserves(cfg, agentKind, input, 0)
+	policy.CheckpointOutputReserve = max(policy.CheckpointOutputReserve, input.ReservedCompletionTokens)
 	estimatedTokensBefore := EstimateContextTokens(input.Messages, input.Tools)
 	tokensBefore := calibratedContextTokens(estimatedTokensBefore, input)
 	projectedTokensBefore := projectedContextTokens(tokensBefore, input)
@@ -181,24 +291,57 @@ func PrepareContextCompaction(ctx context.Context, cfg *config.Config, agentKind
 		ContextWindowTokens:      policy.ContextWindowTokens,
 		Strategy:                 policy.Strategy,
 		Threshold:                policy.Threshold,
+		TriggerReason:            contextCompactionTriggerReason(input.TriggerReason, phase),
+		RecoveryBand:             policy.RecoveryBand,
 		MessageCountBefore:       len(input.Messages),
 		RetainedTurns:            policy.RetainedTurns,
+		CandidateFingerprint:     strings.TrimSpace(input.CandidateFingerprint),
+		CandidateGeneration:      input.CandidateGeneration,
+		ConsecutiveFailures:      input.ConsecutiveFailures,
+		FailureFuseOpen:          input.FailureFuseOpen,
+	}
+	if reason := strings.TrimSpace(input.PreflightSkipReason); reason != "" {
+		result.SkippedReason = reason
+		emitContextCompactionEvent(input.Emit, phase, "skipped", result)
+		return input.Messages, result, nil
 	}
 	shouldCompact, skipped := policy.shouldCompact(projectedTokensBefore, input.Force)
+	if input.Planned {
+		shouldCompact, skipped = true, ""
+	}
 	if !shouldCompact {
 		result.SkippedReason = skipped
 		return input.Messages, result, nil
 	}
 	source := compactionSourceMessages(compactionSourceBaseMessages(input), input.KeepLatestUser)
+	if input.SourceMessagesSet && len(source) == 0 {
+		result.SkippedReason = "empty_source"
+		return input.Messages, result, nil
+	}
 	if len(source) == 0 && strings.TrimSpace(input.ExistingCheckpoint) == "" && strings.TrimSpace(input.ReferenceContext) == "" {
 		result.SkippedReason = "empty_source"
 		return input.Messages, result, nil
 	}
 	sourceTokens := EstimateContextTokens(source, nil)
 	emitContextCompactionEvent(input.Emit, phase, "started", result)
-	summary, inputChars, err := summarizeContextInLayers(ctx, cfg, agentKind, input.ExistingCheckpoint, source, input.ReferenceContext, sourceTokens, policy, func(attempt int, delta string) {
+	compactionCtx := ctx
+	if input.PrimaryRequestSnapshot != nil {
+		compactionCtx = contextWithCompactionRequestSnapshot(compactionCtx, input.PrimaryRequestSnapshot)
+	}
+	if input.Force && compactionRequestSnapshotFromContext(compactionCtx) == nil {
+		if _, allowed := standaloneCompactionFallbackReason(compactionCtx); allowed {
+			// Internal callers may explicitly select the exceptional cold path;
+			// public/manual entry points never receive this unexported capability.
+		} else if manualCompactionSourceExceedsSingleWindow(sourceTokens, policy.ContextWindowTokens) {
+			compactionCtx = contextWithStandaloneCompactionFallback(compactionCtx, contextCompactionFallbackManualSourceWindow)
+		} else {
+			return input.Messages, result, errors.New("manual context compaction requires the final primary request snapshot")
+		}
+	}
+	summary, inputChars, execution, err := summarizeContextInLayers(compactionCtx, cfg, agentKind, input.ExistingCheckpoint, source, input.ReferenceContext, sourceTokens, policy, func(attempt int, delta string) {
 		emitContextCompactionDeltaEvent(input.Emit, phase, result, attempt, delta)
 	})
+	applyContextCompactionExecution(&result, execution)
 	if err != nil {
 		emitContextCompactionEvent(input.Emit, phase, "failed", result)
 		return input.Messages, result, err
@@ -206,17 +349,122 @@ func PrepareContextCompaction(ctx context.Context, cfg *config.Config, agentKind
 	if epoch <= 0 {
 		epoch = 1
 	}
-	newMessages := compactMessagesForModel(input.Messages, summary, epoch, policy.RetainedTurns)
+	sourceEndPosition := len(input.Messages)
+	if positions, _, visible := locateCompactionSourceInPrimary(input.Messages, source); visible && len(positions) > 0 {
+		sourceEndPosition = positions[len(positions)-1] + 1
+	}
+	newMessages, checkpointPayload := compactMessagesForModelThroughSource(
+		input.Messages,
+		summary,
+		input.ExistingCheckpoint,
+		epoch,
+		policy.RetainedTurns,
+		sourceEndPosition,
+	)
+	newMessages, err = NormalizeModelContextMessages(newMessages)
+	if err != nil {
+		result.SkippedReason = "protocol_invalid"
+		emitContextCompactionEvent(input.Emit, phase, "failed", result)
+		return input.Messages, result, err
+	}
+	result.CandidateFingerprint, result.CandidateGeneration = ContextCompactionCandidateIdentity(newMessages, 0)
 	result.Triggered = true
 	result.Epoch = epoch
-	result.Summary = summary
+	result.Summary = checkpointPayload
 	result.TokensAfter = calibratedContextTokens(EstimateContextTokens(newMessages, input.Tools), input)
 	result.ProjectedTokensAfter = projectedContextTokens(result.TokensAfter, input)
 	result.TargetRatio = contextCompactionRatio(countRunes(summary), inputChars)
 	result.SourceMessageCount = len(source)
 	result.MessageCountAfter = len(newMessages)
+	applyContextCompactionRecovery(&result)
+	if err := validateCompactedContextResult(result); err != nil {
+		result.Triggered = false
+		result.SkippedReason = "no_progress"
+		emitContextCompactionEvent(input.Emit, phase, "failed", result)
+		return input.Messages, result, err
+	}
 	emitContextCompactionEvent(input.Emit, phase, "completed", result)
 	return newMessages, result, nil
+}
+
+func contextCompactionTriggerReason(reason, phase string) string {
+	if reason = strings.TrimSpace(reason); reason != "" {
+		return reason
+	}
+	if strings.TrimSpace(phase) == "manual" {
+		return "manual"
+	}
+	return contextCompactionReasonLimit
+}
+
+func applyContextCompactionRecovery(result *ContextCompactionResult) {
+	if result == nil || result.ContextWindowTokens <= 0 {
+		return
+	}
+	recoveryBand := result.RecoveryBand
+	if recoveryBand <= 0 || recoveryBand > 1 {
+		recoveryBand = config.DefaultContextCompactionRecoveryBand
+		result.RecoveryBand = recoveryBand
+	}
+	threshold := effectiveContextCompactionThreshold(result.Threshold)
+	result.Threshold = threshold
+	result.RecoveryTargetTokens = int(float64(result.ContextWindowTokens) * threshold * recoveryBand)
+	result.RecoveryBandMet = result.TokensAfter <= result.RecoveryTargetTokens
+	result.Degraded = !result.RecoveryBandMet && result.TokensAfter < ContextCompactionPublishLimit(result.ContextWindowTokens, threshold)
+}
+
+func effectiveContextCompactionThreshold(threshold float64) float64 {
+	if threshold <= 0 || threshold >= 1 {
+		return config.DefaultContextCompactionThreshold
+	}
+	return threshold
+}
+
+// ContextCompactionPublishLimit is the configured hard checkpoint boundary.
+// Cleanup planning, degraded publication, durable health, and Game validation
+// all use this one threshold rather than drifting to a hidden 85% constant.
+func ContextCompactionPublishLimit(contextWindow int, threshold float64) int {
+	if contextWindow <= 0 {
+		return 0
+	}
+	return int(float64(contextWindow) * effectiveContextCompactionThreshold(threshold))
+}
+
+func applyContextCompactionExecution(result *ContextCompactionResult, execution contextCompactionSummaryExecution) {
+	if result == nil {
+		return
+	}
+	result.ExecutionMode = execution.Mode
+	result.FallbackReason = execution.FallbackReason
+	result.CompactionInputTokens = execution.InputTokens
+	result.CompactionPromptTokens = execution.PromptTokens
+	result.CheckpointOutputReserve = execution.CheckpointOutputReserve
+	result.SafetyMarginTokens = execution.SafetyMarginTokens
+	result.CacheExpectedPrefixTokens = execution.ExpectedCachedPrefixTokens
+	result.CacheReadTokens = execution.CacheReadTokens
+	result.CacheWriteTokens = execution.CacheWriteTokens
+	result.CacheWriteTokensKnown = execution.CacheWriteTokensKnown
+	result.CacheIdentityStatus = execution.CacheIdentityStatus
+	result.CacheUsageStatus = execution.CacheUsageStatus
+	result.CacheMissReason = execution.CacheMissReason
+	result.LayerCount = execution.LayerCount
+}
+
+func validateCompactedContextResult(result ContextCompactionResult) error {
+	if result.TokensAfter >= result.TokensBefore {
+		return fmt.Errorf("context compaction made no progress: before=%d after=%d", result.TokensBefore, result.TokensAfter)
+	}
+	if publishLimit := ContextCompactionPublishLimit(result.ContextWindowTokens, result.Threshold); publishLimit > 0 && result.TokensAfter >= publishLimit {
+		return fmt.Errorf("context compaction post-context remains above hard publish band: after=%d window=%d", result.TokensAfter, result.ContextWindowTokens)
+	}
+	return nil
+}
+
+// ValidateContextCompactionResult validates the true post-context after a
+// domain conversation has re-injected its deterministic bounded state. Callers
+// must run this after, not before, those post-compaction providers.
+func ValidateContextCompactionResult(result ContextCompactionResult) error {
+	return validateCompactedContextResult(result)
 }
 
 func generateContextCompactionSummary(ctx context.Context, cfg *config.Config, agentKind string, existingCheckpoint string, source []*agent.Message, referenceContext string, sourceTokens int, policy contextCompactionPolicy, emitDelta func(attempt int, delta string)) (string, int, error) {
@@ -346,7 +594,7 @@ func compactionTargetCharRange(inputChars int, policy contextCompactionPolicy) (
 }
 
 func contextCompactionSystemInstruction() string {
-	return strings.TrimSpace(`
+	base := strings.TrimSpace(`
 你是 Denova 的独立“上下文 checkpoint 编译器”。输入会明确给出 source_agent_kind；你必须按来源模式生成可继续工作的增量 checkpoint，而不是写一段泛化摘要。
 
 输入边界：
@@ -359,10 +607,11 @@ func contextCompactionSystemInstruction() string {
 - 增量合并三类输入；不要重复旧 checkpoint 已覆盖且未变化的事实。
 - 用户目标、明确约束、已确认决定、未完成事项、失败原因、矛盾、不确定性、不可逆副作用、验证结果和恢复引用必须保留。
 - 新输入只有明确证明旧信息失效、解决或被推翻时，才能更新旧 checkpoint；保留原因与新证据。
-- tool receipt 只提炼其中的状态、结论、证据 ID、artifact URI、文件/版本/Turn 引用和恢复提示；不得把已省略正文重新猜出来。
+- tool receipt 只提炼其中的状态、结论、证据 ID、artifact 可读路径、文件/版本/Turn 引用和恢复提示；不得把已省略正文重新猜出来。
 - 排除 thinking/reasoning、UI 日志、流式片段、重复工具卡片、无结论探索和传输噪音。
 - 禁止编造；矛盾不得擅自裁决，不确定时明确标记。
 - 目标长度由用户消息给出的范围控制，按三类输入总字符数计算；信息密度高时使用上半区，不得为达成比例丢失关键状态。
+- checkpoint 必须覆盖 new_context 全部 durable facts，包括会作为 verbatim convenience tail 暂时保留的最近回合；简洁提炼这些事实，不要逐字复制 tail。后续压缩会让旧 tail 退出，因此不得依赖 tail 代替 checkpoint 记忆。
 
 当 source_agent_kind 是 interactive_story 或 interactive_director 时，使用“叙事/游戏 checkpoint”：
 - 保留事件顺序、用户行动与对白、因果后果、关系变化、任务、秘密、危险、倒计时和长期创作约束。
@@ -370,33 +619,30 @@ func contextCompactionSystemInstruction() string {
 - 当前 Actor 数值/位置/资源以 Actor State 为准；未来安排以 DirectorPlan 为准；稳定设定以 Lore 为准。checkpoint 只保留历史原因和已发生变更，不复制当前真源，不把计划写成事实。
 - 可以合并纯氛围、重复心理描写、无后果闲聊和修辞。
 
-叙事/游戏输出格式：
-【历史事件时间线】
-- [source turn_id 或消息序号] 事件及长期影响
-【历史因果与来源】
-- 结论或变化 ← 原因与来源；含矛盾和不确定性
-【未闭环事项】
-- 伏笔、承诺、债务、秘密、危险、任务、倒计时及来源
-【用户意图与创作约束】
-- 仍影响后续行为的目标、偏好、拒绝、边界与决定
-
 其他 source_agent_kind 使用“工作区任务 checkpoint”，同时适用于写作、配置、图像、自动化和工程任务：
 - 保留用户目标与边界、创作/产品/技术决定及理由、当前实现或作品状态、文件与 artifact 引用、已确认发现、变更与验证、失败和被否决方案、未解决问题及下一步。
 - 文件正文、日志和搜索结果只保留后续决策所需结论及可恢复引用；不要复制大段源内容。
 - 已完成步骤可以合并，但必须保留结果、行为变化、兼容性影响和验证证据。
-
-工作区任务输出格式：
-【任务目标与用户约束】
-- 当前目标、明确边界、偏好和验收条件
-【决定与理由】
-- 已确认的创作/产品/技术决定；被否决方案及原因
-【当前状态】
-- 已完成实现或作品状态、关键文件/版本/数据引用
-【发现、证据与验证】
-- 已确认事实、tool/artifact 引用、测试或检查结果
-【未解决问题与下一步】
-- 阻塞、风险、待验证事项和按依赖排序的下一步
 `)
+	return base + "\n\n所有来源模式都使用以下唯一、稳定的 Markdown checkpoint schema；不适用的 section 可以为空，但不要改名或另造一套格式：\n" +
+		contextCompactionCheckpointSchema()
+}
+
+var contextCompactionCheckpointHeadings = []string{
+	"## Goal",
+	"## Constraints",
+	"## Current state",
+	"## Decisions and rationale",
+	"## Confirmed facts and sources",
+	"## Tool outcomes and readable artifacts",
+	"## Failures and rejected approaches",
+	"## Unresolved issues",
+	"## Next actions",
+	"## Critical context that must not be lost",
+}
+
+func contextCompactionCheckpointSchema() string {
+	return strings.Join(contextCompactionCheckpointHeadings, "\n") + "\n"
 }
 
 func buildContextCompactionTranscript(messages []*agent.Message, existingCheckpoint, referenceContext string, sourceTokens, inputChars int, policy contextCompactionPolicy) string {
@@ -410,7 +656,7 @@ func buildContextCompactionTranscript(messages []*agent.Message, existingCheckpo
 	minChars, maxChars := compactionTargetCharRange(inputChars, policy)
 	var sb strings.Builder
 	sb.WriteString("请按系统要求增量编译以下 Denova 上下文 checkpoint。\n")
-	sb.WriteString(fmt.Sprintf("Source agent kind: %s. 必须选择与该来源模式匹配的唯一输出格式。\n", firstNonEmpty(strings.TrimSpace(policy.AgentKind), "unknown")))
+	sb.WriteString(fmt.Sprintf("Source agent kind: %s. 请应用该来源的领域规则，并严格使用系统消息中的统一 Markdown checkpoint schema。\n", firstNonEmpty(strings.TrimSpace(policy.AgentKind), "unknown")))
 	sb.WriteString(fmt.Sprintf("Estimated new context tokens: %d. Input characters across existing checkpoint, reference context, and new context: %d. Target summary length: %d-%d characters (%s of input characters). 不得低于下限；信息密度高时使用目标范围上半区。\n\n", sourceTokens, inputChars, minChars, maxChars, compactionTargetRange(policy)))
 	sb.WriteString("<existing_checkpoint>\n")
 	if existingCheckpoint = strings.TrimSpace(existingCheckpoint); existingCheckpoint != "" {

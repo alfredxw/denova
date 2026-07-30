@@ -40,8 +40,8 @@ var fallbackToolResultDescriptor = ToolDescriptor{
 	Source: ToolSourceOther, Execution: ToolExecutionParallelRead,
 	MutationScope: ToolMutationNone, PostCheck: ToolPostCheckNone,
 	Recovery: ToolRecoveryReadOnly, ResultProjection: ToolResultBoundedModelContext,
-	ContextRetention: ToolContextReceipt,
-	Steering:         SteeringFinishCurrent, MaxResultBytes: fallbackToolResultMaxBytes,
+	ResultRetention: ToolResultProtected,
+	Steering:        SteeringFinishCurrent, MaxResultBytes: fallbackToolResultMaxBytes,
 }
 
 // executeToolBatch schedules calls in descriptor-defined stages. Parallel reads

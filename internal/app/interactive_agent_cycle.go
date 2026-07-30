@@ -164,6 +164,9 @@ func (c *interactiveAgentCycle) bindCommit(emit func(agents.Event)) {
 		return
 	}
 	c.conversation.withAgentCycleCommit(func(_ context.Context, outcome agents.RunOutcome) error {
+		if outcome.MaintenanceOnly {
+			return nil
+		}
 		turn, _, persisted := c.conversation.LastTurnForState()
 		if !persisted {
 			if outcome.Status == agents.RunOutcomeCompleted {

@@ -35,6 +35,9 @@ func TestContextLedgerRecordsBoundedSources(t *testing.T) {
 	if !part.Included || !part.Truncated || part.Limit != 12 || part.LimitUnit != "bytes" {
 		t.Fatalf("ledger should preserve inclusion and truncation metadata: %#v", part)
 	}
+	if summary := ledger.Summary(); strings.Contains(summary, part.Hash) || strings.Contains(summary, part.Preview) {
+		t.Fatalf("normal context summary exposed rich in-memory audit fields: %s", summary)
+	}
 }
 
 func TestFilterToolResultKeepsContentBelowHighDefaultLimit(t *testing.T) {
@@ -339,9 +342,8 @@ func TestRunLedgerRecordsStructuredTraceSpans(t *testing.T) {
 	if llmAttrs["provider_request_id"] != "provider-1" || llmAttrs["total_tokens"].(float64) != 18 {
 		t.Fatalf("llm attrs should include provider id and tokens: %#v", llmAttrs)
 	}
-	promptSummary, ok := llmAttrs["prompt"].(map[string]any)
-	if !ok || promptSummary["hash"] == "" || promptSummary["preview"] == "" {
-		t.Fatalf("prompt should be summarized with hash and preview: %#v", llmAttrs["prompt"])
+	if _, exists := llmAttrs["prompt"]; exists {
+		t.Fatalf("prompt-derived hash or preview must not be persisted: %#v", llmAttrs["prompt"])
 	}
 	encoded, _ := json.Marshal(llmData)
 	if strings.Contains(string(encoded), strings.Repeat("secret prompt ", 20)) {
@@ -475,12 +477,11 @@ func TestRunLedgerWritesBoundedJSONLTrace(t *testing.T) {
 	}
 
 	eventData := records[2]["data"].(map[string]any)["event_data"].(map[string]any)
-	content := eventData["content"].(map[string]any)
-	if content["bytes"].(float64) == 0 || content["chars"].(float64) == 0 {
-		t.Fatalf("content should be summarized with size metadata: %#v", content)
+	if eventData["result_bytes"].(float64) == 0 {
+		t.Fatalf("tool result should retain content-free size metadata: %#v", eventData)
 	}
-	if strings.Contains(content["preview"].(string), "需要被截断保存") {
-		t.Fatalf("tool result preview should be bounded: %#v", content)
+	if _, exists := eventData["content"]; exists {
+		t.Fatalf("tool result content must not be persisted: %#v", eventData)
 	}
 }
 
@@ -532,6 +533,136 @@ func TestRunLedgerSkipsTransportStreamEvents(t *testing.T) {
 	if firstEvent["event_type"] != "tool_call" || secondEvent["event_type"] != "error" {
 		t.Fatalf("unexpected persisted event types: %#v %#v", firstEvent, secondEvent)
 	}
+}
+
+func TestRunLedgerPersistsOnlyContentFreeTelemetry(t *testing.T) {
+	const secret = "SYNTHETIC_SECRET_DO_NOT_PERSIST"
+	workspace := t.TempDir()
+	ledger, err := newRunLedger(workspace, RunLedgerPolicy{Enabled: true, Directory: ".denova/runs"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := ledger.RecordContext([]ContextLedgerPart{{
+		Source: "user_input", Title: secret, Purpose: "turn_request", Bytes: len(secret), Chars: len(secret),
+		Hash: "sha256:" + secret, Preview: secret, Note: "revision=" + secret, Included: true,
+	}}); err != nil {
+		t.Fatal(err)
+	}
+	for _, event := range []Event{
+		{Type: "tool_call", Data: map[string]any{"id": "call-1", "name": "read", "args": `{"path":"` + secret + `"}`, "target": secret}},
+		{Type: "tool_result", Data: map[string]any{"id": "call-1", "name": "read", "content": secret, "status": "success"}},
+		{Type: "context_compaction", Data: map[string]any{"phase": "model_step", "status": "delta", "delta": secret}},
+		{Type: "context_compaction", Data: map[string]any{
+			"phase": "model_step", "status": "completed", "summary": secret, "tokens_before": 100, "tokens_after": 40,
+			"cache_identity_status": contextCompactionCacheIdentityExact,
+			"cache_usage_status":    contextCompactionCacheUsageZero,
+			"cache_miss_reason":     contextCompactionCacheMissZero,
+		}},
+		{Type: "context_cleanup", Data: map[string]any{
+			"phase": "model_step", "status": "failed", "error": secret, "actual_reclaimed_tokens": 12,
+			"cache_viable_candidate_tokens": 17, "cleanup_skipped_below_minimum_count": 1,
+			"cleanup_skipped_warm_suffix_count": 2,
+		}},
+		{Type: "context_normalizer", Data: map[string]any{"status": "repaired", "context_normalizer_repair_count": 1}},
+	} {
+		if err := ledger.RecordEvent(event); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := ledger.RecordToolDecision(ToolDecision{
+		ToolName: "read", ExecutionID: "call-1", Action: "blocked", Reason: secret,
+		Target: secret, ArgsBytes: len(secret),
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if err := ledger.RecordToolExecution(ToolExecutionRecord{
+		ToolName: "read", ExecutionID: "call-1", Status: "error", Result: secret, Error: secret,
+		Target: secret, IdempotencyKey: "sha256:" + secret, BaseRevision: "sha256:" + secret,
+		Revision: "sha256:" + secret, OriginalBytes: len(secret), ReturnedBytes: len(secret),
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if err := ledger.RecordMutations([]ToolMutation{{
+		ToolName: "write", Source: ToolSourceWrite, Target: secret,
+		BaseRevision: "sha256:" + secret, Revision: "sha256:" + secret,
+	}}); err != nil {
+		t.Fatal(err)
+	}
+	if err := ledger.RecordVerification(PostRunVerification{
+		Status: "warning", Mutations: 1, Warnings: []string{secret},
+		Checks: []PostRunVerificationCheck{{Type: "path", Target: secret, Status: "warning", Message: secret}},
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if err := ledger.RecordTraceSpan(TraceSpanRecord{
+		TraceID: ledger.ID(), SpanID: "span-1", Name: "llm_call", Status: "error",
+		Attrs: map[string]any{"prompt": secret, "content": secret, "revision": "sha256:" + secret, "prompt_tokens": 10, "error": secret},
+		Error: secret,
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if err := ledger.RecordFinish("error", secret, 0); err != nil {
+		t.Fatal(err)
+	}
+	if err := ledger.Close(); err != nil {
+		t.Fatal(err)
+	}
+
+	payload, err := os.ReadFile(ledger.Path())
+	if err != nil {
+		t.Fatal(err)
+	}
+	encoded := string(payload)
+	for _, forbidden := range []string{secret, `"summary"`, `"delta"`, `"preview"`, `"hash"`, `"base_revision"`, `"revision"`, `"target"`, `"args"`} {
+		if strings.Contains(encoded, forbidden) {
+			t.Fatalf("durable ledger contains forbidden content %q:\n%s", forbidden, encoded)
+		}
+	}
+	if !strings.Contains(encoded, `"result_bytes"`) || !strings.Contains(encoded, `"error_class":"failure"`) ||
+		!strings.Contains(encoded, `"event_type":"context_cleanup"`) || !strings.Contains(encoded, `"event_type":"context_compaction"`) ||
+		!strings.Contains(encoded, `"event_type":"context_normalizer"`) ||
+		!strings.Contains(encoded, `"cache_viable_candidate_tokens":17`) ||
+		!strings.Contains(encoded, `"cleanup_skipped_below_minimum_count":1`) ||
+		!strings.Contains(encoded, `"cleanup_skipped_warm_suffix_count":2`) ||
+		!strings.Contains(encoded, `"cache_identity_status":"`+contextCompactionCacheIdentityExact+`"`) ||
+		!strings.Contains(encoded, `"cache_usage_status":"`+contextCompactionCacheUsageZero+`"`) ||
+		!strings.Contains(encoded, `"cache_miss_reason":"`+contextCompactionCacheMissZero+`"`) {
+		t.Fatalf("safe maintenance telemetry was not retained:\n%s", encoded)
+	}
+	if info, err := os.Stat(ledger.Path()); err != nil || info.Mode().Perm() != 0o600 {
+		t.Fatalf("ledger mode = %v err=%v, want 0600", infoMode(info), err)
+	}
+	if info, err := os.Stat(filepath.Dir(ledger.Path())); err != nil || info.Mode().Perm() != 0o700 {
+		t.Fatalf("ledger directory mode = %v err=%v, want 0700", infoMode(info), err)
+	}
+}
+
+func TestRunLedgerSanitizationDoesNotMutateTransientEvent(t *testing.T) {
+	workspace := t.TempDir()
+	ledger, err := newRunLedger(workspace, RunLedgerPolicy{Enabled: true, Directory: ".denova/runs"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	data := map[string]any{
+		"phase": "model_step", "status": "completed",
+		"summary": "checkpoint remains available to the live UI",
+	}
+	if err := ledger.RecordEvent(Event{Type: "context_compaction", Data: data}); err != nil {
+		t.Fatal(err)
+	}
+	if data["summary"] != "checkpoint remains available to the live UI" {
+		t.Fatalf("durable sanitizer mutated transient payload: %#v", data)
+	}
+	if err := ledger.Close(); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func infoMode(info os.FileInfo) os.FileMode {
+	if info == nil {
+		return 0
+	}
+	return info.Mode().Perm()
 }
 
 func readRunLedgerRecords(t *testing.T, path string) []map[string]any {

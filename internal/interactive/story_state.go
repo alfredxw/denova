@@ -1,9 +1,12 @@
 package interactive
 
 import (
+	"encoding/json"
 	"fmt"
 	"log"
 	"strings"
+
+	agent "github.com/alfredxw/denova/agent"
 )
 
 func sanitizeDisplayEvents(events []DisplayEvent) []DisplayEvent {
@@ -94,7 +97,7 @@ func sanitizeModelContextMessages(messages []ModelContextMessage) []ModelContext
 			if len(calls) == 0 {
 				continue
 			}
-			result = append(result, ModelContextMessage{Role: role, ToolCalls: calls})
+			result = append(result, ModelContextMessage{Role: role, Content: msg.Content, ToolCalls: calls})
 		case "tool":
 			toolCallID := strings.TrimSpace(msg.ToolCallID)
 			toolName := strings.TrimSpace(msg.ToolName)
@@ -107,6 +110,7 @@ func sanitizeModelContextMessages(messages []ModelContextMessage) []ModelContext
 				Name:       strings.TrimSpace(msg.Name),
 				ToolCallID: toolCallID,
 				ToolName:   toolName,
+				ToolResult: cloneModelContextToolResult(msg.ToolResult),
 			})
 		}
 	}
@@ -114,6 +118,19 @@ func sanitizeModelContextMessages(messages []ModelContextMessage) []ModelContext
 		return nil
 	}
 	return result
+}
+
+// CloneModelContextMessages returns the same bounded model-only projection used
+// by story persistence, including an independently mutable tool-result summary.
+func CloneModelContextMessages(messages []ModelContextMessage) []ModelContextMessage {
+	return sanitizeModelContextMessages(messages)
+}
+
+func cloneModelContextToolResult(summary *agent.ToolResultSummary) *agent.ToolResultSummary {
+	if summary == nil {
+		return nil
+	}
+	return agent.CloneMessage(&agent.Message{ToolResult: summary}).ToolResult
 }
 
 func sanitizeModelContextToolCalls(calls []ModelContextToolCall) []ModelContextToolCall {
@@ -127,6 +144,22 @@ func sanitizeModelContextToolCalls(calls []ModelContextToolCall) []ModelContextT
 			continue
 		}
 		call.ID = strings.TrimSpace(call.ID)
+		if call.Index != nil {
+			index := *call.Index
+			call.Index = &index
+		}
+		if call.Extra != nil {
+			data, err := json.Marshal(call.Extra)
+			var extra map[string]any
+			if err == nil {
+				err = json.Unmarshal(data, &extra)
+			}
+			if err != nil {
+				call.Extra = nil
+			} else {
+				call.Extra = extra
+			}
+		}
 		if call.Type == "" {
 			call.Type = "function"
 		}

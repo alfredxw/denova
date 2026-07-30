@@ -14,6 +14,10 @@ const (
 	PlacementLeadingMessage  Placement = "leading_message"
 	PlacementFinalUserPrefix Placement = "final_user_prefix"
 	PlacementAuditOnly       Placement = "audit_only"
+	// MessageExtraPlacement records a model-only fragment's placement without
+	// changing provider-visible content. Context pressure accounting uses it to
+	// separate the stable request prefix from the mutable conversation body.
+	MessageExtraPlacement = "agent.context.placement"
 
 	DefaultPreviewChars = 100
 )

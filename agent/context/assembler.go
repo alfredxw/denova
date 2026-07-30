@@ -206,7 +206,9 @@ func (a *Assembler) Assemble(ctx stdcontext.Context, req AssembleRequest) (Resul
 	if len(leading) > 0 {
 		leadingMessages := make([]*agent.Message, 0, len(leading))
 		for _, fragment := range leading {
-			leadingMessages = append(leadingMessages, agent.UserMessage(renderer.RenderLeading(fragment)))
+			message := agent.UserMessage(renderer.RenderLeading(fragment))
+			message.Extra = map[string]any{MessageExtraPlacement: string(PlacementLeadingMessage)}
+			leadingMessages = append(leadingMessages, message)
 		}
 		messages = append(leadingMessages, messages...)
 	}

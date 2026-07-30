@@ -120,6 +120,34 @@ describe('AgentsView', () => {
     expect(screen.getByRole('spinbutton', { name: '来源元数据上限 (KB)' })).toHaveValue(4)
   })
 
+  it('shows and saves the per-Agent context pressure policy', async () => {
+    vi.mocked(fetchSettings).mockResolvedValue(settingsSnapshot({}))
+
+    render(<AgentsView />)
+
+    expect(await screen.findByRole('combobox', { name: '压力计算范围' })).toHaveTextContent('稳定前缀之后的可变正文')
+    expect(screen.getByRole('spinbutton', { name: '工具结果清理阈值 (%)' })).toHaveValue(70)
+    expect(screen.getByRole('spinbutton', { name: '工具结果清理目标 (%)' })).toHaveValue(60)
+    expect(screen.getByRole('spinbutton', { name: '最小清理收益 (Token)' })).toHaveValue(20_000)
+    expect(screen.getByRole('spinbutton', { name: '保护最近工具交互组' })).toHaveValue(3)
+    expect(screen.getByRole('spinbutton', { name: '工具结果保护窗口 (Token)' })).toHaveValue(16_000)
+    expect(screen.getByRole('spinbutton', { name: '热缓存后缀改写上限 (Token)' })).toHaveValue(8_000)
+    expect(screen.getByRole('spinbutton', { name: '即时收据最小结果 (Token)' })).toHaveValue(32_000)
+    expect(screen.getByRole('spinbutton', { name: '压缩恢复系数 (%)' })).toHaveValue(80)
+    expect(screen.getByRole('spinbutton', { name: '最大连续失败次数' })).toHaveValue(3)
+
+    fireEvent.change(screen.getByRole('spinbutton', { name: '工具结果清理阈值 (%)' }), { target: { value: '72' } })
+    flushAgentsAutosave()
+
+    await waitFor(() => {
+      expect(vi.mocked(updateUserSettings)).toHaveBeenCalledWith(expect.objectContaining({
+        agent_context: expect.objectContaining({
+          ide: expect.objectContaining({ tool_result_cleanup_threshold: 0.72 }),
+        }),
+      }))
+    })
+  })
+
   it('keeps the shell capability configurable on Windows runtimes', async () => {
     vi.mocked(fetchSettings).mockResolvedValue(settingsSnapshot({
       runtime: { goos: 'windows' },

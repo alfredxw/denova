@@ -148,9 +148,9 @@ func turnRecordOnPath(path []StoryEventRecord, turnID string) (int, *StoryEventR
 }
 
 // projectTurnVersionSuffix creates new envelopes for the active suffix. A
-// compaction summary is never copied onto a changed ancestor. Existing removal
-// markers are copied so a checkpoint active before the selected turn cannot
-// accidentally reappear after projecting the suffix.
+// compaction summaries and cleanup projections are never copied onto a changed
+// ancestor. Existing removal markers are copied so a checkpoint active before
+// the selected turn cannot accidentally reappear after projecting the suffix.
 func projectTurnVersionSuffix(
 	suffix []StoryEventRecord,
 	selectedTurnID, selectionID string,
@@ -159,7 +159,7 @@ func projectTurnVersionSuffix(
 	projected := make([]any, 0, len(suffix))
 	projections := make([]TurnVersionProjection, 0, len(suffix))
 	for _, record := range suffix {
-		if record.Envelope.Type == StoryEventTypeCompaction {
+		if record.Envelope.Type == StoryEventTypeCompaction || record.Envelope.Type == StoryEventTypeCompactionHealth || record.Envelope.Type == StoryEventTypeToolResultCleanup {
 			continue
 		}
 		clonedRaw, projection, err := cloneTurnVersionPathEvent(record, parentID, selectionID)

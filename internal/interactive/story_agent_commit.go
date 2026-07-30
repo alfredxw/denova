@@ -116,6 +116,35 @@ func (s *Store) AppendTurnWithState(storyID string, req AppendTurnWithStateReque
 	if strings.TrimSpace(req.AgentCommandID) != "" && !hasPlayerInput {
 		return TurnEvent{}, nil, fmt.Errorf("%w: canonical player input is missing for completed turn", ErrPlayerInputIdentityConflict)
 	}
+	var consumedPlayerInputIDs []string
+	var resolvedPlayerInputContexts []ResolvedPlayerInputContext
+	if hasPlayerInput {
+		_, activeAncestry := eventPath(branch.Head, eventsByID(lines))
+		pendingInputs, pendingErr := pendingPlayerInputsForBranch(lines, branchID, activeAncestry)
+		if pendingErr != nil {
+			return TurnEvent{}, nil, pendingErr
+		}
+		consumedPlayerInputIDs = make([]string, 0, len(pendingInputs))
+		currentInputIncluded := false
+		for _, pending := range pendingInputs {
+			consumedPlayerInputIDs = append(consumedPlayerInputIDs, pending.ID)
+			currentInputIncluded = currentInputIncluded || pending.ID == playerInput.ID
+		}
+		if !currentInputIncluded {
+			consumedPlayerInputIDs = append(consumedPlayerInputIDs, playerInput.ID)
+		}
+		resolvedPlayerInputContexts, err = resolveHistoricalPlayerInputContexts(lines, branchID, pendingInputs, playerInput.ID)
+		if err != nil {
+			return TurnEvent{}, nil, err
+		}
+		// Only the current cycle's tool suffix belongs to this Turn. Historical
+		// pending cycles retain their own acceptance position and evidence in
+		// ResolvedPlayerInputContexts instead of being moved to this later Turn.
+		req.ModelContextMessages, err = mergeModelContextBatchesForPlayerInput(lines, branchID, playerInput.ID, req.ModelContextMessages)
+		if err != nil {
+			return TurnEvent{}, nil, err
+		}
+	}
 	if req.ExpectedParentID != nil && branch.Head != strings.TrimSpace(*req.ExpectedParentID) {
 		return TurnEvent{}, nil, fmt.Errorf("%w: 当前分支已前进，拒绝提交基于旧版本的回合: expected_parent=%s current_head=%s", ErrStoryContextRevisionConflict, strings.TrimSpace(*req.ExpectedParentID), branch.Head)
 	}
@@ -161,29 +190,31 @@ func (s *Store) AppendTurnWithState(storyID string, req AppendTurnWithStateReque
 		}
 	}
 	turn := TurnEvent{
-		V:                    schemaVersion,
-		Type:                 StoryEventTypeTurn,
-		ID:                   newID("ev"),
-		ParentID:             parentID,
-		BranchID:             branchID,
-		Ts:                   now,
-		User:                 req.User,
-		Narrative:            req.Narrative,
-		Thinking:             strings.TrimSpace(req.Thinking),
-		RunID:                strings.TrimSpace(req.RunID),
-		AgentKind:            strings.TrimSpace(req.AgentKind),
-		AgentCommandID:       strings.TrimSpace(req.AgentCommandID),
-		AgentOperationID:     strings.TrimSpace(req.AgentOperationID),
-		AgentCycle:           req.AgentCycle,
-		AgentCommitHash:      agentCommitHash,
-		PlayerInputID:        playerInput.ID,
-		PlayerInputHash:      playerInput.AgentCommitHash,
-		DisplayEvents:        sanitizeDisplayEvents(req.DisplayEvents),
-		ModelContextMessages: sanitizeModelContextMessages(req.ModelContextMessages),
-		RuleResolution:       normalizeRuleResolutionPointer(req.RuleResolution),
-		TurnResult:           turnResult,
-		TerminalOutcome:      normalizeTerminalOutcomePointer(req.TerminalOutcome),
-		Flags:                map[string]bool{"pinned": false, "locked": false},
+		V:                           schemaVersion,
+		Type:                        StoryEventTypeTurn,
+		ID:                          newID("ev"),
+		ParentID:                    parentID,
+		BranchID:                    branchID,
+		Ts:                          now,
+		User:                        req.User,
+		Narrative:                   req.Narrative,
+		Thinking:                    strings.TrimSpace(req.Thinking),
+		RunID:                       strings.TrimSpace(req.RunID),
+		AgentKind:                   strings.TrimSpace(req.AgentKind),
+		AgentCommandID:              strings.TrimSpace(req.AgentCommandID),
+		AgentOperationID:            strings.TrimSpace(req.AgentOperationID),
+		AgentCycle:                  req.AgentCycle,
+		AgentCommitHash:             agentCommitHash,
+		PlayerInputID:               playerInput.ID,
+		PlayerInputHash:             playerInput.AgentCommitHash,
+		ConsumedPlayerInputIDs:      append([]string(nil), consumedPlayerInputIDs...),
+		ResolvedPlayerInputContexts: cloneResolvedPlayerInputContexts(resolvedPlayerInputContexts),
+		DisplayEvents:               sanitizeDisplayEvents(req.DisplayEvents),
+		ModelContextMessages:        sanitizeModelContextMessages(req.ModelContextMessages),
+		RuleResolution:              normalizeRuleResolutionPointer(req.RuleResolution),
+		TurnResult:                  turnResult,
+		TerminalOutcome:             normalizeTerminalOutcomePointer(req.TerminalOutcome),
+		Flags:                       map[string]bool{"pinned": false, "locked": false},
 	}
 	actorState, openingOps, openingActorOps, err := prepareOpeningGameStateSchemaCommit(&meta, lines, state, actorState, branchID, turn.ID, now, req.StateSchemaProposal)
 	if err != nil {
@@ -289,30 +320,32 @@ func committedAgentTurnForRequest(lines []StoryEventRecord, branchID string, req
 }
 
 func agentTurnRequestHash(req AppendTurnWithStateRequest) (string, error) {
+	// ModelContextMessages are durable side evidence keyed independently by the
+	// accepted player input and batch ordinal. Excluding them keeps a staged Turn
+	// identity stable when the store atomically folds those batches into it.
 	payload := struct {
-		BranchID             string
-		ExpectedParentID     *string
-		ReplaceTurnID        string
-		User                 string
-		Narrative            string
-		Thinking             string
-		RunID                string
-		AgentKind            string
-		DisplayEvents        []DisplayEvent
-		ModelContextMessages []ModelContextMessage
-		Ops                  []StateOp
-		ActorOps             []ActorStateOp
-		RuleResolution       *RuleResolution
-		TurnResult           *TurnResult
-		TerminalOutcome      *TerminalOutcome
-		StateSchemaProposal  *ActorStateSchemaProposal
+		BranchID            string
+		ExpectedParentID    *string
+		ReplaceTurnID       string
+		User                string
+		Narrative           string
+		Thinking            string
+		RunID               string
+		AgentKind           string
+		DisplayEvents       []DisplayEvent
+		Ops                 []StateOp
+		ActorOps            []ActorStateOp
+		RuleResolution      *RuleResolution
+		TurnResult          *TurnResult
+		TerminalOutcome     *TerminalOutcome
+		StateSchemaProposal *ActorStateSchemaProposal
 	}{
 		BranchID: strings.TrimSpace(req.BranchID), ExpectedParentID: req.ExpectedParentID,
 		ReplaceTurnID: strings.TrimSpace(req.ReplaceTurnID),
 		User:          req.User, Narrative: req.Narrative, Thinking: req.Thinking,
 		RunID: req.RunID, AgentKind: req.AgentKind,
-		DisplayEvents: req.DisplayEvents, ModelContextMessages: req.ModelContextMessages,
-		Ops: req.Ops, ActorOps: req.ActorOps, RuleResolution: req.RuleResolution,
+		DisplayEvents: req.DisplayEvents,
+		Ops:           req.Ops, ActorOps: req.ActorOps, RuleResolution: req.RuleResolution,
 		TurnResult: req.TurnResult, TerminalOutcome: req.TerminalOutcome,
 		StateSchemaProposal: req.StateSchemaProposal,
 	}
@@ -338,8 +371,11 @@ func stateDeltaEventForCommittedTurn(turn TurnEvent) *StateDeltaEvent {
 
 // syncStoryIndexProjectionLocked updates the rebuildable story catalog from
 // canonical JSONL state. A projection failure is logged but never turns an
-// already-durable turn into a false-negative operation result.
+// already-durable event into a false-negative operation result.
 func (s *Store) syncStoryIndexProjectionLocked(storyID string, meta StoryMeta, eventCount int) {
+	if handle := s.storyJournals[strings.TrimSpace(storyID)]; handle != nil && handle.projection != nil && handle.projection.EventCount > eventCount {
+		eventCount = handle.projection.EventCount
+	}
 	index, err := s.readIndexLocked()
 	if err != nil {
 		log.Printf("[interactive-story] index projection read failed after canonical commit story_id=%s err=%v", storyID, err)

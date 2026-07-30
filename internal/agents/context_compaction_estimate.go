@@ -70,6 +70,23 @@ func calibratedContextTokens(estimated int, input ContextCompactionInput) int {
 	return max(1, int(math.Round(float64(estimated)*ratio)))
 }
 
+// RecalculateContextCompactionProjection applies the same provider/local
+// calibration and completion/tool reserves used by PrepareContextCompaction to
+// an exact post-compaction message estimate. Domain conversations must call it
+// after re-injecting stable provider-visible state.
+func RecalculateContextCompactionProjection(result ContextCompactionResult, estimatedPromptTokens int) ContextCompactionResult {
+	input := ContextCompactionInput{
+		ObservedPromptTokens:     result.ObservedPromptTokens,
+		ObservedEstimateTokens:   result.ObservedEstimateTokens,
+		ReservedCompletionTokens: result.ReservedCompletionTokens,
+		ReservedToolResultTokens: result.ReservedToolResultTokens,
+	}
+	result.TokensAfter = calibratedContextTokens(estimatedPromptTokens, input)
+	result.ProjectedTokensAfter = projectedContextTokens(result.TokensAfter, input)
+	applyContextCompactionRecovery(&result)
+	return result
+}
+
 func latestPromptUsageCalibration(messages []*agent.Message, tools []*agent.ToolInfo) (observed, estimated int) {
 	for index := len(messages) - 1; index >= 0; index-- {
 		message := messages[index]
@@ -82,7 +99,7 @@ func latestPromptUsageCalibration(messages []*agent.Message, tools []*agent.Tool
 }
 
 func compactionSourceBaseMessages(input ContextCompactionInput) []*agent.Message {
-	if len(input.SourceMessages) > 0 {
+	if input.SourceMessagesSet || len(input.SourceMessages) > 0 {
 		return input.SourceMessages
 	}
 	return input.Messages

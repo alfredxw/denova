@@ -160,7 +160,16 @@ func (s *Store) DeleteBranch(storyID, branchID string) error {
 	if err := s.appendStoryTransactionLocked(storyID, meta, event); err != nil {
 		return err
 	}
-	return s.updateIndexBranchesLocked(storyID, len(meta.Branches), now, 1)
+	if err := s.updateIndexBranchesLocked(storyID, len(meta.Branches), now, 1); err != nil {
+		return err
+	}
+	// Archive and index publication own the user-visible transaction. Artifacts
+	// are collected only after branch references are durably unreachable; a GC
+	// failure is retryable maintenance and cannot roll the archive back.
+	if err := s.removeBranchToolArtifacts(storyID, branchID); err != nil {
+		log.Printf("[interactive-story] remove archived branch tool artifacts failed story_id=%s branch_id=%s error=%v", storyID, branchID, err)
+	}
+	return nil
 }
 
 func (s *Store) Branches(storyID string) ([]BranchSummary, error) {
