@@ -89,7 +89,7 @@ func (c *interactiveConversation) stageInteractiveCompactionHealth(
 		}
 		next := state.NextFailure(structureFingerprint)
 		result.ConsecutiveFailures = next.ConsecutiveFailures
-		maximum := config.ResolveAgentContext(c.cfg, config.AgentKindInteractiveStory).CompactionMaxConsecutiveFailures
+		maximum := config.DefaultContextCompactionMaxConsecutiveFailures
 		result.FailureFuseOpen = next.ConsecutiveFailures >= maximum
 	} else {
 		result.ConsecutiveFailures = 0

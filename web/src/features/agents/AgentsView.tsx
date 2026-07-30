@@ -16,7 +16,7 @@ import { useLayeredSettingsDraft } from '@/features/settings/use-layered-setting
 import { getSkills } from '@/lib/api'
 import type { SkillSummary } from '@/lib/api'
 import { AgentRuntimeContextSection } from './AgentRuntimeContextSection'
-import { AgentBuiltInCapabilitySection, AgentContextSection, AgentModelOnlySection, AgentModelSection, AgentPromptSection, AgentSkillSection, AgentToolSection, mergeAgentContextOverride, mergeAgentModelOverride, mergeAgentPromptOverride } from './agent-configuration-sections'
+import { AgentBuiltInCapabilitySection, AgentContextSection, AgentModelOnlySection, AgentModelSection, AgentPromptSection, AgentSkillSection, AgentToolSection, mergeAgentModelOverride, mergeAgentPromptOverride } from './agent-configuration-sections'
 import { AgentSubAgentSection, isSubAgentParent, previewGeneralSubAgentSettings } from './agent-subagent-section'
 import { AGENTS, toolDefinitionsFromManifest } from './agent-registry'
 import type { AgentViewDefinition, SubAgentParentKey, ToolKey, VisibleAgentKey } from './agent-registry'
@@ -69,7 +69,7 @@ export function AgentsView({ onClose }: { onClose?: () => void }) {
   const skillsAllowed = Boolean(toolValue.skills ?? toolRows.find((tool) => tool.key === 'skills')?.allowed ?? false)
   const skillValue = draft.agent_skills?.[activeAgent] ?? {}
   const contextValue = draft.agent_context?.[activeAgent] ?? {}
-  const inheritedContext = mergeAgentContextOverride(effective.agent_context?.default ?? {}, effective.agent_context?.[activeAgent] ?? {})
+  const resolvedContext = layered?.resolved_agent_contexts?.[activeAgent]
   const generalSubAgents = draft.general_sub_agents ?? {}
   const inheritedToolParallelism = resolveInheritedToolParallelism(layered, activeLayer)
   const previewGeneralSubAgents = useMemo(() => previewGeneralSubAgentSettings(layered, activeLayer, draft), [activeLayer, draft, layered])
@@ -303,12 +303,14 @@ export function AgentsView({ onClose }: { onClose?: () => void }) {
                 sources={promptSources}
                 onChange={setAgentPrompt}
               />
-              <AgentRuntimeContextSection
-                agent={activeAgent}
-                value={contextValue}
-                inherited={inheritedContext}
-                onChange={setAgentContext}
-              />
+              {resolvedContext && (
+                <AgentRuntimeContextSection
+                  agent={activeAgent}
+                  value={contextValue}
+                  resolved={resolvedContext}
+                  onChange={setAgentContext}
+                />
+              )}
               {selected.capabilityMode === 'tools' ? (
                 <>
                   <AgentToolSection
@@ -345,7 +347,7 @@ export function AgentsView({ onClose }: { onClose?: () => void }) {
               ) : (
                 <AgentModelOnlySection />
               )}
-              <AgentContextSection agent={selected.key} effective={effective} />
+              <AgentContextSection agent={selected.key} effective={effective} resolved={resolvedContext} />
             </div>
           </main>
         )}

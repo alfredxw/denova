@@ -705,6 +705,37 @@ func TestLoadLayeredPublishesResolvedAgentToolCatalogAndManifests(t *testing.T) 
 	}
 }
 
+func TestLoadLayeredPublishesCanonicalResolvedAgentContexts(t *testing.T) {
+	novaDir := t.TempDir()
+	lowThreshold := 0.20
+	disableToolContext := false
+	if err := WriteSettingsFile(UserConfigPath(novaDir), Settings{
+		AgentContexts: AgentContextSettings{
+			Default: AgentContextOverride{CompactionThreshold: &lowThreshold},
+			IDE:     AgentContextOverride{ToolResultContextEnabled: &disableToolContext},
+		},
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	layered, err := LoadLayered(novaDir, "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	ide, found := layered.ResolvedAgentContexts[AgentKindIDE]
+	if !found {
+		t.Fatalf("resolved IDE context is missing: %#v", layered.ResolvedAgentContexts)
+	}
+	if ide.CompactionThreshold != 0.50 || ide.ToolResultContextEnabled {
+		t.Fatalf("resolved IDE context = %#v", ide)
+	}
+	for _, definition := range AgentKindDefinitions() {
+		if _, ok := layered.ResolvedAgentContexts[definition.Kind]; !ok {
+			t.Fatalf("resolved context is missing agent kind %q", definition.Kind)
+		}
+	}
+}
+
 func TestLoadLayeredIgnoresNovaDirFromEditableLayers(t *testing.T) {
 	home := t.TempDir()
 	ws := t.TempDir()

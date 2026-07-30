@@ -58,6 +58,36 @@ func TestAppUpdateUserSettingsPersists(t *testing.T) {
 	}
 }
 
+func TestAppUpdateUserSettingsReturnsCanonicalAgentContext(t *testing.T) {
+	ws := t.TempDir()
+	novaDir := t.TempDir()
+	a := &App{
+		cfg:       &config.Config{Workspace: ws, NovaDir: novaDir},
+		workspace: ws,
+	}
+	lowThreshold := 0.20
+	disableToolContext := false
+	layered, err := a.UpdateUserSettings(config.Settings{
+		AgentContexts: config.AgentContextSettings{
+			IDE: config.AgentContextOverride{
+				CompactionThreshold:      &lowThreshold,
+				ToolResultContextEnabled: &disableToolContext,
+			},
+		},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	resolved := layered.ResolvedAgentContexts[config.AgentKindIDE]
+	if resolved.CompactionThreshold != 0.50 || resolved.ToolResultContextEnabled {
+		t.Fatalf("canonical IDE context = %#v", resolved)
+	}
+	if layered.User.AgentContexts.IDE.CompactionThreshold == nil ||
+		*layered.User.AgentContexts.IDE.CompactionThreshold != 0.50 {
+		t.Fatalf("canonical user override = %#v", layered.User.AgentContexts.IDE)
+	}
+}
+
 func TestAppUpdateUserSettingsPreservesRemoteAccessPasswordHash(t *testing.T) {
 	ws := t.TempDir()
 	novaDir := t.TempDir()

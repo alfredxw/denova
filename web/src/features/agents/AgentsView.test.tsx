@@ -3,7 +3,7 @@ import userEvent from '@testing-library/user-event'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { getSkills } from '@/lib/api'
 import { fetchSettings, updateUserSettings, updateWorkspaceSettings } from '@/features/settings/api'
-import type { AgentToolCapability, LayeredSettings, ResolvedAgentToolCapability } from '@/features/settings/types'
+import type { AgentToolCapability, LayeredSettings, ResolvedAgentContextSettings, ResolvedAgentToolCapability } from '@/features/settings/types'
 import { AgentsView } from './AgentsView'
 
 const { configManagerChatProps } = vi.hoisted(() => ({
@@ -80,18 +80,9 @@ describe('AgentsView', () => {
     expect(await screen.findByText('deepseek（DeepSeek V3）')).toBeInTheDocument()
   })
 
-  it('shows context compaction prompt and target ratio settings', async () => {
+  it('shows context compaction prompt while keeping mechanics backend-managed', async () => {
     const user = userEvent.setup()
     vi.mocked(fetchSettings).mockResolvedValue(settingsSnapshot({
-      effective: {
-        agent_context: {
-          context_compaction: {
-            compaction_recent_turns: 4,
-            compaction_target_min_ratio: 0.09,
-            compaction_target_max_ratio: 0.31,
-          },
-        },
-      },
       builtin_agent_prompt_sources: {
         context_compaction: {
           sources: [
@@ -106,43 +97,33 @@ describe('AgentsView', () => {
 
     await user.click(await screen.findByRole('button', { name: /上下文压缩 Agent/ }))
 
-    expect(screen.getByText('压缩目标下限 (%)')).toBeInTheDocument()
-    expect(screen.getByText('压缩目标上限 (%)')).toBeInTheDocument()
-    expect(screen.getByText('压缩后保留回合')).toBeInTheDocument()
+    expect(screen.queryByText('压缩目标下限 (%)')).not.toBeInTheDocument()
+    expect(screen.queryByText('压缩目标上限 (%)')).not.toBeInTheDocument()
+    expect(screen.queryByText('压缩后保留回合')).not.toBeInTheDocument()
     expect(screen.getByText('流程规则')).toBeInTheDocument()
-    expect(screen.queryByDisplayValue('12')).not.toBeInTheDocument()
-    expect(screen.getByRole('spinbutton', { name: '压缩后保留回合' })).toHaveValue(4)
-    expect(screen.getByDisplayValue('9')).toBeInTheDocument()
-    expect(screen.getByDisplayValue('31')).toBeInTheDocument()
+    expect(screen.getByText('后端管理的缓存安全边界')).toBeInTheDocument()
     expect(screen.getByRole('spinbutton', { name: '单片段上限 (KB)' })).toHaveValue(256)
     expect(screen.getByRole('spinbutton', { name: '本轮注入总上限 (KB)' })).toHaveValue(1024)
     expect(screen.getByRole('spinbutton', { name: '本轮片段数量上限' })).toHaveValue(256)
     expect(screen.getByRole('spinbutton', { name: '来源元数据上限 (KB)' })).toHaveValue(4)
   })
 
-  it('shows and saves the per-Agent context pressure policy', async () => {
+  it('shows backend-resolved context intent and saves only the edited override', async () => {
     vi.mocked(fetchSettings).mockResolvedValue(settingsSnapshot({}))
 
     render(<AgentsView />)
 
-    expect(await screen.findByRole('combobox', { name: '压力计算范围' })).toHaveTextContent('稳定前缀之后的可变正文')
-    expect(screen.getByRole('spinbutton', { name: '工具结果清理阈值 (%)' })).toHaveValue(70)
-    expect(screen.getByRole('spinbutton', { name: '工具结果清理目标 (%)' })).toHaveValue(60)
-    expect(screen.getByRole('spinbutton', { name: '最小清理收益 (Token)' })).toHaveValue(20_000)
-    expect(screen.getByRole('spinbutton', { name: '保护最近工具交互组' })).toHaveValue(3)
-    expect(screen.getByRole('spinbutton', { name: '工具结果保护窗口 (Token)' })).toHaveValue(16_000)
-    expect(screen.getByRole('spinbutton', { name: '热缓存后缀改写上限 (Token)' })).toHaveValue(8_000)
-    expect(screen.getByRole('spinbutton', { name: '即时收据最小结果 (Token)' })).toHaveValue(32_000)
-    expect(screen.getByRole('spinbutton', { name: '压缩恢复系数 (%)' })).toHaveValue(80)
-    expect(screen.getByRole('spinbutton', { name: '最大连续失败次数' })).toHaveValue(3)
+    expect(await screen.findByRole('spinbutton', { name: '触发阈值 (%)' })).toHaveValue(85)
+    expect(screen.getByRole('switch', { name: '工具结果上下文' })).toBeChecked()
+    expect(screen.queryByRole('spinbutton', { name: '工具结果清理阈值 (%)' })).not.toBeInTheDocument()
 
-    fireEvent.change(screen.getByRole('spinbutton', { name: '工具结果清理阈值 (%)' }), { target: { value: '72' } })
+    fireEvent.change(screen.getByRole('spinbutton', { name: '触发阈值 (%)' }), { target: { value: '72' } })
     flushAgentsAutosave()
 
     await waitFor(() => {
       expect(vi.mocked(updateUserSettings)).toHaveBeenCalledWith(expect.objectContaining({
         agent_context: expect.objectContaining({
-          ide: expect.objectContaining({ tool_result_cleanup_threshold: 0.72 }),
+          ide: expect.objectContaining({ compaction_threshold: 0.72 }),
         }),
       }))
     })
@@ -702,7 +683,32 @@ function settingsSnapshot(patch: Partial<LayeredSettings>): LayeredSettings {
     builtin_agent_prompt_blocks: {},
     builtin_agent_prompt_sources: {},
     resolved_agent_tool_manifests: defaultToolManifests(),
+    resolved_agent_contexts: defaultAgentContexts(),
     ...patch,
+  }
+}
+
+function defaultAgentContexts(): NonNullable<LayeredSettings['resolved_agent_contexts']> {
+  const base: ResolvedAgentContextSettings = {
+    compaction_enabled: true,
+    compaction_threshold: 0.85,
+    tool_result_context_enabled: false,
+    max_fragment_bytes: 256 * 1024,
+    max_total_injected_bytes: 1024 * 1024,
+    max_fragments: 256,
+    max_metadata_field_bytes: 4 * 1024,
+    max_provider_input_bytes: 4 * 1024 * 1024,
+  }
+  return {
+    ide: { ...base, tool_result_context_enabled: true },
+    interactive_story: { ...base, tool_result_context_enabled: true },
+    config_manager: { ...base },
+    interactive_director: { ...base },
+    version_summary: { ...base },
+    tool_agent: { ...base },
+    image: { ...base },
+    automation: { ...base },
+    context_compaction: { ...base },
   }
 }
 

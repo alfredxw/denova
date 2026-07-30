@@ -4,12 +4,14 @@ import (
 	"fmt"
 	"strings"
 	"time"
+
+	"denova/internal/contextmaintenance"
 )
 
 const (
-	ContextCompactionHealthOutcomeFailure     = "failure"
-	ContextCompactionHealthOutcomeSuccess     = "success"
-	ContextCompactionHealthOutcomeManualRetry = "manual_retry"
+	ContextCompactionHealthOutcomeFailure     = contextmaintenance.CompactionHealthFailure
+	ContextCompactionHealthOutcomeSuccess     = contextmaintenance.CompactionHealthSuccess
+	ContextCompactionHealthOutcomeManualRetry = contextmaintenance.CompactionHealthManualRetry
 )
 
 // ContextCompactionHealthState returns the branch's model-context revision and
@@ -123,17 +125,15 @@ func (s *Store) AppendContextCompactionHealth(
 	}
 
 	normalized.BasisRevision = projection.ContextRevision
-	previous := projection.CompactionHealth
-	switch normalized.Outcome {
-	case ContextCompactionHealthOutcomeFailure:
-		normalized.ConsecutiveFailures = 1
-		if previous != nil && previous.StructureFingerprint == normalized.StructureFingerprint &&
-			contextCompactionHealthAgentMatches(previous.AgentKind, normalized.AgentKind) {
-			normalized.ConsecutiveFailures = previous.ConsecutiveFailures + 1
-		}
-	case ContextCompactionHealthOutcomeSuccess, ContextCompactionHealthOutcomeManualRetry:
-		normalized.ConsecutiveFailures = 0
+	var previousValue *contextmaintenance.CompactionHealth
+	if projection.CompactionHealth != nil {
+		value := contextCompactionHealthEventValue(*projection.CompactionHealth)
+		previousValue = &value
 	}
+	normalized = applyContextCompactionHealthEventValue(
+		normalized,
+		contextmaintenance.AdvanceCompactionHealth(previousValue, contextCompactionHealthEventValue(normalized)),
+	)
 	now := time.Now().UTC().Format(time.RFC3339Nano)
 	normalized.V = schemaVersion
 	normalized.Type = StoryEventTypeCompactionHealth
@@ -152,26 +152,12 @@ func (s *Store) AppendContextCompactionHealth(
 }
 
 func normalizeContextCompactionHealthEvent(event ContextCompactionHealthEvent) (ContextCompactionHealthEvent, error) {
+	normalized, err := contextmaintenance.NormalizeCompactionHealth(contextCompactionHealthEventValue(event))
+	if err != nil {
+		return ContextCompactionHealthEvent{}, err
+	}
 	event.Type = StoryEventTypeCompactionHealth
-	event.ID = strings.TrimSpace(event.ID)
-	event.AgentKind = strings.TrimSpace(event.AgentKind)
-	event.StructureFingerprint = strings.TrimSpace(event.StructureFingerprint)
-	event.Outcome = strings.TrimSpace(event.Outcome)
-	event.FailureCode = strings.TrimSpace(event.FailureCode)
-	if event.ID == "" || event.StructureFingerprint == "" {
-		return ContextCompactionHealthEvent{}, fmt.Errorf("context compaction health requires id and structure fingerprint")
-	}
-	switch event.Outcome {
-	case ContextCompactionHealthOutcomeFailure:
-		if event.FailureCode == "" {
-			return ContextCompactionHealthEvent{}, fmt.Errorf("failed context compaction health requires failure code")
-		}
-	case ContextCompactionHealthOutcomeSuccess, ContextCompactionHealthOutcomeManualRetry:
-		event.FailureCode = ""
-	default:
-		return ContextCompactionHealthEvent{}, fmt.Errorf("unsupported context compaction health outcome %q", event.Outcome)
-	}
-	return event, nil
+	return applyContextCompactionHealthEventValue(event, normalized), nil
 }
 
 func contextCompactionHealthEventByID(lines []StoryEventRecord, id string) (ContextCompactionHealthEvent, bool, error) {
@@ -209,11 +195,29 @@ func reconcileContextCompactionHealthEvent(
 
 func sameContextCompactionHealthEventIntent(existing, requested ContextCompactionHealthEvent, branchID string) bool {
 	return existing.ID == requested.ID && existing.BranchID == strings.TrimSpace(branchID) &&
-		contextCompactionHealthAgentMatches(existing.AgentKind, requested.AgentKind) &&
-		existing.StructureFingerprint == requested.StructureFingerprint && existing.Outcome == requested.Outcome &&
-		existing.FailureCode == requested.FailureCode
+		contextmaintenance.SameCompactionHealthIntent(
+			contextCompactionHealthEventValue(existing),
+			contextCompactionHealthEventValue(requested),
+		)
 }
 
 func contextCompactionHealthAgentMatches(left, right string) bool {
 	return strings.TrimSpace(left) == strings.TrimSpace(right)
+}
+
+func contextCompactionHealthEventValue(event ContextCompactionHealthEvent) contextmaintenance.CompactionHealth {
+	return contextmaintenance.CompactionHealth{
+		ID: event.ID, AgentKind: event.AgentKind, StructureFingerprint: event.StructureFingerprint,
+		Outcome: event.Outcome, FailureCode: event.FailureCode, ConsecutiveFailures: event.ConsecutiveFailures,
+	}
+}
+
+func applyContextCompactionHealthEventValue(event ContextCompactionHealthEvent, value contextmaintenance.CompactionHealth) ContextCompactionHealthEvent {
+	event.ID = value.ID
+	event.AgentKind = value.AgentKind
+	event.StructureFingerprint = value.StructureFingerprint
+	event.Outcome = value.Outcome
+	event.FailureCode = value.FailureCode
+	event.ConsecutiveFailures = value.ConsecutiveFailures
+	return event
 }

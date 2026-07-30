@@ -66,6 +66,7 @@ function settingsWithManifest(capability?: ResolvedAgentToolCapability): Layered
     effective: {},
     paths: { denova_dir: '', nova_dir: '', user_config: '', workspace_config: '' },
     resolved_agent_tool_manifests: capability ? { ide: [capability] } : {},
+    resolved_agent_contexts: {},
   }
 }
 

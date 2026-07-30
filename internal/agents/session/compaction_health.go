@@ -5,12 +5,14 @@ import (
 	"fmt"
 	"strings"
 	"time"
+
+	"denova/internal/contextmaintenance"
 )
 
 const (
-	contextCompactionHealthFailure     = "failure"
-	contextCompactionHealthSuccess     = "success"
-	contextCompactionHealthManualRetry = "manual_retry"
+	contextCompactionHealthFailure     = contextmaintenance.CompactionHealthFailure
+	contextCompactionHealthSuccess     = contextmaintenance.CompactionHealthSuccess
+	contextCompactionHealthManualRetry = contextmaintenance.CompactionHealthManualRetry
 )
 
 // CommitContextCompactionHealthAtContext appends a model-invisible health
@@ -39,15 +41,15 @@ func (s *Session) CommitContextCompactionHealthAtContext(
 		}
 		normalized.BasisRevision = expected.Revision
 		previous, active := s.latestContextCompactionHealthLocked(normalized.AgentKind)
-		switch normalized.Outcome {
-		case contextCompactionHealthFailure:
-			normalized.ConsecutiveFailures = 1
-			if active && previous.StructureFingerprint == normalized.StructureFingerprint {
-				normalized.ConsecutiveFailures = previous.ConsecutiveFailures + 1
-			}
-		case contextCompactionHealthSuccess, contextCompactionHealthManualRetry:
-			normalized.ConsecutiveFailures = 0
+		var previousValue *contextmaintenance.CompactionHealth
+		if active {
+			value := contextCompactionHealthValue(previous)
+			previousValue = &value
 		}
+		normalized = applyContextCompactionHealthValue(
+			normalized,
+			contextmaintenance.AdvanceCompactionHealth(previousValue, contextCompactionHealthValue(normalized)),
+		)
 		if appendErr := s.appendJournalRecordLocked(normalized); appendErr != nil {
 			return appendErr
 		}
@@ -104,25 +106,12 @@ func (s *Session) latestContextCompactionHealthLocked(agentKind string) (Context
 }
 
 func normalizeContextCompactionHealth(record ContextCompactionHealth) (ContextCompactionHealth, error) {
+	normalized, err := contextmaintenance.NormalizeCompactionHealth(contextCompactionHealthValue(record))
+	if err != nil {
+		return ContextCompactionHealth{}, err
+	}
 	record.Type = historyTypeCompactionHealth
-	record.ID = strings.TrimSpace(record.ID)
-	record.AgentKind = strings.TrimSpace(record.AgentKind)
-	record.StructureFingerprint = strings.TrimSpace(record.StructureFingerprint)
-	record.Outcome = strings.TrimSpace(record.Outcome)
-	record.FailureCode = strings.TrimSpace(record.FailureCode)
-	if record.ID == "" || record.StructureFingerprint == "" {
-		return ContextCompactionHealth{}, fmt.Errorf("context compaction health requires id and structure fingerprint")
-	}
-	switch record.Outcome {
-	case contextCompactionHealthFailure:
-		if record.FailureCode == "" {
-			return ContextCompactionHealth{}, fmt.Errorf("failed context compaction health requires failure code")
-		}
-	case contextCompactionHealthSuccess, contextCompactionHealthManualRetry:
-		record.FailureCode = ""
-	default:
-		return ContextCompactionHealth{}, fmt.Errorf("unsupported context compaction health outcome %q", record.Outcome)
-	}
+	record = applyContextCompactionHealthValue(record, normalized)
 	if record.CreatedAt.IsZero() {
 		record.CreatedAt = time.Now().UTC()
 	}
@@ -150,7 +139,22 @@ func (s *Session) contextCompactionHealthByIDLocked(id string) (ContextCompactio
 }
 
 func sameContextCompactionHealthIntent(existing, requested ContextCompactionHealth) bool {
-	return existing.ID == requested.ID && existing.AgentKind == requested.AgentKind &&
-		existing.StructureFingerprint == requested.StructureFingerprint && existing.Outcome == requested.Outcome &&
-		existing.FailureCode == requested.FailureCode
+	return contextmaintenance.SameCompactionHealthIntent(contextCompactionHealthValue(existing), contextCompactionHealthValue(requested))
+}
+
+func contextCompactionHealthValue(record ContextCompactionHealth) contextmaintenance.CompactionHealth {
+	return contextmaintenance.CompactionHealth{
+		ID: record.ID, AgentKind: record.AgentKind, StructureFingerprint: record.StructureFingerprint,
+		Outcome: record.Outcome, FailureCode: record.FailureCode, ConsecutiveFailures: record.ConsecutiveFailures,
+	}
+}
+
+func applyContextCompactionHealthValue(record ContextCompactionHealth, value contextmaintenance.CompactionHealth) ContextCompactionHealth {
+	record.ID = value.ID
+	record.AgentKind = value.AgentKind
+	record.StructureFingerprint = value.StructureFingerprint
+	record.Outcome = value.Outcome
+	record.FailureCode = value.FailureCode
+	record.ConsecutiveFailures = value.ConsecutiveFailures
+	return record
 }

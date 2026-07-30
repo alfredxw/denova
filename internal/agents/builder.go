@@ -390,7 +390,6 @@ func buildChatModelAgentAssembly(ctx context.Context, cfg *config.Config, spec c
 	executionGate := sharedToolExecutionGate(workspace)
 	toolCatalog := newToolCatalog(cfg)
 	settings := spec.ToolSettings
-	contextSettings := config.ResolveAgentContext(cfg, spec.Kind)
 	middlewares := append([]agent.Middleware(nil), spec.ExtraMiddlewares...)
 	middlewares = append(middlewares,
 		&toolOrchestratorMiddleware{
@@ -399,7 +398,7 @@ func buildChatModelAgentAssembly(ctx context.Context, cfg *config.Config, spec c
 			toolSettings:             spec.ToolSettings,
 			enforceToolSettings:      true,
 			toolResultMaxBytes:       configToolResultMaxBytes(cfg),
-			toolResultEagerMinTokens: contextSettings.ToolResultEagerMinTokens,
+			toolResultEagerMinTokens: config.DefaultToolResultEagerMinTokens,
 			contextWindowTokens:      spec.ContextWindowTokens,
 			executionGate:            executionGate,
 		},

@@ -6,6 +6,7 @@ import (
 
 	agent "github.com/alfredxw/denova/agent"
 
+	"denova/internal/contextmaintenance"
 	"denova/internal/conversationjournal"
 )
 
@@ -437,15 +438,9 @@ type ContextCompactionHealth struct {
 	CreatedAt            time.Time `json:"created_at"`
 }
 
-// ToolResultReplacement is one frozen model-context substitution. MessageIndex
-// addresses the append-only canonical transcript while ToolCallID prevents a
-// replacement from being applied to a different tool result after recovery.
-// Placeholder is already rendered and must be reused byte-for-byte.
-type ToolResultReplacement struct {
-	MessageIndex int64  `json:"message_index"`
-	ToolCallID   string `json:"tool_call_id"`
-	Placeholder  string `json:"placeholder"`
-}
+// ToolResultReplacement shares the same frozen substitution contract across
+// writing sessions and game journals.
+type ToolResultReplacement = contextmaintenance.ToolResultReplacement
 
 // ToolResultCleanupRecord records a model-visible projection without changing
 // the canonical rich tool result or the user-facing transcript. SourceEnd is

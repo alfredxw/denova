@@ -3,10 +3,10 @@ package interactive
 import (
 	"fmt"
 	"os"
-	"slices"
-	"sort"
 	"strings"
 	"time"
+
+	"denova/internal/contextmaintenance"
 )
 
 // ToolResultCleanupByID reads one stable cleanup event from the canonical
@@ -135,66 +135,44 @@ func toolResultCleanupEventByID(lines []StoryEventRecord, id string) (ToolResult
 }
 
 func normalizeToolResultCleanupEvent(event ToolResultCleanupEvent) (ToolResultCleanupEvent, error) {
+	normalized, err := contextmaintenance.NormalizeToolResultCleanup(
+		toolResultCleanupEventValue(event),
+		func() string { return newID("trc") },
+	)
+	if err != nil {
+		return ToolResultCleanupEvent{}, err
+	}
 	event.Type = StoryEventTypeToolResultCleanup
-	event.ID = strings.TrimSpace(event.ID)
-	if event.ID == "" {
-		event.ID = newID("trc")
-	}
-	event.AgentKind = strings.TrimSpace(event.AgentKind)
-	event.RendererVersion = strings.TrimSpace(event.RendererVersion)
-	if event.SourceStart < 0 || event.SourceEnd <= event.SourceStart {
-		return ToolResultCleanupEvent{}, fmt.Errorf("tool result cleanup source range [%d,%d) is invalid", event.SourceStart, event.SourceEnd)
-	}
-	if event.RendererVersion == "" {
-		return ToolResultCleanupEvent{}, fmt.Errorf("tool result cleanup renderer version is required")
-	}
-	if event.ReclaimedTokens <= 0 {
-		return ToolResultCleanupEvent{}, fmt.Errorf("tool result cleanup reclaimed tokens must be positive")
-	}
-	if event.TriggeredAtUsage < 0 || event.WarmSuffixTokens < 0 {
-		return ToolResultCleanupEvent{}, fmt.Errorf("tool result cleanup usage metrics cannot be negative")
-	}
-	if len(event.Replacements) == 0 {
-		return ToolResultCleanupEvent{}, fmt.Errorf("tool result cleanup replacements are required")
-	}
-	event.Replacements = append([]ToolResultReplacement(nil), event.Replacements...)
-	for index := range event.Replacements {
-		replacement := &event.Replacements[index]
-		replacement.ToolCallID = strings.TrimSpace(replacement.ToolCallID)
-		if replacement.MessageIndex < event.SourceStart || replacement.MessageIndex >= event.SourceEnd {
-			return ToolResultCleanupEvent{}, fmt.Errorf("tool result cleanup replacement index %d is outside source range", replacement.MessageIndex)
-		}
-		if replacement.ToolCallID == "" || replacement.Placeholder == "" {
-			return ToolResultCleanupEvent{}, fmt.Errorf("tool result cleanup replacement %d requires tool_call_id and placeholder", index)
-		}
-	}
-	sort.SliceStable(event.Replacements, func(left, right int) bool {
-		if event.Replacements[left].MessageIndex == event.Replacements[right].MessageIndex {
-			return event.Replacements[left].ToolCallID < event.Replacements[right].ToolCallID
-		}
-		return event.Replacements[left].MessageIndex < event.Replacements[right].MessageIndex
-	})
-	messageIndexes := make(map[int64]struct{}, len(event.Replacements))
-	for _, replacement := range event.Replacements {
-		_, duplicateIndex := messageIndexes[replacement.MessageIndex]
-		if duplicateIndex {
-			return ToolResultCleanupEvent{}, fmt.Errorf("tool result cleanup contains a duplicate replacement target")
-		}
-		messageIndexes[replacement.MessageIndex] = struct{}{}
-	}
-	event.EarliestChanged = event.Replacements[0].MessageIndex
-	return event, nil
+	return applyToolResultCleanupEventValue(event, normalized), nil
 }
 
 func sameToolResultCleanupEventIntent(existing, requested ToolResultCleanupEvent, branchID string) bool {
-	return existing.ID == requested.ID && existing.BranchID == strings.TrimSpace(branchID) &&
-		existing.AgentKind == requested.AgentKind && existing.SourceStart == requested.SourceStart && existing.SourceEnd == requested.SourceEnd &&
-		slices.Equal(existing.Replacements, requested.Replacements) && existing.ReclaimedTokens == requested.ReclaimedTokens &&
-		existing.TriggeredAtUsage == requested.TriggeredAtUsage && existing.EarliestChanged == requested.EarliestChanged &&
-		existing.WarmSuffixTokens == requested.WarmSuffixTokens && existing.RendererVersion == requested.RendererVersion
+	return existing.BranchID == strings.TrimSpace(branchID) &&
+		contextmaintenance.SameToolResultCleanupIntent(toolResultCleanupEventValue(existing), toolResultCleanupEventValue(requested))
 }
 
 func cloneToolResultCleanupEvent(event ToolResultCleanupEvent) ToolResultCleanupEvent {
-	event.Replacements = append([]ToolResultReplacement(nil), event.Replacements...)
+	return applyToolResultCleanupEventValue(event, contextmaintenance.CloneToolResultCleanup(toolResultCleanupEventValue(event)))
+}
+
+func toolResultCleanupEventValue(event ToolResultCleanupEvent) contextmaintenance.ToolResultCleanup {
+	return contextmaintenance.ToolResultCleanup{
+		ID: event.ID, AgentKind: event.AgentKind, SourceStart: event.SourceStart, SourceEnd: event.SourceEnd,
+		Replacements: event.Replacements, ReclaimedTokens: event.ReclaimedTokens, TriggeredAtUsage: event.TriggeredAtUsage,
+		EarliestChanged: event.EarliestChanged, WarmSuffixTokens: event.WarmSuffixTokens, RendererVersion: event.RendererVersion,
+	}
+}
+
+func applyToolResultCleanupEventValue(event ToolResultCleanupEvent, value contextmaintenance.ToolResultCleanup) ToolResultCleanupEvent {
+	event.ID = value.ID
+	event.AgentKind = value.AgentKind
+	event.SourceStart = value.SourceStart
+	event.SourceEnd = value.SourceEnd
+	event.Replacements = value.Replacements
+	event.ReclaimedTokens = value.ReclaimedTokens
+	event.TriggeredAtUsage = value.TriggeredAtUsage
+	event.EarliestChanged = value.EarliestChanged
+	event.WarmSuffixTokens = value.WarmSuffixTokens
+	event.RendererVersion = value.RendererVersion
 	return event
 }

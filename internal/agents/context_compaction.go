@@ -180,19 +180,18 @@ func compactionControllerFromContext(ctx context.Context) *contextCompactionCont
 
 func resolveContextCompactionPolicy(cfg *config.Config, agentKind string) contextCompactionPolicy {
 	contextSettings := config.ResolveAgentContext(cfg, agentKind)
-	compactionSettings := config.ResolveAgentContext(cfg, config.AgentKindContextCompaction)
 	modelSettings := config.ResolveAgentModel(cfg, agentKind)
 	return contextCompactionPolicy{
 		AgentKind:              agentKind,
 		Enabled:                contextSettings.CompactionEnabled,
-		Strategy:               contextSettings.CompactionStrategy,
+		Strategy:               config.AgentContextCompactionStrategySummaryAgent,
 		ContextWindowTokens:    modelSettings.ContextWindowTokens,
 		Threshold:              contextSettings.CompactionThreshold,
-		RecoveryBand:           contextSettings.CompactionRecoveryBand,
-		RetainedTurns:          compactionSettings.CompactionRecentTurns,
-		TargetMinRatio:         compactionSettings.CompactionTargetMin,
-		TargetMaxRatio:         compactionSettings.CompactionTargetMax,
-		MaxConsecutiveFailures: contextSettings.CompactionMaxConsecutiveFailures,
+		RecoveryBand:           config.DefaultContextCompactionRecoveryBand,
+		RetainedTurns:          config.DefaultContextCompactionRetainedTurns,
+		TargetMinRatio:         config.DefaultContextCompactionTargetMinRatio,
+		TargetMaxRatio:         config.DefaultContextCompactionTargetMaxRatio,
+		MaxConsecutiveFailures: config.DefaultContextCompactionMaxConsecutiveFailures,
 	}
 }
 

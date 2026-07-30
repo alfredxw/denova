@@ -411,6 +411,7 @@ type LayeredSettings struct {
 	BuiltinAgentPromptSources  AgentPromptSourceSettings                `json:"builtin_agent_prompt_sources,omitempty"`
 	AgentToolCapabilities      []AgentToolCapabilityCatalogEntry        `json:"agent_tool_capabilities"`
 	ResolvedAgentToolManifests map[string][]ResolvedAgentToolCapability `json:"resolved_agent_tool_manifests"`
+	ResolvedAgentContexts      map[string]ResolvedAgentContextSettings  `json:"resolved_agent_contexts"`
 }
 
 var ErrSettingsRevisionConflict = errors.New("配置已被其他操作更新，请重新加载后再保存")
@@ -595,6 +596,7 @@ func LoadLayeredWithGlobal(novaDir, workspace string, global Settings) (LayeredS
 	}
 	eff := Merge(Merge(Merge(def, global), user), ws)
 	toolConfig := &Config{AgentTools: eff.AgentTools}
+	contextConfig := &Config{AgentContexts: eff.AgentContexts}
 	backendPort := settingsInt(eff.BackendPort, 8080)
 	revisions := SettingsRevisions{}
 	userConfigPath := UserConfigPath(novaDir)
@@ -631,6 +633,7 @@ func LoadLayeredWithGlobal(novaDir, workspace string, global Settings) (LayeredS
 		Runtime:                    SettingsRuntime{GOOS: runtime.GOOS},
 		AgentToolCapabilities:      AgentToolCapabilityCatalogForGOOS(runtime.GOOS),
 		ResolvedAgentToolManifests: ResolveAgentToolManifestsForGOOS(toolConfig, runtime.GOOS),
+		ResolvedAgentContexts:      ResolveAgentContexts(contextConfig),
 	}, nil
 }
 

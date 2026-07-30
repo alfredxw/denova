@@ -125,28 +125,20 @@ func TestProcessToolResultMaterializesInsteadOfTrustingUnverifiedCompleteOutput(
 	}
 }
 
-func TestCompleteToolResultArtifactTreatsEmptyPurposeConservatively(t *testing.T) {
-	generic := agent.ToolArtifactRef{
+func TestCompleteToolResultArtifactRejectsPurposeLessReferences(t *testing.T) {
+	references := []agent.ToolArtifactRef{{
 		ID: "artifact-1", ReadablePath: ".denova/artifacts/session/attachment.txt",
 		ContentType: "text/plain", EstimatedBytes: 1024, Complete: true,
-	}
-	if artifact := recoverableToolResultArtifact([]agent.ToolArtifactRef{generic}); artifact != nil {
-		t.Fatalf("generic purpose-less attachment authorized cleanup: %#v", artifact)
-	}
-
-	legacy := agent.ToolArtifactRef{
+	}, {
 		ID:           "call-0123456789abcdef0123456789abcdef",
 		ReadablePath: ".denova/artifacts/scope-0123456789abcdef0123456789abcdef/call-0123456789abcdef0123456789abcdef.log",
 		ContentType:  "text/plain", EstimatedBytes: 1024, Complete: true,
 		SHA256: strings.Repeat("a", 64),
-	}
-	artifact := recoverableToolResultArtifact([]agent.ToolArtifactRef{legacy})
-	if artifact == nil || artifact.Purpose != agent.ToolArtifactPurposeCompleteModelOutput {
-		t.Fatalf("reliable legacy tool-output provenance was not recognized: %#v", artifact)
-	}
-	legacy.ReadablePath = ".denova/archive/artifacts/scope-0123456789abcdef0123456789abcdef/" + legacy.ID + ".log"
-	if artifact := recoverableToolResultArtifact([]agent.ToolArtifactRef{legacy}); artifact != nil {
-		t.Fatalf("lookalike legacy path authorized cleanup: %#v", artifact)
+	}}
+	for _, reference := range references {
+		if artifact := recoverableToolResultArtifact([]agent.ToolArtifactRef{reference}); artifact != nil {
+			t.Fatalf("purpose-less reference authorized cleanup: %#v", artifact)
+		}
 	}
 }
 

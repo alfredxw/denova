@@ -3,10 +3,10 @@ package session
 import (
 	"context"
 	"fmt"
-	"slices"
-	"sort"
 	"strings"
 	"time"
+
+	"denova/internal/contextmaintenance"
 )
 
 // AppendToolResultCleanup persists a frozen cleanup projection at the latest
@@ -180,68 +180,41 @@ func (s *Session) toolResultCleanupByIDLocked(id string) (ToolResultCleanupRecor
 }
 
 func normalizeToolResultCleanupRecord(record ToolResultCleanupRecord) (ToolResultCleanupRecord, error) {
+	normalized, err := contextmaintenance.NormalizeToolResultCleanup(toolResultCleanupValue(record), newToolResultCleanupID)
+	if err != nil {
+		return ToolResultCleanupRecord{}, err
+	}
 	record.Type = historyTypeToolResultCleanup
-	record.ID = strings.TrimSpace(record.ID)
-	if record.ID == "" {
-		record.ID = newToolResultCleanupID()
-	}
-	record.AgentKind = strings.TrimSpace(record.AgentKind)
-	record.RendererVersion = strings.TrimSpace(record.RendererVersion)
-	if record.SourceStart < 0 || record.SourceEnd <= record.SourceStart {
-		return ToolResultCleanupRecord{}, fmt.Errorf("tool result cleanup source range [%d,%d) is invalid", record.SourceStart, record.SourceEnd)
-	}
-	if record.RendererVersion == "" {
-		return ToolResultCleanupRecord{}, fmt.Errorf("tool result cleanup renderer version is required")
-	}
-	if record.ReclaimedTokens <= 0 {
-		return ToolResultCleanupRecord{}, fmt.Errorf("tool result cleanup reclaimed tokens must be positive")
-	}
-	if record.TriggeredAtUsage < 0 || record.WarmSuffixTokens < 0 {
-		return ToolResultCleanupRecord{}, fmt.Errorf("tool result cleanup usage metrics cannot be negative")
-	}
-	if len(record.Replacements) == 0 {
-		return ToolResultCleanupRecord{}, fmt.Errorf("tool result cleanup replacements are required")
-	}
-	record.Replacements = append([]ToolResultReplacement(nil), record.Replacements...)
-	for index := range record.Replacements {
-		replacement := &record.Replacements[index]
-		replacement.ToolCallID = strings.TrimSpace(replacement.ToolCallID)
-		if replacement.MessageIndex < record.SourceStart || replacement.MessageIndex >= record.SourceEnd {
-			return ToolResultCleanupRecord{}, fmt.Errorf("tool result cleanup replacement index %d is outside source range", replacement.MessageIndex)
-		}
-		if replacement.ToolCallID == "" || replacement.Placeholder == "" {
-			return ToolResultCleanupRecord{}, fmt.Errorf("tool result cleanup replacement %d requires tool_call_id and placeholder", index)
-		}
-	}
-	sort.SliceStable(record.Replacements, func(left, right int) bool {
-		if record.Replacements[left].MessageIndex == record.Replacements[right].MessageIndex {
-			return record.Replacements[left].ToolCallID < record.Replacements[right].ToolCallID
-		}
-		return record.Replacements[left].MessageIndex < record.Replacements[right].MessageIndex
-	})
-	messageIndexes := make(map[int64]struct{}, len(record.Replacements))
-	for _, replacement := range record.Replacements {
-		_, duplicateIndex := messageIndexes[replacement.MessageIndex]
-		if duplicateIndex {
-			return ToolResultCleanupRecord{}, fmt.Errorf("tool result cleanup contains a duplicate replacement target")
-		}
-		messageIndexes[replacement.MessageIndex] = struct{}{}
-	}
-	record.EarliestChanged = record.Replacements[0].MessageIndex
-	return record, nil
+	return applyToolResultCleanupValue(record, normalized), nil
 }
 
 func sameToolResultCleanupIntent(existing, requested ToolResultCleanupRecord) bool {
-	return existing.ID == requested.ID && existing.AgentKind == requested.AgentKind &&
-		existing.SourceStart == requested.SourceStart && existing.SourceEnd == requested.SourceEnd &&
-		slices.Equal(existing.Replacements, requested.Replacements) &&
-		existing.ReclaimedTokens == requested.ReclaimedTokens && existing.TriggeredAtUsage == requested.TriggeredAtUsage &&
-		existing.EarliestChanged == requested.EarliestChanged && existing.WarmSuffixTokens == requested.WarmSuffixTokens &&
-		existing.RendererVersion == requested.RendererVersion
+	return contextmaintenance.SameToolResultCleanupIntent(toolResultCleanupValue(existing), toolResultCleanupValue(requested))
 }
 
 func cloneToolResultCleanupRecord(record ToolResultCleanupRecord) ToolResultCleanupRecord {
-	record.Replacements = append([]ToolResultReplacement(nil), record.Replacements...)
+	return applyToolResultCleanupValue(record, contextmaintenance.CloneToolResultCleanup(toolResultCleanupValue(record)))
+}
+
+func toolResultCleanupValue(record ToolResultCleanupRecord) contextmaintenance.ToolResultCleanup {
+	return contextmaintenance.ToolResultCleanup{
+		ID: record.ID, AgentKind: record.AgentKind, SourceStart: record.SourceStart, SourceEnd: record.SourceEnd,
+		Replacements: record.Replacements, ReclaimedTokens: record.ReclaimedTokens, TriggeredAtUsage: record.TriggeredAtUsage,
+		EarliestChanged: record.EarliestChanged, WarmSuffixTokens: record.WarmSuffixTokens, RendererVersion: record.RendererVersion,
+	}
+}
+
+func applyToolResultCleanupValue(record ToolResultCleanupRecord, value contextmaintenance.ToolResultCleanup) ToolResultCleanupRecord {
+	record.ID = value.ID
+	record.AgentKind = value.AgentKind
+	record.SourceStart = value.SourceStart
+	record.SourceEnd = value.SourceEnd
+	record.Replacements = value.Replacements
+	record.ReclaimedTokens = value.ReclaimedTokens
+	record.TriggeredAtUsage = value.TriggeredAtUsage
+	record.EarliestChanged = value.EarliestChanged
+	record.WarmSuffixTokens = value.WarmSuffixTokens
+	record.RendererVersion = value.RendererVersion
 	return record
 }
 

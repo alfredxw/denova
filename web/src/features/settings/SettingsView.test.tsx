@@ -271,6 +271,7 @@ function layeredSettings({ devMode }: { devMode: boolean }): LayeredSettings {
     workspace: {},
     effective: settings,
     resolved_agent_tool_manifests: {},
+    resolved_agent_contexts: {},
     paths: {
       denova_dir: '/tmp/denova',
       nova_dir: '/tmp/nova',

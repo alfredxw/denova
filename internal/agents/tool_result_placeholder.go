@@ -95,7 +95,7 @@ func usableToolResultRecoveryForCleanup(recovery agent.ToolResultRecoveryHint, a
 		if candidate.ReadablePath != want || !candidate.Complete || candidate.ContentType == "" {
 			continue
 		}
-		if recoverableToolArtifactPurpose(candidate.Purpose) || legacyCompleteModelOutputArtifact(candidate) {
+		if recoverableToolArtifactPurpose(candidate.Purpose) {
 			return true
 		}
 	}

@@ -130,7 +130,7 @@ func (c *interactiveConversation) CompactContextIfNeeded(ctx context.Context, in
 	if err != nil {
 		return input.Messages, agents.ContextCompactionResult{}, err
 	}
-	maximumFailures := config.ResolveAgentContext(c.cfg, config.AgentKindInteractiveStory).CompactionMaxConsecutiveFailures
+	maximumFailures := config.DefaultContextCompactionMaxConsecutiveFailures
 	if hasHealth && (agents.ContextCompactionFailureState{
 		StructureFingerprint: health.StructureFingerprint,
 		ConsecutiveFailures:  health.ConsecutiveFailures,
@@ -142,7 +142,7 @@ func (c *interactiveConversation) CompactContextIfNeeded(ctx context.Context, in
 	if input.Automatic && strings.TrimSpace(input.PreflightSkipReason) == "" && activeCompaction != nil &&
 		agents.ContextCompactionNoProgressLatched(
 			activeCompaction.TokensAfter, activeCompaction.ContextWindowTokens, activeCompaction.Threshold,
-			config.ResolveAgentContext(c.cfg, config.AgentKindInteractiveStory).CompactionRecoveryBand,
+			config.DefaultContextCompactionRecoveryBand,
 			agents.EstimateContextTokens(source, nil),
 			agents.EffectiveToolResultCleanupMinimum(input.Messages, input.Tools, c.ContextPressurePolicy(input.Messages)),
 			activeCompaction.CandidateFingerprint, activeCompaction.CandidateGeneration,

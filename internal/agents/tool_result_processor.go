@@ -2,10 +2,8 @@ package agents
 
 import (
 	"context"
-	"encoding/hex"
 	"encoding/json"
 	"fmt"
-	"path"
 	"strings"
 	"unicode/utf8"
 
@@ -201,12 +199,6 @@ func recoverableToolResultArtifact(artifacts []agent.ToolArtifactRef) *agent.Too
 		if recoverableToolArtifactPurpose(artifact.Purpose) {
 			return &artifact
 		}
-		if legacyCompleteModelOutputArtifact(artifact) {
-			// Compatibility is projection-local: historical transcript data remains
-			// append-only, while downstream recovery receives an explicit contract.
-			artifact.Purpose = agent.ToolArtifactPurposeCompleteModelOutput
-			return &artifact
-		}
 	}
 	return nil
 }
@@ -245,51 +237,6 @@ func normalizeUpstreamToolArtifacts(
 		normalized[index] = candidate
 	}
 	return normalized
-}
-
-// legacyCompleteModelOutputArtifact recognizes only references emitted by the
-// pre-purpose Denova tool-output store. A generic complete attachment with an
-// empty purpose remains conservative and cannot authorize result cleanup.
-func legacyCompleteModelOutputArtifact(artifact agent.ToolArtifactRef) bool {
-	if artifact.Purpose != "" || !strings.HasPrefix(artifact.ID, "call-") || len(artifact.ID) != len("call-")+32 ||
-		len(artifact.SHA256) != 64 {
-		return false
-	}
-	if _, err := hex.DecodeString(strings.TrimPrefix(artifact.ID, "call-")); err != nil {
-		return false
-	}
-	if _, err := hex.DecodeString(artifact.SHA256); err != nil {
-		return false
-	}
-	artifactPath := path.Clean(strings.ReplaceAll(strings.TrimSpace(artifact.ReadablePath), "\\", "/"))
-	base := path.Base(artifactPath)
-	if !strings.HasPrefix(base, artifact.ID+".") {
-		return false
-	}
-	directory := path.Dir(artifactPath)
-	if legacyWorkspaceArtifactDirectory(directory) {
-		return true
-	}
-	// Canonical session artifacts are siblings of a <session>.jsonl journal in
-	// a directory named exactly <session>.jsonl.artifacts.
-	return strings.HasSuffix(path.Base(directory), ".jsonl.artifacts") &&
-		len(strings.TrimSuffix(path.Base(directory), ".jsonl.artifacts")) > 0
-}
-
-func legacyWorkspaceArtifactDirectory(directory string) bool {
-	scope := path.Base(directory)
-	if !strings.HasPrefix(scope, "scope-") || len(scope) != len("scope-")+32 {
-		return false
-	}
-	if _, err := hex.DecodeString(strings.TrimPrefix(scope, "scope-")); err != nil {
-		return false
-	}
-	artifactsDirectory := path.Dir(directory)
-	if path.Base(artifactsDirectory) != "artifacts" {
-		return false
-	}
-	dataDirectory := path.Base(path.Dir(artifactsDirectory))
-	return dataDirectory == ".denova" || dataDirectory == ".nova"
 }
 
 func canonicalToolResultArtifact(artifact agent.ToolArtifactRef) agent.ToolArtifactRef {

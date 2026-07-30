@@ -60,18 +60,18 @@ A map from exact Skill name to boolean. `true` explicitly enables an otherwise a
 | Field | Values / bounds |
 | --- | --- |
 | `compaction_enabled` | boolean |
-| `compaction_strategy` | `summary_agent` |
 | `compaction_threshold` | ratio clamped to 0.50–0.98 |
-| `compaction_recent_turns` | 1–30; non-positive values use default 1 |
-| `compaction_target_min_ratio`, `compaction_target_max_ratio` | each 0.01–0.80; max is raised to min when lower |
-| `tool_result_retention_enabled` | boolean |
+| `tool_result_context_enabled` | boolean; allows recoverable tool results to remain in model context until backend-managed cleanup |
 | `max_fragment_bytes` | positive, max 16 MiB; default 256 KiB |
 | `max_total_injected_bytes` | positive, max 64 MiB; default 1 MiB |
 | `max_fragments` | positive, max 4096; default 256 |
 | `max_metadata_field_bytes` | positive, max 64 KiB; default 4 KiB |
 | `max_provider_input_bytes` | positive, max 64 MiB; default 4 MiB |
 
-These are model-context injection boundaries, not transcript-deletion settings.
+Compaction shape, recovery headroom, cleanup watermarks, protected recent tool
+results, and failure handling are one backend-managed policy and are not
+individually configurable. These fields control model-context intent and
+injection boundaries; they never delete the canonical transcript.
 
 ## Fixed Agent update example
 

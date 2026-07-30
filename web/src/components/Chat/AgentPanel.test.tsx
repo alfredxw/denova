@@ -53,6 +53,7 @@ describe('AgentPanel', () => {
         ...settings,
       },
       resolved_agent_tool_manifests: {},
+      resolved_agent_contexts: {},
       revisions: { user: 'r2' },
       paths: { denova_dir: '', nova_dir: '', user_config: '', workspace_config: '' },
     }))

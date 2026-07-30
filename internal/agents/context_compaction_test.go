@@ -184,7 +184,7 @@ func largePendingToolBatchForCompactionTest(index int) []*agent.Message {
 	return []*agent.Message{assistant, result}
 }
 
-func TestBuildContextCompactionUsesContextCompactionTargetRange(t *testing.T) {
+func TestBuildContextCompactionUsesBackendOwnedTargetRange(t *testing.T) {
 	previous := summarizeContextForCompaction
 	defer func() { summarizeContextForCompaction = previous }()
 
@@ -194,14 +194,7 @@ func TestBuildContextCompactionUsesContextCompactionTargetRange(t *testing.T) {
 		return "较完整的压缩摘要，保留用户目标、约束、事件和待办。", 100, nil
 	}
 
-	minRatio := 0.12
-	maxRatio := 0.35
-	cfg := &config.Config{AgentContexts: config.AgentContextSettings{
-		ContextCompaction: config.AgentContextOverride{
-			CompactionTargetMin: &minRatio,
-			CompactionTargetMax: &maxRatio,
-		},
-	}}
+	cfg := &config.Config{}
 	_, _, err := PrepareContextCompaction(contextCompactionColdTestContext(), cfg, config.AgentKindIDE, ContextCompactionInput{
 		Messages: []*agent.Message{
 			agent.UserMessage(strings.Repeat("用户说了很多重要要求", 80)),
@@ -214,8 +207,15 @@ func TestBuildContextCompactionUsesContextCompactionTargetRange(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if capturedPolicy.TargetMinRatio != minRatio || capturedPolicy.TargetMaxRatio != maxRatio {
-		t.Fatalf("target range = %.2f-%.2f, want %.2f-%.2f", capturedPolicy.TargetMinRatio, capturedPolicy.TargetMaxRatio, minRatio, maxRatio)
+	if capturedPolicy.TargetMinRatio != config.DefaultContextCompactionTargetMinRatio ||
+		capturedPolicy.TargetMaxRatio != config.DefaultContextCompactionTargetMaxRatio {
+		t.Fatalf(
+			"target range = %.2f-%.2f, want %.2f-%.2f",
+			capturedPolicy.TargetMinRatio,
+			capturedPolicy.TargetMaxRatio,
+			config.DefaultContextCompactionTargetMinRatio,
+			config.DefaultContextCompactionTargetMaxRatio,
+		)
 	}
 }
 
@@ -344,23 +344,10 @@ func contextCompactionColdTestContext() context.Context {
 	return contextWithStandaloneCompactionFallback(context.Background(), "test_fixture")
 }
 
-func TestContextCompactionPolicyUsesConfiguredRetainedTurns(t *testing.T) {
-	cfg := &config.Config{}
-
-	policy := resolveContextCompactionPolicy(cfg, config.AgentKindIDE)
+func TestContextCompactionPolicyUsesBackendOwnedMechanics(t *testing.T) {
+	policy := resolveContextCompactionPolicy(&config.Config{}, config.AgentKindIDE)
 	if policy.RetainedTurns != config.DefaultContextCompactionRetainedTurns {
 		t.Fatalf("retained turns = %d, want default %d", policy.RetainedTurns, config.DefaultContextCompactionRetainedTurns)
-	}
-
-	retainedTurns := 3
-	strategy := config.AgentContextCompactionStrategySummaryAgent
-	cfg = &config.Config{AgentContexts: config.AgentContextSettings{
-		IDE:               config.AgentContextOverride{CompactionStrategy: &strategy},
-		ContextCompaction: config.AgentContextOverride{CompactionRecentTurns: &retainedTurns},
-	}}
-	policy = resolveContextCompactionPolicy(cfg, config.AgentKindIDE)
-	if policy.RetainedTurns != 3 {
-		t.Fatalf("retained turns = %d, want configured 3", policy.RetainedTurns)
 	}
 	if policy.Strategy != config.AgentContextCompactionStrategySummaryAgent {
 		t.Fatalf("strategy = %q, want summary_agent", policy.Strategy)

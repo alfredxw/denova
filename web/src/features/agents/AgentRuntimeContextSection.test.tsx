@@ -1,89 +1,65 @@
 import { fireEvent, render, screen } from '@testing-library/react'
 import { describe, expect, it, vi } from 'vitest'
-import { AgentRuntimeContextSection, normalizeContextPressurePatch } from './AgentRuntimeContextSection'
+import type { ResolvedAgentContextSettings } from '@/features/settings/types'
+import { AgentRuntimeContextSection } from './AgentRuntimeContextSection'
+
+const resolvedContext: ResolvedAgentContextSettings = {
+  compaction_enabled: true,
+  compaction_threshold: 0.85,
+  tool_result_context_enabled: true,
+  max_fragment_bytes: 256 * 1024,
+  max_total_injected_bytes: 1024 * 1024,
+  max_fragments: 256,
+  max_metadata_field_bytes: 4 * 1024,
+  max_provider_input_bytes: 4 * 1024 * 1024,
+}
 
 describe('AgentRuntimeContextSection', () => {
-  it('renders inherited pressure defaults and emits typed overrides', () => {
+  it('renders backend-resolved values and emits only the edited intent', () => {
     const onChange = vi.fn()
     render(
       <AgentRuntimeContextSection
         agent="ide"
         value={{}}
-        inherited={{
-          compaction_threshold: 0.85,
-          tool_result_cleanup_threshold: 0.7,
-          tool_result_cleanup_target: 0.6,
-          tool_result_keep_recent: 3,
-          compaction_recovery_band: 0.8,
-          compaction_max_consecutive_failures: 3,
-        }}
+        resolved={resolvedContext}
         onChange={onChange}
       />,
     )
 
-    expect(screen.getByLabelText('工具结果清理阈值 (%)')).toHaveValue(70)
-    expect(screen.getByLabelText('工具结果清理目标 (%)')).toHaveValue(60)
-    expect(screen.getByLabelText('保护最近工具交互组')).toHaveValue(3)
-    expect(screen.getByLabelText('压缩恢复系数 (%)')).toHaveValue(80)
+    expect(screen.getByLabelText('触发阈值 (%)')).toHaveValue(85)
+    expect(screen.getByLabelText('本轮片段数量上限')).toHaveValue(256)
+    expect(screen.getByRole('switch', { name: '工具结果上下文' })).toBeChecked()
 
-    fireEvent.change(screen.getByLabelText('最大连续失败次数'), { target: { value: '5' } })
-    expect(onChange).toHaveBeenLastCalledWith({ compaction_max_consecutive_failures: 5 })
+    fireEvent.change(screen.getByLabelText('触发阈值 (%)'), { target: { value: '65' } })
+    expect(onChange).toHaveBeenLastCalledWith({ compaction_threshold: 0.65 })
   })
 
-  it('keeps compactor-only output controls separate from runtime cleanup policy', () => {
+  it('uses the local draft while waiting for the normalized server snapshot', () => {
     render(
       <AgentRuntimeContextSection
-        agent="context_compaction"
-        value={{}}
-        inherited={{}}
+        agent="ide"
+        value={{ compaction_threshold: 0.72, max_fragments: 64 }}
+        resolved={resolvedContext}
         onChange={vi.fn()}
       />,
     )
 
-    expect(screen.getByLabelText('压缩后保留回合')).toBeInTheDocument()
-    expect(screen.queryByLabelText('工具结果清理阈值 (%)')).not.toBeInTheDocument()
+    expect(screen.getByLabelText('触发阈值 (%)')).toHaveValue(72)
+    expect(screen.getByLabelText('本轮片段数量上限')).toHaveValue(64)
   })
 
-  it('keeps cleanup and compaction ratios coherent while editing', () => {
-    const onChange = vi.fn()
+  it('keeps backend-managed compactor mechanics out of the editor', () => {
     render(
       <AgentRuntimeContextSection
-        agent="ide"
+        agent="context_compaction"
         value={{}}
-        inherited={{
-          compaction_threshold: 0.85,
-          tool_result_cleanup_threshold: 0.7,
-          tool_result_cleanup_target: 0.6,
-        }}
-        onChange={onChange}
+        resolved={{ ...resolvedContext, tool_result_context_enabled: false }}
+        onChange={vi.fn()}
       />,
     )
 
-    fireEvent.change(screen.getByLabelText('触发阈值 (%)'), { target: { value: '65' } })
-    expect(onChange).toHaveBeenLastCalledWith({
-      compaction_threshold: 0.65,
-      tool_result_cleanup_threshold: 0.65 * 0.85,
-      tool_result_cleanup_target: 0.65 * 0.85 * 0.85,
-    })
-  })
-
-  it('keeps inherited pressure ratios coherent when an override is reset', () => {
-    expect(normalizeContextPressurePatch(
-      {
-        compaction_threshold: 0.9,
-        tool_result_cleanup_threshold: 0.8,
-        tool_result_cleanup_target: 0.7,
-      },
-      {
-        compaction_threshold: 0.65,
-        tool_result_cleanup_threshold: 0.55,
-        tool_result_cleanup_target: 0.45,
-      },
-      { compaction_threshold: null },
-    )).toEqual({
-      compaction_threshold: null,
-      tool_result_cleanup_threshold: 0.65 * 0.85,
-      tool_result_cleanup_target: 0.65 * 0.85 * 0.85,
-    })
+    expect(screen.queryByLabelText('触发阈值 (%)')).not.toBeInTheDocument()
+    expect(screen.queryByRole('switch', { name: '工具结果上下文' })).not.toBeInTheDocument()
+    expect(screen.getByLabelText('单片段上限 (KB)')).toHaveValue(256)
   })
 })

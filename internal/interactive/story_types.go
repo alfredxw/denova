@@ -1,6 +1,10 @@
 package interactive
 
-import agent "github.com/alfredxw/denova/agent"
+import (
+	agent "github.com/alfredxw/denova/agent"
+
+	"denova/internal/contextmaintenance"
+)
 
 type CreateStoryRequest struct {
 	Title                     string                            `json:"title"`
@@ -457,14 +461,9 @@ type ContextCompactionHealthEvent struct {
 	ExpectedContextRevision uint64 `json:"-"`
 }
 
-// ToolResultReplacement is one frozen substitution in the flattened
-// model-visible branch history. ToolCallID keeps the locator safe across cold
-// recovery, while Placeholder is reused byte-for-byte.
-type ToolResultReplacement struct {
-	MessageIndex int64  `json:"message_index"`
-	ToolCallID   string `json:"tool_call_id"`
-	Placeholder  string `json:"placeholder"`
-}
+// ToolResultReplacement shares the same frozen substitution contract across
+// writing sessions and game journals.
+type ToolResultReplacement = contextmaintenance.ToolResultReplacement
 
 // ToolResultCleanupEvent projects bounded placeholders over canonical rich
 // tool results without changing the stored TurnEvent or UI timeline.

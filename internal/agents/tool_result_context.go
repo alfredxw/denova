@@ -21,7 +21,7 @@ type ToolResultContextPolicy struct {
 func resolveToolResultContextPolicy(cfg *config.Config, agentKind string) ToolResultContextPolicy {
 	settings := config.ResolveAgentContext(cfg, agentKind)
 	return ToolResultContextPolicy{
-		AgentKind: strings.TrimSpace(agentKind), Enabled: settings.ToolResultRetentionEnabled,
+		AgentKind: strings.TrimSpace(agentKind), Enabled: settings.ToolResultContextEnabled,
 		MaxResultBytes: configToolResultMaxBytes(cfg),
 	}
 }

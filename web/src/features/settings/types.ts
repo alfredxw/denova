@@ -166,28 +166,24 @@ interface AgentContextSettings {
 
 export interface AgentContextOverride {
   compaction_enabled?: boolean | null
-  compaction_strategy?: string | null
   compaction_threshold?: number | null
-  context_pressure_scope?: 'body_after_prefix' | 'total' | null
-  tool_result_cleanup_threshold?: number | null
-  tool_result_cleanup_target?: number | null
-  tool_result_cleanup_min_tokens?: number | null
-  tool_result_keep_recent?: number | null
-  tool_result_keep_recent_tokens?: number | null
-  tool_result_warm_suffix_tokens?: number | null
-  tool_result_eager_min_tokens?: number | null
-  compaction_recent_turns?: number | null
-  compaction_target_min_ratio?: number | null
-  compaction_target_max_ratio?: number | null
-  compaction_recovery_band?: number | null
-  compaction_max_consecutive_failures?: number | null
-  /** Legacy compatibility switch; fine-grained cleanup policy uses the fields above. */
-  tool_result_retention_enabled?: boolean | null
+  tool_result_context_enabled?: boolean | null
   max_fragment_bytes?: number | null
   max_total_injected_bytes?: number | null
   max_fragments?: number | null
   max_metadata_field_bytes?: number | null
   max_provider_input_bytes?: number | null
+}
+
+export interface ResolvedAgentContextSettings {
+  compaction_enabled: boolean
+  compaction_threshold: number
+  tool_result_context_enabled: boolean
+  max_fragment_bytes: number
+  max_total_injected_bytes: number
+  max_fragments: number
+  max_metadata_field_bytes: number
+  max_provider_input_bytes: number
 }
 
 interface AgentGeneralSubAgentSettings {
@@ -357,6 +353,7 @@ export interface LayeredSettings {
   builtin_agent_prompt_sources?: AgentPromptSourceSettings
   agent_tool_capabilities?: AgentToolCapabilityCatalogEntry[]
   resolved_agent_tool_manifests: Partial<Record<Exclude<keyof AgentModelSettings, 'default'>, ResolvedAgentToolCapability[]>>
+  resolved_agent_contexts: Partial<Record<Exclude<keyof AgentContextSettings, 'default'>, ResolvedAgentContextSettings>>
 }
 
 export type SettingsLayer = 'user' | 'workspace'

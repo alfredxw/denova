@@ -93,10 +93,7 @@ func TestTwoCompactionsKeepFactAfterRetainedTurnAgesOut(t *testing.T) {
 			return "", 0, nil
 		}
 	}
-	recentTurns := 1
-	cfg := &config.Config{AgentContexts: config.AgentContextSettings{
-		ContextCompaction: config.AgentContextOverride{CompactionRecentTurns: &recentTurns},
-	}}
+	cfg := &config.Config{}
 	firstInput := []*agent.Message{
 		agent.UserMessage(strings.Repeat("first old turn ", 900)),
 		agent.AssistantMessage(strings.Repeat("first old answer ", 900), nil),
@@ -382,10 +379,7 @@ func TestProtectedReceiptUsesCanonicalCheckpointPayloadAcrossPublishReload(t *te
 		agent.AssistantMessage(strings.Repeat("large old answer ", 1200), nil),
 		agent.UserMessage("latest request"),
 	}
-	recentTurns := 1
-	cfg := &config.Config{AgentContexts: config.AgentContextSettings{
-		ContextCompaction: config.AgentContextOverride{CompactionRecentTurns: &recentTurns},
-	}}
+	cfg := &config.Config{}
 	transient, result, err := PrepareContextCompaction(contextCompactionColdTestContext(), cfg, config.AgentKindIDE, ContextCompactionInput{
 		Messages: messages, SourceMessages: messages, Force: true, KeepLatestUser: true,
 	}, 1)
