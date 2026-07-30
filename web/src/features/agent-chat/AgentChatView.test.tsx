@@ -81,11 +81,11 @@ vi.mock('@/components/layout/adaptive-surface', () => ({
     left,
     children,
   }: {
-    left: { enabled?: boolean; content: ReactNode }
+    left: { enabled?: boolean; content: ReactNode; desktopVisible?: boolean; desktopCollapsedContent?: ReactNode }
     children: ReactNode | ((controls: { isMobile: boolean; openLeft: () => void }) => ReactNode)
   }) => (
     <div>
-      {left.enabled === false ? null : left.content}
+      {left.enabled === false ? null : left.desktopVisible === false ? left.desktopCollapsedContent : left.content}
       <main>{typeof children === 'function' ? children({ isMobile: false, openLeft: vi.fn() }) : children}</main>
     </div>
   ),
@@ -179,6 +179,19 @@ describe('AgentChatView project workbenches', () => {
     expect(selectAgentChatProjectDirectory).toHaveBeenCalledWith(undefined)
     expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
     expect(await screen.findByTitle('/projects/story')).toBeInTheDocument()
+  })
+
+  it('toggles the activity tree into a persistent compact rail', async () => {
+    const user = userEvent.setup()
+    renderView(<AgentChatView composerSettings={{} as never} tellers={[]} imagePresets={[]} renderPage={() => null} renderReview={() => null} />)
+
+    await user.click(await screen.findByRole('button', { name: '隐藏活动列表' }))
+    expect(screen.getByRole('button', { name: '显示活动列表' })).toBeInTheDocument()
+    expect(window.localStorage.getItem('nova.agentchat.sidebarVisible.v1')).toBe('false')
+
+    await user.click(screen.getByRole('button', { name: '显示活动列表' }))
+    expect(screen.getByRole('button', { name: '隐藏活动列表' })).toBeInTheDocument()
+    expect(window.localStorage.getItem('nova.agentchat.sidebarVisible.v1')).toBe('true')
   })
 
   it('keeps a separate tab set and mounted conversation for every selected project', async () => {

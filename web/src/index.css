@@ -480,6 +480,7 @@
   --nova-editor-ide-accent: #242422;
   --nova-radius: 8px;
   --nova-ease: cubic-bezier(0.25, 1.1, 0.4, 1);
+  --nova-panel-motion-ease: cubic-bezier(0.2, 0, 0, 1);
   --nova-motion-fast: 140ms;
   --nova-motion-normal: 220ms;
   --nova-motion-slow: 280ms;
@@ -1595,13 +1596,13 @@ html[data-nova-motion="off"] *::after {
 /* Side panes stay mounted so their state and last resized width survive a toggle. The panel's
    real flex share contracts, which lets the neighbouring workspace reflow continuously. */
 [data-nova-panel-motion-group] > [data-panel] {
-  transition: flex-grow var(--nova-panel-motion-duration) var(--nova-ease);
+  transition: flex-grow var(--nova-panel-motion-duration) var(--nova-panel-motion-ease);
 }
 
 [data-panel][data-nova-panel-motion="resizable"] {
   overflow: hidden !important;
   transition:
-    flex-grow var(--nova-panel-motion-duration) var(--nova-ease),
+    flex-grow var(--nova-panel-motion-duration) var(--nova-panel-motion-ease),
     visibility 0s linear 0s;
 }
 
@@ -1609,7 +1610,7 @@ html[data-nova-motion="off"] *::after {
   flex-grow: 0 !important;
   visibility: hidden;
   transition:
-    flex-grow var(--nova-panel-motion-duration) var(--nova-ease),
+    flex-grow var(--nova-panel-motion-duration) var(--nova-panel-motion-ease),
     visibility 0s linear var(--nova-panel-motion-duration);
 }
 
@@ -1617,35 +1618,79 @@ html[data-nova-motion="off"] *::after {
   width: var(--nova-inline-panel-size);
   visibility: visible;
   transition:
-    width var(--nova-panel-motion-duration) var(--nova-ease),
+    width var(--nova-panel-motion-duration) var(--nova-panel-motion-ease),
     visibility 0s linear 0s;
 }
 
 [data-nova-panel-motion="inline"][data-state="closed"] {
-  width: 0;
+  width: var(--nova-inline-panel-collapsed-size, 0px);
+}
+
+[data-nova-panel-motion="inline"][data-state="closed"]:not([data-nova-panel-has-collapsed-content="true"]) {
   visibility: hidden;
   transition:
-    width var(--nova-panel-motion-duration) var(--nova-ease),
+    width var(--nova-panel-motion-duration) var(--nova-panel-motion-ease),
     visibility 0s linear var(--nova-panel-motion-duration);
 }
 
-[data-nova-panel-motion="inline"] > [data-nova-panel-motion-content] {
+[data-nova-panel-motion="inline"] > [data-nova-panel-motion-clip] > [data-nova-panel-motion-content] {
   width: var(--nova-inline-panel-size);
   min-width: var(--nova-inline-panel-size);
+}
+
+[data-nova-panel-motion-collapsed-content] {
+  width: var(--nova-inline-panel-collapsed-size, 0px);
+  min-width: var(--nova-inline-panel-collapsed-size, 0px);
+  opacity: 0;
+  pointer-events: none;
+  transform: translateX(-4px);
+  visibility: hidden;
+  transition:
+    opacity var(--nova-panel-fade-duration) ease-out,
+    transform var(--nova-panel-motion-duration) var(--nova-panel-motion-ease),
+    visibility 0s linear var(--nova-panel-fade-duration);
+  will-change: opacity, transform;
+}
+
+[data-nova-panel-motion-collapsed-content][data-state="closed"] {
+  opacity: 1;
+  pointer-events: auto;
+  transform: translateX(0);
+  visibility: visible;
+  transition:
+    opacity var(--nova-panel-fade-duration) ease-out,
+    transform var(--nova-panel-motion-duration) var(--nova-panel-motion-ease),
+    visibility 0s linear 0s;
+}
+
+[data-nova-panel-motion-collapsed-content][data-nova-panel-side="right"] {
+  transform: translateX(4px);
+}
+
+[data-nova-panel-motion-collapsed-content][data-state="closed"][data-nova-panel-side="right"] {
+  transform: translateX(0);
 }
 
 [data-nova-panel-motion-content] {
   opacity: 1;
   transform: translateX(0);
+  visibility: visible;
   transition:
     opacity var(--nova-panel-fade-duration) ease-out,
-    transform var(--nova-panel-motion-duration) var(--nova-ease);
+    transform var(--nova-panel-motion-duration) var(--nova-panel-motion-ease),
+    visibility 0s linear 0s;
   will-change: opacity, transform;
 }
 
 [data-nova-panel-motion-content][data-state="closed"] {
   opacity: 0;
+  pointer-events: none;
   transform: translateX(-6px);
+  visibility: hidden;
+  transition:
+    opacity var(--nova-panel-fade-duration) ease-out,
+    transform var(--nova-panel-motion-duration) var(--nova-panel-motion-ease),
+    visibility 0s linear var(--nova-panel-fade-duration);
 }
 
 [data-nova-panel-motion-content][data-state="closed"][data-nova-panel-side="right"] {
@@ -1655,9 +1700,9 @@ html[data-nova-motion="off"] *::after {
 [data-nova-panel-motion-separator] {
   opacity: 1;
   transition:
-    width var(--nova-panel-motion-duration) var(--nova-ease),
-    height var(--nova-panel-motion-duration) var(--nova-ease),
-    margin var(--nova-panel-motion-duration) var(--nova-ease),
+    width var(--nova-panel-motion-duration) var(--nova-panel-motion-ease),
+    height var(--nova-panel-motion-duration) var(--nova-panel-motion-ease),
+    margin var(--nova-panel-motion-duration) var(--nova-panel-motion-ease),
     opacity var(--nova-panel-fade-duration) ease-out,
     visibility 0s linear 0s;
 }
@@ -1668,9 +1713,9 @@ html[data-nova-motion="off"] *::after {
   pointer-events: none;
   visibility: hidden;
   transition:
-    width var(--nova-panel-motion-duration) var(--nova-ease),
-    height var(--nova-panel-motion-duration) var(--nova-ease),
-    margin var(--nova-panel-motion-duration) var(--nova-ease),
+    width var(--nova-panel-motion-duration) var(--nova-panel-motion-ease),
+    height var(--nova-panel-motion-duration) var(--nova-panel-motion-ease),
+    margin var(--nova-panel-motion-duration) var(--nova-panel-motion-ease),
     opacity var(--nova-panel-fade-duration) ease-out,
     visibility 0s linear var(--nova-panel-motion-duration);
 }

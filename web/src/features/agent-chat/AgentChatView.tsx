@@ -3,7 +3,6 @@ import { useTranslation } from 'react-i18next'
 import { MessageSquareText } from 'lucide-react'
 import { Group, Panel, Separator } from 'react-resizable-panels'
 import { toast } from 'sonner'
-import { AdaptiveSurface } from '@/components/layout/adaptive-surface'
 import { MobilePaneTrigger } from '@/components/layout/mobile-pane-trigger'
 import { EmptyState } from '@/components/common/EmptyState'
 import { ConfirmDialog } from '@/components/common/ConfirmDialog'
@@ -23,11 +22,11 @@ import {
   type AgentChatProject,
   type AgentChatSession,
 } from './api'
-import { AgentChatActivitySidebar, AgentChatSidebarRail } from './AgentChatActivitySidebar'
 import { AgentChatProjectRenameDialog } from './AgentChatProjectRenameDialog'
 import { AgentChatSessionHistoryDialog } from './AgentChatSessionHistoryDialog'
 import { AgentChatTabContent } from './AgentChatTabContent'
 import { AgentChatTabBar } from './AgentChatTabBar'
+import { AgentChatWorkspaceSurface } from './AgentChatWorkspaceSurface'
 import { agentChatSessionBindingKey } from './sidebar-activity'
 import {
   appendTab,
@@ -36,9 +35,7 @@ import {
   moveTab,
   nextActiveTabId,
   otherTabIds,
-  persistSidebarVisible,
   persistWorkbenchState,
-  readSidebarVisible,
   readStoredWorkbenchState,
   reconcileWorkbenchProjects,
   setTabPinned,
@@ -120,7 +117,6 @@ export function AgentChatView({
   const [workbench, setWorkbench] = useState(() => readStoredWorkbenchState())
   const workbenchRef = useRef(workbench)
   workbenchRef.current = workbench
-  const [sidebarVisible, setSidebarVisible] = useState(() => readSidebarVisible())
   const [historyOpen, setHistoryOpen] = useState(false)
   const [renameTarget, setRenameTarget] = useState<AgentChatProject | null>(null)
   const [projectDirectoryBusy, setProjectDirectoryBusy] = useState(false)
@@ -183,10 +179,6 @@ export function AgentChatView({
   useEffect(() => {
     if (!projectsLoading) persistWorkbenchState(workbench)
   }, [projectsLoading, workbench])
-  useEffect(() => {
-    persistSidebarVisible(sidebarVisible)
-  }, [sidebarVisible])
-
   const refreshTerminalCommands = useCallback(async () => {
     try {
       const runtime = await getTerminalRuntimeStatus()
@@ -725,7 +717,6 @@ export function AgentChatView({
     onRelinkProject: (project: AgentChatProject) => void chooseProjectDirectory(project),
     onArchiveProject: (project: AgentChatProject) => setArchiveTarget(project),
   }
-  const sidebar = <AgentChatActivitySidebar {...treeProps} onCollapse={() => setSidebarVisible(false)} />
 
   const renderProjectGroup = (
     project: AgentChatProject,
@@ -753,10 +744,7 @@ export function AgentChatView({
               side="left"
               className="size-7 shrink-0"
               label={t('agentChat.sidebar.projects')}
-              onClick={() => {
-                setSidebarVisible(true)
-                mobileControls.openLeft()
-              }}
+              onClick={mobileControls.openLeft}
             />
           )}
           <div className="min-w-0 flex-1">
@@ -847,18 +835,11 @@ export function AgentChatView({
 
   return (
     <>
-      <AdaptiveSurface
-        className="h-full min-h-0"
-        collapseAt={720}
-        desktopGridClassName="grid-cols-[auto_minmax(0,1fr)]"
-        left={{
-          id: 'agent-chat-activity',
-          side: 'left',
-          title: t('agentChat.sidebar.projects'),
-          content: sidebar,
-          desktopClassName: 'h-full min-h-0 min-w-0',
-          desktopVisible: sidebarVisible,
-          desktopSize: 'clamp(200px, 18vw, 280px)',
+      <AgentChatWorkspaceSurface
+        sidebarProps={treeProps}
+        createDisabled={!activeProject || activeProject.status !== 'available'}
+        onCreateDefaultSession={() => {
+          if (activeProject?.status === 'available') openDraftSessionInProject(activeProject)
         }}
       >
         {(controls) => {
@@ -915,22 +896,9 @@ export function AgentChatView({
                 }}
               />
             )
-          if (controls.isMobile || sidebarVisible) return workbenchContent
-          return (
-            <div className="flex h-full min-h-0">
-              <AgentChatSidebarRail
-                {...treeProps}
-                onExpand={() => setSidebarVisible(true)}
-                onCreateDefaultSession={() => {
-                  if (activeProject?.status === 'available') openDraftSessionInProject(activeProject)
-                }}
-                createDisabled={!activeProject || activeProject.status !== 'available'}
-              />
-              <div className="min-w-0 flex-1">{workbenchContent}</div>
-            </div>
-          )
+          return workbenchContent
         }}
-      </AdaptiveSurface>
+      </AgentChatWorkspaceSurface>
       <AgentChatSessionHistoryDialog
         open={historyOpen}
         projects={projects}

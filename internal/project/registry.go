@@ -17,7 +17,7 @@ import (
 	"denova/internal/workspacepath"
 )
 
-const registryVersion = 1
+const registryVersion = 2
 
 type registryData struct {
 	Version       int      `json:"version"`
@@ -25,20 +25,6 @@ type registryData struct {
 	SortMode      SortMode `json:"sort_mode,omitempty"`
 	Order         []string `json:"order,omitempty"`
 	Projects      []Record `json:"projects"`
-}
-
-type legacyBookRecord struct {
-	Name         string `json:"name"`
-	Path         string `json:"path"`
-	LastOpenedAt string `json:"last_opened_at"`
-}
-
-type legacyBookRegistry struct {
-	Current  string             `json:"current"`
-	Books    []legacyBookRecord `json:"books"`
-	SortMode string             `json:"sort_mode"`
-	Order    []string           `json:"order"`
-	Hidden   []string           `json:"hidden"`
 }
 
 // Registry is the sole authority for Project identity, aliases and order.
@@ -351,9 +337,14 @@ func (registry *Registry) Reorder(ids []string) error {
 func (registry *Registry) SortMode() SortMode {
 	registry.mu.Lock()
 	defer registry.mu.Unlock()
-	data, _, err := registry.loadAndDiscoverLocked()
+	data, changed, err := registry.loadAndDiscoverLocked()
 	if err != nil {
 		return SortRecent
+	}
+	if changed {
+		if err := registry.saveLocked(data); err != nil {
+			return SortRecent
+		}
 	}
 	return normalizedSortMode(data.SortMode, len(data.Order) > 0)
 }
@@ -418,78 +409,6 @@ func (registry *Registry) loadAndDiscoverLocked() (registryData, bool, error) {
 func (registry *Registry) loadLocked() (registryData, error) {
 	data, _, err := registry.loadOrMigrateLocked()
 	return data, err
-}
-
-func (registry *Registry) loadOrMigrateLocked() (registryData, bool, error) {
-	var data registryData
-	raw, err := os.ReadFile(registry.path)
-	if err == nil {
-		if err := json.Unmarshal(raw, &data); err != nil {
-			return registryData{}, false, fmt.Errorf("decode project registry: %w", err)
-		}
-		normalizeRegistryData(&data)
-		return data, false, nil
-	}
-	if !errors.Is(err, os.ErrNotExist) {
-		return registryData{}, false, err
-	}
-	data = registryData{Version: registryVersion, SortMode: SortRecent, Projects: []Record{}}
-	migrated, err := registry.importLegacyBooksLocked(&data)
-	if err != nil {
-		return registryData{}, false, err
-	}
-	return data, migrated, nil
-}
-
-func (registry *Registry) importLegacyBooksLocked(data *registryData) (bool, error) {
-	raw, err := os.ReadFile(registry.legacyBooksPath)
-	if errors.Is(err, os.ErrNotExist) {
-		return false, nil
-	}
-	if err != nil {
-		return false, err
-	}
-	var legacy legacyBookRegistry
-	if err := json.Unmarshal(raw, &legacy); err != nil {
-		return false, fmt.Errorf("decode legacy book registry: %w", err)
-	}
-	now := time.Now().UTC()
-	hidden := make(map[string]bool, len(legacy.Hidden))
-	for _, path := range legacy.Hidden {
-		if canonical, err := canonicalDirectory(path, false); err == nil {
-			hidden[canonical] = true
-		}
-	}
-	pathToID := make(map[string]string, len(legacy.Books))
-	for _, book := range legacy.Books {
-		canonical, err := canonicalDirectory(book.Path, false)
-		if err != nil || canonical == "" {
-			continue
-		}
-		record, err := newRecord(canonical, TypeBook, book.Name, now)
-		if err != nil {
-			return false, err
-		}
-		if opened, parseErr := time.Parse(time.RFC3339Nano, book.LastOpenedAt); parseErr == nil {
-			record.LastOpenedAt = opened.UTC()
-		}
-		if hidden[canonical] {
-			archivedAt := now
-			record.ArchivedAt = &archivedAt
-		}
-		data.Projects = append(data.Projects, record)
-		pathToID[canonical] = record.ID
-	}
-	for _, path := range legacy.Order {
-		if canonical, err := canonicalDirectory(path, false); err == nil && pathToID[canonical] != "" {
-			data.Order = append(data.Order, pathToID[canonical])
-		}
-	}
-	if canonical, err := canonicalDirectory(legacy.Current, false); err == nil {
-		data.CurrentBookID = pathToID[canonical]
-	}
-	data.SortMode = normalizedSortMode(SortMode(legacy.SortMode), len(data.Order) > 0)
-	return len(data.Projects) > 0 || len(legacy.Hidden) > 0, nil
 }
 
 func (registry *Registry) discoverBooksLocked(data *registryData) (bool, error) {

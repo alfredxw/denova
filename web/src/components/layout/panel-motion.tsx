@@ -94,6 +94,9 @@ interface InlineCollapsiblePaneProps {
   side: PanelSide
   size: string
   children: ReactNode
+  /** Optional compact state that remains usable after the full pane contracts. */
+  collapsedSize?: string
+  collapsedChildren?: ReactNode
   className?: string
 }
 
@@ -101,25 +104,52 @@ interface InlineCollapsiblePaneProps {
  * A fixed-size inline pane for flex/grid layouts that need the same motion as resizable panels.
  * The inner width remains stable so text and trees do not reflow during the short transition.
  */
-export function InlineCollapsiblePane({ visible, side, size, children, className }: InlineCollapsiblePaneProps) {
+export function InlineCollapsiblePane({
+  visible,
+  side,
+  size,
+  children,
+  collapsedSize = '0px',
+  collapsedChildren,
+  className,
+}: InlineCollapsiblePaneProps) {
+  const hasCollapsedContent = collapsedChildren !== null && collapsedChildren !== undefined
   return (
     <div
       data-nova-panel-motion="inline"
       data-nova-panel-side={side}
       data-state={visible ? 'open' : 'closed'}
-      aria-hidden={!visible}
-      inert={!visible}
-      className={cn('min-h-0 min-w-0 shrink-0 overflow-hidden', className)}
-      style={{ '--nova-inline-panel-size': size } as CSSProperties}
+      data-nova-panel-has-collapsed-content={hasCollapsedContent ? 'true' : undefined}
+      aria-hidden={!visible && !hasCollapsedContent}
+      inert={!visible && !hasCollapsedContent}
+      className={cn('relative min-h-0 min-w-0 shrink-0', hasCollapsedContent ? 'overflow-visible' : 'overflow-hidden', className)}
+      style={{
+        '--nova-inline-panel-size': size,
+        '--nova-inline-panel-collapsed-size': collapsedSize,
+      } as CSSProperties}
     >
-      <div
-        data-nova-panel-motion-content="true"
-        data-nova-panel-side={side}
-        data-state={visible ? 'open' : 'closed'}
-        className="h-full min-h-0"
-      >
-        {children}
+      <div data-nova-panel-motion-clip="true" className="h-full min-h-0 overflow-hidden">
+        <div
+          data-nova-panel-motion-content="true"
+          data-nova-panel-side={side}
+          data-state={visible ? 'open' : 'closed'}
+          aria-hidden={!visible}
+          className="h-full min-h-0"
+        >
+          {children}
+        </div>
       </div>
+      {hasCollapsedContent ? (
+        <div
+          data-nova-panel-motion-collapsed-content="true"
+          data-nova-panel-side={side}
+          data-state={visible ? 'open' : 'closed'}
+          aria-hidden={visible}
+          className={cn('absolute inset-y-0 min-h-0', side === 'left' ? 'left-0' : 'right-0')}
+        >
+          {collapsedChildren}
+        </div>
+      ) : null}
     </div>
   )
 }

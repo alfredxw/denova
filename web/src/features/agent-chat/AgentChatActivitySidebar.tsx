@@ -206,6 +206,8 @@ function SidebarSortMenu({ sortMode, onSortModeChange }: { sortMode: AgentChatSi
 
 /** Grace period before a peek closes, so crossing the rail's edge diagonally does not dismiss it. */
 const PEEK_CLOSE_DELAY_MS = 160
+/** Avoid mounting the full project tree when the pointer is only crossing toward a rail action. */
+const PEEK_OPEN_DELAY_MS = 120
 
 interface AgentChatSidebarRailProps extends Omit<AgentChatActivitySidebarProps, 'onCollapse'> {
   onExpand: () => void
@@ -218,36 +220,56 @@ interface AgentChatSidebarRailProps extends Omit<AgentChatActivitySidebarProps, 
 export function AgentChatSidebarRail({ onExpand, onCreateDefaultSession, createDisabled, ...tree }: AgentChatSidebarRailProps) {
   const { t } = useTranslation()
   const [peeking, setPeeking] = useState(false)
+  const openTimerRef = useRef<number | null>(null)
   const closeTimerRef = useRef<number | null>(null)
 
+  const cancelOpen = () => {
+    if (openTimerRef.current === null) return
+    window.clearTimeout(openTimerRef.current)
+    openTimerRef.current = null
+  }
   const cancelClose = () => {
     if (closeTimerRef.current === null) return
     window.clearTimeout(closeTimerRef.current)
     closeTimerRef.current = null
   }
-  const openPeek = () => {
+  const schedulePeek = () => {
     cancelClose()
-    setPeeking(true)
+    if (peeking || openTimerRef.current !== null) return
+    openTimerRef.current = window.setTimeout(() => {
+      openTimerRef.current = null
+      setPeeking(true)
+    }, PEEK_OPEN_DELAY_MS)
   }
   const closePeek = () => {
+    cancelOpen()
     cancelClose()
     closeTimerRef.current = window.setTimeout(() => {
       closeTimerRef.current = null
       setPeeking(false)
     }, PEEK_CLOSE_DELAY_MS)
   }
+  const expandSidebar = () => {
+    cancelOpen()
+    cancelClose()
+    setPeeking(false)
+    onExpand()
+  }
 
-  useEffect(() => cancelClose, [])
+  useEffect(() => () => {
+    cancelOpen()
+    cancelClose()
+  }, [])
 
   return (
     <div
       className="relative z-40 flex h-full w-10 shrink-0 flex-col items-center gap-1 border-r border-[var(--nova-border)] bg-[var(--nova-surface)] py-1"
-      onMouseEnter={openPeek}
+      onMouseEnter={schedulePeek}
       onMouseLeave={closePeek}
-      onFocusCapture={openPeek}
+      onFocusCapture={schedulePeek}
       onBlurCapture={closePeek}
     >
-      <Button type="button" variant="ghost" size="icon-xs" onClick={onExpand} aria-label={t('agentChat.sidebar.show')} title={t('agentChat.sidebar.show')}>
+      <Button type="button" variant="ghost" size="icon-xs" onClick={expandSidebar} aria-label={t('agentChat.sidebar.show')} title={t('agentChat.sidebar.show')}>
         <PanelLeft className="rotate-180" />
       </Button>
       <Button

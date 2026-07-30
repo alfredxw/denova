@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useState, type ReactNode } from 'react'
 import { act, fireEvent, render, screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
@@ -24,6 +24,39 @@ describe('AdaptiveSurface', () => {
     expect(screen.getByTestId('main-pane')).toBeVisible()
     expect(screen.getByTestId('right-pane')).toBeVisible()
     expect(container.querySelector('[data-nova-adaptive-container="true"]')).not.toBeInTheDocument()
+  })
+
+  it('transitions a desktop pane into an accessible compact state', async () => {
+    const user = userEvent.setup()
+    const { container } = render(<CompactLeftPane><div>Main content</div></CompactLeftPane>)
+
+    await user.click(screen.getByRole('button', { name: 'Collapse pane' }))
+
+    const pane = container.querySelector('[data-nova-panel-motion="inline"]')
+    const fullContent = container.querySelector('[data-nova-panel-motion-content="true"]')
+    const compactContent = container.querySelector('[data-nova-panel-motion-collapsed-content="true"]')
+    expect(pane).toHaveAttribute('data-state', 'closed')
+    expect(pane).toHaveStyle({ '--nova-inline-panel-collapsed-size': '40px' })
+    expect(fullContent).toHaveAttribute('aria-hidden', 'true')
+    expect(compactContent).toHaveAttribute('aria-hidden', 'false')
+    expect(screen.getByRole('button', { name: 'Expand pane' })).toBeInTheDocument()
+  })
+
+  it('does not rebuild stable main content for a local sidebar toggle', async () => {
+    const user = userEvent.setup()
+    const renderMain = vi.fn()
+
+    render(
+      <CompactLeftPane>
+        <RenderCounter onRender={renderMain} />
+      </CompactLeftPane>,
+    )
+    expect(renderMain).toHaveBeenCalledTimes(1)
+
+    await user.click(screen.getByRole('button', { name: 'Collapse pane' }))
+    await user.click(screen.getByRole('button', { name: 'Expand pane' }))
+
+    expect(renderMain).toHaveBeenCalledTimes(1)
   })
 
   it('lets desktop users resize an enabled right pane', () => {
@@ -317,6 +350,31 @@ function ToggleResizablePane() {
       <button type="button" onClick={() => setOpen((current) => !current)}>{open ? 'Close Agent' : 'Open Agent'}</button>
     </AdaptiveSurface>
   )
+}
+
+function CompactLeftPane({ children }: { children: ReactNode }) {
+  const [open, setOpen] = useState(true)
+  return (
+    <AdaptiveSurface
+      left={{
+        id: 'left',
+        title: 'Left',
+        side: 'left',
+        content: <button type="button" onClick={() => setOpen(false)}>Collapse pane</button>,
+        desktopVisible: open,
+        desktopSize: '240px',
+        desktopCollapsedSize: '40px',
+        desktopCollapsedContent: <button type="button" onClick={() => setOpen(true)}>Expand pane</button>,
+      }}
+    >
+      {children}
+    </AdaptiveSurface>
+  )
+}
+
+function RenderCounter({ onRender }: { onRender: () => void }) {
+  onRender()
+  return <div>Stable main content</div>
 }
 
 function setMobileViewport(matches: boolean) {

@@ -1,4 +1,4 @@
-import { useEffect, useLayoutEffect, useRef, useState, type ReactNode } from 'react'
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import { createPortal } from 'react-dom'
 import { Group, Panel, type Layout } from 'react-resizable-panels'
 import { useTranslation } from 'react-i18next'
@@ -16,15 +16,18 @@ export interface AdaptiveSurfacePane {
   enabled?: boolean
   desktopClassName?: string
   mobileClassName?: string
-  /** Keeps a desktop pane mounted but contracts it to zero when false. */
+  /** Keeps a desktop pane mounted but contracts it to zero or its compact size when false. */
   desktopVisible?: boolean
   /** Stable inline size used when a non-resizable desktop pane can be toggled. */
   desktopSize?: string
+  /** Optional compact desktop state that replaces a hidden fixed-size pane. */
+  desktopCollapsedSize?: string
+  desktopCollapsedContent?: ReactNode
   onOpen?: () => void
   onClose?: () => void
 }
 
-interface AdaptiveSurfaceControls extends MobilePaneControls {
+export interface AdaptiveSurfaceControls extends MobilePaneControls {
   isMobile: boolean
   openLeft: () => void
   openRight: () => void
@@ -88,29 +91,32 @@ export function AdaptiveSurface({
     if (!isMobile) setMobileOpenPaneId(null)
   }, [isMobile])
 
-  const renderChildren = (controls: MobilePaneControls): ReactNode => {
-    const nextControls: AdaptiveSurfaceControls = {
-      ...controls,
-      isMobile,
-      openLeft: () => {
-        const pane = panes.find((item) => item.side === 'left')
-        if (pane) controls.openPane(pane.id)
-      },
-      openRight: () => {
-        const pane = panes.find((item) => item.side === 'right')
-        if (pane) controls.openPane(pane.id)
-      },
-    }
-    return typeof children === 'function' ? children(nextControls) : children
-  }
-
-  const mobileControls: MobilePaneControls = {
+  const openPane = useCallback((id: string) => mobileControlsRef.current.openPane(id), [])
+  const closePane = useCallback(() => mobileControlsRef.current.closePane(), [])
+  const togglePane = useCallback((id: string) => mobileControlsRef.current.togglePane(id), [])
+  const leftPaneId = left && left.enabled !== false ? left.id : null
+  const rightPaneId = right && right.enabled !== false ? right.id : null
+  const openLeft = useCallback(() => {
+    if (isMobile && leftPaneId) openPane(leftPaneId)
+  }, [isMobile, leftPaneId, openPane])
+  const openRight = useCallback(() => {
+    if (isMobile && rightPaneId) openPane(rightPaneId)
+  }, [isMobile, openPane, rightPaneId])
+  const adaptiveControls = useMemo<AdaptiveSurfaceControls>(() => ({
     openPaneId: mobileOpenPaneId,
-    openPane: (id) => mobileControlsRef.current.openPane(id),
-    closePane: () => mobileControlsRef.current.closePane(),
-    togglePane: (id) => mobileControlsRef.current.togglePane(id),
-  }
-  const mainContent = renderChildren(isMobile ? mobileControls : closedControls)
+    openPane,
+    closePane,
+    togglePane,
+    isMobile,
+    openLeft,
+    openRight,
+  }), [closePane, isMobile, mobileOpenPaneId, openLeft, openPane, openRight, togglePane])
+  // A pane toggle must not rebuild a heavy editor/chat subtree. Call render-prop children only
+  // when their own identity or adaptive controls change, then move that stable result by portal.
+  const mainContent = useMemo(
+    () => typeof children === 'function' ? children(adaptiveControls) : children,
+    [adaptiveControls, children],
+  )
   const mainContentPortal = mainContentHost ? createPortal(mainContent, mainContentHost, 'adaptive-main-content') : null
   const mainContentSlot = (
     <StablePortalSlot
@@ -226,6 +232,8 @@ function AdaptiveDesktopPane({ pane }: { pane: AdaptiveSurfacePane }) {
         visible={visible}
         side={pane.side}
         size={pane.desktopSize}
+        collapsedSize={pane.desktopCollapsedSize}
+        collapsedChildren={pane.desktopCollapsedContent}
         className={pane.desktopClassName}
       >
         {pane.content}

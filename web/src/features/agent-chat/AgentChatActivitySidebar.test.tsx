@@ -1,9 +1,9 @@
-import { render, screen, within } from '@testing-library/react'
+import { act, fireEvent, render, screen, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import type { ComponentProps } from 'react'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import type { AgentChatProject } from './api'
-import { AgentChatActivitySidebar } from './AgentChatActivitySidebar'
+import { AgentChatActivitySidebar, AgentChatSidebarRail } from './AgentChatActivitySidebar'
 import type { AgentChatSidebarActivity } from './sidebar-activity'
 
 const project: AgentChatProject = {
@@ -50,8 +50,8 @@ const activity: AgentChatSidebarActivity = {
   focused: true,
 }
 
-function renderSidebar(overrides: Partial<ComponentProps<typeof AgentChatActivitySidebar>> = {}) {
-  const props: ComponentProps<typeof AgentChatActivitySidebar> = {
+function sidebarProps(overrides: Partial<ComponentProps<typeof AgentChatActivitySidebar>> = {}): ComponentProps<typeof AgentChatActivitySidebar> {
+  return {
     projects: [project],
     activitiesByProject: new Map([[project.id, [activity]]]),
     loading: false,
@@ -68,6 +68,10 @@ function renderSidebar(overrides: Partial<ComponentProps<typeof AgentChatActivit
     onArchiveProject: vi.fn(),
     ...overrides,
   }
+}
+
+function renderSidebar(overrides: Partial<ComponentProps<typeof AgentChatActivitySidebar>> = {}) {
+  const props = sidebarProps(overrides)
   return { ...render(<AgentChatActivitySidebar {...props} />), props }
 }
 
@@ -110,5 +114,32 @@ describe('AgentChatActivitySidebar', () => {
       }),
     )
     expect(screen.getByTitle(/books\/alpha.*长按拖拽排序/)).toHaveClass('cursor-default')
+  })
+
+  it('does not mount the full peek tree when the expand action is clicked directly', () => {
+    vi.useFakeTimers()
+    try {
+      const onExpand = vi.fn()
+      render(
+        <AgentChatSidebarRail
+          {...sidebarProps()}
+          onExpand={onExpand}
+          onCreateDefaultSession={vi.fn()}
+          createDisabled={false}
+        />,
+      )
+      const expand = screen.getByRole('button', { name: '显示活动列表' })
+      const rail = expand.parentElement!
+
+      fireEvent.mouseEnter(rail)
+      fireEvent.focus(expand)
+      fireEvent.click(expand)
+      act(() => vi.advanceTimersByTime(200))
+
+      expect(onExpand).toHaveBeenCalledTimes(1)
+      expect(screen.queryByTitle(project.path)).not.toBeInTheDocument()
+    } finally {
+      vi.useRealTimers()
+    }
   })
 })
