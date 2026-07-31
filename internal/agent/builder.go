@@ -15,6 +15,7 @@ import (
 	"github.com/cloudwego/eino/adk/prebuilt/deep"
 	"github.com/cloudwego/eino/components/tool"
 	"github.com/cloudwego/eino/compose"
+	"github.com/cloudwego/eino/schema"
 
 	"denova/config"
 	agenttools "denova/internal/agent/tools"
@@ -25,7 +26,12 @@ import (
 	"denova/internal/workspacechange"
 )
 
-var newDeepAgent = deep.New
+var (
+	newDeepAgent                = deep.New
+	newConfiguredChatModelAgent = func(ctx context.Context, cfg *adk.ChatModelAgentConfig) (adk.Agent, error) {
+		return adk.NewChatModelAgent(ctx, cfg)
+	}
+)
 
 const unlimitedAgentMaxIterations = 1_000_000
 
@@ -369,13 +375,14 @@ func buildConfiguredSubAgent(ctx context.Context, cfg *config.Config, parent dee
 	if err != nil {
 		return nil, err
 	}
-	return adk.NewChatModelAgent(ctx, &adk.ChatModelAgentConfig{
+	return newConfiguredChatModelAgent(ctx, &adk.ChatModelAgentConfig{
 		Name:          sub.ID,
 		Description:   sub.Description,
 		Instruction:   buildSubAgentInstruction(parent, sub),
 		Model:         subChatModel,
 		MaxIterations: configMaxIteration(cfg),
 		Handlers:      assembly.Handlers,
+		GenModelInput: literalChatModelInput,
 		ToolsConfig: adk.ToolsConfig{
 			EmitInternalEvents: true,
 			ToolsNodeConfig: compose.ToolsNodeConfig{
@@ -385,6 +392,24 @@ func buildConfiguredSubAgent(ctx context.Context, cfg *config.Config, parent dee
 		},
 		ModelRetryConfig: modelRetryConfig(cfg, nil),
 	})
+}
+
+// literalChatModelInput keeps inherited Denova prompts intact. Eino's default
+// formatter treats every brace as an FString placeholder once SessionValues
+// exist, but Denova prompts intentionally contain JSON and filename templates.
+func literalChatModelInput(_ context.Context, instruction string, input *adk.AgentInput) ([]*schema.Message, error) {
+	messageCount := 0
+	if input != nil {
+		messageCount = len(input.Messages)
+	}
+	messages := make([]*schema.Message, 0, messageCount+1)
+	if instruction != "" {
+		messages = append(messages, schema.SystemMessage(instruction))
+	}
+	if input != nil {
+		messages = append(messages, input.Messages...)
+	}
+	return messages, nil
 }
 
 func modelRetryConfig(cfg *config.Config, outputGuard func(context.Context, *adk.RetryContext) *adk.RetryDecision) *adk.ModelRetryConfig {

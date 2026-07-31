@@ -13,6 +13,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Fixed
 
+- 配置型 reviewer 等 SubAgent 在父 Agent 已写入会话状态后，会继续把继承的 JSON 与文件名格式按字面量传给模型，不再因 FString 误解析花括号而导致委派失败。
+- Configured SubAgents such as reviewer now pass inherited JSON and filename formats to the model literally after the parent writes session state, preventing delegation failures caused by accidental FString parsing of braces.
 - 修改以模型名作为 ID 的语言或图像模型配置后，默认图像模型与各 Agent、SubAgent 的模型引用会同步迁移到新 ID，运行时也会立即刷新默认图像模型，不再继续使用缓存中的旧名称或报“模型配置不存在”。
 - Renaming a language or image model profile whose ID follows the model name now migrates default-image, Agent, and SubAgent references to the new ID, and the runtime refreshes the default image profile immediately instead of retaining the cached old name or reporting a missing profile.
 - 资料库生图的用户补充要求现在只在图像方案约束下经过语言模型提炼后进入最终 Prompt，不再以原文重复追加并覆盖所选风格；超长名称、标签或关键词会按总输入预算安全压缩，不再直接中断单张或批量生成。
