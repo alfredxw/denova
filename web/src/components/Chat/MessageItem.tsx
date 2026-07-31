@@ -1783,10 +1783,10 @@ function highlightDialogueText(text: string, enabled: boolean, keyPrefix: string
   return <Fragment>{nodes}</Fragment>
 }
 
-/** 思考过程折叠块：默认展开，流式结束后自动折叠。 */
+/** 思考过程折叠块：流式时展开，历史消息从首帧开始保持折叠。 */
 function ThinkingBlock({ message, content, streaming }: { message: ChatMessage; content: string; streaming: boolean }) {
   const { t } = useTranslation()
-  const [expanded, setExpanded] = useState(true)
+  const [expanded, setExpanded] = useState(streaming)
 
   useLayoutEffect(() => {
     setExpanded(streaming)

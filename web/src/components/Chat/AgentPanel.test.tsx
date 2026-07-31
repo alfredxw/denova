@@ -205,6 +205,7 @@ describe('AgentPanel', () => {
   it('创作 Agent 运行中自动展开执行过程', () => {
     renderAgentPanel({
       isStreaming: true,
+      isExecutionActive: true,
       messages: [
         {
           id: 'assistant-running-trace',
@@ -222,6 +223,29 @@ describe('AgentPanel', () => {
 
     expect(screen.getByRole('button', { name: /正在执行/ })).toHaveAttribute('aria-expanded', 'true')
     expect(screen.getByText('正在读取章节上下文')).toBeInTheDocument()
+  })
+
+  it('空闲恢复探测不会展开已完成的执行过程', () => {
+    renderAgentPanel({
+      isStreaming: true,
+      isExecutionActive: false,
+      activityContent: '正在恢复...',
+      messages: [
+        {
+          id: 'assistant-completed-trace',
+          role: 'assistant',
+          metadata: { run_id: 'run-completed' },
+          parts: [
+            { type: 'reasoning', text: '已完成的历史思考' },
+            { type: 'text', text: '历史回复' },
+          ],
+        },
+      ],
+    })
+
+    expect(screen.getByRole('button', { name: /执行过程/ })).toHaveAttribute('aria-expanded', 'false')
+    expect(screen.queryByText('已完成的历史思考')).not.toBeInTheDocument()
+    expect(screen.getByText('历史回复')).toBeInTheDocument()
   })
 
   it('打开 SubAgent 详情时通知外层扩展右栏', async () => {
@@ -701,6 +725,7 @@ function defaultAgentPanelProps(overrides: AgentPanelOverrides, composerSettings
     ],
     activeSessionId: 'session-1',
     isStreaming: false,
+    isExecutionActive: false,
     activityContent: '',
     hasEarlierMessages: false,
     isLoadingEarlierHistory: false,

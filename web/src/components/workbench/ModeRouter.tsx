@@ -88,6 +88,7 @@ interface ModeRouterProps {
   currentChapter?: ChapterSummary
   chapterStats: Record<string, ChapterSummary>
   isStreaming: boolean
+  isExecutionActive: boolean
   runtimeProjection?: ActiveChatTask | null
   abortPending?: boolean
   commandSubmitting?: boolean
@@ -194,6 +195,7 @@ export function ModeRouter(props: ModeRouterProps) {
     currentChapter,
     chapterStats,
     isStreaming,
+    isExecutionActive,
     runtimeProjection,
     abortPending,
     commandSubmitting,
@@ -692,6 +694,7 @@ export function ModeRouter(props: ModeRouterProps) {
       sessions={sessions}
       activeSessionId={activeSessionId}
       isStreaming={isStreaming}
+      isExecutionActive={isExecutionActive}
       runtimeProjection={runtimeProjection}
       abortPending={abortPending}
       commandSubmitting={commandSubmitting}

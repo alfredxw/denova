@@ -90,6 +90,8 @@ interface AgentPanelProps {
   /** The composer is usable, but no durable session exists until its first submission. */
   sessionDraft?: boolean
   isStreaming: boolean
+  /** Real execution state, excluding an idle startup/recovery inspection. */
+  isExecutionActive: boolean
   runtimeProjection?: ActiveChatTask | null
   abortPending?: boolean
   commandSubmitting?: boolean
@@ -173,6 +175,7 @@ function AgentPanelComponent({
   activeSessionId,
   sessionDraft = false,
   isStreaming,
+  isExecutionActive,
   runtimeProjection = null,
   abortPending = false,
   commandSubmitting = false,
@@ -264,13 +267,13 @@ function AgentPanelComponent({
   const changeGroupsQuery = useWorkspaceChangeGroups(!generalAgent && activeSessionId && !sessionDraft ? workspace : '', { sessionID: activeSessionId })
   const tokenUsageMessages = useMemo(() => selectAgentTokenUsageRecords(messages), [messages])
   const activeRunID = useMemo(() => {
-    if (!isStreaming) return ''
+    if (!isExecutionActive) return ''
     const views = buildAgentMessageViews(messages)
     for (let index = views.length - 1; index >= 0; index -= 1) {
       if (!views[index].metadata.subagent && views[index].metadata.run_id) return views[index].metadata.run_id || ''
     }
     return ''
-  }, [isStreaming, messages])
+  }, [isExecutionActive, messages])
   const messageListBottomPadding = inputAreaHeight > 0 ? inputAreaHeight + 20 : undefined
   const styleSceneSuggestions = useMemo(() => {
     const teller = resolveNarrativeStyle(tellers, ideTellerId, 'writing')
@@ -496,6 +499,7 @@ function AgentPanelComponent({
   const messageListProps = {
     messages,
     isStreaming,
+    isExecutionActive,
     activityContent: runtimeRecovering ? t('chat.activity.recovering') : recoveryPaused ? t('chat.activity.recoveryPaused') : activityContent,
     scrollResetKey: `${workspace || 'none'}:${activeSessionId || 'current'}`,
     bottomPaddingClassName: 'pb-36',

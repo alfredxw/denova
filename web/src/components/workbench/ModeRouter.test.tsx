@@ -548,6 +548,7 @@ function modeRouterProps(
     summary: null,
     chapterStats: {},
     isStreaming: false,
+    isExecutionActive: false,
     projectVisible: true,
     activityBarExpanded: true,
     rightPanel: null,

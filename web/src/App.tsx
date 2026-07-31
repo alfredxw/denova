@@ -170,6 +170,7 @@ function App() {
     sessions,
     activeSessionId,
     isStreaming,
+    isExecutionActive,
     runtimeProjection,
     abortPending,
     commandSubmitting,
@@ -794,6 +795,7 @@ function App() {
         currentChapter={currentChapter}
         chapterStats={chapterStats}
         isStreaming={isStreaming}
+        isExecutionActive={isExecutionActive}
         runtimeProjection={runtimeProjection}
         abortPending={abortPending}
         commandSubmitting={commandSubmitting}

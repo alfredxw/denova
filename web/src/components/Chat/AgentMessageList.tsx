@@ -31,6 +31,8 @@ import { Button } from '@/components/ui/button'
 interface MessageListProps {
   messages: AgentUIMessage[]
   isStreaming: boolean
+  /** 后端确认的真实执行态；恢复探测可保持交互忙碌，但不能展开历史执行过程。 */
+  isExecutionActive?: boolean
   activityContent: string
   highlightDialogue?: boolean
   scrollResetKey?: string
@@ -108,7 +110,7 @@ interface MessageListVirtuosoContext {
   onLoadEarlierMessages?: () => void | Promise<void>
 }
 
-export function MessageList({ messages, isStreaming, activityContent, highlightDialogue = false, scrollResetKey, bottomPaddingClassName = '', bottomPaddingPx, afterContent, hasEarlierMessages = false, isLoadingEarlierMessages = false, onLoadEarlierMessages, timelineAttachments = [], messageStyle, collapseTraceGroups = false, activeTraceDisplay = 'expanded', canMutateMessage, onEditMessage, onEditAssistantReply, onRegenerateMessage, onSwitchMessageVersion, onOpenSubAgentSession, onInsertIllustration, onGenerateInteractiveImage, generatingInteractiveImageTurnId, activeSubAgentSessionKey, onSubmitPlanQuestion, onApprovePlan, onContinuePlan, onExitPlanMode, onOpenTrace, onResolveAsk, turnScrollRequest, onVisibleTurnAnchorChange }: MessageListProps) {
+export function MessageList({ messages, isStreaming, isExecutionActive = isStreaming, activityContent, highlightDialogue = false, scrollResetKey, bottomPaddingClassName = '', bottomPaddingPx, afterContent, hasEarlierMessages = false, isLoadingEarlierMessages = false, onLoadEarlierMessages, timelineAttachments = [], messageStyle, collapseTraceGroups = false, activeTraceDisplay = 'expanded', canMutateMessage, onEditMessage, onEditAssistantReply, onRegenerateMessage, onSwitchMessageVersion, onOpenSubAgentSession, onInsertIllustration, onGenerateInteractiveImage, generatingInteractiveImageTurnId, activeSubAgentSessionKey, onSubmitPlanQuestion, onApprovePlan, onContinuePlan, onExitPlanMode, onOpenTrace, onResolveAsk, turnScrollRequest, onVisibleTurnAnchorChange }: MessageListProps) {
   const { t } = useTranslation()
   const containerRef = useRef<HTMLDivElement | null>(null)
   const lastVisibleTurnAnchorRef = useRef('')
@@ -129,12 +131,13 @@ export function MessageList({ messages, isStreaming, activityContent, highlightD
     () => buildAgentChatListItems({
       views,
       isStreaming,
+      isExecutionActive,
       visibleActivityContent,
       collapseTraceGroups,
       groupSubAgentTimeline: Boolean(onOpenSubAgentSession),
       timelineAttachments,
     }),
-    [collapseTraceGroups, isStreaming, onOpenSubAgentSession, timelineAttachments, views, visibleActivityContent],
+    [collapseTraceGroups, isExecutionActive, isStreaming, onOpenSubAgentSession, timelineAttachments, views, visibleActivityContent],
   )
   const firstItemIndex = usePrependStableFirstItemIndex(listItems, scrollResetKey)
   const resolveMessageScroller = useCallback(
@@ -507,7 +510,7 @@ function AgentChatListRow({ item, isLast, isStreaming, activeTraceDisplay, highl
   )
 }
 
-function buildAgentChatListItems({ views, isStreaming, visibleActivityContent, collapseTraceGroups, groupSubAgentTimeline, timelineAttachments }: { views: AgentMessageView[]; isStreaming: boolean; visibleActivityContent: string; collapseTraceGroups: boolean; groupSubAgentTimeline: boolean; timelineAttachments: AgentTimelineAttachment[] }): AgentChatListItem[] {
+function buildAgentChatListItems({ views, isStreaming, isExecutionActive, visibleActivityContent, collapseTraceGroups, groupSubAgentTimeline, timelineAttachments }: { views: AgentMessageView[]; isStreaming: boolean; isExecutionActive: boolean; visibleActivityContent: string; collapseTraceGroups: boolean; groupSubAgentTimeline: boolean; timelineAttachments: AgentTimelineAttachment[] }): AgentChatListItem[] {
   const items: AgentChatListItem[] = []
   if (views.length === 0 && !isStreaming) {
     items.push({ kind: 'empty', key: 'empty' })
@@ -533,7 +536,7 @@ function buildAgentChatListItems({ views, isStreaming, visibleActivityContent, c
       }
     }
     if (collapseTraceGroups) {
-      const run = buildAgentRunPresentation(views, index, isStreaming)
+      const run = buildAgentRunPresentation(views, index, isExecutionActive)
       if (run) {
         items.push({
           kind: 'run',
@@ -558,7 +561,7 @@ function buildAgentChatListItems({ views, isStreaming, visibleActivityContent, c
         traceViews.push(views[nextIndex])
         nextIndex += 1
       }
-      const activeStreamingTrace = isActiveStreamingTrace(views, nextIndex, isStreaming)
+      const activeStreamingTrace = isActiveStreamingTrace(views, nextIndex, isExecutionActive)
       items.push({ kind: 'trace', key: `trace-${agentViewStableKey(traceViews[0]) || index}`, views: traceViews, activeStreamingTrace })
       index = nextIndex - 1
       continue

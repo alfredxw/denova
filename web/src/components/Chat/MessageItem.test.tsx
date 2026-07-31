@@ -1,5 +1,6 @@
 import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
+import { renderToStaticMarkup } from 'react-dom/server'
 import { describe, expect, it, vi } from 'vitest'
 import { MessageItem } from './MessageItem'
 
@@ -263,6 +264,15 @@ describe('MessageItem', () => {
 
     await user.click(screen.getByRole('button', { name: /思考过程/ }))
     expect(screen.getByText('已经分析完')).toBeInTheDocument()
+  })
+
+  it('历史思考过程的首帧直接以折叠态渲染', () => {
+    const markup = renderToStaticMarkup(
+      <MessageItem message={{ role: 'thinking', content: '历史思考内容', streaming: false }} />,
+    )
+
+    expect(markup).toContain('aria-expanded="false"')
+    expect(markup).not.toContain('历史思考内容')
   })
 
   it('直接增长的流式 thinking 立即复用单棵文本树显示最新内容', () => {

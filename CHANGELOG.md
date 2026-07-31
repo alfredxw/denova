@@ -126,6 +126,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Fixed
 
+- 修复刷新空闲对话时，启动恢复探测会把已完成的思考/执行过程先展开再折叠的问题；恢复探测与真实执行态现在分开传递，历史思考内容从首帧开始即保持折叠，写作与工作台 Agent 对话行为一致。
+- Fixed idle conversation reloads briefly expanding completed thinking/execution details during the startup recovery probe. Recovery inspection and real execution state are now projected separately, so historical reasoning is collapsed from the first frame consistently in Writing and Workspace Agent chats.
 - 修复同一 Agent Run 在正文后继续思考或调用工具时，完成回填会把后置执行内容移动到正文前并触发重挂载抖动的问题。Run 展示现在以结果正文为锚按原始时序拆分前后执行过程：Game 保持 `work → text → work`，Agent Chat 保持 `work → text`；执行过程在运行完成后于绘制前自动收起，流式与历史消息通过稳定段标识复用同一渲染节点。
 - Fixed completed Agent runs moving post-result thinking or tool calls ahead of the result and visibly remounting during history reconciliation. Run presentation now anchors on the result and preserves ordered process sections: Game keeps `work → text → work`, while Agent Chat keeps `work → text`; process disclosures collapse before paint when execution settles, and streaming/history messages reuse the same rendered nodes through stable segment identities.
 - 修复前端重新加载、热更新或侧栏显隐时，面板库的初始化/程序化布局回调偶发覆盖用户已调宽度的问题。写作、游戏、工作台与各共享配置页现在只在用户实际拖拽或使用键盘调宽后保存布局，挂载和折叠只恢复、不回写；一级菜单宽度也改为仅在用户调整时持久化。

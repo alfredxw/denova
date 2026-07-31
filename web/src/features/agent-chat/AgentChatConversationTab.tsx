@@ -121,6 +121,7 @@ function AgentChatConversationTabComponent({
       activeSessionId={chat.activeSessionId || sessionId}
       sessionDraft={draft}
       isStreaming={chat.isStreaming}
+      isExecutionActive={chat.isExecutionActive}
       runtimeProjection={chat.runtimeProjection}
       abortPending={chat.abortPending}
       commandSubmitting={chat.commandSubmitting}
