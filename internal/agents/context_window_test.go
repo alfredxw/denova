@@ -537,8 +537,10 @@ func TestModelHistoryChoosesNewestStructuralContextProjection(t *testing.T) {
 		CheckpointID: "cp-1", MessageCount: 1, ResolvedBoundary: boundary, Report: "rewind finding",
 	}
 	compaction := session.ContextCompaction{
-		AgentKind: AgentKindIDE, Epoch: 1, Summary: "compaction summary",
-		SourceEndIndex: 3, RetainedTurns: 1, ContextRevision: 8,
+		CompactionCheckpoint: NewContextCompactionCheckpoint(AgentKindIDE, ContextCompactionResult{
+			Epoch: 1, Summary: "compaction summary", RetainedTurns: 1,
+		}),
+		SourceEndIndex: 3, ContextRevision: 8,
 	}
 	snapshot := session.ContextSnapshot{
 		EffectiveMessages: history,
@@ -668,11 +670,9 @@ func TestRewindGrowCompactReloadNeverRestoresDiscardedBranch(t *testing.T) {
 		t.Fatalf("rewind compaction did not trigger: %#v", result)
 	}
 	if _, err := sess.AppendContextCompaction(session.ContextCompaction{
-		AgentKind: AgentKindIDE, Epoch: result.Epoch, Summary: result.Summary,
-		SourceStartIndex: projection.SourceStartIndex, SourceEndIndex: projection.SourceEndIndex,
-		SourceMessageCount: result.SourceMessageCount, RetainedTurns: result.RetainedTurns,
-		TokensBefore: result.TokensBefore, TokensAfter: result.TokensAfter,
-		ContextWindowTokens: result.ContextWindowTokens, Threshold: result.Threshold,
+		CompactionCheckpoint: NewContextCompactionCheckpoint(AgentKindIDE, result),
+		SourceStartIndex:     projection.SourceStartIndex, SourceEndIndex: projection.SourceEndIndex,
+		SourceMessageCount: result.SourceMessageCount,
 	}); err != nil {
 		t.Fatal(err)
 	}
@@ -721,8 +721,10 @@ func TestDurableCheckpointRecoveryUsesFrozenCompactedProjection(t *testing.T) {
 		}
 	}
 	if _, err := sess.AppendContextCompaction(session.ContextCompaction{
-		AgentKind: AgentKindIDE, Summary: "bounded compacted memory",
-		SourceStartIndex: 0, SourceEndIndex: 4, RetainedTurns: 1,
+		CompactionCheckpoint: NewContextCompactionCheckpoint(AgentKindIDE, ContextCompactionResult{
+			Summary: "bounded compacted memory", RetainedTurns: 1,
+		}),
+		SourceStartIndex: 0, SourceEndIndex: 4,
 	}); err != nil {
 		t.Fatal(err)
 	}

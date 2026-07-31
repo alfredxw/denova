@@ -6,6 +6,8 @@ import (
 	"testing"
 
 	agent "github.com/alfredxw/denova/agent"
+
+	"denova/internal/contextmaintenance"
 )
 
 func TestStoryToolResultCleanupPersistsProjectionWithoutChangingRichTurn(t *testing.T) {
@@ -91,7 +93,11 @@ func TestStoryToolResultCleanupPersistsProjectionWithoutChangingRichTurn(t *test
 	assertStoryCleanupSnapshot(t, reloadedSnapshot, first, summary)
 
 	compaction, err := reloaded.AppendContextCompaction(story.ID, "main", ContextCompactionEvent{
-		ID: "compaction-after-story-cleanup", AgentKind: "interactive_story", Summary: "checkpoint", SourceTurnCount: 1,
+		ID: "compaction-after-story-cleanup",
+		CompactionCheckpoint: contextmaintenance.CompactionCheckpoint{
+			AgentKind: "interactive_story", Summary: "checkpoint",
+		},
+		SourceTurnCount: 1,
 	})
 	if err != nil {
 		t.Fatal(err)

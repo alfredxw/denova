@@ -5,6 +5,8 @@ import (
 	"testing"
 
 	agent "github.com/alfredxw/denova/agent"
+
+	"denova/internal/contextmaintenance"
 )
 
 func TestContextCompactionStructuralCommitReconcilesExactIdentityBeforeCAS(t *testing.T) {
@@ -21,9 +23,11 @@ func TestContextCompactionStructuralCommitReconcilesExactIdentityBeforeCAS(t *te
 	}
 	cursor := sess.ContextCursor()
 	intent := ContextCompaction{
-		ID: "cc-command-1", AgentKind: "ide", Epoch: 1, Summary: "checkpoint",
+		ID: "cc-command-1",
+		CompactionCheckpoint: contextmaintenance.CompactionCheckpoint{
+			AgentKind: "ide", Epoch: 1, Summary: "checkpoint", RetainedTurns: 2, TriggerReason: "manual", Phase: "manual",
+		},
 		SourceStartIndex: 0, SourceEndIndex: 1, SourceMessageCount: 1,
-		RetainedTurns: 2, Reason: "manual", Phase: "manual",
 	}
 	first, err := sess.AppendContextCompactionAt(cursor, intent)
 	if err != nil {
@@ -35,6 +39,11 @@ func TestContextCompactionStructuralCommitReconcilesExactIdentityBeforeCAS(t *te
 	}
 	if second.ID != first.ID || second.ContextRevision != first.ContextRevision {
 		t.Fatalf("retry created a different compaction: first=%#v second=%#v", first, second)
+	}
+	conflictingReplay := intent
+	conflictingReplay.CandidateGeneration = 2
+	if _, err := sess.AppendContextCompactionAt(cursor, conflictingReplay); !errors.Is(err, ErrDomainCommitIdentityConflict) {
+		t.Fatalf("same checkpoint id with changed durable fields error = %v, want %v", err, ErrDomainCommitIdentityConflict)
 	}
 	removalCursor := sess.ContextCursor()
 	removalIntent := ContextCompactionRemoval{ID: "ccr-command-1", AgentKind: "ide", CompactionID: first.ID, Reason: "user_removed"}
@@ -74,9 +83,11 @@ func TestContextCompactionStructuralCommitRefreshesAcrossSessionInstances(t *tes
 	}
 	cursor := stale.ContextCursor()
 	intent := ContextCompaction{
-		ID: "cc-cross-instance", AgentKind: "ide", Epoch: 1, Summary: "checkpoint",
+		ID: "cc-cross-instance",
+		CompactionCheckpoint: contextmaintenance.CompactionCheckpoint{
+			AgentKind: "ide", Epoch: 1, Summary: "checkpoint", RetainedTurns: 2, TriggerReason: "manual", Phase: "manual",
+		},
 		SourceStartIndex: 0, SourceEndIndex: 1, SourceMessageCount: 1,
-		RetainedTurns: 2, Reason: "manual", Phase: "manual",
 	}
 	committed, err := primary.AppendContextCompactionAt(primary.ContextCursor(), intent)
 	if err != nil {

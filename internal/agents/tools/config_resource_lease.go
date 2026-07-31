@@ -7,7 +7,7 @@ import (
 	"path/filepath"
 	"strings"
 
-	"denova/internal/filelease"
+	"denova/internal/localfs"
 )
 
 func configResourceLeasePath(novaDir, resource string) string {
@@ -22,7 +22,7 @@ func withConfigResourceLease(ctx context.Context, lockPath string, operation fun
 	if strings.TrimSpace(lockPath) == "" {
 		return nil, fmt.Errorf("config resource storage directory is required")
 	}
-	release, err := filelease.Acquire(ctx, lockPath)
+	release, err := localfs.AcquireLease(ctx, lockPath)
 	if err != nil {
 		return nil, fmt.Errorf("acquire config resource lease: %w", err)
 	}

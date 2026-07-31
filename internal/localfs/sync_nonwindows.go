@@ -1,6 +1,6 @@
 //go:build !windows
 
-package fsdurability
+package localfs
 
 import (
 	"errors"

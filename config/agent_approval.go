@@ -10,22 +10,22 @@ import (
 type AgentApprovalMode string
 
 const (
-	AgentApprovalAsk   AgentApprovalMode = "ask"
-	AgentApprovalWrite AgentApprovalMode = "write"
-	AgentApprovalYolo  AgentApprovalMode = "yolo"
+	AgentApprovalAsk        AgentApprovalMode = "ask"
+	AgentApprovalWrite      AgentApprovalMode = "write"
+	AgentApprovalFullAccess AgentApprovalMode = "full_access"
 )
 
 // NormalizeAgentApprovalMode fails closed to Ask for empty or invalid values.
-// The empty value remains meaningful in the user settings layer: it tells the
-// frontend that the mandatory first-run choice has not been persisted yet.
+// The empty value remains meaningful in the user settings layer: it means the
+// user follows the product default instead of persisting an explicit choice.
 func NormalizeAgentApprovalMode(value AgentApprovalMode) AgentApprovalMode {
 	switch AgentApprovalMode(strings.ToLower(strings.TrimSpace(string(value)))) {
 	case AgentApprovalAsk:
 		return AgentApprovalAsk
 	case AgentApprovalWrite:
 		return AgentApprovalWrite
-	case AgentApprovalYolo:
-		return AgentApprovalYolo
+	case AgentApprovalFullAccess:
+		return AgentApprovalFullAccess
 	default:
 		return AgentApprovalAsk
 	}
@@ -34,10 +34,10 @@ func NormalizeAgentApprovalMode(value AgentApprovalMode) AgentApprovalMode {
 func ParseAgentApprovalMode(value string) (AgentApprovalMode, error) {
 	mode := AgentApprovalMode(strings.ToLower(strings.TrimSpace(value)))
 	switch mode {
-	case AgentApprovalAsk, AgentApprovalWrite, AgentApprovalYolo:
+	case AgentApprovalAsk, AgentApprovalWrite, AgentApprovalFullAccess:
 		return mode, nil
 	default:
-		return "", fmt.Errorf("agent approval mode must be %q, %q, or %q", AgentApprovalAsk, AgentApprovalWrite, AgentApprovalYolo)
+		return "", fmt.Errorf("agent approval mode must be %q, %q, or %q", AgentApprovalAsk, AgentApprovalWrite, AgentApprovalFullAccess)
 	}
 }
 

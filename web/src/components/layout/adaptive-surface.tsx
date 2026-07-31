@@ -1,11 +1,12 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import { createPortal } from 'react-dom'
-import { Group, Panel, type Layout } from 'react-resizable-panels'
+import { Group, Panel } from 'react-resizable-panels'
 import { useTranslation } from 'react-i18next'
 import { useIsMobile } from '@/hooks/useIsMobile'
 import { MobilePaneHost, type MobilePane, type MobilePaneControls } from './mobile-pane-host'
 import { CollapsiblePanelSeparator, CollapsibleResizablePanel, InlineCollapsiblePane } from './panel-motion'
 import { createStablePortalHost, StablePortalSlot } from './stable-portal-slot'
+import { usePersistedPanelLayout } from './use-persisted-panel-layout'
 
 export interface AdaptiveSurfacePane {
   id: string
@@ -20,7 +21,7 @@ export interface AdaptiveSurfacePane {
   desktopVisible?: boolean
   /** Stable inline size used when a non-resizable desktop pane can be toggled. */
   desktopSize?: string
-  /** Optional compact desktop state that replaces a hidden fixed-size pane. */
+  /** Optional compact desktop state that replaces a hidden pane. */
   desktopCollapsedSize?: string
   desktopCollapsedContent?: ReactNode
   onOpen?: () => void
@@ -40,15 +41,17 @@ interface AdaptiveSurfaceProps {
   className?: string
   mainClassName?: string
   desktopGridClassName?: string
+  /** Turns the desktop left/main split into an accessible, persisted resize group. */
+  leftResize?: AdaptiveSurfaceSideResize
   /** Turns the desktop main/right split into an accessible, persisted resize group. */
-  rightResize?: AdaptiveSurfaceRightResize
+  rightResize?: AdaptiveSurfaceSideResize
   /** Collapse side panes into drawers when this surface is narrower than the given pixel width. */
   collapseAt?: number
   /** Whether collapsed panes cover the viewport or stay inside this surface. */
   mobilePaneScope?: 'viewport' | 'surface'
 }
 
-export interface AdaptiveSurfaceRightResize {
+export interface AdaptiveSurfaceSideResize {
   layoutKey: string
   label: string
   defaultSize?: string
@@ -71,6 +74,7 @@ export function AdaptiveSurface({
   className = 'h-full min-h-0',
   mainClassName = 'min-h-0 min-w-0',
   desktopGridClassName,
+  leftResize,
   rightResize,
   collapseAt,
   mobilePaneScope = 'viewport',
@@ -84,8 +88,18 @@ export function AdaptiveSurface({
   const [mainContentHost] = useState(() => createStablePortalHost('flex h-full min-h-0 w-full min-w-0 flex-col'))
   const [mobileOpenPaneId, setMobileOpenPaneId] = useState<string | null>(null)
   const mobileControlsRef = useRef<MobilePaneControls>(closedControls)
+  const retainedLeftPaneRef = useRef<AdaptiveSurfacePane | null>(null)
   const retainedRightPaneRef = useRef<AdaptiveSurfacePane | null>(null)
+  if (left && left.enabled !== false) retainedLeftPaneRef.current = left
   if (right && right.enabled !== false) retainedRightPaneRef.current = right
+  const leftPanelLayout = usePersistedPanelLayout({
+    storageKey: leftResize?.layoutKey,
+    panelIds: ['left', 'main'],
+  })
+  const rightPanelLayout = usePersistedPanelLayout({
+    storageKey: rightResize?.layoutKey,
+    panelIds: ['main', 'right'],
+  })
 
   useEffect(() => {
     if (!isMobile) setMobileOpenPaneId(null)
@@ -158,44 +172,100 @@ export function AdaptiveSurface({
   } else {
     const desktopLeft = left && left.enabled !== false ? left : null
     const desktopRight = right && right.enabled !== false ? right : null
+    const retainedDesktopLeft = retainedLeftPaneRef.current
     const retainedDesktopRight = retainedRightPaneRef.current
+    const desktopLeftVisible = Boolean(desktopLeft && desktopLeft.desktopVisible !== false)
     const desktopRightVisible = Boolean(desktopRight && desktopRight.desktopVisible !== false)
-    if (rightResize) {
+
+    const rightResizeSurface = rightResize ? (
+      <Group
+        id={rightResize.layoutKey}
+        data-nova-panel-motion-group="true"
+        orientation="horizontal"
+        resizeTargetMinimumSize={{ coarse: 16, fine: 1 }}
+        defaultLayout={rightPanelLayout.defaultLayout}
+        onLayoutChanged={(layout) => {
+          if (desktopRightVisible) rightPanelLayout.persistUserLayout(layout)
+        }}
+        className="h-full min-h-0 min-w-0"
+      >
+        <Panel id="main" minSize={rightResize.mainMinSize ?? '240px'} className="min-w-0">
+          {mainContentSlot}
+        </Panel>
+        <CollapsiblePanelSeparator
+          visible={desktopRightVisible}
+          aria-label={rightResize.label}
+          className="nova-resize-handle nova-resize-divider nova-resize-divider-vertical relative z-30 -mx-1 w-2 shrink-0 touch-none cursor-col-resize select-none"
+          {...rightPanelLayout.resizeHandleIntentProps}
+        />
+        <CollapsibleResizablePanel
+          id="right"
+          visible={desktopRightVisible}
+          side="right"
+          defaultSize={rightResize.defaultSize ?? '420px'}
+          minSize={rightResize.minSize ?? '300px'}
+          maxSize={rightResize.maxSize ?? '65%'}
+          groupResizeBehavior="preserve-pixel-size"
+          collapsedSize={retainedDesktopRight?.desktopCollapsedSize}
+          collapsedChildren={retainedDesktopRight?.desktopCollapsedContent}
+          className={`min-w-0 ${retainedDesktopRight?.desktopClassName ?? ''}`}
+        >
+          {retainedDesktopRight?.content ?? null}
+        </CollapsibleResizablePanel>
+      </Group>
+    ) : null
+
+    if (leftResize && retainedDesktopLeft) {
+      const mainAndRight = rightResizeSurface ?? (
+        <div className={`grid h-full min-h-0 min-w-0 ${defaultDesktopGridClassName(false, Boolean(desktopRight))}`}>
+          {mainContentSlot}
+          {desktopRight ? <AdaptiveDesktopPane pane={desktopRight} /> : null}
+        </div>
+      )
       surface = (
-        <div className={`flex h-full min-h-0 min-w-0 ${className}`} data-nova-adaptive-resizable="true">
-          {desktopLeft ? <AdaptiveDesktopPane pane={desktopLeft} /> : null}
+        <div className={`flex h-full min-h-0 min-w-0 ${className}`} data-nova-adaptive-resizable="left">
           <Group
-            id={rightResize.layoutKey}
+            id={leftResize.layoutKey}
             data-nova-panel-motion-group="true"
             orientation="horizontal"
             resizeTargetMinimumSize={{ coarse: 16, fine: 1 }}
-            defaultLayout={readStoredLayout(rightResize.layoutKey)}
+            defaultLayout={leftPanelLayout.defaultLayout}
             onLayoutChanged={(layout) => {
-              if (desktopRightVisible) storeLayout(rightResize.layoutKey, layout)
+              if (desktopLeftVisible) leftPanelLayout.persistUserLayout(layout)
             }}
-            className="min-h-0 min-w-0 flex-1"
+            className="h-full min-h-0 min-w-0 flex-1"
           >
-            <Panel id="main" minSize={rightResize.mainMinSize ?? '240px'} className="min-w-0">
-              {mainContentSlot}
-            </Panel>
-            <CollapsiblePanelSeparator
-              visible={desktopRightVisible}
-              aria-label={rightResize.label}
-              className="nova-resize-handle nova-resize-divider nova-resize-divider-vertical relative z-30 -mx-1 w-2 shrink-0 touch-none cursor-col-resize select-none"
-            />
             <CollapsibleResizablePanel
-              id="right"
-              visible={desktopRightVisible}
-              side="right"
-              defaultSize={rightResize.defaultSize ?? '420px'}
-              minSize={rightResize.minSize ?? '300px'}
-              maxSize={rightResize.maxSize ?? '65%'}
+              id="left"
+              visible={desktopLeftVisible}
+              side="left"
+              defaultSize={leftResize.defaultSize ?? '288px'}
+              minSize={leftResize.minSize ?? '200px'}
+              maxSize={leftResize.maxSize ?? '40%'}
               groupResizeBehavior="preserve-pixel-size"
-              className={`min-w-0 ${retainedDesktopRight?.desktopClassName ?? ''}`}
+              collapsedSize={retainedDesktopLeft.desktopCollapsedSize}
+              collapsedChildren={retainedDesktopLeft.desktopCollapsedContent}
+              className={`min-w-0 ${retainedDesktopLeft.desktopClassName ?? ''}`}
             >
-              {retainedDesktopRight?.content ?? null}
+              {retainedDesktopLeft.content}
             </CollapsibleResizablePanel>
+            <CollapsiblePanelSeparator
+              visible={desktopLeftVisible}
+              aria-label={leftResize.label}
+              className="nova-resize-handle nova-resize-divider nova-resize-divider-vertical relative z-30 -mx-1 w-2 shrink-0 touch-none cursor-col-resize select-none"
+              {...leftPanelLayout.resizeHandleIntentProps}
+            />
+            <Panel id="main" minSize={leftResize.mainMinSize ?? '320px'} className="min-w-0">
+              {mainAndRight}
+            </Panel>
           </Group>
+        </div>
+      )
+    } else if (rightResizeSurface) {
+      surface = (
+        <div className={`flex h-full min-h-0 min-w-0 ${className}`} data-nova-adaptive-resizable="right">
+          {desktopLeft ? <AdaptiveDesktopPane pane={desktopLeft} /> : null}
+          {rightResizeSurface}
         </div>
       )
     } else {
@@ -308,23 +378,4 @@ function defaultDesktopGridClassName(hasLeft: boolean, hasRight: boolean) {
   if (hasLeft) return 'grid-cols-[18rem_minmax(0,1fr)]'
   if (hasRight) return 'grid-cols-[minmax(0,1fr)_minmax(320px,28rem)]'
   return 'grid-cols-[minmax(0,1fr)]'
-}
-
-function readStoredLayout(key: string): Layout | undefined {
-  if (typeof window === 'undefined') return undefined
-  try {
-    const value = window.localStorage.getItem(key)
-    return value ? JSON.parse(value) as Layout : undefined
-  } catch {
-    return undefined
-  }
-}
-
-function storeLayout(key: string, layout: Layout) {
-  if (typeof window === 'undefined') return
-  try {
-    window.localStorage.setItem(key, JSON.stringify(layout))
-  } catch {
-    // Private browsing and storage policies may disable persistence; resizing still works.
-  }
 }

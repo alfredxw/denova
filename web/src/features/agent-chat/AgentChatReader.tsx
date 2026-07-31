@@ -161,10 +161,16 @@ export function AgentChatReader({
           title: t('agentChat.reader.outline'),
           icon: <BookOpen className="h-4 w-4" />,
           content: directory,
-          desktopClassName: 'min-h-0 w-60 border-r border-[var(--nova-border)]',
+          desktopClassName: 'min-h-0 border-r border-[var(--nova-border)]',
           mobileClassName: 'w-[min(88vw,340px)]',
         }}
-        desktopGridClassName="grid-cols-[15rem_minmax(0,1fr)]"
+        leftResize={{
+          layoutKey: 'nova-agent-chat-reader-outline-layout',
+          label: t('layout.resize.sidebar'),
+          defaultSize: '240px',
+          minSize: '200px',
+          maxSize: '36%',
+        }}
         collapseAt={720}
       >
         {({ isMobile, openLeft }) => (

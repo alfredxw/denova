@@ -198,12 +198,8 @@ func contextCompactionRemovalEventByID(lines []StoryEventRecord, id string) (Con
 
 func sameContextCompactionEventIntent(existing, requested ContextCompactionEvent, branchID string) bool {
 	return existing.ID == requested.ID && existing.BranchID == strings.TrimSpace(branchID) &&
-		existing.AgentKind == requested.AgentKind && existing.Epoch == requested.Epoch && existing.Summary == requested.Summary &&
-		existing.SourceTurnCount == requested.SourceTurnCount && existing.RetainedTurns == requested.RetainedTurns &&
-		existing.TokensBefore == requested.TokensBefore && existing.TokensAfter == requested.TokensAfter &&
-		existing.TargetRatio == requested.TargetRatio && existing.ContextWindowTokens == requested.ContextWindowTokens &&
-		existing.Strategy == requested.Strategy && existing.Threshold == requested.Threshold &&
-		existing.Reason == requested.Reason && existing.Phase == requested.Phase
+		existing.CompactionCheckpoint == requested.CompactionCheckpoint &&
+		existing.SourceTurnCount == requested.SourceTurnCount
 }
 
 func sameContextCompactionRemovalEventIntent(existing, requested ContextCompactionRemovalEvent, branchID string) bool {

@@ -85,6 +85,7 @@ const ACTIVITY_ORDER_STORAGE_KEYS: Record<ActivityOrderScope, string> = {
 }
 const DEFAULT_IDE_ACTIVITY_ORDER: ActivityItemId[] = ['writing', 'agentchat', 'lore', 'teller', 'versions', 'books', 'skills', 'agents', 'automations']
 const DEFAULT_INTERACTIVE_ACTIVITY_ORDER: ActivityItemId[] = ['story', 'agentchat', 'timeline', 'lore', 'teller', 'versions', 'books', 'skills', 'agents', 'automations']
+// User-level width preference; it should survive reloads and development hot updates.
 const ACTIVITY_BAR_WIDTH_STORAGE_KEY = 'nova.layout.activityBarWidth'
 const ACTIVITY_BAR_COLLAPSED_WIDTH = 64
 const ACTIVITY_BAR_MIN_WIDTH = 112
@@ -185,10 +186,6 @@ export function WorkbenchShell({
     cleanupLegacyActivityOrderStorage()
     setActivityOrders(readStoredActivityOrders())
   }, [])
-
-  useEffect(() => {
-    storeActivityBarWidth(activityBarWidth)
-  }, [activityBarWidth])
 
   useEffect(() => {
     let cancelled = false
@@ -491,7 +488,9 @@ export function WorkbenchShell({
   }
 
   const resizeActivityBar = (nextWidth: number) => {
-    setActivityBarWidth(clampActivityBarWidth(nextWidth))
+    const clampedWidth = clampActivityBarWidth(nextWidth)
+    setActivityBarWidth(clampedWidth)
+    storeActivityBarWidth(clampedWidth)
   }
 
   const handleActivityBarResizePointerDown = (event: React.PointerEvent<HTMLDivElement>) => {

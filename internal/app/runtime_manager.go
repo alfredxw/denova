@@ -498,7 +498,7 @@ func (s *WorkspaceRuntimeManager) UpdateUserSettings(settings config.Settings, b
 }
 
 // UpdateAgentApprovalMode changes one user-scoped safety field atomically.
-// Composer and onboarding flows use this narrow mutation so they cannot
+// Composer and settings surfaces use this narrow mutation so they cannot
 // overwrite a concurrent full settings edit with a stale snapshot.
 func (a *App) UpdateAgentApprovalMode(mode config.AgentApprovalMode) (config.LayeredSettings, error) {
 	return a.runtime().UpdateAgentApprovalMode(mode)

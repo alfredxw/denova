@@ -52,6 +52,7 @@ describe('SkillsView', () => {
     const user = userEvent.setup()
     render(<SkillsView workspace="/books/demo" />)
 
+    expect(await screen.findByRole('separator', { name: '调整侧边栏宽度' })).toBeVisible()
     await user.click(await screen.findByRole('button', { name: '配置 Agent' }))
 
     expect(screen.getByTestId('config-manager-chat')).toBeInTheDocument()

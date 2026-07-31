@@ -18,10 +18,8 @@ describe('AgentApprovalProvider', () => {
     updateAgentApprovalMode.mockReset()
   })
 
-  it('requires a user-level first choice with Write preselected', async () => {
-    const user = userEvent.setup()
+  it('uses the effective Write default without prompting or persisting it', async () => {
     fetchSettings.mockResolvedValue(settingsSnapshot(undefined))
-    updateAgentApprovalMode.mockResolvedValue(settingsSnapshot('write'))
 
     render(
       <AgentApprovalProvider>
@@ -29,17 +27,12 @@ describe('AgentApprovalProvider', () => {
       </AgentApprovalProvider>,
     )
 
-    const dialog = await screen.findByRole('dialog')
-    expect(screen.getByRole('radio', { name: /Write/ })).toHaveAttribute('aria-checked', 'true')
-    expect(dialog).toHaveTextContent('这是执行前安全护栏')
-    await user.click(screen.getByRole('button', { name: '保存并继续' }))
-
-    await waitFor(() => expect(updateAgentApprovalMode).toHaveBeenCalledWith('write'))
-    await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument())
-    expect(screen.getByTestId('mode')).toHaveTextContent('write')
+    await waitFor(() => expect(screen.getByTestId('mode')).toHaveTextContent('write:true'))
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
+    expect(updateAgentApprovalMode).not.toHaveBeenCalled()
   })
 
-  it('does not reopen onboarding when the user already chose a mode', async () => {
+  it('keeps an existing explicit user mode without prompting', async () => {
     fetchSettings.mockResolvedValue(settingsSnapshot('ask'))
     render(
       <AgentApprovalProvider>
@@ -49,6 +42,26 @@ describe('AgentApprovalProvider', () => {
     await waitFor(() => expect(screen.getByTestId('mode')).toHaveTextContent('ask:true'))
     expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
   })
+
+  it('blocks initialization on load failure and recovers through retry', async () => {
+    const user = userEvent.setup()
+    fetchSettings
+      .mockRejectedValueOnce(new Error('offline'))
+      .mockResolvedValueOnce(settingsSnapshot(undefined))
+
+    render(
+      <AgentApprovalProvider>
+        <ModeProbe />
+      </AgentApprovalProvider>,
+    )
+
+    expect(await screen.findByRole('dialog')).toHaveTextContent('无法加载安全模式')
+    expect(screen.getByTestId('mode')).toHaveTextContent('write:false')
+    await user.click(screen.getByRole('button', { name: '重试' }))
+
+    await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument())
+    expect(screen.getByTestId('mode')).toHaveTextContent('write:true')
+  })
 })
 
 function ModeProbe() {
@@ -57,12 +70,13 @@ function ModeProbe() {
 }
 
 function settingsSnapshot(userMode: AgentApprovalMode | undefined): LayeredSettings {
+  const effectiveMode = userMode || 'write'
   return {
-    default: { agent_approval_mode: 'ask' },
+    default: { agent_approval_mode: 'write' },
     global: {},
-    user: userMode ? { agent_approval_mode: userMode } : {},
+    user: userMode ? { agent_approval_mode: userMode as AgentApprovalMode } : {},
     workspace: {},
-    effective: { agent_approval_mode: userMode || 'ask' },
+    effective: { agent_approval_mode: effectiveMode as AgentApprovalMode },
     paths: { denova_dir: '/tmp', nova_dir: '/tmp', user_config: '/tmp/config.toml', workspace_config: '' },
     resolved_agent_tool_manifests: {},
     resolved_agent_contexts: {},

@@ -12,7 +12,7 @@ import (
 	"path/filepath"
 	"strings"
 
-	"denova/internal/fsdurability"
+	"denova/internal/localfs"
 )
 
 type indexBody struct {
@@ -99,7 +99,7 @@ func writeAtomic(path string, data []byte, mode os.FileMode) error {
 		return err
 	}
 	cleanup = false
-	return fsdurability.SyncDirectory(filepath.Dir(path))
+	return localfs.SyncDirectory(filepath.Dir(path))
 }
 
 func removeIndex(path string) error {

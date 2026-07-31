@@ -7,7 +7,7 @@ import (
 	"strings"
 	"time"
 
-	"denova/internal/filelease"
+	"denova/internal/localfs"
 )
 
 // AcquireTriggerEvaluationLease serializes one task/state-key coordinator
@@ -44,7 +44,7 @@ func (s *Store) AcquireTriggerEvaluationLease(ctx context.Context, taskID, state
 			continue
 		}
 		leaseName := deterministicTriggerHash(taskID, stateKey) + ".lock"
-		return filelease.Acquire(ctx, filepath.Join(filepath.Dir(path), ".trigger-leases", leaseName))
+		return localfs.AcquireLease(ctx, filepath.Join(filepath.Dir(path), ".trigger-leases", leaseName))
 	}
 	return nil, fmt.Errorf("automation task %s not found", taskID)
 }
@@ -218,7 +218,7 @@ func (s *Store) EnsureInboxItem(ctx context.Context, item TriggerInboxItem) (Tri
 	}
 	unlock := storePathLocks.Lock(path)
 	defer unlock()
-	release, err := filelease.Acquire(ctx, path+".lock")
+	release, err := localfs.AcquireLease(ctx, path+".lock")
 	if err != nil {
 		return TriggerInboxItem{}, false, err
 	}

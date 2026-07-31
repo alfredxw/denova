@@ -86,9 +86,9 @@ func Evaluate(request Request) Decision {
 		return allow("structured_tool", RiskLow,
 			"结构化工具调用符合已启用的能力范围。 / The structured tool call is within its enabled capability.")
 	case agent.ToolMutationExternal:
-		if request.Mode == config.AgentApprovalYolo {
-			return allow("external_yolo", RiskHigh,
-				"Yolo 模式允许非 Shell 的外部副作用。 / Yolo mode allows this non-shell external side effect.")
+		if request.Mode == config.AgentApprovalFullAccess {
+			return allow("external_full_access", RiskHigh,
+				"Full access 模式允许非 Shell 的外部副作用。 / Full access mode allows this non-shell external side effect.")
 		}
 		if request.Mode == config.AgentApprovalWrite && isNetworkSource(request.Descriptor.Source) {
 			return allow("network_write_mode", RiskMedium,
@@ -125,9 +125,9 @@ func evaluateShell(request Request) Decision {
 		critical.Cwd = input.Cwd
 		return *critical
 	}
-	if request.Mode == config.AgentApprovalYolo {
-		result := allow("yolo_non_critical", RiskHigh,
-			"Yolo 模式允许此命令；它未命中极高危拦截规则。 / Yolo mode allows this command because it did not match a critical block rule.")
+	if request.Mode == config.AgentApprovalFullAccess {
+		result := allow("full_access_non_critical", RiskHigh,
+			"Full access 模式允许此命令；它未命中极高危拦截规则。 / Full access mode allows this command because it did not match a critical block rule.")
 		result.Command, result.Cwd = input.Command, input.Cwd
 		return result
 	}

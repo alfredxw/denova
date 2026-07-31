@@ -1,7 +1,7 @@
-// Package fsdurability centralizes cross-platform directory durability.
-// Callers must sync file contents before publishing a namespace mutation;
-// this package only flushes the containing directory where the OS supports it.
-package fsdurability
+// Package localfs centralizes cross-platform primitives required for correct
+// local-file persistence, including directory durability and file-backed
+// coordination. It does not own domain storage formats or mutation policy.
+package localfs
 
 import (
 	"errors"

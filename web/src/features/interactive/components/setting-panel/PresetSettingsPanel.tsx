@@ -623,12 +623,18 @@ export function PresetSettingsPanel({
           side: 'left',
           icon: <SlidersHorizontal className="h-3.5 w-3.5 shrink-0 text-[var(--nova-text-muted)]" />,
           content: directoryPanel,
-          desktopClassName: `min-h-0 border-r border-[var(--preset-line)] ${embedded ? 'w-56' : 'w-[280px]'}`,
+          desktopClassName: 'min-h-0 border-r border-[var(--preset-line)]',
           mobileClassName: embedded ? 'w-[min(86vw,320px)]' : 'w-[min(90vw,360px)]',
         }}
         className="h-full"
         mainClassName="min-h-0 min-w-0"
-        desktopGridClassName={embedded ? 'grid-cols-[14rem_minmax(0,1fr)]' : 'grid-cols-[280px_minmax(0,1fr)]'}
+        leftResize={{
+          layoutKey: embedded ? 'nova-embedded-preset-directory-layout' : 'nova-preset-directory-layout',
+          label: t('layout.resize.sidebar'),
+          defaultSize: embedded ? '224px' : '280px',
+          minSize: embedded ? '180px' : '220px',
+          maxSize: '42%',
+        }}
         collapseAt={embedded ? 760 : 820}
       >
         {({ isMobile, openLeft, closePane }) => {

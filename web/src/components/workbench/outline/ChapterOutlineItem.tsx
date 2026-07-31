@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { memo, useState } from 'react'
 import { BookOpen, CheckCircle2, Circle, Loader2 } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import type { ChapterSummary } from '@/lib/api'
@@ -20,7 +20,7 @@ interface ChapterOutlineItemProps {
  * 目录栏里的单个章节条目。
  * 根节点带 data-chapter-path，供「定位当前章节」在滚动容器内查找目标元素。
  */
-export function ChapterOutlineItem({
+export const ChapterOutlineItem = memo(function ChapterOutlineItem({
   chapter,
   active,
   onSelectFile,
@@ -90,4 +90,4 @@ export function ChapterOutlineItem({
       </div>
     </OutlineFileActions>
   )
-}
+})

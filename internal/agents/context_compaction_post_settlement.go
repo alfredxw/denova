@@ -158,32 +158,17 @@ func (o *postSettlementSessionCompactionOperation) Reconcile(context.Context) (C
 
 func sessionContextCompactionRecord(id, agentKind string, prepared preparedSessionContextCompaction) session.ContextCompaction {
 	result := prepared.Result
+	result.TriggerReason = contextCompactionTriggerReason(result.TriggerReason, result.Phase)
 	return session.ContextCompaction{
-		ID: id, AgentKind: agentKind, Epoch: result.Epoch, Summary: result.Summary,
+		ID: id, CompactionCheckpoint: NewContextCompactionCheckpoint(agentKind, result),
 		SourceStartIndex: prepared.SourceStartIndex, SourceEndIndex: prepared.SourceEndIndex,
-		SourceMessageCount: result.SourceMessageCount, RetainedTurns: result.RetainedTurns,
-		EstimatedTokensBefore:  result.EstimatedTokensBefore,
-		ObservedPromptTokens:   result.ObservedPromptTokens,
-		ObservedEstimateTokens: result.ObservedEstimateTokens,
-		TokensBefore:           result.TokensBefore, TokensAfter: result.TokensAfter, TargetRatio: result.TargetRatio,
-		ContextWindowTokens: result.ContextWindowTokens, Strategy: result.Strategy, Threshold: result.Threshold,
-		Reason: contextCompactionTriggerReason(result.TriggerReason, result.Phase), Phase: result.Phase,
-		CandidateFingerprint: result.CandidateFingerprint, CandidateGeneration: result.CandidateGeneration,
+		SourceMessageCount: result.SourceMessageCount,
 	}
 }
 
 func contextCompactionResultFromSessionRecord(record session.ContextCompaction) ContextCompactionResult {
-	result := ContextCompactionResult{
-		Triggered: true, Phase: record.Phase, TriggerReason: record.Reason,
-		EstimatedTokensBefore:  record.EstimatedTokensBefore,
-		ObservedPromptTokens:   record.ObservedPromptTokens,
-		ObservedEstimateTokens: record.ObservedEstimateTokens,
-		TokensBefore:           record.TokensBefore, TokensAfter: record.TokensAfter,
-		ContextWindowTokens: record.ContextWindowTokens, Strategy: record.Strategy, Threshold: record.Threshold,
-		Epoch: record.Epoch, Summary: record.Summary, TargetRatio: record.TargetRatio,
-		SourceMessageCount: record.SourceMessageCount, RetainedTurns: record.RetainedTurns,
-		CandidateFingerprint: record.CandidateFingerprint, CandidateGeneration: record.CandidateGeneration,
-	}
+	result := ContextCompactionResultFromCheckpoint(record.CompactionCheckpoint)
+	result.SourceMessageCount = record.SourceMessageCount
 	applyContextCompactionRecovery(&result)
 	return result
 }

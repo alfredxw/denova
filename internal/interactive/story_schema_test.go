@@ -7,6 +7,8 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"denova/internal/contextmaintenance"
 )
 
 func TestAppendTurnWithStatePersistsStateOpSchemaVersion(t *testing.T) {
@@ -122,12 +124,11 @@ func TestAppendContextCompactionRemovalIsAcceptedByStorySchema(t *testing.T) {
 		t.Fatal(err)
 	}
 	compaction, err := store.AppendContextCompaction(story.ID, "main", ContextCompactionEvent{
-		AgentKind:       "interactive",
-		Summary:         "较早剧情摘要",
+		CompactionCheckpoint: contextmaintenance.CompactionCheckpoint{
+			AgentKind: "interactive", Summary: "较早剧情摘要", RetainedTurns: 1,
+			TokensBefore: 1200, TokensAfter: 200,
+		},
 		SourceTurnCount: 1,
-		RetainedTurns:   1,
-		TokensBefore:    1200,
-		TokensAfter:     200,
 	})
 	if err != nil {
 		t.Fatal(err)

@@ -83,6 +83,28 @@ const testDOMRect = {
   toJSON: () => ({}),
 } as DOMRect
 
+const defaultElementBoundingClientRect = HTMLElement.prototype.getBoundingClientRect
+const testSeparatorDOMRect = {
+  ...testDOMRect,
+  top: 10_000,
+  left: 10_000,
+  right: 10_001,
+  bottom: 10_001,
+  x: 10_000,
+  y: 10_000,
+} as DOMRect
+
+// jsdom has no layout and otherwise places every separator at (0, 0), causing the global
+// react-resizable-panels pointer handler to consume unrelated user-event clicks.
+Object.defineProperty(HTMLElement.prototype, 'getBoundingClientRect', {
+  configurable: true,
+  writable: true,
+  value(this: HTMLElement) {
+    if (this.hasAttribute('data-separator')) return testSeparatorDOMRect
+    return defaultElementBoundingClientRect.call(this)
+  },
+})
+
 Object.defineProperty(Element.prototype, 'getClientRects', {
   configurable: true,
   value: () => [testDOMRect],

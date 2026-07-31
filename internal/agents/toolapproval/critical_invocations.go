@@ -7,7 +7,7 @@ import (
 
 // criticalInvocation covers path-qualified and wrapper-unwrapped commands that
 // regex rules cannot reliably anchor. It intentionally targets only host-level
-// destructive operations; ordinary project scripts remain a Yolo tradeoff.
+// destructive operations; ordinary project scripts remain a Full access tradeoff.
 func criticalInvocation(name string, args []string) *Decision {
 	if criticalHostControl(name, args) {
 		result := deny("critical_power_control", RiskCritical,

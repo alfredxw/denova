@@ -101,7 +101,7 @@ export function OutlineFileActions({
           {renderActions(actions, 'context')}
         </ContextMenuContent>
       </ContextMenu>
-      {onRenameItem ? (
+      {onRenameItem && renameOpen ? (
         <FileOperationDialog
           open={renameOpen}
           mode="rename"
@@ -111,7 +111,7 @@ export function OutlineFileActions({
           onSubmit={(newName) => onRenameItem(path, newName)}
         />
       ) : null}
-      {onDeleteItem ? (
+      {onDeleteItem && deleteOpen ? (
         <DeleteConfirmDialog
           open={deleteOpen}
           path={path}

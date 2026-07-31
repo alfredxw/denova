@@ -10,9 +10,22 @@ import type { Tab } from './TabController'
 const toastMock = vi.hoisted(() => ({ warning: vi.fn() }))
 const useDocumentReviewMock = vi.hoisted(() => vi.fn())
 const agentPanelLifecycle = vi.hoisted(() => ({ mounts: 0, unmounts: 0, renders: 0 }))
+const agentChatRouteLifecycle = vi.hoisted(() => ({ renders: 0 }))
 const markdownEditorLifecycle = vi.hoisted(() => ({ mounts: 0, unmounts: 0 }))
 const loreLibraryFlushMock = vi.hoisted(() => vi.fn(async () => true))
 const agentChatFlushMock = vi.hoisted(() => vi.fn(async () => true))
+const writingChangeReviewMock = vi.hoisted(() => ({
+  activeReviewThreadID: '',
+  activeReviewRequest: null,
+  reviewFeedback: null,
+  submittedReviewCommentIDs: new Set<string>(),
+  openChangeReview: vi.fn(),
+  closeChangeReview: vi.fn(),
+  selectReviewFeedback: vi.fn(),
+  removeReviewFeedback: vi.fn(),
+  submitReviewFeedback: vi.fn(),
+  restoreReviewFeedback: vi.fn(),
+}))
 
 function withAppProviders(ui: ReactNode) {
   return <TooltipProvider>{ui}</TooltipProvider>
@@ -59,14 +72,25 @@ vi.mock('@/components/Chat/AgentPanel', () => ({
 }))
 
 vi.mock('@/features/agent-chat/AgentChatRoute', () => ({
-  AgentChatRoute: ({ onFlushHandlerChange }: {
+  AgentChatRoute: ({ selectedFile, summary, onFlushHandlerChange }: {
+    selectedFile?: string | null
+    summary?: { title?: string } | null
     onFlushHandlerChange?: (handler: (() => Promise<boolean>) | null) => void
   }) => {
+    agentChatRouteLifecycle.renders += 1
     useEffect(() => {
       onFlushHandlerChange?.(agentChatFlushMock)
       return () => onFlushHandlerChange?.(null)
     }, [onFlushHandlerChange])
-    return <div data-testid="agent-chat-route">project-scoped agent route</div>
+    return (
+      <div
+        data-testid="agent-chat-route"
+        data-selected-file={selectedFile || ''}
+        data-summary-title={summary?.title || ''}
+      >
+        project-scoped agent route
+      </div>
+    )
   },
 }))
 
@@ -131,18 +155,7 @@ vi.mock('@/features/interactive/stores/interactive-store', () => ({
 }))
 
 vi.mock('@/features/changes/use-writing-change-review', () => ({
-  useWritingChangeReview: () => ({
-    activeReviewThreadID: '',
-    activeReviewRequest: null,
-    reviewFeedback: null,
-    submittedReviewCommentIDs: new Set<string>(),
-    openChangeReview: vi.fn(),
-    closeChangeReview: vi.fn(),
-    selectReviewFeedback: vi.fn(),
-    removeReviewFeedback: vi.fn(),
-    submitReviewFeedback: vi.fn(),
-    restoreReviewFeedback: vi.fn(),
-  }),
+  useWritingChangeReview: () => writingChangeReviewMock,
 }))
 
 vi.mock('@/features/document-review/use-document-review', () => ({
@@ -178,6 +191,7 @@ describe('ModeRouter autosave navigation policy', () => {
     agentPanelLifecycle.mounts = 0
     agentPanelLifecycle.unmounts = 0
     agentPanelLifecycle.renders = 0
+    agentChatRouteLifecycle.renders = 0
     markdownEditorLifecycle.mounts = 0
     markdownEditorLifecycle.unmounts = 0
     useDocumentReviewMock.mockReturnValue({
@@ -465,6 +479,29 @@ describe('ModeRouter autosave navigation policy', () => {
     expect(screen.getByRole('button', { name: 'agent panel state 1' })).toBeInTheDocument()
     expect(agentPanelLifecycle.mounts).toBe(1)
     expect(agentPanelLifecycle.unmounts).toBe(0)
+  })
+
+  it('keeps the retained AgentChat route inert during writing chapter switches', async () => {
+    const firstPath = 'chapters/ch01.md'
+    const secondPath = 'chapters/ch02.md'
+    const updatedSummary = { title: 'Updated Book' } as NonNullable<ComponentProps<typeof ModeRouter>['summary']>
+    const baseProps = modeRouterProps({ mode: 'agentchat', selectedFile: firstPath })
+    const { rerender } = render(withAppProviders(<ModeRouter {...baseProps} />))
+
+    const agentChatRoute = await screen.findByTestId('agent-chat-route')
+    expect(agentChatRoute).toHaveAttribute('data-selected-file', firstPath)
+
+    rerender(withAppProviders(<ModeRouter {...baseProps} mode="ide" />))
+    await waitFor(() => expect(agentChatRoute.closest('section')).toHaveAttribute('hidden'))
+    const rendersAfterHiding = agentChatRouteLifecycle.renders
+
+    rerender(withAppProviders(<ModeRouter {...baseProps} mode="ide" selectedFile={secondPath} summary={updatedSummary} />))
+    await act(async () => { await Promise.resolve() })
+    expect(agentChatRouteLifecycle.renders).toBe(rendersAfterHiding)
+
+    rerender(withAppProviders(<ModeRouter {...baseProps} mode="agentchat" selectedFile={secondPath} summary={updatedSummary} />))
+    await waitFor(() => expect(agentChatRoute).toHaveAttribute('data-selected-file', secondPath))
+    expect(agentChatRoute).toHaveAttribute('data-summary-title', updatedSummary.title)
   })
 
   it('keeps the text editor mounted while switching files so per-file view positions survive', async () => {

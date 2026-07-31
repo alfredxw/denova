@@ -238,6 +238,32 @@ describe('useWorkspace', () => {
     expect(screen.getByTestId('workspace-state')).toHaveTextContent('chapters/new.md|新内容')
   })
 
+  it('重复选择当前文件时复用已加载文档，不发起重复读取', async () => {
+    apiMock.readFile.mockResolvedValue({
+      workspace: '/books/demo',
+      path: 'chapters/ch01.md',
+      content: '章节正文',
+      revision: 'rev-1',
+    })
+
+    let workspace: ReturnType<typeof useWorkspace> | null = null
+    render(<WorkspaceHarness onChange={(value) => { workspace = value }} />)
+    await waitFor(() => expect(apiMock.getCurrentWorkspace).toHaveBeenCalled())
+
+    await act(async () => {
+      await workspace?.selectFile('chapters/ch01.md')
+    })
+    expect(apiMock.readFile).toHaveBeenCalledTimes(1)
+    apiMock.readFile.mockClear()
+
+    await act(async () => {
+      await workspace?.selectFile('chapters/ch01.md')
+    })
+
+    expect(apiMock.readFile).not.toHaveBeenCalled()
+    expect(screen.getByTestId('workspace-state')).toHaveTextContent('chapters/ch01.md|章节正文|rev-1')
+  })
+
   it('选择图像文件时不按文本读取，避免把二进制内容塞进编辑器状态', async () => {
     let workspace: ReturnType<typeof useWorkspace> | null = null
     render(<WorkspaceHarness onChange={(value) => { workspace = value }} />)

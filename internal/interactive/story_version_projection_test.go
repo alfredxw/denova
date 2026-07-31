@@ -3,6 +3,8 @@ package interactive
 import (
 	"errors"
 	"testing"
+
+	"denova/internal/contextmaintenance"
 )
 
 func TestSwitchTurnVersionRejectsHistoricalTurnWithoutMutatingParents(t *testing.T) {
@@ -87,7 +89,9 @@ func TestRejectedHistoricalVersionSwitchKeepsCompactionActive(t *testing.T) {
 	}
 	expected := second.ID
 	compaction, err := store.AppendContextCompaction(story.ID, "main", ContextCompactionEvent{
-		Summary: "大厅通往旋转楼梯。", SourceTurnCount: 2, RetainedTurns: 1, ExpectedParentID: &expected,
+		CompactionCheckpoint: contextmaintenance.CompactionCheckpoint{Summary: "大厅通往旋转楼梯。", RetainedTurns: 1},
+		SourceTurnCount:      2,
+		ExpectedParentID:     &expected,
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -132,7 +136,9 @@ func TestRejectedHistoricalVersionSwitchPreservesPrefixCompactionRemoval(t *test
 	}
 	expected := first.ID
 	compaction, err := store.AppendContextCompaction(story.ID, "main", ContextCompactionEvent{
-		Summary: "你已经进入钟楼。", SourceTurnCount: 1, RetainedTurns: 1, ExpectedParentID: &expected,
+		CompactionCheckpoint: contextmaintenance.CompactionCheckpoint{Summary: "你已经进入钟楼。", RetainedTurns: 1},
+		SourceTurnCount:      1,
+		ExpectedParentID:     &expected,
 	})
 	if err != nil {
 		t.Fatal(err)

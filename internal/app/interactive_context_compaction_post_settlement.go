@@ -70,17 +70,12 @@ func (c *interactiveConversation) PostSettlementContextStructuralSpec(
 		reason = "context_usage_threshold"
 	}
 	event := interactive.ContextCompactionEvent{
-		ID: recordID, AgentKind: config.AgentKindInteractiveStory,
-		Epoch: prepared.Result.Epoch, Summary: prepared.Result.Summary,
-		SourceTurnCount: prepared.SourceTurnCount, RetainedTurns: prepared.Result.RetainedTurns,
-		TokensBefore: prepared.Result.TokensBefore, TokensAfter: prepared.Result.TokensAfter,
-		TargetRatio: prepared.Result.TargetRatio, ContextWindowTokens: prepared.Result.ContextWindowTokens,
-		Strategy: prepared.Result.Strategy, Threshold: prepared.Result.Threshold,
-		Reason: reason, Phase: prepared.Result.Phase,
-		CandidateFingerprint: prepared.Result.CandidateFingerprint,
-		CandidateGeneration:  prepared.Result.CandidateGeneration,
+		ID:                   recordID,
+		CompactionCheckpoint: agents.NewContextCompactionCheckpoint(config.AgentKindInteractiveStory, prepared.Result),
+		SourceTurnCount:      prepared.SourceTurnCount,
 		ExpectedParentID:     &expectedParent,
 	}
+	event.TriggerReason = reason
 	options.StoryID = c.storyID
 	options.BranchID = branchID
 	ref := agents.ContextCompactionRef{

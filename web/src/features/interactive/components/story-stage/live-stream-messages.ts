@@ -45,6 +45,9 @@ export function streamMetadataFromPayload(payload: Record<string, unknown>): Par
   const runPath = Array.isArray(payload.run_path) ? payload.run_path.filter((item): item is string => typeof item === 'string') : undefined
   return {
     run_id: typeof payload.run_id === 'string' ? payload.run_id : undefined,
+    display_segment_id: typeof payload.display_segment_id === 'string' ? payload.display_segment_id : undefined,
+    display_phase: readStreamDisplayPhase(payload.display_phase),
+    agent_kind: typeof payload.agent_kind === 'string' ? payload.agent_kind : undefined,
     agent_name: typeof payload.agent_name === 'string' ? payload.agent_name : undefined,
     root_agent_name: typeof payload.root_agent_name === 'string' ? payload.root_agent_name : undefined,
     run_path: runPath,
@@ -52,6 +55,10 @@ export function streamMetadataFromPayload(payload: Record<string, unknown>): Par
     subagent_session_id: typeof payload.subagent_session_id === 'string' ? payload.subagent_session_id : undefined,
     subagent_type: typeof payload.subagent_type === 'string' ? payload.subagent_type : undefined,
   }
+}
+
+function readStreamDisplayPhase(value: unknown): ChatMessage['display_phase'] {
+  return value === 'candidate' || value === 'progress' || value === 'final' || value === 'partial' ? value : undefined
 }
 
 export function liveToolEventKeys(payload: Record<string, unknown>) {

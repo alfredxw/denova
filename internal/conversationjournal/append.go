@@ -8,7 +8,7 @@ import (
 	"log"
 	"os"
 
-	"denova/internal/filelease"
+	"denova/internal/localfs"
 )
 
 // Append durably publishes one transaction. The reducer is updated only after
@@ -28,7 +28,7 @@ func (journal *Journal) Append(ctx context.Context, guard Guard, payloads ...jso
 			return Commit{}, fmt.Errorf("conversation journal append record %d is invalid JSON", index+1)
 		}
 	}
-	release, err := filelease.Acquire(ctx, journal.path+".domain.lock")
+	release, err := localfs.AcquireLease(ctx, journal.path+".domain.lock")
 	if err != nil {
 		return Commit{}, fmt.Errorf("acquire conversation journal append lease: %w", err)
 	}
@@ -127,7 +127,7 @@ func (journal *Journal) RepairTail(ctx context.Context) error {
 	if ctx == nil {
 		ctx = context.Background()
 	}
-	release, err := filelease.Acquire(ctx, journal.path+".domain.lock")
+	release, err := localfs.AcquireLease(ctx, journal.path+".domain.lock")
 	if err != nil {
 		return err
 	}
@@ -161,7 +161,7 @@ func (journal *Journal) Close() (resultErr error) {
 	if journal == nil {
 		return nil
 	}
-	release, err := filelease.Acquire(context.Background(), journal.path+".domain.lock")
+	release, err := localfs.AcquireLease(context.Background(), journal.path+".domain.lock")
 	if err != nil {
 		return err
 	}

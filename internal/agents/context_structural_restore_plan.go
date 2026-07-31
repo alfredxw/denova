@@ -9,6 +9,7 @@ import (
 	"strings"
 
 	"denova/config"
+	"denova/internal/contextmaintenance"
 	runstate "github.com/alfredxw/denova/agent/runtime"
 )
 
@@ -55,39 +56,28 @@ type contextStructuralResultDescriptor struct {
 }
 
 type contextCompactionResultDescriptor struct {
-	Triggered                bool    `json:"triggered"`
-	SkippedReason            string  `json:"skipped_reason,omitempty"`
-	Phase                    string  `json:"phase,omitempty"`
-	TokensBefore             int     `json:"tokens_before,omitempty"`
-	TokensAfter              int     `json:"tokens_after,omitempty"`
-	ProjectedTokensBefore    int     `json:"projected_tokens_before,omitempty"`
-	ProjectedTokensAfter     int     `json:"projected_tokens_after,omitempty"`
-	ReservedCompletionTokens int     `json:"reserved_completion_tokens,omitempty"`
-	ReservedToolResultTokens int     `json:"reserved_tool_result_tokens,omitempty"`
-	ContextWindowTokens      int     `json:"context_window_tokens,omitempty"`
-	Strategy                 string  `json:"strategy,omitempty"`
-	Threshold                float64 `json:"threshold,omitempty"`
-	Epoch                    int     `json:"epoch,omitempty"`
-	Summary                  string  `json:"summary,omitempty"`
-	TargetRatio              float64 `json:"target_ratio,omitempty"`
-	SourceMessageCount       int     `json:"source_message_count,omitempty"`
-	MessageCountBefore       int     `json:"message_count_before,omitempty"`
-	MessageCountAfter        int     `json:"message_count_after,omitempty"`
-	RetainedTurns            int     `json:"retained_turns,omitempty"`
+	contextmaintenance.CompactionCheckpoint
+	Triggered                bool   `json:"triggered"`
+	SkippedReason            string `json:"skipped_reason,omitempty"`
+	ProjectedTokensBefore    int    `json:"projected_tokens_before,omitempty"`
+	ProjectedTokensAfter     int    `json:"projected_tokens_after,omitempty"`
+	ReservedCompletionTokens int    `json:"reserved_completion_tokens,omitempty"`
+	ReservedToolResultTokens int    `json:"reserved_tool_result_tokens,omitempty"`
+	SourceMessageCount       int    `json:"source_message_count,omitempty"`
+	MessageCountBefore       int    `json:"message_count_before,omitempty"`
+	MessageCountAfter        int    `json:"message_count_after,omitempty"`
 }
 
 func describeContextStructuralResult(result ContextStructuralResult) contextStructuralResultDescriptor {
 	compaction := result.Compaction
 	return contextStructuralResultDescriptor{
 		Compaction: contextCompactionResultDescriptor{
-			Triggered: compaction.Triggered, SkippedReason: compaction.SkippedReason, Phase: compaction.Phase,
-			TokensBefore: compaction.TokensBefore, TokensAfter: compaction.TokensAfter,
+			CompactionCheckpoint: NewContextCompactionCheckpoint("", compaction),
+			Triggered:            compaction.Triggered, SkippedReason: compaction.SkippedReason,
 			ProjectedTokensBefore: compaction.ProjectedTokensBefore, ProjectedTokensAfter: compaction.ProjectedTokensAfter,
 			ReservedCompletionTokens: compaction.ReservedCompletionTokens, ReservedToolResultTokens: compaction.ReservedToolResultTokens,
-			ContextWindowTokens: compaction.ContextWindowTokens, Strategy: compaction.Strategy, Threshold: compaction.Threshold,
-			Epoch: compaction.Epoch, Summary: compaction.Summary, TargetRatio: compaction.TargetRatio,
 			SourceMessageCount: compaction.SourceMessageCount, MessageCountBefore: compaction.MessageCountBefore,
-			MessageCountAfter: compaction.MessageCountAfter, RetainedTurns: compaction.RetainedTurns,
+			MessageCountAfter: compaction.MessageCountAfter,
 		},
 		Removed: result.Removed,
 	}
@@ -95,18 +85,19 @@ func describeContextStructuralResult(result ContextStructuralResult) contextStru
 
 func (descriptor contextStructuralResultDescriptor) result() ContextStructuralResult {
 	compaction := descriptor.Compaction
+	result := ContextCompactionResultFromCheckpoint(compaction.CompactionCheckpoint)
+	result.Triggered = compaction.Triggered
+	result.SkippedReason = compaction.SkippedReason
+	result.ProjectedTokensBefore = compaction.ProjectedTokensBefore
+	result.ProjectedTokensAfter = compaction.ProjectedTokensAfter
+	result.ReservedCompletionTokens = compaction.ReservedCompletionTokens
+	result.ReservedToolResultTokens = compaction.ReservedToolResultTokens
+	result.SourceMessageCount = compaction.SourceMessageCount
+	result.MessageCountBefore = compaction.MessageCountBefore
+	result.MessageCountAfter = compaction.MessageCountAfter
 	return ContextStructuralResult{
-		Compaction: ContextCompactionResult{
-			Triggered: compaction.Triggered, SkippedReason: compaction.SkippedReason, Phase: compaction.Phase,
-			TokensBefore: compaction.TokensBefore, TokensAfter: compaction.TokensAfter,
-			ProjectedTokensBefore: compaction.ProjectedTokensBefore, ProjectedTokensAfter: compaction.ProjectedTokensAfter,
-			ReservedCompletionTokens: compaction.ReservedCompletionTokens, ReservedToolResultTokens: compaction.ReservedToolResultTokens,
-			ContextWindowTokens: compaction.ContextWindowTokens, Strategy: compaction.Strategy, Threshold: compaction.Threshold,
-			Epoch: compaction.Epoch, Summary: compaction.Summary, TargetRatio: compaction.TargetRatio,
-			SourceMessageCount: compaction.SourceMessageCount, MessageCountBefore: compaction.MessageCountBefore,
-			MessageCountAfter: compaction.MessageCountAfter, RetainedTurns: compaction.RetainedTurns,
-		},
-		Removed: descriptor.Removed,
+		Compaction: result,
+		Removed:    descriptor.Removed,
 	}
 }
 

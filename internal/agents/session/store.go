@@ -12,7 +12,7 @@ import (
 	"sync"
 
 	"denova/internal/conversationjournal"
-	"denova/internal/filelease"
+	"denova/internal/localfs"
 )
 
 // Store 管理会话的 JSONL 文件持久化。
@@ -236,7 +236,7 @@ func (s *Store) closeCachedLocked(id string) error {
 // Store.mu keeps this Store's cache transition atomic; independent stores and
 // processes rendezvous on the file lease before unlinking the canonical inode.
 func removeSessionJournal(path string) (resultErr error) {
-	release, err := filelease.Acquire(context.Background(), path+".domain.lock")
+	release, err := localfs.AcquireLease(context.Background(), path+".domain.lock")
 	if err != nil {
 		return err
 	}

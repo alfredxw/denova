@@ -28,6 +28,35 @@ const tiptapMock = vi.hoisted(() => {
     insertContentAt: vi.fn(() => chainApi),
     run: vi.fn(() => true),
   }
+  const schema = {
+    nodeFromJSON: vi.fn((json: unknown) => ({
+      json,
+      content: { size: 100 },
+      textContent: '',
+      forEach: vi.fn(),
+    })),
+  }
+  const state = {
+    schema,
+    plugins: [],
+    doc: {
+      content: { size: 100 },
+      textContent: '',
+      forEach: vi.fn(),
+    },
+    selection: { from: 0, to: 0, head: 0, empty: true },
+    tr: {} as {
+      setMeta: ReturnType<typeof vi.fn>
+      replaceWith: ReturnType<typeof vi.fn>
+    },
+  }
+  state.tr = {
+    setMeta: vi.fn(),
+    replaceWith: vi.fn((_from: number, _to: number, doc: unknown) => ({
+      doc,
+      selection: state.selection,
+    })),
+  }
   const editor = {
     commands: {
       setContent: vi.fn(),
@@ -40,15 +69,17 @@ const tiptapMock = vi.hoisted(() => {
         characters: () => 0,
       },
     },
-    state: {
-      doc: {
-        content: { size: 100 },
-        textContent: '',
-        forEach: vi.fn(),
-      },
-      selection: { from: 0, to: 0, head: 0, empty: true },
-      tr: { setMeta: vi.fn() },
+    schema,
+    markdown: {
+      parse: vi.fn((source: string) => ({
+        type: 'doc',
+        content: [{
+          type: 'paragraph',
+          content: source ? [{ type: 'text', text: source }] : undefined,
+        }],
+      })),
     },
+    state,
     view: {
       dispatch: vi.fn(),
       updateState: vi.fn(),
@@ -59,6 +90,7 @@ const tiptapMock = vi.hoisted(() => {
     setEditable: vi.fn(),
     getText: () => tiptapMock.text,
     getMarkdown: () => tiptapMock.markdown,
+    getJSON: () => tiptapMock.json,
     getHTML: () => '',
     on: vi.fn((event: string, handler: (...args: unknown[]) => void) => {
       const set = handlers.get(event) ?? new Set()
@@ -74,6 +106,8 @@ const tiptapMock = vi.hoisted(() => {
     chainApi,
     handlers,
     useEditorOptions: null as unknown,
+    created: false,
+    json: { type: 'doc', content: [{ type: 'paragraph' }] },
     markdown: '',
     text: '',
     emit(event: string) {
@@ -82,6 +116,8 @@ const tiptapMock = vi.hoisted(() => {
     reset() {
       handlers.clear()
       this.useEditorOptions = null
+      this.created = false
+      this.json = { type: 'doc', content: [{ type: 'paragraph' }] }
       this.markdown = ''
       this.text = ''
       editor.state.selection = { from: 0, to: 0, head: 0, empty: true }
@@ -94,8 +130,12 @@ const tiptapMock = vi.hoisted(() => {
 
 vi.mock('@tiptap/react', () => ({
   EditorContent: () => <div data-testid="editor-content" />,
-  useEditor: (options: unknown) => {
+  useEditor: (options: { onCreate?: (payload: { editor: typeof tiptapMock.editor }) => void }) => {
     tiptapMock.useEditorOptions = options
+    if (!tiptapMock.created) {
+      tiptapMock.created = true
+      options.onCreate?.({ editor: tiptapMock.editor })
+    }
     return tiptapMock.editor
   },
 }))
@@ -1085,6 +1125,30 @@ describe('MarkdownEditor', () => {
     )
 
     expect(tiptapMock.editor.commands.setTextSelection).not.toHaveBeenCalled()
+  })
+
+  it('切回已解析章节时复用文档，原始内容变化后重新解析', () => {
+    const { rerender } = render(
+      <MarkdownEditor workspace="/books/demo" fileName="chapters/ch01.md" content="第一章" onSave={vi.fn()} />,
+    )
+    tiptapMock.editor.markdown.parse.mockClear()
+
+    rerender(
+      <MarkdownEditor workspace="/books/demo" fileName="chapters/ch02.md" content="第二章" onSave={vi.fn()} />,
+    )
+    rerender(
+      <MarkdownEditor workspace="/books/demo" fileName="chapters/ch01.md" content="第一章" onSave={vi.fn()} />,
+    )
+
+    expect(tiptapMock.editor.markdown.parse).toHaveBeenCalledTimes(1)
+    expect(tiptapMock.editor.markdown.parse).toHaveBeenLastCalledWith('第二章')
+
+    rerender(
+      <MarkdownEditor workspace="/books/demo" fileName="chapters/ch02.md" content="第二章（外部更新）" onSave={vi.fn()} />,
+    )
+
+    expect(tiptapMock.editor.markdown.parse).toHaveBeenCalledTimes(2)
+    expect(tiptapMock.editor.markdown.parse).toHaveBeenLastCalledWith('第二章（外部更新）')
   })
 
   it('切换文件后恢复各自的滚动位置', () => {

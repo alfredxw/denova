@@ -59,7 +59,14 @@ export function AgentChatWorkspaceSurface({
     <AdaptiveSurface
       className="h-full min-h-0"
       collapseAt={720}
-      desktopGridClassName="grid-cols-[auto_minmax(0,1fr)]"
+      leftResize={{
+        layoutKey: 'nova-agent-chat-activity-layout',
+        label: t('layout.resize.sidebar'),
+        defaultSize: '260px',
+        minSize: '200px',
+        maxSize: '36%',
+        mainMinSize: '320px',
+      }}
       left={{
         id: 'agent-chat-activity',
         side: 'left',
@@ -67,7 +74,6 @@ export function AgentChatWorkspaceSurface({
         content: sidebar,
         desktopClassName: 'h-full min-h-0 min-w-0',
         desktopVisible: sidebarVisible,
-        desktopSize: 'clamp(200px, 18vw, 280px)',
         desktopCollapsedSize: '40px',
         desktopCollapsedContent: rail,
       }}

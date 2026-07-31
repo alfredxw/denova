@@ -17,9 +17,9 @@ type browserArguments struct {
 // change remote state. The browser uses one external-mutation descriptor for
 // all actions, so its stable action schema is the narrowest reliable boundary.
 func evaluateBrowser(request Request) Decision {
-	if request.Mode == config.AgentApprovalYolo {
-		return allow("browser_yolo", RiskHigh,
-			"Yolo 模式允许此浏览器操作。 / Yolo mode allows this browser action.")
+	if request.Mode == config.AgentApprovalFullAccess {
+		return allow("browser_full_access", RiskHigh,
+			"Full access 模式允许此浏览器操作。 / Full access mode allows this browser action.")
 	}
 	var input browserArguments
 	if err := json.Unmarshal([]byte(request.Arguments), &input); err != nil {

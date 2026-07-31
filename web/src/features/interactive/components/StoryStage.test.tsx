@@ -26,10 +26,12 @@ const testMocks = vi.hoisted(() => ({
   getActiveInteractiveChatMock: vi.fn(),
   getInteractiveHistoryPageMock: vi.fn(),
   runInteractiveDirectorMock: vi.fn(),
+  setAgentApprovalModeMock: vi.fn(),
   sendInteractiveMessageMock: vi.fn(),
   streamActiveInteractiveChatMock: vi.fn(),
   submitInteractiveAgentCommandMock: vi.fn(),
   updateInteractiveTurnNarrativeMock: vi.fn(),
+  useAgentApprovalModeMock: vi.fn(),
   useSkillCommandsMock: vi.fn(),
 }))
 
@@ -37,13 +39,19 @@ const {
   generateInteractiveImageMock,
   getActiveInteractiveChatMock,
   getInteractiveHistoryPageMock,
+  setAgentApprovalModeMock,
   sendInteractiveMessageMock,
   updateInteractiveTurnNarrativeMock,
+  useAgentApprovalModeMock,
   useSkillCommandsMock,
 } = testMocks
 
 vi.mock('@/features/settings/api', () => ({
   fetchSettings: vi.fn().mockResolvedValue({ effective: {} }),
+}))
+
+vi.mock('@/features/agent-approval/AgentApprovalProvider', () => ({
+  useAgentApprovalMode: () => testMocks.useAgentApprovalModeMock(),
 }))
 
 vi.mock('@/hooks/useSkillCommands', () => ({
@@ -68,6 +76,13 @@ vi.mock('../api', () => ({
 beforeEach(() => {
   resetStoryStageTestHarness(testMocks)
   getInteractiveHistoryPageMock.mockReset()
+  setAgentApprovalModeMock.mockReset().mockResolvedValue(true)
+  useAgentApprovalModeMock.mockReset().mockReturnValue({
+    mode: 'write',
+    initialized: true,
+    saving: false,
+    setMode: setAgentApprovalModeMock,
+  })
 })
 
 describe('StoryStage store subscriptions', () => {
@@ -114,6 +129,61 @@ describe('StoryStage TurnResult choices', () => {
 		expect(modelSelector.compareDocumentPosition(choiceControl)).toBe(Node.DOCUMENT_POSITION_FOLLOWING)
 		expect(choiceControl.compareDocumentPosition(sendAction)).toBe(Node.DOCUMENT_POSITION_FOLLOWING)
 	})
+
+  it('keeps the default safety mode inside the game composer options menu', async () => {
+    const user = userEvent.setup()
+    render(
+      <VirtuosoMockContext.Provider value={{ viewportHeight: 1200, itemHeight: 120 }}>
+        <StoryStage
+          workspace="/tmp/book"
+          stories={[story()]}
+          story={story()}
+          tellers={[]}
+          storyId="story-1"
+          branchId="main"
+          snapshot={{ story_id: 'story-1', branch_id: 'main', turns: [], state: {} }}
+          onDone={() => undefined}
+        />
+      </VirtuosoMockContext.Provider>,
+    )
+
+    expect(screen.queryByRole('button', { name: 'Agent 安全模式: Write' })).not.toBeInTheDocument()
+    expect(setAgentApprovalModeMock).not.toHaveBeenCalled()
+
+    fireEvent.pointerDown(screen.getByRole('button', { name: '输入动作' }))
+    const safetyModeOption = await screen.findByRole('menuitem', { name: 'Agent 安全模式: Write' })
+    await user.hover(safetyModeOption)
+    fireEvent.click(await screen.findByRole('menuitem', { name: /Full access/ }))
+
+    await waitFor(() => expect(setAgentApprovalModeMock).toHaveBeenCalledWith('full_access'))
+  })
+
+  it('blocks new game runs until the safety mode is initialized', () => {
+    useAgentApprovalModeMock.mockReturnValue({
+      mode: 'write',
+      initialized: false,
+      saving: false,
+      setMode: setAgentApprovalModeMock,
+    })
+    render(
+      <VirtuosoMockContext.Provider value={{ viewportHeight: 1200, itemHeight: 120 }}>
+        <StoryStage
+          workspace="/tmp/book"
+          stories={[story()]}
+          story={story()}
+          tellers={[]}
+          storyId="story-1"
+          branchId="main"
+          snapshot={{ story_id: 'story-1', branch_id: 'main', turns: [], state: {} }}
+          onDone={() => undefined}
+        />
+      </VirtuosoMockContext.Provider>,
+    )
+
+    expect(getStageInput()).toHaveAttribute('aria-disabled', 'true')
+    expect(screen.getByRole('button', { name: '发送' })).toBeDisabled()
+    expect(screen.queryByRole('button', { name: /Agent 安全模式/ })).not.toBeInTheDocument()
+  })
 
 	it('uses persisted TurnResult choices and only reveals them after the user opens the panel', async () => {
 		const user = userEvent.setup()
@@ -504,7 +574,10 @@ describe('StoryStage composer', () => {
     render(<StoryStageHarness />)
 
     await user.type(getStageInput(), '/story')
-    await user.click(screen.getByText('/story-beat'))
+    const skillCommand = screen.getByText('/story-beat')
+    expect(skillCommand.closest('[cmdk-item]')).toHaveClass('whitespace-nowrap', 'sm:min-h-9')
+    expect(screen.getByText('推进节拍')).toHaveClass('truncate')
+    await user.click(skillCommand)
 
     const textbox = getStageInput()
     expect(within(textbox).getByText('/story-beat')).toHaveClass('nova-composer-token')

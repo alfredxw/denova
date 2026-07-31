@@ -15,7 +15,7 @@ import (
 	"time"
 
 	"denova/internal/conversationjournal"
-	"denova/internal/fsdurability"
+	"denova/internal/localfs"
 )
 
 const (
@@ -370,7 +370,7 @@ func appendStoryRecord(path string, line []byte) error {
 	if writeErr != nil || syncErr != nil || closeErr != nil {
 		return &storyAppendRecordError{writeErr: writeErr, syncErr: syncErr, closeErr: closeErr}
 	}
-	if err := fsdurability.SyncDirectory(filepath.Dir(path)); err != nil {
+	if err := localfs.SyncDirectory(filepath.Dir(path)); err != nil {
 		return &storyAppendRecordError{directoryErr: err}
 	}
 	return nil
@@ -422,5 +422,5 @@ func repairTornStoryTail(path string, validBytes int64) error {
 	if repairErr != nil || closeErr != nil {
 		return errors.Join(repairErr, closeErr)
 	}
-	return fsdurability.SyncDirectory(filepath.Dir(path))
+	return localfs.SyncDirectory(filepath.Dir(path))
 }

@@ -9,7 +9,7 @@ import (
 	"strings"
 	"time"
 
-	"denova/internal/fsdurability"
+	"denova/internal/localfs"
 )
 
 func writeAll(file *os.File, data []byte) error {
@@ -45,7 +45,7 @@ func appendAndSync(path string, validOffset int64, needsNewline bool, line []byt
 	if writeErr != nil || syncErr != nil || closeErr != nil {
 		return Location{}, 0, errors.Join(writeErr, syncErr, closeErr)
 	}
-	if err := fsdurability.SyncDirectory(filepath.Dir(path)); err != nil {
+	if err := localfs.SyncDirectory(filepath.Dir(path)); err != nil {
 		return Location{}, 0, err
 	}
 	return Location{Offset: start, Length: len(line)}, validOffset + int64(len(payload)), nil
@@ -78,7 +78,7 @@ func preserveAndTruncateTail(path string, validOffset int64, tail []byte) error 
 	if truncateErr != nil || closeErr != nil {
 		return errors.Join(truncateErr, closeErr)
 	}
-	if err := fsdurability.SyncDirectory(filepath.Dir(path)); err != nil {
+	if err := localfs.SyncDirectory(filepath.Dir(path)); err != nil {
 		return err
 	}
 	return nil

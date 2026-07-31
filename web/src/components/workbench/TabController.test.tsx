@@ -42,7 +42,7 @@ describe('TabController', () => {
     expect(loreTab).not.toHaveAttribute('title')
     expect(loreTab).toHaveAttribute('aria-selected', 'true')
     expect(loreTab.className).toContain('aria-selected:bg-[var(--nova-active)]')
-    expect(loreTab).toHaveClass('min-w-28', 'max-w-40', 'flex-[1_1_10rem]')
+    expect(loreTab.parentElement).toHaveClass('min-w-28', 'max-w-40', 'flex-[1_1_10rem]')
     expect(screen.getByRole('tablist')).toHaveClass('overflow-x-auto', '[&::-webkit-scrollbar]:hidden')
   })
 
@@ -81,7 +81,11 @@ describe('TabController', () => {
       />,
     )
 
-    fireEvent.click(screen.getByRole('button', { name: '关闭 beta.md' }))
+    const tab = screen.getByRole('tab', { name: /beta.md/ })
+    const closeButton = screen.getByRole('button', { name: '关闭 beta.md' })
+    expect(tab).not.toContainElement(closeButton)
+
+    fireEvent.click(closeButton)
 
     expect(onActivateTab).not.toHaveBeenCalled()
     expect(onCloseTab).toHaveBeenCalledWith(tabs[1])

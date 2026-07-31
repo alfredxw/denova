@@ -774,8 +774,9 @@ func TestInteractiveConversationUsesDefaultCompactionRetainedTurns(t *testing.T)
 		}
 	}
 	if _, err := store.AppendContextCompaction(story.ID, "main", interactive.ContextCompactionEvent{
-		AgentKind:       config.AgentKindInteractiveStory,
-		Summary:         "压缩摘要：主角已进入旧城。",
+		CompactionCheckpoint: agents.NewContextCompactionCheckpoint(config.AgentKindInteractiveStory, agents.ContextCompactionResult{
+			Summary: "压缩摘要：主角已进入旧城。",
+		}),
 		SourceTurnCount: 10,
 	}); err != nil {
 		t.Fatal(err)
@@ -817,8 +818,9 @@ func TestInteractiveDirectorInstructionUsesModelVisibleCompactedHistory(t *testi
 		}
 	}
 	if _, err := store.AppendContextCompaction(story.ID, "main", interactive.ContextCompactionEvent{
-		AgentKind:       config.AgentKindInteractiveStory,
-		Summary:         "压缩摘要：主角已进入旧城。",
+		CompactionCheckpoint: agents.NewContextCompactionCheckpoint(config.AgentKindInteractiveStory, agents.ContextCompactionResult{
+			Summary: "压缩摘要：主角已进入旧城。",
+		}),
 		SourceTurnCount: 10,
 	}); err != nil {
 		t.Fatal(err)
@@ -869,8 +871,8 @@ func TestInteractiveTurnHistoryWithCompactionUsesSingleCheckpointAndRetainedTail
 		{User: "第5次行动", Narrative: "第5段剧情"},
 	}
 	compaction := &interactive.ContextCompactionEvent{
-		Summary:         "压缩摘要：主角已进入旧城。",
-		SourceTurnCount: 3,
+		CompactionCheckpoint: agents.NewContextCompactionCheckpoint("", agents.ContextCompactionResult{Summary: "压缩摘要：主角已进入旧城。"}),
+		SourceTurnCount:      3,
 	}
 	history := buildInteractiveTurnHistoryWithCompaction(turns, compaction, 1)
 	if history.PreviousSummary != "" {
@@ -894,8 +896,8 @@ func TestInteractiveTurnHistoryWithCompactionRetainsSourceTailImmediatelyAfterCo
 		{User: "第3次行动", Narrative: "第3段剧情"},
 	}
 	compaction := &interactive.ContextCompactionEvent{
-		Summary:         "压缩摘要：主角已进入旧城。",
-		SourceTurnCount: len(turns),
+		CompactionCheckpoint: agents.NewContextCompactionCheckpoint("", agents.ContextCompactionResult{Summary: "压缩摘要：主角已进入旧城。"}),
+		SourceTurnCount:      len(turns),
 	}
 	history := buildInteractiveTurnHistoryWithCompaction(turns, compaction, 2)
 	if history.PreviousSummary != "" {
@@ -913,8 +915,8 @@ func TestInteractiveCompactionSourceUsesOnlyTurnsAfterPreviousCompaction(t *test
 		{ID: "turn-3", BranchID: "main", User: "新增行动3", Narrative: "新增剧情3"},
 	}
 	compaction := &interactive.ContextCompactionEvent{
-		Summary:         "旧压缩摘要：前两回合已整理。",
-		SourceTurnCount: 2,
+		CompactionCheckpoint: agents.NewContextCompactionCheckpoint("", agents.ContextCompactionResult{Summary: "旧压缩摘要：前两回合已整理。"}),
+		SourceTurnCount:      2,
 	}
 	source, checkpoint := interactiveCompactionSource(turns, compaction)
 	if checkpoint != compaction.Summary {

@@ -5,8 +5,8 @@ import (
 	"os"
 	"path/filepath"
 
-	"denova/internal/fsdurability"
 	"denova/internal/keyedlock"
+	"denova/internal/localfs"
 )
 
 // storePathLocks coordinates all Store instances in this process. Stores are
@@ -81,7 +81,7 @@ func durableWriteJSON(path string, data []byte, perm os.FileMode) (err error) {
 	if err = os.Rename(tmpPath, path); err != nil {
 		return err
 	}
-	if err := fsdurability.SyncDirectory(dir); err != nil {
+	if err := localfs.SyncDirectory(dir); err != nil {
 		return fmt.Errorf("sync automation store directory: %w", err)
 	}
 	return nil

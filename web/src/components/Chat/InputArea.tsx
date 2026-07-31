@@ -1,8 +1,7 @@
 import { useState, useRef, useEffect, useLayoutEffect, useMemo, useCallback, type ReactNode } from 'react'
 import type { LucideIcon } from 'lucide-react'
-import { Archive, BadgeHelp, BarChart3, Check, ClipboardList, Command as CommandIcon, Eraser, List, PencilLine, ScrollText, ShieldQuestion, Sparkles, Zap } from 'lucide-react'
+import { Archive, BadgeHelp, BarChart3, ClipboardList, Eraser, List, ScrollText, Sparkles } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
-import { toast } from 'sonner'
 import { FileReferencePicker, type ReferencePickerItem } from './FileReferencePicker'
 import { TokenUsageDialog, type TokenUsageRecord } from './TokenUsagePanel'
 import type { AgentRuntimeQueuedCommand, TextSelection } from '@/lib/api'
@@ -12,14 +11,6 @@ import { AgentComposerShell } from './AgentComposerShell'
 import { ModelProfileSwitcher } from './ModelProfileSwitcher'
 import { ComposerTokenInput, type ComposerTokenInputHandle, type ComposerTokenSpec, type ComposerTrigger } from './composer-token-input'
 import { workspaceFileName } from '@/lib/workspace-path'
-import {
-  Command,
-  CommandEmpty,
-  CommandGroup,
-  CommandItem,
-  CommandList,
-} from '@/components/ui/command'
-import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
 import { DropdownMenu, DropdownMenuCheckboxItem, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from '@/components/ui/dropdown-menu'
 import { useKeyboardInset } from '@/hooks/useKeyboardInset'
 import { useIsMobile } from '@/hooks/useIsMobile'
@@ -27,7 +18,8 @@ import { ReviewFeedbackTray, reviewFeedbackCommentCount, type ReviewFeedbackBatc
 import { AgentComposerControls } from './AgentComposerControls'
 import { AgentQueuedCommandList } from './AgentQueuedCommandList'
 import { useAgentApprovalMode } from '@/features/agent-approval/AgentApprovalProvider'
-import type { AgentApprovalMode } from '@/features/settings/types'
+import { AgentApprovalModeMenu } from '@/features/agent-approval/AgentApprovalModeMenu'
+import { InputCommandMenu, type InputCommandOption } from './InputCommandMenu'
 
 /** 可用命令列表 */
 const COMMANDS: Array<{ cmd: string; descKey: string; hintKey: string; icon: LucideIcon }> = [
@@ -41,14 +33,6 @@ const COMMANDS: Array<{ cmd: string; descKey: string; hintKey: string; icon: Luc
 interface SkillCommand {
   name: string
   description: string
-}
-
-type CommandOption = {
-  cmd: string
-  description: string
-  hint: string
-  icon: LucideIcon
-  source: 'builtin' | 'skill'
 }
 
 type CommandScope = 'all' | 'skills' | 'none'
@@ -180,12 +164,11 @@ export function InputArea({
   const inputRef = useRef<ComposerTokenInputHandle>(null)
   const rootRef = useRef<HTMLDivElement>(null)
   const submittingRef = useRef(false)
-  const commandItemRefs = useRef<Array<HTMLDivElement | null>>([])
   const effectiveCommandScope: CommandScope = commandsEnabled ? commandScope : 'none'
   const defaultPlaceholder = skills.length > 0 && effectiveCommandScope !== 'none'
     ? t('chat.input.placeholderWithSkills')
     : t('chat.input.placeholder')
-  const allCommands = useMemo<CommandOption[]>(() => {
+  const allCommands = useMemo<InputCommandOption[]>(() => {
     const allowedBuiltinCommands = builtinCommands ? new Set<string>(builtinCommands) : null
     const staticCommands = effectiveCommandScope === 'all'
       ? COMMANDS
@@ -247,12 +230,6 @@ export function InputArea({
   )
   // Preserve stop controls for legacy callers that still model an active run as `disabled`.
   const isGenerationActive = generationActive ?? Boolean(disabled && onStop)
-  const [displayedApprovalMode, setDisplayedApprovalMode] = useState<AgentApprovalMode>(approval.mode)
-
-  useEffect(() => {
-    if (!isGenerationActive) setDisplayedApprovalMode(approval.mode)
-  }, [approval.mode, isGenerationActive])
-
   useEffect(() => {
     if (!draftKey) return
     setValue(inputDrafts.get(draftKey) || '')
@@ -281,11 +258,6 @@ export function InputArea({
   useEffect(() => {
     if (activeCommandIndex >= filteredCommands.length) setActiveCommandIndex(0)
   }, [activeCommandIndex, filteredCommands.length])
-
-  useEffect(() => {
-    if (!showCommands || filteredCommands.length === 0) return
-    commandItemRefs.current[activeCommandIndex]?.scrollIntoView({ block: 'nearest' })
-  }, [activeCommandIndex, filteredCommands.length, showCommands])
 
   useEffect(() => {
     if (!inputPrefill) return
@@ -464,13 +436,6 @@ export function InputArea({
     }
   }
 
-  const handleApprovalModeChange = (next: AgentApprovalMode) => {
-    if (isGenerationActive || approval.saving || next === approval.mode) return
-    void approval.setMode(next).then((saved) => {
-      if (!saved) toast.error(t('agentApproval.input.changeFailed'))
-    })
-  }
-
   const handleContextAnalyze = () => {
     if (disabled) return
     void onContextAnalyze?.(value)
@@ -524,49 +489,15 @@ export function InputArea({
       style={floating ? { bottom: keyboardInset } : undefined}
       className={floating ? 'nova-chat-input-area nova-chat-input-area-floating' : 'nova-chat-input-area relative border-t border-[var(--nova-border)] p-3'}
     >
-      <Popover open={showCommands && filteredCommands.length > 0}>
-        <PopoverTrigger asChild>
-          <span className="absolute bottom-full left-3 h-0 w-0" />
-        </PopoverTrigger>
-        <PopoverContent
-          align="start"
-          side="top"
-          className="nova-command-menu mb-2 w-[384px] overflow-hidden rounded-lg border border-[var(--nova-border)] p-0 text-[var(--nova-text)]"
-          onOpenAutoFocus={(event) => event.preventDefault()}
-        >
-          <Command shouldFilter={false} className="bg-transparent">
-            <div className="border-b border-[var(--nova-border-soft)] px-3 py-2">
-              <div className="flex items-center justify-between gap-3">
-                <div className="flex min-w-0 items-center gap-2">
-                  <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-md border border-[var(--nova-border)] bg-[var(--nova-surface-2)] text-[var(--nova-text-muted)]">
-                    <CommandIcon className="h-3.5 w-3.5" />
-                  </span>
-                  <div className="min-w-0">
-                    <div className="text-xs font-medium text-[var(--nova-text)]">{t('chat.commands.title')}</div>
-                    <div className="text-[11px] text-[var(--nova-text-faint)]">
-                      {effectiveCommandScope === 'skills' ? t('chat.commands.skillsDescription') : t('chat.commands.description')}
-                    </div>
-                  </div>
-                </div>
-                <kbd className="shrink-0 rounded border border-[var(--nova-border)] bg-[var(--nova-surface-2)] px-1.5 py-0.5 font-mono text-[10px] text-[var(--nova-text-faint)]">/</kbd>
-              </div>
-            </div>
-            <CommandList className="max-h-[312px] p-1.5">
-              <CommandEmpty className="py-5 text-center text-xs text-[var(--nova-text-faint)]">{t('chat.commands.empty')}</CommandEmpty>
-              {filteredBuiltinCommands.length > 0 ? (
-                <CommandGroup heading={t('chat.commands.group')} className="[&_[cmdk-group-heading]]:px-2 [&_[cmdk-group-heading]]:pb-1 [&_[cmdk-group-heading]]:pt-1 [&_[cmdk-group-heading]]:text-[11px] [&_[cmdk-group-heading]]:text-[var(--nova-text-faint)]">
-                  {filteredBuiltinCommands.map(({ command, index }) => renderCommandItem(command, index))}
-                </CommandGroup>
-              ) : null}
-              {filteredSkillCommands.length > 0 ? (
-                <CommandGroup heading={t('chat.commands.skillsGroup')} className="[&_[cmdk-group-heading]]:px-2 [&_[cmdk-group-heading]]:pb-1 [&_[cmdk-group-heading]]:pt-2 [&_[cmdk-group-heading]]:text-[11px] [&_[cmdk-group-heading]]:text-[var(--nova-text-faint)]">
-                  {filteredSkillCommands.map(({ command, index }) => renderCommandItem(command, index))}
-                </CommandGroup>
-              ) : null}
-            </CommandList>
-          </Command>
-        </PopoverContent>
-      </Popover>
+      <InputCommandMenu
+        open={showCommands && filteredCommands.length > 0}
+        skillsOnly={effectiveCommandScope === 'skills'}
+        builtinCommands={filteredBuiltinCommands}
+        skillCommands={filteredSkillCommands}
+        activeIndex={activeCommandIndex}
+        onActiveIndexChange={setActiveCommandIndex}
+        onSelect={(command) => selectCommand(command.cmd)}
+      />
 
       <FileReferencePicker
         open={referenceQuery !== null && (fileSuggestions.length > 0 || loreSuggestions.length > 0)}
@@ -665,7 +596,7 @@ export function InputArea({
                   type="button"
                   size="icon-sm"
                   className="nova-agent-composer-icon h-8 w-8 shrink-0 rounded-[10px] border border-[var(--nova-border)] bg-[var(--nova-surface)] text-[var(--nova-text-muted)] hover:bg-[var(--nova-hover)] hover:text-[var(--nova-text)] disabled:opacity-45"
-                  disabled={!onTogglePlanMode && !writingSkillControl && !onContextAnalyze && tokenUsageMessages.length === 0 && !approval.initialized}
+                  disabled={!onTogglePlanMode && !writingSkillControl && !onContextAnalyze && tokenUsageMessages.length === 0}
                   aria-label={t('chat.input.actions')}
                   title={t('chat.input.actions')}
                 >
@@ -686,31 +617,6 @@ export function InputArea({
                       <span className="min-w-0 flex-1">{t('chat.plan.short')}</span>
                       <span className="order-3 ml-auto shrink-0 text-[10px] text-[var(--nova-text-faint)]">Shift+Tab</span>
                     </DropdownMenuCheckboxItem>
-                    <DropdownMenuSeparator className="bg-[var(--nova-border-soft)]" />
-                  </>
-                ) : null}
-                {approval.initialized ? (
-                  <>
-                    <div className="px-1.5 pb-1 pt-0.5 text-[10px] font-medium uppercase tracking-[0.12em] text-[var(--nova-text-faint)]">
-                      {t('agentApproval.input.section')}
-                    </div>
-                    {([
-                      ['ask', ShieldQuestion],
-                      ['write', PencilLine],
-                      ['yolo', Zap],
-                    ] as const).map(([mode, Icon]) => (
-                      <DropdownMenuItem
-                        key={mode}
-                        disabled={isGenerationActive || approval.saving}
-                        onSelect={() => handleApprovalModeChange(mode)}
-                        title={isGenerationActive ? t('agentApproval.input.changeBlocked') : undefined}
-                        className="cursor-pointer text-xs focus:bg-[var(--nova-active)] focus:text-[var(--nova-text)]"
-                      >
-                        <Icon className="h-3.5 w-3.5" />
-                        <span className="min-w-0 flex-1">{t(`agentApproval.mode.${mode}.label`)}</span>
-                        {approval.mode === mode && <Check className="h-3.5 w-3.5 text-[var(--nova-text-muted)]" />}
-                      </DropdownMenuItem>
-                    ))}
                     <DropdownMenuSeparator className="bg-[var(--nova-border-soft)]" />
                   </>
                 ) : null}
@@ -744,16 +650,7 @@ export function InputArea({
                 {t('chat.plan.short')}
               </span>
             ) : null}
-            {approval.initialized ? (
-              <span
-                className="inline-flex h-8 shrink-0 items-center gap-1.5 border-l border-[var(--nova-border-soft)] pl-2 text-sm text-[var(--nova-text-muted)]"
-                aria-label={`${t('agentApproval.input.section')}: ${t(`agentApproval.mode.${displayedApprovalMode}.label`)}`}
-                title={isGenerationActive ? t('agentApproval.input.changeBlocked') : t(`agentApproval.mode.${displayedApprovalMode}.description`)}
-              >
-                {displayedApprovalMode === 'ask' ? <ShieldQuestion className="h-3.5 w-3.5" /> : displayedApprovalMode === 'write' ? <PencilLine className="h-3.5 w-3.5" /> : <Zap className="h-3.5 w-3.5" />}
-                {t(`agentApproval.mode.${displayedApprovalMode}.label`)}
-              </span>
-            ) : null}
+            <AgentApprovalModeMenu runActive={isGenerationActive} />
             <TokenUsageDialog open={tokenUsageOpen} messages={tokenUsageMessages} onOpenChange={setTokenUsageOpen} onOpenTrace={onOpenTrace} />
           </>
         }
@@ -775,36 +672,6 @@ export function InputArea({
     </div>
   )
 
-  function renderCommandItem({ cmd, description, hint, icon: Icon }: CommandOption, index: number) {
-    const active = index === activeCommandIndex
-    return (
-      <CommandItem
-        key={cmd}
-        ref={(element) => { commandItemRefs.current[index] = element }}
-        value={cmd}
-        onMouseEnter={() => setActiveCommandIndex(index)}
-        onSelect={() => selectCommand(cmd)}
-        className={`group min-h-12 cursor-pointer rounded-md border px-2.5 py-2 text-[var(--nova-text-muted)] ${
-          active
-            ? 'border-[var(--nova-border)] bg-[var(--nova-active)] text-[var(--nova-text)]'
-            : 'border-transparent hover:border-[var(--nova-border)] hover:bg-[var(--nova-hover)]'
-        }`}
-      >
-        <span className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-md border bg-[var(--nova-surface-2)] ${
-          active ? 'border-[var(--nova-border)] text-[var(--nova-text)]' : 'border-[var(--nova-border)] text-[var(--nova-text-faint)]'
-        }`}>
-          <Icon className="h-3.5 w-3.5" />
-        </span>
-        <span className="min-w-0 flex-1">
-          <span className="flex items-center gap-2">
-            <span className="font-mono text-xs text-[var(--nova-text)]">{cmd}</span>
-            <span className="truncate text-xs text-[var(--nova-text-muted)]">{description}</span>
-          </span>
-          <span className="mt-0.5 block text-[11px] text-[var(--nova-text-faint)]">{hint}</span>
-        </span>
-      </CommandItem>
-    )
-  }
 }
 
 function isNativeComposingKeyboardEvent(event: KeyboardEvent) {

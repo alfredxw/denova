@@ -10,7 +10,7 @@ import (
 	"io"
 	"os"
 
-	"denova/internal/filelease"
+	"denova/internal/localfs"
 )
 
 // ReadRange reads a stable physical range without touching the domain
@@ -22,7 +22,7 @@ func (journal *Journal) ReadRange(ctx context.Context, selected Range) ([]Record
 	if ctx == nil {
 		ctx = context.Background()
 	}
-	release, err := filelease.Acquire(ctx, journal.path+".domain.lock")
+	release, err := localfs.AcquireLease(ctx, journal.path+".domain.lock")
 	if err != nil {
 		return nil, err
 	}

@@ -188,6 +188,13 @@ export function agentSubAgentSessionKey(view: AgentMessageView) {
 }
 
 export function agentViewStableKey(view: AgentMessageView) {
+  const runID = view.metadata.run_id?.trim()
+  const segmentID = view.metadata.display_segment_id?.trim()
+  if (runID && segmentID) return `${view.kind}:run:${runID}:segment:${segmentID}`
+  if (runID && (view.kind === 'tool' || view.kind === 'tool-result') && view.partId) {
+    const scope = agentSubAgentSessionKey(view) || 'root'
+    return `${view.kind}:run:${runID}:scope:${scope}:part:${view.partId}`
+  }
   return `${view.kind}:${view.messageId}:${view.partId}:${view.partIndex}`
 }
 
@@ -648,6 +655,7 @@ function providerAgentMetadata(value: unknown): AgentMessageMetadata {
 		created_at: readString(agent.created_at) || undefined,
 		display_role: readString(agent.display_role) as AgentMessageMetadata['display_role'] || undefined,
 		display_phase: readDisplayPhase(agent.display_phase),
+    display_segment_id: readString(agent.display_segment_id) || undefined,
     history_type: readString(agent.history_type) || undefined,
     run_id: readString(agent.run_id) || undefined,
     agent_kind: readString(agent.agent_kind) || undefined,

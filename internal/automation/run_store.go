@@ -13,7 +13,7 @@ import (
 	"strings"
 	"time"
 
-	"denova/internal/fsdurability"
+	"denova/internal/localfs"
 )
 
 const (
@@ -473,7 +473,7 @@ func (s *Store) removeDurableRunObligation(scope, runID string) error {
 		}
 		return fmt.Errorf("remove settled automation run obligation %s: %w", path, err)
 	}
-	if err := fsdurability.SyncDirectory(filepath.Dir(path)); err != nil {
+	if err := localfs.SyncDirectory(filepath.Dir(path)); err != nil {
 		return fmt.Errorf("sync automation run obligation directory: %w", err)
 	}
 	return nil

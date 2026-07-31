@@ -31,6 +31,7 @@ import { DEFAULT_IMAGE_API_BASE_URL, DEFAULT_IMAGE_API_MODEL, DEFAULT_IMAGE_API_
 import { ONBOARDING_OPEN_EVENT, SETTINGS_SECTION_EVENT, type SettingsSectionRequest } from '@/features/onboarding/events'
 import { TerminalCommandsEditor, terminalCommandsForEditor } from './TerminalCommandsEditor'
 import { useAgentApprovalMode } from '@/features/agent-approval/AgentApprovalProvider'
+import { AGENT_APPROVAL_MODES } from '@/features/agent-approval/modes'
 
 type SettingsSectionId = 'model' | 'image' | 'paths' | 'access' | 'appearance' | 'updates' | 'agent' | 'terminal' | 'web-access' | 'debug' | 'ide-editor' | 'ide-output' | 'versions' | 'interactive'
 
@@ -703,7 +704,13 @@ export function SettingsView({ onClose }: { onClose?: () => void }) {
         }}
         className="flex-1 text-xs"
         mainClassName="min-h-0 min-w-0"
-        desktopGridClassName="grid-cols-[14rem_minmax(0,1fr)]"
+        leftResize={{
+          layoutKey: 'nova-settings-navigation-layout',
+          label: t('layout.resize.sidebar'),
+          defaultSize: '224px',
+          minSize: '200px',
+          maxSize: '36%',
+        }}
       >
         {({ openLeft }) => (
           <div ref={contentRef} data-nova-settings-content="true" onScroll={onContentScroll} className="h-full min-h-0 overflow-y-auto overscroll-contain px-4 py-5 sm:px-6">
@@ -1151,9 +1158,11 @@ function AgentApprovalModeSelect({ value, disabled, onChange }: {
             <SelectValue />
           </SelectTrigger>
           <SelectContent className="nova-panel border text-[var(--nova-text)]">
-            <SelectItem value="ask">{t('agentApproval.mode.ask.label')}</SelectItem>
-            <SelectItem value="write">{t('agentApproval.mode.write.label')} · {t('agentApproval.recommended')}</SelectItem>
-            <SelectItem value="yolo">{t('agentApproval.mode.yolo.label')}</SelectItem>
+            {AGENT_APPROVAL_MODES.map((mode) => (
+              <SelectItem key={mode} value={mode}>
+                {t(`agentApproval.mode.${mode}.label`)}{mode === 'write' ? ` · ${t('agentApproval.recommended')}` : ''}
+              </SelectItem>
+            ))}
           </SelectContent>
         </Select>
         <span className="text-[11px] leading-4 text-[var(--nova-text-faint)]">{t(`agentApproval.mode.${value}.description`)}</span>

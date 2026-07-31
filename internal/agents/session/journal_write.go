@@ -11,7 +11,7 @@ import (
 	"time"
 
 	"denova/internal/conversationjournal"
-	"denova/internal/fsdurability"
+	"denova/internal/localfs"
 )
 
 func createSession(id, filePath, title string) (*Session, error) {
@@ -105,5 +105,5 @@ func writeAndSync(f *os.File, data []byte) error {
 }
 
 func syncParentDirectory(filePath string) error {
-	return fsdurability.SyncDirectory(filepath.Dir(filePath))
+	return localfs.SyncDirectory(filepath.Dir(filePath))
 }

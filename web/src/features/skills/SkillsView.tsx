@@ -598,7 +598,7 @@ export function SkillsView({ workspace, onClose }: SkillsViewProps) {
               onSelect={(key) => void selectSkill(key)}
             />
           ),
-          desktopClassName: 'w-80 shrink-0 min-h-0 border-r border-[var(--nova-border)]',
+          desktopClassName: 'min-h-0 border-r border-[var(--nova-border)]',
           mobileClassName: 'w-[min(90vw,380px)]',
         }}
         right={
@@ -615,7 +615,13 @@ export function SkillsView({ workspace, onClose }: SkillsViewProps) {
         }
         className="flex-1 text-xs"
         mainClassName="min-h-0 min-w-0"
-        desktopGridClassName={agentOpen ? 'grid-cols-[20rem_minmax(0,1fr)_minmax(320px,28rem)]' : 'grid-cols-[20rem_minmax(0,1fr)]'}
+        leftResize={{
+          layoutKey: 'nova-skills-list-layout',
+          label: t('layout.resize.sidebar'),
+          defaultSize: '320px',
+          minSize: '240px',
+          maxSize: '42%',
+        }}
         rightResize={{
           layoutKey: 'nova-skills-config-agent-layout',
           label: t('layout.resize.right'),

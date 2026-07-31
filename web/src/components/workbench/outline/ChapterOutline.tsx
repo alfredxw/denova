@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { BookOpen, ChevronDown, ChevronRight, FileText } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import type { FileNode } from '@/hooks/useWorkspace'
@@ -342,7 +342,7 @@ export function ChapterOutline({
   )
 }
 
-function PlanningListItem({
+const PlanningListItem = memo(function PlanningListItem({
   document,
   selected,
   onSelectFile,
@@ -384,7 +384,7 @@ function PlanningListItem({
       </button>
     </OutlineFileActions>
   )
-}
+})
 
 function PlanningEmptyState({ text }: { text: string }) {
   return (

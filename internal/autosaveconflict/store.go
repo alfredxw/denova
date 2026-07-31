@@ -12,7 +12,7 @@ import (
 	"strings"
 	"time"
 
-	"denova/internal/fsdurability"
+	"denova/internal/localfs"
 )
 
 // Store appends immutable autosave conflict records under one Denova data dir.
@@ -159,7 +159,7 @@ func openConflictRoot(dataDir string) (*os.Root, *os.Root, error) {
 	if err := root.Chmod(DirectoryName, 0o700); err != nil {
 		return nil, nil, fmt.Errorf("secure autosave conflict directory: %w", err)
 	}
-	if syncErr := fsdurability.SyncRootDirectory(root, "."); syncErr != nil {
+	if syncErr := localfs.SyncRootDirectory(root, "."); syncErr != nil {
 		return nil, nil, fmt.Errorf("sync Denova data directory: %w", syncErr)
 	}
 	conflictRoot, err := root.OpenRoot(DirectoryName)
@@ -211,7 +211,7 @@ func writeAtomicRecord(ctx context.Context, root *os.Root, name string, data []b
 		return fmt.Errorf("commit autosave conflict record: %w", err)
 	}
 	removeTemp = false
-	if err := fsdurability.SyncRootDirectory(root, "."); err != nil {
+	if err := localfs.SyncRootDirectory(root, "."); err != nil {
 		return fmt.Errorf("sync autosave conflict directory: %w", err)
 	}
 	return nil

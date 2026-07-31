@@ -1,11 +1,47 @@
 package config
 
 import (
+	"os"
+	"path/filepath"
+	"reflect"
+	"regexp"
 	"slices"
+	"strings"
 	"testing"
 
 	agent "github.com/alfredxw/denova/agent"
 )
+
+func TestAgentToolDescriptorSummaryMatchesFrontendContract(t *testing.T) {
+	frontendTypes, err := os.ReadFile(filepath.Join("..", "web", "src", "features", "settings", "types.ts"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	interfaceMatch := regexp.MustCompile(`(?s)export interface AgentToolDescriptorSummary\s*\{([^}]*)\}`).FindSubmatch(frontendTypes)
+	if len(interfaceMatch) != 2 {
+		t.Fatal("frontend AgentToolDescriptorSummary interface is missing")
+	}
+	fieldMatches := regexp.MustCompile(`(?m)^\s*([a-z][a-z0-9_]*)\??:\s*string\s*$`).FindAllSubmatch(interfaceMatch[1], -1)
+	frontendFields := make([]string, 0, len(fieldMatches))
+	for _, match := range fieldMatches {
+		frontendFields = append(frontendFields, string(match[1]))
+	}
+
+	backendType := reflect.TypeOf(AgentToolDescriptorSummary{})
+	backendFields := make([]string, 0, backendType.NumField())
+	for index := range backendType.NumField() {
+		name := strings.Split(backendType.Field(index).Tag.Get("json"), ",")[0]
+		if name == "" || name == "-" {
+			t.Fatalf("backend descriptor field %s has no JSON contract name", backendType.Field(index).Name)
+		}
+		backendFields = append(backendFields, name)
+	}
+	slices.Sort(frontendFields)
+	slices.Sort(backendFields)
+	if !slices.Equal(frontendFields, backendFields) {
+		t.Fatalf("frontend descriptor fields = %v, backend JSON fields = %v", frontendFields, backendFields)
+	}
+}
 
 func TestAgentKindRegistryDefinesUniqueKindsAndConfigAccessors(t *testing.T) {
 	definitions := AgentKindDefinitions()

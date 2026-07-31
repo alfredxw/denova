@@ -971,12 +971,18 @@ function LoreSettingPanel({
           side: 'left',
           icon: <ModeIcon mode={activeMode} />,
           content: directoryPanel,
-          desktopClassName: `min-h-0 border-r border-[var(--nova-border)] ${embedded ? 'w-56' : 'w-[320px]'}`,
+          desktopClassName: 'min-h-0 border-r border-[var(--nova-border)]',
           mobileClassName: embedded ? 'w-[min(86vw,320px)]' : 'w-[min(90vw,360px)]',
         }}
         className="h-full"
         mainClassName="min-h-0 min-w-0"
-        desktopGridClassName={embedded ? 'grid-cols-[14rem_minmax(0,1fr)]' : 'grid-cols-[320px_minmax(0,1fr)]'}
+        leftResize={{
+          layoutKey: embedded ? 'nova-embedded-setting-directory-layout' : 'nova-setting-directory-layout',
+          label: t('layout.resize.sidebar'),
+          defaultSize: embedded ? '224px' : '320px',
+          minSize: embedded ? '180px' : '220px',
+          maxSize: '42%',
+        }}
       >
         {({ isMobile, openLeft }) => (
           <main className="flex h-full min-h-0 min-w-0 flex-1 flex-col bg-[var(--nova-surface-2)]">

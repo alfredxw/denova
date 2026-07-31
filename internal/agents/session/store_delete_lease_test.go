@@ -9,7 +9,7 @@ import (
 
 	agent "github.com/alfredxw/denova/agent"
 
-	"denova/internal/filelease"
+	"denova/internal/localfs"
 )
 
 func TestStoreDeleteWaitsForCanonicalJournalLease(t *testing.T) {
@@ -25,7 +25,7 @@ func TestStoreDeleteWaitsForCanonicalJournalLease(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	release, err := filelease.Acquire(context.Background(), target.filePath+".domain.lock")
+	release, err := localfs.AcquireLease(context.Background(), target.filePath+".domain.lock")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -60,7 +60,7 @@ func TestStoreDeleteByPrefixWaitsForEveryCanonicalJournalLease(t *testing.T) {
 	if _, err := store.GetOrCreate("story-b"); err != nil {
 		t.Fatal(err)
 	}
-	release, err := filelease.Acquire(context.Background(), first.filePath+".domain.lock")
+	release, err := localfs.AcquireLease(context.Background(), first.filePath+".domain.lock")
 	if err != nil {
 		t.Fatal(err)
 	}

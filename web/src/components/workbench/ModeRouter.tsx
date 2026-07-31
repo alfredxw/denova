@@ -996,7 +996,11 @@ export function ModeRouter(props: ModeRouterProps) {
         </MainRouteLayer>
       )}
       {renderedRoutes.has('agentchat') && (
-        <MainRouteLayer visible={presentedMainRoute === 'agentchat'} loadingLabel={t('router.loading')}>
+        <RetainedMainRouteLayer
+          visible={presentedMainRoute === 'agentchat'}
+          loadingLabel={t('router.loading')}
+          retentionKey={workspace}
+        >
           <AgentChatRoute
             workspace={workspace}
             composerSettings={composerSettings}
@@ -1018,7 +1022,7 @@ export function ModeRouter(props: ModeRouterProps) {
             onFlushHandlerChange={handleAgentChatFlushHandlerChange}
             onOpenFile={selectWorkspacePath}
           />
-        </MainRouteLayer>
+        </RetainedMainRouteLayer>
       )}
       {renderedRoutes.has('settings') && (
         <MainRouteLayer visible={presentedMainRoute === 'settings'} loadingLabel={t('router.loading')}>
@@ -1068,7 +1072,15 @@ export function ModeRouter(props: ModeRouterProps) {
   )
 }
 
-function MainRouteLayer({ visible, loadingLabel, children }: { visible: boolean; loadingLabel: string; children: ReactNode }) {
+interface MainRouteLayerProps {
+  visible: boolean
+  loadingLabel: string
+  children: ReactNode
+  /** Hidden retained routes must refresh immediately when their resource owner changes. */
+  retentionKey?: string
+}
+
+function MainRouteLayer({ visible, loadingLabel, children }: MainRouteLayerProps) {
   return (
     <section hidden={!visible} aria-hidden={!visible} className="absolute inset-0 flex min-h-0 flex-col">
       <Suspense fallback={<div className="flex h-full items-center justify-center text-xs text-[var(--nova-text-muted)]">{loadingLabel}</div>}>
@@ -1077,6 +1089,17 @@ function MainRouteLayer({ visible, loadingLabel, children }: { visible: boolean;
     </section>
   )
 }
+
+/**
+ * Keeps route state and effects alive while preventing unrelated foreground renders from
+ * reconciling a large hidden subtree. The latest children are applied as soon as it is shown.
+ */
+const RetainedMainRouteLayer = memo(MainRouteLayer, (previous, next) => (
+  !previous.visible
+  && !next.visible
+  && previous.retentionKey === next.retentionKey
+  && previous.loadingLabel === next.loadingLabel
+))
 
 function IdeWritingInfoActions({
   projectVisible,

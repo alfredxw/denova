@@ -105,7 +105,10 @@ func TestInteractiveCompactionProjectionMatchesDurableReloadAndPreservesPendingS
 		providerMessages, "durable story checkpoint", "", 1, 1, len(sourceMessages),
 	)
 	event := &interactive.ContextCompactionEvent{
-		Epoch: 1, Summary: payload, SourceTurnCount: len(turns), RetainedTurns: 1,
+		CompactionCheckpoint: agents.NewContextCompactionCheckpoint("", agents.ContextCompactionResult{
+			Epoch: 1, Summary: payload, RetainedTurns: 1,
+		}),
+		SourceTurnCount: len(turns),
 	}
 	durableReload := interactiveEffectiveModelMessages(buildInteractiveTurnHistoryWithCompaction(turns, event, 1), event)
 	durableReload = append(durableReload, pendingSideInput...)
@@ -142,7 +145,9 @@ func TestWritingCompactionRemovalUsesDurableStructuralCommand(t *testing.T) {
 		t.Fatal(err)
 	}
 	compaction, err := sess.AppendContextCompaction(session.ContextCompaction{
-		AgentKind: config.AgentKindIDE, Summary: "checkpoint", SourceEndIndex: 1, SourceMessageCount: 1,
+		CompactionCheckpoint: agents.NewContextCompactionCheckpoint(config.AgentKindIDE, agents.ContextCompactionResult{Summary: "checkpoint"}),
+		SourceEndIndex:       1,
+		SourceMessageCount:   1,
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -194,7 +199,9 @@ func TestInteractiveCompactionRemovalUsesDurableStructuralCommand(t *testing.T) 
 	}
 	expected := turn.ID
 	compaction, err := store.AppendContextCompaction(story.ID, "main", interactive.ContextCompactionEvent{
-		AgentKind: config.AgentKindInteractiveStory, Summary: "钟楼响起", SourceTurnCount: 1, ExpectedParentID: &expected,
+		CompactionCheckpoint: agents.NewContextCompactionCheckpoint(config.AgentKindInteractiveStory, agents.ContextCompactionResult{Summary: "钟楼响起"}),
+		SourceTurnCount:      1,
+		ExpectedParentID:     &expected,
 	})
 	if err != nil {
 		t.Fatal(err)

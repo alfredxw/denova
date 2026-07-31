@@ -106,12 +106,13 @@ export const MessageItem = memo(function MessageItem({ message, highlightDialogu
           <div className="w-full">
             <div className="nova-message-body-with-meta nova-message-body-with-meta-assistant">
               <AIMessageContent className="chat-agent-message block w-full gap-0 px-1 text-sm text-[var(--nova-text)]" style={messageStyle}>
+                {/* 流式与完成态共用同一棵 Markdown 组件树，历史回填时只更新内容，不重新挂载正文。 */}
                 {message.streaming && !visibleContent ? (
                   <StreamingPlaceholder />
-                ) : message.streaming ? (
-                  <StreamingMarkdown content={content} targetContent={streamingTargetContent} highlightDialogue={highlightDialogue} />
                 ) : (
-                  <MarkdownContent content={content} highlightDialogue={highlightDialogue} />
+                  <StreamingContentStage content={content} targetContent={streamingTargetContent} streaming={message.streaming === true}>
+                    {(value) => <MarkdownContent content={value} highlightDialogue={highlightDialogue} />}
+                  </StreamingContentStage>
                 )}
               </AIMessageContent>
               <InteractiveImageStrip message={message} />
@@ -535,11 +536,9 @@ function SubAgentOutputWindow({
         >
           {hasContent ? (
             <div className="chat-agent-message text-sm text-[var(--nova-text)]" style={messageStyle}>
-              {message.streaming ? (
-                <StreamingMarkdown content={shownContent} targetContent={shownTargetContent} highlightDialogue={highlightDialogue} />
-              ) : (
-                <MarkdownContent content={shownContent} highlightDialogue={highlightDialogue} />
-              )}
+              <StreamingContentStage content={shownContent} targetContent={shownTargetContent} streaming={message.streaming === true}>
+                {(value) => <MarkdownContent content={value} highlightDialogue={highlightDialogue} />}
+              </StreamingContentStage>
             </div>
           ) : (
             <div className="text-[11px] text-[var(--nova-text-faint)]">{t('chat.subagent.empty')}</div>
@@ -1667,15 +1666,6 @@ function StreamingPlaceholder() {
     <div className="py-1" role="status" aria-live="polite">
       <Shimmer as="span" className="text-sm font-medium">{t('chat.activity.thinking')}</Shimmer>
     </div>
-  )
-}
-
-/** 流式 Markdown 只保留最新快照的一棵渲染树；外层虚拟列表负责在绘制前完成动态行高补偿与锁底。 */
-function StreamingMarkdown({ content, targetContent, highlightDialogue }: { content: string; targetContent?: string; highlightDialogue: boolean }) {
-  return (
-    <StreamingContentStage content={content} targetContent={targetContent} streaming>
-      {(value) => <MarkdownContent content={value} highlightDialogue={highlightDialogue} />}
-    </StreamingContentStage>
   )
 }
 

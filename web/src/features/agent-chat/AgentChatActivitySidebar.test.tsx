@@ -142,4 +142,28 @@ describe('AgentChatActivitySidebar', () => {
       vi.useRealTimers()
     }
   })
+
+  it('opens the project-tree peek after deliberate hover intent', () => {
+    vi.useFakeTimers()
+    try {
+      render(
+        <AgentChatSidebarRail
+          {...sidebarProps()}
+          onExpand={vi.fn()}
+          onCreateDefaultSession={vi.fn()}
+          createDisabled={false}
+        />,
+      )
+      const rail = screen.getByRole('button', { name: '显示活动列表' }).parentElement!
+
+      fireEvent.mouseEnter(rail)
+      act(() => vi.advanceTimersByTime(119))
+      expect(screen.queryByTitle(project.path)).not.toBeInTheDocument()
+
+      act(() => vi.advanceTimersByTime(1))
+      expect(screen.getByTitle(project.path)).toBeInTheDocument()
+    } finally {
+      vi.useRealTimers()
+    }
+  })
 })

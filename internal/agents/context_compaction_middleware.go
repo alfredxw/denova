@@ -221,28 +221,15 @@ func prepareContextMaintenance(
 }
 
 func contextCompactionRecordFromResult(result ContextCompactionResult, agentKind string, sourceStart, sourceEnd, retainedTurns int, summary string) session.ContextCompaction {
+	result.Summary = summary
+	result.RetainedTurns = retainedTurns
+	result.TriggerReason = contextCompactionTriggerReason(result.TriggerReason, result.Phase)
 	return session.ContextCompaction{
-		Type:                   "context_compaction",
-		AgentKind:              agentKind,
-		Epoch:                  result.Epoch,
-		Summary:                summary,
-		SourceStartIndex:       sourceStart,
-		SourceEndIndex:         sourceEnd,
-		SourceMessageCount:     sourceEnd - sourceStart,
-		RetainedTurns:          retainedTurns,
-		EstimatedTokensBefore:  result.EstimatedTokensBefore,
-		ObservedPromptTokens:   result.ObservedPromptTokens,
-		ObservedEstimateTokens: result.ObservedEstimateTokens,
-		TokensBefore:           result.TokensBefore,
-		TokensAfter:            result.TokensAfter,
-		TargetRatio:            result.TargetRatio,
-		ContextWindowTokens:    result.ContextWindowTokens,
-		Strategy:               result.Strategy,
-		Threshold:              result.Threshold,
-		Reason:                 contextCompactionTriggerReason(result.TriggerReason, result.Phase),
-		Phase:                  result.Phase,
-		CandidateFingerprint:   result.CandidateFingerprint,
-		CandidateGeneration:    result.CandidateGeneration,
-		CreatedAt:              time.Now().UTC(),
+		Type:                 "context_compaction",
+		CompactionCheckpoint: NewContextCompactionCheckpoint(agentKind, result),
+		SourceStartIndex:     sourceStart,
+		SourceEndIndex:       sourceEnd,
+		SourceMessageCount:   sourceEnd - sourceStart,
+		CreatedAt:            time.Now().UTC(),
 	}
 }

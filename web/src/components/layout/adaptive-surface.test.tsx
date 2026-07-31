@@ -32,13 +32,14 @@ describe('AdaptiveSurface', () => {
 
     await user.click(screen.getByRole('button', { name: 'Collapse pane' }))
 
-    const pane = container.querySelector('[data-nova-panel-motion="inline"]')
+    const pane = container.querySelector('[data-nova-panel-motion="resizable"]')
     const fullContent = container.querySelector('[data-nova-panel-motion-content="true"]')
     const compactContent = container.querySelector('[data-nova-panel-motion-collapsed-content="true"]')
     expect(pane).toHaveAttribute('data-state', 'closed')
-    expect(pane).toHaveStyle({ '--nova-inline-panel-collapsed-size': '40px' })
+    expect(pane).toHaveAttribute('data-nova-drag-collapse', 'disabled')
     expect(fullContent).toHaveAttribute('aria-hidden', 'true')
     expect(compactContent).toHaveAttribute('aria-hidden', 'false')
+    expect(compactContent).toHaveStyle({ width: '40px', minWidth: '40px' })
     expect(screen.getByRole('button', { name: 'Expand pane' })).toBeInTheDocument()
   })
 
@@ -76,6 +77,7 @@ describe('AdaptiveSurface', () => {
     )
 
     expect(screen.getByRole('separator', { name: 'Resize Config Agent' })).toBeVisible()
+    expect(document.querySelector('#right')).toHaveAttribute('data-nova-drag-collapse', 'disabled')
   })
 
   it('retains a toggled resizable pane while marking the closed layout inert', async () => {
@@ -356,13 +358,18 @@ function CompactLeftPane({ children }: { children: ReactNode }) {
   const [open, setOpen] = useState(true)
   return (
     <AdaptiveSurface
+      leftResize={{
+        layoutKey: 'test-compact-left-layout',
+        label: 'Resize compact pane',
+        defaultSize: '240px',
+        minSize: '200px',
+      }}
       left={{
         id: 'left',
         title: 'Left',
         side: 'left',
         content: <button type="button" onClick={() => setOpen(false)}>Collapse pane</button>,
         desktopVisible: open,
-        desktopSize: '240px',
         desktopCollapsedSize: '40px',
         desktopCollapsedContent: <button type="button" onClick={() => setOpen(true)}>Expand pane</button>,
       }}

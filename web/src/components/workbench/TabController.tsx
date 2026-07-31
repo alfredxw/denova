@@ -180,26 +180,32 @@ export function TabController({
         return (
           <ContextMenu key={key}>
             <ContextMenuTrigger asChild>
-              <WorkbenchTab
-                value={key}
-                label={label}
-                icon={tab.kind === 'lore' ? <BookMarked className="size-3.5 text-emerald-500" /> : undefined}
-                trailing={tab.pinned ? (
-                  <Pin className="size-3 shrink-0 text-[var(--nova-text-faint)]" aria-hidden="true" />
-                ) : (
+              <div className="group/tab relative h-full min-w-28 max-w-40 flex-[1_1_10rem]">
+                <WorkbenchTab
+                  value={key}
+                  label={label}
+                  icon={tab.kind === 'lore' ? <BookMarked className="size-3.5 text-emerald-500" /> : undefined}
+                  className="h-full w-full min-w-0 max-w-none flex-none"
+                  trailing={tab.pinned ? (
+                    <Pin className="size-3 shrink-0 text-[var(--nova-text-faint)]" aria-hidden="true" />
+                  ) : (
+                    <span className="size-4 shrink-0" aria-hidden="true" />
+                  )}
+                />
+                {!tab.pinned ? (
                   <button
                     type="button"
                     onPointerDown={(event) => event.stopPropagation()}
                     onKeyDown={(event) => event.stopPropagation()}
                     onClick={(event) => { event.stopPropagation(); onCloseTab(tab) }}
-                    className="nova-nav-item relative z-10 rounded p-0.5 opacity-0 group-hover/tab:opacity-100 max-md:opacity-100"
+                    className="nova-nav-item absolute right-3 top-1/2 z-10 -translate-y-1/2 rounded p-0.5 opacity-0 group-hover/tab:opacity-100 max-md:opacity-100"
                     aria-label={t('tab.close', { label })}
                     title={t('common.close')}
                   >
                     <X className="size-3" />
                   </button>
-                )}
-              />
+                ) : null}
+              </div>
             </ContextMenuTrigger>
             <ContextMenuContent className="min-w-40">
               <ContextMenuItem onSelect={() => onTogglePin(tab)}>

@@ -501,17 +501,9 @@ func (s *Session) contextCompactionRemovalByIDLocked(id string) (ContextCompacti
 }
 
 func sameContextCompactionIntent(existing, requested ContextCompaction) bool {
-	return existing.ID == requested.ID && existing.AgentKind == requested.AgentKind &&
-		existing.Epoch == requested.Epoch && existing.Summary == requested.Summary &&
+	return existing.ID == requested.ID && existing.CompactionCheckpoint == requested.CompactionCheckpoint &&
 		existing.SourceStartIndex == requested.SourceStartIndex && existing.SourceEndIndex == requested.SourceEndIndex &&
-		existing.SourceMessageCount == requested.SourceMessageCount && existing.RetainedTurns == requested.RetainedTurns &&
-		existing.EstimatedTokensBefore == requested.EstimatedTokensBefore &&
-		existing.ObservedPromptTokens == requested.ObservedPromptTokens &&
-		existing.ObservedEstimateTokens == requested.ObservedEstimateTokens &&
-		existing.TokensBefore == requested.TokensBefore && existing.TokensAfter == requested.TokensAfter &&
-		existing.TargetRatio == requested.TargetRatio && existing.ContextWindowTokens == requested.ContextWindowTokens &&
-		existing.Strategy == requested.Strategy && existing.Threshold == requested.Threshold &&
-		existing.Reason == requested.Reason && existing.Phase == requested.Phase
+		existing.SourceMessageCount == requested.SourceMessageCount
 }
 
 func sameContextCompactionRemovalIntent(existing, requested ContextCompactionRemoval) bool {

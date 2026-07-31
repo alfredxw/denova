@@ -8,7 +8,7 @@ import (
 	"path/filepath"
 	"sync"
 
-	"denova/internal/fsdurability"
+	"denova/internal/localfs"
 	"denova/internal/workspacepath"
 )
 
@@ -92,7 +92,7 @@ func migrateWorkspaceSkillBundle(sourceSkill, targetRoot, targetSkill, name stri
 		}
 		return fmt.Errorf("publish migrated Skill %s: %w", targetSkill, err)
 	}
-	if err := fsdurability.SyncDirectory(targetRoot); err != nil {
+	if err := localfs.SyncDirectory(targetRoot); err != nil {
 		log.Printf("[skills] migrated Skill directory durability failed path=%s err=%v", targetRoot, err)
 	}
 	return nil

@@ -295,44 +295,33 @@ func (s *ChatAppService) executeWritingContextCompactionRemoval(ctx context.Cont
 }
 
 func sessionCompactionRecord(id, agentKind string, sourceStart, sourceEnd int, result agents.ContextCompactionResult) session.ContextCompaction {
+	if strings.TrimSpace(result.TriggerReason) == "" {
+		result.TriggerReason = "manual"
+	}
 	return session.ContextCompaction{
-		ID: id, AgentKind: agentKind, Epoch: result.Epoch, Summary: result.Summary,
+		ID: id, CompactionCheckpoint: agents.NewContextCompactionCheckpoint(agentKind, result),
 		SourceStartIndex: sourceStart, SourceEndIndex: sourceEnd, SourceMessageCount: result.SourceMessageCount,
-		RetainedTurns: result.RetainedTurns, TokensBefore: result.TokensBefore, TokensAfter: result.TokensAfter,
-		TargetRatio: result.TargetRatio, ContextWindowTokens: result.ContextWindowTokens,
-		Strategy: result.Strategy, Threshold: result.Threshold, Reason: "manual", Phase: result.Phase,
-		CandidateFingerprint: result.CandidateFingerprint, CandidateGeneration: result.CandidateGeneration,
 	}
 }
 
 func interactiveCompactionEvent(id, expectedParent string, sourceTurns int, result agents.ContextCompactionResult) interactive.ContextCompactionEvent {
+	if strings.TrimSpace(result.TriggerReason) == "" {
+		result.TriggerReason = "manual"
+	}
 	return interactive.ContextCompactionEvent{
-		ID: id, AgentKind: config.AgentKindInteractiveStory, Epoch: result.Epoch, Summary: result.Summary,
-		SourceTurnCount: sourceTurns, RetainedTurns: result.RetainedTurns,
-		TokensBefore: result.TokensBefore, TokensAfter: result.TokensAfter, TargetRatio: result.TargetRatio,
-		ContextWindowTokens: result.ContextWindowTokens, Strategy: result.Strategy, Threshold: result.Threshold,
-		Reason: "manual", Phase: result.Phase, ExpectedParentID: &expectedParent,
-		CandidateFingerprint: result.CandidateFingerprint, CandidateGeneration: result.CandidateGeneration,
+		ID: id, CompactionCheckpoint: agents.NewContextCompactionCheckpoint(config.AgentKindInteractiveStory, result),
+		SourceTurnCount: sourceTurns, ExpectedParentID: &expectedParent,
 	}
 }
 
 func contextCompactionResultFromSession(record session.ContextCompaction) agents.ContextCompactionResult {
-	return agents.ContextCompactionResult{
-		Triggered: true, Phase: record.Phase, TokensBefore: record.TokensBefore, TokensAfter: record.TokensAfter,
-		ContextWindowTokens: record.ContextWindowTokens, Strategy: record.Strategy, Threshold: record.Threshold,
-		Epoch: record.Epoch, Summary: record.Summary, TargetRatio: record.TargetRatio,
-		SourceMessageCount: record.SourceMessageCount, RetainedTurns: record.RetainedTurns,
-		CandidateFingerprint: record.CandidateFingerprint, CandidateGeneration: record.CandidateGeneration,
-	}
+	result := agents.ContextCompactionResultFromCheckpoint(record.CompactionCheckpoint)
+	result.SourceMessageCount = record.SourceMessageCount
+	return result
 }
 
 func contextCompactionResultFromInteractive(event interactive.ContextCompactionEvent) agents.ContextCompactionResult {
-	return agents.ContextCompactionResult{
-		Triggered: true, Phase: event.Phase, TokensBefore: event.TokensBefore, TokensAfter: event.TokensAfter,
-		ContextWindowTokens: event.ContextWindowTokens, Strategy: event.Strategy, Threshold: event.Threshold,
-		Epoch: event.Epoch, Summary: event.Summary, TargetRatio: event.TargetRatio, RetainedTurns: event.RetainedTurns,
-		CandidateFingerprint: event.CandidateFingerprint, CandidateGeneration: event.CandidateGeneration,
-	}
+	return agents.ContextCompactionResultFromCheckpoint(event.CompactionCheckpoint)
 }
 
 func contextStructuralCommandID(prefix string, parts ...string) string {

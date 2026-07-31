@@ -10,6 +10,8 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"denova/internal/contextmaintenance"
 )
 
 func TestStoryHotAppendsPreserveCanonicalPrefixWithoutFullRewrite(t *testing.T) {
@@ -277,7 +279,8 @@ func TestStoryMutationLeaseLinearizesConcurrentCASAcrossStoreInstances(t *testin
 		}()
 		<-start
 		_, err := store.AppendContextCompaction(story.ID, "main", ContextCompactionEvent{
-			ID: id, Summary: id, SourceTurnCount: 1, RetainedTurns: 1, ExpectedParentID: &expected,
+			ID: id, CompactionCheckpoint: contextmaintenance.CompactionCheckpoint{Summary: id, RetainedTurns: 1},
+			SourceTurnCount: 1, ExpectedParentID: &expected,
 		})
 		results <- err
 	}

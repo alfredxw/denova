@@ -1589,7 +1589,7 @@ html[data-nova-motion="off"] *::after {
 }
 
 .nova-resize-handle:hover,
-.nova-resize-handle[data-resize-handle-active] {
+.nova-resize-handle[data-separator="active"] {
   background: color-mix(in srgb, var(--nova-active) 78%, transparent);
 }
 
@@ -1600,13 +1600,20 @@ html[data-nova-motion="off"] *::after {
 }
 
 [data-panel][data-nova-panel-motion="resizable"] {
-  overflow: hidden !important;
   transition:
     flex-grow var(--nova-panel-motion-duration) var(--nova-panel-motion-ease),
     visibility 0s linear 0s;
 }
 
-[data-panel][data-nova-panel-motion="resizable"][data-state="closed"] {
+[data-panel][data-nova-panel-motion="resizable"]:not([data-nova-panel-has-collapsed-content="true"]) {
+  overflow: hidden !important;
+}
+
+[data-panel][data-nova-panel-motion="resizable"][data-nova-panel-has-collapsed-content="true"] {
+  overflow: visible !important;
+}
+
+[data-panel][data-nova-panel-motion="resizable"][data-state="closed"]:not([data-nova-panel-has-collapsed-content="true"]) {
   flex-grow: 0 !important;
   visibility: hidden;
   transition:
@@ -1728,7 +1735,7 @@ html[data-nova-motion="off"] *::after {
   height: 0 !important;
 }
 
-[data-nova-panel-motion-group]:has([data-resize-handle-active]) > [data-panel] {
+[data-nova-panel-motion-group]:has([data-separator="active"]) > [data-panel] {
   transition: none;
 }
 

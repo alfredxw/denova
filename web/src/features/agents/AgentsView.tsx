@@ -233,7 +233,7 @@ export function AgentsView({ onClose }: { onClose?: () => void }) {
           side: 'left',
           icon: <Bot className="h-4 w-4" />,
           content: <div className="h-full min-h-0 overflow-y-auto bg-[var(--nova-surface-2)] p-3"><AgentList active={activeAgent} onSelect={setActiveAgent} /></div>,
-          desktopClassName: 'w-72 shrink-0 min-h-0 border-r border-[var(--nova-border)]',
+          desktopClassName: 'min-h-0 border-r border-[var(--nova-border)]',
           mobileClassName: 'w-[min(88vw,340px)]',
         }}
         right={agentChatOpen ? {
@@ -257,7 +257,13 @@ export function AgentsView({ onClose }: { onClose?: () => void }) {
         } : undefined}
         className="flex-1 text-xs"
         mainClassName="min-h-0 min-w-0"
-        desktopGridClassName={agentChatOpen ? 'grid-cols-[18rem_minmax(0,1fr)_minmax(320px,28rem)]' : 'grid-cols-[18rem_minmax(0,1fr)]'}
+        leftResize={{
+          layoutKey: 'nova-agents-list-layout',
+          label: t('layout.resize.sidebar'),
+          defaultSize: '288px',
+          minSize: '220px',
+          maxSize: '40%',
+        }}
         rightResize={{
           layoutKey: 'nova-agents-config-manager-layout',
           label: t('layout.resize.right'),

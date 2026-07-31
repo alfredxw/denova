@@ -88,7 +88,7 @@ type AgentChatListItem =
   | { kind: 'message'; key: string; view: AgentMessageView; sourceIndex: number }
   | { kind: 'legacy-message'; key: string; message: ChatMessage; sourceIndex: number; openView?: AgentMessageView }
   | { kind: 'trace'; key: string; views: AgentMessageView[]; activeStreamingTrace: boolean }
-  | { kind: 'run'; key: string; runId: string; processViews: AgentMessageView[]; resultView?: AgentMessageView; active: boolean; sourceIndex: number }
+  | { kind: 'run'; key: string; runId: string; beforeResultViews: AgentMessageView[]; resultView?: AgentMessageView; afterResultViews: AgentMessageView[]; active: boolean; sourceIndex: number }
   | { kind: 'attachment'; key: string; runId: string; content: ReactNode }
 
 const MESSAGE_LIST_OVERSCAN = { main: 520, reverse: 260 }
@@ -396,10 +396,11 @@ function AgentChatListRow({ item, isLast, isStreaming, activeTraceDisplay, highl
 }) {
   const { t } = useTranslation()
   const turnAnchor = chatListItemNavigationAnchor(item)
-  const renderMessageView = (view: AgentMessageView) => {
+  const renderMessageView = (view: AgentMessageView, key?: string) => {
     const mutationsAllowed = canMutateMessage?.(view) !== false
     return (
       <AgentMessageItem
+        key={key}
         view={view}
         highlightDialogue={highlightDialogue}
         messageStyle={messageStyle}
@@ -422,6 +423,21 @@ function AgentChatListRow({ item, isLast, isStreaming, activeTraceDisplay, highl
       />
     )
   }
+  const renderExecutionProcess = (key: string, views: AgentMessageView[], active: boolean) => views.length > 0 ? (
+    <AgentExecutionProcess
+      key={key}
+      views={views}
+      active={active}
+      activeSubAgentSessionKey={activeSubAgentSessionKey}
+      activeTraceDisplay={activeTraceDisplay}
+      highlightDialogue={highlightDialogue}
+      messageStyle={messageStyle}
+      onInsertIllustration={onInsertIllustration}
+      onGenerateInteractiveImage={onGenerateInteractiveImage}
+      onOpenSubAgentSession={onOpenSubAgentSession}
+      onOpenTrace={onOpenTrace}
+    />
+  ) : null
   useLayoutEffect(() => {
     if (isLast && isStreaming) syncStreamingRowHeight?.()
   }, [isLast, isStreaming, item, syncStreamingRowHeight])
@@ -469,21 +485,9 @@ function AgentChatListRow({ item, isLast, isStreaming, activeTraceDisplay, highl
         />
       ) : item.kind === 'run' ? (
         <div className="space-y-2">
-          {item.processViews.length > 0 ? (
-            <AgentExecutionProcess
-              views={item.processViews}
-              active={item.active}
-              activeSubAgentSessionKey={activeSubAgentSessionKey}
-              activeTraceDisplay={activeTraceDisplay}
-              highlightDialogue={highlightDialogue}
-              messageStyle={messageStyle}
-              onInsertIllustration={onInsertIllustration}
-              onGenerateInteractiveImage={onGenerateInteractiveImage}
-              onOpenSubAgentSession={onOpenSubAgentSession}
-              onOpenTrace={onOpenTrace}
-            />
-          ) : null}
-          {item.resultView ? renderMessageView(item.resultView) : null}
+          {renderExecutionProcess('before-result', item.beforeResultViews, item.active && !item.resultView)}
+          {item.resultView ? renderMessageView(item.resultView, agentViewStableKey(item.resultView)) : null}
+          {renderExecutionProcess('after-result', item.afterResultViews, item.active)}
         </div>
       ) : item.kind === 'attachment' ? (
         item.content
@@ -535,8 +539,9 @@ function buildAgentChatListItems({ views, isStreaming, visibleActivityContent, c
           kind: 'run',
           key: run.key,
           runId: run.runID,
-          processViews: run.processViews,
+          beforeResultViews: run.beforeResultViews,
           resultView: run.resultView,
+          afterResultViews: run.afterResultViews,
           active: run.active,
           sourceIndex: index,
         })
@@ -554,7 +559,7 @@ function buildAgentChatListItems({ views, isStreaming, visibleActivityContent, c
         nextIndex += 1
       }
       const activeStreamingTrace = isActiveStreamingTrace(views, nextIndex, isStreaming)
-      items.push({ kind: 'trace', key: `trace-${traceViews[0].partId || index}`, views: traceViews, activeStreamingTrace })
+      items.push({ kind: 'trace', key: `trace-${agentViewStableKey(traceViews[0]) || index}`, views: traceViews, activeStreamingTrace })
       index = nextIndex - 1
       continue
     }
@@ -644,9 +649,12 @@ function chatListItemNavigationAnchor(item?: AgentChatListItem) {
   if (item.kind === 'run') {
     const resultAnchor = item.resultView ? agentViewNavigationAnchor(item.resultView) : ''
     if (resultAnchor) return resultAnchor
-    for (let index = item.processViews.length - 1; index >= 0; index -= 1) {
-      const anchor = agentViewNavigationAnchor(item.processViews[index])
-      if (anchor) return anchor
+    const processSections = [item.afterResultViews, item.beforeResultViews]
+    for (const views of processSections) {
+      for (let index = views.length - 1; index >= 0; index -= 1) {
+        const anchor = agentViewNavigationAnchor(views[index])
+        if (anchor) return anchor
+      }
     }
   }
   return ''

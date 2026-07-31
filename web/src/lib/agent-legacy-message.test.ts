@@ -3,6 +3,23 @@ import type { ChatMessage } from './api-client/types'
 import { chatMessagesToAgentUIMessages } from './agent-legacy-message'
 
 describe('chatMessagesToAgentUIMessages', () => {
+  it('preserves display identity from the interactive render adapter', () => {
+    const [message] = chatMessagesToAgentUIMessages([{
+      id: 'live-thinking',
+      role: 'thinking',
+      content: '正在判断门后的动静。',
+      run_id: 'run-game',
+      display_segment_id: 'thinking-segment',
+      display_phase: 'candidate',
+    } as ChatMessage])
+
+    expect(message.metadata).toMatchObject({
+      run_id: 'run-game',
+      display_segment_id: 'thinking-segment',
+      display_phase: 'candidate',
+    })
+  })
+
   it('preserves completed message identity while only the live tail changes', () => {
     const completed: ChatMessage = {
       id: 'turn-1-assistant',

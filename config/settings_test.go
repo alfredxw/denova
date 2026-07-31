@@ -795,7 +795,7 @@ func TestPrepareWorkspaceAgentSettingsForWritePreservesLegacyGeneralValues(t *te
 
 func TestWorkspaceSettingsCannotOverrideUserSafetyOrShellEnvironment(t *testing.T) {
 	prepared := PrepareWorkspaceAgentSettingsForWrite(Settings{}, Settings{
-		AgentApprovalMode:     AgentApprovalYolo,
+		AgentApprovalMode:     AgentApprovalFullAccess,
 		ShellEnvironmentMode:  ShellEnvironmentProcess,
 		ShellEnvironmentShell: "/tmp/untrusted-shell",
 		AgentBashPath:         "/tmp/untrusted-bash",
@@ -824,7 +824,7 @@ func TestLoadLayeredIgnoresPersistedWorkspaceSafetyOrShellEnvironment(t *testing
 		t.Fatal(err)
 	}
 	if err := WriteSettingsFile(WorkspaceConfigPath(workspace), Settings{
-		AgentApprovalMode:     AgentApprovalYolo,
+		AgentApprovalMode:     AgentApprovalFullAccess,
 		ShellEnvironmentMode:  ShellEnvironmentProcess,
 		ShellEnvironmentShell: "/tmp/untrusted-shell",
 		AgentBashPath:         "/tmp/untrusted-bash",

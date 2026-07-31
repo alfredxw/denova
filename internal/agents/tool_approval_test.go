@@ -108,9 +108,9 @@ func TestToolApprovalPolicyFailsClosedWithoutInteractiveHost(t *testing.T) {
 	}
 }
 
-func TestToolApprovalPolicyDeniesCriticalCommandInYolo(t *testing.T) {
+func TestToolApprovalPolicyDeniesCriticalCommandInFullAccess(t *testing.T) {
 	t.Parallel()
-	middleware := approvalTestMiddleware(config.AgentApprovalYolo, t.TempDir())
+	middleware := approvalTestMiddleware(config.AgentApprovalFullAccess, t.TempDir())
 	called := false
 	endpoint, err := wrapTextToolCallForTest(middleware, func(context.Context, string, ...agent.ToolOption) (string, error) {
 		called = true
@@ -140,7 +140,7 @@ func TestToolApprovalModeIsSnapshottedWhenRunAssemblyIsBuilt(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	cfg.AgentApprovalMode = config.AgentApprovalYolo
+	cfg.AgentApprovalMode = config.AgentApprovalFullAccess
 	for _, middleware := range assembly.Middlewares {
 		orchestrator, ok := middleware.(*toolOrchestratorMiddleware)
 		if !ok {

@@ -15,6 +15,32 @@ const (
 	CompactionHealthManualRetry = "manual_retry"
 )
 
+// CompactionCheckpoint is the storage-neutral, model-visible state shared by
+// Writing Session and Game Story checkpoints. Domain stores embed this value
+// into their existing flat JSON envelopes and own only source cursors, branch
+// identity, CAS metadata, and timestamps. Execution/cache telemetry stays in
+// the run ledger because it is not required to reconstruct model context.
+type CompactionCheckpoint struct {
+	AgentKind              string  `json:"agent_kind,omitempty"`
+	Epoch                  int     `json:"epoch"`
+	Summary                string  `json:"summary"`
+	RetainedTurns          int     `json:"retained_turns"`
+	EstimatedTokensBefore  int     `json:"estimated_tokens_before,omitempty"`
+	ObservedPromptTokens   int     `json:"observed_prompt_tokens,omitempty"`
+	ObservedEstimateTokens int     `json:"observed_estimate_tokens,omitempty"`
+	TokensBefore           int     `json:"tokens_before"`
+	TokensAfter            int     `json:"tokens_after"`
+	TargetRatio            float64 `json:"target_ratio,omitempty"`
+	ContextWindowTokens    int     `json:"context_window_tokens"`
+	Strategy               string  `json:"strategy,omitempty"`
+	Threshold              float64 `json:"threshold"`
+	TriggerReason          string  `json:"reason,omitempty"`
+	Phase                  string  `json:"phase,omitempty"`
+	RecoveryBand           float64 `json:"recovery_band,omitempty"`
+	CandidateFingerprint   string  `json:"candidate_fingerprint,omitempty"`
+	CandidateGeneration    uint64  `json:"candidate_generation,omitempty"`
+}
+
 // ToolResultReplacement is one frozen model-context substitution.
 type ToolResultReplacement struct {
 	MessageIndex int64  `json:"message_index"`

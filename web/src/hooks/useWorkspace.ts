@@ -290,6 +290,9 @@ export function useWorkspace(options: UseWorkspaceOptions = {}) {
 
   /** 选中文件并加载内容 */
   const selectFile = useCallback(async (path: string) => {
+    // Explicit refresh paths use refreshSelectedFile. Re-selecting the active file here
+    // only replaces the same document object and wakes the entire writing workbench.
+    if (selectedFileRef.current === path) return
     const targetWorkspace = workspaceRef.current
     const requestID = selectFileRequestRef.current + 1
     selectFileRequestRef.current = requestID

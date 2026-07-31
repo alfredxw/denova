@@ -95,6 +95,7 @@ export function useStoryStageMessages({
       const metadata = {
         created_at: event.created_at,
         run_id: event.run_id,
+        display_segment_id: event.id,
         agent_kind: event.agent_kind,
         agent_name: event.agent_name,
         root_agent_name: event.root_agent_name,

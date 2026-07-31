@@ -9,9 +9,10 @@ import {
 /** Display-only projection for one contiguous root Agent run. */
 export interface AgentRunPresentation {
   active: boolean
+  afterResultViews: AgentMessageView[]
+  beforeResultViews: AgentMessageView[]
   key: string
   nextIndex: number
-  processViews: AgentMessageView[]
   resultView?: AgentMessageView
   runID: string
 }
@@ -47,15 +48,13 @@ export function buildAgentRunPresentation(
   const active = isActiveRunSlice(views, nextIndex, isStreaming)
   const resultIndex = selectResultIndex(runViews, active)
   const resultView = resultIndex >= 0 ? runViews[resultIndex] : undefined
-  const processViews = resultIndex < 0
-    ? runViews
-    : runViews.filter((_view, index) => index !== resultIndex)
 
   return {
     active,
+    afterResultViews: resultIndex < 0 ? [] : runViews.slice(resultIndex + 1),
+    beforeResultViews: resultIndex < 0 ? runViews : runViews.slice(0, resultIndex),
     key: `run-${runID}-${agentViewStableKey(runViews[0])}`,
     nextIndex,
-    processViews,
     resultView,
     runID,
   }
@@ -73,12 +72,22 @@ function selectResultIndex(views: AgentMessageView[], active: boolean) {
     if (view.metadata.display_phase === 'final' || view.metadata.display_phase === 'partial') return index
   }
 
+  // Streaming root prose starts as a candidate. It remains the visible result
+  // anchor even when Game continues with post-narrative thinking/tools.
+  if (active) {
+    for (let index = views.length - 1; index >= 0; index -= 1) {
+      const view = views[index]
+      if (view.metadata.subagent || view.kind !== 'assistant' || !agentViewContent(view).trim()) continue
+      if (view.metadata.display_phase === 'candidate') return index
+    }
+  }
+
   for (let index = views.length - 1; index >= 0; index -= 1) {
     const view = views[index]
     if (view.metadata.subagent || view.kind !== 'assistant' || !agentViewContent(view).trim()) continue
     if (!active) return index
     if (view.metadata.display_phase === 'progress') return -1
-    return index === views.length - 1 ? index : -1
+    return index
   }
   return -1
 }

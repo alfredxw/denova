@@ -37,6 +37,8 @@ export interface ChatMessage {
   message_count_after?: number
   skipped_reason?: string
   run_id?: string
+  display_segment_id?: string
+  display_phase?: 'candidate' | 'progress' | 'final' | 'partial'
   agent_kind?: string
   agent_name?: string
   root_agent_name?: string
@@ -100,7 +102,7 @@ export interface AgentAskAnswerResult {
 }
 
 export interface AgentToolApprovalPresentation {
-  mode: 'ask' | 'write' | 'yolo' | string
+  mode: 'ask' | 'write' | 'full_access' | string
   tool_name: string
   command?: string
   details?: string

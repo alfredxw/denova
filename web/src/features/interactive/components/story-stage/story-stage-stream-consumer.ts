@@ -109,6 +109,7 @@ export function createStoryStageStreamConsumer({
 
   async function consume(stream: ReadableStream<InteractiveSSEEvent>, previous: StoryStageStreamOutcome): Promise<StoryStageStreamOutcome> {
     let narrativeFilter = createInteractiveNarrativeFilter()
+    let rootNarrativeMetadata: Partial<ChatMessage> = {}
     let {
       finishedNormally,
       persistenceRequired,
@@ -155,6 +156,7 @@ export function createStoryStageStreamConsumer({
           }
           liveAccumulator.resetForCheckpoint()
           narrativeFilter = createInteractiveNarrativeFilter()
+          rootNarrativeMetadata = {}
           finishedNormally = false
           persistenceRequired = false
           persistedSnapshot = undefined
@@ -185,6 +187,7 @@ export function createStoryStageStreamConsumer({
           const cursor = Number(data.cursor)
           liveAccumulator.resetForCheckpoint()
           narrativeFilter = createInteractiveNarrativeFilter()
+          rootNarrativeMetadata = {}
           if (typeof data.persistence_required === 'boolean') {
             persistenceRequired = data.persistence_required
           }
@@ -219,9 +222,10 @@ export function createStoryStageStreamConsumer({
           const { text, reset } = narrativeFilter.flush()
           if (reset) liveAccumulator.resetAssistant()
           liveAccumulator.collapseNonNarrative()
-          if (text) liveAccumulator.appendAssistant(text, liveTurnNavigationAnchorId)
+          if (text) liveAccumulator.appendAssistant(text, liveTurnNavigationAnchorId, rootNarrativeMetadata)
           liveAccumulator.finishMessages()
           narrativeFilter = createInteractiveNarrativeFilter()
+          rootNarrativeMetadata = {}
           receivedPersistedTurn = false
           persistenceRequired = true
           beginAgentCycle(data, checkpointReplay)
@@ -234,11 +238,15 @@ export function createStoryStageStreamConsumer({
             setActivity('')
             break
           }
+          // The per-turn render key is the durable Game narrative identity.
+          // Keep Run/phase provenance, but do not replace it with a display-only
+          // segment ID that the persisted domain turn cannot reproduce.
+          rootNarrativeMetadata = { ...streamMetadataFromPayload(data), display_segment_id: undefined }
           const { text, reset } = narrativeFilter.push(data.content || '')
           if (reset) liveAccumulator.resetAssistant()
           if (text) {
             liveAccumulator.collapseNonNarrative()
-            liveAccumulator.appendAssistant(text, liveTurnNavigationAnchorId)
+            liveAccumulator.appendAssistant(text, liveTurnNavigationAnchorId, rootNarrativeMetadata)
           }
           setActivity('')
           break
@@ -355,7 +363,7 @@ export function createStoryStageStreamConsumer({
           const { text, reset } = narrativeFilter.flush()
           if (reset) liveAccumulator.resetAssistant()
           liveAccumulator.collapseNonNarrative()
-          if (text) liveAccumulator.appendAssistant(text, liveTurnNavigationAnchorId)
+          if (text) liveAccumulator.appendAssistant(text, liveTurnNavigationAnchorId, rootNarrativeMetadata)
           liveAccumulator.finishMessages()
           if (value.event === 'aborted') {
             const data = JSON.parse(value.data) as { message?: unknown; reason?: unknown }

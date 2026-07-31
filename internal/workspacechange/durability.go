@@ -8,7 +8,7 @@ import (
 	"sort"
 	"strings"
 
-	"denova/internal/fsdurability"
+	"denova/internal/localfs"
 )
 
 type mutationStage string
@@ -33,13 +33,13 @@ type durabilityOps struct {
 
 func defaultDurabilityOps() *durabilityOps {
 	return &durabilityOps{
-		syncRootDirFn: fsdurability.SyncRootDirectory,
+		syncRootDirFn: localfs.SyncRootDirectory,
 	}
 }
 
 func (o *durabilityOps) syncRootDir(root *os.Root, rel string) error {
 	if o == nil || o.syncRootDirFn == nil {
-		return fsdurability.SyncRootDirectory(root, rel)
+		return localfs.SyncRootDirectory(root, rel)
 	}
 	return o.syncRootDirFn(root, rel)
 }

@@ -1,9 +1,8 @@
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useRef, useState, type KeyboardEventHandler, type PointerEventHandler } from 'react'
 import { Gauge, GripHorizontal, GripVertical } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import { motion } from 'motion/react'
 import { Group, Panel } from 'react-resizable-panels'
-import type { Layout } from 'react-resizable-panels'
 import { useShallow } from 'zustand/react/shallow'
 import { readFile } from '@/lib/api'
 import { createInteractiveBranch, createInteractiveStory, deleteInteractiveBranch, deleteInteractiveStory, getInteractiveBranches, getInteractiveSnapshot, getInteractiveStories, getInteractiveTellers, getStoryDirectors, selectInteractiveStory, switchInteractiveBranch, updateInteractiveStory } from '../api'
@@ -23,6 +22,7 @@ import { novaEase, panelPresence } from '@/features/motion/motion-tokens'
 import { useIsMobile } from '@/hooks/useIsMobile'
 import { MobilePaneHost } from '@/components/layout/mobile-pane-host'
 import { CollapsiblePanelSeparator, CollapsibleResizablePanel } from '@/components/layout/panel-motion'
+import { usePersistedPanelLayout } from '@/components/layout/use-persisted-panel-layout'
 import type { ImagePreset, InteractiveTurnPersistedEvent, Snapshot, StoryDirector, StoryImageSettings, StorySummary, Teller } from '../types'
 import { INTERACTIVE_OPENING_PRESET_PATH, INTERACTIVE_OPENING_PRESET_UPDATED_EVENT, LEGACY_INTERACTIVE_OPENING_PRESET_PATH, parseBookOpeningPresets, type BookOpeningPreset, type StoryCreateInput } from '../opening'
 import { DEFAULT_NARRATIVE_STYLE_ID, narrativeStylesForMode, resolveNarrativeStyle } from '../narrative-style'
@@ -99,6 +99,10 @@ export function InteractiveLayout({ workspace, active = true, recentNarrativeSty
   const [mobileSnapshotOpen, setMobileSnapshotOpen] = useState(false)
   const [storyStateDisplayPreference, setStoryStateDisplayPreference] = useState(readStoryStateDisplayPreference)
   const [bookOpeningPresets, setBookOpeningPresets] = useState<BookOpeningPreset[]>([])
+  const storyPanelLayout = usePersistedPanelLayout({
+    storageKey: 'nova-interactive-horizontal',
+    panelIds: ['story-stage', 'snapshot'],
+  })
 
   if (currentBranchSnapshot) {
     lastStableSnapshotRef.current = currentBranchSnapshot
@@ -440,9 +444,9 @@ export function InteractiveLayout({ workspace, active = true, recentNarrativeSty
                 <Group
                   id="nova-interactive-horizontal"
                   data-nova-panel-motion-group="true"
-                  defaultLayout={readStoredLayout('nova-interactive-horizontal')}
+                  defaultLayout={storyPanelLayout.defaultLayout}
                   onLayoutChanged={(layout) => {
-                    if (rightPanelVisible) storeLayout('nova-interactive-horizontal', layout)
+                    if (rightPanelVisible) storyPanelLayout.persistUserLayout(layout)
                   }}
                   orientation="horizontal"
                   className="min-h-0 flex-1"
@@ -450,7 +454,12 @@ export function InteractiveLayout({ workspace, active = true, recentNarrativeSty
                   <Panel id="story-stage" minSize="240px" className="min-w-0">
                     {storyStage}
                   </Panel>
-                  <InteractiveResizeHandle visible={rightPanelVisible} direction="vertical" label={t('interactiveLayout.resizeDirectorPanel')} />
+                  <InteractiveResizeHandle
+                    visible={rightPanelVisible}
+                    direction="vertical"
+                    label={t('interactiveLayout.resizeDirectorPanel')}
+                    {...storyPanelLayout.resizeHandleIntentProps}
+                  />
                   <CollapsibleResizablePanel
                     id="snapshot"
                     visible={rightPanelVisible}
@@ -497,31 +506,35 @@ function mergePreferredStory(stories: StorySummary[], preferredStory?: StorySumm
   return found ? nextStories : [preferredStory, ...nextStories]
 }
 
-function InteractiveResizeHandle({ direction, label, prominent = false, visible = true }: { direction: 'horizontal' | 'vertical'; label: string; prominent?: boolean; visible?: boolean }) {
+function InteractiveResizeHandle({
+  direction,
+  label,
+  prominent = false,
+  visible = true,
+  onPointerDownCapture,
+  onKeyDownCapture,
+}: {
+  direction: 'horizontal' | 'vertical'
+  label: string
+  prominent?: boolean
+  visible?: boolean
+  onPointerDownCapture?: PointerEventHandler<HTMLElement>
+  onKeyDownCapture?: KeyboardEventHandler<HTMLElement>
+}) {
   const Icon = direction === 'vertical' ? GripVertical : GripHorizontal
   const className = direction === 'vertical' ? 'nova-resize-handle group -mx-1 flex w-3 cursor-col-resize items-center justify-center bg-transparent transition-colors' : `nova-resize-handle group ${prominent ? '-my-0.5 h-4' : '-my-1 h-3'} flex cursor-row-resize items-center justify-center bg-transparent transition-colors`
 
   return (
-    <CollapsiblePanelSeparator visible={visible} aria-label={label} className={className}>
+    <CollapsiblePanelSeparator
+      visible={visible}
+      aria-label={label}
+      className={className}
+      onPointerDownCapture={onPointerDownCapture}
+      onKeyDownCapture={onKeyDownCapture}
+    >
       <span className={`flex items-center justify-center rounded-full border border-[var(--nova-border)] bg-[var(--nova-surface)] text-[var(--nova-text-faint)] shadow-[0_4px_14px_rgba(0,0,0,0.22)] transition-colors group-hover:border-[var(--nova-active)] group-data-[resize-handle-active]:border-[var(--nova-active)] group-data-[resize-handle-active]:text-[var(--nova-text)] ${direction === 'vertical' ? 'h-9 w-2.5' : 'h-2.5 w-16'}`}>
         <Icon className={direction === 'vertical' ? 'h-3.5 w-3.5' : 'h-3 w-3'} aria-hidden="true" />
       </span>
     </CollapsiblePanelSeparator>
   )
-}
-
-function readStoredLayout(key: string): Layout | undefined {
-  if (typeof window === 'undefined') return undefined
-  const value = window.localStorage.getItem(key)
-  if (!value) return undefined
-  try {
-    return JSON.parse(value) as Layout
-  } catch {
-    return undefined
-  }
-}
-
-function storeLayout(key: string, layout: Layout) {
-  if (typeof window === 'undefined') return
-  window.localStorage.setItem(key, JSON.stringify(layout))
 }

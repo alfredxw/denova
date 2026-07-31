@@ -11,7 +11,7 @@ import (
 	"strings"
 	"syscall"
 
-	"denova/internal/fsdurability"
+	"denova/internal/localfs"
 )
 
 type restorePlanner struct {
@@ -395,7 +395,7 @@ func atomicWriteRestoreFile(root *os.Root, rel string, data []byte, mode os.File
 		return err
 	}
 	removeTemp = false
-	if err := fsdurability.SyncRootDirectory(root, parent); err != nil {
+	if err := localfs.SyncRootDirectory(root, parent); err != nil {
 		return err
 	}
 	return nil

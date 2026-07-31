@@ -82,7 +82,7 @@ function skillsCapability(allowed: boolean): ResolvedAgentToolCapability {
       post_check: 'none',
       recovery: 'retry',
       result_projection: 'summary',
-      context_retention: 'receipt',
+      result_retention: 'receipt',
       steering: 'interruptible',
     },
     available_to_subagents: true,

@@ -2,6 +2,8 @@ import { fireEvent, render, screen, waitFor } from '@testing-library/react'
 import type { ReactElement } from 'react'
 import { VirtuosoMockContext } from 'react-virtuoso'
 import { describe, expect, it, vi } from 'vitest'
+import type { ChatMessage } from '@/lib/api'
+import { chatMessagesToAgentUIMessages } from '@/lib/agent-legacy-message'
 import type { AgentUIMessage } from '@/lib/agent-ui'
 import { MessageList } from './MessageList'
 
@@ -367,6 +369,81 @@ describe('Agent MessageList', () => {
     expect(screen.getByText('核对修复结果。')).toBeInTheDocument()
   })
 
+  it('按原始时序保留同一次运行中结果正文前后的执行过程', () => {
+    renderMessageList(
+      <MessageList
+        isStreaming={false}
+        activityContent=""
+        collapseTraceGroups
+        messages={[
+          { id: 'before-reasoning', role: 'assistant', metadata: { run_id: 'run-game-order', display_segment_id: 'before-reasoning' }, parts: [{ type: 'reasoning', text: '正文前思考。' }] },
+          { id: 'narrative', role: 'assistant', metadata: { run_id: 'run-game-order', display_segment_id: 'narrative', display_phase: 'final' }, parts: [{ type: 'text', text: '门后传来锁链拖地的声音。' }] },
+          { id: 'after-reasoning', role: 'assistant', metadata: { run_id: 'run-game-order', display_segment_id: 'after-reasoning' }, parts: [{ type: 'reasoning', text: '正文后核对状态。' }] },
+          { id: 'after-tool', role: 'assistant', metadata: { run_id: 'run-game-order' }, parts: [{ type: 'dynamic-tool', toolName: 'submit_choices', toolCallId: 'after-tool', state: 'output-available', input: {}, output: 'ok' }] },
+        ] as AgentUIMessage[]}
+      />,
+    )
+
+    const narrative = screen.getByText('门后传来锁链拖地的声音。')
+    const processButtons = screen.getAllByRole('button', { name: /执行过程/ })
+    expect(processButtons).toHaveLength(2)
+    expect(processButtons[0].compareDocumentPosition(narrative) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
+    expect(narrative.compareDocumentPosition(processButtons[1]) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
+    expect(screen.queryByText('正文前思考。')).not.toBeInTheDocument()
+    expect(screen.queryByText('正文后核对状态。')).not.toBeInTheDocument()
+  })
+
+  it('流式结果被持久化历史替换时保持 Run 与结果正文稳定挂载', async () => {
+    const list = (messages: ChatMessage[], isStreaming: boolean) => (
+      <VirtuosoMockContext.Provider value={{ viewportHeight: 180, itemHeight: 52 }}>
+        <MessageList
+          isStreaming={isStreaming}
+          activityContent=""
+          collapseTraceGroups
+          messages={chatMessagesToAgentUIMessages(messages)}
+        />
+      </VirtuosoMockContext.Provider>
+    )
+    const { rerender } = render(list([
+      {
+        role: 'thinking', content: '正在构建场景。', streaming: false,
+        run_id: 'run-stable', display_segment_id: 'reasoning-stable',
+      },
+      {
+        role: 'assistant', content: '雨幕中的城门缓缓打开。', streaming: true,
+        render_key: 'narrative-render-key', run_id: 'run-stable', display_phase: 'candidate',
+      },
+      {
+        id: 'tool-stable', role: 'tool_call', name: 'submit_choices', content: 'submit_choices',
+        status: 'running', streaming: true, run_id: 'run-stable',
+      },
+    ], true))
+
+    const liveNarrative = screen.getByText('雨幕中的城门缓缓打开。')
+    const liveRow = liveNarrative.closest('[data-nova-chat-item="run"]')
+    expect(liveRow).not.toBeNull()
+
+    rerender(list([
+      {
+        id: 'reasoning-stable', role: 'thinking', content: '正在构建场景。', streaming: false,
+        run_id: 'run-stable', display_segment_id: 'reasoning-stable',
+      },
+      {
+        id: 'persisted-turn', role: 'assistant', content: '雨幕中的城门缓缓打开。', streaming: false,
+        render_key: 'narrative-render-key', run_id: 'run-stable',
+      },
+      {
+        id: 'tool-stable', role: 'tool_call', name: 'submit_choices', content: 'submit_choices',
+        status: 'success', result: 'ok', streaming: false, run_id: 'run-stable',
+      },
+    ], false))
+
+    const persistedNarrative = await screen.findByText('雨幕中的城门缓缓打开。')
+    expect(persistedNarrative.closest('[data-nova-chat-item="run"]')).toBe(liveRow)
+    expect(persistedNarrative).toBe(liveNarrative)
+    expect(screen.getAllByRole('button', { name: /执行过程/ })).toHaveLength(2)
+  })
+
   it('旧历史没有正文阶段时仍把同一运行的最后一段正文作为结果', () => {
     renderMessageList(
       <MessageList
@@ -386,7 +463,7 @@ describe('Agent MessageList', () => {
     expect(screen.getByRole('button', { name: /执行过程.*1 段进展.*1 次工具调用/ })).toBeInTheDocument()
   })
 
-  it('运行中的 trace 默认收起，用户展开后在流式更新中保持展开', async () => {
+  it('运行中的 trace 保留用户展开状态，并在运行完成后自动收起', async () => {
     const { rerender } = renderMessageList(
       <MessageList
         isStreaming
@@ -462,7 +539,8 @@ describe('Agent MessageList', () => {
       </VirtuosoMockContext.Provider>,
     )
 
-    await waitFor(() => expect(screen.getByText('正在检查资料')).toBeInTheDocument())
+    await waitFor(() => expect(screen.queryByText('正在检查资料')).not.toBeInTheDocument())
+    expect(screen.getByRole('button', { name: /执行过程.*1 次工具调用/ })).toHaveAttribute('aria-expanded', 'false')
     expect(screen.getByText('资料检查完成。')).toBeInTheDocument()
   })
 

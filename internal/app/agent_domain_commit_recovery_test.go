@@ -194,10 +194,13 @@ func TestAppReconcilesStableSessionAndStoryCompactions(t *testing.T) {
 	}
 	sessionCommand := agents.CommandID("session-compact-command")
 	sessionRecord := session.ContextCompaction{
-		ID: contextStructuralRecordID("cc", string(sessionCommand)), AgentKind: "ide", Epoch: 1,
-		Summary: "summary", SourceEndIndex: 1, SourceMessageCount: 1, RetainedTurns: 1,
-		TokensBefore: 100, TokensAfter: 20, ContextWindowTokens: 1000, Threshold: .8,
-		Reason: "manual", Phase: "manual",
+		ID: contextStructuralRecordID("cc", string(sessionCommand)),
+		CompactionCheckpoint: agents.NewContextCompactionCheckpoint("ide", agents.ContextCompactionResult{
+			Epoch: 1, Summary: "summary", RetainedTurns: 1,
+			TokensBefore: 100, TokensAfter: 20, ContextWindowTokens: 1000, Threshold: .8,
+			TriggerReason: "manual", Phase: "manual",
+		}),
+		SourceEndIndex: 1, SourceMessageCount: 1,
 	}
 	sessionCursor := sess.ContextCursor()
 	sessionBinding := agents.RuntimeBinding{AgentKind: agents.AgentKindIDE, Workspace: workspace, SessionID: sess.ID}
@@ -254,10 +257,13 @@ func TestAppReconcilesStableSessionAndStoryCompactions(t *testing.T) {
 	expectedParent := storyContext.Meta.Branches["main"].Head
 	storyCommand := agents.CommandID("story-compact-command")
 	storyRecord := interactive.ContextCompactionEvent{
-		ID: contextStructuralRecordID("cc", string(storyCommand)), AgentKind: "interactive_story",
-		Epoch: 1, Summary: "story summary", SourceTurnCount: 1, RetainedTurns: 1,
-		TokensBefore: 100, TokensAfter: 30, ContextWindowTokens: 1000, Threshold: .8,
-		Reason: "manual", Phase: "manual", ExpectedParentID: &expectedParent,
+		ID: contextStructuralRecordID("cc", string(storyCommand)),
+		CompactionCheckpoint: agents.NewContextCompactionCheckpoint("interactive_story", agents.ContextCompactionResult{
+			Epoch: 1, Summary: "story summary", RetainedTurns: 1,
+			TokensBefore: 100, TokensAfter: 30, ContextWindowTokens: 1000, Threshold: .8,
+			TriggerReason: "manual", Phase: "manual",
+		}),
+		SourceTurnCount: 1, ExpectedParentID: &expectedParent,
 	}
 	storyBinding := agents.RuntimeBinding{AgentKind: agents.AgentKindInteractiveStory, Workspace: workspace, StoryID: story.ID, BranchID: "main"}
 	storyRequest := structuralRecoveryRequest(

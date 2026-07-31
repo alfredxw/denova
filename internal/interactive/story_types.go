@@ -398,27 +398,14 @@ type StateDeltaEvent struct {
 }
 
 type ContextCompactionEvent struct {
-	V                    int     `json:"v"`
-	Type                 string  `json:"type"`
-	ID                   string  `json:"id"`
-	ParentID             string  `json:"parent_id,omitempty"`
-	BranchID             string  `json:"branch_id"`
-	Ts                   string  `json:"ts"`
-	AgentKind            string  `json:"agent_kind,omitempty"`
-	Epoch                int     `json:"epoch"`
-	Summary              string  `json:"summary"`
-	SourceTurnCount      int     `json:"source_turn_count"`
-	RetainedTurns        int     `json:"retained_turns"`
-	TokensBefore         int     `json:"tokens_before"`
-	TokensAfter          int     `json:"tokens_after"`
-	TargetRatio          float64 `json:"target_ratio,omitempty"`
-	ContextWindowTokens  int     `json:"context_window_tokens"`
-	Strategy             string  `json:"strategy,omitempty"`
-	Threshold            float64 `json:"threshold"`
-	Reason               string  `json:"reason,omitempty"`
-	Phase                string  `json:"phase,omitempty"`
-	CandidateFingerprint string  `json:"candidate_fingerprint,omitempty"`
-	CandidateGeneration  uint64  `json:"candidate_generation,omitempty"`
+	V        int    `json:"v"`
+	Type     string `json:"type"`
+	ID       string `json:"id"`
+	ParentID string `json:"parent_id,omitempty"`
+	BranchID string `json:"branch_id"`
+	Ts       string `json:"ts"`
+	contextmaintenance.CompactionCheckpoint
+	SourceTurnCount int `json:"source_turn_count"`
 	// ExpectedParentID is a write-only compare-and-swap guard. It is never
 	// serialized into the story journal; ParentID records the parent that
 	// actually won the commit.

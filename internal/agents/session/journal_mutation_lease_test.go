@@ -9,7 +9,7 @@ import (
 
 	agent "github.com/alfredxw/denova/agent"
 
-	"denova/internal/filelease"
+	"denova/internal/localfs"
 )
 
 func TestDisplayMutationRefreshesDomainCommitFromAnotherSession(t *testing.T) {
@@ -84,7 +84,7 @@ func TestDisplayMutationWaitsForCanonicalJournalLease(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	release, err := filelease.Acquire(context.Background(), displayWriter.filePath+".domain.lock")
+	release, err := localfs.AcquireLease(context.Background(), displayWriter.filePath+".domain.lock")
 	if err != nil {
 		t.Fatal(err)
 	}

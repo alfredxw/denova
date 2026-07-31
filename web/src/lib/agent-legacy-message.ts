@@ -120,6 +120,8 @@ function metadataFromChatMessage(message: ChatMessage): AgentMessageMetadata | u
   const metadata: AgentMessageMetadata = {
     created_at: message.created_at,
     display_role: message.role,
+    display_phase: message.display_phase,
+    display_segment_id: message.display_segment_id,
     run_id: message.run_id,
     agent_kind: message.agent_kind,
     agent_name: message.agent_name,
@@ -187,6 +189,8 @@ function payloadFromChatMessage(message: ChatMessage): Record<string, unknown> {
     thinking_preview: message.thinking_preview,
     plan_action: message.plan_action,
     created_at: message.created_at,
+    display_phase: message.display_phase,
+    display_segment_id: message.display_segment_id,
   }).filter(([, value]) => value !== undefined && value !== ''))
 }
 

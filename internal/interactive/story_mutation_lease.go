@@ -6,7 +6,7 @@ import (
 	"log"
 	"strings"
 
-	"denova/internal/filelease"
+	"denova/internal/localfs"
 )
 
 // acquireStoryMutationLeaseLocked linearizes the read/CAS/write section across
@@ -23,7 +23,7 @@ func (s *Store) acquireStoryMutationLeaseLocked(storyID string) (func(), error) 
 		s.heldStoryLeases[storyID]++
 		return func() { s.heldStoryLeases[storyID]-- }, nil
 	}
-	release, err := filelease.Acquire(context.Background(), s.storyPath(storyID)+".mutation.lock")
+	release, err := localfs.AcquireLease(context.Background(), s.storyPath(storyID)+".mutation.lock")
 	if err != nil {
 		return nil, fmt.Errorf("acquire story mutation lease: %w", err)
 	}

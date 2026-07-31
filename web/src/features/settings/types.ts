@@ -1,3 +1,7 @@
+import type { AgentApprovalMode } from '@/features/agent-approval/modes'
+
+export type { AgentApprovalMode } from '@/features/agent-approval/modes'
+
 export interface Settings {
   openai_api_key?: string
   openai_base_url?: string
@@ -69,7 +73,6 @@ export interface Settings {
   interactive_stage_line_height?: number | null
 }
 
-export type AgentApprovalMode = 'ask' | 'write' | 'yolo'
 export type ShellEnvironmentMode = 'auto' | 'process'
 
 /** User-owned terminal shortcut resolved by stable ID on the backend. */
@@ -233,7 +236,7 @@ export interface AgentToolDescriptorSummary {
   post_check: string
   recovery: string
   result_projection: string
-  context_retention: string
+  result_retention: string
   steering: string
 }
 

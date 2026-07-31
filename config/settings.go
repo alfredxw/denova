@@ -173,7 +173,7 @@ func DefaultSettings() Settings {
 		AgentIdleTimeoutSeconds:     intPtr(DefaultAgentIdleTimeoutSeconds),
 		AgentToolResultLimitKB:      intPtr(DefaultAgentToolResultLimitKB),
 		AgentToolParallelism:        intPtr(DefaultAgentToolParallelism),
-		AgentApprovalMode:           AgentApprovalAsk,
+		AgentApprovalMode:           AgentApprovalWrite,
 		ShellEnvironmentMode:        ShellEnvironmentAuto,
 		TerminalEnabled:             boolPtr(true),
 		TerminalCommands:            DefaultTerminalCommands(),

@@ -3,6 +3,8 @@ package interactive
 import (
 	"errors"
 	"testing"
+
+	"denova/internal/contextmaintenance"
 )
 
 func TestContextCompactionRejectsBranchHeadDrift(t *testing.T) {
@@ -20,7 +22,8 @@ func TestContextCompactionRejectsBranchHeadDrift(t *testing.T) {
 		t.Fatal(err)
 	}
 	if _, err := store.AppendContextCompaction(story.ID, "main", ContextCompactionEvent{
-		Summary: "基于旧上下文的摘要", ExpectedParentID: &expected,
+		CompactionCheckpoint: contextmaintenance.CompactionCheckpoint{Summary: "基于旧上下文的摘要"},
+		ExpectedParentID:     &expected,
 	}); !errors.Is(err, ErrStoryContextRevisionConflict) {
 		t.Fatalf("stale compaction error = %v, want %v", err, ErrStoryContextRevisionConflict)
 	}
@@ -44,7 +47,10 @@ func TestContextCompactionRemovalRejectsBranchHeadDrift(t *testing.T) {
 		t.Fatal(err)
 	}
 	expected := turn.ID
-	compaction, err := store.AppendContextCompaction(story.ID, "main", ContextCompactionEvent{Summary: "庭院里有井", ExpectedParentID: &expected})
+	compaction, err := store.AppendContextCompaction(story.ID, "main", ContextCompactionEvent{
+		CompactionCheckpoint: contextmaintenance.CompactionCheckpoint{Summary: "庭院里有井"},
+		ExpectedParentID:     &expected,
+	})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -78,8 +84,12 @@ func TestContextCompactionStructuralCommitReconcilesExactEventID(t *testing.T) {
 	}
 	expected := turn.ID
 	intent := ContextCompactionEvent{
-		ID: "cc-command-1", AgentKind: "interactive_story", Epoch: 1, Summary: "钟楼持续鸣响",
-		SourceTurnCount: 1, RetainedTurns: 2, Reason: "manual", Phase: "manual", ExpectedParentID: &expected,
+		ID: "cc-command-1",
+		CompactionCheckpoint: contextmaintenance.CompactionCheckpoint{
+			AgentKind: "interactive_story", Epoch: 1, Summary: "钟楼持续鸣响",
+			RetainedTurns: 2, TriggerReason: "manual", Phase: "manual",
+		},
+		SourceTurnCount: 1, ExpectedParentID: &expected,
 	}
 	first, err := store.AppendContextCompaction(story.ID, "main", intent)
 	if err != nil {
@@ -89,8 +99,13 @@ func TestContextCompactionStructuralCommitReconcilesExactEventID(t *testing.T) {
 	if err != nil {
 		t.Fatalf("exact compaction retry after branch-head advance failed: %v", err)
 	}
-	if second.ID != first.ID || second.ParentID != first.ParentID {
+	if second.ID != first.ID || second.ParentID != first.ParentID || second.CompactionCheckpoint != intent.CompactionCheckpoint {
 		t.Fatalf("retry created a different compaction: first=%#v second=%#v", first, second)
+	}
+	conflictingReplay := intent
+	conflictingReplay.RecoveryBand = 0.75
+	if _, err := store.AppendContextCompaction(story.ID, "main", conflictingReplay); !errors.Is(err, ErrStoryContextRevisionConflict) {
+		t.Fatalf("same event id with changed durable fields error = %v, want %v", err, ErrStoryContextRevisionConflict)
 	}
 	removeExpected := first.ID
 	removeIntent := ContextCompactionRemovalEvent{

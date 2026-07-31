@@ -12,8 +12,6 @@ import (
 	"os"
 	"path/filepath"
 	"sync"
-
-	"github.com/alfredxw/denova/agent/internal/filelease"
 )
 
 const fileJournalVersion = 1
@@ -70,7 +68,7 @@ func (s *FileJournalStore) OpenJournal(ctx context.Context, key string) (Journal
 	}
 	digest := sha256.Sum256([]byte(key))
 	path := filepath.Join(s.root, hex.EncodeToString(digest[:])+".jsonl")
-	releaseLease, err := filelease.Acquire(ctx, path+".lease")
+	releaseLease, err := acquireFileJournalLease(ctx, path+".lease")
 	if err != nil {
 		return nil, fmt.Errorf("lock file journal binding lease: %w", err)
 	}

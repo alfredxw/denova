@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { useTheme } from 'next-themes'
 import { checkForUpdate, fetchSettings } from '@/features/settings/api'
@@ -241,7 +241,10 @@ function App() {
     return () => window.removeEventListener(LORE_UPDATED_EVENT, onLoreUpdated)
   }, [refreshLoreItems])
 
-  const chapterStats: Record<string, ChapterSummary> = Object.fromEntries((summary?.chapters || []).map((chapter) => [chapter.path, chapter]))
+  const chapterStats = useMemo<Record<string, ChapterSummary>>(
+    () => Object.fromEntries((summary?.chapters || []).map((chapter) => [chapter.path, chapter])),
+    [summary?.chapters],
+  )
   const currentChapter = selectedFile ? chapterStats[selectedFile] : undefined
   const currentBookName = summary?.title?.trim() ||
     books.find((book) => book.path === workspace)?.name?.trim() ||
@@ -476,17 +479,18 @@ function App() {
   }, [flushEditorDraft, moveItem, notifyVersionChange, selectedFile])
 
   const handleSelectFile = useCallback(async (path: string) => {
+    const key = `file:${path}`
+    if (selectedFile === path && activeTabKey === key) return true
     if (selectedFile !== path && !(await flushEditorDraft())) return false
     setSelectedChapterId(path)
-    const key = `file:${path}`
     setOpenTabs((prev) => {
       const next: Tab[] = prev.some((tab) => tabKey(tab) === key) ? prev : [...prev, { kind: 'file', path }]
       return limitTabs(next, key)
     })
     setActiveTabKey(key)
-    await selectFile(path)
+    if (selectedFile !== path) await selectFile(path)
     return true
-  }, [flushEditorDraft, limitTabs, selectFile, selectedFile, setSelectedChapterId])
+  }, [activeTabKey, flushEditorDraft, limitTabs, selectFile, selectedFile, setSelectedChapterId])
 
   const handleOpenLoreTab = useCallback(async () => {
     const key = tabKey({ kind: 'lore' })

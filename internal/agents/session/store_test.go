@@ -10,6 +10,8 @@ import (
 	"testing"
 
 	agent "github.com/alfredxw/denova/agent"
+
+	"denova/internal/contextmaintenance"
 )
 
 func TestAgentMessageWireRoundTripsAllStableFields(t *testing.T) {
@@ -830,15 +832,15 @@ func TestContextCompactionPersistsOutsideVisibleHistory(t *testing.T) {
 		t.Fatal(err)
 	}
 	record, err := sess.AppendContextCompaction(ContextCompaction{
-		AgentKind:           "ide",
-		Summary:             "保留目标和决定",
-		SourceStartIndex:    0,
-		SourceEndIndex:      2,
-		RetainedTurns:       8,
-		TokensBefore:        900,
-		TokensAfter:         120,
-		ContextWindowTokens: 1000,
-		Threshold:           0.9,
+		CompactionCheckpoint: contextmaintenance.CompactionCheckpoint{
+			AgentKind: "ide", Summary: "保留目标和决定", RetainedTurns: 8,
+			EstimatedTokensBefore: 850, ObservedPromptTokens: 900, ObservedEstimateTokens: 800,
+			TokensBefore: 900, TokensAfter: 120, ContextWindowTokens: 1000,
+			Strategy: "summary", Threshold: 0.9, TriggerReason: "context_usage_threshold", Phase: "mid_run",
+			RecoveryBand: 0.75, CandidateFingerprint: "sha256:candidate", CandidateGeneration: 3,
+		},
+		SourceStartIndex: 0,
+		SourceEndIndex:   2,
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -868,6 +870,9 @@ func TestContextCompactionPersistsOutsideVisibleHistory(t *testing.T) {
 	if latest.Summary != "保留目标和决定" || latest.SourceEndIndex != 2 {
 		t.Fatalf("unexpected reloaded compaction: %#v", latest)
 	}
+	if latest.CompactionCheckpoint != record.CompactionCheckpoint {
+		t.Fatalf("reloaded durable checkpoint changed:\ngot  %#v\nwant %#v", latest.CompactionCheckpoint, record.CompactionCheckpoint)
+	}
 	if history := reloaded.History(); len(history) != 2 {
 		t.Fatalf("reloaded visible history should stay raw: %#v", history)
 	}
@@ -890,15 +895,12 @@ func TestContextCompactionRemovalRestoresRawHistory(t *testing.T) {
 		t.Fatal(err)
 	}
 	record, err := sess.AppendContextCompaction(ContextCompaction{
-		AgentKind:           "ide",
-		Summary:             "旧摘要",
-		SourceStartIndex:    0,
-		SourceEndIndex:      2,
-		RetainedTurns:       8,
-		TokensBefore:        900,
-		TokensAfter:         120,
-		ContextWindowTokens: 1000,
-		Threshold:           0.9,
+		CompactionCheckpoint: contextmaintenance.CompactionCheckpoint{
+			AgentKind: "ide", Summary: "旧摘要", RetainedTurns: 8,
+			TokensBefore: 900, TokensAfter: 120, ContextWindowTokens: 1000, Threshold: 0.9,
+		},
+		SourceStartIndex: 0,
+		SourceEndIndex:   2,
 	})
 	if err != nil {
 		t.Fatal(err)

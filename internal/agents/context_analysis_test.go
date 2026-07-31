@@ -416,10 +416,10 @@ func TestIDEContextAnalysisUsesPreparedTurnWithoutSideEffects(t *testing.T) {
 		agent.AssistantMessage("assistant 3", nil),
 	}
 	compaction := &session.ContextCompaction{
-		Epoch:          1,
-		Summary:        "压缩摘要：保留早期约束。",
+		CompactionCheckpoint: NewContextCompactionCheckpoint("", ContextCompactionResult{
+			Epoch: 1, Summary: "压缩摘要：保留早期约束。", RetainedTurns: 1,
+		}),
 		SourceEndIndex: 2,
-		RetainedTurns:  1,
 	}
 	cfg := &config.Config{}
 	req := ChatRequest{Message: "continue after compaction"}

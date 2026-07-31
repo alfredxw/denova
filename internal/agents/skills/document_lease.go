@@ -7,7 +7,7 @@ import (
 	"path/filepath"
 	"sort"
 
-	"denova/internal/filelease"
+	"denova/internal/localfs"
 )
 
 type skillLeaseTarget struct {
@@ -35,7 +35,7 @@ func withSkillLeases[T any](ctx context.Context, targets []skillLeaseTarget, ope
 	sort.Strings(paths)
 	releases := make([]func() error, 0, len(paths))
 	for _, lockPath := range paths {
-		release, acquireErr := filelease.Acquire(ctx, lockPath)
+		release, acquireErr := localfs.AcquireLease(ctx, lockPath)
 		if acquireErr != nil {
 			for index := len(releases) - 1; index >= 0; index-- {
 				acquireErr = errors.Join(acquireErr, releases[index]())

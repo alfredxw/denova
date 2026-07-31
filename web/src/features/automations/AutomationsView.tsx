@@ -569,7 +569,13 @@ export function AutomationsView({ workspace, onClose }: { workspace: string; onC
         }}
         className="flex-1 text-xs"
         mainClassName="min-h-0 min-w-0"
-        desktopGridClassName="grid-cols-[18rem_minmax(0,1fr)]"
+        leftResize={{
+          layoutKey: 'nova-automations-task-list-layout',
+          label: t('layout.resize.sidebar'),
+          defaultSize: '288px',
+          minSize: '220px',
+          maxSize: '40%',
+        }}
       >
         {({ openLeft }) => (
           <main className="flex h-full min-h-0 flex-col">

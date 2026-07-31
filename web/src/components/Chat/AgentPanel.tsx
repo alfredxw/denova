@@ -364,25 +364,25 @@ function AgentPanelComponent({
     void handleAnalyzeContext(CONTEXT_ANALYSIS_SIMULATED_MESSAGE)
   }
 
-  const openSubAgentSession = (message: AgentMessageView) => {
+  const openSubAgentSession = useCallback((message: AgentMessageView) => {
     const key = agentSubAgentSessionKey(message)
     if (key) setActiveSubAgentSessionKey(key)
-  }
+  }, [])
 
-  const openTraceRun = (runID: string) => {
+  const openTraceRun = useCallback((runID: string) => {
     if (!runID) return
     setSelectedTraceRunId(runID)
     setView('traces')
-  }
+  }, [])
 
-  const continuePlanDiscussion = (message: AgentMessageView) => {
+  const continuePlanDiscussion = useCallback((message: AgentMessageView) => {
     setView('chat')
     onPlanModeChange(true)
     setInputPrefill((current) => ({
       prompt: formatPlanDiscussionMessage(agentViewContent(message)),
       nonce: (current?.nonce || 0) + 1,
     }))
-  }
+  }, [onPlanModeChange])
 
   const removeContextCompaction = async () => {
     await onRemoveContextCompaction()
@@ -463,14 +463,14 @@ function AgentPanelComponent({
     return accepted
   }
 
-  const returnQueuedCommandToEditor = async (item: AgentRuntimeQueuedCommand) => {
+  const returnQueuedCommandToEditor = useCallback(async (item: AgentRuntimeQueuedCommand) => {
     const prompt = await onEditQueuedCommand?.(item)
     if (typeof prompt !== 'string') return
     setInputPrefill((current) => ({
       prompt,
       nonce: (current?.nonce || 0) + 1,
     }))
-  }
+  }, [onEditQueuedCommand])
 
   // Quick actions are writing-workbench affordances tied to the current chapter. The AgentChat
   // workbench is a general project surface, so it opens on a clean conversation instead.

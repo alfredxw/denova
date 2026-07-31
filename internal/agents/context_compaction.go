@@ -13,6 +13,7 @@ import (
 	"github.com/alfredxw/denova/agent/model/openai"
 
 	"denova/config"
+	"denova/internal/contextmaintenance"
 )
 
 const (
@@ -84,6 +85,59 @@ type ContextCompactionResult struct {
 	CandidateGeneration       uint64
 	ConsecutiveFailures       int
 	FailureFuseOpen           bool
+}
+
+// NewContextCompactionCheckpoint freezes the durable semantic subset of a
+// successful compaction result. Domain-specific stores add their own source
+// cursors and commit metadata around this shared value.
+func NewContextCompactionCheckpoint(agentKind string, result ContextCompactionResult) contextmaintenance.CompactionCheckpoint {
+	return contextmaintenance.CompactionCheckpoint{
+		AgentKind:              strings.TrimSpace(agentKind),
+		Epoch:                  result.Epoch,
+		Summary:                result.Summary,
+		RetainedTurns:          result.RetainedTurns,
+		EstimatedTokensBefore:  result.EstimatedTokensBefore,
+		ObservedPromptTokens:   result.ObservedPromptTokens,
+		ObservedEstimateTokens: result.ObservedEstimateTokens,
+		TokensBefore:           result.TokensBefore,
+		TokensAfter:            result.TokensAfter,
+		TargetRatio:            result.TargetRatio,
+		ContextWindowTokens:    result.ContextWindowTokens,
+		Strategy:               result.Strategy,
+		Threshold:              result.Threshold,
+		TriggerReason:          strings.TrimSpace(result.TriggerReason),
+		Phase:                  result.Phase,
+		RecoveryBand:           result.RecoveryBand,
+		CandidateFingerprint:   result.CandidateFingerprint,
+		CandidateGeneration:    result.CandidateGeneration,
+	}
+}
+
+// ContextCompactionResultFromCheckpoint restores the exact durable runtime
+// view. Callers that need derived recovery-band fields recalculate them after
+// applying any domain-specific post-context projection.
+func ContextCompactionResultFromCheckpoint(checkpoint contextmaintenance.CompactionCheckpoint) ContextCompactionResult {
+	result := ContextCompactionResult{
+		Triggered:              true,
+		Phase:                  checkpoint.Phase,
+		EstimatedTokensBefore:  checkpoint.EstimatedTokensBefore,
+		ObservedPromptTokens:   checkpoint.ObservedPromptTokens,
+		ObservedEstimateTokens: checkpoint.ObservedEstimateTokens,
+		TokensBefore:           checkpoint.TokensBefore,
+		TokensAfter:            checkpoint.TokensAfter,
+		ContextWindowTokens:    checkpoint.ContextWindowTokens,
+		Strategy:               checkpoint.Strategy,
+		Threshold:              checkpoint.Threshold,
+		TriggerReason:          checkpoint.TriggerReason,
+		RecoveryBand:           checkpoint.RecoveryBand,
+		Epoch:                  checkpoint.Epoch,
+		Summary:                checkpoint.Summary,
+		TargetRatio:            checkpoint.TargetRatio,
+		RetainedTurns:          checkpoint.RetainedTurns,
+		CandidateFingerprint:   checkpoint.CandidateFingerprint,
+		CandidateGeneration:    checkpoint.CandidateGeneration,
+	}
+	return result
 }
 
 type contextCompactionSummaryFunc func(ctx context.Context, cfg *config.Config, agentKind string, existingCheckpoint string, source []*agent.Message, referenceContext string, sourceTokens int, policy contextCompactionPolicy, emitDelta func(attempt int, delta string)) (string, int, error)

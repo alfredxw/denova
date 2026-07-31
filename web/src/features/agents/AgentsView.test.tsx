@@ -641,6 +641,7 @@ describe('AgentsView', () => {
     render(<AgentsView />)
 
     await screen.findByText('模型与思考')
+    expect(screen.getByRole('separator', { name: '调整侧边栏宽度' })).toBeVisible()
     await user.click(screen.getByRole('button', { name: '用配置管理 Agent 调整' }))
 
     expect(screen.getByTestId('config-manager-chat')).toBeInTheDocument()
@@ -761,7 +762,7 @@ function resolvedTool(
       post_check: 'none',
       recovery: 'read_only',
       result_projection: 'bounded_model_context',
-      context_retention: 'receipt',
+      result_retention: 'receipt',
       steering: 'finish_current',
     },
   }

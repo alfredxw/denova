@@ -1,24 +1,28 @@
 import { render, screen } from '@testing-library/react'
-import { describe, expect, it, vi } from 'vitest'
+import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { WorkspaceLayout, readStoredLayoutForWorkspace } from './workspace-layout'
 
 describe('WorkspaceLayout', () => {
+  beforeEach(() => {
+    window.localStorage.clear()
+  })
+
   it('removes the sidebar resize target when the sidebar is hidden', () => {
     const { container, rerender } = renderWorkspaceLayout(true)
 
     expect(container.querySelector('#sidebar')).toBeInTheDocument()
-    expect(container.querySelector('#sidebar')).toHaveAttribute('data-nova-user-collapsible', 'false')
-    expect(screen.getByRole('separator', { name: '调整项目结构宽度' })).toHaveClass('cursor-col-resize')
+    expect(container.querySelector('#sidebar')).toHaveAttribute('data-nova-drag-collapse', 'disabled')
+    expect(screen.getByRole('separator', { name: '调整侧边栏宽度' })).toHaveClass('cursor-col-resize')
 
     rerender(workspaceLayout(false))
 
     expect(container.querySelector('#sidebar')).toHaveAttribute('data-disabled', 'true')
-    expect(container.querySelector('#sidebar')).toHaveAttribute('data-nova-user-collapsible', 'true')
+    expect(container.querySelector('#sidebar')).toHaveAttribute('data-nova-drag-collapse', 'disabled')
     expect(container.querySelector('#sidebar')).toHaveAttribute('data-state', 'closed')
     expect(container.querySelector('#sidebar')).toHaveAttribute('aria-hidden', 'true')
     expect(container.querySelector('#sidebar')).toHaveAttribute('inert')
     expect(container.querySelector('#sidebar')).toHaveAttribute('data-nova-collapsible-panel', 'sidebar')
-    expect(screen.queryByRole('separator', { name: '调整项目结构宽度' })).not.toBeInTheDocument()
+    expect(screen.queryByRole('separator', { name: '调整侧边栏宽度' })).not.toBeInTheDocument()
   })
 
   it('removes the right panel resize target when the right panel is hidden', () => {
@@ -108,6 +112,15 @@ describe('WorkspaceLayout', () => {
 
     expect(Object.keys(layout || {})).toEqual(['sidebar', 'center', 'right'])
     expect(layout).toEqual({ sidebar: 20, center: 46, right: 34 })
+  })
+
+  it('does not replace a saved workspace width during layout initialization', () => {
+    const saved = { sidebar: 27, center: 39, right: 34 }
+    window.localStorage.setItem('nova-workspace-horizontal', JSON.stringify(saved))
+
+    renderWorkspaceLayout(true)
+
+    expect(JSON.parse(window.localStorage.getItem('nova-workspace-horizontal') || '{}')).toEqual(saved)
   })
 })
 

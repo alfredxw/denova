@@ -1,17 +1,24 @@
 import { fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { useState } from 'react'
-import { describe, expect, it, vi } from 'vitest'
+import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { InputArea } from './InputArea'
+
+const { setApprovalMode } = vi.hoisted(() => ({ setApprovalMode: vi.fn() }))
 
 vi.mock('@/features/agent-approval/AgentApprovalProvider', () => ({
   useAgentApprovalMode: () => ({
     mode: 'write',
     initialized: true,
     saving: false,
-    setMode: vi.fn().mockResolvedValue(true),
+    setMode: setApprovalMode,
   }),
 }))
+
+beforeEach(() => {
+  setApprovalMode.mockReset()
+  setApprovalMode.mockResolvedValue(true)
+})
 
 describe('InputArea command menu', () => {
   it('keeps retired writing actions out of the built-in command list', async () => {
@@ -47,6 +54,31 @@ describe('InputArea command menu', () => {
     expect(skillCommand).toBeInTheDocument()
     expect(screen.queryByText('/plan')).not.toBeInTheDocument()
     expect(clearCommand.compareDocumentPosition(skillCommand) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
+  })
+
+  it('keeps long Skill choices in one compact, truncatable row', async () => {
+    const user = userEvent.setup()
+    const name = 'scene-continuity-and-character-voice'
+    const description = '检查很长的场景连续性、人物声音、叙事节奏与前后文细节，并给出可直接采用的修订建议'
+    render(
+      <InputArea
+        onSend={vi.fn()}
+        disabled={false}
+        commandScope="skills"
+        skills={[{ name, description }]}
+      />,
+    )
+
+    await user.type(screen.getByRole('textbox'), '/')
+
+    const command = screen.getByText(`/${name}`)
+    const item = command.closest('[cmdk-item]')
+    expect(item).toHaveAttribute('data-command-source', 'skill')
+    expect(item).toHaveClass('whitespace-nowrap', 'sm:min-h-9')
+    expect(command).toHaveClass('truncate')
+    expect(screen.getByText(description)).toHaveClass('truncate')
+    expect(within(item as HTMLElement).getByText('加载 Skill')).toBeInTheDocument()
+    expect(screen.getAllByText('可用 Skills')).toHaveLength(1)
   })
 
   it('inserts selected Skills as inline tokens and sends compatible text', async () => {
@@ -145,6 +177,43 @@ describe('InputArea command menu', () => {
     )
 
     expect(screen.queryByLabelText('Plan Mode 已开启')).not.toBeInTheDocument()
+  })
+
+  it('switches safety mode from its visible composer control instead of input actions', async () => {
+    const user = userEvent.setup()
+    render(
+      <InputArea
+        onSend={vi.fn()}
+        disabled={false}
+        onTogglePlanMode={vi.fn()}
+      />,
+    )
+
+    await user.click(screen.getByRole('button', { name: 'Agent 安全模式: Write' }))
+    const fullAccess = screen.getByRole('menuitem', { name: /Full access/ })
+    expect(fullAccess).toHaveTextContent('除极高危操作外均自动执行')
+    await user.click(fullAccess)
+    expect(setApprovalMode).toHaveBeenCalledWith('full_access')
+
+    await user.click(screen.getByRole('button', { name: '输入动作' }))
+    expect(screen.queryByRole('menuitem', { name: /Full access/ })).not.toBeInTheDocument()
+  })
+
+  it('keeps the run snapshot visible and explains why switching is blocked while active', async () => {
+    const user = userEvent.setup()
+    render(
+      <InputArea
+        onSend={vi.fn()}
+        onStop={vi.fn()}
+        disabled={false}
+        generationActive
+      />,
+    )
+
+    await user.click(screen.getByRole('button', { name: 'Agent 安全模式: Write' }))
+    expect(screen.getByText('当前运行已锁定启动时的模式，结束后可切换。')).toBeInTheDocument()
+    expect(screen.getByRole('menuitem', { name: /Full access/ })).toHaveAttribute('data-disabled')
+    expect(setApprovalMode).not.toHaveBeenCalled()
   })
 
   it('shows selected inline comments and allows sending them without extra text', async () => {

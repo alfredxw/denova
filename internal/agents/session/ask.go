@@ -11,6 +11,8 @@ import (
 	"slices"
 	"strings"
 	"time"
+
+	"denova/config"
 )
 
 const (
@@ -425,9 +427,11 @@ func normalizeToolApprovalInteraction(interaction *AskInteraction) error {
 		approval.RuleID == "" || approval.ArgsHash == "" {
 		return fmt.Errorf("tool approval metadata is incomplete")
 	}
-	if approval.Mode != "ask" && approval.Mode != "write" && approval.Mode != "yolo" {
-		return fmt.Errorf("tool approval mode %q is invalid", approval.Mode)
+	mode, err := config.ParseAgentApprovalMode(approval.Mode)
+	if err != nil {
+		return fmt.Errorf("tool approval mode %q is invalid: %w", approval.Mode, err)
 	}
+	approval.Mode = string(mode)
 	if approval.Risk != "low" && approval.Risk != "medium" && approval.Risk != "high" && approval.Risk != "critical" {
 		return fmt.Errorf("tool approval risk %q is invalid", approval.Risk)
 	}

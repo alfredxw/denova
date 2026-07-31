@@ -143,6 +143,23 @@ func TestToolApprovalInteractionRejectsModelLikeQuestionShape(t *testing.T) {
 	}
 }
 
+func TestToolApprovalInteractionRejectsInvalidMode(t *testing.T) {
+	_, err := normalizeAskInteraction(AskInteraction{
+		ID: "approval-invalid-mode", Kind: AskKindToolApproval, ToolCallID: "tool-invalid-mode", AgentKind: "ide",
+		Approval: &ToolApprovalPresentation{
+			Mode: "unsafe", ToolName: "bash", Risk: "high", Reason: "invalid mode",
+			RuleID: "full_access_non_critical", ArgsHash: strings.Repeat("a", 64),
+		},
+		Questions: []AskQuestion{{
+			ID: toolApprovalQuestionID, Question: "Allow once?",
+			Options: []AskOption{{ID: toolApprovalAllowOptionID, Label: "Allow once"}, {ID: toolApprovalDenyOptionID, Label: "Deny"}},
+		}},
+	})
+	if err == nil {
+		t.Fatal("invalid tool approval mode was accepted")
+	}
+}
+
 func TestAwaitAskResolutionWakesEveryAttachedWaiter(t *testing.T) {
 	store, err := NewStore(t.TempDir())
 	if err != nil {

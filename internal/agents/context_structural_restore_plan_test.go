@@ -19,12 +19,25 @@ func TestContextStructuralRestorePlanStrictRoundTrip(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	compaction := ContextCompactionResultFromCheckpoint(NewContextCompactionCheckpoint("", ContextCompactionResult{
+		Phase: "mid_run", TriggerReason: "compaction_capacity_reserve",
+		EstimatedTokensBefore: 1800, ObservedPromptTokens: 1900, ObservedEstimateTokens: 1700,
+		TokensBefore: 2000, TokensAfter: 400, ContextWindowTokens: 2400,
+		Strategy: "summary", Threshold: 0.85, RecoveryBand: 0.75,
+		Epoch: 2, Summary: "bounded", TargetRatio: 0.22, RetainedTurns: 2,
+		CandidateFingerprint: "sha256:candidate", CandidateGeneration: 7,
+	}))
+	compaction.SourceMessageCount = 8
+	compaction.ProjectedTokensBefore = 2300
+	compaction.ProjectedTokensAfter = 700
+	compaction.ReservedCompletionTokens = 200
+	compaction.ReservedToolResultTokens = 100
+	compaction.MessageCountBefore = 12
+	compaction.MessageCountAfter = 5
 	plan := ContextStructuralRestorePlan{
 		Version: ContextStructuralRestorePlanVersion, Domain: ContextStructuralDomainSession,
 		Action: ContextStructuralCompact, Commit: true, IntentHash: hash, RecordID: "cc-1",
-		Result: ContextStructuralResult{Compaction: ContextCompactionResult{
-			Triggered: true, Epoch: 2, Summary: "bounded", SourceMessageCount: 8,
-		}},
+		Result:   ContextStructuralResult{Compaction: compaction},
 		Mutation: mutation,
 	}
 	encoded, err := EncodeContextStructuralRestorePlan(plan, binding, "context:7")

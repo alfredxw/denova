@@ -16,6 +16,7 @@ require (
 	github.com/go-git/go-git/v5 v5.19.1
 	github.com/go-rod/rod v0.116.2
 	github.com/go-rod/stealth v0.4.9
+	github.com/gofrs/flock v0.13.0
 	github.com/hertz-contrib/websocket v0.2.0
 	github.com/invopop/jsonschema v0.14.0
 	github.com/lithammer/fuzzysearch v1.1.8

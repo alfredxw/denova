@@ -7,7 +7,7 @@ import (
 	"path/filepath"
 	"strings"
 
-	"denova/internal/filelease"
+	"denova/internal/localfs"
 )
 
 // AcquireRunLease serializes admission of one deterministic run identity
@@ -40,14 +40,14 @@ func (s *Store) AcquireRunLease(ctx context.Context, taskID, runID string) (func
 			return nil, readErr
 		}
 		if found {
-			return filelease.Acquire(ctx, filepath.Join(filepath.Dir(path), ".run-leases", deterministicTriggerHash(runID)+".lock"))
+			return localfs.AcquireLease(ctx, filepath.Join(filepath.Dir(path), ".run-leases", deterministicTriggerHash(runID)+".lock"))
 		}
 	}
 	return nil, fmt.Errorf("automation task %s not found", taskID)
 }
 
 func acquireTaskStoreLease(ctx context.Context, path string) (func() error, error) {
-	return filelease.Acquire(ctx, path+".lock")
+	return localfs.AcquireLease(ctx, path+".lock")
 }
 
 func withTaskStoreWriteLease[T any](ctx context.Context, path string, operation func() (T, error)) (result T, err error) {

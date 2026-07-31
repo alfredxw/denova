@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import type { AgentUIMessage } from './agent-ui'
 import {
+  agentViewStableKey,
   buildAgentMessageViews,
   countCompletedAgentTurnSignals,
   hasCompletedAgentTurn,
@@ -8,6 +9,23 @@ import {
 } from './agent-message-view'
 
 describe('agent-message-view', () => {
+  it('uses provider display segment identity across live and persisted message shapes', () => {
+    const view = (messageId: string) => buildAgentMessageViews([{
+      id: messageId,
+      role: 'assistant',
+      parts: [{
+        type: 'reasoning',
+        text: '正在检查。',
+        providerMetadata: { agent: { run_id: 'run-stable', display_segment_id: 'reasoning-stable' } },
+      }],
+    } as AgentUIMessage])[0]
+
+    const live = view('live-message')
+    const persisted = view('persisted-message')
+    expect(live.metadata.display_segment_id).toBe('reasoning-stable')
+    expect(agentViewStableKey(persisted)).toBe(agentViewStableKey(live))
+  })
+
   it('复用未变化消息的 view，只重建正在变化的流式消息', () => {
     const [historyMessage, firstStreamingMessage] = [
       {

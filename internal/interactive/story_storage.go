@@ -12,7 +12,7 @@ import (
 	"time"
 
 	"denova/internal/conversationjournal"
-	"denova/internal/fsdurability"
+	"denova/internal/localfs"
 )
 
 func (s *Store) storyDir() string {
@@ -403,7 +403,7 @@ func writeJSONL(path string, lines []any) error {
 	if err := os.Rename(tmp, path); err != nil {
 		return err
 	}
-	return fsdurability.SyncDirectory(filepath.Dir(path))
+	return localfs.SyncDirectory(filepath.Dir(path))
 }
 
 func writeAtomicBytes(path string, data []byte, mode os.FileMode) error {
@@ -435,7 +435,7 @@ func writeAtomicBytes(path string, data []byte, mode os.FileMode) error {
 	if err := os.Rename(tmp, path); err != nil {
 		return err
 	}
-	return fsdurability.SyncDirectory(dir)
+	return localfs.SyncDirectory(dir)
 }
 
 func mapToStruct(raw map[string]any, out any) error {

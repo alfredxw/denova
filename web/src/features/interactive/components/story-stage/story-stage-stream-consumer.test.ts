@@ -47,6 +47,54 @@ function consumerFixture(initialMessages: ChatMessage[] = []) {
 }
 
 describe('story stage display checkpoint recovery', () => {
+  it('keeps root narrative Run identity while preserving trace segment metadata', async () => {
+    const fixture = consumerFixture()
+    await fixture.consumer.consume(
+      eventStream([
+        {
+          id: '0',
+          event: 'thinking',
+          data: JSON.stringify({
+            content: '正在判断门后的动静。',
+            run_id: 'run-game',
+            display_segment_id: 'thinking-segment',
+          }),
+        },
+        {
+          id: '1',
+          event: 'chunk',
+          data: JSON.stringify({
+            content: '门后亮起一盏灯。',
+            run_id: 'run-game',
+            agent_kind: 'interactive_story',
+            display_segment_id: 'narrative-segment',
+            display_phase: 'candidate',
+          }),
+        },
+        { id: '2', event: 'done', data: '{}' },
+      ]),
+      fixture.consumer.initialOutcome(),
+    )
+
+    expect(fixture.liveAccumulator.appendThinking).toHaveBeenCalledWith(
+      '正在判断门后的动静。',
+      expect.objectContaining({
+        run_id: 'run-game',
+        display_segment_id: 'thinking-segment',
+      }),
+    )
+    expect(fixture.liveAccumulator.appendAssistant).toHaveBeenCalledWith(
+      '门后亮起一盏灯。',
+      'live-turn',
+      expect.objectContaining({
+        run_id: 'run-game',
+        agent_kind: 'interactive_story',
+        display_segment_id: undefined,
+        display_phase: 'candidate',
+      }),
+    )
+  })
+
   it('rebuilds a complete checkpoint before advancing to its committed cursor', async () => {
     const fixture = consumerFixture([{ role: 'thinking', content: 'stale' }])
     const outcome = await fixture.consumer.consume(

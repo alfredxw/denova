@@ -395,34 +395,18 @@ type AskResolution struct {
 // ContextCompaction records a model-visible summary epoch without modifying the
 // raw user-facing transcript.
 type ContextCompaction struct {
-	Type             string `json:"type"`
-	ID               string `json:"id"`
-	AgentKind        string `json:"agent_kind,omitempty"`
-	Epoch            int    `json:"epoch"`
-	Summary          string `json:"summary"`
-	SourceStartIndex int    `json:"source_start_index"`
-	SourceEndIndex   int    `json:"source_end_index"`
+	Type string `json:"type"`
+	ID   string `json:"id"`
+	contextmaintenance.CompactionCheckpoint
+	SourceStartIndex int `json:"source_start_index"`
+	SourceEndIndex   int `json:"source_end_index"`
 	// Cursor fields are the stable v2 boundary. Index fields remain readable
 	// for legacy journals and are populated during the transition.
-	SourceStartCursor      conversationjournal.Cursor `json:"source_start_cursor,omitempty"`
-	SourceEndCursor        conversationjournal.Cursor `json:"source_end_cursor,omitempty"`
-	SourceMessageCount     int                        `json:"source_message_count"`
-	RetainedTurns          int                        `json:"retained_turns"`
-	EstimatedTokensBefore  int                        `json:"estimated_tokens_before,omitempty"`
-	ObservedPromptTokens   int                        `json:"observed_prompt_tokens,omitempty"`
-	ObservedEstimateTokens int                        `json:"observed_estimate_tokens,omitempty"`
-	TokensBefore           int                        `json:"tokens_before"`
-	TokensAfter            int                        `json:"tokens_after"`
-	TargetRatio            float64                    `json:"target_ratio,omitempty"`
-	ContextWindowTokens    int                        `json:"context_window_tokens"`
-	Strategy               string                     `json:"strategy,omitempty"`
-	Threshold              float64                    `json:"threshold"`
-	Reason                 string                     `json:"reason,omitempty"`
-	Phase                  string                     `json:"phase,omitempty"`
-	CandidateFingerprint   string                     `json:"candidate_fingerprint,omitempty"`
-	CandidateGeneration    uint64                     `json:"candidate_generation,omitempty"`
-	CreatedAt              time.Time                  `json:"created_at"`
-	ContextRevision        uint64                     `json:"context_revision,omitempty"`
+	SourceStartCursor  conversationjournal.Cursor `json:"source_start_cursor,omitempty"`
+	SourceEndCursor    conversationjournal.Cursor `json:"source_end_cursor,omitempty"`
+	SourceMessageCount int                        `json:"source_message_count"`
+	CreatedAt          time.Time                  `json:"created_at"`
+	ContextRevision    uint64                     `json:"context_revision,omitempty"`
 }
 
 // ContextCompactionRemoval soft-disables the active model-visible compaction

@@ -414,8 +414,10 @@ func TestProtectedReceiptUsesCanonicalCheckpointPayloadAcrossPublishReload(t *te
 		t.Fatal(err)
 	}
 	if _, err := sess.AppendContextCompaction(session.ContextCompaction{
-		AgentKind: config.AgentKindIDE, Epoch: 1, Summary: result.Summary,
-		SourceStartIndex: 0, SourceEndIndex: len(messages), SourceMessageCount: len(messages), RetainedTurns: 1,
+		CompactionCheckpoint: NewContextCompactionCheckpoint(config.AgentKindIDE, ContextCompactionResult{
+			Epoch: 1, Summary: result.Summary, RetainedTurns: 1,
+		}),
+		SourceStartIndex: 0, SourceEndIndex: len(messages), SourceMessageCount: len(messages),
 	}); err != nil {
 		t.Fatal(err)
 	}

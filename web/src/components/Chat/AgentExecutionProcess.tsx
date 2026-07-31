@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react'
+import { useLayoutEffect, useRef, useState } from 'react'
 import type { CSSProperties, ReactNode } from 'react'
 import { ChevronDown, ChevronRight } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
@@ -6,6 +6,7 @@ import type { ChapterIllustration, ChatMessage } from '@/lib/api'
 import {
   agentSubAgentSessionKey,
   agentViewContent,
+  agentViewStableKey,
   agentViewToRenderMessage,
   isAgentSubAgentTimelineView,
   type AgentMessageView,
@@ -45,6 +46,7 @@ export function AgentExecutionProcess({
   const running = active || views.some((view) => view.streaming || view.status === 'running')
   const [expanded, setExpanded] = useState(activeTraceDisplay === 'expanded' && running)
   const userToggledRef = useRef(false)
+  const wasRunningRef = useRef(running)
   const progressCount = views.filter((view) => !view.metadata.subagent && view.kind === 'assistant' && agentViewContent(view).trim()).length
   const toolCount = views.filter((view) => view.kind === 'tool').length
   const subAgentCount = new Set(views.filter(isAgentSubAgentTimelineView).map(agentSubAgentSessionKey)).size
@@ -54,15 +56,15 @@ export function AgentExecutionProcess({
     toolCount > 0 ? t('chat.trace.toolCalls', { count: toolCount }) : '',
     subAgentCount > 0 ? t('chat.subagent.label') : '',
   ].filter(Boolean).join(' · ')
-  useEffect(() => {
-    if (running) {
-      if (activeTraceDisplay === 'expanded') {
-        userToggledRef.current = false
-        setExpanded(true)
-      }
-      return
+  useLayoutEffect(() => {
+    const wasRunning = wasRunningRef.current
+    wasRunningRef.current = running
+    if (wasRunning && !running) {
+      userToggledRef.current = false
+      setExpanded(false)
+    } else if (running && !userToggledRef.current && activeTraceDisplay === 'expanded') {
+      setExpanded(true)
     }
-    if (!userToggledRef.current) setExpanded(false)
   }, [activeTraceDisplay, running])
 
   const renderProcessItems = () => {
@@ -97,7 +99,7 @@ export function AgentExecutionProcess({
       processItems.push(
         view.kind === 'reasoning'
           ? (
-            <div key={view.partId || index} className="whitespace-pre-wrap text-xs leading-relaxed text-[var(--nova-text-muted)]">
+            <div key={agentViewStableKey(view) || index} className="whitespace-pre-wrap text-xs leading-relaxed text-[var(--nova-text-muted)]">
               <StreamingContentStage
                 content={agentViewContent(view)}
                 targetContent={view.streaming ? view.metadata.streaming_target_content : undefined}
@@ -109,7 +111,7 @@ export function AgentExecutionProcess({
           )
           : (
             <AgentMessageItem
-              key={view.partId || index}
+              key={agentViewStableKey(view) || index}
               view={view}
               highlightDialogue={highlightDialogue}
               messageStyle={messageStyle}

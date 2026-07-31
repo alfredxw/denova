@@ -1,4 +1,4 @@
-package fsdurability
+package localfs
 
 import (
 	"errors"

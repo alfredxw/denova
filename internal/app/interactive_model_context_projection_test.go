@@ -95,8 +95,10 @@ func TestInteractiveModelProjectionKeepsInterruptedBatchesStableAcrossSettlement
 	}
 	expectedParent := storyContext.Meta.Branches["main"].Head
 	checkpoint, err := store.AppendContextCompaction(story.ID, "main", interactive.ContextCompactionEvent{
-		AgentKind: "interactive_story", Epoch: 1, Summary: "completed prefix checkpoint",
-		SourceTurnCount: 1, RetainedTurns: 1, ExpectedParentID: &expectedParent,
+		CompactionCheckpoint: agents.NewContextCompactionCheckpoint("interactive_story", agents.ContextCompactionResult{
+			Epoch: 1, Summary: "completed prefix checkpoint", RetainedTurns: 1,
+		}),
+		SourceTurnCount: 1, ExpectedParentID: &expectedParent,
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -135,8 +137,10 @@ func TestInteractiveModelProjectionKeepsInterruptedBatchesStableAcrossSettlement
 	}
 	expectedParent = storyContext.Meta.Branches["main"].Head
 	if _, err := store.AppendContextCompaction(story.ID, "main", interactive.ContextCompactionEvent{
-		AgentKind: "interactive_story", Epoch: 2, Summary: "fully resolved checkpoint",
-		SourceTurnCount: 3, RetainedTurns: 1, ExpectedParentID: &expectedParent,
+		CompactionCheckpoint: agents.NewContextCompactionCheckpoint("interactive_story", agents.ContextCompactionResult{
+			Epoch: 2, Summary: "fully resolved checkpoint", RetainedTurns: 1,
+		}),
+		SourceTurnCount: 3, ExpectedParentID: &expectedParent,
 	}); err != nil {
 		t.Fatal(err)
 	}

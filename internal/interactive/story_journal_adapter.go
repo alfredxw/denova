@@ -13,7 +13,7 @@ import (
 	"time"
 
 	"denova/internal/conversationjournal"
-	"denova/internal/fsdurability"
+	"denova/internal/localfs"
 )
 
 func (s *Store) openStoryJournalLocked(storyID string) (*storyJournalHandle, error) {
@@ -178,5 +178,5 @@ func backupStoryBeforeTailRepair(path string) error {
 	if writeErr != nil || syncErr != nil || closeErr != nil {
 		return errors.Join(writeErr, syncErr, closeErr)
 	}
-	return fsdurability.SyncDirectory(filepath.Dir(path))
+	return localfs.SyncDirectory(filepath.Dir(path))
 }

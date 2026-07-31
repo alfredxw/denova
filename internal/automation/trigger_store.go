@@ -10,7 +10,7 @@ import (
 	"strings"
 	"time"
 
-	"denova/internal/filelease"
+	"denova/internal/localfs"
 	"denova/internal/workspacepath"
 )
 
@@ -111,7 +111,7 @@ func (s *Store) CreateInboxItem(item TriggerInboxItem) (TriggerInboxItem, error)
 	}
 	unlock := storePathLocks.Lock(path)
 	defer unlock()
-	release, err := filelease.Acquire(context.Background(), path+".lock")
+	release, err := localfs.AcquireLease(context.Background(), path+".lock")
 	if err != nil {
 		return TriggerInboxItem{}, err
 	}
@@ -380,7 +380,7 @@ func (s *Store) mutateInboxItem(ctx context.Context, id string, mutate func(Trig
 			return TriggerInboxItem{}, err
 		}
 		unlock := storePathLocks.Lock(path)
-		release, leaseErr := filelease.Acquire(ctx, path+".lock")
+		release, leaseErr := localfs.AcquireLease(ctx, path+".lock")
 		if leaseErr != nil {
 			unlock()
 			return TriggerInboxItem{}, leaseErr

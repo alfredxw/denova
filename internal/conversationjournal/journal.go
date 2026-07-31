@@ -12,7 +12,7 @@ import (
 	"os"
 	"sync"
 
-	"denova/internal/filelease"
+	"denova/internal/localfs"
 )
 
 // Journal is a concurrency-safe handle to one canonical conversation file.
@@ -52,7 +52,7 @@ func Open(ctx context.Context, path string, identity Identity, reducer Reducer, 
 	if ctx == nil {
 		ctx = context.Background()
 	}
-	release, err := filelease.Acquire(ctx, path+".domain.lock")
+	release, err := localfs.AcquireLease(ctx, path+".domain.lock")
 	if err != nil {
 		return nil, fmt.Errorf("acquire conversation journal open lease: %w", err)
 	}

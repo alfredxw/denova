@@ -335,12 +335,11 @@ func TestSessionConversationPreparesIncrementalCompactionWithoutAdvancingCanonic
 		}
 	}
 	if _, err := sess.AppendContextCompaction(session.ContextCompaction{
-		AgentKind:        config.AgentKindIDE,
-		Epoch:            1,
-		Summary:          "旧压缩摘要：用户 1 已处理。",
+		CompactionCheckpoint: NewContextCompactionCheckpoint(config.AgentKindIDE, ContextCompactionResult{
+			Epoch: 1, Summary: "旧压缩摘要：用户 1 已处理。", RetainedTurns: 1,
+		}),
 		SourceStartIndex: 0,
 		SourceEndIndex:   2,
-		RetainedTurns:    1,
 	}); err != nil {
 		t.Fatal(err)
 	}
@@ -393,11 +392,11 @@ func TestSessionConversationUsesCompactionSummaryRetainedTailAndAppendedMessages
 		}
 	}
 	if _, err := sess.AppendContextCompaction(session.ContextCompaction{
-		AgentKind:        config.AgentKindIDE,
-		Summary:          "用户目标：继续写作。",
+		CompactionCheckpoint: NewContextCompactionCheckpoint(config.AgentKindIDE, ContextCompactionResult{
+			Summary: "用户目标：继续写作。", RetainedTurns: 2,
+		}),
 		SourceStartIndex: 0,
 		SourceEndIndex:   2,
-		RetainedTurns:    2,
 	}); err != nil {
 		t.Fatal(err)
 	}
@@ -440,11 +439,11 @@ func TestSessionConversationKeepsPostCompactionTurnsUntilNextCompaction(t *testi
 		}
 	}
 	if _, err := sess.AppendContextCompaction(session.ContextCompaction{
-		AgentKind:        config.AgentKindIDE,
-		Summary:          "用户目标：继续写作。",
+		CompactionCheckpoint: NewContextCompactionCheckpoint(config.AgentKindIDE, ContextCompactionResult{
+			Summary: "用户目标：继续写作。", RetainedTurns: 1,
+		}),
 		SourceStartIndex: 0,
 		SourceEndIndex:   4,
-		RetainedTurns:    1,
 	}); err != nil {
 		t.Fatal(err)
 	}

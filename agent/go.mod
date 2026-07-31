@@ -6,6 +6,7 @@ require (
 	github.com/bmatcuk/doublestar/v4 v4.10.0
 	github.com/charmbracelet/x/xpty v0.1.3
 	github.com/go-git/go-git/v5 v5.19.1
+	github.com/gofrs/flock v0.13.0
 	github.com/invopop/jsonschema v0.14.0
 )
 

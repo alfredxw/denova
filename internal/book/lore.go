@@ -18,7 +18,7 @@ import (
 
 	"github.com/lithammer/fuzzysearch/fuzzy"
 
-	"denova/internal/fsdurability"
+	"denova/internal/localfs"
 )
 
 const loreItemsVersion = 2
@@ -916,7 +916,7 @@ func (s *LoreStore) save(collection LoreCollection) error {
 	if err := os.Rename(tempPath, path); err != nil {
 		return fmt.Errorf("原子替换资料库文件失败 path=%s: %w", path, err)
 	}
-	if err := fsdurability.SyncDirectory(dir); err != nil {
+	if err := localfs.SyncDirectory(dir); err != nil {
 		log.Printf("[lore-store] directory durability failed path=%s err=%v", dir, err)
 	}
 	return nil

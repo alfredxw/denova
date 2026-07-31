@@ -18,6 +18,7 @@ import type { EditorSettings, ReadingTypographySettings } from './EditorSettings
 import { EditorSurface } from './EditorSurface'
 import { EditorToolbar } from './EditorToolbar'
 import {
+  ParsedMarkdownDocumentCache,
   countTextCharacters,
   createIndentedHardBreakExtension,
   createWorkspaceImageExtension,
@@ -27,6 +28,7 @@ import {
   isTxtFile,
   placeEditorCaretAtClick,
   replaceEditorDocument,
+  replaceEditorDocumentWithFreshState,
   resetEditorStateHistory,
   updateCharacterStats,
 } from './editorDocument'
@@ -135,6 +137,11 @@ export function MarkdownEditor({
   const editorContainerRef = useRef<HTMLDivElement>(null)
   const reviewAnnotationsRef = useRef<DocumentReviewAnnotationsHandle>(null)
   const reviewDecorationStateRef = useRef<DocumentReviewDecorationState>({ enabled: false, decorations: [] })
+  const parsedMarkdownDocumentsRef = useRef<ParsedMarkdownDocumentCache | null>(null)
+  if (!parsedMarkdownDocumentsRef.current) {
+    parsedMarkdownDocumentsRef.current = new ParsedMarkdownDocumentCache()
+  }
+  const initialDocumentRef = useRef({ workspace, fileName, content })
   const documentReviewTarget = useMemo(() => fileName ? { kind: 'workspace_file' as const, id: fileName } : null, [fileName])
   const updateReviewPortalTargets = useCallback((targets: DocumentReviewPortalTarget[]) => {
     setReviewPortalTargets((current) => sameReviewPortalTargets(current, targets) ? current : targets)
@@ -177,6 +184,15 @@ export function MarkdownEditor({
         return false
       },
     },
+    onCreate: ({ editor: createdEditor }) => {
+      const initial = initialDocumentRef.current
+      if (!initial.fileName || !isMarkdownFile(initial.fileName)) return
+      parsedMarkdownDocumentsRef.current?.set(
+        `${initial.workspace}\u0000${initial.fileName}`,
+        initial.content,
+        createdEditor.getJSON(),
+      )
+    },
   })
 
   useEffect(() => {
@@ -208,7 +224,19 @@ export function MarkdownEditor({
     options: { resetHistory: boolean; preserveSelection: boolean },
   ) => {
     if (!editor || editor.isDestroyed) return
-    if (isTxtFile(nextFile)) {
+    const markdownManager = editor.markdown
+    const replaceWithFreshState = Boolean(
+      options.resetHistory && !options.preserveSelection && isMarkdownFile(nextFile) && markdownManager,
+    )
+    if (replaceWithFreshState && markdownManager) {
+      const cacheKey = `${workspace}\u0000${nextFile}`
+      let parsedDocument = parsedMarkdownDocumentsRef.current?.get(cacheKey, nextContent)
+      if (!parsedDocument) {
+        parsedDocument = markdownManager.parse(nextContent)
+        parsedMarkdownDocumentsRef.current?.set(cacheKey, nextContent, parsedDocument)
+      }
+      replaceEditorDocumentWithFreshState(editor, editor.schema.nodeFromJSON(parsedDocument))
+    } else if (isTxtFile(nextFile)) {
       const html = nextContent.split('\n').map((line) => `<p>${line || '<br>'}</p>`).join('')
       replaceEditorDocument(editor, html, {
         contentType: 'html',
@@ -220,12 +248,12 @@ export function MarkdownEditor({
         preserveSelection: options.preserveSelection,
       })
     }
-    if (options.resetHistory) resetEditorStateHistory(editor)
+    if (options.resetHistory && !replaceWithFreshState) resetEditorStateHistory(editor)
     setNativeIndent(hasNativeIndent(nextContent))
     updateCharacterStats(editor, setSelectedCharacters)
     onLineChange?.(getLineNumber(editor.state.doc, editor.state.selection.head))
     updateSearch(searchStateRef.current.query, 0)
-  }, [editor, onLineChange, updateSearch])
+  }, [editor, onLineChange, updateSearch, workspace])
 
   const {
     saveStatus,
