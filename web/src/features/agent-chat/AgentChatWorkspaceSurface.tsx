@@ -12,6 +12,13 @@ type SidebarProps = Omit<AgentChatActivitySidebarProps, 'onCollapse'>
 
 interface AgentChatWorkspaceSurfaceProps {
   sidebarProps: SidebarProps
+  secondaryPane: {
+    content: ReactNode
+    visible: boolean
+    layoutKey: string
+    onOpen: () => void
+    onClose: () => void
+  }
   createDisabled: boolean
   onCreateDefaultSession: () => void
   children: ReactNode | ((controls: AdaptiveSurfaceControls) => ReactNode)
@@ -24,6 +31,7 @@ interface AgentChatWorkspaceSurfaceProps {
  */
 export function AgentChatWorkspaceSurface({
   sidebarProps,
+  secondaryPane,
   createDisabled,
   onCreateDefaultSession,
   children,
@@ -76,6 +84,24 @@ export function AgentChatWorkspaceSurface({
         desktopVisible: sidebarVisible,
         desktopCollapsedSize: '40px',
         desktopCollapsedContent: rail,
+      }}
+      rightResize={{
+        layoutKey: secondaryPane.layoutKey,
+        label: t('agentChat.tabs.resizeSplit'),
+        defaultSize: '50%',
+        minSize: '280px',
+        maxSize: '65%',
+        mainMinSize: '280px',
+      }}
+      right={{
+        id: 'agent-chat-secondary',
+        side: 'right',
+        title: t('agentChat.tabs.secondaryWorkspace'),
+        content: secondaryPane.content,
+        desktopClassName: 'h-full min-h-0 min-w-0',
+        desktopVisible: secondaryPane.visible,
+        onOpen: secondaryPane.onOpen,
+        onClose: secondaryPane.onClose,
       }}
     >
       {children}

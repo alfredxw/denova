@@ -2697,6 +2697,23 @@ html[data-nova-motion="off"] *::after {
   scrollbar-gutter: stable;
 }
 
+.director-console-tab__label,
+.director-console-tab__count {
+  display: none;
+}
+
+@container director-console (min-width: 250px) {
+  .director-console-tab__label {
+    display: inline;
+  }
+}
+
+@container director-console (min-width: 360px) {
+  .director-console-tab__count {
+    display: inline;
+  }
+}
+
 .actor-cue-strip {
   scrollbar-color: var(--nova-scrollbar-thumb) transparent;
   scrollbar-width: thin;

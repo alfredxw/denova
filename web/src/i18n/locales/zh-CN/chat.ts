@@ -160,6 +160,7 @@ const chat = {
   'chat.tracePanel.truncation': '截断',
   'chat.action.editTurn': '编辑这轮输入',
   'chat.action.editAssistantReply': '编辑 AI 回复',
+  'chat.action.createBranch': '从此处创建分支',
   'chat.action.copyMessage': '复制消息',
   'chat.action.copyMessageDone': '已复制',
   'chat.action.prevVersion': '切换到上一版',

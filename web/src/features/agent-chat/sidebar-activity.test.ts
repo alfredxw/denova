@@ -80,6 +80,7 @@ const state: AgentChatProjectTabState = {
   ],
   activeTabIds: { primary: 'agent-tab', secondary: 'terminal-tab' },
   focusedGroup: 'secondary',
+  secondaryVisible: true,
 }
 
 describe('AgentChat sidebar activity projection', () => {
@@ -121,6 +122,23 @@ describe('AgentChat sidebar activity projection', () => {
       tabTitle: () => 'Chat',
     })
     expect(activity).toMatchObject({ paneVisible: false, focused: false })
+  })
+
+  it('keeps hidden secondary activity available without presenting it as visible', () => {
+    const activities = projectSidebarActivities({
+      project,
+      state: { ...state, secondaryVisible: false },
+      activeProjectId: project.id,
+      runningSessionIds: new Set(['open']),
+      terminalStatuses: new Map([['terminal-tab', 'ready']]),
+      tabTitle: (tab) => tab.id,
+    })
+
+    expect(activities.find((activity) => activity.tabId === 'terminal-tab')).toMatchObject({
+      paneVisible: false,
+      focused: false,
+      status: 'ready',
+    })
   })
 
   it('summarizes running and error states without classifying a normal exit as failure', () => {

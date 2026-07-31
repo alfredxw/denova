@@ -202,6 +202,7 @@ export function AdaptiveSurface({
           id="right"
           visible={desktopRightVisible}
           side="right"
+          initialExpandSize={rightPanelLayout.defaultLayout ? undefined : rightResize.defaultSize ?? '420px'}
           defaultSize={rightResize.defaultSize ?? '420px'}
           minSize={rightResize.minSize ?? '300px'}
           maxSize={rightResize.maxSize ?? '65%'}
@@ -239,6 +240,7 @@ export function AdaptiveSurface({
               id="left"
               visible={desktopLeftVisible}
               side="left"
+              initialExpandSize={leftPanelLayout.defaultLayout ? undefined : leftResize.defaultSize ?? '288px'}
               defaultSize={leftResize.defaultSize ?? '288px'}
               minSize={leftResize.minSize ?? '200px'}
               maxSize={leftResize.maxSize ?? '40%'}

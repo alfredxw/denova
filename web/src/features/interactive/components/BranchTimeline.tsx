@@ -3,10 +3,10 @@ import { ArrowLeft, ChevronDown, ChevronUp, Crosshair, GitBranch, Move, Plus, Tr
 import { useTranslation } from 'react-i18next'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
-import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog'
-import { Input } from '@/components/ui/input'
 import { ConfirmDialog } from '@/components/common/ConfirmDialog'
-import type { BranchSummary, PlotNode, Snapshot, TurnEvent } from '../types'
+import type { BranchSummary, PlotNode, Snapshot } from '../types'
+import { CreateBranchDialog } from './branching/CreateBranchDialog'
+import { branchCreationSourceFromPlotNode, branchDisplayName, plotNodesFromSnapshot, type BranchCreationSource } from './branching/model'
 
 interface BranchTimelineProps {
   snapshot: Snapshot | null
@@ -116,19 +116,14 @@ export function BranchTimeline({
   const [internalExpanded, setInternalExpanded] = useState(false)
   const [selectedNodeId, setSelectedNodeId] = useState<string | null>(null)
   const [selectedNodeSnapshot, setSelectedNodeSnapshot] = useState<PlotNode | null>(null)
-  const [branchSourceNode, setBranchSourceNode] = useState<PlotNode | null>(null)
-  const [createDialogOpen, setCreateDialogOpen] = useState(false)
-  const [branchTitle, setBranchTitle] = useState('')
-  const [creatingBranch, setCreatingBranch] = useState(false)
-  const [createError, setCreateError] = useState('')
+  const [branchCreationSource, setBranchCreationSource] = useState<BranchCreationSource | null>(null)
   const [deleteBranchTarget, setDeleteBranchTarget] = useState<BranchSummary | null>(null)
   const scrollRef = useRef<HTMLDivElement | null>(null)
 
-  const graphNodes = useMemo(() => buildGraphNodes(snapshot, t), [snapshot, t])
+  const graphNodes = useMemo(() => plotNodesFromSnapshot(snapshot, t), [snapshot, t])
   const graphBranches = useMemo(() => buildGraphBranches(snapshot, branches, graphNodes), [branches, graphNodes, snapshot])
   const selectedNode = graphNodes.find((node) => node.id === selectedNodeId) ||
     (selectedNodeSnapshot?.id === selectedNodeId ? selectedNodeSnapshot : null)
-  const createSourceNode = branchSourceNode || selectedNode
   const workspaceMode = variant === 'workspace'
   const expanded = workspaceMode ? true : controlledExpanded ?? internalExpanded
   const scrollSize = useElementSize(scrollRef, expanded)
@@ -180,35 +175,7 @@ export function BranchTimeline({
 
   const openCreateDialog = () => {
     if (!selectedNode) return
-    setBranchSourceNode(selectedNode)
-    setBranchTitle(t('branchTimeline.newFromNode', { title: selectedNode.title }))
-    setCreateError('')
-    setCreateDialogOpen(true)
-  }
-
-  const handleCreateDialogOpenChange = (open: boolean) => {
-    if (creatingBranch) return
-    setCreateDialogOpen(open)
-    if (open) return
-    setBranchSourceNode(null)
-    setBranchTitle('')
-    setCreateError('')
-  }
-
-  const submitCreateBranch = async () => {
-    if (!createSourceNode || creatingBranch) return
-    setCreatingBranch(true)
-    setCreateError('')
-    try {
-      await onCreateBranch(createSourceNode.id, branchTitle.trim() || t('branchTimeline.newBranch'))
-      setCreateDialogOpen(false)
-      setBranchSourceNode(null)
-      setBranchTitle('')
-    } catch (error) {
-      setCreateError(error instanceof Error ? error.message : t('branchTimeline.createFailed'))
-    } finally {
-      setCreatingBranch(false)
-    }
+    setBranchCreationSource(branchCreationSourceFromPlotNode(selectedNode))
   }
 
   const deleteBranch = (branch: BranchSummary) => {
@@ -385,28 +352,11 @@ export function BranchTimeline({
         </div>
       )}
 
-      <Dialog open={createDialogOpen} onOpenChange={handleCreateDialogOpenChange}>
-        <DialogContent className="nova-panel border text-[var(--nova-text)]">
-          <DialogHeader>
-            <DialogTitle>{t('branchTimeline.dialogTitle')}</DialogTitle>
-            <DialogDescription className="text-[var(--nova-text-muted)]">
-              {createSourceNode ? t('branchTimeline.dialogDescription', { title: createSourceNode.title }) : ''}
-            </DialogDescription>
-          </DialogHeader>
-          <div className="space-y-2">
-            <Input className="nova-field text-sm" value={branchTitle} onChange={(event) => setBranchTitle(event.target.value)} placeholder={t('branchTimeline.namePlaceholder')} />
-            {createSourceNode?.summary && <div className="rounded-[var(--nova-radius)] border border-[var(--nova-border)] bg-[var(--nova-surface)] p-2 text-xs leading-5 text-[var(--nova-text-muted)]">{createSourceNode.summary}</div>}
-            {createError && <div className="rounded-[var(--nova-radius)] border border-[var(--nova-danger-border)] bg-[var(--nova-danger-bg)] p-2 text-xs text-[var(--nova-danger)]">{createError}</div>}
-          </div>
-          <DialogFooter>
-            <Button variant="ghost" onClick={() => handleCreateDialogOpenChange(false)} disabled={creatingBranch}>{t('common.cancel')}</Button>
-            <Button className="gap-1.5 border border-[var(--nova-border)] bg-[var(--nova-active)] text-[var(--nova-text)] hover:bg-[var(--nova-hover)]" onClick={submitCreateBranch} disabled={!createSourceNode || creatingBranch}>
-              <Plus className="h-4 w-4" />
-              {creatingBranch ? t('common.creating') : t('branchTimeline.createAndSwitch')}
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+      <CreateBranchDialog
+        source={branchCreationSource}
+        onClose={() => setBranchCreationSource(null)}
+        onCreate={(source, title) => onCreateBranch(source.turnId, title)}
+      />
       <ConfirmDialog
         open={Boolean(deleteBranchTarget)}
         onOpenChange={(open) => {
@@ -711,11 +661,6 @@ function isEmptyBranch(branch: BranchSummary, nodes: PlotNode[]) {
   return branch.id !== 'main' && branch.head === branch.from_event && !nodes.some((node) => node.branch_id === branch.id)
 }
 
-function buildGraphNodes(snapshot: Snapshot | null, t: (key: string, options?: Record<string, unknown>) => string): PlotNode[] {
-  if (snapshot?.graph?.nodes?.length) return snapshot.graph.nodes
-  return (snapshot?.turns || []).map((turn, index, turns) => turnToPlotNode(turn, index, turns.length, t))
-}
-
 function buildGraphBranches(snapshot: Snapshot | null, branches: BranchSummary[], nodes: PlotNode[]): BranchSummary[] {
   if (snapshot?.graph?.branches?.length) return snapshot.graph.branches
   if (branches.length) return branches
@@ -736,36 +681,11 @@ function buildGraphBranches(snapshot: Snapshot | null, branches: BranchSummary[]
   return Array.from(summaries.values())
 }
 
-function turnToPlotNode(turn: TurnEvent, index: number, total: number, t: (key: string, options?: Record<string, unknown>) => string): PlotNode {
-  const title = firstLine(turn.user || turn.narrative) || `${t('branchTimeline.nodeFallback')} ${index + 1}`
-  return {
-    id: turn.id,
-    parent_id: turn.parent_id || undefined,
-    branch_id: turn.branch_id || 'main',
-    title: truncateText(title, 18),
-    summary: truncateText(firstLine(turn.narrative) || t('branchTimeline.nodeFallback'), 28),
-	    ts: turn.ts,
-	    current: index === total - 1,
-	    head: index === total - 1,
-	    terminal: turn.terminal_outcome?.terminal === true,
-	    terminal_type: turn.terminal_outcome?.type,
-	  }
-	}
-
-function firstLine(value: string) {
-  return value.trim().split(/\r?\n/).find(Boolean) || ''
-}
-
-function truncateText(value: string, maxLength: number) {
-  const text = value.trim()
-  return text.length > maxLength ? `${text.slice(0, maxLength - 1)}…` : text
-}
-
 function formatBranchName(branch: BranchSummary | undefined, t: (key: string) => string) {
-  if (!branch) return t('branchTimeline.unknownBranch')
-  if (branch.id === 'main') return t('branchTimeline.mainBranch')
-  if (branch.title?.trim()) return branch.title.trim()
-  return branch.id
+  return branchDisplayName(branch, {
+    main: t('branchTimeline.mainBranch'),
+    unknown: t('branchTimeline.unknownBranch'),
+  })
 }
 
 function scrollElementTo(element: HTMLElement, left: number, top: number, behavior: ScrollBehavior) {

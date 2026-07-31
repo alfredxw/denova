@@ -79,14 +79,42 @@ vi.mock('./terminal/TerminalTabView', () => ({
 vi.mock('@/components/layout/adaptive-surface', () => ({
   AdaptiveSurface: ({
     left,
+    right,
+    rightResize,
     children,
   }: {
     left: { enabled?: boolean; content: ReactNode; desktopVisible?: boolean; desktopCollapsedContent?: ReactNode }
-    children: ReactNode | ((controls: { isMobile: boolean; openLeft: () => void }) => ReactNode)
+    right?: { content: ReactNode; desktopVisible?: boolean }
+    rightResize?: { label: string }
+    children: ReactNode | ((controls: {
+      isMobile: boolean
+      openPaneId: string | null
+      openLeft: () => void
+      openRight: () => void
+      closePane: () => void
+    }) => ReactNode)
   }) => (
     <div>
       {left.enabled === false ? null : left.desktopVisible === false ? left.desktopCollapsedContent : left.content}
-      <main>{typeof children === 'function' ? children({ isMobile: false, openLeft: vi.fn() }) : children}</main>
+      <main>{typeof children === 'function' ? children({
+        isMobile: false,
+        openPaneId: null,
+        openLeft: vi.fn(),
+        openRight: vi.fn(),
+        closePane: vi.fn(),
+      }) : children}</main>
+      {right ? (
+        <aside hidden={right.desktopVisible === false}>
+          {right.desktopVisible === false || !rightResize ? null : (
+            <div
+              role="separator"
+              aria-label={rightResize.label}
+              className="nova-resize-handle nova-resize-divider nova-resize-divider-vertical w-2"
+            />
+          )}
+          {right.content}
+        </aside>
+      ) : null}
     </div>
   ),
 }))
@@ -211,6 +239,7 @@ describe('AgentChatView project workbenches', () => {
           ],
           activeTabIds: { primary: 'tab-a', secondary: null },
           focusedGroup: 'primary',
+          secondaryVisible: false,
         },
         'project-b': {
           tabs: [
@@ -224,6 +253,7 @@ describe('AgentChatView project workbenches', () => {
           ],
           activeTabIds: { primary: 'tab-b', secondary: null },
           focusedGroup: 'primary',
+          secondaryVisible: false,
         },
       },
     })
@@ -319,6 +349,7 @@ describe('AgentChatView project workbenches', () => {
           ],
           activeTabIds: { primary: 'primary-tab', secondary: 'secondary-tab' },
           focusedGroup: 'secondary',
+          secondaryVisible: true,
         },
       },
     })
@@ -329,6 +360,95 @@ describe('AgentChatView project workbenches', () => {
       name: '调整分栏宽度',
     })
     expect(separator).toHaveClass('nova-resize-handle', 'nova-resize-divider', 'nova-resize-divider-vertical', 'w-2')
+  })
+
+  it('hides and restores the secondary pane without unmounting its conversation', async () => {
+    const user = userEvent.setup()
+    persistWorkbenchState({
+      activeProjectId: 'project-a',
+      projects: {
+        'project-a': {
+          tabs: [
+            {
+              kind: 'agent',
+              id: 'primary-tab',
+              projectId: 'project-a',
+              workspace: '/books/a',
+              group: 'primary',
+              sessionId: 'session-a',
+            },
+            {
+              kind: 'agent',
+              id: 'secondary-tab',
+              projectId: 'project-a',
+              workspace: '/books/a',
+              group: 'secondary',
+              sessionId: 'session-secondary',
+            },
+          ],
+          activeTabIds: { primary: 'primary-tab', secondary: 'secondary-tab' },
+          focusedGroup: 'secondary',
+          secondaryVisible: true,
+        },
+      },
+    })
+
+    renderView(<AgentChatView composerSettings={{} as never} tellers={[]} imagePresets={[]} renderPage={() => null} renderReview={() => null} />)
+
+    const hideButton = await screen.findByRole('button', { name: '隐藏右侧工作区' })
+    expect(hideButton.closest('[data-agent-chat-group]')).toHaveAttribute('data-agent-chat-group', 'secondary')
+    await user.click(hideButton)
+    expect(screen.queryByRole('separator', { name: '调整分栏宽度' })).not.toBeInTheDocument()
+    expect(screen.getByTestId('conversation:/books/a:session-secondary')).toHaveTextContent('hidden')
+    await waitFor(() => expect(readStoredWorkbenchState().projects['project-a'].secondaryVisible).toBe(false))
+
+    const showButton = screen.getByRole('button', { name: '显示右侧工作区' })
+    expect(showButton.closest('[data-agent-chat-group]')).toHaveAttribute('data-agent-chat-group', 'primary')
+    await user.click(showButton)
+    expect(await screen.findByRole('separator', { name: '调整分栏宽度' })).toBeInTheDocument()
+    expect(screen.getByTestId('conversation:/books/a:session-secondary')).toHaveTextContent('active')
+    expect(screen.getByRole('button', { name: '隐藏右侧工作区' }).closest('[data-agent-chat-group]'))
+      .toHaveAttribute('data-agent-chat-group', 'secondary')
+  })
+
+  it('lets the first secondary-pane click choose what to open there', async () => {
+    const user = userEvent.setup()
+    persistWorkbenchState({
+      activeProjectId: 'project-a',
+      projects: {
+        'project-a': {
+          tabs: [
+            {
+              kind: 'agent',
+              id: 'primary-tab',
+              projectId: 'project-a',
+              workspace: '/books/a',
+              sessionId: 'session-a',
+            },
+          ],
+          activeTabIds: { primary: 'primary-tab', secondary: null },
+          focusedGroup: 'primary',
+          secondaryVisible: false,
+        },
+      },
+    })
+
+    renderView(
+      <AgentChatView
+        composerSettings={{} as never}
+        tellers={[]}
+        imagePresets={[]}
+        renderPage={(_workspace, pageId) => <div data-testid="secondary-page">{pageId}</div>}
+        renderReview={() => null}
+      />,
+    )
+
+    await user.click(await screen.findByRole('button', { name: '显示右侧工作区' }))
+    await user.click(await screen.findByRole('menuitem', { name: '阅读器' }))
+
+    expect(await screen.findByRole('separator', { name: '调整分栏宽度' })).toBeInTheDocument()
+    expect(screen.getByTestId('secondary-page')).toHaveTextContent('reader')
+    expect(readStoredWorkbenchState().projects['project-a'].secondaryVisible).toBe(true)
   })
 
   it('releases only detached terminal sessions that no persisted tab owns', async () => {
@@ -357,6 +477,7 @@ describe('AgentChatView project workbenches', () => {
           ],
           activeTabIds: { primary: 'owned-by-tab', secondary: null },
           focusedGroup: 'primary',
+          secondaryVisible: false,
         },
       },
     })
@@ -402,6 +523,7 @@ describe('AgentChatView project workbenches', () => {
           ],
           activeTabIds: { primary: 'agent-tab', secondary: null },
           focusedGroup: 'primary',
+          secondaryVisible: false,
         },
       },
     })

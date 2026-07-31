@@ -160,6 +160,7 @@ const chat = {
   'chat.tracePanel.truncation': 'truncated',
   'chat.action.editTurn': 'Edit this input',
   'chat.action.editAssistantReply': 'Edit AI reply',
+  'chat.action.createBranch': 'Create branch from here',
   'chat.action.copyMessage': 'Copy message',
   'chat.action.copyMessageDone': 'Copied',
   'chat.action.prevVersion': 'Switch to previous version',

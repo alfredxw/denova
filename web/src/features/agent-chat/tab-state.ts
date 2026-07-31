@@ -118,6 +118,8 @@ export interface AgentChatProjectTabState {
   tabs: AgentChatTab[]
   activeTabIds: ActiveTabIds
   focusedGroup: AgentChatGroupId
+  /** Visibility is independent from ownership: hiding the pane never closes its tabs or runtimes. */
+  secondaryVisible: boolean
 }
 
 /** User-level AgentChat state. Project records are deliberately independent. */
@@ -131,6 +133,7 @@ export function emptyProjectTabState(): AgentChatProjectTabState {
     tabs: [],
     activeTabIds: { ...NO_ACTIVE_TABS },
     focusedGroup: 'primary',
+    secondaryVisible: false,
   }
 }
 
@@ -168,6 +171,9 @@ export function readStoredWorkbenchState(): AgentChatWorkbenchState {
           secondary: validActiveID('secondary'),
         },
         focusedGroup: isGroupId(state.focusedGroup) ? state.focusedGroup : 'primary',
+        // Records written before visibility became explicit always showed a populated
+        // secondary group, so preserve that behavior during the in-place v4 upgrade.
+        secondaryVisible: tabsInGroup(tabs, 'secondary').length > 0 && state.secondaryVisible !== false,
       }
     }
     const storedActive = legacy ? value.activeProjectPath : value.activeProjectId
@@ -198,6 +204,7 @@ export function reconcileWorkbenchProjects(state: AgentChatWorkbenchState, proje
         primary: tabs.some((tab) => tab.id === source.activeTabIds.primary) ? source.activeTabIds.primary : null,
         secondary: tabs.some((tab) => tab.id === source.activeTabIds.secondary) ? source.activeTabIds.secondary : null,
       },
+      secondaryVisible: source.secondaryVisible && tabsInGroup(tabs, 'secondary').length > 0,
     }
   }
   const activeProject = projects.find((project) => project.id === state.activeProjectId || project.path === state.activeProjectId)
@@ -216,7 +223,12 @@ export function persistWorkbenchState(state: AgentChatWorkbenchState) {
       const activeTabIds = Object.fromEntries(
         AGENT_CHAT_GROUP_IDS.map((group) => [group, tabs.some((tab) => tab.id === project.activeTabIds[group]) ? project.activeTabIds[group] : null]),
       ) as ActiveTabIds
-      return [projectId, { ...project, tabs, activeTabIds }]
+      return [projectId, {
+        ...project,
+        tabs,
+        activeTabIds,
+        secondaryVisible: project.secondaryVisible && tabsInGroup(tabs, 'secondary').length > 0,
+      }]
     }),
   )
   writeStorage(WORKBENCH_STORAGE_KEY, JSON.stringify({ ...state, projects }))

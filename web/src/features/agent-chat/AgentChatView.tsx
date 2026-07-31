@@ -1,9 +1,9 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import { useTranslation } from 'react-i18next'
 import { MessageSquareText } from 'lucide-react'
-import { Group, Panel, Separator } from 'react-resizable-panels'
 import { toast } from 'sonner'
 import { MobilePaneTrigger } from '@/components/layout/mobile-pane-trigger'
+import type { AdaptiveSurfaceControls } from '@/components/layout/adaptive-surface'
 import { EmptyState } from '@/components/common/EmptyState'
 import { ConfirmDialog } from '@/components/common/ConfirmDialog'
 import type { WritingComposerSettingsController } from '@/components/Chat/AgentPanel'
@@ -26,6 +26,7 @@ import { AgentChatProjectRenameDialog } from './AgentChatProjectRenameDialog'
 import { AgentChatSessionHistoryDialog } from './AgentChatSessionHistoryDialog'
 import { AgentChatTabContent } from './AgentChatTabContent'
 import { AgentChatTabBar } from './AgentChatTabBar'
+import { AgentChatSecondaryPaneControl } from './AgentChatSecondaryPaneControl'
 import { AgentChatWorkspaceSurface } from './AgentChatWorkspaceSurface'
 import { agentChatSessionBindingKey } from './sidebar-activity'
 import {
@@ -87,6 +88,15 @@ function pendingSessionTitle(message: string) {
   const normalized = message.replace(/^\/plan\s*/, '').trim()
   const characters = Array.from(normalized)
   return characters.length > 60 ? `${characters.slice(0, 60).join('')}...` : normalized
+}
+
+/** Secondary content is already inside the adaptive right pane, so its own tab actions need no drawer launcher. */
+const SECONDARY_PANE_CONTROLS = {
+  isMobile: false,
+  openPaneId: null,
+  openLeft: () => {},
+  openRight: () => {},
+  closePane: () => {},
 }
 
 /**
@@ -179,6 +189,21 @@ export function AgentChatView({
   useEffect(() => {
     if (!projectsLoading) persistWorkbenchState(workbench)
   }, [projectsLoading, workbench])
+  useEffect(() => {
+    setMountedTabKeys((current) => {
+      let next: Set<string> | null = null
+      for (const [projectID, state] of Object.entries(workbench.projects)) {
+        for (const activeID of Object.values(state.activeTabIds)) {
+          if (!activeID) continue
+          const key = mountedTabKey(projectID, activeID)
+          if (current.has(key)) continue
+          next ??= new Set(current)
+          next.add(key)
+        }
+      }
+      return next ?? current
+    })
+  }, [workbench])
   const refreshTerminalCommands = useCallback(async () => {
     try {
       const runtime = await getTerminalRuntimeStatus()
@@ -242,9 +267,11 @@ export function AgentChatView({
         projects: {
           ...current.projects,
           [tab.projectId]: {
+            ...state,
             tabs: appended.tabs,
             activeTabIds: { ...state.activeTabIds, [group]: appended.activeId },
             focusedGroup: group,
+            secondaryVisible: group === 'secondary' || state.secondaryVisible,
           },
         },
       }
@@ -344,14 +371,16 @@ export function AgentChatView({
           const candidates = tabsInGroup(currentState.tabs, group).filter((tab) => tab.id === activeId || !closing.has(tab.id))
           activeTabIds[group] = nextActiveTabId(candidates, activeId, activeId)
         }
+        const tabs = currentState.tabs.filter((tab) => !closing.has(tab.id))
         return {
           ...current,
           projects: {
             ...current.projects,
             [projectID]: {
               ...currentState,
-              tabs: currentState.tabs.filter((tab) => !closing.has(tab.id)),
+              tabs,
               activeTabIds,
+              secondaryVisible: currentState.secondaryVisible && tabsInGroup(tabs, 'secondary').length > 0,
             },
           },
         }
@@ -389,6 +418,7 @@ export function AgentChatView({
             ...state,
             activeTabIds: { ...state.activeTabIds, [group]: tabId },
             focusedGroup: group,
+            secondaryVisible: group === 'secondary' || state.secondaryVisible,
           },
         },
       }
@@ -405,6 +435,34 @@ export function AgentChatView({
         projects: {
           ...current.projects,
           [projectID]: { ...state, focusedGroup: group },
+        },
+      }
+    })
+  }, [])
+
+  const showSecondaryPane = useCallback((projectID: string) => {
+    setWorkbench((current) => {
+      const state = current.projects[projectID]
+      if (!state || state.secondaryVisible || tabsInGroup(state.tabs, 'secondary').length === 0) return current
+      return {
+        ...current,
+        projects: {
+          ...current.projects,
+          [projectID]: { ...state, secondaryVisible: true },
+        },
+      }
+    })
+  }, [])
+
+  const hideSecondaryPane = useCallback((projectID: string) => {
+    setWorkbench((current) => {
+      const state = current.projects[projectID]
+      if (!state || !state.secondaryVisible) return current
+      return {
+        ...current,
+        projects: {
+          ...current.projects,
+          [projectID]: { ...state, secondaryVisible: false, focusedGroup: 'primary' },
         },
       }
     })
@@ -451,13 +509,16 @@ export function AgentChatView({
       const source = state?.tabs.find((tab) => tab.id === sourceId)
       if (!state || !source) return current
       const from = tabGroup(source)
+      const tabs = moveTab(state.tabs, sourceId, group, beforeId)
       return {
         ...current,
         projects: {
           ...current.projects,
           [projectID]: {
-            tabs: moveTab(state.tabs, sourceId, group, beforeId),
+            ...state,
+            tabs,
             focusedGroup: group,
+            secondaryVisible: group === 'secondary' || (state.secondaryVisible && tabsInGroup(tabs, 'secondary').length > 0),
             activeTabIds:
               from === group
                 ? state.activeTabIds
@@ -722,14 +783,64 @@ export function AgentChatView({
     project: AgentChatProject,
     state: AgentChatProjectTabState,
     group: AgentChatGroupId,
-    projectVisible: boolean,
-    mobileControls: { isMobile: boolean; openLeft: () => void },
+    paneVisible: boolean,
+    mobileControls: Pick<AdaptiveSurfaceControls, 'isMobile' | 'openPaneId' | 'openLeft' | 'openRight' | 'closePane'>,
   ) => {
     const groupTabs = tabsInGroup(state.tabs, group)
+    const secondaryTabs = tabsInGroup(state.tabs, 'secondary')
     const activeId = state.activeTabIds[group]
     const projectRunning = project.sessions.some((session) => isSessionRunning(project, session))
+    const secondaryBusy = (activitiesByProject.get(project.id) ?? []).some(
+      (activity) => activity.group === 'secondary' && ['running', 'connecting', 'ready'].includes(activity.status),
+    )
+    const openAgentTab = (target: AgentChatGroupId) => {
+      openDraftSessionInProject(project, target)
+      if (target === 'secondary' && mobileControls.isMobile) mobileControls.openRight()
+    }
+    const openTerminalTab = (target: AgentChatGroupId, profileId: TerminalProfileId, profileName?: string, command?: string) => {
+      openTerminal(project, target, profileId, profileName, command)
+      if (target === 'secondary' && mobileControls.isMobile) mobileControls.openRight()
+    }
+    const openPageTab = (target: AgentChatGroupId, pageId: AgentChatPageId) => {
+      openProjectPage(project, target, pageId)
+      if (target === 'secondary' && mobileControls.isMobile) mobileControls.openRight()
+    }
+    const secondaryControl = (
+      <AgentChatSecondaryPaneControl
+        visible={secondaryTabs.length > 0 && (
+          mobileControls.isMobile
+            ? mobileControls.openPaneId === 'agent-chat-secondary'
+            : state.secondaryVisible
+        )}
+        hasTabs={secondaryTabs.length > 0}
+        busy={secondaryBusy}
+        newChatDisabled={project.status !== 'available'}
+        terminalCommands={terminalCommands}
+        pagesEnabled={project.type === 'book'}
+        onShow={() => {
+          if (mobileControls.isMobile) mobileControls.openRight()
+          else showSecondaryPane(project.id)
+        }}
+        onHide={() => {
+          if (mobileControls.isMobile) mobileControls.closePane()
+          else hideSecondaryPane(project.id)
+        }}
+        onNewAgentTab={openAgentTab}
+        onNewTerminalTab={openTerminalTab}
+        onOpenPage={openPageTab}
+      />
+    )
+    const primaryOwnsSecondaryControl = group === 'primary'
+      && (mobileControls.isMobile || !state.secondaryVisible || secondaryTabs.length === 0)
+    const secondaryOwnsSecondaryControl = group === 'secondary' && paneVisible
+    const tabBarEndActions = primaryOwnsSecondaryControl
+      ? secondaryControl
+      : secondaryOwnsSecondaryControl
+        ? <div className="hidden lg:flex">{secondaryControl}</div>
+        : undefined
     return (
       <div
+        data-agent-chat-group={group}
         className="flex h-full min-h-0 min-w-0 flex-col bg-[var(--nova-bg)]"
         onPointerDownCapture={() => {
           if (state.focusedGroup !== group) focusGroup(project.id, group)
@@ -755,6 +866,8 @@ export function AgentChatView({
               tabTitle={tabTitle}
               terminalCommands={terminalCommands}
               pagesEnabled={project.type === 'book'}
+              newChatDisabled={project.status !== 'available'}
+              endActions={tabBarEndActions}
               onActivate={(tabId) => activateTab(project.id, group, tabId)}
               onClose={(tabId) => {
                 void closeTabs(project.id, [tabId])
@@ -768,9 +881,9 @@ export function AgentChatView({
               onRename={(tabId, title) => renameTab(project.id, tabId, title)}
               onTogglePin={(tabId) => togglePinTab(project.id, tabId)}
               onMoveTab={(sourceId, target, beforeId) => relocateTab(project.id, sourceId, target, beforeId)}
-              onNewAgentTab={(target) => openDraftSessionInProject(project, target)}
-              onNewTerminalTab={(target, profileId, profileName, command) => openTerminal(project, target, profileId, profileName, command)}
-              onOpenPage={(target, pageId) => openProjectPage(project, target, pageId)}
+              onNewAgentTab={openAgentTab}
+              onNewTerminalTab={openTerminalTab}
+              onOpenPage={openPageTab}
             />
           </div>
         </div>
@@ -789,7 +902,7 @@ export function AgentChatView({
             />
           ) : (
             groupTabs.map((tab) => {
-              const active = projectVisible && tab.id === activeId
+              const active = paneVisible && tab.id === activeId
               const mounted = mountedTabKeys.has(mountedTabKey(project.id, tab.id))
               if (!active && !mounted) return null
               return (
@@ -833,10 +946,35 @@ export function AgentChatView({
     )
   }
 
+  const activeProjectState = activeProject ? workbench.projects[activeProject.id] ?? emptyProjectTabState() : null
+  const secondaryVisible = Boolean(
+    activeProjectState?.secondaryVisible && tabsInGroup(activeProjectState.tabs, 'secondary').length > 0,
+  )
+  const secondaryProjectLayers = projects.map((project) => {
+    const state = workbench.projects[project.id] ?? emptyProjectTabState()
+    const visible = project.id === activeProjectId && state.secondaryVisible
+    return (
+      <section key={project.id} hidden={!visible} aria-hidden={!visible} className="absolute inset-0 flex min-h-0 flex-col">
+        {renderProjectGroup(project, state, 'secondary', visible, SECONDARY_PANE_CONTROLS)}
+      </section>
+    )
+  })
+
   return (
     <>
       <AgentChatWorkspaceSurface
         sidebarProps={treeProps}
+        secondaryPane={{
+          content: <div className="relative h-full min-h-0">{secondaryProjectLayers}</div>,
+          visible: secondaryVisible,
+          layoutKey: `nova-agent-chat-secondary-layout:v1:${activeProjectId || 'empty'}`,
+          onOpen: () => {
+            if (activeProject) showSecondaryPane(activeProject.id)
+          },
+          onClose: () => {
+            if (activeProject) hideSecondaryPane(activeProject.id)
+          },
+        }}
         createDisabled={!activeProject || activeProject.status !== 'available'}
         onCreateDefaultSession={() => {
           if (activeProject?.status === 'available') openDraftSessionInProject(activeProject)
@@ -846,27 +984,9 @@ export function AgentChatView({
           const projectLayers = projects.map((project) => {
             const state = workbench.projects[project.id] ?? emptyProjectTabState()
             const visible = project.id === activeProjectId
-            const primary = renderProjectGroup(project, state, 'primary', visible, controls)
-            const content =
-              tabsInGroup(state.tabs, 'secondary').length === 0 ? (
-                primary
-              ) : (
-                <Group id={`nova-agentchat-split-${project.id}`} orientation="horizontal" className="flex h-full min-h-0">
-                  <Panel id="agentchat-primary" defaultSize="50%" minSize="280px" className="min-w-0">
-                    {primary}
-                  </Panel>
-                  <Separator
-                    aria-label={t('agentChat.tabs.resizeSplit')}
-                    className="nova-resize-handle nova-resize-divider nova-resize-divider-vertical relative z-30 -mx-1 w-2 shrink-0 touch-none cursor-col-resize select-none"
-                  />
-                  <Panel id="agentchat-secondary" defaultSize="50%" minSize="280px" className="min-w-0">
-                    {renderProjectGroup(project, state, 'secondary', visible, controls)}
-                  </Panel>
-                </Group>
-              )
             return (
               <section key={project.id} hidden={!visible} aria-hidden={!visible} className="absolute inset-0 flex min-h-0 flex-col">
-                {content}
+                {renderProjectGroup(project, state, 'primary', visible, controls)}
               </section>
             )
           })

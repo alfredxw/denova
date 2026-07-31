@@ -61,7 +61,7 @@ interface WorkbenchShellProps {
   onDismissNotice?: () => void
 }
 
-type ActivityItemId = 'writing' | 'story' | 'timeline' | 'lore' | 'teller' | 'versions' | 'books' | 'agentchat' | 'skills' | 'agents' | 'automations'
+type ActivityItemId = 'writing' | 'story' | 'lore' | 'teller' | 'versions' | 'books' | 'agentchat' | 'skills' | 'agents' | 'automations'
 type PrimaryNavigationId = ActivityItemId | 'settings'
 type ActivityOrderScope = 'ide' | 'interactive'
 type SortableActivityItemId = `${ActivityOrderScope}:${ActivityItemId}`
@@ -84,7 +84,7 @@ const ACTIVITY_ORDER_STORAGE_KEYS: Record<ActivityOrderScope, string> = {
   interactive: 'nova.activity.order.interactive.v2',
 }
 const DEFAULT_IDE_ACTIVITY_ORDER: ActivityItemId[] = ['writing', 'agentchat', 'lore', 'teller', 'versions', 'books', 'skills', 'agents', 'automations']
-const DEFAULT_INTERACTIVE_ACTIVITY_ORDER: ActivityItemId[] = ['story', 'agentchat', 'timeline', 'lore', 'teller', 'versions', 'books', 'skills', 'agents', 'automations']
+const DEFAULT_INTERACTIVE_ACTIVITY_ORDER: ActivityItemId[] = ['story', 'agentchat', 'lore', 'teller', 'versions', 'books', 'skills', 'agents', 'automations']
 // User-level width preference; it should survive reloads and development hot updates.
 const ACTIVITY_BAR_WIDTH_STORAGE_KEY = 'nova.layout.activityBarWidth'
 const ACTIVITY_BAR_COLLAPSED_WIDTH = 64
@@ -391,15 +391,8 @@ export function WorkbenchShell({
       id: 'story',
       label: t('workbench.activity.story'),
       onClick: () => openInteractiveSubmode('story'),
-      active: interactiveModeActive && (interactiveSubmode === 'story' || interactiveSubmode === 'director'),
+      active: interactiveModeActive && (interactiveSubmode === 'story' || interactiveSubmode === 'director' || interactiveSubmode === 'timeline'),
       icon: <MessageSquareText className="h-4 w-4" />,
-    },
-    {
-      id: 'timeline',
-      label: t('workbench.activity.timeline'),
-      onClick: () => openInteractiveSubmode('timeline'),
-      active: interactiveModeActive && interactiveSubmode === 'timeline',
-      icon: <History className="h-4 w-4" />,
     },
     {
       id: 'lore',

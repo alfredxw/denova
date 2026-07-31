@@ -141,10 +141,12 @@ describe('MessageItem', () => {
   it('游戏模式持久化 AI 回复把编辑按钮放在复制与图像生成同一操作行', async () => {
     const user = userEvent.setup()
     const handleEdit = vi.fn()
+    const handleCreateBranch = vi.fn()
     const { container } = render(
       <MessageItem
         message={{ role: 'assistant', content: '朋友住在 3 楼 403 室。', turn_id: 'turn-1' }}
         onEditAssistantReply={handleEdit}
+        onCreateBranch={handleCreateBranch}
         onGenerateInteractiveImage={vi.fn()}
       />,
     )
@@ -153,11 +155,14 @@ describe('MessageItem', () => {
     expect(within(actionRow).getAllByRole('button').map((button) => button.getAttribute('aria-label'))).toEqual([
       '复制消息',
       '编辑 AI 回复',
+      '从此处创建分支',
       '生成互动图像',
     ])
 
     await user.click(screen.getByRole('button', { name: '编辑 AI 回复' }))
     expect(handleEdit).toHaveBeenCalledWith(expect.objectContaining({ turn_id: 'turn-1' }))
+    await user.click(screen.getByRole('button', { name: '从此处创建分支' }))
+    expect(handleCreateBranch).toHaveBeenCalledWith(expect.objectContaining({ turn_id: 'turn-1' }))
   })
 
   it('错误消息结束后展示复制和重试操作', () => {

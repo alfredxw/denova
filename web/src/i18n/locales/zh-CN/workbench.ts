@@ -10,7 +10,6 @@ const workbench = {
   'workbench.activity.skills': 'Skills',
   'workbench.activity.story': '剧情',
   'workbench.activity.teller': '方案预设',
-  'workbench.activity.timeline': '分支路线',
   'workbench.activity.toggleCollapse': '收起',
   'workbench.activity.toggleExpand': '展开',
   'workbench.activity.versions': '版本管理',

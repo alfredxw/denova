@@ -1,17 +1,11 @@
 import { useState, type DragEvent, type ReactNode } from 'react'
 import { useTranslation } from 'react-i18next'
 import {
-  Bot,
-  BookOpen,
-  Clock3,
-  Database,
   FileDiff,
   MessageSquareText,
   Pencil,
   Pin,
   PinOff,
-  SlidersHorizontal,
-  Sparkles,
   SplitSquareHorizontal,
   TerminalSquare,
   X,
@@ -19,11 +13,11 @@ import {
 import { Button } from '@/components/ui/button'
 import { ContextMenu, ContextMenuContent, ContextMenuItem, ContextMenuSeparator, ContextMenuTrigger } from '@/components/ui/context-menu'
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog'
-import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from '@/components/ui/dropdown-menu'
+import { DropdownMenu, DropdownMenuContent, DropdownMenuTrigger } from '@/components/ui/dropdown-menu'
 import { Input } from '@/components/ui/input'
 import { WorkbenchTab, WorkbenchTabAddButton, WorkbenchTabStrip } from '@/components/workbench/WorkbenchTabStrip'
+import { AGENT_CHAT_PAGE_ICONS, AgentChatNewTabMenuItems } from './AgentChatNewTabMenuItems'
 import {
-  AGENT_CHAT_PAGE_IDS,
   type AgentChatGroupId,
   type AgentChatPageId,
   type AgentChatTab,
@@ -50,6 +44,8 @@ interface AgentChatTabBarProps {
   terminalCommands: TerminalCommandProfile[]
   /** Writing-only resource pages are not valid inside a General Project. */
   pagesEnabled?: boolean
+  /** Persistent controls remain reachable when document tabs overflow. */
+  endActions?: ReactNode
   onActivate: (tabId: string) => void
   onClose: (tabId: string) => void
   onCloseOthers: (tabId: string) => void
@@ -61,16 +57,6 @@ interface AgentChatTabBarProps {
   onNewAgentTab: (group: AgentChatGroupId) => void
   onNewTerminalTab: (group: AgentChatGroupId, profileId: TerminalProfileId, profileName?: string, command?: string) => void
   onOpenPage: (group: AgentChatGroupId, pageId: AgentChatPageId) => void
-}
-
-/** Icon per project page, kept beside the page ids so a new page cannot ship without one. */
-const PAGE_ICONS: Record<AgentChatPageId, ReactNode> = {
-  reader: <BookOpen className="size-3.5" />,
-  lore: <Database className="size-3.5" />,
-  presets: <SlidersHorizontal className="size-3.5" />,
-  skills: <Sparkles className="size-3.5" />,
-  agents: <Bot className="size-3.5" />,
-  automations: <Clock3 className="size-3.5" />,
 }
 
 /** The group a tab moves to when it is sent across the split. */
@@ -86,6 +72,7 @@ export function AgentChatTabBar({
   newChatDisabled = false,
   terminalCommands,
   pagesEnabled = true,
+  endActions,
   onActivate,
   onClose,
   onCloseOthers,
@@ -111,7 +98,7 @@ export function AgentChatTabBar({
       case 'terminal':
         return <TerminalSquare className="size-3.5" />
       case 'page':
-        return PAGE_ICONS[tab.pageId]
+        return AGENT_CHAT_PAGE_ICONS[tab.pageId]
       case 'review':
         return <FileDiff className="size-3.5" />
     }
@@ -163,29 +150,15 @@ export function AgentChatTabBar({
         <WorkbenchTabAddButton aria-label={t('agentChat.tabs.new')} title={t('agentChat.tabs.new')} />
       </DropdownMenuTrigger>
       <DropdownMenuContent align="end" className="min-w-48">
-        <DropdownMenuItem disabled={newChatDisabled} onSelect={() => onNewAgentTab(group)}>
-          <MessageSquareText />
-          {t('agentChat.tabs.newChat')}
-        </DropdownMenuItem>
-        <DropdownMenuItem onSelect={() => onNewTerminalTab(group, 'shell')}>
-          <TerminalSquare />
-          {t('agentChat.tabs.newTerminal')}
-        </DropdownMenuItem>
-        {terminalCommands.map((command) => (
-          <DropdownMenuItem key={command.id} onSelect={() => onNewTerminalTab(group, command.id, command.name)}>
-            <TerminalSquare />
-            {command.name}
-          </DropdownMenuItem>
-        ))}
-        {pagesEnabled ? <DropdownMenuSeparator /> : null}
-        {pagesEnabled
-          ? AGENT_CHAT_PAGE_IDS.map((pageId) => (
-              <DropdownMenuItem key={pageId} onSelect={() => onOpenPage(group, pageId)}>
-                {PAGE_ICONS[pageId]}
-                {t(`agentChat.page.${pageId}`)}
-              </DropdownMenuItem>
-            ))
-          : null}
+        <AgentChatNewTabMenuItems
+          group={group}
+          newChatDisabled={newChatDisabled}
+          terminalCommands={terminalCommands}
+          pagesEnabled={pagesEnabled}
+          onNewAgentTab={onNewAgentTab}
+          onNewTerminalTab={onNewTerminalTab}
+          onOpenPage={onOpenPage}
+        />
       </DropdownMenuContent>
     </DropdownMenu>
   )
@@ -196,6 +169,7 @@ export function AgentChatTabBar({
         value={activeTabId ?? ''}
         onValueChange={onActivate}
         flowAction={newTabMenu}
+        endActions={endActions}
         // Tabs sit flush against the pane edge; only the trailing new-tab button gets breathing room.
         className="pr-1"
         onDragOver={(event) => {

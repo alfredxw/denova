@@ -290,6 +290,7 @@ describe('StoryStage AI reply editing', () => {
 
   it('pages older turns without exposing mutation actions outside the latest turn', async () => {
     const user = userEvent.setup()
+    const onRequestCreateBranch = vi.fn()
     const older: TurnEvent = {
       id: 'turn-old',
       parent_id: null,
@@ -332,6 +333,7 @@ describe('StoryStage AI reply editing', () => {
             history_before_cursor: 'older-cursor',
             has_earlier_turns: true,
           }}
+          onRequestCreateBranch={onRequestCreateBranch}
           onDone={() => undefined}
         />
       </VirtuosoMockContext.Provider>,
@@ -342,6 +344,10 @@ describe('StoryStage AI reply editing', () => {
     expect(getInteractiveHistoryPageMock).toHaveBeenCalledWith('story-1', 'main', 'older-cursor')
     expect(screen.getAllByRole('button', { name: '编辑 AI 回复' })).toHaveLength(1)
     expect(screen.getAllByRole('button', { name: '生成互动图像' })).toHaveLength(1)
+    expect(screen.getAllByRole('button', { name: '从此处创建分支' })).toHaveLength(2)
+
+    await user.click(screen.getAllByRole('button', { name: '从此处创建分支' })[0])
+    expect(onRequestCreateBranch).toHaveBeenCalledWith(expect.objectContaining({ turnId: 'turn-old', title: '走进门厅' }))
   })
 })
 

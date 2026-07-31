@@ -61,7 +61,8 @@ export function projectSidebarActivities({
   for (const tab of state.tabs) {
     if (tab.kind !== 'agent' && tab.kind !== 'terminal') continue
     const group = tabGroup(tab)
-    const paneVisible = foreground && state.activeTabIds[group] === tab.id
+    const groupVisible = group === 'primary' || state.secondaryVisible
+    const paneVisible = foreground && groupVisible && state.activeTabIds[group] === tab.id
     const common = {
       projectId: project.id,
       workspace: project.path,

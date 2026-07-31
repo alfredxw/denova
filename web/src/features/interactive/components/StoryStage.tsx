@@ -17,8 +17,7 @@ import { sanitizeStoredNarrative } from '../stream-parser'
 import { emptyStoryStageRun, useInteractiveStore } from '../stores/interactive-store'
 import type { StoryStageRunState } from '../stores/interactive-store'
 import { useInteractiveAgentCommands, type StoryStageRuntimeUpdater } from '../use-interactive-agent-commands'
-import { buildOpeningPrompt, truncateStoryOpeningText, type BookOpeningPreset, type StoryCreateInput } from '../opening'
-import type { ImagePreset, InteractiveTurnPersistedEvent, Snapshot, StoryDirector, StoryImageSettings, StorySummary, Teller } from '../types'
+import { buildOpeningPrompt, truncateStoryOpeningText } from '../opening'
 import { DEFAULT_NARRATIVE_STYLE_ID } from '../narrative-style'
 import { StoryPicker } from './StoryPicker'
 import { NewStorySetupPanel } from './NewStorySetupPanel'
@@ -40,48 +39,15 @@ import { useStoryStageRuntime } from './story-stage/use-story-stage-runtime'
 import { StoryStageComposer } from './story-stage/StoryStageComposer'
 import { StoryStageHeader } from './story-stage/StoryStageHeader'
 import { buildStoryStageCommandMenu } from './story-stage/story-stage-commands'
+import { branchCreationSourceFromMessage, branchCreationSourceFromTurn } from './branching/model'
+import type { StoryStageProps } from './story-stage/story-stage-props'
 import { useIsMobile } from '@/hooks/useIsMobile'
 import { useKeyboardInset } from '@/hooks/useKeyboardInset'
-
-interface StoryStageProps {
-  workspace?: string
-  styleSceneSuggestions?: string[]
-  stories?: StorySummary[]
-  story?: StorySummary
-  tellers?: Teller[]
-  storyDirectors?: StoryDirector[]
-  imagePresets?: ImagePreset[]
-  recentNarrativeStyleID?: string
-  narrativeStyleLoading?: boolean
-  storyId: string
-  branchId: string
-  snapshot: Snapshot | null
-  snapshotLoading?: boolean
-  loreEmpty?: boolean
-  bookOpeningPresets?: BookOpeningPreset[]
-  directorPanelVisible?: boolean
-  stateDisplayPreference?: StoryStateDisplayPreference
-  onStorySelect?: (storyId: string) => void
-  onStoryCreate?: (input: StoryCreateInput) => void | Promise<void>
-  onStorySetupUpdate?: (input: StoryCreateInput) => void | Promise<void>
-  onNarrativeStyleChange?: (id: string) => void | Promise<unknown>
-  onStoryDelete?: (storyIds: string[]) => void | Promise<void>
-  onDirectorChange?: (directorId: string) => void
-  onReplyTargetCharsChange?: (replyTargetChars: number) => void | Promise<void>
-  onImageSettingsChange?: (settings: StoryImageSettings) => void | Promise<void>
-  onRequestLoreInit?: () => void
-  onOpenDirectorConfig?: () => void
-  onToggleDirectorPanel?: () => void
-  onOpenDirectorState?: () => void
-  onStateDisplayPreferenceChange?: (value: StoryStateDisplayPreference) => void
-  onTurnPersisted?: (event: InteractiveTurnPersistedEvent) => Snapshot | void
-  onDone: (options?: { silent?: boolean }) => void | Promise<Snapshot | void>
-}
 
 const DEFAULT_READING_FONT_SIZE = 18
 const EMPTY_STAGE_RUN = emptyStoryStageRun()
 
-export function StoryStage({ workspace, styleSceneSuggestions = [], stories = [], story, tellers = [], storyDirectors = [], imagePresets = [], recentNarrativeStyleID = DEFAULT_NARRATIVE_STYLE_ID, narrativeStyleLoading = false, storyId, branchId, snapshot, snapshotLoading = false, loreEmpty = false, bookOpeningPresets = [], directorPanelVisible = true, stateDisplayPreference = DEFAULT_STORY_STATE_DISPLAY, onStorySelect = noop, onStoryCreate = noop, onStorySetupUpdate = noop, onNarrativeStyleChange, onStoryDelete = noop, onDirectorChange = noop, onReplyTargetCharsChange, onImageSettingsChange, onRequestLoreInit, onOpenDirectorConfig, onToggleDirectorPanel, onOpenDirectorState, onStateDisplayPreferenceChange = noopStateDisplayPreferenceChange, onTurnPersisted = noopTurnPersisted, onDone }: StoryStageProps) {
+export function StoryStage({ workspace, styleSceneSuggestions = [], stories = [], story, tellers = [], storyDirectors = [], imagePresets = [], recentNarrativeStyleID = DEFAULT_NARRATIVE_STYLE_ID, narrativeStyleLoading = false, storyId, branchId, snapshot, snapshotLoading = false, loreEmpty = false, bookOpeningPresets = [], directorPanelVisible = true, stateDisplayPreference = DEFAULT_STORY_STATE_DISPLAY, onStorySelect = noop, onStoryCreate = noop, onStorySetupUpdate = noop, onNarrativeStyleChange, onStoryDelete = noop, onDirectorChange = noop, onReplyTargetCharsChange, onImageSettingsChange, onRequestLoreInit, onOpenDirectorConfig, onToggleDirectorPanel, onOpenDirectorState, onRequestCreateBranch, onStateDisplayPreferenceChange = noopStateDisplayPreferenceChange, onTurnPersisted = noopTurnPersisted, onDone }: StoryStageProps) {
   const { t } = useTranslation()
   const approval = useAgentApprovalMode()
   const approvalReady = approval.initialized && !approval.saving
@@ -571,6 +537,15 @@ export function StoryStage({ workspace, styleSceneSuggestions = [], stories = []
     })
   }
 
+  const startCreatingBranchFromView = (view: AgentMessageView) => {
+    const message = agentViewToRenderMessage(view)
+    if (!message?.turn_id || !onRequestCreateBranch) return
+    const turn = turnsById.get(message.turn_id)
+    onRequestCreateBranch(turn
+      ? branchCreationSourceFromTurn(turn, t('branchTimeline.nodeFallback'))
+      : branchCreationSourceFromMessage(message.turn_id, message.content || '', t('branchTimeline.nodeFallback')))
+  }
+
   const regenerateView = (view: AgentMessageView) => {
     const message = agentViewToRenderMessage(view)
     if (message) regenerateMessage(message)
@@ -764,6 +739,7 @@ export function StoryStage({ workspace, styleSceneSuggestions = [], stories = []
                 canMutateMessage={canMutateStoryView}
                 onEditMessage={startEditingView}
                 onEditAssistantReply={storyImages.generatingTurnId || switchingVersionTurnId ? undefined : startEditingAssistantReply}
+                onCreateBranch={onRequestCreateBranch ? startCreatingBranchFromView : undefined}
                 onRegenerateMessage={regenerateView}
                 onSwitchMessageVersion={switchViewVersion}
                 onGenerateInteractiveImage={generateImageForView}

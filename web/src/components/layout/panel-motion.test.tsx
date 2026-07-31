@@ -68,6 +68,19 @@ describe('CollapsibleResizablePanel', () => {
       expect(panelHarness.resize).toHaveBeenCalledWith(368)
     })
   })
+
+  it('restores the configured layout when the panel starts hidden', async () => {
+    const { rerender } = render(panel(false))
+    await waitFor(() => expect(panelHarness.collapse).toHaveBeenCalledTimes(1))
+
+    panelHarness.reportedPixels = 0
+    rerender(panel(true))
+
+    await waitFor(() => {
+      expect(panelHarness.expand).toHaveBeenCalledTimes(1)
+      expect(panelHarness.resize).toHaveBeenCalledWith('224px')
+    })
+  })
 })
 
 function panel(visible: boolean) {
@@ -76,6 +89,7 @@ function panel(visible: boolean) {
       id="sidebar"
       visible={visible}
       side="left"
+      initialExpandSize="224px"
       defaultSize="224px"
       minSize="180px"
     >

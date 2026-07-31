@@ -282,7 +282,7 @@ describe('WorkbenchShell responsive main content', () => {
 
   it.each([
     ['writing', 'nova.activity.order.ide.v2', 'ide', 'writing', ['writing', 'lore', 'teller', 'versions', 'books', 'skills', 'agents', 'automations']],
-    ['game', 'nova.activity.order.interactive.v2', 'interactive', 'story', ['story', 'timeline', 'lore', 'teller', 'versions', 'books', 'skills', 'agents', 'automations']],
+    ['game', 'nova.activity.order.interactive.v2', 'interactive', 'story', ['story', 'lore', 'teller', 'versions', 'books', 'skills', 'agents', 'automations']],
   ] as const)('places a newly introduced Workspace item after the %s entry', (_label, storageKey, mode, primaryID, storedOrder) => {
     window.localStorage.setItem(storageKey, JSON.stringify(storedOrder))
     const { container } = render(<WorkbenchShell {...workbenchProps(<div />)} mode={mode} booksReturnMode={mode} />)

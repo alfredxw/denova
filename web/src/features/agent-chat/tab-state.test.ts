@@ -126,11 +126,13 @@ describe('agent-chat tab state', () => {
           tabs: [agentTab('a1', 's1'), terminalTab('t1')],
           activeTabIds: { primary: 'a1', secondary: null },
           focusedGroup: 'primary',
+          secondaryVisible: false,
         },
         'project-two': {
           tabs: [agentTab('a2', 's2', '/books/two'), terminalTab('t2', '/books/two')],
           activeTabIds: { primary: 'a2', secondary: null },
           focusedGroup: 'secondary',
+          secondaryVisible: false,
         },
       },
     })
@@ -179,6 +181,7 @@ describe('agent-chat tab state', () => {
           ],
           activeTabIds: { primary: 'aider-tab', secondary: null },
           focusedGroup: 'primary',
+          secondaryVisible: false,
         },
       },
     })
@@ -189,6 +192,31 @@ describe('agent-chat tab state', () => {
     })
   })
 
+  it('persists secondary visibility independently from the tabs it owns', () => {
+    persistWorkbenchState({
+      activeProjectId: 'project-one',
+      projects: {
+        'project-one': {
+          tabs: [agentTab('primary', 's-primary'), { ...terminalTab('secondary'), group: 'secondary' }],
+          activeTabIds: { primary: 'primary', secondary: 'secondary' },
+          focusedGroup: 'primary',
+          secondaryVisible: false,
+        },
+      },
+    })
+
+    const hidden = readStoredWorkbenchState().projects['project-one']
+    expect(hidden.secondaryVisible).toBe(false)
+    expect(tabsInGroup(hidden.tabs, 'secondary').map((tab) => tab.id)).toEqual(['secondary'])
+
+    const raw = JSON.parse(window.localStorage.getItem('nova.agentchat.workbenches.v4') || '{}')
+    delete raw.projects['project-one'].secondaryVisible
+    window.localStorage.setItem('nova.agentchat.workbenches.v4', JSON.stringify(raw))
+
+    // Older v4 records had no explicit visibility and always displayed a populated right group.
+    expect(readStoredWorkbenchState().projects['project-one'].secondaryVisible).toBe(true)
+  })
+
   it('does not persist blank draft conversations', () => {
     persistWorkbenchState({
       activeProjectId: 'project-one',
@@ -197,6 +225,7 @@ describe('agent-chat tab state', () => {
           tabs: [{ ...agentTab('draft', 's-draft'), draft: true }, agentTab('saved', 's-saved')],
           activeTabIds: { primary: 'draft', secondary: null },
           focusedGroup: 'primary',
+          secondaryVisible: false,
         },
       },
     })

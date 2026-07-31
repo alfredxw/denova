@@ -10,7 +10,6 @@ const workbench = {
   'workbench.activity.skills': 'Skills',
   'workbench.activity.story': 'Story',
   'workbench.activity.teller': 'Presets',
-  'workbench.activity.timeline': 'Story Map',
   'workbench.activity.toggleCollapse': 'Collapse',
   'workbench.activity.toggleExpand': 'Expand',
   'workbench.activity.versions': 'Versions',

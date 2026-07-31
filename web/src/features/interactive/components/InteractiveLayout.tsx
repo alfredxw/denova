@@ -3,6 +3,7 @@ import { Gauge, GripHorizontal, GripVertical } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import { motion } from 'motion/react'
 import { Group, Panel } from 'react-resizable-panels'
+import { toast } from 'sonner'
 import { useShallow } from 'zustand/react/shallow'
 import { readFile } from '@/lib/api'
 import { createInteractiveBranch, createInteractiveStory, deleteInteractiveBranch, deleteInteractiveStory, getInteractiveBranches, getInteractiveSnapshot, getInteractiveStories, getInteractiveTellers, getStoryDirectors, selectInteractiveStory, switchInteractiveBranch, updateInteractiveStory } from '../api'
@@ -13,6 +14,8 @@ import { DirectorPanel } from './DirectorPanel'
 import { SettingPanel, type SettingPanelMode } from './SettingPanel'
 import { StoryPicker } from './StoryPicker'
 import { StoryStage } from './StoryStage'
+import { CreateBranchDialog } from './branching/CreateBranchDialog'
+import type { BranchCreationSource } from './branching/model'
 import {
   readStoryStateDisplayPreference,
   writeStoryStateDisplayPreference,
@@ -99,6 +102,7 @@ export function InteractiveLayout({ workspace, active = true, recentNarrativeSty
   const [mobileSnapshotOpen, setMobileSnapshotOpen] = useState(false)
   const [storyStateDisplayPreference, setStoryStateDisplayPreference] = useState(readStoryStateDisplayPreference)
   const [bookOpeningPresets, setBookOpeningPresets] = useState<BookOpeningPreset[]>([])
+  const [branchCreationSource, setBranchCreationSource] = useState<BranchCreationSource | null>(null)
   const storyPanelLayout = usePersistedPanelLayout({
     storageKey: 'nova-interactive-horizontal',
     panelIds: ['story-stage', 'snapshot'],
@@ -114,6 +118,10 @@ export function InteractiveLayout({ workspace, active = true, recentNarrativeSty
   useEffect(() => {
     snapshotStoryIdRef.current = snapshot?.story_id || ''
   }, [snapshot?.story_id])
+
+  useEffect(() => {
+    setBranchCreationSource(null)
+  }, [currentStoryId])
 
   const reloadStories = useCallback(async (preferredStory?: StorySummary) => {
     const requestSeq = storyIndexRequestSeqRef.current + 1
@@ -333,6 +341,11 @@ export function InteractiveLayout({ workspace, active = true, recentNarrativeSty
     if (!rightPanelVisible) onToggleRightPanel?.()
   }, [isMobile, onToggleRightPanel, rightPanelVisible])
 
+  const openBranchTimeline = useCallback(() => {
+    setMobileSnapshotOpen(false)
+    setSubmode('timeline')
+  }, [setSubmode])
+
   const handleTurnPersisted = useCallback((event: InteractiveTurnPersistedEvent) => {
     return applyTurnPersisted(event) || undefined
   }, [applyTurnPersisted])
@@ -350,13 +363,15 @@ export function InteractiveLayout({ workspace, active = true, recentNarrativeSty
   }
 
   const handleCreateBranch = async (turnId: string, title: string) => {
-    if (!currentStoryId) return
-    const branch = await createInteractiveBranch(currentStoryId, {
+    const storyId = currentStoryId || useInteractiveStore.getState().currentStoryId
+    if (!storyId) throw new Error(t('branchTimeline.createUnavailable'))
+    const branch = await createInteractiveBranch(storyId, {
       parent_event_id: turnId,
       title,
     })
     setCurrentBranchId(branch.id)
-    await reloadSnapshot(branch.id)
+    await reloadSnapshot(branch.id, storyId)
+    toast.success(t('branchTimeline.createdAndSwitched', { name: branch.title || title }))
   }
 
   const handleDeleteBranch = async (branchId: string) => {
@@ -407,6 +422,7 @@ export function InteractiveLayout({ workspace, active = true, recentNarrativeSty
       }}
       onToggleDirectorPanel={isMobile ? () => setMobileSnapshotOpen((open) => !open) : onToggleRightPanel}
       onOpenDirectorState={openDirectorState}
+      onRequestCreateBranch={setBranchCreationSource}
       onStateDisplayPreferenceChange={handleStoryStateDisplayPreferenceChange}
       onTurnPersisted={handleTurnPersisted}
       onDone={handleStoryStageDone}
@@ -431,7 +447,22 @@ export function InteractiveLayout({ workspace, active = true, recentNarrativeSty
                     title: t('directorPanel.title'),
                     side: 'right',
                     icon: <Gauge className="h-4 w-4" />,
-                    content: <DirectorPanel storyId={currentStoryId} story={currentStory} storyDirectors={storyDirectors} onDirectorChange={handleDirectorChange} onReplyTargetCharsChange={handleReplyTargetCharsChange} branchId={currentBranchId} snapshot={displaySnapshot} stateDisplayPreference={storyStateDisplayPreference} onStateDisplayPreferenceChange={handleStoryStateDisplayPreferenceChange} />,
+                    content: (
+                      <DirectorPanel
+                        storyId={currentStoryId}
+                        story={currentStory}
+                        storyDirectors={storyDirectors}
+                        onDirectorChange={handleDirectorChange}
+                        onReplyTargetCharsChange={handleReplyTargetCharsChange}
+                        branchId={currentBranchId}
+                        branches={branches}
+                        snapshot={displaySnapshot}
+                        stateDisplayPreference={storyStateDisplayPreference}
+                        onStateDisplayPreferenceChange={handleStoryStateDisplayPreferenceChange}
+                        onSwitchBranch={handleSwitchBranch}
+                        onOpenBranchTimeline={openBranchTimeline}
+                      />
+                    ),
                   }]}
                   closeLabel={t('common.close')}
                   openPaneId={mobileSnapshotOpen ? 'director-panel' : null}
@@ -469,7 +500,20 @@ export function InteractiveLayout({ workspace, active = true, recentNarrativeSty
                     maxSize="45%"
                     className="min-w-[180px]"
                   >
-                    <DirectorPanel storyId={currentStoryId} story={currentStory} storyDirectors={storyDirectors} onDirectorChange={handleDirectorChange} onReplyTargetCharsChange={handleReplyTargetCharsChange} branchId={currentBranchId} snapshot={displaySnapshot} stateDisplayPreference={storyStateDisplayPreference} onStateDisplayPreferenceChange={handleStoryStateDisplayPreferenceChange} />
+                    <DirectorPanel
+                      storyId={currentStoryId}
+                      story={currentStory}
+                      storyDirectors={storyDirectors}
+                      onDirectorChange={handleDirectorChange}
+                      onReplyTargetCharsChange={handleReplyTargetCharsChange}
+                      branchId={currentBranchId}
+                      branches={branches}
+                      snapshot={displaySnapshot}
+                      stateDisplayPreference={storyStateDisplayPreference}
+                      onStateDisplayPreferenceChange={handleStoryStateDisplayPreferenceChange}
+                      onSwitchBranch={handleSwitchBranch}
+                      onOpenBranchTimeline={openBranchTimeline}
+                    />
                   </CollapsibleResizablePanel>
                 </Group>
               )}
@@ -477,6 +521,11 @@ export function InteractiveLayout({ workspace, active = true, recentNarrativeSty
           </div>
         </div>
       </div>
+      <CreateBranchDialog
+        source={branchCreationSource}
+        onClose={() => setBranchCreationSource(null)}
+        onCreate={(source, title) => handleCreateBranch(source.turnId, title)}
+      />
     </div>
   )
 }

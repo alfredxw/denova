@@ -3,7 +3,7 @@ import { Profiler } from 'react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { InteractiveLayout } from './InteractiveLayout'
 import { useInteractiveStore } from '../stores/interactive-store'
-import { createInteractiveStory, deleteInteractiveStory, getInteractiveBranches, getInteractiveSnapshot, getInteractiveStories, getInteractiveTellers, getStoryDirectors, selectInteractiveStory, updateInteractiveStory } from '../api'
+import { createInteractiveBranch, createInteractiveStory, deleteInteractiveStory, getInteractiveBranches, getInteractiveSnapshot, getInteractiveStories, getInteractiveTellers, getStoryDirectors, selectInteractiveStory, updateInteractiveStory } from '../api'
 import type { Snapshot, StoryDirector, StorySummary, Teller } from '../types'
 
 vi.mock('@/hooks/useIsMobile', () => ({
@@ -53,6 +53,7 @@ vi.mock('./StoryStage', () => ({
     onStoryDelete: (storyIds: string[]) => Promise<void>
     onStorySelect: (storyId: string) => void
     onDirectorChange: (directorId: string) => Promise<void>
+    onRequestCreateBranch: (source: { turnId: string; title: string; summary?: string }) => void
   }) => (
     <div data-testid="story-stage-probe" data-story-id={props.storyId}>
       <button
@@ -83,6 +84,9 @@ vi.mock('./StoryStage', () => ({
       <button type="button" onClick={() => props.onStorySelect('st_2')}>
         mock select story
       </button>
+      <button type="button" onClick={() => props.onRequestCreateBranch({ turnId: 'turn-source', title: '调查钟楼', summary: '钟楼里传来齿轮声。' })}>
+        mock create branch
+      </button>
       <div data-testid="story-list">{props.stories.map((item) => item.title).join('|')}</div>
     </div>
   ),
@@ -102,6 +106,7 @@ beforeEach(() => {
     submode: 'story',
   })
   vi.mocked(createInteractiveStory).mockReset()
+  vi.mocked(createInteractiveBranch).mockReset()
   vi.mocked(deleteInteractiveStory).mockReset()
   vi.mocked(getInteractiveStories).mockReset()
   vi.mocked(getInteractiveTellers).mockReset()
@@ -288,6 +293,46 @@ describe('InteractiveLayout story selection', () => {
     await waitFor(() => {
       expect(screen.getByTestId('story-stage-probe')).toHaveAttribute('data-story-id', 'st_2')
       expect(selectInteractiveStory).toHaveBeenCalledWith('st_2')
+    })
+  })
+})
+
+describe('InteractiveLayout branch creation', () => {
+  it('uses the shared dialog to create and switch from a story reply', async () => {
+    vi.mocked(getInteractiveStories).mockResolvedValue({
+      current_story_id: 'st_1',
+      stories: [story('st_1', '故事线')],
+    })
+    vi.mocked(getInteractiveSnapshot).mockImplementation(async (storyId, branchId) => ({
+      story_id: storyId,
+      branch_id: branchId || 'main',
+      turns: [],
+      state: {},
+    }))
+    vi.mocked(createInteractiveBranch).mockResolvedValue({
+      id: 'br-1',
+      head: 'turn-source',
+      from: 'main',
+      from_event: 'turn-source',
+      title: '基于「调查钟楼」的新剧情线',
+      created_at: '2026-07-04T00:01:00Z',
+      current: true,
+    })
+
+    render(<InteractiveLayout workspace="/workspace" />)
+    await waitFor(() => expect(screen.getByTestId('story-stage-probe')).toHaveAttribute('data-story-id', 'st_1'))
+
+    fireEvent.click(screen.getByRole('button', { name: 'mock create branch' }))
+    expect(screen.getByRole('dialog')).toHaveTextContent('钟楼里传来齿轮声。')
+    fireEvent.click(screen.getByRole('button', { name: '创建并切换' }))
+
+    await waitFor(() => {
+      expect(createInteractiveBranch).toHaveBeenCalledWith('st_1', {
+        parent_event_id: 'turn-source',
+        title: '基于「调查钟楼」的新剧情线',
+      })
+      expect(useInteractiveStore.getState().currentBranchId).toBe('br-1')
+      expect(getInteractiveSnapshot).toHaveBeenCalledWith('st_1', 'br-1')
     })
   })
 })
