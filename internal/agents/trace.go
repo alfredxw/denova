@@ -11,7 +11,7 @@ import (
 	"time"
 
 	agent "github.com/alfredxw/denova/agent"
-	"github.com/alfredxw/denova/agent/model/openai"
+	"github.com/alfredxw/denova/agent/providers"
 
 	"denova/config"
 )
@@ -310,13 +310,15 @@ func newTraceSpanID() string {
 	return fmt.Sprintf("span-%d", time.Now().UTC().UnixNano())
 }
 
-func beginLLMCallTrace(ctx context.Context, agentKind, source, mode string, cfg openai.Config, messages []*agent.Message, tools []*agent.ToolInfo, stream bool) (*traceSpanHandle, string, context.Context) {
+func beginLLMCallTrace(ctx context.Context, agentKind, source, mode string, cfg providers.ModelConfig, messages []*agent.Message, tools []*agent.ToolInfo, stream bool) (*traceSpanHandle, string, context.Context) {
 	callID := newModelInputCallID()
 	attrs := map[string]any{
 		"call_id":       callID,
 		"agent_kind":    strings.TrimSpace(agentKind),
 		"source":        strings.TrimSpace(source),
 		"mode":          strings.TrimSpace(mode),
+		"provider":      strings.TrimSpace(string(cfg.Provider)),
+		"protocol":      strings.TrimSpace(string(cfg.Protocol)),
 		"model":         strings.TrimSpace(cfg.Model),
 		"base_url":      strings.TrimSpace(cfg.BaseURL),
 		"stream":        stream,

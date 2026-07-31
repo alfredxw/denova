@@ -8,13 +8,13 @@ import { Select, SelectContent, SelectGroup, SelectItem, SelectTrigger, SelectVa
 import { Switch } from '@/components/ui/switch'
 import { Textarea } from '@/components/ui/textarea'
 import type { AgentModelOverride, AgentToolOverride, LayeredSettings, Settings, SettingsLayer, SubAgentConfig } from '@/features/settings/types'
-import { Field, SectionTitle, SwitchWithInheritance, ToggleSwitch, thinkingDisplayValue, thinkingStatusLabel } from './agent-form-controls'
+import { THINKING_LEVELS } from '@/features/settings/thinking-levels'
+import { Field, SectionTitle, SwitchWithInheritance, ToggleSwitch } from './agent-form-controls'
 import { SUB_AGENT_PARENT_KEYS } from './agent-registry'
 import type { AgentToolDefinition, SubAgentParentKey, ToolKey, VisibleAgentKey } from './agent-registry'
 
-export function AgentSubAgentSection({ agent, inheritedModel, toolRows, generalSettings, effectiveGeneralSettings, subAgents, effectiveSubAgents, profiles, onGeneralChange, onChange }: {
+export function AgentSubAgentSection({ agent, toolRows, generalSettings, effectiveGeneralSettings, subAgents, effectiveSubAgents, profiles, onGeneralChange, onChange }: {
   agent: SubAgentParentKey
-  inheritedModel: AgentModelOverride
   toolRows: AgentToolDefinition[]
   generalSettings: Settings['general_sub_agents']
   effectiveGeneralSettings: Settings['general_sub_agents']
@@ -177,7 +177,6 @@ export function AgentSubAgentSection({ agent, inheritedModel, toolRows, generalS
                 id={editingSubAgent.id}
                 agent={agent}
                 subAgent={editingSubAgent.value}
-                inheritedModel={inheritedModel}
                 toolRows={availableToolRows}
                 profiles={profiles}
                 onChange={updateEditingSubAgent}
@@ -255,11 +254,10 @@ function SubAgentRow({ agent, subAgent, onToggle, onEdit, onDelete }: {
   )
 }
 
-function SubAgentEditor({ id, agent, subAgent, inheritedModel, toolRows, profiles, onChange }: {
+function SubAgentEditor({ id, agent, subAgent, toolRows, profiles, onChange }: {
   id: string
   agent: SubAgentParentKey
   subAgent: SubAgentConfig
-  inheritedModel: AgentModelOverride
   toolRows: AgentToolDefinition[]
   profiles: Array<{ id: string; label: string }>
   onChange: (id: string, patch: Partial<SubAgentConfig>) => void
@@ -269,9 +267,6 @@ function SubAgentEditor({ id, agent, subAgent, inheritedModel, toolRows, profile
   const parentSet = new Set(parents)
   const tools = subAgent.tools ?? {}
   const model = subAgent.model ?? {}
-  const hasThinking = model.enable_thinking !== undefined && model.enable_thinking !== null
-  const effectiveThinking = hasThinking ? model.enable_thinking : inheritedModel.enable_thinking
-
   const setModel = (patch: Partial<AgentModelOverride>) => onChange(id, { model: { ...model, ...patch } })
   const setTool = (key: ToolKey, value: boolean | null) => {
     const nextTools: AgentToolOverride = { ...tools }
@@ -324,7 +319,7 @@ function SubAgentEditor({ id, agent, subAgent, inheritedModel, toolRows, profile
           className="min-h-28 resize-y text-xs leading-5"
         />
       </Field>
-      <div className="grid gap-3 md:grid-cols-3">
+      <div className="grid gap-3 md:grid-cols-2">
         <Field label="Temperature">
           <Input
             type="number"
@@ -338,25 +333,15 @@ function SubAgentEditor({ id, agent, subAgent, inheritedModel, toolRows, profile
             className="h-7 text-xs"
           />
         </Field>
-        <Field label={t('agents.field.thinking')}>
-          <SwitchWithInheritance
-            checked={thinkingDisplayValue(effectiveThinking)}
-            onChange={(checked) => setModel({ enable_thinking: checked })}
-            ariaLabel={t('agents.field.thinking')}
-            statusLabel={thinkingStatusLabel(t, effectiveThinking)}
-            inherited={!hasThinking}
-            onReset={hasThinking ? () => setModel({ enable_thinking: null }) : undefined}
-          />
-        </Field>
-        <Field label={t('agents.field.reasoningEffort')}>
-          <Select value={model.reasoning_effort || '__inherit__'} onValueChange={(effort) => setModel({ reasoning_effort: effort === '__inherit__' ? '' : effort })}>
-            <SelectTrigger size="sm" className="w-full" aria-label={t('agents.field.reasoningEffort')}><SelectValue /></SelectTrigger>
+        <Field label={t('agents.field.thinkingLevel')}>
+          <Select value={model.thinking_level || '__inherit__'} onValueChange={(level) => setModel({ thinking_level: level === '__inherit__' ? '' : level })}>
+            <SelectTrigger size="sm" className="w-full" aria-label={t('agents.field.thinkingLevel')}><SelectValue /></SelectTrigger>
             <SelectContent>
               <SelectGroup>
                 <SelectItem value="__inherit__">{t('agents.option.inherit')}</SelectItem>
-                <SelectItem value="low">low</SelectItem>
-                <SelectItem value="medium">medium</SelectItem>
-                <SelectItem value="high">high</SelectItem>
+                {THINKING_LEVELS.map((level) => (
+                  <SelectItem key={level} value={level}>{t(`agents.thinkingLevel.${level}`)}</SelectItem>
+                ))}
               </SelectGroup>
             </SelectContent>
           </Select>

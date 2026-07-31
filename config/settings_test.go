@@ -8,6 +8,8 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/alfredxw/denova/agent/providers"
 )
 
 func TestDefaultSettingsValues(t *testing.T) {
@@ -71,17 +73,17 @@ func TestDefaultSettingsValues(t *testing.T) {
 	if s.VolumeDirFormat != "v{order:05}-{volume}" {
 		t.Fatalf("VolumeDirFormat default: %s", s.VolumeDirFormat)
 	}
-	if s.AgentModels.IDE.EnableThinking == nil || !*s.AgentModels.IDE.EnableThinking {
-		t.Fatalf("IDE thinking should default on")
+	if s.AgentModels.IDE.ThinkingLevel != string(providers.ThinkingLevelMedium) {
+		t.Fatalf("IDE thinking level = %q, want medium", s.AgentModels.IDE.ThinkingLevel)
 	}
-	if s.AgentModels.ConfigManager.EnableThinking == nil || !*s.AgentModels.ConfigManager.EnableThinking {
-		t.Fatalf("ConfigManager thinking should default on")
+	if s.AgentModels.ConfigManager.ThinkingLevel != string(providers.ThinkingLevelMedium) {
+		t.Fatalf("ConfigManager thinking level = %q, want medium", s.AgentModels.ConfigManager.ThinkingLevel)
 	}
-	if s.AgentModels.InteractiveStory.EnableThinking == nil || *s.AgentModels.InteractiveStory.EnableThinking {
-		t.Fatalf("InteractiveStory extended thinking should default off")
+	if s.AgentModels.InteractiveStory.ThinkingLevel != string(providers.ThinkingLevelOff) {
+		t.Fatalf("InteractiveStory thinking level = %q, want off", s.AgentModels.InteractiveStory.ThinkingLevel)
 	}
-	if s.AgentModels.ToolAgent.EnableThinking == nil || *s.AgentModels.ToolAgent.EnableThinking {
-		t.Fatalf("ToolAgent thinking should default off")
+	if s.AgentModels.ToolAgent.ThinkingLevel != string(providers.ThinkingLevelOff) {
+		t.Fatalf("ToolAgent thinking level = %q, want off", s.AgentModels.ToolAgent.ThinkingLevel)
 	}
 	if s.UIFontFamily != "apple-system" {
 		t.Fatalf("UIFontFamily default: %s", s.UIFontFamily)

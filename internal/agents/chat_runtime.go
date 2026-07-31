@@ -9,6 +9,7 @@ import (
 	"time"
 
 	agent "github.com/alfredxw/denova/agent"
+	"github.com/alfredxw/denova/agent/providers"
 
 	"denova/internal/agents/session"
 	"denova/internal/book"
@@ -53,6 +54,21 @@ type chatRun struct {
 	effectiveOutputSet bool
 	capturedContent    string
 	capturedThinking   string
+}
+
+func (r *chatRun) captureProviderContinuation(message *agent.Message, eventMeta agentEventMetadata) {
+	if r == nil || message == nil || eventMeta.SubAgent {
+		return
+	}
+	// Tool-call responses are persisted atomically with their tool results by
+	// toolResultContextRecorder. Do not duplicate that continuation on the
+	// synthesized terminal assistant message if the run is preempted mid-loop.
+	if len(message.ToolCalls) != 0 {
+		r.assistantMetadata.ProviderContinuation = nil
+		return
+	}
+	clone := message.Clone()
+	r.assistantMetadata.ProviderContinuation = providers.ContinuationExtra(clone.Extra)
 }
 
 func newChatRun(

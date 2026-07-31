@@ -11,7 +11,8 @@ import (
 	"testing"
 
 	agent "github.com/alfredxw/denova/agent"
-	"github.com/alfredxw/denova/agent/model/openai"
+	"github.com/alfredxw/denova/agent/providers"
+	"github.com/alfredxw/denova/agent/providers/builtin"
 
 	"denova/config"
 	"denova/internal/agents/session"
@@ -76,10 +77,16 @@ func TestOpenAIRequestAssemblyKeepsToolContentAsString(t *testing.T) {
 	}))
 	t.Cleanup(server.Close)
 
-	chatModel, err := openai.New(context.Background(), &openai.Config{
-		APIKey:  "test-key",
-		Model:   "test-model",
-		BaseURL: server.URL,
+	registry, err := builtin.NewRegistry()
+	if err != nil {
+		t.Fatal(err)
+	}
+	chatModel, err := registry.NewChatModel(context.Background(), providers.ModelConfig{
+		Provider: providers.ProviderOpenAICompatible,
+		Protocol: providers.ProtocolOpenAIChatCompletions,
+		APIKey:   "test-key",
+		Model:    "test-model",
+		BaseURL:  server.URL,
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -116,6 +123,104 @@ func TestOpenAIRequestAssemblyKeepsToolContentAsString(t *testing.T) {
 	if toolMessage.Role != "tool" || toolMessage.ToolCallID != "call-json" ||
 		toolMessage.Content != projected.Result.ModelContent || strings.Contains(toolMessage.Content, retainedToolReceiptSchema) {
 		t.Fatalf("tool content must be one opaque JSON string, got role=%q id=%q bytes=%d", toolMessage.Role, toolMessage.ToolCallID, len(toolMessage.Content))
+	}
+}
+
+func TestResponsesContinuationSurvivesProductSessionReload(t *testing.T) {
+	requests := make(chan []byte, 2)
+	call := 0
+	server := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
+		body, err := io.ReadAll(request.Body)
+		if err != nil {
+			t.Errorf("read Responses request: %v", err)
+		}
+		requests <- body
+		call++
+		writer.Header().Set("Content-Type", "application/json")
+		if call == 1 {
+			_, _ = writer.Write([]byte(`{
+				"id":"resp_1","object":"response","created_at":1,"status":"completed","model":"test-model",
+				"output":[
+					{"id":"rs_1","type":"reasoning","summary":[],"content":[],"encrypted_content":"encrypted-state","status":"completed"},
+					{"id":"fc_1","type":"function_call","call_id":"call_1","name":"read","arguments":"{\"path\":\"chapter.md\"}","status":"completed"}
+				],
+				"usage":{"input_tokens":1,"input_tokens_details":{"cached_tokens":0},"output_tokens":1,"output_tokens_details":{"reasoning_tokens":1},"total_tokens":2}
+			}`))
+			return
+		}
+		_, _ = writer.Write([]byte(`{
+			"id":"resp_2","object":"response","created_at":2,"status":"completed","model":"test-model",
+			"output":[{"id":"msg_2","type":"message","status":"completed","role":"assistant","content":[{"type":"output_text","text":"done","annotations":[],"logprobs":[]}]}],
+			"usage":{"input_tokens":2,"input_tokens_details":{"cached_tokens":1},"output_tokens":1,"output_tokens_details":{"reasoning_tokens":0},"total_tokens":3}
+		}`))
+	}))
+	t.Cleanup(server.Close)
+
+	registry, err := builtin.NewRegistry()
+	if err != nil {
+		t.Fatal(err)
+	}
+	modelConfig := providers.ModelConfig{
+		Provider: providers.ProviderOpenAICompatible, Protocol: providers.ProtocolOpenAIResponses,
+		APIKey: "test-key", Model: "test-model", BaseURL: server.URL + "/v1", HTTPClient: server.Client(),
+	}
+	model, err := registry.NewChatModel(context.Background(), modelConfig)
+	if err != nil {
+		t.Fatal(err)
+	}
+	first, err := model.Generate(context.Background(), []*agent.Message{agent.UserMessage("inspect")})
+	if err != nil {
+		t.Fatal(err)
+	}
+	<-requests
+
+	workspace := t.TempDir()
+	store, err := session.NewStore(workspace)
+	if err != nil {
+		t.Fatal(err)
+	}
+	sess, err := store.GetOrCreate("responses-reload")
+	if err != nil {
+		t.Fatal(err)
+	}
+	conversation := NewSessionConversationForAgent(sess, &config.Config{}, AgentKindIDE)
+	conversation.BindAgentCycleIdentity(HarnessCycleIdentity{CommandID: "command", OperationID: "operation", Cycle: 1})
+	recorder := newToolResultContextRecorder(conversation)
+	recorder.RecordAssistantToolCalls(first, agentEventMetadata{})
+	if err := recorder.RecordToolResult(agent.ToolMessage(agent.TextToolResult("chapter contents"), "call_1", agent.WithToolName("read")), agentEventMetadata{}); err != nil {
+		t.Fatal(err)
+	}
+
+	reloadedStore, err := session.NewStore(workspace)
+	if err != nil {
+		t.Fatal(err)
+	}
+	reloaded, err := reloadedStore.Get("responses-reload")
+	if err != nil {
+		t.Fatal(err)
+	}
+	history := append(reloaded.GetEffectiveMessages(), agent.UserMessage("continue"))
+	if _, err := model.Generate(context.Background(), history); err != nil {
+		t.Fatal(err)
+	}
+
+	var secondRequest struct {
+		Input []map[string]any `json:"input"`
+	}
+	if err := json.Unmarshal(<-requests, &secondRequest); err != nil {
+		t.Fatal(err)
+	}
+	if len(secondRequest.Input) != 4 {
+		t.Fatalf("reloaded Responses input = %#v", secondRequest.Input)
+	}
+	wantTypes := []string{"reasoning", "function_call", "function_call_output"}
+	for index, want := range wantTypes {
+		if got := secondRequest.Input[index]["type"]; got != want {
+			t.Fatalf("reloaded input[%d] type = %#v, want %q", index, got, want)
+		}
+	}
+	if secondRequest.Input[0]["encrypted_content"] != "encrypted-state" || secondRequest.Input[3]["role"] != "user" {
+		t.Fatalf("reloaded continuation lost state or user turn: %#v", secondRequest.Input)
 	}
 }
 
@@ -178,7 +283,20 @@ func TestToolResultContextRecorderPersistsAtomicBoundedRichBatchInSourceOrder(t 
 		{ID: "call-search", Type: "function", Function: agent.FunctionCall{Name: "web_search", Arguments: searchArguments}},
 	})
 	assistant.ResponseMeta = &agent.ResponseMeta{FinishReason: "tool_calls"}
-	assistant.Extra = map[string]any{"provider_response_id": "response-1"}
+	continuationConfig := providers.ModelConfig{
+		Provider: providers.ProviderOpenAI, Protocol: providers.ProtocolOpenAIResponses,
+		Model: "gpt-5", BaseURL: "https://api.openai.com/v1",
+	}
+	continuation, err := providers.NewContinuation(continuationConfig, []any{
+		map[string]any{"type": "reasoning", "encrypted_content": "encrypted-state"},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	assistant.Extra = map[string]any{
+		"provider_response_id":         "response-1",
+		providers.ExtraKeyContinuation: continuation,
+	}
 	assistant.ReasoningContent = "private chain of thought must not cross turns"
 	assistant.MultiContent = []json.RawMessage{json.RawMessage(`{"type":"reasoning","text":"private"}`)}
 	assistant.AssistantGenMultiContent = []json.RawMessage{json.RawMessage(`{"type":"reasoning","text":"private"}`)}
@@ -216,9 +334,14 @@ func TestToolResultContextRecorderPersistsAtomicBoundedRichBatchInSourceOrder(t 
 		recordedAssistant.ToolCalls[0].Function.Arguments != readArguments {
 		t.Fatalf("original assistant batch was not preserved: %#v", recordedAssistant)
 	}
-	if recordedAssistant.ReasoningContent != "" || recordedAssistant.ResponseMeta != nil || recordedAssistant.Extra != nil ||
+	if recordedAssistant.ReasoningContent != "" || recordedAssistant.ResponseMeta != nil ||
 		len(recordedAssistant.MultiContent) != 0 || len(recordedAssistant.AssistantGenMultiContent) != 0 {
 		t.Fatalf("private reasoning or transport metadata crossed the durable tool boundary: %#v", recordedAssistant)
+	}
+	var persistedOutput []any
+	matched, err := providers.DecodeContinuation(recordedAssistant.Extra, continuationConfig, &persistedOutput)
+	if err != nil || !matched || len(persistedOutput) != 1 || len(recordedAssistant.Extra) != 1 {
+		t.Fatalf("protocol continuation was not isolated: extra=%#v matched=%t err=%v", recordedAssistant.Extra, matched, err)
 	}
 	if conversation.batches != 1 {
 		t.Fatalf("tool exchange batches = %d, want 1", conversation.batches)
@@ -286,7 +409,20 @@ func TestWritingToolResultBatchesRoundTripWithProviderLocalIDReuse(t *testing.T)
 	})
 	first.ReasoningContent = "private cross-turn reasoning"
 	first.ResponseMeta = &agent.ResponseMeta{FinishReason: "tool_calls"}
-	first.Extra = map[string]any{"provider_transport": "opaque"}
+	continuationConfig := providers.ModelConfig{
+		Provider: providers.ProviderOpenAI, Protocol: providers.ProtocolOpenAIResponses,
+		Model: "gpt-5", BaseURL: "https://api.openai.com/v1",
+	}
+	continuation, err := providers.NewContinuation(continuationConfig, []any{
+		map[string]any{"type": "reasoning", "encrypted_content": "encrypted-state"},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	first.Extra = map[string]any{
+		"provider_transport":           "opaque",
+		providers.ExtraKeyContinuation: continuation,
+	}
 	recorder.RecordAssistantToolCalls(first, agentEventMetadata{})
 	recorder.RecordToolResult(agent.ToolMessage(agent.TextToolResult("search one"), "parallel"), agentEventMetadata{})
 	recorder.RecordToolResult(agent.ToolMessage(agent.TextToolResult("file one"), "provider-local"), agentEventMetadata{})
@@ -309,8 +445,13 @@ func TestWritingToolResultBatchesRoundTripWithProviderLocalIDReuse(t *testing.T)
 		history[4].ToolCallID != "provider-local" || history[4].Content != "file two" {
 		t.Fatalf("writing rich tool batches did not round trip atomically: %#v", history)
 	}
-	if history[0].ReasoningContent != "" || history[0].ResponseMeta != nil || history[0].Extra != nil {
+	if history[0].ReasoningContent != "" || history[0].ResponseMeta != nil {
 		t.Fatalf("private reasoning/transport metadata survived cross-turn journal projection: %#v", history[0])
+	}
+	var persistedOutput []any
+	matched, err := providers.DecodeContinuation(history[0].Extra, continuationConfig, &persistedOutput)
+	if err != nil || !matched || len(persistedOutput) != 1 || len(history[0].Extra) != 1 {
+		t.Fatalf("cross-turn protocol continuation was not preserved: extra=%#v matched=%t err=%v", history[0].Extra, matched, err)
 	}
 }
 

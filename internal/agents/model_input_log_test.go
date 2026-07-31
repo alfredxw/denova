@@ -13,7 +13,7 @@ import (
 	"testing"
 
 	agent "github.com/alfredxw/denova/agent"
-	"github.com/alfredxw/denova/agent/model/openai"
+	"github.com/alfredxw/denova/agent/providers"
 )
 
 func TestLogFullModelInputWritesUntruncatedMessages(t *testing.T) {
@@ -35,7 +35,7 @@ func TestLogFullModelInputWritesUntruncatedMessages(t *testing.T) {
 		AgentKind: "test_agent",
 		Source:    "test",
 		Mode:      "generate",
-		Config: openai.Config{
+		Config: providers.ModelConfig{
 			APIKey:  "secret-key-must-not-be-logged",
 			Model:   "test-model",
 			BaseURL: "https://example.test/v1",
@@ -170,7 +170,7 @@ func TestModelInputLoggingUsesStableToolSnapshot(t *testing.T) {
 	wrapper := &modelInputLoggingChatModel{
 		inner:     capture,
 		agentKind: "test_agent",
-		config:    openai.Config{Model: "test-model"},
+		config:    providers.ModelConfig{Model: "test-model"},
 		tools:     stableTools,
 	}
 	if _, err := wrapper.Generate(context.Background(), []*agent.Message{agent.UserMessage("hello")}); err != nil {
@@ -230,7 +230,7 @@ func TestLogModelProviderRequestIDUpdatesModelInputRecord(t *testing.T) {
 		AgentKind: "test_agent",
 		Source:    "test",
 		Mode:      "generate",
-		Config: openai.Config{
+		Config: providers.ModelConfig{
 			Model: "test-model",
 		},
 		Messages: []*agent.Message{
@@ -284,7 +284,7 @@ func TestLogModelProviderRequestIDWithoutCallIDDoesNotAttachInputRecord(t *testi
 		AgentKind: "main_agent",
 		Source:    "agent",
 		Mode:      "stream",
-		Config: openai.Config{
+		Config: providers.ModelConfig{
 			Model: "test-model",
 		},
 		Messages: []*agent.Message{
@@ -337,7 +337,7 @@ func TestLogModelProviderRequestIDKeepsExplicitConcurrentCallMapping(t *testing.
 		AgentKind: "main_agent",
 		Source:    "agent",
 		Mode:      "stream",
-		Config: openai.Config{
+		Config: providers.ModelConfig{
 			Model: "test-model",
 		},
 		Messages: []*agent.Message{
@@ -348,7 +348,7 @@ func TestLogModelProviderRequestIDKeepsExplicitConcurrentCallMapping(t *testing.
 		AgentKind: "main_agent",
 		Source:    "agent",
 		Mode:      "stream",
-		Config: openai.Config{
+		Config: providers.ModelConfig{
 			Model: "test-model",
 		},
 		Messages: []*agent.Message{
@@ -414,7 +414,7 @@ func TestLogFullModelInputSkipsWhenDisabled(t *testing.T) {
 		AgentKind: "test_agent",
 		Source:    "test",
 		Mode:      "generate",
-		Config: openai.Config{
+		Config: providers.ModelConfig{
 			Model: "test-model",
 		},
 		Messages: []*agent.Message{

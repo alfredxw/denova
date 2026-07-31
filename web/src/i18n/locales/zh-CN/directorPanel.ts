@@ -130,6 +130,7 @@ const directorPanel = {
   'directorPanel.stateSchema.decision.covered': '已覆盖',
   'directorPanel.stateSchema.decision.add': '新增',
   'directorPanel.stateSchema.decision.replace': '替换',
+  'directorPanel.stateSchema.decision.remove': '移除',
   'directorPanel.stateSchema.decision.ignored': '不结构化',
   'directorPanel.stateSchema.source.lore': '资料库',
   'directorPanel.stateSchema.source.opening': '开局',

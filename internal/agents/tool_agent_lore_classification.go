@@ -8,7 +8,7 @@ import (
 	"strings"
 
 	agent "github.com/alfredxw/denova/agent"
-	"github.com/alfredxw/denova/agent/model/openai"
+	"github.com/alfredxw/denova/agent/providers"
 
 	"denova/config"
 	"denova/internal/book"
@@ -41,7 +41,7 @@ func ClassifyLoreItems(ctx context.Context, cfg *config.Config, inputs []book.Lo
 	defer func() { finishTrace(runErr) }()
 	instruction := "请对以下资料条目进行语义分类。名称是最重要信号；只有名称不明确时才参考标签、关键词、简介和正文片段。\n\n输入 JSON：\n" + string(data)
 	jsonCfg := chatModelConfigForAgent(cfg, config.AgentKindToolAgent)
-	jsonCfg.ResponseFormat = &openai.ChatCompletionResponseFormat{Type: openai.ChatCompletionResponseFormatTypeJSONObject}
+	jsonCfg = withJSONObjectOutput(jsonCfg)
 	result, err := generateLoreClassifications(traceCtx, cfg, jsonCfg, instruction, inputs, "json_mode")
 	if err == nil {
 		return result, nil
@@ -56,8 +56,8 @@ func ClassifyLoreItems(ctx context.Context, cfg *config.Config, inputs []book.Lo
 	return result, runErr
 }
 
-func generateLoreClassifications(ctx context.Context, cfg *config.Config, modelCfg openai.Config, instruction string, inputs []book.LoreClassificationInput, attempt string) ([]book.LoreClassificationSuggestion, error) {
-	cm, err := openai.New(ctx, &modelCfg)
+func generateLoreClassifications(ctx context.Context, cfg *config.Config, modelCfg providers.ModelConfig, instruction string, inputs []book.LoreClassificationInput, attempt string) ([]book.LoreClassificationSuggestion, error) {
+	cm, err := newChatModel(ctx, modelCfg)
 	if err != nil {
 		return nil, fmt.Errorf("创建工具 Agent 模型失败: %w", err)
 	}

@@ -8,7 +8,7 @@ import (
 	"net/http"
 	"strings"
 
-	agentopenai "github.com/alfredxw/denova/agent/model/openai"
+	"github.com/alfredxw/denova/agent/providers"
 )
 
 type ModelErrorClass string
@@ -43,7 +43,7 @@ func ClassifyModelError(err error) ModelErrorClassification {
 		return ModelErrorClassification{Class: ModelErrorTimeout, Retryable: true}
 	}
 
-	var providerError *agentopenai.APIError
+	var providerError *providers.APIError
 	if errors.As(err, &providerError) {
 		return classifyModelHTTPStatus(providerError.StatusCode)
 	}

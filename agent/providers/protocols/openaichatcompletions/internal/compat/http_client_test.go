@@ -8,8 +8,9 @@ import (
 	"strings"
 	"testing"
 
-	agent "github.com/alfredxw/denova/agent"
-	openai "github.com/alfredxw/denova/agent/model/openai"
+	sdk "github.com/openai/openai-go/v3"
+	"github.com/openai/openai-go/v3/option"
+	"github.com/openai/openai-go/v3/shared"
 )
 
 func TestWrapHTTPClientFiltersSSEHeartbeatLines(t *testing.T) {
@@ -68,31 +69,25 @@ func TestWrapHTTPClientPreservesSSEDispatchBoundaries(t *testing.T) {
 			Request:    req,
 		}, nil
 	})})
-	model, err := openai.New(context.Background(), &openai.Config{
-		APIKey:     "test-key",
-		Model:      "test-model",
-		BaseURL:    "https://example.invalid/v1",
-		HTTPClient: client,
+	sdkClient := sdk.NewClient(
+		option.WithAPIKey("test-key"),
+		option.WithBaseURL("https://example.invalid/v1"),
+		option.WithHTTPClient(client),
+	)
+	stream := sdkClient.Chat.Completions.NewStreaming(context.Background(), sdk.ChatCompletionNewParams{
+		Messages: []sdk.ChatCompletionMessageParamUnion{sdk.UserMessage("hello")},
+		Model:    shared.ChatModel("test-model"),
 	})
-	if err != nil {
-		t.Fatal(err)
-	}
-	stream, err := model.Stream(context.Background(), []*agent.Message{agent.UserMessage("hello")})
-	if err != nil {
-		t.Fatal(err)
-	}
 	defer stream.Close()
-
-	message, err := stream.Recv()
-	if err != nil {
-		t.Fatal(err)
+	if !stream.Next() {
+		t.Fatalf("stream did not yield preserved event: %v", stream.Err())
 	}
-	if message.Role != agent.Assistant || message.Content != "ok" ||
-		message.ResponseMeta == nil || message.ResponseMeta.FinishReason != "stop" {
-		t.Fatalf("stream message = %#v", message)
+	chunk := stream.Current()
+	if len(chunk.Choices) != 1 || chunk.Choices[0].Delta.Content != "ok" || chunk.Choices[0].FinishReason != "stop" {
+		t.Fatalf("stream chunk = %#v", chunk)
 	}
-	if _, err := stream.Recv(); !errors.Is(err, io.EOF) {
-		t.Fatalf("stream terminal error = %v, want EOF", err)
+	if stream.Next() || stream.Err() != nil {
+		t.Fatalf("stream terminal error = %v, want clean EOF", stream.Err())
 	}
 }
 

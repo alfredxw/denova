@@ -11,6 +11,8 @@ import {
 import { fetchSettings, updateUserSettings } from '@/features/settings/api'
 import type { AgentModelOverride, LayeredSettings, ModelProfileSettings, Settings } from '@/features/settings/types'
 import { modelProfileID, modelProfileLabel, modelProfilesWithDefault } from '@/features/settings/model-profiles'
+import { normalizeThinkingLevel, THINKING_LEVEL_SELECTIONS } from '@/features/settings/thinking-levels'
+import type { ThinkingLevelSelection } from '@/features/settings/thinking-levels'
 import type { VisibleAgentKey } from '@/features/agents/agent-registry'
 
 interface ModelProfileSwitcherProps {
@@ -25,14 +27,10 @@ interface ModelProfileOption {
   modelLabel: string
 }
 
-type ReasoningEffort = '' | 'low' | 'medium' | 'high'
-
 interface SavingSelection {
-  kind: 'profile' | 'effort'
+  kind: 'profile' | 'thinking'
   value: string
 }
-
-const REASONING_EFFORTS: readonly ReasoningEffort[] = ['', 'low', 'medium', 'high']
 
 export function ModelProfileSwitcher({ agentKey, workspace, disabled = false }: ModelProfileSwitcherProps) {
   const selector = useModelProfileSelector({ agentKey, workspace, disabled })
@@ -51,11 +49,11 @@ export function ModelProfileSwitcher({ agentKey, workspace, disabled = false }: 
           title={selector.t('chat.modelProfile.switch', { model: selector.currentSelectionLabel })}
           data-model-profile-trigger="true"
           data-current-model={selector.currentModelLabel}
-          data-current-reasoning-effort={selector.currentReasoningEffort}
+          data-current-thinking-level={selector.currentThinkingLevel}
         >
           <span className="min-w-0 truncate">{selector.settings ? selector.currentModelLabel : selector.t('chat.modelProfile.loading')}</span>
-          {selector.currentReasoningEffortLabel ? (
-            <span className="shrink-0 font-normal text-[var(--nova-text-faint)]">{selector.currentReasoningEffortLabel}</span>
+          {selector.currentThinkingLevelLabel ? (
+            <span className="shrink-0 font-normal text-[var(--nova-text-faint)]">{selector.currentThinkingLevelLabel}</span>
           ) : null}
           <ChevronDown className="h-3.5 w-3.5 shrink-0 text-[var(--nova-text-faint)] transition-transform group-data-[state=open]:rotate-180" />
         </button>
@@ -68,9 +66,9 @@ export function ModelProfileSwitcher({ agentKey, workspace, disabled = false }: 
       >
         <ModelProfileOptions
           selector={selector}
-          onReasoningEffortSelect={(effort) => {
+          onThinkingLevelSelect={(level) => {
             setOpen(false)
-            void selector.selectReasoningEffort(effort)
+            void selector.selectThinkingLevel(level)
           }}
         />
       </DropdownMenuContent>
@@ -87,13 +85,13 @@ interface ModelProfileSelector {
   options: ModelProfileOption[]
   currentProfile: string
   currentModelLabel: string
-  currentReasoningEffort: ReasoningEffort
-  currentReasoningEffortLabel: string
+  currentThinkingLevel: ThinkingLevelSelection
+  currentThinkingLevelLabel: string
   currentSelectionLabel: string
   savingSelection: SavingSelection | null
   error: string | null
   selectProfile: (profileID: string) => Promise<void>
-  selectReasoningEffort: (effort: ReasoningEffort) => Promise<void>
+  selectThinkingLevel: (level: ThinkingLevelSelection) => Promise<void>
 }
 
 function useModelProfileSelector({ agentKey, workspace, disabled = false }: ModelProfileSelectorInput): ModelProfileSelector {
@@ -139,14 +137,14 @@ function useModelProfileSelector({ agentKey, workspace, disabled = false }: Mode
     [agentKey, options, settings?.effective],
   )
   const currentModelLabel = options.find((option) => option.id === currentProfile)?.modelLabel || currentProfile
-  const currentReasoningEffort = useMemo(
-    () => agentKey ? resolveCurrentReasoningEffort(settings?.effective ?? {}, agentKey) : '',
+  const currentThinkingLevel = useMemo(
+    () => agentKey ? resolveCurrentThinkingLevel(settings?.effective ?? {}, agentKey) : '',
     [agentKey, settings?.effective],
   )
-  const currentReasoningEffortLabel = currentReasoningEffort
-    ? t(`chat.modelProfile.reasoning.${currentReasoningEffort}`)
+  const currentThinkingLevelLabel = currentThinkingLevel
+    ? t(`chat.modelProfile.thinking.${currentThinkingLevel}`)
     : ''
-  const currentSelectionLabel = [currentModelLabel, currentReasoningEffortLabel].filter(Boolean).join(' ')
+  const currentSelectionLabel = [currentModelLabel, currentThinkingLevelLabel].filter(Boolean).join(' ')
 
   const saveAgentModelSelection = async (
     selection: SavingSelection,
@@ -181,11 +179,11 @@ function useModelProfileSelector({ agentKey, workspace, disabled = false }: Mode
     )
   }
 
-  const selectReasoningEffort = async (effort: ReasoningEffort) => {
-    if (!agentKey || effort === currentReasoningEffort) return
+  const selectThinkingLevel = async (level: ThinkingLevelSelection) => {
+    if (!agentKey || level === currentThinkingLevel) return
     await saveAgentModelSelection(
-      { kind: 'effort', value: effort },
-      (latest) => withAgentModelSelection(latest, agentKey, { reasoningEffort: effort }),
+      { kind: 'thinking', value: level },
+      (latest) => withAgentModelSelection(latest, agentKey, { thinkingLevel: level }),
     )
   }
 
@@ -196,28 +194,28 @@ function useModelProfileSelector({ agentKey, workspace, disabled = false }: Mode
     options,
     currentProfile,
     currentModelLabel,
-    currentReasoningEffort,
-    currentReasoningEffortLabel,
+    currentThinkingLevel,
+    currentThinkingLevelLabel,
     currentSelectionLabel,
     savingSelection,
     error,
     selectProfile,
-    selectReasoningEffort,
+    selectThinkingLevel,
   }
 }
 
 function ModelProfileOptions({
   selector,
-  onReasoningEffortSelect,
+  onThinkingLevelSelect,
 }: {
   selector: ModelProfileSelector
-  onReasoningEffortSelect: (effort: ReasoningEffort) => void
+  onThinkingLevelSelect: (level: ThinkingLevelSelection) => void
 }) {
   const {
     t,
     options,
     currentProfile,
-    currentReasoningEffort,
+    currentThinkingLevel,
     savingSelection,
     error,
     selectProfile,
@@ -247,32 +245,32 @@ function ModelProfileOptions({
       ) : null}
       <DropdownMenuSeparator className="bg-[var(--nova-border-soft)]" />
       <div className="px-1.5 pb-1 pt-0.5 text-[10px] font-medium text-[var(--nova-text-faint)]">
-        {t('chat.modelProfile.reasoningSection')}
+        {t('chat.modelProfile.thinkingSection')}
       </div>
       <div
         role="group"
-        aria-label={t('chat.modelProfile.reasoningSection')}
+        aria-label={t('chat.modelProfile.thinkingSection')}
         className="grid grid-cols-4 gap-1 px-1 pb-1"
       >
-        {REASONING_EFFORTS.map((effort) => {
-          const selected = effort === currentReasoningEffort
-          const label = effort
-            ? t(`chat.modelProfile.reasoning.${effort}`)
-            : t('chat.modelProfile.reasoning.inherit')
+        {THINKING_LEVEL_SELECTIONS.map((level) => {
+          const selected = level === currentThinkingLevel
+          const label = level
+            ? t(`chat.modelProfile.thinking.${level}`)
+            : t('chat.modelProfile.thinking.inherit')
           return (
             <button
-              key={effort || 'inherit'}
+              key={level || 'inherit'}
               type="button"
               disabled={Boolean(savingSelection)}
               aria-pressed={selected}
-              onClick={() => onReasoningEffortSelect(effort)}
+              onClick={() => onThinkingLevelSelect(level)}
               className={`flex h-7 min-w-0 items-center justify-center rounded-md border px-1 text-[11px] transition-colors disabled:opacity-50 ${
                 selected
                   ? 'border-[var(--nova-border)] bg-[var(--nova-active)] text-[var(--nova-text)]'
                   : 'border-transparent text-[var(--nova-text-muted)] hover:bg-[var(--nova-hover)] hover:text-[var(--nova-text)]'
               }`}
             >
-              {savingSelection?.kind === 'effort' && savingSelection.value === effort
+              {savingSelection?.kind === 'thinking' && savingSelection.value === level
                 ? <Loader2 className="h-3.5 w-3.5 animate-spin" />
                 : <span className="truncate">{label}</span>}
             </button>
@@ -316,9 +314,8 @@ export function resolveCurrentProfileID(settings: Settings, agentKey: VisibleAge
   return options.some((option) => option.id === profileID) ? profileID : 'default'
 }
 
-function resolveCurrentReasoningEffort(settings: Settings, agentKey: VisibleAgentKey): ReasoningEffort {
-  const value = resolveAgentModelOverride(settings, agentKey).reasoning_effort?.trim().toLowerCase() ?? ''
-  return REASONING_EFFORTS.includes(value as ReasoningEffort) ? value as ReasoningEffort : ''
+function resolveCurrentThinkingLevel(settings: Settings, agentKey: VisibleAgentKey): ThinkingLevelSelection {
+  return normalizeThinkingLevel(resolveAgentModelOverride(settings, agentKey).thinking_level) ?? ''
 }
 
 function resolveAgentModelOverride(settings: Settings, agentKey: VisibleAgentKey): AgentModelOverride {
@@ -329,21 +326,20 @@ function mergeAgentModelOverride(parent: AgentModelOverride, child: AgentModelOv
   return {
     profile_id: child.profile_id || parent.profile_id,
     temperature: child.temperature ?? parent.temperature,
-    enable_thinking: child.enable_thinking ?? parent.enable_thinking,
-    reasoning_effort: child.reasoning_effort || parent.reasoning_effort,
+    thinking_level: child.thinking_level || parent.thinking_level,
   }
 }
 
 function withAgentModelSelection(
   settings: Settings,
   agentKey: VisibleAgentKey,
-  selection: { profileID?: string; reasoningEffort?: ReasoningEffort },
+  selection: { profileID?: string; thinkingLevel?: ThinkingLevelSelection },
 ): Settings {
   const nextModel = { ...(settings.agent_models?.[agentKey] ?? {}) }
   if (selection.profileID !== undefined) nextModel.profile_id = selection.profileID
-  if (selection.reasoningEffort !== undefined) {
-    if (selection.reasoningEffort) nextModel.reasoning_effort = selection.reasoningEffort
-    else delete nextModel.reasoning_effort
+  if (selection.thinkingLevel !== undefined) {
+    if (selection.thinkingLevel) nextModel.thinking_level = selection.thinkingLevel
+    else delete nextModel.thinking_level
   }
   return {
     ...settings,

@@ -1,42 +1,53 @@
 package agents
 
 import (
-	"github.com/alfredxw/denova/agent/model/openai"
-	providercompat "github.com/alfredxw/denova/agent/model/openai/compat"
+	"context"
+	"fmt"
+
+	agent "github.com/alfredxw/denova/agent"
+	"github.com/alfredxw/denova/agent/providers"
+	"github.com/alfredxw/denova/agent/providers/builtin"
 
 	"denova/config"
 )
 
-func chatModelConfigForAgent(cfg *config.Config, agentKind string) openai.Config {
-	resolved := config.ResolveAgentModel(cfg, agentKind)
-	return chatModelConfigFromResolved(resolved)
+func chatModelConfigForAgent(cfg *config.Config, agentKind string) providers.ModelConfig {
+	return chatModelConfigFromResolved(config.ResolveAgentModel(cfg, agentKind))
 }
 
-func chatModelConfigFromResolved(resolved config.ResolvedModelSettings) openai.Config {
-	modelCfg := openai.Config{
-		APIKey:     resolved.OpenAIAPIKey,
-		Model:      resolved.OpenAIModel,
-		BaseURL:    resolved.OpenAIBaseURL,
-		HTTPClient: providercompat.WrapHTTPClient(nil),
+func chatModelConfigFromResolved(resolved config.ResolvedModelSettings) providers.ModelConfig {
+	provider := providers.ProviderID(resolved.Provider)
+	protocol := providers.ProtocolID(resolved.Protocol)
+	if provider == "" {
+		provider = providers.ProviderOpenAICompatible
+	}
+	if protocol == "" {
+		protocol = providers.ProtocolOpenAIChatCompletions
+	}
+	modelConfig := providers.ModelConfig{
+		Provider:      provider,
+		Protocol:      protocol,
+		APIKey:        resolved.OpenAIAPIKey,
+		Model:         resolved.OpenAIModel,
+		BaseURL:       resolved.OpenAIBaseURL,
+		ThinkingLevel: providers.ThinkingLevel(resolved.ThinkingLevel),
 	}
 	if resolved.Temperature != nil {
 		temperature := float32(*resolved.Temperature)
-		modelCfg.Temperature = &temperature
+		modelConfig.Temperature = &temperature
 	}
-	extraFields := map[string]any{}
-	for k, v := range providercompat.ThinkingExtraFields(modelCfg, resolved.EnableThinking) {
-		extraFields[k] = v
+	return modelConfig
+}
+
+func newChatModel(ctx context.Context, config providers.ModelConfig) (agent.ToolCallingChatModel, error) {
+	registry, err := builtin.NewRegistry()
+	if err != nil {
+		return nil, fmt.Errorf("创建模型 provider registry 失败: %w", err)
 	}
-	// 让 providercompat 决定是否要注入 provider 特有的请求字段。
-	// agent 包不感知任何具体 provider。
-	for k, v := range providercompat.ExtraRequestFields(modelCfg) {
-		extraFields[k] = v
-	}
-	if len(extraFields) > 0 {
-		modelCfg.ExtraFields = extraFields
-	}
-	if resolved.ReasoningEffort != "" {
-		modelCfg.ReasoningEffort = openai.ReasoningEffortLevel(resolved.ReasoningEffort)
-	}
-	return modelCfg
+	return registry.NewChatModel(ctx, config)
+}
+
+func withJSONObjectOutput(config providers.ModelConfig) providers.ModelConfig {
+	config.OutputFormat = &providers.OutputFormat{Type: providers.OutputFormatJSONObject}
+	return config
 }

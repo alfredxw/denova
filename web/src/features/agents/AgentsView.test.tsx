@@ -240,24 +240,22 @@ describe('AgentsView', () => {
     expect(screen.queryByText('任务清单')).not.toBeInTheDocument()
   })
 
-  it('shows inherited empty thinking as the default state', async () => {
+  it('shows inherited empty thinking as the model default level', async () => {
     vi.mocked(fetchSettings).mockResolvedValue(settingsSnapshot({}))
 
     render(<AgentsView />)
 
     await screen.findByText('模型与思考')
-    const thinkingSwitch = screen.getByRole('switch', { name: '思考开关' })
-    expect(thinkingSwitch).toBeChecked()
-    expect(thinkingSwitch).toHaveAttribute('title', '思考开关: 默认')
-    expect(thinkingSwitch.parentElement?.querySelector('[aria-hidden="true"]')).toBeTruthy()
+    const thinkingLevel = screen.getByRole('combobox', { name: '思考强度' })
+    expect(thinkingLevel).toHaveTextContent('模型默认')
   })
 
-  it('shows SubAgent thinking as inherited from the parent model', async () => {
+  it('shows SubAgent thinking level as inherited from the parent model', async () => {
     const user = userEvent.setup()
     vi.mocked(fetchSettings).mockResolvedValue(settingsSnapshot({
       effective: {
         agent_models: {
-          default: { enable_thinking: true },
+          default: { thinking_level: 'medium' },
         },
         sub_agents: [{
           id: 'reviewer',
@@ -279,8 +277,7 @@ describe('AgentsView', () => {
     await user.click(within(row as HTMLElement).getByRole('button', { name: '编辑 SubAgent' }))
 
     const dialog = screen.getByRole('dialog')
-    expect(within(dialog).getByRole('switch', { name: '思考开关' })).toBeChecked()
-    expect(within(dialog).getAllByText('继承').length).toBeGreaterThan(0)
+    expect(within(dialog).getByRole('combobox', { name: '思考强度' })).toHaveTextContent('继承')
   })
 
   it('shows SubAgent tools capped by the parent manifest and counts only explicit restrictions', async () => {

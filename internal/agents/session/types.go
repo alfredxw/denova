@@ -122,6 +122,10 @@ type MessageMetadata struct {
 	SubAgentType      string                 `json:"subagent_type,omitempty"`
 	UserReferences    []UserMessageReference `json:"user_references,omitempty"`
 	ContextOperations []ContextOperation     `json:"context_operations,omitempty"`
+	// ProviderContinuation is process-local model-visible state copied onto the
+	// canonical assistant Message. It is excluded from metadata serialization so
+	// the protocol payload has exactly one durable source of truth.
+	ProviderContinuation map[string]any `json:"-"`
 }
 
 const (

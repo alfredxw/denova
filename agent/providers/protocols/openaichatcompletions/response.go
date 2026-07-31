@@ -1,4 +1,4 @@
-package openai
+package openaichatcompletions
 
 import (
 	"encoding/json"
@@ -14,6 +14,7 @@ const (
 	// ExtraKeyRequestID stores the transport request ID as a plain string.
 	ExtraKeyRequestID         = "openai-request-id"
 	ExtraKeyProvider          = "provider"
+	ExtraKeyProtocol          = "protocol"
 	ExtraKeyResponseID        = "response_id"
 	ExtraKeyModel             = "model"
 	ExtraKeyCreated           = "created"
@@ -21,7 +22,7 @@ const (
 	ExtraKeySystemFingerprint = "system_fingerprint"
 )
 
-func responseMessage(response *sdk.ChatCompletion, rawResponse *http.Response) *agent.Message {
+func responseMessage(response *sdk.ChatCompletion, rawResponse *http.Response, provider string) *agent.Message {
 	choice, found := responseChoice(response.Choices)
 	if !found {
 		return nil
@@ -36,6 +37,7 @@ func responseMessage(response *sdk.ChatCompletion, rawResponse *http.Response) *
 		},
 		Extra: responseExtra(
 			rawResponse,
+			provider,
 			response.ID,
 			response.Model,
 			response.Created,
@@ -67,7 +69,7 @@ func streamChoice(choices []sdk.ChatCompletionChunkChoice) (sdk.ChatCompletionCh
 	return sdk.ChatCompletionChunkChoice{}, false
 }
 
-func streamMessage(chunk sdk.ChatCompletionChunk, rawResponse *http.Response, includeMetadata bool) (*agent.Message, bool) {
+func streamMessage(chunk sdk.ChatCompletionChunk, rawResponse *http.Response, includeMetadata bool, provider string) (*agent.Message, bool) {
 	choice, hasChoice := streamChoice(chunk.Choices)
 	hasUsage := chunk.JSON.Usage.Valid()
 	if !hasChoice && !hasUsage {
@@ -93,6 +95,7 @@ func streamMessage(chunk sdk.ChatCompletionChunk, rawResponse *http.Response, in
 	if includeMetadata {
 		message.Extra = responseExtra(
 			rawResponse,
+			provider,
 			chunk.ID,
 			chunk.Model,
 			chunk.Created,
@@ -179,8 +182,11 @@ func rawReasoningContent(raw string) string {
 	return value.ReasoningContent
 }
 
-func responseExtra(rawResponse *http.Response, responseID, model string, created int64, serviceTier, fingerprint string) map[string]any {
-	result := map[string]any{ExtraKeyProvider: "openai"}
+func responseExtra(rawResponse *http.Response, provider, responseID, model string, created int64, serviceTier, fingerprint string) map[string]any {
+	result := map[string]any{
+		ExtraKeyProvider: provider,
+		ExtraKeyProtocol: "openai-chat-completions",
+	}
 	if requestID := responseRequestID(rawResponse); requestID != "" {
 		result[ExtraKeyRequestID] = requestID
 	}

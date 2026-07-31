@@ -2,6 +2,7 @@ import { act, fireEvent, render, screen } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { fetchSettings, updateUserSettings } from './api'
 import { modelProfilesForEditor, SettingsView, UpdatePanel } from './SettingsView'
+import { MODEL_PROTOCOL_CHAT_COMPLETIONS, MODEL_PROTOCOL_RESPONSES, MODEL_PROVIDER_OPENAI, modelProfilesWithDefault } from './model-profiles'
 import { terminalCommandsForEditor } from './TerminalCommandsEditor'
 import type { LayeredSettings, UpdateCheckResult, UpdateInstallResult } from './types'
 
@@ -48,6 +49,28 @@ describe('modelProfilesForEditor', () => {
 
     expect(profiles).toHaveLength(2)
     expect(profiles[1]).toEqual({ name: 'Draft model', context_window_tokens: 400000 })
+  })
+
+  it('keeps legacy OpenAI endpoints on Chat Completions but defaults explicit OpenAI providers to Responses', () => {
+    const legacy = modelProfilesWithDefault({
+      openai_base_url: 'https://api.openai.com/v1',
+      openai_model: 'gpt-4.1',
+    })
+    expect(legacy[0]).toMatchObject({
+      provider: MODEL_PROVIDER_OPENAI,
+      protocol: MODEL_PROTOCOL_CHAT_COMPLETIONS,
+    })
+
+    const explicit = modelProfilesWithDefault({
+      openai_base_url: 'https://api.deepseek.com',
+      openai_model: 'deepseek-chat',
+      model_profiles: [{ id: 'default', provider: MODEL_PROVIDER_OPENAI, openai_model: 'gpt-5' }],
+    })
+    expect(explicit[0]).toMatchObject({
+      provider: MODEL_PROVIDER_OPENAI,
+      protocol: MODEL_PROTOCOL_RESPONSES,
+      openai_base_url: 'https://api.openai.com/v1',
+    })
   })
 })
 

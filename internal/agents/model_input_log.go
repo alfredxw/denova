@@ -16,7 +16,7 @@ import (
 	"time"
 
 	agent "github.com/alfredxw/denova/agent"
-	"github.com/alfredxw/denova/agent/model/openai"
+	"github.com/alfredxw/denova/agent/providers"
 )
 
 var (
@@ -41,7 +41,7 @@ type modelInputLogOptions struct {
 	AgentKind string
 	Source    string
 	Mode      string
-	Config    openai.Config
+	Config    providers.ModelConfig
 	Messages  []*agent.Message
 	Tools     []*agent.ToolInfo
 }
@@ -72,7 +72,7 @@ type modelInputLogInputJob struct {
 	AgentKind    string
 	Source       string
 	Mode         string
-	Config       openai.Config
+	Config       providers.ModelConfig
 	MessageCount int
 	ToolCount    int
 	Messages     []*agent.Message
@@ -98,13 +98,14 @@ type modelInputLogJob struct {
 }
 
 type modelInputLogModelConfig struct {
-	Model           string                      `json:"model,omitempty"`
-	BaseURL         string                      `json:"base_url,omitempty"`
-	MaxTokens       *int                        `json:"max_tokens,omitempty"`
-	Temperature     *float32                    `json:"temperature,omitempty"`
-	ResponseFormat  any                         `json:"response_format,omitempty"`
-	ExtraFields     map[string]any              `json:"extra_fields,omitempty"`
-	ReasoningEffort openai.ReasoningEffortLevel `json:"reasoning_effort,omitempty"`
+	Provider        providers.ProviderID    `json:"provider,omitempty"`
+	Protocol        providers.ProtocolID    `json:"protocol,omitempty"`
+	Model           string                  `json:"model,omitempty"`
+	BaseURL         string                  `json:"base_url,omitempty"`
+	MaxOutputTokens *int                    `json:"max_output_tokens,omitempty"`
+	Temperature     *float32                `json:"temperature,omitempty"`
+	OutputFormat    *providers.OutputFormat `json:"output_format,omitempty"`
+	ThinkingLevel   providers.ThinkingLevel `json:"thinking_level"`
 }
 
 type modelInputLogTool struct {
@@ -309,7 +310,7 @@ func writeModelInputLogJob(job modelInputLogJob) error {
 			AgentKind:    input.AgentKind,
 			Source:       input.Source,
 			Mode:         input.Mode,
-			ModelConfig:  modelInputLogConfigFromOpenAI(input.Config),
+			ModelConfig:  modelInputLogConfig(input.Config),
 			MessageCount: input.MessageCount,
 			ToolCount:    input.ToolCount,
 			Cache:        modelInputLogCacheAttribution(input.Messages, tools),
@@ -439,15 +440,16 @@ func lastModelInputLogLines(data []byte, maxLines int) []byte {
 	return data
 }
 
-func modelInputLogConfigFromOpenAI(cfg openai.Config) modelInputLogModelConfig {
+func modelInputLogConfig(cfg providers.ModelConfig) modelInputLogModelConfig {
 	return modelInputLogModelConfig{
+		Provider:        cfg.Provider,
+		Protocol:        cfg.Protocol,
 		Model:           cfg.Model,
 		BaseURL:         cfg.BaseURL,
-		MaxTokens:       cfg.MaxTokens,
+		MaxOutputTokens: cfg.MaxOutputTokens,
 		Temperature:     cfg.Temperature,
-		ResponseFormat:  cfg.ResponseFormat,
-		ExtraFields:     cfg.ExtraFields,
-		ReasoningEffort: cfg.ReasoningEffort,
+		OutputFormat:    cfg.OutputFormat,
+		ThinkingLevel:   cfg.ThinkingLevel,
 	}
 }
 
@@ -549,7 +551,7 @@ func modelInputLogFingerprint(value any) string {
 type modelInputLoggingMiddleware struct {
 	*agent.BaseMiddleware
 	agentKind             string
-	config                openai.Config
+	config                providers.ModelConfig
 	contextWindowTokens   int
 	providerInputMaxBytes int
 }
@@ -568,7 +570,7 @@ func (m *modelInputLoggingMiddleware) WrapModel(ctx context.Context, wrapped age
 type modelInputLoggingChatModel struct {
 	inner                 agent.BaseChatModel
 	agentKind             string
-	config                openai.Config
+	config                providers.ModelConfig
 	tools                 []*agent.ToolInfo
 	contextWindowTokens   int
 	providerInputMaxBytes int

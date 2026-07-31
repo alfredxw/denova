@@ -5,8 +5,9 @@ import { Input } from '@/components/ui/input'
 import { Select, SelectContent, SelectGroup, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Textarea } from '@/components/ui/textarea'
 import type { AgentModelOverride, AgentPromptBlocks, AgentPromptOverride, AgentPromptSource, AgentSkillOverride, AgentToolOverride, ResolvedAgentContextSettings, Settings } from '@/features/settings/types'
+import { normalizeThinkingLevel, THINKING_LEVELS } from '@/features/settings/thinking-levels'
 import type { SkillSummary } from '@/lib/api'
-import { Field, SectionTitle, SwitchWithInheritance, thinkingDisplayValue, thinkingStatusLabel } from './agent-form-controls'
+import { Field, SectionTitle, SwitchWithInheritance } from './agent-form-controls'
 import { skillAgentFieldMatches, skillAvailableForAgent } from './agent-registry'
 import type { AgentToolDefinition, ToolKey, VisibleAgentKey } from './agent-registry'
 
@@ -19,12 +20,10 @@ export function AgentModelSection({ value, inherited, profiles, onChange }: {
   const { t } = useTranslation()
   const hasProfile = hasTextOverride(value.profile_id)
   const hasTemperature = value.temperature !== undefined && value.temperature !== null
-  const hasThinking = value.enable_thinking !== undefined && value.enable_thinking !== null
-  const hasEffort = hasTextOverride(value.reasoning_effort)
+  const hasThinkingLevel = hasTextOverride(value.thinking_level)
   const effectiveProfile = hasProfile ? value.profile_id || 'default' : inherited.profile_id || 'default'
   const effectiveTemperature = hasTemperature ? value.temperature : inherited.temperature
-  const effectiveThinking = hasThinking ? value.enable_thinking : inherited.enable_thinking
-  const effectiveEffort = hasEffort ? value.reasoning_effort || '' : inherited.reasoning_effort || ''
+  const effectiveThinkingLevel = normalizeThinkingLevel(hasThinkingLevel ? value.thinking_level : inherited.thinking_level) ?? 'default'
 
   return (
     <section className="flex flex-col gap-3 border-b border-[var(--nova-border)] pb-5">
@@ -55,27 +54,16 @@ export function AgentModelSection({ value, inherited, profiles, onChange }: {
             className="h-7 flex-1 text-xs"
           />
         </Field>
-        <Field label={t('agents.field.thinking')}>
-          <SwitchWithInheritance
-            checked={thinkingDisplayValue(effectiveThinking)}
-            onChange={(checked) => onChange({ enable_thinking: checked })}
-            ariaLabel={t('agents.field.thinking')}
-            statusLabel={thinkingStatusLabel(t, effectiveThinking)}
-            inherited={!hasThinking}
-            onReset={hasThinking ? () => onChange({ enable_thinking: null }) : undefined}
-          />
-        </Field>
-        <Field label={t('agents.field.reasoningEffort')} inherited={!hasEffort} onReset={hasEffort ? () => onChange({ reasoning_effort: '' }) : undefined}>
-          <Select value={effectiveEffort || '__none__'} onValueChange={(effort) => onChange({ reasoning_effort: effort === '__none__' ? '' : effort })}>
-            <SelectTrigger size="sm" className="min-w-0 flex-1" aria-label={t('agents.field.reasoningEffort')}>
+        <Field label={t('agents.field.thinkingLevel')} inherited={!hasThinkingLevel} onReset={hasThinkingLevel ? () => onChange({ thinking_level: '' }) : undefined}>
+          <Select value={effectiveThinkingLevel} onValueChange={(level) => onChange({ thinking_level: level })}>
+            <SelectTrigger size="sm" className="min-w-0 flex-1" aria-label={t('agents.field.thinkingLevel')}>
               <SelectValue />
             </SelectTrigger>
             <SelectContent>
               <SelectGroup>
-                <SelectItem value="__none__">{t('agents.option.noSend')}</SelectItem>
-                <SelectItem value="low">low</SelectItem>
-                <SelectItem value="medium">medium</SelectItem>
-                <SelectItem value="high">high</SelectItem>
+                {THINKING_LEVELS.map((level) => (
+                  <SelectItem key={level} value={level}>{t(`agents.thinkingLevel.${level}`)}</SelectItem>
+                ))}
               </SelectGroup>
             </SelectContent>
           </Select>
@@ -446,8 +434,7 @@ export function mergeAgentModelOverride(parent: AgentModelOverride, child: Agent
   return {
     profile_id: child.profile_id || parent.profile_id,
     temperature: child.temperature ?? parent.temperature,
-    enable_thinking: child.enable_thinking ?? parent.enable_thinking,
-    reasoning_effort: child.reasoning_effort || parent.reasoning_effort,
+    thinking_level: child.thinking_level || parent.thinking_level,
   }
 }
 

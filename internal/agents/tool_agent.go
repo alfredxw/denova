@@ -8,7 +8,7 @@ import (
 	"strings"
 
 	agent "github.com/alfredxw/denova/agent"
-	"github.com/alfredxw/denova/agent/model/openai"
+	"github.com/alfredxw/denova/agent/providers"
 
 	"denova/config"
 )
@@ -37,9 +37,7 @@ func InferChapterSplitRegex(ctx context.Context, cfg *config.Config, sample stri
 	})
 	defer func() { finishTrace(runErr) }()
 	jsonModelCfg := chatModelConfigForAgent(cfg, config.AgentKindToolAgent)
-	jsonModelCfg.ResponseFormat = &openai.ChatCompletionResponseFormat{
-		Type: openai.ChatCompletionResponseFormatTypeJSONObject,
-	}
+	jsonModelCfg = withJSONObjectOutput(jsonModelCfg)
 	instruction := buildChapterSplitRegexInstruction(sample)
 	log.Printf("[tool-agent] infer chapter split regex begin sample_chars=%d", len([]rune(sample)))
 	regex, err := generateChapterSplitRegex(traceCtx, cfg, jsonModelCfg, instruction, "json_mode")
@@ -60,9 +58,9 @@ func InferChapterSplitRegex(ctx context.Context, cfg *config.Config, sample stri
 	return regex, nil
 }
 
-func generateChapterSplitRegex(ctx context.Context, cfg *config.Config, modelCfg openai.Config, instruction, attempt string) (string, error) {
-	log.Printf("[tool-agent] chapter regex model config attempt=%s model=%q base_url=%q max_tokens=%d json_mode=%t", attempt, modelCfg.Model, modelCfg.BaseURL, valueOrZero(modelCfg.MaxTokens), modelCfg.ResponseFormat != nil)
-	cm, err := openai.New(ctx, &modelCfg)
+func generateChapterSplitRegex(ctx context.Context, cfg *config.Config, modelCfg providers.ModelConfig, instruction, attempt string) (string, error) {
+	log.Printf("[tool-agent] chapter regex model config attempt=%s provider=%q protocol=%q model=%q base_url=%q max_tokens=%d json_mode=%t", attempt, modelCfg.Provider, modelCfg.Protocol, modelCfg.Model, modelCfg.BaseURL, valueOrZero(modelCfg.MaxOutputTokens), modelCfg.OutputFormat != nil)
+	cm, err := newChatModel(ctx, modelCfg)
 	if err != nil {
 		log.Printf("[tool-agent] create chapter regex model failed attempt=%s err=%v", attempt, err)
 		return "", fmt.Errorf("创建工具 Agent 模型失败: %w", err)

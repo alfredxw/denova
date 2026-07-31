@@ -50,6 +50,8 @@ type agentConfigLayerSnapshot struct {
 type safeModelProfileSettings struct {
 	ID                  string   `json:"id,omitempty"`
 	Name                string   `json:"name,omitempty"`
+	Provider            string   `json:"provider,omitempty"`
+	Protocol            string   `json:"protocol,omitempty"`
 	OpenAIBaseURL       string   `json:"openai_base_url,omitempty"`
 	OpenAIModel         string   `json:"openai_model,omitempty"`
 	Temperature         *float64 `json:"temperature,omitempty"`
@@ -182,6 +184,8 @@ func safeModelProfiles(profiles []config.ModelProfileSettings) []safeModelProfil
 		out = append(out, safeModelProfileSettings{
 			ID:                  profile.ID,
 			Name:                profile.Name,
+			Provider:            profile.Provider,
+			Protocol:            profile.Protocol,
 			OpenAIBaseURL:       profile.OpenAIBaseURL,
 			OpenAIModel:         profile.OpenAIModel,
 			Temperature:         profile.Temperature,

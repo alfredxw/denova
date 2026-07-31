@@ -9,6 +9,7 @@ import (
 	"sync"
 
 	agent "github.com/alfredxw/denova/agent"
+	"github.com/alfredxw/denova/agent/providers"
 
 	"denova/config"
 	"denova/internal/agents/session"
@@ -623,9 +624,11 @@ func (c *SessionConversation) AppendAssistantWithMetadata(content, _ string, met
 		c.pendingContextOps...,
 	)
 	c.cycleMu.Unlock()
+	message := agent.AssistantMessage(content, nil)
+	message.Extra = providers.ContinuationExtra(metadata.ProviderContinuation)
 	intent, err := session.NewDomainCommitIntent(session.DomainCommitIdentity{
 		CommandID: string(identity.CommandID), OperationID: string(identity.OperationID), Cycle: identity.Cycle,
-	}, agent.AssistantMessage(content, nil), metadata)
+	}, message, metadata)
 	if err != nil {
 		return err
 	}

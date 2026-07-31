@@ -5,6 +5,7 @@ import { cn } from '@/lib/utils'
 import type { ClassifiedStateChange } from './changes'
 import type { LedgerFieldItem } from './model'
 import { humanizeStateKey } from './model'
+import { resolveNumberMeter } from './number-meter'
 
 /** Long text beyond this length is clamped with an inline expand toggle. */
 const BLOCK_CLAMP_LENGTH = 300
@@ -56,8 +57,9 @@ function StatFieldBody({ item }: { item: LedgerFieldItem }) {
   const value = typeof item.value === 'number' ? item.value : 0
   const min = field?.min ?? 0
   const max = field?.max ?? 100
-  const progress = Math.min(100, Math.max(0, ((value - min) / (max - min)) * 100))
-  const valueLabel = `${formatLedgerNumber(value)} / ${formatLedgerNumber(max)}`
+  const meter = field ? resolveNumberMeter(field, value) : null
+  const signed = meter?.zeroPercent !== undefined
+  const valueLabel = !meter || signed ? formatLedgerNumber(value) : `${formatLedgerNumber(value)} / ${formatLedgerNumber(max)}`
   return (
     <div>
       <div className="mb-1 flex min-w-0 items-baseline justify-between gap-2">
@@ -67,17 +69,41 @@ function StatFieldBody({ item }: { item: LedgerFieldItem }) {
           <span className="font-mono text-[11px] font-semibold tabular-nums text-[var(--nova-text)]">{valueLabel}</span>
         </span>
       </div>
-      <Progress
-        value={progress}
-        aria-label={t('storyStage.state.metricProgress', {
-          label: item.label,
-          value: formatLedgerNumber(value),
-          min: formatLedgerNumber(min),
-          max: formatLedgerNumber(max),
-        })}
-        aria-valuetext={valueLabel}
-        className="story-state-ledger__metric-progress h-1.5"
-      />
+      {!meter ? null : signed ? (
+        <div
+          role="meter"
+          aria-label={t('storyStage.state.metricProgress', {
+            label: item.label,
+            value: formatLedgerNumber(value),
+            min: formatLedgerNumber(min),
+            max: formatLedgerNumber(max),
+          })}
+          aria-valuemin={min}
+          aria-valuemax={max}
+          aria-valuenow={value}
+          aria-valuetext={valueLabel}
+          className="relative h-1.5 overflow-hidden rounded-full bg-[var(--nova-surface-3)]"
+        >
+          <span className="absolute inset-y-0 w-px bg-[var(--nova-text-faint)]" style={{ left: `${meter.zeroPercent}%` }} aria-hidden="true" />
+          <span
+            className={cn('absolute inset-y-0 rounded-full transition-[left,width] duration-300 motion-reduce:transition-none', meter.tone === 'negative' ? 'bg-[var(--story-state-negative)]' : 'bg-[var(--story-state-positive)]')}
+            style={{ left: `${meter.startPercent}%`, width: `${meter.widthPercent}%` }}
+            aria-hidden="true"
+          />
+        </div>
+      ) : (
+        <Progress
+          value={meter.widthPercent}
+          aria-label={t('storyStage.state.metricProgress', {
+            label: item.label,
+            value: formatLedgerNumber(value),
+            min: formatLedgerNumber(min),
+            max: formatLedgerNumber(max),
+          })}
+          aria-valuetext={valueLabel}
+          className="story-state-ledger__metric-progress h-1.5"
+        />
+      )}
     </div>
   )
 }

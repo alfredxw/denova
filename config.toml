@@ -12,7 +12,8 @@
 
 # 语言模型。默认模型也放在 model_profiles 列表里，id 固定为 default，name 可作为显示别名。
 # 不配置 temperature 时使用平台/模型默认值。
-# 游戏正文、快捷选项和版本说明 Agent 内置默认 enable_thinking=false；写作与配置 Agent 默认启用。各 Agent 均可单独覆盖。
+# thinking_level 可选：default / off / minimal / low / medium / high / xhigh / max。
+# 游戏正文、快捷选项和版本说明 Agent 内置默认 off；写作与配置 Agent 默认 medium。各 Agent 均可单独覆盖。
 [[model_profiles]]
 id = "default"
 name = "DeepSeek 写作"
@@ -29,10 +30,9 @@ openai_model = "deepseek-v4-pro"
 # [agent_models.ide]
 # profile_id = "deepseek-v4-pro"
 # temperature = 0.7
-# enable_thinking = true       # 可选：不填则不传；适用于支持 enable_thinking 的 OpenAI 兼容平台
-# reasoning_effort = "medium"  # 可选：low / medium / high；不填则不传
+# thinking_level = "medium"   # 可选：统一思考级别；default 表示不发送协议思考参数
 #
-# Gemini OpenAI 兼容端点不支持 enable_thinking；需要控制思考强度时配置 reasoning_effort。
+# Gemini OpenAI 兼容端点会由 provider adapter 将 thinking_level 转换为 reasoning_effort。
 # [[model_profiles]]
 # id = "gemini"
 # name = "Gemini"
@@ -42,7 +42,7 @@ openai_model = "deepseek-v4-pro"
 #
 # [agent_models.ide]
 # profile_id = "gemini"
-# reasoning_effort = "low"
+# thinking_level = "low"
 #
 # [agent_models.config_manager]
 # profile_id = "gpt-4.1"

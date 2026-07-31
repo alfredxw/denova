@@ -47,8 +47,8 @@ func (c *interactiveConversation) contextCompactionStructureFingerprint(
 	}
 	anchors := []string{
 		"agent=" + config.AgentKindInteractiveStory,
-		fmt.Sprintf("model=%s|%s|%s|%v|%d|%v|%s", model.ProfileID, model.OpenAIBaseURL, model.OpenAIModel,
-			model.Temperature, model.ContextWindowTokens, model.EnableThinking, model.ReasoningEffort),
+		fmt.Sprintf("model=%s|%s|%s|%s|%s|%v|%d|%s", model.ProfileID, model.Provider, model.Protocol, model.OpenAIBaseURL, model.OpenAIModel,
+			model.Temperature, model.ContextWindowTokens, model.ThinkingLevel),
 		"story_structure=" + structureHash,
 		fmt.Sprintf("candidate=%s|%d", strings.TrimSpace(input.CandidateFingerprint), input.CandidateGeneration),
 	}

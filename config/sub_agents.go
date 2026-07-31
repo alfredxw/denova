@@ -149,7 +149,9 @@ func SanitizeSubAgents(subAgents []SubAgentConfig) []SubAgentConfig {
 		}
 		sub.Parents = sanitizeSubAgentParents(sub.Parents)
 		sub.Model.ProfileID = normalizeModelProfileID(sub.Model.ProfileID)
-		sub.Model.ReasoningEffort = normalizeReasoningEffort(sub.Model.ReasoningEffort)
+		if sub.Model.ThinkingLevel != "" {
+			sub.Model.ThinkingLevel = normalizeThinkingLevel(sub.Model.ThinkingLevel)
+		}
 		if sub.Name == "" {
 			sub.Name = sub.ID
 		}
@@ -206,10 +208,9 @@ func ResolveSubAgentModel(cfg *Config, parentKind string, sub SubAgentConfig) Re
 	resolved := ResolveAgentModel(cfg, parentKind)
 	override := sub.Model
 	profileOverride := AgentModelSettings{Default: AgentModelOverride{
-		ProfileID:       resolved.ProfileID,
-		Temperature:     resolved.Temperature,
-		EnableThinking:  resolved.EnableThinking,
-		ReasoningEffort: resolved.ReasoningEffort,
+		ProfileID:     resolved.ProfileID,
+		Temperature:   resolved.Temperature,
+		ThinkingLevel: resolved.ThinkingLevel,
 	}}
 	if cfg != nil {
 		tmp := *cfg

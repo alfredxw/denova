@@ -2,7 +2,7 @@ package interactive
 
 import "fmt"
 
-const actorStateFavorabilityBands = "0–20 敌视或强烈排斥；21–40 戒备或疏远；41–60 中立、熟悉或可合作；61–80 友好且愿意信任；81–90 亲近并会主动支持；91–100 深厚羁绊，除非发生根本冲突通常不会动摇。"
+const actorStateFavorabilityGuidance = "0 为路人基线，表示尚无个人好恶；1–100 表示好感逐渐加深，-1–-100 表示敌意逐渐加深。好感度只描述个人好恶的方向与强度，不自动改变关系类型或关系阶段；朋友、恋爱、亲属、师徒、竞争、敌对等关系使用各自符合故事设定的阶段与行为表现。"
 
 func defaultActorStatePresetSpec() actorStatePresetSpec {
 	return actorStatePresetSpec{
@@ -133,7 +133,7 @@ func itemRecordUpdateInstruction(spec actorStatePresetSpec, limit int) string {
 }
 
 func relationshipRecordUpdateInstruction(spec actorStatePresetSpec, limit int, scope string) string {
-	instruction := fmt.Sprintf("键使用目标 Actor 或势力的精确 ID；新建目标直接使用故事语言中的名称，目标 Actor 或势力的名称即 ID，不得翻译成英文、转写拼音或生成 slug。只表示当前 Actor 对目标的单向关系，不自动镜像；每项只写关系类型、阶段、好感度、当前态度、边界或承诺、主要矛盾，最多 %d 条。好感度区间：%s 普通同场或闲聊不自动增加；删除记录时 replace 整个 object。%s", limit, actorStateFavorabilityBands, spec.RelationshipGuidance)
+	instruction := fmt.Sprintf("键使用目标 Actor 或势力的精确 ID；新建目标直接使用故事语言中的名称，目标 Actor 或势力的名称即 ID，不得翻译成英文、转写拼音或生成 slug。只表示当前 Actor 对目标的单向关系，不自动镜像；每项只写关系类型、阶段、好感度、当前态度、边界或承诺、主要矛盾，最多 %d 条。好感度规则：%s 普通同场或闲聊不自动增加；删除记录时 replace 整个 object。%s", limit, actorStateFavorabilityGuidance, spec.RelationshipGuidance)
 	if scope != "" {
 		instruction += " " + scope
 	}
@@ -165,7 +165,7 @@ func actorPanelAndStateFields(spec actorStatePresetSpec) []ActorStateField {
 
 func defaultTRPGPanelFields() []ActorStateField {
 	fields := []ActorStateField{
-		scaledNumberStateField("panel.level", "等级", "角色当前规则等级。", "面板", 1, 1, 20, "1–4 初阶；5–10 中阶；11–16 高阶；17–20 传奇。", "等级只随明确的升级、降级或规则结算改变。"),
+		openEndedNumberStateField("panel.level", "等级", "角色当前规则等级。", "面板", 1, 1, "1–4 初阶；5–10 中阶；11–16 高阶；17 及以上传奇。", "等级只随明确的升级、降级或规则结算改变。"),
 	}
 	for _, attribute := range []struct {
 		path string
@@ -178,11 +178,11 @@ func defaultTRPGPanelFields() []ActorStateField {
 		{path: "panel.wisdom", name: "感知"},
 		{path: "panel.charisma", name: "魅力"},
 	} {
-		fields = append(fields, scaledNumberStateField(attribute.path, attribute.name, "参与相关检定的有效属性值，已经包含装备与持续状态修正。", "面板", 10, 1, 30, "1–5 极弱；6–9 偏弱；10–11 常人；12–15 优秀；16–19 卓越；20–30 超凡。", "基础能力、装备或持续效果改变时更新有效值；临时一次性加值不写入。"))
+		fields = append(fields, openEndedNumberStateField(attribute.path, attribute.name, "参与相关检定的有效属性值，已经包含装备与持续状态修正。", "面板", 10, 1, "1–5 极弱；6–9 偏弱；10–11 常人；12–15 优秀；16–19 卓越；20 及以上超凡。", "基础能力、装备或持续效果改变时更新有效值；临时一次性加值不写入。"))
 	}
 	return append(fields,
-		scaledNumberStateField("panel.attack_ac", "攻击 AC", "参与攻击相关检定的有效值。", "面板", 10, 0, 30, "0–5 极低；6–9 偏低；10–13 常规；14–17 高；18–30 极高。", "装备、等级或持续效果改变攻击结算时更新；一次性加值不写入。"),
-		scaledNumberStateField("panel.defense_dc", "防御 DC", "参与防御相关检定的有效值。", "面板", 10, 0, 30, "0–5 极低；6–9 偏低；10–13 常规；14–17 高；18–30 极高。", "装备、等级或持续效果改变防御结算时更新；一次性加值不写入。"),
+		openEndedNumberStateField("panel.attack_ac", "攻击 AC", "参与攻击相关检定的有效值。", "面板", 10, 0, "0–5 极低；6–9 偏低；10–13 常规；14–17 高；18 及以上极高。", "装备、等级或持续效果改变攻击结算时更新；一次性加值不写入。"),
+		openEndedNumberStateField("panel.defense_dc", "防御 DC", "参与防御相关检定的有效值。", "面板", 10, 0, "0–5 极低；6–9 偏低；10–13 常规；14–17 高；18 及以上极高。", "装备、等级或持续效果改变防御结算时更新；一次性加值不写入。"),
 	)
 }
 
@@ -231,10 +231,19 @@ func objectStateFieldWithInstruction(path, name, description, group, instruction
 }
 
 func favorabilityStateField(path, name, description, group string) ActorStateField {
-	field := presetStateField(path, name, "number", description+" 区间含义："+actorStateFavorabilityBands, group, "stat")
-	field.Min = presetFloatPointer(0)
+	field := presetStateField(path, name, "number", description+" "+actorStateFavorabilityGuidance, group, "stat")
+	field.Default = float64(0)
+	field.Min = presetFloatPointer(-100)
 	field.Max = presetFloatPointer(100)
-	field.UpdateInstruction = "只有会改变双方关系的有效互动或事件才调整；一般事件变化 1–5，重大选择变化 6–15，跨越区间必须有明确剧情依据。"
+	field.UpdateInstruction = "只有会改变双方关系的有效互动或事件才调整；一般事件变化 1–5，重大选择变化 6–15，越过 0 或发生大幅变化必须有明确剧情依据。关系类型与关系阶段只随相应剧情事实更新，不根据好感度自动推导。"
+	return field
+}
+
+func openEndedNumberStateField(path, name, description, group string, defaultValue, minValue float64, scale, instruction string) ActorStateField {
+	field := presetStateField(path, name, "number", description+" 数值区间："+scale, group, "stat")
+	field.Default = defaultValue
+	field.Min = presetFloatPointer(minValue)
+	field.UpdateInstruction = instruction
 	return field
 }
 

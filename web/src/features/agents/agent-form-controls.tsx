@@ -63,15 +63,6 @@ export function SwitchWithInheritance({ checked, onChange, ariaLabel, statusLabe
   )
 }
 
-export function thinkingDisplayValue(value?: boolean | null) {
-  return value ?? true
-}
-
-export function thinkingStatusLabel(t: (key: string) => string, value?: boolean | null) {
-  if (value === undefined || value === null) return t('agents.option.default')
-  return value ? t('agents.option.on') : t('agents.option.off')
-}
-
 function InheritanceText({ inherited, onReset }: { inherited: boolean; onReset?: () => void }) {
   const { t } = useTranslation()
   if (inherited) {

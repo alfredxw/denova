@@ -119,7 +119,7 @@ corepack enable
 
 ## 模型与配置
 
-Denova 使用 OpenAI 兼容接口。推荐先在设置页配置语言模型、图像模型、Agent 参数、默认写作 Skill、编辑器、游戏模式、版本管理、语言、主题和字体。
+Denova 的语言模型将 provider 与 API 协议分开配置：OpenAI 默认使用 Responses API，DeepSeek 默认使用 Chat Completions，自定义 OpenAI 兼容服务可显式选择协议。旧配置和下面的 `OPENAI_*` 环境变量继续按 Chat Completions 解释。推荐先在设置页配置语言模型、图像模型、Agent 参数、默认写作 Skill、编辑器、游戏模式、版本管理、语言、主题和字体。
 
 需要脚本化启动或部署时，也可以用环境变量覆盖模型配置：
 

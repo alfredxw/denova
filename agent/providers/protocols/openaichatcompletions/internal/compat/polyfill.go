@@ -14,12 +14,20 @@ import (
 	"strings"
 
 	agent "github.com/alfredxw/denova/agent"
-	"github.com/alfredxw/denova/agent/model/openai"
+	"github.com/alfredxw/denova/agent/providers"
 )
+
+// Config contains only the endpoint traits needed by compatibility repairs.
+type Config struct {
+	Provider      providers.ProviderID
+	BaseURL       string
+	Model         string
+	ThinkingLevel providers.ThinkingLevel
+}
 
 // Wrap returns a possibly-decorated chat model that hides provider-specific
 // quirks. If the model needs no polyfill, the original is returned untouched.
-func Wrap(cm agent.ToolCallingChatModel, cfg openai.Config) agent.ToolCallingChatModel {
+func Wrap(cm agent.ToolCallingChatModel, cfg Config) agent.ToolCallingChatModel {
 	if polyfills := detect(cfg); len(polyfills) > 0 {
 		log.Printf("[providercompat] Wrap called: applying %d polyfill(s) model=%q", len(polyfills), cfg.Model)
 		cm = chain(cm, polyfills)
@@ -31,7 +39,7 @@ func Wrap(cm agent.ToolCallingChatModel, cfg openai.Config) agent.ToolCallingCha
 // into the request body (e.g. reasoning_split to ask the API to return
 // thinking via the standard reasoning_content field). Called once when
 // building the chat model config, before any request is sent.
-func ExtraRequestFields(cfg openai.Config) map[string]any {
+func ExtraRequestFields(cfg Config) map[string]any {
 	out := map[string]any{}
 	if needsRepair(cfg) {
 		// Ask the provider to return thinking via the standard
@@ -41,14 +49,15 @@ func ExtraRequestFields(cfg openai.Config) map[string]any {
 	return out
 }
 
-// ThinkingExtraFields returns non-standard thinking request fields supported by
-// the current OpenAI-compatible provider. Gemini's OpenAI endpoint rejects
-// enable_thinking; callers should use reasoning_effort for Gemini instead.
-func ThinkingExtraFields(cfg openai.Config, enableThinking *bool) map[string]any {
-	if enableThinking == nil || usesGeminiOpenAICompatibility(cfg) {
+// ThinkingExtraFields maps Denova's unified level to the non-standard boolean
+// switch used by compatible endpoints. Official OpenAI and Gemini endpoints
+// use reasoning_effort instead and must not receive enable_thinking.
+func ThinkingExtraFields(cfg Config) map[string]any {
+	if cfg.ThinkingLevel == "" || cfg.ThinkingLevel == providers.ThinkingLevelDefault ||
+		cfg.Provider == providers.ProviderOpenAI || usesGeminiOpenAICompatibility(cfg) {
 		return nil
 	}
-	return map[string]any{"enable_thinking": *enableThinking}
+	return map[string]any{"enable_thinking": cfg.ThinkingLevel != providers.ThinkingLevelOff}
 }
 
 type polyfill interface {
@@ -57,7 +66,7 @@ type polyfill interface {
 
 // detect inspects the config and returns the polyfill chain to apply.
 // Order matters: later polyfills see output of earlier ones.
-func detect(cfg openai.Config) []polyfill {
+func detect(cfg Config) []polyfill {
 	var out []polyfill
 	if needsRepair(cfg) {
 		// Both polyfills needed: tool-call text-to-struct, then think-tag cleanup
@@ -82,7 +91,7 @@ func chain(cm agent.ToolCallingChatModel, ps []polyfill) agent.ToolCallingChatMo
 // provider that exhibits these quirks; "non-standard" and
 // "incompatible" are generic markers users can opt into via their
 // base URL or model name. Cheap, called once per Wrap.
-func needsRepair(cfg openai.Config) bool {
+func needsRepair(cfg Config) bool {
 	base := strings.ToLower(cfg.BaseURL)
 	model := strings.ToLower(cfg.Model)
 	for _, marker := range []string{"minimax", "non-standard", "incompatible"} {
@@ -93,7 +102,7 @@ func needsRepair(cfg openai.Config) bool {
 	return false
 }
 
-func usesGeminiOpenAICompatibility(cfg openai.Config) bool {
+func usesGeminiOpenAICompatibility(cfg Config) bool {
 	base := strings.ToLower(strings.TrimSpace(cfg.BaseURL))
 	model := strings.ToLower(strings.TrimSpace(cfg.Model))
 	return strings.Contains(base, "generativelanguage.googleapis.com") ||

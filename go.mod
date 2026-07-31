@@ -7,7 +7,6 @@ require (
 	github.com/JohannesKaufmann/html-to-markdown v1.6.0
 	github.com/PuerkitoBio/goquery v1.12.0
 	github.com/alfredxw/denova/agent v0.0.0
-	github.com/alfredxw/denova/agent/model/openai v0.0.0
 	github.com/anmitsu/go-shlex v0.0.0-20200514113438-38f4b401e2be
 	github.com/cavaliergopher/grab/v3 v3.0.1
 	github.com/charmbracelet/x/xpty v0.1.3
@@ -21,21 +20,19 @@ require (
 	github.com/invopop/jsonschema v0.14.0
 	github.com/lithammer/fuzzysearch v1.1.8
 	github.com/ncruces/zenity v0.10.14
-	github.com/openai/openai-go/v3 v3.41.0
+	github.com/openai/openai-go/v3 v3.48.0
 	github.com/pelletier/go-toml/v2 v2.4.0
 	github.com/sergi/go-diff v1.4.0
-	golang.org/x/crypto v0.53.0
-	golang.org/x/net v0.56.0
-	golang.org/x/sync v0.21.0
-	golang.org/x/sys v0.46.0
-	golang.org/x/text v0.39.0
+	golang.org/x/crypto v0.54.0
+	golang.org/x/net v0.57.0
+	golang.org/x/sync v0.22.0
+	golang.org/x/sys v0.47.0
+	golang.org/x/text v0.40.0
 	gopkg.in/yaml.v3 v3.0.1
 	mvdan.cc/sh/v3 v3.13.1
 )
 
 replace github.com/alfredxw/denova/agent => ./agent
-
-replace github.com/alfredxw/denova/agent/model/openai => ./agent/model/openai
 
 require (
 	dario.cat/mergo v1.0.2 // indirect
@@ -76,7 +73,7 @@ require (
 	github.com/pjbgf/sha1cd v0.6.0 // indirect
 	github.com/randall77/makefat v0.0.0-20210315173500-7ddd0e42c844 // indirect
 	github.com/skeema/knownhosts v1.3.2 // indirect
-	github.com/tidwall/gjson v1.18.0 // indirect
+	github.com/tidwall/gjson v1.19.0 // indirect
 	github.com/tidwall/match v1.1.1 // indirect
 	github.com/tidwall/pretty v1.2.1 // indirect
 	github.com/tidwall/sjson v1.2.5 // indirect

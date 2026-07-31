@@ -28,21 +28,42 @@ func TestAgentPackageDependencyDirection(t *testing.T) {
 		importSubtree("denova/internal/api"),
 		importExact("github.com/alfredxw/denova/agent"),
 		importSubtree("github.com/alfredxw/denova/agent/context"),
-		importSubtree("github.com/alfredxw/denova/agent/model"),
+		importSubtree("github.com/alfredxw/denova/agent/providers"),
 		importSubtree("github.com/alfredxw/denova/agent/session"),
 		importSubtree("github.com/alfredxw/denova/agent/tools"),
 	)
 	assertNoProductionImports(t, filepath.Join(repository, "internal", "agents"), nil,
 		importSubtree("denova/internal/app"),
 		importSubtree("denova/internal/api"),
+		importSubtree("github.com/alfredxw/denova/agent/providers/protocols"),
 	)
-	assertNoProductionImports(t, filepath.Join(repository, "agent"), map[string]bool{"model": true},
+	assertNoProductionImports(t, filepath.Join(repository, "agent"), map[string]bool{"providers": true},
 		importSubtree("denova"),
 		importSubtree("github.com/openai/openai-go"),
 	)
-	assertNoProductionImports(t, filepath.Join(repository, "agent", "model", "openai"), nil,
+	assertNoProductionImports(t, filepath.Join(repository, "agent", "providers"), nil,
 		importSubtree("denova"),
 	)
+	// Provider catalog and registry code stay SDK-free. Only protocol adapters
+	// own wire types; builtin provider definitions merely compose registrations.
+	assertNoProductionImports(t, filepath.Join(repository, "agent", "providers"), map[string]bool{"protocols": true},
+		importSubtree("github.com/openai/openai-go"),
+	)
+	// Providers are packages in the public agent module. A nested go.mod would
+	// silently remove that provider from `cd agent && go test ./...` again.
+	providersRoot := filepath.Join(repository, "agent", "providers")
+	if err := filepath.WalkDir(providersRoot, func(path string, entry fs.DirEntry, walkErr error) error {
+		if walkErr != nil {
+			return walkErr
+		}
+		if !entry.IsDir() && entry.Name() == "go.mod" {
+			relative, _ := filepath.Rel(repository, path)
+			t.Errorf("provider must share the agent module, found nested %s", filepath.ToSlash(relative))
+		}
+		return nil
+	}); err != nil {
+		t.Fatalf("inspect provider module boundaries: %v", err)
+	}
 
 	// Eino is not an adapter in the new architecture. Scan every production Go
 	// package and every module manifest so it cannot return through an unrelated

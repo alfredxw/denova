@@ -1,6 +1,10 @@
 package config
 
-import "strings"
+import (
+	"strings"
+
+	"github.com/alfredxw/denova/agent/providers"
+)
 
 const (
 	DefaultContextWindowTokens = 400000
@@ -10,6 +14,8 @@ const (
 type ModelProfileSettings struct {
 	ID                  string   `toml:"id,omitempty" json:"id,omitempty"`
 	Name                string   `toml:"name,omitempty" json:"name,omitempty"`
+	Provider            string   `toml:"provider,omitempty" json:"provider,omitempty"`
+	Protocol            string   `toml:"protocol,omitempty" json:"protocol,omitempty"`
 	OpenAIAPIKey        string   `toml:"openai_api_key,omitempty" json:"openai_api_key,omitempty"`
 	OpenAIBaseURL       string   `toml:"openai_base_url,omitempty" json:"openai_base_url,omitempty"`
 	OpenAIModel         string   `toml:"openai_model,omitempty" json:"openai_model,omitempty"`
@@ -32,21 +38,21 @@ type AgentModelSettings struct {
 }
 
 type AgentModelOverride struct {
-	ProfileID       string   `toml:"profile_id,omitempty" json:"profile_id,omitempty"`
-	Temperature     *float64 `toml:"temperature,omitempty" json:"temperature,omitempty"`
-	EnableThinking  *bool    `toml:"enable_thinking,omitempty" json:"enable_thinking,omitempty"`
-	ReasoningEffort string   `toml:"reasoning_effort,omitempty" json:"reasoning_effort,omitempty"`
+	ProfileID     string   `toml:"profile_id,omitempty" json:"profile_id,omitempty"`
+	Temperature   *float64 `toml:"temperature,omitempty" json:"temperature,omitempty"`
+	ThinkingLevel string   `toml:"thinking_level,omitempty" json:"thinking_level,omitempty"`
 }
 
 type ResolvedModelSettings struct {
 	ProfileID           string
+	Provider            string
+	Protocol            string
 	OpenAIAPIKey        string
 	OpenAIBaseURL       string
 	OpenAIModel         string
 	Temperature         *float64
 	ContextWindowTokens int
-	EnableThinking      *bool
-	ReasoningEffort     string
+	ThinkingLevel       string
 }
 
 func MergeAgentModelSettings(parent, child AgentModelSettings) AgentModelSettings {
@@ -78,6 +84,7 @@ func ResolveAgentModel(cfg *Config, agentKind string) ResolvedModelSettings {
 			continue
 		}
 		base := profiles[id]
+		profile = normalizeModelProfileRouting(profile)
 		profile.ID = id
 		profiles[id] = mergeModelProfile(base, profile)
 	}
@@ -86,7 +93,10 @@ func ResolveAgentModel(cfg *Config, agentKind string) ResolvedModelSettings {
 		defaultProfile.OpenAIAPIKey = cfg.OpenAIAPIKey
 	}
 	if defaultProfile.OpenAIBaseURL == "" {
-		defaultProfile.OpenAIBaseURL = cfg.OpenAIBaseURL
+		defaultProfile.OpenAIBaseURL = defaultModelProviderBaseURL(defaultProfile.Provider)
+		if defaultProfile.OpenAIBaseURL == "" && defaultProfile.Provider == "" {
+			defaultProfile.OpenAIBaseURL = cfg.OpenAIBaseURL
+		}
 	}
 	if defaultProfile.OpenAIModel == "" {
 		defaultProfile.OpenAIModel = cfg.OpenAIModel
@@ -111,11 +121,21 @@ func ResolveAgentModel(cfg *Config, agentKind string) ResolvedModelSettings {
 		profileID = "default"
 		profile = profiles[profileID]
 	}
+	if profile.Provider == "" {
+		profile.Provider = defaultProfile.Provider
+	}
+	if profile.Protocol == "" {
+		profile.Protocol = defaultProfile.Protocol
+	}
 	if profile.OpenAIAPIKey == "" {
 		profile.OpenAIAPIKey = defaultProfile.OpenAIAPIKey
 	}
 	if profile.OpenAIBaseURL == "" {
-		profile.OpenAIBaseURL = defaultProfile.OpenAIBaseURL
+		if profile.Provider != "" && profile.Provider != defaultProfile.Provider {
+			profile.OpenAIBaseURL = defaultModelProviderBaseURL(profile.Provider)
+		} else {
+			profile.OpenAIBaseURL = defaultProfile.OpenAIBaseURL
+		}
 	}
 	if profile.OpenAIModel == "" {
 		profile.OpenAIModel = defaultProfile.OpenAIModel
@@ -129,13 +149,14 @@ func ResolveAgentModel(cfg *Config, agentKind string) ResolvedModelSettings {
 	}
 	return ResolvedModelSettings{
 		ProfileID:           profileID,
+		Provider:            profile.Provider,
+		Protocol:            profile.Protocol,
 		OpenAIAPIKey:        profile.OpenAIAPIKey,
 		OpenAIBaseURL:       profile.OpenAIBaseURL,
 		OpenAIModel:         profile.OpenAIModel,
 		Temperature:         temperature,
 		ContextWindowTokens: *profile.ContextWindowTokens,
-		EnableThinking:      agentOverride.EnableThinking,
-		ReasoningEffort:     normalizeReasoningEffort(agentOverride.ReasoningEffort),
+		ThinkingLevel:       resolvedThinkingLevel(agentOverride.ThinkingLevel),
 	}
 }
 
@@ -176,6 +197,7 @@ func sanitizeModelProfiles(profiles []ModelProfileSettings) []ModelProfileSettin
 	}
 	out := make([]ModelProfileSettings, 0, len(profiles))
 	for _, profile := range profiles {
+		profile = normalizeModelProfileRouting(profile)
 		profile.OpenAIModel = strings.TrimSpace(profile.OpenAIModel)
 		profile.ID = modelProfileID(profile)
 		if profile.ID == "" {
@@ -205,6 +227,8 @@ func sanitizeModelProfiles(profiles []ModelProfileSettings) []ModelProfileSettin
 
 func hasModelProfileDraftFields(profile ModelProfileSettings) bool {
 	return strings.TrimSpace(profile.Name) != "" ||
+		strings.TrimSpace(profile.Provider) != "" ||
+		strings.TrimSpace(profile.Protocol) != "" ||
 		profile.OpenAIAPIKey != "" ||
 		strings.TrimSpace(profile.OpenAIBaseURL) != "" ||
 		profile.Temperature != nil ||
@@ -239,6 +263,23 @@ func mergeModelProfile(parent, child ModelProfileSettings) ModelProfileSettings 
 		out.ID = id
 	}
 	out.Name = strings.TrimSpace(child.Name)
+	if child.Provider != "" {
+		inheritedProvider := strings.TrimSpace(out.Provider)
+		if inheritedProvider == "" && strings.TrimSpace(out.OpenAIBaseURL) != "" {
+			inheritedProvider = inferModelProvider(out.OpenAIBaseURL)
+		}
+		providerChanged := inheritedProvider != "" && strings.TrimSpace(child.Provider) != inheritedProvider
+		if providerChanged && child.OpenAIBaseURL == "" {
+			out.OpenAIBaseURL = ""
+		}
+		if providerChanged && child.Protocol == "" {
+			out.Protocol = ""
+		}
+		out.Provider = strings.TrimSpace(child.Provider)
+	}
+	if child.Protocol != "" {
+		out.Protocol = strings.TrimSpace(child.Protocol)
+	}
 	if child.OpenAIAPIKey != "" {
 		out.OpenAIAPIKey = child.OpenAIAPIKey
 	}
@@ -265,11 +306,8 @@ func mergeAgentModelOverride(parent, child AgentModelOverride) AgentModelOverrid
 	if child.Temperature != nil {
 		out.Temperature = child.Temperature
 	}
-	if child.EnableThinking != nil {
-		out.EnableThinking = child.EnableThinking
-	}
-	if child.ReasoningEffort != "" {
-		out.ReasoningEffort = normalizeReasoningEffort(child.ReasoningEffort)
+	if child.ThinkingLevel != "" {
+		out.ThinkingLevel = normalizeThinkingLevel(child.ThinkingLevel)
 	}
 	return out
 }
@@ -286,13 +324,56 @@ func legacyModelProfile(cfg *Config) ModelProfileSettings {
 	if contextWindowTokens <= 0 {
 		contextWindowTokens = DefaultContextWindowTokens
 	}
-	return ModelProfileSettings{
+	return normalizeModelProfileRouting(ModelProfileSettings{
 		ID:                  "default",
 		Name:                "默认模型",
 		OpenAIAPIKey:        cfg.OpenAIAPIKey,
 		OpenAIBaseURL:       cfg.OpenAIBaseURL,
 		OpenAIModel:         cfg.OpenAIModel,
 		ContextWindowTokens: intPtr(contextWindowTokens),
+	})
+}
+
+func normalizeModelProfileRouting(profile ModelProfileSettings) ModelProfileSettings {
+	profile.Provider = strings.TrimSpace(profile.Provider)
+	profile.Protocol = strings.TrimSpace(profile.Protocol)
+	explicitProvider := profile.Provider != ""
+	if profile.Provider == "" && strings.TrimSpace(profile.OpenAIBaseURL) != "" {
+		profile.Provider = inferModelProvider(profile.OpenAIBaseURL)
+	}
+	if profile.Protocol == "" && profile.Provider != "" {
+		// Profiles written before provider/protocol existed always used Chat
+		// Completions. Preserve that behavior when provider was inferred. A new,
+		// explicit OpenAI provider adopts OpenAI's Responses default.
+		if explicitProvider && profile.Provider == string(providers.ProviderOpenAI) {
+			profile.Protocol = string(providers.ProtocolOpenAIResponses)
+		} else {
+			profile.Protocol = string(providers.ProtocolOpenAIChatCompletions)
+		}
+	}
+	return profile
+}
+
+func inferModelProvider(baseURL string) string {
+	normalized := strings.ToLower(strings.TrimSpace(baseURL))
+	switch {
+	case strings.Contains(normalized, "api.deepseek.com"):
+		return string(providers.ProviderDeepSeek)
+	case strings.Contains(normalized, "api.openai.com"):
+		return string(providers.ProviderOpenAI)
+	default:
+		return string(providers.ProviderOpenAICompatible)
+	}
+}
+
+func defaultModelProviderBaseURL(provider string) string {
+	switch strings.TrimSpace(provider) {
+	case string(providers.ProviderOpenAI):
+		return "https://api.openai.com/v1"
+	case string(providers.ProviderDeepSeek):
+		return "https://api.deepseek.com"
+	default:
+		return ""
 	}
 }
 
@@ -307,6 +388,13 @@ func modelProfileID(profile ModelProfileSettings) string {
 	return strings.TrimSpace(profile.OpenAIModel)
 }
 
-func normalizeReasoningEffort(value string) string {
-	return strings.ToLower(strings.TrimSpace(value))
+func normalizeThinkingLevel(value string) string {
+	return string(providers.NormalizeThinkingLevel(value))
+}
+
+func resolvedThinkingLevel(value string) string {
+	if strings.TrimSpace(value) == "" {
+		return string(providers.ThinkingLevelDefault)
+	}
+	return normalizeThinkingLevel(value)
 }

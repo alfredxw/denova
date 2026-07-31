@@ -7,7 +7,6 @@ import (
 	"strings"
 
 	agent "github.com/alfredxw/denova/agent"
-	"github.com/alfredxw/denova/agent/model/openai"
 
 	"denova/config"
 )
@@ -23,7 +22,7 @@ func GenerateVersionSummary(ctx context.Context, cfg *config.Config, instruction
 	})
 	defer func() { finishTrace(runErr) }()
 	modelCfg := chatModelConfigForAgent(cfg, config.AgentKindVersionSummary)
-	cm, err := openai.New(traceCtx, &modelCfg)
+	cm, err := newChatModel(traceCtx, modelCfg)
 	if err != nil {
 		runErr = err
 		return "", fmt.Errorf("创建版本说明模型失败: %w", err)

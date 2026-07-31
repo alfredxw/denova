@@ -327,7 +327,6 @@ export function AgentsView({ onClose }: { onClose?: () => void }) {
                   {isSubAgentParent(activeAgent) && (
                     <AgentSubAgentSection
                       agent={activeAgent}
-                      inheritedModel={inheritedModel}
                       toolRows={toolRows}
                       generalSettings={generalSubAgents}
                       effectiveGeneralSettings={previewGeneralSubAgents}

@@ -40,8 +40,8 @@ func (c *SessionConversation) compactionStructureFingerprint(input ContextCompac
 	policy := c.compactionPolicy()
 	anchors := []string{
 		"agent=" + strings.TrimSpace(c.agentKind),
-		fmt.Sprintf("model=%s|%s|%s|%v|%d|%v|%s", model.ProfileID, model.OpenAIBaseURL, model.OpenAIModel,
-			model.Temperature, model.ContextWindowTokens, model.EnableThinking, model.ReasoningEffort),
+		fmt.Sprintf("model=%s|%s|%s|%s|%s|%v|%d|%s", model.ProfileID, model.Provider, model.Protocol, model.OpenAIBaseURL, model.OpenAIModel,
+			model.Temperature, model.ContextWindowTokens, model.ThinkingLevel),
 		fmt.Sprintf("policy=%s|%g|%g|%d|%g|%g", policy.Strategy, policy.Threshold, policy.RecoveryBand,
 			policy.RetainedTurns, policy.TargetMinRatio, policy.TargetMaxRatio),
 		fmt.Sprintf("candidate=%s|%d", strings.TrimSpace(input.CandidateFingerprint), input.CandidateGeneration),

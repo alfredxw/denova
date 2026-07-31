@@ -119,7 +119,7 @@ Default addresses:
 
 ## Models and Configuration
 
-Denova uses an OpenAI-compatible API. The recommended path is to configure language models, image models, Agent parameters, the default Writing Skill, editor options, Game Mode behavior, version management, language, theme, and fonts from Settings.
+Denova configures language-model providers independently from API protocols: OpenAI defaults to the Responses API, DeepSeek defaults to Chat Completions, and custom OpenAI-compatible endpoints can select either protocol explicitly. Legacy configuration and the `OPENAI_*` environment variables below remain Chat Completions settings. The recommended path is to configure language models, image models, Agent parameters, the default Writing Skill, editor options, Game Mode behavior, version management, language, theme, and fonts from Settings.
 
 For scripted startup or deployment, you can also override model configuration with environment variables:
 

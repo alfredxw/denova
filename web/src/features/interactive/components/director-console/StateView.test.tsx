@@ -181,6 +181,38 @@ describe('StateView', () => {
     expect(within(supportingRow).queryByText('状态字段')).not.toBeInTheDocument()
   })
 
+  it('renders signed favorability away from a neutral center', () => {
+    render(
+      <StateView
+        section="actors"
+        snapshot={{
+          story_id: 'story', branch_id: 'main', turns: [], state: {},
+          actor_state_schema: {
+            version: 3,
+            revision: 1,
+            system: { templates: [{ id: 'character', name: '角色', fields: [
+              { name: '好感度', type: 'number', min: -100, max: 100, order: 10 },
+            ] }] },
+          },
+        }}
+        stateFacts={[[
+          'actors',
+          {
+            protagonist: { name: '林风', role: 'protagonist', template_id: 'character', state: { 好感度: -40 } },
+            supporting: { name: '沈凝', role: 'supporting', template_id: 'character', state: { 好感度: 60 } },
+          },
+        ]]}
+      />,
+    )
+
+    const negative = within(screen.getByRole('article', { name: '林风' })).getByTitle('好感度 -40 (-100–100)')
+    const negativeFill = negative.querySelector('span[style*="width: 20%"]')
+    expect(negativeFill).toHaveClass('bg-[var(--nova-danger)]')
+    const positive = within(screen.getByRole('article', { name: '沈凝' })).getByTitle('好感度 60 (-100–100)')
+    const positiveFill = positive.querySelector('span[style*="width: 30%"]')
+    expect(positiveFill).toHaveClass('bg-[var(--nova-success)]')
+  })
+
   it('renders fields from historical schemas regardless of legacy visibility metadata', () => {
     render(
       <StateView

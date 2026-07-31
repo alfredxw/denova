@@ -7,7 +7,7 @@ import (
 	"net/http"
 	"testing"
 
-	agentopenai "github.com/alfredxw/denova/agent/model/openai"
+	"github.com/alfredxw/denova/agent/providers"
 )
 
 func TestClassifyModelErrorUsesStructuredProviderStatus(t *testing.T) {
@@ -44,8 +44,8 @@ func TestTransientModelErrorStopsWhenRunContextIsCancelled(t *testing.T) {
 	}
 }
 
-func providerAPIError(status int) *agentopenai.APIError {
-	return &agentopenai.APIError{StatusCode: status}
+func providerAPIError(status int) *providers.APIError {
+	return &providers.APIError{StatusCode: status}
 }
 
 func TestClassifyModelErrorRecognizesWrappedContextCancellation(t *testing.T) {

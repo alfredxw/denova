@@ -3,35 +3,29 @@ package agents
 import (
 	"testing"
 
-	"github.com/alfredxw/denova/agent/model/openai"
+	"github.com/alfredxw/denova/agent/providers"
 
 	"denova/config"
 )
 
-func TestChatModelConfigFromResolvedSkipsEnableThinkingForGemini(t *testing.T) {
-	enabled := true
+func TestChatModelConfigFromResolvedKeepsNeutralThinkingLevel(t *testing.T) {
 	modelCfg := chatModelConfigFromResolved(config.ResolvedModelSettings{
-		OpenAIBaseURL:   "https://generativelanguage.googleapis.com/v1beta/openai/",
-		OpenAIModel:     "gemini-3.5-flash",
-		EnableThinking:  &enabled,
-		ReasoningEffort: "low",
+		OpenAIBaseURL: "https://generativelanguage.googleapis.com/v1beta/openai/",
+		OpenAIModel:   "gemini-3.5-flash",
+		ThinkingLevel: "xhigh",
 	})
-	if _, ok := modelCfg.ExtraFields["enable_thinking"]; ok {
-		t.Fatalf("Gemini request must not include enable_thinking: %#v", modelCfg.ExtraFields)
-	}
-	if modelCfg.ReasoningEffort != openai.ReasoningEffortLevelLow {
-		t.Fatalf("reasoning effort = %q, want low", modelCfg.ReasoningEffort)
+	if modelCfg.ThinkingLevel != providers.ThinkingLevelXHigh {
+		t.Fatalf("thinking level = %q, want xhigh", modelCfg.ThinkingLevel)
 	}
 }
 
-func TestChatModelConfigFromResolvedKeepsEnableThinkingForSupportedProvider(t *testing.T) {
-	enabled := true
+func TestChatModelConfigFromResolvedKeepsOffThinkingLevel(t *testing.T) {
 	modelCfg := chatModelConfigFromResolved(config.ResolvedModelSettings{
-		OpenAIBaseURL:  "https://api.deepseek.com/v1",
-		OpenAIModel:    "deepseek-v4-pro",
-		EnableThinking: &enabled,
+		OpenAIBaseURL: "https://api.deepseek.com/v1",
+		OpenAIModel:   "deepseek-v4-pro",
+		ThinkingLevel: "off",
 	})
-	if got := modelCfg.ExtraFields["enable_thinking"]; got != true {
-		t.Fatalf("enable_thinking = %v, want true in %#v", got, modelCfg.ExtraFields)
+	if modelCfg.ThinkingLevel != providers.ThinkingLevelOff {
+		t.Fatalf("thinking level = %q, want off", modelCfg.ThinkingLevel)
 	}
 }

@@ -130,6 +130,7 @@ const directorPanel = {
   'directorPanel.stateSchema.decision.covered': 'Covered',
   'directorPanel.stateSchema.decision.add': 'Added',
   'directorPanel.stateSchema.decision.replace': 'Replaced',
+  'directorPanel.stateSchema.decision.remove': 'Removed',
   'directorPanel.stateSchema.decision.ignored': 'Not structured',
   'directorPanel.stateSchema.source.lore': 'Lore',
   'directorPanel.stateSchema.source.opening': 'Opening',

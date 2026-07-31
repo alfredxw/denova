@@ -25,7 +25,6 @@ TARGETS=(
 GO_MODULES=(
   "."
   "agent"
-  "agent/model/openai"
 )
 
 require_command() {

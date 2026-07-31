@@ -102,6 +102,42 @@ func TestOpeningActorStateSchemaBatchReturnsExactInitializationGuide(t *testing.
 	}
 }
 
+func TestOpeningActorStateSchemaBatchRemovesInheritedFieldExplicitly(t *testing.T) {
+	base := GeneratedStoryActorStateCore()
+	protagonist := actorStateTemplateByID(base, DefaultActorID)
+	protagonist.Fields = append(protagonist.Fields, ActorStateField{Name: "力量", Type: "number", Default: float64(10), Min: floatPointer(1)})
+	base.Templates[actorStateTemplateIndex(base.Templates, DefaultActorID)] = protagonist
+
+	draft := NewOpeningActorStateSchemaBatchDraft(base, StoryDirectorTRPGSystem{})
+	result := draft.SubmitStructureOnly(ActorStateSchemaBatch{
+		Items: []ActorStateSchemaBatchItem{{
+			ItemID: "remove-strength",
+			Requirements: []ActorStateSchemaRequirementReview{{
+				Source: ActorStateSchemaRequirementSource{Kind: "opening", ID: "opening-draft"}, Requirement: "本故事使用境界体系，不采用力量数值",
+				ValuePolicy: ActorStateSchemaValuePolicySchemaOnly, Decision: "remove", TemplateID: DefaultActorID, FieldID: "力量", Reason: "避免把 D20 六维带入修仙境界",
+			}},
+			Adaptation: ActorStateSchemaAdaptation{TemplateOps: []ActorStateTemplateSchemaOp{{
+				Op: "fields", TemplateID: DefaultActorID, FieldOps: []ActorStateFieldSchemaOp{{Op: "remove", FieldID: "力量"}},
+			}}},
+		}},
+		Finalize: true,
+	}, ActorStateSchemaBatchAudit{OpeningSourceIDs: []string{"opening-draft"}})
+	if !result.Finalized || len(result.Rejected) != 0 || len(result.Accepted) != 1 {
+		t.Fatalf("an explicit inherited-field removal should finalize: %#v", result)
+	}
+	proposal, ok := draft.FinalProposal()
+	if !ok {
+		t.Fatal("finalized removal should expose a proposal")
+	}
+	target, _, err := ApplyActorStateSchemaAdaptation(base, StoryDirectorTRPGSystem{}, proposal.Adaptation)
+	if err != nil {
+		t.Fatalf("apply explicit removal: %v", err)
+	}
+	if _, exists := actorStateFieldByID(actorStateTemplateByID(target, DefaultActorID), "力量"); exists {
+		t.Fatalf("explicitly removed field remains in target schema: %#v", target)
+	}
+}
+
 func TestOpeningActorStateSchemaBatchResolvesInitialActorIDAsTemplateAlias(t *testing.T) {
 	base := StoryDirectorActorStateSystem{
 		Templates: []ActorStateTemplate{
@@ -687,7 +723,7 @@ func batchTestSourcedAdaptationItem(itemID string, adaptation ActorStateSchemaAd
 				ValuePolicy: ActorStateSchemaValuePolicySchemaOnly, Decision: decision, TemplateID: templateID, FieldID: fieldID,
 			}
 			if fieldOp.Op == "remove" {
-				review.Decision = "ignored"
+				review.Decision = "remove"
 				review.Reason = "开局确认不需要该字段"
 			} else {
 				review.ExpectedType = fieldOp.Field.Type

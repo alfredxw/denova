@@ -1,4 +1,4 @@
-package openai
+package openaichatcompletions
 
 import (
 	"context"
@@ -13,7 +13,48 @@ import (
 	"testing"
 
 	agent "github.com/alfredxw/denova/agent"
+	"github.com/alfredxw/denova/agent/providers"
 )
+
+func newTestModel(ctx context.Context, config *providers.ModelConfig) (agent.ToolCallingChatModel, error) {
+	if config.Provider == "" {
+		config.Provider = providers.ProviderOpenAICompatible
+	}
+	config.Protocol = providers.ProtocolOpenAIChatCompletions
+	return NewAdapter().New(ctx, *config)
+}
+
+func TestChatReasoningEffortCoversUnifiedThinkingLevels(t *testing.T) {
+	tests := []struct {
+		level providers.ThinkingLevel
+		want  string
+		ok    bool
+	}{
+		{level: providers.ThinkingLevelDefault},
+		{level: providers.ThinkingLevelOff, want: "none", ok: true},
+		{level: providers.ThinkingLevelMinimal, want: "minimal", ok: true},
+		{level: providers.ThinkingLevelLow, want: "low", ok: true},
+		{level: providers.ThinkingLevelMedium, want: "medium", ok: true},
+		{level: providers.ThinkingLevelHigh, want: "high", ok: true},
+		{level: providers.ThinkingLevelXHigh, want: "xhigh", ok: true},
+		{level: providers.ThinkingLevelMax, want: "max", ok: true},
+	}
+	for _, test := range tests {
+		t.Run(string(test.level), func(t *testing.T) {
+			got, ok := chatReasoningEffort(providers.ModelConfig{
+				Provider: providers.ProviderOpenAI, ThinkingLevel: test.level,
+			})
+			if got != test.want || ok != test.ok {
+				t.Fatalf("chatReasoningEffort(%q) = %q, %t; want %q, %t", test.level, got, ok, test.want, test.ok)
+			}
+		})
+	}
+	if effort, ok := chatReasoningEffort(providers.ModelConfig{
+		Provider: providers.ProviderDeepSeek, ThinkingLevel: providers.ThinkingLevelMax,
+	}); ok || effort != "" {
+		t.Fatalf("DeepSeek effort = %q, %t; want boolean compatibility mapping", effort, ok)
+	}
+}
 
 func TestGenerateMapsCompleteRequestAndResponse(t *testing.T) {
 	requestBody := make(chan []byte, 1)
@@ -49,20 +90,17 @@ func TestGenerateMapsCompleteRequestAndResponse(t *testing.T) {
 
 	temperature := float32(0.25)
 	configuredMaxTokens := 321
-	model, err := New(context.Background(), &Config{
+	model, err := newTestModel(context.Background(), &providers.ModelConfig{
+		Provider:        providers.ProviderOpenAI,
 		APIKey:          "secret",
 		Model:           "test-model",
 		BaseURL:         server.URL + "/v1",
 		HTTPClient:      server.Client(),
 		Temperature:     &temperature,
-		MaxTokens:       &configuredMaxTokens,
-		ReasoningEffort: ReasoningEffortLevelHigh,
-		ResponseFormat: &ChatCompletionResponseFormat{
-			Type: ChatCompletionResponseFormatTypeJSONObject,
-		},
-		ExtraFields: map[string]any{
-			"enable_thinking": true,
-			"reasoning_split": true,
+		MaxOutputTokens: &configuredMaxTokens,
+		ThinkingLevel:   providers.ThinkingLevelHigh,
+		OutputFormat: &providers.OutputFormat{
+			Type: providers.OutputFormatJSONObject,
 		},
 	})
 	if err != nil {
@@ -125,8 +163,6 @@ func TestGenerateMapsCompleteRequestAndResponse(t *testing.T) {
 		"max_tokens":       float64(99),
 		"reasoning_effort": "high",
 		"response_format":  map[string]any{"type": "json_object"},
-		"enable_thinking":  true,
-		"reasoning_split":  true,
 		"tool_choice":      "auto",
 		"tools": []any{map[string]any{
 			"type": "function",
@@ -172,7 +208,8 @@ func TestGenerateMapsCompleteRequestAndResponse(t *testing.T) {
 		t.Fatalf("usage = %#v, want %#v", message.ResponseMeta.Usage, wantUsage)
 	}
 	wantExtra := map[string]any{
-		ExtraKeyProvider:          "openai",
+		ExtraKeyProvider:          string(providers.ProviderOpenAI),
+		ExtraKeyProtocol:          string(providers.ProtocolOpenAIChatCompletions),
 		ExtraKeyRequestID:         "req-generate-1",
 		ExtraKeyResponseID:        "chatcmpl-zero",
 		ExtraKeyModel:             "provider-model",
@@ -201,7 +238,7 @@ func TestWithToolsReturnsImmutableCopy(t *testing.T) {
 	}))
 	defer server.Close()
 
-	model, err := New(context.Background(), &Config{Model: "m", BaseURL: server.URL, HTTPClient: server.Client()})
+	model, err := newTestModel(context.Background(), &providers.ModelConfig{Model: "m", BaseURL: server.URL, HTTPClient: server.Client()})
 	if err != nil {
 		t.Fatalf("new model: %v", err)
 	}
@@ -290,7 +327,7 @@ func TestStreamMapsToolCallDeltasReasoningAndUsageTail(t *testing.T) {
 	}))
 	defer server.Close()
 
-	model, err := New(context.Background(), &Config{Model: "m", BaseURL: server.URL, HTTPClient: server.Client()})
+	model, err := newTestModel(context.Background(), &providers.ModelConfig{Model: "m", BaseURL: server.URL, HTTPClient: server.Client()})
 	if err != nil {
 		t.Fatalf("new model: %v", err)
 	}
@@ -364,7 +401,7 @@ func TestGenerateReturnsAdapterAPIError(t *testing.T) {
 	}))
 	defer server.Close()
 
-	model, err := New(context.Background(), &Config{Model: "m", BaseURL: server.URL, HTTPClient: server.Client()})
+	model, err := newTestModel(context.Background(), &providers.ModelConfig{Model: "m", BaseURL: server.URL, HTTPClient: server.Client()})
 	if err != nil {
 		t.Fatalf("new model: %v", err)
 	}
@@ -372,9 +409,9 @@ func TestGenerateReturnsAdapterAPIError(t *testing.T) {
 	if err == nil {
 		t.Fatal("expected provider error")
 	}
-	var apiError *APIError
+	var apiError *providers.APIError
 	if !errors.As(err, &apiError) {
-		t.Fatalf("error type = %T, want *openai.APIError: %v", err, err)
+		t.Fatalf("error type = %T, want *providers.APIError: %v", err, err)
 	}
 	if apiError.StatusCode != http.StatusBadRequest {
 		t.Fatalf("typed error = %#v", apiError)
@@ -392,7 +429,7 @@ func TestGenerateReturnsContextCancellation(t *testing.T) {
 		<-request.Context().Done()
 		return nil, request.Context().Err()
 	})}
-	model, err := New(context.Background(), &Config{Model: "m", BaseURL: "https://example.invalid/v1", HTTPClient: client})
+	model, err := newTestModel(context.Background(), &providers.ModelConfig{Model: "m", BaseURL: "https://example.invalid/v1", HTTPClient: client})
 	if err != nil {
 		t.Fatalf("new model: %v", err)
 	}

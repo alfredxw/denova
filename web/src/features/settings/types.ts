@@ -94,6 +94,8 @@ export interface WebAccessSettings {
 export interface ModelProfileSettings {
   id?: string
   name?: string
+  provider?: string
+  protocol?: string
   openai_api_key?: string
   openai_base_url?: string
   openai_model?: string
@@ -130,8 +132,7 @@ export interface AgentModelSettings {
 export interface AgentModelOverride {
   profile_id?: string
   temperature?: number | null
-  enable_thinking?: boolean | null
-  reasoning_effort?: string
+  thinking_level?: string
 }
 
 export interface AgentToolSettings {

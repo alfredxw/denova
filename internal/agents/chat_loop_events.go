@@ -288,6 +288,7 @@ func (l *chatAgentLoop) handleAssistantOutput(messageOutput *agent.MessageVarian
 			return l.assistantStreamFailed(streamErr)
 		}
 		run.toolContext.RecordAssistantToolCalls(msg, eventMeta)
+		run.captureProviderContinuation(msg, eventMeta)
 		run.usage.AddMessage(msg)
 		if run.req.PlanMode && l.planParser != nil && l.planParser.HasSuccessfulBlock() {
 			l.cancel()
@@ -305,6 +306,7 @@ func (l *chatAgentLoop) handleAssistantOutput(messageOutput *agent.MessageVarian
 		return l.assistantStreamFailed(processErr)
 	}
 	run.toolContext.RecordAssistantToolCalls(messageOutput.Message, eventMeta)
+	run.captureProviderContinuation(messageOutput.Message, eventMeta)
 	run.usage.AddMessage(messageOutput.Message)
 	if run.req.PlanMode && l.planParser != nil && l.planParser.HasSuccessfulBlock() {
 		l.cancel()

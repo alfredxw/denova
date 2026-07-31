@@ -10,7 +10,6 @@ import (
 	"unicode/utf8"
 
 	agent "github.com/alfredxw/denova/agent"
-	"github.com/alfredxw/denova/agent/model/openai"
 
 	"denova/config"
 	"denova/internal/contextmaintenance"
@@ -530,7 +529,7 @@ func generateContextCompactionSummary(ctx context.Context, cfg *config.Config, a
 	defer func() { finishTrace(runErr) }()
 	modelCfg := chatModelConfigForAgent(cfg, config.AgentKindContextCompaction)
 	inputChars := contextCompactionInputChars(existingCheckpoint, source, referenceContext)
-	cm, err := openai.New(traceCtx, &modelCfg)
+	cm, err := newChatModel(traceCtx, modelCfg)
 	if err != nil {
 		runErr = err
 		return "", inputChars, fmt.Errorf("创建上下文压缩模型失败: %w", err)
@@ -572,7 +571,7 @@ func generateContextCompactionSummary(ctx context.Context, cfg *config.Config, a
 	return summary, inputChars, nil
 }
 
-func streamContextCompactionAttempt(ctx context.Context, cm *openai.ChatModel, input []*agent.Message, attempt int, emitDelta func(attempt int, delta string)) (*agent.Message, error) {
+func streamContextCompactionAttempt(ctx context.Context, cm agent.BaseChatModel, input []*agent.Message, attempt int, emitDelta func(attempt int, delta string)) (*agent.Message, error) {
 	stream, err := cm.Stream(ctx, input)
 	if err != nil {
 		return nil, err

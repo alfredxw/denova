@@ -38,7 +38,7 @@ type ActorStateSchemaRequirementSource struct {
 }
 
 // ActorStateSchemaRequirementReview explains whether one sourced requirement
-// is already covered, requires a schema operation, or is intentionally ignored.
+// is covered, changes the schema, removes inherited structure, or is ignored.
 type ActorStateSchemaRequirementReview struct {
 	// ItemID is injected by the Batch backend and links this audit record to
 	// Actor value provenance. Model-supplied values are overwritten.
@@ -94,7 +94,7 @@ func ValidateActorStateSchemaProposal(base StoryDirectorActorStateSystem, trpg S
 	if err != nil {
 		return ActorStateSchemaProposal{}, ActorStateSchemaProposalPreview{}, err
 	}
-	if err := validateActorStateSchemaRequirementReviews(&proposal, targetSystem); err != nil {
+	if err := validateActorStateSchemaRequirementReviews(&proposal, base, targetSystem); err != nil {
 		return ActorStateSchemaProposal{}, ActorStateSchemaProposalPreview{}, err
 	}
 	fieldOps := 0
@@ -128,7 +128,7 @@ func ValidateOpeningGameStateSchemaProposal(base StoryDirectorActorStateSystem, 
 	return ValidateActorStateSchemaProposal(base, trpg, proposal)
 }
 
-func validateActorStateSchemaRequirementReviews(proposal *ActorStateSchemaProposal, target StoryDirectorActorStateSystem) error {
+func validateActorStateSchemaRequirementReviews(proposal *ActorStateSchemaProposal, base, target StoryDirectorActorStateSystem) error {
 	if proposal == nil {
 		return fmt.Errorf("状态结构提案不存在")
 	}
@@ -183,6 +183,29 @@ func validateActorStateSchemaRequirementReviews(proposal *ActorStateSchemaPropos
 			}
 			if review.Reason == "" {
 				return fmt.Errorf("忽略状态需求必须说明理由: source=%s", review.Source.ID)
+			}
+			continue
+		}
+		if review.Decision == "remove" {
+			if review.ValuePolicy != ActorStateSchemaValuePolicySchemaOnly {
+				return fmt.Errorf("remove 状态需求只能使用 value_policy=schema_only: source=%s", review.Source.ID)
+			}
+			if review.TemplateID == "" || review.FieldID == "" {
+				return fmt.Errorf("删除状态字段的目标不完整: source=%s", review.Source.ID)
+			}
+			if review.Reason == "" {
+				return fmt.Errorf("删除状态字段必须说明理由: source=%s", review.Source.ID)
+			}
+			template := actorStateTemplateByID(base, review.TemplateID)
+			field, ok := actorStateFieldByID(template, review.FieldID)
+			if !ok {
+				return fmt.Errorf("删除审查引用的原状态字段不存在: template=%s field=%s", review.TemplateID, review.FieldID)
+			}
+			if review.ExpectedType != "" && field.Type != review.ExpectedType {
+				return fmt.Errorf("删除审查字段类型不匹配: template=%s field=%s expected=%s actual=%s", review.TemplateID, review.FieldID, review.ExpectedType, field.Type)
+			}
+			if !actorStateSchemaAdaptationHasFieldDecision(proposal.Adaptation, review.Decision, review.TemplateID, review.FieldID) {
+				return fmt.Errorf("删除状态需求缺少对应 schema 操作: template=%s field=%s", review.TemplateID, review.FieldID)
 			}
 			continue
 		}
@@ -241,7 +264,11 @@ func actorStateSchemaAdaptationHasFieldDecision(adaptation ActorStateSchemaAdapt
 			continue
 		}
 		for _, fieldOp := range templateOp.FieldOps {
-			if fieldOp.Op == decision && normalizeActorStateFieldName(fieldOp.Field.Name) == fieldID {
+			targetFieldID := actorStateFieldID(fieldOp.Field)
+			if fieldOp.Op == "remove" {
+				targetFieldID = fieldOp.FieldID
+			}
+			if fieldOp.Op == decision && normalizeActorStateFieldName(targetFieldID) == fieldID {
 				return true
 			}
 		}

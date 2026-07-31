@@ -8,7 +8,7 @@ import (
 	"time"
 
 	agent "github.com/alfredxw/denova/agent"
-	"github.com/alfredxw/denova/agent/model/openai"
+	"github.com/alfredxw/denova/agent/providers"
 )
 
 // fakeChatModel is a minimal ToolCallingChatModel that returns a fixed
@@ -37,7 +37,7 @@ func (f *fakeChatModel) WithTools(_ []*agent.ToolInfo) (agent.ToolCallingChatMod
 // nonStandardProviderCfg 模拟一个走 OpenAI 兼容协议、但输出格式不标准的
 // provider（可能是本地 LM、特定第三方、或者旧版本）。任何字段或输出
 // 与 OpenAI 官方不完全一致的 provider 都会触发 polyfill。
-var nonStandardProviderCfg = openai.Config{
+var nonStandardProviderCfg = Config{
 	BaseURL: "https://example.invalid/v1/",
 	Model:   "non-standard-model-v1",
 }
@@ -50,8 +50,8 @@ func TestExtraRequestFields_NonStandardProvider(t *testing.T) {
 }
 
 func TestExtraRequestFields_OpenAIProvider(t *testing.T) {
-	for _, cfg := range []openai.Config{
-		{BaseURL: "https://api.openai.com/v1", Model: "gpt-4o"},
+	for _, cfg := range []Config{
+		{BaseURL: "https://api.chatcompletions.com/v1", Model: "gpt-4o"},
 		{BaseURL: "https://api.deepseek.com/v1", Model: "deepseek-chat"},
 	} {
 		if got := ExtraRequestFields(cfg); len(got) != 0 {
@@ -61,48 +61,45 @@ func TestExtraRequestFields_OpenAIProvider(t *testing.T) {
 }
 
 func TestThinkingExtraFields_ProviderSupport(t *testing.T) {
-	enabled := true
-	disabled := false
 	tests := []struct {
 		name string
-		cfg  openai.Config
-		in   *bool
+		cfg  Config
 		want map[string]any
 	}{
 		{
 			name: "deepseek keeps enable thinking",
-			cfg:  openai.Config{BaseURL: "https://api.deepseek.com/v1", Model: "deepseek-reasoner"},
-			in:   &enabled,
+			cfg:  Config{Provider: providers.ProviderDeepSeek, BaseURL: "https://api.deepseek.com/v1", Model: "deepseek-reasoner", ThinkingLevel: providers.ThinkingLevelHigh},
 			want: map[string]any{"enable_thinking": true},
 		},
 		{
-			name: "explicit false still sent for supported providers",
-			cfg:  openai.Config{BaseURL: "https://api.deepseek.com/v1", Model: "deepseek-chat"},
-			in:   &disabled,
+			name: "off is sent for supported providers",
+			cfg:  Config{Provider: providers.ProviderDeepSeek, BaseURL: "https://api.deepseek.com/v1", Model: "deepseek-chat", ThinkingLevel: providers.ThinkingLevelOff},
 			want: map[string]any{"enable_thinking": false},
 		},
 		{
 			name: "gemini endpoint skips unsupported field",
-			cfg:  openai.Config{BaseURL: "https://generativelanguage.googleapis.com/v1beta/openai/", Model: "gemini-3.5-flash"},
-			in:   &enabled,
+			cfg:  Config{Provider: providers.ProviderOpenAICompatible, BaseURL: "https://generativelanguage.googleapis.com/v1beta/openai/", Model: "gemini-3.5-flash", ThinkingLevel: providers.ThinkingLevelHigh},
 			want: nil,
 		},
 		{
 			name: "gemini model behind proxy skips unsupported field",
-			cfg:  openai.Config{BaseURL: "https://proxy.example/v1", Model: "gemini-2.5-flash"},
-			in:   &enabled,
+			cfg:  Config{Provider: providers.ProviderOpenAICompatible, BaseURL: "https://proxy.example/v1", Model: "gemini-2.5-flash", ThinkingLevel: providers.ThinkingLevelHigh},
 			want: nil,
 		},
 		{
-			name: "unset means no extra field",
-			cfg:  openai.Config{BaseURL: "https://api.deepseek.com/v1", Model: "deepseek-chat"},
-			in:   nil,
+			name: "model default means no extra field",
+			cfg:  Config{Provider: providers.ProviderDeepSeek, BaseURL: "https://api.deepseek.com/v1", Model: "deepseek-chat", ThinkingLevel: providers.ThinkingLevelDefault},
+			want: nil,
+		},
+		{
+			name: "official OpenAI skips compatibility field",
+			cfg:  Config{Provider: providers.ProviderOpenAI, BaseURL: "https://api.openai.com/v1", Model: "gpt-5", ThinkingLevel: providers.ThinkingLevelMax},
 			want: nil,
 		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			got := ThinkingExtraFields(tt.cfg, tt.in)
+			got := ThinkingExtraFields(tt.cfg)
 			if len(got) != len(tt.want) {
 				t.Fatalf("field count = %d, want %d: %v", len(got), len(tt.want), got)
 			}
@@ -185,7 +182,7 @@ func TestWrap_NonStandardProvider_PreservesNativeToolCalls(t *testing.T) {
 
 func TestWrap_OpenAIProvider_PassThrough(t *testing.T) {
 	inner := &fakeChatModel{fixedMsg: &agent.Message{Role: agent.Assistant, Content: "raw <think>oops</think> done"}}
-	cfg := openai.Config{BaseURL: "https://api.openai.com/v1", Model: "gpt-4o"}
+	cfg := Config{BaseURL: "https://api.chatcompletions.com/v1", Model: "gpt-4o"}
 	// OpenAI 端点：原样返回，think 标签不应被剥离（信任它走 reasoning_content 字段）
 	out, err := Wrap(inner, cfg).Generate(context.Background(), nil)
 	if err != nil {

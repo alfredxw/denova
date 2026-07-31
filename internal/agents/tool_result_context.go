@@ -4,6 +4,7 @@ import (
 	"strings"
 
 	agent "github.com/alfredxw/denova/agent"
+	"github.com/alfredxw/denova/agent/providers"
 
 	"denova/config"
 )
@@ -84,17 +85,17 @@ func (r *toolResultContextRecorder) RecordAssistantToolCalls(msg *agent.Message,
 
 	assistant := msg.Clone()
 	assistant.Role = agent.Assistant
-	// The native run keeps provider reasoning/signatures until the tool loop has
-	// finished. Cross-turn durability is a different boundary: only public
-	// assistant content and the protocol calls belong in future model context.
-	// Usage is recorded by dedicated telemetry, and opaque transport fields may
-	// contain provider-private thinking, so do not duplicate either here.
+	// UI reasoning fields and response telemetry do not cross this boundary.
+	// Protocol continuation is the sole exception: Responses store:false needs
+	// provider-returned output items to recreate the exact stateless tool
+	// sequence. The envelope remains model-only and is never projected as UI
+	// reasoning.
 	assistant.ReasoningContent = ""
 	assistant.MultiContent = nil
 	assistant.UserInputMultiContent = nil
 	assistant.AssistantGenMultiContent = nil
 	assistant.ResponseMeta = nil
-	assistant.Extra = nil
+	assistant.Extra = providers.ContinuationExtra(assistant.Extra)
 	batch := &pendingToolContextBatch{
 		assistant: assistant,
 		callIndex: make(map[string]int, len(msg.ToolCalls)),

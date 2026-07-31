@@ -6,7 +6,6 @@ import (
 	"log"
 
 	agent "github.com/alfredxw/denova/agent"
-	"github.com/alfredxw/denova/agent/model/openai"
 
 	"denova/config"
 )
@@ -22,10 +21,8 @@ func GenerateAutomationTriggerEvaluation(ctx context.Context, cfg *config.Config
 	})
 	defer func() { finishTrace(runErr) }()
 	modelCfg := chatModelConfigForAgent(cfg, config.AgentKindAutomation)
-	modelCfg.ResponseFormat = &openai.ChatCompletionResponseFormat{
-		Type: openai.ChatCompletionResponseFormatTypeJSONObject,
-	}
-	cm, err := openai.New(traceCtx, &modelCfg)
+	modelCfg = withJSONObjectOutput(modelCfg)
+	cm, err := newChatModel(traceCtx, modelCfg)
 	if err != nil {
 		runErr = err
 		return "", fmt.Errorf("创建自动化触发评估模型失败: %w", err)

@@ -159,6 +159,19 @@ func TestActorStateLibraryMaterializesGenreBuiltins(t *testing.T) {
 		if !ok || field.Type != "number" || field.Group != "面板" {
 			t.Fatalf("default TRPG panel should use grouped ordinary number fields; %s = %#v", fieldPath, field)
 		}
+		if field.Max != nil {
+			t.Fatalf("default TRPG panel field %s should not impose a hard maximum: %#v", fieldPath, field)
+		}
+	}
+	favorability, ok := actorStateFieldByPath(actorStateTemplateByID(defaultActorState.ActorState, ActorStateImportantCharacterTemplateID), "protagonist_relation.favorability")
+	defaultFavorability, hasDefaultFavorability := actorStateNumber(favorability.Default)
+	if !ok || !hasDefaultFavorability || defaultFavorability != 0 || favorability.Min == nil || *favorability.Min != -100 || favorability.Max == nil || *favorability.Max != 100 {
+		t.Fatalf("default favorability should use the signed passerby baseline: %#v", favorability)
+	}
+	for _, phrase := range []string{"路人基线", "1–100", "-1–-100", "不自动改变关系类型或关系阶段"} {
+		if !strings.Contains(favorability.Description, phrase) {
+			t.Fatalf("default favorability guidance should contain %q: %#v", phrase, favorability)
+		}
 	}
 	for _, fieldPath := range []string{"state.health", "state.mana", "state.effects", "state.cooldowns"} {
 		field, ok := actorStateFieldByPath(protagonist, fieldPath)
@@ -409,8 +422,9 @@ func requireWritableActorStatePresetFields(t *testing.T, item ActorStateModule) 
 				t.Fatalf("genre actor state %s field %s retains boilerplate update guidance: %#v", item.ID, field.Path, field)
 			}
 			if field.Type == "number" {
-				if !strings.Contains(field.Description, "–") ||
-					field.Min == nil || field.Max == nil || *field.Min >= *field.Max {
+				if !strings.Contains(field.Description, "–") || field.Min == nil ||
+					(field.Max != nil && *field.Min >= *field.Max) ||
+					(field.Max == nil && !strings.Contains(field.Description, "以上")) {
 					t.Fatalf("genre actor state %s numeric field must provide a meaningful scale: %#v", item.ID, field)
 				}
 			}

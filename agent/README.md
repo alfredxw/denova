@@ -1,13 +1,15 @@
 # Denova Agent Development Kit
 
-`agent` 是可独立复用的 Go module，提供 provider-neutral 的原生 Agent loop、消息与事件协议、单一工具注册边界、上下文装配、会话抽象和可选 durable runtime。它不依赖 Denova 应用代码或任何模型 SDK。
+`agent` 是可独立复用的 Go module，提供 provider-neutral 的原生 Agent loop、消息与事件协议、单一工具注册边界、上下文装配、会话抽象和可选 durable runtime。它不依赖 Denova 应用代码；具体模型 SDK 只允许出现在 `providers/*` adapter 子 package 中。
 
 ## 依赖边界
 
 ```text
 业务 Agent / application host
         │
-        ├── provider adapter（例如 model/openai，可替换）
+        ├── providers.Registry（provider 身份/默认值与 protocol adapter 分离）
+        │    ├── builtin       OpenAI、DeepSeek 与兼容 endpoint 定义
+        │    └── protocols     Chat Completions / Responses wire adapter
         │
         └── agent
              ├── context   有来源、有用途、有硬上限的上下文装配
@@ -23,6 +25,10 @@
 | Package | 职责 |
 | --- | --- |
 | `agent` | `Message`、`BaseChatModel`、`Tool`、`ToolDefinition`、唯一 `Registry`、native loop、middleware、typed event、runner 与 Agent/Host registry |
+| `agent/providers` | provider-neutral `ModelConfig`、provider/protocol catalog、显式 `Registry`、稳定 `APIError` 与版本化 continuation 信封；不依赖模型 SDK |
+| `agent/providers/builtin` | 组合内置 provider 定义与 protocol adapter，不使用全局注册 |
+| `agent/providers/protocols/openaichatcompletions` | OpenAI-compatible Chat Completions 请求、流式响应及 endpoint 兼容修复 |
+| `agent/providers/protocols/openairesponses` | OpenAI Responses 请求、流式事件、工具调用及无状态 reasoning output 回放 |
 | `agent/context` | 将带 `source`、`purpose` 和 byte limit 的片段增量装配为模型输入 |
 | `agent/session` | append-only transcript、`/clear` marker、revision/CAS store；不保存 UI 日志或领域状态 |
 | `agent/tools` | 基础 `read` / `glob` / `grep` / `write` / `edit` / `bash` / `pwsh`、可扩展读取 adapter 和 definition factory；不维护第二份 registry |
@@ -31,6 +37,8 @@
 `agent/tools.OpenWorkspace` 默认从 PATH 查找 ripgrep。需要可重复分发的宿主可用 `OpenWorkspaceWithOptions` 注入固定 `RipgrepExecutable`；Denova Release 用该 seam 指向安装目录中的内置版本。
 
 `Agent` 和 `Runner` 不会隐式启用 `runtime`。普通嵌入只需要核心 loop；需要崩溃恢复、幂等命令或跨领域提交时，由宿主在应用 Agent 边界接入 `runtime`。
+
+Responses 的 `store=false` 连续性通过 `providers.Continuation` 保存在 `Message.Extra`。信封只含标准 JSON，并绑定 provider、protocol、model 和 endpoint；切换任一身份后 adapter 会忽略旧状态并退回普通消息转换。宿主持久化时只应保留 `providers.ExtraKeyContinuation`，不应把 request ID、usage 或其他 transport telemetry 当作下一轮模型输入。
 
 ## 工具契约
 
@@ -155,9 +163,4 @@ cd agent
 go test ./...
 ```
 
-provider adapter 是独立 module，需要分别验证，例如：
-
-```bash
-cd agent/model/openai
-go test ./...
-```
+`providers` 与 core 属于同一个 module，因此上面的命令会同时验证公共 core、registry、内置 provider catalog、Chat Completions 和 Responses adapter。新增供应商时优先只在 `providers/builtin` 注册身份、默认 URL 与支持协议；只有出现新的 wire protocol 时才新增 `providers/protocols/<protocol>`。产品 Agent 只能依赖 `providers.Registry`，不能直接构造 protocol adapter 或 OpenAI SDK 类型。

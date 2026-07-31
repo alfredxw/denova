@@ -6,8 +6,7 @@ import (
 	"strings"
 
 	agent "github.com/alfredxw/denova/agent"
-	"github.com/alfredxw/denova/agent/model/openai"
-	providercompat "github.com/alfredxw/denova/agent/model/openai/compat"
+	"github.com/alfredxw/denova/agent/providers"
 
 	"denova/config"
 	novaskills "denova/internal/agents/skills"
@@ -236,13 +235,10 @@ func buildAgent(ctx context.Context, cfg *config.Config, spec agentBuildSpec) (a
 	}
 	modelCfg := chatModelConfigForAgent(cfg, spec.Kind)
 	toolSettings := config.ResolveAgentTools(cfg, spec.Kind)
-	cm, err := openai.New(ctx, &modelCfg)
+	chatModel, err := newChatModel(ctx, modelCfg)
 	if err != nil {
 		return nil, fmt.Errorf("创建模型失败: %w", err)
 	}
-	// providercompat 决定是否要为这个 provider 加包装层（修复工具调用格式、剥离内联 think 等）。
-	// agent 包不感知具体 provider；新增 provider 的兼容性处理只需在 providercompat 里加。
-	chatModel := providercompat.Wrap(cm, modelCfg)
 
 	assembly, err := buildChatModelAgentAssembly(ctx, cfg, chatModelAgentAssemblySpec{
 		Kind:                  spec.Kind,
@@ -384,7 +380,7 @@ func workspaceForPrompt(cfg *config.Config, state *book.State) string {
 type chatModelAgentAssemblySpec struct {
 	Kind                  string
 	ToolPolicyKind        string
-	ModelCfg              openai.Config
+	ModelCfg              providers.ModelConfig
 	ToolSettings          config.ResolvedAgentToolSettings
 	EnableSkills          bool
 	ExtraMiddlewares      []agent.Middleware
@@ -538,11 +534,10 @@ func buildConfiguredSubAgent(ctx context.Context, cfg *config.Config, parent age
 	}
 	resolvedModel := config.ResolveSubAgentModel(cfg, parent.Kind, sub)
 	modelCfg := chatModelConfigFromResolved(resolvedModel)
-	cm, err := openai.New(ctx, &modelCfg)
+	subChatModel, err := newChatModel(ctx, modelCfg)
 	if err != nil {
 		return nil, fmt.Errorf("创建子 Agent 模型失败 id=%s: %w", sub.ID, err)
 	}
-	subChatModel := providercompat.Wrap(cm, modelCfg)
 	toolSettings := config.ResolveSubAgentTools(parentTools, sub.Tools)
 	assembly, err := buildChatModelAgentAssembly(ctx, cfg, chatModelAgentAssemblySpec{
 		Kind:                  sub.ID,

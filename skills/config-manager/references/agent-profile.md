@@ -35,8 +35,7 @@ Set `value.kind` to one of:
 | --- | --- | --- |
 | `profile_id` | string | Exact profile ID from the safe snapshot; missing/unknown values resolve to `default`. |
 | `temperature` | number or null | Optional Agent-specific override. |
-| `enable_thinking` | boolean or null | Optional thinking switch. |
-| `reasoning_effort` | string | Provider/UI-supported effort token; use an existing observed value rather than inventing one. |
+| `thinking_level` | string | Unified thinking level: `default`, `off`, `minimal`, `low`, `medium`, `high`, `xhigh`, or `max`. `default` omits provider thinking parameters; model support for explicit levels is model-dependent. |
 
 ### `tools`
 

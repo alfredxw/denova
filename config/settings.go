@@ -8,6 +8,7 @@ import (
 	"runtime"
 	"strings"
 
+	"github.com/alfredxw/denova/agent/providers"
 	toml "github.com/pelletier/go-toml/v2"
 
 	"denova/internal/narrativestyle"
@@ -184,11 +185,11 @@ func DefaultSettings() Settings {
 		TraceExporter:               DefaultTraceExporter,
 		TraceRetentionRuns:          intPtr(DefaultTraceRetentionRuns),
 		AgentModels: AgentModelSettings{
-			IDE:              AgentModelOverride{EnableThinking: boolPtr(true)},
-			InteractiveStory: AgentModelOverride{EnableThinking: boolPtr(false)},
-			ConfigManager:    AgentModelOverride{EnableThinking: boolPtr(true)},
-			VersionSummary:   AgentModelOverride{EnableThinking: boolPtr(false)},
-			ToolAgent:        AgentModelOverride{EnableThinking: boolPtr(false)},
+			IDE:              AgentModelOverride{ThinkingLevel: string(providers.ThinkingLevelMedium)},
+			InteractiveStory: AgentModelOverride{ThinkingLevel: string(providers.ThinkingLevelOff)},
+			ConfigManager:    AgentModelOverride{ThinkingLevel: string(providers.ThinkingLevelMedium)},
+			VersionSummary:   AgentModelOverride{ThinkingLevel: string(providers.ThinkingLevelOff)},
+			ToolAgent:        AgentModelOverride{ThinkingLevel: string(providers.ThinkingLevelOff)},
 		},
 		AgentTools:                 DefaultAgentToolSettings(),
 		WebAccess:                  DefaultWebAccessSettings(),

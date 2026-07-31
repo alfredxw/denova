@@ -108,6 +108,11 @@ func TestBuiltinStatePanelNameIDsFollowStoryLanguage(t *testing.T) {
 				t.Errorf("state preset %s relationship identity should contain %q: %s", module.ID, phrase, fields["关系"].UpdateInstruction)
 			}
 		}
+		for _, phrase := range []string{"0 为路人基线", "1–100", "-1–-100", "不自动改变关系类型或关系阶段"} {
+			if !strings.Contains(fields["关系"].UpdateInstruction, phrase) {
+				t.Errorf("state preset %s relationship guidance should contain %q: %s", module.ID, phrase, fields["关系"].UpdateInstruction)
+			}
+		}
 		if description := fields["在场角色"].Description; !strings.Contains(description, "Actor 名称即 ID") || !strings.Contains(description, "故事语言") {
 			t.Errorf("state preset %s present Actors should use name IDs: %s", module.ID, description)
 		}

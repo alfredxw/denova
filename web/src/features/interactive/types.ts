@@ -909,7 +909,7 @@ export interface ActorStateSchemaRequirementReview {
 	expected_type?: string
 	min?: number
 	max?: number
-	decision: 'covered' | 'add' | 'replace' | 'ignored' | string
+	decision: 'covered' | 'add' | 'replace' | 'remove' | 'ignored' | string
 	template_id?: string
 	field_id?: string
 	reason?: string

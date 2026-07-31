@@ -6,6 +6,7 @@ import (
 	"testing"
 
 	agent "github.com/alfredxw/denova/agent"
+	"github.com/alfredxw/denova/agent/providers"
 
 	"denova/internal/agents/session"
 )
@@ -83,6 +84,50 @@ func TestSessionConversationStagesAssistantUntilAuthorizedCycleCommit(t *testing
 	}
 	if receipt, ok := conversation.LastAgentCycleCommitReceipt(HarnessDomainCommitOutput); !ok || receipt.Identity != identity || receipt.Hash != intent.Hash || receipt.Revision == "" {
 		t.Fatalf("commit receipt = %+v ok=%t", receipt, ok)
+	}
+}
+
+func TestSessionConversationCommitsOnlyProviderContinuationWithFinalAssistant(t *testing.T) {
+	store, err := session.NewStore(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	sess, err := store.GetOrCreate("provider-continuation")
+	if err != nil {
+		t.Fatal(err)
+	}
+	conversation := NewSessionConversation(sess)
+	conversation.BindAgentCycleIdentity(HarnessCycleIdentity{CommandID: "command-1", OperationID: "operation-1", Cycle: 1})
+
+	config := providers.ModelConfig{
+		Provider: providers.ProviderOpenAI, Protocol: providers.ProtocolOpenAIResponses,
+		Model: "gpt-5", BaseURL: "https://api.openai.com/v1",
+	}
+	continuation, err := providers.NewContinuation(config, []any{
+		map[string]any{"type": "reasoning", "encrypted_content": "encrypted-state"},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	metadata := session.MessageMetadata{ProviderContinuation: map[string]any{
+		"request-id":                   "telemetry-must-not-persist",
+		providers.ExtraKeyContinuation: continuation,
+	}}
+	if err := conversation.AppendAssistantWithMetadata("final answer", "readable reasoning", metadata); err != nil {
+		t.Fatal(err)
+	}
+	if err := conversation.CommitAgentCycle(context.Background(), RunOutcome{Status: RunOutcomeCompleted}); err != nil {
+		t.Fatal(err)
+	}
+
+	messages := sess.GetEffectiveMessages()
+	if len(messages) != 1 || messages[0].Content != "final answer" || len(messages[0].Extra) != 1 {
+		t.Fatalf("committed assistant = %#v", messages)
+	}
+	var output []any
+	matched, err := providers.DecodeContinuation(messages[0].Extra, config, &output)
+	if err != nil || !matched || len(output) != 1 {
+		t.Fatalf("committed continuation = %#v matched=%t err=%v", messages[0].Extra, matched, err)
 	}
 }
 

@@ -3,7 +3,55 @@ package config
 import (
 	"path/filepath"
 	"testing"
+
+	"github.com/alfredxw/denova/agent/providers"
 )
+
+func TestResolveAgentModelProviderProtocolRouting(t *testing.T) {
+	tests := []struct {
+		name         string
+		config       *Config
+		wantProvider providers.ProviderID
+		wantProtocol providers.ProtocolID
+	}{
+		{
+			name:         "legacy OpenAI endpoint remains on Chat Completions",
+			config:       &Config{OpenAIBaseURL: "https://api.openai.com/v1", OpenAIModel: "gpt-4.1"},
+			wantProvider: providers.ProviderOpenAI,
+			wantProtocol: providers.ProtocolOpenAIChatCompletions,
+		},
+		{
+			name: "explicit OpenAI provider defaults to Responses",
+			config: &Config{ModelProfiles: []ModelProfileSettings{{
+				ID: "default", Provider: string(providers.ProviderOpenAI), OpenAIModel: "gpt-5",
+			}}},
+			wantProvider: providers.ProviderOpenAI,
+			wantProtocol: providers.ProtocolOpenAIResponses,
+		},
+		{
+			name: "explicit OpenAI provider can retain Chat Completions",
+			config: &Config{ModelProfiles: []ModelProfileSettings{{
+				ID: "default", Provider: string(providers.ProviderOpenAI), Protocol: string(providers.ProtocolOpenAIChatCompletions), OpenAIModel: "gpt-4.1",
+			}}},
+			wantProvider: providers.ProviderOpenAI,
+			wantProtocol: providers.ProtocolOpenAIChatCompletions,
+		},
+		{
+			name:         "DeepSeek endpoint defaults to Chat Completions",
+			config:       &Config{OpenAIBaseURL: "https://api.deepseek.com", OpenAIModel: "deepseek-chat"},
+			wantProvider: providers.ProviderDeepSeek,
+			wantProtocol: providers.ProtocolOpenAIChatCompletions,
+		},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			resolved := ResolveAgentModel(test.config, AgentKindIDE)
+			if resolved.Provider != string(test.wantProvider) || resolved.Protocol != string(test.wantProtocol) {
+				t.Fatalf("routing = provider %q protocol %q, want %q/%q", resolved.Provider, resolved.Protocol, test.wantProvider, test.wantProtocol)
+			}
+		})
+	}
+}
 
 func TestResolveAgentModelContextWindowDefaultsAndOverrides(t *testing.T) {
 	defaultModel := ResolveAgentModel(&Config{}, AgentKindIDE)
@@ -43,6 +91,45 @@ func TestResolveAgentModelContextWindowDefaultsAndOverrides(t *testing.T) {
 	resolved = ResolveAgentModel(cfg, AgentKindInteractiveStory)
 	if resolved.ContextWindowTokens != mainContextWindow {
 		t.Fatalf("profile inherited context window = %d, want %d", resolved.ContextWindowTokens, mainContextWindow)
+	}
+}
+
+func TestResolveAgentModelUsesUnifiedThinkingLevel(t *testing.T) {
+	tests := []struct {
+		name   string
+		models AgentModelSettings
+		want   providers.ThinkingLevel
+	}{
+		{
+			name: "unset resolves to model default",
+			want: providers.ThinkingLevelDefault,
+		},
+		{
+			name:   "agent inherits default level",
+			models: AgentModelSettings{Default: AgentModelOverride{ThinkingLevel: "xhigh"}},
+			want:   providers.ThinkingLevelXHigh,
+		},
+		{
+			name: "explicit model default overrides parent",
+			models: AgentModelSettings{
+				Default: AgentModelOverride{ThinkingLevel: "high"},
+				IDE:     AgentModelOverride{ThinkingLevel: "default"},
+			},
+			want: providers.ThinkingLevelDefault,
+		},
+		{
+			name:   "OpenAI none alias normalizes to off",
+			models: AgentModelSettings{IDE: AgentModelOverride{ThinkingLevel: "none"}},
+			want:   providers.ThinkingLevelOff,
+		},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			resolved := ResolveAgentModel(&Config{AgentModels: test.models}, AgentKindIDE)
+			if resolved.ThinkingLevel != string(test.want) {
+				t.Fatalf("thinking level = %q, want %q", resolved.ThinkingLevel, test.want)
+			}
+		})
 	}
 }
 
@@ -121,6 +208,77 @@ func TestResolveAgentModelInheritsBlankFieldsFromDefaultProfile(t *testing.T) {
 	}
 	if resolved.ContextWindowTokens != contextWindow {
 		t.Fatalf("context window = %d, want inherited %d", resolved.ContextWindowTokens, contextWindow)
+	}
+}
+
+func TestResolveAgentModelInheritsProviderAndProtocolFromDefaultProfile(t *testing.T) {
+	cfg := &Config{
+		ModelProfiles: []ModelProfileSettings{
+			{
+				ID:          "default",
+				Provider:    string(providers.ProviderOpenAI),
+				Protocol:    string(providers.ProtocolOpenAIResponses),
+				OpenAIModel: "gpt-5",
+			},
+			{
+				ID:          "fast",
+				OpenAIModel: "gpt-5-mini",
+			},
+		},
+		AgentModels: AgentModelSettings{
+			IDE: AgentModelOverride{ProfileID: "fast"},
+		},
+	}
+
+	resolved := ResolveAgentModel(cfg, AgentKindIDE)
+	if resolved.Provider != string(providers.ProviderOpenAI) || resolved.Protocol != string(providers.ProtocolOpenAIResponses) {
+		t.Fatalf("inherited routing = %q/%q, want OpenAI Responses", resolved.Provider, resolved.Protocol)
+	}
+	if resolved.OpenAIBaseURL != "https://api.openai.com/v1" {
+		t.Fatalf("inherited base URL = %q", resolved.OpenAIBaseURL)
+	}
+}
+
+func TestMergeModelProfilesResetsInheritedRoutingDefaultsWhenProviderChanges(t *testing.T) {
+	for _, parent := range []ModelProfileSettings{
+		{
+			ID: "default", OpenAIBaseURL: "https://api.deepseek.com", OpenAIModel: "deepseek-chat",
+		},
+		{
+			ID: "default", Provider: string(providers.ProviderDeepSeek), Protocol: string(providers.ProtocolOpenAIChatCompletions),
+			OpenAIBaseURL: "https://api.deepseek.com", OpenAIModel: "deepseek-chat",
+		},
+	} {
+		profiles := mergeModelProfiles(
+			[]ModelProfileSettings{parent},
+			[]ModelProfileSettings{{ID: "default", Provider: string(providers.ProviderOpenAI), OpenAIModel: "gpt-5"}},
+		)
+		resolved := ResolveAgentModel(&Config{ModelProfiles: profiles}, AgentKindIDE)
+		if resolved.Provider != string(providers.ProviderOpenAI) || resolved.Protocol != string(providers.ProtocolOpenAIResponses) {
+			t.Fatalf("merged routing = %q/%q", resolved.Provider, resolved.Protocol)
+		}
+		if resolved.OpenAIBaseURL != "https://api.openai.com/v1" {
+			t.Fatalf("provider change retained inherited endpoint %q", resolved.OpenAIBaseURL)
+		}
+	}
+}
+
+func TestResolveAgentModelDoesNotReuseLegacyEndpointForExplicitCompatibleProvider(t *testing.T) {
+	resolved := ResolveAgentModel(&Config{
+		OpenAIBaseURL: "https://api.deepseek.com",
+		OpenAIModel:   "deepseek-chat",
+		ModelProfiles: []ModelProfileSettings{{
+			ID:          "default",
+			Provider:    string(providers.ProviderOpenAICompatible),
+			OpenAIModel: "custom-model",
+		}},
+	}, AgentKindIDE)
+	if resolved.Provider != string(providers.ProviderOpenAICompatible) ||
+		resolved.Protocol != string(providers.ProtocolOpenAIChatCompletions) {
+		t.Fatalf("routing = %q/%q", resolved.Provider, resolved.Protocol)
+	}
+	if resolved.OpenAIBaseURL != "" {
+		t.Fatalf("compatible provider inherited legacy endpoint %q", resolved.OpenAIBaseURL)
 	}
 }
 

@@ -1,4 +1,4 @@
-package openai
+package openaichatcompletions
 
 import (
 	"encoding/json"
@@ -11,6 +11,7 @@ import (
 	"github.com/openai/openai-go/v3/shared"
 
 	agent "github.com/alfredxw/denova/agent"
+	"github.com/alfredxw/denova/agent/providers"
 )
 
 func (model *ChatModel) request(input []*agent.Message, stream bool, opts ...agent.ModelOption) (sdk.ChatCompletionNewParams, []option.RequestOption, error) {
@@ -41,7 +42,7 @@ func (model *ChatModel) request(input []*agent.Message, stream bool, opts ...age
 	if model.config.Temperature != nil {
 		params.Temperature = sdk.Float(float64(*model.config.Temperature))
 	}
-	maxTokens := model.config.MaxTokens
+	maxTokens := model.config.MaxOutputTokens
 	if common.MaxTokens != nil {
 		maxTokens = common.MaxTokens
 	}
@@ -231,21 +232,52 @@ func requestToolChoice(choice *agent.ToolChoice, toolCount int) (sdk.ChatComplet
 }
 
 func (model *ChatModel) requestOptions() []option.RequestOption {
-	result := make([]option.RequestOption, 0, len(model.config.ExtraFields)+2)
-	if model.config.ReasoningEffort != "" {
-		result = append(result, option.WithJSONSet("reasoning_effort", string(model.config.ReasoningEffort)))
+	result := make([]option.RequestOption, 0, len(model.extraFields)+2)
+	if effort, ok := chatReasoningEffort(model.config); ok {
+		result = append(result, option.WithJSONSet("reasoning_effort", effort))
 	}
-	if model.config.ResponseFormat != nil {
-		result = append(result, option.WithJSONSet("response_format", model.config.ResponseFormat))
+	if format := chatResponseFormat(model.config.OutputFormat); format != nil {
+		result = append(result, option.WithJSONSet("response_format", format))
 	}
-	keys := make([]string, 0, len(model.config.ExtraFields))
-	for key := range model.config.ExtraFields {
+	keys := make([]string, 0, len(model.extraFields))
+	for key := range model.extraFields {
 		keys = append(keys, key)
 	}
 	sort.Strings(keys)
 	for _, key := range keys {
-		result = append(result, option.WithJSONSet(escapeJSONPathKey(key), model.config.ExtraFields[key]))
+		result = append(result, option.WithJSONSet(escapeJSONPathKey(key), model.extraFields[key]))
 	}
+	return result
+}
+
+func chatReasoningEffort(config providers.ModelConfig) (string, bool) {
+	level := config.ThinkingLevel
+	if level == "" || level == providers.ThinkingLevelDefault || config.Provider == providers.ProviderDeepSeek {
+		return "", false
+	}
+	if level == providers.ThinkingLevelOff {
+		return string(shared.ReasoningEffortNone), true
+	}
+	return string(level), true
+}
+
+func chatResponseFormat(format *providers.OutputFormat) any {
+	if format == nil || format.Type == "" {
+		return nil
+	}
+	result := map[string]any{"type": string(format.Type)}
+	if format.Type != providers.OutputFormatJSONSchema {
+		return result
+	}
+	jsonSchema := map[string]any{
+		"name":   format.Name,
+		"schema": format.Schema,
+		"strict": format.Strict,
+	}
+	if format.Description != "" {
+		jsonSchema["description"] = format.Description
+	}
+	result["json_schema"] = jsonSchema
 	return result
 }
 
