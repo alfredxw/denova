@@ -1559,16 +1559,16 @@ export function StoryStage({ workspace, styleSceneSuggestions = [], stories = []
                       </DropdownMenuItem>
                     </DropdownMenuContent>
                   </DropdownMenu>
-                </>
-              }
-              toolbarEnd={
-                <>
                   <ContextUsageIndicator
                     messages={tokenUsageMessages}
                     agentKind="interactive_story"
                     onOpenDetails={openContextAnalysis}
                     disabled={!storyId || streaming || branchTerminal || directorBlocking}
                   />
+                </>
+              }
+              toolbarEnd={
+                <>
                   <ModelProfileSwitcher agentKey="interactive_story" workspace={workspace} disabled={streaming || directorBlocking} />
                   <Button type="button" variant="outline" className={`nova-agent-composer-pill h-8 shrink-0 rounded-[10px] border-[var(--nova-border)] bg-[var(--nova-surface)] px-2.5 text-[11px] text-[var(--nova-text-muted)] hover:bg-[var(--nova-hover)] hover:text-[var(--nova-text)] ${hotChoicesExpanded ? 'text-[var(--nova-text)]' : ''}`} disabled={!canUseHotChoices} onMouseDown={(event) => event.preventDefault()} onClick={toggleHotChoices} aria-label={hotChoicesExpanded ? t('storyStage.hotChoices.collapse') : t('storyStage.hotChoices.get')} title={hotChoicesExpanded ? t('storyStage.hotChoices.collapse') : t('storyStage.hotChoices.get')}>
                     <Compass className="h-3.5 w-3.5" />

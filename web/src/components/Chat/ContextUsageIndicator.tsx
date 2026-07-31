@@ -22,31 +22,31 @@ export function ContextUsageIndicator({ messages, agentKind, onOpenDetails, disa
 }) {
   const { t } = useTranslation()
   const usage = useMemo(() => latestContextUsage(messages, agentKind), [agentKind, messages])
-  if (!usage) return null
-
-  const percent = Math.round(usage.ratio * 100)
-  const level = contextUsageLevel(percent / 100)
-  const detail = t(onOpenDetails ? 'chat.contextUsage.detailAction' : 'chat.contextUsage.detail', {
-    level: t(`chat.contextUsage.level.${level}`),
-    used: formatLocaleNumber(usage.promptTokens),
-    limit: formatLocaleNumber(usage.contextWindowTokens),
-    percent,
-  })
+  const percent = usage ? Math.round(usage.ratio * 100) : null
+  const level = usage ? contextUsageLevel((percent || 0) / 100) : null
+  const detail = usage
+    ? t(onOpenDetails ? 'chat.contextUsage.detailAction' : 'chat.contextUsage.detail', {
+      level: t(`chat.contextUsage.level.${level}`),
+      used: formatLocaleNumber(usage.promptTokens),
+      limit: formatLocaleNumber(usage.contextWindowTokens),
+      percent,
+    })
+    : t(onOpenDetails ? 'chat.contextUsage.unavailableAction' : 'chat.contextUsage.unavailable')
   const className = cn(
     'inline-flex h-8 shrink-0 items-center gap-1 rounded-md px-1.5 text-[11px] tabular-nums transition-colors',
-    level === 'normal' && 'text-[var(--nova-text-faint)]',
+    (!level || level === 'normal') && 'text-[var(--nova-text-faint)]',
     level === 'warning' && 'bg-[var(--nova-warning-bg)] text-[var(--nova-warning)]',
     level === 'critical' && 'bg-[var(--nova-danger-bg)] text-[var(--nova-danger)]',
   )
   const content = (
     <>
       <Gauge aria-hidden="true" className="h-3.5 w-3.5" />
-      <span>{percent}%</span>
+      <span>{percent === null ? '—%' : `${percent}%`}</span>
     </>
   )
 
   if (!onOpenDetails) {
-    return <span role="status" className={className} aria-label={detail} title={detail}>{content}</span>
+    return <span role="status" className={className} aria-label={detail} title={detail} data-context-usage-indicator="true">{content}</span>
   }
   return (
     <button

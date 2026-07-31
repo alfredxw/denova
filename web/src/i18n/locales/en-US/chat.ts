@@ -267,6 +267,8 @@ const chat = {
   'chat.contextAnalysis.streamingUnavailable': 'Context analysis is unavailable while the AI is responding.',
   'chat.contextUsage.detail': '{{level}}: the Agent\'s last model call used {{used}} / {{limit}} input tokens ({{percent}}%).',
   'chat.contextUsage.detailAction': '{{level}}: the Agent\'s last model call used {{used}} / {{limit}} input tokens ({{percent}}%). Open the current context analysis.',
+  'chat.contextUsage.unavailable': 'No context usage yet. Complete a model call to show it.',
+  'chat.contextUsage.unavailableAction': 'No context usage yet. Complete a model call to show it. Open the current context analysis.',
   'chat.contextUsage.level.normal': 'Context usage is normal',
   'chat.contextUsage.level.warning': 'Context usage is high',
   'chat.contextUsage.level.critical': 'Context is near its limit',

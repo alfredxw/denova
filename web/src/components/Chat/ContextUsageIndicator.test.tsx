@@ -4,6 +4,26 @@ import { describe, expect, it, vi } from 'vitest'
 import { ContextUsageIndicator, latestContextUsage } from './ContextUsageIndicator'
 
 describe('ContextUsageIndicator', () => {
+  it('keeps a stable placeholder before usage is available', async () => {
+    const user = userEvent.setup()
+    const onOpenDetails = vi.fn()
+    render(<ContextUsageIndicator messages={[]} onOpenDetails={onOpenDetails} />)
+
+    const indicator = screen.getByRole('button', { name: /暂无上下文用量/ })
+    expect(indicator).toHaveTextContent('—%')
+
+    await user.click(indicator)
+    expect(onOpenDetails).toHaveBeenCalledTimes(1)
+  })
+
+  it('renders unavailable usage as a read-only status without a details action', () => {
+    render(<ContextUsageIndicator messages={[]} />)
+
+    const indicator = screen.getByRole('status', { name: /暂无上下文用量/ })
+    expect(indicator).toHaveTextContent('—%')
+    expect(indicator).toHaveAttribute('data-context-usage-indicator', 'true')
+  })
+
   it('uses the paired root context prompt instead of the aggregated prompt total', () => {
     expect(latestContextUsage([{
       role: 'token_usage',

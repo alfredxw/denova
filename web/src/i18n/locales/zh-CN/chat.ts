@@ -267,6 +267,8 @@ const chat = {
   'chat.contextAnalysis.streamingUnavailable': 'AI 正在回复时不能分析上下文。',
   'chat.contextUsage.detail': '{{level}}：该 Agent 上次模型调用输入 {{used}} / {{limit}} Token（{{percent}}%）。',
   'chat.contextUsage.detailAction': '{{level}}：该 Agent 上次模型调用输入 {{used}} / {{limit}} Token（{{percent}}%）。点击查看当前上下文分析。',
+  'chat.contextUsage.unavailable': '暂无上下文用量；完成一次模型调用后显示。',
+  'chat.contextUsage.unavailableAction': '暂无上下文用量；完成一次模型调用后显示。点击查看当前上下文分析。',
   'chat.contextUsage.level.normal': '上下文用量正常',
   'chat.contextUsage.level.warning': '上下文用量较高',
   'chat.contextUsage.level.critical': '上下文接近上限',

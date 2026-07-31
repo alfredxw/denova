@@ -123,7 +123,7 @@ describe('InputArea command menu', () => {
   it('shows the last call context usage and opens the current analysis', async () => {
     const user = userEvent.setup()
     const handleContextAnalyze = vi.fn()
-    render(
+    const { container } = render(
       <InputArea
         onSend={vi.fn()}
         disabled={false}
@@ -140,8 +140,29 @@ describe('InputArea command menu', () => {
       />,
     )
 
-    await user.click(screen.getByRole('button', { name: /25%/ }))
+    const indicator = screen.getByRole('button', { name: /25%/ })
+    const actions = screen.getByRole('button', { name: '输入动作' })
+    expect(container.querySelector('[data-slot="agent-composer-start"]')).toContainElement(indicator)
+    expect(container.querySelector('[data-slot="agent-composer-end"]')).not.toContainElement(indicator)
+    expect(actions.compareDocumentPosition(indicator) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
+
+    await user.click(indicator)
     expect(handleContextAnalyze).toHaveBeenCalledWith('')
+  })
+
+  it('keeps context usage visible in the left toolbar before the first model call', () => {
+    const { container } = render(
+      <InputArea
+        onSend={vi.fn()}
+        disabled={false}
+        agentKey="ide"
+        onContextAnalyze={vi.fn()}
+      />,
+    )
+
+    const indicator = screen.getByRole('button', { name: /暂无上下文用量/ })
+    expect(indicator).toHaveTextContent('—%')
+    expect(container.querySelector('[data-slot="agent-composer-start"]')).toContainElement(indicator)
   })
 
   it('shows selected inline comments and allows sending them without extra text', async () => {

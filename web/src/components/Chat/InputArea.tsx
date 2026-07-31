@@ -659,6 +659,12 @@ export function InputArea({
                 </DropdownMenuItem>
               </DropdownMenuContent>
             </DropdownMenu>
+            <ContextUsageIndicator
+              messages={tokenUsageMessages}
+              agentKind={agentKey}
+              onOpenDetails={onContextAnalyze ? handleContextAnalyze : undefined}
+              disabled={disabled}
+            />
             {planMode ? (
               <span
                 className="inline-flex h-8 shrink-0 items-center gap-1.5 border-l border-[var(--nova-border-soft)] pl-2 text-sm text-[var(--nova-text-muted)]"
@@ -672,17 +678,7 @@ export function InputArea({
             <TokenUsageDialog open={tokenUsageOpen} messages={tokenUsageMessages} onOpenChange={setTokenUsageOpen} onOpenTrace={onOpenTrace} />
           </>
         }
-        toolbarEnd={(
-          <>
-            <ContextUsageIndicator
-              messages={tokenUsageMessages}
-              agentKind={agentKey}
-              onOpenDetails={onContextAnalyze ? handleContextAnalyze : undefined}
-              disabled={disabled}
-            />
-            <ModelProfileSwitcher agentKey={agentKey} workspace={workspace} disabled={disabled} />
-          </>
-        )}
+        toolbarEnd={<ModelProfileSwitcher agentKey={agentKey} workspace={workspace} disabled={disabled} />}
         submitControl={
           <Button
             type="button"

@@ -13,6 +13,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Fixed
 
+- 写作与游戏 Agent 的上下文用量现在固定显示在输入框左下操作区；旧会话或首次模型调用前会显示 `—%` 占位并保留上下文分析入口，不再因缺少新版用量快照而整项消失。
+- Writing and Game Agent context usage now stays in the composer's lower-left action area. Older sessions and composers before their first model call show a `—%` placeholder with the context-analysis entry instead of hiding the indicator when no new usage snapshot exists.
 - 配置型 reviewer 等 SubAgent 在父 Agent 已写入会话状态后，会继续把继承的 JSON 与文件名格式按字面量传给模型，不再因 FString 误解析花括号而导致委派失败。
 - Configured SubAgents such as reviewer now pass inherited JSON and filename formats to the model literally after the parent writes session state, preventing delegation failures caused by accidental FString parsing of braces.
 - 修改以模型名作为 ID 的语言或图像模型配置后，默认图像模型与各 Agent、SubAgent 的模型引用会同步迁移到新 ID，运行时也会立即刷新默认图像模型，不再继续使用缓存中的旧名称或报“模型配置不存在”。
