@@ -237,6 +237,8 @@ func TestSessionAPIReturnsTokenUsageFields(t *testing.T) {
 		Content:              "cache_hit_rate=50.0%",
 		RunID:                "run-usage-1",
 		AgentKind:            config.AgentKindIDE,
+		ContextWindowTokens:  400000,
+		ContextPromptTokens:  2000,
 		PromptTokens:         2000,
 		CachedPromptTokens:   1000,
 		UncachedPromptTokens: 1000,
@@ -274,7 +276,7 @@ func TestSessionAPIReturnsTokenUsageFields(t *testing.T) {
 		testMetadataString(got, "agent_kind") != config.AgentKindIDE || testDataInt(data, "model_calls") != 1 {
 		t.Fatalf("token usage metadata missing from API response: %#v", got)
 	}
-	if testDataInt(data, "prompt_tokens") != 2000 || testDataInt(data, "cached_prompt_tokens") != 1000 ||
+	if testDataInt(data, "context_window_tokens") != 400000 || testDataInt(data, "context_prompt_tokens") != 2000 || testDataInt(data, "prompt_tokens") != 2000 || testDataInt(data, "cached_prompt_tokens") != 1000 ||
 		testDataInt(data, "uncached_prompt_tokens") != 1000 || testDataInt(data, "total_tokens") != 2300 {
 		t.Fatalf("token usage counts missing from API response: %#v", got)
 	}

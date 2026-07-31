@@ -120,6 +120,30 @@ describe('InputArea command menu', () => {
     expect(screen.queryByLabelText('Plan Mode 已开启')).not.toBeInTheDocument()
   })
 
+  it('shows the last call context usage and opens the current analysis', async () => {
+    const user = userEvent.setup()
+    const handleContextAnalyze = vi.fn()
+    render(
+      <InputArea
+        onSend={vi.fn()}
+        disabled={false}
+        agentKey="ide"
+        onContextAnalyze={handleContextAnalyze}
+        tokenUsageMessages={[{
+          role: 'token_usage',
+          agent_kind: 'ide',
+          context_window_tokens: 400000,
+          context_prompt_tokens: 100000,
+          model_calls: 1,
+          usage_calls: [{ prompt_tokens: 100000 }],
+        }]}
+      />,
+    )
+
+    await user.click(screen.getByRole('button', { name: /25%/ }))
+    expect(handleContextAnalyze).toHaveBeenCalledWith('')
+  })
+
   it('shows selected inline comments and allows sending them without extra text', async () => {
     const user = userEvent.setup()
     const handleSend = vi.fn()

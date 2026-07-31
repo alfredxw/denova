@@ -237,6 +237,12 @@ func addMetadataPayload(target map[string]any, entry session.HistoryEntry) {
 }
 
 func addUsagePayload(target map[string]any, entry session.HistoryEntry) {
+	if entry.ContextWindowTokens > 0 {
+		target["context_window_tokens"] = entry.ContextWindowTokens
+	}
+	if entry.ContextPromptTokens > 0 {
+		target["context_prompt_tokens"] = entry.ContextPromptTokens
+	}
 	if entry.PromptTokens > 0 {
 		target["prompt_tokens"] = entry.PromptTokens
 	}

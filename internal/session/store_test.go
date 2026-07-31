@@ -560,6 +560,8 @@ func TestTokenUsageDisplayEventPersistsOutsideEffectiveContext(t *testing.T) {
 		Content:              "cache_hit_rate=50.0%",
 		RunID:                "run-1",
 		AgentKind:            "ide",
+		ContextWindowTokens:  400000,
+		ContextPromptTokens:  1200,
 		PromptTokens:         2000,
 		CachedPromptTokens:   1000,
 		UncachedPromptTokens: 1000,
@@ -603,7 +605,7 @@ func TestTokenUsageDisplayEventPersistsOutsideEffectiveContext(t *testing.T) {
 	if usage.UncachedPromptTokens != 1000 {
 		t.Fatalf("uncached prompt tokens were not restored: %#v", usage)
 	}
-	if usage.CacheHitRate != 0.5 || usage.TotalTokens != 2300 || usage.ModelCalls != 2 || usage.GeneratedBytes != 128 {
+	if usage.ContextWindowTokens != 400000 || usage.ContextPromptTokens != 1200 || usage.CacheHitRate != 0.5 || usage.TotalTokens != 2300 || usage.ModelCalls != 2 || usage.GeneratedBytes != 128 {
 		t.Fatalf("usage metrics were not restored: %#v", usage)
 	}
 	if len(usage.UsageCalls) != 2 || usage.UsageCalls[1].PromptTokens != 1200 || usage.UsageCalls[1].CachedPromptTokens != 600 {

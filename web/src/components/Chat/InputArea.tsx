@@ -8,6 +8,7 @@ import type { TextSelection } from '@/lib/api'
 import type { VisibleAgentKey } from '@/features/agents/agent-registry'
 import { Button } from '@/components/ui/button'
 import { AgentComposerShell } from './AgentComposerShell'
+import { ContextUsageIndicator } from './ContextUsageIndicator'
 import { ModelProfileSwitcher } from './ModelProfileSwitcher'
 import { ComposerTokenInput, type ComposerTokenInputHandle, type ComposerTokenSpec, type ComposerTrigger } from './composer-token-input'
 import {
@@ -671,7 +672,17 @@ export function InputArea({
             <TokenUsageDialog open={tokenUsageOpen} messages={tokenUsageMessages} onOpenChange={setTokenUsageOpen} onOpenTrace={onOpenTrace} />
           </>
         }
-        toolbarEnd={<ModelProfileSwitcher agentKey={agentKey} workspace={workspace} disabled={disabled} />}
+        toolbarEnd={(
+          <>
+            <ContextUsageIndicator
+              messages={tokenUsageMessages}
+              agentKind={agentKey}
+              onOpenDetails={onContextAnalyze ? handleContextAnalyze : undefined}
+              disabled={disabled}
+            />
+            <ModelProfileSwitcher agentKey={agentKey} workspace={workspace} disabled={disabled} />
+          </>
+        )}
         submitControl={
           <Button
             type="button"

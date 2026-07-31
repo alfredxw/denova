@@ -6,6 +6,11 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### Added
+
+- 写作与游戏 Agent 输入区现在会显示该 Agent 上次模型调用的上下文使用率，并可直接打开当前上下文分析；使用率按该调用的真实输入 Token 与同次运行的模型上下文上限计算，不会混用整轮累计量或 SubAgent 用量。
+- Writing and Game Agent composers now show that Agent's previous model call context usage and open the current context analysis directly. The ratio pairs the root call's real input tokens with the same run's model context window instead of mixing in aggregate or SubAgent usage.
+
 ### Fixed
 
 - 资料库生图的用户补充要求现在只在图像方案约束下经过语言模型提炼后进入最终 Prompt，不再以原文重复追加并覆盖所选风格；超长名称、标签或关键词会按总输入预算安全压缩，不再直接中断单张或批量生成。

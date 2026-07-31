@@ -425,6 +425,8 @@ export interface TokenUsageEvent {
   total_tokens?: number
   model_calls?: number
   generated_bytes?: number
+  context_window_tokens?: number
+  context_prompt_tokens?: number
   usage_calls?: TokenUsageCall[]
 }
 

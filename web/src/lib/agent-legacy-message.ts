@@ -181,6 +181,7 @@ function payloadFromChatMessage(message: ChatMessage): Record<string, unknown> {
     total_tokens: message.total_tokens,
     model_calls: message.model_calls,
     generated_bytes: message.generated_bytes,
+    context_prompt_tokens: message.context_prompt_tokens,
     usage_calls: message.usage_calls,
     thinking_preview: message.thinking_preview,
     plan_action: message.plan_action,

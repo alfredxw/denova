@@ -298,6 +298,8 @@ type TokenUsageEvent struct {
 	CreatedAt            string           `json:"created_at"`
 	RunID                string           `json:"run_id,omitempty"`
 	AgentKind            string           `json:"agent_kind,omitempty"`
+	ContextWindowTokens  int              `json:"context_window_tokens,omitempty"`
+	ContextPromptTokens  int              `json:"context_prompt_tokens,omitempty"`
 	PromptTokens         int              `json:"prompt_tokens,omitempty"`
 	CachedPromptTokens   int              `json:"cached_prompt_tokens,omitempty"`
 	UncachedPromptTokens int              `json:"uncached_prompt_tokens,omitempty"`

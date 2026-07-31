@@ -369,6 +369,8 @@ func TestAppendTokenUsageEventPersistsSeparatelyFromStory(t *testing.T) {
 		CreatedAt:            "2026-06-22T10:00:00Z",
 		RunID:                "run-1",
 		AgentKind:            "interactive_story",
+		ContextWindowTokens:  400000,
+		ContextPromptTokens:  1200,
 		PromptTokens:         1200,
 		CachedPromptTokens:   300,
 		UncachedPromptTokens: 900,
@@ -414,7 +416,7 @@ func TestAppendTokenUsageEventPersistsSeparatelyFromStory(t *testing.T) {
 	if usage.UncachedPromptTokens != 900 {
 		t.Fatalf("usage uncached prompt tokens were not preserved: %#v", usage)
 	}
-	if usage.CacheHitRate != 0.25 || usage.TotalTokens != 1440 || usage.ModelCalls != 1 || usage.GeneratedBytes != 88 {
+	if usage.ContextWindowTokens != 400000 || usage.ContextPromptTokens != 1200 || usage.CacheHitRate != 0.25 || usage.TotalTokens != 1440 || usage.ModelCalls != 1 || usage.GeneratedBytes != 88 {
 		t.Fatalf("usage metrics were not preserved: %#v", usage)
 	}
 	if len(usage.UsageCalls) != 1 || usage.UsageCalls[0].RequestedTools[0] != "search_workspace" || usage.UsageCalls[0].AfterTools[0] != "read_workspace_file" {

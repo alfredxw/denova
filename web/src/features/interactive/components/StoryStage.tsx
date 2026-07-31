@@ -11,6 +11,7 @@ import { FileReferencePicker } from '@/components/Chat/FileReferencePicker'
 import { CONTEXT_ANALYSIS_SIMULATED_MESSAGE, ContextAnalysisDialog } from '@/components/Chat/ContextAnalysisDialog'
 import { MessageList, type TurnScrollRequest } from '@/components/Chat/MessageList'
 import { AgentComposerShell } from '@/components/Chat/AgentComposerShell'
+import { ContextUsageIndicator } from '@/components/Chat/ContextUsageIndicator'
 import { ModelProfileSwitcher } from '@/components/Chat/ModelProfileSwitcher'
 import { TokenUsageDialog } from '@/components/Chat/TokenUsagePanel'
 import { AgentTracePanel } from '@/components/Chat/AgentTracePanel'
@@ -1562,6 +1563,12 @@ export function StoryStage({ workspace, styleSceneSuggestions = [], stories = []
               }
               toolbarEnd={
                 <>
+                  <ContextUsageIndicator
+                    messages={tokenUsageMessages}
+                    agentKind="interactive_story"
+                    onOpenDetails={openContextAnalysis}
+                    disabled={!storyId || streaming || branchTerminal || directorBlocking}
+                  />
                   <ModelProfileSwitcher agentKey="interactive_story" workspace={workspace} disabled={streaming || directorBlocking} />
                   <Button type="button" variant="outline" className={`nova-agent-composer-pill h-8 shrink-0 rounded-[10px] border-[var(--nova-border)] bg-[var(--nova-surface)] px-2.5 text-[11px] text-[var(--nova-text-muted)] hover:bg-[var(--nova-hover)] hover:text-[var(--nova-text)] ${hotChoicesExpanded ? 'text-[var(--nova-text)]' : ''}`} disabled={!canUseHotChoices} onMouseDown={(event) => event.preventDefault()} onClick={toggleHotChoices} aria-label={hotChoicesExpanded ? t('storyStage.hotChoices.collapse') : t('storyStage.hotChoices.get')} title={hotChoicesExpanded ? t('storyStage.hotChoices.collapse') : t('storyStage.hotChoices.get')}>
                     <Compass className="h-3.5 w-3.5" />
@@ -2173,6 +2180,8 @@ function buildTokenUsageMessage(data: Record<string, unknown> | TokenUsageEvent,
     total_tokens: readNumber(data.total_tokens),
     model_calls: readNumber(data.model_calls),
     generated_bytes: readNumber(data.generated_bytes),
+    context_window_tokens: readNumber(data.context_window_tokens),
+    context_prompt_tokens: readNumber(data.context_prompt_tokens),
     usage_calls: readUsageCalls(data.usage_calls),
     created_at: readString(data.created_at) || new Date().toISOString(),
   }

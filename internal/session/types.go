@@ -46,6 +46,8 @@ type HistoryEntry struct {
 	SubAgent             bool                   `json:"subagent,omitempty"`
 	SubAgentSessionID    string                 `json:"subagent_session_id,omitempty"`
 	SubAgentType         string                 `json:"subagent_type,omitempty"`
+	ContextWindowTokens  int                    `json:"context_window_tokens,omitempty"`
+	ContextPromptTokens  int                    `json:"context_prompt_tokens,omitempty"`
 	PromptTokens         int                    `json:"prompt_tokens,omitempty"`
 	CachedPromptTokens   int                    `json:"cached_prompt_tokens,omitempty"`
 	UncachedPromptTokens int                    `json:"uncached_prompt_tokens,omitempty"`
@@ -126,6 +128,8 @@ type DisplayEvent struct {
 	SubAgent             bool             `json:"subagent,omitempty"`
 	SubAgentSessionID    string           `json:"subagent_session_id,omitempty"`
 	SubAgentType         string           `json:"subagent_type,omitempty"`
+	ContextWindowTokens  int              `json:"context_window_tokens,omitempty"`
+	ContextPromptTokens  int              `json:"context_prompt_tokens,omitempty"`
 	PromptTokens         int              `json:"prompt_tokens,omitempty"`
 	CachedPromptTokens   int              `json:"cached_prompt_tokens,omitempty"`
 	UncachedPromptTokens int              `json:"uncached_prompt_tokens,omitempty"`

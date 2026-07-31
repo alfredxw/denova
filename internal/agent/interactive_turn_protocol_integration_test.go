@@ -127,7 +127,10 @@ func TestInteractiveTurnProtocolAccountsRejectedModelCallUsage(t *testing.T) {
 		t.Fatal(err)
 	}
 	runner := adk.NewRunner(ctx, adk.RunnerConfig{Agent: agent, EnableStreaming: true})
-	conversation := &interactiveProtocolConversation{ready: &ready}
+	conversation := &contextWindowInteractiveProtocolConversation{
+		interactiveProtocolConversation: &interactiveProtocolConversation{ready: &ready},
+		contextWindowTokens:             400_000,
+	}
 	var usage map[string]any
 	var events []Event
 	NewRuntime(DefaultLoopPolicy()).Run(ctx, runner, conversation, nil, ChatRequest{Message: "推开石门"}, RunOptions{
@@ -144,7 +147,7 @@ func TestInteractiveTurnProtocolAccountsRejectedModelCallUsage(t *testing.T) {
 	if conversation.assistant != "门后传来锁链拖地的声音。" {
 		t.Fatalf("final narrative = %q ready=%t calls=%d tools=%#v inputs=%#v usage=%#v", conversation.assistant, ready.Load(), calls, toolCounts, inputs, usage)
 	}
-	if calls != 2 || usage == nil || usage["model_calls"] != 2 || usage["total_tokens"] != 330 {
+	if calls != 2 || usage == nil || usage["model_calls"] != 2 || usage["total_tokens"] != 330 || usage["context_window_tokens"] != 400_000 || usage["context_prompt_tokens"] != 200 {
 		t.Fatalf("usage must include only the candidate and submit model responses: calls=%d usage=%#v", calls, usage)
 	}
 	chunkIndex := eventTypeIndex(events, "chunk")
@@ -354,6 +357,15 @@ func countEventType(events []Event, eventType string) int {
 type interactiveProtocolConversation struct {
 	ready     *atomic.Bool
 	assistant string
+}
+
+type contextWindowInteractiveProtocolConversation struct {
+	*interactiveProtocolConversation
+	contextWindowTokens int
+}
+
+func (c *contextWindowInteractiveProtocolConversation) CompactContextIfNeeded(_ context.Context, input ContextCompactionInput) ([]*schema.Message, ContextCompactionResult, error) {
+	return input.Messages, ContextCompactionResult{ContextWindowTokens: c.contextWindowTokens}, nil
 }
 
 func (c *interactiveProtocolConversation) PrepareMessages(_, agentMessage string) ([]*schema.Message, error) {

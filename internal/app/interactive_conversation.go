@@ -454,7 +454,11 @@ func (c *interactiveConversation) CompactContextIfNeeded(ctx context.Context, in
 		return input.Messages, agent.ContextCompactionResult{}, err
 	}
 	if !input.Force && storyCtx.Snapshot.ContextCompactionRemoval != nil && storyCtx.Snapshot.ContextCompactionRemoval.SourceTurnCount >= len(storyCtx.Snapshot.Turns) {
-		return input.Messages, agent.ContextCompactionResult{SkippedReason: "removed_same_source"}, nil
+		model := config.ResolveAgentModel(c.cfg, config.AgentKindInteractiveStory)
+		return input.Messages, agent.ContextCompactionResult{
+			ContextWindowTokens: model.ContextWindowTokens,
+			SkippedReason:       "removed_same_source",
+		}, nil
 	}
 	source, existingCheckpoint := interactiveCompactionSource(storyCtx.Snapshot.Turns, storyCtx.Snapshot.ContextCompaction)
 	source = agent.ApplyToolResultContextPolicyForConversation(source, c.ToolResultContextPolicy())
@@ -848,6 +852,8 @@ func (c *interactiveConversation) appendTokenUsageEvent(event session.DisplayEve
 		CreatedAt:            createdAt,
 		RunID:                strings.TrimSpace(event.RunID),
 		AgentKind:            strings.TrimSpace(event.AgentKind),
+		ContextWindowTokens:  event.ContextWindowTokens,
+		ContextPromptTokens:  event.ContextPromptTokens,
 		PromptTokens:         event.PromptTokens,
 		CachedPromptTokens:   event.CachedPromptTokens,
 		UncachedPromptTokens: event.UncachedPromptTokens,

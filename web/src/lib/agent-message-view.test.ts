@@ -96,12 +96,12 @@ describe('agent-message-view', () => {
         id: 'assistant-1',
         role: 'assistant',
         metadata: { run_id: 'run-1', agent_kind: 'chat' },
-        parts: [{ type: 'data-agent-token-usage', id: 'usage-1', data: { model_calls: 2, total_tokens: 88 } }],
+        parts: [{ type: 'data-agent-token-usage', id: 'usage-1', data: { model_calls: 2, total_tokens: 88, context_window_tokens: 400000, context_prompt_tokens: 1200 } }],
       },
     ] as AgentUIMessage[])
 
     expect(records).toEqual([
-      expect.objectContaining({ id: 'usage-1', role: 'token_usage', run_id: 'run-1', agent_kind: 'chat', model_calls: 2, total_tokens: 88 }),
+      expect.objectContaining({ id: 'usage-1', role: 'token_usage', run_id: 'run-1', agent_kind: 'chat', model_calls: 2, total_tokens: 88, context_window_tokens: 400000, context_prompt_tokens: 1200 }),
     ])
   })
 

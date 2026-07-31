@@ -56,6 +56,7 @@ export interface ChatMessage {
   total_tokens?: number
   model_calls?: number
   generated_bytes?: number
+  context_prompt_tokens?: number
   usage_calls?: TokenUsageCall[]
   streaming?: boolean
   thinking_preview?: string

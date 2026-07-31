@@ -202,6 +202,8 @@ func (s *Session) History() []HistoryEntry {
 				SubAgent:             record.display.SubAgent,
 				SubAgentSessionID:    record.display.SubAgentSessionID,
 				SubAgentType:         record.display.SubAgentType,
+				ContextWindowTokens:  record.display.ContextWindowTokens,
+				ContextPromptTokens:  record.display.ContextPromptTokens,
 				PromptTokens:         record.display.PromptTokens,
 				CachedPromptTokens:   record.display.CachedPromptTokens,
 				UncachedPromptTokens: record.display.UncachedPromptTokens,
