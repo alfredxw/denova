@@ -521,6 +521,225 @@ func TestPrepareUserSettingsForWritePreservesRemoteAccessPasswordHash(t *testing
 	}
 }
 
+func TestPrepareUserSettingsForWriteMigratesModelDerivedProfileReferences(t *testing.T) {
+	existing := Settings{
+		ModelProfiles: []ModelProfileSettings{{
+			ID:          "old-model",
+			OpenAIModel: "old-model",
+		}},
+		AgentModels: AgentModelSettings{
+			Default: AgentModelOverride{ProfileID: "old-model"},
+			IDE:     AgentModelOverride{ProfileID: "old-model"},
+		},
+		SubAgents: []SubAgentConfig{{
+			ID:    "reviewer",
+			Model: AgentModelOverride{ProfileID: "old-model"},
+		}},
+	}
+	incoming := Settings{
+		ModelProfiles: []ModelProfileSettings{
+			{ID: "default", OpenAIModel: "inherited-default"},
+			{ID: "new-model", OpenAIModel: "new-model"},
+		},
+		ModelProfileAliases: map[string]string{"old-model": "new-model"},
+		AgentModels:         existing.AgentModels,
+		SubAgents:           existing.SubAgents,
+	}
+
+	prepared, err := PrepareUserSettingsForWrite(existing, incoming)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if prepared.AgentModels.Default.ProfileID != "new-model" || prepared.AgentModels.IDE.ProfileID != "new-model" {
+		t.Fatalf("renamed language model references were not migrated: %#v", prepared.AgentModels)
+	}
+	if got := prepared.SubAgents[0].Model.ProfileID; got != "new-model" {
+		t.Fatalf("renamed SubAgent model reference = %q, want new-model", got)
+	}
+	if got := prepared.ModelProfileAliases["old-model"]; got != "new-model" {
+		t.Fatalf("persisted model profile alias = %q, want new-model", got)
+	}
+}
+
+func TestPrepareUserSettingsForWriteMigratesDefaultImageProfileReference(t *testing.T) {
+	existing := Settings{
+		DefaultImageAPIProfileID: "old-image-model",
+		ImageAPIProfiles: []ImageAPIProfileSettings{{
+			ID:          "old-image-model",
+			OpenAIModel: "old-image-model",
+		}},
+	}
+	incoming := Settings{
+		DefaultImageAPIProfileID: existing.DefaultImageAPIProfileID,
+		ImageAPIProfiles: []ImageAPIProfileSettings{{
+			ID:          "new-image-model",
+			OpenAIModel: "new-image-model",
+		}},
+		ImageAPIProfileAliases: map[string]string{"old-image-model": "new-image-model"},
+	}
+
+	prepared, err := PrepareUserSettingsForWrite(existing, incoming)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if prepared.DefaultImageAPIProfileID != "new-image-model" {
+		t.Fatalf("default image profile = %q, want renamed profile", prepared.DefaultImageAPIProfileID)
+	}
+}
+
+func TestPrepareUserSettingsForWriteDoesNotInferDeleteAndAddAsRename(t *testing.T) {
+	existing := Settings{
+		ModelProfiles: []ModelProfileSettings{
+			{ID: "model-a", OpenAIModel: "model-a"},
+			{ID: "model-b", OpenAIModel: "model-b"},
+		},
+	}
+	incoming := Settings{
+		ModelProfiles: []ModelProfileSettings{
+			{ID: "model-b", OpenAIModel: "model-b"},
+			{ID: "model-c", OpenAIModel: "model-c"},
+		},
+		AgentModels: AgentModelSettings{IDE: AgentModelOverride{ProfileID: "model-a"}},
+	}
+
+	prepared, err := PrepareUserSettingsForWrite(existing, incoming)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := prepared.AgentModels.IDE.ProfileID; got != "model-a" {
+		t.Fatalf("delete-and-add changed model reference to %q", got)
+	}
+}
+
+func TestApplyModelProfileAliasesResolvesWorkspaceSubAgentReference(t *testing.T) {
+	settings := applyModelProfileAliases(Settings{
+		ModelProfiles: []ModelProfileSettings{
+			{ID: "old-model", OpenAIModel: "old-model"},
+			{ID: "new-model", OpenAIModel: "new-model"},
+		},
+		ModelProfileAliases: map[string]string{"old-model": "new-model"},
+		SubAgents: []SubAgentConfig{{
+			ID:    "reviewer",
+			Model: AgentModelOverride{ProfileID: "old-model"},
+		}},
+	})
+	if got := settings.SubAgents[0].Model.ProfileID; got != "new-model" {
+		t.Fatalf("workspace SubAgent alias resolved to %q, want new-model", got)
+	}
+	if len(settings.ModelProfiles) != 1 || modelProfileID(settings.ModelProfiles[0]) != "new-model" {
+		t.Fatalf("aliased source profile should be hidden from effective settings: %#v", settings.ModelProfiles)
+	}
+}
+
+func TestApplyModelProfileAliasesResolvesChainsToFinalProfile(t *testing.T) {
+	settings := applyModelProfileAliases(Settings{
+		ModelProfiles: []ModelProfileSettings{
+			{ID: "model-a", OpenAIModel: "model-a"},
+			{ID: "model-b", OpenAIModel: "model-b"},
+			{ID: "model-c", OpenAIModel: "model-c"},
+		},
+		ModelProfileAliases: map[string]string{
+			"model-a": "model-b",
+			"model-b": "model-c",
+		},
+		AgentModels: AgentModelSettings{IDE: AgentModelOverride{ProfileID: "model-a"}},
+	})
+	if got := settings.AgentModels.IDE.ProfileID; got != "model-c" {
+		t.Fatalf("chained alias resolved to %q, want model-c", got)
+	}
+	if len(settings.ModelProfiles) != 1 || modelProfileID(settings.ModelProfiles[0]) != "model-c" {
+		t.Fatalf("chained aliases did not canonicalize profiles: %#v", settings.ModelProfiles)
+	}
+}
+
+func TestLoadLayeredAppliesUserProfileAliasToWorkspaceSubAgent(t *testing.T) {
+	novaDir := t.TempDir()
+	workspace := t.TempDir()
+	if err := WriteSettingsFile(UserConfigPath(novaDir), Settings{
+		ModelProfiles:       []ModelProfileSettings{{ID: "new-model", OpenAIModel: "new-model"}},
+		ModelProfileAliases: map[string]string{"old-model": "new-model"},
+		ImageAPIProfiles: []ImageAPIProfileSettings{{
+			ID:          "new-image-model",
+			OpenAIModel: "new-image-model",
+		}},
+		ImageAPIProfileAliases:   map[string]string{"old-image-model": "new-image-model"},
+		DefaultImageAPIProfileID: "old-image-model",
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if err := WriteSettingsFile(WorkspaceConfigPath(workspace), Settings{
+		SubAgents: []SubAgentConfig{{
+			ID:           "reviewer",
+			Description:  "Reviews drafts.",
+			SystemPrompt: "Return findings.",
+			Model:        AgentModelOverride{ProfileID: "old-model"},
+		}},
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	layered, err := LoadLayeredWithGlobal(novaDir, workspace, Settings{
+		ModelProfiles: []ModelProfileSettings{{
+			ID:           "old-model",
+			OpenAIModel:  "old-model",
+			OpenAIAPIKey: "language-secret",
+		}},
+		ImageAPIProfiles: []ImageAPIProfileSettings{{
+			ID:           "old-image-model",
+			OpenAIModel:  "old-image-model",
+			OpenAIAPIKey: "image-secret",
+		}},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := layered.Effective.SubAgents[0].Model.ProfileID; got != "new-model" {
+		t.Fatalf("effective workspace SubAgent profile = %q, want new-model", got)
+	}
+	if len(layered.Effective.ModelProfiles) != 1 {
+		t.Fatalf("effective model profiles = %#v", layered.Effective.ModelProfiles)
+	}
+	for _, profile := range layered.Effective.ModelProfiles {
+		if modelProfileID(profile) == "old-model" {
+			t.Fatalf("aliased global profile remained effective: %#v", layered.Effective.ModelProfiles)
+		}
+		if modelProfileID(profile) == "new-model" && profile.OpenAIAPIKey != "language-secret" {
+			t.Fatalf("renamed language profile lost inherited secret: %#v", profile)
+		}
+	}
+	if got := layered.Effective.DefaultImageAPIProfileID; got != "new-image-model" {
+		t.Fatalf("effective default image profile = %q, want new-image-model", got)
+	}
+	if len(layered.Effective.ImageAPIProfiles) != 1 || layered.Effective.ImageAPIProfiles[0].OpenAIAPIKey != "image-secret" {
+		t.Fatalf("renamed image profile lost inherited secret: %#v", layered.Effective.ImageAPIProfiles)
+	}
+}
+
+func TestPrepareUserSettingsForWriteKeepsExplicitStableProfileID(t *testing.T) {
+	existing := Settings{
+		ModelProfiles: []ModelProfileSettings{{
+			ID:          "writer",
+			OpenAIModel: "old-model",
+		}},
+		AgentModels: AgentModelSettings{IDE: AgentModelOverride{ProfileID: "writer"}},
+	}
+	incoming := Settings{
+		ModelProfiles: []ModelProfileSettings{{
+			ID:          "writer",
+			OpenAIModel: "new-model",
+		}},
+		AgentModels: existing.AgentModels,
+	}
+
+	prepared, err := PrepareUserSettingsForWrite(existing, incoming)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if prepared.AgentModels.IDE.ProfileID != "writer" {
+		t.Fatalf("explicit stable profile ID changed unexpectedly: %#v", prepared.AgentModels.IDE)
+	}
+}
+
 func TestPrepareUserSettingsForWriteRejectsEnabledRemoteAccessWithoutCredentials(t *testing.T) {
 	enabled := true
 	if _, err := PrepareUserSettingsForWrite(Settings{}, Settings{AllowLANAccess: &enabled}); err == nil {

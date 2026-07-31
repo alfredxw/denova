@@ -9,6 +9,7 @@ const (
 
 type ModelProfileSettings struct {
 	ID                  string   `toml:"id,omitempty" json:"id,omitempty"`
+	RenameFromID        string   `toml:"rename_from_id,omitempty" json:"rename_from_id,omitempty"`
 	Name                string   `toml:"name,omitempty" json:"name,omitempty"`
 	OpenAIAPIKey        string   `toml:"openai_api_key,omitempty" json:"openai_api_key,omitempty"`
 	OpenAIBaseURL       string   `toml:"openai_base_url,omitempty" json:"openai_base_url,omitempty"`
@@ -174,6 +175,7 @@ func sanitizeModelProfiles(profiles []ModelProfileSettings) []ModelProfileSettin
 	}
 	out := make([]ModelProfileSettings, 0, len(profiles))
 	for _, profile := range profiles {
+		profile.RenameFromID = normalizeModelProfileID(profile.RenameFromID)
 		profile.OpenAIModel = strings.TrimSpace(profile.OpenAIModel)
 		profile.ID = modelProfileID(profile)
 		if profile.ID == "" {
@@ -194,6 +196,7 @@ func sanitizeModelProfiles(profiles []ModelProfileSettings) []ModelProfileSettin
 		if profile.OpenAIModel == "" && profile.ID != "default" {
 			profile.OpenAIModel = profile.ID
 		}
+		profile.RenameFromID = ""
 		profile.Name = strings.TrimSpace(profile.Name)
 		profile.ContextWindowTokens = normalizeModelProfileContextWindow(profile.ContextWindowTokens)
 		out = append(out, profile)
@@ -202,7 +205,8 @@ func sanitizeModelProfiles(profiles []ModelProfileSettings) []ModelProfileSettin
 }
 
 func hasModelProfileDraftFields(profile ModelProfileSettings) bool {
-	return strings.TrimSpace(profile.Name) != "" ||
+	return normalizeModelProfileID(profile.RenameFromID) != "" ||
+		strings.TrimSpace(profile.Name) != "" ||
 		profile.OpenAIAPIKey != "" ||
 		strings.TrimSpace(profile.OpenAIBaseURL) != "" ||
 		profile.Temperature != nil ||

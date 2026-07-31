@@ -70,7 +70,7 @@ func LANAddress() string {
 // replacing the user-level settings file. Blank password input preserves the
 // existing password hash.
 func PrepareUserSettingsForWrite(existing, incoming Settings) (Settings, error) {
-	out := incoming
+	out := migrateRenamedModelProfileReferences(existing, incoming)
 	out.RemoteAccessUsername = strings.TrimSpace(out.RemoteAccessUsername)
 	if out.RemoteAccessPassword != "" {
 		hash, err := HashRemoteAccessPassword(out.RemoteAccessPassword)

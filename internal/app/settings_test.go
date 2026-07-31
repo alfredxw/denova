@@ -308,6 +308,23 @@ func TestApplyLayeredSettingsToConfigAppliesContextWindow(t *testing.T) {
 	}
 }
 
+func TestApplyLayeredSettingsToConfigRefreshesDefaultImageProfile(t *testing.T) {
+	cfg := &config.Config{
+		ModelProfiles: []config.ModelProfileSettings{{ID: "stale", OpenAIModel: "stale"}},
+		ImageAPIProfiles: []config.ImageAPIProfileSettings{{
+			ID:          "stale-image",
+			OpenAIModel: "stale-image",
+		}},
+		DefaultImageAPIProfileID: "stale-image",
+	}
+	applyLayeredSettingsToConfig(cfg, config.LayeredSettings{
+		Effective: config.Settings{DefaultImageAPIProfileID: config.DefaultImageAPIProfileID},
+	})
+	if cfg.DefaultImageAPIProfileID != config.DefaultImageAPIProfileID {
+		t.Fatalf("default image profile = %q, want %q", cfg.DefaultImageAPIProfileID, config.DefaultImageAPIProfileID)
+	}
+}
+
 func TestApplyLayeredSettingsToConfigAppliesAgentIdleTimeout(t *testing.T) {
 	idleTimeout := 240
 	cfg := &config.Config{}

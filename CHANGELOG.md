@@ -13,6 +13,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Fixed
 
+- 修改以模型名作为 ID 的语言或图像模型配置后，默认图像模型与各 Agent、SubAgent 的模型引用会同步迁移到新 ID，运行时也会立即刷新默认图像模型，不再继续使用缓存中的旧名称或报“模型配置不存在”。
+- Renaming a language or image model profile whose ID follows the model name now migrates default-image, Agent, and SubAgent references to the new ID, and the runtime refreshes the default image profile immediately instead of retaining the cached old name or reporting a missing profile.
 - 资料库生图的用户补充要求现在只在图像方案约束下经过语言模型提炼后进入最终 Prompt，不再以原文重复追加并覆盖所选风格；超长名称、标签或关键词会按总输入预算安全压缩，不再直接中断单张或批量生成。
 - Lore-image user instructions now enter the final prompt only after language-model refinement under the selected image preset, instead of being appended verbatim and potentially overriding its style. Oversized names, tags, or keywords are safely compacted to the total input budget rather than aborting single or batch generation.
 - 已被旧版本保存为零宽度的作品目录会在加载布局时自动恢复为有效默认宽度并重新平衡工作区，不再继续保持“按钮显示展开、目录实际隐藏”的损坏状态。

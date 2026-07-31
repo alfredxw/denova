@@ -452,9 +452,7 @@ func applyLayeredSettingsToConfig(cfg *config.Config, layered config.LayeredSett
 	if cfg.ImageAPIModel == "" && effective.ImageAPIModel != "" {
 		cfg.ImageAPIModel = effective.ImageAPIModel
 	}
-	if effective.DefaultImageAPIProfileID != "" {
-		cfg.DefaultImageAPIProfileID = effective.DefaultImageAPIProfileID
-	}
+	cfg.DefaultImageAPIProfileID = effective.DefaultImageAPIProfileID
 	cfg.ImageAPIProfiles = effective.ImageAPIProfiles
 	cfg.AgentModels = effective.AgentModels
 	cfg.AgentTools = effective.AgentTools
