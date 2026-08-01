@@ -5,7 +5,7 @@ import (
 	"crypto/rand"
 	"encoding/hex"
 	"fmt"
-	"log"
+	"log/slog"
 	"strings"
 	"sync"
 	"time"
@@ -140,7 +140,7 @@ func withStandaloneRunTrace(ctx context.Context, cfg *config.Config, agentKind, 
 	}
 	ledger, err := newRunLedgerWithOptions(cfg.Workspace, DefaultLoopPolicy().RunLedger, options)
 	if err != nil {
-		log.Printf("[agent-trace] standalone trace unavailable agent_kind=%s source=%s workspace=%s err=%v", agentKind, source, cfg.Workspace, err)
+		slog.WarnContext(ctx, fmt.Sprintf("[agent-trace] standalone trace unavailable agent_kind=%s source=%s workspace=%s err=%v", agentKind, source, cfg.Workspace, err))
 		return ctx, func(error) {}
 	}
 	if ledger == nil {
@@ -179,7 +179,7 @@ func withStandaloneRunTrace(ctx context.Context, cfg *config.Config, agentKind, 
 		}
 		_ = ledger.RecordFinish(status, reason, 0)
 		if err := ledger.Close(); err != nil {
-			log.Printf("[agent-trace] standalone trace close failed run_id=%s err=%v", ledger.ID(), err)
+			slog.ErrorContext(ctx, fmt.Sprintf("[agent-trace] standalone trace close failed run_id=%s err=%v", ledger.ID(), err))
 		}
 	}
 }

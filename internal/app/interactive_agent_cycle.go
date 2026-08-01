@@ -3,7 +3,7 @@ package app
 import (
 	"context"
 	"fmt"
-	"log"
+	"log/slog"
 	"strings"
 
 	"denova/config"
@@ -75,9 +75,9 @@ func (s *InteractiveAppService) prepareInteractiveAgentCycle(ctx context.Context
 		cycle.novaDir, cycle.workspace, config.ProjectConfigPath(cycle.runtimeCfg.ProjectStateDir),
 	); err == nil {
 		applyLayeredSettingsToConfig(&cycle.runtimeCfg, layered)
-		log.Printf("[interactive-agent-cycle] loaded settings workspace=%s story_id=%s", cycle.workspace, cycle.storyID)
+		slog.InfoContext(ctx, fmt.Sprintf("[interactive-agent-cycle] loaded settings workspace=%s story_id=%s", cycle.workspace, cycle.storyID))
 	} else {
-		log.Printf("[interactive-agent-cycle] load settings failed workspace=%s story_id=%s err=%v", cycle.workspace, cycle.storyID, err)
+		slog.ErrorContext(ctx, fmt.Sprintf("[interactive-agent-cycle] load settings failed workspace=%s story_id=%s err=%v", cycle.workspace, cycle.storyID, err))
 	}
 	applyRequestLocaleToConfig(&cycle.runtimeCfg, request.Locale)
 
@@ -138,7 +138,7 @@ func (s *InteractiveAppService) prepareInteractiveAgentCycle(ctx context.Context
 	if err != nil {
 		return nil, fmt.Errorf("build interactive story runner: %w", err)
 	}
-	log.Printf("[interactive-agent-cycle] prepared workspace=%s story_id=%s branch_id=%s message_bytes=%d style_rules=%d", cycle.workspace, cycle.storyID, cycle.branchID, len(cycle.request.Message), len(styleRules))
+	slog.InfoContext(ctx, fmt.Sprintf("[interactive-agent-cycle] prepared workspace=%s story_id=%s branch_id=%s message_bytes=%d style_rules=%d", cycle.workspace, cycle.storyID, cycle.branchID, len(cycle.request.Message), len(styleRules)))
 	return cycle, nil
 }
 
@@ -195,7 +195,7 @@ func (c *interactiveAgentCycle) scheduleDirectorMaintenance(turn interactive.Tur
 	if persistedSnapshot == nil {
 		loaded, err := c.store.Snapshot(c.storyID, turn.BranchID)
 		if err != nil {
-			log.Printf("[interactive-director-agent] load scheduling snapshot failed story_id=%s branch_id=%s turn_id=%s err=%v", c.storyID, turn.BranchID, turn.ID, err)
+			slog.ErrorContext(context.Background(), fmt.Sprintf("[interactive-director-agent] load scheduling snapshot failed story_id=%s branch_id=%s turn_id=%s err=%v", c.storyID, turn.BranchID, turn.ID, err))
 		} else {
 			persistedSnapshot = &loaded
 		}
@@ -215,7 +215,7 @@ func (c *interactiveAgentCycle) scheduleDirectorMaintenance(turn interactive.Tur
 	decision := interactive.DecideDirectorRunAfterTurn(director.Strategy.Enabled, policy, interactive.DirectorRunScheduleContext{
 		CommittedTurns: committedTurns, PlanStatus: planStatus, MaterialUpdate: materialUpdate,
 	})
-	log.Printf("[interactive-director-agent] maintenance decision story_id=%s branch_id=%s turn_id=%s policy_mode=%s interval_turns=%d committed_turns=%d plan_status=%s run_plan=%t reason=%s", c.storyID, turn.BranchID, turn.ID, policy.Mode, policy.IntervalTurns, committedTurns, planStatus, decision.ShouldRun, decision.Reason)
+	slog.InfoContext(context.Background(), fmt.Sprintf("[interactive-director-agent] maintenance decision story_id=%s branch_id=%s turn_id=%s policy_mode=%s interval_turns=%d committed_turns=%d plan_status=%s run_plan=%t reason=%s", c.storyID, turn.BranchID, turn.ID, policy.Mode, policy.IntervalTurns, committedTurns, planStatus, decision.ShouldRun, decision.Reason))
 	return startInteractiveDirectorMaintenanceTask(&c.runtimeCfg, c.state, c.conversation, turn, c.sessionStore, decision.ShouldRun)
 }
 
@@ -252,7 +252,7 @@ func (c *interactiveAgentCycle) reconcilePreviousAgentCommit(ctx context.Context
 
 	key := interactiveDerivedMaintenanceKey(c.conversation, turn.BranchID)
 	if tasks := c.conversation.directorTasks; tasks != nil && tasks.HasKey(key) {
-		log.Printf("[interactive-agent-cycle] wait live Director projection workspace=%s story_id=%s branch_id=%s turn_id=%s", c.workspace, c.storyID, turn.BranchID, turn.ID)
+		slog.InfoContext(ctx, fmt.Sprintf("[interactive-agent-cycle] wait live Director projection workspace=%s story_id=%s branch_id=%s turn_id=%s", c.workspace, c.storyID, turn.BranchID, turn.ID))
 		if err := tasks.WaitKey(ctx, key); err != nil {
 			return fmt.Errorf("wait live Director projection for turn %s: %w", turn.ID, err)
 		}
@@ -284,7 +284,7 @@ func (c *interactiveAgentCycle) reconcilePreviousAgentCommit(ctx context.Context
 	repair := *c
 	repair.conversation = maintenanceConversation
 	repair.storyContext = storyContext
-	log.Printf("[interactive-agent-cycle] drain persisted Director outbox workspace=%s story_id=%s branch_id=%s turn_id=%s command_id=%s operation_id=%s cycle=%d", c.workspace, c.storyID, turn.BranchID, turn.ID, turn.AgentCommandID, turn.AgentOperationID, turn.AgentCycle)
+	slog.InfoContext(ctx, fmt.Sprintf("[interactive-agent-cycle] drain persisted Director outbox workspace=%s story_id=%s branch_id=%s turn_id=%s command_id=%s operation_id=%s cycle=%d", c.workspace, c.storyID, turn.BranchID, turn.ID, turn.AgentCommandID, turn.AgentOperationID, turn.AgentCycle))
 	done := repair.scheduleDirectorMaintenance(*turn, &storyContext.Snapshot)
 	select {
 	case <-done:

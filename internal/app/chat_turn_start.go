@@ -2,7 +2,8 @@ package app
 
 import (
 	"context"
-	"log"
+	"fmt"
+	"log/slog"
 	"strings"
 	"time"
 
@@ -17,7 +18,7 @@ func (a *App) StartTask(ctx context.Context, req agents.ChatRequest) *Task {
 func (s *ChatAppService) StartTask(ctx context.Context, req agents.ChatRequest) *Task {
 	task, err := s.StartTaskWithError(ctx, req)
 	if err != nil {
-		log.Printf("[agent-task] 准备 IDE Agent 运行时失败 err=%v", err)
+		slog.ErrorContext(ctx, fmt.Sprintf("[agent-task] 准备 IDE Agent 运行时失败 err=%v", err))
 		return nil
 	}
 	return task
@@ -103,7 +104,7 @@ func (s *ChatAppService) StartTaskWithError(ctx context.Context, req agents.Chat
 
 	runner, systemPrompt, err := buildAgentRunnerWithComposition(ctx, &runtime.cfg, runtime.state, runtime.ideTeller)
 	if err != nil {
-		log.Printf("[agent-task] 刷新 Agent Runner 失败 workspace=%s err=%v", runtime.workspace, err)
+		slog.ErrorContext(ctx, fmt.Sprintf("[agent-task] 刷新 Agent Runner 失败 workspace=%s err=%v", runtime.workspace, err))
 		return nil, err
 	}
 	runtimeContexts := agents.IDEWorkspaceRuntimeContextsForRequest(runtime.state, req)
@@ -126,7 +127,7 @@ func (s *ChatAppService) StartTaskWithError(ctx context.Context, req agents.Chat
 	var accepted *agents.AcceptedRun
 	runAccepted := func(ctx context.Context, task *Task, emit func(agents.Event)) {
 		defer a.unregisterWorkspaceTask(task)
-		log.Printf("[agent-task] run begin id=%s message_len=%d references=%d lore_references=%d style_scenes=%d style_rules=%d selections=%d plan_mode=%v teller_id=%s writing_skill=%s", task.ID(), len(req.Message), len(req.References), len(req.LoreReferences), len(req.StyleScenes), len(req.StyleRules), len(req.Selections), req.PlanMode, req.TellerID, req.WritingSkill)
+		slog.InfoContext(ctx, fmt.Sprintf("[agent-task] run begin id=%s message_len=%d references=%d lore_references=%d style_scenes=%d style_rules=%d selections=%d plan_mode=%v teller_id=%s writing_skill=%s", task.ID(), len(req.Message), len(req.References), len(req.LoreReferences), len(req.StyleScenes), len(req.StyleRules), len(req.Selections), req.PlanMode, req.TellerID, req.WritingSkill))
 		accepted.Wait(ctx)
 		_, outputCommitted := conversation.LastAgentCycleCommitReceipt(agents.HarnessDomainCommitOutput)
 		postSettlementCtx := ctx
@@ -144,10 +145,10 @@ func (s *ChatAppService) StartTaskWithError(ctx context.Context, req agents.Chat
 		if cycleCommitted && len(verifiedMutations) > 0 {
 			mutationCallback(postSettlementCtx, verifiedMutations, postRunVerification)
 		}
-		log.Printf("[agent-task] run end id=%s status=%s", task.ID(), task.Status())
+		slog.InfoContext(ctx, fmt.Sprintf("[agent-task] run end id=%s status=%s", task.ID(), task.Status()))
 	}
 
-	task, err := NewDeferredRegisteredTask(func(task *Task) error {
+	task, err := NewDeferredRegisteredTaskWithContext(ctx, func(task *Task) error {
 		a.mu.Lock()
 		defer a.mu.Unlock()
 		if a.workspaceTransition {

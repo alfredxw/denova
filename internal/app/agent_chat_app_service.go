@@ -4,7 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"log"
+	"log/slog"
 	"strings"
 	"sync"
 
@@ -52,7 +52,7 @@ func (runtime *agentChatProjectRuntime) close() {
 	runtime.closeOnce.Do(func() {
 		if runtime.store != nil {
 			if err := runtime.store.Close(); err != nil {
-				log.Printf("[app/agent_chat_app_service.go] closing project session store failed workspace=%q err=%v", runtime.workspace, err)
+				slog.ErrorContext(context.Background(), fmt.Sprintf("[app/agent_chat_app_service.go] closing project session store failed workspace=%q err=%v", runtime.workspace, err))
 			}
 		}
 		if runtime.versionService != nil {
@@ -177,7 +177,7 @@ func (s *AgentChatAppService) StartTask(ctx context.Context, binding AgentChatBi
 	)
 	var accepted *agents.AcceptedRun
 	run := &agentChatRun{binding: binding, commandID: req.CommandID, runtime: runtime}
-	task, err := NewDeferredRegisteredTask(func(task *Task) error {
+	task, err := NewDeferredRegisteredTaskWithContext(ctx, func(task *Task) error {
 		run.task = task
 		return s.installActiveRun(run)
 	})
@@ -221,7 +221,7 @@ func (s *AgentChatAppService) StartTask(ctx context.Context, binding AgentChatBi
 
 	if err := task.Start(func(runCtx context.Context, task *Task, emit func(agents.Event)) {
 		defer s.releaseActiveRun(run)
-		log.Printf("[agent-chat-run] begin task_id=%s project_id=%s workspace=%q session_id=%s message_len=%d", task.ID(), binding.ProjectID, binding.Workspace, binding.SessionID, len(req.Message))
+		slog.InfoContext(runCtx, fmt.Sprintf("[agent-chat-run] begin task_id=%s project_id=%s workspace=%q session_id=%s message_len=%d", task.ID(), binding.ProjectID, binding.Workspace, binding.SessionID, len(req.Message)))
 		accepted.Wait(runCtx)
 		_, outputCommitted := conversation.LastAgentCycleCommitReceipt(agents.HarnessDomainCommitOutput)
 		postSettlementCtx := runCtx
@@ -231,7 +231,7 @@ func (s *AgentChatAppService) StartTask(ctx context.Context, binding AgentChatBi
 		if outputCommitted && len(verifiedMutations) > 0 {
 			mutationCallback(postSettlementCtx, verifiedMutations, postRunVerification)
 		}
-		log.Printf("[agent-chat-run] end task_id=%s project_id=%s workspace=%q session_id=%s status=%s", task.ID(), binding.ProjectID, binding.Workspace, binding.SessionID, task.Status())
+		slog.InfoContext(runCtx, fmt.Sprintf("[agent-chat-run] end task_id=%s project_id=%s workspace=%q session_id=%s status=%s", task.ID(), binding.ProjectID, binding.Workspace, binding.SessionID, task.Status()))
 	}); err != nil {
 		reservation.rollback()
 		task.Abort()

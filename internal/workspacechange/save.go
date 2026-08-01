@@ -3,7 +3,8 @@ package workspacechange
 import (
 	"context"
 	"errors"
-	"log"
+	"fmt"
+	"log/slog"
 )
 
 // SaveFile persists a local editor snapshot under the same workspace mutation
@@ -79,7 +80,7 @@ func (s *Service) SaveFile(ctx context.Context, path, content, baseRevision stri
 	// Manual input starts a new local editing branch. Keep the redo projection
 	// accurate without recording the editor snapshot as a reviewable change.
 	if err := s.invalidateRedoExcept(OriginUser); err != nil {
-		log.Printf("[workspace-change] editor save committed but redo invalidation persistence failed path=%q err=%v", rel, err)
+		slog.ErrorContext(ctx, fmt.Sprintf("[workspace-change] editor save committed but redo invalidation persistence failed path=%q err=%v", rel, err))
 	}
 	return result, nil
 }

@@ -1,8 +1,9 @@
 package agents
 
 import (
+	"context"
 	"fmt"
-	"log"
+	"log/slog"
 	"strings"
 
 	"denova/config"
@@ -359,13 +360,13 @@ func (c SystemPromptComposition) logForRun(options RunOptions) {
 		return
 	}
 	if c.assemblyErr != nil {
-		log.Printf("[agent-prompt] system composition failed mode=%s workspace=%s task_id=%s session_id=%s err=%v", c.mode, c.workspace, options.TaskID, options.SessionID, c.assemblyErr)
+		slog.ErrorContext(context.Background(), fmt.Sprintf("[agent-prompt] system composition failed mode=%s workspace=%s task_id=%s session_id=%s err=%v", c.mode, c.workspace, options.TaskID, options.SessionID, c.assemblyErr))
 		return
 	}
-	log.Printf(
+	slog.InfoContext(context.Background(), fmt.Sprintf(
 		"[agent-prompt] system composition mode=%s workspace=%s task_id=%s session_id=%s bytes=%d sha=%s sources=%s",
 		c.mode, c.workspace, options.TaskID, options.SessionID, c.injectedBytes, c.instructionHash, systemPromptManifestSummary(c.manifest),
-	)
+	))
 }
 
 func systemPromptManifestSummary(manifest []SystemPromptManifestEntry) string {

@@ -4,7 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"log"
+	"log/slog"
 	"strings"
 
 	agents "denova/internal/agents"
@@ -92,9 +92,9 @@ func (s *ConfigManagerAppService) ActiveView(ctx context.Context, req ConfigMana
 			if projected {
 				reconciled, reconcileErr := reconcileColdPendingAsk(operation.Context(), sess, runtimeSnapshot)
 				if reconcileErr != nil {
-					log.Printf("[agent-ask-recovery] reconcile Config Manager Ask failed workspace=%s session_id=%s operation_id=%s cycle=%d err=%v", workspace, sessionID, runtimeSnapshot.ActiveOperation, runtimeSnapshot.ActiveCycle, reconcileErr)
+					slog.ErrorContext(ctx, fmt.Sprintf("[agent-ask-recovery] reconcile Config Manager Ask failed workspace=%s session_id=%s operation_id=%s cycle=%d err=%v", workspace, sessionID, runtimeSnapshot.ActiveOperation, runtimeSnapshot.ActiveCycle, reconcileErr))
 				} else if reconciled {
-					log.Printf("[agent-ask-recovery] cancelled orphaned Config Manager Ask workspace=%s session_id=%s operation_id=%s cycle=%d", workspace, sessionID, runtimeSnapshot.ActiveOperation, runtimeSnapshot.ActiveCycle)
+					slog.InfoContext(ctx, fmt.Sprintf("[agent-ask-recovery] cancelled orphaned Config Manager Ask workspace=%s session_id=%s operation_id=%s cycle=%d", workspace, sessionID, runtimeSnapshot.ActiveOperation, runtimeSnapshot.ActiveCycle))
 				}
 			}
 			// Never project a cold durable Ask as answerable unless this process
@@ -200,7 +200,7 @@ func logConfigManagerProjectionError(options agents.RunOptions, err error) {
 	if errors.Is(err, agents.ErrRuntimeProjectionUnavailable) {
 		return
 	}
-	log.Printf("[config-manager-runtime] projection unavailable workspace=%s session_id=%s err=%v", options.Workspace, options.SessionID, err)
+	slog.WarnContext(context.Background(), fmt.Sprintf("[config-manager-runtime] projection unavailable workspace=%s session_id=%s err=%v", options.Workspace, options.SessionID, err))
 }
 
 // selectConfigManagerDisplayRecord chooses one process-local display owner for
@@ -408,7 +408,7 @@ func (s *ConfigManagerAppService) RecoverAgentRuntime(
 		workspace: workspace, sessionID: sessionID, recovery: recovery,
 		recoveryActions: make(map[string]agents.CommandReceipt),
 	}
-	task, err := NewDeferredRegisteredTask(func(task *Task) error {
+	task, err := NewDeferredRegisteredTaskWithContext(ctx, func(task *Task) error {
 		a.mu.Lock()
 		defer a.mu.Unlock()
 		if a.workspaceTransition || lifecycleWorkspaceKey(a.workspace) != lifecycleWorkspaceKey(workspace) || a.chatService != chatService || a.sessionStore != store {
@@ -460,7 +460,7 @@ func (s *ConfigManagerAppService) RecoverAgentRuntime(
 			}
 		}
 		outcome := recovery.Wait(taskCtx, emit)
-		log.Printf("[config-manager-recovery] task settled task_id=%s session_id=%s action=%s command_id=%s operation_id=%s outcome=%s", task.ID(), sessionID, request.Action.Kind, request.Action.CommandID, request.Action.OperationID, outcome.Status)
+		slog.InfoContext(taskCtx, fmt.Sprintf("[config-manager-recovery] task settled task_id=%s session_id=%s action=%s command_id=%s operation_id=%s outcome=%s", task.ID(), sessionID, request.Action.Kind, request.Action.CommandID, request.Action.OperationID, outcome.Status))
 	}); err != nil {
 		recovery.Close()
 		rollbackConfigManagerRecoveryTask(a, s, run, err)

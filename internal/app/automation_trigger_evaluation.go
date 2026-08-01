@@ -3,7 +3,7 @@ package app
 import (
 	"context"
 	"fmt"
-	"log"
+	"log/slog"
 	"strings"
 	"time"
 
@@ -91,7 +91,7 @@ func (s *AutomationAppService) nextChapterBatchTriggerScope(snap *automationWork
 			if content, err := bookService.ReadFile(chapter.Path); err == nil {
 				snippet = fmt.Sprintf("%s\ncontent_excerpt=%s", snippet, trimForTriggerSnippet(content, 1400))
 			} else {
-				log.Printf("[automation-trigger] read chapter batch evidence failed path=%s err=%v", chapter.Path, err)
+				slog.ErrorContext(context.Background(), fmt.Sprintf("[automation-trigger] read chapter batch evidence failed path=%s err=%v", chapter.Path, err))
 			}
 		}
 		evidence = append(evidence, automation.TriggerEvidence{Source: source, Title: chapter.DisplayTitle, Ref: chapter.Path, Snippet: snippet})

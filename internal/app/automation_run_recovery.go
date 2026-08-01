@@ -3,7 +3,7 @@ package app
 import (
 	"context"
 	"fmt"
-	"log"
+	"log/slog"
 	"strings"
 	"time"
 
@@ -14,7 +14,7 @@ import (
 func (s *AutomationAppService) reconcilePersistedAutomationRuns(ctx context.Context) {
 	durableRuns, err := s.storeAllWorkspaces().ListDurableObligations()
 	if err != nil {
-		log.Printf("[automation-recovery] persisted run scan list failed err=%v", err)
+		slog.ErrorContext(ctx, fmt.Sprintf("[automation-recovery] persisted run scan list failed err=%v", err))
 		return
 	}
 	for _, durable := range durableRuns {
@@ -31,7 +31,7 @@ func (s *AutomationAppService) reconcilePersistedAutomationRuns(ctx context.Cont
 		target := automationTargetForRun(taskDef, run)
 		snap, operation, targetErr := s.acquireTargetRuntime(ctx, target)
 		if targetErr != nil {
-			log.Printf("[automation-recovery] persisted run target unavailable task_id=%s run_id=%s workspace=%q err=%v", taskDef.ID, run.ID, run.Workspace, targetErr)
+			slog.WarnContext(ctx, fmt.Sprintf("[automation-recovery] persisted run target unavailable task_id=%s run_id=%s workspace=%q err=%v", taskDef.ID, run.ID, run.Workspace, targetErr))
 			continue
 		}
 		func() {
@@ -42,17 +42,17 @@ func (s *AutomationAppService) reconcilePersistedAutomationRuns(ctx context.Cont
 			runStore := storeForSnapshot(snap)
 			releaseRun, leaseErr := runStore.AcquireRunLease(operation.Context(), automationTaskStoreID(taskDef), run.ID)
 			if leaseErr != nil {
-				log.Printf("[automation-recovery] run lease failed task_id=%s run_id=%s err=%v", taskDef.ID, run.ID, leaseErr)
+				slog.ErrorContext(ctx, fmt.Sprintf("[automation-recovery] run lease failed task_id=%s run_id=%s err=%v", taskDef.ID, run.ID, leaseErr))
 				return
 			}
 			defer func() {
 				if releaseErr := releaseRun(); releaseErr != nil {
-					log.Printf("[automation-recovery] release run lease failed task_id=%s run_id=%s err=%v", taskDef.ID, run.ID, releaseErr)
+					slog.ErrorContext(ctx, fmt.Sprintf("[automation-recovery] release run lease failed task_id=%s run_id=%s err=%v", taskDef.ID, run.ID, releaseErr))
 				}
 			}()
 			latestTask, latestRun, refreshErr := runStore.GetRunByID(run.ID)
 			if refreshErr != nil {
-				log.Printf("[automation-recovery] refresh persisted run failed task_id=%s run_id=%s err=%v", taskDef.ID, run.ID, refreshErr)
+				slog.ErrorContext(ctx, fmt.Sprintf("[automation-recovery] refresh persisted run failed task_id=%s run_id=%s err=%v", taskDef.ID, run.ID, refreshErr))
 				return
 			}
 			taskDef = latestTask
@@ -64,13 +64,13 @@ func (s *AutomationAppService) reconcilePersistedAutomationRuns(ctx context.Cont
 			}
 			if needsEffects && !needsRuntime {
 				if _, effectErr := s.completeAutomationRunEffects(operation.Context(), snap, taskDef, run); effectErr != nil {
-					log.Printf("[automation-recovery] completion effect retry failed task_id=%s run_id=%s err=%v", taskDef.ID, run.ID, effectErr)
+					slog.ErrorContext(ctx, fmt.Sprintf("[automation-recovery] completion effect retry failed task_id=%s run_id=%s err=%v", taskDef.ID, run.ID, effectErr))
 				}
 				return
 			}
 			reconciled, ok, reconcileErr := s.reconcileAutomationRunReceipt(operation.Context(), snap, taskDef, run)
 			if reconcileErr != nil {
-				log.Printf("[automation-recovery] runtime projection reconcile failed task_id=%s run_id=%s command_id=%s operation_id=%s err=%v", taskDef.ID, run.ID, run.RuntimeCommandID, run.RuntimeOperationID, reconcileErr)
+				slog.ErrorContext(ctx, fmt.Sprintf("[automation-recovery] runtime projection reconcile failed task_id=%s run_id=%s command_id=%s operation_id=%s err=%v", taskDef.ID, run.ID, run.RuntimeCommandID, run.RuntimeOperationID, reconcileErr))
 				return
 			}
 			if !ok {
@@ -78,12 +78,12 @@ func (s *AutomationAppService) reconcilePersistedAutomationRuns(ctx context.Cont
 			}
 			if reconciled.RuntimeRecoveryRequired {
 				if _, _, recoveryErr := s.ensureAutomationRecoveryTask(operation.Context(), snap, taskDef, reconciled); recoveryErr != nil {
-					log.Printf("[automation-recovery] recovery observation admission failed task_id=%s run_id=%s command_id=%s operation_id=%s err=%v", taskDef.ID, run.ID, reconciled.RuntimeCommandID, reconciled.RuntimeOperationID, recoveryErr)
+					slog.ErrorContext(ctx, fmt.Sprintf("[automation-recovery] recovery observation admission failed task_id=%s run_id=%s command_id=%s operation_id=%s err=%v", taskDef.ID, run.ID, reconciled.RuntimeCommandID, reconciled.RuntimeOperationID, recoveryErr))
 				}
 				return
 			}
 			if _, effectErr := s.completeAutomationRunEffects(operation.Context(), snap, taskDef, reconciled); effectErr != nil {
-				log.Printf("[automation-recovery] reconciled terminal effect retry failed task_id=%s run_id=%s err=%v", taskDef.ID, run.ID, effectErr)
+				slog.ErrorContext(ctx, fmt.Sprintf("[automation-recovery] reconciled terminal effect retry failed task_id=%s run_id=%s err=%v", taskDef.ID, run.ID, effectErr))
 			}
 		}()
 	}
@@ -166,7 +166,7 @@ func (s *AutomationAppService) ensureAutomationRecoveryTask(
 	}
 
 	var displayTask *Task
-	displayTask, err = NewDeferredRegisteredTask(func(displayTask *Task) error {
+	displayTask, err = NewDeferredRegisteredTaskWithContext(ctx, func(displayTask *Task) error {
 		if err := s.activateAutomationClaim(claim, displayTask); err != nil {
 			return err
 		}
@@ -213,12 +213,12 @@ func (s *AutomationAppService) ensureAutomationRecoveryTask(
 		outcome := recovery.Wait(taskCtx, emit)
 		finalRun, reconcileErr := s.finalizeRecoveredAutomationRun(taskCtx, snap, taskDef, run, outcome)
 		if reconcileErr != nil {
-			log.Printf("[automation-recovery] terminal reconciliation failed task_id=%s run_id=%s operation_id=%s err=%v", taskDef.ID, run.ID, run.RuntimeOperationID, reconcileErr)
+			slog.ErrorContext(taskCtx, fmt.Sprintf("[automation-recovery] terminal reconciliation failed task_id=%s run_id=%s operation_id=%s err=%v", taskDef.ID, run.ID, run.RuntimeOperationID, reconcileErr))
 			emit(agents.Event{Type: "error", Data: map[string]string{"message": reconcileErr.Error()}})
 			return
 		}
 		emit(agents.Event{Type: "automation_run", Data: finalRun})
-		log.Printf("[automation-recovery] observation settled task_id=%s run_id=%s operation_id=%s status=%s outcome=%s", taskDef.ID, run.ID, finalRun.RuntimeOperationID, finalRun.Status, outcome.Status)
+		slog.InfoContext(taskCtx, fmt.Sprintf("[automation-recovery] observation settled task_id=%s run_id=%s operation_id=%s status=%s outcome=%s", taskDef.ID, run.ID, finalRun.RuntimeOperationID, finalRun.Status, outcome.Status))
 	}); err != nil {
 		recovery.Close()
 		displayTask.failBeforeStart(err)

@@ -4,7 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"log"
+	"log/slog"
 	"net"
 	"net/http"
 	"net/url"
@@ -71,9 +71,9 @@ func (renderer *rodBrowserRenderer) Render(ctx context.Context, target *url.URL)
 		return renderedPage{}, err
 	}
 	if standardErr != nil {
-		log.Printf("[webaccess] standard Rod render failed; trying stealth url=%s error=%v", safeURLForLog(target), standardErr)
+		slog.ErrorContext(ctx, fmt.Sprintf("[webaccess] standard Rod render failed; trying stealth url=%s error=%v", safeURLForLog(target), standardErr))
 	} else {
-		log.Printf("[webaccess] standard Rod render encountered an access challenge; trying stealth url=%s status=%d", safeURLForLog(target), standardPage.HTTPStatus)
+		slog.InfoContext(ctx, fmt.Sprintf("[webaccess] standard Rod render encountered an access challenge; trying stealth url=%s status=%d", safeURLForLog(target), standardPage.HTTPStatus))
 	}
 	stealthPage, stealthErr := renderer.renderAttempt(ctx, browser, target, browserRenderModeStealth)
 	if stealthErr == nil {
@@ -136,7 +136,7 @@ func (renderer *rodBrowserRenderer) renderAttempt(ctx context.Context, browser *
 	}
 	defer func() {
 		if closeErr := incognito.Close(); closeErr != nil {
-			log.Printf("[webaccess] close isolated browser context: %v", closeErr)
+			slog.InfoContext(ctx, fmt.Sprintf("[webaccess] close isolated browser context: %v", closeErr))
 		}
 	}()
 
@@ -151,7 +151,7 @@ func (renderer *rodBrowserRenderer) renderAttempt(ctx context.Context, browser *
 	}
 	defer func() {
 		if closeErr := basePage.Close(); closeErr != nil {
-			log.Printf("[webaccess] close browser page: %v", closeErr)
+			slog.InfoContext(ctx, fmt.Sprintf("[webaccess] close browser page: %v", closeErr))
 		}
 	}()
 	page := basePage.Context(ctx)
@@ -175,19 +175,19 @@ func (renderer *rodBrowserRenderer) renderAttempt(ctx context.Context, browser *
 		defer close(routerDone)
 		defer func() {
 			if recovered := recover(); recovered != nil {
-				log.Printf("[webaccess] browser request router recovered panic: %v", recovered)
+				slog.ErrorContext(ctx, fmt.Sprintf("[webaccess] browser request router recovered panic: %v", recovered))
 			}
 		}()
 		router.Run()
 	}()
 	defer func() {
 		if stopErr := router.Stop(); stopErr != nil && ctx.Err() == nil {
-			log.Printf("[webaccess] stop browser request router: %v", stopErr)
+			slog.InfoContext(ctx, fmt.Sprintf("[webaccess] stop browser request router: %v", stopErr))
 		}
 		<-routerDone
 	}()
 
-	log.Printf("[webaccess] rendering public page with Rod mode=%s url=%s", mode, safeURLForLog(target))
+	slog.InfoContext(ctx, fmt.Sprintf("[webaccess] rendering public page with Rod mode=%s url=%s", mode, safeURLForLog(target)))
 	waitForNavigation := page.WaitNavigation(proto.PageLifecycleEventNameDOMContentLoaded)
 	if err := page.Navigate(target.String()); err != nil {
 		return renderedPage{}, fmt.Errorf("navigate browser page: %w", err)
@@ -252,11 +252,11 @@ func (renderer *rodBrowserRenderer) ensureBrowser(ctx context.Context) (*rod.Bro
 	go func() {
 		defer func() {
 			if recovered := recover(); recovered != nil {
-				log.Printf("[webaccess] browser deny proxy recovered panic: %v", recovered)
+				slog.ErrorContext(ctx, fmt.Sprintf("[webaccess] browser deny proxy recovered panic: %v", recovered))
 			}
 		}()
 		if serveErr := denyProxy.Serve(listener); serveErr != nil && !errors.Is(serveErr, http.ErrServerClosed) {
-			log.Printf("[webaccess] browser deny proxy stopped unexpectedly: %v", serveErr)
+			slog.InfoContext(ctx, fmt.Sprintf("[webaccess] browser deny proxy stopped unexpectedly: %v", serveErr))
 		}
 	}()
 	proxyURL := "http://" + listener.Addr().String()
@@ -279,7 +279,7 @@ func (renderer *rodBrowserRenderer) ensureBrowser(ctx context.Context) (*rod.Bro
 		_ = denyProxy.Close()
 		return nil, fmt.Errorf("connect to installed browser: %w", err)
 	}
-	log.Printf("[webaccess] started shared Rod browser binary=%s", binary)
+	slog.InfoContext(ctx, fmt.Sprintf("[webaccess] started shared Rod browser binary=%s", binary))
 	renderer.browser = browser
 	renderer.launcher = launch
 	renderer.denyProxy = denyProxy
@@ -294,7 +294,7 @@ func (renderer *rodBrowserRenderer) handleBrowserRequest(state *browserNavigatio
 	}
 	method := strings.ToUpper(strings.TrimSpace(hijack.Request.Method()))
 	if method != http.MethodGet && method != http.MethodHead && method != http.MethodOptions && method != http.MethodPost {
-		log.Printf("[webaccess] blocked browser request with unsupported method method=%s url=%s", method, safeURLForLog(hijack.Request.URL()))
+		slog.InfoContext(context.Background(), fmt.Sprintf("[webaccess] blocked browser request with unsupported method method=%s url=%s", method, safeURLForLog(hijack.Request.URL())))
 		hijack.Response.Fail(proto.NetworkErrorReasonBlockedByClient)
 		return
 	}
@@ -302,7 +302,7 @@ func (renderer *rodBrowserRenderer) handleBrowserRequest(state *browserNavigatio
 	// authentication. A bounded POST is still needed for common anti-bot/session
 	// bootstraps used while rendering otherwise public pages.
 	if method == http.MethodPost && len(hijack.Request.Body()) > browserMaxRequestBytes {
-		log.Printf("[webaccess] blocked oversized browser POST url=%s request_bytes=%d", safeURLForLog(hijack.Request.URL()), len(hijack.Request.Body()))
+		slog.InfoContext(context.Background(), fmt.Sprintf("[webaccess] blocked oversized browser POST url=%s request_bytes=%d", safeURLForLog(hijack.Request.URL()), len(hijack.Request.Body())))
 		hijack.Response.Fail(proto.NetworkErrorReasonBlockedByClient)
 		return
 	}
@@ -312,7 +312,7 @@ func (renderer *rodBrowserRenderer) handleBrowserRequest(state *browserNavigatio
 	response, err := renderer.publicClient.Do(request)
 	if err != nil {
 		if !errors.Is(err, context.Canceled) {
-			log.Printf("[webaccess] browser subrequest failed method=%s url=%s error=%v", method, safeURLForLog(request.URL), err)
+			slog.ErrorContext(context.Background(), fmt.Sprintf("[webaccess] browser subrequest failed method=%s url=%s error=%v", method, safeURLForLog(request.URL), err))
 		}
 		hijack.Response.Fail(proto.NetworkErrorReasonConnectionFailed)
 		return
@@ -321,7 +321,7 @@ func (renderer *rodBrowserRenderer) handleBrowserRequest(state *browserNavigatio
 	body, err := readBoundedResponse(response, renderer.maxResponseBytes)
 	if err != nil {
 		if !errors.Is(err, context.Canceled) {
-			log.Printf("[webaccess] browser subresponse rejected method=%s url=%s error=%v", method, safeURLForLog(request.URL), err)
+			slog.ErrorContext(context.Background(), fmt.Sprintf("[webaccess] browser subresponse rejected method=%s url=%s error=%v", method, safeURLForLog(request.URL), err))
 		}
 		hijack.Response.Fail(proto.NetworkErrorReasonBlockedByResponse)
 		return

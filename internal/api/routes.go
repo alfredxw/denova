@@ -2,7 +2,8 @@ package api
 
 import (
 	"context"
-	"log"
+	"fmt"
+	"log/slog"
 	"os"
 	"path/filepath"
 
@@ -245,14 +246,14 @@ func (s *Server) registerRoutes(h *hertzserver.Hertz) {
 	}
 
 	if webRoot := resolveWebRoot(); webRoot != "" {
-		log.Printf("[startup] Web 静态资源目录: %s", webRoot)
+		slog.InfoContext(context.Background(), fmt.Sprintf("[startup] Web 静态资源目录: %s", webRoot))
 		staticFS := &hertzapp.FS{Root: webRoot, IndexNames: []string{"index.html"}}
 		if spaFallback := spaFallbackHandler(webRoot); spaFallback != nil {
 			staticFS.PathNotFound = spaFallback
 		}
 		h.StaticFS("/", staticFS)
 	} else {
-		log.Printf("[startup] 未找到 Web 静态资源目录，仅注册 API 路由")
+		slog.InfoContext(context.Background(), "[startup] 未找到 Web 静态资源目录，仅注册 API 路由")
 	}
 }
 
@@ -270,7 +271,7 @@ func spaFallbackHandler(webRoot string) hertzapp.HandlerFunc {
 	indexPath := filepath.Join(webRoot, "index.html")
 	indexHTML, err := os.ReadFile(indexPath)
 	if err != nil {
-		log.Printf("[startup] 读取 index.html 失败，禁用 SPA 回退: %v", err)
+		slog.ErrorContext(context.Background(), fmt.Sprintf("[startup] 读取 index.html 失败，禁用 SPA 回退: %v", err))
 		return nil
 	}
 	return func(ctx context.Context, c *hertzapp.RequestContext) {
@@ -319,10 +320,10 @@ func resolveWebRoot() string {
 	if webfs.HasEmbedded() {
 		root, err := webfs.ExtractEmbedded()
 		if err != nil {
-			log.Printf("[startup] 解压内嵌前端资源失败，仅注册 API 路由: %v", err)
+			slog.ErrorContext(context.Background(), fmt.Sprintf("[startup] 解压内嵌前端资源失败，仅注册 API 路由: %v", err))
 			return ""
 		}
-		log.Printf("[startup] 未找到磁盘 Web 目录，使用内嵌前端资源: %s", root)
+		slog.InfoContext(context.Background(), fmt.Sprintf("[startup] 未找到磁盘 Web 目录，使用内嵌前端资源: %s", root))
 		return root
 	}
 	return ""

@@ -1,10 +1,11 @@
 package app
 
 import (
+	"context"
 	"crypto/sha256"
 	"encoding/hex"
 	"fmt"
-	"log"
+	"log/slog"
 	"strings"
 	"sync"
 
@@ -211,7 +212,7 @@ func (r *automationFollowUpRegistry) pruneLocked() {
 		totalBytes -= released
 		record.task = nil
 		r.records[commandID] = record
-		log.Printf("[automation] evicted settled follow-up display replay command_id=%s task_id=%s released_bytes=%d retained_bytes=%d budget_bytes=%d", commandID, taskID, released, totalBytes, byteLimit)
+		slog.InfoContext(context.Background(), fmt.Sprintf("[automation] evicted settled follow-up display replay command_id=%s task_id=%s released_bytes=%d retained_bytes=%d budget_bytes=%d", commandID, taskID, released, totalBytes, byteLimit))
 	}
 }
 
@@ -241,7 +242,7 @@ func (r *automationFollowUpRegistry) removeOldestSettledIdentityLocked() bool {
 		}
 		delete(r.records, commandID)
 		r.order = removeTaskReplayKey(r.order, index)
-		log.Printf("[automation] pruned settled follow-up replay identity command_id=%s task_id=%s released_bytes=%d max_records=%d", commandID, taskID, released, maxRememberedAutomationFollowUps)
+		slog.InfoContext(context.Background(), fmt.Sprintf("[automation] pruned settled follow-up replay identity command_id=%s task_id=%s released_bytes=%d max_records=%d", commandID, taskID, released, maxRememberedAutomationFollowUps))
 		return true
 	}
 	return false

@@ -4,7 +4,7 @@ import (
 	"context"
 	"crypto/sha1"
 	"fmt"
-	"log"
+	"log/slog"
 	"sort"
 	"strings"
 	"sync"
@@ -54,7 +54,7 @@ func (a *App) StartConfigManagerTask(ctx context.Context, req ConfigManagerReque
 func (s *ConfigManagerAppService) StartTask(ctx context.Context, req ConfigManagerRequest) *Task {
 	task, err := s.StartTaskWithError(ctx, req)
 	if err != nil {
-		log.Printf("[config-manager] start failed command_id=%s err=%v", strings.TrimSpace(req.CommandID), err)
+		slog.ErrorContext(ctx, fmt.Sprintf("[config-manager] start failed command_id=%s err=%v", strings.TrimSpace(req.CommandID), err))
 		return nil
 	}
 	return task
@@ -138,7 +138,7 @@ func (s *ConfigManagerAppService) StartTaskWithError(ctx context.Context, req Co
 	); loadErr == nil {
 		applyLayeredSettingsToConfig(&runtimeCfg, layered)
 	} else {
-		log.Printf("[config-manager] load layered settings failed workspace=%s err=%v", runtime.workspace, loadErr)
+		slog.ErrorContext(ctx, fmt.Sprintf("[config-manager] load layered settings failed workspace=%s err=%v", runtime.workspace, loadErr))
 	}
 	applyRequestLocaleToConfig(&runtimeCfg, req.Locale)
 	resourceSkills, err := loadConfigManagerResourceSkills(ctx, &runtimeCfg, req)
@@ -158,7 +158,7 @@ func (s *ConfigManagerAppService) StartTaskWithError(ctx context.Context, req Co
 	}
 	conversation := agents.NewSessionConversationForAgent(sess, &runtimeCfg, config.AgentKindConfigManager)
 	var accepted *agents.AcceptedRun
-	task, err := NewDeferredRegisteredTask(func(task *Task) error {
+	task, err := NewDeferredRegisteredTaskWithContext(ctx, func(task *Task) error {
 		a.mu.Lock()
 		defer a.mu.Unlock()
 		if a.workspace != runtime.workspace || a.chatService != runtime.chatService {
@@ -199,9 +199,9 @@ func (s *ConfigManagerAppService) StartTaskWithError(ctx context.Context, req Co
 	}
 	if err := task.Start(func(ctx context.Context, task *Task, _ func(agents.Event)) {
 		defer a.unregisterWorkspaceTask(task)
-		log.Printf("[config-manager] run begin id=%s session_id=%s origin=%s resource_id=%s story_id=%s branch_id=%s message_len=%d", task.ID(), sess.ID, req.Origin, req.ResourceID, req.StoryID, req.BranchID, len(message))
+		slog.InfoContext(ctx, fmt.Sprintf("[config-manager] run begin id=%s session_id=%s origin=%s resource_id=%s story_id=%s branch_id=%s message_len=%d", task.ID(), sess.ID, req.Origin, req.ResourceID, req.StoryID, req.BranchID, len(message)))
 		accepted.Wait(ctx)
-		log.Printf("[config-manager] run end id=%s status=%s", task.ID(), task.Status())
+		slog.InfoContext(ctx, fmt.Sprintf("[config-manager] run end id=%s status=%s", task.ID(), task.Status()))
 	}); err != nil {
 		startReservation.rollback()
 		task.Abort()

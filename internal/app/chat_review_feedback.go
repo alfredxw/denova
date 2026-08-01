@@ -4,7 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"log"
+	"log/slog"
 	"strings"
 
 	agents "denova/internal/agents"
@@ -139,10 +139,10 @@ func (s *ChatAppService) consumeResolvedReviewFeedback(ctx context.Context, runt
 			}
 			rollbackErr := rollbackReviewFeedbackConsumptions(ctx, resolvers, sessionID, applied)
 			if rollbackErr != nil {
-				log.Printf("[review-feedback] mixed batch compensation failed workspace=%q applied_batches=%d error=%v rollback_error=%v", runtime.workspace, len(applied), err, rollbackErr)
+				slog.ErrorContext(ctx, fmt.Sprintf("[review-feedback] mixed batch compensation failed workspace=%q applied_batches=%d error=%v rollback_error=%v", runtime.workspace, len(applied), err, rollbackErr))
 				return errors.Join(err, fmt.Errorf("restore partially consumed review feedback: %w", rollbackErr))
 			}
-			log.Printf("[review-feedback] mixed batch consumption rolled back workspace=%q applied_batches=%d error=%v", runtime.workspace, len(applied), err)
+			slog.ErrorContext(ctx, fmt.Sprintf("[review-feedback] mixed batch consumption rolled back workspace=%q applied_batches=%d error=%v", runtime.workspace, len(applied), err))
 			return err
 		}
 		return nil

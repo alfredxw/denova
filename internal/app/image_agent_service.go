@@ -5,7 +5,7 @@ import (
 	"crypto/sha256"
 	"errors"
 	"fmt"
-	"log"
+	"log/slog"
 	"strings"
 
 	"denova/config"
@@ -82,7 +82,7 @@ func (s *ImageAppService) generateWithAgentUsingHooks(runtime *imageWorkspaceRun
 	); loadErr == nil {
 		applyLayeredSettingsToConfig(&cfg, layered)
 	} else {
-		log.Printf("[image-agent] 加载分层配置失败 workspace=%s err=%v", runtime.workspace, loadErr)
+		slog.ErrorContext(context.Background(), fmt.Sprintf("[image-agent] 加载分层配置失败 workspace=%s err=%v", runtime.workspace, loadErr))
 	}
 	cfg.ImagePresetToolPrompt = strings.TrimSpace(req.ToolPrompt)
 	runner, systemPrompt, err := buildImageAgentRunnerWithComposition(runtime.Context(), &cfg, runtime.bookState, req.SystemPrompt)
@@ -173,9 +173,9 @@ func (s *ImageAppService) generateWithAgentUsingHooks(runtime *imageWorkspaceRun
 	output := result.AssistantText
 	if result.InteractiveImage != nil {
 		output = firstNonEmpty(output, result.InteractiveImage.ImagePath)
-		log.Printf("[image-agent] generated interactive image workspace=%s story_id=%s branch_id=%s turn_id=%s path=%s", runtime.workspace, result.InteractiveImage.StoryID, result.InteractiveImage.BranchID, result.InteractiveImage.TurnID, result.InteractiveImage.ImagePath)
+		slog.InfoContext(context.Background(), fmt.Sprintf("[image-agent] generated interactive image workspace=%s story_id=%s branch_id=%s turn_id=%s path=%s", runtime.workspace, result.InteractiveImage.StoryID, result.InteractiveImage.BranchID, result.InteractiveImage.TurnID, result.InteractiveImage.ImagePath))
 	} else {
-		log.Printf("[image-agent] completed image request workspace=%s purpose=%s", runtime.workspace, strings.TrimSpace(req.Purpose))
+		slog.InfoContext(context.Background(), fmt.Sprintf("[image-agent] completed image request workspace=%s purpose=%s", runtime.workspace, strings.TrimSpace(req.Purpose)))
 	}
 	if !result.Replayed {
 		persistAgentCallWithStore(runtime.sessionStore, config.AgentKindImage, conversation.message, output)

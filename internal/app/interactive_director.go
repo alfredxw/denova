@@ -5,7 +5,7 @@ import (
 	"crypto/sha256"
 	"encoding/json"
 	"fmt"
-	"log"
+	"log/slog"
 	"strings"
 	"sync"
 
@@ -56,7 +56,7 @@ func startInteractiveDirectorMaintenanceTask(cfg *config.Config, state *book.Sta
 				if conversation != nil {
 					storyID = conversation.storyID
 				}
-				log.Printf("[interactive-director-agent] maintenance panic recovered story_id=%s branch_id=%s turn_id=%s err=%v", storyID, turn.BranchID, turn.ID, err)
+				slog.ErrorContext(ctx, fmt.Sprintf("[interactive-director-agent] maintenance panic recovered story_id=%s branch_id=%s turn_id=%s err=%v", storyID, turn.BranchID, turn.ID, err))
 				markInteractiveDirectorMaintenanceFailed(conversation, turn, err)
 			}
 		}()
@@ -70,7 +70,7 @@ func startInteractiveDirectorMaintenanceTask(cfg *config.Config, state *book.Sta
 		}
 		conversation.withDirectorTask(interactiveDirectorTaskDirectorPlanUpdate)
 		if _, err := runInteractiveDirectorMaintenance(ctx, cfg, state, conversation, turn, sessionStore, interactiveDirectorTaskDirectorPlanUpdate); err != nil {
-			log.Printf("[interactive-director-agent] plan maintenance failed story_id=%s branch_id=%s turn_id=%s err=%v", conversation.storyID, turn.BranchID, turn.ID, err)
+			slog.ErrorContext(ctx, fmt.Sprintf("[interactive-director-agent] plan maintenance failed story_id=%s branch_id=%s turn_id=%s err=%v", conversation.storyID, turn.BranchID, turn.ID, err))
 			return
 		}
 		acknowledgeInteractiveDirectorDerivedTurn(conversation, turn)
@@ -86,10 +86,10 @@ func acknowledgeInteractiveDirectorDerivedTurn(conversation *interactiveConversa
 		return
 	}
 	if err := conversation.store.MarkDirectorTurnDerived(conversation.storyID, turn.BranchID, turn.ID); err != nil {
-		log.Printf("[interactive-director-agent] persist derived receipt failed story_id=%s branch_id=%s turn_id=%s err=%v", conversation.storyID, turn.BranchID, turn.ID, err)
+		slog.ErrorContext(context.Background(), fmt.Sprintf("[interactive-director-agent] persist derived receipt failed story_id=%s branch_id=%s turn_id=%s err=%v", conversation.storyID, turn.BranchID, turn.ID, err))
 		return
 	}
-	log.Printf("[interactive-director-agent] persisted derived receipt story_id=%s branch_id=%s turn_id=%s", conversation.storyID, turn.BranchID, turn.ID)
+	slog.InfoContext(context.Background(), fmt.Sprintf("[interactive-director-agent] persisted derived receipt story_id=%s branch_id=%s turn_id=%s", conversation.storyID, turn.BranchID, turn.ID))
 }
 
 func prepareInteractiveDirectorBeforeOpening(ctx context.Context, cfg *config.Config, state *book.State, conversation *interactiveConversation, openingMessage string, sessionStore *session.Store) (bool, error) {
@@ -148,7 +148,7 @@ func startInteractiveDirectorTask(cfg *config.Config, state *book.State, convers
 				if conversation != nil {
 					storyID = conversation.storyID
 				}
-				log.Printf("[interactive-director-agent] panic recovered story_id=%s branch_id=%s turn_id=%s err=%v", storyID, turn.BranchID, turn.ID, err)
+				slog.ErrorContext(ctx, fmt.Sprintf("[interactive-director-agent] panic recovered story_id=%s branch_id=%s turn_id=%s err=%v", storyID, turn.BranchID, turn.ID, err))
 				markInteractiveDirectorFailed(conversation, turn, err)
 			}
 		}()
@@ -157,7 +157,7 @@ func startInteractiveDirectorTask(cfg *config.Config, state *book.State, convers
 			return
 		}
 		if _, err := runInteractiveDirectorPlan(ctx, cfg, state, conversation, turn, sessionStore, prestartedTokens...); err != nil {
-			log.Printf("[interactive-director-agent] run failed story_id=%s branch_id=%s turn_id=%s err=%v", conversation.storyID, turn.BranchID, turn.ID, err)
+			slog.ErrorContext(ctx, fmt.Sprintf("[interactive-director-agent] run failed story_id=%s branch_id=%s turn_id=%s err=%v", conversation.storyID, turn.BranchID, turn.ID, err))
 			markInteractiveDirectorFailed(conversation, turn, err)
 			return
 		}
@@ -246,7 +246,7 @@ func runInteractiveDirectorMaintenance(ctx context.Context, cfg *config.Config, 
 	}
 	planDraft := interactive.NewDirectorPlanUpdateDraft(baselinePlan.Docs, token)
 	effectiveTask := task
-	log.Printf("[interactive-director-agent] maintenance begin story_id=%s branch_id=%s turn_id=%s task=%s revision=%s", conversation.storyID, turn.BranchID, turn.ID, task, token.Revision)
+	slog.InfoContext(ctx, fmt.Sprintf("[interactive-director-agent] maintenance begin story_id=%s branch_id=%s turn_id=%s task=%s revision=%s", conversation.storyID, turn.BranchID, turn.ID, task, token.Revision))
 	conversation.withDirectorTask(effectiveTask)
 	stableContext, instruction, err := conversation.buildDirectorModelInput(turn)
 	if err != nil {
@@ -313,7 +313,7 @@ func runInteractiveDirectorMaintenance(ctx context.Context, cfg *config.Config, 
 			// error. Never replace its durable receipt with a failed projection.
 			result.Plan = committedPlan
 			persistAgentCallWithStore(sessionStore, config.AgentKindInteractiveDirector, instruction, persistedOutput)
-			log.Printf("[interactive-director-agent] reconciled committed plan after late runtime error story_id=%s branch_id=%s turn_id=%s err=%v", conversation.storyID, turn.BranchID, turn.ID, err)
+			slog.ErrorContext(ctx, fmt.Sprintf("[interactive-director-agent] reconciled committed plan after late runtime error story_id=%s branch_id=%s turn_id=%s err=%v", conversation.storyID, turn.BranchID, turn.ID, err))
 			return result, nil
 		}
 		if committedPlan, persistedOutput, committed, reconcileErr := interactiveDirectorCanonicalResult(
@@ -321,7 +321,7 @@ func runInteractiveDirectorMaintenance(ctx context.Context, cfg *config.Config, 
 		); reconcileErr == nil && committed {
 			result.Plan = committedPlan
 			persistAgentCallWithStore(sessionStore, config.AgentKindInteractiveDirector, instruction, persistedOutput)
-			log.Printf("[interactive-director-agent] recovered canonical plan after replay error story_id=%s branch_id=%s turn_id=%s command_id=%s err=%v", conversation.storyID, turn.BranchID, turn.ID, commandID, err)
+			slog.ErrorContext(ctx, fmt.Sprintf("[interactive-director-agent] recovered canonical plan after replay error story_id=%s branch_id=%s turn_id=%s command_id=%s err=%v", conversation.storyID, turn.BranchID, turn.ID, commandID, err))
 			return result, nil
 		}
 		persistAgentCallWithStore(sessionStore, config.AgentKindInteractiveDirector, instruction, "执行失败："+err.Error())
@@ -358,7 +358,7 @@ func runInteractiveDirectorMaintenance(ctx context.Context, cfg *config.Config, 
 	if result.Plan.Metadata.LastRun != nil {
 		status = result.Plan.Metadata.LastRun.Status
 	}
-	log.Printf("[interactive-director-agent] maintenance done story_id=%s branch_id=%s turn_id=%s task=%s director_status=%s summary=%q", conversation.storyID, turn.BranchID, turn.ID, task, status, strings.TrimSpace(persistedOutput))
+	slog.InfoContext(ctx, fmt.Sprintf("[interactive-director-agent] maintenance done story_id=%s branch_id=%s turn_id=%s task=%s director_status=%s summary=%q", conversation.storyID, turn.BranchID, turn.ID, task, status, strings.TrimSpace(persistedOutput)))
 	return result, nil
 }
 
@@ -382,7 +382,7 @@ func markInteractiveDirectorFailed(conversation *interactiveConversation, turn i
 		return
 	}
 	if markErr := conversation.store.MarkDirectorPlanRunFailed(conversation.storyID, turn.BranchID, turn.ID, err); markErr != nil {
-		log.Printf("[interactive-director-agent] mark failed director run failed story_id=%s branch_id=%s turn_id=%s err=%v", conversation.storyID, turn.BranchID, turn.ID, markErr)
+		slog.ErrorContext(context.Background(), fmt.Sprintf("[interactive-director-agent] mark failed director run failed story_id=%s branch_id=%s turn_id=%s err=%v", conversation.storyID, turn.BranchID, turn.ID, markErr))
 	}
 }
 

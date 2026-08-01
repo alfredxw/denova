@@ -1,9 +1,10 @@
 package app
 
 import (
-	"log"
-
+	"context"
 	"denova/internal/filewatch"
+	"fmt"
+	"log/slog"
 )
 
 // syncWorkspaceFileWatcher follows the committed runtime workspace. Watcher
@@ -14,11 +15,11 @@ func (a *App) syncWorkspaceFileWatcher(workspace string) {
 		return
 	}
 	if err := a.workspaceFiles.SetWorkspace(workspace); err != nil {
-		log.Printf("[filewatch] workspace watcher unavailable; foreground refresh remains active workspace=%q err=%v", workspace, err)
+		slog.WarnContext(context.Background(), fmt.Sprintf("[filewatch] workspace watcher unavailable; foreground refresh remains active workspace=%q err=%v", workspace, err))
 		return
 	}
 	if workspace != "" {
-		log.Printf("[filewatch] workspace watcher active workspace=%q", workspace)
+		slog.InfoContext(context.Background(), fmt.Sprintf("[filewatch] workspace watcher active workspace=%q", workspace))
 	}
 }
 

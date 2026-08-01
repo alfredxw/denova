@@ -1,10 +1,11 @@
 package filewatch
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"io/fs"
-	"log"
+	"log/slog"
 	"os"
 	"path/filepath"
 	"strings"
@@ -80,7 +81,7 @@ func (w *workspaceWatcher) runSafely() {
 	defer close(w.events)
 	defer func() {
 		if recovered := recover(); recovered != nil {
-			log.Printf("[filewatch] watcher panic recovered workspace=%q err=%v", w.root, recovered)
+			slog.ErrorContext(context.Background(), fmt.Sprintf("[filewatch] watcher panic recovered workspace=%q err=%v", w.root, recovered))
 		}
 	}()
 	w.run()
@@ -108,9 +109,9 @@ func (w *workspaceWatcher) run() {
 		pendingResync = true
 		if err != nil {
 			if repairErr := w.reconcileDirectoryWatches(); repairErr != nil {
-				log.Printf("[filewatch] filesystem events require authoritative resync and watcher repair was incomplete workspace=%q event_err=%v repair_err=%v", w.root, err, repairErr)
+				slog.WarnContext(context.Background(), fmt.Sprintf("[filewatch] filesystem events require authoritative resync and watcher repair was incomplete workspace=%q event_err=%v repair_err=%v", w.root, err, repairErr))
 			} else {
-				log.Printf("[filewatch] filesystem events require authoritative resync; recursive watches repaired workspace=%q err=%v", w.root, err)
+				slog.InfoContext(context.Background(), fmt.Sprintf("[filewatch] filesystem events require authoritative resync; recursive watches repaired workspace=%q err=%v", w.root, err))
 			}
 		}
 		schedule()
@@ -336,7 +337,7 @@ func (w *workspaceWatcher) removeDirectoryWatches(path string) {
 func (w *workspaceWatcher) removeDirectoryWatch(path string) {
 	err := w.native.Remove(filepath.Join(w.root, filepath.FromSlash(path)))
 	if err != nil && !errors.Is(err, fsnotify.ErrNonExistentWatch) {
-		log.Printf("[filewatch] remove recursive directory watch failed workspace=%q path=%q err=%v", w.root, path, err)
+		slog.ErrorContext(context.Background(), fmt.Sprintf("[filewatch] remove recursive directory watch failed workspace=%q path=%q err=%v", w.root, path, err))
 	}
 }
 

@@ -13,7 +13,8 @@ import (
 // protocol. It only translates display transport; model context remains owned
 // by the existing Go Agent runtime.
 type StreamEncoder struct {
-	w io.Writer
+	w         io.Writer
+	requestID string
 
 	started  bool
 	finished bool
@@ -27,9 +28,10 @@ type StreamEncoder struct {
 	startedTool map[string]string
 }
 
-func NewStreamEncoder(w io.Writer) *StreamEncoder {
+func NewStreamEncoder(w io.Writer, requestID string) *StreamEncoder {
 	return &StreamEncoder{
 		w:           w,
+		requestID:   strings.TrimSpace(requestID),
 		toolInputs:  make(map[string]string),
 		startedTool: make(map[string]string),
 	}
@@ -116,7 +118,7 @@ func (e *StreamEncoder) WriteEvent(ev appsvc.AgentEvent) error {
 			return err
 		}
 		message := firstNonEmpty(readString(data, "message"), readString(data, "error"), "Agent request failed")
-		return e.writeChunk(map[string]any{"type": "error", "errorText": message})
+		return e.writeChunk(map[string]any{"type": "error", "errorText": CorrelatedErrorMessage(message, e.requestID)})
 	case "aborted":
 		if err := e.closeOpenContent(); err != nil {
 			return err
@@ -132,6 +134,17 @@ func (e *StreamEncoder) WriteEvent(ev appsvc.AgentEvent) error {
 		payload["event"] = ev.Type
 		return e.writeData(DataTypeActivity, eventID(data, ev.Type), payload)
 	}
+}
+
+// CorrelatedErrorMessage appends the server-issued request ID to a user-visible
+// streaming error. The bilingual label keeps the transport usable before the
+// client-side locale is available.
+func CorrelatedErrorMessage(message, requestID string) string {
+	requestID = strings.TrimSpace(requestID)
+	if requestID == "" {
+		return message
+	}
+	return message + " · 日志 ID / Log ID: " + requestID
 }
 
 func (e *StreamEncoder) Finish(reason string) error {

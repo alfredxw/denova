@@ -3,7 +3,7 @@ package app
 import (
 	"context"
 	"fmt"
-	"log"
+	"log/slog"
 	"strings"
 
 	"denova/config"
@@ -113,15 +113,15 @@ func (s *ChatAppService) prepareIDEChatRuntimeSnapshot(
 			runtime.cfg.IDEStoryTellerID = teller.ID
 		}
 		req.TellerID = runtime.cfg.IDEStoryTellerID
-		log.Printf("[agent-task] load ide narrative style id=%s workspace=%s", runtime.cfg.IDEStoryTellerID, runtime.workspace)
+		slog.InfoContext(ctx, fmt.Sprintf("[agent-task] load ide narrative style id=%s workspace=%s", runtime.cfg.IDEStoryTellerID, runtime.workspace))
 		if len(teller.StyleRefs) > 0 || len(teller.StyleRules) > 0 {
 			converted := convertTellerStyleRules(novaDir, teller.StyleRefs, teller.StyleRules, req.StyleScenes)
 			req.StyleRules = converted
-			log.Printf("[agent-task] inject teller style rules teller_id=%s scenes=%q count=%d rules=%q", teller.ID, req.StyleScenes, len(converted), appStyleRuleNames(converted))
+			slog.InfoContext(ctx, fmt.Sprintf("[agent-task] inject teller style rules teller_id=%s scenes=%q count=%d rules=%q", teller.ID, req.StyleScenes, len(converted), appStyleRuleNames(converted)))
 		}
 		runtime.ideTeller = ideStoryTellerFromInteractive(teller, req.StyleRules)
 	} else {
-		log.Printf("[agent-task] load layered settings failed workspace=%s err=%v", runtime.workspace, err)
+		slog.ErrorContext(ctx, fmt.Sprintf("[agent-task] load layered settings failed workspace=%s err=%v", runtime.workspace, err))
 		applyRequestLocaleToConfig(&runtime.cfg, req.Locale)
 	}
 	applyImagePresetRuntimePolicy(&runtime, &req)
@@ -160,7 +160,7 @@ func applyImagePresetRuntimePolicy(runtime *ideChatRuntime, req *agents.ChatRequ
 	if strings.TrimSpace(runtime.cfg.DataDir()) != "" {
 		loaded, err := imagepreset.NewLibrary(runtime.cfg.DataDir()).Get(presetID)
 		if err != nil {
-			log.Printf("[agent-task] load image preset failed id=%s workspace=%s err=%v; fallback=%s", presetID, runtime.workspace, err, imagepreset.DefaultID)
+			slog.ErrorContext(context.Background(), fmt.Sprintf("[agent-task] load image preset failed id=%s workspace=%s err=%v; fallback=%s", presetID, runtime.workspace, err, imagepreset.DefaultID))
 		} else {
 			preset = loaded
 		}
@@ -177,7 +177,7 @@ func applyImagePresetRuntimePolicy(runtime *ideChatRuntime, req *agents.ChatRequ
 	runtime.ideTeller.ImagePresetID = preset.ID
 	runtime.ideTeller.ImagePresetName = preset.Name
 	runtime.ideTeller.ImagePresetSystemPrompt = agentSystemPrompt
-	log.Printf("[agent-task] selected image preset id=%s name=%q workspace=%s agent_system_chars=%d tool_request_chars=%d", req.ImagePreset.ID, req.ImagePreset.Name, runtime.workspace, len([]rune(agentSystemPrompt)), len([]rune(toolRequestPrompt)))
+	slog.InfoContext(context.Background(), fmt.Sprintf("[agent-task] selected image preset id=%s name=%q workspace=%s agent_system_chars=%d tool_request_chars=%d", req.ImagePreset.ID, req.ImagePreset.Name, runtime.workspace, len([]rune(agentSystemPrompt)), len([]rune(toolRequestPrompt))))
 }
 
 func applyWritingSkillRuntimePolicy(ctx context.Context, runtime *ideChatRuntime, req *agents.ChatRequest) error {
@@ -208,18 +208,18 @@ func applyWritingSkillRuntimePolicy(ctx context.Context, runtime *ideChatRuntime
 	}
 	if availableNames[selected] {
 		req.WritingSkill = selected
-		log.Printf("[agent-task] selected writing skill name=%s workspace=%s", req.WritingSkill, runtime.workspace)
+		slog.InfoContext(ctx, fmt.Sprintf("[agent-task] selected writing skill name=%s workspace=%s", req.WritingSkill, runtime.workspace))
 		return nil
 	}
 
 	fallback := config.DefaultWritingSkillName
 	if selected != fallback && availableNames[fallback] {
 		req.WritingSkill = fallback
-		log.Printf("[agent-task] writing skill unavailable name=%s workspace=%s; fallback=%s", selected, runtime.workspace, fallback)
+		slog.WarnContext(ctx, fmt.Sprintf("[agent-task] writing skill unavailable name=%s workspace=%s; fallback=%s", selected, runtime.workspace, fallback))
 		return nil
 	}
 	req.WritingSkill = ""
-	log.Printf("[agent-task] no active writing skill available requested=%s workspace=%s; continue without writing skill", selected, runtime.workspace)
+	slog.InfoContext(ctx, fmt.Sprintf("[agent-task] no active writing skill available requested=%s workspace=%s; continue without writing skill", selected, runtime.workspace))
 	return nil
 }
 

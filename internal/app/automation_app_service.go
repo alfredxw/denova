@@ -4,7 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"log"
+	"log/slog"
 	"strings"
 	"sync"
 	"time"
@@ -37,13 +37,13 @@ func (a *App) StartAutomationScheduler(ctx context.Context) {
 	}
 	if err := a.initializeLifecycleLocked(); err != nil {
 		a.mu.Unlock()
-		log.Printf("[automation] scheduler admission failed err=%v", err)
+		slog.ErrorContext(ctx, fmt.Sprintf("[automation] scheduler admission failed err=%v", err))
 		return
 	}
 	schedulerCtx, lease, err := a.rootScope.AcquireContext(ctx)
 	if err != nil {
 		a.mu.Unlock()
-		log.Printf("[automation] scheduler admission failed err=%v", err)
+		slog.ErrorContext(ctx, fmt.Sprintf("[automation] scheduler admission failed err=%v", err))
 		return
 	}
 	schedulerCtx, cancel := context.WithCancel(schedulerCtx)
@@ -57,7 +57,7 @@ func (a *App) StartAutomationScheduler(ctx context.Context) {
 		defer cancel()
 		defer func() {
 			if recovered := recover(); recovered != nil {
-				log.Printf("[automation] scheduler panic recovered err=%v", recovered)
+				slog.ErrorContext(ctx, fmt.Sprintf("[automation] scheduler panic recovered err=%v", recovered))
 			}
 		}()
 		ticker := time.NewTicker(time.Minute)
@@ -67,7 +67,7 @@ func (a *App) StartAutomationScheduler(ctx context.Context) {
 		for {
 			select {
 			case <-schedulerCtx.Done():
-				log.Printf("[automation] scheduler stopped err=%v", schedulerCtx.Err())
+				slog.InfoContext(ctx, fmt.Sprintf("[automation] scheduler stopped err=%v", schedulerCtx.Err()))
 				return
 			case now := <-ticker.C:
 				a.runAutomationSchedulerTick(schedulerCtx, now)
@@ -92,7 +92,7 @@ func (a *App) signalAutomationEffectReconciliation() {
 func (a *App) runAutomationSchedulerTick(ctx context.Context, now time.Time) {
 	defer func() {
 		if recovered := recover(); recovered != nil {
-			log.Printf("[automation] scheduler tick panic recovered workspace=%q err=%v", a.Workspace(), recovered)
+			slog.ErrorContext(ctx, fmt.Sprintf("[automation] scheduler tick panic recovered workspace=%q err=%v", a.Workspace(), recovered))
 		}
 	}()
 	a.automation().reconcilePersistedHostEffects(ctx)
@@ -352,7 +352,7 @@ func (s *AutomationAppService) startTaskWithSourceRunID(ctx context.Context, sna
 		if deterministicRunID != "" && !sameAutomationRunSemantics(taskDef, run, claim.run) {
 			return nil, automation.RunRecord{}, automationRunIDConflict(deterministicRunID)
 		}
-		log.Printf("[automation] attach active run workspace=%q task_id=%s run_id=%s status=%s", snap.workspace, taskDef.ID, claim.run.ID, claim.task.Status())
+		slog.InfoContext(ctx, fmt.Sprintf("[automation] attach active run workspace=%q task_id=%s run_id=%s status=%s", snap.workspace, taskDef.ID, claim.run.ID, claim.task.Status()))
 		return claim.task, claim.run, nil
 	}
 	claimActivated := false
@@ -368,7 +368,7 @@ func (s *AutomationAppService) startTaskWithSourceRunID(ctx context.Context, sna
 	}
 
 	var execution *automationAcceptedRun
-	task, err := NewDeferredRegisteredTask(func(task *Task) error {
+	task, err := NewDeferredRegisteredTaskWithContext(ctx, func(task *Task) error {
 		if err := s.activateAutomationClaim(claim, task); err != nil {
 			return err
 		}

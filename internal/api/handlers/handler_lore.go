@@ -200,7 +200,7 @@ func (h *Handlers) HandleLoreImagesGenerateStream(ctx context.Context, c *app.Re
 		return
 	}
 	expectedWorkspace := workspaceChangeExpectedWorkspace(c)
-	task, err := h.app.StartLoreImagesGenerateTaskForWorkspace(expectedWorkspace, body)
+	task, err := h.app.StartLoreImagesGenerateTaskForWorkspace(ctx, expectedWorkspace, body)
 	if err != nil {
 		if errors.Is(err, novaApp.ErrWorkspaceChanged) || errors.Is(err, novaApp.ErrNoWorkspace) || errors.Is(err, novaApp.ErrWorkspaceTransition) {
 			h.writeWorkspaceChangeLeaseError(c, expectedWorkspace, err)
@@ -213,7 +213,7 @@ func (h *Handlers) HandleLoreImagesGenerateStream(ctx context.Context, c *app.Re
 		writeError(c, consts.StatusBadRequest, err.Error())
 		return
 	}
-	sse.StreamTask(c, task)
+	sse.StreamTask(ctx, c, task)
 }
 
 func (h *Handlers) HandleLoreImagesGenerateAbort(ctx context.Context, c *app.RequestContext) {

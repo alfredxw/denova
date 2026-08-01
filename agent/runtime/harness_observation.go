@@ -2,7 +2,8 @@ package runtime
 
 import (
 	"context"
-	"log"
+	"fmt"
+	"log/slog"
 )
 
 func (h *Harness) handleObserve(state *harnessState, ctx context.Context, after Cursor) (Observation, error) {
@@ -38,7 +39,7 @@ func (h *Harness) newObservation(state *harnessState, ctx context.Context, after
 	go func(id uint64) {
 		defer func() {
 			if recovered := recover(); recovered != nil {
-				log.Printf("runtime: binding=%+v subscriber=%d watcher panic: %v", h.binding, id, recovered)
+				slog.ErrorContext(ctx, fmt.Sprintf("runtime: binding=%+v subscriber=%d watcher panic: %v", h.binding, id, recovered))
 			}
 		}()
 		select {

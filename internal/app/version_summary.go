@@ -3,7 +3,7 @@ package app
 import (
 	"context"
 	"fmt"
-	"log"
+	"log/slog"
 	"sort"
 	"strings"
 	"unicode/utf8"
@@ -61,7 +61,7 @@ func (s *WorkspaceRuntimeManager) inferVersionMessage(ctx context.Context, expli
 		if ctx.Err() != nil {
 			return "", ctx.Err()
 		}
-		log.Printf("[versions] 读取变更状态用于生成版本说明失败 source=%s err=%v", source, err)
+		slog.ErrorContext(ctx, fmt.Sprintf("[versions] 读取变更状态用于生成版本说明失败 source=%s err=%v", source, err))
 		return fallbackVersionMessage(source, nil), nil
 	}
 
@@ -75,7 +75,7 @@ func (s *WorkspaceRuntimeManager) inferVersionMessage(ctx context.Context, expli
 			if ctx.Err() != nil {
 				return "", ctx.Err()
 			}
-			log.Printf("[versions] LLM 生成版本说明失败 source=%s workspace=%s err=%v", source, runtime.workspace, err)
+			slog.ErrorContext(ctx, fmt.Sprintf("[versions] LLM 生成版本说明失败 source=%s workspace=%s err=%v", source, runtime.workspace, err))
 			persistAgentCallWithStore(runtime.sessionStore, config.AgentKindVersionSummary, instruction, "执行失败："+err.Error())
 		}
 	}

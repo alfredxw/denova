@@ -3,7 +3,7 @@ package interactive
 import (
 	"context"
 	"fmt"
-	"log"
+	"log/slog"
 	"strings"
 
 	"denova/internal/localfs"
@@ -34,7 +34,7 @@ func (s *Store) acquireStoryMutationLeaseLocked(storyID string) (func(), error) 
 	return func() {
 		delete(s.heldStoryLeases, storyID)
 		if err := release(); err != nil {
-			log.Printf("[interactive-story] release mutation lease failed story_id=%s error=%v", storyID, err)
+			slog.ErrorContext(context.Background(), fmt.Sprintf("[interactive-story] release mutation lease failed story_id=%s error=%v", storyID, err))
 		}
 	}, nil
 }

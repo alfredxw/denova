@@ -1,10 +1,11 @@
 package app
 
 import (
+	"context"
 	"crypto/sha256"
 	"encoding/hex"
 	"fmt"
-	"log"
+	"log/slog"
 	"strconv"
 	"strings"
 	"unicode/utf8"
@@ -17,7 +18,7 @@ import (
 )
 
 func (c *interactiveConversation) MarkInterrupted(userMessage, assistantContent, reason string) error {
-	log.Printf("[interactive-agent] interruption ignored story_id=%s branch_id=%s reason=%s", c.storyID, c.branchID, reason)
+	slog.WarnContext(context.Background(), fmt.Sprintf("[interactive-agent] interruption ignored story_id=%s branch_id=%s reason=%s", c.storyID, c.branchID, reason))
 	return nil
 }
 
@@ -187,10 +188,10 @@ func (c *interactiveConversation) modelHistoryForCycle(storyCtx interactive.Stor
 	cached := history
 	c.modelHistory = &cached
 	c.mu.Unlock()
-	log.Printf(
+	slog.InfoContext(context.Background(), fmt.Sprintf(
 		"[interactive-agent] loaded model history story_id=%s branch_id=%s start_turn=%d end_turn=%d total_turns=%d model_turns=%d checkpoint_id=%s",
 		c.storyID, branchID, history.StartTurn, history.EndTurn, history.TotalTurns, len(history.Turns), compactionID,
-	)
+	))
 	return history, compaction, nil
 }
 

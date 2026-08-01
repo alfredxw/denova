@@ -4,7 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"log"
+	"log/slog"
 	"sync"
 )
 
@@ -313,7 +313,7 @@ func (h *Harness) closeResult() error {
 func (h *Harness) closeOnLifecycleEnd() {
 	defer func() {
 		if recovered := recover(); recovered != nil {
-			log.Printf("runtime: binding=%+v lifecycle watcher panic: %v", h.binding, recovered)
+			slog.ErrorContext(context.Background(), fmt.Sprintf("runtime: binding=%+v lifecycle watcher panic: %v", h.binding, recovered))
 		}
 	}()
 	select {
@@ -457,7 +457,7 @@ func (h *Harness) run(state harnessState) {
 		terminal := h.terminalError()
 		if recovered := recover(); recovered != nil {
 			terminal = fmt.Errorf("%w: actor panic: %v", ErrHarnessFailed, recovered)
-			log.Printf("runtime: binding=%+v cursor=%d actor failed: %v", h.binding, state.cursor, terminal)
+			slog.ErrorContext(context.Background(), fmt.Sprintf("runtime: binding=%+v cursor=%d actor failed: %v", h.binding, state.cursor, terminal))
 			h.setFailure(terminal)
 		}
 		if closeErr := safeJournalClose(h.journal); closeErr != nil {

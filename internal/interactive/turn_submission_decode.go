@@ -1,10 +1,11 @@
 package interactive
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
-	"log"
+	"log/slog"
 	"sort"
 	"strings"
 )
@@ -186,7 +187,7 @@ func decodeStructuredStateChangeItems(raw json.RawMessage) ([]json.RawMessage, e
 	if items == nil {
 		return nil, errors.New("state_changes string cannot contain null")
 	}
-	log.Printf("[interactive-turn-submission] accepted one-layer string-encoded state_changes bytes=%d location=internal/interactive/turn_submission_decode.go", len(encoded))
+	slog.InfoContext(context.Background(), fmt.Sprintf("[interactive-turn-submission] accepted one-layer string-encoded state_changes bytes=%d location=internal/interactive/turn_submission_decode.go", len(encoded)))
 	return items, nil
 }
 

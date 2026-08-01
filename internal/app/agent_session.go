@@ -2,7 +2,8 @@ package app
 
 import (
 	"context"
-	"log"
+	"fmt"
+	"log/slog"
 
 	"denova/internal/agents/session"
 )
@@ -16,11 +17,11 @@ func (a *App) persistAgentCall(agentKind, instruction, response string) {
 
 func persistAgentCallWithStore(store *session.Store, agentKind, instruction, response string) {
 	if store == nil {
-		log.Printf("[agent-session] skip persist agent=%s reason=no_session_store", agentKind)
+		slog.WarnContext(context.Background(), fmt.Sprintf("[agent-session] skip persist agent=%s reason=no_session_store", agentKind))
 		return
 	}
 	if err := session.PersistAgentCall(store, agentKind, instruction, response); err != nil {
-		log.Printf("[agent-session] persist failed agent=%s err=%v", agentKind, err)
+		slog.ErrorContext(context.Background(), fmt.Sprintf("[agent-session] persist failed agent=%s err=%v", agentKind, err))
 	}
 }
 

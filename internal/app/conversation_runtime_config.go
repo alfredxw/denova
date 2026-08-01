@@ -1,8 +1,9 @@
 package app
 
 import (
+	"context"
 	"fmt"
-	"log"
+	"log/slog"
 
 	"denova/config"
 	"denova/internal/agents/session"
@@ -20,7 +21,7 @@ func recentConversationSeed(store *session.Store, runtimeCfg *config.Config, age
 			if err := conversationconfig.Validate(runtimeCfg, recent, agentKind); err == nil {
 				return recent, nil
 			} else {
-				log.Printf("[conversation-config] recent selection is no longer usable agent_kind=%s profile_id=%s error=%v; using Settings default", agentKind, recent.ProfileID, err)
+				slog.ErrorContext(context.Background(), fmt.Sprintf("[conversation-config] recent selection is no longer usable agent_kind=%s profile_id=%s error=%v; using Settings default", agentKind, recent.ProfileID, err))
 			}
 		}
 	}
@@ -41,7 +42,7 @@ func recentInteractiveConversationSeed(store *interactive.Store, runtimeCfg *con
 			if err := conversationconfig.Validate(runtimeCfg, recent, config.AgentKindInteractiveStory); err == nil {
 				return recent, nil
 			} else {
-				log.Printf("[conversation-config] recent Game selection is no longer usable profile_id=%s error=%v; using Settings default", recent.ProfileID, err)
+				slog.ErrorContext(context.Background(), fmt.Sprintf("[conversation-config] recent Game selection is no longer usable profile_id=%s error=%v; using Settings default", recent.ProfileID, err))
 			}
 		}
 	}

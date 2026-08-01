@@ -7,7 +7,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"log"
+	"log/slog"
 	"os"
 	"path/filepath"
 	"sort"
@@ -268,7 +268,7 @@ func (j *fileJournal) maybeCheckpointLocked(state *harnessState) error {
 		return err
 	}
 	if err := j.garbageCollectGenerationsLocked(generation, previous, sequence); err != nil {
-		log.Printf("[agent-runtime] generation garbage collection deferred journal=%s error=%v", filepath.Base(j.path), err)
+		slog.ErrorContext(context.Background(), fmt.Sprintf("[agent-runtime] generation garbage collection deferred journal=%s error=%v", filepath.Base(j.path), err))
 		return nil
 	}
 	return j.runCheckpointHook(checkpointGarbageCollected)

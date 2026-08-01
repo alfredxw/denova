@@ -9,7 +9,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"log"
+	"log/slog"
 	"regexp"
 	"strings"
 
@@ -29,7 +29,7 @@ type Config struct {
 // quirks. If the model needs no polyfill, the original is returned untouched.
 func Wrap(cm agent.ToolCallingChatModel, cfg Config) agent.ToolCallingChatModel {
 	if polyfills := detect(cfg); len(polyfills) > 0 {
-		log.Printf("[providercompat] Wrap called: applying %d polyfill(s) model=%q", len(polyfills), cfg.Model)
+		slog.InfoContext(context.Background(), fmt.Sprintf("[providercompat] Wrap called: applying %d polyfill(s) model=%q", len(polyfills), cfg.Model))
 		cm = chain(cm, polyfills)
 	}
 	return cm

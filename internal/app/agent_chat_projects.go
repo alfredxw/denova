@@ -3,7 +3,7 @@ package app
 import (
 	"context"
 	"fmt"
-	"log"
+	"log/slog"
 	"path/filepath"
 	"sort"
 	"strings"
@@ -81,7 +81,7 @@ func (a *App) AgentChatProjects() []AgentChatProject {
 
 	records, err := a.Projects(false)
 	if err != nil {
-		log.Printf("[app/agent_chat_projects.go] listing projects failed err=%v", err)
+		slog.ErrorContext(context.Background(), fmt.Sprintf("[app/agent_chat_projects.go] listing projects failed err=%v", err))
 		return []AgentChatProject{}
 	}
 	runningBindings := a.agentChat().runningBindingKeys()
@@ -99,7 +99,7 @@ func (a *App) AgentChatProjects() []AgentChatProject {
 		}
 		metas, err := readProjectSessions(layout.SessionsDir(), "")
 		if err != nil {
-			log.Printf("[app/agent_chat_projects.go] reading sessions failed project_id=%s err=%v", record.ID, err)
+			slog.ErrorContext(context.Background(), fmt.Sprintf("[app/agent_chat_projects.go] reading sessions failed project_id=%s err=%v", record.ID, err))
 			project.Error = err.Error()
 			projects = append(projects, project)
 			continue
@@ -116,10 +116,10 @@ func (a *App) AgentChatProjects() []AgentChatProject {
 	for _, project := range projects {
 		totalSessions += project.Total
 	}
-	log.Printf(
+	slog.InfoContext(context.Background(), fmt.Sprintf(
 		"[app/agent_chat_projects.go] listed project session metadata projects=%d sessions=%d duration=%s",
 		len(projects), totalSessions, time.Since(startedAt),
-	)
+	))
 	return projects
 }
 
@@ -182,7 +182,7 @@ func (a *App) AgentChatHistory(query AgentChatHistoryQuery) AgentChatHistoryPage
 		}
 		metas, err := readProjectSessions(layout.SessionsDir(), "")
 		if err != nil {
-			log.Printf("[app/agent_chat_projects.go] reading history failed project_id=%s err=%v", record.ID, err)
+			slog.ErrorContext(context.Background(), fmt.Sprintf("[app/agent_chat_projects.go] reading history failed project_id=%s err=%v", record.ID, err))
 			continue
 		}
 		projectSearchText := strings.ToLower(record.Name + " " + record.WorkspacePath)
@@ -215,10 +215,10 @@ func (a *App) AgentChatHistory(query AgentChatHistoryQuery) AgentChatHistoryPage
 	end := min(page.Offset+query.Limit, page.Total)
 	page.Items = append(page.Items, items[page.Offset:end]...)
 	page.HasMore = end < page.Total
-	log.Printf(
+	slog.InfoContext(context.Background(), fmt.Sprintf(
 		"[app/agent_chat_projects.go] searched conversation history query_length=%d total=%d offset=%d returned=%d duration=%s",
 		len([]rune(normalizedQuery)), page.Total, page.Offset, len(page.Items), time.Since(startedAt),
-	)
+	))
 	return page
 }
 
@@ -229,7 +229,7 @@ func readProjectSessions(sessionsDir, activeID string) ([]session.SessionMeta, e
 	}
 	defer func() {
 		if closeErr := store.Close(); closeErr != nil {
-			log.Printf("[app/agent_chat_projects.go] closing session store failed sessions_dir=%q err=%v", sessionsDir, closeErr)
+			slog.ErrorContext(context.Background(), fmt.Sprintf("[app/agent_chat_projects.go] closing session store failed sessions_dir=%q err=%v", sessionsDir, closeErr))
 		}
 	}()
 	metas, err := listUserSessions(store, activeID)
@@ -263,7 +263,7 @@ func (a *App) CreateProjectSession(projectID, title string) (AgentChatSession, e
 	if err != nil {
 		return AgentChatSession{}, err
 	}
-	log.Printf("[app/agent_chat_projects.go] created project session project_id=%s workspace=%q session=%s", binding.ProjectID, binding.Workspace, sess.ID)
+	slog.InfoContext(context.Background(), fmt.Sprintf("[app/agent_chat_projects.go] created project session project_id=%s workspace=%q session=%s", binding.ProjectID, binding.Workspace, sess.ID))
 	return AgentChatSession{
 		ID: sess.ID, Title: sess.Title(), CreatedAt: sess.CreatedAt, UpdatedAt: sess.UpdatedAt,
 		MessageCount: sess.MessageCount(),

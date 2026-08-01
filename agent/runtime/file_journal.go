@@ -8,7 +8,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"log"
+	"log/slog"
 	"os"
 	"path/filepath"
 	"sync"
@@ -423,7 +423,7 @@ func (j *fileJournal) Append(ctx context.Context, expected Cursor, payloads []Ev
 		// transaction has crossed its durability boundary, so an index write
 		// failure must not turn a confirmed append into a false command error.
 		j.indexReady = false
-		log.Printf("[agent-runtime] command index update deferred journal=%s cursor=%d error=%v", filepath.Base(j.path), j.cursor, indexErr)
+		slog.ErrorContext(ctx, fmt.Sprintf("[agent-runtime] command index update deferred journal=%s cursor=%d error=%v", filepath.Base(j.path), j.cursor, indexErr))
 	}
 	return cloneEvents(committed), nil
 }
@@ -446,7 +446,7 @@ func (j *fileJournal) LookupCommand(ctx context.Context, commandID CommandID) (C
 	if !j.indexReady {
 		loaded, err := j.loadPersistedCommandIndexLocked()
 		if err != nil {
-			log.Printf("[agent-runtime] rebuilding invalid command index journal=%s error=%v", filepath.Base(j.path), err)
+			slog.ErrorContext(ctx, fmt.Sprintf("[agent-runtime] rebuilding invalid command index journal=%s error=%v", filepath.Base(j.path), err))
 		}
 		if !loaded {
 			if _, replayErr := j.replayLocked(ctx, true, nil); replayErr != nil {

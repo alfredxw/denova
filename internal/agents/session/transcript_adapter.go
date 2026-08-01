@@ -1,8 +1,9 @@
 package session
 
 import (
+	"context"
 	"fmt"
-	"log"
+	"log/slog"
 
 	agent "github.com/alfredxw/denova/agent"
 	agentsession "github.com/alfredxw/denova/agent/session"
@@ -72,7 +73,7 @@ func (s *Session) effectiveTranscriptMessagesLocked() []*agent.Message {
 	}
 	// The mixed journal predates the public contract, so corrupt legacy data
 	// must remain readable. New writes are validated before reaching this path.
-	log.Printf("internal/agents/session/transcript_adapter.go: projected transcript fallback session=%q error=%v", s.ID, err)
+	slog.ErrorContext(context.Background(), fmt.Sprintf("internal/agents/session/transcript_adapter.go: projected transcript fallback session=%q error=%v", s.ID, err))
 	result := make([]*agent.Message, len(s.messages)-start)
 	for index, message := range s.messages[start:] {
 		result[index] = agent.CloneMessage(message)

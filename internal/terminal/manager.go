@@ -1,11 +1,12 @@
 package terminal
 
 import (
+	"context"
 	"crypto/rand"
 	"encoding/hex"
 	"errors"
 	"fmt"
-	"log"
+	"log/slog"
 	"sort"
 	"strings"
 	"sync"
@@ -149,7 +150,7 @@ func (m *Manager) SetConfig(cfg Config) {
 	m.cfg = normalized
 	m.mu.Unlock()
 	if previouslyEnabled && !normalized.Enabled {
-		log.Printf("[terminal/manager.go] terminal disabled by config, closing all sessions")
+		slog.InfoContext(context.Background(), "[terminal/manager.go] terminal disabled by config, closing all sessions")
 		m.CloseAll()
 	}
 }
@@ -260,7 +261,7 @@ func (m *Manager) Create(spec Spec) (*Session, error) {
 		if id, ok := m.sessionsByOwner[spec.OwnerTabID]; ok {
 			if session, exists := m.sessions[id]; exists {
 				m.mu.Unlock()
-				log.Printf("[terminal/manager.go] reused session id=%s owner_tab_id=%s", id, spec.OwnerTabID)
+				slog.InfoContext(context.Background(), fmt.Sprintf("[terminal/manager.go] reused session id=%s owner_tab_id=%s", id, spec.OwnerTabID))
 				return session, nil
 			}
 			delete(m.sessionsByOwner, spec.OwnerTabID)
@@ -296,7 +297,7 @@ func (m *Manager) Create(spec Spec) (*Session, error) {
 	}
 	total := len(m.sessions)
 	m.mu.Unlock()
-	log.Printf("[terminal/manager.go] session created id=%s owner_tab_id=%s total=%d", id, spec.OwnerTabID, total)
+	slog.InfoContext(context.Background(), fmt.Sprintf("[terminal/manager.go] session created id=%s owner_tab_id=%s total=%d", id, spec.OwnerTabID, total))
 	return session, nil
 }
 
@@ -357,7 +358,7 @@ func (m *Manager) CloseAll() {
 		session.Close()
 	}
 	if len(sessions) > 0 {
-		log.Printf("[terminal/manager.go] closed all sessions count=%d", len(sessions))
+		slog.InfoContext(context.Background(), fmt.Sprintf("[terminal/manager.go] closed all sessions count=%d", len(sessions)))
 	}
 }
 
@@ -366,7 +367,7 @@ func (m *Manager) CloseAll() {
 // tab or when a new session triggers eviction.
 func (m *Manager) handleSessionExit(session *Session) {
 	code, message := session.ExitStatus()
-	log.Printf("[terminal/manager.go] session process exited id=%s code=%d err=%q", session.ID(), code, message)
+	slog.InfoContext(context.Background(), fmt.Sprintf("[terminal/manager.go] session process exited id=%s code=%d err=%q", session.ID(), code, message))
 }
 
 // evictExitedLocked reclaims the oldest exited session with no attached client once the limit
@@ -397,7 +398,7 @@ func (m *Manager) evictExitedLocked(limit int) {
 		session := m.sessions[item.id]
 		m.removeSessionLocked(item.id, session)
 		session.Close()
-		log.Printf("[terminal/manager.go] evicted exited session id=%s", item.id)
+		slog.InfoContext(context.Background(), fmt.Sprintf("[terminal/manager.go] evicted exited session id=%s", item.id))
 	}
 }
 

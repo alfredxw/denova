@@ -4,7 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"log"
+	"log/slog"
 	"strings"
 	"time"
 
@@ -28,7 +28,7 @@ func (s *AutomationAppService) ContinueRun(ctx context.Context, runID, commandID
 	if replay, run, ok, err := s.followUps.replay(identity); err != nil {
 		return nil, automation.RunRecord{}, err
 	} else if ok {
-		log.Printf("[automation] replay follow-up run_id=%s command_id=%s status=%s", identity.runID, identity.commandID, replay.Status())
+		slog.InfoContext(ctx, fmt.Sprintf("[automation] replay follow-up run_id=%s command_id=%s status=%s", identity.runID, identity.commandID, replay.Status()))
 		return replay, run, nil
 	}
 	if _, _, ok := s.ActiveAutomationTaskByRunID(identity.runID); ok {
@@ -77,7 +77,7 @@ func (s *AutomationAppService) continueRunWithSnapshot(ctx context.Context, snap
 	}
 	defer func() {
 		if releaseErr := releaseRun(); releaseErr != nil {
-			log.Printf("[automation] release follow-up run lease failed task_id=%s run_id=%s err=%v", taskDef.ID, run.ID, releaseErr)
+			slog.ErrorContext(ctx, fmt.Sprintf("[automation] release follow-up run lease failed task_id=%s run_id=%s err=%v", taskDef.ID, run.ID, releaseErr))
 		}
 	}()
 	// The lease may have waited behind recovery/effect reconciliation. Refresh
@@ -123,7 +123,7 @@ func (s *AutomationAppService) continueRunWithSnapshot(ctx context.Context, snap
 		return nil, automation.RunRecord{}, err
 	}
 	var execution *automationAcceptedFollowUp
-	task, err := NewDeferredRegisteredTask(func(task *Task) error {
+	task, err := NewDeferredRegisteredTaskWithContext(ctx, func(task *Task) error {
 		if err := s.activateAutomationClaim(claim, task); err != nil {
 			return err
 		}
@@ -181,17 +181,17 @@ func (s *AutomationAppService) continueRunWithSnapshot(ctx context.Context, snap
 		finalRun.FinishedAt = time.Now().UTC()
 		finalRun.RuntimeRecoveryRequired = false
 		if _, appendErr := storeForSnapshot(snap).AppendRun(taskStoreID, finalRun); appendErr != nil {
-			log.Printf("[automation] persist follow-up terminal failed task_id=%s run_id=%s operation_id=%s err=%v", taskDef.ID, run.ID, finalRun.RuntimeOperationID, appendErr)
+			slog.ErrorContext(taskCtx, fmt.Sprintf("[automation] persist follow-up terminal failed task_id=%s run_id=%s operation_id=%s err=%v", taskDef.ID, run.ID, finalRun.RuntimeOperationID, appendErr))
 			task.emit(agents.Event{Type: "error", Data: map[string]string{"message": appendErr.Error()}})
 		} else if _, persistedRun, loadErr := storeForSnapshot(snap).GetRunByID(finalRun.ID); loadErr != nil {
-			log.Printf("[automation] reload follow-up terminal effects failed task_id=%s run_id=%s operation_id=%s err=%v", taskDef.ID, run.ID, finalRun.RuntimeOperationID, loadErr)
+			slog.ErrorContext(taskCtx, fmt.Sprintf("[automation] reload follow-up terminal effects failed task_id=%s run_id=%s operation_id=%s err=%v", taskDef.ID, run.ID, finalRun.RuntimeOperationID, loadErr))
 			task.emit(agents.Event{Type: "error", Data: map[string]string{"message": loadErr.Error()}})
 		} else {
 			finalRun = persistedRun
 			if persistedRun.CompletionEffectsPending {
 				completedRun, completionErr := s.completeAutomationRunEffects(context.WithoutCancel(taskCtx), snap, taskDef, persistedRun)
 				if completionErr != nil {
-					log.Printf("[automation] persist follow-up completion effects failed task_id=%s run_id=%s operation_id=%s err=%v", taskDef.ID, run.ID, finalRun.RuntimeOperationID, completionErr)
+					slog.ErrorContext(taskCtx, fmt.Sprintf("[automation] persist follow-up completion effects failed task_id=%s run_id=%s operation_id=%s err=%v", taskDef.ID, run.ID, finalRun.RuntimeOperationID, completionErr))
 					task.emit(agents.Event{Type: "error", Data: map[string]string{"message": completionErr.Error()}})
 				} else {
 					finalRun = completedRun
@@ -329,10 +329,10 @@ func (s *AutomationAppService) startAutomationRun(ctx context.Context, snap *aut
 		if recovered := recover(); recovered != nil {
 			err = fmt.Errorf("automation start panic recovered: %v", recovered)
 			execution = nil
-			log.Printf("[automation] start panic recovered task_id=%s scope=%s workspace=%q trigger=%s err=%v", task.ID, task.Scope, run.Workspace, run.Trigger, recovered)
+			slog.ErrorContext(ctx, fmt.Sprintf("[automation] start panic recovered task_id=%s scope=%s workspace=%q trigger=%s err=%v", task.ID, task.Scope, run.Workspace, run.Trigger, recovered))
 		}
 	}()
-	log.Printf("[automation] run begin task_id=%s scope=%s workspace=%q trigger=%s template=%s", task.ID, task.Scope, run.Workspace, run.Trigger, task.Template)
+	slog.InfoContext(ctx, fmt.Sprintf("[automation] run begin task_id=%s scope=%s workspace=%q trigger=%s template=%s", task.ID, task.Scope, run.Workspace, run.Trigger, task.Template))
 	runtimeCfg := conversation.RuntimeConfig()
 	writeMode, writeScope := effectiveAutomationWriteModeScope(task, run)
 	run.WriteConfirmationRequired = automationRunNeedsWriteConfirmation(task, run)
@@ -374,9 +374,9 @@ func (s *AutomationAppService) startAutomationRun(ctx context.Context, snap *aut
 			execution.runError = eventMessage(ev.Data)
 			execution.errorForwarded = true
 		case "tool_call":
-			log.Printf("[automation] tool call task_id=%s data=%v", task.ID, ev.Data)
+			slog.InfoContext(ctx, fmt.Sprintf("[automation] tool call task_id=%s data=%v", task.ID, ev.Data))
 		case "tool_result":
-			log.Printf("[automation] tool result task_id=%s data=%v", task.ID, ev.Data)
+			slog.InfoContext(ctx, fmt.Sprintf("[automation] tool result task_id=%s data=%v", task.ID, ev.Data))
 		}
 		if emit != nil {
 			emit(ev)
@@ -411,11 +411,11 @@ func (s *AutomationAppService) startAutomationRun(ctx context.Context, snap *aut
 		// observing the real runtime outcome and retry the recovery marker.
 		admissionPersisted = false
 		execution.run.RuntimeRecoveryRequired = true
-		log.Printf("[automation] accepted run ledger write deferred task_id=%s run_id=%s operation_id=%s err=%v", task.ID, run.ID, execution.run.RuntimeOperationID, err)
+		slog.WarnContext(ctx, fmt.Sprintf("[automation] accepted run ledger write deferred task_id=%s run_id=%s operation_id=%s err=%v", task.ID, run.ID, execution.run.RuntimeOperationID, err))
 		if _, retryErr := storeForSnapshot(snap).AppendRun(automationTaskStoreID(task), execution.run); retryErr == nil {
 			admissionPersisted = true
 		} else {
-			log.Printf("[automation] accepted run recovery marker remains deferred task_id=%s run_id=%s operation_id=%s err=%v", task.ID, run.ID, execution.run.RuntimeOperationID, retryErr)
+			slog.WarnContext(ctx, fmt.Sprintf("[automation] accepted run recovery marker remains deferred task_id=%s run_id=%s operation_id=%s err=%v", task.ID, run.ID, execution.run.RuntimeOperationID, retryErr))
 		}
 	}
 	_ = admissionPersisted
@@ -428,7 +428,7 @@ func (s *AutomationAppService) waitAutomationRun(ctx context.Context, execution 
 	defer func() {
 		if recovered := recover(); recovered != nil {
 			err = fmt.Errorf("automation panic recovered: %v", recovered)
-			log.Printf("[automation] panic recovered task_id=%s scope=%s workspace=%q trigger=%s err=%v", task.ID, task.Scope, run.Workspace, run.Trigger, recovered)
+			slog.ErrorContext(ctx, fmt.Sprintf("[automation] panic recovered task_id=%s scope=%s workspace=%q trigger=%s err=%v", task.ID, task.Scope, run.Workspace, run.Trigger, recovered))
 		}
 		if err != nil {
 			stageAutomationTerminalEffects(&run, run.CompletionMutationPaths)
@@ -459,7 +459,7 @@ func (s *AutomationAppService) waitAutomationRun(ctx context.Context, execution 
 				return automation.RunResult{Task: updated, Run: run}, appendErr
 			}
 		}
-		log.Printf("[automation] run aborted task_id=%s scope=%s workspace=%q trigger=%s", task.ID, task.Scope, run.Workspace, run.Trigger)
+		slog.InfoContext(ctx, fmt.Sprintf("[automation] run aborted task_id=%s scope=%s workspace=%q trigger=%s", task.ID, task.Scope, run.Workspace, run.Trigger))
 		return automation.RunResult{Task: updated, Run: run}, nil
 	}
 	if outcome.Status != agents.RunOutcomeCompleted {
@@ -497,7 +497,7 @@ func (s *AutomationAppService) waitAutomationRun(ctx context.Context, execution 
 	if err != nil {
 		return automation.RunResult{Task: updated, Run: run}, err
 	}
-	log.Printf("[automation] run done task_id=%s scope=%s workspace=%q trigger=%s status=%s output_path=%q", task.ID, task.Scope, run.Workspace, run.Trigger, run.Status, run.OutputPath)
+	slog.InfoContext(ctx, fmt.Sprintf("[automation] run done task_id=%s scope=%s workspace=%q trigger=%s status=%s output_path=%q", task.ID, task.Scope, run.Workspace, run.Trigger, run.Status, run.OutputPath))
 	return automation.RunResult{Task: updated, Run: run}, nil
 }
 
@@ -512,18 +512,18 @@ func (s *AutomationAppService) failAutomationRun(snap *automationWorkspaceSnapsh
 		if _, persistedRun, loadErr := storeForSnapshot(snap).GetRunByID(run.ID); loadErr == nil {
 			run = persistedRun
 		} else {
-			log.Printf("[automation] reload failed run effects failed task_id=%s run_id=%s err=%v", task.ID, run.ID, loadErr)
+			slog.ErrorContext(context.Background(), fmt.Sprintf("[automation] reload failed run effects failed task_id=%s run_id=%s err=%v", task.ID, run.ID, loadErr))
 		}
 		result = automation.RunResult{Task: updated, Run: run}
 		if run.CompletionEffectsPending {
 			if completed, completionErr := s.completeAutomationRunEffects(context.Background(), snap, task, run); completionErr == nil {
 				result.Run = completed
 			} else {
-				log.Printf("[automation] failed run mutation effects remain pending task_id=%s run_id=%s err=%v", task.ID, run.ID, completionErr)
+				slog.ErrorContext(context.Background(), fmt.Sprintf("[automation] failed run mutation effects remain pending task_id=%s run_id=%s err=%v", task.ID, run.ID, completionErr))
 			}
 		}
 	} else {
-		log.Printf("[automation] persist failed run failed task_id=%s run_id=%s err=%v", task.ID, run.ID, appendErr)
+		slog.ErrorContext(context.Background(), fmt.Sprintf("[automation] persist failed run failed task_id=%s run_id=%s err=%v", task.ID, run.ID, appendErr))
 	}
 	if emit != nil && !errorForwarded {
 		emit(agents.Event{Type: "error", Data: map[string]string{"message": cause.Error()}})
@@ -554,10 +554,10 @@ func (s *AutomationAppService) startAutomationFollowUp(ctx context.Context, snap
 		if recovered := recover(); recovered != nil {
 			err = fmt.Errorf("automation follow-up start panic recovered: %v", recovered)
 			execution = nil
-			log.Printf("[automation] follow-up start panic recovered task_id=%s run_id=%s err=%v", task.ID, run.ID, recovered)
+			slog.ErrorContext(ctx, fmt.Sprintf("[automation] follow-up start panic recovered task_id=%s run_id=%s err=%v", task.ID, run.ID, recovered))
 		}
 	}()
-	log.Printf("[automation] follow-up begin task_id=%s run_id=%s message_len=%d", task.ID, run.ID, len(message))
+	slog.InfoContext(ctx, fmt.Sprintf("[automation] follow-up begin task_id=%s run_id=%s message_len=%d", task.ID, run.ID, len(message)))
 	runtimeCfg := conversation.RuntimeConfig()
 	writeMode, writeScope := effectiveAutomationWriteModeScope(task, run)
 	runtimeCfg = constrainAutomationTools(runtimeCfg, writeMode, writeScope)
@@ -688,7 +688,7 @@ func (s *AutomationAppService) startAutomationFollowUp(ctx context.Context, snap
 func (s *AutomationAppService) waitAutomationFollowUp(ctx context.Context, execution *automationAcceptedFollowUp) (outcome agents.RunOutcome) {
 	defer func() {
 		if recovered := recover(); recovered != nil {
-			log.Printf("[automation] follow-up panic recovered task_id=%s run_id=%s err=%v", execution.task.ID, execution.run.ID, recovered)
+			slog.ErrorContext(ctx, fmt.Sprintf("[automation] follow-up panic recovered task_id=%s run_id=%s err=%v", execution.task.ID, execution.run.ID, recovered))
 			panicErr := fmt.Errorf("automation follow-up panic recovered: %v", recovered)
 			if execution.emit != nil {
 				execution.emit(agents.Event{Type: "error", Data: map[string]string{"message": panicErr.Error()}})
@@ -697,7 +697,7 @@ func (s *AutomationAppService) waitAutomationFollowUp(ctx context.Context, execu
 		}
 	}()
 	outcome = execution.accepted.Wait(ctx)
-	log.Printf("[automation] follow-up end task_id=%s run_id=%s", execution.task.ID, execution.run.ID)
+	slog.InfoContext(ctx, fmt.Sprintf("[automation] follow-up end task_id=%s run_id=%s", execution.task.ID, execution.run.ID))
 	return outcome
 }
 
@@ -717,6 +717,6 @@ func (s *AutomationAppService) runAutomationFollowUp(ctx context.Context, snap *
 		return agents.RunOutcome{Status: agents.RunOutcomeFailed, Error: err, Reason: err.Error()}
 	}
 	outcome := s.waitAutomationFollowUp(ctx, execution)
-	log.Printf("[automation] follow-up end task_id=%s run_id=%s", task.ID, run.ID)
+	slog.InfoContext(ctx, fmt.Sprintf("[automation] follow-up end task_id=%s run_id=%s", task.ID, run.ID))
 	return outcome
 }

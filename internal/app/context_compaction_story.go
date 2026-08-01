@@ -3,7 +3,7 @@ package app
 import (
 	"context"
 	"fmt"
-	"log"
+	"log/slog"
 
 	"denova/config"
 	agents "denova/internal/agents"
@@ -219,7 +219,7 @@ func (s *InteractiveAppService) executeInteractiveContextCompaction(ctx context.
 	if !result.Compaction.Triggered {
 		return result.Compaction, fmt.Errorf("没有可压缩的互动上下文")
 	}
-	log.Printf("[interactive-agent] durable manual context compaction completed workspace=%s story_id=%s branch_id=%s epoch=%d source_turns=%d", workspace, storyID, branchID, result.Compaction.Epoch, modelProjection.SourceTurnCount)
+	slog.InfoContext(ctx, fmt.Sprintf("[interactive-agent] durable manual context compaction completed workspace=%s story_id=%s branch_id=%s epoch=%d source_turns=%d", workspace, storyID, branchID, result.Compaction.Epoch, modelProjection.SourceTurnCount))
 	return result.Compaction, nil
 }
 

@@ -3,7 +3,7 @@ package agents
 import (
 	"context"
 	"fmt"
-	"log"
+	"log/slog"
 
 	agent "github.com/alfredxw/denova/agent"
 
@@ -28,7 +28,7 @@ func GenerateAutomationTriggerEvaluation(ctx context.Context, cfg *config.Config
 		return "", fmt.Errorf("创建自动化触发评估模型失败: %w", err)
 	}
 	system := "你是 Denova 的自动化触发评估器。你的唯一任务是根据用户提供的有界创作上下文判断语义触发条件是否已经满足。不要使用工具，不要假设未给出的剧情，不要输出 JSON 以外的内容。"
-	log.Printf("[automation-trigger-agent] evaluate begin instruction=%s", promptPartSummary(instruction))
+	slog.InfoContext(ctx, fmt.Sprintf("[automation-trigger-agent] evaluate begin instruction=%s", promptPartSummary(instruction)))
 	composition, err := composeBuiltinSystemInstruction(cfg, config.AgentKindAutomation, "automation_trigger", cfg.Workspace, "builtin_base", "自动化触发评估规则", "define the bounded semantic trigger evaluation task", system)
 	if err != nil {
 		runErr = err
@@ -55,6 +55,6 @@ func GenerateAutomationTriggerEvaluation(ctx context.Context, cfg *config.Config
 		return "", runErr
 	}
 	finishLLMCallTrace(span, callID, config.AgentKindAutomation, "automation_trigger", "generate", modelCfg.Model, 0, msg, nil, nil)
-	log.Printf("[automation-trigger-agent] evaluate done output=%s", promptPartSummary(msg.Content))
+	slog.InfoContext(ctx, fmt.Sprintf("[automation-trigger-agent] evaluate done output=%s", promptPartSummary(msg.Content)))
 	return msg.Content, nil
 }

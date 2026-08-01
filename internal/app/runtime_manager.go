@@ -5,7 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"log"
+	"log/slog"
 	"os"
 	"path/filepath"
 	"strings"
@@ -165,12 +165,12 @@ func (s *WorkspaceRuntimeManager) SwitchWorkspace(ctx context.Context, path stri
 	a.syncWorkspaceFileWatcher(runtime.workspace)
 	if previousInteractiveStore != nil && previousInteractiveStore != runtime.interactive {
 		if closeErr := previousInteractiveStore.Close(); closeErr != nil {
-			log.Printf("[app] flush previous interactive journals failed workspace=%s err=%v", currentWorkspace, closeErr)
+			slog.ErrorContext(ctx, fmt.Sprintf("[app] flush previous interactive journals failed workspace=%s err=%v", currentWorkspace, closeErr))
 		}
 	}
 	if previousSessionStore != nil && previousSessionStore != runtime.sessionStore {
 		if closeErr := previousSessionStore.Close(); closeErr != nil {
-			log.Printf("[app] flush previous session journals failed workspace=%s err=%v", currentWorkspace, closeErr)
+			slog.ErrorContext(ctx, fmt.Sprintf("[app] flush previous session journals failed workspace=%s err=%v", currentWorkspace, closeErr))
 		}
 	}
 	if previousVersionService != nil && previousVersionService != runtime.versionService {
@@ -310,7 +310,7 @@ func (s *WorkspaceRuntimeManager) activateFallbackWorkspace(ctx context.Context)
 		if err == nil {
 			return workspace, nil
 		}
-		log.Printf("[books] 切换删除后的备用书籍失败 path=%s err=%v", record.Path, err)
+		slog.ErrorContext(ctx, fmt.Sprintf("[books] 切换删除后的备用书籍失败 path=%s err=%v", record.Path, err))
 	}
 	tasks, scopes, currentWorkspace, err := a.beginWorkspaceTransitionTo()
 	if err != nil {
@@ -346,12 +346,12 @@ func (s *WorkspaceRuntimeManager) activateFallbackWorkspace(ctx context.Context)
 	a.syncWorkspaceFileWatcher("")
 	if previousInteractiveStore != nil {
 		if closeErr := previousInteractiveStore.Close(); closeErr != nil {
-			log.Printf("[app] flush interactive journals while clearing workspace failed workspace=%s err=%v", currentWorkspace, closeErr)
+			slog.ErrorContext(ctx, fmt.Sprintf("[app] flush interactive journals while clearing workspace failed workspace=%s err=%v", currentWorkspace, closeErr))
 		}
 	}
 	if previousSessionStore != nil {
 		if closeErr := previousSessionStore.Close(); closeErr != nil {
-			log.Printf("[app] flush session journals while clearing workspace failed workspace=%s err=%v", currentWorkspace, closeErr)
+			slog.ErrorContext(ctx, fmt.Sprintf("[app] flush session journals while clearing workspace failed workspace=%s err=%v", currentWorkspace, closeErr))
 		}
 	}
 	if previousVersionService != nil {
@@ -510,7 +510,7 @@ func (s *WorkspaceRuntimeManager) patchUserSettings(changes json.RawMessage, bas
 	}); err != nil {
 		return config.LayeredSettings{}, err
 	}
-	log.Printf("[settings] applied partial user settings mutation path=%s", path)
+	slog.InfoContext(context.Background(), fmt.Sprintf("[settings] applied partial user settings mutation path=%s", path))
 	return s.refreshAfterUserSettingsMutation()
 }
 
@@ -564,7 +564,7 @@ func (s *WorkspaceRuntimeManager) patchWorkspaceSettings(changes json.RawMessage
 	}); err != nil {
 		return config.LayeredSettings{}, err
 	}
-	log.Printf("[settings] applied partial workspace settings mutation path=%s", path)
+	slog.InfoContext(context.Background(), fmt.Sprintf("[settings] applied partial workspace settings mutation path=%s", path))
 	layered, err := s.Settings()
 	if err != nil {
 		return config.LayeredSettings{}, err

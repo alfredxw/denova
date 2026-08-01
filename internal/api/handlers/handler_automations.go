@@ -4,7 +4,8 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
-	"log"
+	"fmt"
+	"log/slog"
 	"strings"
 
 	"github.com/cloudwego/hertz/pkg/app"
@@ -164,8 +165,8 @@ func (h *Handlers) HandleAutomationRunStream(ctx context.Context, c *app.Request
 		writeError(c, consts.StatusInternalServerError, err.Error())
 		return
 	}
-	log.Printf("[automation-sse] attach run task_id=%s run_id=%s backend_task_id=%s", run.TaskID, run.ID, task.ID())
-	sse.StreamTaskUI(c, task)
+	slog.InfoContext(ctx, fmt.Sprintf("[automation-sse] attach run task_id=%s run_id=%s backend_task_id=%s", run.TaskID, run.ID, task.ID()))
+	sse.StreamTaskUI(ctx, c, task)
 }
 
 func (h *Handlers) HandleAutomationActiveRuns(ctx context.Context, c *app.RequestContext) {
@@ -178,8 +179,8 @@ func (h *Handlers) HandleAutomationRunStreamByID(ctx context.Context, c *app.Req
 		writeError(c, consts.StatusNotFound, "automation run is not active")
 		return
 	}
-	log.Printf("[automation-sse] attach active run task_id=%s run_id=%s backend_task_id=%s", run.TaskID, run.ID, task.ID())
-	sse.StreamTaskUI(c, task)
+	slog.InfoContext(ctx, fmt.Sprintf("[automation-sse] attach active run task_id=%s run_id=%s backend_task_id=%s", run.TaskID, run.ID, task.ID()))
+	sse.StreamTaskUI(ctx, c, task)
 }
 
 func (h *Handlers) HandleAutomationRunChatStream(ctx context.Context, c *app.RequestContext) {
@@ -216,8 +217,8 @@ func (h *Handlers) HandleAutomationRunChatStream(ctx context.Context, c *app.Req
 		writeError(c, consts.StatusInternalServerError, err.Error())
 		return
 	}
-	log.Printf("[automation-sse] attach run follow-up task_id=%s run_id=%s backend_task_id=%s", run.TaskID, run.ID, task.ID())
-	sse.StreamTaskUI(c, task)
+	slog.InfoContext(ctx, fmt.Sprintf("[automation-sse] attach run follow-up task_id=%s run_id=%s backend_task_id=%s", run.TaskID, run.ID, task.ID()))
+	sse.StreamTaskUI(ctx, c, task)
 }
 
 func (h *Handlers) HandleAutomationRunAbort(ctx context.Context, c *app.RequestContext) {

@@ -3,7 +3,7 @@ package app
 import (
 	"context"
 	"fmt"
-	"log"
+	"log/slog"
 	"path/filepath"
 	"strings"
 	"time"
@@ -56,7 +56,7 @@ func (s *AutomationAppService) createWriteConfirmationInboxIfNeeded(snap *automa
 		UpdatedAt:   time.Now().UTC(),
 	})
 	if err == nil && !created {
-		log.Printf("[automation] write confirmation inbox replayed task_id=%s run_id=%s inbox_id=%s", task.ID, run.ID, item.ID)
+		slog.InfoContext(context.Background(), fmt.Sprintf("[automation] write confirmation inbox replayed task_id=%s run_id=%s inbox_id=%s", task.ID, run.ID, item.ID))
 	}
 	return err
 }
@@ -184,7 +184,7 @@ func (s *AutomationAppService) buildAutomationUserMessage(task automation.Task, 
 			if sourceRun, err := s.automationRunByID(nil, sourceRunID); err == nil {
 				confirmedSummary = trimForTriggerSnippet(sourceRun.Summary, 2500)
 			} else if err != nil {
-				log.Printf("[automation] load source run summary failed source_run_id=%s err=%v", sourceRunID, err)
+				slog.ErrorContext(context.Background(), fmt.Sprintf("[automation] load source run summary failed source_run_id=%s err=%v", sourceRunID, err))
 			}
 		}
 	}

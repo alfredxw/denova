@@ -4,7 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"log"
+	"log/slog"
 	"strings"
 
 	agent "github.com/alfredxw/denova/agent"
@@ -302,7 +302,7 @@ func (t *submitInteractiveTurnTool) Run(ctx context.Context, argumentsInJSON str
 		if t.requestCompletion != nil {
 			requested = t.requestCompletion(ctx)
 		}
-		log.Printf("[interactive-turn] accepted all result modules completion_requested=%t", requested)
+		slog.InfoContext(ctx, fmt.Sprintf("[interactive-turn] accepted all result modules completion_requested=%t", requested))
 	}
 	data, err := json.MarshalIndent(receipt, "", "  ")
 	if err != nil {

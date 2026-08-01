@@ -3,7 +3,7 @@ package update
 import (
 	"context"
 	"io"
-	"log"
+	"log/slog"
 	"os"
 	"path/filepath"
 	"testing"
@@ -92,7 +92,8 @@ func TestRollbackUpdateRestoresBackups(t *testing.T) {
 		TargetExecutable:  targetExe,
 		UpdaterExecutable: filepath.Join(sourceDir, updaterName),
 	}
-	if err := rollbackUpdate(manifest, log.New(io.Discard, "", 0)); err != nil {
+	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
+	if err := rollbackUpdate(context.Background(), manifest, logger); err != nil {
 		t.Fatalf("rollbackUpdate failed: %v", err)
 	}
 	assertFileContent(t, targetExe, "old executable")

@@ -6,7 +6,6 @@ import (
 	"sync"
 
 	agents "denova/internal/agents"
-	"denova/internal/observability"
 )
 
 // TaskEvent is one display event together with its monotonic, task-local
@@ -149,12 +148,12 @@ func (t *Task) subscribeLocked(replayCount int, checkpoint bool) *TaskSubscripti
 	subscription := newTaskSubscription()
 	if t.finished {
 		subscription.close(TaskSubscriptionTaskFinished)
-		observability.Info("agent-task", "task_subscribe", slog.String("task_id", t.id), slog.String("status", string(t.status)), slog.Int("replay", replayCount), slog.Bool("checkpoint", checkpoint), slog.Bool("live", false))
+		slog.LogAttrs(t.ctx, slog.LevelInfo, "task_subscribe", slog.String("component", "agent-task"), slog.String("task_id", t.id), slog.String("status", string(t.status)), slog.Int("replay", replayCount), slog.Bool("checkpoint", checkpoint), slog.Bool("live", false))
 		return subscription
 	}
 
 	t.subs = append(t.subs, subscription)
-	observability.Info("agent-task", "task_subscribe", slog.String("task_id", t.id), slog.String("status", string(t.status)), slog.Int("replay", replayCount), slog.Bool("checkpoint", checkpoint), slog.Int("subscribers", len(t.subs)), slog.Bool("live", true))
+	slog.LogAttrs(t.ctx, slog.LevelInfo, "task_subscribe", slog.String("component", "agent-task"), slog.String("task_id", t.id), slog.String("status", string(t.status)), slog.Int("replay", replayCount), slog.Bool("checkpoint", checkpoint), slog.Int("subscribers", len(t.subs)), slog.Bool("live", true))
 	return subscription
 }
 
@@ -169,7 +168,7 @@ func (t *Task) Unsubscribe(subscription *TaskSubscription) {
 		if sub == subscription {
 			t.subs = append(t.subs[:i], t.subs[i+1:]...)
 			sub.close(TaskSubscriptionDetached)
-			observability.Info("agent-task", "task_unsubscribe", slog.String("task_id", t.id), slog.Int("subscribers", len(t.subs)))
+			slog.LogAttrs(t.ctx, slog.LevelInfo, "task_unsubscribe", slog.String("component", "agent-task"), slog.String("task_id", t.id), slog.Int("subscribers", len(t.subs)))
 			return
 		}
 	}

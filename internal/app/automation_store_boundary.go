@@ -3,7 +3,7 @@ package app
 import (
 	"context"
 	"fmt"
-	"log"
+	"log/slog"
 	"strings"
 	"time"
 
@@ -20,7 +20,7 @@ func (a *App) RunDueAutomations(ctx context.Context, now time.Time) []automation
 func (s *AutomationAppService) RunDue(ctx context.Context, now time.Time) []automation.RunResult {
 	tasks, err := s.storeAllWorkspaces().List()
 	if err != nil {
-		log.Printf("[automation] list scheduler targets failed err=%v", err)
+		slog.ErrorContext(ctx, fmt.Sprintf("[automation] list scheduler targets failed err=%v", err))
 		return nil
 	}
 	targets := map[string]automation.ExecutionTarget{}
@@ -35,7 +35,7 @@ func (s *AutomationAppService) RunDue(ctx context.Context, now time.Time) []auto
 	for _, target := range targets {
 		snap, operation, targetErr := s.acquireTargetRuntime(ctx, target)
 		if targetErr != nil {
-			log.Printf("[automation] resolve scheduler target failed kind=%s workspace=%q err=%v", target.Kind, target.Workspace, targetErr)
+			slog.ErrorContext(ctx, fmt.Sprintf("[automation] resolve scheduler target failed kind=%s workspace=%q err=%v", target.Kind, target.Workspace, targetErr))
 			continue
 		}
 		results = append(results, s.runDueWithSnapshot(operation.Context(), snap, now)...)
@@ -47,7 +47,7 @@ func (s *AutomationAppService) RunDue(ctx context.Context, now time.Time) []auto
 func (s *AutomationAppService) runDueWithSnapshot(ctx context.Context, snap *automationWorkspaceSnapshot, now time.Time) []automation.RunResult {
 	_, results, err := s.processTriggers(ctx, snap, "", now.UTC(), "scheduler")
 	if err != nil {
-		log.Printf("[automation] process due triggers failed err=%v", err)
+		slog.ErrorContext(ctx, fmt.Sprintf("[automation] process due triggers failed err=%v", err))
 		return nil
 	}
 	return results
@@ -71,14 +71,14 @@ func (s *AutomationAppService) storeAllWorkspaces() *automation.Store {
 	}
 	records, err := registry.List(false)
 	if err != nil {
-		log.Printf("[automation] list Project catalog failed err=%v", err)
+		slog.ErrorContext(context.Background(), fmt.Sprintf("[automation] list Project catalog failed err=%v", err))
 		return store
 	}
 	projects := make([]automation.ProjectLocation, 0, len(records))
 	for _, record := range records {
 		layout, layoutErr := registry.Layout(record)
 		if layoutErr != nil {
-			log.Printf("[automation] resolve Project state failed project_id=%s err=%v", record.ID, layoutErr)
+			slog.ErrorContext(context.Background(), fmt.Sprintf("[automation] resolve Project state failed project_id=%s err=%v", record.ID, layoutErr))
 			continue
 		}
 		projects = append(projects, automation.ProjectLocation{

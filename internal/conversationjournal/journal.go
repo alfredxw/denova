@@ -8,7 +8,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"log"
+	"log/slog"
 	"os"
 	"sync"
 
@@ -121,7 +121,7 @@ func (journal *Journal) loadLocked(ctx context.Context) error {
 		_ = journal.reducer.Reset()
 	}
 	if indexErr != nil && !errors.Is(indexErr, os.ErrNotExist) {
-		log.Printf("[conversation-journal] rebuild invalid index path=%s error=%v", journal.indexPath, indexErr)
+		slog.ErrorContext(ctx, fmt.Sprintf("[conversation-journal] rebuild invalid index path=%s error=%v", journal.indexPath, indexErr))
 	}
 	if err := journal.resetForReplayLocked(); err != nil {
 		return err
@@ -131,7 +131,7 @@ func (journal *Journal) loadLocked(ctx context.Context) error {
 	}
 	journal.stats.IndexRebuilt = true
 	if err := journal.persistIndexLocked(); err != nil {
-		log.Printf("[conversation-journal] initial index write deferred path=%s error=%v", journal.indexPath, err)
+		slog.ErrorContext(ctx, fmt.Sprintf("[conversation-journal] initial index write deferred path=%s error=%v", journal.indexPath, err))
 	}
 	return nil
 }

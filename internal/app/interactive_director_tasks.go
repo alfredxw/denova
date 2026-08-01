@@ -2,7 +2,8 @@ package app
 
 import (
 	"context"
-	"log"
+	"fmt"
+	"log/slog"
 	"sync"
 )
 
@@ -64,7 +65,7 @@ func (g *workspaceDirectorTaskGroup) GoKeyed(key string, run func(context.Contex
 		}()
 		defer func() {
 			if recovered := recover(); recovered != nil {
-				log.Printf("[interactive-director-agent] workspace task panic recovered err=%v", recovered)
+				slog.ErrorContext(context.Background(), fmt.Sprintf("[interactive-director-agent] workspace task panic recovered err=%v", recovered))
 			}
 		}()
 		if previous != nil {

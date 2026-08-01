@@ -8,7 +8,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"log"
+	"log/slog"
 	"os"
 	"path/filepath"
 	"strings"
@@ -187,7 +187,7 @@ func (s *Store) appendStoryTransactionLocked(storyID string, meta StoryMeta, new
 		}
 		if committed {
 			handle.recent = make(map[string]storyRecentCache)
-			log.Printf("[interactive-story] reconciled shared journal append story_id=%s events=%d original_error=%v", storyID, len(events), appendErr)
+			slog.ErrorContext(context.Background(), fmt.Sprintf("[interactive-story] reconciled shared journal append story_id=%s events=%d original_error=%v", storyID, len(events), appendErr))
 			return nil
 		}
 		return appendErr
@@ -230,7 +230,7 @@ func (s *Store) appendStoryTransactionLocked(storyID string, meta StoryMeta, new
 	if handle := s.storyJournals[storyID]; handle != nil {
 		handle.recent = make(map[string]storyRecentCache)
 	}
-	log.Printf("[interactive-story] reconciled ambiguous append transaction story_id=%s events=%d original_error=%v", storyID, len(events), appendErr)
+	slog.ErrorContext(context.Background(), fmt.Sprintf("[interactive-story] reconciled ambiguous append transaction story_id=%s events=%d original_error=%v", storyID, len(events), appendErr))
 	return nil
 }
 

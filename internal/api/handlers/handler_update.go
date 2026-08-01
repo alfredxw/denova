@@ -2,7 +2,8 @@ package handlers
 
 import (
 	"context"
-	"log"
+	"fmt"
+	"log/slog"
 
 	"github.com/cloudwego/hertz/pkg/app"
 	"github.com/cloudwego/hertz/pkg/protocol/consts"
@@ -39,6 +40,6 @@ func (h *Handlers) HandleUpdateApply(ctx context.Context, c *app.RequestContext)
 
 func (h *Handlers) HandleUpdateInstallStream(ctx context.Context, c *app.RequestContext) {
 	task := h.app.StartInstallUpdateTask()
-	log.Printf("[update-sse] attach install task_id=%s", task.ID())
-	sse.StreamTask(c, task)
+	slog.InfoContext(ctx, fmt.Sprintf("[update-sse] attach install task_id=%s", task.ID()))
+	sse.StreamTask(ctx, c, task)
 }

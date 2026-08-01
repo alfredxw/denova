@@ -13,6 +13,7 @@ import (
 	"denova/config"
 	novaApp "denova/internal/app"
 	"denova/internal/i18n"
+	"denova/internal/observability"
 )
 
 // corsMiddleware 处理 CORS 跨域请求。
@@ -37,6 +38,7 @@ func corsMiddleware(ctx context.Context, c *app.RequestContext) {
 	}
 	c.Response.Header.Set("Access-Control-Allow-Methods", "GET, POST, PATCH, DELETE, PUT, OPTIONS")
 	c.Response.Header.Set("Access-Control-Allow-Headers", "Content-Type, X-Denova-Locale, X-Nova-Locale, Authorization")
+	c.Response.Header.Set("Access-Control-Expose-Headers", observability.RequestIDHeader)
 
 	if string(c.Request.Method()) == "OPTIONS" {
 		c.AbortWithStatus(consts.StatusNoContent)

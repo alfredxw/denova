@@ -1,7 +1,9 @@
 package app
 
 import (
-	"log"
+	"context"
+	"fmt"
+	"log/slog"
 	"os"
 	"path/filepath"
 	"strings"
@@ -67,7 +69,7 @@ func (a *App) TerminalDefaultCwd() string {
 	}
 	cwd, err := os.Getwd()
 	if err != nil {
-		log.Printf("[app/terminal_app_service.go] resolve process cwd failed: %v", err)
+		slog.ErrorContext(context.Background(), fmt.Sprintf("[app/terminal_app_service.go] resolve process cwd failed: %v", err))
 		return ""
 	}
 	return cwd
@@ -123,13 +125,13 @@ func (a *App) ResolveTerminalCwd(requested string) string {
 	}
 	absolute, err := filepath.Abs(requested)
 	if err != nil {
-		log.Printf("[app/terminal_app_service.go] resolve terminal cwd failed path=%q err=%v", requested, err)
+		slog.ErrorContext(context.Background(), fmt.Sprintf("[app/terminal_app_service.go] resolve terminal cwd failed path=%q err=%v", requested, err))
 		return a.TerminalDefaultCwd()
 	}
 	if dir := usableDirectory(absolute); dir != "" {
 		return dir
 	}
-	log.Printf("[app/terminal_app_service.go] terminal cwd not usable, falling back path=%q", absolute)
+	slog.InfoContext(context.Background(), fmt.Sprintf("[app/terminal_app_service.go] terminal cwd not usable, falling back path=%q", absolute))
 	return a.TerminalDefaultCwd()
 }
 

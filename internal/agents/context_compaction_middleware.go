@@ -11,7 +11,6 @@ import (
 	agent "github.com/alfredxw/denova/agent"
 
 	"denova/internal/agents/session"
-	"denova/internal/observability"
 )
 
 type contextCompactionMiddleware struct {
@@ -83,7 +82,7 @@ func (m *contextCompactionMiddleware) BeforeModelCall(ctx context.Context, call 
 		// Automatic maintenance must never publish a partial checkpoint. The
 		// unchanged primary request still passes through the non-disableable
 		// provider input guard, which remains the final hard-limit authority.
-		observability.Logger("agent-run").Warn("model_step_context_compaction_failed", slog.String("agent_kind", m.agentKind), slog.String("error_class", safeErrorClass(err.Error())))
+		slog.Default().With("component", "agent-run").WarnContext(ctx, "model_step_context_compaction_failed", slog.String("agent_kind", m.agentKind), slog.String("error_class", safeErrorClass(err.Error())))
 		return ctx, call, nil
 	}
 	return ctx, next, nil

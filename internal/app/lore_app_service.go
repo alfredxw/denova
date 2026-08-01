@@ -4,7 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"log"
+	"log/slog"
 	"strings"
 
 	"denova/config"
@@ -117,20 +117,20 @@ func (s *LoreAppService) ClearLoreItemImage(id string) (book.LoreItem, error) {
 	return book.NewLoreStore(state.Workspace()).SetImage(id, nil)
 }
 
-func (a *App) StartLoreImagesGenerateTask(request LoreImagesGenerateRequest) (*Task, error) {
-	return a.lore().startLoreImagesGenerateTask("", request)
+func (a *App) StartLoreImagesGenerateTask(ctx context.Context, request LoreImagesGenerateRequest) (*Task, error) {
+	return a.lore().startLoreImagesGenerateTask(ctx, "", request)
 }
 
 // StartLoreImagesGenerateTaskForWorkspace binds the background task to the
 // workspace identity carried by the initiating HTTP request.
-func (a *App) StartLoreImagesGenerateTaskForWorkspace(expectedWorkspace string, request LoreImagesGenerateRequest) (*Task, error) {
+func (a *App) StartLoreImagesGenerateTaskForWorkspace(ctx context.Context, expectedWorkspace string, request LoreImagesGenerateRequest) (*Task, error) {
 	if err := a.ValidateWorkspaceIdentity(expectedWorkspace); err != nil {
 		return nil, err
 	}
-	return a.lore().startLoreImagesGenerateTask(expectedWorkspace, request)
+	return a.lore().startLoreImagesGenerateTask(ctx, expectedWorkspace, request)
 }
 
-func (s *LoreAppService) startLoreImagesGenerateTask(expectedWorkspace string, request LoreImagesGenerateRequest) (*Task, error) {
+func (s *LoreAppService) startLoreImagesGenerateTask(ctx context.Context, expectedWorkspace string, request LoreImagesGenerateRequest) (*Task, error) {
 	request.ItemIDs = dedupeLoreImageItemIDs(request.ItemIDs)
 	if len(request.ItemIDs) == 0 {
 		return nil, fmt.Errorf("请选择需要生成图片的资料项")
@@ -155,7 +155,7 @@ func (s *LoreAppService) startLoreImagesGenerateTask(expectedWorkspace string, r
 	}
 	a.mu.Unlock()
 
-	task, err := NewRegisteredTask(func(task *Task) error {
+	task, err := NewRegisteredTaskWithContext(ctx, func(task *Task) error {
 		a.mu.Lock()
 		defer a.mu.Unlock()
 		if a.activeLoreImageTask != nil && !a.activeLoreImageTask.Finished() {
@@ -168,7 +168,7 @@ func (s *LoreAppService) startLoreImagesGenerateTask(expectedWorkspace string, r
 		return nil
 	}, func(ctx context.Context, task *Task, emit func(agents.Event)) {
 		defer s.clearLoreImageTask(task)
-		log.Printf("[lore-image] batch begin task_id=%s items=%d overwrite=%v", task.ID(), len(request.ItemIDs), request.OverwriteExisting)
+		slog.InfoContext(ctx, fmt.Sprintf("[lore-image] batch begin task_id=%s items=%d overwrite=%v", task.ID(), len(request.ItemIDs), request.OverwriteExisting))
 		emit(agents.Event{Type: "thinking", Data: map[string]string{"content": "正在准备批量生成资料项图片。"}})
 		generated, skipped, failed := s.runLoreImagesGenerateBatch(ctx, workspace, request, emit)
 		if ctx.Err() != nil {
@@ -182,7 +182,7 @@ func (s *LoreAppService) startLoreImagesGenerateTask(expectedWorkspace string, r
 			"skipped":   skipped,
 			"failed":    failed,
 		}})
-		log.Printf("[lore-image] batch done task_id=%s generated=%d skipped=%d failed=%d", task.ID(), generated, skipped, failed)
+		slog.ErrorContext(ctx, fmt.Sprintf("[lore-image] batch done task_id=%s generated=%d skipped=%d failed=%d", task.ID(), generated, skipped, failed))
 	})
 	if err != nil {
 		return nil, err
@@ -280,7 +280,7 @@ func (s *LoreAppService) generateLoreItemImage(ctx context.Context, expectedWork
 	); loadErr == nil {
 		applyLayeredSettingsToConfig(&cfg, layered)
 	} else {
-		log.Printf("[lore-image] 加载分层配置失败 workspace=%s err=%v", runtime.workspace, loadErr)
+		slog.ErrorContext(ctx, fmt.Sprintf("[lore-image] 加载分层配置失败 workspace=%s err=%v", runtime.workspace, loadErr))
 	}
 	store := book.NewLoreStore(runtime.workspace)
 	item, err := store.ReadAny(id)
@@ -308,7 +308,7 @@ func (s *LoreAppService) generateLoreItemImage(ctx context.Context, expectedWork
 	if err != nil {
 		return book.LoreItem{}, err
 	}
-	log.Printf("[lore-image] generated item_id=%s path=%s", updated.ID, image.ImagePath)
+	slog.InfoContext(ctx, fmt.Sprintf("[lore-image] generated item_id=%s path=%s", updated.ID, image.ImagePath))
 	return updated, nil
 }
 
@@ -339,7 +339,7 @@ func (s *LoreAppService) loreImageRuntimeSnapshot(expectedWorkspace string) (*bo
 	); err == nil {
 		applyLayeredSettingsToConfig(&cfg, layered)
 	} else {
-		log.Printf("[lore-image] 加载分层配置失败 workspace=%s err=%v", workspace, err)
+		slog.ErrorContext(context.Background(), fmt.Sprintf("[lore-image] 加载分层配置失败 workspace=%s err=%v", workspace, err))
 	}
 	return book.NewLoreStore(workspace), cfg, bookService, nil
 }

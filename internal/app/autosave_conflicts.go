@@ -3,7 +3,7 @@ package app
 import (
 	"context"
 	"fmt"
-	"log"
+	"log/slog"
 	"strings"
 
 	"denova/internal/autosaveconflict"
@@ -28,6 +28,6 @@ func (a *App) RecordAutosaveConflict(ctx context.Context, input autosaveconflict
 	if err != nil {
 		return autosaveconflict.AppendResult{}, fmt.Errorf("record autosave conflict: %w", err)
 	}
-	log.Printf("[autosave-conflict] recorded resource=%q scope=%q id=%q record_id=%q path=%q", input.Resource, input.Scope, input.ID, result.Record.ID, result.Path)
+	slog.InfoContext(ctx, fmt.Sprintf("[autosave-conflict] recorded resource=%q scope=%q id=%q record_id=%q path=%q", input.Resource, input.Scope, input.ID, result.Record.ID, result.Path))
 	return result, nil
 }

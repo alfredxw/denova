@@ -4,7 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"log"
+	"log/slog"
 	"strings"
 	"sync"
 
@@ -218,7 +218,7 @@ func (r *writingStartRegistry) pruneLocked() {
 			}
 			delete(r.records, commandID)
 			r.order = removeTaskReplayKey(r.order, index)
-			log.Printf("[agent-task] pruned settled Writing replay identity command_id=%s task_id=%s released_bytes=%d max_records=%d", commandID, taskID, released, maxRememberedWritingStarts)
+			slog.InfoContext(context.Background(), fmt.Sprintf("[agent-task] pruned settled Writing replay identity command_id=%s task_id=%s released_bytes=%d max_records=%d", commandID, taskID, released, maxRememberedWritingStarts))
 			removed = true
 			break
 		}
@@ -245,7 +245,7 @@ func (r *writingStartRegistry) pruneLocked() {
 		totalBytes -= released
 		record.task = nil
 		r.records[commandID] = record
-		log.Printf("[agent-task] evicted settled Writing display replay command_id=%s task_id=%s released_bytes=%d retained_bytes=%d budget_bytes=%d", commandID, taskID, released, totalBytes, byteLimit)
+		slog.InfoContext(context.Background(), fmt.Sprintf("[agent-task] evicted settled Writing display replay command_id=%s task_id=%s released_bytes=%d retained_bytes=%d budget_bytes=%d", commandID, taskID, released, totalBytes, byteLimit))
 	}
 }
 
@@ -323,7 +323,7 @@ func (s *ChatAppService) replayDurableWritingStart(
 		chatService: chatService, workspace: workspace, projectState: stateRoot,
 	}
 	var accepted *agents.AcceptedRun
-	task, err := NewDeferredRegisteredTask(func(task *Task) error {
+	task, err := NewDeferredRegisteredTaskWithContext(ctx, func(task *Task) error {
 		a.mu.Lock()
 		defer a.mu.Unlock()
 		if a.workspaceTransition {
@@ -365,7 +365,7 @@ func (s *ChatAppService) replayDurableWritingStart(
 	if err := task.Start(func(ctx context.Context, task *Task, _ func(agents.Event)) {
 		defer a.unregisterWorkspaceTask(task)
 		outcome := accepted.Wait(ctx)
-		log.Printf("[agent-task] replay end id=%s command_id=%s status=%s", task.ID(), req.CommandID, outcome.Status)
+		slog.InfoContext(ctx, fmt.Sprintf("[agent-task] replay end id=%s command_id=%s status=%s", task.ID(), req.CommandID, outcome.Status))
 	}); err != nil {
 		task.Abort()
 		_ = accepted.Wait(task.ctx)

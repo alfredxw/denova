@@ -4,7 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"log"
+	"log/slog"
 	"strings"
 )
 
@@ -26,7 +26,7 @@ func (h *Harness) startEngine(state *harnessState, snapshot TurnSnapshot) {
 			if !returned {
 				// runtime.Goexit is used by crash simulations and behaves like a
 				// vanished worker: durable recovery, not this goroutine, resolves it.
-				log.Printf("runtime: binding=%+v operation=%s cycle=%d engine exited without a result", h.binding, snapshot.OperationID, snapshot.Cycle)
+				slog.InfoContext(context.Background(), fmt.Sprintf("runtime: binding=%+v operation=%s cycle=%d engine exited without a result", h.binding, snapshot.OperationID, snapshot.Cycle))
 			}
 		}()
 		result, err := h.engine.Run(h.lifecycle, request, func(event EngineEvent) error {
@@ -457,14 +457,14 @@ func (h *Harness) startQueuedCycle(state *harnessState, item QueuedInput) {
 		if _, fatal := terminalJournalAppendError(err); fatal {
 			panic(fmt.Sprintf("operation %s failed to persist queued input materialization: %v", state.activeOperation, err))
 		}
-		log.Printf(
+		slog.InfoContext(context.Background(), fmt.Sprintf(
 			"runtime: binding=%+v command=%s operation=%s cycle=%d accepted input remains pending: %v",
 			h.binding,
 			item.CommandID,
 			state.activeOperation,
 			state.activeCycle,
 			err,
-		)
+		))
 		return
 	}
 }

@@ -1,8 +1,9 @@
 package app
 
 import (
+	"context"
 	"fmt"
-	"log"
+	"log/slog"
 	"path/filepath"
 	"strings"
 
@@ -96,7 +97,7 @@ func applyAutomationLayeredConfig(cfg *config.Config, novaDir, workspace string)
 	if err == nil {
 		applyLayeredSettingsToConfig(cfg, layered)
 	} else {
-		log.Printf("[automation] load layered settings failed workspace=%s err=%v", workspace, err)
+		slog.ErrorContext(context.Background(), fmt.Sprintf("[automation] load layered settings failed workspace=%s err=%v", workspace, err))
 	}
 }
 

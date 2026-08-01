@@ -3,7 +3,7 @@ package app
 import (
 	"context"
 	"fmt"
-	"log"
+	"log/slog"
 	"strings"
 
 	"denova/config"
@@ -62,7 +62,7 @@ func (s *InteractiveAppService) AnalyzeInteractiveContext(storyID, branchID, mes
 	); err == nil {
 		applyLayeredSettingsToConfig(&runtimeCfg, layered)
 	} else {
-		log.Printf("[interactive-agent-analysis] load interactive settings failed workspace=%s err=%v", workspace, err)
+		slog.ErrorContext(context.Background(), fmt.Sprintf("[interactive-agent-analysis] load interactive settings failed workspace=%s err=%v", workspace, err))
 	}
 	applyRequestLocaleToConfig(&runtimeCfg, locale)
 
@@ -113,7 +113,7 @@ func (s *InteractiveAppService) AnalyzeInteractiveDirectorContext(storyID, branc
 	); err == nil {
 		applyLayeredSettingsToConfig(&runtimeCfg, layered)
 	} else {
-		log.Printf("[interactive-director-analysis] load interactive settings failed workspace=%s err=%v", workspace, err)
+		slog.ErrorContext(context.Background(), fmt.Sprintf("[interactive-director-analysis] load interactive settings failed workspace=%s err=%v", workspace, err))
 	}
 	applyRequestLocaleToConfig(&runtimeCfg, locale)
 
@@ -130,7 +130,7 @@ func (s *InteractiveAppService) AnalyzeInteractiveDirectorContext(storyID, branc
 	if err != nil {
 		return agents.ContextAnalysis{}, err
 	}
-	log.Printf("[interactive-director-analysis] built context story_id=%s branch_id=%s turn_id=%s instruction=%s", storyID, storyCtx.Snapshot.BranchID, turn.ID, interactivePartSummary(instruction))
+	slog.InfoContext(context.Background(), fmt.Sprintf("[interactive-director-analysis] built context story_id=%s branch_id=%s turn_id=%s instruction=%s", storyID, storyCtx.Snapshot.BranchID, turn.ID, interactivePartSummary(instruction)))
 	return agents.BuildInteractiveDirectorContextAnalysisWithStableContext(&runtimeCfg, stableContext.Title, stableContext.Content, stableContext.MaxBytes, instruction)
 }
 
@@ -194,7 +194,7 @@ func (s *InteractiveAppService) startInteractiveTask(ctx context.Context, reques
 	a.mu.RLock()
 	if a.interactive == nil || a.bookState == nil || a.cfg == nil || a.chatService == nil {
 		a.mu.RUnlock()
-		log.Printf("[interactive-agent-task] 未选择 workspace，无法启动任务")
+		slog.InfoContext(ctx, "[interactive-agent-task] 未选择 workspace，无法启动任务")
 		return nil, ErrNoWorkspace
 	}
 	workspace := a.workspace
@@ -235,7 +235,7 @@ func (s *InteractiveAppService) startInteractiveTask(ctx context.Context, reques
 		RegenerateFromTurnID: identity.request.RegenerateFromTurnID,
 	})
 	if err != nil {
-		log.Printf("[interactive-agent-task] prepare cycle failed command_id=%s story_id=%s branch_id=%s err=%v", identity.request.CommandID, identity.request.StoryID, identity.request.BranchID, err)
+		slog.ErrorContext(ctx, fmt.Sprintf("[interactive-agent-task] prepare cycle failed command_id=%s story_id=%s branch_id=%s err=%v", identity.request.CommandID, identity.request.StoryID, identity.request.BranchID, err))
 		return nil, err
 	}
 	if cycle.workspace != identity.workspace || cycle.storyID != identity.request.StoryID || cycle.branchID != identity.request.BranchID {
@@ -249,11 +249,11 @@ func (s *InteractiveAppService) startInteractiveTask(ctx context.Context, reques
 	var accepted *agents.AcceptedRun
 	runAccepted := func(ctx context.Context, task *Task, _ func(agents.Event)) {
 		defer a.unregisterWorkspaceTask(task)
-		log.Printf("[interactive-agent-task] run begin id=%s command_id=%s story_id=%s branch_id=%s rewind_turn_id=%s message_len=%d style_scenes=%d", task.ID(), identity.request.CommandID, cycle.storyID, cycle.branchID, identity.request.RegenerateFromTurnID, len(identity.request.Message), len(identity.request.StyleScenes))
+		slog.InfoContext(ctx, fmt.Sprintf("[interactive-agent-task] run begin id=%s command_id=%s story_id=%s branch_id=%s rewind_turn_id=%s message_len=%d style_scenes=%d", task.ID(), identity.request.CommandID, cycle.storyID, cycle.branchID, identity.request.RegenerateFromTurnID, len(identity.request.Message), len(identity.request.StyleScenes)))
 		outcome := accepted.Wait(ctx)
-		log.Printf("[interactive-agent-task] run end id=%s command_id=%s outcome=%s status=%s", task.ID(), identity.request.CommandID, outcome.Status, task.Status())
+		slog.InfoContext(ctx, fmt.Sprintf("[interactive-agent-task] run end id=%s command_id=%s outcome=%s status=%s", task.ID(), identity.request.CommandID, outcome.Status, task.Status()))
 	}
-	task, err := NewDeferredRegisteredTask(func(task *Task) error {
+	task, err := NewDeferredRegisteredTaskWithContext(ctx, func(task *Task) error {
 		a.mu.Lock()
 		defer a.mu.Unlock()
 		if a.workspaceTransition {
@@ -314,7 +314,7 @@ func (s *InteractiveAppService) startInteractiveTask(ctx context.Context, reques
 func emitInteractiveTurnPersisted(store *interactive.Store, storyID string, conversation *interactiveConversation, emit func(agents.Event)) *interactive.Snapshot {
 	snapshot, err := emitInteractiveTurnPersistedResult(store, storyID, conversation, emit)
 	if err != nil {
-		log.Printf("[interactive-agent-task] emit persisted turn failed story_id=%s err=%v", storyID, err)
+		slog.ErrorContext(context.Background(), fmt.Sprintf("[interactive-agent-task] emit persisted turn failed story_id=%s err=%v", storyID, err))
 	}
 	return snapshot
 }
@@ -350,6 +350,6 @@ func emitInteractiveTurnPersistedResult(store *interactive.Store, storyID string
 		ContextCompactionRemoval: snapshot.ContextCompactionRemoval,
 	}
 	emit(agents.Event{Type: "interactive_turn_persisted", Data: event})
-	log.Printf("[interactive-agent-task] emitted persisted turn story_id=%s branch_id=%s turn_id=%s", storyID, snapshot.BranchID, persistedTurn.ID)
+	slog.InfoContext(context.Background(), fmt.Sprintf("[interactive-agent-task] emitted persisted turn story_id=%s branch_id=%s turn_id=%s", storyID, snapshot.BranchID, persistedTurn.ID))
 	return &snapshot, nil
 }

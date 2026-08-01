@@ -2,7 +2,8 @@ package app
 
 import (
 	"context"
-	"log"
+	"fmt"
+	"log/slog"
 
 	"denova/internal/interactive"
 )
@@ -111,17 +112,17 @@ func (s *InteractiveAppService) UpdateInteractiveTurnNarrative(storyID string, r
 	result, err := store.UpdateTurnNarrative(storyID, req)
 	a.mu.Unlock()
 	if err != nil {
-		log.Printf("[interactive-turn-edit] update failed story_id=%s branch_id=%s turn_id=%s err=%v", storyID, req.BranchID, req.TurnID, err)
+		slog.ErrorContext(context.Background(), fmt.Sprintf("[interactive-turn-edit] update failed story_id=%s branch_id=%s turn_id=%s err=%v", storyID, req.BranchID, req.TurnID, err))
 		return interactive.UpdateTurnNarrativeResult{}, err
 	}
-	log.Printf(
+	slog.WarnContext(context.Background(), fmt.Sprintf(
 		"[interactive-turn-edit] narrative updated story_id=%s branch_id=%s turn_id=%s narrative_bytes=%d context_compaction_invalidated=%t",
 		storyID,
 		result.Turn.BranchID,
 		result.Turn.ID,
 		len([]byte(result.Turn.Narrative)),
 		result.ContextCompactionInvalidated,
-	)
+	))
 	return result, nil
 }
 

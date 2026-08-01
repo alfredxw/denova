@@ -5,7 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"log"
+	"log/slog"
 	"os"
 
 	"denova/internal/localfs"
@@ -66,7 +66,7 @@ func (journal *Journal) Append(ctx context.Context, guard Guard, payloads ...jso
 	journal.dirtyTransactions++
 	if journal.dirtyTransactions >= journal.options.FlushEvery {
 		if err := journal.persistIndexLocked(); err != nil {
-			log.Printf("[conversation-journal] index checkpoint deferred path=%s cursor=%d error=%v", journal.indexPath, journal.head.Cursor, err)
+			slog.ErrorContext(ctx, fmt.Sprintf("[conversation-journal] index checkpoint deferred path=%s cursor=%d error=%v", journal.indexPath, journal.head.Cursor, err))
 		}
 	}
 	records := make([]Record, len(payloads))
@@ -149,7 +149,7 @@ func (journal *Journal) RepairTail(ctx context.Context) error {
 	}
 	if journal.indexDirty {
 		if err := journal.persistIndexLocked(); err != nil {
-			log.Printf("[conversation-journal] repaired tail but index checkpoint failed path=%s error=%v", journal.indexPath, err)
+			slog.ErrorContext(ctx, fmt.Sprintf("[conversation-journal] repaired tail but index checkpoint failed path=%s error=%v", journal.indexPath, err))
 		}
 	}
 	return nil

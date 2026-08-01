@@ -1,8 +1,9 @@
 package skills
 
 import (
+	"context"
 	"fmt"
-	"log"
+	"log/slog"
 	"path/filepath"
 	"strings"
 )
@@ -18,7 +19,7 @@ func NewDirectories(builtinDir, novaDir, workspace string) []Directory {
 	}
 	if workspace != "" {
 		if err := MigrateWorkspaceSkills(workspace); err != nil {
-			log.Printf("[skills] migrate legacy workspace Skills failed workspace=%s err=%v", workspace, err)
+			slog.ErrorContext(context.Background(), fmt.Sprintf("[skills] migrate legacy workspace Skills failed workspace=%s err=%v", workspace, err))
 		}
 	}
 	if path := normalizePath(filepath.Join(workspace, "skills")); workspace != "" && path != "" {

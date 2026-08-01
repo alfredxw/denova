@@ -81,12 +81,12 @@ func (l *chatAgentLoop) handleToolOutput(messageOutput *agent.MessageVariant, ev
 		data["deleted_ids"] = deletedIDs
 	}
 	if illustrationResult, parseErr := producttools.ParseChapterIllustrationResult(message.ToolName, fullToolContent); parseErr != nil {
-		run.logger.Warn("parse_chapter_illustration_result_failed", slog.String("tool", message.ToolName), slog.String("error_class", safeErrorClass(parseErr.Error())))
+		run.logger.WarnContext(run.ctx, "parse_chapter_illustration_result_failed", slog.String("tool", message.ToolName), slog.String("error_class", safeErrorClass(parseErr.Error())))
 	} else if illustrationResult != nil {
 		data["illustration"] = illustrationResult
 		data["target"] = illustrationResult.MetaPath
 	} else if interactiveImageResult, parseErr := producttools.ParseInteractiveImageResult(message.ToolName, fullToolContent); parseErr != nil {
-		run.logger.Warn("parse_interactive_image_result_failed", slog.String("tool", message.ToolName), slog.String("error_class", safeErrorClass(parseErr.Error())))
+		run.logger.WarnContext(run.ctx, "parse_interactive_image_result_failed", slog.String("tool", message.ToolName), slog.String("error_class", safeErrorClass(parseErr.Error())))
 	} else if interactiveImageResult != nil {
 		data["interactive_image"] = interactiveImageResult
 		data["target"] = interactiveImageResult.MetaPath
@@ -221,12 +221,12 @@ func populateToolResultDomainData(run *chatRun, toolName, payload string, eventM
 		data["deleted_ids"] = deletedIDs
 	}
 	if illustrationResult, parseErr := producttools.ParseChapterIllustrationResult(toolName, payload); parseErr != nil {
-		run.logger.Warn("parse_chapter_illustration_result_failed", slog.String("tool", toolName), slog.String("error_class", safeErrorClass(parseErr.Error())))
+		run.logger.WarnContext(run.ctx, "parse_chapter_illustration_result_failed", slog.String("tool", toolName), slog.String("error_class", safeErrorClass(parseErr.Error())))
 	} else if illustrationResult != nil {
 		data["illustration"] = illustrationResult
 		data["target"] = illustrationResult.MetaPath
 	} else if interactiveImageResult, parseErr := producttools.ParseInteractiveImageResult(toolName, payload); parseErr != nil {
-		run.logger.Warn("parse_interactive_image_result_failed", slog.String("tool", toolName), slog.String("error_class", safeErrorClass(parseErr.Error())))
+		run.logger.WarnContext(run.ctx, "parse_interactive_image_result_failed", slog.String("tool", toolName), slog.String("error_class", safeErrorClass(parseErr.Error())))
 	} else if interactiveImageResult != nil {
 		data["interactive_image"] = interactiveImageResult
 		data["target"] = interactiveImageResult.MetaPath
@@ -255,13 +255,13 @@ func (l *chatAgentLoop) toolDrainFailed(drainErr error) chatLoopResult {
 	terminalContent, terminalThinking := run.snapshotOutput()
 	if run.ctx.Err() != nil {
 		err := run.ctx.Err()
-		run.logger.Warn("run_interrupted", slog.String("reason", "context"), slog.String("error_class", safeErrorClass(err.Error())), slog.Int("generated_bytes", len(terminalContent)))
+		run.logger.WarnContext(run.ctx, "run_interrupted", slog.String("reason", "context"), slog.String("error_class", safeErrorClass(err.Error())), slog.Int("generated_bytes", len(terminalContent)))
 		run.finish("aborted", err.Error(), len(terminalContent))
 		run.emit(Event{Type: "aborted", Data: map[string]string{}})
 		return chatLoopResult{action: chatLoopTerminal, outcome: outcomeFromOutput(RunOutcomeAborted, err, err.Error(), terminalContent, terminalThinking)}
 	}
 	l.cancel()
-	run.logger.Error("run_interrupted", slog.String("reason", "tool_result_idle_timeout"), slog.String("error_class", safeErrorClass(drainErr.Error())), slog.Int("generated_bytes", len(terminalContent)))
+	run.logger.ErrorContext(run.ctx, "run_interrupted", slog.String("reason", "tool_result_idle_timeout"), slog.String("error_class", safeErrorClass(drainErr.Error())), slog.Int("generated_bytes", len(terminalContent)))
 	markInterruptionIfNeeded(run.conversation, run.resumeInterruption, run.originalMessage, terminalContent, drainErr.Error())
 	run.finish("error", drainErr.Error(), len(terminalContent))
 	run.emit(Event{Type: "error", Data: map[string]string{"message": drainErr.Error()}})
@@ -279,7 +279,7 @@ func (l *chatAgentLoop) handleAssistantOutput(messageOutput *agent.MessageVarian
 			// rejected call's provider usage even though its prose is discarded.
 			run.usage.AddMessage(msg)
 			if reason, retrying := interactiveCompletionRetryFromError(streamErr); retrying {
-				run.logger.Info("interactive_completion_retry", slog.String("code", reason.Code), slog.Int("generated_bytes", run.fullContent.Len()))
+				run.logger.InfoContext(run.ctx, "interactive_completion_retry", slog.String("code", reason.Code), slog.Int("generated_bytes", run.fullContent.Len()))
 				return chatLoopResult{action: chatLoopContinue}
 			}
 			if errors.Is(streamErr, agent.ErrStreamCanceled) && run.control.hasTriggeredControl() {
@@ -321,7 +321,7 @@ func (l *chatAgentLoop) assistantStreamFailed(streamErr error) chatLoopResult {
 	terminalContent, terminalThinking := run.snapshotOutput()
 	if run.ctx.Err() != nil {
 		err := run.ctx.Err()
-		run.logger.Warn("run_interrupted", slog.String("reason", "context"), slog.String("error_class", safeErrorClass(err.Error())), slog.Int("generated_bytes", len(terminalContent)))
+		run.logger.WarnContext(run.ctx, "run_interrupted", slog.String("reason", "context"), slog.String("error_class", safeErrorClass(err.Error())), slog.Int("generated_bytes", len(terminalContent)))
 		run.finish("aborted", err.Error(), len(terminalContent))
 		run.emit(Event{Type: "aborted", Data: map[string]string{}})
 		return chatLoopResult{action: chatLoopTerminal, outcome: outcomeFromOutput(RunOutcomeAborted, err, err.Error(), terminalContent, terminalThinking)}

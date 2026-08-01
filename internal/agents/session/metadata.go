@@ -3,7 +3,7 @@ package session
 import (
 	"context"
 	"fmt"
-	"log"
+	"log/slog"
 	"path/filepath"
 	"strings"
 	"time"
@@ -60,7 +60,7 @@ func loadSessionMetadata(filePath, activeID string) (SessionMeta, error) {
 	if err := journal.Close(); err != nil {
 		// The sidecar is rebuildable. Match Store.Close semantics by preserving
 		// readable canonical metadata while making the checkpoint failure visible.
-		log.Printf("[agents/session/metadata.go] closing metadata journal failed path=%q err=%v", filePath, err)
+		slog.ErrorContext(context.Background(), fmt.Sprintf("[agents/session/metadata.go] closing metadata journal failed path=%q err=%v", filePath, err))
 	}
 
 	now := time.Now().UTC()

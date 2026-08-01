@@ -4,7 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"log"
+	"log/slog"
 	"strings"
 
 	agent "github.com/alfredxw/denova/agent"
@@ -50,7 +50,7 @@ func ClassifyLoreItems(ctx context.Context, cfg *config.Config, inputs []book.Lo
 		runErr = err
 		return nil, err
 	}
-	log.Printf("[tool-agent] lore classification json_mode failed, retry without response_format err=%v", err)
+	slog.ErrorContext(ctx, fmt.Sprintf("[tool-agent] lore classification json_mode failed, retry without response_format err=%v", err))
 	plainCfg := chatModelConfigForAgent(cfg, config.AgentKindToolAgent)
 	result, runErr = generateLoreClassifications(traceCtx, cfg, plainCfg, instruction, inputs, "plain_text_retry")
 	return result, runErr
@@ -92,7 +92,7 @@ func generateLoreClassifications(ctx context.Context, cfg *config.Config, modelC
 	if err != nil {
 		return nil, fmt.Errorf("解析工具 Agent 资料分类输出失败: %w", err)
 	}
-	log.Printf("[tool-agent] lore classification done attempt=%s requested=%d returned=%d", attempt, len(inputs), len(result))
+	slog.InfoContext(ctx, fmt.Sprintf("[tool-agent] lore classification done attempt=%s requested=%d returned=%d", attempt, len(inputs), len(result)))
 	return result, nil
 }
 

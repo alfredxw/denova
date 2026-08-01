@@ -5,7 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
-	"log"
+	"log/slog"
 	"strconv"
 	"strings"
 
@@ -33,15 +33,15 @@ func (h *Handlers) HandlePreviewNovelImport(ctx context.Context, c *app.RequestC
 		return
 	}
 	opts := h.novelImportOptions(ctx, c)
-	log.Printf("[api] 小说导入预览 begin filename=%q size=%d sample_chars=%d split_strategy=%q has_split_regex=%t", filename, len(data), opts.SampleChars, opts.SplitStrategy, opts.SplitRegex != "")
+	slog.InfoContext(ctx, fmt.Sprintf("[api] 小说导入预览 begin filename=%q size=%d sample_chars=%d split_strategy=%q has_split_regex=%t", filename, len(data), opts.SampleChars, opts.SplitStrategy, opts.SplitRegex != ""))
 	preview, err := book.PreviewNovelImport(filename, data, opts)
 	if err != nil {
-		log.Printf("[api] 小说导入预览 failed filename=%q err=%v", filename, err)
+		slog.ErrorContext(ctx, fmt.Sprintf("[api] 小说导入预览 failed filename=%q err=%v", filename, err))
 		writeErrorKey(c, consts.StatusBadRequest, "api.novelImport.parseFailed", "detail", err.Error())
 		return
 	}
 	localizeNovelImportWarnings(c, &preview)
-	log.Printf("[api] 小说导入预览 done filename=%q strategy=%s regex=%q chapters=%d warnings=%v", filename, preview.SplitStrategy, preview.SplitRegex, preview.ChapterCount, preview.Warnings)
+	slog.WarnContext(ctx, fmt.Sprintf("[api] 小说导入预览 done filename=%q strategy=%s regex=%q chapters=%d warnings=%v", filename, preview.SplitStrategy, preview.SplitRegex, preview.ChapterCount, preview.Warnings))
 	writeJSON(c, consts.StatusOK, preview)
 }
 
@@ -53,7 +53,7 @@ func (h *Handlers) HandlePreviewNovelImportStream(ctx context.Context, c *app.Re
 	}
 	opts := h.novelImportOptions(ctx, c)
 	localizer := requestLocalizer(c)
-	log.Printf("[api] 小说导入流式预览 begin filename=%q size=%d sample_chars=%d split_strategy=%q has_split_regex=%t", filename, len(data), opts.SampleChars, opts.SplitStrategy, opts.SplitRegex != "")
+	slog.InfoContext(ctx, fmt.Sprintf("[api] 小说导入流式预览 begin filename=%q size=%d sample_chars=%d split_strategy=%q has_split_regex=%t", filename, len(data), opts.SampleChars, opts.SplitStrategy, opts.SplitRegex != ""))
 
 	c.Response.Header.Set("Content-Type", "text/event-stream")
 	c.Response.Header.Set("Cache-Control", "no-cache")
@@ -64,7 +64,7 @@ func (h *Handlers) HandlePreviewNovelImportStream(ctx context.Context, c *app.Re
 	go func() {
 		defer func() {
 			if recovered := recover(); recovered != nil {
-				log.Printf("[api] 小说导入流式预览 panic recovered filename=%q err=%v", filename, recovered)
+				slog.ErrorContext(ctx, fmt.Sprintf("[api] 小说导入流式预览 panic recovered filename=%q err=%v", filename, recovered))
 				_ = writeNovelImportPreviewEvent(pw, "error", novelImportErrorEvent{Error: fmt.Sprint(recovered)})
 			}
 			_ = pw.Close()
@@ -93,12 +93,12 @@ func (h *Handlers) HandlePreviewNovelImportStream(ctx context.Context, c *app.Re
 		}
 		preview, err := book.PreviewNovelImport(filename, data, streamOpts)
 		if err != nil {
-			log.Printf("[api] 小说导入流式预览 failed filename=%q err=%v", filename, err)
+			slog.ErrorContext(ctx, fmt.Sprintf("[api] 小说导入流式预览 failed filename=%q err=%v", filename, err))
 			_ = writeNovelImportPreviewEvent(pw, "error", novelImportErrorEvent{Error: err.Error()})
 			return
 		}
 		localizeNovelImportWarningsWith(localizer.T, &preview)
-		log.Printf("[api] 小说导入流式预览 done filename=%q strategy=%s regex=%q chapters=%d warnings=%v", filename, preview.SplitStrategy, preview.SplitRegex, preview.ChapterCount, preview.Warnings)
+		slog.WarnContext(ctx, fmt.Sprintf("[api] 小说导入流式预览 done filename=%q strategy=%s regex=%q chapters=%d warnings=%v", filename, preview.SplitStrategy, preview.SplitRegex, preview.ChapterCount, preview.Warnings))
 		if err := writeNovelImportPreviewEvent(pw, "preview", preview); err != nil {
 			return
 		}
@@ -114,10 +114,10 @@ func (h *Handlers) HandleNovelImport(ctx context.Context, c *app.RequestContext)
 		return
 	}
 	opts := h.novelImportOptions(ctx, c)
-	log.Printf("[api] 小说导入确认 begin filename=%q size=%d sample_chars=%d split_strategy=%q has_split_regex=%t", filename, len(data), opts.SampleChars, opts.SplitStrategy, opts.SplitRegex != "")
+	slog.InfoContext(ctx, fmt.Sprintf("[api] 小说导入确认 begin filename=%q size=%d sample_chars=%d split_strategy=%q has_split_regex=%t", filename, len(data), opts.SampleChars, opts.SplitStrategy, opts.SplitRegex != ""))
 	preview, err := book.PreviewNovelImport(filename, data, opts)
 	if err != nil {
-		log.Printf("[api] 小说导入确认 preview failed filename=%q err=%v", filename, err)
+		slog.ErrorContext(ctx, fmt.Sprintf("[api] 小说导入确认 preview failed filename=%q err=%v", filename, err))
 		writeErrorKey(c, consts.StatusBadRequest, "api.novelImport.parseFailed", "detail", err.Error())
 		return
 	}
@@ -139,7 +139,7 @@ func (h *Handlers) HandleNovelImport(ctx context.Context, c *app.RequestContext)
 		return
 	}
 
-	log.Printf("[api] 导入小说 filename=%q size=%d title=%q strategy=%s regex=%q chapters=%d", filename, len(data), title, preview.SplitStrategy, preview.SplitRegex, preview.ChapterCount)
+	slog.InfoContext(ctx, fmt.Sprintf("[api] 导入小说 filename=%q size=%d title=%q strategy=%s regex=%q chapters=%d", filename, len(data), title, preview.SplitStrategy, preview.SplitRegex, preview.ChapterCount))
 	workspace, meta, err := h.app.CreateBook(ctx, layered.Paths.DenovaDir, title, author, description)
 	if err != nil {
 		status := consts.StatusInternalServerError
@@ -151,12 +151,12 @@ func (h *Handlers) HandleNovelImport(ctx context.Context, c *app.RequestContext)
 	}
 	importPreview, paths, err := book.ImportNovelToWorkspace(workspace, filename, data, opts)
 	if err != nil {
-		log.Printf("[api] 小说导入确认 import failed filename=%q workspace=%q err=%v", filename, workspace, err)
+		slog.ErrorContext(ctx, fmt.Sprintf("[api] 小说导入确认 import failed filename=%q workspace=%q err=%v", filename, workspace, err))
 		writeErrorKey(c, consts.StatusInternalServerError, "api.novelImport.importFailed", "detail", err.Error())
 		return
 	}
 
-	log.Printf("[api] 导入小说完成 workspace=%q strategy=%s regex=%q chapters=%d paths=%d warnings=%v", workspace, importPreview.SplitStrategy, importPreview.SplitRegex, importPreview.ChapterCount, len(paths), importPreview.Warnings)
+	slog.WarnContext(ctx, fmt.Sprintf("[api] 导入小说完成 workspace=%q strategy=%s regex=%q chapters=%d paths=%d warnings=%v", workspace, importPreview.SplitStrategy, importPreview.SplitRegex, importPreview.ChapterCount, len(paths), importPreview.Warnings))
 	writeJSON(c, consts.StatusOK, book.NovelImportResult{
 		Workspace:    workspace,
 		BookMeta:     &meta,

@@ -97,18 +97,24 @@ describe('api client backend availability toast', () => {
     vi.stubGlobal('fetch', vi.fn(async () => new Response(JSON.stringify({
       error: 'workspace revision changed',
       code: 'revision_conflict',
+      request_id: '0198f2cb-e980-7a21-81ba-e4999869808c',
       details: { path: 'chapters/ch01.md', expected: 'sha256:old', actual: 'sha256:new' },
     }), { status: 409, headers: { 'Content-Type': 'application/json' } })))
 
     const error = await requestJSON('/api/workspace/change-groups/group-1/review').catch((reason) => reason)
 
     expect(error).toBeInstanceOf(APIError)
+    if (!(error instanceof APIError)) {
+      throw new TypeError('expected APIError')
+    }
     expect(error).toMatchObject({
-      message: 'workspace revision changed',
+      requestID: '0198f2cb-e980-7a21-81ba-e4999869808c',
       status: 409,
       code: 'revision_conflict',
       details: { path: 'chapters/ch01.md', expected: 'sha256:old', actual: 'sha256:new' },
     })
+    expect(error.message).toContain('workspace revision changed')
+    expect(error.message).toContain('0198f2cb-e980-7a21-81ba-e4999869808c')
   })
 
   it('preserves status for streaming response failures', async () => {
@@ -118,6 +124,16 @@ describe('api client backend availability toast', () => {
 
     expect(error).toBeInstanceOf(APIError)
     expect(error).toMatchObject({ status: 400, code: 'agent_runtime.invalid_command', message: 'command rejected' })
+  })
+
+  it('uses the response header as the request ID fallback', async () => {
+    const error = await responseAPIError(new Response('gateway failed', {
+      status: 502,
+      headers: { 'X-Request-ID': '0198f2cb-e980-7a21-81ba-e4999869808d' },
+    }))
+
+    expect(error.requestID).toBe('0198f2cb-e980-7a21-81ba-e4999869808d')
+    expect(error.message).toContain('0198f2cb-e980-7a21-81ba-e4999869808d')
   })
 })
 

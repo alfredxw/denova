@@ -1,6 +1,7 @@
 package app
 
 import (
+	"context"
 	"errors"
 	"testing"
 )
@@ -10,7 +11,7 @@ func TestLoreImageBatchRejectsAbortedTaskUntilWorkerExits(t *testing.T) {
 		activeLoreImageTask: &Task{status: TaskAborted},
 	}
 
-	_, err := application.StartLoreImagesGenerateTask(LoreImagesGenerateRequest{ItemIDs: []string{"hero"}})
+	_, err := application.StartLoreImagesGenerateTask(context.Background(), LoreImagesGenerateRequest{ItemIDs: []string{"hero"}})
 	if !errors.Is(err, ErrLoreImageTaskRunning) {
 		t.Fatalf("StartLoreImagesGenerateTask error = %v, want %v", err, ErrLoreImageTaskRunning)
 	}

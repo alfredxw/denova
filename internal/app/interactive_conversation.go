@@ -3,7 +3,7 @@ package app
 import (
 	"context"
 	"fmt"
-	"log"
+	"log/slog"
 	"strings"
 	"sync"
 
@@ -331,7 +331,7 @@ func (c *interactiveConversation) withOpeningStateSchema(storyCtx interactive.St
 		CurrentState:     storyCtx.Snapshot.State,
 	}
 	c.mu.Unlock()
-	log.Printf("[interactive-agent] enabled opening state schema draft story_id=%s branch_id=%s mode=%s base_revision=%d", c.storyID, storyCtx.Snapshot.BranchID, storyCtx.Meta.StateSchemaPolicy.Mode, storyCtx.Meta.ActorStateSchema.Revision)
+	slog.InfoContext(context.Background(), fmt.Sprintf("[interactive-agent] enabled opening state schema draft story_id=%s branch_id=%s mode=%s base_revision=%d", c.storyID, storyCtx.Snapshot.BranchID, storyCtx.Meta.StateSchemaPolicy.Mode, storyCtx.Meta.ActorStateSchema.Revision))
 	return c
 }
 
@@ -348,7 +348,7 @@ func (c *interactiveConversation) refreshOpeningStateSchema(storyCtx interactive
 	c.openingStateSchemaAudit = interactive.ActorStateSchemaBatchAudit{}
 	c.mu.Unlock()
 	if hadDraft {
-		log.Printf("[interactive-agent] cleared stale opening state schema draft story_id=%s branch_id=%s turns=%d", c.storyID, storyCtx.Snapshot.BranchID, len(storyCtx.Snapshot.Turns))
+		slog.InfoContext(context.Background(), fmt.Sprintf("[interactive-agent] cleared stale opening state schema draft story_id=%s branch_id=%s turns=%d", c.storyID, storyCtx.Snapshot.BranchID, len(storyCtx.Snapshot.Turns)))
 	}
 }
 
@@ -367,7 +367,7 @@ func (c *interactiveConversation) SubmitOpeningStateSchemaBatch(ctx context.Cont
 		return interactive.ActorStateSchemaBatchResult{}, fmt.Errorf("当前故事不需要 Game Agent 初始化状态结构")
 	}
 	result := c.openingStateSchemaDraft.SubmitStructureOnly(batch, c.openingStateSchemaAudit)
-	log.Printf("[interactive-agent] staged opening state schema story_id=%s branch_id=%s accepted=%d rejected=%d blocked=%d finalized=%t draft_items=%d", c.storyID, c.branchID, len(result.Accepted), len(result.Rejected), len(result.Blocked), result.Finalized, result.DraftAcceptedItems)
+	slog.InfoContext(ctx, fmt.Sprintf("[interactive-agent] staged opening state schema story_id=%s branch_id=%s accepted=%d rejected=%d blocked=%d finalized=%t draft_items=%d", c.storyID, c.branchID, len(result.Accepted), len(result.Rejected), len(result.Blocked), result.Finalized, result.DraftAcceptedItems))
 	return result, nil
 }
 
@@ -599,7 +599,7 @@ func (c *interactiveConversation) AssembleModelContext(ctx context.Context, orig
 	sourceParts = resolveInteractiveContextSources(sourceParts, history)
 	sourceSummary := interactiveContextSourceListSummary(sourceParts, assembled.Fragments)
 	contextLedgerParts := interactiveContextLedgerParts(sourceParts, history, c.ToolResultContextPolicy())
-	log.Printf(
+	slog.InfoContext(ctx, fmt.Sprintf(
 		"[interactive-agent] context composition story_id=%s branch_id=%s story_title=%s origin=%s teller_id=%s story_director_id=%s teller_slots=%s teller_turn_context=%s history_checkpoint=%s director_plan=%s turns=%d model_turns=%d history=%s turn_instruction=%s sources=%s",
 		c.storyID,
 		storyCtx.Snapshot.BranchID,
@@ -616,7 +616,7 @@ func (c *interactiveConversation) AssembleModelContext(ctx context.Context, orig
 		interactiveMessageListSummary(history),
 		interactivePartSummary(history[len(history)-1].Content),
 		sourceSummary,
-	)
+	))
 	return agents.ModelContextResult{
 		Messages: history,
 		Context:  assembled,

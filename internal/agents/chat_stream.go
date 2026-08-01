@@ -5,7 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"log"
+	"log/slog"
 	"strings"
 	"time"
 
@@ -43,14 +43,14 @@ func processStreamingEvent(ctx context.Context, mv *agent.MessageVariant, fullCo
 		if err != nil {
 			if _, retrying := interactiveCompletionRetryFromError(err); retrying {
 				finalizeInteractiveStreamContent(fullContent, fullThinking, &interactiveContent, interactiveContentReclassified)
-				log.Printf("[agent-run] interactive completion rejected before TurnResult submission; retrying model call generated_bytes=%d", fullContent.Len())
+				slog.InfoContext(ctx, fmt.Sprintf("[agent-run] interactive completion rejected before TurnResult submission; retrying model call generated_bytes=%d", fullContent.Len()))
 				message, concatErr := concatStreamingChunks(chunks)
 				if concatErr != nil {
-					log.Printf("[agent-run] concat rejected streaming message failed err=%v chunks=%d", concatErr, len(chunks))
+					slog.ErrorContext(ctx, fmt.Sprintf("[agent-run] concat rejected streaming message failed err=%v chunks=%d", concatErr, len(chunks)))
 				}
 				return message, err
 			}
-			log.Printf("[agent-run] interrupted reason=stream_recv_error err=%v generated_bytes=%d", err, fullContent.Len())
+			slog.ErrorContext(ctx, fmt.Sprintf("[agent-run] interrupted reason=stream_recv_error err=%v generated_bytes=%d", err, fullContent.Len()))
 			if ctx.Err() == nil {
 				emit(Event{Type: "error", Data: map[string]string{"message": err.Error()}})
 			}
@@ -181,7 +181,7 @@ func processStreamingEvent(ctx context.Context, mv *agent.MessageVariant, fullCo
 	}
 	msg, err := concatStreamingChunks(chunks)
 	if err != nil {
-		log.Printf("[agent-run] concat streaming message failed err=%v chunks=%d", err, len(chunks))
+		slog.ErrorContext(ctx, fmt.Sprintf("[agent-run] concat streaming message failed err=%v chunks=%d", err, len(chunks)))
 		return nil, nil
 	}
 	return msg, nil

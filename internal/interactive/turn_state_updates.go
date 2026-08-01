@@ -1,9 +1,10 @@
 package interactive
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
-	"log"
+	"log/slog"
 	"reflect"
 	"strings"
 )
@@ -199,7 +200,7 @@ func CompileTurnStateUpdates(system StoryDirectorActorStateSystem, currentState 
 		}
 		fieldID := actorStateFieldID(field)
 		if deltaNormalized {
-			log.Printf("[interactive-turn-submission] normalized lossless delta actor_id=%q field_id=%q from=string to=number location=internal/interactive/turn_state_updates.go", actorID, fieldID)
+			slog.InfoContext(context.Background(), fmt.Sprintf("[interactive-turn-submission] normalized lossless delta actor_id=%q field_id=%q from=string to=number location=internal/interactive/turn_state_updates.go", actorID, fieldID))
 		}
 		canonical := append([]string{actorID, fieldID}, segments[2:]...)
 		if conflict := overlappingStateUpdatePath(canonicalPaths, canonical); conflict != "" {
@@ -210,7 +211,7 @@ func CompileTurnStateUpdates(system StoryDirectorActorStateSystem, currentState 
 		}
 		if len(segments) == 2 && update.Op == TurnStateUpdateReplace {
 			if converted, changed := normalizeTurnSubmissionFieldValue(field, update.Value); changed {
-				log.Printf("[interactive-turn-submission] normalized lossless field value actor_id=%q field_id=%q from=string to=%s location=internal/interactive/turn_state_updates.go", actorID, fieldID, field.Type)
+				slog.InfoContext(context.Background(), fmt.Sprintf("[interactive-turn-submission] normalized lossless field value actor_id=%q field_id=%q from=string to=%s location=internal/interactive/turn_state_updates.go", actorID, fieldID, field.Type))
 				update.Value = converted
 			}
 		}

@@ -1,8 +1,9 @@
 package interactive
 
 import (
+	"context"
 	"fmt"
-	"log"
+	"log/slog"
 	"os"
 	"strings"
 	"time"
@@ -74,7 +75,7 @@ func (s *Store) CreateBranch(storyID string, req CreateBranchRequest) (BranchSum
 		return BranchSummary{}, err
 	}
 	if closeErr := s.evictStoryJournalLocked(storyID); closeErr != nil {
-		log.Printf("[interactive-story] flush index on branch creation failed story_id=%s branch_id=%s error=%v", storyID, branchID, closeErr)
+		slog.ErrorContext(context.Background(), fmt.Sprintf("[interactive-story] flush index on branch creation failed story_id=%s branch_id=%s error=%v", storyID, branchID, closeErr))
 	}
 	return BranchSummary{ID: branchID, Head: parentID, From: fromBranch, FromEvent: parentID, Title: title, CreatedAt: now, Current: true}, nil
 }
@@ -111,7 +112,7 @@ func (s *Store) SwitchBranch(storyID, branchID string) error {
 		return err
 	}
 	if closeErr := s.evictStoryJournalLocked(storyID); closeErr != nil {
-		log.Printf("[interactive-story] flush index on branch switch failed story_id=%s branch_id=%s error=%v", storyID, branchID, closeErr)
+		slog.ErrorContext(context.Background(), fmt.Sprintf("[interactive-story] flush index on branch switch failed story_id=%s branch_id=%s error=%v", storyID, branchID, closeErr))
 	}
 	return nil
 }
@@ -174,7 +175,7 @@ func (s *Store) DeleteBranch(storyID, branchID string) error {
 	// are collected only after branch references are durably unreachable; a GC
 	// failure is retryable maintenance and cannot roll the archive back.
 	if err := s.removeBranchToolArtifacts(storyID, branchID); err != nil {
-		log.Printf("[interactive-story] remove archived branch tool artifacts failed story_id=%s branch_id=%s error=%v", storyID, branchID, err)
+		slog.ErrorContext(context.Background(), fmt.Sprintf("[interactive-story] remove archived branch tool artifacts failed story_id=%s branch_id=%s error=%v", storyID, branchID, err))
 	}
 	return nil
 }

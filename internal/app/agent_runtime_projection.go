@@ -3,7 +3,8 @@ package app
 import (
 	"context"
 	"errors"
-	"log"
+	"fmt"
+	"log/slog"
 	"strings"
 
 	agents "denova/internal/agents"
@@ -84,9 +85,9 @@ func (a *App) WritingAgentActiveView(ctx context.Context) WritingAgentActiveView
 		if projected {
 			reconciled, reconcileErr := reconcileColdPendingAsk(operation.Context(), selectedSession, runtimeSnapshot)
 			if reconcileErr != nil {
-				log.Printf("[agent-ask-recovery] reconcile writing Ask failed workspace=%s session_id=%s operation_id=%s cycle=%d err=%v", workspace, sessionID, runtimeSnapshot.ActiveOperation, runtimeSnapshot.ActiveCycle, reconcileErr)
+				slog.ErrorContext(ctx, fmt.Sprintf("[agent-ask-recovery] reconcile writing Ask failed workspace=%s session_id=%s operation_id=%s cycle=%d err=%v", workspace, sessionID, runtimeSnapshot.ActiveOperation, runtimeSnapshot.ActiveCycle, reconcileErr))
 			} else if reconciled {
-				log.Printf("[agent-ask-recovery] cancelled orphaned writing Ask workspace=%s session_id=%s operation_id=%s cycle=%d", workspace, sessionID, runtimeSnapshot.ActiveOperation, runtimeSnapshot.ActiveCycle)
+				slog.InfoContext(ctx, fmt.Sprintf("[agent-ask-recovery] cancelled orphaned writing Ask workspace=%s session_id=%s operation_id=%s cycle=%d", workspace, sessionID, runtimeSnapshot.ActiveOperation, runtimeSnapshot.ActiveCycle))
 			}
 		}
 		// A durable pending Ask is displayable only when this process owns the
@@ -142,7 +143,7 @@ func (a *App) InteractiveAgentActiveView(ctx context.Context, storyID, branchID 
 	}
 	resolved, err := resolveInteractiveProjectionBranch(store, storyID, projectionBranch)
 	if err != nil {
-		log.Printf("[agent-runtime-projection] resolve game binding failed workspace=%s story_id=%s branch_id=%s err=%v", workspace, storyID, projectionBranch, err)
+		slog.ErrorContext(ctx, fmt.Sprintf("[agent-runtime-projection] resolve game binding failed workspace=%s story_id=%s branch_id=%s err=%v", workspace, storyID, projectionBranch, err))
 		resolved = ""
 	}
 	var runtimeSnapshot agents.RuntimeStatus
@@ -229,7 +230,7 @@ func projectAgentRuntime(ctx context.Context, chatService *agents.ChatService, o
 		return snapshot, true
 	}
 	if !errors.Is(err, agents.ErrRuntimeProjectionUnavailable) {
-		log.Printf("[agent-runtime-projection] projection unavailable kind=%s workspace=%s session_id=%s story_id=%s branch_id=%s err=%v", options.AgentKind, options.Workspace, options.SessionID, options.StoryID, options.BranchID, err)
+		slog.WarnContext(ctx, fmt.Sprintf("[agent-runtime-projection] projection unavailable kind=%s workspace=%s session_id=%s story_id=%s branch_id=%s err=%v", options.AgentKind, options.Workspace, options.SessionID, options.StoryID, options.BranchID, err))
 	}
 	return agents.RuntimeStatus{}, false
 }

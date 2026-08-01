@@ -1,8 +1,9 @@
 package book
 
 import (
+	"context"
 	"fmt"
-	"log"
+	"log/slog"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -203,10 +204,10 @@ func parseNovelImport(filename string, data []byte, opts NovelImportOptions) (pa
 	volumeDirFormat := volumeDirFormatForLanguage(language)
 
 	title := strings.TrimSuffix(filepath.Base(name), filepath.Ext(name))
-	log.Printf("[novel-import] parse begin filename=%q bytes=%d text_chars=%d sample_chars=%d requested_strategy=%q has_split_regex=%t", name, len(data), utf8.RuneCountInString(text), opts.SampleChars, opts.SplitStrategy, opts.SplitRegex != "")
+	slog.InfoContext(context.Background(), fmt.Sprintf("[novel-import] parse begin filename=%q bytes=%d text_chars=%d sample_chars=%d requested_strategy=%q has_split_regex=%t", name, len(data), utf8.RuneCountInString(text), opts.SampleChars, opts.SplitStrategy, opts.SplitRegex != ""))
 	chapters, splitStrategy, splitRegex, warnings, err := splitNovelChaptersWithOptions(text, opts)
 	if err != nil {
-		log.Printf("[novel-import] parse failed filename=%q err=%v", name, err)
+		slog.ErrorContext(context.Background(), fmt.Sprintf("[novel-import] parse failed filename=%q err=%v", name, err))
 		return parsedNovel{}, err
 	}
 	totalChars := 0
@@ -227,7 +228,7 @@ func parseNovelImport(filename string, data []byte, opts NovelImportOptions) (pa
 	if len(chapters) == 1 {
 		warnings = append(warnings, NovelImportSingleChapterWarning)
 	}
-	log.Printf("[novel-import] parse done filename=%q strategy=%s regex=%q chapters=%d total_chars=%d warnings=%v", name, splitStrategy, splitRegex, len(chapters), totalChars, warnings)
+	slog.WarnContext(context.Background(), fmt.Sprintf("[novel-import] parse done filename=%q strategy=%s regex=%q chapters=%d total_chars=%d warnings=%v", name, splitStrategy, splitRegex, len(chapters), totalChars, warnings))
 	previewChapters := make([]NovelImportChapter, 0, minInt(len(chapters), NovelImportMaxPreviewChapters))
 	for i := 0; i < len(chapters) && i < NovelImportMaxPreviewChapters; i++ {
 		previewChapters = append(previewChapters, chapters[i].NovelImportChapter)
@@ -331,14 +332,14 @@ func normalizePlainTextLineForMarkdown(line string) string {
 func splitNovelChaptersWithOptions(text string, opts NovelImportOptions) ([]parsedNovelChapter, string, string, []string, error) {
 	warnings := []string{}
 	if opts.SplitRegex != "" {
-		log.Printf("[novel-import] split using provided regex strategy=%q regex=%q", opts.SplitStrategy, opts.SplitRegex)
+		slog.InfoContext(context.Background(), fmt.Sprintf("[novel-import] split using provided regex strategy=%q regex=%q", opts.SplitStrategy, opts.SplitRegex))
 		chapters, err := splitNovelChaptersByRegex(text, opts.SplitRegex)
 		if err != nil {
-			log.Printf("[novel-import] provided regex invalid regex=%q err=%v", opts.SplitRegex, err)
+			slog.WarnContext(context.Background(), fmt.Sprintf("[novel-import] provided regex invalid regex=%q err=%v", opts.SplitRegex, err))
 			return nil, "", "", nil, err
 		}
 		if len(chapters) < 2 {
-			log.Printf("[novel-import] provided regex matched fewer than 2 chapters regex=%q chapters=%d", opts.SplitRegex, len(chapters))
+			slog.InfoContext(context.Background(), fmt.Sprintf("[novel-import] provided regex matched fewer than 2 chapters regex=%q chapters=%d", opts.SplitRegex, len(chapters)))
 			return nil, "", "", nil, fmt.Errorf("自定义章节正则至少需要识别 2 个章节标题")
 		}
 		strategy := NovelImportSplitStrategyCustom
@@ -349,48 +350,48 @@ func splitNovelChaptersWithOptions(text string, opts NovelImportOptions) ([]pars
 	}
 	if opts.SplitStrategy == NovelImportSplitStrategyBuiltin {
 		chapters := splitNovelChapters(text, novelImportAllowMarkdownHeadings(opts.sourceExt))
-		log.Printf("[novel-import] split using builtin by request chapters=%d", len(chapters))
+		slog.InfoContext(context.Background(), fmt.Sprintf("[novel-import] split using builtin by request chapters=%d", len(chapters)))
 		return chapters, NovelImportSplitStrategyBuiltin, "", warnings, nil
 	}
 	if opts.InferSplitRegex != nil {
 		sample := firstRunes(text, opts.SampleChars)
 		if opts.SplitStrategy != NovelImportSplitStrategyAgent {
 			if regex, ok := inferLocalChapterSplitRegex(sample, novelImportAllowMarkdownHeadings(opts.sourceExt)); ok {
-				log.Printf("[novel-import] local regex inferred regex=%q", regex)
+				slog.InfoContext(context.Background(), fmt.Sprintf("[novel-import] local regex inferred regex=%q", regex))
 				chapters, splitErr := splitNovelChaptersByRegex(text, regex)
 				if splitErr == nil && len(chapters) >= 2 {
 					return chapters, NovelImportSplitStrategyLocal, regex, warnings, nil
 				}
-				log.Printf("[novel-import] local regex rejected regex=%q chapters=%d err=%v; continue=tool_agent", regex, len(chapters), splitErr)
+				slog.InfoContext(context.Background(), fmt.Sprintf("[novel-import] local regex rejected regex=%q chapters=%d err=%v; continue=tool_agent", regex, len(chapters), splitErr))
 			}
 		} else {
-			log.Printf("[novel-import] skip local regex inference by requested strategy=%q", opts.SplitStrategy)
+			slog.WarnContext(context.Background(), fmt.Sprintf("[novel-import] skip local regex inference by requested strategy=%q", opts.SplitStrategy))
 		}
 		agentContext := buildChapterSplitInferenceContext(sample)
-		log.Printf("[novel-import] split requesting tool agent regex sample_chars=%d sample_lines=%d context_chars=%d context_lines=%d", utf8.RuneCountInString(sample), len(strings.Split(sample, "\n")), utf8.RuneCountInString(agentContext), len(strings.Split(agentContext, "\n")))
+		slog.InfoContext(context.Background(), fmt.Sprintf("[novel-import] split requesting tool agent regex sample_chars=%d sample_lines=%d context_chars=%d context_lines=%d", utf8.RuneCountInString(sample), len(strings.Split(sample, "\n")), utf8.RuneCountInString(agentContext), len(strings.Split(agentContext, "\n"))))
 		regex, err := opts.InferSplitRegex(agentContext)
 		if err != nil {
-			log.Printf("[novel-import] tool agent regex inference failed err=%v; fallback=builtin", err)
+			slog.ErrorContext(context.Background(), fmt.Sprintf("[novel-import] tool agent regex inference failed err=%v; fallback=builtin", err))
 			warnings = append(warnings, NovelImportAgentFallbackWarning)
 			return splitNovelChapters(text, novelImportAllowMarkdownHeadings(opts.sourceExt)), NovelImportSplitStrategyBuiltin, "", warnings, nil
 		}
 		regex = strings.TrimSpace(regex)
-		log.Printf("[novel-import] tool agent regex inferred regex=%q", regex)
+		slog.InfoContext(context.Background(), fmt.Sprintf("[novel-import] tool agent regex inferred regex=%q", regex))
 		chapters, splitErr := splitNovelChaptersByRegex(text, regex)
 		if splitErr != nil {
-			log.Printf("[novel-import] tool agent regex split failed regex=%q err=%v; fallback=builtin", regex, splitErr)
+			slog.ErrorContext(context.Background(), fmt.Sprintf("[novel-import] tool agent regex split failed regex=%q err=%v; fallback=builtin", regex, splitErr))
 			warnings = append(warnings, NovelImportRegexFallbackWarningPrefix+splitErr.Error())
 			return splitNovelChapters(text, novelImportAllowMarkdownHeadings(opts.sourceExt)), NovelImportSplitStrategyBuiltin, "", warnings, nil
 		}
 		if len(chapters) < 2 {
-			log.Printf("[novel-import] tool agent regex matched fewer than 2 chapters regex=%q chapters=%d; fallback=builtin", regex, len(chapters))
+			slog.WarnContext(context.Background(), fmt.Sprintf("[novel-import] tool agent regex matched fewer than 2 chapters regex=%q chapters=%d; fallback=builtin", regex, len(chapters)))
 			warnings = append(warnings, NovelImportRegexFewChaptersWarning)
 			return splitNovelChapters(text, novelImportAllowMarkdownHeadings(opts.sourceExt)), NovelImportSplitStrategyBuiltin, "", warnings, nil
 		}
 		return chapters, NovelImportSplitStrategyAgent, regex, warnings, nil
 	}
 	chapters := splitNovelChapters(text, novelImportAllowMarkdownHeadings(opts.sourceExt))
-	log.Printf("[novel-import] split using builtin no_tool_agent chapters=%d", len(chapters))
+	slog.InfoContext(context.Background(), fmt.Sprintf("[novel-import] split using builtin no_tool_agent chapters=%d", len(chapters)))
 	return chapters, NovelImportSplitStrategyBuiltin, "", warnings, nil
 }
 
@@ -444,7 +445,7 @@ func splitNovelChaptersByRegex(text, pattern string) ([]parsedNovelChapter, erro
 		title = strings.Trim(title, "# \t")
 		markers = append(markers, novelImportMarker{line: i, info: classifyNovelImportTitle(title)})
 	}
-	log.Printf("[novel-import] regex marker scan regex=%q markers=%d first_titles=%q", pattern, len(markers), markerTitlePreview(markers, 5))
+	slog.InfoContext(context.Background(), fmt.Sprintf("[novel-import] regex marker scan regex=%q markers=%d first_titles=%q", pattern, len(markers), markerTitlePreview(markers, 5)))
 	if len(markers) == 0 {
 		return []parsedNovelChapter{{
 			NovelImportChapter: NovelImportChapter{Title: "正文"},
@@ -466,7 +467,7 @@ func inferLocalChapterSplitRegex(sample string, allowMarkdownHeadings bool) (str
 		}
 		markers, err := scanRegexMarkers(sample, candidate.pattern)
 		if err != nil {
-			log.Printf("[novel-import] local regex candidate invalid name=%s regex=%q err=%v", candidate.name, candidate.pattern, err)
+			slog.WarnContext(context.Background(), fmt.Sprintf("[novel-import] local regex candidate invalid name=%s regex=%q err=%v", candidate.name, candidate.pattern, err))
 			continue
 		}
 		if len(markers) < 2 {
@@ -475,7 +476,7 @@ func inferLocalChapterSplitRegex(sample string, allowMarkdownHeadings bool) (str
 		results = append(results, result{candidate: candidate, markers: markers})
 	}
 	if len(results) == 0 {
-		log.Printf("[novel-import] local regex inference found no stable candidate")
+		slog.InfoContext(context.Background(), "[novel-import] local regex inference found no stable candidate")
 		return "", false
 	}
 	best := results[0]
@@ -484,7 +485,7 @@ func inferLocalChapterSplitRegex(sample string, allowMarkdownHeadings bool) (str
 			best = current
 		}
 	}
-	log.Printf("[novel-import] local regex candidate selected name=%s regex=%q markers=%d first_titles=%q", best.candidate.name, best.candidate.pattern, len(best.markers), markerTitlePreview(best.markers, 5))
+	slog.InfoContext(context.Background(), fmt.Sprintf("[novel-import] local regex candidate selected name=%s regex=%q markers=%d first_titles=%q", best.candidate.name, best.candidate.pattern, len(best.markers), markerTitlePreview(best.markers, 5)))
 	return best.candidate.pattern, true
 }
 

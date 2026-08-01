@@ -2,7 +2,8 @@ package app
 
 import (
 	"context"
-	"log"
+	"fmt"
+	"log/slog"
 
 	novaskills "denova/internal/agents/skills"
 )
@@ -81,7 +82,7 @@ func (s *SkillsAppService) Create(ctx context.Context, scope novaskills.Scope, n
 	if err != nil {
 		return novaskills.Document{}, err
 	}
-	log.Printf("[skills] Skill created scope=%s name=%s path=%s", scope, name, doc.Path)
+	slog.InfoContext(ctx, fmt.Sprintf("[skills] Skill created scope=%s name=%s path=%s", scope, name, doc.Path))
 	return doc, nil
 }
 
@@ -90,7 +91,7 @@ func (s *SkillsAppService) SaveFile(ctx context.Context, scope novaskills.Scope,
 	if err != nil {
 		return novaskills.FileDocument{}, err
 	}
-	log.Printf("[skills] Skill file saved scope=%s name=%s file=%s", scope, name, path)
+	slog.InfoContext(ctx, fmt.Sprintf("[skills] Skill file saved scope=%s name=%s file=%s", scope, name, path))
 	return doc, nil
 }
 
@@ -99,7 +100,7 @@ func (s *SkillsAppService) SaveAs(ctx context.Context, scope novaskills.Scope, n
 	if err != nil {
 		return novaskills.Document{}, err
 	}
-	log.Printf("[skills] Skill saved as source_scope=%s source_name=%s target_scope=%s target_name=%s path=%s", scope, name, targetScope, targetName, doc.Path)
+	slog.InfoContext(ctx, fmt.Sprintf("[skills] Skill saved as source_scope=%s source_name=%s target_scope=%s target_name=%s path=%s", scope, name, targetScope, targetName, doc.Path))
 	return doc, nil
 }
 
@@ -107,7 +108,7 @@ func (s *SkillsAppService) Delete(ctx context.Context, scope novaskills.Scope, n
 	if err := novaskills.DeleteDocument(ctx, s.directories(), scope, name); err != nil {
 		return err
 	}
-	log.Printf("[skills] Skill deleted scope=%s name=%s", scope, name)
+	slog.InfoContext(ctx, fmt.Sprintf("[skills] Skill deleted scope=%s name=%s", scope, name))
 	return nil
 }
 
@@ -120,7 +121,7 @@ func (s *SkillsAppService) InstallZip(ctx context.Context, scope novaskills.Scop
 	if err != nil {
 		return novaskills.InstallResult{}, err
 	}
-	log.Printf("[skills] Skills installed from zip scope=%s count=%d", scope, len(result.Installed))
+	slog.InfoContext(ctx, fmt.Sprintf("[skills] Skills installed from zip scope=%s count=%d", scope, len(result.Installed)))
 	return result, nil
 }
 
@@ -133,7 +134,7 @@ func (s *SkillsAppService) InstallRemoteArchive(ctx context.Context, scope novas
 	if err != nil {
 		return novaskills.InstallResult{}, err
 	}
-	log.Printf("[skills] Skills installed from remote archive scope=%s count=%d", scope, len(result.Installed))
+	slog.InfoContext(ctx, fmt.Sprintf("[skills] Skills installed from remote archive scope=%s count=%d", scope, len(result.Installed)))
 	return result, nil
 }
 
@@ -146,7 +147,7 @@ func (s *SkillsAppService) InstallGitHub(ctx context.Context, scope novaskills.S
 	if err != nil {
 		return novaskills.InstallResult{}, err
 	}
-	log.Printf("[skills] Skills installed from github scope=%s url=%q count=%d", scope, source.URL, len(result.Installed))
+	slog.InfoContext(ctx, fmt.Sprintf("[skills] Skills installed from github scope=%s url=%q count=%d", scope, source.URL, len(result.Installed)))
 	return result, nil
 }
 

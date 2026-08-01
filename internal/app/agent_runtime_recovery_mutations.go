@@ -2,7 +2,8 @@ package app
 
 import (
 	"context"
-	"log"
+	"fmt"
+	"log/slog"
 
 	agents "denova/internal/agents"
 )
@@ -58,7 +59,7 @@ func (run *writingTaskRun) flushRecoveryMutations(ctx context.Context) {
 			continue
 		}
 		if _, committed := batch.participant.LastAgentCycleCommitReceipt(agents.HarnessDomainCommitOutput); !committed {
-			log.Printf("[agent-recovery] skip writing mutation trigger without output receipt task_id=%s mutations=%d", run.task.ID(), len(batch.mutations))
+			slog.WarnContext(ctx, fmt.Sprintf("[agent-recovery] skip writing mutation trigger without output receipt task_id=%s mutations=%d", run.task.ID(), len(batch.mutations)))
 			continue
 		}
 		batch.dispatch(context.WithoutCancel(ctx), batch.mutations, batch.verification)

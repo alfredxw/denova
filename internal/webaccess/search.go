@@ -3,7 +3,7 @@ package webaccess
 import (
 	"context"
 	"fmt"
-	"log"
+	"log/slog"
 	"net/url"
 	"strings"
 	"time"
@@ -63,10 +63,10 @@ func (client *Client) Search(ctx context.Context, request SearchRequest) (Search
 			if len(outcome.results) > 0 {
 				return successfulSearchResponse(query, outcome.provider, outcome.results, maxResults, nil), nil
 			}
-			log.Printf("[webaccess] search provider=%s returned no usable results; trying free fallbacks", outcome.provider)
+			slog.WarnContext(ctx, fmt.Sprintf("[webaccess] search provider=%s returned no usable results; trying free fallbacks", outcome.provider))
 		} else {
 			failures = append(failures, outcome.err)
-			log.Printf("[webaccess] search provider=%s failed; trying free fallbacks: %v", outcome.provider, outcome.err)
+			slog.ErrorContext(ctx, fmt.Sprintf("[webaccess] search provider=%s failed; trying free fallbacks: %v", outcome.provider, outcome.err))
 		}
 	}
 
@@ -145,7 +145,7 @@ func combineSearchProviders(ctx context.Context, providers []searchProvider, req
 				if recovered := recover(); recovered != nil {
 					outcome.results = nil
 					outcome.err = fmt.Errorf("search provider %s goroutine panicked: %v", outcome.provider, recovered)
-					log.Printf("[webaccess] recovered fallback search provider=%s goroutine panic: %v", outcome.provider, recovered)
+					slog.ErrorContext(ctx, fmt.Sprintf("[webaccess] recovered fallback search provider=%s goroutine panic: %v", outcome.provider, recovered))
 				}
 				outcomes <- outcome
 			}()
@@ -167,16 +167,16 @@ func combineSearchProviders(ctx context.Context, providers []searchProvider, req
 		failures = append(failures, outcome.warnings...)
 		if outcome.err != nil {
 			failures = append(failures, outcome.err)
-			log.Printf("[webaccess] fallback search provider=%s failed: %v", outcome.provider, outcome.err)
+			slog.ErrorContext(ctx, fmt.Sprintf("[webaccess] fallback search provider=%s failed: %v", outcome.provider, outcome.err))
 			continue
 		}
 		hadReachable = true
 		outcome.results = sanitizeSearchResults(outcome.results, outcome.provider, request.MaxResults)
 		if len(outcome.results) == 0 {
-			log.Printf("[webaccess] fallback search provider=%s returned no usable results", outcome.provider)
+			slog.WarnContext(ctx, fmt.Sprintf("[webaccess] fallback search provider=%s returned no usable results", outcome.provider))
 			continue
 		}
-		log.Printf("[webaccess] fallback search provider=%s returned %d result(s)", outcome.provider, len(outcome.results))
+		slog.WarnContext(ctx, fmt.Sprintf("[webaccess] fallback search provider=%s returned %d result(s)", outcome.provider, len(outcome.results)))
 		orderedOutcomes[outcome.index] = outcome
 	}
 	combined := searchOutcome{}
@@ -236,7 +236,7 @@ func runSearchProvider(ctx context.Context, provider searchProvider, request pro
 		if recovered := recover(); recovered != nil {
 			outcome.results = nil
 			outcome.err = fmt.Errorf("search provider %s panicked: %v", outcome.provider, recovered)
-			log.Printf("[webaccess] recovered search provider=%s panic: %v", outcome.provider, recovered)
+			slog.ErrorContext(ctx, fmt.Sprintf("[webaccess] recovered search provider=%s panic: %v", outcome.provider, recovered))
 		}
 	}()
 	if provider == nil {

@@ -3,7 +3,8 @@ package handlers
 import (
 	"context"
 	"errors"
-	"log"
+	"fmt"
+	"log/slog"
 
 	"github.com/cloudwego/hertz/pkg/app"
 	"github.com/cloudwego/hertz/pkg/protocol/consts"
@@ -28,7 +29,7 @@ func (h *Handlers) HandleDirectoryPicker(ctx context.Context, c *app.RequestCont
 		InitialPath: request.InitialPath,
 	})
 	if err != nil {
-		log.Printf("[api/handlers/handler_host_dialog.go] native directory picker failed err=%v", err)
+		slog.ErrorContext(ctx, fmt.Sprintf("[api/handlers/handler_host_dialog.go] native directory picker failed err=%v", err))
 		if errors.Is(err, hostdialog.ErrUnavailable) {
 			writeErrorKey(c, consts.StatusServiceUnavailable, "api.hostDialog.unavailable")
 			return

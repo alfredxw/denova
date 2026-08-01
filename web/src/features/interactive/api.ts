@@ -1,4 +1,4 @@
-import { APIError, createAgentCommandID, fetchAPI, jsonHeaders, parseSSEStream, requestJSON } from '@/lib/api-client'
+import { createAgentCommandID, fetchAPI, jsonHeaders, parseSSEStream, requestJSON, responseAPIError } from '@/lib/api-client'
 import type { AgentCommandReceipt, AgentRuntimeActiveOutput, AgentRuntimeOpenTool, AgentRuntimeOperation, AgentRuntimeQueuedCommand, AgentRuntimeRecoveryAction, AgentRuntimeRecoveryReceipt, ContextAnalysis, InteractiveImage } from '@/lib/api-client'
 import { isKnownAgentCommandOutcome } from '@/lib/agent-command'
 import type { ActorStateModule, ActorTraitRollRequest, ActorTraitRollResult, BranchSummary, DirectorPlan, DirectorPlanStatus, EventPackageModule, ImagePreset, InitialActorTraitRoll, InteractiveSSEEvent, RuleResolution, RuleResolutionRerollInput, RuleSystemModule, Snapshot, StoryDirector, StoryDirectorModuleRefs, StoryDirectorRunPolicy, StoryHistoryPage, StoryStateSchemaPolicy, StyleReference, StyleReferenceFileDocument, StoryImageSettings, StoryIndex, StoryOpeningConfig, StorySummary, Teller, UpdateDirectorPlanInput, UpdateTurnNarrativeResult } from './types'
@@ -376,27 +376,9 @@ export async function sendInteractiveMessage(input: InteractiveStartInput): Prom
     body: JSON.stringify(body),
     signal,
   })
-  if (!res.ok) throw await interactiveStreamResponseError(res)
+  if (!res.ok) throw await responseAPIError(res)
   if (!res.body) throw new Error('No response body')
   return parseSSEStream(res.body)
-}
-
-async function interactiveStreamResponseError(res: Response) {
-  const text = await res.text()
-  let payload: Record<string, unknown> = {}
-  if (text) {
-    try {
-      payload = JSON.parse(text) as Record<string, unknown>
-    } catch {
-      payload = { error: text }
-    }
-  }
-  const message = typeof payload.error === 'string' && payload.error ? payload.error : `HTTP ${res.status}`
-  const code = typeof payload.code === 'string' && payload.code ? payload.code : undefined
-  const details = payload.details && typeof payload.details === 'object' && !Array.isArray(payload.details)
-    ? payload.details as Record<string, unknown>
-    : undefined
-  return new APIError(message, { status: res.status, code, details, payload })
 }
 
 export interface ActiveInteractiveChat {
@@ -474,7 +456,7 @@ export async function streamActiveInteractiveChat(input: { storyId: string; bran
   const taskId = input.taskId?.trim()
   if (!taskId) throw new Error('Cannot reconnect without an exact Agent stream task')
   const res = await fetchAPI(`/api/interactive/chat/stream?${interactiveChatQuery(input.storyId, input.branchId, taskId, input.after)}`, { signal: input.signal })
-  if (!res.ok) throw await interactiveStreamResponseError(res)
+  if (!res.ok) throw await responseAPIError(res)
   if (!res.body) throw new Error('No response body')
   return parseSSEStream(res.body)
 }

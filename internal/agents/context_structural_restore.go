@@ -5,10 +5,11 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"log"
+	"log/slog"
 	"strings"
 
 	"denova/config"
+
 	runstate "github.com/alfredxw/denova/agent/runtime"
 )
 
@@ -54,14 +55,14 @@ func (e *harnessEngine) restoreStructuralOperation(
 	if restorer == nil {
 		return ErrHarnessStructuralRestoreUnavailable
 	}
-	log.Printf(
+	slog.InfoContext(ctx, fmt.Sprintf(
 		"[agent-harness] rebuilding cold structural operation binding=%+v command_id=%s operation_id=%s kind=%s spec_ref=%s",
 		snapshot.Binding,
 		snapshot.CommandID,
 		snapshot.OperationID,
 		snapshot.Kind,
 		ref,
-	)
+	))
 	plan, err := decodeContextStructuralRestorePlan(
 		cloneJSONRawMessage(snapshot.Ref.RestoreDescriptor),
 		snapshot.Binding,
@@ -116,13 +117,13 @@ func (e *harnessEngine) restoreStructuralOperation(
 		return err
 	}
 	registration.accept()
-	log.Printf(
+	slog.InfoContext(ctx, fmt.Sprintf(
 		"[agent-harness] cold structural operation registered and pinned binding=%+v command_id=%s operation_id=%s action=%s",
 		snapshot.Binding,
 		snapshot.CommandID,
 		snapshot.OperationID,
 		action,
-	)
+	))
 	return nil
 }
 
@@ -304,13 +305,13 @@ func (h *chatHarness) resumeRecoveredContextStructuralOperation(
 		return ContextStructuralResult{}, false, err
 	}
 	command := contextStructuralCommand(snapshot.CommandID, action, snapshot.Ref)
-	log.Printf(
+	slog.InfoContext(ctx, fmt.Sprintf(
 		"[agent-harness] explicitly resuming recovery-paused structural operation binding=%+v command_id=%s operation_id=%s action=%s",
 		snapshot.Binding,
 		snapshot.CommandID,
 		snapshot.OperationID,
 		action,
-	)
+	))
 	receipt, err := harness.Submit(ctx, command)
 	if err != nil {
 		return ContextStructuralResult{}, false, err
@@ -321,13 +322,13 @@ func (h *chatHarness) resumeRecoveredContextStructuralOperation(
 	if err := h.waitForRecoveredStructuralSettlement(ctx, harness, observation, receipt); err != nil {
 		return cloneContextStructuralRestorePlan(plan).Result, true, err
 	}
-	log.Printf(
+	slog.InfoContext(ctx, fmt.Sprintf(
 		"[agent-harness] recovered structural operation settled binding=%+v command_id=%s operation_id=%s action=%s",
 		snapshot.Binding,
 		snapshot.CommandID,
 		snapshot.OperationID,
 		action,
-	)
+	))
 	return cloneContextStructuralRestorePlan(plan).Result, true, nil
 }
 

@@ -1,7 +1,9 @@
 package config
 
 import (
-	"log"
+	"context"
+	"fmt"
+	"log/slog"
 	"os"
 	"path/filepath"
 	"strconv"
@@ -329,7 +331,7 @@ func globalConfigCandidates() []string {
 func Load() *Config {
 	cfg, _, err := LoadWithWorkspace("")
 	if err != nil || cfg == nil {
-		log.Printf("[config] LoadWithWorkspace failed, falling back to defaults: %v", err)
+		slog.ErrorContext(context.Background(), fmt.Sprintf("[config] LoadWithWorkspace failed, falling back to defaults: %v", err))
 		// fallback：返回纯默认值 + env，保持启动不挂
 		d := DefaultSettings()
 		cfg = &Config{

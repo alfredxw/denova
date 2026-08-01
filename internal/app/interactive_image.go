@@ -6,7 +6,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"log"
+	"log/slog"
 	"strings"
 
 	"denova/internal/imagepreset"
@@ -324,7 +324,7 @@ func loadImagePreset(novaDir, id string) imagepreset.Preset {
 	}
 	preset, err := imagepreset.NewLibrary(novaDir).Get(presetID)
 	if err != nil {
-		log.Printf("[interactive-image] load image preset failed id=%s err=%v; fallback=%s", presetID, err, imagepreset.DefaultID)
+		slog.ErrorContext(context.Background(), fmt.Sprintf("[interactive-image] load image preset failed id=%s err=%v; fallback=%s", presetID, err, imagepreset.DefaultID))
 		return imagepreset.DefaultPreset()
 	}
 	return preset

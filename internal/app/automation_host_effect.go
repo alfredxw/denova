@@ -5,7 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"log"
+	"log/slog"
 	"strings"
 
 	agents "denova/internal/agents"
@@ -59,7 +59,7 @@ func (a *App) reconcileHarnessHostEffect(ctx context.Context, committed agents.C
 	// still authoritative and the wake-up retries after run admission/restart.
 	if committed.Origin.AgentKind == agents.AgentKindAutomation {
 		if _, reconcileErr := a.automation().reconcilePersistedHostEffect(context.WithoutCancel(ctx), admitted); reconcileErr != nil {
-			log.Printf("[automation-host-effect] immediate transfer deferred effect_id=%s run_id=%s operation_id=%s err=%v", committed.EffectID, committed.Origin.TaskID, committed.RuntimeOperation, reconcileErr)
+			slog.WarnContext(ctx, fmt.Sprintf("[automation-host-effect] immediate transfer deferred effect_id=%s run_id=%s operation_id=%s err=%v", committed.EffectID, committed.Origin.TaskID, committed.RuntimeOperation, reconcileErr))
 		}
 	}
 	a.signalAutomationEffectReconciliation()
@@ -73,17 +73,17 @@ func (s *AutomationAppService) reconcilePersistedHostEffects(ctx context.Context
 	store := s.storeAllWorkspaces()
 	effects, err := store.ListHostEffects()
 	if err != nil {
-		log.Printf("[automation-host-effect] list durable obligations failed err=%v", err)
+		slog.ErrorContext(ctx, fmt.Sprintf("[automation-host-effect] list durable obligations failed err=%v", err))
 		return
 	}
 	for _, effect := range effects {
 		queued, reconcileErr := s.reconcilePersistedHostEffect(ctx, effect)
 		if reconcileErr != nil {
-			log.Printf("[automation-host-effect] obligation remains pending effect_id=%s workspace=%q err=%v", effect.ID, effect.Workspace, reconcileErr)
+			slog.InfoContext(ctx, fmt.Sprintf("[automation-host-effect] obligation remains pending effect_id=%s workspace=%q err=%v", effect.ID, effect.Workspace, reconcileErr))
 			continue
 		}
 		if queued {
-			log.Printf("[automation-host-effect] obligation transferred effect_id=%s workspace=%q", effect.ID, effect.Workspace)
+			slog.InfoContext(ctx, fmt.Sprintf("[automation-host-effect] obligation transferred effect_id=%s workspace=%q", effect.ID, effect.Workspace))
 		}
 	}
 }
@@ -133,11 +133,11 @@ func (s *AutomationAppService) reconcilePersistedHostEffect(ctx context.Context,
 		targets,
 		func(processErr error) {
 			if processErr != nil {
-				log.Printf("[automation-host-effect] trigger pass failed effect_id=%s workspace=%q err=%v", effect.ID, effect.Workspace, processErr)
+				slog.ErrorContext(ctx, fmt.Sprintf("[automation-host-effect] trigger pass failed effect_id=%s workspace=%q err=%v", effect.ID, effect.Workspace, processErr))
 				return
 			}
 			if ackErr := s.storeAllWorkspaces().AcknowledgeHostEffect(context.Background(), effect); ackErr != nil {
-				log.Printf("[automation-host-effect] persist trigger receipt failed effect_id=%s workspace=%q err=%v", effect.ID, effect.Workspace, ackErr)
+				slog.ErrorContext(ctx, fmt.Sprintf("[automation-host-effect] persist trigger receipt failed effect_id=%s workspace=%q err=%v", effect.ID, effect.Workspace, ackErr))
 			}
 		},
 	)
@@ -224,7 +224,7 @@ func (s *AutomationAppService) hostEffectOperationActive(ctx context.Context, pa
 		Mode: payload.Origin.Mode,
 	})
 	if err != nil {
-		log.Printf("[automation-host-effect] runtime projection unavailable effect_operation=%s err=%v", payload.RuntimeOperation, err)
+		slog.WarnContext(ctx, fmt.Sprintf("[automation-host-effect] runtime projection unavailable effect_operation=%s err=%v", payload.RuntimeOperation, err))
 		return true
 	}
 	return status.ActiveOperation == payload.RuntimeOperation

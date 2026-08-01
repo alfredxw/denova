@@ -5,7 +5,8 @@ import (
 	cryptorand "crypto/rand"
 	"encoding/hex"
 	"errors"
-	"log"
+	"fmt"
+	"log/slog"
 	"os"
 	"path/filepath"
 	"sort"
@@ -186,7 +187,7 @@ func (s *Service) AddComment(ctx context.Context, req AddCommentRequest, snapsho
 	if err := s.appendAndApply(ledgerEvent{Type: eventCommentsUpserted, CreatedAt: now, Comments: []Comment{comment}}); err != nil {
 		return Thread{}, Comment{}, err
 	}
-	log.Printf("[document-review] comment created workspace=%q target_kind=%q target_id=%q target_field=%q thread_id=%s comment_id=%s", s.workspace, comment.Target.Kind, comment.Target.ID, comment.Target.Field, comment.ThreadID, comment.ID)
+	slog.InfoContext(ctx, fmt.Sprintf("[document-review] comment created workspace=%q target_kind=%q target_id=%q target_field=%q thread_id=%s comment_id=%s", s.workspace, comment.Target.Kind, comment.Target.ID, comment.Target.Field, comment.ThreadID, comment.ID))
 	return s.currentThreadLocked(), comment, nil
 }
 
@@ -210,7 +211,7 @@ func (s *Service) UpdateComment(ctx context.Context, req UpdateCommentRequest) (
 	if err := s.appendAndApply(ledgerEvent{Type: eventCommentsUpserted, CreatedAt: next.UpdatedAt, Comments: []Comment{next}}); err != nil {
 		return Thread{}, Comment{}, err
 	}
-	log.Printf("[document-review] comment updated workspace=%q target_kind=%q target_id=%q thread_id=%s comment_id=%s", s.workspace, next.Target.Kind, next.Target.ID, next.ThreadID, next.ID)
+	slog.InfoContext(ctx, fmt.Sprintf("[document-review] comment updated workspace=%q target_kind=%q target_id=%q thread_id=%s comment_id=%s", s.workspace, next.Target.Kind, next.Target.ID, next.ThreadID, next.ID))
 	return s.currentThreadLocked(), next, nil
 }
 
@@ -230,7 +231,7 @@ func (s *Service) DeleteComment(ctx context.Context, req DeleteCommentRequest) (
 	if err := s.appendAndApply(ledgerEvent{Type: eventCommentsUpserted, CreatedAt: next.UpdatedAt, Comments: []Comment{next}}); err != nil {
 		return Thread{}, Comment{}, err
 	}
-	log.Printf("[document-review] comment deleted workspace=%q target_kind=%q target_id=%q thread_id=%s comment_id=%s", s.workspace, next.Target.Kind, next.Target.ID, next.ThreadID, next.ID)
+	slog.InfoContext(ctx, fmt.Sprintf("[document-review] comment deleted workspace=%q target_kind=%q target_id=%q thread_id=%s comment_id=%s", s.workspace, next.Target.Kind, next.Target.ID, next.ThreadID, next.ID))
 	return s.currentThreadLocked(), next, nil
 }
 
@@ -269,7 +270,7 @@ func (s *Service) ConsumeReviewComments(ctx context.Context, threadID string, co
 	if err := s.appendAndApply(ledgerEvent{Type: eventCommentsUpserted, CreatedAt: now, Comments: consumed}); err != nil {
 		return nil, err
 	}
-	log.Printf("[document-review] feedback consumed workspace=%q thread_id=%s comment_count=%d", s.workspace, threadID, len(consumed))
+	slog.InfoContext(ctx, fmt.Sprintf("[document-review] feedback consumed workspace=%q thread_id=%s comment_count=%d", s.workspace, threadID, len(consumed)))
 	return append([]Comment{}, consumed...), nil
 }
 
@@ -317,7 +318,7 @@ func (s *Service) RestoreConsumedReviewComments(ctx context.Context, threadID st
 	if err := s.appendAndApply(ledgerEvent{Type: eventCommentsUpserted, CreatedAt: now, Comments: restored}); err != nil {
 		return nil, err
 	}
-	log.Printf("[document-review] feedback consumption restored workspace=%q thread_id=%s comment_count=%d", s.workspace, threadID, len(restored))
+	slog.InfoContext(ctx, fmt.Sprintf("[document-review] feedback consumption restored workspace=%q thread_id=%s comment_count=%d", s.workspace, threadID, len(restored)))
 	return append([]Comment{}, restored...), nil
 }
 

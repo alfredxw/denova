@@ -3,7 +3,7 @@ package runtime
 import (
 	"context"
 	"fmt"
-	"log"
+	"log/slog"
 )
 
 func (h *Harness) startStructuralEngine(state *harnessState, snapshot StructuralOperationSnapshot) {
@@ -30,7 +30,7 @@ func (h *Harness) startStructuralEngine(state *harnessState, snapshot Structural
 				return
 			}
 			if !returned {
-				log.Printf("runtime: binding=%+v operation=%s structural engine exited without a result", h.binding, snapshot.OperationID)
+				slog.InfoContext(context.Background(), fmt.Sprintf("runtime: binding=%+v operation=%s structural engine exited without a result", h.binding, snapshot.OperationID))
 			}
 		}()
 		result, err := engine.RunStructural(operationCtx, request, func(event EngineEvent) error {
@@ -66,7 +66,7 @@ func forwardStructuralControls(
 ) {
 	defer func() {
 		if recovered := recover(); recovered != nil {
-			log.Printf("runtime: binding=%+v operation=%s structural control bridge panic: %v", binding, operationID, recovered)
+			slog.ErrorContext(ctx, fmt.Sprintf("runtime: binding=%+v operation=%s structural control bridge panic: %v", binding, operationID, recovered))
 			cancel()
 		}
 	}()

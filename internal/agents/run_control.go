@@ -70,7 +70,7 @@ type runControlState struct {
 	protocolContributed bool
 }
 
-func (s *runControlState) request(control RunControl, cancel agent.AgentCancelFunc) {
+func (s *runControlState) request(ctx context.Context, control RunControl, cancel agent.AgentCancelFunc) {
 	if s == nil || cancel == nil {
 		return
 	}
@@ -93,7 +93,7 @@ func (s *runControlState) request(control RunControl, cancel agent.AgentCancelFu
 		options = append(options, agent.WithAgentCancelMode(agent.CancelImmediate))
 	}
 	_, contributed := cancel(options...)
-	slog.Info("agent run control cancellation requested", "control", control.Kind, "contributed", contributed)
+	slog.InfoContext(ctx, "agent run control cancellation requested", "control", control.Kind, "contributed", contributed)
 	if !contributed {
 		return
 	}
@@ -171,7 +171,7 @@ func startRunControlWatcher(ctx context.Context, controls <-chan RunControl, can
 		defer close(done)
 		defer func() {
 			if recovered := recover(); recovered != nil {
-				slog.Error("agent run control watcher panic recovered", "error", recovered, "stack", string(debug.Stack()))
+				slog.ErrorContext(ctx, "agent run control watcher panic recovered", "error", recovered, "stack", string(debug.Stack()))
 			}
 		}()
 		for {
@@ -182,7 +182,7 @@ func startRunControlWatcher(ctx context.Context, controls <-chan RunControl, can
 				if !ok {
 					return
 				}
-				state.request(control, cancel)
+				state.request(ctx, control, cancel)
 			}
 		}
 	}()

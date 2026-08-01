@@ -2,7 +2,8 @@ package app
 
 import (
 	"context"
-	"log"
+	"fmt"
+	"log/slog"
 	"strings"
 
 	"denova/config"
@@ -60,7 +61,7 @@ func (s *WorkspaceRuntimeManager) acquireVersionCreateRuntime(ctx context.Contex
 	if layered, loadErr := config.LoadLayeredWithStartupConfigAt(runtime.cfg.DataDir(), workspace, projectConfigPath); loadErr == nil {
 		applyLayeredSettingsToConfig(&runtime.cfg, layered)
 	} else {
-		log.Printf("[versions] 加载分层配置用于版本说明失败 workspace=%s err=%v", workspace, loadErr)
+		slog.ErrorContext(ctx, fmt.Sprintf("[versions] 加载分层配置用于版本说明失败 workspace=%s err=%v", workspace, loadErr))
 	}
 	return runtime, nil
 }

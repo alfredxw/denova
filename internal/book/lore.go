@@ -1,12 +1,13 @@
 package book
 
 import (
+	"context"
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
-	"log"
+	"log/slog"
 	"os"
 	"path/filepath"
 	"sort"
@@ -387,7 +388,7 @@ func (s *LoreStore) Update(id string, input LoreItemInput) (LoreItem, error) {
 		if err := applyLoreReferenceRewrites(rewrites); err != nil {
 			collection.Items[i] = previous
 			if rollbackErr := s.save(collection); rollbackErr != nil {
-				log.Printf("[lore-reference] rollback lore item failed id=%s err=%v", id, rollbackErr)
+				slog.ErrorContext(context.Background(), fmt.Sprintf("[lore-reference] rollback lore item failed id=%s err=%v", id, rollbackErr))
 			}
 			return LoreItem{}, err
 		}
@@ -845,7 +846,7 @@ func (s *LoreStore) Ensure() error {
 		return err
 	}
 	if legacy {
-		log.Printf("[lore-store] migrated legacy Lore collection source=%s target=%s", sourcePath, s.itemsPath())
+		slog.InfoContext(context.Background(), fmt.Sprintf("[lore-store] migrated legacy Lore collection source=%s target=%s", sourcePath, s.itemsPath()))
 	}
 	return nil
 }
@@ -895,7 +896,7 @@ func (s *LoreStore) save(collection LoreCollection) error {
 	defer os.Remove(tempPath)
 	closeTemp := func() {
 		if closeErr := temp.Close(); closeErr != nil {
-			log.Printf("[lore-store] close temp file failed path=%s err=%v", tempPath, closeErr)
+			slog.ErrorContext(context.Background(), fmt.Sprintf("[lore-store] close temp file failed path=%s err=%v", tempPath, closeErr))
 		}
 	}
 	if err := temp.Chmod(0o644); err != nil {
@@ -917,7 +918,7 @@ func (s *LoreStore) save(collection LoreCollection) error {
 		return fmt.Errorf("原子替换资料库文件失败 path=%s: %w", path, err)
 	}
 	if err := localfs.SyncDirectory(dir); err != nil {
-		log.Printf("[lore-store] directory durability failed path=%s err=%v", dir, err)
+		slog.ErrorContext(context.Background(), fmt.Sprintf("[lore-store] directory durability failed path=%s err=%v", dir, err))
 	}
 	return nil
 }

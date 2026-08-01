@@ -7,14 +7,14 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"log"
+	"log/slog"
 	"mime"
 	"net/http"
 	"net/url"
 	"strings"
 
 	"codeberg.org/readeck/go-readability/v2"
-	"github.com/JohannesKaufmann/html-to-markdown"
+	md "github.com/JohannesKaufmann/html-to-markdown"
 	"github.com/PuerkitoBio/goquery"
 	"golang.org/x/net/html/charset"
 )
@@ -102,7 +102,7 @@ func providersUnavailableFetchResponse(target *url.URL, attempts []FetchAttempt)
 }
 
 func (client *Client) fetchDirect(ctx context.Context, target *url.URL) (fetchedDocument, FetchAttempt, error) {
-	log.Printf("[webaccess] fetching public page url=%s response_limit_bytes=%d", safeURLForLog(target), client.config.FetchMaxResponseBytes)
+	slog.InfoContext(ctx, fmt.Sprintf("[webaccess] fetching public page url=%s response_limit_bytes=%d", safeURLForLog(target), client.config.FetchMaxResponseBytes))
 	httpRequest, err := http.NewRequestWithContext(ctx, http.MethodGet, target.String(), nil)
 	if err != nil {
 		return fetchedDocument{}, FetchAttempt{Method: FetchMethodDirectHTTP}, fmt.Errorf("create web fetch request: %w", err)
@@ -200,7 +200,7 @@ func buildFetchResponse(target *url.URL, request FetchRequest, maxChars int, met
 		nextStartIndex = &next
 	}
 
-	log.Printf("[webaccess] fetched public page method=%s final_url=%s response_bytes=%d content_chars=%d returned_chars=%d", method, safeURLForLog(document.finalURL), document.responseSize, len(characters), len([]rune(fragment)))
+	slog.InfoContext(context.Background(), fmt.Sprintf("[webaccess] fetched public page method=%s final_url=%s response_bytes=%d content_chars=%d returned_chars=%d", method, safeURLForLog(document.finalURL), document.responseSize, len(characters), len([]rune(fragment))))
 	return FetchResponse{
 		Schema:         FetchResponseSchema,
 		Status:         FetchStatusSuccess,

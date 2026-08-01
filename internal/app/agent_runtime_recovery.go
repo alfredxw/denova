@@ -3,7 +3,7 @@ package app
 import (
 	"context"
 	"fmt"
-	"log"
+	"log/slog"
 	"strings"
 
 	agents "denova/internal/agents"
@@ -123,7 +123,7 @@ func (s *ChatAppService) RecoverAgentRuntime(ctx context.Context, request AgentR
 	key := recoveryActionKey(request.Action)
 	structural, isStructural := recoveryStructuralAction(request.Action.Kind)
 	var run *writingTaskRun
-	task, err := NewDeferredRegisteredTask(func(task *Task) error {
+	task, err := NewDeferredRegisteredTaskWithContext(ctx, func(task *Task) error {
 		a.mu.Lock()
 		defer a.mu.Unlock()
 		if a.workspaceTransition {
@@ -184,7 +184,7 @@ func (s *ChatAppService) RecoverAgentRuntime(ctx context.Context, request AgentR
 				return
 			}
 			if _, refreshErr := s.retryRecoveryRefresh(taskCtx, workspace, sess.ID, request.Action, sess.RefreshCanonical); refreshErr != nil {
-				log.Printf("[agent-recovery] recovered structural session refresh pending task_id=%s workspace=%s session_id=%s command_id=%s operation_id=%s err=%v", task.ID(), workspace, sess.ID, request.Action.CommandID, request.Action.OperationID, refreshErr)
+				slog.InfoContext(taskCtx, fmt.Sprintf("[agent-recovery] recovered structural session refresh pending task_id=%s workspace=%s session_id=%s command_id=%s operation_id=%s err=%v", task.ID(), workspace, sess.ID, request.Action.CommandID, request.Action.OperationID, refreshErr))
 				emitWritingRecoveryRefreshRequired(emit, request.Action, recovery.InitialStatus().Cursor)
 				if !run.waitForRecoveryRefresh(taskCtx) {
 					return
@@ -193,7 +193,7 @@ func (s *ChatAppService) RecoverAgentRuntime(ctx context.Context, request AgentR
 		}
 		outcome := recovery.Wait(taskCtx, emit)
 		run.flushRecoveryMutations(taskCtx)
-		log.Printf("[agent-recovery] writing task settled task_id=%s action=%s command_id=%s operation_id=%s outcome=%s", task.ID(), request.Action.Kind, request.Action.CommandID, request.Action.OperationID, outcome.Status)
+		slog.InfoContext(taskCtx, fmt.Sprintf("[agent-recovery] writing task settled task_id=%s action=%s command_id=%s operation_id=%s outcome=%s", task.ID(), request.Action.Kind, request.Action.CommandID, request.Action.OperationID, outcome.Status))
 	}); err != nil {
 		recovery.Close()
 		rollbackWritingReplayTask(a, task, err)
@@ -290,7 +290,7 @@ func (s *InteractiveAppService) RecoverAgentRuntime(ctx context.Context, request
 		Message: display.Message, RegenerateFromTurnID: display.RegenerateFromTurnID,
 	}
 	var run *interactiveTaskRun
-	task, err := NewDeferredRegisteredTask(func(task *Task) error {
+	task, err := NewDeferredRegisteredTaskWithContext(ctx, func(task *Task) error {
 		a.mu.Lock()
 		defer a.mu.Unlock()
 		if a.workspaceTransition || a.workspace != workspace || a.interactive != store || a.chatService != chatService {
@@ -345,7 +345,7 @@ func (s *InteractiveAppService) RecoverAgentRuntime(ctx context.Context, request
 			}
 		}
 		outcome := recovery.Wait(taskCtx, emit)
-		log.Printf("[agent-recovery] game task settled task_id=%s story_id=%s branch_id=%s action=%s command_id=%s operation_id=%s outcome=%s", task.ID(), request.StoryID, branchID, request.Action.Kind, request.Action.CommandID, request.Action.OperationID, outcome.Status)
+		slog.InfoContext(taskCtx, fmt.Sprintf("[agent-recovery] game task settled task_id=%s story_id=%s branch_id=%s action=%s command_id=%s operation_id=%s outcome=%s", task.ID(), request.StoryID, branchID, request.Action.Kind, request.Action.CommandID, request.Action.OperationID, outcome.Status))
 	}); err != nil {
 		recovery.Close()
 		rollbackInteractiveReplayTask(a, task, err)

@@ -1,11 +1,12 @@
 package interactive
 
 import (
+	"context"
 	"crypto/sha256"
 	"encoding/json"
 	"errors"
 	"fmt"
-	"log"
+	"log/slog"
 	"strings"
 	"time"
 )
@@ -378,7 +379,7 @@ func (s *Store) syncStoryIndexProjectionLocked(storyID string, meta StoryMeta, e
 	}
 	index, err := s.readIndexLocked()
 	if err != nil {
-		log.Printf("[interactive-story] index projection read failed after canonical commit story_id=%s err=%v", storyID, err)
+		slog.ErrorContext(context.Background(), fmt.Sprintf("[interactive-story] index projection read failed after canonical commit story_id=%s err=%v", storyID, err))
 		return
 	}
 	summary := storySummaryFromMeta(meta, eventCount)
@@ -397,7 +398,7 @@ func (s *Store) syncStoryIndexProjectionLocked(storyID string, meta StoryMeta, e
 		index.CurrentStoryID = storyID
 	}
 	if err := s.writeIndexLocked(index); err != nil {
-		log.Printf("[interactive-story] index projection write failed after canonical commit story_id=%s events=%d err=%v", storyID, eventCount, err)
+		slog.ErrorContext(context.Background(), fmt.Sprintf("[interactive-story] index projection write failed after canonical commit story_id=%s events=%d err=%v", storyID, eventCount, err))
 	}
 }
 

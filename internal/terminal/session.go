@@ -1,9 +1,10 @@
 package terminal
 
 import (
+	"context"
 	"errors"
 	"fmt"
-	"log"
+	"log/slog"
 	"os"
 	"os/exec"
 	"strings"
@@ -140,8 +141,8 @@ func newSession(id, token string, spec Spec, scrollbackBytes int, onTerminal fun
 		exitedCh:   make(chan struct{}),
 		onTerminal: onTerminal,
 	}
-	log.Printf("[terminal/session.go] session started id=%s profile=%s command=%q args=%v cwd=%q size=%dx%d",
-		s.id, spec.ProfileID, spec.Command, spec.Args, spec.Cwd, cols, rows)
+	slog.InfoContext(context.Background(), fmt.Sprintf("[terminal/session.go] session started id=%s profile=%s command=%q args=%v cwd=%q size=%dx%d",
+		s.id, spec.ProfileID, spec.Command, spec.Args, spec.Cwd, cols, rows))
 
 	go s.pumpOutput()
 	go s.waitProcess()
@@ -235,7 +236,7 @@ func (s *Session) Attach(queueSize int) (history []byte, out <-chan []byte, deta
 	s.subs[sub] = struct{}{}
 	attached := len(s.subs)
 	s.mu.Unlock()
-	log.Printf("[terminal/session.go] client attached id=%s attached=%d history=%dB", s.id, attached, len(history))
+	slog.InfoContext(context.Background(), fmt.Sprintf("[terminal/session.go] client attached id=%s attached=%d history=%dB", s.id, attached, len(history)))
 	return history, sub.out, func() { s.detach(sub) }
 }
 
@@ -260,14 +261,14 @@ func (s *Session) detach(sub *subscriber) {
 	}
 	attached := len(s.subs)
 	s.mu.Unlock()
-	log.Printf("[terminal/session.go] client detached id=%s attached=%d", s.id, attached)
+	slog.InfoContext(context.Background(), fmt.Sprintf("[terminal/session.go] client detached id=%s attached=%d", s.id, attached))
 }
 
 // pumpOutput reads pty output continuously, appends it to scrollback and broadcasts it.
 func (s *Session) pumpOutput() {
 	defer func() {
 		if recovered := recover(); recovered != nil {
-			log.Printf("[terminal/session.go] output pump panic recovered id=%s err=%v", s.id, recovered)
+			slog.ErrorContext(context.Background(), fmt.Sprintf("[terminal/session.go] output pump panic recovered id=%s err=%v", s.id, recovered))
 		}
 		s.finishOutput()
 	}()
@@ -281,7 +282,7 @@ func (s *Session) pumpOutput() {
 		}
 		if err != nil {
 			// The pty returns EIO/EOF once the child exits; that is a normal wind-down, not an error.
-			log.Printf("[terminal/session.go] output pump finished id=%s err=%v", s.id, err)
+			slog.InfoContext(context.Background(), fmt.Sprintf("[terminal/session.go] output pump finished id=%s err=%v", s.id, err))
 			return
 		}
 	}
@@ -322,7 +323,7 @@ func (s *Session) broadcast(chunk []byte) {
 	}
 	s.mu.Unlock()
 	for _, sub := range lagging {
-		log.Printf("[terminal/session.go] dropped lagging subscriber id=%s queue=%d", s.id, cap(sub.out))
+		slog.InfoContext(context.Background(), fmt.Sprintf("[terminal/session.go] dropped lagging subscriber id=%s queue=%d", s.id, cap(sub.out)))
 	}
 }
 
@@ -330,7 +331,7 @@ func (s *Session) broadcast(chunk []byte) {
 func (s *Session) waitProcess() {
 	defer func() {
 		if recovered := recover(); recovered != nil {
-			log.Printf("[terminal/session.go] wait panic recovered id=%s err=%v", s.id, recovered)
+			slog.ErrorContext(context.Background(), fmt.Sprintf("[terminal/session.go] wait panic recovered id=%s err=%v", s.id, recovered))
 		}
 	}()
 	err := s.cmd.Wait()
@@ -358,7 +359,7 @@ func (s *Session) waitProcess() {
 	}
 	s.mu.Unlock()
 	closeSubscribers(subs)
-	log.Printf("[terminal/session.go] process exited id=%s code=%d err=%q", s.id, code, message)
+	slog.InfoContext(context.Background(), fmt.Sprintf("[terminal/session.go] process exited id=%s code=%d err=%q", s.id, code, message))
 	finishPTYAfterWait(s.pty)
 	if s.onTerminal != nil {
 		s.onTerminal(s)
@@ -376,14 +377,14 @@ func (s *Session) Close() {
 
 		if !exited && s.cmd.Process != nil {
 			if err := s.cmd.Process.Kill(); err != nil && !errors.Is(err, os.ErrProcessDone) {
-				log.Printf("[terminal/session.go] kill process failed id=%s err=%v", s.id, err)
+				slog.ErrorContext(context.Background(), fmt.Sprintf("[terminal/session.go] kill process failed id=%s err=%v", s.id, err))
 			}
 		}
 		if err := s.pty.Close(); err != nil {
-			log.Printf("[terminal/session.go] close pty failed id=%s err=%v", s.id, err)
+			slog.ErrorContext(context.Background(), fmt.Sprintf("[terminal/session.go] close pty failed id=%s err=%v", s.id, err))
 		}
 		closeSubscribers(subs)
-		log.Printf("[terminal/session.go] session closed id=%s", s.id)
+		slog.InfoContext(context.Background(), fmt.Sprintf("[terminal/session.go] session closed id=%s", s.id))
 	})
 }
 

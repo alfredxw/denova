@@ -1,8 +1,9 @@
 package interactive
 
 import (
+	"context"
 	"fmt"
-	"log"
+	"log/slog"
 	"os"
 	"path/filepath"
 	"strings"
@@ -40,7 +41,7 @@ func (s *Store) SelectStory(storyID string) error {
 		}
 		if previousID := strings.TrimSpace(index.CurrentStoryID); previousID != "" {
 			if closeErr := s.evictStoryJournalLocked(previousID); closeErr != nil {
-				log.Printf("[interactive-story] flush index on story switch failed story_id=%s error=%v", previousID, closeErr)
+				slog.ErrorContext(context.Background(), fmt.Sprintf("[interactive-story] flush index on story switch failed story_id=%s error=%v", previousID, closeErr))
 			}
 		}
 		index.CurrentStoryID = storyID
@@ -471,7 +472,7 @@ func (s *Store) DeleteStory(storyID string) error {
 		}
 	}
 	if closeErr := s.evictStoryJournalLocked(storyID); closeErr != nil {
-		log.Printf("[interactive-story] flush index before story delete failed story_id=%s error=%v", storyID, closeErr)
+		slog.ErrorContext(context.Background(), fmt.Sprintf("[interactive-story] flush index before story delete failed story_id=%s error=%v", storyID, closeErr))
 	}
 	if err := os.Remove(s.storyPath(storyID)); err != nil && !os.IsNotExist(err) {
 		return err
@@ -496,7 +497,7 @@ func (s *Store) DeleteStory(storyID string) error {
 	// sync failure could leave a live story whose recovery paths were deleted.
 	// A GC failure must not turn an already-committed delete into a false error.
 	if err := s.removeStoryToolArtifacts(storyID); err != nil {
-		log.Printf("[interactive-story] remove deleted story tool artifacts failed story_id=%s error=%v", storyID, err)
+		slog.ErrorContext(context.Background(), fmt.Sprintf("[interactive-story] remove deleted story tool artifacts failed story_id=%s error=%v", storyID, err))
 	}
 	return nil
 }

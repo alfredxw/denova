@@ -4,7 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"log"
+	"log/slog"
 	"strings"
 
 	"denova/internal/lifecycle"
@@ -198,7 +198,7 @@ func abortAndWaitTasks(ctx context.Context, tasks []*Task, workspace string) err
 		if task == nil || task.Finished() {
 			continue
 		}
-		log.Printf("[workspace-runtime] abort task before transition workspace=%q task_id=%s status=%s", workspace, task.ID(), task.Status())
+		slog.InfoContext(ctx, fmt.Sprintf("[workspace-runtime] abort task before transition workspace=%q task_id=%s status=%s", workspace, task.ID(), task.Status()))
 		task.Abort()
 	}
 	for _, task := range tasks {

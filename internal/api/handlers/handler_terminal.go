@@ -4,7 +4,8 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
-	"log"
+	"fmt"
+	"log/slog"
 	"strings"
 	"sync"
 	"time"
@@ -78,7 +79,7 @@ func (h *Handlers) HandleTerminalSessions(_ context.Context, c *hertzapp.Request
 }
 
 // HandleTerminalSessionCreate starts a new terminal session.
-func (h *Handlers) HandleTerminalSessionCreate(_ context.Context, c *hertzapp.RequestContext) {
+func (h *Handlers) HandleTerminalSessionCreate(ctx context.Context, c *hertzapp.RequestContext) {
 	manager := h.app.Terminals()
 	if manager == nil {
 		writeErrorKey(c, consts.StatusServiceUnavailable, "api.terminal.disabled")
@@ -106,7 +107,7 @@ func (h *Handlers) HandleTerminalSessionCreate(_ context.Context, c *hertzapp.Re
 	profileID := strings.TrimSpace(req.ProfileID)
 	launch, err := manager.ResolveLaunchProfile(profileID, req.Command, req.Args)
 	if err != nil {
-		writeTerminalError(c, err)
+		writeTerminalError(ctx, c, err)
 		return
 	}
 	spec := terminal.Spec{
@@ -124,14 +125,14 @@ func (h *Handlers) HandleTerminalSessionCreate(_ context.Context, c *hertzapp.Re
 	}
 	session, err := manager.Create(spec)
 	if err != nil {
-		writeTerminalError(c, err)
+		writeTerminalError(ctx, c, err)
 		return
 	}
 	writeJSON(c, consts.StatusOK, terminalSessionResponse{Info: session.Info(), Token: session.Token()})
 }
 
 // HandleTerminalSessionDelete terminates and removes a terminal session.
-func (h *Handlers) HandleTerminalSessionDelete(_ context.Context, c *hertzapp.RequestContext) {
+func (h *Handlers) HandleTerminalSessionDelete(ctx context.Context, c *hertzapp.RequestContext) {
 	manager := h.app.Terminals()
 	if manager == nil {
 		writeErrorKey(c, consts.StatusServiceUnavailable, "api.terminal.disabled")
@@ -145,7 +146,7 @@ func (h *Handlers) HandleTerminalSessionDelete(_ context.Context, c *hertzapp.Re
 			writeJSON(c, consts.StatusOK, map[string]any{"id": id, "closed": false})
 			return
 		}
-		writeTerminalError(c, err)
+		writeTerminalError(ctx, c, err)
 		return
 	}
 	writeJSON(c, consts.StatusOK, map[string]any{"id": id, "closed": true})
@@ -156,7 +157,7 @@ func (h *Handlers) HandleTerminalSessionDelete(_ context.Context, c *hertzapp.Re
 // Auth: browsers cannot send an Authorization header on a WebSocket handshake, so this route is
 // exempt from Basic Auth in the middleware and instead validates the token handed out when the
 // session was created (see middleware.go).
-func (h *Handlers) HandleTerminalAttach(_ context.Context, c *hertzapp.RequestContext) {
+func (h *Handlers) HandleTerminalAttach(ctx context.Context, c *hertzapp.RequestContext) {
 	manager := h.app.Terminals()
 	if manager == nil {
 		writeErrorKey(c, consts.StatusServiceUnavailable, "api.terminal.disabled")
@@ -165,19 +166,19 @@ func (h *Handlers) HandleTerminalAttach(_ context.Context, c *hertzapp.RequestCo
 	id := c.Param("id")
 	session, err := manager.Get(id)
 	if err != nil {
-		writeTerminalError(c, err)
+		writeTerminalError(ctx, c, err)
 		return
 	}
 	token := strings.TrimSpace(c.Query("token"))
 	if token == "" || token != session.Token() {
-		log.Printf("[api/handlers/handler_terminal.go] terminal attach rejected id=%s reason=token_mismatch", id)
+		slog.InfoContext(ctx, fmt.Sprintf("[api/handlers/handler_terminal.go] terminal attach rejected id=%s reason=token_mismatch", id))
 		writeErrorKey(c, consts.StatusForbidden, "api.terminal.tokenInvalid")
 		return
 	}
 	if err := terminalUpgrader.Upgrade(c, func(conn *websocket.Conn) {
-		serveTerminalSocket(session, conn)
+		serveTerminalSocketWithContext(ctx, session, conn)
 	}); err != nil {
-		log.Printf("[api/handlers/handler_terminal.go] terminal websocket upgrade failed id=%s err=%v", id, err)
+		slog.ErrorContext(ctx, fmt.Sprintf("[api/handlers/handler_terminal.go] terminal websocket upgrade failed id=%s err=%v", id, err))
 	}
 }
 
@@ -206,10 +207,18 @@ type terminalSocket interface {
 //   - client -> server: binary frames carry raw input, text frames carry JSON control messages
 //     with type input / resize / ping.
 func serveTerminalSocket(session *terminal.Session, conn terminalSocket) {
-	serveTerminalSocketWithSubscriberQueue(session, conn, 0)
+	serveTerminalSocketWithContext(context.Background(), session, conn)
+}
+
+func serveTerminalSocketWithContext(ctx context.Context, session *terminal.Session, conn terminalSocket) {
+	serveTerminalSocketWithSubscriberQueueContext(ctx, session, conn, 0)
 }
 
 func serveTerminalSocketWithSubscriberQueue(session *terminal.Session, conn terminalSocket, subscriberQueue int) {
+	serveTerminalSocketWithSubscriberQueueContext(context.Background(), session, conn, subscriberQueue)
+}
+
+func serveTerminalSocketWithSubscriberQueueContext(ctx context.Context, session *terminal.Session, conn terminalSocket, subscriberQueue int) {
 	// Any failed relay leg owns the whole transport. Closing through one gate keeps the reader,
 	// writer and output subscription from leaving one another falsely alive.
 	done := make(chan struct{})
@@ -222,7 +231,7 @@ func serveTerminalSocketWithSubscriberQueue(session *terminal.Session, conn term
 	}
 	defer func() {
 		if recovered := recover(); recovered != nil {
-			log.Printf("[api/handlers/handler_terminal.go] terminal socket panic recovered id=%s err=%v", session.ID(), recovered)
+			slog.ErrorContext(ctx, fmt.Sprintf("[api/handlers/handler_terminal.go] terminal socket panic recovered id=%s err=%v", session.ID(), recovered))
 		}
 		closeSocket()
 	}()
@@ -236,7 +245,7 @@ func serveTerminalSocketWithSubscriberQueue(session *terminal.Session, conn term
 	go func() {
 		defer func() {
 			if recovered := recover(); recovered != nil {
-				log.Printf("[api/handlers/handler_terminal.go] terminal writer panic recovered id=%s err=%v", session.ID(), recovered)
+				slog.ErrorContext(ctx, fmt.Sprintf("[api/handlers/handler_terminal.go] terminal writer panic recovered id=%s err=%v", session.ID(), recovered))
 			}
 			closeSocket()
 		}()
@@ -246,7 +255,7 @@ func serveTerminalSocketWithSubscriberQueue(session *terminal.Session, conn term
 				return
 			case write := <-writes:
 				if err := write(); err != nil {
-					log.Printf("[api/handlers/handler_terminal.go] terminal write failed id=%s err=%v", session.ID(), err)
+					slog.ErrorContext(ctx, fmt.Sprintf("[api/handlers/handler_terminal.go] terminal write failed id=%s err=%v", session.ID(), err))
 					return
 				}
 			}
@@ -262,7 +271,7 @@ func serveTerminalSocketWithSubscriberQueue(session *terminal.Session, conn term
 		default:
 			// The session retains bounded scrollback, so disconnecting a client that cannot drain
 			// its own write queue is recoverable and preferable to blocking every relay goroutine.
-			log.Printf("[api/handlers/handler_terminal.go] terminal write queue saturated, closing socket id=%s", session.ID())
+			slog.InfoContext(ctx, fmt.Sprintf("[api/handlers/handler_terminal.go] terminal write queue saturated, closing socket id=%s", session.ID()))
 			closeSocket()
 			return false
 		}
@@ -276,7 +285,7 @@ func serveTerminalSocketWithSubscriberQueue(session *terminal.Session, conn term
 	writeControl := func(message map[string]any) bool {
 		payload, err := json.Marshal(message)
 		if err != nil {
-			log.Printf("[api/handlers/handler_terminal.go] marshal terminal control failed id=%s err=%v", session.ID(), err)
+			slog.ErrorContext(ctx, fmt.Sprintf("[api/handlers/handler_terminal.go] marshal terminal control failed id=%s err=%v", session.ID(), err))
 			return true
 		}
 		return enqueue(func() error {
@@ -294,7 +303,7 @@ func serveTerminalSocketWithSubscriberQueue(session *terminal.Session, conn term
 	go func() {
 		defer func() {
 			if recovered := recover(); recovered != nil {
-				log.Printf("[api/handlers/handler_terminal.go] terminal output relay panic recovered id=%s err=%v", session.ID(), recovered)
+				slog.ErrorContext(ctx, fmt.Sprintf("[api/handlers/handler_terminal.go] terminal output relay panic recovered id=%s err=%v", session.ID(), recovered))
 			}
 		}()
 		for {
@@ -311,7 +320,7 @@ func serveTerminalSocketWithSubscriberQueue(session *terminal.Session, conn term
 						code, message := session.ExitStatus()
 						writeControl(map[string]any{"type": "exit", "code": code, "error": message})
 					default:
-						log.Printf("[api/handlers/handler_terminal.go] terminal output subscription ended, closing socket id=%s", session.ID())
+						slog.InfoContext(ctx, fmt.Sprintf("[api/handlers/handler_terminal.go] terminal output subscription ended, closing socket id=%s", session.ID()))
 						closeSocket()
 					}
 					return
@@ -327,7 +336,7 @@ func serveTerminalSocketWithSubscriberQueue(session *terminal.Session, conn term
 	for {
 		messageType, payload, err := conn.ReadMessage()
 		if err != nil {
-			log.Printf("[api/handlers/handler_terminal.go] terminal socket closed id=%s err=%v", session.ID(), err)
+			slog.InfoContext(ctx, fmt.Sprintf("[api/handlers/handler_terminal.go] terminal socket closed id=%s err=%v", session.ID(), err))
 			return
 		}
 		if messageType == websocket.BinaryMessage {
@@ -341,7 +350,7 @@ func serveTerminalSocketWithSubscriberQueue(session *terminal.Session, conn term
 		}
 		var message terminalClientMessage
 		if err := json.Unmarshal(payload, &message); err != nil {
-			log.Printf("[api/handlers/handler_terminal.go] invalid terminal client frame id=%s err=%v", session.ID(), err)
+			slog.WarnContext(ctx, fmt.Sprintf("[api/handlers/handler_terminal.go] invalid terminal client frame id=%s err=%v", session.ID(), err))
 			continue
 		}
 		switch message.Type {
@@ -351,17 +360,17 @@ func serveTerminalSocketWithSubscriberQueue(session *terminal.Session, conn term
 			}
 		case "resize":
 			if err := session.Resize(message.Cols, message.Rows); err != nil && !errors.Is(err, terminal.ErrSessionExited) {
-				log.Printf("[api/handlers/handler_terminal.go] terminal resize failed id=%s err=%v", session.ID(), err)
+				slog.ErrorContext(ctx, fmt.Sprintf("[api/handlers/handler_terminal.go] terminal resize failed id=%s err=%v", session.ID(), err))
 			}
 		case "ping":
 			writeControl(map[string]any{"type": "pong"})
 		default:
-			log.Printf("[api/handlers/handler_terminal.go] unknown terminal client frame id=%s type=%q", session.ID(), message.Type)
+			slog.InfoContext(ctx, fmt.Sprintf("[api/handlers/handler_terminal.go] unknown terminal client frame id=%s type=%q", session.ID(), message.Type))
 		}
 	}
 }
 
-func writeTerminalError(c *hertzapp.RequestContext, err error) {
+func writeTerminalError(ctx context.Context, c *hertzapp.RequestContext, err error) {
 	switch {
 	case errors.Is(err, terminal.ErrDisabled):
 		writeErrorKey(c, consts.StatusServiceUnavailable, "api.terminal.disabled")
@@ -370,13 +379,13 @@ func writeTerminalError(c *hertzapp.RequestContext, err error) {
 	case errors.Is(err, terminal.ErrTooManySessions):
 		writeErrorKey(c, consts.StatusTooManyRequests, "api.terminal.tooMany")
 	case errors.Is(err, terminal.ErrInvalidProfile):
-		log.Printf("[api/handlers/handler_terminal.go] terminal command unavailable err=%v", err)
+		slog.WarnContext(ctx, fmt.Sprintf("[api/handlers/handler_terminal.go] terminal command unavailable err=%v", err))
 		writeErrorKey(c, consts.StatusBadRequest, "api.terminal.invalidProfile")
 	case errors.Is(err, terminal.ErrInvalidLaunchCommand):
-		log.Printf("[api/handlers/handler_terminal.go] configured terminal command is invalid err=%v", err)
+		slog.WarnContext(ctx, fmt.Sprintf("[api/handlers/handler_terminal.go] configured terminal command is invalid err=%v", err))
 		writeErrorKey(c, consts.StatusBadRequest, "api.terminal.invalidLaunchCommand")
 	default:
-		log.Printf("[api/handlers/handler_terminal.go] terminal request failed err=%v", err)
+		slog.ErrorContext(ctx, fmt.Sprintf("[api/handlers/handler_terminal.go] terminal request failed err=%v", err))
 		writeError(c, consts.StatusInternalServerError, err.Error())
 	}
 }

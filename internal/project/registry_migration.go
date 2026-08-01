@@ -2,10 +2,11 @@ package project
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
-	"log"
+	"log/slog"
 	"os"
 	"path/filepath"
 	"time"
@@ -48,12 +49,12 @@ func (registry *Registry) loadOrMigrateLocked() (registryData, bool, error) {
 			if err != nil {
 				return registryData{}, false, err
 			}
-			log.Printf(
+			slog.InfoContext(context.Background(), fmt.Sprintf(
 				"[project/registry_migration.go] upgraded Project registry path=%s version=%d archived_stale_legacy=%d",
 				registry.path,
 				registryVersion,
 				archived,
-			)
+			))
 			changed = true
 		}
 		normalizeRegistryData(&data)
@@ -245,11 +246,11 @@ func (registry *Registry) backupRegistryLocked(raw []byte, version int) error {
 		return err
 	}
 	removeBackup = false
-	log.Printf(
+	slog.InfoContext(context.Background(), fmt.Sprintf(
 		"[project/registry_migration.go] saved Project registry rollback backup path=%s source_version=%d",
 		backupPath,
 		version,
-	)
+	))
 	return nil
 }
 

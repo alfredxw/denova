@@ -15,7 +15,6 @@ import (
 	"time"
 
 	agents "denova/internal/agents"
-	"denova/internal/observability"
 )
 
 // TaskStatus 表示后台任务的执行状态。
@@ -105,7 +104,13 @@ func NewTask(run func(ctx context.Context, task *Task, emit func(agents.Event)))
 // which a fast task could emit, finish, or receive a command before App had
 // bound it to the matching workspace/session/story.
 func NewRegisteredTask(register func(*Task) error, run func(ctx context.Context, task *Task, emit func(agents.Event))) (*Task, error) {
-	t, err := NewDeferredRegisteredTask(register)
+	return NewRegisteredTaskWithContext(context.Background(), register, run)
+}
+
+// NewRegisteredTaskWithContext preserves correlation values from the request
+// that created the detached task without coupling its lifetime to that request.
+func NewRegisteredTaskWithContext(ctx context.Context, register func(*Task) error, run func(ctx context.Context, task *Task, emit func(agents.Event))) (*Task, error) {
+	t, err := NewDeferredRegisteredTaskWithContext(ctx, register)
 	if err != nil {
 		return nil, err
 	}
@@ -121,7 +126,17 @@ func NewRegisteredTask(register func(*Task) error, run func(ctx context.Context,
 // synchronously crossing durable StartTurn acceptance, then call Start only
 // after a Receipt exists.
 func NewDeferredRegisteredTask(register func(*Task) error) (*Task, error) {
-	ctx, cancel := context.WithCancel(context.Background())
+	return NewDeferredRegisteredTaskWithContext(context.Background(), register)
+}
+
+// NewDeferredRegisteredTaskWithContext creates a detached task while retaining
+// context values such as request_id. Cancellation remains Task-owned because
+// accepted Agent work intentionally outlives the initiating HTTP connection.
+func NewDeferredRegisteredTaskWithContext(ctx context.Context, register func(*Task) error) (*Task, error) {
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	ctx, cancel := context.WithCancel(context.WithoutCancel(ctx))
 	t := &Task{
 		id:                 newTaskID(),
 		startedAt:          time.Now(),
@@ -160,11 +175,11 @@ func (t *Task) Start(run func(ctx context.Context, task *Task, emit func(agents.
 	t.started = true
 	ctx := t.ctx
 	t.mu.Unlock()
-	observability.Info("agent-task", "task_start", slog.String("task_id", t.id))
+	slog.LogAttrs(ctx, slog.LevelInfo, "task_start", slog.String("component", "agent-task"), slog.String("task_id", t.id))
 	go func() {
 		defer func() {
 			if recovered := recover(); recovered != nil {
-				observability.Error("agent-task", "task_panic_recovered", slog.String("task_id", t.id), slog.Any("error", recovered))
+				slog.LogAttrs(ctx, slog.LevelError, "task_panic_recovered", slog.String("component", "agent-task"), slog.String("task_id", t.id), slog.Any("error", recovered))
 				t.emit(agents.Event{Type: "error", Data: map[string]string{"message": "Agent 后台任务异常中断 / Agent background task stopped unexpectedly"}})
 			}
 			t.finish()
@@ -201,7 +216,7 @@ func (t *Task) failBeforeStart(err error) {
 	}
 	close(t.done)
 	t.mu.Unlock()
-	observability.Error("agent-task", "task_start_failed", slog.String("task_id", t.id), slog.Any("error", err))
+	slog.LogAttrs(t.ctx, slog.LevelError, "task_start_failed", slog.String("component", "agent-task"), slog.String("task_id", t.id), slog.Any("error", err))
 }
 
 // taskAcceptanceContext is canceled by either the synchronous API caller or a
@@ -252,7 +267,7 @@ func (t *Task) emit(ev agents.Event) {
 	t.mu.Lock()
 	if t.finished {
 		t.mu.Unlock()
-		observability.Warn("agent-task", "task_event_ignored", slog.String("task_id", t.id), slog.String("event_type", ev.Type), slog.String("reason", "task_finished"))
+		slog.LogAttrs(t.ctx, slog.LevelWarn, "task_event_ignored", slog.String("component", "agent-task"), slog.String("task_id", t.id), slog.String("event_type", ev.Type), slog.String("reason", "task_finished"))
 		return
 	}
 	item := t.appendRetainedEventLocked(ev)
@@ -287,10 +302,10 @@ func (t *Task) emit(ev agents.Event) {
 	t.mu.Unlock()
 
 	if shouldLogEvent(ev.Type, eventCount) {
-		observability.Info("agent-task", "task_event", slog.String("task_id", t.id), slog.String("event_type", ev.Type), slog.Int("events", eventCount), slog.Int("subscribers", subCount))
+		slog.LogAttrs(t.ctx, slog.LevelInfo, "task_event", slog.String("component", "agent-task"), slog.String("task_id", t.id), slog.String("event_type", ev.Type), slog.Int("events", eventCount), slog.Int("subscribers", subCount))
 	}
 	if laggedSubscribers > 0 {
-		observability.Warn("agent-task", "task_subscriber_disconnected", slog.String("task_id", t.id), slog.String("event_type", ev.Type), slog.String("reason", "subscriber_slow"), slog.Int("disconnected", laggedSubscribers), slog.Int("subscribers", subCount))
+		slog.LogAttrs(t.ctx, slog.LevelWarn, "task_subscriber_disconnected", slog.String("component", "agent-task"), slog.String("task_id", t.id), slog.String("event_type", ev.Type), slog.String("reason", "subscriber_slow"), slog.Int("disconnected", laggedSubscribers), slog.Int("subscribers", subCount))
 	}
 }
 
@@ -321,7 +336,7 @@ func (t *Task) finish() {
 		t.cancel = nil
 	}
 	close(t.done)
-	observability.Info("agent-task", "task_finish", slog.String("task_id", t.id), slog.String("status", string(t.status)), slog.Uint64("events", t.nextCursor), slog.Int("retained_events", len(t.events)), slog.Duration("duration", time.Since(t.startedAt).Round(time.Millisecond)))
+	slog.LogAttrs(t.ctx, slog.LevelInfo, "task_finish", slog.String("component", "agent-task"), slog.String("task_id", t.id), slog.String("status", string(t.status)), slog.Uint64("events", t.nextCursor), slog.Int("retained_events", len(t.events)), slog.Duration("duration", time.Since(t.startedAt).Round(time.Millisecond)))
 }
 
 // Abort 取消任务执行。
@@ -334,7 +349,7 @@ func (t *Task) Abort() {
 	t.cancelRequested = true
 	cancel := t.cancel
 	t.mu.Unlock()
-	observability.Warn("agent-task", "task_abort_requested", slog.String("task_id", t.id))
+	slog.LogAttrs(t.ctx, slog.LevelWarn, "task_abort_requested", slog.String("component", "agent-task"), slog.String("task_id", t.id))
 	if cancel != nil {
 		cancel()
 	}

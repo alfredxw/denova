@@ -5,7 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"log"
+	"log/slog"
 	"net"
 	"net/http"
 	"net/url"
@@ -102,7 +102,7 @@ func (driver *RodDriver) NewPage(ctx context.Context) (Page, error) {
 		defer close(done)
 		defer func() {
 			if recovered := recover(); recovered != nil {
-				log.Printf("[browser] recovered request-router panic: %v", recovered)
+				slog.ErrorContext(ctx, fmt.Sprintf("[browser] recovered request-router panic: %v", recovered))
 			}
 		}()
 		router.Run()
@@ -178,11 +178,11 @@ func (driver *RodDriver) ensureBrowser(ctx context.Context) error {
 	go func() {
 		defer func() {
 			if recovered := recover(); recovered != nil {
-				log.Printf("[browser] recovered deny-proxy panic: %v", recovered)
+				slog.ErrorContext(ctx, fmt.Sprintf("[browser] recovered deny-proxy panic: %v", recovered))
 			}
 		}()
 		if serveErr := denyProxy.Serve(listener); serveErr != nil && !errors.Is(serveErr, http.ErrServerClosed) {
-			log.Printf("[browser] deny proxy stopped unexpectedly: %v", serveErr)
+			slog.InfoContext(ctx, fmt.Sprintf("[browser] deny proxy stopped unexpectedly: %v", serveErr))
 		}
 	}()
 	launch := launcher.New().Context(driver.lifetime).Bin(driver.binary).
@@ -217,14 +217,14 @@ func (driver *RodDriver) ensureBrowser(ctx context.Context) error {
 	driver.launcher = launch
 	driver.denyProxy = denyProxy
 	driver.userData = launch.Get(flags.UserDataDir)
-	log.Printf("[browser] started isolated browser runtime binary=%s", filepathBase(driver.binary))
+	slog.InfoContext(ctx, fmt.Sprintf("[browser] started isolated browser runtime binary=%s", filepathBase(driver.binary)))
 	return nil
 }
 
 func (driver *RodDriver) handleRequest(hijack *rod.Hijack) {
 	defer func() {
 		if recovered := recover(); recovered != nil {
-			log.Printf("[browser] recovered request handler panic: %v", recovered)
+			slog.ErrorContext(context.Background(), fmt.Sprintf("[browser] recovered request handler panic: %v", recovered))
 			hijack.Response.Fail(proto.NetworkErrorReasonBlockedByClient)
 		}
 	}()
@@ -251,7 +251,7 @@ func (driver *RodDriver) handleRequest(hijack *rod.Hijack) {
 	response, err := driver.client.Do(request)
 	if err != nil {
 		if !errors.Is(err, context.Canceled) {
-			log.Printf("[browser] blocked or failed subrequest method=%s url=%s error=%v", method, safeURL(request.URL), err)
+			slog.ErrorContext(context.Background(), fmt.Sprintf("[browser] blocked or failed subrequest method=%s url=%s error=%v", method, safeURL(request.URL), err))
 		}
 		hijack.Response.Fail(proto.NetworkErrorReasonConnectionFailed)
 		return

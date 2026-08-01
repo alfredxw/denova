@@ -4,7 +4,7 @@ import (
 	"context"
 	"fmt"
 	"io"
-	"log"
+	"log/slog"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -45,27 +45,27 @@ func RunUpdater(ctx context.Context, manifestPath string, options UpdaterOptions
 		return err
 	}
 	defer closeLog()
-	logger.Printf("start manifest=%s version=%s install_dir=%s source_dir=%s", manifestPath, manifest.Version, manifest.InstallDir, manifest.SourceDir)
+	logger.InfoContext(ctx, "updater_started", "manifest", manifestPath, "version", manifest.Version, "install_dir", manifest.InstallDir, "source_dir", manifest.SourceDir)
 	if err := waitForProcessExit(ctx, manifest.CurrentPID, options, logger); err != nil {
-		logger.Printf("wait failed: %v", err)
+		logger.ErrorContext(ctx, "updater_wait_failed", "error", err)
 		return err
 	}
-	if err := applyStagedUpdate(manifest, logger); err != nil {
-		logger.Printf("apply failed: %v", err)
-		if rollbackErr := rollbackUpdate(manifest, logger); rollbackErr != nil {
-			logger.Printf("rollback failed: %v", rollbackErr)
+	if err := applyStagedUpdate(ctx, manifest, logger); err != nil {
+		logger.ErrorContext(ctx, "updater_apply_failed", "error", err)
+		if rollbackErr := rollbackUpdate(ctx, manifest, logger); rollbackErr != nil {
+			logger.ErrorContext(ctx, "updater_rollback_failed", "error", rollbackErr)
 		}
-		startErr := startRelaunch(manifest, options, logger)
+		startErr := startRelaunch(ctx, manifest, options, logger)
 		if startErr != nil {
-			logger.Printf("restart after failure failed: %v", startErr)
+			logger.ErrorContext(ctx, "updater_failure_restart_failed", "error", startErr)
 		}
 		return err
 	}
-	logger.Printf("apply done, relaunching denova")
-	return startRelaunch(manifest, options, logger)
+	logger.InfoContext(ctx, "updater_apply_completed")
+	return startRelaunch(ctx, manifest, options, logger)
 }
 
-func updaterLogger(logPath string, extra io.Writer) (*log.Logger, func(), error) {
+func updaterLogger(logPath string, extra io.Writer) (*slog.Logger, func(), error) {
 	writers := []io.Writer{}
 	var closeLog func()
 	if logPath != "" {
@@ -87,10 +87,11 @@ func updaterLogger(logPath string, extra io.Writer) (*log.Logger, func(), error)
 	if len(writers) == 0 {
 		writers = append(writers, os.Stdout)
 	}
-	return log.New(io.MultiWriter(writers...), "[denova-updater] ", log.LstdFlags), closeLog, nil
+	handler := slog.NewTextHandler(io.MultiWriter(writers...), &slog.HandlerOptions{AddSource: true, Level: slog.LevelInfo})
+	return slog.New(handler).With("component", "denova-updater"), closeLog, nil
 }
 
-func waitForProcessExit(ctx context.Context, pid int, options UpdaterOptions, logger *log.Logger) error {
+func waitForProcessExit(ctx context.Context, pid int, options UpdaterOptions, logger *slog.Logger) error {
 	alive := options.ProcessAlive
 	if alive == nil {
 		alive = processRunning
@@ -112,7 +113,7 @@ func waitForProcessExit(ctx context.Context, pid int, options UpdaterOptions, lo
 		if time.Now().After(deadline) {
 			return fmt.Errorf("等待 Denova 退出超时 pid=%d", pid)
 		}
-		logger.Printf("waiting for denova exit pid=%d", pid)
+		logger.InfoContext(ctx, "updater_waiting_for_process_exit", "pid", pid)
 		select {
 		case <-ctx.Done():
 			return ctx.Err()
@@ -123,7 +124,7 @@ func waitForProcessExit(ctx context.Context, pid int, options UpdaterOptions, lo
 	return nil
 }
 
-func applyStagedUpdate(manifest ApplyManifest, logger *log.Logger) error {
+func applyStagedUpdate(ctx context.Context, manifest ApplyManifest, logger *slog.Logger) error {
 	if err := validateApplyManifest(manifest); err != nil {
 		return err
 	}
@@ -147,7 +148,7 @@ func applyStagedUpdate(manifest ApplyManifest, logger *log.Logger) error {
 				continue
 			}
 		}
-		logger.Printf("replace target=%s source=%s", entry.Target, entry.Source)
+		logger.InfoContext(ctx, "updater_replacing_entry", "target", entry.Target, "source", entry.Source)
 		if err := copyEntry(entry); err != nil {
 			return err
 		}
@@ -241,13 +242,13 @@ func copyEntry(entry replaceEntry) error {
 	return nil
 }
 
-func rollbackUpdate(manifest ApplyManifest, logger *log.Logger) error {
+func rollbackUpdate(ctx context.Context, manifest ApplyManifest, logger *slog.Logger) error {
 	var firstErr error
 	for _, entry := range updateEntries(manifest) {
 		if _, err := os.Stat(entry.Backup); err != nil {
 			continue
 		}
-		logger.Printf("rollback target=%s backup=%s", entry.Target, entry.Backup)
+		logger.InfoContext(ctx, "updater_rolling_back_entry", "target", entry.Target, "backup", entry.Backup)
 		if err := os.RemoveAll(entry.Target); err != nil && firstErr == nil {
 			firstErr = err
 			continue
@@ -259,7 +260,7 @@ func rollbackUpdate(manifest ApplyManifest, logger *log.Logger) error {
 	return firstErr
 }
 
-func startRelaunch(manifest ApplyManifest, options UpdaterOptions, logger *log.Logger) error {
+func startRelaunch(ctx context.Context, manifest ApplyManifest, options UpdaterOptions, logger *slog.Logger) error {
 	start := options.StartProcess
 	if start == nil {
 		start = startProcess
@@ -268,7 +269,7 @@ func startRelaunch(manifest ApplyManifest, options UpdaterOptions, logger *log.L
 	if len(args) == 0 {
 		args = []string{manifest.TargetExecutable, "--no-open"}
 	}
-	logger.Printf("start denova executable=%s args=%d", manifest.TargetExecutable, len(args))
+	logger.InfoContext(ctx, "updater_starting_denova", "executable", manifest.TargetExecutable, "args", len(args))
 	return start(manifest.TargetExecutable, args, os.Environ())
 }
 

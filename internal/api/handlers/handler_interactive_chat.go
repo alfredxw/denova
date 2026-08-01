@@ -2,7 +2,8 @@ package handlers
 
 import (
 	"context"
-	"log"
+	"fmt"
+	"log/slog"
 	"strings"
 
 	"github.com/cloudwego/hertz/pkg/app"
@@ -52,7 +53,7 @@ func (h *Handlers) HandleInteractiveChat(ctx context.Context, c *app.RequestCont
 		h.writeChatPreparationError(c, err)
 		return
 	}
-	sse.StreamTask(c, task)
+	sse.StreamTask(ctx, c, task)
 }
 
 func (h *Handlers) HandleInteractiveChatContextAnalysis(ctx context.Context, c *app.RequestContext) {
@@ -106,8 +107,8 @@ func (h *Handlers) HandleInteractiveChatStream(ctx context.Context, c *app.Reque
 		writeAgentRuntimeError(c, consts.StatusConflict, "agent_runtime.rehydrate_required", "旧的任务流已失效，请从 active projection 重新挂接 / The old task stream is stale; rehydrate from the active projection", map[string]any{"task_id": taskID})
 		return
 	}
-	log.Printf("[interactive-agent-sse] attach active task_id=%s command_id=%s story_id=%s branch_id=%s status=%s", task.ID(), info.CommandID, info.StoryID, info.BranchID, task.Status())
-	sse.StreamTask(c, task)
+	slog.InfoContext(ctx, fmt.Sprintf("[interactive-agent-sse] attach active task_id=%s command_id=%s story_id=%s branch_id=%s status=%s", task.ID(), info.CommandID, info.StoryID, info.BranchID, task.Status()))
+	sse.StreamTask(ctx, c, task)
 }
 
 // HandleInteractiveChatActive reports the active turn identity and original

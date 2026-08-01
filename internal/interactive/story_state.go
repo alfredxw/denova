@@ -1,9 +1,10 @@
 package interactive
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
-	"log"
+	"log/slog"
 	"strings"
 
 	agent "github.com/alfredxw/denova/agent"
@@ -281,7 +282,7 @@ func applyStateOp(state map[string]any, op StateOp) {
 	switch op.Op {
 	case "set":
 		if op.Value == nil {
-			log.Printf("[interactive-state] skip legacy set operation without value path=%q location=internal/interactive/story_state.go", op.Path)
+			slog.WarnContext(context.Background(), fmt.Sprintf("[interactive-state] skip legacy set operation without value path=%q location=internal/interactive/story_state.go", op.Path))
 			return
 		}
 		setPath(state, op.Path, op.Value)
@@ -328,7 +329,7 @@ func applyActorStateOp(state map[string]any, op ActorStateOp) {
 	}
 	opName := strings.TrimSpace(op.Op)
 	if opName == "set" && op.Value == nil {
-		log.Printf("[interactive-state] skip legacy Actor set operation without value actor_id=%q field_id=%q location=internal/interactive/story_state.go", actorID, fieldID)
+		slog.WarnContext(context.Background(), fmt.Sprintf("[interactive-state] skip legacy Actor set operation without value actor_id=%q field_id=%q location=internal/interactive/story_state.go", actorID, fieldID))
 		return
 	}
 	actors, _ := state[actorStateRoot].(map[string]any)

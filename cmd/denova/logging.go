@@ -3,23 +3,20 @@ package main
 import (
 	"fmt"
 	"io"
-	"log"
 	"os"
 	"path/filepath"
 	"sync"
 	"time"
 )
 
-func setupLogging(dir string) (string, func()) {
-	log.SetFlags(log.LstdFlags | log.Lmicroseconds | log.Lshortfile)
+func setupLogging(dir string) (string, io.Writer, func()) {
 	writer := newDailyLogWriter(dir)
 	if err := writer.openFor(time.Now()); err != nil {
 		fmt.Fprintf(os.Stderr, "警告: 初始化日志文件失败: %v\n", err)
-		log.SetOutput(os.Stderr)
-		return "", func() {}
+		return "", os.Stderr, func() {}
 	}
-	log.SetOutput(io.MultiWriter(os.Stderr, writer))
-	return writer.Path(), func() {
+	output := io.MultiWriter(os.Stderr, writer)
+	return writer.Path(), output, func() {
 		if err := writer.Close(); err != nil {
 			fmt.Fprintf(os.Stderr, "警告: 关闭日志文件失败: %v\n", err)
 		}

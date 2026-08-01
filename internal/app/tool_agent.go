@@ -3,7 +3,8 @@ package app
 import (
 	"context"
 	"encoding/json"
-	"log"
+	"fmt"
+	"log/slog"
 
 	"denova/config"
 	agents "denova/internal/agents"
@@ -15,7 +16,7 @@ func (a *App) InferNovelSplitRegex(ctx context.Context, sample string) (string, 
 	runtimeCfg, workspace := a.toolAgentConfig()
 	regex, err := agents.InferChapterSplitRegex(ctx, &runtimeCfg, sample)
 	if err != nil {
-		log.Printf("[tool-agent] 小说导入章节正则推断失败 workspace=%s err=%v", workspace, err)
+		slog.ErrorContext(ctx, fmt.Sprintf("[tool-agent] 小说导入章节正则推断失败 workspace=%s err=%v", workspace, err))
 		a.persistAgentCall(config.AgentKindToolAgent, sample, "执行失败："+err.Error())
 		return "", err
 	}
@@ -30,7 +31,7 @@ func (a *App) ClassifyLoreItems(ctx context.Context, inputs []book.LoreClassific
 	result, err := agents.ClassifyLoreItems(ctx, &runtimeCfg, inputs)
 	inputJSON, _ := json.Marshal(inputs)
 	if err != nil {
-		log.Printf("[tool-agent] 资料语义分类失败 workspace=%s items=%d err=%v", workspace, len(inputs), err)
+		slog.ErrorContext(ctx, fmt.Sprintf("[tool-agent] 资料语义分类失败 workspace=%s items=%d err=%v", workspace, len(inputs), err))
 		a.persistAgentCall(config.AgentKindToolAgent, string(inputJSON), "执行失败："+err.Error())
 		return nil, err
 	}
@@ -55,7 +56,7 @@ func (a *App) toolAgentConfig() (config.Config, string) {
 	); err == nil {
 		applyLayeredSettingsToConfig(&runtimeCfg, layered)
 	} else {
-		log.Printf("[tool-agent] 加载分层配置失败 workspace=%s err=%v", workspace, err)
+		slog.ErrorContext(context.Background(), fmt.Sprintf("[tool-agent] 加载分层配置失败 workspace=%s err=%v", workspace, err))
 	}
 	return runtimeCfg, workspace
 }

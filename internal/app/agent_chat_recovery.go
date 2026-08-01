@@ -3,7 +3,7 @@ package app
 import (
 	"context"
 	"fmt"
-	"log"
+	"log/slog"
 	"strings"
 
 	agents "denova/internal/agents"
@@ -73,7 +73,7 @@ func (s *AgentChatAppService) Recover(
 		binding: binding, runtime: runtime, recovery: recovery,
 		recoveryActions: make(map[string]agents.CommandReceipt),
 	}
-	task, err := NewDeferredRegisteredTask(func(task *Task) error {
+	task, err := NewDeferredRegisteredTaskWithContext(ctx, func(task *Task) error {
 		run.task = task
 		return s.installActiveRun(run)
 	})
@@ -94,7 +94,7 @@ func (s *AgentChatAppService) Recover(
 		defer s.releaseActiveRun(run)
 		defer recovery.Close()
 		outcome := recovery.Wait(taskCtx, emit)
-		log.Printf("[agent-chat-recovery] settled task_id=%s project_id=%s workspace=%q session_id=%s action=%s outcome=%s", task.ID(), binding.ProjectID, binding.Workspace, binding.SessionID, request.Action.Kind, outcome.Status)
+		slog.InfoContext(taskCtx, fmt.Sprintf("[agent-chat-recovery] settled task_id=%s project_id=%s workspace=%q session_id=%s action=%s outcome=%s", task.ID(), binding.ProjectID, binding.Workspace, binding.SessionID, request.Action.Kind, outcome.Status))
 	}); err != nil {
 		recovery.Close()
 		task.failBeforeStart(err)

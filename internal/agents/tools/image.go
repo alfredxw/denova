@@ -6,7 +6,7 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
-	"log"
+	"log/slog"
 	"path/filepath"
 	"strings"
 	"time"
@@ -328,7 +328,7 @@ func persistGeneratedImages(bookService *book.Service, input generateImageInput,
 			result.Failures = append(result.Failures, generatedImageToolFailure{
 				Index: index, Path: imagePath, Code: "save_failed", Message: message,
 			})
-			log.Printf("[image-tool] generated image save failed index=%d path=%s err=%v", index, imagePath, err)
+			slog.ErrorContext(context.Background(), fmt.Sprintf("[image-tool] generated image save failed index=%d path=%s err=%v", index, imagePath, err))
 			continue
 		}
 		altText := strings.TrimSpace(input.AltText)
@@ -344,7 +344,7 @@ func persistGeneratedImages(bookService *book.Service, input generateImageInput,
 			SizeBytes:     len(image.Data),
 			RevisedPrompt: image.RevisedPrompt,
 		})
-		log.Printf("[image-tool] generated image saved index=%d path=%s bytes=%d", index, imagePath, len(image.Data))
+		slog.InfoContext(context.Background(), fmt.Sprintf("[image-tool] generated image saved index=%d path=%s bytes=%d", index, imagePath, len(image.Data)))
 	}
 	if len(result.Images) == 0 {
 		if len(result.Failures) == 0 {

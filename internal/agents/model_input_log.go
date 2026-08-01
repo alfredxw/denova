@@ -7,7 +7,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
-	"log"
+	"log/slog"
 	"os"
 	"path/filepath"
 	"strings"
@@ -167,10 +167,10 @@ func logFullModelInput(opts modelInputLogOptions) string {
 	}
 
 	if !enqueueModelInputLogJob(modelInputLogJob{input: &input}) {
-		log.Printf("[llm-input-log] dropped agent=%s source=%s mode=%s call_id=%s reason=queue_full", opts.AgentKind, opts.Source, opts.Mode, callID)
+		slog.InfoContext(context.Background(), fmt.Sprintf("[llm-input-log] dropped agent=%s source=%s mode=%s call_id=%s reason=queue_full", opts.AgentKind, opts.Source, opts.Mode, callID))
 		return ""
 	}
-	log.Printf("[llm-input-log] queued agent=%s source=%s mode=%s call_id=%s path=%s messages=%d tools=%d", opts.AgentKind, opts.Source, opts.Mode, callID, modelInputLogPath, input.MessageCount, input.ToolCount)
+	slog.InfoContext(context.Background(), fmt.Sprintf("[llm-input-log] queued agent=%s source=%s mode=%s call_id=%s path=%s messages=%d tools=%d", opts.AgentKind, opts.Source, opts.Mode, callID, modelInputLogPath, input.MessageCount, input.ToolCount))
 	return callID
 }
 
@@ -183,7 +183,7 @@ func logModelProviderRequestIDForCall(callID, agentKind, source, mode, modelName
 	if requestID == "" {
 		return ""
 	}
-	log.Printf(
+	slog.InfoContext(context.Background(), fmt.Sprintf(
 		"[model-response] provider_request_id=%s agent=%s source=%s mode=%s model=%q run_id=%s call_index=%d",
 		requestID,
 		strings.TrimSpace(agentKind),
@@ -192,7 +192,7 @@ func logModelProviderRequestIDForCall(callID, agentKind, source, mode, modelName
 		strings.TrimSpace(modelName),
 		strings.TrimSpace(runID),
 		callIndex,
-	)
+	))
 	attachProviderRequestIDToModelInputLog(callID, agentKind, source, mode, modelName, runID, callIndex, requestID)
 	return requestID
 }
@@ -278,7 +278,7 @@ func enqueueModelInputLogJob(job modelInputLogJob) bool {
 func runModelInputLogWorker(jobs <-chan modelInputLogJob) {
 	defer func() {
 		if recovered := recover(); recovered != nil {
-			log.Printf("[llm-input-log] worker panic recovered error_class=panic")
+			slog.ErrorContext(context.Background(), "[llm-input-log] worker panic recovered error_class=panic")
 		}
 	}()
 	for job := range jobs {
@@ -286,11 +286,11 @@ func runModelInputLogWorker(jobs <-chan modelInputLogJob) {
 			defer modelInputLogWG.Done()
 			defer func() {
 				if recovered := recover(); recovered != nil {
-					log.Printf("[llm-input-log] job panic recovered error_class=panic")
+					slog.ErrorContext(context.Background(), "[llm-input-log] job panic recovered error_class=panic")
 				}
 			}()
 			if err := writeModelInputLogJob(job); err != nil {
-				log.Printf("[llm-input-log] write failed path=%s error_class=%s", modelInputLogPath, safeErrorClass(err.Error()))
+				slog.ErrorContext(context.Background(), fmt.Sprintf("[llm-input-log] write failed path=%s error_class=%s", modelInputLogPath, safeErrorClass(err.Error())))
 			}
 		}()
 	}
@@ -355,7 +355,7 @@ func attachProviderRequestIDToModelInputLog(callID, agentKind, source, mode, mod
 		ProviderID: requestID,
 	}
 	if !enqueueModelInputLogJob(modelInputLogJob{providerRequestID: record}) {
-		log.Printf("[llm-input-log] provider_request_id dropped call_id=%s reason=queue_full", callID)
+		slog.InfoContext(context.Background(), fmt.Sprintf("[llm-input-log] provider_request_id dropped call_id=%s reason=queue_full", callID))
 	}
 }
 

@@ -3,7 +3,7 @@ package skills
 import (
 	"context"
 	"fmt"
-	"log"
+	"log/slog"
 	"os"
 	"path/filepath"
 	"sort"
@@ -109,7 +109,7 @@ func loadRecords(ctx context.Context, dirs []Directory) []record {
 		entries, err := os.ReadDir(dir.Path)
 		if err != nil {
 			if !os.IsNotExist(err) {
-				log.Printf("[skills] scan skill directory failed scope=%s path=%s err=%v", dir.Scope, dir.Path, err)
+				slog.ErrorContext(ctx, fmt.Sprintf("[skills] scan skill directory failed scope=%s path=%s err=%v", dir.Scope, dir.Path, err))
 			}
 			continue
 		}
@@ -124,13 +124,13 @@ func loadRecords(ctx context.Context, dirs []Directory) []record {
 			data, readErr := os.ReadFile(path)
 			if readErr != nil {
 				if !os.IsNotExist(readErr) {
-					log.Printf("[skills] read skill failed scope=%s path=%s err=%v", dir.Scope, path, readErr)
+					slog.ErrorContext(ctx, fmt.Sprintf("[skills] read skill failed scope=%s path=%s err=%v", dir.Scope, path, readErr))
 				}
 				continue
 			}
 			rec, parseErr := parseRecord(ctx, dir, path, string(data))
 			if parseErr != nil {
-				log.Printf("[skills] parse skill failed scope=%s path=%s err=%v", dir.Scope, path, parseErr)
+				slog.ErrorContext(ctx, fmt.Sprintf("[skills] parse skill failed scope=%s path=%s err=%v", dir.Scope, path, parseErr))
 				continue
 			}
 			records = append(records, rec)

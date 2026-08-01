@@ -1,9 +1,10 @@
 package skills
 
 import (
+	"context"
 	"errors"
 	"fmt"
-	"log"
+	"log/slog"
 	"os"
 	"path/filepath"
 	"sync"
@@ -62,7 +63,7 @@ func MigrateWorkspaceSkills(workspace string) error {
 				migrationErrors = append(migrationErrors, err)
 				continue
 			}
-			log.Printf("[skills] migrated legacy workspace Skill source=%s target=%s", sourceSkill, targetSkill)
+			slog.InfoContext(context.Background(), fmt.Sprintf("[skills] migrated legacy workspace Skill source=%s target=%s", sourceSkill, targetSkill))
 		}
 	}
 	return errors.Join(migrationErrors...)
@@ -93,7 +94,7 @@ func migrateWorkspaceSkillBundle(sourceSkill, targetRoot, targetSkill, name stri
 		return fmt.Errorf("publish migrated Skill %s: %w", targetSkill, err)
 	}
 	if err := localfs.SyncDirectory(targetRoot); err != nil {
-		log.Printf("[skills] migrated Skill directory durability failed path=%s err=%v", targetRoot, err)
+		slog.ErrorContext(context.Background(), fmt.Sprintf("[skills] migrated Skill directory durability failed path=%s err=%v", targetRoot, err))
 	}
 	return nil
 }

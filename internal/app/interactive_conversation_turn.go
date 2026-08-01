@@ -3,7 +3,7 @@ package app
 import (
 	"context"
 	"fmt"
-	"log"
+	"log/slog"
 	"strings"
 
 	"denova/config"
@@ -53,7 +53,7 @@ func (c *interactiveConversation) SubmitTurnResult(ctx context.Context, input in
 	default:
 	}
 	if c.InteractiveNarrativeReady() {
-		log.Printf("[interactive-agent] ignored duplicate turn result before validation story_id=%s branch_id=%s", c.storyID, c.branchID)
+		slog.WarnContext(ctx, fmt.Sprintf("[interactive-agent] ignored duplicate turn result before validation story_id=%s branch_id=%s", c.storyID, c.branchID))
 		return interactiveTurnResultAlreadyAcceptedReceipt(), nil
 	}
 	storyCtx, err := c.storyContextForCycle()
@@ -79,11 +79,11 @@ func (c *interactiveConversation) SubmitTurnResult(ctx context.Context, input in
 	c.mu.Unlock()
 	if !staged {
 		receipt = interactiveTurnResultAlreadyAcceptedReceipt()
-		log.Printf("[interactive-agent] ignored turn result update after protocol lock story_id=%s branch_id=%s", c.storyID, c.branchID)
+		slog.WarnContext(ctx, fmt.Sprintf("[interactive-agent] ignored turn result update after protocol lock story_id=%s branch_id=%s", c.storyID, c.branchID))
 		return receipt, nil
 	}
 	stagedResult := prepared.TurnResult()
-	log.Printf("[interactive-agent] updated turn result draft story_id=%s branch_id=%s ready=%t state_updates=%d choices=%d state_changes_status=%s choices_status=%s diagnostics=%q", c.storyID, c.branchID, receipt.Ready, len(stagedResult.StateUpdates), len(stagedResult.Choices), receipt.ModuleStatus.StateChanges, receipt.ModuleStatus.Choices, interactiveTurnSubmissionDiagnosticSummary(receipt.Diagnostics))
+	slog.InfoContext(ctx, fmt.Sprintf("[interactive-agent] updated turn result draft story_id=%s branch_id=%s ready=%t state_updates=%d choices=%d state_changes_status=%s choices_status=%s diagnostics=%q", c.storyID, c.branchID, receipt.Ready, len(stagedResult.StateUpdates), len(stagedResult.Choices), receipt.ModuleStatus.StateChanges, receipt.ModuleStatus.Choices, interactiveTurnSubmissionDiagnosticSummary(receipt.Diagnostics)))
 	return receipt, nil
 }
 
@@ -453,13 +453,13 @@ func (c *interactiveConversation) AppendAssistantWithMetadata(content, thinking 
 		c.assistantMetadata = metadata
 		c.mu.Unlock()
 	}
-	log.Printf("[interactive-agent] parse assistant output content story_id=%s branch_id=%s content=%q", c.storyID, c.branchID, content)
+	slog.InfoContext(context.Background(), fmt.Sprintf("[interactive-agent] parse assistant output content story_id=%s branch_id=%s content=%q", c.storyID, c.branchID, content))
 	narrative, parseErr := parseInteractiveAssistantOutput(content)
 	if parseErr != nil {
-		log.Printf("[interactive-agent] parse assistant output failed story_id=%s branch_id=%s err=%v content=%q", c.storyID, c.branchID, parseErr, content)
+		slog.ErrorContext(context.Background(), fmt.Sprintf("[interactive-agent] parse assistant output failed story_id=%s branch_id=%s err=%v content=%q", c.storyID, c.branchID, parseErr, content))
 		return parseErr
 	}
-	log.Printf("[interactive-agent] parse assistant output result story_id=%s branch_id=%s narrative=%q", c.storyID, c.branchID, narrative)
+	slog.InfoContext(context.Background(), fmt.Sprintf("[interactive-agent] parse assistant output result story_id=%s branch_id=%s narrative=%q", c.storyID, c.branchID, narrative))
 	assistantMetadata := c.assistantMetadataSnapshot()
 	cycleIdentity := c.agentCycleIdentitySnapshot()
 	turnResult := c.turnResultSnapshot()

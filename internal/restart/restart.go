@@ -1,8 +1,9 @@
 package restart
 
 import (
+	"context"
 	"fmt"
-	"log"
+	"log/slog"
 	"os"
 	"path/filepath"
 	"time"
@@ -26,12 +27,12 @@ type Scheduler struct {
 	Invocation func() (Invocation, error)
 	Sleep      func(time.Duration)
 	Replace    func(Invocation) error
-	Logf       func(string, ...any)
+	Logger     *slog.Logger
 }
 
 // Schedule validates the restart target immediately, then replaces the process
 // asynchronously after the configured delay.
-func (s Scheduler) Schedule() error {
+func (s Scheduler) Schedule(ctx context.Context) error {
 	invocationFn := s.Invocation
 	if invocationFn == nil {
 		invocationFn = CurrentProcessInvocation
@@ -53,21 +54,24 @@ func (s Scheduler) Schedule() error {
 	if replace == nil {
 		replace = ReplaceProcess
 	}
-	logf := s.Logf
-	if logf == nil {
-		logf = log.Printf
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	logger := s.Logger
+	if logger == nil {
+		logger = slog.Default()
 	}
 
 	go func() {
 		defer func() {
 			if recovered := recover(); recovered != nil {
-				logf("[restart] panic recovered err=%v", recovered)
+				logger.ErrorContext(ctx, "restart_panic_recovered", "error", recovered)
 			}
 		}()
-		logf("[restart] scheduled executable=%s args=%d delay=%s", invocation.Executable, len(invocation.Args), delay)
+		logger.InfoContext(ctx, "restart_scheduled", "executable", invocation.Executable, "args", len(invocation.Args), "delay", delay)
 		sleep(delay)
 		if err := replace(invocation); err != nil {
-			logf("[restart] failed executable=%s err=%v", invocation.Executable, err)
+			logger.ErrorContext(ctx, "restart_failed", "executable", invocation.Executable, "error", err)
 		}
 	}()
 	return nil
@@ -75,8 +79,8 @@ func (s Scheduler) Schedule() error {
 
 // ScheduleCurrentProcess restarts Nova with the current executable, arguments
 // and environment.
-func ScheduleCurrentProcess(delay time.Duration) error {
-	return Scheduler{Delay: delay}.Schedule()
+func ScheduleCurrentProcess(ctx context.Context, delay time.Duration) error {
+	return Scheduler{Delay: delay}.Schedule(ctx)
 }
 
 // CurrentProcessInvocation builds a bounded, explicit process invocation from

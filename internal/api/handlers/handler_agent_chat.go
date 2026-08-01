@@ -3,7 +3,7 @@ package handlers
 import (
 	"context"
 	"fmt"
-	"log"
+	"log/slog"
 	"path/filepath"
 	"strconv"
 	"strings"
@@ -165,7 +165,7 @@ func (h *Handlers) HandleAgentChatHistory(_ context.Context, c *app.RequestConte
 	}))
 }
 
-func (h *Handlers) HandleAgentChatSessionCreate(_ context.Context, c *app.RequestContext) {
+func (h *Handlers) HandleAgentChatSessionCreate(ctx context.Context, c *app.RequestContext) {
 	var req agentChatSessionCreateRequest
 	if err := c.BindJSON(&req); err != nil {
 		writeErrorKey(c, consts.StatusBadRequest, "api.common.invalidBody")
@@ -173,7 +173,7 @@ func (h *Handlers) HandleAgentChatSessionCreate(_ context.Context, c *app.Reques
 	}
 	sess, err := h.app.CreateProjectSession(firstNonEmpty(req.ProjectID, req.Workspace), strings.TrimSpace(req.Title))
 	if err != nil {
-		log.Printf("[api/handlers/handler_agent_chat.go] creating session failed workspace=%q err=%v", req.Workspace, err)
+		slog.ErrorContext(ctx, fmt.Sprintf("[api/handlers/handler_agent_chat.go] creating session failed workspace=%q err=%v", req.Workspace, err))
 		writeError(c, consts.StatusBadRequest, err.Error())
 		return
 	}
@@ -232,11 +232,11 @@ func (h *Handlers) HandleAgentChat(ctx context.Context, c *app.RequestContext) {
 		h.writeChatPreparationError(c, err)
 		return
 	}
-	log.Printf("[agent-chat-sse] attach new task_id=%s project_id=%s workspace=%q session_id=%s", task.ID(), req.ProjectID, req.Workspace, req.SessionID)
-	sse.StreamTaskUI(c, task, h.chatSSEStreamOptions()...)
+	slog.InfoContext(ctx, fmt.Sprintf("[agent-chat-sse] attach new task_id=%s project_id=%s workspace=%q session_id=%s", task.ID(), req.ProjectID, req.Workspace, req.SessionID))
+	sse.StreamTaskUI(ctx, c, task, h.chatSSEStreamOptions()...)
 }
 
-func (h *Handlers) HandleAgentChatStream(_ context.Context, c *app.RequestContext) {
+func (h *Handlers) HandleAgentChatStream(ctx context.Context, c *app.RequestContext) {
 	taskID := strings.TrimSpace(c.Query("task_id"))
 	if taskID == "" {
 		writeAgentRuntimeError(c, consts.StatusBadRequest, "agent_runtime.invalid_command", "缺少 task_id，无法精确恢复 Agent 流 / task_id is required for exact Agent stream recovery", nil)
@@ -247,7 +247,7 @@ func (h *Handlers) HandleAgentChatStream(_ context.Context, c *app.RequestContex
 		writeAgentRuntimeError(c, consts.StatusConflict, "agent_runtime.rehydrate_required", "旧的任务流已失效，请从 active projection 重新挂接 / The old task stream is stale; rehydrate from the active projection", map[string]any{"task_id": taskID})
 		return
 	}
-	sse.StreamTaskUI(c, task, h.chatSSEStreamOptions()...)
+	sse.StreamTaskUI(ctx, c, task, h.chatSSEStreamOptions()...)
 }
 
 func (h *Handlers) HandleAgentChatActive(ctx context.Context, c *app.RequestContext) {

@@ -3,7 +3,8 @@ package handlers
 import (
 	"context"
 	"errors"
-	"log"
+	"fmt"
+	"log/slog"
 	"os"
 	"path/filepath"
 	"strconv"
@@ -262,7 +263,7 @@ func (h *Handlers) HandleWorkspaceReplace(ctx context.Context, c *app.RequestCon
 				if saveErr != nil {
 					var changeErr *workspacechange.Error
 					if errors.As(saveErr, &changeErr) && changeErr.Code == workspacechange.ErrorCodeRevisionConflict {
-						log.Printf("[workspace-replace] 跳过并发修改的文件 path=%q", rel)
+						slog.WarnContext(ctx, fmt.Sprintf("[workspace-replace] 跳过并发修改的文件 path=%q", rel))
 						skipped = append(skipped, rel)
 						continue
 					}
@@ -313,7 +314,7 @@ func (h *Handlers) HandleWorkspaceReplace(ctx context.Context, c *app.RequestCon
 	for _, item := range changed {
 		total += item.Replacements
 	}
-	log.Printf("[workspace-replace] 全局替换完成 files=%d replacements=%d skipped=%d", len(changed), total, len(skipped))
+	slog.WarnContext(ctx, fmt.Sprintf("[workspace-replace] 全局替换完成 files=%d replacements=%d skipped=%d", len(changed), total, len(skipped)))
 	writeJSON(c, consts.StatusOK, map[string]any{
 		"workspace":          canonicalWorkspace,
 		"files":              changed,

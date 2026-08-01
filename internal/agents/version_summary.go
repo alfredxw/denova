@@ -3,7 +3,7 @@ package agents
 import (
 	"context"
 	"fmt"
-	"log"
+	"log/slog"
 	"strings"
 
 	agent "github.com/alfredxw/denova/agent"
@@ -27,7 +27,7 @@ func GenerateVersionSummary(ctx context.Context, cfg *config.Config, instruction
 		runErr = err
 		return "", fmt.Errorf("创建版本说明模型失败: %w", err)
 	}
-	log.Printf("[version-summary-agent] generate begin instruction=%s", promptPartSummary(instruction))
+	slog.InfoContext(ctx, fmt.Sprintf("[version-summary-agent] generate begin instruction=%s", promptPartSummary(instruction)))
 	composition, err := composeBuiltinSystemInstruction(cfg, config.AgentKindVersionSummary, "version_summary", cfg.Workspace, "builtin_base", "版本说明生成规则", "define the version summary task and output constraint", "你是 Denova 小说工作台的版本说明生成器。根据文件变更推理这次保存的核心创作变化。只输出一句中文版本说明，10 到 30 个汉字，不要编号、引号、冒号、句号或解释。")
 	if err != nil {
 		runErr = err
@@ -59,7 +59,7 @@ func GenerateVersionSummary(ctx context.Context, cfg *config.Config, instruction
 		runErr = fmt.Errorf("版本说明为空")
 		return "", runErr
 	}
-	log.Printf("[version-summary-agent] generate done summary=%q", summary)
+	slog.InfoContext(ctx, fmt.Sprintf("[version-summary-agent] generate done summary=%q", summary))
 	return summary, nil
 }
 

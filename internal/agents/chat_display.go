@@ -1,9 +1,10 @@
 package agents
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
-	"log"
+	"log/slog"
 	"strings"
 	"time"
 
@@ -46,10 +47,10 @@ func appendAssistantIfAny(conversation Conversation, content, thinking *strings.
 		persistErr = conversation.AppendAssistant(generated)
 	}
 	if persistErr != nil {
-		log.Printf("[agent-run] persist assistant message failed err=%v", persistErr)
+		slog.ErrorContext(context.Background(), fmt.Sprintf("[agent-run] persist assistant message failed err=%v", persistErr))
 		return generated, persistErr
 	}
-	log.Printf("[agent-run] persisted assistant message bytes=%d thinking_bytes=%d", len(generated), len(reasoning))
+	slog.InfoContext(context.Background(), fmt.Sprintf("[agent-run] persisted assistant message bytes=%d thinking_bytes=%d", len(generated), len(reasoning)))
 	if content != nil {
 		content.Reset()
 	}
@@ -183,14 +184,14 @@ func (r *displayEventRecorder) Record(ev Event) {
 				return
 			}
 			if err := r.appender.AppendDisplayEvent(r.assistantDisplayEvent(r.assistant.String())); err != nil {
-				log.Printf("[agent-run] persist initial display assistant segment failed bytes=%d err=%v", r.assistant.Len(), err)
+				slog.ErrorContext(context.Background(), fmt.Sprintf("[agent-run] persist initial display assistant segment failed bytes=%d err=%v", r.assistant.Len(), err))
 				return
 			}
 			r.assistantPersisted = true
 			return
 		}
 		if err := contentAppender.AppendDisplayEventContent(r.assistantID, "assistant", content); err != nil {
-			log.Printf("[agent-run] append display assistant segment failed id=%s bytes=%d err=%v", r.assistantID, len(content), err)
+			slog.ErrorContext(context.Background(), fmt.Sprintf("[agent-run] append display assistant segment failed id=%s bytes=%d err=%v", r.assistantID, len(content), err))
 		}
 	case "tool_call":
 		r.flushThinking()
@@ -223,7 +224,7 @@ func (r *displayEventRecorder) Record(ev Event) {
 			SubAgentSessionID: meta.SubAgentSessionID,
 			SubAgentType:      meta.SubAgentType,
 		}); err != nil {
-			log.Printf("[agent-run] persist display tool_call failed name=%s id=%s err=%v", name, id, err)
+			slog.ErrorContext(context.Background(), fmt.Sprintf("[agent-run] persist display tool_call failed name=%s id=%s err=%v", name, id, err))
 			return
 		}
 		if id != "" {
@@ -241,7 +242,7 @@ func (r *displayEventRecorder) Record(ev Event) {
 			return
 		}
 		if err := argsAppender.AppendDisplayToolArgs(id, name, delta); err != nil {
-			log.Printf("[agent-run] persist display tool_args_delta failed name=%s id=%s err=%v", name, id, err)
+			slog.ErrorContext(context.Background(), fmt.Sprintf("[agent-run] persist display tool_args_delta failed name=%s id=%s err=%v", name, id, err))
 		}
 	case "tool_result":
 		r.flushThinking()
@@ -258,15 +259,15 @@ func (r *displayEventRecorder) Record(ev Event) {
 		}
 		if resultUpdater, ok := r.appender.(displayToolResultUpdater); ok {
 			if err := resultUpdater.UpdateDisplayToolResult(id, name, status, result); err != nil {
-				log.Printf("[agent-run] persist display tool_result failed name=%s id=%s err=%v", name, id, err)
+				slog.ErrorContext(context.Background(), fmt.Sprintf("[agent-run] persist display tool_result failed name=%s id=%s err=%v", name, id, err))
 			}
 		} else if err := r.appender.UpdateDisplayToolStatus(id, name, status); err != nil {
-			log.Printf("[agent-run] persist display tool_result status failed name=%s id=%s err=%v", name, id, err)
+			slog.ErrorContext(context.Background(), fmt.Sprintf("[agent-run] persist display tool_result status failed name=%s id=%s err=%v", name, id, err))
 		}
 		if illustration := eventDataChapterIllustration(ev.Data, "illustration"); illustration != nil {
 			if updater, ok := r.appender.(displayToolIllustrationUpdater); ok {
 				if err := updater.UpdateDisplayToolIllustration(id, name, illustration); err != nil {
-					log.Printf("[agent-run] persist display illustration failed name=%s id=%s err=%v", name, id, err)
+					slog.ErrorContext(context.Background(), fmt.Sprintf("[agent-run] persist display illustration failed name=%s id=%s err=%v", name, id, err))
 				}
 			}
 		}
@@ -309,7 +310,7 @@ func (r *displayEventRecorder) Record(ev Event) {
 			GeneratedBytes:       stats.GeneratedBytes,
 			UsageCalls:           usageCallsForSession(stats.Calls),
 		}); err != nil {
-			log.Printf("[agent-run] persist token_usage failed run_id=%s err=%v", stats.RunID, err)
+			slog.ErrorContext(context.Background(), fmt.Sprintf("[agent-run] persist token_usage failed run_id=%s err=%v", stats.RunID, err))
 		}
 	case "plan_question", "proposed_plan":
 		r.flushThinking()
@@ -333,7 +334,7 @@ func (r *displayEventRecorder) Record(ev Event) {
 			SubAgentSessionID: meta.SubAgentSessionID,
 			SubAgentType:      meta.SubAgentType,
 		}); err != nil {
-			log.Printf("[agent-run] persist display plan event failed role=%s bytes=%d err=%v", ev.Type, len(content), err)
+			slog.ErrorContext(context.Background(), fmt.Sprintf("[agent-run] persist display plan event failed role=%s bytes=%d err=%v", ev.Type, len(content), err))
 		}
 	case "error", "aborted":
 		r.flushThinking()
@@ -341,7 +342,7 @@ func (r *displayEventRecorder) Record(ev Event) {
 		r.finalizeRootAssistantSegments(session.DisplayPhasePartial)
 		for id, name := range r.pendingToolIDs {
 			if err := r.appender.UpdateDisplayToolStatus(id, name, "error"); err != nil {
-				log.Printf("[agent-run] persist display tool_error failed name=%s id=%s err=%v", name, id, err)
+				slog.ErrorContext(context.Background(), fmt.Sprintf("[agent-run] persist display tool_error failed name=%s id=%s err=%v", name, id, err))
 			}
 		}
 		r.pendingToolIDs = make(map[string]string)
@@ -351,7 +352,7 @@ func (r *displayEventRecorder) Record(ev Event) {
 		r.finalizeRootAssistantSegments(session.DisplayPhaseFinal)
 		for id, name := range r.pendingToolIDs {
 			if err := r.appender.UpdateDisplayToolStatus(id, name, "success"); err != nil {
-				log.Printf("[agent-run] persist display tool_done failed name=%s id=%s err=%v", name, id, err)
+				slog.ErrorContext(context.Background(), fmt.Sprintf("[agent-run] persist display tool_done failed name=%s id=%s err=%v", name, id, err))
 			}
 		}
 		r.pendingToolIDs = make(map[string]string)
@@ -381,7 +382,7 @@ func (r *displayEventRecorder) flushThinking() {
 		SubAgentSessionID: r.thinkingMeta.SubAgentSessionID,
 		SubAgentType:      r.thinkingMeta.SubAgentType,
 	}); err != nil {
-		log.Printf("[agent-run] persist display thinking failed bytes=%d err=%v", len(content), err)
+		slog.ErrorContext(context.Background(), fmt.Sprintf("[agent-run] persist display thinking failed bytes=%d err=%v", len(content), err))
 	}
 	r.thinkingID = ""
 	r.thinkingMeta = agentEventMetadata{}
@@ -402,13 +403,13 @@ func (r *displayEventRecorder) flushAssistant() {
 	if r.assistantPersisted {
 		if flusher, ok := r.appender.(displayEventContentFlusher); ok {
 			if err := flusher.FlushDisplayEventContent(r.assistantID, "assistant"); err != nil {
-				log.Printf("[agent-run] flush display assistant segment failed id=%s err=%v", r.assistantID, err)
+				slog.ErrorContext(context.Background(), fmt.Sprintf("[agent-run] flush display assistant segment failed id=%s err=%v", r.assistantID, err))
 			}
 		}
 		return
 	}
 	if err := r.appender.AppendDisplayEvent(r.assistantDisplayEvent(content)); err != nil {
-		log.Printf("[agent-run] persist display assistant segment failed bytes=%d err=%v", len(content), err)
+		slog.ErrorContext(context.Background(), fmt.Sprintf("[agent-run] persist display assistant segment failed bytes=%d err=%v", len(content), err))
 	}
 }
 
@@ -443,7 +444,7 @@ func (r *displayEventRecorder) finalizeRootAssistantSegments(terminalPhase strin
 	}
 	finalSegmentID := r.rootAssistantSegmentIDs[len(r.rootAssistantSegmentIDs)-1]
 	if err := finalizer.FinalizeDisplayAssistantRun(r.rootRunID, finalSegmentID, terminalPhase); err != nil {
-		log.Printf("[agent-run] finalize display assistant phases failed run_id=%s final_segment_id=%s phase=%s err=%v", r.rootRunID, finalSegmentID, terminalPhase, err)
+		slog.ErrorContext(context.Background(), fmt.Sprintf("[agent-run] finalize display assistant phases failed run_id=%s final_segment_id=%s phase=%s err=%v", r.rootRunID, finalSegmentID, terminalPhase, err))
 	}
 }
 

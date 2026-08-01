@@ -5,7 +5,7 @@ import (
 	"crypto/rand"
 	"encoding/hex"
 	"fmt"
-	"log"
+	"log/slog"
 	"path/filepath"
 	"time"
 
@@ -72,7 +72,7 @@ func (s *ImageAppService) Generate(ctx context.Context, request imagegen.Generat
 		if err := runtime.bookService.WriteBinaryFile(relPath, image.Data); err != nil {
 			return ImageGenerateResult{}, fmt.Errorf("保存生成图像失败: %w", err)
 		}
-		log.Printf("[imagegen] saved image path=%s bytes=%d mime=%s", relPath, len(image.Data), image.MIMEType)
+		slog.InfoContext(ctx, fmt.Sprintf("[imagegen] saved image path=%s bytes=%d mime=%s", relPath, len(image.Data), image.MIMEType))
 		saved.Images = append(saved.Images, SavedGeneratedImage{
 			Path:          relPath,
 			MIMEType:      image.MIMEType,

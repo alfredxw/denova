@@ -1,9 +1,10 @@
 package app
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
-	"log"
+	"log/slog"
 	"strings"
 
 	"denova/config"
@@ -121,8 +122,8 @@ func (c *interactiveConversation) buildDirectorInstruction(turn interactive.Turn
 		EventOpportunity:            budget.take("director.event_opportunity", boundedJSON(eventOpportunity, 4*1024), 4*1024),
 		EventRuntime:                budget.take("director.event_runtime", boundedJSON(eventRuntime, 8*1024), 8*1024),
 	})
-	log.Printf("[interactive-director-agent] context budget story_id=%s branch_id=%s turn_id=%s instruction_bytes=%d stable_bytes=%d model_window_tokens=%d threshold_tokens=%d source_budget_tokens=%d fragments=%s", c.storyID, storyCtx.Snapshot.BranchID, turn.ID, len(instruction), len([]byte(stableContext.Content)), budget.contextWindowTokens, budget.thresholdTokens, budget.initialTokens, budget.trace())
-	log.Printf(
+	slog.InfoContext(context.Background(), fmt.Sprintf("[interactive-director-agent] context budget story_id=%s branch_id=%s turn_id=%s instruction_bytes=%d stable_bytes=%d model_window_tokens=%d threshold_tokens=%d source_budget_tokens=%d fragments=%s", c.storyID, storyCtx.Snapshot.BranchID, turn.ID, len(instruction), len([]byte(stableContext.Content)), budget.contextWindowTokens, budget.thresholdTokens, budget.initialTokens, budget.trace()))
+	slog.InfoContext(context.Background(), fmt.Sprintf(
 		"[interactive-director-agent] context composition story_id=%s branch_id=%s turn_id=%s teller_id=%s story_director_id=%s director_plan=%s lore=%s turn_audit=%s actor_state=%s history=%s instruction=%s",
 		c.storyID,
 		storyCtx.Snapshot.BranchID,
@@ -135,7 +136,7 @@ func (c *interactiveConversation) buildDirectorInstruction(turn interactive.Turn
 		interactivePartSummary(boundedJSON(actorStateSnapshot, interactiveDirectorContextBytes)),
 		interactivePartSummary(historyText),
 		interactivePartSummary(instruction),
-	)
+	))
 	return instruction, nil
 }
 
@@ -322,17 +323,17 @@ func loadInteractiveTeller(novaDir, tellerID, mode string) interactive.Teller {
 		return teller
 	}
 	if err != nil {
-		log.Printf("[interactive-agent] load narrative style failed id=%s mode=%s err=%v", tellerID, mode, err)
+		slog.ErrorContext(context.Background(), fmt.Sprintf("[interactive-agent] load narrative style failed id=%s mode=%s err=%v", tellerID, mode, err))
 	} else {
-		log.Printf("[interactive-agent] narrative style is unavailable in mode id=%s mode=%s", tellerID, mode)
+		slog.WarnContext(context.Background(), fmt.Sprintf("[interactive-agent] narrative style is unavailable in mode id=%s mode=%s", tellerID, mode))
 	}
 	fallback, fallbackErr := library.Get(narrativestyle.DefaultID)
 	if fallbackErr != nil {
-		log.Printf("[interactive-agent] load default narrative style failed id=%s mode=%s err=%v", narrativestyle.DefaultID, mode, fallbackErr)
+		slog.ErrorContext(context.Background(), fmt.Sprintf("[interactive-agent] load default narrative style failed id=%s mode=%s err=%v", narrativestyle.DefaultID, mode, fallbackErr))
 		return interactive.Teller{}
 	}
 	if !fallback.SupportsMode(mode) {
-		log.Printf("[interactive-agent] default narrative style is unavailable in mode id=%s mode=%s", fallback.ID, mode)
+		slog.WarnContext(context.Background(), fmt.Sprintf("[interactive-agent] default narrative style is unavailable in mode id=%s mode=%s", fallback.ID, mode))
 		return interactive.Teller{}
 	}
 	return fallback
@@ -346,10 +347,10 @@ func loadStoryDirector(novaDir, directorID string) interactive.StoryDirector {
 	if err == nil {
 		return director
 	}
-	log.Printf("[interactive-agent] load story director failed id=%s err=%v", directorID, err)
+	slog.ErrorContext(context.Background(), fmt.Sprintf("[interactive-agent] load story director failed id=%s err=%v", directorID, err))
 	fallback, fallbackErr := interactive.NewStoryDirectorLibrary(novaDir).Get(interactive.DefaultStoryDirectorID)
 	if fallbackErr != nil {
-		log.Printf("[interactive-agent] load fallback story director failed err=%v", fallbackErr)
+		slog.ErrorContext(context.Background(), fmt.Sprintf("[interactive-agent] load fallback story director failed err=%v", fallbackErr))
 		return interactive.DefaultStoryDirector()
 	}
 	return fallback

@@ -7,7 +7,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"log"
+	"log/slog"
 	"strings"
 	"sync"
 
@@ -129,7 +129,7 @@ func (r *interactiveStartRegistry) pruneLocked() {
 			}
 			delete(r.records, commandID)
 			r.order = removeTaskReplayKey(r.order, index)
-			log.Printf("[interactive-agent-task] pruned settled Game replay identity command_id=%s task_id=%s released_bytes=%d max_records=%d", commandID, taskID, released, maxRememberedInteractiveStarts)
+			slog.InfoContext(context.Background(), fmt.Sprintf("[interactive-agent-task] pruned settled Game replay identity command_id=%s task_id=%s released_bytes=%d max_records=%d", commandID, taskID, released, maxRememberedInteractiveStarts))
 			removed = true
 			break
 		}
@@ -156,7 +156,7 @@ func (r *interactiveStartRegistry) pruneLocked() {
 		totalBytes -= released
 		record.task = nil
 		r.records[commandID] = record
-		log.Printf("[interactive-agent-task] evicted settled Game display replay command_id=%s task_id=%s released_bytes=%d retained_bytes=%d budget_bytes=%d", commandID, taskID, released, totalBytes, byteLimit)
+		slog.InfoContext(context.Background(), fmt.Sprintf("[interactive-agent-task] evicted settled Game display replay command_id=%s task_id=%s released_bytes=%d retained_bytes=%d budget_bytes=%d", commandID, taskID, released, totalBytes, byteLimit))
 	}
 }
 
@@ -273,7 +273,7 @@ func (s *InteractiveAppService) replayDurableInteractiveStart(
 	}
 
 	var accepted *agents.AcceptedRun
-	task, err := NewDeferredRegisteredTask(func(task *Task) error {
+	task, err := NewDeferredRegisteredTaskWithContext(ctx, func(task *Task) error {
 		a.mu.Lock()
 		defer a.mu.Unlock()
 		if a.workspaceTransition {
@@ -316,7 +316,7 @@ func (s *InteractiveAppService) replayDurableInteractiveStart(
 	if err := task.Start(func(ctx context.Context, task *Task, _ func(agents.Event)) {
 		defer a.unregisterWorkspaceTask(task)
 		outcome := accepted.Wait(ctx)
-		log.Printf("[interactive-agent-task] replay end id=%s command_id=%s status=%s", task.ID(), identity.request.CommandID, outcome.Status)
+		slog.InfoContext(ctx, fmt.Sprintf("[interactive-agent-task] replay end id=%s command_id=%s status=%s", task.ID(), identity.request.CommandID, outcome.Status))
 	}); err != nil {
 		task.Abort()
 		_ = accepted.Wait(task.ctx)

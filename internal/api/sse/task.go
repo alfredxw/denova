@@ -1,11 +1,12 @@
 package sse
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
-	"log"
+	"log/slog"
 	"strconv"
 	"strings"
 
@@ -14,6 +15,7 @@ import (
 	"denova/internal/api/agentui"
 	ssetransform "denova/internal/api/sse/transform"
 	novaApp "denova/internal/app"
+	"denova/internal/observability"
 )
 
 type StreamOptions struct {
@@ -37,7 +39,7 @@ const (
 )
 
 // StreamTask writes a Task event snapshot and live updates as Server-Sent Events.
-func StreamTask(c *app.RequestContext, task *novaApp.Task, options ...StreamOption) {
+func StreamTask(ctx context.Context, c *app.RequestContext, task *novaApp.Task, options ...StreamOption) {
 	after, ok := requestedTaskCursor(c)
 	if !ok {
 		return
@@ -57,40 +59,40 @@ func StreamTask(c *app.RequestContext, task *novaApp.Task, options ...StreamOpti
 	go func() {
 		defer func() {
 			if recovered := recover(); recovered != nil {
-				log.Printf("[agent-sse] stream panic recovered task_id=%s err=%v", task.ID(), recovered)
+				slog.ErrorContext(ctx, fmt.Sprintf("[agent-sse] stream panic recovered task_id=%s err=%v", task.ID(), recovered))
 			}
 			task.Unsubscribe(subscription)
 			_ = pw.Close()
 		}()
-		log.Printf("[agent-sse] stream start task_id=%s after=%d replay=%d checkpoint=%t", task.ID(), after, len(replay.Events), replay.Checkpoint != nil)
-		writeSSE := newSSEWriteHandler(pw, options...)
+		slog.InfoContext(ctx, fmt.Sprintf("[agent-sse] stream start task_id=%s after=%d replay=%d checkpoint=%t", task.ID(), after, len(replay.Events), replay.Checkpoint != nil))
+		writeSSE := newSSEWriteHandler(ctx, pw, options...)
 
 		if replay.Checkpoint != nil {
 			committed, err := writeTaskCheckpoint(pw, *replay.Checkpoint, writeSSE)
 			if err != nil {
-				log.Printf("[agent-sse] stream interrupted task_id=%s phase=checkpoint cursor=%d err=%v", task.ID(), replay.Checkpoint.Cursor, err)
+				slog.InfoContext(ctx, fmt.Sprintf("[agent-sse] stream interrupted task_id=%s phase=checkpoint cursor=%d err=%v", task.ID(), replay.Checkpoint.Cursor, err))
 				return
 			}
 			if !committed {
-				log.Printf("[agent-sse] stream requires canonical rehydrate task_id=%s cursor=%d", task.ID(), replay.Checkpoint.Cursor)
+				slog.InfoContext(ctx, fmt.Sprintf("[agent-sse] stream requires canonical rehydrate task_id=%s cursor=%d", task.ID(), replay.Checkpoint.Cursor))
 				return
 			}
 		}
 
 		for _, item := range replay.Events {
 			if err := writeSSE(item); err != nil {
-				log.Printf("[agent-sse] stream interrupted task_id=%s phase=replay cursor=%d event=%s err=%v", task.ID(), item.Cursor, item.Event.Type, err)
+				slog.InfoContext(ctx, fmt.Sprintf("[agent-sse] stream interrupted task_id=%s phase=replay cursor=%d event=%s err=%v", task.ID(), item.Cursor, item.Event.Type, err))
 				return
 			}
 		}
 
 		for item := range subscription.Events() {
 			if err := writeSSE(item); err != nil {
-				log.Printf("[agent-sse] stream interrupted task_id=%s phase=live cursor=%d event=%s err=%v", task.ID(), item.Cursor, item.Event.Type, err)
+				slog.InfoContext(ctx, fmt.Sprintf("[agent-sse] stream interrupted task_id=%s phase=live cursor=%d event=%s err=%v", task.ID(), item.Cursor, item.Event.Type, err))
 				return
 			}
 		}
-		log.Printf("[agent-sse] stream end task_id=%s status=%s reason=%s", task.ID(), task.Status(), subscription.EndReason())
+		slog.InfoContext(ctx, fmt.Sprintf("[agent-sse] stream end task_id=%s status=%s reason=%s", task.ID(), task.Status(), subscription.EndReason()))
 	}()
 
 	c.Response.SetBodyStream(pr, -1)
@@ -102,7 +104,7 @@ func StreamTask(c *app.RequestContext, task *novaApp.Task, options ...StreamOpti
 // state with canonical history, then asks for the exact Task suffix after the
 // server-issued checkpoint cursor. The UI stream itself intentionally carries
 // no Last-Event-ID because one Task event may expand to several AI SDK frames.
-func StreamTaskUI(c *app.RequestContext, task *novaApp.Task, options ...StreamOption) {
+func StreamTaskUI(ctx context.Context, c *app.RequestContext, task *novaApp.Task, options ...StreamOption) {
 	after, ok := requestedTaskCursor(c)
 	if !ok {
 		return
@@ -123,43 +125,43 @@ func StreamTaskUI(c *app.RequestContext, task *novaApp.Task, options ...StreamOp
 	go func() {
 		defer func() {
 			if recovered := recover(); recovered != nil {
-				log.Printf("[agent-ui-sse] stream panic recovered task_id=%s err=%v", task.ID(), recovered)
+				slog.ErrorContext(ctx, fmt.Sprintf("[agent-ui-sse] stream panic recovered task_id=%s err=%v", task.ID(), recovered))
 			}
 			task.Unsubscribe(subscription)
 			_ = pw.Close()
 		}()
-		log.Printf("[agent-ui-sse] stream start task_id=%s after=%d replay=%d checkpoint=%t", task.ID(), after, len(replay.Events), replay.Checkpoint != nil)
-		writeUI := newUIWriteHandler(pw, options...)
+		slog.InfoContext(ctx, fmt.Sprintf("[agent-ui-sse] stream start task_id=%s after=%d replay=%d checkpoint=%t", task.ID(), after, len(replay.Events), replay.Checkpoint != nil))
+		writeUI := newUIWriteHandler(ctx, pw, options...)
 
 		if replay.Checkpoint != nil {
 			committed, err := writeUITaskCheckpoint(writeUI, *replay.Checkpoint)
 			if err != nil {
-				log.Printf("[agent-ui-sse] stream interrupted task_id=%s phase=checkpoint cursor=%d err=%v", task.ID(), replay.Checkpoint.Cursor, err)
+				slog.InfoContext(ctx, fmt.Sprintf("[agent-ui-sse] stream interrupted task_id=%s phase=checkpoint cursor=%d err=%v", task.ID(), replay.Checkpoint.Cursor, err))
 				return
 			}
 			if !committed {
-				log.Printf("[agent-ui-sse] stream requires canonical rehydrate task_id=%s cursor=%d", task.ID(), replay.Checkpoint.Cursor)
+				slog.InfoContext(ctx, fmt.Sprintf("[agent-ui-sse] stream requires canonical rehydrate task_id=%s cursor=%d", task.ID(), replay.Checkpoint.Cursor))
 				return
 			}
 		}
 
 		for _, item := range replay.Events {
 			if err := writeUI.Handle(item); err != nil {
-				log.Printf("[agent-ui-sse] stream interrupted task_id=%s phase=replay cursor=%d event=%s err=%v", task.ID(), item.Cursor, item.Event.Type, err)
+				slog.InfoContext(ctx, fmt.Sprintf("[agent-ui-sse] stream interrupted task_id=%s phase=replay cursor=%d event=%s err=%v", task.ID(), item.Cursor, item.Event.Type, err))
 				return
 			}
 		}
 
 		for item := range subscription.Events() {
 			if err := writeUI.Handle(item); err != nil {
-				log.Printf("[agent-ui-sse] stream interrupted task_id=%s phase=live cursor=%d event=%s err=%v", task.ID(), item.Cursor, item.Event.Type, err)
+				slog.InfoContext(ctx, fmt.Sprintf("[agent-ui-sse] stream interrupted task_id=%s phase=live cursor=%d event=%s err=%v", task.ID(), item.Cursor, item.Event.Type, err))
 				return
 			}
 		}
 		if subscription.EndReason() == novaApp.TaskSubscriptionTaskFinished {
 			_ = writeUI.Finish("stop")
 		}
-		log.Printf("[agent-ui-sse] stream end task_id=%s status=%s reason=%s", task.ID(), task.Status(), subscription.EndReason())
+		slog.InfoContext(ctx, fmt.Sprintf("[agent-ui-sse] stream end task_id=%s status=%s reason=%s", task.ID(), task.Status(), subscription.EndReason()))
 	}()
 
 	c.Response.SetBodyStream(pr, -1)
@@ -262,7 +264,7 @@ func writeTaskCursorError(c *app.RequestContext, task *novaApp.Task, err error) 
 	c.JSON(409, response)
 }
 
-func newSSEWriteHandler(w io.Writer, options ...StreamOption) func(novaApp.TaskEvent) error {
+func newSSEWriteHandler(ctx context.Context, w io.Writer, options ...StreamOption) func(novaApp.TaskEvent) error {
 	opts := applyStreamOptions(options...)
 	var cursor uint64
 	chain := ssetransform.NewSSEEventMiddlewareChain(
@@ -276,6 +278,7 @@ func newSSEWriteHandler(w io.Writer, options ...StreamOption) func(novaApp.TaskE
 	})
 	return func(item novaApp.TaskEvent) error {
 		cursor = item.Cursor
+		item.Event = correlateErrorEvent(item.Event, observability.RequestID(ctx))
 		return handler(item.Event)
 	}
 }
@@ -285,9 +288,9 @@ type uiWriteHandler struct {
 	handler ssetransform.SSEEventHandler
 }
 
-func newUIWriteHandler(w io.Writer, options ...StreamOption) *uiWriteHandler {
+func newUIWriteHandler(ctx context.Context, w io.Writer, options ...StreamOption) *uiWriteHandler {
 	opts := applyStreamOptions(options...)
-	encoder := agentui.NewStreamEncoder(w)
+	encoder := agentui.NewStreamEncoder(w, observability.RequestID(ctx))
 	chain := ssetransform.NewSSEEventMiddlewareChain(
 		ssetransform.WithHideChapterBodyLiveOutput(opts.HideChapterBodyLiveOutput),
 	)
@@ -296,6 +299,26 @@ func newUIWriteHandler(w io.Writer, options ...StreamOption) *uiWriteHandler {
 		return encoder.WriteEvent(ev)
 	})
 	return h
+}
+
+func correlateErrorEvent(event novaApp.AgentEvent, requestID string) novaApp.AgentEvent {
+	requestID = strings.TrimSpace(requestID)
+	if event.Type != "error" || requestID == "" {
+		return event
+	}
+	payload := map[string]any{}
+	if raw, err := json.Marshal(event.Data); err == nil {
+		_ = json.Unmarshal(raw, &payload)
+	}
+	payload[observability.RequestIDField] = requestID
+	for _, key := range []string{"message", "error"} {
+		if message, ok := payload[key].(string); ok && strings.TrimSpace(message) != "" {
+			payload[key] = agentui.CorrelatedErrorMessage(message, requestID)
+			break
+		}
+	}
+	event.Data = payload
+	return event
 }
 
 func (h *uiWriteHandler) Handle(item novaApp.TaskEvent) error {

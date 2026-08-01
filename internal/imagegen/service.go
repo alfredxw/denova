@@ -5,7 +5,7 @@ import (
 	"crypto/sha256"
 	"errors"
 	"fmt"
-	"log"
+	"log/slog"
 	"strings"
 	"unicode/utf8"
 
@@ -64,13 +64,13 @@ func (s *Service) Generate(ctx context.Context, cfg *config.Config, request Gene
 	if adapter == nil {
 		return Result{}, fmt.Errorf("%w: %s", ErrUnsupportedProvider, profile.Provider)
 	}
-	log.Printf("[imagegen] generate begin provider=%s profile_id=%s model=%q size=%q quality=%q format=%q n=%d prompt=%s", profile.Provider, profile.ProfileID, profile.OpenAIModel, request.Size, request.Quality, request.OutputFormat, request.N, promptSummary(request.Prompt))
+	slog.InfoContext(ctx, fmt.Sprintf("[imagegen] generate begin provider=%s profile_id=%s model=%q size=%q quality=%q format=%q n=%d prompt=%s", profile.Provider, profile.ProfileID, profile.OpenAIModel, request.Size, request.Quality, request.OutputFormat, request.N, promptSummary(request.Prompt)))
 	result, err := adapter.Generate(ctx, profile, request)
 	if err != nil {
-		log.Printf("[imagegen] generate failed provider=%s profile_id=%s model=%q err=%v", profile.Provider, profile.ProfileID, profile.OpenAIModel, err)
+		slog.ErrorContext(ctx, fmt.Sprintf("[imagegen] generate failed provider=%s profile_id=%s model=%q err=%v", profile.Provider, profile.ProfileID, profile.OpenAIModel, err))
 		return Result{}, err
 	}
-	log.Printf("[imagegen] generate done provider=%s profile_id=%s model=%q images=%d", profile.Provider, profile.ProfileID, profile.OpenAIModel, len(result.Images))
+	slog.InfoContext(ctx, fmt.Sprintf("[imagegen] generate done provider=%s profile_id=%s model=%q images=%d", profile.Provider, profile.ProfileID, profile.OpenAIModel, len(result.Images)))
 	return result, nil
 }
 

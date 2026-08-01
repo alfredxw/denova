@@ -4,7 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"log"
+	"log/slog"
 	"strings"
 	"sync"
 
@@ -161,7 +161,7 @@ func New(ctx context.Context, cfg *config.Config) (*App, error) {
 	app.ensureServices()
 
 	if workspace == "" {
-		log.Printf("[app] 启动时未指定 workspace 且无上次打开的书籍，进入无书籍状态，等待用户在前端选择")
+		slog.InfoContext(ctx, "[app] 启动时未指定 workspace 且无上次打开的书籍，进入无书籍状态，等待用户在前端选择")
 		cfg.Workspace = ""
 		app.StartAutomationScheduler(ctx)
 		return app, nil
@@ -394,16 +394,16 @@ func (a *App) Close() {
 		a.stopWorkspaceDirectorTasks()
 		a.schedulerWG.Wait()
 		if err := rootScope.Wait(context.Background()); err != nil {
-			log.Printf("[app] wait lifecycle scope failed: %v", err)
+			slog.ErrorContext(context.Background(), fmt.Sprintf("[app] wait lifecycle scope failed: %v", err))
 		}
 		if interactiveStore != nil {
 			if err := interactiveStore.Close(); err != nil {
-				log.Printf("[app] flush interactive conversation indexes failed: %v", err)
+				slog.ErrorContext(context.Background(), fmt.Sprintf("[app] flush interactive conversation indexes failed: %v", err))
 			}
 		}
 		if sessionStore != nil {
 			if err := sessionStore.Close(); err != nil {
-				log.Printf("[app] flush Agent conversation indexes failed: %v", err)
+				slog.ErrorContext(context.Background(), fmt.Sprintf("[app] flush Agent conversation indexes failed: %v", err))
 			}
 		}
 		if versionService != nil {
@@ -411,7 +411,7 @@ func (a *App) Close() {
 		}
 		if a.chatService != nil {
 			if err := a.chatService.Close(context.Background()); err != nil {
-				log.Printf("[app] close durable agent runtime failed: %v", err)
+				slog.ErrorContext(context.Background(), fmt.Sprintf("[app] close durable agent runtime failed: %v", err))
 			}
 		}
 	})
@@ -449,7 +449,7 @@ func (a *App) abortOwnedAgentTasks(ctx context.Context) {
 		tasks = append(tasks, task)
 	}
 	if err := abortAndWaitTasks(ctx, tasks, "app_close"); err != nil {
-		log.Printf("[app] wait for owned agent tasks failed: %v", err)
+		slog.ErrorContext(ctx, fmt.Sprintf("[app] wait for owned agent tasks failed: %v", err))
 	}
 }
 

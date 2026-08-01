@@ -8,6 +8,7 @@ import (
 	"testing"
 
 	agents "denova/internal/agents"
+	"denova/internal/observability"
 )
 
 func TestTaskDisconnectsSlowSubscriberInsteadOfDroppingEvents(t *testing.T) {
@@ -107,6 +108,33 @@ func TestTaskStartFailurePublishesCanceledLifecycle(t *testing.T) {
 	default:
 		t.Fatal("failed Task published Done before canceling its lifecycle")
 	}
+}
+
+func TestDetachedTaskRetainsRequestIDWithoutCallerCancellation(t *testing.T) {
+	caller, cancelCaller := context.WithCancel(observability.WithRequestID(context.Background(), "request-123"))
+	task, err := NewDeferredRegisteredTaskWithContext(caller, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	cancelCaller()
+
+	observed := make(chan context.Context, 1)
+	release := make(chan struct{})
+	if err := task.Start(func(ctx context.Context, _ *Task, _ func(agents.Event)) {
+		observed <- ctx
+		<-release
+	}); err != nil {
+		t.Fatal(err)
+	}
+	taskContext := <-observed
+	if got := observability.RequestID(taskContext); got != "request-123" {
+		t.Fatalf("detached Task request_id = %q, want request-123", got)
+	}
+	if err := taskContext.Err(); err != nil {
+		t.Fatalf("caller cancellation leaked into accepted Task: %v", err)
+	}
+	close(release)
+	<-task.Done()
 }
 
 func TestTaskAbortRequestDoesNotOverrideLaterDurableCompletion(t *testing.T) {

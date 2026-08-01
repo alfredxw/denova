@@ -1,8 +1,9 @@
 package interactive
 
 import (
+	"context"
 	"fmt"
-	"log"
+	"log/slog"
 	"strings"
 
 	"denova/internal/book"
@@ -156,7 +157,7 @@ func (s *Store) validateDirectorLoreContext(content string) error {
 	for _, name := range refs.All() {
 		item, ok := byName[strings.ToLower(name)]
 		if !ok {
-			log.Printf("[director-lore-context] ignoring unavailable lore reference name=%q source=lore-context.md location=internal/interactive/director_lore_context.go", name)
+			slog.WarnContext(context.Background(), fmt.Sprintf("[director-lore-context] ignoring unavailable lore reference name=%q source=lore-context.md location=internal/interactive/director_lore_context.go", name))
 			continue
 		}
 		if item.LoadMode == book.LoreLoadModeResident {

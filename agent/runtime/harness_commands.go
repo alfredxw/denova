@@ -3,7 +3,7 @@ package runtime
 import (
 	"context"
 	"fmt"
-	"log"
+	"log/slog"
 )
 
 func (h *Harness) handleSubmit(state *harnessState, ctx context.Context, command Command) (Receipt, error) {
@@ -360,7 +360,7 @@ func (h *Harness) commit(ctx context.Context, state *harnessState, payloads []Ev
 			// The canonical append is already durable. A failed generation switch
 			// leaves the old manifest/tail authoritative and is retried at a later
 			// safe transaction boundary; it must not become a false command error.
-			log.Printf("runtime: binding=%+v cursor=%d checkpoint deferred: %v", h.binding, state.cursor, err)
+			slog.WarnContext(ctx, fmt.Sprintf("runtime: binding=%+v cursor=%d checkpoint deferred: %v", h.binding, state.cursor, err))
 		}
 	}
 	if releaser, ok := h.engine.(EnginePendingInputReleaser); ok {

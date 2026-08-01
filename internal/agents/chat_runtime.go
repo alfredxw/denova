@@ -13,7 +13,6 @@ import (
 
 	"denova/internal/agents/session"
 	"denova/internal/book"
-	"denova/internal/observability"
 )
 
 // chatRun owns the mutable state of one turnExecutor.Run invocation. Keeping this
@@ -84,7 +83,7 @@ func newChatRun(
 	if emit == nil {
 		emit = func(Event) {}
 	}
-	logger := observability.Logger("agent-run")
+	logger := slog.Default().With("component", "agent-run")
 	policy := DefaultLoopPolicy()
 	if runtime != nil {
 		policy = runtime.policy.normalized()
@@ -97,7 +96,7 @@ func newChatRun(
 	options.SystemPromptLog.logForRun(options)
 	ledger, ledgerErr := newRunLedgerWithOptions(workspace, policy.RunLedger, options)
 	if ledgerErr != nil {
-		logger.Warn("run_ledger_unavailable", slog.String("error_class", safeErrorClass(ledgerErr.Error())))
+		logger.WarnContext(ctx, "run_ledger_unavailable", slog.String("error_class", safeErrorClass(ledgerErr.Error())))
 	}
 	rootSpan := StartRootTraceSpan(ledger, map[string]any{
 		"task_id":          options.TaskID,
@@ -158,7 +157,7 @@ func newChatRun(
 		}
 		recorder.Record(event)
 		if err := run.ledger.RecordEvent(event); err != nil {
-			run.logger.Warn("run_ledger_event_failed", slog.String("run_id", run.runID), slog.String("event_type", event.Type), slog.String("error_class", safeErrorClass(err.Error())))
+			run.logger.WarnContext(run.ctx, "run_ledger_event_failed", slog.String("run_id", run.runID), slog.String("event_type", event.Type), slog.String("error_class", safeErrorClass(err.Error())))
 		}
 		emit(event)
 	}
@@ -169,14 +168,14 @@ func (r *chatRun) execute() (outcome RunOutcome) {
 	if r.ledger != nil {
 		defer func() {
 			if err := r.ledger.Close(); err != nil {
-				r.logger.Warn("run_ledger_close_failed", slog.String("run_id", r.runID), slog.String("error_class", safeErrorClass(err.Error())))
+				r.logger.WarnContext(r.ctx, "run_ledger_close_failed", slog.String("run_id", r.runID), slog.String("error_class", safeErrorClass(err.Error())))
 			}
 		}()
 	}
 	defer func() {
 		if recovered := recover(); recovered != nil {
 			panicErr := fmt.Errorf("agent run panic: %v", recovered)
-			r.logger.Error("panic_recovered", slog.String("error_class", "panic"))
+			r.logger.ErrorContext(r.ctx, "panic_recovered", slog.String("error_class", "panic"))
 			markInterruptionIfNeeded(r.conversation, r.resumeInterruption, r.originalMessage, "", fmt.Sprint(recovered))
 			r.finish("panic", fmt.Sprint(recovered), 0)
 			r.emit(Event{Type: "error", Data: map[string]string{"message": "Agent 异常中断"}})
@@ -225,7 +224,7 @@ func (r *chatRun) recordStarted() {
 		"plan_mode":        r.req.PlanMode,
 		"writing_skill":    r.req.WritingSkill,
 	}); err != nil {
-		r.logger.Warn("run_ledger_start_failed", slog.String("run_id", r.runID), slog.String("error_class", safeErrorClass(err.Error())))
+		r.logger.WarnContext(r.ctx, "run_ledger_start_failed", slog.String("run_id", r.runID), slog.String("error_class", safeErrorClass(err.Error())))
 	}
 }
 
@@ -243,7 +242,7 @@ func (r *chatRun) prepareContext() ([]*agent.Message, string, RunOutcome, bool) 
 			r.emit(Event{Type: "aborted", Data: map[string]string{"reason": err.Error()}})
 			return nil, "", r.outcomeFor(RunOutcomeAborted, err, err.Error()), true
 		}
-		r.logger.Error("prepare_messages_failed", slog.String("error_class", safeErrorClass(err.Error())))
+		r.logger.ErrorContext(r.ctx, "prepare_messages_failed", slog.String("error_class", safeErrorClass(err.Error())))
 		r.finish("error", err.Error(), 0)
 		r.emit(Event{Type: "error", Data: map[string]string{"message": err.Error()}})
 		return nil, "", r.outcomeFor(RunOutcomeFailed, err, err.Error()), true
@@ -251,7 +250,7 @@ func (r *chatRun) prepareContext() ([]*agent.Message, string, RunOutcome, bool) 
 	r.originalMessage = turn.OriginalMessage
 	r.resumeInterruption = turn.ResumeInterruption
 	if err := CommitModelInput(r.traceCtx, r.conversation, r.originalMessage, turn.ModelContext); err != nil {
-		r.logger.Error("commit_model_input_failed", slog.String("error_class", safeErrorClass(err.Error())))
+		r.logger.ErrorContext(r.ctx, "commit_model_input_failed", slog.String("error_class", safeErrorClass(err.Error())))
 		r.finish("error", err.Error(), 0)
 		r.emit(Event{Type: "error", Data: map[string]string{"message": err.Error()}})
 		return nil, "", r.outcomeFor(RunOutcomeFailed, err, err.Error()), true
@@ -265,7 +264,7 @@ func (r *chatRun) prepareContext() ([]*agent.Message, string, RunOutcome, bool) 
 	r.emitExplicitSkillLoads(turn.ExplicitSkills)
 	if r.options.OnUserMessageCommitted != nil {
 		if err := r.options.OnUserMessageCommitted(r.traceCtx); err != nil {
-			r.logger.Error("commit_user_message_side_effect_failed", slog.String("error_class", safeErrorClass(err.Error())))
+			r.logger.ErrorContext(r.ctx, "commit_user_message_side_effect_failed", slog.String("error_class", safeErrorClass(err.Error())))
 			r.finish("error", err.Error(), 0)
 			r.emit(Event{Type: "error", Data: map[string]string{"message": err.Error()}})
 			return nil, "", r.outcomeFor(RunOutcomeFailed, err, err.Error()), true
@@ -278,7 +277,7 @@ func (r *chatRun) prepareContext() ([]*agent.Message, string, RunOutcome, bool) 
 	}
 	contextLedgerParts := contextLedgerPartsForConversation(contextLog, r.conversation, history)
 	if err := r.ledger.RecordContext(contextLedgerParts); err != nil {
-		r.logger.Warn("run_ledger_context_failed", slog.String("run_id", r.runID), slog.String("error_class", safeErrorClass(err.Error())))
+		r.logger.WarnContext(r.ctx, "run_ledger_context_failed", slog.String("run_id", r.runID), slog.String("error_class", safeErrorClass(err.Error())))
 	}
 	RecordCompletedTraceSpan(r.traceCtx, "context_build", contextBuildStarted, "success", map[string]any{
 		"history_messages":    len(history),
@@ -288,7 +287,7 @@ func (r *chatRun) prepareContext() ([]*agent.Message, string, RunOutcome, bool) 
 		"plan_mode":           r.req.PlanMode,
 		"writing_skill":       r.req.WritingSkill,
 	})
-	r.logger.Info(
+	r.logger.InfoContext(r.ctx,
 		"context_composition",
 		slog.Int("history_messages", len(history)),
 		slog.Int("original_bytes", len(r.originalMessage)),
@@ -302,10 +301,10 @@ func (r *chatRun) prepareContext() ([]*agent.Message, string, RunOutcome, bool) 
 		slog.String("writing_skill", r.req.WritingSkill),
 		slog.Bool("resumed", r.resumeInterruption != nil),
 	)
-	r.logger.Info("context_sources", slog.Int("count", len(contextLedgerParts)))
+	r.logger.InfoContext(r.ctx, "context_sources", slog.Int("count", len(contextLedgerParts)))
 	if reporter, ok := r.conversation.(ContextSourceReporter); ok {
 		if sources := strings.TrimSpace(reporter.ContextSourceSummary()); sources != "" {
-			r.logger.Info("conversation_context_sources", slog.Bool("available", true), slog.Int("summary_bytes", len(sources)))
+			r.logger.InfoContext(r.ctx, "conversation_context_sources", slog.Bool("available", true), slog.Int("summary_bytes", len(sources)))
 		}
 	}
 	return history, agentMessage, RunOutcome{}, false
@@ -329,7 +328,7 @@ func (r *chatRun) finish(status, reason string, generatedBytes int) {
 	traceMetadata := runTraceMetadataForConversation(r.options, r.conversation)
 	if !traceMetadata.empty() {
 		if err := r.ledger.Record("run_context", traceMetadata.record()); err != nil {
-			r.logger.Warn("run_ledger_context_metadata_failed", slog.String("run_id", r.runID), slog.String("error_class", safeErrorClass(err.Error())))
+			r.logger.WarnContext(r.ctx, "run_ledger_context_metadata_failed", slog.String("run_id", r.runID), slog.String("error_class", safeErrorClass(err.Error())))
 		}
 	}
 	if r.rootSpan != nil {
@@ -343,7 +342,7 @@ func (r *chatRun) finish(status, reason string, generatedBytes int) {
 		})
 	}
 	if err := r.ledger.RecordFinish(status, reason, generatedBytes); err != nil {
-		r.logger.Warn("run_ledger_finish_failed", slog.String("run_id", r.runID), slog.String("error_class", safeErrorClass(err.Error())))
+		r.logger.WarnContext(r.ctx, "run_ledger_finish_failed", slog.String("run_id", r.runID), slog.String("error_class", safeErrorClass(err.Error())))
 	}
 }
 

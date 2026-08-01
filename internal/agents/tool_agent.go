@@ -4,7 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"log"
+	"log/slog"
 	"strings"
 
 	agent "github.com/alfredxw/denova/agent"
@@ -39,7 +39,7 @@ func InferChapterSplitRegex(ctx context.Context, cfg *config.Config, sample stri
 	jsonModelCfg := chatModelConfigForAgent(cfg, config.AgentKindToolAgent)
 	jsonModelCfg = withJSONObjectOutput(jsonModelCfg)
 	instruction := buildChapterSplitRegexInstruction(sample)
-	log.Printf("[tool-agent] infer chapter split regex begin sample_chars=%d", len([]rune(sample)))
+	slog.InfoContext(ctx, fmt.Sprintf("[tool-agent] infer chapter split regex begin sample_chars=%d", len([]rune(sample))))
 	regex, err := generateChapterSplitRegex(traceCtx, cfg, jsonModelCfg, instruction, "json_mode")
 	if err == nil {
 		return regex, nil
@@ -48,7 +48,7 @@ func InferChapterSplitRegex(ctx context.Context, cfg *config.Config, sample stri
 		runErr = err
 		return "", err
 	}
-	log.Printf("[tool-agent] json_mode failed, retry without response_format err=%v", err)
+	slog.ErrorContext(ctx, fmt.Sprintf("[tool-agent] json_mode failed, retry without response_format err=%v", err))
 	plainModelCfg := chatModelConfigForAgent(cfg, config.AgentKindToolAgent)
 	regex, retryErr := generateChapterSplitRegex(traceCtx, cfg, plainModelCfg, instruction, "plain_text_retry")
 	if retryErr != nil {
@@ -59,10 +59,10 @@ func InferChapterSplitRegex(ctx context.Context, cfg *config.Config, sample stri
 }
 
 func generateChapterSplitRegex(ctx context.Context, cfg *config.Config, modelCfg providers.ModelConfig, instruction, attempt string) (string, error) {
-	log.Printf("[tool-agent] chapter regex model config attempt=%s provider=%q protocol=%q model=%q base_url=%q max_tokens=%d json_mode=%t", attempt, modelCfg.Provider, modelCfg.Protocol, modelCfg.Model, modelCfg.BaseURL, valueOrZero(modelCfg.MaxOutputTokens), modelCfg.OutputFormat != nil)
+	slog.InfoContext(ctx, fmt.Sprintf("[tool-agent] chapter regex model config attempt=%s provider=%q protocol=%q model=%q base_url=%q max_tokens=%d json_mode=%t", attempt, modelCfg.Provider, modelCfg.Protocol, modelCfg.Model, modelCfg.BaseURL, valueOrZero(modelCfg.MaxOutputTokens), modelCfg.OutputFormat != nil))
 	cm, err := newChatModel(ctx, modelCfg)
 	if err != nil {
-		log.Printf("[tool-agent] create chapter regex model failed attempt=%s err=%v", attempt, err)
+		slog.ErrorContext(ctx, fmt.Sprintf("[tool-agent] create chapter regex model failed attempt=%s err=%v", attempt, err))
 		return "", fmt.Errorf("创建工具 Agent 模型失败: %w", err)
 	}
 	composition, err := composeBuiltinSystemInstruction(cfg, config.AgentKindToolAgent, "tool_agent", cfg.Workspace, "builtin_base", "章节分割正则任务", "define the structured chapter-regex inference task", chapterSplitRegexSystemInstruction())
@@ -81,23 +81,23 @@ func generateChapterSplitRegex(ctx context.Context, cfg *config.Config, modelCfg
 	msg, err := cm.Generate(traceCtx, messages)
 	if err != nil {
 		finishLLMCallTrace(span, callID, config.AgentKindToolAgent, "tool_agent_chapter_split_regex", mode, modelCfg.Model, 0, nil, err, nil)
-		log.Printf("[tool-agent] infer chapter split regex generate failed attempt=%s err=%v", attempt, err)
+		slog.ErrorContext(ctx, fmt.Sprintf("[tool-agent] infer chapter split regex generate failed attempt=%s err=%v", attempt, err))
 		return "", fmt.Errorf("工具 Agent 推断章节正则失败: %w", err)
 	}
 	if msg == nil {
 		finishLLMCallTrace(span, callID, config.AgentKindToolAgent, "tool_agent_chapter_split_regex", mode, modelCfg.Model, 0, nil, fmt.Errorf("工具 Agent 返回为空"), nil)
-		log.Printf("[tool-agent] infer chapter split regex nil response attempt=%s", attempt)
+		slog.InfoContext(ctx, fmt.Sprintf("[tool-agent] infer chapter split regex nil response attempt=%s", attempt))
 		return "", fmt.Errorf("工具 Agent 返回为空")
 	}
 	finishLLMCallTrace(span, callID, config.AgentKindToolAgent, "tool_agent_chapter_split_regex", mode, modelCfg.Model, 0, msg, nil, nil)
-	log.Printf("[tool-agent] infer chapter split regex raw output attempt=%s content=%s reasoning=%s", attempt, promptPartSummary(msg.Content), promptPartSummary(msg.ReasoningContent))
+	slog.InfoContext(ctx, fmt.Sprintf("[tool-agent] infer chapter split regex raw output attempt=%s content=%s reasoning=%s", attempt, promptPartSummary(msg.Content), promptPartSummary(msg.ReasoningContent)))
 	regex, reason, err := parseChapterSplitRegexContent(msg.Content)
 	if err != nil && strings.TrimSpace(msg.Content) == "" && strings.TrimSpace(msg.ReasoningContent) != "" {
-		log.Printf("[tool-agent] content empty, try parse reasoning content attempt=%s", attempt)
+		slog.InfoContext(ctx, fmt.Sprintf("[tool-agent] content empty, try parse reasoning content attempt=%s", attempt))
 		regex, reason, err = parseChapterSplitRegexContent(msg.ReasoningContent)
 	}
 	if err != nil {
-		log.Printf("[tool-agent] parse chapter regex failed attempt=%s err=%v content=%s content_raw=%q reasoning=%s reasoning_raw=%q extracted_raw=%q",
+		slog.ErrorContext(ctx, fmt.Sprintf("[tool-agent] parse chapter regex failed attempt=%s err=%v content=%s content_raw=%q reasoning=%s reasoning_raw=%q extracted_raw=%q",
 			attempt,
 			err,
 			promptPartSummary(msg.Content),
@@ -105,10 +105,10 @@ func generateChapterSplitRegex(ctx context.Context, cfg *config.Config, modelCfg
 			promptPartSummary(msg.ReasoningContent),
 			safeLogPreview(msg.ReasoningContent, chapterSplitRegexFailureLogBytes),
 			safeLogPreview(extractJSONContent(msg.Content), chapterSplitRegexFailureLogBytes),
-		)
+		))
 		return "", fmt.Errorf("解析工具 Agent 输出失败: %w", err)
 	}
-	log.Printf("[tool-agent] infer chapter split regex done attempt=%s regex=%q reason=%s", attempt, regex, promptPartSummary(reason))
+	slog.InfoContext(ctx, fmt.Sprintf("[tool-agent] infer chapter split regex done attempt=%s regex=%q reason=%s", attempt, regex, promptPartSummary(reason)))
 	return regex, nil
 }
 

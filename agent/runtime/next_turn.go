@@ -3,7 +3,7 @@ package runtime
 import (
 	"context"
 	"fmt"
-	"log"
+	"log/slog"
 	"strings"
 )
 
@@ -68,13 +68,13 @@ func (h *Harness) startPlannedNextTurn(state *harnessState, plan nextTurnPlan) e
 		if _, fatal := terminalJournalAppendError(err); fatal {
 			panic(fmt.Sprintf("operation %s failed to persist NextTurn input materialization: %v", state.activeOperation, err))
 		}
-		log.Printf(
+		slog.InfoContext(context.Background(), fmt.Sprintf(
 			"runtime: binding=%+v command=%s operation=%s accepted NextTurn input remains pending: %v",
 			h.binding,
 			plan.item.CommandID,
 			plan.item.OperationID,
 			err,
-		)
+		))
 		return err
 	}
 	return nil

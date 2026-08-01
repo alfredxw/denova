@@ -4,7 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"log"
+	"log/slog"
 	"strings"
 
 	runstate "github.com/alfredxw/denova/agent/runtime"
@@ -137,7 +137,7 @@ func (r *RecoveryObservation) Wait(ctx context.Context, emit func(Event)) RunOut
 		if abortErr != nil && !errors.Is(abortErr, runstate.ErrInvalidCommand) &&
 			!errors.Is(abortErr, runstate.ErrStaleOperation) &&
 			!errors.Is(abortErr, runstate.ErrDomainCommitRejected) {
-			log.Printf("[agent-recovery] abort after display cancellation failed operation_id=%s err=%v", status.ActiveOperation, abortErr)
+			slog.ErrorContext(ctx, fmt.Sprintf("[agent-recovery] abort after display cancellation failed operation_id=%s err=%v", status.ActiveOperation, abortErr))
 		}
 	}
 	for {

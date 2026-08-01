@@ -3,8 +3,9 @@ package handlers
 import (
 	"context"
 	"errors"
+	"fmt"
 	"io"
-	"log"
+	"log/slog"
 	"os"
 	"strings"
 
@@ -83,7 +84,7 @@ func (h *Handlers) HandleWorkspaceImportCharacterCard(ctx context.Context, c *ap
 			return h.app.ClassifyLoreItems(ctx, inputs)
 		},
 	}
-	log.Printf("[api] 导入酒馆角色卡 filename=%q size=%d workspace=%q target_mode=%q lore_classification=%q", filename, len(data), h.app.Workspace(), targetMode, classificationMode)
+	slog.InfoContext(ctx, fmt.Sprintf("[api] 导入酒馆角色卡 filename=%q size=%d workspace=%q target_mode=%q lore_classification=%q", filename, len(data), h.app.Workspace(), targetMode, classificationMode))
 
 	var result book.CharacterCardImportResult
 	var err error
@@ -100,7 +101,7 @@ func (h *Handlers) HandleWorkspaceImportCharacterCard(ctx context.Context, c *ap
 		return
 	}
 	if err != nil {
-		log.Printf("[api] 导入酒馆角色卡失败 filename=%q target_mode=%q error=%v", filename, targetMode, err)
+		slog.ErrorContext(ctx, fmt.Sprintf("[api] 导入酒馆角色卡失败 filename=%q target_mode=%q error=%v", filename, targetMode, err))
 		status := consts.StatusBadRequest
 		if strings.Contains(err.Error(), "已存在") {
 			status = consts.StatusConflict
@@ -109,7 +110,7 @@ func (h *Handlers) HandleWorkspaceImportCharacterCard(ctx context.Context, c *ap
 		return
 	}
 	result.Message = messageKey(c, "api.characterCard.imported", "name", result.Name)
-	log.Printf("[api] 导入酒馆角色卡完成 name=%q target=%q entries=%d items=%d", result.Name, result.TargetPath, result.EntryCount, result.ItemCount)
+	slog.InfoContext(ctx, fmt.Sprintf("[api] 导入酒馆角色卡完成 name=%q target=%q entries=%d items=%d", result.Name, result.TargetPath, result.EntryCount, result.ItemCount))
 	writeJSON(c, consts.StatusOK, result)
 }
 
@@ -134,10 +135,10 @@ func (h *Handlers) importCharacterCardToNewBook(ctx context.Context, filename st
 	}
 	cleanup := func() {
 		if _, removeErr := h.app.RemoveBook(workspace); removeErr != nil {
-			log.Printf("[api] 清理导入失败的新书记录失败 workspace=%q err=%v", workspace, removeErr)
+			slog.ErrorContext(ctx, fmt.Sprintf("[api] 清理导入失败的新书记录失败 workspace=%q err=%v", workspace, removeErr))
 		}
 		if removeErr := os.RemoveAll(workspace); removeErr != nil {
-			log.Printf("[api] 清理导入失败的新书目录失败 workspace=%q err=%v", workspace, removeErr)
+			slog.ErrorContext(ctx, fmt.Sprintf("[api] 清理导入失败的新书目录失败 workspace=%q err=%v", workspace, removeErr))
 		}
 	}
 	result, err := h.app.BookService().ImportTavernCharacterCard(filename, data, options)

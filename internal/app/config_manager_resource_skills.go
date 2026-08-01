@@ -3,7 +3,7 @@ package app
 import (
 	"context"
 	"fmt"
-	"log"
+	"log/slog"
 	"strings"
 	"unicode/utf8"
 
@@ -40,7 +40,7 @@ func loadConfigManagerResourceSkills(ctx context.Context, cfg *config.Config, re
 			if ctx.Err() != nil {
 				return nil, ctx.Err()
 			}
-			log.Printf("[config-manager] resource skill unavailable name=%s err=%v", name, err)
+			slog.WarnContext(ctx, fmt.Sprintf("[config-manager] resource skill unavailable name=%s err=%v", name, err))
 			continue
 		}
 		content := strings.TrimSpace(skill.Content)
@@ -72,7 +72,7 @@ func loadConfigManagerResourceSkills(ctx context.Context, cfg *config.Config, re
 		for _, skill := range loaded {
 			loadedNames = append(loadedNames, skill.Name)
 		}
-		log.Printf("[config-manager] loaded resource skills origin=%s names=%s", req.Origin, strings.Join(loadedNames, ","))
+		slog.InfoContext(ctx, fmt.Sprintf("[config-manager] loaded resource skills origin=%s names=%s", req.Origin, strings.Join(loadedNames, ",")))
 	}
 	return loaded, nil
 }

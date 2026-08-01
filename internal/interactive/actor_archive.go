@@ -1,8 +1,9 @@
 package interactive
 
 import (
+	"context"
 	"fmt"
-	"log"
+	"log/slog"
 	"sort"
 	"strings"
 )
@@ -261,7 +262,7 @@ func ActorStateRuntimeProjection(system StoryDirectorActorStateSystem, state map
 	system = normalizeActorStateSystem(system)
 	projected := cloneActorStateRoot(state)
 	if err := applyMissingInitialActors(projected, system, "运行时 Actor 投影"); err != nil {
-		log.Printf("[interactive-state] project initial Actors into runtime projection failed err=%v location=internal/interactive/actor_archive.go", err)
+		slog.ErrorContext(context.Background(), fmt.Sprintf("[interactive-state] project initial Actors into runtime projection failed err=%v location=internal/interactive/actor_archive.go", err))
 	}
 	rawActors, _ := projected[actorStateRoot].(map[string]any)
 	actorIDs := make([]string, 0, len(rawActors))

@@ -4,7 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"log"
+	"log/slog"
 	"strings"
 	"sync"
 
@@ -55,9 +55,9 @@ func (s *InteractiveAppService) SelectInteractiveStory(storyID string) error {
 	if store == nil {
 		return ErrNoWorkspace
 	}
-	log.Printf("[interactive-story] persist current story selection story_id=%s", storyID)
+	slog.InfoContext(context.Background(), fmt.Sprintf("[interactive-story] persist current story selection story_id=%s", storyID))
 	if err := store.SelectStory(storyID); err != nil {
-		log.Printf("[interactive-story] persist current story selection failed story_id=%s err=%v", storyID, err)
+		slog.ErrorContext(context.Background(), fmt.Sprintf("[interactive-story] persist current story selection failed story_id=%s err=%v", storyID, err))
 		return err
 	}
 	return nil
@@ -148,7 +148,7 @@ func (s *InteractiveAppService) withStoryDirectorDefaults(req interactive.Create
 	req.StoryDirectorID = directorID
 	director, err := interactive.NewStoryDirectorLibrary(cfg.DataDir()).Get(directorID)
 	if err != nil {
-		log.Printf("[interactive-director] load story director failed story_director_id=%s err=%v", directorID, err)
+		slog.ErrorContext(context.Background(), fmt.Sprintf("[interactive-director] load story director failed story_director_id=%s err=%v", directorID, err))
 		return req, nil
 	}
 	if req.ModuleRefs != nil {
@@ -490,7 +490,7 @@ func (s *InteractiveAppService) RebuildInteractiveDirectorPlan(storyID string, r
 				seed.BranchPlanningTurns = director.Strategy.BranchPlanningTurns
 			}
 		} else {
-			log.Printf("[interactive-director] load story context for rebuild failed story_id=%s branch_id=%s err=%v", storyID, req.BranchID, contextErr)
+			slog.ErrorContext(context.Background(), fmt.Sprintf("[interactive-director] load story context for rebuild failed story_id=%s branch_id=%s err=%v", storyID, req.BranchID, contextErr))
 		}
 	}
 	a := s.app
@@ -540,7 +540,7 @@ func (s *InteractiveAppService) RunInteractiveDirectorPlan(storyID string, req i
 	); err == nil {
 		applyLayeredSettingsToConfig(&runtimeCfg, layered)
 	} else {
-		log.Printf("[interactive-director-agent] load settings for manual run failed workspace=%s err=%v", workspace, err)
+		slog.ErrorContext(context.Background(), fmt.Sprintf("[interactive-director-agent] load settings for manual run failed workspace=%s err=%v", workspace, err))
 	}
 	storyCtx, err := store.StoryContext(storyID, req.BranchID)
 	if err != nil {
@@ -575,7 +575,7 @@ func (s *InteractiveAppService) RunInteractiveDirectorPlan(storyID string, req i
 		_ = store.MarkDirectorPlanRunFailed(storyID, storyCtx.Snapshot.BranchID, turn.ID, ErrWorkspaceTransition)
 		return interactive.DirectorPlanStatus{}, ErrWorkspaceTransition
 	}
-	log.Printf("[interactive-director-agent] manual run scheduled story_id=%s branch_id=%s turn_id=%s source=%s", storyID, storyCtx.Snapshot.BranchID, turn.ID, firstNonEmptyApp(req.Source, "manual_retry"))
+	slog.InfoContext(context.Background(), fmt.Sprintf("[interactive-director-agent] manual run scheduled story_id=%s branch_id=%s turn_id=%s source=%s", storyID, storyCtx.Snapshot.BranchID, turn.ID, firstNonEmptyApp(req.Source, "manual_retry")))
 	conversation := newInteractiveConversation(store, novaDir, workspace, storyID, storyCtx.Snapshot.BranchID, turn.User, storyCtx.Meta.ReplyTargetChars, &runtimeCfg).bindDirectorRuntime(directorTasks, directorGenerator, chatService)
 	startInteractiveDirectorTask(&runtimeCfg, state, conversation, turn, sessionStore, token)
 	return store.DirectorPlanStatus(storyID, storyCtx.Snapshot.BranchID)
@@ -617,7 +617,7 @@ func (s *InteractiveAppService) interactiveRuntimeConfig() (*interactive.Store, 
 	); err == nil {
 		applyLayeredSettingsToConfig(&runtimeCfg, layered)
 	} else {
-		log.Printf("[interactive-agent] load layered settings failed workspace=%s err=%v", workspace, err)
+		slog.ErrorContext(context.Background(), fmt.Sprintf("[interactive-agent] load layered settings failed workspace=%s err=%v", workspace, err))
 	}
 	return store, runtimeCfg, workspace, nil
 }

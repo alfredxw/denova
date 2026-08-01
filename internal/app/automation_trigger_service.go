@@ -4,7 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"log"
+	"log/slog"
 	"strings"
 	"time"
 
@@ -52,7 +52,7 @@ func (s *AutomationAppService) CheckTriggersAfterWorkspaceMutation(ctx context.C
 	}
 	snap, operation, err := s.acquireTargetRuntime(context.Background(), automation.ExecutionTarget{Kind: automation.TargetKindWorkspace, Workspace: workspace})
 	if err != nil {
-		log.Printf("[automation-trigger] mutation check admission failed source=%s workspace=%q err=%v", source, workspace, err)
+		slog.ErrorContext(ctx, fmt.Sprintf("[automation-trigger] mutation check admission failed source=%s workspace=%q err=%v", source, workspace, err))
 		return
 	}
 	defer operation.Release()
@@ -69,7 +69,7 @@ func (s *AutomationAppService) checkTriggersAfterWorkspaceMutation(ctx context.C
 		return
 	}
 	if s.app == nil || s.app.automationTriggers == nil || !s.app.automationTriggers.Enqueue(s, snap, source, targets) {
-		log.Printf("[automation-trigger] mutation check skipped because app lifecycle is closed source=%s workspace=%q targets=%q", source, snap.workspace, targets)
+		slog.WarnContext(ctx, fmt.Sprintf("[automation-trigger] mutation check skipped because app lifecycle is closed source=%s workspace=%q targets=%q", source, snap.workspace, targets))
 	}
 }
 
@@ -190,7 +190,7 @@ func (s *AutomationAppService) processTriggersMatching(ctx context.Context, snap
 				runs = append(runs, run)
 			}
 			if err != nil {
-				log.Printf("[automation-trigger] durable processing failed source=%s task_id=%s trigger_id=%s type=%s processed=%t err=%v", source, task.ID, trigger.ID, trigger.Type, processed, err)
+				slog.ErrorContext(ctx, fmt.Sprintf("[automation-trigger] durable processing failed source=%s task_id=%s trigger_id=%s type=%s processed=%t err=%v", source, task.ID, trigger.ID, trigger.Type, processed, err))
 				if errors.Is(err, errDurableTriggerActionRetry) {
 					continue
 				}

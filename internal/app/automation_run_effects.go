@@ -4,7 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"log"
+	"log/slog"
 	"strings"
 
 	agents "denova/internal/agents"
@@ -131,11 +131,11 @@ func (s *AutomationAppService) completeAutomationRunEffects(
 			targets,
 			func(processErr error) {
 				if processErr != nil {
-					log.Printf("[automation] mutation effect remains pending task_id=%s run_id=%s operation_id=%s err=%v", task.ID, run.ID, effectOperationID, processErr)
+					slog.InfoContext(ctx, fmt.Sprintf("[automation] mutation effect remains pending task_id=%s run_id=%s operation_id=%s err=%v", task.ID, run.ID, effectOperationID, processErr))
 					return
 				}
 				if ackErr := s.acknowledgeAutomationRunEffects(snap, run.ID, effectOperationID); ackErr != nil {
-					log.Printf("[automation] persist mutation effect receipt failed task_id=%s run_id=%s operation_id=%s err=%v", task.ID, run.ID, effectOperationID, ackErr)
+					slog.ErrorContext(ctx, fmt.Sprintf("[automation] persist mutation effect receipt failed task_id=%s run_id=%s operation_id=%s err=%v", task.ID, run.ID, effectOperationID, ackErr))
 				}
 			},
 		)

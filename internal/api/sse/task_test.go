@@ -2,16 +2,18 @@ package sse
 
 import (
 	"bytes"
+	"context"
 	"strings"
 	"testing"
 
 	agents "denova/internal/agents"
 	novaApp "denova/internal/app"
+	"denova/internal/observability"
 )
 
 func TestSSEWriteHandlerKeepsChapterBodyByDefault(t *testing.T) {
 	var buf bytes.Buffer
-	writeSSE := newSSEWriteHandler(&buf)
+	writeSSE := newSSEWriteHandler(context.Background(), &buf)
 	writeChapterBodySSEEvents(t, writeSSE)
 
 	got := buf.String()
@@ -28,7 +30,7 @@ func TestSSEWriteHandlerKeepsChapterBodyByDefault(t *testing.T) {
 
 func TestSSEWriteHandlerAppliesMiddlewareChainBeforeWriteWhenEnabled(t *testing.T) {
 	var buf bytes.Buffer
-	writeSSE := newSSEWriteHandler(&buf, WithHideChapterBodyLiveOutput(true))
+	writeSSE := newSSEWriteHandler(context.Background(), &buf, WithHideChapterBodyLiveOutput(true))
 	writeChapterBodySSEEvents(t, writeSSE)
 
 	got := buf.String()
@@ -51,7 +53,7 @@ func TestSSEWriteHandlerAppliesMiddlewareChainBeforeWriteWhenEnabled(t *testing.
 
 func TestUIWriteHandlerUsesFullReplayProtocolWithoutMisleadingEventCursor(t *testing.T) {
 	var buf bytes.Buffer
-	handler := newUIWriteHandler(&buf)
+	handler := newUIWriteHandler(context.Background(), &buf)
 	if err := handler.Handle(novaApp.TaskEvent{Cursor: 9, Event: agents.Event{
 		Type: "chunk", Data: map[string]any{"content": "继续"},
 	}}); err != nil {
@@ -71,7 +73,7 @@ func TestTaskCheckpointCommitsCursorOnlyAfterCompleteLegacyReplay(t *testing.T) 
 		},
 	}
 	var buf bytes.Buffer
-	committed, err := writeTaskCheckpoint(&buf, checkpoint, newSSEWriteHandler(&buf))
+	committed, err := writeTaskCheckpoint(&buf, checkpoint, newSSEWriteHandler(context.Background(), &buf))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -100,7 +102,7 @@ func TestIncompleteTaskCheckpointRequiresRehydrateWithoutCursorCommitOrReplay(t 
 		},
 	}
 	var buf bytes.Buffer
-	committed, err := writeTaskCheckpoint(&buf, checkpoint, newSSEWriteHandler(&buf))
+	committed, err := writeTaskCheckpoint(&buf, checkpoint, newSSEWriteHandler(context.Background(), &buf))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -122,7 +124,7 @@ func TestIncompleteTaskCheckpointRequiresRehydrateWithoutCursorCommitOrReplay(t 
 func TestWritingUICheckpointUsesCompleteProjectionOrExplicitRehydrateError(t *testing.T) {
 	t.Run("complete", func(t *testing.T) {
 		var buf bytes.Buffer
-		committed, err := writeUITaskCheckpoint(newUIWriteHandler(&buf), novaApp.TaskDisplayCheckpoint{
+		committed, err := writeUITaskCheckpoint(newUIWriteHandler(context.Background(), &buf), novaApp.TaskDisplayCheckpoint{
 			Version: 1, Cursor: 7, Complete: true,
 			Events: []agents.Event{
 				{Type: "thinking", Data: map[string]any{"content": "完整思考"}},
@@ -140,7 +142,7 @@ func TestWritingUICheckpointUsesCompleteProjectionOrExplicitRehydrateError(t *te
 
 	t.Run("incomplete", func(t *testing.T) {
 		var buf bytes.Buffer
-		committed, err := writeUITaskCheckpoint(newUIWriteHandler(&buf), novaApp.TaskDisplayCheckpoint{
+		committed, err := writeUITaskCheckpoint(newUIWriteHandler(context.Background(), &buf), novaApp.TaskDisplayCheckpoint{
 			Version: 1, TaskID: "writing-task-8", Cursor: 8, Complete: false,
 			Events: []agents.Event{{Type: "thinking", Data: map[string]any{"content": "partial-thinking"}}},
 		})
@@ -158,6 +160,26 @@ func TestWritingUICheckpointUsesCompleteProjectionOrExplicitRehydrateError(t *te
 			t.Fatalf("Writing UI treated incomplete output as a replay: %q", got)
 		}
 	})
+}
+
+func TestSSEErrorIncludesRequestID(t *testing.T) {
+	ctx := observability.WithRequestID(context.Background(), "0198-sse-request")
+	var buf bytes.Buffer
+	writeSSE := newSSEWriteHandler(ctx, &buf)
+	if err := writeSSE(novaApp.TaskEvent{Cursor: 12, Event: agents.Event{
+		Type: "error",
+		Data: map[string]any{"message": "生成失败"},
+	}}); err != nil {
+		t.Fatal(err)
+	}
+
+	got := buf.String()
+	if !strings.Contains(got, `"request_id":"0198-sse-request"`) {
+		t.Fatalf("SSE error omitted request_id: %q", got)
+	}
+	if !strings.Contains(got, "生成失败 · 日志 ID / Log ID: 0198-sse-request") {
+		t.Fatalf("SSE error omitted user-visible Log ID: %q", got)
+	}
 }
 
 func TestCheckpointRehydratePayloadUsesIndependentPersistenceBarrier(t *testing.T) {

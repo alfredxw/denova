@@ -1,7 +1,8 @@
 package api
 
 import (
-	"fmt"
+	"context"
+	"log/slog"
 	"net"
 
 	hertzserver "github.com/cloudwego/hertz/pkg/app/server"
@@ -32,6 +33,7 @@ func NewServerWithListener(application *app.App, port string, listener net.Liste
 }
 
 func newServer(application *app.App, port string, listener net.Listener) *Server {
+	configureHertzLogging()
 	remoteAccess := application.RemoteAccessConfig()
 	host := config.HTTPListenHost(remoteAccess.AllowLANAccess)
 	s := &Server{
@@ -48,6 +50,7 @@ func newServer(application *app.App, port string, listener net.Listener) *Server
 		options = append(options, hertzserver.WithListener(listener))
 	}
 	h := hertzserver.Default(options...)
+	h.Use(requestObservabilityMiddleware)
 	h.Use(corsMiddleware)
 	h.Use(remoteAccessMiddleware(application))
 	s.registerRoutes(h)
@@ -57,6 +60,6 @@ func newServer(application *app.App, port string, listener net.Listener) *Server
 
 // Run 启动 HTTP 服务。
 func (s *Server) Run() {
-	fmt.Printf("Denova HTTP 服务启动: http://%s:%s\n", s.host, s.port)
+	slog.InfoContext(context.Background(), "http_server_started", "host", s.host, "port", s.port)
 	s.engine.Spin()
 }

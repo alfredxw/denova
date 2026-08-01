@@ -1,7 +1,9 @@
 package agents
 
 import (
-	"log"
+	"context"
+	"fmt"
+	"log/slog"
 	"strings"
 
 	"denova/internal/agents/session"
@@ -13,7 +15,7 @@ func markInterruptionIfNeeded(conversation Conversation, resumed *session.Interr
 		return
 	}
 	if err := conversation.MarkInterrupted(userMessage, assistantContent, reason); err != nil {
-		log.Printf("[agent-run] mark interruption failed err=%v", err)
+		slog.ErrorContext(context.Background(), fmt.Sprintf("[agent-run] mark interruption failed err=%v", err))
 	}
 }
 

@@ -4,7 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"log"
+	"log/slog"
 	"sort"
 	"strings"
 	"time"
@@ -439,7 +439,7 @@ func (s *Service) commitChangeLocked(ctx context.Context, change *ChangeSet, bef
 	if err := s.invalidateRedoExcept(metadata.Origin); err != nil {
 		// Redo capability also validates the live head, so a ledger failure here
 		// cannot make a stale replay overwrite this committed file.
-		log.Printf("[workspace-change] committed change but failed to persist redo invalidation path=%q change_set=%q err=%v", change.Path, change.ID, err)
+		slog.ErrorContext(ctx, fmt.Sprintf("[workspace-change] committed change but failed to persist redo invalidation path=%q change_set=%q err=%v", change.Path, change.ID, err))
 	}
 	return nil
 }

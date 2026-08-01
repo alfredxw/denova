@@ -11,7 +11,7 @@ import (
 
 func TestStreamEncoderMapsAgentEventsToUIStream(t *testing.T) {
 	var out bytes.Buffer
-	encoder := NewStreamEncoder(&out)
+	encoder := NewStreamEncoder(&out, "0198-stream-request")
 
 	events := []agents.Event{
 		{Type: "thinking", Data: map[string]any{
@@ -103,12 +103,13 @@ func TestStreamEncoderMapsAgentEventsToUIStream(t *testing.T) {
 	assertChunk(t, chunks, DataTypeRuleRoll, "id", "roll-1")
 	assertChunk(t, chunks, DataTypeAsk, "id", "ask-1")
 	assertChunk(t, chunks, "tool-input-available", "toolCallId", "tool-1")
+	assertChunk(t, chunks, "error", "errorText", "失败 · 日志 ID / Log ID: 0198-stream-request")
 	assertStartMetadata(t, chunks[0])
 }
 
 func TestStreamEncoderUsesPersistedDisplaySegmentIDs(t *testing.T) {
 	var out bytes.Buffer
-	encoder := NewStreamEncoder(&out)
+	encoder := NewStreamEncoder(&out, "")
 	for _, event := range []agents.Event{
 		{Type: "chunk", Data: map[string]any{"content": "第一", "run_id": "run-order", "display_segment_id": "run-order-display-001-assistant", "display_phase": "candidate"}},
 		{Type: "chunk", Data: map[string]any{"content": "段", "run_id": "run-order", "display_segment_id": "run-order-display-001-assistant"}},
@@ -130,7 +131,7 @@ func TestStreamEncoderUsesPersistedDisplaySegmentIDs(t *testing.T) {
 
 func TestStreamEncoderPreservesFailedAndIncompleteToolStates(t *testing.T) {
 	var out bytes.Buffer
-	encoder := NewStreamEncoder(&out)
+	encoder := NewStreamEncoder(&out, "")
 
 	failedIDs := []string{"failed-tool-1", "failed-tool-2", "failed-tool-3"}
 	for index, status := range []string{"error", "blocked", "skipped"} {

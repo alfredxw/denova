@@ -2,7 +2,8 @@ package app
 
 import (
 	"context"
-	"log"
+	"fmt"
+	"log/slog"
 	"sort"
 	"strings"
 	"sync"
@@ -128,7 +129,7 @@ func (c *automationTriggerCoordinator) run(workspace string, request *automation
 	defer request.operation.Release()
 	defer func() {
 		if recovered := recover(); recovered != nil {
-			log.Printf("[automation-trigger] coordinator panic recovered workspace=%q err=%v", workspace, recovered)
+			slog.ErrorContext(context.Background(), fmt.Sprintf("[automation-trigger] coordinator panic recovered workspace=%q err=%v", workspace, recovered))
 		}
 		c.mu.Lock()
 		if c.entries[workspace] == request {
@@ -169,9 +170,9 @@ func (c *automationTriggerCoordinator) run(workspace string, request *automation
 			itemsCount, runsCount, err = len(items), len(runs), processErr
 		}
 		if err != nil {
-			log.Printf("[automation-trigger] mutation check failed source=%s workspace=%q targets=%q err=%v", source, workspace, targets, err)
+			slog.ErrorContext(context.Background(), fmt.Sprintf("[automation-trigger] mutation check failed source=%s workspace=%q targets=%q err=%v", source, workspace, targets, err))
 		} else if itemsCount > 0 || runsCount > 0 {
-			log.Printf("[automation-trigger] mutation check completed source=%s workspace=%q targets=%q inbox=%d runs=%d", source, workspace, targets, itemsCount, runsCount)
+			slog.InfoContext(context.Background(), fmt.Sprintf("[automation-trigger] mutation check completed source=%s workspace=%q targets=%q inbox=%d runs=%d", source, workspace, targets, itemsCount, runsCount))
 		}
 		for _, complete := range completions {
 			runAutomationTriggerCompletion(workspace, complete, err)
@@ -191,7 +192,7 @@ func runAutomationTriggerCompletion(workspace string, complete func(error), proc
 	}
 	defer func() {
 		if recovered := recover(); recovered != nil {
-			log.Printf("[automation-trigger] completion callback panic recovered workspace=%q err=%v", workspace, recovered)
+			slog.ErrorContext(context.Background(), fmt.Sprintf("[automation-trigger] completion callback panic recovered workspace=%q err=%v", workspace, recovered))
 		}
 	}()
 	complete(processErr)

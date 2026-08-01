@@ -2,7 +2,8 @@ package handlers
 
 import (
 	"context"
-	"log"
+	"fmt"
+	"log/slog"
 	"strconv"
 	"strings"
 	"time"
@@ -199,8 +200,8 @@ var scheduleRestart = restart.ScheduleCurrentProcess
 
 // handleRestart POST /api/restart — 重启 Nova 服务并重新加载配置。
 func (h *Handlers) HandleRestart(ctx context.Context, c *app.RequestContext) {
-	if err := scheduleRestart(restart.DefaultDelay); err != nil {
-		log.Printf("[restart] schedule failed err=%v", err)
+	if err := scheduleRestart(ctx, restart.DefaultDelay); err != nil {
+		slog.ErrorContext(ctx, fmt.Sprintf("[restart] schedule failed err=%v", err))
 		writeError(c, consts.StatusInternalServerError, err.Error())
 		return
 	}

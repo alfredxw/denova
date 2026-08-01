@@ -4,7 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"log"
+	"log/slog"
 
 	agent "github.com/alfredxw/denova/agent"
 
@@ -37,7 +37,7 @@ func newInteractiveDirectorPlanTools(ctx InteractiveContext) ([]agent.ToolDefini
 		}
 		if receipt.Finalized && ctx.RequestDirectorCompletion != nil {
 			requested := ctx.RequestDirectorCompletion(callCtx)
-			log.Printf("[interactive-director] finalized structured plan patch completion_requested=%t changed_documents=%v", requested, receipt.ChangedDocuments)
+			slog.InfoContext(callCtx, fmt.Sprintf("[interactive-director] finalized structured plan patch completion_requested=%t changed_documents=%v", requested, receipt.ChangedDocuments))
 		}
 		result := agent.TextToolResult(string(data))
 		result.Details = data

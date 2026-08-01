@@ -4,7 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"log"
+	"log/slog"
 
 	agents "denova/internal/agents"
 	"denova/internal/book"
@@ -47,7 +47,7 @@ func (s *ConfigManagerAppService) replayDurableStart(
 
 	a := s.app
 	var accepted *agents.AcceptedRun
-	task, err := NewDeferredRegisteredTask(func(task *Task) error {
+	task, err := NewDeferredRegisteredTaskWithContext(ctx, func(task *Task) error {
 		a.mu.Lock()
 		defer a.mu.Unlock()
 		if a.workspaceTransition {
@@ -91,7 +91,7 @@ func (s *ConfigManagerAppService) replayDurableStart(
 	if err := task.Start(func(ctx context.Context, task *Task, _ func(agents.Event)) {
 		defer a.unregisterWorkspaceTask(task)
 		outcome := accepted.Wait(ctx)
-		log.Printf("[config-manager] replay end id=%s command_id=%s status=%s", task.ID(), chatReq.CommandID, outcome.Status)
+		slog.InfoContext(ctx, fmt.Sprintf("[config-manager] replay end id=%s command_id=%s status=%s", task.ID(), chatReq.CommandID, outcome.Status))
 	}); err != nil {
 		startReservation.rollback()
 		task.Abort()

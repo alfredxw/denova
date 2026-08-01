@@ -3,7 +3,8 @@ package handlers
 import (
 	"context"
 	"errors"
-	"log"
+	"fmt"
+	"log/slog"
 	"strings"
 
 	"github.com/cloudwego/hertz/pkg/app"
@@ -39,8 +40,8 @@ func (h *Handlers) HandleChat(ctx context.Context, c *app.RequestContext) {
 		h.writeChatPreparationError(c, err)
 		return
 	}
-	log.Printf("[agent-ui-sse] attach new chat task_id=%s", task.ID())
-	sse.StreamTaskUI(c, task, h.chatSSEStreamOptions()...)
+	slog.InfoContext(ctx, fmt.Sprintf("[agent-ui-sse] attach new chat task_id=%s", task.ID()))
+	sse.StreamTaskUI(ctx, c, task, h.chatSSEStreamOptions()...)
 }
 
 // HandleChatContextAnalysis 模拟一次聊天请求，返回真实 SystemPrompt 和上下文组成，不启动 LLM。
@@ -160,8 +161,8 @@ func (h *Handlers) HandleChatStream(ctx context.Context, c *app.RequestContext) 
 		writeAgentRuntimeError(c, consts.StatusConflict, "agent_runtime.rehydrate_required", "旧的任务流已失效，请从 active projection 重新挂接 / The old task stream is stale; rehydrate from the active projection", map[string]any{"task_id": taskID})
 		return
 	}
-	log.Printf("[agent-ui-sse] attach active chat task_id=%s status=%s", task.ID(), task.Status())
-	sse.StreamTaskUI(c, task, h.chatSSEStreamOptions()...)
+	slog.InfoContext(ctx, fmt.Sprintf("[agent-ui-sse] attach active chat task_id=%s status=%s", task.ID(), task.Status()))
+	sse.StreamTaskUI(ctx, c, task, h.chatSSEStreamOptions()...)
 }
 
 // handleChatActive 查询当前是否有活跃任务。

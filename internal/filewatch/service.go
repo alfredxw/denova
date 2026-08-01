@@ -1,8 +1,9 @@
 package filewatch
 
 import (
+	"context"
 	"fmt"
-	"log"
+	"log/slog"
 	"path/filepath"
 	"sync"
 )
@@ -59,7 +60,7 @@ func (s *Service) SetWorkspace(workspace string) error {
 
 	if previous != nil {
 		if err := previous.Close(); err != nil {
-			log.Printf("[filewatch] close previous workspace watcher failed workspace=%q err=%v", canonical, err)
+			slog.ErrorContext(context.Background(), fmt.Sprintf("[filewatch] close previous workspace watcher failed workspace=%q err=%v", canonical, err))
 		}
 	}
 
@@ -140,7 +141,7 @@ func (s *Service) Close() {
 	s.mu.Unlock()
 	if watcher != nil {
 		if err := watcher.Close(); err != nil {
-			log.Printf("[filewatch] close workspace watcher failed workspace=%q err=%v", s.workspace, err)
+			slog.ErrorContext(context.Background(), fmt.Sprintf("[filewatch] close workspace watcher failed workspace=%q err=%v", s.workspace, err))
 		}
 	}
 }
@@ -148,7 +149,7 @@ func (s *Service) Close() {
 func (s *Service) forwardSafely(generation uint64, workspace string, watcher *workspaceWatcher) {
 	defer func() {
 		if recovered := recover(); recovered != nil {
-			log.Printf("[filewatch] event forwarding panic recovered workspace=%q err=%v", workspace, recovered)
+			slog.ErrorContext(context.Background(), fmt.Sprintf("[filewatch] event forwarding panic recovered workspace=%q err=%v", workspace, recovered))
 			s.publish(generation, Event{Workspace: workspace, Source: eventSource, Resync: true})
 		}
 	}()

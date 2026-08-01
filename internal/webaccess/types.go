@@ -6,7 +6,7 @@ package webaccess
 import (
 	"context"
 	"fmt"
-	"log"
+	"log/slog"
 	"net/http"
 	"strings"
 	"time"
@@ -250,7 +250,7 @@ func newClient(config Config, deps dependencies) (*Client, error) {
 	if primary == nil && strings.TrimSpace(config.SearXNGBaseURL) != "" {
 		provider, err := newSearXNGProvider(config.SearXNGBaseURL, searchClient)
 		if err != nil {
-			log.Printf("[webaccess] ignoring invalid SearXNG endpoint: %v", err)
+			slog.WarnContext(context.Background(), fmt.Sprintf("[webaccess] ignoring invalid SearXNG endpoint: %v", err))
 			configurationWarnings = append(configurationWarnings, fmt.Errorf(
 				"SearXNG configuration is invalid and was not used / SearXNG 配置无效且未被使用: %w",
 				err,

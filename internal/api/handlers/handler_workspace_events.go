@@ -5,7 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
-	"log"
+	"log/slog"
 	"time"
 
 	"github.com/cloudwego/hertz/pkg/app"
@@ -17,7 +17,7 @@ const workspaceEventHeartbeatInterval = 15 * time.Second
 
 // HandleWorkspaceFileEvents streams ephemeral filesystem invalidations. The
 // first event is always resync; reconnecting clients never depend on replay.
-func (h *Handlers) HandleWorkspaceFileEvents(_ context.Context, c *app.RequestContext) {
+func (h *Handlers) HandleWorkspaceFileEvents(ctx context.Context, c *app.RequestContext) {
 	events, unsubscribe := h.app.SubscribeWorkspaceFileChanges()
 	workspace := h.app.Workspace()
 	c.Response.Header.Set("Content-Type", "text/event-stream")
@@ -32,12 +32,12 @@ func (h *Handlers) HandleWorkspaceFileEvents(_ context.Context, c *app.RequestCo
 		defer func() {
 			heartbeat.Stop()
 			if recovered := recover(); recovered != nil {
-				log.Printf("[filewatch-sse] stream panic recovered workspace=%q err=%v", workspace, recovered)
+				slog.ErrorContext(ctx, fmt.Sprintf("[filewatch-sse] stream panic recovered workspace=%q err=%v", workspace, recovered))
 			}
 			unsubscribe()
 			_ = writer.Close()
 		}()
-		log.Printf("[filewatch-sse] stream connected workspace=%q", workspace)
+		slog.InfoContext(ctx, fmt.Sprintf("[filewatch-sse] stream connected workspace=%q", workspace))
 		for {
 			select {
 			case event, ok := <-events:
@@ -45,12 +45,12 @@ func (h *Handlers) HandleWorkspaceFileEvents(_ context.Context, c *app.RequestCo
 					return
 				}
 				if err := writeWorkspaceFileEvent(writer, event); err != nil {
-					log.Printf("[filewatch-sse] stream disconnected workspace=%q err=%v", event.Workspace, err)
+					slog.InfoContext(ctx, fmt.Sprintf("[filewatch-sse] stream disconnected workspace=%q err=%v", event.Workspace, err))
 					return
 				}
 			case <-heartbeat.C:
 				if _, err := io.WriteString(writer, ": heartbeat\n\n"); err != nil {
-					log.Printf("[filewatch-sse] stream disconnected workspace=%q phase=heartbeat err=%v", workspace, err)
+					slog.InfoContext(ctx, fmt.Sprintf("[filewatch-sse] stream disconnected workspace=%q phase=heartbeat err=%v", workspace, err))
 					return
 				}
 			}

@@ -5,6 +5,7 @@ import { toast } from 'sonner'
 export { parseSSEStream } from './sse'
 
 export const jsonHeaders = { 'Content-Type': 'application/json' }
+const REQUEST_ID_HEADER = 'X-Request-ID'
 const BACKEND_UNAVAILABLE_TOAST_ID = 'nova-backend-unavailable'
 const BACKEND_UNAVAILABLE_STATUS = new Set([502, 503, 504])
 const REMOTE_ACCESS_CREDENTIALS_KEY = 'nova.remoteAccess.credentials'
@@ -19,14 +20,16 @@ export class APIError extends Error {
   readonly status: number
   readonly code?: string
   readonly details?: Record<string, unknown>
+  readonly requestID?: string
   readonly payload: Record<string, unknown>
 
-  constructor(message: string, options: { status: number; code?: string; details?: Record<string, unknown>; payload?: Record<string, unknown> }) {
-    super(message)
+  constructor(message: string, options: { status: number; code?: string; details?: Record<string, unknown>; requestID?: string; payload?: Record<string, unknown> }) {
+    super(formatAPIErrorMessage(message, options.requestID))
     this.name = 'APIError'
     this.status = options.status
     this.code = options.code
     this.details = options.details
+    this.requestID = options.requestID
     this.payload = options.payload ?? {}
   }
 }
@@ -57,7 +60,7 @@ export async function requestJSON<T>(url: string, init?: RequestInit): Promise<T
     }
   }
   if (!res.ok) {
-    throw apiErrorFromPayload(res.status, data)
+    throw apiErrorFromPayload(res.status, data, res.headers.get(REQUEST_ID_HEADER))
   }
   return data as T
 }
@@ -73,28 +76,38 @@ export async function responseAPIError(res: Response): Promise<APIError> {
       payload = { error: text }
     }
   }
-  return apiErrorFromPayload(res.status, payload)
+  return apiErrorFromPayload(res.status, payload, res.headers.get(REQUEST_ID_HEADER))
 }
 
-function apiErrorFromPayload(status: number, payload: Record<string, unknown>): APIError {
+function apiErrorFromPayload(status: number, payload: Record<string, unknown>, responseRequestID?: string | null): APIError {
   const message = typeof payload.error === 'string' && payload.error ? payload.error : `HTTP ${status}`
   const code = typeof payload.code === 'string' && payload.code ? payload.code : undefined
   const details = payload.details && typeof payload.details === 'object' && !Array.isArray(payload.details)
     ? payload.details as Record<string, unknown>
     : undefined
-  return new APIError(message, { status, code, details, payload })
+  const payloadRequestID = typeof payload.request_id === 'string' ? payload.request_id.trim() : ''
+  const requestID = responseRequestID?.trim() || payloadRequestID || undefined
+  return new APIError(message, { status, code, details, requestID, payload })
+}
+
+function formatAPIErrorMessage(message: string, requestID?: string): string {
+  const normalized = requestID?.trim()
+  if (!normalized) return message
+  return `${message} · ${i18next.t('common.logId')}: ${normalized}`
 }
 
 export async function readErrorMessage(res: Response): Promise<string> {
   let message = `HTTP ${res.status}`
+  let requestID = res.headers.get(REQUEST_ID_HEADER)?.trim() || undefined
   notifyBackendUnavailableIfNeeded(res.url || '/api', res.status)
   try {
     const data = await res.json()
     message = data.error || message
+    requestID ||= (typeof data.request_id === 'string' && data.request_id.trim()) || undefined
   } catch {
     // keep HTTP fallback
   }
-  return message
+  return formatAPIErrorMessage(message, requestID)
 }
 
 export function parseUIMessageStream(body: ReadableStream<Uint8Array>): ReadableStream<UIMessageChunk> {

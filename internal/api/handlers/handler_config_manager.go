@@ -2,7 +2,8 @@ package handlers
 
 import (
 	"context"
-	"log"
+	"fmt"
+	"log/slog"
 	"strconv"
 	"strings"
 
@@ -41,7 +42,7 @@ func (h *Handlers) HandleConfigManagerStream(ctx context.Context, c *app.Request
 		h.writeChatPreparationError(c, err)
 		return
 	}
-	sse.StreamTaskUI(c, task)
+	sse.StreamTaskUI(ctx, c, task)
 }
 
 // HandleConfigManagerTaskStream reattaches only to the exact scoped display
@@ -60,8 +61,8 @@ func (h *Handlers) HandleConfigManagerTaskStream(ctx context.Context, c *app.Req
 		writeAgentRuntimeError(c, consts.StatusConflict, "agent_runtime.rehydrate_required", "旧的任务流已失效，请从 active projection 重新挂接 / The old task stream is stale; rehydrate from the active projection", map[string]any{"task_id": taskID})
 		return
 	}
-	log.Printf("[config-manager-sse] attach task_id=%s status=%s", taskID, task.Status())
-	sse.StreamTaskUI(c, task)
+	slog.InfoContext(ctx, fmt.Sprintf("[config-manager-sse] attach task_id=%s status=%s", taskID, task.Status()))
+	sse.StreamTaskUI(ctx, c, task)
 }
 
 func (h *Handlers) HandleConfigManagerActive(ctx context.Context, c *app.RequestContext) {

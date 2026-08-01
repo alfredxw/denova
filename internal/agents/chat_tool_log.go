@@ -1,8 +1,10 @@
 package agents
 
 import (
+	"context"
 	"encoding/json"
-	"log"
+	"fmt"
+	"log/slog"
 	"strings"
 	"unicode/utf8"
 
@@ -10,11 +12,11 @@ import (
 )
 
 func logToolCall(name, id string, argsBytes int, source string) {
-	log.Printf("[agent-tool] call source=%s name=%s id=%s args_bytes=%d", source, name, id, argsBytes)
+	slog.InfoContext(context.Background(), fmt.Sprintf("[agent-tool] call source=%s name=%s id=%s args_bytes=%d", source, name, id, argsBytes))
 }
 
 func logToolPath(name, id, path string) {
-	log.Printf("[agent-tool] target_path name=%s id=%s path=%s", name, id, path)
+	slog.InfoContext(context.Background(), fmt.Sprintf("[agent-tool] target_path name=%s id=%s path=%s", name, id, path))
 }
 
 func logToolResult(name, id, content string) {
@@ -22,10 +24,10 @@ func logToolResult(name, id, content string) {
 		// Tool bodies may contain credentials, private file contents, or user
 		// text. Failure logs retain classification and size only; recoverable
 		// diagnostics belong in the bounded result/artifact path, not process logs.
-		log.Printf("[agent-tool] result suspected_failure=true name=%s id=%s bytes=%d", name, id, len(content))
+		slog.ErrorContext(context.Background(), fmt.Sprintf("[agent-tool] result suspected_failure=true name=%s id=%s bytes=%d", name, id, len(content)))
 		return
 	}
-	log.Printf("[agent-tool] result name=%s id=%s bytes=%d", name, id, len(content))
+	slog.InfoContext(context.Background(), fmt.Sprintf("[agent-tool] result name=%s id=%s bytes=%d", name, id, len(content)))
 }
 
 func toolPathFromArgs(args string) string {
