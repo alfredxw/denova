@@ -10,6 +10,7 @@ const defaultResizeObserver = globalThis.ResizeObserver
 describe('AdaptiveSurface', () => {
   beforeEach(() => {
     setMobileViewport(false)
+    window.localStorage.clear()
   })
 
   afterEach(() => {
@@ -99,6 +100,16 @@ describe('AdaptiveSurface', () => {
     expect(rightPanel).toHaveAttribute('inert')
     expect(screen.queryByRole('separator', { name: 'Resize Agent' })).not.toBeInTheDocument()
     expect(screen.getByText('Agent chat')).toBeInTheDocument()
+  })
+
+  it('restores a persisted right-panel size after mounting the pane hidden', async () => {
+    window.localStorage.setItem('test-restored-right-layout', JSON.stringify({ main: 63, right: 37 }))
+    const user = userEvent.setup()
+    const { container } = render(<PersistedToggleResizablePane />)
+
+    await user.click(screen.getByRole('button', { name: 'Open restored pane' }))
+
+    expect(container.querySelector('#right')).toHaveStyle({ flexGrow: '37' })
   })
 
   it('keeps the main slot height-constrained on desktop', () => {
@@ -350,6 +361,28 @@ function ToggleResizablePane() {
       rightResize={{ layoutKey: 'test-toggle-layout', label: 'Resize Agent' }}
     >
       <button type="button" onClick={() => setOpen((current) => !current)}>{open ? 'Close Agent' : 'Open Agent'}</button>
+    </AdaptiveSurface>
+  )
+}
+
+function PersistedToggleResizablePane() {
+  const [open, setOpen] = useState(false)
+  return (
+    <AdaptiveSurface
+      rightResize={{
+        layoutKey: 'test-restored-right-layout',
+        label: 'Resize restored pane',
+        defaultSize: '66%',
+      }}
+      right={{
+        id: 'restored-pane',
+        title: 'Restored pane',
+        side: 'right',
+        content: <div>Restored pane content</div>,
+        desktopVisible: open,
+      }}
+    >
+      <button type="button" onClick={() => setOpen(true)}>Open restored pane</button>
     </AdaptiveSurface>
   )
 }

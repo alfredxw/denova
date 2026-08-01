@@ -81,15 +81,46 @@ describe('CollapsibleResizablePanel', () => {
       expect(panelHarness.resize).toHaveBeenCalledWith('224px')
     })
   })
+
+  it('restores a persisted percentage when the panel starts hidden', async () => {
+    const { rerender } = render(panel(false, { initialExpandSize: '37%', restorationKey: 'project-a' }))
+    await waitFor(() => expect(panelHarness.collapse).toHaveBeenCalledTimes(1))
+
+    rerender(panel(true, { initialExpandSize: '37%', restorationKey: 'project-a' }))
+
+    await waitFor(() => {
+      expect(panelHarness.expand).toHaveBeenCalledTimes(1)
+      expect(panelHarness.resize).toHaveBeenCalledWith('37%')
+    })
+  })
+
+  it('applies the target layout when the restoration context changes while visible', async () => {
+    const { rerender } = render(panel(true, { initialExpandSize: '50%', restorationKey: 'project-a' }))
+    panelHarness.resize.mockClear()
+
+    rerender(panel(true, { initialExpandSize: '42%', restorationKey: 'project-b' }))
+
+    await waitFor(() => expect(panelHarness.resize).toHaveBeenCalledWith('42%'))
+  })
 })
 
-function panel(visible: boolean) {
+function panel(
+  visible: boolean,
+  {
+    initialExpandSize = '224px',
+    restorationKey = 'test-sidebar-layout',
+  }: {
+    initialExpandSize?: string
+    restorationKey?: string
+  } = {},
+) {
   return (
     <CollapsibleResizablePanel
       id="sidebar"
       visible={visible}
       side="left"
-      initialExpandSize="224px"
+      initialExpandSize={initialExpandSize}
+      restorationKey={restorationKey}
       defaultSize="224px"
       minSize="180px"
     >

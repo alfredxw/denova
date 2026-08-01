@@ -88,10 +88,10 @@ export function AgentChatWorkspaceSurface({
       rightResize={{
         layoutKey: secondaryPane.layoutKey,
         label: t('agentChat.tabs.resizeSplit'),
-        defaultSize: '50%',
+        defaultSize: '66%',
         minSize: '280px',
-        maxSize: '65%',
-        mainMinSize: '280px',
+        maxSize: '75%',
+        mainMinSize: '360px',
       }}
       right={{
         id: 'agent-chat-secondary',

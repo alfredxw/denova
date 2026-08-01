@@ -1,6 +1,10 @@
 import { act, renderHook } from '@testing-library/react'
 import { beforeEach, describe, expect, it } from 'vitest'
-import { readPersistedPanelLayout, usePersistedPanelLayout } from './use-persisted-panel-layout'
+import {
+  readPersistedPanelLayout,
+  resolvePanelInitialSize,
+  usePersistedPanelLayout,
+} from './use-persisted-panel-layout'
 
 const STORAGE_KEY = 'test:persisted-panel-layout'
 
@@ -65,5 +69,16 @@ describe('readPersistedPanelLayout', () => {
     window.localStorage.setItem(STORAGE_KEY, JSON.stringify({ sidebar: 30, main: 50 }))
 
     expect(readPersistedPanelLayout(STORAGE_KEY, ['sidebar', 'main'])).toBeUndefined()
+  })
+})
+
+describe('resolvePanelInitialSize', () => {
+  it('turns a persisted panel percentage into an explicit first-open size', () => {
+    expect(resolvePanelInitialSize({ main: 63, right: 37 }, 'right', '66%')).toBe('37%')
+  })
+
+  it('falls back when the layout has no useful expanded size', () => {
+    expect(resolvePanelInitialSize(undefined, 'right', '66%')).toBe('66%')
+    expect(resolvePanelInitialSize({ main: 100, right: 0 }, 'right', '66%')).toBe('66%')
   })
 })

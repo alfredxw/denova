@@ -6,7 +6,7 @@ import { useIsMobile } from '@/hooks/useIsMobile'
 import { MobilePaneHost, type MobilePane, type MobilePaneControls } from './mobile-pane-host'
 import { CollapsiblePanelSeparator, CollapsibleResizablePanel, InlineCollapsiblePane } from './panel-motion'
 import { createStablePortalHost, StablePortalSlot } from './stable-portal-slot'
-import { usePersistedPanelLayout } from './use-persisted-panel-layout'
+import { resolvePanelInitialSize, usePersistedPanelLayout } from './use-persisted-panel-layout'
 
 export interface AdaptiveSurfacePane {
   id: string
@@ -202,7 +202,12 @@ export function AdaptiveSurface({
           id="right"
           visible={desktopRightVisible}
           side="right"
-          initialExpandSize={rightPanelLayout.defaultLayout ? undefined : rightResize.defaultSize ?? '420px'}
+          initialExpandSize={resolvePanelInitialSize(
+            rightPanelLayout.defaultLayout,
+            'right',
+            rightResize.defaultSize ?? '420px',
+          )}
+          restorationKey={rightResize.layoutKey}
           defaultSize={rightResize.defaultSize ?? '420px'}
           minSize={rightResize.minSize ?? '300px'}
           maxSize={rightResize.maxSize ?? '65%'}
@@ -240,7 +245,12 @@ export function AdaptiveSurface({
               id="left"
               visible={desktopLeftVisible}
               side="left"
-              initialExpandSize={leftPanelLayout.defaultLayout ? undefined : leftResize.defaultSize ?? '288px'}
+              initialExpandSize={resolvePanelInitialSize(
+                leftPanelLayout.defaultLayout,
+                'left',
+                leftResize.defaultSize ?? '288px',
+              )}
+              restorationKey={leftResize.layoutKey}
               defaultSize={leftResize.defaultSize ?? '288px'}
               minSize={leftResize.minSize ?? '200px'}
               maxSize={leftResize.maxSize ?? '40%'}

@@ -15,8 +15,10 @@ interface CollapsibleResizablePanelProps extends Omit<PanelProps, 'children' | '
   visible: boolean
   side: PanelSide
   children: ReactNode
-  /** Explicit first-open size for panes mounted collapsed without a persisted layout. */
+  /** Explicit first-open or layout-context restore size for panes that may mount collapsed. */
   initialExpandSize?: number | string
+  /** Resets the cached visible size when this panel starts representing another layout context. */
+  restorationKey?: string
   /** Size used only for an explicit button-driven collapsed state. */
   collapsedSize?: string
   collapsedChildren?: ReactNode
@@ -33,6 +35,7 @@ export function CollapsibleResizablePanel({
   side,
   children,
   initialExpandSize,
+  restorationKey,
   collapsedSize = '0px',
   collapsedChildren,
   panelRef: externalPanelRef,
@@ -46,6 +49,7 @@ export function CollapsibleResizablePanel({
   const [programmaticCollapseEnabled, setProgrammaticCollapseEnabled] = useState(!visible)
   const hasBeenVisibleRef = useRef(visible)
   const lastVisibleSizeRef = useRef<number | null>(null)
+  const restorationKeyRef = useRef(restorationKey)
   const hasCollapsedContent = collapsedChildren !== null && collapsedChildren !== undefined
   const stableContentMinWidth = typeof panelProps.minSize === 'number' ? `${panelProps.minSize}px` : panelProps.minSize
   const handleResize = useCallback<NonNullable<PanelProps['onResize']>>((size, id, previousSize) => {
@@ -58,6 +62,21 @@ export function CollapsibleResizablePanel({
   useEffect(() => {
     const panel = panelRef.current
     if (!panel) return
+    const restorationContextChanged = restorationKeyRef.current !== restorationKey
+    if (restorationContextChanged) {
+      restorationKeyRef.current = restorationKey
+      hasBeenVisibleRef.current = false
+      lastVisibleSizeRef.current = null
+
+      // A visible panel can switch between independently persisted layout contexts without
+      // collapsing first. Apply the new context explicitly; the Group's in-memory cache is keyed
+      // only by panel ids and would otherwise retain the previous context's width.
+      if (visible && !programmaticCollapseEnabled) {
+        if (initialExpandSize !== null && initialExpandSize !== undefined) panel.resize(initialExpandSize)
+        hasBeenVisibleRef.current = true
+        return
+      }
+    }
     if (visible) {
       if (!programmaticCollapseEnabled) {
         hasBeenVisibleRef.current = true
@@ -69,8 +88,8 @@ export function CollapsibleResizablePanel({
       panel.expand()
       // Changing the library's collapsible constraint re-registers the panel and can discard its
       // internal expanded-size cache. Keep our own pixel snapshot so mode switches restore the
-      // exact visible width. A pane mounted hidden has no such snapshot, so its owner may provide
-      // the configured default while persisted layouts continue to rely on expand().
+      // exact visible width. A pane mounted hidden has no such snapshot, so its owner provides
+      // either the persisted percentage or the configured default as an explicit target.
       const restoreSize = firstOpen ? initialExpandSize : lastVisibleSizeRef.current
       if (restoreSize !== null && restoreSize !== undefined) panel.resize(restoreSize)
       hasBeenVisibleRef.current = true
@@ -84,7 +103,7 @@ export function CollapsibleResizablePanel({
       }
       panel.collapse()
     }
-  }, [initialExpandSize, panelRef, programmaticCollapseEnabled, visible])
+  }, [initialExpandSize, panelRef, programmaticCollapseEnabled, restorationKey, visible])
 
   return (
     <Panel

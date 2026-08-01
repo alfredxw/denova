@@ -125,6 +125,24 @@ export function readPersistedPanelLayout(storageKey?: string, panelIds?: readonl
   }
 }
 
+/**
+ * Converts a persisted percentage into an explicit imperative resize target.
+ *
+ * A panel that mounts collapsed cannot rely on the panel library's internal expanded-size cache:
+ * constraint re-registration may discard that cache before the first visible layout. Supplying
+ * the persisted percentage explicitly keeps reloads and dynamic layout contexts deterministic.
+ */
+export function resolvePanelInitialSize(
+  layout: Layout | undefined,
+  panelId: string,
+  fallbackSize: number | string,
+): number | string {
+  const persistedSize = layout?.[panelId]
+  return typeof persistedSize === 'number' && Number.isFinite(persistedSize) && persistedSize > 0
+    ? `${persistedSize}%`
+    : fallbackSize
+}
+
 function normalizePanelLayout(value: unknown, panelIds?: readonly string[]): Layout | undefined {
   if (!value || typeof value !== 'object' || Array.isArray(value)) return undefined
   const candidate = value as Record<string, unknown>
