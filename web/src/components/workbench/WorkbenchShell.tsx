@@ -16,8 +16,9 @@ import { novaEase, novaSpring } from '@/features/motion/motion-tokens'
 import { MessageCenterButton } from '@/features/messages/MessageCenter'
 import type { AutomationMessageNavigation } from '@/features/messages/types'
 import { requestAutomationNavigation } from '@/features/automations/automation-navigation'
+import { setActivityMessageUnreadCount, useActivitySummary } from '@/features/activity/use-activity-summary'
 import { useIsMobile } from '@/hooks/useIsMobile'
-import { getActiveAutomationRuns, getAutomationInbox, type BookRecord, type ChapterSummary, type WorkspaceSummary } from '@/lib/api'
+import type { BookRecord, ChapterSummary, WorkspaceSummary } from '@/lib/api'
 import { isSharedWorkspaceMode, useWorkspaceStore, type RightPanel, type WorkspaceMode } from '@/stores/workspace-store'
 import type { InteractiveSubmode } from '@/features/interactive/types'
 import { formatNumber } from './workbench-utils'
@@ -93,7 +94,6 @@ const ACTIVITY_BAR_LEGACY_DEFAULT_WIDTH = 152
 const ACTIVITY_BAR_DEFAULT_WIDTH = 180
 const ACTIVITY_BAR_MAX_WIDTH = 280
 const ACTIVITY_BAR_WIDTH_KEYBOARD_STEP = 8
-const AUTOMATION_ACTIVITY_REFRESH_INTERVAL_MS = 30000
 const PRIMARY_NAVIGATION_TRANSITION = { type: 'tween', duration: 0.12, ease: novaEase } as const
 
 function NovaBrandIcon() {
@@ -144,8 +144,10 @@ export function WorkbenchShell({
   const setCommandOpen = useWorkspaceStore((state) => state.setCommandOpen)
   const [activityOrders, setActivityOrders] = useState<Record<ActivityOrderScope, ActivityItemId[]>>(readStoredActivityOrders)
   const [activityBarWidth, setActivityBarWidth] = useState(readStoredActivityBarWidth)
-  const [automationInboxUnread, setAutomationInboxUnread] = useState(0)
-  const [automationRunning, setAutomationRunning] = useState(0)
+  const activitySummary = useActivitySummary().data
+  const messageUnread = activitySummary?.message_unread_count ?? 0
+  const automationInboxUnread = activitySummary?.automation_inbox_unread_count ?? 0
+  const automationRunning = activitySummary?.automation_running_count ?? 0
   const [optimisticNavigationId, setOptimisticNavigationId] = useState<PrimaryNavigationId | null>(null)
   const navigationFrameRef = useRef<number | null>(null)
   const [mainContentHost] = useState(() => {
@@ -185,49 +187,6 @@ export function WorkbenchShell({
   useEffect(() => {
     cleanupLegacyActivityOrderStorage()
     setActivityOrders(readStoredActivityOrders())
-  }, [])
-
-  useEffect(() => {
-    let cancelled = false
-    let timer: number | null = null
-    let running = false
-    const clearTimer = () => {
-      if (timer === null) return
-      window.clearTimeout(timer)
-      timer = null
-    }
-    const scheduleNext = () => {
-      clearTimer()
-      if (cancelled || document.visibilityState !== 'visible') return
-      timer = window.setTimeout(() => {
-        timer = null
-        void loadAutomationActivity()
-      }, AUTOMATION_ACTIVITY_REFRESH_INTERVAL_MS)
-    }
-    async function loadAutomationActivity() {
-      if (cancelled || running || document.visibilityState !== 'visible') return
-      running = true
-      try {
-        const [inboxResult, runsResult] = await Promise.allSettled([getAutomationInbox(), getActiveAutomationRuns()])
-        if (cancelled) return
-        setAutomationInboxUnread(inboxResult.status === 'fulfilled' ? inboxResult.value.filter((item) => item.status === 'pending' && !item.read_at).length : 0)
-        setAutomationRunning(runsResult.status === 'fulfilled' ? runsResult.value.length : 0)
-      } finally {
-        running = false
-        scheduleNext()
-      }
-    }
-    const handleVisibilityChange = () => {
-      clearTimer()
-      if (document.visibilityState === 'visible') void loadAutomationActivity()
-    }
-    void loadAutomationActivity()
-    document.addEventListener('visibilitychange', handleVisibilityChange)
-    return () => {
-      cancelled = true
-      clearTimer()
-      document.removeEventListener('visibilitychange', handleVisibilityChange)
-    }
   }, [])
 
   const loreVisible = rightPanel === 'lore'
@@ -557,7 +516,7 @@ export function WorkbenchShell({
         />
       </div>
       <div className="nova-ui-compact flex items-center justify-end gap-2 text-[var(--nova-text-faint)]">
-        <MessageCenterButton className="!size-7 !min-w-7" onOpenAutomation={openAutomationNotification} />
+        <MessageCenterButton className="!size-7 !min-w-7" unreadCount={messageUnread} onUnreadCountChange={setActivityMessageUnreadCount} onOpenAutomation={openAutomationNotification} />
         <span>{modeLabel}</span>
       </div>
     </header>
@@ -685,7 +644,7 @@ export function WorkbenchShell({
             />
           </div>
           <div className="flex shrink-0 items-center gap-1.5">
-            <MessageCenterButton className="!size-8 !min-w-8" onOpenAutomation={openAutomationNotification} />
+            <MessageCenterButton className="!size-8 !min-w-8" unreadCount={messageUnread} onUnreadCountChange={setActivityMessageUnreadCount} onOpenAutomation={openAutomationNotification} />
             <button
               type="button"
               onClick={() => setCommandOpen(true)}

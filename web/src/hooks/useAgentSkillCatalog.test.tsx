@@ -1,14 +1,14 @@
 import { act, renderHook, waitFor } from '@testing-library/react'
 import { StrictMode, type ReactNode } from 'react'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
-import { fetchSettings } from '@/features/settings/api'
+import { fetchSettings, refreshSettings } from '@/features/settings/api'
 import type { LayeredSettings, ResolvedAgentToolCapability } from '@/features/settings/types'
 import { getSkills } from '@/lib/api'
 import { queryClient } from '@/lib/query-client'
 import { useSkillCommands } from './useSkillCommands'
 import { useWritingSkillOptions } from './useWritingSkillOptions'
 
-vi.mock('@/features/settings/api', () => ({ fetchSettings: vi.fn() }))
+vi.mock('@/features/settings/api', () => ({ fetchSettings: vi.fn(), refreshSettings: vi.fn() }))
 vi.mock('@/lib/api', () => ({ getSkills: vi.fn() }))
 
 describe('useAgentSkillCatalog', () => {
@@ -22,6 +22,7 @@ describe('useAgentSkillCatalog', () => {
       }],
     })
     vi.mocked(fetchSettings).mockReset().mockResolvedValue(settingsWithSkills())
+    vi.mocked(refreshSettings).mockReset().mockResolvedValue(settingsWithSkills())
   })
 
   it('shares one request and one invalidation lane across mounted conversation consumers', async () => {
@@ -50,7 +51,8 @@ describe('useAgentSkillCatalog', () => {
     expect(fetchSettings).toHaveBeenCalledOnce()
 
     act(() => window.dispatchEvent(new CustomEvent('nova:settings-updated')))
-    await waitFor(() => expect(fetchSettings).toHaveBeenCalledTimes(2))
+    await waitFor(() => expect(refreshSettings).toHaveBeenCalledOnce())
+    expect(fetchSettings).toHaveBeenCalledOnce()
     expect(getSkills).toHaveBeenCalledTimes(2)
   })
 })

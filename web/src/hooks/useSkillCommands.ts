@@ -9,13 +9,15 @@ type SkillAgentKey = Exclude<keyof AgentModelSettings, 'default'>
 interface UseSkillCommandsOptions {
   agentKey: SkillAgentKey
   workspace?: string
+  enabled?: boolean
 }
 
 export function useSkillCommands({
   agentKey,
   workspace,
+  enabled = true,
 }: UseSkillCommandsOptions): Array<Pick<SkillSummary, 'name' | 'description'>> {
-  const catalog = useAgentSkillCatalog(workspace).data
+  const catalog = useAgentSkillCatalog(workspace, enabled).data
   return useMemo(() => {
     if (!catalog || !agentSkillsEnabled(catalog.settings.resolved_agent_tool_manifests?.[agentKey])) return []
     return catalog.skills.skills

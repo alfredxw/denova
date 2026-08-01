@@ -23,6 +23,7 @@ vi.mock('@/features/settings/api', () => {
   const fetchSettings = vi.fn()
   return {
     fetchSettings,
+    refreshSettings: (...args: unknown[]) => fetchSettings(...args),
     createSettingsMergePatch: (_baseline: unknown, draft: unknown) => draft,
     patchSettings: (layer: string, changes: unknown, revision?: string) => layer === 'workspace'
       ? revision === undefined ? updateWorkspaceSettings(changes) : updateWorkspaceSettings(changes, revision)

@@ -11,21 +11,67 @@ type JSONMergePatch<T> = T extends readonly unknown[]
 export type SettingsPatch = JSONMergePatch<Settings>
 
 let settingsReadInFlight: Promise<LayeredSettings> | null = null
+let settingsRefreshBatch: Promise<LayeredSettings> | null = null
+let settingsReadCache: LayeredSettings | null = null
+let settingsReadGeneration = 0
 
-/** Merge concurrent startup consumers without caching across completed reads. */
+/** Shares the current settings snapshot across startup consumers. */
 export function fetchSettings(): Promise<LayeredSettings> {
+  if (settingsReadCache) return Promise.resolve(settingsReadCache)
   if (settingsReadInFlight) return settingsReadInFlight
-  settingsReadInFlight = requestJSON<LayeredSettings>('/api/settings')
-    .finally(() => { settingsReadInFlight = null })
-  return settingsReadInFlight
+  return startSettingsRead(settingsReadGeneration)
+}
+
+/** Invalidates once while sharing the read between synchronous listeners of one update event. */
+export function refreshSettings(): Promise<LayeredSettings> {
+  if (settingsRefreshBatch) return settingsRefreshBatch
+  settingsReadGeneration += 1
+  settingsReadCache = null
+  settingsReadInFlight = null
+  const generation = settingsReadGeneration
+  const promise = startSettingsRead(generation)
+  settingsRefreshBatch = promise
+  queueMicrotask(() => {
+    if (settingsRefreshBatch === promise) settingsRefreshBatch = null
+  })
+  return promise
+}
+
+export function invalidateSettingsCache() {
+  settingsReadGeneration += 1
+  settingsReadCache = null
+  settingsReadInFlight = null
+  settingsRefreshBatch = null
 }
 
 export async function patchSettings(layer: SettingsLayer, changes: SettingsPatch, baseRevision?: string): Promise<LayeredSettings> {
-  return requestJSON('/api/settings', {
+  const snapshot = await requestJSON<LayeredSettings>('/api/settings', {
     method: 'PATCH',
     headers: jsonHeaders,
     body: JSON.stringify({ layer, changes, ...(baseRevision ? { base_revision: baseRevision } : {}) }),
   })
+  primeSettingsCache(snapshot)
+  return snapshot
+}
+
+function startSettingsRead(generation: number): Promise<LayeredSettings> {
+  const promise = requestJSON<LayeredSettings>('/api/settings').then((snapshot) => {
+    if (generation === settingsReadGeneration) settingsReadCache = snapshot
+    return snapshot
+  })
+  settingsReadInFlight = promise
+  void promise.then(
+    () => { if (settingsReadInFlight === promise) settingsReadInFlight = null },
+    () => { if (settingsReadInFlight === promise) settingsReadInFlight = null },
+  )
+  return promise
+}
+
+function primeSettingsCache(snapshot: LayeredSettings) {
+  settingsReadGeneration += 1
+  settingsReadCache = snapshot
+  settingsReadInFlight = null
+  settingsRefreshBatch = null
 }
 
 /** Builds the minimal RFC 7386 object needed to transform baseline into draft. */

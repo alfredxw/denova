@@ -74,6 +74,8 @@ interface AgentPanelProps {
   agentKind?: 'writing' | 'general'
   /** Hidden AgentChat tabs remain mounted for parallel streams but ignore global UI intents. */
   active?: boolean
+  /** Enables capabilities backed by the foreground workspace runtime, such as Skills and review. */
+  workspaceContextActive?: boolean
   /**
    * Frame around the panel. `panel` is the docked IDE sidebar; `workbench` embeds the same
    * conversation as a full-width surface (AgentChat tab), where the host owns closing.
@@ -167,6 +169,7 @@ function AgentPanelComponent({
   workspace,
   agentKind = 'writing',
   active = true,
+  workspaceContextActive = true,
   chrome = 'panel',
   composerSettings: persistedSettings,
   currentChapter,
@@ -261,14 +264,15 @@ function AgentPanelComponent({
   const skillCommands = useSkillCommands({
     agentKey: generalAgent ? 'general' : 'ide',
     workspace,
+    enabled: workspaceContextActive,
   })
-  const writingSkillOptions = useWritingSkillOptions(workspace)
+  const writingSkillOptions = useWritingSkillOptions(workspace, workspaceContextActive)
   const writingSkill = useMemo(() => resolveWritingSkillSelection(configuredWritingSkill, writingSkillOptions), [configuredWritingSkill, writingSkillOptions])
   // Change review is still a Writing Project surface: its undo/version hooks
   // are bound to the explicitly active Book workspace. General Projects keep
   // their mutation journal centrally, but must not query or mutate another
   // foreground Book through that legacy endpoint.
-  const changeGroupsQuery = useWorkspaceChangeGroups(!generalAgent && activeSessionId && !sessionDraft ? workspace : '', { sessionID: activeSessionId })
+  const changeGroupsQuery = useWorkspaceChangeGroups(workspaceContextActive && !generalAgent && activeSessionId && !sessionDraft ? workspace : '', { sessionID: activeSessionId })
   const tokenUsageMessages = useMemo(() => selectAgentTokenUsageRecords(messages), [messages])
   const activeRunID = useMemo(() => {
     if (!isExecutionActive) return ''

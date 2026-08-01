@@ -3,7 +3,7 @@ import type { Dispatch, SetStateAction } from 'react'
 import { saveWithRevisionRecovery } from '@/lib/revision-conflict'
 import { rebaseJSONValue } from '@/lib/three-way-rebase'
 import { rebaseJSONWithRecovery } from '@/lib/autosave/rebase-with-recovery'
-import { createSettingsMergePatch, fetchSettings, patchSettings } from './api'
+import { createSettingsMergePatch, fetchSettings, patchSettings, refreshSettings } from './api'
 import type { LayeredSettings, Settings, SettingsLayer } from './types'
 import { settingsForLayer, settingsRevisionForLayer, useAutoSaveSettings } from './use-auto-save-settings'
 
@@ -122,11 +122,11 @@ export function useLayeredSettingsDraft({
     return true
   }, [notifyUpdated, sourcePrefix])
 
-  const reload = useCallback(async () => {
+  const reload = useCallback(async (fresh = false) => {
     const sequence = loadSequenceRef.current + 1
     loadSequenceRef.current = sequence
     try {
-      const next = await (loadSettings ?? fetchSettings)()
+      const next = await (loadSettings ?? (fresh ? refreshSettings : fetchSettings))()
       if (!mountedRef.current || sequence !== loadSequenceRef.current) return null
       const applied = await applySnapshot(next, { kind: 'load' })
       return applied ? next : null
@@ -153,7 +153,7 @@ export function useLayeredSettingsDraft({
     const onSettingsUpdated = (event: Event) => {
       const source = (event as CustomEvent<{ source?: string }>).detail?.source
       if (source === eventSource) return
-      void reload()
+      void reload(true)
     }
     window.addEventListener('nova:settings-updated', onSettingsUpdated)
     return () => window.removeEventListener('nova:settings-updated', onSettingsUpdated)
@@ -185,7 +185,7 @@ export function useLayeredSettingsDraft({
         ? customUpdater(nextDraft, revision)
         : patchSettings(targetLayer, createSettingsMergePatch(patchBaseline, nextDraft), revision),
       loadLatest: async () => {
-        const latest = await (loadSettings ?? fetchSettings)()
+        const latest = await (loadSettings ?? refreshSettings)()
         latestRevision = settingsRevisionForLayer(latest, targetLayer)
         return {
           value: settingsForLayer(latest, targetLayer),

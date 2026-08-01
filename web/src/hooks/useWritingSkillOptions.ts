@@ -17,8 +17,8 @@ export function resolveWritingSkillSelection(configured: string, options: Writin
   return options.find((option) => option.name === DEFAULT_WRITING_SKILL)?.name || options[0].name
 }
 
-export function useWritingSkillOptions(workspace?: string): WritingSkillOption[] {
-  const catalog = useAgentSkillCatalog(workspace).data
+export function useWritingSkillOptions(workspace?: string, enabled = true): WritingSkillOption[] {
+  const catalog = useAgentSkillCatalog(workspace, enabled).data
   return useMemo(
     () => writingSkillOptionsFromSnapshot(catalog?.skills.skills || [], catalog?.settings.effective?.agent_skills),
     [catalog],

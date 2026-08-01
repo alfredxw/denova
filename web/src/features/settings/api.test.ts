@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
-import { createSettingsMergePatch, fetchSettings, patchSettings } from './api'
+import { createSettingsMergePatch, fetchSettings, invalidateSettingsCache, patchSettings, refreshSettings } from './api'
 import type { LayeredSettings } from './types'
 
 const apiClientMocks = vi.hoisted(() => ({ requestJSON: vi.fn() }))
@@ -13,9 +13,12 @@ vi.mock('@/lib/api-client', () => ({
 }))
 
 describe('settings API request coalescing', () => {
-  beforeEach(() => apiClientMocks.requestJSON.mockReset())
+  beforeEach(() => {
+    invalidateSettingsCache()
+    apiClientMocks.requestJSON.mockReset()
+  })
 
-  it('shares concurrent reads but refreshes after the request settles', async () => {
+  it('shares concurrent and completed reads until the snapshot is refreshed', async () => {
     const firstSnapshot = { effective: { language: 'zh-CN' } } as LayeredSettings
     apiClientMocks.requestJSON.mockResolvedValueOnce(firstSnapshot)
 
@@ -26,9 +29,34 @@ describe('settings API request coalescing', () => {
     expect(apiClientMocks.requestJSON).toHaveBeenCalledTimes(1)
     await expect(Promise.all([first, concurrent])).resolves.toEqual([firstSnapshot, firstSnapshot])
 
+    await expect(fetchSettings()).resolves.toBe(firstSnapshot)
+    expect(apiClientMocks.requestJSON).toHaveBeenCalledTimes(1)
+
     const refreshed = { effective: { language: 'en-US' } } as LayeredSettings
     apiClientMocks.requestJSON.mockResolvedValueOnce(refreshed)
-    await expect(fetchSettings()).resolves.toBe(refreshed)
+    const refresh = refreshSettings()
+    expect(refreshSettings()).toBe(refresh)
+    await expect(refresh).resolves.toBe(refreshed)
+    expect(apiClientMocks.requestJSON).toHaveBeenCalledTimes(2)
+  })
+
+  it('starts a newer read when a later update arrives before the previous refresh finishes', async () => {
+    let resolveFirst!: (value: LayeredSettings) => void
+    const firstRefresh = new Promise<LayeredSettings>((resolve) => { resolveFirst = resolve })
+    const latestSnapshot = { effective: { language: 'en-US' } } as LayeredSettings
+    apiClientMocks.requestJSON
+      .mockReturnValueOnce(firstRefresh)
+      .mockResolvedValueOnce(latestSnapshot)
+
+    const staleRequest = refreshSettings()
+    await Promise.resolve()
+    const latestRequest = refreshSettings()
+
+    expect(latestRequest).not.toBe(staleRequest)
+    await expect(latestRequest).resolves.toBe(latestSnapshot)
+    resolveFirst({ effective: { language: 'zh-CN' } } as LayeredSettings)
+    await staleRequest
+    await expect(fetchSettings()).resolves.toBe(latestSnapshot)
     expect(apiClientMocks.requestJSON).toHaveBeenCalledTimes(2)
   })
 
@@ -42,6 +70,8 @@ describe('settings API request coalescing', () => {
       headers: {},
       body: JSON.stringify({ layer: 'user', changes: { theme: 'light' }, base_revision: 'user-r1' }),
     })
+    await expect(fetchSettings()).resolves.toBe(saved)
+    expect(apiClientMocks.requestJSON).toHaveBeenCalledTimes(1)
   })
 })
 

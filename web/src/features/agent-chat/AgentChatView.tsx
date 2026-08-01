@@ -190,12 +190,26 @@ export function AgentChatView({
     if (!projectsLoading) persistWorkbenchState(workbench)
   }, [projectsLoading, workbench])
   useEffect(() => {
+    if (projectsLoading) return
     setMountedTabKeys((current) => {
       let next: Set<string> | null = null
-      for (const [projectID, state] of Object.entries(workbench.projects)) {
-        for (const activeID of Object.values(state.activeTabIds)) {
-          if (!activeID) continue
-          const key = mountedTabKey(projectID, activeID)
+      const mount = (projectID: string, tabID: string) => {
+        const key = mountedTabKey(projectID, tabID)
+        if (current.has(key)) return
+        next ??= new Set(current)
+        next.add(key)
+      }
+      const activeState = workbench.projects[workbench.activeProjectId]
+      if (activeState?.activeTabIds.primary) mount(workbench.activeProjectId, activeState.activeTabIds.primary)
+      if (activeState?.secondaryVisible && activeState.activeTabIds.secondary) {
+        mount(workbench.activeProjectId, activeState.activeTabIds.secondary)
+      }
+      for (const project of projects) {
+        const runningSessionIDs = new Set(project.sessions.filter((session) => session.running).map((session) => session.id))
+        if (runningSessionIDs.size === 0) continue
+        for (const tab of workbench.projects[project.id]?.tabs ?? []) {
+          if (tab.kind !== 'agent' || !runningSessionIDs.has(tab.sessionId)) continue
+          const key = mountedTabKey(project.id, tab.id)
           if (current.has(key)) continue
           next ??= new Set(current)
           next.add(key)
@@ -203,7 +217,7 @@ export function AgentChatView({
       }
       return next ?? current
     })
-  }, [workbench])
+  }, [projects, projectsLoading, workbench.activeProjectId, workbench.projects])
   const refreshTerminalCommands = useCallback(async () => {
     try {
       const runtime = await getTerminalRuntimeStatus()
@@ -910,6 +924,7 @@ export function AgentChatView({
                   <AgentChatTabContent
                     tab={tab}
                     projectType={project.type}
+                    workspaceCurrent={project.current}
                     active={active}
                     running={projectRunning}
                     composerSettings={composerSettings}

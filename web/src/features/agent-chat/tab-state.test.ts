@@ -9,6 +9,7 @@ import {
   otherTabIds,
   persistWorkbenchState,
   readStoredWorkbenchState,
+  reconcileWorkbenchProjects,
   setTabPinned,
   setTabTitle,
   setTerminalTabTitle,
@@ -234,6 +235,45 @@ describe('agent-chat tab state', () => {
       tabs: [expect.objectContaining({ id: 'saved' })],
       activeTabIds: { primary: null, secondary: null },
     })
+  })
+
+  it('drops restored conversations that no longer exist while preserving local drafts and non-agent tabs', () => {
+    const reconciled = reconcileWorkbenchProjects({
+      activeProjectId: 'project-one',
+      projects: {
+        'project-one': {
+          tabs: [
+            agentTab('valid', 'session-valid'),
+            agentTab('stale', 'session-stale'),
+            { ...agentTab('draft', 'session-draft'), draft: true },
+            terminalTab('terminal'),
+          ],
+          activeTabIds: { primary: 'stale', secondary: null },
+          focusedGroup: 'primary',
+          secondaryVisible: false,
+        },
+      },
+    }, [{
+      id: 'project-one',
+      type: 'book',
+      path: '/books/one',
+      name: 'One',
+      status: 'available',
+      current: true,
+      total: 1,
+      sessions: [{
+        id: 'session-valid',
+        title: 'Valid',
+        created_at: '2026-08-01T00:00:00Z',
+        updated_at: '2026-08-01T00:00:00Z',
+        message_count: 1,
+        running: false,
+        active: true,
+      }],
+    }])
+
+    expect(reconciled.projects['project-one'].tabs.map((tab) => tab.id)).toEqual(['valid', 'draft', 'terminal'])
+    expect(reconciled.projects['project-one'].activeTabIds).toEqual({ primary: null, secondary: null })
   })
 
   it('generates unique tab ids carrying the tab kind', () => {

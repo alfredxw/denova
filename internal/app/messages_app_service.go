@@ -12,6 +12,21 @@ import (
 
 const maxAutomationNotificationMessages = 200
 
+// ActivitySummary is the lightweight header projection polled by the frontend.
+// It deliberately contains counts only; full message, inbox, and run records are
+// loaded on demand by their owning surfaces.
+type ActivitySummary struct {
+	MessageUnreadCount         int `json:"message_unread_count"`
+	AutomationInboxUnreadCount int `json:"automation_inbox_unread_count"`
+	AutomationRunningCount     int `json:"automation_running_count"`
+}
+
+type messageSourceSnapshot struct {
+	changelog       []messages.Message
+	dynamic         []messages.Message
+	automationInbox []automation.TriggerInboxItem
+}
+
 // MessagesAppService owns cross-source message merging. It composes changelog
 // messages (from messages.Service) with dynamic automation notices, then
 // applies the shared read state. Keeping the merge in the app layer means
@@ -28,6 +43,29 @@ func (a *App) Messages(locale string) (messages.ListResult, error) {
 	}
 	unread := applyMessageReadState(merged, state)
 	return messages.ListResult{Items: merged, UnreadCount: unread}, nil
+}
+
+// ActivitySummary derives all global badge counts from one source snapshot.
+func (a *App) ActivitySummary(locale string) (ActivitySummary, error) {
+	sources, err := a.loadMessageSources(locale)
+	if err != nil {
+		return ActivitySummary{}, err
+	}
+	merged := mergeMessages(sources.changelog, sources.dynamic)
+	state, err := messages.NewService(a.novaDir()).ReadState()
+	if err != nil {
+		return ActivitySummary{}, err
+	}
+	summary := ActivitySummary{
+		MessageUnreadCount:     applyMessageReadState(merged, state),
+		AutomationRunningCount: len(a.ActiveAutomationRuns()),
+	}
+	for _, item := range sources.automationInbox {
+		if item.Status == automation.InboxStatusPending && item.ReadAt == nil {
+			summary.AutomationInboxUnreadCount++
+		}
+	}
+	return summary, nil
 }
 
 func (a *App) MarkMessageRead(id, locale string) (messages.Message, error) {
@@ -92,16 +130,32 @@ func (a *App) MarkAllMessagesRead(locale string) (messages.ListResult, error) {
 
 // messageSources fetches both changelog and dynamic messages.
 func (a *App) messageSources(locale string) ([]messages.Message, []messages.Message, error) {
+	sources, err := a.loadMessageSources(locale)
+	if err != nil {
+		return nil, nil, err
+	}
+	return sources.changelog, sources.dynamic, nil
+}
+
+func (a *App) loadMessageSources(locale string) (messageSourceSnapshot, error) {
 	svc := messages.NewService(a.novaDir())
 	changelog, err := svc.ChangelogForLocale(locale)
 	if err != nil {
-		return nil, nil, err
+		return messageSourceSnapshot{}, err
 	}
-	dynamic, err := a.automationNotificationMessages(locale)
+	tasks, err := a.Automations()
 	if err != nil {
-		return nil, nil, err
+		return messageSourceSnapshot{}, fmt.Errorf("list automations for messages: %w", err)
 	}
-	return changelog, dynamic, nil
+	inbox, err := a.AutomationInbox()
+	if err != nil {
+		return messageSourceSnapshot{}, fmt.Errorf("list automation inbox for messages: %w", err)
+	}
+	return messageSourceSnapshot{
+		changelog:       changelog,
+		dynamic:         automationMessagesForLocale(tasks, inbox, locale),
+		automationInbox: inbox,
+	}, nil
 }
 
 // mergeMessages combines changelog and dynamic messages, deduplicates by id,
@@ -150,18 +204,6 @@ func applyMessageReadState(items []messages.Message, state map[string]time.Time)
 		unread++
 	}
 	return unread
-}
-
-func (a *App) automationNotificationMessages(locale string) ([]messages.Message, error) {
-	tasks, err := a.Automations()
-	if err != nil {
-		return nil, fmt.Errorf("list automations for messages: %w", err)
-	}
-	inbox, err := a.AutomationInbox()
-	if err != nil {
-		return nil, fmt.Errorf("list automation inbox for messages: %w", err)
-	}
-	return automationMessagesForLocale(tasks, inbox, locale), nil
 }
 
 func automationMessagesForLocale(tasks []automation.Task, inbox []automation.TriggerInboxItem, locale string) []messages.Message {

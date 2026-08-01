@@ -161,6 +161,7 @@ func (s *Server) registerRoutes(h *hertzserver.Hertz) {
 		api.GET("/agent-runs", apiHandlers.HandleAgentRunTraces)
 		api.GET("/agent-runs/:id/export", apiHandlers.HandleAgentRunTraceExport)
 		api.GET("/agent-runs/:id", apiHandlers.HandleAgentRunTrace)
+		api.GET("/activity/summary", apiHandlers.HandleActivitySummary)
 		api.GET("/messages", apiHandlers.HandleMessages)
 		api.POST("/messages/read-all", apiHandlers.HandleMessagesReadAll)
 		api.POST("/messages/:id/read", apiHandlers.HandleMessageRead)

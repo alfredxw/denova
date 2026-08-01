@@ -7,6 +7,7 @@ import (
 
 	hertzserver "github.com/cloudwego/hertz/pkg/app/server"
 	hertzconfig "github.com/cloudwego/hertz/pkg/common/config"
+	"github.com/hertz-contrib/gzip"
 
 	"denova/config"
 	"denova/internal/api/handlers"
@@ -53,6 +54,7 @@ func newServer(application *app.App, port string, listener net.Listener) *Server
 	h.Use(requestObservabilityMiddleware)
 	h.Use(corsMiddleware)
 	h.Use(remoteAccessMiddleware(application))
+	h.Use(gzip.Gzip(gzip.DefaultCompression))
 	s.registerRoutes(h)
 	s.engine = h
 	return s

@@ -1,14 +1,12 @@
 import { useEffect, useState, type ReactNode } from 'react'
 import { act, fireEvent, render, screen } from '@testing-library/react'
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { formatDateTime, setConfiguredLocale } from '@/i18n'
 import { WorkbenchShell } from './WorkbenchShell'
 
 const responsiveState = vi.hoisted(() => ({ mobile: false }))
-const automationActivityApi = vi.hoisted(() => ({
-  getAutomationInbox: vi.fn(),
-  getActiveAutomationRuns: vi.fn(),
-}))
+const useActivitySummaryMock = vi.hoisted(() => vi.fn())
+const messageCenterButtonMock = vi.hoisted(() => vi.fn())
 
 vi.mock('@/hooks/useIsMobile', () => ({
   useIsMobile: () => responsiveState.mobile,
@@ -57,12 +55,15 @@ vi.mock('@/components/layout/workspace-mobile-layout', () => ({
 }))
 
 vi.mock('@/features/messages/MessageCenter', () => ({
-  MessageCenterButton: () => null,
+  MessageCenterButton: (props: { unreadCount: number }) => {
+    messageCenterButtonMock(props)
+    return <span data-testid="message-center-count">{props.unreadCount}</span>
+  },
 }))
 
-vi.mock('@/lib/api', () => ({
-  getAutomationInbox: automationActivityApi.getAutomationInbox,
-  getActiveAutomationRuns: automationActivityApi.getActiveAutomationRuns,
+vi.mock('@/features/activity/use-activity-summary', () => ({
+  useActivitySummary: useActivitySummaryMock,
+  setActivityMessageUnreadCount: vi.fn(),
 }))
 
 describe('WorkbenchShell responsive main content', () => {
@@ -70,50 +71,23 @@ describe('WorkbenchShell responsive main content', () => {
     responsiveState.mobile = false
     window.localStorage.clear()
     setConfiguredLocale('zh-CN')
-    automationActivityApi.getAutomationInbox.mockReset().mockResolvedValue([])
-    automationActivityApi.getActiveAutomationRuns.mockReset().mockResolvedValue([])
-    Object.defineProperty(document, 'visibilityState', { configurable: true, value: 'visible' })
+    useActivitySummaryMock.mockReset().mockReturnValue({
+      data: {
+        message_unread_count: 4,
+        automation_inbox_unread_count: 3,
+        automation_running_count: 1,
+      },
+    })
+    messageCenterButtonMock.mockReset()
   })
 
-  afterEach(() => {
-    Object.defineProperty(document, 'visibilityState', { configurable: true, value: 'visible' })
-  })
-
-  it('keeps automation badge polling single-flight and pauses it while hidden', async () => {
-    vi.useFakeTimers()
+  it('uses one compact activity summary for the message and automation badges', () => {
     render(<WorkbenchShell {...workbenchProps(<div />)} />)
-    await act(async () => {
-      await Promise.resolve()
-      await Promise.resolve()
-    })
-    expect(automationActivityApi.getAutomationInbox).toHaveBeenCalledTimes(1)
 
-    const inbox = deferred<unknown[]>()
-    const runs = deferred<unknown[]>()
-    automationActivityApi.getAutomationInbox.mockReturnValue(inbox.promise)
-    automationActivityApi.getActiveAutomationRuns.mockReturnValue(runs.promise)
-
-    act(() => {
-      vi.advanceTimersByTime(30000)
-    })
-    await act(async () => { await Promise.resolve() })
-    expect(automationActivityApi.getAutomationInbox).toHaveBeenCalledTimes(2)
-
-    act(() => {
-      vi.advanceTimersByTime(90000)
-    })
-    await act(async () => { await Promise.resolve() })
-    expect(automationActivityApi.getAutomationInbox).toHaveBeenCalledTimes(2)
-
-    await act(async () => {
-      Object.defineProperty(document, 'visibilityState', { configurable: true, value: 'hidden' })
-      document.dispatchEvent(new Event('visibilitychange'))
-      inbox.resolve([])
-      runs.resolve([])
-      await Promise.all([inbox.promise, runs.promise])
-      vi.advanceTimersByTime(30000)
-    })
-    expect(automationActivityApi.getAutomationInbox).toHaveBeenCalledTimes(2)
+    expect(useActivitySummaryMock).toHaveBeenCalled()
+    expect(screen.getByTestId('message-center-count')).toHaveTextContent('4')
+    expect(messageCenterButtonMock).toHaveBeenCalledWith(expect.objectContaining({ unreadCount: 4 }))
+    expect(screen.getByText('3')).toBeInTheDocument()
   })
 
   it('keeps the main subtree mounted and preserves local state across the mobile breakpoint', () => {
@@ -336,12 +310,4 @@ function workbenchProps(main: ReactNode) {
     onCloseSettings: vi.fn(),
     onQuickSwitchBook: vi.fn().mockResolvedValue(true),
   }
-}
-
-function deferred<T>() {
-  let resolve!: (value: T) => void
-  const promise = new Promise<T>((innerResolve) => {
-    resolve = innerResolve
-  })
-  return { promise, resolve }
 }

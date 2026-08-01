@@ -9,6 +9,7 @@ interface AgentChatConversationTabProps {
   projectId: string
   projectType: 'book' | 'general'
   workspace: string
+  workspaceCurrent?: boolean
   sessionId: string
   draft?: boolean
   active: boolean
@@ -36,6 +37,7 @@ function AgentChatConversationTabComponent({
   projectId,
   projectType,
   workspace,
+  workspaceCurrent = true,
   sessionId,
   draft = false,
   active,
@@ -106,6 +108,7 @@ function AgentChatConversationTabComponent({
       active={active}
       agentKind={projectType === 'general' ? 'general' : 'writing'}
       workspace={workspace}
+      workspaceContextActive={workspaceCurrent}
       chrome="workbench"
       composerSettings={composerSettings}
       selectedFile={null}

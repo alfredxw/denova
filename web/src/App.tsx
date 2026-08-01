@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { useTheme } from 'next-themes'
-import { checkForUpdate, fetchSettings } from '@/features/settings/api'
+import { checkForUpdate, fetchSettings, refreshSettings } from '@/features/settings/api'
 import { applyFontSettings, fontSettingsFromEffective } from '@/features/settings/font-variables'
 import { markAutoUpdateChecked, shouldRunAutoUpdateCheck, UPDATE_CHECK_RESULT_EVENT } from '@/features/settings/update-check-cache'
 import type { UpdateCheckResult } from '@/features/settings/types'
@@ -121,6 +121,7 @@ function App() {
     selectFile, clearSelectedFile, saveFileDraft, createItem, deleteItem, renameItem, copyItem, moveItem,
     refresh, refreshSummary, refreshAfterAgentFileChange, refreshAll, refreshBooks, setWorkspace,
   } = useWorkspace()
+  const settingsWorkspaceRef = useRef(workspace)
 
   const notifyVersionChange = useCallback(() => {
     setVersionRefreshSignal(value => value + 1)
@@ -269,8 +270,9 @@ function App() {
 
   useEffect(() => {
     let cancelled = false
-    const reload = () => {
-      fetchSettings()
+    const reload = (fresh = false) => {
+      const request = fresh ? refreshSettings() : fetchSettings()
+      request
         .then((data) => {
           if (cancelled) return
           const effective = data?.effective
@@ -285,10 +287,12 @@ function App() {
           setMotionIntensity(normalizeMotionIntensity(effective?.motion_intensity))
           applyFontSettings(fontSettingsFromEffective(effective))
         })
-        .catch((e) => console.warn('加载界面配置失败', e))
+        .catch((e) => console.warn('[App.tsx] failed to load interface settings', e))
     }
-    reload()
-    const onUpdated = () => reload()
+    const workspaceChanged = settingsWorkspaceRef.current !== workspace
+    settingsWorkspaceRef.current = workspace
+    reload(workspaceChanged)
+    const onUpdated = () => reload(true)
     window.addEventListener('nova:settings-updated', onUpdated)
     return () => {
       cancelled = true

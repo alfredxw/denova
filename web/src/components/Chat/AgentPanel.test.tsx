@@ -3,7 +3,7 @@ import userEvent from '@testing-library/user-event'
 import type { ComponentProps } from 'react'
 import { VirtuosoMockContext } from 'react-virtuoso'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { fetchSettings } from '@/features/settings/api'
+import { fetchSettings, refreshSettings } from '@/features/settings/api'
 import { usePersistedUserSettings } from '@/hooks/usePersistedUserSettings'
 import { AgentPanel, WRITING_COMPOSER_SETTING_DEFAULTS, type WritingComposerSettingsController } from './AgentPanel'
 
@@ -20,6 +20,7 @@ vi.mock('@/features/settings/api', () => {
       },
       user: {},
     }),
+    refreshSettings: vi.fn(),
     createSettingsMergePatch: (_baseline: unknown, draft: unknown) => draft,
     patchSettings: (_layer: string, changes: unknown, revision?: string) => revision === undefined
       ? updateUserSettings(changes)
@@ -57,6 +58,7 @@ vi.mock('@/features/changes/use-change-review', () => ({
 describe('AgentPanel', () => {
   beforeEach(() => {
     vi.mocked(fetchSettings).mockClear()
+    vi.mocked(refreshSettings).mockReset().mockImplementation(() => fetchSettings())
     vi.mocked(updateUserSettings).mockClear()
     vi.mocked(updateUserSettings).mockImplementation(async (settings) => ({
       default: {},
@@ -118,7 +120,7 @@ describe('AgentPanel', () => {
     const user = userEvent.setup()
     renderAgentPanel()
 
-    expect(useWritingSkillOptionsMock).toHaveBeenCalledWith('/workspace')
+    expect(useWritingSkillOptionsMock).toHaveBeenCalledWith('/workspace', true)
     expect(useWorkspaceChangeGroupsMock).toHaveBeenCalledWith('/workspace', {
       sessionID: 'session-1',
     })
@@ -136,6 +138,15 @@ describe('AgentPanel', () => {
   it('General Agent 不读取前台 Book 的变更审阅范围', () => {
     renderAgentPanel({ agentKind: 'general' })
 
+    expect(useWorkspaceChangeGroupsMock).toHaveBeenCalledWith('', {
+      sessionID: 'session-1',
+    })
+  })
+
+  it('后台 Project 不读取前台工作区的 Skills 和变更审阅', () => {
+    renderAgentPanel({ workspaceContextActive: false })
+
+    expect(useWritingSkillOptionsMock).toHaveBeenCalledWith('/workspace', false)
     expect(useWorkspaceChangeGroupsMock).toHaveBeenCalledWith('', {
       sessionID: 'session-1',
     })

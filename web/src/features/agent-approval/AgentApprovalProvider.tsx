@@ -10,7 +10,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog'
-import { fetchSettings, patchSettings } from '@/features/settings/api'
+import { fetchSettings, patchSettings, refreshSettings } from '@/features/settings/api'
 import type { LayeredSettings } from '@/features/settings/types'
 import {
   DEFAULT_AGENT_APPROVAL_MODE,
@@ -88,7 +88,7 @@ export function AgentApprovalProvider({ children }: { children: ReactNode }) {
     const reloadExternalChange = (event: Event) => {
       const source = (event as CustomEvent<{ source?: string }>).detail?.source
       if (source === 'agent-approval-provider') return
-      void fetchSettings().then((settings) => {
+      void refreshSettings().then((settings) => {
         setModeState(resolveAgentApprovalMode(settings))
         setInitialized(true)
       }).catch((reason) => {

@@ -18,6 +18,7 @@ require (
 	github.com/go-rod/stealth v0.4.9
 	github.com/gofrs/flock v0.13.0
 	github.com/google/uuid v1.6.0
+	github.com/hertz-contrib/gzip v0.0.4
 	github.com/hertz-contrib/websocket v0.2.0
 	github.com/invopop/jsonschema v0.14.0
 	github.com/lithammer/fuzzysearch v1.1.8

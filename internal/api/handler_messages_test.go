@@ -1,6 +1,9 @@
 package api
 
 import (
+	"bytes"
+	"compress/gzip"
+	"io"
 	"net/http"
 	"net/url"
 	"os"
@@ -59,6 +62,23 @@ func TestMessagesAPIListsAndMarksRead(t *testing.T) {
 		t.Fatalf("first message = %#v", listBody.Items[0])
 	}
 
+	summaryResp := performJSONRequest(t, server, http.MethodGet, "/api/activity/summary", nil)
+	if summaryResp.Code != http.StatusOK {
+		t.Fatalf("activity summary status = %d body=%s", summaryResp.Code, summaryResp.Body.String())
+	}
+	var summaryBody struct {
+		MessageUnreadCount         int `json:"message_unread_count"`
+		AutomationInboxUnreadCount int `json:"automation_inbox_unread_count"`
+		AutomationRunningCount     int `json:"automation_running_count"`
+	}
+	decodeResponse(t, summaryResp.Body.Bytes(), &summaryBody)
+	if summaryBody.MessageUnreadCount != 1 || summaryBody.AutomationInboxUnreadCount != 0 || summaryBody.AutomationRunningCount != 0 {
+		t.Fatalf("initial activity summary = %#v", summaryBody)
+	}
+	if strings.Contains(summaryResp.Body.String(), `"items"`) || strings.Contains(summaryResp.Body.String(), `"body"`) {
+		t.Fatalf("activity summary leaked full records: %s", summaryResp.Body.String())
+	}
+
 	readResp := performJSONRequest(t, server, http.MethodPost, "/api/messages/"+url.PathEscape(listBody.Items[0].ID)+"/read", nil)
 	if readResp.Code != http.StatusOK {
 		t.Fatalf("read status = %d body=%s", readResp.Code, readResp.Body.String())
@@ -73,6 +93,11 @@ func TestMessagesAPIListsAndMarksRead(t *testing.T) {
 	decodeResponse(t, nextResp.Body.Bytes(), &listBody)
 	if listBody.UnreadCount != 0 || listBody.Items[0].ReadAt == nil {
 		t.Fatalf("messages after read = %#v", listBody)
+	}
+	summaryResp = performJSONRequest(t, server, http.MethodGet, "/api/activity/summary", nil)
+	decodeResponse(t, summaryResp.Body.Bytes(), &summaryBody)
+	if summaryBody.MessageUnreadCount != 0 {
+		t.Fatalf("activity summary after read = %#v", summaryBody)
 	}
 
 	readAllResp := performJSONRequest(t, server, http.MethodPost, "/api/messages/read-all", nil)
@@ -142,5 +167,49 @@ func TestMessagesAPIUsesRequestLocale(t *testing.T) {
 	}
 	if strings.Contains(item.Body, "中文") || strings.Contains(item.Body, "消息中心") || strings.Contains(item.Body, "简要说明") {
 		t.Fatalf("English message leaked Chinese content:\n%s", item.Body)
+	}
+}
+
+func TestActivitySummarySupportsGzipWithoutCompressingEventStreams(t *testing.T) {
+	application := newTestApplication(t)
+	server := NewServer(application, "0")
+
+	compressed := ut.PerformRequest(
+		server.engine.Engine,
+		http.MethodGet,
+		"/api/activity/summary",
+		nil,
+		ut.Header{Key: "Accept-Encoding", Value: "gzip"},
+	)
+	if encoding := string(compressed.Header().Peek("Content-Encoding")); encoding != "gzip" {
+		t.Fatalf("content encoding = %q, want gzip", encoding)
+	}
+	reader, err := gzip.NewReader(bytes.NewReader(compressed.Body.Bytes()))
+	if err != nil {
+		t.Fatal(err)
+	}
+	body, err := io.ReadAll(reader)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := reader.Close(); err != nil {
+		t.Fatal(err)
+	}
+	var summary map[string]int
+	decodeResponse(t, body, &summary)
+	if _, ok := summary["message_unread_count"]; !ok {
+		t.Fatalf("decompressed activity summary = %#v", summary)
+	}
+
+	streamCompatible := ut.PerformRequest(
+		server.engine.Engine,
+		http.MethodGet,
+		"/api/activity/summary",
+		nil,
+		ut.Header{Key: "Accept-Encoding", Value: "gzip"},
+		ut.Header{Key: "Accept", Value: "text/event-stream"},
+	)
+	if encoding := string(streamCompatible.Header().Peek("Content-Encoding")); encoding != "" {
+		t.Fatalf("event-stream content encoding = %q, want empty", encoding)
 	}
 }

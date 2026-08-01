@@ -1,6 +1,6 @@
 import { useEffect, useMemo } from 'react'
 import { useQuery, type QueryClient } from '@tanstack/react-query'
-import { fetchSettings } from '@/features/settings/api'
+import { fetchSettings, refreshSettings } from '@/features/settings/api'
 import type { LayeredSettings } from '@/features/settings/types'
 import { getSkills } from '@/lib/api'
 import type { SkillSnapshot } from '@/lib/api'
@@ -36,21 +36,23 @@ const subscriptions = new WeakMap<QueryClient, AgentSkillCatalogSubscription>()
  * listeners per QueryClient, preventing a global event from creating an
  * N-conversation request fan-out.
  */
-export function useAgentSkillCatalog(workspace?: string) {
+export function useAgentSkillCatalog(workspace?: string, enabled = true) {
   const scope = workspace?.trim() || ''
   const skills = useQuery({
     queryKey: agentSkillCatalogKeys.skillsForWorkspace(scope),
     queryFn: getSkills,
+    enabled,
   }, queryClient)
   const settings = useQuery({
     queryKey: agentSkillCatalogKeys.settingsForWorkspace(scope),
     queryFn: fetchSettings,
+    enabled,
   }, queryClient)
 
   useEffect(() => subscribeAgentSkillCatalogEvents(queryClient), [queryClient])
   const data = useMemo<AgentSkillCatalog | undefined>(
-    () => skills.data && settings.data ? { skills: skills.data, settings: settings.data } : undefined,
-    [settings.data, skills.data],
+    () => enabled && skills.data && settings.data ? { skills: skills.data, settings: settings.data } : undefined,
+    [enabled, settings.data, skills.data],
   )
   return { data }
 }
@@ -68,7 +70,10 @@ function subscribeAgentSkillCatalogEvents(queryClient: QueryClient) {
       void queryClient.invalidateQueries({ queryKey: agentSkillCatalogKeys.skills() })
     },
     onSettingsUpdated: () => {
-      void queryClient.invalidateQueries({ queryKey: agentSkillCatalogKeys.settings() })
+      void refreshSettings().then(
+        (snapshot) => { queryClient.setQueriesData({ queryKey: agentSkillCatalogKeys.settings() }, snapshot) },
+        () => { void queryClient.invalidateQueries({ queryKey: agentSkillCatalogKeys.settings() }) },
+      )
     },
   }
   subscriptions.set(queryClient, subscription)

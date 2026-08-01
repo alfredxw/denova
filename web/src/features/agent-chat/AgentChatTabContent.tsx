@@ -20,6 +20,7 @@ import type {
 interface AgentChatTabContentProps {
   tab: AgentChatTab
   projectType: AgentChatProjectType
+  workspaceCurrent: boolean
   active: boolean
   running: boolean
   composerSettings: WritingComposerSettingsController
@@ -49,6 +50,7 @@ interface AgentChatTabContentProps {
 export function AgentChatTabContent({
   tab,
   projectType,
+  workspaceCurrent,
   active,
   running,
   composerSettings,
@@ -101,6 +103,7 @@ export function AgentChatTabContent({
           projectId={tab.projectId}
           projectType={projectType}
           workspace={tab.workspace}
+          workspaceCurrent={workspaceCurrent}
           sessionId={tab.sessionId}
           draft={tab.draft}
           active={active}

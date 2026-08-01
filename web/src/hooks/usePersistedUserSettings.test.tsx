@@ -1,6 +1,6 @@
 import { act, renderHook, waitFor } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { fetchSettings } from '@/features/settings/api'
+import { fetchSettings, refreshSettings } from '@/features/settings/api'
 import type { LayeredSettings } from '@/features/settings/types'
 import { APIError } from '@/lib/api-client'
 import { preserveAutosaveConflict } from '@/lib/api-client/autosave-conflicts'
@@ -11,6 +11,7 @@ const { updateUserSettings } = vi.hoisted(() => ({ updateUserSettings: vi.fn() }
 vi.mock('@/features/settings/api', () => {
   return {
     fetchSettings: vi.fn(),
+    refreshSettings: vi.fn(),
     createSettingsMergePatch: (_baseline: unknown, draft: unknown) => draft,
     patchSettings: (_layer: string, changes: unknown, revision?: string) => revision === undefined
       ? updateUserSettings(changes)
@@ -30,6 +31,7 @@ const defaults = {
 describe('usePersistedUserSettings', () => {
   beforeEach(() => {
     vi.mocked(fetchSettings).mockReset()
+    vi.mocked(refreshSettings).mockReset().mockImplementation(() => fetchSettings())
     vi.mocked(updateUserSettings).mockReset()
     vi.mocked(preserveAutosaveConflict).mockClear()
   })

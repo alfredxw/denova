@@ -191,7 +191,14 @@ export function reconcileWorkbenchProjects(state: AgentChatWorkbenchState, proje
   for (const project of projects) {
     const source = state.projects[project.id] ?? state.projects[project.path]
     if (!source) continue
-    const eligibleTabs = project.type === 'general' ? source.tabs.filter((tab) => tab.kind === 'agent' || tab.kind === 'terminal') : source.tabs
+    const visibleSessionIDs = new Set(project.sessions.map((session) => session.id))
+    const sessionListComplete = project.total <= project.sessions.length
+    const projectTabs = project.type === 'general' ? source.tabs.filter((tab) => tab.kind === 'agent' || tab.kind === 'terminal') : source.tabs
+    // Durable sessions are authoritative only when the project response is complete. If the
+    // backend truncated a large history, keep unknown tabs rather than discarding valid data.
+    const eligibleTabs = projectTabs.filter((tab) =>
+      tab.kind !== 'agent' || tab.draft || !sessionListComplete || visibleSessionIDs.has(tab.sessionId),
+    )
     const tabs = eligibleTabs.map((tab) => ({
       ...tab,
       projectId: project.id,

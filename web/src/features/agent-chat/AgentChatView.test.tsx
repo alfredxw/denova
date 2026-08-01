@@ -142,6 +142,10 @@ function project(path: string, name: string, sessionId: string, title: string): 
   }
 }
 
+function agentTabForProject(id: string, projectId: string, workspace: string, sessionId: string) {
+  return { kind: 'agent' as const, id, projectId, workspace, sessionId }
+}
+
 function terminalSession(id: string, ownerTabId: string | undefined, attached = 0): TerminalSessionInfo {
   return {
     id,
@@ -259,6 +263,8 @@ describe('AgentChatView project workbenches', () => {
     })
     renderView(<AgentChatView composerSettings={{} as never} tellers={[]} imagePresets={[]} renderPage={() => null} renderReview={() => null} />)
 
+    expect(await screen.findByTestId('conversation:/books/a:session-a')).toHaveTextContent('active')
+    expect(screen.queryByTestId('conversation:/books/b:session-b')).not.toBeInTheDocument()
     await user.click(await screen.findByRole('button', { name: /^Chat A/ }))
     expect(
       within(screen.getAllByRole('tablist')[0]).getByRole('tab', {
@@ -294,6 +300,35 @@ describe('AgentChatView project workbenches', () => {
     })
   })
 
+  it('mounts a restored background conversation only when its session is still running', async () => {
+    const projectA = project('/books/a', 'Project A', 'session-a', 'Chat A')
+    const projectB = project('/books/b', 'Project B', 'session-b', 'Chat B')
+    projectB.sessions[0].running = true
+    vi.mocked(getAgentChatProjects).mockResolvedValue([projectA, projectB])
+    persistWorkbenchState({
+      activeProjectId: 'project-a',
+      projects: {
+        'project-a': {
+          tabs: [agentTabForProject('tab-a', 'project-a', '/books/a', 'session-a')],
+          activeTabIds: { primary: 'tab-a', secondary: null },
+          focusedGroup: 'primary',
+          secondaryVisible: false,
+        },
+        'project-b': {
+          tabs: [agentTabForProject('tab-b', 'project-b', '/books/b', 'session-b')],
+          activeTabIds: { primary: 'tab-b', secondary: null },
+          focusedGroup: 'primary',
+          secondaryVisible: false,
+        },
+      },
+    })
+
+    renderView(<AgentChatView composerSettings={{} as never} tellers={[]} imagePresets={[]} renderPage={() => null} renderReview={() => null} />)
+
+    expect(await screen.findByTestId('conversation:/books/a:session-a')).toHaveTextContent('active')
+    expect(await screen.findByTestId('conversation:/books/b:session-b')).toHaveTextContent('hidden')
+  })
+
   it('keeps a detached running conversation in the activity list after its tab closes', async () => {
     const user = userEvent.setup()
     const runningProject = project('/books/a', 'Project A', 'session-a', 'Chat A')
@@ -325,6 +360,14 @@ describe('AgentChatView project workbenches', () => {
   })
 
   it('uses the full split separator as one visible resize target', async () => {
+    const splitProject = project('/books/a', 'Project A', 'session-a', 'Chat A')
+    splitProject.total = 2
+    splitProject.sessions.push({
+      ...splitProject.sessions[0],
+      id: 'session-secondary',
+      title: 'Secondary',
+    })
+    vi.mocked(getAgentChatProjects).mockResolvedValue([splitProject])
     persistWorkbenchState({
       activeProjectId: 'project-a',
       projects: {
@@ -364,6 +407,14 @@ describe('AgentChatView project workbenches', () => {
 
   it('hides and restores the secondary pane without unmounting its conversation', async () => {
     const user = userEvent.setup()
+    const splitProject = project('/books/a', 'Project A', 'session-a', 'Chat A')
+    splitProject.total = 2
+    splitProject.sessions.push({
+      ...splitProject.sessions[0],
+      id: 'session-secondary',
+      title: 'Secondary',
+    })
+    vi.mocked(getAgentChatProjects).mockResolvedValue([splitProject])
     persistWorkbenchState({
       activeProjectId: 'project-a',
       projects: {

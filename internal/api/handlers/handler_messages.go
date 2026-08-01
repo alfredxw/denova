@@ -17,6 +17,15 @@ func (h *Handlers) HandleMessages(ctx context.Context, c *app.RequestContext) {
 	writeJSON(c, consts.StatusOK, result)
 }
 
+func (h *Handlers) HandleActivitySummary(ctx context.Context, c *app.RequestContext) {
+	result, err := h.app.ActivitySummary(requestLocale(c))
+	if err != nil {
+		writeError(c, consts.StatusInternalServerError, err.Error())
+		return
+	}
+	writeJSON(c, consts.StatusOK, result)
+}
+
 func (h *Handlers) HandleMessageRead(ctx context.Context, c *app.RequestContext) {
 	id, unescapeErr := url.PathUnescape(c.Param("id"))
 	if unescapeErr != nil {

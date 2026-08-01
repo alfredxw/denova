@@ -8,7 +8,7 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu'
-import { fetchSettings } from '@/features/settings/api'
+import { fetchSettings, refreshSettings } from '@/features/settings/api'
 import type { LayeredSettings, ModelProfileSettings } from '@/features/settings/types'
 import { modelProfileID, modelProfileLabel, modelProfilesWithDefault } from '@/features/settings/model-profiles'
 import { THINKING_LEVELS, type ThinkingLevel } from '@/features/settings/thinking-levels'
@@ -105,12 +105,13 @@ function useModelProfileSelector({ agentKey, conversationConfig, disabled = fals
   // automations) therefore remain configurable without a workspace path.
   const enabled = Boolean(agentKey && conversationConfig)
 
-  const load = useCallback(() => {
+  const load = useCallback((fresh = false) => {
     if (!enabled) {
       setSettings(null)
       return
     }
-    fetchSettings()
+    const request = fresh ? refreshSettings() : fetchSettings()
+    request
       .then((next) => {
         setSettings(next)
         setCatalogError(null)
@@ -126,7 +127,7 @@ function useModelProfileSelector({ agentKey, conversationConfig, disabled = fals
 
   useEffect(() => {
     if (!enabled) return
-    const onSettingsUpdated = () => load()
+    const onSettingsUpdated = () => load(true)
     window.addEventListener('nova:settings-updated', onSettingsUpdated)
     return () => window.removeEventListener('nova:settings-updated', onSettingsUpdated)
   }, [enabled, load])
