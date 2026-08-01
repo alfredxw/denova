@@ -128,6 +128,18 @@ func loadSession(filePath string) (*Session, error) {
 		}
 		sess.materializedCursor = record.Location.Cursor
 	}
+	// The projection already contains the latest durable runtime config, while
+	// the bounded materialization above can include one or more of the same
+	// session_patch records. Seed the materialization from zero, replay its
+	// local sequence, then install the authoritative projected snapshot. This
+	// keeps legacy sessions (whose header has no config) restart-safe as well as
+	// sessions whose recent window starts after an older config revision.
+	sess.runtimeConfig = nil
+	sess.runtimeConfigRevision = projection.RuntimeConfigRevision
+	if projection.RuntimeConfig != nil {
+		value := *projection.RuntimeConfig
+		sess.runtimeConfig = &value
+	}
 	sess.partialMaterialization = false
 	sess.messageCount = projection.MessageCount
 	sess.clearAfterIndex = projection.ClearAfter
@@ -181,6 +193,19 @@ func appendFirstRecordLine(sess *Session, line []byte) error {
 		}
 		if strings.TrimSpace(header.Title) != "" {
 			sess.title = header.Title
+		}
+		if header.RuntimeConfig != nil {
+			if header.RuntimeConfigRevision != 1 {
+				return fmt.Errorf("session header runtime config revision must be 1")
+			}
+			if err := validateRuntimeConfigState(header.RuntimeConfig, header.RuntimeConfigRevision, ""); err != nil {
+				return fmt.Errorf("session header runtime config: %w", err)
+			}
+			value := *header.RuntimeConfig
+			sess.runtimeConfig = &value
+			sess.runtimeConfigRevision = header.RuntimeConfigRevision
+		} else if header.RuntimeConfigRevision != 0 {
+			return fmt.Errorf("session header runtime config revision exists without a config")
 		}
 		sess.journalIncarnation = journalIncarnation
 		return nil

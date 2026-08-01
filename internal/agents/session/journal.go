@@ -2,6 +2,8 @@ package session
 
 import (
 	"time"
+
+	"denova/internal/conversationconfig"
 )
 
 const (
@@ -15,13 +17,15 @@ const (
 // sessionHeader is immutable journal metadata. Mutable session attributes are
 // persisted as patch records so an update never rewrites prior history.
 type sessionHeader struct {
-	Type          string    `json:"type"`
-	Version       int       `json:"version,omitempty"`
-	ID            string    `json:"id"`
-	IncarnationID string    `json:"incarnation_id,omitempty"`
-	Title         string    `json:"title,omitempty"`
-	CreatedAt     time.Time `json:"created_at"`
-	UpdatedAt     time.Time `json:"updated_at,omitempty"`
+	Type                  string                     `json:"type"`
+	Version               int                        `json:"version,omitempty"`
+	ID                    string                     `json:"id"`
+	IncarnationID         string                     `json:"incarnation_id,omitempty"`
+	Title                 string                     `json:"title,omitempty"`
+	CreatedAt             time.Time                  `json:"created_at"`
+	UpdatedAt             time.Time                  `json:"updated_at,omitempty"`
+	RuntimeConfig         *conversationconfig.Config `json:"runtime_config,omitempty"`
+	RuntimeConfigRevision uint64                     `json:"runtime_config_revision,omitempty"`
 }
 
 type clearRecord struct {
@@ -56,9 +60,11 @@ type displayRecord struct {
 }
 
 type sessionPatchRecord struct {
-	Type      string    `json:"type"`
-	Title     *string   `json:"title,omitempty"`
-	UpdatedAt time.Time `json:"updated_at"`
+	Type                  string                     `json:"type"`
+	Title                 *string                    `json:"title,omitempty"`
+	RuntimeConfig         *conversationconfig.Config `json:"runtime_config,omitempty"`
+	RuntimeConfigRevision uint64                     `json:"runtime_config_revision,omitempty"`
+	UpdatedAt             time.Time                  `json:"updated_at"`
 }
 
 // displayPatchRecord stores only the mutation. Pointer fields distinguish an

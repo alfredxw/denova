@@ -2,6 +2,7 @@ package app
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"log"
@@ -474,12 +475,24 @@ func (s *WorkspaceRuntimeManager) Settings() (config.LayeredSettings, error) {
 	return layered, nil
 }
 
-// UpdateUserSettings 持久化用户级配置并返回最新分层快照。
-func (a *App) UpdateUserSettings(settings config.Settings, baseRevision ...string) (config.LayeredSettings, error) {
-	return a.runtime().UpdateUserSettings(settings, firstRevision(baseRevision))
+// PatchSettings atomically applies a presence-aware partial mutation to one
+// persisted settings layer and returns the canonical layered snapshot.
+func (a *App) PatchSettings(layer config.SettingsLayer, changes json.RawMessage, baseRevision string) (config.LayeredSettings, error) {
+	return a.runtime().PatchSettings(layer, changes, baseRevision)
 }
 
-func (s *WorkspaceRuntimeManager) UpdateUserSettings(settings config.Settings, baseRevision string) (config.LayeredSettings, error) {
+func (s *WorkspaceRuntimeManager) PatchSettings(layer config.SettingsLayer, changes json.RawMessage, baseRevision string) (config.LayeredSettings, error) {
+	switch layer {
+	case config.SettingsLayerUser:
+		return s.patchUserSettings(changes, baseRevision)
+	case config.SettingsLayerWorkspace:
+		return s.patchWorkspaceSettings(changes, baseRevision)
+	default:
+		return config.LayeredSettings{}, fmt.Errorf("%w: %q", config.ErrUnsupportedSettingsLayer, layer)
+	}
+}
+
+func (s *WorkspaceRuntimeManager) patchUserSettings(changes json.RawMessage, baseRevision string) (config.LayeredSettings, error) {
 	a := s.app
 	a.mu.RLock()
 	novaDir := ""
@@ -489,41 +502,15 @@ func (s *WorkspaceRuntimeManager) UpdateUserSettings(settings config.Settings, b
 	a.mu.RUnlock()
 	path := config.UserConfigPath(novaDir)
 	if _, err := config.MutateSettingsFile(path, baseRevision, func(existing config.Settings) (config.Settings, error) {
-		return config.PrepareUserSettingsForWrite(existing, settings)
+		merged, err := config.ApplySettingsMergePatch(existing, changes)
+		if err != nil {
+			return config.Settings{}, err
+		}
+		return config.PrepareUserSettingsForWrite(existing, merged)
 	}); err != nil {
 		return config.LayeredSettings{}, err
 	}
-	log.Printf("[settings] 用户配置已保存 path=%s", path)
-	return s.refreshAfterUserSettingsMutation()
-}
-
-// UpdateAgentApprovalMode changes one user-scoped safety field atomically.
-// Composer and settings surfaces use this narrow mutation so they cannot
-// overwrite a concurrent full settings edit with a stale snapshot.
-func (a *App) UpdateAgentApprovalMode(mode config.AgentApprovalMode) (config.LayeredSettings, error) {
-	return a.runtime().UpdateAgentApprovalMode(mode)
-}
-
-func (s *WorkspaceRuntimeManager) UpdateAgentApprovalMode(mode config.AgentApprovalMode) (config.LayeredSettings, error) {
-	parsed, err := config.ParseAgentApprovalMode(string(mode))
-	if err != nil {
-		return config.LayeredSettings{}, err
-	}
-	a := s.app
-	a.mu.RLock()
-	novaDir := ""
-	if a.cfg != nil {
-		novaDir = a.cfg.DataDir()
-	}
-	a.mu.RUnlock()
-	path := config.UserConfigPath(novaDir)
-	if _, err := config.MutateSettingsFile(path, "", func(existing config.Settings) (config.Settings, error) {
-		existing.AgentApprovalMode = parsed
-		return existing, nil
-	}); err != nil {
-		return config.LayeredSettings{}, err
-	}
-	log.Printf("[settings] Agent approval mode saved path=%s mode=%s", path, parsed)
+	log.Printf("[settings] applied partial user settings mutation path=%s", path)
 	return s.refreshAfterUserSettingsMutation()
 }
 
@@ -545,12 +532,10 @@ func (s *WorkspaceRuntimeManager) refreshAfterUserSettingsMutation() (config.Lay
 	return layered, nil
 }
 
-// UpdateWorkspaceSettings 持久化当前工作区的 Agent 定制并返回最新分层快照。
-func (a *App) UpdateWorkspaceSettings(settings config.Settings, baseRevision ...string) (config.LayeredSettings, error) {
-	return a.runtime().UpdateWorkspaceSettings(settings, firstRevision(baseRevision))
-}
-
-func (s *WorkspaceRuntimeManager) UpdateWorkspaceSettings(settings config.Settings, baseRevision string) (config.LayeredSettings, error) {
+func (s *WorkspaceRuntimeManager) patchWorkspaceSettings(changes json.RawMessage, baseRevision string) (config.LayeredSettings, error) {
+	if err := config.ValidateWorkspaceSettingsPatch(changes); err != nil {
+		return config.LayeredSettings{}, err
+	}
 	a := s.app
 	a.mu.RLock()
 	workspace := a.workspace
@@ -571,11 +556,15 @@ func (s *WorkspaceRuntimeManager) UpdateWorkspaceSettings(settings config.Settin
 		path = layout.ConfigPath()
 	}
 	if _, err := config.MutateSettingsFile(path, baseRevision, func(existing config.Settings) (config.Settings, error) {
-		return config.PrepareWorkspaceAgentSettingsForWrite(existing, settings), nil
+		merged, err := config.ApplySettingsMergePatch(existing, changes)
+		if err != nil {
+			return config.Settings{}, err
+		}
+		return config.PrepareWorkspaceAgentSettingsForWrite(existing, merged), nil
 	}); err != nil {
 		return config.LayeredSettings{}, err
 	}
-	log.Printf("[settings] 工作区 Agent 定制已保存 path=%s", path)
+	log.Printf("[settings] applied partial workspace settings mutation path=%s", path)
 	layered, err := s.Settings()
 	if err != nil {
 		return config.LayeredSettings{}, err

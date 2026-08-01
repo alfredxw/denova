@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 
+	"denova/config"
 	"denova/internal/agents/session"
 )
 
@@ -67,7 +68,15 @@ func (s *ChatAppService) CreateSession(title string) (*session.Session, error) {
 		return nil, err
 	}
 
-	sess, err := fence.store.Create(title)
+	runtimeCfg := config.Config{}
+	if a.cfg != nil {
+		runtimeCfg = *a.cfg
+	}
+	seed, err := recentConversationSeed(fence.store, &runtimeCfg, config.AgentKindIDE, "")
+	if err != nil {
+		return nil, err
+	}
+	sess, err := fence.store.CreateWithRuntimeConfig(title, seed)
 	if err != nil {
 		return nil, err
 	}
@@ -106,6 +115,13 @@ func (s *ChatAppService) SwitchSession(id string) (*session.Session, error) {
 
 	sess, err := fence.store.Get(id)
 	if err != nil {
+		return nil, err
+	}
+	runtimeCfg := config.Config{}
+	if a.cfg != nil {
+		runtimeCfg = *a.cfg
+	}
+	if _, err := ensureExistingSessionConfig(sess, &runtimeCfg, config.AgentKindIDE); err != nil {
 		return nil, err
 	}
 	if err := fence.store.SetActiveID(sess.ID); err != nil {
@@ -182,7 +198,11 @@ func (s *ChatAppService) DeleteSession(id string) (*session.Session, error) {
 			return nil, err
 		}
 		if len(metas) == 0 {
-			sess, createErr := fence.store.GetOrCreate("default")
+			runtimeCfg := config.Config{}
+			if a.cfg != nil {
+				runtimeCfg = *a.cfg
+			}
+			sess, _, createErr := getOrCreateConversationSession(fence.store, "default", &runtimeCfg, config.AgentKindIDE)
 			if createErr != nil {
 				return nil, createErr
 			}
@@ -194,6 +214,13 @@ func (s *ChatAppService) DeleteSession(id string) (*session.Session, error) {
 	}
 	sess, err := fence.store.GetOrCreate(activeID)
 	if err != nil {
+		return nil, err
+	}
+	runtimeCfg := config.Config{}
+	if a.cfg != nil {
+		runtimeCfg = *a.cfg
+	}
+	if _, err := ensureExistingSessionConfig(sess, &runtimeCfg, config.AgentKindIDE); err != nil {
 		return nil, err
 	}
 	if err := fence.store.SetActiveID(sess.ID); err != nil {

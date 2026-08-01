@@ -13,11 +13,12 @@ import (
 
 	agent "github.com/alfredxw/denova/agent"
 
+	"denova/internal/conversationconfig"
 	"denova/internal/conversationjournal"
 )
 
 const (
-	sessionProjectionVersion      = 12
+	sessionProjectionVersion      = 13
 	sessionRecentTransactionLimit = 200
 	sessionRecentCommitLimit      = 200
 	sessionStructuralRecordLimit  = 64
@@ -71,18 +72,20 @@ type assistantTargetCheckpoint struct {
 // conversation index. It deliberately stores locators and current state only;
 // the canonical JSONL remains the sole source of transcript and display text.
 type sessionJournalProjection struct {
-	Version             int                        `json:"version"`
-	SessionID           string                     `json:"session_id"`
-	Generation          string                     `json:"generation"`
-	Title               string                     `json:"title"`
-	CreatedAt           time.Time                  `json:"created_at"`
-	UpdatedAt           time.Time                  `json:"updated_at"`
-	MessageCount        int                        `json:"message_count"`
-	VisibleMessageCount int                        `json:"visible_message_count"`
-	HistoryCount        int                        `json:"history_count"`
-	ClearAfter          int                        `json:"clear_after"`
-	ClearCursor         conversationjournal.Cursor `json:"clear_cursor,omitempty"`
-	ContextRevision     uint64                     `json:"context_revision"`
+	Version               int                        `json:"version"`
+	SessionID             string                     `json:"session_id"`
+	Generation            string                     `json:"generation"`
+	Title                 string                     `json:"title"`
+	CreatedAt             time.Time                  `json:"created_at"`
+	UpdatedAt             time.Time                  `json:"updated_at"`
+	MessageCount          int                        `json:"message_count"`
+	VisibleMessageCount   int                        `json:"visible_message_count"`
+	HistoryCount          int                        `json:"history_count"`
+	ClearAfter            int                        `json:"clear_after"`
+	ClearCursor           conversationjournal.Cursor `json:"clear_cursor,omitempty"`
+	ContextRevision       uint64                     `json:"context_revision"`
+	RuntimeConfig         *conversationconfig.Config `json:"runtime_config,omitempty"`
+	RuntimeConfigRevision uint64                     `json:"runtime_config_revision,omitempty"`
 
 	RecentCursors                  []conversationjournal.Cursor   `json:"recent_cursors,omitempty"`
 	MessageLocators                []messageLocator               `json:"message_locators,omitempty"`
@@ -136,6 +139,9 @@ func (projection *sessionJournalProjection) Restore(data json.RawMessage) error 
 	}
 	if strings.TrimSpace(restored.SessionID) != expectedID || strings.TrimSpace(restored.Generation) != expectedGeneration {
 		return fmt.Errorf("session projection identity mismatch")
+	}
+	if err := validateRuntimeConfigState(restored.RuntimeConfig, restored.RuntimeConfigRevision, ""); err != nil {
+		return fmt.Errorf("restore session runtime config: %w", err)
 	}
 	restored.expectedID = expectedID
 	restored.expectedGeneration = expectedGeneration
@@ -232,6 +238,24 @@ func (projection *sessionJournalProjection) Apply(record conversationjournal.Rec
 				return fmt.Errorf("session patch title is empty")
 			}
 			projection.Title = title
+		}
+		if patch.RuntimeConfig != nil {
+			if patch.RuntimeConfigRevision == 0 || patch.RuntimeConfigRevision <= projection.RuntimeConfigRevision {
+				return fmt.Errorf("session runtime config revision is not monotonic")
+			}
+			expectedKind := ""
+			if projection.RuntimeConfig != nil {
+				expectedKind = projection.RuntimeConfig.AgentKind
+			}
+			if err := validateRuntimeConfigState(patch.RuntimeConfig, patch.RuntimeConfigRevision, expectedKind); err != nil {
+				return fmt.Errorf("session runtime config: %w", err)
+			}
+			value := *patch.RuntimeConfig
+			projection.RuntimeConfig = &value
+			projection.RuntimeConfigRevision = patch.RuntimeConfigRevision
+		}
+		if patch.RuntimeConfig == nil && patch.RuntimeConfigRevision != 0 {
+			return fmt.Errorf("session runtime config revision exists without a config")
 		}
 		projection.advanceUpdatedAt(patch.UpdatedAt)
 		return nil
@@ -392,6 +416,19 @@ func (projection *sessionJournalProjection) applyHeader(payload json.RawMessage)
 	}
 	if title := strings.TrimSpace(header.Title); title != "" {
 		projection.Title = title
+	}
+	if header.RuntimeConfig != nil {
+		if header.RuntimeConfigRevision != 1 {
+			return fmt.Errorf("session header runtime config revision must be 1")
+		}
+		if err := validateRuntimeConfigState(header.RuntimeConfig, header.RuntimeConfigRevision, ""); err != nil {
+			return fmt.Errorf("session header runtime config: %w", err)
+		}
+		value := *header.RuntimeConfig
+		projection.RuntimeConfig = &value
+		projection.RuntimeConfigRevision = header.RuntimeConfigRevision
+	} else if header.RuntimeConfigRevision != 0 {
+		return fmt.Errorf("session header runtime config revision exists without a config")
 	}
 	return nil
 }

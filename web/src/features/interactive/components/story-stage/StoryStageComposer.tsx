@@ -20,6 +20,7 @@ import { EditInteractiveReplyDialog } from '../EditInteractiveReplyDialog'
 import { InteractiveImageSettingsMenu, StoryImagePresetMenu } from './ImageSettingsMenus'
 import type { StoryStageCommandItem } from './story-stage-commands'
 import { isNativeComposingKeyboardEvent } from './utils'
+import type { ConversationConfigController } from '@/features/conversation-config/types'
 
 type StateSetter<T> = Dispatch<SetStateAction<T>>
 
@@ -71,6 +72,7 @@ interface StoryStageComposerProps {
   runtime: {
     streaming: boolean
     approvalReady: boolean
+    conversationConfig: ConversationConfigController
     abortPending: boolean
     recoveryPaused: boolean
     recoveryAbortAvailable: boolean
@@ -122,7 +124,7 @@ export function StoryStageComposer({ layout, editor, story, runtime, dialogs, ac
   const { creatingStory, isMobile, keyboardInset, inputTextStyle, workspace, inputFloatRef, inputRef, t } = layout
   const { input, editingTurn, styleScenes, styleSceneQuery, styleSceneSuggestions, showSkillCommands, activeSkillCommandIndex, skillCommands, filteredSkillCommands, filteredBuiltInCommandItems, filteredSkillCommandItems, setStyleSceneQuery, setShowSkillCommands, setSkillCommandQuery, setActiveSkillCommandIndex } = editor
   const { storyId, story: currentStory, imagePresets, onImageSettingsChange, branchTerminal, directorBlocking, directorPlanStatus, directorStatusVisible, directorRetrying, directorRetryError, hotChoices, hotChoicesExpanded, showHotChoices, canUseHotChoices, setHotChoicesExpanded } = story
-  const { streaming, approvalReady, abortPending, recoveryPaused, recoveryAbortAvailable, operationId, connection, commandSubmitting } = runtime
+  const { streaming, approvalReady, conversationConfig, abortPending, recoveryPaused, recoveryAbortAvailable, operationId, connection, commandSubmitting } = runtime
   const { contextAnalysisOpen, contextAnalysisLoading, contextAnalysisError, contextAnalysis, tokenUsageOpen, tokenUsageMessages, traceOpen, selectedTraceRunId, replyEditTarget, setContextAnalysisOpen, setTokenUsageOpen, setTraceOpen, closeReplyEditor, saveReply } = dialogs
   const { cancelEditing, retryDirectorPlanning, selectHotChoice, selectStyleScene, selectSkillCommand, handleInputChange, handleInputTriggerChange, handleTokenRemove, toggleHotChoices, openMobileNavigation, openContextAnalysis, removeContextCompaction, openTraceRun, send, stop } = actions
   const builtInCommandOptions: IndexedInputCommandOption[] = filteredBuiltInCommandItems.map(({ command, index }) => ({
@@ -263,7 +265,7 @@ export function StoryStageComposer({ layout, editor, story, runtime, dialogs, ac
               <DropdownMenu>
                 <DropdownMenuTrigger asChild><Button type="button" variant="outline" size="icon-sm" className="nova-agent-composer-icon h-8 w-8 shrink-0 rounded-[10px] border border-[var(--nova-border)] bg-[var(--nova-surface)] text-[var(--nova-text-muted)] hover:bg-[var(--nova-hover)] hover:text-[var(--nova-text)] disabled:opacity-45" disabled={streaming || branchTerminal || directorBlocking || (!storyId && tokenUsageMessages.length === 0)} aria-label={t('chat.input.actions')} title={t('chat.input.actions')}><List className="h-3.5 w-3.5" /></Button></DropdownMenuTrigger>
                 <DropdownMenuContent align="start" side="top" className="w-80 border-[var(--nova-border)] bg-[var(--nova-surface-2)] p-2 text-[var(--nova-text)]">
-                  <AgentApprovalModeMenu runActive={streaming} presentation="submenu" />
+                  <AgentApprovalModeMenu runActive={streaming} presentation="submenu" conversationConfig={conversationConfig} />
                   <InteractiveImageSettingsMenu story={currentStory} disabled={!storyId || streaming || directorBlocking || !onImageSettingsChange} onChange={onImageSettingsChange} />
                   <StoryImagePresetMenu story={currentStory} presets={imagePresets} disabled={!storyId || streaming || directorBlocking || !onImageSettingsChange} onChange={onImageSettingsChange} />
                   <DropdownMenuItem onSelect={() => setTokenUsageOpen(true)} className="cursor-pointer text-xs focus:bg-[var(--nova-active)] focus:text-[var(--nova-text)]"><BarChart3 className="h-3.5 w-3.5" /><span className="min-w-0 flex-1">{t('chat.tokenUsage.action')}</span><span className="text-[10px] text-[var(--nova-text-faint)]">{t('chat.tokenUsage.subtitle', { count: tokenUsageMessages.length })}</span></DropdownMenuItem>
@@ -273,7 +275,7 @@ export function StoryStageComposer({ layout, editor, story, runtime, dialogs, ac
               </DropdownMenu>
             </>}
             toolbarEnd={<>
-              <ModelProfileSwitcher agentKey="interactive_story" workspace={workspace} disabled={streaming || directorBlocking || !approvalReady} />
+              <ModelProfileSwitcher agentKey="interactive_story" workspace={workspace} conversationConfig={conversationConfig} disabled={streaming || directorBlocking || !approvalReady} />
               <Button type="button" variant="outline" className={`nova-agent-composer-pill h-8 shrink-0 rounded-[10px] border-[var(--nova-border)] bg-[var(--nova-surface)] px-2.5 text-[11px] text-[var(--nova-text-muted)] hover:bg-[var(--nova-hover)] hover:text-[var(--nova-text)] ${hotChoicesExpanded ? 'text-[var(--nova-text)]' : ''}`} disabled={!canUseHotChoices} onMouseDown={(event) => event.preventDefault()} onClick={toggleHotChoices} aria-label={hotChoicesExpanded ? t('storyStage.hotChoices.collapse') : t('storyStage.hotChoices.get')} title={hotChoicesExpanded ? t('storyStage.hotChoices.collapse') : t('storyStage.hotChoices.get')}><Compass className="h-3.5 w-3.5" />{!isMobile ? t('storyStage.hotChoices.button') : null}</Button>
               {isMobile ? <Button type="button" variant="outline" className="nova-agent-composer-icon h-8 w-8 shrink-0 rounded-[10px] border-[var(--nova-border)] bg-[var(--nova-surface)] px-0 text-[var(--nova-text-muted)] hover:bg-[var(--nova-hover)] hover:text-[var(--nova-text)]" onMouseDown={(event) => event.preventDefault()} onClick={openMobileNavigation} aria-label={t('workbench.mobile.navigationMenu')} title={t('workbench.mobile.navigationMenu')}><Plus className="h-3.5 w-3.5" /></Button> : null}
             </>}

@@ -9,7 +9,7 @@ import (
 
 const defaultUserSessionID = "default"
 
-func activeUserSessionOrCreate(store *session.Store) (*session.Session, error) {
+func activeUserSessionOrCreate(store *session.Store, runtimeCfg *config.Config) (*session.Session, error) {
 	if store == nil {
 		return nil, ErrNoWorkspace
 	}
@@ -20,7 +20,20 @@ func activeUserSessionOrCreate(store *session.Store) (*session.Session, error) {
 	} else if _, err := store.Get(activeID); err != nil {
 		activeID = defaultUserSessionID
 	}
-	sess, err := store.GetOrCreate(activeID)
+	var sess *session.Session
+	var err error
+	if store.Exists(activeID) {
+		sess, err = store.Get(activeID)
+		if err == nil {
+			_, err = ensureExistingSessionConfig(sess, runtimeCfg, config.AgentKindIDE)
+		}
+	} else {
+		seed, seedErr := recentConversationSeed(store, runtimeCfg, config.AgentKindIDE, activeID)
+		if seedErr != nil {
+			return nil, seedErr
+		}
+		sess, err = store.GetOrCreateWithRuntimeConfig(activeID, seed)
+	}
 	if err != nil {
 		return nil, err
 	}

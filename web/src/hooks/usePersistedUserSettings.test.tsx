@@ -1,15 +1,22 @@
 import { act, renderHook, waitFor } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { fetchSettings, updateUserSettings } from '@/features/settings/api'
+import { fetchSettings } from '@/features/settings/api'
 import type { LayeredSettings } from '@/features/settings/types'
 import { APIError } from '@/lib/api-client'
 import { preserveAutosaveConflict } from '@/lib/api-client/autosave-conflicts'
 import { usePersistedUserSettings } from './usePersistedUserSettings'
 
-vi.mock('@/features/settings/api', () => ({
-  fetchSettings: vi.fn(),
-  updateUserSettings: vi.fn(),
-}))
+const { updateUserSettings } = vi.hoisted(() => ({ updateUserSettings: vi.fn() }))
+
+vi.mock('@/features/settings/api', () => {
+  return {
+    fetchSettings: vi.fn(),
+    createSettingsMergePatch: (_baseline: unknown, draft: unknown) => draft,
+    patchSettings: (_layer: string, changes: unknown, revision?: string) => revision === undefined
+      ? updateUserSettings(changes)
+      : updateUserSettings(changes, revision),
+  }
+})
 
 vi.mock('@/lib/api-client/autosave-conflicts', () => ({
   preserveAutosaveConflict: vi.fn(async () => ({ id: 'settings-conflict', path: '/conflicts/settings-conflict.json', storage: 'server' as const })),

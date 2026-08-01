@@ -100,6 +100,9 @@ func (s *InteractiveAppService) prepareInteractiveAgentCycle(ctx context.Context
 		}
 	}
 	cycle.storyContext = storyContext
+	if _, err := applyInteractiveConversationConfig(cycle.store, &cycle.runtimeCfg, cycle.storyID, cycle.branchID); err != nil {
+		return nil, err
+	}
 
 	teller := loadGameTeller(cycle.novaDir, storyContext.Meta.StoryTellerID)
 	cycle.runtimeCfg.InteractiveReplyTargetChars = storyContext.Meta.ReplyTargetChars

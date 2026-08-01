@@ -8,6 +8,8 @@ import (
 	"strings"
 	"time"
 
+	"denova/config"
+	"denova/internal/conversationconfig"
 	"denova/internal/conversationjournal"
 	"denova/internal/narrativestyle"
 )
@@ -120,6 +122,16 @@ func (s *Store) CreateStory(req CreateStoryRequest) (StorySummary, error) {
 		CreatedAt: now,
 		UpdatedAt: now,
 	}
+	if req.RuntimeConfig != nil {
+		if err := conversationconfig.ValidateShape(*req.RuntimeConfig, config.AgentKindInteractiveStory); err != nil {
+			return StorySummary{}, err
+		}
+		branch := meta.Branches["main"]
+		value := *req.RuntimeConfig
+		branch.RuntimeConfig = &value
+		branch.RuntimeConfigRevision = 1
+		meta.Branches["main"] = branch
+	}
 	if req.StateSchemaInitialization != nil {
 		initialization := *req.StateSchemaInitialization
 		initialization.UpdatedAt = now
@@ -188,7 +200,9 @@ func (s *Store) CreateStory(req CreateStoryRequest) (StorySummary, error) {
 			}
 		}
 		initialDeltaID := newID("sd")
-		meta.Branches["main"] = BranchMeta{Head: initialDeltaID, CreatedAt: now}
+		branch := meta.Branches["main"]
+		branch.Head = initialDeltaID
+		meta.Branches["main"] = branch
 		story.Events = 1
 	}
 	// Store callers that predate story-level policies create a fixed-schema

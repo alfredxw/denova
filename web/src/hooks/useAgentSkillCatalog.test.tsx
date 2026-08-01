@@ -1,0 +1,80 @@
+import { act, renderHook, waitFor } from '@testing-library/react'
+import { StrictMode, type ReactNode } from 'react'
+import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { fetchSettings } from '@/features/settings/api'
+import type { LayeredSettings, ResolvedAgentToolCapability } from '@/features/settings/types'
+import { getSkills } from '@/lib/api'
+import { queryClient } from '@/lib/query-client'
+import { useSkillCommands } from './useSkillCommands'
+import { useWritingSkillOptions } from './useWritingSkillOptions'
+
+vi.mock('@/features/settings/api', () => ({ fetchSettings: vi.fn() }))
+vi.mock('@/lib/api', () => ({ getSkills: vi.fn() }))
+
+describe('useAgentSkillCatalog', () => {
+  beforeEach(() => {
+    queryClient.clear()
+    vi.mocked(getSkills).mockReset().mockResolvedValue({
+      scopes: [],
+      skills: [{
+        name: 'novel-lite', description: 'Write', agent: 'ide', scope: 'builtin', path: '/skills/novel-lite',
+        editable: false, active: true, capabilities: ['writing-workflow'],
+      }],
+    })
+    vi.mocked(fetchSettings).mockReset().mockResolvedValue(settingsWithSkills())
+  })
+
+  it('shares one request and one invalidation lane across mounted conversation consumers', async () => {
+    const { result } = renderHook(() => ({
+      commands: useSkillCommands({ agentKey: 'ide', workspace: '/book' }),
+      writing: useWritingSkillOptions('/book'),
+      secondConversationCommands: useSkillCommands({ agentKey: 'ide', workspace: '/book' }),
+      secondConversationWriting: useWritingSkillOptions('/book'),
+    }), { wrapper: strictWrapper })
+
+    await waitFor(() => expect(result.current).toEqual({
+      commands: [{ name: 'novel-lite', description: 'Write' }],
+      writing: [expect.objectContaining({ name: 'novel-lite' })],
+      secondConversationCommands: [{ name: 'novel-lite', description: 'Write' }],
+      secondConversationWriting: [expect.objectContaining({ name: 'novel-lite' })],
+    }))
+    expect(getSkills).toHaveBeenCalledOnce()
+    expect(fetchSettings).toHaveBeenCalledOnce()
+
+    act(() => window.dispatchEvent(new CustomEvent('nova:conversation-config-updated')))
+    expect(getSkills).toHaveBeenCalledOnce()
+    expect(fetchSettings).toHaveBeenCalledOnce()
+
+    act(() => window.dispatchEvent(new CustomEvent('nova:skills-updated')))
+    await waitFor(() => expect(getSkills).toHaveBeenCalledTimes(2))
+    expect(fetchSettings).toHaveBeenCalledOnce()
+
+    act(() => window.dispatchEvent(new CustomEvent('nova:settings-updated')))
+    await waitFor(() => expect(fetchSettings).toHaveBeenCalledTimes(2))
+    expect(getSkills).toHaveBeenCalledTimes(2)
+  })
+})
+
+function strictWrapper({ children }: { children: ReactNode }) {
+  return <StrictMode>{children}</StrictMode>
+}
+
+function settingsWithSkills(): LayeredSettings {
+  return {
+    default: {}, global: {}, user: {}, workspace: {}, effective: {},
+    paths: { denova_dir: '', nova_dir: '', user_config: '', workspace_config: '' },
+    resolved_agent_tool_manifests: { ide: [skillsCapability()] },
+    resolved_agent_contexts: {},
+  }
+}
+
+function skillsCapability(): ResolvedAgentToolCapability {
+  return {
+    capability: 'skills', title_key: 'agents.tool.skills.title', description_key: 'agents.tool.skills.subtitle',
+    tool_names: ['skill'], descriptor: {
+      execution: 'parallel', mutation_scope: 'none', post_check: 'none', recovery: 'retry',
+      result_projection: 'summary', result_retention: 'receipt', steering: 'interruptible',
+    },
+    available_to_subagents: true, allowed: true, availability: 'available',
+  }
+}

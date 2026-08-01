@@ -53,6 +53,7 @@ import {
 import { toast } from 'sonner'
 import type { ChatSendOptions } from '@/hooks/useAgentChat'
 import { resolveAgentAskAndRefresh } from '@/lib/agent-ask'
+import type { ConversationConfigBinding } from '@/features/conversation-config/types'
 
 type AgentPanelView = 'chat' | 'sessions' | 'traces'
 export type AgentPanelChrome = 'panel' | 'workbench'
@@ -87,8 +88,10 @@ interface AgentPanelProps {
   messages: AgentUIMessage[]
   sessions: SessionSummary[]
   activeSessionId: string
-  /** The composer is usable, but no durable session exists until its first submission. */
+  /** The composer may not have messages yet; its conversation configuration is already durable. */
   sessionDraft?: boolean
+  /** AgentChat supplies its project-bound identity; Writing derives it from activeSessionId. */
+  conversationBinding?: ConversationConfigBinding
   isStreaming: boolean
   /** Real execution state, excluding an idle startup/recovery inspection. */
   isExecutionActive: boolean
@@ -174,6 +177,7 @@ function AgentPanelComponent({
   sessions,
   activeSessionId,
   sessionDraft = false,
+  conversationBinding,
   isStreaming,
   isExecutionActive,
   runtimeProjection = null,
@@ -563,6 +567,9 @@ function AgentPanelComponent({
     onOpenTrace: openTraceRun,
     agentKey: generalAgent ? ('general' as const) : ('ide' as const),
     workspace,
+    conversationBinding: conversationBinding ?? (activeSessionId
+      ? { mode: 'writing' as const, session_id: activeSessionId }
+      : undefined),
     writingSkillControl: generalAgent ? undefined : (
       <WritingComposerSettingsMenu
         enabled={Boolean(workspace) && !persistedSettings.loading && !isStreaming}

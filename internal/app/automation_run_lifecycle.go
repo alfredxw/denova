@@ -333,7 +333,7 @@ func (s *AutomationAppService) startAutomationRun(ctx context.Context, snap *aut
 		}
 	}()
 	log.Printf("[automation] run begin task_id=%s scope=%s workspace=%q trigger=%s template=%s", task.ID, task.Scope, run.Workspace, run.Trigger, task.Template)
-	runtimeCfg := runtimeConfigForTask(snap, task)
+	runtimeCfg := conversation.RuntimeConfig()
 	writeMode, writeScope := effectiveAutomationWriteModeScope(task, run)
 	run.WriteConfirmationRequired = automationRunNeedsWriteConfirmation(task, run)
 	run.WriteConfirmationPolicyCaptured = true
@@ -558,7 +558,7 @@ func (s *AutomationAppService) startAutomationFollowUp(ctx context.Context, snap
 		}
 	}()
 	log.Printf("[automation] follow-up begin task_id=%s run_id=%s message_len=%d", task.ID, run.ID, len(message))
-	runtimeCfg := runtimeConfigForTask(snap, task)
+	runtimeCfg := conversation.RuntimeConfig()
 	writeMode, writeScope := effectiveAutomationWriteModeScope(task, run)
 	runtimeCfg = constrainAutomationTools(runtimeCfg, writeMode, writeScope)
 	if task.Target.Kind == automation.TargetKindUser {

@@ -40,6 +40,9 @@ func (s *InteractiveAppService) executeInteractiveContextCompaction(ctx context.
 		return agents.ContextCompactionResult{}, err
 	}
 	branchID = storyCtx.Snapshot.BranchID
+	if _, err := applyInteractiveConversationConfig(store, &runtimeCfg, storyID, branchID); err != nil {
+		return agents.ContextCompactionResult{}, err
+	}
 	expectedParent := storyCtx.Meta.Branches[branchID].Head
 	startTurn, endTurn, activeCompaction := interactiveModelHistoryRange(storyCtx.Snapshot)
 	modelHistory, err := store.ReadModelHistory(storyID, interactive.StoryModelHistoryQuery{

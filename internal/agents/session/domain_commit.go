@@ -637,6 +637,12 @@ func (s *Session) replaceCanonicalStateLocked(recovered *Session) {
 	s.title = recovered.title
 	s.clearAfterIndex = recovered.clearAfterIndex
 	s.contextRevision = recovered.contextRevision
+	s.runtimeConfig = nil
+	s.runtimeConfigRevision = recovered.runtimeConfigRevision
+	if recovered.runtimeConfig != nil {
+		value := *recovered.runtimeConfig
+		s.runtimeConfig = &value
+	}
 	s.journalSize = recovered.journalSize
 	s.journalOffset = recovered.journalOffset
 	s.journalIncarnation = recovered.journalIncarnation

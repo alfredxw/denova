@@ -79,6 +79,9 @@ func (s *ChatAppService) prepareGeneralChatRuntimeSnapshot(
 	if err := s.resolveReviewFeedback(ctx, runtime, &req); err != nil {
 		return ideChatRuntime{}, req, err
 	}
+	if _, err := applySessionConversationConfig(runtime.sess, &runtime.cfg, runtime.agentKind); err != nil {
+		return ideChatRuntime{}, req, err
+	}
 	return runtime, req, nil
 }
 
@@ -134,6 +137,9 @@ func (s *ChatAppService) prepareIDEChatRuntimeSnapshot(
 	}
 	if residentBytes > book.ResidentLoreSafetyMaxBytes {
 		return ideChatRuntime{}, req, fmt.Errorf("常驻资料正文异常过大（%d KB）；请检查是否误将大型文件设为常驻资料", (residentBytes+1023)/1024)
+	}
+	if _, err := applySessionConversationConfig(runtime.sess, &runtime.cfg, runtime.agentKind); err != nil {
+		return ideChatRuntime{}, req, err
 	}
 	return runtime, req, nil
 }

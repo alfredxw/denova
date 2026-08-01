@@ -10,11 +10,16 @@ import (
 	"strings"
 	"time"
 
+	"denova/internal/conversationconfig"
 	"denova/internal/conversationjournal"
 	"denova/internal/localfs"
 )
 
 func createSession(id, filePath, title string) (*Session, error) {
+	return createSessionWithRuntimeConfig(id, filePath, title, nil)
+}
+
+func createSessionWithRuntimeConfig(id, filePath, title string, runtimeConfig *conversationconfig.Config) (*Session, error) {
 	now := time.Now().UTC()
 	incarnationID := newSessionJournalIncarnationID()
 	if strings.TrimSpace(title) == "" {
@@ -28,6 +33,11 @@ func createSession(id, filePath, title string) (*Session, error) {
 		Title:         title,
 		CreatedAt:     now,
 		UpdatedAt:     now,
+	}
+	if runtimeConfig != nil {
+		value := *runtimeConfig
+		header.RuntimeConfig = &value
+		header.RuntimeConfigRevision = 1
 	}
 	data, err := marshalJSONLine(header)
 	if err != nil {

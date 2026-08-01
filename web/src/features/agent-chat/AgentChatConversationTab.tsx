@@ -120,6 +120,7 @@ function AgentChatConversationTabComponent({
       sessions={chat.sessions}
       activeSessionId={chat.activeSessionId || sessionId}
       sessionDraft={draft}
+      conversationBinding={{ mode: 'agent_chat', project_id: projectId, session_id: sessionId }}
       isStreaming={chat.isStreaming}
       isExecutionActive={chat.isExecutionActive}
       runtimeProjection={chat.runtimeProjection}

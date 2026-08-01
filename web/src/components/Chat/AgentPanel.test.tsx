@@ -3,23 +3,29 @@ import userEvent from '@testing-library/user-event'
 import type { ComponentProps } from 'react'
 import { VirtuosoMockContext } from 'react-virtuoso'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { fetchSettings, updateUserSettings } from '@/features/settings/api'
+import { fetchSettings } from '@/features/settings/api'
 import { usePersistedUserSettings } from '@/hooks/usePersistedUserSettings'
 import { AgentPanel, WRITING_COMPOSER_SETTING_DEFAULTS, type WritingComposerSettingsController } from './AgentPanel'
 
 const useWritingSkillOptionsMock = vi.hoisted(() => vi.fn())
 const useWorkspaceChangeGroupsMock = vi.hoisted(() => vi.fn())
+const updateUserSettings = vi.hoisted(() => vi.fn().mockResolvedValue(undefined))
 
-vi.mock('@/features/settings/api', () => ({
-  fetchSettings: vi.fn().mockResolvedValue({
-    effective: {
-      ide_story_teller_id: 'classic',
-      writing_skill_default: 'novel-lite',
-    },
-    user: {},
-  }),
-  updateUserSettings: vi.fn().mockResolvedValue(undefined),
-}))
+vi.mock('@/features/settings/api', () => {
+  return {
+    fetchSettings: vi.fn().mockResolvedValue({
+      effective: {
+        ide_story_teller_id: 'classic',
+        writing_skill_default: 'novel-lite',
+      },
+      user: {},
+    }),
+    createSettingsMergePatch: (_baseline: unknown, draft: unknown) => draft,
+    patchSettings: (_layer: string, changes: unknown, revision?: string) => revision === undefined
+      ? updateUserSettings(changes)
+      : updateUserSettings(changes, revision),
+  }
+})
 
 vi.mock('@/features/agent-approval/AgentApprovalProvider', () => ({
   useAgentApprovalMode: () => ({

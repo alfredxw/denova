@@ -1,9 +1,8 @@
-import { useEffect, useState } from 'react'
-import { fetchSettings } from '@/features/settings/api'
+import { useMemo } from 'react'
 import type { AgentSkillSettings } from '@/features/settings/types'
-import { getSkills } from '@/lib/api'
 import type { SkillSummary } from '@/lib/api'
 import { skillAvailableForAgent } from '@/features/agents/agent-registry'
+import { useAgentSkillCatalog } from './useAgentSkillCatalog'
 
 export const DEFAULT_WRITING_SKILL = 'novel-lite'
 export const BUILTIN_WRITING_SKILLS = ['novel-lite', 'novel-standard'] as const
@@ -19,32 +18,11 @@ export function resolveWritingSkillSelection(configured: string, options: Writin
 }
 
 export function useWritingSkillOptions(workspace?: string): WritingSkillOption[] {
-  const [options, setOptions] = useState<WritingSkillOption[]>([])
-
-  useEffect(() => {
-    let cancelled = false
-    const load = () => {
-      Promise.all([getSkills(), fetchSettings()])
-        .then(([snapshot, settings]) => {
-          if (cancelled) return
-          setOptions(writingSkillOptionsFromSnapshot(snapshot.skills || [], settings.effective?.agent_skills))
-        })
-        .catch((error) => {
-          console.warn('[skills] load writing skill options failed', { error })
-          if (!cancelled) setOptions([])
-        })
-    }
-    load()
-    window.addEventListener('nova:skills-updated', load)
-    window.addEventListener('nova:settings-updated', load)
-    return () => {
-      cancelled = true
-      window.removeEventListener('nova:skills-updated', load)
-      window.removeEventListener('nova:settings-updated', load)
-    }
-  }, [workspace])
-
-  return options
+  const catalog = useAgentSkillCatalog(workspace).data
+  return useMemo(
+    () => writingSkillOptionsFromSnapshot(catalog?.skills.skills || [], catalog?.settings.effective?.agent_skills),
+    [catalog],
+  )
 }
 
 export function writingSkillOptionsFromSnapshot(skills: SkillSummary[], agentSkills?: AgentSkillSettings): WritingSkillOption[] {

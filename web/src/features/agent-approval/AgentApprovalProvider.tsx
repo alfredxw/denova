@@ -10,7 +10,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog'
-import { fetchSettings, updateAgentApprovalMode } from '@/features/settings/api'
+import { fetchSettings, patchSettings } from '@/features/settings/api'
 import type { LayeredSettings } from '@/features/settings/types'
 import {
   DEFAULT_AGENT_APPROVAL_MODE,
@@ -67,7 +67,7 @@ export function AgentApprovalProvider({ children }: { children: ReactNode }) {
     savingRef.current = true
     setSaving(true)
     try {
-      const settings = await updateAgentApprovalMode(next)
+      const settings = await patchSettings('user', { agent_approval_mode: next })
       const saved = normalizeAgentApprovalMode(settings.user?.agent_approval_mode)
         || normalizeAgentApprovalMode(settings.effective?.agent_approval_mode)
       if (!saved) throw new Error('server response did not include the saved user mode')

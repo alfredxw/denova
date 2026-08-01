@@ -16,6 +16,7 @@ import {
 } from '@/components/ui/dropdown-menu'
 import { useAgentApprovalMode } from './AgentApprovalProvider'
 import { AGENT_APPROVAL_MODES, type AgentApprovalMode } from './modes'
+import type { ConversationConfigController } from '@/features/conversation-config/types'
 
 const modePresentation: Record<AgentApprovalMode, { icon: LucideIcon; tone: string }> = {
   ask: { icon: ShieldQuestion, tone: 'text-amber-500' },
@@ -26,12 +27,21 @@ const modePresentation: Record<AgentApprovalMode, { icon: LucideIcon; tone: stri
 interface AgentApprovalModeMenuProps {
   runActive: boolean
   presentation?: 'standalone' | 'submenu'
+  conversationConfig?: ConversationConfigController
 }
 
 /** Safety-mode selector that can stand alone or live inside a composer options menu. */
-export function AgentApprovalModeMenu({ runActive, presentation = 'standalone' }: AgentApprovalModeMenuProps) {
+export function AgentApprovalModeMenu({ runActive, presentation = 'standalone', conversationConfig }: AgentApprovalModeMenuProps) {
   const { t } = useTranslation()
-  const approval = useAgentApprovalMode()
+  const defaultApproval = useAgentApprovalMode()
+  const approval = conversationConfig
+    ? {
+        mode: conversationConfig.snapshot?.approval_mode ?? defaultApproval.mode,
+        initialized: conversationConfig.initialized,
+        saving: conversationConfig.saving,
+        setMode: async (mode: AgentApprovalMode) => conversationConfig.patch({ approval_mode: mode }),
+      }
+    : defaultApproval
   const [displayedMode, setDisplayedMode] = useState<AgentApprovalMode>(approval.mode)
 
   // A run snapshots its starting mode. Keep that exact posture visible until

@@ -442,6 +442,13 @@ export function ConfigManagerChat({ workspace = '', origin, resourceId, storyId,
         tokenUsageMessages={tokenUsageMessages}
         agentKey="config_manager"
         workspace={workspace}
+        conversationBinding={workspace ? {
+          mode: 'config_manager',
+          origin,
+          resource_id: resourceId,
+          story_id: storyId,
+          branch_id: branchId,
+        } : undefined}
         floating
         onHeightChange={setInputAreaHeight}
       />

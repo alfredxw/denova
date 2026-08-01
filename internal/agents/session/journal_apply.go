@@ -189,6 +189,24 @@ func applySessionPatchLine(sess *Session, line []byte) error {
 		}
 		sess.title = title
 	}
+	if patch.RuntimeConfig != nil {
+		if patch.RuntimeConfigRevision == 0 || patch.RuntimeConfigRevision <= sess.runtimeConfigRevision {
+			return fmt.Errorf("session runtime config revision is not monotonic")
+		}
+		expectedKind := ""
+		if sess.runtimeConfig != nil {
+			expectedKind = sess.runtimeConfig.AgentKind
+		}
+		if err := validateRuntimeConfigState(patch.RuntimeConfig, patch.RuntimeConfigRevision, expectedKind); err != nil {
+			return fmt.Errorf("session runtime config: %w", err)
+		}
+		value := *patch.RuntimeConfig
+		sess.runtimeConfig = &value
+		sess.runtimeConfigRevision = patch.RuntimeConfigRevision
+	}
+	if patch.RuntimeConfig == nil && patch.RuntimeConfigRevision != 0 {
+		return fmt.Errorf("session runtime config revision exists without a config")
+	}
 	advanceUpdatedAt(sess, patch.UpdatedAt)
 	return nil
 }

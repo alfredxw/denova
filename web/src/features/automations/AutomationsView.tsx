@@ -174,7 +174,8 @@ export function AutomationsView({ workspace, onClose }: { workspace: string; onC
     return [...activeRuns, { task_id: live.task_id, run: live }]
   }, [activeRuns, runStream.activeRun])
   const automationWorkspace = draft.target?.kind === 'workspace' ? draft.target.workspace || '' : ''
-  const skillCommands = useSkillCommands({ agentKey: 'automation', workspace: automationWorkspace })
+  const runConversationWorkspace = runStream.activeRun?.workspace || automationWorkspace
+  const skillCommands = useSkillCommands({ agentKey: 'automation', workspace: runConversationWorkspace })
   const runMessageListBottomPadding = runInputAreaHeight > 0 ? runInputAreaHeight + 20 : undefined
 
   useEffect(() => {
@@ -678,7 +679,13 @@ export function AutomationsView({ workspace, onClose }: { workspace: string; onC
                   commandScope="skills"
                   skills={skillCommands}
                   agentKey="automation"
-                  workspace={automationWorkspace}
+                  workspace={runConversationWorkspace}
+                  conversationBinding={{
+                    mode: 'automation',
+                    run_id: runStream.activeRun.id,
+                    project_id: runStream.activeRun.project_id,
+                    session_id: runStream.activeRun.session_id,
+                  }}
                   floating
                   onHeightChange={setRunInputAreaHeight}
                 />

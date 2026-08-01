@@ -20,6 +20,8 @@ import { AgentQueuedCommandList } from './AgentQueuedCommandList'
 import { useAgentApprovalMode } from '@/features/agent-approval/AgentApprovalProvider'
 import { AgentApprovalModeMenu } from '@/features/agent-approval/AgentApprovalModeMenu'
 import { InputCommandMenu, type InputCommandOption } from './InputCommandMenu'
+import { useConversationConfig } from '@/features/conversation-config/use-conversation-config'
+import type { ConversationConfigBinding } from '@/features/conversation-config/types'
 
 /** 可用命令列表 */
 const COMMANDS: Array<{ cmd: string; descKey: string; hintKey: string; icon: LucideIcon }> = [
@@ -89,6 +91,7 @@ interface InputAreaProps {
   onOpenTrace?: (runID: string) => void
   agentKey?: VisibleAgentKey
   workspace?: string
+  conversationBinding?: ConversationConfigBinding
   writingSkillControl?: ReactNode
   onboardingAnchor?: string
   floating?: boolean
@@ -144,13 +147,18 @@ export function InputArea({
   onOpenTrace,
   agentKey,
   workspace,
+  conversationBinding,
   writingSkillControl,
   onboardingAnchor,
   floating = false,
   onHeightChange,
 }: InputAreaProps) {
   const { t } = useTranslation()
-  const approval = useAgentApprovalMode()
+  const defaultApproval = useAgentApprovalMode()
+  const conversationConfig = useConversationConfig(conversationBinding)
+  const approvalReady = conversationBinding
+    ? conversationConfig.initialized && !conversationConfig.saving
+    : defaultApproval.initialized && !defaultApproval.saving
   const keyboardInset = useKeyboardInset()
   const isMobile = useIsMobile()
   const [value, setValue] = useState(() => draftKey ? inputDrafts.get(draftKey) || '' : '')
@@ -399,7 +407,7 @@ export function InputArea({
   /** 发送消息 */
   const handleSend = () => {
     const trimmed = value.trim()
-    if ((!trimmed && !hasReviewFeedback) || disabled || !approval.initialized || approval.saving || submittingRef.current) return
+    if ((!trimmed && !hasReviewFeedback) || disabled || !approvalReady || submittingRef.current) return
     const submittedValue = value
     submittingRef.current = true
     setSubmitting(true)
@@ -650,17 +658,17 @@ export function InputArea({
                 {t('chat.plan.short')}
               </span>
             ) : null}
-            <AgentApprovalModeMenu runActive={isGenerationActive} />
+            <AgentApprovalModeMenu runActive={isGenerationActive} conversationConfig={conversationBinding ? conversationConfig : undefined} />
             <TokenUsageDialog open={tokenUsageOpen} messages={tokenUsageMessages} onOpenChange={setTokenUsageOpen} onOpenTrace={onOpenTrace} />
           </>
         }
-        toolbarEnd={<ModelProfileSwitcher agentKey={agentKey} workspace={workspace} disabled={disabled || isGenerationActive} />}
+        toolbarEnd={<ModelProfileSwitcher agentKey={agentKey} workspace={workspace} conversationConfig={conversationBinding ? conversationConfig : undefined} disabled={disabled || isGenerationActive} />}
         submitControl={(
           <AgentComposerControls
             generationActive={isGenerationActive}
             onStop={onStop}
             onSend={handleSend}
-            sendDisabled={sendBlocked || !approval.initialized || approval.saving || submitting || (!value.trim() && !hasReviewFeedback)}
+            sendDisabled={sendBlocked || !approvalReady || submitting || (!value.trim() && !hasReviewFeedback)}
             disabled={disabled}
             abortPending={abortPending}
             actionPending={commandSubmitting}

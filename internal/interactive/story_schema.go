@@ -4,6 +4,9 @@ import (
 	"encoding/json"
 	"fmt"
 	"strings"
+
+	"denova/config"
+	"denova/internal/conversationconfig"
 )
 
 const (
@@ -240,6 +243,20 @@ func validateStoryMeta(meta StoryMeta) error {
 	}
 	if len(meta.Branches) == 0 {
 		return fmt.Errorf("故事元信息缺少 branches")
+	}
+	for branchID, branch := range meta.Branches {
+		if branch.RuntimeConfig == nil {
+			if branch.RuntimeConfigRevision != 0 {
+				return fmt.Errorf("branch %q has runtime config revision without config", branchID)
+			}
+			continue
+		}
+		if branch.RuntimeConfigRevision == 0 {
+			return fmt.Errorf("branch %q runtime config revision is missing", branchID)
+		}
+		if err := conversationconfig.ValidateShape(*branch.RuntimeConfig, config.AgentKindInteractiveStory); err != nil {
+			return fmt.Errorf("branch %q runtime config: %w", branchID, err)
+		}
 	}
 	if meta.ReplyTargetChars <= 0 {
 		return fmt.Errorf("故事单轮目标字数无效: %d", meta.ReplyTargetChars)

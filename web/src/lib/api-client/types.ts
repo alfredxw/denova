@@ -862,6 +862,7 @@ export interface AutomationRunRecord {
   id: string
   task_id: string
   session_id?: string
+  project_id?: string
   scope: AutomationScope
   workspace?: string
   trigger: 'manual' | 'schedule' | 'condition' | 'inbox_confirmation' | 'write_confirmation'

@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 import { Check, ChevronDown, Loader2 } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import {
@@ -8,16 +8,17 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu'
-import { fetchSettings, updateUserSettings } from '@/features/settings/api'
-import type { AgentModelOverride, LayeredSettings, ModelProfileSettings, Settings } from '@/features/settings/types'
+import { fetchSettings } from '@/features/settings/api'
+import type { LayeredSettings, ModelProfileSettings } from '@/features/settings/types'
 import { modelProfileID, modelProfileLabel, modelProfilesWithDefault } from '@/features/settings/model-profiles'
-import { normalizeThinkingLevel, THINKING_LEVEL_SELECTIONS } from '@/features/settings/thinking-levels'
-import type { ThinkingLevelSelection } from '@/features/settings/thinking-levels'
+import { THINKING_LEVELS, type ThinkingLevel } from '@/features/settings/thinking-levels'
 import type { VisibleAgentKey } from '@/features/agents/agent-registry'
+import type { ConversationConfigController } from '@/features/conversation-config/types'
 
 interface ModelProfileSwitcherProps {
   agentKey?: VisibleAgentKey
   workspace?: string
+  conversationConfig?: ConversationConfigController
   disabled?: boolean
 }
 
@@ -32,8 +33,8 @@ interface SavingSelection {
   value: string
 }
 
-export function ModelProfileSwitcher({ agentKey, workspace, disabled = false }: ModelProfileSwitcherProps) {
-  const selector = useModelProfileSelector({ agentKey, workspace, disabled })
+export function ModelProfileSwitcher({ agentKey, workspace, conversationConfig, disabled = false }: ModelProfileSwitcherProps) {
+  const selector = useModelProfileSelector({ agentKey, workspace, conversationConfig, disabled })
   const [open, setOpen] = useState(false)
 
   if (!selector.enabled) return null
@@ -43,7 +44,7 @@ export function ModelProfileSwitcher({ agentKey, workspace, disabled = false }: 
       <DropdownMenuTrigger asChild>
         <button
           type="button"
-          disabled={disabled || !selector.settings}
+          disabled={disabled || !selector.settings || !conversationConfig?.initialized || selector.saving}
           className="group flex h-8 max-w-44 shrink-0 items-center gap-1.5 rounded-md border-0 bg-transparent px-1.5 text-xs leading-none text-[var(--nova-text)] outline-none transition-colors hover:text-[var(--nova-text)] focus-visible:bg-[var(--nova-hover)] disabled:pointer-events-none disabled:opacity-50"
           aria-label={selector.t('chat.modelProfile.switch', { model: selector.currentSelectionLabel })}
           title={selector.t('chat.modelProfile.switch', { model: selector.currentSelectionLabel })}
@@ -85,22 +86,24 @@ interface ModelProfileSelector {
   options: ModelProfileOption[]
   currentProfile: string
   currentModelLabel: string
-  currentThinkingLevel: ThinkingLevelSelection
+  currentThinkingLevel: ThinkingLevel | ''
   currentThinkingLevelLabel: string
   currentSelectionLabel: string
   savingSelection: SavingSelection | null
   error: string | null
   selectProfile: (profileID: string) => Promise<void>
-  selectThinkingLevel: (level: ThinkingLevelSelection) => Promise<void>
+  saving: boolean
+  selectThinkingLevel: (level: ThinkingLevel) => Promise<void>
 }
 
-function useModelProfileSelector({ agentKey, workspace, disabled = false }: ModelProfileSelectorInput): ModelProfileSelector {
+function useModelProfileSelector({ agentKey, conversationConfig, disabled = false }: ModelProfileSelectorInput): ModelProfileSelector {
   const { t } = useTranslation()
   const [settings, setSettings] = useState<LayeredSettings | null>(null)
   const [savingSelection, setSavingSelection] = useState<SavingSelection | null>(null)
-  const [error, setError] = useState<string | null>(null)
-  const savingRef = useRef(false)
-  const enabled = Boolean(agentKey && workspace)
+  const [catalogError, setCatalogError] = useState<string | null>(null)
+  // Model profiles are user-scoped. Global conversations (notably user-wide
+  // automations) therefore remain configurable without a workspace path.
+  const enabled = Boolean(agentKey && conversationConfig)
 
   const load = useCallback(() => {
     if (!enabled) {
@@ -110,10 +113,10 @@ function useModelProfileSelector({ agentKey, workspace, disabled = false }: Mode
     fetchSettings()
       .then((next) => {
         setSettings(next)
-        setError(null)
+        setCatalogError(null)
       })
       .catch((err) => {
-        setError(err instanceof Error ? err.message : t('chat.modelProfile.loadFailed'))
+        setCatalogError(err instanceof Error ? err.message : t('chat.modelProfile.loadFailed'))
       })
   }, [enabled, t])
 
@@ -132,59 +135,34 @@ function useModelProfileSelector({ agentKey, workspace, disabled = false }: Mode
     () => buildModelProfileOptions(settings, t),
     [settings, t],
   )
-  const currentProfile = useMemo(
-    () => agentKey ? resolveCurrentProfileID(settings?.effective ?? {}, agentKey, options) : 'default',
-    [agentKey, options, settings?.effective],
-  )
+  const currentProfile = conversationConfig?.snapshot?.profile_id || 'default'
   const currentModelLabel = options.find((option) => option.id === currentProfile)?.modelLabel || currentProfile
-  const currentThinkingLevel = useMemo(
-    () => agentKey ? resolveCurrentThinkingLevel(settings?.effective ?? {}, agentKey) : '',
-    [agentKey, settings?.effective],
-  )
+  const currentThinkingLevel = conversationConfig?.snapshot?.thinking_level || ''
   const currentThinkingLevelLabel = currentThinkingLevel
     ? t(`chat.modelProfile.thinking.${currentThinkingLevel}`)
     : ''
   const currentSelectionLabel = [currentModelLabel, currentThinkingLevelLabel].filter(Boolean).join(' ')
 
-  const saveAgentModelSelection = async (
-    selection: SavingSelection,
-    update: (latest: Settings) => Settings,
-  ) => {
-    if (!agentKey || disabled || savingRef.current) return
-    const previousSettings = settings
-    savingRef.current = true
+  const saveConversationSelection = async (selection: SavingSelection) => {
+    if (!conversationConfig || disabled || conversationConfig.saving) return
     setSavingSelection(selection)
-    setError(null)
     try {
-      const latest = await fetchSettings()
-      const saved = await updateUserSettings(update(latest.user), latest.revisions?.user)
-      setSettings(saved)
-      window.dispatchEvent(new CustomEvent('nova:settings-updated'))
-    } catch (err) {
-      setSettings(previousSettings)
-      const message = err instanceof Error ? err.message : t('chat.modelProfile.saveFailed')
-      console.warn('[model-profile-switcher] save failed', err)
-      setError(message)
+      await conversationConfig.patch(selection.kind === 'profile'
+        ? { profile_id: selection.value }
+        : { thinking_level: selection.value as ThinkingLevel })
     } finally {
-      savingRef.current = false
       setSavingSelection(null)
     }
   }
 
   const selectProfile = async (profileID: string) => {
-    if (!agentKey || profileID === currentProfile) return
-    await saveAgentModelSelection(
-      { kind: 'profile', value: profileID },
-      (latest) => withAgentModelSelection(latest, agentKey, { profileID }),
-    )
+    if (!conversationConfig || profileID === currentProfile) return
+    await saveConversationSelection({ kind: 'profile', value: profileID })
   }
 
-  const selectThinkingLevel = async (level: ThinkingLevelSelection) => {
-    if (!agentKey || level === currentThinkingLevel) return
-    await saveAgentModelSelection(
-      { kind: 'thinking', value: level },
-      (latest) => withAgentModelSelection(latest, agentKey, { thinkingLevel: level }),
-    )
+  const selectThinkingLevel = async (level: ThinkingLevel) => {
+    if (!conversationConfig || level === currentThinkingLevel) return
+    await saveConversationSelection({ kind: 'thinking', value: level })
   }
 
   return {
@@ -198,7 +176,8 @@ function useModelProfileSelector({ agentKey, workspace, disabled = false }: Mode
     currentThinkingLevelLabel,
     currentSelectionLabel,
     savingSelection,
-    error,
+    error: catalogError || conversationConfig?.error || null,
+    saving: conversationConfig?.saving ?? false,
     selectProfile,
     selectThinkingLevel,
   }
@@ -209,7 +188,7 @@ function ModelProfileOptions({
   onThinkingLevelSelect,
 }: {
   selector: ModelProfileSelector
-  onThinkingLevelSelect: (level: ThinkingLevelSelection) => void
+  onThinkingLevelSelect: (level: ThinkingLevel) => void
 }) {
   const {
     t,
@@ -252,14 +231,12 @@ function ModelProfileOptions({
         aria-label={t('chat.modelProfile.thinkingSection')}
         className="grid grid-cols-4 gap-1 px-1 pb-1"
       >
-        {THINKING_LEVEL_SELECTIONS.map((level) => {
+        {THINKING_LEVELS.map((level) => {
           const selected = level === currentThinkingLevel
-          const label = level
-            ? t(`chat.modelProfile.thinking.${level}`)
-            : t('chat.modelProfile.thinking.inherit')
+          const label = t(`chat.modelProfile.thinking.${level}`)
           return (
             <button
-              key={level || 'inherit'}
+              key={level}
               type="button"
               disabled={Boolean(savingSelection)}
               aria-pressed={selected}
@@ -306,46 +283,4 @@ export function buildModelProfileOptions(settings: LayeredSettings | null, t: (k
       ? t('chat.modelProfile.defaultProfile', { label })
       : t('chat.modelProfile.profile', { id, label }),
   }))
-}
-
-export function resolveCurrentProfileID(settings: Settings, agentKey: VisibleAgentKey, options: ModelProfileOption[]): string {
-  const merged = resolveAgentModelOverride(settings, agentKey)
-  const profileID = merged.profile_id || 'default'
-  return options.some((option) => option.id === profileID) ? profileID : 'default'
-}
-
-function resolveCurrentThinkingLevel(settings: Settings, agentKey: VisibleAgentKey): ThinkingLevelSelection {
-  return normalizeThinkingLevel(resolveAgentModelOverride(settings, agentKey).thinking_level) ?? ''
-}
-
-function resolveAgentModelOverride(settings: Settings, agentKey: VisibleAgentKey): AgentModelOverride {
-  return mergeAgentModelOverride(settings.agent_models?.default ?? {}, settings.agent_models?.[agentKey] ?? {})
-}
-
-function mergeAgentModelOverride(parent: AgentModelOverride, child: AgentModelOverride): AgentModelOverride {
-  return {
-    profile_id: child.profile_id || parent.profile_id,
-    temperature: child.temperature ?? parent.temperature,
-    thinking_level: child.thinking_level || parent.thinking_level,
-  }
-}
-
-function withAgentModelSelection(
-  settings: Settings,
-  agentKey: VisibleAgentKey,
-  selection: { profileID?: string; thinkingLevel?: ThinkingLevelSelection },
-): Settings {
-  const nextModel = { ...(settings.agent_models?.[agentKey] ?? {}) }
-  if (selection.profileID !== undefined) nextModel.profile_id = selection.profileID
-  if (selection.thinkingLevel !== undefined) {
-    if (selection.thinkingLevel) nextModel.thinking_level = selection.thinkingLevel
-    else delete nextModel.thinking_level
-  }
-  return {
-    ...settings,
-    agent_models: {
-      ...(settings.agent_models ?? {}),
-      [agentKey]: nextModel,
-    },
-  }
 }

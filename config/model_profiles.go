@@ -1,6 +1,7 @@
 package config
 
 import (
+	"fmt"
 	"strings"
 
 	"github.com/alfredxw/denova/agent/providers"
@@ -158,6 +159,51 @@ func ResolveAgentModel(cfg *Config, agentKind string) ResolvedModelSettings {
 		ContextWindowTokens: *profile.ContextWindowTokens,
 		ThinkingLevel:       resolvedThinkingLevel(agentOverride.ThinkingLevel),
 	}
+}
+
+// ApplyAgentModelSelection overrides only the model identity and reasoning
+// effort for one Agent kind. Other per-Agent policy, such as temperature,
+// remains owned by Settings.
+func ApplyAgentModelSelection(cfg *Config, agentKind, profileID, thinkingLevel string) error {
+	if cfg == nil {
+		return fmt.Errorf("config is nil")
+	}
+	definition, ok := LookupAgentKind(strings.TrimSpace(agentKind))
+	if !ok || definition.ModelOverride == nil || definition.SetModelOverride == nil {
+		return fmt.Errorf("unsupported Agent kind %q", agentKind)
+	}
+	profileID = normalizeModelProfileID(profileID)
+	if !ModelProfileExists(cfg, profileID) {
+		return fmt.Errorf("model profile %q does not exist", profileID)
+	}
+	level, err := providers.ParseThinkingLevel(thinkingLevel)
+	if err != nil {
+		return err
+	}
+	override := definition.ModelOverride(cfg.AgentModels)
+	override.ProfileID = profileID
+	override.ThinkingLevel = string(level)
+	definition.SetModelOverride(&cfg.AgentModels, override)
+	return nil
+}
+
+// ModelProfileExists reports whether a stable selectable profile ID exists.
+// The legacy/default profile is always present even when no explicit profiles
+// have been configured.
+func ModelProfileExists(cfg *Config, profileID string) bool {
+	profileID = normalizeModelProfileID(profileID)
+	if profileID == "default" {
+		return true
+	}
+	if cfg == nil || profileID == "" {
+		return false
+	}
+	for _, profile := range cfg.ModelProfiles {
+		if modelProfileID(profile) == profileID {
+			return true
+		}
+	}
+	return false
 }
 
 func mergeModelProfiles(parent, child []ModelProfileSettings) []ModelProfileSettings {

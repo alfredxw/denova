@@ -3,7 +3,7 @@ import type { Dispatch, SetStateAction } from 'react'
 import { saveWithRevisionRecovery } from '@/lib/revision-conflict'
 import { rebaseJSONValue } from '@/lib/three-way-rebase'
 import { rebaseJSONWithRecovery } from '@/lib/autosave/rebase-with-recovery'
-import { fetchSettings, updateUserSettings, updateWorkspaceSettings } from './api'
+import { createSettingsMergePatch, fetchSettings, patchSettings } from './api'
 import type { LayeredSettings, Settings, SettingsLayer } from './types'
 import { settingsForLayer, settingsRevisionForLayer, useAutoSaveSettings } from './use-auto-save-settings'
 
@@ -169,20 +169,21 @@ export function useLayeredSettingsDraft({
   }, [layer])
 
   const saveLayer = useCallback(async (targetLayer: SettingsLayer, settings: Settings, baseRevision?: string) => {
-    const updater = targetLayer === 'user'
-      ? (saveUserSettings ?? updateUserSettings)
-      : (saveWorkspaceSettings ?? updateWorkspaceSettings)
     // This baseline belongs to the revision used by the first write. A reload may
     // advance baselinesRef while that request is in flight, but it must not change
     // how the original draft is interpreted during a conflict retry.
     const saveBaseline = baselinesRef.current[targetLayer]
+    const customUpdater = targetLayer === 'user' ? saveUserSettings : saveWorkspaceSettings
+    let patchBaseline = saveBaseline
     let recoveryBaselineRevision = baseRevision
     let latestRevision: string | undefined
     return saveWithRevisionRecovery({
       baseline: saveBaseline,
       draft: settings,
       revision: baseRevision,
-      save: (nextDraft, revision) => revision ? updater(nextDraft, revision) : updater(nextDraft),
+      save: (nextDraft, revision) => customUpdater
+        ? customUpdater(nextDraft, revision)
+        : patchSettings(targetLayer, createSettingsMergePatch(patchBaseline, nextDraft), revision),
       loadLatest: async () => {
         const latest = await (loadSettings ?? fetchSettings)()
         latestRevision = settingsRevisionForLayer(latest, targetLayer)
@@ -201,6 +202,7 @@ export function useLayeredSettingsDraft({
           external: { revision: latestRevision, value: latest },
         })
         recoveryBaselineRevision = latestRevision
+        patchBaseline = latest
         return rebased
       },
     })

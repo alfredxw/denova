@@ -9,7 +9,7 @@ const updateAgentApprovalMode = vi.fn()
 
 vi.mock('@/features/settings/api', () => ({
   fetchSettings: (...args: unknown[]) => fetchSettings(...args),
-  updateAgentApprovalMode: (...args: unknown[]) => updateAgentApprovalMode(...args),
+  patchSettings: (_layer: string, changes: { agent_approval_mode?: AgentApprovalMode }) => updateAgentApprovalMode(changes.agent_approval_mode),
 }))
 
 describe('AgentApprovalProvider', () => {

@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { fetchSettings, updateUserSettings } from '@/features/settings/api'
+import { createSettingsMergePatch, fetchSettings, patchSettings } from '@/features/settings/api'
 import type { LayeredSettings, Settings } from '@/features/settings/types'
 import { useSaveLane } from '@/hooks/use-save-lane'
 import { saveWithRevisionRecovery } from '@/lib/revision-conflict'
@@ -317,11 +317,12 @@ async function updateSettingsOnLatestSnapshot(
   })
   let recoveryBaselineRevision = snapshot.revisions?.user
   let latestRevision: string | undefined
+  let patchBaseline = snapshot.user
   return saveWithRevisionRecovery({
     baseline: snapshot.user,
     draft: rebased,
     revision: snapshot.revisions?.user,
-    save: (draft, revision) => revision ? updateUserSettings(draft, revision) : updateUserSettings(draft),
+    save: (draft, revision) => patchSettings('user', createSettingsMergePatch(patchBaseline, draft), revision),
     loadLatest: async () => {
       const latest = await fetchSettings()
       latestRevision = latest.revisions?.user
@@ -337,6 +338,7 @@ async function updateSettingsOnLatestSnapshot(
         external: { revision: latestRevision, value: external },
       })
       recoveryBaselineRevision = latestRevision
+      patchBaseline = external
       return merged
     },
   })

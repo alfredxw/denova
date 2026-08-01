@@ -217,6 +217,44 @@ export const handlers = [
       paths: { nova_dir: '', user_config: '', workspace_config: '' },
     }),
   ),
+  http.get('/api/conversation-config', ({ request }) => {
+    const mode = new URL(request.url).searchParams.get('mode') || 'writing'
+    return HttpResponse.json({
+      agent_kind: mode === 'interactive'
+        ? 'interactive_story'
+        : mode === 'config_manager'
+          ? 'config_manager'
+          : mode === 'agent_chat'
+            ? 'general'
+            : 'ide',
+      profile_id: 'default',
+      thinking_level: mode === 'interactive' ? 'off' : 'medium',
+      approval_mode: 'write',
+      revision: 1,
+    })
+  }),
+  http.patch('/api/conversation-config', async ({ request }) => {
+    const body = await request.json() as {
+      binding?: { mode?: string }
+      base_revision?: number
+      changes?: Record<string, unknown>
+    }
+    const mode = body.binding?.mode || 'writing'
+    return HttpResponse.json({
+      agent_kind: mode === 'interactive'
+        ? 'interactive_story'
+        : mode === 'config_manager'
+          ? 'config_manager'
+          : mode === 'agent_chat'
+            ? 'general'
+            : 'ide',
+      profile_id: 'default',
+      thinking_level: mode === 'interactive' ? 'off' : 'medium',
+      approval_mode: 'write',
+      ...body.changes,
+      revision: (body.base_revision || 0) + 1,
+    })
+  }),
   http.get('/api/lore/items', () => HttpResponse.json({ items: [] })),
   http.get('/api/config-manager/messages', () => HttpResponse.json([])),
   http.post('/api/command', async ({ request }) => {

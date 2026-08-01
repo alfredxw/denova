@@ -86,6 +86,28 @@ func (s *InteractiveAppService) CreateInteractiveStoryContext(ctx context.Contex
 		return interactive.StorySummary{}, err
 	}
 	req.StoryTellerID = s.gameTellerID(req.StoryTellerID)
+	if req.RuntimeConfig == nil {
+		a := s.app
+		a.mu.RLock()
+		runtimeCfg := config.Config{}
+		workspace := strings.TrimSpace(a.workspace)
+		if a.cfg != nil {
+			runtimeCfg = *a.cfg
+		}
+		a.mu.RUnlock()
+		if workspace == "" {
+			return interactive.StorySummary{}, ErrNoWorkspace
+		}
+		runtimeCfg, err = refreshConversationRuntimeConfig(runtimeCfg, workspace, runtimeCfg.ProjectStateDir)
+		if err != nil {
+			return interactive.StorySummary{}, err
+		}
+		seed, seedErr := recentInteractiveConversationSeed(store, &runtimeCfg, "")
+		if seedErr != nil {
+			return interactive.StorySummary{}, seedErr
+		}
+		req.RuntimeConfig = &seed
+	}
 	story, err := store.CreateStory(req)
 	if err != nil {
 		return interactive.StorySummary{}, err

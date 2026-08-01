@@ -79,11 +79,6 @@ func buildRuntime(ctx context.Context, cfg *config.Config, layout ProjectLayout)
 			_ = store.Close()
 		}
 	}()
-	sess, err := activeUserSessionOrCreate(store)
-	if err != nil {
-		return nil, fmt.Errorf("创建会话失败: %w", err)
-	}
-
 	runtimeCfg := *cfg
 	runtimeCfg.Workspace = absWorkspace
 	runtimeCfg.ProjectID = layout.ProjectID
@@ -92,6 +87,10 @@ func buildRuntime(ctx context.Context, cfg *config.Config, layout ProjectLayout)
 		applyLayeredSettingsToConfig(&runtimeCfg, layered)
 	} else {
 		return nil, fmt.Errorf("加载 Project 配置失败: %w", loadErr)
+	}
+	sess, err := activeUserSessionOrCreate(store, &runtimeCfg)
+	if err != nil {
+		return nil, fmt.Errorf("创建会话失败: %w", err)
 	}
 	agentRunner, err := buildAgentRunner(ctx, &runtimeCfg, state)
 	if err != nil {

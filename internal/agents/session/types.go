@@ -7,6 +7,7 @@ import (
 	agent "github.com/alfredxw/denova/agent"
 
 	"denova/internal/contextmaintenance"
+	"denova/internal/conversationconfig"
 	"denova/internal/conversationjournal"
 )
 
@@ -469,9 +470,11 @@ type ToolResultCleanupRecord struct {
 
 // Session 保存单个会话的内存状态。
 type Session struct {
-	ID        string
-	CreatedAt time.Time
-	UpdatedAt time.Time
+	ID                    string
+	CreatedAt             time.Time
+	UpdatedAt             time.Time
+	runtimeConfig         *conversationconfig.Config
+	runtimeConfigRevision uint64
 
 	filePath               string
 	title                  string
@@ -505,4 +508,7 @@ type SessionMeta struct {
 	UpdatedAt    time.Time `json:"updated_at"`
 	Active       bool      `json:"active"`
 	MessageCount int       `json:"message_count"`
+	// RuntimeConfig is projection metadata used to seed new conversations. The
+	// dedicated conversation-config API is the sole client mutation/read seam.
+	RuntimeConfig *conversationconfig.Snapshot `json:"-"`
 }

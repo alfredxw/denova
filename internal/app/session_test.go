@@ -165,7 +165,7 @@ func TestActiveUserSessionOrCreateIgnoresFixedAgentActiveSession(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	active, err := activeUserSessionOrCreate(store)
+	active, err := activeUserSessionOrCreate(store, &config.Config{})
 	if err != nil {
 		t.Fatal(err)
 	}

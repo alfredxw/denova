@@ -96,6 +96,11 @@ func cloneSessionForTailReplay(source *Session) *Session {
 		messages:               append([]*agent.Message(nil), source.messages...),
 		records:                make([]historyRecord, len(source.records)),
 	}
+	result.runtimeConfigRevision = source.runtimeConfigRevision
+	if source.runtimeConfig != nil {
+		value := *source.runtimeConfig
+		result.runtimeConfig = &value
+	}
 	for index, record := range source.records {
 		result.records[index] = cloneHistoryRecordForTailReplay(record)
 	}

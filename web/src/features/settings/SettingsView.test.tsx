@@ -1,18 +1,25 @@
 import { act, fireEvent, render, screen } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { fetchSettings, updateUserSettings } from './api'
+import { fetchSettings } from './api'
 import { modelProfilesForEditor, SettingsView, UpdatePanel } from './SettingsView'
 import { MODEL_PROTOCOL_CHAT_COMPLETIONS, MODEL_PROTOCOL_RESPONSES, MODEL_PROVIDER_OPENAI, modelProfilesWithDefault } from './model-profiles'
 import { terminalCommandsForEditor } from './TerminalCommandsEditor'
 import type { LayeredSettings, UpdateCheckResult, UpdateInstallResult } from './types'
 
-vi.mock('./api', () => ({
-  applyUpdate: vi.fn(),
-  checkForUpdate: vi.fn(),
-  fetchSettings: vi.fn(),
-  installUpdateStream: vi.fn(),
-  updateUserSettings: vi.fn(),
-}))
+const { updateUserSettings } = vi.hoisted(() => ({ updateUserSettings: vi.fn() }))
+
+vi.mock('./api', () => {
+  return {
+    applyUpdate: vi.fn(),
+    checkForUpdate: vi.fn(),
+    fetchSettings: vi.fn(),
+    installUpdateStream: vi.fn(),
+    patchSettings: (_layer: string, changes: unknown, revision?: string) => revision === undefined
+      ? updateUserSettings(changes)
+      : updateUserSettings(changes, revision),
+    createSettingsMergePatch: (_baseline: unknown, draft: unknown) => draft,
+  }
+})
 
 vi.mock('@/features/interactive/api', () => ({
   getInteractiveTellers: vi.fn().mockResolvedValue([]),

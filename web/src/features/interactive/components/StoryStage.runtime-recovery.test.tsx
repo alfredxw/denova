@@ -37,6 +37,10 @@ vi.mock('@/features/agent-approval/AgentApprovalProvider', () => ({
   useAgentApprovalMode: () => ({ mode: 'write', initialized: true, saving: false, setMode: vi.fn().mockResolvedValue(true) }),
 }))
 
+vi.mock('@/features/conversation-config/use-conversation-config', () => ({
+  useConversationConfig: () => conversationConfigController(),
+}))
+
 vi.mock('@/hooks/useSkillCommands', () => ({
   useSkillCommands: (...args: unknown[]) => testMocks.useSkillCommandsMock(...args),
 }))
@@ -55,6 +59,14 @@ vi.mock('../api', () => ({
   switchInteractiveTurnVersion: vi.fn(),
   updateInteractiveTurnNarrative: testMocks.updateInteractiveTurnNarrativeMock,
 }))
+
+function conversationConfigController() {
+  return {
+    snapshot: { agent_kind: 'interactive_story', profile_id: 'default', thinking_level: 'off', approval_mode: 'write', revision: 1 },
+    initialized: true, loading: false, saving: false, error: null,
+    patch: vi.fn().mockResolvedValue(true), reload: vi.fn(),
+  }
+}
 
 beforeEach(() => {
   resetStoryStageTestHarness(testMocks)

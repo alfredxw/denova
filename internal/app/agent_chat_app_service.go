@@ -144,9 +144,13 @@ func (s *AgentChatAppService) StartTask(ctx context.Context, binding AgentChatBi
 	if err != nil {
 		return nil, err
 	}
-	// AgentChat blank tabs are local drafts. The stable client-generated session ID becomes
-	// durable only when the first real turn reaches admission.
-	sess, err := project.store.GetOrCreate(binding.SessionID)
+	seedCfg, err := refreshConversationRuntimeConfig(project.cfg, project.workspace, project.stateRoot)
+	if err != nil {
+		return nil, err
+	}
+	// The first accepted turn and the selector endpoint share this constructor,
+	// so a new conversation always snapshots the same recent/default policy.
+	sess, _, err := getOrCreateConversationSession(project.store, binding.SessionID, &seedCfg, binding.agentKind)
 	if err != nil {
 		return nil, err
 	}

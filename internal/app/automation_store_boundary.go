@@ -142,12 +142,15 @@ func (s *AutomationAppService) newRunRecord(snap *automationWorkspaceSnapshot, t
 
 func (s *AutomationAppService) newRunConversation(snap *automationWorkspaceSnapshot, run automation.RunRecord, task automation.Task) (*automationRunConversation, error) {
 	store := snap.sessionStore
-	cfg := snap.cfg
 	if store == nil {
 		return nil, ErrNoWorkspace
 	}
-	sess, err := store.GetOrCreate(run.SessionID)
+	runtimeCfg := runtimeConfigForTask(snap, task)
+	sess, _, err := getOrCreateConversationSession(store, run.SessionID, &runtimeCfg, config.AgentKindAutomation)
 	if err != nil {
+		return nil, err
+	}
+	if _, err := applySessionConversationConfig(sess, &runtimeCfg, config.AgentKindAutomation); err != nil {
 		return nil, err
 	}
 	title := fmt.Sprintf("%s · %s · %s", strings.TrimSpace(task.Name), run.Trigger, run.StartedAt.Local().Format(book.DisplayTimeFormat))
@@ -157,7 +160,10 @@ func (s *AutomationAppService) newRunConversation(snap *automationWorkspaceSnaps
 	if err := sess.Rename(title); err != nil {
 		return nil, err
 	}
-	return &automationRunConversation{base: agents.NewSessionConversationForAgent(sess, &cfg, config.AgentKindAutomation)}, nil
+	return &automationRunConversation{
+		base:          agents.NewSessionConversationForAgent(sess, &runtimeCfg, config.AgentKindAutomation),
+		runtimeConfig: runtimeCfg,
+	}, nil
 }
 
 func automationRunSessionID(runID string) string {

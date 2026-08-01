@@ -45,6 +45,13 @@ func (s *Store) CreateBranch(storyID string, req CreateBranchRequest) (BranchSum
 		FromEvent: parentID,
 		Title:     title,
 	}
+	if source := meta.Branches[fromBranch]; source.RuntimeConfig != nil {
+		branch := meta.Branches[branchID]
+		value := *source.RuntimeConfig
+		branch.RuntimeConfig = &value
+		branch.RuntimeConfigRevision = 1
+		meta.Branches[branchID] = branch
+	}
 	meta.UpdatedAt = now
 	event := BranchEvent{
 		V: schemaVersion, Type: StoryEventTypeBranch, ID: newID("ev"), ParentID: parentID,

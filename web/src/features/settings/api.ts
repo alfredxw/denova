@@ -1,6 +1,14 @@
 import { fetchAPI, jsonHeaders, parseSSEStream, readErrorMessage, requestJSON } from '@/lib/api-client'
-import type { AgentApprovalMode, LayeredSettings, Settings, UpdateApplyResult, UpdateCheckResult } from './types'
+import type { LayeredSettings, Settings, SettingsLayer, UpdateApplyResult, UpdateCheckResult } from './types'
 import type { SSEEvent } from '@/lib/api-client'
+
+type JSONMergePatch<T> = T extends readonly unknown[]
+  ? T | null
+  : T extends object
+    ? { [K in keyof T]?: JSONMergePatch<NonNullable<T[K]>> | null }
+    : T | null
+
+export type SettingsPatch = JSONMergePatch<Settings>
 
 let settingsReadInFlight: Promise<LayeredSettings> | null = null
 
@@ -12,32 +20,47 @@ export function fetchSettings(): Promise<LayeredSettings> {
   return settingsReadInFlight
 }
 
-export async function updateUserSettings(s: Settings, baseRevision?: string): Promise<LayeredSettings> {
-  return requestJSON('/api/settings/user', {
-    method: 'PUT',
+export async function patchSettings(layer: SettingsLayer, changes: SettingsPatch, baseRevision?: string): Promise<LayeredSettings> {
+  return requestJSON('/api/settings', {
+    method: 'PATCH',
     headers: jsonHeaders,
-    body: JSON.stringify(settingsUpdateBody(s, baseRevision)),
+    body: JSON.stringify({ layer, changes, ...(baseRevision ? { base_revision: baseRevision } : {}) }),
   })
 }
 
-export async function updateWorkspaceSettings(s: Settings, baseRevision?: string): Promise<LayeredSettings> {
-  return requestJSON('/api/settings/workspace', {
-    method: 'PUT',
-    headers: jsonHeaders,
-    body: JSON.stringify(settingsUpdateBody(s, baseRevision)),
-  })
+/** Builds the minimal RFC 7386 object needed to transform baseline into draft. */
+export function createSettingsMergePatch(baseline: Settings, draft: Settings): SettingsPatch {
+  const patch = createMergePatchValue(baseline, draft)
+  return patch === unchanged || !isPlainObject(patch) ? {} : patch as SettingsPatch
 }
 
-export async function updateAgentApprovalMode(mode: AgentApprovalMode): Promise<LayeredSettings> {
-  return requestJSON('/api/settings/agent-approval-mode', {
-    method: 'PUT',
-    headers: jsonHeaders,
-    body: JSON.stringify({ mode }),
-  })
+const unchanged = Symbol('unchanged')
+
+function createMergePatchValue(baseline: unknown, draft: unknown): unknown | typeof unchanged {
+  if (Object.is(baseline, draft)) return unchanged
+  if (Array.isArray(baseline) || Array.isArray(draft)) {
+    return JSON.stringify(baseline) === JSON.stringify(draft) ? unchanged : draft
+  }
+  if (!isPlainObject(baseline) || !isPlainObject(draft)) return draft
+  const result: Record<string, unknown> = {}
+  const keys = new Set([...Object.keys(baseline), ...Object.keys(draft)])
+  for (const key of keys) {
+    if (!Object.prototype.hasOwnProperty.call(draft, key) || draft[key] === undefined) {
+      result[key] = null
+      continue
+    }
+    if (!Object.prototype.hasOwnProperty.call(baseline, key)) {
+      result[key] = draft[key]
+      continue
+    }
+    const child = createMergePatchValue(baseline[key], draft[key])
+    if (child !== unchanged) result[key] = child
+  }
+  return Object.keys(result).length === 0 ? unchanged : result
 }
 
-function settingsUpdateBody(settings: Settings, baseRevision?: string) {
-  return baseRevision ? { settings, base_revision: baseRevision } : settings
+function isPlainObject(value: unknown): value is Record<string, unknown> {
+  return Boolean(value) && typeof value === 'object' && !Array.isArray(value)
 }
 
 export async function checkForUpdate(): Promise<UpdateCheckResult> {

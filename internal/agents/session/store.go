@@ -11,6 +11,7 @@ import (
 	"strings"
 	"sync"
 
+	"denova/internal/conversationconfig"
 	"denova/internal/conversationjournal"
 	"denova/internal/localfs"
 )
@@ -43,6 +44,27 @@ func (s *Store) GetOrCreate(id string) (*Session, error) {
 	return s.getOrCreateLocked(id)
 }
 
+// GetOrCreateWithRuntimeConfig creates a new session with an atomic initial
+// snapshot, or durably initializes a legacy session that predates this field.
+func (s *Store) GetOrCreateWithRuntimeConfig(id string, seed conversationconfig.Config) (*Session, error) {
+	if err := validateSessionID(id); err != nil {
+		return nil, err
+	}
+	if err := conversationconfig.ValidateShape(seed, seed.AgentKind); err != nil {
+		return nil, err
+	}
+	s.mu.Lock()
+	sess, err := s.getOrCreateLockedWithRuntimeConfig(id, &seed)
+	s.mu.Unlock()
+	if err != nil {
+		return nil, err
+	}
+	if _, err := sess.EnsureRuntimeConfig(seed); err != nil {
+		return nil, err
+	}
+	return sess, nil
+}
+
 // Get 获取指定 ID 的已存在会话。
 func (s *Store) Get(id string) (*Session, error) {
 	if err := validateSessionID(id); err != nil {
@@ -56,8 +78,28 @@ func (s *Store) Get(id string) (*Session, error) {
 	return s.loadLocked(id)
 }
 
+// Exists reports whether a durable session identity is already present.
+func (s *Store) Exists(id string) bool {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.exists(id)
+}
+
 // Create 创建一个新的会话。
 func (s *Store) Create(title string) (*Session, error) {
+	return s.create(title, nil)
+}
+
+// CreateWithRuntimeConfig persists the initial runtime snapshot in the
+// immutable header, so a newly returned session is never temporarily global.
+func (s *Store) CreateWithRuntimeConfig(title string, seed conversationconfig.Config) (*Session, error) {
+	if err := conversationconfig.ValidateShape(seed, seed.AgentKind); err != nil {
+		return nil, err
+	}
+	return s.create(title, &seed)
+}
+
+func (s *Store) create(title string, seed *conversationconfig.Config) (*Session, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
@@ -67,7 +109,7 @@ func (s *Store) Create(title string) (*Session, error) {
 		if _, err := os.Stat(filePath); err == nil {
 			continue
 		}
-		sess, err := createSession(id, filePath, title)
+		sess, err := createSessionWithRuntimeConfig(id, filePath, title, seed)
 		if err != nil {
 			return nil, err
 		}
@@ -75,6 +117,24 @@ func (s *Store) Create(title string) (*Session, error) {
 		return sess, nil
 	}
 	return nil, fmt.Errorf("生成会话 ID 失败")
+}
+
+// RecentRuntimeConfig returns the latest snapshot for one Agent kind. Session
+// metadata is projection-backed, so this does not materialize old transcripts.
+func (s *Store) RecentRuntimeConfig(agentKind, excludeID string) (conversationconfig.Config, bool, error) {
+	metas, err := s.List("")
+	if err != nil {
+		return conversationconfig.Config{}, false, err
+	}
+	for _, meta := range metas {
+		if meta.ID == excludeID || meta.RuntimeConfig == nil {
+			continue
+		}
+		if meta.RuntimeConfig.AgentKind == agentKind {
+			return meta.RuntimeConfig.Config, true, nil
+		}
+	}
+	return conversationconfig.Config{}, false, nil
 }
 
 // GetActiveOrCreate 返回最近激活会话，不存在时创建默认会话。
@@ -303,6 +363,10 @@ func (s *Store) activeIDUnlocked() (string, error) {
 }
 
 func (s *Store) getOrCreateLocked(id string) (*Session, error) {
+	return s.getOrCreateLockedWithRuntimeConfig(id, nil)
+}
+
+func (s *Store) getOrCreateLockedWithRuntimeConfig(id string, seed *conversationconfig.Config) (*Session, error) {
 	if sess, ok := s.cache[id]; ok {
 		return sess, nil
 	}
@@ -313,7 +377,13 @@ func (s *Store) getOrCreateLocked(id string) (*Session, error) {
 		err  error
 	)
 	if _, statErr := os.Stat(filePath); os.IsNotExist(statErr) {
-		sess, err = createSession(id, filePath, defaultSessionTitle)
+		sess, err = createSessionWithRuntimeConfig(id, filePath, defaultSessionTitle, seed)
+		if errors.Is(err, os.ErrExist) {
+			// Another Store/process won deterministic session creation after our
+			// stat. Load its canonical header; EnsureRuntimeConfig below will
+			// converge legacy initialization through the journal lease.
+			sess, err = loadSession(filePath)
+		}
 	} else {
 		sess, err = loadSession(filePath)
 	}

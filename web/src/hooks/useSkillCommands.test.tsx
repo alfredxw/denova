@@ -3,6 +3,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { fetchSettings } from '@/features/settings/api'
 import type { LayeredSettings, ResolvedAgentToolCapability } from '@/features/settings/types'
 import { getSkills } from '@/lib/api'
+import { queryClient } from '@/lib/query-client'
 import { useSkillCommands } from './useSkillCommands'
 
 vi.mock('@/features/settings/api', () => ({ fetchSettings: vi.fn() }))
@@ -10,6 +11,7 @@ vi.mock('@/lib/api', () => ({ getSkills: vi.fn() }))
 
 describe('useSkillCommands', () => {
   beforeEach(() => {
+    queryClient.clear()
     vi.mocked(fetchSettings).mockReset()
     vi.mocked(getSkills).mockReset()
     vi.mocked(getSkills).mockResolvedValue({

@@ -4,6 +4,7 @@ import (
 	"context"
 	"strings"
 
+	"denova/config"
 	agents "denova/internal/agents"
 	agentcontext "denova/internal/agents/context"
 	"denova/internal/agents/session"
@@ -12,11 +13,23 @@ import (
 type automationOutputConversation interface {
 	agents.Conversation
 	Output() string
+	RuntimeConfig() config.Config
 }
 
 type automationRunConversation struct {
-	base   *agents.SessionConversation
-	output string
+	base          *agents.SessionConversation
+	runtimeConfig config.Config
+	output        string
+}
+
+// RuntimeConfig returns the request-local configuration already resolved from
+// this durable conversation. Task constraints may narrow it further, but model,
+// reasoning, and approval selections must never be re-read from Settings.
+func (c *automationRunConversation) RuntimeConfig() config.Config {
+	if c == nil {
+		return config.Config{}
+	}
+	return c.runtimeConfig
 }
 
 func (c *automationRunConversation) ModelContextBudget() agentcontext.Budget {

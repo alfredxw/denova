@@ -145,11 +145,14 @@ func (s *ConfigManagerAppService) StartTaskWithError(ctx context.Context, req Co
 	if err != nil {
 		return nil, fmt.Errorf("load config manager resource Skills / 加载配置管理资源 Skills 失败: %w", err)
 	}
-	runner, systemPrompt, err := buildConfigManagerRunnerWithComposition(ctx, &runtimeCfg, runtime.state, resourceSkills...)
+	sess, _, err := getOrCreateConversationSession(runtime.sessionStore, sessionID, &runtimeCfg, config.AgentKindConfigManager)
 	if err != nil {
 		return nil, err
 	}
-	sess, err := runtime.sessionStore.GetOrCreate(sessionID)
+	if _, err := applySessionConversationConfig(sess, &runtimeCfg, config.AgentKindConfigManager); err != nil {
+		return nil, err
+	}
+	runner, systemPrompt, err := buildConfigManagerRunnerWithComposition(ctx, &runtimeCfg, runtime.state, resourceSkills...)
 	if err != nil {
 		return nil, err
 	}
@@ -220,15 +223,7 @@ func (a *App) ConfigManagerMessagesPage(ctx context.Context, req ConfigManagerRe
 }
 
 func (s *ConfigManagerAppService) Messages(req ConfigManagerRequest) ([]session.HistoryEntry, error) {
-	store := s.sessionStore()
-	if store == nil {
-		return nil, ErrNoWorkspace
-	}
-	sessionID, err := configManagerSessionID(req)
-	if err != nil {
-		return nil, err
-	}
-	sess, err := store.GetOrCreate(sessionID)
+	sess, err := s.conversationSession(req)
 	if err != nil {
 		return nil, err
 	}
@@ -236,15 +231,7 @@ func (s *ConfigManagerAppService) Messages(req ConfigManagerRequest) ([]session.
 }
 
 func (s *ConfigManagerAppService) MessagesPage(ctx context.Context, req ConfigManagerRequest, before, limit int) (session.HistoryPage, error) {
-	store := s.sessionStore()
-	if store == nil {
-		return session.HistoryPage{}, ErrNoWorkspace
-	}
-	sessionID, err := configManagerSessionID(req)
-	if err != nil {
-		return session.HistoryPage{}, err
-	}
-	sess, err := store.GetOrCreate(sessionID)
+	sess, err := s.conversationSession(req)
 	if err != nil {
 		return session.HistoryPage{}, err
 	}
@@ -256,19 +243,36 @@ func (a *App) ClearConfigManagerSession(req ConfigManagerRequest) error {
 }
 
 func (s *ConfigManagerAppService) Clear(req ConfigManagerRequest) error {
-	store := s.sessionStore()
-	if store == nil {
-		return ErrNoWorkspace
-	}
-	sessionID, err := configManagerSessionID(req)
-	if err != nil {
-		return err
-	}
-	sess, err := store.GetOrCreate(sessionID)
+	sess, err := s.conversationSession(req)
 	if err != nil {
 		return err
 	}
 	return sess.Clear()
+}
+
+func (s *ConfigManagerAppService) conversationSession(req ConfigManagerRequest) (*session.Session, error) {
+	if s == nil || s.app == nil {
+		return nil, ErrNoWorkspace
+	}
+	sessionID, err := configManagerSessionID(req)
+	if err != nil {
+		return nil, err
+	}
+	// Reading or clearing an existing conversation must not depend on the
+	// current workspace runtime being fully initialized. Runtime settings are
+	// only needed when we create a new conversation and choose its seed.
+	if store := s.sessionStore(); store != nil && store.Exists(sessionID) {
+		return store.Get(sessionID)
+	}
+	store, runtimeCfg, sessionID, _, err := s.app.configManagerConversationRuntime(ConversationConfigBinding{
+		Mode: ConversationModeConfigManager, Origin: req.Origin, ResourceID: req.ResourceID,
+		StoryID: req.StoryID, BranchID: req.BranchID,
+	})
+	if err != nil {
+		return nil, err
+	}
+	sess, _, err := getOrCreateConversationSession(store, sessionID, &runtimeCfg, config.AgentKindConfigManager)
+	return sess, err
 }
 
 func (s *ConfigManagerAppService) sessionStore() *session.Store {

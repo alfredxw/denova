@@ -11,7 +11,7 @@ import { MOBILE_NAVIGATION_OPEN_EVENT } from '@/components/layout/workspace-mobi
 import type { ChatMessage, ContextAnalysis } from '@/lib/api'
 import { agentSubAgentSessionKey, agentViewToRenderMessage, type AgentMessageView } from '@/lib/agent-message-view'
 import { useSkillCommands } from '@/hooks/useSkillCommands'
-import { useAgentApprovalMode } from '@/features/agent-approval/AgentApprovalProvider'
+import { useConversationConfig } from '@/features/conversation-config/use-conversation-config'
 import { analyzeInteractiveContext, getInteractiveHistoryPage, removeInteractiveContextCompaction, runInteractiveDirector, switchInteractiveTurnVersion, updateInteractiveTurnNarrative } from '../api'
 import { sanitizeStoredNarrative } from '../stream-parser'
 import { emptyStoryStageRun, useInteractiveStore } from '../stores/interactive-store'
@@ -49,8 +49,12 @@ const EMPTY_STAGE_RUN = emptyStoryStageRun()
 
 export function StoryStage({ workspace, styleSceneSuggestions = [], stories = [], story, tellers = [], storyDirectors = [], imagePresets = [], recentNarrativeStyleID = DEFAULT_NARRATIVE_STYLE_ID, narrativeStyleLoading = false, storyId, branchId, snapshot, snapshotLoading = false, loreEmpty = false, bookOpeningPresets = [], directorPanelVisible = true, stateDisplayPreference = DEFAULT_STORY_STATE_DISPLAY, onStorySelect = noop, onStoryCreate = noop, onStorySetupUpdate = noop, onNarrativeStyleChange, onStoryDelete = noop, onDirectorChange = noop, onReplyTargetCharsChange, onImageSettingsChange, onRequestLoreInit, onOpenDirectorConfig, onToggleDirectorPanel, onOpenDirectorState, onRequestCreateBranch, onStateDisplayPreferenceChange = noopStateDisplayPreferenceChange, onTurnPersisted = noopTurnPersisted, onDone }: StoryStageProps) {
   const { t } = useTranslation()
-  const approval = useAgentApprovalMode()
-  const approvalReady = approval.initialized && !approval.saving
+  const conversationConfig = useConversationConfig(storyId ? {
+    mode: 'interactive',
+    story_id: storyId,
+    branch_id: branchId || snapshot?.branch_id || 'main',
+  } : undefined)
+  const approvalReady = conversationConfig.initialized && !conversationConfig.saving
   const isMobile = useIsMobile()
   const keyboardInset = useKeyboardInset()
   const storyStateModel = useMemo(() => buildStoryStateModel(snapshot), [snapshot])
@@ -767,7 +771,7 @@ export function StoryStage({ workspace, styleSceneSuggestions = [], stories = []
         layout={{ creatingStory, isMobile, keyboardInset, inputTextStyle, workspace, inputFloatRef, inputRef, t }}
         editor={{ input, editingTurn, styleScenes, styleSceneQuery, styleSceneSuggestions, showSkillCommands, activeSkillCommandIndex, skillCommands, filteredSkillCommands, filteredBuiltInCommandItems, filteredSkillCommandItems, setStyleSceneQuery, setShowSkillCommands, setSkillCommandQuery, setActiveSkillCommandIndex }}
         story={{ storyId, story, imagePresets, onImageSettingsChange, branchTerminal, directorBlocking, directorPlanStatus, directorStatusVisible, directorRetrying, directorRetryError, hotChoices, hotChoicesExpanded, showHotChoices, canUseHotChoices, setHotChoicesExpanded }}
-        runtime={{ streaming, approvalReady, abortPending: stageRun.runtime.abortPending, recoveryPaused: stageRun.runtime.recoveryPaused, recoveryAbortAvailable: stageRun.runtime.recoveryAbortAvailable, operationId: stageRun.runtime.operationId, connection: stageRun.runtime.connection, commandSubmitting }}
+        runtime={{ streaming, approvalReady, conversationConfig, abortPending: stageRun.runtime.abortPending, recoveryPaused: stageRun.runtime.recoveryPaused, recoveryAbortAvailable: stageRun.runtime.recoveryAbortAvailable, operationId: stageRun.runtime.operationId, connection: stageRun.runtime.connection, commandSubmitting }}
         dialogs={{ contextAnalysisOpen, contextAnalysisLoading, contextAnalysisError, contextAnalysis, tokenUsageOpen, tokenUsageMessages, traceOpen, selectedTraceRunId, replyEditTarget, setContextAnalysisOpen, setTokenUsageOpen, setTraceOpen, closeReplyEditor: () => setReplyEditTarget(null), saveReply: saveEditedReply }}
         actions={{ cancelEditing, retryDirectorPlanning, selectHotChoice, selectStyleScene, selectSkillCommand, handleInputChange, handleInputTriggerChange, handleTokenRemove, toggleHotChoices, openMobileNavigation, openContextAnalysis, removeContextCompaction, openTraceRun, send, stop }}
       />

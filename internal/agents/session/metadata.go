@@ -8,6 +8,7 @@ import (
 	"strings"
 	"time"
 
+	"denova/internal/conversationconfig"
 	"denova/internal/conversationjournal"
 )
 
@@ -24,10 +25,14 @@ func (s *Store) metadataLocked(id, filePath, activeID string) (SessionMeta, erro
 func (s *Session) metadata(activeID string) SessionMeta {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	return SessionMeta{
+	meta := SessionMeta{
 		ID: s.ID, Title: s.titleLocked(), CreatedAt: s.CreatedAt, UpdatedAt: s.UpdatedAt,
 		Active: s.ID == activeID, MessageCount: s.visibleMessageCountLocked(),
 	}
+	if snapshot, ok := s.runtimeConfigLocked(); ok {
+		meta.RuntimeConfig = &snapshot
+	}
+	return meta
 }
 
 // loadSessionMetadata restores the derived projection and scans only an
@@ -67,8 +72,13 @@ func loadSessionMetadata(filePath, activeID string) (SessionMeta, error) {
 	if updatedAt.IsZero() {
 		updatedAt = createdAt
 	}
-	return SessionMeta{
+	meta := SessionMeta{
 		ID: id, Title: projection.Title, CreatedAt: createdAt, UpdatedAt: updatedAt,
 		Active: id == activeID, MessageCount: projection.VisibleMessageCount,
-	}, nil
+	}
+	if projection.RuntimeConfig != nil && projection.RuntimeConfigRevision > 0 {
+		snapshot := conversationconfig.Snapshot{Config: *projection.RuntimeConfig, Revision: projection.RuntimeConfigRevision}
+		meta.RuntimeConfig = &snapshot
+	}
+	return meta, nil
 }

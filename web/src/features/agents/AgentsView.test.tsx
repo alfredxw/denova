@@ -2,7 +2,7 @@ import { act, fireEvent, render, screen, waitFor, within } from '@testing-librar
 import userEvent from '@testing-library/user-event'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { getSkills } from '@/lib/api'
-import { fetchSettings, updateUserSettings, updateWorkspaceSettings } from '@/features/settings/api'
+import { fetchSettings } from '@/features/settings/api'
 import type { AgentToolCapability, LayeredSettings, ResolvedAgentContextSettings, ResolvedAgentToolCapability } from '@/features/settings/types'
 import { AgentsView } from './AgentsView'
 
@@ -14,12 +14,21 @@ const { configManagerChatProps } = vi.hoisted(() => ({
     onMutated?: () => void
   }>,
 }))
-
-vi.mock('@/features/settings/api', () => ({
-  fetchSettings: vi.fn(),
+const { updateUserSettings, updateWorkspaceSettings } = vi.hoisted(() => ({
   updateUserSettings: vi.fn(),
   updateWorkspaceSettings: vi.fn(),
 }))
+
+vi.mock('@/features/settings/api', () => {
+  const fetchSettings = vi.fn()
+  return {
+    fetchSettings,
+    createSettingsMergePatch: (_baseline: unknown, draft: unknown) => draft,
+    patchSettings: (layer: string, changes: unknown, revision?: string) => layer === 'workspace'
+      ? revision === undefined ? updateWorkspaceSettings(changes) : updateWorkspaceSettings(changes, revision)
+      : revision === undefined ? updateUserSettings(changes) : updateUserSettings(changes, revision),
+  }
+})
 
 vi.mock('@/components/Chat/ConfigManagerChat', () => ({
   ConfigManagerChat: (props: {

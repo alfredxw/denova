@@ -1,6 +1,10 @@
 package handlers
 
 import (
+	"bytes"
+	"encoding/json"
+	"errors"
+	"io"
 	"strings"
 
 	"github.com/cloudwego/hertz/pkg/app"
@@ -8,6 +12,24 @@ import (
 
 	"denova/internal/i18n"
 )
+
+// decodeStrictJSONRequest rejects unknown fields and trailing JSON values at
+// mutation boundaries, where silently accepting a caller typo is unsafe.
+func decodeStrictJSONRequest(data []byte, target any) error {
+	decoder := json.NewDecoder(bytes.NewReader(data))
+	decoder.DisallowUnknownFields()
+	if err := decoder.Decode(target); err != nil {
+		return err
+	}
+	var extra any
+	if err := decoder.Decode(&extra); !errors.Is(err, io.EOF) {
+		if err == nil {
+			return errors.New("unexpected trailing JSON value")
+		}
+		return err
+	}
+	return nil
+}
 
 // writeJSON 写入 JSON 响应。
 func writeJSON(c *app.RequestContext, code int, obj interface{}) {

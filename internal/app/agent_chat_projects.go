@@ -251,7 +251,15 @@ func (a *App) CreateProjectSession(projectID, title string) (AgentChatSession, e
 	if err != nil {
 		return AgentChatSession{}, err
 	}
-	sess, err := project.store.Create(title)
+	runtimeCfg, err := refreshConversationRuntimeConfig(project.cfg, project.workspace, project.stateRoot)
+	if err != nil {
+		return AgentChatSession{}, err
+	}
+	seed, err := recentConversationSeed(project.store, &runtimeCfg, binding.agentKind, "")
+	if err != nil {
+		return AgentChatSession{}, err
+	}
+	sess, err := project.store.CreateWithRuntimeConfig(title, seed)
 	if err != nil {
 		return AgentChatSession{}, err
 	}

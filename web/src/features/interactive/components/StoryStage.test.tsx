@@ -25,13 +25,13 @@ const testMocks = vi.hoisted(() => ({
   generateInteractiveImageMock: vi.fn(),
   getActiveInteractiveChatMock: vi.fn(),
   getInteractiveHistoryPageMock: vi.fn(),
+  patchConversationConfigMock: vi.fn(),
   runInteractiveDirectorMock: vi.fn(),
-  setAgentApprovalModeMock: vi.fn(),
   sendInteractiveMessageMock: vi.fn(),
   streamActiveInteractiveChatMock: vi.fn(),
   submitInteractiveAgentCommandMock: vi.fn(),
   updateInteractiveTurnNarrativeMock: vi.fn(),
-  useAgentApprovalModeMock: vi.fn(),
+  useConversationConfigMock: vi.fn(),
   useSkillCommandsMock: vi.fn(),
 }))
 
@@ -39,10 +39,10 @@ const {
   generateInteractiveImageMock,
   getActiveInteractiveChatMock,
   getInteractiveHistoryPageMock,
-  setAgentApprovalModeMock,
+  patchConversationConfigMock,
   sendInteractiveMessageMock,
   updateInteractiveTurnNarrativeMock,
-  useAgentApprovalModeMock,
+  useConversationConfigMock,
   useSkillCommandsMock,
 } = testMocks
 
@@ -51,7 +51,11 @@ vi.mock('@/features/settings/api', () => ({
 }))
 
 vi.mock('@/features/agent-approval/AgentApprovalProvider', () => ({
-  useAgentApprovalMode: () => testMocks.useAgentApprovalModeMock(),
+  useAgentApprovalMode: () => ({ mode: 'write', initialized: true, saving: false, setMode: vi.fn().mockResolvedValue(true) }),
+}))
+
+vi.mock('@/features/conversation-config/use-conversation-config', () => ({
+  useConversationConfig: () => testMocks.useConversationConfigMock(),
 }))
 
 vi.mock('@/hooks/useSkillCommands', () => ({
@@ -76,12 +80,15 @@ vi.mock('../api', () => ({
 beforeEach(() => {
   resetStoryStageTestHarness(testMocks)
   getInteractiveHistoryPageMock.mockReset()
-  setAgentApprovalModeMock.mockReset().mockResolvedValue(true)
-  useAgentApprovalModeMock.mockReset().mockReturnValue({
-    mode: 'write',
+  patchConversationConfigMock.mockReset().mockResolvedValue(true)
+  useConversationConfigMock.mockReset().mockReturnValue({
+    snapshot: { agent_kind: 'interactive_story', profile_id: 'default', thinking_level: 'off', approval_mode: 'write', revision: 1 },
     initialized: true,
+    loading: false,
     saving: false,
-    setMode: setAgentApprovalModeMock,
+    error: null,
+    patch: patchConversationConfigMock,
+    reload: vi.fn(),
   })
 })
 
@@ -148,22 +155,25 @@ describe('StoryStage TurnResult choices', () => {
     )
 
     expect(screen.queryByRole('button', { name: 'Agent 安全模式: Write' })).not.toBeInTheDocument()
-    expect(setAgentApprovalModeMock).not.toHaveBeenCalled()
+    expect(patchConversationConfigMock).not.toHaveBeenCalled()
 
     fireEvent.pointerDown(screen.getByRole('button', { name: '输入动作' }))
     const safetyModeOption = await screen.findByRole('menuitem', { name: 'Agent 安全模式: Write' })
     await user.hover(safetyModeOption)
     fireEvent.click(await screen.findByRole('menuitem', { name: /Full access/ }))
 
-    await waitFor(() => expect(setAgentApprovalModeMock).toHaveBeenCalledWith('full_access'))
+    await waitFor(() => expect(patchConversationConfigMock).toHaveBeenCalledWith({ approval_mode: 'full_access' }))
   })
 
   it('blocks new game runs until the safety mode is initialized', () => {
-    useAgentApprovalModeMock.mockReturnValue({
-      mode: 'write',
+    useConversationConfigMock.mockReturnValue({
+      snapshot: null,
       initialized: false,
+      loading: true,
       saving: false,
-      setMode: setAgentApprovalModeMock,
+      error: null,
+      patch: patchConversationConfigMock,
+      reload: vi.fn(),
     })
     render(
       <VirtuosoMockContext.Provider value={{ viewportHeight: 1200, itemHeight: 120 }}>

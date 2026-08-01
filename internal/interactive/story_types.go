@@ -4,6 +4,7 @@ import (
 	agent "github.com/alfredxw/denova/agent"
 
 	"denova/internal/contextmaintenance"
+	"denova/internal/conversationconfig"
 )
 
 type CreateStoryRequest struct {
@@ -25,6 +26,7 @@ type CreateStoryRequest struct {
 	InitialStateOps           []StateOp                         `json:"-"`
 	DirectorPlanSeed          *DirectorPlanSeed                 `json:"-"`
 	StateSchemaInitialization *StateSchemaInitializationStatus  `json:"-"`
+	RuntimeConfig             *conversationconfig.Config        `json:"-"`
 }
 
 type AppendTurnRequest struct {
@@ -172,11 +174,13 @@ type StoryImageSettings struct {
 }
 
 type BranchMeta struct {
-	Head      string `json:"head"`
-	CreatedAt string `json:"created_at"`
-	From      string `json:"from,omitempty"`
-	FromEvent string `json:"from_event,omitempty"`
-	Title     string `json:"title,omitempty"`
+	Head                  string                     `json:"head"`
+	CreatedAt             string                     `json:"created_at"`
+	From                  string                     `json:"from,omitempty"`
+	FromEvent             string                     `json:"from_event,omitempty"`
+	Title                 string                     `json:"title,omitempty"`
+	RuntimeConfig         *conversationconfig.Config `json:"runtime_config,omitempty"`
+	RuntimeConfigRevision uint64                     `json:"runtime_config_revision,omitempty"`
 }
 
 type BranchSummary struct {
