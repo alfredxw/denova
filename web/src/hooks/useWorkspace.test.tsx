@@ -1,4 +1,4 @@
-import { useEffect } from 'react'
+import { StrictMode, useEffect } from 'react'
 import { act, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { WorkspaceChangeEvent } from '@/features/changes/types'
@@ -52,6 +52,40 @@ describe('useWorkspace', () => {
   afterEach(() => {
     vi.useRealTimers()
     vi.restoreAllMocks()
+  })
+
+  it('starts the canonical workspace and bookshelf reads once under StrictMode', async () => {
+    render(
+      <StrictMode>
+        <WorkspaceHarness autoRefreshEnabled={false} onChange={() => {}} />
+      </StrictMode>,
+    )
+
+    await waitFor(() => expect(screen.getByTestId('workspace-meta')).toHaveTextContent('/books/demo'))
+    expect(apiMock.getCurrentWorkspace).toHaveBeenCalledTimes(1)
+    expect(apiMock.getBookshelf).toHaveBeenCalledTimes(1)
+    expect(apiMock.getWorkspaceTree).toHaveBeenCalledTimes(1)
+    expect(apiMock.getWorkspaceSummary).toHaveBeenCalledTimes(1)
+  })
+
+  it('does not overlap the initial workspace read when the window gains focus', async () => {
+    const tree = deferred<unknown[]>()
+    const summary = deferred<{ title: string; author: string; chapter_count: number; total_words: number; chapters: unknown[] }>()
+    apiMock.getWorkspaceTree.mockReturnValue(tree.promise)
+    apiMock.getWorkspaceSummary.mockReturnValue(summary.promise)
+
+    render(<WorkspaceHarness onChange={() => {}} />)
+    await waitFor(() => expect(apiMock.getWorkspaceTree).toHaveBeenCalledTimes(1))
+
+    act(() => { fireEvent.focus(window) })
+    expect(apiMock.getWorkspaceTree).toHaveBeenCalledTimes(1)
+    expect(apiMock.getWorkspaceSummary).toHaveBeenCalledTimes(1)
+
+    await act(async () => {
+      tree.resolve([])
+      summary.resolve({ title: '', author: '', chapter_count: 0, total_words: 0, chapters: [] })
+      await Promise.all([tree.promise, summary.promise])
+    })
   })
 
   it('关闭后台刷新时窗口唤醒也不扫描目录和章节统计', async () => {

@@ -152,6 +152,12 @@ describe('AgentPanel', () => {
     })
   })
 
+  it('工作区水合前不读取 Skills', () => {
+    renderAgentPanel({ workspace: '' })
+
+    expect(useWritingSkillOptionsMock).toHaveBeenCalledWith('', false)
+  })
+
   it('将新建会话按钮放在标题切换器旁边并隐藏会话摘要和空闲状态文字', async () => {
     const user = userEvent.setup()
     const handleCreateSession = vi.fn()

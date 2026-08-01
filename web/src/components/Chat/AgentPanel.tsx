@@ -261,12 +261,13 @@ function AgentPanelComponent({
   const ideTellerId = persistedSettings.values.ide_story_teller_id
   const imagePresetId = persistedSettings.values.ide_image_preset_id
   const configuredWritingSkill = persistedSettings.values.writing_skill_default
+  const skillCatalogEnabled = workspaceContextActive && Boolean(workspace.trim())
   const skillCommands = useSkillCommands({
     agentKey: generalAgent ? 'general' : 'ide',
     workspace,
-    enabled: workspaceContextActive,
+    enabled: skillCatalogEnabled,
   })
-  const writingSkillOptions = useWritingSkillOptions(workspace, workspaceContextActive)
+  const writingSkillOptions = useWritingSkillOptions(workspace, skillCatalogEnabled)
   const writingSkill = useMemo(() => resolveWritingSkillSelection(configuredWritingSkill, writingSkillOptions), [configuredWritingSkill, writingSkillOptions])
   // Change review is still a Writing Project surface: its undo/version hooks
   // are bound to the explicitly active Book workspace. General Projects keep

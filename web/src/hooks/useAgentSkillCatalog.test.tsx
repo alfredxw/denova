@@ -55,6 +55,18 @@ describe('useAgentSkillCatalog', () => {
     expect(fetchSettings).toHaveBeenCalledOnce()
     expect(getSkills).toHaveBeenCalledTimes(2)
   })
+
+  it('does not load a catalog while its owning surface is disabled', async () => {
+    const { result } = renderHook(() => ({
+      commands: useSkillCommands({ agentKey: 'ide', workspace: '', enabled: false }),
+      writing: useWritingSkillOptions('', false),
+    }), { wrapper: strictWrapper })
+
+    expect(result.current).toEqual({ commands: [], writing: [] })
+    await act(async () => { await Promise.resolve() })
+    expect(getSkills).not.toHaveBeenCalled()
+    expect(fetchSettings).not.toHaveBeenCalled()
+  })
 })
 
 function strictWrapper({ children }: { children: ReactNode }) {

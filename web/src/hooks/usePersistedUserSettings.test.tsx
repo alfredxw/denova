@@ -55,6 +55,22 @@ describe('usePersistedUserSettings', () => {
     expect(fetchSettings).toHaveBeenCalledOnce()
   })
 
+  it('uses the shared startup snapshot when the initial workspace finishes hydrating', async () => {
+    vi.mocked(fetchSettings).mockResolvedValue(snapshot({
+      effective: { ide_story_teller_id: 'slow-burn', ide_image_preset_id: 'cinematic' },
+    }))
+    const { result, rerender } = renderHook(
+      ({ workspace }) => usePersistedUserSettings({ workspace, defaults }),
+      { initialProps: { workspace: '' } },
+    )
+
+    rerender({ workspace: '/book' })
+
+    await waitFor(() => expect(result.current.values.ide_story_teller_id).toBe('slow-burn'))
+    expect(fetchSettings).toHaveBeenCalledOnce()
+    expect(refreshSettings).not.toHaveBeenCalled()
+  })
+
   it('updates optimistically but persists only after the edit delay', async () => {
     const initial = snapshot({
       user: { ide_story_teller_id: 'classic', ide_image_preset_id: 'game-cg' },

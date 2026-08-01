@@ -62,6 +62,7 @@ export function useWorkspace(options: UseWorkspaceOptions = {}) {
   const workspaceRef = useRef(workspace)
   const workspaceEpochRef = useRef(0)
   const workspaceRequestRef = useRef(0)
+  const initialWorkspaceLoadStartedRef = useRef(false)
   const treeRequestRef = useRef(0)
   const summaryRequestRef = useRef(0)
   const booksRequestRef = useRef(0)
@@ -242,6 +243,10 @@ export function useWorkspace(options: UseWorkspaceOptions = {}) {
   }, [])
 
   useEffect(() => {
+    // React StrictMode replays mount effects in development; the canonical startup
+    // snapshot remains valid for both passes and should only hit the server once.
+    if (initialWorkspaceLoadStartedRef.current) return
+    initialWorkspaceLoadStartedRef.current = true
     void Promise.all([fetchWorkspace(), fetchBooks()])
   }, [fetchWorkspace, fetchBooks])
 
@@ -256,7 +261,7 @@ export function useWorkspace(options: UseWorkspaceOptions = {}) {
 
   // 窗口重新激活时刷新派生状态；Agent 的文件事件另有即时刷新，避免固定周期扫描整本作品。
   useEffect(() => {
-    if (!autoRefreshEnabled || !workspaceLoaded || !workspace) return
+    if (!autoRefreshEnabled || !workspaceLoaded || !workspace || loading) return
     let cancelled = false
     let inFlight: Promise<void> | null = null
     const backgroundOptions = { showLoading: false, clearOnError: false }
@@ -286,7 +291,7 @@ export function useWorkspace(options: UseWorkspaceOptions = {}) {
       window.removeEventListener('focus', refreshOnWakeup)
       document.removeEventListener('visibilitychange', handleVisibilityChange)
     }
-  }, [autoRefreshEnabled, fetchTree, fetchSummary, workspace, workspaceLoaded])
+  }, [autoRefreshEnabled, fetchTree, fetchSummary, loading, workspace, workspaceLoaded])
 
   /** 选中文件并加载内容 */
   const selectFile = useCallback(async (path: string) => {

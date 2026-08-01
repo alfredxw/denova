@@ -189,8 +189,12 @@ export function usePersistedUserSettings<TDefaults extends PersistedStringSettin
 
   useEffect(() => {
     mountedRef.current = true
-    const workspaceChanged = loadedWorkspaceRef.current !== workspace
-    loadedWorkspaceRef.current = workspace
+    const workspaceChanged = Boolean(
+      loadedWorkspaceRef.current
+      && workspace
+      && loadedWorkspaceRef.current !== workspace,
+    )
+    if (workspace) loadedWorkspaceRef.current = workspace
     void load(workspaceChanged)
     return () => {
       mountedRef.current = false

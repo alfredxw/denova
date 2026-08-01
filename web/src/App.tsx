@@ -121,7 +121,7 @@ function App() {
     selectFile, clearSelectedFile, saveFileDraft, createItem, deleteItem, renameItem, copyItem, moveItem,
     refresh, refreshSummary, refreshAfterAgentFileChange, refreshAll, refreshBooks, setWorkspace,
   } = useWorkspace()
-  const settingsWorkspaceRef = useRef(workspace)
+  const settingsWorkspaceRef = useRef<string | null>(null)
 
   const notifyVersionChange = useCallback(() => {
     setVersionRefreshSignal(value => value + 1)
@@ -289,8 +289,10 @@ function App() {
         })
         .catch((e) => console.warn('[App.tsx] failed to load interface settings', e))
     }
-    const workspaceChanged = settingsWorkspaceRef.current !== workspace
-    settingsWorkspaceRef.current = workspace
+    const workspaceChanged = workspaceLoaded
+      && settingsWorkspaceRef.current !== null
+      && settingsWorkspaceRef.current !== workspace
+    if (workspaceLoaded) settingsWorkspaceRef.current = workspace
     reload(workspaceChanged)
     const onUpdated = () => reload(true)
     window.addEventListener('nova:settings-updated', onUpdated)
@@ -298,7 +300,7 @@ function App() {
       cancelled = true
       window.removeEventListener('nova:settings-updated', onUpdated)
     }
-  }, [setTheme, workspace])
+  }, [setTheme, workspace, workspaceLoaded])
 
   useEffect(() => {
     const onUpdateCheckResult = (event: Event) => {

@@ -49,7 +49,10 @@ export function useAgentSkillCatalog(workspace?: string, enabled = true) {
     enabled,
   }, queryClient)
 
-  useEffect(() => subscribeAgentSkillCatalogEvents(queryClient), [queryClient])
+  useEffect(() => {
+    if (!enabled) return
+    return subscribeAgentSkillCatalogEvents(queryClient)
+  }, [enabled])
   const data = useMemo<AgentSkillCatalog | undefined>(
     () => enabled && skills.data && settings.data ? { skills: skills.data, settings: settings.data } : undefined,
     [enabled, settings.data, skills.data],
