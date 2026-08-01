@@ -6,9 +6,9 @@ import (
 
 	agent "github.com/alfredxw/denova/agent"
 
-	"denova/internal/contextmaintenance"
-	"denova/internal/conversationconfig"
-	"denova/internal/conversationjournal"
+	agentcontext "denova/internal/agents/context"
+	"denova/internal/agents/conversationconfig"
+	"denova/internal/agents/conversationjournal"
 )
 
 const (
@@ -63,66 +63,55 @@ type HistoryEntry struct {
 	Message          *agent.Message       `json:"-"`
 	CreatedAt        time.Time            `json:"created_at,omitempty"`
 
-	RunID                string                 `json:"run_id,omitempty"`
-	AgentKind            string                 `json:"agent_kind,omitempty"`
-	AgentName            string                 `json:"agent_name,omitempty"`
-	RootAgentName        string                 `json:"root_agent_name,omitempty"`
-	RunPath              []string               `json:"run_path,omitempty"`
-	SubAgent             bool                   `json:"subagent,omitempty"`
-	SubAgentSessionID    string                 `json:"subagent_session_id,omitempty"`
-	SubAgentType         string                 `json:"subagent_type,omitempty"`
-	PromptTokens         int                    `json:"prompt_tokens,omitempty"`
-	CachedPromptTokens   int                    `json:"cached_prompt_tokens,omitempty"`
-	UncachedPromptTokens int                    `json:"uncached_prompt_tokens,omitempty"`
-	CacheHitRate         float64                `json:"cache_hit_rate,omitempty"`
-	CompletionTokens     int                    `json:"completion_tokens,omitempty"`
-	ReasoningTokens      int                    `json:"reasoning_tokens,omitempty"`
-	TotalTokens          int                    `json:"total_tokens,omitempty"`
-	ModelCalls           int                    `json:"model_calls,omitempty"`
-	GeneratedBytes       int                    `json:"generated_bytes,omitempty"`
-	UsageCalls           []TokenUsageCall       `json:"usage_calls,omitempty"`
-	SSEHiddenFields      []string               `json:"sse_hidden_fields,omitempty"`
-	SSEHiddenReason      string                 `json:"sse_hidden_reason,omitempty"`
-	SSEDisplayNotice     string                 `json:"sse_display_notice,omitempty"`
-	SSEGeneratedChars    int                    `json:"sse_generated_chars,omitempty"`
-	UserReferences       []UserMessageReference `json:"user_references,omitempty"`
-	AgentCommandID       string                 `json:"agent_command_id,omitempty"`
-	AgentOperationID     string                 `json:"agent_operation_id,omitempty"`
-	AgentCycle           int                    `json:"agent_cycle,omitempty"`
-	DomainCommitHash     string                 `json:"domain_commit_hash,omitempty"`
-	ContextRevision      uint64                 `json:"context_revision,omitempty"`
-}
-
-// UserMessageReference is display-only context attached to one durable user
-// message. It is intentionally excluded from the model-visible message body.
-type UserMessageReference struct {
-	Kind      string `json:"kind"`
-	ID        string `json:"id,omitempty"`
-	Label     string `json:"label"`
-	Detail    string `json:"detail,omitempty"`
-	StartLine int    `json:"start_line,omitempty"`
-	EndLine   int    `json:"end_line,omitempty"`
+	RunID                string                       `json:"run_id,omitempty"`
+	AgentKind            string                       `json:"agent_kind,omitempty"`
+	AgentName            string                       `json:"agent_name,omitempty"`
+	RootAgentName        string                       `json:"root_agent_name,omitempty"`
+	RunPath              []string                     `json:"run_path,omitempty"`
+	SubAgent             bool                         `json:"subagent,omitempty"`
+	SubAgentSessionID    string                       `json:"subagent_session_id,omitempty"`
+	SubAgentType         string                       `json:"subagent_type,omitempty"`
+	PromptTokens         int                          `json:"prompt_tokens,omitempty"`
+	CachedPromptTokens   int                          `json:"cached_prompt_tokens,omitempty"`
+	UncachedPromptTokens int                          `json:"uncached_prompt_tokens,omitempty"`
+	CacheHitRate         float64                      `json:"cache_hit_rate,omitempty"`
+	CompletionTokens     int                          `json:"completion_tokens,omitempty"`
+	ReasoningTokens      int                          `json:"reasoning_tokens,omitempty"`
+	TotalTokens          int                          `json:"total_tokens,omitempty"`
+	ModelCalls           int                          `json:"model_calls,omitempty"`
+	GeneratedBytes       int                          `json:"generated_bytes,omitempty"`
+	UsageCalls           []TokenUsageCall             `json:"usage_calls,omitempty"`
+	SSEHiddenFields      []string                     `json:"sse_hidden_fields,omitempty"`
+	SSEHiddenReason      string                       `json:"sse_hidden_reason,omitempty"`
+	SSEDisplayNotice     string                       `json:"sse_display_notice,omitempty"`
+	SSEGeneratedChars    int                          `json:"sse_generated_chars,omitempty"`
+	UserReferences       []agentcontext.UserReference `json:"user_references,omitempty"`
+	AgentCommandID       string                       `json:"agent_command_id,omitempty"`
+	AgentOperationID     string                       `json:"agent_operation_id,omitempty"`
+	AgentCycle           int                          `json:"agent_cycle,omitempty"`
+	DomainCommitHash     string                       `json:"domain_commit_hash,omitempty"`
+	ContextRevision      uint64                       `json:"context_revision,omitempty"`
 }
 
 type MessageMetadata struct {
 	// MessageID and the coordinator identity form the stable cross-domain key
 	// for one Agent cycle. They are model-invisible but survive journal replay.
-	MessageID         string                 `json:"message_id,omitempty"`
-	AgentCommandID    string                 `json:"agent_command_id,omitempty"`
-	AgentOperationID  string                 `json:"agent_operation_id,omitempty"`
-	AgentCycle        int                    `json:"agent_cycle,omitempty"`
-	DomainCommitHash  string                 `json:"domain_commit_hash,omitempty"`
-	ContextRevision   uint64                 `json:"context_revision,omitempty"`
-	RunID             string                 `json:"run_id,omitempty"`
-	AgentKind         string                 `json:"agent_kind,omitempty"`
-	AgentName         string                 `json:"agent_name,omitempty"`
-	RootAgentName     string                 `json:"root_agent_name,omitempty"`
-	RunPath           []string               `json:"run_path,omitempty"`
-	SubAgent          bool                   `json:"subagent,omitempty"`
-	SubAgentSessionID string                 `json:"subagent_session_id,omitempty"`
-	SubAgentType      string                 `json:"subagent_type,omitempty"`
-	UserReferences    []UserMessageReference `json:"user_references,omitempty"`
-	ContextOperations []ContextOperation     `json:"context_operations,omitempty"`
+	MessageID         string                       `json:"message_id,omitempty"`
+	AgentCommandID    string                       `json:"agent_command_id,omitempty"`
+	AgentOperationID  string                       `json:"agent_operation_id,omitempty"`
+	AgentCycle        int                          `json:"agent_cycle,omitempty"`
+	DomainCommitHash  string                       `json:"domain_commit_hash,omitempty"`
+	ContextRevision   uint64                       `json:"context_revision,omitempty"`
+	RunID             string                       `json:"run_id,omitempty"`
+	AgentKind         string                       `json:"agent_kind,omitempty"`
+	AgentName         string                       `json:"agent_name,omitempty"`
+	RootAgentName     string                       `json:"root_agent_name,omitempty"`
+	RunPath           []string                     `json:"run_path,omitempty"`
+	SubAgent          bool                         `json:"subagent,omitempty"`
+	SubAgentSessionID string                       `json:"subagent_session_id,omitempty"`
+	SubAgentType      string                       `json:"subagent_type,omitempty"`
+	UserReferences    []agentcontext.UserReference `json:"user_references,omitempty"`
+	ContextOperations []ContextOperation           `json:"context_operations,omitempty"`
 	// ProviderContinuation is process-local model-visible state copied onto the
 	// canonical assistant Message. It is excluded from metadata serialization so
 	// the protocol payload has exactly one durable source of truth.
@@ -402,7 +391,7 @@ type AskResolution struct {
 type ContextCompaction struct {
 	Type string `json:"type"`
 	ID   string `json:"id"`
-	contextmaintenance.CompactionCheckpoint
+	agentcontext.CompactionCheckpoint
 	SourceStartIndex int `json:"source_start_index"`
 	SourceEndIndex   int `json:"source_end_index"`
 	// Cursor fields are the stable v2 boundary. Index fields remain readable
@@ -447,7 +436,7 @@ type ContextCompactionHealth struct {
 
 // ToolResultReplacement shares the same frozen substitution contract across
 // writing sessions and game journals.
-type ToolResultReplacement = contextmaintenance.ToolResultReplacement
+type ToolResultReplacement = agentcontext.ToolResultReplacement
 
 // ToolResultCleanupRecord records a model-visible projection without changing
 // the canonical rich tool result or the user-facing transcript. SourceEnd is

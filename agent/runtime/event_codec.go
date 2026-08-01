@@ -5,10 +5,48 @@ import (
 	"fmt"
 )
 
-type encodedEvent struct {
+// JournalEvent is the stable JSON envelope persisted by Journal
+// implementations. Data contains the typed durable payload selected by Type.
+type JournalEvent struct {
 	Cursor Cursor          `json:"cursor"`
 	Type   string          `json:"type"`
 	Data   json.RawMessage `json:"data"`
+}
+
+type encodedEvent = JournalEvent
+
+// EncodeJournalEvent validates and encodes one durable runtime event.
+func EncodeJournalEvent(event Event) (JournalEvent, error) {
+	return encodeDurableEvent(event)
+}
+
+// DecodeJournalEvent validates and decodes one durable runtime event.
+func DecodeJournalEvent(encoded JournalEvent) (Event, error) {
+	return decodeDurableEvent(encoded)
+}
+
+// MarshalJournalEvent encodes the stable durable event envelope used by
+// Journal storage implementations. Display-only events are rejected.
+func MarshalJournalEvent(event Event) (json.RawMessage, error) {
+	encoded, err := encodeDurableEvent(event)
+	if err != nil {
+		return nil, err
+	}
+	data, err := json.Marshal(encoded)
+	if err != nil {
+		return nil, fmt.Errorf("encode durable event envelope: %w", err)
+	}
+	return data, nil
+}
+
+// UnmarshalJournalEvent decodes and validates one stable durable event
+// envelope produced by MarshalJournalEvent.
+func UnmarshalJournalEvent(data json.RawMessage) (Event, error) {
+	var encoded encodedEvent
+	if err := json.Unmarshal(data, &encoded); err != nil {
+		return Event{}, fmt.Errorf("decode durable event envelope: %w", err)
+	}
+	return decodeDurableEvent(encoded)
 }
 
 func encodeDurableEvent(event Event) (encodedEvent, error) {

@@ -4,7 +4,7 @@ import (
 	"errors"
 	"testing"
 
-	"denova/internal/contextmaintenance"
+	agentcontext "denova/internal/agents/context"
 )
 
 func TestContextCompactionRejectsBranchHeadDrift(t *testing.T) {
@@ -22,7 +22,7 @@ func TestContextCompactionRejectsBranchHeadDrift(t *testing.T) {
 		t.Fatal(err)
 	}
 	if _, err := store.AppendContextCompaction(story.ID, "main", ContextCompactionEvent{
-		CompactionCheckpoint: contextmaintenance.CompactionCheckpoint{Summary: "基于旧上下文的摘要"},
+		CompactionCheckpoint: agentcontext.CompactionCheckpoint{Summary: "基于旧上下文的摘要"},
 		ExpectedParentID:     &expected,
 	}); !errors.Is(err, ErrStoryContextRevisionConflict) {
 		t.Fatalf("stale compaction error = %v, want %v", err, ErrStoryContextRevisionConflict)
@@ -48,7 +48,7 @@ func TestContextCompactionRemovalRejectsBranchHeadDrift(t *testing.T) {
 	}
 	expected := turn.ID
 	compaction, err := store.AppendContextCompaction(story.ID, "main", ContextCompactionEvent{
-		CompactionCheckpoint: contextmaintenance.CompactionCheckpoint{Summary: "庭院里有井"},
+		CompactionCheckpoint: agentcontext.CompactionCheckpoint{Summary: "庭院里有井"},
 		ExpectedParentID:     &expected,
 	})
 	if err != nil {
@@ -85,7 +85,7 @@ func TestContextCompactionStructuralCommitReconcilesExactEventID(t *testing.T) {
 	expected := turn.ID
 	intent := ContextCompactionEvent{
 		ID: "cc-command-1",
-		CompactionCheckpoint: contextmaintenance.CompactionCheckpoint{
+		CompactionCheckpoint: agentcontext.CompactionCheckpoint{
 			AgentKind: "interactive_story", Epoch: 1, Summary: "钟楼持续鸣响",
 			RetainedTurns: 2, TriggerReason: "manual", Phase: "manual",
 		},

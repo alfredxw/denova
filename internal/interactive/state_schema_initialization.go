@@ -1,6 +1,7 @@
 package interactive
 
 import (
+	interactivestate "denova/internal/interactive/state"
 	"encoding/json"
 	"fmt"
 	"reflect"
@@ -15,7 +16,7 @@ const stateSchemaMigrationSourceKind = "state_schema_initialization"
 // state in memory. The caller persists the returned operations together with
 // the opening Turn, so any later validation or write error leaves both schema
 // and state untouched on disk.
-func prepareOpeningGameStateSchemaCommit(meta *StoryMeta, events []StoryEventRecord, state map[string]any, actorState StoryDirectorActorStateSystem, branchID, sourceTurnID, now string, proposal *ActorStateSchemaProposal) (StoryDirectorActorStateSystem, []StateOp, []ActorStateOp, error) {
+func prepareOpeningGameStateSchemaCommit(meta *StoryMeta, events []StoryEventRecord, state map[string]any, actorState StoryDirectorActorStateSystem, branchID, sourceTurnID, now string, proposal *ActorStateSchemaProposal) (StoryDirectorActorStateSystem, []interactivestate.Op, []ActorStateOp, error) {
 	if meta == nil {
 		return StoryDirectorActorStateSystem{}, nil, nil, fmt.Errorf("故事元信息不存在")
 	}
@@ -135,7 +136,7 @@ func prepareOpeningGameStateSchemaCommit(meta *StoryMeta, events []StoryEventRec
 	return targetSystem, normalizeStateOps(ops), normalizeActorStateOps(actorOps), nil
 }
 
-func markOpeningStateBootstrapSources(ops []StateOp, actorOps []ActorStateOp, sourceTurnID string) {
+func markOpeningStateBootstrapSources(ops []interactivestate.Op, actorOps []ActorStateOp, sourceTurnID string) {
 	for index := range ops {
 		ops[index].SourceKind = stateSchemaMigrationSourceKind
 		ops[index].SourceID = "opening_state_schema"
@@ -155,7 +156,7 @@ func actorStateSchemaRevision(snapshot *ActorStateSchemaSnapshot) int {
 	return snapshot.Revision
 }
 
-func buildStateSchemaMigration(base, target StoryDirectorActorStateSystem, state map[string]any, adaptation ActorStateSchemaAdaptation, sourceTurnID string) ([]StateOp, []ActorStateOp, map[string]map[string]string, []string, error) {
+func buildStateSchemaMigration(base, target StoryDirectorActorStateSystem, state map[string]any, adaptation ActorStateSchemaAdaptation, sourceTurnID string) ([]interactivestate.Op, []ActorStateOp, map[string]map[string]string, []string, error) {
 	rawActors, _ := state[actorStateRoot].(map[string]any)
 	actorChanges, actorFieldChanges, err := splitStateSchemaActorChanges(adaptation)
 	if err != nil {
@@ -187,7 +188,7 @@ func buildStateSchemaMigration(base, target StoryDirectorActorStateSystem, state
 			}
 		}
 	}
-	var ops []StateOp
+	var ops []interactivestate.Op
 	var actorOps []ActorStateOp
 	var warnings []string
 	schemaChanged := !reflect.DeepEqual(normalizeActorStateSystem(base), normalizeActorStateSystem(target))
@@ -196,7 +197,7 @@ func buildStateSchemaMigration(base, target StoryDirectorActorStateSystem, state
 		valueSourceID := stateSchemaActorValueSourceID(actorChange.ValueSource)
 		if actorChange.Op == "remove" {
 			if _, exists := rawActors[actorID]; exists {
-				ops = append(ops, StateOp{Op: "unset", Path: actorStateRoot + "." + actorID, Reason: actorChange.Reason, SourceID: valueSourceID})
+				ops = append(ops, interactivestate.Op{Op: "unset", Path: actorStateRoot + "." + actorID, Reason: actorChange.Reason, SourceID: valueSourceID})
 			}
 			handledActors[actorID] = true
 			continue
@@ -236,7 +237,7 @@ func buildStateSchemaMigration(base, target StoryDirectorActorStateSystem, state
 		}
 		if current, ok := rawActors[actorID].(map[string]any); ok {
 			if traits := current["traits"]; traits != nil {
-				baseOps = append(baseOps, StateOp{Op: "set", Path: actorStateActorPath(actorID, "traits"), Value: traits, SourceID: valueSourceID})
+				baseOps = append(baseOps, interactivestate.Op{Op: "set", Path: actorStateActorPath(actorID, "traits"), Value: traits, SourceID: valueSourceID})
 			}
 		}
 		for index := range baseOps {

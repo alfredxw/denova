@@ -7,7 +7,7 @@ import (
 	"path/filepath"
 	"strings"
 
-	"denova/internal/workspacepath"
+	workspacelayout "denova/internal/workspace"
 )
 
 const chapterStatusFileName = "chapter_statuses.json"
@@ -115,7 +115,7 @@ func (s *Service) writeChapterStatusStore(store chapterStatusStore) error {
 }
 
 func (s *Service) chapterStatusPath() string {
-	return workspacepath.Path(s.workspace, chapterStatusFileName)
+	return workspacelayout.Path(s.workspace, chapterStatusFileName)
 }
 
 func chapterStatus(words int, confirmed bool) string {

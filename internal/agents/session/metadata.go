@@ -8,8 +8,8 @@ import (
 	"strings"
 	"time"
 
-	"denova/internal/conversationconfig"
-	"denova/internal/conversationjournal"
+	"denova/internal/agents/conversationconfig"
+	"denova/internal/agents/conversationjournal"
 )
 
 // metadataLocked returns a current session summary without materializing its

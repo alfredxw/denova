@@ -3,6 +3,10 @@ package app
 import (
 	"context"
 	"crypto/sha1"
+	agentchat "denova/internal/agents/chat"
+	agentconversation "denova/internal/agents/conversation"
+	agentharness "denova/internal/agents/harness"
+	apptask "denova/internal/app/task"
 	"fmt"
 	"log/slog"
 	"sort"
@@ -10,7 +14,7 @@ import (
 	"sync"
 
 	"denova/config"
-	agents "denova/internal/agents"
+	agentrun "denova/internal/agents/run"
 	"denova/internal/agents/session"
 	"denova/internal/book"
 )
@@ -29,7 +33,7 @@ type configManagerTaskRuntime struct {
 	sessionStore   *session.Store
 	bookService    *book.Service
 	versionService *book.VersionService
-	chatService    *agents.ChatService
+	chatService    *agentharness.Service
 	bookRegistry   *BookRegistry
 }
 
@@ -47,11 +51,11 @@ type ConfigManagerRequest struct {
 	Locale      string            `json:"-"`
 }
 
-func (a *App) StartConfigManagerTask(ctx context.Context, req ConfigManagerRequest) *Task {
+func (a *App) StartConfigManagerTask(ctx context.Context, req ConfigManagerRequest) *apptask.Task {
 	return a.configManager().StartTask(ctx, req)
 }
 
-func (s *ConfigManagerAppService) StartTask(ctx context.Context, req ConfigManagerRequest) *Task {
+func (s *ConfigManagerAppService) StartTask(ctx context.Context, req ConfigManagerRequest) *apptask.Task {
 	task, err := s.StartTaskWithError(ctx, req)
 	if err != nil {
 		slog.ErrorContext(ctx, fmt.Sprintf("[config-manager] start failed command_id=%s err=%v", strings.TrimSpace(req.CommandID), err))
@@ -60,18 +64,18 @@ func (s *ConfigManagerAppService) StartTask(ctx context.Context, req ConfigManag
 	return task
 }
 
-func (a *App) StartConfigManagerTaskWithError(ctx context.Context, req ConfigManagerRequest) (*Task, error) {
+func (a *App) StartConfigManagerTaskWithError(ctx context.Context, req ConfigManagerRequest) (*apptask.Task, error) {
 	return a.configManager().StartTaskWithError(ctx, req)
 }
 
-func (s *ConfigManagerAppService) StartTaskWithError(ctx context.Context, req ConfigManagerRequest) (*Task, error) {
+func (s *ConfigManagerAppService) StartTaskWithError(ctx context.Context, req ConfigManagerRequest) (*apptask.Task, error) {
 	s.admission.Lock()
 	defer s.admission.Unlock()
 	req.CommandID = strings.TrimSpace(req.CommandID)
 	if req.CommandID == "" {
 		return nil, ErrAgentCommandIDRequired
 	}
-	if err := agents.ValidateCommandID(req.CommandID); err != nil {
+	if err := agentrun.ValidateCommandID(req.CommandID); err != nil {
 		return nil, err
 	}
 	a := s.app
@@ -89,10 +93,10 @@ func (s *ConfigManagerAppService) StartTaskWithError(ctx context.Context, req Co
 		return nil, err
 	}
 	message := buildConfigManagerMessage(req)
-	chatReq := agents.CaptureChatRequestCallerInput(agents.ChatRequest{
+	chatReq := agentchat.CaptureChatRequestCallerInput(agentchat.ChatRequest{
 		CommandID: req.CommandID, Message: message, LoreReferences: append([]string(nil), req.References...), Locale: req.Locale,
 	})
-	fingerprint := agents.ChatRequestSemanticFingerprint(chatReq)
+	fingerprint := agentharness.RequestSemanticFingerprint(chatReq)
 	if replay, ok, err := s.starts.replay(req.CommandID, workspace, sessionID, fingerprint); err != nil {
 		return nil, err
 	} else if ok {
@@ -156,9 +160,9 @@ func (s *ConfigManagerAppService) StartTaskWithError(ctx context.Context, req Co
 	if err != nil {
 		return nil, err
 	}
-	conversation := agents.NewSessionConversationForAgent(sess, &runtimeCfg, config.AgentKindConfigManager)
-	var accepted *agents.AcceptedRun
-	task, err := NewDeferredRegisteredTaskWithContext(ctx, func(task *Task) error {
+	conversation := agentconversation.NewSessionConversationForAgent(sess, &runtimeCfg, config.AgentKindConfigManager)
+	var accepted *agentharness.AcceptedRun
+	task, err := apptask.NewDeferredWithContext(ctx, func(task *apptask.Task) error {
 		a.mu.Lock()
 		defer a.mu.Unlock()
 		if a.workspace != runtime.workspace || a.chatService != runtime.chatService {
@@ -174,13 +178,13 @@ func (s *ConfigManagerAppService) StartTaskWithError(ctx context.Context, req Co
 		fingerprint: fingerprint, task: task,
 	})
 	if err != nil {
-		task.failBeforeStart(err)
+		task.RejectStart(err)
 		a.unregisterWorkspaceTask(task)
 		return nil, err
 	}
-	acceptCtx, releaseAcceptance := taskAcceptanceContext(ctx, task)
-	accepted, err = runtime.chatService.StartWithOptions(acceptCtx, runner, conversation, runtime.bookService, chatReq, agents.RunOptions{
-		AgentKind: agents.AgentKindConfigManager, StateRoot: runtimeCfg.ProjectStateDir,
+	acceptCtx, releaseAcceptance := apptask.AcceptanceContext(ctx, task)
+	accepted, err = runtime.chatService.StartWithOptions(acceptCtx, runner, conversation, runtime.bookService, chatReq, agentrun.Options{
+		AgentKind: agentrun.AgentKindConfigManager, StateRoot: runtimeCfg.ProjectStateDir,
 		TaskID: task.ID(), SessionID: sess.ID, Workspace: runtime.workspace,
 		Mode: "config_manager", IdleTimeout: agentIdleTimeout(runtimeCfg), ToolResultMaxBytes: agentToolResultMaxBytes(runtimeCfg),
 		SystemPromptLog: systemPrompt,
@@ -189,15 +193,15 @@ func (s *ConfigManagerAppService) StartTaskWithError(ctx context.Context, req Co
 			runtime.versionService,
 			versionAutoSettingsForConfig(&runtimeCfg),
 		),
-	}, task.emit)
+	}, task.Emit)
 	releaseAcceptance()
 	if err != nil {
 		startReservation.rollback()
-		task.failBeforeStart(err)
+		task.RejectStart(err)
 		a.unregisterWorkspaceTask(task)
 		return nil, err
 	}
-	if err := task.Start(func(ctx context.Context, task *Task, _ func(agents.Event)) {
+	if err := task.Start(func(ctx context.Context, task *apptask.Task, _ func(agentrun.Event)) {
 		defer a.unregisterWorkspaceTask(task)
 		slog.InfoContext(ctx, fmt.Sprintf("[config-manager] run begin id=%s session_id=%s origin=%s resource_id=%s story_id=%s branch_id=%s message_len=%d", task.ID(), sess.ID, req.Origin, req.ResourceID, req.StoryID, req.BranchID, len(message)))
 		accepted.Wait(ctx)
@@ -205,8 +209,8 @@ func (s *ConfigManagerAppService) StartTaskWithError(ctx context.Context, req Co
 	}); err != nil {
 		startReservation.rollback()
 		task.Abort()
-		_ = accepted.Wait(task.ctx)
-		task.finish()
+		_ = accepted.Wait(task.Context())
+		task.Finish()
 		a.unregisterWorkspaceTask(task)
 		return nil, err
 	}

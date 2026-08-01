@@ -2,15 +2,20 @@ package app
 
 import (
 	"context"
+	agentcontext "denova/internal/agents/context"
+	agentstructural "denova/internal/agents/context/structural"
+	agentinteractive "denova/internal/agents/interactive"
+	agentrun "denova/internal/agents/run"
+	"denova/internal/agents/toolresult"
 	"fmt"
 	"log/slog"
 
 	"denova/config"
-	agents "denova/internal/agents"
+	agentcompaction "denova/internal/agents/context/compaction"
 	"denova/internal/interactive"
 )
 
-func (s *InteractiveAppService) executeInteractiveContextCompaction(ctx context.Context, storyID, branchID, requestedCommandID string) (agents.ContextCompactionResult, error) {
+func (s *InteractiveAppService) executeInteractiveContextCompaction(ctx context.Context, storyID, branchID, requestedCommandID string) (agentcompaction.Result, error) {
 	if ctx == nil {
 		ctx = context.Background()
 	}
@@ -18,14 +23,14 @@ func (s *InteractiveAppService) executeInteractiveContextCompaction(ctx context.
 	defer s.admission.Unlock()
 	store, runtimeCfg, workspace, err := s.interactiveRuntimeConfig()
 	if err != nil {
-		return agents.ContextCompactionResult{}, err
+		return agentcompaction.Result{}, err
 	}
 	storyCtx, err := store.StoryContext(storyID, branchID)
 	if err != nil {
-		return agents.ContextCompactionResult{}, err
+		return agentcompaction.Result{}, err
 	}
 	if recovered, resumed, resumeErr := s.resumeStoryContextStructuralOperation(
-		ctx, workspace, storyID, storyCtx.Snapshot.BranchID, agents.ContextStructuralCompact,
+		ctx, workspace, storyID, storyCtx.Snapshot.BranchID, agentstructural.Compact,
 	); resumeErr != nil {
 		return recovered.Compaction, resumeErr
 	} else if resumed {
@@ -33,15 +38,15 @@ func (s *InteractiveAppService) executeInteractiveContextCompaction(ctx context.
 	}
 	fence, err := s.drainInteractiveBinding(ctx, storyID, storyCtx.Snapshot.BranchID)
 	if err != nil {
-		return agents.ContextCompactionResult{}, err
+		return agentcompaction.Result{}, err
 	}
 	storyCtx, err = store.StoryContext(storyID, storyCtx.Snapshot.BranchID)
 	if err != nil {
-		return agents.ContextCompactionResult{}, err
+		return agentcompaction.Result{}, err
 	}
 	branchID = storyCtx.Snapshot.BranchID
 	if _, err := applyInteractiveConversationConfig(store, &runtimeCfg, storyID, branchID); err != nil {
-		return agents.ContextCompactionResult{}, err
+		return agentcompaction.Result{}, err
 	}
 	expectedParent := storyCtx.Meta.Branches[branchID].Head
 	startTurn, endTurn, activeCompaction := interactiveModelHistoryRange(storyCtx.Snapshot)
@@ -49,17 +54,17 @@ func (s *InteractiveAppService) executeInteractiveContextCompaction(ctx context.
 		BranchID: branchID, StartTurn: startTurn, EndTurn: endTurn,
 	})
 	if err != nil {
-		return agents.ContextCompactionResult{}, err
+		return agentcompaction.Result{}, err
 	}
 	modelProjection, err := buildInteractiveModelContextProjection(
 		modelHistory,
 		activeCompaction,
 		storyCtx.Snapshot,
-		agents.ResolveToolResultContextPolicyForConversation(&runtimeCfg, config.AgentKindInteractiveStory),
-		agents.HarnessCycleIdentity{},
+		toolresult.ResolveContextPolicy(&runtimeCfg, config.AgentKindInteractiveStory),
+		agentrun.CycleIdentity{},
 	)
 	if err != nil {
-		return agents.ContextCompactionResult{}, err
+		return agentcompaction.Result{}, err
 	}
 	source := modelProjection.SourceMessages
 	existingCheckpoint := modelProjection.ExistingCheckpoint
@@ -68,30 +73,30 @@ func (s *InteractiveAppService) executeInteractiveContextCompaction(ctx context.
 		contextStructuralCommandID("game-compact", workspace, storyID, branchID, expectedParent),
 	)
 	if err != nil {
-		return agents.ContextCompactionResult{}, err
+		return agentcompaction.Result{}, err
 	}
 	recordID := contextStructuralRecordID("cc", commandID)
 	if committed, found, findErr := store.ContextCompactionByID(storyID, recordID); findErr != nil {
-		return agents.ContextCompactionResult{}, findErr
+		return agentcompaction.Result{}, findErr
 	} else if found {
 		if committed.BranchID != branchID {
-			return agents.ContextCompactionResult{}, fmt.Errorf("context compaction command belongs to another story branch")
+			return agentcompaction.Result{}, fmt.Errorf("context compaction command belongs to another story branch")
 		}
 		return contextCompactionResultFromInteractive(committed), nil
 	}
 	healthRevision, _, _, err := store.ContextCompactionHealthState(storyID, branchID, config.AgentKindInteractiveStory)
 	if err != nil {
-		return agents.ContextCompactionResult{}, err
+		return agentcompaction.Result{}, err
 	}
 	if _, err := store.AppendContextCompactionHealth(storyID, branchID, interactive.ContextCompactionHealthEvent{
 		ID: contextStructuralRecordID("cch-manual", commandID), AgentKind: config.AgentKindInteractiveStory,
 		StructureFingerprint: "manual:" + commandID, Outcome: interactive.ContextCompactionHealthOutcomeManualRetry,
 		ExpectedContextRevision: healthRevision,
 	}); err != nil {
-		return agents.ContextCompactionResult{}, fmt.Errorf("reset game compaction health: %w", err)
+		return agentcompaction.Result{}, fmt.Errorf("reset game compaction health: %w", err)
 	}
 	if len(source) == 0 {
-		return agents.ContextCompactionResult{Phase: "manual", SkippedReason: "empty_source"}, fmt.Errorf("没有可压缩的互动上下文")
+		return agentcompaction.Result{Phase: "manual", SkippedReason: "empty_source"}, fmt.Errorf("没有可压缩的互动上下文")
 	}
 	runtimeCfg.InteractiveReplyTargetChars = storyCtx.Meta.ReplyTargetChars
 	tellerInput := interactiveStoryTellerSystemInput(loadGameTeller(runtimeCfg.DataDir(), storyCtx.Meta.StoryTellerID))
@@ -102,7 +107,7 @@ func (s *InteractiveAppService) executeInteractiveContextCompaction(ctx context.
 	runtimeMatches := a.interactive == store && a.workspace == workspace
 	a.mu.RUnlock()
 	if state == nil || !runtimeMatches {
-		return agents.ContextCompactionResult{}, ErrAgentContextChanged
+		return agentcompaction.Result{}, ErrAgentContextChanged
 	}
 	manualConversation := newInteractiveConversation(
 		store, runtimeCfg.DataDir(), workspace, storyID, branchID, "",
@@ -115,17 +120,17 @@ func (s *InteractiveAppService) executeInteractiveContextCompaction(ctx context.
 		interactiveSnapshotTurnCount(storyCtx.Snapshot) == 0 {
 		submitOpeningStateSchema = manualConversation.SubmitOpeningStateSchemaBatch
 	}
-	assembled, err := manualConversation.AssembleModelContext(ctx, "", agents.ModelContextInput{
+	assembled, err := manualConversation.AssembleModelContext(ctx, "", agentcontext.ModelContextInput{
 		UserMessage: "", Budget: manualConversation.ModelContextBudget(),
 	})
 	if err != nil {
-		return agents.ContextCompactionResult{}, fmt.Errorf("assemble game compaction context: %w", err)
+		return agentcompaction.Result{}, fmt.Errorf("assemble game compaction context: %w", err)
 	}
 	assemblyState, ok := assembled.CommitState.(interactiveModelContextCommitState)
 	if !ok {
-		return agents.ContextCompactionResult{}, fmt.Errorf("game compaction context is missing its deterministic projection state")
+		return agentcompaction.Result{}, fmt.Errorf("game compaction context is missing its deterministic projection state")
 	}
-	runner, err := buildInteractiveStoryRunner(ctx, &runtimeCfg, state, tellerInput, agents.InteractiveStoryToolContext{
+	runner, err := buildInteractiveStoryRunner(ctx, &runtimeCfg, state, tellerInput, agentinteractive.InteractiveStoryToolContext{
 		Store: store, StoryID: storyID, BranchID: branchID,
 		SubmitStateSchemaBatch: submitOpeningStateSchema,
 		PrepareTurn:            manualConversation.PrepareInteractiveTurn,
@@ -133,19 +138,19 @@ func (s *InteractiveAppService) executeInteractiveContextCompaction(ctx context.
 		TurnResultReady:        manualConversation.InteractiveNarrativeReady,
 	})
 	if err != nil {
-		return agents.ContextCompactionResult{}, fmt.Errorf("assemble game compaction request: %w", err)
+		return agentcompaction.Result{}, fmt.Errorf("assemble game compaction request: %w", err)
 	}
 	primarySnapshot, err := runner.PrepareModelRequest(ctx, assembled.Messages)
 	if err != nil {
-		return agents.ContextCompactionResult{}, fmt.Errorf("capture game compaction request: %w", err)
+		return agentcompaction.Result{}, fmt.Errorf("capture game compaction request: %w", err)
 	}
 	epoch := 1
 	if activeCompaction != nil {
 		epoch = activeCompaction.Epoch + 1
 	}
 	tools := primarySnapshot.ResolvedOptions().Tools
-	completionReserve, toolReserve := agents.EstimateContextProjectionReserves(&runtimeCfg, config.AgentKindInteractiveStory, runtimeCfg.InteractiveReplyTargetChars)
-	compactedMessages, prepared, err := agents.PrepareContextCompaction(ctx, &runtimeCfg, config.AgentKindInteractiveStory, agents.ContextCompactionInput{
+	completionReserve, toolReserve := agentcompaction.EstimateProjectionReserves(&runtimeCfg, config.AgentKindInteractiveStory, runtimeCfg.InteractiveReplyTargetChars)
+	compactedMessages, prepared, err := agentcompaction.Prepare(ctx, &runtimeCfg, config.AgentKindInteractiveStory, agentcompaction.Input{
 		Messages: assembled.Messages, SourceMessages: source, SourceMessagesSet: true, Tools: tools, Phase: "manual", Force: true,
 		ExistingCheckpoint: existingCheckpoint, KeepLatestUser: true, PrimaryRequestSnapshot: primarySnapshot,
 		ReservedCompletionTokens: completionReserve, ReservedToolResultTokens: toolReserve,
@@ -162,55 +167,55 @@ func (s *InteractiveAppService) executeInteractiveContextCompaction(ctx context.
 		return prepared, err
 	}
 	event := interactiveCompactionEvent(recordID, expectedParent, modelProjection.SourceTurnCount, prepared)
-	ref := agents.ContextCompactionRef{
+	ref := agentrun.ContextCompactionRef{
 		Source: "story.turn_events", Purpose: "persist a bounded model-history checkpoint",
 		Resource: storyID + "/" + branchID, ExpectedRevision: contextStoryRevision(expectedParent), Force: true,
 	}
 	binding := storyContextStructuralBinding(workspace, storyID, branchID)
 	plan, err := newContextStructuralRestorePlan(
-		agents.ContextStructuralDomainStory, agents.ContextStructuralCompact, binding, ref, recordID,
-		agents.ContextStructuralResult{Compaction: prepared}, event,
+		agentstructural.DomainStory, agentstructural.Compact, binding, ref, recordID,
+		agentstructural.Result{Compaction: prepared}, event,
 	)
 	if err != nil {
 		return prepared, err
 	}
 	operation := fixedContextStructuralOperation(plan,
-		func(context.Context) (agents.ContextStructuralReceipt, error) {
+		func(context.Context) (agentstructural.Receipt, error) {
 			a := s.app
 			a.mu.Lock()
 			defer a.mu.Unlock()
 			if err := fence.validateLocked(a); err != nil || a.interactive != store {
 				if err != nil {
-					return agents.ContextStructuralReceipt{}, err
+					return agentstructural.Receipt{}, err
 				}
-				return agents.ContextStructuralReceipt{}, ErrAgentContextChanged
+				return agentstructural.Receipt{}, ErrAgentContextChanged
 			}
 			committed, err := store.AppendContextCompaction(storyID, branchID, event)
 			if err != nil {
-				return agents.ContextStructuralReceipt{}, err
+				return agentstructural.Receipt{}, err
 			}
 			if !sameStoryContextCompactionMutation(committed, event) {
-				return agents.ContextStructuralReceipt{}, fmt.Errorf("canonical interactive compaction differs from frozen mutation")
+				return agentstructural.Receipt{}, fmt.Errorf("canonical interactive compaction differs from frozen mutation")
 			}
-			return agents.ContextStructuralReceipt{Revision: "story-head:" + committed.ID}, nil
+			return agentstructural.Receipt{Revision: "story-head:" + committed.ID}, nil
 		},
-		func(context.Context) (agents.ContextStructuralReceipt, bool, error) {
+		func(context.Context) (agentstructural.Receipt, bool, error) {
 			current, err := store.StoryContext(storyID, branchID)
 			if err != nil {
-				return agents.ContextStructuralReceipt{}, false, err
+				return agentstructural.Receipt{}, false, err
 			}
 			if current.Snapshot.ContextCompaction == nil || current.Snapshot.ContextCompaction.ID != recordID {
-				return agents.ContextStructuralReceipt{}, false, nil
+				return agentstructural.Receipt{}, false, nil
 			}
 			committed := *current.Snapshot.ContextCompaction
 			if !sameStoryContextCompactionMutation(committed, event) {
-				return agents.ContextStructuralReceipt{}, false, fmt.Errorf("canonical interactive compaction conflicts with frozen mutation")
+				return agentstructural.Receipt{}, false, fmt.Errorf("canonical interactive compaction conflicts with frozen mutation")
 			}
-			return agents.ContextStructuralReceipt{Revision: "story-head:" + committed.ID}, true, nil
+			return agentstructural.Receipt{Revision: "story-head:" + committed.ID}, true, nil
 		})
-	result, err := fence.chat.ExecuteContextStructuralOperation(ctx, agents.ContextStructuralSpec{
-		CommandID: commandID, Action: agents.ContextStructuralCompact,
-		Ref: ref, Options: agents.RunOptions{AgentKind: agents.AgentKindInteractiveStory, Workspace: workspace, StoryID: storyID, BranchID: branchID, Mode: "interactive"},
+	result, err := fence.chat.ExecuteStructuralOperation(ctx, agentstructural.Spec{
+		CommandID: commandID, Action: agentstructural.Compact,
+		Ref: ref, Options: agentrun.Options{AgentKind: agentrun.AgentKindInteractiveStory, Workspace: workspace, StoryID: storyID, BranchID: branchID, Mode: "interactive"},
 		Operation: operation, RestorePlan: &plan,
 	})
 	if err != nil {
@@ -241,7 +246,7 @@ func (s *InteractiveAppService) executeInteractiveContextCompactionRemoval(ctx c
 	workspace := s.app.workspace
 	s.app.mu.RUnlock()
 	if recovered, resumed, resumeErr := s.resumeStoryContextStructuralOperation(
-		ctx, workspace, storyID, storyCtx.Snapshot.BranchID, agents.ContextStructuralRemove,
+		ctx, workspace, storyID, storyCtx.Snapshot.BranchID, agentstructural.Remove,
 	); resumeErr != nil {
 		return recovered.Removed, resumeErr
 	} else if resumed {
@@ -296,55 +301,55 @@ func (s *InteractiveAppService) executeInteractiveContextCompactionRemoval(ctx c
 		ID: recordID, AgentKind: config.AgentKindInteractiveStory, CompactionID: compactionID,
 		SourceTurnCount: sourceTurns, Reason: "user_removed", ExpectedParentID: &expectedParent,
 	}
-	ref := agents.ContextCompactionRef{
+	ref := agentrun.ContextCompactionRef{
 		Source: "story.context_compaction", Purpose: "restore canonical story turn history",
 		Resource: storyID + "/" + branchID, ExpectedRevision: contextStoryRevision(expectedParent), CompactionID: compactionID,
 	}
 	binding := storyContextStructuralBinding(fence.workspace, storyID, branchID)
 	plan, err := newContextStructuralRestorePlan(
-		agents.ContextStructuralDomainStory, agents.ContextStructuralRemove, binding, ref, recordID,
-		agents.ContextStructuralResult{Removed: true}, event,
+		agentstructural.DomainStory, agentstructural.Remove, binding, ref, recordID,
+		agentstructural.Result{Removed: true}, event,
 	)
 	if err != nil {
 		return false, err
 	}
 	operation := fixedContextStructuralOperation(plan,
-		func(context.Context) (agents.ContextStructuralReceipt, error) {
+		func(context.Context) (agentstructural.Receipt, error) {
 			a := s.app
 			a.mu.Lock()
 			defer a.mu.Unlock()
 			if err := fence.validateLocked(a); err != nil || a.interactive != store {
 				if err != nil {
-					return agents.ContextStructuralReceipt{}, err
+					return agentstructural.Receipt{}, err
 				}
-				return agents.ContextStructuralReceipt{}, ErrAgentContextChanged
+				return agentstructural.Receipt{}, ErrAgentContextChanged
 			}
 			committed, err := store.AppendContextCompactionRemoval(storyID, branchID, event)
 			if err != nil {
-				return agents.ContextStructuralReceipt{}, err
+				return agentstructural.Receipt{}, err
 			}
 			if !sameStoryContextCompactionRemovalMutation(committed, event) {
-				return agents.ContextStructuralReceipt{}, fmt.Errorf("canonical interactive compaction removal differs from frozen mutation")
+				return agentstructural.Receipt{}, fmt.Errorf("canonical interactive compaction removal differs from frozen mutation")
 			}
-			return agents.ContextStructuralReceipt{Revision: "story-head:" + committed.ID}, nil
+			return agentstructural.Receipt{Revision: "story-head:" + committed.ID}, nil
 		},
-		func(context.Context) (agents.ContextStructuralReceipt, bool, error) {
+		func(context.Context) (agentstructural.Receipt, bool, error) {
 			current, err := store.StoryContext(storyID, branchID)
 			if err != nil {
-				return agents.ContextStructuralReceipt{}, false, err
+				return agentstructural.Receipt{}, false, err
 			}
 			if current.Snapshot.ContextCompactionRemoval == nil || current.Snapshot.ContextCompactionRemoval.ID != recordID {
-				return agents.ContextStructuralReceipt{}, false, nil
+				return agentstructural.Receipt{}, false, nil
 			}
 			committed := *current.Snapshot.ContextCompactionRemoval
 			if !sameStoryContextCompactionRemovalMutation(committed, event) {
-				return agents.ContextStructuralReceipt{}, false, fmt.Errorf("canonical interactive compaction removal conflicts with frozen mutation")
+				return agentstructural.Receipt{}, false, fmt.Errorf("canonical interactive compaction removal conflicts with frozen mutation")
 			}
-			return agents.ContextStructuralReceipt{Revision: "story-head:" + recordID}, true, nil
+			return agentstructural.Receipt{Revision: "story-head:" + recordID}, true, nil
 		})
-	result, err := fence.chat.ExecuteContextStructuralOperation(ctx, agents.ContextStructuralSpec{
-		CommandID: commandID, Action: agents.ContextStructuralRemove,
-		Ref: ref, Options: agents.RunOptions{AgentKind: agents.AgentKindInteractiveStory, Workspace: fence.workspace, StoryID: storyID, BranchID: branchID, Mode: "interactive"},
+	result, err := fence.chat.ExecuteStructuralOperation(ctx, agentstructural.Spec{
+		CommandID: commandID, Action: agentstructural.Remove,
+		Ref: ref, Options: agentrun.Options{AgentKind: agentrun.AgentKindInteractiveStory, Workspace: fence.workspace, StoryID: storyID, BranchID: branchID, Mode: "interactive"},
 		Operation: operation, RestorePlan: &plan,
 	})
 	return result.Removed, err

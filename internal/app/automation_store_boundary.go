@@ -2,13 +2,13 @@ package app
 
 import (
 	"context"
+	agentconversation "denova/internal/agents/conversation"
 	"fmt"
 	"log/slog"
 	"strings"
 	"time"
 
 	"denova/config"
-	agents "denova/internal/agents"
 	"denova/internal/automation"
 	"denova/internal/book"
 )
@@ -161,7 +161,7 @@ func (s *AutomationAppService) newRunConversation(snap *automationWorkspaceSnaps
 		return nil, err
 	}
 	return &automationRunConversation{
-		base:          agents.NewSessionConversationForAgent(sess, &runtimeCfg, config.AgentKindAutomation),
+		base:          agentconversation.NewSessionConversationForAgent(sess, &runtimeCfg, config.AgentKindAutomation),
 		runtimeConfig: runtimeCfg,
 	}, nil
 }

@@ -2,6 +2,8 @@ package app
 
 import (
 	"context"
+	agentharness "denova/internal/agents/harness"
+	"denova/internal/agents/run"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -11,7 +13,7 @@ import (
 	"strings"
 
 	"denova/config"
-	agents "denova/internal/agents"
+	"denova/internal/agents/prompts"
 	"denova/internal/agents/session"
 	"denova/internal/book"
 	"denova/internal/interactive"
@@ -71,11 +73,11 @@ func (s *WorkspaceRuntimeManager) Session() *session.Session {
 }
 
 // ChatService 返回聊天服务。
-func (a *App) ChatService() *agents.ChatService {
+func (a *App) ChatService() *agentharness.Service {
 	return a.runtime().ChatService()
 }
 
-func (s *WorkspaceRuntimeManager) ChatService() *agents.ChatService {
+func (s *WorkspaceRuntimeManager) ChatService() *agentharness.Service {
 	return s.app.chatService
 }
 
@@ -469,9 +471,9 @@ func (s *WorkspaceRuntimeManager) Settings() (config.LayeredSettings, error) {
 	applySettingsLayerToConfig(&cfg, layered.Workspace)
 	cfg.AgentPrompts = config.AgentPromptSettings{}
 	ideTeller := ideStoryTellerForConfig(&cfg)
-	layered.BuiltinAgentPrompts = agents.BuiltinAgentPrompts(&cfg, state, ideTeller)
-	layered.BuiltinAgentPromptBlocks = agents.BuiltinAgentPromptBlocks(&cfg, state, ideTeller)
-	layered.BuiltinAgentPromptSources = agents.BuiltinAgentPromptSources(&cfg, state, ideTeller)
+	layered.BuiltinAgentPrompts = prompts.BuiltinAgentPrompts(&cfg, state, ideTeller)
+	layered.BuiltinAgentPromptBlocks = prompts.BuiltinAgentPromptBlocks(&cfg, state, ideTeller)
+	layered.BuiltinAgentPromptSources = prompts.BuiltinAgentPromptSources(&cfg, state, ideTeller)
 	return layered, nil
 }
 
@@ -840,11 +842,11 @@ func applySettingsLayerToConfig(cfg *config.Config, settings config.Settings) {
 
 func syncRuntimeDiagnostics(cfg *config.Config) {
 	if cfg == nil {
-		agents.SetModelInputLoggingEnabled(false)
+		agentrun.SetModelInputLoggingEnabled(false)
 		return
 	}
-	agents.SetModelInputLoggingEnabled(cfg.DevMode && cfg.LLMInputLogEnabled)
-	agents.SetTraceRuntimeConfig(cfg.TraceCaptureLevel, cfg.TraceExporter, cfg.TraceRetentionRuns)
+	agentrun.SetModelInputLoggingEnabled(cfg.DevMode && cfg.LLMInputLogEnabled)
+	agentrun.SetTraceRuntimeConfig(cfg.TraceCaptureLevel, cfg.TraceExporter, cfg.TraceRetentionRuns)
 }
 
 func appSettingsInt(v *int, fallback int) int {

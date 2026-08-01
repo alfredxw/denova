@@ -5,7 +5,7 @@ import (
 	"testing"
 
 	"denova/config"
-	"denova/internal/conversationconfig"
+	"denova/internal/agents/conversationconfig"
 )
 
 func testRuntimeConfig(agentKind string) conversationconfig.Config {

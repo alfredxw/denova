@@ -1,12 +1,16 @@
 package app
 
 import (
+	agentcontext "denova/internal/agents/context"
+	agentrun "denova/internal/agents/run"
+	"denova/internal/agents/toolresult"
 	"reflect"
 	"strconv"
 	"strings"
 	"testing"
 
 	agents "denova/internal/agents"
+	agentcompaction "denova/internal/agents/context/compaction"
 	"denova/internal/interactive"
 )
 
@@ -43,7 +47,7 @@ func TestInteractiveModelProjectionKeepsInterruptedBatchesStableAcrossSettlement
 	if _, err := store.CommitPlayerInput(story.ID, currentIntent); err != nil {
 		t.Fatal(err)
 	}
-	currentCycle := agents.HarnessCycleIdentity{CommandID: agents.CommandID(current.CommandID), OperationID: agents.OperationID(current.OperationID), Cycle: current.Cycle}
+	currentCycle := agentrun.CycleIdentity{CommandID: agentrun.CommandID(current.CommandID), OperationID: agentrun.OperationID(current.OperationID), Cycle: current.Cycle}
 	before := interactiveProjectionFromStoreForTest(t, store, story.ID, currentCycle)
 	if before.SourceTurnCount != 1 {
 		t.Fatalf("compactable completed boundary = %d, want earliest pending boundary 1", before.SourceTurnCount)
@@ -74,7 +78,7 @@ func TestInteractiveModelProjectionKeepsInterruptedBatchesStableAcrossSettlement
 	}); err != nil {
 		t.Fatal(err)
 	}
-	after := interactiveProjectionFromStoreForTest(t, store, story.ID, agents.HarnessCycleIdentity{})
+	after := interactiveProjectionFromStoreForTest(t, store, story.ID, agentrun.CycleIdentity{})
 	if len(after.Messages) < len(before.Messages) || !reflect.DeepEqual(after.Messages[:len(before.Messages)], before.Messages) {
 		t.Fatalf("settlement reordered the canonical pending tail:\nbefore=%#v\nafter=%#v", before.Messages, after.Messages)
 	}
@@ -84,7 +88,7 @@ func TestInteractiveModelProjectionKeepsInterruptedBatchesStableAcrossSettlement
 	}
 
 	reloaded := interactive.NewStore(workspace)
-	cold := interactiveProjectionFromStoreForTest(t, reloaded, story.ID, agents.HarnessCycleIdentity{})
+	cold := interactiveProjectionFromStoreForTest(t, reloaded, story.ID, agentrun.CycleIdentity{})
 	if !reflect.DeepEqual(cold, after) {
 		t.Fatalf("cold Game projection differs from settled projection:\nsettled=%#v\ncold=%#v", after, cold)
 	}
@@ -95,7 +99,7 @@ func TestInteractiveModelProjectionKeepsInterruptedBatchesStableAcrossSettlement
 	}
 	expectedParent := storyContext.Meta.Branches["main"].Head
 	checkpoint, err := store.AppendContextCompaction(story.ID, "main", interactive.ContextCompactionEvent{
-		CompactionCheckpoint: agents.NewContextCompactionCheckpoint("interactive_story", agents.ContextCompactionResult{
+		CompactionCheckpoint: agentcompaction.NewCheckpoint("interactive_story", agentcompaction.Result{
 			Epoch: 1, Summary: "completed prefix checkpoint", RetainedTurns: 1,
 		}),
 		SourceTurnCount: 1, ExpectedParentID: &expectedParent,
@@ -103,9 +107,9 @@ func TestInteractiveModelProjectionKeepsInterruptedBatchesStableAcrossSettlement
 	if err != nil {
 		t.Fatal(err)
 	}
-	durable := interactiveProjectionFromStoreForTest(t, store, story.ID, agents.HarnessCycleIdentity{})
+	durable := interactiveProjectionFromStoreForTest(t, store, story.ID, agentrun.CycleIdentity{})
 	expectedDurable := append(
-		[]*agents.Message{agents.NewContextCompactionSummaryMessage(checkpoint.Epoch, checkpoint.Summary)},
+		[]*agents.Message{agentcontext.NewCompactionSummaryMessage(checkpoint.Epoch, checkpoint.Summary)},
 		after.Messages...,
 	)
 	if !reflect.DeepEqual(durable.Messages, expectedDurable) {
@@ -114,7 +118,7 @@ func TestInteractiveModelProjectionKeepsInterruptedBatchesStableAcrossSettlement
 	if durable.SourceTurnCount != 3 {
 		t.Fatalf("resolved atomic source boundary = %d, want all 3 completed Turns", durable.SourceTurnCount)
 	}
-	if _, err := agents.NormalizeModelContextMessages(durable.SourceMessages); err != nil {
+	if _, err := agentcontext.NormalizeModelContextMessages(durable.SourceMessages); err != nil {
 		t.Fatalf("resolved compaction source is not a valid model transcript: %v", err)
 	}
 	durableSource := joinedInteractiveProjectionContent(durable.SourceMessages)
@@ -137,14 +141,14 @@ func TestInteractiveModelProjectionKeepsInterruptedBatchesStableAcrossSettlement
 	}
 	expectedParent = storyContext.Meta.Branches["main"].Head
 	if _, err := store.AppendContextCompaction(story.ID, "main", interactive.ContextCompactionEvent{
-		CompactionCheckpoint: agents.NewContextCompactionCheckpoint("interactive_story", agents.ContextCompactionResult{
+		CompactionCheckpoint: agentcompaction.NewCheckpoint("interactive_story", agentcompaction.Result{
 			Epoch: 2, Summary: "fully resolved checkpoint", RetainedTurns: 1,
 		}),
 		SourceTurnCount: 3, ExpectedParentID: &expectedParent,
 	}); err != nil {
 		t.Fatal(err)
 	}
-	fullyCompacted := interactiveProjectionFromStoreForTest(t, store, story.ID, agents.HarnessCycleIdentity{})
+	fullyCompacted := interactiveProjectionFromStoreForTest(t, store, story.ID, agentrun.CycleIdentity{})
 	fullyCompactedText := joinedInteractiveProjectionContent(fullyCompacted.Messages)
 	if fullyCompacted.SourceTurnCount != 3 || len(fullyCompacted.SourceMessages) != 0 ||
 		strings.Contains(fullyCompactedText, "interrupted-input-") ||
@@ -154,7 +158,7 @@ func TestInteractiveModelProjectionKeepsInterruptedBatchesStableAcrossSettlement
 		t.Fatalf("resolved interval was not absorbed by the advanced checkpoint: %#v", fullyCompacted)
 	}
 	reloadedAfterCheckpoint := interactive.NewStore(workspace)
-	coldCheckpoint := interactiveProjectionFromStoreForTest(t, reloadedAfterCheckpoint, story.ID, agents.HarnessCycleIdentity{})
+	coldCheckpoint := interactiveProjectionFromStoreForTest(t, reloadedAfterCheckpoint, story.ID, agentrun.CycleIdentity{})
 	if !reflect.DeepEqual(coldCheckpoint, fullyCompacted) {
 		t.Fatalf("cold checkpoint projection differs from canonical view:\ncanonical=%#v\ncold=%#v", fullyCompacted, coldCheckpoint)
 	}
@@ -223,7 +227,7 @@ func interactiveProjectionFromStoreForTest(
 	t *testing.T,
 	store *interactive.Store,
 	storyID string,
-	current agents.HarnessCycleIdentity,
+	current agentrun.CycleIdentity,
 ) interactiveModelContextProjection {
 	t.Helper()
 	storyContext, err := store.StoryContext(storyID, "main")
@@ -236,7 +240,7 @@ func interactiveProjectionFromStoreForTest(
 		t.Fatal(err)
 	}
 	projection, err := buildInteractiveModelContextProjection(
-		history, compaction, storyContext.Snapshot, agents.ToolResultContextPolicy{Enabled: true, MaxResultBytes: 256 * 1024}, current,
+		history, compaction, storyContext.Snapshot, toolresult.ContextPolicy{Enabled: true, MaxResultBytes: 256 * 1024}, current,
 	)
 	if err != nil {
 		t.Fatal(err)

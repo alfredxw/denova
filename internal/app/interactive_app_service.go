@@ -2,6 +2,8 @@ package app
 
 import (
 	"context"
+	apptask "denova/internal/app/task"
+	interactivestate "denova/internal/interactive/state"
 	"encoding/json"
 	"fmt"
 	"log/slog"
@@ -10,6 +12,7 @@ import (
 
 	"denova/config"
 	"denova/internal/interactive"
+	"denova/internal/interactive/director"
 )
 
 // InteractiveAppService 负责互动故事、剧情分支、导演和互动 Agent 任务。
@@ -128,12 +131,12 @@ func (s *InteractiveAppService) RollInteractiveActorTraits(req interactive.Actor
 	if directorID == "" {
 		directorID = interactive.DefaultStoryDirectorID
 	}
-	director, err := interactive.NewStoryDirectorLibrary(cfg.DataDir()).Get(directorID)
+	storyDirector, err := interactive.NewStoryDirectorLibrary(cfg.DataDir()).Get(directorID)
 	if err != nil {
 		return interactive.ActorTraitRollResult{}, err
 	}
 	req.StoryDirectorID = directorID
-	return interactive.RollActorTraits(director.ActorState, req)
+	return interactive.RollActorTraits(storyDirector.ActorState, req)
 }
 
 func (s *InteractiveAppService) withStoryDirectorDefaults(req interactive.CreateStoryRequest) (interactive.CreateStoryRequest, error) {
@@ -146,42 +149,42 @@ func (s *InteractiveAppService) withStoryDirectorDefaults(req interactive.Create
 		directorID = interactive.DefaultStoryDirectorID
 	}
 	req.StoryDirectorID = directorID
-	director, err := interactive.NewStoryDirectorLibrary(cfg.DataDir()).Get(directorID)
+	storyDirector, err := interactive.NewStoryDirectorLibrary(cfg.DataDir()).Get(directorID)
 	if err != nil {
 		slog.ErrorContext(context.Background(), fmt.Sprintf("[interactive-director] load story director failed story_director_id=%s err=%v", directorID, err))
 		return req, nil
 	}
 	if req.ModuleRefs != nil {
-		director.ModuleRefs = interactive.NormalizeStoryDirectorModuleRefs(*req.ModuleRefs)
-		director.ResolvedSnapshot = interactive.StoryDirectorResolvedSnapshot{}
-		director = interactive.ResolveStoryDirectorModules(cfg.DataDir(), director)
-		normalized := interactive.NormalizeStoryDirectorModuleRefs(director.ModuleRefs)
+		storyDirector.ModuleRefs = interactive.NormalizeStoryDirectorModuleRefs(*req.ModuleRefs)
+		storyDirector.ResolvedSnapshot = interactive.StoryDirectorResolvedSnapshot{}
+		storyDirector = interactive.ResolveStoryDirectorModules(cfg.DataDir(), storyDirector)
+		normalized := interactive.NormalizeStoryDirectorModuleRefs(storyDirector.ModuleRefs)
 		req.ModuleRefs = &normalized
 	}
-	if interactive.StoryDirectorNarrativeStyleEnabled(director) && strings.TrimSpace(req.StoryTellerID) == "" && strings.TrimSpace(director.ModuleRefs.NarrativeStyleID) != "" {
-		req.StoryTellerID = strings.TrimSpace(director.ModuleRefs.NarrativeStyleID)
+	if interactive.StoryDirectorNarrativeStyleEnabled(storyDirector) && strings.TrimSpace(req.StoryTellerID) == "" && strings.TrimSpace(storyDirector.ModuleRefs.NarrativeStyleID) != "" {
+		req.StoryTellerID = strings.TrimSpace(storyDirector.ModuleRefs.NarrativeStyleID)
 	}
-	if interactive.StoryDirectorImagePresetEnabled(director) && strings.TrimSpace(req.ImageSettings.PresetID) == "" && strings.TrimSpace(director.ModuleRefs.ImagePresetID) != "" {
-		req.ImageSettings.PresetID = strings.TrimSpace(director.ModuleRefs.ImagePresetID)
+	if interactive.StoryDirectorImagePresetEnabled(storyDirector) && strings.TrimSpace(req.ImageSettings.PresetID) == "" && strings.TrimSpace(storyDirector.ModuleRefs.ImagePresetID) != "" {
+		req.ImageSettings.PresetID = strings.TrimSpace(storyDirector.ModuleRefs.ImagePresetID)
 	}
-	directorRunPolicy := interactive.ResolveStoryDirectorRunPolicy(req.DirectorRunPolicy, director.Strategy)
+	directorRunPolicy := director.ResolveRunPolicy(req.DirectorRunPolicy, storyDirector.Strategy.DirectorAgentMode)
 	req.DirectorRunPolicy = &directorRunPolicy
 	openingSummary := openingSummaryFromStateOps(req.InitialStateOps)
 	req.DirectorPlanSeed = &interactive.DirectorPlanSeed{
-		Templates:           director.Strategy.PlanningTemplates,
-		BranchPlanningTurns: director.Strategy.BranchPlanningTurns,
+		Templates:           storyDirector.Strategy.PlanningTemplates,
+		BranchPlanningTurns: storyDirector.Strategy.BranchPlanningTurns,
 		Source:              "story_create",
 		OpeningSummary:      openingSummary,
-		InitialStatus:       interactive.DirectorPlanStatusWaitingOpening,
+		InitialStatus:       director.PlanStatusWaitingOpening,
 		InitialSummary:      "等待玩家开局完成后由后台导演规划。",
 	}
-	decision := shouldRunInteractiveDirectorAgent(director.Strategy)
+	decision := shouldRunInteractiveDirectorAgent(storyDirector.Strategy)
 	if !decision.ShouldRun {
-		req.DirectorPlanSeed.InitialStatus = interactive.DirectorPlanStatusSkipped
+		req.DirectorPlanSeed.InitialStatus = director.PlanStatusSkipped
 		req.DirectorPlanSeed.InitialSummary = "后台导演已关闭，跳过开局规划。"
 		req.DirectorPlanSeed.StartReady = true
-	} else if directorRunPolicy.Mode == interactive.DirectorRunModeManual {
-		req.DirectorPlanSeed.InitialStatus = interactive.DirectorPlanStatusSkipped
+	} else if directorRunPolicy.Mode == director.RunModeManual {
+		req.DirectorPlanSeed.InitialStatus = director.PlanStatusSkipped
 		req.DirectorPlanSeed.InitialSummary = "后台导演设为仅手动运行。"
 		req.DirectorPlanSeed.StartReady = true
 	}
@@ -190,7 +193,7 @@ func (s *InteractiveAppService) withStoryDirectorDefaults(req interactive.Create
 		policy = interactive.NormalizeStoryStateSchemaPolicy(*req.StateSchemaPolicy)
 	}
 	req.StateSchemaPolicy = &policy
-	actorState := director.ActorState
+	actorState := storyDirector.ActorState
 	if policy.Mode == interactive.StoryStateSchemaModeGenerate {
 		actorState = interactive.GeneratedStoryActorStateCore()
 	}
@@ -202,7 +205,7 @@ func (s *InteractiveAppService) withStoryDirectorDefaults(req interactive.Create
 	} else {
 		req.ActorState = nil
 	}
-	req.TRPGSystem = &director.TRPGSystem
+	req.TRPGSystem = &storyDirector.TRPGSystem
 	status := interactive.StateSchemaInitializationWaitingOpening
 	outcome := ""
 	if policy.Mode == interactive.StoryStateSchemaModeFixedTemplate {
@@ -224,7 +227,7 @@ func (s *InteractiveAppService) withStoryDirectorDefaults(req interactive.Create
 	return req, nil
 }
 
-func openingSummaryFromStateOps(ops []interactive.StateOp) string {
+func openingSummaryFromStateOps(ops []interactivestate.Op) string {
 	if len(ops) == 0 {
 		return ""
 	}
@@ -582,11 +585,11 @@ func (s *InteractiveAppService) RunInteractiveDirectorPlan(storyID string, req i
 }
 
 // ActiveInteractiveTask 返回当前游戏模式活跃任务（可能为 nil）。
-func (a *App) ActiveInteractiveTask() *Task {
+func (a *App) ActiveInteractiveTask() *apptask.Task {
 	return a.interactiveService().ActiveInteractiveTask()
 }
 
-func (s *InteractiveAppService) ActiveInteractiveTask() *Task {
+func (s *InteractiveAppService) ActiveInteractiveTask() *apptask.Task {
 	task, _ := s.ActiveInteractiveTaskFor("", "")
 	return task
 }

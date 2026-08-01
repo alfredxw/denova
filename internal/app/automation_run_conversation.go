@@ -2,22 +2,24 @@ package app
 
 import (
 	"context"
+	agentchat "denova/internal/agents/chat"
+	agentconversation "denova/internal/agents/conversation"
 	"strings"
 
 	"denova/config"
-	agents "denova/internal/agents"
 	agentcontext "denova/internal/agents/context"
 	"denova/internal/agents/session"
+	novaskills "denova/internal/agents/skills"
 )
 
 type automationOutputConversation interface {
-	agents.Conversation
+	agentchat.Conversation
 	Output() string
 	RuntimeConfig() config.Config
 }
 
 type automationRunConversation struct {
-	base          *agents.SessionConversation
+	base          *agentconversation.SessionConversation
 	runtimeConfig config.Config
 	output        string
 }
@@ -36,15 +38,15 @@ func (c *automationRunConversation) ModelContextBudget() agentcontext.Budget {
 	return c.base.ModelContextBudget()
 }
 
-func (c *automationRunConversation) ResolveExplicitSkills(ctx context.Context, message string) ([]agents.ExplicitSkillInvocation, error) {
+func (c *automationRunConversation) ResolveExplicitSkills(ctx context.Context, message string) ([]novaskills.Invocation, error) {
 	return c.base.ResolveExplicitSkills(ctx, message)
 }
 
-func (c *automationRunConversation) AssembleModelContext(ctx context.Context, originalMessage string, input agents.ModelContextInput) (agents.ModelContextResult, error) {
+func (c *automationRunConversation) AssembleModelContext(ctx context.Context, originalMessage string, input agentcontext.ModelContextInput) (agentcontext.ModelContextResult, error) {
 	return c.base.AssembleModelContext(ctx, originalMessage, input)
 }
 
-func (c *automationRunConversation) CommitModelInput(ctx context.Context, originalMessage string, assembled agents.ModelContextResult) error {
+func (c *automationRunConversation) CommitModelInput(ctx context.Context, originalMessage string, assembled agentcontext.ModelContextResult) error {
 	return c.base.CommitModelInput(ctx, originalMessage, assembled)
 }
 

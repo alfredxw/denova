@@ -8,7 +8,8 @@ import (
 	"strings"
 	"time"
 
-	"denova/internal/imagepreset"
+	imagepreset "denova/internal/image/preset"
+	"denova/internal/interactive/director"
 )
 
 func defaultStoryTitle(stories []StorySummary) string {
@@ -110,11 +111,11 @@ func cloneStoryDirectorModuleRefs(refs *StoryDirectorModuleRefs) *StoryDirectorM
 	return &cloned
 }
 
-func cloneStoryDirectorRunPolicy(policy *StoryDirectorRunPolicy) *StoryDirectorRunPolicy {
+func cloneStoryDirectorRunPolicy(policy *director.RunPolicy) *director.RunPolicy {
 	if policy == nil {
 		return nil
 	}
-	cloned := NormalizeStoryDirectorRunPolicy(*policy)
+	cloned := director.NormalizeRunPolicy(*policy)
 	return &cloned
 }
 

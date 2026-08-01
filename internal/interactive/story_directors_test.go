@@ -1,6 +1,8 @@
 package interactive
 
 import (
+	"denova/internal/interactive/director"
+	interactivestate "denova/internal/interactive/state"
 	"encoding/json"
 	"errors"
 	"os"
@@ -23,7 +25,7 @@ func TestStoryDirectorLibraryCRUDAndRevisionConflict(t *testing.T) {
 	if directors[0].ModuleRefs.NarrativeStyleDisabled || directors[0].ModuleRefs.EventPackagesDisabled || directors[0].ModuleRefs.RuleSystemDisabled || directors[0].ModuleRefs.ActorStateDisabled || directors[0].ModuleRefs.ImagePresetDisabled {
 		t.Fatalf("default story director modules should start enabled: %#v", directors[0].ModuleRefs)
 	}
-	if directors[0].Strategy.DirectorAgentMode != DirectorAgentModeTriggered || directors[0].Strategy.BranchPlanningTurns != defaultBranchPlanningTurns {
+	if directors[0].Strategy.DirectorAgentMode != director.AgentModeTriggered || directors[0].Strategy.BranchPlanningTurns != defaultBranchPlanningTurns {
 		t.Fatalf("default story director should use triggered background director schedule: %#v", directors[0].Strategy)
 	}
 
@@ -84,7 +86,7 @@ func TestStoryDirectorLibraryCRUDAndRevisionConflict(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Create failed: %v", err)
 	}
-	if !created.Custom || created.Strategy.EventFrequency != EventFrequencyFrequent || created.Strategy.DirectorAgentMode != DirectorAgentModeTriggered || created.Strategy.BranchPlanningTurns != 12 {
+	if !created.Custom || created.Strategy.EventFrequency != EventFrequencyFrequent || created.Strategy.DirectorAgentMode != director.AgentModeTriggered || created.Strategy.BranchPlanningTurns != 12 {
 		t.Fatalf("custom director should be marked and strategy should be normalized: %#v", created)
 	}
 	if created.ModuleRefs.EventPackagesDisabled || created.ModuleRefs.RuleSystemDisabled {
@@ -289,7 +291,7 @@ func TestStoryDirectorCreateRejectsOversizedPromptBeforePersisting(t *testing.T)
 	}
 }
 
-func containsStateOpPath(ops []StateOp, path string) bool {
+func containsStateOpPath(ops []interactivestate.Op, path string) bool {
 	for _, op := range ops {
 		if op.Path == path {
 			return true

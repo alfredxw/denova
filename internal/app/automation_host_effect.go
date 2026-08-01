@@ -2,13 +2,15 @@ package app
 
 import (
 	"context"
+	agentrun "denova/internal/agents/run"
+	agenttool "denova/internal/agents/tool"
+	agenttoolruntime "denova/internal/agents/toolruntime"
 	"encoding/json"
 	"errors"
 	"fmt"
 	"log/slog"
 	"strings"
 
-	agents "denova/internal/agents"
 	"denova/internal/automation"
 )
 
@@ -18,16 +20,16 @@ const admittedToolMutationVersion = 1
 // Runtime host effect. Runtime keeps the original outbox until this exact
 // payload is durable; the application store then owns all slower reconciliation.
 type admittedToolMutationPayload struct {
-	Version          int                       `json:"version"`
-	Binding          agents.RuntimeBinding     `json:"binding"`
-	RuntimeOperation agents.OperationID        `json:"runtime_operation"`
-	RuntimeCycle     int                       `json:"runtime_cycle"`
-	ToolCallID       string                    `json:"tool_call_id"`
-	Origin           agents.ToolMutationOrigin `json:"origin"`
-	Mutation         agents.ToolMutation       `json:"mutation"`
+	Version          int                                 `json:"version"`
+	Binding          agentrun.RuntimeBinding             `json:"binding"`
+	RuntimeOperation agentrun.OperationID                `json:"runtime_operation"`
+	RuntimeCycle     int                                 `json:"runtime_cycle"`
+	ToolCallID       string                              `json:"tool_call_id"`
+	Origin           agenttoolruntime.ToolMutationOrigin `json:"origin"`
+	Mutation         agenttool.Mutation                  `json:"mutation"`
 }
 
-func (a *App) reconcileHarnessHostEffect(ctx context.Context, committed agents.CommittedToolMutation) error {
+func (a *App) reconcileHarnessHostEffect(ctx context.Context, committed agenttoolruntime.CommittedToolMutation) error {
 	if a == nil || a.cfg == nil {
 		return fmt.Errorf("admit agent host effect: app configuration is unavailable")
 	}
@@ -48,7 +50,7 @@ func (a *App) reconcileHarnessHostEffect(ctx context.Context, committed agents.C
 	}
 	store := automation.NewStore(a.cfg.DataDir(), "")
 	admitted, err := store.AdmitHostEffect(ctx, automation.HostEffectObligation{
-		ID: string(committed.EffectID), Kind: agents.HostEffectToolMutationCommitted,
+		ID: string(committed.EffectID), Kind: agentrun.HostEffectToolMutationCommitted,
 		Workspace: workspace, Payload: payload,
 	})
 	if err != nil {
@@ -57,7 +59,7 @@ func (a *App) reconcileHarnessHostEffect(ctx context.Context, committed agents.C
 	// Automation mutations can usually transfer into their run ledger without
 	// waiting for the scheduler. Failure is safe: the admitted generic outbox is
 	// still authoritative and the wake-up retries after run admission/restart.
-	if committed.Origin.AgentKind == agents.AgentKindAutomation {
+	if committed.Origin.AgentKind == agentrun.AgentKindAutomation {
 		if _, reconcileErr := a.automation().reconcilePersistedHostEffect(context.WithoutCancel(ctx), admitted); reconcileErr != nil {
 			slog.WarnContext(ctx, fmt.Sprintf("[automation-host-effect] immediate transfer deferred effect_id=%s run_id=%s operation_id=%s err=%v", committed.EffectID, committed.Origin.TaskID, committed.RuntimeOperation, reconcileErr))
 		}
@@ -97,7 +99,7 @@ func (s *AutomationAppService) reconcilePersistedHostEffect(ctx context.Context,
 	if err != nil {
 		return false, err
 	}
-	if payload.Origin.AgentKind == agents.AgentKindAutomation {
+	if payload.Origin.AgentKind == agentrun.AgentKindAutomation {
 		if s.hostEffectTransfer != nil {
 			return s.hostEffectTransfer(ctx, effect, payload)
 		}
@@ -106,7 +108,7 @@ func (s *AutomationAppService) reconcilePersistedHostEffect(ctx context.Context,
 	if s.hostEffectOperationActive(ctx, payload) {
 		return false, fmt.Errorf("agent operation %s is still active", payload.RuntimeOperation)
 	}
-	paths := automationCompletionMutationPaths([]agents.ToolMutation{payload.Mutation})
+	paths := automationCompletionMutationPaths([]agenttool.Mutation{payload.Mutation})
 	workspace := strings.TrimSpace(effect.Workspace)
 	if workspace == "" || len(paths) == 0 {
 		return true, s.storeAllWorkspaces().AcknowledgeHostEffect(ctx, effect)
@@ -195,16 +197,16 @@ func (s *AutomationAppService) drainAutomationRunHostEffects(ctx context.Context
 }
 
 func automationHostEffectOwnedByRun(effect automation.HostEffectObligation, runID string) (bool, error) {
-	if effect.Kind != agents.HostEffectToolMutationCommitted {
+	if effect.Kind != agentrun.HostEffectToolMutationCommitted {
 		return false, nil
 	}
 	var owner struct {
-		Origin agents.ToolMutationOrigin `json:"origin"`
+		Origin agenttoolruntime.ToolMutationOrigin `json:"origin"`
 	}
 	if err := json.Unmarshal(effect.Payload, &owner); err != nil {
 		return false, fmt.Errorf("classify admitted host effect %q: %w", effect.ID, err)
 	}
-	if owner.Origin.AgentKind != agents.AgentKindAutomation {
+	if owner.Origin.AgentKind != agentrun.AgentKindAutomation {
 		return false, nil
 	}
 	return strings.TrimSpace(owner.Origin.TaskID) == strings.TrimSpace(runID), nil
@@ -214,7 +216,7 @@ func (s *AutomationAppService) hostEffectOperationActive(ctx context.Context, pa
 	if s == nil || s.app == nil || s.app.chatService == nil {
 		return true
 	}
-	status, err := s.app.chatService.RuntimeStatusProjection(ctx, agents.RunOptions{
+	status, err := s.app.chatService.RuntimeStatusProjection(ctx, agentrun.Options{
 		AgentKind: payload.Origin.AgentKind, ProjectID: payload.Origin.ProjectID,
 		TaskID:           payload.Origin.TaskID,
 		AutomationTaskID: payload.Origin.AutomationTaskID, SessionID: payload.Origin.SessionID,
@@ -237,7 +239,7 @@ func (s *AutomationAppService) transferAutomationHostEffect(
 ) (bool, error) {
 	runID := strings.TrimSpace(payload.Origin.TaskID)
 	operationID := strings.TrimSpace(string(payload.RuntimeOperation))
-	paths := automationCompletionMutationPaths([]agents.ToolMutation{payload.Mutation})
+	paths := automationCompletionMutationPaths([]agenttool.Mutation{payload.Mutation})
 	store := automation.NewStore(s.app.cfg.DataDir(), effect.Workspace)
 	_, _, err := store.MergeRunMutationEffect(ctx, runID, operationID, effect.ID, paths)
 	if err != nil {
@@ -253,7 +255,7 @@ func (s *AutomationAppService) transferAutomationHostEffect(
 }
 
 func decodeAdmittedToolMutation(effect automation.HostEffectObligation) (admittedToolMutationPayload, error) {
-	if effect.Kind != agents.HostEffectToolMutationCommitted {
+	if effect.Kind != agentrun.HostEffectToolMutationCommitted {
 		return admittedToolMutationPayload{}, fmt.Errorf("unsupported admitted host effect kind %q", effect.Kind)
 	}
 	var payload admittedToolMutationPayload

@@ -285,10 +285,10 @@ func (h *Handlers) HandleAgentChatCommand(ctx context.Context, c *app.RequestCon
 		return
 	}
 	kind, err := writingAgentCommandKind(body.Type)
-	queueControl := kind == appsvc.AgentCommandSteerQueued || kind == appsvc.AgentCommandCancelQueued
+	queueControl := kind == appsvc.CommandSteerQueued || kind == appsvc.CommandCancelQueued
 	if err != nil || strings.TrimSpace(body.CommandID) == "" || strings.TrimSpace(body.TargetOperationID) == "" ||
 		(queueControl && strings.TrimSpace(body.TargetCommandID) == "") ||
-		(kind != appsvc.AgentCommandAbort && !queueControl && strings.TrimSpace(body.Input.Message) == "") {
+		(kind != appsvc.CommandAbort && !queueControl && strings.TrimSpace(body.Input.Message) == "") {
 		writeAgentRuntimeError(c, consts.StatusBadRequest, "agent_runtime.invalid_command", "AgentChat 命令 identity 或消息不完整 / AgentChat command identity or message is incomplete", nil)
 		return
 	}

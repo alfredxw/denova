@@ -2,6 +2,8 @@ package app
 
 import (
 	"context"
+	agentchat "denova/internal/agents/chat"
+	"denova/internal/agents/toolresult"
 	"reflect"
 	"strings"
 	"testing"
@@ -12,9 +14,11 @@ import (
 	"denova/config"
 	agents "denova/internal/agents"
 	agentcontext "denova/internal/agents/context"
+	agentcompaction "denova/internal/agents/context/compaction"
+	"denova/internal/agents/prompts"
 	"denova/internal/book"
+	"denova/internal/book/lore"
 	"denova/internal/interactive"
-	"denova/internal/prompts"
 )
 
 func TestInteractiveContextAnalysisUsesPreparedTurnWithoutSideEffects(t *testing.T) {
@@ -34,19 +38,19 @@ func TestInteractiveContextAnalysisUsesPreparedTurnWithoutSideEffects(t *testing
 		t.Fatal(err)
 	}
 
-	analysis, err := agents.BuildInteractiveStoryContextAnalysis(
+	analysis, err := agentchat.BuildInteractiveStoryContextAnalysis(
 		cfg,
 		book.NewState(workspace),
 		prompts.InteractiveStorySystemInstructionInput{ReplyTargetChars: 800},
 		nil,
-		agents.ChatRequest{Message: "询问店主"},
+		agentchat.ChatRequest{Message: "询问店主"},
 		beforeStory.Snapshot.ContextCompaction,
 		conversation,
 	)
 	if err != nil {
 		t.Fatal(err)
 	}
-	runtimePart := agents.ContextAnalysisPart{}
+	runtimePart := agentchat.ContextAnalysisPart{}
 	for _, part := range analysis.ContextParts {
 		if part.Source == "runtime.environment" {
 			runtimePart = part
@@ -67,7 +71,7 @@ func TestInteractiveContextAnalysisUsesPreparedTurnWithoutSideEffects(t *testing
 	baseParentID := conversation.baseParentID
 	lastSources := conversation.lastSources
 	contextSources := append([]interactiveContextSource(nil), conversation.lastContextSources...)
-	contextLedger := append([]agents.ContextLedgerPart(nil), conversation.lastContextLedgerParts...)
+	contextLedger := append([]agentcontext.AuditPart(nil), conversation.lastContextLedgerParts...)
 	stableLeadingMessage := conversation.stableLeadingMessage
 	conversation.mu.Unlock()
 	if !reflect.DeepEqual(beforeStory, afterStory) {
@@ -94,15 +98,15 @@ func TestPreserveInteractiveStableLeadingMessageKeepsNativeSystemFirst(t *testin
 	if len(replayed) != len(result) {
 		t.Fatalf("stable leading was duplicated: %#v", replayed)
 	}
-	if _, err := agents.NormalizeModelContextMessages(replayed); err != nil {
+	if _, err := agentcontext.NormalizeModelContextMessages(replayed); err != nil {
 		t.Fatalf("true post-context protocol invalid: %v", err)
 	}
 }
 
 func TestInteractiveConversationSharesOneBudgetAcrossTurnRuntimeAndResidentLore(t *testing.T) {
 	workspace := t.TempDir()
-	if _, err := book.NewLoreStore(workspace).Create(book.LoreItemInput{
-		ID: "resident-budget", Type: "world", Name: "预算世界", LoadMode: book.LoreLoadModeResident,
+	if _, err := lore.NewStore(workspace).Create(lore.ItemInput{
+		ID: "resident-budget", Type: "world", Name: "预算世界", LoadMode: lore.LoadModeResident,
 		Content: strings.Repeat("常驻设定。", 900),
 	}); err != nil {
 		t.Fatal(err)
@@ -118,9 +122,9 @@ func TestInteractiveConversationSharesOneBudgetAcrossTurnRuntimeAndResidentLore(
 		MaxFragmentBytes: &maxFragmentBytes, MaxTotalInjectedBytes: &maxTotalBytes,
 	}}}
 	conversation := newInteractiveConversation(store, t.TempDir(), workspace, story.ID, "main", "推门", 800, cfg)
-	result, err := conversation.AssembleModelContext(context.Background(), "推门", agents.ModelContextInput{
+	result, err := conversation.AssembleModelContext(context.Background(), "推门", agentcontext.ModelContextInput{
 		UserMessage: "推门",
-		Budget:      agents.ContextBudgetForAgent(cfg, config.AgentKindInteractiveStory),
+		Budget:      agentcontext.ContextBudgetForAgent(cfg, config.AgentKindInteractiveStory),
 		Fragments: []agentcontext.Fragment{{
 			ID: "turn-reference", Source: "workspace.file.reference", Title: "@turn.md",
 			Purpose: "provide an explicit turn reference", Content: strings.Repeat("本轮参考。", 900),
@@ -174,7 +178,7 @@ func TestResolvedInteractiveContextSourcesNeverAuditUnassembledBodiesAsVisible(t
 	if strings.Contains(summary, "秘密尾段") {
 		t.Fatalf("source summary leaked the unassembled source body: %s", summary)
 	}
-	ledger := interactiveContextLedgerParts(resolved, []*agents.Message{agents.UserMessage("只有未裁剪原文")}, agents.ToolResultContextPolicy{})
+	ledger := interactiveContextLedgerParts(resolved, []*agents.Message{agents.UserMessage("只有未裁剪原文")}, toolresult.ContextPolicy{})
 	if len(ledger) != 1 || ledger[0].Included || ledger[0].Bytes != 0 || !ledger[0].Truncated {
 		t.Fatalf("ledger must describe the final omission, not the original body: %#v", ledger)
 	}
@@ -182,8 +186,8 @@ func TestResolvedInteractiveContextSourcesNeverAuditUnassembledBodiesAsVisible(t
 
 func TestInteractiveContextLedgerUsesFinalCompactedMessages(t *testing.T) {
 	workspace := t.TempDir()
-	if _, err := book.NewLoreStore(workspace).Create(book.LoreItemInput{
-		ID: "resident-world", Type: "world", Name: "常驻世界", LoadMode: book.LoreLoadModeResident,
+	if _, err := lore.NewStore(workspace).Create(lore.ItemInput{
+		ID: "resident-world", Type: "world", Name: "常驻世界", LoadMode: lore.LoadModeResident,
 		Content: "常驻规则必须在压缩后继续完整可见。",
 	}); err != nil {
 		t.Fatal(err)
@@ -226,7 +230,7 @@ func TestInteractiveContextLedgerUsesFinalCompactedMessages(t *testing.T) {
 		t.Fatal(err)
 	}
 	stable := conversation.stableLeadingMessageSnapshot()
-	finalMessages := agents.BuildCompactedModelMessages(history, "旧行动和剧情已压缩为有界摘要。", 2, 2)
+	finalMessages := agentcompaction.BuildModelMessages(history, "旧行动和剧情已压缩为有界摘要。", 2, 2)
 	finalMessages = preserveInteractiveStableLeadingMessage(finalMessages, stable)
 	parts := conversation.ContextLedgerPartsForMessages(finalMessages)
 
@@ -247,7 +251,7 @@ func TestInteractiveContextLedgerUsesFinalCompactedMessages(t *testing.T) {
 				t.Fatalf("story title/origin are audit metadata, not model input: %#v", part)
 			}
 		case part.Source == "ResidentLore":
-			resident = part.Included && !part.Truncated && part.Limit > book.ResidentLoreSafetyMaxBytes && part.LimitUnit == "bytes" &&
+			resident = part.Included && !part.Truncated && part.Limit > lore.ResidentLoreSafetyMaxBytes && part.LimitUnit == "bytes" &&
 				part.Bytes == len([]byte(strings.TrimSpace(stable))) && strings.Contains(part.Note, "exact_final_message=true")
 		case part.Source == "ActorState":
 			sawActorState = part.Included && part.Limit > 0

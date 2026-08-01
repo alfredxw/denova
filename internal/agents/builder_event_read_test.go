@@ -2,6 +2,7 @@ package agents
 
 import (
 	"context"
+	agentinteractive "denova/internal/agents/interactive"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -63,7 +64,7 @@ func TestInteractiveDirectorAssemblyRegistersOneEventReadAndIgnoresWorkspaceOver
 			if test.workspaceRead {
 				cfg.AgentTools.InteractiveDirector = config.AgentToolOverride{config.AgentToolWorkspaceRead: true}
 			}
-			_, buildErr := BuildInteractiveDirector(context.Background(), cfg, nil, InteractiveStoryToolContext{
+			_, buildErr := BuildInteractiveDirector(context.Background(), cfg, nil, agentinteractive.InteractiveStoryToolContext{
 				Store: store, StoryID: story.ID, BranchID: "main", TurnID: sourceTurn,
 				MaintenanceTask: "director_plan_update",
 			})

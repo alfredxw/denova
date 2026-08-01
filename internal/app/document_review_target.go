@@ -6,7 +6,8 @@ import (
 	"path/filepath"
 
 	"denova/internal/book"
-	"denova/internal/documentreview"
+	"denova/internal/book/lore"
+	"denova/internal/workspace/documentreview"
 )
 
 // documentReviewTargetResolver is the application-level adapter between the
@@ -14,13 +15,13 @@ import (
 // reads here prevents the review ledger from depending on book storage.
 type documentReviewTargetResolver struct {
 	files *book.Service
-	lore  *book.LoreStore
+	lore  *lore.Store
 }
 
 func newDocumentReviewTargetResolver(workspace string, files *book.Service) documentreview.SnapshotResolver {
 	return documentReviewTargetResolver{
 		files: files,
-		lore:  book.NewLoreStore(workspace),
+		lore:  lore.NewStore(workspace),
 	}
 }
 

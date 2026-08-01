@@ -7,7 +7,7 @@ import (
 	"strings"
 	"testing"
 
-	"denova/internal/conversationjournal"
+	"denova/internal/agents/conversationjournal"
 )
 
 func TestStoryHistoryPagesUseBoundedIndexedRangesWithoutDuplicates(t *testing.T) {

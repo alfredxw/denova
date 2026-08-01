@@ -3,6 +3,7 @@ package app
 import (
 	"context"
 	"crypto/sha256"
+	agentchat "denova/internal/agents/chat"
 	"errors"
 	"fmt"
 	"log/slog"
@@ -11,8 +12,10 @@ import (
 	"denova/config"
 	agents "denova/internal/agents"
 	agentcontext "denova/internal/agents/context"
+	agentrun "denova/internal/agents/run"
 	"denova/internal/agents/session"
-	"denova/internal/interactiveimage"
+	novaskills "denova/internal/agents/skills"
+	imageasset "denova/internal/image/asset"
 )
 
 type ImageAgentGenerateRequest struct {
@@ -30,7 +33,7 @@ type ImageAgentGenerateRequest struct {
 
 type ImageAgentGenerateResult struct {
 	AssistantText    string
-	InteractiveImage *interactiveimage.Result
+	InteractiveImage *imageasset.InteractiveResult
 	Replayed         bool
 }
 
@@ -40,7 +43,7 @@ type imageAgentAdmission struct {
 
 type imageAgentRunHooks struct {
 	OnAccepted         func(imageAgentAdmission) error
-	OnInteractiveImage func(*interactiveimage.Result) error
+	OnInteractiveImage func(*imageasset.InteractiveResult) error
 }
 
 func (a *App) GenerateImageWithAgent(ctx context.Context, req ImageAgentGenerateRequest) (ImageAgentGenerateResult, error) {
@@ -93,7 +96,7 @@ func (s *ImageAppService) generateWithAgentUsingHooks(runtime *imageWorkspaceRun
 		message:       imageAgentMessage(req),
 		sourceContext: strings.TrimSpace(req.SourceContext),
 		sourceSummary: imageAgentSourceSummary(req),
-		contextBudget: agents.ContextBudgetForAgent(&cfg, config.AgentKindImage),
+		contextBudget: agentcontext.ContextBudgetForAgent(&cfg, config.AgentKindImage),
 		skillConfig:   cfg,
 	}
 	var result ImageAgentGenerateResult
@@ -101,10 +104,10 @@ func (s *ImageAppService) generateWithAgentUsingHooks(runtime *imageWorkspaceRun
 	var hookErr error
 	runCtx, cancelRun := context.WithCancel(runtime.Context())
 	defer cancelRun()
-	accepted, err := runtime.chatService.StartWithOptions(runCtx, runner, conversation, runtime.bookService, agents.ChatRequest{
+	accepted, err := runtime.chatService.StartWithOptions(runCtx, runner, conversation, runtime.bookService, agentchat.ChatRequest{
 		CommandID: req.CommandID,
 		Message:   conversation.message,
-	}, agents.RunOptions{
+	}, agentrun.Options{
 		AgentKind:          config.AgentKindImage,
 		StateRoot:          cfg.ProjectStateDir,
 		Workspace:          runtime.workspace,
@@ -115,7 +118,7 @@ func (s *ImageAppService) generateWithAgentUsingHooks(runtime *imageWorkspaceRun
 		IdleTimeout:        agentIdleTimeout(cfg),
 		ToolResultMaxBytes: agentToolResultMaxBytes(cfg),
 		SystemPromptLog:    systemPrompt,
-	}, func(ev agents.Event) {
+	}, func(ev agentrun.Event) {
 		switch ev.Type {
 		case "tool_result":
 			if image := eventInteractiveImage(ev.Data); image != nil {
@@ -131,7 +134,7 @@ func (s *ImageAppService) generateWithAgentUsingHooks(runtime *imageWorkspaceRun
 		}
 	})
 	if err != nil {
-		if errors.Is(err, agents.ErrInvalidCommand) {
+		if errors.Is(err, agentrun.ErrInvalidCommand) {
 			return result, fmt.Errorf("%w: command_id=%q", ErrAgentCommandConflict, req.CommandID)
 		}
 		return result, err
@@ -155,7 +158,7 @@ func (s *ImageAppService) generateWithAgentUsingHooks(runtime *imageWorkspaceRun
 	if runErr != nil {
 		return result, runErr
 	}
-	if outcome.Status != agents.RunOutcomeCompleted {
+	if outcome.Status != agentrun.OutcomeCompleted {
 		if outcome.Error != nil {
 			return result, outcome.Error
 		}
@@ -188,7 +191,7 @@ func validateImageAgentCommandID(commandID string) error {
 	if commandID == "" {
 		return ErrAgentCommandIDRequired
 	}
-	return agents.ValidateCommandID(commandID)
+	return agentrun.ValidateCommandID(commandID)
 }
 
 type imageAgentConversation struct {
@@ -207,16 +210,16 @@ func (c *imageAgentConversation) ModelContextBudget() agentcontext.Budget {
 	return c.contextBudget
 }
 
-func (c *imageAgentConversation) ResolveExplicitSkills(ctx context.Context, message string) ([]agents.ExplicitSkillInvocation, error) {
+func (c *imageAgentConversation) ResolveExplicitSkills(ctx context.Context, message string) ([]novaskills.Invocation, error) {
 	if c == nil {
 		return nil, nil
 	}
-	return agents.ResolveExplicitSkillInvocations(ctx, &c.skillConfig, config.AgentKindImage, message)
+	return novaskills.ResolveConfiguredInvocations(ctx, &c.skillConfig, config.AgentKindImage, message)
 }
 
-func (c *imageAgentConversation) AssembleModelContext(ctx context.Context, _ string, input agents.ModelContextInput) (agents.ModelContextResult, error) {
+func (c *imageAgentConversation) AssembleModelContext(ctx context.Context, _ string, input agentcontext.ModelContextInput) (agentcontext.ModelContextResult, error) {
 	if strings.TrimSpace(c.message) == "" {
-		return agents.ModelContextResult{}, fmt.Errorf("图像 Agent 输入不能为空")
+		return agentcontext.ModelContextResult{}, fmt.Errorf("图像 Agent 输入不能为空")
 	}
 	fragments := append([]agentcontext.Fragment(nil), input.Fragments...)
 	if c.sourceContext != "" {
@@ -231,9 +234,9 @@ func (c *imageAgentConversation) AssembleModelContext(ctx context.Context, _ str
 		Messages: []*agents.Message{agents.UserMessage(c.message)}, Fragments: fragments,
 	})
 	if err != nil {
-		return agents.ModelContextResult{}, err
+		return agentcontext.ModelContextResult{}, err
 	}
-	return agents.ModelContextResult{Messages: assembled.Messages, Context: assembled}, nil
+	return agentcontext.ModelContextResult{Messages: assembled.Messages, Context: assembled}, nil
 }
 
 func (c *imageAgentConversation) AppendAssistant(content string) error {
@@ -297,15 +300,15 @@ func imageAgentSourceSummary(req ImageAgentGenerateRequest) string {
 	return strings.Join(parts, " ")
 }
 
-func eventInteractiveImage(data interface{}) *interactiveimage.Result {
+func eventInteractiveImage(data interface{}) *imageasset.InteractiveResult {
 	payload, ok := data.(map[string]interface{})
 	if !ok {
 		return nil
 	}
 	switch value := payload["interactive_image"].(type) {
-	case *interactiveimage.Result:
+	case *imageasset.InteractiveResult:
 		return value
-	case interactiveimage.Result:
+	case imageasset.InteractiveResult:
 		return &value
 	default:
 		return nil

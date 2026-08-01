@@ -1,10 +1,9 @@
 package interactive
 
 import (
+	"denova/internal/book/lore"
 	"strings"
 	"testing"
-
-	"denova/internal/book"
 )
 
 func TestParseDirectorLoreContextReferencesSeparatesActiveCandidateAndOffstage(t *testing.T) {
@@ -33,7 +32,7 @@ func TestUpdateDirectorPlanIgnoresUnavailableNameReferences(t *testing.T) {
 		t.Fatal(err)
 	}
 	disabled := false
-	if _, err := book.NewLoreStore(workspace).Create(book.LoreItemInput{ID: "disabled", Enabled: &disabled, Type: "character", Name: "未启用的人", Content: "不会加载"}); err != nil {
+	if _, err := lore.NewStore(workspace).Create(lore.ItemInput{ID: "disabled", Enabled: &disabled, Type: "character", Name: "未启用的人", Content: "不会加载"}); err != nil {
 		t.Fatal(err)
 	}
 	plan.Docs.LoreContext = strings.Replace(plan.Docs.LoreContext, "## 当前\n", "## 当前\n\n- [[不存在的人]]\n- [[未启用的人]]\n", 1)
@@ -61,11 +60,11 @@ func TestDirectorLoreContextAllowsOnDemandRulesButRejectsResidentDuplicates(t *t
 	if err != nil {
 		t.Fatal(err)
 	}
-	lore := book.NewLoreStore(workspace)
-	if _, err := lore.Create(book.LoreItemInput{ID: "check", Type: "rule", Name: "按需检定规则", LoadMode: book.LoreLoadModeAuto, Content: "只在场景需要时加载。"}); err != nil {
+	loreStore := lore.NewStore(workspace)
+	if _, err := loreStore.Create(lore.ItemInput{ID: "check", Type: "rule", Name: "按需检定规则", LoadMode: lore.LoadModeAuto, Content: "只在场景需要时加载。"}); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := lore.Create(book.LoreItemInput{ID: "resident", Type: "world", Name: "常驻世界底线", LoadMode: book.LoreLoadModeResident, Content: "始终完整注入。"}); err != nil {
+	if _, err := loreStore.Create(lore.ItemInput{ID: "resident", Type: "world", Name: "常驻世界底线", LoadMode: lore.LoadModeResident, Content: "始终完整注入。"}); err != nil {
 		t.Fatal(err)
 	}
 	plan, err := store.DirectorPlan(story.ID, "main")

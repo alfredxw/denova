@@ -2,6 +2,8 @@ package app
 
 import (
 	"context"
+	agentconversation "denova/internal/agents/conversation"
+	"denova/internal/agents/toolresult"
 	"errors"
 	"fmt"
 	"strings"
@@ -9,6 +11,9 @@ import (
 
 	"denova/config"
 	agents "denova/internal/agents"
+	agentcontext "denova/internal/agents/context"
+	agentcompaction "denova/internal/agents/context/compaction"
+	agentrun "denova/internal/agents/run"
 	"denova/internal/interactive"
 )
 
@@ -18,12 +23,12 @@ type preparedInteractiveToolResultCleanup struct {
 	event interactive.ToolResultCleanupEvent
 }
 
-func (c *interactiveConversation) ContextPressurePolicy(messages []*agents.Message) agents.ContextPressurePolicy {
+func (c *interactiveConversation) ContextPressurePolicy(messages []*agents.Message) agentcontext.ContextPressurePolicy {
 	if c == nil {
-		return agents.ContextPressurePolicy{}
+		return agentcontext.ContextPressurePolicy{}
 	}
-	policy := agents.ResolveContextPressurePolicyForConversation(c.cfg, config.AgentKindInteractiveStory, messages)
-	completionReserve, toolReserve := agents.EstimateContextProjectionReserves(c.cfg, config.AgentKindInteractiveStory, c.replyTargetChars)
+	policy := agentconversation.ResolvePressurePolicy(c.cfg, config.AgentKindInteractiveStory, messages)
+	completionReserve, toolReserve := agentcompaction.EstimateProjectionReserves(c.cfg, config.AgentKindInteractiveStory, c.replyTargetChars)
 	policy.ReservedTokens = completionReserve + toolReserve
 	policy.CheckpointOutputReserve = max(policy.CheckpointOutputReserve, completionReserve)
 	storyCtx, err := c.storyContextForCycle()
@@ -106,7 +111,7 @@ func maxRFC3339Timestamp(left, right string) string {
 	}
 }
 
-func (c *interactiveConversation) StageToolResultCleanup(ctx context.Context, visible []*agents.Message, plan agents.ToolResultCleanupPlan) error {
+func (c *interactiveConversation) StageToolResultCleanup(ctx context.Context, visible []*agents.Message, plan toolresult.CleanupPlan) error {
 	if c == nil || c.store == nil || len(plan.Replacements) == 0 {
 		return nil
 	}
@@ -136,22 +141,22 @@ func (c *interactiveConversation) StageToolResultCleanup(ctx context.Context, vi
 		return err
 	}
 	effective := projection.Messages
-	resolved, err := agents.ResolveToolResultCleanupTargets(visible, effective, plan)
+	resolved, err := toolresult.ResolveCleanupTargets(visible, effective, plan)
 	if err != nil {
 		return err
 	}
 
-	var existing []agents.PersistedToolResultReplacement
+	var existing []toolresult.PersistedReplacement
 	previousReclaimed := 0
 	if existingEvent := storyCtx.Snapshot.ToolResultCleanup; existingEvent != nil {
 		for _, replacement := range existingEvent.Replacements {
-			existing = append(existing, agents.PersistedToolResultReplacement{
+			existing = append(existing, toolresult.PersistedReplacement{
 				MessageIndex: replacement.MessageIndex, ToolCallID: replacement.ToolCallID, Placeholder: replacement.Placeholder,
 			})
 		}
 		previousReclaimed = existingEvent.ReclaimedTokens
 	}
-	merged, err := agents.MergeToolResultCleanup(existing, resolved, 0, int64(len(effective)), previousReclaimed, plan.ReclaimedTokens)
+	merged, err := toolresult.MergeCleanup(existing, resolved, 0, int64(len(effective)), previousReclaimed, plan.ReclaimedTokens)
 	if err != nil {
 		return err
 	}
@@ -164,7 +169,7 @@ func (c *interactiveConversation) StageToolResultCleanup(ctx context.Context, vi
 	event := interactive.ToolResultCleanupEvent{
 		AgentKind:   config.AgentKindInteractiveStory,
 		SourceStart: merged.SourceStart, SourceEnd: merged.SourceEnd, Replacements: ordered,
-		ReclaimedTokens: merged.ReclaimedTokens, TriggeredAtUsage: agents.EstimateContextTokens(visible, nil),
+		ReclaimedTokens: merged.ReclaimedTokens, TriggeredAtUsage: agentcontext.EstimateTokens(visible, nil),
 		EarliestChanged: merged.SourceStart, WarmSuffixTokens: plan.WarmSuffixTokens, RendererVersion: plan.RendererVersion,
 	}
 	c.mu.Lock()
@@ -173,7 +178,7 @@ func (c *interactiveConversation) StageToolResultCleanup(ctx context.Context, vi
 	return nil
 }
 
-func (c *interactiveConversation) CommitPostSettlementToolResultCleanup(ctx context.Context, settledOperationID agents.OperationID) error {
+func (c *interactiveConversation) CommitPostSettlementToolResultCleanup(ctx context.Context, settledOperationID agentrun.OperationID) error {
 	if c == nil || c.store == nil {
 		return nil
 	}
@@ -215,11 +220,11 @@ func (c *interactiveConversation) DiscardStagedToolResultCleanup() {
 }
 
 func applyInteractiveToolResultCleanup(messages []*agents.Message, event interactive.ToolResultCleanupEvent) []*agents.Message {
-	plan := agents.ToolResultCleanupPlan{RendererVersion: event.RendererVersion}
+	plan := toolresult.CleanupPlan{RendererVersion: event.RendererVersion}
 	for _, replacement := range event.Replacements {
-		plan.Replacements = append(plan.Replacements, agents.ToolResultCleanupReplacement{
+		plan.Replacements = append(plan.Replacements, toolresult.CleanupReplacement{
 			MessageIndex: int(replacement.MessageIndex), ToolCallID: replacement.ToolCallID, Placeholder: replacement.Placeholder,
 		})
 	}
-	return agents.ApplyToolResultCleanupPlan(messages, plan)
+	return toolresult.ApplyCleanupPlan(messages, plan)
 }

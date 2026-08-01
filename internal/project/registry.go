@@ -14,7 +14,7 @@ import (
 	"sync"
 	"time"
 
-	"denova/internal/workspacepath"
+	workspacelayout "denova/internal/workspace"
 )
 
 const registryVersion = 2
@@ -679,7 +679,7 @@ func isUserDataDirectory(name string) bool {
 
 func isBookWorkspace(path string) bool {
 	markers := []string{
-		filepath.Join(path, workspacepath.DataDirName), filepath.Join(path, workspacepath.LegacyDataDirName),
+		filepath.Join(path, workspacelayout.DataDirName), filepath.Join(path, workspacelayout.LegacyDataDirName),
 		filepath.Join(path, "book.json"), filepath.Join(path, "ideas.md"), filepath.Join(path, "brainstorm.md"),
 		filepath.Join(path, "chapters"), filepath.Join(path, "setting"),
 	}

@@ -2,11 +2,10 @@ package app
 
 import (
 	"crypto/sha256"
+	agentrun "denova/internal/agents/run"
 	"encoding/hex"
 	"fmt"
 	"strings"
-
-	agents "denova/internal/agents"
 )
 
 // automationManualRunID turns the caller-owned HTTP command identity into the
@@ -19,7 +18,7 @@ func automationManualRunID(taskID, commandID string) (string, error) {
 	if taskID == "" || commandID == "" {
 		return "", ErrAgentCommandIDRequired
 	}
-	if err := agents.ValidateCommandID(commandID); err != nil {
+	if err := agentrun.ValidateCommandID(commandID); err != nil {
 		return "", err
 	}
 	sum := sha256.Sum256([]byte(fmt.Sprintf("manual\x00%s\x00%s", taskID, commandID)))

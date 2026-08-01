@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"io"
 
-	"denova/internal/conversationjournal"
+	"denova/internal/agents/conversationjournal"
 )
 
 const sessionExportBatchTransactions = 8

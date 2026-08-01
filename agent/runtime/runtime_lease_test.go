@@ -3,6 +3,7 @@ package runtime_test
 import (
 	"context"
 	"errors"
+	filejournal "github.com/alfredxw/denova/agent/runtime/filejournal"
 	"path/filepath"
 	"testing"
 	"time"
@@ -34,11 +35,11 @@ func TestRuntimeOpenHoldsFileBindingLeaseAcrossStores(t *testing.T) {
 	t.Parallel()
 
 	root := t.TempDir()
-	firstStore, err := runstate.NewFileJournalStore(filepath.Join(root, "journals"))
+	firstStore, err := filejournal.NewStore(filepath.Join(root, "journals"))
 	if err != nil {
 		t.Fatal(err)
 	}
-	secondStore, err := runstate.NewFileJournalStore(filepath.Join(root, "journals"))
+	secondStore, err := filejournal.NewStore(filepath.Join(root, "journals"))
 	if err != nil {
 		t.Fatal(err)
 	}

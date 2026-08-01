@@ -2,6 +2,7 @@ package app
 
 import (
 	"context"
+	apptask "denova/internal/app/task"
 	"errors"
 	"fmt"
 	"time"
@@ -22,7 +23,7 @@ func (s *AutomationAppService) processDurableBuiltInTrigger(
 	listedTrigger automation.TriggerDefinition,
 	stateKey string,
 ) (item automation.TriggerInboxItem, run automation.RunResult, processed bool, err error) {
-	return s.processDurableBuiltInTriggerWithStarter(ctx, snap, store, now, listedTask, listedTrigger, stateKey, func(ctx context.Context, taskID, trigger, runID string, evidence []automation.TriggerEvidence) (*Task, automation.RunRecord, error) {
+	return s.processDurableBuiltInTriggerWithStarter(ctx, snap, store, now, listedTask, listedTrigger, stateKey, func(ctx context.Context, taskID, trigger, runID string, evidence []automation.TriggerEvidence) (*apptask.Task, automation.RunRecord, error) {
 		return s.startTaskWithSourceRunID(ctx, snap, taskID, trigger, "", runID, evidence)
 	})
 }

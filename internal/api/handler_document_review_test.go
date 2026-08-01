@@ -5,9 +5,9 @@ import (
 	"path/filepath"
 	"testing"
 
-	"denova/internal/book"
-	"denova/internal/documentreview"
-	"denova/internal/workspacechange"
+	"denova/internal/book/lore"
+	workspacechange "denova/internal/workspace/change"
+	"denova/internal/workspace/documentreview"
 )
 
 func TestDocumentReviewCommentLifecycleAPI(t *testing.T) {
@@ -88,7 +88,7 @@ func TestLoreReviewCommentLifecycleAPI(t *testing.T) {
 	application := newTestApplication(t)
 	server := NewServer(application, "0")
 	workspace := application.Workspace()
-	item, err := application.CreateLoreItem(book.LoreItemInput{
+	item, err := application.CreateLoreItem(lore.ItemInput{
 		ID: "gatekeeper", Type: "character", Name: "守门人", Content: "Aldren guards the northern gate.",
 	})
 	if err != nil {

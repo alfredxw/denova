@@ -2,6 +2,7 @@ package app
 
 import (
 	"context"
+	agenttoolruntime "denova/internal/agents/toolruntime"
 	"errors"
 	"os"
 	"path/filepath"
@@ -9,8 +10,10 @@ import (
 	"time"
 
 	"denova/config"
-	agents "denova/internal/agents"
+	agentrun "denova/internal/agents/run"
+	agenttool "denova/internal/agents/tool"
 	"denova/internal/automation"
+
 	runstate "github.com/alfredxw/denova/agent/runtime"
 )
 
@@ -31,14 +34,14 @@ func TestAutomationHostEffectBridgeSurvivesRunMaterializationGap(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	committed := agents.CommittedToolMutation{
+	committed := agenttoolruntime.CommittedToolMutation{
 		EffectID: "host-effect-materialization-gap", RuntimeOperation: "operation-1", RuntimeCycle: 1,
 		ToolCallID: "tool-call-1",
-		Origin: agents.ToolMutationOrigin{
-			AgentKind: agents.AgentKindAutomation, TaskID: "run-materialization-gap",
+		Origin: agenttoolruntime.ToolMutationOrigin{
+			AgentKind: agentrun.AgentKindAutomation, TaskID: "run-materialization-gap",
 			AutomationTaskID: taskDef.ID, Workspace: workspace, Mode: "automation",
 		},
-		Mutation: agents.ToolMutation{
+		Mutation: agenttool.Mutation{
 			ToolName: "write", ToolCallID: "tool-call-1", Workspace: workspace, Target: "chapters/late.md",
 		},
 	}
@@ -137,14 +140,14 @@ func TestAutomationSuccessorFenceRejectsTransferFailureAndRecoversWithoutChangin
 	service.hostEffectTransfer = func(context.Context, automation.HostEffectObligation, admittedToolMutationPayload) (bool, error) {
 		return false, transferFailure
 	}
-	committed := agents.CommittedToolMutation{
+	committed := agenttoolruntime.CommittedToolMutation{
 		EffectID: "host-effect-before-failed-successor", RuntimeOperation: "operation-1", RuntimeCycle: 1,
 		ToolCallID: "tool-call-before-failed-successor",
-		Origin: agents.ToolMutationOrigin{
-			AgentKind: agents.AgentKindAutomation, TaskID: run.ID, AutomationTaskID: taskDef.ID,
+		Origin: agenttoolruntime.ToolMutationOrigin{
+			AgentKind: agentrun.AgentKindAutomation, TaskID: run.ID, AutomationTaskID: taskDef.ID,
 			SessionID: run.SessionID, Workspace: workspace, Mode: "automation",
 		},
-		Mutation: agents.ToolMutation{
+		Mutation: agenttool.Mutation{
 			ToolName: "write", ToolCallID: "tool-call-before-failed-successor",
 			Workspace: workspace, Target: "notes/not-a-chapter.md",
 		},
@@ -211,14 +214,14 @@ func TestCommittedAutomationHostEffectEnablesOneTriggerPassAcrossRedelivery(t *t
 		t.Fatal(err)
 	}
 
-	committed := agents.CommittedToolMutation{
+	committed := agenttoolruntime.CommittedToolMutation{
 		EffectID: "host-effect-exact-output-receipt", RuntimeOperation: "operation-1", RuntimeCycle: 1,
 		ToolCallID: "tool-call-exact-output-receipt",
-		Origin: agents.ToolMutationOrigin{
-			AgentKind: agents.AgentKindAutomation, TaskID: run.ID, AutomationTaskID: taskDef.ID,
+		Origin: agenttoolruntime.ToolMutationOrigin{
+			AgentKind: agentrun.AgentKindAutomation, TaskID: run.ID, AutomationTaskID: taskDef.ID,
 			SessionID: run.SessionID, Workspace: workspace, Mode: "automation",
 		},
-		Mutation: agents.ToolMutation{
+		Mutation: agenttool.Mutation{
 			ToolName: "write", ToolCallID: "tool-call-exact-output-receipt",
 			Workspace: workspace, Target: "chapters/one.md",
 		},

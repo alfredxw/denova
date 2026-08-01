@@ -2,11 +2,12 @@ package app
 
 import (
 	"context"
+	agentharness "denova/internal/agents/harness"
+	agentrun "denova/internal/agents/run"
 	"errors"
 	"testing"
 	"time"
 
-	agents "denova/internal/agents"
 	"denova/internal/agents/session"
 )
 
@@ -20,7 +21,7 @@ func TestResolveSessionAskResumesExactIDEWaiter(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	chat := agents.NewEphemeralChatService()
+	chat := agentharness.NewEphemeralService()
 	t.Cleanup(func() { _ = chat.Close(context.Background()) })
 	application := &App{workspace: "/book", sessionStore: store, session: sess, chatService: chat}
 	done := startAppAskWaiter(t, sess, "ask-ide", "ide")
@@ -48,7 +49,7 @@ func TestResolveConfigManagerAskCannotCrossScope(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer store.Close()
-	chat := agents.NewEphemeralChatService()
+	chat := agentharness.NewEphemeralService()
 	t.Cleanup(func() { _ = chat.Close(context.Background()) })
 	application := &App{workspace: "/book", sessionStore: store, chatService: chat}
 	scope := ConfigManagerRequest{Origin: "settings", ResourceID: "agent-a"}
@@ -135,7 +136,7 @@ func TestActiveViewsHideColdPendingAskWhenRuntimeProjectionUnavailable(t *testin
 		})
 		application := &App{
 			workspace: "/book", sessionStore: store, session: sess,
-			chatService: &agents.ChatService{},
+			chatService: &agentharness.Service{},
 		}
 		view := application.WritingAgentActiveView(context.Background())
 		if view.RuntimeProjectionOK || view.PendingAsk != nil {
@@ -157,7 +158,7 @@ func TestActiveViewsHideColdPendingAskWhenRuntimeProjectionUnavailable(t *testin
 		})
 		application := &App{
 			workspace: "/book", sessionStore: store,
-			chatService: &agents.ChatService{},
+			chatService: &agentharness.Service{},
 		}
 		view := application.ConfigManagerAgentActiveView(context.Background(), scope)
 		if view.RuntimeProjectionOK || view.PendingAsk != nil {
@@ -173,8 +174,8 @@ func TestColdRuntimeAskReconciliationRequiresExactCycle(t *testing.T) {
 	_, sess := reopenAppAskWithoutWaiter(t, "ask-cold-cycle", session.AskCycleIdentity{
 		CommandID: "command-cycle", OperationID: "operation-cycle", Cycle: 2,
 	})
-	notCold := agents.RuntimeStatus{
-		Phase: agents.RunPhaseRunning, ActiveCommandID: "command-cycle", ActiveOperation: "operation-cycle", ActiveCycle: 2,
+	notCold := agentrun.RuntimeStatus{
+		Phase: agentrun.RunPhaseRunning, ActiveCommandID: "command-cycle", ActiveOperation: "operation-cycle", ActiveCycle: 2,
 	}
 	if reconciled, err := reconcileColdPendingAsk(context.Background(), sess, notCold); err != nil || reconciled {
 		t.Fatalf("healthy runtime reconciliation = reconciled:%t err:%v", reconciled, err)

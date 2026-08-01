@@ -9,7 +9,7 @@ import (
 	"sync"
 	"time"
 
-	"denova/internal/keyedlock"
+	"denova/internal/concurrency"
 )
 
 // automationTriggerCoordinator owns mutation-trigger evaluation for the App
@@ -228,4 +228,4 @@ func (c *automationTriggerCoordinator) Close() {
 	c.wg.Wait()
 }
 
-var triggerExecutionLocks = keyedlock.New(canonicalAutomationWorkspace)
+var triggerExecutionLocks = concurrency.NewKeyedLock(canonicalAutomationWorkspace)

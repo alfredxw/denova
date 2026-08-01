@@ -2,18 +2,23 @@ package app
 
 import (
 	"context"
+	agentchat "denova/internal/agents/chat"
+	agentconversation "denova/internal/agents/conversation"
+	agentinteractive "denova/internal/agents/interactive"
 	"fmt"
 	"os"
 	"path/filepath"
 
 	"denova/config"
 	agents "denova/internal/agents"
+	"denova/internal/agents/prompts"
+	agentrun "denova/internal/agents/run"
 	"denova/internal/agents/session"
 	"denova/internal/book"
 	"denova/internal/interactive"
-	"denova/internal/narrativestyle"
-	"denova/internal/prompts"
-	"denova/internal/workspacechange"
+	"denova/internal/interactive/teller"
+	"denova/internal/style"
+	workspacechange "denova/internal/workspace/change"
 )
 
 type runtimeState struct {
@@ -119,33 +124,33 @@ func buildRuntime(ctx context.Context, cfg *config.Config, layout ProjectLayout)
 	return runtime, nil
 }
 
-func buildAgentRunner(ctx context.Context, cfg *config.Config, state *book.State, tellers ...agents.IDEStoryTeller) (*agents.Runner, error) {
+func buildAgentRunner(ctx context.Context, cfg *config.Config, state *book.State, tellers ...prompts.IDEStoryTeller) (*agents.Runner, error) {
 	runner, _, err := buildAgentRunnerWithComposition(ctx, cfg, state, tellers...)
 	return runner, err
 }
 
-func buildAgentRunnerWithComposition(ctx context.Context, cfg *config.Config, state *book.State, tellers ...agents.IDEStoryTeller) (*agents.Runner, agents.SystemPromptComposition, error) {
+func buildAgentRunnerWithComposition(ctx context.Context, cfg *config.Config, state *book.State, tellers ...prompts.IDEStoryTeller) (*agents.Runner, prompts.SystemPromptComposition, error) {
 	teller := ideStoryTellerForConfig(cfg)
 	if len(tellers) > 0 {
 		teller = tellers[0]
 	}
 	builtAgent, composition, err := agents.BuildWithCompositionForHost(ctx, cfg, state, teller, agents.AgentHostCapabilities{Interactive: true})
 	if err != nil {
-		return nil, agents.SystemPromptComposition{}, fmt.Errorf("构建 Agent 失败: %w", err)
+		return nil, prompts.SystemPromptComposition{}, fmt.Errorf("构建 Agent 失败: %w", err)
 	}
-	return agents.NewRunnerWithOptions(ctx, builtAgent, agents.RunOptions{AgentKind: agents.AgentKindIDE, Workspace: cfg.Workspace}), composition, nil
+	return agentchat.NewRunnerWithOptions(ctx, builtAgent, agentrun.Options{AgentKind: agentrun.AgentKindIDE, Workspace: cfg.Workspace}), composition, nil
 }
 
-func buildProjectAgentRunnerWithComposition(ctx context.Context, runtime ideChatRuntime) (*agents.Runner, agents.SystemPromptComposition, error) {
-	if runtime.agentKind == agents.AgentKindGeneral {
+func buildProjectAgentRunnerWithComposition(ctx context.Context, runtime ideChatRuntime) (*agents.Runner, prompts.SystemPromptComposition, error) {
+	if runtime.agentKind == agentrun.AgentKindGeneral {
 		builtAgent, composition, err := agents.BuildGeneralAgentWithCompositionForHost(
 			ctx, &runtime.cfg, agents.AgentHostCapabilities{Interactive: true},
 		)
 		if err != nil {
-			return nil, agents.SystemPromptComposition{}, fmt.Errorf("build General Agent: %w", err)
+			return nil, prompts.SystemPromptComposition{}, fmt.Errorf("build General Agent: %w", err)
 		}
-		return agents.NewRunnerWithOptions(ctx, builtAgent, agents.RunOptions{
-			AgentKind: agents.AgentKindGeneral, ProjectID: runtime.projectID,
+		return agentchat.NewRunnerWithOptions(ctx, builtAgent, agentrun.Options{
+			AgentKind: agentrun.AgentKindGeneral, ProjectID: runtime.projectID,
 			StateRoot: runtime.projectState, Workspace: runtime.workspace,
 		}), composition, nil
 	}
@@ -154,39 +159,39 @@ func buildProjectAgentRunnerWithComposition(ctx context.Context, runtime ideChat
 		agents.AgentHostCapabilities{Interactive: true},
 	)
 	if err != nil {
-		return nil, agents.SystemPromptComposition{}, fmt.Errorf("build Writing Agent: %w", err)
+		return nil, prompts.SystemPromptComposition{}, fmt.Errorf("build Writing Agent: %w", err)
 	}
-	return agents.NewRunnerWithOptions(ctx, builtAgent, agents.RunOptions{
-		AgentKind: agents.AgentKindIDE, ProjectID: runtime.projectID,
+	return agentchat.NewRunnerWithOptions(ctx, builtAgent, agentrun.Options{
+		AgentKind: agentrun.AgentKindIDE, ProjectID: runtime.projectID,
 		StateRoot: runtime.projectState, Workspace: runtime.workspace,
 	}), composition, nil
 }
 
-func projectSessionConversation(runtime ideChatRuntime, req agents.ChatRequest) *agents.SessionConversation {
-	if runtime.agentKind == agents.AgentKindGeneral {
-		return agents.NewSessionConversationForAgent(runtime.sess, &runtime.cfg, config.AgentKindGeneral)
+func projectSessionConversation(runtime ideChatRuntime, req agentchat.ChatRequest) *agentconversation.SessionConversation {
+	if runtime.agentKind == agentrun.AgentKindGeneral {
+		return agentconversation.NewSessionConversationForAgent(runtime.sess, &runtime.cfg, config.AgentKindGeneral)
 	}
-	runtimeContexts := agents.IDEWorkspaceRuntimeContextsForRequest(runtime.state, req)
-	return agents.NewSessionConversationForAgentWithRuntimeContexts(
+	runtimeContexts := prompts.IDEWorkspaceRuntimeContextsForContext(runtime.state, req.IDEContext)
+	return agentconversation.NewSessionConversationForAgentWithRuntimeContexts(
 		runtime.sess, &runtime.cfg, config.AgentKindIDE,
 		runtimeContexts.StableTitle, runtimeContexts.Stable,
 		runtimeContexts.DynamicTitle, runtimeContexts.Dynamic,
 	)
 }
 
-func ideStoryTellerForConfig(cfg *config.Config) agents.IDEStoryTeller {
+func ideStoryTellerForConfig(cfg *config.Config) prompts.IDEStoryTeller {
 	if cfg == nil || cfg.DataDir() == "" {
-		return agents.IDEStoryTeller{}
+		return prompts.IDEStoryTeller{}
 	}
 	tellerID := cfg.IDEStoryTellerID
 	if tellerID == "" {
-		tellerID = narrativestyle.DefaultID
+		tellerID = style.DefaultID
 	}
 	teller := loadWritingTeller(cfg.DataDir(), tellerID)
 	if teller.ID == "" {
-		return agents.IDEStoryTeller{}
+		return prompts.IDEStoryTeller{}
 	}
-	return agents.IDEStoryTeller{
+	return prompts.IDEStoryTeller{
 		ID:          teller.ID,
 		Name:        teller.Name,
 		Description: teller.Description,
@@ -194,11 +199,11 @@ func ideStoryTellerForConfig(cfg *config.Config) agents.IDEStoryTeller {
 	}
 }
 
-func ideStoryTellerFromInteractive(teller interactive.Teller, styleRules []agents.StyleRule) agents.IDEStoryTeller {
+func ideStoryTellerFromInteractive(teller teller.Definition, styleRules []prompts.StyleRule) prompts.IDEStoryTeller {
 	if teller.ID == "" {
-		return agents.IDEStoryTeller{}
+		return prompts.IDEStoryTeller{}
 	}
-	return agents.IDEStoryTeller{
+	return prompts.IDEStoryTeller{
 		ID:          teller.ID,
 		Name:        teller.Name,
 		Description: teller.Description,
@@ -207,44 +212,44 @@ func ideStoryTellerFromInteractive(teller interactive.Teller, styleRules []agent
 	}
 }
 
-func buildInteractiveStoryRunner(ctx context.Context, cfg *config.Config, state *book.State, teller prompts.InteractiveStorySystemInstructionInput, toolContexts ...agents.InteractiveStoryToolContext) (*agents.Runner, error) {
+func buildInteractiveStoryRunner(ctx context.Context, cfg *config.Config, state *book.State, teller prompts.InteractiveStorySystemInstructionInput, toolContexts ...agentinteractive.InteractiveStoryToolContext) (*agents.Runner, error) {
 	runner, _, err := buildInteractiveStoryRunnerWithComposition(ctx, cfg, state, teller, toolContexts...)
 	return runner, err
 }
 
-func buildInteractiveStoryRunnerWithComposition(ctx context.Context, cfg *config.Config, state *book.State, teller prompts.InteractiveStorySystemInstructionInput, toolContexts ...agents.InteractiveStoryToolContext) (*agents.Runner, agents.SystemPromptComposition, error) {
+func buildInteractiveStoryRunnerWithComposition(ctx context.Context, cfg *config.Config, state *book.State, teller prompts.InteractiveStorySystemInstructionInput, toolContexts ...agentinteractive.InteractiveStoryToolContext) (*agents.Runner, prompts.SystemPromptComposition, error) {
 	builtAgent, composition, err := agents.BuildInteractiveStoryWithComposition(ctx, cfg, state, teller, toolContexts...)
 	if err != nil {
-		return nil, agents.SystemPromptComposition{}, fmt.Errorf("构建互动故事 Agent 失败: %w", err)
+		return nil, prompts.SystemPromptComposition{}, fmt.Errorf("构建互动故事 Agent 失败: %w", err)
 	}
-	return agents.NewRunnerWithOptions(ctx, builtAgent, agents.RunOptions{AgentKind: agents.AgentKindInteractiveStory, Workspace: cfg.Workspace}), composition, nil
+	return agentchat.NewRunnerWithOptions(ctx, builtAgent, agentrun.Options{AgentKind: agentrun.AgentKindInteractiveStory, Workspace: cfg.Workspace}), composition, nil
 }
 
-func buildConfigManagerRunner(ctx context.Context, cfg *config.Config, state *book.State, resourceSkills ...agents.ConfigManagerResourceSkill) (*agents.Runner, error) {
+func buildConfigManagerRunner(ctx context.Context, cfg *config.Config, state *book.State, resourceSkills ...prompts.ConfigManagerResourceSkill) (*agents.Runner, error) {
 	runner, _, err := buildConfigManagerRunnerWithComposition(ctx, cfg, state, resourceSkills...)
 	return runner, err
 }
 
-func buildConfigManagerRunnerWithComposition(ctx context.Context, cfg *config.Config, state *book.State, resourceSkills ...agents.ConfigManagerResourceSkill) (*agents.Runner, agents.SystemPromptComposition, error) {
+func buildConfigManagerRunnerWithComposition(ctx context.Context, cfg *config.Config, state *book.State, resourceSkills ...prompts.ConfigManagerResourceSkill) (*agents.Runner, prompts.SystemPromptComposition, error) {
 	builtAgent, composition, err := agents.BuildConfigManagerAgentWithCompositionForHost(ctx, cfg, state, agents.AgentHostCapabilities{Interactive: true}, resourceSkills...)
 	if err != nil {
-		return nil, agents.SystemPromptComposition{}, fmt.Errorf("构建配置管理 Agent 失败: %w", err)
+		return nil, prompts.SystemPromptComposition{}, fmt.Errorf("构建配置管理 Agent 失败: %w", err)
 	}
-	return agents.NewRunnerWithOptions(ctx, builtAgent, agents.RunOptions{AgentKind: agents.AgentKindConfigManager, Workspace: cfg.Workspace}), composition, nil
+	return agentchat.NewRunnerWithOptions(ctx, builtAgent, agentrun.Options{AgentKind: agentrun.AgentKindConfigManager, Workspace: cfg.Workspace}), composition, nil
 }
 
-func buildAutomationAgentRunner(ctx context.Context, cfg *config.Config, state *book.State, task agents.AutomationTaskInstruction) (*agents.Runner, error) {
+func buildAutomationAgentRunner(ctx context.Context, cfg *config.Config, state *book.State, task prompts.AutomationTaskInstruction) (*agents.Runner, error) {
 	runner, _, err := buildAutomationAgentRunnerWithComposition(ctx, cfg, state, task)
 	return runner, err
 }
 
-func buildAutomationAgentRunnerWithComposition(ctx context.Context, cfg *config.Config, state *book.State, task agents.AutomationTaskInstruction) (*agents.Runner, agents.SystemPromptComposition, error) {
+func buildAutomationAgentRunnerWithComposition(ctx context.Context, cfg *config.Config, state *book.State, task prompts.AutomationTaskInstruction) (*agents.Runner, prompts.SystemPromptComposition, error) {
 	builtAgent, composition, err := agents.BuildAutomationAgentWithComposition(ctx, cfg, state, task)
 	if err != nil {
-		return nil, agents.SystemPromptComposition{}, fmt.Errorf("构建自动化 Agent 失败: %w", err)
+		return nil, prompts.SystemPromptComposition{}, fmt.Errorf("构建自动化 Agent 失败: %w", err)
 	}
-	return agents.NewRunnerWithOptions(ctx, builtAgent, agents.RunOptions{
-		AgentKind: agents.AgentKindAutomation,
+	return agentchat.NewRunnerWithOptions(ctx, builtAgent, agentrun.Options{
+		AgentKind: agentrun.AgentKindAutomation,
 		ProjectID: cfg.ProjectID,
 		StateRoot: cfg.ProjectStateDir,
 		Workspace: cfg.Workspace,
@@ -256,10 +261,10 @@ func buildImageAgentRunner(ctx context.Context, cfg *config.Config, state *book.
 	return runner, err
 }
 
-func buildImageAgentRunnerWithComposition(ctx context.Context, cfg *config.Config, state *book.State, systemPrompt string) (*agents.Runner, agents.SystemPromptComposition, error) {
+func buildImageAgentRunnerWithComposition(ctx context.Context, cfg *config.Config, state *book.State, systemPrompt string) (*agents.Runner, prompts.SystemPromptComposition, error) {
 	builtAgent, composition, err := agents.BuildImageAgentWithComposition(ctx, cfg, state, systemPrompt)
 	if err != nil {
-		return nil, agents.SystemPromptComposition{}, fmt.Errorf("构建图像 Agent 失败: %w", err)
+		return nil, prompts.SystemPromptComposition{}, fmt.Errorf("构建图像 Agent 失败: %w", err)
 	}
-	return agents.NewRunnerWithOptions(ctx, builtAgent, agents.RunOptions{AgentKind: agents.AgentKindImage, Workspace: cfg.Workspace}), composition, nil
+	return agentchat.NewRunnerWithOptions(ctx, builtAgent, agentrun.Options{AgentKind: agentrun.AgentKindImage, Workspace: cfg.Workspace}), composition, nil
 }

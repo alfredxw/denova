@@ -2,13 +2,14 @@ package app
 
 import (
 	"context"
+	agentchat "denova/internal/agents/chat"
+	apptask "denova/internal/app/task"
 	"errors"
 	"os"
 	"path/filepath"
 	"testing"
 
 	"denova/config"
-	agents "denova/internal/agents"
 	"denova/internal/automation"
 	"denova/internal/interactive"
 )
@@ -25,7 +26,7 @@ func TestApplyWritingSkillRuntimePolicyKeepsAvailableDefault(t *testing.T) {
 			SystemPrompt: "Return notes.",
 		}},
 	}}
-	req := &agents.ChatRequest{Message: "帮我分析一下 progress.md 有没有问题"}
+	req := &agentchat.ChatRequest{Message: "帮我分析一下 progress.md 有没有问题"}
 
 	if err := applyWritingSkillRuntimePolicy(context.Background(), runtime, req); err != nil {
 		t.Fatal(err)
@@ -42,7 +43,7 @@ func TestApplyWritingSkillRuntimePolicyKeepsCustomSkillAsDynamicHintOnly(t *test
 	skillsDir := t.TempDir()
 	writeIDEWritingSkill(t, skillsDir, "slow-burn")
 	runtime := &ideChatRuntime{cfg: config.Config{SkillsDir: skillsDir, WritingSkillDefault: "novel-standard"}}
-	req := &agents.ChatRequest{Message: "写一个雨夜重逢的场景", WritingSkill: "slow-burn"}
+	req := &agentchat.ChatRequest{Message: "写一个雨夜重逢的场景", WritingSkill: "slow-burn"}
 
 	if err := applyWritingSkillRuntimePolicy(context.Background(), runtime, req); err != nil {
 		t.Fatal(err)
@@ -59,7 +60,7 @@ func TestApplyWritingSkillRuntimePolicyFallsBackFromUnavailablePreset(t *testing
 	skillsDir := t.TempDir()
 	writeIDEWritingSkill(t, skillsDir, config.DefaultWritingSkillName)
 	runtime := &ideChatRuntime{cfg: config.Config{SkillsDir: skillsDir, WritingSkillDefault: "retired-preset"}}
-	req := &agents.ChatRequest{Message: "继续写作"}
+	req := &agentchat.ChatRequest{Message: "继续写作"}
 
 	if err := applyWritingSkillRuntimePolicy(context.Background(), runtime, req); err != nil {
 		t.Fatal(err)
@@ -74,7 +75,7 @@ func TestApplyWritingSkillRuntimePolicyRejectsUnclassifiedIDEUtility(t *testing.
 	writeIDEWritingSkill(t, skillsDir, config.DefaultWritingSkillName)
 	writeIDESkill(t, skillsDir, "humanizer", "category: writing\n")
 	runtime := &ideChatRuntime{cfg: config.Config{SkillsDir: skillsDir}}
-	req := &agents.ChatRequest{Message: "润色这一段", WritingSkill: "humanizer"}
+	req := &agentchat.ChatRequest{Message: "润色这一段", WritingSkill: "humanizer"}
 
 	if err := applyWritingSkillRuntimePolicy(context.Background(), runtime, req); err != nil {
 		t.Fatal(err)
@@ -104,17 +105,17 @@ func writeIDESkill(t *testing.T, root, name, metadata string) {
 func TestRootAgentStartFailureRollsBackDisplayTaskRegistration(t *testing.T) {
 	tests := []struct {
 		name  string
-		start func(*App) (*Task, error)
+		start func(*App) (*apptask.Task, error)
 	}{
 		{
 			name: "writing",
-			start: func(application *App) (*Task, error) {
-				return application.StartTaskWithError(context.Background(), agents.ChatRequest{CommandID: "closed-writing-start", Message: "write"})
+			start: func(application *App) (*apptask.Task, error) {
+				return application.StartTaskWithError(context.Background(), agentchat.ChatRequest{CommandID: "closed-writing-start", Message: "write"})
 			},
 		},
 		{
 			name: "game",
-			start: func(application *App) (*Task, error) {
+			start: func(application *App) (*apptask.Task, error) {
 				story, err := application.CreateInteractiveStory(interactive.CreateStoryRequest{Title: "acceptance", StoryTellerID: "classic"})
 				if err != nil {
 					return nil, err
@@ -166,7 +167,7 @@ func TestWritingInitialStartDeduplicatesBeforeAllocatingAnotherTask(t *testing.T
 	}
 	t.Cleanup(application.Close)
 
-	request := agents.ChatRequest{CommandID: "writing-initial-same", Message: "write the opening"}
+	request := agentchat.ChatRequest{CommandID: "writing-initial-same", Message: "write the opening"}
 	first, err := application.StartTaskWithError(context.Background(), request)
 	if err != nil {
 		t.Fatal(err)

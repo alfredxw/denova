@@ -7,14 +7,14 @@ import (
 	"log/slog"
 
 	"denova/config"
-	agents "denova/internal/agents"
-	"denova/internal/book"
+	agentmodeltask "denova/internal/agents/modeltask"
+	"denova/internal/book/lore"
 )
 
 // InferNovelSplitRegex runs the model-only Tool Agent for novel import chapter splitting.
 func (a *App) InferNovelSplitRegex(ctx context.Context, sample string) (string, error) {
 	runtimeCfg, workspace := a.toolAgentConfig()
-	regex, err := agents.InferChapterSplitRegex(ctx, &runtimeCfg, sample)
+	regex, err := agentmodeltask.InferChapterSplitRegex(ctx, &runtimeCfg, sample)
 	if err != nil {
 		slog.ErrorContext(ctx, fmt.Sprintf("[tool-agent] 小说导入章节正则推断失败 workspace=%s err=%v", workspace, err))
 		a.persistAgentCall(config.AgentKindToolAgent, sample, "执行失败："+err.Error())
@@ -26,9 +26,9 @@ func (a *App) InferNovelSplitRegex(ctx context.Context, sample string) (string, 
 
 // ClassifyLoreItems runs the reusable model-only semantic classifier used by
 // character-card import and the manual lore organization preview.
-func (a *App) ClassifyLoreItems(ctx context.Context, inputs []book.LoreClassificationInput) ([]book.LoreClassificationSuggestion, error) {
+func (a *App) ClassifyLoreItems(ctx context.Context, inputs []lore.ClassificationInput) ([]lore.ClassificationSuggestion, error) {
 	runtimeCfg, workspace := a.toolAgentConfig()
-	result, err := agents.ClassifyLoreItems(ctx, &runtimeCfg, inputs)
+	result, err := agentmodeltask.ClassifyLoreItems(ctx, &runtimeCfg, inputs)
 	inputJSON, _ := json.Marshal(inputs)
 	if err != nil {
 		slog.ErrorContext(ctx, fmt.Sprintf("[tool-agent] 资料语义分类失败 workspace=%s items=%d err=%v", workspace, len(inputs), err))

@@ -2,12 +2,12 @@ package app
 
 import (
 	"context"
+	agentrun "denova/internal/agents/run"
+	apptask "denova/internal/app/task"
 	"errors"
 	"fmt"
 	"testing"
 	"time"
-
-	agents "denova/internal/agents"
 )
 
 func TestAppTaskReplayAdmissionIsSharedAcrossProducts(t *testing.T) {
@@ -35,12 +35,11 @@ func TestAppTaskReplayAdmissionIsSharedAcrossProducts(t *testing.T) {
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
 			application := &App{workspace: "/workspace-a"}
-			application.activeTaskReplay.countLimit = test.countLimit
-			application.activeTaskReplay.byteLimit = test.byteLimit
-			tasks := make([]*Task, 0, len(products)+1)
+			application.activeTaskReplay.Configure(apptask.ReplayAdmissionLimits{MaxActive: test.countLimit, MaxBytes: test.byteLimit})
+			tasks := make([]*apptask.Task, 0, len(products)+1)
 			t.Cleanup(func() {
 				for _, task := range tasks {
-					task.failBeforeStart(errors.New("test cleanup"))
+					task.RejectStart(errors.New("test cleanup"))
 					application.unregisterWorkspaceTask(task)
 				}
 			})
@@ -82,7 +81,7 @@ func TestWorkspaceTaskUnregisterWakesDurableEffectReconciliation(t *testing.T) {
 		t.Fatalf("register Writing Task: %v", err)
 	}
 
-	task.failBeforeStart(errors.New("settled test Task"))
+	task.RejectStart(errors.New("settled test Task"))
 	application.unregisterWorkspaceTask(task)
 	select {
 	case <-application.automationEffectWake:
@@ -112,40 +111,40 @@ func TestDefaultAppTaskReplayAdmissionCapsMixedProductsAtEightAnd512MiB(t *testi
 		{name: "Game-2"},
 		{name: "Automation-2", root: true},
 	}
-	if len(registrations) != maxActiveReplayTasks || len(registrations)*2*defaultTaskRetainedByteLimit != defaultActiveReplayByteLimit {
+	if len(registrations) != apptask.DefaultMaxActiveReplayTasks || len(registrations)*2*apptask.DefaultRetainedByteLimit != apptask.DefaultActiveReplayByteLimit {
 		t.Fatal("mixed product fixture no longer represents the default 8 Task / 512 MiB budget")
 	}
-	tasks := make([]*Task, 0, len(registrations)+1)
+	tasks := make([]*apptask.Task, 0, len(registrations)+1)
 	t.Cleanup(func() {
 		for _, task := range tasks {
-			task.failBeforeStart(errors.New("test cleanup"))
+			task.RejectStart(errors.New("test cleanup"))
 			application.unregisterWorkspaceTask(task)
 		}
 	})
 	for _, registration := range registrations {
-		task, err := registerReplayProductTask(application, registration.name, registration.root, defaultTaskRetainedByteLimit)
+		task, err := registerReplayProductTask(application, registration.name, registration.root, apptask.DefaultRetainedByteLimit)
 		if err != nil {
 			t.Fatalf("register %s Task: %v", registration.name, err)
 		}
 		tasks = append(tasks, task)
 	}
-	assertAppReplayRegistrationCount(t, application, maxActiveReplayTasks, defaultActiveReplayByteLimit)
+	assertAppReplayRegistrationCount(t, application, apptask.DefaultMaxActiveReplayTasks, apptask.DefaultActiveReplayByteLimit)
 
-	if task, err := registerReplayProductTask(application, "Lore-overflow", false, defaultTaskRetainedByteLimit); task != nil || !errors.Is(err, ErrAgentReplayCapacity) {
+	if task, err := registerReplayProductTask(application, "Lore-overflow", false, apptask.DefaultRetainedByteLimit); task != nil || !errors.Is(err, ErrAgentReplayCapacity) {
 		t.Fatalf("ninth mixed Task = task:%p err:%v, want ErrAgentReplayCapacity", task, err)
 	}
 	application.unregisterWorkspaceTask(tasks[0])
-	replacement, err := registerReplayProductTask(application, "Config-replacement", false, defaultTaskRetainedByteLimit)
+	replacement, err := registerReplayProductTask(application, "Config-replacement", false, apptask.DefaultRetainedByteLimit)
 	if err != nil {
 		t.Fatalf("register after releasing one mixed Task: %v", err)
 	}
 	tasks = append(tasks, replacement)
-	assertAppReplayRegistrationCount(t, application, maxActiveReplayTasks, defaultActiveReplayByteLimit)
+	assertAppReplayRegistrationCount(t, application, apptask.DefaultMaxActiveReplayTasks, apptask.DefaultActiveReplayByteLimit)
 }
 
 func TestFailedReplayRegistrationRollsBackWorkspaceLease(t *testing.T) {
 	application := &App{workspace: "/workspace-a"}
-	application.activeTaskReplay.countLimit = 1
+	application.activeTaskReplay.Configure(apptask.ReplayAdmissionLimits{MaxActive: 1})
 	first, err := registerReplayProductTask(application, "Writing", false, 128)
 	if err != nil {
 		t.Fatal(err)
@@ -157,7 +156,7 @@ func TestFailedReplayRegistrationRollsBackWorkspaceLease(t *testing.T) {
 	application.mu.RLock()
 	scope := application.workspaceScopes[lifecycleWorkspaceKey(application.workspace)]
 	application.mu.RUnlock()
-	first.failBeforeStart(errors.New("test cleanup"))
+	first.RejectStart(errors.New("test cleanup"))
 	application.unregisterWorkspaceTask(first)
 	assertAppReplayRegistrationCount(t, application, 0, 0)
 
@@ -173,28 +172,28 @@ func TestFailedReplayRegistrationRollsBackWorkspaceLease(t *testing.T) {
 
 func TestFailedTaskSettlementReleasesReplayRegistration(t *testing.T) {
 	application := &App{workspace: "/workspace-a"}
-	task, err := NewRegisteredTask(func(task *Task) error {
-		task.retainedByteLimit = 128
+	task, err := apptask.NewRegistered(func(task *apptask.Task) error {
+		task.ConfigureRetention(0, 128)
 		application.mu.Lock()
 		defer application.mu.Unlock()
 		return application.registerWorkspaceTaskLocked(task, application.workspace, true)
-	}, func(_ context.Context, task *Task, emit func(agents.Event)) {
+	}, func(_ context.Context, task *apptask.Task, emit func(agentrun.Event)) {
 		defer application.unregisterWorkspaceTask(task)
-		emit(agents.Event{Type: "error", Data: map[string]string{"message": "settlement failed"}})
+		emit(agentrun.Event{Type: "error", Data: map[string]string{"message": "settlement failed"}})
 	})
 	if err != nil {
 		t.Fatal(err)
 	}
 	<-task.Done()
-	if task.Status() != TaskError {
-		t.Fatalf("settled Task status = %s, want %s", task.Status(), TaskError)
+	if task.Status() != apptask.Failed {
+		t.Fatalf("settled Task status = %s, want %s", task.Status(), apptask.Failed)
 	}
 	assertAppReplayRegistrationCount(t, application, 0, 0)
 }
 
-func registerReplayProductTask(application *App, product string, root bool, retainedByteLimit int) (*Task, error) {
-	return NewDeferredRegisteredTask(func(task *Task) error {
-		task.retainedByteLimit = retainedByteLimit
+func registerReplayProductTask(application *App, product string, root bool, retainedByteLimit int) (*apptask.Task, error) {
+	return apptask.NewDeferred(func(task *apptask.Task) error {
+		task.ConfigureRetention(0, retainedByteLimit)
 		application.mu.Lock()
 		defer application.mu.Unlock()
 		if root {
@@ -215,10 +214,9 @@ func assertAppReplayRegistrationCount(t *testing.T, application *App, wantCount,
 	stopping := len(application.workspaceTaskStops)
 	replaying := len(application.workspaceTaskReplayReservations)
 	application.mu.RUnlock()
-	application.activeTaskReplay.mu.Lock()
-	active := len(application.activeTaskReplay.active)
-	activeBytes := application.activeTaskReplay.activeBytesLocked()
-	application.activeTaskReplay.mu.Unlock()
+	stats := application.activeTaskReplay.Stats()
+	active := stats.ActiveTasks
+	activeBytes := stats.ActiveBytes
 	if registered != wantCount || leasing != wantCount || stopping != wantCount || replaying != wantCount || active != wantCount || activeBytes != wantBytes {
 		t.Fatalf("Task registry count mismatch registered=%d leases=%d stops=%d replay_records=%d active=%d bytes=%d, want count=%d bytes=%d", registered, leasing, stopping, replaying, active, activeBytes, wantCount, wantBytes)
 	}
@@ -228,7 +226,7 @@ func TestWorkspaceTransitionFencesStartsAndWaitsForAdmittedTaskExit(t *testing.T
 	application := &App{workspace: "/workspace-a"}
 	cancelSeen := make(chan struct{})
 	release := make(chan struct{})
-	task, err := NewRegisteredTask(func(task *Task) error {
+	task, err := apptask.NewRegistered(func(task *apptask.Task) error {
 		application.mu.Lock()
 		defer application.mu.Unlock()
 		if err := application.registerWorkspaceTaskLocked(task, application.workspace, true); err != nil {
@@ -236,7 +234,7 @@ func TestWorkspaceTransitionFencesStartsAndWaitsForAdmittedTaskExit(t *testing.T
 		}
 		application.activeTask = task
 		return nil
-	}, func(ctx context.Context, task *Task, _ func(agents.Event)) {
+	}, func(ctx context.Context, task *apptask.Task, _ func(agentrun.Event)) {
 		defer application.unregisterWorkspaceTask(task)
 		<-ctx.Done()
 		close(cancelSeen)
@@ -260,11 +258,11 @@ func TestWorkspaceTransitionFencesStartsAndWaitsForAdmittedTaskExit(t *testing.T
 	<-cancelSeen
 
 	ran := make(chan struct{})
-	_, err = NewRegisteredTask(func(candidate *Task) error {
+	_, err = apptask.NewRegistered(func(candidate *apptask.Task) error {
 		application.mu.Lock()
 		defer application.mu.Unlock()
 		return application.registerWorkspaceTaskLocked(candidate, workspace, true)
-	}, func(context.Context, *Task, func(agents.Event)) { close(ran) })
+	}, func(context.Context, *apptask.Task, func(agentrun.Event)) { close(ran) })
 	if !errors.Is(err, ErrWorkspaceTransition) {
 		t.Fatalf("start during transition error = %v, want ErrWorkspaceTransition", err)
 	}
@@ -291,7 +289,11 @@ func TestWorkspaceTransitionFencesStartsAndWaitsForAdmittedTaskExit(t *testing.T
 
 func TestClearLoreImageTaskReleasesWorkspaceGenerationLease(t *testing.T) {
 	application := &App{workspace: "/workspace-a"}
-	task := &Task{}
+	task, err := apptask.NewDeferred(nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer task.RejectStart(errors.New("test cleanup"))
 	application.mu.Lock()
 	if err := application.registerWorkspaceTaskLocked(task, application.workspace, true); err != nil {
 		application.mu.Unlock()

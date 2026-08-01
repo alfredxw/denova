@@ -1,12 +1,14 @@
 package interactive
 
 import (
+	interactivestate "denova/internal/interactive/state"
 	"encoding/json"
 	"fmt"
 	"strings"
 
 	"denova/config"
-	"denova/internal/conversationconfig"
+	"denova/internal/agents/conversationconfig"
+	"denova/internal/interactive/director"
 )
 
 const (
@@ -265,7 +267,7 @@ func validateStoryMeta(meta StoryMeta) error {
 		return err
 	}
 	if meta.DirectorRunPolicy != nil {
-		if err := ValidateStoryDirectorRunPolicy(*meta.DirectorRunPolicy); err != nil {
+		if err := director.ValidateRunPolicy(*meta.DirectorRunPolicy); err != nil {
 			return err
 		}
 	}
@@ -339,15 +341,15 @@ func validateTurnVersionSelection(selection TurnVersionSelectionEvent) error {
 	return nil
 }
 
-func newStateDelta(ops []StateOp) StateDelta {
+func newStateDelta(ops []interactivestate.Op) StateDelta {
 	return StateDelta{SchemaVersion: stateOpSchemaVersion, Ops: ops}
 }
 
-func newStateDeltaWithActorOps(ops []StateOp, actorOps []ActorStateOp) StateDelta {
+func newStateDeltaWithActorOps(ops []interactivestate.Op, actorOps []ActorStateOp) StateDelta {
 	return StateDelta{SchemaVersion: stateOpSchemaVersion, Ops: ops, ActorOps: actorOps}
 }
 
-func newStateDeltaEvent(id, parentID, branchID, ts string, ops []StateOp) StateDeltaEvent {
+func newStateDeltaEvent(id, parentID, branchID, ts string, ops []interactivestate.Op) StateDeltaEvent {
 	return StateDeltaEvent{
 		V:             schemaVersion,
 		Type:          StoryEventTypeStateDelta,
@@ -360,7 +362,7 @@ func newStateDeltaEvent(id, parentID, branchID, ts string, ops []StateOp) StateD
 	}
 }
 
-func newStateDeltaEventWithActorOps(id, parentID, branchID, ts string, ops []StateOp, actorOps []ActorStateOp) StateDeltaEvent {
+func newStateDeltaEventWithActorOps(id, parentID, branchID, ts string, ops []interactivestate.Op, actorOps []ActorStateOp) StateDeltaEvent {
 	event := newStateDeltaEvent(id, parentID, branchID, ts, ops)
 	event.ActorOps = actorOps
 	return event
@@ -415,7 +417,7 @@ func validateActorStateOp(op ActorStateOp) error {
 	return nil
 }
 
-func validateStateOp(op StateOp) error {
+func validateStateOp(op interactivestate.Op) error {
 	opName := strings.TrimSpace(op.Op)
 	switch opName {
 	case "set", "merge", "push", "pull", "inc", "unset":

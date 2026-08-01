@@ -10,8 +10,8 @@ import (
 
 	"denova/config"
 	"denova/internal/book"
-	"denova/internal/bookcover"
-	"denova/internal/imagepreset"
+	imageasset "denova/internal/image/asset"
+	imagepreset "denova/internal/image/preset"
 )
 
 type BookCoverGenerateRequest struct {
@@ -21,24 +21,24 @@ type BookCoverGenerateRequest struct {
 	ProfileID     string `json:"profile_id,omitempty"`
 }
 
-func (a *App) GenerateBookCover(ctx context.Context, request BookCoverGenerateRequest) (bookcover.Result, error) {
+func (a *App) GenerateBookCover(ctx context.Context, request BookCoverGenerateRequest) (imageasset.CoverResult, error) {
 	absPath, err := validateBookWorkspacePath(request.Path)
 	if err != nil {
-		return bookcover.Result{}, err
+		return imageasset.CoverResult{}, err
 	}
 	cfg, err := a.bookCoverConfig(absPath)
 	if err != nil {
-		return bookcover.Result{}, err
+		return imageasset.CoverResult{}, err
 	}
 	meta, err := a.bookMetaStore.Read(absPath)
 	if err != nil {
-		return bookcover.Result{}, err
+		return imageasset.CoverResult{}, err
 	}
 	preset, err := resolveBookCoverImagePreset(cfg, request.ImagePresetID)
 	if err != nil {
-		return bookcover.Result{}, err
+		return imageasset.CoverResult{}, err
 	}
-	return bookcover.NewService().Generate(ctx, &cfg, book.NewService(absPath), bookcover.GenerateRequest{
+	return imageasset.NewService().GenerateCover(ctx, &cfg, book.NewService(absPath), imageasset.CoverGenerateRequest{
 		Title:             meta.Title,
 		Description:       meta.Description,
 		Instruction:       request.Instruction,
@@ -48,12 +48,12 @@ func (a *App) GenerateBookCover(ctx context.Context, request BookCoverGenerateRe
 	})
 }
 
-func (a *App) UploadBookCover(path, filename string, data []byte) (bookcover.Result, error) {
+func (a *App) UploadBookCover(path, filename string, data []byte) (imageasset.CoverResult, error) {
 	absPath, err := validateBookWorkspacePath(path)
 	if err != nil {
-		return bookcover.Result{}, err
+		return imageasset.CoverResult{}, err
 	}
-	return bookcover.NewService().Upload(book.NewService(absPath), bookcover.UploadRequest{
+	return imageasset.NewService().UploadCover(book.NewService(absPath), imageasset.CoverUploadRequest{
 		Filename: filename,
 		Data:     data,
 	})
@@ -64,7 +64,7 @@ func (a *App) ReadBookCover(path string) ([]byte, string, error) {
 	if err != nil {
 		return nil, "", err
 	}
-	absCover, err := book.SafePath(absPath, bookcover.CoverPath)
+	absCover, err := book.SafePath(absPath, imageasset.CoverPath)
 	if err != nil {
 		return nil, "", err
 	}
@@ -151,7 +151,7 @@ func bookCoverUpdatedAt(workspace string) string {
 	if strings.TrimSpace(workspace) == "" {
 		return ""
 	}
-	absCover, err := book.SafePath(workspace, bookcover.CoverPath)
+	absCover, err := book.SafePath(workspace, imageasset.CoverPath)
 	if err != nil {
 		return ""
 	}

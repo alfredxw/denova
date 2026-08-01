@@ -10,7 +10,7 @@ import (
 
 	"github.com/cloudwego/hertz/pkg/app"
 
-	"denova/internal/filewatch"
+	"denova/internal/workspace/filewatch"
 )
 
 const workspaceEventHeartbeatInterval = 15 * time.Second

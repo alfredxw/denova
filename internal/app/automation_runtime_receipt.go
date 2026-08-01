@@ -4,14 +4,14 @@ import (
 	"fmt"
 	"strings"
 
-	agents "denova/internal/agents"
+	agentrun "denova/internal/agents/run"
 	"denova/internal/automation"
 )
 
 // validateAutomationReceipt is the single admission-receipt validator. A
 // durable command is usable as a completion barrier only when every identity
 // component is present and the command is exactly the caller's expectation.
-func validateAutomationReceipt(receipt agents.CommandReceipt, expectedCommandID string) error {
+func validateAutomationReceipt(receipt agentrun.CommandReceipt, expectedCommandID string) error {
 	expectedCommandID = strings.TrimSpace(expectedCommandID)
 	if expectedCommandID == "" || string(receipt.CommandID) != expectedCommandID ||
 		strings.TrimSpace(string(receipt.OperationID)) == "" || receipt.Cursor == 0 {
@@ -23,7 +23,7 @@ func validateAutomationReceipt(receipt agents.CommandReceipt, expectedCommandID 
 	return nil
 }
 
-func automationRootReceipt(run automation.RunRecord) agents.CommandReceipt {
+func automationRootReceipt(run automation.RunRecord) agentrun.CommandReceipt {
 	commandID := strings.TrimSpace(run.RootRuntimeCommandID)
 	operationID := strings.TrimSpace(run.RootRuntimeOperationID)
 	cursor := run.RootRuntimeReceiptCursor
@@ -34,9 +34,9 @@ func automationRootReceipt(run automation.RunRecord) agents.CommandReceipt {
 		operationID = strings.TrimSpace(run.RuntimeOperationID)
 		cursor = run.RuntimeReceiptCursor
 	}
-	return agents.CommandReceipt{
-		CommandID: agents.CommandID(commandID), OperationID: agents.OperationID(operationID),
-		Cursor: agents.Cursor(cursor),
+	return agentrun.CommandReceipt{
+		CommandID: agentrun.CommandID(commandID), OperationID: agentrun.OperationID(operationID),
+		Cursor: agentrun.Cursor(cursor),
 	}
 }
 
@@ -44,7 +44,7 @@ func validateAutomationRunRootReceipt(run automation.RunRecord) error {
 	return validateAutomationReceipt(automationRootReceipt(run), automationRunAgentCommandID(run.ID))
 }
 
-func applyAutomationRootReceipt(run *automation.RunRecord, receipt agents.CommandReceipt) error {
+func applyAutomationRootReceipt(run *automation.RunRecord, receipt agentrun.CommandReceipt) error {
 	if run == nil {
 		return fmt.Errorf("automation run is required")
 	}
@@ -63,7 +63,7 @@ func applyAutomationRootReceipt(run *automation.RunRecord, receipt agents.Comman
 	return nil
 }
 
-func applyAutomationCurrentReceipt(run *automation.RunRecord, receipt agents.CommandReceipt, expectedCommandID string) error {
+func applyAutomationCurrentReceipt(run *automation.RunRecord, receipt agentrun.CommandReceipt, expectedCommandID string) error {
 	if run == nil {
 		return fmt.Errorf("automation run is required")
 	}
@@ -88,7 +88,7 @@ func applyAutomationCurrentReceipt(run *automation.RunRecord, receipt agents.Com
 // current operation. The successor must be newer than the persisted receipt;
 // reconciliation of the same operation continues through
 // applyAutomationCurrentReceipt above.
-func advanceAutomationCurrentReceipt(run *automation.RunRecord, receipt agents.CommandReceipt, expectedCommandID string) error {
+func advanceAutomationCurrentReceipt(run *automation.RunRecord, receipt agentrun.CommandReceipt, expectedCommandID string) error {
 	if run == nil {
 		return fmt.Errorf("automation run is required")
 	}
@@ -115,7 +115,7 @@ func advanceAutomationCurrentReceipt(run *automation.RunRecord, receipt agents.C
 // applyAutomationFollowUpReceipt handles both sides of a cold idempotent retry:
 // a replay of the already-current operation refreshes that same receipt, while
 // a replay accepted before the RunRecord write promotes the pending successor.
-func applyAutomationFollowUpReceipt(run *automation.RunRecord, receipt agents.CommandReceipt, expectedCommandID, fingerprint string) error {
+func applyAutomationFollowUpReceipt(run *automation.RunRecord, receipt agentrun.CommandReceipt, expectedCommandID, fingerprint string) error {
 	if run == nil {
 		return fmt.Errorf("automation run is required")
 	}
@@ -128,7 +128,7 @@ func applyAutomationFollowUpReceipt(run *automation.RunRecord, receipt agents.Co
 			return fmt.Errorf("%w: run_id=%s replayed successor fingerprint changed", automation.ErrRunIdentityConflict, run.ID)
 		}
 		if uint64(receipt.Cursor) < run.RuntimeReceiptCursor {
-			receipt.Cursor = agents.Cursor(run.RuntimeReceiptCursor)
+			receipt.Cursor = agentrun.Cursor(run.RuntimeReceiptCursor)
 		}
 		if err := applyAutomationCurrentReceipt(run, receipt, expectedCommandID); err != nil {
 			return err
@@ -148,7 +148,7 @@ func applyAutomationFollowUpReceipt(run *automation.RunRecord, receipt agents.Co
 // intent. Legacy RuntimeReceiptCursor values sometimes tracked a later status
 // projection rather than the original accept cursor, so identity proof—not a
 // numeric comparison with that legacy value—authorizes promotion.
-func advanceVerifiedAutomationCurrentReceipt(run *automation.RunRecord, receipt agents.CommandReceipt, expectedCommandID string) error {
+func advanceVerifiedAutomationCurrentReceipt(run *automation.RunRecord, receipt agentrun.CommandReceipt, expectedCommandID string) error {
 	if run == nil {
 		return fmt.Errorf("automation run is required")
 	}
@@ -163,7 +163,7 @@ func advanceVerifiedAutomationCurrentReceipt(run *automation.RunRecord, receipt 
 		return fmt.Errorf("%w: run_id=%s successor receipt reuses current identity", automation.ErrRunIdentityConflict, run.ID)
 	}
 	if uint64(receipt.Cursor) < run.RuntimeReceiptCursor {
-		receipt.Cursor = agents.Cursor(run.RuntimeReceiptCursor)
+		receipt.Cursor = agentrun.Cursor(run.RuntimeReceiptCursor)
 	}
 	run.RuntimeCommandID = string(receipt.CommandID)
 	run.RuntimeOperationID = string(receipt.OperationID)

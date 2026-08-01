@@ -1,16 +1,15 @@
 package app
 
 import (
+	"denova/internal/book/lore"
 	"fmt"
 	"strings"
-
-	"denova/internal/book"
 )
 
 // residentLoreReader is the narrow storage boundary required to assemble one
 // revision-consistent stable context shared by interactive helper agents.
 type residentLoreReader interface {
-	List() ([]book.LoreItem, error)
+	List() ([]lore.Item, error)
 	ResidentContextMarkdown() (string, error)
 	Revision() (string, error)
 }
@@ -49,7 +48,7 @@ func assembleResidentLore(reader residentLoreReader) (residentLoreSnapshot, erro
 	snapshot := residentLoreSnapshot{Content: content, Revision: endRevision}
 	for _, item := range items {
 		body := strings.TrimSpace(item.Content)
-		if item.LoadMode != book.LoreLoadModeResident || body == "" {
+		if item.LoadMode != lore.LoadModeResident || body == "" {
 			continue
 		}
 		snapshot.IDs = append(snapshot.IDs, strings.TrimSpace(item.ID))
@@ -63,7 +62,7 @@ func validateResidentLoreSnapshot(snapshot residentLoreSnapshot, purpose string,
 	if purpose == "" {
 		purpose = "Agent"
 	}
-	if snapshot.BodyBytes > book.ResidentLoreSafetyMaxBytes {
+	if snapshot.BodyBytes > lore.ResidentLoreSafetyMaxBytes {
 		return fmt.Errorf("%s的常驻资料正文异常过大（%d KB）；请检查是否误将大型文件设为常驻资料", purpose, (snapshot.BodyBytes+1023)/1024)
 	}
 	if maxContextBytes <= 0 {

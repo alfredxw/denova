@@ -355,8 +355,8 @@ func (h *Harness) commit(ctx context.Context, state *harnessState, payloads []Ev
 			panic(fmt.Sprintf("journal committed an unreducible event at cursor %d: %v", event.Cursor, err))
 		}
 	}
-	if checkpointer, ok := h.journal.(harnessStateCheckpointJournal); ok {
-		if err := checkpointer.MaybeCheckpoint(context.WithoutCancel(ctx), state); err != nil {
+	if checkpointer, ok := h.journal.(checkpointJournal); ok {
+		if err := checkpointer.MaybeCheckpoint(context.WithoutCancel(ctx), journalCheckpointState{state: state}); err != nil {
 			// The canonical append is already durable. A failed generation switch
 			// leaves the old manifest/tail authoritative and is retried at a later
 			// safe transaction boundary; it must not become a false command error.

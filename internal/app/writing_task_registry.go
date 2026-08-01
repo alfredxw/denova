@@ -2,13 +2,15 @@ package app
 
 import (
 	"context"
+	agentchat "denova/internal/agents/chat"
+	agentharness "denova/internal/agents/harness"
+	agentrun "denova/internal/agents/run"
+	apptask "denova/internal/app/task"
 	"errors"
 	"fmt"
 	"log/slog"
 	"strings"
 	"sync"
-
-	agents "denova/internal/agents"
 )
 
 const maxRememberedWritingStarts = 128
@@ -17,10 +19,10 @@ const maxRememberedWritingStarts = 128
 // runtime snapshot admitted for its root operation. Typed commands never
 // reconstruct a binding from whichever session happens to be selected later.
 type writingTaskRun struct {
-	task               *Task
+	task               *apptask.Task
 	runtime            ideChatRuntime
-	recovery           *agents.RecoveryObservation
-	recoveryActions    map[string]agents.CommandReceipt
+	recovery           *agentharness.RecoveryObservation
+	recoveryActions    map[string]agentrun.CommandReceipt
 	recoveryStructural bool
 
 	recoveryMutationMu sync.Mutex
@@ -60,7 +62,7 @@ type writingStartRecord struct {
 	workspace   string
 	sessionID   string
 	fingerprint string
-	task        *Task
+	task        *apptask.Task
 }
 
 // writingStartRegistry is a bounded process-local display replay index. The
@@ -81,7 +83,7 @@ type writingStartReservation struct {
 	bound    bool
 }
 
-func (r *writingStartRegistry) replay(commandID, workspace, sessionID, fingerprint string) (*Task, bool, error) {
+func (r *writingStartRegistry) replay(commandID, workspace, sessionID, fingerprint string) (*apptask.Task, bool, error) {
 	commandID = strings.TrimSpace(commandID)
 	if commandID == "" {
 		return nil, false, ErrAgentCommandIDRequired
@@ -214,7 +216,7 @@ func (r *writingStartRegistry) pruneLocked() {
 			released := 0
 			if record.task != nil {
 				taskID = record.task.ID()
-				released = record.task.releaseDisplayReplay()
+				released = record.task.ReleaseDisplayReplay()
 			}
 			delete(r.records, commandID)
 			r.order = removeTaskReplayKey(r.order, index)
@@ -229,7 +231,7 @@ func (r *writingStartRegistry) pruneLocked() {
 
 	totalBytes := 0
 	for _, record := range r.records {
-		totalBytes += record.task.displayReplayRegistryCharge()
+		totalBytes += record.task.DisplayReplayCharge()
 	}
 	byteLimit := effectiveTaskRegistryReplayByteLimit(r.replayByteLimit)
 	for _, commandID := range r.order {
@@ -241,7 +243,7 @@ func (r *writingStartRegistry) pruneLocked() {
 			continue
 		}
 		taskID := record.task.ID()
-		released := record.task.releaseDisplayReplay()
+		released := record.task.ReleaseDisplayReplay()
 		totalBytes -= released
 		record.task = nil
 		r.records[commandID] = record
@@ -252,7 +254,7 @@ func (r *writingStartRegistry) pruneLocked() {
 func (r *writingStartRegistry) registryChargeLocked() int {
 	total := 0
 	for _, record := range r.records {
-		total += record.task.displayReplayRegistryCharge()
+		total += record.task.DisplayReplayCharge()
 	}
 	return total
 }
@@ -277,7 +279,7 @@ func (r *writingStartRegistry) removeOldestSettledIdentityLocked() bool {
 			continue
 		}
 		if record.task != nil {
-			record.task.releaseDisplayReplay()
+			record.task.ReleaseDisplayReplay()
 		}
 		delete(r.records, commandID)
 		r.order = removeTaskReplayKey(r.order, index)
@@ -288,11 +290,11 @@ func (r *writingStartRegistry) removeOldestSettledIdentityLocked() bool {
 
 func (s *ChatAppService) replayDurableWritingStart(
 	ctx context.Context,
-	req agents.ChatRequest,
+	req agentchat.ChatRequest,
 	workspace string,
 	sessionID string,
 	fingerprint string,
-) (*Task, bool, error) {
+) (*apptask.Task, bool, error) {
 	a := s.app
 	a.mu.RLock()
 	chatService := a.chatService
@@ -306,8 +308,8 @@ func (s *ChatAppService) replayDurableWritingStart(
 	if chatService == nil || sess == nil || sess.ID != sessionID {
 		return nil, false, nil
 	}
-	options := agents.RunOptions{
-		AgentKind: agents.AgentKindIDE, SessionID: sessionID,
+	options := agentrun.Options{
+		AgentKind: agentrun.AgentKindIDE, SessionID: sessionID,
 		StateRoot: stateRoot, Workspace: workspace, Mode: "ide",
 	}
 	status, err := chatService.RuntimeStatusProjection(ctx, options)
@@ -322,8 +324,8 @@ func (s *ChatAppService) replayDurableWritingStart(
 		app: a, sess: sess, bookService: bookService,
 		chatService: chatService, workspace: workspace, projectState: stateRoot,
 	}
-	var accepted *agents.AcceptedRun
-	task, err := NewDeferredRegisteredTaskWithContext(ctx, func(task *Task) error {
+	var accepted *agentharness.AcceptedRun
+	task, err := apptask.NewDeferredWithContext(ctx, func(task *apptask.Task) error {
 		a.mu.Lock()
 		defer a.mu.Unlock()
 		if a.workspaceTransition {
@@ -345,12 +347,12 @@ func (s *ChatAppService) replayDurableWritingStart(
 	if err != nil {
 		return nil, true, err
 	}
-	acceptCtx, releaseAcceptance := taskAcceptanceContext(ctx, task)
-	accepted, err = chatService.StartWithOptions(acceptCtx, nil, nil, bookService, req, options, task.emit)
+	acceptCtx, releaseAcceptance := apptask.AcceptanceContext(ctx, task)
+	accepted, err = chatService.StartWithOptions(acceptCtx, nil, nil, bookService, req, options, task.Emit)
 	releaseAcceptance()
 	if err != nil {
 		rollbackWritingReplayTask(a, task, err)
-		if errors.Is(err, agents.ErrInvalidCommand) {
+		if errors.Is(err, agentrun.ErrInvalidCommand) {
 			return nil, true, fmt.Errorf("%w: command_id=%q", ErrAgentCommandConflict, req.CommandID)
 		}
 		return nil, true, err
@@ -358,17 +360,17 @@ func (s *ChatAppService) replayDurableWritingStart(
 	if !accepted.Receipt().Replayed {
 		err := fmt.Errorf("durable Writing replay unexpectedly accepted a new command")
 		task.Abort()
-		_ = accepted.Wait(task.ctx)
+		_ = accepted.Wait(task.Context())
 		rollbackWritingReplayTask(a, task, err)
 		return nil, true, err
 	}
-	if err := task.Start(func(ctx context.Context, task *Task, _ func(agents.Event)) {
+	if err := task.Start(func(ctx context.Context, task *apptask.Task, _ func(agentrun.Event)) {
 		defer a.unregisterWorkspaceTask(task)
 		outcome := accepted.Wait(ctx)
 		slog.InfoContext(ctx, fmt.Sprintf("[agent-task] replay end id=%s command_id=%s status=%s", task.ID(), req.CommandID, outcome.Status))
 	}); err != nil {
 		task.Abort()
-		_ = accepted.Wait(task.ctx)
+		_ = accepted.Wait(task.Context())
 		rollbackWritingReplayTask(a, task, err)
 		return nil, true, err
 	}
@@ -381,7 +383,7 @@ func (s *ChatAppService) replayDurableWritingStart(
 	return task, true, nil
 }
 
-func agentStatusOwnsCommand(status agents.RuntimeStatus, commandID string) bool {
+func agentStatusOwnsCommand(status agentrun.RuntimeStatus, commandID string) bool {
 	commandID = strings.TrimSpace(commandID)
 	if commandID == "" {
 		return false
@@ -400,8 +402,8 @@ func agentStatusOwnsCommand(status agents.RuntimeStatus, commandID string) bool 
 	return false
 }
 
-func rollbackWritingReplayTask(a *App, task *Task, err error) {
-	task.failBeforeStart(err)
+func rollbackWritingReplayTask(a *App, task *apptask.Task, err error) {
+	task.RejectStart(err)
 	a.unregisterWorkspaceTask(task)
 	a.mu.Lock()
 	if a.activeTask == task {

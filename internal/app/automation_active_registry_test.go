@@ -2,13 +2,14 @@ package app
 
 import (
 	"context"
+	agentrun "denova/internal/agents/run"
+	apptask "denova/internal/app/task"
 	"fmt"
 	"os"
 	"path/filepath"
 	"testing"
 	"time"
 
-	agents "denova/internal/agents"
 	"denova/internal/automation"
 )
 
@@ -84,7 +85,7 @@ func TestActiveAutomationRunsIncludesGlobalAndSelectedWorkspaceOnly(t *testing.T
 		{snap: automationRegistryTestSnapshot(workspaceB), run: automation.RunRecord{ID: "workspace-b-run", TaskID: "workspace-b-task", Workspace: workspaceB, Status: automation.RunStatusRunning}},
 	}
 	release := make(chan struct{})
-	tasks := make([]*Task, 0, len(fixtures))
+	tasks := make([]*apptask.Task, 0, len(fixtures))
 	for _, fixture := range fixtures {
 		claim, owner, err := service.reserveActiveAutomationRun(context.Background(), fixture.snap, fixture.run.TaskID, fixture.run)
 		if err != nil || !owner {
@@ -234,7 +235,7 @@ func TestGlobalAutomationClaimOwnsRootLeaseUntilTaskExit(t *testing.T) {
 	if err != nil || !owner {
 		t.Fatalf("reserve global claim owner=%v err=%v", owner, err)
 	}
-	task := NewTask(func(ctx context.Context, task *Task, _ func(agents.Event)) {
+	task := apptask.New(func(ctx context.Context, task *apptask.Task, _ func(agentrun.Event)) {
 		defer application.unregisterWorkspaceTask(task)
 		defer service.clearActiveAutomationTask(snap, run.TaskID, run.ID)
 		<-ctx.Done()
@@ -261,7 +262,7 @@ func TestGlobalAutomationClaimOwnsRootLeaseUntilTaskExit(t *testing.T) {
 	case <-time.After(time.Second):
 		t.Fatal("App.Close did not cancel and drain the root-owned automation task")
 	}
-	if snapshot := task.Snapshot(); !snapshot.Finished || snapshot.Status != TaskAborted {
+	if snapshot := task.Snapshot(); !snapshot.Finished || snapshot.Status != apptask.Aborted {
 		t.Fatalf("global task snapshot after Close = %#v", snapshot)
 	}
 }
@@ -274,8 +275,8 @@ func automationRegistryTestSnapshot(workspace string) *automationWorkspaceSnapsh
 	return &automationWorkspaceSnapshot{workspace: workspace}
 }
 
-func blockingAutomationRegistryTask(release <-chan struct{}) *Task {
-	return NewTask(func(ctx context.Context, _ *Task, _ func(agents.Event)) {
+func blockingAutomationRegistryTask(release <-chan struct{}) *apptask.Task {
+	return apptask.New(func(ctx context.Context, _ *apptask.Task, _ func(agentrun.Event)) {
 		select {
 		case <-release:
 		case <-ctx.Done():

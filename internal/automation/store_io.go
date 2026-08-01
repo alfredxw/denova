@@ -5,14 +5,14 @@ import (
 	"os"
 	"path/filepath"
 
-	"denova/internal/keyedlock"
+	"denova/internal/concurrency"
 	"denova/internal/localfs"
 )
 
 // storePathLocks coordinates all Store instances in this process. Stores are
 // deliberately short-lived in the app layer, so a mutex on Store itself would
 // not protect shared user-scope files from concurrent read-modify-write cycles.
-var storePathLocks = keyedlock.New(canonicalStorePath)
+var storePathLocks = concurrency.NewKeyedLock(canonicalStorePath)
 
 // canonicalStorePath resolves the longest existing prefix. This makes a real
 // workspace path and a symlink alias share one lock even before the JSON file

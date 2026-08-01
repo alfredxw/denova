@@ -1,6 +1,7 @@
 package interactive
 
 import (
+	interactivestate "denova/internal/interactive/state"
 	"fmt"
 	"strings"
 	"time"
@@ -66,10 +67,10 @@ func (s *Store) AppendStateDelta(storyID string, req AppendStateDeltaRequest) (S
 	if err := mapToStruct(record.Raw, &turn); err != nil {
 		return StateDeltaEvent{}, err
 	}
-	nextOps := append([]StateOp(nil), ops...)
+	nextOps := append([]interactivestate.Op(nil), ops...)
 	nextActorOps := append([]ActorStateOp(nil), actorOps...)
 	if turn.StateDelta != nil {
-		nextOps = append(append([]StateOp(nil), turn.StateDelta.Ops...), nextOps...)
+		nextOps = append(append([]interactivestate.Op(nil), turn.StateDelta.Ops...), nextOps...)
 		nextActorOps = append(append([]ActorStateOp(nil), turn.StateDelta.ActorOps...), nextActorOps...)
 	}
 	delta := newStateDeltaWithActorOps(nextOps, nextActorOps)
@@ -216,7 +217,7 @@ func (s *Store) RerollRuleResolution(storyID, resolutionID string, req RuleResol
 	next.ID = newID("rr")
 	ruleOps, ruleActorOps := applyRuleStateConsumptionV2(state, actorState, target.ID, &next, director.Strategy.RuleStateConsumptionMode)
 	terminalOutcome := terminalOutcomeFromRuleResolution(next, target.ID, target.Narrative)
-	existingOps := []StateOp{}
+	existingOps := []interactivestate.Op{}
 	existingActorOps := []ActorStateOp{}
 	if target.StateDelta != nil {
 		existingOps = append(existingOps, target.StateDelta.Ops...)

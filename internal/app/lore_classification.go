@@ -2,11 +2,10 @@ package app
 
 import (
 	"context"
+	"denova/internal/book/lore"
 	"encoding/json"
 	"fmt"
 	"strings"
-
-	"denova/internal/book"
 )
 
 const (
@@ -39,8 +38,8 @@ type LoreClassificationPreview struct {
 }
 
 type LoreClassificationApplyRequest struct {
-	Revision string                `json:"revision"`
-	Changes  []book.LoreTypeChange `json:"changes"`
+	Revision string            `json:"revision"`
+	Changes  []lore.TypeChange `json:"changes"`
 }
 
 func (a *App) PreviewLoreClassification(ctx context.Context, request LoreClassificationPreviewRequest) (LoreClassificationPreview, error) {
@@ -67,7 +66,7 @@ func (s *LoreAppService) PreviewLoreClassification(ctx context.Context, request 
 	if state == nil {
 		return LoreClassificationPreview{}, ErrNoWorkspace
 	}
-	store := book.NewLoreStore(state.Workspace())
+	store := lore.NewStore(state.Workspace())
 	items, err := store.ListAll()
 	if err != nil {
 		return LoreClassificationPreview{}, err
@@ -78,23 +77,23 @@ func (s *LoreAppService) PreviewLoreClassification(ctx context.Context, request 
 	}
 	selected := selectLoreClassificationCandidates(items, request.ItemIDs)
 	mode := strings.ToLower(strings.TrimSpace(request.Mode))
-	if mode != book.LoreClassificationModeSemantic {
-		mode = book.LoreClassificationModeHeuristic
+	if mode != lore.ClassificationModeSemantic {
+		mode = lore.ClassificationModeHeuristic
 	}
 	preview := LoreClassificationPreview{Revision: revision, Mode: mode, Items: make([]LoreClassificationPreviewItem, 0, len(selected)), Counts: map[string]int{}}
-	semanticInputs := make([]book.LoreClassificationInput, 0, len(selected))
+	semanticInputs := make([]lore.ClassificationInput, 0, len(selected))
 	previewIndexByID := map[string]int{}
 	usedBytes := 2
 	semanticEligible := 0
 	for _, item := range selected {
 		input := loreClassificationInputFromItem(item)
-		suggestion := book.ClassifyLoreItemHeuristic(input)
+		suggestion := lore.ClassifyItemHeuristic(input)
 		preview.Items = append(preview.Items, LoreClassificationPreviewItem{
 			ID: item.ID, Name: item.Name, CurrentType: item.Type, CurrentTypeSource: item.TypeSource,
-			SuggestedType: suggestion.Type, Confidence: suggestion.Confidence, Reason: suggestion.Reason, SuggestionSource: book.LoreTypeSourceHeuristic,
+			SuggestedType: suggestion.Type, Confidence: suggestion.Confidence, Reason: suggestion.Reason, SuggestionSource: lore.TypeSourceHeuristic,
 		})
 		previewIndexByID[item.ID] = len(preview.Items) - 1
-		if mode != book.LoreClassificationModeSemantic || suggestion.Confidence == book.LoreClassificationConfidenceHigh {
+		if mode != lore.ClassificationModeSemantic || suggestion.Confidence == lore.ClassificationConfidenceHigh {
 			continue
 		}
 		semanticEligible++
@@ -108,7 +107,7 @@ func (s *LoreAppService) PreviewLoreClassification(ctx context.Context, request 
 		usedBytes += len(encoded) + 1
 		semanticInputs = append(semanticInputs, input)
 	}
-	if mode == book.LoreClassificationModeSemantic && len(semanticInputs) > 0 {
+	if mode == lore.ClassificationModeSemantic && len(semanticInputs) > 0 {
 		suggestions, classifyErr := s.app.ClassifyLoreItems(ctx, semanticInputs)
 		if classifyErr != nil {
 			preview.Warning = "语义分类暂时不可用，当前展示本地名称分析结果：" + classifyErr.Error()
@@ -121,11 +120,11 @@ func (s *LoreAppService) PreviewLoreClassification(ctx context.Context, request 
 				preview.Items[index].SuggestedType = suggestion.Type
 				preview.Items[index].Confidence = suggestion.Confidence
 				preview.Items[index].Reason = suggestion.Reason
-				preview.Items[index].SuggestionSource = book.LoreTypeSourceSemantic
+				preview.Items[index].SuggestionSource = lore.TypeSourceSemantic
 			}
 		}
 	}
-	if mode == book.LoreClassificationModeSemantic {
+	if mode == lore.ClassificationModeSemantic {
 		if omitted := semanticEligible - len(semanticInputs); omitted > 0 && preview.Warning == "" {
 			preview.Warning = fmt.Sprintf(
 				"分类输入达到 %d KiB 上限；%d 条保留本地分析结果 / Classification input reached the %d KiB limit; %d items keep local analysis results",
@@ -140,19 +139,19 @@ func (s *LoreAppService) PreviewLoreClassification(ctx context.Context, request 
 	return preview, nil
 }
 
-func (a *App) ApplyLoreClassification(request LoreClassificationApplyRequest) (book.LoreTypeApplyResult, error) {
+func (a *App) ApplyLoreClassification(request LoreClassificationApplyRequest) (lore.TypeApplyResult, error) {
 	return a.lore().ApplyLoreClassification(request)
 }
 
-func (s *LoreAppService) ApplyLoreClassification(request LoreClassificationApplyRequest) (book.LoreTypeApplyResult, error) {
+func (s *LoreAppService) ApplyLoreClassification(request LoreClassificationApplyRequest) (lore.TypeApplyResult, error) {
 	state := s.bookState()
 	if state == nil {
-		return book.LoreTypeApplyResult{}, ErrNoWorkspace
+		return lore.TypeApplyResult{}, ErrNoWorkspace
 	}
-	return book.NewLoreStore(state.Workspace()).ApplyTypeChanges(request.Revision, request.Changes)
+	return lore.NewStore(state.Workspace()).ApplyTypeChanges(request.Revision, request.Changes)
 }
 
-func selectLoreClassificationCandidates(items []book.LoreItem, requestedIDs []string) []book.LoreItem {
+func selectLoreClassificationCandidates(items []lore.Item, requestedIDs []string) []lore.Item {
 	wanted := map[string]bool{}
 	for _, id := range requestedIDs {
 		if id = strings.TrimSpace(id); id != "" {
@@ -160,7 +159,7 @@ func selectLoreClassificationCandidates(items []book.LoreItem, requestedIDs []st
 		}
 	}
 	explicit := len(wanted) > 0
-	result := make([]book.LoreItem, 0, len(items))
+	result := make([]lore.Item, 0, len(items))
 	for _, item := range items {
 		if explicit {
 			if wanted[item.ID] {
@@ -176,9 +175,9 @@ func selectLoreClassificationCandidates(items []book.LoreItem, requestedIDs []st
 	return result
 }
 
-func loreClassificationInputFromItem(item book.LoreItem) book.LoreClassificationInput {
+func loreClassificationInputFromItem(item lore.Item) lore.ClassificationInput {
 	content, _ := trimStringToUTF8Bytes(item.Content, loreClassificationBodyMaxBytes)
-	return book.LoreClassificationInput{
+	return lore.ClassificationInput{
 		ID: item.ID, Name: item.Name, Tags: append([]string(nil), item.Tags...), Keywords: append([]string(nil), item.Keywords...),
 		BriefDescription: item.BriefDescription, Content: content, CurrentType: item.Type,
 	}

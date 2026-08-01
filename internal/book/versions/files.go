@@ -10,7 +10,7 @@ import (
 	"strings"
 	"unicode/utf8"
 
-	"denova/internal/workspacepath"
+	workspacelayout "denova/internal/workspace"
 )
 
 // WorkspaceFileSet defines which workspace files are visible to versioning.
@@ -115,26 +115,26 @@ func isTextBytes(data []byte) bool {
 func isVersionExcludedRelPath(relPath string) bool {
 	cleanRel := filepath.ToSlash(filepath.Clean(filepath.FromSlash(relPath)))
 	return cleanRel == ".git" || strings.HasPrefix(cleanRel, ".git/") ||
-		cleanRel == workspacepath.CurrentRel("runs") || strings.HasPrefix(cleanRel, workspacepath.CurrentRel("runs")+"/") ||
-		cleanRel == workspacepath.LegacyRel("runs") || strings.HasPrefix(cleanRel, workspacepath.LegacyRel("runs")+"/") ||
-		cleanRel == workspacepath.CurrentRel("changes") || strings.HasPrefix(cleanRel, workspacepath.CurrentRel("changes")+"/") ||
-		cleanRel == workspacepath.LegacyRel("changes") || strings.HasPrefix(cleanRel, workspacepath.LegacyRel("changes")+"/") ||
-		cleanRel == workspacepath.CurrentRel("reviews") || strings.HasPrefix(cleanRel, workspacepath.CurrentRel("reviews")+"/") ||
-		cleanRel == workspacepath.LegacyRel("reviews") || strings.HasPrefix(cleanRel, workspacepath.LegacyRel("reviews")+"/") ||
-		cleanRel == workspacepath.CurrentRel("interactive") || strings.HasPrefix(cleanRel, workspacepath.CurrentRel("interactive")+"/") ||
-		cleanRel == workspacepath.LegacyRel("interactive") || strings.HasPrefix(cleanRel, workspacepath.LegacyRel("interactive")+"/")
+		cleanRel == workspacelayout.CurrentRel("runs") || strings.HasPrefix(cleanRel, workspacelayout.CurrentRel("runs")+"/") ||
+		cleanRel == workspacelayout.LegacyRel("runs") || strings.HasPrefix(cleanRel, workspacelayout.LegacyRel("runs")+"/") ||
+		cleanRel == workspacelayout.CurrentRel("changes") || strings.HasPrefix(cleanRel, workspacelayout.CurrentRel("changes")+"/") ||
+		cleanRel == workspacelayout.LegacyRel("changes") || strings.HasPrefix(cleanRel, workspacelayout.LegacyRel("changes")+"/") ||
+		cleanRel == workspacelayout.CurrentRel("reviews") || strings.HasPrefix(cleanRel, workspacelayout.CurrentRel("reviews")+"/") ||
+		cleanRel == workspacelayout.LegacyRel("reviews") || strings.HasPrefix(cleanRel, workspacelayout.LegacyRel("reviews")+"/") ||
+		cleanRel == workspacelayout.CurrentRel("interactive") || strings.HasPrefix(cleanRel, workspacelayout.CurrentRel("interactive")+"/") ||
+		cleanRel == workspacelayout.LegacyRel("interactive") || strings.HasPrefix(cleanRel, workspacelayout.LegacyRel("interactive")+"/")
 }
 
 func versionProtectedExcludedDirs() []string {
 	return []string{
-		workspacepath.CurrentRel("runs"),
-		workspacepath.LegacyRel("runs"),
-		workspacepath.CurrentRel("changes"),
-		workspacepath.LegacyRel("changes"),
-		workspacepath.CurrentRel("reviews"),
-		workspacepath.LegacyRel("reviews"),
-		workspacepath.CurrentRel("interactive"),
-		workspacepath.LegacyRel("interactive"),
+		workspacelayout.CurrentRel("runs"),
+		workspacelayout.LegacyRel("runs"),
+		workspacelayout.CurrentRel("changes"),
+		workspacelayout.LegacyRel("changes"),
+		workspacelayout.CurrentRel("reviews"),
+		workspacelayout.LegacyRel("reviews"),
+		workspacelayout.CurrentRel("interactive"),
+		workspacelayout.LegacyRel("interactive"),
 	}
 }
 

@@ -11,8 +11,9 @@ import (
 	"strings"
 	"time"
 
-	"denova/internal/imagepreset"
-	"denova/internal/narrativestyle"
+	imagepreset "denova/internal/image/preset"
+	"denova/internal/interactive/teller"
+	"denova/internal/style"
 )
 
 const (
@@ -65,24 +66,24 @@ type StoryDirectorResolvedSnapshot struct {
 	ModuleRefs       StoryDirectorModuleRefs       `json:"module_refs"`
 	NarrativeStyleID string                        `json:"narrative_style_id,omitempty"`
 	ImagePresetID    string                        `json:"image_preset_id,omitempty"`
-	EventPackages    []TellerEventPackage          `json:"event_packages,omitempty"`
+	EventPackages    []EventPackage                `json:"event_packages,omitempty"`
 	TRPGSystem       StoryDirectorTRPGSystem       `json:"trpg_system,omitempty"`
 	ActorState       StoryDirectorActorStateSystem `json:"actor_state,omitempty"`
 }
 
 type EventPackageModule struct {
-	Version           int               `json:"version"`
-	ID                string            `json:"id"`
-	Name              string            `json:"name"`
-	Description       string            `json:"description"`
-	Events            []TellerEventCard `json:"events,omitempty"`
-	Path              string            `json:"path,omitempty"`
-	Custom            bool              `json:"custom"`
-	BuiltinOverridden bool              `json:"builtin_overridden,omitempty"`
-	Invalid           bool              `json:"invalid,omitempty"`
-	Error             string            `json:"error,omitempty"`
-	CreatedAt         string            `json:"created_at,omitempty"`
-	UpdatedAt         string            `json:"updated_at,omitempty"`
+	Version           int         `json:"version"`
+	ID                string      `json:"id"`
+	Name              string      `json:"name"`
+	Description       string      `json:"description"`
+	Events            []EventCard `json:"events,omitempty"`
+	Path              string      `json:"path,omitempty"`
+	Custom            bool        `json:"custom"`
+	BuiltinOverridden bool        `json:"builtin_overridden,omitempty"`
+	Invalid           bool        `json:"invalid,omitempty"`
+	Error             string      `json:"error,omitempty"`
+	CreatedAt         string      `json:"created_at,omitempty"`
+	UpdatedAt         string      `json:"updated_at,omitempty"`
 }
 
 type RuleSystemModule struct {
@@ -427,7 +428,7 @@ func (l *RuleSystemLibrary) ensureBuiltins() error {
 
 func DefaultStoryDirectorModuleRefs() StoryDirectorModuleRefs {
 	return StoryDirectorModuleRefs{
-		NarrativeStyleID: narrativestyle.DefaultID,
+		NarrativeStyleID: style.DefaultID,
 		EventPackageIDs:  []string{DefaultEventPackageID},
 		RuleSystemID:     DefaultRuleSystemID,
 		ActorStateID:     DefaultActorStateModuleID,
@@ -494,7 +495,7 @@ func ResolveStoryDirectorModules(novaDir string, director StoryDirector) StoryDi
 	effective.ModuleRefs = refs
 
 	if refs.EventPackagesDisabled {
-		effective.EventPackages = []TellerEventPackage{}
+		effective.EventPackages = []EventPackage{}
 	} else if len(refs.EventPackageIDs) > 0 {
 		packages, packageWarnings := resolveEventPackages(novaDir, refs.EventPackageIDs)
 		if len(packageWarnings) > 0 {
@@ -538,7 +539,7 @@ func ResolveStoryDirectorModules(novaDir string, director StoryDirector) StoryDi
 		}
 	}
 	if !refs.NarrativeStyleDisabled && refs.NarrativeStyleID != "" {
-		if _, err := NewTellerLibrary(novaDir).Get(refs.NarrativeStyleID); err != nil {
+		if _, err := teller.NewLibrary(novaDir).Get(refs.NarrativeStyleID); err != nil {
 			warnings = append(warnings, moduleWarning("narrative_style", refs.NarrativeStyleID, err))
 		}
 	}
@@ -584,7 +585,7 @@ func DefaultEventPackageModule() EventPackageModule {
 		ID:          DefaultEventPackageID,
 		Name:        "默认事件包",
 		Description: "通用爽文与互动叙事事件卡，覆盖打脸、奇遇、冲突、恋爱、伏笔回收等基础事件。",
-		Events:      defaultTellerEventCards(),
+		Events:      defaultEventCards(),
 	})
 }
 
@@ -861,7 +862,7 @@ func normalizeEventPackageModule(item EventPackageModule) EventPackageModule {
 	item.ID = normalizeDirectorModuleID(item.ID)
 	item.Name = trimBytes(firstNonEmptyString(item.Name, item.ID, "事件包"), 256)
 	item.Description = trimBytes(item.Description, 1024)
-	item.Events = normalizeTellerEventCards(item.Events, item.ID)
+	item.Events = normalizeEventCards(item.Events, item.ID)
 	return item
 }
 
@@ -896,7 +897,7 @@ func normalizeStoryDirectorResolvedSnapshot(snapshot StoryDirectorResolvedSnapsh
 	snapshot.ModuleRefs = NormalizeStoryDirectorModuleRefs(snapshot.ModuleRefs)
 	snapshot.NarrativeStyleID = strings.TrimSpace(firstNonEmptyString(snapshot.NarrativeStyleID, snapshot.ModuleRefs.NarrativeStyleID))
 	snapshot.ImagePresetID = imagepreset.NormalizeID(firstNonEmptyString(snapshot.ImagePresetID, snapshot.ModuleRefs.ImagePresetID))
-	snapshot.EventPackages = normalizeTellerEventPackagesNoDefault(snapshot.EventPackages)
+	snapshot.EventPackages = normalizeEventPackagesNoDefault(snapshot.EventPackages)
 	snapshot.TRPGSystem.RuleTemplates = normalizeRuleChecks(snapshot.TRPGSystem.RuleTemplates)
 	if snapshot.ModuleRefs.ActorStateDisabled {
 		snapshot.ActorState = normalizeActorStateSystem(StoryDirectorActorStateSystem{})
@@ -1162,9 +1163,9 @@ func normalizeEventPackageIDs(ids []string) []string {
 	return out
 }
 
-func resolveEventPackages(novaDir string, ids []string) ([]TellerEventPackage, []StoryDirectorModuleWarning) {
+func resolveEventPackages(novaDir string, ids []string) ([]EventPackage, []StoryDirectorModuleWarning) {
 	library := NewEventPackageLibrary(novaDir)
-	packages := make([]TellerEventPackage, 0, len(ids))
+	packages := make([]EventPackage, 0, len(ids))
 	warnings := []StoryDirectorModuleWarning{}
 	for _, id := range normalizeEventPackageIDs(ids) {
 		module, err := library.Get(id)
@@ -1174,12 +1175,12 @@ func resolveEventPackages(novaDir string, ids []string) ([]TellerEventPackage, [
 		}
 		packages = append(packages, tellerEventPackageFromModule(module))
 	}
-	return normalizeTellerEventPackagesNoDefault(packages), warnings
+	return normalizeEventPackagesNoDefault(packages), warnings
 }
 
-func tellerEventPackageFromModule(module EventPackageModule) TellerEventPackage {
+func tellerEventPackageFromModule(module EventPackageModule) EventPackage {
 	module = normalizeEventPackageModule(module)
-	return TellerEventPackage{
+	return EventPackage{
 		ID:      module.ID,
 		Name:    module.Name,
 		Enabled: true,

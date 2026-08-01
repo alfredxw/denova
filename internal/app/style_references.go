@@ -1,55 +1,55 @@
 package app
 
 import (
-	"denova/internal/styleref"
+	"denova/internal/style"
 )
 
-func (a *App) StyleReferences() ([]styleref.Reference, error) {
+func (a *App) StyleReferences() ([]style.Reference, error) {
 	return a.interactiveService().StyleReferences()
 }
 
-func (s *InteractiveAppService) StyleReferences() ([]styleref.Reference, error) {
+func (s *InteractiveAppService) StyleReferences() ([]style.Reference, error) {
 	cfg := s.cfg()
 	if cfg == nil || cfg.DataDir() == "" {
 		return nil, ErrNoWorkspace
 	}
-	return styleref.NewLibrary(cfg.DataDir()).List()
+	return style.NewLibrary(cfg.DataDir()).List()
 }
 
-func (a *App) SaveStyleReference(req styleref.WriteRequest) (styleref.Reference, error) {
+func (a *App) SaveStyleReference(req style.WriteRequest) (style.Reference, error) {
 	return a.interactiveService().SaveStyleReference(req)
 }
 
-func (s *InteractiveAppService) SaveStyleReference(req styleref.WriteRequest) (styleref.Reference, error) {
+func (s *InteractiveAppService) SaveStyleReference(req style.WriteRequest) (style.Reference, error) {
 	cfg := s.cfg()
 	if cfg == nil || cfg.DataDir() == "" {
-		return styleref.Reference{}, ErrNoWorkspace
+		return style.Reference{}, ErrNoWorkspace
 	}
-	return styleref.NewLibrary(cfg.DataDir()).Write(req)
+	return style.NewLibrary(cfg.DataDir()).Write(req)
 }
 
-func (a *App) StyleReferenceFile(path string) (styleref.FileDocument, error) {
+func (a *App) StyleReferenceFile(path string) (style.FileDocument, error) {
 	return a.interactiveService().StyleReferenceFile(path)
 }
 
-func (s *InteractiveAppService) StyleReferenceFile(path string) (styleref.FileDocument, error) {
+func (s *InteractiveAppService) StyleReferenceFile(path string) (style.FileDocument, error) {
 	cfg := s.cfg()
 	if cfg == nil || cfg.DataDir() == "" {
-		return styleref.FileDocument{}, ErrNoWorkspace
+		return style.FileDocument{}, ErrNoWorkspace
 	}
-	return styleref.NewLibrary(cfg.DataDir()).Read(path)
+	return style.NewLibrary(cfg.DataDir()).Read(path)
 }
 
-func (a *App) UpdateStyleReferenceFile(req styleref.UpdateRequest) (styleref.FileDocument, error) {
+func (a *App) UpdateStyleReferenceFile(req style.UpdateRequest) (style.FileDocument, error) {
 	return a.interactiveService().UpdateStyleReferenceFile(req)
 }
 
-func (s *InteractiveAppService) UpdateStyleReferenceFile(req styleref.UpdateRequest) (styleref.FileDocument, error) {
+func (s *InteractiveAppService) UpdateStyleReferenceFile(req style.UpdateRequest) (style.FileDocument, error) {
 	cfg := s.cfg()
 	if cfg == nil || cfg.DataDir() == "" {
-		return styleref.FileDocument{}, ErrNoWorkspace
+		return style.FileDocument{}, ErrNoWorkspace
 	}
-	return styleref.NewLibrary(cfg.DataDir()).Update(req)
+	return style.NewLibrary(cfg.DataDir()).Update(req)
 }
 
 func (a *App) DeleteStyleReference(path string) error {
@@ -61,5 +61,5 @@ func (s *InteractiveAppService) DeleteStyleReference(path string) error {
 	if cfg == nil || cfg.DataDir() == "" {
 		return ErrNoWorkspace
 	}
-	return styleref.NewLibrary(cfg.DataDir()).Delete(path)
+	return style.NewLibrary(cfg.DataDir()).Delete(path)
 }

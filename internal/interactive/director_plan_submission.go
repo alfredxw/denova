@@ -1,10 +1,10 @@
 package interactive
 
 import (
+	"denova/internal/book/lore"
+	"denova/internal/interactive/director"
 	"fmt"
 	"strings"
-
-	"denova/internal/book"
 )
 
 // DirectorPlanUpdateSubmission incrementally stages independently retryable
@@ -12,7 +12,7 @@ import (
 // mode for the run; later retries keep that mode and only resend rejected
 // documents. No workspace file changes before Finalize succeeds.
 type DirectorPlanUpdateSubmission struct {
-	Decision           PlanDecision                 `json:"decision"`
+	Decision           director.Decision            `json:"decision"`
 	Updates            []DirectorPlanDocumentUpdate `json:"updates,omitempty"`
 	Finalize           bool                         `json:"finalize"`
 	ReviewedLoreIDs    []string                     `json:"-"`
@@ -42,7 +42,7 @@ type DirectorPlanUpdateReceipt struct {
 	AcceptedDocuments []string                         `json:"accepted_documents,omitempty"`
 	ChangedDocuments  []string                         `json:"changed_documents,omitempty"`
 	Finalized         bool                             `json:"finalized"`
-	Decision          PlanDecision                     `json:"decision"`
+	Decision          director.Decision                `json:"decision"`
 }
 
 // StageDirectorPlanRunUpdate validates each document independently and keeps
@@ -69,7 +69,7 @@ func (s *Store) StageDirectorPlanRunUpdate(storyID, branchID string, token Direc
 	if token.Revision != "" && token.Revision != metadata.Revision {
 		return receipt, fmt.Errorf("导演规划已被其他操作更新，请重新加载后再提交")
 	}
-	if metadata.LastRun == nil || metadata.LastRun.Status != DirectorPlanStatusRunning || strings.TrimSpace(metadata.LastRun.SourceTurnID) != strings.TrimSpace(sourceTurnID) {
+	if metadata.LastRun == nil || metadata.LastRun.Status != director.PlanStatusRunning || strings.TrimSpace(metadata.LastRun.SourceTurnID) != strings.TrimSpace(sourceTurnID) {
 		return receipt, fmt.Errorf("当前导演规划运行已失效，不能提交结果")
 	}
 	if draft.finalized {
@@ -167,14 +167,14 @@ func (s *Store) StageDirectorPlanRunUpdate(storyID, branchID string, token Direc
 	return receipt, nil
 }
 
-func (d *DirectorPlanUpdateDraft) acceptDecision(value PlanDecision) error {
+func (d *DirectorPlanUpdateDraft) acceptDecision(value director.Decision) error {
 	rawMode := strings.TrimSpace(value.Mode)
 	switch rawMode {
-	case PlanDecisionKeep, PlanDecisionPatch, PlanDecisionReplan:
+	case director.DecisionKeep, director.DecisionPatch, director.DecisionReplan:
 	default:
 		return fmt.Errorf("无效的导演规划 mode: %s", rawMode)
 	}
-	decision := normalizePlanDecision(value)
+	decision := director.NormalizeDecision(value)
 	if d.decision == nil {
 		d.decision = &decision
 		return nil
@@ -208,17 +208,17 @@ func (d *DirectorPlanUpdateDraft) finalizeIssue() *DirectorPlanDocumentIssue {
 	}
 	changed := d.acceptedDocuments()
 	switch decision.Mode {
-	case PlanDecisionKeep:
+	case director.DecisionKeep:
 		if len(changed) > 0 {
 			issue := directorPlanDocumentIssue("", "keep_with_updates", "updates", "keep 决策不得修改文档", false)
 			return &issue
 		}
-	case PlanDecisionPatch:
+	case director.DecisionPatch:
 		if len(changed) == 0 {
 			issue := directorPlanDocumentIssue(DirectorDocumentAgentBrief, "patch_without_updates", "updates", "patch 决策至少需要一个文档 Patch；普通更新优先只修改 agent-brief.md", true)
 			return &issue
 		}
-	case PlanDecisionReplan:
+	case director.DecisionReplan:
 		if _, ok := d.accepted[DirectorDocumentPlan]; !ok {
 			issue := directorPlanDocumentIssue(DirectorDocumentPlan, "replan_requires_plan", "updates", "replan 必须更新 director.md", true)
 			return &issue
@@ -253,7 +253,7 @@ func validateDirectorPlanSubmissionLoreRevision(workspace, sourceRevision string
 	if sourceRevision == "" {
 		return fmt.Errorf("导演规划提交缺少资料库来源 revision")
 	}
-	currentRevision, err := book.NewLoreStore(workspace).Revision()
+	currentRevision, err := lore.NewStore(workspace).Revision()
 	if err != nil {
 		return fmt.Errorf("读取资料库 revision 失败: %w", err)
 	}

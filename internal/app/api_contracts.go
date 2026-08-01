@@ -1,9 +1,12 @@
 package app
 
 import (
+	agentchat "denova/internal/agents/chat"
+	agentharness "denova/internal/agents/harness"
 	"strings"
 
-	agents "denova/internal/agents"
+	agentcontext "denova/internal/agents/context"
+	agentrun "denova/internal/agents/run"
 	"denova/internal/agents/session"
 	"denova/internal/agents/skills"
 )
@@ -14,19 +17,19 @@ import (
 // runtime engines, registries, and persistence stores out of this surface.
 
 type (
-	AgentEvent       = agents.Event
-	AgentChatRequest = agents.ChatRequest
+	AgentEvent       = agentrun.Event
+	AgentChatRequest = agentchat.ChatRequest
 
-	AgentCommandKind = agents.AgentCommandKind
-	AgentOperationID = agents.OperationID
-	AgentCommandID   = agents.CommandID
+	CommandKind      = agentharness.CommandKind
+	AgentOperationID = agentrun.OperationID
+	AgentCommandID   = agentrun.CommandID
 
-	AgentRuntimeStatus             = agents.RuntimeStatus
-	AgentRuntimeRecoveryActionKind = agents.RuntimeRecoveryActionKind
-	AgentRuntimeRecoveryAction     = agents.RuntimeRecoveryAction
+	AgentRuntimeStatus             = agentrun.RuntimeStatus
+	AgentRuntimeRecoveryActionKind = agentharness.RuntimeRecoveryActionKind
+	AgentRuntimeRecoveryAction     = agentharness.RuntimeRecoveryAction
 
 	AgentSessionHistoryEntry         = session.HistoryEntry
-	AgentSessionUserMessageReference = session.UserMessageReference
+	AgentSessionUserMessageReference = agentcontext.UserReference
 	AgentSessionMeta                 = session.SessionMeta
 	AgentSession                     = session.Session
 
@@ -37,57 +40,57 @@ type (
 )
 
 const (
-	AgentKindIDE = agents.AgentKindIDE
+	AgentKindIDE = agentrun.AgentKindIDE
 
-	AgentCommandSteer        = agents.AgentCommandSteer
-	AgentCommandFollowUp     = agents.AgentCommandFollowUp
-	AgentCommandNextTurn     = agents.AgentCommandNextTurn
-	AgentCommandSteerQueued  = agents.AgentCommandSteerQueued
-	AgentCommandCancelQueued = agents.AgentCommandCancelQueued
-	AgentCommandAbort        = agents.AgentCommandAbort
+	CommandSteer        = agentharness.CommandSteer
+	CommandFollowUp     = agentharness.CommandFollowUp
+	CommandNextTurn     = agentharness.CommandNextTurn
+	CommandSteerQueued  = agentharness.CommandSteerQueued
+	CommandCancelQueued = agentharness.CommandCancelQueued
+	CommandAbort        = agentharness.CommandAbort
 
-	AgentRuntimePhaseIdle = agents.RunPhaseIdle
+	AgentRuntimePhaseIdle = agentrun.RunPhaseIdle
 
-	AgentRuntimeRecoveryAttach           = agents.RuntimeRecoveryAttach
-	AgentRuntimeRecoveryAbort            = agents.RuntimeRecoveryAbort
-	AgentRuntimeRecoverySteer            = agents.RuntimeRecoverySteer
-	AgentRuntimeRecoveryFollowUp         = agents.RuntimeRecoveryFollowUp
-	AgentRuntimeRecoveryNextTurn         = agents.RuntimeRecoveryNextTurn
-	AgentRuntimeRecoveryCompactContext   = agents.RuntimeRecoveryCompactContext
-	AgentRuntimeRecoveryRemoveCompaction = agents.RuntimeRecoveryRemoveCompaction
+	AgentRuntimeRecoveryAttach           = agentharness.RuntimeRecoveryAttach
+	AgentRuntimeRecoveryAbort            = agentharness.RuntimeRecoveryAbort
+	AgentRuntimeRecoverySteer            = agentharness.RuntimeRecoverySteer
+	AgentRuntimeRecoveryFollowUp         = agentharness.RuntimeRecoveryFollowUp
+	AgentRuntimeRecoveryNextTurn         = agentharness.RuntimeRecoveryNextTurn
+	AgentRuntimeRecoveryCompactContext   = agentharness.RuntimeRecoveryCompactContext
+	AgentRuntimeRecoveryRemoveCompaction = agentharness.RuntimeRecoveryRemoveCompaction
 
 	SkillScopeUser              = skills.ScopeUser
 	MaxSkillInstallArchiveBytes = skills.MaxInstallArchiveBytes
 )
 
 var (
-	ErrAgentRecoveryRequired             = agents.ErrRecoveryRequired
-	ErrAgentRecoveryActionChanged        = agents.ErrRecoveryActionChanged
-	ErrAgentRuntimeRecoveryActionChanged = agents.ErrRecoveryActionChanged
-	ErrInvalidAgentCommand               = agents.ErrInvalidCommand
-	ErrInvalidAgentBinding               = agents.ErrInvalidBinding
-	ErrStaleAgentOperation               = agents.ErrStaleOperation
-	ErrAgentQueueConflict                = agents.ErrQueueConflict
-	ErrAgentBusy                         = agents.ErrBusy
-	ErrAgentDomainCommitRejected         = agents.ErrDomainCommitRejected
+	ErrAgentRecoveryRequired             = agentharness.ErrRecoveryRequired
+	ErrAgentRecoveryActionChanged        = agentharness.ErrRecoveryActionChanged
+	ErrAgentRuntimeRecoveryActionChanged = agentharness.ErrRecoveryActionChanged
+	ErrInvalidAgentCommand               = agentrun.ErrInvalidCommand
+	ErrInvalidAgentBinding               = agentrun.ErrInvalidBinding
+	ErrStaleAgentOperation               = agentrun.ErrStaleOperation
+	ErrAgentQueueConflict                = agentrun.ErrQueueConflict
+	ErrAgentBusy                         = agentrun.ErrBusy
+	ErrAgentDomainCommitRejected         = agentrun.ErrDomainCommitRejected
 	ErrSkillRevisionConflict             = skills.ErrRevisionConflict
 )
 
 // ValidateAgentCommandID applies the exact durable command envelope used by
 // the Agent runtime without exposing runtime configuration to HTTP handlers.
 func ValidateAgentCommandID(commandID string) error {
-	return agents.ValidateCommandID(commandID)
+	return agentrun.ValidateCommandID(commandID)
 }
 
 // ValidateAgentRecoveryIdentity validates the caller-owned identity for one
 // explicit recovery action. Kind validation remains at the transport seam so
 // unsupported wire values can be rejected before constructing the request.
 func ValidateAgentRecoveryIdentity(commandID, operationID string) error {
-	return agents.ValidateRecoveryIdentity(commandID, strings.TrimSpace(operationID))
+	return agentrun.ValidateRecoveryIdentity(commandID, strings.TrimSpace(operationID))
 }
 
 // AgentRuntimeRecoveryActions projects only the recovery operations that are
 // safe for an external caller to retry against the current durable status.
 func AgentRuntimeRecoveryActions(status AgentRuntimeStatus) []AgentRuntimeRecoveryAction {
-	return agents.RuntimeRecoveryActions(status)
+	return agentharness.RuntimeRecoveryActions(status)
 }

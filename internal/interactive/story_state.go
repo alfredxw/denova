@@ -2,6 +2,7 @@ package interactive
 
 import (
 	"context"
+	interactivestate "denova/internal/interactive/state"
 	"encoding/json"
 	"fmt"
 	"log/slog"
@@ -277,7 +278,7 @@ func displayEventKey(event DisplayEvent) string {
 	return ""
 }
 
-func applyStateOp(state map[string]any, op StateOp) {
+func applyStateOp(state map[string]any, op interactivestate.Op) {
 	op.Path = canonicalStatePath(op.Path)
 	switch op.Op {
 	case "set":

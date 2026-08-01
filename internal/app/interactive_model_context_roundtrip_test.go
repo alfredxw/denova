@@ -2,6 +2,7 @@ package app
 
 import (
 	"context"
+	"denova/internal/agents/toolresult"
 	"reflect"
 	"strings"
 	"testing"
@@ -9,6 +10,7 @@ import (
 	agent "github.com/alfredxw/denova/agent"
 
 	agents "denova/internal/agents"
+	agentrun "denova/internal/agents/run"
 	"denova/internal/interactive"
 )
 
@@ -86,7 +88,7 @@ func TestInteractiveMultiToolBatchesRoundTripWithProviderLocalIDReuse(t *testing
 		stored = append(stored, converted)
 	}
 	rehydrated := schemaMessagesFromInteractiveContext(stored)
-	rehydrated = agents.ApplyToolResultContextPolicyForConversation(rehydrated, agents.ToolResultContextPolicy{Enabled: true})
+	rehydrated = toolresult.ApplyContextPolicy(rehydrated, toolresult.ContextPolicy{Enabled: true})
 	if len(rehydrated) != 5 || len(rehydrated[0].ToolCalls) != 2 ||
 		rehydrated[0].ToolCalls[0].ID != "provider-local" || rehydrated[0].ToolCalls[1].ID != "parallel" ||
 		rehydrated[1].ToolCallID != "provider-local" || rehydrated[1].Content != "lore one" ||
@@ -105,7 +107,7 @@ func TestInteractiveToolBatchSurvivesFailedCycleAndReload(t *testing.T) {
 		t.Fatal(err)
 	}
 	failed := newInteractiveConversation(store, t.TempDir(), workspace, story.ID, "main", "检查门", 800, nil)
-	identity := agents.HarnessCycleIdentity{CommandID: "command-fetch-failed", OperationID: "operation-fetch-failed", Cycle: 1}
+	identity := agentrun.CycleIdentity{CommandID: "command-fetch-failed", OperationID: "operation-fetch-failed", Cycle: 1}
 	failed.BindAgentCycleIdentity(identity)
 	materializeInteractiveInputForTest(t, failed, identity)
 	batch := durableInteractiveToolBatchFixture()
@@ -143,7 +145,7 @@ func TestInteractiveSuccessfulTurnConsumesDurableToolBatchWithoutDuplicate(t *te
 		t.Fatal(err)
 	}
 	conversation := newInteractiveConversation(store, t.TempDir(), workspace, story.ID, "main", "检查门", 800, nil)
-	identity := agents.HarnessCycleIdentity{CommandID: "command-fetch-success", OperationID: "operation-fetch-success", Cycle: 1}
+	identity := agentrun.CycleIdentity{CommandID: "command-fetch-success", OperationID: "operation-fetch-success", Cycle: 1}
 	conversation.BindAgentCycleIdentity(identity)
 	materializeInteractiveInputForTest(t, conversation, identity)
 	batch := durableInteractiveToolBatchFixture()
@@ -154,7 +156,7 @@ func TestInteractiveSuccessfulTurnConsumesDurableToolBatchWithoutDuplicate(t *te
 	if err := conversation.AppendAssistant("门后留有新鲜脚印。"); err != nil {
 		t.Fatal(err)
 	}
-	if err := conversation.CommitAgentCycleStage(context.Background(), agents.HarnessDomainCommitOutput, agents.RunOutcome{Status: agents.RunOutcomeCompleted}); err != nil {
+	if err := conversation.CommitAgentCycleStage(context.Background(), agentrun.DomainCommitOutput, agentrun.Outcome{Status: agentrun.OutcomeCompleted}); err != nil {
 		t.Fatal(err)
 	}
 	snapshot, err := store.Snapshot(story.ID, "main")

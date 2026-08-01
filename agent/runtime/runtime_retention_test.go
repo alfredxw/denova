@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	filejournal "github.com/alfredxw/denova/agent/runtime/filejournal"
 	"os"
 	"strings"
 	"sync/atomic"
@@ -150,7 +151,7 @@ func TestProjectConservativelyReportsUnfinishedJournalWithoutCreatingActor(t *te
 
 func TestFileJournalStoresToolPayloadDescriptorsInsteadOfRawContent(t *testing.T) {
 	root := t.TempDir()
-	store, err := runstate.NewFileJournalStore(root)
+	store, err := filejournal.NewStore(root)
 	if err != nil {
 		t.Fatal(err)
 	}

@@ -2,6 +2,11 @@ package app
 
 import (
 	"context"
+	agentchat "denova/internal/agents/chat"
+	agentharness "denova/internal/agents/harness"
+	agentrun "denova/internal/agents/run"
+	agenttool "denova/internal/agents/tool"
+	apptask "denova/internal/app/task"
 	"errors"
 	"fmt"
 	"log/slog"
@@ -9,11 +14,11 @@ import (
 	"sync"
 
 	"denova/config"
-	agents "denova/internal/agents"
+	"denova/internal/agents/prompts"
 	"denova/internal/agents/session"
 	"denova/internal/book"
 	projectdomain "denova/internal/project"
-	"denova/internal/workspacechange"
+	workspacechange "denova/internal/workspace/change"
 )
 
 const agentChatRuntimeMode = "agent_chat"
@@ -40,7 +45,7 @@ type agentChatProjectRuntime struct {
 	store          *session.Store
 	bookService    *book.Service
 	versionService *book.VersionService
-	chatService    *agents.ChatService
+	chatService    *agentharness.Service
 	cfg            config.Config
 	closeOnce      sync.Once
 }
@@ -64,10 +69,10 @@ func (runtime *agentChatProjectRuntime) close() {
 type agentChatRun struct {
 	binding         AgentChatBinding
 	commandID       string
-	task            *Task
+	task            *apptask.Task
 	runtime         ideChatRuntime
-	recovery        *agents.RecoveryObservation
-	recoveryActions map[string]agents.CommandReceipt
+	recovery        *agentharness.RecoveryObservation
+	recoveryActions map[string]agentrun.CommandReceipt
 }
 
 // AgentChatAppService owns user-level project conversations. Runs are keyed by
@@ -99,8 +104,8 @@ func agentChatBindingKey(binding AgentChatBinding) string {
 	return owner + "\x00" + strings.TrimSpace(binding.SessionID)
 }
 
-func agentChatRunOptions(binding AgentChatBinding, taskID string) agents.RunOptions {
-	return agents.RunOptions{
+func agentChatRunOptions(binding AgentChatBinding, taskID string) agentrun.Options {
+	return agentrun.Options{
 		AgentKind: binding.agentKind, ProjectID: binding.ProjectID, StateRoot: binding.stateRoot,
 		TaskID: strings.TrimSpace(taskID), SessionID: binding.SessionID,
 		Workspace: binding.Workspace, Mode: agentChatRuntimeMode,
@@ -109,11 +114,11 @@ func agentChatRunOptions(binding AgentChatBinding, taskID string) agents.RunOpti
 
 // StartAgentChatTask starts one project-scoped turn without switching the
 // foreground Writing book or session.
-func (a *App) StartAgentChatTask(ctx context.Context, binding AgentChatBinding, req agents.ChatRequest) (*Task, error) {
+func (a *App) StartAgentChatTask(ctx context.Context, binding AgentChatBinding, req agentchat.ChatRequest) (*apptask.Task, error) {
 	return a.agentChat().StartTask(ctx, binding, req)
 }
 
-func (s *AgentChatAppService) StartTask(ctx context.Context, binding AgentChatBinding, req agents.ChatRequest) (*Task, error) {
+func (s *AgentChatAppService) StartTask(ctx context.Context, binding AgentChatBinding, req agentchat.ChatRequest) (*apptask.Task, error) {
 	s.admission.Lock()
 	defer s.admission.Unlock()
 
@@ -126,11 +131,11 @@ func (s *AgentChatAppService) StartTask(ctx context.Context, binding AgentChatBi
 	if req.CommandID == "" {
 		return nil, ErrAgentCommandIDRequired
 	}
-	if err := agents.ValidateCommandID(req.CommandID); err != nil {
+	if err := agentrun.ValidateCommandID(req.CommandID); err != nil {
 		return nil, err
 	}
-	req = agents.CaptureChatRequestCallerInput(req)
-	fingerprint := agents.ChatRequestSemanticFingerprint(req)
+	req = agentchat.CaptureChatRequestCallerInput(req)
+	fingerprint := agentharness.RequestSemanticFingerprint(req)
 	if replay, ok, err := s.starts.replay(req.CommandID, binding.ProjectID, binding.SessionID, fingerprint); err != nil {
 		return nil, err
 	} else if ok {
@@ -170,14 +175,14 @@ func (s *AgentChatAppService) StartTask(ctx context.Context, binding AgentChatBi
 	}
 	conversation := projectSessionConversation(runtime, req)
 
-	var verifiedMutations []agents.ToolMutation
-	var postRunVerification agents.PostRunVerification
+	var verifiedMutations []agenttool.Mutation
+	var postRunVerification agenttool.Verification
 	mutationCallback := s.app.verifiedWorkspaceMutationCallback(
 		"agent_chat_post_run", runtime.versionService, versionAutoSettingsForConfig(&runtime.cfg),
 	)
-	var accepted *agents.AcceptedRun
+	var accepted *agentharness.AcceptedRun
 	run := &agentChatRun{binding: binding, commandID: req.CommandID, runtime: runtime}
-	task, err := NewDeferredRegisteredTaskWithContext(ctx, func(task *Task) error {
+	task, err := apptask.NewDeferredWithContext(ctx, func(task *apptask.Task) error {
 		run.task = task
 		return s.installActiveRun(run)
 	})
@@ -189,15 +194,15 @@ func (s *AgentChatAppService) StartTask(ctx context.Context, binding AgentChatBi
 		fingerprint: fingerprint, task: task,
 	})
 	if err != nil {
-		task.failBeforeStart(err)
+		task.RejectStart(err)
 		s.releaseActiveRun(run)
 		return nil, err
 	}
 
-	acceptCtx, releaseAcceptance := taskAcceptanceContext(ctx, task)
+	acceptCtx, releaseAcceptance := apptask.AcceptanceContext(ctx, task)
 	startOptions := s.app.chat().bindReviewFeedbackInputCommit(
-		agentChatStartOptions(run, req.ResolvedReviewFeedback.PrimaryReviewThreadID(), systemPrompt, func(mutations []agents.ToolMutation, verification agents.PostRunVerification) {
-			verifiedMutations = append([]agents.ToolMutation(nil), mutations...)
+		agentChatStartOptions(run, req.ResolvedReviewFeedback.PrimaryReviewThreadID(), systemPrompt, func(mutations []agenttool.Mutation, verification agenttool.Verification) {
+			verifiedMutations = append([]agenttool.Mutation(nil), mutations...)
 			postRunVerification = verification
 		}),
 		runtime,
@@ -206,24 +211,24 @@ func (s *AgentChatAppService) StartTask(ctx context.Context, binding AgentChatBi
 	accepted, err = runtime.chatService.StartWithOptions(
 		acceptCtx, runner, conversation, runtime.bookService, req,
 		startOptions,
-		task.emit,
+		task.Emit,
 	)
 	releaseAcceptance()
 	if err != nil {
 		reservation.rollback()
-		task.failBeforeStart(err)
+		task.RejectStart(err)
 		s.releaseActiveRun(run)
-		if errors.Is(err, agents.ErrInvalidCommand) {
+		if errors.Is(err, agentrun.ErrInvalidCommand) {
 			return nil, fmt.Errorf("%w: command_id=%q", ErrAgentCommandConflict, req.CommandID)
 		}
 		return nil, err
 	}
 
-	if err := task.Start(func(runCtx context.Context, task *Task, emit func(agents.Event)) {
+	if err := task.Start(func(runCtx context.Context, task *apptask.Task, emit func(agentrun.Event)) {
 		defer s.releaseActiveRun(run)
 		slog.InfoContext(runCtx, fmt.Sprintf("[agent-chat-run] begin task_id=%s project_id=%s workspace=%q session_id=%s message_len=%d", task.ID(), binding.ProjectID, binding.Workspace, binding.SessionID, len(req.Message)))
 		accepted.Wait(runCtx)
-		_, outputCommitted := conversation.LastAgentCycleCommitReceipt(agents.HarnessDomainCommitOutput)
+		_, outputCommitted := conversation.LastAgentCycleCommitReceipt(agentrun.DomainCommitOutput)
 		postSettlementCtx := runCtx
 		if outputCommitted {
 			postSettlementCtx = context.WithoutCancel(runCtx)
@@ -235,8 +240,8 @@ func (s *AgentChatAppService) StartTask(ctx context.Context, binding AgentChatBi
 	}); err != nil {
 		reservation.rollback()
 		task.Abort()
-		_ = accepted.Wait(task.ctx)
-		task.finish()
+		_ = accepted.Wait(task.Context())
+		task.Finish()
 		s.releaseActiveRun(run)
 		return nil, err
 	}
@@ -247,15 +252,15 @@ func (s *AgentChatAppService) StartTask(ctx context.Context, binding AgentChatBi
 func agentChatStartOptions(
 	run *agentChatRun,
 	reviewThreadID string,
-	systemPrompt agents.SystemPromptComposition,
-	onVerified func([]agents.ToolMutation, agents.PostRunVerification),
-) agents.RunOptions {
+	systemPrompt prompts.SystemPromptComposition,
+	onVerified func([]agenttool.Mutation, agenttool.Verification),
+) agentrun.Options {
 	options := agentChatRunOptions(run.binding, run.task.ID())
 	options.ReviewThreadID = strings.TrimSpace(reviewThreadID)
 	options.IdleTimeout = agentIdleTimeout(run.runtime.cfg)
 	options.ToolResultMaxBytes = agentToolResultMaxBytes(run.runtime.cfg)
 	options.SystemPromptLog = systemPrompt
-	options.OnMutationsVerified = func(_ context.Context, mutations []agents.ToolMutation, verification agents.PostRunVerification) {
+	options.OnMutationsVerified = func(_ context.Context, mutations []agenttool.Mutation, verification agenttool.Verification) {
 		onVerified(mutations, verification)
 	}
 	return options
@@ -287,9 +292,9 @@ func (s *AgentChatAppService) resolveBinding(binding AgentChatBinding) (AgentCha
 	binding.stateRoot = layout.StateRoot
 	switch record.Type {
 	case projectdomain.TypeBook:
-		binding.agentKind = agents.AgentKindIDE
+		binding.agentKind = agentrun.AgentKindIDE
 	case projectdomain.TypeGeneral:
-		binding.agentKind = agents.AgentKindGeneral
+		binding.agentKind = agentrun.AgentKindGeneral
 	default:
 		return AgentChatBinding{}, fmt.Errorf("unsupported project type %q", record.Type)
 	}
@@ -352,14 +357,14 @@ func (s *AgentChatAppService) projectRuntime(ctx context.Context, projectID stri
 	}
 	var state *book.State
 	var versionService *book.VersionService
-	agentKind := agents.AgentKindGeneral
+	agentKind := agentrun.AgentKindGeneral
 	if record.Type == projectdomain.TypeBook {
 		state = book.NewState(workspace)
 		if err := changes.WithExclusiveWorkspace(ctx, state.InitWorkspace); err != nil {
 			return nil, err
 		}
 		versionService = book.NewVersionService(workspace)
-		agentKind = agents.AgentKindIDE
+		agentKind = agentrun.AgentKindIDE
 	}
 	store, err := session.NewStore(layout.SessionsDir())
 	if err != nil {

@@ -3,7 +3,7 @@ package session
 import (
 	"time"
 
-	"denova/internal/conversationconfig"
+	"denova/internal/agents/conversationconfig"
 )
 
 const (

@@ -1,19 +1,18 @@
 package transform
 
 import (
+	agentrun "denova/internal/agents/run"
 	"strings"
 	"testing"
 	"unicode/utf8"
-
-	agents "denova/internal/agents"
 )
 
 func TestSSEWriteChapterBodyMiddlewareShowsOnlyPathForToolCall(t *testing.T) {
 	collector, handler := newWriteChapterBodySSETestHandler()
 	args := `{"path":"chapters/ch01.md","content":"第一行\n第二行"}`
 
-	got := mustForwardSSEEvent(t, collector, handler, agents.Event{Type: "tool_call", Data: map[string]interface{}{
-		"agent_kind": agents.AgentKindIDE,
+	got := mustForwardSSEEvent(t, collector, handler, agentrun.Event{Type: "tool_call", Data: map[string]interface{}{
+		"agent_kind": agentrun.AgentKindIDE,
 		"id":         "call-1",
 		"name":       "write",
 		"args":       args,
@@ -35,8 +34,8 @@ func TestSSEWriteChapterBodyMiddlewareShowsOnlyPathForAbsoluteNovaChapterToolCal
 	path := `/Users/huangyongquan/.codex/worktrees/999d/nova/.nova/测试/chapters/v00001-第一卷-废材逆袭/ch00001-第1章-陨落.md`
 	args := `{"path":"` + path + `","content":"第一行\n第二行"}`
 
-	got := mustForwardSSEEvent(t, collector, handler, agents.Event{Type: "tool_call", Data: map[string]interface{}{
-		"agent_kind": agents.AgentKindIDE,
+	got := mustForwardSSEEvent(t, collector, handler, agentrun.Event{Type: "tool_call", Data: map[string]interface{}{
+		"agent_kind": agentrun.AgentKindIDE,
 		"id":         "call-1",
 		"name":       "write",
 		"args":       args,
@@ -59,8 +58,8 @@ func TestSSEWriteChapterBodyMiddlewareShowsOnlyPathForPastedDetailArgs(t *testin
 	path := `/Users/huangyongquan/.codex/worktrees/999d/nova/.nova/测试/chapters/v00001-第一卷-废材逆袭/ch00011-第11章-水乳交融.md`
 	args := `"path": "` + path + `", "content": "第一行\n第二行"`
 
-	got := mustForwardSSEEvent(t, collector, handler, agents.Event{Type: "tool_call", Data: map[string]interface{}{
-		"agent_kind": agents.AgentKindIDE,
+	got := mustForwardSSEEvent(t, collector, handler, agentrun.Event{Type: "tool_call", Data: map[string]interface{}{
+		"agent_kind": agentrun.AgentKindIDE,
 		"id":         "call-1",
 		"name":       "write",
 		"args":       args,
@@ -83,8 +82,8 @@ func TestSSEWriteChapterBodyMiddlewareUsesTargetWhenArgsCannotRevealPath(t *test
 	path := `/Users/huangyongquan/.codex/worktrees/999d/nova/.nova/测试/chapters/v00001/ch00001.md`
 	args := `{"content":"第一行\n第二行`
 
-	got := mustForwardSSEEvent(t, collector, handler, agents.Event{Type: "tool_call", Data: map[string]interface{}{
-		"agent_kind": agents.AgentKindIDE,
+	got := mustForwardSSEEvent(t, collector, handler, agentrun.Event{Type: "tool_call", Data: map[string]interface{}{
+		"agent_kind": agentrun.AgentKindIDE,
 		"id":         "call-1",
 		"name":       "write",
 		"args":       args,
@@ -106,8 +105,8 @@ func TestSSEWriteChapterBodyMiddlewareUsesTargetWhenArgsCannotRevealPath(t *test
 func TestSSEWriteChapterBodyMiddlewareHoldsUnknownToolCallArgs(t *testing.T) {
 	collector, handler := newWriteChapterBodySSETestHandler()
 
-	got := mustForwardSSEEvent(t, collector, handler, agents.Event{Type: "tool_call", Data: map[string]interface{}{
-		"agent_kind": agents.AgentKindIDE,
+	got := mustForwardSSEEvent(t, collector, handler, agentrun.Event{Type: "tool_call", Data: map[string]interface{}{
+		"agent_kind": agentrun.AgentKindIDE,
 		"id":         "call-1",
 		"name":       "write",
 		"args":       `{"content":"第一行`,
@@ -121,21 +120,21 @@ func TestSSEWriteChapterBodyMiddlewareHoldsUnknownToolCallArgs(t *testing.T) {
 func TestSSEWriteChapterBodyMiddlewareProjectsToolTargetToArgsDelta(t *testing.T) {
 	collector, handler := newWriteChapterBodySSETestHandler()
 	path := `/Users/huangyongquan/.codex/worktrees/999d/nova/.nova/测试/chapters/v00001/ch00001.md`
-	_ = mustForwardSSEEvent(t, collector, handler, agents.Event{Type: "tool_call", Data: map[string]interface{}{
-		"agent_kind": agents.AgentKindIDE,
+	_ = mustForwardSSEEvent(t, collector, handler, agentrun.Event{Type: "tool_call", Data: map[string]interface{}{
+		"agent_kind": agentrun.AgentKindIDE,
 		"id":         "call-1",
 		"name":       "write",
 		"args":       "",
 	}})
 
-	got := mustForwardSSEEvent(t, collector, handler, agents.Event{Type: "tool_target", Data: map[string]interface{}{
-		"agent_kind": agents.AgentKindIDE,
+	got := mustForwardSSEEvent(t, collector, handler, agentrun.Event{Type: "tool_target", Data: map[string]interface{}{
+		"agent_kind": agentrun.AgentKindIDE,
 		"id":         "call-1",
 		"name":       "write",
 		"target":     path,
 	}})
-	mustSuppressSSEEvent(t, collector, handler, agents.Event{Type: "tool_args_delta", Data: map[string]interface{}{
-		"agent_kind": agents.AgentKindIDE,
+	mustSuppressSSEEvent(t, collector, handler, agentrun.Event{Type: "tool_args_delta", Data: map[string]interface{}{
+		"agent_kind": agentrun.AgentKindIDE,
 		"id":         "call-1",
 		"name":       "write",
 		"delta":      `{"content":"第一行`,
@@ -150,7 +149,7 @@ func TestSSEWriteChapterBodyMiddlewareProjectsToolTargetToArgsDelta(t *testing.T
 		t.Fatalf("projected target delta = %q, want %q", gotDelta, want)
 	}
 	assertChapterBodyHiddenNotice(t, got.Data)
-	events := mustForwardSSEEvents(t, collector, handler, agents.Event{Type: "tool_result", Data: map[string]interface{}{
+	events := mustForwardSSEEvents(t, collector, handler, agentrun.Event{Type: "tool_result", Data: map[string]interface{}{
 		"id":   "call-1",
 		"name": "write",
 	}}, 2)
@@ -164,21 +163,21 @@ func TestSSEWriteChapterBodyMiddlewareProjectsToolTargetToArgsDelta(t *testing.T
 
 func TestSSEWriteChapterBodyMiddlewareDropsChapterContentDeltas(t *testing.T) {
 	collector, handler := newWriteChapterBodySSETestHandler()
-	_ = mustForwardSSEEvent(t, collector, handler, agents.Event{Type: "tool_call", Data: map[string]interface{}{
-		"agent_kind": agents.AgentKindIDE,
+	_ = mustForwardSSEEvent(t, collector, handler, agentrun.Event{Type: "tool_call", Data: map[string]interface{}{
+		"agent_kind": agentrun.AgentKindIDE,
 		"id":         "call-1",
 		"name":       "write",
 		"args":       "",
 	}})
 
-	first := mustForwardSSEEvent(t, collector, handler, agents.Event{Type: "tool_args_delta", Data: map[string]interface{}{
-		"agent_kind": agents.AgentKindIDE,
+	first := mustForwardSSEEvent(t, collector, handler, agentrun.Event{Type: "tool_args_delta", Data: map[string]interface{}{
+		"agent_kind": agentrun.AgentKindIDE,
 		"id":         "call-1",
 		"name":       "write",
 		"delta":      `{"path":"chapters/ch02.md","content":"第一行`,
 	}})
-	mustSuppressSSEEvent(t, collector, handler, agents.Event{Type: "tool_args_delta", Data: map[string]interface{}{
-		"agent_kind": agents.AgentKindIDE,
+	mustSuppressSSEEvent(t, collector, handler, agentrun.Event{Type: "tool_args_delta", Data: map[string]interface{}{
+		"agent_kind": agentrun.AgentKindIDE,
 		"id":         "call-1",
 		"name":       "write",
 		"delta":      `\n第二行\n第三行"}`,
@@ -193,7 +192,7 @@ func TestSSEWriteChapterBodyMiddlewareDropsChapterContentDeltas(t *testing.T) {
 	}
 	assertChapterBodyHiddenNotice(t, first.Data)
 	assertGeneratedChars(t, first.Data, fileCharCount("第一行"))
-	events := mustForwardSSEEvents(t, collector, handler, agents.Event{Type: "tool_result", Data: map[string]interface{}{
+	events := mustForwardSSEEvents(t, collector, handler, agentrun.Event{Type: "tool_result", Data: map[string]interface{}{
 		"id":   "call-1",
 		"name": "write",
 	}}, 2)
@@ -207,16 +206,16 @@ func TestSSEWriteChapterBodyMiddlewareDropsChapterContentDeltas(t *testing.T) {
 
 func TestSSEWriteChapterBodyMiddlewareThrottlesGeneratedCharacterProgress(t *testing.T) {
 	collector, handler := newWriteChapterBodySSETestHandler()
-	_ = mustForwardSSEEvent(t, collector, handler, agents.Event{Type: "tool_call", Data: map[string]interface{}{
-		"agent_kind": agents.AgentKindIDE,
+	_ = mustForwardSSEEvent(t, collector, handler, agentrun.Event{Type: "tool_call", Data: map[string]interface{}{
+		"agent_kind": agentrun.AgentKindIDE,
 		"id":         "call-1",
 		"name":       "write",
 		"args":       "",
 	}})
 
 	firstContent := "第一行"
-	first := mustForwardSSEEvent(t, collector, handler, agents.Event{Type: "tool_args_delta", Data: map[string]interface{}{
-		"agent_kind": agents.AgentKindIDE,
+	first := mustForwardSSEEvent(t, collector, handler, agentrun.Event{Type: "tool_args_delta", Data: map[string]interface{}{
+		"agent_kind": agentrun.AgentKindIDE,
 		"id":         "call-1",
 		"name":       "write",
 		"delta":      `{"path":"chapters/ch02.md","content":"` + firstContent,
@@ -224,15 +223,15 @@ func TestSSEWriteChapterBodyMiddlewareThrottlesGeneratedCharacterProgress(t *tes
 	assertGeneratedChars(t, first.Data, fileCharCount(firstContent))
 
 	heldContent := strings.Repeat("中", chapterBodyProgressStep-1)
-	mustSuppressSSEEvent(t, collector, handler, agents.Event{Type: "tool_args_delta", Data: map[string]interface{}{
-		"agent_kind": agents.AgentKindIDE,
+	mustSuppressSSEEvent(t, collector, handler, agentrun.Event{Type: "tool_args_delta", Data: map[string]interface{}{
+		"agent_kind": agentrun.AgentKindIDE,
 		"id":         "call-1",
 		"name":       "write",
 		"delta":      heldContent,
 	}})
 
-	progress := mustForwardSSEEvent(t, collector, handler, agents.Event{Type: "tool_args_delta", Data: map[string]interface{}{
-		"agent_kind": agents.AgentKindIDE,
+	progress := mustForwardSSEEvent(t, collector, handler, agentrun.Event{Type: "tool_args_delta", Data: map[string]interface{}{
+		"agent_kind": agentrun.AgentKindIDE,
 		"id":         "call-1",
 		"name":       "write",
 		"delta":      "文",
@@ -243,7 +242,7 @@ func TestSSEWriteChapterBodyMiddlewareThrottlesGeneratedCharacterProgress(t *tes
 	assertChapterBodyHiddenNotice(t, progress.Data)
 	assertGeneratedChars(t, progress.Data, fileCharCount(firstContent+heldContent+"文"))
 
-	events := mustForwardSSEEvents(t, collector, handler, agents.Event{Type: "tool_result", Data: map[string]interface{}{
+	events := mustForwardSSEEvents(t, collector, handler, agentrun.Event{Type: "tool_result", Data: map[string]interface{}{
 		"id":   "call-1",
 		"name": "write",
 	}}, 1)
@@ -254,21 +253,21 @@ func TestSSEWriteChapterBodyMiddlewareThrottlesGeneratedCharacterProgress(t *tes
 
 func TestSSEWriteChapterBodyMiddlewareCountsFileCharacters(t *testing.T) {
 	collector, handler := newWriteChapterBodySSETestHandler()
-	_ = mustForwardSSEEvent(t, collector, handler, agents.Event{Type: "tool_call", Data: map[string]interface{}{
-		"agent_kind": agents.AgentKindIDE,
+	_ = mustForwardSSEEvent(t, collector, handler, agentrun.Event{Type: "tool_call", Data: map[string]interface{}{
+		"agent_kind": agentrun.AgentKindIDE,
 		"id":         "call-1",
 		"name":       "write",
 		"args":       "",
 	}})
 
-	first := mustForwardSSEEvent(t, collector, handler, agents.Event{Type: "tool_args_delta", Data: map[string]interface{}{
-		"agent_kind": agents.AgentKindIDE,
+	first := mustForwardSSEEvent(t, collector, handler, agentrun.Event{Type: "tool_args_delta", Data: map[string]interface{}{
+		"agent_kind": agentrun.AgentKindIDE,
 		"id":         "call-1",
 		"name":       "write",
 		"delta":      `{"path":"chapters/ch02.md","content":"第一行，abc123`,
 	}})
-	mustSuppressSSEEvent(t, collector, handler, agents.Event{Type: "tool_args_delta", Data: map[string]interface{}{
-		"agent_kind": agents.AgentKindIDE,
+	mustSuppressSSEEvent(t, collector, handler, agentrun.Event{Type: "tool_args_delta", Data: map[string]interface{}{
+		"agent_kind": agentrun.AgentKindIDE,
 		"id":         "call-1",
 		"name":       "write",
 		"delta":      `\n第二行。"}`,
@@ -276,7 +275,7 @@ func TestSSEWriteChapterBodyMiddlewareCountsFileCharacters(t *testing.T) {
 
 	assertChapterBodyHiddenNotice(t, first.Data)
 	assertGeneratedChars(t, first.Data, fileCharCount("第一行，abc123"))
-	events := mustForwardSSEEvents(t, collector, handler, agents.Event{Type: "tool_result", Data: map[string]interface{}{
+	events := mustForwardSSEEvents(t, collector, handler, agentrun.Event{Type: "tool_result", Data: map[string]interface{}{
 		"id":   "call-1",
 		"name": "write",
 	}}, 2)
@@ -292,8 +291,8 @@ func TestSSEWriteChapterBodyMiddlewareCountsJSONEscapesLikeWrittenFile(t *testin
 	collector, handler := newWriteChapterBodySSETestHandler()
 	args := `{"path":"chapters/ch01.md","content":"\u4e2d\u6587\nA"}`
 
-	got := mustForwardSSEEvent(t, collector, handler, agents.Event{Type: "tool_call", Data: map[string]interface{}{
-		"agent_kind": agents.AgentKindIDE,
+	got := mustForwardSSEEvent(t, collector, handler, agentrun.Event{Type: "tool_call", Data: map[string]interface{}{
+		"agent_kind": agentrun.AgentKindIDE,
 		"id":         "call-1",
 		"name":       "write",
 		"args":       args,
@@ -307,8 +306,8 @@ func TestSSEWriteChapterBodyMiddlewareCorrectsFinalCountWithDecodedArgs(t *testi
 	collector, handler := newWriteChapterBodySSETestHandler()
 	args := `{"path":"chapters/ch01.md","content":"开头\ud83d\ude00结尾"}`
 
-	got := mustForwardSSEEvent(t, collector, handler, agents.Event{Type: "tool_call", Data: map[string]interface{}{
-		"agent_kind": agents.AgentKindIDE,
+	got := mustForwardSSEEvent(t, collector, handler, agentrun.Event{Type: "tool_call", Data: map[string]interface{}{
+		"agent_kind": agentrun.AgentKindIDE,
 		"id":         "call-1",
 		"name":       "write",
 		"args":       args,
@@ -316,7 +315,7 @@ func TestSSEWriteChapterBodyMiddlewareCorrectsFinalCountWithDecodedArgs(t *testi
 
 	assertChapterBodyHiddenNotice(t, got.Data)
 	assertGeneratedChars(t, got.Data, 6)
-	events := mustForwardSSEEvents(t, collector, handler, agents.Event{Type: "tool_result", Data: map[string]interface{}{
+	events := mustForwardSSEEvents(t, collector, handler, agentrun.Event{Type: "tool_result", Data: map[string]interface{}{
 		"id":   "call-1",
 		"name": "write",
 	}}, 2)
@@ -325,15 +324,15 @@ func TestSSEWriteChapterBodyMiddlewareCorrectsFinalCountWithDecodedArgs(t *testi
 
 func TestSSEWriteChapterBodyMiddlewareDropsDraftContentDeltas(t *testing.T) {
 	collector, handler := newWriteChapterBodySSETestHandler()
-	_ = mustForwardSSEEvent(t, collector, handler, agents.Event{Type: "tool_call", Data: map[string]interface{}{
-		"agent_kind": agents.AgentKindIDE,
+	_ = mustForwardSSEEvent(t, collector, handler, agentrun.Event{Type: "tool_call", Data: map[string]interface{}{
+		"agent_kind": agentrun.AgentKindIDE,
 		"id":         "call-1",
 		"name":       "write",
 		"args":       "",
 	}})
 
-	first := mustForwardSSEEvent(t, collector, handler, agents.Event{Type: "tool_args_delta", Data: map[string]interface{}{
-		"agent_kind": agents.AgentKindIDE,
+	first := mustForwardSSEEvent(t, collector, handler, agentrun.Event{Type: "tool_args_delta", Data: map[string]interface{}{
+		"agent_kind": agentrun.AgentKindIDE,
 		"id":         "call-1",
 		"name":       "write",
 		"delta":      `{"path":"drafts/ch02.md","content":"第一行`,
@@ -348,21 +347,21 @@ func TestSSEWriteChapterBodyMiddlewareDropsDraftContentDeltas(t *testing.T) {
 
 func TestSSEWriteChapterBodyMiddlewareDropsAbsoluteNovaChapterContentDeltas(t *testing.T) {
 	collector, handler := newWriteChapterBodySSETestHandler()
-	_ = mustForwardSSEEvent(t, collector, handler, agents.Event{Type: "tool_call", Data: map[string]interface{}{
-		"agent_kind": agents.AgentKindIDE,
+	_ = mustForwardSSEEvent(t, collector, handler, agentrun.Event{Type: "tool_call", Data: map[string]interface{}{
+		"agent_kind": agentrun.AgentKindIDE,
 		"id":         "call-1",
 		"name":       "write",
 		"args":       "",
 	}})
 
-	first := mustForwardSSEEvent(t, collector, handler, agents.Event{Type: "tool_args_delta", Data: map[string]interface{}{
-		"agent_kind": agents.AgentKindIDE,
+	first := mustForwardSSEEvent(t, collector, handler, agentrun.Event{Type: "tool_args_delta", Data: map[string]interface{}{
+		"agent_kind": agentrun.AgentKindIDE,
 		"id":         "call-1",
 		"name":       "write",
 		"delta":      `{"path":"/Users/huangyongquan/.codex/worktrees/999d/nova/.nova/测试/chapters/v00001-第一卷-废材逆袭/ch00001-第1章-陨落.md","content":"第一行`,
 	}})
-	mustSuppressSSEEvent(t, collector, handler, agents.Event{Type: "tool_args_delta", Data: map[string]interface{}{
-		"agent_kind": agents.AgentKindIDE,
+	mustSuppressSSEEvent(t, collector, handler, agentrun.Event{Type: "tool_args_delta", Data: map[string]interface{}{
+		"agent_kind": agentrun.AgentKindIDE,
 		"id":         "call-1",
 		"name":       "write",
 		"delta":      `\n第二行"}`,
@@ -377,7 +376,7 @@ func TestSSEWriteChapterBodyMiddlewareDropsAbsoluteNovaChapterContentDeltas(t *t
 	}
 	assertChapterBodyHiddenNotice(t, first.Data)
 	assertGeneratedChars(t, first.Data, fileCharCount("第一行"))
-	events := mustForwardSSEEvents(t, collector, handler, agents.Event{Type: "tool_result", Data: map[string]interface{}{
+	events := mustForwardSSEEvents(t, collector, handler, agentrun.Event{Type: "tool_result", Data: map[string]interface{}{
 		"id":   "call-1",
 		"name": "write",
 	}}, 2)
@@ -391,21 +390,21 @@ func TestSSEWriteChapterBodyMiddlewareDropsAbsoluteNovaChapterContentDeltas(t *t
 
 func TestSSEWriteChapterBodyMiddlewareRestoresNonChapterDeltas(t *testing.T) {
 	collector, handler := newWriteChapterBodySSETestHandler()
-	_ = mustForwardSSEEvent(t, collector, handler, agents.Event{Type: "tool_call", Data: map[string]interface{}{
-		"agent_kind": agents.AgentKindIDE,
+	_ = mustForwardSSEEvent(t, collector, handler, agentrun.Event{Type: "tool_call", Data: map[string]interface{}{
+		"agent_kind": agentrun.AgentKindIDE,
 		"id":         "call-1",
 		"name":       "write",
 		"args":       "",
 	}})
 
-	mustSuppressSSEEvent(t, collector, handler, agents.Event{Type: "tool_args_delta", Data: map[string]interface{}{
-		"agent_kind": agents.AgentKindIDE,
+	mustSuppressSSEEvent(t, collector, handler, agentrun.Event{Type: "tool_args_delta", Data: map[string]interface{}{
+		"agent_kind": agentrun.AgentKindIDE,
 		"id":         "call-1",
 		"name":       "write",
 		"delta":      `{"path":"set`,
 	}})
-	next := mustForwardSSEEvent(t, collector, handler, agents.Event{Type: "tool_args_delta", Data: map[string]interface{}{
-		"agent_kind": agents.AgentKindIDE,
+	next := mustForwardSSEEvent(t, collector, handler, agentrun.Event{Type: "tool_args_delta", Data: map[string]interface{}{
+		"agent_kind": agentrun.AgentKindIDE,
 		"id":         "call-1",
 		"name":       "write",
 		"delta":      `ting/outline.md","content":"第一行`,
@@ -419,15 +418,15 @@ func TestSSEWriteChapterBodyMiddlewareRestoresNonChapterDeltas(t *testing.T) {
 
 func TestSSEWriteChapterBodyMiddlewareKeepsConfigManagerWriteDeltas(t *testing.T) {
 	collector, handler := newWriteChapterBodySSETestHandler()
-	_ = mustForwardSSEEvent(t, collector, handler, agents.Event{Type: "tool_call", Data: map[string]interface{}{
-		"agent_kind": agents.AgentKindConfigManager,
+	_ = mustForwardSSEEvent(t, collector, handler, agentrun.Event{Type: "tool_call", Data: map[string]interface{}{
+		"agent_kind": agentrun.AgentKindConfigManager,
 		"id":         "call-1",
 		"name":       "write",
 		"args":       "",
 	}})
 
-	next := mustForwardSSEEvent(t, collector, handler, agents.Event{Type: "tool_args_delta", Data: map[string]interface{}{
-		"agent_kind": agents.AgentKindConfigManager,
+	next := mustForwardSSEEvent(t, collector, handler, agentrun.Event{Type: "tool_args_delta", Data: map[string]interface{}{
+		"agent_kind": agentrun.AgentKindConfigManager,
 		"id":         "call-1",
 		"name":       "write",
 		"delta":      `{"path":"chapters/ch02.md","content":"第一行`,
@@ -440,15 +439,15 @@ func TestSSEWriteChapterBodyMiddlewareKeepsConfigManagerWriteDeltas(t *testing.T
 
 func TestSSEWriteChapterBodyMiddlewareKeepsAdditionalEditChapterDeltas(t *testing.T) {
 	collector, handler := newWriteChapterBodySSETestHandler()
-	_ = mustForwardSSEEvent(t, collector, handler, agents.Event{Type: "tool_call", Data: map[string]interface{}{
-		"agent_kind": agents.AgentKindIDE,
+	_ = mustForwardSSEEvent(t, collector, handler, agentrun.Event{Type: "tool_call", Data: map[string]interface{}{
+		"agent_kind": agentrun.AgentKindIDE,
 		"id":         "call-1",
 		"name":       "edit",
 		"args":       "",
 	}})
 
-	next := mustForwardSSEEvent(t, collector, handler, agents.Event{Type: "tool_args_delta", Data: map[string]interface{}{
-		"agent_kind": agents.AgentKindIDE,
+	next := mustForwardSSEEvent(t, collector, handler, agentrun.Event{Type: "tool_args_delta", Data: map[string]interface{}{
+		"agent_kind": agentrun.AgentKindIDE,
 		"id":         "call-1",
 		"name":       "edit",
 		"delta":      `{"path":"chapters/ch02.md","new_string":"第一行`,

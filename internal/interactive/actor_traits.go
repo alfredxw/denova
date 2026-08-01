@@ -1,6 +1,7 @@
 package interactive
 
 import (
+	interactivestate "denova/internal/interactive/state"
 	"encoding/json"
 	"fmt"
 	mathrand "math/rand"
@@ -289,7 +290,7 @@ func actorTraitPoolByID(system StoryDirectorActorStateSystem, id string) (ActorT
 	return ActorTraitPool{}, false
 }
 
-func BuildActorStateInitialChanges(system StoryDirectorActorStateSystem, rolls []InitialActorTraitRoll) ([]StateOp, []ActorStateOp, error) {
+func BuildActorStateInitialChanges(system StoryDirectorActorStateSystem, rolls []InitialActorTraitRoll) ([]interactivestate.Op, []ActorStateOp, error) {
 	system = normalizeActorStateSystem(system)
 	if actorStateEmpty(system) {
 		return nil, nil, nil
@@ -309,7 +310,7 @@ func BuildActorStateInitialChanges(system StoryDirectorActorStateSystem, rolls [
 		rollByActor[roll.ActorID] = roll
 	}
 	knownActors := map[string]bool{}
-	ops := make([]StateOp, 0)
+	ops := make([]interactivestate.Op, 0)
 	actorOps := make([]ActorStateOp, 0)
 	for _, actor := range system.InitialActors {
 		knownActors[actor.ID] = true
@@ -334,7 +335,7 @@ func BuildActorStateInitialChanges(system StoryDirectorActorStateSystem, rolls [
 			return nil, nil, err
 		}
 		if len(result.Traits) > 0 {
-			ops = append(ops, StateOp{
+			ops = append(ops, interactivestate.Op{
 				Op:         "set",
 				Path:       actorStateActorPath(actor.ID, "traits"),
 				Value:      result.Traits,
@@ -351,15 +352,15 @@ func BuildActorStateInitialChanges(system StoryDirectorActorStateSystem, rolls [
 	return normalizeStateOps(ops), normalizeActorStateOps(actorOps), nil
 }
 
-func buildNewActorStateOps(template ActorStateTemplate, actorID, name, role, description string, state map[string]any, reason, sourceTurnID string) ([]StateOp, []ActorStateOp, map[string]any, error) {
-	ops := []StateOp{
+func buildNewActorStateOps(template ActorStateTemplate, actorID, name, role, description string, state map[string]any, reason, sourceTurnID string) ([]interactivestate.Op, []ActorStateOp, map[string]any, error) {
+	ops := []interactivestate.Op{
 		{Op: "set", Path: actorStateActorPath(actorID, "id"), Value: actorID, Reason: reason, SourceTurnID: sourceTurnID},
 		{Op: "set", Path: actorStateActorPath(actorID, "name"), Value: trimBytes(firstNonEmptyString(name, actorID), 128), Reason: reason, SourceTurnID: sourceTurnID},
 		{Op: "set", Path: actorStateActorPath(actorID, "template_id"), Value: template.ID, Reason: reason, SourceTurnID: sourceTurnID},
 		{Op: "set", Path: actorStateActorPath(actorID, "role"), Value: trimBytes(firstNonEmptyString(role, template.ID), 128), Reason: reason, SourceTurnID: sourceTurnID},
 	}
 	if strings.TrimSpace(description) != "" {
-		ops = append(ops, StateOp{Op: "set", Path: actorStateActorPath(actorID, "description"), Value: trimBytes(description, maxInteractiveTextBytes), Reason: reason, SourceTurnID: sourceTurnID})
+		ops = append(ops, interactivestate.Op{Op: "set", Path: actorStateActorPath(actorID, "description"), Value: trimBytes(description, maxInteractiveTextBytes), Reason: reason, SourceTurnID: sourceTurnID})
 	}
 	actorOps, normalizedState, err := buildActorStateValueOps(template, actorID, state, reason, sourceTurnID)
 	if err != nil {

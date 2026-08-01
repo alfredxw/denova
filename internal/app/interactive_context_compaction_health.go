@@ -8,6 +8,8 @@ import (
 
 	"denova/config"
 	agents "denova/internal/agents"
+	agentcompaction "denova/internal/agents/context/compaction"
+	agentrun "denova/internal/agents/run"
 	"denova/internal/interactive"
 )
 
@@ -15,13 +17,13 @@ type preparedInteractiveContextCompactionHealth struct {
 	ExpectedRevision     uint64
 	BranchID             string
 	StructureFingerprint string
-	Outcome              agents.ContextCompactionHealthOutcome
+	Outcome              agentcompaction.HealthOutcome
 	FailureCode          string
 }
 
 func (c *interactiveConversation) contextCompactionStructureFingerprint(
 	storyCtx interactive.StoryContext,
-	input agents.ContextCompactionInput,
+	input agentcompaction.Input,
 ) (string, error) {
 	model := config.ResolveAgentModel(c.cfg, config.AgentKindInteractiveStory)
 	structureHash, err := contextStructuralValueHash(struct {
@@ -66,23 +68,23 @@ func (c *interactiveConversation) contextCompactionStructureFingerprint(
 	if strings.TrimSpace(stable) != "" {
 		leading = []*agents.Message{agents.UserMessage(stable)}
 	}
-	return agents.ContextCompactionStructureFingerprint(leading, input.Tools, anchors...), nil
+	return agentcompaction.StructureFingerprint(leading, input.Tools, anchors...), nil
 }
 
 func (c *interactiveConversation) stageInteractiveCompactionHealth(
 	expectedRevision uint64,
 	branchID, structureFingerprint string,
-	outcome agents.ContextCompactionHealthOutcome,
-	result *agents.ContextCompactionResult,
+	outcome agentcompaction.HealthOutcome,
+	result *agentcompaction.Result,
 ) {
 	if c == nil || c.store == nil || result == nil || strings.TrimSpace(result.Phase) != "model_step" {
 		return
 	}
 	failureCode := ""
-	if outcome == agents.ContextCompactionHealthFailure {
+	if outcome == agentcompaction.HealthFailure {
 		failureCode = interactiveCompactionFailureCode(*result)
 		_, previous, ok, _ := c.store.ContextCompactionHealthState(c.storyID, branchID, config.AgentKindInteractiveStory)
-		state := agents.ContextCompactionFailureState{}
+		state := agentcompaction.FailureState{}
 		if ok {
 			state.StructureFingerprint = previous.StructureFingerprint
 			state.ConsecutiveFailures = previous.ConsecutiveFailures
@@ -103,7 +105,7 @@ func (c *interactiveConversation) stageInteractiveCompactionHealth(
 	c.mu.Unlock()
 }
 
-func interactiveCompactionFailureCode(result agents.ContextCompactionResult) string {
+func interactiveCompactionFailureCode(result agentcompaction.Result) string {
 	reason := strings.TrimSpace(result.FallbackReason)
 	if reason == "" {
 		reason = strings.TrimSpace(result.SkippedReason)
@@ -119,8 +121,8 @@ func interactiveCompactionFailureCode(result agents.ContextCompactionResult) str
 
 func (c *interactiveConversation) CommitPostSettlementContextCompactionHealth(
 	ctx context.Context,
-	settledOperationID agents.OperationID,
-	publication agents.ContextCompactionPublication,
+	settledOperationID agentrun.OperationID,
+	publication agentcompaction.Publication,
 ) error {
 	if c == nil || c.store == nil {
 		return nil
@@ -134,8 +136,8 @@ func (c *interactiveConversation) CommitPostSettlementContextCompactionHealth(
 	}
 	outcome := prepared.Outcome
 	failureCode := prepared.FailureCode
-	if outcome == agents.ContextCompactionHealthSuccess && (!publication.Attempted || publication.Err != nil) {
-		outcome = agents.ContextCompactionHealthFailure
+	if outcome == agentcompaction.HealthSuccess && (!publication.Attempted || publication.Err != nil) {
+		outcome = agentcompaction.HealthFailure
 		failureCode = "checkpoint_not_published"
 		if publication.Err != nil {
 			failureCode = "checkpoint_publish_failed"

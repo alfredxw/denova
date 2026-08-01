@@ -12,7 +12,8 @@ import (
 	"github.com/cloudwego/hertz/pkg/app"
 	"github.com/cloudwego/hertz/pkg/protocol/consts"
 
-	"denova/internal/book"
+	"denova/internal/book/character"
+	"denova/internal/book/lore"
 )
 
 // MaxCharacterCardUploadBytes limits tavern character card uploads.
@@ -24,7 +25,7 @@ func (h *Handlers) HandleWorkspacePreviewCharacterCard(ctx context.Context, c *a
 	if !ok {
 		return
 	}
-	preview, err := book.PreviewTavernCharacterCard(filename, data)
+	preview, err := character.PreviewTavernCard(filename, data)
 	if err != nil {
 		writeErrorKey(c, consts.StatusBadRequest, "api.characterCard.parseFailed", "detail", err.Error())
 		return
@@ -75,25 +76,25 @@ func (h *Handlers) HandleWorkspaceImportCharacterCard(ctx context.Context, c *ap
 	}
 	classificationMode := strings.TrimSpace(string(c.FormValue("lore_classification")))
 	if classificationMode == "" {
-		classificationMode = book.LoreClassificationModeSemantic
+		classificationMode = lore.ClassificationModeSemantic
 	}
-	importOptions := book.CharacterCardImportOptions{
+	importOptions := character.ImportOptions{
 		UserCharacterName:  strings.TrimSpace(string(c.FormValue("user_character_name"))),
 		ClassificationMode: classificationMode,
-		ClassifyLore: func(inputs []book.LoreClassificationInput) ([]book.LoreClassificationSuggestion, error) {
+		ClassifyLore: func(inputs []lore.ClassificationInput) ([]lore.ClassificationSuggestion, error) {
 			return h.app.ClassifyLoreItems(ctx, inputs)
 		},
 	}
 	slog.InfoContext(ctx, fmt.Sprintf("[api] 导入酒馆角色卡 filename=%q size=%d workspace=%q target_mode=%q lore_classification=%q", filename, len(data), h.app.Workspace(), targetMode, classificationMode))
 
-	var result book.CharacterCardImportResult
+	var result character.ImportResult
 	var err error
 	switch targetMode {
 	case "current":
 		if !h.requireWorkspace(c) {
 			return
 		}
-		result, err = h.app.BookService().ImportTavernCharacterCard(filename, data, importOptions)
+		result, err = character.NewService(h.app.BookService().Workspace()).ImportTavernCard(filename, data, importOptions)
 	case "new_book":
 		result, err = h.importCharacterCardToNewBook(ctx, filename, data, strings.TrimSpace(string(c.FormValue("book_title"))), importOptions)
 	default:
@@ -114,24 +115,24 @@ func (h *Handlers) HandleWorkspaceImportCharacterCard(ctx context.Context, c *ap
 	writeJSON(c, consts.StatusOK, result)
 }
 
-func (h *Handlers) importCharacterCardToNewBook(ctx context.Context, filename string, data []byte, title string, options book.CharacterCardImportOptions) (book.CharacterCardImportResult, error) {
-	preview, err := book.PreviewTavernCharacterCard(filename, data)
+func (h *Handlers) importCharacterCardToNewBook(ctx context.Context, filename string, data []byte, title string, options character.ImportOptions) (character.ImportResult, error) {
+	preview, err := character.PreviewTavernCard(filename, data)
 	if err != nil {
-		return book.CharacterCardImportResult{}, err
+		return character.ImportResult{}, err
 	}
 	if title == "" {
 		title = preview.Name
 	}
 	layered, err := h.app.Settings()
 	if err != nil {
-		return book.CharacterCardImportResult{}, err
+		return character.ImportResult{}, err
 	}
 	if layered.Paths.DenovaDir == "" {
-		return book.CharacterCardImportResult{}, errors.New("Denova 数据目录未配置")
+		return character.ImportResult{}, errors.New("Denova 数据目录未配置")
 	}
 	workspace, meta, err := h.app.CreateBook(ctx, layered.Paths.DenovaDir, title, "", "")
 	if err != nil {
-		return book.CharacterCardImportResult{}, err
+		return character.ImportResult{}, err
 	}
 	cleanup := func() {
 		if _, removeErr := h.app.RemoveBook(workspace); removeErr != nil {
@@ -141,10 +142,10 @@ func (h *Handlers) importCharacterCardToNewBook(ctx context.Context, filename st
 			slog.ErrorContext(ctx, fmt.Sprintf("[api] 清理导入失败的新书目录失败 workspace=%q err=%v", workspace, removeErr))
 		}
 	}
-	result, err := h.app.BookService().ImportTavernCharacterCard(filename, data, options)
+	result, err := character.NewService(workspace).ImportTavernCard(filename, data, options)
 	if err != nil {
 		cleanup()
-		return book.CharacterCardImportResult{}, err
+		return character.ImportResult{}, err
 	}
 	result.Workspace = workspace
 	result.BookMeta = &meta

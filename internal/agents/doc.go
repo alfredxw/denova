@@ -1,11 +1,9 @@
-// Package agents composes Denova's writing, game, automation, image, and
-// configuration Agents from the reusable public agent module.
+// Package agents is Denova's Agent composition boundary. It wires product
+// builders while exposing the stable message facade used by the app layer.
 //
-// This package owns product prompts, tool policy, Conversation adapters,
-// context compaction, display projection, and domain-commit coordination.
-// Provider-neutral loop, runtime, context, session, and standard-tool
-// contracts belong to github.com/alfredxw/denova/agent and its subpackages.
-// Product-local subpackages are kept only where they form a real dependency
-// seam; closely coupled orchestration stays here instead of being split into
-// forwarding packages.
+// Chat execution, durable coordination, one-shot model tasks, context,
+// conversations, prompts, tool policy, and interactive protocols live in
+// focused subpackages. Those subpackages never import this root package,
+// keeping dependencies directed from product composition toward reusable
+// implementation.
 package agents

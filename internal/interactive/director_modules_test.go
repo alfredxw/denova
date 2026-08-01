@@ -466,7 +466,7 @@ func TestDirectorEventCatalogUsesOnlyExplicitConfiguredEventCards(t *testing.T) 
 		Name:          "目录顺序",
 		ModuleRefs:    StoryDirectorModuleRefs{EventPackagesDisabled: false},
 		Strategy:      StoryDirectorStrategy{Enabled: true},
-		EventPackages: []TellerEventPackage{tellerEventPackageFromModule(module)},
+		EventPackages: []EventPackage{tellerEventPackageFromModule(module)},
 	})
 
 	catalog := DirectorEventCatalogFromStoryDirector(director)
@@ -495,7 +495,7 @@ func TestStoryDirectorResolvesLiveModulesAndFallsBackToSnapshot(t *testing.T) {
 	eventModule, err := eventLibrary.Create(EventPackageModule{
 		ID:   "storm-events",
 		Name: "风暴事件包",
-		Events: []TellerEventCard{{
+		Events: []EventCard{{
 			ID:                  "storm",
 			TypeName:            "风暴",
 			Enabled:             true,
@@ -625,11 +625,11 @@ func TestStoryDirectorDisabledModulesStayDetached(t *testing.T) {
 		},
 		Strategy: StoryDirectorStrategy{Enabled: true},
 		ResolvedSnapshot: StoryDirectorResolvedSnapshot{
-			EventPackages: []TellerEventPackage{{
+			EventPackages: []EventPackage{{
 				ID:      "snapshot-pack",
 				Name:    "旧快照包",
 				Enabled: true,
-				Events: []TellerEventCard{{
+				Events: []EventCard{{
 					ID:       "snapshot-event",
 					TypeName: "旧快照事件",
 					Enabled:  true,

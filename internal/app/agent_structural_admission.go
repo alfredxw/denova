@@ -2,11 +2,13 @@ package app
 
 import (
 	"context"
+	agentharness "denova/internal/agents/harness"
+	apptask "denova/internal/app/task"
 	"errors"
 	"fmt"
 	"strings"
 
-	agents "denova/internal/agents"
+	agentrun "denova/internal/agents/run"
 	"denova/internal/agents/session"
 	"denova/internal/interactive"
 )
@@ -20,9 +22,9 @@ type writingStructuralFence struct {
 	workspaceGeneration uint64
 	store               *session.Store
 	selected            *session.Session
-	chat                *agents.ChatService
+	chat                *agentharness.Service
 	sessionID           string
-	task                *Task
+	task                *apptask.Task
 }
 
 func (s *ChatAppService) drainWritingBinding(ctx context.Context, sessionID string) (writingStructuralFence, error) {
@@ -64,15 +66,15 @@ func (s *ChatAppService) drainWritingBinding(ctx context.Context, sessionID stri
 	if err := s.retryPendingWritingRecoveryRefresh(ctx, fence.workspace, fence.selected); err != nil {
 		return writingStructuralFence{}, err
 	}
-	if err := closeAgentBindings(fence.chat, func(chat *agents.ChatService) error {
-		return chat.CloseSessionBindings(ctx, agents.AgentKindIDE, fence.workspace, sessionID)
+	if err := closeAgentBindings(fence.chat, func(chat *agentharness.Service) error {
+		return chat.CloseSessionBindings(ctx, agentrun.AgentKindIDE, fence.workspace, sessionID)
 	}); err != nil {
 		return writingStructuralFence{}, err
 	}
 	return fence, nil
 }
 
-func writingTaskForSessionLocked(a *App, workspace, sessionID string) *Task {
+func writingTaskForSessionLocked(a *App, workspace, sessionID string) *apptask.Task {
 	if a == nil || strings.TrimSpace(sessionID) == "" {
 		return nil
 	}
@@ -108,11 +110,11 @@ type interactiveStructuralFence struct {
 	workspace           string
 	workspaceGeneration uint64
 	store               *interactive.Store
-	chat                *agents.ChatService
+	chat                *agentharness.Service
 	directorTasks       *workspaceDirectorTaskGroup
 	storyID             string
 	branchID            string
-	task                *Task
+	task                *apptask.Task
 }
 
 func (s *InteractiveAppService) drainInteractiveBinding(ctx context.Context, storyID, branchID string) (interactiveStructuralFence, error) {
@@ -148,7 +150,7 @@ func (s *InteractiveAppService) drainInteractiveBinding(ctx context.Context, sto
 	if err := abortAndWaitTask(ctx, fence.task); err != nil {
 		return interactiveStructuralFence{}, err
 	}
-	closeStoryBindings := func(chat *agents.ChatService) error {
+	closeStoryBindings := func(chat *agentharness.Service) error {
 		return chat.CloseStoryBindings(ctx, fence.workspace, storyID, branchID)
 	}
 	if err := closeAgentBindings(fence.chat, closeStoryBindings); err != nil {
@@ -166,7 +168,7 @@ func (s *InteractiveAppService) drainInteractiveBinding(ctx context.Context, sto
 	return fence, nil
 }
 
-func interactiveTaskForScopeLocked(a *App, workspace, storyID, branchID string) *Task {
+func interactiveTaskForScopeLocked(a *App, workspace, storyID, branchID string) *apptask.Task {
 	if a == nil || a.activeInteractiveRun == nil || a.activeInteractiveRun.task == nil || a.activeInteractiveRun.task.Finished() {
 		return nil
 	}
@@ -214,7 +216,7 @@ func (f interactiveStructuralFence) validateLocked(a *App) error {
 	return nil
 }
 
-func abortAndWaitTask(ctx context.Context, task *Task) error {
+func abortAndWaitTask(ctx context.Context, task *apptask.Task) error {
 	if task == nil {
 		return nil
 	}
@@ -227,12 +229,12 @@ func abortAndWaitTask(ctx context.Context, task *Task) error {
 	}
 }
 
-func closeAgentBindings(chat *agents.ChatService, close func(*agents.ChatService) error) error {
+func closeAgentBindings(chat *agentharness.Service, close func(*agentharness.Service) error) error {
 	if chat == nil {
 		return nil
 	}
 	err := close(chat)
-	if err == nil || errors.Is(err, agents.ErrRuntimeProjectionUnavailable) {
+	if err == nil || errors.Is(err, agentharness.ErrRuntimeProjectionUnavailable) {
 		return nil
 	}
 	return fmt.Errorf("close Agent runtime binding: %w", err)

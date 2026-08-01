@@ -3,68 +3,74 @@ package app
 import (
 	"context"
 	"crypto/sha256"
+	agentchat "denova/internal/agents/chat"
+	agentcontext "denova/internal/agents/context"
+	agentstructural "denova/internal/agents/context/structural"
+	agentconversation "denova/internal/agents/conversation"
+	agentrun "denova/internal/agents/run"
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"strings"
 
 	"denova/config"
-	agents "denova/internal/agents"
+	agentcompaction "denova/internal/agents/context/compaction"
+	"denova/internal/agents/prompts"
 	"denova/internal/agents/session"
 	"denova/internal/interactive"
 )
 
 type contextStructuralOperationFuncs struct {
-	prepare   func(context.Context, agents.ContextStructuralIdentity, func(agents.Event)) (agents.ContextStructuralIntent, error)
-	commit    func(context.Context, agents.ContextStructuralIdentity, agents.ContextStructuralIntent) (agents.ContextStructuralReceipt, error)
-	reconcile func(context.Context) (agents.ContextStructuralResult, agents.ContextStructuralReceipt, bool, error)
+	prepare   func(context.Context, agentstructural.Identity, func(agentrun.Event)) (agentstructural.Intent, error)
+	commit    func(context.Context, agentstructural.Identity, agentstructural.Intent) (agentstructural.Receipt, error)
+	reconcile func(context.Context) (agentstructural.Result, agentstructural.Receipt, bool, error)
 }
 
-func (o contextStructuralOperationFuncs) Prepare(ctx context.Context, identity agents.ContextStructuralIdentity, emit func(agents.Event)) (agents.ContextStructuralIntent, error) {
+func (o contextStructuralOperationFuncs) Prepare(ctx context.Context, identity agentstructural.Identity, emit func(agentrun.Event)) (agentstructural.Intent, error) {
 	return o.prepare(ctx, identity, emit)
 }
 
-func (o contextStructuralOperationFuncs) Commit(ctx context.Context, identity agents.ContextStructuralIdentity, intent agents.ContextStructuralIntent) (agents.ContextStructuralReceipt, error) {
+func (o contextStructuralOperationFuncs) Commit(ctx context.Context, identity agentstructural.Identity, intent agentstructural.Intent) (agentstructural.Receipt, error) {
 	return o.commit(ctx, identity, intent)
 }
 
-func (o contextStructuralOperationFuncs) Reconcile(ctx context.Context) (agents.ContextStructuralResult, agents.ContextStructuralReceipt, bool, error) {
+func (o contextStructuralOperationFuncs) Reconcile(ctx context.Context) (agentstructural.Result, agentstructural.Receipt, bool, error) {
 	return o.reconcile(ctx)
 }
 
-func (s *ChatAppService) executeWritingContextCompaction(ctx context.Context, requestedCommandID string) (agents.ContextCompactionResult, error) {
+func (s *ChatAppService) executeWritingContextCompaction(ctx context.Context, requestedCommandID string) (agentcompaction.Result, error) {
 	if ctx == nil {
 		ctx = context.Background()
 	}
 	s.admission.Lock()
 	defer s.admission.Unlock()
 	if s.hasActiveWritingStructuralRecovery() {
-		return agents.ContextCompactionResult{}, ErrAgentOperationActive
+		return agentcompaction.Result{}, ErrAgentOperationActive
 	}
-	if recovered, resumed, err := s.resumeWritingContextStructuralOperation(ctx, agents.ContextStructuralCompact); err != nil {
+	if recovered, resumed, err := s.resumeWritingContextStructuralOperation(ctx, agentstructural.Compact); err != nil {
 		return recovered.Compaction, err
 	} else if resumed {
 		return recovered.Compaction, nil
 	}
 	fence, err := s.drainWritingBinding(ctx, "")
 	if err != nil {
-		return agents.ContextCompactionResult{}, err
+		return agentcompaction.Result{}, err
 	}
-	runtime, _, err := s.prepareIDEChatRuntime(ctx, agents.ChatRequest{})
+	runtime, _, err := s.prepareIDEChatRuntime(ctx, agentchat.ChatRequest{})
 	if err != nil {
-		return agents.ContextCompactionResult{}, err
+		return agentcompaction.Result{}, err
 	}
 	a := s.app
 	a.mu.RLock()
 	if err := fence.validateLocked(a, true); err != nil || runtime.sess != fence.selected {
 		a.mu.RUnlock()
 		if err != nil {
-			return agents.ContextCompactionResult{}, err
+			return agentcompaction.Result{}, err
 		}
-		return agents.ContextCompactionResult{}, ErrAgentContextChanged
+		return agentcompaction.Result{}, ErrAgentContextChanged
 	}
-	runtimeContexts := agents.IDEWorkspaceRuntimeContextsForRequest(runtime.state, agents.ChatRequest{})
-	conversation := agents.NewSessionConversationForAgentWithRuntimeContexts(
+	runtimeContexts := prompts.IDEWorkspaceRuntimeContextsForContext(runtime.state, prompts.IDEContextRef{})
+	conversation := agentconversation.NewSessionConversationForAgentWithRuntimeContexts(
 		runtime.sess, &runtime.cfg, config.AgentKindIDE,
 		runtimeContexts.StableTitle, runtimeContexts.Stable,
 		runtimeContexts.DynamicTitle, runtimeContexts.Dynamic,
@@ -72,14 +78,14 @@ func (s *ChatAppService) executeWritingContextCompaction(ctx context.Context, re
 	projection, err := conversation.SnapshotContextCompaction(ctx, true)
 	if err != nil {
 		a.mu.RUnlock()
-		return agents.ContextCompactionResult{}, fmt.Errorf("snapshot writing compaction source: %w", err)
+		return agentcompaction.Result{}, fmt.Errorf("snapshot writing compaction source: %w", err)
 	}
-	assembled, err := conversation.AssembleModelContext(ctx, "", agents.ModelContextInput{
+	assembled, err := conversation.AssembleModelContext(ctx, "", agentcontext.ModelContextInput{
 		UserMessage: "", Budget: conversation.ModelContextBudget(),
 	})
 	if err != nil {
 		a.mu.RUnlock()
-		return agents.ContextCompactionResult{}, fmt.Errorf("assemble writing compaction context: %w", err)
+		return agentcompaction.Result{}, fmt.Errorf("assemble writing compaction context: %w", err)
 	}
 	messages, cursor := assembled.Messages, projection.Cursor
 	a.mu.RUnlock()
@@ -91,7 +97,7 @@ func (s *ChatAppService) executeWritingContextCompaction(ctx context.Context, re
 		contextStructuralCommandID("writing-compact", runtime.workspace, runtime.sess.ID, fmt.Sprint(cursor.Revision)),
 	)
 	if err != nil {
-		return agents.ContextCompactionResult{}, err
+		return agentcompaction.Result{}, err
 	}
 	recordID := contextStructuralRecordID("cc", commandID)
 	if committed, found := runtime.sess.ContextCompactionByID(recordID); found {
@@ -102,18 +108,18 @@ func (s *ChatAppService) executeWritingContextCompaction(ctx context.Context, re
 		ID: contextStructuralRecordID("cch-manual", commandID), AgentKind: config.AgentKindIDE,
 		StructureFingerprint: manualHealthFingerprint, Outcome: "manual_retry",
 	}); err != nil {
-		return agents.ContextCompactionResult{}, fmt.Errorf("reset writing compaction health: %w", err)
+		return agentcompaction.Result{}, fmt.Errorf("reset writing compaction health: %w", err)
 	}
 	if len(source) == 0 {
-		return agents.ContextCompactionResult{Phase: "manual", SkippedReason: "empty_source"}, fmt.Errorf("没有可压缩的上下文")
+		return agentcompaction.Result{Phase: "manual", SkippedReason: "empty_source"}, fmt.Errorf("没有可压缩的上下文")
 	}
 	runner, err := buildAgentRunner(ctx, &runtime.cfg, runtime.state, runtime.ideTeller)
 	if err != nil {
-		return agents.ContextCompactionResult{}, fmt.Errorf("assemble writing compaction request: %w", err)
+		return agentcompaction.Result{}, fmt.Errorf("assemble writing compaction request: %w", err)
 	}
 	primarySnapshot, err := runner.PrepareModelRequest(ctx, messages)
 	if err != nil {
-		return agents.ContextCompactionResult{}, fmt.Errorf("capture writing compaction request: %w", err)
+		return agentcompaction.Result{}, fmt.Errorf("capture writing compaction request: %w", err)
 	}
 	tools := primarySnapshot.ResolvedOptions().Tools
 	// Manual Writing compaction uses the same SessionConversation path as
@@ -121,7 +127,7 @@ func (s *ChatAppService) executeWritingContextCompaction(ctx context.Context, re
 	// normalizer-produced provider projection and validates/re-measures the
 	// compacted candidate before publication. Calling the lower-level helper
 	// here would compare pre-normalizer history with the final request snapshot.
-	_, prepared, err := conversation.CompactContextIfNeeded(ctx, agents.ContextCompactionInput{
+	_, prepared, err := conversation.CompactContextIfNeeded(ctx, agentcompaction.Input{
 		Messages: messages, Tools: tools, Phase: "manual", Force: true,
 		ExistingCheckpoint: existingCheckpoint, KeepLatestUser: true, PrimaryRequestSnapshot: primarySnapshot,
 	})
@@ -132,50 +138,50 @@ func (s *ChatAppService) executeWritingContextCompaction(ctx context.Context, re
 		return prepared, fmt.Errorf("没有可压缩的上下文")
 	}
 	record := sessionCompactionRecord(recordID, config.AgentKindIDE, sourceStart, sourceEnd, prepared)
-	ref := agents.ContextCompactionRef{
+	ref := agentrun.ContextCompactionRef{
 		Source: "session.effective_messages", Purpose: "persist a bounded model-history checkpoint",
 		Resource: runtime.sess.ID, ExpectedRevision: fmt.Sprintf("session-context:%d", cursor.Revision), Force: true,
 	}
 	binding := writingContextStructuralBinding(runtime.workspace, runtime.sess.ID)
 	plan, err := newContextStructuralRestorePlan(
-		agents.ContextStructuralDomainSession, agents.ContextStructuralCompact, binding, ref, recordID,
-		agents.ContextStructuralResult{Compaction: prepared}, record,
+		agentstructural.DomainSession, agentstructural.Compact, binding, ref, recordID,
+		agentstructural.Result{Compaction: prepared}, record,
 	)
 	if err != nil {
 		return prepared, err
 	}
 	operation := fixedContextStructuralOperation(plan,
-		func(commitCtx context.Context) (agents.ContextStructuralReceipt, error) {
+		func(commitCtx context.Context) (agentstructural.Receipt, error) {
 			a.mu.Lock()
 			defer a.mu.Unlock()
 			if err := fence.validateLocked(a, true); err != nil || a.session != runtime.sess {
 				if err != nil {
-					return agents.ContextStructuralReceipt{}, err
+					return agentstructural.Receipt{}, err
 				}
-				return agents.ContextStructuralReceipt{}, ErrAgentContextChanged
+				return agentstructural.Receipt{}, ErrAgentContextChanged
 			}
 			committed, err := runtime.sess.AppendContextCompactionAtContext(commitCtx, cursor, record)
 			if err != nil {
-				return agents.ContextStructuralReceipt{}, err
+				return agentstructural.Receipt{}, err
 			}
 			if !sameSessionContextCompactionMutation(committed, record) {
-				return agents.ContextStructuralReceipt{}, fmt.Errorf("canonical writing compaction differs from frozen mutation")
+				return agentstructural.Receipt{}, fmt.Errorf("canonical writing compaction differs from frozen mutation")
 			}
-			return agents.ContextStructuralReceipt{Revision: fmt.Sprintf("session-context:%d", committed.ContextRevision)}, nil
+			return agentstructural.Receipt{Revision: fmt.Sprintf("session-context:%d", committed.ContextRevision)}, nil
 		},
-		func(context.Context) (agents.ContextStructuralReceipt, bool, error) {
+		func(context.Context) (agentstructural.Receipt, bool, error) {
 			committed, found := runtime.sess.ContextCompactionByID(recordID)
 			if !found {
-				return agents.ContextStructuralReceipt{}, false, nil
+				return agentstructural.Receipt{}, false, nil
 			}
 			if !sameSessionContextCompactionMutation(committed, record) {
-				return agents.ContextStructuralReceipt{}, false, fmt.Errorf("canonical writing compaction conflicts with frozen mutation")
+				return agentstructural.Receipt{}, false, fmt.Errorf("canonical writing compaction conflicts with frozen mutation")
 			}
-			return agents.ContextStructuralReceipt{Revision: fmt.Sprintf("session-context:%d", committed.ContextRevision)}, true, nil
+			return agentstructural.Receipt{Revision: fmt.Sprintf("session-context:%d", committed.ContextRevision)}, true, nil
 		})
-	result, err := runtime.chatService.ExecuteContextStructuralOperation(ctx, agents.ContextStructuralSpec{
-		CommandID: commandID, Action: agents.ContextStructuralCompact,
-		Ref: ref, Options: agents.RunOptions{AgentKind: agents.AgentKindIDE, StateRoot: runtime.projectState, Workspace: runtime.workspace, SessionID: runtime.sess.ID, Mode: "ide"},
+	result, err := runtime.chatService.ExecuteStructuralOperation(ctx, agentstructural.Spec{
+		CommandID: commandID, Action: agentstructural.Compact,
+		Ref: ref, Options: agentrun.Options{AgentKind: agentrun.AgentKindIDE, StateRoot: runtime.projectState, Workspace: runtime.workspace, SessionID: runtime.sess.ID, Mode: "ide"},
 		Operation: operation, RestorePlan: &plan,
 	})
 	if err != nil {
@@ -196,7 +202,7 @@ func (s *ChatAppService) executeWritingContextCompactionRemoval(ctx context.Cont
 	if s.hasActiveWritingStructuralRecovery() {
 		return false, ErrAgentOperationActive
 	}
-	if recovered, resumed, err := s.resumeWritingContextStructuralOperation(ctx, agents.ContextStructuralRemove); err != nil {
+	if recovered, resumed, err := s.resumeWritingContextStructuralOperation(ctx, agentstructural.Remove); err != nil {
 		return recovered.Removed, err
 	} else if resumed {
 		return recovered.Removed, nil
@@ -241,87 +247,87 @@ func (s *ChatAppService) executeWritingContextCompactionRemoval(ctx context.Cont
 		ID: recordID, AgentKind: config.AgentKindIDE, CompactionID: compaction.ID,
 		SourceStartIndex: compaction.SourceStartIndex, SourceEndIndex: compaction.SourceEndIndex, Reason: "user_removed",
 	}
-	ref := agents.ContextCompactionRef{
+	ref := agentrun.ContextCompactionRef{
 		Source: "session.context_compaction", Purpose: "restore raw canonical session history",
 		Resource: sess.ID, ExpectedRevision: fmt.Sprintf("session-context:%d", cursor.Revision), CompactionID: compaction.ID,
 	}
 	binding := writingContextStructuralBinding(fence.workspace, sess.ID)
 	plan, err := newContextStructuralRestorePlan(
-		agents.ContextStructuralDomainSession, agents.ContextStructuralRemove, binding, ref, recordID,
-		agents.ContextStructuralResult{Removed: true}, record,
+		agentstructural.DomainSession, agentstructural.Remove, binding, ref, recordID,
+		agentstructural.Result{Removed: true}, record,
 	)
 	if err != nil {
 		return false, err
 	}
 	operation := fixedContextStructuralOperation(plan,
-		func(commitCtx context.Context) (agents.ContextStructuralReceipt, error) {
+		func(commitCtx context.Context) (agentstructural.Receipt, error) {
 			a := s.app
 			a.mu.Lock()
 			defer a.mu.Unlock()
 			if err := fence.validateLocked(a, true); err != nil || a.session != sess {
 				if err != nil {
-					return agents.ContextStructuralReceipt{}, err
+					return agentstructural.Receipt{}, err
 				}
-				return agents.ContextStructuralReceipt{}, ErrAgentContextChanged
+				return agentstructural.Receipt{}, ErrAgentContextChanged
 			}
 			committed, removed, err := sess.CommitContextCompactionRemovalAtContext(commitCtx, cursor, record)
 			if err != nil {
-				return agents.ContextStructuralReceipt{}, err
+				return agentstructural.Receipt{}, err
 			}
 			if !removed {
-				return agents.ContextStructuralReceipt{}, fmt.Errorf("context compaction disappeared before removal commit")
+				return agentstructural.Receipt{}, fmt.Errorf("context compaction disappeared before removal commit")
 			}
 			if !sameSessionContextCompactionRemovalMutation(committed, record) {
-				return agents.ContextStructuralReceipt{}, fmt.Errorf("canonical writing compaction removal differs from frozen mutation")
+				return agentstructural.Receipt{}, fmt.Errorf("canonical writing compaction removal differs from frozen mutation")
 			}
-			return agents.ContextStructuralReceipt{Revision: fmt.Sprintf("session-context:%d", committed.ContextRevision)}, nil
+			return agentstructural.Receipt{Revision: fmt.Sprintf("session-context:%d", committed.ContextRevision)}, nil
 		},
-		func(context.Context) (agents.ContextStructuralReceipt, bool, error) {
+		func(context.Context) (agentstructural.Receipt, bool, error) {
 			committed, found := sess.ContextCompactionRemovalByID(recordID)
 			if !found {
-				return agents.ContextStructuralReceipt{}, false, nil
+				return agentstructural.Receipt{}, false, nil
 			}
 			if !sameSessionContextCompactionRemovalMutation(committed, record) {
-				return agents.ContextStructuralReceipt{}, false, fmt.Errorf("canonical writing compaction removal conflicts with frozen mutation")
+				return agentstructural.Receipt{}, false, fmt.Errorf("canonical writing compaction removal conflicts with frozen mutation")
 			}
-			return agents.ContextStructuralReceipt{Revision: fmt.Sprintf("session-context:%d", committed.ContextRevision)}, true, nil
+			return agentstructural.Receipt{Revision: fmt.Sprintf("session-context:%d", committed.ContextRevision)}, true, nil
 		})
-	result, err := fence.chat.ExecuteContextStructuralOperation(ctx, agents.ContextStructuralSpec{
-		CommandID: commandID, Action: agents.ContextStructuralRemove,
-		Ref: ref, Options: agents.RunOptions{AgentKind: agents.AgentKindIDE, StateRoot: fence.stateRoot, Workspace: fence.workspace, SessionID: sess.ID, Mode: "ide"},
+	result, err := fence.chat.ExecuteStructuralOperation(ctx, agentstructural.Spec{
+		CommandID: commandID, Action: agentstructural.Remove,
+		Ref: ref, Options: agentrun.Options{AgentKind: agentrun.AgentKindIDE, StateRoot: fence.stateRoot, Workspace: fence.workspace, SessionID: sess.ID, Mode: "ide"},
 		Operation: operation, RestorePlan: &plan,
 	})
 	return result.Removed, err
 }
 
-func sessionCompactionRecord(id, agentKind string, sourceStart, sourceEnd int, result agents.ContextCompactionResult) session.ContextCompaction {
+func sessionCompactionRecord(id, agentKind string, sourceStart, sourceEnd int, result agentcompaction.Result) session.ContextCompaction {
 	if strings.TrimSpace(result.TriggerReason) == "" {
 		result.TriggerReason = "manual"
 	}
 	return session.ContextCompaction{
-		ID: id, CompactionCheckpoint: agents.NewContextCompactionCheckpoint(agentKind, result),
+		ID: id, CompactionCheckpoint: agentcompaction.NewCheckpoint(agentKind, result),
 		SourceStartIndex: sourceStart, SourceEndIndex: sourceEnd, SourceMessageCount: result.SourceMessageCount,
 	}
 }
 
-func interactiveCompactionEvent(id, expectedParent string, sourceTurns int, result agents.ContextCompactionResult) interactive.ContextCompactionEvent {
+func interactiveCompactionEvent(id, expectedParent string, sourceTurns int, result agentcompaction.Result) interactive.ContextCompactionEvent {
 	if strings.TrimSpace(result.TriggerReason) == "" {
 		result.TriggerReason = "manual"
 	}
 	return interactive.ContextCompactionEvent{
-		ID: id, CompactionCheckpoint: agents.NewContextCompactionCheckpoint(config.AgentKindInteractiveStory, result),
+		ID: id, CompactionCheckpoint: agentcompaction.NewCheckpoint(config.AgentKindInteractiveStory, result),
 		SourceTurnCount: sourceTurns, ExpectedParentID: &expectedParent,
 	}
 }
 
-func contextCompactionResultFromSession(record session.ContextCompaction) agents.ContextCompactionResult {
-	result := agents.ContextCompactionResultFromCheckpoint(record.CompactionCheckpoint)
+func contextCompactionResultFromSession(record session.ContextCompaction) agentcompaction.Result {
+	result := agentcompaction.ResultFromCheckpoint(record.CompactionCheckpoint)
 	result.SourceMessageCount = record.SourceMessageCount
 	return result
 }
 
-func contextCompactionResultFromInteractive(event interactive.ContextCompactionEvent) agents.ContextCompactionResult {
-	return agents.ContextCompactionResultFromCheckpoint(event.CompactionCheckpoint)
+func contextCompactionResultFromInteractive(event interactive.ContextCompactionEvent) agentcompaction.Result {
+	return agentcompaction.ResultFromCheckpoint(event.CompactionCheckpoint)
 }
 
 func contextStructuralCommandID(prefix string, parts ...string) string {
@@ -344,7 +350,7 @@ func resolveContextStructuralCommandID(requested, fallback string) (string, erro
 	if commandID == "" {
 		commandID = strings.TrimSpace(fallback)
 	}
-	if err := agents.ValidateCommandID(commandID); err != nil {
+	if err := agentrun.ValidateCommandID(commandID); err != nil {
 		return "", err
 	}
 	return commandID, nil

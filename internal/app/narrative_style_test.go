@@ -4,26 +4,26 @@ import (
 	"strings"
 	"testing"
 
-	"denova/internal/interactive"
-	"denova/internal/narrativestyle"
-	"denova/internal/prompts"
+	"denova/internal/agents/prompts"
+	"denova/internal/interactive/teller"
+	"denova/internal/style"
 )
 
 func TestNarrativeStyleRuntimeHonorsModeAndFallsBackToDefault(t *testing.T) {
 	novaDir := t.TempDir()
-	library := interactive.NewTellerLibrary(novaDir)
+	library := teller.NewLibrary(novaDir)
 	create := func(id, mode string) {
 		t.Helper()
-		_, err := library.Create(interactive.Teller{
+		_, err := library.Create(teller.Definition{
 			ID: id, Name: id, Modes: []string{mode},
-			Slots: []interactive.TellerPromptSlot{{ID: "system", Target: "system", Enabled: true, Content: id}},
+			Slots: []teller.PromptSlot{{ID: "system", Target: "system", Enabled: true, Content: id}},
 		})
 		if err != nil {
 			t.Fatalf("create %s: %v", id, err)
 		}
 	}
-	create("writing-only", narrativestyle.ModeWriting)
-	create("game-only", narrativestyle.ModeGame)
+	create("writing-only", style.ModeWriting)
+	create("game-only", style.ModeGame)
 
 	if got := loadWritingTeller(novaDir, "writing-only"); got.ID != "writing-only" {
 		t.Fatalf("writing runtime loaded %q", got.ID)
@@ -31,20 +31,20 @@ func TestNarrativeStyleRuntimeHonorsModeAndFallsBackToDefault(t *testing.T) {
 	if got := loadGameTeller(novaDir, "game-only"); got.ID != "game-only" {
 		t.Fatalf("game runtime loaded %q", got.ID)
 	}
-	for _, got := range []interactive.Teller{
+	for _, got := range []teller.Definition{
 		loadGameTeller(novaDir, "writing-only"),
 		loadWritingTeller(novaDir, "game-only"),
 		loadWritingTeller(novaDir, "missing"),
 	} {
-		if got.ID != narrativestyle.DefaultID {
-			t.Fatalf("incompatible or missing style should fall back to %q, got %q", narrativestyle.DefaultID, got.ID)
+		if got.ID != style.DefaultID {
+			t.Fatalf("incompatible or missing style should fall back to %q, got %q", style.DefaultID, got.ID)
 		}
 	}
 }
 
 func TestBuiltInNarrativeStylePromptsReachWritingAndGameAssemblies(t *testing.T) {
 	novaDir := t.TempDir()
-	library := interactive.NewTellerLibrary(novaDir)
+	library := teller.NewLibrary(novaDir)
 	for _, id := range []string{"rhythm", "classic", "screenwriter", "grimdark", "direct-erotica"} {
 		t.Run(id, func(t *testing.T) {
 			teller, err := library.Get(id)

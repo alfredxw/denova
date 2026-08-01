@@ -1,0 +1,713 @@
+package prompts
+
+import (
+	"crypto/sha256"
+	"encoding/hex"
+	"fmt"
+	"path/filepath"
+	"strconv"
+	"strings"
+	"unicode/utf8"
+
+	"denova/config"
+	"denova/internal/book"
+)
+
+func buildIDEBuiltinInstruction(cfg *config.Config, state *book.State, teller IDEStoryTeller) (string, string, string, string) {
+	if cfg == nil {
+		cfg = &config.Config{}
+	}
+	creator := ""
+	stateContext := ""
+	workspace := ""
+	workspace = cfg.Workspace
+	if state != nil {
+		creator = state.ReadCreatorPrompt()
+		stateContext = state.CompactContext()
+		if workspace == "" {
+			workspace = state.Workspace()
+		}
+	}
+	builtIn := BuildSystemInstruction(SystemInstructionInput{
+		CreatorPrompt:          creator,
+		Workspace:              workspace,
+		StateContext:           stateContext,
+		StoryTellerID:          teller.ID,
+		StoryTellerName:        teller.Name,
+		StoryTellerDescription: teller.Description,
+		StoryTellerPrompt:      teller.Prompt,
+		StyleRules:             teller.StyleRules,
+		ChapterFilenameFormat:  cfg.ChapterFilenameFormat,
+		VolumeDirFormat:        cfg.VolumeDirFormat,
+		ChapterGroupMin:        cfg.ChapterGroupMin,
+		ChapterGroupMax:        cfg.ChapterGroupMax,
+	})
+	if imagePresetSystem := imagePresetSystemInstruction(teller); imagePresetSystem != "" {
+		builtIn = strings.TrimSpace(builtIn) + "\n\n" + imagePresetSystem
+	}
+	return builtIn, workspace, creator, stateContext
+}
+
+func imagePresetSystemInstruction(teller IDEStoryTeller) string {
+	prompt := strings.TrimSpace(teller.ImagePresetSystemPrompt)
+	if prompt == "" {
+		return ""
+	}
+	var sb strings.Builder
+	sb.WriteString("## 图像方案系统规则（仅用于图像生成）\n\n")
+	if id := strings.TrimSpace(teller.ImagePresetID); id != "" {
+		sb.WriteString("- id: ")
+		sb.WriteString(id)
+		sb.WriteString("\n")
+	}
+	if name := strings.TrimSpace(teller.ImagePresetName); name != "" {
+		sb.WriteString("- name: ")
+		sb.WriteString(name)
+		sb.WriteString("\n")
+	}
+	sb.WriteString("\n以下规则只在构造 `generate_image` 的图像提示词时生效；普通正文写作、资料库修改和非图像任务不要套用这些视觉约束。\n\n")
+	sb.WriteString(prompt)
+	return strings.TrimSpace(sb.String())
+}
+
+const (
+	ideWorkspaceStableContextTitle  = "稳定作品上下文"
+	ideWorkspaceDynamicContextTitle = "本轮动态作品状态"
+	ideContextMaxOpenFiles          = 20
+	ideContextMaxPathRunes          = 240
+)
+
+// IDEContextRef carries bounded, model-visible IDE focus state for one turn.
+// It contains paths only and never editor contents.
+type IDEContextRef struct {
+	CurrentFile string   `json:"current_file,omitempty"`
+	OpenFiles   []string `json:"open_files,omitempty"`
+}
+
+type IDEWorkspaceRuntimeContexts struct {
+	StableTitle  string
+	Stable       string
+	DynamicTitle string
+	Dynamic      string
+}
+
+func IDEWorkspaceRuntimeContextsForState(state *book.State) IDEWorkspaceRuntimeContexts {
+	contexts := IDEWorkspaceRuntimeContexts{
+		StableTitle:  ideWorkspaceStableContextTitle,
+		DynamicTitle: ideWorkspaceDynamicContextTitle,
+	}
+	if state == nil {
+		return contexts
+	}
+	contexts.Stable = strings.TrimSpace(state.StableContext())
+	contexts.Dynamic = strings.TrimSpace(state.DynamicContext())
+	if contexts.Stable == "" && contexts.Dynamic == "" {
+		contexts.Stable = EmptyIDEStateHint()
+	}
+	return contexts
+}
+
+// IDEWorkspaceRuntimeContextsForContext combines the durable workspace state
+// with the bounded, request-scoped IDE focus paths. Keeping the request DTO out
+// of this package makes prompt composition independent from chat transport.
+func IDEWorkspaceRuntimeContextsForContext(state *book.State, ide IDEContextRef) IDEWorkspaceRuntimeContexts {
+	contexts := IDEWorkspaceRuntimeContextsForState(state)
+	ideContext := IDEContextRuntimeContext(ide)
+	if strings.TrimSpace(ideContext) == "" {
+		return contexts
+	}
+	extra := book.FormatCompactContextParts([]book.CompactContextPart{{
+		ID:          "ide_current_state",
+		Source:      "frontend:ide_context",
+		Title:       "IDE 当前状态",
+		PromptTitle: fmt.Sprintf("IDE 当前状态（前端请求提供，仅路径；最多 %d 个打开文件）", ideContextMaxOpenFiles),
+		Content:     ideContext,
+	}})
+	contexts.Dynamic = strings.TrimSpace(strings.Join(nonEmptyStrings(contexts.Dynamic, extra), "\n\n"))
+	return contexts
+}
+
+func IDEContextRuntimeContext(ide IDEContextRef) string {
+	currentFile := boundedIDEContextPath(ide.CurrentFile)
+	openFiles := boundedIDEContextPaths(ide.OpenFiles, ideContextMaxOpenFiles)
+	if currentFile == "" && len(openFiles) == 0 {
+		return ""
+	}
+	var sb strings.Builder
+	sb.WriteString("来源：前端 IDE 请求状态；仅描述当前打开/聚焦的文件路径，不包含文件正文。\n")
+	if currentFile != "" {
+		sb.WriteString("- 当前聚焦文件：")
+		sb.WriteString(currentFile)
+		sb.WriteString("\n")
+	} else {
+		sb.WriteString("- 当前聚焦文件：无\n")
+	}
+	if len(openFiles) > 0 {
+		sb.WriteString("- 当前打开文件：")
+		sb.WriteString(strings.Join(openFiles, "、"))
+		if len(ide.OpenFiles) > len(openFiles) {
+			sb.WriteString(fmt.Sprintf("（其余 %d 个已省略）", len(ide.OpenFiles)-len(openFiles)))
+		}
+		sb.WriteString("\n")
+	}
+	sb.WriteString("- 使用约束：如需读取正文，必须按路径显式使用工具读取；不要假设这里包含最新文件内容。")
+	return strings.TrimSpace(sb.String())
+}
+
+func boundedIDEContextPaths(paths []string, limit int) []string {
+	if limit <= 0 {
+		return nil
+	}
+	result := make([]string, 0, min(len(paths), limit))
+	seen := make(map[string]bool, len(paths))
+	for _, path := range paths {
+		path = boundedIDEContextPath(path)
+		if path == "" || seen[path] {
+			continue
+		}
+		seen[path] = true
+		result = append(result, path)
+		if len(result) >= limit {
+			break
+		}
+	}
+	return result
+}
+
+func boundedIDEContextPath(path string) string {
+	path = strings.TrimSpace(filepath.ToSlash(path))
+	path = strings.TrimLeft(path, "/")
+	if path == "" || strings.Contains(path, ":") {
+		return ""
+	}
+	for _, part := range strings.Split(path, "/") {
+		if part == ".." {
+			return ""
+		}
+	}
+	runes := []rune(path)
+	if len(runes) <= ideContextMaxPathRunes {
+		return path
+	}
+	return string(runes[:ideContextMaxPathRunes]) + "[已截断]"
+}
+
+func IDEWorkspaceRuntimeContext(state *book.State) string {
+	if state == nil {
+		return ""
+	}
+	contexts := IDEWorkspaceRuntimeContextsForState(state)
+	parts := make([]book.CompactContextPart, 0, 2)
+	if contexts.Stable != "" {
+		parts = append(parts, book.CompactContextPart{PromptTitle: contexts.StableTitle, Content: contexts.Stable})
+	}
+	if contexts.Dynamic != "" {
+		parts = append(parts, book.CompactContextPart{PromptTitle: contexts.DynamicTitle, Content: contexts.Dynamic})
+	}
+	if context := strings.TrimSpace(book.FormatCompactContextParts(parts)); context != "" {
+		return context
+	}
+	return EmptyIDEStateHint()
+}
+
+func BuildInteractiveStoryInstruction(cfg *config.Config, state *book.State, teller InteractiveStorySystemInstructionInput) string {
+	return BuildInteractiveStoryInstructionComposition(cfg, state, teller).Instruction()
+}
+
+func buildInteractiveStoryBuiltinInstruction(cfg *config.Config, state *book.State, teller InteractiveStorySystemInstructionInput) (string, string, string) {
+	workspace := ""
+	replyTargetChars := 0
+	if cfg != nil {
+		workspace = cfg.Workspace
+		replyTargetChars = cfg.InteractiveReplyTargetChars
+	}
+	creator := ""
+	if state != nil {
+		creator = state.ReadCreatorPrompt()
+	}
+	builtIn := BuildInteractiveStorySystemInstruction(InteractiveStorySystemInstructionInput{
+		CreatorPrompt:           creator,
+		Workspace:               workspace,
+		ReplyTargetChars:        replyTargetChars,
+		ChoiceCount:             teller.ChoiceCount,
+		StoryTellerID:           teller.StoryTellerID,
+		StoryTellerName:         teller.StoryTellerName,
+		StoryTellerDescription:  teller.StoryTellerDescription,
+		StoryTellerSystemPrompt: teller.StoryTellerSystemPrompt,
+		StyleRules:              teller.StyleRules,
+	})
+	return builtIn, workspace, creator
+}
+
+func buildImageBuiltinInstruction(cfg *config.Config, state *book.State, systemPrompt string) (string, string, string) {
+	workspace := ""
+	if cfg != nil {
+		workspace = cfg.Workspace
+	}
+	creator := ""
+	if state != nil {
+		creator = state.ReadCreatorPrompt()
+		if workspace == "" {
+			workspace = state.Workspace()
+		}
+	}
+	parts := []string{
+		"你是 Denova 的通用图像 Agent，负责把调用方提供的有界上下文转换成图像生成请求。",
+		"必须先理解本次 purpose、source_context、调用方系统提示和已加载 Skill，再调用 generate_image 工具生成图像。",
+		"只能生成图像和图像元数据，不得修改故事正文、章节正文、资料库、配置或其他 workspace 内容。",
+		"图像提示词应清晰描述主体、场景、构图、光线、视觉风格、情绪和需要避免的文字、水印、logo。",
+		"如果调用方要求加载 Skill，必须先用 skill 工具读取完整 Skill 后再调用 generate_image。",
+	}
+	if strings.TrimSpace(creator) != "" {
+		parts = append(parts, "可参考 CREATOR.md 中稳定的作品基调，但不得复制大段原文。")
+	}
+	if trimmed := strings.TrimSpace(systemPrompt); trimmed != "" {
+		parts = append(parts, "## 调用点系统提示\n\n"+trimmed)
+	}
+	return strings.Join(parts, "\n\n"), workspace, creator
+}
+
+// BuiltinAgentPrompts returns the default system prompts shown in the Agents
+// settings page. The result is read-only display data; persisted overrides
+// still live under config.Settings.AgentPrompts.
+func BuiltinAgentPrompts(cfg *config.Config, state *book.State, ideTeller IDEStoryTeller) config.AgentPromptSettings {
+	promptCfg := &config.Config{}
+	if cfg != nil {
+		copy := *cfg
+		copy.AgentPrompts = config.AgentPromptSettings{}
+		promptCfg = &copy
+	}
+	ide, ideErr := ComposeInstruction(promptCfg, state, ideTeller)
+	general, generalErr := ComposeGeneralInstruction(promptCfg)
+	interactiveStory, interactiveErr := ComposeInteractiveStoryInstruction(promptCfg, state, InteractiveStorySystemInstructionInput{})
+	configManager, configErr := ComposeConfigManagerInstruction(promptCfg, state)
+	director, directorErr := ComposeBuiltinSystemInstruction(promptCfg, config.AgentKindInteractiveDirector, "interactive_director", workspaceForPrompt(promptCfg, state), "builtin_base", "后台导演系统规则", "define the interactive director planning workflow", BuildInteractiveDirectorSystemInstruction())
+	version, versionErr := ComposeBuiltinSystemInstruction(promptCfg, config.AgentKindVersionSummary, "version_summary", workspaceForPrompt(promptCfg, state), "builtin_base", "版本说明生成规则", "define the version summary task and output constraint", "你是 Denova 小说工作台的版本说明生成器。根据文件变更推理这次保存的核心创作变化。只输出一句中文版本说明，10 到 30 个汉字，不要编号、引号、冒号、句号或解释。")
+	toolAgent, toolErr := ComposeBuiltinSystemInstruction(promptCfg, config.AgentKindToolAgent, "tool_agent", workspaceForPrompt(promptCfg, state), "builtin_base", "章节分割正则任务", "define the structured chapter-regex inference task", ChapterSplitRegexSystemInstruction())
+	image, imageErr := ComposeImageInstruction(promptCfg, state, "")
+	automationPrompt, automationErr := ComposeAutomationInstruction(promptCfg, state, AutomationTaskInstruction{})
+	compaction, compactionErr := ComposeBuiltinSystemInstruction(promptCfg, config.AgentKindContextCompaction, "context_compaction", workspaceForPrompt(promptCfg, state), "builtin_base", "上下文压缩规则", "define the bounded context compaction task", ContextCompactionSystemInstruction())
+	return config.AgentPromptSettings{
+		General:             config.AgentPromptOverride{SystemPrompt: systemPromptPreview(general, generalErr)},
+		IDE:                 config.AgentPromptOverride{SystemPrompt: systemPromptPreview(ide, ideErr)},
+		InteractiveStory:    config.AgentPromptOverride{SystemPrompt: systemPromptPreview(interactiveStory, interactiveErr)},
+		ConfigManager:       config.AgentPromptOverride{SystemPrompt: systemPromptPreview(configManager, configErr)},
+		InteractiveDirector: config.AgentPromptOverride{SystemPrompt: systemPromptPreview(director, directorErr)},
+		VersionSummary:      config.AgentPromptOverride{SystemPrompt: systemPromptPreview(version, versionErr)},
+		ToolAgent:           config.AgentPromptOverride{SystemPrompt: systemPromptPreview(toolAgent, toolErr)},
+		Image:               config.AgentPromptOverride{SystemPrompt: systemPromptPreview(image, imageErr)},
+		Automation:          config.AgentPromptOverride{SystemPrompt: systemPromptPreview(automationPrompt, automationErr)},
+		ContextCompaction:   config.AgentPromptOverride{SystemPrompt: systemPromptPreview(compaction, compactionErr)},
+	}
+}
+
+func systemPromptPreview(composition SystemPromptComposition, err error) string {
+	if err != nil {
+		return "System prompt admission failed / 系统提示准入失败: " + err.Error()
+	}
+	return composition.Instruction()
+}
+
+func BuiltinAgentPromptBlocks(cfg *config.Config, state *book.State, ideTeller IDEStoryTeller) config.AgentPromptBlockSettings {
+	promptCfg := &config.Config{}
+	if cfg != nil {
+		copy := *cfg
+		copy.AgentPrompts = config.AgentPromptSettings{}
+		promptCfg = &copy
+	}
+	_, ideWorkspace, _, _ := buildIDEBuiltinInstruction(promptCfg, state, ideTeller)
+	_, interactiveWorkspace, _ := buildInteractiveStoryBuiltinInstruction(promptCfg, state, InteractiveStorySystemInstructionInput{})
+	configManagerFlow := configManagerFlowInstruction(promptCfg, state)
+	return config.AgentPromptBlockSettings{
+		General:             builtinPromptBlocks(promptCfg, config.AgentKindGeneral, generalAgentFlowInstruction(promptCfg)),
+		IDE:                 builtinPromptBlocks(promptCfg, config.AgentKindIDE, ideFlowInstruction(promptCfg, ideWorkspace)),
+		InteractiveStory:    builtinPromptBlocks(promptCfg, config.AgentKindInteractiveStory, interactiveStoryFlowInstruction(promptCfg, interactiveWorkspace)),
+		ConfigManager:       builtinPromptBlocks(promptCfg, config.AgentKindConfigManager, configManagerFlow),
+		InteractiveDirector: builtinPromptBlocks(promptCfg, config.AgentKindInteractiveDirector, BuildInteractiveDirectorSystemInstruction()),
+		VersionSummary:      builtinPromptBlocks(promptCfg, config.AgentKindVersionSummary, "你是 Denova 小说工作台的版本说明生成器。根据文件变更推理这次保存的核心创作变化。只输出一句中文版本说明，10 到 30 个汉字，不要编号、引号、冒号、句号或解释。"),
+		ToolAgent:           builtinPromptBlocks(promptCfg, config.AgentKindToolAgent, ChapterSplitRegexSystemInstruction()),
+		Image:               builtinPromptBlocks(promptCfg, config.AgentKindImage, ""),
+		Automation:          builtinPromptBlocks(promptCfg, config.AgentKindAutomation, editableAutomationBuiltinInstruction(promptCfg, state, AutomationTaskInstruction{})),
+		ContextCompaction:   builtinPromptBlocks(promptCfg, config.AgentKindContextCompaction, ContextCompactionSystemInstruction()),
+	}
+}
+
+func BuiltinAgentPromptSources(cfg *config.Config, state *book.State, ideTeller IDEStoryTeller) config.AgentPromptSourceSettings {
+	promptCfg := &config.Config{}
+	if cfg != nil {
+		copy := *cfg
+		copy.AgentPrompts = config.AgentPromptSettings{}
+		promptCfg = &copy
+	}
+	_, ideWorkspace, ideCreator, _ := buildIDEBuiltinInstruction(promptCfg, state, ideTeller)
+	_, interactiveWorkspace, interactiveCreator := buildInteractiveStoryBuiltinInstruction(promptCfg, state, InteractiveStorySystemInstructionInput{})
+	configManagerFlow := configManagerFlowInstruction(promptCfg, state)
+	configManagerCreator := ""
+	if state != nil {
+		configManagerCreator = state.ReadCreatorPrompt()
+	}
+	return config.AgentPromptSourceSettings{
+		General: builtinPromptSourceList(promptCfg, config.AgentKindGeneral, generalAgentFlowInstruction(promptCfg)),
+		IDE: builtinPromptSourceList(promptCfg, config.AgentKindIDE, ideFlowInstruction(promptCfg, ideWorkspace),
+			readonlyPromptSource("creator", "CREATOR.md", "CREATOR.md", ideCreator),
+			readonlyPromptSource("teller", "IDE 默认导演规则", ideTeller.ID, ideTeller.Prompt),
+		),
+		InteractiveStory: builtinPromptSourceList(promptCfg, config.AgentKindInteractiveStory, interactiveStoryFlowInstruction(promptCfg, interactiveWorkspace),
+			readonlyPromptSource("creator", "CREATOR.md", "CREATOR.md", interactiveCreator),
+		),
+		ConfigManager:       builtinPromptSourceList(promptCfg, config.AgentKindConfigManager, configManagerFlow, readonlyPromptSource("creator", "CREATOR.md", "CREATOR.md", configManagerCreator)),
+		InteractiveDirector: builtinPromptSourceList(promptCfg, config.AgentKindInteractiveDirector, BuildInteractiveDirectorSystemInstruction()),
+		VersionSummary:      builtinPromptSourceList(promptCfg, config.AgentKindVersionSummary, "你是 Denova 小说工作台的版本说明生成器。根据文件变更推理这次保存的核心创作变化。只输出一句中文版本说明，10 到 30 个汉字，不要编号、引号、冒号、句号或解释。"),
+		ToolAgent:           builtinPromptSourceList(promptCfg, config.AgentKindToolAgent, ChapterSplitRegexSystemInstruction()),
+		Image:               builtinPromptSourceList(promptCfg, config.AgentKindImage, ""),
+		Automation:          builtinPromptSourceList(promptCfg, config.AgentKindAutomation, editableAutomationBuiltinInstruction(promptCfg, state, AutomationTaskInstruction{})),
+		ContextCompaction:   builtinPromptSourceList(promptCfg, config.AgentKindContextCompaction, ContextCompactionSystemInstruction()),
+	}
+}
+
+func builtinPromptBlocks(cfg *config.Config, agentKind, flow string) config.AgentPromptBlocks {
+	return config.AgentPromptBlocks{
+		RuntimeContract:      runtimeContractForAgent(cfg, agentKind),
+		OutputProtocol:       outputProtocolForAgent(agentKind),
+		EditableSystemPrompt: editablePromptFlowForAgent(agentKind, flow),
+	}
+}
+
+func builtinPromptSourceList(cfg *config.Config, agentKind, flow string, extraSources ...config.AgentPromptSource) config.AgentPromptSourceList {
+	sources := make([]config.AgentPromptSource, 0, len(extraSources)+4)
+	sources = append(sources, config.AgentPromptSource{
+		ID:      "runtime_contract",
+		Title:   "运行契约",
+		Source:  "Denova runtime",
+		Content: runtimeContractForAgent(cfg, agentKind),
+	})
+	if outputProtocol := strings.TrimSpace(outputProtocolForAgent(agentKind)); outputProtocol != "" {
+		sources = append(sources, config.AgentPromptSource{
+			ID:      "output_protocol",
+			Title:   "输出格式",
+			Source:  "Denova runtime",
+			Content: outputProtocol,
+		})
+	}
+	for _, source := range extraSources {
+		if strings.TrimSpace(source.Content) != "" {
+			sources = append(sources, source)
+		}
+	}
+	sources = append(sources, config.AgentPromptSource{
+		ID:       "flow",
+		Title:    "流程规则",
+		Source:   "Denova built-in",
+		Content:  editablePromptFlowForAgent(agentKind, flow),
+		Editable: true,
+		Field:    "flow_prompt",
+	})
+	sources = append(sources, config.AgentPromptSource{
+		ID:       "custom",
+		Title:    "用户自定义",
+		Source:   "user/workspace config",
+		Editable: true,
+		Field:    "system_prompt",
+	})
+	return config.AgentPromptSourceList{Sources: sources}
+}
+
+func readonlyPromptSource(id, title, source, content string) config.AgentPromptSource {
+	return config.AgentPromptSource{
+		ID:      id,
+		Title:   title,
+		Source:  source,
+		Content: strings.TrimSpace(content),
+	}
+}
+
+func styleRulePromptSources(rules []StyleRule) []promptSource {
+	sources := make([]promptSource, 0, len(rules))
+	for _, rule := range rules {
+		scene := strings.TrimSpace(rule.Scene)
+		if !rule.Global && scene == "" {
+			continue
+		}
+		if len(rule.StyleReferences) == 0 && len(rule.StyleContents) == 0 {
+			continue
+		}
+		content := StyleRulesInstruction([]StyleRule{rule})
+		if strings.TrimSpace(content) == "" {
+			continue
+		}
+		title := "文风参考：全局"
+		if !rule.Global {
+			title = "文风参考：" + scene
+		}
+		sources = append(sources, promptSource{
+			source:  "系统提示",
+			title:   title,
+			content: content,
+			note:    "当前叙事风格",
+		})
+	}
+	return sources
+}
+
+func ideFlowInstruction(cfg *config.Config, workspace string) string {
+	if cfg == nil {
+		cfg = &config.Config{}
+	}
+	return BuildIDEWritingFlowInstruction(SystemInstructionInput{
+		Workspace:             workspace,
+		ChapterFilenameFormat: cfg.ChapterFilenameFormat,
+		VolumeDirFormat:       cfg.VolumeDirFormat,
+		ChapterGroupMin:       cfg.ChapterGroupMin,
+		ChapterGroupMax:       cfg.ChapterGroupMax,
+	})
+}
+
+func generalAgentFlowInstruction(cfg *config.Config) string {
+	composition, err := ComposeGeneralInstruction(cfg)
+	if err != nil {
+		return ""
+	}
+	for _, fragment := range composition.fragments {
+		if fragment.ID == "builtin_base" {
+			return fragment.Content
+		}
+	}
+	return ""
+}
+
+func interactiveStoryFlowInstruction(cfg *config.Config, workspace string) string {
+	return BuildInteractiveStoryFlowInstruction(InteractiveStorySystemInstructionInput{
+		Workspace: workspace,
+	})
+}
+
+func editablePromptFlowForAgent(agentKind, flow string) string {
+	switch agentKind {
+	case config.AgentKindInteractiveDirector:
+		return ""
+	case config.AgentKindVersionSummary:
+		return ""
+	case config.AgentKindToolAgent:
+		return filterPromptLines(flow, "只输出 JSON", "不要返回 Markdown")
+	default:
+		return strings.TrimSpace(flow)
+	}
+}
+
+func BuildConfigManagerInstruction(cfg *config.Config, state *book.State, resourceSkills ...ConfigManagerResourceSkill) string {
+	return BuildConfigManagerInstructionComposition(cfg, state, resourceSkills...).Instruction()
+}
+
+func appendConfigManagerResourceSkills(builtIn string, resourceSkills []ConfigManagerResourceSkill) string {
+	var sb strings.Builder
+	for _, skill := range resourceSkills {
+		name := strings.TrimSpace(skill.Name)
+		content := strings.TrimSpace(skill.Content)
+		if name == "" || content == "" {
+			continue
+		}
+		if sb.Len() == 0 {
+			sb.WriteString("\n\n## 配置管理 Skill\n\n")
+			sb.WriteString("以下内容来自当前生效的 config-manager Skill。资源细节位于 references；按需使用 read 读取，不要把全部参考一次性注入上下文。若与运行时契约或后端校验冲突，以运行时契约和后端校验为准。\n")
+		}
+		sb.WriteString("\n### /")
+		sb.WriteString(name)
+		sb.WriteString("\n\n")
+		if description := strings.TrimSpace(skill.Description); description != "" {
+			sb.WriteString("description: ")
+			sb.WriteString(description)
+			sb.WriteString("\n\n")
+		}
+		sb.WriteString(content)
+		sb.WriteString("\n")
+	}
+	if sb.Len() == 0 {
+		return builtIn
+	}
+	return strings.TrimSpace(builtIn) + sb.String()
+}
+
+func buildConfigManagerBuiltinInstruction(cfg *config.Config, state *book.State) (string, string, string) {
+	workspace := ""
+	creator := ""
+	if cfg != nil {
+		workspace = cfg.Workspace
+	}
+	if state != nil {
+		if workspace == "" {
+			workspace = state.Workspace()
+		}
+		creator = state.ReadCreatorPrompt()
+	}
+	return configManagerFlowInstructionFor(workspace, creator), workspace, creator
+}
+
+func configManagerFlowInstruction(cfg *config.Config, state *book.State) string {
+	builtIn, _, _ := buildConfigManagerBuiltinInstruction(cfg, state)
+	return builtIn
+}
+
+func configManagerFlowInstructionFor(workspace, creator string) string {
+	var sb strings.Builder
+	sb.WriteString("你是 Denova 的统一配置管理 Agent，负责在模块内嵌入口中帮助用户管理资料库、方案预设（叙事风格、故事导演、状态系统和图像方案）、自动化任务、Skills 和 Agent 配置。\n\n")
+	if strings.TrimSpace(workspace) != "" {
+		sb.WriteString("当前作品 workspace: ")
+		sb.WriteString(strings.TrimSpace(workspace))
+		sb.WriteString("\n\n")
+	}
+	if strings.TrimSpace(creator) != "" {
+		sb.WriteString("## CREATOR.md 创作约束\n\n")
+		sb.WriteString(strings.TrimSpace(creator))
+		sb.WriteString("\n\n")
+	}
+	sb.WriteString(strings.Join([]string{
+		"## 工作方式",
+		"- 配置资源只有两个入口：config_read 负责 describe/list/get，config_apply 负责一次 create/update/delete。",
+		"- 遇到不熟悉的 resource，先调用 config_read operation=describe，再按 config-manager Skill 中对应 reference 的结构操作。",
+		"- 读取先 list 缩小范围，再按精确 ID get；update/delete 必须携带最近一次 config_read 返回的 revision。",
+		"- config_apply 一次只提交一个独立资源变更；成功后根据回执中的新 revision 继续，禁止拿旧 revision 覆盖并发修改。",
+		"- Agent 页配置使用 resource=agent_profile，必须显式指定 scope=user 或 scope=workspace。",
+		"- 不要修改端口、主题、远程访问、编辑器外观等非 Agent 页设置。",
+		"- 不要通过文件工具直接改资料库、方案预设、自动化、Skills 或 Agent 配置的底层存储文件。",
+		"- 删除、隐藏、覆盖、大范围重写必须有用户明确指令；缺少明确指令时先询问。",
+		"",
+		"## 模块边界",
+		"- 资料库记录长期稳定设定；游戏模式中已发生事实进入 Turn 历史，当前位置、伤势、关系、资源和规则值进入 Actor State，不默认写资料库。",
+		"- 叙事风格只维护文风、提示词槽位、场景风格和上下文策略；故事导演维护编排策略，并通过 module_refs 可插拔组合叙事风格、多个事件包、TRPG 检定、状态系统和图像方案；事件包只维护事件卡列表；每个 TRPG 检定资源代表一种 DM 检定风格，检定固定使用 d20，并可通过 state_bindings 绑定状态系统字段；状态系统是结构化状态、开局词条、当前时间地点、当前事件、可计算字段和规则消费字段的唯一真源，模板只是状态表 schema，可表示故事上下文、主角、重要角色、敌人、世界、故事倒计时、特定角色、势力、基地或副本等任意状态对象；图像方案只维护视觉风格、媒介、构图、限制和避免项。",
+		"- 新故事的状态结构策略由开局页面按故事配置；动态模式由前台 Game Agent 在首回合原子提交前完成结构草案，固定模式只更新状态值。故事导演不拥有或修改状态结构。",
+		"- resource=skill 写入 SKILL.md 文档，必须说明适用场景、上下文获取和具体工作流；内置预制 Skill 只能通过工作区同名覆盖修改，不得写入内置 Skills 目录。",
+		"- 自动化任务必须保持触发条件、通知/执行策略和写入权限清晰。",
+	}, "\n"))
+	return sb.String()
+}
+
+type promptSource struct {
+	source  string
+	title   string
+	content string
+	note    string
+}
+
+func systemPromptSourceSummary(mode, creator string, stateParts []book.CompactContextPart, extraSources ...promptSource) string {
+	type summaryPart struct {
+		source  string
+		title   string
+		content string
+		note    string
+	}
+	parts := make([]summaryPart, 0, len(stateParts)+len(extraSources)+2)
+	if strings.TrimSpace(creator) != "" {
+		parts = append(parts, summaryPart{source: "系统提示", title: "CREATOR.md", content: creator, note: "创作者指令"})
+	}
+	for _, source := range extraSources {
+		if strings.TrimSpace(source.content) == "" {
+			continue
+		}
+		parts = append(parts, summaryPart{source: source.source, title: source.title, content: source.content, note: source.note})
+	}
+	for _, section := range stateParts {
+		if strings.TrimSpace(section.Content) == "" {
+			continue
+		}
+		parts = append(parts, summaryPart{source: "作品状态", title: section.Title, content: section.Content, note: section.Source})
+	}
+	parts = append(parts, summaryPart{source: "系统提示", title: "Denova " + mode + " 内置规则", content: "基础规则、工具边界、工作流约束"})
+
+	summaries := make([]string, 0, len(parts))
+	for i, part := range parts {
+		content := strings.TrimSpace(part.content)
+		fields := []string{
+			fmt.Sprintf("%d:source=%q", i, strings.TrimSpace(part.source)),
+			fmt.Sprintf("title=%q", strings.TrimSpace(part.title)),
+			"bytes=" + strconv.Itoa(len(content)),
+			"chars=" + strconv.Itoa(utf8.RuneCountInString(content)),
+			"included=true",
+		}
+		if note := strings.TrimSpace(part.note); note != "" {
+			fields = append(fields, "note="+strconv.Quote(note))
+		}
+		summaries = append(summaries, strings.Join(fields, ","))
+	}
+	return fmt.Sprintf("count=%d parts=[%s]", len(parts), strings.Join(summaries, "; "))
+}
+
+// PartSummary returns a bounded, content-safe diagnostic summary for one
+// prompt or model-output fragment.
+func PartSummary(s string) string {
+	s = strings.TrimSpace(s)
+	return strings.Join([]string{
+		"present=" + boolString(s != ""),
+		"bytes=" + intString(len(s)),
+		"chars=" + intString(utf8.RuneCountInString(s)),
+		"lines=" + intString(promptLineCount(s)),
+		"sha=" + shortSHA256(s),
+		"preview=" + strconv.Quote(logPreview(s, 80)),
+	}, ",")
+}
+
+func filterPromptLines(content string, blockedPrefixes ...string) string {
+	lines := strings.Split(strings.TrimSpace(content), "\n")
+	out := make([]string, 0, len(lines))
+	for _, line := range lines {
+		trimmed := strings.TrimSpace(line)
+		blocked := false
+		for _, prefix := range blockedPrefixes {
+			if strings.HasPrefix(trimmed, prefix) {
+				blocked = true
+				break
+			}
+		}
+		if !blocked {
+			out = append(out, line)
+		}
+	}
+	return strings.TrimSpace(strings.Join(out, "\n"))
+}
+
+func boolString(v bool) string {
+	if v {
+		return "true"
+	}
+	return "false"
+}
+
+func intString(v int) string {
+	return strconv.Itoa(v)
+}
+
+func promptLineCount(s string) int {
+	if s == "" {
+		return 0
+	}
+	return strings.Count(s, "\n") + 1
+}
+
+func shortSHA256(s string) string {
+	if s == "" {
+		return "-"
+	}
+	sum := sha256.Sum256([]byte(s))
+	return hex.EncodeToString(sum[:])[:12]
+}
+
+func nonEmptyStrings(values ...string) []string {
+	result := make([]string, 0, len(values))
+	for _, value := range values {
+		if value = strings.TrimSpace(value); value != "" {
+			result = append(result, value)
+		}
+	}
+	return result
+}
+
+func logPreview(content string, limit int) string {
+	content = strings.ReplaceAll(content, "\n", "\\n")
+	content = strings.ReplaceAll(content, "\r", "\\r")
+	if limit <= 0 || len(content) <= limit {
+		return content
+	}
+	for limit > 0 && !utf8.RuneStart(content[limit]) {
+		limit--
+	}
+	return content[:limit] + "..."
+}

@@ -6,7 +6,7 @@ import (
 	"strings"
 	"time"
 
-	"denova/internal/contextmaintenance"
+	agentcontext "denova/internal/agents/context"
 )
 
 // AppendToolResultCleanup persists a frozen cleanup projection at the latest
@@ -180,7 +180,7 @@ func (s *Session) toolResultCleanupByIDLocked(id string) (ToolResultCleanupRecor
 }
 
 func normalizeToolResultCleanupRecord(record ToolResultCleanupRecord) (ToolResultCleanupRecord, error) {
-	normalized, err := contextmaintenance.NormalizeToolResultCleanup(toolResultCleanupValue(record), newToolResultCleanupID)
+	normalized, err := agentcontext.NormalizeToolResultCleanup(toolResultCleanupValue(record), newToolResultCleanupID)
 	if err != nil {
 		return ToolResultCleanupRecord{}, err
 	}
@@ -189,22 +189,22 @@ func normalizeToolResultCleanupRecord(record ToolResultCleanupRecord) (ToolResul
 }
 
 func sameToolResultCleanupIntent(existing, requested ToolResultCleanupRecord) bool {
-	return contextmaintenance.SameToolResultCleanupIntent(toolResultCleanupValue(existing), toolResultCleanupValue(requested))
+	return agentcontext.SameToolResultCleanupIntent(toolResultCleanupValue(existing), toolResultCleanupValue(requested))
 }
 
 func cloneToolResultCleanupRecord(record ToolResultCleanupRecord) ToolResultCleanupRecord {
-	return applyToolResultCleanupValue(record, contextmaintenance.CloneToolResultCleanup(toolResultCleanupValue(record)))
+	return applyToolResultCleanupValue(record, agentcontext.CloneToolResultCleanup(toolResultCleanupValue(record)))
 }
 
-func toolResultCleanupValue(record ToolResultCleanupRecord) contextmaintenance.ToolResultCleanup {
-	return contextmaintenance.ToolResultCleanup{
+func toolResultCleanupValue(record ToolResultCleanupRecord) agentcontext.ToolResultCleanup {
+	return agentcontext.ToolResultCleanup{
 		ID: record.ID, AgentKind: record.AgentKind, SourceStart: record.SourceStart, SourceEnd: record.SourceEnd,
 		Replacements: record.Replacements, ReclaimedTokens: record.ReclaimedTokens, TriggeredAtUsage: record.TriggeredAtUsage,
 		EarliestChanged: record.EarliestChanged, WarmSuffixTokens: record.WarmSuffixTokens, RendererVersion: record.RendererVersion,
 	}
 }
 
-func applyToolResultCleanupValue(record ToolResultCleanupRecord, value contextmaintenance.ToolResultCleanup) ToolResultCleanupRecord {
+func applyToolResultCleanupValue(record ToolResultCleanupRecord, value agentcontext.ToolResultCleanup) ToolResultCleanupRecord {
 	record.ID = value.ID
 	record.AgentKind = value.AgentKind
 	record.SourceStart = value.SourceStart

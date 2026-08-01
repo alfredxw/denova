@@ -1,6 +1,9 @@
 package app
 
 import (
+	agentcontext "denova/internal/agents/context"
+	agentrun "denova/internal/agents/run"
+	"denova/internal/agents/toolresult"
 	"fmt"
 	"strings"
 	"time"
@@ -50,8 +53,8 @@ func buildInteractiveModelContextProjection(
 	history interactive.StoryModelHistory,
 	compaction *interactive.ContextCompactionEvent,
 	snapshot interactive.Snapshot,
-	policy agents.ToolResultContextPolicy,
-	current agents.HarnessCycleIdentity,
+	policy toolresult.ContextPolicy,
+	current agentrun.CycleIdentity,
 ) (interactiveModelContextProjection, error) {
 	if history.StartTurn < 0 || history.EndTurn < history.StartTurn ||
 		history.EndTurn > history.TotalTurns || len(history.Turns) != history.EndTurn-history.StartTurn {
@@ -156,13 +159,13 @@ func projectInteractiveCompletedContext(
 	history interactive.StoryModelHistory,
 	compaction *interactive.ContextCompactionEvent,
 	cleanup *interactive.ToolResultCleanupEvent,
-	policy agents.ToolResultContextPolicy,
+	policy toolresult.ContextPolicy,
 	sourceStart int,
 ) ([]interactiveProjectedTurn, []interactiveResolvedContext, []*agents.Message, error) {
 	raw := make([]*agents.Message, 0, len(history.Turns)*3+1)
 	checkpointCount := 0
 	if compaction != nil && strings.TrimSpace(compaction.Summary) != "" {
-		raw = append(raw, agents.NewContextCompactionSummaryMessage(compaction.Epoch, compaction.Summary))
+		raw = append(raw, agentcontext.NewCompactionSummaryMessage(compaction.Epoch, compaction.Summary))
 		checkpointCount = 1
 	}
 	type messageSpan struct{ start, end int }
@@ -229,11 +232,11 @@ func projectInteractiveCompletedContext(
 	checkpoint := append([]*agents.Message(nil), visible[:checkpointCount]...)
 	for index := range turns {
 		span := turnSpans[index]
-		turns[index].messages = agents.ApplyToolResultContextPolicyForConversation(visible[span.start:span.end], policy)
+		turns[index].messages = toolresult.ApplyContextPolicy(visible[span.start:span.end], policy)
 	}
 	for index := range resolved {
 		span := resolvedSpans[index]
-		resolved[index].messages = agents.ApplyToolResultContextPolicyForConversation(visible[span.start:span.end], policy)
+		resolved[index].messages = toolresult.ApplyContextPolicy(visible[span.start:span.end], policy)
 	}
 	return turns, resolved, checkpoint, nil
 }
@@ -241,8 +244,8 @@ func projectInteractiveCompletedContext(
 func projectInteractivePendingContext(
 	history interactive.StoryModelHistory,
 	snapshot interactive.Snapshot,
-	policy agents.ToolResultContextPolicy,
-	current agents.HarnessCycleIdentity,
+	policy toolresult.ContextPolicy,
+	current agentrun.CycleIdentity,
 ) ([]interactivePendingContext, []string, int, error) {
 	batches := make(map[string][]interactive.ModelContextBatchEvent, len(snapshot.PendingPlayerInputs))
 	for _, batch := range snapshot.PendingModelContextBatches {
@@ -265,7 +268,7 @@ func projectInteractivePendingContext(
 			earliest = boundary
 		}
 		user := interruptedPlayerInputModelMessage(input)
-		messages := agents.ApplyToolResultContextPolicyForConversation(
+		messages := toolresult.ApplyContextPolicy(
 			interactivePlayerInputContextMessages(input, batches[input.ID]), policy,
 		)
 		pending = append(pending, interactivePendingContext{turnBoundary: boundary, messages: messages})
@@ -274,7 +277,7 @@ func projectInteractivePendingContext(
 	return pending, pendingInputMessages, earliest, nil
 }
 
-func interactivePendingInputMatchesCycle(input interactive.PlayerInputAcceptedEvent, current agents.HarnessCycleIdentity) bool {
+func interactivePendingInputMatchesCycle(input interactive.PlayerInputAcceptedEvent, current agentrun.CycleIdentity) bool {
 	return strings.TrimSpace(input.AgentCommandID) != "" &&
 		input.AgentCommandID == string(current.CommandID) &&
 		input.AgentOperationID == string(current.OperationID) &&

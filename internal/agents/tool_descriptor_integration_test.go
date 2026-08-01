@@ -2,6 +2,8 @@ package agents
 
 import (
 	"context"
+	agentinteractive "denova/internal/agents/interactive"
+	agenttoolruntime "denova/internal/agents/toolruntime"
 	"os"
 	"path/filepath"
 	"testing"
@@ -16,11 +18,11 @@ import (
 func TestNativeAgentBuiltInToolsPassDescriptorGuard(t *testing.T) {
 	ctx := context.Background()
 	chatModel := &descriptorGuardProbeModel{}
-	todoTool, err := newToolCatalog(nil).Todo()
+	todoTool, err := agenttoolruntime.NewCatalog(nil).Todo()
 	if err != nil {
 		t.Fatal(err)
 	}
-	taskTool, err := newToolCatalog(nil).Task(ctx, []agent.Runnable{fakeAgent{name: producttools.GeneralSubAgentName, description: "test"}})
+	taskTool, err := agenttoolruntime.NewCatalog(nil).Task(ctx, []agent.Runnable{fakeAgent{name: producttools.GeneralSubAgentName, description: "test"}})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -87,17 +89,17 @@ func TestWritingAgentFinalRuntimeToolSurfacePassesDescriptorGuard(t *testing.T) 
 		Kind:              config.AgentKindIDE,
 		ToolSettings:      settings,
 		EnableSkills:      true,
-		ExtraToolsFactory: newToolCatalog(cfg).IDE(),
+		ExtraToolsFactory: agenttoolruntime.NewCatalog(cfg).IDE(),
 		IncludeCompaction: true,
 	})
 	if err != nil {
 		t.Fatal(err)
 	}
-	todoTool, err := newToolCatalog(cfg).Todo()
+	todoTool, err := agenttoolruntime.NewCatalog(cfg).Todo()
 	if err != nil {
 		t.Fatal(err)
 	}
-	taskTool, err := newToolCatalog(cfg).Task(ctx, []agent.Runnable{fakeAgent{name: producttools.GeneralSubAgentName, description: "test"}})
+	taskTool, err := agenttoolruntime.NewCatalog(cfg).Task(ctx, []agent.Runnable{fakeAgent{name: producttools.GeneralSubAgentName, description: "test"}})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -149,7 +151,7 @@ func TestProductToolFactoriesDeclareEveryConcreteTool(t *testing.T) {
 	ctx := context.Background()
 	cfg := &config.Config{Workspace: t.TempDir()}
 	cfg.SetDataDir(t.TempDir())
-	storyContext := InteractiveStoryToolContext{
+	storyContext := agentinteractive.InteractiveStoryToolContext{
 		Store:     interactive.NewStore(t.TempDir()),
 		StoryID:   "story-tool-descriptor-test",
 		BranchID:  "main",
@@ -180,41 +182,41 @@ func TestProductToolFactoriesDeclareEveryConcreteTool(t *testing.T) {
 		{
 			name: "writing",
 			build: func() ([]agent.ToolDefinition, error) {
-				return newToolCatalog(cfg).IDE()(config.ResolveAgentTools(cfg, config.AgentKindIDE))
+				return agenttoolruntime.NewCatalog(cfg).IDE()(config.ResolveAgentTools(cfg, config.AgentKindIDE))
 			},
 		},
 		{
 			name: "game",
 			build: func() ([]agent.ToolDefinition, error) {
-				return newToolCatalog(cfg).InteractiveStory(projectInteractiveToolContext(storyContext))(config.ResolveAgentTools(cfg, config.AgentKindInteractiveStory))
+				return agenttoolruntime.NewCatalog(cfg).InteractiveStory(agenttoolruntime.ProjectInteractiveContext(storyContext))(config.ResolveAgentTools(cfg, config.AgentKindInteractiveStory))
 			},
 		},
 		{
 			name: "game director",
 			build: func() ([]agent.ToolDefinition, error) {
-				return newToolCatalog(cfg).InteractiveDirector(projectInteractiveToolContext(directorContext))(config.ResolveAgentTools(cfg, config.AgentKindInteractiveDirector))
+				return agenttoolruntime.NewCatalog(cfg).InteractiveDirector(agenttoolruntime.ProjectInteractiveContext(directorContext))(config.ResolveAgentTools(cfg, config.AgentKindInteractiveDirector))
 			},
 		},
 		{
 			name: "config manager",
 			build: func() ([]agent.ToolDefinition, error) {
-				return newToolCatalog(cfg).ConfigManager()(config.ResolveAgentTools(cfg, config.AgentKindConfigManager))
+				return agenttoolruntime.NewCatalog(cfg).ConfigManager()(config.ResolveAgentTools(cfg, config.AgentKindConfigManager))
 			},
 		},
 		{
 			name: "image",
 			build: func() ([]agent.ToolDefinition, error) {
-				return newToolCatalog(cfg).Image()(config.ResolveAgentTools(cfg, config.AgentKindImage))
+				return agenttoolruntime.NewCatalog(cfg).Image()(config.ResolveAgentTools(cfg, config.AgentKindImage))
 			},
 		},
 		{
 			name: "automation",
 			build: func() ([]agent.ToolDefinition, error) {
-				return newToolCatalog(cfg).Lore(false)(config.ResolveAgentTools(cfg, config.AgentKindAutomation))
+				return agenttoolruntime.NewCatalog(cfg).Lore(false)(config.ResolveAgentTools(cfg, config.AgentKindAutomation))
 			},
 		},
 		{name: "web access", build: func() ([]agent.ToolDefinition, error) {
-			return newToolCatalog(cfg).WebAccess(config.ResolveAgentTools(cfg, config.AgentKindIDE))
+			return agenttoolruntime.NewCatalog(cfg).WebAccess(config.ResolveAgentTools(cfg, config.AgentKindIDE))
 		}},
 	}
 
@@ -253,7 +255,7 @@ func TestRestrictedAgentOverridesDoNotReachGenericToolCatalog(t *testing.T) {
 			InteractiveDirector: forcedDirectorTools,
 		},
 	}
-	catalog := newToolCatalog(cfg)
+	catalog := agenttoolruntime.NewCatalog(cfg)
 
 	tests := []struct {
 		kind             string

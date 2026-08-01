@@ -1,6 +1,7 @@
 package interactive
 
 import (
+	interactivestate "denova/internal/interactive/state"
 	"strings"
 	"testing"
 )
@@ -56,7 +57,7 @@ func TestArchivedActorsCannotParticipateInLaterRuleBindings(t *testing.T) {
 }
 
 func TestStoryHistoryDescribesArchiveAndRestoreSemantically(t *testing.T) {
-	changes := storyHistoryStateChanges(&StateDelta{Ops: []StateOp{
+	changes := storyHistoryStateChanges(&StateDelta{Ops: []interactivestate.Op{
 		{Op: "set", Path: "actor_archives.狼王", Value: map[string]any{"reason": "确认死亡", "source_turn_id": "turn-death"}, Reason: "确认死亡"},
 		{Op: "unset", Path: "actor_archives.斥候", Reason: "确认幸存"},
 	}})

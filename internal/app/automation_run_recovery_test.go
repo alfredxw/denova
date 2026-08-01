@@ -2,6 +2,7 @@ package app
 
 import (
 	"context"
+	agentrun "denova/internal/agents/run"
 	"encoding/json"
 	"errors"
 	"os"
@@ -9,9 +10,11 @@ import (
 	"testing"
 	"time"
 
+	filejournal "github.com/alfredxw/denova/agent/runtime/filejournal"
+
 	"denova/config"
-	agents "denova/internal/agents"
 	"denova/internal/automation"
+
 	runstate "github.com/alfredxw/denova/agent/runtime"
 )
 
@@ -110,7 +113,7 @@ func TestAutomationColdAcceptedRunStaysRecoveryRequiredUntilExplicitAbort(t *tes
 		t.Fatalf("uncertain runtime completed trigger evaluation: %#v", got)
 	}
 
-	if _, err := application.AbortAutomationRunCommand(context.Background(), runID, "abort-cold-accepted", agents.OperationID(operationID), "user_requested"); err != nil {
+	if _, err := application.AbortAutomationRunCommand(context.Background(), runID, "abort-cold-accepted", agentrun.OperationID(operationID), "user_requested"); err != nil {
 		t.Fatal(err)
 	}
 	settled := waitForAutomationRunStatus(t, store, runID, automation.RunStatusAborted)
@@ -267,14 +270,14 @@ func TestAutomationColdFollowUpPublishesAndAbortsCurrentOperation(t *testing.T) 
 	if active.Run.RootRuntimeCommandID != rootCommandID || active.Run.RootRuntimeOperationID != string(rootOperationID) {
 		t.Fatalf("follow-up changed immutable root receipt: %#v", active.Run)
 	}
-	if _, err := application.AbortAutomationRunCommand(context.Background(), runID, "abort-stale-root", agents.OperationID(rootOperationID), "stale"); !errors.Is(err, agents.ErrStaleOperation) {
+	if _, err := application.AbortAutomationRunCommand(context.Background(), runID, "abort-stale-root", agentrun.OperationID(rootOperationID), "stale"); !errors.Is(err, agentrun.ErrStaleOperation) {
 		t.Fatalf("root-operation abort error = %v, want stale operation", err)
 	}
-	receipt, err := application.AbortAutomationRunCommand(context.Background(), runID, "abort-current-follow-up", agents.OperationID(currentOperationID), "user_requested")
+	receipt, err := application.AbortAutomationRunCommand(context.Background(), runID, "abort-current-follow-up", agentrun.OperationID(currentOperationID), "user_requested")
 	if err != nil {
 		t.Fatal(err)
 	}
-	if receipt.CommandID != "abort-current-follow-up" || receipt.OperationID != agents.OperationID(currentOperationID) || receipt.Cursor == 0 {
+	if receipt.CommandID != "abort-current-follow-up" || receipt.OperationID != agentrun.OperationID(currentOperationID) || receipt.Cursor == 0 {
 		t.Fatalf("follow-up abort receipt = %#v", receipt)
 	}
 	settled := waitForAutomationRunStatus(t, store, runID, automation.RunStatusAborted)
@@ -352,7 +355,7 @@ func TestAutomationPendingFollowUpIntentRecoversActiveSuccessorAfterCrash(t *tes
 	if active.Run.RootRuntimeCommandID != rootCommandID || active.Run.RootRuntimeOperationID != string(rootOperationID) || active.Run.RootRuntimeReceiptCursor != 1 {
 		t.Fatalf("successor recovery changed root receipt: %#v", active.Run)
 	}
-	if _, err := application.AbortAutomationRunCommand(context.Background(), runID, "abort-pending-successor", agents.OperationID(successorOperationID), "user_requested"); err != nil {
+	if _, err := application.AbortAutomationRunCommand(context.Background(), runID, "abort-pending-successor", agentrun.OperationID(successorOperationID), "user_requested"); err != nil {
 		t.Fatal(err)
 	}
 	settled := waitForAutomationRunStatus(t, store, runID, automation.RunStatusAborted)
@@ -384,16 +387,16 @@ func TestAutomationRecoveryFailureCannotFinalizeAnActiveProjection(t *testing.T)
 	application.ensureServices()
 	t.Cleanup(application.Close)
 	service := application.automation()
-	service.runtimeProjector = func(context.Context, *automationWorkspaceSnapshot, automation.Task, automation.RunRecord) (agents.RuntimeStatus, error) {
-		return agents.RuntimeStatus{
-			Cursor: 9, Phase: agents.RunPhaseRunning,
-			ActiveCommandID: agents.CommandID(run.RuntimeCommandID), ActiveOperation: agents.OperationID(run.RuntimeOperationID),
+	service.runtimeProjector = func(context.Context, *automationWorkspaceSnapshot, automation.Task, automation.RunRecord) (agentrun.RuntimeStatus, error) {
+		return agentrun.RuntimeStatus{
+			Cursor: 9, Phase: agentrun.RunPhaseRunning,
+			ActiveCommandID: agentrun.CommandID(run.RuntimeCommandID), ActiveOperation: agentrun.OperationID(run.RuntimeOperationID),
 		}, nil
 	}
 	snapshot := &automationWorkspaceSnapshot{workspace: workspace, novaDir: novaDir}
 	finalized, err := service.finalizeRecoveredAutomationRun(
 		context.Background(), snapshot, taskDef, run,
-		agents.RunOutcome{Status: agents.RunOutcomeFailed, Error: errors.New("observer failed")},
+		agentrun.Outcome{Status: agentrun.OutcomeFailed, Error: errors.New("observer failed")},
 	)
 	if err == nil {
 		t.Fatal("failed observer finalized a still-active runtime projection")
@@ -417,7 +420,7 @@ func seedAutomationRuntimeJournal(t *testing.T, dataDir string, taskDef automati
 	if err != nil {
 		t.Fatal(err)
 	}
-	journalStore, err := runstate.NewFileJournalStore(filepath.Join(dataDir, "agent-runtime"))
+	journalStore, err := filejournal.NewStore(filepath.Join(dataDir, "agent-runtime"))
 	if err != nil {
 		t.Fatal(err)
 	}

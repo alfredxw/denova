@@ -10,14 +10,14 @@ import (
 
 	"github.com/cloudwego/hertz/pkg/common/ut"
 
-	"denova/internal/workspacepath"
+	workspacelayout "denova/internal/workspace"
 )
 
 func TestAgentRunTraceExportAPI(t *testing.T) {
 	application := newTestApplication(t)
 	runID := "run-support-export"
 	payload := []byte("{\"type\":\"run_created\",\"run_id\":\"run-support-export\"}\n")
-	path := workspacepath.Path(application.Workspace(), "runs", runID+".jsonl")
+	path := workspacelayout.Path(application.Workspace(), "runs", runID+".jsonl")
 	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
 		t.Fatal(err)
 	}

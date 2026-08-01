@@ -7,10 +7,11 @@ import (
 	"path/filepath"
 	"sort"
 	"strings"
+
+	"denova/internal/book/lore"
 	"time"
 
-	"denova/internal/prompts"
-	"denova/internal/workspacepath"
+	workspacelayout "denova/internal/workspace"
 )
 
 // State 管理作品状态文件和内部目录。
@@ -39,17 +40,17 @@ func (s *State) Workspace() string {
 
 // NovaDir 返回工作区内部数据目录路径（用户不需要关注）。
 func (s *State) NovaDir() string {
-	return workspacepath.Dir(s.workspace)
+	return workspacelayout.Dir(s.workspace)
 }
 
 // SessionDir 返回内部 sessions/ 目录路径（会话存储）。
 func (s *State) SessionDir() string {
-	return workspacepath.Path(s.workspace, "sessions")
+	return workspacelayout.Path(s.workspace, "sessions")
 }
 
 // BackupDir 返回内部 backups/ 目录路径。
 func (s *State) BackupDir() string {
-	return workspacepath.Path(s.workspace, "backups")
+	return workspacelayout.Path(s.workspace, "backups")
 }
 
 // LoreDir 返回用户可见的 setting/lore/ 目录路径（结构化资料库）。
@@ -102,7 +103,7 @@ func (s *State) InitWorkspace() error {
 	if err := ensureCreatorTemplate(s.workspace); err != nil {
 		return err
 	}
-	if err := NewLoreStore(s.workspace).Ensure(); err != nil {
+	if err := lore.NewStore(s.workspace).Ensure(); err != nil {
 		return fmt.Errorf("初始化资料库失败: %w", err)
 	}
 	return nil
@@ -142,7 +143,7 @@ func (s *State) StableContextParts() []CompactContextPart {
 	if loreContext != "" {
 		parts = append(parts, CompactContextPart{
 			ID:      "lore",
-			Source:  LoreItemsRelativePath,
+			Source:  lore.ItemsRelativePath,
 			Title:   "资料库",
 			Content: loreContext,
 		})
@@ -264,7 +265,7 @@ func (s *State) ensureIdeasFile() error {
 		return fmt.Errorf("检查 %s 失败: %w", LegacyBrainstormFileName, err)
 	}
 
-	if err := os.WriteFile(ideasPath, []byte(prompts.IdeasTemplate), 0o644); err != nil {
+	if err := os.WriteFile(ideasPath, []byte(IdeasTemplate), 0o644); err != nil {
 		return fmt.Errorf("写入 %s 失败: %w", IdeasFileName, err)
 	}
 	return nil
@@ -277,7 +278,7 @@ func (s *State) IdeasContext() string {
 		return ""
 	}
 	content := strings.TrimSpace(string(data))
-	if content == "" || content == strings.TrimSpace(prompts.IdeasTemplate) {
+	if content == "" || content == strings.TrimSpace(IdeasTemplate) {
 		return ""
 	}
 	runes := []rune(content)
@@ -416,7 +417,7 @@ func (s *State) ChapterPathContext(limit int) string {
 
 // LoreContext 返回结构化资料库的渐进式 Markdown 上下文。
 func (s *State) LoreContext() string {
-	context, err := NewLoreStore(s.workspace).ProgressiveContextMarkdown()
+	context, err := lore.NewStore(s.workspace).ProgressiveContextMarkdown()
 	if err != nil {
 		return ""
 	}

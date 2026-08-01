@@ -2,6 +2,9 @@ package app
 
 import (
 	"context"
+	agentcontext "denova/internal/agents/context"
+	agentharness "denova/internal/agents/harness"
+	apptask "denova/internal/app/task"
 	"errors"
 	"os"
 	"os/exec"
@@ -15,6 +18,7 @@ import (
 
 	"denova/config"
 	agents "denova/internal/agents"
+	agentrun "denova/internal/agents/run"
 	"denova/internal/agents/session"
 	"denova/internal/interactive"
 )
@@ -31,7 +35,7 @@ func TestInteractiveStartRegistryRequiresIdentityAndReplaysExactSettledTask(t *t
 	if err != nil {
 		t.Fatal(err)
 	}
-	original := NewTask(func(context.Context, *Task, func(agents.Event)) {})
+	original := apptask.New(func(context.Context, *apptask.Task, func(agentrun.Event)) {})
 	waitInteractiveTask(t, original)
 	if err := service.starts.remember(identity, original); err != nil {
 		t.Fatal(err)
@@ -58,14 +62,14 @@ func TestInteractiveStartRegistrySerializesConcurrentExactReplay(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	original := NewTask(func(context.Context, *Task, func(agents.Event)) {})
+	original := apptask.New(func(context.Context, *apptask.Task, func(agentrun.Event)) {})
 	waitInteractiveTask(t, original)
 	if err := service.starts.remember(identity, original); err != nil {
 		t.Fatal(err)
 	}
 
 	const callers = 16
-	results := make(chan *Task, callers)
+	results := make(chan *apptask.Task, callers)
 	errorsCh := make(chan error, callers)
 	var start sync.WaitGroup
 	start.Add(1)
@@ -127,7 +131,7 @@ func TestInteractiveInitialStartColdReplayBuildsBoundedTaskWithoutGameCycle(t *t
 		t.Fatal(err)
 	}
 	outcome := accepted.Wait(context.Background())
-	if outcome.Status != agents.RunOutcomeCompleted || outcome.Content != "持久化回答" {
+	if outcome.Status != agentrun.OutcomeCompleted || outcome.Content != "持久化回答" {
 		first.Close()
 		t.Fatalf("seed outcome = %#v", outcome)
 	}
@@ -147,7 +151,7 @@ func TestInteractiveInitialStartColdReplayBuildsBoundedTaskWithoutGameCycle(t *t
 		first.Close()
 		t.Fatal(err)
 	}
-	if newerOutcome := newer.Wait(context.Background()); newerOutcome.Status != agents.RunOutcomeCompleted {
+	if newerOutcome := newer.Wait(context.Background()); newerOutcome.Status != agentrun.OutcomeCompleted {
 		first.Close()
 		t.Fatalf("newer seed outcome = %#v", newerOutcome)
 	}
@@ -199,10 +203,10 @@ func TestInteractiveInitialStartColdReplayBuildsBoundedTaskWithoutGameCycle(t *t
 }
 
 func TestInteractiveStatusOwnsInterruptedCommand(t *testing.T) {
-	status := agents.RuntimeStatus{
-		LastOperation: &agents.OperationSummary{CommandID: "newer", Status: agents.OperationSucceeded},
-		RecentOperations: []agents.OperationSummary{{
-			CommandID: "game-cold-interrupted", Status: agents.OperationInterrupted,
+	status := agentrun.RuntimeStatus{
+		LastOperation: &agentrun.OperationSummary{CommandID: "newer", Status: agentrun.OperationSucceeded},
+		RecentOperations: []agentrun.OperationSummary{{
+			CommandID: "game-cold-interrupted", Status: agentrun.OperationInterrupted,
 		}},
 	}
 	if !interactiveStatusOwnsCommand(status, "game-cold-interrupted") {
@@ -255,10 +259,10 @@ func TestInteractiveInitialStartColdInterruptedReplayDoesNotRunGameCycle(t *test
 	if !projected {
 		t.Fatal("cold Game runtime projection unavailable")
 	}
-	actions := agents.RuntimeRecoveryActions(status)
-	if status.Phase != agents.RunPhaseRunning || !status.RecoveryPaused || len(actions) != 2 ||
-		actions[0].Kind != agents.RuntimeRecoveryAttach || actions[0].CommandID != "game-cold-interrupted" ||
-		actions[1].Kind != agents.RuntimeRecoveryAbort {
+	actions := agentharness.RuntimeRecoveryActions(status)
+	if status.Phase != agentrun.RunPhaseRunning || !status.RecoveryPaused || len(actions) != 2 ||
+		actions[0].Kind != agentharness.RuntimeRecoveryAttach || actions[0].CommandID != "game-cold-interrupted" ||
+		actions[1].Kind != agentharness.RuntimeRecoveryAbort {
 		t.Fatalf("cold Game recovery actions = %#v status=%#v", actions, status)
 	}
 	result, err := reopened.RecoverInteractiveAgent(context.Background(), AgentRuntimeRecoveryRequest{
@@ -301,7 +305,7 @@ func TestInteractiveInitialStartColdInterruptedReplayDoesNotRunGameCycle(t *test
 		t.Fatalf("accepted player input was not independently durable: %#v", snapshot.PendingPlayerInputs)
 	}
 	status, projected = reopened.InteractiveAgentRuntimeProjection(context.Background(), story.ID, "main")
-	if !projected || status.Phase != agents.RunPhaseIdle || status.LastOperation == nil || status.LastOperation.Status != agents.OperationAborted || len(agents.RuntimeRecoveryActions(status)) != 0 {
+	if !projected || status.Phase != agentrun.RunPhaseIdle || status.LastOperation == nil || status.LastOperation.Status != agentrun.OperationAborted || len(agentharness.RuntimeRecoveryActions(status)) != 0 {
 		t.Fatalf("cold Game abort terminal projection = %#v projected=%t", status, projected)
 	}
 }
@@ -356,7 +360,7 @@ func newInteractiveStartRegistryFixture(t *testing.T) (*InteractiveAppService, I
 	}
 }
 
-func waitInteractiveTask(t *testing.T, task *Task) {
+func waitInteractiveTask(t *testing.T, task *apptask.Task) {
 	t.Helper()
 	select {
 	case <-task.Done():
@@ -365,7 +369,7 @@ func waitInteractiveTask(t *testing.T, task *Task) {
 	}
 }
 
-func countInteractiveTaskEvents(events []TaskEvent, eventType string) int {
+func countInteractiveTaskEvents(events []apptask.Event, eventType string) int {
 	count := 0
 	for _, event := range events {
 		if event.Event.Type == eventType {
@@ -377,8 +381,8 @@ func countInteractiveTaskEvents(events []TaskEvent, eventType string) int {
 
 type interactiveReplayConversation struct{}
 
-func (*interactiveReplayConversation) AssembleModelContext(ctx context.Context, _ string, input agents.ModelContextInput) (agents.ModelContextResult, error) {
-	return agents.AssembleSingleUserModelContext(ctx, input)
+func (*interactiveReplayConversation) AssembleModelContext(ctx context.Context, _ string, input agentcontext.ModelContextInput) (agentcontext.ModelContextResult, error) {
+	return agentcontext.AssembleSingleUserModelContext(ctx, input)
 }
 
 func (*interactiveReplayConversation) AppendAssistant(string) error { return nil }
@@ -393,10 +397,10 @@ type interactiveCrashConversation struct {
 	vanished chan struct{}
 }
 
-func (c *interactiveCrashConversation) AssembleModelContext(context.Context, string, agents.ModelContextInput) (agents.ModelContextResult, error) {
+func (c *interactiveCrashConversation) AssembleModelContext(context.Context, string, agentcontext.ModelContextInput) (agentcontext.ModelContextResult, error) {
 	close(c.vanished)
 	runtime.Goexit()
-	return agents.ModelContextResult{}, nil
+	return agentcontext.ModelContextResult{}, nil
 }
 
 func (*interactiveCrashConversation) AppendAssistant(string) error { return nil }

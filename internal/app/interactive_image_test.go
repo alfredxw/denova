@@ -8,8 +8,9 @@ import (
 	"testing"
 
 	"denova/config"
-	"denova/internal/imagepreset"
+	imagepreset "denova/internal/image/preset"
 	"denova/internal/interactive"
+
 	runstate "github.com/alfredxw/denova/agent/runtime"
 )
 

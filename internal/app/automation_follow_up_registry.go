@@ -3,13 +3,14 @@ package app
 import (
 	"context"
 	"crypto/sha256"
+	agentrun "denova/internal/agents/run"
+	apptask "denova/internal/app/task"
 	"encoding/hex"
 	"fmt"
 	"log/slog"
 	"strings"
 	"sync"
 
-	agents "denova/internal/agents"
 	"denova/internal/automation"
 )
 
@@ -29,7 +30,7 @@ func newAutomationFollowUpIdentity(runID, commandID, message string) (automation
 	if commandID == "" {
 		return automationFollowUpIdentity{}, ErrAgentCommandIDRequired
 	}
-	if err := agents.ValidateCommandID(commandID); err != nil {
+	if err := agentrun.ValidateCommandID(commandID); err != nil {
 		return automationFollowUpIdentity{}, err
 	}
 	if runID == "" || message == "" {
@@ -44,14 +45,14 @@ func newAutomationFollowUpIdentity(runID, commandID, message string) (automation
 
 type automationFollowUpRecord struct {
 	identity automationFollowUpIdentity
-	task     *Task
+	task     *apptask.Task
 	run      automation.RunRecord
 }
 
 type automationFollowUpReservation struct {
 	registry *automationFollowUpRegistry
 	identity automationFollowUpIdentity
-	task     *Task
+	task     *apptask.Task
 	inserted bool
 	rebound  bool
 	bound    bool
@@ -66,7 +67,7 @@ type automationFollowUpRegistry struct {
 	replayByteLimit int
 }
 
-func (r *automationFollowUpRegistry) replay(identity automationFollowUpIdentity) (*Task, automation.RunRecord, bool, error) {
+func (r *automationFollowUpRegistry) replay(identity automationFollowUpIdentity) (*apptask.Task, automation.RunRecord, bool, error) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	record, ok := r.records[identity.commandID]
@@ -93,7 +94,7 @@ func (r *automationFollowUpRegistry) replay(identity automationFollowUpIdentity)
 
 // reserve admits display retention before Runtime.StartWithOptions can durably
 // accept the command. Once it succeeds, bind is capacity-infallible.
-func (r *automationFollowUpRegistry) reserve(identity automationFollowUpIdentity, task *Task) (*automationFollowUpReservation, error) {
+func (r *automationFollowUpRegistry) reserve(identity automationFollowUpIdentity, task *apptask.Task) (*automationFollowUpReservation, error) {
 	if task == nil {
 		return nil, fmt.Errorf("cannot reserve a nil automation follow-up task")
 	}
@@ -185,7 +186,7 @@ func (reservation *automationFollowUpReservation) rollback() {
 	r.mu.Unlock()
 }
 
-func (r *automationFollowUpRegistry) remember(identity automationFollowUpIdentity, task *Task, run automation.RunRecord) error {
+func (r *automationFollowUpRegistry) remember(identity automationFollowUpIdentity, task *apptask.Task, run automation.RunRecord) error {
 	reservation, err := r.reserve(identity, task)
 	if err != nil {
 		return err
@@ -208,7 +209,7 @@ func (r *automationFollowUpRegistry) pruneLocked() {
 			continue
 		}
 		taskID := record.task.ID()
-		released := record.task.releaseDisplayReplay()
+		released := record.task.ReleaseDisplayReplay()
 		totalBytes -= released
 		record.task = nil
 		r.records[commandID] = record
@@ -219,7 +220,7 @@ func (r *automationFollowUpRegistry) pruneLocked() {
 func (r *automationFollowUpRegistry) registryChargeLocked() int {
 	total := 0
 	for _, record := range r.records {
-		total += record.task.displayReplayRegistryCharge()
+		total += record.task.DisplayReplayCharge()
 	}
 	return total
 }
@@ -238,7 +239,7 @@ func (r *automationFollowUpRegistry) removeOldestSettledIdentityLocked() bool {
 		released := 0
 		if record.task != nil {
 			taskID = record.task.ID()
-			released = record.task.releaseDisplayReplay()
+			released = record.task.ReleaseDisplayReplay()
 		}
 		delete(r.records, commandID)
 		r.order = removeTaskReplayKey(r.order, index)

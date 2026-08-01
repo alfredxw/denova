@@ -2,16 +2,18 @@ package app
 
 import (
 	"context"
+	agentstructural "denova/internal/agents/context/structural"
 	"fmt"
 	"strings"
 
 	"denova/config"
-	agents "denova/internal/agents"
+	agentcompaction "denova/internal/agents/context/compaction"
+	agentrun "denova/internal/agents/run"
 	"denova/internal/interactive"
 )
 
 type preparedInteractiveContextCompaction struct {
-	Result          agents.ContextCompactionResult
+	Result          agentcompaction.Result
 	SourceTurnCount int
 }
 
@@ -27,9 +29,9 @@ func (c *interactiveConversation) stagePreparedInteractiveCompaction(prepared pr
 
 func (c *interactiveConversation) PostSettlementContextStructuralSpec(
 	ctx context.Context,
-	settledOperationID agents.OperationID,
-	options agents.RunOptions,
-) (*agents.ContextStructuralSpec, error) {
+	settledOperationID agentrun.OperationID,
+	options agentrun.Options,
+) (*agentstructural.Spec, error) {
 	if c == nil || c.store == nil {
 		return nil, nil
 	}
@@ -54,7 +56,7 @@ func (c *interactiveConversation) PostSettlementContextStructuralSpec(
 	}
 	expectedParent := branch.Head
 	preparedHash, err := contextStructuralValueHash(struct {
-		Result          agents.ContextCompactionResult
+		Result          agentcompaction.Result
 		SourceTurnCount int
 	}{prepared.Result, prepared.SourceTurnCount})
 	if err != nil {
@@ -71,52 +73,52 @@ func (c *interactiveConversation) PostSettlementContextStructuralSpec(
 	}
 	event := interactive.ContextCompactionEvent{
 		ID:                   recordID,
-		CompactionCheckpoint: agents.NewContextCompactionCheckpoint(config.AgentKindInteractiveStory, prepared.Result),
+		CompactionCheckpoint: agentcompaction.NewCheckpoint(config.AgentKindInteractiveStory, prepared.Result),
 		SourceTurnCount:      prepared.SourceTurnCount,
 		ExpectedParentID:     &expectedParent,
 	}
 	event.TriggerReason = reason
 	options.StoryID = c.storyID
 	options.BranchID = branchID
-	ref := agents.ContextCompactionRef{
+	ref := agentrun.ContextCompactionRef{
 		Source: "story.turn_events", Purpose: "persist an automatic bounded model-history checkpoint after turn settlement",
 		Resource: c.storyID + "/" + branchID, ExpectedRevision: contextStoryRevision(expectedParent),
 	}
 	binding := storyContextStructuralBinding(options.Workspace, c.storyID, branchID)
 	plan, err := newContextStructuralRestorePlan(
-		agents.ContextStructuralDomainStory, agents.ContextStructuralCompact, binding, ref, recordID,
-		agents.ContextStructuralResult{Compaction: prepared.Result}, event,
+		agentstructural.DomainStory, agentstructural.Compact, binding, ref, recordID,
+		agentstructural.Result{Compaction: prepared.Result}, event,
 	)
 	if err != nil {
 		return nil, err
 	}
 	operation := fixedContextStructuralOperation(plan,
-		func(context.Context) (agents.ContextStructuralReceipt, error) {
+		func(context.Context) (agentstructural.Receipt, error) {
 			committed, err := c.store.AppendContextCompaction(c.storyID, branchID, event)
 			if err != nil {
-				return agents.ContextStructuralReceipt{}, err
+				return agentstructural.Receipt{}, err
 			}
 			if !sameStoryContextCompactionMutation(committed, event) {
-				return agents.ContextStructuralReceipt{}, fmt.Errorf("canonical post-settlement Story compaction differs from frozen mutation")
+				return agentstructural.Receipt{}, fmt.Errorf("canonical post-settlement Story compaction differs from frozen mutation")
 			}
-			return agents.ContextStructuralReceipt{Revision: "story-head:" + committed.ID}, nil
+			return agentstructural.Receipt{Revision: "story-head:" + committed.ID}, nil
 		},
-		func(context.Context) (agents.ContextStructuralReceipt, bool, error) {
+		func(context.Context) (agentstructural.Receipt, bool, error) {
 			current, err := c.store.StoryContext(c.storyID, branchID)
 			if err != nil {
-				return agents.ContextStructuralReceipt{}, false, err
+				return agentstructural.Receipt{}, false, err
 			}
 			if current.Snapshot.ContextCompaction == nil || current.Snapshot.ContextCompaction.ID != recordID {
-				return agents.ContextStructuralReceipt{}, false, nil
+				return agentstructural.Receipt{}, false, nil
 			}
 			committed := *current.Snapshot.ContextCompaction
 			if !sameStoryContextCompactionMutation(committed, event) {
-				return agents.ContextStructuralReceipt{}, false, fmt.Errorf("canonical post-settlement Story compaction conflicts with frozen mutation")
+				return agentstructural.Receipt{}, false, fmt.Errorf("canonical post-settlement Story compaction conflicts with frozen mutation")
 			}
-			return agents.ContextStructuralReceipt{Revision: "story-head:" + committed.ID}, true, nil
+			return agentstructural.Receipt{Revision: "story-head:" + committed.ID}, true, nil
 		})
-	return &agents.ContextStructuralSpec{
-		CommandID: commandID, Action: agents.ContextStructuralCompact,
+	return &agentstructural.Spec{
+		CommandID: commandID, Action: agentstructural.Compact,
 		Ref: ref, Options: options, Operation: operation, RestorePlan: &plan,
 	}, nil
 }

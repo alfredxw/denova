@@ -2,6 +2,7 @@ package app
 
 import (
 	"context"
+	interactivestate "denova/internal/interactive/state"
 	"strings"
 	"testing"
 
@@ -36,7 +37,7 @@ func TestSubmitTurnResultValidatesFrozenStatePathsAndRetainsChoicesAcrossRetry(t
 	if invalidConversation.InteractiveNarrativeReady() {
 		t.Fatal("narrative must stay closed before TurnResult is staged")
 	}
-	wrongType := testTurnSubmissionInput([]interactive.StateUpdate{{Op: "replace", Path: "/protagonist/生命值", Value: "很多"}}, true)
+	wrongType := testTurnSubmissionInput([]interactivestate.Update{{Op: "replace", Path: "/protagonist/生命值", Value: "很多"}}, true)
 	receipt, err := invalidConversation.SubmitTurnResult(context.Background(), wrongType)
 	if err != nil || receipt.Ready || receipt.ModuleStatus.StateChanges != interactive.TurnSubmissionModuleRejected || receipt.ModuleStatus.Choices != interactive.TurnSubmissionModuleAccepted || len(receipt.Diagnostics) != 1 || !strings.Contains(receipt.Diagnostics[0].MessageZH, "生命值") {
 		t.Fatalf("wrong field type should return model-correctable feedback: receipt=%#v err=%v", receipt, err)
@@ -46,7 +47,7 @@ func TestSubmitTurnResultValidatesFrozenStatePathsAndRetainsChoicesAcrossRetry(t
 	}
 
 	conversation := newInteractiveConversation(store, t.TempDir(), workspace, story.ID, "main", "休息", 800, &config.Config{})
-	withUnknownField := testTurnSubmissionInput([]interactive.StateUpdate{
+	withUnknownField := testTurnSubmissionInput([]interactivestate.Update{
 		{Op: "replace", Path: "/protagonist/当前身体与精神 状态", Value: "安定"},
 		{Op: "replace", Path: "/protagonist/body.status", Value: "良好"},
 	}, true)
@@ -57,7 +58,7 @@ func TestSubmitTurnResultValidatesFrozenStatePathsAndRetainsChoicesAcrossRetry(t
 	if conversation.InteractiveNarrativeReady() {
 		t.Fatal("narrative must remain closed while state_updates needs retry")
 	}
-	replacement := testTurnSubmissionInput([]interactive.StateUpdate{{Op: "replace", Path: "/protagonist/当前身体与精神 状态", Value: "安定"}}, false)
+	replacement := testTurnSubmissionInput([]interactivestate.Update{{Op: "replace", Path: "/protagonist/当前身体与精神 状态", Value: "安定"}}, false)
 	receipt, err = conversation.SubmitTurnResult(context.Background(), replacement)
 	if err != nil || !receipt.Ready || receipt.ModuleStatus.Choices != interactive.TurnSubmissionModuleAccepted {
 		t.Fatalf("state-only retry should retain accepted choices: receipt=%#v err=%v", receipt, err)
@@ -92,7 +93,7 @@ func TestSubmitTurnResultRequiresAndCommitsStoryContext(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	result := testTurnSubmissionInput([]interactive.StateUpdate{}, true)
+	result := testTurnSubmissionInput([]interactivestate.Update{}, true)
 
 	missing := newInteractiveConversation(store, t.TempDir(), workspace, story.ID, "main", "进入酒馆", 800, &config.Config{})
 	receipt, err := missing.SubmitTurnResult(context.Background(), result)
@@ -106,7 +107,7 @@ func TestSubmitTurnResultRequiresAndCommitsStoryContext(t *testing.T) {
 		t.Fatal("narrative must remain closed until story context is submitted")
 	}
 
-	eventOnly := testTurnSubmissionInput([]interactive.StateUpdate{{Op: "replace", Path: "/story/当前事件", Value: "主角进入黄泉酒馆并观察堂内局势"}}, true)
+	eventOnly := testTurnSubmissionInput([]interactivestate.Update{{Op: "replace", Path: "/story/当前事件", Value: "主角进入黄泉酒馆并观察堂内局势"}}, true)
 	withoutLocation := newInteractiveConversation(store, t.TempDir(), workspace, story.ID, "main", "进入酒馆", 800, &config.Config{})
 	receipt, err = withoutLocation.SubmitTurnResult(context.Background(), eventOnly)
 	if err != nil {
@@ -116,7 +117,7 @@ func TestSubmitTurnResultRequiresAndCommitsStoryContext(t *testing.T) {
 		t.Fatalf("uninitialized story context should require a current location even without scene_id: %#v", receipt)
 	}
 
-	result = testTurnSubmissionInput([]interactive.StateUpdate{
+	result = testTurnSubmissionInput([]interactivestate.Update{
 		{Op: "replace", Path: "/story/当前详细地点", Value: "黄泉酒馆"},
 		{Op: "replace", Path: "/story/当前事件", Value: "主角进入黄泉酒馆并观察堂内局势"},
 	}, true)
@@ -141,7 +142,7 @@ func TestSubmitTurnResultRequiresAndCommitsStoryContext(t *testing.T) {
 	}
 }
 
-func testTurnSubmissionInput(updates []interactive.StateUpdate, includeChoices bool) interactive.TurnSubmissionInput {
+func testTurnSubmissionInput(updates []interactivestate.Update, includeChoices bool) interactive.TurnSubmissionInput {
 	input := interactive.TurnSubmissionInput{StateUpdates: &updates}
 	if includeChoices {
 		choices := []string{"继续当前行动", "观察周围变化", "询问在场人物", "检查自身状态", "暂时等待"}

@@ -1,6 +1,7 @@
 package interactive
 
 import (
+	interactivestate "denova/internal/interactive/state"
 	"reflect"
 	"strings"
 	"testing"
@@ -119,8 +120,8 @@ func TestPrepareTurnSubmissionLosslesslyNormalizesNumericDelta(t *testing.T) {
 
 func TestCompileTurnStateUpdatesLosslesslyNormalizesNumericDelta(t *testing.T) {
 	system, state := turnSubmissionTestState()
-	compiled, err := CompileTurnStateUpdates(system, state, []StateUpdate{{
-		Op: TurnStateUpdateDelta, Path: "/protagonist/生命值", Value: "2",
+	compiled, err := CompileTurnStateUpdates(system, state, []interactivestate.Update{{
+		Op: interactivestate.Delta, Path: "/protagonist/生命值", Value: "2",
 	}}, TurnStateUpdateCompileOptions{})
 	if err != nil {
 		t.Fatalf("the model-to-state compiler should accept an unambiguous numeric string: %v", err)

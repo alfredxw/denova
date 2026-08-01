@@ -1,0 +1,549 @@
+package chat
+
+import (
+	"context"
+	agentcontext "denova/internal/agents/context"
+	agentconversation "denova/internal/agents/conversation"
+	agentrun "denova/internal/agents/run"
+	agenttoolruntime "denova/internal/agents/toolruntime"
+	"os"
+	"path/filepath"
+	"strings"
+	"testing"
+
+	agent "github.com/alfredxw/denova/agent"
+
+	"denova/config"
+	agentcompaction "denova/internal/agents/context/compaction"
+	"denova/internal/agents/prompts"
+	"denova/internal/agents/session"
+	"denova/internal/book"
+	"denova/internal/book/lore"
+)
+
+type contextAnalysisConversation struct {
+	prepare func(originalMessage, agentMessage string) ([]*agent.Message, error)
+}
+
+func (c contextAnalysisConversation) AssembleModelContext(_ context.Context, originalMessage string, input agentcontext.ModelContextInput) (agentcontext.ModelContextResult, error) {
+	messages, err := c.prepare(originalMessage, input.UserMessage)
+	return agentcontext.ModelContextResult{Messages: messages}, err
+}
+
+func (contextAnalysisConversation) AppendAssistant(string) error                 { return nil }
+func (contextAnalysisConversation) MarkInterrupted(string, string, string) error { return nil }
+func (contextAnalysisConversation) PendingInterruption() *session.Interruption   { return nil }
+func (contextAnalysisConversation) ResolveInterruption(string) error             { return nil }
+
+func buildIDEContextAnalysisForTest(t *testing.T, cfg *config.Config, state *book.State, teller prompts.IDEStoryTeller, bookService *book.Service, messages []*agent.Message, compaction *session.ContextCompaction, pending *session.Interruption, req ChatRequest) (ContextAnalysis, *agentconversation.SessionConversation) {
+	t.Helper()
+	store, err := session.NewStore(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	sess, err := store.GetOrCreate("context-analysis")
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, message := range messages {
+		if message != nil {
+			if err := sess.Append(message); err != nil {
+				t.Fatal(err)
+			}
+		}
+	}
+	if compaction != nil {
+		record := *compaction
+		record.AgentKind = config.AgentKindIDE
+		if _, err := sess.AppendContextCompaction(record); err != nil {
+			t.Fatal(err)
+		}
+	}
+	runtimeContexts := prompts.IDEWorkspaceRuntimeContextsForContext(state, req.IDEContext)
+	conversation := agentconversation.NewSessionConversationForAgentWithRuntimeContexts(
+		sess, cfg, config.AgentKindIDE,
+		runtimeContexts.StableTitle, runtimeContexts.Stable,
+		runtimeContexts.DynamicTitle, runtimeContexts.Dynamic,
+	)
+	analysis, err := BuildIDEContextAnalysis(cfg, state, teller, bookService, compaction, pending, req, conversation)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return analysis, conversation
+}
+
+func TestInteractiveContextAnalysisLabelsDynamicContextAtFinalMessage(t *testing.T) {
+	analysis, err := BuildInteractiveStoryContextAnalysis(
+		&config.Config{},
+		nil,
+		prompts.InteractiveStorySystemInstructionInput{},
+		nil,
+		ChatRequest{Message: "我点燃火把"},
+		nil,
+		contextAnalysisConversation{prepare: func(originalMessage, agentMessage string) ([]*agent.Message, error) {
+			return []*agent.Message{
+				agent.UserMessage("我推开门"),
+				agent.AssistantMessage("门后传来风声。", nil),
+				agent.UserMessage(agentMessage + "\n\n[本轮动态上下文]\n## 当前互动状态快照(JSON)\n{}"),
+			}, nil
+		}},
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(analysis.ContextMessages) != 3 {
+		t.Fatalf("context message count = %d, want 3", len(analysis.ContextMessages))
+	}
+	if first := analysis.ContextMessages[0]; first.Source != "互动历史回合" || strings.Contains(first.Title, "故事状态与记忆") {
+		t.Fatalf("first message should be interactive history, got: %#v", first)
+	}
+	last := analysis.ContextMessages[len(analysis.ContextMessages)-1]
+	if last.Source != "本轮互动指令" || last.Title != "本轮互动指令与动态上下文" {
+		t.Fatalf("final message should carry runtime context label, got: %#v", last)
+	}
+	if !strings.Contains(last.Content, "[本轮动态上下文]") || !strings.Contains(last.Content, "当前互动状态快照") {
+		t.Fatalf("final message should include dynamic context content: %#v", last)
+	}
+}
+
+func TestInteractiveContextAnalysisSplitsCurrentTurnByRuntimeSource(t *testing.T) {
+	runtimeContext := prompts.InteractiveStoryRuntimeContext(prompts.InteractiveStoryPromptInput{
+		ReplyTargetChars:            1200,
+		ChoiceCount:                 3,
+		DirectorPlanVisible:         "## 正文 Agent 简报（source: agent-brief.md）\n\n当前目标：进入藏书阁。",
+		StoryDirectorRules:          "冲突升级应保持渐进。",
+		ActorState:                  "主角：体力=8。",
+		StoryDirectorStrategyPrompt: "伏笔回收前先给征兆。",
+	})
+	turnInstruction := prompts.InteractiveStoryTurnInstruction(
+		"我推开藏书阁的门",
+		"守门人会先观察来者身份。",
+		runtimeContext,
+	)
+	analysis, err := BuildInteractiveStoryContextAnalysis(
+		&config.Config{},
+		nil,
+		prompts.InteractiveStorySystemInstructionInput{},
+		nil,
+		ChatRequest{Message: "我推开藏书阁的门"},
+		nil,
+		contextAnalysisConversation{prepare: func(originalMessage, agentMessage string) ([]*agent.Message, error) {
+			return []*agent.Message{agent.UserMessage(turnInstruction)}, nil
+		}},
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(analysis.ContextMessages) != 1 {
+		t.Fatalf("context message count = %d, want 1", len(analysis.ContextMessages))
+	}
+	parts := analysis.ContextMessages[0].Parts
+	if len(parts) < 7 {
+		t.Fatalf("current turn should be split into source parts: %#v", parts)
+	}
+	wants := []struct {
+		source  string
+		title   string
+		content string
+	}{
+		{source: "本轮行动", title: "当前用户行动", content: "我推开藏书阁的门"},
+		{source: "StoryTeller.turn_context", title: "导演本轮上下文规则", content: "守门人会先观察来者身份"},
+		{source: "agent-brief.md", title: "正文 Agent 简报", content: "进入藏书阁"},
+		{source: "StoryDirector", title: "故事导演规则清单", content: "冲突升级"},
+		{source: "Snapshot.State.actors + effective Actor schema", title: "Actor 状态手册", content: "体力=8"},
+		{source: "StoryDirector.strategy.prompt_markdown", title: "故事导演 Markdown 策略提示", content: "伏笔回收"},
+	}
+	for _, want := range wants {
+		matches := 0
+		contentFound := false
+		for _, part := range parts {
+			if part.Source == want.source && part.Title == want.title {
+				matches++
+				contentFound = contentFound || strings.Contains(part.Content, want.content)
+			}
+		}
+		if matches != 1 || !contentFound {
+			t.Fatalf("split part source=%q title=%q matches=%d content_found=%v, want one matching %q in %#v", want.source, want.title, matches, contentFound, want.content, parts)
+		}
+	}
+}
+
+func TestInteractiveContextAnalysisUsesConfiguredContextWindow(t *testing.T) {
+	contextWindow := 650000
+	analysis, err := BuildInteractiveStoryContextAnalysis(
+		&config.Config{OpenAIContextWindowTokens: contextWindow},
+		nil,
+		prompts.InteractiveStorySystemInstructionInput{},
+		nil,
+		ChatRequest{Message: "继续"},
+		nil,
+		contextAnalysisConversation{prepare: func(originalMessage, agentMessage string) ([]*agent.Message, error) {
+			return []*agent.Message{agent.UserMessage(agentMessage)}, nil
+		}},
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if analysis.ContextWindowTokens != contextWindow {
+		t.Fatalf("context window tokens = %d, want %d", analysis.ContextWindowTokens, contextWindow)
+	}
+}
+
+func TestInteractiveContextAnalysisShowsDirectNarrativeOutputProtocol(t *testing.T) {
+	analysis, err := BuildInteractiveStoryContextAnalysis(
+		&config.Config{},
+		nil,
+		prompts.InteractiveStorySystemInstructionInput{},
+		nil,
+		ChatRequest{Message: "继续"},
+		nil,
+		contextAnalysisConversation{prepare: func(originalMessage, agentMessage string) ([]*agent.Message, error) {
+			return []*agent.Message{agent.UserMessage(agentMessage)}, nil
+		}},
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var outputProtocol *ContextAnalysisPart
+	for i := range analysis.SystemPromptParts {
+		part := &analysis.SystemPromptParts[i]
+		if part.ID == "output_protocol" {
+			outputProtocol = part
+			break
+		}
+	}
+	if outputProtocol == nil {
+		t.Fatalf("output protocol part missing: %#v", analysis.SystemPromptParts)
+	}
+	if !strings.Contains(outputProtocol.Content, "只输出本回合可展示在故事舞台上的故事正文") {
+		t.Fatalf("output protocol should describe direct narrative text: %#v", outputProtocol)
+	}
+}
+
+func TestInteractiveDirectorContextAnalysisSplitsInstructionSources(t *testing.T) {
+	instruction := prompts.InteractiveDirectorInstruction(prompts.InteractiveDirectorPromptInput{
+		Title:                "外门逆袭",
+		Origin:               "主角被同门轻视",
+		StoryTellerID:        "classic",
+		StoryDirectorID:      "default",
+		BranchID:             "main",
+		DirectorPlanDocs:     "## 文件：agent-brief.md\n\n# 正文 Agent 简报",
+		LoreContext:          "角色 沈凝。外门比试关键见证者。",
+		TurnAuditJSON:        `{"turn_id":"turn-1","user_action":"报名比试"}`,
+		TurnHistory:          "用户：我报名参加公开比试",
+		StoryDirectorPlan:    "mainline_strength: soft_guidance",
+		DirectorEventCatalog: `{"events":[{"id":"face_slap"}]}`,
+	})
+	analysis, err := BuildInteractiveDirectorContextAnalysis(&config.Config{OpenAIContextWindowTokens: 128000}, instruction)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if analysis.AgentKind != config.AgentKindInteractiveDirector || analysis.Mode != "interactive_director" {
+		t.Fatalf("unexpected director analysis identity: %#v", analysis)
+	}
+	if analysis.ContextWindowTokens != 128000 {
+		t.Fatalf("context window tokens = %d, want 128000", analysis.ContextWindowTokens)
+	}
+	if analysis.MessageCount != 1 {
+		t.Fatalf("director analysis should estimate the single user instruction message, got %d", analysis.MessageCount)
+	}
+	sawRuntimeEnvironment := false
+	for _, part := range analysis.ContextParts {
+		if part.Source == "runtime.environment" && strings.Contains(part.Content, "Captured at:") {
+			sawRuntimeEnvironment = true
+			break
+		}
+	}
+	if !sawRuntimeEnvironment {
+		t.Fatalf("director analysis is missing runtime.environment: %#v", analysis.ContextParts)
+	}
+	var sawOutputProtocol, sawLore, sawTurnAudit, sawPlanDocs bool
+	for _, part := range analysis.SystemPromptParts {
+		if part.ID == "output_protocol" && strings.Contains(part.Content, agenttoolruntime.SubmitDirectorPlanUpdateToolName) {
+			sawOutputProtocol = true
+		}
+	}
+	for _, part := range analysis.ContextMessages {
+		switch {
+		case part.Title == "资料库导演上下文" && strings.Contains(part.Source, "lore-context.md") && strings.Contains(part.Content, "沈凝"):
+			sawLore = true
+		case part.Title == "本回合 TurnResult / RuleResolution / StateDelta 审计 JSON" && strings.Contains(part.Source, "committed turn") && strings.Contains(part.Content, "turn-1"):
+			sawTurnAudit = true
+		case part.Title == "文件：agent-brief.md" && strings.Contains(part.Content, "正文 Agent 简报"):
+			sawPlanDocs = true
+		}
+	}
+	if !sawOutputProtocol || !sawLore || !sawTurnAudit || !sawPlanDocs {
+		t.Fatalf("director analysis missing expected parts output=%v lore=%v audit=%v planDocs=%v parts=%#v", sawOutputProtocol, sawLore, sawTurnAudit, sawPlanDocs, analysis.ContextMessages)
+	}
+}
+
+func TestInteractiveDirectorContextAnalysisIncludesStableResidentLoreMessage(t *testing.T) {
+	analysis, err := BuildInteractiveDirectorContextAnalysisWithStableContext(
+		&config.Config{OpenAIContextWindowTokens: 128000},
+		"完整常驻资料（complete=true）",
+		"## [[公开比试规则]]\n\n禁止场外偷袭。",
+		1024,
+		prompts.InteractiveDirectorInstruction(prompts.InteractiveDirectorPromptInput{Title: "外门逆袭"}),
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if analysis.MessageCount != 2 {
+		t.Fatalf("stable resident Lore plus the task instruction should be two exact model messages, got %d", analysis.MessageCount)
+	}
+	if len(analysis.ContextMessages) == 0 || analysis.ContextMessages[0].ID != "resident_lore" || !strings.Contains(analysis.ContextMessages[0].Content, "禁止场外偷袭") || !strings.Contains(analysis.ContextMessages[0].Note, "max_bytes=1024") {
+		t.Fatalf("stable resident Lore should be explicit in diagnostics: %#v", analysis.ContextMessages)
+	}
+}
+
+func TestIDEContextAnalysisShowsExactModelVisibleToolContext(t *testing.T) {
+	result := "第一章内容\n\n" + "[Denova tool result metadata]" + "\nschema: tool_result.v1"
+	analysis, _ := buildIDEContextAnalysisForTest(t,
+		&config.Config{},
+		nil,
+		prompts.IDEStoryTeller{},
+		nil,
+		[]*agent.Message{
+			agent.UserMessage("读取第一章"),
+			agent.AssistantMessage("", []agent.ToolCall{{
+				ID:   "call-read",
+				Type: "function",
+				Function: agent.FunctionCall{
+					Name:      "read",
+					Arguments: `{"path":"chapters/1.md"}`,
+				},
+			}}),
+			agent.ToolMessage(agent.TextToolResult(result), "call-read", agent.WithToolName("read")),
+			agent.AssistantMessage("已读取", nil),
+		},
+		nil,
+		nil,
+		ChatRequest{Message: "继续"},
+	)
+	var sawToolCall, sawToolResult bool
+	for _, part := range analysis.ContextMessages {
+		switch part.Kind {
+		case "tool_call":
+			sawToolCall = true
+			if part.ToolName != "read" || !strings.Contains(part.Content, `{"path":"chapters/1.md"}`) {
+				t.Fatalf("tool call part should include tool name and args: %#v", part)
+			}
+		case "tool_result":
+			sawToolResult = true
+			if part.ToolName != "read" || part.Content != result {
+				t.Fatalf("tool result part should match the model-visible message: %#v", part)
+			}
+		}
+	}
+	if !sawToolCall || !sawToolResult {
+		t.Fatalf("context analysis should include tool call and result parts: %#v", analysis.ContextMessages)
+	}
+}
+
+func TestIDEContextAnalysisShowsStyleRulesAsSystemPromptParts(t *testing.T) {
+	analysis, _ := buildIDEContextAnalysisForTest(t,
+		&config.Config{},
+		nil,
+		prompts.IDEStoryTeller{
+			ID:         "classic",
+			StyleRules: []prompts.StyleRule{{Scene: "激烈打斗", StyleContents: []string{"短句留白"}}},
+		},
+		nil,
+		nil,
+		nil,
+		nil,
+		ChatRequest{
+			Message:    "续写第三章",
+			StyleRules: []prompts.StyleRule{{Scene: "激烈打斗", StyleContents: []string{"短句留白"}}},
+		},
+	)
+	var foundSystemPart bool
+	for _, part := range analysis.SystemPromptParts {
+		if part.Title == "文风参考：激烈打斗" && strings.Contains(part.Content, "短句留白") {
+			foundSystemPart = true
+		}
+	}
+	if !foundSystemPart {
+		t.Fatalf("style rule should be a system prompt part: %#v", analysis.SystemPromptParts)
+	}
+	if len(analysis.ContextMessages) == 0 {
+		t.Fatal("context messages should not be empty")
+	}
+	final := analysis.ContextMessages[len(analysis.ContextMessages)-1].Content
+	if strings.Contains(final, "文风参考") || strings.Contains(final, "短句留白") {
+		t.Fatalf("style rule should not be appended to final user message:\n%s", final)
+	}
+}
+
+func TestInteractiveContextAnalysisShowsStyleRulesAsSystemPromptParts(t *testing.T) {
+	analysis, err := BuildInteractiveStoryContextAnalysis(
+		&config.Config{},
+		nil,
+		prompts.InteractiveStorySystemInstructionInput{
+			StoryTellerID: "classic",
+			StyleRules:    []prompts.StyleRule{{Scene: "日常对话", StyleContents: []string{"克制对白"}}},
+		},
+		nil,
+		ChatRequest{
+			Message:    "我和守卫交谈",
+			StyleRules: []prompts.StyleRule{{Scene: "日常对话", StyleContents: []string{"克制对白"}}},
+		},
+		nil,
+		contextAnalysisConversation{prepare: func(originalMessage, agentMessage string) ([]*agent.Message, error) {
+			return []*agent.Message{agent.UserMessage(agentMessage)}, nil
+		}},
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var foundSystemPart bool
+	for _, part := range analysis.SystemPromptParts {
+		if part.Title == "文风参考：日常对话" && strings.Contains(part.Content, "克制对白") {
+			foundSystemPart = true
+		}
+	}
+	if !foundSystemPart {
+		t.Fatalf("style rule should be a system prompt part: %#v", analysis.SystemPromptParts)
+	}
+	final := analysis.ContextMessages[len(analysis.ContextMessages)-1].Content
+	if strings.Contains(final, "文风参考") || strings.Contains(final, "克制对白") {
+		t.Fatalf("style rule should not be appended to final interactive message:\n%s", final)
+	}
+}
+
+func TestIDEContextAnalysisUsesPreparedTurnWithoutSideEffects(t *testing.T) {
+	messages := []*agent.Message{
+		agent.UserMessage("user 1"),
+		agent.AssistantMessage("assistant 1", nil),
+		agent.UserMessage("user 2"),
+		agent.AssistantMessage("assistant 2", nil),
+		agent.UserMessage("user 3"),
+		agent.AssistantMessage("assistant 3", nil),
+	}
+	compaction := &session.ContextCompaction{
+		CompactionCheckpoint: agentcompaction.NewCheckpoint("", agentcompaction.Result{
+			Epoch: 1, Summary: "压缩摘要：保留早期约束。", RetainedTurns: 1,
+		}),
+		SourceEndIndex: 2,
+	}
+	cfg := &config.Config{}
+	req := ChatRequest{Message: "continue after compaction"}
+	analysis, conversation := buildIDEContextAnalysisForTest(t, cfg, nil, prompts.IDEStoryTeller{}, nil, messages, compaction, nil, req)
+	projection, err := conversation.SnapshotContextCompaction(context.Background(), true)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if after := projection.Cursor.MessageCount; after != len(messages) {
+		t.Fatalf("context analysis changed session history: before=%d after=%d", len(messages), after)
+	}
+	sawRuntimeEnvironment := false
+	for _, part := range analysis.ContextParts {
+		if part.Source == "runtime.environment" {
+			sawRuntimeEnvironment = true
+			break
+		}
+	}
+	if !sawRuntimeEnvironment {
+		t.Fatalf("context analysis is missing runtime.environment: %#v", analysis.ContextParts)
+	}
+	if _, pending, err := conversation.PendingAgentCycleCommit(agentrun.DomainCommitInput); err != nil || pending {
+		t.Fatalf("analysis staged an input intent pending=%t err=%v", pending, err)
+	}
+	if len(analysis.ContextMessages) == 0 || !strings.Contains(analysis.ContextMessages[len(analysis.ContextMessages)-1].Content, req.Message) {
+		t.Fatalf("analysis is missing the prepared user turn: %#v", analysis.ContextMessages)
+	}
+}
+
+func TestIDEContextAnalysisSplitsStableAndDynamicWorkspaceState(t *testing.T) {
+	dir := t.TempDir()
+	state := book.NewState(dir)
+	if err := state.InitWorkspace(); err != nil {
+		t.Fatalf("InitWorkspace failed: %v", err)
+	}
+	if err := os.MkdirAll(state.SettingDir(), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(state.SettingDir(), "outline.md"), []byte("## 第一卷\n\n主角进入废城。"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(state.SettingDir(), "progress.md"), []byte("当前进度：抵达废城入口。"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(state.SettingDir(), book.CharacterStatesFileName), []byte("林川：警惕，轻伤。"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(state.ChapterGroupDir(), "group01-废城.md"), []byte("章节组：探索废城。"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, "chapters", "ch0001-开局.md"), []byte("第一章正文"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := lore.NewStore(dir).Create(lore.ItemInput{
+		ID:         "hero",
+		Type:       "character",
+		Name:       "林川",
+		Importance: "major",
+		LoadMode:   lore.LoadModeResident,
+		Content:    "## 角色小标题\n\n林川长期设定。",
+	}); err != nil {
+		t.Fatalf("create lore item failed: %v", err)
+	}
+
+	cfg := &config.Config{Workspace: dir}
+	req := ChatRequest{
+		Message: "继续写",
+		IDEContext: prompts.IDEContextRef{
+			CurrentFile: "chapters/ch0001-开局.md",
+			OpenFiles:   []string{"chapters/ch0001-开局.md", "setting/progress.md"},
+		},
+	}
+	analysis, _ := buildIDEContextAnalysisForTest(t,
+		cfg,
+		state,
+		prompts.IDEStoryTeller{},
+		nil,
+		nil,
+		nil,
+		nil,
+		req,
+	)
+
+	for _, part := range analysis.SystemPromptParts {
+		if part.Source == lore.ItemsRelativePath {
+			t.Fatalf("workspace state should not be part of system prompt sources: %#v", part)
+		}
+		if part.Title == "角色小标题" || part.Source == "作品状态注入" {
+			t.Fatalf("context analysis should not split workspace state by markdown headings: %#v", part)
+		}
+	}
+	if len(analysis.ContextMessages) == 0 {
+		t.Fatal("context analysis should include final model messages")
+	}
+	first := analysis.ContextMessages[0]
+	if first.Source != "稳定作品上下文" || first.Title != "稳定作品上下文" {
+		t.Fatalf("first message should carry stable workspace state: %#v", first)
+	}
+	for _, want := range []string{"# 稳定作品上下文", "主角进入废城", "## 角色小标题", "林川长期设定"} {
+		if !strings.Contains(first.Content, want) {
+			t.Fatalf("stable message missing %q:\n%s", want, first.Content)
+		}
+	}
+	for _, notWant := range []string{"当前进度：抵达废城入口", "章节组：探索废城", "chapters/ch0001-开局.md", "林川：警惕"} {
+		if strings.Contains(first.Content, notWant) {
+			t.Fatalf("stable message should not include dynamic state %q:\n%s", notWant, first.Content)
+		}
+	}
+	final := analysis.ContextMessages[len(analysis.ContextMessages)-1]
+	if final.Source != "本轮上下文" || final.Title != "动态作品状态与本轮用户请求" {
+		t.Fatalf("final message should carry dynamic workspace state label: %#v", final)
+	}
+	for _, want := range []string{"# 本轮动态作品状态", "章节组：探索废城", "chapters/ch0001-开局.md", "当前进度：抵达废城入口", "林川：警惕", "## IDE 当前状态", "当前聚焦文件：chapters/ch0001-开局.md", "当前打开文件：chapters/ch0001-开局.md、setting/progress.md", "# 本轮用户请求（最高优先级）"} {
+		if !strings.Contains(final.Content, want) {
+			t.Fatalf("final message missing %q:\n%s", want, final.Content)
+		}
+	}
+	if !strings.HasSuffix(strings.TrimSpace(final.Content), "继续写") {
+		t.Fatalf("final message should keep current request at the bottom:\n%s", final.Content)
+	}
+}

@@ -2,6 +2,10 @@ package app
 
 import (
 	"context"
+	agentchat "denova/internal/agents/chat"
+	agentharness "denova/internal/agents/harness"
+	agentrun "denova/internal/agents/run"
+	apptask "denova/internal/app/task"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -52,8 +56,8 @@ func TestConcurrentColdWritingRecoveryCreatesOneDisplayTask(t *testing.T) {
 	if !ok {
 		t.Fatal("writing recovery projection unavailable")
 	}
-	actions := agents.RuntimeRecoveryActions(status)
-	if status.Phase != agents.RunPhaseRunning || !status.RecoveryPaused || len(actions) != 2 || actions[0].Kind != agents.RuntimeRecoveryAttach || actions[0].CommandID != "writing-recovery-start" || actions[1].Kind != agents.RuntimeRecoveryAbort {
+	actions := agentharness.RuntimeRecoveryActions(status)
+	if status.Phase != agentrun.RunPhaseRunning || !status.RecoveryPaused || len(actions) != 2 || actions[0].Kind != agentharness.RuntimeRecoveryAttach || actions[0].CommandID != "writing-recovery-start" || actions[1].Kind != agentharness.RuntimeRecoveryAbort {
 		t.Fatalf("cold recovery actions = %#v status=%#v", actions, status)
 	}
 	abortAction := actions[1]
@@ -86,7 +90,7 @@ func TestConcurrentColdWritingRecoveryCreatesOneDisplayTask(t *testing.T) {
 		}
 	}
 	close(results)
-	var task *Task
+	var task *apptask.Task
 	for result := range results {
 		if task == nil {
 			task = result.Task
@@ -111,7 +115,7 @@ func TestConcurrentColdWritingRecoveryCreatesOneDisplayTask(t *testing.T) {
 		t.Fatal("rehydrated interrupted Start did not settle after explicit abort")
 	}
 	status, ok = reopened.WritingAgentRuntimeProjection(context.Background())
-	if !ok || status.Phase != agents.RunPhaseIdle || status.LastOperation == nil || status.LastOperation.Status != agents.OperationAborted {
+	if !ok || status.Phase != agentrun.RunPhaseIdle || status.LastOperation == nil || status.LastOperation.Status != agentrun.OperationAborted {
 		t.Fatalf("aborted cold recovery status = %#v projected=%t", status, ok)
 	}
 }
@@ -136,8 +140,8 @@ func runWritingRecoveryCrashSeed(t *testing.T) {
 		newInteractiveReplayRunner(t, &interactiveReplayModel{message: agents.AssistantMessage("must not run", nil)}),
 		&interactiveCrashConversation{vanished: vanished},
 		application.bookService,
-		agents.ChatRequest{CommandID: "writing-recovery-start", Message: "persist before crash"},
-		agents.RunOptions{AgentKind: agents.AgentKindIDE, Workspace: workspace, SessionID: sessionID, Mode: "ide"},
+		agentchat.ChatRequest{CommandID: "writing-recovery-start", Message: "persist before crash"},
+		agentrun.Options{AgentKind: agentrun.AgentKindIDE, Workspace: workspace, SessionID: sessionID, Mode: "ide"},
 		nil,
 	); err != nil {
 		t.Fatal(err)

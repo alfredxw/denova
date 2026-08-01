@@ -10,9 +10,10 @@ import (
 	agenttools "github.com/alfredxw/denova/agent/tools"
 
 	"denova/config"
+	"denova/internal/agents/configresource"
 	novaskills "denova/internal/agents/skills"
 	"denova/internal/webaccess"
-	"denova/internal/workspacechange"
+	workspacechange "denova/internal/workspace/change"
 )
 
 // Catalog is the only construction boundary for Denova's concrete tools. It
@@ -359,7 +360,7 @@ func configManagerToolsFactory(cfg *config.Config) Factory {
 		if cfg == nil || (!settings.Allows(config.AgentToolConfigRead) && !settings.Allows(config.AgentToolConfigApply)) {
 			return nil, nil
 		}
-		definitions, err := newConfigManagerTools(cfg, settings)
+		definitions, err := configresource.NewTools(cfg, catalogToolResultMaxBytes(cfg))
 		if err != nil {
 			return nil, err
 		}

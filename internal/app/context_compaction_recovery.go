@@ -3,6 +3,9 @@ package app
 import (
 	"bytes"
 	"context"
+	agentstructural "denova/internal/agents/context/structural"
+	agentharness "denova/internal/agents/harness"
+	agentrun "denova/internal/agents/run"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -11,17 +14,16 @@ import (
 	"strings"
 	"time"
 
-	agents "denova/internal/agents"
 	"denova/internal/agents/session"
 	"denova/internal/interactive"
 )
 
 func (s *ChatAppService) resumeWritingContextStructuralOperation(
 	ctx context.Context,
-	action agents.ContextStructuralAction,
-) (agents.ContextStructuralResult, bool, error) {
+	action agentstructural.Action,
+) (agentstructural.Result, bool, error) {
 	if s == nil || s.app == nil {
-		return agents.ContextStructuralResult{}, false, nil
+		return agentstructural.Result{}, false, nil
 	}
 	a := s.app
 	a.mu.RLock()
@@ -38,10 +40,10 @@ func (s *ChatAppService) resumeWritingContextStructuralOperation(
 	}
 	a.mu.RUnlock()
 	if chat == nil || strings.TrimSpace(workspace) == "" || strings.TrimSpace(sessionID) == "" {
-		return agents.ContextStructuralResult{}, false, nil
+		return agentstructural.Result{}, false, nil
 	}
-	result, resumed, err := chat.ResumeRecoveredContextStructuralOperation(ctx, agents.RunOptions{
-		AgentKind: agents.AgentKindIDE, StateRoot: stateRoot, Workspace: workspace, SessionID: sessionID, Mode: "ide",
+	result, resumed, err := chat.ResumeRecoveredStructuralOperation(ctx, agentrun.Options{
+		AgentKind: agentrun.AgentKindIDE, StateRoot: stateRoot, Workspace: workspace, SessionID: sessionID, Mode: "ide",
 	}, action)
 	if !resumed || selected == nil {
 		return result, resumed, err
@@ -49,7 +51,7 @@ func (s *ChatAppService) resumeWritingContextStructuralOperation(
 	// Cold restore commits through an independently loaded Session. Record the
 	// obligation before refresh: if this read fails, every later Start, session
 	// mutation, and exact structural retry remains fenced from stale state.
-	recoveryAction := agents.RuntimeRecoveryAction{
+	recoveryAction := agentharness.RuntimeRecoveryAction{
 		Kind: runtimeRecoveryActionForStructural(action),
 	}
 	s.markRecoveryRefreshPending(workspace, sessionID, recoveryAction)
@@ -69,12 +71,12 @@ func (s *ChatAppService) resumeWritingContextStructuralOperation(
 	return result, true, nil
 }
 
-func runtimeRecoveryActionForStructural(action agents.ContextStructuralAction) agents.RuntimeRecoveryActionKind {
+func runtimeRecoveryActionForStructural(action agentstructural.Action) agentharness.RuntimeRecoveryActionKind {
 	switch action {
-	case agents.ContextStructuralCompact:
-		return agents.RuntimeRecoveryCompactContext
-	case agents.ContextStructuralRemove:
-		return agents.RuntimeRecoveryRemoveCompaction
+	case agentstructural.Compact:
+		return agentharness.RuntimeRecoveryCompactContext
+	case agentstructural.Remove:
+		return agentharness.RuntimeRecoveryRemoveCompaction
 	default:
 		return ""
 	}
@@ -83,19 +85,19 @@ func runtimeRecoveryActionForStructural(action agents.ContextStructuralAction) a
 func (s *InteractiveAppService) resumeStoryContextStructuralOperation(
 	ctx context.Context,
 	workspace, storyID, branchID string,
-	action agents.ContextStructuralAction,
-) (agents.ContextStructuralResult, bool, error) {
+	action agentstructural.Action,
+) (agentstructural.Result, bool, error) {
 	if s == nil || s.app == nil {
-		return agents.ContextStructuralResult{}, false, nil
+		return agentstructural.Result{}, false, nil
 	}
 	s.app.mu.RLock()
 	chat := s.app.chatService
 	s.app.mu.RUnlock()
 	if chat == nil {
-		return agents.ContextStructuralResult{}, false, nil
+		return agentstructural.Result{}, false, nil
 	}
-	return chat.ResumeRecoveredContextStructuralOperation(ctx, agents.RunOptions{
-		AgentKind: agents.AgentKindInteractiveStory, Workspace: workspace,
+	return chat.ResumeRecoveredStructuralOperation(ctx, agentrun.Options{
+		AgentKind: agentrun.AgentKindInteractiveStory, Workspace: workspace,
 		StoryID: storyID, BranchID: branchID, Mode: "interactive",
 	}, action)
 }
@@ -105,21 +107,21 @@ func (s *InteractiveAppService) resumeStoryContextStructuralOperation(
 // result, so cold recovery never invokes a model, tool, or current UI state.
 func (a *App) restoreContextStructuralOperation(
 	ctx context.Context,
-	request agents.HarnessStructuralRestoreRequest,
-) (agents.ContextStructuralSpec, error) {
+	request agentharness.StructuralRestoreRequest,
+) (agentstructural.Spec, error) {
 	if ctx == nil {
 		ctx = context.Background()
 	}
 	if err := ctx.Err(); err != nil {
-		return agents.ContextStructuralSpec{}, err
+		return agentstructural.Spec{}, err
 	}
 	operation, err := a.contextStructuralOperationForRestore(request)
 	if err != nil {
-		return agents.ContextStructuralSpec{}, err
+		return agentstructural.Spec{}, err
 	}
 	plan := request.Plan
 	plan.Mutation = append(json.RawMessage(nil), request.Plan.Mutation...)
-	return agents.ContextStructuralSpec{
+	return agentstructural.Spec{
 		CommandID: string(request.Snapshot.CommandID), Action: request.Plan.Action,
 		Ref: request.Snapshot.Ref, Options: request.Options,
 		Operation: operation, RestorePlan: &plan,
@@ -127,12 +129,12 @@ func (a *App) restoreContextStructuralOperation(
 }
 
 func (a *App) contextStructuralOperationForRestore(
-	request agents.HarnessStructuralRestoreRequest,
-) (agents.ContextStructuralOperation, error) {
+	request agentharness.StructuralRestoreRequest,
+) (agentstructural.Operation, error) {
 	switch request.Plan.Domain {
-	case agents.ContextStructuralDomainSession:
+	case agentstructural.DomainSession:
 		return a.restoreSessionContextStructuralOperation(request)
-	case agents.ContextStructuralDomainStory:
+	case agentstructural.DomainStory:
 		return restoreStoryContextStructuralOperation(request)
 	default:
 		return nil, fmt.Errorf("unsupported structural context domain %q", request.Plan.Domain)
@@ -140,11 +142,11 @@ func (a *App) contextStructuralOperationForRestore(
 }
 
 func (a *App) restoreSessionContextStructuralOperation(
-	request agents.HarnessStructuralRestoreRequest,
-) (agents.ContextStructuralOperation, error) {
+	request agentharness.StructuralRestoreRequest,
+) (agentstructural.Operation, error) {
 	binding := request.Binding
-	if (binding.AgentKind != agents.AgentKindGeneral && binding.AgentKind != agents.AgentKindIDE &&
-		binding.AgentKind != agents.AgentKindConfigManager && binding.AgentKind != agents.AgentKindImage) ||
+	if (binding.AgentKind != agentrun.AgentKindGeneral && binding.AgentKind != agentrun.AgentKindIDE &&
+		binding.AgentKind != agentrun.AgentKindConfigManager && binding.AgentKind != agentrun.AgentKindImage) ||
 		strings.TrimSpace(binding.SessionID) == "" || request.Snapshot.Ref.Resource != binding.SessionID {
 		return nil, fmt.Errorf("structural Session restore binding does not match its resource")
 	}
@@ -158,7 +160,7 @@ func (a *App) restoreSessionContextStructuralOperation(
 	}
 	plan := request.Plan
 	switch plan.Action {
-	case agents.ContextStructuralCompact:
+	case agentstructural.Compact:
 		var record session.ContextCompaction
 		if err := decodeContextStructuralMutation(plan.Mutation, &record); err != nil {
 			return nil, err
@@ -167,27 +169,27 @@ func (a *App) restoreSessionContextStructuralOperation(
 			return nil, fmt.Errorf("Session compaction mutation record id does not match restore plan")
 		}
 		return fixedContextStructuralOperation(plan,
-			func(ctx context.Context) (agents.ContextStructuralReceipt, error) {
+			func(ctx context.Context) (agentstructural.Receipt, error) {
 				committed, err := session.CommitStoredContextCompaction(ctx, dir, binding.SessionID, expectedRevision, record)
 				if err != nil {
-					return agents.ContextStructuralReceipt{}, err
+					return agentstructural.Receipt{}, err
 				}
 				if !sameSessionContextCompactionMutation(committed, record) {
-					return agents.ContextStructuralReceipt{}, fmt.Errorf("canonical Session compaction differs from frozen restore mutation")
+					return agentstructural.Receipt{}, fmt.Errorf("canonical Session compaction differs from frozen restore mutation")
 				}
-				return agents.ContextStructuralReceipt{Revision: fmt.Sprintf("session-context:%d", committed.ContextRevision)}, nil
+				return agentstructural.Receipt{Revision: fmt.Sprintf("session-context:%d", committed.ContextRevision)}, nil
 			},
-			func(context.Context) (agents.ContextStructuralReceipt, bool, error) {
+			func(context.Context) (agentstructural.Receipt, bool, error) {
 				committed, found, err := session.FindStoredContextCompaction(dir, binding.SessionID, plan.RecordID)
 				if err != nil || !found {
-					return agents.ContextStructuralReceipt{}, false, err
+					return agentstructural.Receipt{}, false, err
 				}
 				if !sameSessionContextCompactionMutation(committed, record) {
-					return agents.ContextStructuralReceipt{}, false, fmt.Errorf("canonical Session compaction conflicts with frozen restore mutation")
+					return agentstructural.Receipt{}, false, fmt.Errorf("canonical Session compaction conflicts with frozen restore mutation")
 				}
-				return agents.ContextStructuralReceipt{Revision: fmt.Sprintf("session-context:%d", committed.ContextRevision)}, true, nil
+				return agentstructural.Receipt{Revision: fmt.Sprintf("session-context:%d", committed.ContextRevision)}, true, nil
 			}), nil
-	case agents.ContextStructuralRemove:
+	case agentstructural.Remove:
 		var record session.ContextCompactionRemoval
 		if err := decodeContextStructuralMutation(plan.Mutation, &record); err != nil {
 			return nil, err
@@ -196,28 +198,28 @@ func (a *App) restoreSessionContextStructuralOperation(
 			return nil, fmt.Errorf("Session compaction removal record id does not match restore plan")
 		}
 		return fixedContextStructuralOperation(plan,
-			func(ctx context.Context) (agents.ContextStructuralReceipt, error) {
+			func(ctx context.Context) (agentstructural.Receipt, error) {
 				committed, removed, err := session.CommitStoredContextCompactionRemoval(ctx, dir, binding.SessionID, expectedRevision, record)
 				if err != nil {
-					return agents.ContextStructuralReceipt{}, err
+					return agentstructural.Receipt{}, err
 				}
 				if !removed {
-					return agents.ContextStructuralReceipt{}, fmt.Errorf("Session compaction disappeared before frozen removal commit")
+					return agentstructural.Receipt{}, fmt.Errorf("Session compaction disappeared before frozen removal commit")
 				}
 				if !sameSessionContextCompactionRemovalMutation(committed, record) {
-					return agents.ContextStructuralReceipt{}, fmt.Errorf("canonical Session compaction removal differs from frozen restore mutation")
+					return agentstructural.Receipt{}, fmt.Errorf("canonical Session compaction removal differs from frozen restore mutation")
 				}
-				return agents.ContextStructuralReceipt{Revision: fmt.Sprintf("session-context:%d", committed.ContextRevision)}, nil
+				return agentstructural.Receipt{Revision: fmt.Sprintf("session-context:%d", committed.ContextRevision)}, nil
 			},
-			func(context.Context) (agents.ContextStructuralReceipt, bool, error) {
+			func(context.Context) (agentstructural.Receipt, bool, error) {
 				committed, found, err := session.FindStoredContextCompactionRemoval(dir, binding.SessionID, plan.RecordID)
 				if err != nil || !found {
-					return agents.ContextStructuralReceipt{}, false, err
+					return agentstructural.Receipt{}, false, err
 				}
 				if !sameSessionContextCompactionRemovalMutation(committed, record) {
-					return agents.ContextStructuralReceipt{}, false, fmt.Errorf("canonical Session compaction removal conflicts with frozen restore mutation")
+					return agentstructural.Receipt{}, false, fmt.Errorf("canonical Session compaction removal conflicts with frozen restore mutation")
 				}
-				return agents.ContextStructuralReceipt{Revision: fmt.Sprintf("session-context:%d", committed.ContextRevision)}, true, nil
+				return agentstructural.Receipt{Revision: fmt.Sprintf("session-context:%d", committed.ContextRevision)}, true, nil
 			}), nil
 	default:
 		return nil, fmt.Errorf("unsupported Session structural action %q", plan.Action)
@@ -225,10 +227,10 @@ func (a *App) restoreSessionContextStructuralOperation(
 }
 
 func restoreStoryContextStructuralOperation(
-	request agents.HarnessStructuralRestoreRequest,
-) (agents.ContextStructuralOperation, error) {
+	request agentharness.StructuralRestoreRequest,
+) (agentstructural.Operation, error) {
 	binding := request.Binding
-	if binding.AgentKind != agents.AgentKindInteractiveStory ||
+	if binding.AgentKind != agentrun.AgentKindInteractiveStory ||
 		strings.TrimSpace(binding.Workspace) == "" || strings.TrimSpace(binding.StoryID) == "" ||
 		strings.TrimSpace(binding.BranchID) == "" || request.Snapshot.Ref.Resource != binding.StoryID+"/"+binding.BranchID {
 		return nil, fmt.Errorf("structural Story restore binding does not match its resource")
@@ -240,7 +242,7 @@ func restoreStoryContextStructuralOperation(
 	store := interactive.NewStore(binding.Workspace)
 	plan := request.Plan
 	switch plan.Action {
-	case agents.ContextStructuralCompact:
+	case agentstructural.Compact:
 		var event interactive.ContextCompactionEvent
 		if err := decodeContextStructuralMutation(plan.Mutation, &event); err != nil {
 			return nil, err
@@ -250,27 +252,27 @@ func restoreStoryContextStructuralOperation(
 		}
 		event.ExpectedParentID = &expectedParent
 		return fixedContextStructuralOperation(plan,
-			func(context.Context) (agents.ContextStructuralReceipt, error) {
+			func(context.Context) (agentstructural.Receipt, error) {
 				committed, err := store.AppendContextCompaction(binding.StoryID, binding.BranchID, event)
 				if err != nil {
-					return agents.ContextStructuralReceipt{}, err
+					return agentstructural.Receipt{}, err
 				}
 				if !sameStoryContextCompactionMutation(committed, event) {
-					return agents.ContextStructuralReceipt{}, fmt.Errorf("canonical Story compaction differs from frozen restore mutation")
+					return agentstructural.Receipt{}, fmt.Errorf("canonical Story compaction differs from frozen restore mutation")
 				}
-				return agents.ContextStructuralReceipt{Revision: "story-head:" + committed.ID}, nil
+				return agentstructural.Receipt{Revision: "story-head:" + committed.ID}, nil
 			},
-			func(context.Context) (agents.ContextStructuralReceipt, bool, error) {
+			func(context.Context) (agentstructural.Receipt, bool, error) {
 				committed, found, err := store.ContextCompactionByID(binding.StoryID, plan.RecordID)
 				if err != nil || !found {
-					return agents.ContextStructuralReceipt{}, false, err
+					return agentstructural.Receipt{}, false, err
 				}
 				if committed.BranchID != binding.BranchID || !sameStoryContextCompactionMutation(committed, event) {
-					return agents.ContextStructuralReceipt{}, false, fmt.Errorf("canonical Story compaction conflicts with frozen restore mutation")
+					return agentstructural.Receipt{}, false, fmt.Errorf("canonical Story compaction conflicts with frozen restore mutation")
 				}
-				return agents.ContextStructuralReceipt{Revision: "story-head:" + committed.ID}, true, nil
+				return agentstructural.Receipt{Revision: "story-head:" + committed.ID}, true, nil
 			}), nil
-	case agents.ContextStructuralRemove:
+	case agentstructural.Remove:
 		var event interactive.ContextCompactionRemovalEvent
 		if err := decodeContextStructuralMutation(plan.Mutation, &event); err != nil {
 			return nil, err
@@ -280,25 +282,25 @@ func restoreStoryContextStructuralOperation(
 		}
 		event.ExpectedParentID = &expectedParent
 		return fixedContextStructuralOperation(plan,
-			func(context.Context) (agents.ContextStructuralReceipt, error) {
+			func(context.Context) (agentstructural.Receipt, error) {
 				committed, err := store.AppendContextCompactionRemoval(binding.StoryID, binding.BranchID, event)
 				if err != nil {
-					return agents.ContextStructuralReceipt{}, err
+					return agentstructural.Receipt{}, err
 				}
 				if !sameStoryContextCompactionRemovalMutation(committed, event) {
-					return agents.ContextStructuralReceipt{}, fmt.Errorf("canonical Story compaction removal differs from frozen restore mutation")
+					return agentstructural.Receipt{}, fmt.Errorf("canonical Story compaction removal differs from frozen restore mutation")
 				}
-				return agents.ContextStructuralReceipt{Revision: "story-head:" + committed.ID}, nil
+				return agentstructural.Receipt{Revision: "story-head:" + committed.ID}, nil
 			},
-			func(context.Context) (agents.ContextStructuralReceipt, bool, error) {
+			func(context.Context) (agentstructural.Receipt, bool, error) {
 				committed, found, err := store.ContextCompactionRemovalByID(binding.StoryID, plan.RecordID)
 				if err != nil || !found {
-					return agents.ContextStructuralReceipt{}, false, err
+					return agentstructural.Receipt{}, false, err
 				}
 				if committed.BranchID != binding.BranchID || !sameStoryContextCompactionRemovalMutation(committed, event) {
-					return agents.ContextStructuralReceipt{}, false, fmt.Errorf("canonical Story compaction removal conflicts with frozen restore mutation")
+					return agentstructural.Receipt{}, false, fmt.Errorf("canonical Story compaction removal conflicts with frozen restore mutation")
 				}
-				return agents.ContextStructuralReceipt{Revision: "story-head:" + committed.ID}, true, nil
+				return agentstructural.Receipt{Revision: "story-head:" + committed.ID}, true, nil
 			}), nil
 	default:
 		return nil, fmt.Errorf("unsupported Story structural action %q", plan.Action)
@@ -306,31 +308,31 @@ func restoreStoryContextStructuralOperation(
 }
 
 func fixedContextStructuralOperation(
-	plan agents.ContextStructuralRestorePlan,
-	commit func(context.Context) (agents.ContextStructuralReceipt, error),
-	reconcile func(context.Context) (agents.ContextStructuralReceipt, bool, error),
-) agents.ContextStructuralOperation {
+	plan agentstructural.RestorePlan,
+	commit func(context.Context) (agentstructural.Receipt, error),
+	reconcile func(context.Context) (agentstructural.Receipt, bool, error),
+) agentstructural.Operation {
 	return contextStructuralOperationFuncs{
-		prepare: func(ctx context.Context, _ agents.ContextStructuralIdentity, _ func(agents.Event)) (agents.ContextStructuralIntent, error) {
+		prepare: func(ctx context.Context, _ agentstructural.Identity, _ func(agentrun.Event)) (agentstructural.Intent, error) {
 			if ctx != nil {
 				if err := ctx.Err(); err != nil {
-					return agents.ContextStructuralIntent{Result: plan.Result}, err
+					return agentstructural.Intent{Result: plan.Result}, err
 				}
 			}
-			return agents.ContextStructuralIntent{Hash: plan.IntentHash, Commit: plan.Commit, Result: plan.Result}, nil
+			return agentstructural.Intent{Hash: plan.IntentHash, Commit: plan.Commit, Result: plan.Result}, nil
 		},
-		commit: func(ctx context.Context, _ agents.ContextStructuralIdentity, intent agents.ContextStructuralIntent) (agents.ContextStructuralReceipt, error) {
+		commit: func(ctx context.Context, _ agentstructural.Identity, intent agentstructural.Intent) (agentstructural.Receipt, error) {
 			if intent.Hash != plan.IntentHash || intent.Commit != plan.Commit || !reflect.DeepEqual(intent.Result, plan.Result) {
-				return agents.ContextStructuralReceipt{}, fmt.Errorf("structural context intent changed before frozen commit")
+				return agentstructural.Receipt{}, fmt.Errorf("structural context intent changed before frozen commit")
 			}
 			if !plan.Commit {
-				return agents.ContextStructuralReceipt{}, fmt.Errorf("non-committing structural plan reached canonical commit")
+				return agentstructural.Receipt{}, fmt.Errorf("non-committing structural plan reached canonical commit")
 			}
 			return commit(ctx)
 		},
-		reconcile: func(ctx context.Context) (agents.ContextStructuralResult, agents.ContextStructuralReceipt, bool, error) {
+		reconcile: func(ctx context.Context) (agentstructural.Result, agentstructural.Receipt, bool, error) {
 			if !plan.Commit {
-				return plan.Result, agents.ContextStructuralReceipt{}, false, nil
+				return plan.Result, agentstructural.Receipt{}, false, nil
 			}
 			receipt, found, err := reconcile(ctx)
 			return plan.Result, receipt, found, err
@@ -339,34 +341,34 @@ func fixedContextStructuralOperation(
 }
 
 func newContextStructuralRestorePlan(
-	domain agents.ContextStructuralDomain,
-	action agents.ContextStructuralAction,
-	binding agents.RuntimeBinding,
-	ref agents.ContextCompactionRef,
+	domain agentstructural.Domain,
+	action agentstructural.Action,
+	binding agentrun.RuntimeBinding,
+	ref agentrun.ContextCompactionRef,
 	recordID string,
-	result agents.ContextStructuralResult,
+	result agentstructural.Result,
 	mutation any,
-) (agents.ContextStructuralRestorePlan, error) {
+) (agentstructural.RestorePlan, error) {
 	encoded, err := json.Marshal(mutation)
 	if err != nil {
-		return agents.ContextStructuralRestorePlan{}, fmt.Errorf("encode structural context mutation: %w", err)
+		return agentstructural.RestorePlan{}, fmt.Errorf("encode structural context mutation: %w", err)
 	}
-	hash, err := agents.ContextStructuralIntentHash(action, binding, ref.ExpectedRevision, recordID, encoded)
+	hash, err := agentstructural.IntentHash(action, binding, ref.ExpectedRevision, recordID, encoded)
 	if err != nil {
-		return agents.ContextStructuralRestorePlan{}, err
+		return agentstructural.RestorePlan{}, err
 	}
-	return agents.ContextStructuralRestorePlan{
-		Version: agents.ContextStructuralRestorePlanVersion, Domain: domain, Action: action,
+	return agentstructural.RestorePlan{
+		Version: agentstructural.RestorePlanVersion, Domain: domain, Action: action,
 		Commit: true, IntentHash: hash, RecordID: recordID, Result: result, Mutation: encoded,
 	}, nil
 }
 
-func writingContextStructuralBinding(workspace, sessionID string) agents.RuntimeBinding {
-	return agents.RuntimeBinding{AgentKind: agents.AgentKindIDE, Workspace: workspace, SessionID: sessionID}
+func writingContextStructuralBinding(workspace, sessionID string) agentrun.RuntimeBinding {
+	return agentrun.RuntimeBinding{AgentKind: agentrun.AgentKindIDE, Workspace: workspace, SessionID: sessionID}
 }
 
-func storyContextStructuralBinding(workspace, storyID, branchID string) agents.RuntimeBinding {
-	return agents.RuntimeBinding{AgentKind: agents.AgentKindInteractiveStory, Workspace: workspace, StoryID: storyID, BranchID: branchID}
+func storyContextStructuralBinding(workspace, storyID, branchID string) agentrun.RuntimeBinding {
+	return agentrun.RuntimeBinding{AgentKind: agentrun.AgentKindInteractiveStory, Workspace: workspace, StoryID: storyID, BranchID: branchID}
 }
 
 func parseSessionContextRevision(value string) (uint64, error) {

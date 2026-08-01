@@ -3,6 +3,8 @@ package config
 import (
 	"fmt"
 	"strings"
+
+	"denova/internal/hostruntime"
 )
 
 // AgentApprovalMode is the user-owned safety posture snapshotted when an Agent
@@ -43,11 +45,11 @@ func ParseAgentApprovalMode(value string) (AgentApprovalMode, error) {
 
 // ShellEnvironmentMode controls how Agent Bash inherits a desktop user's
 // exported environment. It never changes manual terminal sessions.
-type ShellEnvironmentMode string
+type ShellEnvironmentMode = hostruntime.EnvironmentMode
 
 const (
-	ShellEnvironmentAuto    ShellEnvironmentMode = "auto"
-	ShellEnvironmentProcess ShellEnvironmentMode = "process"
+	ShellEnvironmentAuto    = hostruntime.EnvironmentAuto
+	ShellEnvironmentProcess = hostruntime.EnvironmentProcess
 )
 
 func normalizeShellEnvironmentMode(value ShellEnvironmentMode) ShellEnvironmentMode {

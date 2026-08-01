@@ -11,7 +11,7 @@ import (
 
 	agent "github.com/alfredxw/denova/agent"
 
-	"denova/internal/contextmaintenance"
+	agentcontext "denova/internal/agents/context"
 )
 
 func TestAgentMessageWireRoundTripsAllStableFields(t *testing.T) {
@@ -191,7 +191,7 @@ func TestUserMessageReferencesPersistAcrossSessionReload(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := sess.AppendWithMetadata(agent.UserMessage("请修改"), MessageMetadata{UserReferences: []UserMessageReference{
+	if err := sess.AppendWithMetadata(agent.UserMessage("请修改"), MessageMetadata{UserReferences: []agentcontext.UserReference{
 		{Kind: "file", Label: "chapters/ch01.md"},
 		{Kind: "review_comment", ID: "comment-1", Label: "setting/progress.md", Detail: "需要增加爽点"},
 	}}); err != nil {
@@ -832,7 +832,7 @@ func TestContextCompactionPersistsOutsideVisibleHistory(t *testing.T) {
 		t.Fatal(err)
 	}
 	record, err := sess.AppendContextCompaction(ContextCompaction{
-		CompactionCheckpoint: contextmaintenance.CompactionCheckpoint{
+		CompactionCheckpoint: agentcontext.CompactionCheckpoint{
 			AgentKind: "ide", Summary: "保留目标和决定", RetainedTurns: 8,
 			EstimatedTokensBefore: 850, ObservedPromptTokens: 900, ObservedEstimateTokens: 800,
 			TokensBefore: 900, TokensAfter: 120, ContextWindowTokens: 1000,
@@ -895,7 +895,7 @@ func TestContextCompactionRemovalRestoresRawHistory(t *testing.T) {
 		t.Fatal(err)
 	}
 	record, err := sess.AppendContextCompaction(ContextCompaction{
-		CompactionCheckpoint: contextmaintenance.CompactionCheckpoint{
+		CompactionCheckpoint: agentcontext.CompactionCheckpoint{
 			AgentKind: "ide", Summary: "旧摘要", RetainedTurns: 8,
 			TokensBefore: 900, TokensAfter: 120, ContextWindowTokens: 1000, Threshold: 0.9,
 		},

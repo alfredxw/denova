@@ -1,11 +1,13 @@
 package app
 
 import (
+	agentrun "denova/internal/agents/run"
+	interactivestate "denova/internal/interactive/state"
 	"encoding/json"
 	"testing"
 
-	agents "denova/internal/agents"
 	"denova/internal/interactive"
+	"denova/internal/interactive/director"
 )
 
 func TestEmitInteractiveTurnPersistedUsesCurrentSnapshot(t *testing.T) {
@@ -30,15 +32,15 @@ func TestEmitInteractiveTurnPersistedUsesCurrentSnapshot(t *testing.T) {
 	if _, err := store.AppendStateDelta(story.ID, interactive.AppendStateDeltaRequest{
 		ParentID: turn.ID,
 		BranchID: turn.BranchID,
-		Ops: []interactive.StateOp{
+		Ops: []interactivestate.Op{
 			{Op: "merge", Path: "scene", Value: map[string]any{"location": "旧门外"}},
 		},
 	}); err != nil {
 		t.Fatal(err)
 	}
 
-	var events []agents.Event
-	emitInteractiveTurnPersisted(store, story.ID, conversation, func(event agents.Event) {
+	var events []agentrun.Event
+	emitInteractiveTurnPersisted(store, story.ID, conversation, func(event agentrun.Event) {
 		events = append(events, event)
 	})
 
@@ -61,7 +63,7 @@ func TestEmitInteractiveTurnPersistedUsesCurrentSnapshot(t *testing.T) {
 	if payload.DirectorPlanStatus == nil || payload.DirectorPlanStatus.Status == "" {
 		t.Fatalf("payload director status should come from current snapshot: %#v", payload.DirectorPlanStatus)
 	}
-	if payload.DirectorPlanStatus.Status != interactive.DirectorPlanStatusWaitingOpening {
+	if payload.DirectorPlanStatus.Status != director.PlanStatusWaitingOpening {
 		t.Fatalf("payload director status mismatch: %#v", payload.DirectorPlanStatus)
 	}
 	encoded, err := json.Marshal(payload)
@@ -99,8 +101,8 @@ func TestEmitInteractiveTurnPersistedSkipsWhenNoTurnWasPersisted(t *testing.T) {
 	}
 	conversation := newInteractiveConversation(store, t.TempDir(), workspace, story.ID, "main", "继续前进", 800, nil)
 
-	var events []agents.Event
-	emitInteractiveTurnPersisted(store, story.ID, conversation, func(event agents.Event) {
+	var events []agentrun.Event
+	emitInteractiveTurnPersisted(store, story.ID, conversation, func(event agentrun.Event) {
 		events = append(events, event)
 	})
 

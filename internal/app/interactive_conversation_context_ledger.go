@@ -1,14 +1,17 @@
 package app
 
 import (
+	agentrun "denova/internal/agents/run"
+	"denova/internal/agents/toolresult"
 	"encoding/json"
 	"fmt"
 	"strings"
 
 	agents "denova/internal/agents"
 	agentcontext "denova/internal/agents/context"
-	"denova/internal/book"
-	"denova/internal/interactive"
+	agentcompaction "denova/internal/agents/context/compaction"
+	"denova/internal/book/lore"
+	"denova/internal/interactive/teller"
 )
 
 // interactiveContextSource is a transient description of one domain fragment.
@@ -43,16 +46,16 @@ func (c *interactiveConversation) stableLeadingMessageSnapshot() string {
 // the compactable history tail, mirroring the stable-prefix behavior used by
 // writing-mode sessions.
 func preserveInteractiveStableLeadingMessage(messages []*agents.Message, content string) []*agents.Message {
-	return agents.PreserveModelContextLeadingMessage(messages, content)
+	return agentcompaction.PreserveLeadingMessage(messages, content)
 }
 
-func interactiveCompactionResultForMessages(result agents.ContextCompactionResult, messages []*agents.Message, tools []*agents.ToolInfo) agents.ContextCompactionResult {
-	result = agents.RecalculateContextCompactionProjection(result, agents.EstimateContextTokens(messages, tools))
+func interactiveCompactionResultForMessages(result agentcompaction.Result, messages []*agents.Message, tools []*agents.ToolInfo) agentcompaction.Result {
+	result = agentcompaction.RecalculateProjection(result, agentcontext.EstimateTokens(messages, tools))
 	result.MessageCountAfter = len(messages)
 	return result
 }
 
-func interactiveStoryContextSources(title, origin string, teller interactive.Teller, historyCheckpoint, directorPlanVisible, residentLore, loreRevision, loreRuntime, ruleSummary, actorStateRuntime, stateSchemaInitialization, strategyPrompt string, turnHistory interactiveTurnHistory, userAction string) []interactiveContextSource {
+func interactiveStoryContextSources(title, origin string, teller teller.Definition, historyCheckpoint, directorPlanVisible, residentLore, loreRevision, loreRuntime, ruleSummary, actorStateRuntime, stateSchemaInitialization, strategyPrompt string, turnHistory interactiveTurnHistory, userAction string) []interactiveContextSource {
 	parts := []interactiveContextSource{
 		{Source: "互动故事", Title: "故事标题", Content: title, Note: "metadata_only", MetadataOnly: true},
 		{Source: "互动故事", Title: "开端", Content: origin, Note: "metadata_only", MetadataOnly: true},
@@ -76,7 +79,7 @@ func interactiveStoryContextSources(title, origin string, teller interactive.Tel
 			Title:   "已启用常驻 Lore 正文",
 			Purpose: "stable leading model context",
 			Content: residentLore,
-			Note:    fmt.Sprintf("complete=true; source=enabled resident lore; body_max_bytes=%d; revision=%s", book.ResidentLoreSafetyMaxBytes, strings.TrimSpace(loreRevision)),
+			Note:    fmt.Sprintf("complete=true; source=enabled resident lore; body_max_bytes=%d; revision=%s", lore.ResidentLoreSafetyMaxBytes, strings.TrimSpace(loreRevision)),
 			Limit:   interactiveResidentLoreMessageMaxBytes,
 		})
 	}
@@ -130,8 +133,8 @@ func interactiveStoryContextSources(title, origin string, teller interactive.Tel
 	return parts
 }
 
-func interactiveContextLedgerParts(parts []interactiveContextSource, messages []*agents.Message, policy agents.ToolResultContextPolicy) []agents.ContextLedgerPart {
-	ledger := agents.NewContextLedger(agents.DefaultLoopPolicy().ContextLedger)
+func interactiveContextLedgerParts(parts []interactiveContextSource, messages []*agents.Message, policy toolresult.ContextPolicy) []agentcontext.AuditPart {
+	ledger := agentcontext.NewAuditLedger(agentrun.DefaultLoopPolicy().ContextLedger)
 	for _, part := range parts {
 		matchedMessage, visible := interactiveContextSourceMessage(part, messages)
 		included := !part.MetadataOnly && visible
@@ -226,13 +229,13 @@ func joinInteractiveContextNote(existing, extra string) string {
 	return existing + "; " + extra
 }
 
-func addFinalInteractiveMessageContextParts(ledger *agents.ContextLedger, messages []*agents.Message, policy agents.ToolResultContextPolicy) {
+func addFinalInteractiveMessageContextParts(ledger *agentcontext.AuditLedger, messages []*agents.Message, policy toolresult.ContextPolicy) {
 	resultLimit := policy.MaxResultBytes
 	for index, msg := range messages {
 		if msg == nil {
 			continue
 		}
-		if agents.IsContextCompactionSummaryMessage(msg) {
+		if agentcontext.IsCompactionSummaryMessage(msg) {
 			ledger.AddPart(
 				"ContextCompaction", fmt.Sprintf("模型可见历史检查点 %d", index+1), "model-visible history checkpoint",
 				msg.Content, "source=committed context compaction; final_message=true", true, false, interactiveStoryRuntimeContextBytes,
@@ -278,7 +281,7 @@ func interactiveToolContextTruncated(content string) bool {
 		strings.Contains(content, `"schema":"tool_result.retained.v1"`)
 }
 
-func interactiveTellerSlotSources(teller interactive.Teller, targets ...string) []interactiveContextSource {
+func interactiveTellerSlotSources(teller teller.Definition, targets ...string) []interactiveContextSource {
 	allowed := make(map[string]bool, len(targets))
 	for _, target := range targets {
 		allowed[target] = true
@@ -296,7 +299,7 @@ func interactiveTellerSlotSources(teller interactive.Teller, targets ...string) 
 	return parts
 }
 
-func interactiveTellerSlotSummary(teller interactive.Teller, targets ...string) string {
+func interactiveTellerSlotSummary(teller teller.Definition, targets ...string) string {
 	sources := interactiveTellerSlotSources(teller, targets...)
 	if len(sources) == 0 {
 		return "count=0"

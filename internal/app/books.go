@@ -10,7 +10,7 @@ import (
 	"time"
 
 	projectdomain "denova/internal/project"
-	"denova/internal/workspacepath"
+	workspacelayout "denova/internal/workspace"
 )
 
 const (
@@ -324,8 +324,8 @@ func bookCreationParentDir(parentDir, novaDir string) (string, error) {
 
 func isBookWorkspace(path string) bool {
 	markers := []string{
-		filepath.Join(path, workspacepath.DataDirName),
-		filepath.Join(path, workspacepath.LegacyDataDirName),
+		filepath.Join(path, workspacelayout.DataDirName),
+		filepath.Join(path, workspacelayout.LegacyDataDirName),
 		filepath.Join(path, "book.json"),
 		filepath.Join(path, "ideas.md"),
 		filepath.Join(path, "brainstorm.md"),
@@ -599,7 +599,7 @@ func legacyBookRegistryPath() string {
 		return filepath.Join(dir, "nova", "books.json")
 	}
 	if home, err := os.UserHomeDir(); err == nil && home != "" {
-		return filepath.Join(home, workspacepath.LegacyDataDirName, "books.json")
+		return filepath.Join(home, workspacelayout.LegacyDataDirName, "books.json")
 	}
 	return filepath.Join(".", ".nova-books.json")
 }

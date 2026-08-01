@@ -7,7 +7,7 @@ import (
 
 	agent "github.com/alfredxw/denova/agent"
 
-	"denova/internal/contextmaintenance"
+	agentcontext "denova/internal/agents/context"
 )
 
 func TestToolResultCleanupRoundTripsWithoutChangingRawOrDisplayHistory(t *testing.T) {
@@ -142,7 +142,7 @@ func TestToolResultCleanupIsInvalidatedByCompactionAndClearBoundaries(t *testing
 	}
 	compaction, err := sess.AppendContextCompactionAt(sess.ContextCursor(), ContextCompaction{
 		ID: "compaction-after-cleanup",
-		CompactionCheckpoint: contextmaintenance.CompactionCheckpoint{
+		CompactionCheckpoint: agentcontext.CompactionCheckpoint{
 			AgentKind: "ide", Epoch: 1, Summary: "checkpoint", RetainedTurns: 1,
 		},
 		SourceStartIndex: 0, SourceEndIndex: 3, SourceMessageCount: 3,

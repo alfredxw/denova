@@ -4,7 +4,7 @@ import (
 	"strings"
 	"testing"
 
-	"denova/internal/conversationjournal"
+	"denova/internal/agents/conversationjournal"
 )
 
 func TestPersistedStoryEventVocabularyClassifiesEveryEvent(t *testing.T) {

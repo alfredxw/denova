@@ -2,12 +2,13 @@ package app
 
 import (
 	"context"
+	agentrun "denova/internal/agents/run"
+	apptask "denova/internal/app/task"
 	"errors"
 	"fmt"
 	"strings"
 	"testing"
 
-	agents "denova/internal/agents"
 	"denova/internal/automation"
 )
 
@@ -16,7 +17,7 @@ func TestAutomationFollowUpRegistryReplaysExactTaskAndRejectsConflict(t *testing
 	if err != nil {
 		t.Fatal(err)
 	}
-	task := NewTask(nil)
+	task := apptask.New(nil)
 	run := automation.RunRecord{ID: "run-1"}
 	var registry automationFollowUpRegistry
 	if err := registry.remember(identity, task, run); err != nil {
@@ -38,7 +39,7 @@ func TestAutomationFollowUpRegistryReplaysExactTaskAndRejectsConflict(t *testing
 func TestAutomationFollowUpRegistryEvictsSettledDisplayButKeepsIdentity(t *testing.T) {
 	first := settledTaskWithReplay(t, "same-size")
 	second := settledTaskWithReplay(t, "same-size")
-	perTask := first.displayReplayBytes()
+	perTask := first.DisplayReplayBytes()
 	if perTask == 0 {
 		t.Fatal("settled Automation replay has no display bytes")
 	}
@@ -60,8 +61,8 @@ func TestAutomationFollowUpRegistryEvictsSettledDisplayButKeepsIdentity(t *testi
 	if record := registry.records[firstIdentity.commandID]; record.task != nil {
 		t.Fatalf("least-recent Automation display task was retained: %#v", record)
 	}
-	if first.displayReplayBytes() != 0 {
-		t.Fatalf("evicted Automation task retains %d bytes", first.displayReplayBytes())
+	if first.DisplayReplayBytes() != 0 {
+		t.Fatalf("evicted Automation task retains %d bytes", first.DisplayReplayBytes())
 	}
 	replay, subscription, err := first.SubscribeDisplayAfter(0)
 	if err != nil {
@@ -93,19 +94,19 @@ func TestAutomationFollowUpRegistryEvictsSettledDisplayButKeepsIdentity(t *testi
 }
 
 func TestAutomationFollowUpRegistryRejectsBeforeRuntimeWhenActiveCapacityIsFull(t *testing.T) {
-	first, err := NewDeferredRegisteredTask(nil)
+	first, err := apptask.NewDeferred(nil)
 	if err != nil {
 		t.Fatal(err)
 	}
-	second, err := NewDeferredRegisteredTask(nil)
+	second, err := apptask.NewDeferred(nil)
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer first.failBeforeStart(errors.New("test complete"))
-	defer second.failBeforeStart(errors.New("test complete"))
+	defer first.RejectStart(errors.New("test complete"))
+	defer second.RejectStart(errors.New("test complete"))
 	firstIdentity, _ := newAutomationFollowUpIdentity("run", "command-first", "first")
 	secondIdentity, _ := newAutomationFollowUpIdentity("run", "command-second", "second")
-	registry := automationFollowUpRegistry{replayByteLimit: first.displayReplayRegistryCharge()}
+	registry := automationFollowUpRegistry{replayByteLimit: first.DisplayReplayCharge()}
 	firstReservation, err := registry.reserve(firstIdentity, first)
 	if err != nil {
 		t.Fatal(err)
@@ -128,7 +129,7 @@ func TestAutomationFollowUpRegistryRejectsBeforeRuntimeWhenActiveCapacityIsFull(
 
 func TestAutomationFollowUpRegistryBoundsUnfinishedIdentities(t *testing.T) {
 	release := make(chan struct{})
-	tasks := make([]*Task, 0, maxRememberedAutomationFollowUps+1)
+	tasks := make([]*apptask.Task, 0, maxRememberedAutomationFollowUps+1)
 	defer func() {
 		close(release)
 		for _, task := range tasks {
@@ -143,7 +144,7 @@ func TestAutomationFollowUpRegistryBoundsUnfinishedIdentities(t *testing.T) {
 		}
 		task := blockingAutomationRegistryTask(release)
 		if index == 0 {
-			registry.replayByteLimit = maxRememberedAutomationFollowUps * task.displayReplayRegistryCharge()
+			registry.replayByteLimit = maxRememberedAutomationFollowUps * task.DisplayReplayCharge()
 		}
 		tasks = append(tasks, task)
 		if err := registry.remember(identity, task, automation.RunRecord{ID: "run"}); err != nil {
@@ -166,12 +167,12 @@ func TestAutomationFollowUpRegistryBoundsUnfinishedIdentities(t *testing.T) {
 }
 
 func TestAutomationEvictedDisplayCheckpointRequiresCanonicalRehydrate(t *testing.T) {
-	task := NewTask(func(_ context.Context, _ *Task, emit func(agents.Event)) {
-		emit(agents.Event{Type: "agent_cycle_started", Data: map[string]any{"command_id": "follow-up"}})
-		emit(agents.Event{Type: "chunk", Data: map[string]any{"content": strings.Repeat("bounded", 64)}})
+	task := apptask.New(func(_ context.Context, _ *apptask.Task, emit func(agentrun.Event)) {
+		emit(agentrun.Event{Type: "agent_cycle_started", Data: map[string]any{"command_id": "follow-up"}})
+		emit(agentrun.Event{Type: "chunk", Data: map[string]any{"content": strings.Repeat("bounded", 64)}})
 	})
 	<-task.Done()
-	if task.releaseDisplayReplay() == 0 {
+	if task.ReleaseDisplayReplay() == 0 {
 		t.Fatal("fixture did not release display replay")
 	}
 	replay, subscription, err := task.SubscribeDisplayAfter(0)

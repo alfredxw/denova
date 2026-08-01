@@ -2,6 +2,10 @@ package app
 
 import (
 	"context"
+	agentchat "denova/internal/agents/chat"
+	agentharness "denova/internal/agents/harness"
+	agentrun "denova/internal/agents/run"
+	apptask "denova/internal/app/task"
 	"errors"
 	"fmt"
 	"log/slog"
@@ -9,16 +13,16 @@ import (
 	"time"
 
 	"denova/config"
-	agents "denova/internal/agents"
+	"denova/internal/agents/prompts"
 	"denova/internal/agents/session"
 	"denova/internal/automation"
 )
 
-func (a *App) ContinueAutomationRun(ctx context.Context, runID, commandID, message string) (*Task, automation.RunRecord, error) {
+func (a *App) ContinueAutomationRun(ctx context.Context, runID, commandID, message string) (*apptask.Task, automation.RunRecord, error) {
 	return a.automation().ContinueRun(ctx, runID, commandID, message)
 }
 
-func (s *AutomationAppService) ContinueRun(ctx context.Context, runID, commandID, message string) (*Task, automation.RunRecord, error) {
+func (s *AutomationAppService) ContinueRun(ctx context.Context, runID, commandID, message string) (*apptask.Task, automation.RunRecord, error) {
 	identity, err := newAutomationFollowUpIdentity(runID, commandID, message)
 	if err != nil {
 		return nil, automation.RunRecord{}, err
@@ -53,7 +57,7 @@ func (s *AutomationAppService) ContinueRun(ctx context.Context, runID, commandID
 	return s.continueRunWithSnapshot(operation.Context(), snap, identity)
 }
 
-func (s *AutomationAppService) continueRunWithSnapshot(ctx context.Context, snap *automationWorkspaceSnapshot, identity automationFollowUpIdentity) (*Task, automation.RunRecord, error) {
+func (s *AutomationAppService) continueRunWithSnapshot(ctx context.Context, snap *automationWorkspaceSnapshot, identity automationFollowUpIdentity) (*apptask.Task, automation.RunRecord, error) {
 	run, err := s.automationRunByID(snap, identity.runID)
 	if err != nil {
 		return nil, automation.RunRecord{}, err
@@ -123,7 +127,7 @@ func (s *AutomationAppService) continueRunWithSnapshot(ctx context.Context, snap
 		return nil, automation.RunRecord{}, err
 	}
 	var execution *automationAcceptedFollowUp
-	task, err := NewDeferredRegisteredTaskWithContext(ctx, func(task *Task) error {
+	task, err := apptask.NewDeferredWithContext(ctx, func(task *apptask.Task) error {
 		if err := s.activateAutomationClaim(claim, task); err != nil {
 			return err
 		}
@@ -135,45 +139,45 @@ func (s *AutomationAppService) continueRunWithSnapshot(ctx context.Context, snap
 	}
 	reservation, err := s.followUps.reserve(identity, task)
 	if err != nil {
-		task.failBeforeStart(err)
+		task.RejectStart(err)
 		s.app.unregisterWorkspaceTask(task)
 		s.clearActiveAutomationTask(snap, taskStoreID, run.ID)
 		return nil, automation.RunRecord{}, err
 	}
 	defer reservation.rollback()
-	task.emit(agents.Event{Type: "automation_run", Data: activeRun})
-	acceptCtx, releaseAcceptance := taskAcceptanceContext(ctx, task)
-	execution, err = s.startAutomationFollowUp(acceptCtx, snap, taskDef, run, conversation, identity.commandID, identity.fingerprint, identity.message, task.emit)
+	task.Emit(agentrun.Event{Type: "automation_run", Data: activeRun})
+	acceptCtx, releaseAcceptance := apptask.AcceptanceContext(ctx, task)
+	execution, err = s.startAutomationFollowUp(acceptCtx, snap, taskDef, run, conversation, identity.commandID, identity.fingerprint, identity.message, task.Emit)
 	releaseAcceptance()
 	if err != nil {
-		task.emit(agents.Event{Type: "error", Data: map[string]string{"message": err.Error()}})
-		task.failBeforeStart(err)
+		task.Emit(agentrun.Event{Type: "error", Data: map[string]string{"message": err.Error()}})
+		task.RejectStart(err)
 		s.app.unregisterWorkspaceTask(task)
 		s.clearActiveAutomationTask(snap, taskStoreID, run.ID)
-		if errors.Is(err, agents.ErrInvalidCommand) {
+		if errors.Is(err, agentrun.ErrInvalidCommand) {
 			return nil, automation.RunRecord{}, fmt.Errorf("%w: command_id=%q", ErrAgentCommandConflict, identity.commandID)
 		}
 		return nil, automation.RunRecord{}, err
 	}
-	task.emit(agents.Event{Type: "automation_run", Data: execution.run})
+	task.Emit(agentrun.Event{Type: "automation_run", Data: execution.run})
 	reservation.bind(execution.run)
-	if err := task.Start(func(taskCtx context.Context, task *Task, _ func(agents.Event)) {
+	if err := task.Start(func(taskCtx context.Context, task *apptask.Task, _ func(agentrun.Event)) {
 		defer s.app.unregisterWorkspaceTask(task)
 		defer s.clearActiveAutomationTask(snap, taskStoreID, run.ID)
 		outcome := s.waitAutomationFollowUp(taskCtx, execution)
 		finalRun := execution.run
 		switch outcome.Status {
-		case agents.RunOutcomeCompleted:
+		case agentrun.OutcomeCompleted:
 			finalRun.Status = automation.RunStatusSuccess
 			finalRun.Error = ""
 			finalRun.WriteConfirmationRequired = false
 			finalRun.WriteConfirmationPolicyCaptured = true
 			stageAutomationTerminalEffects(&finalRun, finalRun.CompletionMutationPaths)
-		case agents.RunOutcomeAborted, agents.RunOutcomePreempted:
+		case agentrun.OutcomeAborted, agentrun.OutcomePreempted:
 			finalRun.Status = automation.RunStatusAborted
 			finalRun.Error = automationRunOutcomeError(outcome).Error()
 			stageAutomationTerminalEffects(&finalRun, finalRun.CompletionMutationPaths)
-		case agents.RunOutcomeFailed:
+		case agentrun.OutcomeFailed:
 			finalRun.Status = automation.RunStatusFailed
 			finalRun.Error = automationRunOutcomeError(outcome).Error()
 			stageAutomationTerminalEffects(&finalRun, finalRun.CompletionMutationPaths)
@@ -182,27 +186,27 @@ func (s *AutomationAppService) continueRunWithSnapshot(ctx context.Context, snap
 		finalRun.RuntimeRecoveryRequired = false
 		if _, appendErr := storeForSnapshot(snap).AppendRun(taskStoreID, finalRun); appendErr != nil {
 			slog.ErrorContext(taskCtx, fmt.Sprintf("[automation] persist follow-up terminal failed task_id=%s run_id=%s operation_id=%s err=%v", taskDef.ID, run.ID, finalRun.RuntimeOperationID, appendErr))
-			task.emit(agents.Event{Type: "error", Data: map[string]string{"message": appendErr.Error()}})
+			task.Emit(agentrun.Event{Type: "error", Data: map[string]string{"message": appendErr.Error()}})
 		} else if _, persistedRun, loadErr := storeForSnapshot(snap).GetRunByID(finalRun.ID); loadErr != nil {
 			slog.ErrorContext(taskCtx, fmt.Sprintf("[automation] reload follow-up terminal effects failed task_id=%s run_id=%s operation_id=%s err=%v", taskDef.ID, run.ID, finalRun.RuntimeOperationID, loadErr))
-			task.emit(agents.Event{Type: "error", Data: map[string]string{"message": loadErr.Error()}})
+			task.Emit(agentrun.Event{Type: "error", Data: map[string]string{"message": loadErr.Error()}})
 		} else {
 			finalRun = persistedRun
 			if persistedRun.CompletionEffectsPending {
 				completedRun, completionErr := s.completeAutomationRunEffects(context.WithoutCancel(taskCtx), snap, taskDef, persistedRun)
 				if completionErr != nil {
 					slog.ErrorContext(taskCtx, fmt.Sprintf("[automation] persist follow-up completion effects failed task_id=%s run_id=%s operation_id=%s err=%v", taskDef.ID, run.ID, finalRun.RuntimeOperationID, completionErr))
-					task.emit(agents.Event{Type: "error", Data: map[string]string{"message": completionErr.Error()}})
+					task.Emit(agentrun.Event{Type: "error", Data: map[string]string{"message": completionErr.Error()}})
 				} else {
 					finalRun = completedRun
 				}
 			}
 		}
-		task.emit(agents.Event{Type: "automation_run", Data: finalRun})
+		task.Emit(agentrun.Event{Type: "automation_run", Data: finalRun})
 	}); err != nil {
 		task.Abort()
-		_ = s.waitAutomationFollowUp(task.ctx, execution)
-		task.finish()
+		_ = s.waitAutomationFollowUp(task.Context(), execution)
+		task.Finish()
 		s.app.unregisterWorkspaceTask(task)
 		s.clearActiveAutomationTask(snap, taskStoreID, run.ID)
 		return nil, automation.RunRecord{}, err
@@ -315,16 +319,16 @@ type automationAcceptedRun struct {
 	task           automation.Task
 	run            automation.RunRecord
 	conversation   automationOutputConversation
-	emit           func(agents.Event)
+	emit           func(agentrun.Event)
 	runtimeCfg     config.Config
 	writeMode      string
 	writeScope     string
-	accepted       *agents.AcceptedRun
+	accepted       *agentharness.AcceptedRun
 	runError       string
 	errorForwarded bool
 }
 
-func (s *AutomationAppService) startAutomationRun(ctx context.Context, snap *automationWorkspaceSnapshot, task automation.Task, run automation.RunRecord, conversation automationOutputConversation, emit func(agents.Event)) (execution *automationAcceptedRun, err error) {
+func (s *AutomationAppService) startAutomationRun(ctx context.Context, snap *automationWorkspaceSnapshot, task automation.Task, run automation.RunRecord, conversation automationOutputConversation, emit func(agentrun.Event)) (execution *automationAcceptedRun, err error) {
 	defer func() {
 		if recovered := recover(); recovered != nil {
 			err = fmt.Errorf("automation start panic recovered: %v", recovered)
@@ -342,7 +346,7 @@ func (s *AutomationAppService) startAutomationRun(ctx context.Context, snap *aut
 		runtimeCfg = constrainGlobalAutomationTools(runtimeCfg)
 	}
 	run.ToolManifest = automationToolManifest(&runtimeCfg)
-	taskInstruction := agents.AutomationTaskInstruction{
+	taskInstruction := prompts.AutomationTaskInstruction{
 		Name:         task.Name,
 		Template:     task.Template,
 		Prompt:       task.Prompt,
@@ -368,7 +372,7 @@ func (s *AutomationAppService) startAutomationRun(ctx context.Context, snap *aut
 		snap: snap, task: task, run: run, conversation: conversation, emit: emit,
 		runtimeCfg: runtimeCfg, writeMode: writeMode, writeScope: writeScope,
 	}
-	forward := func(ev agents.Event) {
+	forward := func(ev agentrun.Event) {
 		switch ev.Type {
 		case "error":
 			execution.runError = eventMessage(ev.Data)
@@ -382,11 +386,11 @@ func (s *AutomationAppService) startAutomationRun(ctx context.Context, snap *aut
 			emit(ev)
 		}
 	}
-	accepted, err := chatService.StartWithOptions(ctx, runner, conversation, bookService, agents.ChatRequest{
+	accepted, err := chatService.StartWithOptions(ctx, runner, conversation, bookService, agentchat.ChatRequest{
 		CommandID: automationRunAgentCommandID(run.ID),
 		Message:   s.buildAutomationUserMessage(task, run, writeMode, writeScope),
-	}, agents.RunOptions{
-		AgentKind:          agents.AgentKindAutomation,
+	}, agentrun.Options{
+		AgentKind:          agentrun.AgentKindAutomation,
 		ProjectID:          snap.projectID,
 		StateRoot:          snap.stateRoot,
 		TaskID:             run.ID,
@@ -437,7 +441,7 @@ func (s *AutomationAppService) waitAutomationRun(ctx context.Context, execution 
 	}()
 
 	outcome := execution.accepted.Wait(ctx)
-	if outcome.Status == agents.RunOutcomeAborted || outcome.Status == agents.RunOutcomePreempted {
+	if outcome.Status == agentrun.OutcomeAborted || outcome.Status == agentrun.OutcomePreempted {
 		output := execution.conversation.Output()
 		run.Summary = strings.TrimSpace(output)
 		run.Status = automation.RunStatusAborted
@@ -462,7 +466,7 @@ func (s *AutomationAppService) waitAutomationRun(ctx context.Context, execution 
 		slog.InfoContext(ctx, fmt.Sprintf("[automation] run aborted task_id=%s scope=%s workspace=%q trigger=%s", task.ID, task.Scope, run.Workspace, run.Trigger))
 		return automation.RunResult{Task: updated, Run: run}, nil
 	}
-	if outcome.Status != agents.RunOutcomeCompleted {
+	if outcome.Status != agentrun.OutcomeCompleted {
 		if execution.runError != "" {
 			err = errors.New(execution.runError)
 		} else {
@@ -501,7 +505,7 @@ func (s *AutomationAppService) waitAutomationRun(ctx context.Context, execution 
 	return automation.RunResult{Task: updated, Run: run}, nil
 }
 
-func (s *AutomationAppService) failAutomationRun(snap *automationWorkspaceSnapshot, task automation.Task, run automation.RunRecord, emit func(agents.Event), errorForwarded bool, cause error) (automation.RunResult, error) {
+func (s *AutomationAppService) failAutomationRun(snap *automationWorkspaceSnapshot, task automation.Task, run automation.RunRecord, emit func(agentrun.Event), errorForwarded bool, cause error) (automation.RunResult, error) {
 	run.Status = automation.RunStatusFailed
 	run.Error = cause.Error()
 	run.FinishedAt = time.Now().UTC()
@@ -526,12 +530,12 @@ func (s *AutomationAppService) failAutomationRun(snap *automationWorkspaceSnapsh
 		slog.ErrorContext(context.Background(), fmt.Sprintf("[automation] persist failed run failed task_id=%s run_id=%s err=%v", task.ID, run.ID, appendErr))
 	}
 	if emit != nil && !errorForwarded {
-		emit(agents.Event{Type: "error", Data: map[string]string{"message": cause.Error()}})
+		emit(agentrun.Event{Type: "error", Data: map[string]string{"message": cause.Error()}})
 	}
 	return result, cause
 }
 
-func (s *AutomationAppService) runAutomation(ctx context.Context, snap *automationWorkspaceSnapshot, task automation.Task, run automation.RunRecord, conversation automationOutputConversation, emit func(agents.Event)) (automation.RunResult, error) {
+func (s *AutomationAppService) runAutomation(ctx context.Context, snap *automationWorkspaceSnapshot, task automation.Task, run automation.RunRecord, conversation automationOutputConversation, emit func(agentrun.Event)) (automation.RunResult, error) {
 	execution, err := s.startAutomationRun(ctx, snap, task, run, conversation, emit)
 	if err != nil {
 		if execution != nil {
@@ -543,13 +547,13 @@ func (s *AutomationAppService) runAutomation(ctx context.Context, snap *automati
 }
 
 type automationAcceptedFollowUp struct {
-	accepted *agents.AcceptedRun
+	accepted *agentharness.AcceptedRun
 	task     automation.Task
 	run      automation.RunRecord
-	emit     func(agents.Event)
+	emit     func(agentrun.Event)
 }
 
-func (s *AutomationAppService) startAutomationFollowUp(ctx context.Context, snap *automationWorkspaceSnapshot, task automation.Task, run automation.RunRecord, conversation automationOutputConversation, commandID, intentHash, message string, emit func(agents.Event)) (execution *automationAcceptedFollowUp, err error) {
+func (s *AutomationAppService) startAutomationFollowUp(ctx context.Context, snap *automationWorkspaceSnapshot, task automation.Task, run automation.RunRecord, conversation automationOutputConversation, commandID, intentHash, message string, emit func(agentrun.Event)) (execution *automationAcceptedFollowUp, err error) {
 	defer func() {
 		if recovered := recover(); recovered != nil {
 			err = fmt.Errorf("automation follow-up start panic recovered: %v", recovered)
@@ -564,7 +568,7 @@ func (s *AutomationAppService) startAutomationFollowUp(ctx context.Context, snap
 	if task.Target.Kind == automation.TargetKindUser {
 		runtimeCfg = constrainGlobalAutomationTools(runtimeCfg)
 	}
-	taskInstruction := agents.AutomationTaskInstruction{
+	taskInstruction := prompts.AutomationTaskInstruction{
 		Name:         task.Name,
 		Template:     task.Template,
 		Prompt:       task.Prompt,
@@ -591,9 +595,9 @@ func (s *AutomationAppService) startAutomationFollowUp(ctx context.Context, snap
 	if commandID == "" || intentHash == "" {
 		return nil, fmt.Errorf("automation follow-up durable intent is incomplete")
 	}
-	request := agents.ChatRequest{CommandID: commandID, Message: message}
-	options := agents.RunOptions{
-		AgentKind:          agents.AgentKindAutomation,
+	request := agentchat.ChatRequest{CommandID: commandID, Message: message}
+	options := agentrun.Options{
+		AgentKind:          agentrun.AgentKindAutomation,
 		ProjectID:          snap.projectID,
 		StateRoot:          snap.stateRoot,
 		TaskID:             run.ID,
@@ -611,7 +615,7 @@ func (s *AutomationAppService) startAutomationFollowUp(ctx context.Context, snap
 	if bookService != nil {
 		workspace = bookService.Workspace()
 	}
-	runtimeFingerprint, err := agents.DurableStartTurnFingerprint(request, options, workspace)
+	runtimeFingerprint, err := agentharness.StartTurnFingerprint(request, options, workspace)
 	if err != nil {
 		return nil, fmt.Errorf("derive automation follow-up runtime fingerprint: %w", err)
 	}
@@ -632,7 +636,7 @@ func (s *AutomationAppService) startAutomationFollowUp(ctx context.Context, snap
 	}
 	accepted, err := chatService.StartWithOptions(ctx, runner, conversation, bookService, request, options, emit)
 	if err != nil {
-		if errors.Is(err, agents.ErrInvalidCommand) {
+		if errors.Is(err, agentrun.ErrInvalidCommand) {
 			// A semantic command conflict proves this successor was not accepted.
 			// Clear its write-ahead intent so startup recovery cannot mistake an
 			// older command with the same ID for this follow-up.
@@ -685,15 +689,15 @@ func (s *AutomationAppService) startAutomationFollowUp(ctx context.Context, snap
 	return execution, nil
 }
 
-func (s *AutomationAppService) waitAutomationFollowUp(ctx context.Context, execution *automationAcceptedFollowUp) (outcome agents.RunOutcome) {
+func (s *AutomationAppService) waitAutomationFollowUp(ctx context.Context, execution *automationAcceptedFollowUp) (outcome agentrun.Outcome) {
 	defer func() {
 		if recovered := recover(); recovered != nil {
 			slog.ErrorContext(ctx, fmt.Sprintf("[automation] follow-up panic recovered task_id=%s run_id=%s err=%v", execution.task.ID, execution.run.ID, recovered))
 			panicErr := fmt.Errorf("automation follow-up panic recovered: %v", recovered)
 			if execution.emit != nil {
-				execution.emit(agents.Event{Type: "error", Data: map[string]string{"message": panicErr.Error()}})
+				execution.emit(agentrun.Event{Type: "error", Data: map[string]string{"message": panicErr.Error()}})
 			}
-			outcome = agents.RunOutcome{Status: agents.RunOutcomeFailed, Error: panicErr, Reason: panicErr.Error()}
+			outcome = agentrun.Outcome{Status: agentrun.OutcomeFailed, Error: panicErr, Reason: panicErr.Error()}
 		}
 	}()
 	outcome = execution.accepted.Wait(ctx)
@@ -701,20 +705,20 @@ func (s *AutomationAppService) waitAutomationFollowUp(ctx context.Context, execu
 	return outcome
 }
 
-func (s *AutomationAppService) runAutomationFollowUp(ctx context.Context, snap *automationWorkspaceSnapshot, task automation.Task, run automation.RunRecord, conversation automationOutputConversation, commandID, message string, emit func(agents.Event)) agents.RunOutcome {
+func (s *AutomationAppService) runAutomationFollowUp(ctx context.Context, snap *automationWorkspaceSnapshot, task automation.Task, run automation.RunRecord, conversation automationOutputConversation, commandID, message string, emit func(agentrun.Event)) agentrun.Outcome {
 	identity, identityErr := newAutomationFollowUpIdentity(run.ID, commandID, message)
 	if identityErr != nil {
 		if emit != nil {
-			emit(agents.Event{Type: "error", Data: map[string]string{"message": identityErr.Error()}})
+			emit(agentrun.Event{Type: "error", Data: map[string]string{"message": identityErr.Error()}})
 		}
-		return agents.RunOutcome{Status: agents.RunOutcomeFailed, Error: identityErr, Reason: identityErr.Error()}
+		return agentrun.Outcome{Status: agentrun.OutcomeFailed, Error: identityErr, Reason: identityErr.Error()}
 	}
 	execution, err := s.startAutomationFollowUp(ctx, snap, task, run, conversation, identity.commandID, identity.fingerprint, identity.message, emit)
 	if err != nil {
 		if emit != nil {
-			emit(agents.Event{Type: "error", Data: map[string]string{"message": err.Error()}})
+			emit(agentrun.Event{Type: "error", Data: map[string]string{"message": err.Error()}})
 		}
-		return agents.RunOutcome{Status: agents.RunOutcomeFailed, Error: err, Reason: err.Error()}
+		return agentrun.Outcome{Status: agentrun.OutcomeFailed, Error: err, Reason: err.Error()}
 	}
 	outcome := s.waitAutomationFollowUp(ctx, execution)
 	slog.InfoContext(ctx, fmt.Sprintf("[automation] follow-up end task_id=%s run_id=%s", task.ID, run.ID))

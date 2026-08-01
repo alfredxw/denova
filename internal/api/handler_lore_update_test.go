@@ -1,17 +1,16 @@
 package api
 
 import (
+	"denova/internal/book/lore"
 	"net/http"
 	"testing"
-
-	"denova/internal/book"
 )
 
 func TestLoreItemUpdateUsesFullPutContract(t *testing.T) {
 	application := newTestApplication(t)
 	server := NewServer(application, "0")
 	workspace := application.Workspace()
-	created, err := application.CreateLoreItem(book.LoreItemInput{
+	created, err := application.CreateLoreItem(lore.ItemInput{
 		ID:               "hero",
 		Type:             "character",
 		Name:             "林川",
@@ -19,7 +18,7 @@ func TestLoreItemUpdateUsesFullPutContract(t *testing.T) {
 		Tags:             []string{"主角", "调查员"},
 		BriefDescription: "谨慎的调查员",
 		Keywords:         []string{"林川", "调查"},
-		LoadMode:         book.LoreLoadModeResident,
+		LoadMode:         lore.LoadModeResident,
 		Content:          "旧正文",
 	})
 	if err != nil {
@@ -44,7 +43,7 @@ func TestLoreItemUpdateUsesFullPutContract(t *testing.T) {
 	if response.Code != http.StatusOK {
 		t.Fatalf("PUT update status=%d body=%s", response.Code, response.Body.String())
 	}
-	var updated book.LoreItem
+	var updated lore.Item
 	decodeResponse(t, response.Body.Bytes(), &updated)
 	if updated.Name != "林川（成年）" || updated.Content != "新正文" {
 		t.Fatalf("unexpected updated lore item: %#v", updated)

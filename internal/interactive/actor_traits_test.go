@@ -1,6 +1,7 @@
 package interactive
 
 import (
+	interactivestate "denova/internal/interactive/state"
 	"encoding/json"
 	"strings"
 	"testing"
@@ -362,7 +363,7 @@ func actorTraitTestSystem() StoryDirectorActorStateSystem {
 	}
 }
 
-func applyActorTraitTestOps(state map[string]any, ops []StateOp, actorOpGroups ...[]ActorStateOp) map[string]any {
+func applyActorTraitTestOps(state map[string]any, ops []interactivestate.Op, actorOpGroups ...[]ActorStateOp) map[string]any {
 	if state == nil {
 		state = map[string]any{}
 	}

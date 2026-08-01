@@ -2,6 +2,8 @@ package app
 
 import (
 	"context"
+	agentharness "denova/internal/agents/harness"
+	apptask "denova/internal/app/task"
 	"errors"
 	"fmt"
 	"log/slog"
@@ -12,11 +14,11 @@ import (
 	agents "denova/internal/agents"
 	"denova/internal/agents/session"
 	"denova/internal/book"
-	"denova/internal/filewatch"
+	"denova/internal/concurrency"
 	"denova/internal/interactive"
-	"denova/internal/lifecycle"
 	projectdomain "denova/internal/project"
 	"denova/internal/terminal"
+	"denova/internal/workspace/filewatch"
 )
 
 // App 是 API 层使用的应用门面；具体业务由领域应用服务承接。
@@ -31,31 +33,31 @@ type App struct {
 	session                         *session.Session
 	agentRunner                     *agents.Runner
 	interactiveStoryRunner          *agents.Runner
-	chatService                     *agents.ChatService
+	chatService                     *agentharness.Service
 	bookRegistry                    *BookRegistry
 	projectRegistry                 *projectdomain.Registry
 	bookMetaStore                   *BookMetaStore
 	versionService                  *book.VersionService
-	activeTask                      *Task
+	activeTask                      *apptask.Task
 	activeWritingRun                *writingTaskRun
 	activeInteractiveRun            *interactiveTaskRun
-	activeLoreImageTask             *Task
-	activeAutomationTasks           map[string]*Task
+	activeLoreImageTask             *apptask.Task
+	activeAutomationTasks           map[string]*apptask.Task
 	activeAutomationRuns            map[string]automationRunState
 	activeAutomationClaims          map[string]*automationRunClaim
 	automationTriggers              *automationTriggerCoordinator
 	workspaceDirectorTasks          *workspaceDirectorTaskGroup
-	workspaceTasks                  map[*Task]string
-	workspaceTaskLeases             map[*Task]*lifecycle.Lease
-	workspaceTaskStops              map[*Task]func() bool
-	workspaceTaskReplayReservations map[*Task]*activeTaskReplayReservation
+	workspaceTasks                  map[*apptask.Task]string
+	workspaceTaskLeases             map[*apptask.Task]*concurrency.Lease
+	workspaceTaskStops              map[*apptask.Task]func() bool
+	workspaceTaskReplayReservations map[*apptask.Task]*apptask.ReplayReservation
 	workspaceTransition             bool
 	workspaceTransitionTargets      map[string]struct{}
 	directorGenerator               interactiveDirectorGenerator
 	versionSummaryGenerator         versionSummaryGeneratorFunc
 	workspaceFiles                  *filewatch.Service
-	rootScope                       *lifecycle.Scope
-	workspaceScopes                 map[string]*lifecycle.Scope
+	rootScope                       *concurrency.Scope
+	workspaceScopes                 map[string]*concurrency.Scope
 	workspaceScopeSequence          uint64
 	workspaceGeneration             uint64
 	closed                          bool
@@ -64,7 +66,7 @@ type App struct {
 	schedulerWG                     sync.WaitGroup
 	schedulerStarted                bool
 	automationEffectWake            chan struct{}
-	activeTaskReplay                activeTaskReplayAdmission
+	activeTaskReplay                apptask.ReplayAdmission
 
 	// terminals owns the pty sessions behind the AgentChat terminal tabs. They are decoupled from
 	// the workspace: each session keeps its own cwd, so switching books never kills a running command.
@@ -131,14 +133,14 @@ func New(ctx context.Context, cfg *config.Config) (*App, error) {
 		terminals:            terminal.NewManager(terminalConfigFromAppConfig(cfg)),
 		automationEffectWake: make(chan struct{}, 1),
 	}
-	chatService, err := agents.NewDurableChatService(
+	chatService, err := agentharness.NewDurableService(
 		ctx,
 		dataDir,
-		agents.WithHarnessDomainCommitReconciler(app.reconcileHarnessDomainCommit),
-		agents.WithHarnessInputMaterializer(app),
-		agents.WithHarnessTurnRestorer(app.restoreHarnessTurn),
-		agents.WithHarnessStructuralRestorer(app.restoreContextStructuralOperation),
-		agents.WithHarnessHostEffectReconciler(app.reconcileHarnessHostEffect),
+		agentharness.WithDomainCommitReconciler(app.reconcileHarnessDomainCommit),
+		agentharness.WithInputMaterializer(app),
+		agentharness.WithTurnRestorer(app.restoreHarnessTurn),
+		agentharness.WithStructuralRestorer(app.restoreContextStructuralOperation),
+		agentharness.WithHostEffectReconciler(app.reconcileHarnessHostEffect),
 	)
 	if err != nil {
 		return nil, fmt.Errorf("initialize durable agent runtime: %w", err)
@@ -422,8 +424,8 @@ func (a *App) abortOwnedAgentTasks(ctx context.Context) {
 		return
 	}
 	a.mu.RLock()
-	unique := make(map[*Task]struct{}, 3+len(a.activeAutomationTasks)+len(a.workspaceTasks))
-	add := func(task *Task) {
+	unique := make(map[*apptask.Task]struct{}, 3+len(a.activeAutomationTasks)+len(a.workspaceTasks))
+	add := func(task *apptask.Task) {
 		if task != nil {
 			unique[task] = struct{}{}
 		}
@@ -444,7 +446,7 @@ func (a *App) abortOwnedAgentTasks(ctx context.Context) {
 		add(task)
 	}
 	a.mu.RUnlock()
-	tasks := make([]*Task, 0, len(unique))
+	tasks := make([]*apptask.Task, 0, len(unique))
 	for task := range unique {
 		tasks = append(tasks, task)
 	}

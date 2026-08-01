@@ -6,7 +6,7 @@ import (
 	"strings"
 	"testing"
 
-	"denova/internal/contextmaintenance"
+	agentcontext "denova/internal/agents/context"
 )
 
 func TestUpdateLatestTurnNarrativePreservesStoryPathAndInvalidatesCoveredCompaction(t *testing.T) {
@@ -34,7 +34,7 @@ func TestUpdateLatestTurnNarrativePreservesStoryPathAndInvalidatesCoveredCompact
 		t.Fatal(err)
 	}
 	compaction, err := store.AppendContextCompaction(story.ID, "main", ContextCompactionEvent{
-		CompactionCheckpoint: contextmaintenance.CompactionCheckpoint{
+		CompactionCheckpoint: agentcontext.CompactionCheckpoint{
 			AgentKind: "interactive_story", Summary: "朋友住在旧地址。", RetainedTurns: 1,
 			TokensBefore: 1200, TokensAfter: 200,
 		},

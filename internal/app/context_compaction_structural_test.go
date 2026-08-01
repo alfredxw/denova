@@ -2,12 +2,17 @@ package app
 
 import (
 	"context"
+	agentcontext "denova/internal/agents/context"
+	agentstructural "denova/internal/agents/context/structural"
+	agentharness "denova/internal/agents/harness"
+	agentrun "denova/internal/agents/run"
 	"reflect"
 	"strings"
 	"testing"
 
 	"denova/config"
 	agents "denova/internal/agents"
+	agentcompaction "denova/internal/agents/context/compaction"
 	"denova/internal/agents/session"
 	"denova/internal/interactive"
 )
@@ -17,13 +22,13 @@ func TestInteractiveCompactionRejectsNoProgressAfterStableContextReinjection(t *
 	candidate := []*agents.Message{agents.UserMessage("bounded checkpoint")}
 	stableLeading := strings.Repeat("complete resident lore remains provider-visible. ", 200)
 	candidate = preserveInteractiveStableLeadingMessage(candidate, stableLeading)
-	candidateTokens := agents.EstimateContextTokens([]*agents.Message{agents.UserMessage("bounded checkpoint")}, nil)
-	truePostTokens := agents.EstimateContextTokens(candidate, nil)
+	candidateTokens := agentcontext.EstimateTokens([]*agents.Message{agents.UserMessage("bounded checkpoint")}, nil)
+	truePostTokens := agentcontext.EstimateTokens(candidate, nil)
 	if candidateTokens >= truePostTokens {
 		t.Fatalf("test fixture has no stable-context pressure: candidate=%d true_post=%d", candidateTokens, truePostTokens)
 	}
 	tokensBefore := candidateTokens + (truePostTokens-candidateTokens)/2
-	result := agents.ContextCompactionResult{
+	result := agentcompaction.Result{
 		Triggered:            true,
 		TokensBefore:         tokensBefore,
 		TokensAfter:          candidateTokens,
@@ -53,17 +58,17 @@ func TestInteractiveCompactionCalibratesTruePostContextAfterStableReinjection(t 
 	original := []*agents.Message{agents.UserMessage(strings.Repeat("original history ", 200))}
 	candidate := []*agents.Message{agents.UserMessage("bounded checkpoint")}
 	candidate = preserveInteractiveStableLeadingMessage(candidate, strings.Repeat("resident lore remains exact. ", 80))
-	localTruePost := agents.EstimateContextTokens(candidate, nil)
+	localTruePost := agentcontext.EstimateTokens(candidate, nil)
 	observedTruePost := localTruePost * 2
 	contextWindow := (observedTruePost*100 + 83) / 84
 	const completionReserve = 31
 	const toolReserve = 47
-	result := agents.ContextCompactionResult{
+	result := agentcompaction.Result{
 		Triggered:                true,
 		ObservedPromptTokens:     observedTruePost,
 		ObservedEstimateTokens:   localTruePost,
 		TokensBefore:             observedTruePost + 100,
-		TokensAfter:              agents.EstimateContextTokens([]*agents.Message{agents.UserMessage("bounded checkpoint")}, nil),
+		TokensAfter:              agentcontext.EstimateTokens([]*agents.Message{agents.UserMessage("bounded checkpoint")}, nil),
 		ProjectedTokensAfter:     localTruePost,
 		ReservedCompletionTokens: completionReserve,
 		ReservedToolResultTokens: toolReserve,
@@ -101,11 +106,11 @@ func TestInteractiveCompactionProjectionMatchesDurableReloadAndPreservesPendingS
 		agents.UserMessage("current player instruction"),
 	}
 	providerMessages := append(append([]*agents.Message(nil), sourceMessages...), pendingSideInput...)
-	transient, payload := agents.BuildCompactedModelMessagesThroughSource(
+	transient, payload := agentcompaction.BuildModelMessagesThroughSource(
 		providerMessages, "durable story checkpoint", "", 1, 1, len(sourceMessages),
 	)
 	event := &interactive.ContextCompactionEvent{
-		CompactionCheckpoint: agents.NewContextCompactionCheckpoint("", agents.ContextCompactionResult{
+		CompactionCheckpoint: agentcompaction.NewCheckpoint("", agentcompaction.Result{
 			Epoch: 1, Summary: payload, RetainedTurns: 1,
 		}),
 		SourceTurnCount: len(turns),
@@ -115,8 +120,8 @@ func TestInteractiveCompactionProjectionMatchesDurableReloadAndPreservesPendingS
 	if !reflect.DeepEqual(transient, durableReload) {
 		t.Fatalf("immediate/durable game projections differ:\nimmediate=%#v\ndurable=%#v", transient, durableReload)
 	}
-	if agents.EstimateContextTokens(transient, nil) != agents.EstimateContextTokens(durableReload, nil) {
-		t.Fatalf("immediate/durable token estimates differ: %d vs %d", agents.EstimateContextTokens(transient, nil), agents.EstimateContextTokens(durableReload, nil))
+	if agentcontext.EstimateTokens(transient, nil) != agentcontext.EstimateTokens(durableReload, nil) {
+		t.Fatalf("immediate/durable token estimates differ: %d vs %d", agentcontext.EstimateTokens(transient, nil), agentcontext.EstimateTokens(durableReload, nil))
 	}
 	for _, expected := range []string{hugeNthOldTurn, "pending interrupted player input", "pending durable model-context batch", "current player instruction"} {
 		found := false
@@ -145,14 +150,14 @@ func TestWritingCompactionRemovalUsesDurableStructuralCommand(t *testing.T) {
 		t.Fatal(err)
 	}
 	compaction, err := sess.AppendContextCompaction(session.ContextCompaction{
-		CompactionCheckpoint: agents.NewContextCompactionCheckpoint(config.AgentKindIDE, agents.ContextCompactionResult{Summary: "checkpoint"}),
+		CompactionCheckpoint: agentcompaction.NewCheckpoint(config.AgentKindIDE, agentcompaction.Result{Summary: "checkpoint"}),
 		SourceEndIndex:       1,
 		SourceMessageCount:   1,
 	})
 	if err != nil {
 		t.Fatal(err)
 	}
-	chat := agents.NewEphemeralChatService()
+	chat := agentharness.NewEphemeralService()
 	t.Cleanup(func() { _ = chat.Close(context.Background()) })
 	application := &App{
 		workspace: "/book", workspaceGeneration: 1, sessionStore: store,
@@ -174,13 +179,13 @@ func TestWritingCompactionRemovalUsesDurableStructuralCommand(t *testing.T) {
 	if !ok || marker.CompactionID != compaction.ID {
 		t.Fatalf("missing canonical removal marker: %#v", marker)
 	}
-	status, err := chat.RuntimeStatusProjection(context.Background(), agents.RunOptions{
-		AgentKind: agents.AgentKindIDE, Workspace: "/book", SessionID: sess.ID,
+	status, err := chat.RuntimeStatusProjection(context.Background(), agentrun.Options{
+		AgentKind: agentrun.AgentKindIDE, Workspace: "/book", SessionID: sess.ID,
 	})
 	if err != nil {
 		t.Fatal(err)
 	}
-	if status.Phase != agents.RunPhaseIdle || status.LastOperation == nil || status.LastOperation.Status != agents.OperationSucceeded ||
+	if status.Phase != agentrun.RunPhaseIdle || status.LastOperation == nil || status.LastOperation.Status != agentrun.OperationSucceeded ||
 		status.LastDomainCommit == nil || status.LastDomainCommit.Revision == "" {
 		t.Fatalf("durable structural settlement missing: %#v", status)
 	}
@@ -199,14 +204,14 @@ func TestInteractiveCompactionRemovalUsesDurableStructuralCommand(t *testing.T) 
 	}
 	expected := turn.ID
 	compaction, err := store.AppendContextCompaction(story.ID, "main", interactive.ContextCompactionEvent{
-		CompactionCheckpoint: agents.NewContextCompactionCheckpoint(config.AgentKindInteractiveStory, agents.ContextCompactionResult{Summary: "钟楼响起"}),
+		CompactionCheckpoint: agentcompaction.NewCheckpoint(config.AgentKindInteractiveStory, agentcompaction.Result{Summary: "钟楼响起"}),
 		SourceTurnCount:      1,
 		ExpectedParentID:     &expected,
 	})
 	if err != nil {
 		t.Fatal(err)
 	}
-	chat := agents.NewEphemeralChatService()
+	chat := agentharness.NewEphemeralService()
 	t.Cleanup(func() { _ = chat.Close(context.Background()) })
 	application := &App{workspace: workspace, workspaceGeneration: 1, interactive: store, chatService: chat}
 	service := &InteractiveAppService{app: application}
@@ -225,13 +230,13 @@ func TestInteractiveCompactionRemovalUsesDurableStructuralCommand(t *testing.T) 
 	if snapshot.ContextCompaction != nil || snapshot.ContextCompactionRemoval == nil || snapshot.ContextCompactionRemoval.CompactionID != compaction.ID {
 		t.Fatalf("canonical interactive removal missing: %#v", snapshot)
 	}
-	status, err := chat.RuntimeStatusProjection(context.Background(), agents.RunOptions{
-		AgentKind: agents.AgentKindInteractiveStory, Workspace: workspace, StoryID: story.ID, BranchID: "main",
+	status, err := chat.RuntimeStatusProjection(context.Background(), agentrun.Options{
+		AgentKind: agentrun.AgentKindInteractiveStory, Workspace: workspace, StoryID: story.ID, BranchID: "main",
 	})
 	if err != nil {
 		t.Fatal(err)
 	}
-	if status.Phase != agents.RunPhaseIdle || status.LastOperation == nil || status.LastOperation.Status != agents.OperationSucceeded ||
+	if status.Phase != agentrun.RunPhaseIdle || status.LastOperation == nil || status.LastOperation.Status != agentrun.OperationSucceeded ||
 		status.LastDomainCommit == nil || status.LastDomainCommit.Revision == "" {
 		t.Fatalf("durable game structural settlement missing: %#v", status)
 	}
@@ -251,7 +256,7 @@ func TestInteractivePostSettlementCompactionPublishesAtSettledTurnHead(t *testin
 	}
 	conversation := newInteractiveConversation(store, "", workspace, story.ID, "main", "", 0, &config.Config{})
 	conversation.stagePreparedInteractiveCompaction(preparedInteractiveContextCompaction{
-		Result: agents.ContextCompactionResult{
+		Result: agentcompaction.Result{
 			Triggered: true, Phase: "mid_run", Epoch: 1, Summary: "大厅中央有一盏旧灯。",
 			SourceMessageCount: 2, RetainedTurns: 2,
 		},
@@ -263,8 +268,8 @@ func TestInteractivePostSettlementCompactionPublishesAtSettledTurnHead(t *testin
 	if err != nil {
 		t.Fatal(err)
 	}
-	spec, err := conversation.PostSettlementContextStructuralSpec(context.Background(), "settled-game-operation", agents.RunOptions{
-		AgentKind: agents.AgentKindInteractiveStory, Workspace: workspace, StoryID: story.ID, BranchID: "main",
+	spec, err := conversation.PostSettlementContextStructuralSpec(context.Background(), "settled-game-operation", agentrun.Options{
+		AgentKind: agentrun.AgentKindInteractiveStory, Workspace: workspace, StoryID: story.ID, BranchID: "main",
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -272,13 +277,13 @@ func TestInteractivePostSettlementCompactionPublishesAtSettledTurnHead(t *testin
 	if spec == nil {
 		t.Fatal("expected staged post-settlement structural spec")
 	}
-	if spec.RestorePlan == nil || spec.RestorePlan.Domain != agents.ContextStructuralDomainStory ||
+	if spec.RestorePlan == nil || spec.RestorePlan.Domain != agentstructural.DomainStory ||
 		spec.RestorePlan.RecordID == "" || spec.RestorePlan.IntentHash == "" || len(spec.RestorePlan.Mutation) == 0 {
 		t.Fatalf("post-settlement Story compaction has no exact restore plan: %#v", spec.RestorePlan)
 	}
-	chat := agents.NewEphemeralChatService()
+	chat := agentharness.NewEphemeralService()
 	t.Cleanup(func() { _ = chat.Close(context.Background()) })
-	result, err := chat.ExecuteContextStructuralOperation(context.Background(), *spec)
+	result, err := chat.ExecuteStructuralOperation(context.Background(), *spec)
 	if err != nil {
 		t.Fatal(err)
 	}

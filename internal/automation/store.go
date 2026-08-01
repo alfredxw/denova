@@ -14,7 +14,7 @@ import (
 	"strings"
 	"time"
 
-	"denova/internal/workspacepath"
+	workspacelayout "denova/internal/workspace"
 )
 
 type Store struct {
@@ -58,7 +58,7 @@ func (e *RevisionConflictError) Unwrap() error {
 }
 
 // WithWorkspaces returns the same user-level automation store configured to
-// discover tasks from every registered workspace. Paths are canonicalized and
+// discover tasks from every registered workspacelayout. Paths are canonicalized and
 // deduplicated so aliases never create duplicate catalog entries.
 func (s *Store) WithWorkspaces(workspaces ...string) *Store {
 	if s == nil {
@@ -172,7 +172,7 @@ func (s *Store) List() ([]Task, error) {
 
 // ListForTarget returns the tasks that execute in one explicit context. It is
 // the scheduler-facing view of the user catalog and never falls back to the
-// currently open workspace.
+// currently open workspacelayout.
 //
 // ListForTarget keeps each execution target's list exclusive: a workspace
 // target returns only workspace-scoped tasks for that workspace, and the user
@@ -228,7 +228,7 @@ func (s *Store) ListForTriggerEvaluation(target ExecutionTarget) ([]Task, error)
 			continue
 		}
 		// When evaluating a workspace target, also include user-scoped tasks so
-		// their content triggers fire against that workspace.
+		// their content triggers fire against that workspacelayout.
 		if kind == TargetKindWorkspace && task.Target.Kind == TargetKindUser {
 			filtered = append(filtered, task)
 		}
@@ -676,7 +676,7 @@ func (s *Store) pathForScope(scope string) (string, error) {
 		if strings.TrimSpace(s.workspaceStateRoot) != "" {
 			return filepath.Join(s.workspaceStateRoot, "automations", "tasks.json"), nil
 		}
-		return workspacepath.Path(s.workspace, "automations", "tasks.json"), nil
+		return workspacelayout.Path(s.workspace, "automations", "tasks.json"), nil
 	default:
 		return "", fmt.Errorf("unknown automation scope %q", scope)
 	}

@@ -2,6 +2,7 @@ package interactive
 
 import (
 	"context"
+	interactivestate "denova/internal/interactive/state"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -14,7 +15,7 @@ const turnSubmissionStateChangesField = "state_changes"
 
 // TurnStateChangeInput is the model-facing state mutation shape. Stable IDs
 // are separate fields so the model never has to construct or escape a JSON
-// Pointer; the backend compiles this shape to the persisted StateUpdate.
+// Pointer; the backend compiles this shape to the persisted interactivestate.Update.
 type TurnStateChangeInput struct {
 	Op           string         `json:"op" jsonschema:"enum=replace,enum=delta,enum=create,enum=archive,enum=restore" jsonschema_description:"replace 写入字段完整新值，delta 增减已有数值，create 创建 Actor，archive 让 Actor 退出运行时状态，restore 恢复参与。"`
 	ActorID      string         `json:"actor_id" jsonschema_description:"引用已有 Actor 时逐字使用状态手册中的 ID；create 时直接使用故事语言中的角色名称，并与 name 完全相同。"`
@@ -101,7 +102,7 @@ func DecodeInteractiveTurnSubmissionInput(arguments string) TurnSubmissionInput 
 	return input
 }
 
-func decodeStructuredStateChangesModule(raw json.RawMessage) ([]StateUpdate, []TurnSubmissionDiagnostic) {
+func decodeStructuredStateChangesModule(raw json.RawMessage) ([]interactivestate.Update, []TurnSubmissionDiagnostic) {
 	items, err := decodeStructuredStateChangeItems(raw)
 	if err != nil {
 		return nil, []TurnSubmissionDiagnostic{*newTurnSubmissionDiagnostic(
@@ -115,7 +116,7 @@ func decodeStructuredStateChangesModule(raw json.RawMessage) ([]StateUpdate, []T
 			fmt.Sprintf("state_changes must be a native array; only one string layer containing valid array JSON is tolerated: %v", err),
 		)}
 	}
-	updates := make([]StateUpdate, 0, len(items))
+	updates := make([]interactivestate.Update, 0, len(items))
 	diagnostics := make([]TurnSubmissionDiagnostic, 0)
 	for index, item := range items {
 		var change TurnStateChangeInput
@@ -191,43 +192,43 @@ func decodeStructuredStateChangeItems(raw json.RawMessage) ([]json.RawMessage, e
 	return items, nil
 }
 
-func stateUpdateFromStructuredInput(change TurnStateChangeInput) (StateUpdate, error) {
+func stateUpdateFromStructuredInput(change TurnStateChangeInput) (interactivestate.Update, error) {
 	change.Op = strings.ToLower(strings.TrimSpace(change.Op))
 	change.ActorID = strings.TrimSpace(change.ActorID)
 	change.FieldID = strings.TrimSpace(change.FieldID)
 	change.TemplateID = strings.TrimSpace(change.TemplateID)
 	if change.ActorID == "" {
-		return StateUpdate{}, fmt.Errorf("state_changes 缺少 actor_id")
+		return interactivestate.Update{}, fmt.Errorf("state_changes 缺少 actor_id")
 	}
 	switch change.Op {
-	case TurnStateUpdateReplace, TurnStateUpdateDelta:
+	case interactivestate.Replace, interactivestate.Delta:
 		if change.FieldID == "" {
-			return StateUpdate{}, fmt.Errorf("%s 状态变化缺少 field_id", change.Op)
+			return interactivestate.Update{}, fmt.Errorf("%s 状态变化缺少 field_id", change.Op)
 		}
 		if change.Value == nil {
-			return StateUpdate{}, fmt.Errorf("%s 状态变化缺少非空 value", change.Op)
+			return interactivestate.Update{}, fmt.Errorf("%s 状态变化缺少非空 value", change.Op)
 		}
 		if change.TemplateID != "" || change.Name != "" || change.Role != "" || change.Description != "" || change.InitialState != nil || strings.TrimSpace(change.Reason) != "" {
-			return StateUpdate{}, fmt.Errorf("%s 不能包含 create 或 lifecycle 专用字段", change.Op)
+			return interactivestate.Update{}, fmt.Errorf("%s 不能包含 create 或 lifecycle 专用字段", change.Op)
 		}
 		segments := []string{change.ActorID, change.FieldID}
 		for _, segment := range change.Subpath {
 			segment = strings.TrimSpace(segment)
 			if segment == "" {
-				return StateUpdate{}, fmt.Errorf("subpath 不能包含空段")
+				return interactivestate.Update{}, fmt.Errorf("subpath 不能包含空段")
 			}
 			segments = append(segments, segment)
 		}
-		return StateUpdate{Op: change.Op, Path: formatStateUpdatePath(segments), Value: change.Value}, nil
-	case TurnStateUpdateCreate:
+		return interactivestate.Update{Op: change.Op, Path: interactivestate.FormatPath(segments), Value: change.Value}, nil
+	case interactivestate.Create:
 		if change.TemplateID == "" {
-			return StateUpdate{}, fmt.Errorf("create 状态变化缺少 template_id")
+			return interactivestate.Update{}, fmt.Errorf("create 状态变化缺少 template_id")
 		}
 		if strings.TrimSpace(change.Name) == "" {
-			return StateUpdate{}, fmt.Errorf("create 状态变化缺少 name；新建 Actor 的 name 必须与 actor_id 完全相同")
+			return interactivestate.Update{}, fmt.Errorf("create 状态变化缺少 name；新建 Actor 的 name 必须与 actor_id 完全相同")
 		}
 		if change.FieldID != "" || len(change.Subpath) > 0 || change.Value != nil || strings.TrimSpace(change.Reason) != "" {
-			return StateUpdate{}, fmt.Errorf("create 不能包含 field_id、subpath、value 或 reason")
+			return interactivestate.Update{}, fmt.Errorf("create 不能包含 field_id、subpath、value 或 reason")
 		}
 		value := map[string]any{"template_id": change.TemplateID}
 		if name := strings.TrimSpace(change.Name); name != "" {
@@ -242,21 +243,21 @@ func stateUpdateFromStructuredInput(change TurnStateChangeInput) (StateUpdate, e
 		if change.InitialState != nil {
 			value["state"] = change.InitialState
 		}
-		return StateUpdate{Op: TurnStateUpdateCreate, Path: formatStateUpdatePath([]string{change.ActorID}), Value: value}, nil
-	case TurnStateUpdateArchive, TurnStateUpdateRestore:
+		return interactivestate.Update{Op: interactivestate.Create, Path: interactivestate.FormatPath([]string{change.ActorID}), Value: value}, nil
+	case interactivestate.Archive, interactivestate.Restore:
 		reason := strings.TrimSpace(change.Reason)
 		if reason == "" {
-			return StateUpdate{}, fmt.Errorf("%s 状态变化缺少非空 reason", change.Op)
+			return interactivestate.Update{}, fmt.Errorf("%s 状态变化缺少非空 reason", change.Op)
 		}
 		if len([]byte(reason)) > maxActorArchiveReasonBytes {
-			return StateUpdate{}, fmt.Errorf("%s reason 超过 %d bytes", change.Op, maxActorArchiveReasonBytes)
+			return interactivestate.Update{}, fmt.Errorf("%s reason 超过 %d bytes", change.Op, maxActorArchiveReasonBytes)
 		}
 		if change.FieldID != "" || len(change.Subpath) > 0 || change.Value != nil || change.TemplateID != "" || change.Name != "" || change.Role != "" || change.Description != "" || change.InitialState != nil {
-			return StateUpdate{}, fmt.Errorf("%s 只能包含 actor_id 和 reason", change.Op)
+			return interactivestate.Update{}, fmt.Errorf("%s 只能包含 actor_id 和 reason", change.Op)
 		}
-		return StateUpdate{Op: change.Op, Path: formatStateUpdatePath([]string{change.ActorID}), Value: map[string]any{"reason": reason}}, nil
+		return interactivestate.Update{Op: change.Op, Path: interactivestate.FormatPath([]string{change.ActorID}), Value: map[string]any{"reason": reason}}, nil
 	default:
-		return StateUpdate{}, fmt.Errorf("op 必须是 replace、delta、create、archive 或 restore")
+		return interactivestate.Update{}, fmt.Errorf("op 必须是 replace、delta、create、archive 或 restore")
 	}
 }
 

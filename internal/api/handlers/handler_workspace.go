@@ -15,7 +15,7 @@ import (
 
 	denovaapp "denova/internal/app"
 	"denova/internal/book"
-	"denova/internal/workspacechange"
+	workspacechange "denova/internal/workspace/change"
 )
 
 // handleWorkspaceTree GET /api/workspace/tree — 递归扫描 workspace 目录返回文件树。

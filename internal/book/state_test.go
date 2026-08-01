@@ -6,6 +6,8 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"denova/internal/book/lore"
 	"time"
 )
 
@@ -59,7 +61,7 @@ func TestInitWorkspaceMigratesLegacyLoreIntoPublicSettingDirectory(t *testing.T)
 	if err := state.InitWorkspace(); err != nil {
 		t.Fatalf("InitWorkspace 失败: %v", err)
 	}
-	data, err := os.ReadFile(LoreItemsPath(dir))
+	data, err := os.ReadFile(lore.ItemsPath(dir))
 	if err != nil {
 		t.Fatalf("读取迁移后的 Lore 失败: %v", err)
 	}
@@ -116,12 +118,12 @@ func TestCompactContextIncludesCharacterStates(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(state.ChapterGroupDir(), "group01-废城.md"), []byte("章节组内容"), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := NewLoreStore(dir).Create(LoreItemInput{
+	if _, err := lore.NewStore(dir).Create(lore.ItemInput{
 		ID:         "hero",
 		Type:       "character",
 		Name:       "林川",
 		Importance: "major",
-		LoadMode:   LoreLoadModeResident,
+		LoadMode:   lore.LoadModeResident,
 		Content:    "林川的长期人设",
 	}); err != nil {
 		t.Fatalf("创建资料失败: %v", err)
@@ -191,12 +193,12 @@ func TestStableAndDynamicContextPartsSeparateByChurn(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(dir, "chapters", "ch0001-开局.md"), []byte("第一章正文"), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := NewLoreStore(dir).Create(LoreItemInput{
+	if _, err := lore.NewStore(dir).Create(lore.ItemInput{
 		ID:         "hero",
 		Type:       "character",
 		Name:       "林川",
 		Importance: "major",
-		LoadMode:   LoreLoadModeResident,
+		LoadMode:   lore.LoadModeResident,
 		Content:    "林川长期设定",
 	}); err != nil {
 		t.Fatalf("创建资料失败: %v", err)
@@ -249,12 +251,12 @@ func TestCompactContextPartsKeepLoreMarkdownAsSingleSource(t *testing.T) {
 	if err := state.InitWorkspace(); err != nil {
 		t.Fatalf("InitWorkspace 失败: %v", err)
 	}
-	if _, err := NewLoreStore(dir).Create(LoreItemInput{
+	if _, err := lore.NewStore(dir).Create(lore.ItemInput{
 		ID:         "hero",
 		Type:       "character",
 		Name:       "林川",
 		Importance: "major",
-		LoadMode:   LoreLoadModeResident,
+		LoadMode:   lore.LoadModeResident,
 		Content:    "## 角色小标题\n\n这里是资料库正文。",
 	}); err != nil {
 		t.Fatalf("创建资料失败: %v", err)
@@ -263,7 +265,7 @@ func TestCompactContextPartsKeepLoreMarkdownAsSingleSource(t *testing.T) {
 	parts := state.CompactContextParts()
 	loreParts := 0
 	for _, part := range parts {
-		if part.Source == LoreItemsRelativePath {
+		if part.Source == lore.ItemsRelativePath {
 			loreParts++
 			if part.Title != "资料库" {
 				t.Fatalf("资料库来源标题 = %q, want 资料库", part.Title)
@@ -287,7 +289,7 @@ func TestHasStateRecognizesCharacterStates(t *testing.T) {
 	if err := os.MkdirAll(state.SettingDir(), 0o755); err != nil {
 		t.Fatal(err)
 	}
-	if err := NewLoreStore(dir).Ensure(); err != nil {
+	if err := lore.NewStore(dir).Ensure(); err != nil {
 		t.Fatal(err)
 	}
 	if state.HasState() {

@@ -2,6 +2,9 @@ package app
 
 import (
 	"context"
+	agentcontext "denova/internal/agents/context"
+	agentrun "denova/internal/agents/run"
+	"denova/internal/agents/toolresult"
 	"errors"
 	"strings"
 	"testing"
@@ -52,10 +55,10 @@ func TestInteractiveToolResultCleanupStagesAfterSettlementAndPreservesRichTurn(t
 		t.Fatalf("unexpected provider history: %#v", visible)
 	}
 	placeholder := "[Older tool result removed. Recovery: read lore/cast.md.]"
-	plan := agents.ToolResultCleanupPlan{
-		Replacements: []agents.ToolResultCleanupReplacement{{
+	plan := toolresult.CleanupPlan{
+		Replacements: []toolresult.CleanupReplacement{{
 			MessageIndex: 2, ToolCallID: "call-read", Placeholder: placeholder,
-			OriginalTokens: agents.EstimateContextTokens([]*agents.Message{visible[2]}, nil), PlaceholderTokens: 20,
+			OriginalTokens: agentcontext.EstimateTokens([]*agents.Message{visible[2]}, nil), PlaceholderTokens: 20,
 		}},
 		ReclaimedTokens: 1000, EarliestChanged: 1, RendererVersion: "tool-result-placeholder/v1",
 	}
@@ -138,7 +141,7 @@ func TestInteractiveToolResultCleanupIndexesResolvedAcceptanceProjection(t *test
 		t.Fatal(err)
 	}
 
-	visible := interactiveProjectionFromStoreForTest(t, store, story.ID, agents.HarnessCycleIdentity{}).Messages
+	visible := interactiveProjectionFromStoreForTest(t, store, story.ID, agentrun.CycleIdentity{}).Messages
 	targetIndex := -1
 	for index, message := range visible {
 		if message != nil && message.Role == agents.RoleTool && message.ToolCallID == callID {
@@ -152,10 +155,10 @@ func TestInteractiveToolResultCleanupIndexesResolvedAcceptanceProjection(t *test
 
 	conversation := newInteractiveConversation(store, "", workspace, story.ID, "main", "", 0, &config.Config{})
 	const placeholder = "[Older tool result removed. Recovery: read lore/interrupted.md.]"
-	plan := agents.ToolResultCleanupPlan{
-		Replacements: []agents.ToolResultCleanupReplacement{{
+	plan := toolresult.CleanupPlan{
+		Replacements: []toolresult.CleanupReplacement{{
 			MessageIndex: targetIndex, ToolCallID: callID, Placeholder: placeholder,
-			OriginalTokens: agents.EstimateContextTokens([]*agents.Message{visible[targetIndex]}, nil), PlaceholderTokens: 20,
+			OriginalTokens: agentcontext.EstimateTokens([]*agents.Message{visible[targetIndex]}, nil), PlaceholderTokens: 20,
 		}},
 		ReclaimedTokens: 100, EarliestChanged: targetIndex, RendererVersion: "tool-result-placeholder/v1",
 	}
@@ -166,7 +169,7 @@ func TestInteractiveToolResultCleanupIndexesResolvedAcceptanceProjection(t *test
 		t.Fatal(err)
 	}
 
-	projected := interactiveProjectionFromStoreForTest(t, interactive.NewStore(workspace), story.ID, agents.HarnessCycleIdentity{})
+	projected := interactiveProjectionFromStoreForTest(t, interactive.NewStore(workspace), story.ID, agentrun.CycleIdentity{})
 	if len(projected.Messages) <= targetIndex || projected.Messages[targetIndex].Content != placeholder {
 		t.Fatalf("resolved cleanup index did not survive cold projection: %#v", projected.Messages)
 	}
@@ -274,9 +277,9 @@ func TestInteractiveCleanupDefersPendingSideBatchWithReusedProviderCallID(t *tes
 	visible = append(visible, agents.UserMessage("pending input"))
 	visible = append(visible, schemaMessagesFromInteractiveContext(pendingMessages)...)
 	pendingIndex := len(visible) - 1
-	plan := agents.ToolResultCleanupPlan{Replacements: []agents.ToolResultCleanupReplacement{{
+	plan := toolresult.CleanupPlan{Replacements: []toolresult.CleanupReplacement{{
 		MessageIndex: pendingIndex, ToolCallID: "reused-call", Placeholder: "must not persist",
-		OriginalTokens: agents.EstimateContextTokens([]*agents.Message{visible[pendingIndex]}, nil), PlaceholderTokens: 4,
+		OriginalTokens: agentcontext.EstimateTokens([]*agents.Message{visible[pendingIndex]}, nil), PlaceholderTokens: 4,
 	}}}
 	if err := conversation.StageToolResultCleanup(context.Background(), visible, plan); !errors.Is(err, errInteractiveCleanupBlockedByPendingModelContext) {
 		t.Fatalf("pending side-batch cleanup error = %v", err)
@@ -287,7 +290,7 @@ func TestInteractiveCleanupDefersPendingSideBatchWithReusedProviderCallID(t *tes
 	}
 	policy.ContextWindowTokens = 10
 	policy.ReservedTokens = 10
-	if decision := agents.PlanContextPressure(visible, nil, policy); decision.Action != agents.ContextMaintenanceCompaction {
+	if decision := agentcontext.PlanContextPressure(visible, nil, policy); decision.Action != agentcontext.ContextMaintenanceCompaction {
 		t.Fatalf("hard pressure with pending side batch must compact: %#v", decision)
 	}
 
@@ -309,7 +312,7 @@ func TestInteractiveCleanupDefersPendingSideBatchWithReusedProviderCallID(t *tes
 func interactiveEffectiveModelMessages(history interactiveTurnHistory, compaction *interactive.ContextCompactionEvent) []*agents.Message {
 	messages := make([]*agents.Message, 0, len(history.Turns)*3+1)
 	if compaction != nil && strings.TrimSpace(compaction.Summary) != "" {
-		messages = append(messages, agents.NewContextCompactionSummaryMessage(compaction.Epoch, compaction.Summary))
+		messages = append(messages, agentcontext.NewCompactionSummaryMessage(compaction.Epoch, compaction.Summary))
 	}
 	for _, turn := range history.Turns {
 		messages = append(messages, agents.UserMessage(turn.User))

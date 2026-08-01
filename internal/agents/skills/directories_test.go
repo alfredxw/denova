@@ -6,7 +6,7 @@ import (
 	"strings"
 	"testing"
 
-	"denova/internal/workspacepath"
+	workspacelayout "denova/internal/workspace"
 )
 
 func TestNewDirectoriesUsesPublicBookSkillsDirectory(t *testing.T) {
@@ -22,8 +22,8 @@ func TestNewDirectoriesUsesPublicBookSkillsDirectory(t *testing.T) {
 
 func TestNewDirectoriesMigratesLegacySkillBundlesWithPublicPrecedence(t *testing.T) {
 	workspace := t.TempDir()
-	legacyRoot := filepath.Join(workspace, workspacepath.LegacyDataDirName, "skills")
-	currentRoot := filepath.Join(workspace, workspacepath.DataDirName, "skills")
+	legacyRoot := filepath.Join(workspace, workspacelayout.LegacyDataDirName, "skills")
+	currentRoot := filepath.Join(workspace, workspacelayout.DataDirName, "skills")
 	publicRoot := filepath.Join(workspace, "skills")
 	writeSkillFixture(t, filepath.Join(legacyRoot, "legacy-only"), "legacy-only", "legacy body")
 	if err := os.MkdirAll(filepath.Join(legacyRoot, "legacy-only", "references"), 0o755); err != nil {

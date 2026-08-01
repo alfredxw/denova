@@ -11,7 +11,7 @@ import (
 	"os"
 	"strings"
 
-	"denova/internal/keyedlock"
+	"denova/internal/concurrency"
 )
 
 const MissingRevision = "missing"
@@ -20,7 +20,7 @@ const MissingRevision = "missing"
 // no longer matches the exact bytes on disk.
 var ErrRevisionConflict = errors.New("file revision conflict")
 
-var mutationLocks = keyedlock.New(canonicalPath)
+var mutationLocks = concurrency.NewKeyedLock(canonicalPath)
 
 // Options controls permissions used when a mutation creates a new path.
 // Existing file permissions are preserved.

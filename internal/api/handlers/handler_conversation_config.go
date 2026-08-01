@@ -8,7 +8,6 @@ import (
 	"github.com/cloudwego/hertz/pkg/protocol/consts"
 
 	appsvc "denova/internal/app"
-	"denova/internal/conversationconfig"
 )
 
 func (h *Handlers) HandleConversationConfigGet(ctx context.Context, c *app.RequestContext) {
@@ -24,7 +23,7 @@ func (h *Handlers) HandleConversationConfigPatch(ctx context.Context, c *app.Req
 	var body struct {
 		Binding      appsvc.ConversationConfigBinding `json:"binding"`
 		BaseRevision uint64                           `json:"base_revision"`
-		Changes      conversationconfig.Patch         `json:"changes"`
+		Changes      appsvc.ConversationConfigPatch   `json:"changes"`
 	}
 	if err := decodeStrictJSONRequest(c.Request.Body(), &body); err != nil {
 		writeErrorKey(c, consts.StatusBadRequest, "api.common.invalidRequestWithDetail", "detail", err.Error())
@@ -48,7 +47,7 @@ func conversationConfigBindingFromQuery(c *app.RequestContext) appsvc.Conversati
 
 func writeConversationConfigError(c *app.RequestContext, err error) {
 	switch {
-	case errors.Is(err, conversationconfig.ErrRevisionConflict):
+	case appsvc.IsConversationConfigRevisionConflict(err):
 		writeErrorKey(c, consts.StatusConflict, "api.conversationConfig.revisionConflict")
 	case errors.Is(err, appsvc.ErrAgentOperationActive):
 		writeErrorKey(c, consts.StatusConflict, "api.conversationConfig.active")

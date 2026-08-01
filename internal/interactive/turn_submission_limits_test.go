@@ -1,6 +1,7 @@
 package interactive
 
 import (
+	interactivestate "denova/internal/interactive/state"
 	"encoding/json"
 	"fmt"
 	"testing"
@@ -10,7 +11,7 @@ func TestDecodeInteractiveTurnSubmissionDoesNotApplyAnOperationCountLimit(t *tes
 	changes := make([]map[string]any, 201)
 	for index := range changes {
 		changes[index] = map[string]any{
-			"op":       TurnStateUpdateReplace,
+			"op":       interactivestate.Replace,
 			"actor_id": fmt.Sprintf("actor-%d", index),
 			"field_id": "status",
 			"value":    index,

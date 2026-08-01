@@ -12,8 +12,8 @@ import (
 
 	agent "github.com/alfredxw/denova/agent"
 
-	"denova/internal/contextmaintenance"
-	"denova/internal/conversationjournal"
+	agentcontext "denova/internal/agents/context"
+	"denova/internal/agents/conversationjournal"
 )
 
 func TestHistoryPageReadsIndexedRangesWithoutOmissions(t *testing.T) {
@@ -37,7 +37,7 @@ func TestHistoryPageReadsIndexedRangesWithoutOmissions(t *testing.T) {
 	legacyCompaction, err := json.Marshal(ContextCompaction{
 		Type: historyTypeCompaction,
 		ID:   "legacy-long-compaction",
-		CompactionCheckpoint: contextmaintenance.CompactionCheckpoint{
+		CompactionCheckpoint: agentcontext.CompactionCheckpoint{
 			AgentKind: "ide", Epoch: 1, Summary: "旧格式长会话摘要",
 		},
 		SourceStartIndex:   123,

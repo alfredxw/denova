@@ -11,7 +11,7 @@ import (
 	agent "github.com/alfredxw/denova/agent"
 	agenttools "github.com/alfredxw/denova/agent/tools"
 
-	"denova/internal/workspacechange"
+	workspacechange "denova/internal/workspace/change"
 )
 
 type workspaceChangeService interface {
@@ -142,49 +142,14 @@ func workspaceChangeMetadata(ctx context.Context, provider WorkspaceMetadataProv
 	}
 }
 
-func marshalWorkspaceChangeToolReceipt(workspace string, changeSet workspacechange.ChangeSet) (string, error) {
-	edits := make([]workspaceChangeEditReceipt, 0, len(changeSet.Edits))
-	for _, edit := range changeSet.Edits {
-		edits = append(edits, workspaceChangeEditReceipt{
-			ID: edit.ID, Replacements: len(edit.Hunks),
-		})
-	}
-	receipt := workspaceChangeToolReceipt{
-		Schema:         workspaceChangeToolResultSchema,
-		Status:         workspaceChangeReceiptStatus(changeSet),
-		Workspace:      workspace,
-		ChangeGroupID:  changeSet.GroupID,
-		ReviewThreadID: changeSet.ReviewThreadID,
-		ChangeSetID:    changeSet.ID,
-		Path:           changeSet.Path,
-		BaseRevision:   changeSet.BaseRevision,
-		Revision:       changeSet.Revision,
-		ReviewStatus:   changeSet.ReviewStatus,
-		ApplyState:     changeSet.ApplyState,
-		Edits:          edits,
-	}
-	data, err := json.Marshal(receipt)
-	if err != nil {
-		return "", fmt.Errorf("serialize workspace change receipt: %w", err)
-	}
-	return string(data), nil
-}
-
 func workspaceChangeToolResult(workspace string, changeSet workspacechange.ChangeSet) (agent.ToolResult, error) {
-	content, err := marshalWorkspaceChangeToolReceipt(workspace, changeSet)
+	content, err := workspacechange.MarshalToolReceipt(workspace, changeSet)
 	if err != nil {
-		return agent.ToolResult{}, err
+		return agent.ToolResult{}, fmt.Errorf("serialize workspace change receipt: %w", err)
 	}
 	result := agent.TextToolResult(content)
 	result.Details = json.RawMessage(content)
 	return result, nil
-}
-
-func workspaceChangeReceiptStatus(changeSet workspacechange.ChangeSet) string {
-	if strings.TrimSpace(changeSet.ApplyState) == "" || changeSet.ApplyState == workspacechange.ApplyStateApplied {
-		return "applied"
-	}
-	return changeSet.ApplyState
 }
 
 type workspaceChangeToolErrorReceipt struct {

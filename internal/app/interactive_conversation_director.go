@@ -10,10 +10,12 @@ import (
 	"denova/config"
 	agents "denova/internal/agents"
 	agentcontext "denova/internal/agents/context"
-	"denova/internal/book"
+	agentcompaction "denova/internal/agents/context/compaction"
+	"denova/internal/agents/prompts"
+	"denova/internal/book/lore"
 	"denova/internal/interactive"
-	"denova/internal/narrativestyle"
-	"denova/internal/prompts"
+	"denova/internal/interactive/teller"
+	"denova/internal/style"
 )
 
 func (c *interactiveConversation) BuildDirectorInstruction(turn interactive.TurnEvent) (string, error) {
@@ -30,7 +32,7 @@ func (c *interactiveConversation) buildDirectorModelInput(turn interactive.TurnE
 	if err != nil {
 		return interactiveDirectorStableContext{}, "", err
 	}
-	assembledRevision, err := book.NewLoreStore(c.workspace).Revision()
+	assembledRevision, err := lore.NewStore(c.workspace).Revision()
 	if err != nil {
 		return interactiveDirectorStableContext{}, "", fmt.Errorf("读取导演资料库装配后 revision 失败: %w", err)
 	}
@@ -200,7 +202,7 @@ func newDirectorContextBudget(cfg *config.Config, task string, stableContext int
 		threshold = 0.80
 	}
 	thresholdTokens := int(float64(window) * threshold)
-	composition, err := agents.ComposeInteractiveDirectorInstruction(cfg, nil)
+	composition, err := prompts.ComposeInteractiveDirectorInstruction(cfg, nil)
 	if err != nil {
 		return nil, fmt.Errorf("compose interactive director system prompt / 组装互动导演系统提示失败: %w", err)
 	}
@@ -219,8 +221,8 @@ func newDirectorContextBudget(cfg *config.Config, task string, stableContext int
 		}
 		overheadMessages = append(overheadMessages, agents.UserMessage(agentcontext.StandaloneMessage(title, stable, "")))
 	}
-	overheadTokens := agents.EstimateContextTokens(overheadMessages, nil)
-	completionReserve, toolReserve := agents.EstimateContextProjectionReserves(cfg, config.AgentKindInteractiveDirector, 1024)
+	overheadTokens := agentcontext.EstimateTokens(overheadMessages, nil)
+	completionReserve, toolReserve := agentcompaction.EstimateProjectionReserves(cfg, config.AgentKindInteractiveDirector, 1024)
 	toolSchemaAndRuntimeHeadroom := max(2048, window/100)
 	available := max(0, thresholdTokens-overheadTokens-completionReserve-toolReserve-toolSchemaAndRuntimeHeadroom)
 	return &directorContextBudget{
@@ -238,7 +240,7 @@ func (b *directorContextBudget) take(source, value string, fragmentLimit int) st
 	}
 	kept := boundedText(value, fragmentLimit)
 	kept = fitTextToTokenBudget(kept, b.remainingTokens)
-	usedTokens := agents.EstimateContextTokens([]*agents.Message{agents.UserMessage(kept)}, nil)
+	usedTokens := agentcontext.EstimateTokens([]*agents.Message{agents.UserMessage(kept)}, nil)
 	if strings.TrimSpace(kept) == "" {
 		usedTokens = 0
 	}
@@ -255,14 +257,14 @@ func fitTextToTokenBudget(value string, tokenBudget int) string {
 	if tokenBudget <= 0 || strings.TrimSpace(value) == "" {
 		return ""
 	}
-	if agents.EstimateContextTokens([]*agents.Message{agents.UserMessage(value)}, nil) <= tokenBudget {
+	if agentcontext.EstimateTokens([]*agents.Message{agents.UserMessage(value)}, nil) <= tokenBudget {
 		return value
 	}
 	low, high := 0, len(value)
 	for low < high {
 		mid := low + (high-low+1)/2
 		candidate, _ := trimStringToUTF8Bytes(value, mid)
-		if agents.EstimateContextTokens([]*agents.Message{agents.UserMessage(candidate)}, nil) <= tokenBudget {
+		if agentcontext.EstimateTokens([]*agents.Message{agents.UserMessage(candidate)}, nil) <= tokenBudget {
 			low = mid
 		} else {
 			high = mid - 1
@@ -272,7 +274,7 @@ func fitTextToTokenBudget(value string, tokenBudget int) string {
 	return trimmed
 }
 
-func (c *interactiveConversation) teller(tellerID string) interactive.Teller {
+func (c *interactiveConversation) teller(tellerID string) teller.Definition {
 	return loadGameTeller(c.novaDir, tellerID)
 }
 
@@ -305,36 +307,36 @@ func storyDirectorForSnapshot(director interactive.StoryDirector, snapshot *inte
 	return director
 }
 
-func loadWritingTeller(novaDir, tellerID string) interactive.Teller {
-	return loadInteractiveTeller(novaDir, tellerID, narrativestyle.ModeWriting)
+func loadWritingTeller(novaDir, tellerID string) teller.Definition {
+	return loadInteractiveTeller(novaDir, tellerID, style.ModeWriting)
 }
 
-func loadGameTeller(novaDir, tellerID string) interactive.Teller {
-	return loadInteractiveTeller(novaDir, tellerID, narrativestyle.ModeGame)
+func loadGameTeller(novaDir, tellerID string) teller.Definition {
+	return loadInteractiveTeller(novaDir, tellerID, style.ModeGame)
 }
 
-func loadInteractiveTeller(novaDir, tellerID, mode string) interactive.Teller {
+func loadInteractiveTeller(novaDir, tellerID, mode string) teller.Definition {
 	if novaDir == "" {
-		return interactive.Teller{}
+		return teller.Definition{}
 	}
-	library := interactive.NewTellerLibrary(novaDir)
-	teller, err := library.Get(tellerID)
-	if err == nil && teller.SupportsMode(mode) {
-		return teller
+	library := teller.NewLibrary(novaDir)
+	selected, err := library.Get(tellerID)
+	if err == nil && selected.SupportsMode(mode) {
+		return selected
 	}
 	if err != nil {
 		slog.ErrorContext(context.Background(), fmt.Sprintf("[interactive-agent] load narrative style failed id=%s mode=%s err=%v", tellerID, mode, err))
 	} else {
 		slog.WarnContext(context.Background(), fmt.Sprintf("[interactive-agent] narrative style is unavailable in mode id=%s mode=%s", tellerID, mode))
 	}
-	fallback, fallbackErr := library.Get(narrativestyle.DefaultID)
+	fallback, fallbackErr := library.Get(style.DefaultID)
 	if fallbackErr != nil {
-		slog.ErrorContext(context.Background(), fmt.Sprintf("[interactive-agent] load default narrative style failed id=%s mode=%s err=%v", narrativestyle.DefaultID, mode, fallbackErr))
-		return interactive.Teller{}
+		slog.ErrorContext(context.Background(), fmt.Sprintf("[interactive-agent] load default narrative style failed id=%s mode=%s err=%v", style.DefaultID, mode, fallbackErr))
+		return teller.Definition{}
 	}
 	if !fallback.SupportsMode(mode) {
 		slog.WarnContext(context.Background(), fmt.Sprintf("[interactive-agent] default narrative style is unavailable in mode id=%s mode=%s", fallback.ID, mode))
-		return interactive.Teller{}
+		return teller.Definition{}
 	}
 	return fallback
 }
@@ -356,8 +358,8 @@ func loadStoryDirector(novaDir, directorID string) interactive.StoryDirector {
 	return fallback
 }
 
-func interactiveStoryTellerSystemInput(teller interactive.Teller, styleRules ...[]agents.StyleRule) prompts.InteractiveStorySystemInstructionInput {
-	var rules []agents.StyleRule
+func interactiveStoryTellerSystemInput(teller teller.Definition, styleRules ...[]prompts.StyleRule) prompts.InteractiveStorySystemInstructionInput {
+	var rules []prompts.StyleRule
 	if len(styleRules) > 0 {
 		rules = styleRules[0]
 	}

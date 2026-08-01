@@ -8,7 +8,7 @@ import (
 	"sort"
 	"strings"
 
-	"denova/internal/conversationjournal"
+	"denova/internal/agents/conversationjournal"
 )
 
 const (

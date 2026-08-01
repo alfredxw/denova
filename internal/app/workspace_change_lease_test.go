@@ -12,7 +12,7 @@ import (
 
 	"denova/config"
 	"denova/internal/book"
-	"denova/internal/workspacechange"
+	workspacechange "denova/internal/workspace/change"
 )
 
 func TestWorkspaceFileMutationDefersAutomaticGitVersion(t *testing.T) {

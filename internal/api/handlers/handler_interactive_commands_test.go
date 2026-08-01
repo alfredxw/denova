@@ -13,7 +13,7 @@ import (
 
 func TestInteractiveAgentCommandKindIsClosed(t *testing.T) {
 	kind, err := interactiveAgentCommandKind("abort")
-	if err != nil || kind != appsvc.AgentCommandAbort {
+	if err != nil || kind != appsvc.CommandAbort {
 		t.Fatalf("abort kind = %q, %v", kind, err)
 	}
 	for _, value := range []string{"steer", "follow_up", "next_turn", "steer_queued", "cancel_queued"} {

@@ -2,6 +2,7 @@ package interactive
 
 import (
 	"context"
+	interactivestate "denova/internal/interactive/state"
 	"fmt"
 	"log/slog"
 	"os"
@@ -10,9 +11,10 @@ import (
 	"time"
 
 	"denova/config"
-	"denova/internal/conversationconfig"
-	"denova/internal/conversationjournal"
-	"denova/internal/narrativestyle"
+	"denova/internal/agents/conversationconfig"
+	"denova/internal/agents/conversationjournal"
+	"denova/internal/interactive/director"
+	"denova/internal/style"
 )
 
 func (s *Store) Index() (Index, error) {
@@ -69,7 +71,7 @@ func (s *Store) CreateStory(req CreateStoryRequest) (StorySummary, error) {
 	stateSchemaPolicy := cloneStoryStateSchemaPolicy(req.StateSchemaPolicy)
 	directorRunPolicy := cloneStoryDirectorRunPolicy(req.DirectorRunPolicy)
 	if directorRunPolicy != nil {
-		if err := ValidateStoryDirectorRunPolicy(*directorRunPolicy); err != nil {
+		if err := director.ValidateRunPolicy(*directorRunPolicy); err != nil {
 			return StorySummary{}, err
 		}
 	}
@@ -94,7 +96,7 @@ func (s *Store) CreateStory(req CreateStoryRequest) (StorySummary, error) {
 		return StorySummary{}, err
 	}
 	if story.StoryTellerID == "" {
-		story.StoryTellerID = narrativestyle.DefaultID
+		story.StoryTellerID = style.DefaultID
 	}
 	if story.StoryDirectorID == "" {
 		story.StoryDirectorID = DefaultStoryDirectorID
@@ -184,7 +186,7 @@ func (s *Store) CreateStory(req CreateStoryRequest) (StorySummary, error) {
 		return StorySummary{}, fmt.Errorf("状态结构初始化策略缺少可冻结的基础状态系统 / State schema policy requires a freezable base state system")
 	}
 	initialStateOps := normalizeStateOps(req.InitialStateOps)
-	generatedOps := []StateOp(nil)
+	generatedOps := []interactivestate.Op(nil)
 	initialActorOps := []ActorStateOp(nil)
 	if meta.ActorStateSchema != nil && !storyStateSchemaPolicyRequiresOpeningDraft(stateSchemaPolicy) {
 		generatedOps, initialActorOps, err = BuildActorStateInitialChanges(meta.ActorStateSchema.System, req.InitialTraitRolls)
@@ -277,8 +279,8 @@ func (s *Store) UpdateStory(storyID string, req UpdateStoryRequest) (StorySummar
 		meta.ModuleRefs = cloneStoryDirectorModuleRefs(req.ModuleRefs)
 	}
 	if req.DirectorRunPolicy != nil {
-		policy := NormalizeStoryDirectorRunPolicy(*req.DirectorRunPolicy)
-		if err := ValidateStoryDirectorRunPolicy(policy); err != nil {
+		policy := director.NormalizeRunPolicy(*req.DirectorRunPolicy)
+		if err := director.ValidateRunPolicy(policy); err != nil {
 			return StorySummary{}, err
 		}
 		meta.DirectorRunPolicy = &policy

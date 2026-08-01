@@ -10,7 +10,7 @@ import (
 	"github.com/cloudwego/hertz/pkg/protocol/consts"
 
 	denovaapp "denova/internal/app"
-	"denova/internal/workspacechange"
+	workspacechange "denova/internal/workspace/change"
 )
 
 const workspaceChangeWorkspaceHeader = "X-Denova-Workspace"

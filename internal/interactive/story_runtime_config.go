@@ -7,7 +7,7 @@ import (
 	"time"
 
 	"denova/config"
-	"denova/internal/conversationconfig"
+	"denova/internal/agents/conversationconfig"
 )
 
 // BranchRuntimeConfig reads the complete durable selection without mutating a

@@ -1,6 +1,7 @@
 package interactive
 
 import (
+	"denova/internal/interactive/director"
 	"encoding/json"
 	"fmt"
 	"strings"
@@ -52,7 +53,7 @@ type DirectorPlanUpdateDraft struct {
 	baseline  DirectorPlanDocs
 	baseHash  map[string]string
 	accepted  map[string]directorPlanAcceptedDocument
-	decision  *PlanDecision
+	decision  *director.Decision
 	finalized bool
 }
 
@@ -75,9 +76,9 @@ func (d *DirectorPlanUpdateDraft) FinalDocs() (DirectorPlanDocs, bool) {
 	return d.currentDocs(), true
 }
 
-func (d *DirectorPlanUpdateDraft) Decision() (PlanDecision, bool) {
+func (d *DirectorPlanUpdateDraft) Decision() (director.Decision, bool) {
 	if d == nil || d.decision == nil {
-		return PlanDecision{}, false
+		return director.Decision{}, false
 	}
 	return *d.decision, true
 }

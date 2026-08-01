@@ -80,12 +80,12 @@ func builtinGenreEventPackageModule(id, name, description string, cards []genreE
 	})
 }
 
-func builtinGenreEventPackage(id, name string, cards []genreEventCardPreset) TellerEventPackage {
-	events := make([]TellerEventCard, 0, len(cards))
+func builtinGenreEventPackage(id, name string, cards []genreEventCardPreset) EventPackage {
+	events := make([]EventCard, 0, len(cards))
 	for _, card := range cards {
 		events = append(events, builtinGenreEventCard(card))
 	}
-	return TellerEventPackage{
+	return EventPackage{
 		ID:      id,
 		Name:    name,
 		Enabled: true,
@@ -93,8 +93,8 @@ func builtinGenreEventPackage(id, name string, cards []genreEventCardPreset) Tel
 	}
 }
 
-func builtinGenreEventCard(card genreEventCardPreset) TellerEventCard {
-	return TellerEventCard{
+func builtinGenreEventCard(card genreEventCardPreset) EventCard {
+	return EventCard{
 		ID:                  card.ID,
 		TypeName:            card.TypeName,
 		DescriptionMarkdown: builtinGenreEventMarkdown(card),

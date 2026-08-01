@@ -6,8 +6,8 @@ import (
 	"log/slog"
 
 	"denova/config"
+	"denova/internal/agents/conversationconfig"
 	"denova/internal/agents/session"
-	"denova/internal/conversationconfig"
 	"denova/internal/interactive"
 )
 

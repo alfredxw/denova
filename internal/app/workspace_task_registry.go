@@ -2,12 +2,13 @@ package app
 
 import (
 	"context"
+	apptask "denova/internal/app/task"
 	"errors"
 	"fmt"
 	"log/slog"
 	"strings"
 
-	"denova/internal/lifecycle"
+	"denova/internal/concurrency"
 )
 
 // registerWorkspaceTaskLocked records a background task against the exact
@@ -15,7 +16,7 @@ import (
 // is used by UI-scoped agents; library automations may intentionally target a
 // different registered workspace and therefore opt out of that equality
 // check while retaining transition fencing.
-func (a *App) registerWorkspaceTaskLocked(task *Task, workspace string, strictCurrent bool) error {
+func (a *App) registerWorkspaceTaskLocked(task *apptask.Task, workspace string, strictCurrent bool) error {
 	workspace = strings.TrimSpace(workspace)
 	if task == nil || workspace == "" {
 		return ErrNoWorkspace
@@ -32,7 +33,7 @@ func (a *App) registerWorkspaceTaskLocked(task *Task, workspace string, strictCu
 		return err
 	}
 	if err := a.registerOwnedTaskLocked(task, workspace, scope); err != nil {
-		if errors.Is(err, lifecycle.ErrClosing) || errors.Is(err, lifecycle.ErrClosed) {
+		if errors.Is(err, concurrency.ErrClosing) || errors.Is(err, concurrency.ErrClosed) {
 			return ErrWorkspaceTransition
 		}
 		return err
@@ -43,14 +44,14 @@ func (a *App) registerWorkspaceTaskLocked(task *Task, workspace string, strictCu
 // registerOwnedTaskLocked binds every App-owned Task to both its cancellation
 // scope and the process-wide replay budget before publishing it in the common
 // registry. The caller holds App.mu. Rollback is completed here because a
-// failed NewDeferredRegisteredTask registration does not return the Task to
+// failed apptask.NewDeferred registration does not return the Task to
 // its caller, so no outer cleanup can safely recover these resources.
-func (a *App) registerOwnedTaskLocked(task *Task, workspace string, scope *lifecycle.Scope) error {
+func (a *App) registerOwnedTaskLocked(task *apptask.Task, workspace string, scope *concurrency.Scope) error {
 	if task == nil {
 		return fmt.Errorf("cannot register a nil Task")
 	}
 	if scope == nil {
-		return lifecycle.ErrClosed
+		return concurrency.ErrClosed
 	}
 	if _, exists := a.workspaceTasks[task]; exists {
 		return fmt.Errorf("Task %q is already registered", task.ID())
@@ -59,7 +60,7 @@ func (a *App) registerOwnedTaskLocked(task *Task, workspace string, scope *lifec
 	if err != nil {
 		return err
 	}
-	replay, err := a.activeTaskReplay.reserve(task)
+	replay, err := a.activeTaskReplay.Reserve(task)
 	if err != nil {
 		// Release while the Task is still private. No App registry entry or
 		// cancellation callback has been published at this point.
@@ -67,16 +68,16 @@ func (a *App) registerOwnedTaskLocked(task *Task, workspace string, scope *lifec
 		return err
 	}
 	if a.workspaceTasks == nil {
-		a.workspaceTasks = make(map[*Task]string)
+		a.workspaceTasks = make(map[*apptask.Task]string)
 	}
 	if a.workspaceTaskLeases == nil {
-		a.workspaceTaskLeases = make(map[*Task]*lifecycle.Lease)
+		a.workspaceTaskLeases = make(map[*apptask.Task]*concurrency.Lease)
 	}
 	if a.workspaceTaskStops == nil {
-		a.workspaceTaskStops = make(map[*Task]func() bool)
+		a.workspaceTaskStops = make(map[*apptask.Task]func() bool)
 	}
 	if a.workspaceTaskReplayReservations == nil {
-		a.workspaceTaskReplayReservations = make(map[*Task]*activeTaskReplayReservation)
+		a.workspaceTaskReplayReservations = make(map[*apptask.Task]*apptask.ReplayReservation)
 	}
 	a.workspaceTasks[task] = workspace
 	a.workspaceTaskLeases[task] = lease
@@ -85,7 +86,7 @@ func (a *App) registerOwnedTaskLocked(task *Task, workspace string, scope *lifec
 	return nil
 }
 
-func (a *App) unregisterWorkspaceTask(task *Task) {
+func (a *App) unregisterWorkspaceTask(task *apptask.Task) {
 	if a == nil || task == nil {
 		return
 	}
@@ -109,7 +110,7 @@ func (a *App) unregisterWorkspaceTask(task *Task) {
 		stop()
 	}
 	lease.Release()
-	replay.release()
+	replay.Release()
 	// Runtime admits a durable HostEffect immediately after the exact output
 	// receipt, while the owning display Task may still be registered as active.
 	// Wake reconciliation again at the common settlement boundary so Writing,
@@ -121,7 +122,7 @@ func (a *App) unregisterWorkspaceTask(task *Task) {
 // beginWorkspaceTransition fences new current-workspace tasks and snapshots
 // every admitted task before cancellation. The returned tasks are safe to
 // await without holding App.mu.
-func (a *App) beginWorkspaceTransition() ([]*Task, string, error) {
+func (a *App) beginWorkspaceTransition() ([]*apptask.Task, string, error) {
 	tasks, _, workspace, err := a.beginWorkspaceTransitionTo()
 	return tasks, workspace, err
 }
@@ -129,7 +130,7 @@ func (a *App) beginWorkspaceTransition() ([]*Task, string, error) {
 // beginWorkspaceTransitionTo fences both the currently installed generation
 // and every target generation before callers release App.mu. This prevents an
 // inactive-workspace automation from racing buildRuntime for the same path.
-func (a *App) beginWorkspaceTransitionTo(targets ...string) ([]*Task, []*lifecycle.Scope, string, error) {
+func (a *App) beginWorkspaceTransitionTo(targets ...string) ([]*apptask.Task, []*concurrency.Scope, string, error) {
 	if a == nil {
 		return nil, nil, "", ErrNoWorkspace
 	}
@@ -158,8 +159,8 @@ func (a *App) beginWorkspaceTransitionTo(targets ...string) ([]*Task, []*lifecyc
 		}
 	}
 	scopes := a.fenceWorkspaceScopesLocked(transitionWorkspaces...)
-	unique := make(map[*Task]struct{})
-	appendTask := func(task *Task) {
+	unique := make(map[*apptask.Task]struct{})
+	appendTask := func(task *apptask.Task) {
 		if task != nil && !task.Finished() {
 			unique[task] = struct{}{}
 		}
@@ -176,7 +177,7 @@ func (a *App) beginWorkspaceTransitionTo(targets ...string) ([]*Task, []*lifecyc
 		appendTask(a.activeInteractiveRun.task)
 	}
 	appendTask(a.activeLoreImageTask)
-	tasks := make([]*Task, 0, len(unique))
+	tasks := make([]*apptask.Task, 0, len(unique))
 	for task := range unique {
 		tasks = append(tasks, task)
 	}
@@ -193,7 +194,7 @@ func (a *App) endWorkspaceTransition() {
 	a.mu.Unlock()
 }
 
-func abortAndWaitTasks(ctx context.Context, tasks []*Task, workspace string) error {
+func abortAndWaitTasks(ctx context.Context, tasks []*apptask.Task, workspace string) error {
 	for _, task := range tasks {
 		if task == nil || task.Finished() {
 			continue

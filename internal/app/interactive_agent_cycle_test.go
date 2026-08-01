@@ -2,11 +2,12 @@ package app
 
 import (
 	"context"
+	agentinteractive "denova/internal/agents/interactive"
 	"errors"
 	"testing"
 
 	"denova/config"
-	agents "denova/internal/agents"
+	agentrun "denova/internal/agents/run"
 	"denova/internal/book"
 	"denova/internal/interactive"
 )
@@ -19,7 +20,7 @@ func TestInteractiveConversationPublishesOnlyAuthorizedOutputStage(t *testing.T)
 		t.Fatal(err)
 	}
 	aborted := newInteractiveConversation(store, t.TempDir(), workspace, story.ID, "main", "先观察", 800, nil)
-	aborted.BindAgentCycleIdentity(agents.HarnessCycleIdentity{CommandID: agents.CommandID("command-abort"), OperationID: agents.OperationID("operation-abort"), Cycle: 1})
+	aborted.BindAgentCycleIdentity(agentrun.CycleIdentity{CommandID: agentrun.CommandID("command-abort"), OperationID: agentrun.OperationID("operation-abort"), Cycle: 1})
 	materializeInteractiveInputForTest(t, aborted, aborted.agentCycleIdentitySnapshot())
 	submitTestTurnResult(t, aborted, "观察", "确认环境")
 	if err := aborted.AppendAssistant("尚未授权的叙事"); err != nil {
@@ -28,21 +29,21 @@ func TestInteractiveConversationPublishesOnlyAuthorizedOutputStage(t *testing.T)
 	if snapshot, err := store.Snapshot(story.ID, "main"); err != nil || len(snapshot.Turns) != 0 {
 		t.Fatalf("staged output advanced story before authorization: turns=%+v err=%v", snapshot.Turns, err)
 	}
-	if _, ok, err := aborted.PendingAgentCycleCommit(agents.HarnessDomainCommitOutput); err != nil || !ok {
+	if _, ok, err := aborted.PendingAgentCycleCommit(agentrun.DomainCommitOutput); err != nil || !ok {
 		t.Fatalf("pending game intent missing: ok=%t err=%v", ok, err)
 	}
-	if err := aborted.CommitAgentCycleStage(context.Background(), agents.HarnessDomainCommitOutput, agents.RunOutcome{Status: agents.RunOutcomeAborted}); err != nil {
+	if err := aborted.CommitAgentCycleStage(context.Background(), agentrun.DomainCommitOutput, agentrun.Outcome{Status: agentrun.OutcomeAborted}); err != nil {
 		t.Fatal(err)
 	}
 
 	completed := newInteractiveConversation(store, t.TempDir(), workspace, story.ID, "main", "再观察", 800, nil)
-	completed.BindAgentCycleIdentity(agents.HarnessCycleIdentity{CommandID: agents.CommandID("command-complete"), OperationID: agents.OperationID("operation-complete"), Cycle: 1})
+	completed.BindAgentCycleIdentity(agentrun.CycleIdentity{CommandID: agentrun.CommandID("command-complete"), OperationID: agentrun.OperationID("operation-complete"), Cycle: 1})
 	materializeInteractiveInputForTest(t, completed, completed.agentCycleIdentitySnapshot())
 	submitTestTurnResult(t, completed, "观察", "发现线索")
 	if err := completed.AppendAssistant("授权后写入的叙事"); err != nil {
 		t.Fatal(err)
 	}
-	if err := completed.CommitAgentCycleStage(context.Background(), agents.HarnessDomainCommitOutput, agents.RunOutcome{Status: agents.RunOutcomeCompleted}); err != nil {
+	if err := completed.CommitAgentCycleStage(context.Background(), agentrun.DomainCommitOutput, agentrun.Outcome{Status: agentrun.OutcomeCompleted}); err != nil {
 		t.Fatal(err)
 	}
 	snapshot, err := store.Snapshot(story.ID, "main")
@@ -52,7 +53,7 @@ func TestInteractiveConversationPublishesOnlyAuthorizedOutputStage(t *testing.T)
 	if len(snapshot.Turns) != 1 || snapshot.Turns[0].Narrative != "授权后写入的叙事" {
 		t.Fatalf("authorized game output was not canonical: %+v", snapshot.Turns)
 	}
-	if receipt, ok := completed.LastAgentCycleCommitReceipt(agents.HarnessDomainCommitOutput); !ok || receipt.Revision != snapshot.Turns[0].ID {
+	if receipt, ok := completed.LastAgentCycleCommitReceipt(agentrun.DomainCommitOutput); !ok || receipt.Revision != snapshot.Turns[0].ID {
 		t.Fatalf("game commit receipt = %+v ok=%t", receipt, ok)
 	}
 }
@@ -66,10 +67,10 @@ func TestInteractiveAgentCycleAcceptsMaintenanceOnlyCompletionWithoutTurn(t *tes
 	}
 	conversation := newInteractiveConversation(store, t.TempDir(), workspace, story.ID, "main", "pending input", 800, nil)
 	cycle := &interactiveAgentCycle{store: store, storyID: story.ID, branchID: "main", conversation: conversation}
-	cycle.bindCommit(func(agents.Event) {})
+	cycle.bindCommit(func(agentrun.Event) {})
 
-	if err := conversation.CommitAgentCycleStage(context.Background(), agents.HarnessDomainCommitOutput, agents.RunOutcome{
-		Status: agents.RunOutcomeCompleted, MaintenanceOnly: true,
+	if err := conversation.CommitAgentCycleStage(context.Background(), agentrun.DomainCommitOutput, agentrun.Outcome{
+		Status: agentrun.OutcomeCompleted, MaintenanceOnly: true,
 	}); err != nil {
 		t.Fatalf("maintenance-only completion was rejected: %v", err)
 	}
@@ -80,8 +81,8 @@ func TestInteractiveAgentCycleAcceptsMaintenanceOnlyCompletionWithoutTurn(t *tes
 	if len(snapshot.Turns) != 0 {
 		t.Fatalf("maintenance-only completion persisted a narrative turn: %#v", snapshot.Turns)
 	}
-	if err := conversation.CommitAgentCycleStage(context.Background(), agents.HarnessDomainCommitOutput, agents.RunOutcome{
-		Status: agents.RunOutcomeCompleted,
+	if err := conversation.CommitAgentCycleStage(context.Background(), agentrun.DomainCommitOutput, agentrun.Outcome{
+		Status: agentrun.OutcomeCompleted,
 	}); err == nil {
 		t.Fatal("ordinary completed cycle without a turn must still fail closed")
 	}
@@ -173,7 +174,7 @@ func TestInteractiveAgentCycleKeepsFailedDirectorProjectionPending(t *testing.T)
 		t.Fatal(err)
 	}
 	generated := 0
-	generator := func(context.Context, *config.Config, *book.State, agents.InteractiveStoryToolContext, string) (string, error) {
+	generator := func(context.Context, *config.Config, *book.State, agentinteractive.InteractiveStoryToolContext, string) (string, error) {
 		generated++
 		return "", errors.New("simulated Director failure")
 	}

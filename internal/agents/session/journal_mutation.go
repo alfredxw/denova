@@ -5,7 +5,7 @@ import (
 	"errors"
 	"fmt"
 
-	"denova/internal/conversationjournal"
+	"denova/internal/agents/conversationjournal"
 )
 
 // withCanonicalMutation refreshes the bounded materialization and then runs a

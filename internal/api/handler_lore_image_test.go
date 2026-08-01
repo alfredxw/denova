@@ -12,7 +12,7 @@ import (
 
 	"denova/config"
 	runtimeapp "denova/internal/app"
-	"denova/internal/book"
+	"denova/internal/book/lore"
 )
 
 func TestLoreItemImageGenerateAPIUpdatesItem(t *testing.T) {
@@ -20,7 +20,7 @@ func TestLoreItemImageGenerateAPIUpdatesItem(t *testing.T) {
 	defer imageServer.Close()
 	server := NewServer(application, "0")
 	workspace := application.Workspace()
-	item, err := application.CreateLoreItem(book.LoreItemInput{ID: "hero", Type: "character", Name: "林川", Importance: "major", Content: "谨慎。"})
+	item, err := application.CreateLoreItem(lore.ItemInput{ID: "hero", Type: "character", Name: "林川", Importance: "major", Content: "谨慎。"})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -31,7 +31,7 @@ func TestLoreItemImageGenerateAPIUpdatesItem(t *testing.T) {
 	if resp.Code != http.StatusOK {
 		t.Fatalf("generate status = %d body=%s", resp.Code, resp.Body.String())
 	}
-	var updated book.LoreItem
+	var updated lore.Item
 	decodeResponse(t, resp.Body.Bytes(), &updated)
 	if updated.Image == nil || !strings.HasPrefix(updated.Image.ImagePath, "assets/lore/images/hero/") {
 		t.Fatalf("generated item missing image: %#v", updated)
@@ -49,15 +49,15 @@ func TestLoreImagesGenerateStreamSkipsExistingByDefault(t *testing.T) {
 	defer imageServer.Close()
 	server := NewServer(application, "0")
 	workspace := application.Workspace()
-	withImage, err := application.CreateLoreItem(book.LoreItemInput{ID: "with-image", Type: "character", Name: "已有图", Importance: "major", Content: "已有。"})
+	withImage, err := application.CreateLoreItem(lore.ItemInput{ID: "with-image", Type: "character", Name: "已有图", Importance: "major", Content: "已有。"})
 	if err != nil {
 		t.Fatal(err)
 	}
-	withoutImage, err := application.CreateLoreItem(book.LoreItemInput{ID: "without-image", Type: "location", Name: "无图地点", Importance: "important", Content: "地点。"})
+	withoutImage, err := application.CreateLoreItem(lore.ItemInput{ID: "without-image", Type: "location", Name: "无图地点", Importance: "important", Content: "地点。"})
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err := book.NewLoreStore(application.BookService().Workspace()).SetImage(withImage.ID, &book.LoreItemImage{
+	if _, err := lore.NewStore(application.BookService().Workspace()).SetImage(withImage.ID, &lore.Image{
 		Schema:    "lore_item_image.v1",
 		ImagePath: "assets/lore/images/with-image/old/image.png",
 		MetaPath:  "assets/lore/images/with-image/old/meta.json",
@@ -85,7 +85,7 @@ func TestLoreImagesGenerateStreamSkipsExistingByDefault(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	byID := map[string]book.LoreItem{}
+	byID := map[string]lore.Item{}
 	for _, item := range items {
 		byID[item.ID] = item
 	}

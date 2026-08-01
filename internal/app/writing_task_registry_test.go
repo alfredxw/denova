@@ -2,6 +2,10 @@ package app
 
 import (
 	"context"
+	agentchat "denova/internal/agents/chat"
+	agentcontext "denova/internal/agents/context"
+	agentharness "denova/internal/agents/harness"
+	apptask "denova/internal/app/task"
 	"path/filepath"
 	"testing"
 	"time"
@@ -10,6 +14,7 @@ import (
 
 	"denova/config"
 	agents "denova/internal/agents"
+	agentrun "denova/internal/agents/run"
 	"denova/internal/agents/session"
 )
 
@@ -19,18 +24,18 @@ func TestWritingOlderSettledStartColdReplayThroughApp(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	chatService, err := agents.NewDurableChatService(context.Background(), root)
+	chatService, err := agentharness.NewDurableService(context.Background(), root)
 	if err != nil {
 		t.Fatal(err)
 	}
 
-	requests := []agents.ChatRequest{
+	requests := []agentchat.ChatRequest{
 		{CommandID: "writing-older-settled", Message: "write the first answer"},
 		{CommandID: "writing-newer-settled", Message: "write the second answer"},
 	}
 	answers := []string{"first durable answer", "second durable answer"}
-	options := agents.RunOptions{
-		AgentKind: agents.AgentKindIDE,
+	options := agentrun.Options{
+		AgentKind: agentrun.AgentKindIDE,
 		Workspace: workspace,
 		SessionID: "default",
 		Mode:      "ide",
@@ -45,7 +50,7 @@ func TestWritingOlderSettledStartColdReplayThroughApp(t *testing.T) {
 			options,
 			nil,
 		)
-		if outcome.Status != agents.RunOutcomeCompleted || outcome.Content != answers[index] {
+		if outcome.Status != agentrun.OutcomeCompleted || outcome.Content != answers[index] {
 			_ = chatService.Close(context.Background())
 			t.Fatalf("seed run %d outcome = %#v", index, outcome)
 		}
@@ -76,8 +81,8 @@ func TestWritingOlderSettledStartColdReplayThroughApp(t *testing.T) {
 	case <-time.After(500 * time.Millisecond):
 		t.Fatal("older settled Writing replay waited for future runtime events")
 	}
-	if task.Status() != TaskDone {
-		t.Fatalf("cold replay task status = %q, want %q", task.Status(), TaskDone)
+	if task.Status() != apptask.Done {
+		t.Fatalf("cold replay task status = %q, want %q", task.Status(), apptask.Done)
 	}
 
 	events, subscription := task.Subscribe()
@@ -133,9 +138,9 @@ type writingColdReplayConversation struct{}
 func (writingColdReplayConversation) AssembleModelContext(
 	ctx context.Context,
 	_ string,
-	input agents.ModelContextInput,
-) (agents.ModelContextResult, error) {
-	return agents.AssembleSingleUserModelContext(ctx, input)
+	input agentcontext.ModelContextInput,
+) (agentcontext.ModelContextResult, error) {
+	return agentcontext.AssembleSingleUserModelContext(ctx, input)
 }
 
 func (writingColdReplayConversation) AppendAssistant(string) error { return nil }

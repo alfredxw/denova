@@ -6,7 +6,7 @@ import (
 
 	agent "github.com/alfredxw/denova/agent"
 
-	"denova/internal/contextmaintenance"
+	agentcontext "denova/internal/agents/context"
 )
 
 func TestContextCompactionStructuralCommitReconcilesExactIdentityBeforeCAS(t *testing.T) {
@@ -24,7 +24,7 @@ func TestContextCompactionStructuralCommitReconcilesExactIdentityBeforeCAS(t *te
 	cursor := sess.ContextCursor()
 	intent := ContextCompaction{
 		ID: "cc-command-1",
-		CompactionCheckpoint: contextmaintenance.CompactionCheckpoint{
+		CompactionCheckpoint: agentcontext.CompactionCheckpoint{
 			AgentKind: "ide", Epoch: 1, Summary: "checkpoint", RetainedTurns: 2, TriggerReason: "manual", Phase: "manual",
 		},
 		SourceStartIndex: 0, SourceEndIndex: 1, SourceMessageCount: 1,
@@ -84,7 +84,7 @@ func TestContextCompactionStructuralCommitRefreshesAcrossSessionInstances(t *tes
 	cursor := stale.ContextCursor()
 	intent := ContextCompaction{
 		ID: "cc-cross-instance",
-		CompactionCheckpoint: contextmaintenance.CompactionCheckpoint{
+		CompactionCheckpoint: agentcontext.CompactionCheckpoint{
 			AgentKind: "ide", Epoch: 1, Summary: "checkpoint", RetainedTurns: 2, TriggerReason: "manual", Phase: "manual",
 		},
 		SourceStartIndex: 0, SourceEndIndex: 1, SourceMessageCount: 1,

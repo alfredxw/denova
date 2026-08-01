@@ -1,6 +1,9 @@
 package interactive
 
-import "testing"
+import (
+	interactivestate "denova/internal/interactive/state"
+	"testing"
+)
 
 func TestActorStatePatchValidationAndReplay(t *testing.T) {
 	maxHP := 12.0
@@ -151,13 +154,13 @@ func TestDefaultActorStateCentralizedRecordsUseNestedUpdates(t *testing.T) {
 		t.Fatalf("world entity actor should be initialized, got %#v state=%#v", got, snapshot.State)
 	}
 
-	updates := []StateUpdate{
-		{Op: TurnStateUpdateReplace, Path: formatStateUpdatePath([]string{DefaultActorID, "技能与能力", "洞察"}), Value: map[string]any{"名称": "洞察", "类型": "探索", "当前状态": "可用"}},
-		{Op: TurnStateUpdateReplace, Path: formatStateUpdatePath([]string{DefaultActorID, "重要物品", "旧钥匙"}), Value: map[string]any{"名称": "旧钥匙", "类型": "线索", "数量": float64(1)}},
-		{Op: TurnStateUpdateReplace, Path: formatStateUpdatePath([]string{DefaultActorID, "关系", "引路人"}), Value: map[string]any{"关系类型": "同伴", "好感度": float64(60), "当前态度": "愿意合作"}},
-		{Op: TurnStateUpdateReplace, Path: formatStateUpdatePath([]string{DefaultStoryContextActorID, "当前任务", "进入遗迹"}), Value: map[string]any{"任务名称": "进入遗迹", "当前状态": "进行中"}},
-		{Op: TurnStateUpdateReplace, Path: formatStateUpdatePath([]string{DefaultWorldEntitiesActorID, "地点记录", "沉没遗迹"}), Value: map[string]any{"地点名称": "沉没遗迹", "探索状态": "已发现"}},
-		{Op: TurnStateUpdateReplace, Path: formatStateUpdatePath([]string{DefaultWorldEntitiesActorID, "势力记录", "灰塔协会"}), Value: map[string]any{"势力名称": "灰塔协会", "对主角立场": "观望"}},
+	updates := []interactivestate.Update{
+		{Op: interactivestate.Replace, Path: interactivestate.FormatPath([]string{DefaultActorID, "技能与能力", "洞察"}), Value: map[string]any{"名称": "洞察", "类型": "探索", "当前状态": "可用"}},
+		{Op: interactivestate.Replace, Path: interactivestate.FormatPath([]string{DefaultActorID, "重要物品", "旧钥匙"}), Value: map[string]any{"名称": "旧钥匙", "类型": "线索", "数量": float64(1)}},
+		{Op: interactivestate.Replace, Path: interactivestate.FormatPath([]string{DefaultActorID, "关系", "引路人"}), Value: map[string]any{"关系类型": "同伴", "好感度": float64(60), "当前态度": "愿意合作"}},
+		{Op: interactivestate.Replace, Path: interactivestate.FormatPath([]string{DefaultStoryContextActorID, "当前任务", "进入遗迹"}), Value: map[string]any{"任务名称": "进入遗迹", "当前状态": "进行中"}},
+		{Op: interactivestate.Replace, Path: interactivestate.FormatPath([]string{DefaultWorldEntitiesActorID, "地点记录", "沉没遗迹"}), Value: map[string]any{"地点名称": "沉没遗迹", "探索状态": "已发现"}},
+		{Op: interactivestate.Replace, Path: interactivestate.FormatPath([]string{DefaultWorldEntitiesActorID, "势力记录", "灰塔协会"}), Value: map[string]any{"势力名称": "灰塔协会", "对主角立场": "观望"}},
 	}
 	compiled, err := CompileTurnStateUpdates(system, snapshot.State, updates, TurnStateUpdateCompileOptions{SourceTurnID: "turn-centralized"})
 	if err != nil {

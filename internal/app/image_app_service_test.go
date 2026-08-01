@@ -13,7 +13,7 @@ import (
 
 	"denova/config"
 	"denova/internal/book"
-	"denova/internal/imagegen"
+	imagegen "denova/internal/image/generation"
 )
 
 func TestGenerateImageSavesOpenAIResultToAssets(t *testing.T) {

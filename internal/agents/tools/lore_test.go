@@ -2,20 +2,19 @@ package tools
 
 import (
 	"context"
+	"denova/internal/book/lore"
 	"encoding/json"
 	"fmt"
 	"strings"
 	"testing"
 
 	agent "github.com/alfredxw/denova/agent"
-
-	"denova/internal/book"
 )
 
 func TestNewLoreToolsUsesListLoreItemsInsteadOfSearch(t *testing.T) {
 	workspace := t.TempDir()
-	store := book.NewLoreStore(workspace)
-	if _, err := store.Create(book.LoreItemInput{
+	store := lore.NewStore(workspace)
+	if _, err := store.Create(lore.ItemInput{
 		ID:               "hero",
 		Type:             "character",
 		Name:             "林川",
@@ -174,7 +173,7 @@ func TestWriteLoreItemsToolSupportsSparseCreateUpdateAndDelete(t *testing.T) {
 	if _, err := runToolForTest(context.Background(), writeTool, `{"items":[{"name":"黄泉酒馆","content":"最初的据点。","tags":["据点"]}]}`); err != nil {
 		t.Fatalf("sparse create failed: %v", err)
 	}
-	store := book.NewLoreStore(workspace)
+	store := lore.NewStore(workspace)
 	created, err := store.Get("黄泉酒馆")
 	if err != nil {
 		t.Fatal(err)
@@ -223,10 +222,10 @@ func TestWriteLoreItemsToolSupportsSparseCreateUpdateAndDelete(t *testing.T) {
 
 func TestListLoreItemsFiltersByResidentLoadMode(t *testing.T) {
 	workspace := t.TempDir()
-	store := book.NewLoreStore(workspace)
-	for _, input := range []book.LoreItemInput{
-		{ID: "resident-rule", Type: "rule", Name: "常驻数值规则", Importance: "major", LoadMode: book.LoreLoadModeResident, BriefDescription: "定义数值状态。", Content: "生命为 0-100。"},
-		{ID: "auto-place", Type: "location", Name: "按需地点", Importance: "major", LoadMode: book.LoreLoadModeAuto, BriefDescription: "进入地点时读取。", Content: "地点正文。"},
+	store := lore.NewStore(workspace)
+	for _, input := range []lore.ItemInput{
+		{ID: "resident-rule", Type: "rule", Name: "常驻数值规则", Importance: "major", LoadMode: lore.LoadModeResident, BriefDescription: "定义数值状态。", Content: "生命为 0-100。"},
+		{ID: "auto-place", Type: "location", Name: "按需地点", Importance: "major", LoadMode: lore.LoadModeAuto, BriefDescription: "进入地点时读取。", Content: "地点正文。"},
 	} {
 		if _, err := store.Create(input); err != nil {
 			t.Fatal(err)
@@ -261,7 +260,7 @@ func TestListLoreItemsFiltersByResidentLoadMode(t *testing.T) {
 
 func TestLoreReadAllowsLargeBatchesAndReportsPartialMisses(t *testing.T) {
 	workspace := t.TempDir()
-	store := book.NewLoreStore(workspace)
+	store := lore.NewStore(workspace)
 	ids := make([]string, 0, 19)
 	for i := 0; i < 19; i++ {
 		id := fmt.Sprintf("rule-%02d", i)
@@ -270,9 +269,9 @@ func TestLoreReadAllowsLargeBatchesAndReportsPartialMisses(t *testing.T) {
 		if i == 0 {
 			content += strings.Repeat("这是一段很长的资料正文。", 12_000)
 		}
-		if _, err := store.Create(book.LoreItemInput{
+		if _, err := store.Create(lore.ItemInput{
 			ID: id, Type: "rule", Name: fmt.Sprintf("规则 %02d", i),
-			LoadMode: book.LoreLoadModeResident, Content: content,
+			LoadMode: lore.LoadModeResident, Content: content,
 		}); err != nil {
 			t.Fatal(err)
 		}
@@ -338,9 +337,9 @@ func TestListLoreItemsAcceptsCallerRequestedLimitWithoutToolCap(t *testing.T) {
 
 func TestBuildWriteLoreOperationsUpdatesDisabledKnownID(t *testing.T) {
 	workspace := t.TempDir()
-	store := book.NewLoreStore(workspace)
+	store := lore.NewStore(workspace)
 	disabled := false
-	item, err := store.Create(book.LoreItemInput{
+	item, err := store.Create(lore.ItemInput{
 		ID: "archived-hero", Enabled: &disabled, Type: "character", Name: "封存角色", Content: "旧正文",
 	})
 	if err != nil {

@@ -2,35 +2,36 @@ package app
 
 import (
 	"context"
+	agentharness "denova/internal/agents/harness"
+	agentrun "denova/internal/agents/run"
+	apptask "denova/internal/app/task"
 	"strings"
-
-	agents "denova/internal/agents"
 )
 
 // InteractiveAgentAbort identifies the exact game operation to stop. Workspace
 // and durable binding identity are always derived from the active App runtime.
 type InteractiveAgentAbort struct {
 	CommandID   string
-	OperationID agents.OperationID
+	OperationID agentrun.OperationID
 	StoryID     string
 	BranchID    string
 	Reason      string
 }
 
-func (a *App) SubmitInteractiveAgentAbort(ctx context.Context, command InteractiveAgentAbort) (agents.CommandReceipt, error) {
+func (a *App) SubmitInteractiveAgentAbort(ctx context.Context, command InteractiveAgentAbort) (agentrun.CommandReceipt, error) {
 	return a.interactiveService().SubmitAgentAbort(ctx, command)
 }
 
-func (s *InteractiveAppService) SubmitAgentAbort(ctx context.Context, command InteractiveAgentAbort) (agents.CommandReceipt, error) {
+func (s *InteractiveAppService) SubmitAgentAbort(ctx context.Context, command InteractiveAgentAbort) (agentrun.CommandReceipt, error) {
 	target, err := s.activeAgentCommandTarget(command.StoryID, command.BranchID)
 	if err != nil {
-		return agents.CommandReceipt{}, err
+		return agentrun.CommandReceipt{}, err
 	}
-	return target.chatService.SubmitCommand(ctx, agents.AgentCommandSpec{
-		Kind: agents.AgentCommandAbort, CommandID: command.CommandID,
+	return target.chatService.SubmitCommand(ctx, agentharness.CommandSpec{
+		Kind: agentharness.CommandAbort, CommandID: command.CommandID,
 		OperationID: command.OperationID, Reason: command.Reason,
-		Options: agents.RunOptions{
-			AgentKind: agents.AgentKindInteractiveStory, TaskID: target.task.ID(),
+		Options: agentrun.Options{
+			AgentKind: agentrun.AgentKindInteractiveStory, TaskID: target.task.ID(),
 			StoryID: target.info.StoryID, BranchID: target.info.BranchID,
 			Workspace: target.info.Workspace, Mode: "interactive",
 		},
@@ -38,9 +39,9 @@ func (s *InteractiveAppService) SubmitAgentAbort(ctx context.Context, command In
 }
 
 type interactiveAgentCommandTarget struct {
-	task        *Task
+	task        *apptask.Task
 	info        InteractiveTaskInfo
-	chatService *agents.ChatService
+	chatService *agentharness.Service
 }
 
 func (s *InteractiveAppService) activeAgentCommandTarget(storyID, branchID string) (interactiveAgentCommandTarget, error) {

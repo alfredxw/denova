@@ -2,6 +2,7 @@ package interactive
 
 import (
 	"context"
+	interactivestate "denova/internal/interactive/state"
 	"encoding/json"
 	"fmt"
 	"log/slog"
@@ -24,8 +25,8 @@ type TurnStateUpdateCompileOptions struct {
 // reducer operations. Reducer operations, rather than model paths, remain the
 // replay source of truth.
 type CompiledTurnStateUpdates struct {
-	Updates  []StateUpdate
-	Ops      []StateOp
+	Updates  []interactivestate.Update
+	Ops      []interactivestate.Op
 	ActorOps []ActorStateOp
 }
 
@@ -81,8 +82,8 @@ func (e *StateUpdateValidationErrors) Unwrap() []error {
 // CompileTurnStateUpdates validates the complete state_updates module against
 // the frozen Actor schema and current replayed state. Any invalid operation
 // rejects the whole module.
-func CompileTurnStateUpdates(system StoryDirectorActorStateSystem, currentState map[string]any, updates []StateUpdate, options TurnStateUpdateCompileOptions) (CompiledTurnStateUpdates, error) {
-	updates = normalizeTurnStateUpdates(updates)
+func CompileTurnStateUpdates(system StoryDirectorActorStateSystem, currentState map[string]any, updates []interactivestate.Update, options TurnStateUpdateCompileOptions) (CompiledTurnStateUpdates, error) {
+	updates = interactivestate.NormalizeUpdates(updates)
 	system = normalizeActorStateSystem(system)
 	lifecycleIntents := options.actorLifecycleIntents
 	if lifecycleIntents == nil {
@@ -93,21 +94,21 @@ func CompileTurnStateUpdates(system StoryDirectorActorStateSystem, currentState 
 		}
 	}
 	workingState := cloneActorStateRoot(currentState)
-	compiled := CompiledTurnStateUpdates{Updates: []StateUpdate{}, Ops: []StateOp{}, ActorOps: []ActorStateOp{}}
+	compiled := CompiledTurnStateUpdates{Updates: []interactivestate.Update{}, Ops: []interactivestate.Op{}, ActorOps: []ActorStateOp{}}
 	canonicalPaths := make([][]string, 0, len(updates))
 
 	for index, update := range updates {
 		deltaNormalized := false
-		if update.Op == TurnStateUpdateDelta {
+		if update.Op == interactivestate.Delta {
 			if converted, changed := normalizeTurnSubmissionFieldValue(ActorStateField{Type: "number"}, update.Value); changed {
 				update.Value = converted
 				deltaNormalized = true
 			}
 		}
-		if err := validateStateUpdateShape(update); err != nil {
+		if err := interactivestate.ValidateUpdate(update); err != nil {
 			return CompiledTurnStateUpdates{}, stateUpdateError(index, "invalid_state_update", update.Path, "replace, delta, create, archive, or restore with a non-null value", stateUpdateActual(update.Value), err)
 		}
-		segments, err := parseStateUpdatePath(update.Path)
+		segments, err := interactivestate.ParsePath(update.Path)
 		if err != nil {
 			return CompiledTurnStateUpdates{}, stateUpdateError(index, "invalid_state_path", update.Path, "schema-bound JSON Pointer", update.Path, err)
 		}
@@ -118,19 +119,19 @@ func CompileTurnStateUpdates(system StoryDirectorActorStateSystem, currentState 
 		if err := validateStateUpdateValueSize(update.Value); err != nil {
 			return CompiledTurnStateUpdates{}, stateUpdateError(index, "state_value_too_large", update.Path, fmt.Sprintf("at most %d JSON bytes", maxTurnStateUpdateValueBytes), stateUpdateActual(update.Value), err)
 		}
-		if update.Op == TurnStateUpdateArchive || update.Op == TurnStateUpdateRestore {
+		if update.Op == interactivestate.Archive || update.Op == interactivestate.Restore {
 			intent := lifecycleIntents[actorID]
 			canonical := []string{actorArchiveRoot, actorID}
-			if conflict := overlappingStateUpdatePath(canonicalPaths, canonical); conflict != "" {
+			if conflict := interactivestate.OverlappingPath(canonicalPaths, canonical); conflict != "" {
 				return CompiledTurnStateUpdates{}, stateUpdateError(index, "overlapping_state_path", update.Path, "one lifecycle operation per Actor", conflict, fmt.Errorf("同一次提交不能包含重复或相互覆盖的状态路径: %s", conflict))
 			}
-			stateOp := StateOp{
+			stateOp := interactivestate.Op{
 				Path:         actorArchiveStatePath(actorID),
 				Reason:       intent.Reason,
 				SourceTurnID: options.SourceTurnID,
-				SourceKind:   StateOpSourceTurnResult,
+				SourceKind:   interactivestate.SourceTurnResult,
 			}
-			if update.Op == TurnStateUpdateArchive {
+			if update.Op == interactivestate.Archive {
 				stateOp.Op = "set"
 				stateOp.Value = map[string]any{"reason": intent.Reason, "source_turn_id": options.SourceTurnID}
 			} else {
@@ -138,17 +139,17 @@ func CompileTurnStateUpdates(system StoryDirectorActorStateSystem, currentState 
 			}
 			applyStateOp(workingState, stateOp)
 			canonicalPaths = append(canonicalPaths, canonical)
-			compiled.Updates = append(compiled.Updates, StateUpdate{Op: update.Op, Path: formatStateUpdatePath([]string{actorID}), Value: map[string]any{"reason": intent.Reason}})
+			compiled.Updates = append(compiled.Updates, interactivestate.Update{Op: update.Op, Path: interactivestate.FormatPath([]string{actorID}), Value: map[string]any{"reason": intent.Reason}})
 			compiled.Ops = append(compiled.Ops, stateOp)
 			continue
 		}
 
-		if update.Op == TurnStateUpdateCreate {
+		if update.Op == interactivestate.Create {
 			if len(segments) != 1 {
 				return CompiledTurnStateUpdates{}, stateUpdateError(index, "invalid_create_path", update.Path, "/<actor_id>", update.Path, fmt.Errorf("create 只能作用于 Actor 根路径"))
 			}
 			canonical := []string{actorID}
-			if conflict := overlappingStateUpdatePath(canonicalPaths, canonical); conflict != "" {
+			if conflict := interactivestate.OverlappingPath(canonicalPaths, canonical); conflict != "" {
 				return CompiledTurnStateUpdates{}, stateUpdateError(index, "overlapping_state_path", update.Path, "non-overlapping paths", conflict, fmt.Errorf("同一次提交不能包含重复或相互覆盖的状态路径: %s", conflict))
 			}
 			patch, err := actorPatchFromCreateUpdate(actorID, update.Value)
@@ -180,7 +181,7 @@ func CompileTurnStateUpdates(system StoryDirectorActorStateSystem, currentState 
 				applyActorStateOp(workingState, op)
 			}
 			canonicalPaths = append(canonicalPaths, canonical)
-			compiled.Updates = append(compiled.Updates, StateUpdate{Op: TurnStateUpdateCreate, Path: formatStateUpdatePath(canonical), Value: actorCreateAuditValue(normalized)})
+			compiled.Updates = append(compiled.Updates, interactivestate.Update{Op: interactivestate.Create, Path: interactivestate.FormatPath(canonical), Value: actorCreateAuditValue(normalized)})
 			compiled.Ops = append(compiled.Ops, ops...)
 			compiled.ActorOps = append(compiled.ActorOps, actorOps...)
 			continue
@@ -203,13 +204,13 @@ func CompileTurnStateUpdates(system StoryDirectorActorStateSystem, currentState 
 			slog.InfoContext(context.Background(), fmt.Sprintf("[interactive-turn-submission] normalized lossless delta actor_id=%q field_id=%q from=string to=number location=internal/interactive/turn_state_updates.go", actorID, fieldID))
 		}
 		canonical := append([]string{actorID, fieldID}, segments[2:]...)
-		if conflict := overlappingStateUpdatePath(canonicalPaths, canonical); conflict != "" {
+		if conflict := interactivestate.OverlappingPath(canonicalPaths, canonical); conflict != "" {
 			return CompiledTurnStateUpdates{}, stateUpdateError(index, "overlapping_state_path", update.Path, "non-overlapping paths", conflict, fmt.Errorf("同一次提交不能包含重复或相互覆盖的状态路径: %s", conflict))
 		}
 		if stateUpdateConflictsWithRuleResolution(options, actorID, fieldID) {
 			return CompiledTurnStateUpdates{}, stateUpdateError(index, "duplicate_rule_state_update", update.Path, "a field not consumed by RuleResolution", fieldID, fmt.Errorf("该字段已由本轮 RuleResolution 自动消费，不能在 state_updates 中重复修改"))
 		}
-		if len(segments) == 2 && update.Op == TurnStateUpdateReplace {
+		if len(segments) == 2 && update.Op == interactivestate.Replace {
 			if converted, changed := normalizeTurnSubmissionFieldValue(field, update.Value); changed {
 				slog.InfoContext(context.Background(), fmt.Sprintf("[interactive-turn-submission] normalized lossless field value actor_id=%q field_id=%q from=string to=%s location=internal/interactive/turn_state_updates.go", actorID, fieldID, field.Type))
 				update.Value = converted
@@ -221,12 +222,12 @@ func CompileTurnStateUpdates(system StoryDirectorActorStateSystem, currentState 
 		if err != nil {
 			code := "state_value_invalid"
 			actualValue := update.Value
-			if update.Op == TurnStateUpdateDelta {
+			if update.Op == interactivestate.Delta {
 				code = "delta_target_not_number"
 				actualValue = currentValue
 				if len(segments) > 2 {
 					if currentObject, ok := currentValue.(map[string]any); ok {
-						if leaf, found := stateUpdateNestedValue(currentObject, segments[2:]); found {
+						if leaf, found := interactivestate.NestedValue(currentObject, segments[2:]); found {
 							actualValue = leaf
 						} else {
 							actualValue = nil
@@ -270,11 +271,11 @@ func CompileTurnStateUpdates(system StoryDirectorActorStateSystem, currentState 
 			applyActorStateOp(workingState, op)
 		}
 		canonicalPaths = append(canonicalPaths, canonical)
-		compiled.Updates = append(compiled.Updates, StateUpdate{Op: update.Op, Path: formatStateUpdatePath(canonical), Value: auditValue})
+		compiled.Updates = append(compiled.Updates, interactivestate.Update{Op: update.Op, Path: interactivestate.FormatPath(canonical), Value: auditValue})
 		compiled.Ops = append(compiled.Ops, ops...)
 		compiled.ActorOps = append(compiled.ActorOps, actorOps...)
 	}
-	for _, intent := range sortedActorLifecycleIntents(lifecycleIntents, TurnStateUpdateArchive) {
+	for _, intent := range sortedActorLifecycleIntents(lifecycleIntents, interactivestate.Archive) {
 		ops, actorOps := compileActorArchivePresenceCleanup(system, workingState, intent, options.SourceTurnID)
 		compiled.Ops = append(compiled.Ops, ops...)
 		compiled.ActorOps = append(compiled.ActorOps, actorOps...)
@@ -285,13 +286,13 @@ func CompileTurnStateUpdates(system StoryDirectorActorStateSystem, currentState 
 	return compiled, nil
 }
 
-func applyStateUpdateValue(field ActorStateField, current any, nestedPath []string, update StateUpdate) (any, any, error) {
+func applyStateUpdateValue(field ActorStateField, current any, nestedPath []string, update interactivestate.Update) (any, any, error) {
 	if len(nestedPath) == 0 {
 		switch update.Op {
-		case TurnStateUpdateReplace:
+		case interactivestate.Replace:
 			next, err := normalizeActorStateValue(field, update.Value)
 			return next, next, err
-		case TurnStateUpdateDelta:
+		case interactivestate.Delta:
 			if field.Type != "number" {
 				return nil, nil, fmt.Errorf("delta 只能用于 number 字段")
 			}
@@ -307,7 +308,7 @@ func applyStateUpdateValue(field ActorStateField, current any, nestedPath []stri
 	if field.Type != "object" {
 		return nil, nil, fmt.Errorf("只有 object 字段允许继续访问子路径")
 	}
-	root, ok := cloneStateUpdateObject(current)
+	root, ok := interactivestate.CloneObject(current)
 	if !ok {
 		if current != nil {
 			return nil, nil, fmt.Errorf("目标 object 字段的当前值无效")
@@ -315,13 +316,13 @@ func applyStateUpdateValue(field ActorStateField, current any, nestedPath []stri
 		root = map[string]any{}
 	}
 	switch update.Op {
-	case TurnStateUpdateReplace:
-		if err := setStateUpdateNestedValue(root, nestedPath, update.Value, false); err != nil {
+	case interactivestate.Replace:
+		if err := interactivestate.SetNestedValue(root, nestedPath, update.Value, false); err != nil {
 			return nil, nil, err
 		}
 		return root, update.Value, nil
-	case TurnStateUpdateDelta:
-		currentLeaf, found := stateUpdateNestedValue(root, nestedPath)
+	case interactivestate.Delta:
+		currentLeaf, found := interactivestate.NestedValue(root, nestedPath)
 		if !found {
 			return nil, nil, fmt.Errorf("delta 目标叶子不存在，不能把缺失值当作 0")
 		}
@@ -330,7 +331,7 @@ func applyStateUpdateValue(field ActorStateField, current any, nestedPath []stri
 			return nil, nil, fmt.Errorf("delta 目标叶子必须是已有数值")
 		}
 		delta, _ := actorStateNumber(update.Value)
-		if err := setStateUpdateNestedValue(root, nestedPath, currentNumber+delta, true); err != nil {
+		if err := interactivestate.SetNestedValue(root, nestedPath, currentNumber+delta, true); err != nil {
 			return nil, nil, err
 		}
 		return root, delta, nil
@@ -441,7 +442,7 @@ func stateUpdateError(index int, code, path, expected, actual string, cause erro
 }
 
 func stateUpdateExpected(field ActorStateField, nested []string, op string) string {
-	if op == TurnStateUpdateDelta {
+	if op == interactivestate.Delta {
 		return "existing number"
 	}
 	if len(nested) > 0 {

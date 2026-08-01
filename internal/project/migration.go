@@ -10,7 +10,7 @@ import (
 	"strings"
 	"time"
 
-	"denova/internal/workspacepath"
+	workspacelayout "denova/internal/workspace"
 )
 
 const stateMigrationVersion = 1
@@ -45,12 +45,12 @@ func (registry *Registry) EnsureState(record Record) (Layout, error) {
 		source      string
 		destination string
 	}{
-		{name: "sessions", source: workspacepath.Path(layout.ContentRoot, "sessions"), destination: layout.SessionsDir()},
-		{name: "config", source: workspacepath.Path(layout.ContentRoot, "config.toml"), destination: layout.ConfigPath()},
-		{name: "changes", source: workspacepath.Path(layout.ContentRoot, "changes"), destination: layout.ChangesDir()},
-		{name: "runs", source: workspacepath.Path(layout.ContentRoot, "runs"), destination: layout.RunsDir()},
-		{name: "artifacts", source: workspacepath.Path(layout.ContentRoot, "artifacts"), destination: layout.ArtifactsDir()},
-		{name: "automations", source: workspacepath.Path(layout.ContentRoot, "automations"), destination: layout.AutomationsDir()},
+		{name: "sessions", source: workspacelayout.Path(layout.ContentRoot, "sessions"), destination: layout.SessionsDir()},
+		{name: "config", source: workspacelayout.Path(layout.ContentRoot, "config.toml"), destination: layout.ConfigPath()},
+		{name: "changes", source: workspacelayout.Path(layout.ContentRoot, "changes"), destination: layout.ChangesDir()},
+		{name: "runs", source: workspacelayout.Path(layout.ContentRoot, "runs"), destination: layout.RunsDir()},
+		{name: "artifacts", source: workspacelayout.Path(layout.ContentRoot, "artifacts"), destination: layout.ArtifactsDir()},
+		{name: "automations", source: workspacelayout.Path(layout.ContentRoot, "automations"), destination: layout.AutomationsDir()},
 	}
 	copied := make([]string, 0, len(legacy))
 	for _, item := range legacy {

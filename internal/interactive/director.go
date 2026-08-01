@@ -6,11 +6,6 @@ import (
 
 const DirectorPatchSourceInteractiveDirector = "interactive_director"
 
-type DirectorAgentScheduleDecision struct {
-	ShouldRun bool   `json:"should_run"`
-	Reason    string `json:"reason,omitempty"`
-}
-
 func DefaultDirectorEventTemplates() []DirectorEvent {
 	return []DirectorEvent{
 		directorEventTemplate("face_slap", "打脸反转", "打脸", "让轻视主角的一方在公开场合被事实反证。"),

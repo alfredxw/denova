@@ -10,6 +10,10 @@ import (
 	agentcontext "github.com/alfredxw/denova/agent/context"
 )
 
+// RewindSummaryPrefix identifies the deterministic model-visible marker for a
+// context rewind projection.
+const RewindSummaryPrefix = "[denova-context-rewind]"
+
 type Placement = agentcontext.Placement
 
 const (

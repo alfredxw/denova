@@ -11,6 +11,8 @@ import (
 	"time"
 
 	agent "github.com/alfredxw/denova/agent"
+
+	agentcontext "denova/internal/agents/context"
 )
 
 var (
@@ -529,16 +531,16 @@ func domainMessageHash(message agent.Message, metadata MessageMetadata) (string,
 	payload := struct {
 		Message  agent.Message `json:"message"`
 		Metadata struct {
-			RunID             string                 `json:"run_id,omitempty"`
-			AgentKind         string                 `json:"agent_kind,omitempty"`
-			AgentName         string                 `json:"agent_name,omitempty"`
-			RootAgentName     string                 `json:"root_agent_name,omitempty"`
-			RunPath           []string               `json:"run_path,omitempty"`
-			SubAgent          bool                   `json:"subagent,omitempty"`
-			SubAgentSessionID string                 `json:"subagent_session_id,omitempty"`
-			SubAgentType      string                 `json:"subagent_type,omitempty"`
-			UserReferences    []UserMessageReference `json:"user_references,omitempty"`
-			ContextOperations []ContextOperation     `json:"context_operations,omitempty"`
+			RunID             string                       `json:"run_id,omitempty"`
+			AgentKind         string                       `json:"agent_kind,omitempty"`
+			AgentName         string                       `json:"agent_name,omitempty"`
+			RootAgentName     string                       `json:"root_agent_name,omitempty"`
+			RunPath           []string                     `json:"run_path,omitempty"`
+			SubAgent          bool                         `json:"subagent,omitempty"`
+			SubAgentSessionID string                       `json:"subagent_session_id,omitempty"`
+			SubAgentType      string                       `json:"subagent_type,omitempty"`
+			UserReferences    []agentcontext.UserReference `json:"user_references,omitempty"`
+			ContextOperations []ContextOperation           `json:"context_operations,omitempty"`
 		} `json:"metadata"`
 	}{Message: message}
 	payload.Metadata.RunID = metadata.RunID
@@ -549,7 +551,7 @@ func domainMessageHash(message agent.Message, metadata MessageMetadata) (string,
 	payload.Metadata.SubAgent = metadata.SubAgent
 	payload.Metadata.SubAgentSessionID = metadata.SubAgentSessionID
 	payload.Metadata.SubAgentType = metadata.SubAgentType
-	payload.Metadata.UserReferences = append([]UserMessageReference(nil), metadata.UserReferences...)
+	payload.Metadata.UserReferences = append([]agentcontext.UserReference(nil), metadata.UserReferences...)
 	payload.Metadata.ContextOperations = append([]ContextOperation(nil), metadata.ContextOperations...)
 	data, err := json.Marshal(payload)
 	if err != nil {

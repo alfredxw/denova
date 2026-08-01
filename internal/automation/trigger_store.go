@@ -11,7 +11,7 @@ import (
 	"time"
 
 	"denova/internal/localfs"
-	"denova/internal/workspacepath"
+	workspacelayout "denova/internal/workspace"
 )
 
 type inboxFile struct {
@@ -481,7 +481,7 @@ func (s *Store) inboxPathForScope(scope string) (string, error) {
 		if strings.TrimSpace(s.workspaceStateRoot) != "" {
 			return filepath.Join(s.workspaceStateRoot, "automations", "inbox.json"), nil
 		}
-		return workspacepath.Path(s.workspace, "automations", "inbox.json"), nil
+		return workspacelayout.Path(s.workspace, "automations", "inbox.json"), nil
 	default:
 		return "", fmt.Errorf("unknown automation scope %q", scope)
 	}

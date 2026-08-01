@@ -1,7 +1,10 @@
-package runtime
+package runtime_test
 
 import (
 	"context"
+	"encoding/json"
+	runstate "github.com/alfredxw/denova/agent/runtime"
+	filejournal "github.com/alfredxw/denova/agent/runtime/filejournal"
 	"path/filepath"
 	"sync/atomic"
 	"testing"
@@ -10,52 +13,52 @@ import (
 
 func TestFileJournalReopensInputMaterializationRecoveryMarkers(t *testing.T) {
 	root := filepath.Join(t.TempDir(), "journals")
-	store, err := NewFileJournalStore(root)
+	store, err := filejournal.NewStore(root)
 	if err != nil {
 		t.Fatal(err)
 	}
 	binding := testBindingAt("/book", "file-input-recovery")
-	ref, err := BindingReference(binding)
+	ref, err := runstate.BindingReference(binding)
 	if err != nil {
 		t.Fatal(err)
 	}
-	operationID := OperationID("operation-file-input-recovery")
-	commandID := CommandID("follow-up-file-input-recovery")
-	acceptedInput := UserInput{Text: "accepted", TurnSpecRef: "durable-follow-up-descriptor"}
-	accepted := FollowUp{ID: commandID, OperationID: operationID, Input: acceptedInput}
-	later := FollowUp{
+	operationID := runstate.OperationID("operation-file-input-recovery")
+	commandID := runstate.CommandID("follow-up-file-input-recovery")
+	acceptedInput := runstate.UserInput{Text: "accepted", TurnSpecRef: "durable-follow-up-descriptor"}
+	accepted := runstate.FollowUp{ID: commandID, OperationID: operationID, Input: acceptedInput}
+	later := runstate.FollowUp{
 		ID: "later-cancelled-follow-up", OperationID: operationID,
-		Input: UserInput{Text: "later", TurnSpecRef: "later-descriptor"},
+		Input: runstate.UserInput{Text: "later", TurnSpecRef: "later-descriptor"},
 	}
-	seedRuntimeEvents(t, store, ref, []EventPayload{
-		CommandAcceptedEvent{CommandID: "start", CommandKind: "start_turn", OperationID: operationID, Fingerprint: "start"},
-		OperationStartedEvent{OperationID: operationID},
-		UserMessageCommittedEvent{Message: Message{ID: "parent", Role: RoleUser, Content: "parent", Input: UserInput{Text: "parent"}, Operation: operationID}},
-		CycleStartedEvent{OperationID: operationID, Cycle: 1, SnapshotID: "parent-snapshot"},
-		CommandAcceptedEvent{CommandID: commandID, CommandKind: string(DeliveryFollowUp), OperationID: operationID, Fingerprint: fingerprintCommand(accepted)},
-		QueueEnqueuedEvent{Item: QueuedInput{CommandID: commandID, OperationID: operationID, Delivery: DeliveryFollowUp, Input: acceptedInput}},
-		SavePointCommittedEvent{OperationID: operationID, Cycle: 1},
-		QueueConsumedEvent{CommandID: commandID, Delivery: DeliveryFollowUp},
-		UserMessageCommittedEvent{Message: Message{ID: "accepted", Role: RoleUser, Content: "accepted", Input: acceptedInput, Operation: operationID}},
-		CycleStartedEvent{OperationID: operationID, Cycle: 2, SnapshotID: "accepted-snapshot"},
-		InputMaterializationRecoveryPendingEvent{OperationID: operationID, Cycle: 2, CommandID: commandID, Delivery: DeliveryFollowUp},
+	seedFileRuntimeEvents(t, store, ref, []runstate.EventPayload{
+		runstate.CommandAcceptedEvent{CommandID: "start", CommandKind: "start_turn", OperationID: operationID, Fingerprint: "start"},
+		runstate.OperationStartedEvent{OperationID: operationID},
+		runstate.UserMessageCommittedEvent{Message: runstate.Message{ID: "parent", Role: runstate.RoleUser, Content: "parent", Input: runstate.UserInput{Text: "parent"}, Operation: operationID}},
+		runstate.CycleStartedEvent{OperationID: operationID, Cycle: 1, SnapshotID: "parent-snapshot"},
+		runstate.CommandAcceptedEvent{CommandID: commandID, CommandKind: string(runstate.DeliveryFollowUp), OperationID: operationID, Fingerprint: fileRecoveryCommandFingerprint(t, accepted)},
+		runstate.QueueEnqueuedEvent{Item: runstate.QueuedInput{CommandID: commandID, OperationID: operationID, Delivery: runstate.DeliveryFollowUp, Input: acceptedInput}},
+		runstate.SavePointCommittedEvent{OperationID: operationID, Cycle: 1},
+		runstate.QueueConsumedEvent{CommandID: commandID, Delivery: runstate.DeliveryFollowUp},
+		runstate.UserMessageCommittedEvent{Message: runstate.Message{ID: "accepted", Role: runstate.RoleUser, Content: "accepted", Input: acceptedInput, Operation: operationID}},
+		runstate.CycleStartedEvent{OperationID: operationID, Cycle: 2, SnapshotID: "accepted-snapshot"},
+		runstate.InputMaterializationRecoveryPendingEvent{OperationID: operationID, Cycle: 2, CommandID: commandID, Delivery: runstate.DeliveryFollowUp},
 		// Retain only this later cancelled receipt in the actor's hot cache. The
 		// exact recovery below must use FileJournal's durable command index for
 		// commandID while rebuilding the accepted input from the durable snapshot.
-		CommandAcceptedEvent{CommandID: later.ID, CommandKind: string(DeliveryFollowUp), OperationID: operationID, Fingerprint: fingerprintCommand(later)},
-		QueueEnqueuedEvent{Item: QueuedInput{CommandID: later.ID, OperationID: operationID, Delivery: DeliveryFollowUp, Input: later.Input}},
-		QueueCancelledEvent{CommandID: later.ID, Reason: "test retained-command eviction"},
+		runstate.CommandAcceptedEvent{CommandID: later.ID, CommandKind: string(runstate.DeliveryFollowUp), OperationID: operationID, Fingerprint: fileRecoveryCommandFingerprint(t, later)},
+		runstate.QueueEnqueuedEvent{Item: runstate.QueuedInput{CommandID: later.ID, OperationID: operationID, Delivery: runstate.DeliveryFollowUp, Input: later.Input}},
+		runstate.QueueCancelledEvent{CommandID: later.ID, Reason: "test retained-command eviction"},
 	})
 
-	reopenedStore, err := NewFileJournalStore(root)
+	reopenedStore, err := filejournal.NewStore(root)
 	if err != nil {
 		t.Fatal(err)
 	}
 	engine := newFileInputRecoveryEngine()
-	runtime, err := NewRuntime(
-		EngineFactoryFunc(func(context.Context, BindingRef) (Engine, error) { return engine, nil }),
+	runtime, err := runstate.NewRuntime(
+		runstate.EngineFactoryFunc(func(context.Context, runstate.BindingRef) (runstate.Engine, error) { return engine, nil }),
 		reopenedStore,
-		RuntimeConfig{RetainedCommandLimit: 1},
+		runstate.RuntimeConfig{RetainedCommandLimit: 1},
 	)
 	if err != nil {
 		t.Fatal(err)
@@ -69,11 +72,11 @@ func TestFileJournalReopensInputMaterializationRecoveryMarkers(t *testing.T) {
 		t.Fatal(err)
 	}
 	if !status.RecoveryPaused || status.InputRecovery == nil || status.InputRecovery.CommandID != commandID ||
-		status.InputRecovery.OperationID != operationID || status.InputRecovery.Cycle != 2 || status.InputRecovery.Delivery != DeliveryFollowUp {
+		status.InputRecovery.OperationID != operationID || status.InputRecovery.Cycle != 2 || status.InputRecovery.Delivery != runstate.DeliveryFollowUp {
 		t.Fatalf("actor reopened pending marker = %#v", status)
 	}
-	receipt, err := harness.RecoverAcceptedInput(context.Background(), RecoveryAction{
-		Kind: DeliveryFollowUp, CommandID: commandID, OperationID: operationID,
+	receipt, err := harness.RecoverAcceptedInput(context.Background(), runstate.RecoveryAction{
+		Kind: runstate.DeliveryFollowUp, CommandID: commandID, OperationID: operationID,
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -81,7 +84,7 @@ func TestFileJournalReopensInputMaterializationRecoveryMarkers(t *testing.T) {
 	if !receipt.Replayed || receipt.CommandID != commandID || receipt.OperationID != operationID {
 		t.Fatalf("cold recovery receipt = %#v", receipt)
 	}
-	wantInput := func(name string, got UserInput) {
+	wantInput := func(name string, got runstate.UserInput) {
 		t.Helper()
 		if got.Text != acceptedInput.Text || got.TurnSpecRef != acceptedInput.TurnSpecRef {
 			t.Fatalf("%s rebuilt input = %#v, want %#v", name, got, acceptedInput)
@@ -89,7 +92,7 @@ func TestFileJournalReopensInputMaterializationRecoveryMarkers(t *testing.T) {
 	}
 	select {
 	case restored := <-engine.restored:
-		if restored.CommandID != commandID || restored.OperationID != operationID || restored.Delivery != DeliveryFollowUp {
+		if restored.CommandID != commandID || restored.OperationID != operationID || restored.Delivery != runstate.DeliveryFollowUp {
 			t.Fatalf("restored queued identity = %#v", restored)
 		}
 		wantInput("restorer", restored.Input)
@@ -114,13 +117,13 @@ func TestFileJournalReopensInputMaterializationRecoveryMarkers(t *testing.T) {
 	case <-time.After(500 * time.Millisecond):
 		t.Fatal("cold recovery did not start the exact accepted cycle")
 	}
-	waitForTerminalOperation(t, harness, operationID)
+	waitForOperationSettled(t, harness, 0, operationID)
 	status, err = harness.Status(context.Background())
 	if err != nil {
 		t.Fatal(err)
 	}
-	if status.Phase != PhaseIdle || status.RecoveryPaused || status.InputRecovery != nil ||
-		status.LastOperation == nil || status.LastOperation.OperationID != operationID || status.LastOperation.Status != OperationSucceeded {
+	if status.Phase != runstate.PhaseIdle || status.RecoveryPaused || status.InputRecovery != nil ||
+		status.LastOperation == nil || status.LastOperation.OperationID != operationID || status.LastOperation.Status != runstate.OperationSucceeded {
 		t.Fatalf("actor recovery terminal status = %#v", status)
 	}
 	if engine.restoreCalls.Load() != 1 || engine.materializeCalls.Load() != 1 || engine.runCalls.Load() != 1 {
@@ -131,18 +134,33 @@ func TestFileJournalReopensInputMaterializationRecoveryMarkers(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	resumed, reopenedJournal := reopenFileRecoveryState(t, root, ref)
-	defer reopenedJournal.Close()
-	if resumed.inputRecovery != nil || resumed.recoveryPaused || resumed.phase != PhaseIdle ||
-		resumed.lastOperation == nil || resumed.lastOperation.OperationID != operationID || resumed.lastOperation.Status != OperationSucceeded {
-		t.Fatalf("reopened resumed marker = %#v", resumed.statusSnapshot(1<<20))
+	settledStore, err := filejournal.NewStore(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	settledRuntime, err := runstate.NewRuntime(runstate.NewScriptedEngine(), settledStore, runstate.RuntimeConfig{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = settledRuntime.Close(context.Background()) })
+	settledHarness, err := settledRuntime.Open(context.Background(), binding)
+	if err != nil {
+		t.Fatal(err)
+	}
+	resumed, err := settledHarness.Status(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if resumed.InputRecovery != nil || resumed.RecoveryPaused || resumed.Phase != runstate.PhaseIdle ||
+		resumed.LastOperation == nil || resumed.LastOperation.OperationID != operationID || resumed.LastOperation.Status != runstate.OperationSucceeded {
+		t.Fatalf("reopened resumed marker = %#v", resumed)
 	}
 }
 
 type fileInputRecoveryEngine struct {
-	restored     chan QueuedInput
-	materialized chan InputMaterializationRequest
-	ran          chan EngineRequest
+	restored     chan runstate.QueuedInput
+	materialized chan runstate.InputMaterializationRequest
+	ran          chan runstate.EngineRequest
 
 	restoreCalls     atomic.Int32
 	materializeCalls atomic.Int32
@@ -151,51 +169,61 @@ type fileInputRecoveryEngine struct {
 
 func newFileInputRecoveryEngine() *fileInputRecoveryEngine {
 	return &fileInputRecoveryEngine{
-		restored: make(chan QueuedInput, 1), materialized: make(chan InputMaterializationRequest, 1),
-		ran: make(chan EngineRequest, 1),
+		restored: make(chan runstate.QueuedInput, 1), materialized: make(chan runstate.InputMaterializationRequest, 1),
+		ran: make(chan runstate.EngineRequest, 1),
 	}
 }
 
-func (e *fileInputRecoveryEngine) RestorePendingInput(_ context.Context, input QueuedInput) error {
+func (e *fileInputRecoveryEngine) RestorePendingInput(_ context.Context, input runstate.QueuedInput) error {
 	e.restoreCalls.Add(1)
 	e.restored <- input
 	return nil
 }
 
-func (*fileInputRecoveryEngine) PlanInputMaterialization(_ context.Context, request InputMaterializationRequest) (InputMaterializationPlan, error) {
-	return InputMaterializationPlan{Required: true, Hash: "sha256:file:" + string(request.Snapshot.CommandID)}, nil
+func (*fileInputRecoveryEngine) PlanInputMaterialization(_ context.Context, request runstate.InputMaterializationRequest) (runstate.InputMaterializationPlan, error) {
+	return runstate.InputMaterializationPlan{Required: true, Hash: "sha256:file:" + string(request.Snapshot.CommandID)}, nil
 }
 
 func (e *fileInputRecoveryEngine) MaterializeInput(
 	_ context.Context,
-	request InputMaterializationRequest,
-	_ InputMaterializationPlan,
-) (InputMaterializationReceipt, error) {
+	request runstate.InputMaterializationRequest,
+	_ runstate.InputMaterializationPlan,
+) (runstate.InputMaterializationReceipt, error) {
 	e.materializeCalls.Add(1)
 	e.materialized <- request
-	return InputMaterializationReceipt{Revision: "file-input:cycle-2"}, nil
+	return runstate.InputMaterializationReceipt{Revision: "file-input:cycle-2"}, nil
 }
 
-func (e *fileInputRecoveryEngine) Run(_ context.Context, request EngineRequest, _ EngineEventSink) (EngineResult, error) {
+func (e *fileInputRecoveryEngine) Run(_ context.Context, request runstate.EngineRequest, _ runstate.EngineEventSink) (runstate.EngineResult, error) {
 	e.runCalls.Add(1)
 	e.ran <- request
-	return EngineResult{Status: EngineCompleted}, nil
+	return runstate.EngineResult{Status: runstate.EngineCompleted}, nil
 }
 
-func reopenFileRecoveryState(t *testing.T, root string, ref BindingRef) (harnessState, Journal) {
+func seedFileRuntimeEvents(t *testing.T, store runstate.JournalStore, ref runstate.BindingRef, payloads []runstate.EventPayload) {
 	t.Helper()
-	store, err := NewFileJournalStore(root)
+	key, err := json.Marshal(ref)
 	if err != nil {
 		t.Fatal(err)
 	}
-	journal, err := store.OpenJournal(context.Background(), bindingJournalKey(ref))
+	journal, err := store.OpenJournal(context.Background(), string(key))
 	if err != nil {
 		t.Fatal(err)
 	}
-	state := newHarnessState(ref)
-	if _, err := replayJournalState(context.Background(), journal, func(event Event) error { return state.reduce(event) }); err != nil {
-		journal.Close()
+	if _, err := journal.Append(context.Background(), 0, payloads); err != nil {
+		_ = journal.Close()
 		t.Fatal(err)
 	}
-	return state, journal
+	if err := journal.Close(); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func fileRecoveryCommandFingerprint(t *testing.T, command runstate.Command) string {
+	t.Helper()
+	fingerprint, err := runstate.CommandFingerprint(command)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return fingerprint
 }

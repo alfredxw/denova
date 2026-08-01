@@ -1,6 +1,7 @@
 package interactive
 
 import (
+	"denova/internal/interactive/director"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -17,10 +18,6 @@ const (
 	DefaultStoryDirectorID = "default"
 
 	MaxStoryDirectorStrategyPromptBytes = DirectorContextMaxBytes
-	DefaultDirectorAgentMode            = DirectorAgentModeTriggered
-	DirectorAgentModeTriggered          = "triggered"
-	DirectorAgentModeEveryTurn          = "every_turn"
-	DirectorAgentModeOff                = "off"
 	DefaultRuleVisibilityMode           = RuleVisibilityModeAuditOnly
 	RuleVisibilityModeAuditOnly         = "audit_only"
 	RuleVisibilityModePublicRoll        = "public_roll"
@@ -44,7 +41,7 @@ type StoryDirector struct {
 	Description       string                        `json:"description"`
 	ModuleRefs        StoryDirectorModuleRefs       `json:"module_refs,omitempty"`
 	Strategy          StoryDirectorStrategy         `json:"strategy"`
-	EventPackages     []TellerEventPackage          `json:"event_packages,omitempty"`
+	EventPackages     []EventPackage                `json:"event_packages,omitempty"`
 	TRPGSystem        StoryDirectorTRPGSystem       `json:"trpg_system"`
 	ActorState        StoryDirectorActorStateSystem `json:"actor_state,omitempty"`
 	ResolvedSnapshot  StoryDirectorResolvedSnapshot `json:"resolved_snapshot,omitempty"`
@@ -341,13 +338,13 @@ func DefaultStoryDirector() StoryDirector {
 			FailurePolicy:            "reversible",
 			PacingCurve:              "progressive",
 			EventFrequency:           DefaultEventFrequency,
-			DirectorAgentMode:        DefaultDirectorAgentMode,
+			DirectorAgentMode:        director.DefaultAgentMode,
 			RuleStateConsumptionMode: DefaultRuleStateConsumptionMode,
 			RuleVisibilityMode:       DefaultRuleVisibilityMode,
 			BranchPlanningTurns:      defaultBranchPlanningTurns,
 			PlanningTemplates:        DefaultStoryDirectorPlanningTemplates(),
 		},
-		EventPackages: []TellerEventPackage{tellerEventPackageFromModule(DefaultEventPackageModule())},
+		EventPackages: []EventPackage{tellerEventPackageFromModule(DefaultEventPackageModule())},
 		TRPGSystem:    DefaultRuleSystemModule().TRPGSystem,
 		ActorState:    defaultActorState.ActorState,
 	})
@@ -363,7 +360,7 @@ func normalizeStoryDirector(director StoryDirector) StoryDirector {
 		director.ModuleRefs = DefaultStoryDirectorModuleRefs()
 	}
 	director.Strategy = normalizeStoryDirectorStrategy(director.Strategy)
-	director.EventPackages = normalizeTellerEventPackagesNoDefault(director.EventPackages)
+	director.EventPackages = normalizeEventPackagesNoDefault(director.EventPackages)
 	director.TRPGSystem.RuleTemplates = normalizeRuleChecks(director.TRPGSystem.RuleTemplates)
 	if director.ModuleRefs.ActorStateDisabled {
 		director.ActorState = normalizeActorStateSystem(StoryDirectorActorStateSystem{})
@@ -437,14 +434,14 @@ func normalizeRuleVisibilityMode(mode string) string {
 
 func normalizeDirectorAgentMode(mode string) string {
 	switch strings.TrimSpace(mode) {
-	case DirectorAgentModeEveryTurn:
-		return DirectorAgentModeEveryTurn
-	case DirectorAgentModeOff:
-		return DirectorAgentModeOff
-	case DirectorAgentModeTriggered, "":
-		return DirectorAgentModeTriggered
+	case director.AgentModeEveryTurn:
+		return director.AgentModeEveryTurn
+	case director.AgentModeOff:
+		return director.AgentModeOff
+	case director.AgentModeTriggered, "":
+		return director.AgentModeTriggered
 	default:
-		return DirectorAgentModeTriggered
+		return director.AgentModeTriggered
 	}
 }
 
@@ -467,7 +464,7 @@ func DirectorEventCatalogFromStoryDirector(director StoryDirector) []DirectorEve
 			if !eventCard.Enabled {
 				continue
 			}
-			event := directorEventFromTellerEventCard(eventCard)
+			event := directorEventFromCard(eventCard)
 			event.ID = strings.Trim(strings.TrimSpace(pkg.ID), "/") + "/" + strings.Trim(strings.TrimSpace(eventCard.ID), "/")
 			events = upsertDirectorEvent(events, event)
 		}

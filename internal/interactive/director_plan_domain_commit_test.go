@@ -1,6 +1,7 @@
 package interactive
 
 import (
+	"denova/internal/interactive/director"
 	"errors"
 	"testing"
 )
@@ -42,7 +43,7 @@ func TestCommitDirectorPlanRunReplaysCanonicalReceiptAfterStoreRestart(t *testin
 	if err != nil {
 		t.Fatal(err)
 	}
-	if afterLateFailure.Metadata.LastRun == nil || afterLateFailure.Metadata.LastRun.Status != DirectorPlanStatusReady || afterLateFailure.Metadata.LastRun.DomainCommit == nil {
+	if afterLateFailure.Metadata.LastRun == nil || afterLateFailure.Metadata.LastRun.Status != director.PlanStatusReady || afterLateFailure.Metadata.LastRun.DomainCommit == nil {
 		t.Fatalf("late runtime failure replaced an authorized canonical commit: %#v", afterLateFailure.Metadata.LastRun)
 	}
 

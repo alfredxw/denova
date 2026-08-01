@@ -7,8 +7,9 @@ import (
 	"denova/config"
 	agents "denova/internal/agents"
 	agentcontext "denova/internal/agents/context"
+	agentcompaction "denova/internal/agents/context/compaction"
+	"denova/internal/agents/prompts"
 	"denova/internal/interactive"
-	"denova/internal/prompts"
 )
 
 func TestDirectorContextBudgetCountsExactComposedSystemInstruction(t *testing.T) {
@@ -19,7 +20,7 @@ func TestDirectorContextBudgetCountsExactComposedSystemInstruction(t *testing.T)
 		},
 	}
 	stable := interactiveDirectorStableContext{Title: "resident lore", Content: "bounded stable context"}
-	composition, err := agents.ComposeInteractiveDirectorInstruction(cfg, nil)
+	composition, err := prompts.ComposeInteractiveDirectorInstruction(cfg, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -34,8 +35,8 @@ func TestDirectorContextBudgetCountsExactComposedSystemInstruction(t *testing.T)
 		agents.UserMessage(emptyPrompt),
 		agents.UserMessage(agentcontext.StandaloneMessage(stable.Title, stable.Content, "")),
 	}
-	overheadTokens := agents.EstimateContextTokens(overheadMessages, nil)
-	completionReserve, toolReserve := agents.EstimateContextProjectionReserves(cfg, config.AgentKindInteractiveDirector, 1024)
+	overheadTokens := agentcontext.EstimateTokens(overheadMessages, nil)
+	completionReserve, toolReserve := agentcompaction.EstimateProjectionReserves(cfg, config.AgentKindInteractiveDirector, 1024)
 	want := max(0, budget.thresholdTokens-overheadTokens-completionReserve-toolReserve-max(2048, budget.contextWindowTokens/100))
 	if budget.initialTokens != want {
 		t.Fatalf("source budget = %d, want %d from exact composition hash=%s", budget.initialTokens, want, composition.InstructionHash())

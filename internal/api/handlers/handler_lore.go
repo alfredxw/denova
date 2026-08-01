@@ -11,15 +11,15 @@ import (
 
 	"denova/internal/api/sse"
 	novaApp "denova/internal/app"
-	"denova/internal/book"
+	"denova/internal/book/lore"
 )
 
 func (h *Handlers) HandleLoreItems(ctx context.Context, c *app.RequestContext) {
 	if !h.requireWorkspace(c) {
 		return
 	}
-	var items []book.LoreItem
-	_, ok := h.withLoreStore(c, func(store *book.LoreStore) error {
+	var items []lore.Item
+	_, ok := h.withLoreStore(c, func(store *lore.Store) error {
 		var err error
 		items, err = store.ListAll()
 		return err
@@ -34,13 +34,13 @@ func (h *Handlers) HandleLoreItemCreate(ctx context.Context, c *app.RequestConte
 	if !h.requireWorkspace(c) {
 		return
 	}
-	var body book.LoreItemInput
+	var body lore.ItemInput
 	if err := c.BindJSON(&body); err != nil {
 		writeErrorKey(c, consts.StatusBadRequest, "api.common.invalidRequestWithDetail", "detail", err.Error())
 		return
 	}
-	var item book.LoreItem
-	_, ok := h.withLoreStore(c, func(store *book.LoreStore) error {
+	var item lore.Item
+	_, ok := h.withLoreStore(c, func(store *lore.Store) error {
 		var err error
 		item, err = store.Create(body)
 		return err
@@ -56,7 +56,7 @@ func (h *Handlers) HandleLoreItemUpdate(ctx context.Context, c *app.RequestConte
 	if !h.requireWorkspace(c) {
 		return
 	}
-	var body book.LoreItemInput
+	var body lore.ItemInput
 	if err := c.BindJSON(&body); err != nil {
 		writeErrorKey(c, consts.StatusBadRequest, "api.common.invalidRequestWithDetail", "detail", err.Error())
 		return
@@ -84,8 +84,8 @@ func (h *Handlers) HandleLoreItemUpdate(ctx context.Context, c *app.RequestConte
 			"Lore 请求正文 ID 与路径不一致 / Lore body ID does not match the resource path")
 		return
 	}
-	var item book.LoreItem
-	_, err := h.app.WithLoreStore(workspaceChangeExpectedWorkspace(c), func(store *book.LoreStore) error {
+	var item lore.Item
+	_, err := h.app.WithLoreStore(workspaceChangeExpectedWorkspace(c), func(store *lore.Store) error {
 		var updateErr error
 		item, updateErr = store.Update(id, body)
 		return updateErr
@@ -95,7 +95,7 @@ func (h *Handlers) HandleLoreItemUpdate(ctx context.Context, c *app.RequestConte
 			h.writeWorkspaceChangeLeaseError(c, workspaceChangeExpectedWorkspace(c), err)
 			return
 		}
-		if errors.Is(err, book.ErrLoreRevisionConflict) {
+		if errors.Is(err, lore.ErrRevisionConflict) {
 			writeErrorKey(c, consts.StatusConflict, "api.resource.revisionConflict")
 			return
 		}
@@ -109,7 +109,7 @@ func (h *Handlers) HandleLoreItemDelete(ctx context.Context, c *app.RequestConte
 	if !h.requireWorkspace(c) {
 		return
 	}
-	_, ok := h.withLoreStore(c, func(store *book.LoreStore) error { return store.Delete(c.Param("id")) })
+	_, ok := h.withLoreStore(c, func(store *lore.Store) error { return store.Delete(c.Param("id")) })
 	if !ok {
 		return
 	}
@@ -147,8 +147,8 @@ func (h *Handlers) HandleLoreClassificationApply(ctx context.Context, c *app.Req
 		writeErrorKey(c, consts.StatusBadRequest, "api.common.invalidRequestWithDetail", "detail", err.Error())
 		return
 	}
-	var result book.LoreTypeApplyResult
-	_, err := h.app.WithLoreStore(workspaceChangeExpectedWorkspace(c), func(store *book.LoreStore) error {
+	var result lore.TypeApplyResult
+	_, err := h.app.WithLoreStore(workspaceChangeExpectedWorkspace(c), func(store *lore.Store) error {
 		var applyErr error
 		result, applyErr = store.ApplyTypeChanges(body.Revision, body.Changes)
 		return applyErr
@@ -158,7 +158,7 @@ func (h *Handlers) HandleLoreClassificationApply(ctx context.Context, c *app.Req
 			h.writeWorkspaceChangeLeaseError(c, workspaceChangeExpectedWorkspace(c), err)
 			return
 		}
-		if errors.Is(err, book.ErrLoreRevisionConflict) {
+		if errors.Is(err, lore.ErrRevisionConflict) {
 			writeErrorKey(c, consts.StatusConflict, "api.resource.revisionConflict")
 			return
 		}
@@ -233,8 +233,8 @@ func (h *Handlers) HandleLoreItemImageDelete(ctx context.Context, c *app.Request
 	if !h.requireWorkspace(c) {
 		return
 	}
-	var item book.LoreItem
-	_, ok := h.withLoreStore(c, func(store *book.LoreStore) error {
+	var item lore.Item
+	_, ok := h.withLoreStore(c, func(store *lore.Store) error {
 		var err error
 		item, err = store.SetImage(c.Param("id"), nil)
 		return err
@@ -245,7 +245,7 @@ func (h *Handlers) HandleLoreItemImageDelete(ctx context.Context, c *app.Request
 	writeJSON(c, consts.StatusOK, item)
 }
 
-func (h *Handlers) withLoreStore(c *app.RequestContext, action func(*book.LoreStore) error) (string, bool) {
+func (h *Handlers) withLoreStore(c *app.RequestContext, action func(*lore.Store) error) (string, bool) {
 	expectedWorkspace := workspaceChangeExpectedWorkspace(c)
 	workspace, err := h.app.WithLoreStore(expectedWorkspace, action)
 	if err != nil {

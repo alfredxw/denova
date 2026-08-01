@@ -2,6 +2,7 @@ package agents
 
 import (
 	"context"
+	agenttoolruntime "denova/internal/agents/toolruntime"
 	"errors"
 	"os"
 	"path/filepath"
@@ -14,7 +15,7 @@ import (
 
 func TestWorkspaceToolsFactoryBuildsOnlyEnabledReadSurface(t *testing.T) {
 	workspace := t.TempDir()
-	tools, err := newToolCatalog(&config.Config{Workspace: workspace}).Workspace(config.ResolvedAgentToolSettings{config.AgentToolWorkspaceRead: true})
+	tools, err := agenttoolruntime.NewCatalog(&config.Config{Workspace: workspace}).Workspace(config.ResolvedAgentToolSettings{config.AgentToolWorkspaceRead: true})
 	if err != nil {
 		t.Fatal(err)
 	}

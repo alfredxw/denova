@@ -9,7 +9,7 @@ import (
 	"github.com/cloudwego/hertz/pkg/protocol/consts"
 
 	denovaapp "denova/internal/app"
-	"denova/internal/documentreview"
+	"denova/internal/workspace/documentreview"
 )
 
 // HandleDocumentReview returns the author's current one-shot review batch.

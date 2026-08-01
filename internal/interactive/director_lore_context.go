@@ -2,11 +2,10 @@ package interactive
 
 import (
 	"context"
+	"denova/internal/book/lore"
 	"fmt"
 	"log/slog"
 	"strings"
-
-	"denova/internal/book"
 )
 
 const (
@@ -146,11 +145,11 @@ func (s *Store) validateDirectorLoreContext(content string) error {
 	if len(refs.All()) == 0 {
 		return nil
 	}
-	items, err := book.NewLoreStore(s.root).List()
+	items, err := lore.NewStore(s.root).List()
 	if err != nil {
 		return fmt.Errorf("读取资料库以校验导演资料工作集失败: %w", err)
 	}
-	byName := make(map[string]book.LoreItem, len(items))
+	byName := make(map[string]lore.Item, len(items))
 	for _, item := range items {
 		byName[strings.ToLower(strings.TrimSpace(item.Name))] = item
 	}
@@ -160,7 +159,7 @@ func (s *Store) validateDirectorLoreContext(content string) error {
 			slog.WarnContext(context.Background(), fmt.Sprintf("[director-lore-context] ignoring unavailable lore reference name=%q source=lore-context.md location=internal/interactive/director_lore_context.go", name))
 			continue
 		}
-		if item.LoadMode == book.LoreLoadModeResident {
+		if item.LoadMode == lore.LoadModeResident {
 			return fmt.Errorf("常驻资料已由系统完整加载，不应重复写入 lore-context.md: %s", name)
 		}
 	}

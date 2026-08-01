@@ -9,7 +9,7 @@ import (
 	agent "github.com/alfredxw/denova/agent"
 
 	"denova/config"
-	"denova/internal/book"
+	"denova/internal/book/lore"
 )
 
 type readLoreItemsInput struct {
@@ -72,7 +72,7 @@ func (p *loreReadPolicy) validateBatch(input readLoreItemsInput) error {
 	return nil
 }
 
-func (p *loreReadPolicy) observe(items []book.LoreItem) {
+func (p *loreReadPolicy) observe(items []lore.Item) {
 	if p == nil || p.OnRead == nil {
 		return
 	}
@@ -104,8 +104,8 @@ func newLoreTools(workspace string, allowWrite bool, options ...loreToolsOptions
 		if err := readPolicy.validateBatch(input); err != nil {
 			return "", err
 		}
-		store := book.NewLoreStore(workspace)
-		var result book.LoreReadResult
+		store := lore.NewStore(workspace)
+		var result lore.ReadResult
 		var err error
 		missingField := "ids"
 		if len(input.Names) > 0 {
@@ -136,18 +136,18 @@ func newLoreTools(workspace string, allowWrite bool, options ...loreToolsOptions
 		if err := validateListLoreItemsInput(input); err != nil {
 			return "", err
 		}
-		store := book.NewLoreStore(workspace)
+		store := lore.NewStore(workspace)
 		if !hasLoreListFilters(input) {
-			catalog, err := store.LoreNameCatalogMarkdown(book.LoreNameCatalogOptions{
+			catalog, err := store.NameCatalogMarkdown(lore.NameCatalogOptions{
 				Offset:   input.Offset,
-				MaxBytes: book.LoreIndexDefaultMaxBytes,
+				MaxBytes: lore.IndexDefaultMaxBytes,
 			})
 			if err != nil {
 				return "", err
 			}
 			return strings.TrimSpace(catalog), nil
 		}
-		options := book.LoreIndexOptions{
+		options := lore.IndexOptions{
 			Keywords:  input.Keywords,
 			Match:     input.Match,
 			Types:     input.Types,
@@ -165,7 +165,7 @@ func newLoreTools(workspace string, allowWrite bool, options ...loreToolsOptions
 			readPolicy.observe(items)
 			return output, nil
 		}
-		index, err := store.LoreIndexMarkdown(options)
+		index, err := store.SearchIndexMarkdown(options)
 		if err != nil {
 			return "", err
 		}
@@ -195,7 +195,7 @@ func newLoreTools(workspace string, allowWrite bool, options ...loreToolsOptions
 		if workspace == "" {
 			return agent.ToolResult{}, fmt.Errorf("当前 workspace 不可用，无法写入资料库")
 		}
-		store := book.NewLoreStore(workspace)
+		store := lore.NewStore(workspace)
 		ops, err := buildWriteLoreOperations(store, input)
 		if err != nil {
 			return agent.ToolResult{}, err
@@ -227,7 +227,7 @@ func newLoreTools(workspace string, allowWrite bool, options ...loreToolsOptions
 
 func validateListLoreItemsInput(input listLoreItemsInput) error {
 	match := strings.TrimSpace(input.Match)
-	if match != "" && match != book.LoreIndexMatchAny && match != book.LoreIndexMatchAll {
+	if match != "" && match != lore.IndexMatchAny && match != lore.IndexMatchAll {
 		return fmt.Errorf("match 只能是 any 或 all")
 	}
 	validTypes := map[string]bool{"character": true, "world": true, "location": true, "faction": true, "rule": true, "item": true, "other": true}
@@ -236,14 +236,14 @@ func validateListLoreItemsInput(input listLoreItemsInput) error {
 			return fmt.Errorf("无效资料类型: %s", strings.TrimSpace(itemType))
 		}
 	}
-	validLoadModes := map[string]bool{book.LoreLoadModeResident: true, book.LoreLoadModeAuto: true, book.LoreLoadModeManual: true}
+	validLoadModes := map[string]bool{lore.LoadModeResident: true, lore.LoadModeAuto: true, lore.LoadModeManual: true}
 	for _, loadMode := range input.LoadModes {
 		if !validLoadModes[strings.TrimSpace(loadMode)] {
 			return fmt.Errorf("无效资料加载策略: %s", strings.TrimSpace(loadMode))
 		}
 	}
 	if input.Limit < 0 {
-		return fmt.Errorf("limit 不能小于 0；省略时默认 %d", book.LoreIndexDefaultLimit)
+		return fmt.Errorf("limit 不能小于 0；省略时默认 %d", lore.IndexDefaultLimit)
 	}
 	if input.Offset < 0 {
 		return fmt.Errorf("offset 不能小于 0")
@@ -262,7 +262,7 @@ func hasLoreListFilters(input listLoreItemsInput) bool {
 	return len(input.Keywords) > 0 || len(input.Types) > 0 || len(input.LoadModes) > 0
 }
 
-func formatLoreItems(items []book.LoreItem) string {
+func formatLoreItems(items []lore.Item) string {
 	if len(items) == 0 {
 		return "未读取到资料库条目。"
 	}
@@ -270,13 +270,13 @@ func formatLoreItems(items []book.LoreItem) string {
 	fmt.Fprintln(&sb, "# 资料库条目")
 	fmt.Fprintln(&sb)
 	for _, item := range items {
-		fmt.Fprintln(&sb, book.LoreReferenceMarkdown(item))
+		fmt.Fprintln(&sb, lore.ReferenceMarkdown(item))
 		fmt.Fprintln(&sb)
 	}
 	return strings.TrimSpace(sb.String())
 }
 
-func formatLoreReadResult(result book.LoreReadResult, missingField string) string {
+func formatLoreReadResult(result lore.ReadResult, missingField string) string {
 	output := formatLoreItems(result.Items)
 	if len(result.Missing) == 0 {
 		return output
@@ -285,8 +285,8 @@ func formatLoreReadResult(result book.LoreReadResult, missingField string) strin
 	return output + "\n\n## 未找到的资料\n\n" + missingField + ": " + string(missing)
 }
 
-func buildWriteLoreOperations(store *book.LoreStore, input writeLoreItemsInput) ([]book.LoreOperation, error) {
-	itemsByID := map[string]book.LoreItem{}
+func buildWriteLoreOperations(store *lore.Store, input writeLoreItemsInput) ([]lore.Operation, error) {
+	itemsByID := map[string]lore.Item{}
 	// Explicit write IDs may refer to disabled entries. Those entries stay out
 	// of model read tools, but an author-approved review snapshot can still
 	// safely drive an update without accidentally treating the ID as a create.
@@ -297,11 +297,11 @@ func buildWriteLoreOperations(store *book.LoreStore, input writeLoreItemsInput) 
 	for _, item := range existing {
 		itemsByID[item.ID] = item
 	}
-	ops := make([]book.LoreOperation, 0, len(input.Items)+len(input.DeleteIDs))
+	ops := make([]lore.Operation, 0, len(input.Items)+len(input.DeleteIDs))
 	for _, item := range input.Items {
 		item.ID = strings.TrimSpace(item.ID)
 		item.Name = strings.TrimSpace(item.Name)
-		loreInput := book.LoreItemInput{
+		loreInput := lore.ItemInput{
 			ID:               item.ID,
 			Enabled:          item.Enabled,
 			Type:             item.Type,
@@ -325,14 +325,14 @@ func buildWriteLoreOperations(store *book.LoreStore, input writeLoreItemsInput) 
 		if op == "update" && !hasWriteLoreItemChanges(item) {
 			return nil, fmt.Errorf("更新资料 %s 时至少提供一个实际变化字段", item.ID)
 		}
-		ops = append(ops, book.LoreOperation{Op: op, ID: item.ID, Item: loreInput})
+		ops = append(ops, lore.Operation{Op: op, ID: item.ID, Item: loreInput})
 	}
 	for _, id := range input.DeleteIDs {
 		id = strings.TrimSpace(id)
 		if id == "" {
 			continue
 		}
-		ops = append(ops, book.LoreOperation{Op: "delete", ID: id})
+		ops = append(ops, lore.Operation{Op: "delete", ID: id})
 	}
 	if len(ops) == 0 {
 		return nil, fmt.Errorf("没有可写入的资料库条目")
@@ -346,7 +346,7 @@ func hasWriteLoreItemChanges(item writeLoreItemInput) bool {
 		item.Keywords != nil || strings.TrimSpace(item.LoadMode) != "" || strings.TrimSpace(item.Content) != ""
 }
 
-func formatWriteLoreItemsResult(result book.LoreApplyResult) string {
+func formatWriteLoreItemsResult(result lore.ApplyResult) string {
 	changed := []string{}
 	if len(result.Created) > 0 {
 		changed = append(changed, fmt.Sprintf("新增 %d", len(result.Created)))
@@ -373,7 +373,7 @@ func formatWriteLoreItemsResult(result book.LoreApplyResult) string {
 	return strings.Join(lines, "\n")
 }
 
-func writeLoreChangedItemIDs(result book.LoreApplyResult) []string {
+func writeLoreChangedItemIDs(result lore.ApplyResult) []string {
 	ids := make([]string, 0, len(result.Created)+len(result.Updated)+len(result.DeletedIDs))
 	seen := map[string]bool{}
 	for _, item := range result.Created {

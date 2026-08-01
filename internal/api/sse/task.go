@@ -15,6 +15,7 @@ import (
 	"denova/internal/api/agentui"
 	ssetransform "denova/internal/api/sse/transform"
 	novaApp "denova/internal/app"
+	apptask "denova/internal/app/task"
 	"denova/internal/observability"
 )
 
@@ -39,7 +40,7 @@ const (
 )
 
 // StreamTask writes a Task event snapshot and live updates as Server-Sent Events.
-func StreamTask(ctx context.Context, c *app.RequestContext, task *novaApp.Task, options ...StreamOption) {
+func StreamTask(ctx context.Context, c *app.RequestContext, task *apptask.Task, options ...StreamOption) {
 	after, ok := requestedTaskCursor(c)
 	if !ok {
 		return
@@ -104,7 +105,7 @@ func StreamTask(ctx context.Context, c *app.RequestContext, task *novaApp.Task, 
 // state with canonical history, then asks for the exact Task suffix after the
 // server-issued checkpoint cursor. The UI stream itself intentionally carries
 // no Last-Event-ID because one Task event may expand to several AI SDK frames.
-func StreamTaskUI(ctx context.Context, c *app.RequestContext, task *novaApp.Task, options ...StreamOption) {
+func StreamTaskUI(ctx context.Context, c *app.RequestContext, task *apptask.Task, options ...StreamOption) {
 	after, ok := requestedTaskCursor(c)
 	if !ok {
 		return
@@ -158,7 +159,7 @@ func StreamTaskUI(ctx context.Context, c *app.RequestContext, task *novaApp.Task
 				return
 			}
 		}
-		if subscription.EndReason() == novaApp.TaskSubscriptionTaskFinished {
+		if subscription.EndReason() == apptask.SubscriptionTaskFinished {
 			_ = writeUI.Finish("stop")
 		}
 		slog.InfoContext(ctx, fmt.Sprintf("[agent-ui-sse] stream end task_id=%s status=%s reason=%s", task.ID(), task.Status(), subscription.EndReason()))
@@ -167,7 +168,7 @@ func StreamTaskUI(ctx context.Context, c *app.RequestContext, task *novaApp.Task
 	c.Response.SetBodyStream(pr, -1)
 }
 
-func writeTaskCheckpoint(w io.Writer, checkpoint novaApp.TaskDisplayCheckpoint, writeSSE func(novaApp.TaskEvent) error) (bool, error) {
+func writeTaskCheckpoint(w io.Writer, checkpoint apptask.DisplayCheckpoint, writeSSE func(apptask.Event) error) (bool, error) {
 	if !checkpoint.Complete {
 		// An incomplete projection must never advance Last-Event-ID or attach the
 		// client to live events: either would silently certify missing display
@@ -197,7 +198,7 @@ func writeTaskCheckpoint(w io.Writer, checkpoint novaApp.TaskDisplayCheckpoint, 
 		return false, err
 	}
 	for _, event := range checkpoint.Events {
-		if err := writeSSE(novaApp.TaskEvent{Event: event}); err != nil {
+		if err := writeSSE(apptask.Event{Event: event}); err != nil {
 			return false, err
 		}
 	}
@@ -210,7 +211,7 @@ func writeTaskCheckpoint(w io.Writer, checkpoint novaApp.TaskDisplayCheckpoint, 
 	return true, nil
 }
 
-func taskRehydrateRequiredData(checkpoint novaApp.TaskDisplayCheckpoint) map[string]any {
+func taskRehydrateRequiredData(checkpoint apptask.DisplayCheckpoint) map[string]any {
 	return map[string]any{
 		"code":                      "agent_stream.rehydrate_required",
 		"message":                   "展示历史超过恢复预算，请重新加载以从持久化历史恢复 / Display history exceeded the recovery budget; reload from canonical history",
@@ -225,16 +226,16 @@ func taskRehydrateRequiredData(checkpoint novaApp.TaskDisplayCheckpoint) map[str
 	}
 }
 
-func writeUITaskCheckpoint(writeUI *uiWriteHandler, checkpoint novaApp.TaskDisplayCheckpoint) (bool, error) {
+func writeUITaskCheckpoint(writeUI *uiWriteHandler, checkpoint apptask.DisplayCheckpoint) (bool, error) {
 	if !checkpoint.Complete {
 		data := taskRehydrateRequiredData(checkpoint)
 		// Preserve a typed data part for the Writing client before surfacing the
 		// user-visible error. AI SDK errorText alone cannot carry a stable code or
 		// the exact Task identity that must no longer be reconnected.
-		if err := writeUI.Handle(novaApp.TaskEvent{Event: novaApp.AgentEvent{Type: taskRehydrateRequiredEventType, Data: data}}); err != nil {
+		if err := writeUI.Handle(apptask.Event{Event: novaApp.AgentEvent{Type: taskRehydrateRequiredEventType, Data: data}}); err != nil {
 			return false, err
 		}
-		if err := writeUI.Handle(novaApp.TaskEvent{Event: novaApp.AgentEvent{Type: "error", Data: data}}); err != nil {
+		if err := writeUI.Handle(apptask.Event{Event: novaApp.AgentEvent{Type: "error", Data: data}}); err != nil {
 			return false, err
 		}
 		if err := writeUI.Finish("error"); err != nil {
@@ -243,28 +244,28 @@ func writeUITaskCheckpoint(writeUI *uiWriteHandler, checkpoint novaApp.TaskDispl
 		return false, nil
 	}
 	for _, event := range checkpoint.Events {
-		if err := writeUI.Handle(novaApp.TaskEvent{Cursor: checkpoint.Cursor, Event: event}); err != nil {
+		if err := writeUI.Handle(apptask.Event{Cursor: checkpoint.Cursor, Event: event}); err != nil {
 			return false, err
 		}
 	}
 	return true, nil
 }
 
-func writeTaskCursorError(c *app.RequestContext, task *novaApp.Task, err error) {
+func writeTaskCursorError(c *app.RequestContext, task *apptask.Task, err error) {
 	response := map[string]any{
 		"error":           "事件流游标已失效 / Event stream cursor is invalid",
 		"code":            "agent_stream.invalid_cursor",
 		"earliest_cursor": task.EarliestCursor(),
 		"latest_cursor":   task.Cursor(),
 	}
-	if errors.Is(err, novaApp.ErrTaskCursorExpired) {
+	if errors.Is(err, apptask.ErrCursorExpired) {
 		response["error"] = "事件流游标已过期，请从规范历史恢复 / Event stream cursor expired; recover from canonical history"
 		response["code"] = "agent_stream.cursor_expired"
 	}
 	c.JSON(409, response)
 }
 
-func newSSEWriteHandler(ctx context.Context, w io.Writer, options ...StreamOption) func(novaApp.TaskEvent) error {
+func newSSEWriteHandler(ctx context.Context, w io.Writer, options ...StreamOption) func(apptask.Event) error {
 	opts := applyStreamOptions(options...)
 	var cursor uint64
 	chain := ssetransform.NewSSEEventMiddlewareChain(
@@ -276,7 +277,7 @@ func newSSEWriteHandler(ctx context.Context, w io.Writer, options ...StreamOptio
 		}
 		return writeEvent(w, cursor, ev.Type, ev.Data)
 	})
-	return func(item novaApp.TaskEvent) error {
+	return func(item apptask.Event) error {
 		cursor = item.Cursor
 		item.Event = correlateErrorEvent(item.Event, observability.RequestID(ctx))
 		return handler(item.Event)
@@ -321,7 +322,7 @@ func correlateErrorEvent(event novaApp.AgentEvent, requestID string) novaApp.Age
 	return event
 }
 
-func (h *uiWriteHandler) Handle(item novaApp.TaskEvent) error {
+func (h *uiWriteHandler) Handle(item apptask.Event) error {
 	return h.handler(item.Event)
 }
 

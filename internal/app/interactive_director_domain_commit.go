@@ -7,7 +7,7 @@ import (
 	"strings"
 	"sync"
 
-	agents "denova/internal/agents"
+	agentrun "denova/internal/agents/run"
 	"denova/internal/interactive"
 )
 
@@ -24,7 +24,7 @@ type interactiveDirectorPlanCommit struct {
 	draftMu      *sync.Mutex
 
 	mu       sync.Mutex
-	identity agents.HarnessCycleIdentity
+	identity agentrun.CycleIdentity
 	pending  *interactive.DirectorPlanDomainCommitIntent
 	receipt  *interactive.DirectorPlanDomainCommitReceipt
 }
@@ -39,7 +39,7 @@ func newInteractiveDirectorPlanCommit(store *interactive.Store, storyID, branchI
 	}
 }
 
-func (c *interactiveDirectorPlanCommit) BindAgentCycleIdentity(identity agents.HarnessCycleIdentity) {
+func (c *interactiveDirectorPlanCommit) BindAgentCycleIdentity(identity agentrun.CycleIdentity) {
 	if c == nil {
 		return
 	}
@@ -50,18 +50,18 @@ func (c *interactiveDirectorPlanCommit) BindAgentCycleIdentity(identity agents.H
 	c.mu.Unlock()
 }
 
-func (c *interactiveDirectorPlanCommit) PendingAgentCycleCommit(stage agents.HarnessDomainCommitStage) (agents.HarnessDomainCommitIntent, bool, error) {
-	if c == nil || stage != agents.HarnessDomainCommitOutput {
-		return agents.HarnessDomainCommitIntent{}, false, nil
+func (c *interactiveDirectorPlanCommit) PendingAgentCycleCommit(stage agentrun.DomainCommitStage) (agentrun.DomainCommitIntent, bool, error) {
+	if c == nil || stage != agentrun.DomainCommitOutput {
+		return agentrun.DomainCommitIntent{}, false, nil
 	}
 	c.mu.Lock()
 	identity := c.identity
 	c.mu.Unlock()
 	if strings.TrimSpace(string(identity.CommandID)) == "" || strings.TrimSpace(string(identity.OperationID)) == "" || identity.Cycle <= 0 {
-		return agents.HarnessDomainCommitIntent{}, false, fmt.Errorf("互动导演输出缺少 durable cycle identity")
+		return agentrun.DomainCommitIntent{}, false, fmt.Errorf("互动导演输出缺少 durable cycle identity")
 	}
 	if c.draft == nil {
-		return agents.HarnessDomainCommitIntent{}, false, fmt.Errorf("互动导演 Patch 草稿不可用")
+		return agentrun.DomainCommitIntent{}, false, fmt.Errorf("互动导演 Patch 草稿不可用")
 	}
 
 	c.draftMu.Lock()
@@ -69,11 +69,11 @@ func (c *interactiveDirectorPlanCommit) PendingAgentCycleCommit(stage agents.Har
 	decision, decided := c.draft.Decision()
 	c.draftMu.Unlock()
 	if !finalized || !decided {
-		return agents.HarnessDomainCommitIntent{}, false, fmt.Errorf("导演规划未通过 submit_director_plan_update finalize Patch 草稿")
+		return agentrun.DomainCommitIntent{}, false, fmt.Errorf("导演规划未通过 submit_director_plan_update finalize Patch 草稿")
 	}
 	summary, err := json.Marshal(decision)
 	if err != nil {
-		return agents.HarnessDomainCommitIntent{}, false, fmt.Errorf("序列化导演规划决策失败: %w", err)
+		return agentrun.DomainCommitIntent{}, false, fmt.Errorf("序列化导演规划决策失败: %w", err)
 	}
 	intent, err := interactive.NewDirectorPlanDomainCommitIntent(
 		interactive.DirectorPlanDomainCommitIdentity{
@@ -85,26 +85,26 @@ func (c *interactiveDirectorPlanCommit) PendingAgentCycleCommit(stage agents.Har
 		docs,
 	)
 	if err != nil {
-		return agents.HarnessDomainCommitIntent{}, false, err
+		return agentrun.DomainCommitIntent{}, false, err
 	}
 
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	if c.identity != identity {
-		return agents.HarnessDomainCommitIntent{}, false, fmt.Errorf("互动导演 durable cycle identity 在提交准备期间发生变化")
+		return agentrun.DomainCommitIntent{}, false, fmt.Errorf("互动导演 durable cycle identity 在提交准备期间发生变化")
 	}
 	if c.pending != nil && c.pending.Hash != intent.Hash {
-		return agents.HarnessDomainCommitIntent{}, false, fmt.Errorf("互动导演输出提交内容在授权前发生变化")
+		return agentrun.DomainCommitIntent{}, false, fmt.Errorf("互动导演输出提交内容在授权前发生变化")
 	}
 	c.pending = &intent
-	return agents.HarnessDomainCommitIntent{Identity: identity, Stage: stage, Hash: intent.Hash}, true, nil
+	return agentrun.DomainCommitIntent{Identity: identity, Stage: stage, Hash: intent.Hash}, true, nil
 }
 
-func (c *interactiveDirectorPlanCommit) CommitAgentCycleStage(_ context.Context, stage agents.HarnessDomainCommitStage, outcome agents.RunOutcome) error {
-	if c == nil || stage != agents.HarnessDomainCommitOutput {
+func (c *interactiveDirectorPlanCommit) CommitAgentCycleStage(_ context.Context, stage agentrun.DomainCommitStage, outcome agentrun.Outcome) error {
+	if c == nil || stage != agentrun.DomainCommitOutput {
 		return nil
 	}
-	if outcome.Status != agents.RunOutcomeCompleted && outcome.Status != agents.RunOutcomePreempted {
+	if outcome.Status != agentrun.OutcomeCompleted && outcome.Status != agentrun.OutcomePreempted {
 		c.mu.Lock()
 		if c.receipt != nil {
 			c.mu.Unlock()
@@ -134,16 +134,16 @@ func (c *interactiveDirectorPlanCommit) CommitAgentCycleStage(_ context.Context,
 	return nil
 }
 
-func (c *interactiveDirectorPlanCommit) LastAgentCycleCommitReceipt(stage agents.HarnessDomainCommitStage) (agents.HarnessDomainCommitReceipt, bool) {
-	if c == nil || stage != agents.HarnessDomainCommitOutput {
-		return agents.HarnessDomainCommitReceipt{}, false
+func (c *interactiveDirectorPlanCommit) LastAgentCycleCommitReceipt(stage agentrun.DomainCommitStage) (agentrun.DomainCommitReceipt, bool) {
+	if c == nil || stage != agentrun.DomainCommitOutput {
+		return agentrun.DomainCommitReceipt{}, false
 	}
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	if c.receipt == nil || c.pending == nil {
-		return agents.HarnessDomainCommitReceipt{}, false
+		return agentrun.DomainCommitReceipt{}, false
 	}
-	return agents.HarnessDomainCommitReceipt{
+	return agentrun.DomainCommitReceipt{
 		Identity: c.identity, Stage: stage, Hash: c.receipt.Hash, Revision: c.receipt.Revision,
 	}, true
 }
@@ -172,25 +172,25 @@ func (c *interactiveDirectorPlanCommit) commitCustomGenerator(ctx context.Contex
 		return err
 	}
 	c.BindAgentCycleIdentity(identity)
-	if _, pending, err := c.PendingAgentCycleCommit(agents.HarnessDomainCommitOutput); err != nil {
+	if _, pending, err := c.PendingAgentCycleCommit(agentrun.DomainCommitOutput); err != nil {
 		return err
 	} else if !pending {
 		return fmt.Errorf("互动导演自定义生成器没有待提交输出")
 	}
-	return c.CommitAgentCycleStage(ctx, agents.HarnessDomainCommitOutput, agents.RunOutcome{Status: agents.RunOutcomeCompleted})
+	return c.CommitAgentCycleStage(ctx, agentrun.DomainCommitOutput, agentrun.Outcome{Status: agentrun.OutcomeCompleted})
 }
 
-func interactiveDirectorCustomCycleIdentity(token interactive.DirectorPlanRunToken, sourceTurnID string) (agents.HarnessCycleIdentity, error) {
+func interactiveDirectorCustomCycleIdentity(token interactive.DirectorPlanRunToken, sourceTurnID string) (agentrun.CycleIdentity, error) {
 	commandID, err := interactiveDirectorCommandID(token, sourceTurnID, "custom_generator")
 	if err != nil {
-		return agents.HarnessCycleIdentity{}, err
+		return agentrun.CycleIdentity{}, err
 	}
 	operationID, err := interactiveDirectorCommandID(token, sourceTurnID, "custom_generator_operation")
 	if err != nil {
-		return agents.HarnessCycleIdentity{}, err
+		return agentrun.CycleIdentity{}, err
 	}
 	operationID = strings.Replace(operationID, "interactive-director:", "interactive-director-operation:", 1)
-	return agents.HarnessCycleIdentity{
-		CommandID: agents.CommandID(commandID), OperationID: agents.OperationID(operationID), Cycle: 1,
+	return agentrun.CycleIdentity{
+		CommandID: agentrun.CommandID(commandID), OperationID: agentrun.OperationID(operationID), Cycle: 1,
 	}, nil
 }

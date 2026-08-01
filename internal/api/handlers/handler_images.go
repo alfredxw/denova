@@ -7,7 +7,7 @@ import (
 	"github.com/cloudwego/hertz/pkg/protocol/consts"
 
 	novaApp "denova/internal/app"
-	"denova/internal/imagegen"
+	imagegen "denova/internal/image/generation"
 )
 
 func (h *Handlers) HandleImageGenerate(ctx context.Context, c *app.RequestContext) {

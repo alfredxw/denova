@@ -2,10 +2,11 @@ package app
 
 import (
 	"context"
+	agentchat "denova/internal/agents/chat"
+	"denova/internal/agents/run"
+	agenttool "denova/internal/agents/tool"
 	"fmt"
 	"log/slog"
-
-	agents "denova/internal/agents"
 )
 
 // writingRecoveryMutationBatch delays automation triggers until the same
@@ -14,18 +15,18 @@ import (
 // OnMutationsVerified would expose mutations from a cycle that later fails its
 // commit barrier.
 type writingRecoveryMutationBatch struct {
-	participant  agents.HarnessDomainCommitParticipant
-	mutations    []agents.ToolMutation
-	verification agents.PostRunVerification
-	dispatch     func(context.Context, []agents.ToolMutation, agents.PostRunVerification)
+	participant  agentrun.DomainCommitParticipant
+	mutations    []agenttool.Mutation
+	verification agenttool.Verification
+	dispatch     func(context.Context, []agenttool.Mutation, agenttool.Verification)
 }
 
 func (a *App) writingMutationCallback(
 	taskID string,
-	conversation agents.Conversation,
-) func(context.Context, []agents.ToolMutation, agents.PostRunVerification) {
+	conversation agentchat.Conversation,
+) func(context.Context, []agenttool.Mutation, agenttool.Verification) {
 	dispatch := a.automationMutationCallback("ide_agent_post_run")
-	participant, supportsCommitReceipt := conversation.(agents.HarnessDomainCommitParticipant)
+	participant, supportsCommitReceipt := conversation.(agentrun.DomainCommitParticipant)
 	if !supportsCommitReceipt || participant == nil {
 		return dispatch
 	}
@@ -36,7 +37,7 @@ func (a *App) writingMutationCallback(
 	if !isRecovery {
 		return dispatch
 	}
-	return func(_ context.Context, mutations []agents.ToolMutation, verification agents.PostRunVerification) {
+	return func(_ context.Context, mutations []agenttool.Mutation, verification agenttool.Verification) {
 		run.recoveryMutationMu.Lock()
 		run.recoveryMutations = append(run.recoveryMutations, writingRecoveryMutationBatch{
 			participant: participant, mutations: cloneRecoveryToolMutations(mutations),
@@ -58,7 +59,7 @@ func (run *writingTaskRun) flushRecoveryMutations(ctx context.Context) {
 		if batch.participant == nil || batch.dispatch == nil {
 			continue
 		}
-		if _, committed := batch.participant.LastAgentCycleCommitReceipt(agents.HarnessDomainCommitOutput); !committed {
+		if _, committed := batch.participant.LastAgentCycleCommitReceipt(agentrun.DomainCommitOutput); !committed {
 			slog.WarnContext(ctx, fmt.Sprintf("[agent-recovery] skip writing mutation trigger without output receipt task_id=%s mutations=%d", run.task.ID(), len(batch.mutations)))
 			continue
 		}
@@ -66,8 +67,8 @@ func (run *writingTaskRun) flushRecoveryMutations(ctx context.Context) {
 	}
 }
 
-func cloneRecoveryToolMutations(values []agents.ToolMutation) []agents.ToolMutation {
-	cloned := append([]agents.ToolMutation(nil), values...)
+func cloneRecoveryToolMutations(values []agenttool.Mutation) []agenttool.Mutation {
+	cloned := append([]agenttool.Mutation(nil), values...)
 	for index := range cloned {
 		cloned[index].LoreItemIDs = append([]string(nil), cloned[index].LoreItemIDs...)
 		cloned[index].DeletedLoreItemIDs = append([]string(nil), cloned[index].DeletedLoreItemIDs...)
@@ -75,8 +76,8 @@ func cloneRecoveryToolMutations(values []agents.ToolMutation) []agents.ToolMutat
 	return cloned
 }
 
-func cloneRecoveryPostRunVerification(value agents.PostRunVerification) agents.PostRunVerification {
-	value.Checks = append([]agents.PostRunVerificationCheck(nil), value.Checks...)
+func cloneRecoveryPostRunVerification(value agenttool.Verification) agenttool.Verification {
+	value.Checks = append([]agenttool.VerificationCheck(nil), value.Checks...)
 	value.Warnings = append([]string(nil), value.Warnings...)
 	return value
 }

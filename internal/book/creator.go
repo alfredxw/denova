@@ -4,8 +4,6 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
-
-	"denova/internal/prompts"
 )
 
 // CreatorFileName 创作者指令文件名，存于 workspace 根目录。
@@ -19,7 +17,7 @@ func ensureCreatorTemplate(workspace string) error {
 	} else if !os.IsNotExist(err) {
 		return fmt.Errorf("检查 %s 失败: %w", CreatorFileName, err)
 	}
-	if err := os.WriteFile(path, []byte(prompts.CreatorTemplate), 0o644); err != nil {
+	if err := os.WriteFile(path, []byte(CreatorTemplate), 0o644); err != nil {
 		return fmt.Errorf("写入 %s 失败: %w", CreatorFileName, err)
 	}
 	return nil

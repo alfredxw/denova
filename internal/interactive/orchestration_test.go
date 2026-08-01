@@ -1,6 +1,7 @@
 package interactive
 
 import (
+	interactivestate "denova/internal/interactive/state"
 	"os"
 	"strings"
 	"testing"
@@ -453,7 +454,7 @@ func TestCreateStoryAppliesOpeningInitialStateOps(t *testing.T) {
 	story, err := store.CreateStory(CreateStoryRequest{
 		Title:           "开局词条",
 		StoryTellerID:   "classic",
-		InitialStateOps: []StateOp{{Op: "set", Path: "resources.hp", Value: float64(18)}, {Op: "push", Path: "rules.opening_traits", Value: "隐脉"}},
+		InitialStateOps: []interactivestate.Op{{Op: "set", Path: "resources.hp", Value: float64(18)}, {Op: "push", Path: "rules.opening_traits", Value: "隐脉"}},
 	})
 	if err != nil {
 		t.Fatal(err)

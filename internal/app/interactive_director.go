@@ -3,6 +3,7 @@ package app
 import (
 	"context"
 	"crypto/sha256"
+	agentinteractive "denova/internal/agents/interactive"
 	"encoding/json"
 	"fmt"
 	"log/slog"
@@ -10,10 +11,10 @@ import (
 	"sync"
 
 	"denova/config"
-	agents "denova/internal/agents"
 	"denova/internal/agents/session"
 	"denova/internal/book"
 	"denova/internal/interactive"
+	"denova/internal/interactive/director"
 )
 
 type interactiveDirectorCommandDescriptor struct {
@@ -266,7 +267,7 @@ func runInteractiveDirectorMaintenance(ctx context.Context, cfg *config.Config, 
 		markInteractiveDirectorFailed(conversation, turn, err)
 		return result, err
 	}
-	_, err = generator(ctx, cfg, state, agents.InteractiveStoryToolContext{
+	_, err = generator(ctx, cfg, state, agentinteractive.InteractiveStoryToolContext{
 		Store:                   conversation.store,
 		CommandID:               commandID,
 		StoryID:                 conversation.storyID,
@@ -390,12 +391,12 @@ func markInteractiveDirectorMaintenanceFailed(conversation *interactiveConversat
 	markInteractiveDirectorFailed(conversation, turn, err)
 }
 
-func shouldRunInteractiveDirectorAgent(strategy interactive.StoryDirectorStrategy) interactive.DirectorAgentScheduleDecision {
+func shouldRunInteractiveDirectorAgent(strategy interactive.StoryDirectorStrategy) director.ScheduleDecision {
 	strategy = interactive.NormalizeStoryDirectorStrategy(strategy)
 	if !strategy.Enabled {
-		return interactive.DirectorAgentScheduleDecision{Reason: "disabled"}
+		return director.ScheduleDecision{Reason: "disabled"}
 	}
-	return interactive.DirectorAgentScheduleDecision{ShouldRun: true, Reason: "after_persisted_turn"}
+	return director.ScheduleDecision{ShouldRun: true, Reason: "after_persisted_turn"}
 }
 
 func firstNonEmptyApp(values ...string) string {

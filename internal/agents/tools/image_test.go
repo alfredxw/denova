@@ -10,14 +10,13 @@ import (
 
 	"denova/config"
 	"denova/internal/book"
-	"denova/internal/illustration"
-	"denova/internal/imagegen"
-	"denova/internal/interactiveimage"
+	imageasset "denova/internal/image/asset"
+	imagegen "denova/internal/image/generation"
 )
 
 func TestParseChapterIllustrationToolResult(t *testing.T) {
-	payload := illustration.Result{
-		Schema:      illustration.ResultSchema,
+	payload := imageasset.IllustrationResult{
+		Schema:      imageasset.IllustrationResultSchema,
 		ChapterPath: "chapters/ch01.md",
 		ImagePath:   "assets/illustrations/ch01/run/image.png",
 		MetaPath:    "assets/illustrations/ch01/run/meta.json",
@@ -41,8 +40,8 @@ func TestParseChapterIllustrationToolResult(t *testing.T) {
 }
 
 func TestParseLegacyChapterIllustrationToolResult(t *testing.T) {
-	payload := illustration.Result{
-		Schema:    illustration.ResultSchema,
+	payload := imageasset.IllustrationResult{
+		Schema:    imageasset.IllustrationResultSchema,
 		ImagePath: "assets/illustrations/ch01/run/image.png",
 		MetaPath:  "assets/illustrations/ch01/run/meta.json",
 	}
@@ -114,16 +113,16 @@ func TestGeneratedImageReceiptUsesMetadataAsMutationTarget(t *testing.T) {
 	}{
 		{
 			name: "chapter illustration",
-			value: illustration.Result{
-				Schema: illustration.ResultSchema, ImagePath: "assets/illustrations/ch01/image.png",
+			value: imageasset.IllustrationResult{
+				Schema: imageasset.IllustrationResultSchema, ImagePath: "assets/illustrations/ch01/image.png",
 				MetaPath: "assets/illustrations/ch01/meta.json",
 			},
 			want: "assets/illustrations/ch01/meta.json",
 		},
 		{
 			name: "interactive image",
-			value: interactiveimage.Result{
-				Schema: interactiveimage.ResultSchema, ImagePath: "assets/interactive/images/turn.png",
+			value: imageasset.InteractiveResult{
+				Schema: imageasset.InteractiveResultSchema, ImagePath: "assets/interactive/images/turn.png",
 				MetaPath: "assets/interactive/images/turn.json",
 			},
 			want: "assets/interactive/images/turn.json",

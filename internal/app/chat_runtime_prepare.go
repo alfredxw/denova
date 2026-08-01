@@ -2,21 +2,23 @@ package app
 
 import (
 	"context"
+	agentchat "denova/internal/agents/chat"
+	apptask "denova/internal/app/task"
 	"fmt"
 	"log/slog"
 	"strings"
 
 	"denova/config"
-	agents "denova/internal/agents"
+	"denova/internal/agents/prompts"
+	agentrun "denova/internal/agents/run"
 	novaskills "denova/internal/agents/skills"
-	"denova/internal/book"
-	"denova/internal/imagepreset"
-	"denova/internal/interactive"
-	"denova/internal/narrativestyle"
-	"denova/internal/styleref"
+	"denova/internal/book/lore"
+	imagepreset "denova/internal/image/preset"
+	"denova/internal/interactive/teller"
+	"denova/internal/style"
 )
 
-func (s *ChatAppService) prepareIDEChatRuntime(ctx context.Context, req agents.ChatRequest) (ideChatRuntime, agents.ChatRequest, error) {
+func (s *ChatAppService) prepareIDEChatRuntime(ctx context.Context, req agentchat.ChatRequest) (ideChatRuntime, agentchat.ChatRequest, error) {
 	a := s.app
 	a.mu.Lock()
 	if a.session == nil || a.bookState == nil || a.cfg == nil {
@@ -29,7 +31,7 @@ func (s *ChatAppService) prepareIDEChatRuntime(ctx context.Context, req agents.C
 		projectID:      a.cfg.ProjectID,
 		projectType:    ProjectTypeBook,
 		projectState:   a.cfg.ProjectStateDir,
-		agentKind:      agents.AgentKindIDE,
+		agentKind:      agentrun.AgentKindIDE,
 		sess:           a.session,
 		state:          a.bookState,
 		bookService:    a.bookService,
@@ -47,8 +49,8 @@ func (s *ChatAppService) prepareIDEChatRuntime(ctx context.Context, req agents.C
 func (s *ChatAppService) prepareProjectChatRuntimeSnapshot(
 	ctx context.Context,
 	runtime ideChatRuntime,
-	req agents.ChatRequest,
-) (ideChatRuntime, agents.ChatRequest, error) {
+	req agentchat.ChatRequest,
+) (ideChatRuntime, agentchat.ChatRequest, error) {
 	if runtime.projectType == ProjectTypeGeneral {
 		return s.prepareGeneralChatRuntimeSnapshot(ctx, runtime, req)
 	}
@@ -58,8 +60,8 @@ func (s *ChatAppService) prepareProjectChatRuntimeSnapshot(
 func (s *ChatAppService) prepareGeneralChatRuntimeSnapshot(
 	ctx context.Context,
 	runtime ideChatRuntime,
-	req agents.ChatRequest,
-) (ideChatRuntime, agents.ChatRequest, error) {
+	req agentchat.ChatRequest,
+) (ideChatRuntime, agentchat.ChatRequest, error) {
 	if err := ctx.Err(); err != nil {
 		return ideChatRuntime{}, req, err
 	}
@@ -92,8 +94,8 @@ func (s *ChatAppService) prepareGeneralChatRuntimeSnapshot(
 func (s *ChatAppService) prepareIDEChatRuntimeSnapshot(
 	ctx context.Context,
 	runtime ideChatRuntime,
-	req agents.ChatRequest,
-) (ideChatRuntime, agents.ChatRequest, error) {
+	req agentchat.ChatRequest,
+) (ideChatRuntime, agentchat.ChatRequest, error) {
 	runtime.cfg.Workspace = runtime.workspace
 	runtime.ideTeller = ideStoryTellerForConfig(&runtime.cfg)
 	novaDir := runtime.cfg.DataDir()
@@ -106,7 +108,7 @@ func (s *ChatAppService) prepareIDEChatRuntimeSnapshot(
 			runtime.cfg.IDEStoryTellerID = requestTellerID
 		}
 		if runtime.cfg.IDEStoryTellerID == "" {
-			runtime.cfg.IDEStoryTellerID = narrativestyle.DefaultID
+			runtime.cfg.IDEStoryTellerID = style.DefaultID
 		}
 		teller := loadWritingTeller(novaDir, runtime.cfg.IDEStoryTellerID)
 		if teller.ID != "" {
@@ -131,11 +133,11 @@ func (s *ChatAppService) prepareIDEChatRuntimeSnapshot(
 	if err := s.resolveReviewFeedback(ctx, runtime, &req); err != nil {
 		return ideChatRuntime{}, req, err
 	}
-	residentBytes, err := book.NewLoreStore(runtime.workspace).ResidentContentBytes()
+	residentBytes, err := lore.NewStore(runtime.workspace).ResidentContentBytes()
 	if err != nil {
 		return ideChatRuntime{}, req, fmt.Errorf("读取常驻资料预算失败: %w", err)
 	}
-	if residentBytes > book.ResidentLoreSafetyMaxBytes {
+	if residentBytes > lore.ResidentLoreSafetyMaxBytes {
 		return ideChatRuntime{}, req, fmt.Errorf("常驻资料正文异常过大（%d KB）；请检查是否误将大型文件设为常驻资料", (residentBytes+1023)/1024)
 	}
 	if _, err := applySessionConversationConfig(runtime.sess, &runtime.cfg, runtime.agentKind); err != nil {
@@ -144,7 +146,7 @@ func (s *ChatAppService) prepareIDEChatRuntimeSnapshot(
 	return runtime, req, nil
 }
 
-func applyImagePresetRuntimePolicy(runtime *ideChatRuntime, req *agents.ChatRequest) {
+func applyImagePresetRuntimePolicy(runtime *ideChatRuntime, req *agentchat.ChatRequest) {
 	if runtime == nil || req == nil {
 		return
 	}
@@ -167,7 +169,7 @@ func applyImagePresetRuntimePolicy(runtime *ideChatRuntime, req *agents.ChatRequ
 	}
 	agentSystemPrompt := preset.PromptForTargets(imagepreset.TargetAgentSystem)
 	toolRequestPrompt := preset.PromptForTargets(imagepreset.TargetToolRequest)
-	req.ImagePreset = agents.ImagePresetContext{
+	req.ImagePreset = agentchat.ImagePresetContext{
 		ID:                preset.ID,
 		Name:              preset.Name,
 		AgentSystemPrompt: agentSystemPrompt,
@@ -180,14 +182,14 @@ func applyImagePresetRuntimePolicy(runtime *ideChatRuntime, req *agents.ChatRequ
 	slog.InfoContext(context.Background(), fmt.Sprintf("[agent-task] selected image preset id=%s name=%q workspace=%s agent_system_chars=%d tool_request_chars=%d", req.ImagePreset.ID, req.ImagePreset.Name, runtime.workspace, len([]rune(agentSystemPrompt)), len([]rune(toolRequestPrompt))))
 }
 
-func applyWritingSkillRuntimePolicy(ctx context.Context, runtime *ideChatRuntime, req *agents.ChatRequest) error {
+func applyWritingSkillRuntimePolicy(ctx context.Context, runtime *ideChatRuntime, req *agentchat.ChatRequest) error {
 	if runtime == nil || req == nil {
 		return nil
 	}
 	if err := ctx.Err(); err != nil {
 		return err
 	}
-	selected := agents.ResolveWritingSkillName(&runtime.cfg, req.WritingSkill)
+	selected := novaskills.ResolveWritingSkillName(&runtime.cfg, req.WritingSkill)
 	backend := novaskills.NewAgentBackend(
 		novaskills.NewDirectories(runtime.cfg.SkillsDir, runtime.cfg.DataDir(), runtime.workspace),
 		config.AgentKindIDE,
@@ -224,11 +226,11 @@ func applyWritingSkillRuntimePolicy(ctx context.Context, runtime *ideChatRuntime
 }
 
 // ActiveTask 返回当前活跃任务（可能为 nil）。
-func (a *App) ActiveTask() *Task {
+func (a *App) ActiveTask() *apptask.Task {
 	return a.chat().ActiveTask()
 }
 
-func (s *ChatAppService) ActiveTask() *Task {
+func (s *ChatAppService) ActiveTask() *apptask.Task {
 	a := s.app
 	a.mu.RLock()
 	defer a.mu.RUnlock()
@@ -238,7 +240,7 @@ func (s *ChatAppService) ActiveTask() *Task {
 	return a.activeTask
 }
 
-func appStyleRuleNames(rules []agents.StyleRule) []string {
+func appStyleRuleNames(rules []prompts.StyleRule) []string {
 	names := make([]string, 0, len(rules))
 	for _, rule := range rules {
 		scene := strings.TrimSpace(rule.Scene)
@@ -250,12 +252,12 @@ func appStyleRuleNames(rules []agents.StyleRule) []string {
 	return names
 }
 
-func convertTellerStyleRules(novaDir string, globalRefs []string, rules []interactive.StyleRule, scenes []string) []agents.StyleRule {
-	converted := make([]agents.StyleRule, 0, len(rules)+1)
+func convertTellerStyleRules(novaDir string, globalRefs []string, rules []teller.StyleRule, scenes []string) []prompts.StyleRule {
+	converted := make([]prompts.StyleRule, 0, len(rules)+1)
 	allowed := styleSceneSet(scenes)
-	styleRefs := styleref.NewLibrary(novaDir)
+	styleRefs := style.NewLibrary(novaDir)
 	if len(globalRefs) > 0 {
-		converted = append(converted, agents.StyleRule{
+		converted = append(converted, prompts.StyleRule{
 			Global:          true,
 			StyleReferences: styleReferencesForPrompt(styleRefs.Resolve(globalRefs)),
 		})
@@ -266,7 +268,7 @@ func convertTellerStyleRules(novaDir string, globalRefs []string, rules []intera
 			continue
 		}
 		if isGlobalStyleScene(scene) {
-			converted = append(converted, agents.StyleRule{
+			converted = append(converted, prompts.StyleRule{
 				Global:          true,
 				StyleReferences: styleReferencesForPrompt(styleRefs.Resolve(r.StyleRefs)),
 				StyleContents:   r.StyleContents,
@@ -276,7 +278,7 @@ func convertTellerStyleRules(novaDir string, globalRefs []string, rules []intera
 		if len(allowed) > 0 && !allowed[scene] {
 			continue
 		}
-		converted = append(converted, agents.StyleRule{
+		converted = append(converted, prompts.StyleRule{
 			Scene:           scene,
 			StyleReferences: styleReferencesForPrompt(styleRefs.Resolve(r.StyleRefs)),
 			StyleContents:   r.StyleContents,
@@ -290,10 +292,10 @@ func isGlobalStyleScene(scene string) bool {
 	return normalized == "全局" || normalized == "global"
 }
 
-func styleReferencesForPrompt(refs []styleref.Reference) []agents.StyleReference {
-	result := make([]agents.StyleReference, 0, len(refs))
+func styleReferencesForPrompt(refs []style.Reference) []prompts.StyleReference {
+	result := make([]prompts.StyleReference, 0, len(refs))
 	for _, ref := range refs {
-		result = append(result, agents.StyleReference{
+		result = append(result, prompts.StyleReference{
 			Name:        ref.Name,
 			Description: ref.Description,
 			Path:        ref.Path,

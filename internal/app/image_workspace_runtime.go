@@ -2,11 +2,11 @@ package app
 
 import (
 	"context"
+	agentharness "denova/internal/agents/harness"
 	"fmt"
 	"strings"
 
 	"denova/config"
-	agents "denova/internal/agents"
 	"denova/internal/agents/session"
 	"denova/internal/book"
 	"denova/internal/interactive"
@@ -23,7 +23,7 @@ type imageWorkspaceRuntime struct {
 	bookService  *book.Service
 	interactive  *interactive.Store
 	sessionStore *session.Store
-	chatService  *agents.ChatService
+	chatService  *agentharness.Service
 }
 
 func (r *imageWorkspaceRuntime) Context() context.Context {

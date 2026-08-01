@@ -1,6 +1,7 @@
 package interactive
 
 import (
+	interactivestate "denova/internal/interactive/state"
 	"fmt"
 	"strings"
 )
@@ -12,7 +13,7 @@ const (
 
 // storyContextSubmissionDiagnostic keeps the built-in story_context useful
 // after the model-facing contract was reduced to state_changes and choices.
-func storyContextSubmissionDiagnostic(system StoryDirectorActorStateSystem, currentState map[string]any, updates []StateUpdate) *TurnSubmissionDiagnostic {
+func storyContextSubmissionDiagnostic(system StoryDirectorActorStateSystem, currentState map[string]any, updates []interactivestate.Update) *TurnSubmissionDiagnostic {
 	template := actorStateTemplateByID(system, ActorStateStoryContextTemplateID)
 	if template.ID == "" || !hasStoryContextActor(system, currentState) || len(template.Fields) == 0 {
 		return nil
@@ -39,12 +40,12 @@ func storyContextSubmissionDiagnostic(system StoryDirectorActorStateSystem, curr
 	return nil
 }
 
-func submittedStoryContextValue(updates []StateUpdate, fieldID string) (any, bool) {
+func submittedStoryContextValue(updates []interactivestate.Update, fieldID string) (any, bool) {
 	for _, update := range updates {
-		if update.Op != TurnStateUpdateReplace {
+		if update.Op != interactivestate.Replace {
 			continue
 		}
-		segments, err := parseStateUpdatePath(update.Path)
+		segments, err := interactivestate.ParsePath(update.Path)
 		if err != nil || len(segments) != 2 {
 			continue
 		}
@@ -73,7 +74,7 @@ func meaningfulStoryContextValue(value any) bool {
 }
 
 func newStoryContextRequiredDiagnostic(field, reason string) *TurnSubmissionDiagnostic {
-	path := formatStateUpdatePath([]string{DefaultStoryContextActorID, field})
+	path := interactivestate.FormatPath([]string{DefaultStoryContextActorID, field})
 	return newTurnSubmissionDiagnostic(
 		TurnSubmissionModuleStateChanges,
 		nil,

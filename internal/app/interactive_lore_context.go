@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"strings"
 
-	"denova/internal/book"
+	"denova/internal/book/lore"
 	"denova/internal/interactive"
 )
 
@@ -26,7 +26,7 @@ type interactiveDirectorStableContext struct {
 }
 
 func buildInteractiveDirectorStableContext(workspace string) (interactiveDirectorStableContext, error) {
-	resident, err := assembleResidentLore(book.NewLoreStore(workspace))
+	resident, err := assembleResidentLore(lore.NewStore(workspace))
 	if err != nil {
 		return interactiveDirectorStableContext{}, fmt.Errorf("装配后台导演的完整常驻资料失败: %w", err)
 	}
@@ -36,7 +36,7 @@ func buildInteractiveDirectorStableContext(workspace string) (interactiveDirecto
 	return interactiveDirectorStableContext{
 		Title: fmt.Sprintf(
 			"完整常驻资料（source: enabled resident lore bodies; complete=true; body_bytes=%d; max_body_bytes=%d; lore_revision=%s）",
-			resident.BodyBytes, book.ResidentLoreSafetyMaxBytes, resident.Revision,
+			resident.BodyBytes, lore.ResidentLoreSafetyMaxBytes, resident.Revision,
 		),
 		Content:   resident.Content,
 		MaxBytes:  interactiveResidentLoreMessageMaxBytes,
@@ -46,25 +46,25 @@ func buildInteractiveDirectorStableContext(workspace string) (interactiveDirecto
 }
 
 func buildInteractiveStoryLoreContext(workspace string, plan interactive.DirectorPlan, userAction string) (string, error) {
-	items, err := book.NewLoreStore(workspace).List()
+	items, err := lore.NewStore(workspace).List()
 	if err != nil {
 		return "", fmt.Errorf("读取互动故事资料库失败: %w", err)
 	}
 	byName := loreItemsByName(items)
 
 	refs := interactive.ParseDirectorLoreContextReferences(plan.Docs.LoreContext)
-	selected := make([]book.LoreItem, 0, len(refs.Active))
+	selected := make([]lore.Item, 0, len(refs.Active))
 	seen := map[string]bool{}
 	for _, name := range refs.Active {
 		item, ok := byName[strings.ToLower(strings.TrimSpace(name))]
-		if !ok || item.LoadMode == book.LoreLoadModeResident {
+		if !ok || item.LoadMode == lore.LoadModeResident {
 			continue
 		}
 		selected = append(selected, item)
 		seen[item.ID] = true
 	}
 	for _, item := range items {
-		if seen[item.ID] || item.LoadMode == book.LoreLoadModeResident || !loreItemMentionedByName(item, userAction) {
+		if seen[item.ID] || item.LoadMode == lore.LoadModeResident || !loreItemMentionedByName(item, userAction) {
 			continue
 		}
 		selected = append(selected, item)
@@ -78,7 +78,7 @@ func buildInteractiveStoryLoreContext(workspace string, plan interactive.Directo
 }
 
 func buildInteractiveDirectorLoreContext(workspace string, plan interactive.DirectorPlan, turn interactive.TurnEvent) (string, error) {
-	store := book.NewLoreStore(workspace)
+	store := lore.NewStore(workspace)
 	startRevision, err := store.Revision()
 	if err != nil {
 		return "", fmt.Errorf("读取资料库装配前 revision 失败: %w", err)
@@ -89,9 +89,9 @@ func buildInteractiveDirectorLoreContext(workspace string, plan interactive.Dire
 	}
 	byName := loreItemsByName(items)
 	refs := interactive.ParseDirectorLoreContextReferences(plan.Docs.LoreContext)
-	active := make([]book.LoreItem, 0, len(refs.Active))
+	active := make([]lore.Item, 0, len(refs.Active))
 	for _, name := range refs.Active {
-		if item, ok := byName[strings.ToLower(strings.TrimSpace(name))]; ok && item.LoadMode != book.LoreLoadModeResident {
+		if item, ok := byName[strings.ToLower(strings.TrimSpace(name))]; ok && item.LoadMode != lore.LoadModeResident {
 			active = append(active, item)
 		}
 	}
@@ -103,12 +103,12 @@ func buildInteractiveDirectorLoreContext(workspace string, plan interactive.Dire
 	if workset != "" {
 		workset = "## 分支资料工作集（source: lore-context.md）\n\n" + workset
 	}
-	roster, err := store.LoreNameRosterMarkdown(interactiveDirectorLoreRosterMaxBytes, true)
+	roster, err := store.NameRosterMarkdown(interactiveDirectorLoreRosterMaxBytes, true)
 	if err != nil {
 		return "", fmt.Errorf("生成资料名称目录失败: %w", err)
 	}
 	if roster != "" {
-		roster = fmt.Sprintf("## 非驻留资料名称目录（source: %s, revision-bound, max 64 KiB）\n\n%s", book.LoreItemsRelativePath, roster)
+		roster = fmt.Sprintf("## 非驻留资料名称目录（source: %s, revision-bound, max 64 KiB）\n\n%s", lore.ItemsRelativePath, roster)
 	}
 	currentRevision, err := store.Revision()
 	if err != nil {
@@ -129,7 +129,7 @@ func buildInteractiveDirectorLoreContext(workspace string, plan interactive.Dire
 	return joinLoreContextSections(reviewStatus, roster, workset, activeContext, temporary), nil
 }
 
-func formatBoundedCompleteLoreSection(title string, items []book.LoreItem, maxBytes int) (string, error) {
+func formatBoundedCompleteLoreSection(title string, items []lore.Item, maxBytes int) (string, error) {
 	if len(items) == 0 {
 		return "", nil
 	}
@@ -146,7 +146,7 @@ func formatBoundedCompleteLoreSection(title string, items []book.LoreItem, maxBy
 	return strings.TrimSpace(sb.String()), nil
 }
 
-func formatInteractiveLoreItem(item book.LoreItem) string {
+func formatInteractiveLoreItem(item lore.Item) string {
 	var sb strings.Builder
 	fmt.Fprintf(&sb, "### [[%s]]（%s）\n", strings.TrimSpace(item.Name), strings.TrimSpace(item.Type))
 	if brief := strings.TrimSpace(item.BriefDescription); brief != "" {
@@ -159,16 +159,16 @@ func formatInteractiveLoreItem(item book.LoreItem) string {
 	return strings.TrimSpace(sb.String())
 }
 
-func loreItemsByName(items []book.LoreItem) map[string]book.LoreItem {
-	result := make(map[string]book.LoreItem, len(items))
+func loreItemsByName(items []lore.Item) map[string]lore.Item {
+	result := make(map[string]lore.Item, len(items))
 	for _, item := range items {
 		result[strings.ToLower(strings.TrimSpace(item.Name))] = item
 	}
 	return result
 }
 
-func loreItemsOfType(items []book.LoreItem, itemType string) []book.LoreItem {
-	result := []book.LoreItem{}
+func loreItemsOfType(items []lore.Item, itemType string) []lore.Item {
+	result := []lore.Item{}
 	for _, item := range items {
 		if item.Type == itemType {
 			result = append(result, item)
@@ -177,7 +177,7 @@ func loreItemsOfType(items []book.LoreItem, itemType string) []book.LoreItem {
 	return result
 }
 
-func loreItemMentionedByName(item book.LoreItem, text string) bool {
+func loreItemMentionedByName(item lore.Item, text string) bool {
 	name := strings.TrimSpace(item.Name)
 	return name != "" && strings.Contains(strings.ToLower(text), strings.ToLower(name))
 }
@@ -192,8 +192,8 @@ func joinLoreContextSections(sections ...string) string {
 	return strings.Join(nonEmpty, "\n\n")
 }
 
-func formatTemporaryLoreRecalls(items []book.LoreItem, messages []interactive.ModelContextMessage) string {
-	byID := make(map[string]book.LoreItem, len(items))
+func formatTemporaryLoreRecalls(items []lore.Item, messages []interactive.ModelContextMessage) string {
+	byID := make(map[string]lore.Item, len(items))
 	for _, item := range items {
 		byID[item.ID] = item
 	}

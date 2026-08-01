@@ -4,7 +4,7 @@ import (
 	"strings"
 	"sync"
 
-	"denova/internal/conversationjournal"
+	"denova/internal/agents/conversationjournal"
 )
 
 const schemaVersion = 1

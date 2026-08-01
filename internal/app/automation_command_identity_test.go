@@ -9,8 +9,11 @@ import (
 	"strings"
 	"testing"
 
+	filejournal "github.com/alfredxw/denova/agent/runtime/filejournal"
+
 	"denova/config"
 	"denova/internal/automation"
+
 	runstate "github.com/alfredxw/denova/agent/runtime"
 )
 
@@ -125,7 +128,7 @@ func TestAutomationManualCommandCanonicalizesTaskAliasBeforeAdmission(t *testing
 	if err != nil {
 		t.Fatal(err)
 	}
-	journalStore, err := runstate.NewFileJournalStore(filepath.Join(dataDir, "agent-runtime"))
+	journalStore, err := filejournal.NewStore(filepath.Join(dataDir, "agent-runtime"))
 	if err != nil {
 		t.Fatal(err)
 	}

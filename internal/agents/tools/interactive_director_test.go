@@ -6,6 +6,7 @@ import (
 	"testing"
 
 	"denova/internal/interactive"
+	"denova/internal/interactive/director"
 )
 
 func TestInteractiveDirectorPlanToolSubmitsMarkdownPatchPayload(t *testing.T) {
@@ -36,7 +37,7 @@ func TestInteractiveDirectorPlanToolSubmitsMarkdownPatchPayload(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if received.Decision.Mode != interactive.PlanDecisionPatch || !received.Finalize || len(received.Updates) != 1 || received.Updates[0].Document != interactive.DirectorDocumentAgentBrief || received.Updates[0].BaseHash != "brief-hash" {
+	if received.Decision.Mode != director.DecisionPatch || !received.Finalize || len(received.Updates) != 1 || received.Updates[0].Document != interactive.DirectorDocumentAgentBrief || received.Updates[0].BaseHash != "brief-hash" {
 		t.Fatalf("unexpected submission: %#v", received)
 	}
 	if !strings.Contains(output, `"finalized":true`) || !strings.Contains(output, `"changed_documents":["agent-brief.md"]`) {

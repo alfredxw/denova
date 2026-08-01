@@ -2,13 +2,17 @@ package agents
 
 import (
 	"context"
+	agentchat "denova/internal/agents/chat"
+	agentrun "denova/internal/agents/run"
+	agenttoolruntime "denova/internal/agents/toolruntime"
 	"strings"
 	"sync"
 	"testing"
 
 	"denova/config"
-	"denova/internal/agents/session"
+	"denova/internal/agents/prompts"
 	producttools "denova/internal/agents/tools"
+
 	agent "github.com/alfredxw/denova/agent"
 )
 
@@ -148,7 +152,7 @@ func TestBuildAgentExposesGeneralAndConfiguredSubAgentsThroughTask(t *testing.T)
 		Kind:        config.AgentKindIDE,
 		Name:        "DenovaAgent",
 		Description: "test",
-		Instruction: "test",
+		Composition: mustTestPromptComposition(t, config.AgentKindIDE, "test"),
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -159,17 +163,17 @@ func TestBuildAgentExposesGeneralAndConfiguredSubAgentsThroughTask(t *testing.T)
 	if captured[0].Name != "researcher" || captured[1].Name != producttools.GeneralSubAgentName || captured[2].Name != "DenovaAgent" {
 		t.Fatalf("unexpected native Agent construction order: %q %q %q", captured[0].Name, captured[1].Name, captured[2].Name)
 	}
-	var generalOrchestrator, rootOrchestrator *toolOrchestratorMiddleware
+	var generalOrchestrator, rootOrchestrator *agenttoolruntime.OrchestratorMiddleware
 	for _, middleware := range captured[1].Middlewares {
-		if _, ok := middleware.(*contextCompactionMiddleware); ok {
+		if agentchat.IsContextMaintenanceMiddleware(middleware) {
 			t.Fatal("general subagent must not inherit root context compaction middleware")
 		}
-		if current, ok := middleware.(*toolOrchestratorMiddleware); ok {
+		if current, ok := middleware.(*agenttoolruntime.OrchestratorMiddleware); ok {
 			generalOrchestrator = current
 		}
 	}
 	for _, middleware := range captured[2].Middlewares {
-		if current, ok := middleware.(*toolOrchestratorMiddleware); ok {
+		if current, ok := middleware.(*agenttoolruntime.OrchestratorMiddleware); ok {
 			rootOrchestrator = current
 		}
 	}
@@ -186,7 +190,7 @@ func TestBuildSubAgentInstructionInheritsParentSystemPrompt(t *testing.T) {
 	parentInstruction := "# Denova 运行时契约（不可覆盖）\n\n作品根目录：/tmp/book\n父级工具权限边界。"
 	instruction := buildSubAgentInstruction(agentBuildSpec{
 		Kind:        config.AgentKindIDE,
-		Instruction: parentInstruction,
+		Composition: mustTestPromptComposition(t, config.AgentKindIDE, parentInstruction),
 	}, config.SubAgentConfig{
 		ID:           "researcher",
 		Name:         "Researcher",
@@ -217,8 +221,8 @@ func TestBuildSubAgentInstructionInheritsParentSystemPrompt(t *testing.T) {
 func TestAutomationSubAgentInheritsReadOnlyModeAndScope(t *testing.T) {
 	parent := agentBuildSpec{
 		Kind: config.AgentKindAutomation,
-		Composition: BuildAutomationInstructionComposition(&config.Config{}, nil, AutomationTaskInstruction{
-			Name: "Review", WriteMode: RunWriteModeReadOnly, WriteScope: "none", Workspace: "/tmp/book",
+		Composition: prompts.BuildAutomationInstructionComposition(&config.Config{}, nil, prompts.AutomationTaskInstruction{
+			Name: "Review", WriteMode: agentrun.WriteModeReadOnly, WriteScope: "none", Workspace: "/tmp/book",
 		}),
 	}
 	instruction, err := composeSubAgentInstruction(&config.Config{}, parent, config.SubAgentConfig{
@@ -236,10 +240,10 @@ func TestAutomationSubAgentInheritsReadOnlyModeAndScope(t *testing.T) {
 }
 
 func TestBuildSubAgentInstructionInheritsInteractiveStoryBoundary(t *testing.T) {
-	parentInstruction := protectedSystemInstruction(&config.Config{}, config.AgentKindInteractiveStory, "互动故事父级内置规则")
+	parentComposition := mustTestPromptComposition(t, config.AgentKindInteractiveStory, "互动故事父级内置规则")
 	instruction := buildSubAgentInstruction(agentBuildSpec{
 		Kind:        config.AgentKindInteractiveStory,
-		Instruction: parentInstruction,
+		Composition: parentComposition,
 	}, config.SubAgentConfig{
 		ID:           "story-researcher",
 		Name:         "Story Researcher",
@@ -293,7 +297,7 @@ func TestBuildAgentCanDisableGeneralSubAgent(t *testing.T) {
 		Kind:        config.AgentKindIDE,
 		Name:        "DenovaAgent",
 		Description: "test",
-		Instruction: "test",
+		Composition: mustTestPromptComposition(t, config.AgentKindIDE, "test"),
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -316,9 +320,9 @@ func TestSubAgentAssemblyUsesParentToolPolicyKind(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	var orchestrator *toolOrchestratorMiddleware
+	var orchestrator *agenttoolruntime.OrchestratorMiddleware
 	for _, handler := range assembly.Middlewares {
-		if middleware, ok := handler.(*toolOrchestratorMiddleware); ok {
+		if middleware, ok := handler.(*agenttoolruntime.OrchestratorMiddleware); ok {
 			orchestrator = middleware
 			break
 		}
@@ -326,7 +330,7 @@ func TestSubAgentAssemblyUsesParentToolPolicyKind(t *testing.T) {
 	if orchestrator == nil {
 		t.Fatalf("expected tool orchestrator middleware")
 	}
-	if got := orchestrator.effectivePolicyKind(); got != config.AgentKindInteractiveStory {
+	if got := orchestrator.Configuration().PolicyKind; got != config.AgentKindInteractiveStory {
 		t.Fatalf("subagent tool policy should use parent kind, got %q", got)
 	}
 }
@@ -340,9 +344,9 @@ func TestBuildChatModelAgentAssemblyPassesToolResultLimit(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	var orchestrator *toolOrchestratorMiddleware
+	var orchestrator *agenttoolruntime.OrchestratorMiddleware
 	for _, handler := range assembly.Middlewares {
-		if middleware, ok := handler.(*toolOrchestratorMiddleware); ok {
+		if middleware, ok := handler.(*agenttoolruntime.OrchestratorMiddleware); ok {
 			orchestrator = middleware
 			break
 		}
@@ -350,117 +354,9 @@ func TestBuildChatModelAgentAssemblyPassesToolResultLimit(t *testing.T) {
 	if orchestrator == nil {
 		t.Fatalf("expected tool orchestrator middleware")
 	}
-	if got := orchestrator.toolResultLimitBytes(); got != 64*1024 {
+	if got := orchestrator.Configuration().ToolResultMaxBytes; got != 64*1024 {
 		t.Fatalf("tool result limit bytes = %d, want %d", got, 64*1024)
 	}
-}
-
-func TestSubAgentStreamingDoesNotAppendParentAssistantContent(t *testing.T) {
-	var fullContent, fullThinking strings.Builder
-	var events []Event
-	meta := agentEventMetadata{AgentName: "researcher", RootAgentName: "DenovaAgent", RunPath: []string{"DenovaAgent", "researcher"}, SubAgent: true}
-	processNonStreamingEvent(&agent.MessageVariant{Message: agent.AssistantMessage("sub draft", nil)}, &fullContent, &fullThinking, 0, meta, nil, func(ev Event) {
-		events = append(events, ev)
-	})
-	if fullContent.Len() != 0 || fullThinking.Len() != 0 {
-		t.Fatalf("subagent output must not append to parent builders content=%q thinking=%q", fullContent.String(), fullThinking.String())
-	}
-	if len(events) != 1 || events[0].Type != "chunk" || !eventDataBool(events[0].Data, "subagent") {
-		t.Fatalf("subagent chunk should still be emitted with metadata: %#v", events)
-	}
-
-	rootMeta := agentEventMetadata{AgentName: "DenovaAgent", RootAgentName: "DenovaAgent", RunPath: []string{"DenovaAgent"}}
-	processNonStreamingEvent(&agent.MessageVariant{Message: agent.AssistantMessage("root final", nil)}, &fullContent, &fullThinking, 0, rootMeta, nil, func(Event) {})
-	if got := fullContent.String(); got != "root final" {
-		t.Fatalf("root output should append to parent builder, got %q", got)
-	}
-}
-
-func TestDisplayRecorderPersistsSubAgentAssistantChunks(t *testing.T) {
-	appender := &fakeDisplayAppender{}
-	recorder := newDisplayEventRecorder(fakeDisplayConversation{appender: appender}, displayEventRecorderOptions{})
-	meta := agentEventMetadata{
-		RunID:             "run-1",
-		AgentName:         "researcher",
-		RootAgentName:     "DenovaAgent",
-		RunPath:           []string{"DenovaAgent", "researcher"},
-		SubAgent:          true,
-		SubAgentSessionID: "run-1-subagent-01-researcher",
-		SubAgentType:      "researcher",
-	}
-
-	recorder.Record(Event{Type: "chunk", Data: meta.appendTo(map[string]interface{}{"content": "第一段"})})
-	recorder.Record(Event{Type: "chunk", Data: meta.appendTo(map[string]interface{}{"content": "第二段"})})
-
-	if len(appender.events) != 1 {
-		t.Fatalf("expected one merged display event, got %#v", appender.events)
-	}
-	event := appender.events[0]
-	if event.Role != "assistant" || event.Content != "第一段第二段" {
-		t.Fatalf("unexpected persisted subagent event: %#v", event)
-	}
-	if !event.SubAgent || event.SubAgentSessionID != "run-1-subagent-01-researcher" || event.SubAgentType != "researcher" {
-		t.Fatalf("subagent metadata missing: %#v", event)
-	}
-}
-
-func TestSubAgentWriteToolResultStillTracksMutation(t *testing.T) {
-	observer := newRunObserver(nil, "")
-	record := ToolExecutionRecord{
-		ToolName: "write", ExecutionID: "call-write", Status: "success",
-		Descriptor: producttools.WorkspaceWriteDescriptor(agent.ToolSourceWrite, config.AgentToolWorkspaceWrite, agent.ToolRecoveryReconcilable),
-	}
-	applyToolMutationReceiptToExecutionRecord(&record, agent.ToolResult{Details: []byte(`{"schema":"workspace_change.tool_result.v1","status":"applied","workspace":"/workspace/book-a","change_group_id":"group-1","change_set_id":"change-1","path":"chapters/ch01.md"}`)})
-	observer.RecordToolExecution(record)
-	mutations, warnings := observer.ResolvedMutations()
-	if len(mutations) != 1 {
-		t.Fatalf("expected subagent write tool to be tracked, got %#v warnings=%#v", mutations, warnings)
-	}
-	if mutations[0].Target != "chapters/ch01.md" || mutations[0].PostCheck != ToolPostCheckWorkspaceChange {
-		t.Fatalf("unexpected mutation: %#v", mutations[0])
-	}
-}
-
-type fakeDisplayConversation struct {
-	appender *fakeDisplayAppender
-}
-
-func (c fakeDisplayConversation) AssembleModelContext(ctx context.Context, _ string, input ModelContextInput) (ModelContextResult, error) {
-	return AssembleSingleUserModelContext(ctx, input)
-}
-func (c fakeDisplayConversation) AppendAssistant(string) error               { return nil }
-func (c fakeDisplayConversation) MarkInterrupted(_, _, _ string) error       { return nil }
-func (c fakeDisplayConversation) PendingInterruption() *session.Interruption { return nil }
-func (c fakeDisplayConversation) ResolveInterruption(string) error           { return nil }
-func (c fakeDisplayConversation) AppendDisplayEvent(event session.DisplayEvent) error {
-	return c.appender.AppendDisplayEvent(event)
-}
-func (c fakeDisplayConversation) UpdateDisplayToolStatus(id, name, status string) error {
-	return c.appender.UpdateDisplayToolStatus(id, name, status)
-}
-func (c fakeDisplayConversation) AppendDisplayEventContent(id, role, delta string) error {
-	return c.appender.AppendDisplayEventContent(id, role, delta)
-}
-
-type fakeDisplayAppender struct {
-	events []session.DisplayEvent
-}
-
-func (a *fakeDisplayAppender) AppendDisplayEvent(event session.DisplayEvent) error {
-	a.events = append(a.events, event)
-	return nil
-}
-
-func (a *fakeDisplayAppender) UpdateDisplayToolStatus(_, _, _ string) error { return nil }
-
-func (a *fakeDisplayAppender) AppendDisplayEventContent(id, role, delta string) error {
-	for index := range a.events {
-		if a.events[index].ID == id && a.events[index].Role == role {
-			a.events[index].Content += delta
-			return nil
-		}
-	}
-	return nil
 }
 
 func TestRunSubAgentForwardsDrainedChildEvents(t *testing.T) {
@@ -472,7 +368,7 @@ func TestRunSubAgentForwardsDrainedChildEvents(t *testing.T) {
 		forwarded = append(forwarded, event)
 	})
 
-	task, err := newToolCatalog(nil).Task(ctx, []agent.Runnable{child})
+	task, err := agenttoolruntime.NewCatalog(nil).Task(ctx, []agent.Runnable{child})
 	if err != nil {
 		t.Fatal(err)
 	}

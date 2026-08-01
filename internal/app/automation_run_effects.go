@@ -7,11 +7,11 @@ import (
 	"log/slog"
 	"strings"
 
-	agents "denova/internal/agents"
+	agenttool "denova/internal/agents/tool"
 	"denova/internal/automation"
 )
 
-func automationCompletionMutationPaths(mutations []agents.ToolMutation) []string {
+func automationCompletionMutationPaths(mutations []agenttool.Mutation) []string {
 	seen := make(map[string]struct{}, len(mutations))
 	paths := make([]string, 0, len(mutations))
 	for _, mutation := range mutations {

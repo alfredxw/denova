@@ -2,6 +2,7 @@ package app
 
 import (
 	"context"
+	apptask "denova/internal/app/task"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -9,7 +10,7 @@ import (
 	"time"
 
 	"denova/config"
-	agents "denova/internal/agents"
+	agentmodeltask "denova/internal/agents/modeltask"
 	"denova/internal/automation"
 )
 
@@ -19,7 +20,7 @@ var errDurableTriggerActionRetry = errors.New("durable trigger action must be re
 
 type semanticTriggerEvaluationFunc func(context.Context, *config.Config, string) (string, error)
 
-type durableTriggerRunStarter func(context.Context, string, string, string, []automation.TriggerEvidence) (*Task, automation.RunRecord, error)
+type durableTriggerRunStarter func(context.Context, string, string, string, []automation.TriggerEvidence) (*apptask.Task, automation.RunRecord, error)
 
 // processDurableSemanticTrigger owns one complete evaluation/action cycle. Its
 // filesystem lease spans model evaluation and side-effect reconciliation, so a
@@ -42,7 +43,7 @@ func (s *AutomationAppService) processDurableSemanticTrigger(
 		listedTask,
 		listedTrigger,
 		stateKey,
-		func(ctx context.Context, taskID, trigger, runID string, evidence []automation.TriggerEvidence) (*Task, automation.RunRecord, error) {
+		func(ctx context.Context, taskID, trigger, runID string, evidence []automation.TriggerEvidence) (*apptask.Task, automation.RunRecord, error) {
 			return s.startTaskWithSourceRunID(ctx, snap, taskID, trigger, "", runID, evidence)
 		},
 	)
@@ -205,7 +206,7 @@ func (s *AutomationAppService) evaluateClaimedSemanticTrigger(
 	runtimeCfg := runtimeConfigForTask(snap, task)
 	evaluator := s.semanticEvaluator
 	if evaluator == nil {
-		evaluator = agents.GenerateAutomationTriggerEvaluation
+		evaluator = agentmodeltask.GenerateAutomationTriggerEvaluation
 	}
 	raw, err := evaluator(ctx, &runtimeCfg, record.Instruction)
 	if err != nil {

@@ -24,7 +24,7 @@ func TestAskRegistrationRequiresInteractiveTopLevelHost(t *testing.T) {
 		cfg := askOnlyAgentConfig(t, kind)
 		if _, err := buildAgent(context.Background(), cfg, agentBuildSpec{
 			Kind: kind, Name: "ask-registration-test", Description: "test",
-			Instruction: "test", InteractiveHost: interactive, DisableWriteTodos: true,
+			Composition: mustTestPromptComposition(t, kind, "test"), InteractiveHost: interactive, DisableWriteTodos: true,
 		}); err != nil {
 			t.Fatal(err)
 		}

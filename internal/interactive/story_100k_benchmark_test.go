@@ -13,7 +13,7 @@ import (
 	"strings"
 	"testing"
 
-	"denova/internal/conversationjournal"
+	"denova/internal/agents/conversationjournal"
 )
 
 const storyJournalBenchmarkTurns = 100_000

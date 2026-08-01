@@ -2,6 +2,10 @@ package app
 
 import (
 	"context"
+	agentchat "denova/internal/agents/chat"
+	agentharness "denova/internal/agents/harness"
+	agentrun "denova/internal/agents/run"
+	apptask "denova/internal/app/task"
 	"errors"
 	"fmt"
 	"os"
@@ -15,31 +19,31 @@ import (
 )
 
 type configManagerProjectionProbe struct {
-	stored        agents.RuntimeStatus
-	recovered     agents.RuntimeStatus
+	stored        agentrun.RuntimeStatus
+	recovered     agentrun.RuntimeStatus
 	storedCalls   int
 	recoveryCalls int
 }
 
-func (p *configManagerProjectionProbe) RuntimeStatusProjection(context.Context, agents.RunOptions) (agents.RuntimeStatus, error) {
+func (p *configManagerProjectionProbe) RuntimeStatusProjection(context.Context, agentrun.Options) (agentrun.RuntimeStatus, error) {
 	p.storedCalls++
 	return p.stored, nil
 }
 
-func (p *configManagerProjectionProbe) RuntimeRecoveryStatusProjection(context.Context, agents.RunOptions) (agents.RuntimeStatus, error) {
+func (p *configManagerProjectionProbe) RuntimeRecoveryStatusProjection(context.Context, agentrun.Options) (agentrun.RuntimeStatus, error) {
 	p.recoveryCalls++
 	return p.recovered, nil
 }
 
 func TestConfigManagerIdleActiveProjectionNeverOpensRecoveryActor(t *testing.T) {
-	probe := &configManagerProjectionProbe{stored: agents.RuntimeStatus{Phase: agents.RunPhaseIdle}}
+	probe := &configManagerProjectionProbe{stored: agentrun.RuntimeStatus{Phase: agentrun.RunPhaseIdle}}
 	for index := 0; index < 256; index++ {
-		status, ok := projectConfigManagerRuntime(context.Background(), probe, agents.RunOptions{
-			AgentKind: agents.AgentKindConfigManager,
+		status, ok := projectConfigManagerRuntime(context.Background(), probe, agentrun.Options{
+			AgentKind: agentrun.AgentKindConfigManager,
 			Workspace: "/book",
 			SessionID: fmt.Sprintf("config-scope-%d", index),
 		})
-		if !ok || status.Phase != agents.RunPhaseIdle {
+		if !ok || status.Phase != agentrun.RunPhaseIdle {
 			t.Fatalf("idle projection %d = %#v projected=%t", index, status, ok)
 		}
 	}
@@ -50,17 +54,17 @@ func TestConfigManagerIdleActiveProjectionNeverOpensRecoveryActor(t *testing.T) 
 
 func TestConfigManagerColdUnfinishedProjectionOpensCanonicalRecovery(t *testing.T) {
 	probe := &configManagerProjectionProbe{
-		stored: agents.RuntimeStatus{
-			Phase: agents.RunPhaseIdle, RecoveryPending: true,
-			LastOperation: &agents.OperationSummary{Status: agents.OperationInterrupted},
+		stored: agentrun.RuntimeStatus{
+			Phase: agentrun.RunPhaseIdle, RecoveryPending: true,
+			LastOperation: &agentrun.OperationSummary{Status: agentrun.OperationInterrupted},
 		},
-		recovered: agents.RuntimeStatus{
-			Phase: agents.RunPhaseRunning, RecoveryPaused: true,
+		recovered: agentrun.RuntimeStatus{
+			Phase: agentrun.RunPhaseRunning, RecoveryPaused: true,
 			ActiveCommandID: "accepted-start", ActiveOperation: "operation-1",
 		},
 	}
-	status, ok := projectConfigManagerRuntime(context.Background(), probe, agents.RunOptions{
-		AgentKind: agents.AgentKindConfigManager, Workspace: "/book", SessionID: "config-scope",
+	status, ok := projectConfigManagerRuntime(context.Background(), probe, agentrun.Options{
+		AgentKind: agentrun.AgentKindConfigManager, Workspace: "/book", SessionID: "config-scope",
 	})
 	if !ok || !status.RecoveryPaused || status.ActiveCommandID != "accepted-start" {
 		t.Fatalf("canonical recovery projection = %#v projected=%t", status, ok)
@@ -71,18 +75,16 @@ func TestConfigManagerColdUnfinishedProjectionOpensCanonicalRecovery(t *testing.
 }
 
 func TestConfigManagerNewNormalTaskSupersedesSettledRecoveryDisplay(t *testing.T) {
-	recoveryTask, err := NewDeferredRegisteredTask(nil)
+	recoveryTask, err := apptask.NewDeferred(nil)
 	if err != nil {
 		t.Fatal(err)
 	}
-	recoveryTask.startedAt = time.Unix(1, 0)
-	recoveryTask.failBeforeStart(errors.New("settled recovery"))
-	startTask, err := NewDeferredRegisteredTask(nil)
+	recoveryTask.RejectStart(errors.New("settled recovery"))
+	startTask, err := apptask.NewDeferred(nil)
 	if err != nil {
 		t.Fatal(err)
 	}
-	startTask.startedAt = time.Unix(2, 0)
-	startTask.failBeforeStart(errors.New("settled normal run"))
+	startTask.RejectStart(errors.New("settled normal run"))
 
 	selected, recoverySelected := selectConfigManagerDisplayRecord(
 		configManagerTaskRecord{CommandID: "new-normal", Task: startTask},
@@ -94,24 +96,24 @@ func TestConfigManagerNewNormalTaskSupersedesSettledRecoveryDisplay(t *testing.T
 }
 
 func TestConfigManagerSettledOrMismatchedDisplayIsNotStreamAttached(t *testing.T) {
-	settled, err := NewDeferredRegisteredTask(nil)
+	settled, err := apptask.NewDeferred(nil)
 	if err != nil {
 		t.Fatal(err)
 	}
-	settled.failBeforeStart(errors.New("settled display"))
-	runtime := agents.RuntimeStatus{
-		Phase: agents.RunPhaseRunning, RecoveryPaused: true,
+	settled.RejectStart(errors.New("settled display"))
+	runtime := agentrun.RuntimeStatus{
+		Phase: agentrun.RunPhaseRunning, RecoveryPaused: true,
 		ActiveCommandID: "accepted-start", ActiveOperation: "operation-1",
 	}
 	if configManagerDisplayOwnsRuntime(configManagerTaskRecord{CommandID: "accepted-start", Task: settled}, runtime) {
 		t.Fatal("settled Config Manager display was reported as stream attached")
 	}
 
-	active, err := NewDeferredRegisteredTask(nil)
+	active, err := apptask.NewDeferred(nil)
 	if err != nil {
 		t.Fatal(err)
 	}
-	t.Cleanup(func() { active.failBeforeStart(errors.New("test cleanup")) })
+	t.Cleanup(func() { active.RejectStart(errors.New("test cleanup")) })
 	if configManagerDisplayOwnsRuntime(configManagerTaskRecord{CommandID: "older-command", Task: active}, runtime) {
 		t.Fatal("display task from another Runtime command was reported as attached")
 	}
@@ -122,14 +124,14 @@ func TestConfigManagerSettledOrMismatchedDisplayIsNotStreamAttached(t *testing.T
 
 func TestConfigManagerRecoveryRegistryRejectsUnboundedActiveRuns(t *testing.T) {
 	registry := configManagerRecoveryRegistry{replayByteLimit: (maxRememberedConfigManagerRecoveries + 1) * (64 << 20)}
-	tasks := make([]*Task, 0, maxRememberedConfigManagerRecoveries+1)
+	tasks := make([]*apptask.Task, 0, maxRememberedConfigManagerRecoveries+1)
 	t.Cleanup(func() {
 		for _, task := range tasks {
-			task.failBeforeStart(errors.New("test cleanup"))
+			task.RejectStart(errors.New("test cleanup"))
 		}
 	})
 	for index := 0; index < maxRememberedConfigManagerRecoveries; index++ {
-		task, err := NewDeferredRegisteredTask(nil)
+		task, err := apptask.NewDeferred(nil)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -140,7 +142,7 @@ func TestConfigManagerRecoveryRegistryRejectsUnboundedActiveRuns(t *testing.T) {
 			t.Fatalf("install recovery %d: %v", index, err)
 		}
 	}
-	overflow, err := NewDeferredRegisteredTask(nil)
+	overflow, err := apptask.NewDeferred(nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -184,11 +186,11 @@ func TestConfigManagerColdRecoveryAttachesAndAbortsSameDisplayTask(t *testing.T)
 	if err != nil {
 		t.Fatal(err)
 	}
-	stale, err := NewDeferredRegisteredTask(nil)
+	stale, err := apptask.NewDeferred(nil)
 	if err != nil {
 		t.Fatal(err)
 	}
-	stale.failBeforeStart(errors.New("stale display from before recovery"))
+	stale.RejectStart(errors.New("stale display from before recovery"))
 	application.mu.RLock()
 	currentWorkspace := application.workspace
 	application.mu.RUnlock()
@@ -200,10 +202,10 @@ func TestConfigManagerColdRecoveryAttachesAndAbortsSameDisplayTask(t *testing.T)
 	}
 
 	view := application.ConfigManagerAgentActiveView(context.Background(), scope)
-	actions := agents.RuntimeRecoveryActions(view.Runtime)
+	actions := agentharness.RuntimeRecoveryActions(view.Runtime)
 	if !view.RuntimeProjectionOK || !view.Runtime.RecoveryPaused || view.StreamAttached || len(actions) != 2 ||
-		actions[0].Kind != agents.RuntimeRecoveryAttach || actions[0].CommandID != "config-manager-recovery-start" ||
-		actions[1].Kind != agents.RuntimeRecoveryAbort {
+		actions[0].Kind != agentharness.RuntimeRecoveryAttach || actions[0].CommandID != "config-manager-recovery-start" ||
+		actions[1].Kind != agentharness.RuntimeRecoveryAbort {
 		t.Fatalf("cold Config Manager projection view=%#v actions=%#v", view, actions)
 	}
 	if view.Task == nil || application.ConfigManagerDisplayTask(context.Background(), scope, view.Task.ID) != nil {
@@ -237,14 +239,14 @@ func TestConfigManagerColdRecoveryAttachesAndAbortsSameDisplayTask(t *testing.T)
 		t.Fatal("Config Manager recovery display did not settle after abort")
 	}
 	status := application.ConfigManagerAgentActiveView(context.Background(), scope).Runtime
-	if status.Phase != agents.RunPhaseIdle || status.LastOperation == nil || status.LastOperation.Status != agents.OperationAborted {
+	if status.Phase != agentrun.RunPhaseIdle || status.LastOperation == nil || status.LastOperation.Status != agentrun.OperationAborted {
 		t.Fatalf("aborted Config Manager recovery status = %#v", status)
 	}
 
 	clearScope := ConfigManagerRequest{Origin: "settings", ResourceID: "resource-cold-clear"}
 	clearView := application.ConfigManagerAgentActiveView(context.Background(), clearScope)
-	clearActions := agents.RuntimeRecoveryActions(clearView.Runtime)
-	if !clearView.Runtime.RecoveryPaused || clearView.StreamAttached || len(clearActions) < 1 || clearActions[0].Kind != agents.RuntimeRecoveryAttach {
+	clearActions := agentharness.RuntimeRecoveryActions(clearView.Runtime)
+	if !clearView.Runtime.RecoveryPaused || clearView.StreamAttached || len(clearActions) < 1 || clearActions[0].Kind != agentharness.RuntimeRecoveryAttach {
 		t.Fatalf("cold clear projection view=%#v actions=%#v", clearView, clearActions)
 	}
 	clearRecovery, err := application.RecoverConfigManagerAgent(context.Background(), clearScope, AgentRuntimeRecoveryRequest{Action: clearActions[0]})
@@ -260,11 +262,11 @@ func TestConfigManagerColdRecoveryAttachesAndAbortsSameDisplayTask(t *testing.T)
 		t.Fatal("Config Manager /clear did not drain the exact display task")
 	}
 	cleared := application.ConfigManagerAgentActiveView(context.Background(), clearScope)
-	if cleared.Task != nil || cleared.StreamAttached || cleared.Runtime.Phase != agents.RunPhaseIdle || cleared.Runtime.RecoveryPaused || cleared.Runtime.RecoveryPending {
+	if cleared.Task != nil || cleared.StreamAttached || cleared.Runtime.Phase != agentrun.RunPhaseIdle || cleared.Runtime.RecoveryPaused || cleared.Runtime.RecoveryPending {
 		t.Fatalf("Config Manager /clear left active state: %#v", cleared)
 	}
 	unchanged := application.ConfigManagerAgentActiveView(context.Background(), scope).Runtime
-	if unchanged.LastOperation == nil || unchanged.LastOperation.Status != agents.OperationAborted {
+	if unchanged.LastOperation == nil || unchanged.LastOperation.Status != agentrun.OperationAborted {
 		t.Fatalf("clearing another Config Manager scope changed the recovered scope: %#v", unchanged)
 	}
 }
@@ -305,7 +307,7 @@ func runConfigManagerRecoveryCrashSeed(t *testing.T) {
 			context.Background(),
 			newInteractiveReplayRunner(t, &interactiveReplayModel{message: agents.AssistantMessage("must not run", nil)}),
 			&interactiveCrashConversation{vanished: reachedContext}, application.bookService,
-			agents.ChatRequest{CommandID: seed.commandID, Message: "persist Config Manager work before crash"},
+			agentchat.ChatRequest{CommandID: seed.commandID, Message: "persist Config Manager work before crash"},
 			configManagerRunOptions(workspace, "", sessionID), nil,
 		); err != nil {
 			t.Fatal(err)

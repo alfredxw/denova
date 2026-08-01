@@ -5,13 +5,13 @@ import (
 	"strings"
 	"time"
 
-	"denova/internal/contextmaintenance"
+	agentcontext "denova/internal/agents/context"
 )
 
 const (
-	ContextCompactionHealthOutcomeFailure     = contextmaintenance.CompactionHealthFailure
-	ContextCompactionHealthOutcomeSuccess     = contextmaintenance.CompactionHealthSuccess
-	ContextCompactionHealthOutcomeManualRetry = contextmaintenance.CompactionHealthManualRetry
+	ContextCompactionHealthOutcomeFailure     = agentcontext.CompactionHealthFailure
+	ContextCompactionHealthOutcomeSuccess     = agentcontext.CompactionHealthSuccess
+	ContextCompactionHealthOutcomeManualRetry = agentcontext.CompactionHealthManualRetry
 )
 
 // ContextCompactionHealthState returns the branch's model-context revision and
@@ -125,14 +125,14 @@ func (s *Store) AppendContextCompactionHealth(
 	}
 
 	normalized.BasisRevision = projection.ContextRevision
-	var previousValue *contextmaintenance.CompactionHealth
+	var previousValue *agentcontext.CompactionHealth
 	if projection.CompactionHealth != nil {
 		value := contextCompactionHealthEventValue(*projection.CompactionHealth)
 		previousValue = &value
 	}
 	normalized = applyContextCompactionHealthEventValue(
 		normalized,
-		contextmaintenance.AdvanceCompactionHealth(previousValue, contextCompactionHealthEventValue(normalized)),
+		agentcontext.AdvanceCompactionHealth(previousValue, contextCompactionHealthEventValue(normalized)),
 	)
 	now := time.Now().UTC().Format(time.RFC3339Nano)
 	normalized.V = schemaVersion
@@ -152,7 +152,7 @@ func (s *Store) AppendContextCompactionHealth(
 }
 
 func normalizeContextCompactionHealthEvent(event ContextCompactionHealthEvent) (ContextCompactionHealthEvent, error) {
-	normalized, err := contextmaintenance.NormalizeCompactionHealth(contextCompactionHealthEventValue(event))
+	normalized, err := agentcontext.NormalizeCompactionHealth(contextCompactionHealthEventValue(event))
 	if err != nil {
 		return ContextCompactionHealthEvent{}, err
 	}
@@ -195,7 +195,7 @@ func reconcileContextCompactionHealthEvent(
 
 func sameContextCompactionHealthEventIntent(existing, requested ContextCompactionHealthEvent, branchID string) bool {
 	return existing.ID == requested.ID && existing.BranchID == strings.TrimSpace(branchID) &&
-		contextmaintenance.SameCompactionHealthIntent(
+		agentcontext.SameCompactionHealthIntent(
 			contextCompactionHealthEventValue(existing),
 			contextCompactionHealthEventValue(requested),
 		)
@@ -205,14 +205,14 @@ func contextCompactionHealthAgentMatches(left, right string) bool {
 	return strings.TrimSpace(left) == strings.TrimSpace(right)
 }
 
-func contextCompactionHealthEventValue(event ContextCompactionHealthEvent) contextmaintenance.CompactionHealth {
-	return contextmaintenance.CompactionHealth{
+func contextCompactionHealthEventValue(event ContextCompactionHealthEvent) agentcontext.CompactionHealth {
+	return agentcontext.CompactionHealth{
 		ID: event.ID, AgentKind: event.AgentKind, StructureFingerprint: event.StructureFingerprint,
 		Outcome: event.Outcome, FailureCode: event.FailureCode, ConsecutiveFailures: event.ConsecutiveFailures,
 	}
 }
 
-func applyContextCompactionHealthEventValue(event ContextCompactionHealthEvent, value contextmaintenance.CompactionHealth) ContextCompactionHealthEvent {
+func applyContextCompactionHealthEventValue(event ContextCompactionHealthEvent, value agentcontext.CompactionHealth) ContextCompactionHealthEvent {
 	event.ID = value.ID
 	event.AgentKind = value.AgentKind
 	event.StructureFingerprint = value.StructureFingerprint

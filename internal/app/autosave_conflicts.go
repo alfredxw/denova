@@ -6,14 +6,14 @@ import (
 	"log/slog"
 	"strings"
 
-	"denova/internal/autosaveconflict"
+	"denova/internal/workspace/autosave"
 )
 
 // RecordAutosaveConflict durably preserves every side of a merge conflict in
 // the process-wide Denova data directory before a caller resolves it.
-func (a *App) RecordAutosaveConflict(ctx context.Context, input autosaveconflict.Input) (autosaveconflict.AppendResult, error) {
+func (a *App) RecordAutosaveConflict(ctx context.Context, input autosave.Input) (autosave.AppendResult, error) {
 	if a == nil {
-		return autosaveconflict.AppendResult{}, fmt.Errorf("record autosave conflict: app is nil")
+		return autosave.AppendResult{}, fmt.Errorf("record autosave conflict: app is nil")
 	}
 	a.mu.RLock()
 	dataDir := ""
@@ -22,11 +22,11 @@ func (a *App) RecordAutosaveConflict(ctx context.Context, input autosaveconflict
 	}
 	a.mu.RUnlock()
 	if dataDir == "" {
-		return autosaveconflict.AppendResult{}, fmt.Errorf("record autosave conflict: Denova data directory is not configured")
+		return autosave.AppendResult{}, fmt.Errorf("record autosave conflict: Denova data directory is not configured")
 	}
-	result, err := autosaveconflict.NewStore(dataDir).Append(ctx, input)
+	result, err := autosave.NewStore(dataDir).Append(ctx, input)
 	if err != nil {
-		return autosaveconflict.AppendResult{}, fmt.Errorf("record autosave conflict: %w", err)
+		return autosave.AppendResult{}, fmt.Errorf("record autosave conflict: %w", err)
 	}
 	slog.InfoContext(ctx, fmt.Sprintf("[autosave-conflict] recorded resource=%q scope=%q id=%q record_id=%q path=%q", input.Resource, input.Scope, input.ID, result.Record.ID, result.Path))
 	return result, nil

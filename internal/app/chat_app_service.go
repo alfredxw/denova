@@ -1,10 +1,11 @@
 package app
 
 import (
+	agentharness "denova/internal/agents/harness"
 	"sync"
 
 	"denova/config"
-	agents "denova/internal/agents"
+	"denova/internal/agents/prompts"
 	"denova/internal/agents/session"
 	"denova/internal/book"
 )
@@ -19,7 +20,7 @@ type ChatAppService struct {
 	// a fresh canonical Session projection. Within one process it must outlive
 	// the display Task that discovered the durable structural recovery commit.
 	recoveryRefreshMu      sync.Mutex
-	recoveryRefreshPending map[string]agents.RuntimeRecoveryAction
+	recoveryRefreshPending map[string]agentharness.RuntimeRecoveryAction
 }
 
 type ideChatRuntime struct {
@@ -31,9 +32,9 @@ type ideChatRuntime struct {
 	sess           *session.Session
 	state          *book.State
 	bookService    *book.Service
-	chatService    *agents.ChatService
+	chatService    *agentharness.Service
 	workspace      string
 	versionService *book.VersionService
 	cfg            config.Config
-	ideTeller      agents.IDEStoryTeller
+	ideTeller      prompts.IDEStoryTeller
 }

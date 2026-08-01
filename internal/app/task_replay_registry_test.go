@@ -2,20 +2,20 @@ package app
 
 import (
 	"context"
+	agentrun "denova/internal/agents/run"
+	apptask "denova/internal/app/task"
 	"errors"
 	"strings"
 	"testing"
-
-	agents "denova/internal/agents"
 )
 
 func TestWritingStartRegistryEvictsSettledTaskBuffersByLRUBytesButKeepsIdentity(t *testing.T) {
 	first := settledTaskWithReplay(t, "same-size")
 	second := settledTaskWithReplay(t, "same-size")
 	third := settledTaskWithReplay(t, "same-size")
-	perTask := first.displayReplayBytes()
-	if perTask == 0 || second.displayReplayBytes() != perTask || third.displayReplayBytes() != perTask {
-		t.Fatalf("test replay sizes are not stable: %d %d %d", perTask, second.displayReplayBytes(), third.displayReplayBytes())
+	perTask := first.DisplayReplayBytes()
+	if perTask == 0 || second.DisplayReplayBytes() != perTask || third.DisplayReplayBytes() != perTask {
+		t.Fatalf("test replay sizes are not stable: %d %d %d", perTask, second.DisplayReplayBytes(), third.DisplayReplayBytes())
 	}
 
 	registry := writingStartRegistry{replayByteLimit: 2 * perTask}
@@ -29,8 +29,8 @@ func TestWritingStartRegistryEvictsSettledTaskBuffersByLRUBytesButKeepsIdentity(
 	if registry.records["writing-2"].task != nil {
 		t.Fatal("least-recently-used settled Writing Task retained its display buffers")
 	}
-	if second.displayReplayBytes() != 0 {
-		t.Fatalf("evicted Writing Task still owns %d replay bytes", second.displayReplayBytes())
+	if second.DisplayReplayBytes() != 0 {
+		t.Fatalf("evicted Writing Task still owns %d replay bytes", second.DisplayReplayBytes())
 	}
 	evictedReplay, evictedSubscription, err := second.SubscribeDisplayAfter(0)
 	if err != nil {
@@ -61,7 +61,7 @@ func TestWritingStartRegistryEvictsSettledTaskBuffersByLRUBytesButKeepsIdentity(
 func TestInteractiveStartRegistryEvictsSettledTaskBuffersByBytesButKeepsIdentity(t *testing.T) {
 	first := settledTaskWithReplay(t, "same-size")
 	second := settledTaskWithReplay(t, "same-size")
-	perTask := first.displayReplayBytes()
+	perTask := first.DisplayReplayBytes()
 	registry := interactiveStartRegistry{replayByteLimit: perTask}
 	firstIdentity := interactiveReplayIdentity("game-1", "fingerprint-1")
 	secondIdentity := interactiveReplayIdentity("game-2", "fingerprint-2")
@@ -75,8 +75,8 @@ func TestInteractiveStartRegistryEvictsSettledTaskBuffersByBytesButKeepsIdentity
 	if registry.records["game-1"].task != nil || registry.records["game-2"].task != second {
 		t.Fatalf("Game replay byte pruning = %#v", registry.records)
 	}
-	if first.displayReplayBytes() != 0 {
-		t.Fatalf("evicted Game Task still owns %d replay bytes", first.displayReplayBytes())
+	if first.DisplayReplayBytes() != 0 {
+		t.Fatalf("evicted Game Task still owns %d replay bytes", first.DisplayReplayBytes())
 	}
 	if replay, ok, err := registry.replay(firstIdentity); err != nil || ok || replay != nil {
 		t.Fatalf("evicted Game Task should fall through to durable replay: task:%p ok:%t err:%v", replay, ok, err)
@@ -97,42 +97,43 @@ func TestInteractiveStartRegistryEvictsSettledTaskBuffersByBytesButKeepsIdentity
 
 func TestWritingStartRegistryReservesActiveTaskReplayCapacityBeforeItGrows(t *testing.T) {
 	settled := settledTaskWithReplay(t, "same-size")
-	settledBytes := settled.displayReplayBytes()
-	active, err := NewDeferredRegisteredTask(nil)
+	settledBytes := settled.DisplayReplayBytes()
+	active, err := apptask.NewDeferred(nil)
 	if err != nil {
 		t.Fatal(err)
 	}
-	active.retainedByteLimit = (settledBytes + 1) / 2
-	if active.retainedByteLimit <= 0 {
+	activeLimit := (settledBytes + 1) / 2
+	active.ConfigureRetention(0, activeLimit)
+	if activeLimit <= 0 {
 		t.Fatal("invalid active replay capacity fixture")
 	}
-	registry := writingStartRegistry{replayByteLimit: active.displayReplayRegistryCharge()}
+	registry := writingStartRegistry{replayByteLimit: active.DisplayReplayCharge()}
 	rememberWritingTask(t, &registry, "settled", "settled-fingerprint", settled)
 	if registry.records["settled"].task != settled {
 		t.Fatal("settled replay did not fit before the active capacity reservation")
 	}
 	rememberWritingTask(t, &registry, "active", "active-fingerprint", active)
 
-	if registry.records["settled"].task != nil || settled.displayReplayBytes() != 0 {
+	if registry.records["settled"].task != nil || settled.DisplayReplayBytes() != 0 {
 		t.Fatal("settled replay was not released to reserve the active Task's future capacity")
 	}
 	if registry.records["active"].task != active {
 		t.Fatal("active Task was evicted while reserving its bounded replay capacity")
 	}
-	active.failBeforeStart(errors.New("test complete"))
+	active.RejectStart(errors.New("test complete"))
 }
 
-func settledTaskWithReplay(t *testing.T, content string) *Task {
+func settledTaskWithReplay(t *testing.T, content string) *apptask.Task {
 	t.Helper()
-	task := NewTask(func(_ context.Context, _ *Task, emit func(agents.Event)) {
-		emit(agents.Event{Type: "chunk", Data: map[string]any{"content": strings.Repeat(content, 32)}})
-		emit(agents.Event{Type: "done", Data: map[string]any{}})
+	task := apptask.New(func(_ context.Context, _ *apptask.Task, emit func(agentrun.Event)) {
+		emit(agentrun.Event{Type: "chunk", Data: map[string]any{"content": strings.Repeat(content, 32)}})
+		emit(agentrun.Event{Type: "done", Data: map[string]any{}})
 	})
 	<-task.Done()
 	return task
 }
 
-func rememberWritingTask(t *testing.T, registry *writingStartRegistry, commandID, fingerprint string, task *Task) {
+func rememberWritingTask(t *testing.T, registry *writingStartRegistry, commandID, fingerprint string, task *apptask.Task) {
 	t.Helper()
 	if err := registry.remember(writingStartRecord{
 		commandID: commandID, workspace: "/workspace", sessionID: "session-1", fingerprint: fingerprint, task: task,

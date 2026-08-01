@@ -3,6 +3,8 @@ package app
 import (
 	"context"
 	"crypto/sha256"
+	agentcontext "denova/internal/agents/context"
+	"denova/internal/book/lore"
 	"encoding/hex"
 	"fmt"
 	"log/slog"
@@ -13,7 +15,6 @@ import (
 	"denova/config"
 	agents "denova/internal/agents"
 	"denova/internal/agents/session"
-	"denova/internal/book"
 	"denova/internal/interactive"
 )
 
@@ -43,7 +44,7 @@ const (
 	// The raw resident bodies keep their 1 MiB safety ceiling. This additional
 	// bounded allowance covers deterministic Lore metadata and the standalone
 	// message wrapper while still constraining the exact model-visible fragment.
-	interactiveResidentLoreMessageMaxBytes = book.ResidentLoreSafetyMaxBytes + interactive.DirectorContextMaxBytes
+	interactiveResidentLoreMessageMaxBytes = lore.ResidentLoreSafetyMaxBytes + interactive.DirectorContextMaxBytes
 )
 
 func buildInteractiveTurnHistory(turns []interactive.TurnEvent) interactiveTurnHistory {
@@ -212,7 +213,7 @@ func formatInteractiveTurnHistoryWithCheckpoint(turnHistory interactiveTurnHisto
 	var sb strings.Builder
 	if compaction != nil && strings.TrimSpace(compaction.Summary) != "" {
 		sb.WriteString("[历史上下文检查点]\n")
-		sb.WriteString(agents.NewContextCompactionSummaryMessage(compaction.Epoch, compaction.Summary).Content)
+		sb.WriteString(agentcontext.NewCompactionSummaryMessage(compaction.Epoch, compaction.Summary).Content)
 		sb.WriteString("\n\n")
 	}
 	if len(turnHistory.Turns) > 0 {

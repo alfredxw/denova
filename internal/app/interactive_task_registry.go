@@ -3,6 +3,10 @@ package app
 import (
 	"context"
 	"crypto/sha256"
+	agentchat "denova/internal/agents/chat"
+	agentharness "denova/internal/agents/harness"
+	agentrun "denova/internal/agents/run"
+	apptask "denova/internal/app/task"
 	"encoding/hex"
 	"encoding/json"
 	"errors"
@@ -10,8 +14,6 @@ import (
 	"log/slog"
 	"strings"
 	"sync"
-
-	agents "denova/internal/agents"
 )
 
 const maxRememberedInteractiveStarts = 128
@@ -32,13 +34,13 @@ type interactiveStartIdentity struct {
 	request     InteractiveAgentStartRequest
 	workspace   string
 	fingerprint string
-	chatRequest agents.ChatRequest
+	chatRequest agentchat.ChatRequest
 }
 
 type interactiveStartRecord struct {
 	commandID   string
 	fingerprint string
-	task        *Task
+	task        *apptask.Task
 }
 
 // interactiveStartRegistry is a bounded process-local display replay index.
@@ -50,7 +52,7 @@ type interactiveStartRegistry struct {
 	replayByteLimit int
 }
 
-func (r *interactiveStartRegistry) replay(identity interactiveStartIdentity) (*Task, bool, error) {
+func (r *interactiveStartRegistry) replay(identity interactiveStartIdentity) (*apptask.Task, bool, error) {
 	commandID := strings.TrimSpace(identity.request.CommandID)
 	if commandID == "" {
 		return nil, false, ErrAgentCommandIDRequired
@@ -75,7 +77,7 @@ func (r *interactiveStartRegistry) replay(identity interactiveStartIdentity) (*T
 	return record.task, true, nil
 }
 
-func (r *interactiveStartRegistry) remember(identity interactiveStartIdentity, task *Task) error {
+func (r *interactiveStartRegistry) remember(identity interactiveStartIdentity, task *apptask.Task) error {
 	commandID := strings.TrimSpace(identity.request.CommandID)
 	if commandID == "" {
 		return ErrAgentCommandIDRequired
@@ -125,7 +127,7 @@ func (r *interactiveStartRegistry) pruneLocked() {
 			released := 0
 			if record.task != nil {
 				taskID = record.task.ID()
-				released = record.task.releaseDisplayReplay()
+				released = record.task.ReleaseDisplayReplay()
 			}
 			delete(r.records, commandID)
 			r.order = removeTaskReplayKey(r.order, index)
@@ -140,7 +142,7 @@ func (r *interactiveStartRegistry) pruneLocked() {
 
 	totalBytes := 0
 	for _, record := range r.records {
-		totalBytes += record.task.displayReplayRegistryCharge()
+		totalBytes += record.task.DisplayReplayCharge()
 	}
 	byteLimit := effectiveTaskRegistryReplayByteLimit(r.replayByteLimit)
 	for _, commandID := range r.order {
@@ -152,7 +154,7 @@ func (r *interactiveStartRegistry) pruneLocked() {
 			continue
 		}
 		taskID := record.task.ID()
-		released := record.task.releaseDisplayReplay()
+		released := record.task.ReleaseDisplayReplay()
 		totalBytes -= released
 		record.task = nil
 		r.records[commandID] = record
@@ -171,7 +173,7 @@ func (s *InteractiveAppService) resolveInteractiveStart(request InteractiveAgent
 	if request.CommandID == "" {
 		return interactiveStartIdentity{}, ErrAgentCommandIDRequired
 	}
-	if err := agents.ValidateCommandID(request.CommandID); err != nil {
+	if err := agentrun.ValidateCommandID(request.CommandID); err != nil {
 		return interactiveStartIdentity{}, err
 	}
 	if request.StoryID == "" || request.Message == "" {
@@ -193,7 +195,7 @@ func (s *InteractiveAppService) resolveInteractiveStart(request InteractiveAgent
 		return interactiveStartIdentity{}, err
 	}
 	request.BranchID = branchID
-	chatRequest := agents.CaptureChatRequestCallerInput(agents.ChatRequest{
+	chatRequest := agentchat.CaptureChatRequestCallerInput(agentchat.ChatRequest{
 		CommandID: request.CommandID, Message: request.Message,
 		StyleScenes: append([]string(nil), request.StyleScenes...), Locale: request.Locale,
 	})
@@ -206,7 +208,7 @@ func (s *InteractiveAppService) resolveInteractiveStart(request InteractiveAgent
 	}{
 		Workspace: workspace, StoryID: request.StoryID, BranchID: request.BranchID,
 		RegenerateFromTurnID: request.RegenerateFromTurnID,
-		Request:              agents.ChatRequestSemanticFingerprint(chatRequest),
+		Request:              agentharness.RequestSemanticFingerprint(chatRequest),
 	}
 	encoded, _ := json.Marshal(descriptor)
 	sum := sha256.Sum256(encoded)
@@ -233,9 +235,9 @@ func normalizeInteractiveStartStyleScenes(values []string) []string {
 	return result
 }
 
-func (identity interactiveStartIdentity) options(taskID string) agents.RunOptions {
-	return agents.RunOptions{
-		AgentKind: agents.AgentKindInteractiveStory, TaskID: strings.TrimSpace(taskID),
+func (identity interactiveStartIdentity) options(taskID string) agentrun.Options {
+	return agentrun.Options{
+		AgentKind: agentrun.AgentKindInteractiveStory, TaskID: strings.TrimSpace(taskID),
 		StoryID: identity.request.StoryID, BranchID: identity.request.BranchID,
 		TurnID:    identity.request.RegenerateFromTurnID,
 		Workspace: identity.workspace, Mode: "interactive",
@@ -254,7 +256,7 @@ func (identity interactiveStartIdentity) taskInfo(taskID string) InteractiveTask
 func (s *InteractiveAppService) replayDurableInteractiveStart(
 	ctx context.Context,
 	identity interactiveStartIdentity,
-) (*Task, bool, error) {
+) (*apptask.Task, bool, error) {
 	a := s.app
 	a.mu.RLock()
 	chatService := a.chatService
@@ -272,8 +274,8 @@ func (s *InteractiveAppService) replayDurableInteractiveStart(
 		return nil, false, nil
 	}
 
-	var accepted *agents.AcceptedRun
-	task, err := NewDeferredRegisteredTaskWithContext(ctx, func(task *Task) error {
+	var accepted *agentharness.AcceptedRun
+	task, err := apptask.NewDeferredWithContext(ctx, func(task *apptask.Task) error {
 		a.mu.Lock()
 		defer a.mu.Unlock()
 		if a.workspaceTransition {
@@ -294,14 +296,14 @@ func (s *InteractiveAppService) replayDurableInteractiveStart(
 	if err != nil {
 		return nil, true, err
 	}
-	acceptCtx, releaseAcceptance := taskAcceptanceContext(ctx, task)
+	acceptCtx, releaseAcceptance := apptask.AcceptanceContext(ctx, task)
 	accepted, err = chatService.StartWithOptions(
-		acceptCtx, nil, nil, bookService, identity.chatRequest, identity.options(task.ID()), task.emit,
+		acceptCtx, nil, nil, bookService, identity.chatRequest, identity.options(task.ID()), task.Emit,
 	)
 	releaseAcceptance()
 	if err != nil {
 		rollbackInteractiveReplayTask(a, task, err)
-		if errors.Is(err, agents.ErrInvalidCommand) {
+		if errors.Is(err, agentrun.ErrInvalidCommand) {
 			return nil, true, fmt.Errorf("%w: command_id=%q", ErrAgentCommandConflict, identity.request.CommandID)
 		}
 		return nil, true, err
@@ -309,17 +311,17 @@ func (s *InteractiveAppService) replayDurableInteractiveStart(
 	if !accepted.Receipt().Replayed {
 		err := fmt.Errorf("durable Game replay unexpectedly accepted a new command")
 		task.Abort()
-		_ = accepted.Wait(task.ctx)
+		_ = accepted.Wait(task.Context())
 		rollbackInteractiveReplayTask(a, task, err)
 		return nil, true, err
 	}
-	if err := task.Start(func(ctx context.Context, task *Task, _ func(agents.Event)) {
+	if err := task.Start(func(ctx context.Context, task *apptask.Task, _ func(agentrun.Event)) {
 		defer a.unregisterWorkspaceTask(task)
 		outcome := accepted.Wait(ctx)
 		slog.InfoContext(ctx, fmt.Sprintf("[interactive-agent-task] replay end id=%s command_id=%s status=%s", task.ID(), identity.request.CommandID, outcome.Status))
 	}); err != nil {
 		task.Abort()
-		_ = accepted.Wait(task.ctx)
+		_ = accepted.Wait(task.Context())
 		rollbackInteractiveReplayTask(a, task, err)
 		return nil, true, err
 	}
@@ -329,7 +331,7 @@ func (s *InteractiveAppService) replayDurableInteractiveStart(
 	return task, true, nil
 }
 
-func interactiveStatusOwnsCommand(status agents.RuntimeStatus, commandID string) bool {
+func interactiveStatusOwnsCommand(status agentrun.RuntimeStatus, commandID string) bool {
 	commandID = strings.TrimSpace(commandID)
 	if commandID == "" {
 		return false
@@ -348,8 +350,8 @@ func interactiveStatusOwnsCommand(status agents.RuntimeStatus, commandID string)
 	return false
 }
 
-func rollbackInteractiveReplayTask(a *App, task *Task, err error) {
-	task.failBeforeStart(err)
+func rollbackInteractiveReplayTask(a *App, task *apptask.Task, err error) {
+	task.RejectStart(err)
 	a.unregisterWorkspaceTask(task)
 	a.mu.Lock()
 	if a.activeInteractiveRun != nil && a.activeInteractiveRun.task == task {
@@ -372,13 +374,13 @@ type InteractiveTaskInfo struct {
 }
 
 type interactiveTaskRun struct {
-	task            *Task
+	task            *apptask.Task
 	info            InteractiveTaskInfo
-	recovery        *agents.RecoveryObservation
-	recoveryActions map[string]agents.CommandReceipt
+	recovery        *agentharness.RecoveryObservation
+	recoveryActions map[string]agentrun.CommandReceipt
 }
 
-func (s *InteractiveAppService) bindActiveInteractiveTask(task *Task, info InteractiveTaskInfo) bool {
+func (s *InteractiveAppService) bindActiveInteractiveTask(task *apptask.Task, info InteractiveTaskInfo) bool {
 	if s == nil || s.app == nil || task == nil {
 		return false
 	}
@@ -400,11 +402,11 @@ func (s *InteractiveAppService) bindActiveInteractiveTask(task *Task, info Inter
 
 // ActiveInteractiveTaskFor returns the reconnectable task only when the
 // current workspace, story, and branch all match the request.
-func (a *App) ActiveInteractiveTaskFor(storyID, branchID string) (*Task, InteractiveTaskInfo) {
+func (a *App) ActiveInteractiveTaskFor(storyID, branchID string) (*apptask.Task, InteractiveTaskInfo) {
 	return a.interactiveService().ActiveInteractiveTaskFor(storyID, branchID)
 }
 
-func (s *InteractiveAppService) ActiveInteractiveTaskFor(storyID, branchID string) (*Task, InteractiveTaskInfo) {
+func (s *InteractiveAppService) ActiveInteractiveTaskFor(storyID, branchID string) (*apptask.Task, InteractiveTaskInfo) {
 	if s == nil || s.app == nil {
 		return nil, InteractiveTaskInfo{}
 	}

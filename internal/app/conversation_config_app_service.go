@@ -2,14 +2,15 @@ package app
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"strings"
 
 	"denova/config"
+	"denova/internal/agents/conversationconfig"
 	"denova/internal/agents/session"
 	"denova/internal/automation"
-	"denova/internal/conversationconfig"
 	"denova/internal/interactive"
 )
 
@@ -35,6 +36,39 @@ type ConversationConfigBinding struct {
 	RunID      string `json:"run_id,omitempty"`
 }
 
+// ConversationConfigPatch is the application-facing mutation contract. The
+// transport layer depends on this type instead of reaching through app into
+// the Agent implementation package.
+type ConversationConfigPatch struct {
+	ProfileID     *string                   `json:"profile_id,omitempty"`
+	ThinkingLevel *string                   `json:"thinking_level,omitempty"`
+	ApprovalMode  *config.AgentApprovalMode `json:"approval_mode,omitempty"`
+}
+
+// UnmarshalJSON delegates the strict omitted-versus-null validation to the
+// conversation domain and then projects the validated transport value.
+func (patch *ConversationConfigPatch) UnmarshalJSON(data []byte) error {
+	if patch == nil {
+		return errors.New("conversation config patch is nil")
+	}
+	var parsed conversationconfig.Patch
+	if err := json.Unmarshal(data, &parsed); err != nil {
+		return err
+	}
+	*patch = ConversationConfigPatch{
+		ProfileID:     parsed.ProfileID,
+		ThinkingLevel: parsed.ThinkingLevel,
+		ApprovalMode:  parsed.ApprovalMode,
+	}
+	return nil
+}
+
+// IsConversationConfigRevisionConflict keeps transport error classification
+// on the application boundary rather than exposing the Agent package.
+func IsConversationConfigRevisionConflict(err error) bool {
+	return errors.Is(err, conversationconfig.ErrRevisionConflict)
+}
+
 func (a *App) ConversationConfig(ctx context.Context, binding ConversationConfigBinding) (conversationconfig.Snapshot, error) {
 	if a == nil {
 		return conversationconfig.Snapshot{}, ErrNoWorkspace
@@ -55,21 +89,26 @@ func (a *App) ConversationConfig(ctx context.Context, binding ConversationConfig
 	}
 }
 
-func (a *App) PatchConversationConfig(ctx context.Context, binding ConversationConfigBinding, patch conversationconfig.Patch, baseRevision uint64) (conversationconfig.Snapshot, error) {
+func (a *App) PatchConversationConfig(ctx context.Context, binding ConversationConfigBinding, patch ConversationConfigPatch, baseRevision uint64) (conversationconfig.Snapshot, error) {
 	if patch.ProfileID == nil && patch.ThinkingLevel == nil && patch.ApprovalMode == nil {
 		return conversationconfig.Snapshot{}, errors.New("conversation config changes are empty")
 	}
+	change := conversationconfig.Patch{
+		ProfileID:     patch.ProfileID,
+		ThinkingLevel: patch.ThinkingLevel,
+		ApprovalMode:  patch.ApprovalMode,
+	}
 	switch normalizeConversationMode(binding.Mode) {
 	case ConversationModeWriting:
-		return a.patchWritingConversationConfig(binding, patch, baseRevision)
+		return a.patchWritingConversationConfig(binding, change, baseRevision)
 	case ConversationModeAgentChat:
-		return a.patchAgentChatConversationConfig(ctx, binding, patch, baseRevision)
+		return a.patchAgentChatConversationConfig(ctx, binding, change, baseRevision)
 	case ConversationModeConfigManager:
-		return a.patchConfigManagerConversationConfig(binding, patch, baseRevision)
+		return a.patchConfigManagerConversationConfig(binding, change, baseRevision)
 	case ConversationModeInteractive:
-		return a.patchInteractiveConversationConfig(binding, patch, baseRevision)
+		return a.patchInteractiveConversationConfig(binding, change, baseRevision)
 	case ConversationModeAutomation:
-		return a.patchAutomationConversationConfig(ctx, binding, patch, baseRevision)
+		return a.patchAutomationConversationConfig(ctx, binding, change, baseRevision)
 	default:
 		return conversationconfig.Snapshot{}, fmt.Errorf("unsupported conversation mode %q", binding.Mode)
 	}

@@ -16,8 +16,8 @@ import (
 
 	"github.com/cloudwego/hertz/pkg/common/ut"
 
-	"denova/internal/book"
-	"denova/internal/bookcover"
+	"denova/internal/book/lore"
+	imageasset "denova/internal/image/asset"
 )
 
 func TestCharacterCardImportAsNewBookAboveRecommendation(t *testing.T) {
@@ -54,11 +54,11 @@ func TestCharacterCardImportAsNewBookAboveRecommendation(t *testing.T) {
 	if result.Workspace == "" || result.ItemCount == 0 {
 		t.Fatalf("new-book import result mismatch: %#v", result)
 	}
-	residentBytes, err := book.NewLoreStore(result.Workspace).ResidentContentBytes()
+	residentBytes, err := lore.NewStore(result.Workspace).ResidentContentBytes()
 	if err != nil {
 		t.Fatal(err)
 	}
-	if residentBytes <= book.ResidentLoreWarningBytes {
+	if residentBytes <= lore.ResidentLoreWarningBytes {
 		t.Fatalf("fixture should exceed warning recommendation: %d", residentBytes)
 	}
 }
@@ -79,12 +79,12 @@ func TestBookCoverUploadAPI(t *testing.T) {
 		t.Fatalf("upload status = %d body=%s", resp.Code, resp.Body.String())
 	}
 
-	var result bookcover.Result
+	var result imageasset.CoverResult
 	decodeResponse(t, resp.Body.Bytes(), &result)
-	if result.CoverPath != bookcover.CoverPath || result.CoverUpdatedAt == "" {
+	if result.CoverPath != imageasset.CoverPath || result.CoverUpdatedAt == "" {
 		t.Fatalf("上传封面响应不符合预期: %#v", result)
 	}
-	file, err := os.Open(filepath.Join(application.Workspace(), filepath.FromSlash(bookcover.CoverPath)))
+	file, err := os.Open(filepath.Join(application.Workspace(), filepath.FromSlash(imageasset.CoverPath)))
 	if err != nil {
 		t.Fatalf("读取展示封面失败: %v", err)
 	}

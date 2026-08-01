@@ -11,7 +11,7 @@ import (
 
 	toml "github.com/pelletier/go-toml/v2"
 
-	"denova/internal/workspacepath"
+	workspacelayout "denova/internal/workspace"
 )
 
 // Config 保存 Denova 的全局配置。
@@ -45,7 +45,7 @@ type Config struct {
 	NovaDir                   string                       `toml:"nova_dir"`
 	Workspace                 string                       `toml:"workspace"`
 	// ProjectID and ProjectStateDir are runtime-owned bindings. They never
-	// persist into user configuration or enter the content workspace.
+	// persist into user configuration or enter the content workspacelayout.
 	ProjectID                   string                    `toml:"-"`
 	ProjectStateDir             string                    `toml:"-"`
 	AutomationWorkspaces        []string                  `toml:"-"`
@@ -564,10 +564,10 @@ func (cfg *Config) SetDataDir(dir string) {
 }
 
 func defaultNovaDir() string {
-	if dirExists(workspacepath.LegacyDataDirName) && !dirExists(workspacepath.DataDirName) {
-		return "./" + workspacepath.LegacyDataDirName
+	if dirExists(workspacelayout.LegacyDataDirName) && !dirExists(workspacelayout.DataDirName) {
+		return "./" + workspacelayout.LegacyDataDirName
 	}
-	return "./" + workspacepath.DataDirName
+	return "./" + workspacelayout.DataDirName
 }
 
 func normalizeConfigDataDir(cfg *Config) {

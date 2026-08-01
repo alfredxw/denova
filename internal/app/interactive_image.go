@@ -9,9 +9,9 @@ import (
 	"log/slog"
 	"strings"
 
-	"denova/internal/imagepreset"
+	imageasset "denova/internal/image/asset"
+	imagepreset "denova/internal/image/preset"
 	"denova/internal/interactive"
-	"denova/internal/interactiveimage"
 )
 
 const (
@@ -22,10 +22,10 @@ const (
 )
 
 type InteractiveImageGenerateResult struct {
-	Enabled       bool                     `json:"enabled"`
-	Skipped       bool                     `json:"skipped,omitempty"`
-	SkippedReason string                   `json:"skipped_reason,omitempty"`
-	Image         *interactiveimage.Result `json:"image,omitempty"`
+	Enabled       bool                          `json:"enabled"`
+	Skipped       bool                          `json:"skipped,omitempty"`
+	SkippedReason string                        `json:"skipped_reason,omitempty"`
+	Image         *imageasset.InteractiveResult `json:"image,omitempty"`
 }
 
 func (a *App) GenerateInteractiveImage(ctx context.Context, storyID string, req interactive.InteractiveImageGenerateRequest) (InteractiveImageGenerateResult, error) {
@@ -99,7 +99,7 @@ func (s *InteractiveAppService) GenerateInteractiveImage(ctx context.Context, st
 				Status: "running", Args: interactiveImageEventArgs(req.CommandID, source, req.Force),
 			})
 		},
-		OnInteractiveImage: func(image *interactiveimage.Result) error {
+		OnInteractiveImage: func(image *imageasset.InteractiveResult) error {
 			return appendInteractiveImageSuccess(store, storyID, storyCtx.Snapshot.BranchID, turn.ID, eventID, req.CommandID, source, req.Force, image)
 		},
 	})
@@ -243,14 +243,14 @@ func interactiveImageDisplayEventByID(events []interactive.DisplayEvent, eventID
 	return nil
 }
 
-func interactiveImageCommandProjection(events []interactive.DisplayEvent, eventID string) (*interactiveimage.Result, bool, error) {
+func interactiveImageCommandProjection(events []interactive.DisplayEvent, eventID string) (*imageasset.InteractiveResult, bool, error) {
 	event := interactiveImageDisplayEventByID(events, eventID)
 	if event == nil {
 		return nil, false, nil
 	}
 	switch strings.TrimSpace(event.Status) {
 	case "success":
-		var image interactiveimage.Result
+		var image imageasset.InteractiveResult
 		if err := json.Unmarshal([]byte(event.Result), &image); err != nil {
 			return nil, true, fmt.Errorf("互动图像展示结果损坏: %w", err)
 		}
@@ -273,7 +273,7 @@ func appendInteractiveImageSuccess(
 	store *interactive.Store,
 	storyID, branchID, turnID, eventID, commandID, source string,
 	force bool,
-	image *interactiveimage.Result,
+	image *imageasset.InteractiveResult,
 ) error {
 	if image == nil {
 		return fmt.Errorf("图像 Agent 未返回互动图像")

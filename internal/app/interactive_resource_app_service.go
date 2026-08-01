@@ -1,56 +1,57 @@
 package app
 
 import (
-	"denova/internal/imagepreset"
+	imagepreset "denova/internal/image/preset"
 	"denova/internal/interactive"
+	"denova/internal/interactive/teller"
 )
 
-func (a *App) InteractiveTellers() ([]interactive.Teller, error) {
+func (a *App) InteractiveTellers() ([]teller.Definition, error) {
 	return a.interactiveService().InteractiveTellers()
 }
 
-func (s *InteractiveAppService) InteractiveTellers() ([]interactive.Teller, error) {
+func (s *InteractiveAppService) InteractiveTellers() ([]teller.Definition, error) {
 	cfg := s.cfg()
 	if cfg == nil || cfg.DataDir() == "" {
 		return nil, ErrNoWorkspace
 	}
-	return interactive.NewTellerLibrary(cfg.DataDir()).List()
+	return teller.NewLibrary(cfg.DataDir()).List()
 }
 
-func (a *App) InteractiveTeller(id string) (interactive.Teller, error) {
+func (a *App) InteractiveTeller(id string) (teller.Definition, error) {
 	return a.interactiveService().InteractiveTeller(id)
 }
 
-func (s *InteractiveAppService) InteractiveTeller(id string) (interactive.Teller, error) {
+func (s *InteractiveAppService) InteractiveTeller(id string) (teller.Definition, error) {
 	cfg := s.cfg()
 	if cfg == nil || cfg.DataDir() == "" {
-		return interactive.Teller{}, ErrNoWorkspace
+		return teller.Definition{}, ErrNoWorkspace
 	}
-	return interactive.NewTellerLibrary(cfg.DataDir()).Get(id)
+	return teller.NewLibrary(cfg.DataDir()).Get(id)
 }
 
-func (a *App) CreateInteractiveTeller(teller interactive.Teller) (interactive.Teller, error) {
-	return a.interactiveService().CreateInteractiveTeller(teller)
+func (a *App) CreateInteractiveTeller(definition teller.Definition) (teller.Definition, error) {
+	return a.interactiveService().CreateInteractiveTeller(definition)
 }
 
-func (s *InteractiveAppService) CreateInteractiveTeller(teller interactive.Teller) (interactive.Teller, error) {
+func (s *InteractiveAppService) CreateInteractiveTeller(definition teller.Definition) (teller.Definition, error) {
 	cfg := s.cfg()
 	if cfg == nil || cfg.DataDir() == "" {
-		return interactive.Teller{}, ErrNoWorkspace
+		return teller.Definition{}, ErrNoWorkspace
 	}
-	return interactive.NewTellerLibrary(cfg.DataDir()).Create(teller)
+	return teller.NewLibrary(cfg.DataDir()).Create(definition)
 }
 
-func (a *App) UpdateInteractiveTeller(id string, teller interactive.Teller, baseRevision ...string) (interactive.Teller, error) {
-	return a.interactiveService().UpdateInteractiveTeller(id, teller, firstRevision(baseRevision))
+func (a *App) UpdateInteractiveTeller(id string, definition teller.Definition, baseRevision ...string) (teller.Definition, error) {
+	return a.interactiveService().UpdateInteractiveTeller(id, definition, firstRevision(baseRevision))
 }
 
-func (s *InteractiveAppService) UpdateInteractiveTeller(id string, teller interactive.Teller, baseRevision string) (interactive.Teller, error) {
+func (s *InteractiveAppService) UpdateInteractiveTeller(id string, definition teller.Definition, baseRevision string) (teller.Definition, error) {
 	cfg := s.cfg()
 	if cfg == nil || cfg.DataDir() == "" {
-		return interactive.Teller{}, ErrNoWorkspace
+		return teller.Definition{}, ErrNoWorkspace
 	}
-	return interactive.NewTellerLibrary(cfg.DataDir()).Update(id, teller, baseRevision)
+	return teller.NewLibrary(cfg.DataDir()).Update(id, definition, baseRevision)
 }
 
 func (a *App) DeleteInteractiveTeller(id string) error {
@@ -62,7 +63,7 @@ func (s *InteractiveAppService) DeleteInteractiveTeller(id string) error {
 	if cfg == nil || cfg.DataDir() == "" {
 		return ErrNoWorkspace
 	}
-	return interactive.NewTellerLibrary(cfg.DataDir()).Delete(id)
+	return teller.NewLibrary(cfg.DataDir()).Delete(id)
 }
 
 func (a *App) StoryDirectors() ([]interactive.StoryDirector, error) {

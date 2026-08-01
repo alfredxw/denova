@@ -2,6 +2,8 @@ package app
 
 import (
 	"context"
+	agentrun "denova/internal/agents/run"
+	apptask "denova/internal/app/task"
 	"encoding/json"
 	"errors"
 	"os"
@@ -9,7 +11,6 @@ import (
 	"testing"
 
 	"denova/config"
-	agents "denova/internal/agents"
 	projectdomain "denova/internal/project"
 )
 
@@ -33,7 +34,7 @@ func TestRemoveBookRejectsArchivingProjectWithRunningAgentChat(t *testing.T) {
 		t.Fatal(err)
 	}
 	application.ensureServices()
-	task := NewTask(func(ctx context.Context, _ *Task, _ func(event agents.Event)) {
+	task := apptask.New(func(ctx context.Context, _ *apptask.Task, _ func(event agentrun.Event)) {
 		<-ctx.Done()
 	})
 	defer func() {

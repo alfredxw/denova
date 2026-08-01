@@ -13,8 +13,8 @@ import (
 
 	agent "github.com/alfredxw/denova/agent"
 
-	"denova/internal/conversationconfig"
-	"denova/internal/conversationjournal"
+	"denova/internal/agents/conversationconfig"
+	"denova/internal/agents/conversationjournal"
 )
 
 const (

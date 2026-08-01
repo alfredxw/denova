@@ -7,7 +7,7 @@ import (
 	"path/filepath"
 	"strings"
 
-	"denova/internal/workspacechange"
+	workspacechange "denova/internal/workspace/change"
 )
 
 // ErrWorkspaceChanged means a mutation was submitted for a workspace that is

@@ -2,16 +2,22 @@ package app
 
 import (
 	"context"
+	apptask "denova/internal/app/task"
 	"errors"
 	"testing"
 )
 
 func TestLoreImageBatchRejectsAbortedTaskUntilWorkerExits(t *testing.T) {
+	active, err := apptask.NewDeferred(nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer active.RejectStart(errors.New("test cleanup"))
 	application := &App{
-		activeLoreImageTask: &Task{status: TaskAborted},
+		activeLoreImageTask: active,
 	}
 
-	_, err := application.StartLoreImagesGenerateTask(context.Background(), LoreImagesGenerateRequest{ItemIDs: []string{"hero"}})
+	_, err = application.StartLoreImagesGenerateTask(context.Background(), LoreImagesGenerateRequest{ItemIDs: []string{"hero"}})
 	if !errors.Is(err, ErrLoreImageTaskRunning) {
 		t.Fatalf("StartLoreImagesGenerateTask error = %v, want %v", err, ErrLoreImageTaskRunning)
 	}
@@ -20,11 +26,11 @@ func TestLoreImageBatchRejectsAbortedTaskUntilWorkerExits(t *testing.T) {
 func TestAbortLoreImagesGenerateTaskForWorkspaceChecksIdentityWithCommand(t *testing.T) {
 	workspace := t.TempDir()
 	staleWorkspace := t.TempDir()
-	task, err := NewDeferredRegisteredTask(nil)
+	task, err := apptask.NewDeferred(nil)
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer task.failBeforeStart(errors.New("test cleanup"))
+	defer task.RejectStart(errors.New("test cleanup"))
 	application := &App{workspace: workspace, activeLoreImageTask: task}
 
 	err = application.AbortLoreImagesGenerateTaskForWorkspace(staleWorkspace)

@@ -7,7 +7,8 @@ import (
 
 	agent "github.com/alfredxw/denova/agent"
 
-	"denova/internal/conversationjournal"
+	agentcontext "denova/internal/agents/context"
+	"denova/internal/agents/conversationjournal"
 )
 
 // refreshCanonicalTailLocked materializes only physical transactions appended
@@ -110,7 +111,7 @@ func cloneSessionForTailReplay(source *Session) *Session {
 func cloneHistoryRecordForTailReplay(record historyRecord) historyRecord {
 	clone := record
 	clone.messageMetadata.RunPath = append([]string(nil), record.messageMetadata.RunPath...)
-	clone.messageMetadata.UserReferences = append([]UserMessageReference(nil), record.messageMetadata.UserReferences...)
+	clone.messageMetadata.UserReferences = append([]agentcontext.UserReference(nil), record.messageMetadata.UserReferences...)
 	if record.display != nil {
 		display := *record.display
 		display.Illustration = cloneChapterIllustration(record.display.Illustration)

@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"time"
 
-	"denova/internal/conversationconfig"
+	"denova/internal/agents/conversationconfig"
 )
 
 // RuntimeConfig returns the complete per-conversation Agent selection.

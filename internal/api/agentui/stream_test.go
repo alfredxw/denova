@@ -2,18 +2,17 @@ package agentui
 
 import (
 	"bytes"
+	agentrun "denova/internal/agents/run"
 	"encoding/json"
 	"strings"
 	"testing"
-
-	agents "denova/internal/agents"
 )
 
 func TestStreamEncoderMapsAgentEventsToUIStream(t *testing.T) {
 	var out bytes.Buffer
 	encoder := NewStreamEncoder(&out, "0198-stream-request")
 
-	events := []agents.Event{
+	events := []agentrun.Event{
 		{Type: "thinking", Data: map[string]any{
 			"content":            "分析",
 			"run_id":             "run-1",
@@ -110,7 +109,7 @@ func TestStreamEncoderMapsAgentEventsToUIStream(t *testing.T) {
 func TestStreamEncoderUsesPersistedDisplaySegmentIDs(t *testing.T) {
 	var out bytes.Buffer
 	encoder := NewStreamEncoder(&out, "")
-	for _, event := range []agents.Event{
+	for _, event := range []agentrun.Event{
 		{Type: "chunk", Data: map[string]any{"content": "第一", "run_id": "run-order", "display_segment_id": "run-order-display-001-assistant", "display_phase": "candidate"}},
 		{Type: "chunk", Data: map[string]any{"content": "段", "run_id": "run-order", "display_segment_id": "run-order-display-001-assistant"}},
 		{Type: "thinking", Data: map[string]any{"content": "检查", "run_id": "run-order", "display_segment_id": "run-order-display-002-thinking"}},
@@ -136,18 +135,18 @@ func TestStreamEncoderPreservesFailedAndIncompleteToolStates(t *testing.T) {
 	failedIDs := []string{"failed-tool-1", "failed-tool-2", "failed-tool-3"}
 	for index, status := range []string{"error", "blocked", "skipped"} {
 		id := failedIDs[index]
-		if err := encoder.WriteEvent(agents.Event{Type: "tool_call", Data: map[string]any{
+		if err := encoder.WriteEvent(agentrun.Event{Type: "tool_call", Data: map[string]any{
 			"id": id, "name": "todo", "args": `{"plan":[]}`,
 		}}); err != nil {
 			t.Fatal(err)
 		}
-		if err := encoder.WriteEvent(agents.Event{Type: "tool_result", Data: map[string]any{
+		if err := encoder.WriteEvent(agentrun.Event{Type: "tool_result", Data: map[string]any{
 			"id": id, "name": "todo", "status": status, "content": "did not apply",
 		}}); err != nil {
 			t.Fatal(err)
 		}
 	}
-	if err := encoder.WriteEvent(agents.Event{Type: "tool_call", Data: map[string]any{
+	if err := encoder.WriteEvent(agentrun.Event{Type: "tool_call", Data: map[string]any{
 		"id": "unfinished-tool", "name": "read", "args": `{"path":"draft.md"}`,
 	}}); err != nil {
 		t.Fatal(err)

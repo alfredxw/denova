@@ -17,7 +17,7 @@ import (
 
 	agent "github.com/alfredxw/denova/agent"
 
-	"denova/internal/workspacepath"
+	workspacelayout "denova/internal/workspace"
 )
 
 // Store publishes immutable artifacts beneath one already-existing boundary.
@@ -56,7 +56,7 @@ func NewWorkspaceStore(workspaceRoot, scopeID string) (*Store, error) {
 		return nil, errors.New("artifact workspace is not a directory")
 	}
 	scopeDigest := sha256.Sum256([]byte(scopeID))
-	artifactRoot := workspacepath.Path(canonical, "artifacts", "scope-"+hex.EncodeToString(scopeDigest[:16]))
+	artifactRoot := workspacelayout.Path(canonical, "artifacts", "scope-"+hex.EncodeToString(scopeDigest[:16]))
 	return NewBoundedStore(canonical, artifactRoot)
 }
 

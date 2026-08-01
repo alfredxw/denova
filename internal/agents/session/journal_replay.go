@@ -11,7 +11,7 @@ import (
 
 	agent "github.com/alfredxw/denova/agent"
 
-	"denova/internal/conversationjournal"
+	"denova/internal/agents/conversationjournal"
 )
 
 func loadSession(filePath string) (*Session, error) {

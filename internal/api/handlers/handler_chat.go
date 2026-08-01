@@ -12,7 +12,7 @@ import (
 
 	"denova/internal/api/sse"
 	novaApp "denova/internal/app"
-	"denova/internal/workspacechange"
+	workspacechange "denova/internal/workspace/change"
 )
 
 // handleChat 处理聊天请求：启动后台 Task，然后以 AI SDK UIMessage stream 订阅事件。

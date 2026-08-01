@@ -5,6 +5,8 @@ import (
 	"testing"
 
 	agent "github.com/alfredxw/denova/agent"
+
+	agentcontext "denova/internal/agents/context"
 )
 
 func TestCommitDomainMessageIsIdempotentAndPersistsCoordinatorIdentity(t *testing.T) {
@@ -90,11 +92,11 @@ func TestCommitDomainMessageRejectsSameContentWithDifferentSemanticMetadata(t *t
 		t.Fatal(err)
 	}
 	identity := DomainCommitIdentity{CommandID: "command-1", OperationID: "operation-1", Cycle: 1}
-	first, err := NewDomainCommitIntent(identity, agent.UserMessage("same content"), MessageMetadata{UserReferences: []UserMessageReference{{Kind: "file", Label: "a.md"}}})
+	first, err := NewDomainCommitIntent(identity, agent.UserMessage("same content"), MessageMetadata{UserReferences: []agentcontext.UserReference{{Kind: "file", Label: "a.md"}}})
 	if err != nil {
 		t.Fatal(err)
 	}
-	second, err := NewDomainCommitIntent(identity, agent.UserMessage("same content"), MessageMetadata{UserReferences: []UserMessageReference{{Kind: "file", Label: "b.md"}}})
+	second, err := NewDomainCommitIntent(identity, agent.UserMessage("same content"), MessageMetadata{UserReferences: []agentcontext.UserReference{{Kind: "file", Label: "b.md"}}})
 	if err != nil {
 		t.Fatal(err)
 	}

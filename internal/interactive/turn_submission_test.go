@@ -1,6 +1,7 @@
 package interactive
 
 import (
+	interactivestate "denova/internal/interactive/state"
 	"encoding/json"
 	"strings"
 	"testing"
@@ -8,7 +9,7 @@ import (
 
 func TestPrepareTurnSubmissionRetainsAcceptedModuleAcrossRetry(t *testing.T) {
 	system, state := turnSubmissionTestState()
-	updates := []StateUpdate{{Op: TurnStateUpdateReplace, Path: "/protagonist/当前处境", Value: "废弃哨站"}}
+	updates := []interactivestate.Update{{Op: interactivestate.Replace, Path: "/protagonist/当前处境", Value: "废弃哨站"}}
 	invalidChoices := []string{"检查楼梯"}
 
 	prepared, receipt := PrepareTurnSubmission(TurnSubmissionContext{
@@ -39,7 +40,7 @@ func TestPrepareTurnSubmissionRetainsAcceptedModuleAcrossRetry(t *testing.T) {
 
 func TestPrepareTurnSubmissionIgnoresResubmittedAcceptedModule(t *testing.T) {
 	system, state := turnSubmissionTestState()
-	updates := []StateUpdate{{Op: TurnStateUpdateReplace, Path: "/protagonist/当前处境", Value: "废弃哨站"}}
+	updates := []interactivestate.Update{{Op: interactivestate.Replace, Path: "/protagonist/当前处境", Value: "废弃哨站"}}
 	invalidChoices := []string{"只有一个"}
 	prepared, receipt := PrepareTurnSubmission(TurnSubmissionContext{
 		ActorState: system, CurrentState: state, ChoiceCount: 5,
@@ -64,9 +65,9 @@ func TestPrepareTurnSubmissionIgnoresResubmittedAcceptedModule(t *testing.T) {
 
 func TestPrepareTurnSubmissionRejectsStateModuleAtomically(t *testing.T) {
 	system, state := turnSubmissionTestState()
-	updates := []StateUpdate{
-		{Op: TurnStateUpdateReplace, Path: "/protagonist/当前处境", Value: "废弃哨站"},
-		{Op: TurnStateUpdateReplace, Path: "/protagonist/生命值", Value: "很多"},
+	updates := []interactivestate.Update{
+		{Op: interactivestate.Replace, Path: "/protagonist/当前处境", Value: "废弃哨站"},
+		{Op: interactivestate.Replace, Path: "/protagonist/生命值", Value: "很多"},
 	}
 	choices := testTurnChoices()
 
@@ -107,9 +108,9 @@ func TestPrepareTurnSubmissionRequiresCompleteOpeningInitialState(t *testing.T) 
 	if err != nil {
 		t.Fatal(err)
 	}
-	incomplete := []StateUpdate{
-		{Op: TurnStateUpdateReplace, Path: "/story/当前详细地点", Value: "维护舱"},
-		{Op: TurnStateUpdateReplace, Path: "/story/当前事件", Value: "站体持续泄漏"},
+	incomplete := []interactivestate.Update{
+		{Op: interactivestate.Replace, Path: "/story/当前详细地点", Value: "维护舱"},
+		{Op: interactivestate.Replace, Path: "/story/当前事件", Value: "站体持续泄漏"},
 	}
 	choices := testTurnChoices()
 	prepared, receipt := PrepareTurnSubmission(TurnSubmissionContext{
@@ -122,7 +123,7 @@ func TestPrepareTurnSubmissionRequiresCompleteOpeningInitialState(t *testing.T) 
 		t.Fatalf("opening diagnostic must identify the missing field: %#v", receipt.Diagnostics)
 	}
 
-	complete := append([]StateUpdate{{Op: TurnStateUpdateReplace, Path: "/protagonist/身份", Value: "潜水工程师"}}, incomplete...)
+	complete := append([]interactivestate.Update{{Op: interactivestate.Replace, Path: "/protagonist/身份", Value: "潜水工程师"}}, incomplete...)
 	prepared, receipt = PrepareTurnSubmission(TurnSubmissionContext{
 		ActorState: system, CurrentState: state, ChoiceCount: 5, RequireCompleteInitialState: true,
 	}, prepared, TurnSubmissionInput{StateUpdates: &complete})
@@ -204,7 +205,7 @@ func TestUnifiedTurnSubmissionDecodesActorArchiveAndRestore(t *testing.T) {
 		t.Fatalf("actor lifecycle changes should decode as one valid state module: %#v", input)
 	}
 	archive := (*input.StateUpdates)[0]
-	if archive.Op != TurnStateUpdateArchive || archive.Path != "/狼王" {
+	if archive.Op != interactivestate.Archive || archive.Path != "/狼王" {
 		t.Fatalf("unexpected archive update: %#v", archive)
 	}
 	archiveValue, ok := archive.Value.(map[string]any)
@@ -212,7 +213,7 @@ func TestUnifiedTurnSubmissionDecodesActorArchiveAndRestore(t *testing.T) {
 		t.Fatalf("archive reason should survive structured decoding: %#v", archive.Value)
 	}
 	restore := (*input.StateUpdates)[1]
-	if restore.Op != TurnStateUpdateRestore || restore.Path != "/失踪斥候" {
+	if restore.Op != interactivestate.Restore || restore.Path != "/失踪斥候" {
 		t.Fatalf("unexpected restore update: %#v", restore)
 	}
 
@@ -224,7 +225,7 @@ func TestUnifiedTurnSubmissionDecodesActorArchiveAndRestore(t *testing.T) {
 
 func TestChoicesSubmissionCarriesOptionalDirectorUpdateHint(t *testing.T) {
 	system, state := turnSubmissionTestState()
-	updates := []StateUpdate{}
+	updates := []interactivestate.Update{}
 	choicesInput := DecodeInteractiveTurnSubmissionInput(`{"choices":["左路","右路","检查地图","询问同伴","原地观察"],"director_update":{"needed":true,"reason":"玩家公开了足以推翻当前阶段前提的证据"}}`)
 	if choicesInput.Choices == nil || choicesInput.DirectorUpdate == nil || !choicesInput.DirectorUpdate.Needed {
 		t.Fatalf("material Director hint was not decoded: %#v", choicesInput)
@@ -264,7 +265,7 @@ func TestChoicesSubmissionRejectsUnexplainedDirectorUpdateHint(t *testing.T) {
 
 func TestPrepareTurnSubmissionUsesConfiguredChoiceCountAndUnicodeDistinctness(t *testing.T) {
 	system, state := turnSubmissionTestState()
-	updates := []StateUpdate{}
+	updates := []interactivestate.Update{}
 	choices := []string{"左路", "右路", "检查地图", "询问同伴", "原地观察", "返回营地", "独自探路"}
 	prepared, receipt := PrepareTurnSubmission(TurnSubmissionContext{
 		ActorState: system, CurrentState: state, ChoiceCount: 7,
@@ -284,7 +285,7 @@ func TestPrepareTurnSubmissionUsesConfiguredChoiceCountAndUnicodeDistinctness(t 
 
 func TestPrepareTurnSubmissionAcceptsEmptyChoicesOnlyForDeclaredTerminal(t *testing.T) {
 	system, state := turnSubmissionTestState()
-	updates := []StateUpdate{}
+	updates := []interactivestate.Update{}
 	choices := []string{}
 	_, receipt := PrepareTurnSubmission(TurnSubmissionContext{
 		ActorState: system, CurrentState: state, ChoiceCount: 5,

@@ -2,6 +2,10 @@ package app
 
 import (
 	"context"
+	agentchat "denova/internal/agents/chat"
+	agentharness "denova/internal/agents/harness"
+	agentrun "denova/internal/agents/run"
+	apptask "denova/internal/app/task"
 	"errors"
 	"os"
 	"os/exec"
@@ -66,24 +70,24 @@ func TestColdRecoveryKeepsOneTaskAcrossConsecutiveQueuedPauses(t *testing.T) {
 			if !projected {
 				t.Fatal("cold runtime projection unavailable")
 			}
-			actions := agents.RuntimeRecoveryActions(status)
-			if status.Phase != agents.RunPhaseRunning || !status.RecoveryPaused || len(actions) != 3 ||
-				actions[2].Kind != agents.RuntimeRecoverySteer || actions[2].CommandID != "hol-steer" {
+			actions := agentharness.RuntimeRecoveryActions(status)
+			if status.Phase != agentrun.RunPhaseRunning || !status.RecoveryPaused || len(actions) != 3 ||
+				actions[2].Kind != agentharness.RuntimeRecoverySteer || actions[2].CommandID != "hol-steer" {
 				t.Fatalf("initial HOL actions = %#v status=%#v", actions, status)
 			}
 			first, err := recoverConsecutiveAction(reopened, mode, storyID, actions[2])
 			if err != nil {
 				t.Fatal(err)
 			}
-			waitForTaskEventType(t, first.Task, agents.RuntimeRecoveryRequiredEventType)
+			waitForTaskEventType(t, first.Task, agentharness.RuntimeRecoveryRequiredEventType)
 			if first.Task.Finished() {
 				t.Fatal("first recovered item closed the display Task at the next recovery boundary")
 			}
 
 			status, projected = consecutiveRecoveryProjection(reopened, mode, storyID)
-			actions = agents.RuntimeRecoveryActions(status)
+			actions = agentharness.RuntimeRecoveryActions(status)
 			if !projected || status.InputRecovery == nil || len(actions) != 3 ||
-				actions[2].Kind != agents.RuntimeRecoveryFollowUp || actions[2].CommandID != "hol-follow-up" {
+				actions[2].Kind != agentharness.RuntimeRecoveryFollowUp || actions[2].CommandID != "hol-follow-up" {
 				t.Fatalf("second HOL actions = %#v status=%#v projected=%t", actions, status, projected)
 			}
 			allowFollowUp.Store(true)
@@ -97,12 +101,12 @@ func TestColdRecoveryKeepsOneTaskAcrossConsecutiveQueuedPauses(t *testing.T) {
 			waitInteractiveTask(t, first.Task)
 			events, subscription := first.Task.Subscribe()
 			defer first.Task.Unsubscribe(subscription)
-			if countInteractiveTaskEvents(events, agents.RuntimeRecoveryRequiredEventType) != 1 || countInteractiveTaskEvents(events, "done") != 1 {
+			if countInteractiveTaskEvents(events, agentharness.RuntimeRecoveryRequiredEventType) != 1 || countInteractiveTaskEvents(events, "done") != 1 {
 				t.Fatalf("consecutive recovery task events = %#v", events)
 			}
 			status, projected = consecutiveRecoveryProjection(reopened, mode, storyID)
-			if !projected || status.Phase != agents.RunPhaseIdle || status.LastOperation == nil ||
-				status.LastOperation.Status != agents.OperationSucceeded || len(agents.RuntimeRecoveryActions(status)) != 0 {
+			if !projected || status.Phase != agentrun.RunPhaseIdle || status.LastOperation == nil ||
+				status.LastOperation.Status != agentrun.OperationSucceeded || len(agentharness.RuntimeRecoveryActions(status)) != 0 {
 				t.Fatalf("consecutive recovery terminal status = %#v projected=%t", status, projected)
 			}
 		})
@@ -146,15 +150,15 @@ func TestRecoveryTaskAbortRetriesFailOnceInputMaterialization(t *testing.T) {
 	}
 	installConsecutiveRecoveryTestChat(t, reopened, root, &allowFollowUp, materializer)
 	status, projected := reopened.WritingAgentRuntimeProjection(context.Background())
-	actions := agents.RuntimeRecoveryActions(status)
-	if !projected || len(actions) != 3 || actions[2].Kind != agents.RuntimeRecoverySteer || actions[2].CommandID != "hol-steer" {
+	actions := agentharness.RuntimeRecoveryActions(status)
+	if !projected || len(actions) != 3 || actions[2].Kind != agentharness.RuntimeRecoverySteer || actions[2].CommandID != "hol-steer" {
 		t.Fatalf("initial abort recovery actions = %#v status=%#v projected=%t", actions, status, projected)
 	}
 	first, err := reopened.RecoverWritingAgent(context.Background(), AgentRuntimeRecoveryRequest{Action: actions[2]})
 	if err != nil {
 		t.Fatal(err)
 	}
-	waitForTaskEventType(t, first.Task, agents.RuntimeRecoveryRequiredEventType)
+	waitForTaskEventType(t, first.Task, agentharness.RuntimeRecoveryRequiredEventType)
 	status, projected = reopened.WritingAgentRuntimeProjection(context.Background())
 	if !projected || status.InputRecovery == nil || status.InputRecovery.CommandID != "hol-follow-up" {
 		t.Fatalf("abort input-recovery boundary = %#v projected=%t", status, projected)
@@ -166,15 +170,15 @@ func TestRecoveryTaskAbortRetriesFailOnceInputMaterialization(t *testing.T) {
 	case <-time.After(time.Second):
 		t.Fatal("Task.Abort did not durably settle fail-once input recovery")
 	}
-	if first.Task.Status() != TaskAborted {
+	if first.Task.Status() != apptask.Aborted {
 		t.Fatalf("aborted recovery Task status = %s", first.Task.Status())
 	}
 	if got := materializer.targetCalls.Load(); got != 2 {
 		t.Fatalf("Task.Abort input materialization attempts = %d, want fail plus exact replay", got)
 	}
 	status, projected = reopened.WritingAgentRuntimeProjection(context.Background())
-	if !projected || status.Phase != agents.RunPhaseIdle || status.InputRecovery != nil ||
-		status.LastOperation == nil || status.LastOperation.Status != agents.OperationAborted {
+	if !projected || status.Phase != agentrun.RunPhaseIdle || status.InputRecovery != nil ||
+		status.LastOperation == nil || status.LastOperation.Status != agentrun.OperationAborted {
 		t.Fatalf("Task.Abort terminal runtime = %#v projected=%t", status, projected)
 	}
 }
@@ -193,10 +197,10 @@ func runConsecutiveRecoveryCrashSeed(t *testing.T, mode string) {
 	workspace := application.workspace
 	sessionID := application.session.ID
 	application.mu.RUnlock()
-	options := agents.RunOptions{AgentKind: agents.AgentKindIDE, Workspace: workspace, SessionID: sessionID, Mode: "ide"}
+	options := agentrun.Options{AgentKind: agentrun.AgentKindIDE, Workspace: workspace, SessionID: sessionID, Mode: "ide"}
 	if mode == "game" {
-		options = agents.RunOptions{
-			AgentKind: agents.AgentKindInteractiveStory, Workspace: workspace,
+		options = agentrun.Options{
+			AgentKind: agentrun.AgentKindInteractiveStory, Workspace: workspace,
 			StoryID: os.Getenv("DENOVA_HOL_RECOVERY_STORY"), BranchID: "main", Mode: "interactive",
 		}
 	}
@@ -204,7 +208,7 @@ func runConsecutiveRecoveryCrashSeed(t *testing.T, mode string) {
 	accepted, err := application.chatService.StartWithOptions(
 		context.Background(), newInteractiveReplayRunner(t, &interactiveReplayModel{message: agents.AssistantMessage("must not run", nil)}),
 		&interactiveCrashConversation{vanished: vanished}, application.bookService,
-		agents.ChatRequest{CommandID: "hol-start", Message: "parent before crash"}, options, nil,
+		agentchat.ChatRequest{CommandID: "hol-start", Message: "parent before crash"}, options, nil,
 	)
 	if err != nil {
 		t.Fatal(err)
@@ -215,17 +219,17 @@ func runConsecutiveRecoveryCrashSeed(t *testing.T, mode string) {
 		t.Fatal("HOL crash seed did not reach model context")
 	}
 	operationID := accepted.Receipt().OperationID
-	prepareMustNotRun := func(context.Context) (agents.HarnessTurnExecution, error) {
-		return agents.HarnessTurnExecution{}, errors.New("seed deferred preparation must not run")
+	prepareMustNotRun := func(context.Context) (agentharness.TurnExecution, error) {
+		return agentharness.TurnExecution{}, errors.New("seed deferred preparation must not run")
 	}
-	for _, command := range []agents.AgentCommandSpec{
+	for _, command := range []agentharness.CommandSpec{
 		{
-			Kind: agents.AgentCommandSteer, CommandID: "hol-steer", OperationID: operationID,
-			Request: agents.ChatRequest{Message: "recover first"}, Options: options, Prepare: prepareMustNotRun,
+			Kind: agentharness.CommandSteer, CommandID: "hol-steer", OperationID: operationID,
+			Request: agentchat.ChatRequest{Message: "recover first"}, Options: options, Prepare: prepareMustNotRun,
 		},
 		{
-			Kind: agents.AgentCommandFollowUp, CommandID: "hol-follow-up", OperationID: operationID,
-			Request: agents.ChatRequest{Message: "recover second"}, Options: options, Prepare: prepareMustNotRun,
+			Kind: agentharness.CommandFollowUp, CommandID: "hol-follow-up", OperationID: operationID,
+			Request: agentchat.ChatRequest{Message: "recover second"}, Options: options, Prepare: prepareMustNotRun,
 		},
 	} {
 		if _, err := application.chatService.SubmitCommand(context.Background(), command); err != nil {
@@ -240,7 +244,7 @@ func installConsecutiveRecoveryTestChat(
 	application *App,
 	root string,
 	allowFollowUp *atomic.Bool,
-	materializers ...agents.HarnessInputMaterializer,
+	materializers ...agentharness.InputMaterializer,
 ) {
 	t.Helper()
 	application.mu.RLock()
@@ -252,22 +256,22 @@ func installConsecutiveRecoveryTestChat(
 		}
 	}
 	runner := newInteractiveReplayRunner(t, &interactiveReplayModel{message: agents.AssistantMessage("recovered cycle", nil)})
-	restored := func(_ context.Context, request agents.HarnessTurnRestoreRequest) (agents.HarnessTurnSpec, error) {
+	restored := func(_ context.Context, request agentharness.TurnRestoreRequest) (agentharness.TurnSpec, error) {
 		if request.CommandID == "hol-follow-up" && !allowFollowUp.Load() {
-			return agents.HarnessTurnSpec{}, errors.New("follow-up dependency temporarily unavailable")
+			return agentharness.TurnSpec{}, errors.New("follow-up dependency temporarily unavailable")
 		}
-		return agents.HarnessTurnSpec{Runner: runner, Conversation: &interactiveReplayConversation{}}, nil
+		return agentharness.TurnSpec{Runner: runner, Conversation: &interactiveReplayConversation{}}, nil
 	}
-	var materializer agents.HarnessInputMaterializer = application
+	var materializer agentharness.InputMaterializer = application
 	if len(materializers) > 0 && materializers[0] != nil {
 		materializer = materializers[0]
 	}
-	service, err := agents.NewDurableChatService(
+	service, err := agentharness.NewDurableService(
 		context.Background(), root,
-		agents.WithHarnessDomainCommitReconciler(application.reconcileHarnessDomainCommit),
-		agents.WithHarnessInputMaterializer(materializer),
-		agents.WithHarnessTurnRestorer(restored),
-		agents.WithHarnessStructuralRestorer(application.restoreContextStructuralOperation),
+		agentharness.WithDomainCommitReconciler(application.reconcileHarnessDomainCommit),
+		agentharness.WithInputMaterializer(materializer),
+		agentharness.WithTurnRestorer(restored),
+		agentharness.WithStructuralRestorer(application.restoreContextStructuralOperation),
 	)
 	if err != nil {
 		t.Fatal(err)
@@ -278,38 +282,38 @@ func installConsecutiveRecoveryTestChat(
 }
 
 type failOnceHarnessInputMaterializer struct {
-	delegate agents.HarnessInputMaterializer
-	target   agents.CommandID
+	delegate agentharness.InputMaterializer
+	target   agentrun.CommandID
 
 	targetCalls atomic.Int32
 }
 
 func (m *failOnceHarnessInputMaterializer) PlanHarnessInputMaterialization(
 	ctx context.Context,
-	request agents.HarnessInputMaterializationRequest,
-) (agents.InputMaterializationPlan, error) {
+	request agentharness.InputMaterializationRequest,
+) (agentrun.InputMaterializationPlan, error) {
 	return m.delegate.PlanHarnessInputMaterialization(ctx, request)
 }
 
 func (m *failOnceHarnessInputMaterializer) MaterializeHarnessInput(
 	ctx context.Context,
-	request agents.HarnessInputMaterializationRequest,
-	plan agents.InputMaterializationPlan,
-) (agents.InputMaterializationReceipt, error) {
+	request agentharness.InputMaterializationRequest,
+	plan agentrun.InputMaterializationPlan,
+) (agentrun.InputMaterializationReceipt, error) {
 	if request.Identity.CommandID == m.target && m.targetCalls.Add(1) == 1 {
-		return agents.InputMaterializationReceipt{}, errors.New("accepted input store failed once during Task.Abort")
+		return agentrun.InputMaterializationReceipt{}, errors.New("accepted input store failed once during Task.Abort")
 	}
 	return m.delegate.MaterializeHarnessInput(ctx, request, plan)
 }
 
-func consecutiveRecoveryProjection(application *App, mode, storyID string) (agents.RuntimeStatus, bool) {
+func consecutiveRecoveryProjection(application *App, mode, storyID string) (agentrun.RuntimeStatus, bool) {
 	if mode == "game" {
 		return application.InteractiveAgentRuntimeProjection(context.Background(), storyID, "main")
 	}
 	return application.WritingAgentRuntimeProjection(context.Background())
 }
 
-func recoverConsecutiveAction(application *App, mode, storyID string, action agents.RuntimeRecoveryAction) (AgentRuntimeRecoveryResult, error) {
+func recoverConsecutiveAction(application *App, mode, storyID string, action agentharness.RuntimeRecoveryAction) (AgentRuntimeRecoveryResult, error) {
 	request := AgentRuntimeRecoveryRequest{Action: action}
 	if mode == "game" {
 		request.StoryID = storyID
@@ -319,7 +323,7 @@ func recoverConsecutiveAction(application *App, mode, storyID string, action age
 	return application.RecoverWritingAgent(context.Background(), request)
 }
 
-func waitForTaskEventType(t *testing.T, task *Task, eventType string) {
+func waitForTaskEventType(t *testing.T, task *apptask.Task, eventType string) {
 	t.Helper()
 	events, subscription := task.Subscribe()
 	for _, event := range events {

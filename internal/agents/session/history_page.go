@@ -6,7 +6,7 @@ import (
 
 	agent "github.com/alfredxw/denova/agent"
 
-	"denova/internal/conversationjournal"
+	"denova/internal/agents/conversationjournal"
 )
 
 // HistoryPage is a bounded chronological slice of the UI transcript. Before

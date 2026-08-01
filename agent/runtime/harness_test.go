@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	filejournal "github.com/alfredxw/denova/agent/runtime/filejournal"
 	"reflect"
 	"sync"
 	"testing"
@@ -579,7 +580,7 @@ func TestFileJournalReplaysAcrossStoreInstances(t *testing.T) {
 	t.Parallel()
 
 	root := t.TempDir()
-	store, err := runstate.NewFileJournalStore(root)
+	store, err := filejournal.NewStore(root)
 	if err != nil {
 		t.Fatalf("new file journal: %v", err)
 	}
@@ -604,7 +605,7 @@ func TestFileJournalReplaysAcrossStoreInstances(t *testing.T) {
 		t.Fatalf("close first runtime: %v", err)
 	}
 
-	reopenedStore, err := runstate.NewFileJournalStore(root)
+	reopenedStore, err := filejournal.NewStore(root)
 	if err != nil {
 		t.Fatalf("reopen file journal: %v", err)
 	}

@@ -6,7 +6,7 @@ import (
 	"strings"
 	"time"
 
-	"denova/internal/contextmaintenance"
+	agentcontext "denova/internal/agents/context"
 )
 
 // ToolResultCleanupByID reads one stable cleanup event from the canonical
@@ -135,7 +135,7 @@ func toolResultCleanupEventByID(lines []StoryEventRecord, id string) (ToolResult
 }
 
 func normalizeToolResultCleanupEvent(event ToolResultCleanupEvent) (ToolResultCleanupEvent, error) {
-	normalized, err := contextmaintenance.NormalizeToolResultCleanup(
+	normalized, err := agentcontext.NormalizeToolResultCleanup(
 		toolResultCleanupEventValue(event),
 		func() string { return newID("trc") },
 	)
@@ -148,22 +148,22 @@ func normalizeToolResultCleanupEvent(event ToolResultCleanupEvent) (ToolResultCl
 
 func sameToolResultCleanupEventIntent(existing, requested ToolResultCleanupEvent, branchID string) bool {
 	return existing.BranchID == strings.TrimSpace(branchID) &&
-		contextmaintenance.SameToolResultCleanupIntent(toolResultCleanupEventValue(existing), toolResultCleanupEventValue(requested))
+		agentcontext.SameToolResultCleanupIntent(toolResultCleanupEventValue(existing), toolResultCleanupEventValue(requested))
 }
 
 func cloneToolResultCleanupEvent(event ToolResultCleanupEvent) ToolResultCleanupEvent {
-	return applyToolResultCleanupEventValue(event, contextmaintenance.CloneToolResultCleanup(toolResultCleanupEventValue(event)))
+	return applyToolResultCleanupEventValue(event, agentcontext.CloneToolResultCleanup(toolResultCleanupEventValue(event)))
 }
 
-func toolResultCleanupEventValue(event ToolResultCleanupEvent) contextmaintenance.ToolResultCleanup {
-	return contextmaintenance.ToolResultCleanup{
+func toolResultCleanupEventValue(event ToolResultCleanupEvent) agentcontext.ToolResultCleanup {
+	return agentcontext.ToolResultCleanup{
 		ID: event.ID, AgentKind: event.AgentKind, SourceStart: event.SourceStart, SourceEnd: event.SourceEnd,
 		Replacements: event.Replacements, ReclaimedTokens: event.ReclaimedTokens, TriggeredAtUsage: event.TriggeredAtUsage,
 		EarliestChanged: event.EarliestChanged, WarmSuffixTokens: event.WarmSuffixTokens, RendererVersion: event.RendererVersion,
 	}
 }
 
-func applyToolResultCleanupEventValue(event ToolResultCleanupEvent, value contextmaintenance.ToolResultCleanup) ToolResultCleanupEvent {
+func applyToolResultCleanupEventValue(event ToolResultCleanupEvent, value agentcontext.ToolResultCleanup) ToolResultCleanupEvent {
 	event.ID = value.ID
 	event.AgentKind = value.AgentKind
 	event.SourceStart = value.SourceStart

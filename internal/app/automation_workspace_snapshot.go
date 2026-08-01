@@ -2,13 +2,13 @@ package app
 
 import (
 	"context"
+	agentharness "denova/internal/agents/harness"
 	"fmt"
 	"log/slog"
 	"path/filepath"
 	"strings"
 
 	"denova/config"
-	agents "denova/internal/agents"
 	"denova/internal/agents/session"
 	"denova/internal/book"
 )
@@ -31,7 +31,7 @@ type automationWorkspaceSnapshot struct {
 	bookState    *book.State
 	bookService  *book.Service
 	sessionStore *session.Store
-	chatService  *agents.ChatService
+	chatService  *agentharness.Service
 }
 
 // runtimeSnapshot builds a snapshot from the currently-active App runtime. It

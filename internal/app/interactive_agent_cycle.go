@@ -2,16 +2,21 @@ package app
 
 import (
 	"context"
+	agentchat "denova/internal/agents/chat"
+	agentharness "denova/internal/agents/harness"
+	agentinteractive "denova/internal/agents/interactive"
 	"fmt"
 	"log/slog"
 	"strings"
 
 	"denova/config"
 	agents "denova/internal/agents"
+	"denova/internal/agents/prompts"
+	agentrun "denova/internal/agents/run"
 	"denova/internal/agents/session"
 	"denova/internal/book"
 	"denova/internal/interactive"
-	"denova/internal/prompts"
+	"denova/internal/interactive/director"
 )
 
 // interactiveAgentCycle is the complete, process-local adapter state for one
@@ -24,7 +29,7 @@ type interactiveAgentCycle struct {
 	state          *book.State
 	bookService    *book.Service
 	versionService *book.VersionService
-	chatService    *agents.ChatService
+	chatService    *agentharness.Service
 	sessionStore   *session.Store
 	runtimeCfg     config.Config
 	workspace      string
@@ -34,9 +39,9 @@ type interactiveAgentCycle struct {
 	storyContext   interactive.StoryContext
 	tellerInput    prompts.InteractiveStorySystemInstructionInput
 	runner         *agents.Runner
-	systemPrompt   agents.SystemPromptComposition
+	systemPrompt   prompts.SystemPromptComposition
 	conversation   *interactiveConversation
-	request        agents.ChatRequest
+	request        agentchat.ChatRequest
 }
 
 type interactiveAgentCycleRequest struct {
@@ -109,7 +114,7 @@ func (s *InteractiveAppService) prepareInteractiveAgentCycle(ctx context.Context
 	styleRules := convertTellerStyleRules(cycle.novaDir, teller.StyleRefs, teller.StyleRules, request.StyleScenes)
 	cycle.tellerInput = interactiveStoryTellerSystemInput(teller, styleRules)
 	cycle.tellerInput.ChoiceCount = storyContext.Meta.ChoiceCount
-	cycle.request = agents.ChatRequest{
+	cycle.request = agentchat.ChatRequest{
 		Message: strings.TrimSpace(request.Message), StyleScenes: append([]string(nil), request.StyleScenes...),
 		StyleRules: styleRules, Locale: strings.TrimSpace(request.Locale),
 	}
@@ -126,7 +131,7 @@ func (s *InteractiveAppService) prepareInteractiveAgentCycle(ctx context.Context
 		interactiveSnapshotTurnCount(storyContext.Snapshot) == 0 {
 		submitOpeningStateSchema = cycle.conversation.SubmitOpeningStateSchemaBatch
 	}
-	cycle.runner, cycle.systemPrompt, err = buildInteractiveStoryRunnerWithComposition(ctx, &cycle.runtimeCfg, cycle.state, cycle.tellerInput, agents.InteractiveStoryToolContext{
+	cycle.runner, cycle.systemPrompt, err = buildInteractiveStoryRunnerWithComposition(ctx, &cycle.runtimeCfg, cycle.state, cycle.tellerInput, agentinteractive.InteractiveStoryToolContext{
 		Store:                  cycle.store,
 		StoryID:                cycle.storyID,
 		BranchID:               cycle.branchID,
@@ -142,9 +147,9 @@ func (s *InteractiveAppService) prepareInteractiveAgentCycle(ctx context.Context
 	return cycle, nil
 }
 
-func (c *interactiveAgentCycle) options(taskID string) agents.RunOptions {
-	return agents.RunOptions{
-		AgentKind:          agents.AgentKindInteractiveStory,
+func (c *interactiveAgentCycle) options(taskID string) agentrun.Options {
+	return agentrun.Options{
+		AgentKind:          agentrun.AgentKindInteractiveStory,
 		StateRoot:          c.runtimeCfg.ProjectStateDir,
 		TaskID:             strings.TrimSpace(taskID),
 		StoryID:            c.storyID,
@@ -162,20 +167,20 @@ func (c *interactiveAgentCycle) options(taskID string) agents.RunOptions {
 	}
 }
 
-// bindCommit installs the game projection commit before the HarnessTurnSpec is
+// bindCommit installs the game projection commit before the TurnSpec is
 // registered. A fresh cycle/conversation therefore emits exactly its own turn
 // for Start, Steer, and FollowUp commands.
-func (c *interactiveAgentCycle) bindCommit(emit func(agents.Event)) {
+func (c *interactiveAgentCycle) bindCommit(emit func(agentrun.Event)) {
 	if c == nil || c.conversation == nil {
 		return
 	}
-	c.conversation.withAgentCycleCommit(func(_ context.Context, outcome agents.RunOutcome) error {
+	c.conversation.withAgentCycleCommit(func(_ context.Context, outcome agentrun.Outcome) error {
 		if outcome.MaintenanceOnly {
 			return nil
 		}
 		turn, _, persisted := c.conversation.LastTurnForState()
 		if !persisted {
-			if outcome.Status == agents.RunOutcomeCompleted {
+			if outcome.Status == agentrun.OutcomeCompleted {
 				return fmt.Errorf("interactive agent cycle completed without a persisted turn")
 			}
 			return nil
@@ -190,8 +195,8 @@ func (c *interactiveAgentCycle) bindCommit(emit func(agents.Event)) {
 }
 
 func (c *interactiveAgentCycle) scheduleDirectorMaintenance(turn interactive.TurnEvent, persistedSnapshot *interactive.Snapshot) <-chan struct{} {
-	director := c.conversation.storyDirectorForMeta(c.storyContext.Meta)
-	policy := interactive.ResolveStoryDirectorRunPolicy(c.storyContext.Meta.DirectorRunPolicy, director.Strategy)
+	storyDirector := c.conversation.storyDirectorForMeta(c.storyContext.Meta)
+	policy := director.ResolveRunPolicy(c.storyContext.Meta.DirectorRunPolicy, storyDirector.Strategy.DirectorAgentMode)
 	if persistedSnapshot == nil {
 		loaded, err := c.store.Snapshot(c.storyID, turn.BranchID)
 		if err != nil {
@@ -212,7 +217,7 @@ func (c *interactiveAgentCycle) scheduleDirectorMaintenance(turn interactive.Tur
 		}
 	}
 	materialUpdate := turn.TurnResult != nil && turn.TurnResult.DirectorUpdate != nil && turn.TurnResult.DirectorUpdate.Needed
-	decision := interactive.DecideDirectorRunAfterTurn(director.Strategy.Enabled, policy, interactive.DirectorRunScheduleContext{
+	decision := director.DecideRunAfterTurn(storyDirector.Strategy.Enabled, policy, director.ScheduleContext{
 		CommittedTurns: committedTurns, PlanStatus: planStatus, MaterialUpdate: materialUpdate,
 	})
 	slog.InfoContext(context.Background(), fmt.Sprintf("[interactive-director-agent] maintenance decision story_id=%s branch_id=%s turn_id=%s policy_mode=%s interval_turns=%d committed_turns=%d plan_status=%s run_plan=%t reason=%s", c.storyID, turn.BranchID, turn.ID, policy.Mode, policy.IntervalTurns, committedTurns, planStatus, decision.ShouldRun, decision.Reason))
@@ -315,5 +320,5 @@ func directorProjectionAcknowledged(storyContext interactive.StoryContext, turnI
 func directorProjectionSucceededForTurn(storyContext interactive.StoryContext, turnID string) bool {
 	status := storyContext.Snapshot.DirectorPlanStatus
 	return status != nil && strings.TrimSpace(status.SourceTurnID) == strings.TrimSpace(turnID) &&
-		(status.Status == interactive.DirectorPlanStatusReady || status.Status == interactive.DirectorPlanStatusSkipped)
+		(status.Status == director.PlanStatusReady || status.Status == director.PlanStatusSkipped)
 }

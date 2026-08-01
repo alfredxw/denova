@@ -2,6 +2,8 @@ package app
 
 import (
 	"context"
+	agentrun "denova/internal/agents/run"
+	apptask "denova/internal/app/task"
 	"errors"
 	"fmt"
 	"log/slog"
@@ -9,7 +11,6 @@ import (
 	"sync"
 	"time"
 
-	agents "denova/internal/agents"
 	"denova/internal/automation"
 )
 
@@ -156,18 +157,18 @@ func (s *AutomationAppService) Delete(id string) error {
 	return store.Delete(automationTaskStoreID(task))
 }
 
-func (a *App) StartAutomationTaskWithEvidence(ctx context.Context, id, trigger string, evidence []automation.TriggerEvidence) (*Task, automation.RunRecord, error) {
+func (a *App) StartAutomationTaskWithEvidence(ctx context.Context, id, trigger string, evidence []automation.TriggerEvidence) (*apptask.Task, automation.RunRecord, error) {
 	return a.automation().StartTaskWithEvidence(ctx, id, trigger, evidence)
 }
 
 // StartAutomationTaskCommand starts an HTTP/manual run with a caller-owned
 // idempotency key. The derived run ID is persisted and reconciled across
 // process restarts; transport retries therefore cannot allocate another run.
-func (a *App) StartAutomationTaskCommand(ctx context.Context, id, commandID string, evidence []automation.TriggerEvidence) (*Task, automation.RunRecord, error) {
+func (a *App) StartAutomationTaskCommand(ctx context.Context, id, commandID string, evidence []automation.TriggerEvidence) (*apptask.Task, automation.RunRecord, error) {
 	return a.automation().StartTaskCommand(ctx, id, commandID, evidence)
 }
 
-func (s *AutomationAppService) StartTaskCommand(ctx context.Context, id, commandID string, evidence []automation.TriggerEvidence) (*Task, automation.RunRecord, error) {
+func (s *AutomationAppService) StartTaskCommand(ctx context.Context, id, commandID string, evidence []automation.TriggerEvidence) (*apptask.Task, automation.RunRecord, error) {
 	task, err := s.storeAllWorkspaces().Get(id)
 	if err != nil {
 		return nil, automation.RunRecord{}, err
@@ -209,16 +210,16 @@ func (s *AutomationAppService) StartTaskCommand(ctx context.Context, id, command
 
 // replayAutomationRunTask adapts a terminal persisted run to the same bounded
 // SSE Task contract as a live execution. It never opens an Agent runner.
-func replayAutomationRunTask(run automation.RunRecord) *Task {
-	return NewTask(func(_ context.Context, _ *Task, emit func(agents.Event)) {
-		emit(agents.Event{Type: "automation_run", Data: run})
+func replayAutomationRunTask(run automation.RunRecord) *apptask.Task {
+	return apptask.New(func(_ context.Context, _ *apptask.Task, emit func(agentrun.Event)) {
+		emit(agentrun.Event{Type: "automation_run", Data: run})
 		if run.Status == automation.RunStatusFailed && strings.TrimSpace(run.Error) != "" {
-			emit(agents.Event{Type: "error", Data: map[string]string{"message": run.Error}})
+			emit(agentrun.Event{Type: "error", Data: map[string]string{"message": run.Error}})
 		}
 	})
 }
 
-func (s *AutomationAppService) StartTaskWithEvidence(ctx context.Context, id, trigger string, evidence []automation.TriggerEvidence) (*Task, automation.RunRecord, error) {
+func (s *AutomationAppService) StartTaskWithEvidence(ctx context.Context, id, trigger string, evidence []automation.TriggerEvidence) (*apptask.Task, automation.RunRecord, error) {
 	task, err := s.storeAllWorkspaces().Get(id)
 	if err != nil {
 		return nil, automation.RunRecord{}, err
@@ -234,7 +235,7 @@ func (s *AutomationAppService) StartTaskWithEvidence(ctx context.Context, id, tr
 	return s.startTaskWithSourceRun(operation.Context(), snap, automationTaskStoreID(task), trigger, "", evidence)
 }
 
-func (s *AutomationAppService) startTaskWithSourceRun(ctx context.Context, snap *automationWorkspaceSnapshot, id, trigger, sourceRunID string, triggerEvidence []automation.TriggerEvidence) (*Task, automation.RunRecord, error) {
+func (s *AutomationAppService) startTaskWithSourceRun(ctx context.Context, snap *automationWorkspaceSnapshot, id, trigger, sourceRunID string, triggerEvidence []automation.TriggerEvidence) (*apptask.Task, automation.RunRecord, error) {
 	return s.startTaskWithSourceRunID(ctx, snap, id, trigger, sourceRunID, "", triggerEvidence)
 }
 
@@ -242,7 +243,7 @@ func (s *AutomationAppService) startTaskWithSourceRun(ctx context.Context, snap 
 // identity supplied by a durable upstream command. Replaying the same identity
 // returns the active or persisted run when its semantics match; conflicting
 // reuse is rejected and never falls back to a generated ID.
-func (s *AutomationAppService) startTaskWithSourceRunID(ctx context.Context, snap *automationWorkspaceSnapshot, id, trigger, sourceRunID, deterministicRunID string, triggerEvidence []automation.TriggerEvidence) (startedTask *Task, resultRun automation.RunRecord, resultErr error) {
+func (s *AutomationAppService) startTaskWithSourceRunID(ctx context.Context, snap *automationWorkspaceSnapshot, id, trigger, sourceRunID, deterministicRunID string, triggerEvidence []automation.TriggerEvidence) (startedTask *apptask.Task, resultRun automation.RunRecord, resultErr error) {
 	taskDef, err := storeForSnapshot(snap).Get(id)
 	if err != nil {
 		return nil, automation.RunRecord{}, err
@@ -368,7 +369,7 @@ func (s *AutomationAppService) startTaskWithSourceRunID(ctx context.Context, sna
 	}
 
 	var execution *automationAcceptedRun
-	task, err := NewDeferredRegisteredTaskWithContext(ctx, func(task *Task) error {
+	task, err := apptask.NewDeferredWithContext(ctx, func(task *apptask.Task) error {
 		if err := s.activateAutomationClaim(claim, task); err != nil {
 			return err
 		}
@@ -381,36 +382,36 @@ func (s *AutomationAppService) startTaskWithSourceRunID(ctx context.Context, sna
 		// leaves no failed run ledger entry for an operation that never existed.
 		return nil, automation.RunRecord{}, err
 	}
-	task.emit(agents.Event{Type: "automation_run", Data: run})
-	acceptCtx, releaseAcceptance := taskAcceptanceContext(ctx, task)
-	execution, err = s.startAutomationRun(acceptCtx, snap, taskDef, run, conversation, task.emit)
+	task.Emit(agentrun.Event{Type: "automation_run", Data: run})
+	acceptCtx, releaseAcceptance := apptask.AcceptanceContext(ctx, task)
+	execution, err = s.startAutomationRun(acceptCtx, snap, taskDef, run, conversation, task.Emit)
 	releaseAcceptance()
 	if err != nil {
 		if execution != nil {
 			run = execution.run
 		}
-		result, _ := s.failAutomationRun(snap, taskDef, run, task.emit, false, err)
+		result, _ := s.failAutomationRun(snap, taskDef, run, task.Emit, false, err)
 		if result.Run.ID != "" {
-			task.emit(agents.Event{Type: "automation_run", Data: result.Run})
+			task.Emit(agentrun.Event{Type: "automation_run", Data: result.Run})
 		}
-		task.failBeforeStart(err)
+		task.RejectStart(err)
 		s.app.unregisterWorkspaceTask(task)
 		s.clearActiveAutomationTask(snap, taskStoreID, run.ID)
 		return nil, result.Run, err
 	}
 	run = execution.run
-	task.emit(agents.Event{Type: "automation_run", Data: run})
-	if err := task.Start(func(taskCtx context.Context, task *Task, _ func(agents.Event)) {
+	task.Emit(agentrun.Event{Type: "automation_run", Data: run})
+	if err := task.Start(func(taskCtx context.Context, task *apptask.Task, _ func(agentrun.Event)) {
 		defer s.app.unregisterWorkspaceTask(task)
 		defer s.clearActiveAutomationTask(snap, taskStoreID, run.ID)
 		result, _ := s.waitAutomationRun(taskCtx, execution)
 		if result.Run.ID != "" {
-			task.emit(agents.Event{Type: "automation_run", Data: result.Run})
+			task.Emit(agentrun.Event{Type: "automation_run", Data: result.Run})
 		}
 	}); err != nil {
 		task.Abort()
-		_, _ = s.waitAutomationRun(task.ctx, execution)
-		task.finish()
+		_, _ = s.waitAutomationRun(task.Context(), execution)
+		task.Finish()
 		s.app.unregisterWorkspaceTask(task)
 		s.clearActiveAutomationTask(snap, taskStoreID, run.ID)
 		return nil, automation.RunRecord{}, err

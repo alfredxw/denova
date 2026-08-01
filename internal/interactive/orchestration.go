@@ -253,7 +253,7 @@ func NormalizeTurnCheckRequest(req TurnCheckRequest) TurnCheckRequest {
 	req.Rule.Label = trimBytes(req.Rule.Label, 256)
 	req.Rule.FailurePolicy = normalizeRuleCheckFailurePolicyOptional(req.Rule.FailurePolicy)
 	req.Rule.RollMode = normalizeTurnCheckRollMode(req.Rule.RollMode)
-	req.Rule.BindingID = normalizeSlotID(req.Rule.BindingID)
+	req.Rule.BindingID = normalizeInteractiveID(req.Rule.BindingID)
 	req.Rule.ActorID = normalizeStatePanelActorID(req.Rule.ActorID)
 	req.Rule.TargetActorID = normalizeStatePanelActorID(req.Rule.TargetActorID)
 	req.Difficulty = normalizeTurnCheckDifficulty(req.Difficulty)

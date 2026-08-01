@@ -9,7 +9,7 @@ import (
 
 	"denova/config"
 	"denova/internal/book"
-	"denova/internal/workspacechange"
+	workspacechange "denova/internal/workspace/change"
 )
 
 func TestWorkspaceTreeMutationWaitsForSharedExclusiveLease(t *testing.T) {

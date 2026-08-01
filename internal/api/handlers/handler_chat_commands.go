@@ -46,12 +46,12 @@ func (h *Handlers) HandleChatCommand(ctx context.Context, c *app.RequestContext)
 		writeAgentRuntimeError(c, consts.StatusBadRequest, "agent_runtime.invalid_command", "命令类型、command_id 和 target_operation_id 为必填项 / Command type, command_id, and target_operation_id are required", nil)
 		return
 	}
-	queueControl := kind == novaApp.AgentCommandSteerQueued || kind == novaApp.AgentCommandCancelQueued
+	queueControl := kind == novaApp.CommandSteerQueued || kind == novaApp.CommandCancelQueued
 	if queueControl && strings.TrimSpace(body.TargetCommandID) == "" {
 		writeAgentRuntimeError(c, consts.StatusBadRequest, "agent_runtime.invalid_command", "target_command_id 为必填项 / target_command_id is required", nil)
 		return
 	}
-	if kind != novaApp.AgentCommandAbort && !queueControl && strings.TrimSpace(body.Input.Message) == "" {
+	if kind != novaApp.CommandAbort && !queueControl && strings.TrimSpace(body.Input.Message) == "" {
 		writeAgentRuntimeError(c, consts.StatusBadRequest, "agent_runtime.invalid_command", "消息不能为空 / Message is required", nil)
 		return
 	}
@@ -71,20 +71,20 @@ func (h *Handlers) HandleChatCommand(ctx context.Context, c *app.RequestContext)
 	})
 }
 
-func writingAgentCommandKind(value string) (novaApp.AgentCommandKind, error) {
+func writingAgentCommandKind(value string) (novaApp.CommandKind, error) {
 	switch strings.TrimSpace(value) {
-	case string(novaApp.AgentCommandSteer):
-		return novaApp.AgentCommandSteer, nil
-	case string(novaApp.AgentCommandFollowUp):
-		return novaApp.AgentCommandFollowUp, nil
-	case string(novaApp.AgentCommandNextTurn):
-		return novaApp.AgentCommandNextTurn, nil
-	case string(novaApp.AgentCommandAbort):
-		return novaApp.AgentCommandAbort, nil
-	case string(novaApp.AgentCommandSteerQueued):
-		return novaApp.AgentCommandSteerQueued, nil
-	case string(novaApp.AgentCommandCancelQueued):
-		return novaApp.AgentCommandCancelQueued, nil
+	case string(novaApp.CommandSteer):
+		return novaApp.CommandSteer, nil
+	case string(novaApp.CommandFollowUp):
+		return novaApp.CommandFollowUp, nil
+	case string(novaApp.CommandNextTurn):
+		return novaApp.CommandNextTurn, nil
+	case string(novaApp.CommandAbort):
+		return novaApp.CommandAbort, nil
+	case string(novaApp.CommandSteerQueued):
+		return novaApp.CommandSteerQueued, nil
+	case string(novaApp.CommandCancelQueued):
+		return novaApp.CommandCancelQueued, nil
 	default:
 		return "", novaApp.ErrInvalidAgentCommand
 	}

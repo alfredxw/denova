@@ -1,6 +1,7 @@
 package interactive
 
 import (
+	interactivestate "denova/internal/interactive/state"
 	"errors"
 	"fmt"
 	"os"
@@ -71,7 +72,7 @@ func TestAppendTurnWithStateIsIdempotentByDurableAgentIdentity(t *testing.T) {
 	request := AppendTurnWithStateRequest{
 		BranchID: "main", User: "推门", Narrative: "门后是一条长廊。",
 		AgentCommandID: "command-1", AgentOperationID: "operation-1", AgentCycle: 1,
-		Ops: []StateOp{{Op: "set", Path: "location", Value: "长廊"}},
+		Ops: []interactivestate.Op{{Op: "set", Path: "location", Value: "长廊"}},
 	}
 	commitPlayerInputForTurnTest(t, store, story.ID, request)
 	first, firstDelta, err := store.AppendTurnWithState(story.ID, request)

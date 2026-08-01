@@ -5,11 +5,11 @@ import (
 	"testing"
 
 	"denova/config"
-	agents "denova/internal/agents"
+	agentcompaction "denova/internal/agents/context/compaction"
 )
 
 func TestManualCompactionRecordsPreserveDurableDiagnostics(t *testing.T) {
-	result := agents.ContextCompactionResult{
+	result := agentcompaction.Result{
 		Triggered: true, Phase: "manual", TriggerReason: "manual", Epoch: 3, Summary: "bounded checkpoint",
 		EstimatedTokensBefore: 900, ObservedPromptTokens: 990, ObservedEstimateTokens: 880,
 		TokensBefore: 1010, TokensAfter: 240, ContextWindowTokens: 1200,
@@ -23,7 +23,7 @@ func TestManualCompactionRecordsPreserveDurableDiagnostics(t *testing.T) {
 		name      string
 		agentKind string
 		record    any
-		restored  agents.ContextCompactionResult
+		restored  agentcompaction.Result
 	}{
 		{name: "writing", agentKind: config.AgentKindIDE, record: writing, restored: contextCompactionResultFromSession(writing)},
 		{name: "game", agentKind: config.AgentKindInteractiveStory, record: game, restored: contextCompactionResultFromInteractive(game)},
@@ -51,7 +51,7 @@ func TestManualCompactionRecordsPreserveDurableDiagnostics(t *testing.T) {
 					t.Errorf("%s = %#v, want %#v; record=%s", field, got, want, data)
 				}
 			}
-			if got, want := agents.NewContextCompactionCheckpoint(test.agentKind, test.restored), agents.NewContextCompactionCheckpoint(test.agentKind, result); got != want {
+			if got, want := agentcompaction.NewCheckpoint(test.agentKind, test.restored), agentcompaction.NewCheckpoint(test.agentKind, result); got != want {
 				t.Fatalf("durable checkpoint round trip changed fields:\ngot  %#v\nwant %#v", got, want)
 			}
 		})

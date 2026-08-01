@@ -5,9 +5,9 @@ import (
 	"errors"
 	"fmt"
 
-	agents "denova/internal/agents"
-	"denova/internal/documentreview"
-	"denova/internal/workspacechange"
+	agentreview "denova/internal/agents/review"
+	workspacechange "denova/internal/workspace/change"
+	"denova/internal/workspace/documentreview"
 )
 
 // reviewFeedbackResolver abstracts one review-feedback source (workspace-change
@@ -20,7 +20,7 @@ import (
 // this interface and registering it in newReviewFeedbackResolvers, instead of
 // editing N switch statements.
 type reviewFeedbackResolver interface {
-	Resolve(ctx context.Context, runtime ideChatRuntime, threadID string, commentIDs []string, feedback *agents.ReviewFeedbackContext) error
+	Resolve(ctx context.Context, runtime ideChatRuntime, threadID string, commentIDs []string, feedback *agentreview.Context) error
 	Validate(ctx context.Context, sessionID, threadID string, commentIDs []string) error
 	Consume(ctx context.Context, sessionID, threadID string, commentIDs []string) (reviewFeedbackConsumption, error)
 	Restore(ctx context.Context, sessionID, threadID string, consumption reviewFeedbackConsumption) error
@@ -32,8 +32,8 @@ type reviewFeedbackResolvers map[string]reviewFeedbackResolver
 
 func newReviewFeedbackResolvers(changes *workspacechange.Service, documents *documentreview.Service, targets documentreview.SnapshotResolver) reviewFeedbackResolvers {
 	return reviewFeedbackResolvers{
-		agents.ReviewFeedbackSourceWorkspaceChange: workspaceChangeReviewFeedbackResolver{changes: changes},
-		agents.ReviewFeedbackSourceDocument:        documentReviewFeedbackResolver{documents: documents, targets: targets},
+		agentreview.SourceWorkspaceChange: workspaceChangeReviewFeedbackResolver{changes: changes},
+		agentreview.SourceDocument:        documentReviewFeedbackResolver{documents: documents, targets: targets},
 	}
 }
 
@@ -53,17 +53,17 @@ type workspaceChangeReviewFeedbackResolver struct {
 	changes *workspacechange.Service
 }
 
-func (r workspaceChangeReviewFeedbackResolver) Resolve(ctx context.Context, runtime ideChatRuntime, threadID string, commentIDs []string, feedback *agents.ReviewFeedbackContext) error {
+func (r workspaceChangeReviewFeedbackResolver) Resolve(ctx context.Context, runtime ideChatRuntime, threadID string, commentIDs []string, feedback *agentreview.Context) error {
 	resolved, err := r.changes.GetReviewComments(ctx, threadID, runtime.sess.ID, commentIDs)
 	if err != nil {
 		return err
 	}
 	for _, item := range resolved {
 		comment := item.Comment
-		feedback.Comments = append(feedback.Comments, agents.ReviewFeedbackComment{
+		feedback.Comments = append(feedback.Comments, agentreview.Comment{
 			ID: comment.ID, GroupID: comment.GroupID, ChangeSetID: comment.ChangeSetID, EditID: comment.EditID,
 			HunkID: comment.HunkID, Path: item.Path, Body: comment.Body,
-			Anchor: agents.ReviewFeedbackAnchor{
+			Anchor: agentreview.Anchor{
 				Side: comment.Anchor.Side, Encoding: comment.Anchor.Encoding, Kind: comment.Anchor.Kind,
 				Revision: comment.Anchor.Revision, Start: comment.Anchor.Start, End: comment.Anchor.End,
 				Quote: comment.Anchor.Quote, Prefix: comment.Anchor.Prefix, Suffix: comment.Anchor.Suffix,
@@ -81,7 +81,7 @@ func (r workspaceChangeReviewFeedbackResolver) Validate(ctx context.Context, ses
 func (r workspaceChangeReviewFeedbackResolver) Consume(ctx context.Context, sessionID, threadID string, commentIDs []string) (reviewFeedbackConsumption, error) {
 	comments, err := r.changes.ConsumeReviewComments(ctx, threadID, sessionID, commentIDs)
 	return reviewFeedbackConsumption{
-		source: agents.ReviewFeedbackSourceWorkspaceChange, threadID: threadID, commentIDs: commentIDs,
+		source: agentreview.SourceWorkspaceChange, threadID: threadID, commentIDs: commentIDs,
 		workspaceComments: comments,
 	}, err
 }
@@ -98,7 +98,7 @@ type documentReviewFeedbackResolver struct {
 	targets   documentreview.SnapshotResolver
 }
 
-func (r documentReviewFeedbackResolver) Resolve(ctx context.Context, runtime ideChatRuntime, threadID string, commentIDs []string, feedback *agents.ReviewFeedbackContext) error {
+func (r documentReviewFeedbackResolver) Resolve(ctx context.Context, runtime ideChatRuntime, threadID string, commentIDs []string, feedback *agentreview.Context) error {
 	comments, err := r.documents.GetReviewComments(ctx, threadID, commentIDs)
 	if err != nil {
 		return translateDocumentReviewError(err)
@@ -115,20 +115,20 @@ func (r documentReviewFeedbackResolver) Resolve(ctx context.Context, runtime ide
 				"comment_id": comment.ID, "target": comment.Target,
 			})
 		}
-		target := &agents.ReviewFeedbackTarget{
+		target := &agentreview.Target{
 			Kind: resolved.Target.Kind, ID: resolved.Target.ID, Field: resolved.Target.Field, Name: resolved.Name,
 		}
 		snapshotKey := resolved.Target.Kind + "\x00" + resolved.Target.ID + "\x00" + resolved.Target.Field
 		if resolved.ContextSnapshot != nil && !includedSnapshots[snapshotKey] {
-			target.Snapshot = &agents.ReviewFeedbackSnapshot{
+			target.Snapshot = &agentreview.Snapshot{
 				Revision: resolved.ContextSnapshot.Revision,
 				Content:  resolved.ContextSnapshot.Content,
 			}
 			includedSnapshots[snapshotKey] = true
 		}
-		feedback.Comments = append(feedback.Comments, agents.ReviewFeedbackComment{
+		feedback.Comments = append(feedback.Comments, agentreview.Comment{
 			ID: comment.ID, Target: target, Body: comment.Body,
-			Anchor: agents.ReviewFeedbackAnchor{
+			Anchor: agentreview.Anchor{
 				Encoding: anchor.Encoding, Kind: anchor.Kind, Revision: anchor.Revision,
 				Start: anchor.Start, End: anchor.End, Quote: anchor.Quote, Prefix: anchor.Prefix,
 				Suffix: anchor.Suffix, DisplayQuote: anchor.DisplayQuote,
@@ -146,7 +146,7 @@ func (r documentReviewFeedbackResolver) Validate(ctx context.Context, sessionID,
 func (r documentReviewFeedbackResolver) Consume(ctx context.Context, sessionID, threadID string, commentIDs []string) (reviewFeedbackConsumption, error) {
 	comments, err := r.documents.ConsumeReviewComments(ctx, threadID, commentIDs)
 	return reviewFeedbackConsumption{
-		source: agents.ReviewFeedbackSourceDocument, threadID: threadID, commentIDs: commentIDs,
+		source: agentreview.SourceDocument, threadID: threadID, commentIDs: commentIDs,
 		documentComments: comments,
 	}, err
 }
@@ -203,10 +203,10 @@ func rollbackReviewFeedbackConsumptions(
 
 // reviewFeedbackCommentIDs extracts the original client comment IDs for a
 // resolved feedback context from the request refs.
-func reviewFeedbackCommentIDs(refs agents.ReviewFeedbackRefs, feedback agents.ReviewFeedbackContext) []string {
-	wantedSource, _ := agents.NormalizeReviewFeedbackSource(feedback.Source)
+func reviewFeedbackCommentIDs(refs agentreview.Refs, feedback agentreview.Context) []string {
+	wantedSource, _ := agentreview.NormalizeSource(feedback.Source)
 	for _, ref := range refs {
-		source, _ := agents.NormalizeReviewFeedbackSource(ref.Source)
+		source, _ := agentreview.NormalizeSource(ref.Source)
 		if source == wantedSource && ref.ReviewThreadID == feedback.ReviewThreadID {
 			return ref.CommentIDs
 		}

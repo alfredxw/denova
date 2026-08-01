@@ -2,11 +2,14 @@ package app
 
 import (
 	"context"
+	agentharness "denova/internal/agents/harness"
+	apptask "denova/internal/app/task"
 	"os"
 	"path/filepath"
 	"testing"
 
 	agents "denova/internal/agents"
+	agentrun "denova/internal/agents/run"
 	"denova/internal/agents/session"
 	"denova/internal/interactive"
 )
@@ -37,14 +40,14 @@ func TestWritingDrainRetriesPendingRecoveryRefreshBeforeSessionSwitch(t *testing
 		t.Fatal(err)
 	}
 
-	chat := agents.NewEphemeralChatService()
+	chat := agentharness.NewEphemeralService()
 	t.Cleanup(func() { _ = chat.Close(context.Background()) })
-	task := NewTask(func(context.Context, *Task, func(agents.Event)) {})
+	task := apptask.New(func(context.Context, *apptask.Task, func(agentrun.Event)) {})
 	<-task.Done()
 	run := &writingTaskRun{task: task, runtime: ideChatRuntime{workspace: "/book", sess: selected}}
-	action := agents.RuntimeRecoveryAction{
-		Kind: agents.RuntimeRecoveryCompactContext, CommandID: "refresh-before-switch",
-		OperationID: agents.OperationID("operation-refresh-before-switch"),
+	action := agentharness.RuntimeRecoveryAction{
+		Kind: agentharness.RuntimeRecoveryCompactContext, CommandID: "refresh-before-switch",
+		OperationID: agentrun.OperationID("operation-refresh-before-switch"),
 	}
 	application := &App{
 		workspace: "/book", workspaceGeneration: 1, sessionStore: store,
@@ -101,10 +104,10 @@ func TestClearSessionDrainsExactWritingTaskBeforeMutation(t *testing.T) {
 	if err := sess.Append(agents.UserMessage("keep in display history")); err != nil {
 		t.Fatal(err)
 	}
-	chat := agents.NewEphemeralChatService()
+	chat := agentharness.NewEphemeralService()
 	t.Cleanup(func() { _ = chat.Close(context.Background()) })
 	started := make(chan struct{})
-	task := NewTask(func(ctx context.Context, _ *Task, _ func(agents.Event)) {
+	task := apptask.New(func(ctx context.Context, _ *apptask.Task, _ func(agentrun.Event)) {
 		close(started)
 		<-ctx.Done()
 	})
@@ -119,7 +122,7 @@ func TestClearSessionDrainsExactWritingTaskBeforeMutation(t *testing.T) {
 	if err := service.ClearSession(); err != nil {
 		t.Fatal(err)
 	}
-	if !task.Finished() || task.Status() != TaskAborted {
+	if !task.Finished() || task.Status() != apptask.Aborted {
 		t.Fatalf("structural mutation did not drain task: finished=%t status=%s", task.Finished(), task.Status())
 	}
 	if got := sess.GetEffectiveMessages(); len(got) != 0 {
@@ -137,12 +140,12 @@ func TestAppendInteractiveTurnDrainsExactBranchTaskBeforeMutation(t *testing.T) 
 	if err != nil {
 		t.Fatal(err)
 	}
-	chat := agents.NewEphemeralChatService()
+	chat := agentharness.NewEphemeralService()
 	t.Cleanup(func() { _ = chat.Close(context.Background()) })
 	directorTasks := newWorkspaceDirectorTaskGroup()
 	t.Cleanup(directorTasks.Close)
 	started := make(chan struct{})
-	task := NewTask(func(ctx context.Context, _ *Task, _ func(agents.Event)) {
+	task := apptask.New(func(ctx context.Context, _ *apptask.Task, _ func(agentrun.Event)) {
 		close(started)
 		<-ctx.Done()
 	})
@@ -160,7 +163,7 @@ func TestAppendInteractiveTurnDrainsExactBranchTaskBeforeMutation(t *testing.T) 
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !task.Finished() || task.Status() != TaskAborted {
+	if !task.Finished() || task.Status() != apptask.Aborted {
 		t.Fatalf("structural mutation did not drain game task: finished=%t status=%s", task.Finished(), task.Status())
 	}
 	snapshot, err := store.Snapshot(story.ID, "main")

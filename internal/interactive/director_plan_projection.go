@@ -2,6 +2,7 @@ package interactive
 
 import (
 	"crypto/sha256"
+	"denova/internal/interactive/director"
 	"encoding/hex"
 	"fmt"
 	"path/filepath"
@@ -89,14 +90,14 @@ func ExtractDirectorLoreContextActiveSection(content string) string {
 func DirectorPlanStatusFromPlan(plan DirectorPlan, hasTurns bool) DirectorPlanStatus {
 	_ = hasTurns
 	run := plan.Metadata.LastRun
-	status := DirectorPlanStatusWaitingOpening
+	status := director.PlanStatusWaitingOpening
 	if run != nil && strings.TrimSpace(run.Status) != "" {
 		status = strings.TrimSpace(run.Status)
 	}
 	docBytes, visibleBytes := directorPlanByteTotals(plan.Metadata.Docs)
 	plannedDocs := len(requiredDirectorPlanDocKinds())
 	completedDocs := directorPlanCompletedDocsForStatus(status)
-	startReady := status == DirectorPlanStatusReady || status == DirectorPlanStatusSkipped || status == DirectorPlanStatusConflict
+	startReady := status == director.PlanStatusReady || status == director.PlanStatusSkipped || status == director.PlanStatusConflict
 	blocking := false
 	summary := ""
 	errorText := ""
@@ -112,13 +113,13 @@ func DirectorPlanStatusFromPlan(plan DirectorPlan, hasTurns bool) DirectorPlanSt
 		if run.PlannedDocs > 0 {
 			plannedDocs = run.PlannedDocs
 		}
-		if run.CompletedDocs > 0 || status == DirectorPlanStatusRunning || status == DirectorPlanStatusWaitingOpening || status == DirectorPlanStatusFailed {
+		if run.CompletedDocs > 0 || status == director.PlanStatusRunning || status == director.PlanStatusWaitingOpening || status == director.PlanStatusFailed {
 			completedDocs = run.CompletedDocs
 		}
 		if run.StartReady {
 			startReady = true
 		}
-		if status == DirectorPlanStatusRunning {
+		if status == director.PlanStatusRunning {
 			completedDocs = directorPlanCompletedDocs(plan.Docs, run.BaselineHashes)
 		}
 	}
@@ -158,7 +159,7 @@ func directorPlanHashesEqual(left, right map[string]string) bool {
 	return true
 }
 
-func runDecision(run *DirectorPlanRunStatus) *PlanDecision {
+func runDecision(run *DirectorPlanRunStatus) *director.Decision {
 	if run == nil || run.Decision == nil {
 		return nil
 	}
@@ -225,7 +226,7 @@ func directorPlanRunStartReady(run *DirectorPlanRunStatus) bool {
 		return true
 	}
 	switch run.Status {
-	case DirectorPlanStatusReady, DirectorPlanStatusSkipped, DirectorPlanStatusConflict:
+	case director.PlanStatusReady, director.PlanStatusSkipped, director.PlanStatusConflict:
 		return true
 	default:
 		return false
@@ -234,7 +235,7 @@ func directorPlanRunStartReady(run *DirectorPlanRunStatus) bool {
 
 func directorPlanCompletedDocsForStatus(status string) int {
 	switch status {
-	case DirectorPlanStatusReady, DirectorPlanStatusSkipped, DirectorPlanStatusConflict:
+	case director.PlanStatusReady, director.PlanStatusSkipped, director.PlanStatusConflict:
 		return len(requiredDirectorPlanDocKinds())
 	default:
 		return 0

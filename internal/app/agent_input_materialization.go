@@ -2,6 +2,9 @@ package app
 
 import (
 	"context"
+	agentchat "denova/internal/agents/chat"
+	agentharness "denova/internal/agents/harness"
+	agentrun "denova/internal/agents/run"
 	"fmt"
 	"strconv"
 	"strings"
@@ -16,75 +19,75 @@ import (
 // invoking a model, tool, Runner, or process-local turn registry.
 func (a *App) PlanHarnessInputMaterialization(
 	ctx context.Context,
-	request agents.HarnessInputMaterializationRequest,
-) (agents.InputMaterializationPlan, error) {
+	request agentharness.InputMaterializationRequest,
+) (agentrun.InputMaterializationPlan, error) {
 	binding := request.Binding
 	switch binding.AgentKind {
-	case agents.AgentKindGeneral, agents.AgentKindIDE, agents.AgentKindConfigManager, agents.AgentKindImage, agents.AgentKindAutomation:
+	case agentrun.AgentKindGeneral, agentrun.AgentKindIDE, agentrun.AgentKindConfigManager, agentrun.AgentKindImage, agentrun.AgentKindAutomation:
 		intent, err := a.sessionAcceptedInputIntent(ctx, request)
 		if err != nil {
-			return agents.InputMaterializationPlan{}, err
+			return agentrun.InputMaterializationPlan{}, err
 		}
-		return agents.InputMaterializationPlan{Required: true, Hash: intent.Hash}, nil
-	case agents.AgentKindInteractiveStory:
+		return agentrun.InputMaterializationPlan{Required: true, Hash: intent.Hash}, nil
+	case agentrun.AgentKindInteractiveStory:
 		intent, err := gameAcceptedInputIntent(request)
 		if err != nil {
-			return agents.InputMaterializationPlan{}, err
+			return agentrun.InputMaterializationPlan{}, err
 		}
-		return agents.InputMaterializationPlan{Required: true, Hash: intent.Hash}, nil
+		return agentrun.InputMaterializationPlan{Required: true, Hash: intent.Hash}, nil
 	case config.AgentKindInteractiveDirector:
-		return agents.InputMaterializationPlan{}, nil
+		return agentrun.InputMaterializationPlan{}, nil
 	default:
-		return agents.InputMaterializationPlan{}, fmt.Errorf("unsupported Agent kind %q for accepted input", binding.AgentKind)
+		return agentrun.InputMaterializationPlan{}, fmt.Errorf("unsupported Agent kind %q for accepted input", binding.AgentKind)
 	}
 }
 
 func (a *App) MaterializeHarnessInput(
 	ctx context.Context,
-	request agents.HarnessInputMaterializationRequest,
-	plan agents.InputMaterializationPlan,
-) (agents.InputMaterializationReceipt, error) {
+	request agentharness.InputMaterializationRequest,
+	plan agentrun.InputMaterializationPlan,
+) (agentrun.InputMaterializationReceipt, error) {
 	if !plan.Required || strings.TrimSpace(plan.Hash) == "" {
-		return agents.InputMaterializationReceipt{}, fmt.Errorf("accepted input materialization requires an exact semantic hash")
+		return agentrun.InputMaterializationReceipt{}, fmt.Errorf("accepted input materialization requires an exact semantic hash")
 	}
 	binding := request.Binding
 	switch binding.AgentKind {
-	case agents.AgentKindGeneral, agents.AgentKindIDE, agents.AgentKindConfigManager, agents.AgentKindImage, agents.AgentKindAutomation:
+	case agentrun.AgentKindGeneral, agentrun.AgentKindIDE, agentrun.AgentKindConfigManager, agentrun.AgentKindImage, agentrun.AgentKindAutomation:
 		intent, err := a.sessionAcceptedInputIntent(ctx, request)
 		if err != nil {
-			return agents.InputMaterializationReceipt{}, err
+			return agentrun.InputMaterializationReceipt{}, err
 		}
 		if intent.Hash != plan.Hash {
-			return agents.InputMaterializationReceipt{}, fmt.Errorf("%w: accepted Session input changed after planning", session.ErrDomainCommitIdentityConflict)
+			return agentrun.InputMaterializationReceipt{}, fmt.Errorf("%w: accepted Session input changed after planning", session.ErrDomainCommitIdentityConflict)
 		}
 		receipt, err := a.commitSessionAcceptedInput(ctx, request.Binding, intent)
 		if err != nil {
-			return agents.InputMaterializationReceipt{}, err
+			return agentrun.InputMaterializationReceipt{}, err
 		}
-		return agents.InputMaterializationReceipt{Revision: strconv.FormatUint(receipt.ContextRevision, 10)}, nil
-	case agents.AgentKindInteractiveStory:
+		return agentrun.InputMaterializationReceipt{Revision: strconv.FormatUint(receipt.ContextRevision, 10)}, nil
+	case agentrun.AgentKindInteractiveStory:
 		intent, err := gameAcceptedInputIntent(request)
 		if err != nil {
-			return agents.InputMaterializationReceipt{}, err
+			return agentrun.InputMaterializationReceipt{}, err
 		}
 		if intent.Hash != plan.Hash {
-			return agents.InputMaterializationReceipt{}, fmt.Errorf("%w: accepted player input changed after planning", interactive.ErrPlayerInputIdentityConflict)
+			return agentrun.InputMaterializationReceipt{}, fmt.Errorf("%w: accepted player input changed after planning", interactive.ErrPlayerInputIdentityConflict)
 		}
 		receipt, err := interactive.NewStore(binding.Workspace).CommitPlayerInput(binding.StoryID, intent)
 		if err != nil {
-			return agents.InputMaterializationReceipt{}, err
+			return agentrun.InputMaterializationReceipt{}, err
 		}
-		return agents.InputMaterializationReceipt{Revision: receipt.Revision}, nil
+		return agentrun.InputMaterializationReceipt{Revision: receipt.Revision}, nil
 	case config.AgentKindInteractiveDirector:
-		return agents.InputMaterializationReceipt{}, fmt.Errorf("Director profile has no canonical user input")
+		return agentrun.InputMaterializationReceipt{}, fmt.Errorf("Director profile has no canonical user input")
 	default:
-		return agents.InputMaterializationReceipt{}, fmt.Errorf("unsupported Agent kind %q for accepted input", binding.AgentKind)
+		return agentrun.InputMaterializationReceipt{}, fmt.Errorf("unsupported Agent kind %q for accepted input", binding.AgentKind)
 	}
 }
 
 func (a *App) sessionAcceptedInputIntent(
 	ctx context.Context,
-	request agents.HarnessInputMaterializationRequest,
+	request agentharness.InputMaterializationRequest,
 ) (session.DomainCommitIntent, error) {
 	binding := request.Binding
 	resolved := request.Request
@@ -108,13 +111,13 @@ func (a *App) sessionAcceptedInputIntent(
 	return session.NewDomainCommitIntent(session.DomainCommitIdentity{
 		CommandID: string(request.Identity.CommandID), OperationID: string(request.Identity.OperationID), Cycle: request.Identity.Cycle,
 	}, agents.UserMessage(request.Message), session.MessageMetadata{
-		AgentKind: request.AgentKind, UserReferences: agents.UserMessageReferencesForRequest(resolved),
+		AgentKind: request.AgentKind, UserReferences: agentchat.UserMessageReferencesForRequest(resolved),
 	})
 }
 
 func (a *App) commitSessionAcceptedInput(
 	ctx context.Context,
-	binding agents.RuntimeBinding,
+	binding agentrun.RuntimeBinding,
 	intent session.DomainCommitIntent,
 ) (session.DomainCommitReceipt, error) {
 	if a != nil {
@@ -137,7 +140,7 @@ func (a *App) commitSessionAcceptedInput(
 	return session.CommitStoredDomainMessage(ctx, dir, binding.SessionID, intent)
 }
 
-func gameAcceptedInputIntent(request agents.HarnessInputMaterializationRequest) (interactive.PlayerInputIntent, error) {
+func gameAcceptedInputIntent(request agentharness.InputMaterializationRequest) (interactive.PlayerInputIntent, error) {
 	binding := request.Binding
 	return interactive.NewPlayerInputIntent(interactive.DomainCommitIdentity{
 		CommandID: string(request.Identity.CommandID), OperationID: string(request.Identity.OperationID), Cycle: request.Identity.Cycle,

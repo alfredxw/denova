@@ -2,12 +2,14 @@ package app
 
 import (
 	"context"
+	agentchat "denova/internal/agents/chat"
+	agentharness "denova/internal/agents/harness"
 	"os"
 	"path/filepath"
 	"testing"
 
 	"denova/config"
-	agents "denova/internal/agents"
+	agentrun "denova/internal/agents/run"
 	"denova/internal/agents/session"
 	"denova/internal/book"
 	"denova/internal/interactive"
@@ -30,14 +32,14 @@ func TestAppMaterializesAcceptedWritingInputExactlyOnce(t *testing.T) {
 	if _, err := store.GetOrCreate("accepted-writing"); err != nil {
 		t.Fatal(err)
 	}
-	request := agents.HarnessInputMaterializationRequest{
-		Binding: agents.RuntimeBinding{AgentKind: agents.AgentKindIDE, Workspace: workspace, SessionID: "accepted-writing"},
-		Identity: agents.HarnessCycleIdentity{
+	request := agentharness.InputMaterializationRequest{
+		Binding: agentrun.RuntimeBinding{AgentKind: agentrun.AgentKindIDE, Workspace: workspace, SessionID: "accepted-writing"},
+		Identity: agentrun.CycleIdentity{
 			CommandID: "writing-command", OperationID: "writing-operation", Cycle: 1,
 		},
 		AgentKind: config.AgentKindIDE,
 		Message:   "write this chapter",
-		Request: agents.ChatRequest{
+		Request: agentchat.ChatRequest{
 			Message: "write this chapter", References: []string{"chapters/one.md"},
 		},
 	}
@@ -103,17 +105,17 @@ func TestAppMaterializesGeneralProjectInputInUserState(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	request := agents.HarnessInputMaterializationRequest{
-		Binding: agents.RuntimeBinding{
-			AgentKind: agents.AgentKindGeneral, ProjectID: record.ID,
+	request := agentharness.InputMaterializationRequest{
+		Binding: agentrun.RuntimeBinding{
+			AgentKind: agentrun.AgentKindGeneral, ProjectID: record.ID,
 			Mode: "agent_chat", SessionID: "general-session",
 		},
-		Identity: agents.HarnessCycleIdentity{
+		Identity: agentrun.CycleIdentity{
 			CommandID: "general-command", OperationID: "general-operation", Cycle: 1,
 		},
-		AgentKind: agents.AgentKindGeneral,
+		AgentKind: agentrun.AgentKindGeneral,
 		Message:   "inspect the repository",
-		Request:   agents.ChatRequest{Message: "inspect the repository"},
+		Request:   agentchat.ChatRequest{Message: "inspect the repository"},
 	}
 	application := &App{
 		cfg: &config.Config{NovaDir: dataDir}, projectRegistry: registry,
@@ -154,7 +156,7 @@ func TestAppMaterializesGeneralProjectInputInUserState(t *testing.T) {
 		context.Background(),
 		domainRecoveryRequest(
 			request.Binding, string(request.Identity.CommandID), string(request.Identity.OperationID),
-			request.Identity.Cycle, agents.DomainCommitInput, plan.Hash,
+			request.Identity.Cycle, agentrun.DomainCommitInput, plan.Hash,
 		),
 	)
 	if err != nil || !result.Found || result.Revision != first.Revision {
@@ -171,14 +173,14 @@ func TestAppMaterializesAcceptedGameInputAsPendingWithoutNarrative(t *testing.T)
 	if err != nil {
 		t.Fatal(err)
 	}
-	request := agents.HarnessInputMaterializationRequest{
-		Binding: agents.RuntimeBinding{AgentKind: agents.AgentKindInteractiveStory, Workspace: workspace, StoryID: story.ID, BranchID: "main"},
-		Identity: agents.HarnessCycleIdentity{
+	request := agentharness.InputMaterializationRequest{
+		Binding: agentrun.RuntimeBinding{AgentKind: agentrun.AgentKindInteractiveStory, Workspace: workspace, StoryID: story.ID, BranchID: "main"},
+		Identity: agentrun.CycleIdentity{
 			CommandID: "game-command", OperationID: "game-operation", Cycle: 1,
 		},
 		AgentKind: config.AgentKindInteractiveStory,
 		Message:   "open the sealed door",
-		Request:   agents.ChatRequest{Message: "open the sealed door"},
+		Request:   agentchat.ChatRequest{Message: "open the sealed door"},
 	}
 	application := &App{}
 	plan, err := application.PlanHarnessInputMaterialization(context.Background(), request)

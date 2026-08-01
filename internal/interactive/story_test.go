@@ -1,6 +1,7 @@
 package interactive
 
 import (
+	interactivestate "denova/internal/interactive/state"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -297,7 +298,7 @@ func TestSnapshotAppliesTurnAndStateDelta(t *testing.T) {
 	_, err = store.AppendStateDelta(story.ID, AppendStateDeltaRequest{
 		ParentID: turn.ID,
 		BranchID: "main",
-		Ops: []StateOp{
+		Ops: []interactivestate.Op{
 			{Op: "set", Path: "on_stage", Value: []any{"林川", "酒保老李"}},
 			{Op: "merge", Path: "characters.林川", Value: map[string]any{"hp": 80, "location": "黄泉酒馆"}},
 			{Op: "push", Path: "events", Value: map[string]any{"flag": "遇到神秘老人"}},
@@ -591,7 +592,7 @@ func TestAppendTurnWithStatePersistsTurnAndDeltaAtomically(t *testing.T) {
 		User:      "我点燃火把",
 		Narrative: "火光照亮了墙上的新线索。",
 		Thinking:  "先判断现场风险。",
-		Ops: []StateOp{
+		Ops: []interactivestate.Op{
 			{Op: "set", Path: "on_stage", Value: []any{"林川"}},
 			{Op: "merge", Path: "characters.林川", Value: map[string]any{"location": "黄泉酒馆"}},
 		},
@@ -934,7 +935,7 @@ func TestAppendTurnWithStateCanFinalizePendingState(t *testing.T) {
 	_, err = store.AppendStateDelta(story.ID, AppendStateDeltaRequest{
 		ParentID: turn.ID,
 		BranchID: "main",
-		Ops: []StateOp{
+		Ops: []interactivestate.Op{
 			{Op: "set", Path: "on_stage", Value: []any{"主角"}},
 		},
 	})
@@ -970,7 +971,7 @@ func TestStoryGraphLinksTurnsDirectlyWhenStateDeltaIsEmbedded(t *testing.T) {
 		BranchID:  "main",
 		User:      "检查石门",
 		Narrative: "石门上的符文被逐一点亮。",
-		Ops:       []StateOp{{Op: "set", Path: "scene.mood", Value: "紧张"}},
+		Ops:       []interactivestate.Op{{Op: "set", Path: "scene.mood", Value: "紧张"}},
 	})
 	if err != nil {
 		t.Fatalf("AppendTurnWithState failed: %v", err)
@@ -1326,7 +1327,7 @@ func TestBackgroundTurnUpdatesDoNotRewindBranchHead(t *testing.T) {
 		if _, err := store.AppendStateDelta(story.ID, AppendStateDeltaRequest{
 			ParentID: first.ID,
 			BranchID: "main",
-			Ops:      []StateOp{{Op: "set", Path: "scene.phase", Value: "late-state"}},
+			Ops:      []interactivestate.Op{{Op: "set", Path: "scene.phase", Value: "late-state"}},
 		}); !errors.Is(err, ErrHistoricalTurnRequiresBranch) {
 			t.Fatalf("late state update should be rejected, got %v", err)
 		}

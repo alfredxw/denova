@@ -3,6 +3,7 @@ package main
 import (
 	"bufio"
 	"context"
+	agentrun "denova/internal/agents/run"
 	"flag"
 	"fmt"
 	"io"
@@ -16,7 +17,6 @@ import (
 	"strings"
 
 	"denova/config"
-	agents "denova/internal/agents"
 	"denova/internal/api"
 	"denova/internal/app"
 	"denova/internal/buildinfo"
@@ -46,8 +46,8 @@ func main() {
 	flag.Parse()
 
 	cfg.DevMode = dev || devMode
-	agents.SetModelInputLoggingEnabled(cfg.DevMode && cfg.LLMInputLogEnabled)
-	agents.SetTraceRuntimeConfig(cfg.TraceCaptureLevel, cfg.TraceExporter, cfg.TraceRetentionRuns)
+	agentrun.SetModelInputLoggingEnabled(cfg.DevMode && cfg.LLMInputLogEnabled)
+	agentrun.SetTraceRuntimeConfig(cfg.TraceCaptureLevel, cfg.TraceExporter, cfg.TraceRetentionRuns)
 
 	logPath, logOutput, closeLog := setupLogging("./log")
 	defer closeLog()

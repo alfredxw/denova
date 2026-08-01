@@ -2,20 +2,26 @@ package app
 
 import (
 	"context"
+	agentchat "denova/internal/agents/chat"
+	agentconversation "denova/internal/agents/conversation"
+	agentharness "denova/internal/agents/harness"
+	apptask "denova/internal/app/task"
 	"fmt"
 	"log/slog"
 	"strings"
 	"time"
 
 	"denova/config"
-	agents "denova/internal/agents"
+	"denova/internal/agents/prompts"
+	agentrun "denova/internal/agents/run"
+	agenttool "denova/internal/agents/tool"
 )
 
-func (a *App) StartTask(ctx context.Context, req agents.ChatRequest) *Task {
+func (a *App) StartTask(ctx context.Context, req agentchat.ChatRequest) *apptask.Task {
 	return a.chat().StartTask(ctx, req)
 }
 
-func (s *ChatAppService) StartTask(ctx context.Context, req agents.ChatRequest) *Task {
+func (s *ChatAppService) StartTask(ctx context.Context, req agentchat.ChatRequest) *apptask.Task {
 	task, err := s.StartTaskWithError(ctx, req)
 	if err != nil {
 		slog.ErrorContext(ctx, fmt.Sprintf("[agent-task] 准备 IDE Agent 运行时失败 err=%v", err))
@@ -26,22 +32,22 @@ func (s *ChatAppService) StartTask(ctx context.Context, req agents.ChatRequest) 
 
 // StartTaskWithError preserves preparation failures so HTTP callers can
 // distinguish invalid review references from a missing workspace.
-func (a *App) StartTaskWithError(ctx context.Context, req agents.ChatRequest) (*Task, error) {
+func (a *App) StartTaskWithError(ctx context.Context, req agentchat.ChatRequest) (*apptask.Task, error) {
 	return a.chat().StartTaskWithError(ctx, req)
 }
 
-func (s *ChatAppService) StartTaskWithError(ctx context.Context, req agents.ChatRequest) (*Task, error) {
+func (s *ChatAppService) StartTaskWithError(ctx context.Context, req agentchat.ChatRequest) (*apptask.Task, error) {
 	s.admission.Lock()
 	defer s.admission.Unlock()
 	req.CommandID = strings.TrimSpace(req.CommandID)
 	if req.CommandID == "" {
 		return nil, ErrAgentCommandIDRequired
 	}
-	if err := agents.ValidateCommandID(req.CommandID); err != nil {
+	if err := agentrun.ValidateCommandID(req.CommandID); err != nil {
 		return nil, err
 	}
-	req = agents.CaptureChatRequestCallerInput(req)
-	requestFingerprint := agents.ChatRequestSemanticFingerprint(req)
+	req = agentchat.CaptureChatRequestCallerInput(req)
+	requestFingerprint := agentharness.RequestSemanticFingerprint(req)
 	a := s.app
 	a.mu.RLock()
 	workspace := a.workspace
@@ -107,8 +113,8 @@ func (s *ChatAppService) StartTaskWithError(ctx context.Context, req agents.Chat
 		slog.ErrorContext(ctx, fmt.Sprintf("[agent-task] 刷新 Agent Runner 失败 workspace=%s err=%v", runtime.workspace, err))
 		return nil, err
 	}
-	runtimeContexts := agents.IDEWorkspaceRuntimeContextsForRequest(runtime.state, req)
-	conversation := agents.NewSessionConversationForAgentWithRuntimeContexts(
+	runtimeContexts := prompts.IDEWorkspaceRuntimeContextsForContext(runtime.state, req.IDEContext)
+	conversation := agentconversation.NewSessionConversationForAgentWithRuntimeContexts(
 		runtime.sess,
 		&runtime.cfg,
 		config.AgentKindIDE,
@@ -117,19 +123,19 @@ func (s *ChatAppService) StartTaskWithError(ctx context.Context, req agents.Chat
 		runtimeContexts.DynamicTitle,
 		runtimeContexts.Dynamic,
 	)
-	var verifiedMutations []agents.ToolMutation
-	var postRunVerification agents.PostRunVerification
+	var verifiedMutations []agenttool.Mutation
+	var postRunVerification agenttool.Verification
 	mutationCallback := a.verifiedWorkspaceMutationCallback(
 		"ide_agent_post_run",
 		runtime.versionService,
 		versionAutoSettingsForConfig(&runtime.cfg),
 	)
-	var accepted *agents.AcceptedRun
-	runAccepted := func(ctx context.Context, task *Task, emit func(agents.Event)) {
+	var accepted *agentharness.AcceptedRun
+	runAccepted := func(ctx context.Context, task *apptask.Task, emit func(agentrun.Event)) {
 		defer a.unregisterWorkspaceTask(task)
 		slog.InfoContext(ctx, fmt.Sprintf("[agent-task] run begin id=%s message_len=%d references=%d lore_references=%d style_scenes=%d style_rules=%d selections=%d plan_mode=%v teller_id=%s writing_skill=%s", task.ID(), len(req.Message), len(req.References), len(req.LoreReferences), len(req.StyleScenes), len(req.StyleRules), len(req.Selections), req.PlanMode, req.TellerID, req.WritingSkill))
 		accepted.Wait(ctx)
-		_, outputCommitted := conversation.LastAgentCycleCommitReceipt(agents.HarnessDomainCommitOutput)
+		_, outputCommitted := conversation.LastAgentCycleCommitReceipt(agentrun.DomainCommitOutput)
 		postSettlementCtx := ctx
 		if outputCommitted {
 			// A durable domain receipt outlives a late caller cancellation. Keep
@@ -148,7 +154,7 @@ func (s *ChatAppService) StartTaskWithError(ctx context.Context, req agents.Chat
 		slog.InfoContext(ctx, fmt.Sprintf("[agent-task] run end id=%s status=%s", task.ID(), task.Status()))
 	}
 
-	task, err := NewDeferredRegisteredTaskWithContext(ctx, func(task *Task) error {
+	task, err := apptask.NewDeferredWithContext(ctx, func(task *apptask.Task) error {
 		a.mu.Lock()
 		defer a.mu.Unlock()
 		if a.workspaceTransition {
@@ -171,9 +177,9 @@ func (s *ChatAppService) StartTaskWithError(ctx context.Context, req agents.Chat
 	if err != nil {
 		return nil, err
 	}
-	acceptCtx, releaseAcceptance := taskAcceptanceContext(ctx, task)
-	startOptions := s.bindReviewFeedbackInputCommit(agents.RunOptions{
-		AgentKind:          agents.AgentKindIDE,
+	acceptCtx, releaseAcceptance := apptask.AcceptanceContext(ctx, task)
+	startOptions := s.bindReviewFeedbackInputCommit(agentrun.Options{
+		AgentKind:          agentrun.AgentKindIDE,
 		StateRoot:          runtime.projectState,
 		TaskID:             task.ID(),
 		SessionID:          runtime.sess.ID,
@@ -182,17 +188,17 @@ func (s *ChatAppService) StartTaskWithError(ctx context.Context, req agents.Chat
 		IdleTimeout:        agentIdleTimeout(runtime.cfg),
 		ToolResultMaxBytes: agentToolResultMaxBytes(runtime.cfg),
 		SystemPromptLog:    systemPrompt,
-		OnMutationsVerified: func(_ context.Context, mutations []agents.ToolMutation, verification agents.PostRunVerification) {
-			verifiedMutations = append([]agents.ToolMutation(nil), mutations...)
+		OnMutationsVerified: func(_ context.Context, mutations []agenttool.Mutation, verification agenttool.Verification) {
+			verifiedMutations = append([]agenttool.Mutation(nil), mutations...)
 			postRunVerification = verification
 		},
 	}, runtime, req)
 	accepted, err = runtime.chatService.StartWithOptions(
-		acceptCtx, runner, conversation, runtime.bookService, req, startOptions, task.emit,
+		acceptCtx, runner, conversation, runtime.bookService, req, startOptions, task.Emit,
 	)
 	releaseAcceptance()
 	if err != nil {
-		task.failBeforeStart(err)
+		task.RejectStart(err)
 		a.unregisterWorkspaceTask(task)
 		a.mu.Lock()
 		if a.activeTask == task {
@@ -206,8 +212,8 @@ func (s *ChatAppService) StartTaskWithError(ctx context.Context, req agents.Chat
 	}
 	if err := task.Start(runAccepted); err != nil {
 		task.Abort()
-		_ = accepted.Wait(task.ctx)
-		task.finish()
+		_ = accepted.Wait(task.Context())
+		task.Finish()
 		a.unregisterWorkspaceTask(task)
 		a.mu.Lock()
 		if a.activeTask == task {

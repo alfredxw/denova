@@ -11,8 +11,8 @@ import (
 	"strings"
 	"sync"
 
-	"denova/internal/conversationconfig"
-	"denova/internal/conversationjournal"
+	"denova/internal/agents/conversationconfig"
+	"denova/internal/agents/conversationjournal"
 	"denova/internal/localfs"
 )
 

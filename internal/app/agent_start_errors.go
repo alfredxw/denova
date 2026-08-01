@@ -1,6 +1,10 @@
 package app
 
-import "errors"
+import (
+	"errors"
+
+	apptask "denova/internal/app/task"
+)
 
 var (
 	// ErrAgentCommandIDRequired is returned before any display task, model, or
@@ -12,7 +16,7 @@ var (
 	// ErrAgentReplayCapacity means every bounded display replay slot is owned by
 	// live work. Admission fails before the durable Runtime command is submitted,
 	// so callers may retry the same command without an uncertain acceptance.
-	ErrAgentReplayCapacity = errors.New("agent display replay capacity is full")
+	ErrAgentReplayCapacity = apptask.ErrReplayCapacity
 	// ErrImageAgentReplayResultUnavailable means the durable image operation
 	// settled but its story display projection has not become observable yet.
 	ErrImageAgentReplayResultUnavailable = errors.New("replayed image Agent result is not yet projected")

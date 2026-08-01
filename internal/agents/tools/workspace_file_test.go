@@ -10,7 +10,7 @@ import (
 	agent "github.com/alfredxw/denova/agent"
 	agenttools "github.com/alfredxw/denova/agent/tools"
 
-	"denova/internal/workspacechange"
+	workspacechange "denova/internal/workspace/change"
 )
 
 type recordingWorkspaceChangeService struct {
@@ -212,12 +212,12 @@ func TestWorkspaceChangeErrorIsStructuredAndHidesRevisions(t *testing.T) {
 func TestWorkspaceChangeReceiptTrustsOnlyNewMutationToolNames(t *testing.T) {
 	content := `{"schema":"workspace_change.tool_result.v1","status":"applied","workspace":"/workspace/book-a","change_group_id":"group-1","change_set_id":"change-1","path":"chapters/ch01.md","base_revision":"sha256:before","revision":"sha256:after","review_status":"pending","apply_state":"applied"}`
 	for _, toolName := range []string{"read", "grep", "read_file", "write_file", "edit_file", "execute"} {
-		if _, ok := parseWorkspaceChangeToolReceipt(toolName, content); ok {
+		if _, ok := workspacechange.ParseToolReceipt(toolName, content); ok {
 			t.Fatalf("untrusted tool %q forged a workspace change receipt", toolName)
 		}
 	}
 	for _, toolName := range []string{"write", "edit"} {
-		receipt, ok := parseWorkspaceChangeToolReceipt(toolName, content)
+		receipt, ok := workspacechange.ParseToolReceipt(toolName, content)
 		if !ok || receipt.ChangeSetID != "change-1" {
 			t.Fatalf("receipt for %s = %#v ok=%t", toolName, receipt, ok)
 		}

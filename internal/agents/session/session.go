@@ -7,6 +7,8 @@ import (
 	"time"
 
 	agent "github.com/alfredxw/denova/agent"
+
+	agentcontext "denova/internal/agents/context"
 )
 
 // Append 追加消息并持久化到磁盘。
@@ -148,8 +150,8 @@ const (
 	maxUserReferenceMetadataBytes = 128 * 1024
 )
 
-func sanitizeUserMessageReferences(values []UserMessageReference) []UserMessageReference {
-	result := make([]UserMessageReference, 0, min(len(values), maxUserMessageReferences))
+func sanitizeUserMessageReferences(values []agentcontext.UserReference) []agentcontext.UserReference {
+	result := make([]agentcontext.UserReference, 0, min(len(values), maxUserMessageReferences))
 	totalBytes := 0
 	for _, value := range values {
 		if len(result) >= maxUserMessageReferences {
@@ -317,7 +319,7 @@ func (s *Session) History() []HistoryEntry {
 				SubAgent:          record.messageMetadata.SubAgent,
 				SubAgentSessionID: record.messageMetadata.SubAgentSessionID,
 				SubAgentType:      record.messageMetadata.SubAgentType,
-				UserReferences:    append([]UserMessageReference(nil), record.messageMetadata.UserReferences...),
+				UserReferences:    append([]agentcontext.UserReference(nil), record.messageMetadata.UserReferences...),
 				AgentCommandID:    record.messageMetadata.AgentCommandID,
 				AgentOperationID:  record.messageMetadata.AgentOperationID,
 				AgentCycle:        record.messageMetadata.AgentCycle,

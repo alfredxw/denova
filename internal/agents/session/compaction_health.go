@@ -6,13 +6,13 @@ import (
 	"strings"
 	"time"
 
-	"denova/internal/contextmaintenance"
+	agentcontext "denova/internal/agents/context"
 )
 
 const (
-	contextCompactionHealthFailure     = contextmaintenance.CompactionHealthFailure
-	contextCompactionHealthSuccess     = contextmaintenance.CompactionHealthSuccess
-	contextCompactionHealthManualRetry = contextmaintenance.CompactionHealthManualRetry
+	contextCompactionHealthFailure     = agentcontext.CompactionHealthFailure
+	contextCompactionHealthSuccess     = agentcontext.CompactionHealthSuccess
+	contextCompactionHealthManualRetry = agentcontext.CompactionHealthManualRetry
 )
 
 // CommitContextCompactionHealthAtContext appends a model-invisible health
@@ -41,14 +41,14 @@ func (s *Session) CommitContextCompactionHealthAtContext(
 		}
 		normalized.BasisRevision = expected.Revision
 		previous, active := s.latestContextCompactionHealthLocked(normalized.AgentKind)
-		var previousValue *contextmaintenance.CompactionHealth
+		var previousValue *agentcontext.CompactionHealth
 		if active {
 			value := contextCompactionHealthValue(previous)
 			previousValue = &value
 		}
 		normalized = applyContextCompactionHealthValue(
 			normalized,
-			contextmaintenance.AdvanceCompactionHealth(previousValue, contextCompactionHealthValue(normalized)),
+			agentcontext.AdvanceCompactionHealth(previousValue, contextCompactionHealthValue(normalized)),
 		)
 		if appendErr := s.appendJournalRecordLocked(normalized); appendErr != nil {
 			return appendErr
@@ -106,7 +106,7 @@ func (s *Session) latestContextCompactionHealthLocked(agentKind string) (Context
 }
 
 func normalizeContextCompactionHealth(record ContextCompactionHealth) (ContextCompactionHealth, error) {
-	normalized, err := contextmaintenance.NormalizeCompactionHealth(contextCompactionHealthValue(record))
+	normalized, err := agentcontext.NormalizeCompactionHealth(contextCompactionHealthValue(record))
 	if err != nil {
 		return ContextCompactionHealth{}, err
 	}
@@ -139,17 +139,17 @@ func (s *Session) contextCompactionHealthByIDLocked(id string) (ContextCompactio
 }
 
 func sameContextCompactionHealthIntent(existing, requested ContextCompactionHealth) bool {
-	return contextmaintenance.SameCompactionHealthIntent(contextCompactionHealthValue(existing), contextCompactionHealthValue(requested))
+	return agentcontext.SameCompactionHealthIntent(contextCompactionHealthValue(existing), contextCompactionHealthValue(requested))
 }
 
-func contextCompactionHealthValue(record ContextCompactionHealth) contextmaintenance.CompactionHealth {
-	return contextmaintenance.CompactionHealth{
+func contextCompactionHealthValue(record ContextCompactionHealth) agentcontext.CompactionHealth {
+	return agentcontext.CompactionHealth{
 		ID: record.ID, AgentKind: record.AgentKind, StructureFingerprint: record.StructureFingerprint,
 		Outcome: record.Outcome, FailureCode: record.FailureCode, ConsecutiveFailures: record.ConsecutiveFailures,
 	}
 }
 
-func applyContextCompactionHealthValue(record ContextCompactionHealth, value contextmaintenance.CompactionHealth) ContextCompactionHealth {
+func applyContextCompactionHealthValue(record ContextCompactionHealth, value agentcontext.CompactionHealth) ContextCompactionHealth {
 	record.ID = value.ID
 	record.AgentKind = value.AgentKind
 	record.StructureFingerprint = value.StructureFingerprint

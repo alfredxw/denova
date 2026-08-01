@@ -1,6 +1,7 @@
 package interactive
 
 import (
+	interactivestate "denova/internal/interactive/state"
 	"errors"
 	"strings"
 	"testing"
@@ -23,8 +24,8 @@ func TestAppendTurnWithStatePersistsTurnResultAndActorStateAtomically(t *testing
 		User:      "我接受苏灿灿的帮助",
 		Narrative: "苏灿灿替林风处理了掌心灼伤，并答应继续调查青冥灵根。",
 		TurnResult: &TurnResult{
-			StateUpdates: []StateUpdate{{
-				Op:   TurnStateUpdateCreate,
+			StateUpdates: []interactivestate.Update{{
+				Op:   interactivestate.Create,
 				Path: "/protagonist",
 				Value: map[string]any{
 					"template_id": "protagonist",
@@ -53,7 +54,7 @@ func TestAppendTurnWithStatePersistsTurnResultAndActorStateAtomically(t *testing
 	}
 	foundEffectState := false
 	for _, op := range turn.StateDelta.ActorOps {
-		if op.SourceKind != StateOpSourceTurnResult || op.SourceID != turn.ID || op.SourceTurnID != turn.ID {
+		if op.SourceKind != interactivestate.SourceTurnResult || op.SourceID != turn.ID || op.SourceTurnID != turn.ID {
 			t.Fatalf("turn result state op source mismatch: %#v", op)
 		}
 		if op.ActorID == "protagonist" && op.FieldID == "持续效果" {
@@ -95,7 +96,7 @@ func TestAppendTurnWithStateReplaysActorArchiveAndRestore(t *testing.T) {
 	}
 	archivedTurn, _, err := store.AppendTurnWithState(story.ID, AppendTurnWithStateRequest{
 		BranchID: "main", User: "结束战斗", Narrative: "狼王倒下。",
-		TurnResult: &TurnResult{StateUpdates: []StateUpdate{{Op: TurnStateUpdateArchive, Path: "/狼王", Value: map[string]any{"reason": "确认死亡"}}}, Choices: testTurnChoices()},
+		TurnResult: &TurnResult{StateUpdates: []interactivestate.Update{{Op: interactivestate.Archive, Path: "/狼王", Value: map[string]any{"reason": "确认死亡"}}}, Choices: testTurnChoices()},
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -117,7 +118,7 @@ func TestAppendTurnWithStateReplaysActorArchiveAndRestore(t *testing.T) {
 
 	restoredTurn, _, err := store.AppendTurnWithState(story.ID, AppendTurnWithStateRequest{
 		BranchID: "main", User: "检查呼吸", Narrative: "狼王尚有微弱呼吸。",
-		TurnResult: &TurnResult{StateUpdates: []StateUpdate{{Op: TurnStateUpdateRestore, Path: "/狼王", Value: map[string]any{"reason": "确认仍然存活"}}}, Choices: testTurnChoices()},
+		TurnResult: &TurnResult{StateUpdates: []interactivestate.Update{{Op: interactivestate.Restore, Path: "/狼王", Value: map[string]any{"reason": "确认仍然存活"}}}, Choices: testTurnChoices()},
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -138,7 +139,7 @@ func TestAppendTurnWithStateReplaysActorArchiveAndRestore(t *testing.T) {
 }
 
 func TestValidateTurnResultRequiresConfiguredChoices(t *testing.T) {
-	base := TurnResult{StateUpdates: []StateUpdate{}}
+	base := TurnResult{StateUpdates: []interactivestate.Update{}}
 	if err := ValidateTurnResult(base); err == nil {
 		t.Fatal("a non-terminal turn may not omit choices")
 	}
@@ -196,14 +197,14 @@ func TestAppendTurnWithStateUsesStoryChoiceCount(t *testing.T) {
 	}
 	if _, _, err := store.AppendTurnWithState(story.ID, AppendTurnWithStateRequest{
 		User: "前进", Narrative: "前方出现岔路。",
-		TurnResult: &TurnResult{StateUpdates: []StateUpdate{}, Choices: testTurnChoices()},
+		TurnResult: &TurnResult{StateUpdates: []interactivestate.Update{}, Choices: testTurnChoices()},
 	}); err == nil {
 		t.Fatal("default five choices should fail a story configured for seven")
 	}
 	choices := append(testTurnChoices(), "返回营地", "独自探路")
 	turn, _, err := store.AppendTurnWithState(story.ID, AppendTurnWithStateRequest{
 		User: "前进", Narrative: "前方出现岔路。",
-		TurnResult: &TurnResult{StateUpdates: []StateUpdate{}, Choices: choices},
+		TurnResult: &TurnResult{StateUpdates: []interactivestate.Update{}, Choices: choices},
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -268,7 +269,7 @@ func TestAppendTurnWithStateRejectsStaleExpectedParent(t *testing.T) {
 		ExpectedParentID: &base,
 		User:             "先行动",
 		Narrative:        "第一回合完成。",
-		TurnResult:       &TurnResult{StateUpdates: []StateUpdate{}, Choices: testTurnChoices()},
+		TurnResult:       &TurnResult{StateUpdates: []interactivestate.Update{}, Choices: testTurnChoices()},
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -278,7 +279,7 @@ func TestAppendTurnWithStateRejectsStaleExpectedParent(t *testing.T) {
 		ExpectedParentID: &base,
 		User:             "迟到行动",
 		Narrative:        "不应写入。",
-		TurnResult:       &TurnResult{StateUpdates: []StateUpdate{}, Choices: testTurnChoices()},
+		TurnResult:       &TurnResult{StateUpdates: []interactivestate.Update{}, Choices: testTurnChoices()},
 	})
 	if err == nil || !strings.Contains(err.Error(), "分支已前进") {
 		t.Fatalf("expected stale parent rejection after %s, got %v", first.ID, err)
@@ -295,7 +296,7 @@ func TestAppendStateDeltaRejectsNonHeadTurn(t *testing.T) {
 		BranchID:   "main",
 		User:       "第一步",
 		Narrative:  "第一回合。",
-		TurnResult: &TurnResult{StateUpdates: []StateUpdate{}, Choices: testTurnChoices()},
+		TurnResult: &TurnResult{StateUpdates: []interactivestate.Update{}, Choices: testTurnChoices()},
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -304,7 +305,7 @@ func TestAppendStateDeltaRejectsNonHeadTurn(t *testing.T) {
 		BranchID:   "main",
 		User:       "第二步",
 		Narrative:  "第二回合。",
-		TurnResult: &TurnResult{StateUpdates: []StateUpdate{}, Choices: testTurnChoices()},
+		TurnResult: &TurnResult{StateUpdates: []interactivestate.Update{}, Choices: testTurnChoices()},
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -312,7 +313,7 @@ func TestAppendStateDeltaRejectsNonHeadTurn(t *testing.T) {
 	_, err = store.AppendStateDelta(story.ID, AppendStateDeltaRequest{
 		ParentID: first.ID,
 		BranchID: "main",
-		Ops:      []StateOp{{Op: "set", Path: "scene.late", Value: true}},
+		Ops:      []interactivestate.Op{{Op: "set", Path: "scene.late", Value: true}},
 	})
 	if !errors.Is(err, ErrHistoricalTurnRequiresBranch) {
 		t.Fatalf("expected non-head state rejection, got %v", err)

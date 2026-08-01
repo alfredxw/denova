@@ -6,7 +6,7 @@ import (
 
 	agenttools "github.com/alfredxw/denova/agent/tools"
 
-	"denova/internal/workspacechange"
+	workspacechange "denova/internal/workspace/change"
 )
 
 // newAgentCommandRunner binds the reusable Process implementation to Denova's

@@ -2,6 +2,7 @@ package agents
 
 import (
 	"context"
+	agenttoolruntime "denova/internal/agents/toolruntime"
 	"testing"
 
 	agent "github.com/alfredxw/denova/agent"
@@ -10,7 +11,7 @@ import (
 )
 
 func TestLoreToolsFactoryOmitsDisabledLoreSchemas(t *testing.T) {
-	factory := newToolCatalog(&config.Config{Workspace: t.TempDir()}).Lore(false)
+	factory := agenttoolruntime.NewCatalog(&config.Config{Workspace: t.TempDir()}).Lore(false)
 
 	tools, err := factory(config.ResolvedAgentToolSettings{})
 	if err != nil {
@@ -22,7 +23,7 @@ func TestLoreToolsFactoryOmitsDisabledLoreSchemas(t *testing.T) {
 }
 
 func TestLoreToolsFactoryHonorsResolvedWriteCapability(t *testing.T) {
-	factory := newToolCatalog(&config.Config{Workspace: t.TempDir()}).Lore(false)
+	factory := agenttoolruntime.NewCatalog(&config.Config{Workspace: t.TempDir()}).Lore(false)
 
 	readOnlyTools, err := factory(config.ResolvedAgentToolSettings{config.AgentToolLoreRead: true})
 	if err != nil {

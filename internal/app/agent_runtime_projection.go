@@ -2,30 +2,32 @@ package app
 
 import (
 	"context"
+	agentharness "denova/internal/agents/harness"
+	apptask "denova/internal/app/task"
 	"errors"
 	"fmt"
 	"log/slog"
 	"strings"
 
-	agents "denova/internal/agents"
+	agentrun "denova/internal/agents/run"
 	"denova/internal/agents/session"
 	"denova/internal/interactive"
 )
 
 type WritingAgentActiveView struct {
-	Task                *TaskStateSnapshot
-	Runtime             agents.RuntimeStatus
+	Task                *apptask.Snapshot
+	Runtime             agentrun.RuntimeStatus
 	RuntimeProjectionOK bool
 	PendingAsk          *session.AskInteraction
 	// RecoveryActions can contain a process-local projection refresh action
 	// after the durable runtime has already settled to Idle.
-	RecoveryActions []agents.RuntimeRecoveryAction
+	RecoveryActions []agentharness.RuntimeRecoveryAction
 }
 
 type InteractiveAgentActiveView struct {
-	Task                *TaskStateSnapshot
+	Task                *apptask.Snapshot
 	Info                InteractiveTaskInfo
-	Runtime             agents.RuntimeStatus
+	Runtime             agentrun.RuntimeStatus
 	RuntimeProjectionOK bool
 }
 
@@ -61,19 +63,19 @@ func (a *App) WritingAgentActiveView(ctx context.Context) WritingAgentActiveView
 	if selectedSession != nil {
 		sessionID = strings.TrimSpace(selectedSession.ID)
 	}
-	var runtimeSnapshot agents.RuntimeStatus
+	var runtimeSnapshot agentrun.RuntimeStatus
 	projected := false
 	if sessionID != "" && chatService != nil {
-		runtimeSnapshot, projected = projectAgentRuntime(operation.Context(), chatService, agents.RunOptions{
-			AgentKind: agents.AgentKindIDE,
+		runtimeSnapshot, projected = projectAgentRuntime(operation.Context(), chatService, agentrun.Options{
+			AgentKind: agentrun.AgentKindIDE,
 			StateRoot: stateRoot,
 			Workspace: workspace,
 			SessionID: sessionID,
 		})
 	}
-	var recoveryActions []agents.RuntimeRecoveryAction
+	var recoveryActions []agentharness.RuntimeRecoveryAction
 	if action, pending := chatApp.pendingRecoveryRefreshAction(workspace, sessionID); pending {
-		recoveryActions = []agents.RuntimeRecoveryAction{action}
+		recoveryActions = []agentharness.RuntimeRecoveryAction{action}
 		// The selected projection remains paused at the application boundary even
 		// though the durable actor is already Idle: clients must exact-retry the
 		// refresh before this Session can be used again.
@@ -100,7 +102,7 @@ func (a *App) WritingAgentActiveView(ctx context.Context) WritingAgentActiveView
 		a.mu.RUnlock()
 		return WritingAgentActiveView{}
 	}
-	var taskSnapshot *TaskStateSnapshot
+	var taskSnapshot *apptask.Snapshot
 	if task != nil {
 		snapshot := task.Snapshot()
 		taskSnapshot = &snapshot
@@ -146,11 +148,11 @@ func (a *App) InteractiveAgentActiveView(ctx context.Context, storyID, branchID 
 		slog.ErrorContext(ctx, fmt.Sprintf("[agent-runtime-projection] resolve game binding failed workspace=%s story_id=%s branch_id=%s err=%v", workspace, storyID, projectionBranch, err))
 		resolved = ""
 	}
-	var runtimeSnapshot agents.RuntimeStatus
+	var runtimeSnapshot agentrun.RuntimeStatus
 	projected := false
 	if resolved != "" && chatService != nil {
-		runtimeSnapshot, projected = projectAgentRuntime(operation.Context(), chatService, agents.RunOptions{
-			AgentKind: agents.AgentKindInteractiveStory,
+		runtimeSnapshot, projected = projectAgentRuntime(operation.Context(), chatService, agentrun.Options{
+			AgentKind: agentrun.AgentKindInteractiveStory,
 			Workspace: workspace,
 			StoryID:   storyID,
 			BranchID:  resolved,
@@ -163,7 +165,7 @@ func (a *App) InteractiveAgentActiveView(ctx context.Context, storyID, branchID 
 		a.mu.RUnlock()
 		return InteractiveAgentActiveView{}
 	}
-	var taskSnapshot *TaskStateSnapshot
+	var taskSnapshot *apptask.Snapshot
 	if task != nil {
 		snapshot := task.Snapshot()
 		taskSnapshot = &snapshot
@@ -174,24 +176,24 @@ func (a *App) InteractiveAgentActiveView(ctx context.Context, storyID, branchID 
 
 // Projection-only methods remain useful to non-active callers while sharing
 // the same immutable view construction as the HTTP active endpoints.
-func (a *App) WritingAgentRuntimeProjection(ctx context.Context) (agents.RuntimeStatus, bool) {
+func (a *App) WritingAgentRuntimeProjection(ctx context.Context) (agentrun.RuntimeStatus, bool) {
 	view := a.WritingAgentActiveView(ctx)
 	return view.Runtime, view.RuntimeProjectionOK
 }
 
-func (a *App) InteractiveAgentRuntimeProjection(ctx context.Context, storyID, branchID string) (agents.RuntimeStatus, bool) {
+func (a *App) InteractiveAgentRuntimeProjection(ctx context.Context, storyID, branchID string) (agentrun.RuntimeStatus, bool) {
 	view := a.InteractiveAgentActiveView(ctx, storyID, branchID)
 	return view.Runtime, view.RuntimeProjectionOK
 }
 
-func activeWritingTaskLocked(a *App) *Task {
+func activeWritingTaskLocked(a *App) *apptask.Task {
 	if a == nil || (a.activeWritingRun != nil && !a.activeWritingRun.matchesCurrent(a)) {
 		return nil
 	}
 	return a.activeTask
 }
 
-func activeInteractiveTaskLocked(a *App, storyID, branchID string) (*Task, InteractiveTaskInfo) {
+func activeInteractiveTaskLocked(a *App, storyID, branchID string) (*apptask.Task, InteractiveTaskInfo) {
 	if a == nil || a.activeInteractiveRun == nil || a.activeInteractiveRun.task == nil {
 		return nil, InteractiveTaskInfo{}
 	}
@@ -224,13 +226,13 @@ func resolveInteractiveProjectionBranch(store *interactive.Store, storyID, reque
 	return "", errors.New("interactive story has no current branch")
 }
 
-func projectAgentRuntime(ctx context.Context, chatService *agents.ChatService, options agents.RunOptions) (agents.RuntimeStatus, bool) {
+func projectAgentRuntime(ctx context.Context, chatService *agentharness.Service, options agentrun.Options) (agentrun.RuntimeStatus, bool) {
 	snapshot, err := chatService.RuntimeRecoveryStatusProjection(ctx, options)
 	if err == nil {
 		return snapshot, true
 	}
-	if !errors.Is(err, agents.ErrRuntimeProjectionUnavailable) {
+	if !errors.Is(err, agentharness.ErrRuntimeProjectionUnavailable) {
 		slog.WarnContext(ctx, fmt.Sprintf("[agent-runtime-projection] projection unavailable kind=%s workspace=%s session_id=%s story_id=%s branch_id=%s err=%v", options.AgentKind, options.Workspace, options.SessionID, options.StoryID, options.BranchID, err))
 	}
-	return agents.RuntimeStatus{}, false
+	return agentrun.RuntimeStatus{}, false
 }

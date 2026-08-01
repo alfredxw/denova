@@ -2,6 +2,7 @@ package app
 
 import (
 	"context"
+	apptask "denova/internal/app/task"
 	"errors"
 	"os"
 	"path/filepath"
@@ -66,7 +67,7 @@ func TestDurableSemanticTriggerResumesDecisionAcrossRunCrashWithoutDuplicates(t 
 	createdRuns := map[string]automation.RunRecord{}
 	startIDs := []string{}
 	firstStart := true
-	starter := func(_ context.Context, taskID, triggerName, runID string, evidence []automation.TriggerEvidence) (*Task, automation.RunRecord, error) {
+	starter := func(_ context.Context, taskID, triggerName, runID string, evidence []automation.TriggerEvidence) (*apptask.Task, automation.RunRecord, error) {
 		startIDs = append(startIDs, runID)
 		run, exists := createdRuns[runID]
 		if !exists {
@@ -142,7 +143,7 @@ func TestDurableSemanticSilentAutoRunNeverCreatesInbox(t *testing.T) {
 		return `{"matched":true,"confidence":0.99,"reason":"matched","title":"Silent hit","evidence_refs":[]}`, nil
 	}
 	starts := 0
-	starter := func(_ context.Context, taskID, triggerName, runID string, evidence []automation.TriggerEvidence) (*Task, automation.RunRecord, error) {
+	starter := func(_ context.Context, taskID, triggerName, runID string, evidence []automation.TriggerEvidence) (*apptask.Task, automation.RunRecord, error) {
 		starts++
 		return nil, automation.RunRecord{
 			ID: runID, TaskID: taskID, Scope: task.Scope, Workspace: snap.workspace, Trigger: triggerName, TriggerEvidence: evidence, Status: automation.RunStatusRunning,
@@ -191,7 +192,7 @@ func TestDurableScheduleTriggerResumesEffectBeforeCompletion(t *testing.T) {
 	crashErr := errors.New("simulated crash after schedule effect")
 	createdRuns := map[string]automation.RunRecord{}
 	first := true
-	starter := func(_ context.Context, taskID, triggerName, runID string, evidence []automation.TriggerEvidence) (*Task, automation.RunRecord, error) {
+	starter := func(_ context.Context, taskID, triggerName, runID string, evidence []automation.TriggerEvidence) (*apptask.Task, automation.RunRecord, error) {
 		run, ok := createdRuns[runID]
 		if !ok {
 			run = automation.RunRecord{ID: runID, TaskID: taskID, Scope: automation.ScopeWorkspace, Workspace: workspace, Trigger: triggerName, TriggerEvidence: evidence, Status: automation.RunStatusRunning}

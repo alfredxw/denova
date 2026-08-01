@@ -5,7 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 
-	"denova/internal/conversationjournal"
+	"denova/internal/agents/conversationjournal"
 )
 
 const compactionCursorScanBatch = 128

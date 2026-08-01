@@ -1,10 +1,9 @@
 package transform
 
 import (
+	agentrun "denova/internal/agents/run"
 	"strings"
 	"testing"
-
-	agents "denova/internal/agents"
 )
 
 func TestSSEEventMiddlewareChainRunsMiddlewaresInOrder(t *testing.T) {
@@ -15,7 +14,7 @@ func TestSSEEventMiddlewareChainRunsMiddlewaresInOrder(t *testing.T) {
 		&sseRecordingMiddleware{name: "second", calls: &calls, nextType: "second_seen"},
 	)
 
-	if err := chain.Next(collector.Handle)(agents.Event{Type: "start", Data: nil}); err != nil {
+	if err := chain.Next(collector.Handle)(agentrun.Event{Type: "start", Data: nil}); err != nil {
 		t.Fatalf("handler failed: %v", err)
 	}
 
@@ -42,7 +41,7 @@ func TestSSEEventMiddlewareChainStopsWhenMiddlewareDoesNotCallNext(t *testing.T)
 		&sseRecordingMiddleware{name: "second", calls: &calls},
 	)
 
-	if err := chain.Next(collector.Handle)(agents.Event{Type: "start", Data: map[string]string{}}); err != nil {
+	if err := chain.Next(collector.Handle)(agentrun.Event{Type: "start", Data: map[string]string{}}); err != nil {
 		t.Fatalf("handler failed: %v", err)
 	}
 	if strings.Join(calls, ",") != "first" {
@@ -57,8 +56,8 @@ func TestSSEEventMiddlewareChainDoesNotFilterChapterBodyByDefault(t *testing.T) 
 	collector := &sseEventCollector{}
 	handler := NewSSEEventMiddlewareChain().Next(collector.Handle)
 
-	if err := handler(agents.Event{Type: "tool_args_delta", Data: map[string]interface{}{
-		"agent_kind": agents.AgentKindIDE,
+	if err := handler(agentrun.Event{Type: "tool_args_delta", Data: map[string]interface{}{
+		"agent_kind": agentrun.AgentKindIDE,
 		"id":         "call-1",
 		"name":       "write",
 		"delta":      `{"path":"chapters/ch02.md","content":"正文"}`,
@@ -77,8 +76,8 @@ func TestSSEEventMiddlewareChainAppliesOptions(t *testing.T) {
 	collector := &sseEventCollector{}
 	handler := NewSSEEventMiddlewareChain(WithHideChapterBodyLiveOutput(true)).Next(collector.Handle)
 
-	if err := handler(agents.Event{Type: "tool_args_delta", Data: map[string]interface{}{
-		"agent_kind": agents.AgentKindIDE,
+	if err := handler(agentrun.Event{Type: "tool_args_delta", Data: map[string]interface{}{
+		"agent_kind": agentrun.AgentKindIDE,
 		"id":         "call-1",
 		"name":       "write",
 		"delta":      `{"path":"chapters/ch02.md","content":"正文"}`,
@@ -105,7 +104,7 @@ type sseRecordingMiddleware struct {
 }
 
 func (m *sseRecordingMiddleware) Next(next SSEEventHandler) SSEEventHandler {
-	return func(ev agents.Event) error {
+	return func(ev agentrun.Event) error {
 		*m.calls = append(*m.calls, m.name)
 		if m.suppress {
 			return nil

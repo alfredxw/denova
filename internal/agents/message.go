@@ -1,6 +1,10 @@
 package agents
 
-import agent "github.com/alfredxw/denova/agent"
+import (
+	"strings"
+
+	agent "github.com/alfredxw/denova/agent"
+)
 
 // Message is the product-facing alias of Agent's stable model message. App and
 // transport layers depend on Agent composition, while provider/session code can
@@ -40,4 +44,13 @@ var (
 
 func StreamReaderFromArray[T any](values []T) *StreamReader[T] {
 	return agent.StreamReaderFromArray(values)
+}
+
+func firstNonEmpty(values ...string) string {
+	for _, value := range values {
+		if trimmed := strings.TrimSpace(value); trimmed != "" {
+			return trimmed
+		}
+	}
+	return ""
 }

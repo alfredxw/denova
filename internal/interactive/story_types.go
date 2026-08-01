@@ -1,10 +1,12 @@
 package interactive
 
 import (
+	interactivestate "denova/internal/interactive/state"
 	agent "github.com/alfredxw/denova/agent"
 
-	"denova/internal/contextmaintenance"
-	"denova/internal/conversationconfig"
+	agentcontext "denova/internal/agents/context"
+	"denova/internal/agents/conversationconfig"
+	"denova/internal/interactive/director"
 )
 
 type CreateStoryRequest struct {
@@ -12,7 +14,7 @@ type CreateStoryRequest struct {
 	Origin                    string                            `json:"origin"`
 	StoryTellerID             string                            `json:"story_teller_id"`
 	StoryDirectorID           string                            `json:"story_director_id,omitempty"`
-	DirectorRunPolicy         *StoryDirectorRunPolicy           `json:"director_run_policy,omitempty"`
+	DirectorRunPolicy         *director.RunPolicy               `json:"director_run_policy,omitempty"`
 	ModuleRefs                *StoryDirectorModuleRefs          `json:"module_refs,omitempty"`
 	ReplyTargetChars          int                               `json:"reply_target_chars"`
 	ChoiceCount               int                               `json:"choice_count"`
@@ -23,7 +25,7 @@ type CreateStoryRequest struct {
 	ActorState                *StoryDirectorActorStateSystem    `json:"-"`
 	TRPGSystem                *StoryDirectorTRPGSystem          `json:"-"`
 	ActorStateAdaptation      *ActorStateSchemaAdaptationRecord `json:"-"`
-	InitialStateOps           []StateOp                         `json:"-"`
+	InitialStateOps           []interactivestate.Op             `json:"-"`
 	DirectorPlanSeed          *DirectorPlanSeed                 `json:"-"`
 	StateSchemaInitialization *StateSchemaInitializationStatus  `json:"-"`
 	RuntimeConfig             *conversationconfig.Config        `json:"-"`
@@ -52,7 +54,7 @@ type AppendTurnWithStateRequest struct {
 	AgentCycle           int                       `json:"agent_cycle,omitempty"`
 	DisplayEvents        []DisplayEvent            `json:"display_events,omitempty"`
 	ModelContextMessages []ModelContextMessage     `json:"model_context_messages,omitempty"`
-	Ops                  []StateOp                 `json:"ops,omitempty"`
+	Ops                  []interactivestate.Op     `json:"ops,omitempty"`
 	ActorOps             []ActorStateOp            `json:"actor_ops,omitempty"`
 	RuleResolution       *RuleResolution           `json:"rule_resolution,omitempty"`
 	TurnResult           *TurnResult               `json:"turn_result,omitempty"`
@@ -102,10 +104,10 @@ type InteractiveImageGenerateRequest struct {
 }
 
 type AppendStateDeltaRequest struct {
-	ParentID string         `json:"parent_id"`
-	BranchID string         `json:"branch_id"`
-	Ops      []StateOp      `json:"ops"`
-	ActorOps []ActorStateOp `json:"actor_ops,omitempty"`
+	ParentID string                `json:"parent_id"`
+	BranchID string                `json:"branch_id"`
+	Ops      []interactivestate.Op `json:"ops"`
+	ActorOps []ActorStateOp        `json:"actor_ops,omitempty"`
 }
 
 type MarkStateFailedRequest struct {
@@ -119,7 +121,7 @@ type UpdateStoryRequest struct {
 	Origin                    *string                          `json:"origin,omitempty"`
 	StoryTellerID             string                           `json:"story_teller_id"`
 	StoryDirectorID           string                           `json:"story_director_id,omitempty"`
-	DirectorRunPolicy         *StoryDirectorRunPolicy          `json:"director_run_policy,omitempty"`
+	DirectorRunPolicy         *director.RunPolicy              `json:"director_run_policy,omitempty"`
 	ModuleRefs                *StoryDirectorModuleRefs         `json:"module_refs,omitempty"`
 	ReplyTargetChars          *int                             `json:"reply_target_chars,omitempty"`
 	ChoiceCount               *int                             `json:"choice_count,omitempty"`
@@ -147,7 +149,7 @@ type StorySummary struct {
 	Origin            string                   `json:"origin"`
 	StoryTellerID     string                   `json:"story_teller_id"`
 	StoryDirectorID   string                   `json:"story_director_id"`
-	DirectorRunPolicy *StoryDirectorRunPolicy  `json:"director_run_policy,omitempty"`
+	DirectorRunPolicy *director.RunPolicy      `json:"director_run_policy,omitempty"`
 	ModuleRefs        *StoryDirectorModuleRefs `json:"module_refs,omitempty"`
 	ReplyTargetChars  int                      `json:"reply_target_chars"`
 	ChoiceCount       int                      `json:"choice_count"`
@@ -201,7 +203,7 @@ type StoryMeta struct {
 	Origin                    string                           `json:"origin"`
 	StoryTellerID             string                           `json:"story_teller_id"`
 	StoryDirectorID           string                           `json:"story_director_id,omitempty"`
-	DirectorRunPolicy         *StoryDirectorRunPolicy          `json:"director_run_policy,omitempty"`
+	DirectorRunPolicy         *director.RunPolicy              `json:"director_run_policy,omitempty"`
 	ModuleRefs                *StoryDirectorModuleRefs         `json:"module_refs,omitempty"`
 	ReplyTargetChars          int                              `json:"reply_target_chars"`
 	ChoiceCount               int                              `json:"choice_count"`
@@ -370,9 +372,9 @@ type TurnVersion struct {
 }
 
 type StateDelta struct {
-	SchemaVersion int            `json:"schema_version,omitempty"`
-	Ops           []StateOp      `json:"ops"`
-	ActorOps      []ActorStateOp `json:"actor_ops,omitempty"`
+	SchemaVersion int                   `json:"schema_version,omitempty"`
+	Ops           []interactivestate.Op `json:"ops"`
+	ActorOps      []ActorStateOp        `json:"actor_ops,omitempty"`
 }
 
 type HotState struct {
@@ -390,15 +392,15 @@ type HotChoicesEvent struct {
 }
 
 type StateDeltaEvent struct {
-	V             int            `json:"v"`
-	Type          string         `json:"type"`
-	ID            string         `json:"id"`
-	ParentID      string         `json:"parent_id"`
-	BranchID      string         `json:"branch_id"`
-	Ts            string         `json:"ts"`
-	SchemaVersion int            `json:"schema_version,omitempty"`
-	Ops           []StateOp      `json:"ops"`
-	ActorOps      []ActorStateOp `json:"actor_ops,omitempty"`
+	V             int                   `json:"v"`
+	Type          string                `json:"type"`
+	ID            string                `json:"id"`
+	ParentID      string                `json:"parent_id"`
+	BranchID      string                `json:"branch_id"`
+	Ts            string                `json:"ts"`
+	SchemaVersion int                   `json:"schema_version,omitempty"`
+	Ops           []interactivestate.Op `json:"ops"`
+	ActorOps      []ActorStateOp        `json:"actor_ops,omitempty"`
 }
 
 type ContextCompactionEvent struct {
@@ -408,7 +410,7 @@ type ContextCompactionEvent struct {
 	ParentID string `json:"parent_id,omitempty"`
 	BranchID string `json:"branch_id"`
 	Ts       string `json:"ts"`
-	contextmaintenance.CompactionCheckpoint
+	agentcontext.CompactionCheckpoint
 	SourceTurnCount int `json:"source_turn_count"`
 	// ExpectedParentID is a write-only compare-and-swap guard. It is never
 	// serialized into the story journal; ParentID records the parent that
@@ -454,7 +456,7 @@ type ContextCompactionHealthEvent struct {
 
 // ToolResultReplacement shares the same frozen substitution contract across
 // writing sessions and game journals.
-type ToolResultReplacement = contextmaintenance.ToolResultReplacement
+type ToolResultReplacement = agentcontext.ToolResultReplacement
 
 // ToolResultCleanupEvent projects bounded placeholders over canonical rich
 // tool results without changing the stored TurnEvent or UI timeline.
@@ -519,16 +521,6 @@ type BranchEvent struct {
 	StateCheckpoint map[string]any `json:"state_checkpoint,omitempty"`
 	LatestTurnID    string         `json:"latest_turn_id,omitempty"`
 	Depth           int            `json:"depth,omitempty"`
-}
-
-type StateOp struct {
-	Op           string `json:"op"`
-	Path         string `json:"path"`
-	Value        any    `json:"value,omitempty"`
-	Reason       string `json:"reason,omitempty"`
-	SourceTurnID string `json:"source_turn_id,omitempty"`
-	SourceKind   string `json:"source_kind,omitempty"`
-	SourceID     string `json:"source_id,omitempty"`
 }
 
 type Snapshot struct {

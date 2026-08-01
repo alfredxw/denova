@@ -9,13 +9,13 @@ import (
 func TestWritingAgentCommandKindIncludesQueueControls(t *testing.T) {
 	t.Parallel()
 
-	tests := map[string]appsvc.AgentCommandKind{
-		"steer":         appsvc.AgentCommandSteer,
-		"follow_up":     appsvc.AgentCommandFollowUp,
-		"next_turn":     appsvc.AgentCommandNextTurn,
-		"abort":         appsvc.AgentCommandAbort,
-		"steer_queued":  appsvc.AgentCommandSteerQueued,
-		"cancel_queued": appsvc.AgentCommandCancelQueued,
+	tests := map[string]appsvc.CommandKind{
+		"steer":         appsvc.CommandSteer,
+		"follow_up":     appsvc.CommandFollowUp,
+		"next_turn":     appsvc.CommandNextTurn,
+		"abort":         appsvc.CommandAbort,
+		"steer_queued":  appsvc.CommandSteerQueued,
+		"cancel_queued": appsvc.CommandCancelQueued,
 	}
 	for input, want := range tests {
 		input, want := input, want

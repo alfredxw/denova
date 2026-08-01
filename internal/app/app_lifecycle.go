@@ -7,7 +7,7 @@ import (
 	"path/filepath"
 	"strings"
 
-	"denova/internal/lifecycle"
+	"denova/internal/concurrency"
 )
 
 // appOperation is an admitted unit of work. Its context is canceled when the
@@ -15,7 +15,7 @@ import (
 // barrier used by workspace switches and App.Close.
 type appOperation struct {
 	ctx   context.Context
-	lease *lifecycle.Lease
+	lease *concurrency.Lease
 }
 
 func (o *appOperation) Context() context.Context {
@@ -33,13 +33,13 @@ func (o *appOperation) Release() {
 
 func (a *App) initializeLifecycleLocked() error {
 	if a == nil || a.closed {
-		return lifecycle.ErrClosed
+		return concurrency.ErrClosed
 	}
 	if a.rootScope == nil {
-		a.rootScope = lifecycle.NewRoot("denova-app")
+		a.rootScope = concurrency.NewRoot("denova-app")
 	}
 	if a.workspaceScopes == nil {
-		a.workspaceScopes = make(map[string]*lifecycle.Scope)
+		a.workspaceScopes = make(map[string]*concurrency.Scope)
 	}
 	return nil
 }
@@ -58,7 +58,7 @@ func lifecycleWorkspaceKey(workspace string) string {
 	return filepath.Clean(workspace)
 }
 
-func (a *App) workspaceScopeLocked(workspace string) (*lifecycle.Scope, error) {
+func (a *App) workspaceScopeLocked(workspace string) (*concurrency.Scope, error) {
 	if err := a.initializeLifecycleLocked(); err != nil {
 		return nil, err
 	}
@@ -87,13 +87,13 @@ func (a *App) workspaceScopeLocked(workspace string) (*lifecycle.Scope, error) {
 // being rebuilt.
 func (a *App) acquireWorkspaceOperation(ctx context.Context, workspace string, strictCurrent bool) (*appOperation, error) {
 	if a == nil {
-		return nil, lifecycle.ErrClosed
+		return nil, concurrency.ErrClosed
 	}
 	key := lifecycleWorkspaceKey(workspace)
 	a.mu.Lock()
 	defer a.mu.Unlock()
 	if a.closed {
-		return nil, lifecycle.ErrClosed
+		return nil, concurrency.ErrClosed
 	}
 	if strictCurrent && lifecycleWorkspaceKey(a.workspace) != key {
 		return nil, fmt.Errorf("%w: expected=%q actual=%q", ErrWorkspaceChanged, workspace, a.workspace)
@@ -107,7 +107,7 @@ func (a *App) acquireWorkspaceOperation(ctx context.Context, workspace string, s
 	}
 	opCtx, lease, err := scope.AcquireContext(ctx)
 	if err != nil {
-		if errors.Is(err, lifecycle.ErrClosing) || errors.Is(err, lifecycle.ErrClosed) {
+		if errors.Is(err, concurrency.ErrClosing) || errors.Is(err, concurrency.ErrClosed) {
 			return nil, ErrWorkspaceTransition
 		}
 		return nil, err
@@ -117,7 +117,7 @@ func (a *App) acquireWorkspaceOperation(ctx context.Context, workspace string, s
 
 func (a *App) acquireRootOperation(ctx context.Context) (*appOperation, error) {
 	if a == nil {
-		return nil, lifecycle.ErrClosed
+		return nil, concurrency.ErrClosed
 	}
 	a.mu.Lock()
 	defer a.mu.Unlock()
@@ -133,9 +133,9 @@ func (a *App) acquireRootOperation(ctx context.Context) (*appOperation, error) {
 
 // fenceWorkspaceScopesLocked fences known generations for the provided
 // workspaces. The caller must hold App.mu and wait after releasing it.
-func (a *App) fenceWorkspaceScopesLocked(workspaces ...string) []*lifecycle.Scope {
-	seen := make(map[*lifecycle.Scope]struct{})
-	result := make([]*lifecycle.Scope, 0, len(workspaces))
+func (a *App) fenceWorkspaceScopesLocked(workspaces ...string) []*concurrency.Scope {
+	seen := make(map[*concurrency.Scope]struct{})
+	result := make([]*concurrency.Scope, 0, len(workspaces))
 	for _, workspace := range workspaces {
 		key := lifecycleWorkspaceKey(workspace)
 		if key == "" {
@@ -152,7 +152,7 @@ func (a *App) fenceWorkspaceScopesLocked(workspaces ...string) []*lifecycle.Scop
 	return result
 }
 
-func waitLifecycleScopes(ctx context.Context, scopes []*lifecycle.Scope) error {
+func waitLifecycleScopes(ctx context.Context, scopes []*concurrency.Scope) error {
 	for _, scope := range scopes {
 		if scope == nil {
 			continue

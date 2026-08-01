@@ -2,6 +2,7 @@ package interactive
 
 import (
 	"context"
+	interactivestate "denova/internal/interactive/state"
 	"fmt"
 	"log/slog"
 	"sort"
@@ -119,16 +120,16 @@ func actorArchiveProtected(actorID string) bool {
 // planActorLifecycleUpdates validates lifecycle transitions against the state
 // at the start of the atomic module. The resulting intent map lets ordinary
 // field updates compose with archive/restore regardless of submission order.
-func planActorLifecycleUpdates(system StoryDirectorActorStateSystem, currentState map[string]any, updates []StateUpdate) (map[string]actorLifecycleIntent, error) {
+func planActorLifecycleUpdates(system StoryDirectorActorStateSystem, currentState map[string]any, updates []interactivestate.Update) (map[string]actorLifecycleIntent, error) {
 	intents := map[string]actorLifecycleIntent{}
 	createIndexes := map[string]int{}
 	for index, update := range updates {
-		segments, err := parseStateUpdatePath(update.Path)
+		segments, err := interactivestate.ParsePath(update.Path)
 		if err != nil || len(segments) == 0 {
 			continue
 		}
 		actorID := segments[0]
-		if update.Op == TurnStateUpdateCreate && len(segments) == 1 {
+		if update.Op == interactivestate.Create && len(segments) == 1 {
 			if actorRecordExists(currentState, actorID) {
 				message := fmt.Sprintf("Actor 已存在，不能再次 create: %s", actorID)
 				if actorIsArchived(currentState, actorID) {
@@ -138,10 +139,10 @@ func planActorLifecycleUpdates(system StoryDirectorActorStateSystem, currentStat
 			}
 			createIndexes[actorID] = index
 		}
-		if update.Op != TurnStateUpdateArchive && update.Op != TurnStateUpdateRestore {
+		if update.Op != interactivestate.Archive && update.Op != interactivestate.Restore {
 			continue
 		}
-		if err := validateStateUpdateShape(update); err != nil {
+		if err := interactivestate.ValidateUpdate(update); err != nil {
 			return nil, stateUpdateError(index, "invalid_state_update", update.Path, "archive or restore with actor_id and reason", stateUpdateActual(update.Value), err)
 		}
 		if len(segments) != 1 {
@@ -171,51 +172,51 @@ func planActorLifecycleUpdates(system StoryDirectorActorStateSystem, currentStat
 		}
 		archived := actorIsArchived(currentState, actorID)
 		switch intent.Op {
-		case TurnStateUpdateArchive:
+		case interactivestate.Archive:
 			if archived {
-				return nil, stateUpdateError(intent.Index, "actor_already_archived", formatStateUpdatePath([]string{actorID}), "active actor_id", actorID, fmt.Errorf("Actor 已归档: %s", actorID))
+				return nil, stateUpdateError(intent.Index, "actor_already_archived", interactivestate.FormatPath([]string{actorID}), "active actor_id", actorID, fmt.Errorf("Actor 已归档: %s", actorID))
 			}
 			if !exists && !createdInBatch {
-				return nil, stateUpdateError(intent.Index, "actor_not_found", formatStateUpdatePath([]string{actorID}), "existing actor_id", actorID, fmt.Errorf("归档的 Actor 不存在: %s", actorID))
+				return nil, stateUpdateError(intent.Index, "actor_not_found", interactivestate.FormatPath([]string{actorID}), "existing actor_id", actorID, fmt.Errorf("归档的 Actor 不存在: %s", actorID))
 			}
-		case TurnStateUpdateRestore:
+		case interactivestate.Restore:
 			if createdInBatch && !exists {
-				return nil, stateUpdateError(intent.Index, "actor_lifecycle_conflict", formatStateUpdatePath([]string{actorID}), "create or restore, not both", actorID, fmt.Errorf("同一次提交不能同时 create 和 restore Actor: %s", actorID))
+				return nil, stateUpdateError(intent.Index, "actor_lifecycle_conflict", interactivestate.FormatPath([]string{actorID}), "create or restore, not both", actorID, fmt.Errorf("同一次提交不能同时 create 和 restore Actor: %s", actorID))
 			}
 			if !exists {
-				return nil, stateUpdateError(intent.Index, "actor_not_found", formatStateUpdatePath([]string{actorID}), "existing actor_id", actorID, fmt.Errorf("恢复的 Actor 不存在: %s", actorID))
+				return nil, stateUpdateError(intent.Index, "actor_not_found", interactivestate.FormatPath([]string{actorID}), "existing actor_id", actorID, fmt.Errorf("恢复的 Actor 不存在: %s", actorID))
 			}
 			if !archived {
-				return nil, stateUpdateError(intent.Index, "actor_not_archived", formatStateUpdatePath([]string{actorID}), "archived actor_id", actorID, fmt.Errorf("Actor 当前未归档，无需 restore: %s", actorID))
+				return nil, stateUpdateError(intent.Index, "actor_not_archived", interactivestate.FormatPath([]string{actorID}), "archived actor_id", actorID, fmt.Errorf("Actor 当前未归档，无需 restore: %s", actorID))
 			}
 		}
 	}
 
 	for index, update := range updates {
-		if update.Op == TurnStateUpdateArchive || update.Op == TurnStateUpdateRestore {
+		if update.Op == interactivestate.Archive || update.Op == interactivestate.Restore {
 			continue
 		}
-		segments, err := parseStateUpdatePath(update.Path)
+		segments, err := interactivestate.ParsePath(update.Path)
 		if err != nil || len(segments) == 0 {
 			continue
 		}
 		actorID := segments[0]
-		if update.Op == TurnStateUpdateCreate {
+		if update.Op == interactivestate.Create {
 			continue
 		}
-		if actorIsArchived(currentState, actorID) && intents[actorID].Op != TurnStateUpdateRestore {
+		if actorIsArchived(currentState, actorID) && intents[actorID].Op != interactivestate.Restore {
 			return nil, stateUpdateError(index, "actor_archived", update.Path, "active actor_id or restore in the same module", actorID, fmt.Errorf("Actor 已归档；必须先在同一次提交中显式 restore 才能更新: %s", actorID))
 		}
 	}
 	return intents, nil
 }
 
-func compileActorArchivePresenceCleanup(system StoryDirectorActorStateSystem, state map[string]any, intent actorLifecycleIntent, sourceTurnID string) ([]StateOp, []ActorStateOp) {
-	ops := make([]StateOp, 0, 1)
+func compileActorArchivePresenceCleanup(system StoryDirectorActorStateSystem, state map[string]any, intent actorLifecycleIntent, sourceTurnID string) ([]interactivestate.Op, []ActorStateOp) {
+	ops := make([]interactivestate.Op, 0, 1)
 	actorOps := make([]ActorStateOp, 0, 1)
 	if current := getPathExact(state, "scene.present_actors"); current != nil {
 		if next, changed := actorArchiveFilterActorList(current, intent.ActorID); changed {
-			ops = append(ops, StateOp{Op: "set", Path: "scene.present_actors", Value: next, Reason: intent.Reason, SourceTurnID: sourceTurnID, SourceKind: StateOpSourceTurnResult})
+			ops = append(ops, interactivestate.Op{Op: "set", Path: "scene.present_actors", Value: next, Reason: intent.Reason, SourceTurnID: sourceTurnID, SourceKind: interactivestate.SourceTurnResult})
 		}
 	}
 	templateID, found := actorTemplateIDFromStateOrSystem(state, system, "story")
@@ -229,7 +230,7 @@ func compileActorArchivePresenceCleanup(system StoryDirectorActorStateSystem, st
 		}
 		fieldID := actorStateFieldID(field)
 		if next, changed := actorArchiveFilterActorList(actorStateFieldValue(state, "story", fieldID), intent.ActorID); changed {
-			actorOps = append(actorOps, ActorStateOp{Op: "set", ActorID: "story", FieldID: fieldID, Value: next, Reason: intent.Reason, SourceTurnID: sourceTurnID, SourceKind: StateOpSourceTurnResult})
+			actorOps = append(actorOps, ActorStateOp{Op: "set", ActorID: "story", FieldID: fieldID, Value: next, Reason: intent.Reason, SourceTurnID: sourceTurnID, SourceKind: interactivestate.SourceTurnResult})
 		}
 		break
 	}

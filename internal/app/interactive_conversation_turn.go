@@ -2,12 +2,15 @@ package app
 
 import (
 	"context"
+	agentcontext "denova/internal/agents/context"
+	"denova/internal/agents/toolresult"
 	"fmt"
 	"log/slog"
 	"strings"
 
 	"denova/config"
 	agents "denova/internal/agents"
+	agentcompaction "denova/internal/agents/context/compaction"
 	"denova/internal/agents/session"
 	"denova/internal/interactive"
 )
@@ -96,42 +99,42 @@ func (c *interactiveConversation) InteractiveNarrativeReady() bool {
 	return c.turnProtocol.narrativeReady()
 }
 
-func (c *interactiveConversation) CompactContextIfNeeded(ctx context.Context, input agents.ContextCompactionInput) ([]*agents.Message, agents.ContextCompactionResult, error) {
+func (c *interactiveConversation) CompactContextIfNeeded(ctx context.Context, input agentcompaction.Input) ([]*agents.Message, agentcompaction.Result, error) {
 	if c == nil || c.store == nil {
-		return input.Messages, agents.ContextCompactionResult{}, fmt.Errorf("互动故事不存在")
+		return input.Messages, agentcompaction.Result{}, fmt.Errorf("互动故事不存在")
 	}
 	storyCtx, err := c.storyContextForCycle()
 	if err != nil {
-		return input.Messages, agents.ContextCompactionResult{}, err
+		return input.Messages, agentcompaction.Result{}, err
 	}
 	modelHistory, activeCompaction, err := c.modelHistoryForCycle(storyCtx)
 	if err != nil {
-		return input.Messages, agents.ContextCompactionResult{}, err
+		return input.Messages, agentcompaction.Result{}, err
 	}
 	if !input.Force && storyCtx.Snapshot.ContextCompactionRemoval != nil && storyCtx.Snapshot.ContextCompactionRemoval.SourceTurnCount >= modelHistory.EndTurn {
-		return input.Messages, agents.ContextCompactionResult{SkippedReason: "removed_same_source"}, nil
+		return input.Messages, agentcompaction.Result{SkippedReason: "removed_same_source"}, nil
 	}
 	modelProjection, err := buildInteractiveModelContextProjection(
 		modelHistory, activeCompaction, storyCtx.Snapshot, c.ToolResultContextPolicy(), c.agentCycleIdentitySnapshot(),
 	)
 	if err != nil {
-		return input.Messages, agents.ContextCompactionResult{}, err
+		return input.Messages, agentcompaction.Result{}, err
 	}
 	source := modelProjection.SourceMessages
 	existingCheckpoint := modelProjection.ExistingCheckpoint
-	input.CandidateFingerprint, input.CandidateGeneration = agents.ContextCompactionCandidateIdentity(input.Messages, 0)
+	input.CandidateFingerprint, input.CandidateGeneration = agentcompaction.CandidateIdentity(input.Messages, 0)
 	healthRevision, health, hasHealth, err := c.store.ContextCompactionHealthState(
 		c.storyID, storyCtx.Snapshot.BranchID, config.AgentKindInteractiveStory,
 	)
 	if err != nil {
-		return input.Messages, agents.ContextCompactionResult{}, err
+		return input.Messages, agentcompaction.Result{}, err
 	}
 	structureFingerprint, err := c.contextCompactionStructureFingerprint(storyCtx, input)
 	if err != nil {
-		return input.Messages, agents.ContextCompactionResult{}, err
+		return input.Messages, agentcompaction.Result{}, err
 	}
 	maximumFailures := config.DefaultContextCompactionMaxConsecutiveFailures
-	if hasHealth && (agents.ContextCompactionFailureState{
+	if hasHealth && (agentcompaction.FailureState{
 		StructureFingerprint: health.StructureFingerprint,
 		ConsecutiveFailures:  health.ConsecutiveFailures,
 	}).Blocks(structureFingerprint, maximumFailures, input.Automatic) {
@@ -140,11 +143,11 @@ func (c *interactiveConversation) CompactContextIfNeeded(ctx context.Context, in
 		input.FailureFuseOpen = true
 	}
 	if input.Automatic && strings.TrimSpace(input.PreflightSkipReason) == "" && activeCompaction != nil &&
-		agents.ContextCompactionNoProgressLatched(
+		agentcompaction.NoProgressLatched(
 			activeCompaction.TokensAfter, activeCompaction.ContextWindowTokens, activeCompaction.Threshold,
 			config.DefaultContextCompactionRecoveryBand,
-			agents.EstimateContextTokens(source, nil),
-			agents.EffectiveToolResultCleanupMinimum(input.Messages, input.Tools, c.ContextPressurePolicy(input.Messages)),
+			agentcontext.EstimateTokens(source, nil),
+			agentcontext.EffectiveToolResultCleanupMinimum(input.Messages, input.Tools, c.ContextPressurePolicy(input.Messages)),
 			activeCompaction.CandidateFingerprint, activeCompaction.CandidateGeneration,
 			input.CandidateFingerprint, input.CandidateGeneration,
 		) {
@@ -161,16 +164,16 @@ func (c *interactiveConversation) CompactContextIfNeeded(ctx context.Context, in
 	}
 	input.KeepLatestUser = true
 	stableLeadingMessage := c.stableLeadingMessageSnapshot()
-	completionReserve, toolReserve := agents.EstimateContextProjectionReserves(c.cfg, config.AgentKindInteractiveStory, c.replyTargetChars)
+	completionReserve, toolReserve := agentcompaction.EstimateProjectionReserves(c.cfg, config.AgentKindInteractiveStory, c.replyTargetChars)
 	if input.ReservedCompletionTokens <= 0 {
 		input.ReservedCompletionTokens = completionReserve
 	}
 	if input.ReservedToolResultTokens <= 0 {
 		input.ReservedToolResultTokens = toolReserve
 	}
-	newMessages, result, err := agents.PrepareContextCompaction(ctx, c.cfg, config.AgentKindInteractiveStory, input, epoch)
+	newMessages, result, err := agentcompaction.Prepare(ctx, c.cfg, config.AgentKindInteractiveStory, input, epoch)
 	if err != nil {
-		c.stageInteractiveCompactionHealth(healthRevision, storyCtx.Snapshot.BranchID, structureFingerprint, agents.ContextCompactionHealthFailure, &result)
+		c.stageInteractiveCompactionHealth(healthRevision, storyCtx.Snapshot.BranchID, structureFingerprint, agentcompaction.HealthFailure, &result)
 		return newMessages, result, err
 	}
 	if !result.Triggered {
@@ -179,10 +182,10 @@ func (c *interactiveConversation) CompactContextIfNeeded(ctx context.Context, in
 	newMessages = preserveInteractiveStableLeadingMessage(newMessages, stableLeadingMessage)
 	newMessages, result, err = validateInteractiveCompactionProjection(input.Messages, newMessages, result, input.Tools)
 	if err != nil {
-		c.stageInteractiveCompactionHealth(healthRevision, storyCtx.Snapshot.BranchID, structureFingerprint, agents.ContextCompactionHealthFailure, &result)
+		c.stageInteractiveCompactionHealth(healthRevision, storyCtx.Snapshot.BranchID, structureFingerprint, agentcompaction.HealthFailure, &result)
 		return newMessages, result, err
 	}
-	c.stageInteractiveCompactionHealth(healthRevision, storyCtx.Snapshot.BranchID, structureFingerprint, agents.ContextCompactionHealthSuccess, &result)
+	c.stageInteractiveCompactionHealth(healthRevision, storyCtx.Snapshot.BranchID, structureFingerprint, agentcompaction.HealthSuccess, &result)
 	if !input.Force && result.Phase == "model_step" {
 		c.stagePreparedInteractiveCompaction(preparedInteractiveContextCompaction{
 			Result: result, SourceTurnCount: modelProjection.SourceTurnCount,
@@ -202,24 +205,24 @@ func (c *interactiveConversation) CompactContextIfNeeded(ctx context.Context, in
 func validateInteractiveCompactionProjection(
 	originalMessages []*agents.Message,
 	compactedMessages []*agents.Message,
-	result agents.ContextCompactionResult,
+	result agentcompaction.Result,
 	tools []*agents.ToolInfo,
-) ([]*agents.Message, agents.ContextCompactionResult, error) {
-	normalized, err := agents.NormalizeModelContextMessages(compactedMessages)
+) ([]*agents.Message, agentcompaction.Result, error) {
+	normalized, err := agentcontext.NormalizeModelContextMessages(compactedMessages)
 	if err != nil {
 		result.Triggered = false
 		result.SkippedReason = "protocol_invalid"
 		return originalMessages, result, err
 	}
 	compactedMessages = normalized
-	result.CandidateFingerprint, result.CandidateGeneration = agents.ContextCompactionCandidateIdentity(compactedMessages, 0)
+	result.CandidateFingerprint, result.CandidateGeneration = agentcompaction.CandidateIdentity(compactedMessages, 0)
 	result = interactiveCompactionResultForMessages(result, compactedMessages, tools)
 	if result.RecoveryTargetTokens > 0 {
 		result.RecoveryBandMet = result.TokensAfter <= result.RecoveryTargetTokens
 		result.Degraded = !result.RecoveryBandMet && result.ContextWindowTokens > 0 &&
-			result.TokensAfter < agents.ContextCompactionPublishLimit(result.ContextWindowTokens, result.Threshold)
+			result.TokensAfter < agentcompaction.PublishLimit(result.ContextWindowTokens, result.Threshold)
 	}
-	if err := agents.ValidateContextCompactionResult(result); err != nil {
+	if err := agentcompaction.Validate(result); err != nil {
 		result.Triggered = false
 		result.SkippedReason = "no_progress"
 		return originalMessages, result, err
@@ -436,8 +439,8 @@ func (c *interactiveConversation) AppendContextMessages(messages ...*agents.Mess
 	return nil
 }
 
-func (c *interactiveConversation) ToolResultContextPolicy() agents.ToolResultContextPolicy {
-	return agents.ResolveToolResultContextPolicyForConversation(c.cfg, config.AgentKindInteractiveStory)
+func (c *interactiveConversation) ToolResultContextPolicy() toolresult.ContextPolicy {
+	return toolresult.ResolveContextPolicy(c.cfg, config.AgentKindInteractiveStory)
 }
 
 func (c *interactiveConversation) AppendAssistantWithThinking(content, thinking string) error {

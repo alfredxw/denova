@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"strings"
 
-	"denova/internal/conversationjournal"
+	"denova/internal/agents/conversationjournal"
 )
 
 const (

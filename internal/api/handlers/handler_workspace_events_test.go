@@ -5,7 +5,7 @@ import (
 	"strings"
 	"testing"
 
-	"denova/internal/filewatch"
+	"denova/internal/workspace/filewatch"
 )
 
 func TestWriteWorkspaceFileEvent(t *testing.T) {

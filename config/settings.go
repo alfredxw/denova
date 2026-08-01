@@ -11,9 +11,9 @@ import (
 	"github.com/alfredxw/denova/agent/providers"
 	toml "github.com/pelletier/go-toml/v2"
 
-	"denova/internal/narrativestyle"
 	"denova/internal/revisionfile"
-	"denova/internal/workspacepath"
+	"denova/internal/style"
+	workspacelayout "denova/internal/workspace"
 )
 
 // Settings 是用户设置的持久化模型。工作区文件只会从中取出 Agent 定制字段。
@@ -100,7 +100,7 @@ type Settings struct {
 	WritingSkillDefault string `toml:"writing_skill_default,omitempty" json:"writing_skill_default,omitempty"`
 
 	// Terminal (the AgentChat terminal tabs). A terminal runs arbitrary commands on this
-	// machine, so this entire section is user-scoped and cannot be overridden by a workspace.
+	// machine, so this entire section is user-scoped and cannot be overridden by a workspacelayout.
 	TerminalEnabled  *bool                     `toml:"terminal_enabled,omitempty" json:"terminal_enabled,omitempty"`
 	TerminalShell    string                    `toml:"terminal_shell,omitempty" json:"terminal_shell,omitempty"`
 	TerminalCommands []TerminalCommandSettings `toml:"terminal_commands,omitempty" json:"terminal_commands,omitempty"`
@@ -147,8 +147,8 @@ func DefaultSettings() Settings {
 		ImageAPIModel:               DefaultImageAPIModel,
 		DefaultImageAPIProfileID:    DefaultImageAPIProfileID,
 		SkillsDir:                   "./skills",
-		DenovaDir:                   "./" + workspacepath.DataDirName,
-		NovaDir:                     "./" + workspacepath.DataDirName,
+		DenovaDir:                   "./" + workspacelayout.DataDirName,
+		NovaDir:                     "./" + workspacelayout.DataDirName,
 		BackendPort:                 intPtr(8080),
 		FrontendPort:                intPtr(5173),
 		AllowLANAccess:              boolPtr(false),
@@ -198,10 +198,10 @@ func DefaultSettings() Settings {
 		GeneralSubAgents:           DefaultAgentGeneralSubAgentSettings(),
 		SubAgents:                  nil,
 		PlanModeDefault:            boolPtr(false),
-		IDEStoryTellerID:           narrativestyle.DefaultID,
+		IDEStoryTellerID:           style.DefaultID,
 		IDEImagePresetID:           "game-cg",
 		WritingSkillDefault:        DefaultWritingSkillName,
-		InteractiveStoryTellerID:   narrativestyle.DefaultID,
+		InteractiveStoryTellerID:   style.DefaultID,
 		InteractiveStageFontSize:   intPtr(16),
 		InteractiveStageLineHeight: floatPtr(1.78),
 	}
@@ -410,9 +410,9 @@ const (
 	// UserConfigFilename 是用户级配置文件名（位于 DenovaDir 下）。
 	UserConfigFilename = "config.toml"
 	// WorkspaceConfigDir 是工作区级 Agent 定制目录（相对于 workspace）。
-	WorkspaceConfigDir = workspacepath.DataDirName
+	WorkspaceConfigDir = workspacelayout.DataDirName
 	// LegacyWorkspaceConfigDir 是改名前的工作区级配置目录，仅用于兼容已有工作区。
-	LegacyWorkspaceConfigDir = workspacepath.LegacyDataDirName
+	LegacyWorkspaceConfigDir = workspacelayout.LegacyDataDirName
 	// WorkspaceConfigFilename 是工作区级配置文件名。
 	WorkspaceConfigFilename = "config.toml"
 )
@@ -574,7 +574,7 @@ func UserConfigPath(novaDir string) string {
 
 // WorkspaceConfigPath 计算工作区级 Agent 定制路径。
 func WorkspaceConfigPath(workspace string) string {
-	return workspacepath.Path(workspace, WorkspaceConfigFilename)
+	return workspacelayout.Path(workspace, WorkspaceConfigFilename)
 }
 
 // ProjectConfigPath returns the user-owned Agent override file for a Project

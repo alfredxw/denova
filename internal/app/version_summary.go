@@ -9,7 +9,7 @@ import (
 	"unicode/utf8"
 
 	"denova/config"
-	agents "denova/internal/agents"
+	agentmodeltask "denova/internal/agents/modeltask"
 	"denova/internal/book"
 )
 
@@ -38,13 +38,13 @@ func (a *App) setVersionSummaryGeneratorForTest(generator versionSummaryGenerato
 
 func (a *App) versionSummaryGeneratorSnapshot() versionSummaryGeneratorFunc {
 	if a == nil {
-		return agents.GenerateVersionSummary
+		return agentmodeltask.GenerateVersionSummary
 	}
 	a.mu.RLock()
 	generator := a.versionSummaryGenerator
 	a.mu.RUnlock()
 	if generator == nil {
-		return agents.GenerateVersionSummary
+		return agentmodeltask.GenerateVersionSummary
 	}
 	return generator
 }

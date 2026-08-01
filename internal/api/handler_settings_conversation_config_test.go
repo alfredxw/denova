@@ -6,7 +6,7 @@ import (
 	"testing"
 
 	"denova/config"
-	"denova/internal/conversationconfig"
+	"denova/internal/agents/conversationconfig"
 )
 
 func TestSettingsAPIPartiallyMutatesOneLayerThroughOneRoute(t *testing.T) {

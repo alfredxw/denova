@@ -2,6 +2,7 @@ package app
 
 import (
 	"context"
+	apptask "denova/internal/app/task"
 	"errors"
 	"fmt"
 	"log/slog"
@@ -110,7 +111,7 @@ func (s *AutomationAppService) ConfirmInboxItem(ctx context.Context, id string) 
 		return automation.InboxActionResult{}, err
 	}
 	defer operation.Release()
-	return s.confirmInboxItemWithStarter(operation.Context(), store, snap, item.ID, func(ctx context.Context, taskID, trigger, sourceRunID, runID string, evidence []automation.TriggerEvidence) (*Task, automation.RunRecord, error) {
+	return s.confirmInboxItemWithStarter(operation.Context(), store, snap, item.ID, func(ctx context.Context, taskID, trigger, sourceRunID, runID string, evidence []automation.TriggerEvidence) (*apptask.Task, automation.RunRecord, error) {
 		return s.startTaskWithSourceRunID(ctx, snap, taskID, trigger, sourceRunID, runID, evidence)
 	})
 }

@@ -2,6 +2,7 @@ package app
 
 import (
 	"context"
+	apptask "denova/internal/app/task"
 	"errors"
 	"path/filepath"
 	"strings"
@@ -33,7 +34,7 @@ func TestAutomationInboxConfirmationRetriesFailureBeforeRuntimeAcceptance(t *tes
 	snap := &automationWorkspaceSnapshot{workspace: workspace, novaDir: novaDir}
 	crashErr := errors.New("simulated crash after run start")
 	started := map[string]int{}
-	firstStarter := func(_ context.Context, taskID, trigger, sourceRunID, runID string, evidence []automation.TriggerEvidence) (*Task, automation.RunRecord, error) {
+	firstStarter := func(_ context.Context, taskID, trigger, sourceRunID, runID string, evidence []automation.TriggerEvidence) (*apptask.Task, automation.RunRecord, error) {
 		started[runID]++
 		return nil, automation.RunRecord{
 			ID: runID, TaskID: taskID, Trigger: trigger, SourceRunID: sourceRunID, TriggerEvidence: evidence, Status: automation.RunStatusFailed,
@@ -48,7 +49,7 @@ func TestAutomationInboxConfirmationRetriesFailureBeforeRuntimeAcceptance(t *tes
 	}
 
 	restarted := automation.NewStore(novaDir, workspace)
-	secondStarter := func(_ context.Context, taskID, trigger, sourceRunID, runID string, evidence []automation.TriggerEvidence) (*Task, automation.RunRecord, error) {
+	secondStarter := func(_ context.Context, taskID, trigger, sourceRunID, runID string, evidence []automation.TriggerEvidence) (*apptask.Task, automation.RunRecord, error) {
 		started[runID]++
 		if runID != claimed.RunID {
 			t.Fatalf("retry run id=%q want=%q", runID, claimed.RunID)
@@ -96,7 +97,7 @@ func TestAutomationInboxConfirmationRequiresDurableRuntimeReceipt(t *testing.T) 
 		store,
 		&automationWorkspaceSnapshot{workspace: workspace, novaDir: novaDir},
 		item.ID,
-		func(_ context.Context, taskID, trigger, sourceRunID, runID string, evidence []automation.TriggerEvidence) (*Task, automation.RunRecord, error) {
+		func(_ context.Context, taskID, trigger, sourceRunID, runID string, evidence []automation.TriggerEvidence) (*apptask.Task, automation.RunRecord, error) {
 			return nil, automation.RunRecord{
 				ID: runID, TaskID: taskID, Trigger: trigger, SourceRunID: sourceRunID,
 				TriggerEvidence: evidence, Status: automation.RunStatusRunning,

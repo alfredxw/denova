@@ -17,7 +17,7 @@ import (
 	"testing"
 	"time"
 
-	"denova/internal/runtimetools"
+	"denova/internal/hostruntime"
 )
 
 func TestSelectAssetForPlatform(t *testing.T) {
@@ -97,7 +97,7 @@ func TestValidateReleasePackageRequiresRipgrepLicenses(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	if err := os.WriteFile(filepath.Join(dir, "tools", runtimetools.RipgrepExecutableName()), []byte("ripgrep"), 0o755); err != nil {
+	if err := os.WriteFile(filepath.Join(dir, "tools", hostruntime.RipgrepExecutableName()), []byte("ripgrep"), 0o755); err != nil {
 		t.Fatal(err)
 	}
 	if err := validateReleasePackage(dir, "denova", updaterExecutableName()); err == nil || !strings.Contains(err.Error(), "许可") {
@@ -114,7 +114,7 @@ func TestInstallStagesUpdateAndIgnoresRequestCancel(t *testing.T) {
 		updaterName:            "new updater",
 		"web/index.html":       "<html>new</html>",
 		"skills/demo/SKILL.md": "skill",
-		filepath.ToSlash(filepath.Join("tools", runtimetools.RipgrepExecutableName())): "ripgrep",
+		filepath.ToSlash(filepath.Join("tools", hostruntime.RipgrepExecutableName())): "ripgrep",
 		"licenses/ripgrep/LICENSE-MIT": "MIT license",
 		"licenses/ripgrep/UNLICENSE":   "Unlicense",
 		"README.md":                    "readme",
@@ -211,7 +211,7 @@ func TestInstallStagesUpdateAndIgnoresRequestCancel(t *testing.T) {
 	if got, err := os.ReadFile(filepath.Join(result.StagedPath, updaterName)); err != nil || string(got) != "new updater" {
 		t.Fatalf("staged updater missing: %q err=%v", got, err)
 	}
-	if got, err := os.ReadFile(filepath.Join(result.StagedPath, "tools", runtimetools.RipgrepExecutableName())); err != nil || string(got) != "ripgrep" {
+	if got, err := os.ReadFile(filepath.Join(result.StagedPath, "tools", hostruntime.RipgrepExecutableName())); err != nil || string(got) != "ripgrep" {
 		t.Fatalf("staged ripgrep missing: %q err=%v", got, err)
 	}
 	archivePath := filepath.Join(installDir, ".denova-updates", "downloads", assetName)
@@ -247,7 +247,7 @@ func testReleaseArchive(t *testing.T, exeName string, files map[string]string) [
 	tw := tar.NewWriter(gz)
 	for name, content := range files {
 		mode := int64(0o644)
-		if name == exeName || filepath.Base(name) == runtimetools.RipgrepExecutableName() {
+		if name == exeName || filepath.Base(name) == hostruntime.RipgrepExecutableName() {
 			mode = 0o755
 		}
 		path := filepath.ToSlash(filepath.Join("denova", name))

@@ -2,7 +2,7 @@ package app
 
 import (
 	"context"
-	"denova/internal/filewatch"
+	"denova/internal/workspace/filewatch"
 	"fmt"
 	"log/slog"
 )

@@ -1,18 +1,17 @@
 package app
 
 import (
+	"denova/internal/book/lore"
 	"errors"
 	"fmt"
 	"path/filepath"
 	"strings"
-
-	"denova/internal/book"
 )
 
 // WithLoreStore binds a short lore read or mutation to the workspace identity
 // supplied by the client. Workspace switches take the write lock and therefore
 // cannot redirect an in-flight edit into another book.
-func (a *App) WithLoreStore(expectedWorkspace string, action func(*book.LoreStore) error) (string, error) {
+func (a *App) WithLoreStore(expectedWorkspace string, action func(*lore.Store) error) (string, error) {
 	if action == nil {
 		return "", errors.New("lore action is nil")
 	}
@@ -27,7 +26,7 @@ func (a *App) WithLoreStore(expectedWorkspace string, action func(*book.LoreStor
 	if expectedWorkspace == "" || filepath.Clean(expectedWorkspace) != filepath.Clean(actualWorkspace) {
 		return "", fmt.Errorf("%w: expected=%q actual=%q", ErrWorkspaceChanged, expectedWorkspace, actualWorkspace)
 	}
-	if err := action(book.NewLoreStore(actualWorkspace)); err != nil {
+	if err := action(lore.NewStore(actualWorkspace)); err != nil {
 		return "", err
 	}
 	return actualWorkspace, nil

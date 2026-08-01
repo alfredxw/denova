@@ -1,6 +1,6 @@
 package interactive
 
-type defaultTellerEventCardMarkdownDetails struct {
+type defaultEventCardMarkdownDetails struct {
 	Trigger    string
 	Fusion     string
 	Logic      string
@@ -9,12 +9,12 @@ type defaultTellerEventCardMarkdownDetails struct {
 	Guardrail  string
 }
 
-func defaultTellerEventCardDetails(event DirectorEvent) defaultTellerEventCardMarkdownDetails {
-	if details, ok := defaultTellerEventCardDetailsByID[event.ID]; ok {
+func defaultEventCardDetails(event DirectorEvent) defaultEventCardMarkdownDetails {
+	if details, ok := defaultEventCardDetailsByID[event.ID]; ok {
 		return details
 	}
 	summary := firstNonEmptyString(event.Summary, event.PublicSummary, event.Name)
-	return defaultTellerEventCardMarkdownDetails{
+	return defaultEventCardMarkdownDetails{
 		Trigger:    summary,
 		Fusion:     "结合当前作品已确认的世界观、势力、地点、人物关系或冲突源选择触发点；没有明确设定依据时保持为可变形的通用事件，不编造具体事实。",
 		Logic:      "先顺着用户行动和当前压力铺垫，再让阻力或机会自然升级；中段给出可被玩家行动影响的转折，最后落到阶段性结果或新的选择点。",
@@ -24,7 +24,7 @@ func defaultTellerEventCardDetails(event DirectorEvent) defaultTellerEventCardMa
 	}
 }
 
-var defaultTellerEventCardDetailsByID = map[string]defaultTellerEventCardMarkdownDetails{
+var defaultEventCardDetailsByID = map[string]defaultEventCardMarkdownDetails{
 	"face_slap": {
 		Trigger:    "主角被公开轻视、污蔑、抢功或被迫证明资格时触发，最好已有旁观者、赌注或可验证证据。",
 		Fusion:     "优先绑定当前势力的评价体系，例如宗门考核、职场会议、家族宴席、榜单公示或交易现场，让反转发生在对方最在意的规则内。",

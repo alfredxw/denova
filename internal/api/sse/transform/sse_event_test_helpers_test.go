@@ -1,27 +1,26 @@
 package transform
 
 import (
+	agentrun "denova/internal/agents/run"
 	"testing"
-
-	agents "denova/internal/agents"
 )
 
 type sseEventCollector struct {
-	events []agents.Event
+	events []agentrun.Event
 }
 
-func (c *sseEventCollector) Handle(ev agents.Event) error {
+func (c *sseEventCollector) Handle(ev agentrun.Event) error {
 	c.events = append(c.events, ev)
 	return nil
 }
 
-func mustForwardSSEEvent(t *testing.T, collector *sseEventCollector, handler SSEEventHandler, ev agents.Event) agents.Event {
+func mustForwardSSEEvent(t *testing.T, collector *sseEventCollector, handler SSEEventHandler, ev agentrun.Event) agentrun.Event {
 	t.Helper()
 	events := mustForwardSSEEvents(t, collector, handler, ev, 1)
 	return events[0]
 }
 
-func mustForwardSSEEvents(t *testing.T, collector *sseEventCollector, handler SSEEventHandler, ev agents.Event, want int) []agents.Event {
+func mustForwardSSEEvents(t *testing.T, collector *sseEventCollector, handler SSEEventHandler, ev agentrun.Event, want int) []agentrun.Event {
 	t.Helper()
 	before := len(collector.events)
 	if err := handler(ev); err != nil {
@@ -33,7 +32,7 @@ func mustForwardSSEEvents(t *testing.T, collector *sseEventCollector, handler SS
 	return collector.events[before:]
 }
 
-func mustSuppressSSEEvent(t *testing.T, collector *sseEventCollector, handler SSEEventHandler, ev agents.Event) {
+func mustSuppressSSEEvent(t *testing.T, collector *sseEventCollector, handler SSEEventHandler, ev agentrun.Event) {
 	t.Helper()
 	before := len(collector.events)
 	if err := handler(ev); err != nil {

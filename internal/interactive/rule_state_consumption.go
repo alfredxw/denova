@@ -1,6 +1,7 @@
 package interactive
 
 import (
+	interactivestate "denova/internal/interactive/state"
 	"fmt"
 	"strings"
 )
@@ -16,7 +17,7 @@ const (
 type RuleStateConsumption struct {
 	Status          string                        `json:"status"`
 	Mode            string                        `json:"mode,omitempty"`
-	AppliedOps      []StateOp                     `json:"applied_ops,omitempty"`
+	AppliedOps      []interactivestate.Op         `json:"applied_ops,omitempty"`
 	AppliedActorOps []ActorStateOp                `json:"applied_actor_ops,omitempty"`
 	Warnings        []RuleStateConsumptionWarning `json:"warnings,omitempty"`
 }
@@ -27,7 +28,7 @@ type RuleStateConsumptionWarning struct {
 	Reason  string `json:"reason"`
 }
 
-func applyRuleStateConsumptionV2(state map[string]any, system StoryDirectorActorStateSystem, turnID string, resolution *RuleResolution, mode string) ([]StateOp, []ActorStateOp) {
+func applyRuleStateConsumptionV2(state map[string]any, system StoryDirectorActorStateSystem, turnID string, resolution *RuleResolution, mode string) ([]interactivestate.Op, []ActorStateOp) {
 	if resolution == nil {
 		return nil, nil
 	}
@@ -132,11 +133,11 @@ func actorStateFieldByPath(template ActorStateTemplate, path string) (ActorState
 	return actorStateFieldByID(template, path)
 }
 
-func removeRuleResolutionStateOps(ops []StateOp, resolutionID string) []StateOp {
+func removeRuleResolutionStateOps(ops []interactivestate.Op, resolutionID string) []interactivestate.Op {
 	if len(ops) == 0 {
 		return nil
 	}
-	out := make([]StateOp, 0, len(ops))
+	out := make([]interactivestate.Op, 0, len(ops))
 	for _, op := range ops {
 		if op.SourceKind == StateOpSourceRuleResolution && (resolutionID == "" || op.SourceID == resolutionID) {
 			continue

@@ -2,11 +2,11 @@ package app
 
 import (
 	"context"
+	agentinteractive "denova/internal/agents/interactive"
 	"fmt"
 	"testing"
 
 	"denova/config"
-	agents "denova/internal/agents"
 	"denova/internal/book"
 	"denova/internal/interactive"
 )
@@ -24,7 +24,7 @@ func TestLegacyStoryDirectorMaintenanceKeepsStateSchemaFixed(t *testing.T) {
 		t.Fatal(err)
 	}
 	var maintenanceTasks []string
-	generator := func(_ context.Context, _ *config.Config, _ *book.State, toolContext agents.InteractiveStoryToolContext, _ string) (string, error) {
+	generator := func(_ context.Context, _ *config.Config, _ *book.State, toolContext agentinteractive.InteractiveStoryToolContext, _ string) (string, error) {
 		maintenanceTasks = append(maintenanceTasks, toolContext.MaintenanceTask)
 		return "", fmt.Errorf("stop after inspecting Director maintenance task")
 	}

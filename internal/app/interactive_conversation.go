@@ -2,6 +2,8 @@ package app
 
 import (
 	"context"
+	agentharness "denova/internal/agents/harness"
+	agentinteractive "denova/internal/agents/interactive"
 	"fmt"
 	"log/slog"
 	"strings"
@@ -10,10 +12,13 @@ import (
 	"denova/config"
 	agents "denova/internal/agents"
 	agentcontext "denova/internal/agents/context"
+	"denova/internal/agents/prompts"
+	agentrun "denova/internal/agents/run"
 	"denova/internal/agents/session"
+	novaskills "denova/internal/agents/skills"
 	"denova/internal/book"
+	"denova/internal/book/lore"
 	"denova/internal/interactive"
-	"denova/internal/prompts"
 )
 
 type interactiveConversation struct {
@@ -32,7 +37,7 @@ type interactiveConversation struct {
 	lastStateReady           bool
 	lastSources              string
 	lastContextSources       []interactiveContextSource
-	lastContextLedgerParts   []agents.ContextLedgerPart
+	lastContextLedgerParts   []agentcontext.AuditPart
 	stableLeadingMessage     string
 	assistantMetadata        session.MessageMetadata
 	displayEvents            []interactive.DisplayEvent
@@ -45,11 +50,11 @@ type interactiveConversation struct {
 	pinParentAtExecution     bool
 	directorTasks            *workspaceDirectorTaskGroup
 	directorGenerator        interactiveDirectorGenerator
-	directorChatService      *agents.ChatService
+	directorChatService      *agentharness.Service
 	customDirectorGenerator  bool
-	agentCycleCommit         func(context.Context, agents.RunOutcome) error
+	agentCycleCommit         func(context.Context, agentrun.Outcome) error
 	agentCyclePrepare        func(context.Context) error
-	agentCycleIdentity       agents.HarnessCycleIdentity
+	agentCycleIdentity       agentrun.CycleIdentity
 	pendingDomainCommit      *interactive.DomainCommitIntent
 	lastDomainReceipt        *interactive.DomainCommitReceipt
 	pendingCompaction        *preparedInteractiveContextCompaction
@@ -61,29 +66,29 @@ type interactiveConversation struct {
 	openingStateSchemaAudit  interactive.ActorStateSchemaBatchAudit
 }
 
-var _ agents.ExplicitSkillResolver = (*interactiveConversation)(nil)
+var _ novaskills.ExplicitResolver = (*interactiveConversation)(nil)
 
 func (c *interactiveConversation) ModelContextBudget() agentcontext.Budget {
 	if c == nil {
 		return agentcontext.DefaultBudget()
 	}
-	return agents.ContextBudgetForAgent(c.cfg, config.AgentKindInteractiveStory)
+	return agentcontext.ContextBudgetForAgent(c.cfg, config.AgentKindInteractiveStory)
 }
 
-func (c *interactiveConversation) ResolveExplicitSkills(ctx context.Context, message string) ([]agents.ExplicitSkillInvocation, error) {
+func (c *interactiveConversation) ResolveExplicitSkills(ctx context.Context, message string) ([]novaskills.Invocation, error) {
 	if c == nil {
 		return nil, nil
 	}
 	c.mu.Lock()
 	cfg := c.cfg
 	c.mu.Unlock()
-	return agents.ResolveExplicitSkillInvocations(ctx, cfg, config.AgentKindInteractiveStory, message)
+	return novaskills.ResolveConfiguredInvocations(ctx, cfg, config.AgentKindInteractiveStory, message)
 }
 
 // BindAgentCycleIdentity receives the coordinator-selected identity before
 // the model cycle starts. The turn store persists it with the canonical game
 // event, providing an idempotency key across the domain/runtime commit seam.
-func (c *interactiveConversation) BindAgentCycleIdentity(identity agents.HarnessCycleIdentity) {
+func (c *interactiveConversation) BindAgentCycleIdentity(identity agentrun.CycleIdentity) {
 	if c == nil {
 		return
 	}
@@ -101,16 +106,16 @@ func (c *interactiveConversation) BindAgentCycleIdentity(identity agents.Harness
 	c.mu.Unlock()
 }
 
-func (c *interactiveConversation) agentCycleIdentitySnapshot() agents.HarnessCycleIdentity {
+func (c *interactiveConversation) agentCycleIdentitySnapshot() agentrun.CycleIdentity {
 	if c == nil {
-		return agents.HarnessCycleIdentity{}
+		return agentrun.CycleIdentity{}
 	}
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	return c.agentCycleIdentity
 }
 
-func (c *interactiveConversation) withAgentCycleCommit(commit func(context.Context, agents.RunOutcome) error) *interactiveConversation {
+func (c *interactiveConversation) withAgentCycleCommit(commit func(context.Context, agentrun.Outcome) error) *interactiveConversation {
 	if c != nil {
 		c.mu.Lock()
 		c.agentCycleCommit = commit
@@ -128,7 +133,7 @@ func (c *interactiveConversation) withAgentCyclePrepare(prepare func(context.Con
 	return c
 }
 
-// PrepareAgentCycle implements agents.HarnessCyclePreparer. The durable
+// PrepareAgentCycle implements agentrun.CyclePreparer. The durable
 // coordinator calls it after binding command/operation/cycle identity and
 // before any model or tool effect, so queued follow-ups cannot observe a stale
 // cross-domain projection.
@@ -145,35 +150,35 @@ func (c *interactiveConversation) PrepareAgentCycle(ctx context.Context) error {
 	return prepare(ctx)
 }
 
-// CommitAgentCycle implements agents.HarnessCycleCommitter. The callback is
+// CommitAgentCycle implements agentrun.CycleCommitter. The callback is
 // immutable once execution begins and bridges the generic durable cycle
 // boundary to the game domain's persisted-turn projection.
-func (c *interactiveConversation) CommitAgentCycle(ctx context.Context, outcome agents.RunOutcome) error {
-	return c.CommitAgentCycleStage(ctx, agents.HarnessDomainCommitOutput, outcome)
+func (c *interactiveConversation) CommitAgentCycle(ctx context.Context, outcome agentrun.Outcome) error {
+	return c.CommitAgentCycleStage(ctx, agentrun.DomainCommitOutput, outcome)
 }
 
-func (c *interactiveConversation) PendingAgentCycleCommit(stage agents.HarnessDomainCommitStage) (agents.HarnessDomainCommitIntent, bool, error) {
+func (c *interactiveConversation) PendingAgentCycleCommit(stage agentrun.DomainCommitStage) (agentrun.DomainCommitIntent, bool, error) {
 	if c == nil {
-		return agents.HarnessDomainCommitIntent{}, false, nil
+		return agentrun.DomainCommitIntent{}, false, nil
 	}
 	c.mu.Lock()
 	defer c.mu.Unlock()
-	if stage != agents.HarnessDomainCommitOutput || c.pendingDomainCommit == nil {
-		return agents.HarnessDomainCommitIntent{}, false, nil
+	if stage != agentrun.DomainCommitOutput || c.pendingDomainCommit == nil {
+		return agentrun.DomainCommitIntent{}, false, nil
 	}
-	return agents.HarnessDomainCommitIntent{
+	return agentrun.DomainCommitIntent{
 		Identity: c.agentCycleIdentity, Stage: stage, Hash: c.pendingDomainCommit.Hash,
 	}, true, nil
 }
 
-func (c *interactiveConversation) CommitAgentCycleStage(ctx context.Context, stage agents.HarnessDomainCommitStage, outcome agents.RunOutcome) error {
-	if c == nil || stage != agents.HarnessDomainCommitOutput {
+func (c *interactiveConversation) CommitAgentCycleStage(ctx context.Context, stage agentrun.DomainCommitStage, outcome agentrun.Outcome) error {
+	if c == nil || stage != agentrun.DomainCommitOutput {
 		return nil
 	}
 	c.mu.Lock()
 	pending := c.pendingDomainCommit
 	commit := c.agentCycleCommit
-	if outcome.Status != agents.RunOutcomeCompleted && outcome.Status != agents.RunOutcomePreempted {
+	if outcome.Status != agentrun.OutcomeCompleted && outcome.Status != agentrun.OutcomePreempted {
 		c.pendingDomainCommit = nil
 		c.lastDomainReceipt = nil
 		c.mu.Unlock()
@@ -207,28 +212,28 @@ func (c *interactiveConversation) CommitAgentCycleStage(ctx context.Context, sta
 	return nil
 }
 
-func (c *interactiveConversation) LastAgentCycleCommitReceipt(stage agents.HarnessDomainCommitStage) (agents.HarnessDomainCommitReceipt, bool) {
-	if c == nil || stage != agents.HarnessDomainCommitOutput {
-		return agents.HarnessDomainCommitReceipt{}, false
+func (c *interactiveConversation) LastAgentCycleCommitReceipt(stage agentrun.DomainCommitStage) (agentrun.DomainCommitReceipt, bool) {
+	if c == nil || stage != agentrun.DomainCommitOutput {
+		return agentrun.DomainCommitReceipt{}, false
 	}
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	if c.lastDomainReceipt == nil {
-		return agents.HarnessDomainCommitReceipt{}, false
+		return agentrun.DomainCommitReceipt{}, false
 	}
-	return agents.HarnessDomainCommitReceipt{
+	return agentrun.DomainCommitReceipt{
 		Identity: c.agentCycleIdentity, Stage: stage,
 		Hash: c.lastDomainReceipt.Hash, Revision: c.lastDomainReceipt.Revision,
 	}, true
 }
 
-type interactiveDirectorGenerator func(context.Context, *config.Config, *book.State, agents.InteractiveStoryToolContext, string) (string, error)
+type interactiveDirectorGenerator func(context.Context, *config.Config, *book.State, agentinteractive.InteractiveStoryToolContext, string) (string, error)
 
 func newInteractiveConversation(store *interactive.Store, novaDir, workspace, storyID, branchID, user string, replyTargetChars int, cfg *config.Config) *interactiveConversation {
 	return &interactiveConversation{store: store, novaDir: novaDir, workspace: workspace, cfg: cfg, storyID: storyID, branchID: branchID, user: user, replyTargetChars: replyTargetChars}
 }
 
-func (c *interactiveConversation) bindDirectorRuntime(tasks *workspaceDirectorTaskGroup, generator interactiveDirectorGenerator, chatServices ...*agents.ChatService) *interactiveConversation {
+func (c *interactiveConversation) bindDirectorRuntime(tasks *workspaceDirectorTaskGroup, generator interactiveDirectorGenerator, chatServices ...*agentharness.Service) *interactiveConversation {
 	if c != nil {
 		c.directorTasks = tasks
 		if len(chatServices) > 0 {
@@ -239,7 +244,7 @@ func (c *interactiveConversation) bindDirectorRuntime(tasks *workspaceDirectorTa
 			c.customDirectorGenerator = true
 		} else if c.directorChatService != nil {
 			service := c.directorChatService
-			c.directorGenerator = func(ctx context.Context, cfg *config.Config, state *book.State, toolContext agents.InteractiveStoryToolContext, instruction string) (string, error) {
+			c.directorGenerator = func(ctx context.Context, cfg *config.Config, state *book.State, toolContext agentinteractive.InteractiveStoryToolContext, instruction string) (string, error) {
 				return agents.GenerateInteractiveDirectorWithTools(ctx, service, cfg, state, toolContext, instruction)
 			}
 			c.customDirectorGenerator = false
@@ -445,25 +450,25 @@ type interactiveModelContextCommitState struct {
 	baseParentID         *string
 	sourceSummary        string
 	contextSources       []interactiveContextSource
-	contextLedgerParts   []agents.ContextLedgerPart
+	contextLedgerParts   []agentcontext.AuditPart
 	stableLeadingMessage string
 }
 
-func (c *interactiveConversation) AssembleModelContext(ctx context.Context, originalMessage string, input agents.ModelContextInput) (agents.ModelContextResult, error) {
+func (c *interactiveConversation) AssembleModelContext(ctx context.Context, originalMessage string, input agentcontext.ModelContextInput) (agentcontext.ModelContextResult, error) {
 	_ = originalMessage
 	if c == nil || c.store == nil {
-		return agents.ModelContextResult{}, fmt.Errorf("互动故事不存在")
+		return agentcontext.ModelContextResult{}, fmt.Errorf("互动故事不存在")
 	}
 	if err := ctx.Err(); err != nil {
-		return agents.ModelContextResult{}, err
+		return agentcontext.ModelContextResult{}, err
 	}
 	storyCtx, err := c.storyContextForCycle()
 	if err != nil {
-		return agents.ModelContextResult{}, err
+		return agentcontext.ModelContextResult{}, err
 	}
 	branch, ok := storyCtx.Meta.Branches[storyCtx.Snapshot.BranchID]
 	if !ok {
-		return agents.ModelContextResult{}, fmt.Errorf("互动故事分支元数据不存在: %s", storyCtx.Snapshot.BranchID)
+		return agentcontext.ModelContextResult{}, fmt.Errorf("互动故事分支元数据不存在: %s", storyCtx.Snapshot.BranchID)
 	}
 	// Commands may wait behind an active cycle. Pin the compare-and-swap parent
 	// at actual model-context assembly time, not HTTP acceptance time, so a
@@ -482,7 +487,7 @@ func (c *interactiveConversation) AssembleModelContext(ctx context.Context, orig
 	tellerTurnContextPrompt := teller.PromptForTargets("turn_context")
 	modelHistory, activeCompaction, err := c.modelHistoryForCycle(storyCtx)
 	if err != nil {
-		return agents.ModelContextResult{}, err
+		return agentcontext.ModelContextResult{}, err
 	}
 	turnHistory := buildInteractiveModelVisibleHistory(modelHistory, activeCompaction)
 	checkpointSummary := ""
@@ -497,26 +502,26 @@ func (c *interactiveConversation) AssembleModelContext(ctx context.Context, orig
 	}
 	loreRuntime, err := buildInteractiveStoryLoreContext(c.workspace, directorPlan, input.UserMessage)
 	if err != nil {
-		return agents.ModelContextResult{}, err
+		return agentcontext.ModelContextResult{}, err
 	}
-	loreStore := book.NewLoreStore(c.workspace)
+	loreStore := lore.NewStore(c.workspace)
 	residentLore, err := loreStore.ResidentContextMarkdown()
 	if err != nil {
-		return agents.ModelContextResult{}, fmt.Errorf("读取常驻资料失败: %w", err)
+		return agentcontext.ModelContextResult{}, fmt.Errorf("读取常驻资料失败: %w", err)
 	}
 	residentContentBytes, err := loreStore.ResidentContentBytes()
 	if err != nil {
-		return agents.ModelContextResult{}, fmt.Errorf("读取常驻资料预算失败: %w", err)
+		return agentcontext.ModelContextResult{}, fmt.Errorf("读取常驻资料预算失败: %w", err)
 	}
-	if residentContentBytes > book.ResidentLoreSafetyMaxBytes {
-		return agents.ModelContextResult{}, fmt.Errorf("常驻资料正文异常过大（%d KB）；请检查是否误将大型文件设为常驻资料", (residentContentBytes+1023)/1024)
+	if residentContentBytes > lore.ResidentLoreSafetyMaxBytes {
+		return agentcontext.ModelContextResult{}, fmt.Errorf("常驻资料正文异常过大（%d KB）；请检查是否误将大型文件设为常驻资料", (residentContentBytes+1023)/1024)
 	}
 	if len([]byte(residentLore)) > interactiveResidentLoreMessageMaxBytes {
-		return agents.ModelContextResult{}, fmt.Errorf("常驻资料模型上下文过大: %d > %d bytes", len([]byte(residentLore)), interactiveResidentLoreMessageMaxBytes)
+		return agentcontext.ModelContextResult{}, fmt.Errorf("常驻资料模型上下文过大: %d > %d bytes", len([]byte(residentLore)), interactiveResidentLoreMessageMaxBytes)
 	}
 	loreRevision, err := loreStore.Revision()
 	if err != nil {
-		return agents.ModelContextResult{}, fmt.Errorf("读取资料库 revision 失败: %w", err)
+		return agentcontext.ModelContextResult{}, fmt.Errorf("读取资料库 revision 失败: %w", err)
 	}
 	ruleSummary := interactive.StoryDirectorRuleSummary(storyDirector, interactiveStoryRuntimeContextBytes)
 	actorStateRuntime := interactive.ActorStateRuntimeContext(storyDirector.ActorState, storyCtx.Snapshot.State, interactiveStoryRuntimeContextBytes, storyCtx.Meta.ChoiceCount)
@@ -543,7 +548,7 @@ func (c *interactiveConversation) AssembleModelContext(ctx context.Context, orig
 		modelHistory, activeCompaction, storyCtx.Snapshot, c.ToolResultContextPolicy(), cycleIdentity,
 	)
 	if err != nil {
-		return agents.ModelContextResult{}, err
+		return agentcontext.ModelContextResult{}, err
 	}
 	history := modelProjection.Messages
 	pendingInputMessages := modelProjection.PendingInputMessages
@@ -574,7 +579,7 @@ func (c *interactiveConversation) AssembleModelContext(ctx context.Context, orig
 	history = append(history, agents.UserMessage(baseInstruction))
 	assembled, err := agentcontext.NewAssembler(input.Budget).Assemble(ctx, agentcontext.AssembleRequest{Messages: history, Fragments: fragments})
 	if err != nil {
-		return agents.ModelContextResult{}, err
+		return agentcontext.ModelContextResult{}, err
 	}
 	history = assembled.Messages
 	stableLeadingMessage := ""
@@ -617,7 +622,7 @@ func (c *interactiveConversation) AssembleModelContext(ctx context.Context, orig
 		interactivePartSummary(history[len(history)-1].Content),
 		sourceSummary,
 	))
-	return agents.ModelContextResult{
+	return agentcontext.ModelContextResult{
 		Messages: history,
 		Context:  assembled,
 		CommitState: interactiveModelContextCommitState{
@@ -634,7 +639,7 @@ func interruptedPlayerInputModelMessage(input interactive.PlayerInputAcceptedEve
 		strings.TrimSpace(input.Text)
 }
 
-func (c *interactiveConversation) CommitModelInput(ctx context.Context, _ string, assembled agents.ModelContextResult) error {
+func (c *interactiveConversation) CommitModelInput(ctx context.Context, _ string, assembled agentcontext.ModelContextResult) error {
 	if c == nil {
 		return fmt.Errorf("互动故事不存在")
 	}
@@ -652,7 +657,7 @@ func (c *interactiveConversation) CommitModelInput(ctx context.Context, _ string
 	c.mu.Lock()
 	c.lastSources = state.sourceSummary
 	c.lastContextSources = cloneInteractiveContextSources(state.contextSources)
-	c.lastContextLedgerParts = append([]agents.ContextLedgerPart(nil), state.contextLedgerParts...)
+	c.lastContextLedgerParts = append([]agentcontext.AuditPart(nil), state.contextLedgerParts...)
 	c.stableLeadingMessage = state.stableLeadingMessage
 	c.mu.Unlock()
 	return nil
@@ -667,16 +672,16 @@ func (c *interactiveConversation) ContextSourceSummary() string {
 	return c.lastSources
 }
 
-func (c *interactiveConversation) ContextLedgerParts() []agents.ContextLedgerPart {
+func (c *interactiveConversation) ContextLedgerParts() []agentcontext.AuditPart {
 	if c == nil {
 		return nil
 	}
 	c.mu.Lock()
 	defer c.mu.Unlock()
-	return append([]agents.ContextLedgerPart(nil), c.lastContextLedgerParts...)
+	return append([]agentcontext.AuditPart(nil), c.lastContextLedgerParts...)
 }
 
-func (c *interactiveConversation) ContextLedgerPartsForMessages(messages []*agents.Message) []agents.ContextLedgerPart {
+func (c *interactiveConversation) ContextLedgerPartsForMessages(messages []*agents.Message) []agentcontext.AuditPart {
 	if c == nil {
 		return nil
 	}
@@ -685,18 +690,18 @@ func (c *interactiveConversation) ContextLedgerPartsForMessages(messages []*agen
 	c.mu.Unlock()
 	parts := interactiveContextLedgerParts(sources, messages, c.ToolResultContextPolicy())
 	c.mu.Lock()
-	c.lastContextLedgerParts = append([]agents.ContextLedgerPart(nil), parts...)
+	c.lastContextLedgerParts = append([]agentcontext.AuditPart(nil), parts...)
 	c.mu.Unlock()
 	return parts
 }
 
-func (c *interactiveConversation) RunTraceMetadata() agents.RunTraceMetadata {
+func (c *interactiveConversation) RunTraceMetadata() agentrun.TraceMetadata {
 	if c == nil {
-		return agents.RunTraceMetadata{}
+		return agentrun.TraceMetadata{}
 	}
 	c.mu.Lock()
 	defer c.mu.Unlock()
-	metadata := agents.RunTraceMetadata{
+	metadata := agentrun.TraceMetadata{
 		StoryID:         c.storyID,
 		BranchID:        c.branchID,
 		MaintenanceTask: c.directorTask,

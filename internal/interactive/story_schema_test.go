@@ -1,6 +1,7 @@
 package interactive
 
 import (
+	interactivestate "denova/internal/interactive/state"
 	"encoding/json"
 	"os"
 	"path/filepath"
@@ -8,7 +9,7 @@ import (
 	"testing"
 	"time"
 
-	"denova/internal/contextmaintenance"
+	agentcontext "denova/internal/agents/context"
 )
 
 func TestAppendTurnWithStatePersistsStateOpSchemaVersion(t *testing.T) {
@@ -21,7 +22,7 @@ func TestAppendTurnWithStatePersistsStateOpSchemaVersion(t *testing.T) {
 		BranchID:  "main",
 		User:      "检查门",
 		Narrative: "门上刻着新符号。",
-		Ops:       []StateOp{{Op: "set", Path: "scene.symbol", Value: "月亮"}},
+		Ops:       []interactivestate.Op{{Op: "set", Path: "scene.symbol", Value: "月亮"}},
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -66,7 +67,7 @@ func TestAppendStateDeltaRejectsInvalidStateOp(t *testing.T) {
 	_, err = store.AppendStateDelta(story.ID, AppendStateDeltaRequest{
 		ParentID: turn.ID,
 		BranchID: "main",
-		Ops:      []StateOp{{Op: "teleport", Path: "scene.place", Value: "塔顶"}},
+		Ops:      []interactivestate.Op{{Op: "teleport", Path: "scene.place", Value: "塔顶"}},
 	})
 	if err == nil {
 		t.Fatal("expected invalid state op to be rejected")
@@ -124,7 +125,7 @@ func TestAppendContextCompactionRemovalIsAcceptedByStorySchema(t *testing.T) {
 		t.Fatal(err)
 	}
 	compaction, err := store.AppendContextCompaction(story.ID, "main", ContextCompactionEvent{
-		CompactionCheckpoint: contextmaintenance.CompactionCheckpoint{
+		CompactionCheckpoint: agentcontext.CompactionCheckpoint{
 			AgentKind: "interactive", Summary: "较早剧情摘要", RetainedTurns: 1,
 			TokensBefore: 1200, TokensAfter: 200,
 		},

@@ -1,6 +1,7 @@
 package interactive
 
 import (
+	interactivestate "denova/internal/interactive/state"
 	"errors"
 	"reflect"
 	"strings"
@@ -12,9 +13,9 @@ func TestCompileTurnStateUpdatesCreatesActorWithNameAsID(t *testing.T) {
 		ID:     "important_character",
 		Fields: []ActorStateField{{Name: "当前状态", Type: "string"}},
 	}}}
-	update := StateUpdate{
-		Op:   TurnStateUpdateCreate,
-		Path: formatStateUpdatePath([]string{"柳寒衣"}),
+	update := interactivestate.Update{
+		Op:   interactivestate.Create,
+		Path: interactivestate.FormatPath([]string{"柳寒衣"}),
 		Value: map[string]any{
 			"template_id": "important_character",
 			"name":        "柳寒衣",
@@ -22,7 +23,7 @@ func TestCompileTurnStateUpdatesCreatesActorWithNameAsID(t *testing.T) {
 		},
 	}
 
-	compiled, err := CompileTurnStateUpdates(system, nil, []StateUpdate{update}, TurnStateUpdateCompileOptions{})
+	compiled, err := CompileTurnStateUpdates(system, nil, []interactivestate.Update{update}, TurnStateUpdateCompileOptions{})
 	if err != nil {
 		t.Fatalf("a new Actor should use its name directly as actor_id: %v", err)
 	}
@@ -37,9 +38,9 @@ func TestCompileTurnStateUpdatesCreatesActorWithNameAsID(t *testing.T) {
 func TestCompileTurnStateUpdatesPreservesStoryLanguageNamePunctuation(t *testing.T) {
 	name := "奥莉薇娅·O'Neil"
 	system := StoryDirectorActorStateSystem{Templates: []ActorStateTemplate{{ID: "important_character"}}}
-	compiled, err := CompileTurnStateUpdates(system, nil, []StateUpdate{{
-		Op:   TurnStateUpdateCreate,
-		Path: formatStateUpdatePath([]string{name}),
+	compiled, err := CompileTurnStateUpdates(system, nil, []interactivestate.Update{{
+		Op:   interactivestate.Create,
+		Path: interactivestate.FormatPath([]string{name}),
 		Value: map[string]any{
 			"template_id": "important_character",
 			"name":        name,
@@ -48,15 +49,15 @@ func TestCompileTurnStateUpdatesPreservesStoryLanguageNamePunctuation(t *testing
 	if err != nil {
 		t.Fatalf("story-language name punctuation should remain part of the Actor ID: %v", err)
 	}
-	if compiled.Updates[0].Path != formatStateUpdatePath([]string{name}) {
+	if compiled.Updates[0].Path != interactivestate.FormatPath([]string{name}) {
 		t.Fatalf("Actor name punctuation was not preserved: %#v", compiled.Updates)
 	}
 }
 
 func TestCompileTurnStateUpdatesRejectsActorIDDifferentFromName(t *testing.T) {
 	system := StoryDirectorActorStateSystem{Templates: []ActorStateTemplate{{ID: "important_character"}}}
-	_, err := CompileTurnStateUpdates(system, nil, []StateUpdate{{
-		Op:   TurnStateUpdateCreate,
+	_, err := CompileTurnStateUpdates(system, nil, []interactivestate.Update{{
+		Op:   interactivestate.Create,
 		Path: "/liu-han-yi",
 		Value: map[string]any{
 			"template_id": "important_character",
@@ -146,11 +147,11 @@ func TestCompileTurnStateUpdatesUsesNamedRecordMapKeysAsStableIdentity(t *testin
 		map[string]any{"止血药": map[string]any{"名称": "旧药名"}},
 		map[string]any{"寻人": map[string]any{"任务名称": "旧任务名", "名称": "legacy alias"}},
 	}
-	updates := make([]StateUpdate, 0, len(fieldIDs))
+	updates := make([]interactivestate.Update, 0, len(fieldIDs))
 	for index, fieldID := range fieldIDs {
-		updates = append(updates, StateUpdate{
-			Op:    TurnStateUpdateReplace,
-			Path:  formatStateUpdatePath([]string{"protagonist", fieldID}),
+		updates = append(updates, interactivestate.Update{
+			Op:    interactivestate.Replace,
+			Path:  interactivestate.FormatPath([]string{"protagonist", fieldID}),
 			Value: want[index],
 		})
 	}

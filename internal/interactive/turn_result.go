@@ -1,6 +1,7 @@
 package interactive
 
 import (
+	interactivestate "denova/internal/interactive/state"
 	"fmt"
 	"strings"
 
@@ -8,25 +9,7 @@ import (
 	"golang.org/x/text/unicode/norm"
 )
 
-const StateOpSourceTurnResult = "turn_result"
-
-const (
-	TurnStateUpdateReplace = "replace"
-	TurnStateUpdateDelta   = "delta"
-	TurnStateUpdateCreate  = "create"
-	TurnStateUpdateArchive = "archive"
-	TurnStateUpdateRestore = "restore"
-
-	maxDirectorUpdateReasonBytes = 1024
-)
-
-// StateUpdate is the small, model-facing state mutation contract. Path is a
-// schema-bound JSON Pointer whose first segment is a stable Actor ID.
-type StateUpdate struct {
-	Op    string `json:"op" jsonschema:"enum=replace,enum=delta,enum=create,enum=archive,enum=restore" jsonschema_description:"状态操作：replace/delta 更新字段，create 新建 Actor，archive/restore 改变 Actor 是否参与运行时状态。"`
-	Path  string `json:"path" jsonschema_description:"以稳定 actor_id 开头的 schema-bound JSON Pointer，例如 /protagonist/生命值。"`
-	Value any    `json:"value" jsonschema_description:"replace/create 的目标值，或 delta 的数值变化量。"`
-}
+const maxDirectorUpdateReasonBytes = 1024
 
 // DirectorUpdateHint is a lightweight post-narrative signal from the Game
 // Agent. It only reports that committed facts materially affect future
@@ -40,13 +23,13 @@ type DirectorUpdateHint struct {
 // TurnResult is the complete hidden result produced by the Game Agent. The
 // backend compiles StateUpdates into replayable StateDelta operations.
 type TurnResult struct {
-	StateUpdates   []StateUpdate       `json:"state_updates"`
-	Choices        []string            `json:"choices"`
-	DirectorUpdate *DirectorUpdateHint `json:"director_update,omitempty"`
+	StateUpdates   []interactivestate.Update `json:"state_updates"`
+	Choices        []string                  `json:"choices"`
+	DirectorUpdate *DirectorUpdateHint       `json:"director_update,omitempty"`
 }
 
 func NormalizeTurnResult(result TurnResult) TurnResult {
-	result.StateUpdates = normalizeTurnStateUpdates(result.StateUpdates)
+	result.StateUpdates = interactivestate.NormalizeUpdates(result.StateUpdates)
 	result.Choices = normalizeChoiceListLimit(result.Choices, MaxStoryChoiceCount+1)
 	result.DirectorUpdate = normalizeDirectorUpdateHint(result.DirectorUpdate)
 	return result
@@ -70,7 +53,7 @@ func validateTurnResult(result TurnResult, configuredChoiceCount int, terminal b
 		return err
 	}
 	for index, update := range result.StateUpdates {
-		if err := validateStateUpdateShape(update); err != nil {
+		if err := interactivestate.ValidateUpdate(update); err != nil {
 			return fmt.Errorf("TurnResult state_updates[%d] 无效: %w", index, err)
 		}
 	}
@@ -134,39 +117,6 @@ func normalizeTurnResultPointer(result *TurnResult, configuredChoiceCount int, t
 		return nil
 	}
 	return &normalized
-}
-
-func normalizeTurnStateUpdates(updates []StateUpdate) []StateUpdate {
-	if updates == nil {
-		return []StateUpdate{}
-	}
-	result := make([]StateUpdate, len(updates))
-	for index, update := range updates {
-		update.Op = strings.ToLower(strings.TrimSpace(update.Op))
-		update.Path = strings.TrimSpace(update.Path)
-		result[index] = update
-	}
-	return result
-}
-
-func validateStateUpdateShape(update StateUpdate) error {
-	switch update.Op {
-	case TurnStateUpdateReplace, TurnStateUpdateDelta, TurnStateUpdateCreate, TurnStateUpdateArchive, TurnStateUpdateRestore:
-	default:
-		return fmt.Errorf("op 必须是 replace、delta、create、archive 或 restore")
-	}
-	if !strings.HasPrefix(update.Path, "/") || update.Path == "/" {
-		return fmt.Errorf("path 必须是以 / 开头的非空 JSON Pointer")
-	}
-	if update.Value == nil {
-		return fmt.Errorf("value 不能为空")
-	}
-	if update.Op == TurnStateUpdateDelta {
-		if _, ok := actorStateNumber(update.Value); !ok {
-			return fmt.Errorf("delta 的 value 必须是 number")
-		}
-	}
-	return nil
 }
 
 func normalizedChoiceKey(value string) string {

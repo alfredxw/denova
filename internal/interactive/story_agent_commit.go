@@ -3,6 +3,7 @@ package interactive
 import (
 	"context"
 	"crypto/sha256"
+	interactivestate "denova/internal/interactive/state"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -234,13 +235,13 @@ func (s *Store) AppendTurnWithState(storyID string, req AppendTurnWithStateReque
 		}
 		turn.TurnResult.StateUpdates = compiled.Updates
 		for i := range compiled.Ops {
-			compiled.Ops[i].SourceKind = StateOpSourceTurnResult
+			compiled.Ops[i].SourceKind = interactivestate.SourceTurnResult
 			compiled.Ops[i].SourceID = turn.ID
 			compiled.Ops[i].SourceTurnID = turn.ID
 		}
 		ops = append(ops, compiled.Ops...)
 		for i := range compiled.ActorOps {
-			compiled.ActorOps[i].SourceKind = StateOpSourceTurnResult
+			compiled.ActorOps[i].SourceKind = interactivestate.SourceTurnResult
 			compiled.ActorOps[i].SourceID = turn.ID
 			compiled.ActorOps[i].SourceTurnID = turn.ID
 		}
@@ -334,7 +335,7 @@ func agentTurnRequestHash(req AppendTurnWithStateRequest) (string, error) {
 		RunID               string
 		AgentKind           string
 		DisplayEvents       []DisplayEvent
-		Ops                 []StateOp
+		Ops                 []interactivestate.Op
 		ActorOps            []ActorStateOp
 		RuleResolution      *RuleResolution
 		TurnResult          *TurnResult
@@ -364,7 +365,7 @@ func stateDeltaEventForCommittedTurn(turn TurnEvent) *StateDeltaEvent {
 	}
 	event := newStateDeltaEventWithActorOps(
 		turn.ID, parentIDString(turn.ParentID), turn.BranchID, turn.Ts,
-		append([]StateOp(nil), turn.StateDelta.Ops...), append([]ActorStateOp(nil), turn.StateDelta.ActorOps...),
+		append([]interactivestate.Op(nil), turn.StateDelta.Ops...), append([]ActorStateOp(nil), turn.StateDelta.ActorOps...),
 	)
 	event.SchemaVersion = turn.StateDelta.SchemaVersion
 	return &event

@@ -1,14 +1,14 @@
 package interactive
 
 import (
+	"denova/internal/book/lore"
+	"denova/internal/interactive/director"
 	"encoding/json"
 	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
 	"time"
-
-	"denova/internal/book"
 )
 
 func (s *Store) DirectorPlan(storyID, branchID string) (DirectorPlan, error) {
@@ -83,7 +83,7 @@ func (s *Store) UpdateDirectorPlan(storyID string, req UpdateDirectorPlanRequest
 	metadata.DerivedThroughTurnID = current.Metadata.DerivedThroughTurnID
 	metadata.DerivedAt = current.Metadata.DerivedAt
 	metadata.LastRun = &DirectorPlanRunStatus{
-		Status:        DirectorPlanStatusReady,
+		Status:        director.PlanStatusReady,
 		Summary:       firstNonEmpty(strings.TrimSpace(req.Summary), "导演规划已手动更新。"),
 		UpdatedAt:     metadata.UpdatedAt,
 		PlannedDocs:   len(requiredDirectorPlanDocKinds()),
@@ -120,7 +120,7 @@ func (s *Store) RebuildDirectorPlan(storyID string, req RebuildDirectorPlanReque
 		plan.Metadata.EventRuntime = reconcileDirectorEventRuntime(previous.EventRuntime, snapshot.Turns)
 	}
 	plan.Metadata.LastRun = &DirectorPlanRunStatus{
-		Status:        DirectorPlanStatusReady,
+		Status:        director.PlanStatusReady,
 		Summary:       "导演规划已重建。",
 		UpdatedAt:     time.Now().UTC().Format(time.RFC3339Nano),
 		PlannedDocs:   len(requiredDirectorPlanDocKinds()),
@@ -170,14 +170,14 @@ func (s *Store) MarkDirectorPlanRunStarted(storyID, branchID string, token Direc
 	metadata.Revision = token.Revision
 	previous := metadata.LastRun
 	startReady := directorPlanRunStartReady(previous)
-	director := s.storyDirectorForMeta(meta)
-	catalog := DirectorEventCatalogFromStoryDirector(director)
+	storyDirector := s.storyDirectorForMeta(meta)
+	catalog := DirectorEventCatalogFromStoryDirector(storyDirector)
 	turns := directorEventTurnsThrough(snapshot.Turns, sourceTurnID)
 	metadata.EventRuntime = reconcileDirectorEventRuntime(metadata.EventRuntime, turns)
 	forced := len(forceEventEvaluation) > 0 && forceEventEvaluation[0]
-	opportunity := directorEventOpportunity(metadata.EventRuntime, turns, director.Strategy.EventFrequency, len(catalog) > 0, forced)
+	opportunity := directorEventOpportunity(metadata.EventRuntime, turns, storyDirector.Strategy.EventFrequency, len(catalog) > 0, forced)
 	metadata.LastRun = &DirectorPlanRunStatus{
-		Status:           DirectorPlanStatusRunning,
+		Status:           director.PlanStatusRunning,
 		Summary:          "后台导演正在规划故事。",
 		SourceTurnID:     sourceTurnID,
 		UpdatedAt:        time.Now().UTC().Format(time.RFC3339Nano),
@@ -229,7 +229,7 @@ func (s *Store) completeDirectorPlanRun(storyID, branchID string, token Director
 	now := time.Now().UTC().Format(time.RFC3339Nano)
 	if token.Revision != "" && token.Revision != storedMetadata.Revision {
 		storedMetadata.LastRun = &DirectorPlanRunStatus{
-			Status:        DirectorPlanStatusConflict,
+			Status:        director.PlanStatusConflict,
 			Summary:       "后台导演运行期间规划已被手动修改，已跳过覆盖。",
 			SourceTurnID:  sourceTurnID,
 			UpdatedAt:     now,
@@ -252,7 +252,7 @@ func (s *Store) completeDirectorPlanRun(storyID, branchID string, token Director
 		}
 		return s.readDirectorPlanLocked(storyID, branchID)
 	}
-	decision, err := ParsePlanDecisionJSON(summary)
+	decision, err := director.ParseDecisionJSON(summary)
 	if err != nil {
 		return DirectorPlan{}, fmt.Errorf("导演规划决策格式无效: %w", err)
 	}
@@ -267,7 +267,7 @@ func (s *Store) completeDirectorPlanRun(storyID, branchID string, token Director
 	if err := validateDirectorPlanDocs(plan.Docs); err != nil {
 		startReady := directorPlanRunStartReady(storedMetadata.LastRun)
 		plan.Metadata.LastRun = &DirectorPlanRunStatus{
-			Status:        DirectorPlanStatusFailed,
+			Status:        director.PlanStatusFailed,
 			Summary:       "后台导演写入的规划未通过校验。",
 			Error:         err.Error(),
 			SourceTurnID:  sourceTurnID,
@@ -285,7 +285,7 @@ func (s *Store) completeDirectorPlanRun(storyID, branchID string, token Director
 	if err := s.validateDirectorLoreContext(plan.Docs.LoreContext); err != nil {
 		startReady := directorPlanRunStartReady(storedMetadata.LastRun)
 		plan.Metadata.LastRun = &DirectorPlanRunStatus{
-			Status:        DirectorPlanStatusFailed,
+			Status:        director.PlanStatusFailed,
 			Summary:       "后台导演写入的资料工作集未通过校验。",
 			Error:         err.Error(),
 			SourceTurnID:  sourceTurnID,
@@ -304,21 +304,21 @@ func (s *Store) completeDirectorPlanRun(storyID, branchID string, token Director
 	if err != nil {
 		return DirectorPlan{}, err
 	}
-	director := s.storyDirectorForMeta(meta)
+	storyDirector := s.storyDirectorForMeta(meta)
 	opportunity := EventOpportunity{}
 	if storedMetadata.LastRun != nil && storedMetadata.LastRun.SourceTurnID == sourceTurnID {
 		opportunity = storedMetadata.LastRun.EventOpportunity
 	}
 	turns := directorEventTurnsThrough(snapshot.Turns, sourceTurnID)
-	eventRuntime, err := applyDirectorEventDecision(storedMetadata.EventRuntime, decision.EventDecision, opportunity, sourceTurnID, turns, DirectorEventCatalogFromStoryDirector(director))
+	eventRuntime, err := applyDirectorEventDecision(storedMetadata.EventRuntime, decision.EventDecision, opportunity, sourceTurnID, turns, DirectorEventCatalogFromStoryDirector(storyDirector))
 	if err != nil {
 		return DirectorPlan{}, fmt.Errorf("事件决策校验失败: %w", err)
 	}
 	storedMetadata.EventRuntime = eventRuntime
-	if decision.Mode == PlanDecisionKeep && directorPlanHashesEqual(token.Hashes, directorPlanHashes(plan.Docs)) {
-		storedMetadata.LoreRevision, _ = book.NewLoreStore(s.root).Revision()
+	if decision.Mode == director.DecisionKeep && directorPlanHashesEqual(token.Hashes, directorPlanHashes(plan.Docs)) {
+		storedMetadata.LoreRevision, _ = lore.NewStore(s.root).Revision()
 		storedMetadata.LastRun = &DirectorPlanRunStatus{
-			Status:           DirectorPlanStatusReady,
+			Status:           director.PlanStatusReady,
 			Summary:          firstNonEmpty(decision.Reason, "后台导演确认当前计划继续有效。"),
 			SourceTurnID:     sourceTurnID,
 			UpdatedAt:        now,
@@ -335,8 +335,8 @@ func (s *Store) completeDirectorPlanRun(storyID, branchID string, token Director
 		}
 		return s.readDirectorPlanLocked(storyID, branchID)
 	}
-	if decision.Mode == PlanDecisionKeep {
-		decision.Mode = PlanDecisionPatch
+	if decision.Mode == director.DecisionKeep {
+		decision.Mode = director.DecisionPatch
 		decision.Reason = firstNonEmpty(decision.Reason, "导演实际修改了计划，按 patch 记录。")
 	}
 	docsWritten := stagedDocs != nil && !directorPlanHashesEqual(directorPlanHashes(publishedDocs), directorPlanHashes(plan.Docs))
@@ -347,9 +347,9 @@ func (s *Store) completeDirectorPlanRun(storyID, branchID string, token Director
 	}
 	plan.Metadata = s.buildDirectorPlanMetadataLocked(storyID, branchID, NormalizeBranchPlanningTurns(plan.Metadata.BranchPlanningTurns), "interactive_director", sourceTurnID)
 	plan.Metadata.EventRuntime = eventRuntime
-	plan.Metadata.LoreRevision, _ = book.NewLoreStore(s.root).Revision()
+	plan.Metadata.LoreRevision, _ = lore.NewStore(s.root).Revision()
 	plan.Metadata.LastRun = &DirectorPlanRunStatus{
-		Status:           DirectorPlanStatusReady,
+		Status:           director.PlanStatusReady,
 		Summary:          firstNonEmpty(decision.Reason, strings.TrimSpace(summary), "后台导演已更新导演规划。"),
 		SourceTurnID:     sourceTurnID,
 		UpdatedAt:        now,
@@ -403,7 +403,7 @@ func (s *Store) MarkDirectorPlanRunFailed(storyID, branchID, sourceTurnID string
 		baselineHashes = previous.BaselineHashes
 	}
 	plan.Metadata.LastRun = &DirectorPlanRunStatus{
-		Status:        DirectorPlanStatusFailed,
+		Status:        director.PlanStatusFailed,
 		Summary:       message,
 		Error:         errorText,
 		SourceTurnID:  sourceTurnID,
@@ -424,7 +424,7 @@ func (s *Store) MarkDirectorPlanRunSkipped(storyID, branchID, sourceTurnID, reas
 		return err
 	}
 	plan.Metadata.LastRun = &DirectorPlanRunStatus{
-		Status:        DirectorPlanStatusSkipped,
+		Status:        director.PlanStatusSkipped,
 		Summary:       firstNonEmpty(strings.TrimSpace(reason), "后台导演已关闭，跳过规划。"),
 		SourceTurnID:  sourceTurnID,
 		UpdatedAt:     time.Now().UTC().Format(time.RFC3339Nano),
@@ -450,9 +450,9 @@ func (s *Store) seedDirectorPlanLocked(storyID, branchID string, meta StoryMeta,
 		return err
 	}
 	metadata := s.buildDirectorPlanMetadataLocked(storyID, branchID, NormalizeBranchPlanningTurns(seed.BranchPlanningTurns), firstNonEmpty(seed.Source, "seed"), "")
-	initialStatus := firstNonEmpty(seed.InitialStatus, DirectorPlanStatusWaitingOpening)
+	initialStatus := firstNonEmpty(seed.InitialStatus, director.PlanStatusWaitingOpening)
 	initialSummary := firstNonEmpty(seed.InitialSummary, "等待开局完成后由后台导演规划。")
-	startReady := seed.StartReady || initialStatus == DirectorPlanStatusReady || initialStatus == DirectorPlanStatusSkipped
+	startReady := seed.StartReady || initialStatus == director.PlanStatusReady || initialStatus == director.PlanStatusSkipped
 	metadata.LastRun = &DirectorPlanRunStatus{
 		Status:        initialStatus,
 		Summary:       initialSummary,
@@ -486,7 +486,7 @@ func (s *Store) cloneDirectorPlanForBranchLocked(storyID, fromBranchID, branchID
 	metadata.EventRuntime = parent.Metadata.EventRuntime
 	metadata.LoreRevision = parent.Metadata.LoreRevision
 	metadata.LastRun = &DirectorPlanRunStatus{
-		Status:        DirectorPlanStatusReady,
+		Status:        director.PlanStatusReady,
 		Summary:       "新分支已继承并独立保存导演规划。",
 		UpdatedAt:     metadata.UpdatedAt,
 		PlannedDocs:   len(requiredDirectorPlanDocKinds()),

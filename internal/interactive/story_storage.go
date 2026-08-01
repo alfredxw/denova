@@ -11,7 +11,7 @@ import (
 	"strings"
 	"time"
 
-	"denova/internal/conversationjournal"
+	"denova/internal/agents/conversationjournal"
 	"denova/internal/localfs"
 )
 

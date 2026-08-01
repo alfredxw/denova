@@ -2,18 +2,20 @@ package app
 
 import (
 	"context"
+	agentchat "denova/internal/agents/chat"
+	agentrun "denova/internal/agents/run"
+	apptask "denova/internal/app/task"
 	"fmt"
 	"strings"
 
-	agents "denova/internal/agents"
 	"denova/internal/agents/session"
 )
 
 // AgentChatActiveView binds display and durable runtime state to one explicit
 // project conversation rather than the foreground Writing selection.
 type AgentChatActiveView struct {
-	Task                *TaskStateSnapshot
-	Runtime             agents.RuntimeStatus
+	Task                *apptask.Snapshot
+	Runtime             agentrun.RuntimeStatus
 	RuntimeProjectionOK bool
 	StreamAttached      bool
 	PendingAsk          *session.AskInteraction
@@ -36,7 +38,7 @@ func (s *AgentChatAppService) ActiveView(ctx context.Context, binding AgentChatB
 	}
 	runtime, projected := projectAgentRuntime(ctx, chatService, agentChatRunOptions(binding, ""))
 	run := s.activeRun(binding)
-	var taskSnapshot *TaskStateSnapshot
+	var taskSnapshot *apptask.Snapshot
 	var pendingAsk *session.AskInteraction
 	streamAttached := false
 	if run != nil && run.task != nil {
@@ -54,11 +56,11 @@ func (s *AgentChatAppService) ActiveView(ctx context.Context, binding AgentChatB
 }
 
 // AgentChatDisplayTask resolves only a task owned by the requested binding.
-func (a *App) AgentChatDisplayTask(binding AgentChatBinding, taskID string) *Task {
+func (a *App) AgentChatDisplayTask(binding AgentChatBinding, taskID string) *apptask.Task {
 	return a.agentChat().DisplayTask(binding, taskID)
 }
 
-func (s *AgentChatAppService) DisplayTask(binding AgentChatBinding, taskID string) *Task {
+func (s *AgentChatAppService) DisplayTask(binding AgentChatBinding, taskID string) *apptask.Task {
 	binding, err := s.resolveBinding(binding)
 	if err != nil || strings.TrimSpace(taskID) == "" {
 		return nil
@@ -104,27 +106,27 @@ func (s *AgentChatAppService) MessagesPage(
 func (a *App) AnalyzeAgentChatContext(
 	ctx context.Context,
 	binding AgentChatBinding,
-	req agents.ChatRequest,
-) (agents.ContextAnalysis, error) {
+	req agentchat.ChatRequest,
+) (agentchat.ContextAnalysis, error) {
 	return a.agentChat().AnalyzeContext(ctx, binding, req)
 }
 
 func (s *AgentChatAppService) AnalyzeContext(
 	ctx context.Context,
 	binding AgentChatBinding,
-	req agents.ChatRequest,
-) (agents.ContextAnalysis, error) {
+	req agentchat.ChatRequest,
+) (agentchat.ContextAnalysis, error) {
 	binding, err := s.resolveBinding(binding)
 	if err != nil {
-		return agents.ContextAnalysis{}, err
+		return agentchat.ContextAnalysis{}, err
 	}
 	project, err := s.projectRuntime(ctx, binding.ProjectID)
 	if err != nil {
-		return agents.ContextAnalysis{}, err
+		return agentchat.ContextAnalysis{}, err
 	}
 	sess, err := project.store.Get(binding.SessionID)
 	if err != nil {
-		return agents.ContextAnalysis{}, err
+		return agentchat.ContextAnalysis{}, err
 	}
 	runtime := ideChatRuntime{
 		projectID: project.projectID, projectType: project.projectType, projectState: project.stateRoot, agentKind: project.agentKind,
@@ -134,7 +136,7 @@ func (s *AgentChatAppService) AnalyzeContext(
 	}
 	runtime, req, err = s.app.chat().prepareProjectChatRuntimeSnapshot(ctx, runtime, req)
 	if err != nil {
-		return agents.ContextAnalysis{}, err
+		return agentchat.ContextAnalysis{}, err
 	}
 	var pending *session.Interruption
 	if strings.TrimSpace(req.Message) != "" {
@@ -145,10 +147,10 @@ func (s *AgentChatAppService) AnalyzeContext(
 		compaction = &record
 	}
 	conversation := projectSessionConversation(runtime, req)
-	if runtime.agentKind == agents.AgentKindGeneral {
-		return agents.BuildGeneralContextAnalysis(&runtime.cfg, runtime.bookService, compaction, pending, req, conversation)
+	if runtime.agentKind == agentrun.AgentKindGeneral {
+		return agentchat.BuildGeneralContextAnalysis(&runtime.cfg, runtime.bookService, compaction, pending, req, conversation)
 	}
-	return agents.BuildIDEContextAnalysis(
+	return agentchat.BuildIDEContextAnalysis(
 		&runtime.cfg, runtime.state, runtime.ideTeller, runtime.bookService,
 		compaction, pending, req, conversation,
 	)
@@ -244,7 +246,7 @@ func (s *AgentChatAppService) runningBindingKeys() map[string]struct{} {
 		return nil
 	}
 	s.mu.RLock()
-	runs := make(map[string]*Task, len(s.active))
+	runs := make(map[string]*apptask.Task, len(s.active))
 	for key, run := range s.active {
 		if run != nil && run.task != nil {
 			runs[key] = run.task

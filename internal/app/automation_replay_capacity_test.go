@@ -2,13 +2,14 @@ package app
 
 import (
 	"context"
+	agentrun "denova/internal/agents/run"
+	apptask "denova/internal/app/task"
 	"errors"
 	"os"
 	"path/filepath"
 	"testing"
 
 	"denova/config"
-	agents "denova/internal/agents"
 	"denova/internal/automation"
 )
 
@@ -33,18 +34,18 @@ func TestAutomationRootReplayCapacityRejectsBeforeRunOrRuntimeAdmission(t *testi
 		t.Fatal(err)
 	}
 
-	blocker, err := NewDeferredRegisteredTask(nil)
+	blocker, err := apptask.NewDeferred(nil)
 	if err != nil {
 		t.Fatal(err)
 	}
-	application.activeTaskReplay.byteLimit = blocker.displayReplayRegistryCharge()
-	reservation, err := application.activeTaskReplay.reserve(blocker)
+	application.activeTaskReplay.Configure(apptask.ReplayAdmissionLimits{MaxBytes: blocker.DisplayReplayCharge()})
+	reservation, err := application.activeTaskReplay.Reserve(blocker)
 	if err != nil {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() {
-		reservation.release()
-		blocker.failBeforeStart(errors.New("test cleanup"))
+		reservation.Release()
+		blocker.RejectStart(errors.New("test cleanup"))
 	})
 
 	const commandID = "automation-capacity-pre-admission"
@@ -60,14 +61,14 @@ func TestAutomationRootReplayCapacityRejectsBeforeRunOrRuntimeAdmission(t *testi
 		t.Fatalf("capacity rejection persisted a run ledger entry: %v", err)
 	}
 
-	status, err := application.chatService.RuntimeStatusProjection(context.Background(), agents.RunOptions{
-		AgentKind: agents.AgentKindAutomation, TaskID: runID, AutomationTaskID: taskDef.ID,
+	status, err := application.chatService.RuntimeStatusProjection(context.Background(), agentrun.Options{
+		AgentKind: agentrun.AgentKindAutomation, TaskID: runID, AutomationTaskID: taskDef.ID,
 		SessionID: automationRunSessionID(runID), Workspace: taskDef.Target.Workspace, Mode: "automation",
 	})
 	if err != nil {
 		t.Fatal(err)
 	}
-	if status.Phase != agents.RunPhaseIdle || status.ActiveOperation != "" || status.LastOperation != nil || len(status.Queue) != 0 {
+	if status.Phase != agentrun.RunPhaseIdle || status.ActiveOperation != "" || status.LastOperation != nil || len(status.Queue) != 0 {
 		t.Fatalf("Runtime was mutated before Automation replay admission: %#v", status)
 	}
 }

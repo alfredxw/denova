@@ -5,13 +5,13 @@ import (
 	"path/filepath"
 	"testing"
 
-	"denova/internal/workspacepath"
+	workspacelayout "denova/internal/workspace"
 )
 
 func TestEnsureStateCopiesLegacyProjectDataWithoutDeletingSource(t *testing.T) {
 	denovaDir := t.TempDir()
 	workspace := t.TempDir()
-	legacyRoot := workspacepath.Dir(workspace)
+	legacyRoot := workspacelayout.Dir(workspace)
 	fixtures := map[string]string{
 		filepath.Join(legacyRoot, "sessions", "session.jsonl"): "history\n",
 		filepath.Join(legacyRoot, "config.toml"):               "[agent_tools.general]\nshell = false\n",
@@ -70,7 +70,7 @@ func TestEnsureStateCopiesLegacyProjectDataWithoutDeletingSource(t *testing.T) {
 func TestEnsureStateRejectsLegacySymlinks(t *testing.T) {
 	denovaDir := t.TempDir()
 	workspace := t.TempDir()
-	legacySessions := workspacepath.Path(workspace, "sessions")
+	legacySessions := workspacelayout.Path(workspace, "sessions")
 	if err := os.MkdirAll(filepath.Dir(legacySessions), 0o755); err != nil {
 		t.Fatal(err)
 	}

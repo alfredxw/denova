@@ -9,7 +9,7 @@ import (
 	"path/filepath"
 	"strings"
 
-	"denova/internal/workspacepath"
+	workspacelayout "denova/internal/workspace"
 )
 
 // WorkspaceScopeOwner identifies one level in an artifact ownership hierarchy.
@@ -122,7 +122,7 @@ func resolveWorkspaceScope(workspaceRoot string, scope WorkspaceScope) (string, 
 	for _, owner := range validated.owners {
 		parts = append(parts, owner.Kind+"-"+scopeOwnerDigest(owner.ID))
 	}
-	return boundary, workspacepath.Path(boundary, parts...), nil
+	return boundary, workspacelayout.Path(boundary, parts...), nil
 }
 
 func canonicalWorkspaceRoot(workspaceRoot string) (string, error) {

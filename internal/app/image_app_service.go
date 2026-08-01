@@ -9,7 +9,7 @@ import (
 	"path/filepath"
 	"time"
 
-	"denova/internal/imagegen"
+	imagegen "denova/internal/image/generation"
 )
 
 type ImageAppService struct {

@@ -2,6 +2,7 @@ package interactive
 
 import (
 	"crypto/sha256"
+	interactivestate "denova/internal/interactive/state"
 	"encoding/base64"
 	"encoding/hex"
 	"encoding/json"
@@ -394,7 +395,7 @@ func storyHistoryStateChanges(delta *StateDelta) []string {
 	return changes
 }
 
-func storyHistoryActorLifecycleChange(op StateOp) (string, bool) {
+func storyHistoryActorLifecycleChange(op interactivestate.Op) (string, bool) {
 	prefix := actorArchiveRoot + "."
 	if !strings.HasPrefix(op.Path, prefix) {
 		return "", false

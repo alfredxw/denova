@@ -2,6 +2,7 @@ package app
 
 import (
 	"context"
+	interactivestate "denova/internal/interactive/state"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -10,21 +11,22 @@ import (
 
 	"denova/config"
 	agents "denova/internal/agents"
+	agentcompaction "denova/internal/agents/context/compaction"
 	"denova/internal/agents/session"
-	"denova/internal/book"
+	"denova/internal/book/lore"
 	"denova/internal/interactive"
 )
 
 func TestInteractiveConversationBuildsHistoryAndPersistsAssistantToStory(t *testing.T) {
 	workspace := t.TempDir()
-	loreStore := book.NewLoreStore(workspace)
-	if _, err := loreStore.Create(book.LoreItemInput{ID: "hero", Type: "character", Name: "林川", Importance: "major", LoadMode: book.LoreLoadModeResident, Content: "林川：谨慎的幸存者"}); err != nil {
+	loreStore := lore.NewStore(workspace)
+	if _, err := loreStore.Create(lore.ItemInput{ID: "hero", Type: "character", Name: "林川", Importance: "major", LoadMode: lore.LoadModeResident, Content: "林川：谨慎的幸存者"}); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := loreStore.Create(book.LoreItemInput{ID: "world", Type: "world", Name: "黄昏末日", Importance: "major", LoadMode: book.LoreLoadModeResident, Content: "世界已进入黄昏末日。"}); err != nil {
+	if _, err := loreStore.Create(lore.ItemInput{ID: "world", Type: "world", Name: "黄昏末日", Importance: "major", LoadMode: lore.LoadModeResident, Content: "世界已进入黄昏末日。"}); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := loreStore.Create(book.LoreItemInput{ID: "base", Type: "location", Name: "黄泉酒馆", Importance: "important", LoadMode: book.LoreLoadModeAuto, BriefDescription: "黄泉酒馆据点索引", Content: "黄泉酒馆完整设定：柜台后的影子不能离开酒馆。"}); err != nil {
+	if _, err := loreStore.Create(lore.ItemInput{ID: "base", Type: "location", Name: "黄泉酒馆", Importance: "important", LoadMode: lore.LoadModeAuto, BriefDescription: "黄泉酒馆据点索引", Content: "黄泉酒馆完整设定：柜台后的影子不能离开酒馆。"}); err != nil {
 		t.Fatal(err)
 	}
 	novaDir := t.TempDir()
@@ -130,7 +132,7 @@ func TestInteractiveConversationBuildsHistoryAndPersistsAssistantToStory(t *test
 	ledgerParts := conversation.ContextLedgerParts()
 	var sawResidentLore, sawActiveLore, sawCurrentAction bool
 	for _, part := range ledgerParts {
-		if part.Source == "ResidentLore" && part.Bytes > 0 && part.Limit > book.ResidentLoreSafetyMaxBytes && part.LimitUnit == "bytes" && strings.Contains(part.Note, "complete=true") && strings.Contains(part.Note, "revision=") && strings.Contains(part.Note, "exact_final_message=true") {
+		if part.Source == "ResidentLore" && part.Bytes > 0 && part.Limit > lore.ResidentLoreSafetyMaxBytes && part.LimitUnit == "bytes" && strings.Contains(part.Note, "complete=true") && strings.Contains(part.Note, "revision=") && strings.Contains(part.Note, "exact_final_message=true") {
 			sawResidentLore = true
 		}
 		if part.Source == "LoreContext" && part.Title == "当前分支活动资料工作集" && part.Bytes > 0 {
@@ -178,7 +180,7 @@ func TestInteractiveConversationBuildsHistoryAndPersistsAssistantToStory(t *test
 	if _, err := store.AppendStateDelta(story.ID, interactive.AppendStateDeltaRequest{
 		ParentID: last.ID,
 		BranchID: last.BranchID,
-		Ops: []interactive.StateOp{
+		Ops: []interactivestate.Op{
 			{Op: "set", Path: "on_stage", Value: []any{"林川"}},
 			{Op: "merge", Path: "characters.林川", Value: map[string]any{"location": "黄泉酒馆"}},
 		},
@@ -248,7 +250,7 @@ func TestInteractiveConversationBuildsHistoryAndPersistsAssistantToStory(t *test
 	if _, err := store.AppendStateDelta(story.ID, interactive.AppendStateDeltaRequest{
 		ParentID: nextTurn.ID,
 		BranchID: nextTurn.BranchID,
-		Ops: []interactive.StateOp{
+		Ops: []interactivestate.Op{
 			{Op: "merge", Path: "scene", Value: map[string]any{"danger_level": "升高", "interactive_objects": []any{"柜台", "地窖门"}}},
 			{Op: "push", Path: "action_space", Value: map[string]any{"target": "地窖门", "risk": "可能惊动柜台后的影子"}},
 			{Op: "push", Path: "threads", Value: map[string]any{"title": "柜台后的影子", "status": "未解决"}},
@@ -368,7 +370,7 @@ func TestInteractiveConversationKeepsEventCardsForDirectorOnly(t *testing.T) {
 	eventPackage, err := interactive.NewEventPackageLibrary(novaDir).Create(interactive.EventPackageModule{
 		ID:   "academy-pack",
 		Name: "学院事件包",
-		Events: []interactive.TellerEventCard{{
+		Events: []interactive.EventCard{{
 			ID:                  "academy_trial",
 			TypeName:            "外门考核打脸",
 			DescriptionMarkdown: "## 触发场景\n外门考核中同门当众质疑主角。\n\n## 事件回收 / 后果\n以后续榜单与戒律回收。",
@@ -456,10 +458,10 @@ func TestInteractiveDirectorEventCatalogIncludesConfiguredEventCards(t *testing.
 		ID:         "catalog",
 		Name:       "事件目录",
 		ModuleRefs: interactive.StoryDirectorModuleRefs{EventPackageIDs: []string{"academy-pack"}},
-		EventPackages: []interactive.TellerEventPackage{{
+		EventPackages: []interactive.EventPackage{{
 			ID:      "academy-pack",
 			Enabled: true,
-			Events: []interactive.TellerEventCard{{
+			Events: []interactive.EventCard{{
 				ID:                  "academy_trial",
 				TypeName:            "外门考核打脸",
 				DescriptionMarkdown: "## 触发场景\n外门考核中同门当众质疑主角。\n\n## 事件回收 / 后果\n以后续榜单与戒律回收。",
@@ -774,7 +776,7 @@ func TestInteractiveConversationUsesDefaultCompactionRetainedTurns(t *testing.T)
 		}
 	}
 	if _, err := store.AppendContextCompaction(story.ID, "main", interactive.ContextCompactionEvent{
-		CompactionCheckpoint: agents.NewContextCompactionCheckpoint(config.AgentKindInteractiveStory, agents.ContextCompactionResult{
+		CompactionCheckpoint: agentcompaction.NewCheckpoint(config.AgentKindInteractiveStory, agentcompaction.Result{
 			Summary: "压缩摘要：主角已进入旧城。",
 		}),
 		SourceTurnCount: 10,
@@ -818,7 +820,7 @@ func TestInteractiveDirectorInstructionUsesModelVisibleCompactedHistory(t *testi
 		}
 	}
 	if _, err := store.AppendContextCompaction(story.ID, "main", interactive.ContextCompactionEvent{
-		CompactionCheckpoint: agents.NewContextCompactionCheckpoint(config.AgentKindInteractiveStory, agents.ContextCompactionResult{
+		CompactionCheckpoint: agentcompaction.NewCheckpoint(config.AgentKindInteractiveStory, agentcompaction.Result{
 			Summary: "压缩摘要：主角已进入旧城。",
 		}),
 		SourceTurnCount: 10,
@@ -871,7 +873,7 @@ func TestInteractiveTurnHistoryWithCompactionUsesSingleCheckpointAndRetainedTail
 		{User: "第5次行动", Narrative: "第5段剧情"},
 	}
 	compaction := &interactive.ContextCompactionEvent{
-		CompactionCheckpoint: agents.NewContextCompactionCheckpoint("", agents.ContextCompactionResult{Summary: "压缩摘要：主角已进入旧城。"}),
+		CompactionCheckpoint: agentcompaction.NewCheckpoint("", agentcompaction.Result{Summary: "压缩摘要：主角已进入旧城。"}),
 		SourceTurnCount:      3,
 	}
 	history := buildInteractiveTurnHistoryWithCompaction(turns, compaction, 1)
@@ -896,7 +898,7 @@ func TestInteractiveTurnHistoryWithCompactionRetainsSourceTailImmediatelyAfterCo
 		{User: "第3次行动", Narrative: "第3段剧情"},
 	}
 	compaction := &interactive.ContextCompactionEvent{
-		CompactionCheckpoint: agents.NewContextCompactionCheckpoint("", agents.ContextCompactionResult{Summary: "压缩摘要：主角已进入旧城。"}),
+		CompactionCheckpoint: agentcompaction.NewCheckpoint("", agentcompaction.Result{Summary: "压缩摘要：主角已进入旧城。"}),
 		SourceTurnCount:      len(turns),
 	}
 	history := buildInteractiveTurnHistoryWithCompaction(turns, compaction, 2)
@@ -915,7 +917,7 @@ func TestInteractiveCompactionSourceUsesOnlyTurnsAfterPreviousCompaction(t *test
 		{ID: "turn-3", BranchID: "main", User: "新增行动3", Narrative: "新增剧情3"},
 	}
 	compaction := &interactive.ContextCompactionEvent{
-		CompactionCheckpoint: agents.NewContextCompactionCheckpoint("", agents.ContextCompactionResult{Summary: "旧压缩摘要：前两回合已整理。"}),
+		CompactionCheckpoint: agentcompaction.NewCheckpoint("", agentcompaction.Result{Summary: "旧压缩摘要：前两回合已整理。"}),
 		SourceTurnCount:      2,
 	}
 	source, checkpoint := interactiveCompactionSource(turns, compaction)
@@ -959,7 +961,7 @@ func TestParseInteractiveAssistantOutput(t *testing.T) {
 
 func submitTestTurnResult(t *testing.T, conversation *interactiveConversation, intent, goal string) {
 	t.Helper()
-	updates := []interactive.StateUpdate{}
+	updates := []interactivestate.Update{}
 	storyContext, err := conversation.store.StoryContext(conversation.storyID, conversation.branchID)
 	if err != nil {
 		t.Fatal(err)
@@ -984,8 +986,8 @@ func submitTestTurnResult(t *testing.T, conversation *interactiveConversation, i
 			event = strings.TrimSpace(intent)
 		}
 		updates = append(updates,
-			interactive.StateUpdate{Op: "replace", Path: "/story/当前详细地点", Value: "测试场景"},
-			interactive.StateUpdate{Op: "replace", Path: "/story/当前事件", Value: event},
+			interactivestate.Update{Op: "replace", Path: "/story/当前详细地点", Value: "测试场景"},
+			interactivestate.Update{Op: "replace", Path: "/story/当前事件", Value: event},
 		)
 	}
 	input := testTurnSubmissionInput(updates, true)

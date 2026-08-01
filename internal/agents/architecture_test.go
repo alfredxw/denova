@@ -4,6 +4,7 @@ import (
 	"go/parser"
 	"go/token"
 	"io/fs"
+	"os"
 	"path/filepath"
 	"strconv"
 	"strings"
@@ -20,6 +21,41 @@ func TestADKRuntimeDependencyStopsAtAgentsLayer(t *testing.T) {
 
 func TestConcreteToolsDoNotDependOnAgentOrchestration(t *testing.T) {
 	assertGoFilesDoNotImport(t, "tools", false, adkRuntimeImport, "denova/internal/agents")
+}
+
+func TestReusableAgentPackagesDoNotDependOnCompositionRoot(t *testing.T) {
+	for _, dir := range []string{
+		"chat", "context", "conversation", "harness", "interactive",
+		"modelio", "modeltask", "prompts", "run", "skills", "toolresult", "toolruntime",
+	} {
+		assertGoFilesDoNotImport(t, dir, false, "denova/internal/agents")
+	}
+}
+
+func TestChatDoesNotDependOnDurableHarness(t *testing.T) {
+	assertGoFilesDoNotImport(t, "chat", false, "denova/internal/agents/harness")
+}
+
+func TestAgentsRootContainsOnlyCompositionResponsibilities(t *testing.T) {
+	allowed := map[string]bool{
+		"builder.go":  true,
+		"director.go": true,
+		"doc.go":      true,
+		"message.go":  true,
+	}
+	entries, err := os.ReadDir(".")
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, entry := range entries {
+		name := entry.Name()
+		if entry.IsDir() || !strings.HasSuffix(name, ".go") || strings.HasSuffix(name, "_test.go") {
+			continue
+		}
+		if !allowed[name] {
+			t.Errorf("agents root implementation %q must move to its owning package", name)
+		}
+	}
 }
 
 func assertGoFilesDoNotImport(t *testing.T, dir string, skipTests bool, forbidden ...string) {

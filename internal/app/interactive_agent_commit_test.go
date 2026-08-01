@@ -6,7 +6,7 @@ import (
 	"sync/atomic"
 	"testing"
 
-	agents "denova/internal/agents"
+	agentrun "denova/internal/agents/run"
 	"denova/internal/interactive"
 )
 
@@ -19,19 +19,19 @@ func commitInteractiveAssistantForTest(t testing.TB, conversation *interactiveCo
 	t.Helper()
 	cycle := interactiveAgentTestCycle.Add(1)
 	identity := fmt.Sprintf("test-cycle:%d", cycle)
-	conversation.BindAgentCycleIdentity(agents.HarnessCycleIdentity{
-		CommandID:   agents.CommandID(identity),
-		OperationID: agents.OperationID(identity),
+	conversation.BindAgentCycleIdentity(agentrun.CycleIdentity{
+		CommandID:   agentrun.CommandID(identity),
+		OperationID: agentrun.OperationID(identity),
 		Cycle:       1,
 	})
 	materializeInteractiveInputForTest(t, conversation, conversation.agentCycleIdentitySnapshot())
 	if err := conversation.AppendAssistantWithThinking(content, thinking); err != nil {
 		return err
 	}
-	return conversation.CommitAgentCycleStage(context.Background(), agents.HarnessDomainCommitOutput, agents.RunOutcome{Status: agents.RunOutcomeCompleted})
+	return conversation.CommitAgentCycleStage(context.Background(), agentrun.DomainCommitOutput, agentrun.Outcome{Status: agentrun.OutcomeCompleted})
 }
 
-func materializeInteractiveInputForTest(t testing.TB, conversation *interactiveConversation, identity agents.HarnessCycleIdentity) {
+func materializeInteractiveInputForTest(t testing.TB, conversation *interactiveConversation, identity agentrun.CycleIdentity) {
 	t.Helper()
 	storyContext, err := conversation.store.StoryContext(conversation.storyID, conversation.branchID)
 	if err != nil {

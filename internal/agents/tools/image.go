@@ -15,9 +15,8 @@ import (
 
 	"denova/config"
 	"denova/internal/book"
-	"denova/internal/illustration"
-	"denova/internal/imagegen"
-	"denova/internal/interactiveimage"
+	imageasset "denova/internal/image/asset"
+	imagegen "denova/internal/image/generation"
 )
 
 const (
@@ -185,7 +184,7 @@ func generatedImageReceipt(value any) (generatedImageReceiptDetails, string, err
 		if len(receipt.Images) > 0 {
 			return receipt, receipt.Images[0].Path, nil
 		}
-	case illustration.Result:
+	case imageasset.IllustrationResult:
 		receipt.ResultSchema = result.Schema
 		receipt.Purpose = generateImagePurposeChapterIllustration
 		receipt.ChapterPath = result.ChapterPath
@@ -201,7 +200,7 @@ func generatedImageReceipt(value any) (generatedImageReceiptDetails, string, err
 			AltText: result.AltText, MIMEType: result.MIMEType, SizeBytes: result.SizeBytes,
 		}}
 		return receipt, result.MetaPath, nil
-	case interactiveimage.Result:
+	case imageasset.InteractiveResult:
 		receipt.ResultSchema = result.Schema
 		receipt.Purpose = generateImagePurposeInteractiveImage
 		receipt.StoryID = result.StoryID
@@ -229,7 +228,7 @@ func generateImageForTool(ctx context.Context, cfg *config.Config, bookService *
 	input.Prompt = mergeImagePresetToolPrompt(cfg, input.Prompt)
 	purpose := normalizeGenerateImagePurpose(input.Purpose)
 	if purpose == generateImagePurposeChapterIllustration {
-		return illustration.NewService().Generate(ctx, cfg, bookService, illustration.GenerateRequest{
+		return imageasset.NewService().GenerateIllustration(ctx, cfg, bookService, imageasset.IllustrationGenerateRequest{
 			ChapterPath:  input.TargetPath,
 			Prompt:       input.Prompt,
 			AltText:      input.AltText,
@@ -240,7 +239,7 @@ func generateImageForTool(ctx context.Context, cfg *config.Config, bookService *
 		})
 	}
 	if purpose == generateImagePurposeInteractiveImage {
-		return interactiveimage.NewService().Generate(ctx, cfg, bookService, interactiveimage.GenerateRequest{
+		return imageasset.NewService().GenerateInteractive(ctx, cfg, bookService, imageasset.InteractiveGenerateRequest{
 			StoryID:      input.StoryID,
 			BranchID:     input.BranchID,
 			TurnID:       input.TurnID,
@@ -358,7 +357,7 @@ func persistGeneratedImages(bookService *book.Service, input generateImageInput,
 	return result, nil
 }
 
-func parseChapterIllustrationToolResult(toolName, content string) (*illustration.Result, error) {
+func parseChapterIllustrationToolResult(toolName, content string) (*imageasset.IllustrationResult, error) {
 	if !isImageGenerationToolName(toolName) {
 		return nil, nil
 	}
@@ -369,11 +368,11 @@ func parseChapterIllustrationToolResult(toolName, content string) (*illustration
 	if body == "" {
 		return nil, nil
 	}
-	var result illustration.Result
+	var result imageasset.IllustrationResult
 	if err := json.Unmarshal([]byte(body), &result); err != nil {
 		return nil, err
 	}
-	if result.Schema != illustration.ResultSchema {
+	if result.Schema != imageasset.IllustrationResultSchema {
 		return nil, nil
 	}
 	return &result, nil
@@ -381,7 +380,7 @@ func parseChapterIllustrationToolResult(toolName, content string) (*illustration
 
 // ParseChapterIllustrationResult decodes a chapter illustration emitted by
 // the image tool, ignoring unrelated tool results.
-func ParseChapterIllustrationResult(toolName, content string) (*illustration.Result, error) {
+func ParseChapterIllustrationResult(toolName, content string) (*imageasset.IllustrationResult, error) {
 	return parseChapterIllustrationToolResult(toolName, content)
 }
 
@@ -411,7 +410,7 @@ func ParseGeneratedImageTarget(toolName, content string) string {
 	return parseGeneratedImageToolTarget(toolName, content)
 }
 
-func parseInteractiveImageToolResult(toolName, content string) (*interactiveimage.Result, error) {
+func parseInteractiveImageToolResult(toolName, content string) (*imageasset.InteractiveResult, error) {
 	if !isImageGenerationToolName(toolName) {
 		return nil, nil
 	}
@@ -422,18 +421,18 @@ func parseInteractiveImageToolResult(toolName, content string) (*interactiveimag
 	if body == "" {
 		return nil, nil
 	}
-	var result interactiveimage.Result
+	var result imageasset.InteractiveResult
 	if err := json.Unmarshal([]byte(body), &result); err != nil {
 		return nil, err
 	}
-	if result.Schema != interactiveimage.ResultSchema {
+	if result.Schema != imageasset.InteractiveResultSchema {
 		return nil, nil
 	}
 	return &result, nil
 }
 
 // ParseInteractiveImageResult decodes an interactive image tool result.
-func ParseInteractiveImageResult(toolName, content string) (*interactiveimage.Result, error) {
+func ParseInteractiveImageResult(toolName, content string) (*imageasset.InteractiveResult, error) {
 	return parseInteractiveImageToolResult(toolName, content)
 }
 

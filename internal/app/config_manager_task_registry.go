@@ -2,11 +2,14 @@ package app
 
 import (
 	"context"
+	agentchat "denova/internal/agents/chat"
+	agentharness "denova/internal/agents/harness"
+	agentrun "denova/internal/agents/run"
+	apptask "denova/internal/app/task"
 	"errors"
 	"fmt"
 	"log/slog"
 
-	agents "denova/internal/agents"
 	"denova/internal/book"
 )
 
@@ -15,13 +18,13 @@ import (
 // conversation, or mutable request preparation is needed on this path.
 func (s *ConfigManagerAppService) replayDurableStart(
 	ctx context.Context,
-	chatService *agents.ChatService,
+	chatService *agentharness.Service,
 	bookService *book.Service,
-	chatReq agents.ChatRequest,
+	chatReq agentchat.ChatRequest,
 	workspace string,
 	sessionID string,
 	fingerprint string,
-) (*Task, bool, error) {
+) (*apptask.Task, bool, error) {
 	if chatService == nil {
 		return nil, false, nil
 	}
@@ -33,8 +36,8 @@ func (s *ConfigManagerAppService) replayDurableStart(
 		}
 		s.app.mu.RUnlock()
 	}
-	options := agents.RunOptions{
-		AgentKind: agents.AgentKindConfigManager, SessionID: sessionID,
+	options := agentrun.Options{
+		AgentKind: agentrun.AgentKindConfigManager, SessionID: sessionID,
 		StateRoot: stateRoot, Workspace: workspace, Mode: "config_manager",
 	}
 	status, err := chatService.RuntimeStatusProjection(ctx, options)
@@ -46,8 +49,8 @@ func (s *ConfigManagerAppService) replayDurableStart(
 	}
 
 	a := s.app
-	var accepted *agents.AcceptedRun
-	task, err := NewDeferredRegisteredTaskWithContext(ctx, func(task *Task) error {
+	var accepted *agentharness.AcceptedRun
+	task, err := apptask.NewDeferredWithContext(ctx, func(task *apptask.Task) error {
 		a.mu.Lock()
 		defer a.mu.Unlock()
 		if a.workspaceTransition {
@@ -69,13 +72,13 @@ func (s *ConfigManagerAppService) replayDurableStart(
 		rollbackConfigManagerReplayTask(a, task, err)
 		return nil, true, err
 	}
-	acceptCtx, releaseAcceptance := taskAcceptanceContext(ctx, task)
-	accepted, err = chatService.StartWithOptions(acceptCtx, nil, nil, bookService, chatReq, options, task.emit)
+	acceptCtx, releaseAcceptance := apptask.AcceptanceContext(ctx, task)
+	accepted, err = chatService.StartWithOptions(acceptCtx, nil, nil, bookService, chatReq, options, task.Emit)
 	releaseAcceptance()
 	if err != nil {
 		startReservation.rollback()
 		rollbackConfigManagerReplayTask(a, task, err)
-		if errors.Is(err, agents.ErrInvalidCommand) {
+		if errors.Is(err, agentrun.ErrInvalidCommand) {
 			return nil, true, fmt.Errorf("%w: command_id=%q", ErrAgentCommandConflict, chatReq.CommandID)
 		}
 		return nil, true, err
@@ -84,18 +87,18 @@ func (s *ConfigManagerAppService) replayDurableStart(
 		err := fmt.Errorf("durable Config Manager replay unexpectedly accepted a new command")
 		startReservation.rollback()
 		task.Abort()
-		_ = accepted.Wait(task.ctx)
+		_ = accepted.Wait(task.Context())
 		rollbackConfigManagerReplayTask(a, task, err)
 		return nil, true, err
 	}
-	if err := task.Start(func(ctx context.Context, task *Task, _ func(agents.Event)) {
+	if err := task.Start(func(ctx context.Context, task *apptask.Task, _ func(agentrun.Event)) {
 		defer a.unregisterWorkspaceTask(task)
 		outcome := accepted.Wait(ctx)
 		slog.InfoContext(ctx, fmt.Sprintf("[config-manager] replay end id=%s command_id=%s status=%s", task.ID(), chatReq.CommandID, outcome.Status))
 	}); err != nil {
 		startReservation.rollback()
 		task.Abort()
-		_ = accepted.Wait(task.ctx)
+		_ = accepted.Wait(task.Context())
 		rollbackConfigManagerReplayTask(a, task, err)
 		return nil, true, err
 	}
@@ -103,7 +106,7 @@ func (s *ConfigManagerAppService) replayDurableStart(
 	return task, true, nil
 }
 
-func rollbackConfigManagerReplayTask(a *App, task *Task, err error) {
-	task.failBeforeStart(err)
+func rollbackConfigManagerReplayTask(a *App, task *apptask.Task, err error) {
+	task.RejectStart(err)
 	a.unregisterWorkspaceTask(task)
 }

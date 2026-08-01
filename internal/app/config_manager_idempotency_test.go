@@ -2,6 +2,10 @@ package app
 
 import (
 	"context"
+	agentchat "denova/internal/agents/chat"
+	agentcontext "denova/internal/agents/context"
+	agentharness "denova/internal/agents/harness"
+	apptask "denova/internal/app/task"
 	"errors"
 	"path/filepath"
 	"strings"
@@ -12,7 +16,9 @@ import (
 
 	"denova/config"
 	agents "denova/internal/agents"
+	agentrun "denova/internal/agents/run"
 	"denova/internal/agents/session"
+
 	runstate "github.com/alfredxw/denova/agent/runtime"
 )
 
@@ -76,18 +82,18 @@ func TestConfigManagerReplayCapacityRejectsBeforeRuntimeAdmission(t *testing.T) 
 	}
 	t.Cleanup(application.Close)
 
-	blocker, err := NewDeferredRegisteredTask(nil)
+	blocker, err := apptask.NewDeferred(nil)
 	if err != nil {
 		t.Fatal(err)
 	}
-	application.activeTaskReplay.byteLimit = blocker.displayReplayRegistryCharge()
-	reservation, err := application.activeTaskReplay.reserve(blocker)
+	application.activeTaskReplay.Configure(apptask.ReplayAdmissionLimits{MaxBytes: blocker.DisplayReplayCharge()})
+	reservation, err := application.activeTaskReplay.Reserve(blocker)
 	if err != nil {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() {
-		reservation.release()
-		blocker.failBeforeStart(errors.New("test cleanup"))
+		reservation.Release()
+		blocker.RejectStart(errors.New("test cleanup"))
 	})
 
 	request := ConfigManagerRequest{
@@ -106,14 +112,14 @@ func TestConfigManagerReplayCapacityRejectsBeforeRuntimeAdmission(t *testing.T) 
 	workspace := application.workspace
 	chatService := application.chatService
 	application.mu.RUnlock()
-	status, err := chatService.RuntimeStatusProjection(context.Background(), agents.RunOptions{
-		AgentKind: agents.AgentKindConfigManager, SessionID: sessionID,
+	status, err := chatService.RuntimeStatusProjection(context.Background(), agentrun.Options{
+		AgentKind: agentrun.AgentKindConfigManager, SessionID: sessionID,
 		Workspace: workspace, Mode: "config_manager",
 	})
 	if err != nil {
 		t.Fatal(err)
 	}
-	if status.Phase != agents.RunPhaseIdle || status.ActiveOperation != "" || status.LastOperation != nil || len(status.Queue) != 0 {
+	if status.Phase != agentrun.RunPhaseIdle || status.ActiveOperation != "" || status.LastOperation != nil || len(status.Queue) != 0 {
 		t.Fatalf("Runtime was mutated before capacity admission: %#v", status)
 	}
 }
@@ -124,7 +130,7 @@ func TestConfigManagerOlderSettledStartColdReplayWithoutModel(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	service, err := agents.NewDurableChatService(context.Background(), root)
+	service, err := agentharness.NewDurableService(context.Background(), root)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -137,12 +143,12 @@ func TestConfigManagerOlderSettledStartColdReplayWithoutModel(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	options := agents.RunOptions{
-		AgentKind: agents.AgentKindConfigManager, Workspace: workspace,
+	options := agentrun.Options{
+		AgentKind: agentrun.AgentKindConfigManager, Workspace: workspace,
 		SessionID: sessionID, Mode: "config_manager",
 	}
 	for index := range requests {
-		chatRequest := agents.ChatRequest{
+		chatRequest := agentchat.ChatRequest{
 			CommandID: requests[index].CommandID,
 			Message:   buildConfigManagerMessage(requests[index]),
 		}
@@ -150,7 +156,7 @@ func TestConfigManagerOlderSettledStartColdReplayWithoutModel(t *testing.T) {
 			context.Background(), newConfigManagerColdReplayRunner(t, answers[index]),
 			configManagerColdReplayConversation{}, nil, chatRequest, options, nil,
 		)
-		if outcome.Status != agents.RunOutcomeCompleted || outcome.Content != answers[index] {
+		if outcome.Status != agentrun.OutcomeCompleted || outcome.Content != answers[index] {
 			_ = service.Close(context.Background())
 			t.Fatalf("seed run %d outcome = %#v", index, outcome)
 		}
@@ -191,7 +197,7 @@ func TestConfigManagerOlderSettledStartColdReplayWithoutModel(t *testing.T) {
 			}
 		}
 	}
-	if task.Status() != TaskDone || content != answers[0] {
+	if task.Status() != apptask.Done || content != answers[0] {
 		t.Fatalf("cold replay status=%s content=%q events=%#v", task.Status(), content, events)
 	}
 }
@@ -220,8 +226,8 @@ func (m configManagerColdReplayModel) Stream(context.Context, []*agents.Message,
 
 type configManagerColdReplayConversation struct{}
 
-func (configManagerColdReplayConversation) AssembleModelContext(ctx context.Context, _ string, input agents.ModelContextInput) (agents.ModelContextResult, error) {
-	return agents.AssembleSingleUserModelContext(ctx, input)
+func (configManagerColdReplayConversation) AssembleModelContext(ctx context.Context, _ string, input agentcontext.ModelContextInput) (agentcontext.ModelContextResult, error) {
+	return agentcontext.AssembleSingleUserModelContext(ctx, input)
 }
 func (configManagerColdReplayConversation) AppendAssistant(string) error { return nil }
 func (configManagerColdReplayConversation) MarkInterrupted(string, string, string) error {

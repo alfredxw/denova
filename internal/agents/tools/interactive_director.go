@@ -9,13 +9,14 @@ import (
 	agent "github.com/alfredxw/denova/agent"
 
 	"denova/internal/interactive"
+	"denova/internal/interactive/director"
 )
 
 const submitDirectorPlanUpdateToolName = "submit_director_plan_update"
 const SubmitDirectorPlanUpdateToolName = submitDirectorPlanUpdateToolName
 
 type submitDirectorPlanUpdateInput struct {
-	Decision interactive.PlanDecision                 `json:"decision" jsonschema:"description=本轮 keep、patch 或 replan 决策及证据；重试时保持 mode 不变，不填写 base_revision"`
+	Decision director.Decision                        `json:"decision" jsonschema:"description=本轮 keep、patch 或 replan 决策及证据；重试时保持 mode 不变，不填写 base_revision"`
 	Updates  []interactive.DirectorPlanDocumentUpdate `json:"updates,omitempty" jsonschema:"description=本次要独立校验的文档 Patch；已 accepted 的文件不要重传，未变化文件必须省略"`
 	Finalize bool                                     `json:"finalize" jsonschema:"description=是否在接收本次合法 Patch 后完成草稿；存在 rejected 文件时不会 finalize"`
 }

@@ -2,6 +2,7 @@ package interactive
 
 import (
 	"bytes"
+	interactivestate "denova/internal/interactive/state"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -70,7 +71,7 @@ type TurnSubmissionReceipt struct {
 // TurnSubmissionInput holds independently retryable fields decoded from one
 // submit_interactive_turn call. Either field may be absent on a targeted retry.
 type TurnSubmissionInput struct {
-	StateUpdates   *[]StateUpdate
+	StateUpdates   *[]interactivestate.Update
 	Choices        *[]string
 	DirectorUpdate *DirectorUpdateHint
 	Diagnostics    []TurnSubmissionDiagnostic
@@ -100,7 +101,7 @@ func (s *PreparedTurnSubmission) TurnResult() TurnResult {
 		return TurnResult{}
 	}
 	return TurnResult{
-		StateUpdates:   append([]StateUpdate(nil), s.result.StateUpdates...),
+		StateUpdates:   append([]interactivestate.Update(nil), s.result.StateUpdates...),
 		Choices:        append([]string(nil), s.result.Choices...),
 		DirectorUpdate: normalizeDirectorUpdateHint(s.result.DirectorUpdate),
 	}
@@ -148,7 +149,7 @@ func PrepareTurnSubmission(validation TurnSubmissionContext, current *PreparedTu
 		}
 	}
 	if input.StateUpdates != nil && !prepared.stateUpdatesAccepted && !rejected[TurnSubmissionModuleStateChanges] {
-		updates := normalizeTurnStateUpdates(*input.StateUpdates)
+		updates := interactivestate.NormalizeUpdates(*input.StateUpdates)
 		compileOptions := TurnStateUpdateCompileOptions{
 			RuleResolution:           validation.RuleResolution,
 			RuleStateConsumptionMode: validation.RuleStateConsumptionMode,
@@ -201,11 +202,11 @@ func PrepareTurnSubmission(validation TurnSubmissionContext, current *PreparedTu
 
 func clonePreparedTurnSubmission(current *PreparedTurnSubmission) *PreparedTurnSubmission {
 	if current == nil {
-		return &PreparedTurnSubmission{result: TurnResult{StateUpdates: []StateUpdate{}, Choices: []string{}}}
+		return &PreparedTurnSubmission{result: TurnResult{StateUpdates: []interactivestate.Update{}, Choices: []string{}}}
 	}
 	return &PreparedTurnSubmission{
 		result: TurnResult{
-			StateUpdates:   append([]StateUpdate(nil), current.result.StateUpdates...),
+			StateUpdates:   append([]interactivestate.Update(nil), current.result.StateUpdates...),
 			Choices:        append([]string(nil), current.result.Choices...),
 			DirectorUpdate: normalizeDirectorUpdateHint(current.result.DirectorUpdate),
 		},

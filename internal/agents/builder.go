@@ -2,17 +2,23 @@ package agents
 
 import (
 	"context"
+	agentchat "denova/internal/agents/chat"
+	agentinteractive "denova/internal/agents/interactive"
+	agenttoolruntime "denova/internal/agents/toolruntime"
 	"fmt"
-	"strings"
 
 	agent "github.com/alfredxw/denova/agent"
 	"github.com/alfredxw/denova/agent/providers"
 
 	"denova/config"
+	agentcompaction "denova/internal/agents/context/compaction"
+	"denova/internal/agents/modelio"
+	"denova/internal/agents/prompts"
+	agentrun "denova/internal/agents/run"
 	novaskills "denova/internal/agents/skills"
+	"denova/internal/agents/toolresult"
 	producttools "denova/internal/agents/tools"
 	"denova/internal/book"
-	"denova/internal/prompts"
 )
 
 var newNativeAgent = func(ctx context.Context, cfg agent.AgentConfig) (agent.Runnable, error) {
@@ -20,14 +26,14 @@ var newNativeAgent = func(ctx context.Context, cfg agent.AgentConfig) (agent.Run
 }
 
 // Build 构建小说创作 Agent（native loop + 文件系统工具 + Skills）。
-func Build(ctx context.Context, cfg *config.Config, state *book.State, teller IDEStoryTeller) (agent.Runnable, error) {
+func Build(ctx context.Context, cfg *config.Config, state *book.State, teller prompts.IDEStoryTeller) (agent.Runnable, error) {
 	built, _, err := BuildWithComposition(ctx, cfg, state, teller)
 	return built, err
 }
 
 // BuildWithComposition returns the exact admitted prompt artifact consumed by
-// the constructed Agent so RunOptions never needs to rebuild mutable sources.
-func BuildWithComposition(ctx context.Context, cfg *config.Config, state *book.State, teller IDEStoryTeller) (agent.Runnable, SystemPromptComposition, error) {
+// the constructed Agent so agentrun.Options never needs to rebuild mutable sources.
+func BuildWithComposition(ctx context.Context, cfg *config.Config, state *book.State, teller prompts.IDEStoryTeller) (agent.Runnable, prompts.SystemPromptComposition, error) {
 	return buildWithCompositionForHost(ctx, cfg, state, teller, AgentHostCapabilities{})
 }
 
@@ -39,17 +45,17 @@ type AgentHostCapabilities struct {
 
 // BuildWithCompositionForHost builds the top-level IDE Agent for a concrete
 // host. Headless callers should keep using BuildWithComposition.
-func BuildWithCompositionForHost(ctx context.Context, cfg *config.Config, state *book.State, teller IDEStoryTeller, host AgentHostCapabilities) (agent.Runnable, SystemPromptComposition, error) {
+func BuildWithCompositionForHost(ctx context.Context, cfg *config.Config, state *book.State, teller prompts.IDEStoryTeller, host AgentHostCapabilities) (agent.Runnable, prompts.SystemPromptComposition, error) {
 	return buildWithCompositionForHost(ctx, cfg, state, teller, host)
 }
 
 // BuildGeneralAgentWithCompositionForHost builds a general-purpose Agent for
 // a user-added Project. It intentionally assembles only generic workspace,
 // web, browser, Skill, planning, ask, delegation and context tools.
-func BuildGeneralAgentWithCompositionForHost(ctx context.Context, cfg *config.Config, host AgentHostCapabilities) (agent.Runnable, SystemPromptComposition, error) {
-	composition, err := ComposeGeneralInstruction(cfg)
+func BuildGeneralAgentWithCompositionForHost(ctx context.Context, cfg *config.Config, host AgentHostCapabilities) (agent.Runnable, prompts.SystemPromptComposition, error) {
+	composition, err := prompts.ComposeGeneralInstruction(cfg)
 	if err != nil {
-		return nil, SystemPromptComposition{}, err
+		return nil, prompts.SystemPromptComposition{}, err
 	}
 	built, err := buildAgent(ctx, cfg, agentBuildSpec{
 		Kind:            config.AgentKindGeneral,
@@ -62,10 +68,10 @@ func BuildGeneralAgentWithCompositionForHost(ctx context.Context, cfg *config.Co
 	return built, composition, err
 }
 
-func buildWithCompositionForHost(ctx context.Context, cfg *config.Config, state *book.State, teller IDEStoryTeller, host AgentHostCapabilities) (agent.Runnable, SystemPromptComposition, error) {
-	composition, err := ComposeInstruction(cfg, state, teller)
+func buildWithCompositionForHost(ctx context.Context, cfg *config.Config, state *book.State, teller prompts.IDEStoryTeller, host AgentHostCapabilities) (agent.Runnable, prompts.SystemPromptComposition, error) {
+	composition, err := prompts.ComposeInstruction(cfg, state, teller)
 	if err != nil {
-		return nil, SystemPromptComposition{}, err
+		return nil, prompts.SystemPromptComposition{}, err
 	}
 	built, err := buildAgent(ctx, cfg, agentBuildSpec{
 		Kind:              config.AgentKindIDE,
@@ -74,27 +80,27 @@ func buildWithCompositionForHost(ctx context.Context, cfg *config.Config, state 
 		Composition:       composition,
 		EnableSkills:      true,
 		InteractiveHost:   host.Interactive,
-		ExtraToolsFactory: newToolCatalog(cfg).IDE(),
+		ExtraToolsFactory: agenttoolruntime.NewCatalog(cfg).IDE(),
 	})
 	return built, composition, err
 }
 
-func BuildInteractiveStory(ctx context.Context, cfg *config.Config, state *book.State, teller prompts.InteractiveStorySystemInstructionInput, toolContexts ...InteractiveStoryToolContext) (agent.Runnable, error) {
+func BuildInteractiveStory(ctx context.Context, cfg *config.Config, state *book.State, teller prompts.InteractiveStorySystemInstructionInput, toolContexts ...agentinteractive.InteractiveStoryToolContext) (agent.Runnable, error) {
 	built, _, err := BuildInteractiveStoryWithComposition(ctx, cfg, state, teller, toolContexts...)
 	return built, err
 }
 
-func BuildInteractiveStoryWithComposition(ctx context.Context, cfg *config.Config, state *book.State, teller prompts.InteractiveStorySystemInstructionInput, toolContexts ...InteractiveStoryToolContext) (agent.Runnable, SystemPromptComposition, error) {
-	handlers := []agent.Middleware{newInteractiveStoryToolMiddleware()}
+func BuildInteractiveStoryWithComposition(ctx context.Context, cfg *config.Config, state *book.State, teller prompts.InteractiveStorySystemInstructionInput, toolContexts ...agentinteractive.InteractiveStoryToolContext) (agent.Runnable, prompts.SystemPromptComposition, error) {
+	handlers := []agent.Middleware{agenttoolruntime.NewInteractiveStoryMiddleware()}
 	var outputGuard func(context.Context, *agent.RetryContext) *agent.RetryDecision
 	if len(toolContexts) > 0 && toolContexts[0].TurnResultReady != nil {
-		completionTokens, _ := EstimateContextProjectionReserves(cfg, config.AgentKindInteractiveStory, teller.ReplyTargetChars)
-		handlers = append(handlers, newInteractiveTurnProtocolMiddleware(toolContexts[0].TurnResultReady, completionTokens))
-		outputGuard = newInteractiveCompletionGuard(toolContexts[0].TurnResultReady)
+		completionTokens, _ := agentcompaction.EstimateProjectionReserves(cfg, config.AgentKindInteractiveStory, teller.ReplyTargetChars)
+		handlers = append(handlers, agentinteractive.NewTurnProtocolMiddleware(toolContexts[0].TurnResultReady, completionTokens))
+		outputGuard = agentinteractive.NewCompletionGuard(toolContexts[0].TurnResultReady)
 	}
-	composition, err := ComposeInteractiveStoryInstruction(cfg, state, teller)
+	composition, err := prompts.ComposeInteractiveStoryInstruction(cfg, state, teller)
 	if err != nil {
-		return nil, SystemPromptComposition{}, err
+		return nil, prompts.SystemPromptComposition{}, err
 	}
 	built, err := buildAgent(ctx, cfg, agentBuildSpec{
 		Kind:              config.AgentKindInteractiveStory,
@@ -104,23 +110,23 @@ func BuildInteractiveStoryWithComposition(ctx context.Context, cfg *config.Confi
 		EnableSkills:      true,
 		DisableWriteTodos: true,
 		ExtraMiddlewares:  handlers,
-		ExtraToolsFactory: newToolCatalog(cfg).InteractiveStory(projectInteractiveToolContext(toolContexts...)),
+		ExtraToolsFactory: agenttoolruntime.NewCatalog(cfg).InteractiveStory(agenttoolruntime.ProjectInteractiveContext(toolContexts...)),
 		ModelOutputGuard:  outputGuard,
 	})
 	return built, composition, err
 }
 
-func BuildInteractiveDirector(ctx context.Context, cfg *config.Config, state *book.State, toolContexts ...InteractiveStoryToolContext) (agent.Runnable, error) {
+func BuildInteractiveDirector(ctx context.Context, cfg *config.Config, state *book.State, toolContexts ...agentinteractive.InteractiveStoryToolContext) (agent.Runnable, error) {
 	built, _, err := BuildInteractiveDirectorWithComposition(ctx, cfg, state, toolContexts...)
 	return built, err
 }
 
-func BuildInteractiveDirectorWithComposition(ctx context.Context, cfg *config.Config, state *book.State, toolContexts ...InteractiveStoryToolContext) (agent.Runnable, SystemPromptComposition, error) {
-	composition, err := ComposeInteractiveDirectorInstruction(cfg, state)
+func BuildInteractiveDirectorWithComposition(ctx context.Context, cfg *config.Config, state *book.State, toolContexts ...agentinteractive.InteractiveStoryToolContext) (agent.Runnable, prompts.SystemPromptComposition, error) {
+	composition, err := prompts.ComposeInteractiveDirectorInstruction(cfg, state)
 	if err != nil {
-		return nil, SystemPromptComposition{}, err
+		return nil, prompts.SystemPromptComposition{}, err
 	}
-	toolContext := projectInteractiveToolContext(toolContexts...)
+	toolContext := agenttoolruntime.ProjectInteractiveContext(toolContexts...)
 	built, err := buildAgent(ctx, cfg, agentBuildSpec{
 		Kind:                config.AgentKindInteractiveDirector,
 		Name:                "DenovaInteractiveDirectorAgent",
@@ -128,31 +134,31 @@ func BuildInteractiveDirectorWithComposition(ctx context.Context, cfg *config.Co
 		Composition:         composition,
 		EnableSkills:        false,
 		DisableWriteTodos:   true,
-		ExtraMiddlewares:    []agent.Middleware{newInteractiveDirectorPlanFileMiddleware()},
-		ReadAdaptersFactory: newToolCatalog(cfg).InteractiveDirectorRead(toolContext),
-		ExtraToolsFactory:   newToolCatalog(cfg).InteractiveDirector(toolContext),
+		ExtraMiddlewares:    []agent.Middleware{agenttoolruntime.NewInteractiveDirectorPlanFileMiddleware()},
+		ReadAdaptersFactory: agenttoolruntime.NewCatalog(cfg).InteractiveDirectorRead(toolContext),
+		ExtraToolsFactory:   agenttoolruntime.NewCatalog(cfg).InteractiveDirector(toolContext),
 	})
 	return built, composition, err
 }
 
 // BuildConfigManagerAgent 构建统一配置管理 Agent（native loop + 通用工具 + Skills + 模块资源工具）。
-func BuildConfigManagerAgent(ctx context.Context, cfg *config.Config, state *book.State, resourceSkills ...ConfigManagerResourceSkill) (agent.Runnable, error) {
+func BuildConfigManagerAgent(ctx context.Context, cfg *config.Config, state *book.State, resourceSkills ...prompts.ConfigManagerResourceSkill) (agent.Runnable, error) {
 	built, _, err := BuildConfigManagerAgentWithComposition(ctx, cfg, state, resourceSkills...)
 	return built, err
 }
 
-func BuildConfigManagerAgentWithComposition(ctx context.Context, cfg *config.Config, state *book.State, resourceSkills ...ConfigManagerResourceSkill) (agent.Runnable, SystemPromptComposition, error) {
+func BuildConfigManagerAgentWithComposition(ctx context.Context, cfg *config.Config, state *book.State, resourceSkills ...prompts.ConfigManagerResourceSkill) (agent.Runnable, prompts.SystemPromptComposition, error) {
 	return buildConfigManagerAgentWithCompositionForHost(ctx, cfg, state, AgentHostCapabilities{}, resourceSkills...)
 }
 
-func BuildConfigManagerAgentWithCompositionForHost(ctx context.Context, cfg *config.Config, state *book.State, host AgentHostCapabilities, resourceSkills ...ConfigManagerResourceSkill) (agent.Runnable, SystemPromptComposition, error) {
+func BuildConfigManagerAgentWithCompositionForHost(ctx context.Context, cfg *config.Config, state *book.State, host AgentHostCapabilities, resourceSkills ...prompts.ConfigManagerResourceSkill) (agent.Runnable, prompts.SystemPromptComposition, error) {
 	return buildConfigManagerAgentWithCompositionForHost(ctx, cfg, state, host, resourceSkills...)
 }
 
-func buildConfigManagerAgentWithCompositionForHost(ctx context.Context, cfg *config.Config, state *book.State, host AgentHostCapabilities, resourceSkills ...ConfigManagerResourceSkill) (agent.Runnable, SystemPromptComposition, error) {
-	composition, err := ComposeConfigManagerInstruction(cfg, state, resourceSkills...)
+func buildConfigManagerAgentWithCompositionForHost(ctx context.Context, cfg *config.Config, state *book.State, host AgentHostCapabilities, resourceSkills ...prompts.ConfigManagerResourceSkill) (agent.Runnable, prompts.SystemPromptComposition, error) {
+	composition, err := prompts.ComposeConfigManagerInstruction(cfg, state, resourceSkills...)
 	if err != nil {
-		return nil, SystemPromptComposition{}, err
+		return nil, prompts.SystemPromptComposition{}, err
 	}
 	built, err := buildAgent(ctx, cfg, agentBuildSpec{
 		Kind:              config.AgentKindConfigManager,
@@ -161,21 +167,21 @@ func buildConfigManagerAgentWithCompositionForHost(ctx context.Context, cfg *con
 		Composition:       composition,
 		EnableSkills:      true,
 		InteractiveHost:   host.Interactive,
-		ExtraToolsFactory: newToolCatalog(cfg).ConfigManager(),
+		ExtraToolsFactory: agenttoolruntime.NewCatalog(cfg).ConfigManager(),
 	})
 	return built, composition, err
 }
 
 // BuildAutomationAgent 构建后台自动化 Agent。工具权限由调用方按任务写入策略提前收敛到 cfg.AgentTools.Automation。
-func BuildAutomationAgent(ctx context.Context, cfg *config.Config, state *book.State, task AutomationTaskInstruction) (agent.Runnable, error) {
+func BuildAutomationAgent(ctx context.Context, cfg *config.Config, state *book.State, task prompts.AutomationTaskInstruction) (agent.Runnable, error) {
 	built, _, err := BuildAutomationAgentWithComposition(ctx, cfg, state, task)
 	return built, err
 }
 
-func BuildAutomationAgentWithComposition(ctx context.Context, cfg *config.Config, state *book.State, task AutomationTaskInstruction) (agent.Runnable, SystemPromptComposition, error) {
-	composition, err := ComposeAutomationInstruction(cfg, state, task)
+func BuildAutomationAgentWithComposition(ctx context.Context, cfg *config.Config, state *book.State, task prompts.AutomationTaskInstruction) (agent.Runnable, prompts.SystemPromptComposition, error) {
+	composition, err := prompts.ComposeAutomationInstruction(cfg, state, task)
 	if err != nil {
-		return nil, SystemPromptComposition{}, err
+		return nil, prompts.SystemPromptComposition{}, err
 	}
 	built, err := buildAgent(ctx, cfg, agentBuildSpec{
 		Kind:              config.AgentKindAutomation,
@@ -183,7 +189,7 @@ func BuildAutomationAgentWithComposition(ctx context.Context, cfg *config.Config
 		Description:       "AI 自动化任务助手",
 		Composition:       composition,
 		EnableSkills:      true,
-		ExtraToolsFactory: newToolCatalog(cfg).Lore(false),
+		ExtraToolsFactory: agenttoolruntime.NewCatalog(cfg).Lore(false),
 	})
 	return built, composition, err
 }
@@ -194,10 +200,10 @@ func BuildImageAgent(ctx context.Context, cfg *config.Config, state *book.State,
 	return built, err
 }
 
-func BuildImageAgentWithComposition(ctx context.Context, cfg *config.Config, state *book.State, systemPrompt string) (agent.Runnable, SystemPromptComposition, error) {
-	composition, err := ComposeImageInstruction(cfg, state, systemPrompt)
+func BuildImageAgentWithComposition(ctx context.Context, cfg *config.Config, state *book.State, systemPrompt string) (agent.Runnable, prompts.SystemPromptComposition, error) {
+	composition, err := prompts.ComposeImageInstruction(cfg, state, systemPrompt)
 	if err != nil {
-		return nil, SystemPromptComposition{}, err
+		return nil, prompts.SystemPromptComposition{}, err
 	}
 	built, err := buildAgent(ctx, cfg, agentBuildSpec{
 		Kind:              config.AgentKindImage,
@@ -206,7 +212,7 @@ func BuildImageAgentWithComposition(ctx context.Context, cfg *config.Config, sta
 		Composition:       composition,
 		EnableSkills:      true,
 		DisableWriteTodos: true,
-		ExtraToolsFactory: newToolCatalog(cfg).Image(),
+		ExtraToolsFactory: agenttoolruntime.NewCatalog(cfg).Image(),
 	})
 	return built, composition, err
 }
@@ -215,8 +221,7 @@ type agentBuildSpec struct {
 	Kind                string
 	Name                string
 	Description         string
-	Instruction         string
-	Composition         SystemPromptComposition
+	Composition         prompts.SystemPromptComposition
 	EnableSkills        bool
 	InteractiveHost     bool
 	DisableWriteTodos   bool
@@ -228,14 +233,14 @@ type agentBuildSpec struct {
 }
 
 func buildAgent(ctx context.Context, cfg *config.Config, spec agentBuildSpec) (agent.Runnable, error) {
-	toolCatalog := newToolCatalogWithContext(ctx, cfg)
+	toolCatalog := agenttoolruntime.NewCatalogWithContext(ctx, cfg)
 	composition, err := resolveAgentSystemPrompt(cfg, spec)
 	if err != nil {
 		return nil, err
 	}
-	modelCfg := chatModelConfigForAgent(cfg, spec.Kind)
+	modelCfg := modelio.ConfigForAgent(cfg, spec.Kind)
 	toolSettings := config.ResolveAgentTools(cfg, spec.Kind)
-	chatModel, err := newChatModel(ctx, modelCfg)
+	chatModel, err := modelio.NewChatModel(ctx, modelCfg)
 	if err != nil {
 		return nil, fmt.Errorf("创建模型失败: %w", err)
 	}
@@ -342,39 +347,12 @@ func buildAgent(ctx context.Context, cfg *config.Config, spec agentBuildSpec) (a
 	})
 }
 
-func resolveAgentSystemPrompt(cfg *config.Config, spec agentBuildSpec) (SystemPromptComposition, error) {
+func resolveAgentSystemPrompt(_ *config.Config, spec agentBuildSpec) (prompts.SystemPromptComposition, error) {
 	composition := spec.Composition
-	if composition.Err() != nil {
-		return SystemPromptComposition{}, composition.Err()
+	if err := composition.ValidateForAgent(spec.Kind); err != nil {
+		return prompts.SystemPromptComposition{}, err
 	}
-	if composition.Instruction() != "" {
-		if composition.agentKind != "" && composition.agentKind != strings.TrimSpace(spec.Kind) {
-			return SystemPromptComposition{}, fmt.Errorf("system prompt agent kind mismatch: composition=%s spec=%s", composition.agentKind, spec.Kind)
-		}
-		if composition.InstructionHash() != systemPromptSHA(composition.Instruction()) {
-			return SystemPromptComposition{}, fmt.Errorf("system prompt composition hash mismatch: agent=%s", spec.Kind)
-		}
-		return composition, nil
-	}
-	instruction := strings.TrimSpace(spec.Instruction)
-	if instruction == "" {
-		return SystemPromptComposition{}, fmt.Errorf("system prompt composition is required: agent=%s", spec.Kind)
-	}
-	return composeSystemPrompt(cfg, spec.Kind, spec.Kind, "", []SystemPromptFragment{{
-		ID: "agent_instruction", Source: "agent build specification", Title: "Agent system instruction",
-		Purpose: "provide a compatibility instruction for internal Agent construction", Content: instruction,
-		Required: true, Overflow: SystemPromptOverflowReject,
-	}})
-}
-
-func workspaceForPrompt(cfg *config.Config, state *book.State) string {
-	if cfg != nil && strings.TrimSpace(cfg.Workspace) != "" {
-		return strings.TrimSpace(cfg.Workspace)
-	}
-	if state != nil {
-		return strings.TrimSpace(state.Workspace())
-	}
-	return ""
+	return composition, nil
 }
 
 type chatModelAgentAssemblySpec struct {
@@ -406,41 +384,25 @@ func buildChatModelAgentAssembly(ctx context.Context, cfg *config.Config, spec c
 	if cfg != nil {
 		approvalMode = config.NormalizeAgentApprovalMode(cfg.AgentApprovalMode)
 	}
-	executionGate := sharedToolExecutionGate(workspace)
-	toolCatalog := newToolCatalogWithContext(ctx, cfg)
+	toolCatalog := agenttoolruntime.NewCatalogWithContext(ctx, cfg)
 	settings := spec.ToolSettings
 	middlewares := append([]agent.Middleware(nil), spec.ExtraMiddlewares...)
 	middlewares = append(middlewares,
-		&toolOrchestratorMiddleware{
-			agentKind:                spec.Kind,
-			policyKind:               firstNonEmpty(spec.ToolPolicyKind, spec.Kind),
-			toolSettings:             spec.ToolSettings,
-			enforceToolSettings:      true,
-			enforceApprovalPolicy:    true,
-			approvalMode:             approvalMode,
-			workspace:                workspace,
-			toolResultMaxBytes:       configToolResultMaxBytes(cfg),
-			toolResultEagerMinTokens: config.DefaultToolResultEagerMinTokens,
-			contextWindowTokens:      spec.ContextWindowTokens,
-			executionGate:            executionGate,
-		},
-		&modelInputLoggingMiddleware{
-			BaseMiddleware:        &agent.BaseMiddleware{},
-			agentKind:             spec.Kind,
-			config:                spec.ModelCfg,
-			contextWindowTokens:   spec.ContextWindowTokens,
-			providerInputMaxBytes: spec.ProviderInputMaxBytes,
-		},
-		&contextNormalizerMiddleware{BaseMiddleware: &agent.BaseMiddleware{}},
+		agenttoolruntime.NewOrchestratorMiddleware(agenttoolruntime.OrchestratorConfig{
+			AgentKind: spec.Kind, PolicyKind: firstNonEmpty(spec.ToolPolicyKind, spec.Kind),
+			ToolSettings: spec.ToolSettings, EnforceToolSettings: true,
+			EnforceApprovalPolicy: true, ApprovalMode: approvalMode, Workspace: workspace,
+			ToolResultMaxBytes:       toolresult.LimitBytes(cfg),
+			ToolResultEagerMinTokens: config.DefaultToolResultEagerMinTokens,
+			ContextWindowTokens:      spec.ContextWindowTokens,
+		}),
+		agentrun.NewModelInputLoggingMiddleware(
+			spec.Kind, spec.ModelCfg, spec.ContextWindowTokens, spec.ProviderInputMaxBytes,
+		),
 	)
-	if spec.IncludeCompaction {
-		// Context maintenance must observe the final model call after every
-		// mode-specific option and tool decision has been applied.
-		middlewares = append(middlewares, &contextCompactionMiddleware{
-			BaseMiddleware: &agent.BaseMiddleware{},
-			agentKind:      spec.Kind,
-		})
-	}
+	// Context maintenance must observe the final model call after every
+	// mode-specific option and tool decision has been applied.
+	middlewares = append(middlewares, agentchat.NewModelContextMiddlewares(spec.Kind, spec.IncludeCompaction)...)
 	tools := append([]agent.ToolDefinition(nil), spec.ExtraTools...)
 	skillTools, readAdapters, err := buildSkillTools(ctx, cfg, spec.Kind, spec.EnableSkills, settings)
 	if err != nil {
@@ -491,14 +453,14 @@ func buildSkillTools(ctx context.Context, cfg *config.Config, agentKind string, 
 		agentKind,
 		config.ResolveAgentSkillOverrides(cfg, agentKind),
 	)
-	skillTool, err := newToolCatalog(cfg).Skill(ctx, skillBackend, config.ResolveAgentContext(cfg, agentKind).MaxFragmentBytes)
+	skillTool, err := agenttoolruntime.NewCatalog(cfg).Skill(ctx, skillBackend, config.ResolveAgentContext(cfg, agentKind).MaxFragmentBytes)
 	if err != nil {
 		return nil, nil, fmt.Errorf("创建 Skill 工具失败 agent=%s: %w", agentKind, err)
 	}
 	if skillTool.Tool == nil {
 		return nil, nil, nil
 	}
-	referenceAdapter, err := newToolCatalog(cfg).SkillReference(skillBackend)
+	referenceAdapter, err := agenttoolruntime.NewCatalog(cfg).SkillReference(skillBackend)
 	if err != nil {
 		return nil, nil, fmt.Errorf("创建 Skill reference Adapter 失败 agent=%s: %w", agentKind, err)
 	}
@@ -533,8 +495,8 @@ func buildConfiguredSubAgent(ctx context.Context, cfg *config.Config, parent age
 		return nil, fmt.Errorf("assemble sub Agent system prompt id=%s: %w", sub.ID, err)
 	}
 	resolvedModel := config.ResolveSubAgentModel(cfg, parent.Kind, sub)
-	modelCfg := chatModelConfigFromResolved(resolvedModel)
-	subChatModel, err := newChatModel(ctx, modelCfg)
+	modelCfg := modelio.ConfigFromResolved(resolvedModel)
+	subChatModel, err := modelio.NewChatModel(ctx, modelCfg)
 	if err != nil {
 		return nil, fmt.Errorf("创建子 Agent 模型失败 id=%s: %w", sub.ID, err)
 	}
@@ -569,7 +531,7 @@ func buildConfiguredSubAgent(ctx context.Context, cfg *config.Config, parent age
 func modelRetryConfig(cfg *config.Config, outputGuard func(context.Context, *agent.RetryContext) *agent.RetryDecision) *agent.RetryConfig {
 	retryConfig := &agent.RetryConfig{
 		MaxRetries:  configModelMaxRetries(cfg),
-		IsRetryable: isTransientModelError,
+		IsRetryable: modelio.IsRetryable,
 	}
 	if outputGuard == nil {
 		return retryConfig
@@ -577,18 +539,11 @@ func modelRetryConfig(cfg *config.Config, outputGuard func(context.Context, *age
 	retryConfig.IsRetryable = nil
 	retryConfig.ShouldRetry = func(ctx context.Context, retryCtx *agent.RetryContext) *agent.RetryDecision {
 		if retryCtx != nil && retryCtx.Err != nil {
-			return &agent.RetryDecision{Retry: isTransientModelError(ctx, retryCtx.Err)}
+			return &agent.RetryDecision{Retry: modelio.IsRetryable(ctx, retryCtx.Err)}
 		}
 		return outputGuard(ctx, retryCtx)
 	}
 	return retryConfig
-}
-
-func isTransientModelError(ctx context.Context, err error) bool {
-	if err == nil || (ctx != nil && ctx.Err() != nil) {
-		return false
-	}
-	return ClassifyModelError(err).Retryable
 }
 
 func buildSubAgentInstruction(parent agentBuildSpec, sub config.SubAgentConfig) string {
@@ -599,35 +554,12 @@ func buildSubAgentInstruction(parent agentBuildSpec, sub config.SubAgentConfig) 
 	return composition.Instruction()
 }
 
-func composeSubAgentInstruction(cfg *config.Config, parent agentBuildSpec, sub config.SubAgentConfig) (SystemPromptComposition, error) {
+func composeSubAgentInstruction(cfg *config.Config, parent agentBuildSpec, sub config.SubAgentConfig) (prompts.SystemPromptComposition, error) {
 	parentComposition, err := resolveAgentSystemPrompt(cfg, parent)
 	if err != nil {
-		return SystemPromptComposition{}, err
+		return prompts.SystemPromptComposition{}, err
 	}
-	fragments := append([]SystemPromptFragment(nil), parentComposition.fragments...)
-	var metadata strings.Builder
-	metadata.WriteString("以下说明只限定当前 SubAgent 的职责、输出形态和工作偏好；不得覆盖父 Agent 的运行时契约、工具权限、workspace 边界、互动禁写规则、输出协议或后端校验。若与父 Agent system prompt 冲突，必须以父 Agent system prompt 为准。")
-	if name := strings.TrimSpace(sub.Name); name != "" {
-		metadata.WriteString("\n\n- 名称：" + name)
-	}
-	if id := strings.TrimSpace(sub.ID); id != "" {
-		metadata.WriteString("\n- ID：" + id)
-	}
-	if description := strings.TrimSpace(sub.Description); description != "" {
-		metadata.WriteString("\n- 职责：" + description)
-	}
-	fragments = append(fragments, SystemPromptFragment{
-		ID: "subagent_metadata", Source: "SubAgent configuration", Title: "SubAgent 专属说明",
-		Purpose: "define the delegated Agent identity, responsibility, and inherited boundaries",
-		Content: metadata.String(), Prefix: "\n\n---\n\n# SubAgent 专属说明\n\n", Required: true,
-		Overflow: SystemPromptOverflowReject,
-	}, SystemPromptFragment{
-		ID: "subagent_custom_prompt", Source: "SubAgent configuration", Title: "专属系统提示",
-		Purpose: "apply the delegated Agent's custom behavior and output preferences",
-		Content: sub.SystemPrompt, Prefix: "\n\n## 专属系统提示\n\n",
-		Overflow: SystemPromptOverflowTruncate,
-	})
-	return composeSystemPrompt(cfg, parent.Kind, "subagent", parentComposition.workspace, fragments)
+	return prompts.ComposeSubAgentInstruction(cfg, parentComposition, sub)
 }
 
 func configMaxIteration(cfg *config.Config) int {
@@ -642,13 +574,6 @@ func configModelMaxRetries(cfg *config.Config) int {
 		return 5
 	}
 	return cfg.ModelMaxRetries
-}
-
-func configToolResultMaxBytes(cfg *config.Config) int {
-	if cfg == nil || cfg.AgentToolResultLimitKB <= 0 {
-		return defaultToolResultMaxBytes
-	}
-	return cfg.AgentToolResultLimitKB * 1024
 }
 
 func configToolParallelism(cfg *config.Config) int {

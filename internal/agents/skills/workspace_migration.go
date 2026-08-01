@@ -10,7 +10,7 @@ import (
 	"sync"
 
 	"denova/internal/localfs"
-	"denova/internal/workspacepath"
+	workspacelayout "denova/internal/workspace"
 )
 
 var workspaceSkillMigrationLocks sync.Map
@@ -31,8 +31,8 @@ func MigrateWorkspaceSkills(workspace string) error {
 
 	targetRoot := filepath.Join(workspace, "skills")
 	sources := []string{
-		filepath.Join(workspace, workspacepath.DataDirName, "skills"),
-		filepath.Join(workspace, workspacepath.LegacyDataDirName, "skills"),
+		filepath.Join(workspace, workspacelayout.DataDirName, "skills"),
+		filepath.Join(workspace, workspacelayout.LegacyDataDirName, "skills"),
 	}
 	var migrationErrors []error
 	for _, sourceRoot := range sources {

@@ -2,12 +2,13 @@ package app
 
 import (
 	"context"
+	apptask "denova/internal/app/task"
 	"fmt"
 
 	"denova/internal/automation"
 )
 
-type automationInboxRunStarter func(context.Context, string, string, string, string, []automation.TriggerEvidence) (*Task, automation.RunRecord, error)
+type automationInboxRunStarter func(context.Context, string, string, string, string, []automation.TriggerEvidence) (*apptask.Task, automation.RunRecord, error)
 
 func (s *AutomationAppService) confirmInboxItemWithStarter(ctx context.Context, store *automation.Store, snap *automationWorkspaceSnapshot, id string, start automationInboxRunStarter) (automation.InboxActionResult, error) {
 	item, err := store.GetInboxItem(id)

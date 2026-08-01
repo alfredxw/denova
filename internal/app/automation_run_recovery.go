@@ -2,12 +2,14 @@ package app
 
 import (
 	"context"
+	agentharness "denova/internal/agents/harness"
+	agentrun "denova/internal/agents/run"
+	apptask "denova/internal/app/task"
 	"fmt"
 	"log/slog"
 	"strings"
 	"time"
 
-	agents "denova/internal/agents"
 	"denova/internal/automation"
 )
 
@@ -89,9 +91,9 @@ func (s *AutomationAppService) reconcilePersistedAutomationRuns(ctx context.Cont
 	}
 }
 
-func automationRecoveryOptions(snap *automationWorkspaceSnapshot, task automation.Task, run automation.RunRecord) agents.RunOptions {
-	return agents.RunOptions{
-		AgentKind: agents.AgentKindAutomation, ProjectID: snap.projectID, StateRoot: snap.stateRoot,
+func automationRecoveryOptions(snap *automationWorkspaceSnapshot, task automation.Task, run automation.RunRecord) agentrun.Options {
+	return agentrun.Options{
+		AgentKind: agentrun.AgentKindAutomation, ProjectID: snap.projectID, StateRoot: snap.stateRoot,
 		TaskID: run.ID, AutomationTaskID: task.ID,
 		SessionID: run.SessionID, Workspace: run.Workspace, Mode: "automation",
 	}
@@ -105,12 +107,12 @@ func (s *AutomationAppService) ensureAutomationRecoveryTask(
 	snap *automationWorkspaceSnapshot,
 	taskDef automation.Task,
 	run automation.RunRecord,
-) (*Task, automation.RunRecord, error) {
+) (*apptask.Task, automation.RunRecord, error) {
 	if !run.RuntimeRecoveryRequired {
 		return nil, run, nil
 	}
 	if snap == nil || snap.chatService == nil {
-		return nil, automation.RunRecord{}, agents.ErrRuntimeProjectionUnavailable
+		return nil, automation.RunRecord{}, agentharness.ErrRuntimeProjectionUnavailable
 	}
 	if activeTask, activeRun, ok := s.activeAutomationTaskByRunID(snap, run.ID); ok {
 		return activeTask, activeRun, nil
@@ -135,16 +137,16 @@ func (s *AutomationAppService) ensureAutomationRecoveryTask(
 		return nil, automation.RunRecord{}, err
 	}
 	status := recovery.InitialStatus()
-	var attach agents.RuntimeRecoveryAction
-	for _, action := range agents.RuntimeRecoveryActions(status) {
-		if action.Kind == agents.RuntimeRecoveryAttach {
+	var attach agentharness.RuntimeRecoveryAction
+	for _, action := range agentharness.RuntimeRecoveryActions(status) {
+		if action.Kind == agentharness.RuntimeRecoveryAttach {
 			attach = action
 			break
 		}
 	}
 	if attach.CommandID == "" || attach.OperationID == "" {
 		recovery.Close()
-		if status.Phase == agents.RunPhaseIdle {
+		if status.Phase == agentrun.RunPhaseIdle {
 			reconciled, ok, reconcileErr := s.reconcileAutomationRunReceipt(ctx, snap, taskDef, run)
 			if reconcileErr != nil {
 				return nil, run, reconcileErr
@@ -165,8 +167,8 @@ func (s *AutomationAppService) ensureAutomationRecoveryTask(
 		)
 	}
 
-	var displayTask *Task
-	displayTask, err = NewDeferredRegisteredTaskWithContext(ctx, func(displayTask *Task) error {
+	var displayTask *apptask.Task
+	displayTask, err = apptask.NewDeferredWithContext(ctx, func(displayTask *apptask.Task) error {
 		if err := s.activateAutomationClaim(claim, displayTask); err != nil {
 			return err
 		}
@@ -177,36 +179,36 @@ func (s *AutomationAppService) ensureAutomationRecoveryTask(
 		recovery.Close()
 		return nil, automation.RunRecord{}, err
 	}
-	displayTask.emit(agents.Event{Type: "automation_run", Data: run})
-	receipt, err := recovery.Resume(ctx, attach, displayTask.ID(), displayTask.emit)
+	displayTask.Emit(agentrun.Event{Type: "automation_run", Data: run})
+	receipt, err := recovery.Resume(ctx, attach, displayTask.ID(), displayTask.Emit)
 	if err != nil {
 		recovery.Close()
-		displayTask.failBeforeStart(err)
+		displayTask.RejectStart(err)
 		s.app.unregisterWorkspaceTask(displayTask)
 		s.clearActiveAutomationTask(snap, taskStoreID, run.ID)
 		return nil, automation.RunRecord{}, err
 	}
 	if err := applyAutomationCurrentReceipt(&run, receipt, strings.TrimSpace(run.RuntimeCommandID)); err != nil {
 		recovery.Close()
-		displayTask.failBeforeStart(err)
+		displayTask.RejectStart(err)
 		s.app.unregisterWorkspaceTask(displayTask)
 		s.clearActiveAutomationTask(snap, taskStoreID, run.ID)
 		return nil, automation.RunRecord{}, err
 	}
 	if _, err := storeForSnapshot(snap).AppendRun(taskStoreID, run); err != nil {
 		recovery.Close()
-		displayTask.failBeforeStart(err)
+		displayTask.RejectStart(err)
 		s.app.unregisterWorkspaceTask(displayTask)
 		s.clearActiveAutomationTask(snap, taskStoreID, run.ID)
 		return nil, automation.RunRecord{}, err
 	}
 	s.updateActiveAutomationRun(snap, taskStoreID, run)
-	displayTask.emit(agents.Event{Type: agents.RuntimeRecoveryRequiredEventType, Data: map[string]any{
-		"code":       agents.RuntimeRecoveryRequiredEventCode,
+	displayTask.Emit(agentrun.Event{Type: agentharness.RuntimeRecoveryRequiredEventType, Data: map[string]any{
+		"code":       agentharness.RuntimeRecoveryRequiredEventCode,
 		"message":    "自动化运行需要显式终止或等待持久化终态 / Automation run requires explicit control or durable terminal reconciliation",
 		"command_id": attach.CommandID, "operation_id": attach.OperationID,
 	}})
-	if err := displayTask.Start(func(taskCtx context.Context, displayTask *Task, emit func(agents.Event)) {
+	if err := displayTask.Start(func(taskCtx context.Context, displayTask *apptask.Task, emit func(agentrun.Event)) {
 		defer s.app.unregisterWorkspaceTask(displayTask)
 		defer s.clearActiveAutomationTask(snap, taskStoreID, run.ID)
 		defer recovery.Close()
@@ -214,14 +216,14 @@ func (s *AutomationAppService) ensureAutomationRecoveryTask(
 		finalRun, reconcileErr := s.finalizeRecoveredAutomationRun(taskCtx, snap, taskDef, run, outcome)
 		if reconcileErr != nil {
 			slog.ErrorContext(taskCtx, fmt.Sprintf("[automation-recovery] terminal reconciliation failed task_id=%s run_id=%s operation_id=%s err=%v", taskDef.ID, run.ID, run.RuntimeOperationID, reconcileErr))
-			emit(agents.Event{Type: "error", Data: map[string]string{"message": reconcileErr.Error()}})
+			emit(agentrun.Event{Type: "error", Data: map[string]string{"message": reconcileErr.Error()}})
 			return
 		}
-		emit(agents.Event{Type: "automation_run", Data: finalRun})
+		emit(agentrun.Event{Type: "automation_run", Data: finalRun})
 		slog.InfoContext(taskCtx, fmt.Sprintf("[automation-recovery] observation settled task_id=%s run_id=%s operation_id=%s status=%s outcome=%s", taskDef.ID, run.ID, finalRun.RuntimeOperationID, finalRun.Status, outcome.Status))
 	}); err != nil {
 		recovery.Close()
-		displayTask.failBeforeStart(err)
+		displayTask.RejectStart(err)
 		s.app.unregisterWorkspaceTask(displayTask)
 		s.clearActiveAutomationTask(snap, taskStoreID, run.ID)
 		return nil, automation.RunRecord{}, err
@@ -234,7 +236,7 @@ func (s *AutomationAppService) finalizeRecoveredAutomationRun(
 	snap *automationWorkspaceSnapshot,
 	taskDef automation.Task,
 	run automation.RunRecord,
-	outcome agents.RunOutcome,
+	outcome agentrun.Outcome,
 ) (automation.RunRecord, error) {
 	if reconciled, ok, err := s.reconcileAutomationRunReceipt(context.WithoutCancel(ctx), snap, taskDef, run); err != nil {
 		return automation.RunRecord{}, err
@@ -251,7 +253,7 @@ func (s *AutomationAppService) finalizeRecoveredAutomationRun(
 	// The observer's durable terminal is authoritative even if a bounded status
 	// projection was concurrently evicted. This fallback never executes an
 	// Engine and preserves the already-validated root/current receipts.
-	if outcome.Status == agents.RunOutcomeFailed {
+	if outcome.Status == agentrun.OutcomeFailed {
 		run.RuntimeRecoveryRequired = true
 		if _, err := storeForSnapshot(snap).AppendRun(automationTaskStoreID(taskDef), run); err != nil {
 			return automation.RunRecord{}, err
@@ -265,7 +267,7 @@ func (s *AutomationAppService) finalizeRecoveredAutomationRun(
 	run.RuntimeRecoveryRequired = false
 	run.FinishedAt = time.Now().UTC()
 	switch outcome.Status {
-	case agents.RunOutcomeCompleted:
+	case agentrun.OutcomeCompleted:
 		run.Status = automation.RunStatusSuccess
 		run.Error = ""
 		if summary := recoveredAutomationRunSummary(snap, run); summary != "" {
@@ -280,7 +282,7 @@ func (s *AutomationAppService) finalizeRecoveredAutomationRun(
 			run.WriteConfirmationRequired = false
 		}
 		run.WriteConfirmationPolicyCaptured = true
-	case agents.RunOutcomeAborted, agents.RunOutcomePreempted:
+	case agentrun.OutcomeAborted, agentrun.OutcomePreempted:
 		run.Status = automation.RunStatusAborted
 		run.Error = automationRunOutcomeError(outcome).Error()
 		stageAutomationTerminalEffects(&run, run.CompletionMutationPaths)

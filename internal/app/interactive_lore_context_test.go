@@ -5,19 +5,19 @@ import (
 	"testing"
 
 	"denova/config"
-	"denova/internal/book"
+	"denova/internal/book/lore"
 	"denova/internal/interactive"
 )
 
 func TestInteractiveStoryLoadsAllResidentLoreAndActiveOnDemandLore(t *testing.T) {
 	workspace := t.TempDir()
-	lore := book.NewLoreStore(workspace)
-	for _, input := range []book.LoreItemInput{
-		{ID: "rule", Type: "world", Name: "公开比试规则", LoadMode: book.LoreLoadModeResident, Content: "公开比试禁止场外偷袭。"},
+	loreStore := lore.NewStore(workspace)
+	for _, input := range []lore.ItemInput{
+		{ID: "rule", Type: "world", Name: "公开比试规则", LoadMode: lore.LoadModeResident, Content: "公开比试禁止场外偷袭。"},
 		{ID: "active", Type: "character", Name: "沈凝", Content: "沈凝不会无证据帮助任何人。"},
 		{ID: "candidate", Type: "character", Name: "戒律长老", Keywords: []string{"演武场"}, Content: "戒律长老掌握隐藏裁决权。"},
 	} {
-		if _, err := lore.Create(input); err != nil {
+		if _, err := loreStore.Create(input); err != nil {
 			t.Fatal(err)
 		}
 	}
@@ -54,7 +54,7 @@ func TestInteractiveStoryLoadsAllResidentLoreAndActiveOnDemandLore(t *testing.T)
 
 func TestDirectorReceivesCommittedTemporaryLoreRecallForPromotion(t *testing.T) {
 	workspace := t.TempDir()
-	if _, err := book.NewLoreStore(workspace).Create(book.LoreItemInput{ID: "luo", Type: "character", Name: "洛青衣", Content: "洛青衣完整设定"}); err != nil {
+	if _, err := lore.NewStore(workspace).Create(lore.ItemInput{ID: "luo", Type: "character", Name: "洛青衣", Content: "洛青衣完整设定"}); err != nil {
 		t.Fatal(err)
 	}
 	store := interactive.NewStore(workspace)
@@ -94,7 +94,7 @@ func TestDirectorReceivesCommittedTemporaryLoreRecallForPromotion(t *testing.T) 
 }
 
 func TestDirectorRecognizesOnlySuccessfulFullLoreToolResultsAsTemporaryRecalls(t *testing.T) {
-	items := []book.LoreItem{
+	items := []lore.Item{
 		{ID: "full", Name: "完整命中"},
 		{ID: "failed", Name: "失败调用"},
 		{ID: "index", Name: "目录命中"},
@@ -121,13 +121,13 @@ func TestDirectorRecognizesOnlySuccessfulFullLoreToolResultsAsTemporaryRecalls(t
 
 func TestDirectorLoreRosterIsInjectedOnEveryRun(t *testing.T) {
 	workspace := t.TempDir()
-	lore := book.NewLoreStore(workspace)
-	for _, input := range []book.LoreItemInput{
-		{ID: "resident", Type: "rule", Name: "常驻规则", Importance: "major", LoadMode: book.LoreLoadModeResident, Content: "常驻正文"},
-		{ID: "hero", Type: "character", Name: "沈凝", Importance: "major", LoadMode: book.LoreLoadModeAuto, Content: "沈凝正文"},
-		{ID: "faction", Type: "faction", Name: "戒律堂", Importance: "important", LoadMode: book.LoreLoadModeAuto, Content: "戒律堂正文"},
+	loreStore := lore.NewStore(workspace)
+	for _, input := range []lore.ItemInput{
+		{ID: "resident", Type: "rule", Name: "常驻规则", Importance: "major", LoadMode: lore.LoadModeResident, Content: "常驻正文"},
+		{ID: "hero", Type: "character", Name: "沈凝", Importance: "major", LoadMode: lore.LoadModeAuto, Content: "沈凝正文"},
+		{ID: "faction", Type: "faction", Name: "戒律堂", Importance: "important", LoadMode: lore.LoadModeAuto, Content: "戒律堂正文"},
 	} {
-		if _, err := lore.Create(input); err != nil {
+		if _, err := loreStore.Create(input); err != nil {
 			t.Fatal(err)
 		}
 	}
@@ -161,7 +161,7 @@ func TestDirectorLoreRosterIsInjectedOnEveryRun(t *testing.T) {
 		t.Fatalf("resident Lore should use its own complete stable source: %#v", stable)
 	}
 
-	currentRevision, err := lore.Revision()
+	currentRevision, err := loreStore.Revision()
 	if err != nil {
 		t.Fatal(err)
 	}

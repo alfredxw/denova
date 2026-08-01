@@ -102,7 +102,7 @@ type RuleStateBindingWarning struct {
 func normalizeRuleStateBindings(values []RuleStateBinding) []RuleStateBinding {
 	out := make([]RuleStateBinding, 0, len(values))
 	for i, value := range values {
-		value.ID = normalizeSlotID(value.ID)
+		value.ID = normalizeInteractiveID(value.ID)
 		if value.ID == "" {
 			value.ID = fmt.Sprintf("binding-%d", i+1)
 		}
@@ -312,7 +312,7 @@ func normalizeRuleStateBindingAuditPointer(value *RuleStateBindingAudit) *RuleSt
 		return nil
 	}
 	next := *value
-	next.BindingID = normalizeSlotID(next.BindingID)
+	next.BindingID = normalizeInteractiveID(next.BindingID)
 	next.ActorID = normalizeStatePanelActorID(next.ActorID)
 	next.TargetActorID = normalizeStatePanelActorID(next.TargetActorID)
 	next.NarrativeStateRefs = normalizeRuleNarrativeStateRefs(next.NarrativeStateRefs)
@@ -382,7 +382,7 @@ func ruleChecksHaveStateBindings(checks []RuleCheck) bool {
 }
 
 func resolveRuleStateBinding(state map[string]any, director StoryDirector, req TurnCheckRequest) (*RuleStateBindingAudit, error) {
-	bindingID := normalizeSlotID(req.Rule.BindingID)
+	bindingID := normalizeInteractiveID(req.Rule.BindingID)
 	if bindingID == "" {
 		return nil, nil
 	}
@@ -475,7 +475,7 @@ func resolveRuleStateBinding(state map[string]any, director StoryDirector, req T
 
 func findRuleStateBinding(checks []RuleCheck, templateID, bindingID string) (RuleStateBinding, bool) {
 	templateID = strings.TrimSpace(templateID)
-	bindingID = normalizeSlotID(bindingID)
+	bindingID = normalizeInteractiveID(bindingID)
 	normalized := normalizeRuleChecks(checks)
 	for _, check := range normalized {
 		if templateID != "" && check.ID != templateID {

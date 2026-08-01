@@ -6,7 +6,7 @@ import (
 	"path/filepath"
 	"strings"
 
-	"denova/internal/documentreview"
+	"denova/internal/workspace/documentreview"
 )
 
 // WithDocumentReviewService keeps the workspace identity, resource resolver,

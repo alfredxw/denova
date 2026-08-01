@@ -1,15 +1,15 @@
 package app
 
 import (
+	agentrun "denova/internal/agents/run"
+	agenttool "denova/internal/agents/tool"
 	"errors"
 	"fmt"
 	"strings"
-
-	agents "denova/internal/agents"
 )
 
-func cloneAutomationToolMutations(mutations []agents.ToolMutation) []agents.ToolMutation {
-	result := append([]agents.ToolMutation(nil), mutations...)
+func cloneAutomationToolMutations(mutations []agenttool.Mutation) []agenttool.Mutation {
+	result := append([]agenttool.Mutation(nil), mutations...)
 	for index := range result {
 		result[index].LoreItemIDs = append([]string(nil), result[index].LoreItemIDs...)
 		result[index].DeletedLoreItemIDs = append([]string(nil), result[index].DeletedLoreItemIDs...)
@@ -17,7 +17,7 @@ func cloneAutomationToolMutations(mutations []agents.ToolMutation) []agents.Tool
 	return result
 }
 
-func automationRunOutcomeError(outcome agents.RunOutcome) error {
+func automationRunOutcomeError(outcome agentrun.Outcome) error {
 	if outcome.Error != nil {
 		return outcome.Error
 	}

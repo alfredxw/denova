@@ -8,9 +8,12 @@ import (
 	"testing"
 	"time"
 
+	filejournal "github.com/alfredxw/denova/agent/runtime/filejournal"
+
 	"denova/config"
-	agents "denova/internal/agents"
+	agentrun "denova/internal/agents/run"
 	"denova/internal/automation"
+
 	runstate "github.com/alfredxw/denova/agent/runtime"
 )
 
@@ -58,7 +61,7 @@ func TestAutomationAbortReplaysPersistedReceiptAfterRestart(t *testing.T) {
 		application.Close()
 		t.Fatal(err)
 	}
-	journalStore, err := runstate.NewFileJournalStore(filepath.Join(root, "agent-runtime"))
+	journalStore, err := filejournal.NewStore(filepath.Join(root, "agent-runtime"))
 	if err != nil {
 		application.Close()
 		t.Fatal(err)
@@ -99,11 +102,11 @@ func TestAutomationAbortReplaysPersistedReceiptAfterRestart(t *testing.T) {
 	if !reopenedRef.Equal(ref) {
 		t.Fatalf("reopened runtime binding = %#v, seeded %#v", reopenedRef, ref)
 	}
-	receipt, err := reopened.AbortAutomationRunCommand(context.Background(), runID, commandID, agents.OperationID(operationID), abort.Reason)
+	receipt, err := reopened.AbortAutomationRunCommand(context.Background(), runID, commandID, agentrun.OperationID(operationID), abort.Reason)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !receipt.Replayed || receipt.CommandID != agents.CommandID(commandID) || receipt.OperationID != agents.OperationID(operationID) || receipt.Cursor != 3 {
+	if !receipt.Replayed || receipt.CommandID != agentrun.CommandID(commandID) || receipt.OperationID != agentrun.OperationID(operationID) || receipt.Cursor != 3 {
 		t.Fatalf("replayed abort receipt = %#v", receipt)
 	}
 }

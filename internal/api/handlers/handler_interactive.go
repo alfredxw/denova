@@ -11,9 +11,10 @@ import (
 	"github.com/cloudwego/hertz/pkg/protocol/consts"
 
 	appsvc "denova/internal/app"
-	"denova/internal/imagepreset"
+	imagepreset "denova/internal/image/preset"
 	"denova/internal/interactive"
-	"denova/internal/narrativestyle"
+	"denova/internal/interactive/teller"
+	"denova/internal/style"
 )
 
 func (h *Handlers) HandleInteractiveStories(ctx context.Context, c *app.RequestContext) {
@@ -384,7 +385,7 @@ func (h *Handlers) HandleInteractiveTellers(ctx context.Context, c *app.RequestC
 		writeError(c, consts.StatusInternalServerError, err.Error())
 		return
 	}
-	writeJSON(c, consts.StatusOK, map[string]any{"tellers": tellers, "default_id": narrativestyle.DefaultID})
+	writeJSON(c, consts.StatusOK, map[string]any{"tellers": tellers, "default_id": style.DefaultID})
 }
 
 func (h *Handlers) HandleInteractiveTeller(ctx context.Context, c *app.RequestContext) {
@@ -398,7 +399,7 @@ func (h *Handlers) HandleInteractiveTeller(ctx context.Context, c *app.RequestCo
 }
 
 func (h *Handlers) HandleInteractiveTellerCreate(ctx context.Context, c *app.RequestContext) {
-	var body interactive.Teller
+	var body teller.Definition
 	if err := c.BindJSON(&body); err != nil {
 		writeErrorKey(c, consts.StatusBadRequest, "api.common.invalidRequestWithDetail", "detail", err.Error())
 		return
@@ -413,7 +414,7 @@ func (h *Handlers) HandleInteractiveTellerCreate(ctx context.Context, c *app.Req
 
 func (h *Handlers) HandleInteractiveTellerUpdate(ctx context.Context, c *app.RequestContext) {
 	var body struct {
-		interactive.Teller
+		teller.Definition
 		BaseRevision string `json:"base_revision"`
 		Workspace    string `json:"workspace"`
 	}
@@ -424,16 +425,16 @@ func (h *Handlers) HandleInteractiveTellerUpdate(ctx context.Context, c *app.Req
 	if !h.ensurePresetMutationWorkspace(c, body.Workspace) {
 		return
 	}
-	teller, err := h.app.UpdateInteractiveTeller(c.Param("id"), body.Teller, body.BaseRevision)
+	updated, err := h.app.UpdateInteractiveTeller(c.Param("id"), body.Definition, body.BaseRevision)
 	if err != nil {
-		if errors.Is(err, interactive.ErrTellerRevisionConflict) {
+		if errors.Is(err, teller.ErrRevisionConflict) {
 			writeErrorKey(c, consts.StatusConflict, "api.resource.revisionConflict")
 			return
 		}
 		writeError(c, consts.StatusBadRequest, err.Error())
 		return
 	}
-	writeJSON(c, consts.StatusOK, teller)
+	writeJSON(c, consts.StatusOK, updated)
 }
 
 func (h *Handlers) HandleInteractiveTellerDelete(ctx context.Context, c *app.RequestContext) {

@@ -1,11 +1,12 @@
 package app
 
 import (
+	agentharness "denova/internal/agents/harness"
+	agentrun "denova/internal/agents/run"
+	apptask "denova/internal/app/task"
 	"fmt"
 	"strings"
 	"sync"
-
-	agents "denova/internal/agents"
 )
 
 const maxRememberedConfigManagerRecoveries = 128
@@ -15,9 +16,9 @@ const maxRememberedConfigManagerRecoveries = 128
 type configManagerRecoveryRun struct {
 	workspace       string
 	sessionID       string
-	task            *Task
-	recovery        *agents.RecoveryObservation
-	recoveryActions map[string]agents.CommandReceipt
+	task            *apptask.Task
+	recovery        *agentharness.RecoveryObservation
+	recoveryActions map[string]agentrun.CommandReceipt
 }
 
 type configManagerRecoveryRegistry struct {
@@ -68,7 +69,7 @@ func (r *configManagerRecoveryRegistry) install(run *configManagerRecoveryRun) e
 		return ErrAgentOperationActive
 	}
 	if existing != nil {
-		existing.task.releaseDisplayReplay()
+		existing.task.ReleaseDisplayReplay()
 		delete(r.runs, key)
 		r.removeOrderKeyLocked(key)
 	}
@@ -105,7 +106,7 @@ func (r *configManagerRecoveryRegistry) rollback(run *configManagerRecoveryRun) 
 	r.removeOrderKeyLocked(key)
 }
 
-func (r *configManagerRecoveryRegistry) releaseScope(workspace, sessionID string) *Task {
+func (r *configManagerRecoveryRegistry) releaseScope(workspace, sessionID string) *apptask.Task {
 	if r == nil {
 		return nil
 	}
@@ -119,7 +120,7 @@ func (r *configManagerRecoveryRegistry) releaseScope(workspace, sessionID string
 	delete(r.runs, key)
 	r.removeOrderKeyLocked(key)
 	if run.task != nil && run.task.Finished() {
-		run.task.releaseDisplayReplay()
+		run.task.ReleaseDisplayReplay()
 	}
 	return run.task
 }
@@ -145,7 +146,7 @@ func (r *configManagerRecoveryRegistry) registryChargeLocked() int {
 	total := 0
 	for _, run := range r.runs {
 		if run != nil && run.task != nil {
-			total += run.task.displayReplayRegistryCharge()
+			total += run.task.DisplayReplayCharge()
 		}
 	}
 	return total
@@ -158,7 +159,7 @@ func (r *configManagerRecoveryRegistry) removeOldestSettledLocked() bool {
 			continue
 		}
 		if run != nil && run.task != nil {
-			run.task.releaseDisplayReplay()
+			run.task.ReleaseDisplayReplay()
 		}
 		delete(r.runs, key)
 		r.order = removeTaskReplayKey(r.order, index)

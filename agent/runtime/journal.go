@@ -2,6 +2,7 @@ package runtime
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"sync"
 )
@@ -47,24 +48,34 @@ type StreamingJournal interface {
 	Replay(context.Context, func(Event) error) (JournalReplayStats, error)
 }
 
-type harnessStateReplayJournal interface {
-	ReplayHarnessState(context.Context, *harnessState) (JournalReplayStats, error)
+// JournalCheckpointState is the opaque reducer seam used by checkpoint-aware
+// Journal implementations. Storage packages can persist and replay a runtime
+// checkpoint without depending on the private harnessState representation.
+// Implementations are created by this package; Journal implementations must
+// treat them as opaque and interact only through these methods.
+type JournalCheckpointState interface {
+	Cursor() Cursor
+	CheckpointSafe() bool
+	Fresh() JournalCheckpointState
+	Reduce(Event) error
+	MarshalCheckpoint() (json.RawMessage, error)
+	RestoreCheckpoint(json.RawMessage) error
+	PublishFrom(JournalCheckpointState) error
+	RetainedEvents() []Event
+}
+
+type checkpointJournal interface {
+	ReplayCheckpoint(context.Context, JournalCheckpointState) (JournalReplayStats, error)
+	MaybeCheckpoint(context.Context, JournalCheckpointState) error
 }
 
 func replayHarnessJournalState(ctx context.Context, journal Journal, state *harnessState) (JournalReplayStats, error) {
-	if stateful, ok := journal.(harnessStateReplayJournal); ok {
-		return stateful.ReplayHarnessState(ctx, state)
+	if stateful, ok := journal.(checkpointJournal); ok {
+		return stateful.ReplayCheckpoint(ctx, journalCheckpointState{state: state})
 	}
 	return replayJournalState(ctx, journal, func(event Event) error {
 		return state.reduce(event)
 	})
-}
-
-// harnessStateCheckpointJournal is implemented only by journals that can
-// atomically switch a reducer checkpoint plus bounded tail generation. The
-// actor calls it after a complete durable transaction has been reduced.
-type harnessStateCheckpointJournal interface {
-	MaybeCheckpoint(context.Context, *harnessState) error
 }
 
 // replayJournalState prefers bounded-memory streaming replay while preserving

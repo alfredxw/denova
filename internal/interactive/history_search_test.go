@@ -1,6 +1,7 @@
 package interactive
 
 import (
+	interactivestate "denova/internal/interactive/state"
 	"fmt"
 	"reflect"
 	"strings"
@@ -17,7 +18,7 @@ func TestSearchStoryHistoryUsesCurrentBranchTurnsAsSource(t *testing.T) {
 		BranchID:  "main",
 		User:      "前往银月港",
 		Narrative: "林舟在银月港见到了穿红衣的岚。",
-		Ops:       []StateOp{{Op: "set", Path: "actors.story.id", Value: DefaultStoryContextActorID}},
+		Ops:       []interactivestate.Op{{Op: "set", Path: "actors.story.id", Value: DefaultStoryContextActorID}},
 	})
 	if err != nil {
 		t.Fatal(err)

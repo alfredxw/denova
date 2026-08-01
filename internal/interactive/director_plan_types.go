@@ -1,18 +1,14 @@
 package interactive
 
-import "strings"
+import (
+	"denova/internal/interactive/director"
+	"strings"
+)
 
 const (
 	DirectorPlanDocPlan        = "plan"
 	DirectorPlanDocAgentBrief  = "agent_brief"
 	DirectorPlanDocLoreContext = "lore_context"
-
-	DirectorPlanStatusWaitingOpening = "waiting_opening"
-	DirectorPlanStatusRunning        = "running"
-	DirectorPlanStatusReady          = "ready"
-	DirectorPlanStatusSkipped        = "skipped"
-	DirectorPlanStatusFailed         = "failed"
-	DirectorPlanStatusConflict       = "conflict"
 
 	directorPlanFile         = "director.md"
 	directorAgentBriefFile   = "agent-brief.md"
@@ -75,7 +71,7 @@ type DirectorPlanRunStatus struct {
 	StartReady       bool                             `json:"start_ready,omitempty"`
 	Blocking         bool                             `json:"blocking,omitempty"`
 	BaselineHashes   map[string]string                `json:"baseline_hashes,omitempty"`
-	Decision         *PlanDecision                    `json:"decision,omitempty"`
+	Decision         *director.Decision               `json:"decision,omitempty"`
 	EventOpportunity EventOpportunity                 `json:"event_opportunity,omitempty"`
 	DomainCommit     *DirectorPlanDomainCommitReceipt `json:"domain_commit,omitempty"`
 }
@@ -124,7 +120,7 @@ type DirectorPlanStatus struct {
 	StartReady       bool                 `json:"start_ready"`
 	Blocking         bool                 `json:"blocking"`
 	Revision         string               `json:"revision,omitempty"`
-	Decision         *PlanDecision        `json:"decision,omitempty"`
+	Decision         *director.Decision   `json:"decision,omitempty"`
 	EventRuntime     DirectorEventRuntime `json:"event_runtime,omitempty"`
 	EventOpportunity EventOpportunity     `json:"event_opportunity,omitempty"`
 }

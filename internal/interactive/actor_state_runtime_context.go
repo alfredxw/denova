@@ -1,6 +1,7 @@
 package interactive
 
 import (
+	interactivestate "denova/internal/interactive/state"
 	"encoding/json"
 	"fmt"
 	"sort"
@@ -187,7 +188,7 @@ func actorStateRuntimeSubmissionTemplate(system StoryDirectorActorStateSystem, r
 	sb.WriteString("## 提交参数模板\n\n")
 	sb.WriteString("已有 Actor 字段更新示例（只提交确实变化的字段）：\n\n```json\n")
 	example := map[string]any{
-		"state_changes": []map[string]any{{"op": TurnStateUpdateReplace, "actor_id": actorID, "field_id": fieldID, "value": exampleValue}},
+		"state_changes": []map[string]any{{"op": interactivestate.Replace, "actor_id": actorID, "field_id": fieldID, "value": exampleValue}},
 		"choices":       choices,
 	}
 	data, _ := json.MarshalIndent(example, "", "  ")
@@ -196,7 +197,7 @@ func actorStateRuntimeSubmissionTemplate(system StoryDirectorActorStateSystem, r
 	sb.WriteString("没有状态变化时提交 `\"state_changes\": []`。创建新 Actor 时使用：\n\n")
 	sb.WriteString("`initial_state` 必须使用目标模板中的真实 Field ID；下面的 key 只是类型占位，不要照抄。number、bool、object、list 必须使用原生 JSON 值，不能写成带引号的字符串；有默认值且没有可靠新事实的字段直接省略。\n\n```json\n")
 	create := map[string]any{
-		"op":          TurnStateUpdateCreate,
+		"op":          interactivestate.Create,
 		"actor_id":    "{{new_actor_name}}",
 		"template_id": "{{template_id}}",
 		"name":        "{{new_actor_name}}",
@@ -212,8 +213,8 @@ func actorStateRuntimeSubmissionTemplate(system StoryDirectorActorStateSystem, r
 	sb.Write(data)
 	sb.WriteString("\n```\n\nActor 已确认死亡或永久退场时使用 `archive`；只有其确实重新参与时才使用 `restore`：\n\n```json\n")
 	lifecycle := []map[string]any{
-		{"op": TurnStateUpdateArchive, "actor_id": "{{existing_actor_id}}", "reason": "{{confirmed_exit_reason}}"},
-		{"op": TurnStateUpdateRestore, "actor_id": "{{archived_actor_id}}", "reason": "{{confirmed_return_reason}}"},
+		{"op": interactivestate.Archive, "actor_id": "{{existing_actor_id}}", "reason": "{{confirmed_exit_reason}}"},
+		{"op": interactivestate.Restore, "actor_id": "{{archived_actor_id}}", "reason": "{{confirmed_return_reason}}"},
 	}
 	data, _ = json.MarshalIndent(lifecycle, "", "  ")
 	sb.Write(data)

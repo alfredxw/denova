@@ -1,6 +1,7 @@
 package interactive
 
 import (
+	interactivestate "denova/internal/interactive/state"
 	"encoding/json"
 	"fmt"
 	"sort"
@@ -165,7 +166,7 @@ type ActorStatePatchResult struct {
 	AppliedActors  []string                        `json:"applied_actors"`
 	CreatedActors  []string                        `json:"created_actors,omitempty"`
 	AssignedTraits map[string][]ActorTraitInstance `json:"assigned_traits,omitempty"`
-	Ops            []StateOp                       `json:"ops"`
+	Ops            []interactivestate.Op           `json:"ops"`
 	ActorOps       []ActorStateOp                  `json:"actor_ops,omitempty"`
 }
 
@@ -205,7 +206,7 @@ func ValidateActorStatePatchesAgainstState(system StoryDirectorActorStateSystem,
 	if len(patches) == 0 {
 		return ActorStatePatchResult{}, fmt.Errorf("Actor 状态更新不能为空")
 	}
-	result := ActorStatePatchResult{AppliedActors: []string{}, CreatedActors: []string{}, AssignedTraits: map[string][]ActorTraitInstance{}, Ops: []StateOp{}}
+	result := ActorStatePatchResult{AppliedActors: []string{}, CreatedActors: []string{}, AssignedTraits: map[string][]ActorTraitInstance{}, Ops: []interactivestate.Op{}}
 	workingState := cloneActorStateRoot(currentState)
 	seenActors := map[string]bool{}
 	for _, patch := range patches {
@@ -760,7 +761,7 @@ func actorStateTemplateByID(system StoryDirectorActorStateSystem, id string) Act
 	return ActorStateTemplate{}
 }
 
-func validateActorStatePatch(system StoryDirectorActorStateSystem, currentState map[string]any, patch ActorStatePatch) (ActorStatePatch, []StateOp, []ActorStateOp, bool, []ActorTraitInstance, error) {
+func validateActorStatePatch(system StoryDirectorActorStateSystem, currentState map[string]any, patch ActorStatePatch) (ActorStatePatch, []interactivestate.Op, []ActorStateOp, bool, []ActorTraitInstance, error) {
 	system = normalizeActorStateSystem(system)
 	patch.ActorID = normalizeStatePanelActorID(patch.ActorID)
 	if patch.ActorID == "" {
@@ -802,7 +803,7 @@ func validateActorStatePatch(system StoryDirectorActorStateSystem, currentState 
 	}
 	reason := trimBytes(patch.Reason, maxInteractiveTextBytes)
 	sourceTurnID := trimBytes(patch.SourceTurnID, 128)
-	ops := []StateOp{}
+	ops := []interactivestate.Op{}
 	actorOps := []ActorStateOp{}
 	if created {
 		baseOps, baseActorOps, normalizedState, err := buildNewActorStateOps(template, patch.ActorID, patch.ActorName, patch.Role, patch.Description, patch.State, reason, sourceTurnID)
@@ -814,16 +815,16 @@ func validateActorStatePatch(system StoryDirectorActorStateSystem, currentState 
 		actorOps = append(actorOps, baseActorOps...)
 	} else {
 		if bindLegacyTemplate {
-			ops = append(ops, StateOp{Op: "set", Path: actorStateActorPath(patch.ActorID, "template_id"), Value: patch.TemplateID, Reason: reason, SourceTurnID: sourceTurnID})
+			ops = append(ops, interactivestate.Op{Op: "set", Path: actorStateActorPath(patch.ActorID, "template_id"), Value: patch.TemplateID, Reason: reason, SourceTurnID: sourceTurnID})
 		}
 		if strings.TrimSpace(patch.ActorName) != "" {
-			ops = append(ops, StateOp{Op: "set", Path: actorStateActorPath(patch.ActorID, "name"), Value: trimBytes(patch.ActorName, 128), Reason: reason, SourceTurnID: sourceTurnID})
+			ops = append(ops, interactivestate.Op{Op: "set", Path: actorStateActorPath(patch.ActorID, "name"), Value: trimBytes(patch.ActorName, 128), Reason: reason, SourceTurnID: sourceTurnID})
 		}
 		if strings.TrimSpace(patch.Role) != "" {
-			ops = append(ops, StateOp{Op: "set", Path: actorStateActorPath(patch.ActorID, "role"), Value: trimBytes(patch.Role, 128), Reason: reason, SourceTurnID: sourceTurnID})
+			ops = append(ops, interactivestate.Op{Op: "set", Path: actorStateActorPath(patch.ActorID, "role"), Value: trimBytes(patch.Role, 128), Reason: reason, SourceTurnID: sourceTurnID})
 		}
 		if strings.TrimSpace(patch.Description) != "" {
-			ops = append(ops, StateOp{Op: "set", Path: actorStateActorPath(patch.ActorID, "description"), Value: trimBytes(patch.Description, maxInteractiveTextBytes), Reason: reason, SourceTurnID: sourceTurnID})
+			ops = append(ops, interactivestate.Op{Op: "set", Path: actorStateActorPath(patch.ActorID, "description"), Value: trimBytes(patch.Description, maxInteractiveTextBytes), Reason: reason, SourceTurnID: sourceTurnID})
 		}
 	}
 	if !created {
@@ -869,7 +870,7 @@ func validateActorStatePatch(system StoryDirectorActorStateSystem, currentState 
 		changedTraits = changedTraits || changed
 	}
 	if changedTraits {
-		ops = append(ops, StateOp{
+		ops = append(ops, interactivestate.Op{
 			Op:           "set",
 			Path:         actorStateActorPath(patch.ActorID, "traits"),
 			Value:        traits,

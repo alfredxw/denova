@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	filejournal "github.com/alfredxw/denova/agent/runtime/filejournal"
 	"path/filepath"
 	"sync/atomic"
 	"testing"
@@ -184,7 +185,7 @@ func TestFileJournalPersistsReconciledReceiptAcrossReopen(t *testing.T) {
 	t.Parallel()
 
 	root := filepath.Join(t.TempDir(), "journals")
-	store, err := runstate.NewFileJournalStore(root)
+	store, err := filejournal.NewStore(root)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -204,7 +205,7 @@ func TestFileJournalPersistsReconciledReceiptAcrossReopen(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	reopenedStore, err := runstate.NewFileJournalStore(root)
+	reopenedStore, err := filejournal.NewStore(root)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -239,7 +240,7 @@ func TestFileJournalPersistsReconciledReceiptAcrossReopen(t *testing.T) {
 
 func TestFileJournalPersistsAuthoritativeNotFoundAbandonmentAcrossAbortAndReopen(t *testing.T) {
 	root := filepath.Join(t.TempDir(), "journals")
-	store, err := runstate.NewFileJournalStore(root)
+	store, err := filejournal.NewStore(root)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -280,7 +281,7 @@ func TestFileJournalPersistsAuthoritativeNotFoundAbandonmentAcrossAbortAndReopen
 		t.Fatal(err)
 	}
 
-	reopenedStore, err := runstate.NewFileJournalStore(root)
+	reopenedStore, err := filejournal.NewStore(root)
 	if err != nil {
 		t.Fatal(err)
 	}

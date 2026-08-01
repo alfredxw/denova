@@ -5,27 +5,11 @@ import (
 	"encoding/hex"
 	"fmt"
 	"strings"
+
+	"denova/internal/interactive/director"
 )
 
 const maxDirectorEventDecisionHistory = 128
-
-const (
-	EventDecisionNone    = "none"
-	EventDecisionSeed    = "seed"
-	EventDecisionAdvance = "advance"
-	EventDecisionPayoff  = "payoff"
-	EventDecisionResolve = "resolve"
-	EventDecisionAbandon = "abandon"
-)
-
-type EventDecision struct {
-	Mode            string   `json:"mode"`
-	EventRef        string   `json:"event_ref,omitempty"`
-	Summary         string   `json:"summary,omitempty"`
-	Reason          string   `json:"reason,omitempty"`
-	Evidence        []string `json:"evidence,omitempty"`
-	EvidenceTurnIDs []string `json:"evidence_turn_ids,omitempty"`
-}
 
 type EventOpportunity struct {
 	Due              bool   `json:"due"`
@@ -47,9 +31,9 @@ type DirectorEventThread struct {
 }
 
 type DirectorEventDecisionRecord struct {
-	ID           string        `json:"id"`
-	SourceTurnID string        `json:"source_turn_id"`
-	Decision     EventDecision `json:"decision"`
+	ID           string                 `json:"id"`
+	SourceTurnID string                 `json:"source_turn_id"`
+	Decision     director.EventDecision `json:"decision"`
 }
 
 type DirectorEventRuntime struct {
@@ -66,22 +50,12 @@ type DirectorEventCardIndex struct {
 	Intensity string   `json:"intensity,omitempty"`
 }
 
-func normalizeEventDecision(decision EventDecision) EventDecision {
-	decision.Mode = normalizeEnum(decision.Mode, EventDecisionNone, EventDecisionSeed, EventDecisionAdvance, EventDecisionPayoff, EventDecisionResolve, EventDecisionAbandon)
-	decision.EventRef = trimBytes(strings.TrimSpace(decision.EventRef), 256)
-	decision.Summary = trimBytes(strings.TrimSpace(decision.Summary), maxInteractiveTextBytes)
-	decision.Reason = trimBytes(strings.TrimSpace(decision.Reason), maxInteractiveTextBytes)
-	decision.Evidence = normalizeStringListLimit(decision.Evidence, maxInteractiveListItems)
-	decision.EvidenceTurnIDs = normalizeStringListLimit(decision.EvidenceTurnIDs, maxInteractiveListItems)
-	return decision
-}
-
 func normalizeDirectorEventRuntime(runtime DirectorEventRuntime) DirectorEventRuntime {
 	if len(runtime.RecentDecisions) > maxDirectorEventDecisionHistory {
 		runtime.RecentDecisions = runtime.RecentDecisions[len(runtime.RecentDecisions)-maxDirectorEventDecisionHistory:]
 	}
 	for i := range runtime.RecentDecisions {
-		runtime.RecentDecisions[i].Decision = normalizeEventDecision(runtime.RecentDecisions[i].Decision)
+		runtime.RecentDecisions[i].Decision = director.NormalizeEventDecision(runtime.RecentDecisions[i].Decision)
 	}
 	return runtime
 }
@@ -105,21 +79,21 @@ func reconcileDirectorEventRuntime(runtime DirectorEventRuntime, turns []TurnEve
 }
 
 func replayDirectorEventDecision(runtime DirectorEventRuntime, record DirectorEventDecisionRecord) DirectorEventRuntime {
-	decision := normalizeEventDecision(record.Decision)
+	decision := director.NormalizeEventDecision(record.Decision)
 	switch decision.Mode {
-	case EventDecisionNone:
+	case director.EventDecisionNone:
 		runtime.LastOpportunityTurnID = record.SourceTurnID
-	case EventDecisionSeed:
+	case director.EventDecisionSeed:
 		runtime.LastOpportunityTurnID = record.SourceTurnID
-		runtime.Active = &DirectorEventThread{EventRef: decision.EventRef, Summary: decision.Summary, Stage: EventDecisionSeed, SeededTurnID: record.SourceTurnID, UpdatedTurnID: record.SourceTurnID, LastDecisionID: record.ID}
-	case EventDecisionAdvance, EventDecisionPayoff:
+		runtime.Active = &DirectorEventThread{EventRef: decision.EventRef, Summary: decision.Summary, Stage: director.EventDecisionSeed, SeededTurnID: record.SourceTurnID, UpdatedTurnID: record.SourceTurnID, LastDecisionID: record.ID}
+	case director.EventDecisionAdvance, director.EventDecisionPayoff:
 		if runtime.Active != nil && runtime.Active.EventRef == decision.EventRef {
 			runtime.Active.Summary = firstNonEmptyString(decision.Summary, runtime.Active.Summary)
 			runtime.Active.Stage = decision.Mode
 			runtime.Active.UpdatedTurnID = record.SourceTurnID
 			runtime.Active.LastDecisionID = record.ID
 		}
-	case EventDecisionResolve, EventDecisionAbandon:
+	case director.EventDecisionResolve, director.EventDecisionAbandon:
 		if runtime.Active != nil && runtime.Active.EventRef == decision.EventRef {
 			runtime.Active = nil
 			runtime.LastOpportunityTurnID = record.SourceTurnID
@@ -195,7 +169,7 @@ func eventFrequencyInterval(frequency string) int {
 	}
 }
 
-func applyDirectorEventDecision(runtime DirectorEventRuntime, decision *EventDecision, opportunity EventOpportunity, sourceTurnID string, turns []TurnEvent, catalog []DirectorEvent) (DirectorEventRuntime, error) {
+func applyDirectorEventDecision(runtime DirectorEventRuntime, decision *director.EventDecision, opportunity EventOpportunity, sourceTurnID string, turns []TurnEvent, catalog []DirectorEvent) (DirectorEventRuntime, error) {
 	runtime = reconcileDirectorEventRuntime(runtime, turns)
 	if decision == nil {
 		if opportunity.Due && opportunity.Kind == "new" {
@@ -203,26 +177,26 @@ func applyDirectorEventDecision(runtime DirectorEventRuntime, decision *EventDec
 		}
 		return runtime, nil
 	}
-	normalized := normalizeEventDecision(*decision)
+	normalized := director.NormalizeEventDecision(*decision)
 	if !opportunity.Due {
 		return runtime, fmt.Errorf("本轮没有事件机会，不应提交 event_decision")
 	}
-	if opportunity.Kind == "new" && normalized.Mode != EventDecisionNone && normalized.Mode != EventDecisionSeed {
+	if opportunity.Kind == "new" && normalized.Mode != director.EventDecisionNone && normalized.Mode != director.EventDecisionSeed {
 		return runtime, fmt.Errorf("新事件机会只能选择 none 或 seed")
 	}
-	if opportunity.Kind == "active" && (normalized.Mode == EventDecisionNone || normalized.Mode == EventDecisionSeed) {
+	if opportunity.Kind == "active" && (normalized.Mode == director.EventDecisionNone || normalized.Mode == director.EventDecisionSeed) {
 		return runtime, fmt.Errorf("活跃事件只能 advance、payoff、resolve、abandon，未变化时省略 event_decision")
 	}
-	if normalized.Mode != EventDecisionNone && normalized.EventRef == "" {
+	if normalized.Mode != director.EventDecisionNone && normalized.EventRef == "" {
 		return runtime, fmt.Errorf("event_decision.event_ref 不能为空")
 	}
-	if normalized.Mode == EventDecisionSeed && !directorEventCatalogContains(catalog, normalized.EventRef) {
+	if normalized.Mode == director.EventDecisionSeed && !directorEventCatalogContains(catalog, normalized.EventRef) {
 		return runtime, fmt.Errorf("事件卡不在当前故事导演显式选择的事件包中: %s", normalized.EventRef)
 	}
 	if opportunity.Kind == "active" && (runtime.Active == nil || normalized.EventRef != runtime.Active.EventRef) {
 		return runtime, fmt.Errorf("event_decision.event_ref 必须匹配当前活跃事件")
 	}
-	if normalized.Mode == EventDecisionAdvance || normalized.Mode == EventDecisionPayoff || normalized.Mode == EventDecisionResolve {
+	if normalized.Mode == director.EventDecisionAdvance || normalized.Mode == director.EventDecisionPayoff || normalized.Mode == director.EventDecisionResolve {
 		turnSet := map[string]bool{}
 		for _, turn := range turns {
 			turnSet[turn.ID] = true

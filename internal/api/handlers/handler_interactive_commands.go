@@ -55,10 +55,10 @@ func (h *Handlers) HandleInteractiveChatCommand(ctx context.Context, c *app.Requ
 	})
 }
 
-func interactiveAgentCommandKind(value string) (novaApp.AgentCommandKind, error) {
+func interactiveAgentCommandKind(value string) (novaApp.CommandKind, error) {
 	switch strings.TrimSpace(value) {
-	case string(novaApp.AgentCommandAbort):
-		return novaApp.AgentCommandAbort, nil
+	case string(novaApp.CommandAbort):
+		return novaApp.CommandAbort, nil
 	default:
 		return "", novaApp.ErrInvalidAgentCommand
 	}

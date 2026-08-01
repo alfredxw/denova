@@ -7,13 +7,13 @@ import (
 	"strings"
 	"testing"
 
-	"denova/internal/styleref"
+	"denova/internal/style"
 )
 
 func TestStyleReferenceFileReadAndUpdateAPI(t *testing.T) {
 	application := newTestApplication(t)
 	server := NewServer(application, "0")
-	ref, err := application.SaveStyleReference(styleref.WriteRequest{
+	ref, err := application.SaveStyleReference(style.WriteRequest{
 		Name:     "克制文风",
 		Filename: "restraint.md",
 		Content:  "# 克制文风\n\n动作承载情绪。\n",
@@ -26,7 +26,7 @@ func TestStyleReferenceFileReadAndUpdateAPI(t *testing.T) {
 	if readResp.Code != http.StatusOK {
 		t.Fatalf("read status = %d body=%s", readResp.Code, readResp.Body.String())
 	}
-	var readBody styleref.FileDocument
+	var readBody style.FileDocument
 	decodeResponse(t, readResp.Body.Bytes(), &readBody)
 	if readBody.Reference.DisplayPath != ref.DisplayPath || !strings.Contains(readBody.Content, "动作承载情绪") || readBody.Revision == "" {
 		t.Fatalf("unexpected read body: %#v", readBody)
@@ -40,7 +40,7 @@ func TestStyleReferenceFileReadAndUpdateAPI(t *testing.T) {
 	if updateResp.Code != http.StatusOK {
 		t.Fatalf("update status = %d body=%s", updateResp.Code, updateResp.Body.String())
 	}
-	var updateBody styleref.FileDocument
+	var updateBody style.FileDocument
 	decodeResponse(t, updateResp.Body.Bytes(), &updateBody)
 	if updateBody.Reference.Name != "锋利文风" || updateBody.Content != "# 锋利文风\n\n对白更锋利。\n" {
 		t.Fatalf("unexpected update body: %#v", updateBody)
@@ -50,7 +50,7 @@ func TestStyleReferenceFileReadAndUpdateAPI(t *testing.T) {
 func TestStyleReferenceFileUpdateRejectsStaleRevisionAPI(t *testing.T) {
 	application := newTestApplication(t)
 	server := NewServer(application, "0")
-	ref, err := application.SaveStyleReference(styleref.WriteRequest{
+	ref, err := application.SaveStyleReference(style.WriteRequest{
 		Name:     "旧文风",
 		Filename: "stale.md",
 		Content:  "# 旧文风\n\n旧内容。\n",

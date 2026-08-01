@@ -2,6 +2,9 @@ package app
 
 import (
 	"context"
+	agentchat "denova/internal/agents/chat"
+	agentconversation "denova/internal/agents/conversation"
+	agentharness "denova/internal/agents/harness"
 	"errors"
 	"os"
 	"path/filepath"
@@ -10,16 +13,19 @@ import (
 	agent "github.com/alfredxw/denova/agent"
 
 	agents "denova/internal/agents"
+	agentreview "denova/internal/agents/review"
+	agentrun "denova/internal/agents/run"
 	"denova/internal/agents/session"
 	"denova/internal/book"
-	"denova/internal/documentreview"
-	"denova/internal/workspacechange"
-	"denova/internal/workspacepath"
+	"denova/internal/book/lore"
+	workspacelayout "denova/internal/workspace"
+	workspacechange "denova/internal/workspace/change"
+	"denova/internal/workspace/documentreview"
 )
 
 func bookReviewRuntime(workspace string, sess *session.Session) ideChatRuntime {
 	return ideChatRuntime{
-		agentKind: agents.AgentKindIDE, projectType: ProjectTypeBook,
+		agentKind: agentrun.AgentKindIDE, projectType: ProjectTypeBook,
 		workspace: workspace, state: book.NewState(workspace),
 		bookService: book.NewService(workspace), sess: sess,
 	}
@@ -60,13 +66,13 @@ func TestDocumentReviewFeedbackResolvesCurrentAnchorAndConsumesAfterCommit(t *te
 	application := &App{workspace: workspace, bookService: book.NewService(workspace)}
 	chat := &ChatAppService{app: application}
 	runtime := bookReviewRuntime(workspace, nil)
-	req := agents.ChatRequest{ReviewFeedback: agents.ReviewFeedbackRefs{{
-		Source: agents.ReviewFeedbackSourceDocument, ReviewThreadID: thread.ID, CommentIDs: []string{comment.ID},
+	req := agentchat.ChatRequest{ReviewFeedback: agentreview.Refs{{
+		Source: agentreview.SourceDocument, ReviewThreadID: thread.ID, CommentIDs: []string{comment.ID},
 	}}}
 	if err := chat.resolveReviewFeedback(context.Background(), runtime, &req); err != nil {
 		t.Fatal(err)
 	}
-	if len(req.ResolvedReviewFeedback) != 1 || req.ResolvedReviewFeedback[0].Source != agents.ReviewFeedbackSourceDocument || len(req.ResolvedReviewFeedback[0].Comments) != 1 {
+	if len(req.ResolvedReviewFeedback) != 1 || req.ResolvedReviewFeedback[0].Source != agentreview.SourceDocument || len(req.ResolvedReviewFeedback[0].Comments) != 1 {
 		t.Fatalf("resolved document feedback = %#v", req.ResolvedReviewFeedback)
 	}
 	resolved := req.ResolvedReviewFeedback[0].Comments[0]
@@ -84,9 +90,9 @@ func TestDocumentReviewFeedbackResolvesCurrentAnchorAndConsumesAfterCommit(t *te
 
 func TestLoreReviewFeedbackResolvesStructuredTargetAndCurrentAnchor(t *testing.T) {
 	workspace := t.TempDir()
-	store := book.NewLoreStore(workspace)
+	store := lore.NewStore(workspace)
 	disabled := false
-	item, err := store.Create(book.LoreItemInput{
+	item, err := store.Create(lore.ItemInput{
 		ID: "hero", Enabled: &disabled, Type: "character", Name: "林川", Content: "谨慎的旅人。\n他害怕失去同伴。",
 	})
 	if err != nil {
@@ -111,7 +117,7 @@ func TestLoreReviewFeedbackResolvesStructuredTargetAndCurrentAnchor(t *testing.T
 		t.Fatal(err)
 	}
 	updatedContent := "角色底色：\n" + item.Content
-	updated, err := store.Update(item.ID, book.LoreItemInput{
+	updated, err := store.Update(item.ID, lore.ItemInput{
 		Type: item.Type, Name: item.Name, Content: updatedContent, BaseRevision: item.UpdatedAt,
 	})
 	if err != nil {
@@ -121,8 +127,8 @@ func TestLoreReviewFeedbackResolvesStructuredTargetAndCurrentAnchor(t *testing.T
 	application := &App{workspace: workspace, bookService: book.NewService(workspace)}
 	chat := &ChatAppService{app: application}
 	runtime := bookReviewRuntime(workspace, nil)
-	req := agents.ChatRequest{ReviewFeedback: agents.ReviewFeedbackRefs{{
-		Source: agents.ReviewFeedbackSourceDocument, ReviewThreadID: thread.ID, CommentIDs: []string{comment.ID},
+	req := agentchat.ChatRequest{ReviewFeedback: agentreview.Refs{{
+		Source: agentreview.SourceDocument, ReviewThreadID: thread.ID, CommentIDs: []string{comment.ID},
 	}}}
 	if err := chat.resolveReviewFeedback(context.Background(), runtime, &req); err != nil {
 		t.Fatal(err)
@@ -198,9 +204,9 @@ func TestReviewFeedbackResolvesAndConsumesDocumentAndDiffSelectionsTogether(t *t
 	application := &App{workspace: workspace, bookService: book.NewService(workspace)}
 	chat := &ChatAppService{app: application}
 	runtime := bookReviewRuntime(workspace, &session.Session{ID: "session-1"})
-	req := agents.ChatRequest{ReviewFeedback: agents.ReviewFeedbackRefs{
-		{Source: agents.ReviewFeedbackSourceWorkspaceChange, ReviewThreadID: "diff-thread", CommentIDs: []string{diffComment.ID}},
-		{Source: agents.ReviewFeedbackSourceDocument, ReviewThreadID: documentThread.ID, CommentIDs: []string{documentComment.ID}},
+	req := agentchat.ChatRequest{ReviewFeedback: agentreview.Refs{
+		{Source: agentreview.SourceWorkspaceChange, ReviewThreadID: "diff-thread", CommentIDs: []string{diffComment.ID}},
+		{Source: agentreview.SourceDocument, ReviewThreadID: documentThread.ID, CommentIDs: []string{documentComment.ID}},
 	}}
 	if err := chat.resolveReviewFeedback(context.Background(), runtime, &req); err != nil {
 		t.Fatal(err)
@@ -232,12 +238,12 @@ func TestMixedReviewFeedbackRestoresEarlierConsumptionWhenLaterLedgerWriteFails(
 	}{
 		{
 			name:          "restore diff feedback after document ledger failure",
-			order:         []string{agents.ReviewFeedbackSourceWorkspaceChange, agents.ReviewFeedbackSourceDocument},
+			order:         []string{agentreview.SourceWorkspaceChange, agentreview.SourceDocument},
 			failingLedger: "reviews",
 		},
 		{
 			name:          "restore document feedback after diff ledger failure",
-			order:         []string{agents.ReviewFeedbackSourceDocument, agents.ReviewFeedbackSourceWorkspaceChange},
+			order:         []string{agentreview.SourceDocument, agentreview.SourceWorkspaceChange},
 			failingLedger: "changes",
 		},
 	}
@@ -303,23 +309,23 @@ func assertMixedReviewFeedbackRollback(t *testing.T, order []string, failingLedg
 	application := &App{workspace: workspace, bookService: book.NewService(workspace)}
 	chat := &ChatAppService{app: application}
 	runtime := bookReviewRuntime(workspace, &session.Session{ID: "session-rollback"})
-	refs := make(agents.ReviewFeedbackRefs, 0, len(order))
+	refs := make(agentreview.Refs, 0, len(order))
 	for _, source := range order {
 		switch source {
-		case agents.ReviewFeedbackSourceDocument:
-			refs = append(refs, agents.ReviewFeedbackRef{Source: source, ReviewThreadID: documentThread.ID, CommentIDs: []string{documentComment.ID}})
-		case agents.ReviewFeedbackSourceWorkspaceChange:
-			refs = append(refs, agents.ReviewFeedbackRef{Source: source, ReviewThreadID: "diff-rollback", CommentIDs: []string{diffComment.ID}})
+		case agentreview.SourceDocument:
+			refs = append(refs, agentreview.Ref{Source: source, ReviewThreadID: documentThread.ID, CommentIDs: []string{documentComment.ID}})
+		case agentreview.SourceWorkspaceChange:
+			refs = append(refs, agentreview.Ref{Source: source, ReviewThreadID: "diff-rollback", CommentIDs: []string{diffComment.ID}})
 		default:
 			t.Fatalf("unsupported test feedback source: %s", source)
 		}
 	}
-	req := agents.ChatRequest{ReviewFeedback: refs}
+	req := agentchat.ChatRequest{ReviewFeedback: refs}
 	if err := chat.resolveReviewFeedback(context.Background(), runtime, &req); err != nil {
 		t.Fatal(err)
 	}
 
-	ledgerPath := filepath.Join(workspacepath.Path(workspace, failingLedger), "ledger.jsonl")
+	ledgerPath := filepath.Join(workspacelayout.Path(workspace, failingLedger), "ledger.jsonl")
 	backupPath := ledgerPath + ".test-backup"
 	if err := os.Rename(ledgerPath, backupPath); err != nil {
 		t.Fatal(err)
@@ -396,21 +402,21 @@ func TestCommittedReviewFeedbackPersistsWithUserMessageAndDisappearsAfterReload(
 	application := &App{workspace: workspace}
 	chat := &ChatAppService{app: application}
 	runtime := ideChatRuntime{workspace: workspace, sess: sess}
-	req := agents.ChatRequest{
+	req := agentchat.ChatRequest{
 		CommandID: "review-feedback-commit", Message: "Please handle this review comment.",
-		ReviewFeedback: agents.ReviewFeedbackRefs{{
+		ReviewFeedback: agentreview.Refs{{
 			ReviewThreadID: "thread-1",
 			CommentIDs:     []string{comment.ID},
 		}},
 	}
-	acceptedRequest := agents.CaptureChatRequestCallerInput(req)
+	acceptedRequest := agentchat.CaptureChatRequestCallerInput(req)
 	if err := chat.resolveReviewFeedback(context.Background(), runtime, &req); err != nil {
 		t.Fatal(err)
 	}
-	identity := agents.HarnessCycleIdentity{CommandID: "review-feedback-commit", OperationID: "review-feedback-operation", Cycle: 1}
-	plan, err := application.PlanHarnessInputMaterialization(context.Background(), agents.HarnessInputMaterializationRequest{
-		Binding:  agents.RuntimeBinding{AgentKind: agents.AgentKindIDE, Workspace: workspace, SessionID: sess.ID},
-		Identity: identity, AgentKind: agents.AgentKindIDE,
+	identity := agentrun.CycleIdentity{CommandID: "review-feedback-commit", OperationID: "review-feedback-operation", Cycle: 1}
+	plan, err := application.PlanHarnessInputMaterialization(context.Background(), agentharness.InputMaterializationRequest{
+		Binding:  agentrun.RuntimeBinding{AgentKind: agentrun.AgentKindIDE, Workspace: workspace, SessionID: sess.ID},
+		Identity: identity, AgentKind: agentrun.AgentKindIDE,
 		Message: req.Message, Request: acceptedRequest,
 	})
 	if err != nil {
@@ -419,7 +425,7 @@ func TestCommittedReviewFeedbackPersistsWithUserMessageAndDisappearsAfterReload(
 	normalIntent, err := session.NewDomainCommitIntent(session.DomainCommitIdentity{
 		CommandID: string(identity.CommandID), OperationID: string(identity.OperationID), Cycle: identity.Cycle,
 	}, agents.UserMessage(req.Message), session.MessageMetadata{
-		AgentKind: agents.AgentKindIDE, UserReferences: agents.UserMessageReferencesForRequest(req),
+		AgentKind: agentrun.AgentKindIDE, UserReferences: agentchat.UserMessageReferencesForRequest(req),
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -442,8 +448,8 @@ func TestCommittedReviewFeedbackPersistsWithUserMessageAndDisappearsAfterReload(
 	runner := agent.NewRunner(agent.RunnerConfig{Agent: builtAgent, EnableStreaming: true})
 	var callbackSawDurableReference bool
 	var emittedEventTypes []string
-	options := chat.bindReviewFeedbackInputCommit(agents.RunOptions{
-		AgentKind: agents.AgentKindIDE,
+	options := chat.bindReviewFeedbackInputCommit(agentrun.Options{
+		AgentKind: agentrun.AgentKindIDE,
 		SessionID: sess.ID,
 		Workspace: workspace,
 	}, runtime, req)
@@ -456,14 +462,14 @@ func TestCommittedReviewFeedbackPersistsWithUserMessageAndDisappearsAfterReload(
 		callbackSawDurableReference = history[0].UserReferences[0].ID == comment.ID
 		return consumeFeedback(ctx)
 	}
-	agents.NewEphemeralChatService().RunWithOptions(
+	agentharness.NewEphemeralService().RunWithOptions(
 		ctx,
 		runner,
-		agents.NewSessionConversation(sess),
+		agentconversation.NewSessionConversation(sess),
 		nil,
 		req,
 		options,
-		func(event agents.Event) {
+		func(event agentrun.Event) {
 			emittedEventTypes = append(emittedEventTypes, event.Type)
 		},
 	)
@@ -559,7 +565,7 @@ func TestResolveReviewFeedbackUsesCanonicalWorkspaceLedger(t *testing.T) {
 
 	application := &App{workspace: workspace}
 	chat := &ChatAppService{app: application}
-	req := agents.ChatRequest{ReviewFeedback: agents.ReviewFeedbackRefs{{
+	req := agentchat.ChatRequest{ReviewFeedback: agentreview.Refs{{
 		ReviewThreadID: " thread-1 ", CommentIDs: []string{" " + comment.ID, comment.ID},
 	}}}
 	if err := chat.resolveReviewFeedback(context.Background(), ideChatRuntime{workspace: workspace, sess: &session.Session{ID: "session-1"}}, &req); err != nil {
@@ -591,7 +597,7 @@ func TestResolveReviewFeedbackUsesCanonicalWorkspaceLedger(t *testing.T) {
 		t.Fatalf("consumed review comments did not survive replay: group=%#v err=%v", reloadedGroup, err)
 	}
 
-	crossSession := agents.ChatRequest{ReviewFeedback: agents.ReviewFeedbackRefs{{
+	crossSession := agentchat.ChatRequest{ReviewFeedback: agentreview.Refs{{
 		ReviewThreadID: "thread-1", CommentIDs: []string{comment.ID},
 	}}}
 	var crossSessionErr *workspacechange.Error
@@ -605,7 +611,7 @@ func TestResolveReviewFeedbackRejectsForgedThreadWithinCapturedRuntime(t *testin
 	application := &App{workspace: workspace}
 	chat := &ChatAppService{app: application}
 
-	req := agents.ChatRequest{ReviewFeedback: agents.ReviewFeedbackRefs{{ReviewThreadID: "missing", CommentIDs: []string{"forged"}}}}
+	req := agentchat.ChatRequest{ReviewFeedback: agentreview.Refs{{ReviewThreadID: "missing", CommentIDs: []string{"forged"}}}}
 	var changeErr *workspacechange.Error
 	if err := chat.resolveReviewFeedback(context.Background(), ideChatRuntime{workspace: workspace, sess: &session.Session{ID: "session-1"}}, &req); !errors.As(err, &changeErr) || changeErr.Code != workspacechange.ErrorCodeNotFound {
 		t.Fatalf("forged feedback error=%v", err)

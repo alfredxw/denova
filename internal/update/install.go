@@ -12,7 +12,7 @@ import (
 
 	"github.com/cavaliergopher/grab/v3"
 
-	"denova/internal/runtimetools"
+	"denova/internal/hostruntime"
 )
 
 func (s *Service) Install(ctx context.Context) (InstallResult, error) {
@@ -259,7 +259,7 @@ func validateReleasePackage(packageRoot, exeName, updaterName string) error {
 			return fmt.Errorf("更新包中的 %s 不是目录", name)
 		}
 	}
-	if runtimeExecutables := runtimetools.DiscoverForExecutable(filepath.Join(packageRoot, exeName)); runtimeExecutables.Ripgrep == "" {
+	if runtimeExecutables := hostruntime.DiscoverForExecutable(filepath.Join(packageRoot, exeName)); runtimeExecutables.Ripgrep == "" {
 		return fmt.Errorf("更新包缺少可执行的内置 ripgrep / update package is missing executable bundled ripgrep")
 	}
 	for _, name := range []string{"LICENSE-MIT", "UNLICENSE"} {

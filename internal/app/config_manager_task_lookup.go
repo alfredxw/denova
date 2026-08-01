@@ -1,13 +1,16 @@
 package app
 
-import "strings"
+import (
+	apptask "denova/internal/app/task"
+	"strings"
+)
 
 // configManagerTaskRecord is the reconnectable, process-local display owner
 // for one scoped Config Manager binding. Durable Runtime state remains the
 // authority when this bounded display record has already been evicted.
 type configManagerTaskRecord struct {
 	CommandID string
-	Task      *Task
+	Task      *apptask.Task
 }
 
 // latestConfigManagerTask returns the most recently used display Task for an
@@ -60,7 +63,7 @@ func (r *writingStartRegistry) releaseConfigManagerScope(workspace, sessionID st
 			continue
 		}
 		if record.task != nil {
-			record.task.releaseDisplayReplay()
+			record.task.ReleaseDisplayReplay()
 		}
 		delete(r.records, commandID)
 		r.order = removeTaskReplayKey(r.order, index)

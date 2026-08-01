@@ -7,7 +7,7 @@ import (
 
 	agent "github.com/alfredxw/denova/agent"
 
-	"denova/internal/conversationjournal"
+	"denova/internal/agents/conversationjournal"
 )
 
 // ReadMessageRange returns the exact canonical logical message range [start,

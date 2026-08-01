@@ -10,7 +10,7 @@ import (
 	"github.com/cloudwego/hertz/pkg/protocol/consts"
 
 	novaApp "denova/internal/app"
-	"denova/internal/styleref"
+	"denova/internal/style"
 )
 
 func (h *Handlers) HandleStyleReferences(ctx context.Context, c *app.RequestContext) {
@@ -23,7 +23,7 @@ func (h *Handlers) HandleStyleReferences(ctx context.Context, c *app.RequestCont
 }
 
 func (h *Handlers) HandleStyleReferenceSave(ctx context.Context, c *app.RequestContext) {
-	var body styleref.WriteRequest
+	var body style.WriteRequest
 	if err := c.BindJSON(&body); err != nil {
 		writeErrorKey(c, consts.StatusBadRequest, "api.common.invalidRequestWithDetail", "detail", err.Error())
 		return
@@ -55,7 +55,7 @@ func (h *Handlers) HandleStyleReferenceFile(ctx context.Context, c *app.RequestC
 }
 
 func (h *Handlers) HandleStyleReferenceFileUpdate(ctx context.Context, c *app.RequestContext) {
-	var body styleref.UpdateRequest
+	var body style.UpdateRequest
 	if err := c.BindJSON(&body); err != nil {
 		writeErrorKey(c, consts.StatusBadRequest, "api.common.invalidRequestWithDetail", "detail", err.Error())
 		return
@@ -66,7 +66,7 @@ func (h *Handlers) HandleStyleReferenceFileUpdate(ctx context.Context, c *app.Re
 			writeError(c, consts.StatusConflict, err.Error())
 			return
 		}
-		if errors.Is(err, styleref.ErrReferenceRevisionConflict) {
+		if errors.Is(err, style.ErrReferenceRevisionConflict) {
 			writeError(c, consts.StatusConflict, err.Error())
 			return
 		}
