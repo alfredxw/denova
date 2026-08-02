@@ -26,6 +26,7 @@ type ToolReceipt struct {
 	ReviewStatus   string            `json:"review_status"`
 	ApplyState     string            `json:"apply_state"`
 	Edits          []ToolReceiptEdit `json:"edits,omitempty"`
+	FileStats      *FileStats        `json:"file_stats,omitempty"`
 }
 
 // ToolReceiptEdit is the bounded per-edit projection needed by review and
@@ -46,6 +47,7 @@ type modelToolReceipt struct {
 	ReviewStatus   string            `json:"review_status"`
 	ApplyState     string            `json:"apply_state"`
 	Edits          []ToolReceiptEdit `json:"edits,omitempty"`
+	FileStats      *FileStats        `json:"file_stats,omitempty"`
 }
 
 // NewToolReceipt projects a committed change set into the stable tool
@@ -55,12 +57,18 @@ func NewToolReceipt(workspace string, changeSet ChangeSet) ToolReceipt {
 	for _, edit := range changeSet.Edits {
 		edits = append(edits, ToolReceiptEdit{ID: edit.ID, Replacements: len(edit.Hunks)})
 	}
+	var fileStats *FileStats
+	if changeSet.afterFileStats != nil {
+		stats := *changeSet.afterFileStats
+		fileStats = &stats
+	}
 	return ToolReceipt{
 		Schema: ToolResultSchema, Status: toolReceiptStatus(changeSet), Workspace: workspace,
 		ChangeGroupID: changeSet.GroupID, ReviewThreadID: changeSet.ReviewThreadID,
 		ChangeSetID: changeSet.ID, Path: changeSet.Path,
 		BaseRevision: changeSet.BaseRevision, Revision: changeSet.Revision,
 		ReviewStatus: changeSet.ReviewStatus, ApplyState: changeSet.ApplyState, Edits: edits,
+		FileStats: fileStats,
 	}
 }
 
@@ -104,6 +112,7 @@ func ToolReceiptForModel(toolName, content string) string {
 		ChangeGroupID: receipt.ChangeGroupID, ReviewThreadID: receipt.ReviewThreadID,
 		ChangeSetID: receipt.ChangeSetID, Path: receipt.Path,
 		ReviewStatus: receipt.ReviewStatus, ApplyState: receipt.ApplyState, Edits: receipt.Edits,
+		FileStats: receipt.FileStats,
 	})
 	if err != nil {
 		return content

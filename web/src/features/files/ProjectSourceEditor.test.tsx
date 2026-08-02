@@ -45,6 +45,12 @@ describe('ProjectSourceEditor', () => {
     expect(edited.defaultValue).toBe('before\n')
     expect(edited.options).toBe(initial.options)
     expect(edited.options).toMatchObject({
+      editContext: false,
+      experimentalGpuAcceleration: 'off',
+      guides: {
+        bracketPairs: false,
+        indentation: false,
+      },
       largeFileOptimizations: true,
       smoothScrolling: false,
       wordWrap: 'on',

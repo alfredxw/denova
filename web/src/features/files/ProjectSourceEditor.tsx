@@ -51,10 +51,22 @@ function ProjectTextEditor({
     ariaLabel: t('files.editor.source', { path: document.path }),
     automaticLayout: true,
     bracketPairColorization: { enabled: false },
+    // Native EditContext measures selection geometry after line DOM changes,
+    // forcing layout during scroll; the textarea path avoids that extra read.
+    editContext: false,
+    // Monaco 0.55.1's shared GPU atlas retains the first standalone editor's
+    // disposed service after a Preview/Source remount, so keep its stable DOM renderer.
+    experimentalGpuAcceleration: 'off',
     fixedOverflowWidgets: true,
     folding: true,
     formatOnPaste: true,
     glyphMargin: false,
+    // Guide overlays query visible-line DOM geometry on every scroll. Files
+    // keeps folding and syntax highlighting without those decorative overlays.
+    guides: {
+      bracketPairs: false,
+      indentation: false,
+    },
     largeFileOptimizations: true,
     lineDecorationsWidth: 10,
     lineNumbers: 'on',
@@ -112,18 +124,25 @@ function ProjectTextEditor({
   }, [document.revision])
 
   return (
-    <Editor
-      height="100%"
-      path={projectFileModelPath(projectId, document.path)}
-      language={projectFileLanguage(document.path)}
-      theme={resolvedTheme === 'light' ? 'light' : 'vs-dark'}
-      defaultValue={initialValueRef.current}
-      keepCurrentModel={false}
-      saveViewState={false}
-      onChange={handleChange}
-      onMount={handleMount}
-      options={options}
-    />
+    <div
+      className="h-full min-h-0 min-w-0 overflow-hidden"
+      // Monaco mutates line DOM while scrolling. Size/layout/style containment
+      // keeps those invalidations inside the editor without clipping widgets.
+      style={{ contain: 'size layout style' }}
+    >
+      <Editor
+        height="100%"
+        path={projectFileModelPath(projectId, document.path)}
+        language={projectFileLanguage(document.path)}
+        theme={resolvedTheme === 'light' ? 'light' : 'vs-dark'}
+        defaultValue={initialValueRef.current}
+        keepCurrentModel={false}
+        saveViewState={false}
+        onChange={handleChange}
+        onMount={handleMount}
+        options={options}
+      />
+    </div>
   )
 }
 

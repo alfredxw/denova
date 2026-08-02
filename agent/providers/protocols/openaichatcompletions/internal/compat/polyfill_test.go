@@ -3,6 +3,7 @@ package compat
 import (
 	"context"
 	"io"
+	"reflect"
 	"strings"
 	"testing"
 	"time"
@@ -67,14 +68,19 @@ func TestThinkingExtraFields_ProviderSupport(t *testing.T) {
 		want map[string]any
 	}{
 		{
-			name: "deepseek keeps enable thinking",
-			cfg:  Config{Provider: providers.ProviderDeepSeek, BaseURL: "https://api.deepseek.com/v1", Model: "deepseek-reasoner", ThinkingLevel: providers.ThinkingLevelHigh},
-			want: map[string]any{"enable_thinking": true},
+			name: "deepseek enables thinking with nested object",
+			cfg:  Config{Provider: providers.ProviderDeepSeek, BaseURL: "https://api.deepseek.com/v1", Model: "deepseek-v4-flash", ThinkingLevel: providers.ThinkingLevelHigh},
+			want: map[string]any{"thinking": map[string]any{"type": "enabled"}},
 		},
 		{
-			name: "off is sent for supported providers",
-			cfg:  Config{Provider: providers.ProviderDeepSeek, BaseURL: "https://api.deepseek.com/v1", Model: "deepseek-chat", ThinkingLevel: providers.ThinkingLevelOff},
-			want: map[string]any{"enable_thinking": false},
+			name: "deepseek disables thinking with nested object",
+			cfg:  Config{Provider: providers.ProviderDeepSeek, BaseURL: "https://api.deepseek.com/v1", Model: "deepseek-v4-flash", ThinkingLevel: providers.ThinkingLevelOff},
+			want: map[string]any{"thinking": map[string]any{"type": "disabled"}},
+		},
+		{
+			name: "legacy compatible endpoint keeps boolean field",
+			cfg:  Config{Provider: providers.ProviderOpenAICompatible, BaseURL: "https://proxy.example/v1", Model: "custom-thinking-model", ThinkingLevel: providers.ThinkingLevelHigh},
+			want: map[string]any{"enable_thinking": true},
 		},
 		{
 			name: "gemini endpoint skips unsupported field",
@@ -100,13 +106,8 @@ func TestThinkingExtraFields_ProviderSupport(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			got := ThinkingExtraFields(tt.cfg)
-			if len(got) != len(tt.want) {
-				t.Fatalf("field count = %d, want %d: %v", len(got), len(tt.want), got)
-			}
-			for k, want := range tt.want {
-				if got[k] != want {
-					t.Fatalf("field %s = %v, want %v in %v", k, got[k], want, got)
-				}
+			if !reflect.DeepEqual(got, tt.want) {
+				t.Fatalf("ThinkingExtraFields() = %#v, want %#v", got, tt.want)
 			}
 		})
 	}

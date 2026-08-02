@@ -25,7 +25,7 @@ func newTestModel(ctx context.Context, config *providers.ModelConfig) (agent.Too
 }
 
 func TestChatReasoningEffortCoversUnifiedThinkingLevels(t *testing.T) {
-	tests := []struct {
+	openAITests := []struct {
 		level providers.ThinkingLevel
 		want  string
 		ok    bool
@@ -39,7 +39,7 @@ func TestChatReasoningEffortCoversUnifiedThinkingLevels(t *testing.T) {
 		{level: providers.ThinkingLevelXHigh, want: "xhigh", ok: true},
 		{level: providers.ThinkingLevelMax, want: "max", ok: true},
 	}
-	for _, test := range tests {
+	for _, test := range openAITests {
 		t.Run(string(test.level), func(t *testing.T) {
 			got, ok := chatReasoningEffort(providers.ModelConfig{
 				Provider: providers.ProviderOpenAI, ThinkingLevel: test.level,
@@ -49,10 +49,109 @@ func TestChatReasoningEffortCoversUnifiedThinkingLevels(t *testing.T) {
 			}
 		})
 	}
-	if effort, ok := chatReasoningEffort(providers.ModelConfig{
-		Provider: providers.ProviderDeepSeek, ThinkingLevel: providers.ThinkingLevelMax,
-	}); ok || effort != "" {
-		t.Fatalf("DeepSeek effort = %q, %t; want boolean compatibility mapping", effort, ok)
+	deepSeekTests := []struct {
+		level providers.ThinkingLevel
+		want  string
+		ok    bool
+	}{
+		{level: providers.ThinkingLevelDefault},
+		{level: providers.ThinkingLevelOff},
+		{level: providers.ThinkingLevelMinimal, want: "low", ok: true},
+		{level: providers.ThinkingLevelLow, want: "low", ok: true},
+		{level: providers.ThinkingLevelMedium, want: "high", ok: true},
+		{level: providers.ThinkingLevelHigh, want: "high", ok: true},
+		{level: providers.ThinkingLevelXHigh, want: "xhigh", ok: true},
+		{level: providers.ThinkingLevelMax, want: "max", ok: true},
+	}
+	for _, test := range deepSeekTests {
+		t.Run("deepseek_"+string(test.level), func(t *testing.T) {
+			got, ok := chatReasoningEffort(providers.ModelConfig{
+				Provider: providers.ProviderDeepSeek, ThinkingLevel: test.level,
+			})
+			if got != test.want || ok != test.ok {
+				t.Fatalf("DeepSeek chatReasoningEffort(%q) = %q, %t; want %q, %t", test.level, got, ok, test.want, test.ok)
+			}
+		})
+	}
+}
+
+func TestDeepSeekThinkingRequestUsesV4WireFormat(t *testing.T) {
+	tests := []struct {
+		name                 string
+		level                providers.ThinkingLevel
+		wantThinking         string
+		wantEffort           string
+		wantReasoningContent bool
+	}{
+		{name: "default", level: providers.ThinkingLevelDefault, wantReasoningContent: true},
+		{name: "off", level: providers.ThinkingLevelOff, wantThinking: "disabled"},
+		{name: "minimal", level: providers.ThinkingLevelMinimal, wantThinking: "enabled", wantEffort: "low", wantReasoningContent: true},
+		{name: "high", level: providers.ThinkingLevelHigh, wantThinking: "enabled", wantEffort: "high", wantReasoningContent: true},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			requestBody := make(chan []byte, 1)
+			server := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
+				body, err := io.ReadAll(request.Body)
+				if err != nil {
+					t.Errorf("read request: %v", err)
+				}
+				requestBody <- body
+				writer.Header().Set("Content-Type", "application/json")
+				_, _ = io.WriteString(writer, `{"id":"deepseek-test","choices":[{"index":0,"finish_reason":"stop","message":{"role":"assistant","content":"ok"}}]}`)
+			}))
+			defer server.Close()
+
+			model, err := newTestModel(context.Background(), &providers.ModelConfig{
+				Provider: providers.ProviderDeepSeek, APIKey: "secret", Model: "deepseek-v4-flash",
+				BaseURL: server.URL + "/v1", HTTPClient: server.Client(), ThinkingLevel: test.level,
+			})
+			if err != nil {
+				t.Fatal(err)
+			}
+			_, err = model.Generate(context.Background(), []*agent.Message{
+				{Role: agent.User, Content: "start"},
+				{
+					Role: agent.Assistant, ReasoningContent: "previous reasoning",
+					ToolCalls: []agent.ToolCall{{ID: "call-1", Type: "function", Function: agent.FunctionCall{Name: "lookup", Arguments: `{}`}}},
+				},
+				{Role: agent.ToolRole, ToolCallID: "call-1", ToolName: "lookup", Content: "result"},
+			})
+			if err != nil {
+				t.Fatal(err)
+			}
+
+			rawBody := <-requestBody
+			var got map[string]any
+			if err := json.Unmarshal(rawBody, &got); err != nil {
+				t.Fatal(err)
+			}
+			if _, exists := got["enable_thinking"]; exists {
+				t.Fatalf("request retained legacy enable_thinking: %s", rawBody)
+			}
+			thinking, hasThinking := got["thinking"].(map[string]any)
+			if test.wantThinking == "" {
+				if hasThinking {
+					t.Fatalf("default request unexpectedly set thinking: %#v", thinking)
+				}
+			} else if !hasThinking || thinking["type"] != test.wantThinking {
+				t.Fatalf("thinking = %#v, want type %q", thinking, test.wantThinking)
+			}
+			effort, hasEffort := got["reasoning_effort"].(string)
+			if test.wantEffort == "" {
+				if hasEffort {
+					t.Fatalf("request unexpectedly set reasoning_effort=%q", effort)
+				}
+			} else if !hasEffort || effort != test.wantEffort {
+				t.Fatalf("reasoning_effort = %q, %t; want %q", effort, hasEffort, test.wantEffort)
+			}
+			messages := got["messages"].([]any)
+			assistantMessage := messages[1].(map[string]any)
+			_, hasReasoningContent := assistantMessage["reasoning_content"]
+			if hasReasoningContent != test.wantReasoningContent {
+				t.Fatalf("reasoning_content present = %t, want %t: %#v", hasReasoningContent, test.wantReasoningContent, assistantMessage)
+			}
+		})
 	}
 }
 

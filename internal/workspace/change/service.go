@@ -662,6 +662,10 @@ func (s *Service) invalidateRedoExcept(origin string) error {
 
 func cloneChangeSet(change ChangeSet) ChangeSet {
 	change.Edits = append([]AppliedEdit(nil), change.Edits...)
+	if change.afterFileStats != nil {
+		stats := *change.afterFileStats
+		change.afterFileStats = &stats
+	}
 	for i := range change.Edits {
 		change.Edits[i].Hunks = append([]Hunk(nil), change.Edits[i].Hunks...)
 	}

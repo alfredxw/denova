@@ -49,12 +49,22 @@ func ExtraRequestFields(cfg Config) map[string]any {
 	return out
 }
 
-// ThinkingExtraFields maps Denova's unified level to the non-standard boolean
-// switch used by compatible endpoints. Official OpenAI and Gemini endpoints
-// use reasoning_effort instead and must not receive enable_thinking.
+// ThinkingExtraFields maps Denova's unified level to provider-specific
+// thinking toggles that are not represented by the OpenAI SDK. DeepSeek V4
+// uses the nested thinking object; legacy compatible endpoints continue to use
+// enable_thinking. Official OpenAI and Gemini endpoints need neither field.
 func ThinkingExtraFields(cfg Config) map[string]any {
-	if cfg.ThinkingLevel == "" || cfg.ThinkingLevel == providers.ThinkingLevelDefault ||
-		cfg.Provider == providers.ProviderOpenAI || usesGeminiOpenAICompatibility(cfg) {
+	if cfg.ThinkingLevel == "" || cfg.ThinkingLevel == providers.ThinkingLevelDefault {
+		return nil
+	}
+	if cfg.Provider == providers.ProviderDeepSeek {
+		mode := "enabled"
+		if cfg.ThinkingLevel == providers.ThinkingLevelOff {
+			mode = "disabled"
+		}
+		return map[string]any{"thinking": map[string]any{"type": mode}}
+	}
+	if cfg.Provider == providers.ProviderOpenAI || usesGeminiOpenAICompatibility(cfg) {
 		return nil
 	}
 	return map[string]any{"enable_thinking": cfg.ThinkingLevel != providers.ThinkingLevelOff}

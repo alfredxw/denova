@@ -352,6 +352,11 @@ func newChangeSet(path string, before, after []byte, beforeExists, afterExists b
 	if afterExists {
 		revision = Revision(after)
 	}
+	var afterFileStats *FileStats
+	if afterExists {
+		stats := measureFileStats(after)
+		afterFileStats = &stats
+	}
 	return ChangeSet{
 		ID:             newID("change"),
 		GroupID:        metadata.ChangeGroupID,
@@ -360,6 +365,7 @@ func newChangeSet(path string, before, after []byte, beforeExists, afterExists b
 		Revision:       revision,
 		BeforeExists:   beforeExists,
 		AfterExists:    afterExists,
+		afterFileStats: afterFileStats,
 		Edits:          edits,
 		ReviewStatus:   reviewStatus,
 		ApplyState:     ApplyStatePrepared,

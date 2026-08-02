@@ -136,6 +136,9 @@ type ChangeSet struct {
 	RunID          string        `json:"run_id,omitempty"`
 	SessionID      string        `json:"session_id,omitempty"`
 	ToolCallID     string        `json:"tool_call_id,omitempty"`
+	// afterFileStats is a transient projection for immediate mutation receipts.
+	// File bodies stay in the blob store and are not retained in the ledger.
+	afterFileStats *FileStats
 }
 
 type ChangeFilter struct {

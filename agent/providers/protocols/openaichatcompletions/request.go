@@ -15,7 +15,9 @@ import (
 )
 
 func (model *ChatModel) request(input []*agent.Message, stream bool, opts ...agent.ModelOption) (sdk.ChatCompletionNewParams, []option.RequestOption, error) {
-	messages, err := requestMessages(input)
+	replayReasoningContent := model.config.Provider == providers.ProviderDeepSeek &&
+		model.config.ThinkingLevel != providers.ThinkingLevelOff
+	messages, err := requestMessages(input, replayReasoningContent)
 	if err != nil {
 		return sdk.ChatCompletionNewParams{}, nil, err
 	}
@@ -56,13 +58,13 @@ func (model *ChatModel) request(input []*agent.Message, stream bool, opts ...age
 	return params, model.requestOptions(), nil
 }
 
-func requestMessages(messages []*agent.Message) ([]sdk.ChatCompletionMessageParamUnion, error) {
+func requestMessages(messages []*agent.Message, replayReasoningContent bool) ([]sdk.ChatCompletionMessageParamUnion, error) {
 	result := make([]sdk.ChatCompletionMessageParamUnion, 0, len(messages))
 	for index, message := range messages {
 		if message == nil {
 			return nil, fmt.Errorf("openai request message %d: nil message", index)
 		}
-		mapped, err := requestMessage(message)
+		mapped, err := requestMessage(message, replayReasoningContent)
 		if err != nil {
 			return nil, fmt.Errorf("openai request message %d: %w", index, err)
 		}
@@ -71,7 +73,7 @@ func requestMessages(messages []*agent.Message) ([]sdk.ChatCompletionMessagePara
 	return result, nil
 }
 
-func requestMessage(message *agent.Message) (sdk.ChatCompletionMessageParamUnion, error) {
+func requestMessage(message *agent.Message, replayReasoningContent bool) (sdk.ChatCompletionMessageParamUnion, error) {
 	switch message.Role {
 	case agent.System:
 		result := sdk.SystemMessage(message.Content)
@@ -92,6 +94,12 @@ func requestMessage(message *agent.Message) (sdk.ChatCompletionMessageParamUnion
 		}
 		if message.Name != "" {
 			assistant.Name = sdk.String(message.Name)
+		}
+		// DeepSeek requires the complete reasoning_content to be replayed after
+		// assistant tool calls. Other OpenAI-compatible providers may reject the
+		// extension, so the protocol caller enables it only for DeepSeek thinking.
+		if replayReasoningContent && message.ReasoningContent != "" {
+			assistant.SetExtraFields(map[string]any{"reasoning_content": message.ReasoningContent})
 		}
 		for callIndex, call := range message.ToolCalls {
 			if call.Type != "" && call.Type != "function" {
@@ -252,8 +260,23 @@ func (model *ChatModel) requestOptions() []option.RequestOption {
 
 func chatReasoningEffort(config providers.ModelConfig) (string, bool) {
 	level := config.ThinkingLevel
-	if level == "" || level == providers.ThinkingLevelDefault || config.Provider == providers.ProviderDeepSeek {
+	if level == "" || level == providers.ThinkingLevelDefault {
 		return "", false
+	}
+	if config.Provider == providers.ProviderDeepSeek {
+		// DeepSeek disables thinking through the nested thinking object instead
+		// of accepting reasoning_effort=none. Minimal and medium are normalized
+		// to supported levels; xhigh remains a documented compatibility alias.
+		switch level {
+		case providers.ThinkingLevelOff:
+			return "", false
+		case providers.ThinkingLevelMinimal:
+			return string(providers.ThinkingLevelLow), true
+		case providers.ThinkingLevelMedium:
+			return string(providers.ThinkingLevelHigh), true
+		default:
+			return string(level), true
+		}
 	}
 	if level == providers.ThinkingLevelOff {
 		return string(shared.ReasoningEffortNone), true

@@ -28,6 +28,8 @@ func TestSystemInstructionRequiresIdeasAndCreatorDuringIdeation(t *testing.T) {
 		"ch{order:05}-{chapter}-{title}.md",
 		"v{order:05}-{volume}",
 		"不要自动重命名旧章节",
+		"尚未发生的后续剧情只用于规划",
+		"必须检查未来剧情泄漏",
 	} {
 		if !strings.Contains(instruction, required) {
 			t.Fatalf("系统提示缺少 %q:\n%s", required, instruction)

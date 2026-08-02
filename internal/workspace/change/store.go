@@ -228,6 +228,7 @@ func ledgerChangeSet(input ChangeSet) ChangeSet {
 	change := cloneChangeSet(input)
 	change.BeforeContent = ""
 	change.AfterContent = ""
+	change.afterFileStats = nil
 	for index := range change.Edits {
 		change.Edits[index].OldString = ""
 		change.Edits[index].NewString = ""

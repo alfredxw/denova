@@ -117,8 +117,17 @@ func TestWorkspaceEditUsesCurrentContentAfterEarlierExternalChange(t *testing.T)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err := definition.Tool.Run(context.Background(), `{"path":"ideas.md","old_string":"manual update","new_string":"agent update"}`); err != nil {
+	result, err := definition.Tool.Run(context.Background(), `{"path":"ideas.md","old_string":"manual update","new_string":"agent update"}`)
+	if err != nil {
 		t.Fatal(err)
+	}
+	receipt, ok := workspacechange.ParseToolReceipt("edit", result.ModelContent)
+	if !ok || receipt.FileStats == nil {
+		t.Fatalf("edit result has no file stats: %s", result.ModelContent)
+	}
+	if got := *receipt.FileStats; got.Bytes != 22 || got.Characters != 22 ||
+		got.NonWhitespaceCharacters != 20 || got.Lines != 2 {
+		t.Fatalf("edit file stats = %#v", got)
 	}
 	content, err := os.ReadFile(path)
 	if err != nil {
@@ -126,6 +135,34 @@ func TestWorkspaceEditUsesCurrentContentAfterEarlierExternalChange(t *testing.T)
 	}
 	if string(content) != "unrelated\nagent update" {
 		t.Fatalf("edit did not preserve unrelated current content: %q", content)
+	}
+}
+
+func TestWorkspaceWriteReturnsCompleteUnicodeFileStats(t *testing.T) {
+	workspace := t.TempDir()
+	service, err := workspacechange.NewService(workspace)
+	if err != nil {
+		t.Fatal(err)
+	}
+	adapter, err := newWorkspaceMutationAdapter(service)
+	if err != nil {
+		t.Fatal(err)
+	}
+	definition, err := agenttools.Write(adapter)
+	if err != nil {
+		t.Fatal(err)
+	}
+	result, err := definition.Tool.Run(context.Background(), `{"path":"chapter.md","content":"第一行\nsecond line"}`)
+	if err != nil {
+		t.Fatal(err)
+	}
+	receipt, ok := workspacechange.ParseToolReceipt("write", result.ModelContent)
+	if !ok || receipt.FileStats == nil {
+		t.Fatalf("write result has no file stats: %s", result.ModelContent)
+	}
+	if got := *receipt.FileStats; got.Bytes != 21 || got.Characters != 15 ||
+		got.NonWhitespaceCharacters != 13 || got.Lines != 2 {
+		t.Fatalf("write file stats = %#v", got)
 	}
 }
 
