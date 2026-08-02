@@ -39,12 +39,22 @@ function terminalTab(id: string, workspace = '/books/one'): AgentChatTab {
   }
 }
 
+function filesTab(id: string, workspace = '/books/one', selectedPath?: string): AgentChatTab {
+  return {
+    kind: 'files',
+    id,
+    projectId: `project-${workspace.split('/').pop()}`,
+    workspace,
+    selectedPath,
+  }
+}
+
 describe('agent-chat tab state', () => {
   beforeEach(() => {
     window.localStorage.clear()
   })
 
-  it('keeps one tab per page and per session but allows many terminals', () => {
+  it('keeps one tab per page, Files workspace, and session but allows many terminals', () => {
     const deduped = dedupeTabs([
       {
         kind: 'page',
@@ -64,9 +74,11 @@ describe('agent-chat tab state', () => {
       agentTab('a2', 's1'),
       terminalTab('t1'),
       terminalTab('t2'),
+      filesTab('f1'),
+      filesTab('f2'),
     ])
 
-    expect(deduped.map((tab) => tab.id)).toEqual(['p1', 'a1', 't1', 't2'])
+    expect(deduped.map((tab) => tab.id)).toEqual(['p1', 'a1', 't1', 't2', 'f1'])
   })
 
   it('reuses an existing tab instead of opening a duplicate', () => {
@@ -96,6 +108,15 @@ describe('agent-chat tab state', () => {
         },
       ],
       activeId: 'p1',
+    })
+  })
+
+  it('reuses Files while updating the selected source path', () => {
+    const tabs = [agentTab('a1', 's1'), filesTab('files', '/books/one', 'README.md')]
+
+    expect(appendTab(tabs, filesTab('new-files', '/books/one', 'src/main.ts'))).toEqual({
+      tabs: [agentTab('a1', 's1'), filesTab('files', '/books/one', 'src/main.ts')],
+      activeId: 'files',
     })
   })
 
@@ -247,6 +268,7 @@ describe('agent-chat tab state', () => {
             agentTab('stale', 'session-stale'),
             { ...agentTab('draft', 'session-draft'), draft: true },
             terminalTab('terminal'),
+            filesTab('files'),
           ],
           activeTabIds: { primary: 'stale', secondary: null },
           focusedGroup: 'primary',
@@ -272,16 +294,45 @@ describe('agent-chat tab state', () => {
       }],
     }])
 
-    expect(reconciled.projects['project-one'].tabs.map((tab) => tab.id)).toEqual(['valid', 'draft', 'terminal'])
+    expect(reconciled.projects['project-one'].tabs.map((tab) => tab.id)).toEqual(['valid', 'draft', 'terminal', 'files'])
     expect(reconciled.projects['project-one'].activeTabIds).toEqual({ primary: null, secondary: null })
   })
 
-  it('generates unique tab ids carrying the tab kind', () => {
-    const ids = [createTabId('agent'), createTabId('agent'), createTabId('terminal')]
+  it('keeps Files but removes Writing-only pages when a project is General', () => {
+    const reconciled = reconcileWorkbenchProjects({
+      activeProjectId: 'project-one',
+      projects: {
+        'project-one': {
+          tabs: [
+            filesTab('files'),
+            { kind: 'page', id: 'reader', projectId: 'project-one', workspace: '/books/one', pageId: 'reader' },
+          ],
+          activeTabIds: { primary: 'files', secondary: null },
+          focusedGroup: 'primary',
+          secondaryVisible: false,
+        },
+      },
+    }, [{
+      id: 'project-one',
+      type: 'general',
+      path: '/books/one',
+      name: 'One',
+      status: 'available',
+      current: false,
+      total: 0,
+      sessions: [],
+    }])
 
-    expect(new Set(ids).size).toBe(3)
+    expect(reconciled.projects['project-one'].tabs.map((tab) => tab.kind)).toEqual(['files'])
+  })
+
+  it('generates unique tab ids carrying the tab kind', () => {
+    const ids = [createTabId('agent'), createTabId('agent'), createTabId('terminal'), createTabId('files')]
+
+    expect(new Set(ids).size).toBe(4)
     expect(ids[0].startsWith('agent-')).toBe(true)
     expect(ids[2].startsWith('terminal-')).toBe(true)
+    expect(ids[3].startsWith('files-')).toBe(true)
   })
 })
 

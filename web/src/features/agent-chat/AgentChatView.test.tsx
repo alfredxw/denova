@@ -76,6 +76,12 @@ vi.mock('./terminal/TerminalTabView', () => ({
   terminalTabLabel: () => 'Terminal',
 }))
 
+vi.mock('@/features/files/FilesTab', () => ({
+  FilesTab: ({ selectedPath }: { selectedPath: string | null }) => (
+    <div data-testid="project-files-tab">{selectedPath || 'no-selection'}</div>
+  ),
+}))
+
 vi.mock('@/components/layout/adaptive-surface', () => ({
   AdaptiveSurface: ({
     left,
@@ -500,6 +506,78 @@ describe('AgentChatView project workbenches', () => {
     expect(await screen.findByRole('separator', { name: '调整分栏宽度' })).toBeInTheDocument()
     expect(screen.getByTestId('secondary-page')).toHaveTextContent('reader')
     expect(readStoredWorkbenchState().projects['project-a'].secondaryVisible).toBe(true)
+  })
+
+  it('opens the general Files tab in the secondary workspace without replacing the active chat', async () => {
+    const user = userEvent.setup()
+    const general = project('/books/a', 'Project A', 'session-a', 'Chat A')
+    general.type = 'general'
+    vi.mocked(getAgentChatProjects).mockResolvedValue([general])
+    persistWorkbenchState({
+      activeProjectId: 'project-a',
+      projects: {
+        'project-a': {
+          tabs: [agentTabForProject('agent-tab', 'project-a', '/books/a', 'session-a')],
+          activeTabIds: { primary: 'agent-tab', secondary: null },
+          focusedGroup: 'primary',
+          secondaryVisible: false,
+        },
+      },
+    })
+
+    renderView(<AgentChatView composerSettings={{} as never} tellers={[]} imagePresets={[]} renderPage={() => null} renderReview={() => null} />)
+    await user.click(await screen.findByRole('button', { name: '显示右侧工作区' }))
+    await user.click(await screen.findByRole('menuitem', { name: '文件' }))
+
+    expect(await screen.findByTestId('project-files-tab')).toHaveTextContent('no-selection')
+    expect(screen.getByTestId('conversation:/books/a:session-a')).toHaveTextContent('active')
+    expect(readStoredWorkbenchState().projects['project-a'].tabs).toEqual(expect.arrayContaining([
+      expect.objectContaining({ kind: 'files', group: 'secondary' }),
+    ]))
+  })
+
+  it('routes a reviewed source file into the reusable Files tab in the same pane', async () => {
+    const user = userEvent.setup()
+    persistWorkbenchState({
+      activeProjectId: 'project-a',
+      projects: {
+        'project-a': {
+          tabs: [
+            agentTabForProject('agent-tab', 'project-a', '/books/a', 'session-a'),
+            {
+              kind: 'review',
+              id: 'review-tab',
+              projectId: 'project-a',
+              workspace: '/books/a',
+              group: 'secondary',
+              threadID: 'thread-one',
+            },
+          ],
+          activeTabIds: { primary: 'agent-tab', secondary: 'review-tab' },
+          focusedGroup: 'secondary',
+          secondaryVisible: true,
+        },
+      },
+    })
+
+    renderView(
+      <AgentChatView
+        composerSettings={{} as never}
+        tellers={[]}
+        imagePresets={[]}
+        renderPage={() => null}
+        renderReview={(_tab, _disabled, context) => (
+          <button type="button" onClick={() => context.openFile('src/main.ts')}>open reviewed source</button>
+        )}
+      />,
+    )
+    await user.click(await screen.findByRole('button', { name: 'open reviewed source' }))
+
+    expect(await screen.findByTestId('project-files-tab')).toHaveTextContent('src/main.ts')
+    expect(screen.getByTestId('conversation:/books/a:session-a')).toHaveTextContent('active')
+    expect(readStoredWorkbenchState().projects['project-a'].tabs).toEqual(expect.arrayContaining([
+      expect.objectContaining({ kind: 'files', group: 'secondary', selectedPath: 'src/main.ts' }),
+    ]))
   })
 
   it('releases only detached terminal sessions that no persisted tab owns', async () => {

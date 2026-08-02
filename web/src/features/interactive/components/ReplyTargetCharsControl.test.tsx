@@ -61,5 +61,6 @@ function storySummary(): StorySummary {
     updated_at: '2026-01-01T00:00:00Z',
     branches: 1,
     events: 0,
+    turn_count: 0,
   }
 }

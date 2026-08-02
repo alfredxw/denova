@@ -41,6 +41,7 @@ import changes from './en-US/changes'
 import narrativeStyle from './en-US/narrativeStyle'
 import agentChat from './en-US/agentChat'
 import agentApproval from './en-US/agentApproval'
+import files from './en-US/files'
 
 const enUS = {
   ...common,
@@ -86,6 +87,7 @@ const enUS = {
   ...narrativeStyle,
   ...agentChat,
   ...agentApproval,
+  ...files,
   'agents.tool.availability.runtimeCheck': 'Runtime check',
 } as const
 

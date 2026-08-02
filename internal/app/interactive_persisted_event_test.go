@@ -58,6 +58,9 @@ func TestEmitInteractiveTurnPersistedUsesCurrentSnapshot(t *testing.T) {
 	if payload.StoryID != story.ID || payload.BranchID != "main" {
 		t.Fatalf("payload story/branch mismatch: %#v", payload)
 	}
+	if payload.TurnCount != 1 {
+		t.Fatalf("payload turn count = %d, want 1", payload.TurnCount)
+	}
 	if payload.Turn.User != "继续前进" || payload.Turn.Narrative != "雾气在门外散开。" || payload.Turn.Thinking != "先确认场景。" {
 		t.Fatalf("payload turn mismatch: %#v", payload.Turn)
 	}

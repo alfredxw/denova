@@ -139,6 +139,7 @@ type CreateBranchRequest struct {
 }
 
 type Index struct {
+	Version        int            `json:"version"`
 	CurrentStoryID string         `json:"current_story_id"`
 	Stories        []StorySummary `json:"stories"`
 }
@@ -160,6 +161,9 @@ type StorySummary struct {
 	UpdatedAt         string                   `json:"updated_at"`
 	Branches          int                      `json:"branches"`
 	Events            int                      `json:"events"`
+	// TurnCount is the canonical depth of the story's current branch. Journal
+	// side events and turns that only exist on another branch are excluded.
+	TurnCount int `json:"turn_count"`
 }
 
 type StoryOpeningConfig struct {

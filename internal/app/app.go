@@ -22,6 +22,7 @@ import (
 	imageapp "denova/internal/app/image"
 	interactiveapp "denova/internal/app/interactive"
 	loreapp "denova/internal/app/lore"
+	projectfilesapp "denova/internal/app/projectfiles"
 	resourcecatalogapp "denova/internal/app/resourcecatalog"
 	settingsapp "denova/internal/app/settings"
 	"denova/internal/book"
@@ -85,6 +86,7 @@ type App struct {
 	resourceCatalog *resourcecatalogapp.Service
 	settingsApp     *settingsapp.Service
 	imageApp        *imageapp.Service
+	projectFiles    *projectfilesapp.Service
 	servicesOnce    sync.Once
 
 	mu sync.RWMutex
@@ -222,6 +224,7 @@ func (a *App) ensureServices() {
 		a.settingsApp = settingsapp.NewService(settingsHost{app: a})
 		a.imageApp = imageapp.NewService(imageHost{app: a})
 		a.loreApp = loreapp.NewService(loreHost{app: a}, a.imageApp)
+		a.projectFiles = projectfilesapp.NewService(a.projectRegistry)
 	})
 }
 
@@ -239,6 +242,13 @@ func (a *App) chat() *ChatAppService {
 func (a *App) AgentChat() *agentchatapp.Service {
 	a.ensureServices()
 	return a.agentChatApp
+}
+
+// ProjectFiles exposes Project-scoped file browsing and editing without
+// changing the foreground Writing workspace.
+func (a *App) ProjectFiles() *projectfilesapp.Service {
+	a.ensureServices()
+	return a.projectFiles
 }
 
 func (a *App) interactiveService() *InteractiveAppService {

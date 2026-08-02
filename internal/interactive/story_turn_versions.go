@@ -135,7 +135,7 @@ func (s *Store) SwitchTurnVersion(storyID string, req SwitchTurnVersionRequest) 
 	if err := s.appendStoryTransactionLocked(storyID, meta, newEvents...); err != nil {
 		return err
 	}
-	return s.touchIndexLocked(storyID, now, len(newEvents))
+	return s.syncStorySummaryLocked(storyID)
 }
 
 func turnRecordOnPath(path []StoryEventRecord, turnID string) (int, *StoryEventRecord) {

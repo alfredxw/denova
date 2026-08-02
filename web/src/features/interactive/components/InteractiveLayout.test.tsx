@@ -405,6 +405,7 @@ function story(id: string, title: string): StorySummary {
     updated_at: '2026-07-04T00:00:00Z',
     branches: 1,
     events: 0,
+    turn_count: 0,
   }
 }
 

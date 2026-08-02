@@ -8,6 +8,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Added
 
+- 工作台 AgentChat 新增通用 Files Tab，Book 与任意本地目录均通过稳定 Project ID 独立浏览和编辑，不会切换当前写作/游戏模式。Files 采用左侧 Monaco 源码编辑器与右侧懒加载文件树，支持项目级布局和展开状态持久化、生成目录开关、自适应窄屏抽屉、文本自动/手动保存、revision CAS 与非重叠并发三方合并、安全图片预览，以及新建、重命名、复制、移动和删除；删除会明确提示无法恢复，文件操作不会沿符号链接越出项目边界。批量文件操作逐项返回结果，Review 中打开源码会复用同项目 Files Tab。新增 project-scoped 文件 API，后台 Project 的读写不依赖当前前台 workspace。
+- Workspace AgentChat now includes a generic Files tab for both Books and arbitrary local directories, scoped by stable Project ID and never switching the active Writing/Game mode. Files uses a Monaco source editor on the left and a lazy file tree on the right, with per-project layout and expansion persistence, generated-directory visibility, an adaptive narrow-screen drawer, automatic/manual text saves, revision CAS with non-overlapping three-way rebases, safe image previews, and create, rename, copy, move, and delete operations. Deletion explicitly warns that recovery is unavailable, and mutations cannot follow symbolic links outside the Project boundary. Batch operations report each item independently, Review source links reuse the same project's Files tab, and the new project-scoped file API reads or writes background Projects without depending on the foreground workspace.
 - 新增轻量 `GET /api/activity/summary`，只返回消息未读数、自动化待处理数和运行中任务数；顶栏改为轮询该摘要，完整消息及自动化内容仅在用户打开对应界面时读取。普通 API 响应在客户端支持时启用 gzip，SSE 与协议升级连接保持流式直传。
 - Added lightweight `GET /api/activity/summary`, returning only message unread, pending automation, and active-run counts. The header now polls this summary, while full message and automation content loads only when the user opens the corresponding surface. Regular API responses use gzip when supported, while SSE and protocol-upgrade connections remain streamed directly.
 - 后端日志（含 Hertz 框架日志）统一迁移到标准库 `log/slog` 的 context-aware API，并保留源码位置与现有按日日志文件；每个 HTTP 请求由服务端生成 UUIDv7 `request_id`，通过 `X-Request-ID` 响应头、JSON 错误体、SSE / AI UI 流式错误和请求完成日志保持一致。请求 context 会继续传入 handlers、SSE、WebSocket 及脱离 HTTP 生命周期的 Agent/Automation 后台任务；启动与定时任务等无请求所有权的日志显式使用后台 context。前端 API 错误现在以中英文本地化的「日志 ID / Log ID」展示该标识，便于从界面报错直接定位服务端日志。
@@ -150,6 +152,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Fixed
 
+- 修复游戏模式剧情页左侧回合导航错误地把相对行号叠加到虚拟列表分页基准、导致点击历史回合仍定位到最新回合附近的问题；回合跳转现在使用当前消息窗口内的真实相对索引，并以即时滚动保证长篇、变高消息也能准确定位。
+- Fixed the Game story turn navigator adding its relative row offset to Virtuoso's pagination baseline, which made historical turn clicks land near the latest turn. Turn jumps now use the actual index within the current message window and scroll instantly for deterministic positioning across long, variable-height messages.
+- 修复游戏模式故事线选择器误把内部 journal 事件条数显示为回合数的问题；列表现在展示当前分支的真实回合数，并在回合落盘、分支创建或切换后实时同步。旧故事索引会从规范 journal 原子重建一次，无需手动迁移。
+- Fixed the Game story picker showing internal journal event totals as turn counts. It now displays the actual turn count of each story's current branch and stays synchronized after turn persistence, branch creation, or branch switching. Existing story indexes are rebuilt atomically once from the canonical journal with no manual migration required.
 - 修复浏览器自动发送 `Accept-Encoding: gzip` 时，服务端 gzip 中间件会等待 Agent / 配置管理 / 自动化等 SSE body 完整结束再压缩，导致 Ask、思考和工具进度只能在刷新或任务完成后显示的问题；所有事件流路由现在由服务端统一排除压缩，写作、游戏与其他流式入口均可即时消费。
 - Fixed the server gzip middleware buffering Agent, Config Manager, Automation, and other SSE bodies to completion when browsers automatically sent `Accept-Encoding: gzip`, which delayed Ask, reasoning, and tool progress until reload or task settlement. Every event-stream route is now excluded from compression at the server boundary so Writing, Game, and other streaming clients consume updates immediately.
 - 修复全局替换在 Denova 数据目录配置于当前 workspace 内且非隐藏时，可能扫描并改写 `project-state/<project-id>` 会话与变更日志的问题；替换预扫描和 CAS 写入现在都显式排除当前 Workspace Change Service 的持久状态根目录，并补充重复运行回归测试。

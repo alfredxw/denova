@@ -226,6 +226,30 @@ describe('Agent MessageList', () => {
     await waitFor(() => expect(handleVisibleTurnAnchorChange).toHaveBeenCalledWith('turn-1'))
   })
 
+  it('回合顶端定位时忽略刚好结束在视口上边界的前一回合', async () => {
+    const handleVisibleTurnAnchorChange = vi.fn()
+    const { container } = render(
+      <VirtuosoMockContext.Provider value={{ viewportHeight: 52, itemHeight: 52 }}>
+        <MessageList
+          isStreaming={false}
+          activityContent=""
+          messages={agentTurnMessages()}
+          onVisibleTurnAnchorChange={handleVisibleTurnAnchorChange}
+        />
+      </VirtuosoMockContext.Provider>,
+    )
+    const scroller = container.querySelector<HTMLElement>('.nova-chat-canvas')
+    if (!scroller) throw new Error('Expected message scroller')
+    await waitFor(() => expect(handleVisibleTurnAnchorChange).toHaveBeenCalledWith('turn-1'))
+
+    handleVisibleTurnAnchorChange.mockClear()
+    scroller.scrollTop = 104
+    fireEvent.scroll(scroller)
+
+    await waitFor(() => expect(handleVisibleTurnAnchorChange).toHaveBeenCalledWith('turn-2'))
+    expect(handleVisibleTurnAnchorChange).not.toHaveBeenCalledWith('turn-1')
+  })
+
   it('把本轮引用显示在已发送的用户消息内', () => {
     renderMessageList(
       <MessageList

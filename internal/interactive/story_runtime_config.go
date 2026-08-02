@@ -59,7 +59,7 @@ func (s *Store) EnsureBranchRuntimeConfig(storyID, branchID string, seed convers
 	if err := s.appendStoryTransactionLocked(storyID, meta, event); err != nil {
 		return conversationconfig.Snapshot{}, err
 	}
-	if err := s.touchIndexLocked(storyID, now, 1); err != nil {
+	if err := s.syncStorySummaryLocked(storyID); err != nil {
 		return conversationconfig.Snapshot{}, err
 	}
 	return conversationconfig.Snapshot{Config: value, Revision: 1}, nil
@@ -104,7 +104,7 @@ func (s *Store) SetBranchRuntimeConfig(storyID, branchID string, next conversati
 	if err := s.appendStoryTransactionLocked(storyID, meta, event); err != nil {
 		return conversationconfig.Snapshot{}, err
 	}
-	if err := s.touchIndexLocked(storyID, now, 1); err != nil {
+	if err := s.syncStorySummaryLocked(storyID); err != nil {
 		return conversationconfig.Snapshot{}, err
 	}
 	return conversationconfig.Snapshot{Config: value, Revision: revision}, nil

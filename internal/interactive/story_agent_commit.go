@@ -108,7 +108,7 @@ func (s *Store) AppendTurnWithState(storyID string, req AppendTurnWithStateReque
 	if existing, delta, found, err := committedAgentTurnForRequest(lines, branchID, req); err != nil {
 		return TurnEvent{}, nil, err
 	} else if found {
-		s.syncStoryIndexProjectionLocked(storyID, meta, len(lines))
+		s.syncStoryIndexProjectionLocked(storyID)
 		return existing, delta, nil
 	}
 	playerInput, hasPlayerInput, err := playerInputForTurnRequest(lines, branchID, req)
@@ -284,7 +284,7 @@ func (s *Store) AppendTurnWithState(storyID string, req AppendTurnWithStateReque
 	if appendErr := s.appendStoryTransactionLocked(storyID, meta, newEvents...); appendErr != nil {
 		return TurnEvent{}, nil, appendErr
 	}
-	s.syncStoryIndexProjectionLocked(storyID, meta, len(lines)+len(newEvents))
+	s.syncStoryIndexProjectionLocked(storyID)
 	return turn, delta, nil
 }
 
@@ -374,44 +374,8 @@ func stateDeltaEventForCommittedTurn(turn TurnEvent) *StateDeltaEvent {
 // syncStoryIndexProjectionLocked updates the rebuildable story catalog from
 // canonical JSONL state. A projection failure is logged but never turns an
 // already-durable event into a false-negative operation result.
-func (s *Store) syncStoryIndexProjectionLocked(storyID string, meta StoryMeta, eventCount int) {
-	if handle := s.storyJournals[strings.TrimSpace(storyID)]; handle != nil && handle.projection != nil && handle.projection.EventCount > eventCount {
-		eventCount = handle.projection.EventCount
+func (s *Store) syncStoryIndexProjectionLocked(storyID string) {
+	if _, err := s.publishStorySummaryLocked(storyID); err != nil {
+		slog.ErrorContext(context.Background(), fmt.Sprintf("[interactive-story] index projection write failed after canonical commit story_id=%s err=%v", storyID, err))
 	}
-	index, err := s.readIndexLocked()
-	if err != nil {
-		slog.ErrorContext(context.Background(), fmt.Sprintf("[interactive-story] index projection read failed after canonical commit story_id=%s err=%v", storyID, err))
-		return
-	}
-	summary := storySummaryFromMeta(meta, eventCount)
-	found := false
-	for i := range index.Stories {
-		if index.Stories[i].ID == storyID {
-			index.Stories[i] = summary
-			found = true
-			break
-		}
-	}
-	if !found {
-		index.Stories = append(index.Stories, summary)
-	}
-	if strings.TrimSpace(index.CurrentStoryID) == "" {
-		index.CurrentStoryID = storyID
-	}
-	if err := s.writeIndexLocked(index); err != nil {
-		slog.ErrorContext(context.Background(), fmt.Sprintf("[interactive-story] index projection write failed after canonical commit story_id=%s events=%d err=%v", storyID, eventCount, err))
-	}
-}
-
-func storySummaryFromMeta(meta StoryMeta, eventCount int) StorySummary {
-	return normalizeStorySummary(StorySummary{
-		ID: meta.StoryID, Title: meta.Title, Origin: meta.Origin,
-		StoryTellerID: meta.StoryTellerID, StoryDirectorID: normalizedStoryDirectorID(meta.StoryDirectorID),
-		DirectorRunPolicy: cloneStoryDirectorRunPolicy(meta.DirectorRunPolicy), ModuleRefs: cloneStoryDirectorModuleRefs(meta.ModuleRefs),
-		ReplyTargetChars: meta.ReplyTargetChars, ChoiceCount: meta.ChoiceCount,
-		Opening: meta.Opening, ImageSettings: meta.ImageSettings,
-		StateSchemaPolicy: cloneStoryStateSchemaPolicy(meta.StateSchemaPolicy),
-		CreatedAt:         meta.CreatedAt, UpdatedAt: meta.UpdatedAt,
-		Branches: len(meta.Branches), Events: eventCount,
-	})
 }

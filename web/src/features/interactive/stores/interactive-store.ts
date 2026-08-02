@@ -173,6 +173,7 @@ export const useInteractiveStore = create<InteractiveStore>((set) => ({
     if (snapshot) rememberCurrentBranch(snapshot.story_id, snapshot.branch_id)
     return {
       snapshot,
+      stories: snapshot ? storiesWithTurnCount(state.stories, snapshot.story_id, snapshot.turn_count) : state.stories,
       currentBranchId: snapshot?.branch_id || state.currentBranchId,
     }
   }),
@@ -188,6 +189,7 @@ export const useInteractiveStore = create<InteractiveStore>((set) => ({
       rememberCurrentBranch(event.story_id, event.branch_id)
       return {
         snapshot,
+        stories: storiesWithTurnCount(state.stories, event.story_id, event.turn_count),
         branches: event.branches?.length ? event.branches : state.branches,
         currentStoryId: event.story_id,
         currentBranchId: event.branch_id,
@@ -240,6 +242,7 @@ export function mergeInteractiveTurnPersistedSnapshot(current: Snapshot | null, 
     ...base,
     story_id: event.story_id,
     branch_id: event.branch_id,
+    turn_count: event.turn_count,
     turns,
     current_turn: turn,
     director_plan: event.director_plan || base.director_plan,
@@ -249,6 +252,13 @@ export function mergeInteractiveTurnPersistedSnapshot(current: Snapshot | null, 
     context_compaction: event.context_compaction === undefined ? base.context_compaction : event.context_compaction,
     context_compaction_removal: event.context_compaction_removal === undefined ? base.context_compaction_removal : event.context_compaction_removal,
   }
+}
+
+function storiesWithTurnCount(stories: StorySummary[], storyId: string, turnCount?: number): StorySummary[] {
+  if (typeof turnCount !== 'number' || !Number.isInteger(turnCount) || turnCount < 0) return stories
+  return stories.map(story => story.id === storyId && story.turn_count !== turnCount
+    ? { ...story, turn_count: turnCount }
+    : story)
 }
 
 function mergePersistedTurn(currentTurns: TurnEvent[], turn: TurnEvent): TurnEvent[] {

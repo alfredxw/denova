@@ -168,10 +168,9 @@ describe('useVirtuosoBottomLock', () => {
     expect(scroller.scrollTop).toBe(430)
   })
 
-  it('translates relative navigation targets into the virtualizer absolute index window', () => {
+  it('keeps imperative navigation relative to the current data', () => {
     const scrollToIndex = vi.fn()
     const { result } = renderHook(() => useVirtuosoBottomLock({
-      firstItemIndex: 1_000_000,
       itemCount: 3,
       autoFollowEnabled: false,
     }))
@@ -180,7 +179,7 @@ describe('useVirtuosoBottomLock', () => {
       result.current.scrollToIndex(1, { align: 'start', behavior: 'smooth' })
     })
 
-    expect(scrollToIndex).toHaveBeenCalledWith({ index: 1_000_001, align: 'start', behavior: 'smooth' })
+    expect(scrollToIndex).toHaveBeenCalledWith({ index: 1, align: 'start', behavior: 'smooth' })
   })
 })
 

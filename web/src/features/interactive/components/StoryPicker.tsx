@@ -100,7 +100,7 @@ export function StoryPicker({ stories, currentStoryId, onSelect, onCreate, onDel
                 {selected ? <Check className="size-3.5 shrink-0 text-[var(--nova-text-faint)]" /> : null}
               </span>
               <span className="flex min-w-0 items-center gap-2 text-[11px] leading-4 text-[var(--nova-text-faint)]">
-                <span className="shrink-0">{t('storyPicker.turnCount', { count: story.events })}</span>
+                <span className="shrink-0">{t('storyPicker.turnCount', { count: story.turn_count })}</span>
                 {lastTurnTime ? (
                   <>
                     <span aria-hidden="true">·</span>

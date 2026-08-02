@@ -2,8 +2,6 @@ import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } fro
 import { useTranslation } from 'react-i18next'
 import { MessageSquareText } from 'lucide-react'
 import { toast } from 'sonner'
-import { MobilePaneTrigger } from '@/components/layout/mobile-pane-trigger'
-import type { AdaptiveSurfaceControls } from '@/components/layout/adaptive-surface'
 import { EmptyState } from '@/components/common/EmptyState'
 import { ConfirmDialog } from '@/components/common/ConfirmDialog'
 import type { WritingComposerSettingsController } from '@/components/Chat/AgentPanel'
@@ -23,53 +21,50 @@ import {
   type AgentChatSession,
 } from './api'
 import { AgentChatProjectRenameDialog } from './AgentChatProjectRenameDialog'
+import {
+  AgentChatProjectGroup,
+  DESKTOP_SECONDARY_PANE_CONTROLS,
+  type AgentChatPaneControls,
+} from './AgentChatProjectGroup'
 import { AgentChatSessionHistoryDialog } from './AgentChatSessionHistoryDialog'
 import { AgentChatTabContent } from './AgentChatTabContent'
-import { AgentChatTabBar } from './AgentChatTabBar'
-import { AgentChatSecondaryPaneControl } from './AgentChatSecondaryPaneControl'
 import { AgentChatWorkspaceSurface } from './AgentChatWorkspaceSurface'
 import { agentChatSessionBindingKey } from './sidebar-activity'
 import {
-  appendTab,
   createTabId,
   emptyProjectTabState,
-  moveTab,
-  nextActiveTabId,
-  otherTabIds,
   persistWorkbenchState,
   readStoredWorkbenchState,
   reconcileWorkbenchProjects,
-  setTabPinned,
-  setTabTitle,
-  setTerminalTabTitle,
   tabGroup,
-  tabIdsAfter,
   tabsInGroup,
   type AgentChatProjectTabState,
 } from './tab-state'
-import { terminalTabLabel, type AgentChatTerminalStatus } from './terminal/TerminalTabView'
-import { getTerminalRuntimeStatus } from './terminal/api'
+import { terminalTabLabel } from './terminal/TerminalTabView'
 import { useTerminalSessionLifecycle } from './terminal/use-terminal-session-lifecycle'
 import { useAgentChatActivityNavigator } from './use-agent-chat-activity-navigator'
+import { mountedAgentChatTabKey, useAgentChatTabWorkbench } from './use-agent-chat-tab-workbench'
+import { useAgentChatTerminalTabs } from './use-agent-chat-terminal-tabs'
 import {
   AGENT_CHAT_GROUP_IDS,
   type AgentChatDocumentReviewNavigation,
   type AgentChatGroupId,
   type AgentChatPageId,
   type AgentChatPageRenderContext,
+  type AgentChatReviewRenderContext,
   type AgentChatReviewTab,
   type AgentChatTab,
-  type TerminalCommandProfile,
-  type TerminalProfileId,
 } from './types'
 
 interface AgentChatViewProps {
   composerSettings: WritingComposerSettingsController
   tellers: Teller[]
   imagePresets: ImagePreset[]
+  autoSaveEnabled?: boolean
+  autoSaveDelayMs?: number
   /** Project pages receive their tab's project, never the foreground Writing book. */
   renderPage: (workspace: string, pageId: AgentChatPageId, context: AgentChatPageRenderContext) => ReactNode
-  renderReview: (tab: AgentChatReviewTab, disabled: boolean) => ReactNode
+  renderReview: (tab: AgentChatReviewTab, disabled: boolean, context: AgentChatReviewRenderContext) => ReactNode
   documentReviewWorkspace?: string
   documentReviewFeedback?: ReviewFeedbackSelection | null
   onDocumentReviewFeedbackRemove?: (selection: ReviewFeedbackSelection, commentID: string) => void
@@ -80,23 +75,10 @@ interface AgentChatViewProps {
   onWorkspaceChanged?: (workspace: string, paths: string[]) => void | Promise<void>
 }
 
-function mountedTabKey(projectID: string, tabId: string) {
-  return `${projectID}\u0000${tabId}`
-}
-
 function pendingSessionTitle(message: string) {
   const normalized = message.replace(/^\/plan\s*/, '').trim()
   const characters = Array.from(normalized)
   return characters.length > 60 ? `${characters.slice(0, 60).join('')}...` : normalized
-}
-
-/** Secondary content is already inside the adaptive right pane, so its own tab actions need no drawer launcher. */
-const SECONDARY_PANE_CONTROLS = {
-  isMobile: false,
-  openPaneId: null,
-  openLeft: () => {},
-  openRight: () => {},
-  closePane: () => {},
 }
 
 /**
@@ -109,6 +91,8 @@ export function AgentChatView({
   composerSettings,
   tellers,
   imagePresets,
+  autoSaveEnabled = true,
+  autoSaveDelayMs = 1200,
   renderPage,
   renderReview,
   documentReviewWorkspace,
@@ -137,10 +121,9 @@ export function AgentChatView({
   /** Optimistic live state reported by mounted hooks, layered over the project snapshot. */
   const [liveRunningBindings, setLiveRunningBindings] = useState<ReadonlySet<string>>(() => new Set())
   const liveRunningBindingsRef = useRef<ReadonlySet<string>>(new Set())
-  const [terminalStatuses, setTerminalStatuses] = useState<ReadonlyMap<string, AgentChatTerminalStatus>>(() => new Map())
-  const [terminalCommands, setTerminalCommands] = useState<TerminalCommandProfile[]>([])
   const refreshSequenceRef = useRef(0)
-  const pageFlushHandlersRef = useRef(new Map<string, EditorFlushHandler>())
+  const tabFlushHandlersRef = useRef(new Map<string, EditorFlushHandler>())
+  const [filesRefreshSignals, setFilesRefreshSignals] = useState<ReadonlyMap<string, number>>(() => new Map())
   const navigationNonceRef = useRef(0)
   const [documentReviewNavigation, setDocumentReviewNavigation] = useState<AgentChatDocumentReviewNavigation | null>(null)
   const { bindTerminalSession, markTerminalTabsClosing } = useTerminalSessionLifecycle(workbench, projectsLoading, setWorkbench)
@@ -194,7 +177,7 @@ export function AgentChatView({
     setMountedTabKeys((current) => {
       let next: Set<string> | null = null
       const mount = (projectID: string, tabID: string) => {
-        const key = mountedTabKey(projectID, tabID)
+        const key = mountedAgentChatTabKey(projectID, tabID)
         if (current.has(key)) return
         next ??= new Set(current)
         next.add(key)
@@ -209,7 +192,7 @@ export function AgentChatView({
         if (runningSessionIDs.size === 0) continue
         for (const tab of workbench.projects[project.id]?.tabs ?? []) {
           if (tab.kind !== 'agent' || !runningSessionIDs.has(tab.sessionId)) continue
-          const key = mountedTabKey(project.id, tab.id)
+          const key = mountedAgentChatTabKey(project.id, tab.id)
           if (current.has(key)) continue
           next ??= new Set(current)
           next.add(key)
@@ -218,37 +201,19 @@ export function AgentChatView({
       return next ?? current
     })
   }, [projects, projectsLoading, workbench.activeProjectId, workbench.projects])
-  const refreshTerminalCommands = useCallback(async () => {
-    try {
-      const runtime = await getTerminalRuntimeStatus()
-      setTerminalCommands(runtime.commands ?? [])
-    } catch (error) {
-      console.warn('[features/agent-chat/AgentChatView.tsx] loading terminal commands failed', { error })
-    }
+  const registerTabFlushHandler = useCallback((projectID: string, tabId: string, handler: EditorFlushHandler | null) => {
+    const key = mountedAgentChatTabKey(projectID, tabId)
+    if (handler) tabFlushHandlersRef.current.set(key, handler)
+    else tabFlushHandlersRef.current.delete(key)
   }, [])
 
-  useEffect(() => {
-    void refreshTerminalCommands()
-    const onSettingsUpdated = () => {
-      void refreshTerminalCommands()
-    }
-    window.addEventListener('nova:settings-updated', onSettingsUpdated)
-    return () => window.removeEventListener('nova:settings-updated', onSettingsUpdated)
-  }, [refreshTerminalCommands])
-
-  const registerPageFlushHandler = useCallback((projectID: string, tabId: string, handler: EditorFlushHandler | null) => {
-    const key = mountedTabKey(projectID, tabId)
-    if (handler) pageFlushHandlersRef.current.set(key, handler)
-    else pageFlushHandlersRef.current.delete(key)
-  }, [])
-
-  const flushPageDrafts = useCallback(async (keys?: ReadonlySet<string>): Promise<boolean> => {
-    for (const [key, flush] of pageFlushHandlersRef.current) {
+  const flushTabDrafts = useCallback(async (keys?: ReadonlySet<string>): Promise<boolean> => {
+    for (const [key, flush] of tabFlushHandlersRef.current) {
       if (keys && !keys.has(key)) continue
       try {
         if (!(await flush())) return false
       } catch (error) {
-        console.error('[features/agent-chat/AgentChatView.tsx] flushing project page failed', { key, error })
+        console.error('[features/agent-chat/AgentChatView.tsx] flushing tab draft failed', { key, error })
         return false
       }
     }
@@ -256,9 +221,35 @@ export function AgentChatView({
   }, [])
 
   useEffect(() => {
-    onFlushHandlerChange?.(flushPageDrafts)
+    onFlushHandlerChange?.(flushTabDrafts)
     return () => onFlushHandlerChange?.(null)
-  }, [flushPageDrafts, onFlushHandlerChange])
+  }, [flushTabDrafts, onFlushHandlerChange])
+
+  const {
+    activateTab,
+    closeTabs,
+    focusGroup,
+    hideSecondaryPane,
+    openTab,
+    relocateTab,
+    renameTab,
+    showSecondaryPane,
+    togglePinTab,
+  } = useAgentChatTabWorkbench({
+    workbenchRef,
+    setWorkbench,
+    setMountedTabKeys,
+    flushTabDrafts,
+    tabFlushHandlersRef,
+    markTerminalTabsClosing,
+  })
+  const {
+    commands: terminalCommands,
+    statuses: terminalStatuses,
+    openTerminal,
+    updateTitle: updateTerminalTitle,
+    handleStatusChange: handleTerminalStatusChange,
+  } = useAgentChatTerminalTabs({ setWorkbench, openTab })
 
   const activeProjectId = workbench.activeProjectId
   const activeProject = projects.find((project) => project.id === activeProjectId) ?? null
@@ -268,29 +259,6 @@ export function AgentChatView({
       activeProjectId: projectID,
       projects: current.projects[projectID] ? current.projects : { ...current.projects, [projectID]: emptyProjectTabState() },
     }))
-  }, [])
-
-  const openTab = useCallback((tab: AgentChatTab) => {
-    setWorkbench((current) => {
-      const state = current.projects[tab.projectId] ?? emptyProjectTabState()
-      const appended = appendTab(state.tabs, tab)
-      const opened = appended.tabs.find((item) => item.id === appended.activeId)
-      const group = opened ? tabGroup(opened) : tabGroup(tab)
-      return {
-        activeProjectId: tab.projectId,
-        projects: {
-          ...current.projects,
-          [tab.projectId]: {
-            ...state,
-            tabs: appended.tabs,
-            activeTabIds: { ...state.activeTabIds, [group]: appended.activeId },
-            focusedGroup: group,
-            secondaryVisible: group === 'secondary' || state.secondaryVisible,
-          },
-        },
-      }
-    })
-    setMountedTabKeys((current) => new Set(current).add(mountedTabKey(tab.projectId, tab.id)))
   }, [])
 
   const openSessionTab = useCallback(
@@ -365,47 +333,6 @@ export function AgentChatView({
     [refreshProjects],
   )
 
-  const closeTabs = useCallback(
-    async (projectID: string, tabIds: string[]): Promise<boolean> => {
-      if (!tabIds.length) return true
-      const closingKeys = new Set(tabIds.map((id) => mountedTabKey(projectID, id)))
-      if (!(await flushPageDrafts(closingKeys))) return false
-      const closing = new Set(tabIds)
-      const doomed = workbenchRef.current.projects[projectID]?.tabs.filter((tab) => closing.has(tab.id)) || []
-      if (!doomed.length) return true
-      markTerminalTabsClosing(doomed)
-
-      setWorkbench((current) => {
-        const currentState = current.projects[projectID]
-        if (!currentState) return current
-        const activeTabIds = { ...currentState.activeTabIds }
-        for (const group of AGENT_CHAT_GROUP_IDS) {
-          const activeId = activeTabIds[group]
-          if (!activeId || !closing.has(activeId)) continue
-          const candidates = tabsInGroup(currentState.tabs, group).filter((tab) => tab.id === activeId || !closing.has(tab.id))
-          activeTabIds[group] = nextActiveTabId(candidates, activeId, activeId)
-        }
-        const tabs = currentState.tabs.filter((tab) => !closing.has(tab.id))
-        return {
-          ...current,
-          projects: {
-            ...current.projects,
-            [projectID]: {
-              ...currentState,
-              tabs,
-              activeTabIds,
-              secondaryVisible: currentState.secondaryVisible && tabsInGroup(tabs, 'secondary').length > 0,
-            },
-          },
-        }
-      })
-      for (const key of closingKeys) pageFlushHandlersRef.current.delete(key)
-      setMountedTabKeys((current) => new Set([...current].filter((key) => !closingKeys.has(key))))
-      return true
-    },
-    [flushPageDrafts, markTerminalTabsClosing],
-  )
-
   const deleteSession = useCallback(
     async (projectID: string, session: AgentChatSession) => {
       try {
@@ -420,177 +347,6 @@ export function AgentChatView({
     },
     [closeTabs, refreshProjects, workbench.projects],
   )
-
-  const activateTab = useCallback((projectID: string, group: AgentChatGroupId, tabId: string) => {
-    setWorkbench((current) => {
-      const state = current.projects[projectID] ?? emptyProjectTabState()
-      return {
-        activeProjectId: projectID,
-        projects: {
-          ...current.projects,
-          [projectID]: {
-            ...state,
-            activeTabIds: { ...state.activeTabIds, [group]: tabId },
-            focusedGroup: group,
-            secondaryVisible: group === 'secondary' || state.secondaryVisible,
-          },
-        },
-      }
-    })
-    setMountedTabKeys((current) => new Set(current).add(mountedTabKey(projectID, tabId)))
-  }, [])
-
-  const focusGroup = useCallback((projectID: string, group: AgentChatGroupId) => {
-    setWorkbench((current) => {
-      const state = current.projects[projectID] ?? emptyProjectTabState()
-      if (current.activeProjectId === projectID && state.focusedGroup === group) return current
-      return {
-        activeProjectId: projectID,
-        projects: {
-          ...current.projects,
-          [projectID]: { ...state, focusedGroup: group },
-        },
-      }
-    })
-  }, [])
-
-  const showSecondaryPane = useCallback((projectID: string) => {
-    setWorkbench((current) => {
-      const state = current.projects[projectID]
-      if (!state || state.secondaryVisible || tabsInGroup(state.tabs, 'secondary').length === 0) return current
-      return {
-        ...current,
-        projects: {
-          ...current.projects,
-          [projectID]: { ...state, secondaryVisible: true },
-        },
-      }
-    })
-  }, [])
-
-  const hideSecondaryPane = useCallback((projectID: string) => {
-    setWorkbench((current) => {
-      const state = current.projects[projectID]
-      if (!state || !state.secondaryVisible) return current
-      return {
-        ...current,
-        projects: {
-          ...current.projects,
-          [projectID]: { ...state, secondaryVisible: false, focusedGroup: 'primary' },
-        },
-      }
-    })
-  }, [])
-
-  const renameTab = useCallback((projectID: string, tabId: string, title: string) => {
-    setWorkbench((current) => {
-      const state = current.projects[projectID]
-      if (!state) return current
-      return {
-        ...current,
-        projects: {
-          ...current.projects,
-          [projectID]: {
-            ...state,
-            tabs: setTabTitle(state.tabs, tabId, title),
-          },
-        },
-      }
-    })
-  }, [])
-
-  const togglePinTab = useCallback((projectID: string, tabId: string) => {
-    setWorkbench((current) => {
-      const state = current.projects[projectID]
-      if (!state) return current
-      const pinned = !state.tabs.find((tab) => tab.id === tabId)?.pinned
-      return {
-        ...current,
-        projects: {
-          ...current.projects,
-          [projectID]: {
-            ...state,
-            tabs: setTabPinned(state.tabs, tabId, pinned),
-          },
-        },
-      }
-    })
-  }, [])
-
-  const relocateTab = useCallback((projectID: string, sourceId: string, group: AgentChatGroupId, beforeId: string | null) => {
-    setWorkbench((current) => {
-      const state = current.projects[projectID]
-      const source = state?.tabs.find((tab) => tab.id === sourceId)
-      if (!state || !source) return current
-      const from = tabGroup(source)
-      const tabs = moveTab(state.tabs, sourceId, group, beforeId)
-      return {
-        ...current,
-        projects: {
-          ...current.projects,
-          [projectID]: {
-            ...state,
-            tabs,
-            focusedGroup: group,
-            secondaryVisible: group === 'secondary' || (state.secondaryVisible && tabsInGroup(tabs, 'secondary').length > 0),
-            activeTabIds:
-              from === group
-                ? state.activeTabIds
-                : {
-                    ...state.activeTabIds,
-                    [from]:
-                      state.activeTabIds[from] === sourceId ? nextActiveTabId(tabsInGroup(state.tabs, from), sourceId, sourceId) : state.activeTabIds[from],
-                    [group]: sourceId,
-                  },
-          },
-        },
-      }
-    })
-  }, [])
-
-  const openTerminal = useCallback(
-    (project: AgentChatProject, group: AgentChatGroupId, profileId: TerminalProfileId, profileName?: string, command?: string) => {
-      openTab({
-        kind: 'terminal',
-        id: createTabId('terminal'),
-        projectId: project.id,
-        workspace: project.path,
-        group,
-        profileId,
-        profileName,
-        command,
-        title: profileId === 'custom' ? command || '' : profileId === 'shell' ? '' : profileName || profileId,
-      })
-    },
-    [openTab],
-  )
-
-  const updateTerminalTitle = useCallback((projectID: string, tabId: string, title: string) => {
-    setWorkbench((current) => {
-      const state = current.projects[projectID]
-      if (!state) return current
-      const tabs = setTerminalTabTitle(state.tabs, tabId, title)
-      if (tabs.every((tab, index) => tab === state.tabs[index])) return current
-      return {
-        ...current,
-        projects: {
-          ...current.projects,
-          [projectID]: { ...state, tabs },
-        },
-      }
-    })
-  }, [])
-
-  const handleTerminalStatusChange = useCallback((tabId: string, status: AgentChatTerminalStatus | null) => {
-    setTerminalStatuses((current) => {
-      if (status === null && !current.has(tabId)) return current
-      if (status !== null && current.get(tabId) === status) return current
-      const next = new Map(current)
-      if (status === null) next.delete(tabId)
-      else next.set(tabId, status)
-      return next
-    })
-  }, [])
 
   const openProjectPage = useCallback(
     (project: AgentChatProject, group: AgentChatGroupId, pageId: AgentChatPageId) => {
@@ -607,12 +363,66 @@ export function AgentChatView({
     [openTab],
   )
 
+  const openProjectFiles = useCallback(
+    (project: AgentChatProject, group: AgentChatGroupId, selectedPath?: string) => {
+      openTab({
+        kind: 'files',
+        id: createTabId('files'),
+        projectId: project.id,
+        workspace: project.path,
+        group,
+        selectedPath,
+      })
+    },
+    [openTab],
+  )
+
+  const setFilesSelectedPath = useCallback((projectID: string, tabId: string, path: string | null) => {
+    setWorkbench((current) => {
+      const state = current.projects[projectID]
+      if (!state) return current
+      return {
+        ...current,
+        projects: {
+          ...current.projects,
+          [projectID]: {
+            ...state,
+            tabs: state.tabs.map((tab) => (
+              tab.id === tabId && tab.kind === 'files'
+                ? { ...tab, selectedPath: path || undefined }
+                : tab
+            )),
+          },
+        },
+      }
+    })
+  }, [])
+
+  const openProjectFile = useCallback((projectID: string, path: string, preferredGroup: AgentChatGroupId) => {
+    const project = projects.find((candidate) => candidate.id === projectID)
+    if (!project) return
+    const existing = workbenchRef.current.projects[projectID]?.tabs.find((tab) => tab.kind === 'files')
+    openProjectFiles(project, existing ? tabGroup(existing) : preferredGroup, path)
+  }, [openProjectFiles, projects])
+
+  const handleWorkspaceChanged = useCallback(async (changedWorkspace: string, paths: string[]) => {
+    const projectIDs = projects.filter((project) => project.path === changedWorkspace).map((project) => project.id)
+    if (projectIDs.length > 0) {
+      setFilesRefreshSignals((current) => {
+        const next = new Map(current)
+        projectIDs.forEach((projectID) => next.set(projectID, (next.get(projectID) ?? 0) + 1))
+        return next
+      })
+    }
+    await onWorkspaceChanged?.(changedWorkspace, paths)
+  }, [onWorkspaceChanged, projects])
+
   const activateProjectWorkspace = useCallback(
     async (workspace: string): Promise<boolean> => {
-      if (!(await flushPageDrafts())) return false
+      if (!(await flushTabDrafts())) return false
       return onActivateWorkspace ? onActivateWorkspace(workspace) : false
     },
-    [flushPageDrafts, onActivateWorkspace],
+    [flushTabDrafts, onActivateWorkspace],
   )
 
   const openDocumentReviewFeedback = useCallback(
@@ -707,6 +517,8 @@ export function AgentChatView({
           return sessionTitles.get(agentChatSessionBindingKey(tab.projectId, tab.sessionId)) || tab.pendingTitle || t('chat.untitledSession')
         case 'terminal':
           return terminalTabLabel(tab, t)
+        case 'files':
+          return t('files.title')
         case 'page':
           return t(`agentChat.page.${tab.pageId}`)
         case 'review':
@@ -798,166 +610,76 @@ export function AgentChatView({
     state: AgentChatProjectTabState,
     group: AgentChatGroupId,
     paneVisible: boolean,
-    mobileControls: Pick<AdaptiveSurfaceControls, 'isMobile' | 'openPaneId' | 'openLeft' | 'openRight' | 'closePane'>,
+    mobileControls: AgentChatPaneControls,
   ) => {
-    const groupTabs = tabsInGroup(state.tabs, group)
-    const secondaryTabs = tabsInGroup(state.tabs, 'secondary')
-    const activeId = state.activeTabIds[group]
     const projectRunning = project.sessions.some((session) => isSessionRunning(project, session))
     const secondaryBusy = (activitiesByProject.get(project.id) ?? []).some(
       (activity) => activity.group === 'secondary' && ['running', 'connecting', 'ready'].includes(activity.status),
     )
-    const openAgentTab = (target: AgentChatGroupId) => {
-      openDraftSessionInProject(project, target)
-      if (target === 'secondary' && mobileControls.isMobile) mobileControls.openRight()
-    }
-    const openTerminalTab = (target: AgentChatGroupId, profileId: TerminalProfileId, profileName?: string, command?: string) => {
-      openTerminal(project, target, profileId, profileName, command)
-      if (target === 'secondary' && mobileControls.isMobile) mobileControls.openRight()
-    }
-    const openPageTab = (target: AgentChatGroupId, pageId: AgentChatPageId) => {
-      openProjectPage(project, target, pageId)
-      if (target === 'secondary' && mobileControls.isMobile) mobileControls.openRight()
-    }
-    const secondaryControl = (
-      <AgentChatSecondaryPaneControl
-        visible={secondaryTabs.length > 0 && (
-          mobileControls.isMobile
-            ? mobileControls.openPaneId === 'agent-chat-secondary'
-            : state.secondaryVisible
-        )}
-        hasTabs={secondaryTabs.length > 0}
-        busy={secondaryBusy}
-        newChatDisabled={project.status !== 'available'}
-        terminalCommands={terminalCommands}
-        pagesEnabled={project.type === 'book'}
-        onShow={() => {
-          if (mobileControls.isMobile) mobileControls.openRight()
-          else showSecondaryPane(project.id)
-        }}
-        onHide={() => {
-          if (mobileControls.isMobile) mobileControls.closePane()
-          else hideSecondaryPane(project.id)
-        }}
-        onNewAgentTab={openAgentTab}
-        onNewTerminalTab={openTerminalTab}
-        onOpenPage={openPageTab}
-      />
-    )
-    const primaryOwnsSecondaryControl = group === 'primary'
-      && (mobileControls.isMobile || !state.secondaryVisible || secondaryTabs.length === 0)
-    const secondaryOwnsSecondaryControl = group === 'secondary' && paneVisible
-    const tabBarEndActions = primaryOwnsSecondaryControl
-      ? secondaryControl
-      : secondaryOwnsSecondaryControl
-        ? <div className="hidden lg:flex">{secondaryControl}</div>
-        : undefined
     return (
-      <div
-        data-agent-chat-group={group}
-        className="flex h-full min-h-0 min-w-0 flex-col bg-[var(--nova-bg)]"
-        onPointerDownCapture={() => {
-          if (state.focusedGroup !== group) focusGroup(project.id, group)
-        }}
-        onFocusCapture={() => {
-          if (state.focusedGroup !== group) focusGroup(project.id, group)
-        }}
-      >
-        <div className="flex items-center gap-1 bg-[var(--nova-surface)] pl-1.5 md:pl-0">
-          {group === 'primary' && mobileControls.isMobile && (
-            <MobilePaneTrigger
-              side="left"
-              className="size-7 shrink-0"
-              label={t('agentChat.sidebar.projects')}
-              onClick={mobileControls.openLeft}
-            />
-          )}
-          <div className="min-w-0 flex-1">
-            <AgentChatTabBar
-              group={group}
-              tabs={groupTabs}
-              activeTabId={activeId}
-              tabTitle={tabTitle}
-              terminalCommands={terminalCommands}
-              pagesEnabled={project.type === 'book'}
-              newChatDisabled={project.status !== 'available'}
-              endActions={tabBarEndActions}
-              onActivate={(tabId) => activateTab(project.id, group, tabId)}
-              onClose={(tabId) => {
-                void closeTabs(project.id, [tabId])
-              }}
-              onCloseOthers={(tabId) => {
-                void closeTabs(project.id, otherTabIds(state.tabs, tabId))
-              }}
-              onCloseToRight={(tabId) => {
-                void closeTabs(project.id, tabIdsAfter(state.tabs, tabId))
-              }}
-              onRename={(tabId, title) => renameTab(project.id, tabId, title)}
-              onTogglePin={(tabId) => togglePinTab(project.id, tabId)}
-              onMoveTab={(sourceId, target, beforeId) => relocateTab(project.id, sourceId, target, beforeId)}
-              onNewAgentTab={openAgentTab}
-              onNewTerminalTab={openTerminalTab}
-              onOpenPage={openPageTab}
-            />
-          </div>
-        </div>
-
-        <div className="relative min-h-0 flex-1">
-          {groupTabs.length === 0 ? (
-            <EmptyState
-              variant="page"
-              icon={MessageSquareText}
-              title={t('agentChat.empty.title')}
-              description={t('agentChat.empty.description')}
-              action={{
-                label: t('agentChat.tabs.newChat'),
-                onClick: () => openDraftSessionInProject(project, group),
-              }}
-            />
-          ) : (
-            groupTabs.map((tab) => {
-              const active = paneVisible && tab.id === activeId
-              const mounted = mountedTabKeys.has(mountedTabKey(project.id, tab.id))
-              if (!active && !mounted) return null
-              return (
-                <section key={tab.id} hidden={!active} aria-hidden={!active} className="absolute inset-0 flex min-h-0 flex-col">
-                  <AgentChatTabContent
-                    tab={tab}
-                    projectType={project.type}
-                    workspaceCurrent={project.current}
-                    active={active}
-                    running={projectRunning}
-                    composerSettings={composerSettings}
-                    tellers={tellers}
-                    imagePresets={imagePresets}
-                    renderPage={renderPage}
-                    renderReview={renderReview}
-                    navigationIntent={documentReviewNavigation?.workspace === tab.workspace ? documentReviewNavigation : null}
-                    documentReviewFeedback={tab.workspace === documentReviewWorkspace ? documentReviewFeedback : null}
-                    onDocumentReviewFeedbackOpen={openDocumentReviewFeedback}
-                    onDocumentReviewFeedbackRemove={onDocumentReviewFeedbackRemove}
-                    onDocumentReviewFeedbackSubmitted={onDocumentReviewFeedbackSubmitted}
-                    onDocumentReviewFeedbackSubmissionFailed={onDocumentReviewFeedbackSubmissionFailed}
-                    onOpenPage={(projectID, groupID, pageID) => {
-                      const target = projects.find((candidate) => candidate.id === projectID)
-                      if (target) openProjectPage(target, groupID, pageID)
-                    }}
-                    onActivateWorkspace={activateProjectWorkspace}
-                    onPageFlushHandlerChange={registerPageFlushHandler}
-                    onOpenChangeReview={openChangeReview}
-                    onWorkspaceChanged={onWorkspaceChanged}
-                    onRunningChange={handleRunningChange}
-                    onDraftCommitted={(message) => commitDraftSession(project.id, tab.id, message)}
-                    onTerminalSessionEstablished={(tabId, session) => bindTerminalSession(project.id, tabId, session)}
-                    onTerminalTitleChange={(tabId, title) => updateTerminalTitle(project.id, tabId, title)}
-                    onTerminalStatusChange={handleTerminalStatusChange}
-                  />
-                </section>
-              )
-            })
-          )}
-        </div>
-      </div>
+      <AgentChatProjectGroup
+        project={project}
+        state={state}
+        group={group}
+        paneVisible={paneVisible}
+        mobileControls={mobileControls}
+        mountedTabKeys={mountedTabKeys}
+        terminalCommands={terminalCommands}
+        secondaryBusy={secondaryBusy}
+        tabTitle={tabTitle}
+        renderTab={(tab, active) => (
+          <AgentChatTabContent
+            tab={tab}
+            projectType={project.type}
+            workspaceCurrent={project.current}
+            active={active}
+            running={projectRunning}
+            composerSettings={composerSettings}
+            tellers={tellers}
+            imagePresets={imagePresets}
+            autoSaveEnabled={autoSaveEnabled}
+            autoSaveDelayMs={autoSaveDelayMs}
+            filesRefreshSignal={filesRefreshSignals.get(project.id) ?? 0}
+            renderPage={renderPage}
+            renderReview={renderReview}
+            navigationIntent={documentReviewNavigation?.workspace === tab.workspace ? documentReviewNavigation : null}
+            documentReviewFeedback={tab.workspace === documentReviewWorkspace ? documentReviewFeedback : null}
+            onDocumentReviewFeedbackOpen={openDocumentReviewFeedback}
+            onDocumentReviewFeedbackRemove={onDocumentReviewFeedbackRemove}
+            onDocumentReviewFeedbackSubmitted={onDocumentReviewFeedbackSubmitted}
+            onDocumentReviewFeedbackSubmissionFailed={onDocumentReviewFeedbackSubmissionFailed}
+            onOpenPage={(projectID, groupID, pageID) => {
+              const target = projects.find((candidate) => candidate.id === projectID)
+              if (target) openProjectPage(target, groupID, pageID)
+            }}
+            onActivateWorkspace={activateProjectWorkspace}
+            onFlushHandlerChange={registerTabFlushHandler}
+            onFilesSelectedPathChange={setFilesSelectedPath}
+            onOpenProjectFile={openProjectFile}
+            onOpenChangeReview={openChangeReview}
+            onWorkspaceChanged={handleWorkspaceChanged}
+            onRunningChange={handleRunningChange}
+            onDraftCommitted={(message) => commitDraftSession(project.id, tab.id, message)}
+            onTerminalSessionEstablished={(tabID, session) => bindTerminalSession(project.id, tabID, session)}
+            onTerminalTitleChange={(tabID, title) => updateTerminalTitle(project.id, tabID, title)}
+            onTerminalStatusChange={handleTerminalStatusChange}
+          />
+        )}
+        onFocus={(target) => focusGroup(project.id, target)}
+        onActivate={(target, tabID) => activateTab(project.id, target, tabID)}
+        onClose={(tabIDs) => { void closeTabs(project.id, tabIDs) }}
+        onRename={(tabID, title) => renameTab(project.id, tabID, title)}
+        onTogglePin={(tabID) => togglePinTab(project.id, tabID)}
+        onMoveTab={(sourceID, target, beforeID) => relocateTab(project.id, sourceID, target, beforeID)}
+        onNewAgentTab={(target) => openDraftSessionInProject(project, target)}
+        onNewTerminalTab={(target, profileID, profileName, command) => (
+          openTerminal(project, target, profileID, profileName, command)
+        )}
+        onOpenFiles={(target) => openProjectFiles(project, target)}
+        onOpenPage={(target, pageID) => openProjectPage(project, target, pageID)}
+        onShowSecondary={() => showSecondaryPane(project.id)}
+        onHideSecondary={() => hideSecondaryPane(project.id)}
+      />
     )
   }
 
@@ -970,7 +692,7 @@ export function AgentChatView({
     const visible = project.id === activeProjectId && state.secondaryVisible
     return (
       <section key={project.id} hidden={!visible} aria-hidden={!visible} className="absolute inset-0 flex min-h-0 flex-col">
-        {renderProjectGroup(project, state, 'secondary', visible, SECONDARY_PANE_CONTROLS)}
+        {renderProjectGroup(project, state, 'secondary', visible, DESKTOP_SECONDARY_PANE_CONTROLS)}
       </section>
     )
   })

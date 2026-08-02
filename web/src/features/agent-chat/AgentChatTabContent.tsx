@@ -1,4 +1,4 @@
-import { useCallback, useMemo, type ReactNode } from 'react'
+import { lazy, Suspense, useCallback, useMemo, type ReactNode } from 'react'
 import type { WritingComposerSettingsController } from '@/components/Chat/AgentPanel'
 import type { EditorFlushHandler } from '@/components/Editor/useEditorDraftPersistence'
 import type { AgentChatProjectType } from './api'
@@ -14,8 +14,11 @@ import type {
   AgentChatPageId,
   AgentChatPageRenderContext,
   AgentChatReviewTab,
+  AgentChatReviewRenderContext,
   AgentChatTab,
 } from './types'
+
+const FilesTab = lazy(() => import('@/features/files/FilesTab').then((module) => ({ default: module.FilesTab })))
 
 interface AgentChatTabContentProps {
   tab: AgentChatTab
@@ -26,8 +29,11 @@ interface AgentChatTabContentProps {
   composerSettings: WritingComposerSettingsController
   tellers: Teller[]
   imagePresets: ImagePreset[]
+  autoSaveEnabled: boolean
+  autoSaveDelayMs: number
+  filesRefreshSignal: number
   renderPage: (workspace: string, pageId: AgentChatPageId, context: AgentChatPageRenderContext) => ReactNode
-  renderReview: (tab: AgentChatReviewTab, disabled: boolean) => ReactNode
+  renderReview: (tab: AgentChatReviewTab, disabled: boolean, context: AgentChatReviewRenderContext) => ReactNode
   navigationIntent: AgentChatDocumentReviewNavigation | null
   documentReviewFeedback?: ReviewFeedbackSelection | null
   onDocumentReviewFeedbackOpen: (workspace: string, selection: ReviewFeedbackSelection, comment: ReviewFeedbackComment) => void
@@ -36,7 +42,9 @@ interface AgentChatTabContentProps {
   onDocumentReviewFeedbackSubmissionFailed?: (feedback: ReviewFeedbackBatch) => void
   onOpenPage: (projectID: string, group: AgentChatGroupId, pageId: AgentChatPageId) => void
   onActivateWorkspace: (workspace: string) => Promise<boolean>
-  onPageFlushHandlerChange: (projectID: string, tabId: string, handler: EditorFlushHandler | null) => void
+  onFlushHandlerChange: (projectID: string, tabId: string, handler: EditorFlushHandler | null) => void
+  onFilesSelectedPathChange: (projectID: string, tabId: string, path: string | null) => void
+  onOpenProjectFile: (projectID: string, path: string, group: AgentChatGroupId) => void
   onOpenChangeReview: (projectID: string, workspace: string, reviewThreadID: string, groupID: string) => void
   onWorkspaceChanged?: (workspace: string, paths: string[]) => void | Promise<void>
   onRunningChange: (projectID: string, sessionId: string, running: boolean | null) => void
@@ -56,6 +64,9 @@ export function AgentChatTabContent({
   composerSettings,
   tellers,
   imagePresets,
+  autoSaveEnabled,
+  autoSaveDelayMs,
+  filesRefreshSignal,
   renderPage,
   renderReview,
   navigationIntent,
@@ -66,7 +77,9 @@ export function AgentChatTabContent({
   onDocumentReviewFeedbackSubmissionFailed,
   onOpenPage,
   onActivateWorkspace,
-  onPageFlushHandlerChange,
+  onFlushHandlerChange,
+  onFilesSelectedPathChange,
+  onOpenProjectFile,
   onOpenChangeReview,
   onWorkspaceChanged,
   onRunningChange,
@@ -84,9 +97,9 @@ export function AgentChatTabContent({
   )
   const handlePageFlushHandlerChange = useCallback(
     (handler: EditorFlushHandler | null) => {
-      onPageFlushHandlerChange(tab.projectId, tab.id, handler)
+      onFlushHandlerChange(tab.projectId, tab.id, handler)
     },
-    [onPageFlushHandlerChange, tab.id, tab.projectId],
+    [onFlushHandlerChange, tab.id, tab.projectId],
   )
   const openPage = useCallback(
     (pageId: AgentChatPageId) => {
@@ -131,6 +144,22 @@ export function AgentChatTabContent({
           onStatusChange={onTerminalStatusChange}
         />
       )
+    case 'files':
+      return (
+        <Suspense fallback={<div className="flex h-full items-center justify-center text-xs text-[var(--nova-text-muted)]">…</div>}>
+          <FilesTab
+            projectId={tab.projectId}
+            workspace={tab.workspace}
+            selectedPath={tab.selectedPath ?? null}
+            autoSaveEnabled={autoSaveEnabled}
+            autoSaveDelayMs={autoSaveDelayMs}
+            refreshSignal={filesRefreshSignal}
+            onSelectedPathChange={(path) => onFilesSelectedPathChange(tab.projectId, tab.id, path)}
+            onFlushHandlerChange={handlePageFlushHandlerChange}
+            onWorkspaceChanged={onWorkspaceChanged}
+          />
+        </Suspense>
+      )
     case 'page':
       return (
         <>
@@ -143,6 +172,9 @@ export function AgentChatTabContent({
         </>
       )
     case 'review':
-      return <>{renderReview(tab, running)}</>
+      return <>{renderReview(tab, running, {
+        openFile: (path) => onOpenProjectFile(tab.projectId, path, tabGroup(tab)),
+        onWorkspaceChanged: (paths) => onWorkspaceChanged?.(tab.workspace, paths),
+      })}</>
   }
 }

@@ -2,6 +2,7 @@ import { useState, type DragEvent, type ReactNode } from 'react'
 import { useTranslation } from 'react-i18next'
 import {
   FileDiff,
+  FolderTree,
   MessageSquareText,
   Pencil,
   Pin,
@@ -56,6 +57,7 @@ interface AgentChatTabBarProps {
   onMoveTab: (sourceId: string, group: AgentChatGroupId, beforeId: string | null) => void
   onNewAgentTab: (group: AgentChatGroupId) => void
   onNewTerminalTab: (group: AgentChatGroupId, profileId: TerminalProfileId, profileName?: string, command?: string) => void
+  onOpenFiles: (group: AgentChatGroupId) => void
   onOpenPage: (group: AgentChatGroupId, pageId: AgentChatPageId) => void
 }
 
@@ -82,6 +84,7 @@ export function AgentChatTabBar({
   onMoveTab,
   onNewAgentTab,
   onNewTerminalTab,
+  onOpenFiles,
   onOpenPage,
 }: AgentChatTabBarProps) {
   const { t } = useTranslation()
@@ -97,6 +100,8 @@ export function AgentChatTabBar({
         return <MessageSquareText className="size-3.5" />
       case 'terminal':
         return <TerminalSquare className="size-3.5" />
+      case 'files':
+        return <FolderTree className="size-3.5" />
       case 'page':
         return AGENT_CHAT_PAGE_ICONS[tab.pageId]
       case 'review':
@@ -157,6 +162,7 @@ export function AgentChatTabBar({
           pagesEnabled={pagesEnabled}
           onNewAgentTab={onNewAgentTab}
           onNewTerminalTab={onNewTerminalTab}
+          onOpenFiles={onOpenFiles}
           onOpenPage={onOpenPage}
         />
       </DropdownMenuContent>

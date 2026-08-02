@@ -64,7 +64,7 @@ func (s *Store) AppendToolResultCleanup(
 		if !sameToolResultCleanupEventIntent(existing, normalized, branchID) {
 			return ToolResultCleanupEvent{}, fmt.Errorf("%w: tool result cleanup id %q has different content", ErrStoryContextRevisionConflict, normalized.ID)
 		}
-		s.syncStoryIndexProjectionLocked(storyID, meta, len(lines))
+		s.syncStoryIndexProjectionLocked(storyID)
 		return cloneToolResultCleanupEvent(existing), nil
 	}
 	// The branch recent cache is deliberately bounded. A stable retry may be
@@ -80,7 +80,7 @@ func (s *Store) AppendToolResultCleanup(
 		if !sameToolResultCleanupEventIntent(existing, normalized, branchID) {
 			return ToolResultCleanupEvent{}, fmt.Errorf("%w: tool result cleanup id %q has different content", ErrStoryContextRevisionConflict, normalized.ID)
 		}
-		s.syncStoryIndexProjectionLocked(storyID, meta, len(all))
+		s.syncStoryIndexProjectionLocked(storyID)
 		return cloneToolResultCleanupEvent(existing), nil
 	}
 	branch, ok := meta.Branches[branchID]
@@ -108,7 +108,7 @@ func (s *Store) AppendToolResultCleanup(
 	if err := s.appendStoryTransactionLocked(storyID, meta, normalized); err != nil {
 		return ToolResultCleanupEvent{}, err
 	}
-	s.syncStoryIndexProjectionLocked(storyID, meta, len(all)+1)
+	s.syncStoryIndexProjectionLocked(storyID)
 	return cloneToolResultCleanupEvent(normalized), nil
 }
 

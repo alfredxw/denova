@@ -165,6 +165,7 @@ export function persistedTurnEvent(): InteractiveTurnPersistedEvent {
   return {
     story_id: 'story-1',
     branch_id: 'main',
+    turn_count: 1,
     turn: {
       id: 'turn-1',
       parent_id: null,
@@ -291,6 +292,7 @@ export function story(): StorySummary {
     updated_at: '2026-06-27T00:00:00Z',
     branches: 1,
     events: 0,
+    turn_count: 0,
   }
 }
 

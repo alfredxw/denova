@@ -13,6 +13,7 @@ const baseProps = {
   onHide: vi.fn(),
   onNewAgentTab: vi.fn(),
   onNewTerminalTab: vi.fn(),
+  onOpenFiles: vi.fn(),
   onOpenPage: vi.fn(),
 }
 

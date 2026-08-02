@@ -1,4 +1,4 @@
-import { render, screen } from '@testing-library/react'
+import { fireEvent, render, screen } from '@testing-library/react'
 import { describe, expect, it, vi } from 'vitest'
 import { FileTree } from './FileTree'
 import type { FileNode } from '@/hooks/useWorkspace'
@@ -54,6 +54,44 @@ describe('FileTree', () => {
     )
 
     expect(screen.queryByLabelText('更多操作')).not.toBeInTheDocument()
+  })
+
+  it('loads a lazy directory only when it is expanded and reports the persisted state', () => {
+    const onDirectoryExpand = vi.fn()
+    const onDirectoryExpandedChange = vi.fn()
+    render(
+      <FileTree
+        nodes={[{ name: 'src', type: 'dir' }]}
+        selectedFile={null}
+        onSelectFile={vi.fn()}
+        onDirectoryExpand={onDirectoryExpand}
+        onDirectoryExpandedChange={onDirectoryExpandedChange}
+      />,
+    )
+
+    expect(onDirectoryExpand).not.toHaveBeenCalled()
+    fireEvent.click(screen.getByRole('button', { name: 'src' }))
+    expect(onDirectoryExpand).toHaveBeenCalledWith('src')
+    expect(onDirectoryExpandedChange).toHaveBeenCalledWith('src', true)
+
+    fireEvent.click(screen.getByRole('button', { name: 'src' }))
+    expect(onDirectoryExpand).toHaveBeenCalledTimes(1)
+    expect(onDirectoryExpandedChange).toHaveBeenLastCalledWith('src', false)
+  })
+
+  it('restores a persisted lazy expansion without requiring a second click', () => {
+    const onDirectoryExpand = vi.fn()
+    render(
+      <FileTree
+        nodes={[{ name: 'src', type: 'dir' }]}
+        selectedFile={null}
+        onSelectFile={vi.fn()}
+        defaultExpandedPaths={['src']}
+        onDirectoryExpand={onDirectoryExpand}
+      />,
+    )
+
+    expect(onDirectoryExpand).toHaveBeenCalledWith('src')
   })
 
   it('sorts Chinese chapter ordinals in reading order', () => {

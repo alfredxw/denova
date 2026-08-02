@@ -71,7 +71,7 @@ func (s *Store) CreateBranch(storyID string, req CreateBranchRequest) (BranchSum
 		_ = os.RemoveAll(s.directorPlanBranchDir(storyID, branchID))
 		return BranchSummary{}, err
 	}
-	if err := s.updateIndexBranchesLocked(storyID, len(meta.Branches), now, 2); err != nil {
+	if err := s.syncStorySummaryLocked(storyID); err != nil {
 		return BranchSummary{}, err
 	}
 	if closeErr := s.evictStoryJournalLocked(storyID); closeErr != nil {
@@ -108,7 +108,7 @@ func (s *Store) SwitchBranch(storyID, branchID string) error {
 	if err := s.appendStoryTransactionLocked(storyID, meta, event); err != nil {
 		return err
 	}
-	if err := s.touchIndexLocked(storyID, now, 1); err != nil {
+	if err := s.syncStorySummaryLocked(storyID); err != nil {
 		return err
 	}
 	if closeErr := s.evictStoryJournalLocked(storyID); closeErr != nil {
@@ -168,7 +168,7 @@ func (s *Store) DeleteBranch(storyID, branchID string) error {
 	if err := s.appendStoryTransactionLocked(storyID, meta, event); err != nil {
 		return err
 	}
-	if err := s.updateIndexBranchesLocked(storyID, len(meta.Branches), now, 1); err != nil {
+	if err := s.syncStorySummaryLocked(storyID); err != nil {
 		return err
 	}
 	// Archive and index publication own the user-visible transaction. Artifacts

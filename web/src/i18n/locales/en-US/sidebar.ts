@@ -21,6 +21,8 @@ const sidebar = {
   'sidebar.confirmDeleteTitle': 'Confirm Delete?',
   'sidebar.confirmDeleteOne': 'Delete {{path}}. Denova saves a version first, so you can restore it from version history.',
   'sidebar.confirmDeleteMany': 'Delete the selected {{count}} item(s). Denova saves a version first, so you can restore them from version history.',
+  'sidebar.confirmDeleteOnePermanent': 'Delete {{path}} permanently. This cannot be undone.',
+  'sidebar.confirmDeleteManyPermanent': 'Permanently delete the selected {{count}} item(s). This cannot be undone.',
   'sidebar.referenceToChat': 'Reference in Chat',
   'sidebar.revealInProjectFiles': 'Reveal in Project Files',
   'sidebar.copySelected': 'Copy {{count}} Selected',

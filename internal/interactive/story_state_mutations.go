@@ -85,7 +85,7 @@ func (s *Store) AppendStateDelta(storyID string, req AppendStateDeltaRequest) (S
 	if err := s.appendStoryTransactionLocked(storyID, meta, revision); err != nil {
 		return StateDeltaEvent{}, err
 	}
-	if err := s.touchIndexLocked(storyID, now, 1); err != nil {
+	if err := s.syncStorySummaryLocked(storyID); err != nil {
 		return StateDeltaEvent{}, err
 	}
 	return event, nil
@@ -143,7 +143,7 @@ func (s *Store) MarkStateFailed(storyID string, req MarkStateFailedRequest) erro
 	if err := s.appendStoryTransactionLocked(storyID, meta, revision); err != nil {
 		return err
 	}
-	return s.touchIndexLocked(storyID, now, 1)
+	return s.syncStorySummaryLocked(storyID)
 }
 
 func (s *Store) RerollRuleResolution(storyID, resolutionID string, req RuleResolutionRerollRequest) (RuleResolution, error) {
@@ -257,7 +257,7 @@ func (s *Store) RerollRuleResolution(storyID, resolutionID string, req RuleResol
 	if err := s.appendStoryTransactionLocked(storyID, meta, revision); err != nil {
 		return RuleResolution{}, err
 	}
-	if err := s.touchIndexLocked(storyID, now, 1); err != nil {
+	if err := s.syncStorySummaryLocked(storyID); err != nil {
 		return RuleResolution{}, err
 	}
 	return next, nil

@@ -66,5 +66,6 @@ function story(storyDirectorId: string) {
     updated_at: '',
     branches: 1,
     events: 1,
+    turn_count: 1,
   }
 }

@@ -89,7 +89,7 @@ func (s *Store) AppendContextCompactionHealth(
 		if reconcileErr != nil {
 			return ContextCompactionHealthEvent{}, reconcileErr
 		}
-		s.syncStoryIndexProjectionLocked(storyID, meta, len(recent))
+		s.syncStoryIndexProjectionLocked(storyID)
 		return reconciled, nil
 	}
 	if projection.CompactionHealth != nil && projection.CompactionHealth.ID == normalized.ID {
@@ -97,7 +97,7 @@ func (s *Store) AppendContextCompactionHealth(
 		if reconcileErr != nil {
 			return ContextCompactionHealthEvent{}, reconcileErr
 		}
-		s.syncStoryIndexProjectionLocked(storyID, meta, len(recent))
+		s.syncStoryIndexProjectionLocked(storyID)
 		return reconciled, nil
 	}
 	// Health rows do not advance the branch revision, so an exact retry can be
@@ -114,7 +114,7 @@ func (s *Store) AppendContextCompactionHealth(
 		if reconcileErr != nil {
 			return ContextCompactionHealthEvent{}, reconcileErr
 		}
-		s.syncStoryIndexProjectionLocked(storyID, meta, len(all))
+		s.syncStoryIndexProjectionLocked(storyID)
 		return reconciled, nil
 	}
 	if projection.ContextRevision != normalized.ExpectedContextRevision {
@@ -147,7 +147,7 @@ func (s *Store) AppendContextCompactionHealth(
 	if err := s.appendStoryTransactionLocked(storyID, meta, normalized); err != nil {
 		return ContextCompactionHealthEvent{}, err
 	}
-	s.syncStoryIndexProjectionLocked(storyID, meta, len(all)+1)
+	s.syncStoryIndexProjectionLocked(storyID)
 	return normalized, nil
 }
 

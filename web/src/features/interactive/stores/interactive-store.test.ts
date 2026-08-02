@@ -33,6 +33,7 @@ describe('interactive-store', () => {
           updated_at: '',
           branches: 1,
           events: 0,
+          turn_count: 0,
         },
       ],
       'st_1',
@@ -61,6 +62,7 @@ describe('interactive-store', () => {
           updated_at: '',
           branches: 2,
           events: 0,
+          turn_count: 0,
         },
       ],
       'st_1',
@@ -90,6 +92,7 @@ describe('interactive-store', () => {
           updated_at: '',
           branches: 2,
           events: 0,
+          turn_count: 0,
         },
       ],
       'st_1',
@@ -153,6 +156,7 @@ describe('interactive-store', () => {
           updated_at: '',
           branches: 2,
           events: 0,
+          turn_count: 0,
         },
       ],
       'st_1',
@@ -184,6 +188,7 @@ describe('interactive-store', () => {
           updated_at: '',
           branches: 2,
           events: 0,
+          turn_count: 0,
         },
       ],
       'st_1',
@@ -243,6 +248,7 @@ describe('interactive-store', () => {
 
   it('applies a persisted turn through the store only for the active story and branch', () => {
     useInteractiveStore.setState({
+      stories: [storySummary('story-1', '当前故事')],
       currentStoryId: 'story-1',
       currentBranchId: 'main',
       snapshot: snapshot([turn('turn-1', null, '醒来', '雾气很重。')]),
@@ -254,6 +260,7 @@ describe('interactive-store', () => {
     expect(applied?.turns.map((item) => item.id)).toEqual(['turn-1', 'turn-2'])
     expect(useInteractiveStore.getState().snapshot?.current_turn?.id).toBe('turn-2')
     expect(useInteractiveStore.getState().branches[0].head).toBe('turn-2')
+    expect(useInteractiveStore.getState().stories[0].turn_count).toBe(2)
 
     const ignored = useInteractiveStore.getState().applyTurnPersisted({
       ...persistedEvent(turn('other-turn', null, '别处', '不应合并。')),
@@ -261,6 +268,20 @@ describe('interactive-store', () => {
     })
     expect(ignored).toBeNull()
     expect(useInteractiveStore.getState().snapshot?.current_turn?.id).toBe('turn-2')
+  })
+
+  it('syncs the story turn count when a branch snapshot is loaded', () => {
+    useInteractiveStore.setState({
+      stories: [storySummary('story-1', '当前故事')],
+      currentStoryId: 'story-1',
+    })
+
+    useInteractiveStore.getState().setSnapshot({
+      ...snapshot([turn('turn-1', null, '醒来', '雾气很重。')]),
+      turn_count: 7,
+    })
+
+    expect(useInteractiveStore.getState().stories[0].turn_count).toBe(7)
   })
 })
 
@@ -278,6 +299,7 @@ function storySummary(id: string, title: string): StorySummary {
     updated_at: '',
     branches: 1,
     events: 0,
+    turn_count: 0,
   }
 }
 
@@ -309,6 +331,7 @@ function persistedEvent(turnEvent: TurnEvent): InteractiveTurnPersistedEvent {
   return {
     story_id: 'story-1',
     branch_id: 'main',
+    turn_count: 2,
     turn: turnEvent,
     director_plan_status: directorPlanStatus(),
     state: { scene: { location: '门外' } },

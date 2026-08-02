@@ -6,10 +6,9 @@ import type { EditorFlushHandler } from '@/components/Editor/useEditorDraftPersi
  * Tab model for the AgentChat workspace.
  *
  * The centre area of AgentChat is a multi-tab workbench: a tab is either a built-in
- * agent conversation, a local terminal (used to drive codex / claude code and other
- * external agents), or one of the existing project pages (reader, lore, presets,
- * skills, agents, automations) hosted inline so the whole project can be managed
- * from a single screen.
+ * agent conversation, local terminal, project file workspace, review, or one of the
+ * existing project pages hosted inline so the whole project can be managed from a
+ * single screen.
  */
 
 /** Project pages that can be hosted inside an AgentChat tab. */
@@ -99,6 +98,13 @@ export interface AgentChatPageTab extends AgentChatTabCommon {
   pageId: AgentChatPageId
 }
 
+/** General project file workspace. One instance is reused per project. */
+export interface AgentChatFilesTab extends AgentChatTabCommon {
+  kind: 'files'
+  /** Last source path remains with the tab across project and app navigation. */
+  selectedPath?: string
+}
+
 /**
  * Diff review for one change thread. Opening it as a tab is what lets the conversation that
  * produced the changes stay visible on the other side of the split while they are reviewed.
@@ -110,4 +116,10 @@ export interface AgentChatReviewTab extends AgentChatTabCommon {
   groupID?: string
 }
 
-export type AgentChatTab = AgentChatAgentTab | AgentChatTerminalTab | AgentChatPageTab | AgentChatReviewTab
+/** Navigation and mutation capabilities supplied to a mounted review tab. */
+export interface AgentChatReviewRenderContext {
+  openFile: (path: string) => void
+  onWorkspaceChanged: (paths: string[]) => void | Promise<void>
+}
+
+export type AgentChatTab = AgentChatAgentTab | AgentChatTerminalTab | AgentChatFilesTab | AgentChatPageTab | AgentChatReviewTab

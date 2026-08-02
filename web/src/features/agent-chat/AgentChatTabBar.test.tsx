@@ -45,6 +45,7 @@ describe('AgentChatTabBar', () => {
         onMoveTab={vi.fn()}
         onNewAgentTab={vi.fn()}
         onNewTerminalTab={vi.fn()}
+        onOpenFiles={vi.fn()}
         onOpenPage={vi.fn()}
       />,
     )
@@ -88,6 +89,7 @@ describe('AgentChatTabBar', () => {
         onMoveTab={vi.fn()}
         onNewAgentTab={vi.fn()}
         onNewTerminalTab={vi.fn()}
+        onOpenFiles={vi.fn()}
         onOpenPage={vi.fn()}
       />,
     )
@@ -118,6 +120,7 @@ describe('AgentChatTabBar', () => {
           onMoveTab={vi.fn()}
           onNewAgentTab={vi.fn()}
           onNewTerminalTab={vi.fn()}
+          onOpenFiles={vi.fn()}
           onOpenPage={vi.fn()}
         />,
       )
@@ -154,6 +157,7 @@ describe('AgentChatTabBar', () => {
           onMoveTab={vi.fn()}
           onNewAgentTab={vi.fn()}
           onNewTerminalTab={vi.fn()}
+          onOpenFiles={vi.fn()}
           onOpenPage={vi.fn()}
         />,
       )
@@ -191,6 +195,7 @@ describe('AgentChatTabBar', () => {
         onMoveTab={vi.fn()}
         onNewAgentTab={vi.fn()}
         onNewTerminalTab={onNewTerminalTab}
+        onOpenFiles={vi.fn()}
         onOpenPage={vi.fn()}
       />,
     )

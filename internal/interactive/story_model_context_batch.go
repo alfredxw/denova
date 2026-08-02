@@ -205,7 +205,7 @@ func (s *Store) AppendModelContextBatch(storyID string, intent ModelContextBatch
 	if err := s.appendStoryTransactionLocked(storyID, meta, event); err != nil {
 		return ModelContextBatchReceipt{}, err
 	}
-	s.syncStoryIndexProjectionLocked(storyID, meta, len(lines)+1)
+	s.syncStoryIndexProjectionLocked(storyID)
 	return modelContextBatchReceipt(canonical.Identity, event), nil
 }
 

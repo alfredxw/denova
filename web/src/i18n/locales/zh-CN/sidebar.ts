@@ -21,6 +21,8 @@ const sidebar = {
   'sidebar.confirmDeleteTitle': '确认删除？',
   'sidebar.confirmDeleteOne': '将删除 {{path}}。删除前会保存版本，可通过版本历史恢复。',
   'sidebar.confirmDeleteMany': '将删除选中的 {{count}} 项。删除前会保存版本，可通过版本历史恢复。',
+  'sidebar.confirmDeleteOnePermanent': '将永久删除 {{path}}，且无法恢复。',
+  'sidebar.confirmDeleteManyPermanent': '将永久删除选中的 {{count}} 项，且无法恢复。',
   'sidebar.referenceToChat': '引用到 Chat',
   'sidebar.revealInProjectFiles': '在项目文件中显示',
   'sidebar.copySelected': '复制选中 {{count}} 项',

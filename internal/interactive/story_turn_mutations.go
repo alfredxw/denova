@@ -55,7 +55,7 @@ func (s *Store) AppendTurn(storyID string, req AppendTurnRequest) (TurnEvent, er
 	if err := s.appendStoryTransactionLocked(storyID, meta, event); err != nil {
 		return TurnEvent{}, err
 	}
-	if err := s.touchIndexLocked(storyID, now, 1); err != nil {
+	if err := s.syncStorySummaryLocked(storyID); err != nil {
 		return TurnEvent{}, err
 	}
 	return event, nil
@@ -102,7 +102,7 @@ func (s *Store) AppendTurnDisplayEvent(storyID, branchID, turnID string, event D
 	if err := s.appendStoryTransactionLocked(storyID, meta, revision); err != nil {
 		return err
 	}
-	return s.touchIndexLocked(storyID, now, 1)
+	return s.syncStorySummaryLocked(storyID)
 }
 
 func (s *Store) RewindToTurnParent(storyID string, req RewindTurnRequest) error {
@@ -177,5 +177,5 @@ func (s *Store) RewindToTurnParent(storyID string, req RewindTurnRequest) error 
 	if err := s.appendStoryTransactionLocked(storyID, meta, event); err != nil {
 		return err
 	}
-	return s.touchIndexLocked(storyID, now, 1)
+	return s.syncStorySummaryLocked(storyID)
 }

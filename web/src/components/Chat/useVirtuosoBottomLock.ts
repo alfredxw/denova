@@ -13,7 +13,7 @@ export interface ScrollElementBottomIntoViewOptions {
   lockAfterScroll?: boolean
 }
 
-export function useVirtuosoBottomLock({ resetKey, firstItemIndex = 0, itemCount, autoFollowEnabled, awayFromBottomThreshold = VIRTUOSO_AWAY_FROM_BOTTOM_THRESHOLD, resolveScroller }: { resetKey?: string; firstItemIndex?: number; itemCount: number; autoFollowEnabled: boolean; awayFromBottomThreshold?: number; resolveScroller?: () => HTMLElement | null }) {
+export function useVirtuosoBottomLock({ resetKey, itemCount, autoFollowEnabled, awayFromBottomThreshold = VIRTUOSO_AWAY_FROM_BOTTOM_THRESHOLD, resolveScroller }: { resetKey?: string; itemCount: number; autoFollowEnabled: boolean; awayFromBottomThreshold?: number; resolveScroller?: () => HTMLElement | null }) {
   const virtuosoRef = useRef<VirtuosoHandle | null>(null)
   const scrollerElementRef = useRef<HTMLElement | null>(null)
   const lockedRef = useRef(true)
@@ -195,13 +195,15 @@ export function useVirtuosoBottomLock({ resetKey, firstItemIndex = 0, itemCount,
     afterContentInteractionRef.current = false
     lockedRef.current = false
     cancelScheduledScroll()
+    // Virtuoso reports visible ranges in the absolute firstItemIndex coordinate space,
+    // but its imperative scrollToIndex API accepts an index relative to the current data.
     virtuosoRef.current?.scrollToIndex({
-      index: firstItemIndex + Math.max(0, Math.min(itemCount - 1, index)),
+      index: Math.max(0, Math.min(itemCount - 1, index)),
       align: options?.align || 'start',
       behavior: options?.behavior || 'smooth',
     })
     updateAwayFromBottom()
-  }, [cancelScheduledScroll, firstItemIndex, itemCount, updateAwayFromBottom])
+  }, [cancelScheduledScroll, itemCount, updateAwayFromBottom])
 
   const handleScrollElement = useCallback((element: HTMLElement) => {
     const currentTop = element.scrollTop

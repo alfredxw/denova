@@ -2,10 +2,12 @@ package interactive
 
 import (
 	"bufio"
+	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
+	"log/slog"
 	"os"
 	"path/filepath"
 	"strings"
@@ -14,6 +16,8 @@ import (
 	"denova/internal/agents/conversationjournal"
 	"denova/internal/localfs"
 )
+
+const storyIndexSchemaVersion = 1
 
 func (s *Store) storyDir() string {
 	return filepath.Join(s.root, "interactive", "story")
@@ -42,7 +46,7 @@ func (s *Store) usagePath(storyID string) string {
 func (s *Store) readIndexLocked() (Index, error) {
 	data, err := os.ReadFile(s.indexPath())
 	if os.IsNotExist(err) {
-		return Index{Stories: []StorySummary{}}, nil
+		return Index{Version: storyIndexSchemaVersion, Stories: []StorySummary{}}, nil
 	}
 	if err != nil {
 		return Index{}, err
@@ -51,6 +55,27 @@ func (s *Store) readIndexLocked() (Index, error) {
 	if err := json.Unmarshal(data, &index); err != nil {
 		return Index{}, fmt.Errorf("解析互动故事索引失败: %w", err)
 	}
+	if index.Version > storyIndexSchemaVersion {
+		return Index{}, fmt.Errorf("unsupported interactive story index version: %d", index.Version)
+	}
+	if index.Version < storyIndexSchemaVersion {
+		previousVersion := index.Version
+		migrated, migrateErr := s.rebuildStoryIndexLocked(index)
+		if migrateErr != nil {
+			return Index{}, migrateErr
+		}
+		if writeErr := s.writeIndexLocked(migrated); writeErr != nil {
+			return Index{}, writeErr
+		}
+		slog.InfoContext(context.Background(), fmt.Sprintf(
+			"[interactive-story] migrated story index schema from=%d to=%d stories=%d",
+			previousVersion, storyIndexSchemaVersion, len(migrated.Stories),
+		))
+		return migrated, nil
+	}
+	if index.Stories == nil {
+		index.Stories = []StorySummary{}
+	}
 	for i := range index.Stories {
 		index.Stories[i] = normalizeStorySummary(index.Stories[i])
 	}
@@ -58,6 +83,10 @@ func (s *Store) readIndexLocked() (Index, error) {
 }
 
 func (s *Store) writeIndexLocked(index Index) error {
+	index.Version = storyIndexSchemaVersion
+	if index.Stories == nil {
+		index.Stories = []StorySummary{}
+	}
 	data, err := json.MarshalIndent(index, "", "  ")
 	if err != nil {
 		return err
@@ -65,35 +94,75 @@ func (s *Store) writeIndexLocked(index Index) error {
 	return writeAtomicBytes(s.indexPath(), append(data, '\n'), 0o644)
 }
 
-func (s *Store) touchIndexLocked(storyID, updatedAt string, eventDelta int) error {
-	index, err := s.readIndexLocked()
-	if err != nil {
-		return err
-	}
-	for i := range index.Stories {
-		if index.Stories[i].ID == storyID {
-			index.Stories[i].UpdatedAt = updatedAt
-			index.Stories[i].Events += eventDelta
-			return s.writeIndexLocked(index)
+func (s *Store) rebuildStoryIndexLocked(index Index) (Index, error) {
+	stories := make([]StorySummary, 0, len(index.Stories))
+	for _, indexed := range index.Stories {
+		handle, err := s.refreshStoryJournalLocked(indexed.ID, true)
+		if err != nil {
+			return Index{}, fmt.Errorf("rebuild story index failed story_id=%s: %w", indexed.ID, err)
 		}
+		stories = append(stories, storySummaryFromProjection(handle.projection))
 	}
-	return fmt.Errorf("故事不存在: %s", storyID)
+	index.Version = storyIndexSchemaVersion
+	index.Stories = stories
+	return index, nil
 }
 
-func (s *Store) updateIndexBranchesLocked(storyID string, branches int, updatedAt string, eventDelta int) error {
+// publishStorySummaryLocked replaces the rebuildable catalog row from the
+// canonical journal projection. Callers never increment counts independently.
+func (s *Store) publishStorySummaryLocked(storyID string) (StorySummary, error) {
+	handle, err := s.refreshStoryJournalLocked(storyID, true)
+	if err != nil {
+		return StorySummary{}, err
+	}
+	summary := storySummaryFromProjection(handle.projection)
 	index, err := s.readIndexLocked()
 	if err != nil {
-		return err
+		return StorySummary{}, err
 	}
 	for i := range index.Stories {
 		if index.Stories[i].ID == storyID {
-			index.Stories[i].Branches = branches
-			index.Stories[i].UpdatedAt = updatedAt
-			index.Stories[i].Events += eventDelta
-			return s.writeIndexLocked(index)
+			index.Stories[i] = summary
+			if err := s.writeIndexLocked(index); err != nil {
+				return StorySummary{}, err
+			}
+			return summary, nil
 		}
 	}
-	return fmt.Errorf("故事不存在: %s", storyID)
+	index.Stories = append(index.Stories, summary)
+	if strings.TrimSpace(index.CurrentStoryID) == "" {
+		index.CurrentStoryID = storyID
+	}
+	if err := s.writeIndexLocked(index); err != nil {
+		return StorySummary{}, err
+	}
+	return summary, nil
+}
+
+func (s *Store) syncStorySummaryLocked(storyID string) error {
+	_, err := s.publishStorySummaryLocked(storyID)
+	return err
+}
+
+func storySummaryFromProjection(projection *storyJournalProjection) StorySummary {
+	if projection == nil {
+		return StorySummary{}
+	}
+	turnCount := 0
+	if branch := projection.Branches[projection.Meta.CurrentBranch]; branch != nil {
+		turnCount = max(0, branch.Depth)
+	}
+	meta := projection.Meta
+	return normalizeStorySummary(StorySummary{
+		ID: meta.StoryID, Title: meta.Title, Origin: meta.Origin,
+		StoryTellerID: meta.StoryTellerID, StoryDirectorID: normalizedStoryDirectorID(meta.StoryDirectorID),
+		DirectorRunPolicy: cloneStoryDirectorRunPolicy(meta.DirectorRunPolicy), ModuleRefs: cloneStoryDirectorModuleRefs(meta.ModuleRefs),
+		ReplyTargetChars: meta.ReplyTargetChars, ChoiceCount: meta.ChoiceCount,
+		Opening: meta.Opening, ImageSettings: meta.ImageSettings,
+		StateSchemaPolicy: cloneStoryStateSchemaPolicy(meta.StateSchemaPolicy),
+		CreatedAt:         meta.CreatedAt, UpdatedAt: meta.UpdatedAt,
+		Branches: len(meta.Branches), Events: projection.EventCount, TurnCount: turnCount,
+	})
 }
 
 func (s *Store) readStoryLocked(storyID string) (StoryMeta, []StoryEventRecord, error) {

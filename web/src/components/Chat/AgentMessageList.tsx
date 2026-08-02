@@ -1,9 +1,9 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef } from 'react'
-import type { CSSProperties, ReactNode, RefCallback } from 'react'
+import type { CSSProperties, ReactNode, RefCallback, UIEvent } from 'react'
 import { useTranslation } from 'react-i18next'
 import { motion } from 'motion/react'
 import { Virtuoso } from 'react-virtuoso'
-import type { Components, ContextProp, ListItem, ListRange } from 'react-virtuoso'
+import type { Components, ContextProp, ListItem } from 'react-virtuoso'
 import type { AgentAskAnswer, AgentAskResolution, ChapterIllustration, ChatMessage } from '@/lib/api'
 import type { AgentUIMessage } from '@/lib/agent-ui'
 import {
@@ -114,6 +114,7 @@ interface MessageListVirtuosoContext {
 export function MessageList({ messages, isStreaming, isExecutionActive = isStreaming, activityContent, highlightDialogue = false, scrollResetKey, bottomPaddingClassName = '', bottomPaddingPx, afterContent, hasEarlierMessages = false, isLoadingEarlierMessages = false, onLoadEarlierMessages, timelineAttachments = [], messageStyle, collapseTraceGroups = false, activeTraceDisplay = 'expanded', canMutateMessage, onEditMessage, onEditAssistantReply, onCreateBranch, onRegenerateMessage, onSwitchMessageVersion, onOpenSubAgentSession, onInsertIllustration, onGenerateInteractiveImage, generatingInteractiveImageTurnId, activeSubAgentSessionKey, onApprovePlan, onContinuePlan, onExitPlanMode, onOpenTrace, onResolveAsk, turnScrollRequest, onVisibleTurnAnchorChange }: MessageListProps) {
   const { t } = useTranslation()
   const containerRef = useRef<HTMLDivElement | null>(null)
+  const renderedItemsRef = useRef<ListItem<AgentChatListItem>[]>([])
   const lastVisibleTurnAnchorRef = useRef('')
   const lastTurnScrollRequestIdRef = useRef<number | null>(null)
   const views = useMemo(() => buildAgentMessageViews(messages), [messages])
@@ -147,7 +148,6 @@ export function MessageList({ messages, isStreaming, isExecutionActive = isStrea
   )
   const scrollLock = useVirtuosoBottomLock({
     resetKey: scrollResetKey,
-    firstItemIndex,
     itemCount: listItems.length,
     autoFollowEnabled: isStreaming,
     resolveScroller: resolveMessageScroller,
@@ -201,33 +201,36 @@ export function MessageList({ messages, isStreaming, isExecutionActive = isStrea
     lastTurnScrollRequestIdRef.current = turnScrollRequest.requestId
     const targetIndex = listItems.findIndex((item) => chatListItemNavigationAnchor(item) === turnScrollRequest.anchorId)
     if (targetIndex < 0) return
-    scrollLock.scrollToIndex(targetIndex, { align: 'start', behavior: 'smooth' })
+    scrollLock.scrollToIndex(targetIndex, { align: 'start', behavior: 'auto' })
   }, [listItems, scrollLock, turnScrollRequest])
 
-  const notifyVisibleTurnAnchor = useCallback((startIndex: number, endIndex: number) => {
+  const notifyVisibleTurnAnchor = useCallback((renderedItems: ListItem<AgentChatListItem>[], viewportStartOverride?: number) => {
     if (!onVisibleTurnAnchorChange) return
-    const relativeStartIndex = startIndex - firstItemIndex
-    const relativeEndIndex = endIndex - firstItemIndex
-    for (let index = Math.max(0, relativeStartIndex); index <= Math.min(listItems.length - 1, relativeEndIndex); index += 1) {
-      const anchorId = chatListItemNavigationAnchor(listItems[index])
+    const viewportStart = viewportStartOverride ?? resolveMessageScroller()?.scrollTop ?? 0
+    for (const renderedItem of renderedItems) {
+      // itemsRendered includes reverse overscan. Ignore rows ending at or above the
+      // viewport so a top-aligned turn is not attributed to the preceding turn.
+      if (renderedItem.offset + renderedItem.size <= viewportStart) continue
+      const relativeIndex = renderedItem.index - firstItemIndex
+      const item = renderedItem.data || listItems[relativeIndex]
+      const anchorId = chatListItemNavigationAnchor(item)
       if (!anchorId) continue
       if (lastVisibleTurnAnchorRef.current === anchorId) return
       lastVisibleTurnAnchorRef.current = anchorId
       onVisibleTurnAnchorChange(anchorId)
       return
     }
-  }, [firstItemIndex, listItems, onVisibleTurnAnchorChange])
-
-  const handleRangeChanged = useCallback((range: ListRange) => {
-    notifyVisibleTurnAnchor(range.startIndex, range.endIndex)
-  }, [notifyVisibleTurnAnchor])
+  }, [firstItemIndex, listItems, onVisibleTurnAnchorChange, resolveMessageScroller])
 
   const handleItemsRendered = useCallback((items: ListItem<AgentChatListItem>[]) => {
-    const firstIndex = items[0]?.index
-    const lastIndex = items[items.length - 1]?.index
-    if (firstIndex === undefined || lastIndex === undefined) return
-    notifyVisibleTurnAnchor(firstIndex, lastIndex)
+    renderedItemsRef.current = items
+    notifyVisibleTurnAnchor(items)
   }, [notifyVisibleTurnAnchor])
+
+  const handleMessageScroll = useCallback((event: UIEvent<HTMLDivElement>) => {
+    scrollLock.onScroll(event)
+    notifyVisibleTurnAnchor(renderedItemsRef.current, event.currentTarget.scrollTop)
+  }, [notifyVisibleTurnAnchor, scrollLock.onScroll])
 
   const itemContent = useCallback((index: number, item?: AgentChatListItem) => {
     const resolvedItem = item || listItems[index - firstItemIndex]
@@ -268,7 +271,7 @@ export function MessageList({ messages, isStreaming, isExecutionActive = isStrea
       <Virtuoso
         ref={scrollLock.virtuosoRef}
         scrollerRef={scrollLock.scrollerRef}
-        onScroll={scrollLock.onScroll}
+        onScroll={handleMessageScroll}
         onWheel={scrollLock.onWheel}
         onKeyDown={scrollLock.onKeyDown}
         onPointerDown={scrollLock.onPointerDown}
@@ -282,7 +285,6 @@ export function MessageList({ messages, isStreaming, isExecutionActive = isStrea
         components={MESSAGE_LIST_COMPONENTS}
         computeItemKey={(index, item) => item?.key || listItems[index - firstItemIndex]?.key || `agent-chat-item-${index}`}
         itemContent={itemContent}
-        rangeChanged={handleRangeChanged}
         itemsRendered={handleItemsRendered}
         overscan={MESSAGE_LIST_OVERSCAN}
         increaseViewportBy={MESSAGE_LIST_INCREASE_VIEWPORT_BY}

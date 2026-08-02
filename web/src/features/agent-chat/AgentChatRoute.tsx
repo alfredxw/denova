@@ -14,7 +14,7 @@ import type { FileNode } from '@/hooks/useWorkspace'
 import type { WorkspaceSummary } from '@/lib/api'
 import { AgentChatReader, type AgentChatSaveFile } from './AgentChatReader'
 import { AgentChatView } from './AgentChatView'
-import type { AgentChatPageId, AgentChatPageRenderContext, AgentChatReviewTab } from './types'
+import type { AgentChatPageId, AgentChatPageRenderContext, AgentChatReviewRenderContext, AgentChatReviewTab } from './types'
 
 const LoreWorkspaceTab = lazy(() => import('@/features/lore/LoreWorkspaceTab').then((module) => ({ default: module.LoreWorkspaceTab })))
 const SettingPanel = lazy(() => import('@/features/interactive/components/SettingPanel').then((module) => ({ default: module.SettingPanel })))
@@ -32,6 +32,8 @@ interface AgentChatRouteProps {
   selectedFile: string | null
   tellers: Teller[]
   imagePresets: ImagePreset[]
+  autoSaveEnabled?: boolean
+  autoSaveDelayMs?: number
   documentReview: DocumentReviewController
   documentReviewFeedback?: ReviewFeedbackSelection | null
   onDocumentReviewFeedbackRemove?: (selection: ReviewFeedbackSelection, commentID: string) => void
@@ -46,8 +48,7 @@ interface AgentChatRouteProps {
   onActivateWorkspace: (workspace: string) => Promise<boolean>
   /** Registers every mounted project-page draft with the workbench navigation guard. */
   onFlushHandlerChange?: (handler: EditorFlushHandler | null) => void
-  /** Opens a file from a diff. The navigation result is ignored; the review tab stays open. */
-  onOpenFile?: (path: string) => boolean | void | Promise<boolean | void>
+  onWorkspaceChanged?: (paths: string[]) => void | Promise<void>
 }
 
 /**
@@ -62,6 +63,8 @@ function AgentChatRouteComponent({
   selectedFile,
   tellers,
   imagePresets,
+  autoSaveEnabled = true,
+  autoSaveDelayMs = 1200,
   documentReview,
   documentReviewFeedback,
   onDocumentReviewFeedbackRemove,
@@ -73,7 +76,7 @@ function AgentChatRouteComponent({
   onSaveFile,
   onActivateWorkspace,
   onFlushHandlerChange,
-  onOpenFile,
+  onWorkspaceChanged,
 }: AgentChatRouteProps) {
   const { t } = useTranslation()
 
@@ -149,7 +152,7 @@ function AgentChatRouteComponent({
     </Suspense>
   ), [pageContent, t])
 
-  const renderReview = useCallback((tab: AgentChatReviewTab, disabled: boolean): ReactNode => (
+  const renderReview = useCallback((tab: AgentChatReviewTab, disabled: boolean, context: AgentChatReviewRenderContext): ReactNode => (
     <Suspense fallback={<div className="flex h-full items-center justify-center text-xs text-[var(--nova-text-muted)]">{t('router.loading')}</div>}>
       <ChangeReviewWorkspace
         workspace={tab.workspace}
@@ -157,16 +160,19 @@ function AgentChatRouteComponent({
         scopeRequest={tab.groupID ? { id: 0, threadID: tab.threadID, groupID: tab.groupID } : null}
         disabled={disabled}
         selectedPath={tab.workspace === workspace ? selectedFile : null}
-        onOpenFile={tab.workspace === workspace && onOpenFile ? async (path) => { await onOpenFile(path) } : undefined}
+        onOpenFile={(path) => context.openFile(path)}
+        onWorkspaceChanged={context.onWorkspaceChanged}
       />
     </Suspense>
-  ), [onOpenFile, selectedFile, t, workspace])
+  ), [selectedFile, t, workspace])
 
   return (
     <AgentChatView
       composerSettings={composerSettings}
       tellers={tellers}
       imagePresets={imagePresets}
+      autoSaveEnabled={autoSaveEnabled}
+      autoSaveDelayMs={autoSaveDelayMs}
       renderPage={renderPage}
       renderReview={renderReview}
       documentReviewWorkspace={workspace}
@@ -176,6 +182,9 @@ function AgentChatRouteComponent({
       onDocumentReviewFeedbackSubmissionFailed={onDocumentReviewFeedbackSubmissionFailed}
       onActivateWorkspace={onActivateWorkspace}
       onFlushHandlerChange={onFlushHandlerChange}
+      onWorkspaceChanged={(changedWorkspace, paths) => (
+        changedWorkspace === workspace ? onWorkspaceChanged?.(paths) : undefined
+      )}
     />
   )
 }

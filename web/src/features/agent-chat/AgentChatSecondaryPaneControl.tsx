@@ -21,6 +21,7 @@ interface AgentChatSecondaryPaneControlProps {
   onHide: () => void
   onNewAgentTab: (group: AgentChatGroupId) => void
   onNewTerminalTab: (group: AgentChatGroupId, profileId: TerminalProfileId, profileName?: string) => void
+  onOpenFiles: (group: AgentChatGroupId) => void
   onOpenPage: (group: AgentChatGroupId, pageId: AgentChatPageId) => void
 }
 
@@ -41,6 +42,7 @@ export function AgentChatSecondaryPaneControl({
   onHide,
   onNewAgentTab,
   onNewTerminalTab,
+  onOpenFiles,
   onOpenPage,
 }: AgentChatSecondaryPaneControlProps) {
   const { t } = useTranslation()
@@ -83,6 +85,7 @@ export function AgentChatSecondaryPaneControl({
           pagesEnabled={pagesEnabled}
           onNewAgentTab={onNewAgentTab}
           onNewTerminalTab={onNewTerminalTab}
+          onOpenFiles={onOpenFiles}
           onOpenPage={onOpenPage}
         />
       </DropdownMenuContent>

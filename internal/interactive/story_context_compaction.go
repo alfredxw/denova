@@ -97,7 +97,7 @@ func (s *Store) AppendContextCompaction(storyID, branchID string, event ContextC
 	if err := s.appendStoryTransactionLocked(storyID, meta, event); err != nil {
 		return ContextCompactionEvent{}, err
 	}
-	if err := s.touchIndexLocked(storyID, now, 1); err != nil {
+	if err := s.syncStorySummaryLocked(storyID); err != nil {
 		return ContextCompactionEvent{}, err
 	}
 	return event, nil
@@ -154,7 +154,7 @@ func (s *Store) AppendContextCompactionRemoval(storyID, branchID string, event C
 	if err := s.appendStoryTransactionLocked(storyID, meta, event); err != nil {
 		return ContextCompactionRemovalEvent{}, err
 	}
-	if err := s.touchIndexLocked(storyID, now, 1); err != nil {
+	if err := s.syncStorySummaryLocked(storyID); err != nil {
 		return ContextCompactionRemovalEvent{}, err
 	}
 	return event, nil

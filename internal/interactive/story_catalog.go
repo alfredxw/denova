@@ -375,32 +375,7 @@ func (s *Store) UpdateStory(storyID string, req UpdateStoryRequest) (StorySummar
 	if err := s.appendStoryTransactionLocked(storyID, meta, appendedEvents...); err != nil {
 		return StorySummary{}, err
 	}
-	index, err := s.readIndexLocked()
-	if err != nil {
-		return StorySummary{}, err
-	}
-	for i := range index.Stories {
-		if index.Stories[i].ID == storyID {
-			index.Stories[i].Title = meta.Title
-			index.Stories[i].Origin = meta.Origin
-			index.Stories[i].StoryTellerID = meta.StoryTellerID
-			index.Stories[i].StoryDirectorID = normalizedStoryDirectorID(meta.StoryDirectorID)
-			index.Stories[i].DirectorRunPolicy = cloneStoryDirectorRunPolicy(meta.DirectorRunPolicy)
-			index.Stories[i].ModuleRefs = cloneStoryDirectorModuleRefs(meta.ModuleRefs)
-			index.Stories[i].ReplyTargetChars = meta.ReplyTargetChars
-			index.Stories[i].ChoiceCount = meta.ChoiceCount
-			index.Stories[i].Opening = meta.Opening
-			index.Stories[i].ImageSettings = meta.ImageSettings
-			index.Stories[i].StateSchemaPolicy = cloneStoryStateSchemaPolicy(meta.StateSchemaPolicy)
-			index.Stories[i].Events += len(appendedEvents)
-			index.Stories[i].UpdatedAt = now
-			if err := s.writeIndexLocked(index); err != nil {
-				return StorySummary{}, err
-			}
-			return index.Stories[i], nil
-		}
-	}
-	return StorySummary{}, fmt.Errorf("故事不存在: %s", storyID)
+	return s.publishStorySummaryLocked(storyID)
 }
 
 func storyConfigUpdatedFields(req UpdateStoryRequest) []string {

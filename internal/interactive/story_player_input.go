@@ -115,7 +115,7 @@ func (s *Store) CommitPlayerInput(storyID string, intent PlayerInputIntent) (Pla
 	if appendErr := s.appendStoryTransactionLocked(storyID, meta, event); appendErr != nil {
 		return PlayerInputReceipt{}, appendErr
 	}
-	s.syncStoryIndexProjectionLocked(storyID, meta, len(lines)+1)
+	s.syncStoryIndexProjectionLocked(storyID)
 	return playerInputReceipt(canonical.Identity, event), nil
 }
 

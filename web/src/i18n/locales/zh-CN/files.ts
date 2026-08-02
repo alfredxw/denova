@@ -1,0 +1,25 @@
+const files = {
+  'files.title': '文件',
+  'files.tree.title': '项目文件',
+  'files.tree.open': '显示文件树',
+  'files.tree.hide': '隐藏文件树',
+  'files.tree.loading': '正在加载项目文件…',
+  'files.tree.empty': '项目目录为空。',
+  'files.tree.showIgnored': '显示生成目录',
+  'files.tree.hideIgnored': '隐藏生成目录',
+  'files.tree.generatedHint': '包括 node_modules、dist、build、target、vendor 和 coverage。',
+  'files.tree.refreshFailed': '刷新项目文件失败',
+  'files.editor.noSelection': '选择一个文件',
+  'files.editor.noSelectionDescription': '从右侧项目文件树选择文件，即可查看或编辑源码。',
+  'files.editor.loading': '正在加载文件…',
+  'files.editor.loadFailed': '加载文件失败',
+  'files.editor.binaryTitle': '二进制文件',
+  'files.editor.binaryDescription': '此文件不能作为文本编辑。',
+  'files.editor.imageAlt': '{{path}} 的预览',
+  'files.editor.save': '保存文件',
+  'files.editor.readOnly': '只读',
+  'files.editor.source': '{{path}} 的源码编辑器',
+  'files.operation.failed': '文件操作失败',
+} as const
+
+export default files

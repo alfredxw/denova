@@ -5,6 +5,7 @@ import {
   BookOpen,
   Clock3,
   Database,
+  FolderTree,
   MessageSquareText,
   SlidersHorizontal,
   Sparkles,
@@ -36,6 +37,7 @@ interface AgentChatNewTabMenuItemsProps {
   pagesEnabled: boolean
   onNewAgentTab: (group: AgentChatGroupId) => void
   onNewTerminalTab: (group: AgentChatGroupId, profileId: TerminalProfileId, profileName?: string) => void
+  onOpenFiles: (group: AgentChatGroupId) => void
   onOpenPage: (group: AgentChatGroupId, pageId: AgentChatPageId) => void
 }
 
@@ -47,6 +49,7 @@ export function AgentChatNewTabMenuItems({
   pagesEnabled,
   onNewAgentTab,
   onNewTerminalTab,
+  onOpenFiles,
   onOpenPage,
 }: AgentChatNewTabMenuItemsProps) {
   const { t } = useTranslation()
@@ -66,6 +69,10 @@ export function AgentChatNewTabMenuItems({
           {command.name}
         </DropdownMenuItem>
       ))}
+      <DropdownMenuItem onSelect={() => onOpenFiles(group)}>
+        <FolderTree />
+        {t('files.title')}
+      </DropdownMenuItem>
       {pagesEnabled ? <DropdownMenuSeparator /> : null}
       {pagesEnabled
         ? AGENT_CHAT_PAGE_IDS.map((pageId) => (

@@ -30,6 +30,7 @@ type InteractiveAppService struct {
 type InteractiveTurnPersistedEvent struct {
 	StoryID                  string                                     `json:"story_id"`
 	BranchID                 string                                     `json:"branch_id"`
+	TurnCount                int                                        `json:"turn_count"`
 	Turn                     interactive.TurnEvent                      `json:"turn"`
 	DirectorPlanStatus       *interactive.DirectorPlanStatus            `json:"director_plan_status,omitempty"`
 	State                    map[string]any                             `json:"state"`

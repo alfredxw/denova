@@ -109,7 +109,7 @@ func (s *Store) UpdateTurnNarrative(storyID string, req UpdateTurnNarrativeReque
 	if err := s.appendStoryTransactionLocked(storyID, meta, newEvents...); err != nil {
 		return UpdateTurnNarrativeResult{}, err
 	}
-	if err := s.touchIndexLocked(storyID, now, len(newEvents)); err != nil {
+	if err := s.syncStorySummaryLocked(storyID); err != nil {
 		return UpdateTurnNarrativeResult{}, err
 	}
 	return result, nil

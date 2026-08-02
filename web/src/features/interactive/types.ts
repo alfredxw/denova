@@ -19,6 +19,7 @@ export interface StorySummary {
   updated_at: string
   branches: number
   events: number
+  turn_count: number
 }
 
 export type StoryStateSchemaMode = 'adapt_template' | 'fixed_template' | 'generate'
@@ -1008,6 +1009,7 @@ interface StoryGraph {
 export interface InteractiveTurnPersistedEvent {
   story_id: string
   branch_id: string
+  turn_count: number
   turn: TurnEvent
   director_plan?: DirectorPlan
   director_plan_status?: DirectorPlanStatus

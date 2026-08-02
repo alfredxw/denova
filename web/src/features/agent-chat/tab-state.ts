@@ -88,6 +88,10 @@ function parseTab(raw: unknown): AgentChatTab | null {
     }
     case 'page':
       return isPageId(value.pageId) ? { kind: 'page', ...common, pageId: value.pageId } : null
+    case 'files': {
+      const selectedPath = typeof value.selectedPath === 'string' ? value.selectedPath.trim() : ''
+      return { kind: 'files', ...common, selectedPath: selectedPath || undefined }
+    }
     case 'review':
       return typeof value.threadID === 'string' && value.threadID
         ? {
@@ -193,7 +197,9 @@ export function reconcileWorkbenchProjects(state: AgentChatWorkbenchState, proje
     if (!source) continue
     const visibleSessionIDs = new Set(project.sessions.map((session) => session.id))
     const sessionListComplete = project.total <= project.sessions.length
-    const projectTabs = project.type === 'general' ? source.tabs.filter((tab) => tab.kind === 'agent' || tab.kind === 'terminal') : source.tabs
+    const projectTabs = project.type === 'general'
+      ? source.tabs.filter((tab) => tab.kind === 'agent' || tab.kind === 'terminal' || tab.kind === 'files')
+      : source.tabs
     // Durable sessions are authoritative only when the project response is complete. If the
     // backend truncated a large history, keep unknown tabs rather than discarding valid data.
     const eligibleTabs = projectTabs.filter((tab) =>
@@ -263,14 +269,15 @@ export function persistTabBarExpanded(expanded: boolean) {
 }
 
 /**
- * Deduplication rules: each project page keeps a single instance (one React subtree cannot
- * be mounted twice), conversation tabs are unique per session, terminal tabs are always distinct.
+ * Deduplication rules: each project page and Files workspace keeps a single instance,
+ * conversation tabs are unique per session, and terminal tabs are always distinct.
  */
 export function dedupeTabs(tabs: AgentChatTab[]): AgentChatTab[] {
   const seenPages = new Set<AgentChatPageId>()
   const seenSessions = new Set<string>()
   const seenDraftGroups = new Set<AgentChatGroupId>()
   const seenThreads = new Set<string>()
+  let seenFiles = false
   const seenIds = new Set<string>()
   const out: AgentChatTab[] = []
   for (const tab of tabs) {
@@ -291,6 +298,10 @@ export function dedupeTabs(tabs: AgentChatTab[]): AgentChatTab[] {
     if (tab.kind === 'review') {
       if (seenThreads.has(tab.threadID)) continue
       seenThreads.add(tab.threadID)
+    }
+    if (tab.kind === 'files') {
+      if (seenFiles) continue
+      seenFiles = true
     }
     seenIds.add(tab.id)
     out.push(tab)
@@ -342,9 +353,15 @@ export function appendTab(tabs: AgentChatTab[], next: AgentChatTab): { tabs: Age
       return tab.sessionId === next.sessionId
     }
     if (tab.kind === 'review' && next.kind === 'review') return tab.threadID === next.threadID
+    if (tab.kind === 'files' && next.kind === 'files') return true
     return false
   })
-  if (existing) return { tabs, activeId: existing.id }
+  if (existing) {
+    const updated = existing.kind === 'files' && next.kind === 'files' && next.selectedPath
+      ? tabs.map((tab) => tab.id === existing.id ? { ...tab, selectedPath: next.selectedPath } : tab)
+      : tabs
+    return { tabs: updated, activeId: existing.id }
+  }
   return {
     tabs: orderTabs(trimTabs(dedupeTabs([...tabs, next]))),
     activeId: next.id,

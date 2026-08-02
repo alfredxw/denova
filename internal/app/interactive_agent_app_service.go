@@ -348,6 +348,7 @@ func emitInteractiveTurnPersistedResult(store *interactive.Store, storyID string
 	event := InteractiveTurnPersistedEvent{
 		StoryID:                  storyID,
 		BranchID:                 snapshot.BranchID,
+		TurnCount:                snapshot.TurnCount,
 		Turn:                     persistedTurn,
 		DirectorPlanStatus:       snapshot.DirectorPlanStatus,
 		State:                    snapshot.State,

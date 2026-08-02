@@ -1009,6 +1009,8 @@ export function ModeRouter(props: ModeRouterProps) {
             selectedFile={selectedFile}
             tellers={tellers}
             imagePresets={imagePresets}
+            autoSaveEnabled={editorAutoSaveEnabled}
+            autoSaveDelayMs={editorAutoSaveDelayMs}
             documentReview={documentReviewController}
             documentReviewFeedback={documentReview.feedback}
             onDocumentReviewFeedbackRemove={removeActiveReviewFeedback}
@@ -1020,7 +1022,7 @@ export function ModeRouter(props: ModeRouterProps) {
             onSaveFile={onSaveCurrentFile}
             onActivateWorkspace={quickSwitchBook}
             onFlushHandlerChange={handleAgentChatFlushHandlerChange}
-            onOpenFile={selectWorkspacePath}
+            onWorkspaceChanged={onWorkspaceChanged}
           />
         </RetainedMainRouteLayer>
       )}

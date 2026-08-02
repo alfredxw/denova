@@ -158,7 +158,7 @@ describe('NewStorySetupPanel', () => {
   })
 
   it('prefills an existing empty story when returning from opening', () => {
-    render(<NewStorySetupPanel stories={[]} story={{ id: 'st_1', title: '返程故事', origin: '已有简介', story_teller_id: 'classic', story_director_id: 'default', module_refs: { rule_system_id: 'rules' }, state_schema_policy: { mode: 'fixed_template' }, choice_count: 6, reply_target_chars: 1800, opening: { mode: 'ai' }, created_at: '', updated_at: '', branches: 1, events: 0 }} tellers={[]} directors={[director]} imagePresets={[]} onCancel={vi.fn()} onCreate={vi.fn()} />)
+    render(<NewStorySetupPanel stories={[]} story={{ id: 'st_1', title: '返程故事', origin: '已有简介', story_teller_id: 'classic', story_director_id: 'default', module_refs: { rule_system_id: 'rules' }, state_schema_policy: { mode: 'fixed_template' }, choice_count: 6, reply_target_chars: 1800, opening: { mode: 'ai' }, created_at: '', updated_at: '', branches: 1, events: 0, turn_count: 0 }} tellers={[]} directors={[director]} imagePresets={[]} onCancel={vi.fn()} onCreate={vi.fn()} />)
     expect(screen.getByRole('heading', { name: '编辑故事线配置' })).toBeInTheDocument()
     expect(screen.getByLabelText('故事线名称')).toHaveValue('返程故事')
     expect(screen.getByPlaceholderText('开端描述')).toHaveValue('已有简介')
