@@ -65,3 +65,21 @@ func TestPlanTextEditsReportsEveryOverlapAgainstContainingRange(t *testing.T) {
 		}
 	}
 }
+
+func TestPlanTextEditsNeverMatchesTextProducedByAnEarlierItem(t *testing.T) {
+	result, applied, err := planTextEdits("ideas.md", "alpha beta", []TextEdit{
+		{OldString: "alpha", NewString: "gamma"},
+		{OldString: "gamma", NewString: "delta"},
+	}, false)
+	if result != "" || applied != nil {
+		t.Fatalf("dependent batch produced a plan: result=%q applied=%#v", result, applied)
+	}
+	var changeErr *Error
+	if !errors.As(err, &changeErr) {
+		t.Fatalf("dependent batch error = %#v", err)
+	}
+	issues, ok := changeErr.Details["issues"].([]editValidationIssue)
+	if !ok || len(issues) != 1 || issues[0].EditIndex != 1 || issues[0].Code != editIssueNotFound {
+		t.Fatalf("dependent batch issues = %#v", changeErr.Details["issues"])
+	}
+}
