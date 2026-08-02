@@ -19,6 +19,14 @@ const (
 	defaultRunTraceRecordCap = 500
 )
 
+// TraceLocation identifies the durable Project state that owns Agent traces.
+// StateRoot is authoritative for registered Projects; Workspace remains a
+// read-only compatibility source for traces created before state migration.
+type TraceLocation struct {
+	Workspace string
+	StateRoot string
+}
+
 type RunTraceSummary struct {
 	ID                    string    `json:"id"`
 	CreatedAt             time.Time `json:"created_at"`
@@ -76,9 +84,9 @@ type RunTraceRecord struct {
 	Data      map[string]any `json:"data,omitempty"`
 }
 
-func ListRunTraces(workspace string, limit int) ([]RunTraceSummary, error) {
-	dir := runTraceDir(workspace)
-	if dir == "" {
+func ListRunTraces(location TraceLocation, limit int) ([]RunTraceSummary, error) {
+	dirs := runTraceDirs(location)
+	if len(dirs) == 0 {
 		return nil, nil
 	}
 	if limit <= 0 {
@@ -87,19 +95,31 @@ func ListRunTraces(workspace string, limit int) ([]RunTraceSummary, error) {
 	if limit > maxRunTraceLimit {
 		limit = maxRunTraceLimit
 	}
-	entries, err := os.ReadDir(dir)
-	if os.IsNotExist(err) {
-		return []RunTraceSummary{}, nil
-	}
-	if err != nil {
-		return nil, err
-	}
-	files := make([]string, 0, len(entries))
-	for _, entry := range entries {
-		if entry.IsDir() || filepath.Ext(entry.Name()) != ".jsonl" {
+	// The first directory is authoritative. Deduplication keeps its copy when
+	// the copy-only migration left the same Run ID in the legacy workspace.
+	filesByID := make(map[string]string)
+	for _, dir := range dirs {
+		entries, err := os.ReadDir(dir)
+		if os.IsNotExist(err) {
 			continue
 		}
-		files = append(files, filepath.Join(dir, entry.Name()))
+		if err != nil {
+			return nil, err
+		}
+		for _, entry := range entries {
+			if entry.IsDir() || filepath.Ext(entry.Name()) != ".jsonl" {
+				continue
+			}
+			id := strings.TrimSuffix(entry.Name(), filepath.Ext(entry.Name()))
+			if _, exists := filesByID[id]; exists {
+				continue
+			}
+			filesByID[id] = filepath.Join(dir, entry.Name())
+		}
+	}
+	files := make([]string, 0, len(filesByID))
+	for _, file := range filesByID {
+		files = append(files, file)
 	}
 	sort.Slice(files, func(i, j int) bool {
 		left, _ := os.Stat(files[i])
@@ -123,8 +143,8 @@ func ListRunTraces(workspace string, limit int) ([]RunTraceSummary, error) {
 	return result, nil
 }
 
-func ReadRunTrace(workspace, id string) (RunTrace, error) {
-	path, err := runTracePath(workspace, id)
+func ReadRunTrace(location TraceLocation, id string) (RunTrace, error) {
+	path, err := resolveRunTracePath(location, id)
 	if err != nil {
 		return RunTrace{}, err
 	}
@@ -133,8 +153,8 @@ func ReadRunTrace(workspace, id string) (RunTrace, error) {
 
 // ExportRunTrace returns the complete persisted JSONL file for one run.
 // The caller owns any HTTP download behavior and must not expose arbitrary files.
-func ExportRunTrace(workspace, id string) (RunTraceExport, error) {
-	path, err := runTracePath(workspace, id)
+func ExportRunTrace(location TraceLocation, id string) (RunTraceExport, error) {
+	path, err := resolveRunTracePath(location, id)
 	if err != nil {
 		return RunTraceExport{}, err
 	}
@@ -148,16 +168,33 @@ func ExportRunTrace(workspace, id string) (RunTraceExport, error) {
 	}, nil
 }
 
-func runTracePath(workspace, id string) (string, error) {
+func resolveRunTracePath(location TraceLocation, id string) (string, error) {
 	id = strings.TrimSpace(id)
 	if id == "" || strings.ContainsAny(id, `/\`) {
 		return "", fmt.Errorf("invalid run id")
 	}
-	dir := runTraceDir(workspace)
-	if dir == "" {
-		return "", fmt.Errorf("workspace trace directory unavailable")
+	dirs := runTraceDirs(location)
+	if len(dirs) == 0 {
+		return "", fmt.Errorf("run trace directory unavailable")
 	}
-	return filepath.Join(dir, id+".jsonl"), nil
+	var notFound error
+	for _, dir := range dirs {
+		path := filepath.Join(dir, id+".jsonl")
+		info, err := os.Stat(path)
+		if err == nil {
+			if info.IsDir() {
+				return "", fmt.Errorf("run trace path is a directory: %s", path)
+			}
+			return path, nil
+		}
+		if !os.IsNotExist(err) {
+			return "", err
+		}
+		if notFound == nil {
+			notFound = err
+		}
+	}
+	return "", notFound
 }
 
 func readRunTraceFile(path string, recordCap int) (RunTrace, error) {
@@ -458,10 +495,33 @@ func stringField(data map[string]any, key string) string {
 	return value
 }
 
-func runTraceDir(workspace string) string {
-	workspace = strings.TrimSpace(workspace)
-	if workspace == "" {
+func primaryRunTraceDir(location TraceLocation) string {
+	dirs := runTraceDirs(location)
+	if len(dirs) == 0 {
 		return ""
 	}
-	return workspacelayout.Path(workspace, "runs")
+	return dirs[0]
+}
+
+func runTraceDirs(location TraceLocation) []string {
+	dirs := make([]string, 0, 2)
+	appendDir := func(dir string) {
+		dir = filepath.Clean(strings.TrimSpace(dir))
+		if dir == "." || dir == "" {
+			return
+		}
+		for _, existing := range dirs {
+			if existing == dir {
+				return
+			}
+		}
+		dirs = append(dirs, dir)
+	}
+	if stateRoot := strings.TrimSpace(location.StateRoot); stateRoot != "" {
+		appendDir(filepath.Join(stateRoot, "runs"))
+	}
+	if workspace := strings.TrimSpace(location.Workspace); workspace != "" {
+		appendDir(workspacelayout.Path(workspace, "runs"))
+	}
+	return dirs
 }

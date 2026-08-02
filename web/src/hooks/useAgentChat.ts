@@ -6,7 +6,7 @@ import { createAgentCommandID } from '@/lib/api'
 import type { AgentQueuedCommandAction, AgentRuntimeQueuedCommand, ContextAnalysis, IDEContext, SessionSummary, TextSelection } from '@/lib/api'
 import { fetchSettings } from '@/features/settings/api'
 import { formatApprovedPlanExecutionMessage } from '@/lib/plan-mode'
-import { agentCommandErrorMessage, agentCommandRetryKey, isKnownAgentCommandOutcome, rememberAgentCommandID } from '@/lib/agent-command'
+import { agentCommandErrorMessage, agentCommandRetryKey, isKnownAgentCommandOutcome, mergeProjectedAgentQueue, rememberAgentCommandID } from '@/lib/agent-command'
 import { AgentChatTransport, buildAgentChatRequestBody, normalizeAgentUIMessages, type AgentUIMessage } from '@/lib/agent-ui'
 import { agentViewContent, type AgentPartRef } from '@/lib/agent-message-view'
 import { isWorkspaceChangeForWorkspace, type WorkspaceChangeEvent } from '@/features/changes/types'
@@ -17,7 +17,6 @@ import {
   collectPlanUserContext,
   findAgentMessageView,
   markPlanUIMessageAction,
-  mergeProjectedQueue,
   normalizeIDEContext,
   parseInlineReferences,
   parseInlineStyleScenes,
@@ -417,7 +416,7 @@ export function useAgentChat(options: ChatOptions = {}) {
               recovery_paused: false,
               runtime_recoverable: false,
               recovery_actions: [],
-              queue: mergeProjectedQueue(current.queue, {
+              queue: mergeProjectedAgentQueue(current.queue, {
                 command_id: commandID,
                 operation_id: receipt.operation_id,
                 delivery,

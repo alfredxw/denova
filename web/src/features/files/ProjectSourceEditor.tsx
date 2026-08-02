@@ -50,42 +50,31 @@ function ProjectTextEditor({
   const options = useMemo<editor.IStandaloneEditorConstructionOptions>(() => ({
     ariaLabel: t('files.editor.source', { path: document.path }),
     automaticLayout: true,
-    bracketPairColorization: { enabled: false },
-    // Native EditContext measures selection geometry after line DOM changes,
-    // forcing layout during scroll; the textarea path avoids that extra read.
-    editContext: false,
-    // Monaco 0.55.1's shared GPU atlas retains the first standalone editor's
-    // disposed service after a Preview/Source remount, so keep its stable DOM renderer.
+    bracketPairColorization: { enabled: true },
+    // vscode.dev uses Monaco's stable DOM text path by default. Keep the same
+    // renderer until Monaco's experimental GPU path has equivalent lifecycle guarantees.
     experimentalGpuAcceleration: 'off',
     fixedOverflowWidgets: true,
     folding: true,
     formatOnPaste: true,
-    glyphMargin: false,
-    // Guide overlays query visible-line DOM geometry on every scroll. Files
-    // keeps folding and syntax highlighting without those decorative overlays.
+    glyphMargin: true,
     guides: {
-      bracketPairs: false,
-      indentation: false,
+      bracketPairs: 'active',
+      indentation: true,
     },
     largeFileOptimizations: true,
     lineDecorationsWidth: 10,
     lineNumbers: 'on',
     lineNumbersMinChars: 3,
-    minimap: { enabled: false },
-    overviewRulerBorder: false,
-    overviewRulerLanes: 0,
-    padding: { top: 12, bottom: 12 },
-    renderLineHighlight: 'gutter',
-    readOnly: !document.editable,
-    scrollBeyondLastLine: false,
-    smoothScrolling: false,
-    stickyScroll: { enabled: false },
-    scrollbar: {
-      alwaysConsumeMouseWheel: false,
-      horizontalScrollbarSize: 10,
-      useShadows: false,
-      verticalScrollbarSize: 10,
+    minimap: {
+      enabled: true,
+      showSlider: 'mouseover',
+      size: 'proportional',
     },
+    renderLineHighlight: 'line',
+    readOnly: !document.editable,
+    smoothScrolling: false,
+    stickyScroll: { enabled: true },
     tabSize: 2,
     wordWrap: wordWrap ? 'on' : 'off',
     wrappingStrategy: 'simple',

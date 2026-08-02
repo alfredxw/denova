@@ -406,17 +406,42 @@ export interface ActiveInteractiveChat {
   last_operation?: AgentRuntimeOperation
 }
 
-export interface InteractiveAgentCommand {
-  type: 'abort'
+interface InteractiveAgentCommandBase {
   commandId: string
   targetOperationId: string
   storyId: string
   branchId?: string
-  reason?: string
 }
 
-/** Abort the exact game operation shown by the stage. */
+export type InteractiveAgentCommand = InteractiveAgentCommandBase & (
+  | {
+    type: 'follow_up'
+    input: {
+      message: string
+      styleScenes?: string[]
+    }
+  }
+  | {
+    type: 'steer_queued' | 'cancel_queued'
+    targetCommandId: string
+    reason?: string
+  }
+  | {
+    type: 'abort'
+    reason?: string
+  }
+)
+
+/** Submit a targeted command to the exact durable game operation in view. */
 export function submitInteractiveAgentCommand(command: InteractiveAgentCommand): Promise<AgentCommandReceipt> {
+  const input = 'input' in command
+    ? {
+        message: command.input.message,
+        ...(command.input.styleScenes?.length ? { style_scenes: command.input.styleScenes } : {}),
+      }
+    : undefined
+  const targetCommandId = 'targetCommandId' in command ? command.targetCommandId : ''
+  const reason = 'reason' in command ? command.reason : undefined
   return requestJSON('/api/interactive/chat/commands', {
     method: 'POST',
     headers: jsonHeaders,
@@ -426,7 +451,9 @@ export function submitInteractiveAgentCommand(command: InteractiveAgentCommand):
       target_operation_id: command.targetOperationId,
       story_id: command.storyId,
       ...(command.branchId ? { branch_id: command.branchId } : {}),
-      ...(command.reason ? { reason: command.reason } : {}),
+      ...(targetCommandId ? { target_command_id: targetCommandId } : {}),
+      ...(input ? { input } : {}),
+      ...(reason ? { reason } : {}),
     }),
   })
 }

@@ -666,6 +666,7 @@ export function InputArea({
         submitControl={(
           <AgentComposerControls
             generationActive={isGenerationActive}
+            hasSendableContent={Boolean(value.trim() || hasReviewFeedback)}
             onStop={onStop}
             onSend={handleSend}
             sendDisabled={sendBlocked || !approvalReady || submitting || (!value.trim() && !hasReviewFeedback)}

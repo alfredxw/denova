@@ -225,7 +225,8 @@ func TestRunTraceReaderSummarizesLedger(t *testing.T) {
 	if err := ledger.Close(); err != nil {
 		t.Fatal(err)
 	}
-	summaries, err := ListRunTraces(workspace, 10)
+	location := TraceLocation{Workspace: workspace}
+	summaries, err := ListRunTraces(location, 10)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -241,7 +242,7 @@ func TestRunTraceReaderSummarizesLedger(t *testing.T) {
 	if summaries[0].ToolDomainRejected != 1 || summaries[0].ToolDomainDiagnostics != 2 {
 		t.Fatalf("transport success must not hide a rejected domain receipt: %#v", summaries[0])
 	}
-	trace, err := ReadRunTrace(workspace, summaries[0].ID)
+	trace, err := ReadRunTrace(location, summaries[0].ID)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -314,7 +315,7 @@ func TestRunLedgerRecordsStructuredTraceSpans(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	trace, err := ReadRunTrace(workspace, ledger.ID())
+	trace, err := ReadRunTrace(TraceLocation{Workspace: workspace}, ledger.ID())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -407,7 +408,7 @@ func TestReadRunTraceKeepsHeadAndTailWhenTruncated(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	trace, err := ReadRunTrace(workspace, ledger.ID())
+	trace, err := ReadRunTrace(TraceLocation{Workspace: workspace}, ledger.ID())
 	if err != nil {
 		t.Fatal(err)
 	}

@@ -2,7 +2,7 @@ import { useCallback, useEffect, useRef, useState, type KeyboardEventHandler, ty
 import { Gauge, GripHorizontal, GripVertical } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import { motion } from 'motion/react'
-import { Group, Panel } from 'react-resizable-panels'
+import { Panel } from 'react-resizable-panels'
 import { toast } from 'sonner'
 import { useShallow } from 'zustand/react/shallow'
 import { readFile } from '@/lib/api'
@@ -24,7 +24,7 @@ import {
 import { novaEase, panelPresence } from '@/features/motion/motion-tokens'
 import { useIsMobile } from '@/hooks/useIsMobile'
 import { MobilePaneHost } from '@/components/layout/mobile-pane-host'
-import { CollapsiblePanelSeparator, CollapsibleResizablePanel } from '@/components/layout/panel-motion'
+import { CollapsiblePanelSeparator, CollapsibleResizablePanel, PanelMotionGroup } from '@/components/layout/panel-motion'
 import { usePersistedPanelLayout } from '@/components/layout/use-persisted-panel-layout'
 import type { ImagePreset, InteractiveTurnPersistedEvent, Snapshot, StoryDirector, StoryImageSettings, StorySummary, Teller } from '../types'
 import { INTERACTIVE_OPENING_PRESET_PATH, INTERACTIVE_OPENING_PRESET_UPDATED_EVENT, LEGACY_INTERACTIVE_OPENING_PRESET_PATH, parseBookOpeningPresets, type BookOpeningPreset, type StoryCreateInput } from '../opening'
@@ -472,9 +472,8 @@ export function InteractiveLayout({ workspace, active = true, recentNarrativeSty
                   {storyStage}
                 </MobilePaneHost>
               ) : (
-                <Group
+                <PanelMotionGroup
                   id="nova-interactive-horizontal"
-                  data-nova-panel-motion-group="true"
                   defaultLayout={storyPanelLayout.defaultLayout}
                   onLayoutChanged={(layout) => {
                     if (rightPanelVisible) storyPanelLayout.persistUserLayout(layout)
@@ -515,7 +514,7 @@ export function InteractiveLayout({ workspace, active = true, recentNarrativeSty
                       onOpenBranchTimeline={openBranchTimeline}
                     />
                   </CollapsibleResizablePanel>
-                </Group>
+                </PanelMotionGroup>
               )}
             </motion.div>
           </div>

@@ -12,7 +12,6 @@ import (
 	"time"
 
 	agenttool "denova/internal/agents/tool"
-	workspacelayout "denova/internal/workspace"
 )
 
 // Ledger is a durable JSONL trace for one Agent loop run.
@@ -66,11 +65,7 @@ func NewLedgerWithOptions(workspace string, policy LedgerPolicy, options Options
 	id := NewID("run")
 	dir := filepath.Join(workspace, filepath.FromSlash(policy.Directory))
 	if policy.Directory == defaults.Directory {
-		if strings.TrimSpace(options.StateRoot) != "" {
-			dir = filepath.Join(options.StateRoot, "runs")
-		} else {
-			dir = workspacelayout.Path(workspace, "runs")
-		}
+		dir = primaryRunTraceDir(TraceLocation{Workspace: workspace, StateRoot: options.StateRoot})
 	}
 	if err := os.MkdirAll(dir, 0o700); err != nil {
 		return nil, fmt.Errorf("create run ledger dir: %w", err)

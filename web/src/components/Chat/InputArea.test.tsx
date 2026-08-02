@@ -294,7 +294,7 @@ describe('InputArea command menu', () => {
 })
 
 describe('InputArea active generation controls', () => {
-  it('keeps the composer editable and exposes independent send and stop actions', async () => {
+  it('keeps one contextual action that sends a draft or stops an empty active run', async () => {
     const user = userEvent.setup()
     const handleSend = vi.fn()
     const handleStop = vi.fn()
@@ -314,14 +314,15 @@ describe('InputArea active generation controls', () => {
     expect(textbox).toHaveAttribute('contenteditable', 'true')
 
     const sendButton = screen.getByRole('button', { name: '发送' })
-    const stopButton = screen.getByRole('button', { name: '中断 AI 执行' })
     expect(sendButton).toBeEnabled()
-    expect(stopButton).toBeEnabled()
+    expect(screen.queryByRole('button', { name: '中断 AI 执行' })).not.toBeInTheDocument()
 
     await user.click(sendButton)
     expect(handleSend).toHaveBeenCalledWith('Add more atmosphere')
     expect(handleStop).not.toHaveBeenCalled()
 
+    const stopButton = screen.getByRole('button', { name: '中断 AI 执行' })
+    expect(screen.queryByRole('button', { name: '发送' })).not.toBeInTheDocument()
     await user.click(stopButton)
     expect(handleStop).toHaveBeenCalledTimes(1)
   })

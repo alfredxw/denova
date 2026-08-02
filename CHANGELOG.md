@@ -152,8 +152,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Fixed
 
-- 修复 Files 源码编辑器在长行自动换行场景滚动不流畅的问题：关闭会在每次滚动时同步测量可见行位置的 Monaco 缩进/括号引导线与实验性 EditContext 路径，并隔离编辑器宿主的布局和样式失效；保留折叠、语法高亮和稳定的 DOM 文本渲染。
-- Fixed uneven scrolling in the Files source editor with long wrapped lines. Monaco's indentation/bracket guide overlay and experimental EditContext path no longer synchronously measure visible-line geometry during each scroll, while editor-host containment limits layout and style invalidation; folding, syntax highlighting, and the stable DOM text renderer remain enabled.
+- 修复 Files 源码编辑器在长行自动换行场景滚动不流畅的问题：面板拖拽状态不再通过祖先 `:has()` 关系选择器推导，避免 Monaco 回收可见行节点时让四层工作区面板重复失效；改为由通用面板组显式管理拖拽生命周期，并隔离编辑器宿主的布局与样式计算。编辑器保持与 vscode.dev 一致的稳定 DOM 文本渲染、原生 EditContext、缩进/括号引导线、代码小地图、字形栏和当前行样式。
+- Fixed uneven scrolling in the Files source editor with long wrapped lines. Panel resize state no longer relies on an ancestor `:has()` selector that invalidated four nested workspace groups whenever Monaco recycled visible line nodes; the shared panel group now owns an explicit resize lifecycle, and editor-host layout/style work is contained. The editor retains vscode.dev-style stable DOM text rendering, native EditContext, indentation/bracket guides, minimap, glyph margin, and current-line styling.
 - 修复游戏模式剧情页左侧回合导航错误地把相对行号叠加到虚拟列表分页基准、导致点击历史回合仍定位到最新回合附近的问题；回合跳转现在使用当前消息窗口内的真实相对索引，并以即时滚动保证长篇、变高消息也能准确定位。
 - Fixed the Game story turn navigator adding its relative row offset to Virtuoso's pagination baseline, which made historical turn clicks land near the latest turn. Turn jumps now use the actual index within the current message window and scroll instantly for deterministic positioning across long, variable-height messages.
 - 修复游戏模式故事线选择器误把内部 journal 事件条数显示为回合数的问题；列表现在展示当前分支的真实回合数，并在回合落盘、分支创建或切换后实时同步。旧故事索引会从规范 journal 原子重建一次，无需手动迁移。

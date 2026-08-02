@@ -1735,7 +1735,7 @@ html[data-nova-motion="off"] *::after {
   height: 0 !important;
 }
 
-[data-nova-panel-motion-group]:has([data-separator="active"]) > [data-panel] {
+[data-nova-panel-motion-group][data-nova-panel-resizing="true"] > [data-panel] {
   transition: none;
 }
 

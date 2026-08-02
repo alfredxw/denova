@@ -45,14 +45,18 @@ describe('ProjectSourceEditor', () => {
     expect(edited.defaultValue).toBe('before\n')
     expect(edited.options).toBe(initial.options)
     expect(edited.options).toMatchObject({
-      editContext: false,
+      bracketPairColorization: { enabled: true },
       experimentalGpuAcceleration: 'off',
+      glyphMargin: true,
       guides: {
-        bracketPairs: false,
-        indentation: false,
+        bracketPairs: 'active',
+        indentation: true,
       },
       largeFileOptimizations: true,
+      minimap: { enabled: true },
+      renderLineHighlight: 'line',
       smoothScrolling: false,
+      stickyScroll: { enabled: true },
       wordWrap: 'on',
       wrappingStrategy: 'simple',
     })

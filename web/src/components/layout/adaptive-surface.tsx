@@ -1,10 +1,10 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import { createPortal } from 'react-dom'
-import { Group, Panel } from 'react-resizable-panels'
+import { Panel } from 'react-resizable-panels'
 import { useTranslation } from 'react-i18next'
 import { useIsMobile } from '@/hooks/useIsMobile'
 import { MobilePaneHost, type MobilePane, type MobilePaneControls } from './mobile-pane-host'
-import { CollapsiblePanelSeparator, CollapsibleResizablePanel, InlineCollapsiblePane } from './panel-motion'
+import { CollapsiblePanelSeparator, CollapsibleResizablePanel, InlineCollapsiblePane, PanelMotionGroup } from './panel-motion'
 import { createStablePortalHost, StablePortalSlot } from './stable-portal-slot'
 import { resolvePanelInitialSize, usePersistedPanelLayout } from './use-persisted-panel-layout'
 
@@ -178,9 +178,8 @@ export function AdaptiveSurface({
     const desktopRightVisible = Boolean(desktopRight && desktopRight.desktopVisible !== false)
 
     const rightResizeSurface = rightResize ? (
-      <Group
+      <PanelMotionGroup
         id={rightResize.layoutKey}
-        data-nova-panel-motion-group="true"
         orientation="horizontal"
         resizeTargetMinimumSize={{ coarse: 16, fine: 1 }}
         defaultLayout={rightPanelLayout.defaultLayout}
@@ -218,7 +217,7 @@ export function AdaptiveSurface({
         >
           {retainedDesktopRight?.content ?? null}
         </CollapsibleResizablePanel>
-      </Group>
+      </PanelMotionGroup>
     ) : null
 
     if (leftResize && retainedDesktopLeft) {
@@ -230,9 +229,8 @@ export function AdaptiveSurface({
       )
       surface = (
         <div className={`flex h-full min-h-0 min-w-0 ${className}`} data-nova-adaptive-resizable="left">
-          <Group
+          <PanelMotionGroup
             id={leftResize.layoutKey}
-            data-nova-panel-motion-group="true"
             orientation="horizontal"
             resizeTargetMinimumSize={{ coarse: 16, fine: 1 }}
             defaultLayout={leftPanelLayout.defaultLayout}
@@ -270,7 +268,7 @@ export function AdaptiveSurface({
             <Panel id="main" minSize={leftResize.mainMinSize ?? '320px'} className="min-w-0">
               {mainAndRight}
             </Panel>
-          </Group>
+          </PanelMotionGroup>
         </div>
       )
     } else if (rightResizeSurface) {

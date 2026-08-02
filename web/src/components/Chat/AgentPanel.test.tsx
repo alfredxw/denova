@@ -627,7 +627,7 @@ describe('AgentPanel', () => {
 
     expect(screen.getByText('正在从持久化状态恢复已接受的 Agent 运行…')).toBeInTheDocument()
     expect(screen.queryByRole('button', { name: /发送方式/ })).not.toBeInTheDocument()
-    expect(screen.getByRole('button', { name: '发送' })).toBeDisabled()
+    expect(screen.queryByRole('button', { name: '发送' })).not.toBeInTheDocument()
     const stopButton = screen.getByRole('button', { name: '中断 AI 执行' })
     expect(stopButton).toBeEnabled()
 

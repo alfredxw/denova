@@ -1,6 +1,8 @@
 package app
 
 import (
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 
@@ -9,6 +11,49 @@ import (
 	"denova/internal/agents/session"
 	configmanagerapp "denova/internal/app/configmanager"
 )
+
+func TestAgentRunTracesUseProjectStateRoot(t *testing.T) {
+	workspace := t.TempDir()
+	stateRoot := t.TempDir()
+	application := &App{
+		workspace: workspace,
+		cfg:       &config.Config{ProjectStateDir: stateRoot},
+	}
+	runID := "run-project-state"
+	payload := strings.Join([]string{
+		`{"type":"run_created","run_id":"run-project-state","created_at":"2026-08-02T12:25:04Z","data":{"agent_kind":"ide"}}`,
+		`{"type":"run_finished","run_id":"run-project-state","created_at":"2026-08-02T12:35:38Z","data":{"status":"success"}}`,
+	}, "\n") + "\n"
+	runsDir := filepath.Join(stateRoot, "runs")
+	if err := os.MkdirAll(runsDir, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(runsDir, runID+".jsonl"), []byte(payload), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	summaries, err := application.AgentRunTraces(10)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(summaries) != 1 || summaries[0].ID != runID || summaries[0].Status != "success" {
+		t.Fatalf("project-state trace summaries = %#v", summaries)
+	}
+	trace, err := application.AgentRunTrace(runID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if trace.Summary.ID != runID || len(trace.Records) != 2 {
+		t.Fatalf("project-state trace detail = %#v", trace)
+	}
+	export, err := application.ExportAgentRunTrace(runID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(export.Data) != payload {
+		t.Fatalf("project-state trace export = %q, want %q", string(export.Data), payload)
+	}
+}
 
 func TestAgentSessionIDCoversBuiltInModelAgents(t *testing.T) {
 	for _, agentKind := range persistentAgentKinds() {

@@ -1,7 +1,7 @@
 import { useRef, useState } from 'react'
 import type { TFunction } from 'i18next'
 import { createContextCompactionMessageId } from '@/components/Chat/context-compaction-message'
-import { createAgentCommandID, type ChatMessage } from '@/lib/api'
+import { createAgentCommandID, type AgentRuntimeQueuedCommand, type ChatMessage } from '@/lib/api'
 import { agentCommandRetryKey, isKnownAgentCommandOutcome, rememberAgentCommandID } from '@/lib/agent-command'
 import {
   compactInteractiveContext,
@@ -62,7 +62,8 @@ interface UseStoryStageRuntimeOptions {
 }
 
 // Coordinates one durable agent operation with its resumable SSE display stream.
-// New game turns are admitted only while idle. During a run, this hook owns
+// Root game turns are admitted while idle; active-run input becomes a durable
+// Follow Up that can be steered from the projected queue. This hook also owns
 // transport recovery, abort, event projection and terminal settlement.
 export function useStoryStageRuntime({
   storyId,
@@ -91,6 +92,7 @@ export function useStoryStageRuntime({
   onDone,
 }: UseStoryStageRuntimeOptions) {
   const [commandSubmitting, setCommandSubmitting] = useState(false)
+  const [queueActionPendingCommandID, setQueueActionPendingCommandID] = useState('')
   const commandSubmittingRef = useRef(false)
   const compactionIdCounterRef = useRef(0)
   const initialStartCommandIDsRef = useRef(new Map<string, string>())
@@ -123,10 +125,15 @@ export function useStoryStageRuntime({
 
   async function send(override?: { message?: string; rewindTurnId?: string }) {
     const message = (override?.message ?? input).trim()
-    if (!message || !storyId || streaming || branchTerminal || blocked || commandSubmittingRef.current) return
+    if (!message || !storyId || branchTerminal || blocked || commandSubmittingRef.current) return false
+    if (streaming) {
+      const runtime = readStageRuntime()
+      if (runtime.abortPending || !runtime.operationId || runtime.connection !== 'connected') return false
+      return submitFollowUp(message)
+    }
     if (message === '/compact') {
       await compactCurrentContext()
-      return
+      return true
     }
     const rewindTurnId = override?.rewindTurnId ?? editingTurnId
     const inlineStyleScenes = parseInlineStyleScenes(message)
@@ -161,10 +168,30 @@ export function useStoryStageRuntime({
         await completeStream(outcome)
         finishRun(abortController)
       }
+      return true
     } catch (error) {
       if (isKnownAgentCommandOutcome(error)) initialStartCommandIDsRef.current.delete(retryKey)
       handleStreamError(error)
       finishRun(abortController)
+      return false
+    }
+  }
+
+  async function submitFollowUp(message: string) {
+    const inlineStyleScenes = parseInlineStyleScenes(message)
+    const mergedStyleScenes = Array.from(new Set([...styleScenes, ...inlineStyleScenes]))
+    commandSubmittingRef.current = true
+    setCommandSubmitting(true)
+    try {
+      await interactiveAgentCommands.followUp({ message, styleScenes: mergedStyleScenes })
+      clearComposer()
+      return true
+    } catch (error) {
+      appendError(error)
+      return false
+    } finally {
+      commandSubmittingRef.current = false
+      setCommandSubmitting(false)
     }
   }
 
@@ -183,6 +210,33 @@ export function useStoryStageRuntime({
     } finally {
       commandSubmittingRef.current = false
       setCommandSubmitting(false)
+    }
+  }
+
+  async function steerQueuedCommand(item: AgentRuntimeQueuedCommand) {
+    return submitQueuedControl(item, 'steer')
+  }
+
+  async function deleteQueuedCommand(item: AgentRuntimeQueuedCommand) {
+    return submitQueuedControl(item, 'cancel')
+  }
+
+  async function submitQueuedControl(item: AgentRuntimeQueuedCommand, action: 'steer' | 'cancel') {
+    if (commandSubmittingRef.current || stageRun.runtime.abortPending) return false
+    commandSubmittingRef.current = true
+    setCommandSubmitting(true)
+    setQueueActionPendingCommandID(item.command_id)
+    try {
+      if (action === 'steer') await interactiveAgentCommands.steerQueued(item)
+      else await interactiveAgentCommands.cancelQueued(item)
+      return true
+    } catch (error) {
+      appendError(error)
+      return false
+    } finally {
+      commandSubmittingRef.current = false
+      setCommandSubmitting(false)
+      setQueueActionPendingCommandID('')
     }
   }
 
@@ -552,5 +606,5 @@ export function useStoryStageRuntime({
     ])
   }
 
-  return { commandSubmitting, compactCurrentContext, send, stop }
+  return { commandSubmitting, deleteQueuedCommand, queueActionPendingCommandID, compactCurrentContext, send, steerQueuedCommand, stop }
 }

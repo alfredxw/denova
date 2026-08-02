@@ -122,22 +122,39 @@ func (a *App) resolveSessionAsk(ctx context.Context, sessionID, askID, status st
 }
 
 func (a *App) AgentRunTraces(limit int) ([]agentrun.RunTraceSummary, error) {
-	if !a.HasWorkspace() {
+	location, ok := a.agentRunTraceLocation()
+	if !ok {
 		return []agentrun.RunTraceSummary{}, nil
 	}
-	return agentrun.ListRunTraces(a.Workspace(), limit)
+	return agentrun.ListRunTraces(location, limit)
 }
 
 func (a *App) AgentRunTrace(id string) (agentrun.RunTrace, error) {
-	if !a.HasWorkspace() {
+	location, ok := a.agentRunTraceLocation()
+	if !ok {
 		return agentrun.RunTrace{}, ErrNoWorkspace
 	}
-	return agentrun.ReadRunTrace(a.Workspace(), id)
+	return agentrun.ReadRunTrace(location, id)
 }
 
 func (a *App) ExportAgentRunTrace(id string) (agentrun.RunTraceExport, error) {
-	if !a.HasWorkspace() {
+	location, ok := a.agentRunTraceLocation()
+	if !ok {
 		return agentrun.RunTraceExport{}, ErrNoWorkspace
 	}
-	return agentrun.ExportRunTrace(a.Workspace(), id)
+	return agentrun.ExportRunTrace(location, id)
+}
+
+func (a *App) agentRunTraceLocation() (agentrun.TraceLocation, bool) {
+	a.mu.RLock()
+	defer a.mu.RUnlock()
+	workspace := strings.TrimSpace(a.workspace)
+	if workspace == "" {
+		return agentrun.TraceLocation{}, false
+	}
+	stateRoot := ""
+	if a.cfg != nil {
+		stateRoot = strings.TrimSpace(a.cfg.ProjectStateDir)
+	}
+	return agentrun.TraceLocation{Workspace: workspace, StateRoot: stateRoot}, true
 }

@@ -1,4 +1,5 @@
 import type { TFunction } from 'i18next'
+import type { AgentRuntimeQueuedCommand } from '@/lib/api'
 
 /** Stable fingerprint for retaining one idempotency key across an uncertain retry. */
 export function agentCommandRetryKey(operationID: string, type: string, payload: unknown) {
@@ -53,4 +54,12 @@ export function agentCommandErrorMessage(error: unknown, t: TFunction) {
       return t('chat.activity.requestFailed', { error: detail })
     }
   }
+}
+
+/** Optimistically project one accepted command without duplicating queue entries on retry. */
+export function mergeProjectedAgentQueue(
+  queue: AgentRuntimeQueuedCommand[] | undefined,
+  next: AgentRuntimeQueuedCommand,
+) {
+  return [...(queue || []).filter((item) => item.command_id !== next.command_id), next]
 }

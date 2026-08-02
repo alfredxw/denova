@@ -73,6 +73,44 @@ describe('interactive agent command API', () => {
     })
   })
 
+  it('submits game follow-ups and queued steering through the active operation', async () => {
+    await submitInteractiveAgentCommand({
+      type: 'follow_up',
+      commandId: 'command-follow-up',
+      targetOperationId: 'operation-1',
+      storyId: 'story-1',
+      branchId: 'main',
+      input: { message: '先检查石门', styleScenes: ['雨夜'] },
+    })
+    await submitInteractiveAgentCommand({
+      type: 'steer_queued',
+      commandId: 'command-steer',
+      targetOperationId: 'operation-1',
+      targetCommandId: 'command-follow-up',
+      storyId: 'story-1',
+      branchId: 'main',
+    })
+
+    const followUpInit = vi.mocked(requestJSON).mock.calls[0]?.[1]
+    expect(JSON.parse(String(followUpInit?.body))).toEqual({
+      type: 'follow_up',
+      command_id: 'command-follow-up',
+      target_operation_id: 'operation-1',
+      story_id: 'story-1',
+      branch_id: 'main',
+      input: { message: '先检查石门', style_scenes: ['雨夜'] },
+    })
+    const steerInit = vi.mocked(requestJSON).mock.calls[1]?.[1]
+    expect(JSON.parse(String(steerInit?.body))).toEqual({
+      type: 'steer_queued',
+      command_id: 'command-steer',
+      target_operation_id: 'operation-1',
+      target_command_id: 'command-follow-up',
+      story_id: 'story-1',
+      branch_id: 'main',
+    })
+  })
+
   it('recovers game work with only the server-projected action and resource binding', async () => {
     vi.mocked(requestJSON).mockResolvedValue({
       task_id: 'recovery-task-1',

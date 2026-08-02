@@ -2,7 +2,7 @@ import { useLayoutEffect, useRef, type KeyboardEventHandler, type PointerEventHa
 import { Group, Panel, useGroupRef, usePanelRef } from 'react-resizable-panels'
 import type { Layout } from 'react-resizable-panels'
 import { useTranslation } from 'react-i18next'
-import { CollapsiblePanelSeparator, CollapsibleResizablePanel } from './panel-motion'
+import { CollapsiblePanelSeparator, CollapsibleResizablePanel, PanelMotionGroup } from './panel-motion'
 import { readPersistedPanelLayout, usePersistedPanelLayout } from './use-persisted-panel-layout'
 
 // 224px 恰好保留三列快捷入口；窄屏时仍由 min/max 约束参与布局收缩。
@@ -138,10 +138,9 @@ export function WorkspaceLayout({
         {topBar}
         <div className="flex min-h-0 flex-1">
           {activityBar}
-          <Group
+          <PanelMotionGroup
             id="nova-workspace-horizontal"
             data-nova-layout-emphasis={layoutEmphasis}
-            data-nova-panel-motion-group="true"
             groupRef={horizontalGroupRef}
             defaultLayout={horizontalPanelLayout.defaultLayout}
             onLayoutChanged={(layout) => {
@@ -243,7 +242,7 @@ export function WorkspaceLayout({
             >
               {retainedRightPanelRef.current}
             </CollapsibleResizablePanel>
-          </Group>
+          </PanelMotionGroup>
         </div>
         {statusBar}
       </div>

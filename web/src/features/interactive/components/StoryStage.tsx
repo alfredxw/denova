@@ -321,7 +321,7 @@ export function StoryStage({ workspace, styleSceneSuggestions = [], stories = []
 
   useLayoutEffect(() => {
     syncInputFloatHeight()
-  }, [directorRetryError, directorRetrying, directorStatusVisible, editingTurn, hotChoices.length, input, showHotChoices, syncInputFloatHeight])
+  }, [directorRetryError, directorRetrying, directorStatusVisible, editingTurn, hotChoices.length, input, showHotChoices, stageRun.runtime.queue.length, syncInputFloatHeight])
 
   useEffect(() => {
     setSelectedBookOpeningPresetId((current) => {
@@ -361,7 +361,7 @@ export function StoryStage({ workspace, styleSceneSuggestions = [], stories = []
     setActiveSkillCommandIndex(0)
   }
 
-  const { commandSubmitting, send, stop } = useStoryStageRuntime({
+  const { commandSubmitting, deleteQueuedCommand, queueActionPendingCommandID, send, steerQueuedCommand, stop } = useStoryStageRuntime({
     stageKey,
     storyId,
     branchId,
@@ -771,9 +771,9 @@ export function StoryStage({ workspace, styleSceneSuggestions = [], stories = []
         layout={{ creatingStory, isMobile, keyboardInset, inputTextStyle, workspace, inputFloatRef, inputRef, t }}
         editor={{ input, editingTurn, styleScenes, styleSceneQuery, styleSceneSuggestions, showSkillCommands, activeSkillCommandIndex, skillCommands, filteredSkillCommands, filteredBuiltInCommandItems, filteredSkillCommandItems, setStyleSceneQuery, setShowSkillCommands, setSkillCommandQuery, setActiveSkillCommandIndex }}
         story={{ storyId, story, imagePresets, onImageSettingsChange, branchTerminal, directorBlocking, directorPlanStatus, directorStatusVisible, directorRetrying, directorRetryError, hotChoices, hotChoicesExpanded, showHotChoices, canUseHotChoices, setHotChoicesExpanded }}
-        runtime={{ streaming, approvalReady, conversationConfig, abortPending: stageRun.runtime.abortPending, recoveryPaused: stageRun.runtime.recoveryPaused, recoveryAbortAvailable: stageRun.runtime.recoveryAbortAvailable, operationId: stageRun.runtime.operationId, connection: stageRun.runtime.connection, commandSubmitting }}
+        runtime={{ streaming, approvalReady, conversationConfig, abortPending: stageRun.runtime.abortPending, recoveryPaused: stageRun.runtime.recoveryPaused, recoveryAbortAvailable: stageRun.runtime.recoveryAbortAvailable, operationId: stageRun.runtime.operationId, connection: stageRun.runtime.connection, commandSubmitting, queue: stageRun.runtime.queue, queueActionPendingCommandID }}
         dialogs={{ contextAnalysisOpen, contextAnalysisLoading, contextAnalysisError, contextAnalysis, tokenUsageOpen, tokenUsageMessages, traceOpen, selectedTraceRunId, replyEditTarget, setContextAnalysisOpen, setTokenUsageOpen, setTraceOpen, closeReplyEditor: () => setReplyEditTarget(null), saveReply: saveEditedReply }}
-        actions={{ cancelEditing, retryDirectorPlanning, selectHotChoice, selectStyleScene, selectSkillCommand, handleInputChange, handleInputTriggerChange, handleTokenRemove, toggleHotChoices, openMobileNavigation, openContextAnalysis, removeContextCompaction, openTraceRun, send, stop }}
+        actions={{ cancelEditing, retryDirectorPlanning, selectHotChoice, selectStyleScene, selectSkillCommand, handleInputChange, handleInputTriggerChange, handleTokenRemove, toggleHotChoices, openMobileNavigation, openContextAnalysis, removeContextCompaction, openTraceRun, send, steerQueuedCommand, deleteQueuedCommand, stop }}
       />
     </main>
   )

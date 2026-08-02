@@ -640,7 +640,7 @@ describe('StoryStage runtime recovery', () => {
     },
   )
 
-  it('keeps an attach-only recovered game operation stop-only until it settles', async () => {
+  it('accepts a queued follow-up after an attach-only game recovery reconnects', async () => {
     const user = userEvent.setup()
     const stream = controllableInteractiveStream()
     const attachAction = {
@@ -677,8 +677,17 @@ describe('StoryStage runtime recovery', () => {
       await waitFor(() => expect(screen.getByRole('button', { name: '中断 AI 执行' })).toBeEnabled())
       expect(screen.queryByRole('button', { name: /发送方式/ })).not.toBeInTheDocument()
       await user.type(getStageInput(), '采用新的恢复方向')
-      expect(screen.getByRole('button', { name: '发送' })).toBeDisabled()
-      expect(submitInteractiveAgentCommandMock).not.toHaveBeenCalled()
+      const sendButton = screen.getByRole('button', { name: '发送' })
+      expect(sendButton).toBeEnabled()
+      await user.click(sendButton)
+      await waitFor(() => expect(submitInteractiveAgentCommandMock).toHaveBeenCalledWith({
+        type: 'follow_up',
+        commandId: expect.any(String),
+        targetOperationId: 'operation-recovery',
+        storyId: 'story-1',
+        branchId: 'main',
+        input: { message: '采用新的恢复方向', styleScenes: [] },
+      }))
       expect(recoverInteractiveAgentRuntimeMock).toHaveBeenCalledTimes(1)
       expect(recoverInteractiveAgentRuntimeMock).toHaveBeenCalledWith({
         storyId: 'story-1',
@@ -687,8 +696,8 @@ describe('StoryStage runtime recovery', () => {
       })
       expect(sendInteractiveMessageMock).not.toHaveBeenCalled()
       expect(useInteractiveStore.getState().storyStageRuns['/tmp/book:story-1:main']?.runtime).toMatchObject({
-        recoveryPaused: true,
-        recoveryAbortAvailable: true,
+        recoveryPaused: false,
+        recoveryAbortAvailable: false,
       })
     } finally {
       stream.close()

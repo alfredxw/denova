@@ -1,4 +1,4 @@
-import type { ActiveChatTask, IDEContext, TextSelection } from '@/lib/api'
+import type { IDEContext, TextSelection } from '@/lib/api'
 import type { UserMessageReference } from '@/lib/api-client/types'
 import type { AgentUIMessage } from '@/lib/agent-ui'
 import {
@@ -212,13 +212,6 @@ function sameAgentPartRef(left: AgentPartRef, right: AgentPartRef) {
     && left.partIndex === right.partIndex
     && left.partId === right.partId
     && left.type === right.type
-}
-
-export function mergeProjectedQueue(
-  queue: ActiveChatTask['queue'],
-  next: NonNullable<ActiveChatTask['queue']>[number],
-) {
-  return [...(queue || []).filter((item) => item.command_id !== next.command_id), next]
 }
 
 export function isAbortError(error: unknown) {

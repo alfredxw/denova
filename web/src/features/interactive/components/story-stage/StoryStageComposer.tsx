@@ -3,6 +3,7 @@ import type { TFunction } from 'i18next'
 import { Activity, Archive, BarChart3, ChevronDown, ChevronUp, Compass, List, Loader2, Pencil, Plus, RefreshCw, ScrollText, Sparkles, X } from 'lucide-react'
 import { AgentComposerControls } from '@/components/Chat/AgentComposerControls'
 import { AgentComposerShell } from '@/components/Chat/AgentComposerShell'
+import { AgentQueuedCommandList } from '@/components/Chat/AgentQueuedCommandList'
 import { ContextAnalysisDialog } from '@/components/Chat/ContextAnalysisDialog'
 import { FileReferencePicker } from '@/components/Chat/FileReferencePicker'
 import { InputCommandMenu, type IndexedInputCommandOption } from '@/components/Chat/InputCommandMenu'
@@ -14,7 +15,7 @@ import { Button } from '@/components/ui/button'
 import { AgentApprovalModeMenu } from '@/features/agent-approval/AgentApprovalModeMenu'
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from '@/components/ui/dropdown-menu'
-import type { ChatMessage, ContextAnalysis } from '@/lib/api'
+import type { AgentRuntimeQueuedCommand, ChatMessage, ContextAnalysis } from '@/lib/api'
 import type { DirectorPlanStatus, ImagePreset, StoryImageSettings, StorySummary } from '../../types'
 import { EditInteractiveReplyDialog } from '../EditInteractiveReplyDialog'
 import { InteractiveImageSettingsMenu, StoryImagePresetMenu } from './ImageSettingsMenus'
@@ -79,6 +80,8 @@ interface StoryStageComposerProps {
     operationId: string
     connection: string
     commandSubmitting: boolean
+    queue: AgentRuntimeQueuedCommand[]
+    queueActionPendingCommandID: string
   }
   dialogs: {
     contextAnalysisOpen: boolean
@@ -115,7 +118,9 @@ interface StoryStageComposerProps {
     openContextAnalysis: () => void
     removeContextCompaction: () => Promise<void>
     openTraceRun: (runId: string) => void
-    send: () => Promise<void>
+    send: () => Promise<boolean>
+    steerQueuedCommand: (item: AgentRuntimeQueuedCommand) => Promise<boolean>
+    deleteQueuedCommand: (item: AgentRuntimeQueuedCommand) => Promise<boolean>
     stop: () => Promise<void>
   }
 }
@@ -124,9 +129,10 @@ export function StoryStageComposer({ layout, editor, story, runtime, dialogs, ac
   const { creatingStory, isMobile, keyboardInset, inputTextStyle, workspace, inputFloatRef, inputRef, t } = layout
   const { input, editingTurn, styleScenes, styleSceneQuery, styleSceneSuggestions, showSkillCommands, activeSkillCommandIndex, skillCommands, filteredSkillCommands, filteredBuiltInCommandItems, filteredSkillCommandItems, setStyleSceneQuery, setShowSkillCommands, setSkillCommandQuery, setActiveSkillCommandIndex } = editor
   const { storyId, story: currentStory, imagePresets, onImageSettingsChange, branchTerminal, directorBlocking, directorPlanStatus, directorStatusVisible, directorRetrying, directorRetryError, hotChoices, hotChoicesExpanded, showHotChoices, canUseHotChoices, setHotChoicesExpanded } = story
-  const { streaming, approvalReady, conversationConfig, abortPending, recoveryPaused, recoveryAbortAvailable, operationId, connection, commandSubmitting } = runtime
+  const { streaming, approvalReady, conversationConfig, abortPending, recoveryPaused, recoveryAbortAvailable, operationId, connection, commandSubmitting, queue, queueActionPendingCommandID } = runtime
   const { contextAnalysisOpen, contextAnalysisLoading, contextAnalysisError, contextAnalysis, tokenUsageOpen, tokenUsageMessages, traceOpen, selectedTraceRunId, replyEditTarget, setContextAnalysisOpen, setTokenUsageOpen, setTraceOpen, closeReplyEditor, saveReply } = dialogs
-  const { cancelEditing, retryDirectorPlanning, selectHotChoice, selectStyleScene, selectSkillCommand, handleInputChange, handleInputTriggerChange, handleTokenRemove, toggleHotChoices, openMobileNavigation, openContextAnalysis, removeContextCompaction, openTraceRun, send, stop } = actions
+  const { cancelEditing, retryDirectorPlanning, selectHotChoice, selectStyleScene, selectSkillCommand, handleInputChange, handleInputTriggerChange, handleTokenRemove, toggleHotChoices, openMobileNavigation, openContextAnalysis, removeContextCompaction, openTraceRun, send, steerQueuedCommand, deleteQueuedCommand, stop } = actions
+  const activeControlsDisabled = streaming && (!operationId || connection !== 'connected')
   const builtInCommandOptions: IndexedInputCommandOption[] = filteredBuiltInCommandItems.map(({ command, index }) => ({
     index,
     command: {
@@ -204,6 +210,13 @@ export function StoryStageComposer({ layout, editor, story, runtime, dialogs, ac
             ) : null}
           </div>
         ) : null}
+        <AgentQueuedCommandList
+          items={queue}
+          pendingCommandID={queueActionPendingCommandID}
+          disabled={activeControlsDisabled || abortPending || commandSubmitting}
+          onSteer={steerQueuedCommand}
+          onDelete={deleteQueuedCommand}
+        />
         <div className="relative min-w-0">
           <FileReferencePicker open={styleSceneQuery !== null && styleSceneSuggestions.length > 0} query={styleSceneQuery || ''} files={styleSceneSuggestions} onSelect={selectStyleScene} trigger="#" placeholder={t('chat.styleReference.placeholder')} emptyText={t('chat.styleReference.empty')} heading={t('chat.styleReference.heading')} />
           <InputCommandMenu
@@ -279,7 +292,7 @@ export function StoryStageComposer({ layout, editor, story, runtime, dialogs, ac
               <Button type="button" variant="outline" className={`nova-agent-composer-pill h-8 shrink-0 rounded-[10px] border-[var(--nova-border)] bg-[var(--nova-surface)] px-2.5 text-[11px] text-[var(--nova-text-muted)] hover:bg-[var(--nova-hover)] hover:text-[var(--nova-text)] ${hotChoicesExpanded ? 'text-[var(--nova-text)]' : ''}`} disabled={!canUseHotChoices} onMouseDown={(event) => event.preventDefault()} onClick={toggleHotChoices} aria-label={hotChoicesExpanded ? t('storyStage.hotChoices.collapse') : t('storyStage.hotChoices.get')} title={hotChoicesExpanded ? t('storyStage.hotChoices.collapse') : t('storyStage.hotChoices.get')}><Compass className="h-3.5 w-3.5" />{!isMobile ? t('storyStage.hotChoices.button') : null}</Button>
               {isMobile ? <Button type="button" variant="outline" className="nova-agent-composer-icon h-8 w-8 shrink-0 rounded-[10px] border-[var(--nova-border)] bg-[var(--nova-surface)] px-0 text-[var(--nova-text-muted)] hover:bg-[var(--nova-hover)] hover:text-[var(--nova-text)]" onMouseDown={(event) => event.preventDefault()} onClick={openMobileNavigation} aria-label={t('workbench.mobile.navigationMenu')} title={t('workbench.mobile.navigationMenu')}><Plus className="h-3.5 w-3.5" /></Button> : null}
             </>}
-            submitControl={<AgentComposerControls generationActive={streaming} onStop={() => { void stop() }} onSend={() => { void send() }} sendDisabled={streaming || !approvalReady || !storyId || !input.trim()} disabled={branchTerminal || directorBlocking} abortPending={abortPending} actionPending={commandSubmitting} activeControlsDisabled={streaming && (!operationId || connection !== 'connected')} stopDisabled={streaming && !recoveryAbortAvailable && (recoveryPaused || !operationId || connection !== 'connected')} sendLabel={editingTurn ? t('storyStage.sendRegenerate') : undefined} sendIcon={editingTurn ? <RefreshCw /> : undefined} />}
+            submitControl={<AgentComposerControls generationActive={streaming} hasSendableContent={Boolean(input.trim())} onStop={() => { void stop() }} onSend={() => { void send() }} sendDisabled={!approvalReady || !storyId || !input.trim()} disabled={branchTerminal || directorBlocking} abortPending={abortPending} actionPending={commandSubmitting} activeControlsDisabled={activeControlsDisabled} stopDisabled={streaming && !recoveryAbortAvailable && (recoveryPaused || !operationId || connection !== 'connected')} sendLabel={editingTurn ? t('storyStage.sendRegenerate') : undefined} sendIcon={editingTurn ? <RefreshCw /> : undefined} />}
           />
         </div>
         <ContextAnalysisDialog open={contextAnalysisOpen} loading={contextAnalysisLoading} error={contextAnalysisError} analysis={contextAnalysis} onOpenChange={setContextAnalysisOpen} onRemoveCompaction={removeContextCompaction} />

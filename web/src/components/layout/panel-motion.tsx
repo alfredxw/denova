@@ -1,8 +1,10 @@
 import { useCallback, useEffect, useRef, useState, type CSSProperties, type ReactNode, type RefObject } from 'react'
 import {
+  Group,
   Panel,
   Separator,
   usePanelRef,
+  type GroupProps,
   type PanelImperativeHandle,
   type PanelProps,
   type SeparatorProps,
@@ -10,6 +12,49 @@ import {
 import { cn } from '@/lib/utils'
 
 type PanelSide = 'left' | 'right'
+
+/**
+ * A panel group whose resize state is explicit rather than derived with CSS `:has()`.
+ *
+ * Monaco replaces visible line nodes while scrolling. A relational selector on an ancestor panel
+ * group makes each of those mutations invalidate styles across the whole group, so resize state is
+ * captured once at the interaction boundary instead.
+ */
+export function PanelMotionGroup({ onPointerDownCapture, ...groupProps }: GroupProps) {
+  const [resizing, setResizing] = useState(false)
+  const handlePointerDownCapture = useCallback<NonNullable<GroupProps['onPointerDownCapture']>>((event) => {
+    onPointerDownCapture?.(event)
+    if (event.defaultPrevented || !(event.target instanceof Element)) return
+
+    const separator = event.target.closest<HTMLElement>('[data-separator]')
+    // Nested panel groups receive the same captured event. Only the separator's direct group owns
+    // this resize interaction and should suspend its panel transitions.
+    if (!separator || separator.parentElement !== event.currentTarget || separator.ariaDisabled === 'true') return
+    setResizing(true)
+  }, [onPointerDownCapture])
+
+  useEffect(() => {
+    if (!resizing) return
+    const finishResize = () => setResizing(false)
+    window.addEventListener('pointerup', finishResize, true)
+    window.addEventListener('pointercancel', finishResize, true)
+    window.addEventListener('blur', finishResize)
+    return () => {
+      window.removeEventListener('pointerup', finishResize, true)
+      window.removeEventListener('pointercancel', finishResize, true)
+      window.removeEventListener('blur', finishResize)
+    }
+  }, [resizing])
+
+  return (
+    <Group
+      {...groupProps}
+      data-nova-panel-motion-group="true"
+      data-nova-panel-resizing={resizing ? 'true' : undefined}
+      onPointerDownCapture={handlePointerDownCapture}
+    />
+  )
+}
 
 interface CollapsibleResizablePanelProps extends Omit<PanelProps, 'children' | 'collapsedSize' | 'collapsible' | 'disabled' | 'panelRef'> {
   visible: boolean

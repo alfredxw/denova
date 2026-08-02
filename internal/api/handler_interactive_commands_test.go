@@ -10,13 +10,31 @@ func TestInteractiveAgentCommandEndpointUsesTypedRuntimeErrors(t *testing.T) {
 	server := NewServer(application, "0")
 
 	invalid := performJSONRequest(t, server, http.MethodPost, "/api/interactive/chat/commands", map[string]any{
-		"type": "follow_up", "command_id": "follow-up-1", "target_operation_id": "operation-1",
+		"type": "steer", "command_id": "steer-1", "target_operation_id": "operation-1",
 		"story_id": "story-1", "branch_id": "main", "input": map[string]any{"message": "继续"},
 	})
 	if invalid.Code != http.StatusBadRequest {
 		t.Fatalf("invalid command status=%d body=%s", invalid.Code, invalid.Body.String())
 	}
 	assertAgentRuntimeErrorCode(t, invalid.Body.Bytes(), "agent_runtime.invalid_command")
+
+	missingInput := performJSONRequest(t, server, http.MethodPost, "/api/interactive/chat/commands", map[string]any{
+		"type": "follow_up", "command_id": "follow-up-1", "target_operation_id": "operation-1",
+		"story_id": "story-1", "branch_id": "main",
+	})
+	if missingInput.Code != http.StatusBadRequest {
+		t.Fatalf("missing follow-up input status=%d body=%s", missingInput.Code, missingInput.Body.String())
+	}
+	assertAgentRuntimeErrorCode(t, missingInput.Body.Bytes(), "agent_runtime.invalid_command")
+
+	missingQueueTarget := performJSONRequest(t, server, http.MethodPost, "/api/interactive/chat/commands", map[string]any{
+		"type": "steer_queued", "command_id": "steer-queued-1", "target_operation_id": "operation-1",
+		"story_id": "story-1", "branch_id": "main",
+	})
+	if missingQueueTarget.Code != http.StatusBadRequest {
+		t.Fatalf("missing queue target status=%d body=%s", missingQueueTarget.Code, missingQueueTarget.Body.String())
+	}
+	assertAgentRuntimeErrorCode(t, missingQueueTarget.Body.Bytes(), "agent_runtime.invalid_command")
 
 	create := performJSONRequest(t, server, http.MethodPost, "/api/interactive/stories", map[string]string{
 		"title": "命令测试", "origin": "验证游戏 typed command。", "story_teller_id": "classic",

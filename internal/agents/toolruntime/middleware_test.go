@@ -448,7 +448,7 @@ func TestToolOrchestratorReturnsContentFilterContextForIncompleteWriteArguments(
 	if strings.Contains(result, "重新发起同一个工具调用") {
 		t.Fatalf("content-filter context should not force a same-tool retry: %s", result)
 	}
-	trace, err := agentrun.ReadRunTrace(workspace, ledger.ID())
+	trace, err := agentrun.ReadRunTrace(agentrun.TraceLocation{Workspace: workspace}, ledger.ID())
 	if err != nil {
 		t.Fatal(err)
 	}

@@ -12,11 +12,19 @@ import (
 )
 
 func TestInteractiveAgentCommandKindIsClosed(t *testing.T) {
-	kind, err := interactiveAgentCommandKind("abort")
-	if err != nil || kind != appsvc.CommandAbort {
-		t.Fatalf("abort kind = %q, %v", kind, err)
+	want := map[string]appsvc.CommandKind{
+		"abort":         appsvc.CommandAbort,
+		"follow_up":     appsvc.CommandFollowUp,
+		"steer_queued":  appsvc.CommandSteerQueued,
+		"cancel_queued": appsvc.CommandCancelQueued,
 	}
-	for _, value := range []string{"steer", "follow_up", "next_turn", "steer_queued", "cancel_queued"} {
+	for value, expected := range want {
+		kind, err := interactiveAgentCommandKind(value)
+		if err != nil || kind != expected {
+			t.Fatalf("kind(%q) = %q, %v, want %q", value, kind, err, expected)
+		}
+	}
+	for _, value := range []string{"steer", "next_turn", "unknown"} {
 		if kind, err := interactiveAgentCommandKind(value); err == nil {
 			t.Fatalf("kind(%q) = %q, want error", value, kind)
 		}

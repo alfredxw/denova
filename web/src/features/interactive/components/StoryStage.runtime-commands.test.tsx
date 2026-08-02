@@ -1,4 +1,4 @@
-import { act, fireEvent, render, screen, waitFor } from '@testing-library/react'
+import { act, render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { useInteractiveStore } from '../stores/interactive-store'
@@ -74,7 +74,7 @@ beforeEach(() => {
 })
 
 describe('StoryStage active runtime commands', () => {
-  it('keeps a draft editable while the current turn runs without exposing queued delivery', async () => {
+  it('uses the contextual action to queue a follow-up and exposes manual steering', async () => {
     const user = userEvent.setup()
     const stream = controllableInteractiveStream()
     sendInteractiveMessageMock.mockResolvedValue(stream.readable)
@@ -106,12 +106,33 @@ describe('StoryStage active runtime commands', () => {
       expect(input).toHaveAttribute('contenteditable', 'true')
       await user.type(input, '再检查门后的脚印')
       const sendButton = screen.getByRole('button', { name: '发送' })
-      expect(sendButton).toBeDisabled()
-      fireEvent.keyDown(input, { key: 'Enter', shiftKey: false })
+      expect(sendButton).toBeEnabled()
+      expect(screen.queryByRole('button', { name: '中断 AI 执行' })).not.toBeInTheDocument()
+      await user.click(sendButton)
 
-      expect(submitInteractiveAgentCommandMock).not.toHaveBeenCalled()
+      await waitFor(() => expect(submitInteractiveAgentCommandMock).toHaveBeenCalledWith({
+        type: 'follow_up',
+        commandId: expect.any(String),
+        targetOperationId: 'operation-1',
+        storyId: 'story-1',
+        branchId: 'main',
+        input: { message: '再检查门后的脚印', styleScenes: [] },
+      }))
       expect(sendInteractiveMessageMock).toHaveBeenCalledTimes(1)
-      expect(input).toHaveTextContent('再检查门后的脚印')
+      expect(input).toHaveTextContent('')
+      expect(screen.getByRole('button', { name: '中断 AI 执行' })).toBeEnabled()
+      expect(screen.getByText('再检查门后的脚印')).toBeInTheDocument()
+
+      const followUp = submitInteractiveAgentCommandMock.mock.calls.find(([command]) => command.type === 'follow_up')?.[0]
+      await user.click(screen.getByRole('button', { name: '立即转向' }))
+      await waitFor(() => expect(submitInteractiveAgentCommandMock).toHaveBeenCalledWith({
+        type: 'steer_queued',
+        commandId: expect.any(String),
+        targetOperationId: 'operation-1',
+        targetCommandId: followUp.commandId,
+        storyId: 'story-1',
+        branchId: 'main',
+      }))
     } finally {
       stream.close()
     }
@@ -198,13 +219,14 @@ describe('StoryStage active runtime commands', () => {
           }),
         }),
       )
-      await user.type(getStageInput(), '不能在中断后发送')
-
+      const input = getStageInput()
       const stopButton = screen.getByRole('button', { name: '中断 AI 执行' })
       await user.click(stopButton)
       await waitFor(() => expect(submitInteractiveAgentCommandMock).toHaveBeenCalledWith(expect.objectContaining({ type: 'abort' })))
 
       expect(stopButton).toBeDisabled()
+      await user.type(input, '不能在中断后发送')
+      expect(screen.queryByRole('button', { name: '中断 AI 执行' })).not.toBeInTheDocument()
       expect(screen.getByRole('button', { name: '发送' })).toBeDisabled()
     } finally {
       stream.close()
