@@ -1,6 +1,5 @@
-// Package plan implements the model-to-display protocol used by planning
-// agents. It owns both streamed tag parsing and tool-call projection so every
-// caller produces the same plan events.
+// Package plan owns the model-to-display protocol for a reviewable final plan.
+// Interactive clarification is handled by the ordinary durable Ask tool.
 package plan
 
 import (
@@ -10,24 +9,16 @@ import (
 )
 
 const (
-	questionsOpenTag  = "<plan_questions>"
-	questionsCloseTag = "</plan_questions>"
-	proposalOpenTag   = "<proposed_plan>"
-	proposalCloseTag  = "</proposed_plan>"
-)
-
-type blockKind string
-
-const (
-	blockQuestions blockKind = "plan_question"
-	blockProposal  blockKind = "proposed_plan"
+	proposalOpenTag  = "<proposed_plan>"
+	proposalCloseTag = "</proposed_plan>"
+	proposalEvent    = "proposed_plan"
 )
 
 // ToolEventID is the stable display identity shared by protocol tool calls.
 const ToolEventID = "plan_protocol_tool"
 
 // Event is the bounded plan-card event emitted by Parser. The chat transport
-// adapts it to its general event envelope at the package boundary.
+// adapts it to its general event envelope at the package seam.
 type Event struct {
 	Type string
 	Data map[string]any
@@ -74,14 +65,14 @@ func (m Metadata) appendTo(data map[string]any) map[string]any {
 	return data
 }
 
-// Parser incrementally removes plan protocol blocks from assistant text and
+// Parser incrementally removes proposed-plan blocks from assistant text and
 // emits them as structured display events.
 type Parser struct {
 	emit func(Event)
 	meta Metadata
 
 	buffer      strings.Builder
-	block       blockKind
+	inProposal  bool
 	blockID     string
 	blockSeq    int
 	blockBuffer strings.Builder
@@ -89,7 +80,7 @@ type Parser struct {
 	successfulBlocks int
 }
 
-// NewParser creates a streaming plan protocol parser.
+// NewParser creates a streaming proposed-plan parser.
 func NewParser(meta Metadata, emit func(Event)) *Parser {
 	if emit == nil {
 		emit = func(Event) {}
@@ -127,41 +118,34 @@ func (p *Parser) drain(flush bool) string {
 	for {
 		buffer := p.buffer.String()
 		if buffer == "" {
-			if flush && p.block != "" {
+			if flush && p.inProposal {
 				p.emitPlanBlock("error", "")
-				visible.WriteString(openTag(p.block))
+				visible.WriteString(proposalOpenTag)
 				visible.WriteString(p.blockBuffer.String())
-				p.block = ""
-				p.blockID = ""
-				p.blockBuffer.Reset()
+				p.resetBlock()
 			}
 			return visible.String()
 		}
 
-		if p.block != "" {
-			closeTag := closeTag(p.block)
-			if idx := strings.Index(buffer, closeTag); idx >= 0 {
+		if p.inProposal {
+			if idx := strings.Index(buffer, proposalCloseTag); idx >= 0 {
 				p.blockBuffer.WriteString(buffer[:idx])
 				p.buffer.Reset()
-				p.buffer.WriteString(buffer[idx+len(closeTag):])
+				p.buffer.WriteString(buffer[idx+len(proposalCloseTag):])
 				p.emitPlanBlock("success", normalizeBlockDisplay(p.blockBuffer.String()))
-				p.block = ""
-				p.blockID = ""
-				p.blockBuffer.Reset()
+				p.resetBlock()
 				continue
 			}
 			if flush {
 				p.emitPlanBlock("error", "")
-				visible.WriteString(openTag(p.block))
+				visible.WriteString(proposalOpenTag)
 				visible.WriteString(p.blockBuffer.String())
 				visible.WriteString(buffer)
 				p.buffer.Reset()
-				p.block = ""
-				p.blockID = ""
-				p.blockBuffer.Reset()
+				p.resetBlock()
 				return visible.String()
 			}
-			retain := longestTagPrefixSuffix(buffer, []string{closeTag})
+			retain := longestTagPrefixSuffix(buffer, proposalCloseTag)
 			if len(buffer) > retain {
 				p.blockBuffer.WriteString(buffer[:len(buffer)-retain])
 				p.buffer.Reset()
@@ -170,13 +154,13 @@ func (p *Parser) drain(flush bool) string {
 			return visible.String()
 		}
 
-		kind, idx, openTag := nextOpenTag(buffer)
-		if idx >= 0 {
+		if idx := strings.Index(buffer, proposalOpenTag); idx >= 0 {
 			visible.WriteString(buffer[:idx])
 			p.buffer.Reset()
-			p.buffer.WriteString(buffer[idx+len(openTag):])
-			p.block = kind
-			p.blockID = p.nextBlockID(kind)
+			p.buffer.WriteString(buffer[idx+len(proposalOpenTag):])
+			p.inProposal = true
+			p.blockSeq++
+			p.blockID = fmt.Sprintf("%s-%d", proposalEvent, p.blockSeq)
 			p.emitPlanBlock("running", "")
 			continue
 		}
@@ -185,7 +169,7 @@ func (p *Parser) drain(flush bool) string {
 			p.buffer.Reset()
 			return visible.String()
 		}
-		retain := longestTagPrefixSuffix(buffer, []string{questionsOpenTag, proposalOpenTag})
+		retain := longestTagPrefixSuffix(buffer, proposalOpenTag)
 		if len(buffer) > retain {
 			visible.WriteString(buffer[:len(buffer)-retain])
 			p.buffer.Reset()
@@ -195,164 +179,83 @@ func (p *Parser) drain(flush bool) string {
 	}
 }
 
-func (p *Parser) nextBlockID(kind blockKind) string {
-	p.blockSeq++
-	return fmt.Sprintf("%s-%d", kind, p.blockSeq)
+func (p *Parser) resetBlock() {
+	p.inProposal = false
+	p.blockID = ""
+	p.blockBuffer.Reset()
 }
 
-func (p *Parser) emitPlanBlock(status string, content string) {
-	if p == nil || p.block == "" {
+func (p *Parser) emitPlanBlock(status, content string) {
+	if p == nil || !p.inProposal {
 		return
 	}
 	if status == "success" {
 		p.successfulBlocks++
 	}
-	data := map[string]interface{}{
-		"id":     p.blockID,
-		"status": status,
-	}
+	data := map[string]any{"id": p.blockID, "status": status}
 	if content != "" {
 		data["content"] = content
 	}
-	p.emit(Event{Type: string(p.block), Data: p.meta.appendTo(data)})
+	p.emit(Event{Type: proposalEvent, Data: p.meta.appendTo(data)})
 }
 
-func nextOpenTag(content string) (blockKind, int, string) {
-	bestKind := blockKind("")
-	bestIdx := -1
-	bestTag := ""
-	for _, candidate := range []struct {
-		kind blockKind
-		tag  string
-	}{
-		{kind: blockQuestions, tag: questionsOpenTag},
-		{kind: blockProposal, tag: proposalOpenTag},
-	} {
-		idx := strings.Index(content, candidate.tag)
-		if idx < 0 {
-			continue
-		}
-		if bestIdx < 0 || idx < bestIdx {
-			bestKind = candidate.kind
-			bestIdx = idx
-			bestTag = candidate.tag
+func longestTagPrefixSuffix(content, tag string) int {
+	limit := len(tag) - 1
+	if len(content) < limit {
+		limit = len(content)
+	}
+	for length := limit; length > 0; length-- {
+		if strings.HasSuffix(content, tag[:length]) {
+			return length
 		}
 	}
-	return bestKind, bestIdx, bestTag
-}
-
-func openTag(kind blockKind) string {
-	switch kind {
-	case blockQuestions:
-		return questionsOpenTag
-	case blockProposal:
-		return proposalOpenTag
-	default:
-		return ""
-	}
-}
-
-func closeTag(kind blockKind) string {
-	switch kind {
-	case blockQuestions:
-		return questionsCloseTag
-	case blockProposal:
-		return proposalCloseTag
-	default:
-		return ""
-	}
-}
-
-func longestTagPrefixSuffix(content string, tags []string) int {
-	max := 0
-	for _, tag := range tags {
-		limit := len(tag) - 1
-		if len(content) < limit {
-			limit = len(content)
-		}
-		for n := limit; n > max; n-- {
-			if strings.HasSuffix(content, tag[:n]) {
-				max = n
-				break
-			}
-		}
-	}
-	return max
+	return 0
 }
 
 func normalizeBlockDisplay(content string) string {
 	return strings.TrimSpace(content)
 }
 
-func blockKindForToolName(name string) (blockKind, bool) {
-	switch strings.TrimSpace(name) {
-	case "plan_questions", "plan_question":
-		return blockQuestions, true
-	case "proposed_plan":
-		return blockProposal, true
-	default:
-		return "", false
-	}
-}
-
-// IsToolName reports whether a tool call belongs to the plan display protocol.
+// IsToolName reports whether a tool call belongs to the final-plan display
+// protocol. Plan questions deliberately use the ordinary Ask tool instead.
 func IsToolName(name string) bool {
-	_, ok := blockKindForToolName(name)
-	return ok
+	return strings.TrimSpace(name) == proposalEvent
 }
 
-// EmitToolRunning publishes the running state for a plan protocol tool.
+// EmitToolRunning publishes the running state for a proposed-plan tool call.
 func EmitToolRunning(name string, meta Metadata, emit func(Event)) bool {
-	if emit == nil {
+	if emit == nil || !IsToolName(name) {
 		return false
 	}
-	kind, ok := blockKindForToolName(name)
-	if !ok {
-		return false
-	}
-	emit(Event{Type: string(kind), Data: meta.appendTo(map[string]interface{}{
-		"id":     ToolEventID,
-		"status": "running",
+	emit(Event{Type: proposalEvent, Data: meta.appendTo(map[string]any{
+		"id": ToolEventID, "status": "running",
 	})})
 	return true
 }
 
-// EmitToolCall projects a plan protocol tool call into a completed plan card.
+// EmitToolCall projects a proposed-plan protocol tool call into a completed
+// plan card. The tool form remains accepted for provider compatibility even
+// though the canonical prompt asks for a tagged assistant block.
 func EmitToolCall(name, args string, meta Metadata, emit func(Event)) (bool, bool) {
-	if emit == nil {
+	if emit == nil || !IsToolName(name) {
 		return false, false
 	}
-	kind, ok := blockKindForToolName(name)
-	if !ok {
-		return false, false
-	}
-	content := normalizeBlockDisplay(toolContent(kind, args))
+	content := normalizeBlockDisplay(extractProposedPlanToolContent(strings.TrimSpace(args)))
 	if content == "" {
 		EmitToolRunning(name, meta, emit)
 		return true, false
 	}
-	data := meta.appendTo(map[string]interface{}{
-		"id":      ToolEventID,
-		"status":  "success",
-		"content": content,
-	})
-	emit(Event{Type: string(kind), Data: data})
+	emit(Event{Type: proposalEvent, Data: meta.appendTo(map[string]any{
+		"id": ToolEventID, "status": "success", "content": content,
+	})})
 	return true, true
-}
-
-func toolContent(kind blockKind, args string) string {
-	args = strings.TrimSpace(args)
-	if kind == blockProposal {
-		return extractProposedPlanToolContent(args)
-	}
-	return args
 }
 
 func extractProposedPlanToolContent(args string) string {
 	if args == "" {
 		return ""
 	}
-	var payload map[string]interface{}
+	var payload map[string]any
 	if err := json.Unmarshal([]byte(args), &payload); err != nil {
 		return args
 	}

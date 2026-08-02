@@ -177,7 +177,6 @@ interface ModeRouterProps {
   onTextSelectionRemove: (index: number) => void
   onChatPlanModeChange: (value: boolean) => void
   onChatPlanModeToggle: () => void
-  onSubmitPlanQuestion: (ref: AgentPartRef, content: string, preview: string) => void
   onApproveProposedPlan: (ref: AgentPartRef) => void
   onExitChatPlanMode: () => void
   onDismissNotice?: () => void
@@ -284,7 +283,6 @@ export function ModeRouter(props: ModeRouterProps) {
     onTextSelectionRemove,
     onChatPlanModeChange,
     onChatPlanModeToggle,
-    onSubmitPlanQuestion,
     onApproveProposedPlan,
     onExitChatPlanMode,
     onDismissNotice,
@@ -732,7 +730,6 @@ export function ModeRouter(props: ModeRouterProps) {
       onInsertIllustration={insertIllustrationIntoEditor}
       onPlanModeChange={onChatPlanModeChange}
       onPlanModeToggle={onChatPlanModeToggle}
-      onSubmitPlanQuestion={onSubmitPlanQuestion}
       onApproveProposedPlan={onApproveProposedPlan}
       onExitPlanMode={onExitChatPlanMode}
       reviewFeedback={reviewFeedback}

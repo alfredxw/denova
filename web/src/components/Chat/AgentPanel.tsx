@@ -146,7 +146,6 @@ interface AgentPanelProps {
   onInsertIllustration?: (illustration: ChapterIllustration) => void
   onPlanModeChange: (value: boolean) => void
   onPlanModeToggle: () => void
-  onSubmitPlanQuestion: (ref: AgentPartRef, content: string, preview: string) => void
   onApproveProposedPlan: (ref: AgentPartRef) => void
   onExitPlanMode: () => void
   reviewFeedback?: ReviewFeedbackBatch | null
@@ -223,7 +222,6 @@ function AgentPanelComponent({
   onInsertIllustration,
   onPlanModeChange,
   onPlanModeToggle,
-  onSubmitPlanQuestion,
   onApproveProposedPlan,
   onExitPlanMode,
   reviewFeedback,
@@ -522,7 +520,6 @@ function AgentPanelComponent({
     onOpenSubAgentSession: openSubAgentSession,
     onInsertIllustration,
     activeSubAgentSessionKey,
-    onSubmitPlanQuestion,
     onApprovePlan: onApproveProposedPlan,
     onContinuePlan: continuePlanDiscussion,
     onExitPlanMode,

@@ -51,6 +51,9 @@ func newChatAgentLoop(run *chatRun, history []*agent.Message, agentMessage strin
 	if controller := agentconversation.NewContextWindowController(run.conversation, run.options.AgentKind); controller != nil {
 		runCtx = agent.ContextWithContextWindowController(runCtx, controller)
 	}
+	if run.req.PlanMode {
+		runCtx = agenttoolruntime.ContextWithToolAccessMode(runCtx, agenttoolruntime.ToolAccessModePlanReadOnly)
+	}
 	if interaction := newRunAskInteraction(run.conversation, run.options, run.emit); interaction != nil {
 		runCtx = producttools.ContextWithAskInteraction(runCtx, interaction)
 		runCtx = agenttoolruntime.ContextWithApprovalHost(runCtx, interaction)

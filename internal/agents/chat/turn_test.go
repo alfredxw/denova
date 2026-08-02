@@ -127,19 +127,22 @@ func TestTurnContextSelectionProjectionIncludesFileAndLineRange(t *testing.T) {
 	assertContains(t, got, "```\n选中的正文\n```")
 }
 
-func TestTurnContextPlanModeUsesStructuredPlanningProtocol(t *testing.T) {
+func TestTurnContextPlanModeUsesDurableAskAndProposal(t *testing.T) {
 	_, assembled := assembleTurnForTest(t, ChatRequest{Message: "重构章节", PlanMode: true}, nil, nil, agentcontext.DefaultBudget())
 	got := finalAssembledUserMessage(t, assembled)
 
 	assertContains(t, got, "[Plan Mode / 规划模式]")
 	assertContains(t, got, "不要直接执行")
-	assertContains(t, got, "<plan_questions>")
+	assertContains(t, got, "必须立即调用 ask")
+	assertContains(t, got, "所有交互式澄清都通过 ask 完成")
 	assertContains(t, got, "<proposed_plan>")
 	assertContains(t, got, "# 计划标题")
 	assertContains(t, got, "## Summary")
 	assertContains(t, got, "## Key Changes")
-	assertContains(t, got, "用户需求：")
 	assertContains(t, got, "# 本轮用户请求（最高优先级）\n\n重构章节")
+	if strings.Contains(got, "<plan_questions>...") || strings.Contains(got, `"questions":`) {
+		t.Fatalf("Plan Mode should not teach the retired question protocol:\n%s", got)
+	}
 	if strings.Contains(got, "Tests、Assumptions") || strings.Contains(got, "Test Plan") {
 		t.Fatalf("Plan Mode 最终方案模板不应强制输出测试或假设小节:\n%s", got)
 	}

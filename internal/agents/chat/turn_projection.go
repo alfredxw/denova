@@ -75,7 +75,7 @@ func projectTurnContextFragments(input turnContextProjectionInput) []agentcontex
 		appendFragment(turnFragment(
 			"turn_rule_plan_mode", "turn.rule.plan_mode", "规划模式",
 			"constrain this turn to collaborative planning",
-			prompts.PlanMode(""), 0,
+			prompts.PlanModeInstruction(), 0,
 		))
 	}
 	if skillName := strings.TrimSpace(req.WritingSkill); skillName != "" {

@@ -164,7 +164,6 @@ function AgentChatConversationTabComponent({
       onTextSelectionRemove={chat.removeTextSelection}
       onPlanModeChange={chat.setPlanMode}
       onPlanModeToggle={chat.togglePlanMode}
-      onSubmitPlanQuestion={chat.submitPlanQuestion}
       onApproveProposedPlan={chat.approveProposedPlan}
       onExitPlanMode={chat.exitPlanMode}
       onOpenChangeReview={onOpenChangeReview}

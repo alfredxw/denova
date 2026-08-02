@@ -461,6 +461,11 @@ func (m *OrchestratorMiddleware) buildToolDecision(ctx context.Context, toolCtx 
 		decision.Reason = fmt.Sprintf("[tool error] 工具 %q 没有显式 ToolDescriptor，已在执行前拒绝。 / Tool %q has no explicit ToolDescriptor and was rejected before execution.", manifest.Name, manifest.Name)
 		return decision
 	}
+	if mode := toolAccessModeFromContext(ctx); !toolAllowedByAccessMode(mode, manifest.ToolDescriptor) {
+		decision.Action = "blocked"
+		decision.Reason = toolAccessModeBlockedMessage(mode, manifest.Name, manifest.ToolDescriptor)
+		return decision
+	}
 	if m != nil && m.enforceToolSettings && manifest.Capability != "" && !config.AgentToolAllowed(m.toolSettings, manifest.Capability) {
 		decision.Action = "blocked"
 		decision.Reason = disabledToolCapabilityMessage(manifest.Name, manifest.Capability)

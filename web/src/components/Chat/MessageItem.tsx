@@ -1,6 +1,6 @@
 import { Children, Fragment, cloneElement, isValidElement, memo, useEffect, useLayoutEffect, useRef, useState } from 'react'
 import type { CSSProperties, ReactNode } from 'react'
-import { Activity, AlertTriangle, Check, CheckCircle2, ChevronDown, ChevronLeft, ChevronRight, Circle, CircleDot, ClipboardCheck, ClipboardList, Copy, Dice5, FileText, GitBranch, ImagePlus, ListTodo, Loader2, PanelRightOpen, Pencil, RefreshCw, Send, X } from 'lucide-react'
+import { Activity, AlertTriangle, Check, CheckCircle2, ChevronDown, ChevronLeft, ChevronRight, Circle, CircleDot, ClipboardCheck, ClipboardList, Copy, Dice5, FileText, GitBranch, ImagePlus, ListTodo, Loader2, PanelRightOpen, Pencil, RefreshCw, X } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import { ImagePreviewDialog } from '@/components/common/ImagePreviewDialog'
 import { MarkdownRenderer, type MarkdownRendererComponents } from '@/components/common/MarkdownRenderer'
@@ -14,9 +14,7 @@ import { TooltipIconButton } from '@/components/common/tooltip-icon-button'
 import { TooltipProvider } from '@/components/ui/tooltip'
 import { subAgentSessionKey } from './subagent-session'
 import { Button } from '@/components/ui/button'
-import { Textarea } from '@/components/ui/textarea'
-import { formatPlanQuestionAnswerMessage, formatPlanQuestionAnswerPreview, parsePlanQuestionSet, planDisplayContent, recommendedAnswerSet } from '@/lib/plan-mode'
-import type { PlanQuestionAnswer } from '@/lib/plan-mode'
+import { parsePlanQuestionSet, planDisplayContent } from '@/lib/plan-mode'
 import { Message as AIMessage, MessageContent as AIMessageContent } from '@/components/ai-elements/message'
 import { Reasoning, ReasoningContent, ReasoningTrigger } from '@/components/ai-elements/reasoning'
 import { Plan, PlanContent, PlanHeader } from '@/components/ai-elements/plan'
@@ -41,7 +39,6 @@ interface MessageItemProps {
   generatingInteractiveImageTurnId?: string
   activeSubAgentSessionKey?: string
   subAgentPresentation?: 'card' | 'content'
-  onSubmitPlanQuestion?: (message: ChatMessage, content: string, preview: string) => void
   onApprovePlan?: (message: ChatMessage) => void
   onContinuePlan?: (message: ChatMessage) => void
   onExitPlanMode?: () => void
@@ -57,7 +54,7 @@ const messageActionTooltipSideOffset = 3
 const planThinkingPreviewStaleMs = 3500
 
 /** 单条消息组件，根据 role 渲染不同样式 */
-export const MessageItem = memo(function MessageItem({ message, highlightDialogue = false, messageStyle, onEdit, onEditAssistantReply, onCreateBranch, onRegenerate, onSwitchVersion, onOpenSubAgentSession, onInsertIllustration, onGenerateInteractiveImage, generatingInteractiveImageTurnId, activeSubAgentSessionKey, subAgentPresentation = 'card', onSubmitPlanQuestion, onApprovePlan, onContinuePlan, onExitPlanMode, onOpenTrace, onPlanCardLayoutChange, onResolveAsk }: MessageItemProps) {
+export const MessageItem = memo(function MessageItem({ message, highlightDialogue = false, messageStyle, onEdit, onEditAssistantReply, onCreateBranch, onRegenerate, onSwitchVersion, onOpenSubAgentSession, onInsertIllustration, onGenerateInteractiveImage, generatingInteractiveImageTurnId, activeSubAgentSessionKey, subAgentPresentation = 'card', onApprovePlan, onContinuePlan, onExitPlanMode, onOpenTrace, onPlanCardLayoutChange, onResolveAsk }: MessageItemProps) {
   const { role, content = '' } = message
   const canEdit = role === 'user' && Boolean(message.turn_id) && Boolean(onEdit)
   const canEditAssistantReply = role === 'assistant' && !message.subagent && Boolean(message.turn_id) && Boolean(onEditAssistantReply) && !message.streaming
@@ -179,7 +176,7 @@ export const MessageItem = memo(function MessageItem({ message, highlightDialogu
       return <ContextCompactionBlock message={message} />
 
     case 'plan_question':
-      return <PlanQuestionBlock message={message} onSubmit={onSubmitPlanQuestion} onLayoutChange={onPlanCardLayoutChange} />
+      return <LegacyPlanQuestionBlock message={message} />
 
     case 'proposed_plan':
       return <ProposedPlanBlock message={message} highlightDialogue={highlightDialogue} onApprove={onApprovePlan} onContinue={onContinuePlan} onExit={onExitPlanMode} onLayoutChange={onPlanCardLayoutChange} />
@@ -645,92 +642,31 @@ function ContextCompactionBlock({ message }: { message: ChatMessage }) {
   )
 }
 
-function PlanQuestionBlock({ message, onSubmit, onLayoutChange }: { message: ChatMessage; onSubmit?: (message: ChatMessage, content: string, preview: string) => void; onLayoutChange?: () => void }) {
+/** Keeps previously persisted plan-question cards readable after interactive
+ * clarification moved to the durable Ask tool. Legacy cards are intentionally
+ * display-only: there is no live waiter that could safely accept an answer. */
+function LegacyPlanQuestionBlock({ message }: { message: ChatMessage }) {
   const { t } = useTranslation()
   const questionSet = parsePlanQuestionSet(message.content || '')
   const fallback = planDisplayContent(message.content || '')
-  const [selected, setSelected] = useState<Record<string, string[]>>(() => questionSet ? recommendedAnswerSet(questionSet) : {})
-  const [customAnswers, setCustomAnswers] = useState<Record<string, string>>({})
-  const [questionIndex, setQuestionIndex] = useState(0)
-  const [localAction, setLocalAction] = useState<ChatMessage['plan_action']>(message.plan_action)
-  const questionBodyRef = useRef<HTMLDivElement | null>(null)
-  const pendingLayoutChangeRef = useRef(false)
-  const planAction = message.plan_action || localAction
-  const locked = planAction === 'answered'
-  const requestLayoutChange = () => {
-    pendingLayoutChangeRef.current = true
-  }
-  useEffect(() => {
-    if (!questionSet) return
-    setSelected((current) => Object.keys(current).length > 0 ? current : recommendedAnswerSet(questionSet))
-    setQuestionIndex((current) => Math.min(current, Math.max(0, questionSet.questions.length - 1)))
-  }, [message.content])
-  useEffect(() => {
-    if (message.plan_action) setLocalAction(message.plan_action)
-  }, [message.plan_action])
-  useLayoutEffect(() => {
-    if (questionBodyRef.current) questionBodyRef.current.scrollTop = 0
-    if (!pendingLayoutChangeRef.current) return
-    pendingLayoutChangeRef.current = false
-    onLayoutChange?.()
-  }, [questionIndex, message.content, planAction, onLayoutChange])
-
-  if (message.status === 'running' && !(message.content || '').trim()) {
-    return (
-      <PlanShell icon={<Loader2 className="h-3.5 w-3.5 animate-spin" />} title={t('chat.plan.questionTitle')} badge={t('chat.plan.generatingBadge')}>
-        <PlanPendingBlock text={t('chat.plan.generatingQuestions')} preview={message.thinking_preview} />
-      </PlanShell>
-    )
-  }
 
   if (!questionSet) {
     return (
-      <PlanShell icon={<ClipboardList className="h-3.5 w-3.5" />} title={t('chat.plan.questionTitle')}>
-        <div className="max-h-72 overflow-auto whitespace-pre-wrap text-xs leading-relaxed text-[var(--nova-text-muted)]">{fallback}</div>
+      <PlanShell icon={<ClipboardList className="h-3.5 w-3.5" />} title={t('chat.plan.questionTitle')} badge={t('chat.plan.legacyBadge')}>
+        <div className="space-y-2 text-xs leading-relaxed text-[var(--nova-text-muted)]">
+          <p>{t('chat.plan.legacyDescription')}</p>
+          {fallback && <div className="max-h-72 overflow-auto whitespace-pre-wrap">{fallback}</div>}
+        </div>
       </PlanShell>
     )
   }
 
-  const setQuestionSelection = (questionId: string, optionId: string, multi: boolean) => {
-    if (locked) return
-    setSelected((current) => {
-      const existing = current[questionId] || []
-      if (!multi) return { ...current, [questionId]: [optionId] }
-      return {
-        ...current,
-        [questionId]: existing.includes(optionId)
-          ? existing.filter((item) => item !== optionId)
-          : [...existing, optionId],
-      }
-    })
-  }
-
-  const submit = () => {
-    if (locked) return
-    const answers: PlanQuestionAnswer[] = questionSet.questions.map((question) => {
-      const selectedIds = new Set(selected[question.id] || [])
-      return {
-        questionId: question.id,
-        question: question.question,
-        selectedOptions: question.options.filter((option) => selectedIds.has(option.id)),
-        customAnswer: customAnswers[question.id] || '',
-      }
-    })
-    setLocalAction('answered')
-    requestLayoutChange()
-    onSubmit?.(message, formatPlanQuestionAnswerMessage(answers), formatPlanQuestionAnswerPreview(answers))
-  }
-
-  const currentIndex = Math.min(questionIndex, questionSet.questions.length - 1)
-  const question = questionSet.questions[currentIndex]
-  const selectedIds = new Set(selected[question.id] || [])
-  const isLastQuestion = currentIndex >= questionSet.questions.length - 1
-
   return (
-    <PlanShell icon={<ClipboardList className="h-3.5 w-3.5" />} title={t('chat.plan.questionTitle')} badge={t('chat.plan.questionProgress', { current: currentIndex + 1, total: questionSet.questions.length })}>
-      <div className="flex max-h-[min(620px,calc(100vh-220px))] min-h-0 flex-col">
-        <div ref={questionBodyRef} className="min-h-0 flex-1 overflow-y-auto overscroll-contain pr-1 [scrollbar-gutter:stable]">
-          <div className="rounded-md border border-[var(--nova-border)] bg-[var(--nova-surface-2)] p-2.5">
+    <PlanShell icon={<ClipboardList className="h-3.5 w-3.5" />} title={t('chat.plan.questionTitle')} badge={t('chat.plan.legacyBadge')}>
+      <div className="max-h-[min(620px,calc(100vh-220px))] space-y-3 overflow-y-auto overscroll-contain pr-1 [scrollbar-gutter:stable]">
+        <p className="text-xs leading-5 text-[var(--nova-text-muted)]">{t('chat.plan.legacyDescription')}</p>
+        {questionSet.questions.map((question) => (
+          <section key={question.id} className="rounded-md border border-[var(--nova-border)] bg-[var(--nova-surface-2)] p-2.5">
             <div className="flex min-w-0 items-start gap-2">
               <div className="min-w-0 flex-1">
                 <div className="text-sm font-medium leading-5 text-[var(--nova-text)]">{question.question}</div>
@@ -741,83 +677,18 @@ function PlanQuestionBlock({ message, onSubmit, onLayoutChange }: { message: Cha
               </span>
             </div>
             <div className="mt-2 space-y-1.5">
-              {question.options.map((option) => {
-                const active = selectedIds.has(option.id)
-                return (
-                  <button
-                    key={option.id}
-                    type="button"
-                    disabled={locked}
-                    className={`flex w-full items-start gap-2 rounded-md border px-2.5 py-2 text-left transition-colors disabled:cursor-default ${active ? 'border-[var(--nova-accent)] bg-[var(--nova-active)] text-[var(--nova-text)]' : `border-[var(--nova-border)] bg-[var(--nova-surface)] text-[var(--nova-text-muted)] ${locked ? '' : 'hover:bg-[var(--nova-hover)] hover:text-[var(--nova-text)]'}`}`}
-                    onClick={() => setQuestionSelection(question.id, option.id, question.type === 'multi')}
-                  >
-                    <span className="mt-0.5 flex h-4 w-4 shrink-0 items-center justify-center rounded-full border border-current">
-                      {active && <span className="h-2 w-2 rounded-full bg-current" />}
-                    </span>
-                    <span className="min-w-0 flex-1">
-                      <span className="flex flex-wrap items-center gap-1.5 text-xs font-medium">
-                        {option.label}
-                        {option.recommended && <span className="rounded border border-[var(--nova-border)] bg-[var(--nova-surface-2)] px-1.5 py-0.5 text-[10px] text-[var(--nova-text-faint)]">{t('chat.plan.recommended')}</span>}
-                      </span>
-                      {option.description && <span className="mt-0.5 block text-[11px] leading-4 text-[var(--nova-text-faint)]">{option.description}</span>}
-                    </span>
-                  </button>
-                )
-              })}
+              {question.options.map((option) => (
+                <div key={option.id} className="rounded-md border border-[var(--nova-border)] bg-[var(--nova-surface)] px-2.5 py-2 text-[var(--nova-text-muted)]">
+                  <span className="flex flex-wrap items-center gap-1.5 text-xs font-medium text-[var(--nova-text)]">
+                    {option.label}
+                    {option.recommended && <span className="rounded border border-[var(--nova-border)] bg-[var(--nova-surface-2)] px-1.5 py-0.5 text-[10px] text-[var(--nova-text-faint)]">{t('chat.plan.recommended')}</span>}
+                  </span>
+                  {option.description && <span className="mt-0.5 block text-[11px] leading-4 text-[var(--nova-text-faint)]">{option.description}</span>}
+                </div>
+              ))}
             </div>
-            {question.allow_custom !== false && (
-              <Textarea
-                value={customAnswers[question.id] || ''}
-                onChange={(event) => {
-                  if (locked) return
-                  setCustomAnswers((current) => ({ ...current, [question.id]: event.target.value }))
-                }}
-                placeholder={t('chat.plan.customPlaceholder')}
-                rows={2}
-                readOnly={locked}
-                disabled={locked}
-                className="nova-field mt-2 min-h-16 resize-none text-xs"
-              />
-            )}
-          </div>
-        </div>
-        {locked ? (
-          <PlanActionStatus text={t('chat.plan.answerSubmittedStatus')} />
-        ) : (
-          <div className="mt-3 flex shrink-0 flex-wrap justify-between gap-2 border-t border-[var(--nova-border)] bg-[var(--nova-surface)] pt-3">
-            <Button type="button" size="xs" variant="outline" className="gap-1.5" onClick={() => {
-              setSelected(recommendedAnswerSet(questionSet))
-            }}>
-              <CheckCircle2 className="h-3.5 w-3.5" />
-              {t('chat.plan.useRecommended')}
-            </Button>
-            <div className="flex flex-wrap justify-end gap-2">
-              {currentIndex > 0 && (
-                <Button type="button" size="xs" variant="outline" className="gap-1.5" onClick={() => {
-                  requestLayoutChange()
-                  setQuestionIndex((value) => Math.max(0, value - 1))
-                }}>
-                  <ChevronLeft className="h-3.5 w-3.5" />
-                  {t('chat.plan.previousQuestion')}
-                </Button>
-              )}
-              {isLastQuestion ? (
-                <Button type="button" size="xs" className="gap-1.5" onClick={submit}>
-                  <Send className="h-3.5 w-3.5" />
-                  {t('chat.plan.submitAllAnswers')}
-                </Button>
-              ) : (
-                <Button type="button" size="xs" className="gap-1.5" onClick={() => {
-                  requestLayoutChange()
-                  setQuestionIndex((value) => Math.min(questionSet.questions.length - 1, value + 1))
-                }}>
-                  {t('chat.plan.confirmAndNext')}
-                  <ChevronRight className="h-3.5 w-3.5" />
-                </Button>
-              )}
-            </div>
-          </div>
-        )}
+          </section>
+        ))}
       </div>
     </PlanShell>
   )

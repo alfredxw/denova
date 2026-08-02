@@ -3,11 +3,10 @@ import {
   formatApprovedPlanExecutionMessage,
   parsePlanQuestionSet,
   planDisplayContent,
-  recommendedAnswerSet,
 } from './plan-mode'
 
 describe('plan-mode helpers', () => {
-  it('解析问题卡 JSON 并生成推荐答案', () => {
+  it('解析旧版问题卡 JSON 供历史记录展示', () => {
     const parsed = parsePlanQuestionSet(JSON.stringify({
       questions: [{
         id: 'scope',
@@ -21,7 +20,10 @@ describe('plan-mode helpers', () => {
     }))
 
     expect(parsed?.questions[0]).toMatchObject({ id: 'scope', type: 'multi', question: '实现范围？' })
-    expect(recommendedAnswerSet(parsed!)).toEqual({ scope: ['chat', 'interactive'] })
+    expect(parsed?.questions[0].options).toEqual([
+      expect.objectContaining({ id: 'chat', label: 'IDE Chat', recommended: true }),
+      expect.objectContaining({ id: 'interactive', label: '互动模式', recommended: true }),
+    ])
   })
 
   it('非法问题 JSON 返回 null', () => {
@@ -29,7 +31,7 @@ describe('plan-mode helpers', () => {
     expect(parsePlanQuestionSet('{"questions":[]}')).toBeNull()
   })
 
-  it('保留多个问题，由前端逐题确认后统一提交', () => {
+  it('保留旧版卡片中的多个问题', () => {
     const parsed = parsePlanQuestionSet(JSON.stringify({
       questions: [
         {

@@ -777,7 +777,6 @@ function defaultAgentPanelProps(overrides: AgentPanelOverrides, composerSettings
     onTextSelectionRemove: vi.fn(),
     onPlanModeChange: vi.fn(),
     onPlanModeToggle: vi.fn(),
-    onSubmitPlanQuestion: vi.fn(),
     onApproveProposedPlan: vi.fn(),
     onExitPlanMode: vi.fn(),
     onClose: vi.fn(),

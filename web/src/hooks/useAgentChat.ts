@@ -601,14 +601,6 @@ export function useAgentChat(options: ChatOptions = {}) {
     [client, isStreaming, prepareAgentRequest, t],
   )
 
-  const submitPlanQuestion = useCallback(
-    (ref: AgentPartRef, content: string, _preview: string) => {
-      setUIMessages((prev) => markPlanUIMessageAction(prev, ref, 'answered'))
-      void send(content, { planMode: true, hideUserMessage: true })
-    },
-    [send, setUIMessages],
-  )
-
   const approveProposedPlan = useCallback(
     (ref: AgentPartRef) => {
       const planView = findAgentMessageView(messages, ref)
@@ -739,7 +731,6 @@ export function useAgentChat(options: ChatOptions = {}) {
     togglePlanMode,
     send,
     analyzeContext,
-    submitPlanQuestion,
     approveProposedPlan,
     exitPlanMode,
     stop,

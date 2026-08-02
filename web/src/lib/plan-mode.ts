@@ -20,13 +20,6 @@ export interface PlanQuestionSet {
   questions: PlanQuestion[]
 }
 
-export interface PlanQuestionAnswer {
-  questionId: string
-  question: string
-  selectedOptions: PlanQuestionOption[]
-  customAnswer?: string
-}
-
 const MAX_APPROVED_PLAN_CHARS = 16_000
 
 export function parsePlanQuestionSet(content: string): PlanQuestionSet | null {
@@ -41,39 +34,6 @@ export function parsePlanQuestionSet(content: string): PlanQuestionSet | null {
   } catch {
     return null
   }
-}
-
-export function recommendedAnswerSet(questionSet: PlanQuestionSet): Record<string, string[]> {
-  const result: Record<string, string[]> = {}
-  for (const question of questionSet.questions) {
-    const recommended = question.options.filter((option) => option.recommended).map((option) => option.id)
-    result[question.id] = recommended.length > 0 ? recommended : question.options.slice(0, 1).map((option) => option.id)
-  }
-  return result
-}
-
-export function formatPlanQuestionAnswerMessage(answers: PlanQuestionAnswer[]) {
-  const payload = {
-    answers: answers.map((answer) => ({
-      question_id: answer.questionId,
-      question: answer.question,
-      selected_options: answer.selectedOptions.map((option) => ({
-        id: option.id,
-        label: option.label,
-        description: option.description || '',
-      })),
-      custom_answer: answer.customAnswer || '',
-    })),
-  }
-  return `[Plan Mode question answers]\n<plan_question_answers>\n${JSON.stringify(payload, null, 2)}\n</plan_question_answers>\n\n请基于以上回答继续完善计划；如果仍有关键不确定性，请继续提问，否则输出最终 <proposed_plan>。`
-}
-
-export function formatPlanQuestionAnswerPreview(answers: PlanQuestionAnswer[]) {
-  return answers.map((answer) => {
-    const selected = answer.selectedOptions.map((option) => option.label).join(', ') || '未选择 / No option'
-    const custom = answer.customAnswer?.trim()
-    return custom ? `${answer.question}\n${selected}\n${custom}` : `${answer.question}\n${selected}`
-  }).join('\n\n')
 }
 
 export function formatApprovedPlanExecutionMessage(planContent: string, originalRequest?: string) {

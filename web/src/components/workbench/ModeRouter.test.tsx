@@ -629,7 +629,6 @@ function modeRouterProps(
     onTextSelectionRemove: vi.fn(),
     onChatPlanModeChange: vi.fn(),
     onChatPlanModeToggle: vi.fn(),
-    onSubmitPlanQuestion: vi.fn(),
     onApproveProposedPlan: vi.fn(),
     onExitChatPlanMode: vi.fn(),
     ...overrides,

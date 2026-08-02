@@ -357,22 +357,22 @@ func TestDisplayRecorderConvertsPlanProtocolToolCall(t *testing.T) {
 	recorder.Record(agentrun.Event{Type: "tool_call", Data: map[string]interface{}{
 		"agent_kind": agentrun.AgentKindIDE,
 		"id":         "call-plan",
-		"name":       "plan_questions",
-		"args":       `{"questions":[{"id":"scope","question":"确认范围？"}]}`,
+		"name":       "proposed_plan",
+		"args":       `{"content":"# Plan"}`,
 		"run_id":     "run-plan-tool",
 	}})
 
 	if len(appender.events) != 1 {
 		t.Fatalf("events = %d, want 1", len(appender.events))
 	}
-	if appender.events[0].Role != "plan_question" {
-		t.Fatalf("role = %q, want plan_question", appender.events[0].Role)
+	if appender.events[0].Role != "proposed_plan" {
+		t.Fatalf("role = %q, want proposed_plan", appender.events[0].Role)
 	}
 	if appender.events[0].Name != "" {
 		t.Fatalf("plan protocol tool should not persist tool name, got %q", appender.events[0].Name)
 	}
-	if appender.events[0].Content == "" || !strings.Contains(appender.events[0].Content, `"questions"`) {
-		t.Fatalf("plan event should keep question content: %#v", appender.events[0])
+	if appender.events[0].Content != "# Plan" {
+		t.Fatalf("plan event should keep proposal content: %#v", appender.events[0])
 	}
 }
 

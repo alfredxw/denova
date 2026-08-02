@@ -922,9 +922,7 @@ describe('MessageItem', () => {
     expect(screen.queryByText('阈值 90%')).not.toBeInTheDocument()
   })
 
-  it('Plan 问题卡选择选项时只更新卡片内部状态', async () => {
-    const user = userEvent.setup()
-
+  it('旧版 Plan 问题卡只读展示，不再创建第二套交互状态', () => {
     render(
       <MessageItem
         message={{
@@ -944,22 +942,22 @@ describe('MessageItem', () => {
       />,
     )
 
-    const manualOption = screen.getByRole('button', { name: /手动确认/ })
-    expect(manualOption).not.toHaveClass('border-[var(--nova-accent)]')
-
-    await user.click(manualOption)
-
-    expect(manualOption).toHaveClass('border-[var(--nova-accent)]')
+    expect(screen.getByText('历史记录')).toBeInTheDocument()
+    expect(screen.getByText(/旧版 Plan Mode 留下的问题卡/)).toBeInTheDocument()
+    expect(screen.getByText('采用推荐方案')).toBeInTheDocument()
+    expect(screen.getByText('手动确认')).toBeInTheDocument()
+    expect(screen.getByText('推荐')).toBeInTheDocument()
+    expect(screen.queryByRole('button')).not.toBeInTheDocument()
+    expect(screen.queryByRole('textbox')).not.toBeInTheDocument()
   })
 
-  it('Plan 问题卡生成中时展示占位状态', () => {
+  it('无法解析的旧版 Plan 问题卡仍保留只读说明', () => {
     render(<MessageItem message={{ role: 'plan_question', status: 'running', streaming: true, content: '', thinking_preview: '准备输出问题卡' }} />)
 
     expect(screen.getByText('规划问题')).toBeInTheDocument()
-    expect(screen.getByText('生成中')).toBeInTheDocument()
-    expect(screen.getByText('正在生成规划问题卡…')).toBeInTheDocument()
-    expect(screen.getByText('正在规划：')).toBeInTheDocument()
-    expect(screen.getByText('准备输出问题卡')).toBeInTheDocument()
+    expect(screen.getByText('历史记录')).toBeInTheDocument()
+    expect(screen.getByText(/新的规划澄清会通过可恢复的 Ask 卡片完成/)).toBeInTheDocument()
+    expect(screen.queryByText('准备输出问题卡')).not.toBeInTheDocument()
   })
 
   it('Plan 生成中预览长时间不变化时自动隐藏', () => {
@@ -979,38 +977,6 @@ describe('MessageItem', () => {
     } finally {
       vi.useRealTimers()
     }
-  })
-
-  it('Plan 问题卡提交后隐藏按钮并展示完成态', async () => {
-    const user = userEvent.setup()
-    const handleSubmit = vi.fn()
-
-    render(
-      <MessageItem
-        message={{
-          role: 'plan_question',
-          content: JSON.stringify({
-            questions: [{
-              id: 'scope',
-              type: 'single',
-              question: '这次要先确认什么？',
-              options: [
-                { id: 'recommended', label: '采用推荐方案', recommended: true },
-                { id: 'manual', label: '手动确认' },
-              ],
-            }],
-          }),
-        }}
-        onSubmitPlanQuestion={handleSubmit}
-      />,
-    )
-
-    await user.click(screen.getByRole('button', { name: /提交全部回答/ }))
-
-    expect(handleSubmit).toHaveBeenCalledTimes(1)
-    expect(screen.queryByRole('button', { name: /提交全部回答/ })).not.toBeInTheDocument()
-    expect(screen.queryByRole('button', { name: /采用推荐项/ })).not.toBeInTheDocument()
-    expect(screen.getByText('已提交回答，正在继续规划。')).toBeInTheDocument()
   })
 
   it.each([

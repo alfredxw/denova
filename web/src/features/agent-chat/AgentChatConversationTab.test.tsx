@@ -72,7 +72,6 @@ describe('AgentChatConversationTab draft lifecycle', () => {
       removeTextSelection: vi.fn(),
       setPlanMode: vi.fn(),
       togglePlanMode: vi.fn(),
-      submitPlanQuestion: vi.fn(),
       approveProposedPlan: vi.fn(),
       exitPlanMode: vi.fn(),
     } as never)

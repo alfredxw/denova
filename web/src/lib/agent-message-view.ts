@@ -199,6 +199,8 @@ export function agentViewStableKey(view: AgentMessageView) {
 }
 
 export function isPlanProtocolToolName(name: string) {
+  // Legacy names are replay-only: old providers emitted a tool call beside the
+  // persisted plan card, and rendering both would duplicate historical UI.
   return name === 'plan_questions' || name === 'plan_question' || name === 'proposed_plan'
 }
 

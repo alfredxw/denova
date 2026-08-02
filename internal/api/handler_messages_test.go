@@ -212,4 +212,21 @@ func TestActivitySummarySupportsGzipWithoutCompressingEventStreams(t *testing.T)
 	if encoding := string(streamCompatible.Header().Peek("Content-Encoding")); encoding != "" {
 		t.Fatalf("event-stream content encoding = %q, want empty", encoding)
 	}
+
+	// Browsers send Accept-Encoding automatically, while the AI SDK stream
+	// transport does not need to send an explicit Accept header. Stream routes
+	// must therefore be excluded by path as a server-side invariant.
+	streamRoute := ut.PerformRequest(
+		server.engine.Engine,
+		http.MethodGet,
+		"/api/chat/stream?task_id=missing",
+		nil,
+		ut.Header{Key: "Accept-Encoding", Value: "gzip"},
+	)
+	if streamRoute.Code != http.StatusConflict {
+		t.Fatalf("missing stream status = %d, want %d", streamRoute.Code, http.StatusConflict)
+	}
+	if encoding := string(streamRoute.Header().Peek("Content-Encoding")); encoding != "" {
+		t.Fatalf("stream route content encoding = %q, want empty", encoding)
+	}
 }

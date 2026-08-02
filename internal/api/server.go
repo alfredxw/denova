@@ -54,7 +54,13 @@ func newServer(application *app.App, port string, listener net.Listener) *Server
 	h.Use(requestObservabilityMiddleware)
 	h.Use(corsMiddleware)
 	h.Use(remoteAccessMiddleware(application))
-	h.Use(gzip.Gzip(gzip.DefaultCompression))
+	// The gzip middleware buffers body streams before compressing them. Exclude
+	// every SSE route at the server boundary so browsers can consume events as
+	// they arrive even when their automatic Accept-Encoding header includes gzip.
+	h.Use(gzip.Gzip(gzip.DefaultCompression, gzip.WithExcludedPathRegexes([]string{
+		`^/api/.*/stream(?:\?.*)?$`,
+		`^/api/(?:chat|interactive/chat|agent-chat/chat|workspace/events)(?:\?.*)?$`,
+	})))
 	s.registerRoutes(h)
 	s.engine = h
 	return s

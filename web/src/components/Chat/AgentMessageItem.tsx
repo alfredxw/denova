@@ -19,7 +19,6 @@ interface AgentMessageItemProps {
   onCreateBranch?: (view: AgentMessageView) => void
   onRegenerateMessage?: (view: AgentMessageView) => void
   onSwitchMessageVersion?: (view: AgentMessageView, direction: -1 | 1) => void
-  onSubmitPlanQuestion?: (ref: AgentPartRef, content: string, preview: string) => void
   onApprovePlan?: (ref: AgentPartRef) => void
   onContinuePlan?: (view: AgentMessageView) => void
   onExitPlanMode?: () => void
@@ -43,7 +42,6 @@ export const AgentMessageItem = memo(function AgentMessageItem({
   onCreateBranch,
   onRegenerateMessage,
   onSwitchMessageVersion,
-  onSubmitPlanQuestion,
   onApprovePlan,
   onContinuePlan,
   onExitPlanMode,
@@ -69,7 +67,6 @@ export const AgentMessageItem = memo(function AgentMessageItem({
       generatingInteractiveImageTurnId={generatingInteractiveImageTurnId}
       activeSubAgentSessionKey={activeSubAgentSessionKey}
       subAgentPresentation={subAgentPresentation}
-      onSubmitPlanQuestion={onSubmitPlanQuestion ? (_message, content, preview) => onSubmitPlanQuestion(view.ref, content, preview) : undefined}
       onApprovePlan={onApprovePlan ? () => onApprovePlan(view.ref) : undefined}
       onContinuePlan={onContinuePlan ? () => onContinuePlan(view) : undefined}
       onExitPlanMode={onExitPlanMode}

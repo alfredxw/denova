@@ -185,7 +185,6 @@ function App() {
     togglePlanMode,
     send,
     analyzeContext,
-    submitPlanQuestion,
     approveProposedPlan,
     exitPlanMode,
     stop,
@@ -891,7 +890,6 @@ function App() {
         onTextSelectionRemove={removeTextSelection}
         onChatPlanModeChange={handleChatPlanModeChange}
         onChatPlanModeToggle={handleChatPlanModeToggle}
-        onSubmitPlanQuestion={submitPlanQuestion}
         onApproveProposedPlan={approveProposedPlan}
         onExitChatPlanMode={exitPlanMode}
       />

@@ -164,6 +164,8 @@ export function collectPlanUserContext(messages: AgentUIMessage[], target: Agent
 export function filterInternalPlanUIMessages(messages: AgentUIMessage[]) {
   return messages.filter((message) => {
     const text = message.parts.map(part => part.type === 'text' ? part.text : '').join('')
+    // Pre-Ask sessions persisted hidden answer follow-ups. Keep suppressing
+    // those records during replay; new turns never produce this protocol.
     if (message.role === 'user' && isPlanQuestionAnswerProtocol(text)) return false
     return !message.parts.some(part => isPlanProtocolToolPart(part))
   })
@@ -201,6 +203,8 @@ export function markPlanUIMessageAction(
   }))
 }
 
+// `answered` remains readable for UI journals written by the retired question
+// flow. New interactions resolve through Ask and never create this action.
 type AgentPlanAction = 'answered' | 'approved' | 'continue' | 'exited'
 
 function sameAgentPartRef(left: AgentPartRef, right: AgentPartRef) {

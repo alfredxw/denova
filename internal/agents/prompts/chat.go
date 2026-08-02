@@ -5,34 +5,19 @@ import (
 	"strings"
 )
 
-// PlanMode 在用户消息前追加规划模式指令，让模型先提问和形成可审阅计划。
-func PlanMode(message string) string {
+// PlanModeInstruction constrains one turn to read-only research, durable Ask
+// clarification, and a reviewable final proposal.
+func PlanModeInstruction() string {
 	return `[Plan Mode / 规划模式] 请先协作制定计划，不要直接执行。
 
 要求：
-1. 先分析用户需求、当前上下文和风险；需要了解现状时，可优先使用只读方式收集信息。
-2. 在 Plan Mode 中不要主动执行会改变作品、代码、配置、资料库或工作区状态的操作；等用户确认计划后再进入执行。
-3. 如果需求、范围、交互、数据结构或实现取舍存在高影响不确定性，先输出结构化问题卡，不要把不确定点偷偷写成假设。
-4. 一旦决定输出问题卡或最终方案卡，立即从对应开始标签写起，不要在标签前输出解释、寒暄、思路铺垫或 Markdown 正文。
-5. 问题卡必须只输出一个 <plan_questions>...</plan_questions> 块，块内是 JSON；如果有多个关键确认点，可一次给出多个问题，前端会像 Codex Plan Mode 一样逐个向用户确认；问题和选项保持精简，避免让用户等待冗长说明。推荐格式：
-{
-  "questions": [
-    {
-      "id": "scope",
-      "type": "single",
-      "question": "要解决的关键选择是什么？",
-      "description": "可选，解释这个问题为什么影响方案。",
-      "options": [
-        {"id": "recommended", "label": "推荐方案", "description": "推荐理由", "recommended": true},
-        {"id": "alternative", "label": "备选方案", "description": "取舍说明"}
-      ],
-      "allow_custom": true
-    }
-  ]
-}
-6. type 只使用 "single" 或 "multi"。每个问题至少给 2 个有效选项；能推荐时用 recommended=true 标记推荐项。
-7. 收到用户提交的整组回答后继续停留在 Plan Mode；如果仍有关键不确定性，可继续输出下一组问题。
-8. 当方案已经足够明确时，输出最终方案卡：只输出一个 <proposed_plan>...</proposed_plan> 块，块内使用清晰 Markdown；不要输出测试计划或假设小节。使用这个轻量模板，并保留必要空行：
+1. 先分析用户需求、当前上下文和风险；需要了解现状时，只使用当前可用的只读工具收集信息。
+2. Plan Mode 只允许读取和会话内规划操作；不要调用会改变作品、代码、配置、资料库、工作区、宿主环境或外部系统的工具。用户确认计划后才进入执行。
+3. 如果需求、范围、交互、数据结构或实现取舍存在高影响不确定性，并且 ask 工具可用，必须立即调用 ask，不要把不确定点偷偷写成假设。不要先输出解释、寒暄、思路铺垫或 Markdown 正文。
+4. 每次 ask 只收集当前最关键的一到三个决策；选择题提供二到三个精简选项并在适合时标记推荐项，需要开放回答时使用自由文本问题。问题、选项和说明使用用户当前语言。
+5. ask 返回回答后继续留在同一次 Plan Mode 运行中完善方案；如果仍有关键不确定性，可以再次调用 ask。如果用户取消，或 ask 不可用，则基于已有事实选择最稳妥且范围最小的方向，不要伪造工具调用。
+6. 不要输出 <plan_questions>、问题 JSON 或其他自定义提问协议；所有交互式澄清都通过 ask 完成。
+7. 当方案已经足够明确时，立即从 <proposed_plan> 开始，只输出一个 <proposed_plan>...</proposed_plan> 块，块内使用清晰 Markdown；不要输出测试计划或假设小节。使用这个轻量模板，并保留必要空行：
 # 计划标题
 
 ## Summary
@@ -42,10 +27,7 @@ func PlanMode(message string) string {
 ## Key Changes
 - **关键方向**：用短 bullet 分组说明会怎么做。
 - **取舍**：只列影响执行的重点取舍，不写长段落。
-9. 不要在 <proposed_plan> 外输出执行结果。
-
-用户需求：
-` + message
+8. 不要在 <proposed_plan> 外输出执行结果。`
 }
 
 // ContextBoundary 在用户消息前追加上下文边界说明，强调当前请求才是“这次要做什么”，
