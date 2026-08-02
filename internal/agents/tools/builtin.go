@@ -214,22 +214,25 @@ func runSubAgent(ctx context.Context, child agent.Runnable, request string) (res
 		if event == nil {
 			continue
 		}
-		if event.Err != nil {
-			agent.EmitEvent(childCtx, event)
-			return "", event.Err
+		// Child Agents emit message, tool lifecycle, and error events from the
+		// same invocation. Normalize every event to the full ancestry before it
+		// reaches the parent so one delegated run keeps one stable session ID.
+		forwarded := *event
+		forwarded.RunPath = invocationRunPath(childCtx, event.RunPath)
+		if forwarded.Err != nil {
+			agent.EmitEvent(childCtx, &forwarded)
+			return "", forwarded.Err
 		}
-		if event.Output == nil || event.Output.MessageOutput == nil {
-			agent.EmitEvent(childCtx, event)
+		if forwarded.Output == nil || forwarded.Output.MessageOutput == nil {
+			agent.EmitEvent(childCtx, &forwarded)
 			continue
 		}
-		message, err := event.Output.MessageOutput.GetMessage()
+		message, err := forwarded.Output.MessageOutput.GetMessage()
 		if err != nil && !errors.Is(err, io.EOF) {
 			return "", err
 		}
-		forwarded := *event
-		forwarded.RunPath = invocationRunPath(childCtx, event.RunPath)
-		forwardedOutput := *event.Output
-		forwardedVariant := *event.Output.MessageOutput
+		forwardedOutput := *forwarded.Output
+		forwardedVariant := *forwarded.Output.MessageOutput
 		forwardedVariant.IsStreaming = false
 		forwardedVariant.MessageStream = nil
 		forwardedVariant.Message = message.Clone()

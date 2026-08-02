@@ -18,8 +18,9 @@ type toolInteractionGroup struct {
 	resultIndexes        []int
 	resultTokens         int
 	originalResultTokens int
-	currentTurn          bool
+	awaitingModelStep    bool
 	protected            bool
+	largeRecoverable     bool
 	eager                bool
 	discardable          bool
 	superseded           bool
@@ -30,12 +31,6 @@ type toolInteractionGroup struct {
 }
 
 func collectToolInteractionGroups(messages []*agent.Message, policy ContextPressurePolicy) ([]*toolInteractionGroup, int) {
-	lastUser := -1
-	for index, message := range messages {
-		if message != nil && message.Role == agent.User {
-			lastUser = index
-		}
-	}
 	eagerMinimum := toolresult.EagerMinimumTokens(policy.EagerMinTokens, policy.ContextWindowTokens, policy.EagerMinContextRatio)
 	groups := make([]*toolInteractionGroup, 0)
 	protectedResults := 0
@@ -76,15 +71,28 @@ func collectToolInteractionGroups(messages []*agent.Message, policy ContextPress
 			}
 			group.end++
 		}
-		group.currentTurn = group.start > lastUser
-		if len(seen) != len(calls) || len(calls) == 0 || group.currentTurn {
+		// A later assistant step proves the model has already consumed this tool
+		// batch. Protect only the still-unconsumed batch; a user-turn boundary is
+		// not a semantic reason to pin every recoverable result body in that turn.
+		group.awaitingModelStep = !hasLaterAssistantStep(messages, group.end)
+		if len(seen) != len(calls) || len(calls) == 0 || group.awaitingModelStep {
 			group.protected = true
 		}
-		group.eager = !group.protected && group.originalResultTokens >= eagerMinimum && groupAllowsEager(messages, group)
+		group.largeRecoverable = !group.protected && group.originalResultTokens >= eagerMinimum
+		group.eager = group.largeRecoverable && groupAllowsEager(messages, group)
 		groups = append(groups, group)
 		index = group.end - 1
 	}
 	return groups, protectedResults
+}
+
+func hasLaterAssistantStep(messages []*agent.Message, start int) bool {
+	for index := start; index < len(messages); index++ {
+		if message := messages[index]; message != nil && message.Role == agent.Assistant {
+			return true
+		}
+	}
+	return false
 }
 
 func estimatedOriginalToolResultTokens(message *agent.Message) int {
@@ -201,12 +209,14 @@ func protectRecentToolGroups(groups []*toolInteractionGroup, policy ContextPress
 	protectedGroups := 0
 	for index := len(groups) - 1; index >= 0; index-- {
 		group := groups[index]
-		if group.currentTurn {
+		if group.awaitingModelStep {
 			continue
 		}
-		if group.eager {
-			// Eager candidates already passed stricter size, recovery and settled-
-			// run gates; they intentionally bypass ordinary recent-group aging.
+		if group.eager || group.largeRecoverable {
+			// Large recoverable results must remain available through one later
+			// assistant step, but must not make the recent-group window impossible
+			// to clean under pressure. Eager candidates additionally passed the
+			// settled-run gate and may transition below ordinary pressure.
 			continue
 		}
 		if protectedGroups < policy.KeepRecentGroups || protectedTokens < policy.KeepRecentTokens {

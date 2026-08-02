@@ -542,7 +542,7 @@ func TestWriteSettingsFileFiltersNegativeAgentIdleTimeout(t *testing.T) {
 	}
 }
 
-func TestWriteSettingsFileMapsZeroToolResultLimitToHighDefault(t *testing.T) {
+func TestWriteSettingsFileMapsZeroToolResultLimitToDefault(t *testing.T) {
 	dir := t.TempDir()
 	p := filepath.Join(dir, "config.toml")
 	in := Settings{OpenAIModel: "abc", AgentToolResultLimitKB: intPtr(0)}
@@ -554,7 +554,7 @@ func TestWriteSettingsFileMapsZeroToolResultLimitToHighDefault(t *testing.T) {
 		t.Fatal(err)
 	}
 	if out.AgentToolResultLimitKB == nil || *out.AgentToolResultLimitKB != DefaultAgentToolResultLimitKB {
-		t.Fatalf("agent tool result limit should persist the high default, got %v", out.AgentToolResultLimitKB)
+		t.Fatalf("agent tool result limit should persist the default, got %v", out.AgentToolResultLimitKB)
 	}
 }
 

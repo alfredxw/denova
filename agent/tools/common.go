@@ -15,7 +15,7 @@ const (
 	defaultDirectoryDepth    = 1
 	defaultDirectoryItems    = 200
 	defaultMaxDirectoryDepth = 64
-	defaultResultBytes       = 1024 * 1024
+	defaultResultBytes       = 128 * 1024
 	defaultResultEntries     = 10_000
 	maxConfiguredResultBytes = 64 * 1024 * 1024
 	maxConfiguredEntries     = 100_000
@@ -23,8 +23,8 @@ const (
 	maxWorkspaceIgnoreBytes  = 1024 * 1024
 	maxWorkspaceIgnoreRules  = 10_000
 	maxMutationFileBytes     = 16 * 1024 * 1024
-	maxMutationFragmentBytes = 4 * 1024 * 1024
-	resultTruncatedMarker    = "[workspace result truncated at the 1 MiB safety limit; narrow path or pattern]"
+	maxMutationEdits         = 256
+	resultTruncatedMarker    = "[workspace result truncated at the configured safety limit; use pagination or narrow the path or pattern / 工作区结果已在配置的安全上限处截断；请分页或缩小路径或模式]"
 	processTruncatedMarker   = "[process output truncated; inspect a narrower command]"
 )
 

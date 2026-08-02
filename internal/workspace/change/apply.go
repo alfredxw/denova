@@ -5,7 +5,6 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
-	"sort"
 	"strings"
 	"time"
 )
@@ -17,14 +16,6 @@ const (
 	maxWorkspaceMutationReplacements  = 10_000
 	maxWorkspaceMutationScanBytes     = 64 * 1024 * 1024
 )
-
-type plannedSpan struct {
-	editIndex  int
-	start      int
-	end        int
-	afterStart int
-	afterEnd   int
-}
 
 // ApplyEdits validates every edit against one immutable base snapshot and
 // commits the resulting file exactly once.
@@ -176,170 +167,6 @@ func normalizeMetadata(metadata ChangeMetadata) ChangeMetadata {
 	// compatible without weakening the per-group history boundary.
 	metadata.ReviewThreadID = firstNonEmpty(metadata.ReviewThreadID, metadata.ChangeGroupID)
 	return metadata
-}
-
-func planTextEdits(path, base string, requested []TextEdit, autoAccept bool) (string, []AppliedEdit, error) {
-	if len(requested) == 0 {
-		return "", nil, newError(ErrorCodeInvalidEdit, "at least one edit is required", map[string]any{"path": path})
-	}
-	if len(base) > maxWorkspaceMutationFileBytes {
-		return "", nil, newError(ErrorCodeInvalidEdit, "workspace file exceeds the mutation limit", map[string]any{
-			"path": path, "max_bytes": maxWorkspaceMutationFileBytes,
-		})
-	}
-	if len(requested) > maxWorkspaceMutationEdits {
-		return "", nil, newError(ErrorCodeInvalidEdit, "too many edits in one mutation", map[string]any{
-			"path": path, "max_edits": maxWorkspaceMutationEdits,
-		})
-	}
-	reviewStatus := ReviewStatusPending
-	if autoAccept {
-		reviewStatus = ReviewStatusAccepted
-	}
-	applied := make([]AppliedEdit, len(requested))
-	spans := make([]plannedSpan, 0, len(requested))
-	seenIDs := map[string]bool{}
-	scannedBytes := 0
-	for index, edit := range requested {
-		editID := strings.TrimSpace(edit.ID)
-		if editID == "" {
-			editID = newID("edit")
-		}
-		if seenIDs[editID] {
-			return "", nil, invalidEdit(path, index, editID, "duplicate edit id", nil)
-		}
-		seenIDs[editID] = true
-		if edit.OldString == "" {
-			return "", nil, invalidEdit(path, index, editID, "old_string must not be empty", nil)
-		}
-		if edit.OldString == edit.NewString {
-			return "", nil, invalidEdit(path, index, editID, "new_string must differ from old_string", nil)
-		}
-		if len(edit.OldString) > maxWorkspaceMutationFragmentBytes || len(edit.NewString) > maxWorkspaceMutationFragmentBytes {
-			return "", nil, invalidEdit(path, index, editID, "edit text exceeds the mutation fragment limit", map[string]any{
-				"max_bytes": maxWorkspaceMutationFragmentBytes,
-			})
-		}
-		if len(base) > maxWorkspaceMutationScanBytes-scannedBytes {
-			return "", nil, invalidEdit(path, index, editID, "combined edit search exceeds the mutation scan limit", map[string]any{
-				"max_scan_bytes": maxWorkspaceMutationScanBytes,
-			})
-		}
-		scannedBytes += len(base)
-		matchLimit := 2
-		if edit.ReplaceAll {
-			matchLimit = maxWorkspaceMutationReplacements + 1
-		}
-		matches := literalMatches(base, edit.OldString, matchLimit)
-		if len(matches) == 0 {
-			return "", nil, invalidEdit(path, index, editID, "old_string was not found", map[string]any{"match_count": 0})
-		}
-		if len(matches) > 1 && !edit.ReplaceAll {
-			return "", nil, invalidEdit(path, index, editID, "old_string is not unique", map[string]any{"match_count_at_least": 2})
-		}
-		if edit.ReplaceAll && len(matches) > maxWorkspaceMutationReplacements {
-			return "", nil, invalidEdit(path, index, editID, "replace_all exceeds the replacement limit", map[string]any{
-				"max_replacements": maxWorkspaceMutationReplacements,
-			})
-		}
-		if !edit.ReplaceAll {
-			matches = matches[:1]
-		}
-		applied[index] = AppliedEdit{
-			ID:           editID,
-			OldString:    edit.OldString,
-			NewString:    edit.NewString,
-			ReplaceAll:   edit.ReplaceAll,
-			ReviewStatus: reviewStatus,
-		}
-		for _, start := range matches {
-			if len(spans) >= maxWorkspaceMutationReplacements {
-				return "", nil, invalidEdit(path, index, editID, "mutation exceeds the total replacement limit", map[string]any{
-					"max_replacements": maxWorkspaceMutationReplacements,
-				})
-			}
-			spans = append(spans, plannedSpan{editIndex: index, start: start, end: start + len(edit.OldString)})
-		}
-	}
-	sort.SliceStable(spans, func(i, j int) bool {
-		if spans[i].start == spans[j].start {
-			return spans[i].end < spans[j].end
-		}
-		return spans[i].start < spans[j].start
-	})
-	for index := 1; index < len(spans); index++ {
-		if spans[index].start < spans[index-1].end {
-			return "", nil, newError(ErrorCodeInvalidEdit, "edit ranges overlap", map[string]any{
-				"path":              path,
-				"edit_id":           applied[spans[index].editIndex].ID,
-				"other_edit_id":     applied[spans[index-1].editIndex].ID,
-				"workspace_mutated": false,
-			})
-		}
-	}
-	resultBytes := int64(len(base))
-	delta := int64(0)
-	for index := range spans {
-		span := &spans[index]
-		newText := applied[span.editIndex].NewString
-		change := int64(len(newText) - (span.end - span.start))
-		resultBytes += change
-		if resultBytes < 0 || resultBytes > maxWorkspaceMutationFileBytes {
-			return "", nil, newError(ErrorCodeInvalidEdit, "edited file exceeds the workspace mutation file limit", map[string]any{
-				"path": path, "max_bytes": maxWorkspaceMutationFileBytes,
-			})
-		}
-		span.afterStart = span.start + int(delta)
-		span.afterEnd = span.afterStart + len(newText)
-		delta += change
-		applied[span.editIndex].Hunks = append(applied[span.editIndex].Hunks, Hunk{
-			ID:          newID("hunk"),
-			BeforeStart: span.start,
-			BeforeEnd:   span.end,
-			AfterStart:  span.afterStart,
-			AfterEnd:    span.afterEnd,
-		})
-	}
-	var result strings.Builder
-	result.Grow(int(resultBytes))
-	cursor := 0
-	for _, span := range spans {
-		result.WriteString(base[cursor:span.start])
-		result.WriteString(applied[span.editIndex].NewString)
-		cursor = span.end
-	}
-	result.WriteString(base[cursor:])
-	return result.String(), applied, nil
-}
-
-func literalMatches(content, needle string, limit int) []int {
-	matches := make([]int, 0, min(limit, 2))
-	for offset := 0; offset <= len(content)-len(needle); {
-		index := strings.Index(content[offset:], needle)
-		if index < 0 {
-			break
-		}
-		start := offset + index
-		matches = append(matches, start)
-		if len(matches) >= limit {
-			break
-		}
-		offset = start + len(needle)
-	}
-	return matches
-}
-
-func invalidEdit(path string, index int, editID, message string, extra map[string]any) *Error {
-	details := map[string]any{
-		"path":              path,
-		"edit_index":        index,
-		"edit_id":           editID,
-		"workspace_mutated": false,
-	}
-	for key, value := range extra {
-		details[key] = value
-	}
-	return newError(ErrorCodeInvalidEdit, message, details)
 }
 
 func newChangeSet(path string, before, after []byte, beforeExists, afterExists bool, edits []AppliedEdit, metadata ChangeMetadata) ChangeSet {

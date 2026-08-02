@@ -8,6 +8,7 @@ import {
   agentViewContent,
   agentViewStableKey,
   agentViewToRenderMessage,
+  buildAgentSubAgentTimelineGroups,
   isAgentSubAgentTimelineView,
   type AgentMessageView,
 } from '@/lib/agent-message-view'
@@ -56,6 +57,9 @@ export function AgentExecutionProcess({
     toolCount > 0 ? t('chat.trace.toolCalls', { count: toolCount }) : '',
     subAgentCount > 0 ? t('chat.subagent.label') : '',
   ].filter(Boolean).join(' · ')
+  const subAgentGroupsByStart = new Map(
+    (onOpenSubAgentSession ? buildAgentSubAgentTimelineGroups(views) : []).map(group => [group.startIndex, group]),
+  )
   useLayoutEffect(() => {
     const wasRunning = wasRunningRef.current
     wasRunningRef.current = running
@@ -71,28 +75,22 @@ export function AgentExecutionProcess({
     const processItems: ReactNode[] = []
     for (let index = 0; index < views.length; index += 1) {
       const view = views[index]
-      if (onOpenSubAgentSession && isAgentSubAgentTimelineView(view)) {
-        const sessionKey = agentSubAgentSessionKey(view)
-        const group: AgentMessageView[] = []
-        let nextIndex = index
-        while (nextIndex < views.length && isAgentSubAgentTimelineView(views[nextIndex]) && agentSubAgentSessionKey(views[nextIndex]) === sessionKey) {
-          group.push(views[nextIndex])
-          nextIndex += 1
-        }
-        const progress = buildSubAgentProgressMessage(group.map(item => agentViewToRenderMessage(item)).filter((item): item is ChatMessage => Boolean(item)))
+      const subAgentGroup = subAgentGroupsByStart.get(index)
+      if (onOpenSubAgentSession && subAgentGroup) {
+        const progress = buildSubAgentProgressMessage(subAgentGroup.views.map(item => agentViewToRenderMessage(item)).filter((item): item is ChatMessage => Boolean(item)))
         if (progress) {
           processItems.push(
             <MessageItem
-              key={`subagent-${sessionKey}`}
+              key={`subagent-${subAgentGroup.key}`}
               message={progress}
               highlightDialogue={highlightDialogue}
               messageStyle={messageStyle}
-              onOpenSubAgentSession={() => onOpenSubAgentSession(group[0])}
+              onOpenSubAgentSession={() => onOpenSubAgentSession(subAgentGroup.views[0])}
               activeSubAgentSessionKey={activeSubAgentSessionKey}
               onOpenTrace={onOpenTrace}
             />,
           )
-          index = nextIndex - 1
+          index = subAgentGroup.nextIndex - 1
           continue
         }
       }

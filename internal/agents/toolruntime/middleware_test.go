@@ -301,7 +301,7 @@ func TestToolOrchestratorKeepsExecutionMetadataOutOfModelResult(t *testing.T) {
 		t.Fatal(err)
 	}
 	if result != content {
-		t.Fatalf("result below the high default limit changed")
+		t.Fatalf("result below the default limit changed")
 	}
 	if strings.Contains(result, "tool_result.v1") || strings.Contains(result, "mutates_workspace") {
 		t.Fatalf("execution metadata leaked into model result: %s", result)

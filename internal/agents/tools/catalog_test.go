@@ -17,7 +17,14 @@ func TestMain(m *testing.M) {
 	if os.Getenv("DENOVA_TEST_CATALOG_RIPGREP_HELPER") == "1" {
 		for _, arg := range os.Args[1:] {
 			if arg == "--no-config" {
-				fmt.Fprint(os.Stdout, "chapters/one.md\n")
+				if os.Getenv("DENOVA_TEST_CATALOG_RIPGREP_LARGE") == "1" {
+					payload := strings.Repeat("x", 2048)
+					for line := 1; line <= 200; line++ {
+						fmt.Fprintf(os.Stdout, "large.txt:%d:%s\n", line, payload)
+					}
+				} else {
+					fmt.Fprint(os.Stdout, "chapters/one.md\n")
+				}
 				os.Exit(0)
 			}
 		}
@@ -201,6 +208,51 @@ func TestCatalogWorkspaceUsesHostRipgrepExecutable(t *testing.T) {
 	}
 	if !strings.Contains(result, `"schema":"workspace.search.v1"`) || !strings.Contains(result, "chapters/one.md") {
 		t.Fatalf("grep result = %q", result)
+	}
+}
+
+func TestCatalogDefaultGrepBudgetPaginatesContextBlowingOutput(t *testing.T) {
+	t.Setenv("PATH", t.TempDir())
+	t.Setenv("DENOVA_TEST_CATALOG_RIPGREP_HELPER", "1")
+	t.Setenv("DENOVA_TEST_CATALOG_RIPGREP_LARGE", "1")
+	catalog := NewCatalog(
+		&config.Config{Workspace: t.TempDir()},
+		nil,
+		RuntimeExecutables{Ripgrep: os.Args[0]},
+	)
+	definitions, err := catalog.Workspace(config.ResolvedAgentToolSettings{config.AgentToolWorkspaceRead: true})
+	if err != nil {
+		t.Fatal(err)
+	}
+	var grep *agent.ToolDefinition
+	for index := range definitions {
+		info, infoErr := definitions[index].Tool.Info(context.Background())
+		if infoErr != nil {
+			t.Fatal(infoErr)
+		}
+		if info.Name == "grep" {
+			grep = &definitions[index]
+			break
+		}
+	}
+	if grep == nil {
+		t.Fatal("catalog did not expose invokable grep")
+	}
+	wantLimit := config.DefaultAgentToolResultLimitKB * 1024
+	if grep.Descriptor.MaxResultBytes != wantLimit {
+		t.Fatalf("grep model-result budget = %d, want %d", grep.Descriptor.MaxResultBytes, wantLimit)
+	}
+	result, err := runToolForTest(context.Background(), grep, `{"pattern":"dragon","limit":200}`)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(result) > wantLimit {
+		t.Fatalf("grep result = %d bytes, want at most %d", len(result), wantLimit)
+	}
+	if !strings.Contains(result, `"status":"partial"`) ||
+		!strings.Contains(result, `"truncated":true`) ||
+		!strings.Contains(result, `"next_cursor"`) {
+		t.Fatalf("grep did not expose a bounded continuation: %q", result[:min(len(result), 1024)])
 	}
 }
 

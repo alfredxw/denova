@@ -54,14 +54,17 @@ func (service *recordingWorkspaceChangeService) ReplaceFile(_ context.Context, r
 	return service.changeSet, service.err
 }
 
-func TestWorkspaceMutationAdapterMapsSingleExactEditAndReturnsReviewReceipt(t *testing.T) {
+func TestWorkspaceMutationAdapterMapsAtomicEditBatchAndReturnsPerEditReceipt(t *testing.T) {
 	service := &recordingWorkspaceChangeService{
 		workspace: t.TempDir(), readRevision: "sha256:before",
 		changeSet: workspacechange.ChangeSet{
 			ID: "change-1", GroupID: "run-1", ReviewThreadID: "review-1",
 			Path: "chapters/ch01.md", BaseRevision: "sha256:before", Revision: "sha256:after",
 			BeforeContent: strings.Repeat("secret-before", 100), AfterContent: strings.Repeat("secret-after", 100),
-			Edits:        []workspacechange.AppliedEdit{{ID: "edit-1", Hunks: []workspacechange.Hunk{{ID: "one"}, {ID: "two"}}}},
+			Edits: []workspacechange.AppliedEdit{
+				{ID: "edit-1", Hunks: []workspacechange.Hunk{{ID: "one"}, {ID: "two"}}},
+				{ID: "edit-2", Hunks: []workspacechange.Hunk{{ID: "three"}}},
+			},
 			ReviewStatus: workspacechange.ReviewStatusPending, ApplyState: workspacechange.ApplyStateApplied,
 		},
 	}
@@ -72,7 +75,11 @@ func TestWorkspaceMutationAdapterMapsSingleExactEditAndReturnsReviewReceipt(t *t
 		t.Fatal(err)
 	}
 	result, err := adapter.Edit(context.Background(), agenttools.EditRequest{
-		Path: "chapters/ch01.md", OldString: "old", NewString: "new", ReplaceAll: true,
+		Path: "chapters/ch01.md",
+		Edits: []agenttools.EditReplacement{
+			{OldString: "old", NewString: "new", ReplaceAll: true},
+			{OldString: "ending", NewString: "finale"},
+		},
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -80,15 +87,17 @@ func TestWorkspaceMutationAdapterMapsSingleExactEditAndReturnsReviewReceipt(t *t
 	if service.readCalls != 1 || service.readPath != "chapters/ch01.md" || service.applyRequest.BaseRevision != "sha256:before" {
 		t.Fatalf("unexpected revision lookup/request: %#v", service.applyRequest)
 	}
-	if len(service.applyRequest.Edits) != 1 || service.applyRequest.Edits[0].OldString != "old" ||
-		service.applyRequest.Edits[0].NewString != "new" || !service.applyRequest.Edits[0].ReplaceAll {
-		t.Fatalf("exact edit was not preserved: %#v", service.applyRequest.Edits)
+	if service.applyCalls != 1 || len(service.applyRequest.Edits) != 2 ||
+		service.applyRequest.Edits[0].OldString != "old" || service.applyRequest.Edits[0].NewString != "new" || !service.applyRequest.Edits[0].ReplaceAll ||
+		service.applyRequest.Edits[1].OldString != "ending" || service.applyRequest.Edits[1].NewString != "finale" || service.applyRequest.Edits[1].ReplaceAll {
+		t.Fatalf("atomic edit batch was not preserved: %#v", service.applyRequest.Edits)
 	}
 	if service.applyRequest.Metadata.RunID != "run-1" {
 		t.Fatalf("metadata = %#v", service.applyRequest.Metadata)
 	}
-	if !strings.Contains(result.ModelContent, `"change_set_id":"change-1"`) ||
-		!strings.Contains(result.ModelContent, `"replacements":2`) ||
+	receipt, ok := workspacechange.ParseToolReceipt("edit", result.ModelContent)
+	if !ok || len(receipt.Edits) != 2 || receipt.Edits[0].ID != "edit-1" || receipt.Edits[0].Replacements != 2 ||
+		receipt.Edits[1].ID != "edit-2" || receipt.Edits[1].Replacements != 1 ||
 		strings.Contains(result.ModelContent, "secret-before") || len(result.ModelContent) > 4096 {
 		t.Fatalf("receipt = %s", result.ModelContent)
 	}
@@ -117,7 +126,7 @@ func TestWorkspaceEditUsesCurrentContentAfterEarlierExternalChange(t *testing.T)
 	if err != nil {
 		t.Fatal(err)
 	}
-	result, err := definition.Tool.Run(context.Background(), `{"path":"ideas.md","old_string":"manual update","new_string":"agent update"}`)
+	result, err := definition.Tool.Run(context.Background(), `{"path":"ideas.md","edits":[{"old_string":"unrelated","new_string":"context"},{"old_string":"manual update","new_string":"agent update"}]}`)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -125,15 +134,15 @@ func TestWorkspaceEditUsesCurrentContentAfterEarlierExternalChange(t *testing.T)
 	if !ok || receipt.FileStats == nil {
 		t.Fatalf("edit result has no file stats: %s", result.ModelContent)
 	}
-	if got := *receipt.FileStats; got.Bytes != 22 || got.Characters != 22 ||
-		got.NonWhitespaceCharacters != 20 || got.Lines != 2 {
+	if got := *receipt.FileStats; got.Bytes != 20 || got.Characters != 20 ||
+		got.NonWhitespaceCharacters != 18 || got.Lines != 2 {
 		t.Fatalf("edit file stats = %#v", got)
 	}
 	content, err := os.ReadFile(path)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if string(content) != "unrelated\nagent update" {
+	if string(content) != "context\nagent update" {
 		t.Fatalf("edit did not preserve unrelated current content: %q", content)
 	}
 }
@@ -184,10 +193,18 @@ func TestWorkspaceEditRejectsAmbiguousAndNoOpWithoutMutation(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err := definition.Tool.Run(context.Background(), `{"path":"ideas.md","old_string":"same","new_string":"new"}`); err == nil {
+	if _, err := definition.Tool.Run(context.Background(), `{"path":"ideas.md","edits":[{"old_string":"same","new_string":"new"}]}`); err == nil {
 		t.Fatal("ambiguous edit succeeded")
 	}
-	if _, err := definition.Tool.Run(context.Background(), `{"path":"ideas.md","old_string":"same","new_string":"same"}`); err == nil {
+	_, validationErr := definition.Tool.Run(context.Background(), `{"path":"ideas.md","edits":[{"old_string":"same","new_string":"new"},{"old_string":"missing","new_string":"present"}]}`)
+	message, ok := formatWorkspaceChangeToolError("edit", validationErr)
+	if validationErr == nil || !ok || !strings.Contains(message, `"issue_count":2`) ||
+		!strings.Contains(message, `"edit_index":0`) || !strings.Contains(message, `"code":"not_unique"`) ||
+		!strings.Contains(message, `"edit_index":1`) || !strings.Contains(message, `"code":"not_found"`) ||
+		!strings.Contains(message, `"workspace_mutated":false`) {
+		t.Fatalf("batch validation error = %v, receipt = %s", validationErr, message)
+	}
+	if _, err := definition.Tool.Run(context.Background(), `{"path":"ideas.md","edits":[{"old_string":"same","new_string":"same"}]}`); err == nil {
 		t.Fatal("no-op edit succeeded")
 	}
 	content, err := os.ReadFile(path)

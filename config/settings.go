@@ -125,16 +125,19 @@ func stringPtr(v string) *string  { return &v }
 const (
 	DefaultWritingSkillName        = "novel-lite"
 	DefaultAgentIdleTimeoutSeconds = 0
-	DefaultAgentToolResultLimitKB  = 1024
-	DefaultAgentToolParallelism    = 8
-	MaxAgentToolParallelism        = 64
-	DefaultTraceCaptureLevel       = "summary"
-	DefaultTraceExporter           = "local"
-	DefaultTraceRetentionRuns      = 100
-	DefaultTerminalMaxSessions     = 8
-	MaxTerminalSessions            = 64
-	DefaultTerminalScrollbackKB    = 256
-	MaxTerminalScrollbackKB        = 4096
+	// Keep one model-visible tool result above the shared 50 KiB fragment floor
+	// while preventing a single successful call from consuming most of the
+	// default 400K-token context window.
+	DefaultAgentToolResultLimitKB = 128
+	DefaultAgentToolParallelism   = 8
+	MaxAgentToolParallelism       = 64
+	DefaultTraceCaptureLevel      = "summary"
+	DefaultTraceExporter          = "local"
+	DefaultTraceRetentionRuns     = 100
+	DefaultTerminalMaxSessions    = 8
+	MaxTerminalSessions           = 64
+	DefaultTerminalScrollbackKB   = 256
+	MaxTerminalScrollbackKB       = 4096
 )
 
 // DefaultSettings 返回内置默认配置（最低优先级）。

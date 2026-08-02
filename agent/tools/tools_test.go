@@ -287,7 +287,7 @@ func TestWriteAndEditPublishSmallExactInterfaces(t *testing.T) {
 		arguments  string
 	}{
 		{writeDefinition, "write", `{"path":"ideas.md","content":"new"}`},
-		{editDefinition, "edit", `{"path":"ideas.md","old_string":"old","new_string":"new","replace_all":true}`},
+		{editDefinition, "edit", `{"path":"ideas.md","edits":[{"old_string":"old","new_string":"new","replace_all":true},{"old_string":"ending","new_string":"finale"}]}`},
 	} {
 		info, infoErr := test.definition.Tool.Info(context.Background())
 		if infoErr != nil {
@@ -303,11 +303,34 @@ func TestWriteAndEditPublishSmallExactInterfaces(t *testing.T) {
 	if adapter.write.Path != "ideas.md" || adapter.write.Content != "new" {
 		t.Fatalf("write request = %#v", adapter.write)
 	}
-	if adapter.edit.Path != "ideas.md" || adapter.edit.OldString != "old" || adapter.edit.NewString != "new" || !adapter.edit.ReplaceAll {
+	if adapter.edit.Path != "ideas.md" || len(adapter.edit.Edits) != 2 ||
+		adapter.edit.Edits[0].OldString != "old" || adapter.edit.Edits[0].NewString != "new" || !adapter.edit.Edits[0].ReplaceAll ||
+		adapter.edit.Edits[1].OldString != "ending" || adapter.edit.Edits[1].NewString != "finale" || adapter.edit.Edits[1].ReplaceAll {
 		t.Fatalf("edit request = %#v", adapter.edit)
 	}
-	if _, err := editDefinition.Tool.Run(context.Background(), `{"path":"ideas.md","old_string":"same","new_string":"same"}`); err == nil {
-		t.Fatal("edit accepted a no-op")
+	info, err := editDefinition.Tool.Info(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	schema, err := info.ToJSONSchema()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, ok := schema.Properties.Get("old_string"); ok {
+		t.Fatalf("edit root must not expose the removed single-replacement fields: %#v", schema)
+	}
+	editsSchema, ok := schema.Properties.Get("edits")
+	if !ok || editsSchema.Items == nil || editsSchema.MinItems == nil || *editsSchema.MinItems != 1 ||
+		editsSchema.MaxItems == nil || *editsSchema.MaxItems != maxMutationEdits {
+		t.Fatalf("edit batch schema = %#v", editsSchema)
+	}
+	for _, required := range []string{"old_string", "new_string"} {
+		if !containsTestString(editsSchema.Items.Required, required) {
+			t.Fatalf("edit item must require %q: %#v", required, editsSchema.Items)
+		}
+	}
+	if _, err := editDefinition.Tool.Run(context.Background(), `{"path":"ideas.md","edits":[]}`); err == nil {
+		t.Fatal("edit accepted an empty batch")
 	}
 }
 

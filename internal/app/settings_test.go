@@ -414,7 +414,7 @@ func TestApplyLayeredSettingsToConfigAppliesAgentToolResultLimit(t *testing.T) {
 	}
 }
 
-func TestApplyLayeredSettingsToConfigMapsZeroToolResultLimitToHighDefault(t *testing.T) {
+func TestApplyLayeredSettingsToConfigMapsZeroToolResultLimitToDefault(t *testing.T) {
 	limitKB := 0
 	cfg := &config.Config{AgentToolResultLimitKB: 128}
 	appsettings.ApplyLayered(cfg, config.LayeredSettings{

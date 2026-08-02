@@ -75,6 +75,34 @@ func TestInteractiveDirectorDisplayStreamsHiddenDirectorPlanCharCount(t *testing
 	}
 }
 
+func TestDirectorToolTextCounterCountsEveryBatchEditValue(t *testing.T) {
+	counter := directorToolTextCounter{}
+	keys := directorToolGeneratedTextKeys("edit")
+	chunks := []string{
+		`{"path":"director.md","edits":[{"old_string":"\"new_string\":\"trap\"","new_`,
+		`string":"第一"},{"old_string":"x","new_string":"二\n`,
+		`三"}]}`,
+	}
+	total := 0
+	for _, chunk := range chunks {
+		total += counter.countDelta(chunk, keys)
+	}
+	if total != 5 {
+		t.Fatalf("streamed batch edit character count = %d, want 5", total)
+	}
+}
+
+func TestDirectorToolDisplayStateSynchronizesBatchEditCharacterCount(t *testing.T) {
+	state := directorToolDisplayState{
+		name:    "edit",
+		rawArgs: `{"path":"director.md","edits":[{"old_string":"one","new_string":"第一"},{"old_string":"two","new_string":"二\n三"}]}`,
+	}
+	state.syncDecodedGeneratedChars()
+	if state.generatedChars != 5 {
+		t.Fatalf("decoded batch edit character count = %d, want 5", state.generatedChars)
+	}
+}
+
 type directorDisplayConversation struct {
 	events []session.DisplayEvent
 }

@@ -41,6 +41,35 @@ func TestProcessToolResultMaterializesOversizedText(t *testing.T) {
 	}
 }
 
+func TestProcessDefaultBudgetProjectsSingleContextBlowingResult(t *testing.T) {
+	if DefaultMaxBytes != 128*1024 {
+		t.Fatalf("default model-visible tool result budget = %d, want 128 KiB", DefaultMaxBytes)
+	}
+	store := &processorArtifactStore{}
+	ctx := agent.ContextWithToolArtifactStore(context.Background(), store)
+	content := "HEAD-SENTINEL\n" + strings.Repeat("x", 708*1024) + "\nTAIL-SENTINEL"
+	decision := processorTestDecision(agent.ToolResultEagerCandidate)
+
+	processed, err := Process(ctx, decision, `{"path":"large-result.log"}`, agent.TextToolResult(content),
+		ProcessingPolicy{MaxBytes: DefaultMaxBytes, EagerMinTokens: 32_000, ContextWindowTokens: 400_000})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if store.content.String() != content {
+		t.Fatal("complete oversized output was not materialized before projection")
+	}
+	if len(processed.ModelContent) > DefaultMaxBytes || !processed.Metadata.ModelTruncated {
+		t.Fatalf("model projection = %d bytes, truncated=%t", len(processed.ModelContent), processed.Metadata.ModelTruncated)
+	}
+	if !strings.Contains(processed.ModelContent, "HEAD-SENTINEL") ||
+		!strings.Contains(processed.ModelContent, "TAIL-SENTINEL") {
+		t.Fatal("default projection did not retain both useful edges")
+	}
+	if processed.ContextHints == nil || processed.ContextHints.Recovery.Kind != agent.ToolResultRecoveryArtifact {
+		t.Fatalf("default projection recovery = %#v", processed.ContextHints)
+	}
+}
+
 func TestProcessToolResultMaterializesOutputInsteadOfReusingAttachment(t *testing.T) {
 	store := &processorArtifactStore{}
 	ctx := agent.ContextWithToolArtifactStore(context.Background(), store)

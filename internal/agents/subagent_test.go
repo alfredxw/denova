@@ -392,11 +392,45 @@ func TestRunSubAgentForwardsDrainedChildEvents(t *testing.T) {
 	}
 }
 
+func TestRunSubAgentPreservesParentPathForEveryNestedEvent(t *testing.T) {
+	parentCtx, finishParent, err := agent.BeginChildInvocation(context.Background(), "root")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() {
+		if err := finishParent(); err != nil {
+			t.Errorf("finish parent invocation: %v", err)
+		}
+	}()
+
+	child := &streamingSubAgent{emitToolEvent: true}
+	var forwarded []*agent.AgentEvent
+	parentCtx = agent.ContextWithEventSink(parentCtx, func(event *agent.AgentEvent) {
+		forwarded = append(forwarded, event)
+	})
+	task, err := agenttoolruntime.NewCatalog(nil).Task(parentCtx, []agent.Runnable{child})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := task.Tool.Run(parentCtx, `{"subagent_type":"reviewer","description":"inspect the draft"}`); err != nil {
+		t.Fatal(err)
+	}
+	if len(forwarded) != 2 {
+		t.Fatalf("forwarded events = %#v, want tool event and assistant event", forwarded)
+	}
+	for index, event := range forwarded {
+		if len(event.RunPath) != 2 || event.RunPath[0].String() != "root" || event.RunPath[1].String() != "reviewer" {
+			t.Fatalf("forwarded event %d path = %#v, want root/reviewer", index, event.RunPath)
+		}
+	}
+}
+
 type streamingSubAgent struct {
 	request             string
 	scope               agent.InvocationScope
 	hasRewriter         bool
 	hasMutationObserver bool
+	emitToolEvent       bool
 }
 
 func (*streamingSubAgent) Name(context.Context) string        { return "reviewer" }
@@ -412,6 +446,15 @@ func (child *streamingSubAgent) Run(ctx context.Context, input *agent.AgentInput
 	writer.Send(agent.AssistantMessage("child result", nil), nil)
 	writer.Close()
 	iterator, generator := agent.NewAsyncIteratorPair[*agent.AgentEvent]()
+	if child.emitToolEvent {
+		generator.Send(&agent.AgentEvent{
+			AgentName: "reviewer",
+			RunPath:   []agent.RunStep{agent.NewRunStep("reviewer")},
+			Output: &agent.AgentOutput{ToolExecution: &agent.ToolExecutionEvent{
+				Phase: agent.ToolExecutionStarted, ExecutionID: "reviewer-read-1", ToolName: "read",
+			}},
+		})
+	}
 	generator.Send(&agent.AgentEvent{
 		AgentName: "reviewer",
 		RunPath:   []agent.RunStep{agent.NewRunStep("reviewer")},

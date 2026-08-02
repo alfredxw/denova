@@ -1,6 +1,7 @@
 import {
   agentViewContent,
   agentViewStableKey,
+  isAgentSubAgentTimelineBridgeView,
   isAgentSubAgentTimelineView,
   isAgentTraceView,
   type AgentMessageView,
@@ -39,7 +40,11 @@ export function buildAgentRunPresentation(
       nextIndex += 1
       continue
     }
-    if (view.metadata.run_id !== runID || (!isRootRunView(view) && !isAgentSubAgentTimelineView(view))) break
+    const subAgentBridge = isAgentSubAgentTimelineBridgeView(view, runViews)
+    if (
+      (view.metadata.run_id !== runID && !subAgentBridge) ||
+      (!isRootRunView(view) && !isAgentSubAgentTimelineView(view) && !subAgentBridge)
+    ) break
     runViews.push(view)
     nextIndex += 1
   }

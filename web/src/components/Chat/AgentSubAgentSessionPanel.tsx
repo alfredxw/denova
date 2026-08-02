@@ -5,7 +5,7 @@ import { useTranslation } from 'react-i18next'
 import { Virtuoso } from 'react-virtuoso'
 import type { Components } from 'react-virtuoso'
 import type { AgentUIMessage } from '@/lib/agent-ui'
-import { agentSubAgentSessionKey, buildAgentMessageViews, type AgentMessageView } from '@/lib/agent-message-view'
+import { agentSubAgentSessionKey, buildAgentMessageViews, buildAgentSubAgentTimelineGroups, type AgentMessageView } from '@/lib/agent-message-view'
 import { AgentMessageItem } from './AgentMessageItem'
 import { VIRTUOSO_BOTTOM_THRESHOLD, useVirtuosoBottomLock } from './useVirtuosoBottomLock'
 import { ScrollToBottomButton } from './ScrollToBottomButton'
@@ -25,10 +25,12 @@ const SUBAGENT_SESSION_COMPONENTS: Components<AgentMessageView> = {
 
 export function AgentSubAgentSessionPanel({ messages, sessionKey, onClose, highlightDialogue = false, messageStyle }: AgentSubAgentSessionPanelProps) {
   const { t } = useTranslation()
-  const sessionViews = useMemo(
-    () => buildAgentMessageViews(messages).filter((view) => agentSubAgentSessionKey(view) === sessionKey && view.kind !== 'token-usage'),
-    [messages, sessionKey],
-  )
+  const sessionViews = useMemo(() => {
+    const views = buildAgentMessageViews(messages)
+    const group = buildAgentSubAgentTimelineGroups(views).find(candidate => candidate.sessionKeys.includes(sessionKey))
+    if (group) return group.views
+    return views.filter((view) => agentSubAgentSessionKey(view) === sessionKey && view.kind !== 'token-usage')
+  }, [messages, sessionKey])
   const first = sessionViews[0]
   const name = first?.metadata.agent_name || first?.metadata.subagent_type || t('chat.subagent.label')
   const running = sessionViews.some((view) => view.streaming)

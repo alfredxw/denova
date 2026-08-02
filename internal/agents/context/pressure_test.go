@@ -67,6 +67,60 @@ func TestContextPressureProtectsErrorsAndRecentGroups(t *testing.T) {
 	}
 }
 
+func TestContextPressureCleansConsumedLargeResultWithoutRewritingCurrentUserInput(t *testing.T) {
+	large := pressureToolResult(
+		"large", strings.Repeat("large recoverable output ", 20_000),
+		agent.ToolResultDeferred, agent.ToolResultContextNormal,
+	)
+	small := pressureToolResult(
+		"follow-up", "small unconsumed result",
+		agent.ToolResultDeferred, agent.ToolResultContextNormal,
+	)
+	messages := []*agent.Message{
+		agent.UserMessage("current user request must remain exact"),
+		agent.AssistantMessage("", []agent.ToolCall{pressureCall("large", 0)}),
+		large,
+		agent.AssistantMessage("result consumed; inspect one follow-up", []agent.ToolCall{pressureCall("follow-up", 1)}),
+		small,
+	}
+	policy := pressureTestPolicy(80_000)
+	policy.ProviderCacheState = ProviderCacheCold
+
+	decision := PlanContextPressure(messages, nil, policy)
+	if decision.Action != ContextMaintenanceCleanup {
+		t.Fatalf("consumed recoverable result should be cleaned before whole-turn compaction: %#v", decision)
+	}
+	if len(decision.Cleanup.Replacements) != 1 || decision.Cleanup.Replacements[0].ToolCallID != "large" {
+		t.Fatalf("cleanup targets = %#v, want only consumed large result", decision.Cleanup.Replacements)
+	}
+	projected := toolresult.ApplyCleanupPlan(messages, decision.Cleanup)
+	if projected[0].Content != messages[0].Content || projected[3].Content != messages[3].Content {
+		t.Fatal("tool-result cleanup rewrote user or assistant content")
+	}
+	if projected[2].Content == messages[2].Content || projected[4].Content != messages[4].Content {
+		t.Fatal("cleanup did not isolate the consumed tool-result body")
+	}
+}
+
+func TestContextPressureKeepsLargeResultUntilOneLaterAssistantStepConsumesIt(t *testing.T) {
+	result := pressureToolResult(
+		"pending", strings.Repeat("pending evidence ", 30_000),
+		agent.ToolResultDeferred, agent.ToolResultContextNormal,
+	)
+	messages := []*agent.Message{
+		agent.UserMessage("analyze this"),
+		agent.AssistantMessage("", []agent.ToolCall{pressureCall("pending", 0)}),
+		result,
+	}
+	policy := pressureTestPolicy(80_000)
+	policy.ProviderCacheState = ProviderCacheCold
+
+	decision := PlanContextPressure(messages, nil, policy)
+	if decision.Action == ContextMaintenanceCleanup || len(decision.Cleanup.Replacements) != 0 {
+		t.Fatalf("unconsumed tool result must stay rich: %#v", decision)
+	}
+}
+
 func TestContextPressureCleanupRequiresCacheGateAndRecoveryTarget(t *testing.T) {
 	messages := pressureHistory(10, 9000, agent.ToolResultDeferred, agent.ToolResultContextDiscardable)
 	messages = append(messages, agent.UserMessage(strings.Repeat("warm-suffix ", 12_000)))

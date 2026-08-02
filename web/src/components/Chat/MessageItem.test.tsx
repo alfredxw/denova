@@ -419,7 +419,7 @@ describe('MessageItem', () => {
       />,
     )
 
-    expect(screen.getByText('访问被阻止 · 改用其他公开来源')).toHaveClass('basis-full', 'whitespace-normal')
+    expect(screen.getByText('访问被阻止 · 改用其他公开来源')).toHaveClass('col-start-2', 'col-end-4', 'whitespace-normal')
     await user.click(screen.getByRole('button', { name: '详情' }))
     expect(screen.getByText(/"status": "blocked"/)).toBeInTheDocument()
     expect(screen.getAllByText(/改用其他公开来源/)).toHaveLength(2)
@@ -445,11 +445,13 @@ describe('MessageItem', () => {
     expect(screen.getByText('# Skill: alpha ALPHA_BODY')).toBeInTheDocument()
   })
 
-  it('edit 单次精确替换时流式展示 new_string', () => {
+  it('edit 批量精确替换时按顺序流式展示全部 new_string', () => {
     const args = JSON.stringify({
       path: 'chapters/ch01.md',
-      old_string: '旧开场',
-      new_string: '新的开场正文。'.repeat(8),
+      edits: [
+        { old_string: '旧开场', new_string: '新的开场正文。'.repeat(8) },
+        { old_string: '旧结尾', new_string: '新的结尾正文。'.repeat(8) },
+      ],
     })
     const { container } = render(
       <MessageItem
@@ -467,6 +469,30 @@ describe('MessageItem', () => {
     const preview = container.querySelector('[data-nova-scroll-lock="tool-stream-preview"]')
     expect(preview).toBeInTheDocument()
     expect(preview).toHaveTextContent('新的开场正文')
+    expect(preview).toHaveTextContent('新的结尾正文')
+  })
+
+  it('edit 参数尚未闭合时安全提取多项 new_string，不误读 old_string 内文本', () => {
+    const args = '{"path":"chapters/ch01.md","edits":['
+      + '{"old_string":"\\\"new_string\\\":\\\"trap\\\"","new_string":"第一段正文。"},'
+      + '{"old_string":"旧结尾","new_string":"第二段尚未结束'
+    const { container } = render(
+      <MessageItem
+        message={{
+          id: 'tool-partial-batch-edit',
+          role: 'tool_call',
+          content: 'edit',
+          name: 'edit',
+          args,
+          status: 'running',
+        }}
+      />,
+    )
+
+    const preview = container.querySelector('[data-nova-scroll-lock="tool-stream-preview"]')
+    expect(preview).toHaveTextContent('第一段正文。')
+    expect(preview).toHaveTextContent('第二段尚未结束')
+    expect(preview).not.toHaveTextContent('trap')
   })
 
   it('隐藏章节正文的工具卡片展示写入状态和说明详情', async () => {
@@ -821,6 +847,31 @@ describe('MessageItem', () => {
     await user.click(screen.getByRole('button', { name: '详情' }))
     expect(screen.getByText('委派结果')).toBeInTheDocument()
     expect(screen.getAllByText('找到三条线索').length).toBeGreaterThan(0)
+  })
+
+  it('超长工具来源会收缩并始终为详情操作保留独立列', () => {
+    const longToolName = 'workspace-tool-with-a-name-that-is-longer-than-the-available-ide-card-width'
+    const longAgentName = 'general-purpose-subagent-with-an-unusually-long-display-name'
+    const { container } = render(
+      <MessageItem
+        message={{
+          role: 'tool_call',
+          content: longToolName,
+          name: longToolName,
+          args: '{"path":"chapters/long-file-name.md"}',
+          status: 'success',
+          result: 'done',
+          agent_name: longAgentName,
+          subagent: true,
+        }}
+      />,
+    )
+
+    const header = container.querySelector('[data-nova-tool-header]')
+    expect(header).toHaveClass('grid', 'grid-cols-[auto_minmax(0,1fr)_auto]')
+    expect(screen.getByText(longToolName)).toHaveClass('min-w-0', 'truncate')
+    expect(screen.getByText(longAgentName)).toHaveClass('truncate')
+    expect(screen.getByRole('button', { name: '详情' })).toHaveClass('col-start-3', 'shrink-0')
   })
 
   it('SubAgent assistant 输出默认显示紧凑小窗并可行内展开收起', async () => {

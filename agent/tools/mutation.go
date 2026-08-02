@@ -15,12 +15,19 @@ type WriteRequest struct {
 	Content string
 }
 
-// EditRequest applies one exact current-content replacement.
-type EditRequest struct {
-	Path       string
+// EditReplacement describes one exact replacement evaluated against the
+// shared base snapshot of an EditRequest.
+type EditReplacement struct {
 	OldString  string
 	NewString  string
 	ReplaceAll bool
+}
+
+// EditRequest applies non-overlapping exact replacements to one file as one
+// mutation. Every replacement is evaluated against the same current snapshot.
+type EditRequest struct {
+	Path  string
+	Edits []EditReplacement
 }
 
 // MutationAdapter is the product seam behind write and edit. Implementations
@@ -60,36 +67,41 @@ func Write(adapter MutationAdapter, options ...DefinitionOption) (agent.ToolDefi
 }
 
 type editInput struct {
-	Path       string `json:"path" jsonschema:"maxLength=4096" jsonschema_description:"Absolute or workspace-relative path of the file to edit."`
-	OldString  string `json:"old_string" jsonschema:"maxLength=4194304" jsonschema_description:"Exact non-empty current text to replace, up to the mutation fragment safety limit."`
-	NewString  string `json:"new_string" jsonschema:"maxLength=4194304" jsonschema_description:"Replacement text, up to the mutation fragment safety limit; an empty string deletes the matched text."`
-	ReplaceAll bool   `json:"replace_all,omitempty" jsonschema_description:"Replace every exact occurrence; otherwise old_string must match exactly once."`
+	Path  string           `json:"path" jsonschema:"maxLength=4096" jsonschema_description:"Absolute or workspace-relative path of the single file to edit."`
+	Edits []editEntryInput `json:"edits" jsonschema:"minItems=1,maxItems=256" jsonschema_description:"Non-overlapping exact replacements evaluated against the same original file snapshot and committed together."`
 }
 
-// Edit defines one Claude Code-style exact string replacement.
+type editEntryInput struct {
+	OldString  string `json:"old_string" jsonschema:"maxLength=4194304" jsonschema_description:"Exact non-empty text to replace in the original file snapshot."`
+	NewString  string `json:"new_string" jsonschema:"maxLength=4194304" jsonschema_description:"Replacement text; an empty string deletes the matched text."`
+	ReplaceAll bool   `json:"replace_all,omitempty" jsonschema_description:"Replace every exact occurrence in the original snapshot; otherwise old_string must match exactly once."`
+}
+
+// Edit defines one single-file atomic exact-replacement batch.
 func Edit(adapter MutationAdapter, options ...DefinitionOption) (agent.ToolDefinition, error) {
 	if adapter == nil {
 		return agent.ToolDefinition{}, errors.New("edit MutationAdapter is nil")
 	}
-	tool, err := agent.InferTool("edit", `Replace exact current text in one workspace file. Without replace_all, old_string must occur exactly once. The file may have changed since an earlier read as long as old_string still matches the current content exactly and uniquely.
+	tool, err := agent.InferTool("edit", `Apply one or more exact replacements to a single workspace file as one atomic change. Every edits item is matched against the same current file snapshot, not against earlier replacements in the list. Without replace_all, old_string must occur exactly once. All ranges must be non-overlapping; if any item is invalid, the file is not changed. The file may have changed since an earlier read as long as every old_string still matches the current content exactly as required.
 
-在一个工作区文件的当前内容中执行精确文本替换。未设置 replace_all 时，old_string 必须恰好出现一次；只要它仍能在当前内容中精确且唯一匹配，文件可以在之前读取后发生其它变化。`, func(ctx context.Context, input editInput) (agent.ToolResult, error) {
+将一个或多个精确替换作为一次原子变更应用到同一个工作区文件。edits 中每一项都匹配同一份当前文件快照，而不是前一项替换后的结果。未设置 replace_all 时，old_string 必须恰好出现一次；所有区间必须互不重叠，任一项无效时文件都不会改变。只要每个 old_string 仍按要求精确匹配，文件可以在之前读取后发生其它变化。`, func(ctx context.Context, input editInput) (agent.ToolResult, error) {
 		path := strings.TrimSpace(input.Path)
 		if path == "" {
 			return agent.ToolResult{}, errors.New("edit path is required")
 		}
-		if input.OldString == "" {
-			return agent.ToolResult{}, errors.New("edit old_string must not be empty")
+		if len(input.Edits) == 0 {
+			return agent.ToolResult{}, errors.New("edit requires at least one edits item")
 		}
-		if input.OldString == input.NewString {
-			return agent.ToolResult{}, errors.New("edit new_string must differ from old_string")
+		if len(input.Edits) > maxMutationEdits {
+			return agent.ToolResult{}, fmt.Errorf("edit exceeds the %d-item mutation limit", maxMutationEdits)
 		}
-		if len(input.OldString) > maxMutationFragmentBytes || len(input.NewString) > maxMutationFragmentBytes {
-			return agent.ToolResult{}, fmt.Errorf("edit text exceeds the %d-byte mutation fragment limit", maxMutationFragmentBytes)
+		replacements := make([]EditReplacement, len(input.Edits))
+		for index, edit := range input.Edits {
+			replacements[index] = EditReplacement{
+				OldString: edit.OldString, NewString: edit.NewString, ReplaceAll: edit.ReplaceAll,
+			}
 		}
-		result, err := adapter.Edit(ctx, EditRequest{
-			Path: path, OldString: input.OldString, NewString: input.NewString, ReplaceAll: input.ReplaceAll,
-		})
+		result, err := adapter.Edit(ctx, EditRequest{Path: path, Edits: replacements})
 		if err == nil && result.Status == "" {
 			result.Status = agent.ToolResultSuccess
 		}

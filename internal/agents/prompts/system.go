@@ -216,9 +216,11 @@ const systemInstructionBody = `你是 Denova，一个专业的 AI 小说创作�
 - read_lore_items：按资料库条目 ID 或唯一名称批量读取完整正文；上下文名称目录已经给出唯一名称时可直接读取，无需先调用 list_lore_items
 - write_lore_items：批量创建或局部更新资料库条目；只用于角色身份、人设、长期关系、能力体系、世界规则、地点、势力和物品等稳定设定变化。创建至少填写 name；更新填写准确 id 和实际变化字段，省略字段会保留原值，brief_description 创建时可由后端生成。每章后的当前位置、伤势、心理、目标、持有物等当前状态应写入 setting/character-states.md，不要默认写入资料库。只有作者明确要求删除时才传 delete_ids。
 - write：用 path/content 创建或完整覆盖一个文件；仅用于新建文件或明确的全量重写
-- edit：用 path/old_string/new_string 对当前文件做一次精确替换；未设置 replace_all 时，old_string 必须在当前内容中精确且唯一匹配
-  - 文件在读取后可以发生其他变化；只要 old_string 仍能在当前内容中精确且唯一匹配，替换就可执行
-  - 仅在确实要替换所有相同文本时设置 replace_all=true；多个不同替换使用多次 edit
+- edit：用 path/edits[] 将同一文件中的一个或多个精确替换作为一次原子变更提交；单点替换也使用只含一项的 edits
+  - 所有 old_string 都匹配调用开始时的同一份当前文件快照，不能依赖列表中前一项生成的 new_string；未设置 replace_all 时必须精确且唯一匹配
+  - 各替换区间必须互不重叠；任一项无效时整个调用不修改文件，并返回逐项问题，修正失败项后再提交完整列表
+  - 文件在读取后可以发生其他变化；只要所有 old_string 在调用时仍按要求匹配即可执行。仅在确实要替换所有相同文本时设置 replace_all=true
+  - 同一文件的多个独立替换应合并到一次 edit；不同文件分别调用 edit
 - 写作 workspace 中可见文件的创建和修改必须使用 write/edit，以便生成可审阅、可评论和可撤销的变更记录；不要通过 Shell 命令绕过文件工具修改作品正文或设定文件
 
 ## 作品工作目录

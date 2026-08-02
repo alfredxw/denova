@@ -9,47 +9,84 @@ import (
 )
 
 type directorToolTextCounter struct {
-	scanBuffer        string
+	inString          bool
 	countingValue     bool
-	valueDone         bool
 	escapedValue      bool
 	unicodeEscapeLeft int
+	candidateKey      string
+	candidateTooLong  bool
+	pendingKey        string
+	expectingValue    bool
 }
 
 func (c *directorToolTextCounter) countDelta(delta string, keys []string) int {
-	if c == nil || c.valueDone || delta == "" {
+	if c == nil || delta == "" {
 		return 0
 	}
-	input := delta
-	if !c.countingValue {
-		c.scanBuffer += delta
-		offset, ok := jsonStringValueOffsetAny(c.scanBuffer, keys)
-		if !ok {
-			c.trimScanBuffer()
-			return 0
-		}
-		input = c.scanBuffer[offset:]
-		c.scanBuffer = ""
-		c.countingValue = true
-	}
-	return c.countValue(input)
-}
-
-func (c *directorToolTextCounter) trimScanBuffer() {
-	const maxScanBuffer = 256
-	if len(c.scanBuffer) > maxScanBuffer {
-		c.scanBuffer = c.scanBuffer[len(c.scanBuffer)-maxScanBuffer:]
-	}
-}
-
-func (c *directorToolTextCounter) countValue(input string) int {
 	count := 0
-	for input != "" {
-		r, size := utf8.DecodeRuneInString(input)
+	for delta != "" {
+		r, size := utf8.DecodeRuneInString(delta)
 		if size <= 0 {
 			size = 1
 		}
-		input = input[size:]
+		delta = delta[size:]
+		if !c.inString {
+			if c.expectingValue {
+				if isJSONWhitespace(r) {
+					continue
+				}
+				c.expectingValue = false
+				if r == '"' {
+					c.startString(true)
+					continue
+				}
+			}
+			if c.pendingKey != "" {
+				if isJSONWhitespace(r) {
+					continue
+				}
+				pendingKey := c.pendingKey
+				c.pendingKey = ""
+				if r == ':' {
+					c.expectingValue = containsDirectorGeneratedTextKey(keys, pendingKey)
+					continue
+				}
+			}
+			if r == '"' {
+				c.startString(false)
+			}
+			continue
+		}
+
+		if !c.countingValue {
+			if c.escapedValue {
+				c.escapedValue = false
+				c.candidateTooLong = true
+				continue
+			}
+			switch r {
+			case '\\':
+				c.escapedValue = true
+				c.candidateTooLong = true
+			case '"':
+				c.inString = false
+				if !c.candidateTooLong && c.candidateKey != "" {
+					c.pendingKey = c.candidateKey
+				}
+				c.candidateKey = ""
+				c.candidateTooLong = false
+			default:
+				const maxCandidateKeyBytes = 64
+				if !c.candidateTooLong && len(c.candidateKey)+size <= maxCandidateKeyBytes {
+					c.candidateKey += string(r)
+				} else {
+					c.candidateKey = ""
+					c.candidateTooLong = true
+				}
+			}
+			continue
+		}
+
 		if c.unicodeEscapeLeft > 0 {
 			c.unicodeEscapeLeft--
 			if c.unicodeEscapeLeft == 0 {
@@ -70,13 +107,43 @@ func (c *directorToolTextCounter) countValue(input string) int {
 		case '\\':
 			c.escapedValue = true
 		case '"':
-			c.valueDone = true
-			return count
+			c.inString = false
+			c.countingValue = false
 		default:
 			count++
 		}
 	}
 	return count
+}
+
+func (c *directorToolTextCounter) startString(countingValue bool) {
+	c.inString = true
+	c.countingValue = countingValue
+	c.escapedValue = false
+	c.unicodeEscapeLeft = 0
+	c.candidateKey = ""
+	c.candidateTooLong = false
+	if countingValue {
+		c.pendingKey = ""
+	}
+}
+
+func containsDirectorGeneratedTextKey(keys []string, target string) bool {
+	for _, key := range keys {
+		if key == target {
+			return true
+		}
+	}
+	return false
+}
+
+func isJSONWhitespace(r rune) bool {
+	switch r {
+	case ' ', '\n', '\r', '\t':
+		return true
+	default:
+		return false
+	}
 }
 
 type directorToolPathArgPreview struct {
@@ -152,36 +219,10 @@ func partialDirectorJSONStringField(args, key string) (string, bool) {
 	}
 }
 
-func jsonStringValueOffsetAny(data string, keys []string) (int, bool) {
-	for _, key := range keys {
-		if offset, ok := jsonStringValueOffset(data, key); ok {
-			return offset, true
-		}
-	}
-	return 0, false
-}
-
-func jsonStringValueOffset(data, key string) (int, bool) {
-	needle := `"` + key + `"`
-	index := strings.Index(data, needle)
-	if index < 0 {
-		return 0, false
-	}
-	afterKey := strings.TrimLeft(data[index+len(needle):], " \n\r\t")
-	if afterKey == "" || !strings.HasPrefix(afterKey, ":") {
-		return 0, false
-	}
-	afterColon := strings.TrimLeft(afterKey[1:], " \n\r\t")
-	if afterColon == "" || !strings.HasPrefix(afterColon, `"`) {
-		return 0, false
-	}
-	return len(data) - len(afterColon) + 1, true
-}
-
 func directorToolGeneratedTextKeys(name string) []string {
 	switch strings.TrimSpace(name) {
 	case "edit":
-		return []string{"new_string", "content"}
+		return []string{"new_string"}
 	case producttools.SubmitDirectorPlanUpdateToolName:
 		return []string{"plan", "agent_brief", "lore_context"}
 	default:

@@ -567,7 +567,7 @@ function AgentSourceBadge({ message, compact = false }: { message: ChatMessage; 
   const name = message.agent_name || message.subagent_type || t('chat.subagent.label')
   const label = compact ? name : t('chat.subagent.outputFrom', { name })
   return (
-    <span className={`mb-1 inline-flex max-w-full items-center rounded-[var(--nova-radius)] border border-[var(--nova-border)] bg-[var(--nova-surface-2)] px-1.5 py-0.5 text-[10px] text-[var(--nova-text-faint)] ${compact ? 'mb-0 shrink-0' : ''}`}>
+    <span className={`mb-1 inline-flex max-w-full items-center rounded-[var(--nova-radius)] border border-[var(--nova-border)] bg-[var(--nova-surface-2)] px-1.5 py-0.5 text-[10px] text-[var(--nova-text-faint)] ${compact ? 'mb-0 min-w-0' : ''}`}>
       <span className="truncate">{label}</span>
     </span>
   )
@@ -880,31 +880,47 @@ function ToolExecutionBlock({ message }: { message: ChatMessage }) {
   return (
     <div className="flex justify-start">
       <Tool open={expanded} onOpenChange={setExpanded} className="mb-0 w-full overflow-hidden rounded-lg border border-[var(--nova-border)] bg-[var(--nova-surface)] text-xs shadow-[var(--nova-shadow)]">
-        <div className={`flex min-h-10 min-w-0 items-center gap-2 px-3 py-2 ${showReadableOutcome ? 'flex-wrap' : ''}`}>
+        <div
+          data-nova-tool-header
+          className={`grid min-h-10 min-w-0 grid-cols-[auto_minmax(0,1fr)_auto] items-center gap-x-2 px-3 py-2 ${showReadableOutcome ? 'gap-y-1' : ''}`}
+        >
           <ToolStatusIcon status={resultSeverity === 'error' ? 'error' : status} warning={resultSeverity === 'warning'} />
-          <span className="shrink-0 font-medium text-[var(--nova-text)]">{t('chat.tool.calling')}</span>
-          <code className="shrink-0 rounded border border-[var(--nova-border)] bg-[var(--nova-surface-2)] px-1.5 py-0.5 font-mono text-[11px] text-[var(--nova-text-muted)]">
-            {displayName}
-          </code>
-          {taskSubAgent && (
-            <span className="shrink-0 rounded border border-[var(--nova-border)] bg-[var(--nova-surface-2)] px-1.5 py-0.5 text-[10px] text-[var(--nova-text-muted)]">
-              {t('chat.subagent.delegating', { name: taskSubAgent })}
-            </span>
-          )}
-          {message.subagent && <AgentSourceBadge message={message} compact />}
-          <span className={showReadableOutcome
-            ? `order-last basis-full whitespace-normal pl-7 pt-1 leading-4 ${resultSeverity === 'warning' ? 'text-[var(--nova-warning)]' : 'text-[var(--nova-danger)]'}`
-            : 'min-w-0 flex-1 truncate text-[var(--nova-text-faint)]'}>
-            {displaySummary}
-          </span>
+          <div className="flex min-w-0 items-center gap-2 overflow-hidden">
+            <span className="shrink-0 font-medium text-[var(--nova-text)]">{t('chat.tool.calling')}</span>
+            <code
+              className="min-w-0 truncate rounded border border-[var(--nova-border)] bg-[var(--nova-surface-2)] px-1.5 py-0.5 font-mono text-[11px] text-[var(--nova-text-muted)]"
+              title={displayName}
+            >
+              {displayName}
+            </code>
+            {taskSubAgent && (
+              <span
+                className="min-w-0 truncate rounded border border-[var(--nova-border)] bg-[var(--nova-surface-2)] px-1.5 py-0.5 text-[10px] text-[var(--nova-text-muted)]"
+                title={t('chat.subagent.delegating', { name: taskSubAgent })}
+              >
+                {t('chat.subagent.delegating', { name: taskSubAgent })}
+              </span>
+            )}
+            {message.subagent && <AgentSourceBadge message={message} compact />}
+            {!showReadableOutcome && (
+              <span className="min-w-0 flex-1 truncate text-[var(--nova-text-faint)]" title={displaySummary}>
+                {displaySummary}
+              </span>
+            )}
+          </div>
           {hasDetail && !isStreamingContent && (
             <button
               type="button"
-              className="shrink-0 rounded border border-transparent px-1.5 py-0.5 text-[var(--nova-text-muted)] transition hover:border-[var(--nova-border)] hover:bg-[var(--nova-hover)] hover:text-[var(--nova-text)]"
+              className="col-start-3 row-start-1 shrink-0 rounded border border-transparent px-1.5 py-0.5 text-[var(--nova-text-muted)] transition hover:border-[var(--nova-border)] hover:bg-[var(--nova-hover)] hover:text-[var(--nova-text)]"
               onClick={() => setExpanded(!expanded)}
             >
               {expanded ? t('chat.tool.collapse') : t('chat.tool.details')}
             </button>
+          )}
+          {showReadableOutcome && (
+            <span className={`col-start-2 col-end-4 whitespace-normal pt-1 leading-4 ${resultSeverity === 'warning' ? 'text-[var(--nova-warning)]' : 'text-[var(--nova-danger)]'}`}>
+              {displaySummary}
+            </span>
           )}
         </div>
         {/* 流式写入时展示实时内容预览 */}
@@ -1521,29 +1537,134 @@ function isContentTool(name: string): boolean {
   return ['write', 'edit'].includes(name)
 }
 
-/** 从不完整的 JSON args 中提取 content/new_string 字段的流式文本 */
+/** Extract generated text from complete or incrementally streamed tool arguments. */
 function extractStreamingContent(rawArgs: string): string {
   try {
     const parsed = JSON.parse(rawArgs) as Record<string, unknown>
-    for (const key of ['content', 'new_string']) {
-      if (typeof parsed[key] === 'string') return parsed[key]
+    if (typeof parsed.content === 'string') return parsed.content
+    if (Array.isArray(parsed.edits)) {
+      const replacements = parsed.edits.flatMap((entry) => {
+        if (!entry || typeof entry !== 'object') return []
+        const value = (entry as Record<string, unknown>).new_string
+        return typeof value === 'string' ? [value] : []
+      })
+      if (replacements.some((value) => value.length > 0)) return replacements.join('\n\n')
     }
+    if (typeof parsed.new_string === 'string') return parsed.new_string
   } catch {
-    // 流式参数尚未形成完整 JSON 时继续按增量文本提取。
+    // The accumulated stream can be incomplete; scan its valid string tokens.
   }
-  // 尝试提取 "content": "..." 或 "new_string": "..."
-  const match = rawArgs.match(/"(?:content|new_string)"\s*:\s*"([\s\S]*)$/m)
-  if (!match) return ''
-  // 解码已有的 JSON 转义字符，末尾可能不完整
-  let text = match[1]
+
+  const content = extractStreamingJSONStringValues(rawArgs, 'content')
+  if (content.length > 0) return content[0]
+  const replacements = extractStreamingJSONStringValues(rawArgs, 'new_string')
+  return replacements.some((value) => value.length > 0) ? replacements.join('\n\n') : ''
+}
+
+type StreamingJSONStringToken = {
+  value: string
+  end: number
+  complete: boolean
+}
+
+function extractStreamingJSONStringValues(rawArgs: string, targetKey: string): string[] {
+  const values: string[] = []
+  let offset = 0
+  while (offset < rawArgs.length) {
+    if (rawArgs[offset] !== '"') {
+      offset += 1
+      continue
+    }
+    const key = readStreamingJSONString(rawArgs, offset)
+    if (!key.complete) break
+    offset = key.end
+    let cursor = skipJSONWhitespace(rawArgs, offset)
+    if (key.value !== targetKey || rawArgs[cursor] !== ':') continue
+    cursor = skipJSONWhitespace(rawArgs, cursor + 1)
+    if (rawArgs[cursor] !== '"') {
+      offset = cursor
+      continue
+    }
+    const value = readStreamingJSONString(rawArgs, cursor)
+    values.push(value.value)
+    offset = value.end
+    if (!value.complete) break
+  }
+  return values
+}
+
+function readStreamingJSONString(source: string, start: number): StreamingJSONStringToken {
+  let escaped = false
+  for (let index = start + 1; index < source.length; index += 1) {
+    const char = source[index]
+    if (escaped) {
+      escaped = false
+      continue
+    }
+    if (char === '\\') {
+      escaped = true
+      continue
+    }
+    if (char === '"') {
+      return {
+        value: decodeStreamingJSONString(source.slice(start + 1, index)),
+        end: index + 1,
+        complete: true,
+      }
+    }
+  }
+  return {
+    value: decodeStreamingJSONString(source.slice(start + 1)),
+    end: source.length,
+    complete: false,
+  }
+}
+
+function decodeStreamingJSONString(rawValue: string): string {
   try {
-    // 尝试解析 JSON 字符串（加上闭合引号使其合法）
-    text = JSON.parse(`"${text}"`)
+    return JSON.parse(`"${rawValue}"`) as string
   } catch {
-    // 不完整时做简单转义还原
-    text = text.replace(/\\n/g, '\n').replace(/\\t/g, '\t').replace(/\\"/g, '"').replace(/\\\\/g, '\\')
+    let decoded = ''
+    for (let index = 0; index < rawValue.length; index += 1) {
+      const char = rawValue[index]
+      if (char !== '\\') {
+        decoded += char
+        continue
+      }
+      const escaped = rawValue[index + 1]
+      if (escaped === undefined) break
+      index += 1
+      const simpleEscape = ({
+        '"': '"',
+        '\\': '\\',
+        '/': '/',
+        b: '\b',
+        f: '\f',
+        n: '\n',
+        r: '\r',
+        t: '\t',
+      } as Record<string, string>)[escaped]
+      if (simpleEscape !== undefined) {
+        decoded += simpleEscape
+        continue
+      }
+      if (escaped === 'u') {
+        const hex = rawValue.slice(index + 1, index + 5)
+        if (!/^[0-9a-fA-F]{4}$/.test(hex)) break
+        decoded += String.fromCharCode(Number.parseInt(hex, 16))
+        index += 4
+        continue
+      }
+      decoded += escaped
+    }
+    return decoded
   }
-  return text
+}
+
+function skipJSONWhitespace(source: string, start: number): number {
+  let offset = start
+  while (offset < source.length && /\s/.test(source[offset])) offset += 1
+  return offset
 }
 
 /** 流式等待占位：正文尚未到达（或仅有被隐藏的思考）时显示，避免空白气泡像卡死。 */

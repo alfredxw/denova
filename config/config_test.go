@@ -162,7 +162,7 @@ func TestLoadWithWorkspaceAllowsUnlimitedAgentIdleTimeout(t *testing.T) {
 	}
 }
 
-func TestLoadWithWorkspaceMapsZeroToolResultLimitToHighDefault(t *testing.T) {
+func TestLoadWithWorkspaceMapsZeroToolResultLimitToDefault(t *testing.T) {
 	novaDir := t.TempDir()
 	ws := t.TempDir()
 	t.Setenv("NOVA_DIR", novaDir)
@@ -179,10 +179,10 @@ func TestLoadWithWorkspaceMapsZeroToolResultLimitToHighDefault(t *testing.T) {
 		t.Fatal(err)
 	}
 	if cfg.AgentToolResultLimitKB != DefaultAgentToolResultLimitKB {
-		t.Fatalf("agent tool result limit should map 0 to the high default, got %d", cfg.AgentToolResultLimitKB)
+		t.Fatalf("agent tool result limit should map 0 to the default, got %d", cfg.AgentToolResultLimitKB)
 	}
 	if layered.Effective.AgentToolResultLimitKB == nil || *layered.Effective.AgentToolResultLimitKB != DefaultAgentToolResultLimitKB {
-		t.Fatalf("effective agent tool result limit should expose the high default")
+		t.Fatalf("effective agent tool result limit should expose the default")
 	}
 }
 
@@ -345,7 +345,7 @@ func TestLoadWithWorkspaceAllowsGlobalUnlimitedAgentIdleTimeout(t *testing.T) {
 	}
 }
 
-func TestLoadWithWorkspaceMapsGlobalZeroToolResultLimitToHighDefault(t *testing.T) {
+func TestLoadWithWorkspaceMapsGlobalZeroToolResultLimitToDefault(t *testing.T) {
 	root := t.TempDir()
 	t.Chdir(root)
 	ws := t.TempDir()
@@ -362,10 +362,10 @@ func TestLoadWithWorkspaceMapsGlobalZeroToolResultLimitToHighDefault(t *testing.
 		t.Fatal(err)
 	}
 	if cfg.AgentToolResultLimitKB != DefaultAgentToolResultLimitKB {
-		t.Fatalf("global agent tool result limit should map 0 to the high default, got %d", cfg.AgentToolResultLimitKB)
+		t.Fatalf("global agent tool result limit should map 0 to the default, got %d", cfg.AgentToolResultLimitKB)
 	}
 	if layered.Global.AgentToolResultLimitKB == nil || *layered.Global.AgentToolResultLimitKB != DefaultAgentToolResultLimitKB {
-		t.Fatalf("global layer should expose the high default")
+		t.Fatalf("global layer should expose the default")
 	}
 }
 

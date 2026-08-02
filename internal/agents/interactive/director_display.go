@@ -332,6 +332,21 @@ func (s *directorToolDisplayState) syncDecodedGeneratedChars() {
 		}
 		return
 	}
+	if strings.TrimSpace(s.name) == "edit" {
+		var input struct {
+			Edits []struct {
+				NewString string `json:"new_string"`
+			} `json:"edits"`
+		}
+		if err := json.Unmarshal([]byte(strings.TrimSpace(s.rawArgs)), &input); err == nil {
+			total := 0
+			for _, edit := range input.Edits {
+				total += utf8.RuneCountInString(edit.NewString)
+			}
+			s.generatedChars = total
+		}
+		return
+	}
 	for _, key := range directorToolGeneratedTextKeys(s.name) {
 		raw, ok := payload[key]
 		if !ok {

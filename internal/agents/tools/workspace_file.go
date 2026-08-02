@@ -53,11 +53,15 @@ func (adapter *workspaceMutationAdapter) Edit(ctx context.Context, request agent
 	if err != nil {
 		return agent.ToolResult{}, err
 	}
+	edits := make([]workspacechange.TextEdit, len(request.Edits))
+	for index, edit := range request.Edits {
+		edits[index] = workspacechange.TextEdit{
+			OldString: edit.OldString, NewString: edit.NewString, ReplaceAll: edit.ReplaceAll,
+		}
+	}
 	changeSet, err := adapter.changes.ApplyEdits(ctx, workspacechange.ApplyEditsRequest{
 		Path: request.Path, BaseRevision: baseRevision,
-		Edits: []workspacechange.TextEdit{{
-			OldString: request.OldString, NewString: request.NewString, ReplaceAll: request.ReplaceAll,
-		}},
+		Edits:    edits,
 		Metadata: workspaceChangeMetadata(ctx, adapter.metadata),
 	})
 	if err != nil {

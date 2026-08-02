@@ -226,6 +226,184 @@ describe('Agent MessageList', () => {
     await waitFor(() => expect(handleVisibleTurnAnchorChange).toHaveBeenCalledWith('turn-1'))
   })
 
+  it('同一次历史 SubAgent 委派的逐轮会话 ID 会合并为一张更新中的卡片', () => {
+    const subAgentMetadata = {
+      run_id: 'run-review',
+      agent_name: 'general-purpose',
+      root_agent_name: 'DenovaAgent',
+      run_path: ['DenovaAgent', 'general-purpose'],
+      subagent: true as const,
+    }
+    renderMessageList(
+      <MessageList
+        isStreaming={false}
+        activityContent=""
+        onOpenSubAgentSession={vi.fn()}
+        messages={[
+          {
+            id: 'review-loop-1',
+            role: 'assistant',
+            metadata: { ...subAgentMetadata, subagent_session_id: 'run-review-subagent-01-general-purpose' },
+            parts: [{ type: 'text', text: '先读取待审章节。' }],
+          },
+          {
+            id: 'review-tool',
+            role: 'assistant',
+            metadata: { ...subAgentMetadata, subagent_session_id: 'run-review-subagent-01-general-purpose' },
+            parts: [{
+              type: 'dynamic-tool', toolName: 'bash', toolCallId: 'review-tool-call', state: 'output-available',
+              input: { command: 'count words' }, output: 'done',
+            }],
+          },
+          {
+            id: 'review-approval',
+            role: 'assistant',
+            metadata: {},
+            parts: [{
+              type: 'data-agent-ask',
+              data: {
+                id: 'review-approval',
+                agent_kind: 'ide',
+                status: 'answered',
+                tool_call_id: 'review-tool-call',
+                questions: [{ id: 'tool-approval', question: '允许统计字数？', options: [] }],
+              },
+            }],
+          },
+          {
+            id: 'review-loop-2',
+            role: 'assistant',
+            metadata: { ...subAgentMetadata, subagent_session_id: 'run-review-subagent-03-general-purpose' },
+            parts: [{ type: 'text', text: '继续核对上下文。' }],
+          },
+          {
+            id: 'review-loop-3',
+            role: 'assistant',
+            metadata: { ...subAgentMetadata, subagent_session_id: 'run-review-subagent-05-general-purpose' },
+            parts: [{ type: 'text', text: '审稿完成，输出最终结论。' }],
+          },
+        ] as AgentUIMessage[]}
+      />,
+    )
+
+    expect(screen.getAllByRole('button', { name: /general-purpose 输出/ })).toHaveLength(1)
+    expect(screen.getByText('审稿完成，输出最终结论。')).toBeInTheDocument()
+    expect(screen.queryByText('先读取待审章节。')).not.toBeInTheDocument()
+    expect(screen.queryByText('继续核对上下文。')).not.toBeInTheDocument()
+  })
+
+  it('根 Agent 的新委派边界不会合并同名 SubAgent 卡片', () => {
+    const subAgentMetadata = {
+      run_id: 'run-review',
+      agent_name: 'general-purpose',
+      root_agent_name: 'DenovaAgent',
+      run_path: ['DenovaAgent', 'general-purpose'],
+      subagent: true as const,
+    }
+    renderMessageList(
+      <MessageList
+        isStreaming={false}
+        activityContent=""
+        onOpenSubAgentSession={vi.fn()}
+        messages={[
+          {
+            id: 'first-delegation', role: 'assistant',
+            metadata: { ...subAgentMetadata, subagent_session_id: 'run-review-subagent-01-general-purpose' },
+            parts: [{ type: 'text', text: '第一次审稿结论。' }],
+          },
+          {
+            id: 'second-task', role: 'assistant', metadata: { run_id: 'run-review' },
+            parts: [{
+              type: 'dynamic-tool', toolName: 'task', toolCallId: 'second-task', state: 'output-available',
+              input: { subagent_type: 'general-purpose', description: 'review again' }, output: 'done',
+            }],
+          },
+          {
+            id: 'second-delegation', role: 'assistant',
+            metadata: { ...subAgentMetadata, subagent_session_id: 'run-review-subagent-02-general-purpose' },
+            parts: [{ type: 'text', text: '第二次审稿结论。' }],
+          },
+        ] as AgentUIMessage[]}
+      />,
+    )
+
+    expect(screen.getAllByRole('button', { name: /general-purpose 输出/ })).toHaveLength(2)
+    expect(screen.getByText('第一次审稿结论。')).toBeInTheDocument()
+    expect(screen.getByText('第二次审稿结论。')).toBeInTheDocument()
+  })
+
+  it('折叠根 Agent 执行过程时已完成的子工具审批不会拆开 SubAgent 卡片', () => {
+    const rootMetadata = {
+      run_id: 'run-review',
+      agent_name: 'DenovaAgent',
+      root_agent_name: 'DenovaAgent',
+      run_path: ['DenovaAgent'],
+    }
+    const subAgentMetadata = {
+      ...rootMetadata,
+      agent_name: 'general-purpose',
+      run_path: ['DenovaAgent', 'general-purpose'],
+      subagent: true as const,
+    }
+    renderMessageList(
+      <MessageList
+        isStreaming={false}
+        activityContent=""
+        collapseTraceGroups
+        onOpenSubAgentSession={vi.fn()}
+        messages={[
+          {
+            id: 'root-thinking', role: 'assistant', metadata: rootMetadata,
+            parts: [{ type: 'reasoning', text: '准备委派审稿。' }],
+          },
+          {
+            id: 'root-progress', role: 'assistant', metadata: { ...rootMetadata, display_phase: 'progress' },
+            parts: [{ type: 'text', text: '开始委派审稿。' }],
+          },
+          {
+            id: 'review-loop-1', role: 'assistant',
+            metadata: { ...subAgentMetadata, subagent_session_id: 'run-review-subagent-01-general-purpose' },
+            parts: [{ type: 'text', text: '先读取待审章节。' }],
+          },
+          {
+            id: 'review-tool', role: 'assistant',
+            metadata: { ...subAgentMetadata, subagent_session_id: 'run-review-subagent-01-general-purpose' },
+            parts: [{
+              type: 'dynamic-tool', toolName: 'bash', toolCallId: 'review-tool-call', state: 'output-available',
+              input: { command: 'count words' }, output: 'done',
+            }],
+          },
+          {
+            id: 'review-approval', role: 'assistant', metadata: {},
+            parts: [{
+              type: 'data-agent-ask',
+              data: {
+                id: 'review-approval',
+                agent_kind: 'ide',
+                status: 'answered',
+                tool_call_id: 'review-tool-call',
+                questions: [{ id: 'tool-approval', question: '允许统计字数？', options: [] }],
+              },
+            }],
+          },
+          {
+            id: 'review-loop-2', role: 'assistant',
+            metadata: { ...subAgentMetadata, subagent_session_id: 'run-review-subagent-03-general-purpose' },
+            parts: [{ type: 'text', text: '审稿完成。' }],
+          },
+          {
+            id: 'root-result', role: 'assistant', metadata: { ...rootMetadata, display_phase: 'final' },
+            parts: [{ type: 'text', text: '主 Agent 已处理审稿意见。' }],
+          },
+        ] as AgentUIMessage[]}
+      />,
+    )
+
+    fireEvent.click(screen.getByRole('button', { name: /执行过程.*SubAgent/ }))
+    expect(screen.getAllByRole('button', { name: /general-purpose 输出/ })).toHaveLength(1)
+    expect(screen.getByText('审稿完成。')).toBeInTheDocument()
+  })
+
   it('回合顶端定位时忽略刚好结束在视口上边界的前一回合', async () => {
     const handleVisibleTurnAnchorChange = vi.fn()
     const { container } = render(

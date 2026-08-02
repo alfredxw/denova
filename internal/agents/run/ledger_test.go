@@ -44,7 +44,7 @@ func TestContextLedgerRecordsBoundedSources(t *testing.T) {
 	}
 }
 
-func TestFilterToolResultKeepsContentBelowHighDefaultLimit(t *testing.T) {
+func TestFilterToolResultKeepsContentBelowDefaultLimit(t *testing.T) {
 	content := strings.Repeat("章节正文", 4096)
 	filtered := toolresult.FilterText(
 		"write",
@@ -60,7 +60,7 @@ func TestFilterToolResultKeepsContentBelowHighDefaultLimit(t *testing.T) {
 		t.Fatalf("write capability = %q, want %s", filtered.Manifest.Capability, config.AgentToolWorkspaceWrite)
 	}
 	if filtered.Truncated {
-		t.Fatalf("tool result below the high default limit should not truncate")
+		t.Fatalf("tool result below the default limit should not truncate")
 	}
 	if filtered.Content != content || filtered.Result.ModelContent != content {
 		t.Fatalf("model content below the limit changed")
@@ -74,7 +74,7 @@ func TestFilterToolResultKeepsContentBelowHighDefaultLimit(t *testing.T) {
 	}
 }
 
-func TestFilterToolResultBoundsOutputAboveHighDefaultLimit(t *testing.T) {
+func TestFilterToolResultBoundsOutputAboveDefaultLimit(t *testing.T) {
 	content := strings.Repeat("x", toolresult.DefaultMaxBytes+1024)
 	filtered := toolresult.Filter("read", `{"path":"references/large.txt"}`, content)
 	if !filtered.Truncated || filtered.Manifest.MaxResultBytes != toolresult.DefaultMaxBytes {

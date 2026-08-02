@@ -7,13 +7,12 @@ import type { Components, ContextProp, ListItem } from 'react-virtuoso'
 import type { AgentAskAnswer, AgentAskResolution, ChapterIllustration, ChatMessage } from '@/lib/api'
 import type { AgentUIMessage } from '@/lib/agent-ui'
 import {
-  agentSubAgentSessionKey,
   agentViewToRenderMessage,
   agentViewContent,
   agentViewNavigationAnchor,
   agentViewStableKey,
+  buildAgentSubAgentTimelineGroups,
   buildAgentMessageViews,
-  isAgentSubAgentTimelineView,
   isAgentTraceView,
   type AgentMessageView,
   type AgentPartRef,
@@ -519,22 +518,19 @@ function buildAgentChatListItems({ views, isStreaming, isExecutionActive, visibl
     items.push({ kind: 'empty', key: 'empty' })
     return items
   }
+  const subAgentGroupsByStart = new Map(
+    (groupSubAgentTimeline ? buildAgentSubAgentTimelineGroups(views) : []).map(group => [group.startIndex, group]),
+  )
 
   for (let index = 0; index < views.length; index += 1) {
     const view = views[index]
     if (view.kind === 'token-usage') continue
-    if (groupSubAgentTimeline && isAgentSubAgentTimelineView(view)) {
-      const key = agentSubAgentSessionKey(view)
-      const group: AgentMessageView[] = []
-      let nextIndex = index
-      while (nextIndex < views.length && isAgentSubAgentTimelineView(views[nextIndex]) && agentSubAgentSessionKey(views[nextIndex]) === key) {
-        group.push(views[nextIndex])
-        nextIndex += 1
-      }
-      const progress = buildSubAgentProgressMessage(group.map(item => agentViewToRenderMessage(item)).filter((item): item is ChatMessage => Boolean(item)))
+    const subAgentGroup = subAgentGroupsByStart.get(index)
+    if (subAgentGroup) {
+      const progress = buildSubAgentProgressMessage(subAgentGroup.views.map(item => agentViewToRenderMessage(item)).filter((item): item is ChatMessage => Boolean(item)))
       if (progress) {
-        items.push({ kind: 'legacy-message', key: `subagent-${key || index}`, message: progress, sourceIndex: index, openView: group[0] })
-        index = nextIndex - 1
+        items.push({ kind: 'legacy-message', key: `subagent-${subAgentGroup.key || index}`, message: progress, sourceIndex: index, openView: subAgentGroup.views[0] })
+        index = subAgentGroup.nextIndex - 1
         continue
       }
     }
