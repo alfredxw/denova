@@ -3,6 +3,7 @@ package projectfiles
 import (
 	"context"
 	"errors"
+	"fmt"
 	"os"
 	"path/filepath"
 	"testing"
@@ -11,37 +12,146 @@ import (
 	workspacechange "denova/internal/workspace/change"
 )
 
-func TestServiceListsDirectoriesLazilyAndKeepsIgnoredEntriesExplicit(t *testing.T) {
+func TestServiceResolvesBatchedBranchesAndSingleChildChains(t *testing.T) {
 	service, projectID, workspace := projectFilesTestService(t)
-	mustWriteProjectFile(t, workspace, "src/main.ts", "export const value = 1\n")
+	mustWriteProjectFile(t, workspace, "src/components/editor/main.ts", "export const value = 1\n")
 	mustWriteProjectFile(t, workspace, "node_modules/pkg/index.js", "module.exports = 1\n")
-	mustWriteProjectFile(t, workspace, ".hidden", "secret")
+	mustWriteProjectFile(t, workspace, ".env.example", "TOKEN=\n")
 
-	root, err := service.ListDirectory(context.Background(), projectID, "", false)
+	resolved, err := service.ResolveTree(context.Background(), projectID, TreeResolveRequest{
+		Targets:                      []TreeResolveTarget{{ID: "root", Path: ""}, {ID: "source", Path: "src"}},
+		FollowSingleChildDirectories: true,
+	})
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(root.Entries) != 1 || root.Entries[0].Path != "src" || root.Entries[0].Type != EntryDirectory {
-		t.Fatalf("unexpected filtered root: %#v", root.Entries)
+	if len(resolved.Results) != 2 || !resolved.Results[0].OK || !resolved.Results[1].OK {
+		t.Fatalf("unexpected resolve results: %#v", resolved.Results)
 	}
-	if root.Entries[0].Ignored {
-		t.Fatal("ordinary source directory was marked ignored")
+	root := resolved.Results[0].Directories
+	if len(root) != 4 || len(root[0].Entries) != 1 || root[0].Entries[0].Path != "src" || root[3].Entries[0].Path != "src/components/editor/main.ts" {
+		t.Fatalf("unexpected filtered root: %#v", root)
+	}
+	source := resolved.Results[1].Directories
+	if len(source) != 3 || source[0].Path != "src" || source[1].Path != "src/components" || source[2].Path != "src/components/editor" {
+		t.Fatalf("single-child directories were not resolved together: %#v", source)
+	}
+	if source[2].Entries[0].Path != "src/components/editor/main.ts" {
+		t.Fatalf("unexpected chain leaf: %#v", source[2].Entries)
 	}
 
-	complete, err := service.ListDirectory(context.Background(), projectID, "", true)
+	complete, err := service.ResolveTree(context.Background(), projectID, TreeResolveRequest{
+		Targets:        []TreeResolveTarget{{Path: ""}},
+		IncludeIgnored: true,
+	})
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(complete.Entries) != 2 || complete.Entries[0].Path != "node_modules" || !complete.Entries[0].Ignored {
-		t.Fatalf("ignored directory was not surfaced explicitly: %#v", complete.Entries)
+	entries := complete.Results[0].Directories[0].Entries
+	if len(entries) != 2 || entries[0].Path != "node_modules" || !entries[0].Ignored {
+		t.Fatalf("ignored directory was not surfaced explicitly: %#v", entries)
+	}
+	if hidden, err := service.ResolveTree(context.Background(), projectID, TreeResolveRequest{
+		Targets: []TreeResolveTarget{{Path: ".git"}},
+	}); err != nil || hidden.Results[0].Code != "invalid_path" {
+		t.Fatalf("hidden target should remain outside the file API: response=%#v err=%v", hidden, err)
+	}
+}
+
+func TestServicePaginatesLargeDirectoriesAndRejectsStaleContinuations(t *testing.T) {
+	service, projectID, workspace := projectFilesTestService(t)
+	for _, name := range []string{"a.txt", "b.txt", "c.txt"} {
+		mustWriteProjectFile(t, workspace, name, name)
 	}
 
-	source, err := service.ListDirectory(context.Background(), projectID, "src", false)
+	first, err := service.ResolveTree(context.Background(), projectID, TreeResolveRequest{
+		Targets:     []TreeResolveTarget{{Path: ""}},
+		EntryBudget: 2,
+	})
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(source.Entries) != 1 || source.Entries[0].Path != "src/main.ts" {
-		t.Fatalf("unexpected lazy child listing: %#v", source.Entries)
+	page := first.Results[0].Directories[0]
+	if page.ChildrenState != DirectoryChildrenPartial || len(page.Entries) != 2 || page.Continuation == "" {
+		t.Fatalf("unexpected first page: %#v", page)
+	}
+	second, err := service.ResolveTree(context.Background(), projectID, TreeResolveRequest{
+		Targets:     []TreeResolveTarget{{Path: "", Cursor: page.Continuation}},
+		EntryBudget: 2,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	lastPage := second.Results[0].Directories[0]
+	if lastPage.ChildrenState != DirectoryChildrenComplete || len(lastPage.Entries) != 1 || lastPage.Entries[0].Path != "c.txt" {
+		t.Fatalf("unexpected final page: %#v", lastPage)
+	}
+
+	mustWriteProjectFile(t, workspace, "d.txt", "d")
+	stale, err := service.ResolveTree(context.Background(), projectID, TreeResolveRequest{
+		Targets: []TreeResolveTarget{{Path: "", Cursor: page.Continuation}},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if stale.Results[0].OK || stale.Results[0].Code != "cursor_stale" {
+		t.Fatalf("expected a target-scoped stale cursor result, got %#v", stale.Results[0])
+	}
+}
+
+func TestServiceKeepsValidTreeTargetsWhenANeighbourFails(t *testing.T) {
+	service, projectID, workspace := projectFilesTestService(t)
+	mustWriteProjectFile(t, workspace, "main.ts", "export {}\n")
+	resolved, err := service.ResolveTree(context.Background(), projectID, TreeResolveRequest{
+		Targets: []TreeResolveTarget{{ID: "invalid", Path: "../outside"}, {ID: "root", Path: ""}},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(resolved.Results) != 2 || resolved.Results[0].OK || resolved.Results[0].Code != "invalid_path" || !resolved.Results[1].OK {
+		t.Fatalf("unexpected partial resolve results: %#v", resolved.Results)
+	}
+}
+
+func TestServiceReportsTargetsBeyondTheEntryBudget(t *testing.T) {
+	service, projectID, workspace := projectFilesTestService(t)
+	mustWriteProjectFile(t, workspace, "a/file.txt", "a")
+	mustWriteProjectFile(t, workspace, "b/file.txt", "b")
+
+	resolved, err := service.ResolveTree(context.Background(), projectID, TreeResolveRequest{
+		Targets:     []TreeResolveTarget{{Path: "a"}, {Path: "b"}},
+		EntryBudget: 1,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(resolved.Results) != 2 || !resolved.Results[0].OK || resolved.Results[1].OK || resolved.Results[1].Code != "budget_exhausted" {
+		t.Fatalf("unexpected budgeted results: %#v", resolved.Results)
+	}
+}
+
+func TestServiceBoundsAutomaticSingleDirectoryChains(t *testing.T) {
+	service, projectID, workspace := projectFilesTestService(t)
+	path := ""
+	for index := 0; index < maximumResolvedDirChain+8; index++ {
+		path = filepath.Join(path, fmt.Sprintf("dir-%03d", index))
+	}
+	mustWriteProjectFile(t, workspace, filepath.Join(path, "leaf.txt"), "leaf")
+
+	resolved, err := service.ResolveTree(context.Background(), projectID, TreeResolveRequest{
+		Targets:                      []TreeResolveTarget{{Path: ""}},
+		FollowSingleChildDirectories: true,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	directories := resolved.Results[0].Directories
+	if len(directories) != maximumResolvedDirChain {
+		t.Fatalf("resolved directory chain length = %d, want %d", len(directories), maximumResolvedDirChain)
+	}
+	last := directories[len(directories)-1]
+	if len(last.Entries) != 1 || last.Entries[0].Type != EntryDirectory {
+		t.Fatalf("bounded chain should leave its next directory expandable: %#v", last)
 	}
 }
 
@@ -145,6 +255,41 @@ func TestServiceRejectsMutationsThroughSymlinks(t *testing.T) {
 	}
 	if _, err := os.Stat(filepath.Join(external, "outside.txt")); !errors.Is(err, os.ErrNotExist) {
 		t.Fatalf("operation escaped the project root: %v", err)
+	}
+}
+
+func TestServiceCanManageASymlinkWithoutFollowingIt(t *testing.T) {
+	service, projectID, workspace := projectFilesTestService(t)
+	external := filepath.Join(t.TempDir(), "external")
+	if err := os.MkdirAll(external, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	target := filepath.Join(external, "keep.txt")
+	if err := os.WriteFile(target, []byte("keep"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	link := filepath.Join(workspace, "linked")
+	if err := os.Symlink(external, link); err != nil {
+		t.Skipf("create symlink: %v", err)
+	}
+
+	results, err := service.ApplyOperations(context.Background(), projectID, []Operation{
+		{Kind: OperationRename, Path: "linked", NewName: "renamed"},
+		{Kind: OperationMove, Path: "renamed", To: "folder/moved"},
+		{Kind: OperationDelete, Path: "folder/moved"},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(results) != 3 || !results[0].OK || !results[1].OK || !results[2].OK {
+		t.Fatalf("unexpected symlink operation results: %#v", results)
+	}
+	content, readErr := os.ReadFile(target)
+	if readErr != nil || string(content) != "keep" {
+		t.Fatalf("symlink target was changed: content=%q err=%v", content, readErr)
+	}
+	if _, statErr := os.Lstat(filepath.Join(workspace, "folder", "moved")); !errors.Is(statErr, os.ErrNotExist) {
+		t.Fatalf("symlink leaf was not deleted: %v", statErr)
 	}
 }
 

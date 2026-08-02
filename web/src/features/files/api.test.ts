@@ -3,9 +3,9 @@ import { describe, expect, it } from 'vitest'
 import { server } from '@/test/msw/server'
 import {
   applyProjectFileOperations,
-  listProjectDirectory,
   projectFileAssetURL,
   readProjectFile,
+  resolveProjectFileTree,
   saveProjectFile,
 } from './api'
 
@@ -13,10 +13,13 @@ describe('project files API', () => {
   it('keeps project identity and paths encoded at the transport boundary', async () => {
     const requests: Array<{ method: string; path: string; body?: unknown }> = []
     server.use(
-      http.get('/api/projects/project%20one/files', ({ request }) => {
+      http.post('/api/projects/project%20one/files/resolve', async ({ request }) => {
         const url = new URL(request.url)
-        requests.push({ method: request.method, path: `${url.pathname}${url.search}` })
-        return HttpResponse.json({ project_id: 'project one', path: 'src', entries: null })
+        requests.push({ method: request.method, path: `${url.pathname}${url.search}`, body: await request.json() })
+        return HttpResponse.json({
+          project_id: 'project one',
+          results: [{ id: 'source', path: 'src', ok: true, directories: [{ path: 'src', revision: 'r1', entries: null, children_state: 'complete' }] }],
+        })
       }),
       http.get('/api/projects/project%20one/files/file', ({ request }) => {
         const url = new URL(request.url)
@@ -38,12 +41,26 @@ describe('project files API', () => {
       }),
     )
 
-    await expect(listProjectDirectory('project one', 'src', true)).resolves.toMatchObject({ entries: [] })
+    await expect(resolveProjectFileTree('project one', {
+      targets: [{ id: 'source', path: 'src' }],
+      include_ignored: true,
+      follow_single_child_directories: true,
+      entry_budget: 4096,
+    })).resolves.toMatchObject({ results: [{ directories: [{ entries: [] }] }] })
     const document = await readProjectFile('project one', 'src/main file.ts')
     await saveProjectFile('project one', document.path, 'after', document.revision)
 
     expect(requests).toEqual([
-      { method: 'GET', path: '/api/projects/project%20one/files?path=src&include_ignored=true' },
+      {
+        method: 'POST',
+        path: '/api/projects/project%20one/files/resolve',
+        body: {
+          targets: [{ id: 'source', path: 'src' }],
+          include_ignored: true,
+          follow_single_child_directories: true,
+          entry_budget: 4096,
+        },
+      },
       { method: 'GET', path: '/api/projects/project%20one/files/file?path=src%2Fmain+file.ts' },
       {
         method: 'PUT',

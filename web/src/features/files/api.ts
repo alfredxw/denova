@@ -7,16 +7,45 @@ export interface ProjectFileEntry {
   name: string
   path: string
   type: ProjectFileEntryType
-  size?: number
-  modified_at: string
   ignored?: boolean
   symlink?: boolean
 }
 
-export interface ProjectDirectory {
-  project_id: string
+export type ProjectDirectoryChildrenState = 'complete' | 'partial'
+
+export interface ProjectDirectoryPage {
   path: string
+  revision: string
   entries: ProjectFileEntry[]
+  children_state: ProjectDirectoryChildrenState
+  continuation?: string
+}
+
+export interface ProjectFileTreeResolveTarget {
+  id?: string
+  path: string
+  cursor?: string
+}
+
+export interface ProjectFileTreeResolveRequest {
+  targets: ProjectFileTreeResolveTarget[]
+  include_ignored?: boolean
+  follow_single_child_directories?: boolean
+  entry_budget?: number
+}
+
+export interface ProjectFileTreeResolveResult {
+  id?: string
+  path: string
+  ok: boolean
+  directories: ProjectDirectoryPage[]
+  code?: string
+  error?: string
+}
+
+export interface ProjectFileTreeResolveResponse {
+  project_id: string
+  results: ProjectFileTreeResolveResult[]
 }
 
 export interface ProjectFileDocument {
@@ -57,14 +86,23 @@ function projectFilesURL(projectId: string) {
   return `/api/projects/${encodeURIComponent(projectId)}/files`
 }
 
-export function listProjectDirectory(projectId: string, path = '', includeIgnored = false): Promise<ProjectDirectory> {
-  const params = new URLSearchParams()
-  if (path) params.set('path', path)
-  if (includeIgnored) params.set('include_ignored', 'true')
-  const suffix = params.size > 0 ? `?${params.toString()}` : ''
-  return requestJSON<ProjectDirectory>(`${projectFilesURL(projectId)}${suffix}`).then((directory) => ({
-    ...directory,
-    entries: directory.entries ?? [],
+export function resolveProjectFileTree(
+  projectId: string,
+  request: ProjectFileTreeResolveRequest,
+): Promise<ProjectFileTreeResolveResponse> {
+  return requestJSON<ProjectFileTreeResolveResponse>(`${projectFilesURL(projectId)}/resolve`, {
+    method: 'POST',
+    headers: jsonHeaders,
+    body: JSON.stringify(request),
+  }).then((response) => ({
+    ...response,
+    results: (response.results ?? []).map((result) => ({
+      ...result,
+      directories: (result.directories ?? []).map((directory) => ({
+        ...directory,
+        entries: directory.entries ?? [],
+      })),
+    })),
   }))
 }
 

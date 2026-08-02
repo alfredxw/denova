@@ -21,7 +21,7 @@ func (s *Server) registerRoutes(h *hertzserver.Hertz) {
 	api := h.Group("/api")
 	{
 		api.POST("/autosave-conflicts", apiHandlers.HandleAutosaveConflictCreate)
-		api.GET("/projects/:project_id/files", apiHandlers.HandleProjectFilesList)
+		api.POST("/projects/:project_id/files/resolve", apiHandlers.HandleProjectFileTreeResolve)
 		api.GET("/projects/:project_id/files/file", apiHandlers.HandleProjectFileRead)
 		api.GET("/projects/:project_id/files/asset", apiHandlers.HandleProjectFileAsset)
 		api.PUT("/projects/:project_id/files/file", apiHandlers.HandleProjectFileSave)

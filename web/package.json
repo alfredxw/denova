@@ -64,6 +64,7 @@
     "node-diff3": "3.2.1",
     "radix-ui": "^1.4.3",
     "react": "^19.2.6",
+    "react-arborist": "^3.16.0",
     "react-dom": "^19.2.6",
     "react-hotkeys-hook": "^5.3.2",
     "react-i18next": "^17.0.8",

@@ -3,8 +3,6 @@
 // one stable Project ID to its current content directory and state root.
 package projectfiles
 
-import "time"
-
 type EntryType string
 
 const (
@@ -12,22 +10,60 @@ const (
 	EntryDirectory EntryType = "dir"
 )
 
-// Entry is one immediate child of a listed directory. Directories are loaded
-// lazily by callers, so children are deliberately absent from this contract.
+// Entry is intentionally metadata-light. Tree resolution is a hot path and the
+// explorer does not need a stat call for every visible child.
 type Entry struct {
-	Name       string    `json:"name"`
-	Path       string    `json:"path"`
-	Type       EntryType `json:"type"`
-	Size       int64     `json:"size,omitempty"`
-	ModifiedAt time.Time `json:"modified_at"`
-	Ignored    bool      `json:"ignored,omitempty"`
-	Symlink    bool      `json:"symlink,omitempty"`
+	Name    string    `json:"name"`
+	Path    string    `json:"path"`
+	Type    EntryType `json:"type"`
+	Ignored bool      `json:"ignored,omitempty"`
+	Symlink bool      `json:"symlink,omitempty"`
 }
 
-type Directory struct {
-	ProjectID string  `json:"project_id"`
-	Path      string  `json:"path"`
-	Entries   []Entry `json:"entries"`
+type DirectoryChildrenState string
+
+const (
+	DirectoryChildrenComplete DirectoryChildrenState = "complete"
+	DirectoryChildrenPartial  DirectoryChildrenState = "partial"
+)
+
+// DirectoryPage is one stable, bounded page of an immediate directory. A
+// continuation is opaque to callers and valid only while Revision is current.
+type DirectoryPage struct {
+	Path          string                 `json:"path"`
+	Revision      string                 `json:"revision"`
+	Entries       []Entry                `json:"entries"`
+	ChildrenState DirectoryChildrenState `json:"children_state"`
+	Continuation  string                 `json:"continuation,omitempty"`
+}
+
+// TreeResolveTarget lets clients batch unrelated expanded directories. ID is
+// echoed so a malformed target can fail without invalidating its neighbours.
+type TreeResolveTarget struct {
+	ID     string `json:"id,omitempty"`
+	Path   string `json:"path"`
+	Cursor string `json:"cursor,omitempty"`
+}
+
+type TreeResolveRequest struct {
+	Targets                      []TreeResolveTarget `json:"targets"`
+	IncludeIgnored               bool                `json:"include_ignored,omitempty"`
+	FollowSingleChildDirectories bool                `json:"follow_single_child_directories,omitempty"`
+	EntryBudget                  int                 `json:"entry_budget,omitempty"`
+}
+
+type TreeResolveResult struct {
+	ID          string          `json:"id,omitempty"`
+	Path        string          `json:"path"`
+	OK          bool            `json:"ok"`
+	Directories []DirectoryPage `json:"directories,omitempty"`
+	Code        string          `json:"code,omitempty"`
+	Error       string          `json:"error,omitempty"`
+}
+
+type TreeResolveResponse struct {
+	ProjectID string              `json:"project_id"`
+	Results   []TreeResolveResult `json:"results"`
 }
 
 type DocumentKind string

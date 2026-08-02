@@ -2,22 +2,28 @@ import { fireEvent, render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { http, HttpResponse } from 'msw'
 import { useState, type ReactNode } from 'react'
-import { describe, expect, it, vi } from 'vitest'
+import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { server } from '@/test/msw/server'
 import { FilesTab } from './FilesTab'
 
 vi.mock('@monaco-editor/react', () => ({
-  Editor: ({ value, onChange, options }: {
-    value: string
+  Editor: ({ defaultValue, onChange, options }: {
+    defaultValue: string
     onChange: (value: string) => void
     options?: { ariaLabel?: string }
-  }) => (
-    <textarea
-      aria-label={options?.ariaLabel}
-      value={value}
-      onChange={(event) => onChange(event.target.value)}
-    />
-  ),
+  }) => {
+    const [value, setValue] = useState(defaultValue)
+    return (
+      <textarea
+        aria-label={options?.ariaLabel}
+        value={value}
+        onChange={(event) => {
+          setValue(event.target.value)
+          onChange(event.target.value)
+        }}
+      />
+    )
+  },
 }))
 
 vi.mock('@/components/layout/adaptive-surface', () => ({
@@ -57,24 +63,29 @@ function FilesHarness({
 }
 
 describe('FilesTab', () => {
-  it('loads directories lazily and saves Monaco edits with the selected revision', async () => {
+  beforeEach(() => window.localStorage.clear())
+
+  it('resolves a single-child directory chain in one request and saves Monaco edits with the selected revision', async () => {
     const user = userEvent.setup()
     const onWorkspaceChanged = vi.fn()
     let savedBody: unknown
     server.use(
-      http.get('/api/projects/project-one/files', ({ request }) => {
-        const path = new URL(request.url).searchParams.get('path') || ''
-        return HttpResponse.json(path === 'src'
-          ? {
-              project_id: 'project-one',
-              path,
-              entries: [{ name: 'main.ts', path: 'src/main.ts', type: 'file', modified_at: '2026-08-02T00:00:00Z' }],
-            }
-          : {
-              project_id: 'project-one',
-              path: '',
-              entries: [{ name: 'src', path: 'src', type: 'dir', modified_at: '2026-08-02T00:00:00Z' }],
-            })
+      http.post('/api/projects/project-one/files/resolve', async ({ request }) => {
+        expect(await request.json()).toMatchObject({
+          targets: [{ path: '' }],
+          follow_single_child_directories: true,
+        })
+        return HttpResponse.json({
+          project_id: 'project-one',
+          results: [{
+            path: '',
+            ok: true,
+            directories: [
+              { path: '', revision: 'tree-root', entries: [{ name: 'src', path: 'src', type: 'dir' }], children_state: 'complete' },
+              { path: 'src', revision: 'tree-src', entries: [{ name: 'main.ts', path: 'src/main.ts', type: 'file' }], children_state: 'complete' },
+            ],
+          }],
+        })
       }),
       http.get('/api/projects/project-one/files/file', () => HttpResponse.json({
         project_id: 'project-one',
@@ -93,8 +104,8 @@ describe('FilesTab', () => {
     )
 
     render(<FilesHarness onWorkspaceChanged={onWorkspaceChanged} />)
-    await user.click(await screen.findByRole('button', { name: 'src' }))
-    await user.click(await screen.findByRole('button', { name: 'main.ts' }))
+    await user.click(await screen.findByRole('button', { name: '展开 src' }))
+    await user.click(await screen.findByText('main.ts'))
 
     const editor = await screen.findByRole('textbox', { name: 'src/main.ts 的源码编辑器' })
     fireEvent.change(editor, { target: { value: 'after\n' } })
@@ -113,7 +124,17 @@ describe('FilesTab', () => {
     let reads = 0
     const saves: Array<Record<string, unknown>> = []
     server.use(
-      http.get('/api/projects/project-one/files', () => HttpResponse.json({ project_id: 'project-one', path: '', entries: [] })),
+      http.post('/api/projects/project-one/files/resolve', async ({ request }) => {
+        const body = await request.json() as { targets: Array<{ path: string }> }
+        return HttpResponse.json({
+          project_id: 'project-one',
+          results: body.targets.map((target) => ({
+            path: target.path,
+            ok: true,
+            directories: [{ path: target.path, revision: `tree-${target.path || 'root'}`, entries: [], children_state: 'complete' }],
+          })),
+        })
+      }),
       http.get('/api/projects/project-one/files/file', () => {
         reads += 1
         return HttpResponse.json({
@@ -145,5 +166,46 @@ describe('FilesTab', () => {
     await waitFor(() => expect(saves).toHaveLength(2))
     expect(saves[0]).toMatchObject({ content: 'alpha local\nmiddle\nbeta\n', base_revision: 'r1' })
     expect(saves[1]).toMatchObject({ content: 'alpha local\nmiddle\nbeta external\n', base_revision: 'r2' })
+  })
+
+  it('opens Markdown in preview and persists the source word-wrap preference', async () => {
+    const user = userEvent.setup()
+    server.use(
+      http.post('/api/projects/project-one/files/resolve', () => HttpResponse.json({
+        project_id: 'project-one',
+        results: [{
+          path: '',
+          ok: true,
+          directories: [{
+            path: '',
+            revision: 'tree-root',
+            entries: [{ name: 'README.md', path: 'README.md', type: 'file' }],
+            children_state: 'complete',
+          }],
+        }],
+      })),
+      http.get('/api/projects/project-one/files/file', () => HttpResponse.json({
+        project_id: 'project-one',
+        path: 'README.md',
+        content: '# Hello Files\n',
+        revision: 'r1',
+        kind: 'text',
+        mime_type: 'text/markdown',
+        size: 14,
+        editable: true,
+      })),
+    )
+
+    render(<FilesHarness initialPath="README.md" />)
+    expect(await screen.findByRole('heading', { name: 'Hello Files' })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: '预览' })).toHaveAttribute('aria-pressed', 'true')
+
+    await user.click(screen.getByRole('button', { name: '源码' }))
+    expect(await screen.findByRole('textbox', { name: 'README.md 的源码编辑器' })).toHaveValue('# Hello Files\n')
+    const wrap = screen.getByRole('button', { name: '关闭自动换行' })
+    expect(wrap).toHaveAttribute('aria-pressed', 'true')
+    await user.click(wrap)
+    expect(screen.getByRole('button', { name: '启用自动换行' })).toHaveAttribute('aria-pressed', 'false')
+    expect(JSON.parse(window.localStorage.getItem('nova.project-file-editor.preferences.v1') ?? '{}')).toEqual({ wordWrap: false })
   })
 })

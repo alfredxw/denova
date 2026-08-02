@@ -4,11 +4,20 @@ export interface ProjectFilesPreferences {
   treeVisible: boolean
 }
 
+export interface ProjectFileEditorPreferences {
+  wordWrap: boolean
+}
+
 const PROJECT_FILES_PREFERENCES_VERSION = 1
-const MAX_EXPANDED_PATHS = 256
+const PROJECT_FILE_EDITOR_PREFERENCES_VERSION = 1
+const MAX_EXPANDED_PATHS = 192
 
 export function defaultProjectFilesPreferences(): ProjectFilesPreferences {
   return { expandedPaths: [], showIgnored: false, treeVisible: true }
+}
+
+export function defaultProjectFileEditorPreferences(): ProjectFileEditorPreferences {
+  return { wordWrap: true }
 }
 
 export function readProjectFilesPreferences(projectId: string): ProjectFilesPreferences {
@@ -41,6 +50,42 @@ export function persistProjectFilesPreferences(projectId: string, preferences: P
   }
 }
 
+export function readProjectFileEditorPreferences(): ProjectFileEditorPreferences {
+  const fallback = defaultProjectFileEditorPreferences()
+  try {
+    const raw = window.localStorage.getItem(editorPreferencesKey())
+    if (!raw) return fallback
+    const parsed = JSON.parse(raw) as Partial<ProjectFileEditorPreferences>
+    return { wordWrap: parsed.wordWrap !== false }
+  } catch {
+    return fallback
+  }
+}
+
+export function persistProjectFileEditorPreferences(preferences: ProjectFileEditorPreferences) {
+  try {
+    window.localStorage.setItem(editorPreferencesKey(), JSON.stringify({ wordWrap: preferences.wordWrap }))
+  } catch {
+    // The editor remains usable with defaults in restricted webviews.
+  }
+}
+
+export function removeExpandedBranch(paths: readonly string[], branch: string): string[] {
+  return paths.filter((path) => path !== branch && !path.startsWith(`${branch}/`))
+}
+
+export function relocateExpandedBranch(paths: readonly string[], from: string, to: string): string[] {
+  return paths.map((path) => {
+    if (path === from) return to
+    if (path.startsWith(`${from}/`)) return `${to}${path.slice(from.length)}`
+    return path
+  })
+}
+
 function preferencesKey(projectId: string) {
   return `nova.project-files.preferences.v${PROJECT_FILES_PREFERENCES_VERSION}:${projectId}`
+}
+
+function editorPreferencesKey() {
+  return `nova.project-file-editor.preferences.v${PROJECT_FILE_EDITOR_PREFERENCES_VERSION}`
 }

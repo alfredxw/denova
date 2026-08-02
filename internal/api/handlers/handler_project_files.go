@@ -13,18 +13,28 @@ import (
 	workspacechange "denova/internal/workspace/change"
 )
 
-func (h *Handlers) HandleProjectFilesList(ctx context.Context, c *app.RequestContext) {
+func (h *Handlers) HandleProjectFileTreeResolve(ctx context.Context, c *app.RequestContext) {
 	projectID := strings.TrimSpace(c.Param("project_id"))
 	if projectID == "" {
 		writeErrorKey(c, consts.StatusBadRequest, "api.projectFiles.projectIDRequired")
 		return
 	}
-	directory, err := h.app.ProjectFiles().ListDirectory(ctx, projectID, c.Query("path"), isTruthyQueryFlag(c.Query("include_ignored")))
-	if err != nil {
-		writeProjectFilesError(c, err, "api.projectFiles.listFailed")
+	var request projectfilesapp.TreeResolveRequest
+	if err := c.BindJSON(&request); err != nil || len(request.Targets) == 0 {
+		writeErrorKey(c, consts.StatusBadRequest, "api.projectFiles.resolveTargetsRequired")
 		return
 	}
-	writeJSON(c, consts.StatusOK, directory)
+	response, err := h.app.ProjectFiles().ResolveTree(ctx, projectID, request)
+	if err != nil {
+		writeProjectFilesError(c, err, "api.projectFiles.resolveFailed")
+		return
+	}
+	for index := range response.Results {
+		if !response.Results[index].OK {
+			response.Results[index].Error = projectFileTreeResolveMessage(c, response.Results[index].Code, response.Results[index].Error)
+		}
+	}
+	writeJSON(c, consts.StatusOK, response)
 }
 
 func (h *Handlers) HandleProjectFileRead(ctx context.Context, c *app.RequestContext) {
@@ -172,5 +182,24 @@ func projectFileOperationMessage(c *app.RequestContext, code, detail string) str
 		return messageKey(c, "api.projectFiles.notFound")
 	default:
 		return messageKey(c, "api.projectFiles.operationFailed", "detail", detail)
+	}
+}
+
+func projectFileTreeResolveMessage(c *app.RequestContext, code, detail string) string {
+	switch code {
+	case "not_found":
+		return messageKey(c, "api.projectFiles.notFound")
+	case "not_directory":
+		return messageKey(c, "api.projectFiles.notDirectory")
+	case "cursor_stale":
+		return messageKey(c, "api.projectFiles.cursorStale")
+	case "invalid_cursor":
+		return messageKey(c, "api.projectFiles.invalidCursor")
+	case "invalid_path":
+		return messageKey(c, "api.projectFiles.invalidPath")
+	case "budget_exhausted":
+		return messageKey(c, "api.projectFiles.budgetExhausted")
+	default:
+		return messageKey(c, "api.projectFiles.resolveFailed", "detail", detail)
 	}
 }

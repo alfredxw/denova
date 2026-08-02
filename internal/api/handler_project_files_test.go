@@ -25,20 +25,33 @@ func TestProjectFilesAPIKeepsBackgroundProjectScoped(t *testing.T) {
 	}
 	base := "/api/projects/" + url.PathEscape(record.ID) + "/files"
 
-	listResponse := performJSONRequest(t, server, http.MethodGet, base+"?path=", nil)
+	listResponse := performJSONRequest(t, server, http.MethodPost, base+"/resolve", map[string]any{
+		"targets":                         []map[string]string{{"id": "root", "path": ""}},
+		"follow_single_child_directories": true,
+	})
 	if listResponse.Code != http.StatusOK {
 		t.Fatalf("list status = %d body=%s", listResponse.Code, listResponse.Body.String())
 	}
 	var listed struct {
 		ProjectID string `json:"project_id"`
-		Entries   []struct {
-			Path string `json:"path"`
-			Type string `json:"type"`
-		} `json:"entries"`
+		Results   []struct {
+			OK          bool `json:"ok"`
+			Directories []struct {
+				Path    string `json:"path"`
+				Entries []struct {
+					Path string `json:"path"`
+					Type string `json:"type"`
+				} `json:"entries"`
+			} `json:"directories"`
+		} `json:"results"`
 	}
 	decodeResponse(t, listResponse.Body.Bytes(), &listed)
-	if listed.ProjectID != record.ID || len(listed.Entries) != 1 || listed.Entries[0].Path != "src" || listed.Entries[0].Type != "dir" {
+	if listed.ProjectID != record.ID || len(listed.Results) != 1 || !listed.Results[0].OK || len(listed.Results[0].Directories) != 2 {
 		t.Fatalf("unexpected directory response: %#v", listed)
+	}
+	root := listed.Results[0].Directories[0]
+	if len(root.Entries) != 1 || root.Entries[0].Path != "src" || root.Entries[0].Type != "dir" {
+		t.Fatalf("unexpected root response: %#v", root)
 	}
 
 	filePath := url.QueryEscape("src/main.ts")

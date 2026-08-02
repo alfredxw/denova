@@ -1,0 +1,270 @@
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import {
+  applyProjectFileOperations,
+  resolveProjectFileTree,
+  type ProjectFileEntryType,
+  type ProjectFileOperation,
+  type ProjectFileTreeResolveResult,
+  type ProjectFileTreeResolveTarget,
+} from './api'
+import {
+  buildProjectFileExplorerNodes,
+  mergeProjectDirectories,
+  type CachedProjectDirectory,
+  type ProjectFileExplorerNode,
+} from './project-file-explorer-model'
+
+export type { ProjectFileExplorerNode } from './project-file-explorer-model'
+
+const TREE_ENTRY_BUDGET = 4096
+const MAX_TARGETS_PER_REQUEST = 256
+interface ProjectFileExplorerOptions {
+  projectId: string
+  includeIgnored: boolean
+  expandedPaths: readonly string[]
+  selectedPath: string | null
+}
+
+export interface ProjectFileExplorerState {
+  nodes: ProjectFileExplorerNode[]
+  loading: boolean
+  loadingPaths: ReadonlySet<string>
+  error: string | null
+  loadDirectory: (path: string) => Promise<void>
+  loadMore: (path: string) => Promise<void>
+  refresh: () => Promise<void>
+  createItem: (path: string, type: ProjectFileEntryType) => Promise<void>
+  deleteItem: (path: string) => Promise<void>
+  renameItem: (path: string, newName: string) => Promise<string>
+  copyItem: (from: string, to: string) => Promise<void>
+  moveItem: (from: string, to: string) => Promise<void>
+}
+
+interface ResolveOptions {
+  appendPath?: string
+  surfaceErrors?: boolean
+}
+
+/**
+ * Owns a normalized directory cache. Tree branches are resolved in batches and
+ * mutations invalidate only their affected parents, keeping large projects
+ * responsive without coupling explorer state to editor drafts.
+ */
+export function useProjectFileExplorer({
+  projectId,
+  includeIgnored,
+  expandedPaths,
+  selectedPath,
+}: ProjectFileExplorerOptions): ProjectFileExplorerState {
+  const [directories, setDirectories] = useState<ReadonlyMap<string, CachedProjectDirectory>>(() => new Map())
+  const directoriesRef = useRef(directories)
+  directoriesRef.current = directories
+  const [loadingPaths, setLoadingPaths] = useState<ReadonlySet<string>>(() => new Set())
+  const [error, setError] = useState<string | null>(null)
+  const sourceVersionRef = useRef(0)
+  const requestVersionsRef = useRef(new Map<string, number>())
+  const loadingCountsRef = useRef(new Map<string, number>())
+
+  const resolveTargets = useCallback(async (
+    targets: readonly ProjectFileTreeResolveTarget[],
+    options: ResolveOptions = {},
+  ): Promise<ProjectFileTreeResolveResult[]> => {
+    const uniqueTargets = deduplicateTargets(targets)
+    if (uniqueTargets.length === 0) return []
+    const sourceVersion = sourceVersionRef.current
+    const chunks = chunkTargets(uniqueTargets)
+    const loading = uniqueTargets.map((target) => target.path)
+    const requestVersions = new Map<string, number>()
+    for (const path of loading) {
+      const version = (requestVersionsRef.current.get(path) ?? 0) + 1
+      requestVersionsRef.current.set(path, version)
+      requestVersions.set(path, version)
+      loadingCountsRef.current.set(path, (loadingCountsRef.current.get(path) ?? 0) + 1)
+    }
+    setLoadingPaths(new Set(loadingCountsRef.current.keys()))
+    try {
+      const responses = await Promise.all(chunks.map((chunk) => resolveProjectFileTree(projectId, {
+        targets: chunk,
+        include_ignored: includeIgnored,
+        follow_single_child_directories: true,
+        entry_budget: TREE_ENTRY_BUDGET,
+      })))
+      if (sourceVersionRef.current !== sourceVersion) return []
+      const results = responses.flatMap((response) => response.results).filter((result) => (
+        requestVersionsRef.current.get(result.path) === requestVersions.get(result.path)
+      ))
+      setDirectories((current) => mergeProjectDirectories(current, results, options.appendPath))
+      const failed = results.find((result) => !result.ok && result.code !== 'cursor_stale')
+      if (options.surfaceErrors !== false) setError(failed?.error ?? null)
+      return results
+    } catch (cause) {
+      if (sourceVersionRef.current === sourceVersion) {
+        setError(cause instanceof Error ? cause.message : String(cause))
+      }
+      throw cause
+    } finally {
+      if (sourceVersionRef.current === sourceVersion) {
+        for (const path of loading) {
+          const remaining = (loadingCountsRef.current.get(path) ?? 1) - 1
+          if (remaining > 0) loadingCountsRef.current.set(path, remaining)
+          else loadingCountsRef.current.delete(path)
+        }
+        setLoadingPaths(new Set(loadingCountsRef.current.keys()))
+      }
+    }
+  }, [includeIgnored, projectId])
+
+  useEffect(() => {
+    sourceVersionRef.current += 1
+    requestVersionsRef.current.clear()
+    loadingCountsRef.current.clear()
+    setDirectories(new Map())
+    setLoadingPaths(new Set())
+    setError(null)
+    const targets = bootstrapTargets(expandedPaths, selectedPath)
+    void resolveTargets(targets, { surfaceErrors: false })
+      .then((results) => {
+        const root = results.find((result) => result.path === '')
+        if (root && !root.ok) setError(root.error ?? null)
+      })
+      .catch((cause) => {
+        console.error('[features/files/use-project-file-explorer.ts] loading project tree failed', {
+          projectId,
+          cause,
+        })
+      })
+  // Expanded paths and selection are bootstrap hints, not live query inputs.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [includeIgnored, projectId, resolveTargets])
+
+  const loadDirectory = useCallback(async (path: string) => {
+    if (directoriesRef.current.has(path)) return
+    const results = await resolveTargets([{ path }])
+    throwForFailedTarget(results, path)
+  }, [resolveTargets])
+
+  const refreshDirectories = useCallback(async (paths: readonly string[]) => {
+    const targets = [...new Set(paths)].map((path) => ({ path }))
+    const results = await resolveTargets(targets)
+    const failedPaths = new Set(results.filter((result) => !result.ok).map((result) => result.path))
+    if (failedPaths.size > 0) {
+      setDirectories((current) => removeDirectoryBranches(current, [...failedPaths]))
+    }
+    const firstFailure = results.find((result) => !result.ok)
+    if (firstFailure) throw new Error(firstFailure.error || 'Project directory refresh failed')
+  }, [resolveTargets])
+
+  const loadMore = useCallback(async (path: string) => {
+    const continuation = directoriesRef.current.get(path)?.continuation
+    if (!continuation) return
+    const results = await resolveTargets([{ path, cursor: continuation }], { appendPath: path })
+    const result = results.find((item) => item.path === path)
+    if (result?.code === 'cursor_stale') {
+      await refreshDirectories([path])
+      return
+    }
+    throwForFailedTarget(results, path)
+  }, [refreshDirectories, resolveTargets])
+
+  const refresh = useCallback(async () => {
+    await refreshDirectories(['', ...directoriesRef.current.keys()])
+  }, [refreshDirectories])
+
+  const applyOperation = useCallback(async (
+    operation: ProjectFileOperation,
+    affectedParents: readonly string[],
+    evictedBranches: readonly string[] = [],
+  ) => {
+    const [result] = await applyProjectFileOperations(projectId, [operation])
+    if (!result?.ok) throw new Error(result?.error || 'Project file operation failed')
+    if (evictedBranches.length > 0) {
+      setDirectories((current) => removeDirectoryBranches(current, evictedBranches))
+    }
+    await refreshDirectories(affectedParents)
+    return result.path || operation.path
+  }, [projectId, refreshDirectories])
+
+  const createItem = useCallback(async (path: string, type: ProjectFileEntryType) => {
+    await applyOperation({ kind: 'create', path, type }, [parentPath(path)])
+  }, [applyOperation])
+  const deleteItem = useCallback(async (path: string) => {
+    await applyOperation({ kind: 'delete', path }, [parentPath(path)], [path])
+  }, [applyOperation])
+  const renameItem = useCallback((path: string, newName: string) => (
+    applyOperation({ kind: 'rename', path, new_name: newName }, [parentPath(path)], [path])
+  ), [applyOperation])
+  const copyItem = useCallback(async (from: string, to: string) => {
+    await applyOperation({ kind: 'copy', path: from, to }, [parentPath(to)])
+  }, [applyOperation])
+  const moveItem = useCallback(async (from: string, to: string) => {
+    await applyOperation({ kind: 'move', path: from, to }, [parentPath(from), parentPath(to)], [from])
+  }, [applyOperation])
+
+  const nodes = useMemo(
+    () => buildProjectFileExplorerNodes('', directories, loadingPaths),
+    [directories, loadingPaths],
+  )
+  return {
+    nodes,
+    loading: loadingPaths.has('') && !directories.has(''),
+    loadingPaths,
+    error,
+    loadDirectory,
+    loadMore,
+    refresh,
+    createItem,
+    deleteItem,
+    renameItem,
+    copyItem,
+    moveItem,
+  }
+}
+
+function bootstrapTargets(expandedPaths: readonly string[], selectedPath: string | null): ProjectFileTreeResolveTarget[] {
+  const paths = ['', ...expandedPaths, ...ancestorDirectories(selectedPath)]
+  return [...new Set(paths)].map((path) => ({ path }))
+}
+
+function ancestorDirectories(path: string | null): string[] {
+  if (!path) return []
+  const components = path.split('/').filter(Boolean)
+  const ancestors: string[] = []
+  for (let index = 1; index < components.length; index += 1) {
+    ancestors.push(components.slice(0, index).join('/'))
+  }
+  return ancestors
+}
+
+function deduplicateTargets(targets: readonly ProjectFileTreeResolveTarget[]) {
+  const unique = new Map<string, ProjectFileTreeResolveTarget>()
+  for (const target of targets) {
+    unique.set(target.path, target)
+  }
+  return [...unique.values()]
+}
+
+function chunkTargets(targets: readonly ProjectFileTreeResolveTarget[]) {
+  const chunks: ProjectFileTreeResolveTarget[][] = []
+  for (let index = 0; index < targets.length; index += MAX_TARGETS_PER_REQUEST) {
+    chunks.push(targets.slice(index, index + MAX_TARGETS_PER_REQUEST))
+  }
+  return chunks
+}
+
+function removeDirectoryBranches(current: ReadonlyMap<string, CachedProjectDirectory>, prefixes: readonly string[]) {
+  const next = new Map(current)
+  for (const path of next.keys()) {
+    if (prefixes.some((prefix) => path === prefix || path.startsWith(`${prefix}/`))) next.delete(path)
+  }
+  return next
+}
+
+function throwForFailedTarget(results: readonly ProjectFileTreeResolveResult[], path: string) {
+  const failed = results.find((result) => result.path === path && !result.ok)
+  if (failed) throw new Error(failed.error || 'Project directory resolution failed')
+}
+
+function parentPath(path: string) {
+  const separator = path.lastIndexOf('/')
+  return separator < 0 ? '' : path.slice(0, separator)
+}

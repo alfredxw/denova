@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState, type DragEvent, type MouseEvent, type ReactNode } from 'react'
+import { useMemo, useState, type DragEvent, type MouseEvent, type ReactNode } from 'react'
 import { useTranslation } from 'react-i18next'
 import {
   ChevronDown,
@@ -14,7 +14,6 @@ import {
   Pencil,
   Trash2,
   AtSign,
-  Loader2,
 } from 'lucide-react'
 import type { FileNode } from '@/hooks/useWorkspace'
 import type { ChapterSummary } from '@/lib/api'
@@ -43,12 +42,6 @@ interface FileTreeProps {
   onSelectFile: (path: string) => void
   onReferenceFile?: (path: string) => void
   defaultExpandedPaths?: readonly string[]
-  /** Loads one directory when a reusable tree is backed by a lazy data source. */
-  onDirectoryExpand?: (path: string) => void | Promise<void>
-  /** Persists expansion without making the existing tree implementation controlled. */
-  onDirectoryExpandedChange?: (path: string, expanded: boolean) => void
-  isDirectoryLoading?: (path: string) => boolean
-  deleteRecovery?: 'version-history' | 'none'
   onCreateItem?: (path: string, type: 'file' | 'dir') => Promise<void>
   onDeleteItem?: (path: string) => Promise<void>
   onRenameItem?: (path: string, newName: string) => Promise<void>
@@ -87,10 +80,6 @@ export function FileTree({
   onSelectFile,
   onReferenceFile,
   defaultExpandedPaths = [],
-  onDirectoryExpand,
-  onDirectoryExpandedChange,
-  isDirectoryLoading,
-  deleteRecovery = 'version-history',
   onCreateItem,
   onDeleteItem,
   onRenameItem,
@@ -251,9 +240,6 @@ export function FileTree({
         dragPaths={dragPaths}
         dragOverPath={dragOverPath}
         defaultExpandedPaths={defaultExpandedPathSet}
-        onDirectoryExpand={onDirectoryExpand}
-        onDirectoryExpandedChange={onDirectoryExpandedChange}
-        isDirectoryLoading={isDirectoryLoading}
         {...capabilities}
         onSelectFile={onSelectFile}
         onSelectPath={updateSelection}
@@ -291,7 +277,7 @@ export function FileTree({
       <DeleteConfirmDialog
         open={deleteTarget !== null}
         path={deleteTarget || ''}
-        recovery={deleteRecovery}
+        recovery="version-history"
         onOpenChange={(open) => {
           if (!open) setDeleteTarget(null)
         }}
@@ -317,9 +303,6 @@ interface FileTreeListProps {
   dragPaths: string[]
   dragOverPath: string
   defaultExpandedPaths: Set<string>
-  onDirectoryExpand?: (path: string) => void | Promise<void>
-  onDirectoryExpandedChange?: (path: string, expanded: boolean) => void
-  isDirectoryLoading?: (path: string) => boolean
   canReferenceFile: boolean
   canCreateItem: boolean
   canDeleteItem: boolean
@@ -388,9 +371,6 @@ interface FileTreeNodeProps {
   dragPaths: string[]
   dragOverPath: string
   defaultExpandedPaths: Set<string>
-  onDirectoryExpand?: (path: string) => void | Promise<void>
-  onDirectoryExpandedChange?: (path: string, expanded: boolean) => void
-  isDirectoryLoading?: (path: string) => boolean
   canReferenceFile: boolean
   canCreateItem: boolean
   canDeleteItem: boolean
@@ -432,9 +412,6 @@ function FileTreeNode({
   dragPaths,
   dragOverPath,
   defaultExpandedPaths,
-  onDirectoryExpand,
-  onDirectoryExpandedChange,
-  isDirectoryLoading,
   canReferenceFile,
   canCreateItem,
   canDeleteItem,
@@ -469,19 +446,6 @@ function FileTreeNode({
   const chapter = chapterStats[path]
   const actionPaths = getActionPaths(path)
   const isBatchAction = actionPaths.length > 1
-  const directoryLoading = isDir && Boolean(isDirectoryLoading?.(path))
-
-  const setDirectoryExpanded = (next: boolean) => {
-    setExpanded(next)
-    onDirectoryExpandedChange?.(path, next)
-  }
-
-  useEffect(() => {
-    if (!isDir || !expanded || node.children !== undefined || !onDirectoryExpand) return
-    void Promise.resolve(onDirectoryExpand(path)).catch((error) => {
-      console.error('[components/Sidebar/FileTree.tsx] loading directory failed', { path, error })
-    })
-  }, [expanded, isDir, node.children, onDirectoryExpand, path])
 
   // 是否正在重命名此节点
   const isRenaming = inlineEdit?.type === 'rename' && inlineEdit.renamePath === path
@@ -512,7 +476,7 @@ function FileTreeNode({
             label: t('sidebar.createFile'),
             icon: <FilePlus className="h-3.5 w-3.5" />,
             onSelect: () => {
-              if (isDir) setDirectoryExpanded(true)
+              if (isDir) setExpanded(true)
               onStartInlineEdit('create-file', createTargetDir, '')
             },
           },
@@ -520,7 +484,7 @@ function FileTreeNode({
             label: t('sidebar.createDir'),
             icon: <FolderPlus className="h-3.5 w-3.5" />,
             onSelect: () => {
-              if (isDir) setDirectoryExpanded(true)
+              if (isDir) setExpanded(true)
               onStartInlineEdit('create-dir', createTargetDir, '')
             },
           },
@@ -605,12 +569,10 @@ function FileTreeNode({
                     return
                   }
                   onSelectPath(path)
-                  setDirectoryExpanded(!expanded)
+                  setExpanded(!expanded)
                 }}
               >
-                {directoryLoading ? (
-                  <Loader2 className="h-3.5 w-3.5 shrink-0 animate-spin text-[var(--nova-tree-chevron)]" />
-                ) : expanded ? (
+                {expanded ? (
                   <ChevronDown className="h-3.5 w-3.5 shrink-0 text-[var(--nova-tree-chevron)]" />
                 ) : (
                   <ChevronRight className="h-3.5 w-3.5 shrink-0 text-[var(--nova-tree-chevron)]" />
@@ -650,9 +612,6 @@ function FileTreeNode({
               dragPaths={dragPaths}
               dragOverPath={dragOverPath}
               defaultExpandedPaths={defaultExpandedPaths}
-              onDirectoryExpand={onDirectoryExpand}
-              onDirectoryExpandedChange={onDirectoryExpandedChange}
-              isDirectoryLoading={isDirectoryLoading}
               canReferenceFile={canReferenceFile}
               canCreateItem={canCreateItem}
               canDeleteItem={canDeleteItem}

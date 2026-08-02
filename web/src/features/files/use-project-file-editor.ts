@@ -189,20 +189,22 @@ export function useProjectFileEditor({
 
   const dirty = Boolean(document?.kind === 'text' && draft !== (document.content ?? ''))
   const dirtyRef = useRef(dirty)
+  const autosaveStatusRef = useRef(autosave.status)
   dirtyRef.current = dirty
+  autosaveStatusRef.current = autosave.status
   const flush = useCallback(async (force = false) => {
     if (!documentRef.current || documentRef.current.kind !== 'text' || !documentRef.current.editable) return true
     try {
       const pending = autosave.flushPending()
       if (pending) await pending
-      else if (force || dirtyRef.current || autosave.status === 'error') await autosave.saveNow('manual')
+      else if (force || dirtyRef.current || autosaveStatusRef.current === 'error') await autosave.saveNow('manual')
       setError(null)
       return true
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : String(cause))
       return false
     }
-  }, [autosave.flushPending, autosave.saveNow, autosave.status])
+  }, [autosave.flushPending, autosave.saveNow])
 
   const status: AutosaveStatus = dirty && autosave.status === 'saved' ? 'pending' : autosave.status
   return {

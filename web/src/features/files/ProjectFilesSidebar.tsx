@@ -1,13 +1,14 @@
-import { Eye, EyeOff, FilePlus, FolderPlus, Loader2, RefreshCw } from 'lucide-react'
-import { useState } from 'react'
+import type { TreeApi } from 'react-arborist'
+import { Eye, EyeOff, FilePlus, FolderPlus, ListCollapse, Loader2, LocateFixed, RefreshCw } from 'lucide-react'
+import { memo, useCallback, useEffect, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
-import { FileTree } from '@/components/Sidebar/FileTree'
 import { FileOperationDialog, type FileOperationMode } from '@/components/Sidebar/FileOperationDialog'
 import { Button } from '@/components/ui/button'
-import type { FileNode } from '@/hooks/useWorkspace'
+import { ProjectFileTree } from './ProjectFileTree'
+import type { ProjectFileExplorerNode } from './project-file-explorer-model'
 
 interface ProjectFilesSidebarProps {
-  nodes: FileNode[]
+  nodes: readonly ProjectFileExplorerNode[]
   selectedPath: string | null
   expandedPaths: readonly string[]
   loading: boolean
@@ -18,6 +19,8 @@ interface ProjectFilesSidebarProps {
   onSelectFile: (path: string) => void
   onDirectoryExpand: (path: string) => void | Promise<void>
   onDirectoryExpandedChange: (path: string, expanded: boolean) => void
+  onCollapseAll: () => void
+  onLoadMore: (path: string) => void | Promise<void>
   onCreateItem: (path: string, type: 'file' | 'dir') => Promise<void>
   onDeleteItem: (path: string) => Promise<void>
   onRenameItem: (path: string, newName: string) => Promise<void>
@@ -26,8 +29,8 @@ interface ProjectFilesSidebarProps {
   onRefresh: () => void | Promise<void>
 }
 
-/** Right-hand project tree. FileTree remains the single reusable interaction implementation. */
-export function ProjectFilesSidebar({
+/** Right-hand, virtualized project explorer for both Writing and Game projects. */
+export const ProjectFilesSidebar = memo(function ProjectFilesSidebar({
   nodes,
   selectedPath,
   expandedPaths,
@@ -39,6 +42,8 @@ export function ProjectFilesSidebar({
   onSelectFile,
   onDirectoryExpand,
   onDirectoryExpandedChange,
+  onCollapseAll,
+  onLoadMore,
   onCreateItem,
   onDeleteItem,
   onRenameItem,
@@ -47,8 +52,34 @@ export function ProjectFilesSidebar({
   onRefresh,
 }: ProjectFilesSidebarProps) {
   const { t } = useTranslation()
+  const treeRef = useRef<TreeApi<ProjectFileExplorerNode>>(null)
+  const revealedPathRef = useRef<string | null>(null)
   const [createMode, setCreateMode] = useState<FileOperationMode | null>(null)
   const actionButtonClass = 'text-[var(--nova-text-muted)] hover:bg-[var(--nova-hover)] hover:text-[var(--nova-text)]'
+
+  const revealCurrentFile = useCallback(() => {
+    if (!selectedPath) return false
+    const tree = treeRef.current
+    if (!tree || !containsPath(nodes, selectedPath)) return false
+    // A collapsed descendant is intentionally absent from react-arborist's
+    // visible-node index. scrollTo accepts the stable ID and opens its parents
+    // before rebuilding that index, after which the node can receive focus.
+    void Promise.resolve(tree.scrollTo(selectedPath, 'smart')).then(() => {
+      const node = tree.get(selectedPath)
+      if (node) tree.focus(node, { scroll: false })
+    })
+    return true
+  }, [nodes, selectedPath])
+
+  useEffect(() => {
+    if (!selectedPath) {
+      revealedPathRef.current = null
+      return
+    }
+    if (revealedPathRef.current !== selectedPath && revealCurrentFile()) {
+      revealedPathRef.current = selectedPath
+    }
+  }, [nodes, revealCurrentFile, selectedPath])
 
   return (
     <aside className="flex h-full min-h-0 min-w-0 flex-col bg-[var(--nova-surface)] text-[var(--nova-text)]">
@@ -65,6 +96,32 @@ export function ProjectFilesSidebar({
           variant="ghost"
           size="icon-xs"
           className={actionButtonClass}
+          disabled={!selectedPath}
+          onClick={() => void revealCurrentFile()}
+          aria-label={t('files.tree.revealCurrent')}
+          title={t('files.tree.revealCurrent')}
+        >
+          <LocateFixed />
+        </Button>
+        <Button
+          type="button"
+          variant="ghost"
+          size="icon-xs"
+          className={actionButtonClass}
+          onClick={() => {
+            treeRef.current?.closeAll()
+            onCollapseAll()
+          }}
+          aria-label={t('files.tree.collapseAll')}
+          title={`${t('files.tree.collapseAll')} · ${t('files.tree.recursiveFoldHint')}`}
+        >
+          <ListCollapse />
+        </Button>
+        <Button
+          type="button"
+          variant="ghost"
+          size="icon-xs"
+          className={actionButtonClass}
           onClick={() => onShowIgnoredChange(!showIgnored)}
           aria-pressed={showIgnored}
           aria-label={t(showIgnored ? 'files.tree.hideIgnored' : 'files.tree.showIgnored')}
@@ -73,7 +130,7 @@ export function ProjectFilesSidebar({
           {showIgnored ? <EyeOff /> : <Eye />}
         </Button>
         <Button type="button" variant="ghost" size="icon-xs" className={actionButtonClass} onClick={() => void onRefresh()} aria-label={t('common.refresh')} title={t('common.refresh')}>
-          <RefreshCw className={loading ? 'animate-spin' : undefined} />
+          <RefreshCw className={loadingPaths.size > 0 ? 'animate-spin' : undefined} />
         </Button>
       </div>
       {error ? (
@@ -81,7 +138,7 @@ export function ProjectFilesSidebar({
           {error}
         </div>
       ) : null}
-      <div className="min-h-0 flex-1 overflow-y-auto p-2">
+      <div className="min-h-0 flex-1 p-1">
         {loading ? (
           <div className="flex items-center justify-center gap-2 py-8 text-xs text-[var(--nova-text-faint)]">
             <Loader2 className="size-3.5 animate-spin" />
@@ -90,15 +147,15 @@ export function ProjectFilesSidebar({
         ) : nodes.length === 0 ? (
           <div className="px-3 py-8 text-center text-xs text-[var(--nova-text-faint)]">{t('files.tree.empty')}</div>
         ) : (
-          <FileTree
+          <ProjectFileTree
+            treeRef={treeRef}
             nodes={nodes}
-            selectedFile={selectedPath}
+            selectedPath={selectedPath}
+            expandedPaths={expandedPaths}
             onSelectFile={onSelectFile}
-            defaultExpandedPaths={expandedPaths}
             onDirectoryExpand={onDirectoryExpand}
             onDirectoryExpandedChange={onDirectoryExpandedChange}
-            isDirectoryLoading={(path) => loadingPaths.has(path)}
-            deleteRecovery="none"
+            onLoadMore={onLoadMore}
             onCreateItem={onCreateItem}
             onDeleteItem={onDeleteItem}
             onRenameItem={onRenameItem}
@@ -119,4 +176,8 @@ export function ProjectFilesSidebar({
       />
     </aside>
   )
+})
+
+function containsPath(nodes: readonly ProjectFileExplorerNode[], path: string): boolean {
+  return nodes.some((node) => node.path === path || (node.children ? containsPath(node.children, path) : false))
 }

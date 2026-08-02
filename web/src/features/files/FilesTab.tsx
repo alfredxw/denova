@@ -1,21 +1,29 @@
-import { FileCode2, FileWarning, Loader2, PanelRightClose, PanelRightOpen, Save } from 'lucide-react'
+import { FileCode2, FileWarning, Loader2, PanelRightClose, PanelRightOpen, Save, WrapText } from 'lucide-react'
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { toast } from 'sonner'
 import { EmptyState } from '@/components/common/EmptyState'
+import { MarkdownViewToggle } from '@/components/common/MarkdownEditPreview'
 import type { EditorFlushHandler } from '@/components/Editor/useEditorDraftPersistence'
 import { AutosaveStatusIndicator } from '@/components/forms/autosave-status'
 import { AdaptiveSurface } from '@/components/layout/adaptive-surface'
 import { Button } from '@/components/ui/button'
 import { ProjectFilesSidebar } from './ProjectFilesSidebar'
+import { ProjectMarkdownPreview } from './ProjectMarkdownPreview'
 import { ProjectSourceEditor } from './ProjectSourceEditor'
+import { isPreviewableMarkdown } from './file-language'
 import {
+  persistProjectFileEditorPreferences,
   persistProjectFilesPreferences,
+  readProjectFileEditorPreferences,
   readProjectFilesPreferences,
+  relocateExpandedBranch,
+  removeExpandedBranch,
+  type ProjectFileEditorPreferences,
   type ProjectFilesPreferences,
 } from './preferences'
 import { useProjectFileEditor } from './use-project-file-editor'
-import { useProjectFileTree } from './use-project-file-tree'
+import { useProjectFileExplorer } from './use-project-file-explorer'
 
 interface FilesTabProps {
   projectId: string
@@ -43,7 +51,14 @@ export function FilesTab({
 }: FilesTabProps) {
   const { t } = useTranslation()
   const [preferences, setPreferences] = useState<ProjectFilesPreferences>(() => readProjectFilesPreferences(projectId))
-  const tree = useProjectFileTree({ projectId, includeIgnored: preferences.showIgnored })
+  const [editorPreferences, setEditorPreferences] = useState<ProjectFileEditorPreferences>(readProjectFileEditorPreferences)
+  const [markdownViews, setMarkdownViews] = useState<ReadonlyMap<string, boolean>>(() => new Map())
+  const tree = useProjectFileExplorer({
+    projectId,
+    includeIgnored: preferences.showIgnored,
+    expandedPaths: preferences.expandedPaths,
+    selectedPath,
+  })
   const editor = useProjectFileEditor({
     projectId,
     selectedPath,
@@ -56,6 +71,10 @@ export function FilesTab({
   useEffect(() => {
     persistProjectFilesPreferences(projectId, preferences)
   }, [preferences, projectId])
+
+  useEffect(() => {
+    persistProjectFileEditorPreferences(editorPreferences)
+  }, [editorPreferences])
 
   useEffect(() => {
     onFlushHandlerChange?.(editor.flush)
@@ -85,6 +104,21 @@ export function FilesTab({
     onSelectedPathChange(path)
   }, [editor.flush, onSelectedPathChange, selectedPath])
 
+  const markdownDocument = editor.document?.kind === 'text' && isPreviewableMarkdown(editor.document.path)
+    ? editor.document
+    : null
+  const markdownPreview = markdownDocument ? (markdownViews.get(markdownDocument.path) ?? true) : false
+  const setMarkdownPreview = useCallback((preview: boolean) => {
+    if (!markdownDocument) return
+    setMarkdownViews((current) => new Map(current).set(markdownDocument.path, preview))
+  }, [markdownDocument])
+  const toggleWordWrap = useCallback(() => {
+    setEditorPreferences((current) => ({ ...current, wordWrap: !current.wordWrap }))
+  }, [])
+  const openMarkdownFile = useCallback((path: string) => {
+    void selectFile(path)
+  }, [selectFile])
+
   const runOperation = useCallback(async <Result,>(paths: string[], operation: () => Promise<Result>): Promise<Result> => {
     try {
       const result = await operation()
@@ -109,6 +143,7 @@ export function FilesTab({
       if (!await editor.flush()) throw new Error(t('files.operation.failed'))
     }
     await runOperation([path], () => tree.deleteItem(path))
+    setPreferences((current) => ({ ...current, expandedPaths: removeExpandedBranch(current.expandedPaths, path) }))
     if (selectedPath === path || selectedPath?.startsWith(`${path}/`)) onSelectedPathChange(null)
   }, [editor.flush, onSelectedPathChange, runOperation, selectedPath, t, tree.deleteItem])
 
@@ -117,6 +152,7 @@ export function FilesTab({
       if (!await editor.flush()) throw new Error(t('files.operation.failed'))
     }
     const renamedPath = await runOperation([path], () => tree.renameItem(path, newName))
+    setPreferences((current) => ({ ...current, expandedPaths: relocateExpandedBranch(current.expandedPaths, path, renamedPath) }))
     if (selectedPath === path) onSelectedPathChange(renamedPath)
     else if (selectedPath?.startsWith(`${path}/`)) onSelectedPathChange(`${renamedPath}${selectedPath.slice(path.length)}`)
   }, [editor.flush, onSelectedPathChange, runOperation, selectedPath, t, tree.renameItem])
@@ -130,6 +166,7 @@ export function FilesTab({
       if (!await editor.flush()) throw new Error(t('files.operation.failed'))
     }
     await runOperation([from, to], () => tree.moveItem(from, to))
+    setPreferences((current) => ({ ...current, expandedPaths: relocateExpandedBranch(current.expandedPaths, from, to) }))
     if (selectedPath === from) onSelectedPathChange(to)
     else if (selectedPath?.startsWith(`${from}/`)) onSelectedPathChange(`${to}${selectedPath.slice(from.length)}`)
   }, [editor.flush, onSelectedPathChange, runOperation, selectedPath, t, tree.moveItem])
@@ -148,6 +185,9 @@ export function FilesTab({
       return { ...current, expandedPaths: [...paths] }
     })
   }, [])
+  const collapseAllDirectories = useCallback(() => {
+    setPreferences((current) => ({ ...current, expandedPaths: [] }))
+  }, [])
 
   const sidebar = (
     <ProjectFilesSidebar
@@ -159,9 +199,11 @@ export function FilesTab({
       error={tree.error}
       showIgnored={preferences.showIgnored}
       onShowIgnoredChange={setShowIgnored}
-      onSelectFile={(path) => void selectFile(path)}
+      onSelectFile={selectFile}
       onDirectoryExpand={tree.loadDirectory}
       onDirectoryExpandedChange={setDirectoryExpanded}
+      onCollapseAll={collapseAllDirectories}
+      onLoadMore={tree.loadMore}
       onCreateItem={createItem}
       onDeleteItem={deleteItem}
       onRenameItem={renameItem}
@@ -206,6 +248,27 @@ export function FilesTab({
                 {selectedPath || workspace}
               </div>
             </div>
+            {markdownDocument ? (
+              <MarkdownViewToggle
+                preview={markdownPreview}
+                onPreviewChange={setMarkdownPreview}
+                sourceLabel={t('files.editor.sourceMode')}
+              />
+            ) : null}
+            {editor.document?.kind === 'text' && !markdownPreview ? (
+              <Button
+                type="button"
+                variant="ghost"
+                size="icon-sm"
+                aria-pressed={editorPreferences.wordWrap}
+                onClick={toggleWordWrap}
+                aria-label={t(editorPreferences.wordWrap ? 'files.editor.disableWordWrap' : 'files.editor.enableWordWrap')}
+                title={`${t(editorPreferences.wordWrap ? 'files.editor.disableWordWrap' : 'files.editor.enableWordWrap')} · Alt+Z`}
+                className={editorPreferences.wordWrap ? 'bg-[var(--nova-active)] text-[var(--nova-text)]' : 'text-[var(--nova-text-muted)] hover:bg-[var(--nova-hover)] hover:text-[var(--nova-text)]'}
+              >
+                <WrapText />
+              </Button>
+            ) : null}
             {editor.document?.kind === 'text' && editor.document.editable ? (
               <AutosaveStatusIndicator status={editor.status} error={editor.autoSaveError} onRetry={editor.retry} />
             ) : editor.document ? (
@@ -256,11 +319,21 @@ export function FilesTab({
                 description={editor.error}
                 action={{ label: t('common.retry'), onClick: () => void editor.reload() }}
               />
+            ) : markdownDocument && markdownPreview ? (
+              <ProjectMarkdownPreview
+                projectId={projectId}
+                path={markdownDocument.path}
+                content={editor.draft}
+                onOpenFile={openMarkdownFile}
+              />
             ) : editor.document ? (
               <ProjectSourceEditor
+                key={`${projectId}:${editor.document.path}`}
                 projectId={projectId}
                 document={editor.document}
                 value={editor.draft}
+                wordWrap={editorPreferences.wordWrap}
+                onWordWrapToggle={toggleWordWrap}
                 onChange={editor.setDraft}
                 onSave={() => void editor.flush(true)}
               />

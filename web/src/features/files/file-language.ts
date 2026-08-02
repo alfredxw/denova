@@ -21,6 +21,7 @@ const LANGUAGE_BY_EXTENSION: Readonly<Record<string, string>> = {
   less: 'less',
   lua: 'lua',
   md: 'markdown',
+  markdown: 'markdown',
   mdx: 'markdown',
   mjs: 'javascript',
   php: 'php',
@@ -54,4 +55,10 @@ export function projectFileLanguage(path: string): string {
   if (LANGUAGE_BY_NAME[name]) return LANGUAGE_BY_NAME[name]
   const extension = name.includes('.') ? name.split('.').at(-1) ?? '' : ''
   return LANGUAGE_BY_EXTENSION[extension] ?? 'plaintext'
+}
+
+/** MDX stays in source mode because rendering executable MDX is not safe here. */
+export function isPreviewableMarkdown(path: string): boolean {
+  const name = path.split('/').at(-1)?.toLowerCase() ?? ''
+  return name.endsWith('.md') || name.endsWith('.markdown')
 }

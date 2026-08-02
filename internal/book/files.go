@@ -158,7 +158,9 @@ func (s *Service) Delete(relPath string) error {
 	if err != nil {
 		return err
 	}
-	info, err := os.Stat(absPath)
+	// Lstat keeps a symbolic-link leaf as the deletion target instead of
+	// following it. RemoveAll likewise removes the link, not its destination.
+	info, err := os.Lstat(absPath)
 	if err != nil {
 		return err
 	}
