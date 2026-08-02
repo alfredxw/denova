@@ -68,7 +68,7 @@ func (r *interactiveStartRegistry) replay(identity interactiveStartIdentity) (*a
 		r.pruneLocked()
 		return nil, false, fmt.Errorf("%w: command_id=%q", ErrAgentCommandConflict, commandID)
 	}
-	r.order = touchTaskReplayKey(r.order, commandID)
+	r.order = apptask.TouchReplayKey(r.order, commandID)
 	r.pruneLocked()
 	record = r.records[commandID]
 	if record.task == nil {
@@ -98,14 +98,14 @@ func (r *interactiveStartRegistry) remember(identity interactiveStartIdentity, t
 			existing.task = task
 			r.records[commandID] = existing
 		}
-		r.order = touchTaskReplayKey(r.order, commandID)
+		r.order = apptask.TouchReplayKey(r.order, commandID)
 		r.pruneLocked()
 		return nil
 	}
 	r.records[commandID] = interactiveStartRecord{
 		commandID: commandID, fingerprint: identity.fingerprint, task: task,
 	}
-	r.order = touchTaskReplayKey(r.order, commandID)
+	r.order = apptask.TouchReplayKey(r.order, commandID)
 	r.pruneLocked()
 	return nil
 }
@@ -116,7 +116,7 @@ func (r *interactiveStartRegistry) pruneLocked() {
 		for index, commandID := range r.order {
 			record, ok := r.records[commandID]
 			if !ok {
-				r.order = removeTaskReplayKey(r.order, index)
+				r.order = apptask.RemoveReplayKey(r.order, index)
 				removed = true
 				break
 			}
@@ -130,7 +130,7 @@ func (r *interactiveStartRegistry) pruneLocked() {
 				released = record.task.ReleaseDisplayReplay()
 			}
 			delete(r.records, commandID)
-			r.order = removeTaskReplayKey(r.order, index)
+			r.order = apptask.RemoveReplayKey(r.order, index)
 			slog.InfoContext(context.Background(), fmt.Sprintf("[interactive-agent-task] pruned settled Game replay identity command_id=%s task_id=%s released_bytes=%d max_records=%d", commandID, taskID, released, maxRememberedInteractiveStarts))
 			removed = true
 			break
@@ -144,7 +144,7 @@ func (r *interactiveStartRegistry) pruneLocked() {
 	for _, record := range r.records {
 		totalBytes += record.task.DisplayReplayCharge()
 	}
-	byteLimit := effectiveTaskRegistryReplayByteLimit(r.replayByteLimit)
+	byteLimit := apptask.EffectiveRegistryReplayByteLimit(r.replayByteLimit)
 	for _, commandID := range r.order {
 		if totalBytes <= byteLimit {
 			break

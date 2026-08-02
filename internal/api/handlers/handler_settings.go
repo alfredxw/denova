@@ -14,7 +14,7 @@ import (
 
 // HandleSettingsGet returns persisted layers and their resolved runtime view.
 func (h *Handlers) HandleSettingsGet(ctx context.Context, c *app.RequestContext) {
-	layered, err := h.app.Settings()
+	layered, err := h.app.SettingsService().Snapshot()
 	if err != nil {
 		writeError(c, consts.StatusInternalServerError, err.Error())
 		return
@@ -39,7 +39,7 @@ func (h *Handlers) HandleSettingsPatch(ctx context.Context, c *app.RequestContex
 		writeErrorKey(c, consts.StatusBadRequest, "api.common.invalidRequestWithDetail", "detail", err.Error())
 		return
 	}
-	layered, err := h.app.PatchSettings(layer, body.Changes, body.BaseRevision)
+	layered, err := h.app.SettingsService().Patch(layer, body.Changes, body.BaseRevision)
 	if err != nil {
 		switch {
 		case errors.Is(err, config.ErrSettingsRevisionConflict):

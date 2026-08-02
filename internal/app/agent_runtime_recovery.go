@@ -3,54 +3,29 @@ package app
 import (
 	"context"
 	agentstructural "denova/internal/agents/context/structural"
+	agentconversation "denova/internal/agents/conversation"
 	agentharness "denova/internal/agents/harness"
 	agentrun "denova/internal/agents/run"
+	appagentruntime "denova/internal/app/agentruntime"
 	apptask "denova/internal/app/task"
 	"fmt"
 	"log/slog"
 	"strings"
 )
 
-type AgentRuntimeRecoveryRequest struct {
-	Action   agentharness.RuntimeRecoveryAction
-	StoryID  string
-	BranchID string
-}
-
-type AgentRuntimeRecoveryResult struct {
-	Task    *apptask.Task
-	Action  agentharness.RuntimeRecoveryAction
-	Receipt agentrun.CommandReceipt
-}
+type AgentRuntimeRecoveryRequest = appagentruntime.RecoveryRequest
+type AgentRuntimeRecoveryResult = appagentruntime.RecoveryResult
 
 func recoveryActionKey(action agentharness.RuntimeRecoveryAction) string {
-	return strings.Join([]string{string(action.Kind), string(action.CommandID), string(action.OperationID)}, "\x00")
+	return appagentruntime.RecoveryActionKey(action)
 }
 
 func validateSelectedRecoveryAction(status agentrun.RuntimeStatus, selected agentharness.RuntimeRecoveryAction) error {
-	for _, action := range agentharness.RuntimeRecoveryActions(status) {
-		if action == selected {
-			return nil
-		}
-	}
-	return fmt.Errorf(
-		"%w: kind=%q command_id=%q operation_id=%q",
-		agentharness.ErrRecoveryActionChanged,
-		selected.Kind,
-		selected.CommandID,
-		selected.OperationID,
-	)
+	return appagentruntime.ValidateRecoveryAction(status, selected)
 }
 
 func recoveryStructuralAction(kind agentharness.RuntimeRecoveryActionKind) (agentstructural.Action, bool) {
-	switch kind {
-	case agentharness.RuntimeRecoveryCompactContext:
-		return agentstructural.Compact, true
-	case agentharness.RuntimeRecoveryRemoveCompaction:
-		return agentstructural.Remove, true
-	default:
-		return "", false
-	}
+	return appagentruntime.StructuralRecoveryAction(kind)
 }
 
 func (a *App) RecoverWritingAgent(ctx context.Context, request AgentRuntimeRecoveryRequest) (AgentRuntimeRecoveryResult, error) {
@@ -117,7 +92,7 @@ func (s *ChatAppService) RecoverAgentRuntime(ctx context.Context, request AgentR
 		recovery.Close()
 		return AgentRuntimeRecoveryResult{}, err
 	}
-	if _, err := reconcileColdPendingAsk(operation.Context(), sess, recovery.InitialStatus()); err != nil {
+	if _, err := agentconversation.ReconcileColdPendingAsk(operation.Context(), sess, recovery.InitialStatus()); err != nil {
 		recovery.Close()
 		return AgentRuntimeRecoveryResult{}, fmt.Errorf("reconcile orphaned Ask before writing recovery: %w", err)
 	}
@@ -384,17 +359,5 @@ func finishedRecoveryActionStillCurrent(
 	recovery *agentharness.RecoveryObservation,
 	action agentharness.RuntimeRecoveryAction,
 ) (bool, error) {
-	if task == nil || recovery == nil || !task.Finished() {
-		return false, nil
-	}
-	status, err := recovery.CurrentStatus(ctx)
-	if err != nil {
-		return false, err
-	}
-	for _, current := range agentharness.RuntimeRecoveryActions(status) {
-		if current == action {
-			return true, nil
-		}
-	}
-	return false, nil
+	return appagentruntime.FinishedRecoveryActionStillCurrent(ctx, task, recovery, action)
 }

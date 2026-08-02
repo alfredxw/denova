@@ -3,8 +3,12 @@ package app
 import (
 	"context"
 	"errors"
+	"fmt"
+	"log/slog"
+	"strings"
 
 	"denova/internal/book"
+	"denova/internal/workspace/autosave"
 )
 
 // workspaceMutationRuntime is a workspace-scoped snapshot of the services
@@ -18,7 +22,7 @@ type workspaceMutationRuntime struct {
 
 // withExclusiveWorkspaceMutation binds an unmanaged filesystem mutation to
 // both the active App runtime and the shared workspace-change write lease.
-func (s *WorkspaceRuntimeManager) withExclusiveWorkspaceMutation(
+func (s *workspaceService) withExclusiveWorkspaceMutation(
 	ctx context.Context,
 	action func(workspaceMutationRuntime) error,
 ) error {
@@ -50,7 +54,7 @@ func (s *WorkspaceRuntimeManager) withExclusiveWorkspaceMutation(
 // CreateWorkspaceItem creates one file or directory under the same workspace
 // lease used by editor, Agent, review, undo, and redo mutations.
 func (a *App) CreateWorkspaceItem(ctx context.Context, path, itemType, content string) error {
-	return a.runtime().withExclusiveWorkspaceMutation(ctx, func(runtime workspaceMutationRuntime) error {
+	return a.workspaceService().withExclusiveWorkspaceMutation(ctx, func(runtime workspaceMutationRuntime) error {
 		if err := runtime.bookService.Create(path, itemType, content); err != nil {
 			return err
 		}
@@ -62,7 +66,7 @@ func (a *App) CreateWorkspaceItem(ctx context.Context, path, itemType, content s
 // DeleteWorkspaceItem creates the existing restore point and removes one file
 // or directory as a single workspace-scoped operation.
 func (a *App) DeleteWorkspaceItem(ctx context.Context, path string) error {
-	return a.runtime().withExclusiveWorkspaceMutation(ctx, func(runtime workspaceMutationRuntime) error {
+	return a.workspaceService().withExclusiveWorkspaceMutation(ctx, func(runtime workspaceMutationRuntime) error {
 		if _, err := runtime.versionService.Create("删除前自动备份", book.VersionSourceManual, runtime.versionSettings); err != nil && !errors.Is(err, book.ErrVersionClean) {
 			return err
 		}
@@ -77,7 +81,7 @@ func (a *App) DeleteWorkspaceItem(ctx context.Context, path string) error {
 // RenameWorkspaceItem renames one file or directory under the shared write lease.
 func (a *App) RenameWorkspaceItem(ctx context.Context, path, newName string) (string, error) {
 	var newPath string
-	err := a.runtime().withExclusiveWorkspaceMutation(ctx, func(runtime workspaceMutationRuntime) error {
+	err := a.workspaceService().withExclusiveWorkspaceMutation(ctx, func(runtime workspaceMutationRuntime) error {
 		var err error
 		newPath, err = runtime.bookService.Rename(path, newName)
 		if err != nil {
@@ -91,7 +95,7 @@ func (a *App) RenameWorkspaceItem(ctx context.Context, path, newName string) (st
 
 // CopyWorkspaceItem copies one file or directory under the shared write lease.
 func (a *App) CopyWorkspaceItem(ctx context.Context, from, to string) error {
-	return a.runtime().withExclusiveWorkspaceMutation(ctx, func(runtime workspaceMutationRuntime) error {
+	return a.workspaceService().withExclusiveWorkspaceMutation(ctx, func(runtime workspaceMutationRuntime) error {
 		if err := runtime.bookService.Copy(from, to); err != nil {
 			return err
 		}
@@ -102,11 +106,34 @@ func (a *App) CopyWorkspaceItem(ctx context.Context, from, to string) error {
 
 // MoveWorkspaceItem moves one file or directory under the shared write lease.
 func (a *App) MoveWorkspaceItem(ctx context.Context, from, to string) error {
-	return a.runtime().withExclusiveWorkspaceMutation(ctx, func(runtime workspaceMutationRuntime) error {
+	return a.workspaceService().withExclusiveWorkspaceMutation(ctx, func(runtime workspaceMutationRuntime) error {
 		if err := runtime.bookService.Move(from, to); err != nil {
 			return err
 		}
 		scheduleAutoVersion(runtime.versionService, runtime.versionSettings)
 		return nil
 	})
+}
+
+// RecordAutosaveConflict durably preserves every side of a merge conflict in
+// the process-wide Denova data directory before a caller resolves it.
+func (a *App) RecordAutosaveConflict(ctx context.Context, input autosave.Input) (autosave.AppendResult, error) {
+	if a == nil {
+		return autosave.AppendResult{}, fmt.Errorf("record autosave conflict: app is nil")
+	}
+	a.mu.RLock()
+	dataDir := ""
+	if a.cfg != nil {
+		dataDir = strings.TrimSpace(a.cfg.DataDir())
+	}
+	a.mu.RUnlock()
+	if dataDir == "" {
+		return autosave.AppendResult{}, fmt.Errorf("record autosave conflict: Denova data directory is not configured")
+	}
+	result, err := autosave.NewStore(dataDir).Append(ctx, input)
+	if err != nil {
+		return autosave.AppendResult{}, fmt.Errorf("record autosave conflict: %w", err)
+	}
+	slog.InfoContext(ctx, fmt.Sprintf("[autosave-conflict] recorded resource=%q scope=%q id=%q record_id=%q path=%q", input.Resource, input.Scope, input.ID, result.Record.ID, result.Path))
+	return result, nil
 }

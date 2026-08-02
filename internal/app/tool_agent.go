@@ -8,6 +8,7 @@ import (
 
 	"denova/config"
 	agentmodeltask "denova/internal/agents/modeltask"
+	appsettings "denova/internal/app/settings"
 	"denova/internal/book/lore"
 )
 
@@ -54,7 +55,7 @@ func (a *App) toolAgentConfig() (config.Config, string) {
 	if layered, err := config.LoadLayeredWithStartupConfigAt(
 		novaDir, workspace, config.ProjectConfigPath(runtimeCfg.ProjectStateDir),
 	); err == nil {
-		applyLayeredSettingsToConfig(&runtimeCfg, layered)
+		appsettings.ApplyLayered(&runtimeCfg, layered)
 	} else {
 		slog.ErrorContext(context.Background(), fmt.Sprintf("[tool-agent] 加载分层配置失败 workspace=%s err=%v", workspace, err))
 	}

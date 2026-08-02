@@ -11,6 +11,7 @@ import (
 	agents "denova/internal/agents"
 	agentrun "denova/internal/agents/run"
 	"denova/internal/agents/session"
+	interactiveapp "denova/internal/app/interactive"
 	"denova/internal/interactive"
 )
 
@@ -142,7 +143,7 @@ func TestAppendInteractiveTurnDrainsExactBranchTaskBeforeMutation(t *testing.T) 
 	}
 	chat := agentharness.NewEphemeralService()
 	t.Cleanup(func() { _ = chat.Close(context.Background()) })
-	directorTasks := newWorkspaceDirectorTaskGroup()
+	directorTasks := interactiveapp.NewDirectorTaskGroup()
 	t.Cleanup(directorTasks.Close)
 	started := make(chan struct{})
 	task := apptask.New(func(ctx context.Context, _ *apptask.Task, _ func(agentrun.Event)) {

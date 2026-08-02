@@ -53,7 +53,7 @@ func TestGenerateImageSavesOpenAIResultToAssets(t *testing.T) {
 		workspace:   workspace,
 		bookService: book.NewService(workspace),
 	}
-	result, err := application.GenerateImage(context.Background(), imagegen.GenerateRequest{
+	result, err := application.Images().Generate(context.Background(), imagegen.GenerateRequest{
 		Prompt:  "a quiet writing desk",
 		Quality: "high",
 	})
@@ -106,7 +106,7 @@ func TestGenerateImageWorkspaceTransitionCancelsBeforeAssetWrite(t *testing.T) {
 	}
 	generateDone := make(chan error, 1)
 	runAppErrorTestGoroutine(generateDone, "workspace image generation", func() error {
-		_, err := application.GenerateImage(context.Background(), imagegen.GenerateRequest{Prompt: "cancelled image"})
+		_, err := application.Images().Generate(context.Background(), imagegen.GenerateRequest{Prompt: "cancelled image"})
 		return err
 	})
 	<-requestStarted

@@ -3,6 +3,7 @@ package app
 import (
 	"testing"
 
+	appagentruntime "denova/internal/app/agentruntime"
 	"denova/internal/interactive/teller"
 	"denova/internal/style"
 )
@@ -13,7 +14,7 @@ func TestConvertTellerStyleRulesFiltersSelectedScenes(t *testing.T) {
 		{Scene: "日常对话", StyleContents: []string{"温吞对白"}},
 	}
 
-	got := convertTellerStyleRules("", nil, rules, []string{"日常对话"})
+	got := appagentruntime.StyleRules("", nil, rules, []string{"日常对话"})
 	if len(got) != 1 || got[0].Scene != "日常对话" || got[0].StyleContents[0] != "温吞对白" {
 		t.Fatalf("filtered style rules mismatch: %#v", got)
 	}
@@ -25,7 +26,7 @@ func TestConvertTellerStyleRulesUsesAllScenesWhenUnspecified(t *testing.T) {
 		{Scene: "日常对话", StyleContents: []string{"温吞对白"}},
 	}
 
-	got := convertTellerStyleRules("", nil, rules, nil)
+	got := appagentruntime.StyleRules("", nil, rules, nil)
 	if len(got) != 2 {
 		t.Fatalf("style rules = %#v, want all scenes", got)
 	}
@@ -42,7 +43,7 @@ func TestConvertTellerStyleRulesResolvesSharedStyleRefs(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	got := convertTellerStyleRules(novaDir, nil, []teller.StyleRule{{
+	got := appagentruntime.StyleRules(novaDir, nil, []teller.StyleRule{{
 		Scene:     "日常对话",
 		StyleRefs: []string{ref.DisplayPath},
 	}}, nil)
@@ -66,7 +67,7 @@ func TestConvertTellerStyleRulesKeepsGlobalRefsWhenSceneFiltered(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	got := convertTellerStyleRules(novaDir, []string{ref.DisplayPath}, []teller.StyleRule{
+	got := appagentruntime.StyleRules(novaDir, []string{ref.DisplayPath}, []teller.StyleRule{
 		{Scene: "激烈打斗", StyleContents: []string{"短句留白"}},
 		{Scene: "日常对话", StyleContents: []string{"温吞对白"}},
 	}, []string{"日常对话"})
@@ -83,7 +84,7 @@ func TestConvertTellerStyleRulesKeepsGlobalRefsWhenSceneFiltered(t *testing.T) {
 }
 
 func TestConvertTellerStyleRulesTreatsGlobalSceneAsDefault(t *testing.T) {
-	got := convertTellerStyleRules("", nil, []teller.StyleRule{
+	got := appagentruntime.StyleRules("", nil, []teller.StyleRule{
 		{Scene: "全局", StyleContents: []string{"默认文风"}},
 		{Scene: "日常对话", StyleContents: []string{"温吞对白"}},
 		{Scene: "激烈打斗", StyleContents: []string{"短句留白"}},

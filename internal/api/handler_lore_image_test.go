@@ -20,7 +20,7 @@ func TestLoreItemImageGenerateAPIUpdatesItem(t *testing.T) {
 	defer imageServer.Close()
 	server := NewServer(application, "0")
 	workspace := application.Workspace()
-	item, err := application.CreateLoreItem(lore.ItemInput{ID: "hero", Type: "character", Name: "林川", Importance: "major", Content: "谨慎。"})
+	item, err := application.Lore().CreateItem(lore.ItemInput{ID: "hero", Type: "character", Name: "林川", Importance: "major", Content: "谨慎。"})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -49,11 +49,11 @@ func TestLoreImagesGenerateStreamSkipsExistingByDefault(t *testing.T) {
 	defer imageServer.Close()
 	server := NewServer(application, "0")
 	workspace := application.Workspace()
-	withImage, err := application.CreateLoreItem(lore.ItemInput{ID: "with-image", Type: "character", Name: "已有图", Importance: "major", Content: "已有。"})
+	withImage, err := application.Lore().CreateItem(lore.ItemInput{ID: "with-image", Type: "character", Name: "已有图", Importance: "major", Content: "已有。"})
 	if err != nil {
 		t.Fatal(err)
 	}
-	withoutImage, err := application.CreateLoreItem(lore.ItemInput{ID: "without-image", Type: "location", Name: "无图地点", Importance: "important", Content: "地点。"})
+	withoutImage, err := application.Lore().CreateItem(lore.ItemInput{ID: "without-image", Type: "location", Name: "无图地点", Importance: "important", Content: "地点。"})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -81,7 +81,7 @@ func TestLoreImagesGenerateStreamSkipsExistingByDefault(t *testing.T) {
 	if !strings.Contains(body, `"status":"success"`) || !strings.Contains(body, `"item_id":"without-image"`) {
 		t.Fatalf("stream should report generated item:\n%s", body)
 	}
-	items, err := application.LoreItems()
+	items, err := application.Lore().Items()
 	if err != nil {
 		t.Fatal(err)
 	}

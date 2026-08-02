@@ -182,7 +182,7 @@ func TestInteractiveStorySelectionAPIUpdatesWorkspaceCurrentStory(t *testing.T) 
 
 func TestInteractiveDirectorAPI(t *testing.T) {
 	application := newTestApplication(t)
-	directorFixture, err := application.CreateStoryDirector(interactive.StoryDirector{
+	directorFixture, err := application.ResourceCatalog().CreateStoryDirector(interactive.StoryDirector{
 		ID:   "director-api-fixture",
 		Name: "导演 API 测试",
 		ModuleRefs: interactive.StoryDirectorModuleRefs{
@@ -420,7 +420,7 @@ func TestInteractiveStoryStateSchemaReviewRoutesAreRemoved(t *testing.T) {
 
 func TestInteractiveStoryCreateCanUseFixedStateSchemaPolicy(t *testing.T) {
 	application := newTestApplication(t)
-	director, err := application.CreateStoryDirector(interactive.StoryDirector{
+	director, err := application.ResourceCatalog().CreateStoryDirector(interactive.StoryDirector{
 		ID:         "preset-only-director",
 		Name:       "直接使用预设",
 		ModuleRefs: interactive.DefaultStoryDirectorModuleRefs(),
@@ -458,7 +458,7 @@ func TestInteractiveStoryCreateCanUseFixedStateSchemaPolicy(t *testing.T) {
 
 func TestInteractiveActorTraitRollAndInitialStateAPI(t *testing.T) {
 	application := newTestApplication(t)
-	actorState, err := application.CreateActorState(interactive.ActorStateModule{
+	actorState, err := application.ResourceCatalog().CreateActorState(interactive.ActorStateModule{
 		ID:   "trait-api-state",
 		Name: "词条 API 状态",
 		ActorState: interactive.StoryDirectorActorStateSystem{
@@ -477,7 +477,7 @@ func TestInteractiveActorTraitRollAndInitialStateAPI(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	director, err := application.CreateStoryDirector(interactive.StoryDirector{
+	director, err := application.ResourceCatalog().CreateStoryDirector(interactive.StoryDirector{
 		ID:   "trait-api-director",
 		Name: "词条 API 导演",
 		ModuleRefs: interactive.StoryDirectorModuleRefs{
@@ -620,7 +620,7 @@ func TestInteractiveActorTraitRollAndInitialStateAPI(t *testing.T) {
 
 func TestInteractiveDisabledStoryDirectorModulesAPI(t *testing.T) {
 	application := newTestApplication(t)
-	if _, err := application.CreateStoryDirector(interactive.StoryDirector{
+	if _, err := application.ResourceCatalog().CreateStoryDirector(interactive.StoryDirector{
 		ID:   "detached",
 		Name: "关闭模块导演",
 		ModuleRefs: interactive.StoryDirectorModuleRefs{

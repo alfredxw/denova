@@ -129,7 +129,7 @@ func (h *Handlers) HandleNovelImport(ctx context.Context, c *app.RequestContext)
 	author := strings.TrimSpace(string(c.FormValue("author")))
 	description := strings.TrimSpace(string(c.FormValue("description")))
 
-	layered, err := h.app.Settings()
+	layered, err := h.app.SettingsService().Snapshot()
 	if err != nil {
 		writeError(c, consts.StatusInternalServerError, err.Error())
 		return

@@ -4,9 +4,19 @@ import (
 	"context"
 	"fmt"
 	"log/slog"
+	"strings"
 
+	agentconversation "denova/internal/agents/conversation"
+	agentrun "denova/internal/agents/run"
 	"denova/internal/agents/session"
 )
+
+type AgentAskAnswer = agentconversation.HostAskAnswer
+type AgentAskSelectedOption = agentconversation.HostAskSelectedOption
+type AgentAskAnswerResult = agentconversation.HostAskAnswerResult
+type AgentAskResolution = agentconversation.HostAskResolution
+
+var ErrAgentAskNotFound = agentconversation.ErrAskNotFound
 
 func (a *App) persistAgentCall(agentKind, instruction, response string) {
 	a.mu.RLock()
@@ -74,4 +84,60 @@ func agentSessionFromStore(store *session.Store, agentKind string) (*session.Ses
 
 func agentSessionID(agentKind string) (string, bool) {
 	return session.AgentSessionID(agentKind)
+}
+
+// AnswerSessionAsk answers the exact pending ask in a user IDE session. The
+// blocked tool call remains inside the same durable Agent task.
+func (a *App) AnswerSessionAsk(ctx context.Context, sessionID, askID string, answers []AgentAskAnswer) (AgentAskResolution, error) {
+	return a.resolveSessionAsk(ctx, sessionID, askID, session.AskAnswered, answers, "")
+}
+
+func (a *App) CancelSessionAsk(ctx context.Context, sessionID, askID, reason string) (AgentAskResolution, error) {
+	return a.resolveSessionAsk(ctx, sessionID, askID, session.AskCancelled, nil, reason)
+}
+
+func (a *App) resolveSessionAsk(ctx context.Context, sessionID, askID, status string, answers []AgentAskAnswer, cancelReason string) (AgentAskResolution, error) {
+	if a == nil {
+		return AgentAskResolution{}, ErrNoWorkspace
+	}
+	a.mu.RLock()
+	store := a.sessionStore
+	selected := a.session
+	a.mu.RUnlock()
+	if store == nil || selected == nil {
+		return AgentAskResolution{}, ErrNoWorkspace
+	}
+	sessionID = strings.TrimSpace(sessionID)
+	if sessionID == "" {
+		sessionID = selected.ID
+	}
+	if isAgentSessionID(sessionID) {
+		return AgentAskResolution{}, fmt.Errorf("cannot resolve a fixed Agent ask through the IDE session endpoint: %s", sessionID)
+	}
+	sess, err := store.Get(sessionID)
+	if err != nil {
+		return AgentAskResolution{}, err
+	}
+	return agentconversation.ResolveAsk(ctx, sess, askID, status, answers, cancelReason)
+}
+
+func (a *App) AgentRunTraces(limit int) ([]agentrun.RunTraceSummary, error) {
+	if !a.HasWorkspace() {
+		return []agentrun.RunTraceSummary{}, nil
+	}
+	return agentrun.ListRunTraces(a.Workspace(), limit)
+}
+
+func (a *App) AgentRunTrace(id string) (agentrun.RunTrace, error) {
+	if !a.HasWorkspace() {
+		return agentrun.RunTrace{}, ErrNoWorkspace
+	}
+	return agentrun.ReadRunTrace(a.Workspace(), id)
+}
+
+func (a *App) ExportAgentRunTrace(id string) (agentrun.RunTraceExport, error) {
+	if !a.HasWorkspace() {
+		return agentrun.RunTraceExport{}, ErrNoWorkspace
+	}
+	return agentrun.ExportRunTrace(a.Workspace(), id)
 }

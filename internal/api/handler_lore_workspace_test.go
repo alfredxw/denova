@@ -14,7 +14,7 @@ func TestLoreAPIRejectsStaleWorkspaceIdentity(t *testing.T) {
 		"enabled": true, "type": "world", "name": "不应写入", "importance": "important", "load_mode": "auto", "content": "stale",
 	})
 	assertWorkspaceChangedResponse(t, response, staleWorkspace, application.Workspace())
-	items, err := application.LoreItems()
+	items, err := application.Lore().Items()
 	if err != nil {
 		t.Fatal(err)
 	}

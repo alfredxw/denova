@@ -51,7 +51,7 @@ type skillInstallRemoteRequest struct {
 }
 
 func (h *Handlers) HandleSkills(ctx context.Context, c *app.RequestContext) {
-	snapshot, err := h.app.SkillSnapshot(ctx)
+	snapshot, err := h.app.ResourceCatalog().SkillSnapshot(ctx)
 	if err != nil {
 		writeError(c, consts.StatusInternalServerError, err.Error())
 		return
@@ -66,7 +66,7 @@ func (h *Handlers) HandleSkillDocument(ctx context.Context, c *app.RequestContex
 		writeErrorKey(c, consts.StatusBadRequest, "api.skills.scopeNameRequired")
 		return
 	}
-	doc, err := h.app.SkillDocument(ctx, scope, name)
+	doc, err := h.app.ResourceCatalog().SkillDocument(ctx, scope, name)
 	if err != nil {
 		writeError(c, consts.StatusBadRequest, err.Error())
 		return
@@ -82,7 +82,7 @@ func (h *Handlers) HandleSkillFileDocument(ctx context.Context, c *app.RequestCo
 		writeErrorKey(c, consts.StatusBadRequest, "api.skills.scopeNamePathRequired")
 		return
 	}
-	doc, err := h.app.SkillFileDocument(ctx, scope, name, path)
+	doc, err := h.app.ResourceCatalog().SkillFileDocument(ctx, scope, name, path)
 	if err != nil {
 		writeError(c, consts.StatusBadRequest, err.Error())
 		return
@@ -98,7 +98,7 @@ func (h *Handlers) HandleSkillCreate(ctx context.Context, c *app.RequestContext)
 	}
 	body.Scope = appsvc.SkillScope(strings.TrimSpace(string(body.Scope)))
 	body.Name = strings.TrimSpace(body.Name)
-	doc, err := h.app.CreateSkillDocument(ctx, body.Scope, body.Name, appsvc.SkillCreateMetadata{
+	doc, err := h.app.ResourceCatalog().CreateSkill(ctx, body.Scope, body.Name, appsvc.SkillCreateMetadata{
 		Description:  body.Description,
 		Agents:       body.Agents,
 		Category:     body.Category,
@@ -127,7 +127,7 @@ func (h *Handlers) HandleSkillSave(ctx context.Context, c *app.RequestContext) {
 	if body.TargetName == "" {
 		body.TargetName = body.Name
 	}
-	doc, err := h.app.SaveSkillDocumentAs(ctx, body.Scope, body.Name, body.TargetScope, body.TargetName, body.Content, strings.TrimSpace(body.BaseRevision))
+	doc, err := h.app.ResourceCatalog().SaveSkillAs(ctx, body.Scope, body.Name, body.TargetScope, body.TargetName, body.Content, strings.TrimSpace(body.BaseRevision))
 	if err != nil {
 		if errors.Is(err, appsvc.ErrSkillRevisionConflict) {
 			writeErrorKey(c, consts.StatusConflict, "api.resource.revisionConflict")
@@ -152,7 +152,7 @@ func (h *Handlers) HandleSkillFileSave(ctx context.Context, c *app.RequestContex
 		writeErrorKey(c, consts.StatusBadRequest, "api.skills.scopeNamePathRequired")
 		return
 	}
-	doc, err := h.app.SaveSkillFileDocument(ctx, body.Scope, body.Name, body.Path, body.Content, strings.TrimSpace(body.BaseRevision))
+	doc, err := h.app.ResourceCatalog().SaveSkillFile(ctx, body.Scope, body.Name, body.Path, body.Content, strings.TrimSpace(body.BaseRevision))
 	if err != nil {
 		if errors.Is(err, appsvc.ErrSkillRevisionConflict) {
 			writeErrorKey(c, consts.StatusConflict, "api.resource.revisionConflict")
@@ -171,7 +171,7 @@ func (h *Handlers) HandleSkillDelete(ctx context.Context, c *app.RequestContext)
 		writeErrorKey(c, consts.StatusBadRequest, "api.skills.scopeNameRequired")
 		return
 	}
-	if err := h.app.DeleteSkillDocument(ctx, scope, name); err != nil {
+	if err := h.app.ResourceCatalog().DeleteSkill(ctx, scope, name); err != nil {
 		writeError(c, consts.StatusBadRequest, err.Error())
 		return
 	}
@@ -184,7 +184,7 @@ func (h *Handlers) HandleSkillInstallZipPreview(ctx context.Context, c *app.Requ
 	if !ok {
 		return
 	}
-	preview, err := h.app.PreviewSkillZip(ctx, scope, data)
+	preview, err := h.app.ResourceCatalog().PreviewSkillZip(ctx, scope, data)
 	if err != nil {
 		writeError(c, consts.StatusBadRequest, err.Error())
 		return
@@ -199,7 +199,7 @@ func (h *Handlers) HandleSkillInstallZip(ctx context.Context, c *app.RequestCont
 		return
 	}
 	candidateIDs := parseCandidateIDs(string(c.FormValue("candidate_ids")))
-	result, err := h.app.InstallSkillZip(ctx, scope, data, candidateIDs)
+	result, err := h.app.ResourceCatalog().InstallSkillZip(ctx, scope, data, candidateIDs)
 	if err != nil {
 		writeError(c, consts.StatusBadRequest, err.Error())
 		return
@@ -214,7 +214,7 @@ func (h *Handlers) HandleSkillInstallGitHubPreview(ctx context.Context, c *app.R
 		return
 	}
 	source := appsvc.SkillGitHubSource{URL: body.URL, Ref: body.Ref, Subdir: body.Subdir}
-	preview, err := h.app.PreviewSkillGitHub(ctx, normalizeSkillInstallScope(string(body.Scope)), source)
+	preview, err := h.app.ResourceCatalog().PreviewSkillGitHub(ctx, normalizeSkillInstallScope(string(body.Scope)), source)
 	if err != nil {
 		writeError(c, consts.StatusBadRequest, err.Error())
 		return
@@ -229,7 +229,7 @@ func (h *Handlers) HandleSkillInstallGitHub(ctx context.Context, c *app.RequestC
 		return
 	}
 	source := appsvc.SkillGitHubSource{URL: body.URL, Ref: body.Ref, Subdir: body.Subdir}
-	result, err := h.app.InstallSkillGitHub(ctx, normalizeSkillInstallScope(string(body.Scope)), source, body.CandidateIDs)
+	result, err := h.app.ResourceCatalog().InstallSkillGitHub(ctx, normalizeSkillInstallScope(string(body.Scope)), source, body.CandidateIDs)
 	if err != nil {
 		writeError(c, consts.StatusBadRequest, err.Error())
 		return
@@ -244,7 +244,7 @@ func (h *Handlers) HandleSkillInstallRemotePreview(ctx context.Context, c *app.R
 		return
 	}
 	source := appsvc.SkillRemoteArchiveSource{URL: body.URL, Ref: body.Ref, Subdir: body.Subdir}
-	preview, err := h.app.PreviewSkillRemoteArchive(ctx, normalizeSkillInstallScope(string(body.Scope)), source)
+	preview, err := h.app.ResourceCatalog().PreviewSkillRemoteArchive(ctx, normalizeSkillInstallScope(string(body.Scope)), source)
 	if err != nil {
 		writeError(c, consts.StatusBadRequest, err.Error())
 		return
@@ -259,7 +259,7 @@ func (h *Handlers) HandleSkillInstallRemote(ctx context.Context, c *app.RequestC
 		return
 	}
 	source := appsvc.SkillRemoteArchiveSource{URL: body.URL, Ref: body.Ref, Subdir: body.Subdir}
-	result, err := h.app.InstallSkillRemoteArchive(ctx, normalizeSkillInstallScope(string(body.Scope)), source, body.CandidateIDs)
+	result, err := h.app.ResourceCatalog().InstallSkillRemoteArchive(ctx, normalizeSkillInstallScope(string(body.Scope)), source, body.CandidateIDs)
 	if err != nil {
 		writeError(c, consts.StatusBadRequest, err.Error())
 		return

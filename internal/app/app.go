@@ -13,6 +13,17 @@ import (
 	"denova/config"
 	agents "denova/internal/agents"
 	"denova/internal/agents/session"
+	activityapp "denova/internal/app/activity"
+	agentchatapp "denova/internal/app/agentchat"
+	appagentruntime "denova/internal/app/agentruntime"
+	automationapp "denova/internal/app/automation"
+	bookapp "denova/internal/app/book"
+	configmanagerapp "denova/internal/app/configmanager"
+	imageapp "denova/internal/app/image"
+	interactiveapp "denova/internal/app/interactive"
+	loreapp "denova/internal/app/lore"
+	resourcecatalogapp "denova/internal/app/resourcecatalog"
+	settingsapp "denova/internal/app/settings"
 	"denova/internal/book"
 	"denova/internal/concurrency"
 	"denova/internal/interactive"
@@ -34,26 +45,20 @@ type App struct {
 	agentRunner                     *agents.Runner
 	interactiveStoryRunner          *agents.Runner
 	chatService                     *agentharness.Service
-	bookRegistry                    *BookRegistry
 	projectRegistry                 *projectdomain.Registry
-	bookMetaStore                   *BookMetaStore
+	bookMetaStore                   *book.MetaStore
 	versionService                  *book.VersionService
 	activeTask                      *apptask.Task
 	activeWritingRun                *writingTaskRun
 	activeInteractiveRun            *interactiveTaskRun
-	activeLoreImageTask             *apptask.Task
-	activeAutomationTasks           map[string]*apptask.Task
-	activeAutomationRuns            map[string]automationRunState
-	activeAutomationClaims          map[string]*automationRunClaim
-	automationTriggers              *automationTriggerCoordinator
-	workspaceDirectorTasks          *workspaceDirectorTaskGroup
+	workspaceDirectorTasks          *interactiveapp.DirectorTaskGroup
 	workspaceTasks                  map[*apptask.Task]string
 	workspaceTaskLeases             map[*apptask.Task]*concurrency.Lease
 	workspaceTaskStops              map[*apptask.Task]func() bool
 	workspaceTaskReplayReservations map[*apptask.Task]*apptask.ReplayReservation
 	workspaceTransition             bool
 	workspaceTransitionTargets      map[string]struct{}
-	directorGenerator               interactiveDirectorGenerator
+	directorGenerator               interactiveapp.DirectorGenerator
 	versionSummaryGenerator         versionSummaryGeneratorFunc
 	workspaceFiles                  *filewatch.Service
 	rootScope                       *concurrency.Scope
@@ -62,58 +67,31 @@ type App struct {
 	workspaceGeneration             uint64
 	closed                          bool
 	closeOnce                       sync.Once
-	schedulerCancel                 context.CancelFunc
-	schedulerWG                     sync.WaitGroup
-	schedulerStarted                bool
-	automationEffectWake            chan struct{}
 	activeTaskReplay                apptask.ReplayAdmission
 
 	// terminals owns the pty sessions behind the AgentChat terminal tabs. They are decoupled from
 	// the workspace: each session keeps its own cwd, so switching books never kills a running command.
 	terminals *terminal.Manager
 
-	runtimeManager *WorkspaceRuntimeManager
-	chatApp        *ChatAppService
-	agentChatApp   *AgentChatAppService
-	interactiveApp *InteractiveAppService
-	loreApp        *LoreAppService
-	configApp      *ConfigManagerAppService
-	automationApp  *AutomationAppService
-	skillsApp      *SkillsAppService
-	imageApp       *ImageAppService
-	servicesOnce   sync.Once
+	workspaceApp    *workspaceService
+	chatApp         *ChatAppService
+	agentChatApp    *agentchatapp.Service
+	interactiveApp  *InteractiveAppService
+	loreApp         *loreapp.Service
+	configApp       *configmanagerapp.Service
+	automationApp   *automationapp.Service
+	activityApp     *activityapp.Service
+	bookApp         *bookapp.Service
+	resourceCatalog *resourcecatalogapp.Service
+	settingsApp     *settingsapp.Service
+	imageApp        *imageapp.Service
+	servicesOnce    sync.Once
 
 	mu sync.RWMutex
 }
 
-// SetInteractiveDirectorGeneratorForTest installs an App-scoped Director
-// generator so tests do not share mutable package-level state.
-func (a *App) SetInteractiveDirectorGeneratorForTest(generator interactiveDirectorGenerator) func() {
-	if a == nil {
-		return func() {}
-	}
-	a.mu.Lock()
-	previous := a.directorGenerator
-	a.directorGenerator = generator
-	a.mu.Unlock()
-	return func() {
-		a.mu.Lock()
-		a.directorGenerator = previous
-		a.mu.Unlock()
-	}
-}
-
-func (a *App) interactiveDirectorGenerator() interactiveDirectorGenerator {
-	if a == nil {
-		return nil
-	}
-	a.mu.RLock()
-	defer a.mu.RUnlock()
-	return a.directorGenerator
-}
-
-// New 创建应用运行时。当 workspace 为空且没有上次打开的 workspace 时，App 进入“无书籍”状态，
-// 等待用户在前端书籍管理页选择或新建书籍后再构建 runtime。
+// New creates the application runtime. When neither an explicit nor resumable
+// workspace exists, App stays unbound until the user selects or creates a Book.
 func New(ctx context.Context, cfg *config.Config) (*App, error) {
 	dataDir := ""
 	if cfg != nil {
@@ -122,17 +100,16 @@ func New(ctx context.Context, cfg *config.Config) (*App, error) {
 	if dataDir == "" {
 		return nil, ErrAgentDataDirRequired
 	}
-	registry := NewBookRegistry(dataDir)
-	bookMetaStore := NewBookMetaStore(dataDir)
+	registry := projectdomain.NewRegistry(dataDir)
+	bookMetaStore := book.NewMetaStore(dataDir)
 	app := &App{
-		cfg:                  cfg,
-		bookRegistry:         registry,
-		projectRegistry:      registry.ProjectRegistry(),
-		bookMetaStore:        bookMetaStore,
-		workspaceFiles:       filewatch.NewService(),
-		terminals:            terminal.NewManager(terminalConfigFromAppConfig(cfg)),
-		automationEffectWake: make(chan struct{}, 1),
+		cfg:             cfg,
+		projectRegistry: registry,
+		bookMetaStore:   bookMetaStore,
+		workspaceFiles:  filewatch.NewService(),
+		terminals:       terminal.NewManager(terminalConfigFromAppConfig(cfg)),
 	}
+	app.automationApp = automationapp.NewService(automationHost{app: app})
 	chatService, err := agentharness.NewDurableService(
 		ctx,
 		dataDir,
@@ -140,7 +117,7 @@ func New(ctx context.Context, cfg *config.Config) (*App, error) {
 		agentharness.WithInputMaterializer(app),
 		agentharness.WithTurnRestorer(app.restoreHarnessTurn),
 		agentharness.WithStructuralRestorer(app.restoreContextStructuralOperation),
-		agentharness.WithHostEffectReconciler(app.reconcileHarnessHostEffect),
+		agentharness.WithHostEffectReconciler(app.automationApp.ReconcileHostEffect),
 	)
 	if err != nil {
 		return nil, fmt.Errorf("initialize durable agent runtime: %w", err)
@@ -148,7 +125,7 @@ func New(ctx context.Context, cfg *config.Config) (*App, error) {
 	app.chatService = chatService
 	workspace := cfg.Workspace
 	if workspace == "" && cfg.ResumeLastWorkspace {
-		if lastWorkspace := registry.Current(); lastWorkspace != "" {
+		if lastWorkspace := registry.CurrentBookPath(); lastWorkspace != "" {
 			workspace = lastWorkspace
 		}
 	}
@@ -165,7 +142,7 @@ func New(ctx context.Context, cfg *config.Config) (*App, error) {
 	if workspace == "" {
 		slog.InfoContext(ctx, "[app] 启动时未指定 workspace 且无上次打开的书籍，进入无书籍状态，等待用户在前端选择")
 		cfg.Workspace = ""
-		app.StartAutomationScheduler(ctx)
+		app.Automation().StartScheduler(ctx)
 		return app, nil
 	}
 
@@ -185,7 +162,7 @@ func New(ctx context.Context, cfg *config.Config) (*App, error) {
 		return nil, err
 	}
 	cfg.Workspace = runtime.workspace
-	_ = registry.Touch(runtime.workspace)
+	_, _ = registry.TouchBook(runtime.workspace)
 
 	app.mu.Lock()
 	if err := app.replaceWorkspaceScopeLocked(runtime.workspace); err != nil {
@@ -196,54 +173,61 @@ func New(ctx context.Context, cfg *config.Config) (*App, error) {
 	app.applyRuntime(runtime)
 	app.mu.Unlock()
 	app.syncWorkspaceFileWatcher(runtime.workspace)
-	app.StartAutomationScheduler(ctx)
+	app.Automation().StartScheduler(ctx)
 	return app, nil
 }
 
 // ErrNoWorkspace 表示当前 App 尚未绑定任何书籍 workspace。
-var ErrNoWorkspace = fmt.Errorf("尚未选择书籍工作区")
+var ErrNoWorkspace = appagentruntime.ErrNoWorkspace
 
 // ErrAgentDataDirRequired prevents production App instances from silently
 // falling back to a process-local journal that cannot survive restart.
 var ErrAgentDataDirRequired = errors.New("agent runtime data directory is required")
 
-// ErrNoWorkspaceOpen 表示请求需要一个已打开的工作区但当前没有。
-var ErrNoWorkspaceOpen = errors.New("当前没有打开的工作区")
+// ErrNoWorkspaceOpen means a request requires an open workspace.
+var ErrNoWorkspaceOpen = settingsapp.ErrWorkspaceRequired
 
 // ErrAgentOperationActive rejects implicit replacement. Callers must target
 // the running operation with Follow Up, Steer, or Abort before starting a new
 // root operation.
-var ErrAgentOperationActive = errors.New("agent operation is already active")
+var ErrAgentOperationActive = appagentruntime.ErrOperationActive
 
 // ErrWorkspaceTransition prevents a task from binding half to an old
 // workspace and half to a newly constructed runtime.
-var ErrWorkspaceTransition = errors.New("workspace runtime is transitioning")
+var ErrWorkspaceTransition = appagentruntime.ErrWorkspaceTransition
 
 // ErrAgentContextChanged means preparation completed against a workspace,
 // session, story, or branch that is no longer current at atomic registration.
-var ErrAgentContextChanged = errors.New("agent start context changed")
+var ErrAgentContextChanged = appagentruntime.ErrContextChanged
 
 func (a *App) ensureServices() {
 	a.servicesOnce.Do(func() {
-		if a.projectRegistry == nil && a.bookRegistry != nil {
-			a.projectRegistry = a.bookRegistry.ProjectRegistry()
+		a.workspaceApp = &workspaceService{app: a}
+		a.chatApp = &ChatAppService{
+			app: a, starts: apptask.NewStartRegistry(apptask.StartRegistryOptions{Label: "Writing"}),
 		}
-		a.automationTriggers = newAutomationTriggerCoordinator()
-		a.runtimeManager = &WorkspaceRuntimeManager{app: a}
-		a.chatApp = &ChatAppService{app: a}
-		a.agentChatApp = newAgentChatAppService(a)
+		a.agentChatApp = agentchatapp.NewService(agentChatHost{app: a}, a.projectRegistry)
 		a.interactiveApp = &InteractiveAppService{app: a}
-		a.loreApp = &LoreAppService{app: a}
-		a.configApp = &ConfigManagerAppService{app: a}
-		a.automationApp = &AutomationAppService{app: a}
-		a.skillsApp = &SkillsAppService{app: a}
-		a.imageApp = &ImageAppService{app: a}
+		a.configApp = configmanagerapp.NewService(configManagerHost{app: a})
+		if a.automationApp == nil {
+			a.automationApp = automationapp.NewService(automationHost{app: a})
+		}
+		dataDir := ""
+		if a.cfg != nil {
+			dataDir = a.cfg.DataDir()
+		}
+		a.activityApp = activityapp.NewService(dataDir, a.automationApp)
+		a.bookApp = bookapp.NewService(dataDir, a.projectRegistry, a.bookMetaStore)
+		a.resourceCatalog = resourcecatalogapp.NewService(dataDir, resourceCatalogHost{app: a})
+		a.settingsApp = settingsapp.NewService(settingsHost{app: a})
+		a.imageApp = imageapp.NewService(imageHost{app: a})
+		a.loreApp = loreapp.NewService(loreHost{app: a}, a.imageApp)
 	})
 }
 
-func (a *App) runtime() *WorkspaceRuntimeManager {
+func (a *App) workspaceService() *workspaceService {
 	a.ensureServices()
-	return a.runtimeManager
+	return a.workspaceApp
 }
 
 func (a *App) chat() *ChatAppService {
@@ -251,7 +235,8 @@ func (a *App) chat() *ChatAppService {
 	return a.chatApp
 }
 
-func (a *App) agentChat() *AgentChatAppService {
+// AgentChat exposes the cohesive project-scoped conversation service.
+func (a *App) AgentChat() *agentchatapp.Service {
 	a.ensureServices()
 	return a.agentChatApp
 }
@@ -261,29 +246,55 @@ func (a *App) interactiveService() *InteractiveAppService {
 	return a.interactiveApp
 }
 
-func (a *App) lore() *LoreAppService {
+// Lore exposes the cohesive lore application service.
+func (a *App) Lore() *loreapp.Service {
 	a.ensureServices()
 	return a.loreApp
 }
 
-func (a *App) images() *ImageAppService {
+// Images exposes shared image generation for writing and game modes.
+func (a *App) Images() *imageapp.Service {
 	a.ensureServices()
 	return a.imageApp
 }
 
-func (a *App) configManager() *ConfigManagerAppService {
+// ConfigManager exposes scoped configuration conversations directly.
+func (a *App) ConfigManager() *configmanagerapp.Service {
 	a.ensureServices()
 	return a.configApp
 }
 
-func (a *App) automation() *AutomationAppService {
+// Automation exposes the automation domain service without duplicating its API
+// on the root composition type.
+func (a *App) Automation() *automationapp.Service {
 	a.ensureServices()
 	return a.automationApp
 }
 
-func (a *App) skills() *SkillsAppService {
+// Activity exposes the unified notification and badge projection.
+func (a *App) Activity() *activityapp.Service {
 	a.ensureServices()
-	return a.skillsApp
+	return a.activityApp
+}
+
+// BookAssets exposes book cover and export operations.
+func (a *App) BookAssets() *bookapp.Service {
+	a.ensureServices()
+	return a.bookApp
+}
+
+// ResourceCatalog exposes reusable creator resources shared by writing and
+// game modes without duplicating their API on the root composition type.
+func (a *App) ResourceCatalog() *resourcecatalogapp.Service {
+	a.ensureServices()
+	return a.resourceCatalog
+}
+
+// SettingsService exposes layered settings persistence while App retains only
+// the process-local refresh effects.
+func (a *App) SettingsService() *settingsapp.Service {
+	a.ensureServices()
+	return a.settingsApp
 }
 
 func (a *App) applyRuntime(runtime *runtimeState) {
@@ -303,8 +314,7 @@ func (a *App) applyRuntime(runtime *runtimeState) {
 	a.activeTask = nil
 	a.activeWritingRun = nil
 	a.activeInteractiveRun = nil
-	a.activeLoreImageTask = nil
-	a.workspaceDirectorTasks = newWorkspaceDirectorTaskGroup()
+	a.workspaceDirectorTasks = interactiveapp.NewDirectorTaskGroup()
 }
 
 func (a *App) clearRuntime() {
@@ -323,7 +333,6 @@ func (a *App) clearRuntime() {
 	a.activeTask = nil
 	a.activeWritingRun = nil
 	a.activeInteractiveRun = nil
-	a.activeLoreImageTask = nil
 }
 
 func (a *App) stopWorkspaceDirectorTasks() {
@@ -344,11 +353,11 @@ func (a *App) restoreWorkspaceDirectorTasks(workspace string) {
 	a.mu.Lock()
 	defer a.mu.Unlock()
 	if a.workspace == workspace && a.workspaceDirectorTasks == nil {
-		a.workspaceDirectorTasks = newWorkspaceDirectorTaskGroup()
+		a.workspaceDirectorTasks = interactiveapp.NewDirectorTaskGroup()
 	}
 }
 
-func (a *App) directorTasksForWorkspace(workspace string) *workspaceDirectorTaskGroup {
+func (a *App) directorTasksForWorkspace(workspace string) *interactiveapp.DirectorTaskGroup {
 	a.mu.RLock()
 	defer a.mu.RUnlock()
 	if a.workspace != workspace {
@@ -367,7 +376,6 @@ func (a *App) Close() {
 		a.mu.Lock()
 		a.closed = true
 		rootScope := a.rootScope
-		schedulerCancel := a.schedulerCancel
 		versionService := a.versionService
 		workspaceFiles := a.workspaceFiles
 		interactiveStore := a.interactive
@@ -382,21 +390,23 @@ func (a *App) Close() {
 		}
 		// Admission closes before cancellation so no task can slip between the
 		// final registry snapshot and the resource barrier.
-		rootScope.BeginClose()
-		if schedulerCancel != nil {
-			schedulerCancel()
+		if rootScope != nil {
+			rootScope.BeginClose()
 		}
-		if a.automationTriggers != nil {
-			a.automationTriggers.Close()
+		if a.automationApp != nil {
+			if err := a.automationApp.Close(context.Background()); err != nil {
+				slog.ErrorContext(context.Background(), fmt.Sprintf("[app] close automation service failed: %v", err))
+			}
 		}
 		if a.agentChatApp != nil {
 			a.agentChatApp.Close(context.Background())
 		}
 		a.abortOwnedAgentTasks(context.Background())
 		a.stopWorkspaceDirectorTasks()
-		a.schedulerWG.Wait()
-		if err := rootScope.Wait(context.Background()); err != nil {
-			slog.ErrorContext(context.Background(), fmt.Sprintf("[app] wait lifecycle scope failed: %v", err))
+		if rootScope != nil {
+			if err := rootScope.Wait(context.Background()); err != nil {
+				slog.ErrorContext(context.Background(), fmt.Sprintf("[app] wait lifecycle scope failed: %v", err))
+			}
 		}
 		if interactiveStore != nil {
 			if err := interactiveStore.Close(); err != nil {
@@ -424,7 +434,7 @@ func (a *App) abortOwnedAgentTasks(ctx context.Context) {
 		return
 	}
 	a.mu.RLock()
-	unique := make(map[*apptask.Task]struct{}, 3+len(a.activeAutomationTasks)+len(a.workspaceTasks))
+	unique := make(map[*apptask.Task]struct{}, 3+len(a.workspaceTasks))
 	add := func(task *apptask.Task) {
 		if task != nil {
 			unique[task] = struct{}{}
@@ -435,12 +445,6 @@ func (a *App) abortOwnedAgentTasks(ctx context.Context) {
 	}
 	if a.activeInteractiveRun != nil && a.activeInteractiveRun.task != nil {
 		add(a.activeInteractiveRun.task)
-	}
-	if a.activeLoreImageTask != nil {
-		add(a.activeLoreImageTask)
-	}
-	for _, task := range a.activeAutomationTasks {
-		add(task)
 	}
 	for task := range a.workspaceTasks {
 		add(task)

@@ -39,11 +39,11 @@ func TestAgentChatHistorySearchAndPagination(t *testing.T) {
 	if projectID == "" {
 		t.Fatalf("created workspace %q was not registered as a project: %#v", workspace, projectList)
 	}
-	created, err := application.CreateProjectSession(workspace, "Needle conversation")
+	created, err := application.AgentChat().CreateSession(workspace, "Needle conversation")
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err := application.CreateProjectSession(workspace, "Other conversation"); err != nil {
+	if _, err := application.AgentChat().CreateSession(workspace, "Other conversation"); err != nil {
 		t.Fatal(err)
 	}
 
@@ -81,7 +81,7 @@ func TestAgentChatHistorySearchAndPagination(t *testing.T) {
 		Workspace string `json:"workspace"`
 	}
 	decodeResponse(t, otherBook.Body.Bytes(), &createdOtherBook)
-	if _, err := application.CreateProjectSession(createdOtherBook.Workspace, "Newest conversation"); err != nil {
+	if _, err := application.AgentChat().CreateSession(createdOtherBook.Workspace, "Newest conversation"); err != nil {
 		t.Fatal(err)
 	}
 

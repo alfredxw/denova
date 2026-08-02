@@ -9,6 +9,7 @@ import (
 	agentrun "denova/internal/agents/run"
 	"denova/internal/agents/session"
 	"denova/internal/agents/skills"
+	projectdomain "denova/internal/project"
 )
 
 // These aliases are the deliberately shared contract values exposed by App.
@@ -37,6 +38,7 @@ type (
 	SkillCreateMetadata      = skills.CreateMetadata
 	SkillGitHubSource        = skills.GitHubSource
 	SkillRemoteArchiveSource = skills.RemoteArchiveSource
+	ProjectRecord            = projectdomain.Record
 )
 
 const (
@@ -93,4 +95,13 @@ func ValidateAgentRecoveryIdentity(commandID, operationID string) error {
 // safe for an external caller to retry against the current durable status.
 func AgentRuntimeRecoveryActions(status AgentRuntimeStatus) []AgentRuntimeRecoveryAction {
 	return agentharness.RuntimeRecoveryActions(status)
+}
+
+func firstNonEmpty(values ...string) string {
+	for _, value := range values {
+		if value = strings.TrimSpace(value); value != "" {
+			return value
+		}
+	}
+	return ""
 }

@@ -9,12 +9,11 @@ import (
 	"github.com/cloudwego/hertz/pkg/app"
 	"github.com/cloudwego/hertz/pkg/protocol/consts"
 
-	novaApp "denova/internal/app"
 	"denova/internal/style"
 )
 
 func (h *Handlers) HandleStyleReferences(ctx context.Context, c *app.RequestContext) {
-	refs, err := h.app.StyleReferences()
+	refs, err := h.app.ResourceCatalog().StyleReferences()
 	if err != nil {
 		writeError(c, consts.StatusConflict, err.Error())
 		return
@@ -28,7 +27,7 @@ func (h *Handlers) HandleStyleReferenceSave(ctx context.Context, c *app.RequestC
 		writeErrorKey(c, consts.StatusBadRequest, "api.common.invalidRequestWithDetail", "detail", err.Error())
 		return
 	}
-	ref, err := h.app.SaveStyleReference(body)
+	ref, err := h.app.ResourceCatalog().SaveStyleReference(body)
 	if err != nil {
 		writeError(c, consts.StatusBadRequest, err.Error())
 		return
@@ -42,12 +41,8 @@ func (h *Handlers) HandleStyleReferenceFile(ctx context.Context, c *app.RequestC
 		writeError(c, consts.StatusBadRequest, "文风参考路径不能为空")
 		return
 	}
-	doc, err := h.app.StyleReferenceFile(path)
+	doc, err := h.app.ResourceCatalog().StyleReferenceFile(path)
 	if err != nil {
-		if errors.Is(err, novaApp.ErrNoWorkspace) {
-			writeError(c, consts.StatusConflict, err.Error())
-			return
-		}
 		writeError(c, fileReadStatus(err), err.Error())
 		return
 	}
@@ -60,12 +55,8 @@ func (h *Handlers) HandleStyleReferenceFileUpdate(ctx context.Context, c *app.Re
 		writeErrorKey(c, consts.StatusBadRequest, "api.common.invalidRequestWithDetail", "detail", err.Error())
 		return
 	}
-	doc, err := h.app.UpdateStyleReferenceFile(body)
+	doc, err := h.app.ResourceCatalog().UpdateStyleReferenceFile(body)
 	if err != nil {
-		if errors.Is(err, novaApp.ErrNoWorkspace) {
-			writeError(c, consts.StatusConflict, err.Error())
-			return
-		}
 		if errors.Is(err, style.ErrReferenceRevisionConflict) {
 			writeError(c, consts.StatusConflict, err.Error())
 			return
@@ -88,7 +79,7 @@ func (h *Handlers) HandleStyleReferenceDelete(ctx context.Context, c *app.Reques
 	if path == "" {
 		path = strings.TrimSpace(c.Param("path"))
 	}
-	if err := h.app.DeleteStyleReference(path); err != nil {
+	if err := h.app.ResourceCatalog().DeleteStyleReference(path); err != nil {
 		writeError(c, consts.StatusBadRequest, err.Error())
 		return
 	}

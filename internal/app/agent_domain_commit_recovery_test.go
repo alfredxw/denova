@@ -13,6 +13,7 @@ import (
 	agents "denova/internal/agents"
 	agentcompaction "denova/internal/agents/context/compaction"
 	"denova/internal/agents/session"
+	compactionapp "denova/internal/app/compaction"
 	"denova/internal/book"
 	"denova/internal/interactive"
 )
@@ -197,7 +198,7 @@ func TestAppReconcilesStableSessionAndStoryCompactions(t *testing.T) {
 	}
 	sessionCommand := agentrun.CommandID("session-compact-command")
 	sessionRecord := session.ContextCompaction{
-		ID: contextStructuralRecordID("cc", string(sessionCommand)),
+		ID: agentstructural.RecordID("cc", string(sessionCommand)),
 		CompactionCheckpoint: agentcompaction.NewCheckpoint("ide", agentcompaction.Result{
 			Epoch: 1, Summary: "summary", RetainedTurns: 1,
 			TokensBefore: 100, TokensAfter: 20, ContextWindowTokens: 1000, Threshold: .8,
@@ -213,7 +214,7 @@ func TestAppReconcilesStableSessionAndStoryCompactions(t *testing.T) {
 	sessionRequest := structuralRecoveryRequest(
 		t, sessionBinding, sessionCommand, "session-compact-operation", agentstructural.DomainSession,
 		agentstructural.Compact, agentrun.StructuralCompactContext, sessionRef,
-		agentstructural.Result{Compaction: contextCompactionResultFromSession(sessionRecord)}, sessionRecord,
+		agentstructural.Result{Compaction: compactionapp.ResultFromSession(sessionRecord)}, sessionRecord,
 	)
 	committedSession, err := sess.AppendContextCompactionAt(sessionCursor, sessionRecord)
 	if err != nil {
@@ -225,7 +226,7 @@ func TestAppReconcilesStableSessionAndStoryCompactions(t *testing.T) {
 	}
 	sessionRemoveCommand := agentrun.CommandID("session-remove-command")
 	sessionRemoval := session.ContextCompactionRemoval{
-		ID: contextStructuralRecordID("ccr", string(sessionRemoveCommand)), AgentKind: "ide",
+		ID: agentstructural.RecordID("ccr", string(sessionRemoveCommand)), AgentKind: "ide",
 		CompactionID: committedSession.ID, SourceStartIndex: committedSession.SourceStartIndex,
 		SourceEndIndex: committedSession.SourceEndIndex, Reason: "user_removed",
 	}
@@ -260,7 +261,7 @@ func TestAppReconcilesStableSessionAndStoryCompactions(t *testing.T) {
 	expectedParent := storyContext.Meta.Branches["main"].Head
 	storyCommand := agentrun.CommandID("story-compact-command")
 	storyRecord := interactive.ContextCompactionEvent{
-		ID: contextStructuralRecordID("cc", string(storyCommand)),
+		ID: agentstructural.RecordID("cc", string(storyCommand)),
 		CompactionCheckpoint: agentcompaction.NewCheckpoint("interactive_story", agentcompaction.Result{
 			Epoch: 1, Summary: "story summary", RetainedTurns: 1,
 			TokensBefore: 100, TokensAfter: 30, ContextWindowTokens: 1000, Threshold: .8,
@@ -272,8 +273,8 @@ func TestAppReconcilesStableSessionAndStoryCompactions(t *testing.T) {
 	storyRequest := structuralRecoveryRequest(
 		t, storyBinding, storyCommand, "story-compact-operation", agentstructural.DomainStory,
 		agentstructural.Compact, agentrun.StructuralCompactContext,
-		agentrun.ContextCompactionRef{Resource: story.ID + "/main", ExpectedRevision: contextStoryRevision(expectedParent)},
-		agentstructural.Result{Compaction: contextCompactionResultFromInteractive(storyRecord)}, storyRecord,
+		agentrun.ContextCompactionRef{Resource: story.ID + "/main", ExpectedRevision: agentstructural.StoryRevision(expectedParent)},
+		agentstructural.Result{Compaction: compactionapp.ResultFromStory(storyRecord)}, storyRecord,
 	)
 	committedStory, err := storyStore.AppendContextCompaction(story.ID, "main", storyRecord)
 	if err != nil {
@@ -290,7 +291,7 @@ func TestAppReconcilesStableSessionAndStoryCompactions(t *testing.T) {
 	storyRemoveCommand := agentrun.CommandID("story-remove-command")
 	storyExpectedParent := committedStory.ID
 	storyRemoval := interactive.ContextCompactionRemovalEvent{
-		ID: contextStructuralRecordID("ccr", string(storyRemoveCommand)), AgentKind: "interactive_story",
+		ID: agentstructural.RecordID("ccr", string(storyRemoveCommand)), AgentKind: "interactive_story",
 		CompactionID: committedStory.ID, SourceTurnCount: committedStory.SourceTurnCount,
 		Reason: "user_removed", ExpectedParentID: &storyExpectedParent,
 	}
@@ -299,7 +300,7 @@ func TestAppReconcilesStableSessionAndStoryCompactions(t *testing.T) {
 		agentstructural.Remove, agentrun.StructuralRemoveCompaction,
 		agentrun.ContextCompactionRef{
 			Resource: story.ID + "/main", CompactionID: committedStory.ID,
-			ExpectedRevision: contextStoryRevision(storyExpectedParent),
+			ExpectedRevision: agentstructural.StoryRevision(storyExpectedParent),
 		},
 		agentstructural.Result{Removed: true}, storyRemoval,
 	)
@@ -346,7 +347,7 @@ func structuralRecoveryRequest(
 	mutation any,
 ) agentrun.DomainCommitReconcileRequest {
 	t.Helper()
-	plan, err := newContextStructuralRestorePlan(domain, action, binding, ref, contextStructuralRecordID(structuralRecordPrefix(action), string(commandID)), result, mutation)
+	plan, err := agentstructural.NewRestorePlan(domain, action, binding, ref, agentstructural.RecordID(structuralRecordPrefix(action), string(commandID)), result, mutation)
 	if err != nil {
 		t.Fatal(err)
 	}

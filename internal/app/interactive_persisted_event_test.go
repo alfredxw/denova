@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"testing"
 
+	interactiveapp "denova/internal/app/interactive"
 	"denova/internal/interactive"
 	"denova/internal/interactive/director"
 )
@@ -20,9 +21,9 @@ func TestEmitInteractiveTurnPersistedUsesCurrentSnapshot(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	conversation := newInteractiveConversation(store, t.TempDir(), workspace, story.ID, "main", "继续前进", 800, nil)
-	submitTestTurnResult(t, conversation, "走出门外", "确认雾中环境")
-	if err := commitInteractiveAssistantForTest(t, conversation, "雾气在门外散开。", "先确认场景。"); err != nil {
+	conversation := interactiveapp.NewConversation(store, t.TempDir(), workspace, story.ID, "main", "继续前进", 800, nil)
+	submitTestTurnResult(t, store, story.ID, "main", conversation, "走出门外", "确认雾中环境")
+	if err := commitInteractiveAssistantForTest(t, store, story.ID, "main", "继续前进", conversation, "雾气在门外散开。", "先确认场景。"); err != nil {
 		t.Fatal(err)
 	}
 	turn, _, ok := conversation.LastTurnForState()
@@ -99,7 +100,7 @@ func TestEmitInteractiveTurnPersistedSkipsWhenNoTurnWasPersisted(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	conversation := newInteractiveConversation(store, t.TempDir(), workspace, story.ID, "main", "继续前进", 800, nil)
+	conversation := interactiveapp.NewConversation(store, t.TempDir(), workspace, story.ID, "main", "继续前进", 800, nil)
 
 	var events []agentrun.Event
 	emitInteractiveTurnPersisted(store, story.ID, conversation, func(event agentrun.Event) {

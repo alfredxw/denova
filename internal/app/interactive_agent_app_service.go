@@ -12,6 +12,9 @@ import (
 	"denova/config"
 	agentcompaction "denova/internal/agents/context/compaction"
 	agentrun "denova/internal/agents/run"
+	appagentruntime "denova/internal/app/agentruntime"
+	interactiveapp "denova/internal/app/interactive"
+	appsettings "denova/internal/app/settings"
 	"denova/internal/interactive"
 )
 
@@ -64,27 +67,27 @@ func (s *InteractiveAppService) AnalyzeInteractiveContext(storyID, branchID, mes
 	if layered, err := config.LoadLayeredWithStartupConfigAt(
 		novaDir, workspace, config.ProjectConfigPath(runtimeCfg.ProjectStateDir),
 	); err == nil {
-		applyLayeredSettingsToConfig(&runtimeCfg, layered)
+		appsettings.ApplyLayered(&runtimeCfg, layered)
 	} else {
 		slog.ErrorContext(context.Background(), fmt.Sprintf("[interactive-agent-analysis] load interactive settings failed workspace=%s err=%v", workspace, err))
 	}
-	applyRequestLocaleToConfig(&runtimeCfg, locale)
+	appsettings.ApplyLocale(&runtimeCfg, locale)
 
 	storyCtx, err := store.StoryContext(storyID, branchID)
 	if err != nil {
 		return agentchat.ContextAnalysis{}, err
 	}
-	teller := loadGameTeller(novaDir, storyCtx.Meta.StoryTellerID)
+	teller := interactiveapp.LoadGameTeller(novaDir, storyCtx.Meta.StoryTellerID)
 	runtimeCfg.InteractiveReplyTargetChars = storyCtx.Meta.ReplyTargetChars
-	styleRules := convertTellerStyleRules(novaDir, teller.StyleRefs, teller.StyleRules, styleScenes)
+	styleRules := appagentruntime.StyleRules(novaDir, teller.StyleRefs, teller.StyleRules, styleScenes)
 	req := agentchat.ChatRequest{
 		Message:     message,
 		StyleScenes: styleScenes,
 		StyleRules:  styleRules,
 		Locale:      locale,
 	}
-	conversation := newInteractiveConversation(store, novaDir, workspace, storyID, branchID, message, runtimeCfg.InteractiveReplyTargetChars, &runtimeCfg)
-	return agentchat.BuildInteractiveStoryContextAnalysis(&runtimeCfg, state, interactiveStoryTellerSystemInput(teller, styleRules), bookService, req, storyCtx.Snapshot.ContextCompaction, conversation)
+	conversation := interactiveapp.NewConversation(store, novaDir, workspace, storyID, branchID, message, runtimeCfg.InteractiveReplyTargetChars, &runtimeCfg)
+	return agentchat.BuildInteractiveStoryContextAnalysis(&runtimeCfg, state, interactiveapp.StoryTellerSystemInput(teller, styleRules), bookService, req, storyCtx.Snapshot.ContextCompaction, conversation)
 }
 
 func (a *App) AnalyzeInteractiveDirectorContext(storyID, branchID, turnID string, locale string) (agentchat.ContextAnalysis, error) {
@@ -115,11 +118,11 @@ func (s *InteractiveAppService) AnalyzeInteractiveDirectorContext(storyID, branc
 	if layered, err := config.LoadLayeredWithStartupConfigAt(
 		novaDir, workspace, config.ProjectConfigPath(runtimeCfg.ProjectStateDir),
 	); err == nil {
-		applyLayeredSettingsToConfig(&runtimeCfg, layered)
+		appsettings.ApplyLayered(&runtimeCfg, layered)
 	} else {
 		slog.ErrorContext(context.Background(), fmt.Sprintf("[interactive-director-analysis] load interactive settings failed workspace=%s err=%v", workspace, err))
 	}
-	applyRequestLocaleToConfig(&runtimeCfg, locale)
+	appsettings.ApplyLocale(&runtimeCfg, locale)
 
 	storyCtx, err := store.StoryContext(storyID, branchID)
 	if err != nil {
@@ -129,12 +132,12 @@ func (s *InteractiveAppService) AnalyzeInteractiveDirectorContext(storyID, branc
 	if err != nil {
 		return agentchat.ContextAnalysis{}, err
 	}
-	conversation := newInteractiveConversation(store, novaDir, workspace, storyID, storyCtx.Snapshot.BranchID, turn.User, storyCtx.Meta.ReplyTargetChars, &runtimeCfg)
-	stableContext, instruction, err := conversation.buildDirectorModelInput(turn)
+	conversation := interactiveapp.NewConversation(store, novaDir, workspace, storyID, storyCtx.Snapshot.BranchID, turn.User, storyCtx.Meta.ReplyTargetChars, &runtimeCfg)
+	stableContext, instruction, err := conversation.BuildDirectorModelInput(turn)
 	if err != nil {
 		return agentchat.ContextAnalysis{}, err
 	}
-	slog.InfoContext(context.Background(), fmt.Sprintf("[interactive-director-analysis] built context story_id=%s branch_id=%s turn_id=%s instruction=%s", storyID, storyCtx.Snapshot.BranchID, turn.ID, interactivePartSummary(instruction)))
+	slog.InfoContext(context.Background(), fmt.Sprintf("[interactive-director-analysis] built context story_id=%s branch_id=%s turn_id=%s instruction=%s", storyID, storyCtx.Snapshot.BranchID, turn.ID, interactiveapp.PartSummary(instruction)))
 	return agentchat.BuildInteractiveDirectorContextAnalysisWithStableContext(&runtimeCfg, stableContext.Title, stableContext.Content, stableContext.MaxBytes, instruction)
 }
 
@@ -315,7 +318,7 @@ func (s *InteractiveAppService) startInteractiveTask(ctx context.Context, reques
 	return task, nil
 }
 
-func emitInteractiveTurnPersisted(store *interactive.Store, storyID string, conversation *interactiveConversation, emit func(agentrun.Event)) *interactive.Snapshot {
+func emitInteractiveTurnPersisted(store *interactive.Store, storyID string, conversation *interactiveapp.Conversation, emit func(agentrun.Event)) *interactive.Snapshot {
 	snapshot, err := emitInteractiveTurnPersistedResult(store, storyID, conversation, emit)
 	if err != nil {
 		slog.ErrorContext(context.Background(), fmt.Sprintf("[interactive-agent-task] emit persisted turn failed story_id=%s err=%v", storyID, err))
@@ -323,7 +326,7 @@ func emitInteractiveTurnPersisted(store *interactive.Store, storyID string, conv
 	return snapshot
 }
 
-func emitInteractiveTurnPersistedResult(store *interactive.Store, storyID string, conversation *interactiveConversation, emit func(agentrun.Event)) (*interactive.Snapshot, error) {
+func emitInteractiveTurnPersistedResult(store *interactive.Store, storyID string, conversation *interactiveapp.Conversation, emit func(agentrun.Event)) (*interactive.Snapshot, error) {
 	if store == nil || conversation == nil || emit == nil {
 		return nil, fmt.Errorf("interactive turn persistence projection is unavailable")
 	}

@@ -123,7 +123,7 @@ func (h *Handlers) importCharacterCardToNewBook(ctx context.Context, filename st
 	if title == "" {
 		title = preview.Name
 	}
-	layered, err := h.app.Settings()
+	layered, err := h.app.SettingsService().Snapshot()
 	if err != nil {
 		return character.ImportResult{}, err
 	}

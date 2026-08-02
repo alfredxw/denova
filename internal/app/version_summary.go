@@ -49,7 +49,7 @@ func (a *App) versionSummaryGeneratorSnapshot() versionSummaryGeneratorFunc {
 	return generator
 }
 
-func (s *WorkspaceRuntimeManager) inferVersionMessage(ctx context.Context, explicitMessage, source string, runtime *versionCreateRuntime) (string, error) {
+func (s *workspaceService) inferVersionMessage(ctx context.Context, explicitMessage, source string, runtime *versionCreateRuntime) (string, error) {
 	if ctx == nil {
 		ctx = context.Background()
 	}

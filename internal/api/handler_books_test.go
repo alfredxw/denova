@@ -96,7 +96,7 @@ func TestBookCoverUploadAPI(t *testing.T) {
 
 func TestBookExportTextAPI(t *testing.T) {
 	application := newTestApplication(t)
-	if _, err := application.UpdateBookInfo(application.Workspace(), "星河边境", "Denova", ""); err != nil {
+	if _, err := application.BookAssets().UpdateInfo(application.Workspace(), "星河边境", "Denova", ""); err != nil {
 		t.Fatalf("写入书籍元信息失败: %v", err)
 	}
 	if err := application.BookService().Create("chapters/ch00002-第二章-追光.md", "file", "第二章 追光\n\n林川踏入雨夜。"); err != nil {

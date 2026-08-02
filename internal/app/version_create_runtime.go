@@ -8,6 +8,7 @@ import (
 
 	"denova/config"
 	"denova/internal/agents/session"
+	appsettings "denova/internal/app/settings"
 	"denova/internal/book"
 )
 
@@ -25,7 +26,7 @@ type versionCreateRuntime struct {
 	settings       book.VersionAutoSettings
 }
 
-func (s *WorkspaceRuntimeManager) acquireVersionCreateRuntime(ctx context.Context) (*versionCreateRuntime, error) {
+func (s *workspaceService) acquireVersionCreateRuntime(ctx context.Context) (*versionCreateRuntime, error) {
 	if s == nil || s.app == nil {
 		return nil, ErrNoWorkspace
 	}
@@ -59,7 +60,7 @@ func (s *WorkspaceRuntimeManager) acquireVersionCreateRuntime(ctx context.Contex
 	runtime.cfg.Workspace = workspace
 	projectConfigPath := config.ProjectConfigPath(runtime.cfg.ProjectStateDir)
 	if layered, loadErr := config.LoadLayeredWithStartupConfigAt(runtime.cfg.DataDir(), workspace, projectConfigPath); loadErr == nil {
-		applyLayeredSettingsToConfig(&runtime.cfg, layered)
+		appsettings.ApplyLayered(&runtime.cfg, layered)
 	} else {
 		slog.ErrorContext(ctx, fmt.Sprintf("[versions] 加载分层配置用于版本说明失败 workspace=%s err=%v", workspace, loadErr))
 	}

@@ -11,6 +11,7 @@ import (
 
 	"denova/internal/api/sse"
 	novaApp "denova/internal/app"
+	loreapp "denova/internal/app/lore"
 	"denova/internal/book/lore"
 )
 
@@ -120,13 +121,13 @@ func (h *Handlers) HandleLoreClassificationPreview(ctx context.Context, c *app.R
 	if !h.requireWorkspace(c) {
 		return
 	}
-	var body novaApp.LoreClassificationPreviewRequest
+	var body loreapp.ClassificationPreviewRequest
 	if err := c.BindJSON(&body); err != nil && len(c.Request.Body()) > 0 {
 		writeErrorKey(c, consts.StatusBadRequest, "api.common.invalidRequestWithDetail", "detail", err.Error())
 		return
 	}
 	expectedWorkspace := workspaceChangeExpectedWorkspace(c)
-	preview, err := h.app.PreviewLoreClassificationForWorkspace(ctx, expectedWorkspace, body)
+	preview, err := h.app.Lore().PreviewClassificationForWorkspace(ctx, expectedWorkspace, body)
 	if err != nil {
 		if errors.Is(err, novaApp.ErrWorkspaceChanged) || errors.Is(err, novaApp.ErrNoWorkspace) || errors.Is(err, novaApp.ErrWorkspaceTransition) {
 			h.writeWorkspaceChangeLeaseError(c, expectedWorkspace, err)
@@ -142,7 +143,7 @@ func (h *Handlers) HandleLoreClassificationApply(ctx context.Context, c *app.Req
 	if !h.requireWorkspace(c) {
 		return
 	}
-	var body novaApp.LoreClassificationApplyRequest
+	var body loreapp.ClassificationApplyRequest
 	if err := c.BindJSON(&body); err != nil {
 		writeErrorKey(c, consts.StatusBadRequest, "api.common.invalidRequestWithDetail", "detail", err.Error())
 		return
@@ -172,13 +173,13 @@ func (h *Handlers) HandleLoreItemImageGenerate(ctx context.Context, c *app.Reque
 	if !h.requireWorkspace(c) {
 		return
 	}
-	var body novaApp.LoreItemImageGenerateRequest
+	var body loreapp.ItemImageGenerateRequest
 	if err := c.BindJSON(&body); err != nil && len(c.Request.Body()) > 0 {
 		writeErrorKey(c, consts.StatusBadRequest, "api.common.invalidRequestWithDetail", "detail", err.Error())
 		return
 	}
 	expectedWorkspace := workspaceChangeExpectedWorkspace(c)
-	item, err := h.app.GenerateLoreItemImageForWorkspace(ctx, expectedWorkspace, c.Param("id"), body)
+	item, err := h.app.Lore().GenerateItemImageForWorkspace(ctx, expectedWorkspace, c.Param("id"), body)
 	if err != nil {
 		if errors.Is(err, novaApp.ErrWorkspaceChanged) || errors.Is(err, novaApp.ErrNoWorkspace) || errors.Is(err, novaApp.ErrWorkspaceTransition) {
 			h.writeWorkspaceChangeLeaseError(c, expectedWorkspace, err)
@@ -194,19 +195,19 @@ func (h *Handlers) HandleLoreImagesGenerateStream(ctx context.Context, c *app.Re
 	if !h.requireWorkspace(c) {
 		return
 	}
-	var body novaApp.LoreImagesGenerateRequest
+	var body loreapp.ImagesGenerateRequest
 	if err := c.BindJSON(&body); err != nil {
 		writeErrorKey(c, consts.StatusBadRequest, "api.common.invalidRequestWithDetail", "detail", err.Error())
 		return
 	}
 	expectedWorkspace := workspaceChangeExpectedWorkspace(c)
-	task, err := h.app.StartLoreImagesGenerateTaskForWorkspace(ctx, expectedWorkspace, body)
+	task, err := h.app.Lore().StartImagesGenerateTaskForWorkspace(ctx, expectedWorkspace, body)
 	if err != nil {
 		if errors.Is(err, novaApp.ErrWorkspaceChanged) || errors.Is(err, novaApp.ErrNoWorkspace) || errors.Is(err, novaApp.ErrWorkspaceTransition) {
 			h.writeWorkspaceChangeLeaseError(c, expectedWorkspace, err)
 			return
 		}
-		if errors.Is(err, novaApp.ErrLoreImageTaskRunning) {
+		if errors.Is(err, loreapp.ErrImageTaskRunning) {
 			writeError(c, consts.StatusConflict, err.Error())
 			return
 		}
@@ -218,7 +219,7 @@ func (h *Handlers) HandleLoreImagesGenerateStream(ctx context.Context, c *app.Re
 
 func (h *Handlers) HandleLoreImagesGenerateAbort(ctx context.Context, c *app.RequestContext) {
 	expectedWorkspace := workspaceChangeExpectedWorkspace(c)
-	if err := h.app.AbortLoreImagesGenerateTaskForWorkspace(expectedWorkspace); err != nil {
+	if err := h.app.Lore().AbortImagesGenerateTask(expectedWorkspace); err != nil {
 		if errors.Is(err, novaApp.ErrWorkspaceChanged) || errors.Is(err, novaApp.ErrNoWorkspace) {
 			h.writeWorkspaceChangeLeaseError(c, expectedWorkspace, err)
 			return

@@ -14,11 +14,12 @@ import (
 	"denova/internal/api/agentui"
 	"denova/internal/api/sse"
 	appsvc "denova/internal/app"
+	automationapp "denova/internal/app/automation"
 	"denova/internal/automation"
 )
 
 func (h *Handlers) HandleAutomations(ctx context.Context, c *app.RequestContext) {
-	tasks, err := h.app.Automations()
+	tasks, err := h.app.Automation().List()
 	if err != nil {
 		writeError(c, consts.StatusInternalServerError, err.Error())
 		return
@@ -28,12 +29,12 @@ func (h *Handlers) HandleAutomations(ctx context.Context, c *app.RequestContext)
 
 func (h *Handlers) HandleAutomationTemplates(ctx context.Context, c *app.RequestContext) {
 	writeJSON(c, consts.StatusOK, automation.TemplateListResult{
-		Templates: h.app.AutomationTemplates(c.Query("locale")),
+		Templates: h.app.Automation().Templates(c.Query("locale")),
 	})
 }
 
 func (h *Handlers) HandleAutomationInbox(ctx context.Context, c *app.RequestContext) {
-	items, err := h.app.AutomationInbox()
+	items, err := h.app.Automation().Inbox()
 	if err != nil {
 		writeError(c, consts.StatusInternalServerError, err.Error())
 		return
@@ -42,7 +43,7 @@ func (h *Handlers) HandleAutomationInbox(ctx context.Context, c *app.RequestCont
 }
 
 func (h *Handlers) HandleAutomationCheck(ctx context.Context, c *app.RequestContext) {
-	items, err := h.app.CheckAutomationTriggers(ctx, c.Param("id"))
+	items, err := h.app.Automation().CheckTriggers(ctx, c.Param("id"))
 	if err != nil {
 		writeError(c, consts.StatusInternalServerError, err.Error())
 		return
@@ -51,7 +52,7 @@ func (h *Handlers) HandleAutomationCheck(ctx context.Context, c *app.RequestCont
 }
 
 func (h *Handlers) HandleAutomationInboxConfirm(ctx context.Context, c *app.RequestContext) {
-	result, err := h.app.ConfirmAutomationInboxItem(ctx, c.Param("item_id"))
+	result, err := h.app.Automation().ConfirmInboxItem(ctx, c.Param("item_id"))
 	if err != nil {
 		writeError(c, consts.StatusInternalServerError, err.Error())
 		return
@@ -60,7 +61,7 @@ func (h *Handlers) HandleAutomationInboxConfirm(ctx context.Context, c *app.Requ
 }
 
 func (h *Handlers) HandleAutomationInboxDismiss(ctx context.Context, c *app.RequestContext) {
-	item, err := h.app.DismissAutomationInboxItem(c.Param("item_id"))
+	item, err := h.app.Automation().DismissInboxItem(c.Param("item_id"))
 	if err != nil {
 		writeError(c, consts.StatusInternalServerError, err.Error())
 		return
@@ -69,7 +70,7 @@ func (h *Handlers) HandleAutomationInboxDismiss(ctx context.Context, c *app.Requ
 }
 
 func (h *Handlers) HandleAutomationInboxRead(ctx context.Context, c *app.RequestContext) {
-	item, err := h.app.MarkAutomationInboxItemRead(c.Param("item_id"))
+	item, err := h.app.Automation().MarkInboxItemRead(c.Param("item_id"))
 	if err != nil {
 		writeError(c, consts.StatusInternalServerError, err.Error())
 		return
@@ -83,7 +84,7 @@ func (h *Handlers) HandleAutomationCreate(ctx context.Context, c *app.RequestCon
 		writeError(c, consts.StatusBadRequest, err.Error())
 		return
 	}
-	task, err := h.app.CreateAutomation(req)
+	task, err := h.app.Automation().Create(req)
 	if err != nil {
 		writeError(c, consts.StatusBadRequest, err.Error())
 		return
@@ -114,7 +115,7 @@ func (h *Handlers) HandleAutomationUpdate(ctx context.Context, c *app.RequestCon
 		})
 		return
 	}
-	task, err := h.app.UpdateAutomationIfRevision(id, req, baseRevision)
+	task, err := h.app.Automation().UpdateIfRevision(id, req, baseRevision)
 	if err != nil {
 		if errors.Is(err, automation.ErrRevisionConflict) {
 			writeJSON(c, consts.StatusConflict, map[string]any{
@@ -130,7 +131,7 @@ func (h *Handlers) HandleAutomationUpdate(ctx context.Context, c *app.RequestCon
 }
 
 func (h *Handlers) HandleAutomationDelete(ctx context.Context, c *app.RequestContext) {
-	if err := h.app.DeleteAutomation(c.Param("id")); err != nil {
+	if err := h.app.Automation().Delete(c.Param("id")); err != nil {
 		writeError(c, consts.StatusBadRequest, err.Error())
 		return
 	}
@@ -152,13 +153,13 @@ func (h *Handlers) HandleAutomationRunStream(ctx context.Context, c *app.Request
 		writeAgentRuntimeError(c, consts.StatusBadRequest, "agent_runtime.invalid_command", "缺少 command_id，无法安全重试自动化运行 / command_id is required for safe automation retries", nil)
 		return
 	}
-	task, run, err := h.app.StartAutomationTaskCommand(ctx, c.Param("id"), req.CommandID, req.TriggerEvidence)
+	task, run, err := h.app.Automation().StartTaskCommand(ctx, c.Param("id"), req.CommandID, req.TriggerEvidence)
 	if err != nil {
 		if errors.Is(err, appsvc.ErrInvalidAgentCommand) {
 			writeAgentRuntimeError(c, consts.StatusBadRequest, "agent_runtime.invalid_command", err.Error(), nil)
 			return
 		}
-		if errors.Is(err, automation.ErrRunIdentityConflict) || errors.Is(err, appsvc.ErrAgentCommandConflict) {
+		if errors.Is(err, automation.ErrRunIdentityConflict) || errors.Is(err, automationapp.ErrCommandConflict) {
 			writeAgentRuntimeError(c, consts.StatusConflict, "agent_runtime.command_conflict", "command_id 已用于不同的自动化请求 / command_id was already used for a different automation request", nil)
 			return
 		}
@@ -170,11 +171,11 @@ func (h *Handlers) HandleAutomationRunStream(ctx context.Context, c *app.Request
 }
 
 func (h *Handlers) HandleAutomationActiveRuns(ctx context.Context, c *app.RequestContext) {
-	writeJSON(c, consts.StatusOK, automation.ActiveRunsResult{Runs: h.app.ActiveAutomationRuns()})
+	writeJSON(c, consts.StatusOK, automation.ActiveRunsResult{Runs: h.app.Automation().ActiveAutomationRuns()})
 }
 
 func (h *Handlers) HandleAutomationRunStreamByID(ctx context.Context, c *app.RequestContext) {
-	task, run, ok := h.app.ActiveAutomationTaskByRunID(c.Param("run_id"))
+	task, run, ok := h.app.Automation().ActiveAutomationTaskByRunID(c.Param("run_id"))
 	if !ok {
 		writeError(c, consts.StatusNotFound, "automation run is not active")
 		return
@@ -200,17 +201,17 @@ func (h *Handlers) HandleAutomationRunChatStream(ctx context.Context, c *app.Req
 		writeAgentRuntimeError(c, consts.StatusBadRequest, "agent_runtime.invalid_command", "缺少 command_id，无法安全重试自动化追问 / command_id is required for safe automation follow-up retries", nil)
 		return
 	}
-	task, run, err := h.app.ContinueAutomationRun(ctx, c.Param("run_id"), req.CommandID, req.Message)
+	task, run, err := h.app.Automation().ContinueRun(ctx, c.Param("run_id"), req.CommandID, req.Message)
 	if err != nil {
 		if errors.Is(err, appsvc.ErrInvalidAgentCommand) {
 			writeAgentRuntimeError(c, consts.StatusBadRequest, "agent_runtime.invalid_command", err.Error(), nil)
 			return
 		}
-		if errors.Is(err, appsvc.ErrAgentCommandConflict) {
+		if errors.Is(err, automationapp.ErrCommandConflict) {
 			writeAgentRuntimeError(c, consts.StatusConflict, "agent_runtime.command_conflict", "command_id 已用于不同的自动化追问 / command_id was already used for a different automation follow-up", nil)
 			return
 		}
-		if errors.Is(err, appsvc.ErrAgentOperationActive) {
+		if errors.Is(err, automationapp.ErrOperationActive) {
 			writeAgentRuntimeError(c, consts.StatusConflict, "agent_runtime.busy", "自动化运行已有活动操作 / The automation run already has an active operation", nil)
 			return
 		}
@@ -235,7 +236,7 @@ func (h *Handlers) HandleAutomationRunAbort(ctx context.Context, c *app.RequestC
 		writeAgentRuntimeError(c, consts.StatusBadRequest, "agent_runtime.invalid_command", "command_id 和 target_operation_id 为必填项 / command_id and target_operation_id are required", nil)
 		return
 	}
-	receipt, err := h.app.AbortAutomationRunCommand(
+	receipt, err := h.app.Automation().AbortRunCommand(
 		ctx, c.Param("run_id"), req.CommandID,
 		appsvc.AgentOperationID(strings.TrimSpace(req.TargetOperationID)), req.Reason,
 	)
@@ -249,7 +250,7 @@ func (h *Handlers) HandleAutomationRunAbort(ctx context.Context, c *app.RequestC
 }
 
 func (h *Handlers) HandleAutomationRunMessages(ctx context.Context, c *app.RequestContext) {
-	entries, err := h.app.AutomationRunMessages(c.Param("run_id"))
+	entries, err := h.app.Automation().AutomationRunMessages(c.Param("run_id"))
 	if err != nil {
 		writeError(c, consts.StatusNotFound, err.Error())
 		return

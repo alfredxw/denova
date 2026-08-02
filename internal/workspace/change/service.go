@@ -59,6 +59,16 @@ type pendingSaveIntent struct {
 	RedoInvalidated bool
 }
 
+// StateRoot returns the durable Project-state boundary associated with this
+// content mutation service. Callers use it to keep internal journals out of
+// user-content scans when a configured data directory sits below workspace.
+func (service *Service) StateRoot() string {
+	if service == nil {
+		return ""
+	}
+	return service.stateRoot
+}
+
 // ForWorkspace returns the process-wide service shared by all callers for an
 // absolute workspace. This is the production constructor: Agent, HTTP, review,
 // and history operations must use the same instance.

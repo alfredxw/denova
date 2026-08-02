@@ -3,8 +3,10 @@ package app
 import (
 	"context"
 	"fmt"
+	"strings"
 
 	"denova/config"
+	agentconversation "denova/internal/agents/conversation"
 	"denova/internal/agents/session"
 )
 
@@ -72,7 +74,7 @@ func (s *ChatAppService) CreateSession(title string) (*session.Session, error) {
 	if a.cfg != nil {
 		runtimeCfg = *a.cfg
 	}
-	seed, err := recentConversationSeed(fence.store, &runtimeCfg, config.AgentKindIDE, "")
+	seed, err := agentconversation.RecentSessionSeed(fence.store, &runtimeCfg, config.AgentKindIDE, "")
 	if err != nil {
 		return nil, err
 	}
@@ -121,7 +123,7 @@ func (s *ChatAppService) SwitchSession(id string) (*session.Session, error) {
 	if a.cfg != nil {
 		runtimeCfg = *a.cfg
 	}
-	if _, err := ensureExistingSessionConfig(sess, &runtimeCfg, config.AgentKindIDE); err != nil {
+	if _, err := agentconversation.EnsureSession(sess, &runtimeCfg, config.AgentKindIDE); err != nil {
 		return nil, err
 	}
 	if err := fence.store.SetActiveID(sess.ID); err != nil {
@@ -202,7 +204,7 @@ func (s *ChatAppService) DeleteSession(id string) (*session.Session, error) {
 			if a.cfg != nil {
 				runtimeCfg = *a.cfg
 			}
-			sess, _, createErr := getOrCreateConversationSession(fence.store, "default", &runtimeCfg, config.AgentKindIDE)
+			sess, _, createErr := agentconversation.GetOrCreateSession(fence.store, "default", &runtimeCfg, config.AgentKindIDE)
 			if createErr != nil {
 				return nil, createErr
 			}
@@ -220,7 +222,7 @@ func (s *ChatAppService) DeleteSession(id string) (*session.Session, error) {
 	if a.cfg != nil {
 		runtimeCfg = *a.cfg
 	}
-	if _, err := ensureExistingSessionConfig(sess, &runtimeCfg, config.AgentKindIDE); err != nil {
+	if _, err := agentconversation.EnsureSession(sess, &runtimeCfg, config.AgentKindIDE); err != nil {
 		return nil, err
 	}
 	if err := fence.store.SetActiveID(sess.ID); err != nil {
@@ -298,6 +300,63 @@ func (s *ChatAppService) SessionMessagesPage(ctx context.Context, id string, bef
 		}
 	}
 	return sess.ReadHistoryPage(ctx, before, limit)
+}
+
+const defaultUserSessionID = "default"
+
+func activeUserSessionOrCreate(store *session.Store, runtimeCfg *config.Config) (*session.Session, error) {
+	if store == nil {
+		return nil, ErrNoWorkspace
+	}
+	activeID, _ := store.ActiveID()
+	activeID = strings.TrimSpace(activeID)
+	if activeID == "" || isAgentSessionID(activeID) {
+		activeID = defaultUserSessionID
+	} else if _, err := store.Get(activeID); err != nil {
+		activeID = defaultUserSessionID
+	}
+	var sess *session.Session
+	var err error
+	if store.Exists(activeID) {
+		sess, err = store.Get(activeID)
+		if err == nil {
+			_, err = agentconversation.EnsureSession(sess, runtimeCfg, config.AgentKindIDE)
+		}
+	} else {
+		seed, seedErr := agentconversation.RecentSessionSeed(store, runtimeCfg, config.AgentKindIDE, activeID)
+		if seedErr != nil {
+			return nil, seedErr
+		}
+		sess, err = store.GetOrCreateWithRuntimeConfig(activeID, seed)
+	}
+	if err != nil {
+		return nil, err
+	}
+	if err := store.SetActiveID(sess.ID); err != nil {
+		return nil, err
+	}
+	return sess, nil
+}
+
+func listUserSessions(store *session.Store, activeID string) ([]session.SessionMeta, error) {
+	if store == nil {
+		return nil, ErrNoWorkspace
+	}
+	metas, err := store.List(activeID)
+	if err != nil {
+		return nil, err
+	}
+	result := make([]session.SessionMeta, 0, len(metas))
+	for _, meta := range metas {
+		if !isAgentSessionID(meta.ID) {
+			result = append(result, meta)
+		}
+	}
+	return result, nil
+}
+
+func isAgentSessionID(id string) bool {
+	return agentconversation.IsReservedSessionID(id)
 }
 
 // StartTask starts a root Writing Agent task. A running operation is never

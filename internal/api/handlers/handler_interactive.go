@@ -11,6 +11,7 @@ import (
 	"github.com/cloudwego/hertz/pkg/protocol/consts"
 
 	appsvc "denova/internal/app"
+	imageapp "denova/internal/app/image"
 	imagepreset "denova/internal/image/preset"
 	"denova/internal/interactive"
 	"denova/internal/interactive/teller"
@@ -241,7 +242,7 @@ func (h *Handlers) HandleInteractiveImageGenerate(ctx context.Context, c *app.Re
 	if body.BranchID == "" {
 		body.BranchID = c.Query("branch")
 	}
-	result, err := h.app.GenerateInteractiveImage(ctx, c.Param("id"), body)
+	result, err := h.app.Images().GenerateInteractiveImage(ctx, c.Param("id"), body)
 	if err != nil {
 		switch {
 		case errors.Is(err, appsvc.ErrAgentCommandIDRequired):
@@ -250,7 +251,7 @@ func (h *Handlers) HandleInteractiveImageGenerate(ctx context.Context, c *app.Re
 			writeAgentRuntimeError(c, consts.StatusBadRequest, "agent_runtime.invalid_command", "command_id 请求标识无效 / invalid request identifier command_id", nil)
 		case errors.Is(err, appsvc.ErrAgentCommandConflict):
 			writeAgentRuntimeError(c, consts.StatusConflict, "agent_runtime.command_conflict", "command_id 已用于其他请求 / command_id was already used for a different request", nil)
-		case errors.Is(err, appsvc.ErrImageAgentExecution), errors.Is(err, appsvc.ErrImageAgentReplayResultUnavailable):
+		case errors.Is(err, imageapp.ErrExecution), errors.Is(err, imageapp.ErrReplayResultUnavailable):
 			writeError(c, consts.StatusInternalServerError, err.Error())
 		default:
 			writeError(c, consts.StatusBadRequest, err.Error())
@@ -380,7 +381,7 @@ func (h *Handlers) HandleInteractiveContextCompactionRemove(ctx context.Context,
 }
 
 func (h *Handlers) HandleInteractiveTellers(ctx context.Context, c *app.RequestContext) {
-	tellers, err := h.app.InteractiveTellers()
+	tellers, err := h.app.ResourceCatalog().Tellers()
 	if err != nil {
 		writeError(c, consts.StatusInternalServerError, err.Error())
 		return
@@ -390,7 +391,7 @@ func (h *Handlers) HandleInteractiveTellers(ctx context.Context, c *app.RequestC
 
 func (h *Handlers) HandleInteractiveTeller(ctx context.Context, c *app.RequestContext) {
 	id := c.Param("id")
-	teller, err := h.app.InteractiveTeller(id)
+	teller, err := h.app.ResourceCatalog().Teller(id)
 	if err != nil {
 		writeError(c, consts.StatusNotFound, err.Error())
 		return
@@ -404,7 +405,7 @@ func (h *Handlers) HandleInteractiveTellerCreate(ctx context.Context, c *app.Req
 		writeErrorKey(c, consts.StatusBadRequest, "api.common.invalidRequestWithDetail", "detail", err.Error())
 		return
 	}
-	teller, err := h.app.CreateInteractiveTeller(body)
+	teller, err := h.app.ResourceCatalog().CreateTeller(body)
 	if err != nil {
 		writeError(c, consts.StatusBadRequest, err.Error())
 		return
@@ -425,7 +426,7 @@ func (h *Handlers) HandleInteractiveTellerUpdate(ctx context.Context, c *app.Req
 	if !h.ensurePresetMutationWorkspace(c, body.Workspace) {
 		return
 	}
-	updated, err := h.app.UpdateInteractiveTeller(c.Param("id"), body.Definition, body.BaseRevision)
+	updated, err := h.app.ResourceCatalog().UpdateTeller(c.Param("id"), body.Definition, body.BaseRevision)
 	if err != nil {
 		if errors.Is(err, teller.ErrRevisionConflict) {
 			writeErrorKey(c, consts.StatusConflict, "api.resource.revisionConflict")
@@ -438,7 +439,7 @@ func (h *Handlers) HandleInteractiveTellerUpdate(ctx context.Context, c *app.Req
 }
 
 func (h *Handlers) HandleInteractiveTellerDelete(ctx context.Context, c *app.RequestContext) {
-	if err := h.app.DeleteInteractiveTeller(c.Param("id")); err != nil {
+	if err := h.app.ResourceCatalog().DeleteTeller(c.Param("id")); err != nil {
 		writeError(c, consts.StatusBadRequest, err.Error())
 		return
 	}
@@ -446,7 +447,7 @@ func (h *Handlers) HandleInteractiveTellerDelete(ctx context.Context, c *app.Req
 }
 
 func (h *Handlers) HandleStoryDirectors(ctx context.Context, c *app.RequestContext) {
-	directors, err := h.app.StoryDirectors()
+	directors, err := h.app.ResourceCatalog().StoryDirectors()
 	if err != nil {
 		writeError(c, consts.StatusInternalServerError, err.Error())
 		return
@@ -455,7 +456,7 @@ func (h *Handlers) HandleStoryDirectors(ctx context.Context, c *app.RequestConte
 }
 
 func (h *Handlers) HandleStoryDirector(ctx context.Context, c *app.RequestContext) {
-	director, err := h.app.StoryDirector(c.Param("id"))
+	director, err := h.app.ResourceCatalog().StoryDirector(c.Param("id"))
 	if err != nil {
 		writeError(c, consts.StatusNotFound, err.Error())
 		return
@@ -469,7 +470,7 @@ func (h *Handlers) HandleStoryDirectorCreate(ctx context.Context, c *app.Request
 		writeErrorKey(c, consts.StatusBadRequest, "api.common.invalidRequestWithDetail", "detail", err.Error())
 		return
 	}
-	director, err := h.app.CreateStoryDirector(body)
+	director, err := h.app.ResourceCatalog().CreateStoryDirector(body)
 	if err != nil {
 		writeError(c, consts.StatusBadRequest, err.Error())
 		return
@@ -490,7 +491,7 @@ func (h *Handlers) HandleStoryDirectorUpdate(ctx context.Context, c *app.Request
 	if !h.ensurePresetMutationWorkspace(c, body.Workspace) {
 		return
 	}
-	director, err := h.app.UpdateStoryDirector(c.Param("id"), body.StoryDirector, body.BaseRevision)
+	director, err := h.app.ResourceCatalog().UpdateStoryDirector(c.Param("id"), body.StoryDirector, body.BaseRevision)
 	if err != nil {
 		if errors.Is(err, interactive.ErrStoryDirectorRevisionConflict) {
 			writeErrorKey(c, consts.StatusConflict, "api.resource.revisionConflict")
@@ -503,7 +504,7 @@ func (h *Handlers) HandleStoryDirectorUpdate(ctx context.Context, c *app.Request
 }
 
 func (h *Handlers) HandleStoryDirectorDelete(ctx context.Context, c *app.RequestContext) {
-	if err := h.app.DeleteStoryDirector(c.Param("id")); err != nil {
+	if err := h.app.ResourceCatalog().DeleteStoryDirector(c.Param("id")); err != nil {
 		writeError(c, consts.StatusBadRequest, err.Error())
 		return
 	}
@@ -511,7 +512,7 @@ func (h *Handlers) HandleStoryDirectorDelete(ctx context.Context, c *app.Request
 }
 
 func (h *Handlers) HandleEventPackages(ctx context.Context, c *app.RequestContext) {
-	items, err := h.app.EventPackages()
+	items, err := h.app.ResourceCatalog().EventPackages()
 	if err != nil {
 		writeError(c, consts.StatusInternalServerError, err.Error())
 		return
@@ -520,7 +521,7 @@ func (h *Handlers) HandleEventPackages(ctx context.Context, c *app.RequestContex
 }
 
 func (h *Handlers) HandleEventPackage(ctx context.Context, c *app.RequestContext) {
-	item, err := h.app.EventPackage(c.Param("id"))
+	item, err := h.app.ResourceCatalog().EventPackage(c.Param("id"))
 	if err != nil {
 		writeError(c, consts.StatusNotFound, err.Error())
 		return
@@ -534,7 +535,7 @@ func (h *Handlers) HandleEventPackageCreate(ctx context.Context, c *app.RequestC
 		writeErrorKey(c, consts.StatusBadRequest, "api.common.invalidRequestWithDetail", "detail", err.Error())
 		return
 	}
-	item, err := h.app.CreateEventPackage(body)
+	item, err := h.app.ResourceCatalog().CreateEventPackage(body)
 	if err != nil {
 		writeError(c, consts.StatusBadRequest, err.Error())
 		return
@@ -555,7 +556,7 @@ func (h *Handlers) HandleEventPackageUpdate(ctx context.Context, c *app.RequestC
 	if !h.ensurePresetMutationWorkspace(c, body.Workspace) {
 		return
 	}
-	item, err := h.app.UpdateEventPackage(c.Param("id"), body.EventPackageModule, body.BaseRevision)
+	item, err := h.app.ResourceCatalog().UpdateEventPackage(c.Param("id"), body.EventPackageModule, body.BaseRevision)
 	if err != nil {
 		if errors.Is(err, interactive.ErrEventPackageRevisionConflict) {
 			writeErrorKey(c, consts.StatusConflict, "api.resource.revisionConflict")
@@ -568,7 +569,7 @@ func (h *Handlers) HandleEventPackageUpdate(ctx context.Context, c *app.RequestC
 }
 
 func (h *Handlers) HandleEventPackageDelete(ctx context.Context, c *app.RequestContext) {
-	if err := h.app.DeleteEventPackage(c.Param("id")); err != nil {
+	if err := h.app.ResourceCatalog().DeleteEventPackage(c.Param("id")); err != nil {
 		writeError(c, consts.StatusBadRequest, err.Error())
 		return
 	}
@@ -576,7 +577,7 @@ func (h *Handlers) HandleEventPackageDelete(ctx context.Context, c *app.RequestC
 }
 
 func (h *Handlers) HandleRuleSystems(ctx context.Context, c *app.RequestContext) {
-	items, err := h.app.RuleSystems()
+	items, err := h.app.ResourceCatalog().RuleSystems()
 	if err != nil {
 		writeError(c, consts.StatusInternalServerError, err.Error())
 		return
@@ -585,7 +586,7 @@ func (h *Handlers) HandleRuleSystems(ctx context.Context, c *app.RequestContext)
 }
 
 func (h *Handlers) HandleRuleSystem(ctx context.Context, c *app.RequestContext) {
-	item, err := h.app.RuleSystem(c.Param("id"))
+	item, err := h.app.ResourceCatalog().RuleSystem(c.Param("id"))
 	if err != nil {
 		writeError(c, consts.StatusNotFound, err.Error())
 		return
@@ -599,7 +600,7 @@ func (h *Handlers) HandleRuleSystemCreate(ctx context.Context, c *app.RequestCon
 		writeErrorKey(c, consts.StatusBadRequest, "api.common.invalidRequestWithDetail", "detail", err.Error())
 		return
 	}
-	item, err := h.app.CreateRuleSystem(body)
+	item, err := h.app.ResourceCatalog().CreateRuleSystem(body)
 	if err != nil {
 		writeError(c, consts.StatusBadRequest, err.Error())
 		return
@@ -620,7 +621,7 @@ func (h *Handlers) HandleRuleSystemUpdate(ctx context.Context, c *app.RequestCon
 	if !h.ensurePresetMutationWorkspace(c, body.Workspace) {
 		return
 	}
-	item, err := h.app.UpdateRuleSystem(c.Param("id"), body.RuleSystemModule, body.BaseRevision)
+	item, err := h.app.ResourceCatalog().UpdateRuleSystem(c.Param("id"), body.RuleSystemModule, body.BaseRevision)
 	if err != nil {
 		if errors.Is(err, interactive.ErrRuleSystemRevisionConflict) {
 			writeErrorKey(c, consts.StatusConflict, "api.resource.revisionConflict")
@@ -633,7 +634,7 @@ func (h *Handlers) HandleRuleSystemUpdate(ctx context.Context, c *app.RequestCon
 }
 
 func (h *Handlers) HandleRuleSystemDelete(ctx context.Context, c *app.RequestContext) {
-	if err := h.app.DeleteRuleSystem(c.Param("id")); err != nil {
+	if err := h.app.ResourceCatalog().DeleteRuleSystem(c.Param("id")); err != nil {
 		writeError(c, consts.StatusBadRequest, err.Error())
 		return
 	}
@@ -641,7 +642,7 @@ func (h *Handlers) HandleRuleSystemDelete(ctx context.Context, c *app.RequestCon
 }
 
 func (h *Handlers) HandleActorStates(ctx context.Context, c *app.RequestContext) {
-	items, err := h.app.ActorStates()
+	items, err := h.app.ResourceCatalog().ActorStates()
 	if err != nil {
 		writeError(c, consts.StatusInternalServerError, err.Error())
 		return
@@ -650,7 +651,7 @@ func (h *Handlers) HandleActorStates(ctx context.Context, c *app.RequestContext)
 }
 
 func (h *Handlers) HandleActorState(ctx context.Context, c *app.RequestContext) {
-	item, err := h.app.ActorState(c.Param("id"))
+	item, err := h.app.ResourceCatalog().ActorState(c.Param("id"))
 	if err != nil {
 		writeError(c, consts.StatusNotFound, err.Error())
 		return
@@ -664,7 +665,7 @@ func (h *Handlers) HandleActorStateCreate(ctx context.Context, c *app.RequestCon
 		writeErrorKey(c, consts.StatusBadRequest, "api.common.invalidRequestWithDetail", "detail", err.Error())
 		return
 	}
-	item, err := h.app.CreateActorState(body)
+	item, err := h.app.ResourceCatalog().CreateActorState(body)
 	if err != nil {
 		writeError(c, consts.StatusBadRequest, err.Error())
 		return
@@ -685,7 +686,7 @@ func (h *Handlers) HandleActorStateUpdate(ctx context.Context, c *app.RequestCon
 	if !h.ensurePresetMutationWorkspace(c, body.Workspace) {
 		return
 	}
-	item, err := h.app.UpdateActorState(c.Param("id"), body.ActorStateModule, body.BaseRevision)
+	item, err := h.app.ResourceCatalog().UpdateActorState(c.Param("id"), body.ActorStateModule, body.BaseRevision)
 	if err != nil {
 		if errors.Is(err, interactive.ErrActorStateRevisionConflict) {
 			writeErrorKey(c, consts.StatusConflict, "api.resource.revisionConflict")
@@ -698,7 +699,7 @@ func (h *Handlers) HandleActorStateUpdate(ctx context.Context, c *app.RequestCon
 }
 
 func (h *Handlers) HandleActorStateDelete(ctx context.Context, c *app.RequestContext) {
-	if err := h.app.DeleteActorState(c.Param("id")); err != nil {
+	if err := h.app.ResourceCatalog().DeleteActorState(c.Param("id")); err != nil {
 		writeError(c, consts.StatusBadRequest, err.Error())
 		return
 	}
@@ -706,7 +707,7 @@ func (h *Handlers) HandleActorStateDelete(ctx context.Context, c *app.RequestCon
 }
 
 func (h *Handlers) HandleImagePresets(ctx context.Context, c *app.RequestContext) {
-	presets, err := h.app.ImagePresets()
+	presets, err := h.app.ResourceCatalog().ImagePresets()
 	if err != nil {
 		writeError(c, consts.StatusInternalServerError, err.Error())
 		return
@@ -715,7 +716,7 @@ func (h *Handlers) HandleImagePresets(ctx context.Context, c *app.RequestContext
 }
 
 func (h *Handlers) HandleImagePreset(ctx context.Context, c *app.RequestContext) {
-	preset, err := h.app.ImagePreset(c.Param("id"))
+	preset, err := h.app.ResourceCatalog().ImagePreset(c.Param("id"))
 	if err != nil {
 		writeError(c, consts.StatusNotFound, err.Error())
 		return
@@ -729,7 +730,7 @@ func (h *Handlers) HandleImagePresetCreate(ctx context.Context, c *app.RequestCo
 		writeErrorKey(c, consts.StatusBadRequest, "api.common.invalidRequestWithDetail", "detail", err.Error())
 		return
 	}
-	preset, err := h.app.CreateImagePreset(body)
+	preset, err := h.app.ResourceCatalog().CreateImagePreset(body)
 	if err != nil {
 		writeError(c, consts.StatusBadRequest, err.Error())
 		return
@@ -750,7 +751,7 @@ func (h *Handlers) HandleImagePresetUpdate(ctx context.Context, c *app.RequestCo
 	if !h.ensurePresetMutationWorkspace(c, body.Workspace) {
 		return
 	}
-	preset, err := h.app.UpdateImagePreset(c.Param("id"), body.Preset, body.BaseRevision)
+	preset, err := h.app.ResourceCatalog().UpdateImagePreset(c.Param("id"), body.Preset, body.BaseRevision)
 	if err != nil {
 		if errors.Is(err, imagepreset.ErrPresetRevisionConflict) {
 			writeErrorKey(c, consts.StatusConflict, "api.resource.revisionConflict")
@@ -776,7 +777,7 @@ func (h *Handlers) ensurePresetMutationWorkspace(c *app.RequestContext, expected
 }
 
 func (h *Handlers) HandleImagePresetDelete(ctx context.Context, c *app.RequestContext) {
-	if err := h.app.DeleteImagePreset(c.Param("id")); err != nil {
+	if err := h.app.ResourceCatalog().DeleteImagePreset(c.Param("id")); err != nil {
 		writeError(c, consts.StatusBadRequest, err.Error())
 		return
 	}

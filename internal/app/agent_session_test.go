@@ -7,6 +7,7 @@ import (
 	"denova/config"
 	agents "denova/internal/agents"
 	"denova/internal/agents/session"
+	configmanagerapp "denova/internal/app/configmanager"
 )
 
 func TestAgentSessionIDCoversBuiltInModelAgents(t *testing.T) {
@@ -92,14 +93,14 @@ func TestConfigManagerScopedSessionsAreIsolated(t *testing.T) {
 		t.Fatal(err)
 	}
 	app := &App{sessionStore: store}
-	automationReq := ConfigManagerRequest{Origin: "automation", ResourceID: "daily-review"}
-	loreReq := ConfigManagerRequest{Origin: "lore", ResourceID: "__config_manager_lore__"}
+	automationReq := configmanagerapp.Request{Origin: "automation", ResourceID: "daily-review"}
+	loreReq := configmanagerapp.Request{Origin: "lore", ResourceID: "__config_manager_lore__"}
 
-	automationID, err := configManagerSessionID(automationReq)
+	automationID, err := configmanagerapp.SessionID(automationReq)
 	if err != nil {
 		t.Fatal(err)
 	}
-	loreID, err := configManagerSessionID(loreReq)
+	loreID, err := configmanagerapp.SessionID(loreReq)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -121,24 +122,24 @@ func TestConfigManagerScopedSessionsAreIsolated(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	automationHistory, err := app.ConfigManagerMessages(automationReq)
+	automationHistory, err := app.ConfigManager().Messages(automationReq)
 	if err != nil {
 		t.Fatal(err)
 	}
 	if len(automationHistory) != 1 || automationHistory[0].Content != "自动化配置" {
 		t.Fatalf("automation history should stay scoped: %#v", automationHistory)
 	}
-	loreHistory, err := app.ConfigManagerMessages(loreReq)
+	loreHistory, err := app.ConfigManager().Messages(loreReq)
 	if err != nil {
 		t.Fatal(err)
 	}
 	if len(loreHistory) != 1 || loreHistory[0].Content != "资料库配置" {
 		t.Fatalf("lore history should stay scoped: %#v", loreHistory)
 	}
-	if err := app.ClearConfigManagerSession(automationReq); err != nil {
+	if err := app.ConfigManager().Clear(automationReq); err != nil {
 		t.Fatal(err)
 	}
-	loreHistory, err = app.ConfigManagerMessages(loreReq)
+	loreHistory, err = app.ConfigManager().Messages(loreReq)
 	if err != nil {
 		t.Fatal(err)
 	}

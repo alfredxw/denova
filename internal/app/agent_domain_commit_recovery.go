@@ -13,6 +13,7 @@ import (
 	"denova/config"
 	agents "denova/internal/agents"
 	"denova/internal/agents/session"
+	compactionapp "denova/internal/app/compaction"
 	"denova/internal/book"
 	"denova/internal/interactive"
 )
@@ -239,9 +240,9 @@ func (a *App) reconcileStructuralDomainCommit(
 	if request.Commit.Hash != plan.IntentHash {
 		return agentrun.DomainCommitReconcileResult{}, fmt.Errorf("structural canonical commit hash does not match frozen recovery plan")
 	}
-	operation, err := a.contextStructuralOperationForRestore(agentharness.StructuralRestoreRequest{
+	operation, err := compactionapp.RestoreOperation(agentharness.StructuralRestoreRequest{
 		Binding: request.Binding, Snapshot: *snapshot, Plan: plan,
-	})
+	}, a.sessionDirectoryForBinding)
 	if err != nil {
 		return agentrun.DomainCommitReconcileResult{}, err
 	}

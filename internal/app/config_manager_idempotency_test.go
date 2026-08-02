@@ -18,6 +18,7 @@ import (
 	agents "denova/internal/agents"
 	agentrun "denova/internal/agents/run"
 	"denova/internal/agents/session"
+	configmanagerapp "denova/internal/app/configmanager"
 
 	runstate "github.com/alfredxw/denova/agent/runtime"
 )
@@ -32,17 +33,17 @@ func TestConfigManagerInitialStartReusesExactTaskAndRejectsConflict(t *testing.T
 	}
 	t.Cleanup(application.Close)
 
-	request := ConfigManagerRequest{
+	request := configmanagerapp.Request{
 		CommandID:   "config-manager-same-start",
 		Instruction: "update the selected resource",
 		Origin:      "settings", ResourceID: "resource-1",
 		Context: map[string]string{"kind": "teller"},
 	}
-	first, err := application.StartConfigManagerTaskWithError(context.Background(), request)
+	first, err := application.ConfigManager().StartTaskWithError(context.Background(), request)
 	if err != nil {
 		t.Fatal(err)
 	}
-	replayed, err := application.StartConfigManagerTaskWithError(context.Background(), request)
+	replayed, err := application.ConfigManager().StartTaskWithError(context.Background(), request)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -52,21 +53,21 @@ func TestConfigManagerInitialStartReusesExactTaskAndRejectsConflict(t *testing.T
 
 	conflict := request
 	conflict.Instruction = "delete the selected resource"
-	if task, err := application.StartConfigManagerTaskWithError(context.Background(), conflict); task != nil || !errors.Is(err, ErrAgentCommandConflict) {
+	if task, err := application.ConfigManager().StartTaskWithError(context.Background(), conflict); task != nil || !errors.Is(err, ErrAgentCommandConflict) {
 		t.Fatalf("different Config Manager payload reuse = task=%v err=%v", task, err)
 	}
 }
 
 func TestConfigManagerInitialStartRequiresCallerCommandID(t *testing.T) {
-	service := &ConfigManagerAppService{}
-	if task, err := service.StartTaskWithError(context.Background(), ConfigManagerRequest{Instruction: "update"}); task != nil || !errors.Is(err, ErrAgentCommandIDRequired) {
+	service := configmanagerapp.NewService(nil)
+	if task, err := service.StartTaskWithError(context.Background(), configmanagerapp.Request{Instruction: "update"}); task != nil || !errors.Is(err, ErrAgentCommandIDRequired) {
 		t.Fatalf("missing command_id = task=%v err=%v", task, err)
 	}
 }
 
 func TestConfigManagerInitialStartRejectsOversizedCommandIDBeforeWorkspaceAccess(t *testing.T) {
-	service := &ConfigManagerAppService{}
-	request := ConfigManagerRequest{CommandID: strings.Repeat("x", 4097), Instruction: "update"}
+	service := configmanagerapp.NewService(nil)
+	request := configmanagerapp.Request{CommandID: strings.Repeat("x", 4097), Instruction: "update"}
 	if task, err := service.StartTaskWithError(context.Background(), request); task != nil || !errors.Is(err, runstate.ErrInvalidCommand) {
 		t.Fatalf("oversized command_id = task=%v err=%v", task, err)
 	}
@@ -96,15 +97,15 @@ func TestConfigManagerReplayCapacityRejectsBeforeRuntimeAdmission(t *testing.T) 
 		blocker.RejectStart(errors.New("test cleanup"))
 	})
 
-	request := ConfigManagerRequest{
+	request := configmanagerapp.Request{
 		CommandID: "config-capacity-pre-admission", Instruction: "update settings",
 		Origin: "settings", ResourceID: "resource-capacity",
 	}
-	if task, err := application.StartConfigManagerTaskWithError(context.Background(), request); task != nil || !errors.Is(err, ErrAgentReplayCapacity) {
+	if task, err := application.ConfigManager().StartTaskWithError(context.Background(), request); task != nil || !errors.Is(err, ErrAgentReplayCapacity) {
 		t.Fatalf("capacity start = task=%v err=%v, want pre-admission capacity rejection", task, err)
 	}
 
-	sessionID, err := configManagerSessionID(request)
+	sessionID, err := configmanagerapp.SessionID(request)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -134,12 +135,12 @@ func TestConfigManagerOlderSettledStartColdReplayWithoutModel(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	requests := []ConfigManagerRequest{
+	requests := []configmanagerapp.Request{
 		{CommandID: "config-older-settled", Instruction: "first update"},
 		{CommandID: "config-newer-settled", Instruction: "second update"},
 	}
 	answers := []string{"first config answer", "second config answer"}
-	sessionID, err := configManagerSessionID(requests[0])
+	sessionID, err := configmanagerapp.SessionID(requests[0])
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -150,7 +151,7 @@ func TestConfigManagerOlderSettledStartColdReplayWithoutModel(t *testing.T) {
 	for index := range requests {
 		chatRequest := agentchat.ChatRequest{
 			CommandID: requests[index].CommandID,
-			Message:   buildConfigManagerMessage(requests[index]),
+			Message:   configmanagerapp.BuildMessage(requests[index]),
 		}
 		outcome := service.RunWithOptions(
 			context.Background(), newConfigManagerColdReplayRunner(t, answers[index]),
@@ -178,7 +179,7 @@ func TestConfigManagerOlderSettledStartColdReplayWithoutModel(t *testing.T) {
 	application.agentRunner = nil
 	application.mu.Unlock()
 
-	task, err := application.StartConfigManagerTaskWithError(context.Background(), requests[0])
+	task, err := application.ConfigManager().StartTaskWithError(context.Background(), requests[0])
 	if err != nil {
 		t.Fatal(err)
 	}

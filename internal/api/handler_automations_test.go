@@ -11,7 +11,7 @@ import (
 func TestAutomationAgentStreamsRequireCallerCommandID(t *testing.T) {
 	application := newTestApplication(t)
 	server := NewServer(application, "0")
-	created, err := application.CreateAutomation(automation.Task{
+	created, err := application.Automation().Create(automation.Task{
 		Scope: automation.ScopeWorkspace, Name: "Review", Template: automation.TemplateReview, Prompt: "review",
 	})
 	if err != nil {
@@ -39,7 +39,7 @@ func TestAutomationAgentStreamsRequireCallerCommandID(t *testing.T) {
 func TestAutomationUpdateRejectsStaleRevisionAPI(t *testing.T) {
 	application := newTestApplication(t)
 	server := NewServer(application, "0")
-	created, err := application.CreateAutomation(automation.Task{
+	created, err := application.Automation().Create(automation.Task{
 		Scope:    automation.ScopeWorkspace,
 		Name:     "Review",
 		Template: automation.TemplateReview,
@@ -48,7 +48,7 @@ func TestAutomationUpdateRejectsStaleRevisionAPI(t *testing.T) {
 	if err != nil {
 		t.Fatalf("CreateAutomation failed: %v", err)
 	}
-	agent, err := application.UpdateAutomation(created.ID, automation.Task{Prompt: "agent update"})
+	agent, err := application.Automation().Update(created.ID, automation.Task{Prompt: "agent update"})
 	if err != nil {
 		t.Fatalf("agent UpdateAutomation failed: %v", err)
 	}
@@ -65,7 +65,7 @@ func TestAutomationUpdateRejectsStaleRevisionAPI(t *testing.T) {
 	if payload["code"] != "revision_conflict" {
 		t.Fatalf("conflict code = %#v body=%s", payload["code"], resp.Body.String())
 	}
-	tasks, err := application.Automations()
+	tasks, err := application.Automation().List()
 	if err != nil {
 		t.Fatalf("list latest tasks failed: %v", err)
 	}
@@ -84,7 +84,7 @@ func TestAutomationUpdateRejectsStaleRevisionAPI(t *testing.T) {
 func TestAutomationUpdateRequiresBaseRevisionAPI(t *testing.T) {
 	application := newTestApplication(t)
 	server := NewServer(application, "0")
-	created, err := application.CreateAutomation(automation.Task{
+	created, err := application.Automation().Create(automation.Task{
 		Scope:    automation.ScopeWorkspace,
 		Name:     "Review",
 		Template: automation.TemplateReview,
@@ -106,7 +106,7 @@ func TestAutomationUpdateRequiresBaseRevisionAPI(t *testing.T) {
 		t.Fatalf("missing revision code = %#v body=%s", payload["code"], resp.Body.String())
 	}
 
-	tasks, err := application.Automations()
+	tasks, err := application.Automation().List()
 	if err != nil {
 		t.Fatalf("list tasks failed: %v", err)
 	}

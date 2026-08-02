@@ -13,10 +13,11 @@ import (
 	"denova/internal/api/agentui"
 	"denova/internal/api/sse"
 	appsvc "denova/internal/app"
+	configmanagerapp "denova/internal/app/configmanager"
 )
 
 func (h *Handlers) HandleConfigManagerStream(ctx context.Context, c *app.RequestContext) {
-	var req appsvc.ConfigManagerRequest
+	var req configmanagerapp.Request
 	if err := c.BindJSON(&req); err != nil {
 		writeError(c, consts.StatusBadRequest, err.Error())
 		return
@@ -37,7 +38,7 @@ func (h *Handlers) HandleConfigManagerStream(ctx context.Context, c *app.Request
 		return
 	}
 	req.Locale = requestLocale(c)
-	task, err := h.app.StartConfigManagerTaskWithError(ctx, req)
+	task, err := h.app.ConfigManager().StartTaskWithError(ctx, req)
 	if err != nil {
 		h.writeChatPreparationError(c, err)
 		return
@@ -56,7 +57,7 @@ func (h *Handlers) HandleConfigManagerTaskStream(ctx context.Context, c *app.Req
 		writeAgentRuntimeError(c, consts.StatusBadRequest, "agent_runtime.invalid_command", "缺少 task_id，无法精确恢复 Agent 流 / task_id is required for exact Agent stream recovery", nil)
 		return
 	}
-	task := h.app.ConfigManagerDisplayTask(ctx, configManagerRequestFromQuery(c), taskID)
+	task := h.app.ConfigManager().DisplayTask(ctx, configManagerRequestFromQuery(c), taskID)
 	if task == nil {
 		writeAgentRuntimeError(c, consts.StatusConflict, "agent_runtime.rehydrate_required", "旧的任务流已失效，请从 active projection 重新挂接 / The old task stream is stale; rehydrate from the active projection", map[string]any{"task_id": taskID})
 		return
@@ -69,7 +70,7 @@ func (h *Handlers) HandleConfigManagerActive(ctx context.Context, c *app.Request
 	if !h.requireWorkspace(c) {
 		return
 	}
-	view := h.app.ConfigManagerAgentActiveView(ctx, configManagerRequestFromQuery(c))
+	view := h.app.ConfigManager().ActiveView(ctx, configManagerRequestFromQuery(c))
 	response := map[string]any{"active": false}
 	if view.PendingAsk != nil {
 		response["pending_ask"] = view.PendingAsk
@@ -95,7 +96,7 @@ func (h *Handlers) HandleConfigManagerRecovery(ctx context.Context, c *app.Reque
 	if !ok {
 		return
 	}
-	result, err := h.app.RecoverConfigManagerAgent(ctx, configManagerRequestFromQuery(c), request)
+	result, err := h.app.ConfigManager().Recover(ctx, configManagerRequestFromQuery(c), request)
 	if err != nil {
 		h.writeAgentRecoveryError(c, err, request.Action)
 		return
@@ -128,7 +129,7 @@ func (h *Handlers) HandleConfigManagerMessages(ctx context.Context, c *app.Reque
 				return
 			}
 		}
-		page, err := h.app.ConfigManagerMessagesPage(ctx, configManagerRequestFromQuery(c), before, limit)
+		page, err := h.app.ConfigManager().MessagesPage(ctx, configManagerRequestFromQuery(c), before, limit)
 		if err != nil {
 			writeError(c, consts.StatusBadRequest, err.Error())
 			return
@@ -139,7 +140,7 @@ func (h *Handlers) HandleConfigManagerMessages(ctx context.Context, c *app.Reque
 		})
 		return
 	}
-	entries, err := h.app.ConfigManagerMessages(configManagerRequestFromQuery(c))
+	entries, err := h.app.ConfigManager().Messages(configManagerRequestFromQuery(c))
 	if err != nil {
 		writeError(c, consts.StatusBadRequest, err.Error())
 		return
@@ -151,15 +152,15 @@ func (h *Handlers) HandleConfigManagerClear(ctx context.Context, c *app.RequestC
 	if !h.requireWorkspace(c) {
 		return
 	}
-	if err := h.app.ClearConfigManagerSessionContext(ctx, configManagerRequestFromQuery(c)); err != nil {
+	if err := h.app.ConfigManager().ClearContext(ctx, configManagerRequestFromQuery(c)); err != nil {
 		writeError(c, consts.StatusBadRequest, err.Error())
 		return
 	}
 	writeJSON(c, consts.StatusOK, map[string]string{"status": "ok"})
 }
 
-func configManagerRequestFromQuery(c *app.RequestContext) appsvc.ConfigManagerRequest {
-	return appsvc.ConfigManagerRequest{
+func configManagerRequestFromQuery(c *app.RequestContext) configmanagerapp.Request {
+	return configmanagerapp.Request{
 		Origin:     strings.TrimSpace(c.Query("origin")),
 		ResourceID: strings.TrimSpace(c.Query("resource_id")),
 		StoryID:    strings.TrimSpace(c.Query("story_id")),

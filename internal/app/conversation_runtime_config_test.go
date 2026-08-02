@@ -2,11 +2,10 @@ package app
 
 import (
 	"testing"
-	"time"
 
 	"denova/config"
+	agentconversation "denova/internal/agents/conversation"
 	"denova/internal/agents/session"
-	"denova/internal/automation"
 )
 
 func TestNewConversationInheritsLatestSameKindWithoutChangingOlderSessions(t *testing.T) {
@@ -22,7 +21,7 @@ func TestNewConversationInheritsLatestSameKindWithoutChangingOlderSessions(t *te
 		},
 	}
 
-	first, firstSnapshot, err := getOrCreateConversationSession(store, "writing-first", &runtimeCfg, config.AgentKindIDE)
+	first, firstSnapshot, err := agentconversation.GetOrCreateSession(store, "writing-first", &runtimeCfg, config.AgentKindIDE)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -34,7 +33,7 @@ func TestNewConversationInheritsLatestSameKindWithoutChangingOlderSessions(t *te
 		t.Fatal(err)
 	}
 
-	_, inherited, err := getOrCreateConversationSession(store, "writing-second", &runtimeCfg, config.AgentKindIDE)
+	_, inherited, err := agentconversation.GetOrCreateSession(store, "writing-second", &runtimeCfg, config.AgentKindIDE)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -47,7 +46,7 @@ func TestNewConversationInheritsLatestSameKindWithoutChangingOlderSessions(t *te
 		t.Fatalf("creating a new conversation changed the older one: %#v", firstAfter)
 	}
 
-	_, general, err := getOrCreateConversationSession(store, "general-first", &runtimeCfg, config.AgentKindGeneral)
+	_, general, err := agentconversation.GetOrCreateSession(store, "general-first", &runtimeCfg, config.AgentKindGeneral)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -71,14 +70,14 @@ func TestLegacyConversationInitializesOnceAndThenStaysIndependent(t *testing.T) 
 			IDE: config.AgentModelOverride{ThinkingLevel: "medium"},
 		},
 	}
-	initialized, err := ensureExistingSessionConfig(legacy, &runtimeCfg, config.AgentKindIDE)
+	initialized, err := agentconversation.EnsureSession(legacy, &runtimeCfg, config.AgentKindIDE)
 	if err != nil {
 		t.Fatal(err)
 	}
 
 	runtimeCfg.AgentApprovalMode = config.AgentApprovalAsk
 	runtimeCfg.AgentModels.IDE.ThinkingLevel = "max"
-	again, err := ensureExistingSessionConfig(legacy, &runtimeCfg, config.AgentKindIDE)
+	again, err := agentconversation.EnsureSession(legacy, &runtimeCfg, config.AgentKindIDE)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -98,7 +97,7 @@ func TestConversationConfigPreviewDoesNotPersistDraftSession(t *testing.T) {
 			General: config.AgentModelOverride{ThinkingLevel: "medium"},
 		},
 	}
-	snapshot, err := previewConversationSessionConfig(store, "local-draft", &runtimeCfg, config.AgentKindGeneral)
+	snapshot, err := agentconversation.PreviewSession(store, "local-draft", &runtimeCfg, config.AgentKindGeneral)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -108,73 +107,11 @@ func TestConversationConfigPreviewDoesNotPersistDraftSession(t *testing.T) {
 	if store.Exists("local-draft") {
 		t.Fatal("reading draft configuration must not create a durable session")
 	}
-	_, persisted, err := getOrCreateConversationSession(store, "local-draft", &runtimeCfg, config.AgentKindGeneral)
+	_, persisted, err := agentconversation.GetOrCreateSession(store, "local-draft", &runtimeCfg, config.AgentKindGeneral)
 	if err != nil {
 		t.Fatal(err)
 	}
 	if persisted.Revision != 1 || !store.Exists("local-draft") {
 		t.Fatalf("persisted draft configuration = %#v", persisted)
-	}
-}
-
-func TestAutomationConversationInheritsRecentSelectionAndAppliesItToRuntime(t *testing.T) {
-	store, err := session.NewStore(t.TempDir())
-	if err != nil {
-		t.Fatal(err)
-	}
-	snap := &automationWorkspaceSnapshot{
-		sessionStore: store,
-		cfg: config.Config{
-			OpenAIModel:       "base-model",
-			AgentApprovalMode: config.AgentApprovalWrite,
-			AgentModels: config.AgentModelSettings{
-				Automation: config.AgentModelOverride{ProfileID: "fast", ThinkingLevel: "low"},
-			},
-			ModelProfiles: []config.ModelProfileSettings{
-				{ID: "fast", Name: "Fast", OpenAIModel: "fast-model"},
-				{ID: "quality", Name: "Quality", OpenAIModel: "quality-model"},
-			},
-		},
-	}
-	service := &AutomationAppService{}
-	task := automation.Task{Name: "Review", ModelProfileID: "fast"}
-	firstRun := automation.RunRecord{ID: "first", SessionID: automationRunSessionID("first"), Trigger: automation.TriggerManual, StartedAt: time.Now()}
-	firstConversation, err := service.newRunConversation(snap, firstRun, task)
-	if err != nil {
-		t.Fatal(err)
-	}
-	firstSession, err := store.Get(firstRun.SessionID)
-	if err != nil {
-		t.Fatal(err)
-	}
-	firstSnapshot, ok := firstSession.RuntimeConfig()
-	if !ok {
-		t.Fatal("first automation conversation has no runtime config")
-	}
-	configured := firstSnapshot.Config
-	configured.ProfileID = "quality"
-	configured.ThinkingLevel = "high"
-	configured.ApprovalMode = config.AgentApprovalFullAccess
-	if _, err := firstSession.SetRuntimeConfig(configured, firstSnapshot.Revision); err != nil {
-		t.Fatal(err)
-	}
-
-	secondRun := automation.RunRecord{ID: "second", SessionID: automationRunSessionID("second"), Trigger: automation.TriggerSchedule, StartedAt: time.Now()}
-	secondConversation, err := service.newRunConversation(snap, secondRun, task)
-	if err != nil {
-		t.Fatal(err)
-	}
-	secondRuntime := secondConversation.RuntimeConfig()
-	resolved := config.ResolveAgentModel(&secondRuntime, config.AgentKindAutomation)
-	if resolved.ProfileID != "quality" || resolved.OpenAIModel != "quality-model" || resolved.ThinkingLevel != "high" {
-		t.Fatalf("inherited automation model = %#v", resolved)
-	}
-	if secondConversation.RuntimeConfig().AgentApprovalMode != config.AgentApprovalFullAccess {
-		t.Fatalf("inherited automation approval = %q", secondConversation.RuntimeConfig().AgentApprovalMode)
-	}
-	firstRuntime := firstConversation.RuntimeConfig()
-	firstResolved := config.ResolveAgentModel(&firstRuntime, config.AgentKindAutomation)
-	if firstResolved.ProfileID != "fast" {
-		t.Fatalf("older automation runtime changed after configuring a newer run: %#v", firstResolved)
 	}
 }

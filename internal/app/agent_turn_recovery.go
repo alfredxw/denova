@@ -11,6 +11,8 @@ import (
 	"denova/config"
 	"denova/internal/agents/prompts"
 	agentrun "denova/internal/agents/run"
+	agentchatapp "denova/internal/app/agentchat"
+	appagentruntime "denova/internal/app/agentruntime"
 )
 
 // restoreHarnessTurn reconstructs only process-local execution dependencies.
@@ -24,10 +26,10 @@ func (a *App) restoreHarnessTurn(_ context.Context, request agentharness.TurnRes
 	binding := request.Binding
 	switch binding.AgentKind {
 	case agentrun.AgentKindGeneral:
-		return a.agentChat().restoreHarnessTurn(request, binding), nil
+		return a.AgentChat().RestoreTurn(request, binding), nil
 	case agentrun.AgentKindIDE:
-		if binding.Mode == agentChatRuntimeMode {
-			return a.agentChat().restoreHarnessTurn(request, binding), nil
+		if binding.Mode == agentchatapp.RuntimeMode {
+			return a.AgentChat().RestoreTurn(request, binding), nil
 		}
 		return a.restoreWritingHarnessTurn(request, binding), nil
 	case agentrun.AgentKindInteractiveStory:
@@ -99,7 +101,9 @@ func (s *ChatAppService) prepareWritingHarnessTurn(
 	if err != nil {
 		return agentharness.TurnExecution{}, ideChatRuntime{}, err
 	}
-	runner, systemPrompt, err := buildAgentRunnerWithComposition(ctx, &runtime.cfg, runtime.state, runtime.ideTeller)
+	runner, systemPrompt, err := appagentruntime.BuildConversation(
+		ctx, &runtime.cfg, runtime.state, runtime.ideTeller, agentrun.AgentKindIDE,
+	)
 	if err != nil {
 		return agentharness.TurnExecution{}, ideChatRuntime{}, err
 	}
@@ -116,8 +120,8 @@ func (s *ChatAppService) prepareWritingHarnessTurn(
 		SessionID:          runtime.sess.ID,
 		Workspace:          runtime.workspace,
 		Mode:               "ide",
-		IdleTimeout:        agentIdleTimeout(runtime.cfg),
-		ToolResultMaxBytes: agentToolResultMaxBytes(runtime.cfg),
+		IdleTimeout:        appagentruntime.IdleTimeout(runtime.cfg),
+		ToolResultMaxBytes: appagentruntime.ToolResultMaxBytes(runtime.cfg),
 		SystemPromptLog:    systemPrompt,
 		OnMutationsVerified: s.app.writingMutationCallback(
 			strings.TrimSpace(taskID), conversation,

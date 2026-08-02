@@ -9,12 +9,12 @@ import (
 	"fmt"
 	"log/slog"
 	"strings"
-	"time"
 
 	"denova/config"
 	"denova/internal/agents/prompts"
 	agentrun "denova/internal/agents/run"
 	agenttool "denova/internal/agents/tool"
+	appagentruntime "denova/internal/app/agentruntime"
 )
 
 func (a *App) StartTask(ctx context.Context, req agentchat.ChatRequest) *apptask.Task {
@@ -60,7 +60,7 @@ func (s *ChatAppService) StartTaskWithError(ctx context.Context, req agentchat.C
 	if workspace == "" || sessionID == "" {
 		return nil, ErrNoWorkspace
 	}
-	if replay, ok, err := s.starts.replay(req.CommandID, workspace, sessionID, requestFingerprint); err != nil {
+	if replay, ok, err := s.starts.Replay(agentStartIdentity(req.CommandID, workspace, sessionID, requestFingerprint)); err != nil {
 		return nil, err
 	} else if ok {
 		return replay, nil
@@ -108,7 +108,9 @@ func (s *ChatAppService) StartTaskWithError(ctx context.Context, req agentchat.C
 		return nil, ErrAgentOperationActive
 	}
 
-	runner, systemPrompt, err := buildAgentRunnerWithComposition(ctx, &runtime.cfg, runtime.state, runtime.ideTeller)
+	runner, systemPrompt, err := appagentruntime.BuildConversation(
+		ctx, &runtime.cfg, runtime.state, runtime.ideTeller, agentrun.AgentKindIDE,
+	)
 	if err != nil {
 		slog.ErrorContext(ctx, fmt.Sprintf("[agent-task] 刷新 Agent Runner 失败 workspace=%s err=%v", runtime.workspace, err))
 		return nil, err
@@ -185,8 +187,8 @@ func (s *ChatAppService) StartTaskWithError(ctx context.Context, req agentchat.C
 		SessionID:          runtime.sess.ID,
 		Workspace:          runtime.workspace,
 		Mode:               "ide",
-		IdleTimeout:        agentIdleTimeout(runtime.cfg),
-		ToolResultMaxBytes: agentToolResultMaxBytes(runtime.cfg),
+		IdleTimeout:        appagentruntime.IdleTimeout(runtime.cfg),
+		ToolResultMaxBytes: appagentruntime.ToolResultMaxBytes(runtime.cfg),
 		SystemPromptLog:    systemPrompt,
 		OnMutationsVerified: func(_ context.Context, mutations []agenttool.Mutation, verification agenttool.Verification) {
 			verifiedMutations = append([]agenttool.Mutation(nil), mutations...)
@@ -225,21 +227,13 @@ func (s *ChatAppService) StartTaskWithError(ctx context.Context, req agentchat.C
 		a.mu.Unlock()
 		return nil, err
 	}
-	if err := s.starts.remember(writingStartRecord{
-		commandID: req.CommandID, workspace: runtime.workspace,
-		sessionID: runtime.sess.ID, fingerprint: requestFingerprint, task: task,
-	}); err != nil {
+	if err := s.starts.Remember(agentStartRecord(
+		req.CommandID, runtime.workspace, runtime.sess.ID, requestFingerprint, task,
+	)); err != nil {
 		// The command is already durable at this point. Keep the original Task
 		// alive and surface the registry invariant instead of starting another.
 		return nil, err
 	}
 
 	return task, nil
-}
-
-func agentIdleTimeout(cfg config.Config) time.Duration {
-	if cfg.AgentIdleTimeoutSeconds <= 0 {
-		return 0
-	}
-	return time.Duration(cfg.AgentIdleTimeoutSeconds) * time.Second
 }

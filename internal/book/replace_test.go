@@ -127,3 +127,25 @@ func TestListReplaceCandidateFilesFiltersLikeSearch(t *testing.T) {
 		t.Fatalf("候选文件应只包含可见文本文件，实际: %#v", paths)
 	}
 }
+
+func TestListReplaceCandidateFilesExcludesExplicitProjectState(t *testing.T) {
+	workspace := t.TempDir()
+	stateRoot := filepath.Join(workspace, "project-state", "project-1")
+	if err := os.MkdirAll(stateRoot, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(workspace, "notes.txt"), []byte("user content"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(stateRoot, "session.json"), []byte("internal state"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	paths, err := ListReplaceCandidateFiles(workspace, stateRoot)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(paths) != 1 || paths[0] != "notes.txt" {
+		t.Fatalf("candidate files = %#v, want only user content", paths)
+	}
+}

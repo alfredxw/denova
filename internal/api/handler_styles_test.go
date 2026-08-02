@@ -13,7 +13,7 @@ import (
 func TestStyleReferenceFileReadAndUpdateAPI(t *testing.T) {
 	application := newTestApplication(t)
 	server := NewServer(application, "0")
-	ref, err := application.SaveStyleReference(style.WriteRequest{
+	ref, err := application.ResourceCatalog().SaveStyleReference(style.WriteRequest{
 		Name:     "克制文风",
 		Filename: "restraint.md",
 		Content:  "# 克制文风\n\n动作承载情绪。\n",
@@ -50,7 +50,7 @@ func TestStyleReferenceFileReadAndUpdateAPI(t *testing.T) {
 func TestStyleReferenceFileUpdateRejectsStaleRevisionAPI(t *testing.T) {
 	application := newTestApplication(t)
 	server := NewServer(application, "0")
-	ref, err := application.SaveStyleReference(style.WriteRequest{
+	ref, err := application.ResourceCatalog().SaveStyleReference(style.WriteRequest{
 		Name:     "旧文风",
 		Filename: "stale.md",
 		Content:  "# 旧文风\n\n旧内容。\n",
@@ -58,7 +58,7 @@ func TestStyleReferenceFileUpdateRejectsStaleRevisionAPI(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	doc, err := application.StyleReferenceFile(ref.DisplayPath)
+	doc, err := application.ResourceCatalog().StyleReferenceFile(ref.DisplayPath)
 	if err != nil {
 		t.Fatal(err)
 	}

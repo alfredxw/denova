@@ -71,31 +71,6 @@ func TestAppTaskReplayAdmissionIsSharedAcrossProducts(t *testing.T) {
 	}
 }
 
-func TestWorkspaceTaskUnregisterWakesDurableEffectReconciliation(t *testing.T) {
-	application := &App{
-		workspace:            "/workspace-a",
-		automationEffectWake: make(chan struct{}, 1),
-	}
-	task, err := registerReplayProductTask(application, "Writing", false, 128)
-	if err != nil {
-		t.Fatalf("register Writing Task: %v", err)
-	}
-
-	task.RejectStart(errors.New("settled test Task"))
-	application.unregisterWorkspaceTask(task)
-	select {
-	case <-application.automationEffectWake:
-	default:
-		t.Fatal("Task settlement did not wake durable HostEffect reconciliation")
-	}
-	application.unregisterWorkspaceTask(task)
-	select {
-	case <-application.automationEffectWake:
-		t.Fatal("duplicate Task unregister emitted another reconciliation wake")
-	default:
-	}
-}
-
 func TestDefaultAppTaskReplayAdmissionCapsMixedProductsAtEightAnd512MiB(t *testing.T) {
 	application := &App{workspace: "/workspace-a"}
 	registrations := []struct {
@@ -197,7 +172,10 @@ func registerReplayProductTask(application *App, product string, root bool, reta
 		application.mu.Lock()
 		defer application.mu.Unlock()
 		if root {
-			return (&AutomationAppService{app: application}).registerAutomationTaskLocked(task, "")
+			if err := application.initializeLifecycleLocked(); err != nil {
+				return err
+			}
+			return application.registerOwnedTaskLocked(task, "", application.rootScope)
 		}
 		if product == "" {
 			return fmt.Errorf("test product is required")
@@ -287,7 +265,7 @@ func TestWorkspaceTransitionFencesStartsAndWaitsForAdmittedTaskExit(t *testing.T
 	}
 }
 
-func TestClearLoreImageTaskReleasesWorkspaceGenerationLease(t *testing.T) {
+func TestLoreHostUnregisterReleasesWorkspaceGenerationLease(t *testing.T) {
 	application := &App{workspace: "/workspace-a"}
 	task, err := apptask.NewDeferred(nil)
 	if err != nil {
@@ -299,20 +277,18 @@ func TestClearLoreImageTaskReleasesWorkspaceGenerationLease(t *testing.T) {
 		application.mu.Unlock()
 		t.Fatal(err)
 	}
-	application.activeLoreImageTask = task
 	scope := application.workspaceScopes[lifecycleWorkspaceKey(application.workspace)]
 	application.mu.Unlock()
 
-	(&LoreAppService{app: application}).clearLoreImageTask(task)
+	(loreHost{app: application}).UnregisterLoreTask(task)
 	application.mu.RLock()
 	_, registered := application.workspaceTasks[task]
 	_, hasLease := application.workspaceTaskLeases[task]
 	_, hasStop := application.workspaceTaskStops[task]
 	_, hasReplay := application.workspaceTaskReplayReservations[task]
-	active := application.activeLoreImageTask
 	application.mu.RUnlock()
-	if registered || hasLease || hasStop || hasReplay || active != nil {
-		t.Fatalf("lore task cleanup left registry state: registered=%t lease=%t stop=%t replay=%t active=%p", registered, hasLease, hasStop, hasReplay, active)
+	if registered || hasLease || hasStop || hasReplay {
+		t.Fatalf("lore task cleanup left registry state: registered=%t lease=%t stop=%t replay=%t", registered, hasLease, hasStop, hasReplay)
 	}
 
 	scope.BeginClose()

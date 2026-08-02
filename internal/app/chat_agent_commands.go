@@ -2,24 +2,16 @@ package app
 
 import (
 	"context"
-	agentchat "denova/internal/agents/chat"
 	agentharness "denova/internal/agents/harness"
 	agentrun "denova/internal/agents/run"
+	appagentruntime "denova/internal/app/agentruntime"
 	apptask "denova/internal/app/task"
-	"errors"
 	"fmt"
 )
 
-var ErrNoActiveAgentOperation = errors.New("no active agent operation")
+var ErrNoActiveAgentOperation = appagentruntime.ErrNoActiveOperation
 
-type ChatAgentCommand struct {
-	Kind            agentharness.CommandKind
-	CommandID       string
-	OperationID     agentrun.OperationID
-	TargetCommandID agentrun.CommandID
-	Reason          string
-	Input           agentchat.ChatRequest
-}
+type ChatAgentCommand = appagentruntime.Command
 
 // SubmitChatAgentCommand adapts a transport command to the active writing
 // binding. Workspace/session identity is captured from App state and never

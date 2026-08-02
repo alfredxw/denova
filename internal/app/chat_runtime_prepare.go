@@ -2,321 +2,72 @@ package app
 
 import (
 	"context"
-	agentchat "denova/internal/agents/chat"
-	apptask "denova/internal/app/task"
-	"fmt"
-	"log/slog"
-	"strings"
 
 	"denova/config"
-	"denova/internal/agents/prompts"
-	agentrun "denova/internal/agents/run"
-	novaskills "denova/internal/agents/skills"
-	"denova/internal/book/lore"
-	imagepreset "denova/internal/image/preset"
-	"denova/internal/interactive/teller"
-	"denova/internal/style"
+	agentchat "denova/internal/agents/chat"
+	appconversation "denova/internal/app/conversation"
+	"denova/internal/app/task"
 )
 
-func (s *ChatAppService) prepareIDEChatRuntime(ctx context.Context, req agentchat.ChatRequest) (ideChatRuntime, agentchat.ChatRequest, error) {
-	a := s.app
-	a.mu.Lock()
-	if a.session == nil || a.bookState == nil || a.cfg == nil {
-		a.mu.Unlock()
-		return ideChatRuntime{}, req, ErrNoWorkspace
+func (service *ChatAppService) prepareIDEChatRuntime(ctx context.Context, request agentchat.ChatRequest) (ideChatRuntime, agentchat.ChatRequest, error) {
+	app := service.app
+	app.mu.Lock()
+	if app.session == nil || app.bookState == nil || app.cfg == nil {
+		app.mu.Unlock()
+		return ideChatRuntime{}, request, ErrNoWorkspace
 	}
-
 	runtime := ideChatRuntime{
-		app:            a,
-		projectID:      a.cfg.ProjectID,
-		projectType:    ProjectTypeBook,
-		projectState:   a.cfg.ProjectStateDir,
-		agentKind:      agentrun.AgentKindIDE,
-		sess:           a.session,
-		state:          a.bookState,
-		bookService:    a.bookService,
-		chatService:    a.chatService,
-		workspace:      a.workspace,
-		versionService: a.versionService,
-		cfg:            *a.cfg,
+		app: app, projectID: app.cfg.ProjectID, projectType: ProjectTypeBook,
+		projectState: app.cfg.ProjectStateDir, agentKind: config.AgentKindIDE,
+		sess: app.session, state: app.bookState, bookService: app.bookService,
+		chatService: app.chatService, workspace: app.workspace, versionService: app.versionService,
+		cfg: *app.cfg,
 	}
 	runtime.cfg.Workspace = runtime.workspace
-	runtime.ideTeller = ideStoryTellerForConfig(&runtime.cfg)
-	a.mu.Unlock()
-	return s.prepareIDEChatRuntimeSnapshot(ctx, runtime, req)
+	app.mu.Unlock()
+	return service.prepareIDEChatRuntimeSnapshot(ctx, runtime, request)
 }
 
-func (s *ChatAppService) prepareProjectChatRuntimeSnapshot(
-	ctx context.Context,
-	runtime ideChatRuntime,
-	req agentchat.ChatRequest,
-) (ideChatRuntime, agentchat.ChatRequest, error) {
-	if runtime.projectType == ProjectTypeGeneral {
-		return s.prepareGeneralChatRuntimeSnapshot(ctx, runtime, req)
-	}
-	return s.prepareIDEChatRuntimeSnapshot(ctx, runtime, req)
-}
-
-func (s *ChatAppService) prepareGeneralChatRuntimeSnapshot(
-	ctx context.Context,
-	runtime ideChatRuntime,
-	req agentchat.ChatRequest,
-) (ideChatRuntime, agentchat.ChatRequest, error) {
-	if err := ctx.Err(); err != nil {
-		return ideChatRuntime{}, req, err
-	}
-	runtime.cfg.Workspace = runtime.workspace
-	runtime.cfg.ProjectID = runtime.projectID
-	runtime.cfg.ProjectStateDir = runtime.projectState
-	projectConfigPath := config.ProjectConfigPath(runtime.projectState)
-	layered, err := config.LoadLayeredWithStartupConfigAt(runtime.cfg.DataDir(), runtime.workspace, projectConfigPath)
+func (service *ChatAppService) prepareProjectChatRuntimeSnapshot(ctx context.Context, runtime ideChatRuntime, request agentchat.ChatRequest) (ideChatRuntime, agentchat.ChatRequest, error) {
+	prepared, resolved, err := appconversation.Prepare(ctx, sharedConversationRuntime(runtime), request)
 	if err != nil {
-		return ideChatRuntime{}, req, fmt.Errorf("load General Agent project settings: %w", err)
+		return ideChatRuntime{}, request, err
 	}
-	applyLayeredSettingsToConfig(&runtime.cfg, layered)
-	runtime.cfg.Workspace = runtime.workspace
-	runtime.cfg.ProjectID = runtime.projectID
-	runtime.cfg.ProjectStateDir = runtime.projectState
-	applyRequestLocaleToConfig(&runtime.cfg, req.Locale)
-	if err := s.resolveReviewFeedback(ctx, runtime, &req); err != nil {
-		return ideChatRuntime{}, req, err
-	}
-	if _, err := applySessionConversationConfig(runtime.sess, &runtime.cfg, runtime.agentKind); err != nil {
-		return ideChatRuntime{}, req, err
-	}
-	return runtime, req, nil
+	return applySharedConversationRuntime(runtime, prepared), resolved, nil
 }
 
-// prepareIDEChatRuntimeSnapshot applies the same request/runtime policy to an
-// explicitly captured project runtime. The foreground Writing workspace and
-// user-level AgentChat both use this path, so prompt, Skills, teller, image,
-// review and resident-lore behavior cannot silently drift between surfaces.
-func (s *ChatAppService) prepareIDEChatRuntimeSnapshot(
-	ctx context.Context,
-	runtime ideChatRuntime,
-	req agentchat.ChatRequest,
-) (ideChatRuntime, agentchat.ChatRequest, error) {
-	runtime.cfg.Workspace = runtime.workspace
-	runtime.ideTeller = ideStoryTellerForConfig(&runtime.cfg)
-	novaDir := runtime.cfg.DataDir()
-	projectConfigPath := config.ProjectConfigPath(runtime.cfg.ProjectStateDir)
-	if layered, err := config.LoadLayeredWithStartupConfigAt(novaDir, runtime.workspace, projectConfigPath); err == nil {
-		applyLayeredSettingsToConfig(&runtime.cfg, layered)
-		applyRequestLocaleToConfig(&runtime.cfg, req.Locale)
-		runtime.cfg.IDEStoryTellerID = layered.Effective.IDEStoryTellerID
-		if requestTellerID := strings.TrimSpace(req.TellerID); requestTellerID != "" {
-			runtime.cfg.IDEStoryTellerID = requestTellerID
-		}
-		if runtime.cfg.IDEStoryTellerID == "" {
-			runtime.cfg.IDEStoryTellerID = style.DefaultID
-		}
-		teller := loadWritingTeller(novaDir, runtime.cfg.IDEStoryTellerID)
-		if teller.ID != "" {
-			runtime.cfg.IDEStoryTellerID = teller.ID
-		}
-		req.TellerID = runtime.cfg.IDEStoryTellerID
-		slog.InfoContext(ctx, fmt.Sprintf("[agent-task] load ide narrative style id=%s workspace=%s", runtime.cfg.IDEStoryTellerID, runtime.workspace))
-		if len(teller.StyleRefs) > 0 || len(teller.StyleRules) > 0 {
-			converted := convertTellerStyleRules(novaDir, teller.StyleRefs, teller.StyleRules, req.StyleScenes)
-			req.StyleRules = converted
-			slog.InfoContext(ctx, fmt.Sprintf("[agent-task] inject teller style rules teller_id=%s scenes=%q count=%d rules=%q", teller.ID, req.StyleScenes, len(converted), appStyleRuleNames(converted)))
-		}
-		runtime.ideTeller = ideStoryTellerFromInteractive(teller, req.StyleRules)
-	} else {
-		slog.ErrorContext(ctx, fmt.Sprintf("[agent-task] load layered settings failed workspace=%s err=%v", runtime.workspace, err))
-		applyRequestLocaleToConfig(&runtime.cfg, req.Locale)
-	}
-	applyImagePresetRuntimePolicy(&runtime, &req)
-	if err := applyWritingSkillRuntimePolicy(ctx, &runtime, &req); err != nil {
-		return ideChatRuntime{}, req, err
-	}
-	if err := s.resolveReviewFeedback(ctx, runtime, &req); err != nil {
-		return ideChatRuntime{}, req, err
-	}
-	residentBytes, err := lore.NewStore(runtime.workspace).ResidentContentBytes()
-	if err != nil {
-		return ideChatRuntime{}, req, fmt.Errorf("读取常驻资料预算失败: %w", err)
-	}
-	if residentBytes > lore.ResidentLoreSafetyMaxBytes {
-		return ideChatRuntime{}, req, fmt.Errorf("常驻资料正文异常过大（%d KB）；请检查是否误将大型文件设为常驻资料", (residentBytes+1023)/1024)
-	}
-	if _, err := applySessionConversationConfig(runtime.sess, &runtime.cfg, runtime.agentKind); err != nil {
-		return ideChatRuntime{}, req, err
-	}
-	return runtime, req, nil
+func (service *ChatAppService) prepareGeneralChatRuntimeSnapshot(ctx context.Context, runtime ideChatRuntime, request agentchat.ChatRequest) (ideChatRuntime, agentchat.ChatRequest, error) {
+	return service.prepareProjectChatRuntimeSnapshot(ctx, runtime, request)
 }
 
-func applyImagePresetRuntimePolicy(runtime *ideChatRuntime, req *agentchat.ChatRequest) {
-	if runtime == nil || req == nil {
-		return
-	}
-	presetID := imagepreset.NormalizeID(req.ImagePresetID)
-	if presetID == "" {
-		presetID = imagepreset.NormalizeID(runtime.cfg.IDEImagePresetID)
-	}
-	if presetID == "" {
-		presetID = imagepreset.DefaultID
-	}
-	req.ImagePresetID = presetID
-	preset := imagepreset.DefaultPreset()
-	if strings.TrimSpace(runtime.cfg.DataDir()) != "" {
-		loaded, err := imagepreset.NewLibrary(runtime.cfg.DataDir()).Get(presetID)
-		if err != nil {
-			slog.ErrorContext(context.Background(), fmt.Sprintf("[agent-task] load image preset failed id=%s workspace=%s err=%v; fallback=%s", presetID, runtime.workspace, err, imagepreset.DefaultID))
-		} else {
-			preset = loaded
-		}
-	}
-	agentSystemPrompt := preset.PromptForTargets(imagepreset.TargetAgentSystem)
-	toolRequestPrompt := preset.PromptForTargets(imagepreset.TargetToolRequest)
-	req.ImagePreset = agentchat.ImagePresetContext{
-		ID:                preset.ID,
-		Name:              preset.Name,
-		AgentSystemPrompt: agentSystemPrompt,
-		ToolRequestPrompt: toolRequestPrompt,
-	}
-	runtime.cfg.ImagePresetToolPrompt = toolRequestPrompt
-	runtime.ideTeller.ImagePresetID = preset.ID
-	runtime.ideTeller.ImagePresetName = preset.Name
-	runtime.ideTeller.ImagePresetSystemPrompt = agentSystemPrompt
-	slog.InfoContext(context.Background(), fmt.Sprintf("[agent-task] selected image preset id=%s name=%q workspace=%s agent_system_chars=%d tool_request_chars=%d", req.ImagePreset.ID, req.ImagePreset.Name, runtime.workspace, len([]rune(agentSystemPrompt)), len([]rune(toolRequestPrompt))))
+func (service *ChatAppService) prepareIDEChatRuntimeSnapshot(ctx context.Context, runtime ideChatRuntime, request agentchat.ChatRequest) (ideChatRuntime, agentchat.ChatRequest, error) {
+	return service.prepareProjectChatRuntimeSnapshot(ctx, runtime, request)
 }
 
-func applyWritingSkillRuntimePolicy(ctx context.Context, runtime *ideChatRuntime, req *agentchat.ChatRequest) error {
-	if runtime == nil || req == nil {
+// applyWritingSkillRuntimePolicy remains a narrow test seam around the shared
+// Writing/AgentChat policy. Production preparation calls the shared package.
+func applyWritingSkillRuntimePolicy(ctx context.Context, runtime *ideChatRuntime, request *agentchat.ChatRequest) error {
+	if runtime == nil {
 		return nil
 	}
-	if err := ctx.Err(); err != nil {
+	shared := sharedConversationRuntime(*runtime)
+	if err := appconversation.ApplyWritingSkillPolicy(ctx, &shared, request); err != nil {
 		return err
 	}
-	selected := novaskills.ResolveWritingSkillName(&runtime.cfg, req.WritingSkill)
-	backend := novaskills.NewAgentBackend(
-		novaskills.NewDirectories(runtime.cfg.SkillsDir, runtime.cfg.DataDir(), runtime.workspace),
-		config.AgentKindIDE,
-		config.ResolveAgentSkillOverrides(&runtime.cfg, config.AgentKindIDE),
-	)
-	available, err := backend.List(ctx)
-	if err != nil {
-		return fmt.Errorf("list available writing Skills: %w", err)
-	}
-	if err := ctx.Err(); err != nil {
-		return err
-	}
-	availableNames := make(map[string]bool, len(available))
-	for _, skill := range available {
-		if skill.HasCapability(novaskills.CapabilityWritingWorkflow) {
-			availableNames[skill.Name] = true
-		}
-	}
-	if availableNames[selected] {
-		req.WritingSkill = selected
-		slog.InfoContext(ctx, fmt.Sprintf("[agent-task] selected writing skill name=%s workspace=%s", req.WritingSkill, runtime.workspace))
-		return nil
-	}
-
-	fallback := config.DefaultWritingSkillName
-	if selected != fallback && availableNames[fallback] {
-		req.WritingSkill = fallback
-		slog.WarnContext(ctx, fmt.Sprintf("[agent-task] writing skill unavailable name=%s workspace=%s; fallback=%s", selected, runtime.workspace, fallback))
-		return nil
-	}
-	req.WritingSkill = ""
-	slog.InfoContext(ctx, fmt.Sprintf("[agent-task] no active writing skill available requested=%s workspace=%s; continue without writing skill", selected, runtime.workspace))
+	*runtime = applySharedConversationRuntime(*runtime, shared)
 	return nil
 }
 
-// ActiveTask 返回当前活跃任务（可能为 nil）。
-func (a *App) ActiveTask() *apptask.Task {
-	return a.chat().ActiveTask()
+func (app *App) ActiveTask() *task.Task {
+	return app.chat().ActiveTask()
 }
 
-func (s *ChatAppService) ActiveTask() *apptask.Task {
-	a := s.app
-	a.mu.RLock()
-	defer a.mu.RUnlock()
-	if a.activeWritingRun != nil && !a.activeWritingRun.matchesCurrent(a) {
+func (service *ChatAppService) ActiveTask() *task.Task {
+	app := service.app
+	app.mu.RLock()
+	defer app.mu.RUnlock()
+	if app.activeWritingRun != nil && !app.activeWritingRun.matchesCurrent(app) {
 		return nil
 	}
-	return a.activeTask
-}
-
-func appStyleRuleNames(rules []prompts.StyleRule) []string {
-	names := make([]string, 0, len(rules))
-	for _, rule := range rules {
-		scene := strings.TrimSpace(rule.Scene)
-		if rule.Global {
-			scene = "global"
-		}
-		names = append(names, fmt.Sprintf("%s -> %d refs, %d legacy contents", scene, len(rule.StyleReferences), len(rule.StyleContents)))
-	}
-	return names
-}
-
-func convertTellerStyleRules(novaDir string, globalRefs []string, rules []teller.StyleRule, scenes []string) []prompts.StyleRule {
-	converted := make([]prompts.StyleRule, 0, len(rules)+1)
-	allowed := styleSceneSet(scenes)
-	styleRefs := style.NewLibrary(novaDir)
-	if len(globalRefs) > 0 {
-		converted = append(converted, prompts.StyleRule{
-			Global:          true,
-			StyleReferences: styleReferencesForPrompt(styleRefs.Resolve(globalRefs)),
-		})
-	}
-	for _, r := range rules {
-		scene := strings.TrimSpace(r.Scene)
-		if scene == "" || (len(r.StyleRefs) == 0 && len(r.StyleContents) == 0) {
-			continue
-		}
-		if isGlobalStyleScene(scene) {
-			converted = append(converted, prompts.StyleRule{
-				Global:          true,
-				StyleReferences: styleReferencesForPrompt(styleRefs.Resolve(r.StyleRefs)),
-				StyleContents:   r.StyleContents,
-			})
-			continue
-		}
-		if len(allowed) > 0 && !allowed[scene] {
-			continue
-		}
-		converted = append(converted, prompts.StyleRule{
-			Scene:           scene,
-			StyleReferences: styleReferencesForPrompt(styleRefs.Resolve(r.StyleRefs)),
-			StyleContents:   r.StyleContents,
-		})
-	}
-	return converted
-}
-
-func isGlobalStyleScene(scene string) bool {
-	normalized := strings.ToLower(strings.TrimSpace(scene))
-	return normalized == "全局" || normalized == "global"
-}
-
-func styleReferencesForPrompt(refs []style.Reference) []prompts.StyleReference {
-	result := make([]prompts.StyleReference, 0, len(refs))
-	for _, ref := range refs {
-		result = append(result, prompts.StyleReference{
-			Name:        ref.Name,
-			Description: ref.Description,
-			Path:        ref.Path,
-			DisplayPath: ref.DisplayPath,
-			Missing:     ref.Missing,
-			Error:       ref.Error,
-		})
-	}
-	return result
-}
-
-func styleSceneSet(scenes []string) map[string]bool {
-	if len(scenes) == 0 {
-		return nil
-	}
-	set := make(map[string]bool, len(scenes))
-	for _, scene := range scenes {
-		scene = strings.TrimSpace(scene)
-		if scene != "" {
-			set[scene] = true
-		}
-	}
-	return set
+	return app.activeTask
 }

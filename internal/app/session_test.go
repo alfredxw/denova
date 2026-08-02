@@ -6,6 +6,7 @@ import (
 	"denova/config"
 	agents "denova/internal/agents"
 	"denova/internal/agents/session"
+	configmanagerapp "denova/internal/app/configmanager"
 )
 
 func TestAppSwitchSessionUsesCurrentSessionHistoryOnly(t *testing.T) {
@@ -102,7 +103,7 @@ func TestAppUserSessionsIgnoreFixedAgentSessions(t *testing.T) {
 	if err := persistAgentCallInStore(store, config.AgentKindConfigManager, "配置输入", "配置输出"); err != nil {
 		t.Fatal(err)
 	}
-	scopedID, err := configManagerSessionID(ConfigManagerRequest{Origin: "automation", ResourceID: "daily-review"})
+	scopedID, err := configmanagerapp.SessionID(configmanagerapp.Request{Origin: "automation", ResourceID: "daily-review"})
 	if err != nil {
 		t.Fatal(err)
 	}

@@ -219,9 +219,14 @@ func (h *Handlers) HandleWorkspaceReplace(ctx context.Context, c *app.RequestCon
 		return
 	}
 
-	// 只读预扫描：没有任何匹配时直接返回，避免创建无意义的备份版本。
+	// Read-only preflight avoids creating a backup when user content has no match.
 	workspace := strings.TrimSpace(h.app.Workspace())
-	hasMatch, err := workspaceHasReplacement(workspace, replacer)
+	changeService, err := h.app.WorkspaceChangeService()
+	if err != nil {
+		writeWorkspaceChangeError(c, err)
+		return
+	}
+	hasMatch, err := workspaceHasReplacement(workspace, replacer, changeService.StateRoot())
 	if err != nil {
 		writeErrorKey(c, consts.StatusInternalServerError, "api.workspace.replaceFailed", "detail", err.Error())
 		return
@@ -246,7 +251,7 @@ func (h *Handlers) HandleWorkspaceReplace(ctx context.Context, c *app.RequestCon
 		ctx,
 		req.Workspace,
 		func(changeService *workspacechange.Service) (denovaapp.WorkspaceChangeMutationHooks, error) {
-			candidates, listErr := book.ListReplaceCandidateFiles(changeService.Workspace())
+			candidates, listErr := book.ListReplaceCandidateFiles(changeService.Workspace(), changeService.StateRoot())
 			if listErr != nil {
 				return denovaapp.WorkspaceChangeMutationHooks{}, listErr
 			}
@@ -263,13 +268,13 @@ func (h *Handlers) HandleWorkspaceReplace(ctx context.Context, c *app.RequestCon
 				if saveErr != nil {
 					var changeErr *workspacechange.Error
 					if errors.As(saveErr, &changeErr) && changeErr.Code == workspacechange.ErrorCodeRevisionConflict {
-						slog.WarnContext(ctx, fmt.Sprintf("[workspace-replace] 跳过并发修改的文件 path=%q", rel))
+						slog.WarnContext(ctx, fmt.Sprintf("[workspace-replace] skipped concurrently modified file path=%q", rel))
 						skipped = append(skipped, rel)
 						continue
 					}
 					return denovaapp.WorkspaceChangeMutationHooks{}, saveErr
 				}
-				// 替换结果与原内容一致时 SaveFile 不产生实际写入，不计入变更。
+				// A no-op SaveFile does not count as a content mutation.
 				if !saveResult.Changed {
 					continue
 				}
@@ -314,7 +319,7 @@ func (h *Handlers) HandleWorkspaceReplace(ctx context.Context, c *app.RequestCon
 	for _, item := range changed {
 		total += item.Replacements
 	}
-	slog.WarnContext(ctx, fmt.Sprintf("[workspace-replace] 全局替换完成 files=%d replacements=%d skipped=%d", len(changed), total, len(skipped)))
+	slog.InfoContext(ctx, fmt.Sprintf("[workspace-replace] completed files=%d replacements=%d skipped=%d", len(changed), total, len(skipped)))
 	writeJSON(c, consts.StatusOK, map[string]any{
 		"workspace":          canonicalWorkspace,
 		"files":              changed,
@@ -323,9 +328,9 @@ func (h *Handlers) HandleWorkspaceReplace(ctx context.Context, c *app.RequestCon
 	})
 }
 
-// workspaceHasReplacement 只读扫描 workspace，报告是否存在至少一处可替换匹配。
-func workspaceHasReplacement(workspace string, replacer *book.Replacer) (bool, error) {
-	candidates, err := book.ListReplaceCandidateFiles(workspace)
+// workspaceHasReplacement reports whether user content contains a real mutation.
+func workspaceHasReplacement(workspace string, replacer *book.Replacer, excludedRoots ...string) (bool, error) {
+	candidates, err := book.ListReplaceCandidateFiles(workspace, excludedRoots...)
 	if err != nil {
 		return false, err
 	}

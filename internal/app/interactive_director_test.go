@@ -10,6 +10,7 @@ import (
 	"testing"
 
 	"denova/config"
+	interactiveapp "denova/internal/app/interactive"
 	"denova/internal/book"
 	"denova/internal/book/lore"
 	"denova/internal/interactive"
@@ -91,11 +92,10 @@ func TestInteractiveDirectorTaskCompletesPlanMetadataAfterFileUpdate(t *testing.
 		}
 		return "已完成导演规划。", nil
 	}
-	directorTasks := newWorkspaceDirectorTaskGroup()
+	directorTasks := interactiveapp.NewDirectorTaskGroup()
 	defer directorTasks.Close()
-	conversation := newInteractiveConversation(store, t.TempDir(), workspace, story.ID, "main", turn.User, story.ReplyTargetChars, &config.Config{}).bindDirectorRuntime(directorTasks, nil)
-	conversation.directorGenerator = directorGenerator
-	done := startInteractiveDirectorTask(&config.Config{}, book.NewState(workspace), conversation, turn, nil)
+	conversation := interactiveapp.NewConversation(store, t.TempDir(), workspace, story.ID, "main", turn.User, story.ReplyTargetChars, &config.Config{}).BindDirectorRuntime(directorTasks, directorGenerator)
+	done := interactiveapp.StartDirectorTask(&config.Config{}, book.NewState(workspace), conversation, turn, nil)
 
 	<-started
 	runningStatus, err := store.DirectorPlanStatus(story.ID, "main")
@@ -141,11 +141,10 @@ func TestPrepareInteractiveDirectorBeforeOpeningBuildsLoreWorksetForFirstGameTur
 		t.Fatal(err)
 	}
 	cfg := &config.Config{Workspace: workspace}
-	conversation := newInteractiveConversation(store, "", workspace, story.ID, "main", "我报名公开比试", story.ReplyTargetChars, cfg)
 	generated := 0
-	conversation.directorGenerator = func(_ context.Context, _ *config.Config, _ *book.State, toolContext agentinteractive.InteractiveStoryToolContext, instruction string) (string, error) {
+	directorGenerator := func(_ context.Context, _ *config.Config, _ *book.State, toolContext agentinteractive.InteractiveStoryToolContext, instruction string) (string, error) {
 		generated++
-		if toolContext.MaintenanceTask != interactiveDirectorTaskOpeningPlan || toolContext.TurnID != interactiveDirectorOpeningSourceID {
+		if toolContext.MaintenanceTask != interactiveapp.DirectorTaskOpeningPlan || toolContext.TurnID != interactiveapp.DirectorOpeningSourceID {
 			t.Fatalf("unexpected opening tool context: %#v", toolContext)
 		}
 		for _, want := range []string{"开局正文生成前", "资料名称目录", "沈凝", "戒律堂", "我报名公开比试"} {
@@ -169,8 +168,9 @@ func TestPrepareInteractiveDirectorBeforeOpeningBuildsLoreWorksetForFirstGameTur
 		}
 		return "开局资料工作集已建立。", nil
 	}
+	conversation := interactiveapp.NewConversation(store, "", workspace, story.ID, "main", "我报名公开比试", story.ReplyTargetChars, cfg).BindDirectorRuntime(nil, directorGenerator)
 
-	prepared, err := prepareInteractiveDirectorBeforeOpening(context.Background(), cfg, book.NewState(workspace), conversation, "我报名公开比试", nil)
+	prepared, err := interactiveapp.PrepareDirectorBeforeOpening(context.Background(), cfg, book.NewState(workspace), conversation, "我报名公开比试", nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -181,7 +181,7 @@ func TestPrepareInteractiveDirectorBeforeOpeningBuildsLoreWorksetForFirstGameTur
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(snapshot.Turns) != 0 || snapshot.DirectorPlanStatus == nil || snapshot.DirectorPlanStatus.Status != director.PlanStatusReady || snapshot.DirectorPlanStatus.SourceTurnID != interactiveDirectorOpeningSourceID {
+	if len(snapshot.Turns) != 0 || snapshot.DirectorPlanStatus == nil || snapshot.DirectorPlanStatus.Status != director.PlanStatusReady || snapshot.DirectorPlanStatus.SourceTurnID != interactiveapp.DirectorOpeningSourceID {
 		t.Fatalf("opening director should finish before the first turn: %#v", snapshot.DirectorPlanStatus)
 	}
 	messages, err := assembleAndCommitInteractiveContextForTest(conversation, "", "我报名公开比试")
@@ -192,7 +192,7 @@ func TestPrepareInteractiveDirectorBeforeOpeningBuildsLoreWorksetForFirstGameTur
 		t.Fatalf("first Game Agent turn should receive the prepared active lore:\n%s", messages[len(messages)-1].Content)
 	}
 
-	prepared, err = prepareInteractiveDirectorBeforeOpening(context.Background(), cfg, book.NewState(workspace), conversation, "我报名公开比试", nil)
+	prepared, err = interactiveapp.PrepareDirectorBeforeOpening(context.Background(), cfg, book.NewState(workspace), conversation, "我报名公开比试", nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -224,11 +224,10 @@ func TestInteractiveDirectorTaskMarksFailureWithoutBlockingTurn(t *testing.T) {
 		return "", errors.New("director unavailable")
 	}
 
-	directorTasks := newWorkspaceDirectorTaskGroup()
+	directorTasks := interactiveapp.NewDirectorTaskGroup()
 	defer directorTasks.Close()
-	conversation := newInteractiveConversation(store, t.TempDir(), workspace, story.ID, "main", turn.User, story.ReplyTargetChars, &config.Config{}).bindDirectorRuntime(directorTasks, nil)
-	conversation.directorGenerator = directorGenerator
-	done := startInteractiveDirectorTask(&config.Config{}, book.NewState(workspace), conversation, turn, nil)
+	conversation := interactiveapp.NewConversation(store, t.TempDir(), workspace, story.ID, "main", turn.User, story.ReplyTargetChars, &config.Config{}).BindDirectorRuntime(directorTasks, directorGenerator)
+	done := interactiveapp.StartDirectorTask(&config.Config{}, book.NewState(workspace), conversation, turn, nil)
 	<-done
 
 	snapshot, err := store.Snapshot(story.ID, "main")
@@ -245,7 +244,7 @@ func TestInteractiveDirectorTaskMarksFailureWithoutBlockingTurn(t *testing.T) {
 		t.Fatalf("initial director failure should be recorded without blocking retry: %#v", snapshot.DirectorPlanStatus)
 	}
 
-	conversation.directorGenerator = func(_ context.Context, _ *config.Config, _ *book.State, toolContext agentinteractive.InteractiveStoryToolContext, _ string) (string, error) {
+	retryGenerator := func(_ context.Context, _ *config.Config, _ *book.State, toolContext agentinteractive.InteractiveStoryToolContext, _ string) (string, error) {
 		plan, err := toolContext.Store.DirectorPlan(toolContext.StoryID, toolContext.BranchID)
 		if err != nil {
 			return "", err
@@ -257,7 +256,8 @@ func TestInteractiveDirectorTaskMarksFailureWithoutBlockingTurn(t *testing.T) {
 		}
 		return "失败后重试成功。", nil
 	}
-	done = startInteractiveDirectorTask(&config.Config{}, book.NewState(workspace), conversation, turn, nil)
+	conversation.BindDirectorRuntime(directorTasks, retryGenerator)
+	done = interactiveapp.StartDirectorTask(&config.Config{}, book.NewState(workspace), conversation, turn, nil)
 	<-done
 	retried, err := store.Snapshot(story.ID, "main")
 	if err != nil {
@@ -332,11 +332,11 @@ func TestAnalyzeInteractiveDirectorContextUsesCurrentDirectorInputs(t *testing.T
 
 func TestShouldRunInteractiveDirectorAgentAllowsManualRunForLegacyOffMode(t *testing.T) {
 	strategy := interactive.StoryDirectorStrategy{Enabled: true, DirectorAgentMode: director.AgentModeOff}
-	if decision := shouldRunInteractiveDirectorAgent(strategy); !decision.ShouldRun {
+	if decision := interactiveapp.DirectorRunDecision(strategy); !decision.ShouldRun {
 		t.Fatalf("manual runs should remain available when automatic scheduling is off: %#v", decision)
 	}
 	strategy.Enabled = false
-	if decision := shouldRunInteractiveDirectorAgent(strategy); decision.ShouldRun || decision.Reason != "disabled" {
+	if decision := interactiveapp.DirectorRunDecision(strategy); decision.ShouldRun || decision.Reason != "disabled" {
 		t.Fatalf("disabled Director must reject manual runs: %#v", decision)
 	}
 }
@@ -348,11 +348,11 @@ func TestInteractiveDirectorCommandIDIsStableBoundedAndSemantic(t *testing.T) {
 	}
 	reordered := token
 	reordered.Hashes = map[string]string{"agent_brief": "hash-brief", "plan": "hash-plan"}
-	first, err := interactiveDirectorCommandID(token, "turn-1", interactiveDirectorTaskDirectorPlanUpdate)
+	first, err := interactiveapp.DirectorCommandID(token, "turn-1", interactiveapp.DirectorTaskPlanUpdate)
 	if err != nil {
 		t.Fatal(err)
 	}
-	second, err := interactiveDirectorCommandID(reordered, "turn-1", interactiveDirectorTaskDirectorPlanUpdate)
+	second, err := interactiveapp.DirectorCommandID(reordered, "turn-1", interactiveapp.DirectorTaskPlanUpdate)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -364,14 +364,14 @@ func TestInteractiveDirectorCommandIDIsStableBoundedAndSemantic(t *testing.T) {
 	}
 	changed := token
 	changed.Revision = "revision-2"
-	third, err := interactiveDirectorCommandID(changed, "turn-1", interactiveDirectorTaskDirectorPlanUpdate)
+	third, err := interactiveapp.DirectorCommandID(changed, "turn-1", interactiveapp.DirectorTaskPlanUpdate)
 	if err != nil {
 		t.Fatal(err)
 	}
 	if first == third {
 		t.Fatal("Director token revision change reused command identity")
 	}
-	fourth, err := interactiveDirectorCommandID(token, "turn-2", interactiveDirectorTaskDirectorPlanUpdate)
+	fourth, err := interactiveapp.DirectorCommandID(token, "turn-2", interactiveapp.DirectorTaskPlanUpdate)
 	if err != nil {
 		t.Fatal(err)
 	}

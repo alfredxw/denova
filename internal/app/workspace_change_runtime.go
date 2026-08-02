@@ -126,7 +126,6 @@ func (a *App) WithWorkspaceChangeMutation(
 	}
 	versionService := a.versionService
 	settings := versionAutoSettingsForConfig(a.cfg)
-	automationSnapshot := a.automationSnapshotLocked()
 	stateRoot := ""
 	if a.cfg != nil {
 		stateRoot = a.cfg.ProjectStateDir
@@ -148,10 +147,7 @@ func (a *App) WithWorkspaceChangeMutation(
 		scheduleAutoVersion(versionService, settings)
 	}
 	if strings.TrimSpace(hooks.AutomationSource) != "" && len(hooks.Paths) > 0 {
-		if automationSnapshot != nil {
-			applyAutomationLayeredConfig(&automationSnapshot.cfg, automationSnapshot.novaDir, automationSnapshot.workspace)
-			a.automation().checkTriggersAfterWorkspaceMutation(operation.Context(), automationSnapshot, hooks.AutomationSource, hooks.Paths)
-		}
+		a.Automation().CheckTriggersAfterWorkspaceMutation(operation.Context(), hooks.AutomationSource, hooks.Paths)
 	}
 	return actualWorkspace, nil
 }

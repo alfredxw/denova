@@ -10,6 +10,7 @@ import (
 	"testing"
 
 	"denova/config"
+	configmanagerapp "denova/internal/app/configmanager"
 	"denova/internal/automation"
 	"denova/internal/interactive"
 )
@@ -196,7 +197,7 @@ func TestConfigAndAutomationStartFailureRollBackTaskRegistration(t *testing.T) {
 		t.Fatal(err)
 	}
 	t.Cleanup(application.Close)
-	automationTask, err := application.CreateAutomation(automation.Task{
+	automationTask, err := application.Automation().Create(automation.Task{
 		Scope: automation.ScopeWorkspace, Name: "acceptance", Template: automation.TemplateReview,
 	})
 	if err != nil {
@@ -206,30 +207,29 @@ func TestConfigAndAutomationStartFailureRollBackTaskRegistration(t *testing.T) {
 		ID: "follow-up-acceptance", TaskID: automationTask.ID, Scope: automation.ScopeWorkspace,
 		Workspace: root, SessionID: "automation-follow-up-acceptance", Status: automation.RunStatusSuccess,
 	}
-	if _, err := application.automation().storeAllWorkspaces().AppendRun(automationTask.ID, followUpRun); err != nil {
+	if _, err := automation.NewProjectStore(
+		application.cfg.DataDir(), application.cfg.ProjectID, application.workspace, application.cfg.ProjectStateDir,
+	).AppendRun(automationTask.ID, followUpRun); err != nil {
 		t.Fatal(err)
 	}
 	if err := application.chatService.Close(context.Background()); err != nil {
 		t.Fatal(err)
 	}
 
-	if task := application.StartConfigManagerTask(context.Background(), ConfigManagerRequest{Instruction: "inspect config"}); task != nil {
+	if task := application.ConfigManager().StartTask(context.Background(), configmanagerapp.Request{Instruction: "inspect config"}); task != nil {
 		t.Fatalf("config manager start against closed durable runtime returned task %s", task.ID())
 	}
-	if task, _, startErr := application.StartAutomationTaskWithEvidence(context.Background(), automationTask.ID, automation.TriggerManual, nil); startErr == nil || task != nil {
+	if task, _, startErr := application.Automation().StartTaskWithEvidence(context.Background(), automationTask.ID, automation.TriggerManual, nil); startErr == nil || task != nil {
 		t.Fatalf("automation start against closed durable runtime = task=%v err=%v", task, startErr)
 	}
-	if task, _, startErr := application.ContinueAutomationRun(context.Background(), followUpRun.ID, "follow-up-command", "continue"); startErr == nil || task != nil {
+	if task, _, startErr := application.Automation().ContinueRun(context.Background(), followUpRun.ID, "follow-up-command", "continue"); startErr == nil || task != nil {
 		t.Fatalf("automation follow-up against closed durable runtime = task=%v err=%v", task, startErr)
 	}
 
 	application.mu.RLock()
 	registered := len(application.workspaceTasks)
-	claims := len(application.activeAutomationClaims)
-	activeTasks := len(application.activeAutomationTasks)
-	activeRuns := len(application.activeAutomationRuns)
 	application.mu.RUnlock()
-	if registered != 0 || claims != 0 || activeTasks != 0 || activeRuns != 0 {
-		t.Fatalf("failed durable acceptance leaked state registered=%d claims=%d tasks=%d runs=%d", registered, claims, activeTasks, activeRuns)
+	if registered != 0 || len(application.Automation().ActiveAutomationRuns()) != 0 {
+		t.Fatalf("failed durable acceptance leaked state registered=%d active_runs=%d", registered, len(application.Automation().ActiveAutomationRuns()))
 	}
 }

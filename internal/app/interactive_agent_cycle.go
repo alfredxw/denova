@@ -14,10 +14,39 @@ import (
 	"denova/internal/agents/prompts"
 	agentrun "denova/internal/agents/run"
 	"denova/internal/agents/session"
+	appagentruntime "denova/internal/app/agentruntime"
+	interactiveapp "denova/internal/app/interactive"
+	appsettings "denova/internal/app/settings"
 	"denova/internal/book"
 	"denova/internal/interactive"
 	"denova/internal/interactive/director"
 )
+
+// SetInteractiveDirectorGeneratorForTest installs an App-scoped Director
+// generator so tests do not share mutable package-level state.
+func (a *App) SetInteractiveDirectorGeneratorForTest(generator interactiveapp.DirectorGenerator) func() {
+	if a == nil {
+		return func() {}
+	}
+	a.mu.Lock()
+	previous := a.directorGenerator
+	a.directorGenerator = generator
+	a.mu.Unlock()
+	return func() {
+		a.mu.Lock()
+		a.directorGenerator = previous
+		a.mu.Unlock()
+	}
+}
+
+func (a *App) interactiveDirectorGenerator() interactiveapp.DirectorGenerator {
+	if a == nil {
+		return nil
+	}
+	a.mu.RLock()
+	defer a.mu.RUnlock()
+	return a.directorGenerator
+}
 
 // interactiveAgentCycle is the complete, process-local adapter state for one
 // game model cycle. Durable commands retain only its bounded TurnSpecRef; the
@@ -40,7 +69,7 @@ type interactiveAgentCycle struct {
 	tellerInput    prompts.InteractiveStorySystemInstructionInput
 	runner         *agents.Runner
 	systemPrompt   prompts.SystemPromptComposition
-	conversation   *interactiveConversation
+	conversation   *interactiveapp.Conversation
 	request        agentchat.ChatRequest
 }
 
@@ -79,12 +108,12 @@ func (s *InteractiveAppService) prepareInteractiveAgentCycle(ctx context.Context
 	if layered, err := config.LoadLayeredWithStartupConfigAt(
 		cycle.novaDir, cycle.workspace, config.ProjectConfigPath(cycle.runtimeCfg.ProjectStateDir),
 	); err == nil {
-		applyLayeredSettingsToConfig(&cycle.runtimeCfg, layered)
+		appsettings.ApplyLayered(&cycle.runtimeCfg, layered)
 		slog.InfoContext(ctx, fmt.Sprintf("[interactive-agent-cycle] loaded settings workspace=%s story_id=%s", cycle.workspace, cycle.storyID))
 	} else {
 		slog.ErrorContext(ctx, fmt.Sprintf("[interactive-agent-cycle] load settings failed workspace=%s story_id=%s err=%v", cycle.workspace, cycle.storyID, err))
 	}
-	applyRequestLocaleToConfig(&cycle.runtimeCfg, request.Locale)
+	appsettings.ApplyLocale(&cycle.runtimeCfg, request.Locale)
 
 	canonicalContext, err := cycle.store.StoryContext(cycle.storyID, strings.TrimSpace(request.BranchID))
 	if err != nil {
@@ -105,33 +134,33 @@ func (s *InteractiveAppService) prepareInteractiveAgentCycle(ctx context.Context
 		}
 	}
 	cycle.storyContext = storyContext
-	if _, err := applyInteractiveConversationConfig(cycle.store, &cycle.runtimeCfg, cycle.storyID, cycle.branchID); err != nil {
+	if _, err := interactiveapp.ApplyConversationConfig(cycle.store, &cycle.runtimeCfg, cycle.storyID, cycle.branchID); err != nil {
 		return nil, err
 	}
 
-	teller := loadGameTeller(cycle.novaDir, storyContext.Meta.StoryTellerID)
+	teller := interactiveapp.LoadGameTeller(cycle.novaDir, storyContext.Meta.StoryTellerID)
 	cycle.runtimeCfg.InteractiveReplyTargetChars = storyContext.Meta.ReplyTargetChars
-	styleRules := convertTellerStyleRules(cycle.novaDir, teller.StyleRefs, teller.StyleRules, request.StyleScenes)
-	cycle.tellerInput = interactiveStoryTellerSystemInput(teller, styleRules)
+	styleRules := appagentruntime.StyleRules(cycle.novaDir, teller.StyleRefs, teller.StyleRules, request.StyleScenes)
+	cycle.tellerInput = interactiveapp.StoryTellerSystemInput(teller, styleRules)
 	cycle.tellerInput.ChoiceCount = storyContext.Meta.ChoiceCount
 	cycle.request = agentchat.ChatRequest{
 		Message: strings.TrimSpace(request.Message), StyleScenes: append([]string(nil), request.StyleScenes...),
 		StyleRules: styleRules, Locale: strings.TrimSpace(request.Locale),
 	}
-	cycle.conversation = newInteractiveConversation(
+	cycle.conversation = interactiveapp.NewConversation(
 		cycle.store, cycle.novaDir, cycle.workspace, cycle.storyID, cycle.branchID,
 		cycle.request.Message, cycle.runtimeCfg.InteractiveReplyTargetChars, &cycle.runtimeCfg,
-	).bindDirectorRuntime(a.directorTasksForWorkspace(cycle.workspace), a.interactiveDirectorGenerator(), cycle.chatService).withBaseParentID(expectedHead).withRegenerateTarget(regenerateTurnID).withExecutionParentPinning().withOpeningStateSchema(storyContext)
+	).BindDirectorRuntime(a.directorTasksForWorkspace(cycle.workspace), a.interactiveDirectorGenerator(), cycle.chatService).WithBaseParentID(expectedHead).WithRegenerateTarget(regenerateTurnID).WithExecutionParentPinning().WithOpeningStateSchema(storyContext)
 	cycle.bindDerivedProjectionBarrier()
 
 	var submitOpeningStateSchema func(context.Context, interactive.ActorStateSchemaBatch) (interactive.ActorStateSchemaBatchResult, error)
 	if interactive.StoryStateSchemaPolicyUsesOpeningGameAgent(storyContext.Meta.StateSchemaPolicy) &&
 		storyContext.Meta.StateSchemaInitialization != nil &&
 		storyContext.Meta.StateSchemaInitialization.Status == interactive.StateSchemaInitializationWaitingOpening &&
-		interactiveSnapshotTurnCount(storyContext.Snapshot) == 0 {
+		interactiveapp.SnapshotTurnCount(storyContext.Snapshot) == 0 {
 		submitOpeningStateSchema = cycle.conversation.SubmitOpeningStateSchemaBatch
 	}
-	cycle.runner, cycle.systemPrompt, err = buildInteractiveStoryRunnerWithComposition(ctx, &cycle.runtimeCfg, cycle.state, cycle.tellerInput, agentinteractive.InteractiveStoryToolContext{
+	cycle.runner, cycle.systemPrompt, err = appagentruntime.BuildInteractive(ctx, &cycle.runtimeCfg, cycle.state, cycle.tellerInput, agentinteractive.InteractiveStoryToolContext{
 		Store:                  cycle.store,
 		StoryID:                cycle.storyID,
 		BranchID:               cycle.branchID,
@@ -156,8 +185,8 @@ func (c *interactiveAgentCycle) options(taskID string) agentrun.Options {
 		BranchID:           c.branchID,
 		Workspace:          c.workspace,
 		Mode:               "interactive",
-		IdleTimeout:        agentIdleTimeout(c.runtimeCfg),
-		ToolResultMaxBytes: agentToolResultMaxBytes(c.runtimeCfg),
+		IdleTimeout:        appagentruntime.IdleTimeout(c.runtimeCfg),
+		ToolResultMaxBytes: appagentruntime.ToolResultMaxBytes(c.runtimeCfg),
 		SystemPromptLog:    c.systemPrompt,
 		OnMutationsVerified: c.app.verifiedWorkspaceMutationCallback(
 			"interactive_agent_post_run",
@@ -174,7 +203,7 @@ func (c *interactiveAgentCycle) bindCommit(emit func(agentrun.Event)) {
 	if c == nil || c.conversation == nil {
 		return
 	}
-	c.conversation.withAgentCycleCommit(func(_ context.Context, outcome agentrun.Outcome) error {
+	c.conversation.WithAgentCycleCommit(func(_ context.Context, outcome agentrun.Outcome) error {
 		if outcome.MaintenanceOnly {
 			return nil
 		}
@@ -195,7 +224,7 @@ func (c *interactiveAgentCycle) bindCommit(emit func(agentrun.Event)) {
 }
 
 func (c *interactiveAgentCycle) scheduleDirectorMaintenance(turn interactive.TurnEvent, persistedSnapshot *interactive.Snapshot) <-chan struct{} {
-	storyDirector := c.conversation.storyDirectorForMeta(c.storyContext.Meta)
+	storyDirector := c.conversation.StoryDirectorForMeta(c.storyContext.Meta)
 	policy := director.ResolveRunPolicy(c.storyContext.Meta.DirectorRunPolicy, storyDirector.Strategy.DirectorAgentMode)
 	if persistedSnapshot == nil {
 		loaded, err := c.store.Snapshot(c.storyID, turn.BranchID)
@@ -205,13 +234,13 @@ func (c *interactiveAgentCycle) scheduleDirectorMaintenance(turn interactive.Tur
 			persistedSnapshot = &loaded
 		}
 	}
-	committedTurns := interactiveSnapshotTurnCount(c.storyContext.Snapshot) + 1
+	committedTurns := interactiveapp.SnapshotTurnCount(c.storyContext.Snapshot) + 1
 	planStatus := ""
 	if c.storyContext.Snapshot.DirectorPlanStatus != nil {
 		planStatus = c.storyContext.Snapshot.DirectorPlanStatus.Status
 	}
 	if persistedSnapshot != nil {
-		committedTurns = interactiveSnapshotTurnCount(*persistedSnapshot)
+		committedTurns = interactiveapp.SnapshotTurnCount(*persistedSnapshot)
 		if persistedSnapshot.DirectorPlanStatus != nil {
 			planStatus = persistedSnapshot.DirectorPlanStatus.Status
 		}
@@ -221,14 +250,14 @@ func (c *interactiveAgentCycle) scheduleDirectorMaintenance(turn interactive.Tur
 		CommittedTurns: committedTurns, PlanStatus: planStatus, MaterialUpdate: materialUpdate,
 	})
 	slog.InfoContext(context.Background(), fmt.Sprintf("[interactive-director-agent] maintenance decision story_id=%s branch_id=%s turn_id=%s policy_mode=%s interval_turns=%d committed_turns=%d plan_status=%s run_plan=%t reason=%s", c.storyID, turn.BranchID, turn.ID, policy.Mode, policy.IntervalTurns, committedTurns, planStatus, decision.ShouldRun, decision.Reason))
-	return startInteractiveDirectorMaintenanceTask(&c.runtimeCfg, c.state, c.conversation, turn, c.sessionStore, decision.ShouldRun)
+	return interactiveapp.StartDirectorMaintenanceTask(&c.runtimeCfg, c.state, c.conversation, turn, c.sessionStore, decision.ShouldRun)
 }
 
 func (c *interactiveAgentCycle) bindDerivedProjectionBarrier() {
 	if c == nil || c.conversation == nil {
 		return
 	}
-	c.conversation.withAgentCyclePrepare(func(ctx context.Context) error {
+	c.conversation.WithAgentCyclePrepare(func(ctx context.Context) error {
 		return c.reconcilePreviousAgentCommit(ctx)
 	})
 }
@@ -255,8 +284,8 @@ func (c *interactiveAgentCycle) reconcilePreviousAgentCommit(ctx context.Context
 		return nil
 	}
 
-	key := interactiveDerivedMaintenanceKey(c.conversation, turn.BranchID)
-	if tasks := c.conversation.directorTasks; tasks != nil && tasks.HasKey(key) {
+	key := interactiveapp.DerivedMaintenanceKey(c.conversation, turn.BranchID)
+	if tasks := c.conversation.DirectorTasks(); tasks != nil && tasks.HasKey(key) {
 		slog.InfoContext(ctx, fmt.Sprintf("[interactive-agent-cycle] wait live Director projection workspace=%s story_id=%s branch_id=%s turn_id=%s", c.workspace, c.storyID, turn.BranchID, turn.ID))
 		if err := tasks.WaitKey(ctx, key); err != nil {
 			return fmt.Errorf("wait live Director projection for turn %s: %w", turn.ID, err)
@@ -282,10 +311,10 @@ func (c *interactiveAgentCycle) reconcilePreviousAgentCommit(ctx context.Context
 		return nil
 	}
 
-	maintenanceConversation := newInteractiveConversation(
+	maintenanceConversation := interactiveapp.NewConversation(
 		c.store, c.novaDir, c.workspace, c.storyID, turn.BranchID,
 		turn.User, c.runtimeCfg.InteractiveReplyTargetChars, &c.runtimeCfg,
-	).inheritDirectorRuntime(c.conversation)
+	).InheritDirectorRuntime(c.conversation)
 	repair := *c
 	repair.conversation = maintenanceConversation
 	repair.storyContext = storyContext

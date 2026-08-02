@@ -2,6 +2,7 @@ package app
 
 import (
 	"context"
+	agentconversation "denova/internal/agents/conversation"
 	agentharness "denova/internal/agents/harness"
 	agentrun "denova/internal/agents/run"
 	"errors"
@@ -9,6 +10,7 @@ import (
 	"time"
 
 	"denova/internal/agents/session"
+	configmanagerapp "denova/internal/app/configmanager"
 )
 
 func TestResolveSessionAskResumesExactIDEWaiter(t *testing.T) {
@@ -52,8 +54,8 @@ func TestResolveConfigManagerAskCannotCrossScope(t *testing.T) {
 	chat := agentharness.NewEphemeralService()
 	t.Cleanup(func() { _ = chat.Close(context.Background()) })
 	application := &App{workspace: "/book", sessionStore: store, chatService: chat}
-	scope := ConfigManagerRequest{Origin: "settings", ResourceID: "agent-a"}
-	sessionID, err := configManagerSessionID(scope)
+	scope := configmanagerapp.Request{Origin: "settings", ResourceID: "agent-a"}
+	sessionID, err := configmanagerapp.SessionID(scope)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -62,15 +64,15 @@ func TestResolveConfigManagerAskCannotCrossScope(t *testing.T) {
 		t.Fatal(err)
 	}
 	done := startAppAskWaiter(t, sess, "ask-config", "config_manager")
-	if view := application.ConfigManagerAgentActiveView(context.Background(), scope); view.PendingAsk == nil || view.PendingAsk.ID != "ask-config" {
+	if view := application.ConfigManager().ActiveView(context.Background(), scope); view.PendingAsk == nil || view.PendingAsk.ID != "ask-config" {
 		t.Fatalf("Config Manager active projection omitted pending Ask: %#v", view)
 	}
 
-	otherScope := ConfigManagerRequest{Origin: "settings", ResourceID: "agent-b"}
-	if _, err := application.CancelConfigManagerAsk(context.Background(), otherScope, "ask-config", "user_cancelled"); err == nil {
+	otherScope := configmanagerapp.Request{Origin: "settings", ResourceID: "agent-b"}
+	if _, err := application.ConfigManager().CancelAsk(context.Background(), otherScope, "ask-config", "user_cancelled"); err == nil {
 		t.Fatal("another Config Manager scope resolved the pending Ask")
 	}
-	if _, err := application.CancelConfigManagerAsk(context.Background(), scope, "ask-config", "user_cancelled"); err != nil {
+	if _, err := application.ConfigManager().CancelAsk(context.Background(), scope, "ask-config", "user_cancelled"); err != nil {
 		t.Fatal(err)
 	}
 	if err := <-done; err != nil {
@@ -148,8 +150,8 @@ func TestActiveViewsHideColdPendingAskWhenRuntimeProjectionUnavailable(t *testin
 	})
 
 	t.Run("config_manager", func(t *testing.T) {
-		scope := ConfigManagerRequest{Origin: "settings", ResourceID: "agent-cold"}
-		sessionID, err := configManagerSessionID(scope)
+		scope := configmanagerapp.Request{Origin: "settings", ResourceID: "agent-cold"}
+		sessionID, err := configmanagerapp.SessionID(scope)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -160,7 +162,7 @@ func TestActiveViewsHideColdPendingAskWhenRuntimeProjectionUnavailable(t *testin
 			workspace: "/book", sessionStore: store,
 			chatService: &agentharness.Service{},
 		}
-		view := application.ConfigManagerAgentActiveView(context.Background(), scope)
+		view := application.ConfigManager().ActiveView(context.Background(), scope)
 		if view.RuntimeProjectionOK || view.PendingAsk != nil {
 			t.Fatalf("cold Config Manager active view = %#v", view)
 		}
@@ -177,18 +179,18 @@ func TestColdRuntimeAskReconciliationRequiresExactCycle(t *testing.T) {
 	notCold := agentrun.RuntimeStatus{
 		Phase: agentrun.RunPhaseRunning, ActiveCommandID: "command-cycle", ActiveOperation: "operation-cycle", ActiveCycle: 2,
 	}
-	if reconciled, err := reconcileColdPendingAsk(context.Background(), sess, notCold); err != nil || reconciled {
+	if reconciled, err := agentconversation.ReconcileColdPendingAsk(context.Background(), sess, notCold); err != nil || reconciled {
 		t.Fatalf("healthy runtime reconciliation = reconciled:%t err:%v", reconciled, err)
 	}
 	wrongCycle := notCold
 	wrongCycle.RecoveryPaused = true
 	wrongCycle.ActiveCycle = 3
-	if reconciled, err := reconcileColdPendingAsk(context.Background(), sess, wrongCycle); err != nil || reconciled {
+	if reconciled, err := agentconversation.ReconcileColdPendingAsk(context.Background(), sess, wrongCycle); err != nil || reconciled {
 		t.Fatalf("mismatched runtime reconciliation = reconciled:%t err:%v", reconciled, err)
 	}
 	matching := wrongCycle
 	matching.ActiveCycle = 2
-	if reconciled, err := reconcileColdPendingAsk(context.Background(), sess, matching); err != nil || !reconciled {
+	if reconciled, err := agentconversation.ReconcileColdPendingAsk(context.Background(), sess, matching); err != nil || !reconciled {
 		t.Fatalf("matching runtime reconciliation = reconciled:%t err:%v", reconciled, err)
 	}
 	if pending := sess.PendingAsk(""); pending != nil {

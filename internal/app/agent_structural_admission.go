@@ -4,12 +4,13 @@ import (
 	"context"
 	agentharness "denova/internal/agents/harness"
 	apptask "denova/internal/app/task"
-	"errors"
 	"fmt"
 	"strings"
 
 	agentrun "denova/internal/agents/run"
 	"denova/internal/agents/session"
+	appagentruntime "denova/internal/app/agentruntime"
+	interactiveapp "denova/internal/app/interactive"
 	"denova/internal/interactive"
 )
 
@@ -111,7 +112,7 @@ type interactiveStructuralFence struct {
 	workspaceGeneration uint64
 	store               *interactive.Store
 	chat                *agentharness.Service
-	directorTasks       *workspaceDirectorTaskGroup
+	directorTasks       *interactiveapp.DirectorTaskGroup
 	storyID             string
 	branchID            string
 	task                *apptask.Task
@@ -217,25 +218,9 @@ func (f interactiveStructuralFence) validateLocked(a *App) error {
 }
 
 func abortAndWaitTask(ctx context.Context, task *apptask.Task) error {
-	if task == nil {
-		return nil
-	}
-	task.Abort()
-	select {
-	case <-task.Done():
-		return nil
-	case <-ctx.Done():
-		return ctx.Err()
-	}
+	return appagentruntime.AbortAndWait(ctx, task)
 }
 
 func closeAgentBindings(chat *agentharness.Service, close func(*agentharness.Service) error) error {
-	if chat == nil {
-		return nil
-	}
-	err := close(chat)
-	if err == nil || errors.Is(err, agentharness.ErrRuntimeProjectionUnavailable) {
-		return nil
-	}
-	return fmt.Errorf("close Agent runtime binding: %w", err)
+	return appagentruntime.CloseBindings(chat, close)
 }

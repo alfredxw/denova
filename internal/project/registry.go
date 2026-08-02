@@ -84,6 +84,47 @@ func (registry *Registry) Get(id string) (Record, error) {
 	return Record{}, fmt.Errorf("project %s not found", id)
 }
 
+// Resolve returns one non-archived project and its durable layout. When
+// requireAvailable is true, a missing content directory is rejected before a
+// runtime can bind to it.
+func (registry *Registry) Resolve(id string, requireAvailable bool) (Record, Layout, error) {
+	if registry == nil {
+		return Record{}, Layout{}, fmt.Errorf("project registry is unavailable")
+	}
+	id = strings.TrimSpace(id)
+	record, err := registry.Get(id)
+	if err != nil {
+		return Record{}, Layout{}, err
+	}
+	if record.Status == StatusArchived {
+		return Record{}, Layout{}, fmt.Errorf("project %s is archived", id)
+	}
+	if requireAvailable && record.Status != StatusAvailable {
+		return Record{}, Layout{}, fmt.Errorf("project directory is unavailable: %s", record.WorkspacePath)
+	}
+	layout, err := registry.EnsureState(record)
+	if err != nil {
+		return Record{}, Layout{}, err
+	}
+	return record, layout, nil
+}
+
+// ResolveByPath upgrades a compatibility directory binding to the stable
+// project identity used by all application services.
+func (registry *Registry) ResolveByPath(path string, requireAvailable bool) (Record, Layout, error) {
+	if registry == nil {
+		return Record{}, Layout{}, fmt.Errorf("project registry is unavailable")
+	}
+	record, found, err := registry.FindByPath(path, false)
+	if err != nil {
+		return Record{}, Layout{}, err
+	}
+	if !found {
+		return Record{}, Layout{}, fmt.Errorf("directory is not a registered project")
+	}
+	return registry.Resolve(record.ID, requireAvailable)
+}
+
 func (registry *Registry) FindByPath(path string, includeArchived bool) (Record, bool, error) {
 	canonical, err := canonicalDirectory(path, false)
 	if err != nil {
@@ -428,7 +469,7 @@ func (registry *Registry) discoverBooksLocked(data *registryData) (bool, error) 
 	for _, record := range data.Projects {
 		known[filepath.Clean(record.WorkspacePath)] = true
 	}
-	candidates := []string{filepath.Join(root, "projects"), root}
+	candidates := []string{filepath.Join(root, ContentDirectoryName), root}
 	changed := false
 	for index, parent := range candidates {
 		entries, readErr := os.ReadDir(parent)
@@ -670,7 +711,7 @@ func normalizedSortMode(mode SortMode, hasOrder bool) SortMode {
 
 func isUserDataDirectory(name string) bool {
 	switch name {
-	case "book_meta", "styles", "projects", StateDirectoryName, "automations":
+	case "book_meta", "styles", ContentDirectoryName, StateDirectoryName, "automations":
 		return true
 	default:
 		return strings.HasPrefix(name, ".")

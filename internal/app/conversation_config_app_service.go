@@ -8,9 +8,14 @@ import (
 	"strings"
 
 	"denova/config"
+	agentconversation "denova/internal/agents/conversation"
 	"denova/internal/agents/conversationconfig"
 	"denova/internal/agents/session"
-	"denova/internal/automation"
+	agentchatapp "denova/internal/app/agentchat"
+	automationapp "denova/internal/app/automation"
+	configmanagerapp "denova/internal/app/configmanager"
+	interactiveapp "denova/internal/app/interactive"
+	appsettings "denova/internal/app/settings"
 	"denova/internal/interactive"
 )
 
@@ -77,13 +82,17 @@ func (a *App) ConversationConfig(ctx context.Context, binding ConversationConfig
 	case ConversationModeWriting:
 		return a.writingConversationConfig(binding)
 	case ConversationModeAgentChat:
-		return a.agentChatConversationConfig(ctx, binding)
+		return a.AgentChat().ConversationConfig(ctx, agentchatapp.Binding{
+			ProjectID: binding.ProjectID, SessionID: binding.SessionID,
+		})
 	case ConversationModeConfigManager:
-		return a.configManagerConversationConfig(binding)
+		return a.ConfigManager().ConversationConfig(configManagerConfigRequest(binding))
 	case ConversationModeInteractive:
 		return a.interactiveConversationConfig(binding)
 	case ConversationModeAutomation:
-		return a.automationConversationConfig(ctx, binding)
+		return a.Automation().ConversationConfig(ctx, automationapp.ConversationBinding{
+			ProjectID: binding.ProjectID, SessionID: binding.SessionID, RunID: binding.RunID,
+		})
 	default:
 		return conversationconfig.Snapshot{}, fmt.Errorf("unsupported conversation mode %q", binding.Mode)
 	}
@@ -102,13 +111,17 @@ func (a *App) PatchConversationConfig(ctx context.Context, binding ConversationC
 	case ConversationModeWriting:
 		return a.patchWritingConversationConfig(binding, change, baseRevision)
 	case ConversationModeAgentChat:
-		return a.patchAgentChatConversationConfig(ctx, binding, change, baseRevision)
+		return a.AgentChat().PatchConversationConfig(ctx, agentchatapp.Binding{
+			ProjectID: binding.ProjectID, SessionID: binding.SessionID,
+		}, change, baseRevision)
 	case ConversationModeConfigManager:
-		return a.patchConfigManagerConversationConfig(binding, change, baseRevision)
+		return a.ConfigManager().PatchConversationConfig(configManagerConfigRequest(binding), change, baseRevision)
 	case ConversationModeInteractive:
 		return a.patchInteractiveConversationConfig(binding, change, baseRevision)
 	case ConversationModeAutomation:
-		return a.patchAutomationConversationConfig(ctx, binding, change, baseRevision)
+		return a.Automation().PatchConversationConfig(ctx, automationapp.ConversationBinding{
+			ProjectID: binding.ProjectID, SessionID: binding.SessionID, RunID: binding.RunID,
+		}, change, baseRevision)
 	default:
 		return conversationconfig.Snapshot{}, fmt.Errorf("unsupported conversation mode %q", binding.Mode)
 	}
@@ -126,7 +139,7 @@ func (a *App) writingConversationConfig(binding ConversationConfigBinding) (conv
 	if err != nil {
 		return conversationconfig.Snapshot{}, err
 	}
-	return ensureExistingSessionConfig(sess, &runtimeCfg, config.AgentKindIDE)
+	return agentconversation.EnsureSession(sess, &runtimeCfg, config.AgentKindIDE)
 }
 
 func (a *App) patchWritingConversationConfig(binding ConversationConfigBinding, patch conversationconfig.Patch, baseRevision uint64) (conversationconfig.Snapshot, error) {
@@ -147,7 +160,7 @@ func (a *App) patchWritingConversationConfig(binding ConversationConfigBinding, 
 	if err != nil {
 		return conversationconfig.Snapshot{}, err
 	}
-	current, err := ensureExistingSessionConfig(sess, &runtimeCfg, config.AgentKindIDE)
+	current, err := agentconversation.EnsureSession(sess, &runtimeCfg, config.AgentKindIDE)
 	if err != nil {
 		return conversationconfig.Snapshot{}, err
 	}
@@ -158,212 +171,11 @@ func (a *App) patchWritingConversationConfig(binding ConversationConfigBinding, 
 	return sess.SetRuntimeConfig(next, baseRevision)
 }
 
-func (a *App) agentChatConversationConfig(ctx context.Context, binding ConversationConfigBinding) (conversationconfig.Snapshot, error) {
-	service := a.agentChat()
-	service.admission.Lock()
-	defer service.admission.Unlock()
-	resolved, project, runtimeCfg, err := service.conversationRuntime(ctx, binding)
-	if err != nil {
-		return conversationconfig.Snapshot{}, err
+func configManagerConfigRequest(binding ConversationConfigBinding) configmanagerapp.Request {
+	return configmanagerapp.Request{
+		Origin: binding.Origin, ResourceID: binding.ResourceID,
+		StoryID: binding.StoryID, BranchID: binding.BranchID,
 	}
-	return previewConversationSessionConfig(project.store, resolved.SessionID, &runtimeCfg, resolved.agentKind)
-}
-
-func (a *App) patchAgentChatConversationConfig(ctx context.Context, binding ConversationConfigBinding, patch conversationconfig.Patch, baseRevision uint64) (conversationconfig.Snapshot, error) {
-	service := a.agentChat()
-	service.admission.Lock()
-	defer service.admission.Unlock()
-	resolved, project, runtimeCfg, err := service.conversationRuntime(ctx, binding)
-	if err != nil {
-		return conversationconfig.Snapshot{}, err
-	}
-	if run := service.activeRun(resolved); run != nil && run.task != nil && !run.task.Finished() {
-		return conversationconfig.Snapshot{}, ErrAgentOperationActive
-	}
-	if !project.store.Exists(resolved.SessionID) {
-		current, previewErr := previewConversationSessionConfig(project.store, resolved.SessionID, &runtimeCfg, resolved.agentKind)
-		if previewErr != nil {
-			return conversationconfig.Snapshot{}, previewErr
-		}
-		if baseRevision != 0 {
-			return conversationconfig.Snapshot{}, fmt.Errorf("%w: conversation is not initialized", conversationconfig.ErrRevisionConflict)
-		}
-		next, mergeErr := conversationconfig.Merge(&runtimeCfg, current.Config, patch)
-		if mergeErr != nil {
-			return conversationconfig.Snapshot{}, mergeErr
-		}
-		sess, createErr := project.store.GetOrCreateWithRuntimeConfig(resolved.SessionID, next)
-		if createErr != nil {
-			return conversationconfig.Snapshot{}, createErr
-		}
-		created, ok := sess.RuntimeConfig()
-		if !ok || created.Config != next || created.Revision != 1 {
-			return conversationconfig.Snapshot{}, fmt.Errorf("%w: conversation was initialized concurrently", conversationconfig.ErrRevisionConflict)
-		}
-		return created, nil
-	}
-	sess, current, err := getOrCreateConversationSession(project.store, resolved.SessionID, &runtimeCfg, resolved.agentKind)
-	if err != nil {
-		return conversationconfig.Snapshot{}, err
-	}
-	next, err := conversationconfig.Merge(&runtimeCfg, current.Config, patch)
-	if err != nil {
-		return conversationconfig.Snapshot{}, err
-	}
-	return sess.SetRuntimeConfig(next, baseRevision)
-}
-
-func (s *AgentChatAppService) conversationRuntime(ctx context.Context, binding ConversationConfigBinding) (AgentChatBinding, *agentChatProjectRuntime, config.Config, error) {
-	resolved, err := s.resolveBinding(AgentChatBinding{ProjectID: binding.ProjectID, SessionID: binding.SessionID})
-	if err != nil {
-		return AgentChatBinding{}, nil, config.Config{}, err
-	}
-	project, err := s.projectRuntime(ctx, resolved.ProjectID)
-	if err != nil {
-		return AgentChatBinding{}, nil, config.Config{}, err
-	}
-	runtimeCfg, err := refreshConversationRuntimeConfig(project.cfg, project.workspace, project.stateRoot)
-	if err != nil {
-		return AgentChatBinding{}, nil, config.Config{}, err
-	}
-	return resolved, project, runtimeCfg, nil
-}
-
-func (a *App) configManagerConversationConfig(binding ConversationConfigBinding) (conversationconfig.Snapshot, error) {
-	service := a.configManager()
-	service.admission.Lock()
-	defer service.admission.Unlock()
-	store, runtimeCfg, sessionID, _, err := a.configManagerConversationRuntime(binding)
-	if err != nil {
-		return conversationconfig.Snapshot{}, err
-	}
-	_, snapshot, err := getOrCreateConversationSession(store, sessionID, &runtimeCfg, config.AgentKindConfigManager)
-	return snapshot, err
-}
-
-func (a *App) patchConfigManagerConversationConfig(binding ConversationConfigBinding, patch conversationconfig.Patch, baseRevision uint64) (conversationconfig.Snapshot, error) {
-	service := a.configManager()
-	service.admission.Lock()
-	defer service.admission.Unlock()
-	store, runtimeCfg, sessionID, workspace, err := a.configManagerConversationRuntime(binding)
-	if err != nil {
-		return conversationconfig.Snapshot{}, err
-	}
-	if active := service.starts.latestConfigManagerTask(workspace, sessionID).Task; active != nil && !active.Finished() {
-		return conversationconfig.Snapshot{}, ErrAgentOperationActive
-	}
-	if recovery := service.recoveries.current(workspace, sessionID); recovery != nil && recovery.task != nil && !recovery.task.Finished() {
-		return conversationconfig.Snapshot{}, ErrAgentOperationActive
-	}
-	sess, current, err := getOrCreateConversationSession(store, sessionID, &runtimeCfg, config.AgentKindConfigManager)
-	if err != nil {
-		return conversationconfig.Snapshot{}, err
-	}
-	next, err := conversationconfig.Merge(&runtimeCfg, current.Config, patch)
-	if err != nil {
-		return conversationconfig.Snapshot{}, err
-	}
-	return sess.SetRuntimeConfig(next, baseRevision)
-}
-
-func (a *App) configManagerConversationRuntime(binding ConversationConfigBinding) (*session.Store, config.Config, string, string, error) {
-	request := ConfigManagerRequest{Origin: binding.Origin, ResourceID: binding.ResourceID, StoryID: binding.StoryID, BranchID: binding.BranchID}
-	sessionID, err := configManagerSessionID(request)
-	if err != nil {
-		return nil, config.Config{}, "", "", err
-	}
-	a.mu.RLock()
-	store := a.sessionStore
-	workspace := strings.TrimSpace(a.workspace)
-	runtimeCfg := config.Config{}
-	if a.cfg != nil {
-		runtimeCfg = *a.cfg
-	}
-	a.mu.RUnlock()
-	if store == nil || workspace == "" {
-		return nil, config.Config{}, "", "", ErrNoWorkspace
-	}
-	runtimeCfg, err = refreshConversationRuntimeConfig(runtimeCfg, workspace, runtimeCfg.ProjectStateDir)
-	return store, runtimeCfg, sessionID, workspace, err
-}
-
-func (a *App) automationConversationConfig(ctx context.Context, binding ConversationConfigBinding) (conversationconfig.Snapshot, error) {
-	snap, operation, run, task, err := a.automationConversationRuntime(ctx, binding)
-	if err != nil {
-		return conversationconfig.Snapshot{}, err
-	}
-	defer operation.Release()
-	runtimeCfg := runtimeConfigForTask(snap, task)
-	_, snapshot, err := getOrCreateConversationSession(snap.sessionStore, run.SessionID, &runtimeCfg, config.AgentKindAutomation)
-	return snapshot, err
-}
-
-func (a *App) patchAutomationConversationConfig(ctx context.Context, binding ConversationConfigBinding, patch conversationconfig.Patch, baseRevision uint64) (conversationconfig.Snapshot, error) {
-	service := a.automation()
-	// ContinueRun owns the same admission lock. The active-run check and CAS
-	// update therefore form one boundary with follow-up Agent admission.
-	service.followUpAdmission.Lock()
-	defer service.followUpAdmission.Unlock()
-	snap, operation, run, task, err := a.automationConversationRuntime(ctx, binding)
-	if err != nil {
-		return conversationconfig.Snapshot{}, err
-	}
-	defer operation.Release()
-	if active, _, ok := service.activeAutomationTaskByRunID(snap, run.ID); ok && active != nil && !active.Finished() {
-		return conversationconfig.Snapshot{}, ErrAgentOperationActive
-	}
-	runtimeCfg := runtimeConfigForTask(snap, task)
-	sess, current, err := getOrCreateConversationSession(snap.sessionStore, run.SessionID, &runtimeCfg, config.AgentKindAutomation)
-	if err != nil {
-		return conversationconfig.Snapshot{}, err
-	}
-	next, err := conversationconfig.Merge(&runtimeCfg, current.Config, patch)
-	if err != nil {
-		return conversationconfig.Snapshot{}, err
-	}
-	return sess.SetRuntimeConfig(next, baseRevision)
-}
-
-// automationConversationRuntime resolves the durable run first, then admits
-// its exact user/workspace lifecycle. Callers must release the operation.
-func (a *App) automationConversationRuntime(ctx context.Context, binding ConversationConfigBinding) (*automationWorkspaceSnapshot, *appOperation, automation.RunRecord, automation.Task, error) {
-	service := a.automation()
-	runID := strings.TrimSpace(binding.RunID)
-	if runID == "" {
-		return nil, nil, automation.RunRecord{}, automation.Task{}, errors.New("automation run is required")
-	}
-	_, activeRun, active := service.ActiveAutomationTaskByRunID(runID)
-	run := activeRun
-	var err error
-	if !active {
-		run, err = service.automationRunByID(nil, runID)
-		if err != nil {
-			return nil, nil, automation.RunRecord{}, automation.Task{}, err
-		}
-	}
-	if sessionID := strings.TrimSpace(binding.SessionID); sessionID != "" && sessionID != strings.TrimSpace(run.SessionID) {
-		return nil, nil, automation.RunRecord{}, automation.Task{}, errors.New("automation conversation does not match the run")
-	}
-	if projectID := strings.TrimSpace(binding.ProjectID); projectID != "" && projectID != strings.TrimSpace(run.ProjectID) {
-		return nil, nil, automation.RunRecord{}, automation.Task{}, errors.New("automation project does not match the run")
-	}
-	if strings.TrimSpace(run.SessionID) == "" {
-		return nil, nil, automation.RunRecord{}, automation.Task{}, fmt.Errorf("automation run %s has no session history", run.ID)
-	}
-	target := automation.ExecutionTarget{Kind: automation.TargetKindUser}
-	if strings.TrimSpace(run.Workspace) != "" {
-		target = automation.ExecutionTarget{Kind: automation.TargetKindWorkspace, WorkspaceID: run.ProjectID, Workspace: run.Workspace}
-	}
-	snap, operation, err := service.acquireTargetRuntime(ctx, target)
-	if err != nil {
-		return nil, nil, automation.RunRecord{}, automation.Task{}, err
-	}
-	task, err := storeForSnapshot(snap).Get(run.TaskID)
-	if err != nil {
-		operation.Release()
-		return nil, nil, automation.RunRecord{}, automation.Task{}, err
-	}
-	return snap, operation, run, task, nil
 }
 
 func (a *App) interactiveConversationConfig(binding ConversationConfigBinding) (conversationconfig.Snapshot, error) {
@@ -374,7 +186,7 @@ func (a *App) interactiveConversationConfig(binding ConversationConfigBinding) (
 	if err != nil {
 		return conversationconfig.Snapshot{}, err
 	}
-	return applyInteractiveConversationConfig(store, &runtimeCfg, binding.StoryID, binding.BranchID)
+	return interactiveapp.ApplyConversationConfig(store, &runtimeCfg, binding.StoryID, binding.BranchID)
 }
 
 func (a *App) patchInteractiveConversationConfig(binding ConversationConfigBinding, patch conversationconfig.Patch, baseRevision uint64) (conversationconfig.Snapshot, error) {
@@ -446,14 +258,7 @@ func (a *App) interactiveConversationRuntime(binding ConversationConfigBinding) 
 }
 
 func refreshConversationRuntimeConfig(runtimeCfg config.Config, workspace, stateRoot string) (config.Config, error) {
-	layered, err := config.LoadLayeredWithStartupConfigAt(runtimeCfg.DataDir(), workspace, config.ProjectConfigPath(stateRoot))
-	if err != nil {
-		return config.Config{}, err
-	}
-	applyLayeredSettingsToConfig(&runtimeCfg, layered)
-	runtimeCfg.Workspace = workspace
-	runtimeCfg.ProjectStateDir = stateRoot
-	return runtimeCfg, nil
+	return appsettings.RefreshProject(runtimeCfg, workspace, stateRoot)
 }
 
 func normalizeConversationMode(mode string) string {

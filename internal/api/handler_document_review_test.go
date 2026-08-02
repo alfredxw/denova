@@ -88,7 +88,7 @@ func TestLoreReviewCommentLifecycleAPI(t *testing.T) {
 	application := newTestApplication(t)
 	server := NewServer(application, "0")
 	workspace := application.Workspace()
-	item, err := application.CreateLoreItem(lore.ItemInput{
+	item, err := application.Lore().CreateItem(lore.ItemInput{
 		ID: "gatekeeper", Type: "character", Name: "守门人", Content: "Aldren guards the northern gate.",
 	})
 	if err != nil {

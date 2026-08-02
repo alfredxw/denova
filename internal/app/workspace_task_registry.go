@@ -116,7 +116,7 @@ func (a *App) unregisterWorkspaceTask(task *apptask.Task) {
 	// Wake reconciliation again at the common settlement boundary so Writing,
 	// Game, Config, Lore, and Automation effects never depend on the periodic
 	// scheduler after an earlier active-operation check deferred delivery.
-	a.signalAutomationEffectReconciliation()
+	a.Automation().SignalReconciliation()
 }
 
 // beginWorkspaceTransition fences new current-workspace tasks and snapshots
@@ -176,7 +176,6 @@ func (a *App) beginWorkspaceTransitionTo(targets ...string) ([]*apptask.Task, []
 	if a.activeInteractiveRun != nil {
 		appendTask(a.activeInteractiveRun.task)
 	}
-	appendTask(a.activeLoreImageTask)
 	tasks := make([]*apptask.Task, 0, len(unique))
 	for task := range unique {
 		tasks = append(tasks, task)

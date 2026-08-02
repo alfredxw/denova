@@ -81,7 +81,7 @@ func (a *App) TerminalDefaultCwd() string {
 func (a *App) ResolveTerminalWorkspace(requested string) (string, error) {
 	requested = strings.TrimSpace(requested)
 	if requested != "" {
-		return a.canonicalAgentChatWorkspace(requested)
+		return a.AgentChat().ResolveWorkspace(requested)
 	}
 	if a == nil {
 		return "", ErrNoWorkspace

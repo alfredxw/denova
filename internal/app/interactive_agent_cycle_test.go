@@ -8,6 +8,7 @@ import (
 
 	"denova/config"
 	agentrun "denova/internal/agents/run"
+	interactiveapp "denova/internal/app/interactive"
 	"denova/internal/book"
 	"denova/internal/interactive"
 )
@@ -19,10 +20,10 @@ func TestInteractiveConversationPublishesOnlyAuthorizedOutputStage(t *testing.T)
 	if err != nil {
 		t.Fatal(err)
 	}
-	aborted := newInteractiveConversation(store, t.TempDir(), workspace, story.ID, "main", "先观察", 800, nil)
+	aborted := interactiveapp.NewConversation(store, t.TempDir(), workspace, story.ID, "main", "先观察", 800, nil)
 	aborted.BindAgentCycleIdentity(agentrun.CycleIdentity{CommandID: agentrun.CommandID("command-abort"), OperationID: agentrun.OperationID("operation-abort"), Cycle: 1})
-	materializeInteractiveInputForTest(t, aborted, aborted.agentCycleIdentitySnapshot())
-	submitTestTurnResult(t, aborted, "观察", "确认环境")
+	materializeInteractiveInputForTest(t, store, story.ID, "main", "先观察", aborted.AgentCycleIdentitySnapshot())
+	submitTestTurnResult(t, store, story.ID, "main", aborted, "观察", "确认环境")
 	if err := aborted.AppendAssistant("尚未授权的叙事"); err != nil {
 		t.Fatal(err)
 	}
@@ -36,10 +37,10 @@ func TestInteractiveConversationPublishesOnlyAuthorizedOutputStage(t *testing.T)
 		t.Fatal(err)
 	}
 
-	completed := newInteractiveConversation(store, t.TempDir(), workspace, story.ID, "main", "再观察", 800, nil)
+	completed := interactiveapp.NewConversation(store, t.TempDir(), workspace, story.ID, "main", "再观察", 800, nil)
 	completed.BindAgentCycleIdentity(agentrun.CycleIdentity{CommandID: agentrun.CommandID("command-complete"), OperationID: agentrun.OperationID("operation-complete"), Cycle: 1})
-	materializeInteractiveInputForTest(t, completed, completed.agentCycleIdentitySnapshot())
-	submitTestTurnResult(t, completed, "观察", "发现线索")
+	materializeInteractiveInputForTest(t, store, story.ID, "main", "再观察", completed.AgentCycleIdentitySnapshot())
+	submitTestTurnResult(t, store, story.ID, "main", completed, "观察", "发现线索")
 	if err := completed.AppendAssistant("授权后写入的叙事"); err != nil {
 		t.Fatal(err)
 	}
@@ -65,7 +66,7 @@ func TestInteractiveAgentCycleAcceptsMaintenanceOnlyCompletionWithoutTurn(t *tes
 	if err != nil {
 		t.Fatal(err)
 	}
-	conversation := newInteractiveConversation(store, t.TempDir(), workspace, story.ID, "main", "pending input", 800, nil)
+	conversation := interactiveapp.NewConversation(store, t.TempDir(), workspace, story.ID, "main", "pending input", 800, nil)
 	cycle := &interactiveAgentCycle{store: store, storyID: story.ID, branchID: "main", conversation: conversation}
 	cycle.bindCommit(func(agentrun.Event) {})
 
@@ -95,8 +96,8 @@ func TestInteractiveConversationRejectsOutputWithoutDurableCycleIdentity(t *test
 	if err != nil {
 		t.Fatal(err)
 	}
-	conversation := newInteractiveConversation(store, t.TempDir(), workspace, story.ID, "main", "观察", 800, nil)
-	submitTestTurnResult(t, conversation, "观察", "确认环境")
+	conversation := interactiveapp.NewConversation(store, t.TempDir(), workspace, story.ID, "main", "观察", 800, nil)
+	submitTestTurnResult(t, store, story.ID, "main", conversation, "观察", "确认环境")
 	if err := conversation.AppendAssistant("不应直接写入的叙事"); err == nil {
 		t.Fatal("assistant output without a durable cycle identity must fail closed")
 	}
@@ -117,11 +118,11 @@ func TestInteractiveConversationPinsBranchHeadWhenQueuedCycleStarts(t *testing.T
 		t.Fatal(err)
 	}
 	initialHead := initialContext.Meta.Branches["main"].Head
-	queued := newInteractiveConversation(store, t.TempDir(), workspace, story.ID, "main", "跟进动作", 800, nil).withBaseParentID(initialHead).withExecutionParentPinning()
+	queued := interactiveapp.NewConversation(store, t.TempDir(), workspace, story.ID, "main", "跟进动作", 800, nil).WithBaseParentID(initialHead).WithExecutionParentPinning()
 
-	first := newInteractiveConversation(store, t.TempDir(), workspace, story.ID, "main", "初始动作", 800, nil).withBaseParentID(initialHead)
-	submitTestTurnResult(t, first, "先观察", "完成初始动作")
-	if err := commitInteractiveAssistantForTest(t, first, "第一回合完成。", ""); err != nil {
+	first := interactiveapp.NewConversation(store, t.TempDir(), workspace, story.ID, "main", "初始动作", 800, nil).WithBaseParentID(initialHead)
+	submitTestTurnResult(t, store, story.ID, "main", first, "先观察", "完成初始动作")
+	if err := commitInteractiveAssistantForTest(t, store, story.ID, "main", "初始动作", first, "第一回合完成。", ""); err != nil {
 		t.Fatal(err)
 	}
 	firstTurn, _, ok := first.LastTurnForState()
@@ -132,8 +133,8 @@ func TestInteractiveConversationPinsBranchHeadWhenQueuedCycleStarts(t *testing.T
 	if _, err := assembleAndCommitInteractiveContextForTest(queued, "跟进动作", "跟进动作"); err != nil {
 		t.Fatalf("prepare queued cycle: %v", err)
 	}
-	submitTestTurnResult(t, queued, "继续观察", "完成跟进动作")
-	if err := commitInteractiveAssistantForTest(t, queued, "第二回合完成。", ""); err != nil {
+	submitTestTurnResult(t, store, story.ID, "main", queued, "继续观察", "完成跟进动作")
+	if err := commitInteractiveAssistantForTest(t, store, story.ID, "main", "跟进动作", queued, "第二回合完成。", ""); err != nil {
 		t.Fatalf("persist queued cycle against latest head: %v", err)
 	}
 	secondTurn, _, ok := queued.LastTurnForState()
@@ -178,10 +179,10 @@ func TestInteractiveAgentCycleKeepsFailedDirectorProjectionPending(t *testing.T)
 		generated++
 		return "", errors.New("simulated Director failure")
 	}
-	tasks := newWorkspaceDirectorTaskGroup()
+	tasks := interactiveapp.NewDirectorTaskGroup()
 	defer tasks.Close()
 	cfg := config.Config{Workspace: workspace}
-	conversation := newInteractiveConversation(store, "", workspace, story.ID, "main", "下一步", story.ReplyTargetChars, &cfg).bindDirectorRuntime(tasks, generator)
+	conversation := interactiveapp.NewConversation(store, "", workspace, story.ID, "main", "下一步", story.ReplyTargetChars, &cfg).BindDirectorRuntime(tasks, generator)
 	cycle := &interactiveAgentCycle{
 		store: store, state: book.NewState(workspace), runtimeCfg: cfg,
 		workspace: workspace, storyID: story.ID, branchID: "main",

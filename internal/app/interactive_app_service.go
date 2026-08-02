@@ -11,6 +11,8 @@ import (
 	"sync"
 
 	"denova/config"
+	interactiveapp "denova/internal/app/interactive"
+	appsettings "denova/internal/app/settings"
 	"denova/internal/interactive"
 	"denova/internal/interactive/director"
 )
@@ -105,7 +107,7 @@ func (s *InteractiveAppService) CreateInteractiveStoryContext(ctx context.Contex
 		if err != nil {
 			return interactive.StorySummary{}, err
 		}
-		seed, seedErr := recentInteractiveConversationSeed(store, &runtimeCfg, "")
+		seed, seedErr := interactiveapp.RecentConversationSeed(store, &runtimeCfg, "")
 		if seedErr != nil {
 			return interactive.StorySummary{}, seedErr
 		}
@@ -178,7 +180,7 @@ func (s *InteractiveAppService) withStoryDirectorDefaults(req interactive.Create
 		InitialStatus:       director.PlanStatusWaitingOpening,
 		InitialSummary:      "等待玩家开局完成后由后台导演规划。",
 	}
-	decision := shouldRunInteractiveDirectorAgent(storyDirector.Strategy)
+	decision := interactiveapp.DirectorRunDecision(storyDirector.Strategy)
 	if !decision.ShouldRun {
 		req.DirectorPlanSeed.InitialStatus = director.PlanStatusSkipped
 		req.DirectorPlanSeed.InitialSummary = "后台导演已关闭，跳过开局规划。"
@@ -277,7 +279,7 @@ func (s *InteractiveAppService) gameTellerID(tellerID string) string {
 	if cfg == nil || cfg.DataDir() == "" {
 		return strings.TrimSpace(tellerID)
 	}
-	if teller := loadGameTeller(cfg.DataDir(), strings.TrimSpace(tellerID)); teller.ID != "" {
+	if teller := interactiveapp.LoadGameTeller(cfg.DataDir(), strings.TrimSpace(tellerID)); teller.ID != "" {
 		return teller.ID
 	}
 	return strings.TrimSpace(tellerID)
@@ -485,10 +487,10 @@ func (s *InteractiveAppService) RebuildInteractiveDirectorPlan(storyID string, r
 	if err != nil {
 		return interactive.DirectorPlan{}, err
 	}
-	seed := interactive.DirectorPlanSeed{Templates: interactive.DefaultStoryDirectorPlanningTemplates(), BranchPlanningTurns: 5, Source: firstNonEmptyApp(req.Source, "manual_rebuild")}
+	seed := interactive.DirectorPlanSeed{Templates: interactive.DefaultStoryDirectorPlanningTemplates(), BranchPlanningTurns: 5, Source: firstNonEmpty(req.Source, "manual_rebuild")}
 	if cfg := s.cfg(); cfg != nil && cfg.DataDir() != "" {
 		if currentStoryCtx, contextErr := store.StoryContext(storyID, storyCtx.Snapshot.BranchID); contextErr == nil {
-			if director := loadStoryDirectorForMeta(cfg.DataDir(), currentStoryCtx.Meta); director.ID != "" {
+			if director := interactiveapp.LoadStoryDirectorForMeta(cfg.DataDir(), currentStoryCtx.Meta); director.ID != "" {
 				seed.Templates = director.Strategy.PlanningTemplates
 				seed.BranchPlanningTurns = director.Strategy.BranchPlanningTurns
 			}
@@ -541,7 +543,7 @@ func (s *InteractiveAppService) RunInteractiveDirectorPlan(storyID string, req i
 	if layered, err := config.LoadLayeredWithStartupConfigAt(
 		novaDir, workspace, config.ProjectConfigPath(runtimeCfg.ProjectStateDir),
 	); err == nil {
-		applyLayeredSettingsToConfig(&runtimeCfg, layered)
+		appsettings.ApplyLayered(&runtimeCfg, layered)
 	} else {
 		slog.ErrorContext(context.Background(), fmt.Sprintf("[interactive-director-agent] load settings for manual run failed workspace=%s err=%v", workspace, err))
 	}
@@ -559,8 +561,8 @@ func (s *InteractiveAppService) RunInteractiveDirectorPlan(storyID string, req i
 		return interactive.DirectorPlanStatus{}, fmt.Errorf("开局尚未完成，无法运行导演规划")
 	}
 	turn := *storyCtx.Snapshot.CurrentTurn
-	director := loadStoryDirectorForMeta(novaDir, storyCtx.Meta)
-	decision := shouldRunInteractiveDirectorAgent(director.Strategy)
+	director := interactiveapp.LoadStoryDirectorForMeta(novaDir, storyCtx.Meta)
+	decision := interactiveapp.DirectorRunDecision(director.Strategy)
 	if !decision.ShouldRun {
 		if err := store.MarkDirectorPlanRunSkipped(storyID, storyCtx.Snapshot.BranchID, turn.ID, decision.Reason); err != nil {
 			return interactive.DirectorPlanStatus{}, err
@@ -578,9 +580,9 @@ func (s *InteractiveAppService) RunInteractiveDirectorPlan(storyID string, req i
 		_ = store.MarkDirectorPlanRunFailed(storyID, storyCtx.Snapshot.BranchID, turn.ID, ErrWorkspaceTransition)
 		return interactive.DirectorPlanStatus{}, ErrWorkspaceTransition
 	}
-	slog.InfoContext(context.Background(), fmt.Sprintf("[interactive-director-agent] manual run scheduled story_id=%s branch_id=%s turn_id=%s source=%s", storyID, storyCtx.Snapshot.BranchID, turn.ID, firstNonEmptyApp(req.Source, "manual_retry")))
-	conversation := newInteractiveConversation(store, novaDir, workspace, storyID, storyCtx.Snapshot.BranchID, turn.User, storyCtx.Meta.ReplyTargetChars, &runtimeCfg).bindDirectorRuntime(directorTasks, directorGenerator, chatService)
-	startInteractiveDirectorTask(&runtimeCfg, state, conversation, turn, sessionStore, token)
+	slog.InfoContext(context.Background(), fmt.Sprintf("[interactive-director-agent] manual run scheduled story_id=%s branch_id=%s turn_id=%s source=%s", storyID, storyCtx.Snapshot.BranchID, turn.ID, firstNonEmpty(req.Source, "manual_retry")))
+	conversation := interactiveapp.NewConversation(store, novaDir, workspace, storyID, storyCtx.Snapshot.BranchID, turn.User, storyCtx.Meta.ReplyTargetChars, &runtimeCfg).BindDirectorRuntime(directorTasks, directorGenerator, chatService)
+	interactiveapp.StartDirectorTask(&runtimeCfg, state, conversation, turn, sessionStore, token)
 	return store.DirectorPlanStatus(storyID, storyCtx.Snapshot.BranchID)
 }
 
@@ -618,7 +620,7 @@ func (s *InteractiveAppService) interactiveRuntimeConfig() (*interactive.Store, 
 	if layered, err := config.LoadLayeredWithStartupConfigAt(
 		novaDir, workspace, config.ProjectConfigPath(runtimeCfg.ProjectStateDir),
 	); err == nil {
-		applyLayeredSettingsToConfig(&runtimeCfg, layered)
+		appsettings.ApplyLayered(&runtimeCfg, layered)
 	} else {
 		slog.ErrorContext(context.Background(), fmt.Sprintf("[interactive-agent] load layered settings failed workspace=%s err=%v", workspace, err))
 	}

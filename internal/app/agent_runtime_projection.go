@@ -2,6 +2,7 @@ package app
 
 import (
 	"context"
+	agentconversation "denova/internal/agents/conversation"
 	agentharness "denova/internal/agents/harness"
 	apptask "denova/internal/app/task"
 	"errors"
@@ -11,6 +12,7 @@ import (
 
 	agentrun "denova/internal/agents/run"
 	"denova/internal/agents/session"
+	appagentruntime "denova/internal/app/agentruntime"
 	"denova/internal/interactive"
 )
 
@@ -85,7 +87,7 @@ func (a *App) WritingAgentActiveView(ctx context.Context) WritingAgentActiveView
 	var pendingAsk *session.AskInteraction
 	if selectedSession != nil {
 		if projected {
-			reconciled, reconcileErr := reconcileColdPendingAsk(operation.Context(), selectedSession, runtimeSnapshot)
+			reconciled, reconcileErr := agentconversation.ReconcileColdPendingAsk(operation.Context(), selectedSession, runtimeSnapshot)
 			if reconcileErr != nil {
 				slog.ErrorContext(ctx, fmt.Sprintf("[agent-ask-recovery] reconcile writing Ask failed workspace=%s session_id=%s operation_id=%s cycle=%d err=%v", workspace, sessionID, runtimeSnapshot.ActiveOperation, runtimeSnapshot.ActiveCycle, reconcileErr))
 			} else if reconciled {
@@ -227,12 +229,5 @@ func resolveInteractiveProjectionBranch(store *interactive.Store, storyID, reque
 }
 
 func projectAgentRuntime(ctx context.Context, chatService *agentharness.Service, options agentrun.Options) (agentrun.RuntimeStatus, bool) {
-	snapshot, err := chatService.RuntimeRecoveryStatusProjection(ctx, options)
-	if err == nil {
-		return snapshot, true
-	}
-	if !errors.Is(err, agentharness.ErrRuntimeProjectionUnavailable) {
-		slog.WarnContext(ctx, fmt.Sprintf("[agent-runtime-projection] projection unavailable kind=%s workspace=%s session_id=%s story_id=%s branch_id=%s err=%v", options.AgentKind, options.Workspace, options.SessionID, options.StoryID, options.BranchID, err))
-	}
-	return agentrun.RuntimeStatus{}, false
+	return appagentruntime.RuntimeProjection(ctx, chatService, options)
 }

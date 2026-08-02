@@ -6,6 +6,7 @@ import (
 
 	"denova/config"
 	"denova/internal/agents/session"
+	configmanagerapp "denova/internal/app/configmanager"
 	"denova/internal/book"
 )
 
@@ -26,7 +27,7 @@ func TestConfigManagerDoesNotCreateSessionBeforeWorkspaceAdmission(t *testing.T)
 		},
 	}
 
-	task := (&ConfigManagerAppService{app: application}).StartTask(context.Background(), ConfigManagerRequest{
+	task := application.ConfigManager().StartTask(context.Background(), configmanagerapp.Request{
 		CommandID:   "config-manager-admission",
 		Instruction: "update configuration",
 		Origin:      "test",

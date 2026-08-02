@@ -64,7 +64,7 @@ func (h *Handlers) HandleConfigManagerAskAnswer(ctx context.Context, c *app.Requ
 		writeErrorKey(c, consts.StatusBadRequest, "api.common.invalidBody")
 		return
 	}
-	result, err := h.app.AnswerConfigManagerAsk(ctx, configManagerRequestFromQuery(c), strings.TrimSpace(c.Param("ask_id")), request.Answers)
+	result, err := h.app.ConfigManager().AnswerAsk(ctx, configManagerRequestFromQuery(c), strings.TrimSpace(c.Param("ask_id")), request.Answers)
 	if err != nil {
 		writeAskResolutionError(c, err)
 		return
@@ -81,7 +81,7 @@ func (h *Handlers) HandleConfigManagerAskCancel(ctx context.Context, c *app.Requ
 		writeErrorKey(c, consts.StatusBadRequest, "api.common.invalidBody")
 		return
 	}
-	result, err := h.app.CancelConfigManagerAsk(ctx, configManagerRequestFromQuery(c), strings.TrimSpace(c.Param("ask_id")), request.Reason)
+	result, err := h.app.ConfigManager().CancelAsk(ctx, configManagerRequestFromQuery(c), strings.TrimSpace(c.Param("ask_id")), request.Reason)
 	if err != nil {
 		writeAskResolutionError(c, err)
 		return

@@ -16,7 +16,7 @@ func (h *Handlers) HandleImageGenerate(ctx context.Context, c *app.RequestContex
 		writeErrorKey(c, consts.StatusBadRequest, "api.common.invalidRequestWithDetail", "detail", err.Error())
 		return
 	}
-	result, err := h.app.GenerateImage(ctx, req)
+	result, err := h.app.Images().Generate(ctx, req)
 	if err != nil {
 		if err == novaApp.ErrNoWorkspace {
 			writeErrorKey(c, consts.StatusBadRequest, "api.settings.workspaceMissing")
