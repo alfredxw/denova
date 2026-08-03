@@ -1,6 +1,7 @@
 package api
 
 import (
+	"archive/zip"
 	"bytes"
 	"encoding/json"
 	"image"
@@ -137,13 +138,58 @@ func TestBookExportTextAPI(t *testing.T) {
 	}
 }
 
+func TestBookExportEPUBAPI(t *testing.T) {
+	application := newTestApplication(t)
+	if _, err := application.UpdateBookInfo(application.Workspace(), "星河边境", "Denova", ""); err != nil {
+		t.Fatalf("写入书籍元信息失败: %v", err)
+	}
+	if err := application.BookService().Create("chapters/ch00001-第一章-开局.md", "file", "# 第一章 开局\n\n天亮了。"); err != nil {
+		t.Fatalf("创建第一章失败: %v", err)
+	}
+	if err := application.BookService().Create("chapters/ch00002-第二章-追光.md", "file", "第二章 追光\n\n林川踏入雨夜。"); err != nil {
+		t.Fatalf("创建第二章失败: %v", err)
+	}
+	server := NewServer(application, "0")
+
+	resp := ut.PerformRequest(
+		server.engine.Engine,
+		http.MethodGet,
+		"/api/books/export?path="+url.QueryEscape(application.Workspace())+"&format=epub",
+		nil,
+	)
+	if resp.Code != http.StatusOK {
+		t.Fatalf("export status = %d body=%s", resp.Code, resp.Body.String())
+	}
+	if contentType := string(resp.Header().Peek("Content-Type")); !strings.HasPrefix(contentType, "application/epub+zip") {
+		t.Fatalf("content type = %q", contentType)
+	}
+	disposition := string(resp.Header().Peek("Content-Disposition"))
+	if !strings.Contains(disposition, "attachment") || !strings.Contains(disposition, ".epub") {
+		t.Fatalf("content disposition = %q", disposition)
+	}
+	body := resp.Body.Bytes()
+	zr, err := zip.NewReader(bytes.NewReader(body), int64(len(body)))
+	if err != nil {
+		t.Fatalf("epub is not a valid zip: %v", err)
+	}
+	hasPackage := false
+	for _, f := range zr.File {
+		if f.Name == "EPUB/package.opf" {
+			hasPackage = true
+		}
+	}
+	if !hasPackage {
+		t.Fatalf("epub missing package.opf")
+	}
+}
+
 func TestBookExportRejectsUnsupportedFormat(t *testing.T) {
 	application := newTestApplication(t)
 	server := NewServer(application, "0")
 	resp := ut.PerformRequest(
 		server.engine.Engine,
 		http.MethodGet,
-		"/api/books/export?path="+url.QueryEscape(application.Workspace())+"&format=epub",
+		"/api/books/export?path="+url.QueryEscape(application.Workspace())+"&format=pdf",
 		nil,
 	)
 	if resp.Code != http.StatusBadRequest {

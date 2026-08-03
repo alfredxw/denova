@@ -3,10 +3,13 @@ package app
 import (
 	"errors"
 	"fmt"
+	"os"
 	"path/filepath"
 	"strings"
 
 	"denova/internal/book"
+	"denova/internal/bookcover"
+	"denova/internal/bookexport"
 )
 
 // ErrUnsupportedBookExportFormat indicates that the requested export format is not implemented.
@@ -18,7 +21,15 @@ type BookExportFormat string
 const (
 	// BookExportFormatTXT exports a plain UTF-8 text manuscript.
 	BookExportFormatTXT BookExportFormat = "txt"
+	// BookExportFormatEPUB exports an EPUB 3.0 file with a chapter table of contents.
+	BookExportFormatEPUB BookExportFormat = "epub"
 )
+
+// bookExportContentType maps each supported format to its HTTP content type.
+var bookExportContentType = map[BookExportFormat]string{
+	BookExportFormatTXT:  "text/plain; charset=utf-8",
+	BookExportFormatEPUB: "application/epub+zip",
+}
 
 // BookExportRequest describes a format-specific book export request.
 type BookExportRequest struct {
@@ -53,27 +64,57 @@ func (s *WorkspaceRuntimeManager) ExportBook(req BookExportRequest) (BookExportR
 		return BookExportResult{}, err
 	}
 
+	// Build the format-independent manuscript once; renderers consume it below.
+	manuscript, err := book.NewService(absPath).Manuscript(meta)
+	if err != nil {
+		return BookExportResult{}, err
+	}
+
+	data, err := renderBookExport(absPath, format, manuscript)
+	if err != nil {
+		return BookExportResult{}, err
+	}
+	return BookExportResult{
+		Filename:     bookExportFilename(meta, absPath, format),
+		ContentType:  bookExportContentType[format],
+		Data:         data,
+		ChapterCount: manuscript.ChapterCount(),
+	}, nil
+}
+
+// renderBookExport renders the manuscript into the bytes for the requested format.
+func renderBookExport(workspace string, format BookExportFormat, manuscript book.Manuscript) ([]byte, error) {
 	switch format {
 	case BookExportFormatTXT:
-		result, err := book.NewService(absPath).ExportText(meta)
-		if err != nil {
-			return BookExportResult{}, err
-		}
-		return BookExportResult{
-			Filename:     bookExportFilename(meta, absPath, format),
-			ContentType:  "text/plain; charset=utf-8",
-			Data:         []byte(result.Content),
-			ChapterCount: result.ChapterCount,
-		}, nil
+		return []byte(bookexport.RenderText(manuscript)), nil
+	case BookExportFormatEPUB:
+		return bookexport.RenderEPUB(manuscript, readBookCoverPNG(workspace))
 	default:
-		return BookExportResult{}, fmt.Errorf("%w: %s", ErrUnsupportedBookExportFormat, req.Format)
+		return nil, fmt.Errorf("%w: %s", ErrUnsupportedBookExportFormat, format)
 	}
+}
+
+// readBookCoverPNG returns the workspace cover image bytes, or nil when the book
+// has no cover. Cover embedding is best-effort so a missing cover never blocks
+// an EPUB export.
+func readBookCoverPNG(workspace string) []byte {
+	absCover, err := book.SafePath(workspace, bookcover.CoverPath)
+	if err != nil {
+		return nil
+	}
+	data, err := os.ReadFile(absCover)
+	if err != nil {
+		return nil
+	}
+	return data
 }
 
 func normalizeBookExportFormat(format BookExportFormat) BookExportFormat {
 	switch BookExportFormat(strings.ToLower(strings.TrimSpace(string(format)))) {
 	case BookExportFormatTXT:
 		return BookExportFormatTXT
+	case BookExportFormatEPUB:
+		return BookExportFormatEPUB
 	default:
 		return ""
 	}

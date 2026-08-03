@@ -6,6 +6,16 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### Added
+
+- 书籍下载新增 EPUB 格式：导出为标准 EPUB 3.0 电子书，按分卷与章节生成可跳转目录（分卷为父级、章节为子级），并在存在书籍封面时自动内嵌为电子书封面。书籍管理页的「导出」按钮改为下拉菜单，可选择「导出 TXT」或「导出 EPUB（带章节）」，写作与游戏模式共用同一入口。
+- Book download now supports EPUB: export a standard EPUB 3.0 e-book with a navigable table of contents built from volumes and chapters (volumes as parents, chapters as nested entries), and the book cover is embedded automatically when present. The "Export" action on the Book Management page is now a dropdown offering "Export TXT" or "Export EPUB (with chapters)", shared by both Writing and Interactive modes.
+
+### Changed
+
+- 书籍导出重构为「结构化稿件模型 + 按格式渲染」：`internal/book` 统一产出标题/作者/分卷/章节的 `Manuscript`，新增 `internal/bookexport` 分别渲染 TXT 与 EPUB，使章节分组与标题去重逻辑只维护一处，且 EPUB 依赖不侵入核心 `book` 包。
+- Book export was refactored into a structured manuscript model plus per-format renderers: `internal/book` produces a single `Manuscript` (title/author/volumes/chapters), and the new `internal/bookexport` package renders TXT and EPUB separately, so chapter grouping and heading de-duplication live in one place and the EPUB dependency stays out of the core `book` package.
+
 ## [v0.3.3] - 2026-07-25
 
 ### Fixed

@@ -193,8 +193,9 @@ describe('HomeView book covers', () => {
     const onSwitch = vi.fn()
     renderHome({ onSwitch })
 
-    const exportButtons = await screen.findAllByRole('button', { name: '导出 TXT' })
-    await user.click(exportButtons[0])
+    const exportTriggers = await screen.findAllByRole('button', { name: '导出' })
+    await user.click(exportTriggers[0])
+    await user.click(await screen.findByRole('menuitem', { name: '导出 TXT' }))
 
     await waitFor(() => {
       expect(exportBook).toHaveBeenCalledWith({ path: '/books/star', format: 'txt' })
@@ -207,13 +208,35 @@ describe('HomeView book covers', () => {
     expect(toast.success).toHaveBeenCalledWith('已开始下载 星河边境.txt')
   })
 
+  it('exports a book as epub with chapters', async () => {
+    const user = userEvent.setup()
+    vi.mocked(exportBook).mockResolvedValueOnce({
+      filename: '星河边境.epub',
+      blob: new Blob(['epub']),
+    })
+    renderHome()
+
+    const exportTriggers = await screen.findAllByRole('button', { name: '导出' })
+    await user.click(exportTriggers[0])
+    await user.click(await screen.findByRole('menuitem', { name: '导出 EPUB（带章节）' }))
+
+    await waitFor(() => {
+      expect(exportBook).toHaveBeenCalledWith({ path: '/books/star', format: 'epub' })
+      expect(downloadBookExport).toHaveBeenCalledWith({
+        filename: '星河边境.epub',
+        blob: expect.any(Blob),
+      })
+    })
+  })
+
   it('shows an error when txt export fails', async () => {
     const user = userEvent.setup()
     vi.mocked(exportBook).mockRejectedValueOnce(new Error('没有可导出的非空章节'))
     renderHome()
 
-    const exportButtons = await screen.findAllByRole('button', { name: '导出 TXT' })
-    await user.click(exportButtons[0])
+    const exportTriggers = await screen.findAllByRole('button', { name: '导出' })
+    await user.click(exportTriggers[0])
+    await user.click(await screen.findByRole('menuitem', { name: '导出 TXT' }))
 
     await waitFor(() => {
       expect(toast.error).toHaveBeenCalledWith('导出失败', {

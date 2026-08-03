@@ -1,7 +1,7 @@
 import { fetchAPI, jsonHeaders, parseSSEStream, readErrorMessage, requestJSON } from './client'
 import type { BookCoverResult, BookMeta, BookRecord, BookSortMode, BookshelfResult, NovelImportResult, SSEEvent } from './types'
 
-export type BookExportFormat = 'txt'
+export type BookExportFormat = 'txt' | 'epub'
 
 export interface BookExportFile {
   filename: string
