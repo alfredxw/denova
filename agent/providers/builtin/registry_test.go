@@ -5,6 +5,8 @@ import (
 	"testing"
 
 	"github.com/alfredxw/denova/agent/providers"
+	"github.com/alfredxw/denova/agent/providers/protocols/anthropicmessages"
+	"github.com/alfredxw/denova/agent/providers/protocols/openaichatcompletions"
 	"github.com/alfredxw/denova/agent/providers/protocols/openairesponses"
 )
 
@@ -114,6 +116,54 @@ func TestDeepSeekPresetsKeepModelAwareXHighEffort(t *testing.T) {
 				t.Fatalf("unsupported neutral efforts were not normalized: %#v", options.EffortMap)
 			}
 		})
+	}
+}
+
+func TestMiniMaxPresetsPreferAnthropicWithExplicitChatFallback(t *testing.T) {
+	registry, err := NewRegistry()
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, test := range []struct {
+		provider providers.ProviderID
+		baseURL  string
+	}{
+		{provider: "minimax", baseURL: "https://api.minimax.io/anthropic"},
+		{provider: "minimax-cn", baseURL: "https://api.minimaxi.com/anthropic"},
+	} {
+		t.Run(string(test.provider), func(t *testing.T) {
+			resolved, err := registry.Resolve(providers.ModelConfig{Provider: test.provider, Model: "MiniMax-M3"})
+			if err != nil {
+				t.Fatal(err)
+			}
+			if resolved.Protocol != providers.ProtocolAnthropicMessages || resolved.BaseURL != test.baseURL {
+				t.Fatalf("resolved route = %s %q", resolved.Protocol, resolved.BaseURL)
+			}
+			var compatibility anthropicmessages.Compatibility
+			if err := providers.DecodeProtocolOptions(resolved.ProtocolOptions, &compatibility); err != nil {
+				t.Fatal(err)
+			}
+			if compatibility.ThinkingMode != anthropicmessages.ThinkingModeAdaptive ||
+				compatibility.SupportsEffort == nil || *compatibility.SupportsEffort {
+				t.Fatalf("Anthropic compatibility = %#v", compatibility)
+			}
+		})
+	}
+
+	chat, err := registry.Resolve(providers.ModelConfig{
+		Provider: "minimax", Protocol: providers.ProtocolOpenAIChatCompletions, Model: "MiniMax-M3",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	var chatCompatibility openaichatcompletions.Compatibility
+	if err := providers.DecodeProtocolOptions(chat.ProtocolOptions, &chatCompatibility); err != nil {
+		t.Fatal(err)
+	}
+	if chatCompatibility.ThinkingToggle != openaichatcompletions.ThinkingToggleAdaptive ||
+		chatCompatibility.SupportsReasoningEffort == nil || *chatCompatibility.SupportsReasoningEffort ||
+		chatCompatibility.MaxTokensField != openaichatcompletions.MaxTokensFieldMaxCompletionTokens {
+		t.Fatalf("Chat compatibility = %#v", chatCompatibility)
 	}
 }
 

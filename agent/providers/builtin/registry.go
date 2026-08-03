@@ -77,12 +77,23 @@ func providerPresets() ([]providers.ProviderPreset, error) {
 	if err != nil {
 		return nil, err
 	}
+	supportsEffort := false
 	minimaxChat, err := protocolOptions(openaichatcompletions.Compatibility{
-		ThinkingToggle:        openaichatcompletions.ThinkingToggleEnableThinking,
-		ReasoningContentField: "reasoning_content",
-		RepairTextToolCalls:   true,
-		RepairInlineThinking:  true,
-		RequestReasoningSplit: true,
+		ThinkingToggle:          openaichatcompletions.ThinkingToggleAdaptive,
+		SupportsReasoningEffort: &supportsEffort,
+		ReasoningContentField:   "reasoning_content",
+		ReasoningReplay:         openaichatcompletions.ReasoningReplayToolCalls,
+		MaxTokensField:          openaichatcompletions.MaxTokensFieldMaxCompletionTokens,
+		RepairInlineThinking:    true,
+		RequestReasoningSplit:   true,
+	})
+	if err != nil {
+		return nil, err
+	}
+	minimaxAnthropic, err := protocolOptions(anthropicmessages.Compatibility{
+		ThinkingMode:           anthropicmessages.ThinkingModeAdaptive,
+		SupportsEffort:         &supportsEffort,
+		DefaultMaxOutputTokens: 65536,
 	})
 	if err != nil {
 		return nil, err
@@ -221,10 +232,19 @@ func providerPresets() ([]providers.ProviderPreset, error) {
 		{
 			ID:              "minimax",
 			Name:            "MiniMax",
-			DefaultProtocol: providers.ProtocolOpenAIChatCompletions,
+			DefaultProtocol: providers.ProtocolAnthropicMessages,
 			Endpoints: map[providers.ProtocolID]providers.EndpointPreset{
 				providers.ProtocolOpenAIChatCompletions: {BaseURL: "https://api.minimax.io/v1", ProtocolOptions: minimaxChat},
-				providers.ProtocolAnthropicMessages:     {BaseURL: "https://api.minimax.io/anthropic", ProtocolOptions: anthropicCompatible},
+				providers.ProtocolAnthropicMessages:     {BaseURL: "https://api.minimax.io/anthropic", ProtocolOptions: minimaxAnthropic},
+			},
+		},
+		{
+			ID:              "minimax-cn",
+			Name:            "MiniMax China",
+			DefaultProtocol: providers.ProtocolAnthropicMessages,
+			Endpoints: map[providers.ProtocolID]providers.EndpointPreset{
+				providers.ProtocolOpenAIChatCompletions: {BaseURL: "https://api.minimaxi.com/v1", ProtocolOptions: minimaxChat},
+				providers.ProtocolAnthropicMessages:     {BaseURL: "https://api.minimaxi.com/anthropic", ProtocolOptions: minimaxAnthropic},
 			},
 		},
 		{

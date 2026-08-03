@@ -16,6 +16,7 @@ type ThinkingToggle string
 const (
 	ThinkingToggleNone           ThinkingToggle = "none"
 	ThinkingToggleNested         ThinkingToggle = "nested"
+	ThinkingToggleAdaptive       ThinkingToggle = "adaptive"
 	ThinkingToggleEnableThinking ThinkingToggle = "enable_thinking"
 )
 
@@ -64,7 +65,7 @@ func resolveCompatibility(config providers.ModelConfig) (Compatibility, error) {
 		compatibility.ThinkingToggle = ThinkingToggleNone
 	}
 	switch compatibility.ThinkingToggle {
-	case ThinkingToggleNone, ThinkingToggleNested, ThinkingToggleEnableThinking:
+	case ThinkingToggleNone, ThinkingToggleNested, ThinkingToggleAdaptive, ThinkingToggleEnableThinking:
 	default:
 		return Compatibility{}, fmt.Errorf("openai chat completions compatibility: unsupported thinking toggle %q", compatibility.ThinkingToggle)
 	}
@@ -124,6 +125,12 @@ func (compatibility Compatibility) thinkingFields(level providers.ThinkingLevel)
 	switch compatibility.ThinkingToggle {
 	case ThinkingToggleNested:
 		mode := "enabled"
+		if !enabled {
+			mode = "disabled"
+		}
+		return map[string]any{"thinking": map[string]any{"type": mode}}
+	case ThinkingToggleAdaptive:
+		mode := "adaptive"
 		if !enabled {
 			mode = "disabled"
 		}

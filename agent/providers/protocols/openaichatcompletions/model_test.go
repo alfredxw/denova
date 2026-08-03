@@ -85,6 +85,26 @@ func TestCompatibilityReasoningEffortCoversUnifiedThinkingLevels(t *testing.T) {
 	}
 }
 
+func TestAdaptiveThinkingToggleUsesProviderWireValues(t *testing.T) {
+	compatibility := Compatibility{ThinkingToggle: ThinkingToggleAdaptive}
+	for _, test := range []struct {
+		level providers.ThinkingLevel
+		want  string
+	}{
+		{level: providers.ThinkingLevelHigh, want: "adaptive"},
+		{level: providers.ThinkingLevelOff, want: "disabled"},
+	} {
+		fields := compatibility.thinkingFields(test.level)
+		thinking, ok := fields["thinking"].(map[string]any)
+		if !ok || thinking["type"] != test.want {
+			t.Fatalf("thinkingFields(%q) = %#v, want %q", test.level, fields, test.want)
+		}
+	}
+	if fields := compatibility.thinkingFields(providers.ThinkingLevelDefault); fields != nil {
+		t.Fatalf("default thinking fields = %#v", fields)
+	}
+}
+
 func TestDeepSeekThinkingRequestUsesV4WireFormat(t *testing.T) {
 	tests := []struct {
 		name                 string
