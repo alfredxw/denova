@@ -148,6 +148,18 @@ export interface ModelPingResult {
   model: string
 }
 
+export interface ModelInfo {
+  id: string
+  owned_by?: string
+}
+
+export interface ModelDiscoveryResult {
+  models: ModelInfo[]
+  provider: string
+  protocol: string
+  base_url: string
+}
+
 export interface ImageAPIProfileSettings {
   id?: string
   name?: string

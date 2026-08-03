@@ -38,6 +38,7 @@ import { TerminalCommandsEditor, terminalCommandsForEditor } from './TerminalCom
 import { useAgentApprovalMode } from '@/features/agent-approval/AgentApprovalProvider'
 import { AGENT_APPROVAL_MODES } from '@/features/agent-approval/modes'
 import { ApprovalRulesEditor } from './ApprovalRulesEditor'
+import { ApiKeyInput } from './ApiKeyInput'
 
 type SettingsSectionId = 'model' | 'image' | 'paths' | 'access' | 'appearance' | 'updates' | 'agent' | 'terminal' | 'web-access' | 'debug' | 'ide-editor' | 'ide-output' | 'versions' | 'interactive'
 
@@ -1566,11 +1567,11 @@ function ImageAPIProfilesEditor({ profiles, effectiveProfiles, defaultProfileID,
                 />
               </ModelProfileInput>
               <ModelProfileInput label={t('settings.imageApi.profileKeyLabel')} className="md:col-span-5">
-                <Input
-                  type="password"
+                <ApiKeyInput
+                  label={t('settings.imageApi.profileKeyLabel')}
                   value={profile.openai_api_key ?? ''}
                   placeholder={t('settings.imageApi.profileKeyInheritPlaceholder')}
-                  onChange={(e) => updateProfile(index, { openai_api_key: e.target.value })}
+                  onChange={(apiKey) => updateProfile(index, { openai_api_key: apiKey })}
                 />
               </ModelProfileInput>
               <ImageOptionSelect

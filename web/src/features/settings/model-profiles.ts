@@ -3,17 +3,17 @@ import type { ModelProfileSettings } from './types'
 export const DEFAULT_MODEL_PROFILE_ID = 'default'
 export const MODEL_PROVIDER_OPENAI = 'openai'
 export const MODEL_PROVIDER_DEEPSEEK = 'deepseek'
+export const MODEL_PROVIDER_GOOGLE = 'google'
+export const MODEL_PROVIDER_VOLCENGINE = 'volcengine'
 export const MODEL_PROVIDER_OPENAI_COMPATIBLE = 'openai-compatible'
 export const MODEL_PROTOCOL_CHAT_COMPLETIONS = 'openai-chat-completions'
 export const MODEL_PROTOCOL_RESPONSES = 'openai-responses'
 export const MODEL_PROTOCOL_ANTHROPIC_MESSAGES = 'anthropic-messages'
-export const MODEL_PROTOCOL_GOOGLE_GENERATIVE_AI = 'google-generative-ai'
 
 export const FALLBACK_MODEL_PROTOCOLS = [
   MODEL_PROTOCOL_CHAT_COMPLETIONS,
   MODEL_PROTOCOL_RESPONSES,
   MODEL_PROTOCOL_ANTHROPIC_MESSAGES,
-  MODEL_PROTOCOL_GOOGLE_GENERATIVE_AI,
 ]
 
 export function modelProfileID(profile?: ModelProfileSettings): string {
@@ -46,6 +46,8 @@ export function inferModelProvider(baseUrl?: string): string {
   const normalized = baseUrl?.trim().toLowerCase() ?? ''
   if (normalized.includes('api.deepseek.com')) return MODEL_PROVIDER_DEEPSEEK
   if (normalized.includes('api.openai.com')) return MODEL_PROVIDER_OPENAI
+  if (normalized.includes('ark.cn-beijing.volces.com')) return MODEL_PROVIDER_VOLCENGINE
+  if (normalized.includes('generativelanguage.googleapis.com')) return MODEL_PROVIDER_GOOGLE
   return MODEL_PROVIDER_OPENAI_COMPATIBLE
 }
 

@@ -1,6 +1,6 @@
-// Package builtin assembles Denova's built-in protocol adapters and optional
-// provider presets. Presets improve setup ergonomics but never form an
-// allowlist: any provider ID can use any registered protocol explicitly.
+// Package builtin assembles Denova's built-in protocol adapters and provider
+// presets. Custom endpoints use the compatible preset plus an explicit
+// registered protocol instead of inventing provider identities.
 package builtin
 
 import (
@@ -9,7 +9,6 @@ import (
 
 	"github.com/alfredxw/denova/agent/providers"
 	"github.com/alfredxw/denova/agent/providers/protocols/anthropicmessages"
-	"github.com/alfredxw/denova/agent/providers/protocols/googlegenerativeai"
 	"github.com/alfredxw/denova/agent/providers/protocols/openaichatcompletions"
 	"github.com/alfredxw/denova/agent/providers/protocols/openairesponses"
 )
@@ -21,7 +20,6 @@ func NewRegistry() (*providers.Registry, error) {
 		openaichatcompletions.NewAdapter(),
 		openairesponses.NewAdapter(),
 		anthropicmessages.NewAdapter(),
-		googlegenerativeai.NewAdapter(),
 	} {
 		if err := registry.RegisterProtocol(adapter); err != nil {
 			return nil, fmt.Errorf("build provider registry: %w", err)
@@ -127,21 +125,6 @@ func providerPresets() ([]providers.ProviderPreset, error) {
 	if err != nil {
 		return nil, err
 	}
-	googleNative, err := protocolOptions(googlegenerativeai.Compatibility{
-		APIVersion:   "v1beta",
-		ThinkingMode: googlegenerativeai.ThinkingModeLevel,
-		ThinkingLevels: map[string]string{
-			"minimal": "MINIMAL",
-			"low":     "LOW",
-			"medium":  "MEDIUM",
-			"high":    "HIGH",
-			"xhigh":   "HIGH",
-			"max":     "HIGH",
-		},
-	})
-	if err != nil {
-		return nil, err
-	}
 	supportsStreamUsage := false
 	veniceChat, err := protocolOptions(openaichatcompletions.Compatibility{
 		SupportsStreamUsage: &supportsStreamUsage,
@@ -184,21 +167,21 @@ func providerPresets() ([]providers.ProviderPreset, error) {
 			},
 		},
 		{
-			ID:              "google",
+			ID:              providers.ProviderGoogle,
 			Name:            "Google Gemini",
-			DefaultProtocol: providers.ProtocolGoogleGenerativeAI,
+			DefaultProtocol: providers.ProtocolOpenAIChatCompletions,
 			Endpoints: map[providers.ProtocolID]providers.EndpointPreset{
-				providers.ProtocolGoogleGenerativeAI:    {BaseURL: "https://generativelanguage.googleapis.com", ProtocolOptions: googleNative},
 				providers.ProtocolOpenAIChatCompletions: {BaseURL: "https://generativelanguage.googleapis.com/v1beta/openai", ProtocolOptions: openAIChat},
 			},
 		},
 		{
 			ID:              providers.ProviderOpenAICompatible,
-			Name:            "OpenAI Compatible",
+			Name:            "Compatible / Custom Endpoint",
 			DefaultProtocol: providers.ProtocolOpenAIChatCompletions,
 			Endpoints: map[providers.ProtocolID]providers.EndpointPreset{
 				providers.ProtocolOpenAIChatCompletions: {ProtocolOptions: openAIChat},
 				providers.ProtocolOpenAIResponses:       {},
+				providers.ProtocolAnthropicMessages:     {ProtocolOptions: anthropicCompatible},
 			},
 		},
 		{ID: "groq", Name: "Groq", DefaultProtocol: providers.ProtocolOpenAIChatCompletions, Endpoints: chatEndpoint("https://api.groq.com/openai/v1")},
@@ -215,7 +198,7 @@ func providerPresets() ([]providers.ProviderPreset, error) {
 		{ID: "alibaba", Name: "Alibaba Cloud Model Studio", DefaultProtocol: providers.ProtocolOpenAIChatCompletions, Endpoints: chatEndpoint("https://coding-intl.dashscope.aliyuncs.com/v1")},
 		{ID: "zhipu", Name: "Zhipu AI", DefaultProtocol: providers.ProtocolOpenAIChatCompletions, Endpoints: chatEndpoint("https://open.bigmodel.cn/api/coding/paas/v4")},
 		{ID: "siliconflow", Name: "SiliconFlow", DefaultProtocol: providers.ProtocolOpenAIChatCompletions, Endpoints: chatEndpoint("https://api.siliconflow.cn/v1")},
-		{ID: "volcengine", Name: "Volcengine Ark", DefaultProtocol: providers.ProtocolOpenAIChatCompletions, Endpoints: chatEndpoint("https://ark.cn-beijing.volces.com/api/v3")},
+		{ID: providers.ProviderVolcengine, Name: "Volcengine Ark", DefaultProtocol: providers.ProtocolOpenAIChatCompletions, Endpoints: chatEndpoint("https://ark.cn-beijing.volces.com/api/v3")},
 		{ID: "synthetic", Name: "Synthetic", DefaultProtocol: providers.ProtocolOpenAIChatCompletions, Endpoints: chatEndpoint("https://api.synthetic.new/openai/v1")},
 		{ID: "baseten", Name: "Baseten", DefaultProtocol: providers.ProtocolOpenAIChatCompletions, Endpoints: chatEndpoint("https://inference.baseten.co/v1")},
 		{ID: "nanogpt", Name: "NanoGPT", DefaultProtocol: providers.ProtocolOpenAIChatCompletions, Endpoints: chatEndpoint("https://nano-gpt.com/api/v1")},

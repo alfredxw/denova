@@ -14,13 +14,19 @@ const (
 )
 
 type ModelProfileSettings struct {
-	ID                  string            `toml:"id,omitempty" json:"id,omitempty"`
-	Name                string            `toml:"name,omitempty" json:"name,omitempty"`
-	Provider            string            `toml:"provider,omitempty" json:"provider,omitempty"`
-	Protocol            string            `toml:"protocol,omitempty" json:"protocol,omitempty"`
-	APIKey              string            `toml:"api_key,omitempty" json:"api_key,omitempty"`
-	BaseURL             string            `toml:"base_url,omitempty" json:"base_url,omitempty"`
-	Model               string            `toml:"model,omitempty" json:"model,omitempty"`
+	ID       string `toml:"id,omitempty" json:"id,omitempty"`
+	Name     string `toml:"name,omitempty" json:"name,omitempty"`
+	Provider string `toml:"provider,omitempty" json:"provider,omitempty"`
+	Protocol string `toml:"protocol,omitempty" json:"protocol,omitempty"`
+	APIKey   string `toml:"api_key,omitempty" json:"api_key,omitempty"`
+	BaseURL  string `toml:"base_url,omitempty" json:"base_url,omitempty"`
+	Model    string `toml:"model,omitempty" json:"model,omitempty"`
+	// LegacyOpenAI* are decode-only aliases for profiles persisted before the
+	// provider/protocol split. Sanitization moves them into the generic fields
+	// and clears them, so every subsequent write uses the canonical schema.
+	LegacyOpenAIAPIKey  string            `toml:"openai_api_key,omitempty" json:"openai_api_key,omitempty"`
+	LegacyOpenAIBaseURL string            `toml:"openai_base_url,omitempty" json:"openai_base_url,omitempty"`
+	LegacyOpenAIModel   string            `toml:"openai_model,omitempty" json:"openai_model,omitempty"`
 	Headers             map[string]string `toml:"headers,omitempty" json:"headers,omitempty"`
 	ProtocolOptions     map[string]any    `toml:"protocol_options,omitempty" json:"protocol_options,omitempty"`
 	Temperature         *float64          `toml:"temperature,omitempty" json:"temperature,omitempty"`
@@ -288,6 +294,7 @@ func sanitizeModelProfiles(profiles []ModelProfileSettings) []ModelProfileSettin
 	}
 	out := make([]ModelProfileSettings, 0, len(profiles))
 	for _, profile := range profiles {
+		profile = migrateLegacyModelProfile(profile)
 		profile = normalizeModelProfileRouting(profile)
 		profile.Model = strings.TrimSpace(profile.Model)
 		profile.ID = modelProfileID(profile)
@@ -316,6 +323,24 @@ func sanitizeModelProfiles(profiles []ModelProfileSettings) []ModelProfileSettin
 		out = append(out, profile)
 	}
 	return out
+}
+
+// migrateLegacyModelProfile accepts the former OpenAI-prefixed profile fields
+// without letting them override an explicitly configured canonical value.
+func migrateLegacyModelProfile(profile ModelProfileSettings) ModelProfileSettings {
+	if profile.APIKey == "" {
+		profile.APIKey = profile.LegacyOpenAIAPIKey
+	}
+	if strings.TrimSpace(profile.BaseURL) == "" {
+		profile.BaseURL = profile.LegacyOpenAIBaseURL
+	}
+	if strings.TrimSpace(profile.Model) == "" {
+		profile.Model = profile.LegacyOpenAIModel
+	}
+	profile.LegacyOpenAIAPIKey = ""
+	profile.LegacyOpenAIBaseURL = ""
+	profile.LegacyOpenAIModel = ""
+	return profile
 }
 
 func hasModelProfileDraftFields(profile ModelProfileSettings) bool {
@@ -478,6 +503,7 @@ func legacyModelProfile(cfg *Config) ModelProfileSettings {
 }
 
 func normalizeModelProfileRouting(profile ModelProfileSettings) ModelProfileSettings {
+	profile = migrateLegacyModelProfile(profile)
 	profile.Provider = strings.TrimSpace(profile.Provider)
 	profile.Protocol = strings.TrimSpace(profile.Protocol)
 	explicitProvider := profile.Provider != ""
@@ -500,6 +526,10 @@ func inferModelProvider(baseURL string) string {
 		return string(providers.ProviderDeepSeek)
 	case strings.Contains(normalized, "api.openai.com"):
 		return string(providers.ProviderOpenAI)
+	case strings.Contains(normalized, "ark.cn-beijing.volces.com"):
+		return string(providers.ProviderVolcengine)
+	case strings.Contains(normalized, "generativelanguage.googleapis.com"):
+		return string(providers.ProviderGoogle)
 	default:
 		return string(providers.ProviderOpenAICompatible)
 	}

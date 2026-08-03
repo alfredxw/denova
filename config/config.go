@@ -235,7 +235,7 @@ func settingsFromConfig(cfg *Config) Settings {
 		OpenAIAPIKey:             cfg.OpenAIAPIKey,
 		OpenAIBaseURL:            cfg.OpenAIBaseURL,
 		OpenAIModel:              cfg.OpenAIModel,
-		ModelProfiles:            cfg.ModelProfiles,
+		ModelProfiles:            sanitizeModelProfiles(cfg.ModelProfiles),
 		ImageAPIKey:              cfg.ImageAPIKey,
 		ImageAPIBaseURL:          cfg.ImageAPIBaseURL,
 		ImageAPIModel:            cfg.ImageAPIModel,

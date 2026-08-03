@@ -119,7 +119,7 @@ corepack enable
 
 ## 模型与配置
 
-Denova 的语言模型将 provider 与 API 协议分开配置：任意 provider ID 都可自由组合 OpenAI Chat Completions、OpenAI Responses、Anthropic Messages 或 Google Generative AI，并独立设置 Base URL；内置服务商预设只补充常用默认值，不是白名单。OpenAI 默认使用 Responses API，DeepSeek 同时提供 Chat Completions、Responses 与 Anthropic 路由，MiniMax 默认使用能完整续传 thinking block 的 Anthropic 路由。设置页可直接用当前未保存配置发送一次最小生成请求来测试连接。旧配置和下面的 `OPENAI_*` 环境变量继续按 Chat Completions 解释。推荐先在设置页配置语言模型、图像模型、Agent 参数、默认写作 Skill、编辑器、游戏模式、版本管理、语言、主题和字体。
+Denova 的语言模型将 provider 与 API 协议分开配置：provider 从内置服务商目录选择，协议统一为 OpenAI Chat Completions、OpenAI Responses 或 Anthropic Messages。自定义端点选择「兼容 / 自定义端点」服务商，再设置协议与 Base URL；Gemini 使用 Google 官方的 OpenAI 兼容入口。OpenAI 默认使用 Responses API，DeepSeek 同时提供 Chat Completions、Responses 与 Anthropic 路由，MiniMax 默认使用能完整续传 thinking block 的 Anthropic 路由。设置页可通过 OpenAI-compatible `/models` 获取模型候选，但模型名始终可自定义；也可直接用当前未保存配置发送一次最小生成请求来测试连接。旧 `model_profiles` 的 `openai_*` 字段和下面的 `OPENAI_*` 环境变量会继续按 Chat Completions 兼容读取。推荐先在设置页配置语言模型、图像模型、Agent 参数、默认写作 Skill、编辑器、游戏模式、版本管理、语言、主题和字体。
 
 需要脚本化启动或部署时，也可以用环境变量覆盖模型配置：
 

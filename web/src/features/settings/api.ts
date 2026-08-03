@@ -1,5 +1,5 @@
 import { fetchAPI, jsonHeaders, parseSSEStream, readErrorMessage, requestJSON } from '@/lib/api-client'
-import type { LayeredSettings, ModelCatalog, ModelPingResult, ModelProfileSettings, Settings, SettingsLayer, UpdateApplyResult, UpdateCheckResult } from './types'
+import type { LayeredSettings, ModelCatalog, ModelDiscoveryResult, ModelPingResult, ModelProfileSettings, Settings, SettingsLayer, UpdateApplyResult, UpdateCheckResult } from './types'
 import type { SSEEvent } from '@/lib/api-client'
 
 type JSONMergePatch<T> = T extends readonly unknown[]
@@ -136,6 +136,17 @@ export async function applyUpdate(): Promise<UpdateApplyResult> {
 
 export function fetchModelCatalog(signal?: AbortSignal): Promise<ModelCatalog> {
   return requestJSON('/api/models/catalog', { signal })
+}
+
+/** Loads optional OpenAI-compatible model suggestions without validating or
+ * restricting the profile's custom model text. */
+export function discoverModels(profile: ModelProfileSettings, signal?: AbortSignal): Promise<ModelDiscoveryResult> {
+  return requestJSON('/api/models/discover', {
+    method: 'POST',
+    headers: jsonHeaders,
+    body: JSON.stringify({ profile }),
+    signal,
+  })
 }
 
 /** Validates an unsaved profile through the same resolver and adapter as a real Agent run. */

@@ -39,7 +39,7 @@ func TestPingUsesStoredSecretAndRealAgentAdapter(t *testing.T) {
 	defer server.Close()
 
 	service := NewService(testHost{config: config.Config{ModelProfiles: []config.ModelProfileSettings{{
-		ID: "private", Provider: "private-provider", Protocol: string(providers.ProtocolOpenAIChatCompletions),
+		ID: "private", Provider: string(providers.ProviderOpenAICompatible), Protocol: string(providers.ProtocolOpenAIChatCompletions),
 		APIKey: "secret", BaseURL: server.URL, Model: "private-model",
 		Headers: map[string]string{"X-Custom": "custom"},
 	}}}})
@@ -47,7 +47,7 @@ func TestPingUsesStoredSecretAndRealAgentAdapter(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !result.OK || result.Provider != "private-provider" || result.Protocol != string(providers.ProtocolOpenAIChatCompletions) || result.Model != "private-model" {
+	if !result.OK || result.Provider != string(providers.ProviderOpenAICompatible) || result.Protocol != string(providers.ProtocolOpenAIChatCompletions) || result.Model != "private-model" {
 		t.Fatalf("result = %#v", result)
 	}
 	var request map[string]any
@@ -72,7 +72,7 @@ func TestPingDoesNotForwardStoredCredentialsToChangedOrigin(t *testing.T) {
 	defer server.Close()
 
 	service := NewService(testHost{config: config.Config{ModelProfiles: []config.ModelProfileSettings{{
-		ID: "private", Provider: "private-provider", Protocol: string(providers.ProtocolOpenAIChatCompletions),
+		ID: "private", Provider: string(providers.ProviderOpenAICompatible), Protocol: string(providers.ProtocolOpenAIChatCompletions),
 		APIKey: "stored-secret", BaseURL: "https://original.example.test/v1", Model: "private-model",
 		Headers: map[string]string{"X-Private": "stored-header"},
 	}}}})
@@ -97,7 +97,7 @@ func TestPingPreservesProviderAPIErrors(t *testing.T) {
 
 	service := NewService(testHost{config: config.Config{}})
 	_, err := service.Ping(context.Background(), config.ModelProfileSettings{
-		ID: "invalid", Provider: "private", Protocol: string(providers.ProtocolOpenAIChatCompletions),
+		ID: "invalid", Provider: string(providers.ProviderOpenAICompatible), Protocol: string(providers.ProtocolOpenAIChatCompletions),
 		APIKey: "bad", BaseURL: server.URL, Model: "model",
 	})
 	if !IsProviderRequestError(err) {
@@ -106,6 +106,61 @@ func TestPingPreservesProviderAPIErrors(t *testing.T) {
 	var apiError *providers.APIError
 	if !errors.As(err, &apiError) || apiError.StatusCode != http.StatusUnauthorized {
 		t.Fatalf("error = %T %v", err, err)
+	}
+}
+
+func TestListModelsUsesStoredSecretAndKeepsSuggestionsIndependent(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
+		if request.Method != http.MethodGet || request.URL.Path != "/v1/models" {
+			t.Errorf("request = %s %s", request.Method, request.URL.Path)
+		}
+		if request.Header.Get("Authorization") != "Bearer stored-secret" || request.Header.Get("X-Custom") != "custom" {
+			t.Errorf("headers = %#v", request.Header)
+		}
+		writer.Header().Set("Content-Type", "application/json")
+		_, _ = io.WriteString(writer, `{"object":"list","data":[{"id":"model-b"},{"id":"model-a","owned_by":"vendor"}]}`)
+	}))
+	defer server.Close()
+
+	service := NewService(testHost{config: config.Config{ModelProfiles: []config.ModelProfileSettings{{
+		ID: "private", Provider: string(providers.ProviderOpenAICompatible), Protocol: string(providers.ProtocolOpenAIResponses),
+		APIKey: "stored-secret", BaseURL: server.URL + "/v1", Model: "custom-model-not-in-list",
+		Headers: map[string]string{"X-Custom": "custom"},
+	}}}})
+	result, err := service.List(context.Background(), config.ModelProfileSettings{ID: "private"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if result.Provider != string(providers.ProviderOpenAICompatible) || result.Protocol != string(providers.ProtocolOpenAIResponses) || len(result.Models) != 2 {
+		t.Fatalf("result = %#v", result)
+	}
+	if result.Models[0].ID != "model-a" || result.Models[0].OwnedBy != "vendor" || result.Models[1].ID != "model-b" {
+		t.Fatalf("models = %#v", result.Models)
+	}
+}
+
+func TestListModelsDoesNotForwardStoredCredentialsToChangedOrigin(t *testing.T) {
+	headers := make(chan http.Header, 1)
+	server := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
+		headers <- request.Header.Clone()
+		writer.Header().Set("Content-Type", "application/json")
+		_, _ = io.WriteString(writer, `{"object":"list","data":[]}`)
+	}))
+	defer server.Close()
+
+	service := NewService(testHost{config: config.Config{ModelProfiles: []config.ModelProfileSettings{{
+		ID: "private", Provider: string(providers.ProviderOpenAICompatible), Protocol: string(providers.ProtocolOpenAIChatCompletions),
+		APIKey: "stored-secret", BaseURL: "https://original.example.test/v1", Model: "custom-model",
+		Headers: map[string]string{"X-Private": "stored-header"},
+	}}}})
+	if _, err := service.List(context.Background(), config.ModelProfileSettings{
+		ID: "private", BaseURL: server.URL + "/v1",
+	}); err != nil {
+		t.Fatal(err)
+	}
+	requestHeaders := <-headers
+	if requestHeaders.Get("Authorization") == "Bearer stored-secret" || requestHeaders.Get("X-Private") != "" {
+		t.Fatalf("changed endpoint received stored credentials: %#v", requestHeaders)
 	}
 }
 
@@ -119,7 +174,6 @@ func TestCatalogPublishesAdaptersAndDeepSeekRoutes(t *testing.T) {
 		string(providers.ProtocolOpenAIChatCompletions): false,
 		string(providers.ProtocolOpenAIResponses):       false,
 		string(providers.ProtocolAnthropicMessages):     false,
-		string(providers.ProtocolGoogleGenerativeAI):    false,
 	}
 	for _, protocol := range catalog.Protocols {
 		if _, ok := wantProtocols[protocol]; ok {

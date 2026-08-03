@@ -3,6 +3,7 @@ package providers
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"strings"
 	"testing"
 
@@ -15,6 +16,12 @@ func (adapter stubAdapter) ID() ProtocolID { return adapter.id }
 
 func (stubAdapter) New(context.Context, ModelConfig) (agent.ToolCallingChatModel, error) {
 	return stubModel{}, nil
+}
+
+type stubListingAdapter struct{ stubAdapter }
+
+func (stubListingAdapter) ListModels(context.Context, ModelConfig) ([]ModelInfo, error) {
+	return []ModelInfo{{ID: "suggested-model"}}, nil
 }
 
 type stubModel struct{}
@@ -89,24 +96,50 @@ func TestRegistryMergesPresetDefaultsWithoutRestrictingOverrides(t *testing.T) {
 	}
 }
 
-func TestRegistryAcceptsArbitraryProviderWithExplicitProtocol(t *testing.T) {
+func TestRegistryRejectsUnregisteredProvider(t *testing.T) {
 	registry := NewRegistry()
 	if err := registry.RegisterProtocol(stubAdapter{id: ProtocolAnthropicMessages}); err != nil {
 		t.Fatal(err)
 	}
-	resolved, err := registry.Resolve(ModelConfig{
+	_, err := registry.Resolve(ModelConfig{
 		Provider: "private-cloud", Protocol: ProtocolAnthropicMessages,
 		BaseURL: "https://private.example", Model: "model",
 	})
+	if err == nil || !strings.Contains(err.Error(), "has no registered preset") {
+		t.Fatalf("unregistered provider error = %v", err)
+	}
+}
+
+func TestRegistryModelListingIsOptionalAndDoesNotRequireConfiguredModel(t *testing.T) {
+	registry := NewRegistry()
+	if err := registry.RegisterProtocol(stubListingAdapter{stubAdapter{id: ProtocolOpenAIResponses}}); err != nil {
+		t.Fatal(err)
+	}
+	if err := registry.RegisterProtocol(stubAdapter{id: ProtocolAnthropicMessages}); err != nil {
+		t.Fatal(err)
+	}
+	if err := registry.RegisterProviderPreset(ProviderPreset{
+		ID: "known", Name: "Known", DefaultProtocol: ProtocolOpenAIResponses,
+		Endpoints: map[ProtocolID]EndpointPreset{
+			ProtocolOpenAIResponses:   {BaseURL: "https://known.example/v1"},
+			ProtocolAnthropicMessages: {BaseURL: "https://known.example/anthropic"},
+		},
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	models, resolved, err := registry.ListModelsWithResolvedConfig(context.Background(), ModelConfig{Provider: "known"})
 	if err != nil {
 		t.Fatal(err)
 	}
-	if resolved.Provider != "private-cloud" || resolved.Protocol != ProtocolAnthropicMessages {
-		t.Fatalf("resolved = %#v", resolved)
+	if len(models) != 1 || models[0].ID != "suggested-model" || resolved.Model != "" {
+		t.Fatalf("models = %#v resolved = %#v", models, resolved)
 	}
-	_, err = registry.Resolve(ModelConfig{Provider: "private-cloud", BaseURL: "https://private.example", Model: "model"})
-	if err == nil || !strings.Contains(err.Error(), "protocol is required") {
-		t.Fatalf("missing custom protocol error = %v", err)
+	_, _, err = registry.ListModelsWithResolvedConfig(context.Background(), ModelConfig{
+		Provider: "known", Protocol: ProtocolAnthropicMessages,
+	})
+	if !errors.Is(err, ErrModelListingUnsupported) {
+		t.Fatalf("unsupported listing error = %v", err)
 	}
 }
 

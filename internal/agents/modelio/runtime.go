@@ -18,8 +18,8 @@ import (
 )
 
 // Catalog is the stable application projection of installed protocol
-// adapters and optional provider presets. Presets only supply conveniences;
-// callers may still configure arbitrary provider IDs and routes.
+// adapters and the closed provider preset catalog. Custom routes use the
+// compatible provider preset with an explicit installed protocol.
 type Catalog struct {
 	Providers []ProviderPreset `json:"providers"`
 	Protocols []string         `json:"protocols"`
@@ -46,6 +46,15 @@ type ProbeResult struct {
 	Model    string
 }
 
+// ModelListResult is a provider-advertised suggestion set for one effective
+// OpenAI-compatible route. It never constrains custom model IDs.
+type ModelListResult struct {
+	Models   []providers.ModelInfo
+	Provider string
+	Protocol string
+	BaseURL  string
+}
+
 // ProbeRequestError means configuration and adapter construction succeeded,
 // but the actual provider request or its response failed.
 type ProbeRequestError struct{ cause error }
@@ -66,6 +75,29 @@ func (err *ProbeRequestError) Unwrap() error {
 
 func IsProbeRequestError(err error) bool {
 	var target *ProbeRequestError
+	return errors.As(err, &target)
+}
+
+// ModelListRequestError means route resolution succeeded but the upstream
+// endpoint rejected, omitted, or failed its optional /models request.
+type ModelListRequestError struct{ cause error }
+
+func (err *ModelListRequestError) Error() string {
+	if err == nil || err.cause == nil {
+		return "model listing request failed"
+	}
+	return err.cause.Error()
+}
+
+func (err *ModelListRequestError) Unwrap() error {
+	if err == nil {
+		return nil
+	}
+	return err.cause
+}
+
+func IsModelListRequestError(err error) bool {
+	var target *ModelListRequestError
 	return errors.As(err, &target)
 }
 
@@ -164,6 +196,40 @@ func (runtime *Runtime) Probe(ctx context.Context, resolved config.ResolvedModel
 		Protocol: string(effective.Protocol),
 		BaseURL:  effective.BaseURL,
 		Model:    effective.Model,
+	}, nil
+}
+
+// ListModels calls the optional protocol discovery endpoint without imposing
+// a request timeout. Unsupported protocols fail before any network request.
+func (runtime *Runtime) ListModels(ctx context.Context, resolved config.ResolvedModelSettings) (ModelListResult, error) {
+	registry, err := runtime.providerRegistry()
+	if err != nil {
+		return ModelListResult{}, err
+	}
+	modelConfig, err := ConfigFromResolved(resolved)
+	if err != nil {
+		return ModelListResult{}, err
+	}
+	models, effective, err := registry.ListModelsWithResolvedConfig(ctx, modelConfig)
+	if err != nil {
+		if errors.Is(err, providers.ErrModelListingUnsupported) {
+			return ModelListResult{}, err
+		}
+		slog.WarnContext(ctx, fmt.Sprintf(
+			"[agents/modelio] model listing failed provider=%s protocol=%s base_url=%q err=%v",
+			effective.Provider, effective.Protocol, loggableModelBaseURL(effective.BaseURL), err,
+		))
+		return ModelListResult{}, &ModelListRequestError{cause: err}
+	}
+	slog.InfoContext(ctx, fmt.Sprintf(
+		"[agents/modelio] model listing succeeded provider=%s protocol=%s base_url=%q count=%d",
+		effective.Provider, effective.Protocol, loggableModelBaseURL(effective.BaseURL), len(models),
+	))
+	return ModelListResult{
+		Models:   models,
+		Provider: string(effective.Provider),
+		Protocol: string(effective.Protocol),
+		BaseURL:  effective.BaseURL,
 	}, nil
 }
 

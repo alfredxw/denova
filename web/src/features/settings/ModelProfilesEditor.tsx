@@ -1,33 +1,35 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import type { ReactNode } from 'react'
-import { Plus, Trash2 } from 'lucide-react'
+import { Check, ChevronDown, Plus, Trash2 } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
+import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
 import { Separator } from '@/components/ui/separator'
 import { Select, SelectContent, SelectGroup, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
+import { cn } from '@/lib/utils'
 import { fetchModelCatalog } from './api'
+import { ApiKeyInput } from './ApiKeyInput'
+import { ModelDiscoveryInput } from './ModelDiscoveryInput'
 import { ModelProfilePingButton } from './ModelProfilePingButton'
 import {
   DEFAULT_MODEL_PROFILE_ID,
   FALLBACK_MODEL_PROTOCOLS,
   MODEL_PROTOCOL_ANTHROPIC_MESSAGES,
   MODEL_PROTOCOL_CHAT_COMPLETIONS,
-  MODEL_PROTOCOL_GOOGLE_GENERATIVE_AI,
   MODEL_PROTOCOL_RESPONSES,
   modelProfileID,
   modelProfileLabel,
 } from './model-profiles'
-import type { ModelCatalog, ModelProfileSettings } from './types'
+import type { ModelCatalog, ModelProfileSettings, ModelProviderPreset } from './types'
 
 const DEFAULT_CONTEXT_WINDOW_TOKENS = 400000
 const MIN_CONTEXT_WINDOW_TOKENS = 1024
 const MAX_CONTEXT_WINDOW_TOKENS = 2000000
 const CONTEXT_WINDOW_PRESETS = [200000, DEFAULT_CONTEXT_WINDOW_TOKENS, 1000000]
 const PROVIDER_DEFAULT_PROTOCOL = '__provider_default__'
-const MODEL_PROVIDER_DATALIST_ID = 'nova-model-provider-presets'
 const EMPTY_MODEL_CATALOG: ModelCatalog = { providers: [], protocols: FALLBACK_MODEL_PROTOCOLS }
 
 export function ModelProfilesEditor({ profiles, effectiveProfiles, onChange }: {
@@ -105,9 +107,6 @@ export function ModelProfilesEditor({ profiles, effectiveProfiles, onChange }: {
         {t('settings.model.routingHint')}
       </div>
       <div className="flex flex-col gap-2">
-        <datalist id={MODEL_PROVIDER_DATALIST_ID}>
-          {catalog.providers.map((provider) => <option key={provider.id} value={provider.id}>{provider.name}</option>)}
-        </datalist>
         {profiles.length === 0 && (
           <div className="rounded-[var(--nova-radius)] border border-dashed border-[var(--nova-border)] bg-[var(--nova-surface-2)] px-2.5 py-2 text-[var(--nova-text-faint)]">
             {t('settings.model.profileEmpty', { count: effectiveProfiles.length || 1 })}
@@ -150,10 +149,12 @@ export function ModelProfilesEditor({ profiles, effectiveProfiles, onChange }: {
                   />
                 </ModelProfileField>
                 <ModelProfileField label={t('settings.model.profileModelLabel')} className="md:col-span-4">
-                  <Input
+                  <ModelDiscoveryInput
+                    profile={profile}
+                    defaultProtocol={catalog.providers.find((provider) => provider.id === profile.provider)?.default_protocol}
                     value={profile.model ?? ''}
                     placeholder={t('settings.model.profileModelPlaceholder')}
-                    onChange={(event) => updateProfileModel(index, event.target.value)}
+                    onChange={(model) => updateProfileModel(index, model)}
                   />
                 </ModelProfileField>
                 <ModelProfileField label={t('settings.model.profileAliasLabel')} className="md:col-span-3">
@@ -164,11 +165,12 @@ export function ModelProfilesEditor({ profiles, effectiveProfiles, onChange }: {
                   />
                 </ModelProfileField>
                 <ModelProfileField label={t('settings.model.profileProviderLabel')} className="md:col-span-4">
-                  <Input
-                    list={MODEL_PROVIDER_DATALIST_ID}
+                  <ProviderPicker
+                    label={t('settings.model.profileProviderLabel')}
+                    providers={catalog.providers}
                     value={profile.provider ?? ''}
                     placeholder={t('settings.model.profileProviderPlaceholder')}
-                    onChange={(event) => updateProfileProvider(index, event.target.value)}
+                    onChange={(provider) => updateProfileProvider(index, provider)}
                   />
                 </ModelProfileField>
                 <ModelProfileField label={t('settings.model.profileProtocolLabel')} className="md:col-span-4">
@@ -185,11 +187,11 @@ export function ModelProfilesEditor({ profiles, effectiveProfiles, onChange }: {
                   </Select>
                 </ModelProfileField>
                 <ModelProfileField label={t('settings.model.profileKeyLabel')} className="md:col-span-4">
-                  <Input
-                    type="password"
+                  <ApiKeyInput
+                    label={t('settings.model.profileKeyLabel')}
                     value={profile.api_key ?? ''}
                     placeholder={t('settings.model.profileKeyInheritPlaceholder')}
-                    onChange={(event) => updateProfile(index, { api_key: event.target.value })}
+                    onChange={(apiKey) => updateProfile(index, { api_key: apiKey })}
                   />
                 </ModelProfileField>
                 <ModelProfileField label={t('settings.model.profileTemperatureLabel')} className="md:col-span-2">
@@ -239,6 +241,82 @@ export function ModelProfilesEditor({ profiles, effectiveProfiles, onChange }: {
   )
 }
 
+function ProviderPicker({ label, providers, value, placeholder, onChange }: {
+  label: string
+  providers: ModelProviderPreset[]
+  value: string
+  placeholder: string
+  onChange: (provider: string) => void
+}) {
+  const [open, setOpen] = useState(false)
+  const normalizedValue = value.trim()
+  const selectedProvider = providers.find((provider) => provider.id === normalizedValue)
+  // Keep an unknown persisted value visible so users can deliberately migrate
+  // away from it, but only catalog presets can be newly selected.
+  const includesCurrentCustomProvider = normalizedValue !== '' && !selectedProvider
+  const options = includesCurrentCustomProvider
+    ? [{ id: normalizedValue, name: normalizedValue, default_protocol: '', endpoints: {} }, ...providers]
+    : providers
+
+  return (
+    <Popover open={open} onOpenChange={setOpen}>
+      <PopoverTrigger asChild>
+        <Button
+          type="button"
+          variant="outline"
+          size="sm"
+          role="combobox"
+          aria-label={label}
+          aria-expanded={open}
+          className="nova-field w-full min-w-0 justify-between px-2.5 text-xs font-normal text-[var(--nova-text)]"
+        >
+          <span className="min-w-0 flex-1 truncate text-left">
+            {selectedProvider?.name || normalizedValue || placeholder}
+          </span>
+          <ChevronDown className={cn('size-4 shrink-0 text-[var(--nova-text-faint)] transition-transform', open && 'rotate-180')} />
+        </Button>
+      </PopoverTrigger>
+      <PopoverContent
+        align="start"
+        sideOffset={4}
+        collisionPadding={8}
+        className="nova-panel w-[var(--radix-popover-trigger-width)] max-w-[calc(100vw-1rem)] gap-0 border p-1 text-[var(--nova-text)]"
+      >
+        <div
+          role="listbox"
+          aria-label={label}
+          data-provider-list
+          className="max-h-64 overflow-y-auto overscroll-contain [scrollbar-gutter:stable]"
+        >
+          {options.map((provider) => (
+            <button
+              key={provider.id}
+              type="button"
+              role="option"
+              aria-selected={provider.id === normalizedValue}
+              data-provider-option
+              className={cn(
+                'flex h-8 w-full min-w-0 items-center gap-2 rounded-md px-2 text-left text-xs',
+                provider.id === normalizedValue
+                  ? 'bg-[var(--nova-active)] text-[var(--nova-text)]'
+                  : 'text-[var(--nova-text-muted)] hover:bg-[var(--nova-hover)] hover:text-[var(--nova-text)]',
+              )}
+              onClick={() => {
+                setOpen(false)
+                onChange(provider.id)
+              }}
+            >
+              <span className="min-w-0 flex-1 truncate">{provider.name}</span>
+              {provider.name !== provider.id && <span className="shrink-0 text-[11px] text-[var(--nova-text-faint)]">{provider.id}</span>}
+              {provider.id === normalizedValue && <Check className="size-3.5 shrink-0" />}
+            </button>
+          ))}
+        </div>
+      </PopoverContent>
+    </Popover>
+  )
+}
+
 function baseURLAfterRouteChange(currentValue: string | undefined, catalog: ModelCatalog, providerID?: string, protocolID?: string) {
   const current = currentValue?.trim() ?? ''
   const knownBaseURLs = new Set(catalog.providers.flatMap((provider) =>
@@ -263,8 +341,6 @@ function modelProtocolLabel(protocol: string, t: (key: string) => string) {
       return t('settings.model.profileProtocolResponses')
     case MODEL_PROTOCOL_ANTHROPIC_MESSAGES:
       return t('settings.model.profileProtocolAnthropicMessages')
-    case MODEL_PROTOCOL_GOOGLE_GENERATIVE_AI:
-      return t('settings.model.profileProtocolGoogleGenerativeAI')
     default:
       return protocol
   }

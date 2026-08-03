@@ -1,14 +1,13 @@
 import { useState } from 'react'
-import { render, screen, waitFor } from '@testing-library/react'
+import { fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { beforeEach, expect, it, vi } from 'vitest'
 
-import { fetchModelCatalog, pingModelProfile } from './api'
+import { discoverModels, fetchModelCatalog, pingModelProfile } from './api'
 import { ModelProfilesEditor } from './ModelProfilesEditor'
 import {
   MODEL_PROTOCOL_ANTHROPIC_MESSAGES,
   MODEL_PROTOCOL_CHAT_COMPLETIONS,
-  MODEL_PROTOCOL_GOOGLE_GENERATIVE_AI,
   MODEL_PROTOCOL_RESPONSES,
   MODEL_PROVIDER_DEEPSEEK,
   MODEL_PROVIDER_OPENAI,
@@ -16,6 +15,7 @@ import {
 import type { ModelCatalog, ModelProfileSettings } from './types'
 
 vi.mock('./api', () => ({
+  discoverModels: vi.fn(),
   fetchModelCatalog: vi.fn(),
   pingModelProfile: vi.fn(),
 }))
@@ -23,7 +23,6 @@ vi.mock('./api', () => ({
 const catalog: ModelCatalog = {
   protocols: [
     MODEL_PROTOCOL_ANTHROPIC_MESSAGES,
-    MODEL_PROTOCOL_GOOGLE_GENERATIVE_AI,
     MODEL_PROTOCOL_CHAT_COMPLETIONS,
     MODEL_PROTOCOL_RESPONSES,
   ],
@@ -47,12 +46,52 @@ const catalog: ModelCatalog = {
         [MODEL_PROTOCOL_ANTHROPIC_MESSAGES]: { base_url: 'https://api.deepseek.com/anthropic' },
       },
     },
+    ...Array.from({ length: 10 }, (_, index) => ({
+      id: `provider-${index}`,
+      name: `Provider ${index}`,
+      default_protocol: MODEL_PROTOCOL_CHAT_COMPLETIONS,
+      endpoints: {
+        [MODEL_PROTOCOL_CHAT_COMPLETIONS]: { base_url: `https://provider-${index}.example.test/v1` },
+      },
+    })),
   ],
 }
 
 beforeEach(() => {
+  vi.mocked(discoverModels).mockReset().mockResolvedValue({
+    models: [
+      { id: 'gpt-listed', owned_by: 'openai' },
+      { id: 'gpt-other' },
+    ],
+    provider: MODEL_PROVIDER_OPENAI,
+    protocol: MODEL_PROTOCOL_RESPONSES,
+    base_url: 'https://api.openai.com/v1',
+  })
   vi.mocked(fetchModelCatalog).mockReset().mockResolvedValue(catalog)
   vi.mocked(pingModelProfile).mockReset()
+})
+
+it('offers discovered models without restricting custom model input', async () => {
+  const user = userEvent.setup()
+  const onChange = vi.fn()
+  render(<EditorHarness onChange={onChange} />)
+
+  await user.click(await screen.findByRole('button', { name: '获取可用模型' }))
+  await waitFor(() => expect(discoverModels).toHaveBeenCalledWith(expect.objectContaining({
+    provider: MODEL_PROVIDER_OPENAI,
+    protocol: MODEL_PROTOCOL_RESPONSES,
+    model: 'gpt-5',
+  }), expect.any(AbortSignal)))
+  await user.click(await screen.findByRole('option', { name: /gpt-listed/ }))
+  expect(screen.getByDisplayValue('gpt-listed')).toBeInTheDocument()
+
+  const modelInput = screen.getByDisplayValue('gpt-listed')
+  await user.clear(modelInput)
+  await user.type(modelInput, 'private-model-id')
+  expect(screen.getByDisplayValue('private-model-id')).toBeInTheDocument()
+  expect(onChange).toHaveBeenLastCalledWith([
+    expect.objectContaining({ model: 'private-model-id' }),
+  ])
 })
 
 it('keeps provider and protocol independent while applying catalog endpoint defaults', async () => {
@@ -60,13 +99,17 @@ it('keeps provider and protocol independent while applying catalog endpoint defa
   const onChange = vi.fn()
   render(<EditorHarness onChange={onChange} />)
 
-  await waitFor(() => expect(document.querySelector('option[value="deepseek"]')).toBeInTheDocument())
-  expect(screen.getByDisplayValue(MODEL_PROVIDER_OPENAI)).toBeInTheDocument()
+  const providerPicker = await screen.findByRole('combobox', { name: '服务商' })
+  expect(providerPicker).toHaveTextContent('OpenAI')
   expect(screen.getByText('Responses API')).toBeInTheDocument()
 
-  const providerInput = screen.getByDisplayValue(MODEL_PROVIDER_OPENAI)
-  await user.clear(providerInput)
-  await user.type(providerInput, MODEL_PROVIDER_DEEPSEEK)
+  await user.click(providerPicker)
+  const providerList = screen.getByRole('listbox', { name: '服务商' })
+  expect(providerList).toHaveClass('max-h-64', 'overflow-y-auto')
+  expect(within(providerList).getAllByRole('option')).toHaveLength(catalog.providers.length)
+  fireEvent.scroll(providerList, { target: { scrollTop: 96 } })
+  expect(within(providerList).getAllByRole('option')).toHaveLength(catalog.providers.length)
+  await user.click(screen.getByRole('option', { name: /DeepSeek/ }))
 
   expect(screen.getByText('Responses API')).toBeInTheDocument()
   expect(screen.getByDisplayValue('https://api.deepseek.com')).toBeInTheDocument()
@@ -89,6 +132,10 @@ it('keeps provider and protocol independent while applying catalog endpoint defa
       base_url: 'https://api.deepseek.com/anthropic',
     }),
   ])
+
+  await user.click(screen.getByRole('combobox', { name: '服务商' }))
+  await user.click(screen.getByRole('option', { name: /^OpenAI/ }))
+  expect(screen.getByRole('combobox', { name: '服务商' })).toHaveTextContent('OpenAI')
 })
 
 it('pings the current unsaved profile and reports the resolved route', async () => {

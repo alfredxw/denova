@@ -3,6 +3,7 @@ package providers
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net/http"
 	"sort"
@@ -12,15 +13,14 @@ import (
 )
 
 // EndpointPreset supplies optional defaults for one provider/protocol route.
-// Its presence documents a known route but never acts as an allowlist.
 type EndpointPreset struct {
 	BaseURL         string            `json:"base_url,omitempty"`
 	Headers         map[string]string `json:"-"`
 	ProtocolOptions json.RawMessage   `json:"-"`
 }
 
-// ProviderPreset is catalog data: display identity and route defaults only.
-// Arbitrary provider IDs remain valid when callers supply explicit routing.
+// ProviderPreset is the registered provider identity exposed to callers and
+// the Settings catalog, together with optional route defaults.
 type ProviderPreset struct {
 	ID              ProviderID                    `json:"id"`
 	Name            string                        `json:"name"`
@@ -36,15 +36,33 @@ type ProtocolAdapter interface {
 	New(context.Context, ModelConfig) (agent.ToolCallingChatModel, error)
 }
 
-// Catalog is the immutable user-facing provider/protocol inventory. Protocols
-// are executable adapters; providers are optional convenience presets.
+// ModelInfo is one provider-advertised model that can be offered as a
+// suggestion. Callers must continue accepting model IDs not present here.
+type ModelInfo struct {
+	ID      string `json:"id"`
+	OwnedBy string `json:"owned_by,omitempty"`
+}
+
+// ModelListingAdapter is an optional protocol capability. An adapter should
+// implement it only when its wire protocol defines an OpenAI-compatible model
+// listing endpoint.
+type ModelListingAdapter interface {
+	ListModels(context.Context, ModelConfig) ([]ModelInfo, error)
+}
+
+// ErrModelListingUnsupported reports that a protocol has no optional model
+// discovery capability. It does not make custom model configuration invalid.
+var ErrModelListingUnsupported = errors.New("model listing is not supported by this protocol")
+
+// Catalog is the immutable user-facing provider/protocol inventory. Providers
+// are selectable identities and protocols are executable adapters.
 type Catalog struct {
 	Providers []ProviderPreset `json:"providers"`
 	Protocols []ProtocolID     `json:"protocols"`
 }
 
-// Registry owns provider presets and executable protocol adapters. It has no
-// package-global state and does not constrain provider/protocol combinations.
+// Registry owns the closed provider catalog and executable protocol adapters.
+// Registered providers may still select any installed protocol explicitly.
 type Registry struct {
 	presets   map[ProviderID]ProviderPreset
 	protocols map[ProtocolID]ProtocolAdapter
@@ -58,8 +76,7 @@ func NewRegistry() *Registry {
 	}
 }
 
-// RegisterProviderPreset adds optional catalog defaults. Endpoints describe
-// known-good routes, not the complete set of routes a provider may expose.
+// RegisterProviderPreset adds one selectable provider and its known defaults.
 func (registry *Registry) RegisterProviderPreset(preset ProviderPreset) error {
 	if registry == nil {
 		return fmt.Errorf("register provider preset: nil registry")
@@ -145,6 +162,10 @@ func (registry *Registry) Catalog() Catalog {
 // Resolve applies optional provider/endpoint defaults, then validates only the
 // executable protocol seam and the complete route required by its adapter.
 func (registry *Registry) Resolve(config ModelConfig) (ModelConfig, error) {
+	return registry.resolve(config, true)
+}
+
+func (registry *Registry) resolve(config ModelConfig, requireModel bool) (ModelConfig, error) {
 	if registry == nil {
 		return ModelConfig{}, fmt.Errorf("resolve model: nil registry")
 	}
@@ -158,31 +179,29 @@ func (registry *Registry) Resolve(config ModelConfig) (ModelConfig, error) {
 		return ModelConfig{}, fmt.Errorf("resolve model: provider is required")
 	}
 	preset, knownProvider := registry.presets[resolved.Provider]
+	if !knownProvider {
+		return ModelConfig{}, fmt.Errorf("resolve model: provider %q has no registered preset", resolved.Provider)
+	}
 	if resolved.Protocol == "" {
-		if !knownProvider {
-			return ModelConfig{}, fmt.Errorf("resolve model: protocol is required for custom provider %q", resolved.Provider)
-		}
 		resolved.Protocol = preset.DefaultProtocol
 	}
 	if _, ok := registry.protocols[resolved.Protocol]; !ok {
 		return ModelConfig{}, fmt.Errorf("resolve model: protocol %q has no registered adapter", resolved.Protocol)
 	}
-	if knownProvider {
-		if endpoint, ok := preset.Endpoints[resolved.Protocol]; ok {
-			if resolved.BaseURL == "" {
-				resolved.BaseURL = endpoint.BaseURL
-			}
-			resolved.Headers = mergeHeaders(endpoint.Headers, resolved.Headers)
-			resolved.ProtocolOptions, err = mergeProtocolOptions(endpoint.ProtocolOptions, resolved.ProtocolOptions)
-			if err != nil {
-				return ModelConfig{}, fmt.Errorf("resolve model: %w", err)
-			}
+	if endpoint, ok := preset.Endpoints[resolved.Protocol]; ok {
+		if resolved.BaseURL == "" {
+			resolved.BaseURL = endpoint.BaseURL
+		}
+		resolved.Headers = mergeHeaders(endpoint.Headers, resolved.Headers)
+		resolved.ProtocolOptions, err = mergeProtocolOptions(endpoint.ProtocolOptions, resolved.ProtocolOptions)
+		if err != nil {
+			return ModelConfig{}, fmt.Errorf("resolve model: %w", err)
 		}
 	}
 	if resolved.BaseURL == "" {
 		return ModelConfig{}, fmt.Errorf("resolve model: provider %q protocol %q requires a base URL", resolved.Provider, resolved.Protocol)
 	}
-	if resolved.Model == "" {
+	if requireModel && resolved.Model == "" {
 		return ModelConfig{}, fmt.Errorf("resolve model: model is required")
 	}
 	if resolved.MaxOutputTokens != nil && *resolved.MaxOutputTokens <= 0 {
@@ -192,6 +211,25 @@ func (registry *Registry) Resolve(config ModelConfig) (ModelConfig, error) {
 		return ModelConfig{}, fmt.Errorf("resolve model: %w", err)
 	}
 	return resolved, nil
+}
+
+// ListModelsWithResolvedConfig resolves provider defaults, then uses the
+// protocol's optional discovery capability. The returned models are
+// suggestions and never constrain ModelConfig.Model validation.
+func (registry *Registry) ListModelsWithResolvedConfig(ctx context.Context, config ModelConfig) ([]ModelInfo, ModelConfig, error) {
+	resolved, err := registry.resolve(config, false)
+	if err != nil {
+		return nil, ModelConfig{}, err
+	}
+	adapter, ok := registry.protocols[resolved.Protocol].(ModelListingAdapter)
+	if !ok {
+		return nil, resolved, fmt.Errorf("list models for protocol %q: %w", resolved.Protocol, ErrModelListingUnsupported)
+	}
+	models, err := adapter.ListModels(ctx, resolved)
+	if err != nil {
+		return nil, resolved, fmt.Errorf("list models for provider %s protocol %s: %w", resolved.Provider, resolved.Protocol, err)
+	}
+	return models, resolved, nil
 }
 
 // NewChatModel resolves config and dispatches to exactly one protocol adapter.

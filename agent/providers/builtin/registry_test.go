@@ -167,22 +167,30 @@ func TestMiniMaxPresetsPreferAnthropicWithExplicitChatFallback(t *testing.T) {
 	}
 }
 
-func TestRegistryAllowsCustomProviderWithAnyInstalledProtocol(t *testing.T) {
+func TestRegistryCompatibleProviderSupportsEveryInstalledProtocol(t *testing.T) {
 	registry, err := NewRegistry()
 	if err != nil {
 		t.Fatal(err)
 	}
-	resolved, err := registry.Resolve(providers.ModelConfig{
-		Provider: "private-gateway",
-		Protocol: providers.ProtocolGoogleGenerativeAI,
-		BaseURL:  "https://models.example.test",
-		Model:    "private-model",
-	})
-	if err != nil {
-		t.Fatal(err)
-	}
-	if resolved.Provider != "private-gateway" || resolved.Protocol != providers.ProtocolGoogleGenerativeAI {
-		t.Fatalf("resolved = %#v", resolved)
+	for _, protocol := range []providers.ProtocolID{
+		providers.ProtocolOpenAIChatCompletions,
+		providers.ProtocolOpenAIResponses,
+		providers.ProtocolAnthropicMessages,
+	} {
+		t.Run(string(protocol), func(t *testing.T) {
+			resolved, resolveErr := registry.Resolve(providers.ModelConfig{
+				Provider: providers.ProviderOpenAICompatible,
+				Protocol: protocol,
+				BaseURL:  "https://models.example.test",
+				Model:    "private-model",
+			})
+			if resolveErr != nil {
+				t.Fatal(resolveErr)
+			}
+			if resolved.Provider != providers.ProviderOpenAICompatible || resolved.Protocol != protocol {
+				t.Fatalf("resolved = %#v", resolved)
+			}
+		})
 	}
 }
 

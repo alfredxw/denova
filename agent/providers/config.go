@@ -9,7 +9,7 @@ import (
 	"strings"
 )
 
-// ProviderID identifies an API vendor or OpenAI-compatible endpoint family.
+// ProviderID identifies a registered API vendor or compatibility preset.
 type ProviderID string
 
 // ProtocolID identifies the wire protocol used for model requests.
@@ -18,12 +18,13 @@ type ProtocolID string
 const (
 	ProviderOpenAI           ProviderID = "openai"
 	ProviderDeepSeek         ProviderID = "deepseek"
+	ProviderGoogle           ProviderID = "google"
+	ProviderVolcengine       ProviderID = "volcengine"
 	ProviderOpenAICompatible ProviderID = "openai-compatible"
 
 	ProtocolOpenAIChatCompletions ProtocolID = "openai-chat-completions"
 	ProtocolOpenAIResponses       ProtocolID = "openai-responses"
 	ProtocolAnthropicMessages     ProtocolID = "anthropic-messages"
-	ProtocolGoogleGenerativeAI    ProtocolID = "google-generative-ai"
 )
 
 // OutputFormatType is the provider-neutral structured-output mode.

@@ -1,11 +1,84 @@
 package config
 
 import (
+	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/alfredxw/denova/agent/providers"
 )
+
+func TestReadSettingsFileMigratesLegacyModelProfileFields(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "config.toml")
+	legacy := `[[model_profiles]]
+id = "doubao"
+name = "Doubao"
+openai_api_key = "legacy-key"
+openai_base_url = "https://ark.cn-beijing.volces.com/api/v3"
+openai_model = "doubao-seed"
+`
+	if err := os.WriteFile(path, []byte(legacy), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	settings, err := ReadSettingsFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(settings.ModelProfiles) != 1 {
+		t.Fatalf("model profile count = %d, want 1", len(settings.ModelProfiles))
+	}
+	profile := settings.ModelProfiles[0]
+	if profile.APIKey != "legacy-key" || profile.BaseURL != "https://ark.cn-beijing.volces.com/api/v3" || profile.Model != "doubao-seed" {
+		t.Fatalf("legacy model profile was not migrated: %#v", profile)
+	}
+	if profile.Provider != string(providers.ProviderVolcengine) || profile.Protocol != string(providers.ProtocolOpenAIChatCompletions) {
+		t.Fatalf("legacy route = provider %q protocol %q", profile.Provider, profile.Protocol)
+	}
+
+	if err := WriteSettingsFile(path, settings); err != nil {
+		t.Fatal(err)
+	}
+	persisted, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	text := string(persisted)
+	if strings.Contains(text, "openai_api_key") || strings.Contains(text, "openai_base_url") || strings.Contains(text, "openai_model") {
+		t.Fatalf("legacy model profile fields must not be written back:\n%s", text)
+	}
+	for _, field := range []string{`api_key = 'legacy-key'`, `base_url = 'https://ark.cn-beijing.volces.com/api/v3'`, `model = 'doubao-seed'`} {
+		if !strings.Contains(text, field) {
+			t.Fatalf("canonical model profile field %q missing from:\n%s", field, text)
+		}
+	}
+}
+
+func TestReadSettingsFilePrefersCanonicalModelProfileFields(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "config.toml")
+	mixed := `[[model_profiles]]
+id = "mixed"
+api_key = "canonical-key"
+base_url = "https://canonical.example/v1"
+model = "canonical-model"
+openai_api_key = "legacy-key"
+openai_base_url = "https://legacy.example/v1"
+openai_model = "legacy-model"
+`
+	if err := os.WriteFile(path, []byte(mixed), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	settings, err := ReadSettingsFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	profile := settings.ModelProfiles[0]
+	if profile.APIKey != "canonical-key" || profile.BaseURL != "https://canonical.example/v1" || profile.Model != "canonical-model" {
+		t.Fatalf("canonical fields must win over legacy aliases: %#v", profile)
+	}
+}
 
 func TestResolveAgentModelProviderProtocolRouting(t *testing.T) {
 	tests := []struct {
