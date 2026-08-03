@@ -1,12 +1,15 @@
 import { render } from '@testing-library/react'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import type { Monaco } from '@monaco-editor/react'
+import type { editor } from 'monaco-editor'
 
 const harness = vi.hoisted(() => ({
   editorProps: [] as Array<Record<string, unknown>>,
   diffEditorProps: [] as Array<Record<string, unknown>>,
   resolvedTheme: 'dark',
 }))
+
+const ENHANCED_TEXT_CONTRAST_RATIO = 7
 
 vi.mock('@monaco-editor/react', () => ({
   Editor: (props: Record<string, unknown>) => {
@@ -68,6 +71,16 @@ describe('DenovaMonaco', () => {
     expect(defineTheme).toHaveBeenCalledTimes(2)
   })
 
+  it('keeps all syntax and supporting text at enhanced contrast in both variants', () => {
+    const defineTheme = vi.fn()
+    const monaco = { editor: { defineTheme } } as unknown as Monaco
+
+    installDenovaMonacoThemes(monaco)
+
+    expectThemeTextContrast(definedTheme(defineTheme, DENOVA_MONACO_THEME_DARK))
+    expectThemeTextContrast(definedTheme(defineTheme, DENOVA_MONACO_THEME_LIGHT))
+  })
+
   it('enforces the CJK-safe Unicode policy without disabling spoofing detection', () => {
     render(
       <DenovaMonacoEditor
@@ -123,3 +136,40 @@ describe('DenovaMonaco', () => {
     })
   })
 })
+
+function definedTheme(defineTheme: ReturnType<typeof vi.fn>, name: string): editor.IStandaloneThemeData {
+  const definition = defineTheme.mock.calls.find(([themeName]) => themeName === name)?.[1]
+  expect(definition).toBeDefined()
+  return definition as editor.IStandaloneThemeData
+}
+
+function expectThemeTextContrast(theme: editor.IStandaloneThemeData) {
+  const background = theme.colors['editor.background']
+  const colors = new Set([
+    theme.colors['editor.foreground'],
+    theme.colors['editorLineNumber.foreground'],
+    ...theme.rules.map((rule) => rule.foreground),
+  ].filter((color): color is string => Boolean(color)))
+
+  expect(background).toBeDefined()
+  for (const color of colors) {
+    expect(contrastRatio(color, background!), `${color} against ${background}`)
+      .toBeGreaterThanOrEqual(ENHANCED_TEXT_CONTRAST_RATIO)
+  }
+}
+
+function contrastRatio(foreground: string, background: string) {
+  const foregroundLuminance = relativeLuminance(foreground)
+  const backgroundLuminance = relativeLuminance(background)
+  const lighter = Math.max(foregroundLuminance, backgroundLuminance)
+  const darker = Math.min(foregroundLuminance, backgroundLuminance)
+  return (lighter + 0.05) / (darker + 0.05)
+}
+
+function relativeLuminance(color: string) {
+  const hex = color.replace('#', '')
+  const [red, green, blue] = [0, 2, 4].map((offset) => Number.parseInt(hex.slice(offset, offset + 2), 16) / 255)
+  const [linearRed, linearGreen, linearBlue] = [red, green, blue]
+    .map((channel) => channel <= 0.04045 ? channel / 12.92 : ((channel + 0.055) / 1.055) ** 2.4)
+  return 0.2126 * linearRed + 0.7152 * linearGreen + 0.0722 * linearBlue
+}

@@ -55,7 +55,6 @@ export function FilesTab({
   const [markdownViews, setMarkdownViews] = useState<ReadonlyMap<string, boolean>>(() => new Map())
   const tree = useProjectFileExplorer({
     projectId,
-    includeIgnored: preferences.showIgnored,
     expandedPaths: preferences.expandedPaths,
     selectedPath,
   })
@@ -174,9 +173,6 @@ export function FilesTab({
   const setTreeVisible = useCallback((treeVisible: boolean) => {
     setPreferences((current) => ({ ...current, treeVisible }))
   }, [])
-  const setShowIgnored = useCallback((showIgnored: boolean) => {
-    setPreferences((current) => ({ ...current, showIgnored }))
-  }, [])
   const setDirectoryExpanded = useCallback((path: string, expanded: boolean) => {
     setPreferences((current) => {
       const paths = new Set(current.expandedPaths)
@@ -192,13 +188,12 @@ export function FilesTab({
   const sidebar = (
     <ProjectFilesSidebar
       nodes={tree.nodes}
+      workspace={workspace}
       selectedPath={selectedPath}
       expandedPaths={preferences.expandedPaths}
       loading={tree.loading}
       loadingPaths={tree.loadingPaths}
       error={tree.error}
-      showIgnored={preferences.showIgnored}
-      onShowIgnoredChange={setShowIgnored}
       onSelectFile={selectFile}
       onDirectoryExpand={tree.loadDirectory}
       onDirectoryExpandedChange={setDirectoryExpanded}

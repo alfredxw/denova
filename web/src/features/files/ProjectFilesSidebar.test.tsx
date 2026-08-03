@@ -1,4 +1,5 @@
 import { fireEvent, render, screen, waitFor } from '@testing-library/react'
+import userEvent from '@testing-library/user-event'
 import { describe, expect, it, vi } from 'vitest'
 import type { ProjectFileExplorerNode } from './project-file-explorer-model'
 import { ProjectFilesSidebar } from './ProjectFilesSidebar'
@@ -43,13 +44,12 @@ describe('ProjectFilesSidebar', () => {
     render(
       <ProjectFilesSidebar
         nodes={explorerNodes()}
+        workspace="/projects/one"
         selectedPath={selectedPath}
         expandedPaths={['chapters', 'chapters/volume']}
         loading={false}
         loadingPaths={new Set()}
         error={null}
-        showIgnored={false}
-        onShowIgnoredChange={vi.fn()}
         onSelectFile={vi.fn()}
         onDirectoryExpand={vi.fn()}
         onDirectoryExpandedChange={vi.fn()}
@@ -69,5 +69,76 @@ describe('ProjectFilesSidebar', () => {
 
     fireEvent.click(screen.getByRole('button', { name: '定位当前文件' }))
     await waitFor(() => expect(screen.getByRole('treeitem', { name: /chapter\.md/ })).toHaveAttribute('aria-selected', 'true'))
+  })
+
+  it('creates beside the focused file with an inline tree input and no project heading', async () => {
+    const user = userEvent.setup()
+    const onCreateItem = vi.fn().mockResolvedValue(undefined)
+    render(
+      <ProjectFilesSidebar
+        nodes={explorerNodes()}
+        workspace="/projects/one"
+        selectedPath={selectedPath}
+        expandedPaths={['chapters', 'chapters/volume']}
+        loading={false}
+        loadingPaths={new Set()}
+        error={null}
+        onSelectFile={vi.fn()}
+        onDirectoryExpand={vi.fn()}
+        onDirectoryExpandedChange={vi.fn()}
+        onCollapseAll={vi.fn()}
+        onLoadMore={vi.fn()}
+        onCreateItem={onCreateItem}
+        onDeleteItem={vi.fn()}
+        onRenameItem={vi.fn()}
+        onCopyItem={vi.fn()}
+        onMoveItem={vi.fn()}
+        onRefresh={vi.fn()}
+      />,
+    )
+
+    await waitFor(() => expect(screen.getByRole('treeitem', { name: /chapter\.md/ })).toHaveAttribute('aria-selected', 'true'))
+    expect(screen.queryByText('项目文件')).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: '隐藏生成目录' })).not.toBeInTheDocument()
+
+    await user.click(screen.getByRole('button', { name: '新建文件' }))
+    const input = await screen.findByRole('textbox')
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
+    await user.type(input, 'notes.md{Enter}')
+
+    await waitFor(() => expect(onCreateItem).toHaveBeenCalledWith('chapters/volume/notes.md', 'file'))
+  })
+
+  it('creates a root folder inline when the project is empty', async () => {
+    const user = userEvent.setup()
+    const onCreateItem = vi.fn().mockResolvedValue(undefined)
+    render(
+      <ProjectFilesSidebar
+        nodes={[]}
+        workspace="/projects/one"
+        selectedPath={null}
+        expandedPaths={[]}
+        loading={false}
+        loadingPaths={new Set()}
+        error={null}
+        onSelectFile={vi.fn()}
+        onDirectoryExpand={vi.fn()}
+        onDirectoryExpandedChange={vi.fn()}
+        onCollapseAll={vi.fn()}
+        onLoadMore={vi.fn()}
+        onCreateItem={onCreateItem}
+        onDeleteItem={vi.fn()}
+        onRenameItem={vi.fn()}
+        onCopyItem={vi.fn()}
+        onMoveItem={vi.fn()}
+        onRefresh={vi.fn()}
+      />,
+    )
+
+    expect(screen.getByText('项目目录为空。')).toBeInTheDocument()
+    await user.click(screen.getByRole('button', { name: '新建目录' }))
+    await user.type(await screen.findByRole('textbox'), 'drafts{Enter}')
+
+    await waitFor(() => expect(onCreateItem).toHaveBeenCalledWith('drafts', 'dir'))
   })
 })

@@ -14,18 +14,15 @@ describe('project files preferences', () => {
   it('isolates layout preferences by stable project identity', () => {
     persistProjectFilesPreferences('one', {
       expandedPaths: ['src', 'src/components'],
-      showIgnored: true,
       treeVisible: false,
     })
 
     expect(readProjectFilesPreferences('one')).toEqual({
       expandedPaths: ['src', 'src/components'],
-      showIgnored: true,
       treeVisible: false,
     })
     expect(readProjectFilesPreferences('two')).toEqual({
       expandedPaths: [],
-      showIgnored: false,
       treeVisible: true,
     })
   })

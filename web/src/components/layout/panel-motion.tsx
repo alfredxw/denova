@@ -21,36 +21,58 @@ type PanelSide = 'left' | 'right'
  * captured once at the interaction boundary instead.
  */
 export function PanelMotionGroup({ onPointerDownCapture, ...groupProps }: GroupProps) {
-  const [resizing, setResizing] = useState(false)
+  const activeGroupRef = useRef<HTMLDivElement | null>(null)
+  const pointerCleanupRef = useRef<(() => void) | null>(null)
+  const clearResizeState = useCallback(() => {
+    activeGroupRef.current?.removeAttribute('data-nova-panel-resizing')
+    activeGroupRef.current = null
+    pointerCleanupRef.current?.()
+    pointerCleanupRef.current = null
+  }, [])
+
   const handlePointerDownCapture = useCallback<NonNullable<GroupProps['onPointerDownCapture']>>((event) => {
     onPointerDownCapture?.(event)
-    if (event.defaultPrevented || !(event.target instanceof Element)) return
+    if (!(event.target instanceof Element)) return
 
     const separator = event.target.closest<HTMLElement>('[data-separator]')
     // Nested panel groups receive the same captured event. Only the separator's direct group owns
     // this resize interaction and should suspend its panel transitions.
     if (!separator || separator.parentElement !== event.currentTarget || separator.ariaDisabled === 'true') return
-    setResizing(true)
-  }, [onPointerDownCapture])
 
-  useEffect(() => {
-    if (!resizing) return
-    const finishResize = () => setResizing(false)
+    clearResizeState()
+    activeGroupRef.current = event.currentTarget
+    // react-resizable-panels intentionally prevents the native pointer default from a document
+    // capture listener once it has claimed a resize. That is a positive resize signal here, not a
+    // cancellation signal, so the group still needs to disable its flex transition.
+    // This interaction-only flag must take effect before the first pointer move. Updating it
+    // imperatively avoids both a React commit delay and a re-render of the potentially heavy panel
+    // subtree merely to disable its flex transition during a drag.
+    event.currentTarget.setAttribute('data-nova-panel-resizing', 'true')
+
+    const finishResize = () => {
+      // react-resizable-panels finalizes its layout from a document capture listener. Defer cleanup
+      // until the current event has fully dispatched so that final flex update also stays unanimated.
+      queueMicrotask(clearResizeState)
+    }
+    const finishResizeOnBlur = () => clearResizeState()
     window.addEventListener('pointerup', finishResize, true)
     window.addEventListener('pointercancel', finishResize, true)
-    window.addEventListener('blur', finishResize)
-    return () => {
+    window.addEventListener('blur', finishResizeOnBlur)
+    pointerCleanupRef.current = () => {
       window.removeEventListener('pointerup', finishResize, true)
       window.removeEventListener('pointercancel', finishResize, true)
-      window.removeEventListener('blur', finishResize)
+      window.removeEventListener('blur', finishResizeOnBlur)
     }
-  }, [resizing])
+  }, [clearResizeState, onPointerDownCapture])
+
+  useEffect(() => {
+    return clearResizeState
+  }, [clearResizeState])
 
   return (
     <Group
       {...groupProps}
       data-nova-panel-motion-group="true"
-      data-nova-panel-resizing={resizing ? 'true' : undefined}
       onPointerDownCapture={handlePointerDownCapture}
     />
   )

@@ -19,6 +19,8 @@ export interface ProjectFileExplorerNode {
   loaded: boolean
   loading: boolean
   children?: ProjectFileExplorerNode[]
+  /** Client-only placeholder used while a new name is being entered. */
+  draft?: true
 }
 
 /** Merges a resolve response into the normalized cache, appending only cursor pages. */

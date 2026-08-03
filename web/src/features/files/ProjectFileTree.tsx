@@ -1,24 +1,20 @@
-import type { NodeApi, NodeRendererProps, RowRendererProps, TreeApi } from 'react-arborist'
+import type { NodeApi, TreeApi } from 'react-arborist'
 import { Tree } from 'react-arborist'
+import { ClipboardPaste, FileText, FolderPlus } from 'lucide-react'
 import {
-  ChevronDown,
-  ChevronRight,
-  Copy,
-  FileText,
-  Folder,
-  FolderOpen,
-  FolderPlus,
-  Loader2,
-  MoreHorizontal,
-  MoveRight,
-  Pencil,
-  Plus,
-  Trash2,
-} from 'lucide-react'
-import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type RefObject } from 'react'
+  forwardRef,
+  useCallback,
+  useEffect,
+  useImperativeHandle,
+  useMemo,
+  useRef,
+  useState,
+  type KeyboardEvent,
+  type RefObject,
+} from 'react'
 import { useTranslation } from 'react-i18next'
+import { toast } from 'sonner'
 import { DeleteConfirmDialog } from '@/components/Sidebar/DeleteConfirmDialog'
-import { FileOperationDialog, type FileOperationMode } from '@/components/Sidebar/FileOperationDialog'
 import {
   ContextMenu,
   ContextMenuContent,
@@ -26,18 +22,29 @@ import {
   ContextMenuSeparator,
   ContextMenuTrigger,
 } from '@/components/ui/context-menu'
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuSeparator,
-  DropdownMenuTrigger,
-} from '@/components/ui/dropdown-menu'
-import { cn } from '@/lib/utils'
 import type { ProjectFileExplorerNode } from './project-file-explorer-model'
+import {
+  ExplorerNode,
+  ExplorerRow,
+  ProjectFileTreeRenderContext,
+  type ProjectFileTreeActions,
+} from './ProjectFileTreeNode'
+import {
+  absoluteProjectPath,
+  buildProjectFilePastePlan,
+  insertProjectFileDraft,
+  joinProjectPath,
+  projectBaseName,
+  projectParentPath,
+  PROJECT_FILE_DRAFT_PREFIX,
+  removeNestedProjectPaths,
+  type ProjectFileClipboard,
+  type ProjectFileDraft,
+} from './project-file-tree-operations'
 
 interface ProjectFileTreeProps {
   nodes: readonly ProjectFileExplorerNode[]
+  workspace: string
   selectedPath: string | null
   expandedPaths: readonly string[]
   onSelectFile: (path: string) => void
@@ -52,29 +59,14 @@ interface ProjectFileTreeProps {
   treeRef: RefObject<TreeApi<ProjectFileExplorerNode> | null>
 }
 
-interface OperationState {
-  mode: FileOperationMode
-  targetPath: string
-  defaultValue: string
+export interface ProjectFileTreeHandle {
+  beginCreate: (type: 'file' | 'dir') => void
 }
 
-interface TreeActions {
-  create: (parentPath: string, type: 'file' | 'dir') => void
-  rename: (node: NodeApi<ProjectFileExplorerNode>) => void
-  copy: (path: string) => void
-  move: (path: string) => void
-  delete: (paths: string[]) => void
-}
-
-interface ExplorerRenderContextValue {
-  actions: TreeActions
-  onLoadMore: (path: string) => void | Promise<void>
-}
-
-const ExplorerRenderContext = createContext<ExplorerRenderContextValue | null>(null)
-
-export function ProjectFileTree({
+/** Virtualized Explorer behavior shared by Writing and Game project files. */
+export const ProjectFileTree = forwardRef<ProjectFileTreeHandle, ProjectFileTreeProps>(function ProjectFileTree({
   nodes,
+  workspace,
   selectedPath,
   expandedPaths,
   onSelectFile,
@@ -87,29 +79,47 @@ export function ProjectFileTree({
   onCopyItem,
   onMoveItem,
   treeRef,
-}: ProjectFileTreeProps) {
+}, ref) {
   const { t } = useTranslation()
   const hostRef = useRef<HTMLDivElement>(null)
   const size = useElementSize(hostRef)
-  const [operation, setOperation] = useState<OperationState | null>(null)
+  const draftSequenceRef = useRef(0)
+  const [draft, setDraft] = useState<ProjectFileDraft | null>(null)
+  const [clipboard, setClipboard] = useState<ProjectFileClipboard | null>(null)
   const [deletePaths, setDeletePaths] = useState<string[]>([])
+  const renderedNodes = useMemo(() => insertProjectFileDraft(nodes, draft), [draft, nodes])
   const initialOpenState = useMemo(
     () => Object.fromEntries(expandedPaths.map((path) => [path, true])),
     [expandedPaths],
   )
 
-  const actions = useMemo<TreeActions>(() => ({
-    create: (parentPath, type) => setOperation({
-      mode: type === 'dir' ? 'create-dir' : 'create-file',
-      targetPath: parentPath,
-      defaultValue: parentPath ? `${parentPath}/` : '',
-    }),
-    rename: (node) => void node.edit(),
-    copy: (path) => setOperation({ mode: 'copy', targetPath: path, defaultValue: copyDefaultPath(path) }),
-    move: (path) => setOperation({ mode: 'move', targetPath: path, defaultValue: path }),
-    delete: setDeletePaths,
-  }), [])
-  const renderContext = useMemo(() => ({ actions, onLoadMore }), [actions, onLoadMore])
+  const beginCreate = useCallback((type: 'file' | 'dir', explicitParent?: string) => {
+    const tree = treeRef.current
+    const parentPath = explicitParent ?? insertionDirectory(tree, selectedPath)
+    if (parentPath) tree?.open(parentPath)
+    if (tree?.editingId) tree.reset()
+    draftSequenceRef.current += 1
+    setDraft({
+      id: `${PROJECT_FILE_DRAFT_PREFIX}${draftSequenceRef.current}`,
+      parentPath,
+      type,
+      index: 0,
+    })
+  }, [selectedPath, treeRef])
+
+  useImperativeHandle(ref, () => ({
+    beginCreate: (type) => beginCreate(type),
+  }), [beginCreate])
+
+  useEffect(() => {
+    if (!draft) return
+    const tree = treeRef.current
+    const node = tree?.get(draft.id)
+    if (!tree || !node || tree.editingId === draft.id) return
+    tree.openParents(draft.id)
+    tree.focus(node)
+    void node.edit()
+  }, [draft, renderedNodes, treeRef])
 
   const handleToggle = useCallback((id: string) => {
     const node = treeRef.current?.get(id)
@@ -127,6 +137,7 @@ export function ProjectFileTree({
   }, [onDirectoryExpand, onDirectoryExpandedChange, treeRef])
 
   const handleActivate = useCallback((node: NodeApi<ProjectFileExplorerNode>) => {
+    if (node.data.draft) return
     if (node.data.type === 'file') onSelectFile(node.data.path)
     if (node.data.type === 'dir') node.toggle()
     if (node.data.type === 'more') {
@@ -147,79 +158,167 @@ export function ProjectFileTree({
     parentId: string | null
   }) => {
     const parent = parentId ?? ''
-    const sources = removeNestedPaths(dragNodes
+    const sources = removeNestedProjectPaths(dragNodes
       .map((node) => node.data)
-      .filter((node) => node.type !== 'more')
+      .filter((node) => node.type !== 'more' && !node.draft)
       .map((node) => node.path))
     for (const source of sources) {
-      const destination = joinPath(parent, baseName(source))
+      const destination = joinProjectPath(parent, projectBaseName(source))
       if (source !== destination) await onMoveItem(source, destination)
     }
   }, [onMoveItem])
+
   const handleRename = useCallback(async ({ node, name }: {
     node: NodeApi<ProjectFileExplorerNode>
     name: string
-  }) => onRenameItem(node.data.path, name), [onRenameItem])
-
-  const submitOperation = useCallback(async (value: string) => {
-    if (!operation) return
-    switch (operation.mode) {
-      case 'create-file':
-        await onCreateItem(value, 'file')
-        return
-      case 'create-dir':
-        await onCreateItem(value, 'dir')
-        return
-      case 'rename':
-        await onRenameItem(operation.targetPath, value)
-        return
-      case 'copy':
-        await onCopyItem(operation.targetPath, value)
-        return
-      case 'move':
-        await onMoveItem(operation.targetPath, value)
+  }) => {
+    if (node.data.draft && draft) {
+      await onCreateItem(joinProjectPath(draft.parentPath, name), draft.type)
+      setDraft(null)
+      return
     }
-  }, [onCopyItem, onCreateItem, onMoveItem, onRenameItem, operation])
+    await onRenameItem(node.data.path, name)
+  }, [draft, onCreateItem, onRenameItem])
+
+  const stageClipboard = useCallback((mode: ProjectFileClipboard['mode'], paths: string[]) => {
+    const actionable = removeNestedProjectPaths(paths)
+    if (actionable.length > 0) setClipboard({ mode, paths: actionable })
+  }, [])
+
+  const pasteInto = useCallback(async (targetDirectory: string) => {
+    if (!clipboard) return
+    const transfers = buildProjectFilePastePlan(nodes, clipboard, targetDirectory)
+    for (const transfer of transfers) {
+      if (clipboard.mode === 'copy') await onCopyItem(transfer.source, transfer.destination)
+      else await onMoveItem(transfer.source, transfer.destination)
+    }
+    if (clipboard.mode === 'cut' && transfers.length > 0) setClipboard(null)
+  }, [clipboard, nodes, onCopyItem, onMoveItem])
+
+  const copyPath = useCallback((path: string, relative: boolean) => {
+    const value = relative ? path : absoluteProjectPath(workspace, path)
+    void writeClipboardText(value).catch((cause) => {
+      console.error('[features/files/ProjectFileTree.tsx] copying project file path failed', {
+        path,
+        relative,
+        cause,
+      })
+      toast.error(t('files.tree.copyPathFailed'))
+    })
+  }, [t, workspace])
+
+  const actions = useMemo<ProjectFileTreeActions>(() => ({
+    beginCreate: (parentPath, type) => beginCreate(type, parentPath),
+    rename: (node) => void node.edit(),
+    stageClipboard,
+    paste: (parentPath) => {
+      void pasteInto(parentPath).catch((cause) => {
+        console.error('[features/files/ProjectFileTree.tsx] pasting project files failed', {
+          parentPath,
+          cause,
+        })
+      })
+    },
+    copyPath,
+    delete: setDeletePaths,
+    cancelDraft: () => setDraft(null),
+    clipboard,
+  }), [beginCreate, clipboard, copyPath, pasteInto, stageClipboard])
+  const renderContext = useMemo(() => ({ actions, onLoadMore }), [actions, onLoadMore])
+
+  const handleKeyDownCapture = useCallback((event: KeyboardEvent<HTMLDivElement>) => {
+    if (event.target instanceof HTMLInputElement || event.target instanceof HTMLTextAreaElement) return
+    const tree = treeRef.current
+    if (!tree) return
+    const focused = actionableFocusedNode(tree)
+    const paths = actionableSelection(tree)
+    const command = event.metaKey || event.ctrlKey
+
+    if (event.key === 'F2' && focused) {
+      consumeKeyboardEvent(event)
+      void focused.edit()
+      return
+    }
+    if (event.key === 'Enter' && focused) {
+      consumeKeyboardEvent(event)
+      focused.select()
+      if (focused.data.type === 'file') onSelectFile(focused.data.path)
+      else focused.toggle()
+      return
+    }
+    if ((event.key === 'Delete' || (event.key === 'Backspace' && command)) && paths.length > 0) {
+      consumeKeyboardEvent(event)
+      setDeletePaths(paths)
+      return
+    }
+    if (command && event.key.toLowerCase() === 'c' && paths.length > 0) {
+      consumeKeyboardEvent(event)
+      stageClipboard('copy', paths)
+      return
+    }
+    if (command && event.key.toLowerCase() === 'x' && paths.length > 0) {
+      consumeKeyboardEvent(event)
+      stageClipboard('cut', paths)
+      return
+    }
+    if (command && event.key.toLowerCase() === 'v' && clipboard) {
+      consumeKeyboardEvent(event)
+      void pasteInto(insertionDirectory(tree, selectedPath)).catch((cause) => {
+        console.error('[features/files/ProjectFileTree.tsx] keyboard paste failed', { cause })
+      })
+    }
+  }, [clipboard, onSelectFile, pasteInto, selectedPath, stageClipboard, treeRef])
 
   return (
-    <div ref={hostRef} className="h-full min-h-0 min-w-0 overflow-hidden">
-      <ExplorerRenderContext.Provider value={renderContext}>
-        <Tree<ProjectFileExplorerNode>
-          ref={treeRef}
-          data={nodes}
-          idAccessor="id"
-          childrenAccessor="children"
-          width={Math.max(size.width, 1)}
-          height={Math.max(size.height, 1)}
-          rowHeight={26}
-          indent={14}
-          overscanCount={12}
-          openByDefault={false}
-          selection={selectedPath ?? undefined}
-          initialOpenState={initialOpenState}
-          aria-label={t('files.tree.title')}
-          disableEdit={disableProjectFileEdit}
-          disableDrag={disableProjectFileDrag}
-          disableDrop={disableProjectFileDrop}
-          onActivate={handleActivate}
-          onToggle={handleToggle}
-          onRename={handleRename}
-          onMove={handleMove}
-          renderRow={ExplorerRow}
-        >
-          {ExplorerNode}
-        </Tree>
-      </ExplorerRenderContext.Provider>
-      <FileOperationDialog
-        open={operation !== null}
-        mode={operation?.mode ?? 'copy'}
-        targetPath={operation?.targetPath ?? ''}
-        defaultValue={operation?.defaultValue ?? ''}
-        onOpenChange={(open) => {
-          if (!open) setOperation(null)
-        }}
-        onSubmit={submitOperation}
-      />
+    <>
+      <ContextMenu>
+        <ContextMenuTrigger asChild>
+          <div
+            ref={hostRef}
+            className="relative h-full min-h-0 min-w-0 overflow-hidden"
+            onKeyDownCapture={handleKeyDownCapture}
+          >
+            <ProjectFileTreeRenderContext.Provider value={renderContext}>
+              <Tree<ProjectFileExplorerNode>
+                ref={treeRef}
+                data={renderedNodes}
+                idAccessor="id"
+                childrenAccessor="children"
+                width={Math.max(size.width, 1)}
+                height={Math.max(size.height, 1)}
+                rowHeight={26}
+                indent={14}
+                overscanCount={12}
+                openByDefault={false}
+                selection={selectedPath ?? undefined}
+                initialOpenState={initialOpenState}
+                aria-label={t('files.tree.title')}
+                disableEdit={disableProjectFileEdit}
+                disableDrag={disableProjectFileDrag}
+                disableDrop={disableProjectFileDrop}
+                onActivate={handleActivate}
+                onToggle={handleToggle}
+                onRename={handleRename}
+                onMove={handleMove}
+                renderRow={ExplorerRow}
+              >
+                {ExplorerNode}
+              </Tree>
+            </ProjectFileTreeRenderContext.Provider>
+            {renderedNodes.length === 0 ? (
+              <div className="pointer-events-none absolute inset-x-3 top-8 text-center text-xs text-[var(--nova-text-faint)]">
+                {t('files.tree.empty')}
+              </div>
+            ) : null}
+          </div>
+        </ContextMenuTrigger>
+        <ContextMenuContent>
+          <ContextMenuItem onSelect={() => beginCreate('file', '')}><FileText />{t('sidebar.createFile')}</ContextMenuItem>
+          <ContextMenuItem onSelect={() => beginCreate('dir', '')}><FolderPlus />{t('sidebar.createDir')}</ContextMenuItem>
+          <ContextMenuSeparator />
+          <ContextMenuItem disabled={!clipboard} onSelect={() => actions.paste('')}><ClipboardPaste />{t('sidebar.paste')}</ContextMenuItem>
+        </ContextMenuContent>
+      </ContextMenu>
       <DeleteConfirmDialog
         open={deletePaths.length > 0}
         path={deletePaths}
@@ -228,195 +327,46 @@ export function ProjectFileTree({
           if (!open) setDeletePaths([])
         }}
         onConfirm={async () => {
-          for (const path of removeNestedPaths(deletePaths)) await onDeleteItem(path)
+          for (const path of removeNestedProjectPaths(deletePaths)) await onDeleteItem(path)
           setDeletePaths([])
         }}
       />
-    </div>
-  )
-}
-
-function ExplorerRow({ node, attrs, innerRef, children }: RowRendererProps<ProjectFileExplorerNode>) {
-  return (
-    <div
-      {...attrs}
-      ref={innerRef}
-      onFocus={(event) => event.stopPropagation()}
-      onClick={node.handleClick}
-      className={cn(
-        'group/tree-row flex cursor-default items-center rounded-sm outline-none',
-        node.isSelected && 'bg-[var(--nova-active)] text-[var(--nova-text)]',
-        !node.isSelected && 'hover:bg-[var(--nova-hover)]',
-        node.isFocused && 'ring-1 ring-inset ring-[var(--nova-accent)]',
-      )}
-    >
-      {children}
-    </div>
-  )
-}
-
-function ExplorerNode({ node, style, dragHandle }: NodeRendererProps<ProjectFileExplorerNode>) {
-  const { t } = useTranslation()
-  const renderContext = useContext(ExplorerRenderContext)
-  if (!renderContext) throw new Error('Project file explorer render context is unavailable')
-  const { actions, onLoadMore } = renderContext
-  const data = node.data
-  if (data.type === 'more') {
-    return (
-      <button
-        type="button"
-        style={style}
-        className="flex h-full min-w-0 flex-1 items-center gap-1.5 pr-2 text-[11px] text-[var(--nova-accent)] hover:underline"
-        onClick={(event) => {
-          event.stopPropagation()
-          void onLoadMore(data.path)
-        }}
-      >
-        {data.loading ? <Loader2 className="size-3.5 animate-spin" /> : <Plus className="size-3.5" />}
-        {t(data.loading ? 'files.tree.loadingMore' : 'files.tree.loadMore')}
-      </button>
-    )
-  }
-
-  const actionPaths = node.isSelected
-    ? node.tree.selectedNodes.map((selected) => selected.data).filter((item) => item.type !== 'more').map((item) => item.path)
-    : [data.path]
-  const menu = (
-    <NodeActions
-      node={node}
-      actionPaths={actionPaths}
-      actions={actions}
-      kind="context"
-    />
-  )
-  return (
-    <ContextMenu>
-      <ContextMenuTrigger asChild>
-        <div
-          ref={dragHandle}
-          style={style}
-          className={cn(
-            'flex h-full min-w-0 flex-1 items-center gap-1 pr-1 text-xs',
-            data.ignored && 'opacity-55',
-          )}
-          title={data.path}
-        >
-          {data.type === 'dir' ? (
-            <button
-              type="button"
-              className="flex size-5 shrink-0 items-center justify-center rounded text-[var(--nova-text-faint)] hover:bg-[var(--nova-hover)] hover:text-[var(--nova-text)]"
-              aria-label={t(node.isOpen ? 'files.tree.collapseDirectory' : 'files.tree.expandDirectory', { name: data.name })}
-              onClick={(event) => {
-                event.stopPropagation()
-                if (event.altKey) toggleLoadedBranch(node, !node.isOpen)
-                else node.toggle()
-              }}
-            >
-              {data.loading ? <Loader2 className="size-3.5 animate-spin" /> : node.isOpen ? <ChevronDown className="size-3.5" /> : <ChevronRight className="size-3.5" />}
-            </button>
-          ) : <span className="size-5 shrink-0" />}
-          {data.type === 'dir'
-            ? node.isOpen ? <FolderOpen className="size-4 shrink-0 text-[var(--nova-tree-icon)]" /> : <Folder className="size-4 shrink-0 text-[var(--nova-tree-icon)]" />
-            : <FileText className="size-4 shrink-0 text-[var(--nova-tree-icon)]" />}
-          {node.isEditing ? <RenameInput node={node} /> : <span className="min-w-0 flex-1 truncate">{data.name}</span>}
-          {data.symlink ? <span className="shrink-0 text-[9px] text-[var(--nova-text-faint)]">↗</span> : null}
-          <NodeActionDropdown node={node} actionPaths={actionPaths} actions={actions} />
-        </div>
-      </ContextMenuTrigger>
-      <ContextMenuContent>{menu}</ContextMenuContent>
-    </ContextMenu>
-  )
-}
-
-function RenameInput({ node }: { node: NodeApi<ProjectFileExplorerNode> }) {
-  const ref = useRef<HTMLInputElement>(null)
-  useEffect(() => {
-    ref.current?.focus()
-    ref.current?.select()
-  }, [])
-  return (
-    <input
-      ref={ref}
-      defaultValue={node.data.name}
-      className="h-5 min-w-0 flex-1 rounded-sm border border-[var(--nova-accent)] bg-[var(--nova-bg)] px-1 text-xs outline-none"
-      onClick={(event) => event.stopPropagation()}
-      onBlur={() => node.reset()}
-      onKeyDown={(event) => {
-        event.stopPropagation()
-        if (event.key === 'Escape') node.reset()
-        if (event.key === 'Enter') {
-          const name = event.currentTarget.value.trim()
-          if (name && name !== node.data.name) void node.submit(name)
-          else node.reset()
-        }
-      }}
-    />
-  )
-}
-
-function NodeActionDropdown({ node, actionPaths, actions }: {
-  node: NodeApi<ProjectFileExplorerNode>
-  actionPaths: string[]
-  actions: TreeActions
-}) {
-  const { t } = useTranslation()
-  return (
-    <DropdownMenu>
-      <DropdownMenuTrigger asChild>
-        <button
-          type="button"
-          className="flex size-5 shrink-0 items-center justify-center rounded text-[var(--nova-text-faint)] opacity-0 hover:bg-[var(--nova-hover)] hover:text-[var(--nova-text)] group-hover/tree-row:opacity-100 data-[state=open]:opacity-100 focus-visible:opacity-100"
-          onClick={(event) => event.stopPropagation()}
-          aria-label={t('files.tree.moreActions')}
-        >
-          <MoreHorizontal className="size-3.5" />
-        </button>
-      </DropdownMenuTrigger>
-      <DropdownMenuContent align="end" className="min-w-40">
-        <NodeActions node={node} actionPaths={actionPaths} actions={actions} kind="dropdown" />
-      </DropdownMenuContent>
-    </DropdownMenu>
-  )
-}
-
-function NodeActions({ node, actionPaths, actions, kind }: {
-  node: NodeApi<ProjectFileExplorerNode>
-  actionPaths: string[]
-  actions: TreeActions
-  kind: 'context' | 'dropdown'
-}) {
-  const { t } = useTranslation()
-  const Item = kind === 'context' ? ContextMenuItem : DropdownMenuItem
-  const Separator = kind === 'context' ? ContextMenuSeparator : DropdownMenuSeparator
-  const path = node.data.path
-  return (
-    <>
-      {node.data.type === 'dir' ? (
-        <>
-          <Item onSelect={() => actions.create(path, 'file')}><FileText />{t('sidebar.createFile')}</Item>
-          <Item onSelect={() => actions.create(path, 'dir')}><FolderPlus />{t('sidebar.createDir')}</Item>
-          <Separator />
-        </>
-      ) : null}
-      <Item onSelect={() => actions.rename(node)}><Pencil />{t('sidebar.rename')}</Item>
-      <Item disabled={node.data.symlink} onSelect={() => actions.copy(path)}><Copy />{t('sidebar.copy')}</Item>
-      <Item onSelect={() => actions.move(path)}><MoveRight />{t('sidebar.move')}</Item>
-      <Separator />
-      <Item variant="destructive" onSelect={() => actions.delete(actionPaths)}><Trash2 />{t('sidebar.delete')}</Item>
     </>
   )
+})
+
+function insertionDirectory(
+  tree: TreeApi<ProjectFileExplorerNode> | null,
+  selectedPath: string | null,
+): string {
+  const node = tree?.focusedNode ?? (selectedPath ? tree?.get(selectedPath) : null)
+  if (!node || node.data.type === 'more' || node.data.draft) return ''
+  return node.data.type === 'dir' ? node.data.path : projectParentPath(node.data.path)
 }
 
-function toggleLoadedBranch(node: NodeApi<ProjectFileExplorerNode>, open: boolean) {
-  const visit = (current: NodeApi<ProjectFileExplorerNode>) => {
-    if (!current.isInternal) return
-    if (open) current.tree.open(current.id, false)
-    else current.tree.close(current.id, false)
-    if (open && !current.data.loaded) return
-    current.children?.forEach(visit)
-  }
-  visit(node)
-  node.tree.redrawList(node.rowIndex ?? 0)
+function actionableFocusedNode(tree: TreeApi<ProjectFileExplorerNode>) {
+  const node = tree.focusedNode
+  return node && node.data.type !== 'more' && !node.data.draft ? node : null
+}
+
+function actionableSelection(tree: TreeApi<ProjectFileExplorerNode>): string[] {
+  const selected = tree.selectedNodes
+    .map((node) => node.data)
+    .filter((node) => node.type !== 'more' && !node.draft)
+    .map((node) => node.path)
+  if (selected.length > 0) return removeNestedProjectPaths(selected)
+  const focused = actionableFocusedNode(tree)
+  return focused ? [focused.data.path] : []
+}
+
+function consumeKeyboardEvent(event: KeyboardEvent) {
+  event.preventDefault()
+  event.stopPropagation()
+}
+
+async function writeClipboardText(value: string) {
+  if (!navigator.clipboard?.writeText) throw new Error('Clipboard API is unavailable')
+  await navigator.clipboard.writeText(value)
 }
 
 function useElementSize(ref: RefObject<HTMLElement | null>) {
@@ -438,35 +388,14 @@ function useElementSize(ref: RefObject<HTMLElement | null>) {
   return size
 }
 
-function removeNestedPaths(paths: readonly string[]) {
-  const sorted = [...new Set(paths)].sort((left, right) => left.length - right.length)
-  return sorted.filter((path, index) => !sorted.slice(0, index).some((parent) => path.startsWith(`${parent}/`)))
-}
-
-function baseName(path: string) {
-  return path.slice(path.lastIndexOf('/') + 1)
-}
-
-function joinPath(parent: string, name: string) {
-  return parent ? `${parent}/${name}` : name
-}
-
-function copyDefaultPath(path: string) {
-  const parent = path.includes('/') ? path.slice(0, path.lastIndexOf('/')) : ''
-  const name = baseName(path)
-  const dot = name.lastIndexOf('.')
-  const copyName = dot > 0 ? `${name.slice(0, dot)}-copy${name.slice(dot)}` : `${name}-copy`
-  return joinPath(parent, copyName)
-}
-
 function disableProjectFileEdit(node: ProjectFileExplorerNode) {
   return node.type !== 'file' && node.type !== 'dir'
 }
 
 function disableProjectFileDrag(node: ProjectFileExplorerNode) {
-  return node.type === 'more'
+  return node.type === 'more' || node.draft === true
 }
 
 function disableProjectFileDrop({ parentNode }: { parentNode: NodeApi<ProjectFileExplorerNode> }) {
-  return !parentNode.isRoot && (parentNode.data.type !== 'dir' || parentNode.data.symlink)
+  return !parentNode.isRoot && (parentNode.data.type !== 'dir' || parentNode.data.symlink || parentNode.data.draft === true)
 }

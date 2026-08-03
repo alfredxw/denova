@@ -1,6 +1,5 @@
 export interface ProjectFilesPreferences {
   expandedPaths: string[]
-  showIgnored: boolean
   treeVisible: boolean
 }
 
@@ -13,7 +12,7 @@ const PROJECT_FILE_EDITOR_PREFERENCES_VERSION = 1
 const MAX_EXPANDED_PATHS = 192
 
 export function defaultProjectFilesPreferences(): ProjectFilesPreferences {
-  return { expandedPaths: [], showIgnored: false, treeVisible: true }
+  return { expandedPaths: [], treeVisible: true }
 }
 
 export function defaultProjectFileEditorPreferences(): ProjectFileEditorPreferences {
@@ -30,7 +29,6 @@ export function readProjectFilesPreferences(projectId: string): ProjectFilesPref
       expandedPaths: Array.isArray(parsed.expandedPaths)
         ? parsed.expandedPaths.filter((path): path is string => typeof path === 'string' && Boolean(path)).slice(0, MAX_EXPANDED_PATHS)
         : [],
-      showIgnored: parsed.showIgnored === true,
       treeVisible: parsed.treeVisible !== false,
     }
   } catch {
@@ -42,7 +40,6 @@ export function persistProjectFilesPreferences(projectId: string, preferences: P
   try {
     window.localStorage.setItem(preferencesKey(projectId), JSON.stringify({
       expandedPaths: [...new Set(preferences.expandedPaths)].slice(-MAX_EXPANDED_PATHS),
-      showIgnored: preferences.showIgnored,
       treeVisible: preferences.treeVisible,
     }))
   } catch {

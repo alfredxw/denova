@@ -20,7 +20,6 @@ const TREE_ENTRY_BUDGET = 4096
 const MAX_TARGETS_PER_REQUEST = 256
 interface ProjectFileExplorerOptions {
   projectId: string
-  includeIgnored: boolean
   expandedPaths: readonly string[]
   selectedPath: string | null
 }
@@ -52,7 +51,6 @@ interface ResolveOptions {
  */
 export function useProjectFileExplorer({
   projectId,
-  includeIgnored,
   expandedPaths,
   selectedPath,
 }: ProjectFileExplorerOptions): ProjectFileExplorerState {
@@ -85,7 +83,7 @@ export function useProjectFileExplorer({
     try {
       const responses = await Promise.all(chunks.map((chunk) => resolveProjectFileTree(projectId, {
         targets: chunk,
-        include_ignored: includeIgnored,
+        include_ignored: true,
         follow_single_child_directories: true,
         entry_budget: TREE_ENTRY_BUDGET,
       })))
@@ -112,7 +110,7 @@ export function useProjectFileExplorer({
         setLoadingPaths(new Set(loadingCountsRef.current.keys()))
       }
     }
-  }, [includeIgnored, projectId])
+  }, [projectId])
 
   useEffect(() => {
     sourceVersionRef.current += 1
@@ -135,7 +133,7 @@ export function useProjectFileExplorer({
       })
   // Expanded paths and selection are bootstrap hints, not live query inputs.
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [includeIgnored, projectId, resolveTargets])
+  }, [projectId, resolveTargets])
 
   const loadDirectory = useCallback(async (path: string) => {
     if (directoriesRef.current.has(path)) return

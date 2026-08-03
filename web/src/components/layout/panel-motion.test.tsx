@@ -6,6 +6,7 @@ import { CollapsibleResizablePanel, PanelMotionGroup } from './panel-motion'
 
 const panelHarness = vi.hoisted(() => ({
   reportedPixels: 368,
+  groupRenders: 0,
   collapse: vi.fn(),
   expand: vi.fn(),
   resize: vi.fn(),
@@ -15,7 +16,10 @@ vi.mock('react-resizable-panels', () => ({
   Group: ({ children, orientation: _orientation, ...props }: HTMLAttributes<HTMLDivElement> & {
     children?: ReactNode
     orientation?: 'horizontal' | 'vertical'
-  }) => <div {...props}>{children}</div>,
+  }) => {
+    panelHarness.groupRenders += 1
+    return <div {...props}>{children}</div>
+  },
   Panel: ({
     children,
     id,
@@ -109,6 +113,10 @@ describe('CollapsibleResizablePanel', () => {
 })
 
 describe('PanelMotionGroup', () => {
+  beforeEach(() => {
+    panelHarness.groupRenders = 0
+  })
+
   it('tracks only its direct separator resize without a relational CSS selector', async () => {
     const { getByTestId } = render(
       <PanelMotionGroup orientation="horizontal">
@@ -123,9 +131,11 @@ describe('PanelMotionGroup', () => {
 
     fireEvent.pointerDown(separator)
     expect(group).toHaveAttribute('data-nova-panel-resizing', 'true')
+    expect(panelHarness.groupRenders).toBe(1)
 
     fireEvent.pointerUp(window)
     await waitFor(() => expect(group).not.toHaveAttribute('data-nova-panel-resizing'))
+    expect(panelHarness.groupRenders).toBe(1)
   })
 
   it('does not mark an ancestor panel group while a nested group is resizing', () => {
@@ -143,6 +153,29 @@ describe('PanelMotionGroup', () => {
 
     expect(innerGroup).toHaveAttribute('data-nova-panel-resizing', 'true')
     expect(outerGroup).not.toHaveAttribute('data-nova-panel-resizing')
+  })
+
+  it('tracks a resize after the panel library prevents the native pointer default', async () => {
+    const preventNativeDefault = (event: PointerEvent) => event.preventDefault()
+    document.addEventListener('pointerdown', preventNativeDefault, true)
+
+    try {
+      const { getByTestId } = render(
+        <PanelMotionGroup orientation="horizontal">
+          <div data-separator="inactive" data-testid="prevented-resize-separator" />
+        </PanelMotionGroup>,
+      )
+      const separator = getByTestId('prevented-resize-separator')
+      const group = separator.parentElement
+
+      fireEvent.pointerDown(separator)
+      expect(group).toHaveAttribute('data-nova-panel-resizing', 'true')
+
+      fireEvent.pointerUp(window)
+      await waitFor(() => expect(group).not.toHaveAttribute('data-nova-panel-resizing'))
+    } finally {
+      document.removeEventListener('pointerdown', preventNativeDefault, true)
+    }
   })
 })
 

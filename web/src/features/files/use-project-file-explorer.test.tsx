@@ -7,10 +7,12 @@ import { useProjectFileExplorer } from './use-project-file-explorer'
 describe('useProjectFileExplorer', () => {
   it('batches bootstrap resolution and refreshes only mutation parents', async () => {
     const resolvedTargets: string[][] = []
+    const includeIgnoredValues: unknown[] = []
     server.use(
       http.post('/api/projects/project-one/files/resolve', async ({ request }) => {
-        const body = await request.json() as { targets: Array<{ path: string }> }
+        const body = await request.json() as { targets: Array<{ path: string }>; include_ignored?: boolean }
         resolvedTargets.push(body.targets.map((target) => target.path))
+        includeIgnoredValues.push(body.include_ignored)
         return HttpResponse.json({
           project_id: 'project-one',
           results: body.targets.map((target) => ({
@@ -33,7 +35,6 @@ describe('useProjectFileExplorer', () => {
     )
     const { result } = renderHook(() => useProjectFileExplorer({
       projectId: 'project-one',
-      includeIgnored: false,
       expandedPaths: ['a'],
       selectedPath: 'b/current.ts',
     }))
@@ -42,5 +43,6 @@ describe('useProjectFileExplorer', () => {
     await act(() => result.current.createItem('a/new.ts', 'file'))
 
     expect(resolvedTargets).toEqual([['', 'a', 'b'], ['a']])
+    expect(includeIgnoredValues).toEqual([true, true])
   })
 })

@@ -1,6 +1,6 @@
 const files = {
   'files.title': 'Files',
-  'files.tree.title': 'Project files',
+  'files.tree.title': 'Files',
   'files.tree.open': 'Show file tree',
   'files.tree.hide': 'Hide file tree',
   'files.tree.loading': 'Loading project files…',
@@ -13,9 +13,7 @@ const files = {
   'files.tree.moreActions': 'More file actions',
   'files.tree.loadMore': 'Load more',
   'files.tree.loadingMore': 'Loading more…',
-  'files.tree.showIgnored': 'Show generated folders',
-  'files.tree.hideIgnored': 'Hide generated folders',
-  'files.tree.generatedHint': 'Includes node_modules, dist, build, target, vendor, and coverage.',
+  'files.tree.copyPathFailed': 'Failed to copy file path',
   'files.tree.refreshFailed': 'Failed to refresh project files',
   'files.editor.noSelection': 'Select a file',
   'files.editor.noSelectionDescription': 'Choose a file from the project tree to inspect or edit its source.',

@@ -1,6 +1,6 @@
 const files = {
   'files.title': '文件',
-  'files.tree.title': '项目文件',
+  'files.tree.title': '文件',
   'files.tree.open': '显示文件树',
   'files.tree.hide': '隐藏文件树',
   'files.tree.loading': '正在加载项目文件…',
@@ -13,9 +13,7 @@ const files = {
   'files.tree.moreActions': '更多文件操作',
   'files.tree.loadMore': '加载更多',
   'files.tree.loadingMore': '正在加载更多…',
-  'files.tree.showIgnored': '显示生成目录',
-  'files.tree.hideIgnored': '隐藏生成目录',
-  'files.tree.generatedHint': '包括 node_modules、dist、build、target、vendor 和 coverage。',
+  'files.tree.copyPathFailed': '复制文件路径失败',
   'files.tree.refreshFailed': '刷新项目文件失败',
   'files.editor.noSelection': '选择一个文件',
   'files.editor.noSelectionDescription': '从右侧项目文件树选择文件，即可查看或编辑源码。',
