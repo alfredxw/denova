@@ -1,11 +1,16 @@
 package interactive
 
 import (
+	"context"
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
 	"time"
+
+	"denova/internal/revisionfile"
+	"denova/internal/revisionjson"
 )
 
 func attachBuiltinActorStateLegacyPaths(id string, system StoryDirectorActorStateSystem) StoryDirectorActorStateSystem {
@@ -90,18 +95,18 @@ func (l *ActorStateLibrary) Create(item ActorStateModule) (ActorStateModule, err
 		return ActorStateModule{}, err
 	}
 	path := filepath.Join(l.dir(), item.ID+".json")
-	if _, err := os.Stat(path); err == nil {
-		return ActorStateModule{}, fmt.Errorf("状态系统已存在: %s", item.ID)
-	} else if !os.IsNotExist(err) {
-		return ActorStateModule{}, err
-	}
 	now := time.Now().UTC().Format(time.RFC3339Nano)
 	item.CreatedAt = now
 	item.UpdatedAt = now
-	if err := writeActorStateFile(path, item); err != nil {
+	document, err := actorStateFileStore(path).Create(context.Background(), item)
+	if errors.Is(err, revisionjson.ErrAlreadyExists) {
+		return ActorStateModule{}, fmt.Errorf("状态系统已存在: %s", item.ID)
+	}
+	if err != nil {
 		return ActorStateModule{}, err
 	}
-	item.Path = path
+	item = document.Value
+	item.Path, item.Revision = path, document.Revision
 	return applyActorStateOwnership(item), nil
 }
 
@@ -113,30 +118,29 @@ func (l *ActorStateLibrary) Update(id string, item ActorStateModule, baseRevisio
 	if err := validateDirectorModuleID(id, "状态系统"); err != nil {
 		return ActorStateModule{}, err
 	}
-	isBuiltin := IsBuiltinActorStateID(id)
-	current, err := l.Get(id)
-	if err != nil {
-		return ActorStateModule{}, err
-	}
-	if strings.TrimSpace(baseRevision) != "" && strings.TrimSpace(current.UpdatedAt) != strings.TrimSpace(baseRevision) {
-		return ActorStateModule{}, ErrActorStateRevisionConflict
-	}
 	if err := validateDirectorModuleWriteBounds(item.Name, item.Description); err != nil {
 		return ActorStateModule{}, err
 	}
 	item = normalizeActorStateModule(item)
 	item.ID = id
-	item.CreatedAt = firstNonEmptyString(current.CreatedAt, item.CreatedAt)
-	item.UpdatedAt = time.Now().UTC().Format(time.RFC3339Nano)
-	item.BuiltinOverridden = isBuiltin
 	if err := validateActorStateModule(item); err != nil {
 		return ActorStateModule{}, err
 	}
 	path := filepath.Join(l.dir(), id+".json")
-	if err := writeActorStateFile(path, item); err != nil {
+	document, err := actorStateFileStore(path).Update(context.Background(), baseRevision, func(current ActorStateModule) (ActorStateModule, error) {
+		item.CreatedAt = firstNonEmptyString(current.CreatedAt, item.CreatedAt)
+		item.UpdatedAt = time.Now().UTC().Format(time.RFC3339Nano)
+		item.BuiltinOverridden = IsBuiltinActorStateID(id)
+		return item, validateActorStateModule(item)
+	})
+	if err != nil {
+		if errors.Is(err, revisionfile.ErrRevisionConflict) || errors.Is(err, revisionjson.ErrRevisionRequired) {
+			return ActorStateModule{}, fmt.Errorf("%w: %v", ErrActorStateRevisionConflict, err)
+		}
 		return ActorStateModule{}, err
 	}
-	item.Path = path
+	item = document.Value
+	item.Path, item.Revision = path, document.Revision
 	return applyActorStateOwnership(item), nil
 }
 

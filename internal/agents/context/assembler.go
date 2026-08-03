@@ -14,7 +14,15 @@ func NewAssembler(budget Budget) *Assembler {
 type denovaRenderer struct{}
 
 func (denovaRenderer) RenderLeading(fragment Fragment) string {
-	return StandaloneMessage(fragment.Title, fragment.Content, "")
+	return StandaloneMessage(fragment.Title, renderSourceContent(sourceFromFragment(fragment)), "")
+}
+
+func sourceFromFragment(fragment Fragment) Source {
+	return Source{
+		Source: fragment.Source, Title: fragment.Title, Purpose: fragment.Purpose,
+		Content: fragment.Content, Placement: fragment.Placement, Limit: fragment.Limit,
+		Included: fragment.Included, Truncated: fragment.Truncated, Note: fragment.Note,
+	}
 }
 
 func (denovaRenderer) RenderFinalUser(userRequest string, fragments []Fragment) string {

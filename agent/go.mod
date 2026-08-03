@@ -9,6 +9,7 @@ require (
 	github.com/gofrs/flock v0.13.0
 	github.com/invopop/jsonschema v0.14.0
 	github.com/openai/openai-go/v3 v3.48.0
+	mvdan.cc/sh/v3 v3.13.1
 )
 
 require (

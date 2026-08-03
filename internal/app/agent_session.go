@@ -103,6 +103,11 @@ func (a *App) resolveSessionAsk(ctx context.Context, sessionID, askID, status st
 	a.mu.RLock()
 	store := a.sessionStore
 	selected := a.session
+	workspace := a.workspace
+	projectID := ""
+	if a.cfg != nil {
+		projectID = a.cfg.ProjectID
+	}
 	a.mu.RUnlock()
 	if store == nil || selected == nil {
 		return AgentAskResolution{}, ErrNoWorkspace
@@ -118,7 +123,7 @@ func (a *App) resolveSessionAsk(ctx context.Context, sessionID, askID, status st
 	if err != nil {
 		return AgentAskResolution{}, err
 	}
-	return agentconversation.ResolveAsk(ctx, sess, askID, status, answers, cancelReason)
+	return a.resolveAgentAsk(ctx, sess, projectID, workspace, askID, status, answers, cancelReason)
 }
 
 func (a *App) AgentRunTraces(limit int) ([]agentrun.RunTraceSummary, error) {

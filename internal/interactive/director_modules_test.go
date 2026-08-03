@@ -52,7 +52,7 @@ func TestEventPackageLibraryMaterializesGenreBuiltins(t *testing.T) {
 		t.Fatalf("genre cards should default to Chinese names and structured markdown: %#v", firstCard)
 	}
 	xiuxian.Name = "我的修仙事件包"
-	overridden, err := library.Update(GenreXiuxianEventPackageID, xiuxian, xiuxian.UpdatedAt)
+	overridden, err := library.Update(GenreXiuxianEventPackageID, xiuxian, xiuxian.Revision)
 	if err != nil {
 		t.Fatalf("Update built-in genre event package should create override: %v", err)
 	}
@@ -253,7 +253,7 @@ func TestActorStateLibraryMaterializesGenreBuiltins(t *testing.T) {
 		t.Fatalf("xiuxian actor state should expose cultivation protagonist fields: %#v", xiuxian)
 	}
 	xiuxian.Name = "我的修仙状态系统"
-	overridden, err := library.Update(ActorStateXiuxianID, xiuxian, xiuxian.UpdatedAt)
+	overridden, err := library.Update(ActorStateXiuxianID, xiuxian, xiuxian.Revision)
 	if err != nil {
 		t.Fatalf("Update built-in xiuxian actor state should create override: %v", err)
 	}
@@ -307,7 +307,7 @@ func TestDirectorModuleBuiltinOverridesRestore(t *testing.T) {
 		}
 	}
 	rule.Name = "我的 TRPG 检定"
-	overriddenRule, err := ruleLibrary.Update(DefaultRuleSystemID, rule, rule.UpdatedAt)
+	overriddenRule, err := ruleLibrary.Update(DefaultRuleSystemID, rule, rule.Revision)
 	if err != nil {
 		t.Fatalf("Update built-in rule system should create override: %v", err)
 	}
@@ -329,7 +329,7 @@ func TestDirectorModuleBuiltinOverridesRestore(t *testing.T) {
 		t.Fatal(err)
 	}
 	styleRule.Name = "我的 OSR 检定"
-	overriddenStyleRule, err := ruleLibrary.Update(RuleSystemOSRPlayerSkillID, styleRule, styleRule.UpdatedAt)
+	overriddenStyleRule, err := ruleLibrary.Update(RuleSystemOSRPlayerSkillID, styleRule, styleRule.Revision)
 	if err != nil {
 		t.Fatalf("Update built-in style rule system should create override: %v", err)
 	}
@@ -353,7 +353,7 @@ func TestDirectorModuleBuiltinOverridesRestore(t *testing.T) {
 		t.Fatal(err)
 	}
 	actorState.Name = "我的状态系统"
-	overriddenActorState, err := actorLibrary.Update(DefaultActorStateModuleID, actorState, actorState.UpdatedAt)
+	overriddenActorState, err := actorLibrary.Update(DefaultActorStateModuleID, actorState, actorState.Revision)
 	if err != nil {
 		t.Fatalf("Update built-in actor state should create override: %v", err)
 	}
@@ -572,7 +572,7 @@ func TestStoryDirectorResolvesLiveModulesAndFallsBackToSnapshot(t *testing.T) {
 		t.Fatalf("director should resolve actor state module on create: %#v", director.ActorState)
 	}
 	eventModule.Events[0].DescriptionMarkdown = "v2"
-	if _, err := eventLibrary.Update(eventModule.ID, eventModule, eventModule.UpdatedAt); err != nil {
+	if _, err := eventLibrary.Update(eventModule.ID, eventModule, eventModule.Revision); err != nil {
 		t.Fatalf("update event package failed: %v", err)
 	}
 	live, err := directorLibrary.Get("modular")

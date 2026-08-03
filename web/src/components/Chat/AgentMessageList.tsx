@@ -9,6 +9,7 @@ import type { AgentUIMessage } from '@/lib/agent-ui'
 import {
   agentViewToRenderMessage,
   agentViewContent,
+  agentViewAskInteraction,
   agentViewNavigationAnchor,
   agentViewStableKey,
   buildAgentSubAgentTimelineGroups,
@@ -19,12 +20,13 @@ import {
 } from '@/lib/agent-message-view'
 import { listItem, novaEase } from '@/features/motion/motion-tokens'
 import { buildSubAgentProgressMessage } from './subagent-session'
-import { VIRTUOSO_BOTTOM_THRESHOLD, useVirtuosoBottomLock, type ScrollElementBottomIntoViewOptions } from './useVirtuosoBottomLock'
+import { VIRTUOSO_BOTTOM_THRESHOLD, useVirtuosoBottomLock } from './useVirtuosoBottomLock'
 import { ScrollToBottomButton } from './ScrollToBottomButton'
 import { AgentMessageItem } from './AgentMessageItem'
 import { AgentActivityShimmer, MessageItem } from './MessageItem'
 import { AgentExecutionProcess } from './AgentExecutionProcess'
 import { buildAgentRunPresentation } from './agent-run-presentation'
+import { scheduleChatRowBottomAnchor, scheduleResolvedChatRowBottomAnchor } from './chat-row-bottom-anchor'
 import { Button } from '@/components/ui/button'
 
 interface MessageListProps {
@@ -151,11 +153,11 @@ export function MessageList({ messages, isStreaming, isExecutionActive = isStrea
     autoFollowEnabled: isStreaming,
     resolveScroller: resolveMessageScroller,
   })
-  const latestPlanCardAnchor = useMemo(
-    () => latestPlanCardBottomAnchorTarget(listItems),
+  const latestInteractiveCardAnchor = useMemo(
+    () => latestInteractiveCardBottomAnchorTarget(listItems),
     [listItems],
   )
-  const lastPlanCardAnchorKeyRef = useRef<string | null>(null)
+  const lastInteractiveCardAnchorKeyRef = useRef<string | null>(null)
   const virtuosoContext = useMemo<MessageListVirtuosoContext>(
     () => ({
       bottomPaddingClassName,
@@ -169,30 +171,42 @@ export function MessageList({ messages, isStreaming, isExecutionActive = isStrea
     [afterContent, bottomPaddingClassName, bottomPaddingPx, hasEarlierMessages, isLoadingEarlierMessages, onLoadEarlierMessages, scrollLock.releaseBottomLock],
   )
   const scrollButtonBottomOffset = typeof bottomPaddingPx === 'number' ? Math.max(24, bottomPaddingPx + 12) : 24
-  const anchorLatestPlanCardBottom = useCallback(() => {
-    if (!latestPlanCardAnchor) return
+  const anchorLatestInteractiveCardBottom = useCallback((element?: HTMLElement) => {
+    const row = element?.closest<HTMLElement>('[data-nova-chat-row-key]')
     const bottomInsetPx = Math.max(0, bottomPaddingPx || 0)
-    scheduleChatRowBottomAnchor(containerRef.current, latestPlanCardAnchor.rowKey, bottomInsetPx, scrollLock.scrollElementBottomIntoView)
-  }, [bottomPaddingPx, latestPlanCardAnchor, scrollLock.scrollElementBottomIntoView])
+    const cardRowKey = row?.dataset.novaChatRowKey
+    if (cardRowKey) {
+      scheduleResolvedChatRowBottomAnchor(
+        () => containerRef.current,
+        cardRowKey,
+        bottomInsetPx,
+        scrollLock.scrollElementBottomIntoView,
+      )
+      return
+    }
+    const rowKey = latestInteractiveCardAnchor?.rowKey
+    if (!rowKey) return
+    scheduleChatRowBottomAnchor(containerRef.current, rowKey, bottomInsetPx, scrollLock.scrollElementBottomIntoView)
+  }, [bottomPaddingPx, latestInteractiveCardAnchor, scrollLock.scrollElementBottomIntoView])
 
   useEffect(() => {
     const bottomInsetPx = Math.max(0, bottomPaddingPx || 0)
-    const anchorKey = latestPlanCardAnchor ? `${latestPlanCardAnchor.anchorKey}:${Math.round(bottomInsetPx)}` : ''
-    if (lastPlanCardAnchorKeyRef.current === null) {
-      lastPlanCardAnchorKeyRef.current = anchorKey
-      if (latestPlanCardAnchor && isStreaming) {
-        return scheduleChatRowBottomAnchor(containerRef.current, latestPlanCardAnchor.rowKey, bottomInsetPx, scrollLock.scrollElementBottomIntoView)
+    const anchorKey = latestInteractiveCardAnchor ? `${latestInteractiveCardAnchor.anchorKey}:${Math.round(bottomInsetPx)}` : ''
+    if (lastInteractiveCardAnchorKeyRef.current === null) {
+      lastInteractiveCardAnchorKeyRef.current = anchorKey
+      if (latestInteractiveCardAnchor && isStreaming) {
+        return scheduleChatRowBottomAnchor(containerRef.current, latestInteractiveCardAnchor.rowKey, bottomInsetPx, scrollLock.scrollElementBottomIntoView)
       }
       return undefined
     }
-    if (latestPlanCardAnchor && anchorKey !== lastPlanCardAnchorKeyRef.current) {
-      const cancelAnchor = scheduleChatRowBottomAnchor(containerRef.current, latestPlanCardAnchor.rowKey, bottomInsetPx, scrollLock.scrollElementBottomIntoView)
-      lastPlanCardAnchorKeyRef.current = anchorKey
+    if (latestInteractiveCardAnchor && anchorKey !== lastInteractiveCardAnchorKeyRef.current) {
+      const cancelAnchor = scheduleChatRowBottomAnchor(containerRef.current, latestInteractiveCardAnchor.rowKey, bottomInsetPx, scrollLock.scrollElementBottomIntoView)
+      lastInteractiveCardAnchorKeyRef.current = anchorKey
       return cancelAnchor
     }
-    lastPlanCardAnchorKeyRef.current = anchorKey
+    lastInteractiveCardAnchorKeyRef.current = anchorKey
     return undefined
-  }, [bottomPaddingPx, isStreaming, latestPlanCardAnchor, scrollLock.scrollElementBottomIntoView])
+  }, [bottomPaddingPx, isStreaming, latestInteractiveCardAnchor, scrollLock.scrollElementBottomIntoView])
 
   useEffect(() => {
     if (!turnScrollRequest?.anchorId) return
@@ -258,12 +272,12 @@ export function MessageList({ messages, isStreaming, isExecutionActive = isStrea
         onExitPlanMode={onExitPlanMode}
         onOpenTrace={onOpenTrace}
         onResolveAsk={onResolveAsk}
-        onPlanCardLayoutChange={anchorLatestPlanCardBottom}
+        onInteractiveCardLayoutChange={anchorLatestInteractiveCardBottom}
         streamingRowRef={isStreaming ? scrollLock.streamingRowRef : undefined}
         syncStreamingRowHeight={isStreaming ? scrollLock.syncStreamingRowHeight : undefined}
       />
     )
-  }, [activeSubAgentSessionKey, activeTraceDisplay, anchorLatestPlanCardBottom, canMutateMessage, firstItemIndex, generatingInteractiveImageTurnId, highlightDialogue, isStreaming, listItems, messageStyle, onApprovePlan, onContinuePlan, onCreateBranch, onEditAssistantReply, onEditMessage, onExitPlanMode, onGenerateInteractiveImage, onInsertIllustration, onOpenSubAgentSession, onOpenTrace, onRegenerateMessage, onResolveAsk, onSwitchMessageVersion, scrollLock.streamingRowRef, scrollLock.syncStreamingRowHeight])
+  }, [activeSubAgentSessionKey, activeTraceDisplay, anchorLatestInteractiveCardBottom, canMutateMessage, firstItemIndex, generatingInteractiveImageTurnId, highlightDialogue, isStreaming, listItems, messageStyle, onApprovePlan, onContinuePlan, onCreateBranch, onEditAssistantReply, onEditMessage, onExitPlanMode, onGenerateInteractiveImage, onInsertIllustration, onOpenSubAgentSession, onOpenTrace, onRegenerateMessage, onResolveAsk, onSwitchMessageVersion, scrollLock.streamingRowRef, scrollLock.syncStreamingRowHeight])
 
   return (
     <div ref={containerRef} className="relative flex min-h-0 flex-1 flex-col">
@@ -372,7 +386,7 @@ function MessageListFooter({ context }: ContextProp<MessageListVirtuosoContext>)
   )
 }
 
-function AgentChatListRow({ item, isLast, isStreaming, activeTraceDisplay, highlightDialogue, messageStyle, canMutateMessage, onEditMessage, onEditAssistantReply, onCreateBranch, onRegenerateMessage, onSwitchMessageVersion, onOpenSubAgentSession, onInsertIllustration, onGenerateInteractiveImage, generatingInteractiveImageTurnId, activeSubAgentSessionKey, onApprovePlan, onContinuePlan, onExitPlanMode, onOpenTrace, onResolveAsk, onPlanCardLayoutChange, streamingRowRef, syncStreamingRowHeight }: {
+function AgentChatListRow({ item, isLast, isStreaming, activeTraceDisplay, highlightDialogue, messageStyle, canMutateMessage, onEditMessage, onEditAssistantReply, onCreateBranch, onRegenerateMessage, onSwitchMessageVersion, onOpenSubAgentSession, onInsertIllustration, onGenerateInteractiveImage, generatingInteractiveImageTurnId, activeSubAgentSessionKey, onApprovePlan, onContinuePlan, onExitPlanMode, onOpenTrace, onResolveAsk, onInteractiveCardLayoutChange, streamingRowRef, syncStreamingRowHeight }: {
   item: AgentChatListItem
   isLast: boolean
   isStreaming: boolean
@@ -395,7 +409,7 @@ function AgentChatListRow({ item, isLast, isStreaming, activeTraceDisplay, highl
   onExitPlanMode?: () => void
   onOpenTrace?: (runID: string) => void
   onResolveAsk?: (view: AgentMessageView, action: { status: 'answered'; answers: AgentAskAnswer[] } | { status: 'cancelled' }) => Promise<AgentAskResolution>
-  onPlanCardLayoutChange?: () => void
+  onInteractiveCardLayoutChange?: (element?: HTMLElement) => void
   streamingRowRef?: RefCallback<HTMLDivElement>
   syncStreamingRowHeight?: () => void
 }) {
@@ -424,7 +438,7 @@ function AgentChatListRow({ item, isLast, isStreaming, activeTraceDisplay, highl
         onExitPlanMode={isStreaming ? undefined : onExitPlanMode}
         onOpenTrace={onOpenTrace}
         onResolveAsk={onResolveAsk}
-        onPlanCardLayoutChange={onPlanCardLayoutChange}
+        onInteractiveCardLayoutChange={onInteractiveCardLayoutChange}
       />
     )
   }
@@ -441,6 +455,8 @@ function AgentChatListRow({ item, isLast, isStreaming, activeTraceDisplay, highl
       onGenerateInteractiveImage={onGenerateInteractiveImage}
       onOpenSubAgentSession={onOpenSubAgentSession}
       onOpenTrace={onOpenTrace}
+      onInteractiveCardLayoutChange={onInteractiveCardLayoutChange}
+      onResolveAsk={onResolveAsk}
     />
   ) : null
   useLayoutEffect(() => {
@@ -487,6 +503,8 @@ function AgentChatListRow({ item, isLast, isStreaming, activeTraceDisplay, highl
           onGenerateInteractiveImage={onGenerateInteractiveImage}
           onOpenSubAgentSession={onOpenSubAgentSession}
           onOpenTrace={onOpenTrace}
+          onInteractiveCardLayoutChange={onInteractiveCardLayoutChange}
+          onResolveAsk={onResolveAsk}
         />
       ) : item.kind === 'run' ? (
         <div className="space-y-2">
@@ -504,6 +522,7 @@ function AgentChatListRow({ item, isLast, isStreaming, activeTraceDisplay, highl
           onOpenSubAgentSession={item.openView && onOpenSubAgentSession ? () => onOpenSubAgentSession(item.openView as AgentMessageView) : undefined}
           activeSubAgentSessionKey={activeSubAgentSessionKey}
           onOpenTrace={onOpenTrace}
+          onResolveAsk={item.openView && onResolveAsk ? (_message, action) => onResolveAsk(item.openView as AgentMessageView, action) : undefined}
         />
       ) : (
         renderMessageView(item.view)
@@ -527,6 +546,18 @@ function buildAgentChatListItems({ views, isStreaming, isExecutionActive, visibl
     if (view.kind === 'token-usage') continue
     const subAgentGroup = subAgentGroupsByStart.get(index)
     if (subAgentGroup) {
+      const pendingApprovalView = subAgentGroup.views.find(item => agentViewAskInteraction(item)?.status === 'pending')
+      if (pendingApprovalView) {
+        const approvalMessage = agentViewToRenderMessage(pendingApprovalView)
+        if (approvalMessage) {
+          items.push({
+            kind: 'legacy-message', key: `subagent-approval-${subAgentGroup.key || index}`,
+            message: approvalMessage, sourceIndex: index, openView: pendingApprovalView,
+          })
+          index = subAgentGroup.nextIndex - 1
+          continue
+        }
+      }
       const progress = buildSubAgentProgressMessage(subAgentGroup.views.map(item => agentViewToRenderMessage(item)).filter((item): item is ChatMessage => Boolean(item)))
       if (progress) {
         items.push({ kind: 'legacy-message', key: `subagent-${subAgentGroup.key || index}`, message: progress, sourceIndex: index, openView: subAgentGroup.views[0] })
@@ -625,23 +656,46 @@ function agentMessageItemKey(view: AgentMessageView, index: number) {
   return `${prefix}-${index}`
 }
 
-function latestPlanCardBottomAnchorTarget(items: AgentChatListItem[]) {
+function latestInteractiveCardBottomAnchorTarget(items: AgentChatListItem[]) {
   for (let index = items.length - 1; index >= 0; index -= 1) {
     const item = items[index]
-    if (item.kind !== 'message') continue
-    const view = item.view
-    if (view.kind !== 'plan-question' && view.kind !== 'proposed-plan') continue
-    const content = agentViewContent(view)
-    const stableKey = view.partId || view.messageId || view.metadata.created_at || `${content.slice(0, 64)}:${content.length}`
-    const dynamicKey = view.streaming || view.status === 'running'
-      ? `${stableKey}:${view.status || ''}:${content.length}:${readString(view.data.thinking_preview).length}`
-      : stableKey
-    return {
-      anchorKey: `${view.kind}:${item.key}:${dynamicKey}`,
-      rowKey: item.key,
+    const views = chatListItemViews(item)
+    for (let viewIndex = views.length - 1; viewIndex >= 0; viewIndex -= 1) {
+      const view = views[viewIndex]
+      const approval = agentViewAskInteraction(view)
+      if (approval?.kind === 'tool_approval' && approval.status === 'pending') {
+        return {
+          anchorKey: `tool-approval:${item.key}:${approval.id}:${approval.tool_call_id}`,
+          rowKey: item.key,
+        }
+      }
+      if (view.kind !== 'plan-question' && view.kind !== 'proposed-plan') continue
+      const content = agentViewContent(view)
+      const stableKey = view.partId || view.messageId || view.metadata.created_at || `${content.slice(0, 64)}:${content.length}`
+      const dynamicKey = view.streaming || view.status === 'running'
+        ? `${stableKey}:${view.status || ''}:${content.length}:${readString(view.data.thinking_preview).length}`
+        : stableKey
+      return {
+        anchorKey: `${view.kind}:${item.key}:${dynamicKey}`,
+        rowKey: item.key,
+      }
     }
   }
   return null
+}
+
+function chatListItemViews(item: AgentChatListItem): AgentMessageView[] {
+  if (item.kind === 'message') return [item.view]
+  if (item.kind === 'legacy-message') return item.openView ? [item.openView] : []
+  if (item.kind === 'trace') return item.views
+  if (item.kind === 'run') {
+    return [
+      ...item.beforeResultViews,
+      ...(item.resultView ? [item.resultView] : []),
+      ...item.afterResultViews,
+    ]
+  }
+  return []
 }
 
 function chatListItemNavigationAnchor(item?: AgentChatListItem) {
@@ -688,64 +742,6 @@ function ContextClearDivider({ createdAt }: { createdAt?: string }) {
       <div className="h-px flex-1 bg-[var(--nova-border)]" />
     </div>
   )
-}
-
-function findChatRowElement(container: HTMLElement | null, rowKey: string) {
-  if (!container) return null
-  const rows = container.querySelectorAll<HTMLElement>('[data-nova-chat-row-key]')
-  for (const row of rows) {
-    if (row.dataset.novaChatRowKey === rowKey) return row
-  }
-  return null
-}
-
-function scheduleChatRowBottomAnchor(container: HTMLElement | null, rowKey: string, bottomInsetPx: number, anchor: (element: HTMLElement, options?: ScrollElementBottomIntoViewOptions) => void) {
-  let cancelled = false
-  const frameID = requestAnimationFrame(() => {
-    if (cancelled) return
-    const row = findChatRowElement(container, rowKey)
-    if (!row) return
-    anchor(row, {
-      bottomInsetPx,
-      lockAfterScroll: true,
-      visibleBottomPx: resolveChatVisibleBottomPx(container, bottomInsetPx),
-    })
-  })
-  return () => {
-    cancelled = true
-    cancelAnimationFrame(frameID)
-  }
-}
-
-function resolveChatVisibleBottomPx(container: HTMLElement | null, bottomInsetPx: number) {
-  const scroller = container?.querySelector<HTMLElement>('.nova-chat-canvas') || null
-  if (!scroller) return undefined
-  const scrollerRect = scroller.getBoundingClientRect()
-  const composerTop = findChatComposerTop(container, scrollerRect)
-  if (composerTop !== null) return composerTop
-  return scrollerRect.bottom - Math.max(0, bottomInsetPx)
-}
-
-function findChatComposerTop(container: HTMLElement | null, scrollerRect: DOMRect) {
-  const parent = container?.parentElement
-  if (!parent) return null
-  const composers = parent.querySelectorAll<HTMLElement>('.nova-chat-input-area .nova-agent-composer')
-  let visibleTop: number | null = null
-  for (const composer of composers) {
-    if (container?.contains(composer)) continue
-    const rect = composer.getBoundingClientRect()
-    if (
-      rect.width <= 0
-      || rect.height <= 0
-      || !Number.isFinite(rect.top)
-      || rect.top <= scrollerRect.top
-      || rect.top > scrollerRect.bottom
-    ) {
-      continue
-    }
-    visibleTop = visibleTop === null ? rect.top : Math.max(visibleTop, rect.top)
-  }
-  return visibleTop
 }
 
 function readString(value: unknown) {

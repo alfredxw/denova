@@ -16,24 +16,25 @@ import (
 )
 
 const (
-	askPendingSchema          = "ask.pending.v1"
-	askResultSchema           = "ask.result.v1"
-	askContinuationLostReason = "runtime_continuation_unavailable"
-	maxAskQuestions           = 3
-	minAskOptions             = 2
-	maxAskOptions             = 3
-	maxAskPayloadBytes        = 128 * 1024
-	maxAskQuestionTextBytes   = 8 * 1024
-	maxAskOptionTextBytes     = 4 * 1024
-	maxAskCustomInputBytes    = 64 * 1024
-	maxAskCancelReasonBytes   = 2 * 1024
-	maxAskStableIDBytes       = 256
-	maxApprovalCommandBytes   = 64 * 1024
-	maxApprovalTextBytes      = 8 * 1024
-	reservedAskOtherOptionID  = "other"
-	toolApprovalQuestionID    = "tool-approval"
-	toolApprovalAllowOptionID = "allow-once"
-	toolApprovalDenyOptionID  = "deny"
+	askPendingSchema                   = "ask.pending.v1"
+	askResultSchema                    = "ask.result.v1"
+	askContinuationLostReason          = "runtime_continuation_unavailable"
+	maxAskQuestions                    = 3
+	minAskOptions                      = 2
+	maxAskOptions                      = 3
+	maxAskPayloadBytes                 = 128 * 1024
+	maxAskQuestionTextBytes            = 8 * 1024
+	maxAskOptionTextBytes              = 4 * 1024
+	maxAskCustomInputBytes             = 64 * 1024
+	maxAskCancelReasonBytes            = 2 * 1024
+	maxAskStableIDBytes                = 256
+	maxApprovalCommandBytes            = 64 * 1024
+	maxApprovalTextBytes               = 8 * 1024
+	reservedAskOtherOptionID           = "other"
+	ToolApprovalQuestionID             = "tool-approval"
+	ToolApprovalAllowOnceOptionID      = "allow-once"
+	ToolApprovalAllowWorkspaceOptionID = "allow-workspace"
+	ToolApprovalDenyOptionID           = "deny"
 )
 
 var (
@@ -420,10 +421,11 @@ func normalizeToolApprovalInteraction(interaction *AskInteraction) error {
 	approval.Command = strings.TrimSpace(approval.Command)
 	approval.Cwd = strings.TrimSpace(approval.Cwd)
 	approval.Risk = strings.TrimSpace(approval.Risk)
-	approval.Reason = strings.TrimSpace(approval.Reason)
 	approval.RuleID = strings.TrimSpace(approval.RuleID)
 	approval.ArgsHash = strings.TrimSpace(approval.ArgsHash)
-	if approval.Mode == "" || approval.ToolName == "" || approval.Risk == "" || approval.Reason == "" ||
+	approval.RuleCommandKey = strings.TrimSpace(approval.RuleCommandKey)
+	approval.RuleCommandPattern = strings.TrimSpace(approval.RuleCommandPattern)
+	if approval.Mode == "" || approval.ToolName == "" || approval.Risk == "" ||
 		approval.RuleID == "" || approval.ArgsHash == "" {
 		return fmt.Errorf("tool approval metadata is incomplete")
 	}
@@ -437,8 +439,7 @@ func normalizeToolApprovalInteraction(interaction *AskInteraction) error {
 	}
 	approval.Details = strings.TrimSpace(approval.Details)
 	if len(approval.Command) > maxApprovalCommandBytes || len(approval.Details) > maxApprovalCommandBytes ||
-		len(approval.Cwd) > maxApprovalCommandBytes ||
-		len(approval.ToolName) > maxApprovalTextBytes || len(approval.Reason) > maxApprovalTextBytes {
+		len(approval.Cwd) > maxApprovalCommandBytes || len(approval.ToolName) > maxApprovalTextBytes {
 		return fmt.Errorf("tool approval presentation exceeds its display limit")
 	}
 	if err := validateAskStableID("tool approval rule id", approval.RuleID); err != nil {
@@ -450,14 +451,36 @@ func normalizeToolApprovalInteraction(interaction *AskInteraction) error {
 	if _, err := hex.DecodeString(approval.ArgsHash); err != nil {
 		return fmt.Errorf("tool approval argument hash is invalid: %w", err)
 	}
+	if approval.CanRemember {
+		if approval.RuleMatcherVersion != config.AgentApprovalRuleMatcherVersion ||
+			approval.RuleCommandKey == "" || approval.RuleCommandPattern == "" {
+			return fmt.Errorf("rememberable tool approval rule metadata is incomplete")
+		}
+		if len(approval.RuleCommandKey) > config.MaxAgentApprovalRuleKeyBytes ||
+			len(approval.RuleCommandPattern) > config.MaxAgentApprovalCommandBytes {
+			return fmt.Errorf("rememberable tool approval rule metadata exceeds its limit")
+		}
+	} else if approval.RuleMatcherVersion != 0 || approval.RuleCommandKey != "" || approval.RuleCommandPattern != "" {
+		return fmt.Errorf("one-shot tool approval cannot include a saved rule")
+	}
 	if len(interaction.Questions) != 1 {
 		return fmt.Errorf("tool approval requires exactly one decision question")
 	}
 	question := interaction.Questions[0]
-	if question.ID != toolApprovalQuestionID || question.MultiSelect ||
-		len(question.Options) != 2 || question.Options[0].ID != toolApprovalAllowOptionID ||
-		question.Options[1].ID != toolApprovalDenyOptionID {
+	if question.ID != ToolApprovalQuestionID || question.MultiSelect {
 		return fmt.Errorf("tool approval decision shape is invalid")
+	}
+	wantOptions := []string{ToolApprovalAllowOnceOptionID, ToolApprovalDenyOptionID}
+	if approval.CanRemember {
+		wantOptions = []string{ToolApprovalAllowOnceOptionID, ToolApprovalAllowWorkspaceOptionID, ToolApprovalDenyOptionID}
+	}
+	if len(question.Options) != len(wantOptions) {
+		return fmt.Errorf("tool approval decision shape is invalid")
+	}
+	for index, optionID := range wantOptions {
+		if question.Options[index].ID != optionID {
+			return fmt.Errorf("tool approval decision shape is invalid")
+		}
 	}
 	return nil
 }

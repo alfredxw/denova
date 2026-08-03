@@ -44,6 +44,7 @@ export interface AgentMessageView {
   input?: unknown
   output?: unknown
   errorText?: string
+  approval?: AgentAskInteraction
 }
 
 export interface AgentTokenUsageRecord {
@@ -87,7 +88,32 @@ export function buildAgentMessageViews(messages: AgentUIMessage[]): AgentMessage
     messageViewsCache.set(message, messageViews)
     views.push(...messageViews)
   })
-  return projectCurrentTodoPlans(views)
+  return projectToolApprovals(projectCurrentTodoPlans(views))
+}
+
+// Tool approvals are lifecycle state for an existing tool call, not a new
+// timeline item. Correlate by the durable tool_call_id and keep unmatched
+// records as trace diagnostics instead of letting them split the run fold.
+function projectToolApprovals(views: AgentMessageView[]): AgentMessageView[] {
+  const toolIndexes = new Map<string, number>()
+  views.forEach((view, index) => {
+    if (view.kind === 'tool' && view.partId) toolIndexes.set(view.partId, index)
+  })
+  const approvals = new Map<number, AgentAskInteraction>()
+  const matchedAskIndexes = new Set<number>()
+  views.forEach((view, index) => {
+    if (view.kind !== 'ask') return
+    const interaction = readAskInteraction(view.data)
+    if (interaction?.kind !== 'tool_approval') return
+    const toolIndex = toolIndexes.get(interaction.tool_call_id)
+    if (toolIndex === undefined) return
+    approvals.set(toolIndex, interaction)
+    matchedAskIndexes.add(index)
+  })
+  if (approvals.size === 0) return views
+  return views
+    .map((view, index) => approvals.has(index) ? { ...view, approval: approvals.get(index) } : view)
+    .filter((_, index) => !matchedAskIndexes.has(index))
 }
 
 // todo is a run-local replacement state, not an append-only activity feed.
@@ -170,7 +196,16 @@ export function agentViewNavigationAnchor(view: AgentMessageView) {
 export function isAgentTraceView(view: AgentMessageView) {
   if (view.kind === 'interactive-image') return false
   if (view.toolName === 'generate_interactive_image') return false
-  return view.kind === 'reasoning' || view.kind === 'tool' || view.kind === 'tool-result'
+  return view.kind === 'reasoning' || view.kind === 'tool' || view.kind === 'tool-result' ||
+    (view.kind === 'ask' && agentViewAskInteraction(view)?.kind === 'tool_approval')
+}
+
+export function agentViewAskInteraction(view: AgentMessageView) {
+  return view.approval || (view.kind === 'ask' ? readAskInteraction(view.data) : undefined)
+}
+
+export function agentViewAskID(view: AgentMessageView) {
+  return agentViewAskInteraction(view)?.id?.trim() || ''
 }
 
 export function isAgentSubAgentTimelineView(view: AgentMessageView) {
@@ -309,6 +344,7 @@ export function agentViewToRenderMessage(view: AgentMessageView, options: { forc
         args,
         status,
         result,
+        ask: view.approval,
         illustration: readChapterIllustration(objectData(raw.toolMetadata).illustration),
         streaming,
         ...meta,

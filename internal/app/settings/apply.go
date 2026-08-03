@@ -113,6 +113,7 @@ func ApplyLayered(cfg *config.Config, layered config.LayeredSettings) {
 		cfg.AgentToolParallelism = toolParallelism(effective.AgentToolParallelism)
 	}
 	cfg.AgentApprovalMode = config.NormalizeAgentApprovalMode(effective.AgentApprovalMode)
+	cfg.AgentApprovalRules = config.NormalizeAgentApprovalRules(effective.AgentApprovalRules)
 	cfg.ShellEnvironmentMode = effective.ShellEnvironmentMode
 	cfg.ShellEnvironmentShell = effective.ShellEnvironmentShell
 	cfg.AgentBashPath = effective.AgentBashPath
@@ -246,6 +247,9 @@ func ApplyLayer(cfg *config.Config, settings config.Settings) {
 	}
 	if settings.AgentApprovalMode != "" {
 		cfg.AgentApprovalMode = config.NormalizeAgentApprovalMode(settings.AgentApprovalMode)
+	}
+	if settings.AgentApprovalRules != nil {
+		cfg.AgentApprovalRules = config.NormalizeAgentApprovalRules(settings.AgentApprovalRules)
 	}
 	if settings.ShellEnvironmentMode != "" {
 		cfg.ShellEnvironmentMode = settings.ShellEnvironmentMode

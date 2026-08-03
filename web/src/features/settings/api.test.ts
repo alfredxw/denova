@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
-import { createSettingsMergePatch, fetchSettings, invalidateSettingsCache, patchSettings, refreshSettings } from './api'
+import { createSettingsMergePatch, fetchSettings, invalidateSettingsCache, patchSettings, refreshSettings, revokeAgentApprovalRule } from './api'
 import type { LayeredSettings } from './types'
 
 const apiClientMocks = vi.hoisted(() => ({ requestJSON: vi.fn() }))
@@ -69,6 +69,27 @@ describe('settings API request coalescing', () => {
       method: 'PATCH',
       headers: {},
       body: JSON.stringify({ layer: 'user', changes: { theme: 'light' }, base_revision: 'user-r1' }),
+    })
+    await expect(fetchSettings()).resolves.toBe(saved)
+    expect(apiClientMocks.requestJSON).toHaveBeenCalledTimes(1)
+  })
+
+  it('revokes a saved approval rule by stable ID and primes the canonical snapshot', async () => {
+    const saved: LayeredSettings = {
+      default: {},
+      global: {},
+      user: { agent_approval_rules: [] },
+      workspace: {},
+      effective: {},
+      paths: { denova_dir: '', nova_dir: '', user_config: '', workspace_config: '' },
+      resolved_agent_tool_manifests: {},
+      resolved_agent_contexts: {},
+    }
+    apiClientMocks.requestJSON.mockResolvedValueOnce(saved)
+
+    await expect(revokeAgentApprovalRule('approval/one')).resolves.toBe(saved)
+    expect(apiClientMocks.requestJSON).toHaveBeenCalledWith('/api/settings/agent-approval-rules/approval%2Fone', {
+      method: 'DELETE',
     })
     await expect(fetchSettings()).resolves.toBe(saved)
     expect(apiClientMocks.requestJSON).toHaveBeenCalledTimes(1)

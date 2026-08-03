@@ -198,6 +198,17 @@ func normalizeGlobRequest(request GlobRequest) GlobRequest {
 	return request
 }
 
+func normalizeRequestedPaths(paths []string) []string {
+	if len(paths) == 0 {
+		return []string{"."}
+	}
+	result := make([]string, len(paths))
+	for index, value := range paths {
+		result[index] = filepath.ToSlash(strings.TrimSpace(value))
+	}
+	return result
+}
+
 func (workspace *LocalWorkspace) globTargets(inputs []string) ([]globTarget, []string, error) {
 	if len(inputs) == 0 {
 		inputs = []string{"."}

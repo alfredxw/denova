@@ -35,22 +35,35 @@ const (
 // snapshotted by the run owner; a tool call cannot select either value.
 type Request struct {
 	Mode       config.AgentApprovalMode
+	ProjectID  string
 	Workspace  string
 	ToolName   string
 	Arguments  string
 	Descriptor agent.ToolDescriptor
 	GOOS       string
+	Rules      []config.AgentApprovalRule
+}
+
+// RuleProposal is a policy-generated, human-readable authorization boundary.
+// CommandKey is opaque outside this package and is only trusted after the
+// current invocation independently produces the same versioned proposal.
+type RuleProposal struct {
+	MatcherVersion int    `json:"matcher_version"`
+	CommandKey     string `json:"command_key"`
+	CommandPattern string `json:"command_pattern"`
 }
 
 // Decision is suitable for durable audit records and user approval cards.
-// RuleID is stable; Reason is bilingual presentation text.
+// RuleID is stable; Reason is internal diagnostic text. Presentation localizes
+// RuleID at the UI boundary.
 type Decision struct {
-	Action  Action `json:"action"`
-	Risk    Risk   `json:"risk"`
-	RuleID  string `json:"rule_id"`
-	Reason  string `json:"reason"`
-	Command string `json:"command,omitempty"`
-	Cwd     string `json:"cwd,omitempty"`
+	Action   Action        `json:"action"`
+	Risk     Risk          `json:"risk"`
+	RuleID   string        `json:"rule_id"`
+	Reason   string        `json:"reason"`
+	Command  string        `json:"command,omitempty"`
+	Cwd      string        `json:"cwd,omitempty"`
+	Remember *RuleProposal `json:"remember,omitempty"`
 }
 
 type commandArguments struct {
@@ -150,6 +163,17 @@ func evaluateShell(request Request) Decision {
 		classification = classifyPowerShell(input.Command, workspace, input.Cwd, request.Mode)
 	}
 	classification.Command, classification.Cwd = input.Command, input.Cwd
+	if classification.Action == ActionPrompt {
+		classification.Remember = workspaceRuleProposal(request.ToolName, input.Command, workspace, input.Cwd)
+		if classification.Remember != nil {
+			if rule := matchingWorkspaceRule(request, *classification.Remember); rule != nil {
+				result := allow(rule.ID, classification.Risk,
+					"A user-owned command rule allows this validated command family in the current workspace.")
+				result.Command, result.Cwd = input.Command, input.Cwd
+				return result
+			}
+		}
+	}
 	return classification
 }
 

@@ -129,7 +129,7 @@ func classifyPowerShellCall(words []string, boundary pathBoundary, mode config.A
 	case "git":
 		return classifyGitWrite(args, boundary)
 	case "npm", "pnpm", "yarn", "bun", "npx", "bunx":
-		if safePackageCommand(args, boundary) {
+		if safePackageCommand(name, args, boundary) {
 			return commandWrite
 		}
 	case "go", "cargo", "dotnet", "msbuild":

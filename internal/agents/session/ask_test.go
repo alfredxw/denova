@@ -96,11 +96,11 @@ func TestToolApprovalInteractionIsDurableAndStrictlyShaped(t *testing.T) {
 		ID: "approval-1", Kind: AskKindToolApproval, ToolCallID: "tool-1", AgentKind: "ide",
 		Approval: &ToolApprovalPresentation{
 			Mode: "ask", ToolName: "bash", Command: "npm test", Risk: "high",
-			Reason: "unknown command", RuleID: "bash_unlisted_command", ArgsHash: strings.Repeat("a", 64),
+			RuleID: "bash_unlisted_command", ArgsHash: strings.Repeat("a", 64),
 		},
 		Questions: []AskQuestion{{
-			ID: toolApprovalQuestionID, Question: "Allow once?",
-			Options: []AskOption{{ID: toolApprovalAllowOptionID, Label: "Allow once"}, {ID: toolApprovalDenyOptionID, Label: "Deny"}},
+			ID: ToolApprovalQuestionID, Question: "Allow once?",
+			Options: []AskOption{{ID: ToolApprovalAllowOnceOptionID, Label: "Allow once"}, {ID: ToolApprovalDenyOptionID, Label: "Deny"}},
 		}},
 	}
 	result := make(chan AskResolution, 1)
@@ -119,11 +119,11 @@ func TestToolApprovalInteractionIsDurableAndStrictlyShaped(t *testing.T) {
 		t.Fatalf("approval presentation was aliased: %#v", canonical)
 	}
 	if _, err := sess.ResolveAsk(context.Background(), interaction.ID, AskAnswered, []AskAnswer{{
-		QuestionID: toolApprovalQuestionID, SelectedOptionIDs: []string{toolApprovalAllowOptionID},
+		QuestionID: ToolApprovalQuestionID, SelectedOptionIDs: []string{ToolApprovalAllowOnceOptionID},
 	}}, ""); err != nil {
 		t.Fatal(err)
 	}
-	if resolved := <-result; resolved.Status != AskAnswered || resolved.Answers[0].SelectedOptions[0].ID != toolApprovalAllowOptionID {
+	if resolved := <-result; resolved.Status != AskAnswered || resolved.Answers[0].SelectedOptions[0].ID != ToolApprovalAllowOnceOptionID {
 		t.Fatalf("approval resolution = %#v", resolved)
 	}
 }
@@ -132,7 +132,7 @@ func TestToolApprovalInteractionRejectsModelLikeQuestionShape(t *testing.T) {
 	_, err := normalizeAskInteraction(AskInteraction{
 		ID: "approval-invalid", Kind: AskKindToolApproval, ToolCallID: "tool-invalid", AgentKind: "ide",
 		Approval: &ToolApprovalPresentation{
-			Mode: "ask", ToolName: "bash", Risk: "high", Reason: "reason", RuleID: "rule", ArgsHash: "hash",
+			Mode: "ask", ToolName: "bash", Risk: "high", RuleID: "rule", ArgsHash: "hash",
 		},
 		Questions: []AskQuestion{{
 			ID: "arbitrary", Question: "Anything?", Options: []AskOption{{ID: "yes", Label: "Yes"}, {ID: "no", Label: "No"}},
@@ -147,12 +147,12 @@ func TestToolApprovalInteractionRejectsInvalidMode(t *testing.T) {
 	_, err := normalizeAskInteraction(AskInteraction{
 		ID: "approval-invalid-mode", Kind: AskKindToolApproval, ToolCallID: "tool-invalid-mode", AgentKind: "ide",
 		Approval: &ToolApprovalPresentation{
-			Mode: "unsafe", ToolName: "bash", Risk: "high", Reason: "invalid mode",
+			Mode: "unsafe", ToolName: "bash", Risk: "high",
 			RuleID: "full_access_non_critical", ArgsHash: strings.Repeat("a", 64),
 		},
 		Questions: []AskQuestion{{
-			ID: toolApprovalQuestionID, Question: "Allow once?",
-			Options: []AskOption{{ID: toolApprovalAllowOptionID, Label: "Allow once"}, {ID: toolApprovalDenyOptionID, Label: "Deny"}},
+			ID: ToolApprovalQuestionID, Question: "Allow once?",
+			Options: []AskOption{{ID: ToolApprovalAllowOnceOptionID, Label: "Allow once"}, {ID: ToolApprovalDenyOptionID, Label: "Deny"}},
 		}},
 	})
 	if err == nil {

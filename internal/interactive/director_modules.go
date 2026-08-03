@@ -1,6 +1,8 @@
 package interactive
 
 import (
+	"bytes"
+	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -13,6 +15,8 @@ import (
 
 	imagepreset "denova/internal/image/preset"
 	"denova/internal/interactive/teller"
+	"denova/internal/revisionfile"
+	"denova/internal/revisionjson"
 	"denova/internal/style"
 )
 
@@ -84,6 +88,7 @@ type EventPackageModule struct {
 	Error             string      `json:"error,omitempty"`
 	CreatedAt         string      `json:"created_at,omitempty"`
 	UpdatedAt         string      `json:"updated_at,omitempty"`
+	Revision          string      `json:"revision,omitempty"`
 }
 
 type RuleSystemModule struct {
@@ -100,6 +105,7 @@ type RuleSystemModule struct {
 	Error             string                  `json:"error,omitempty"`
 	CreatedAt         string                  `json:"created_at,omitempty"`
 	UpdatedAt         string                  `json:"updated_at,omitempty"`
+	Revision          string                  `json:"revision,omitempty"`
 }
 
 type ActorStateModule struct {
@@ -115,6 +121,7 @@ type ActorStateModule struct {
 	Error             string                        `json:"error,omitempty"`
 	CreatedAt         string                        `json:"created_at,omitempty"`
 	UpdatedAt         string                        `json:"updated_at,omitempty"`
+	Revision          string                        `json:"revision,omitempty"`
 }
 
 type EventPackageLibrary struct {
@@ -199,18 +206,18 @@ func (l *EventPackageLibrary) Create(item EventPackageModule) (EventPackageModul
 		return EventPackageModule{}, err
 	}
 	path := filepath.Join(l.dir(), item.ID+".json")
-	if _, err := os.Stat(path); err == nil {
-		return EventPackageModule{}, fmt.Errorf("事件包已存在: %s", item.ID)
-	} else if !os.IsNotExist(err) {
-		return EventPackageModule{}, err
-	}
 	now := time.Now().UTC().Format(time.RFC3339Nano)
 	item.CreatedAt = now
 	item.UpdatedAt = now
-	if err := writeEventPackageFile(path, item); err != nil {
+	document, err := eventPackageFileStore(path).Create(context.Background(), item)
+	if errors.Is(err, revisionjson.ErrAlreadyExists) {
+		return EventPackageModule{}, fmt.Errorf("事件包已存在: %s", item.ID)
+	}
+	if err != nil {
 		return EventPackageModule{}, err
 	}
-	item.Path = path
+	item = document.Value
+	item.Path, item.Revision = path, document.Revision
 	return applyEventPackageOwnership(item), nil
 }
 
@@ -222,30 +229,29 @@ func (l *EventPackageLibrary) Update(id string, item EventPackageModule, baseRev
 	if err := validateDirectorModuleID(id, "事件包"); err != nil {
 		return EventPackageModule{}, err
 	}
-	isBuiltin := IsBuiltinEventPackageID(id)
-	current, err := l.Get(id)
-	if err != nil {
-		return EventPackageModule{}, err
-	}
-	if strings.TrimSpace(baseRevision) != "" && strings.TrimSpace(current.UpdatedAt) != strings.TrimSpace(baseRevision) {
-		return EventPackageModule{}, ErrEventPackageRevisionConflict
-	}
 	if err := validateDirectorModuleWriteBounds(item.Name, item.Description); err != nil {
 		return EventPackageModule{}, err
 	}
 	item = normalizeEventPackageModule(item)
 	item.ID = id
-	item.CreatedAt = firstNonEmptyString(current.CreatedAt, item.CreatedAt)
-	item.UpdatedAt = time.Now().UTC().Format(time.RFC3339Nano)
-	item.BuiltinOverridden = isBuiltin
 	if err := validateEventPackageModule(item); err != nil {
 		return EventPackageModule{}, err
 	}
 	path := filepath.Join(l.dir(), id+".json")
-	if err := writeEventPackageFile(path, item); err != nil {
+	document, err := eventPackageFileStore(path).Update(context.Background(), baseRevision, func(current EventPackageModule) (EventPackageModule, error) {
+		item.CreatedAt = firstNonEmptyString(current.CreatedAt, item.CreatedAt)
+		item.UpdatedAt = time.Now().UTC().Format(time.RFC3339Nano)
+		item.BuiltinOverridden = IsBuiltinEventPackageID(id)
+		return item, validateEventPackageModule(item)
+	})
+	if err != nil {
+		if errors.Is(err, revisionfile.ErrRevisionConflict) || errors.Is(err, revisionjson.ErrRevisionRequired) {
+			return EventPackageModule{}, fmt.Errorf("%w: %v", ErrEventPackageRevisionConflict, err)
+		}
 		return EventPackageModule{}, err
 	}
-	item.Path = path
+	item = document.Value
+	item.Path, item.Revision = path, document.Revision
 	return applyEventPackageOwnership(item), nil
 }
 
@@ -343,18 +349,18 @@ func (l *RuleSystemLibrary) Create(item RuleSystemModule) (RuleSystemModule, err
 		return RuleSystemModule{}, err
 	}
 	path := filepath.Join(l.dir(), item.ID+".json")
-	if _, err := os.Stat(path); err == nil {
-		return RuleSystemModule{}, fmt.Errorf("TRPG 检定已存在: %s", item.ID)
-	} else if !os.IsNotExist(err) {
-		return RuleSystemModule{}, err
-	}
 	now := time.Now().UTC().Format(time.RFC3339Nano)
 	item.CreatedAt = now
 	item.UpdatedAt = now
-	if err := writeRuleSystemFile(path, item); err != nil {
+	document, err := ruleSystemFileStore(path).Create(context.Background(), item)
+	if errors.Is(err, revisionjson.ErrAlreadyExists) {
+		return RuleSystemModule{}, fmt.Errorf("TRPG 检定已存在: %s", item.ID)
+	}
+	if err != nil {
 		return RuleSystemModule{}, err
 	}
-	item.Path = path
+	item = document.Value
+	item.Path, item.Revision = path, document.Revision
 	return applyRuleSystemOwnership(item), nil
 }
 
@@ -366,30 +372,29 @@ func (l *RuleSystemLibrary) Update(id string, item RuleSystemModule, baseRevisio
 	if err := validateDirectorModuleID(id, "TRPG 检定"); err != nil {
 		return RuleSystemModule{}, err
 	}
-	isBuiltin := IsBuiltinRuleSystemID(id)
-	current, err := l.Get(id)
-	if err != nil {
-		return RuleSystemModule{}, err
-	}
-	if strings.TrimSpace(baseRevision) != "" && strings.TrimSpace(current.UpdatedAt) != strings.TrimSpace(baseRevision) {
-		return RuleSystemModule{}, ErrRuleSystemRevisionConflict
-	}
 	if err := validateDirectorModuleWriteBounds(item.Name, item.Description); err != nil {
 		return RuleSystemModule{}, err
 	}
 	item = normalizeRuleSystemModule(item)
 	item.ID = id
-	item.CreatedAt = firstNonEmptyString(current.CreatedAt, item.CreatedAt)
-	item.UpdatedAt = time.Now().UTC().Format(time.RFC3339Nano)
-	item.BuiltinOverridden = isBuiltin
 	if err := validateRuleSystemModule(item); err != nil {
 		return RuleSystemModule{}, err
 	}
 	path := filepath.Join(l.dir(), id+".json")
-	if err := writeRuleSystemFile(path, item); err != nil {
+	document, err := ruleSystemFileStore(path).Update(context.Background(), baseRevision, func(current RuleSystemModule) (RuleSystemModule, error) {
+		item.CreatedAt = firstNonEmptyString(current.CreatedAt, item.CreatedAt)
+		item.UpdatedAt = time.Now().UTC().Format(time.RFC3339Nano)
+		item.BuiltinOverridden = IsBuiltinRuleSystemID(id)
+		return item, validateRuleSystemModule(item)
+	})
+	if err != nil {
+		if errors.Is(err, revisionfile.ErrRevisionConflict) || errors.Is(err, revisionjson.ErrRevisionRequired) {
+			return RuleSystemModule{}, fmt.Errorf("%w: %v", ErrRuleSystemRevisionConflict, err)
+		}
 		return RuleSystemModule{}, err
 	}
-	item.Path = path
+	item = document.Value
+	item.Path, item.Revision = path, document.Revision
 	return applyRuleSystemOwnership(item), nil
 }
 
@@ -557,7 +562,8 @@ func snapshotFromEffectiveDirector(director StoryDirector, refs StoryDirectorMod
 	if len(warnings) > 0 {
 		status = "warning"
 	}
-	return normalizeStoryDirectorResolvedSnapshot(StoryDirectorResolvedSnapshot{
+	previous := normalizeStoryDirectorResolvedSnapshot(director.ResolvedSnapshot)
+	next := normalizeStoryDirectorResolvedSnapshot(StoryDirectorResolvedSnapshot{
 		Version:          storyDirectorModuleVersion,
 		ResolvedAt:       time.Now().UTC().Format(time.RFC3339Nano),
 		Status:           status,
@@ -569,6 +575,17 @@ func snapshotFromEffectiveDirector(director StoryDirector, refs StoryDirectorMod
 		TRPGSystem:       director.TRPGSystem,
 		ActorState:       director.ActorState,
 	})
+	if previous.ResolvedAt != "" && storyDirectorResolvedSnapshotsEqual(previous, next) {
+		next.ResolvedAt = previous.ResolvedAt
+	}
+	return next
+}
+
+func storyDirectorResolvedSnapshotsEqual(left, right StoryDirectorResolvedSnapshot) bool {
+	left.ResolvedAt, right.ResolvedAt = "", ""
+	leftJSON, leftErr := json.Marshal(left)
+	rightJSON, rightErr := json.Marshal(right)
+	return leftErr == nil && rightErr == nil && bytes.Equal(leftJSON, rightJSON)
 }
 
 func moduleWarning(module, id string, err error) StoryDirectorModuleWarning {
@@ -792,6 +809,7 @@ func eventPackageComparable(item EventPackageModule) EventPackageModule {
 	item.Error = ""
 	item.CreatedAt = ""
 	item.UpdatedAt = ""
+	item.Revision = ""
 	return item
 }
 
@@ -823,6 +841,7 @@ func ruleSystemComparable(item RuleSystemModule) RuleSystemModule {
 	item.Error = ""
 	item.CreatedAt = ""
 	item.UpdatedAt = ""
+	item.Revision = ""
 	return item
 }
 
@@ -854,6 +873,7 @@ func actorStateComparable(item ActorStateModule) ActorStateModule {
 	item.Error = ""
 	item.CreatedAt = ""
 	item.UpdatedAt = ""
+	item.Revision = ""
 	return item
 }
 
@@ -983,91 +1003,121 @@ func validateActorStateModule(item ActorStateModule) error {
 }
 
 func parseEventPackageFile(path string) (EventPackageModule, error) {
-	data, err := os.ReadFile(path)
+	document, err := eventPackageFileStore(path).Read(context.Background())
 	if err != nil {
 		return EventPackageModule{}, err
 	}
-	var item EventPackageModule
-	if err := json.Unmarshal(data, &item); err != nil {
-		return EventPackageModule{}, fmt.Errorf("解析事件包 JSON 失败: %w", err)
-	}
-	item = normalizeEventPackageModule(item)
-	if err := validateEventPackageModule(item); err != nil {
-		return EventPackageModule{}, err
-	}
+	item := document.Value
 	item.Path = path
+	item.Revision = document.Revision
 	return item, nil
 }
 
 func parseRuleSystemFile(path string) (RuleSystemModule, error) {
-	data, err := os.ReadFile(path)
+	document, err := ruleSystemFileStore(path).Read(context.Background())
 	if err != nil {
 		return RuleSystemModule{}, err
 	}
-	var item RuleSystemModule
-	if err := json.Unmarshal(data, &item); err != nil {
-		return RuleSystemModule{}, fmt.Errorf("解析 TRPG 检定 JSON 失败: %w", err)
-	}
-	item = normalizeRuleSystemModule(item)
-	if err := validateRuleSystemModule(item); err != nil {
-		return RuleSystemModule{}, err
-	}
+	item := document.Value
 	item.Path = path
+	item.Revision = document.Revision
 	return item, nil
 }
 
 func parseActorStateFile(path string) (ActorStateModule, error) {
-	data, err := os.ReadFile(path)
+	document, err := actorStateFileStore(path).Read(context.Background())
 	if err != nil {
 		return ActorStateModule{}, err
 	}
-	var item ActorStateModule
-	if err := json.Unmarshal(data, &item); err != nil {
-		return ActorStateModule{}, fmt.Errorf("解析状态系统 JSON 失败: %w", err)
-	}
-	item = normalizeActorStateModule(item)
-	item.ActorState = attachBuiltinActorStateLegacyPaths(item.ID, item.ActorState)
-	if err := validateActorStateModule(item); err != nil {
-		return ActorStateModule{}, err
-	}
+	item := document.Value
 	item.Path = path
+	item.Revision = document.Revision
 	return item, nil
 }
 
 func writeEventPackageFile(path string, item EventPackageModule) error {
-	item = normalizeEventPackageModule(item)
-	data, err := json.MarshalIndent(item, "", "  ")
-	if err != nil {
-		return err
-	}
-	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
-		return err
-	}
-	return os.WriteFile(path, append(data, '\n'), 0o644)
+	_, err := eventPackageFileStore(path).Replace(context.Background(), item)
+	return err
 }
 
 func writeRuleSystemFile(path string, item RuleSystemModule) error {
-	item = normalizeRuleSystemModule(item)
-	data, err := json.MarshalIndent(item, "", "  ")
-	if err != nil {
-		return err
-	}
-	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
-		return err
-	}
-	return os.WriteFile(path, append(data, '\n'), 0o644)
+	_, err := ruleSystemFileStore(path).Replace(context.Background(), item)
+	return err
+}
+
+func eventPackageFileStore(path string) revisionjson.Store[EventPackageModule] {
+	return revisionjson.NewStore(path, revisionjson.Codec[EventPackageModule]{
+		Decode: func(data []byte) (EventPackageModule, error) {
+			var item EventPackageModule
+			if err := json.Unmarshal(data, &item); err != nil {
+				return EventPackageModule{}, fmt.Errorf("解析事件包 JSON 失败: %w", err)
+			}
+			item = normalizeEventPackageModule(item)
+			return item, validateEventPackageModule(item)
+		},
+		Encode: func(item EventPackageModule) ([]byte, error) {
+			item = normalizeEventPackageModule(item)
+			if err := validateEventPackageModule(item); err != nil {
+				return nil, err
+			}
+			item.Path, item.Revision, item.Error = "", "", ""
+			item.Invalid, item.Custom = false, false
+			data, err := json.MarshalIndent(item, "", "  ")
+			return append(data, '\n'), err
+		},
+	})
+}
+
+func ruleSystemFileStore(path string) revisionjson.Store[RuleSystemModule] {
+	return revisionjson.NewStore(path, revisionjson.Codec[RuleSystemModule]{
+		Decode: func(data []byte) (RuleSystemModule, error) {
+			var item RuleSystemModule
+			if err := json.Unmarshal(data, &item); err != nil {
+				return RuleSystemModule{}, fmt.Errorf("解析 TRPG 检定 JSON 失败: %w", err)
+			}
+			item = normalizeRuleSystemModule(item)
+			return item, validateRuleSystemModule(item)
+		},
+		Encode: func(item RuleSystemModule) ([]byte, error) {
+			item = normalizeRuleSystemModule(item)
+			if err := validateRuleSystemModule(item); err != nil {
+				return nil, err
+			}
+			item.Path, item.Revision, item.Error = "", "", ""
+			item.Invalid, item.Custom = false, false
+			data, err := json.MarshalIndent(item, "", "  ")
+			return append(data, '\n'), err
+		},
+	})
 }
 
 func writeActorStateFile(path string, item ActorStateModule) error {
-	item = normalizeActorStateModule(item)
-	data, err := json.MarshalIndent(item, "", "  ")
-	if err != nil {
-		return err
-	}
-	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
-		return err
-	}
-	return os.WriteFile(path, append(data, '\n'), 0o644)
+	_, err := actorStateFileStore(path).Replace(context.Background(), item)
+	return err
+}
+
+func actorStateFileStore(path string) revisionjson.Store[ActorStateModule] {
+	return revisionjson.NewStore(path, revisionjson.Codec[ActorStateModule]{
+		Decode: func(data []byte) (ActorStateModule, error) {
+			var item ActorStateModule
+			if err := json.Unmarshal(data, &item); err != nil {
+				return ActorStateModule{}, fmt.Errorf("解析状态系统 JSON 失败: %w", err)
+			}
+			item = normalizeActorStateModule(item)
+			item.ActorState = attachBuiltinActorStateLegacyPaths(item.ID, item.ActorState)
+			return item, validateActorStateModule(item)
+		},
+		Encode: func(item ActorStateModule) ([]byte, error) {
+			item = normalizeActorStateModule(item)
+			if err := validateActorStateModule(item); err != nil {
+				return nil, err
+			}
+			item.Path, item.Revision, item.Error = "", "", ""
+			item.Invalid, item.Custom = false, false
+			data, err := json.MarshalIndent(item, "", "  ")
+			return append(data, '\n'), err
+		},
+	})
 }
 
 func normalizeDirectorModuleID(id string) string {

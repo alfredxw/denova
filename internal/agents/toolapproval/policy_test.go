@@ -6,6 +6,7 @@ import (
 	"path/filepath"
 	"runtime"
 	"testing"
+	"time"
 
 	agent "github.com/alfredxw/denova/agent"
 
@@ -320,6 +321,139 @@ func TestEvaluateMalformedShellArgumentsFailsClosed(t *testing.T) {
 	})
 	if got.Action != ActionDeny {
 		t.Fatalf("action = %q, want deny", got.Action)
+	}
+}
+
+func TestWorkspaceCommandRuleMatchesValidatedCommandFamily(t *testing.T) {
+	t.Parallel()
+	workspace := t.TempDir()
+	projectID := "project-command-rule"
+	firstArgs := `{"command":"go test ./internal/agents/..."}`
+	first := Evaluate(Request{
+		Mode: config.AgentApprovalAsk, ProjectID: projectID, Workspace: workspace,
+		ToolName: "bash", Arguments: firstArgs,
+		Descriptor: agent.ToolDescriptor{Source: agent.ToolSourceShell, MutationScope: agent.ToolMutationExternal},
+	})
+	if first.Action != ActionPrompt || first.Remember == nil || first.Remember.CommandPattern != "go test ..." {
+		t.Fatalf("first approval = %#v", first)
+	}
+	rule, err := NewWorkspaceRule(
+		projectID, workspace, "bash", *first.Remember, ArgumentsHash(firstArgs),
+		first.Command, first.Cwd, first.RuleID, time.Now(),
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	secondArgs := `{"cwd":".","command":"go test ./internal/app/..."}`
+	if ArgumentsHash(firstArgs) == ArgumentsHash(secondArgs) {
+		t.Fatal("test inputs unexpectedly share an exact argument fingerprint")
+	}
+	second := Evaluate(Request{
+		Mode: config.AgentApprovalAsk, ProjectID: projectID, Workspace: workspace,
+		ToolName: "bash", Arguments: secondArgs, Rules: []config.AgentApprovalRule{rule},
+		Descriptor: agent.ToolDescriptor{Source: agent.ToolSourceShell, MutationScope: agent.ToolMutationExternal},
+	})
+	if second.Action != ActionAllow || second.RuleID != rule.ID {
+		t.Fatalf("same command family = %#v", second)
+	}
+	riskyArgs := `{"command":"go test -exec sh ./internal/app/..."}`
+	risky := Evaluate(Request{
+		Mode: config.AgentApprovalAsk, ProjectID: projectID, Workspace: workspace,
+		ToolName: "bash", Arguments: riskyArgs, Rules: []config.AgentApprovalRule{rule},
+		Descriptor: agent.ToolDescriptor{Source: agent.ToolSourceShell, MutationScope: agent.ToolMutationExternal},
+	})
+	if risky.Action != ActionPrompt || risky.Remember != nil {
+		t.Fatalf("command-launching test flag inherited rule: %#v", risky)
+	}
+	otherProject := Evaluate(Request{
+		Mode: config.AgentApprovalAsk, ProjectID: "other-project", Workspace: workspace,
+		ToolName: "bash", Arguments: secondArgs, Rules: []config.AgentApprovalRule{rule},
+		Descriptor: agent.ToolDescriptor{Source: agent.ToolSourceShell, MutationScope: agent.ToolMutationExternal},
+	})
+	if otherProject.Action != ActionPrompt {
+		t.Fatalf("cross-project rule leaked: %#v", otherProject)
+	}
+	otherWorkspace := Evaluate(Request{
+		Mode: config.AgentApprovalAsk, ProjectID: projectID, Workspace: t.TempDir(),
+		ToolName: "bash", Arguments: secondArgs, Rules: []config.AgentApprovalRule{rule},
+		Descriptor: agent.ToolDescriptor{Source: agent.ToolSourceShell, MutationScope: agent.ToolMutationExternal},
+	})
+	if otherWorkspace.Action != ActionPrompt {
+		t.Fatalf("rule survived a project workspace relink: %#v", otherWorkspace)
+	}
+}
+
+func TestWorkspaceCommandRuleOnlyOffersExplicitReusableFamilies(t *testing.T) {
+	t.Parallel()
+	workspace := t.TempDir()
+	for _, command := range []string{
+		"curl https://example.com/archive.zip",
+		"git fetch ext::helper",
+		"npx --yes prettier .",
+		"npm exec --yes prettier .",
+		"go test -toolexec sh ./...",
+		"cargo test --config build.rustc-wrapper=sh",
+	} {
+		command := command
+		t.Run(command, func(t *testing.T) {
+			t.Parallel()
+			decision := evaluateShellCommand(t, workspace, "bash", config.AgentApprovalAsk, command)
+			if decision.Action != ActionPrompt || decision.Remember != nil {
+				t.Fatalf("decision = %#v, want one-shot prompt", decision)
+			}
+		})
+	}
+}
+
+func TestWorkspaceCommandRuleRevalidatesRiskyVariants(t *testing.T) {
+	t.Parallel()
+	workspace := t.TempDir()
+	projectID := "project-push-rule"
+	request := func(command string, rules []config.AgentApprovalRule) Decision {
+		arguments, err := json.Marshal(commandArguments{Command: command})
+		if err != nil {
+			t.Fatal(err)
+		}
+		return Evaluate(Request{
+			Mode: config.AgentApprovalWrite, ProjectID: projectID, Workspace: workspace,
+			ToolName: "bash", Arguments: string(arguments), Rules: rules,
+			Descriptor: agent.ToolDescriptor{Source: agent.ToolSourceShell, MutationScope: agent.ToolMutationExternal},
+		})
+	}
+	first := request("git push origin main", nil)
+	if first.Action != ActionPrompt || first.Remember == nil || first.Remember.CommandPattern != "git push origin ..." {
+		t.Fatalf("push approval = %#v", first)
+	}
+	rule, err := NewWorkspaceRule(
+		projectID, workspace, "bash", *first.Remember,
+		ArgumentsHash(`{"command":"git push origin main"}`), first.Command, first.Cwd, first.RuleID, time.Now(),
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if allowed := request("git push origin feature", []config.AgentApprovalRule{rule}); allowed.Action != ActionAllow {
+		t.Fatalf("ordinary push did not match rule: %#v", allowed)
+	}
+	if forced := request("git push --force origin feature", []config.AgentApprovalRule{rule}); forced.Action != ActionPrompt || forced.Remember != nil {
+		t.Fatalf("force push inherited broad rule: %#v", forced)
+	}
+	if forcedRefspec := request("git push origin +feature", []config.AgentApprovalRule{rule}); forcedRefspec.Action != ActionPrompt || forcedRefspec.Remember != nil {
+		t.Fatalf("forced refspec inherited broad rule: %#v", forcedRefspec)
+	}
+	if deleteRefspec := request("git push origin :feature", []config.AgentApprovalRule{rule}); deleteRefspec.Action != ActionPrompt || deleteRefspec.Remember != nil {
+		t.Fatalf("delete refspec inherited broad rule: %#v", deleteRefspec)
+	}
+	if dynamic := request("git push origin $(git branch --show-current)", []config.AgentApprovalRule{rule}); dynamic.Action != ActionPrompt || dynamic.Remember != nil {
+		t.Fatalf("dynamic push inherited broad rule: %#v", dynamic)
+	}
+}
+
+func TestArgumentsHashCanonicalizesJSONObjectOrder(t *testing.T) {
+	t.Parallel()
+	left := ArgumentsHash(`{"command":"go test ./...","cwd":"."}`)
+	right := ArgumentsHash(" { \"cwd\" : \".\", \"command\" : \"go test ./...\" } ")
+	if left != right {
+		t.Fatalf("canonical JSON hashes differ: %s != %s", left, right)
 	}
 }
 

@@ -108,9 +108,12 @@ export interface AgentToolApprovalPresentation {
   details?: string
   cwd?: string
   risk: 'low' | 'medium' | 'high' | 'critical' | string
-  reason: string
   rule_id: string
   args_hash: string
+  can_remember?: boolean
+  rule_matcher_version?: number
+  rule_command_key?: string
+  rule_command_pattern?: string
 }
 
 export interface AgentAskInteraction {

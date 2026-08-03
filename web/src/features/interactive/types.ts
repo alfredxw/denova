@@ -73,6 +73,7 @@ export interface Teller {
   error?: string
   created_at?: string
   updated_at?: string
+  revision?: string
 }
 
 export interface ImagePreset {
@@ -89,6 +90,7 @@ export interface ImagePreset {
   error?: string
   created_at?: string
   updated_at?: string
+  revision?: string
 }
 
 export interface StoryDirector {
@@ -109,6 +111,7 @@ export interface StoryDirector {
   error?: string
   created_at?: string
   updated_at?: string
+  revision?: string
 }
 
 export interface StoryDirectorModuleRefs {
@@ -156,6 +159,7 @@ export interface EventPackageModule {
   error?: string
   created_at?: string
   updated_at?: string
+  revision?: string
 }
 
 export interface RuleSystemModule {
@@ -172,6 +176,7 @@ export interface RuleSystemModule {
   error?: string
   created_at?: string
   updated_at?: string
+  revision?: string
 }
 
 export interface ActorStateModule {
@@ -187,6 +192,7 @@ export interface ActorStateModule {
   error?: string
   created_at?: string
   updated_at?: string
+  revision?: string
 }
 
 interface StoryDirectorStrategy {
@@ -1011,7 +1017,6 @@ export interface InteractiveTurnPersistedEvent {
   branch_id: string
   turn_count: number
   turn: TurnEvent
-  director_plan?: DirectorPlan
   director_plan_status?: DirectorPlanStatus
   state?: Record<string, unknown>
   graph?: StoryGraph

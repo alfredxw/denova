@@ -54,6 +54,16 @@ export async function patchSettings(layer: SettingsLayer, changes: SettingsPatch
   return snapshot
 }
 
+/** Revokes one saved rule by stable ID so concurrent rule additions cannot be
+ * lost through replacement of a stale settings array. */
+export async function revokeAgentApprovalRule(id: string): Promise<LayeredSettings> {
+  const snapshot = await requestJSON<LayeredSettings>(`/api/settings/agent-approval-rules/${encodeURIComponent(id)}`, {
+    method: 'DELETE',
+  })
+  primeSettingsCache(snapshot)
+  return snapshot
+}
+
 function startSettingsRead(generation: number): Promise<LayeredSettings> {
   const promise = requestJSON<LayeredSettings>('/api/settings').then((snapshot) => {
     if (generation === settingsReadGeneration) settingsReadCache = snapshot

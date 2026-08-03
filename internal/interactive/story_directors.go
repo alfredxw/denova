@@ -1,16 +1,21 @@
 package interactive
 
 import (
+	"context"
 	"denova/internal/interactive/director"
 	"encoding/json"
 	"errors"
 	"fmt"
+	"log/slog"
 	"os"
 	"path/filepath"
 	"reflect"
 	"sort"
 	"strings"
 	"time"
+
+	"denova/internal/revisionfile"
+	"denova/internal/revisionjson"
 )
 
 const (
@@ -52,6 +57,7 @@ type StoryDirector struct {
 	Error             string                        `json:"error,omitempty"`
 	CreatedAt         string                        `json:"created_at,omitempty"`
 	UpdatedAt         string                        `json:"updated_at,omitempty"`
+	Revision          string                        `json:"revision,omitempty"`
 }
 
 type StoryDirectorStrategy struct {
@@ -100,7 +106,7 @@ func (l *StoryDirectorLibrary) List() ([]StoryDirector, error) {
 		director.Path = file
 		director = applyStoryDirectorOwnership(director)
 		director = ResolveStoryDirectorModules(l.novaDir, director)
-		persistResolvedStoryDirectorSnapshot(file, director)
+		director = persistResolvedStoryDirectorSnapshot(file, director)
 		directors = append(directors, director)
 	}
 	sort.Slice(directors, func(i, j int) bool {
@@ -129,7 +135,7 @@ func (l *StoryDirectorLibrary) Get(id string) (StoryDirector, error) {
 	}
 	director = applyStoryDirectorOwnership(director)
 	director = ResolveStoryDirectorModules(l.novaDir, director)
-	persistResolvedStoryDirectorSnapshot(filepath.Join(l.dir(), id+".json"), director)
+	director = persistResolvedStoryDirectorSnapshot(filepath.Join(l.dir(), id+".json"), director)
 	return director, nil
 }
 
@@ -149,17 +155,19 @@ func (l *StoryDirectorLibrary) Create(director StoryDirector) (StoryDirector, er
 		return StoryDirector{}, err
 	}
 	path := filepath.Join(l.dir(), director.ID+".json")
-	if _, err := os.Stat(path); err == nil {
-		return StoryDirector{}, fmt.Errorf("故事导演已存在: %s", director.ID)
-	}
 	now := time.Now().UTC().Format(time.RFC3339Nano)
 	director.CreatedAt = firstNonEmptyString(director.CreatedAt, now)
 	director.UpdatedAt = now
 	director = ResolveStoryDirectorModules(l.novaDir, director)
-	if err := writeStoryDirectorFile(path, director); err != nil {
+	document, err := storyDirectorFileStore(path).Create(context.Background(), director)
+	if errors.Is(err, revisionjson.ErrAlreadyExists) {
+		return StoryDirector{}, fmt.Errorf("故事导演已存在: %s", director.ID)
+	}
+	if err != nil {
 		return StoryDirector{}, err
 	}
-	director.Path = path
+	director = document.Value
+	director.Path, director.Revision = path, document.Revision
 	return applyStoryDirectorOwnership(director), nil
 }
 
@@ -172,27 +180,26 @@ func (l *StoryDirectorLibrary) Update(id string, director StoryDirector, baseRev
 		return StoryDirector{}, err
 	}
 	path := filepath.Join(l.dir(), id+".json")
-	current, err := parseStoryDirectorFile(path)
-	if err != nil {
-		return StoryDirector{}, err
-	}
-	isBuiltin := IsBuiltinStoryDirectorID(id)
-	if strings.TrimSpace(baseRevision) != "" && strings.TrimSpace(current.UpdatedAt) != strings.TrimSpace(baseRevision) {
-		return StoryDirector{}, ErrStoryDirectorRevisionConflict
-	}
 	if err := validateStoryDirectorWriteBounds(director); err != nil {
 		return StoryDirector{}, err
 	}
 	director = normalizeStoryDirector(director)
 	director.ID = id
-	director.CreatedAt = firstNonEmptyString(current.CreatedAt, director.CreatedAt)
-	director.UpdatedAt = time.Now().UTC().Format(time.RFC3339Nano)
-	director.BuiltinOverridden = isBuiltin
 	director = ResolveStoryDirectorModules(l.novaDir, director)
-	if err := writeStoryDirectorFile(path, director); err != nil {
+	document, err := storyDirectorFileStore(path).Update(context.Background(), baseRevision, func(current StoryDirector) (StoryDirector, error) {
+		director.CreatedAt = firstNonEmptyString(current.CreatedAt, director.CreatedAt)
+		director.UpdatedAt = time.Now().UTC().Format(time.RFC3339Nano)
+		director.BuiltinOverridden = IsBuiltinStoryDirectorID(id)
+		return director, validatePersistedStoryDirector(director)
+	})
+	if err != nil {
+		if errors.Is(err, revisionfile.ErrRevisionConflict) || errors.Is(err, revisionjson.ErrRevisionRequired) {
+			return StoryDirector{}, fmt.Errorf("%w: %v", ErrStoryDirectorRevisionConflict, err)
+		}
 		return StoryDirector{}, err
 	}
-	director.Path = path
+	director = document.Value
+	director.Path, director.Revision = path, document.Revision
 	return applyStoryDirectorOwnership(director), nil
 }
 
@@ -251,16 +258,13 @@ func readStoryDirectorFileVersion(path string) (int, error) {
 }
 
 func parseStoryDirectorFile(path string) (StoryDirector, error) {
-	data, err := os.ReadFile(path)
+	document, err := storyDirectorFileStore(path).Read(context.Background())
 	if err != nil {
 		return StoryDirector{}, err
 	}
-	director, err := decodeStoryDirectorJSON(data)
-	if err != nil {
-		return StoryDirector{}, fmt.Errorf("解析故事导演 JSON 失败: %w", err)
-	}
-	director = normalizeStoryDirector(director)
+	director := document.Value
 	director.Path = path
+	director.Revision = document.Revision
 	return applyStoryDirectorOwnership(director), nil
 }
 
@@ -273,23 +277,57 @@ func decodeStoryDirectorJSON(data []byte) (StoryDirector, error) {
 }
 
 func writeStoryDirectorFile(path string, director StoryDirector) error {
-	director = normalizeStoryDirector(director)
-	data, err := json.MarshalIndent(director, "", "  ")
-	if err != nil {
-		return err
-	}
-	data = append(data, '\n')
-	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
-		return err
-	}
-	return os.WriteFile(path, data, 0o644)
+	_, err := storyDirectorFileStore(path).Replace(context.Background(), director)
+	return err
 }
 
-func persistResolvedStoryDirectorSnapshot(path string, director StoryDirector) {
-	if path == "" || IsBuiltinStoryDirectorID(director.ID) || director.Invalid {
-		return
+func storyDirectorFileStore(path string) revisionjson.Store[StoryDirector] {
+	return revisionjson.NewStore(path, revisionjson.Codec[StoryDirector]{
+		Decode: func(data []byte) (StoryDirector, error) {
+			director, err := decodeStoryDirectorJSON(data)
+			if err != nil {
+				return StoryDirector{}, fmt.Errorf("解析故事导演 JSON 失败: %w", err)
+			}
+			director = normalizeStoryDirector(director)
+			return director, validatePersistedStoryDirector(director)
+		},
+		Encode: func(director StoryDirector) ([]byte, error) {
+			director = normalizeStoryDirector(director)
+			if err := validatePersistedStoryDirector(director); err != nil {
+				return nil, err
+			}
+			director.Path, director.Revision, director.Error = "", "", ""
+			director.Invalid, director.Custom = false, false
+			data, err := json.MarshalIndent(director, "", "  ")
+			return append(data, '\n'), err
+		},
+	})
+}
+
+func validatePersistedStoryDirector(director StoryDirector) error {
+	if err := validateStoryDirectorID(director.ID); err != nil {
+		return err
 	}
-	_ = writeStoryDirectorFile(path, director)
+	return validateStoryDirectorWriteBounds(director)
+}
+
+func persistResolvedStoryDirectorSnapshot(path string, director StoryDirector) StoryDirector {
+	if path == "" || IsBuiltinStoryDirectorID(director.ID) || director.Invalid {
+		return director
+	}
+	document, err := storyDirectorFileStore(path).Update(context.Background(), director.Revision, func(StoryDirector) (StoryDirector, error) {
+		return director, nil
+	})
+	if err != nil {
+		slog.Warn("persist resolved story director snapshot failed", "path", path, "error", err)
+		if latest, readErr := parseStoryDirectorFile(path); readErr == nil {
+			return ResolveStoryDirectorModules(filepath.Dir(filepath.Dir(path)), latest)
+		}
+		return director
+	}
+	director = document.Value
+	director.Path, director.Revision = path, document.Revision
+	return applyStoryDirectorOwnership(director)
 }
 
 func applyStoryDirectorOwnership(director StoryDirector) StoryDirector {
@@ -319,6 +357,7 @@ func storyDirectorComparable(director StoryDirector) StoryDirector {
 	director.Error = ""
 	director.CreatedAt = ""
 	director.UpdatedAt = ""
+	director.Revision = ""
 	director.ResolvedSnapshot = StoryDirectorResolvedSnapshot{}
 	return director
 }

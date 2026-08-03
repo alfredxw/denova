@@ -69,6 +69,7 @@ type App struct {
 	closed                          bool
 	closeOnce                       sync.Once
 	activeTaskReplay                apptask.ReplayAdmission
+	agentAskResolutionMu            sync.Mutex
 
 	// terminals owns the pty sessions behind the AgentChat terminal tabs. They are decoupled from
 	// the workspace: each session keeps its own cwd, so switching books never kills a running command.

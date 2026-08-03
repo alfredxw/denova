@@ -77,12 +77,13 @@ type Settings struct {
 	UpdateCheckEnabled *bool  `toml:"update_check_enabled,omitempty" json:"update_check_enabled,omitempty"`
 
 	// Agent
-	MaxIteration            *int              `toml:"max_iteration,omitempty" json:"max_iteration,omitempty"`
-	ModelMaxRetries         *int              `toml:"model_max_retries,omitempty" json:"model_max_retries,omitempty"`
-	AgentIdleTimeoutSeconds *int              `toml:"agent_idle_timeout_seconds,omitempty" json:"agent_idle_timeout_seconds,omitempty"`
-	AgentToolResultLimitKB  *int              `toml:"agent_tool_result_limit_kb,omitempty" json:"agent_tool_result_limit_kb,omitempty"`
-	AgentToolParallelism    *int              `toml:"agent_tool_parallelism,omitempty" json:"agent_tool_parallelism,omitempty"`
-	AgentApprovalMode       AgentApprovalMode `toml:"agent_approval_mode,omitempty" json:"agent_approval_mode,omitempty"`
+	MaxIteration            *int                `toml:"max_iteration,omitempty" json:"max_iteration,omitempty"`
+	ModelMaxRetries         *int                `toml:"model_max_retries,omitempty" json:"model_max_retries,omitempty"`
+	AgentIdleTimeoutSeconds *int                `toml:"agent_idle_timeout_seconds,omitempty" json:"agent_idle_timeout_seconds,omitempty"`
+	AgentToolResultLimitKB  *int                `toml:"agent_tool_result_limit_kb,omitempty" json:"agent_tool_result_limit_kb,omitempty"`
+	AgentToolParallelism    *int                `toml:"agent_tool_parallelism,omitempty" json:"agent_tool_parallelism,omitempty"`
+	AgentApprovalMode       AgentApprovalMode   `toml:"agent_approval_mode,omitempty" json:"agent_approval_mode,omitempty"`
+	AgentApprovalRules      []AgentApprovalRule `toml:"agent_approval_rules,omitempty" json:"agent_approval_rules,omitempty"`
 
 	// Agent shell execution is user-scoped. A workspace must not choose which
 	// host profile is loaded or substitute the executable used on the machine.
@@ -348,6 +349,9 @@ func Merge(parent, child Settings) Settings {
 	}
 	if child.AgentApprovalMode != "" {
 		out.AgentApprovalMode = NormalizeAgentApprovalMode(child.AgentApprovalMode)
+	}
+	if child.AgentApprovalRules != nil {
+		out.AgentApprovalRules = NormalizeAgentApprovalRules(child.AgentApprovalRules)
 	}
 	if child.ShellEnvironmentMode != "" {
 		out.ShellEnvironmentMode = normalizeShellEnvironmentMode(child.ShellEnvironmentMode)

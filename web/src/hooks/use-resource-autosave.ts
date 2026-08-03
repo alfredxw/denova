@@ -8,7 +8,7 @@ export type ResourceSaveMode = 'manual' | 'auto'
 const DEFAULT_RESOURCE_AUTOSAVE_DELAY_MS = 1200
 const MAX_RESOURCE_SAVE_ATTEMPTS = 3
 
-interface ResourceAutosaveOptions<Draft extends { id: string; updated_at?: string }, Payload, Saved extends { updated_at?: string }> {
+export interface ResourceAutosaveOptions<Draft extends { id: string; updated_at?: string }, Payload, Saved extends { updated_at?: string }> {
   draft: Draft | null
   active: boolean
   scopeKey?: string

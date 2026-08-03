@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"strings"
 
 	"denova/config"
 	"denova/internal/agents/prompts"
@@ -117,6 +118,80 @@ func (service *Service) patchWorkspace(changes json.RawMessage, baseRevision str
 	}
 	slog.InfoContext(context.Background(), fmt.Sprintf("[app/settings] applied partial workspace settings mutation path=%s", runtime.ProjectConfigPath))
 	return service.refresh(config.SettingsLayerWorkspace)
+}
+
+// EnsureAgentApprovalRule atomically adds one server-generated user rule. The
+// deterministic rule ID makes retries idempotent while rejecting the extremely
+// unlikely case where one ID names a different authorization boundary.
+func (service *Service) EnsureAgentApprovalRule(rule config.AgentApprovalRule) (bool, error) {
+	rules := config.NormalizeAgentApprovalRules([]config.AgentApprovalRule{rule})
+	if err := config.ValidateAgentApprovalRules(rules); err != nil {
+		return false, err
+	}
+	rule = rules[0]
+	runtime := service.runtime()
+	path := config.UserConfigPath(runtime.Config.DataDir())
+	created := false
+	if _, err := config.MutateSettingsFile(path, "", func(existing config.Settings) (config.Settings, error) {
+		existing.AgentApprovalRules = config.NormalizeAgentApprovalRules(existing.AgentApprovalRules)
+		for _, current := range existing.AgentApprovalRules {
+			if current.ID != rule.ID {
+				continue
+			}
+			if current.Scope != rule.Scope || current.ProjectID != rule.ProjectID ||
+				current.Workspace != rule.Workspace || current.ToolName != rule.ToolName ||
+				current.MatcherVersion != rule.MatcherVersion || current.CommandKey != rule.CommandKey ||
+				current.CommandPattern != rule.CommandPattern {
+				return config.Settings{}, fmt.Errorf("agent approval rule id %q is already bound to another command", rule.ID)
+			}
+			return config.PrepareUserSettingsForWrite(existing, existing)
+		}
+		existing.AgentApprovalRules = append(existing.AgentApprovalRules, rule)
+		created = true
+		return config.PrepareUserSettingsForWrite(existing, existing)
+	}); err != nil {
+		return created, err
+	}
+	slog.InfoContext(context.Background(), fmt.Sprintf(
+		"[app/settings] persisted workspace command approval rule id=%s project_id=%s pattern=%q path=%s",
+		rule.ID, rule.ProjectID, rule.CommandPattern, path,
+	))
+	_, err := service.refresh(config.SettingsLayerUser)
+	return created, err
+}
+
+// RemoveAgentApprovalRule atomically revokes a user rule. It is also used to
+// roll back a newly persisted rule when the corresponding pending ask cannot
+// be resolved and therefore cannot execute.
+func (service *Service) RemoveAgentApprovalRule(id string) (bool, config.LayeredSettings, error) {
+	id = strings.TrimSpace(id)
+	if id == "" {
+		return false, config.LayeredSettings{}, fmt.Errorf("agent approval rule id is required")
+	}
+	runtime := service.runtime()
+	path := config.UserConfigPath(runtime.Config.DataDir())
+	removed := false
+	if _, err := config.MutateSettingsFile(path, "", func(existing config.Settings) (config.Settings, error) {
+		filtered := make([]config.AgentApprovalRule, 0, len(existing.AgentApprovalRules))
+		for _, rule := range existing.AgentApprovalRules {
+			if rule.ID == id {
+				removed = true
+				continue
+			}
+			filtered = append(filtered, rule)
+		}
+		existing.AgentApprovalRules = filtered
+		return config.PrepareUserSettingsForWrite(existing, existing)
+	}); err != nil {
+		return removed, config.LayeredSettings{}, err
+	}
+	if removed {
+		slog.InfoContext(context.Background(), fmt.Sprintf(
+			"[app/settings] removed workspace command approval rule id=%s path=%s", id, path,
+		))
+	}
+	layered, err := service.refresh(config.SettingsLayerUser)
+	return removed, layered, err
 }
 
 func (service *Service) refresh(layer config.SettingsLayer) (config.LayeredSettings, error) {

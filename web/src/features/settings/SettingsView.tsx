@@ -4,7 +4,7 @@ import { ChevronDown, ChevronUp, Download, ExternalLink, Loader2, Plus, RefreshC
 import { useTranslation } from 'react-i18next'
 import { toast } from 'sonner'
 import type { AgentApprovalMode, ImageAPIProfileSettings, LayeredSettings, ModelProfileSettings, Settings, SettingsLayer, ShellEnvironmentMode, UpdateApplyResult, UpdateCheckResult, UpdateInstallProgress, UpdateInstallResult, WebAccessSettings } from './types'
-import { applyUpdate, checkForUpdate, installUpdateStream } from './api'
+import { applyUpdate, checkForUpdate, installUpdateStream, revokeAgentApprovalRule } from './api'
 import { FONT_OPTIONS, fontLabelKeyFor } from './font-options'
 import { useLayeredSettingsDraft } from './use-layered-settings-draft'
 import { getInteractiveTellers } from '@/features/interactive/api'
@@ -37,6 +37,7 @@ import { ONBOARDING_OPEN_EVENT, SETTINGS_SECTION_EVENT, type SettingsSectionRequ
 import { TerminalCommandsEditor, terminalCommandsForEditor } from './TerminalCommandsEditor'
 import { useAgentApprovalMode } from '@/features/agent-approval/AgentApprovalProvider'
 import { AGENT_APPROVAL_MODES } from '@/features/agent-approval/modes'
+import { ApprovalRulesEditor } from './ApprovalRulesEditor'
 
 type SettingsSectionId = 'model' | 'image' | 'paths' | 'access' | 'appearance' | 'updates' | 'agent' | 'terminal' | 'web-access' | 'debug' | 'ide-editor' | 'ide-output' | 'versions' | 'interactive'
 
@@ -66,7 +67,7 @@ const TRACE_EXPORTER_OPTIONS = [
 export function SettingsView({ onClose }: { onClose?: () => void }) {
   const { t } = useTranslation()
   const approval = useAgentApprovalMode()
-  const { layered, draft, setDraft, error, autosaveStatus, autosaveError, saveNow } = useLayeredSettingsDraft({
+  const { layered, draft, setDraft, error, autosaveStatus, autosaveError, saveNow, reload, notifyUpdated } = useLayeredSettingsDraft({
     layer: 'user',
     sourcePrefix: 'settings-view',
   })
@@ -80,6 +81,7 @@ export function SettingsView({ onClose }: { onClose?: () => void }) {
   const [applyingUpdate, setApplyingUpdate] = useState(false)
   const [updateError, setUpdateError] = useState<string | null>(null)
   const [activeSection, setActiveSection] = useState<SettingsSectionId>('appearance')
+  const [revokingApprovalRuleID, setRevokingApprovalRuleID] = useState('')
   const [expandedSections, setExpandedSections] = useState<Record<SettingsSectionId, boolean>>({
     model: true,
     image: true,
@@ -114,6 +116,22 @@ export function SettingsView({ onClose }: { onClose?: () => void }) {
   // whenever the user edits the field.
   const inherited = layered ? inheritedSettings(layered, 'user') : {}
   const showDebugSettings = layered?.runtime?.dev_mode === true
+
+  const revokeApprovalRule = useCallback(async (id: string) => {
+    if (revokingApprovalRuleID) return
+    setRevokingApprovalRuleID(id)
+    try {
+      await revokeAgentApprovalRule(id)
+      await reload()
+      notifyUpdated()
+      toast.success(t('agentApproval.rules.revokeSucceeded'))
+    } catch (cause) {
+      console.error(`[settings] failed to revoke agent approval rule id=${id}`, cause)
+      toast.error(t('agentApproval.rules.revokeFailed'))
+    } finally {
+      setRevokingApprovalRuleID('')
+    }
+  }, [notifyUpdated, reload, revokingApprovalRuleID, t])
 
   const runUpdateCheck = useCallback(async (source: 'auto' | 'manual' = 'manual') => {
     setCheckingUpdate(true)
@@ -381,6 +399,11 @@ export function SettingsView({ onClose }: { onClose?: () => void }) {
                 if (!saved) toast.error(t('agentApproval.input.changeFailed'))
               })
             }}
+          />
+          <ApprovalRulesEditor
+            rules={draft.agent_approval_rules}
+            revokingRuleID={revokingApprovalRuleID}
+            onRevoke={(id) => void revokeApprovalRule(id)}
           />
           <Num label={t('settings.agent.maxIteration')} value={draft.max_iteration ?? null}
                placeholder={placeholderFor('max_iteration')}

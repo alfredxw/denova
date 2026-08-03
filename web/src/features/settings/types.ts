@@ -52,6 +52,7 @@ export interface Settings {
   agent_tool_result_limit_kb?: number | null
   agent_tool_parallelism?: number | null
   agent_approval_mode?: AgentApprovalMode
+  agent_approval_rules?: AgentApprovalRule[]
   shell_environment_mode?: ShellEnvironmentMode
   shell_environment_shell?: string
   agent_bash_path?: string
@@ -74,6 +75,22 @@ export interface Settings {
 }
 
 export type ShellEnvironmentMode = 'auto' | 'process'
+
+export interface AgentApprovalRule {
+  id: string
+  scope: 'workspace'
+  project_id?: string
+  workspace?: string
+  tool_name: string
+  matcher_version: number
+  command_key: string
+  command_pattern: string
+  approved_args_hash: string
+  approved_command: string
+  approved_cwd?: string
+  source_rule_id?: string
+  created_at: string
+}
 
 /** User-owned terminal shortcut resolved by stable ID on the backend. */
 export interface TerminalCommandSettings {

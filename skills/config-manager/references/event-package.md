@@ -2,7 +2,7 @@
 
 An event package is a reusable Game-mode catalog of flexible event cards. A Story Director references package IDs; editing a package affects future resolution without turning cards into a fixed chapter outline.
 
-This resource uses `user` scope and complete editable-resource replacement. Update/delete require the latest `updated_at` returned by `get` as `revision`.
+This resource uses `user` scope and complete editable-resource replacement. Update/delete require the latest content-addressed `revision` returned by `get`; `updated_at` is display metadata and is not a concurrency token.
 
 ## Field reference
 

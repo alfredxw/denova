@@ -2,9 +2,11 @@ import { describe, expect, it } from 'vitest'
 import type { AgentUIMessage } from './agent-ui'
 import {
   agentViewStableKey,
+  agentViewToRenderMessage,
   buildAgentMessageViews,
   countCompletedAgentTurnSignals,
   hasCompletedAgentTurn,
+  isAgentTraceView,
   selectAgentTokenUsageRecords,
 } from './agent-message-view'
 
@@ -183,6 +185,48 @@ describe('agent-message-view', () => {
       expect.objectContaining({ partId: 'todo-committed', status: 'success' }),
       expect.objectContaining({ partId: 'todo-rejected', status: 'error' }),
     ]))
+  })
+
+  it('将工具审批关联到原工具 view，不生成独立时间线卡片', () => {
+    const views = buildAgentMessageViews([
+    {
+      id: 'tool-message', role: 'assistant', metadata: { run_id: 'run-approval' },
+      parts: [{
+      type: 'dynamic-tool', toolName: 'bash', toolCallId: 'tool-execution-1',
+      state: 'input-available', input: { command: 'go test ./...' },
+      }],
+    },
+    {
+      id: 'approval-message', role: 'assistant', metadata: { run_id: 'run-approval' },
+      parts: [{
+      type: 'data-agent-ask', id: 'approval-1', data: {
+        schema: 'ask.pending.v1', id: 'approval-1', kind: 'tool_approval',
+        tool_call_id: 'tool-execution-1', agent_kind: 'ide', status: 'pending',
+        questions: [{ id: 'tool-approval', question: 'Approve?', options: [{ id: 'allow-once', label: 'Allow once' }, { id: 'deny', label: 'Deny' }] }],
+        approval: { mode: 'ask', tool_name: 'bash', command: 'go test ./...', risk: 'high', rule_id: 'bash_unlisted_command', args_hash: 'a'.repeat(64) },
+      },
+      }],
+    },
+    ] as AgentUIMessage[])
+
+    expect(views).toHaveLength(1)
+    expect(views[0]).toMatchObject({ kind: 'tool', partId: 'tool-execution-1', approval: { id: 'approval-1' } })
+    expect(agentViewToRenderMessage(views[0])).toMatchObject({ role: 'tool_call', ask: { id: 'approval-1' } })
+  })
+
+  it('将找不到工具调用的审批保留在 trace 中作为容错诊断', () => {
+    const views = buildAgentMessageViews([{
+    id: 'orphan-approval', role: 'assistant', parts: [{
+      type: 'data-agent-ask', id: 'orphan-approval', data: {
+      schema: 'ask.pending.v1', id: 'orphan-approval', kind: 'tool_approval',
+      tool_call_id: 'missing-tool', agent_kind: 'ide', status: 'cancelled', questions: [],
+      approval: { mode: 'ask', tool_name: 'bash', risk: 'high', rule_id: 'bash_unlisted_command', args_hash: 'a'.repeat(64) },
+      },
+    }],
+    }] as AgentUIMessage[])
+
+    expect(views).toHaveLength(1)
+    expect(isAgentTraceView(views[0])).toBe(true)
   })
 
   it('提取 token usage records 供输入区统计使用', () => {

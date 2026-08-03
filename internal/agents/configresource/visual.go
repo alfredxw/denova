@@ -94,7 +94,7 @@ func newImagePresetResource(novaDir string) Adapter {
 	return configResourceAdapter{
 		descriptor: Descriptor{
 			Name: "image_preset", Description: "Shared image generation presets for writing and game modes.",
-			Scopes: []string{"user"}, Operations: configCRUDOperations(), RevisionField: "updated_at", Reference: "references/image-preset.md",
+			Scopes: []string{"user"}, Operations: configCRUDOperations(), RevisionField: "revision", Reference: "references/image-preset.md",
 		},
 		list: func(ctx context.Context, _ ReadRequest) (any, error) {
 			return withConfigResourceLease(ctx, leasePath, func() (any, error) {
@@ -142,7 +142,7 @@ func applyImagePresetMutation(lib *imagepreset.Library, mutation Mutation) (any,
 		if err != nil {
 			return nil, err
 		}
-		if err := requireConfigRevision(mutation.Resource, mutation.ID, mutation.Revision, current.UpdatedAt); err != nil {
+		if err := requireConfigRevision(mutation.Resource, mutation.ID, mutation.Revision, current.Revision); err != nil {
 			return nil, err
 		}
 		if err := lib.Delete(mutation.ID); err != nil {
@@ -159,7 +159,7 @@ func configPresetReceipt(mutation Mutation, item imagepreset.Preset, err error) 
 		return nil, err
 	}
 	id := strings.TrimSpace(item.ID)
-	return configMutationReceipt{Resource: mutation.Resource, Operation: mutation.Operation, ID: id, Revision: item.UpdatedAt, Value: item}, nil
+	return configMutationReceipt{Resource: mutation.Resource, Operation: mutation.Operation, ID: id, Revision: item.Revision, Value: item}, nil
 }
 
 func configCRUDOperations() []string {

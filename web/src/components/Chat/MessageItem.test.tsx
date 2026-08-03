@@ -1156,29 +1156,36 @@ describe('MessageItem', () => {
     expect(screen.getByText('已取消')).toBeInTheDocument()
   })
 
-  it('工具审批使用专用卡片且只提交 Allow once 或 Deny', async () => {
+  it('工具审批内联到原工具卡并可保存工作区命令规则', async () => {
     const user = userEvent.setup()
+    const settingsUpdated = vi.fn()
+    window.addEventListener('nova:settings-updated', settingsUpdated)
     const onResolve = vi.fn().mockResolvedValue({
       schema: 'ask.result.v1', id: 'approval-1', status: 'answered',
       answers: [{
         question_id: 'tool-approval', question: 'Allow once?',
-        selected_options: [{ id: 'allow-once', label: 'Allow once' }],
+        selected_options: [{ id: 'allow-workspace', label: 'Always allow' }],
       }],
     })
     render(
       <MessageItem
         message={{
-          id: 'approval-1', role: 'ask', ask: {
+          id: 'tool-1', role: 'tool_call', name: 'bash', args: '{"command":"npm test"}', status: 'running', ask: {
             schema: 'ask.pending.v1', id: 'approval-1', kind: 'tool_approval',
             tool_call_id: 'tool-1', agent_kind: 'ide', status: 'pending',
             questions: [{
               id: 'tool-approval', question: 'Allow once?',
-              options: [{ id: 'allow-once', label: 'Allow once' }, { id: 'deny', label: 'Deny' }],
+              options: [
+                { id: 'allow-once', label: 'Allow once' },
+                { id: 'allow-workspace', label: 'Always allow' },
+                { id: 'deny', label: 'Deny' },
+              ],
             }],
             approval: {
               mode: 'ask', tool_name: 'bash', command: 'npm test', cwd: '.',
-              details: '{"action":"run"}',
-              risk: 'high', reason: '不在白名单', rule_id: 'bash_unlisted_command', args_hash: 'abc',
+              risk: 'high', rule_id: 'bash_unlisted_command', args_hash: 'abc',
+        can_remember: true, rule_matcher_version: 1,
+        rule_command_key: '["npm","test"]', rule_command_pattern: 'npm test ...',
             },
           },
         }}
@@ -1187,13 +1194,16 @@ describe('MessageItem', () => {
     )
 
     expect(screen.getByText('npm test')).toBeInTheDocument()
-    expect(screen.getByText('{"action":"run"}')).toBeInTheDocument()
+  expect(screen.getByText('此命令不在当前安全模式的自动允许范围内。')).toBeInTheDocument()
+  expect(screen.getByText(/工作区规则：npm test/)).toBeInTheDocument()
     expect(screen.queryByRole('radio', { name: /其他/ })).not.toBeInTheDocument()
-    await user.click(screen.getByRole('button', { name: '仅允许本次' }))
+  await user.click(screen.getByRole('button', { name: '在此工作区始终允许' }))
     await waitFor(() => expect(onResolve).toHaveBeenCalledWith(
-      expect.objectContaining({ id: 'approval-1' }),
-      { status: 'answered', answers: [{ question_id: 'tool-approval', selected_option_ids: ['allow-once'] }] },
+      expect.objectContaining({ ask: expect.objectContaining({ id: 'approval-1' }) }),
+      { status: 'answered', answers: [{ question_id: 'tool-approval', selected_option_ids: ['allow-workspace'] }] },
     ))
-    expect(screen.getByText('已允许一次')).toBeInTheDocument()
+    expect(screen.getByText('已在此工作区持续允许')).toBeInTheDocument()
+    expect(settingsUpdated).toHaveBeenCalledTimes(1)
+    window.removeEventListener('nova:settings-updated', settingsUpdated)
   })
 })

@@ -28,6 +28,7 @@ const (
 	DefaultMaxMetadataFieldBytes = agentcontext.DefaultMaxMetadataFieldBytes
 
 	finalUserSourceNote     = "状态快照可能过期，以工具读取为准。"
+	truncationNotice        = "内容已截断；如需完整内容，请使用工具重新读取。 / Content truncated; use a tool to read the complete source if needed."
 	contextSourceSeparator  = "\n\n---\n\n"
 	finalUserRequestWrapper = "\n\n---\n\n# 本轮用户请求（最高优先级）\n\n"
 )
@@ -114,6 +115,25 @@ func finalUserSourceBlock(source Source) string {
 	builder.WriteString("\n\n")
 	builder.WriteString(finalUserSourceNote)
 	builder.WriteString("\n\n")
-	builder.WriteString(strings.TrimSpace(source.Content))
+	builder.WriteString(renderSourceContent(source))
+	return builder.String()
+}
+
+func renderSourceContent(source Source) string {
+	content := strings.TrimSpace(source.Content)
+	var builder strings.Builder
+	if source.Source == "workspace.file.reference" {
+		// The renderer owns framing so truncation can never remove the closing
+		// fence. Raw Markdown remains the auditable content and hash input.
+		builder.WriteString("```markdown\n")
+		builder.WriteString(content)
+		builder.WriteString("\n```")
+	} else {
+		builder.WriteString(content)
+	}
+	if source.Truncated {
+		builder.WriteString("\n\n> ")
+		builder.WriteString(truncationNotice)
+	}
 	return builder.String()
 }

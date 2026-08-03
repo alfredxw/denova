@@ -2,7 +2,7 @@
 
 Narrative styles are shared prose-policy presets. `modes` controls whether a style appears in Writing, Game, or both; shared style-reference files can be attached globally or for named scene types.
 
-This resource uses `user` scope. Create and update submit a complete editable resource. Update/delete require the latest `updated_at` returned by `get` as the top-level `revision`.
+This resource uses `user` scope. Create and update submit a complete editable resource. Update/delete require the latest content-addressed `revision` returned by `get`; `updated_at` is display metadata and is not a concurrency token.
 
 ## Field reference
 
@@ -27,7 +27,7 @@ Each `slots` item contains:
 | `enabled` | boolean | yes | Whether the slot is injected. |
 | `content` | string | yes when enabled | Focused narrative instruction for that target. |
 
-Do not send host-owned `version`, `path`, `custom`, `builtin_overridden`, `invalid`, `error`, `created_at`, or `updated_at` when constructing a new value. On update, rebuild the complete editable value from `get` and leave those fields untouched.
+Do not send host-owned `version`, `path`, `custom`, `builtin_overridden`, `invalid`, `error`, `created_at`, `updated_at`, or `revision` when constructing a new value. On update, rebuild the complete editable value from `get` and leave those fields untouched; pass the returned top-level `revision` only through `config_apply.revision`.
 
 ## Create example
 

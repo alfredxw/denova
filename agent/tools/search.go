@@ -22,17 +22,11 @@ type GlobRequest struct {
 	Cursor    string
 }
 
-// GrepRequest describes one bounded ripgrep-compatible content search.
+// GrepRequest describes one bounded, command-shaped ripgrep search. Command
+// uses Denova's literal rg grammar; it is never passed through a shell.
 type GrepRequest struct {
-	Pattern       string
-	Paths         []string
-	Mode          string
-	CaseSensitive bool
-	Gitignore     bool
-	ContextBefore int
-	ContextAfter  int
-	Limit         int
-	Cursor        string
+	Command string
+	Cursor  string
 }
 
 // SearchResult is shared by glob and grep without leaking local process
@@ -44,10 +38,23 @@ type SearchResult struct {
 	Warnings   []string
 }
 
-// Searcher is the reusable workspace-search seam behind glob and grep.
-type Searcher interface {
+// GlobSearcher is the reusable workspace path-discovery seam.
+type GlobSearcher interface {
 	Glob(context.Context, GlobRequest) (SearchResult, error)
+}
+
+// GrepSearcher is the reusable workspace text-search seam. It is deliberately
+// separate from GlobSearcher because command compilation and logical result
+// pagination are grep-specific responsibilities.
+type GrepSearcher interface {
 	Grep(context.Context, GrepRequest) (SearchResult, error)
+}
+
+// Searcher composes both search capabilities for hosts that expose one
+// workspace adapter. Tool factories depend on the narrower interface above.
+type Searcher interface {
+	GlobSearcher
+	GrepSearcher
 }
 
 type globInput struct {
@@ -60,9 +67,9 @@ type globInput struct {
 
 // Glob defines multi-path workspace discovery. Directory reading remains the
 // responsibility of read; glob only answers path-pattern questions.
-func Glob(searcher Searcher, options ...DefinitionOption) (agent.ToolDefinition, error) {
+func Glob(searcher GlobSearcher, options ...DefinitionOption) (agent.ToolDefinition, error) {
 	if searcher == nil {
-		return agent.ToolDefinition{}, errors.New("glob Searcher is nil")
+		return agent.ToolDefinition{}, errors.New("glob GlobSearcher is nil")
 	}
 	descriptor := readDescriptor(options...)
 	descriptor.ResultRecoveryKind = agent.ToolResultRecoveryRerun
@@ -88,45 +95,35 @@ func Glob(searcher Searcher, options ...DefinitionOption) (agent.ToolDefinition,
 }
 
 type grepInput struct {
-	Pattern       string   `json:"pattern" jsonschema_description:"Ripgrep regular expression to search for; a newline automatically enables multiline matching."`
-	Paths         []string `json:"paths,omitempty" jsonschema:"minItems=1" jsonschema_description:"Workspace-relative files, directories, or glob patterns. Omit to search the workspace root."`
-	Mode          string   `json:"mode,omitempty" jsonschema:"enum=content,enum=files,enum=count" jsonschema_description:"content, files, or count; defaults to content."`
-	CaseSensitive *bool    `json:"case_sensitive,omitempty" jsonschema_description:"Use case-sensitive matching; defaults to true."`
-	Gitignore     *bool    `json:"gitignore,omitempty" jsonschema_description:"Respect .gitignore rules; defaults to true."`
-	ContextBefore int      `json:"context_before,omitempty" jsonschema:"minimum=0" jsonschema_description:"Lines before each match in content mode."`
-	ContextAfter  int      `json:"context_after,omitempty" jsonschema:"minimum=0" jsonschema_description:"Lines after each match in content mode."`
-	Limit         int      `json:"limit,omitempty" jsonschema:"minimum=1" jsonschema_description:"Maximum returned lines or entries; defaults to the workspace search policy."`
-	Cursor        string   `json:"cursor,omitempty" jsonschema_description:"Opaque continuation cursor returned by an earlier identical grep call."`
+	Command string `json:"command" jsonschema:"minLength=3,maxLength=65536" jsonschema_description:"One literal ripgrep invocation beginning with rg. This is not a shell command: pipelines, redirects, substitutions, and external paths are rejected. Put explicit workspace-relative search paths after --. Example: rg -S -C 2 -g '*.go' 'TODO|FIXME' -- agent internal."`
+	Cursor  string `json:"cursor,omitempty" jsonschema:"maxLength=8192" jsonschema_description:"Opaque next_cursor returned by the same normalized grep command."`
 }
 
-// Grep defines bounded multi-path text search over ripgrep.
-func Grep(searcher Searcher, options ...DefinitionOption) (agent.ToolDefinition, error) {
+// Grep defines bounded workspace text search using a controlled rg command.
+func Grep(searcher GrepSearcher, options ...DefinitionOption) (agent.ToolDefinition, error) {
 	if searcher == nil {
-		return agent.ToolDefinition{}, errors.New("grep Searcher is nil")
+		return agent.ToolDefinition{}, errors.New("grep GrepSearcher is nil")
 	}
 	descriptor := readDescriptor(options...)
 	descriptor.ResultRecoveryKind = agent.ToolResultRecoveryRerun
-	tool, err := agent.InferTool("grep", `Search workspace text with ripgrep regular expressions. Content mode returns copyable paths, stable line numbers, and original context suitable for edit.old_string. A cursor is valid only for the identical query while the workspace remains unchanged; restart from the first page after mutations.
+	tool, err := agent.InferTool("grep", `Search workspace text with one controlled rg command. The command starts with rg but never runs through a shell. Safe ripgrep search flags are supported; use -- before explicit workspace-relative paths. Pipelines, redirects, substitutions, external configuration, process-spawning flags, and paths outside the workspace are rejected. Results are deterministic and bounded; repeat the identical command with next_cursor to continue after a partial result.
 
-使用 ripgrep 正则搜索工作区文本。content 模式返回可复制路径、稳定行号和原始上下文，可用于 edit.old_string。游标仅适用于工作区未变化时的同一查询；工作区变更后请从第一页重新搜索。`, func(ctx context.Context, input grepInput) (agent.ToolResult, error) {
-		request := GrepRequest{
-			Pattern: input.Pattern, Paths: input.Paths, Mode: input.Mode,
-			CaseSensitive: boolDefault(input.CaseSensitive, true),
-			Gitignore:     boolDefault(input.Gitignore, true),
-			ContextBefore: input.ContextBefore, ContextAfter: input.ContextAfter,
-			Limit: input.Limit, Cursor: input.Cursor,
-		}
-		request = normalizeGrepRequest(request)
-		offset, err := decodeGrepCursor(request.Cursor, request)
-		if err != nil {
-			return agent.ToolResult{}, err
-		}
+使用一条受控的 rg 命令搜索工作区文本。命令虽然以 rg 开头，但绝不会经过 shell。支持安全的 ripgrep 搜索参数；显式工作区相对路径请放在 -- 之后。管道、重定向、替换、外部配置、可启动进程的参数和工作区外路径都会被拒绝。结果稳定且有界；结果为 partial 时，用相同 command 携带 next_cursor 继续。`, func(ctx context.Context, input grepInput) (agent.ToolResult, error) {
+		request := normalizeGrepRequest(GrepRequest{Command: input.Command, Cursor: input.Cursor})
 		result, err := searcher.Grep(ctx, request)
 		if err != nil {
 			return agent.ToolResult{}, err
 		}
+		state, err := decodeGrepCursor(request.Cursor, request)
+		if err != nil {
+			return agent.ToolResult{}, err
+		}
 		return searchToolResult("grep", result, descriptor.MaxResultBytes, func(returned int) (string, error) {
-			return encodeGrepCursor(offset+returned, request)
+			next := grepCursorState{
+				Offset: state.Offset + returned,
+				Prefix: advanceGrepPrefix(state.Prefix, result.Entries[:returned]),
+			}
+			return encodeGrepCursor(next, request)
 		})
 	})
 	return agent.ToolDefinition{Tool: tool, Descriptor: descriptor}, err
@@ -181,7 +178,7 @@ func searchToolResult(
 			status = "partial"
 			recovery = &searchRecovery{
 				Retryable:  true,
-				Suggestion: "Use next_cursor when present, otherwise narrow paths or pattern. / 如有 next_cursor 请继续分页，否则缩小路径或模式。",
+				Suggestion: "Use next_cursor when present, otherwise narrow the search scope. / 如有 next_cursor 请继续分页，否则缩小搜索范围。",
 			}
 		}
 		metadata := searchEnvelope{
@@ -245,6 +242,12 @@ type grepCursor struct {
 	Version     int    `json:"v"`
 	Offset      int    `json:"o"`
 	Fingerprint string `json:"f"`
+	Prefix      string `json:"p,omitempty"`
+}
+
+type grepCursorState struct {
+	Offset int
+	Prefix string
 }
 
 type globCursor struct {
@@ -289,8 +292,11 @@ func globRequestFingerprint(request GlobRequest) string {
 	return hex.EncodeToString(digest[:16])
 }
 
-func encodeGrepCursor(offset int, request GrepRequest) (string, error) {
-	cursor := grepCursor{Version: 1, Offset: offset, Fingerprint: grepRequestFingerprint(request)}
+func encodeGrepCursor(state grepCursorState, request GrepRequest) (string, error) {
+	cursor := grepCursor{
+		Version: 2, Offset: state.Offset, Prefix: state.Prefix,
+		Fingerprint: grepRequestFingerprint(request),
+	}
 	encoded, err := json.Marshal(cursor)
 	if err != nil {
 		return "", err
@@ -298,29 +304,42 @@ func encodeGrepCursor(offset int, request GrepRequest) (string, error) {
 	return base64.RawURLEncoding.EncodeToString(encoded), nil
 }
 
-func decodeGrepCursor(value string, request GrepRequest) (int, error) {
+func decodeGrepCursor(value string, request GrepRequest) (grepCursorState, error) {
 	value = strings.TrimSpace(value)
 	if value == "" {
-		return 0, nil
+		return grepCursorState{}, nil
 	}
 	decoded, err := base64.RawURLEncoding.DecodeString(value)
 	if err != nil {
-		return 0, errors.New("grep cursor is invalid / grep 游标无效")
+		return grepCursorState{}, errors.New("grep cursor is invalid / grep 游标无效")
 	}
 	var cursor grepCursor
-	if err := json.Unmarshal(decoded, &cursor); err != nil || cursor.Version != 1 || cursor.Offset < 0 {
-		return 0, errors.New("grep cursor is invalid / grep 游标无效")
+	if err := json.Unmarshal(decoded, &cursor); err != nil || cursor.Version != 2 || cursor.Offset < 0 ||
+		(cursor.Offset == 0 && cursor.Prefix != "") || (cursor.Offset > 0 && cursor.Prefix == "") {
+		return grepCursorState{}, errors.New("grep cursor is invalid / grep 游标无效")
 	}
 	if cursor.Fingerprint != grepRequestFingerprint(request) {
-		return 0, errors.New("grep cursor does not belong to this query / grep 游标不属于当前查询")
+		return grepCursorState{}, errors.New("grep cursor does not belong to this query / grep 游标不属于当前查询")
 	}
-	return cursor.Offset, nil
+	return grepCursorState{Offset: cursor.Offset, Prefix: cursor.Prefix}, nil
 }
 
 func grepRequestFingerprint(request GrepRequest) string {
 	request.Cursor = ""
-	request.Limit = 0
-	encoded, _ := json.Marshal(request)
+	encoded, _ := json.Marshal(struct {
+		Policy  int         `json:"policy"`
+		Request GrepRequest `json:"request"`
+	}{Policy: grepCommandPolicyVersion, Request: request})
 	digest := sha256.Sum256(encoded)
 	return hex.EncodeToString(digest[:16])
+}
+
+func advanceGrepPrefix(prefix string, entries []string) string {
+	for _, entry := range entries {
+		hash := sha256.New()
+		_, _ = fmt.Fprintf(hash, "denova-grep-prefix-v1\x00%s\x00%d:", prefix, len(entry))
+		_, _ = hash.Write([]byte(entry))
+		prefix = hex.EncodeToString(hash.Sum(nil)[:16])
+	}
+	return prefix
 }

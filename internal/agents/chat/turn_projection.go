@@ -173,12 +173,12 @@ func projectReferenceFragments(bookService *book.Service, references []string, b
 			content = "读取失败：当前 workspace 不可用。"
 			note += "; read_failed"
 		} else {
-			read, _, err := readReferencedFile(bookService, ref, limit, limit)
+			read, err := readReferencedFile(bookService, ref)
 			if err != nil {
 				content = "读取失败：" + err.Error()
 				note += "; read_failed"
 			} else {
-				content = "```markdown\n" + read + "\n```"
+				content = read
 			}
 		}
 		fragment := turnFragment(

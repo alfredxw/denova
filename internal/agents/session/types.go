@@ -329,15 +329,18 @@ type AskAnswerResult struct {
 // ToolApprovalPresentation is host-generated display metadata. It is never
 // accepted from a model tool schema and never enters model context.
 type ToolApprovalPresentation struct {
-	Mode     string `json:"mode"`
-	ToolName string `json:"tool_name"`
-	Command  string `json:"command,omitempty"`
-	Details  string `json:"details,omitempty"`
-	Cwd      string `json:"cwd,omitempty"`
-	Risk     string `json:"risk"`
-	Reason   string `json:"reason"`
-	RuleID   string `json:"rule_id"`
-	ArgsHash string `json:"args_hash"`
+	Mode               string `json:"mode"`
+	ToolName           string `json:"tool_name"`
+	Command            string `json:"command,omitempty"`
+	Details            string `json:"details,omitempty"`
+	Cwd                string `json:"cwd,omitempty"`
+	Risk               string `json:"risk"`
+	RuleID             string `json:"rule_id"`
+	ArgsHash           string `json:"args_hash"`
+	CanRemember        bool   `json:"can_remember,omitempty"`
+	RuleMatcherVersion int    `json:"rule_matcher_version,omitempty"`
+	RuleCommandKey     string `json:"rule_command_key,omitempty"`
+	RuleCommandPattern string `json:"rule_command_pattern,omitempty"`
 }
 
 // AskInteraction is append-only session state for one blocking ask call. The

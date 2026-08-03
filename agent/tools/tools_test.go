@@ -350,7 +350,15 @@ func TestLocalWorkspaceGlobAndGrep(t *testing.T) {
 		t.Fatal(err)
 	}
 	mustWriteTestFile(t, root, ".gitignore", "chapters/ignored.md\nempty-ignored/\n")
-	workspace := mustOpenTestWorkspace(t, root)
+	workspace, err := OpenWorkspaceWithOptions(WorkspaceOptions{
+		Root: root,
+		Limits: WorkspaceLimits{
+			DefaultDirectoryItems: 1,
+		},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
 	matches, err := workspace.Glob(context.Background(), GlobRequest{
 		Paths: []string{"**/*.md", "empty-*"}, Hidden: true, Gitignore: true, Limit: 20,
 	})
@@ -385,25 +393,37 @@ func TestLocalWorkspaceGlobAndGrep(t *testing.T) {
 	if result, err := workspace.Glob(context.Background(), GlobRequest{Paths: manyPaths, Hidden: true, Gitignore: true}); err != nil || len(result.Entries) != 1 {
 		t.Fatalf("glob should accept more than 256 requested paths: result=%#v err=%v", result, err)
 	}
-	content, err := workspace.Grep(context.Background(), GrepRequest{
-		Pattern: "dragon", Paths: []string{"chapters/*.md"}, Mode: "content",
-		CaseSensitive: true, Gitignore: true, Limit: 1,
-	})
+	grepCommand := "rg -C 1 dragon"
+	content, err := workspace.Grep(context.Background(), GrepRequest{Command: grepCommand})
 	if err != nil || len(content.Entries) != 1 || !content.Truncated || content.NextCursor == "" {
 		t.Fatalf("first grep page = %#v, %v", content, err)
 	}
-	next, err := workspace.Grep(context.Background(), GrepRequest{
-		Pattern: "dragon", Paths: []string{"chapters/*.md"}, Mode: "content",
-		CaseSensitive: true, Gitignore: true, Limit: 1, Cursor: content.NextCursor,
-	})
+	if !strings.Contains(content.Entries[0], "dragon") || !strings.Contains(content.Entries[0], "opening") {
+		t.Fatalf("grep split a logical context block: %#v", content.Entries)
+	}
+	next, err := workspace.Grep(context.Background(), GrepRequest{Command: grepCommand, Cursor: content.NextCursor})
 	if err != nil || len(next.Entries) != 1 || next.Entries[0] == content.Entries[0] {
 		t.Fatalf("second grep page = %#v, %v", next, err)
 	}
-	if _, err := workspace.Grep(context.Background(), GrepRequest{
-		Pattern: "different", Paths: []string{"chapters/*.md"}, Mode: "content",
-		CaseSensitive: true, Gitignore: true, Limit: 1, Cursor: content.NextCursor,
-	}); err == nil || !strings.Contains(err.Error(), "does not belong") {
+	if _, err := workspace.Grep(context.Background(), GrepRequest{Command: "rg different", Cursor: content.NextCursor}); err == nil || !strings.Contains(err.Error(), "does not belong") {
 		t.Fatalf("cursor was accepted for a different query: %v", err)
+	}
+	hidden, err := workspace.Grep(context.Background(), GrepRequest{Command: "rg 'hidden dragon'"})
+	if err != nil || len(hidden.Entries) != 0 {
+		t.Fatalf("grep should use native hidden-file defaults: result=%#v err=%v", hidden, err)
+	}
+	hidden, err = workspace.Grep(context.Background(), GrepRequest{Command: "rg --hidden 'hidden dragon'"})
+	if err != nil || len(hidden.Entries) != 1 || !strings.Contains(hidden.Entries[0], ".hidden.md") {
+		t.Fatalf("grep --hidden = %#v, %v", hidden, err)
+	}
+	unpaged := mustOpenTestWorkspace(t, root)
+	files, err := unpaged.Grep(context.Background(), GrepRequest{Command: "rg -l dragon"})
+	if err != nil || strings.Join(files.Entries, ",") != "chapters/one.md,chapters/two.md" {
+		t.Fatalf("grep files mode = %#v, %v", files, err)
+	}
+	counts, err := unpaged.Grep(context.Background(), GrepRequest{Command: "rg --count-matches dragon"})
+	if err != nil || strings.Join(counts.Entries, ",") != "chapters/one.md:1,chapters/two.md:1" {
+		t.Fatalf("grep count mode = %#v, %v", counts, err)
 	}
 }
 
@@ -415,65 +435,73 @@ func TestLocalWorkspaceGrepUsesConfiguredRipgrep(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	matches, err := workspace.Grep(context.Background(), GrepRequest{
-		Pattern: "dragon", Paths: []string{"."}, Mode: "content",
-		CaseSensitive: true, Gitignore: true, Limit: 10,
-	})
+	matches, err := workspace.Grep(context.Background(), GrepRequest{Command: "rg dragon"})
 	if err != nil || strings.Join(matches.Entries, "\n") != "chapters/one.md" {
 		t.Fatalf("grep = %#v, %v", matches, err)
 	}
 }
 
 func TestGrepCursorSupportsLargeContinuationOffsets(t *testing.T) {
-	request := GrepRequest{
-		Pattern: "dragon", Paths: []string{"."}, Mode: "content",
-		CaseSensitive: true, Gitignore: true, Limit: 10,
-	}
-	cursor, err := encodeGrepCursor(50_000, request)
+	request := GrepRequest{Command: "rg dragon"}
+	cursor, err := encodeGrepCursor(grepCursorState{Offset: 50_000, Prefix: "prefix"}, request)
 	if err != nil {
 		t.Fatal(err)
 	}
-	offset, err := decodeGrepCursor(cursor, request)
-	if err != nil || offset != 50_000 {
-		t.Fatalf("large continuation cursor offset=%d err=%v", offset, err)
+	state, err := decodeGrepCursor(cursor, request)
+	if err != nil || state.Offset != 50_000 || state.Prefix != "prefix" {
+		t.Fatalf("large continuation cursor state=%#v err=%v", state, err)
 	}
 }
 
 func TestGrepUsesDeterministicPathOrdering(t *testing.T) {
-	args := grepArguments(normalizeGrepRequest(GrepRequest{Pattern: "dragon"}), grepTarget{searchPath: "."})
-	if !containsTestString(args, "--sort=path") {
+	workspace := mustOpenTestWorkspace(t, t.TempDir())
+	command, err := workspace.compileGrepCommand("rg dragon")
+	if err != nil {
+		t.Fatal(err)
+	}
+	args := grepArguments(command)
+	if !containsTestString(args, "--sort=path") || !containsTestString(args, "--path-separator=/") {
 		t.Fatalf("grep args are not deterministically sorted: %v", args)
+	}
+	if containsTestString(args, "--hidden") {
+		t.Fatalf("grep should preserve native hidden-file defaults: %v", args)
 	}
 }
 
 func TestSearchProjectionBudgetsEnvelopeAndRewritesCursor(t *testing.T) {
-	request := normalizeGrepRequest(GrepRequest{Pattern: "dragon", Mode: "content", Limit: 3})
-	result, err := searchToolResult("grep", SearchResult{Entries: []string{
-		strings.Repeat("a", 180), strings.Repeat("b", 180), strings.Repeat("c", 180),
-	}}, 600, func(returned int) (string, error) {
-		return encodeGrepCursor(7+returned, request)
+	request := normalizeGrepRequest(GrepRequest{Command: "rg dragon"})
+	initial := grepCursorState{Offset: 7, Prefix: "previous-prefix"}
+	entries := []string{
+		strings.Repeat("a", 220), strings.Repeat("b", 220), strings.Repeat("c", 220),
+		strings.Repeat("d", 220), strings.Repeat("e", 220),
+	}
+	result, err := searchToolResult("grep", SearchResult{Entries: entries}, 900, func(returned int) (string, error) {
+		return encodeGrepCursor(grepCursorState{
+			Offset: initial.Offset + returned,
+			Prefix: advanceGrepPrefix(initial.Prefix, entries[:returned]),
+		}, request)
 	})
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(result.ModelContent) > 600 {
+	if len(result.ModelContent) > 900 {
 		t.Fatalf("projected search has %d bytes", len(result.ModelContent))
 	}
 	parts := strings.Split(result.ModelContent, "\n")
 	visible := len(parts) - 1
-	if visible <= 0 || visible >= 3 {
+	if visible <= 0 || visible >= len(entries) {
 		t.Fatalf("visible entries = %d, result=%q", visible, result.ModelContent)
 	}
 	var envelope searchEnvelope
 	if err := json.Unmarshal([]byte(parts[0]), &envelope); err != nil {
 		t.Fatal(err)
 	}
-	offset, err := decodeGrepCursor(envelope.Limits.NextCursor, request)
+	state, err := decodeGrepCursor(envelope.Limits.NextCursor, request)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if envelope.Limits.Returned != visible || offset != 7+visible || !envelope.Limits.Truncated {
-		t.Fatalf("search envelope = %#v offset=%d visible=%d", envelope, offset, visible)
+	if envelope.Limits.Returned != visible || state.Offset != 7+visible || !envelope.Limits.Truncated {
+		t.Fatalf("search envelope = %#v cursor=%#v visible=%d", envelope, state, visible)
 	}
 }
 
@@ -502,6 +530,25 @@ func TestSearchToolsPublishNewStrictInterfaces(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	grepInfo, err := grep.Tool.Info(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	grepSchema, err := grepInfo.ToJSONSchema()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, ok := grepSchema.Properties.Get("command"); !ok || !containsTestString(grepSchema.Required, "command") {
+		t.Fatalf("grep command schema = %#v", grepSchema)
+	}
+	if _, ok := grepSchema.Properties.Get("cursor"); !ok {
+		t.Fatalf("grep cursor schema = %#v", grepSchema)
+	}
+	for _, removed := range []string{"pattern", "paths", "mode", "case_sensitive", "gitignore", "context_before", "context_after", "limit"} {
+		if _, ok := grepSchema.Properties.Get(removed); ok {
+			t.Fatalf("grep schema still exposes removed field %q: %#v", removed, grepSchema)
+		}
+	}
 	if glob.Descriptor.ResultRecoveryKind != agent.ToolResultRecoveryRerun || grep.Descriptor.ResultRecoveryKind != agent.ToolResultRecoveryRerun {
 		t.Fatalf("search result recovery = glob:%q grep:%q", glob.Descriptor.ResultRecoveryKind, grep.Descriptor.ResultRecoveryKind)
 	}
@@ -511,20 +558,20 @@ func TestSearchToolsPublishNewStrictInterfaces(t *testing.T) {
 	if searcher.glob.Hidden || searcher.glob.Gitignore || searcher.glob.Limit != 5 {
 		t.Fatalf("glob request = %#v", searcher.glob)
 	}
-	if _, err := grep.Tool.Run(context.Background(), `{"pattern":"dragon","paths":["chapters"],"mode":"files","case_sensitive":false,"gitignore":false,"context_after":2}`); err != nil {
+	if _, err := grep.Tool.Run(context.Background(), `{"command":"rg -i -l dragon -- chapters"}`); err != nil {
 		t.Fatal(err)
 	}
-	if searcher.grep.Mode != "files" || searcher.grep.CaseSensitive || searcher.grep.Gitignore || searcher.grep.ContextAfter != 2 {
+	if searcher.grep.Command != "rg -i -l dragon -- chapters" {
 		t.Fatalf("grep request = %#v", searcher.grep)
 	}
 	if _, err := glob.Tool.Run(context.Background(), `{"pattern":"legacy"}`); err == nil {
 		t.Fatal("glob accepted the removed pattern/path interface")
 	}
-	if _, err := grep.Tool.Run(context.Background(), `{"pattern":"dragon","output_mode":"content"}`); err != nil {
-		t.Fatalf("grep rejected harmless removed output_mode: %v", err)
+	if _, err := grep.Tool.Run(context.Background(), `{"pattern":"legacy"}`); err == nil {
+		t.Fatal("grep accepted the removed structured interface")
 	}
-	if searcher.grep.Mode != "content" {
-		t.Fatalf("grep default mode = %q", searcher.grep.Mode)
+	if _, err := grep.Tool.Run(context.Background(), `{"command":"rg dragon","output_mode":"content"}`); err != nil {
+		t.Fatalf("grep rejected a harmless unknown parameter: %v", err)
 	}
 }
 

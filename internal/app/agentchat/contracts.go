@@ -9,6 +9,7 @@ import (
 
 	"denova/config"
 	chatagent "denova/internal/agents/chat"
+	agentconversation "denova/internal/agents/conversation"
 	agentharness "denova/internal/agents/harness"
 	agentrun "denova/internal/agents/run"
 	"denova/internal/agents/session"
@@ -26,6 +27,7 @@ const RuntimeMode = "agent_chat"
 type Host interface {
 	BaseRuntime() (config.Config, *agentharness.Service)
 	CurrentWorkspace() string
+	ResolveAsk(context.Context, *session.Session, string, string, string, string, []agentconversation.HostAskAnswer, string) (agentconversation.HostAskResolution, error)
 	OnVerifiedMutations(context.Context, string, *book.VersionService, config.Config, []agenttool.Mutation, agenttool.Verification)
 }
 

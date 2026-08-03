@@ -22,6 +22,7 @@ import type {
 import type { AgentUIMessage } from '@/lib/agent-ui'
 import {
   agentSubAgentSessionKey,
+  agentViewAskID,
   agentViewContent,
   buildAgentMessageViews,
   selectAgentTokenUsageRecords,
@@ -490,7 +491,7 @@ function AgentPanelComponent({
     ) : null
   const resolveAsk = useCallback(
     async (view: AgentMessageView, action: { status: 'answered'; answers: AgentAskAnswer[] } | { status: 'cancelled' }) => {
-      const askID = typeof view.data.id === 'string' ? view.data.id.trim() : ''
+      const askID = agentViewAskID(view)
       if (!activeSessionId || !askID) throw new Error('Cannot resolve an Ask without its Session and interaction IDs')
       return resolveAgentAskAndRefresh(
         action,
@@ -704,11 +705,11 @@ function AgentPanelComponent({
                   </Panel>
                   <SubAgentDetailsResizeHandle label={t('chat.subagent.resizeSession')} />
                   <Panel id="subagent-details" defaultSize="48%" minSize="300px" maxSize="68%" className="min-w-[300px]">
-                    <AgentSubAgentSessionPanel messages={messages} sessionKey={activeSubAgentSessionKey} onClose={() => setActiveSubAgentSessionKey('')} />
+                    <AgentSubAgentSessionPanel messages={messages} sessionKey={activeSubAgentSessionKey} onClose={() => setActiveSubAgentSessionKey('')} onResolveAsk={resolveAsk} />
                   </Panel>
                 </Group>
                 <div className="absolute inset-0 z-30 lg:hidden">
-                  <AgentSubAgentSessionPanel messages={messages} sessionKey={activeSubAgentSessionKey} onClose={() => setActiveSubAgentSessionKey('')} />
+                  <AgentSubAgentSessionPanel messages={messages} sessionKey={activeSubAgentSessionKey} onClose={() => setActiveSubAgentSessionKey('')} onResolveAsk={resolveAsk} />
                 </div>
               </>
             )}

@@ -3,6 +3,7 @@ import { describe, expect, it, vi } from 'vitest'
 import type { ChatMessage } from '@/lib/api'
 import type { InteractiveSSEEvent } from '../../types'
 import { createStoryStageStreamConsumer } from './story-stage-stream-consumer'
+import { INTERACTIVE_STREAM_EVENT_CONTRACT } from './story-stage-stream-events'
 import type { LiveMessageAccumulator } from './use-live-message-accumulator'
 
 function eventStream(events: InteractiveSSEEvent[]) {
@@ -32,19 +33,86 @@ function consumerFixture(initialMessages: ChatMessage[] = []) {
     resetCompaction: vi.fn(),
     resetForCheckpoint: vi.fn(() => setMessages([])),
   } as unknown as LiveMessageAccumulator
+  const setActivity = vi.fn()
   const consumer = createStoryStageStreamConsumer({
     liveAccumulator,
     liveTurnNavigationAnchorId: 'live-turn',
     onRuntimeRecoveryRequired: vi.fn().mockResolvedValue(undefined),
     onTurnPersisted: vi.fn(),
-    setActivity: vi.fn(),
+    setActivity,
     setMessages,
     setStageRuntime: vi.fn(),
     t: ((key: string) => key) as unknown as TFunction,
     updateStageRun: vi.fn(),
   })
-  return { consumer, liveAccumulator, messages: () => messages }
+  return { consumer, liveAccumulator, messages: () => messages, setActivity }
 }
+
+describe('story stage stream event contract', () => {
+  it('surfaces unknown events instead of silently discarding them', async () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => undefined)
+    const fixture = consumerFixture()
+
+    await fixture.consumer.consume(
+      eventStream([
+        { id: '8', event: 'future_runtime_event', data: '{}' },
+        { id: '9', event: 'done', data: '{}' },
+      ]),
+      fixture.consumer.initialOutcome(),
+    )
+
+    expect(warn).toHaveBeenCalledWith(
+      '[interactive-stage] received unknown stream event',
+      { event: 'future_runtime_event', id: '8' },
+    )
+    expect(fixture.setActivity).toHaveBeenCalledWith('storyStage.activity.unsupportedEvent')
+    warn.mockRestore()
+  })
+
+  it('declares every intentionally display-neutral event', async () => {
+    const ignored = Object.entries(INTERACTIVE_STREAM_EVENT_CONTRACT)
+      .filter(([, handling]) => handling === 'ignored')
+      .map(([event]) => event)
+    expect(ignored).toEqual([
+      'ask_pending',
+      'ask_resolved',
+      'context_cleanup',
+      'context_normalizer',
+      'post_run_verification',
+      'run_state',
+      'tool_target',
+      'verification',
+      'workspace_change',
+    ])
+
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => undefined)
+    const fixture = consumerFixture()
+    await fixture.consumer.consume(
+      eventStream([
+        ...ignored.map((event, index) => ({ id: String(index + 1), event, data: '{}' })),
+        { id: '10', event: 'done', data: '{}' },
+      ]),
+      fixture.consumer.initialOutcome(),
+    )
+
+    expect(warn).not.toHaveBeenCalled()
+    warn.mockRestore()
+  })
+
+  it('projects tool execution lifecycle events into activity', async () => {
+    const fixture = consumerFixture()
+    await fixture.consumer.consume(
+      eventStream([
+        { id: '1', event: 'tool_started', data: JSON.stringify({ name: 'read' }) },
+        { id: '2', event: 'tool_progress', data: JSON.stringify({ name: 'read' }) },
+        { id: '3', event: 'done', data: '{}' },
+      ]),
+      fixture.consumer.initialOutcome(),
+    )
+
+    expect(fixture.setActivity).toHaveBeenCalledWith('storyStage.activity.processingTool')
+  })
+})
 
 describe('story stage display checkpoint recovery', () => {
   it('keeps root narrative Run identity while preserving trace segment metadata', async () => {

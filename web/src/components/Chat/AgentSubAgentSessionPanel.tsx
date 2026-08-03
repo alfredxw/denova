@@ -5,6 +5,7 @@ import { useTranslation } from 'react-i18next'
 import { Virtuoso } from 'react-virtuoso'
 import type { Components } from 'react-virtuoso'
 import type { AgentUIMessage } from '@/lib/agent-ui'
+import type { AgentAskAnswer, AgentAskResolution } from '@/lib/api'
 import { agentSubAgentSessionKey, buildAgentMessageViews, buildAgentSubAgentTimelineGroups, type AgentMessageView } from '@/lib/agent-message-view'
 import { AgentMessageItem } from './AgentMessageItem'
 import { VIRTUOSO_BOTTOM_THRESHOLD, useVirtuosoBottomLock } from './useVirtuosoBottomLock'
@@ -16,6 +17,7 @@ interface AgentSubAgentSessionPanelProps {
   onClose: () => void
   highlightDialogue?: boolean
   messageStyle?: CSSProperties
+  onResolveAsk?: (view: AgentMessageView, action: { status: 'answered'; answers: AgentAskAnswer[] } | { status: 'cancelled' }) => Promise<AgentAskResolution>
 }
 
 const SUBAGENT_SESSION_COMPONENTS: Components<AgentMessageView> = {
@@ -23,7 +25,7 @@ const SUBAGENT_SESSION_COMPONENTS: Components<AgentMessageView> = {
   Footer: SubAgentSessionListPadding,
 }
 
-export function AgentSubAgentSessionPanel({ messages, sessionKey, onClose, highlightDialogue = false, messageStyle }: AgentSubAgentSessionPanelProps) {
+export function AgentSubAgentSessionPanel({ messages, sessionKey, onClose, highlightDialogue = false, messageStyle, onResolveAsk }: AgentSubAgentSessionPanelProps) {
   const { t } = useTranslation()
   const sessionViews = useMemo(() => {
     const views = buildAgentMessageViews(messages)
@@ -50,9 +52,10 @@ export function AgentSubAgentSessionPanel({ messages, sessionKey, onClose, highl
         syncStreamingRowHeight={scrollLock.syncStreamingRowHeight}
         highlightDialogue={highlightDialogue}
         messageStyle={messageStyle}
+        onResolveAsk={onResolveAsk}
       />
     )
-  }, [highlightDialogue, messageStyle, running, scrollLock.streamingRowRef, scrollLock.syncStreamingRowHeight, sessionViews])
+  }, [highlightDialogue, messageStyle, onResolveAsk, running, scrollLock.streamingRowRef, scrollLock.syncStreamingRowHeight, sessionViews])
 
   return (
     <section className="flex h-full min-h-0 flex-col border-l border-[var(--nova-border)] bg-[var(--nova-surface-2)] shadow-[-12px_0_26px_-24px_rgba(0,0,0,0.72)]">
@@ -113,13 +116,14 @@ export function AgentSubAgentSessionPanel({ messages, sessionKey, onClose, highl
   )
 }
 
-function SubAgentSessionRow({ view, streamingTail, streamingRowRef, syncStreamingRowHeight, highlightDialogue, messageStyle }: {
+function SubAgentSessionRow({ view, streamingTail, streamingRowRef, syncStreamingRowHeight, highlightDialogue, messageStyle, onResolveAsk }: {
   view: AgentMessageView
   streamingTail: boolean
   streamingRowRef: RefCallback<HTMLElement>
   syncStreamingRowHeight: () => void
   highlightDialogue: boolean
   messageStyle?: CSSProperties
+  onResolveAsk?: AgentSubAgentSessionPanelProps['onResolveAsk']
 }) {
   useLayoutEffect(() => {
     if (streamingTail) syncStreamingRowHeight()
@@ -136,6 +140,7 @@ function SubAgentSessionRow({ view, streamingTail, streamingRowRef, syncStreamin
         highlightDialogue={highlightDialogue}
         messageStyle={messageStyle}
         subAgentPresentation="content"
+        onResolveAsk={onResolveAsk}
       />
     </div>
   )

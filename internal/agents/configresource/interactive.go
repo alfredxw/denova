@@ -27,7 +27,7 @@ func (resource jsonConfigResource[T]) adapter() Adapter {
 	return configResourceAdapter{
 		descriptor: Descriptor{
 			Name: resource.name, Description: resource.description, Scopes: []string{"user"},
-			Operations: configCRUDOperations(), RevisionField: "updated_at", Reference: resource.reference,
+			Operations: configCRUDOperations(), RevisionField: "revision", Reference: resource.reference,
 		},
 		list: func(ctx context.Context, _ ReadRequest) (any, error) {
 			return withConfigResourceLease(ctx, resource.leasePath, func() (any, error) {
@@ -109,7 +109,7 @@ func newNarrativeStyleResource(novaDir string) Adapter {
 		update: func(id string, value teller.Definition, revision string) (teller.Definition, error) {
 			return lib.Update(id, value, revision)
 		},
-		delete: lib.Delete, id: func(value teller.Definition) string { return value.ID }, revision: func(value teller.Definition) string { return value.UpdatedAt },
+		delete: lib.Delete, id: func(value teller.Definition) string { return value.ID }, revision: func(value teller.Definition) string { return value.Revision },
 	}.adapter()
 }
 
@@ -119,7 +119,7 @@ func newStoryDirectorResource(novaDir string) Adapter {
 		name: "story_director", description: "Game-mode story orchestration and reusable module references.", reference: "references/story-director.md",
 		leasePath: configResourceLeasePath(novaDir, "story_director"),
 		list:      lib.List, get: lib.Get, create: lib.Create, update: lib.Update, delete: lib.Delete,
-		id: func(value interactive.StoryDirector) string { return value.ID }, revision: func(value interactive.StoryDirector) string { return value.UpdatedAt },
+		id: func(value interactive.StoryDirector) string { return value.ID }, revision: func(value interactive.StoryDirector) string { return value.Revision },
 	}.adapter()
 }
 
@@ -129,7 +129,7 @@ func newEventPackageResource(novaDir string) Adapter {
 		name: "event_package", description: "Game-mode package of reusable event cards.", reference: "references/event-package.md",
 		leasePath: configResourceLeasePath(novaDir, "event_package"),
 		list:      lib.List, get: lib.Get, create: lib.Create, update: lib.Update, delete: lib.Delete,
-		id: func(value interactive.EventPackageModule) string { return value.ID }, revision: func(value interactive.EventPackageModule) string { return value.UpdatedAt },
+		id: func(value interactive.EventPackageModule) string { return value.ID }, revision: func(value interactive.EventPackageModule) string { return value.Revision },
 	}.adapter()
 }
 
@@ -139,7 +139,7 @@ func newRuleSystemResource(novaDir string) Adapter {
 		name: "rule_system", description: "Game-mode d20 check policy, guidance, and state bindings.", reference: "references/rule-system.md",
 		leasePath: configResourceLeasePath(novaDir, "rule_system"),
 		list:      lib.List, get: lib.Get, create: lib.Create, update: lib.Update, delete: lib.Delete,
-		id: func(value interactive.RuleSystemModule) string { return value.ID }, revision: func(value interactive.RuleSystemModule) string { return value.UpdatedAt },
+		id: func(value interactive.RuleSystemModule) string { return value.ID }, revision: func(value interactive.RuleSystemModule) string { return value.Revision },
 	}.adapter()
 }
 
@@ -149,6 +149,6 @@ func newStateSystemResource(novaDir string) Adapter {
 		name: "state_system", description: "Game-mode Actor state schemas, initial actors, and trait pools.", reference: "references/state-system.md",
 		leasePath: configResourceLeasePath(novaDir, "state_system"),
 		list:      lib.List, get: lib.Get, create: lib.Create, update: lib.Update, delete: lib.Delete,
-		id: func(value interactive.ActorStateModule) string { return value.ID }, revision: func(value interactive.ActorStateModule) string { return value.UpdatedAt },
+		id: func(value interactive.ActorStateModule) string { return value.ID }, revision: func(value interactive.ActorStateModule) string { return value.Revision },
 	}.adapter()
 }

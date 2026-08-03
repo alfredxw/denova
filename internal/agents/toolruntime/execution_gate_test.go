@@ -37,7 +37,7 @@ func TestToolExecutionGateAllowsReadOnlyCallsInParallel(t *testing.T) {
 
 	errs := make(chan error, 2)
 	go invokeGateTestEndpoint(readFile, `{"file_path":"a.md"}`, errs)
-	go invokeGateTestEndpoint(grep, `{"pattern":"x"}`, errs)
+	go invokeGateTestEndpoint(grep, `{"command":"rg x"}`, errs)
 	waitForGateTestEntries(t, entered, 2)
 	close(release)
 	waitForGateTestResults(t, errs, 2)

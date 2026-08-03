@@ -2,6 +2,7 @@ package app
 
 import (
 	"context"
+	"denova/config"
 	agentconversation "denova/internal/agents/conversation"
 	agentharness "denova/internal/agents/harness"
 	agentrun "denova/internal/agents/run"
@@ -12,6 +13,79 @@ import (
 	"denova/internal/agents/session"
 	configmanagerapp "denova/internal/app/configmanager"
 )
+
+func TestPermanentToolApprovalPersistsBeforeWaiterResumes(t *testing.T) {
+	novaDir := t.TempDir()
+	workspace := t.TempDir()
+	store, err := session.NewStore(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer store.Close()
+	sess, err := store.Create("approval-rule-session")
+	if err != nil {
+		t.Fatal(err)
+	}
+	application := &App{
+		cfg: &config.Config{
+			NovaDir: novaDir, Workspace: workspace, ProjectID: "project-approval-rule",
+		},
+		workspace: workspace, sessionStore: store, session: sess,
+	}
+	interaction := session.AskInteraction{
+		ID: "approval-rule-ask", Kind: session.AskKindToolApproval,
+		ToolCallID: "approval-rule-tool", AgentKind: "ide",
+		Approval: &session.ToolApprovalPresentation{
+			Mode: "ask", ToolName: "bash", Command: "go test ./internal/agents/...", Risk: "high",
+			RuleID: "bash_unlisted_command", ArgsHash: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+			CanRemember: true, RuleMatcherVersion: config.AgentApprovalRuleMatcherVersion,
+			RuleCommandKey: `["go","test"]`, RuleCommandPattern: "go test ...",
+		},
+		Questions: []session.AskQuestion{{
+			ID: session.ToolApprovalQuestionID, Question: "Approve this tool call?",
+			Options: []session.AskOption{
+				{ID: session.ToolApprovalAllowOnceOptionID, Label: "Allow once"},
+				{ID: session.ToolApprovalAllowWorkspaceOptionID, Label: "Always allow"},
+				{ID: session.ToolApprovalDenyOptionID, Label: "Deny"},
+			},
+		}},
+	}
+	persistedBeforeResume := make(chan bool, 1)
+	waiterErr := make(chan error, 1)
+	go func() {
+		_, awaitErr := sess.AwaitAsk(context.Background(), interaction)
+		settings, readErr := config.ReadSettingsFile(config.UserConfigPath(novaDir))
+		persistedBeforeResume <- readErr == nil && len(settings.AgentApprovalRules) == 1
+		waiterErr <- awaitErr
+	}()
+	deadline := time.Now().Add(time.Second)
+	for time.Now().Before(deadline) && sess.PendingAsk(interaction.ID) == nil {
+		time.Sleep(time.Millisecond)
+	}
+	if sess.PendingAsk(interaction.ID) == nil {
+		t.Fatal("tool approval did not become pending")
+	}
+	resolution, err := application.AnswerSessionAsk(context.Background(), sess.ID, interaction.ID, []AgentAskAnswer{{
+		QuestionID:        session.ToolApprovalQuestionID,
+		SelectedOptionIDs: []string{session.ToolApprovalAllowWorkspaceOptionID},
+	}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if resolution.Status != session.AskAnswered || !<-persistedBeforeResume {
+		t.Fatalf("resolution=%#v persisted_before_resume=false", resolution)
+	}
+	if err := <-waiterErr; err != nil {
+		t.Fatal(err)
+	}
+	persisted, err := config.ReadSettingsFile(config.UserConfigPath(novaDir))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(persisted.AgentApprovalRules) != 1 || persisted.AgentApprovalRules[0].CommandPattern != "go test ..." {
+		t.Fatalf("persisted rules = %#v", persisted.AgentApprovalRules)
+	}
+}
 
 func TestResolveSessionAskResumesExactIDEWaiter(t *testing.T) {
 	store, err := session.NewStore(t.TempDir())

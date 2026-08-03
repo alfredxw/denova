@@ -152,7 +152,7 @@ func TestCustomPresetUpdateAndDelete(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	updated, err := lib.Update(created.ID, Preset{Name: "新方案", Prompt: "新 prompt"})
+	updated, err := lib.Update(created.ID, Preset{Name: "新方案", Prompt: "新 prompt"}, created.Revision)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -173,11 +173,11 @@ func TestPresetUpdateRejectsStaleRevision(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	agent, err := lib.Update(created.ID, Preset{Name: "Agent 方案", Prompt: "Agent prompt"}, created.UpdatedAt)
+	agent, err := lib.Update(created.ID, Preset{Name: "Agent 方案", Prompt: "Agent prompt"}, created.Revision)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err := lib.Update(created.ID, Preset{Name: "前端旧方案", Prompt: "前端旧 prompt"}, created.UpdatedAt); !errors.Is(err, ErrPresetRevisionConflict) {
+	if _, err := lib.Update(created.ID, Preset{Name: "前端旧方案", Prompt: "前端旧 prompt"}, created.Revision); !errors.Is(err, ErrPresetRevisionConflict) {
 		t.Fatalf("expected preset revision conflict, got %v", err)
 	}
 	got, err := lib.Get(created.ID)
@@ -196,7 +196,7 @@ func TestBuiltinPresetOverrideAndRestore(t *testing.T) {
 		t.Fatal(err)
 	}
 	builtin.Name = "我的游戏 CG"
-	overridden, err := lib.Update(DefaultID, builtin, builtin.UpdatedAt)
+	overridden, err := lib.Update(DefaultID, builtin, builtin.Revision)
 	if err != nil {
 		t.Fatalf("Update built-in preset should create override: %v", err)
 	}

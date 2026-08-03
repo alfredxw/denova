@@ -2,7 +2,7 @@
 
 State Systems define reusable Game-mode Actor schemas, initial Actors, and weighted trait pools. A story freezes a schema snapshot when initialized, so editing a reusable module affects new stories, not historical story state.
 
-This resource uses `user` scope and complete editable-resource replacement. Update/delete require the latest `updated_at` returned by `get` as `revision`.
+This resource uses `user` scope and complete editable-resource replacement. Update/delete require the latest content-addressed `revision` returned by `get`; `updated_at` is display metadata and is not a concurrency token.
 
 ## Top-level fields
 

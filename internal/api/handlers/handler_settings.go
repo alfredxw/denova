@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"strings"
 
 	"github.com/cloudwego/hertz/pkg/app"
 	"github.com/cloudwego/hertz/pkg/protocol/consts"
@@ -15,6 +16,22 @@ import (
 // HandleSettingsGet returns persisted layers and their resolved runtime view.
 func (h *Handlers) HandleSettingsGet(ctx context.Context, c *app.RequestContext) {
 	layered, err := h.app.SettingsService().Snapshot()
+	if err != nil {
+		writeError(c, consts.StatusInternalServerError, err.Error())
+		return
+	}
+	writeJSON(c, consts.StatusOK, layered)
+}
+
+// HandleAgentApprovalRuleDelete atomically revokes one server-generated user
+// rule without replacing the surrounding collection from a stale UI snapshot.
+func (h *Handlers) HandleAgentApprovalRuleDelete(ctx context.Context, c *app.RequestContext) {
+	id := strings.TrimSpace(c.Param("id"))
+	if id == "" {
+		writeErrorKey(c, consts.StatusBadRequest, "api.common.invalidRequestWithDetail", "detail", "agent approval rule id is required")
+		return
+	}
+	_, layered, err := h.app.SettingsService().RemoveAgentApprovalRule(id)
 	if err != nil {
 		writeError(c, consts.StatusInternalServerError, err.Error())
 		return

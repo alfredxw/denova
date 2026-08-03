@@ -196,6 +196,19 @@ func safeDevelopmentCommand(name string, args []string, boundary pathBoundary) b
 		containsActionArgument(args, "install", "uninstall", "publish", "unpublish", "deploy", "release", "upload") {
 		return false
 	}
+	// These flags replace part of a trusted toolchain with an invocation chosen
+	// by the command. Treat them as arbitrary execution instead of inheriting a
+	// broad development-command policy or a saved command-family approval.
+	switch name {
+	case "go":
+		if hasFlagPrefix(args, "-exec", "-toolexec", "-overlay") {
+			return false
+		}
+	case "cargo":
+		if hasFlagPrefix(args, "--config") {
+			return false
+		}
+	}
 	if name == "gradlew" {
 		return true
 	}
@@ -213,8 +226,8 @@ func safeDevelopmentCommand(name string, args []string, boundary pathBoundary) b
 	}
 }
 
-func safePackageCommand(args []string, boundary pathBoundary) bool {
-	if len(args) == 0 {
+func safePackageCommand(name string, args []string, boundary pathBoundary) bool {
+	if len(args) == 0 || strings.HasPrefix(args[0], "-") {
 		return false
 	}
 	if containsArgument(args,
@@ -226,6 +239,18 @@ func safePackageCommand(args []string, boundary pathBoundary) bool {
 		"--location", "--global-folder",
 	) {
 		return false
+	}
+	runner := oneOf(name, "npx", "bunx") ||
+		oneOf(strings.ToLower(args[0]), "exec", "dlx", "x")
+	for _, arg := range args {
+		if arg == "--" {
+			break
+		}
+		option, _, _ := strings.Cut(strings.ToLower(arg), "=")
+		if oneOf(option, "--script-shell", "--shell", "--node-options") ||
+			runner && oneOf(option, "-c", "--call", "-p", "--package") {
+			return false
+		}
 	}
 	return !hasExternalLiteralArgument(args, boundary)
 }

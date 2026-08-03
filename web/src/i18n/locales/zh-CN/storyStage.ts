@@ -160,6 +160,7 @@ const storyStage = {
   'storyStage.activity.processingTool': '正在处理 {{name}}…',
   'storyStage.activity.toolCall': '工具调用',
   'storyStage.activity.unknownError': '未知错误',
+  'storyStage.activity.unsupportedEvent': '收到暂不支持的 Agent 事件：{{event}}',
   'storyStage.activity.persistenceMissing': '本轮没有收到持久化确认，已丢弃未落盘的正文并重新加载故事。请重试。',
   'storyStage.activity.rehydrateRequired': '较早的实时轨迹已超出展示预算；已恢复规范故事历史，并继续观察同一次游戏 Agent 运行。',
   'storyStage.activity.done': '完成',

@@ -1,6 +1,7 @@
 package teller
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -11,6 +12,8 @@ import (
 	"strings"
 	"time"
 
+	"denova/internal/revisionfile"
+	"denova/internal/revisionjson"
 	"denova/internal/style"
 )
 
@@ -41,6 +44,7 @@ type Definition struct {
 	Error             string        `json:"error,omitempty"`
 	CreatedAt         string        `json:"created_at,omitempty"`
 	UpdatedAt         string        `json:"updated_at,omitempty"`
+	Revision          string        `json:"revision,omitempty"`
 }
 
 type ContextPolicy struct {
@@ -133,63 +137,55 @@ func (l *Library) Create(teller Definition) (Definition, error) {
 		return Definition{}, err
 	}
 	path := filepath.Join(l.dir(), teller.ID+".json")
-	if _, err := os.Stat(path); err == nil {
-		return Definition{}, fmt.Errorf("导演 ID 已存在: %s", teller.ID)
-	} else if !os.IsNotExist(err) {
-		return Definition{}, err
-	}
 	now := time.Now().UTC().Format(time.RFC3339Nano)
 	teller.CreatedAt = now
 	teller.UpdatedAt = now
-	if err := writeTellerFile(path, teller); err != nil {
+	document, err := tellerFileStore(path).Create(context.Background(), teller)
+	if errors.Is(err, revisionjson.ErrAlreadyExists) {
+		return Definition{}, fmt.Errorf("导演 ID 已存在: %s", teller.ID)
+	}
+	if err != nil {
 		return Definition{}, err
 	}
-	teller.Path = path
+	teller = document.Value
+	teller.Path, teller.Revision = path, document.Revision
 	teller = applyTellerOwnership(teller)
 	return teller, nil
 }
 
-func (l *Library) Update(id string, teller Definition, baseRevision ...string) (Definition, error) {
+func (l *Library) Update(id string, teller Definition, baseRevision string) (Definition, error) {
 	if err := l.ensureBuiltins(); err != nil {
 		return Definition{}, err
 	}
 	if err := validateTellerID(id); err != nil {
 		return Definition{}, err
 	}
-	isBuiltin := isBuiltinID(id)
-	current, err := l.Get(id)
-	if err != nil {
-		return Definition{}, err
-	}
-	if firstTellerRevision(baseRevision) != "" && current.UpdatedAt != firstTellerRevision(baseRevision) {
-		return Definition{}, ErrRevisionConflict
-	}
-	now := time.Now().UTC().Format(time.RFC3339Nano)
 	teller.ID = id
-	teller.CreatedAt = current.CreatedAt
-	if teller.CreatedAt == "" {
-		teller.CreatedAt = now
-	}
-	teller.UpdatedAt = now
-	teller.BuiltinOverridden = isBuiltin
 	teller = Normalize(teller)
 	if err := validateTeller(teller); err != nil {
 		return Definition{}, err
 	}
 	path := filepath.Join(l.dir(), id+".json")
-	if err := writeTellerFile(path, teller); err != nil {
+	document, err := tellerFileStore(path).Update(context.Background(), baseRevision, func(current Definition) (Definition, error) {
+		now := time.Now().UTC().Format(time.RFC3339Nano)
+		teller.CreatedAt = current.CreatedAt
+		if teller.CreatedAt == "" {
+			teller.CreatedAt = now
+		}
+		teller.UpdatedAt = now
+		teller.BuiltinOverridden = isBuiltinID(id)
+		return teller, validateTeller(teller)
+	})
+	if err != nil {
+		if errors.Is(err, revisionfile.ErrRevisionConflict) || errors.Is(err, revisionjson.ErrRevisionRequired) {
+			return Definition{}, fmt.Errorf("%w: %v", ErrRevisionConflict, err)
+		}
 		return Definition{}, err
 	}
-	teller.Path = path
+	teller = document.Value
+	teller.Path, teller.Revision = path, document.Revision
 	teller = applyTellerOwnership(teller)
 	return teller, nil
-}
-
-func firstTellerRevision(values []string) string {
-	if len(values) == 0 {
-		return ""
-	}
-	return values[0]
 }
 
 func (l *Library) Delete(id string) error {
@@ -253,29 +249,42 @@ func readTellerFileVersion(path string) (int, error) {
 }
 
 func parseTellerFile(path string) (Definition, error) {
-	data, err := os.ReadFile(path)
+	document, err := tellerFileStore(path).Read(context.Background())
 	if err != nil {
 		return Definition{}, err
 	}
-	var teller Definition
-	if err := json.Unmarshal(data, &teller); err != nil {
-		return Definition{}, fmt.Errorf("解析导演 JSON 失败: %w", err)
-	}
-	teller = Normalize(teller)
-	if err := validateTeller(teller); err != nil {
-		return Definition{}, err
-	}
+	teller := document.Value
 	teller.Path = path
+	teller.Revision = document.Revision
 	return teller, nil
 }
 
 func writeTellerFile(path string, teller Definition) error {
-	teller = Normalize(teller)
-	data, err := json.MarshalIndent(teller, "", "  ")
-	if err != nil {
-		return err
-	}
-	return os.WriteFile(path, append(data, '\n'), 0o644)
+	_, err := tellerFileStore(path).Replace(context.Background(), teller)
+	return err
+}
+
+func tellerFileStore(path string) revisionjson.Store[Definition] {
+	return revisionjson.NewStore(path, revisionjson.Codec[Definition]{
+		Decode: func(data []byte) (Definition, error) {
+			var teller Definition
+			if err := json.Unmarshal(data, &teller); err != nil {
+				return Definition{}, fmt.Errorf("解析导演 JSON 失败: %w", err)
+			}
+			teller = Normalize(teller)
+			return teller, validateTeller(teller)
+		},
+		Encode: func(teller Definition) ([]byte, error) {
+			teller = Normalize(teller)
+			if err := validateTeller(teller); err != nil {
+				return nil, err
+			}
+			teller.Path, teller.Revision, teller.Error = "", "", ""
+			teller.Invalid, teller.Custom = false, false
+			data, err := json.MarshalIndent(teller, "", "  ")
+			return append(data, '\n'), err
+		},
+	})
 }
 
 func applyTellerOwnership(teller Definition) Definition {
@@ -306,6 +315,7 @@ func tellerComparable(teller Definition) Definition {
 	teller.Error = ""
 	teller.CreatedAt = ""
 	teller.UpdatedAt = ""
+	teller.Revision = ""
 	return teller
 }
 

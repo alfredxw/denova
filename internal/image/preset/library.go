@@ -1,6 +1,7 @@
 package preset
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -10,6 +11,9 @@ import (
 	"sort"
 	"strings"
 	"time"
+
+	"denova/internal/revisionfile"
+	"denova/internal/revisionjson"
 )
 
 const (
@@ -41,6 +45,7 @@ type Preset struct {
 	Error             string `json:"error,omitempty"`
 	CreatedAt         string `json:"created_at,omitempty"`
 	UpdatedAt         string `json:"updated_at,omitempty"`
+	Revision          string `json:"revision,omitempty"`
 }
 
 type Slot struct {
@@ -123,22 +128,22 @@ func (l *Library) Create(preset Preset) (Preset, error) {
 		return Preset{}, err
 	}
 	path := filepath.Join(l.dir(), preset.ID+".json")
-	if _, err := os.Stat(path); err == nil {
-		return Preset{}, fmt.Errorf("图像方案 ID 已存在: %s", preset.ID)
-	} else if !os.IsNotExist(err) {
-		return Preset{}, err
-	}
 	now := time.Now().UTC().Format(time.RFC3339Nano)
 	preset.CreatedAt = now
 	preset.UpdatedAt = now
-	if err := writePresetFile(path, preset); err != nil {
+	document, err := presetFileStore(path).Create(context.Background(), preset)
+	if errors.Is(err, revisionjson.ErrAlreadyExists) {
+		return Preset{}, fmt.Errorf("图像方案 ID 已存在: %s", preset.ID)
+	}
+	if err != nil {
 		return Preset{}, err
 	}
-	preset.Path = path
+	preset = document.Value
+	preset.Path, preset.Revision = path, document.Revision
 	return applyPresetOwnership(preset), nil
 }
 
-func (l *Library) Update(id string, preset Preset, baseRevision ...string) (Preset, error) {
+func (l *Library) Update(id string, preset Preset, baseRevision string) (Preset, error) {
 	if err := l.ensureBuiltins(); err != nil {
 		return Preset{}, err
 	}
@@ -146,38 +151,30 @@ func (l *Library) Update(id string, preset Preset, baseRevision ...string) (Pres
 	if err := validateID(id); err != nil {
 		return Preset{}, err
 	}
-	isBuiltin := IsBuiltinID(id)
-	current, err := l.Get(id)
-	if err != nil {
-		return Preset{}, err
-	}
-	if firstPresetRevision(baseRevision) != "" && current.UpdatedAt != firstPresetRevision(baseRevision) {
-		return Preset{}, ErrPresetRevisionConflict
-	}
 	if err := validatePresetWriteBounds(preset); err != nil {
 		return Preset{}, err
 	}
 	preset.ID = id
-	preset.CreatedAt = current.CreatedAt
-	preset.UpdatedAt = time.Now().UTC().Format(time.RFC3339Nano)
-	preset.BuiltinOverridden = isBuiltin
 	preset = normalizePreset(preset)
 	if err := validatePreset(preset); err != nil {
 		return Preset{}, err
 	}
 	path := filepath.Join(l.dir(), id+".json")
-	if err := writePresetFile(path, preset); err != nil {
+	document, err := presetFileStore(path).Update(context.Background(), baseRevision, func(current Preset) (Preset, error) {
+		preset.CreatedAt = current.CreatedAt
+		preset.UpdatedAt = time.Now().UTC().Format(time.RFC3339Nano)
+		preset.BuiltinOverridden = IsBuiltinID(id)
+		return preset, validatePreset(preset)
+	})
+	if err != nil {
+		if errors.Is(err, revisionfile.ErrRevisionConflict) || errors.Is(err, revisionjson.ErrRevisionRequired) {
+			return Preset{}, fmt.Errorf("%w: %v", ErrPresetRevisionConflict, err)
+		}
 		return Preset{}, err
 	}
-	preset.Path = path
+	preset = document.Value
+	preset.Path, preset.Revision = path, document.Revision
 	return applyPresetOwnership(preset), nil
-}
-
-func firstPresetRevision(values []string) string {
-	if len(values) == 0 {
-		return ""
-	}
-	return values[0]
 }
 
 func (l *Library) Delete(id string) error {
@@ -242,29 +239,42 @@ func readPresetFileVersion(path string) (int, error) {
 }
 
 func parsePresetFile(path string) (Preset, error) {
-	data, err := os.ReadFile(path)
+	document, err := presetFileStore(path).Read(context.Background())
 	if err != nil {
 		return Preset{}, err
 	}
-	var preset Preset
-	if err := json.Unmarshal(data, &preset); err != nil {
-		return Preset{}, fmt.Errorf("解析图像方案 JSON 失败: %w", err)
-	}
-	preset = normalizePreset(preset)
-	if err := validatePreset(preset); err != nil {
-		return Preset{}, err
-	}
+	preset := document.Value
 	preset.Path = path
+	preset.Revision = document.Revision
 	return preset, nil
 }
 
 func writePresetFile(path string, preset Preset) error {
-	preset = normalizePreset(preset)
-	data, err := json.MarshalIndent(preset, "", "  ")
-	if err != nil {
-		return err
-	}
-	return os.WriteFile(path, append(data, '\n'), 0o644)
+	_, err := presetFileStore(path).Replace(context.Background(), preset)
+	return err
+}
+
+func presetFileStore(path string) revisionjson.Store[Preset] {
+	return revisionjson.NewStore(path, revisionjson.Codec[Preset]{
+		Decode: func(data []byte) (Preset, error) {
+			var preset Preset
+			if err := json.Unmarshal(data, &preset); err != nil {
+				return Preset{}, fmt.Errorf("解析图像方案 JSON 失败: %w", err)
+			}
+			preset = normalizePreset(preset)
+			return preset, validatePreset(preset)
+		},
+		Encode: func(preset Preset) ([]byte, error) {
+			preset = normalizePreset(preset)
+			if err := validatePreset(preset); err != nil {
+				return nil, err
+			}
+			preset.Path, preset.Revision, preset.Error = "", "", ""
+			preset.Invalid, preset.Custom = false, false
+			data, err := json.MarshalIndent(preset, "", "  ")
+			return append(data, '\n'), err
+		},
+	})
 }
 
 func normalizePreset(preset Preset) Preset {
@@ -309,6 +319,7 @@ func presetComparable(preset Preset) Preset {
 	preset.Error = ""
 	preset.CreatedAt = ""
 	preset.UpdatedAt = ""
+	preset.Revision = ""
 	return preset
 }
 

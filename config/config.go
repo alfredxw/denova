@@ -66,6 +66,7 @@ type Config struct {
 	AgentToolResultLimitKB      int                       `toml:"agent_tool_result_limit_kb"`
 	AgentToolParallelism        int                       `toml:"agent_tool_parallelism"`
 	AgentApprovalMode           AgentApprovalMode         `toml:"agent_approval_mode"`
+	AgentApprovalRules          []AgentApprovalRule       `toml:"agent_approval_rules"`
 	ShellEnvironmentMode        ShellEnvironmentMode      `toml:"shell_environment_mode"`
 	ShellEnvironmentShell       string                    `toml:"shell_environment_shell"`
 	AgentBashPath               string                    `toml:"agent_bash_path"`
@@ -136,6 +137,7 @@ func LoadWithWorkspace(workspace string) (*Config, LayeredSettings, error) {
 		AgentToolResultLimitKB:      settingsAgentToolResultLimitKB(s.AgentToolResultLimitKB),
 		AgentToolParallelism:        settingsAgentToolParallelism(s.AgentToolParallelism),
 		AgentApprovalMode:           NormalizeAgentApprovalMode(s.AgentApprovalMode),
+		AgentApprovalRules:          NormalizeAgentApprovalRules(s.AgentApprovalRules),
 		ShellEnvironmentMode:        normalizeShellEnvironmentMode(s.ShellEnvironmentMode),
 		ShellEnvironmentShell:       s.ShellEnvironmentShell,
 		AgentBashPath:               s.AgentBashPath,
@@ -263,6 +265,7 @@ func settingsFromConfig(cfg *Config) Settings {
 		TerminalCodexCommand:     cfg.TerminalCodexCommand,
 		TerminalClaudeCommand:    cfg.TerminalClaudeCommand,
 		AgentApprovalMode:        cfg.AgentApprovalMode,
+		AgentApprovalRules:       NormalizeAgentApprovalRules(cfg.AgentApprovalRules),
 		ShellEnvironmentMode:     cfg.ShellEnvironmentMode,
 		ShellEnvironmentShell:    cfg.ShellEnvironmentShell,
 		AgentBashPath:            cfg.AgentBashPath,
@@ -371,6 +374,7 @@ func Load() *Config {
 			AgentToolResultLimitKB:      settingsAgentToolResultLimitKB(d.AgentToolResultLimitKB),
 			AgentToolParallelism:        settingsAgentToolParallelism(d.AgentToolParallelism),
 			AgentApprovalMode:           NormalizeAgentApprovalMode(d.AgentApprovalMode),
+			AgentApprovalRules:          NormalizeAgentApprovalRules(d.AgentApprovalRules),
 			ShellEnvironmentMode:        normalizeShellEnvironmentMode(d.ShellEnvironmentMode),
 			ShellEnvironmentShell:       d.ShellEnvironmentShell,
 			AgentBashPath:               d.AgentBashPath,

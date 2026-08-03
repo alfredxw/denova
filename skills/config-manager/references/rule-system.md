@@ -2,7 +2,7 @@
 
 Rule systems define one reusable Game-mode fixed-d20 adjudication style and optional typed State System bindings.
 
-This resource uses `user` scope and complete editable-resource replacement. Update/delete require the latest `updated_at` returned by `get` as `revision`.
+This resource uses `user` scope and complete editable-resource replacement. Update/delete require the latest content-addressed `revision` returned by `get`; `updated_at` is display metadata and is not a concurrency token.
 
 ## Top-level fields
 

@@ -70,5 +70,8 @@ func (service *Service) resolveAsk(
 	if err != nil {
 		return agentconversation.HostAskResolution{}, err
 	}
-	return agentconversation.ResolveAsk(ctx, sess, askID, status, answers, cancelReason)
+	runtime := service.host.Snapshot()
+	return service.host.ResolveAsk(
+		ctx, sess, runtime.Config.ProjectID, runtime.Workspace, askID, status, answers, cancelReason,
+	)
 }

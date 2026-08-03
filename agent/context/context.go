@@ -20,6 +20,10 @@ const (
 	MessageExtraPlacement = "agent.context.placement"
 
 	DefaultPreviewChars = 100
+	// DefaultTruncationNotice is rendered whenever an included fragment is
+	// incomplete. It stays outside caller content so the assembler can account
+	// for it without changing the fragment's content hash.
+	DefaultTruncationNotice = "Content truncated. Use a tool to read the complete source if needed."
 )
 
 // Renderer owns the human-facing placement text around bounded fragments.
@@ -41,7 +45,7 @@ func (DefaultRenderer) RenderLeading(fragment Fragment) string {
 	if title == "" {
 		title = "Context"
 	}
-	return "# " + title + "\n\n" + strings.TrimSpace(fragment.Content)
+	return "# " + title + "\n\n" + defaultRenderedFragmentContent(fragment)
 }
 
 func (DefaultRenderer) RenderFinalUser(userRequest string, fragments []Fragment) string {
@@ -60,11 +64,19 @@ func (DefaultRenderer) RenderFinalUser(userRequest string, fragments []Fragment)
 		builder.WriteString("# ")
 		builder.WriteString(title)
 		builder.WriteString("\n\n")
-		builder.WriteString(strings.TrimSpace(fragment.Content))
+		builder.WriteString(defaultRenderedFragmentContent(fragment))
 	}
 	builder.WriteString("\n\n---\n\n# User request\n\n")
 	builder.WriteString(strings.TrimSpace(userRequest))
 	return builder.String()
+}
+
+func defaultRenderedFragmentContent(fragment Fragment) string {
+	content := strings.TrimSpace(fragment.Content)
+	if !fragment.Truncated {
+		return content
+	}
+	return content + "\n\n> " + DefaultTruncationNotice
 }
 
 // Source is one bounded context fragment intentionally made visible to the model

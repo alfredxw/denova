@@ -22,7 +22,7 @@ import { Tool, ToolContent } from '@/components/ai-elements/tool'
 import { Shimmer } from '@/components/ai-elements/shimmer'
 import { StreamingContentStage } from './StreamingContentStage'
 import { AskInteractionCard, type AskInteractionResolver } from './AskInteractionCard'
-import { ToolApprovalCard } from './ToolApprovalCard'
+import { ToolApprovalCard, ToolApprovalPanel } from './ToolApprovalCard'
 
 interface MessageItemProps {
   message: ChatMessage
@@ -43,7 +43,7 @@ interface MessageItemProps {
   onContinuePlan?: (message: ChatMessage) => void
   onExitPlanMode?: () => void
   onOpenTrace?: (runID: string) => void
-  onPlanCardLayoutChange?: () => void
+  onInteractiveCardLayoutChange?: (element?: HTMLElement) => void
   onResolveAsk?: AskInteractionResolver
 }
 
@@ -54,7 +54,7 @@ const messageActionTooltipSideOffset = 3
 const planThinkingPreviewStaleMs = 3500
 
 /** 单条消息组件，根据 role 渲染不同样式 */
-export const MessageItem = memo(function MessageItem({ message, highlightDialogue = false, messageStyle, onEdit, onEditAssistantReply, onCreateBranch, onRegenerate, onSwitchVersion, onOpenSubAgentSession, onInsertIllustration, onGenerateInteractiveImage, generatingInteractiveImageTurnId, activeSubAgentSessionKey, subAgentPresentation = 'card', onApprovePlan, onContinuePlan, onExitPlanMode, onOpenTrace, onPlanCardLayoutChange, onResolveAsk }: MessageItemProps) {
+export const MessageItem = memo(function MessageItem({ message, highlightDialogue = false, messageStyle, onEdit, onEditAssistantReply, onCreateBranch, onRegenerate, onSwitchVersion, onOpenSubAgentSession, onInsertIllustration, onGenerateInteractiveImage, generatingInteractiveImageTurnId, activeSubAgentSessionKey, subAgentPresentation = 'card', onApprovePlan, onContinuePlan, onExitPlanMode, onOpenTrace, onInteractiveCardLayoutChange, onResolveAsk }: MessageItemProps) {
   const { role, content = '' } = message
   const canEdit = role === 'user' && Boolean(message.turn_id) && Boolean(onEdit)
   const canEditAssistantReply = role === 'assistant' && !message.subagent && Boolean(message.turn_id) && Boolean(onEditAssistantReply) && !message.streaming
@@ -154,7 +154,7 @@ export const MessageItem = memo(function MessageItem({ message, highlightDialogu
         if (message.ask?.kind === 'tool_approval') return <ToolApprovalCard message={message} onResolve={onResolveAsk} />
         return <AskInteractionCard message={message} onResolve={onResolveAsk} />
       }
-      return <ToolExecutionBlock message={message} />
+      return <ToolExecutionBlock message={message} onResolve={onResolveAsk} onLayoutChange={onInteractiveCardLayoutChange} />
 
     case 'ask':
       if (message.ask?.kind === 'tool_approval') return <ToolApprovalCard message={message} onResolve={onResolveAsk} />
@@ -179,7 +179,7 @@ export const MessageItem = memo(function MessageItem({ message, highlightDialogu
       return <LegacyPlanQuestionBlock message={message} />
 
     case 'proposed_plan':
-      return <ProposedPlanBlock message={message} highlightDialogue={highlightDialogue} onApprove={onApprovePlan} onContinue={onContinuePlan} onExit={onExitPlanMode} onLayoutChange={onPlanCardLayoutChange} />
+      return <ProposedPlanBlock message={message} highlightDialogue={highlightDialogue} onApprove={onApprovePlan} onContinue={onContinuePlan} onExit={onExitPlanMode} onLayoutChange={onInteractiveCardLayoutChange} />
 
     case 'system':
       if (!content.trim()) return null
@@ -825,9 +825,11 @@ function PlanShell({ icon, title, badge, children }: { icon: ReactNode; title: s
 }
 
 /** 工具执行卡片，默认以单行展示运行态和结果态。 */
-function ToolExecutionBlock({ message }: { message: ChatMessage }) {
+function ToolExecutionBlock({ message, onResolve, onLayoutChange }: { message: ChatMessage; onResolve?: AskInteractionResolver; onLayoutChange?: (element: HTMLElement) => void }) {
   const { t } = useTranslation()
-  const [expanded, setExpanded] = useState(false)
+  const approvalInteraction = message.ask?.kind === 'tool_approval' ? message.ask : undefined
+  const approvalPending = approvalInteraction?.status === 'pending'
+  const [expanded, setExpanded] = useState(() => approvalPending)
   const info = parseToolCallContent(message.content || '')
   const name = message.name || info.name
   const rawArgs = message.args !== undefined ? message.args : info.args
@@ -843,7 +845,10 @@ function ToolExecutionBlock({ message }: { message: ChatMessage }) {
   const displayName = isDelegationTool ? t('chat.subagent.taskLabel') : name
   const detailArgs = isDelegationTool ? formatTaskDelegationArgs(rawArgs) : (isChapterBodyHidden ? '' : args)
   const hasResult = status === 'success'
-  const isStreamingContent = !isChapterBodyHidden && status === 'running' && isContentTool(name) && rawArgs.length > 50
+  useLayoutEffect(() => {
+    if (approvalPending) setExpanded(true)
+  }, [approvalPending, approvalInteraction?.id])
+  const isStreamingContent = !approvalInteraction && !isChapterBodyHidden && status === 'running' && isContentTool(name) && rawArgs.length > 50
   const streamPreview = isStreamingContent ? extractStreamingContent(rawArgs) : ''
   // 内容工具运行中但不展示流式预览时（流式为 off / 参数较短），展示"正在写入文件"的 Loading 文案
   const isContentToolLoading = !isChapterBodyHidden && !isStreamingContent && status === 'running' && isContentTool(name)
@@ -870,7 +875,8 @@ function ToolExecutionBlock({ message }: { message: ChatMessage }) {
       : isContentToolLoading
         ? (contentToolChars !== undefined ? t('chat.tool.fileWritingWithCount', { count: contentToolChars }) : t('chat.tool.fileWriting'))
         : summary)
-  const hasDetail = Boolean(detailArgs || result || isChapterBodyHidden)
+  const headerSummary = approvalPending ? t('agentApproval.approval.waiting') : displaySummary
+  const hasDetail = Boolean(approvalInteraction || detailArgs || result || isChapterBodyHidden)
   const streamPreviewScrollLock = useBottomScrollLock<HTMLDivElement>({
     enabled: isStreamingContent,
     resetKey: `${message.id || name}:tool-stream-preview`,
@@ -902,9 +908,14 @@ function ToolExecutionBlock({ message }: { message: ChatMessage }) {
               </span>
             )}
             {message.subagent && <AgentSourceBadge message={message} compact />}
+            {approvalPending && (
+              <span className="shrink-0 rounded-full border border-amber-500/25 bg-amber-500/10 px-1.5 py-0.5 text-[10px] text-amber-700 dark:text-amber-300">
+                {t('agentApproval.approval.waiting')}
+              </span>
+            )}
             {!showReadableOutcome && (
-              <span className="min-w-0 flex-1 truncate text-[var(--nova-text-faint)]" title={displaySummary}>
-                {displaySummary}
+              <span className="min-w-0 flex-1 truncate text-[var(--nova-text-faint)]" title={headerSummary}>
+                {headerSummary}
               </span>
             )}
           </div>
@@ -937,7 +948,8 @@ function ToolExecutionBlock({ message }: { message: ChatMessage }) {
           </div>
         )}
         {!isStreamingContent && (
-          <ToolContent className="grid max-h-48 gap-2 overflow-auto border-t border-[var(--nova-border)] bg-[var(--nova-surface-2)] px-3 py-2.5 font-mono text-[11px] leading-relaxed text-[var(--nova-text-muted)]">
+          <ToolContent className={`grid gap-2 overflow-auto border-t border-[var(--nova-border)] bg-[var(--nova-surface-2)] px-3 py-2.5 font-mono text-[11px] leading-relaxed text-[var(--nova-text-muted)] ${approvalInteraction ? 'max-h-80' : 'max-h-48'}`}>
+            {approvalInteraction && <ToolApprovalPanel message={message} onResolve={onResolve} embedded onLayoutChange={onLayoutChange} />}
             {isChapterBodyHidden && (
               <div className="grid gap-1 font-sans">
                 {chapterBodyHiddenPath && (
@@ -954,7 +966,7 @@ function ToolExecutionBlock({ message }: { message: ChatMessage }) {
                 <div className="text-[var(--nova-text-faint)]">{t(isDirectorPlanHidden ? 'chat.tool.fileBodyHidden' : 'chat.tool.chapterBodyHidden')}</div>
               </div>
             )}
-            {detailArgs && <pre className="whitespace-pre-wrap">{detailArgs}</pre>}
+            {detailArgs && !approvalInteraction?.approval?.command && <pre className="whitespace-pre-wrap">{detailArgs}</pre>}
             {taskSubAgent && result && <div className="text-[var(--nova-text-muted)]">{t('chat.subagent.result')}</div>}
             {result && <pre className={`whitespace-pre-wrap ${resultSeverity === 'error' ? 'text-[var(--nova-danger)]' : resultSeverity === 'warning' ? 'text-[var(--nova-warning)]' : 'text-[var(--nova-accent-green)]'}`}>{detailResult}</pre>}
           </ToolContent>

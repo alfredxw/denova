@@ -377,8 +377,12 @@ type chatModelAgentAssembly struct {
 
 func buildChatModelAgentAssembly(ctx context.Context, cfg *config.Config, spec chatModelAgentAssemblySpec) (chatModelAgentAssembly, error) {
 	workspace := ""
+	projectID := ""
+	var approvalRules []config.AgentApprovalRule
 	if cfg != nil {
 		workspace = cfg.Workspace
+		projectID = cfg.ProjectID
+		approvalRules = config.NormalizeAgentApprovalRules(cfg.AgentApprovalRules)
 	}
 	approvalMode := config.AgentApprovalAsk
 	if cfg != nil {
@@ -391,7 +395,8 @@ func buildChatModelAgentAssembly(ctx context.Context, cfg *config.Config, spec c
 		agenttoolruntime.NewOrchestratorMiddleware(agenttoolruntime.OrchestratorConfig{
 			AgentKind: spec.Kind, PolicyKind: firstNonEmpty(spec.ToolPolicyKind, spec.Kind),
 			ToolSettings: spec.ToolSettings, EnforceToolSettings: true,
-			EnforceApprovalPolicy: true, ApprovalMode: approvalMode, Workspace: workspace,
+			EnforceApprovalPolicy: true, ApprovalMode: approvalMode,
+			ProjectID: projectID, Workspace: workspace, ApprovalRules: approvalRules,
 			ToolResultMaxBytes:       toolresult.LimitBytes(cfg),
 			ToolResultEagerMinTokens: config.DefaultToolResultEagerMinTokens,
 			ContextWindowTokens:      spec.ContextWindowTokens,

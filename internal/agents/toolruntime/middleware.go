@@ -6,6 +6,8 @@ import (
 	"denova/internal/agents/tool"
 	"fmt"
 	"strings"
+	"sync"
+	"time"
 	"unicode/utf8"
 
 	agent "github.com/alfredxw/denova/agent"
@@ -29,7 +31,10 @@ type OrchestratorMiddleware struct {
 	enforceToolSettings      bool
 	enforceApprovalPolicy    bool
 	approvalMode             config.AgentApprovalMode
+	projectID                string
 	workspace                string
+	approvalRulesMu          sync.RWMutex
+	approvalRules            []config.AgentApprovalRule
 	toolResultMaxBytes       int
 	toolResultEagerMinTokens int
 	contextWindowTokens      int
@@ -46,7 +51,9 @@ type OrchestratorConfig struct {
 	EnforceToolSettings      bool
 	EnforceApprovalPolicy    bool
 	ApprovalMode             config.AgentApprovalMode
+	ProjectID                string
 	Workspace                string
+	ApprovalRules            []config.AgentApprovalRule
 	ToolResultMaxBytes       int
 	ToolResultEagerMinTokens int
 	ContextWindowTokens      int
@@ -61,7 +68,9 @@ func NewOrchestratorMiddleware(cfg OrchestratorConfig) *OrchestratorMiddleware {
 		enforceToolSettings:      cfg.EnforceToolSettings,
 		enforceApprovalPolicy:    cfg.EnforceApprovalPolicy,
 		approvalMode:             cfg.ApprovalMode,
+		projectID:                strings.TrimSpace(cfg.ProjectID),
 		workspace:                cfg.Workspace,
+		approvalRules:            config.NormalizeAgentApprovalRules(cfg.ApprovalRules),
 		toolResultMaxBytes:       cfg.ToolResultMaxBytes,
 		toolResultEagerMinTokens: cfg.ToolResultEagerMinTokens,
 		contextWindowTokens:      cfg.ContextWindowTokens,
@@ -79,7 +88,8 @@ func (m *OrchestratorMiddleware) Configuration() OrchestratorConfig {
 	return OrchestratorConfig{
 		AgentKind: m.agentKind, PolicyKind: m.effectivePolicyKind(), ToolSettings: m.toolSettings,
 		EnforceToolSettings: m.enforceToolSettings, EnforceApprovalPolicy: m.enforceApprovalPolicy,
-		ApprovalMode: m.approvalMode, Workspace: m.workspace,
+		ApprovalMode: m.approvalMode, ProjectID: m.projectID, Workspace: m.workspace,
+		ApprovalRules:      m.approvalRulesSnapshot(),
 		ToolResultMaxBytes: m.toolResultLimitBytes(), ToolResultEagerMinTokens: m.toolResultEagerMinTokens,
 		ContextWindowTokens: m.contextWindowTokens,
 	}
@@ -290,8 +300,9 @@ func (m *OrchestratorMiddleware) applyApprovalPolicy(
 	}
 	mode := config.NormalizeAgentApprovalMode(m.approvalMode)
 	policyDecision := toolapproval.Evaluate(toolapproval.Request{
-		Mode: mode, Workspace: m.workspace, ToolName: decision.ToolName,
+		Mode: mode, ProjectID: m.projectID, Workspace: m.workspace, ToolName: decision.ToolName,
 		Arguments: args, Descriptor: decision.Descriptor,
+		Rules: m.approvalRulesSnapshot(),
 	})
 	if err := policyDecision.Validate(); err != nil {
 		return decision, fmt.Errorf("evaluate tool approval policy: %w", err)
@@ -313,10 +324,10 @@ func (m *OrchestratorMiddleware) applyApprovalPolicy(
 			granted := false
 			decision.ApprovalGranted = &granted
 			decision.Action = "blocked"
-			decision.Reason = "[tool error] 此调用需要用户确认，但当前运行没有可恢复的交互主机，已安全阻止。 / This call requires approval, but the run has no recoverable interactive host and was safely blocked."
+			decision.Reason = "[tool error] This call requires approval, but the run has no recoverable interactive host and was safely blocked."
 			return decision, nil
 		}
-		granted, err := host.ApproveTool(ctx, ApprovalRequest{
+		approval, err := host.ApproveTool(ctx, ApprovalRequest{
 			Mode: mode, ToolName: decision.ToolName,
 			ProviderCallID: decision.ProviderCallID, ExecutionID: decision.ExecutionID,
 			Arguments: args, Decision: policyDecision,
@@ -324,15 +335,58 @@ func (m *OrchestratorMiddleware) applyApprovalPolicy(
 		if err != nil {
 			return decision, fmt.Errorf("await approval for tool %q: %w", decision.ToolName, err)
 		}
+		if err := approval.Validate(); err != nil {
+			return decision, err
+		}
+		granted := approval.Choice != ApprovalDenied
 		decision.ApprovalGranted = &granted
 		if !granted {
 			decision.Action = "blocked"
-			decision.Reason = "[tool error] 用户拒绝了本次工具调用。 / The user denied this tool call."
+			decision.Reason = "[tool error] The user denied this tool call."
+			return decision, nil
+		}
+		if approval.Choice == ApprovalAllowWorkspace {
+			if policyDecision.Remember == nil {
+				return decision, fmt.Errorf("tool approval rule %q cannot be remembered", policyDecision.RuleID)
+			}
+			rule, ruleErr := toolapproval.NewWorkspaceRule(
+				m.projectID, m.workspace, decision.ToolName, *policyDecision.Remember,
+				toolapproval.ArgumentsHash(args), policyDecision.Command, policyDecision.Cwd,
+				policyDecision.RuleID, time.Now(),
+			)
+			if ruleErr != nil {
+				return decision, ruleErr
+			}
+			m.rememberApprovalRule(rule)
 		}
 		return decision, nil
 	default:
 		return decision, fmt.Errorf("unhandled tool approval action %q", policyDecision.Action)
 	}
+}
+
+func (m *OrchestratorMiddleware) approvalRulesSnapshot() []config.AgentApprovalRule {
+	if m == nil {
+		return nil
+	}
+	m.approvalRulesMu.RLock()
+	defer m.approvalRulesMu.RUnlock()
+	return config.NormalizeAgentApprovalRules(m.approvalRules)
+}
+
+func (m *OrchestratorMiddleware) rememberApprovalRule(rule config.AgentApprovalRule) {
+	if m == nil {
+		return
+	}
+	m.approvalRulesMu.Lock()
+	defer m.approvalRulesMu.Unlock()
+	for index := range m.approvalRules {
+		if m.approvalRules[index].ID == rule.ID {
+			m.approvalRules[index] = rule
+			return
+		}
+	}
+	m.approvalRules = append(m.approvalRules, rule)
 }
 
 func toolEndpointErrorMessage(toolName string, err error) string {

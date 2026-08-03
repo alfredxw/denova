@@ -6,6 +6,7 @@ import (
 	"context"
 
 	"denova/config"
+	agentconversation "denova/internal/agents/conversation"
 	agentharness "denova/internal/agents/harness"
 	"denova/internal/agents/session"
 	agenttool "denova/internal/agents/tool"
@@ -50,6 +51,7 @@ type Operation interface {
 // Config Manager policy; Host only validates and registers captured resources.
 type Host interface {
 	Snapshot() Runtime
+	ResolveAsk(context.Context, *session.Session, string, string, string, string, []agentconversation.HostAskAnswer, string) (agentconversation.HostAskResolution, error)
 	AcquireWorkspaceOperation(context.Context, string) (Operation, error)
 	IsCurrent(Runtime) bool
 	RegisterTask(*apptask.Task, Runtime) error

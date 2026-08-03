@@ -1,4 +1,4 @@
-import { fireEvent, render, screen, waitFor } from '@testing-library/react'
+import { act, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import type { ReactElement } from 'react'
 import { VirtuosoMockContext } from 'react-virtuoso'
 import { describe, expect, it, vi } from 'vitest'
@@ -166,6 +166,120 @@ describe('Agent MessageList', () => {
     expect(screen.queryByText('正在分析当前剧情。')).not.toBeInTheDocument()
     expect(screen.getByRole('button', { name: /正在执行/ })).toHaveAttribute('aria-expanded', 'false')
     expect(screen.queryByText('正在思考…')).not.toBeInTheDocument()
+  })
+
+  it('审批作为工具状态留在同一个 execution fold 内', () => {
+    const { container } = renderMessageList(
+      <MessageList
+        isStreaming
+        isExecutionActive
+        activityContent=""
+        collapseTraceGroups
+        activeTraceDisplay="expanded"
+        messages={[
+          {
+            id: 'approval-tool', role: 'assistant', metadata: { run_id: 'run-approval' },
+            parts: [{ type: 'dynamic-tool', toolName: 'bash', toolCallId: 'execution-approval', state: 'input-available', input: { command: 'npm test' } }],
+          },
+          {
+            id: 'approval-state', role: 'assistant', metadata: { run_id: 'run-approval' },
+            parts: [{
+              type: 'data-agent-ask', id: 'approval-state', data: {
+                schema: 'ask.pending.v1', id: 'approval-state', kind: 'tool_approval',
+                tool_call_id: 'execution-approval', agent_kind: 'ide', status: 'pending',
+                questions: [{ id: 'tool-approval', question: 'Approve?', options: [{ id: 'allow-once', label: 'Allow once' }, { id: 'deny', label: 'Deny' }] }],
+                approval: { mode: 'ask', tool_name: 'bash', command: 'npm test', risk: 'high', rule_id: 'bash_unlisted_command', args_hash: 'a'.repeat(64) },
+              },
+            }],
+          },
+        ] as AgentUIMessage[]}
+      />,
+    )
+
+    expect(container.querySelectorAll('[data-agent-execution-process]')).toHaveLength(1)
+    expect(container.querySelectorAll('[data-tool-approval-panel]')).toHaveLength(1)
+    expect(screen.getByText('npm test')).toBeInTheDocument()
+  })
+
+  it('审批展开后将操作区锚定到悬浮 composer 上方', async () => {
+    const initialMessages = [{
+      id: 'approval-tool', role: 'assistant', metadata: { run_id: 'run-approval' },
+      parts: [{ type: 'dynamic-tool', toolName: 'bash', toolCallId: 'execution-approval', state: 'input-available', input: { command: 'npm test' } }],
+    }] as AgentUIMessage[]
+    const pendingMessages = [
+      ...initialMessages,
+      {
+        id: 'approval-state', role: 'assistant', metadata: { run_id: 'run-approval' },
+        parts: [{
+          type: 'data-agent-ask', id: 'approval-state', data: {
+            schema: 'ask.pending.v1', id: 'approval-state', kind: 'tool_approval',
+            tool_call_id: 'execution-approval', agent_kind: 'ide', status: 'pending',
+            questions: [{ id: 'tool-approval', question: 'Approve?', options: [{ id: 'allow-once', label: 'Allow once' }, { id: 'deny', label: 'Deny' }] }],
+            approval: { mode: 'ask', tool_name: 'bash', command: 'npm test', risk: 'high', rule_id: 'bash_unlisted_command', args_hash: 'a'.repeat(64) },
+          },
+        }],
+      },
+    ] as AgentUIMessage[]
+    let scrollTop = 400
+    const originalRect = HTMLElement.prototype.getBoundingClientRect
+    const rectSpy = vi.spyOn(HTMLElement.prototype, 'getBoundingClientRect').mockImplementation(function getBoundingClientRect(this: HTMLElement) {
+      if (this.classList.contains('nova-chat-canvas')) {
+        return { top: 100, right: 320, bottom: 300, left: 0, width: 320, height: 200 } as DOMRect
+      }
+      if (this.classList.contains('nova-agent-composer')) {
+        return { top: 220, right: 320, bottom: 300, left: 0, width: 320, height: 80 } as DOMRect
+      }
+      if (this.hasAttribute('data-nova-chat-row-key')) {
+        return { top: 500 - scrollTop, right: 320, bottom: 820 - scrollTop, left: 0, width: 320, height: 320 } as DOMRect
+      }
+      return originalRect.call(this)
+    })
+    const frameCallbacks: FrameRequestCallback[] = []
+    const animationFrameSpy = vi.spyOn(window, 'requestAnimationFrame').mockImplementation((callback) => {
+      frameCallbacks.push(callback)
+      return frameCallbacks.length
+    })
+    const renderList = (messages: AgentUIMessage[]) => (
+      <div className="relative flex h-[300px] flex-col">
+        <MessageList
+          isStreaming={false}
+          activityContent=""
+          collapseTraceGroups
+          activeTraceDisplay="expanded"
+          messages={messages}
+        />
+        <div className="nova-chat-input-area"><div className="nova-agent-composer" /></div>
+      </div>
+    )
+
+    try {
+      const { container, rerender } = renderMessageList(renderList(initialMessages))
+      frameCallbacks.length = 0
+
+      rerender(renderList(pendingMessages))
+
+      await waitFor(() => expect(container.querySelector('[data-tool-approval-panel]')).toBeInTheDocument())
+      const pendingScroller = container.querySelector<HTMLElement>('.nova-chat-canvas')
+      if (!pendingScroller) throw new Error('Expected message scroller')
+      Object.defineProperty(pendingScroller, 'scrollHeight', { configurable: true, value: 900 })
+      Object.defineProperty(pendingScroller, 'clientHeight', { configurable: true, value: 200 })
+      Object.defineProperty(pendingScroller, 'scrollTop', {
+        configurable: true,
+        get: () => scrollTop,
+        set: value => { scrollTop = value },
+      })
+      fireEvent.scroll(pendingScroller)
+      expect(frameCallbacks.length).toBeGreaterThan(0)
+      act(() => {
+        for (let frame = 0; frame < 20 && frameCallbacks.length > 0; frame += 1) {
+          frameCallbacks.splice(0).forEach(callback => callback(frame * 16))
+        }
+      })
+      expect(scrollTop).toBe(600)
+    } finally {
+      animationFrameSpy.mockRestore()
+      rectSpy.mockRestore()
+    }
   })
 
   it('尚无真实流式内容时直接以 Shimmer 显示思考状态', () => {

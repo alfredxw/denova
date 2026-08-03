@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"path/filepath"
+	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -87,6 +88,31 @@ func TestAppPatchSettingsMutatesOnlyApprovalField(t *testing.T) {
 	}
 	if layered.User.AgentApprovalMode != config.AgentApprovalWrite || a.cfg.AgentApprovalMode != config.AgentApprovalWrite {
 		t.Fatalf("runtime safety mode was not refreshed: layered=%q runtime=%q", layered.User.AgentApprovalMode, a.cfg.AgentApprovalMode)
+	}
+}
+
+func TestRemoveAgentApprovalRulePreservesOtherRules(t *testing.T) {
+	workspace := t.TempDir()
+	novaDir := t.TempDir()
+	a := &App{cfg: &config.Config{Workspace: workspace, NovaDir: novaDir}, workspace: workspace}
+	first := settingsApprovalRule("approval-one", workspace, `["go","test"]`, "go test ...")
+	second := settingsApprovalRule("approval-two", workspace, `["git","push","origin"]`, "git push origin ...")
+	if _, err := a.SettingsService().EnsureAgentApprovalRule(first); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := a.SettingsService().EnsureAgentApprovalRule(second); err != nil {
+		t.Fatal(err)
+	}
+
+	removed, layered, err := a.SettingsService().RemoveAgentApprovalRule(first.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !removed {
+		t.Fatal("expected the selected approval rule to be removed")
+	}
+	if len(layered.User.AgentApprovalRules) != 1 || layered.User.AgentApprovalRules[0].ID != second.ID {
+		t.Fatalf("remaining approval rules = %#v", layered.User.AgentApprovalRules)
 	}
 }
 
@@ -492,6 +518,22 @@ func TestApplyLayeredSettingsToConfigClearsMaxIterationWhenUnset(t *testing.T) {
 	})
 	if cfg.MaxIteration != 0 {
 		t.Fatalf("max iteration = %d, want unlimited default 0", cfg.MaxIteration)
+	}
+}
+
+func settingsApprovalRule(id, workspace, commandKey, commandPattern string) config.AgentApprovalRule {
+	return config.AgentApprovalRule{
+		ID:               id,
+		Scope:            config.AgentApprovalRuleWorkspace,
+		ProjectID:        "project-one",
+		Workspace:        workspace,
+		ToolName:         "bash",
+		MatcherVersion:   config.AgentApprovalRuleMatcherVersion,
+		CommandKey:       commandKey,
+		CommandPattern:   commandPattern,
+		ApprovedArgsHash: strings.Repeat("a", 64),
+		ApprovedCommand:  commandPattern,
+		CreatedAt:        time.Now().UTC(),
 	}
 }
 

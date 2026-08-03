@@ -257,6 +257,9 @@ func fitFragmentToRenderedBudget(fragment Fragment, remaining int, renderer Rend
 		middle := low + (high-low)/2
 		candidate := fragment
 		candidate.Content = strings.TrimSpace(content[:boundaries[middle]])
+		// Price the model-visible notice as part of every truncation candidate.
+		// Otherwise content can consume the bytes reserved for that notice.
+		candidate.Truncated = true
 		if candidate.Content == "" {
 			low = middle + 1
 			continue

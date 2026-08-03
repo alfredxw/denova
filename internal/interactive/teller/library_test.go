@@ -161,7 +161,7 @@ func TestTellerLibraryOverridesAndRestoresBuiltinInUserSpace(t *testing.T) {
 	classic.Name = "我的经典叙事"
 	classic.Slots[0].Content = "用户覆盖规则"
 
-	overridden, err := library.Update("classic", classic, classic.UpdatedAt)
+	overridden, err := library.Update("classic", classic, classic.Revision)
 	if err != nil {
 		t.Fatalf("Update builtin teller should create user override: %v", err)
 	}
@@ -233,7 +233,7 @@ func TestTellerLibraryUpdateRejectsStaleRevision(t *testing.T) {
 			Enabled: true,
 			Content: "Agent 规则",
 		}},
-	}, created.UpdatedAt)
+	}, created.Revision)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -246,7 +246,7 @@ func TestTellerLibraryUpdateRejectsStaleRevision(t *testing.T) {
 			Enabled: true,
 			Content: "前端旧规则",
 		}},
-	}, created.UpdatedAt); !errors.Is(err, ErrRevisionConflict) {
+	}, created.Revision); !errors.Is(err, ErrRevisionConflict) {
 		t.Fatalf("expected teller revision conflict, got %v", err)
 	}
 	got, err := library.Get(created.ID)

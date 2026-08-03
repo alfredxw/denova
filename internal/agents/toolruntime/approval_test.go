@@ -12,12 +12,44 @@ import (
 
 type approvalHostStub struct {
 	granted  bool
+	choice   ApprovalChoice
 	requests []ApprovalRequest
 }
 
-func (host *approvalHostStub) ApproveTool(_ context.Context, request ApprovalRequest) (bool, error) {
+func (host *approvalHostStub) ApproveTool(_ context.Context, request ApprovalRequest) (ApprovalResult, error) {
 	host.requests = append(host.requests, request)
-	return host.granted, nil
+	if host.choice != "" {
+		return ApprovalResult{Choice: host.choice}, nil
+	}
+	if host.granted {
+		return ApprovalResult{Choice: ApprovalAllowOnce}, nil
+	}
+	return ApprovalResult{Choice: ApprovalDenied}, nil
+}
+
+func TestWorkspaceApprovalIsReusedWithinCurrentRun(t *testing.T) {
+	t.Parallel()
+	workspace := t.TempDir()
+	host := &approvalHostStub{choice: ApprovalAllowWorkspace}
+	ctx := ContextWithApprovalHost(context.Background(), host)
+	middleware := approvalTestMiddleware(config.AgentApprovalAsk, workspace)
+	called := 0
+	endpoint, err := wrapTextToolCallForTest(middleware, func(context.Context, string, ...agent.ToolOption) (string, error) {
+		called++
+		return "ok", nil
+	}, testToolContext("bash", "remembered-command"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := endpoint(ctx, `{"command":"go test ./internal/agents/..."}`); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := endpoint(ctx, `{"command":"go test ./internal/app/..."}`); err != nil {
+		t.Fatal(err)
+	}
+	if called != 2 || len(host.requests) != 1 {
+		t.Fatalf("executions=%d approval requests=%d", called, len(host.requests))
+	}
 }
 
 func TestToolApprovalPolicyAllowsSafeAskReadWithoutPrompt(t *testing.T) {
@@ -83,7 +115,7 @@ func TestToolApprovalPolicyDenialReturnsBlockedResult(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if called || len(host.requests) != 1 || !strings.Contains(result, "用户拒绝") {
+	if called || len(host.requests) != 1 || !strings.Contains(result, "user denied") {
 		t.Fatalf("called=%t requests=%d result=%q", called, len(host.requests), result)
 	}
 }
@@ -103,7 +135,7 @@ func TestToolApprovalPolicyFailsClosedWithoutInteractiveHost(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if called || !strings.Contains(result, "没有可恢复的交互主机") {
+	if called || !strings.Contains(result, "no recoverable interactive host") {
 		t.Fatalf("called=%t result=%q", called, result)
 	}
 }

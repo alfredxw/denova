@@ -2,7 +2,7 @@
 
 Story Directors are Game-mode composition presets. They select reusable narrative, event, rule, state, and image modules and add orchestration policy; they do not duplicate those modules' content.
 
-This resource uses `user` scope and complete editable-resource replacement. Update/delete require the latest `updated_at` returned by `get` as `revision`.
+This resource uses `user` scope and complete editable-resource replacement. Update/delete require the latest content-addressed `revision` returned by `get`; `updated_at` is display metadata and is not a concurrency token.
 
 ## Field reference
 

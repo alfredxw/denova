@@ -240,7 +240,7 @@ func classifyLiteralCommand(words []string, boundary pathBoundary, mode config.A
 			return commandWrite
 		}
 	case "npm", "pnpm", "yarn", "bun", "npx", "bunx":
-		if safePackageCommand(args, boundary) {
+		if safePackageCommand(name, args, boundary) {
 			return commandWrite
 		}
 	case "curl":

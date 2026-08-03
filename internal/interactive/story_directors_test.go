@@ -120,11 +120,11 @@ func TestStoryDirectorLibraryCRUDAndRevisionConflict(t *testing.T) {
 		Name:       "Agent 更新",
 		ModuleRefs: created.ModuleRefs,
 		Strategy:   StoryDirectorStrategy{Enabled: true},
-	}, created.UpdatedAt)
+	}, created.Revision)
 	if err != nil {
 		t.Fatalf("Update failed: %v", err)
 	}
-	if _, err := library.Update(created.ID, StoryDirector{Name: "旧前端保存"}, created.UpdatedAt); !errors.Is(err, ErrStoryDirectorRevisionConflict) {
+	if _, err := library.Update(created.ID, StoryDirector{Name: "旧前端保存"}, created.Revision); !errors.Is(err, ErrStoryDirectorRevisionConflict) {
 		t.Fatalf("expected story director revision conflict, got %v", err)
 	}
 	got, err := library.Get(created.ID)
@@ -133,6 +133,21 @@ func TestStoryDirectorLibraryCRUDAndRevisionConflict(t *testing.T) {
 	}
 	if got.Name != updated.Name {
 		t.Fatalf("stale update should not overwrite story director: %#v", got)
+	}
+}
+
+func TestStoryDirectorGetDoesNotAdvanceRevision(t *testing.T) {
+	library := NewStoryDirectorLibrary(t.TempDir())
+	created, err := library.Create(StoryDirector{ID: "stable-read", Name: "Stable read"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	got, err := library.Get(created.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got.Revision != created.Revision {
+		t.Fatalf("read advanced revision: created=%s got=%s", created.Revision, got.Revision)
 	}
 }
 
@@ -157,7 +172,7 @@ func TestStoryDirectorBuiltinOverrideAndRestore(t *testing.T) {
 		t.Fatal(err)
 	}
 	builtin.Name = "我的默认导演"
-	overridden, err := library.Update(DefaultStoryDirectorID, builtin, builtin.UpdatedAt)
+	overridden, err := library.Update(DefaultStoryDirectorID, builtin, builtin.Revision)
 	if err != nil {
 		t.Fatalf("Update built-in story director should create override: %v", err)
 	}

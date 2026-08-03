@@ -2,9 +2,10 @@ import { useLayoutEffect, useRef, useState } from 'react'
 import type { CSSProperties, ReactNode } from 'react'
 import { ChevronDown, ChevronRight } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
-import type { ChapterIllustration, ChatMessage } from '@/lib/api'
+import type { AgentAskAnswer, AgentAskResolution, ChapterIllustration, ChatMessage } from '@/lib/api'
 import {
   agentSubAgentSessionKey,
+  agentViewAskInteraction,
   agentViewContent,
   agentViewStableKey,
   agentViewToRenderMessage,
@@ -27,6 +28,8 @@ interface AgentExecutionProcessProps {
   onInsertIllustration?: (illustration: ChapterIllustration) => void
   onOpenTrace?: (runID: string) => void
   onOpenSubAgentSession?: (view: AgentMessageView) => void
+  onInteractiveCardLayoutChange?: (element?: HTMLElement) => void
+  onResolveAsk?: (view: AgentMessageView, action: { status: 'answered'; answers: AgentAskAnswer[] } | { status: 'cancelled' }) => Promise<AgentAskResolution>
   views: AgentMessageView[]
 }
 
@@ -41,6 +44,8 @@ export function AgentExecutionProcess({
   onInsertIllustration,
   onOpenTrace,
   onOpenSubAgentSession,
+  onInteractiveCardLayoutChange,
+  onResolveAsk,
   views,
 }: AgentExecutionProcessProps) {
   const { t } = useTranslation()
@@ -77,6 +82,22 @@ export function AgentExecutionProcess({
       const view = views[index]
       const subAgentGroup = subAgentGroupsByStart.get(index)
       if (onOpenSubAgentSession && subAgentGroup) {
+        const pendingApprovalView = subAgentGroup.views.find(item => agentViewAskInteraction(item)?.status === 'pending')
+        if (pendingApprovalView) {
+          processItems.push(
+            <AgentMessageItem
+              key={`subagent-approval-${subAgentGroup.key}`}
+              view={pendingApprovalView}
+              highlightDialogue={highlightDialogue}
+              messageStyle={messageStyle}
+              onOpenTrace={onOpenTrace}
+              onInteractiveCardLayoutChange={onInteractiveCardLayoutChange}
+              onResolveAsk={onResolveAsk}
+            />,
+          )
+          index = subAgentGroup.nextIndex - 1
+          continue
+        }
         const progress = buildSubAgentProgressMessage(subAgentGroup.views.map(item => agentViewToRenderMessage(item)).filter((item): item is ChatMessage => Boolean(item)))
         if (progress) {
           processItems.push(
@@ -116,6 +137,8 @@ export function AgentExecutionProcess({
               onInsertIllustration={onInsertIllustration}
               onGenerateInteractiveImage={onGenerateInteractiveImage}
               onOpenTrace={onOpenTrace}
+              onInteractiveCardLayoutChange={onInteractiveCardLayoutChange}
+              onResolveAsk={onResolveAsk}
             />
           ),
       )

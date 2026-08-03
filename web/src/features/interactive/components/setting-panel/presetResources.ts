@@ -41,6 +41,7 @@ export function presetResourceDraftSignature(item: object) {
   const {
     created_at: _createdAt,
     updated_at: _updatedAt,
+    revision: _revision,
     ...editable
   } = item as Record<string, unknown>
   return JSON.stringify(editable)

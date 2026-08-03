@@ -209,26 +209,26 @@ describe('SettingPanel', () => {
     vi.mocked(toast.success).mockReset()
     vi.mocked(getLoreItems).mockResolvedValue([])
     vi.mocked(getInteractiveTellers).mockResolvedValue([teller('classic', '经典叙事'), teller('slow-burn', '慢热叙事')])
-    vi.mocked(updateInteractiveTeller).mockImplementation(async (id, input) => ({ ...teller(id, input.name || id), ...input, id, custom: id !== 'classic', builtin_overridden: id === 'classic', updated_at: '2026-01-01T00:00:01Z' }) as Teller)
+    vi.mocked(updateInteractiveTeller).mockImplementation(async (id, input) => ({ ...teller(id, input.name || id), ...input, id, custom: id !== 'classic', builtin_overridden: id === 'classic', revision: 'sha256:saved', updated_at: '2026-01-01T00:00:01Z' }) as Teller)
     vi.mocked(deleteInteractiveTeller).mockResolvedValue(undefined)
     vi.mocked(getStoryDirectors).mockResolvedValue([storyDirector('default', '默认导演')])
     vi.mocked(createStoryDirector).mockResolvedValue(storyDirector('default-custom', '默认导演'))
-    vi.mocked(updateStoryDirector).mockImplementation(async (id, input) => ({ ...storyDirector(id, input.name || id), ...input, id, custom: id !== 'default', builtin_overridden: id === 'default', updated_at: '2026-01-01T00:00:01Z' }) as StoryDirector)
+    vi.mocked(updateStoryDirector).mockImplementation(async (id, input) => ({ ...storyDirector(id, input.name || id), ...input, id, custom: id !== 'default', builtin_overridden: id === 'default', revision: 'sha256:saved', updated_at: '2026-01-01T00:00:01Z' }) as StoryDirector)
     vi.mocked(deleteStoryDirector).mockResolvedValue(undefined)
     vi.mocked(getActorStates).mockResolvedValue([])
     vi.mocked(deleteActorState).mockResolvedValue(undefined)
     vi.mocked(getImagePresets).mockResolvedValue([imagePreset('game-cg', '游戏 CG')])
-    vi.mocked(updateImagePreset).mockImplementation(async (id, input) => ({ ...imagePreset(id, input.name || id), ...input, id, custom: id !== 'game-cg', builtin_overridden: id === 'game-cg', updated_at: '2026-01-01T00:00:01Z' }) as ImagePreset)
+    vi.mocked(updateImagePreset).mockImplementation(async (id, input) => ({ ...imagePreset(id, input.name || id), ...input, id, custom: id !== 'game-cg', builtin_overridden: id === 'game-cg', revision: 'sha256:saved', updated_at: '2026-01-01T00:00:01Z' }) as ImagePreset)
     vi.mocked(deleteImagePreset).mockResolvedValue(undefined)
     vi.mocked(getEventPackages).mockResolvedValue([eventPackage('default', '默认事件包')])
     vi.mocked(deleteEventPackage).mockResolvedValue(undefined)
-    vi.mocked(updateEventPackage).mockImplementation(async (id, input) => ({ ...eventPackage(id, input.name || id), ...input, id, custom: id !== 'default', builtin_overridden: id === 'default', updated_at: '2026-01-01T00:00:01Z' }) as EventPackageModule)
+    vi.mocked(updateEventPackage).mockImplementation(async (id, input) => ({ ...eventPackage(id, input.name || id), ...input, id, custom: id !== 'default', builtin_overridden: id === 'default', revision: 'sha256:saved', updated_at: '2026-01-01T00:00:01Z' }) as EventPackageModule)
     vi.mocked(getRuleSystems).mockResolvedValue([
       ruleSystem('default', '均衡 DM 检定'),
       ruleSystem('dm-fail-forward', '推进型 DM：失败也前进'),
       ruleSystem('dm-osr-player-skill', 'OSR 型 DM：玩家技巧优先'),
     ])
-    vi.mocked(updateRuleSystem).mockImplementation(async (id, input) => ({ ...ruleSystem(id, input.name || id), ...input, id, custom: !isBuiltinRuleSystemID(id), builtin_overridden: isBuiltinRuleSystemID(id), updated_at: '2026-01-01T00:00:01Z' }) as RuleSystemModule)
+    vi.mocked(updateRuleSystem).mockImplementation(async (id, input) => ({ ...ruleSystem(id, input.name || id), ...input, id, custom: !isBuiltinRuleSystemID(id), builtin_overridden: isBuiltinRuleSystemID(id), revision: 'sha256:saved', updated_at: '2026-01-01T00:00:01Z' }) as RuleSystemModule)
     vi.mocked(getStyleReferences).mockResolvedValue([])
   })
 
@@ -392,7 +392,7 @@ describe('SettingPanel', () => {
         name: '覆盖后的经典叙事',
         custom: false,
       }),
-      undefined,
+      'sha256:fixture',
       '/workspace',
     )
     expect(createInteractiveTeller).not.toHaveBeenCalled()
@@ -414,7 +414,7 @@ describe('SettingPanel', () => {
         id: 'classic',
         name: '切换前自动保存',
       }),
-      undefined,
+      'sha256:fixture',
       '/workspace',
     )
     expect(screen.getByRole('heading', { name: '游戏 CG' })).toBeInTheDocument()
@@ -428,6 +428,7 @@ describe('SettingPanel', () => {
         ...teller(id, input.name || id),
         ...input,
         id,
+        revision: 'sha256:retry',
         updated_at: '2026-01-01T00:00:02Z',
       }) as Teller)
     render(<PresetPanelHarness />)
@@ -446,8 +447,8 @@ describe('SettingPanel', () => {
 
   it('round-trips a custom preset through autosave with its latest content and revision', async () => {
     vi.useFakeTimers()
-    const customA = { ...teller('custom-a', '自定义 A'), updated_at: 'a-r1' }
-    const customB = { ...teller('custom-b', '自定义 B'), updated_at: 'b-r1' }
+    const customA = { ...teller('custom-a', '自定义 A'), revision: 'a-r1', updated_at: 'same-time' }
+    const customB = { ...teller('custom-b', '自定义 B'), revision: 'b-r1', updated_at: 'same-time' }
     let resolveFirstSave!: (saved: Teller) => void
     const firstSave = new Promise<Teller>((resolve) => { resolveFirstSave = resolve })
     vi.mocked(updateInteractiveTeller)
@@ -457,7 +458,8 @@ describe('SettingPanel', () => {
       ...input,
       id,
       custom: true,
-      updated_at: id === 'custom-a' ? 'a-r3' : 'b-r2',
+      revision: id === 'custom-a' ? 'a-r3' : 'b-r2',
+      updated_at: 'same-time',
     }) as Teller)
 
     try {
@@ -473,7 +475,7 @@ describe('SettingPanel', () => {
 
       fireEvent.change(screen.getByDisplayValue('A 首次保存'), { target: { value: 'A 最新内容' } })
       await act(async () => {
-        resolveFirstSave({ ...customA, name: 'A 首次保存', updated_at: 'a-r2' })
+        resolveFirstSave({ ...customA, name: 'A 首次保存', revision: 'a-r2' })
         await firstSave
       })
       expect(screen.getByDisplayValue('A 最新内容')).toBeInTheDocument()
@@ -499,8 +501,8 @@ describe('SettingPanel', () => {
   })
 
   it('loads an external preset update without writing when the draft is clean', async () => {
-    const initial = { ...teller('custom-a', '自定义 A'), updated_at: 'a-r1' }
-    const external = { ...initial, name: '外部更新 A', updated_at: 'a-r2' }
+    const initial = { ...teller('custom-a', '自定义 A'), revision: 'a-r1' }
+    const external = { ...initial, name: '外部更新 A', revision: 'a-r2' }
     const onTellersChange = vi.fn()
     const view = render(
       <SettingPanel
@@ -531,8 +533,8 @@ describe('SettingPanel', () => {
   })
 
   it('rebases a dirty preset draft over an external list update', async () => {
-    const initial = { ...teller('custom-a', '自定义 A'), updated_at: 'a-r1' }
-    const external = { ...initial, description: '外部更新的描述', updated_at: 'a-r2' }
+    const initial = { ...teller('custom-a', '自定义 A'), revision: 'a-r1' }
+    const external = { ...initial, description: '外部更新的描述', revision: 'a-r2' }
     const onTellersChange = vi.fn()
     const view = render(
       <SettingPanel
@@ -572,8 +574,8 @@ describe('SettingPanel', () => {
   })
 
   it('keeps a newer preset edit made while an overlapping reload is being archived', async () => {
-    const initial = { ...teller('custom-a', '自定义 A'), updated_at: 'a-r1' }
-    const external = { ...initial, name: '外部改名 A', updated_at: 'a-r2' }
+    const initial = { ...teller('custom-a', '自定义 A'), revision: 'a-r1' }
+    const external = { ...initial, name: '外部改名 A', revision: 'a-r2' }
     let finishArchive!: (value: Awaited<ReturnType<typeof preserveAutosaveConflict>>) => void
     const archivePending = new Promise<Awaited<ReturnType<typeof preserveAutosaveConflict>>>((resolve) => {
       finishArchive = resolve
@@ -605,8 +607,8 @@ describe('SettingPanel', () => {
   })
 
   it('transparently rebases and retries a preset revision conflict', async () => {
-    const initial = { ...teller('custom-a', '自定义 A'), updated_at: 'a-r1' }
-    const external = { ...initial, description: '服务端新描述', updated_at: 'a-r2' }
+    const initial = { ...teller('custom-a', '自定义 A'), revision: 'a-r1' }
+    const external = { ...initial, description: '服务端新描述', revision: 'a-r2' }
     vi.mocked(getInteractiveTellers).mockResolvedValue([external])
     vi.mocked(updateInteractiveTeller)
       .mockRejectedValueOnce(new APIError('revision conflict', { status: 409 }))
@@ -614,7 +616,7 @@ describe('SettingPanel', () => {
         ...external,
         ...input,
         id,
-        updated_at: 'a-r3',
+        revision: 'a-r3',
       }) as Teller)
     render(
       <SettingPanel
@@ -685,7 +687,7 @@ describe('SettingPanel', () => {
         name: '覆盖后的图像方案',
         custom: false,
       }),
-      undefined,
+      'sha256:fixture',
       '/workspace',
     )
     expect(createImagePreset).not.toHaveBeenCalled()
@@ -847,7 +849,7 @@ describe('SettingPanel', () => {
     flushSettingPanelAutosave()
 
     await waitFor(() => expect(updateEventPackage).toHaveBeenCalled())
-    expect(updateEventPackage).toHaveBeenCalledWith('default', expect.objectContaining({ id: 'default', custom: false }), undefined, '/workspace')
+    expect(updateEventPackage).toHaveBeenCalledWith('default', expect.objectContaining({ id: 'default', custom: false }), 'sha256:fixture', '/workspace')
     expect(createStoryDirector).not.toHaveBeenCalled()
     const payload = vi.mocked(updateEventPackage).mock.calls.at(-1)?.[1] as Partial<EventPackageModule>
     expect(payload.events?.[0]?.type_name).toBe('伏笔回收')
@@ -1703,6 +1705,8 @@ function teller(id: string, name: string): Teller {
     context_policy: { creator: 'always', lore: 'relevant', runtime_state: 'always' },
     slots: [{ id: 'identity', name: '系统提示', target: 'system', enabled: true, content: 'rules' }],
     custom: id !== 'classic',
+    revision: 'sha256:fixture',
+    updated_at: '2026-01-01T00:00:00Z',
   }
 }
 
@@ -1715,6 +1719,8 @@ function imagePreset(id: string, name: string): ImagePreset {
     prompt: '## 图像请求 Prompt（tool_request）\n\nvisual prompt',
     slots: [{ id: 'tool_request', name: '图像请求 Prompt', target: 'tool_request', enabled: true, content: 'visual prompt' }],
     custom: id !== 'game-cg',
+    revision: 'sha256:fixture',
+    updated_at: '2026-01-01T00:00:00Z',
   }
 }
 
@@ -1740,6 +1746,8 @@ function storyDirector(id: string, name: string): StoryDirector {
     }],
     trpg_system: { rule_templates: [] },
     custom: id !== 'default',
+    revision: 'sha256:fixture',
+    updated_at: '2026-01-01T00:00:00Z',
   }
 }
 
@@ -1751,6 +1759,8 @@ function eventPackage(id: string, name: string): EventPackageModule {
     description: `${name} description`,
     events: [],
     custom: id !== 'default',
+    revision: 'sha256:fixture',
+    updated_at: '2026-01-01T00:00:00Z',
   }
 }
 
@@ -1762,6 +1772,8 @@ function ruleSystem(id: string, name: string): RuleSystemModule {
     description: `${name} description`,
     trpg_system: { rule_templates: defaultRuleTemplates() },
     custom: !isBuiltinRuleSystemID(id),
+    revision: 'sha256:fixture',
+    updated_at: '2026-01-01T00:00:00Z',
   }
 }
 

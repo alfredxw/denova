@@ -108,7 +108,7 @@ func TestRunAskInteractionPresentsHostGeneratedToolApproval(t *testing.T) {
 	host := newRunAskInteraction(agentconversation.NewSessionConversation(sess), agentrun.Options{
 		AgentKind: agentrun.AgentKindIDE, TaskID: "approval-task",
 	}, func(event agentrun.Event) { events <- event })
-	result := make(chan bool, 1)
+	result := make(chan agenttoolruntime.ApprovalResult, 1)
 	errs := make(chan error, 1)
 	go func() {
 		allowed, approveErr := host.ApproveTool(context.Background(), agenttoolruntime.ApprovalRequest{
@@ -129,7 +129,7 @@ func TestRunAskInteractionPresentsHostGeneratedToolApproval(t *testing.T) {
 		t.Fatalf("approval pending event = %#v", pending)
 	}
 	if _, err := sess.ResolveAsk(context.Background(), pending.ID, session.AskAnswered, []session.AskAnswer{{
-		QuestionID: toolApprovalQuestionID, SelectedOptionIDs: []string{toolApprovalAllowID},
+		QuestionID: session.ToolApprovalQuestionID, SelectedOptionIDs: []string{session.ToolApprovalAllowOnceOptionID},
 	}}, ""); err != nil {
 		t.Fatal(err)
 	}
@@ -137,7 +137,7 @@ func TestRunAskInteractionPresentsHostGeneratedToolApproval(t *testing.T) {
 	if err := <-errs; err != nil {
 		t.Fatal(err)
 	}
-	if !<-result {
+	if approval := <-result; approval.Choice != agenttoolruntime.ApprovalAllowOnce {
 		t.Fatal("allow-once resolution was not granted")
 	}
 }

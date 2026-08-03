@@ -202,7 +202,7 @@ func TestCatalogWorkspaceUsesHostRipgrepExecutable(t *testing.T) {
 	if grep == nil {
 		t.Fatal("catalog did not expose invokable grep")
 	}
-	result, err := runToolForTest(context.Background(), grep, `{"pattern":"dragon"}`)
+	result, err := runToolForTest(context.Background(), grep, `{"command":"rg dragon"}`)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -242,7 +242,7 @@ func TestCatalogDefaultGrepBudgetPaginatesContextBlowingOutput(t *testing.T) {
 	if grep.Descriptor.MaxResultBytes != wantLimit {
 		t.Fatalf("grep model-result budget = %d, want %d", grep.Descriptor.MaxResultBytes, wantLimit)
 	}
-	result, err := runToolForTest(context.Background(), grep, `{"pattern":"dragon","limit":200}`)
+	result, err := runToolForTest(context.Background(), grep, `{"command":"rg dragon"}`)
 	if err != nil {
 		t.Fatal(err)
 	}

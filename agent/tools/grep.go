@@ -6,80 +6,65 @@ import (
 	"errors"
 	"fmt"
 	"os/exec"
-	"path"
-	"path/filepath"
 	"strings"
 	"unicode/utf8"
-
-	"github.com/bmatcuk/doublestar/v4"
 )
 
-type grepTarget struct {
-	searchPath string
-	glob       string
-}
-
-// Grep runs ripgrep once per requested target, then applies a stable global
-// cursor over the de-duplicated textual result. Cursor state is self-contained
-// and bound to the normalized query fingerprint.
+// Grep compiles and executes one controlled rg command, then applies a stable
+// cursor to complete logical records. The model-visible command never reaches
+// a shell, and the implementation stops the process as soon as one additional
+// record proves that the bounded page is partial.
 func (workspace *LocalWorkspace) Grep(ctx context.Context, request GrepRequest) (SearchResult, error) {
 	if workspace == nil || workspace.Root() == "" {
-		return SearchResult{}, errors.New("workspace is not configured")
-	}
-	if strings.TrimSpace(request.Pattern) == "" {
-		return SearchResult{}, errors.New("grep pattern is required")
+		return SearchResult{}, errors.New("grep workspace is not configured / grep 工作区未配置")
 	}
 	request = normalizeGrepRequest(request)
-	if request.Mode != "content" && request.Mode != "files" && request.Mode != "count" {
-		return SearchResult{}, fmt.Errorf("unsupported grep mode %q", request.Mode)
+	command, err := workspace.compileGrepCommand(request.Command)
+	if err != nil {
+		return SearchResult{}, err
 	}
-	if request.ContextBefore < 0 || request.ContextAfter < 0 {
-		return SearchResult{}, errors.New("grep context cannot be negative")
+	cursor, err := decodeGrepCursor(request.Cursor, request)
+	if err != nil {
+		return SearchResult{}, err
 	}
 	limits := workspace.Limits()
-	if request.Limit <= 0 {
-		request.Limit = limits.DefaultDirectoryItems
-	}
-	offset, err := decodeGrepCursor(request.Cursor, request)
-	if err != nil {
-		return SearchResult{}, err
-	}
-	targets, warnings, err := workspace.grepTargets(request.Paths)
-	if err != nil {
-		return SearchResult{}, err
-	}
-
-	// Cursor input is model-controlled. Do not let a forged offset turn map
-	// preallocation into an immediate memory spike; entries grow only as rg
-	// actually produces validated output and the pagination window is bounded.
-	capacity := min(request.Limit, limits.MaxResultBytes)
+	limit := limits.DefaultDirectoryItems
+	capacity := min(limit, limits.MaxResultBytes)
 	if capacity < limits.MaxResultBytes {
 		capacity++
 	}
 	seen := make(map[string]struct{}, capacity)
-	entries := make([]string, 0, min(request.Limit, capacity))
+	entries := make([]string, 0, min(limit, capacity))
 	eligible, outputBytes := 0, 0
 	truncated := false
 	oversizedEntry := false
-	consume := func(line string) bool {
-		line = filepath.ToSlash(strings.TrimSuffix(line, "\r"))
-		line = strings.TrimPrefix(line, "./")
-		line = strings.TrimPrefix(line, `.\`)
-		if line != "--" {
-			if _, duplicate := seen[line]; duplicate {
-				return true
-			}
-			seen[line] = struct{}{}
-		}
-		if eligible < offset {
-			eligible++
+	prefix := ""
+	prefixVerified := cursor.Offset == 0
+	cursorStale := false
+
+	consume := func(entry string) bool {
+		entry = normalizeGrepEntry(entry)
+		if _, duplicate := seen[entry]; duplicate {
 			return true
 		}
-		if len(entries) >= request.Limit {
+		seen[entry] = struct{}{}
+		if eligible < cursor.Offset {
+			eligible++
+			prefix = advanceGrepPrefix(prefix, []string{entry})
+			if eligible == cursor.Offset {
+				prefixVerified = prefix == cursor.Prefix
+				if !prefixVerified {
+					cursorStale = true
+					return false
+				}
+			}
+			return true
+		}
+		if len(entries) >= limit {
 			truncated = true
 			return false
 		}
-		additional := len(line)
+		additional := len(entry)
 		if len(entries) > 0 {
 			additional++
 		}
@@ -88,49 +73,47 @@ func (workspace *LocalWorkspace) Grep(ctx context.Context, request GrepRequest) 
 			truncated = true
 			return false
 		}
-		entries = append(entries, line)
+		entries = append(entries, entry)
 		outputBytes += additional
 		eligible++
 		return true
 	}
 
-	for index, target := range targets {
-		stopped, runErr := workspace.runGrepTarget(ctx, request, target, limits.MaxResultBytes, consume)
-		if runErr != nil {
-			return SearchResult{}, runErr
-		}
-		if stopped {
-			truncated = true
-			break
-		}
-		if len(entries) >= request.Limit && index < len(targets)-1 {
-			truncated = true
-			break
-		}
+	stopped, err := workspace.runGrepCommand(ctx, command, limits.MaxResultBytes, consume)
+	if err != nil {
+		return SearchResult{}, err
+	}
+	if cursorStale || !prefixVerified {
+		return SearchResult{}, errors.New("grep cursor is stale because preceding results changed; rerun without cursor / grep 游标已因前序结果变化而失效；请移除 cursor 后重新搜索")
+	}
+	if stopped {
+		truncated = true
 	}
 	if oversizedEntry {
-		return SearchResult{}, fmt.Errorf("grep entry exceeds the %d-byte result limit; narrow the query", limits.MaxResultBytes)
+		return SearchResult{}, fmt.Errorf("grep result block exceeds the %d-byte result limit; reduce context or narrow the command / grep 结果块超过 %d 字节上限；请减少上下文或缩小命令范围", limits.MaxResultBytes, limits.MaxResultBytes)
 	}
-	result := SearchResult{Entries: entries, Truncated: truncated, Warnings: warnings}
+	result := SearchResult{Entries: entries, Truncated: truncated, Warnings: command.warnings}
 	if truncated {
-		next, err := encodeGrepCursor(offset+len(entries), request)
+		next := grepCursorState{
+			Offset: cursor.Offset + len(entries),
+			Prefix: advanceGrepPrefix(cursor.Prefix, entries),
+		}
+		encoded, err := encodeGrepCursor(next, request)
 		if err != nil {
 			return SearchResult{}, fmt.Errorf("encode grep cursor: %w", err)
 		}
-		result.NextCursor = next
+		result.NextCursor = encoded
 	}
 	return result, nil
 }
 
-func (workspace *LocalWorkspace) runGrepTarget(
+func (workspace *LocalWorkspace) runGrepCommand(
 	ctx context.Context,
-	request GrepRequest,
-	target grepTarget,
+	plan compiledGrepCommand,
 	maxBytes int,
 	consume func(string) bool,
 ) (bool, error) {
-	args := grepArguments(request, target)
-	command := exec.CommandContext(ctx, workspace.ripgrepExecutable, args...)
+	command := exec.CommandContext(ctx, workspace.ripgrepExecutable, grepArguments(plan)...)
 	command.Dir = workspace.root
 	stdout, err := command.StdoutPipe()
 	if err != nil {
@@ -149,6 +132,36 @@ func (workspace *LocalWorkspace) runGrepTarget(
 	diagnostics := readProcessDiagnostics(stderr, maxBytes)
 	stopped := false
 	var scanErr error
+	groupsContext := plan.groupsContext()
+	var block strings.Builder
+	emit := func(entry string) bool {
+		if entry == "" {
+			return true
+		}
+		if !consume(entry) {
+			stopped = true
+			_ = command.Process.Kill()
+			return false
+		}
+		return true
+	}
+	appendBlockLine := func(line string) bool {
+		additional := len(line)
+		if block.Len() > 0 {
+			additional++
+		}
+		if block.Len()+additional > maxBytes {
+			scanErr = fmt.Errorf("grep context block exceeds the %d-byte result limit; reduce context or narrow the command / grep 上下文结果块超过 %d 字节上限；请减少上下文或缩小命令范围", maxBytes, maxBytes)
+			_ = command.Process.Kill()
+			return false
+		}
+		if block.Len() > 0 {
+			block.WriteByte('\n')
+		}
+		block.WriteString(line)
+		return true
+	}
+
 	scanner := bufio.NewScanner(stdout)
 	scanner.Buffer(make([]byte, 64*1024), maxBytes+1)
 	for scanner.Scan() {
@@ -157,20 +170,38 @@ func (workspace *LocalWorkspace) runGrepTarget(
 			_ = command.Process.Kill()
 			break
 		}
-		if !utf8.ValidString(scanner.Text()) {
-			scanErr = errors.New("grep encountered non-UTF-8 output")
+		line := strings.TrimSuffix(scanner.Text(), "\r")
+		if !utf8.ValidString(line) {
+			scanErr = errors.New("grep encountered non-UTF-8 output; select a compatible encoding or narrow the command / grep 遇到非 UTF-8 输出；请选择兼容编码或缩小命令范围")
 			_ = command.Process.Kill()
 			break
 		}
-		if !consume(scanner.Text()) {
-			stopped = true
-			_ = command.Process.Kill()
+		if !groupsContext {
+			if !emit(line) {
+				break
+			}
+			continue
+		}
+		if line == "--" {
+			if block.Len() == 0 {
+				continue
+			}
+			if !appendBlockLine(line) || !emit(block.String()) {
+				break
+			}
+			block.Reset()
+			continue
+		}
+		if !appendBlockLine(line) {
 			break
 		}
 	}
 	if scanErr == nil && scanner.Err() != nil {
 		scanErr = fmt.Errorf("read ripgrep output: %w", scanner.Err())
 		_ = command.Process.Kill()
+	}
+	if scanErr == nil && !stopped && block.Len() > 0 {
+		_ = emit(block.String())
 	}
 	diagnostic := <-diagnostics
 	waitErr := command.Wait()
@@ -183,97 +214,29 @@ func (workspace *LocalWorkspace) runGrepTarget(
 	if waitErr != nil && !stopped {
 		var exitError *exec.ExitError
 		if !errors.As(waitErr, &exitError) || exitError.ExitCode() != 1 {
-			return false, fmt.Errorf("ripgrep failed: %s", boundedString(diagnostic.content, maxBytes))
+			message := strings.TrimSpace(diagnostic.content)
+			if message == "" {
+				message = waitErr.Error()
+			}
+			return false, fmt.Errorf("ripgrep failed / ripgrep 执行失败: %s", boundedString(message, maxBytes))
 		}
 	}
 	return stopped, nil
 }
 
-func grepArguments(request GrepRequest, target grepTarget) []string {
-	args := []string{
-		"--no-config", "--color=never", "--no-messages", "--no-require-git",
-		"--no-ignore-global", "--no-ignore-parent", "--sort=path", "--hidden", "--glob", "!.git/**",
+func normalizeGrepEntry(entry string) string {
+	lines := strings.Split(entry, "\n")
+	for index, line := range lines {
+		line = strings.TrimSuffix(line, "\r")
+		line = strings.TrimPrefix(line, "./")
+		line = strings.TrimPrefix(line, `.\`)
+		lines[index] = line
 	}
-	switch request.Mode {
-	case "files":
-		args = append(args, "--files-with-matches")
-	case "count":
-		args = append(args, "--count-matches", "--with-filename")
-	default:
-		args = append(args, "--with-filename", "--line-number")
-		if request.ContextBefore > 0 {
-			args = append(args, "--before-context", fmt.Sprintf("%d", request.ContextBefore))
-		}
-		if request.ContextAfter > 0 {
-			args = append(args, "--after-context", fmt.Sprintf("%d", request.ContextAfter))
-		}
-	}
-	if !request.CaseSensitive {
-		args = append(args, "--ignore-case")
-	}
-	if !request.Gitignore {
-		args = append(args, "--no-ignore")
-	}
-	if strings.Contains(request.Pattern, "\n") {
-		args = append(args, "--multiline", "--multiline-dotall")
-	}
-	if target.glob != "" {
-		args = append(args, "--glob", target.glob)
-	}
-	return append(args, "-e", request.Pattern, "--", filepath.FromSlash(target.searchPath))
-}
-
-func (workspace *LocalWorkspace) grepTargets(inputs []string) ([]grepTarget, []string, error) {
-	targets := make([]grepTarget, 0, len(inputs))
-	warnings := make([]string, 0)
-	for _, input := range inputs {
-		input = filepath.ToSlash(strings.TrimSpace(input))
-		if input == "" {
-			return nil, nil, errors.New("grep paths must not contain an empty entry")
-		}
-		if hasResourceScheme(input) {
-			return nil, nil, fmt.Errorf("grep only supports workspace paths: %s", input)
-		}
-		if hasGlobMeta(input) {
-			if filepath.IsAbs(input) || strings.HasPrefix(input, "/") || strings.HasPrefix(input, "!") ||
-				hasParentComponent(input) || !doublestar.ValidatePathPattern(input) {
-				return nil, nil, fmt.Errorf("grep path pattern must be workspace-relative and valid: %s", input)
-			}
-			targets = append(targets, grepTarget{searchPath: ".", glob: path.Clean(input)})
-			continue
-		}
-		relative, _, err := workspace.stat(input, true)
-		if err != nil {
-			if len(inputs) == 1 {
-				return nil, nil, err
-			}
-			warnings = append(warnings, fmt.Sprintf("Skipped missing path %q. / 已跳过不存在的路径 %q。", input, input))
-			continue
-		}
-		targets = append(targets, grepTarget{searchPath: relative})
-	}
-	if len(targets) == 0 {
-		return nil, nil, errors.New("none of the requested grep paths exists")
-	}
-	return targets, warnings, nil
-}
-
-func normalizeRequestedPaths(paths []string) []string {
-	if len(paths) == 0 {
-		return []string{"."}
-	}
-	result := make([]string, len(paths))
-	for index, value := range paths {
-		result[index] = filepath.ToSlash(strings.TrimSpace(value))
-	}
-	return result
+	return strings.Join(lines, "\n")
 }
 
 func normalizeGrepRequest(request GrepRequest) GrepRequest {
-	request.Mode = strings.TrimSpace(request.Mode)
-	if request.Mode == "" {
-		request.Mode = "content"
-	}
-	request.Paths = normalizeRequestedPaths(request.Paths)
+	request.Command = strings.TrimSpace(request.Command)
+	request.Cursor = strings.TrimSpace(request.Cursor)
 	return request
 }

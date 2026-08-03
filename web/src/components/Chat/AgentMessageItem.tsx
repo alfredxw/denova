@@ -23,7 +23,7 @@ interface AgentMessageItemProps {
   onContinuePlan?: (view: AgentMessageView) => void
   onExitPlanMode?: () => void
   onOpenTrace?: (runID: string) => void
-  onPlanCardLayoutChange?: () => void
+  onInteractiveCardLayoutChange?: (element?: HTMLElement) => void
   onResolveAsk?: (view: AgentMessageView, action: { status: 'answered'; answers: AgentAskAnswer[] } | { status: 'cancelled' }) => Promise<AgentAskResolution>
 }
 
@@ -46,7 +46,7 @@ export const AgentMessageItem = memo(function AgentMessageItem({
   onContinuePlan,
   onExitPlanMode,
   onOpenTrace,
-  onPlanCardLayoutChange,
+  onInteractiveCardLayoutChange,
   onResolveAsk,
 }: AgentMessageItemProps) {
   const message = agentViewToRenderMessage(view)
@@ -71,7 +71,7 @@ export const AgentMessageItem = memo(function AgentMessageItem({
       onContinuePlan={onContinuePlan ? () => onContinuePlan(view) : undefined}
       onExitPlanMode={onExitPlanMode}
       onOpenTrace={onOpenTrace}
-      onPlanCardLayoutChange={onPlanCardLayoutChange}
+      onInteractiveCardLayoutChange={onInteractiveCardLayoutChange}
       onResolveAsk={onResolveAsk ? (_message, action) => onResolveAsk(view, action) : undefined}
     />
   )

@@ -3,7 +3,9 @@ package api
 import (
 	"net/http"
 	"net/url"
+	"strings"
 	"testing"
+	"time"
 
 	"denova/config"
 	"denova/internal/agents/conversationconfig"
@@ -59,6 +61,39 @@ func TestSettingsAPIPartiallyMutatesOneLayerThroughOneRoute(t *testing.T) {
 		if response.Code != http.StatusNotFound {
 			t.Fatalf("retired route %s status = %d body=%s", retiredPath, response.Code, response.Body.String())
 		}
+	}
+}
+
+func TestSettingsAPIRevokesOneApprovalRuleWithoutReplacingConcurrentRules(t *testing.T) {
+	application := newTestApplication(t)
+	server := NewServer(application, "0")
+	workspace := application.Workspace()
+	rules := []config.AgentApprovalRule{
+		{
+			ID: "approval-one", Scope: config.AgentApprovalRuleWorkspace, ProjectID: "project-one", Workspace: workspace,
+			ToolName: "bash", MatcherVersion: config.AgentApprovalRuleMatcherVersion, CommandKey: `["go","test"]`,
+			CommandPattern: "go test ...", ApprovedArgsHash: strings.Repeat("a", 64), ApprovedCommand: "go test ./...", CreatedAt: time.Now().UTC(),
+		},
+		{
+			ID: "approval-two", Scope: config.AgentApprovalRuleWorkspace, ProjectID: "project-one", Workspace: workspace,
+			ToolName: "bash", MatcherVersion: config.AgentApprovalRuleMatcherVersion, CommandKey: `["git","push","origin"]`,
+			CommandPattern: "git push origin ...", ApprovedArgsHash: strings.Repeat("b", 64), ApprovedCommand: "git push origin main", CreatedAt: time.Now().UTC(),
+		},
+	}
+	for _, rule := range rules {
+		if _, err := application.SettingsService().EnsureAgentApprovalRule(rule); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	response := performJSONRequest(t, server, http.MethodDelete, "/api/settings/agent-approval-rules/approval-one", nil)
+	if response.Code != http.StatusOK {
+		t.Fatalf("delete approval rule status = %d body=%s", response.Code, response.Body.String())
+	}
+	var layered config.LayeredSettings
+	decodeResponse(t, response.Body.Bytes(), &layered)
+	if len(layered.User.AgentApprovalRules) != 1 || layered.User.AgentApprovalRules[0].ID != "approval-two" {
+		t.Fatalf("remaining approval rules = %#v", layered.User.AgentApprovalRules)
 	}
 }
 

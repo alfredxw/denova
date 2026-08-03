@@ -14,6 +14,7 @@ vi.mock('./api', () => {
     checkForUpdate: vi.fn(),
     fetchSettings: vi.fn(),
     installUpdateStream: vi.fn(),
+    revokeAgentApprovalRule: vi.fn(),
     patchSettings: (_layer: string, changes: unknown, revision?: string) => revision === undefined
       ? updateUserSettings(changes)
       : updateUserSettings(changes, revision),

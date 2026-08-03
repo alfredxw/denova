@@ -1,7 +1,6 @@
 package chat
 
 import (
-	"errors"
 	"strings"
 
 	"denova/internal/agents/prompts"
@@ -107,31 +106,13 @@ func truncateRunes(value string, limit int) string {
 	return string(runes[:limit])
 }
 
-// readReferencedFile 安全读取引用文件，并按单文件和总大小限制截断。
-func readReferencedFile(bookService *book.Service, relPath string, fileLimit, remainLimit int) (string, int, error) {
-	limit := fileLimit
-	if remainLimit < limit {
-		limit = remainLimit
-	}
-	if limit <= 0 {
-		return "", 0, errors.New("引用内容总量已超过限制")
-	}
-
+// readReferencedFile reads one explicit workspace reference without applying a
+// second, caller-local budget. The shared context assembler is the sole owner
+// of UTF-8-safe truncation and model-visible truncation notices.
+func readReferencedFile(bookService *book.Service, relPath string) (string, error) {
 	content, err := bookService.ReadFile(relPath)
 	if err != nil {
-		return "", 0, err
+		return "", err
 	}
-
-	data := []byte(content)
-	truncated := false
-	if len(data) > limit {
-		data = data[:limit]
-		truncated = true
-	}
-
-	result := string(data)
-	if truncated {
-		result += "\n\n[内容已截断]"
-	}
-	return result, len(data), nil
+	return content, nil
 }

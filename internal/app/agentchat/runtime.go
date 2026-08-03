@@ -133,7 +133,12 @@ func (service *Service) resolveAsk(
 	if err != nil {
 		return agentconversation.HostAskResolution{}, err
 	}
-	return agentconversation.ResolveAsk(ctx, sess, askID, status, answers, cancelReason)
+	if service.host == nil {
+		return agentconversation.ResolveAsk(ctx, sess, askID, status, answers, cancelReason)
+	}
+	return service.host.ResolveAsk(
+		ctx, sess, binding.ProjectID, binding.Workspace, askID, status, answers, cancelReason,
+	)
 }
 
 // ClearSession drains exactly one binding and appends the durable clear marker.

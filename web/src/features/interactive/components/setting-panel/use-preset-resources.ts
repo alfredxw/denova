@@ -5,6 +5,7 @@ import { rebaseJSONValue } from '@/lib/three-way-rebase'
 import { getActorStates, getEventPackages, getImagePresets, getInteractiveTellers, getRuleSystems, getStoryDirectors } from '../../api'
 import type { ActorStateModule, EventPackageModule, ImagePreset, RuleSystemModule, StoryDirector, Teller } from '../../types'
 import { cloneActorState, cloneEventPackage, cloneImagePreset, cloneRuleSystem, cloneStoryDirector, cloneTeller, EMPTY_ACTOR_STATES, EMPTY_EVENT_PACKAGES, EMPTY_IMAGE_PRESETS, EMPTY_RULE_SYSTEMS, EMPTY_STORY_DIRECTORS, EMPTY_TELLERS, TELLER_CONFIG_AGENT_ENTRY_ID, type PresetDrafts } from './presetResources'
+import { presetResourceRevision } from './usePresetResourceAutosave'
 
 /** 外部传入列表优先；未传入时按 workspace 自行加载。 */
 export function usePresetResources({
@@ -419,7 +420,7 @@ export function usePresetDraftSync(resources: PresetResources, autosaves: DraftS
   }, [setActiveSlotId, tellerDraft])
 }
 
-function useRebasedPresetDraft<T extends { id: string; updated_at?: string }>({
+function useRebasedPresetDraft<T extends { id: string; revision?: string; updated_at?: string }>({
   resource,
   scopeKey,
   baseline,
@@ -463,9 +464,9 @@ function useRebasedPresetDraft<T extends { id: string; updated_at?: string }>({
                 resource,
                 scope: scopeKey,
                 id: nextBaseline.id,
-                baseline: { revision: previousBaseline.updated_at, value: previousBaseline },
-                local: { revision: previousBaseline.updated_at, value: currentDraft },
-                external: { revision: nextBaseline.updated_at, value: nextBaseline },
+                baseline: { revision: presetResourceRevision(previousBaseline), value: previousBaseline },
+                local: { revision: presetResourceRevision(previousBaseline), value: currentDraft },
+                external: { revision: presetResourceRevision(nextBaseline), value: nextBaseline },
               })
           : nextBaseline
         : null
@@ -479,9 +480,9 @@ function useRebasedPresetDraft<T extends { id: string; updated_at?: string }>({
           resource,
           scope: scopeKey,
           id: nextDraft.id,
-          baseline: { revision: rebasedFromDraft.updated_at, value: rebasedFromDraft },
-          local: { revision: rebasedFromDraft.updated_at, value: latestDraft },
-          external: { revision: nextBaseline?.updated_at, value: nextDraft },
+          baseline: { revision: presetResourceRevision(rebasedFromDraft), value: rebasedFromDraft },
+          local: { revision: presetResourceRevision(rebasedFromDraft), value: latestDraft },
+          external: { revision: nextBaseline ? presetResourceRevision(nextBaseline) : undefined, value: nextDraft },
         })
         rebasedFromDraft = latestDraft
       }

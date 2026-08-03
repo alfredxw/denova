@@ -10,9 +10,9 @@ import (
 
 func TestAssemblerAccountsForDefaultRendererAndTruncatesContent(t *testing.T) {
 	const request = "continue"
-	const want = "# State\n\nabc\n\n---\n\n# User request\n\ncontinue"
+	const want = "# State\n\nabc\n\n> " + DefaultTruncationNotice + "\n\n---\n\n# User request\n\ncontinue"
 	result, err := NewAssembler(Budget{
-		MaxFragmentBytes: 64,
+		MaxFragmentBytes: 3,
 		MaxTotalBytes:    len(want) - len(request),
 	}).Assemble(stdcontext.Background(), AssembleRequest{
 		Messages: []*agent.Message{agent.UserMessage(request)},
@@ -67,7 +67,7 @@ func (testProjector) Project(stdcontext.Context) ([]Fragment, error) {
 }
 
 func TestProjectorCannotEscapeDescriptorOrHardLimit(t *testing.T) {
-	result, err := NewAssembler(Budget{MaxFragmentBytes: 64, MaxTotalBytes: 64}).Assemble(stdcontext.Background(), AssembleRequest{
+	result, err := NewAssembler(Budget{MaxFragmentBytes: 64, MaxTotalBytes: 256}).Assemble(stdcontext.Background(), AssembleRequest{
 		Messages:   []*agent.Message{agent.UserMessage("continue")},
 		Projectors: []ContextProjector{testProjector{}},
 	})

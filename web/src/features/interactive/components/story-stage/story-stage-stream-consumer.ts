@@ -5,6 +5,7 @@ import type { StoryStageRunState } from '../../stores/interactive-store'
 import type { InteractiveSSEEvent, InteractiveTurnPersistedEvent, Snapshot } from '../../types'
 import type { StoryStageRuntimeUpdater } from '../../use-interactive-agent-commands'
 import { streamMetadataFromPayload } from './live-stream-messages'
+import { isInteractiveStreamEventType } from './story-stage-stream-events'
 import { buildTokenUsageMessage, upsertTokenUsageMessage } from './token-usage'
 import type { LiveMessageAccumulator } from './use-live-message-accumulator'
 
@@ -143,7 +144,13 @@ export function createStoryStageStreamConsumer({
           },
         }))
       }
-      switch (value.event) {
+      const eventType = value.event
+      if (!isInteractiveStreamEventType(eventType)) {
+        console.warn('[interactive-stage] received unknown stream event', { event: eventType, id: value.id })
+        setActivity(t('storyStage.activity.unsupportedEvent', { event: eventType || 'unknown' }))
+        continue
+      }
+      switch (eventType) {
         case 'task_checkpoint': {
           const data = JSON.parse(value.data) as {
             complete?: boolean
@@ -281,6 +288,16 @@ export function createStoryStageStreamConsumer({
           liveAccumulator.appendToolArgs(data)
           break
         }
+        case 'tool_started':
+        case 'tool_progress': {
+          const data = JSON.parse(value.data) as { name?: unknown }
+          setActivity(t('storyStage.activity.processingTool', {
+            name: typeof data.name === 'string' && data.name.trim()
+              ? data.name
+              : t('storyStage.activity.toolCall'),
+          }))
+          break
+        }
         case 'tool_result': {
           const data = JSON.parse(value.data)
           liveAccumulator.flush()
@@ -365,7 +382,7 @@ export function createStoryStageStreamConsumer({
           liveAccumulator.collapseNonNarrative()
           if (text) liveAccumulator.appendAssistant(text, liveTurnNavigationAnchorId, rootNarrativeMetadata)
           liveAccumulator.finishMessages()
-          if (value.event === 'aborted') {
+          if (eventType === 'aborted') {
             const data = JSON.parse(value.data) as { message?: unknown; reason?: unknown }
             terminalStatus = 'aborted'
             terminalReason =
@@ -388,6 +405,21 @@ export function createStoryStageStreamConsumer({
           terminalEventReceived = true
           break
         }
+        case 'ask_pending':
+        case 'ask_resolved':
+        case 'context_cleanup':
+        case 'context_normalizer':
+        case 'post_run_verification':
+        case 'run_state':
+        case 'tool_target':
+        case 'verification':
+        case 'workspace_change':
+          // These events are transport metadata or are projected through the
+          // durable persisted-turn event. They intentionally do not alter the
+          // game-stage display.
+          break
+        default:
+          assertNever(eventType)
       }
     }
     return {
@@ -435,6 +467,10 @@ export function createStoryStageStreamConsumer({
   }
 
   return { consume, initialOutcome, settleInactiveProjection }
+}
+
+function assertNever(value: never): never {
+  throw new Error(`Unhandled interactive stream event: ${value}`)
 }
 
 function taskCheckpointStatus(value: unknown): TaskCheckpointStatus | undefined {

@@ -16,7 +16,7 @@ import {
 } from '@/lib/api'
 import type { ActiveChatTask, AgentAskAnswer, AgentRuntimeRecoveryAction, ConfigManagerRunRequest } from '@/lib/api'
 import { useSkillCommands } from '@/hooks/useSkillCommands'
-import { selectAgentTokenUsageRecords, type AgentMessageView } from '@/lib/agent-message-view'
+import { agentViewAskID, selectAgentTokenUsageRecords, type AgentMessageView } from '@/lib/agent-message-view'
 import { createAgentDataMessage, createAgentTextMessage, useAgentUIMessageStream } from '@/hooks/useAgentUIMessageStream'
 import { agentCommandRetryKey, isKnownAgentCommandOutcome, rememberAgentCommandID } from '@/lib/agent-command'
 import { normalizeAgentUIMessages } from '@/lib/agent-ui'
@@ -402,7 +402,7 @@ export function ConfigManagerChat({ workspace = '', origin, resourceId, storyId,
   const runtimeBusy = running || recoveryPending
   const canAbortRecovery = runtimeProjection?.recovery_actions?.some((action) => action.kind === 'abort') === true
   const resolveAsk = useCallback(async (view: AgentMessageView, action: { status: 'answered'; answers: AgentAskAnswer[] } | { status: 'cancelled' }) => {
-    const askID = typeof view.data.id === 'string' ? view.data.id.trim() : ''
+    const askID = agentViewAskID(view)
     if (!askID) throw new Error('Cannot resolve an Ask without its interaction ID')
     return resolveAgentAskAndRefresh(action, {
       answer: (answers) => answerConfigManagerAsk(scope, askID, answers),
