@@ -49,7 +49,21 @@ var defaultIgnoredDirectories = map[string]struct{}{
 }
 
 type Service struct {
-	registry *projectdomain.Registry
+	registry               *projectdomain.Registry
+	bookVersioningProvider BookMutationVersioningProvider
+}
+
+// BookMutationVersioning preserves Writing's version-history contract while
+// the project-scoped file service remains usable for non-Book projects.
+type BookMutationVersioning struct {
+	Service  *book.VersionService
+	Settings book.VersionAutoSettings
+}
+
+// BookMutationVersioningProvider resolves version behavior without coupling
+// this project-scoped service to the foreground App package.
+type BookMutationVersioningProvider interface {
+	ProjectFileBookMutationVersioning(projectID, workspace string) BookMutationVersioning
 }
 
 type projectRuntime struct {
@@ -61,6 +75,12 @@ type projectRuntime struct {
 
 func NewService(registry *projectdomain.Registry) *Service {
 	return &Service{registry: registry}
+}
+
+// NewServiceWithBookVersioning enables restore points only for Book mutations
+// whose host provides a live Writing version service.
+func NewServiceWithBookVersioning(registry *projectdomain.Registry, provider BookMutationVersioningProvider) *Service {
+	return &Service{registry: registry, bookVersioningProvider: provider}
 }
 
 // ResolveTree resolves several explorer branches in one bounded request. Each
@@ -229,12 +249,7 @@ func readDirectoryPage(ctx context.Context, root *os.Root, path string, includeI
 		if entries[left].Type != entries[right].Type {
 			return entries[left].Type == EntryDirectory
 		}
-		leftName := strings.ToLower(entries[left].Name)
-		rightName := strings.ToLower(entries[right].Name)
-		if leftName == rightName {
-			return entries[left].Name < entries[right].Name
-		}
-		return leftName < rightName
+		return book.CompareFileNodeNames(entries[left].Name, entries[right].Name) < 0
 	})
 	if err := ctx.Err(); err != nil {
 		return DirectoryPage{}, err
@@ -436,6 +451,7 @@ func (service *Service) applyOperation(ctx context.Context, runtime projectRunti
 		return "", err
 	}
 	resultPath := path
+	versioning := service.bookMutationVersioning(runtime)
 	err = runtime.changes.WithExclusiveWorkspace(ctx, func() error {
 		switch operation.Kind {
 		case OperationCreate:
@@ -449,6 +465,11 @@ func (service *Service) applyOperation(ctx context.Context, runtime projectRunti
 		case OperationDelete:
 			if pathErr := rejectSymlinkParents(runtime.layout.ContentRoot, path); pathErr != nil {
 				return pathErr
+			}
+			if versioning.Service != nil {
+				if _, versionErr := versioning.Service.Create("删除前自动备份", book.VersionSourceManual, versioning.Settings); versionErr != nil && !errors.Is(versionErr, book.ErrVersionClean) {
+					return versionErr
+				}
 			}
 			return runtime.files.Delete(path)
 		case OperationRename:
@@ -498,7 +519,17 @@ func (service *Service) applyOperation(ctx context.Context, runtime projectRunti
 			return fmt.Errorf("unsupported project file operation %q", operation.Kind)
 		}
 	})
+	if err == nil && versioning.Service != nil {
+		versioning.Service.ScheduleAutoVersion(versioning.Settings)
+	}
 	return resultPath, err
+}
+
+func (service *Service) bookMutationVersioning(runtime projectRuntime) BookMutationVersioning {
+	if runtime.record.Type != projectdomain.TypeBook || service.bookVersioningProvider == nil {
+		return BookMutationVersioning{}
+	}
+	return service.bookVersioningProvider.ProjectFileBookMutationVersioning(runtime.record.ID, runtime.layout.ContentRoot)
 }
 
 func (service *Service) resolve(projectID string) (projectRuntime, error) {

@@ -354,27 +354,6 @@ export interface SSEEvent {
   data: string
 }
 
-export interface FileOperationResult {
-  path: string
-  message: string
-}
-
-export interface CreateFileRequest {
-  path: string
-  type: 'file' | 'dir'
-  content?: string
-}
-
-export interface CopyMoveRequest {
-  from: string
-  to: string
-}
-
-export interface RenameRequest {
-  path: string
-  new_name: string
-}
-
 export interface BookRecord {
   name: string
   path: string

@@ -1,4 +1,4 @@
-import { act, renderHook } from '@testing-library/react'
+import { act, renderHook, waitFor } from '@testing-library/react'
 import { beforeEach, describe, expect, it } from 'vitest'
 import {
   readPersistedPanelLayout,
@@ -41,6 +41,29 @@ describe('usePersistedPanelLayout', () => {
     })
 
     expect(JSON.parse(window.localStorage.getItem(STORAGE_KEY) || '{}')).toEqual({ sidebar: 31, main: 69 })
+  })
+
+  it('keeps persisting through the post-pointerup layout commit so the final width wins', async () => {
+    const { result } = renderHook(() => usePersistedPanelLayout({
+      storageKey: STORAGE_KEY,
+      panelIds: ['sidebar', 'main'],
+    }))
+
+    act(() => {
+      result.current.resizeHandleIntentProps.onPointerDownCapture({} as never)
+      expect(result.current.persistUserLayout({ sidebar: 25, main: 75 })).toBe(true)
+      expect(result.current.persistUserLayout({ sidebar: 32, main: 68 })).toBe(true)
+    })
+
+    expect(JSON.parse(window.localStorage.getItem(STORAGE_KEY) || '{}')).toEqual({ sidebar: 32, main: 68 })
+
+    act(() => {
+      window.dispatchEvent(new Event('pointerup'))
+    })
+    expect(result.current.isUserResizeActive()).toBe(true)
+    expect(result.current.persistUserLayout({ sidebar: 40, main: 60 })).toBe(true)
+    await waitFor(() => expect(result.current.isUserResizeActive()).toBe(false))
+    expect(JSON.parse(window.localStorage.getItem(STORAGE_KEY) || '{}')).toEqual({ sidebar: 40, main: 60 })
   })
 
   it('only treats resize keys as keyboard resize intent', () => {

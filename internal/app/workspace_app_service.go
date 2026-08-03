@@ -47,6 +47,21 @@ func (s *workspaceService) Workspace() string {
 	return a.workspace
 }
 
+// ProjectID returns the stable Project identity bound to the active workspace.
+func (a *App) ProjectID() string {
+	return a.workspaceService().ProjectID()
+}
+
+func (s *workspaceService) ProjectID() string {
+	a := s.app
+	a.mu.RLock()
+	defer a.mu.RUnlock()
+	if a.cfg == nil {
+		return ""
+	}
+	return a.cfg.ProjectID
+}
+
 // BookService 返回当前作品文件服务。
 func (a *App) BookService() *book.Service {
 	return a.workspaceService().BookService()

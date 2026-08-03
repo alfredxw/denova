@@ -4,13 +4,13 @@ import type { ReactNode } from 'react'
 import { createPortal } from 'react-dom'
 import { useTranslation } from 'react-i18next'
 import { toast } from 'sonner'
-import { FileTree } from '@/components/Sidebar/FileTree'
 import { SearchPanel } from '@/components/Sidebar/SearchPanel'
 import { AgentPanel, WRITING_COMPOSER_SETTING_DEFAULTS } from '@/components/Chat/AgentPanel'
 import { FilePreview } from '@/components/workbench/FilePreview'
 import { MarkdownEditor, type EditorFlushHandler } from '@/components/Editor/MarkdownEditor'
 import { ChapterOutline, type OutlineRevealRequest } from '@/components/workbench/outline/ChapterOutline'
 import { getImagePresets, getInteractiveTellers } from '@/features/interactive/api'
+import { WritingProjectExplorer } from '@/features/project-explorer/WritingProjectExplorer'
 import { useInteractiveStore } from '@/features/interactive/stores/interactive-store'
 import type { ImagePreset, Teller } from '@/features/interactive/types'
 import type { FileNode } from '@/hooks/useWorkspace'
@@ -23,7 +23,7 @@ import { applyReadingTypographySettings } from '@/features/settings/font-variabl
 import type { AgentPartRef } from '@/lib/agent-message-view'
 import type { RightPanel, WorkspaceMode } from '@/stores/workspace-store'
 import { workspaceFileKind } from '@/lib/workspace-file-kind'
-import { isLoreItemsPath, workspaceParentPaths } from '@/lib/workspace-path'
+import { isLoreItemsPath } from '@/lib/workspace-path'
 import { useWritingChangeReview } from '@/features/changes/use-writing-change-review'
 import type { ReviewFeedbackBatch, ReviewFeedbackSelection } from '@/features/changes/agent/ReviewFeedbackTray'
 import { useDocumentReview } from '@/features/document-review/use-document-review'
@@ -48,7 +48,7 @@ const SkillsView = memo(lazy(() => import('@/features/skills/SkillsView').then((
 const SettingsView = memo(lazy(() => import('@/features/settings/SettingsView').then((module) => ({ default: module.SettingsView }))))
 const AgentChatRoute = memo(lazy(() => import('@/features/agent-chat/AgentChatRoute').then((module) => ({ default: module.AgentChatRoute }))))
 const LoreWorkspaceTab = memo(lazy(() => import('@/features/lore/LoreWorkspaceTab').then((module) => ({ default: module.LoreWorkspaceTab }))))
-const StableFileTree = memo(FileTree)
+const StableWritingProjectExplorer = memo(WritingProjectExplorer)
 const StableSearchPanel = memo(SearchPanel)
 const StableChapterOutline = memo(ChapterOutline)
 const StableFilePreview = memo(FilePreview)
@@ -83,6 +83,7 @@ interface ModeRouterProps {
   booksReturnMode: 'ide' | 'interactive'
   currentBookName: string
   workspace: string
+  projectId: string
   appVersion: string
   summary: WorkspaceSummary | null
   currentChapter?: ChapterSummary
@@ -149,6 +150,7 @@ interface ModeRouterProps {
   onRenameItem: (path: string, newName: string) => Promise<void>
   onCopyItem: (from: string, to: string) => Promise<void>
   onMoveItem: (from: string, to: string) => Promise<void>
+  onRefreshWorkspace: () => void | Promise<void>
   onActivateTab: (tab: Tab) => void
   onCloseTab: (tab: Tab) => void
   onToggleTabPin: (tab: Tab) => void
@@ -189,6 +191,7 @@ export function ModeRouter(props: ModeRouterProps) {
     booksReturnMode,
     currentBookName,
     workspace,
+    projectId,
     appVersion,
     summary,
     currentChapter,
@@ -255,6 +258,7 @@ export function ModeRouter(props: ModeRouterProps) {
     onRenameItem,
     onCopyItem,
     onMoveItem,
+    onRefreshWorkspace,
     onActivateTab,
     onCloseTab,
     onToggleTabPin,
@@ -328,10 +332,8 @@ export function ModeRouter(props: ModeRouterProps) {
   const [agentPanelHost] = useState(() => createStablePortalHost('h-full min-h-0 w-full min-w-0 overflow-hidden'))
   const [illustrationInsertSignal, setIllustrationInsertSignal] = useState<{ illustration: ChapterIllustration; nonce: number } | null>(null)
   const [outlineRevealRequest, setOutlineRevealRequest] = useState<OutlineRevealRequest | null>(null)
-  const [projectRevealPath, setProjectRevealPath] = useState('')
   const loreLibraryFlushHandlerRef = useRef<EditorFlushHandler | null>(null)
   const agentChatFlushHandlerRef = useRef<EditorFlushHandler | null>(null)
-  const projectRevealParents = useMemo(() => workspaceParentPaths(projectRevealPath), [projectRevealPath])
   const [editorLine, setEditorLine] = useState(1)
   // The router is the lifecycle owner: the settings lane survives AgentPanel close/unmount.
   const composerSettings = usePersistedUserSettings({ workspace, defaults: WRITING_COMPOSER_SETTING_DEFAULTS })
@@ -386,7 +388,6 @@ export function ModeRouter(props: ModeRouterProps) {
 
   useEffect(() => {
     setOutlineRevealRequest(null)
-    setProjectRevealPath('')
   }, [workspace])
 
   useEffect(() => {
@@ -429,7 +430,11 @@ export function ModeRouter(props: ModeRouterProps) {
     }),
   })), [i18n.language, loreItems, t])
   const loreEmpty = Boolean(workspace) && loreItems.length === 0
-  const showSidebarLoading = loading && tree.length === 0 && !summary
+  const showSidebarLoading = Boolean(workspace) && (
+    sidebarView === 'files'
+      ? !projectId
+      : sidebarView === 'outline' && loading && tree.length === 0 && !summary
+  )
 
   const selectWorkspacePath = useCallback((path: string) => {
     if (isLoreItemsPath(path)) return onOpenLoreTab()
@@ -472,7 +477,6 @@ export function ModeRouter(props: ModeRouterProps) {
   }, [onSetSidebarView, onToggleProjectVisible, projectVisible])
   const revealFileInProject = useCallback(async (path: string) => {
     if (!projectVisible) onToggleProjectVisible()
-    setProjectRevealPath(path)
     onSetSidebarView('files')
     await Promise.resolve(selectWorkspacePath(path))
   }, [onSetSidebarView, onToggleProjectVisible, projectVisible, selectWorkspacePath])
@@ -805,28 +809,33 @@ export function ModeRouter(props: ModeRouterProps) {
             onSetChapterConfirmed={onSetChapterConfirmed}
           />
         ) : (
-          <div className="h-full overflow-y-auto p-2">
+          <div className="h-full min-h-0">
             {sidebarView === 'search' ? (
-              <StableSearchPanel
-                workspace={workspace}
-                onSelectResult={selectWorkspaceSearchResult}
-                onWorkspaceChanged={onWorkspaceChanged}
-              />
-            ) : tree.length === 0 ? (
-              <div className="py-4 text-center text-[var(--nova-text-muted)]">{t('router.noFiles')}</div>
+              <div className="h-full overflow-y-auto p-2">
+                <StableSearchPanel
+                  workspace={workspace}
+                  onSelectResult={selectWorkspaceSearchResult}
+                  onWorkspaceChanged={onWorkspaceChanged}
+                />
+              </div>
+            ) : !projectId ? (
+              <div className="px-2 py-4 text-center text-[var(--nova-text-muted)]">{t('router.loading')}</div>
             ) : (
-              <StableFileTree
-                nodes={tree}
-                selectedFile={selectedFile}
+              <StableWritingProjectExplorer
+                key={projectId}
+                projectId={projectId}
+                workspace={workspace}
+                selectedPath={selectedFile}
+                chapterStats={chapterStats}
+                refreshSignal={versionRefreshSignal}
                 onSelectFile={selectWorkspacePath}
                 onReferenceFile={onReferenceFile}
-                chapterStats={chapterStats}
                 onCreateItem={onCreateItem}
                 onDeleteItem={onDeleteItem}
                 onRenameItem={onRenameItem}
                 onCopyItem={onCopyItem}
                 onMoveItem={onMoveItem}
-                defaultExpandedPaths={projectRevealParents}
+                onRefreshWorkspace={onRefreshWorkspace}
               />
             )}
           </div>

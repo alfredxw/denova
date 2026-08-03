@@ -225,7 +225,7 @@ func (a *App) ensureServices() {
 		a.settingsApp = settingsapp.NewService(settingsHost{app: a})
 		a.imageApp = imageapp.NewService(imageHost{app: a})
 		a.loreApp = loreapp.NewService(loreHost{app: a}, a.imageApp)
-		a.projectFiles = projectfilesapp.NewService(a.projectRegistry)
+		a.projectFiles = projectfilesapp.NewServiceWithBookVersioning(a.projectRegistry, a)
 	})
 }
 

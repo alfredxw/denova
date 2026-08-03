@@ -412,128 +412,6 @@ func (h *Handlers) HandleWorkspaceFileWrite(ctx context.Context, c *app.RequestC
 	})
 }
 
-// handleWorkspaceCreate POST /api/workspace/create — 新建文件或目录。
-func (h *Handlers) HandleWorkspaceCreate(ctx context.Context, c *app.RequestContext) {
-	if !h.requireWorkspace(c) {
-		return
-	}
-	var req struct {
-		Path    string `json:"path"`
-		Type    string `json:"type"`
-		Content string `json:"content"`
-	}
-	if err := c.BindJSON(&req); err != nil || req.Path == "" {
-		writeErrorKey(c, consts.StatusBadRequest, "api.workspace.pathTypeRequired")
-		return
-	}
-
-	if err := h.app.CreateWorkspaceItem(ctx, req.Path, req.Type, req.Content); err != nil {
-		if errors.Is(err, os.ErrExist) {
-			writeErrorKey(c, consts.StatusConflict, "api.workspace.targetExists")
-			return
-		}
-		writeError(c, fileWriteStatus(err), err.Error())
-		return
-	}
-	writeJSON(c, consts.StatusOK, map[string]string{"path": req.Path, "message": messageKey(c, "api.workspace.created")})
-}
-
-// handleWorkspaceDelete POST /api/workspace/delete — 删除文件或目录。
-func (h *Handlers) HandleWorkspaceDelete(ctx context.Context, c *app.RequestContext) {
-	if !h.requireWorkspace(c) {
-		return
-	}
-	var req struct {
-		Path string `json:"path"`
-	}
-	if err := c.BindJSON(&req); err != nil || req.Path == "" {
-		writeErrorKey(c, consts.StatusBadRequest, "api.common.pathRequired")
-		return
-	}
-
-	if err := h.app.DeleteWorkspaceItem(ctx, req.Path); err != nil {
-		writeErrorKey(c, fileWriteStatus(err), "api.workspace.deleteFailed", "detail", err.Error())
-		return
-	}
-	writeJSON(c, consts.StatusOK, map[string]string{"path": req.Path, "message": messageKey(c, "api.workspace.deleted")})
-}
-
-// handleWorkspaceRename POST /api/workspace/rename — 重命名同目录下的文件或目录。
-func (h *Handlers) HandleWorkspaceRename(ctx context.Context, c *app.RequestContext) {
-	if !h.requireWorkspace(c) {
-		return
-	}
-	var req struct {
-		Path    string `json:"path"`
-		NewName string `json:"new_name"`
-	}
-	if err := c.BindJSON(&req); err != nil || req.Path == "" {
-		writeErrorKey(c, consts.StatusBadRequest, "api.workspace.pathNewNameRequired")
-		return
-	}
-
-	newPath, err := h.app.RenameWorkspaceItem(ctx, req.Path, req.NewName)
-	if err != nil {
-		if errors.Is(err, os.ErrExist) {
-			writeErrorKey(c, consts.StatusConflict, "api.workspace.targetExists")
-			return
-		}
-		writeError(c, fileWriteStatus(err), err.Error())
-		return
-	}
-	writeJSON(c, consts.StatusOK, map[string]string{"path": newPath, "message": messageKey(c, "api.workspace.renamed")})
-}
-
-// handleWorkspaceCopy POST /api/workspace/copy — 复制文件或目录。
-func (h *Handlers) HandleWorkspaceCopy(ctx context.Context, c *app.RequestContext) {
-	if !h.requireWorkspace(c) {
-		return
-	}
-	var req struct {
-		From string `json:"from"`
-		To   string `json:"to"`
-	}
-	if err := c.BindJSON(&req); err != nil || req.From == "" || req.To == "" {
-		writeErrorKey(c, consts.StatusBadRequest, "api.workspace.fromToRequired")
-		return
-	}
-
-	if err := h.app.CopyWorkspaceItem(ctx, req.From, req.To); err != nil {
-		if errors.Is(err, os.ErrExist) {
-			writeErrorKey(c, consts.StatusConflict, "api.workspace.targetExists")
-			return
-		}
-		writeErrorKey(c, fileWriteStatus(err), "api.workspace.copyFailed", "detail", err.Error())
-		return
-	}
-	writeJSON(c, consts.StatusOK, map[string]string{"path": req.To, "message": messageKey(c, "api.workspace.copied")})
-}
-
-// handleWorkspaceMove POST /api/workspace/move — 移动文件或目录。
-func (h *Handlers) HandleWorkspaceMove(ctx context.Context, c *app.RequestContext) {
-	if !h.requireWorkspace(c) {
-		return
-	}
-	var req struct {
-		From string `json:"from"`
-		To   string `json:"to"`
-	}
-	if err := c.BindJSON(&req); err != nil || req.From == "" || req.To == "" {
-		writeErrorKey(c, consts.StatusBadRequest, "api.workspace.fromToRequired")
-		return
-	}
-
-	if err := h.app.MoveWorkspaceItem(ctx, req.From, req.To); err != nil {
-		if errors.Is(err, os.ErrExist) {
-			writeErrorKey(c, consts.StatusConflict, "api.workspace.targetExists")
-			return
-		}
-		writeErrorKey(c, fileWriteStatus(err), "api.workspace.moveFailed", "detail", err.Error())
-		return
-	}
-	writeJSON(c, consts.StatusOK, map[string]string{"path": req.To, "message": messageKey(c, "api.workspace.moved")})
-}
-
 // handleWorkspaceSwitch POST /api/workspace/switch — 切换工作目录。
 func (h *Handlers) HandleWorkspaceSwitch(ctx context.Context, c *app.RequestContext) {
 	var req struct {
@@ -559,8 +437,9 @@ func (h *Handlers) HandleWorkspaceSwitch(ctx context.Context, c *app.RequestCont
 func (h *Handlers) HandleWorkspaceCurrent(ctx context.Context, c *app.RequestContext) {
 	hasState, _ := h.app.Status()
 	writeJSON(c, consts.StatusOK, map[string]interface{}{
-		"workspace": h.app.Workspace(),
-		"has_state": hasState,
+		"workspace":  h.app.Workspace(),
+		"project_id": h.app.ProjectID(),
+		"has_state":  hasState,
 	})
 }
 

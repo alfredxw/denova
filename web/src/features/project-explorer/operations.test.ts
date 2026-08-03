@@ -1,10 +1,10 @@
 import { describe, expect, it } from 'vitest'
-import type { ProjectFileExplorerNode } from './project-file-explorer-model'
+import type { ProjectFileExplorerNode } from './model'
 import {
   buildProjectFilePastePlan,
   insertProjectFileDraft,
   PROJECT_FILE_DRAFT_PREFIX,
-} from './project-file-tree-operations'
+} from './operations'
 
 describe('project file tree operations', () => {
   it('places a new row at the start of its target directory', () => {

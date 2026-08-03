@@ -1,15 +1,10 @@
 import { useState, useEffect, useCallback, useRef } from 'react'
 import {
-  copyWorkspaceItem,
-  createWorkspaceItem,
-  deleteWorkspaceItem,
   getBookshelf,
   getCurrentWorkspace,
   getWorkspaceSummary,
   getWorkspaceTree,
-  moveWorkspaceItem,
   readFile as readWorkspaceFile,
-  renameWorkspaceItem,
   saveFile,
   APIError,
 } from '@/lib/api'
@@ -19,6 +14,11 @@ import type { WorkspaceChangeEvent, WorkspaceFileChange } from '@/features/chang
 import { WorkspaceFileRevisionConflictError } from '@/lib/autosave/workspace-file-revision-conflict'
 import { workspaceFileKind } from '@/lib/workspace-file-kind'
 import { MISSING_WORKSPACE_REVISION } from '@/lib/api-client/workspace'
+import {
+  applyProjectFileOperations,
+  type ProjectFileOperation,
+  type ProjectFileOperationResult,
+} from '@/lib/api-client/project-files'
 import { useWorkspaceFileEvents } from './useWorkspaceFileEvents'
 
 export interface FileNode {
@@ -51,6 +51,7 @@ export function useWorkspace(options: UseWorkspaceOptions = {}) {
   const fileContent = fileDocument.content
   const fileRevision = fileDocument.revision
   const [workspace, setWorkspaceState] = useState<string>('')
+  const [projectId, setProjectId] = useState<string>('')
   const [workspaceLoaded, setWorkspaceLoaded] = useState(false)
   const [summary, setSummary] = useState<WorkspaceSummary | null>(null)
   const [books, setBooks] = useState<BookRecord[]>([])
@@ -98,6 +99,7 @@ export function useWorkspace(options: UseWorkspaceOptions = {}) {
     setFileDocument({ content: '', revision: '' })
     setSummary(null)
     setLoading(Boolean(nextWorkspace))
+    setProjectId('')
     setWorkspaceState(nextWorkspace)
   }, [setFileDocument])
 
@@ -134,6 +136,7 @@ export function useWorkspace(options: UseWorkspaceOptions = {}) {
     fileReadGenerationsRef.current.clear()
     filePreviewVersionRef.current = 0
     setSummary(null)
+    setProjectId('')
   }, [setFileDocument])
 
   /** 获取当前 workspace 路径 */
@@ -145,11 +148,13 @@ export function useWorkspace(options: UseWorkspaceOptions = {}) {
       const data = await getCurrentWorkspace()
       if (requestID !== workspaceRequestRef.current || requestEpoch !== workspaceEpochRef.current) return
       setWorkspace(data.workspace || '')
+      setProjectId(data.project_id || '')
       setWorkspaceLoaded(true)
     } catch (e) {
       if (requestID !== workspaceRequestRef.current || requestEpoch !== workspaceEpochRef.current) return
       console.error('获取 workspace 失败', e)
       setWorkspace('')
+      setProjectId('')
       setWorkspaceLoaded(true)
     }
   }, [setWorkspace])
@@ -521,55 +526,66 @@ export function useWorkspace(options: UseWorkspaceOptions = {}) {
     await Promise.all([fetchWorkspace(), fetchBooks()])
   }, [fetchWorkspace, fetchBooks, setFileDocument])
 
+  const applyWorkspaceFileOperation = useCallback(async (
+    operation: ProjectFileOperation,
+  ): Promise<ProjectFileOperationResult> => {
+    if (!projectId) throw new Error('A stable project identity is required for workspace file operations')
+    const [result] = await applyProjectFileOperations(projectId, [operation])
+    if (!result?.ok) throw new Error(result?.error || 'Project file operation failed')
+    return result
+  }, [projectId])
+
   /** 新建文件或目录 */
   const createItem = useCallback(async (path: string, type: 'file' | 'dir') => {
-    await createWorkspaceItem({ path, type, content: '' })
+    await applyWorkspaceFileOperation({ kind: 'create', path, type, content: '' })
     await Promise.all([fetchTree(), fetchSummary()])
-  }, [fetchTree, fetchSummary])
+  }, [applyWorkspaceFileOperation, fetchTree, fetchSummary])
 
   /** 删除文件或目录 */
   const deleteItem = useCallback(async (path: string) => {
-    await deleteWorkspaceItem(path)
+    await applyWorkspaceFileOperation({ kind: 'delete', path })
     if (selectedFile === path || selectedFile?.startsWith(`${path}/`)) {
       setSelectedFile(null)
       setFileDocument({ content: '', revision: '' })
     }
     await Promise.all([fetchTree(), fetchSummary()])
-  }, [fetchTree, fetchSummary, selectedFile, setFileDocument])
+  }, [applyWorkspaceFileOperation, fetchTree, fetchSummary, selectedFile, setFileDocument])
 
   /** 重命名文件或目录 */
   const renameItem = useCallback(async (path: string, newName: string) => {
-    const result = await renameWorkspaceItem({ path, new_name: newName })
+    const result = await applyWorkspaceFileOperation({ kind: 'rename', path, new_name: newName })
+    const renamedPath = result.path || path
     if (selectedFile === path) {
-      setSelectedFile(result.path)
-      await selectFile(result.path)
+      setSelectedFile(renamedPath)
+      await selectFile(renamedPath)
     } else if (selectedFile?.startsWith(`${path}/`)) {
-      const nextPath = `${result.path}/${selectedFile.slice(path.length + 1)}`
+      const nextPath = `${renamedPath}/${selectedFile.slice(path.length + 1)}`
       setSelectedFile(nextPath)
       await selectFile(nextPath)
     }
     await Promise.all([fetchTree(), fetchSummary()])
-  }, [fetchTree, fetchSummary, selectFile, selectedFile])
+  }, [applyWorkspaceFileOperation, fetchTree, fetchSummary, selectFile, selectedFile])
 
   /** 复制文件或目录 */
   const copyItem = useCallback(async (from: string, to: string) => {
-    await copyWorkspaceItem({ from, to })
+    await applyWorkspaceFileOperation({ kind: 'copy', path: from, to })
     await Promise.all([fetchTree(), fetchSummary()])
-  }, [fetchTree, fetchSummary])
+  }, [applyWorkspaceFileOperation, fetchTree, fetchSummary])
 
   /** 移动文件或目录 */
   const moveItem = useCallback(async (from: string, to: string) => {
-    const result = await moveWorkspaceItem({ from, to })
+    const result = await applyWorkspaceFileOperation({ kind: 'move', path: from, to })
+    const movedPath = result.path || to
     if (selectedFile === from) {
-      setSelectedFile(result.path)
-      await selectFile(result.path)
+      setSelectedFile(movedPath)
+      await selectFile(movedPath)
     } else if (selectedFile?.startsWith(`${from}/`)) {
-      const nextPath = `${result.path}/${selectedFile.slice(from.length + 1)}`
+      const nextPath = `${movedPath}/${selectedFile.slice(from.length + 1)}`
       setSelectedFile(nextPath)
       await selectFile(nextPath)
     }
     await Promise.all([fetchTree(), fetchSummary()])
-  }, [fetchTree, fetchSummary, selectFile, selectedFile])
+  }, [applyWorkspaceFileOperation, fetchTree, fetchSummary, selectFile, selectedFile])
 
   /** 刷新目录树和章节统计 */
   const refresh = useCallback(async () => {
@@ -587,6 +603,7 @@ export function useWorkspace(options: UseWorkspaceOptions = {}) {
     fileContent,
     fileRevision,
     workspace,
+    projectId,
     workspaceLoaded,
     summary,
     books,

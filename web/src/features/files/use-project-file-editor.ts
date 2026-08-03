@@ -4,7 +4,7 @@ import { useResourceAutosave } from '@/hooks/use-resource-autosave'
 import { rebaseTextWithRecovery } from '@/lib/autosave/rebase-with-recovery'
 import { isRevisionConflict } from '@/lib/revision-conflict'
 import { rebaseText } from '@/lib/three-way-rebase'
-import { readProjectFile, saveProjectFile, type ProjectFileDocument } from './api'
+import { readProjectFile, saveProjectFile, type ProjectFileDocument } from '@/lib/api-client/project-files'
 
 interface ProjectFileDraft {
   id: string

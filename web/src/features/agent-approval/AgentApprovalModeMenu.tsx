@@ -84,11 +84,6 @@ export function AgentApprovalModeMenu({ runActive, presentation = 'standalone', 
             <span className="min-w-0 flex-1">
               <span className="flex items-center gap-1.5 font-medium text-[var(--nova-text)]">
                 {t(`agentApproval.mode.${mode}.label`)}
-                {mode === 'write' ? (
-                  <span className="rounded-full border border-emerald-500/25 bg-emerald-500/10 px-1.5 py-0.5 text-[10px] font-medium leading-none text-emerald-600 dark:text-emerald-400">
-                    {t('agentApproval.recommended')}
-                  </span>
-                ) : null}
               </span>
               <span className="mt-0.5 block text-[11px] leading-4 text-[var(--nova-text-faint)]">
                 {t(`agentApproval.mode.${mode}.description`)}
@@ -134,15 +129,15 @@ export function AgentApprovalModeMenu({ runActive, presentation = 'standalone', 
           size="sm"
           variant="ghost"
           disabled={approval.saving}
-          className="nova-agent-composer-pill h-8 max-w-40 gap-1.5 rounded-[10px] border border-[var(--nova-border)] bg-[var(--nova-surface)] px-2 text-xs font-medium text-[var(--nova-text-muted)] hover:bg-[var(--nova-hover)] hover:text-[var(--nova-text)]"
+          className="nova-agent-composer-pill nova-agent-approval-trigger h-8 max-w-40 shrink-0 gap-1.5 rounded-[10px] border border-[var(--nova-border)] bg-[var(--nova-surface)] px-2 text-xs font-medium text-[var(--nova-text-muted)] hover:bg-[var(--nova-hover)] hover:text-[var(--nova-text)]"
           aria-label={`${t('agentApproval.input.section')}: ${t(`agentApproval.mode.${displayedMode}.label`)}`}
           title={runActive ? t('agentApproval.input.changeBlocked') : t(`agentApproval.mode.${displayedMode}.description`)}
         >
           {approval.saving
             ? <Loader2 className="h-3.5 w-3.5 animate-spin" />
             : <CurrentIcon className={`h-3.5 w-3.5 ${modePresentation[displayedMode].tone}`} />}
-          <span className="truncate">{t(`agentApproval.mode.${displayedMode}.label`)}</span>
-          <ChevronDown className="h-3 w-3 text-[var(--nova-text-faint)]" />
+          <span className="nova-agent-approval-label truncate">{t(`agentApproval.mode.${displayedMode}.label`)}</span>
+          <ChevronDown className="nova-agent-approval-chevron h-3 w-3 text-[var(--nova-text-faint)]" />
         </Button>
       </DropdownMenuTrigger>
       <DropdownMenuContent

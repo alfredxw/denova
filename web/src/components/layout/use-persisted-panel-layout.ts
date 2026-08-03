@@ -21,6 +21,7 @@ interface ResizeHandleIntentProps {
 interface PersistedPanelLayout {
   defaultLayout: Layout | undefined
   resizeHandleIntentProps: ResizeHandleIntentProps
+  isUserResizeActive: () => boolean
   persistUserLayout: (layout: Layout) => boolean
 }
 
@@ -39,12 +40,17 @@ export function usePersistedPanelLayout({ storageKey, panelIds }: PersistedPanel
   const panelIdsSignature = panelIds.join(PANEL_IDS_SEPARATOR)
   const resizeIntentRef = useRef(false)
   const pointerIntentCleanupRef = useRef<(() => void) | null>(null)
+  const pointerIntentFinishFrameRef = useRef<number | null>(null)
   const keyboardIntentTimerRef = useRef<number | null>(null)
 
   const clearResizeIntent = useCallback(() => {
     resizeIntentRef.current = false
     pointerIntentCleanupRef.current?.()
     pointerIntentCleanupRef.current = null
+    if (pointerIntentFinishFrameRef.current !== null) {
+      window.cancelAnimationFrame(pointerIntentFinishFrameRef.current)
+      pointerIntentFinishFrameRef.current = null
+    }
     if (keyboardIntentTimerRef.current !== null) {
       window.clearTimeout(keyboardIntentTimerRef.current)
       keyboardIntentTimerRef.current = null
@@ -66,9 +72,21 @@ export function usePersistedPanelLayout({ storageKey, panelIds }: PersistedPanel
     if (!storageKey) return
     resizeIntentRef.current = true
 
-    // react-resizable-panels commits on document pointerup before this window listener runs.
-    // Clearing here prevents a click without movement from authorizing a later programmatic save.
-    const clearAfterPointer = () => clearResizeIntent()
+    // The panel store finalizes on pointerup, but React can deliver its onLayoutChanged callback
+    // after the native event has finished. Keep this interaction armed through that final commit.
+    const clearAfterPointer = () => {
+      pointerIntentCleanupRef.current?.()
+      pointerIntentCleanupRef.current = null
+      if (pointerIntentFinishFrameRef.current !== null) window.cancelAnimationFrame(pointerIntentFinishFrameRef.current)
+      // onLayoutChanged is delivered from a passive effect after the committed panel size paints.
+      // A second frame closes the grace period after that effect without using an arbitrary delay.
+      pointerIntentFinishFrameRef.current = window.requestAnimationFrame(() => {
+        pointerIntentFinishFrameRef.current = window.requestAnimationFrame(() => {
+          pointerIntentFinishFrameRef.current = null
+          clearResizeIntent()
+        })
+      })
+    }
     window.addEventListener('pointerup', clearAfterPointer, { once: true })
     window.addEventListener('pointercancel', clearAfterPointer, { once: true })
     pointerIntentCleanupRef.current = () => {
@@ -87,7 +105,8 @@ export function usePersistedPanelLayout({ storageKey, panelIds }: PersistedPanel
 
   const persistUserLayout = useCallback((layout: Layout) => {
     if (!storageKey || !resizeIntentRef.current) return false
-    clearResizeIntent()
+    // A pointer drag emits many layouts. Pointerup (or the keyboard timer) owns cleanup so the
+    // final layout keeps replacing the earlier intermediate widths throughout the interaction.
 
     const normalized = normalizePanelLayout(layout, panelIdsSignature.split(PANEL_IDS_SEPARATOR))
     if (!normalized) {
@@ -102,14 +121,15 @@ export function usePersistedPanelLayout({ storageKey, panelIds }: PersistedPanel
       console.warn('[panel-layout] Unable to persist user resize layout', { storageKey, error })
       return false
     }
-  }, [clearResizeIntent, panelIdsSignature, storageKey])
+  }, [panelIdsSignature, storageKey])
 
   const resizeHandleIntentProps = useMemo<ResizeHandleIntentProps>(() => ({
     onPointerDownCapture: armPointerResize,
     onKeyDownCapture: armKeyboardResize,
   }), [armKeyboardResize, armPointerResize])
+  const isUserResizeActive = useCallback(() => resizeIntentRef.current, [])
 
-  return { defaultLayout, resizeHandleIntentProps, persistUserLayout }
+  return { defaultLayout, resizeHandleIntentProps, isUserResizeActive, persistUserLayout }
 }
 
 export function readPersistedPanelLayout(storageKey?: string, panelIds?: readonly string[]): Layout | undefined {

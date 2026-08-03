@@ -7,7 +7,7 @@ import {
   readProjectFile,
   resolveProjectFileTree,
   saveProjectFile,
-} from './api'
+} from './project-files'
 
 describe('project files API', () => {
   it('keeps project identity and paths encoded at the transport boundary', async () => {

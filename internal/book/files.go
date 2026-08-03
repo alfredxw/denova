@@ -292,13 +292,18 @@ func BuildFileTree(dir string) ([]*FileNode, error) {
 		if nodes[i].Type != nodes[j].Type {
 			return nodes[i].Type == "dir"
 		}
-		return compareFileNodeNames(nodes[i].Name, nodes[j].Name) < 0
+		return CompareFileNodeNames(nodes[i].Name, nodes[j].Name) < 0
 	})
 	return nodes, nil
 }
 
-func compareFileNodeNames(left, right string) int {
+// CompareFileNodeNames defines the canonical project tree order, including
+// natural chapter and volume ordinals used by Writing projects.
+func CompareFileNodeNames(left, right string) int {
 	if cmp := compareChapterLikeNames(left, right); cmp != 0 {
+		return cmp
+	}
+	if cmp := strings.Compare(strings.ToLower(left), strings.ToLower(right)); cmp != 0 {
 		return cmp
 	}
 	return strings.Compare(left, right)

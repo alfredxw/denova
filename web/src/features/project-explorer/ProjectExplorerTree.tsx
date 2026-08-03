@@ -22,13 +22,13 @@ import {
   ContextMenuSeparator,
   ContextMenuTrigger,
 } from '@/components/ui/context-menu'
-import type { ProjectFileExplorerNode } from './project-file-explorer-model'
+import type { ProjectFileExplorerNode } from './model'
 import {
   ExplorerNode,
   ExplorerRow,
-  ProjectFileTreeRenderContext,
-  type ProjectFileTreeActions,
-} from './ProjectFileTreeNode'
+  ProjectExplorerRenderContext,
+  type ProjectExplorerTreeActions,
+} from './ProjectExplorerNode'
 import {
   absoluteProjectPath,
   buildProjectFilePastePlan,
@@ -40,9 +40,10 @@ import {
   removeNestedProjectPaths,
   type ProjectFileClipboard,
   type ProjectFileDraft,
-} from './project-file-tree-operations'
+} from './operations'
+import type { ProjectExplorerExtensions } from './types'
 
-interface ProjectFileTreeProps {
+interface ProjectExplorerTreeProps {
   nodes: readonly ProjectFileExplorerNode[]
   workspace: string
   selectedPath: string | null
@@ -57,14 +58,15 @@ interface ProjectFileTreeProps {
   onCopyItem: (from: string, to: string) => Promise<void>
   onMoveItem: (from: string, to: string) => Promise<void>
   treeRef: RefObject<TreeApi<ProjectFileExplorerNode> | null>
+  extensions?: ProjectExplorerExtensions
 }
 
-export interface ProjectFileTreeHandle {
+export interface ProjectExplorerTreeHandle {
   beginCreate: (type: 'file' | 'dir') => void
 }
 
 /** Virtualized Explorer behavior shared by Writing and Game project files. */
-export const ProjectFileTree = forwardRef<ProjectFileTreeHandle, ProjectFileTreeProps>(function ProjectFileTree({
+export const ProjectExplorerTree = forwardRef<ProjectExplorerTreeHandle, ProjectExplorerTreeProps>(function ProjectExplorerTree({
   nodes,
   workspace,
   selectedPath,
@@ -79,6 +81,7 @@ export const ProjectFileTree = forwardRef<ProjectFileTreeHandle, ProjectFileTree
   onCopyItem,
   onMoveItem,
   treeRef,
+  extensions = {},
 }, ref) {
   const { t } = useTranslation()
   const hostRef = useRef<HTMLDivElement>(null)
@@ -128,7 +131,7 @@ export const ProjectFileTree = forwardRef<ProjectFileTreeHandle, ProjectFileTree
     onDirectoryExpandedChange(node.data.path, expanded)
     if (expanded && !node.data.loaded) {
       void Promise.resolve(onDirectoryExpand(node.data.path)).catch((cause) => {
-        console.error('[features/files/ProjectFileTree.tsx] expanding directory failed', {
+        console.error('[features/project-explorer/ProjectExplorerTree.tsx] expanding directory failed', {
           path: node.data.path,
           cause,
         })
@@ -142,7 +145,7 @@ export const ProjectFileTree = forwardRef<ProjectFileTreeHandle, ProjectFileTree
     if (node.data.type === 'dir') node.toggle()
     if (node.data.type === 'more') {
       void Promise.resolve(onLoadMore(node.data.path)).catch((cause) => {
-        console.error('[features/files/ProjectFileTree.tsx] loading directory page failed', {
+        console.error('[features/project-explorer/ProjectExplorerTree.tsx] loading directory page failed', {
           path: node.data.path,
           cause,
         })
@@ -198,7 +201,7 @@ export const ProjectFileTree = forwardRef<ProjectFileTreeHandle, ProjectFileTree
   const copyPath = useCallback((path: string, relative: boolean) => {
     const value = relative ? path : absoluteProjectPath(workspace, path)
     void writeClipboardText(value).catch((cause) => {
-      console.error('[features/files/ProjectFileTree.tsx] copying project file path failed', {
+      console.error('[features/project-explorer/ProjectExplorerTree.tsx] copying project file path failed', {
         path,
         relative,
         cause,
@@ -207,13 +210,13 @@ export const ProjectFileTree = forwardRef<ProjectFileTreeHandle, ProjectFileTree
     })
   }, [t, workspace])
 
-  const actions = useMemo<ProjectFileTreeActions>(() => ({
+  const actions = useMemo<ProjectExplorerTreeActions>(() => ({
     beginCreate: (parentPath, type) => beginCreate(type, parentPath),
     rename: (node) => void node.edit(),
     stageClipboard,
     paste: (parentPath) => {
       void pasteInto(parentPath).catch((cause) => {
-        console.error('[features/files/ProjectFileTree.tsx] pasting project files failed', {
+        console.error('[features/project-explorer/ProjectExplorerTree.tsx] pasting project files failed', {
           parentPath,
           cause,
         })
@@ -224,7 +227,7 @@ export const ProjectFileTree = forwardRef<ProjectFileTreeHandle, ProjectFileTree
     cancelDraft: () => setDraft(null),
     clipboard,
   }), [beginCreate, clipboard, copyPath, pasteInto, stageClipboard])
-  const renderContext = useMemo(() => ({ actions, onLoadMore }), [actions, onLoadMore])
+  const renderContext = useMemo(() => ({ actions, extensions, onLoadMore }), [actions, extensions, onLoadMore])
 
   const handleKeyDownCapture = useCallback((event: KeyboardEvent<HTMLDivElement>) => {
     if (event.target instanceof HTMLInputElement || event.target instanceof HTMLTextAreaElement) return
@@ -264,7 +267,7 @@ export const ProjectFileTree = forwardRef<ProjectFileTreeHandle, ProjectFileTree
     if (command && event.key.toLowerCase() === 'v' && clipboard) {
       consumeKeyboardEvent(event)
       void pasteInto(insertionDirectory(tree, selectedPath)).catch((cause) => {
-        console.error('[features/files/ProjectFileTree.tsx] keyboard paste failed', { cause })
+        console.error('[features/project-explorer/ProjectExplorerTree.tsx] keyboard paste failed', { cause })
       })
     }
   }, [clipboard, onSelectFile, pasteInto, selectedPath, stageClipboard, treeRef])
@@ -278,7 +281,7 @@ export const ProjectFileTree = forwardRef<ProjectFileTreeHandle, ProjectFileTree
             className="relative h-full min-h-0 min-w-0 overflow-hidden"
             onKeyDownCapture={handleKeyDownCapture}
           >
-            <ProjectFileTreeRenderContext.Provider value={renderContext}>
+            <ProjectExplorerRenderContext.Provider value={renderContext}>
               <Tree<ProjectFileExplorerNode>
                 ref={treeRef}
                 data={renderedNodes}
@@ -304,7 +307,7 @@ export const ProjectFileTree = forwardRef<ProjectFileTreeHandle, ProjectFileTree
               >
                 {ExplorerNode}
               </Tree>
-            </ProjectFileTreeRenderContext.Provider>
+            </ProjectExplorerRenderContext.Provider>
             {renderedNodes.length === 0 ? (
               <div className="pointer-events-none absolute inset-x-3 top-8 text-center text-xs text-[var(--nova-text-faint)]">
                 {t('files.tree.empty')}
@@ -322,7 +325,7 @@ export const ProjectFileTree = forwardRef<ProjectFileTreeHandle, ProjectFileTree
       <DeleteConfirmDialog
         open={deletePaths.length > 0}
         path={deletePaths}
-        recovery="none"
+        recovery={extensions.deleteRecovery ?? 'none'}
         onOpenChange={(open) => {
           if (!open) setDeletePaths([])
         }}

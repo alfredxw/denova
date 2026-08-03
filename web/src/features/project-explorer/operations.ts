@@ -1,5 +1,5 @@
-import type { ProjectFileEntryType } from './api'
-import type { ProjectFileExplorerNode } from './project-file-explorer-model'
+import type { ProjectFileEntryType } from '@/lib/api-client/project-files'
+import type { ProjectFileExplorerNode } from './model'
 
 export const PROJECT_FILE_DRAFT_PREFIX = '\u0000project-file-draft:'
 

@@ -8,22 +8,18 @@ import type { EditorFlushHandler } from '@/components/Editor/useEditorDraftPersi
 import { AutosaveStatusIndicator } from '@/components/forms/autosave-status'
 import { AdaptiveSurface } from '@/components/layout/adaptive-surface'
 import { Button } from '@/components/ui/button'
-import { ProjectFilesSidebar } from './ProjectFilesSidebar'
+import { ProjectExplorerPane } from '@/features/project-explorer/ProjectExplorerPane'
+import { useProjectExplorerPreferences } from '@/features/project-explorer/preferences'
+import { useProjectExplorer } from '@/features/project-explorer/use-project-explorer'
 import { ProjectMarkdownPreview } from './ProjectMarkdownPreview'
 import { ProjectSourceEditor } from './ProjectSourceEditor'
 import { isPreviewableMarkdown } from './file-language'
 import {
   persistProjectFileEditorPreferences,
-  persistProjectFilesPreferences,
   readProjectFileEditorPreferences,
-  readProjectFilesPreferences,
-  relocateExpandedBranch,
-  removeExpandedBranch,
   type ProjectFileEditorPreferences,
-  type ProjectFilesPreferences,
 } from './preferences'
 import { useProjectFileEditor } from './use-project-file-editor'
-import { useProjectFileExplorer } from './use-project-file-explorer'
 
 interface FilesTabProps {
   projectId: string
@@ -50,10 +46,17 @@ export function FilesTab({
   onWorkspaceChanged,
 }: FilesTabProps) {
   const { t } = useTranslation()
-  const [preferences, setPreferences] = useState<ProjectFilesPreferences>(() => readProjectFilesPreferences(projectId))
+  const {
+    preferences,
+    setTreeVisible,
+    setDirectoryExpanded,
+    collapseAll,
+    removeBranch,
+    relocateBranch,
+  } = useProjectExplorerPreferences(projectId)
   const [editorPreferences, setEditorPreferences] = useState<ProjectFileEditorPreferences>(readProjectFileEditorPreferences)
   const [markdownViews, setMarkdownViews] = useState<ReadonlyMap<string, boolean>>(() => new Map())
-  const tree = useProjectFileExplorer({
+  const tree = useProjectExplorer({
     projectId,
     expandedPaths: preferences.expandedPaths,
     selectedPath,
@@ -66,10 +69,6 @@ export function FilesTab({
     onSaved: (path) => onWorkspaceChanged?.(workspace, [path]),
   })
   const refreshSignalRef = useRef(refreshSignal)
-
-  useEffect(() => {
-    persistProjectFilesPreferences(projectId, preferences)
-  }, [preferences, projectId])
 
   useEffect(() => {
     persistProjectFileEditorPreferences(editorPreferences)
@@ -142,19 +141,19 @@ export function FilesTab({
       if (!await editor.flush()) throw new Error(t('files.operation.failed'))
     }
     await runOperation([path], () => tree.deleteItem(path))
-    setPreferences((current) => ({ ...current, expandedPaths: removeExpandedBranch(current.expandedPaths, path) }))
+    removeBranch(path)
     if (selectedPath === path || selectedPath?.startsWith(`${path}/`)) onSelectedPathChange(null)
-  }, [editor.flush, onSelectedPathChange, runOperation, selectedPath, t, tree.deleteItem])
+  }, [editor.flush, onSelectedPathChange, removeBranch, runOperation, selectedPath, t, tree.deleteItem])
 
   const renameItem = useCallback(async (path: string, newName: string) => {
     if (selectedPath === path || selectedPath?.startsWith(`${path}/`)) {
       if (!await editor.flush()) throw new Error(t('files.operation.failed'))
     }
     const renamedPath = await runOperation([path], () => tree.renameItem(path, newName))
-    setPreferences((current) => ({ ...current, expandedPaths: relocateExpandedBranch(current.expandedPaths, path, renamedPath) }))
+    relocateBranch(path, renamedPath)
     if (selectedPath === path) onSelectedPathChange(renamedPath)
     else if (selectedPath?.startsWith(`${path}/`)) onSelectedPathChange(`${renamedPath}${selectedPath.slice(path.length)}`)
-  }, [editor.flush, onSelectedPathChange, runOperation, selectedPath, t, tree.renameItem])
+  }, [editor.flush, onSelectedPathChange, relocateBranch, runOperation, selectedPath, t, tree.renameItem])
 
   const copyItem = useCallback(async (from: string, to: string) => {
     await runOperation([from, to], () => tree.copyItem(from, to))
@@ -165,28 +164,13 @@ export function FilesTab({
       if (!await editor.flush()) throw new Error(t('files.operation.failed'))
     }
     await runOperation([from, to], () => tree.moveItem(from, to))
-    setPreferences((current) => ({ ...current, expandedPaths: relocateExpandedBranch(current.expandedPaths, from, to) }))
+    relocateBranch(from, to)
     if (selectedPath === from) onSelectedPathChange(to)
     else if (selectedPath?.startsWith(`${from}/`)) onSelectedPathChange(`${to}${selectedPath.slice(from.length)}`)
-  }, [editor.flush, onSelectedPathChange, runOperation, selectedPath, t, tree.moveItem])
-
-  const setTreeVisible = useCallback((treeVisible: boolean) => {
-    setPreferences((current) => ({ ...current, treeVisible }))
-  }, [])
-  const setDirectoryExpanded = useCallback((path: string, expanded: boolean) => {
-    setPreferences((current) => {
-      const paths = new Set(current.expandedPaths)
-      if (expanded) paths.add(path)
-      else paths.delete(path)
-      return { ...current, expandedPaths: [...paths] }
-    })
-  }, [])
-  const collapseAllDirectories = useCallback(() => {
-    setPreferences((current) => ({ ...current, expandedPaths: [] }))
-  }, [])
+  }, [editor.flush, onSelectedPathChange, relocateBranch, runOperation, selectedPath, t, tree.moveItem])
 
   const sidebar = (
-    <ProjectFilesSidebar
+    <ProjectExplorerPane
       nodes={tree.nodes}
       workspace={workspace}
       selectedPath={selectedPath}
@@ -197,7 +181,7 @@ export function FilesTab({
       onSelectFile={selectFile}
       onDirectoryExpand={tree.loadDirectory}
       onDirectoryExpandedChange={setDirectoryExpanded}
-      onCollapseAll={collapseAllDirectories}
+      onCollapseAll={collapseAll}
       onLoadMore={tree.loadMore}
       onCreateItem={createItem}
       onDeleteItem={deleteItem}

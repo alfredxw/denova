@@ -3,8 +3,8 @@ import { Copy, FileCode2, FileText, ListTree, Loader2, Lock, RefreshCw, Settings
 import { useTranslation } from 'react-i18next'
 import { MarkdownEditPreview, MarkdownViewToggle } from '@/components/common/MarkdownEditPreview'
 import { InlineCollapsiblePane } from '@/components/layout/panel-motion'
-import { FileTree } from '@/components/Sidebar/FileTree'
 import type { SkillDocument, SkillFileDocument, SkillScopeInfo, SkillSummary } from '@/lib/api'
+import { SkillFileTree } from './SkillFileTree'
 import type { SkillContentViewMode } from './skill-utils'
 import {
   collectSkillFileTreeDirs,
@@ -45,7 +45,7 @@ interface SkillEditorProps {
   onCreateBuiltinOverride: () => void
 }
 
-/** Skill 编辑器：文件头栏 + 目录 FileTree + Markdown 预览/原文编辑区。 */
+/** Skill editor with a read-only package tree and Markdown source/preview surface. */
 export function SkillEditor({
   document,
   fileDocument,
@@ -169,7 +169,7 @@ export function SkillEditor({
               <span className="truncate">{t('skills.files.title')}</span>
             </div>
             <div className="min-h-0 flex-1 overflow-y-auto p-2">
-              <FileTree
+              <SkillFileTree
                 key={keyOf(document)}
                 nodes={skillFileTree}
                 selectedFile={selectedFilePath}

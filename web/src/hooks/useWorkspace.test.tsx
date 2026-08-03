@@ -9,6 +9,10 @@ const workspaceEventsMock = vi.hoisted(() => ({
   subscribeWorkspaceFileEvents: vi.fn(),
 }))
 
+const projectFilesApiMock = vi.hoisted(() => ({
+  applyProjectFileOperations: vi.fn(),
+}))
+
 const apiMock = vi.hoisted(() => {
   class MockAPIError extends Error {
     readonly status: number
@@ -22,30 +26,35 @@ const apiMock = vi.hoisted(() => {
   }
   return {
     APIError: MockAPIError,
-    copyWorkspaceItem: vi.fn(),
-    createWorkspaceItem: vi.fn(),
-    deleteWorkspaceItem: vi.fn(),
     getBookshelf: vi.fn(),
     getCurrentWorkspace: vi.fn(),
     getWorkspaceSummary: vi.fn(),
     getWorkspaceTree: vi.fn(),
-    moveWorkspaceItem: vi.fn(),
     readFile: vi.fn(),
-    renameWorkspaceItem: vi.fn(),
     saveFile: vi.fn(),
   }
 })
 
 vi.mock('@/lib/api', () => apiMock)
+vi.mock('@/lib/api-client/project-files', () => projectFilesApiMock)
 vi.mock('@/features/workspace-events/client', () => workspaceEventsMock)
 
 describe('useWorkspace', () => {
   beforeEach(() => {
     vi.clearAllMocks()
-    apiMock.getCurrentWorkspace.mockResolvedValue({ workspace: '/books/demo', has_state: true })
+    apiMock.getCurrentWorkspace.mockResolvedValue({ workspace: '/books/demo', project_id: 'project-demo', has_state: true })
     apiMock.getBookshelf.mockResolvedValue({ books: [], sort_mode: 'recent' })
     apiMock.getWorkspaceTree.mockResolvedValue([])
     apiMock.getWorkspaceSummary.mockResolvedValue({ title: '', author: '', chapter_count: 0, total_words: 0, chapters: [] })
+    projectFilesApiMock.applyProjectFileOperations.mockImplementation(async (_projectId, operations) => (
+      operations.map((operation: { kind: string; path: string; to?: string; new_name?: string }) => ({
+        kind: operation.kind,
+        ok: true,
+        path: operation.kind === 'rename'
+          ? [...operation.path.split('/').slice(0, -1), operation.new_name].filter(Boolean).join('/')
+          : operation.to || operation.path,
+      }))
+    ))
     workspaceEventsMock.subscribeWorkspaceFileEvents.mockReturnValue(vi.fn())
   })
 
@@ -66,6 +75,34 @@ describe('useWorkspace', () => {
     expect(apiMock.getBookshelf).toHaveBeenCalledTimes(1)
     expect(apiMock.getWorkspaceTree).toHaveBeenCalledTimes(1)
     expect(apiMock.getWorkspaceSummary).toHaveBeenCalledTimes(1)
+  })
+
+  it('exposes the stable project identity for project-scoped workspace modules', async () => {
+    render(<WorkspaceHarness autoRefreshEnabled={false} onChange={() => {}} />)
+
+    await waitFor(() => expect(screen.getByTestId('workspace-meta')).toHaveTextContent('|project-demo'))
+  })
+
+  it('routes every workspace tree mutation through the project-scoped operations API', async () => {
+    let workspace: ReturnType<typeof useWorkspace> | null = null
+    render(<WorkspaceHarness autoRefreshEnabled={false} onChange={(value) => { workspace = value }} />)
+    await waitFor(() => expect(screen.getByTestId('workspace-meta')).toHaveTextContent('|project-demo'))
+
+    await act(async () => {
+      await workspace?.createItem('notes/new.md', 'file')
+      await workspace?.renameItem('notes/new.md', 'renamed.md')
+      await workspace?.copyItem('notes/renamed.md', 'notes/copy.md')
+      await workspace?.moveItem('notes/copy.md', 'archive/copy.md')
+      await workspace?.deleteItem('archive/copy.md')
+    })
+
+    expect(projectFilesApiMock.applyProjectFileOperations.mock.calls).toEqual([
+      ['project-demo', [{ kind: 'create', path: 'notes/new.md', type: 'file', content: '' }]],
+      ['project-demo', [{ kind: 'rename', path: 'notes/new.md', new_name: 'renamed.md' }]],
+      ['project-demo', [{ kind: 'copy', path: 'notes/renamed.md', to: 'notes/copy.md' }]],
+      ['project-demo', [{ kind: 'move', path: 'notes/copy.md', to: 'archive/copy.md' }]],
+      ['project-demo', [{ kind: 'delete', path: 'archive/copy.md' }]],
+    ])
   })
 
   it('does not overlap the initial workspace read when the window gains focus', async () => {
@@ -671,7 +708,7 @@ function WorkspaceHarness({
   return (
     <>
       <div data-testid="workspace-state">{workspace.selectedFile}|{workspace.fileContent}|{workspace.fileRevision}</div>
-      <div data-testid="workspace-meta">{workspace.workspace}|{workspace.tree.map((node) => node.name).join(',')}|{workspace.summary?.title ?? ''}|{workspace.bookSortMode}</div>
+      <div data-testid="workspace-meta">{workspace.workspace}|{workspace.tree.map((node) => node.name).join(',')}|{workspace.summary?.title ?? ''}|{workspace.bookSortMode}|{workspace.projectId}</div>
     </>
   )
 }

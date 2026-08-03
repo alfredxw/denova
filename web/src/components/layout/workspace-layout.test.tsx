@@ -1,6 +1,10 @@
 import { render, screen } from '@testing-library/react'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
-import { WorkspaceLayout, readStoredLayoutForWorkspace } from './workspace-layout'
+import {
+  WorkspaceLayout,
+  readStoredLayoutForWorkspace,
+  resolveInitialWorkspaceSidebarWidth,
+} from './workspace-layout'
 
 describe('WorkspaceLayout', () => {
   beforeEach(() => {
@@ -121,6 +125,12 @@ describe('WorkspaceLayout', () => {
     renderWorkspaceLayout(true)
 
     expect(JSON.parse(window.localStorage.getItem('nova-workspace-horizontal') || '{}')).toEqual(saved)
+  })
+
+  it('migrates an old narrow sidebar once while preserving intentional pixel widths', () => {
+    expect(resolveInitialWorkspaceSidebarWidth(null, 180)).toBe(240)
+    expect(resolveInitialWorkspaceSidebarWidth(null, 286)).toBe(286)
+    expect(resolveInitialWorkspaceSidebarWidth(180, 286)).toBe(180)
   })
 })
 

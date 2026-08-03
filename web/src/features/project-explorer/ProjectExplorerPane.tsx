@@ -3,10 +3,11 @@ import { FilePlus, FolderPlus, ListCollapse, Loader2, LocateFixed, RefreshCw } f
 import { memo, useCallback, useEffect, useRef } from 'react'
 import { useTranslation } from 'react-i18next'
 import { Button } from '@/components/ui/button'
-import { ProjectFileTree, type ProjectFileTreeHandle } from './ProjectFileTree'
-import type { ProjectFileExplorerNode } from './project-file-explorer-model'
+import { ProjectExplorerTree, type ProjectExplorerTreeHandle } from './ProjectExplorerTree'
+import type { ProjectFileExplorerNode } from './model'
+import type { ProjectExplorerExtensions } from './types'
 
-interface ProjectFilesSidebarProps {
+interface ProjectExplorerPaneProps {
   nodes: readonly ProjectFileExplorerNode[]
   workspace: string
   selectedPath: string | null
@@ -25,10 +26,11 @@ interface ProjectFilesSidebarProps {
   onCopyItem: (from: string, to: string) => Promise<void>
   onMoveItem: (from: string, to: string) => Promise<void>
   onRefresh: () => void | Promise<void>
+  extensions?: ProjectExplorerExtensions
 }
 
-/** Right-hand, virtualized project explorer for both Writing and Game projects. */
-export const ProjectFilesSidebar = memo(function ProjectFilesSidebar({
+/** Virtualized project Explorer surface shared by Writing and Game layouts. */
+export const ProjectExplorerPane = memo(function ProjectExplorerPane({
   nodes,
   workspace,
   selectedPath,
@@ -47,10 +49,11 @@ export const ProjectFilesSidebar = memo(function ProjectFilesSidebar({
   onCopyItem,
   onMoveItem,
   onRefresh,
-}: ProjectFilesSidebarProps) {
+  extensions,
+}: ProjectExplorerPaneProps) {
   const { t } = useTranslation()
   const treeRef = useRef<TreeApi<ProjectFileExplorerNode>>(null)
-  const explorerRef = useRef<ProjectFileTreeHandle>(null)
+  const explorerRef = useRef<ProjectExplorerTreeHandle>(null)
   const revealedPathRef = useRef<string | null>(null)
   const actionButtonClass = 'text-[var(--nova-text-muted)] hover:bg-[var(--nova-hover)] hover:text-[var(--nova-text)]'
 
@@ -129,7 +132,7 @@ export const ProjectFilesSidebar = memo(function ProjectFilesSidebar({
             {t('files.tree.loading')}
           </div>
         ) : (
-          <ProjectFileTree
+          <ProjectExplorerTree
             ref={explorerRef}
             treeRef={treeRef}
             nodes={nodes}
@@ -145,6 +148,7 @@ export const ProjectFilesSidebar = memo(function ProjectFilesSidebar({
             onRenameItem={onRenameItem}
             onCopyItem={onCopyItem}
             onMoveItem={onMoveItem}
+            extensions={extensions}
           />
         )}
       </div>

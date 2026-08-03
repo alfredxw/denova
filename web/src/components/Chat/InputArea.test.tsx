@@ -189,7 +189,13 @@ describe('InputArea command menu', () => {
       />,
     )
 
-    await user.click(screen.getByRole('button', { name: 'Agent 安全模式: Write' }))
+    const safetyMode = screen.getByRole('button', { name: 'Agent 安全模式: Write' })
+    expect(safetyMode).toHaveClass('nova-agent-approval-trigger')
+    expect(within(safetyMode).getByText('Write')).toHaveClass('nova-agent-approval-label')
+    expect(safetyMode.querySelector('.nova-agent-approval-chevron')).toBeInTheDocument()
+
+    await user.click(safetyMode)
+    expect(screen.queryByText('推荐')).not.toBeInTheDocument()
     const fullAccess = screen.getByRole('menuitem', { name: /Full access/ })
     expect(fullAccess).toHaveTextContent('除极高危操作外均自动执行')
     await user.click(fullAccess)

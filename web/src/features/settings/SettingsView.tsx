@@ -1183,7 +1183,7 @@ function AgentApprovalModeSelect({ value, disabled, onChange }: {
           <SelectContent className="nova-panel border text-[var(--nova-text)]">
             {AGENT_APPROVAL_MODES.map((mode) => (
               <SelectItem key={mode} value={mode}>
-                {t(`agentApproval.mode.${mode}.label`)}{mode === 'write' ? ` · ${t('agentApproval.recommended')}` : ''}
+                {t(`agentApproval.mode.${mode}.label`)}
               </SelectItem>
             ))}
           </SelectContent>

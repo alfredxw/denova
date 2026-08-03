@@ -1,10 +1,10 @@
 import { describe, expect, it } from 'vitest'
-import type { ProjectFileTreeResolveResult } from './api'
+import type { ProjectFileTreeResolveResult } from '@/lib/api-client/project-files'
 import {
   buildProjectFileExplorerNodes,
   mergeProjectDirectories,
   PROJECT_FILE_LOAD_MORE_PREFIX,
-} from './project-file-explorer-model'
+} from './model'
 
 describe('project file explorer model', () => {
   it('appends stable cursor pages and removes the load-more row when complete', () => {

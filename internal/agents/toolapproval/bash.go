@@ -27,15 +27,15 @@ func classifyBash(command, workspace, cwd string, mode config.AgentApprovalMode)
 		return prompt("bash_parse_failed", RiskHigh,
 			"无法可靠解析 Bash 命令，需要你的确认。 / The Bash command could not be parsed reliably, so approval is required.")
 	}
-	calls, ok := literalBashCalls(file)
+	calls, ok := staticBashCalls(file, boundary)
 	if !ok || len(calls) == 0 {
 		return prompt("bash_dynamic_syntax", RiskHigh,
-			"命令包含重定向、赋值、替换或复杂动态语法，需要你的确认。 / The command uses redirects, assignments, substitutions, or complex dynamic syntax and requires approval.")
+			"命令包含无法静态验证的重定向、赋值、替换或复杂动态语法，需要你的确认。 / The command uses redirects, assignments, substitutions, or complex dynamic syntax that cannot be verified statically and requires approval.")
 	}
 
 	highest := commandRead
 	for _, call := range calls {
-		class := classifyLiteralCommand(call, boundary, mode)
+		class := classifyLiteralCommand(call.words, call.boundary, mode)
 		if class == commandUnknown {
 			return prompt("bash_unlisted_command", RiskHigh,
 				"命令不在当前模式的自动允许列表中，需要你的确认。 / The command is not in this mode's automatic allowlist and requires approval.")
@@ -151,6 +151,20 @@ func classifyLiteralCommand(words []string, boundary pathBoundary, mode config.A
 		return commandRead
 	}
 	switch name {
+	case "cd":
+		if _, ok := boundary.changeDirectory(args); ok {
+			return commandRead
+		}
+	case "echo", "true", "false", ":":
+		return commandRead
+	case "printf":
+		if safePrintfArguments(args) {
+			return commandRead
+		}
+	case "awk":
+		if safeAWKReadArguments(args, boundary) {
+			return commandRead
+		}
 	case "pwd":
 		if len(args) == 0 || len(args) == 1 && (args[0] == "-L" || args[0] == "-P") {
 			return commandRead
@@ -241,6 +255,13 @@ func classifyLiteralCommand(words []string, boundary pathBoundary, mode config.A
 		}
 	case "npm", "pnpm", "yarn", "bun", "npx", "bunx":
 		if safePackageCommand(name, args, boundary) {
+			return commandWrite
+		}
+	case "python", "python3":
+		if len(args) == 2 && args[0] == "-c" && strings.TrimSpace(args[1]) != "" {
+			// Write already authorizes project code runners such as go run and
+			// npm test. Inline Python has the same execution tier; this policy
+			// intentionally does not pretend to understand Python semantics.
 			return commandWrite
 		}
 	case "curl":

@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"slices"
 	"testing"
 
 	projectdomain "denova/internal/project"
@@ -96,6 +97,42 @@ func TestServicePaginatesLargeDirectoriesAndRejectsStaleContinuations(t *testing
 	}
 	if stale.Results[0].OK || stale.Results[0].Code != "cursor_stale" {
 		t.Fatalf("expected a target-scoped stale cursor result, got %#v", stale.Results[0])
+	}
+}
+
+func TestServicePaginatesWritingChaptersInNaturalOrder(t *testing.T) {
+	service, projectID, workspace := projectFilesTestService(t)
+	for _, name := range []string{
+		"第十一章-潮声.md",
+		"第一章-开局.md",
+		"序章.md",
+		"第十章-交锋.md",
+	} {
+		mustWriteProjectFile(t, workspace, name, name)
+	}
+
+	first, err := service.ResolveTree(context.Background(), projectID, TreeResolveRequest{
+		Targets:     []TreeResolveTarget{{Path: ""}},
+		EntryBudget: 2,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	firstPage := first.Results[0].Directories[0]
+	if got, want := []string{firstPage.Entries[0].Name, firstPage.Entries[1].Name}, []string{"序章.md", "第一章-开局.md"}; !slices.Equal(got, want) {
+		t.Fatalf("first writing page order = %v, want %v", got, want)
+	}
+
+	second, err := service.ResolveTree(context.Background(), projectID, TreeResolveRequest{
+		Targets:     []TreeResolveTarget{{Path: "", Cursor: firstPage.Continuation}},
+		EntryBudget: 2,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	secondPage := second.Results[0].Directories[0]
+	if got, want := []string{secondPage.Entries[0].Name, secondPage.Entries[1].Name}, []string{"第十章-交锋.md", "第十一章-潮声.md"}; !slices.Equal(got, want) {
+		t.Fatalf("second writing page order = %v, want %v", got, want)
 	}
 }
 

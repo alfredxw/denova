@@ -2,10 +2,34 @@ package app
 
 import (
 	"context"
+	"path/filepath"
+	"strings"
 
 	"denova/config"
+	projectfilesapp "denova/internal/app/projectfiles"
 	"denova/internal/book"
 )
+
+// ProjectFileBookMutationVersioning binds the shared Explorer's mutations to
+// the current Writing runtime without giving general projects version-history
+// semantics they do not expose in the UI.
+func (a *App) ProjectFileBookMutationVersioning(projectID, workspace string) projectfilesapp.BookMutationVersioning {
+	if a == nil {
+		return projectfilesapp.BookMutationVersioning{}
+	}
+	a.mu.RLock()
+	defer a.mu.RUnlock()
+	if a.cfg == nil || a.versionService == nil || strings.TrimSpace(projectID) == "" {
+		return projectfilesapp.BookMutationVersioning{}
+	}
+	if a.cfg.ProjectID != projectID || filepath.Clean(a.workspace) != filepath.Clean(workspace) {
+		return projectfilesapp.BookMutationVersioning{}
+	}
+	return projectfilesapp.BookMutationVersioning{
+		Service:  a.versionService,
+		Settings: versionAutoSettingsForConfig(a.cfg),
+	}
+}
 
 // VersionStatus 返回当前书籍 workspace 的本地版本状态。
 func (a *App) VersionStatus(ctx context.Context) (book.VersionStatus, error) {

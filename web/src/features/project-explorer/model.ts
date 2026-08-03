@@ -3,7 +3,7 @@ import type {
   ProjectFileEntry,
   ProjectFileEntryType,
   ProjectFileTreeResolveResult,
-} from './api'
+} from '@/lib/api-client/project-files'
 
 export const PROJECT_FILE_LOAD_MORE_PREFIX = '\u0000project-file-load-more:'
 

@@ -2,10 +2,6 @@ import { jsonHeaders, requestJSON } from './client'
 import type {
   CharacterCardImportResult,
   CharacterCardPreview,
-  CopyMoveRequest,
-  CreateFileRequest,
-  FileOperationResult,
-  RenameRequest,
   WorkspaceReplaceResult,
   WorkspaceSearchResult,
   WorkspaceSummary,
@@ -21,7 +17,7 @@ export async function switchWorkspace(path: string): Promise<{ workspace: string
   })
 }
 
-export async function getCurrentWorkspace(): Promise<{ workspace: string; has_state: boolean }> {
+export async function getCurrentWorkspace(): Promise<{ workspace: string; project_id: string; has_state: boolean }> {
   return requestJSON('/api/workspace/current')
 }
 
@@ -87,46 +83,6 @@ export async function saveFile(path: string, content: string, baseRevision: stri
     method: 'POST',
     headers: jsonHeaders,
     body: JSON.stringify({ path, content, base_revision: baseRevision || '', workspace }),
-  })
-}
-
-export async function createWorkspaceItem(req: CreateFileRequest): Promise<FileOperationResult> {
-  return requestJSON('/api/workspace/create', {
-    method: 'POST',
-    headers: jsonHeaders,
-    body: JSON.stringify(req),
-  })
-}
-
-export async function deleteWorkspaceItem(path: string): Promise<FileOperationResult> {
-  return requestJSON('/api/workspace/delete', {
-    method: 'POST',
-    headers: jsonHeaders,
-    body: JSON.stringify({ path }),
-  })
-}
-
-export async function renameWorkspaceItem(req: RenameRequest): Promise<FileOperationResult> {
-  return requestJSON('/api/workspace/rename', {
-    method: 'POST',
-    headers: jsonHeaders,
-    body: JSON.stringify(req),
-  })
-}
-
-export async function copyWorkspaceItem(req: CopyMoveRequest): Promise<FileOperationResult> {
-  return requestJSON('/api/workspace/copy', {
-    method: 'POST',
-    headers: jsonHeaders,
-    body: JSON.stringify(req),
-  })
-}
-
-export async function moveWorkspaceItem(req: CopyMoveRequest): Promise<FileOperationResult> {
-  return requestJSON('/api/workspace/move', {
-    method: 'POST',
-    headers: jsonHeaders,
-    body: JSON.stringify(req),
   })
 }
 

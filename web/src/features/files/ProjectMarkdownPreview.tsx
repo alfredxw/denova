@@ -1,6 +1,6 @@
 import { useMemo, type MouseEvent } from 'react'
 import { ThemedMarkdownRenderer, type MarkdownRendererComponents } from '@/components/common/MarkdownRenderer'
-import { projectFileAssetURL } from './api'
+import { projectFileAssetURL } from '@/lib/api-client/project-files'
 
 interface ProjectMarkdownPreviewProps {
   projectId: string

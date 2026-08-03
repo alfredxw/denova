@@ -117,7 +117,7 @@ function App() {
   }, [mode])
 
   const {
-    tree, loading, selectedFile, fileContent, fileRevision, workspace, workspaceLoaded, summary, books, bookSortMode,
+    tree, loading, selectedFile, fileContent, fileRevision, workspace, projectId, workspaceLoaded, summary, books, bookSortMode,
     selectFile, clearSelectedFile, saveFileDraft, createItem, deleteItem, renameItem, copyItem, moveItem,
     refresh, refreshSummary, refreshAfterAgentFileChange, refreshAll, refreshBooks, setWorkspace,
   } = useWorkspace()
@@ -795,6 +795,7 @@ function App() {
         booksReturnMode={booksReturnMode}
         currentBookName={currentBookName}
         workspace={workspace}
+        projectId={projectId}
         appVersion={APP_VERSION}
         summary={summary}
         currentChapter={currentChapter}
@@ -862,6 +863,7 @@ function App() {
         onRenameItem={handleRenameItem}
         onCopyItem={handleCopyItem}
         onMoveItem={handleMoveItem}
+        onRefreshWorkspace={refresh}
         onActivateTab={handleActivateTab}
         onCloseTab={handleCloseTab}
         onToggleTabPin={handleToggleTabPin}

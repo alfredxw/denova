@@ -1,5 +1,4 @@
 const agentApproval = {
-  'agentApproval.recommended': 'Recommended',
   'agentApproval.loadErrorTitle': 'Safety mode unavailable',
   'agentApproval.loadFailed': 'Denova could not confirm the current safety mode. New Agent runs stay blocked until retry succeeds.',
   'agentApproval.retry': 'Retry',

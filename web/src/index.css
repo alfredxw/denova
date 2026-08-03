@@ -1379,6 +1379,28 @@ html[data-nova-motion="off"] *::after {
   justify-content: flex-end;
 }
 
+.nova-agent-composer-toolbar-end [data-model-profile-trigger="true"] {
+  min-width: 0;
+  flex-shrink: 1;
+}
+
+/* Composer panels can become narrow independently of the viewport. Keep the
+   safety posture visible as an icon without letting its label crowd the model. */
+@container (max-width: 42rem) {
+  .nova-agent-approval-trigger {
+    width: 2rem;
+    max-width: 2rem;
+    justify-content: center;
+    gap: 0;
+    padding-inline: 0;
+  }
+
+  .nova-agent-approval-label,
+  .nova-agent-approval-chevron {
+    display: none;
+  }
+}
+
 .nova-agent-composer-icon,
 .nova-agent-composer-pill,
 .nova-agent-composer-submit {

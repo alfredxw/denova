@@ -32,10 +32,11 @@ import {
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu'
 import { cn } from '@/lib/utils'
-import type { ProjectFileExplorerNode } from './project-file-explorer-model'
-import type { ProjectFileClipboard } from './project-file-tree-operations'
+import type { ProjectFileExplorerNode } from './model'
+import type { ProjectFileClipboard } from './operations'
+import type { ProjectExplorerExtensions } from './types'
 
-export interface ProjectFileTreeActions {
+export interface ProjectExplorerTreeActions {
   beginCreate: (parentPath: string, type: 'file' | 'dir') => void
   rename: (node: NodeApi<ProjectFileExplorerNode>) => void
   stageClipboard: (mode: ProjectFileClipboard['mode'], paths: string[]) => void
@@ -46,12 +47,13 @@ export interface ProjectFileTreeActions {
   clipboard: ProjectFileClipboard | null
 }
 
-interface ProjectFileTreeRenderContextValue {
-  actions: ProjectFileTreeActions
+interface ProjectExplorerRenderContextValue {
+  actions: ProjectExplorerTreeActions
+  extensions: ProjectExplorerExtensions
   onLoadMore: (path: string) => void | Promise<void>
 }
 
-export const ProjectFileTreeRenderContext = createContext<ProjectFileTreeRenderContextValue | null>(null)
+export const ProjectExplorerRenderContext = createContext<ProjectExplorerRenderContextValue | null>(null)
 
 export function ExplorerRow({ node, attrs, innerRef, children }: RowRendererProps<ProjectFileExplorerNode>) {
   return (
@@ -74,9 +76,9 @@ export function ExplorerRow({ node, attrs, innerRef, children }: RowRendererProp
 
 export function ExplorerNode({ node, style, dragHandle }: NodeRendererProps<ProjectFileExplorerNode>) {
   const { t } = useTranslation()
-  const renderContext = useContext(ProjectFileTreeRenderContext)
+  const renderContext = useContext(ProjectExplorerRenderContext)
   if (!renderContext) throw new Error('Project file explorer render context is unavailable')
-  const { actions, onLoadMore } = renderContext
+  const { actions, extensions, onLoadMore } = renderContext
   const data = node.data
   if (data.type === 'more') {
     return (
@@ -136,13 +138,14 @@ export function ExplorerNode({ node, style, dragHandle }: NodeRendererProps<Proj
           {node.isEditing
             ? <RenameInput node={node} onCancelDraft={actions.cancelDraft} />
             : <span className="min-w-0 flex-1 truncate">{data.name}</span>}
+          {!data.draft ? extensions.renderNodeMeta?.(data) : null}
           {data.symlink ? <span className="shrink-0 text-[9px] text-[var(--nova-text-faint)]">↗</span> : null}
           {!data.draft ? <NodeActionDropdown node={node} actionPaths={actionPaths} actions={actions} /> : null}
         </div>
       </ContextMenuTrigger>
       {!data.draft ? (
         <ContextMenuContent>
-          <NodeActions node={node} actionPaths={actionPaths} actions={actions} kind="context" />
+          <NodeActions node={node} actionPaths={actionPaths} actions={actions} extensions={extensions} kind="context" />
         </ContextMenuContent>
       ) : null}
     </ContextMenu>
@@ -183,7 +186,7 @@ function RenameInput({ node, onCancelDraft }: {
     try {
       await node.submit(name)
     } catch (cause) {
-      console.error('[features/files/ProjectFileTreeNode.tsx] inline file operation failed', {
+      console.error('[features/project-explorer/ProjectExplorerNode.tsx] inline file operation failed', {
         path: node.data.path,
         cause,
       })
@@ -217,9 +220,11 @@ function RenameInput({ node, onCancelDraft }: {
 function NodeActionDropdown({ node, actionPaths, actions }: {
   node: NodeApi<ProjectFileExplorerNode>
   actionPaths: string[]
-  actions: ProjectFileTreeActions
+  actions: ProjectExplorerTreeActions
 }) {
   const { t } = useTranslation()
+  const renderContext = useContext(ProjectExplorerRenderContext)
+  if (!renderContext) throw new Error('Project file explorer render context is unavailable')
   return (
     <DropdownMenu>
       <DropdownMenuTrigger asChild>
@@ -233,24 +238,33 @@ function NodeActionDropdown({ node, actionPaths, actions }: {
         </button>
       </DropdownMenuTrigger>
       <DropdownMenuContent align="end" className="min-w-44">
-        <NodeActions node={node} actionPaths={actionPaths} actions={actions} kind="dropdown" />
+        <NodeActions node={node} actionPaths={actionPaths} actions={actions} extensions={renderContext.extensions} kind="dropdown" />
       </DropdownMenuContent>
     </DropdownMenu>
   )
 }
 
-function NodeActions({ node, actionPaths, actions, kind }: {
+function NodeActions({ node, actionPaths, actions, extensions, kind }: {
   node: NodeApi<ProjectFileExplorerNode>
   actionPaths: string[]
-  actions: ProjectFileTreeActions
+  actions: ProjectExplorerTreeActions
+  extensions: ProjectExplorerExtensions
   kind: 'context' | 'dropdown'
 }) {
   const { t } = useTranslation()
   const Item = kind === 'context' ? ContextMenuItem : DropdownMenuItem
   const Separator = kind === 'context' ? ContextMenuSeparator : DropdownMenuSeparator
   const path = node.data.path
+  const extensionActions = extensions.getNodeActions?.({ node: node.data, paths: actionPaths }) ?? []
   return (
     <>
+      {extensionActions.map((action) => (
+        <Item key={action.id} disabled={action.disabled} onSelect={action.onSelect}>
+          {action.icon}
+          {action.label}
+        </Item>
+      ))}
+      {extensionActions.length > 0 ? <Separator /> : null}
       {node.data.type === 'dir' ? (
         <>
           <Item onSelect={() => actions.beginCreate(path, 'file')}><FileText />{t('sidebar.createFile')}</Item>

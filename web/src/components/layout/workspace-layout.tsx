@@ -5,8 +5,14 @@ import { useTranslation } from 'react-i18next'
 import { CollapsiblePanelSeparator, CollapsibleResizablePanel, PanelMotionGroup } from './panel-motion'
 import { readPersistedPanelLayout, usePersistedPanelLayout } from './use-persisted-panel-layout'
 
-// 224px 恰好保留三列快捷入口；窄屏时仍由 min/max 约束参与布局收缩。
-const DEFAULT_SIDEBAR_WIDTH = '224px'
+// 240px keeps three shortcut columns stable after padding and a non-overlay scrollbar;
+// narrow screens still let the panel constraints shrink the layout adaptively.
+const DEFAULT_SIDEBAR_WIDTH = '240px'
+const DEFAULT_SIDEBAR_WIDTH_PX = 240
+const COMFORTABLE_SIDEBAR_WIDTH_PX = 224
+const MIN_SIDEBAR_WIDTH_PX = 180
+const MAX_STORED_SIDEBAR_WIDTH_PX = 8192
+const SIDEBAR_WIDTH_STORAGE_KEY = 'nova.layout.workspaceSidebarWidth:v1'
 
 interface WorkspaceLayoutProps {
   activityBar: ReactNode
@@ -41,6 +47,11 @@ export function WorkspaceLayout({
   const { t } = useTranslation()
   const horizontalGroupRef = useGroupRef()
   const sidebarPanelRef = usePanelRef()
+  const storedSidebarWidthRef = useRef<number | null | undefined>(undefined)
+  if (storedSidebarWidthRef.current === undefined) {
+    storedSidebarWidthRef.current = readStoredWorkspaceSidebarWidth()
+  }
+  const sidebarWidthInitializedRef = useRef(false)
   const rightPanelRef = usePanelRef()
   const rightPanelElementRef = useRef<HTMLDivElement | null>(null)
   const retainedRightPanelRef = useRef<ReactNode>(null)
@@ -63,6 +74,21 @@ export function WorkspaceLayout({
     storageKey: 'nova-workspace-main-vertical',
     panelIds: bottomPanelVisible && bottomPanel ? ['main', 'bottom'] : ['main'],
   })
+
+  useLayoutEffect(() => {
+    if (!sidebar || !sidebarVisible || sidebarWidthInitializedRef.current) return
+    const panel = sidebarPanelRef.current
+    if (!panel) return
+
+    const currentWidth = panel.getSize().inPixels
+    const targetWidth = resolveInitialWorkspaceSidebarWidth(storedSidebarWidthRef.current ?? null, currentWidth)
+    if (Math.abs(currentWidth - targetWidth) > 1) panel.resize(`${targetWidth}px`)
+    if (storedSidebarWidthRef.current === null) {
+      persistWorkspaceSidebarWidth(targetWidth)
+      storedSidebarWidthRef.current = targetWidth
+    }
+    sidebarWidthInitializedRef.current = true
+  }, [sidebar, sidebarPanelRef, sidebarVisible])
 
   useLayoutEffect(() => {
     if (!rightPanelOpen || layoutEmphasis !== 'normal' || previousEmphasisRef.current !== 'normal') return
@@ -170,12 +196,18 @@ export function WorkspaceLayout({
                   panelRef={sidebarPanelRef}
                   visible={sidebarVisible}
                   side="left"
+                  initialExpandSize={`${storedSidebarWidthRef.current ?? DEFAULT_SIDEBAR_WIDTH_PX}px`}
                   defaultSize={DEFAULT_SIDEBAR_WIDTH}
                   minSize="180px"
                   maxSize="36%"
                   groupResizeBehavior="preserve-pixel-size"
                   className="min-w-[180px]"
                   data-nova-collapsible-panel="sidebar"
+                  onResize={(size) => {
+                    if (!horizontalPanelLayout.isUserResizeActive() || !Number.isFinite(size.inPixels) || size.inPixels <= 0) return
+                    persistWorkspaceSidebarWidth(size.inPixels)
+                    storedSidebarWidthRef.current = size.inPixels
+                  }}
                 >
                   {sidebar}
                 </CollapsibleResizablePanel>
@@ -290,4 +322,34 @@ function WorkspaceResizeHandle({
 
 export function readStoredLayoutForWorkspace(key: string, panelOrder?: string[]): Layout | undefined {
   return readPersistedPanelLayout(key, panelOrder)
+}
+
+/** Resolves the one-time migration from a legacy narrow percentage to pixel persistence. */
+export function resolveInitialWorkspaceSidebarWidth(storedWidth: number | null, currentWidth: number): number {
+  if (storedWidth !== null) return storedWidth
+  return currentWidth >= COMFORTABLE_SIDEBAR_WIDTH_PX ? currentWidth : DEFAULT_SIDEBAR_WIDTH_PX
+}
+
+function readStoredWorkspaceSidebarWidth(): number | null {
+  if (typeof window === 'undefined') return null
+  try {
+    const raw = window.localStorage.getItem(SIDEBAR_WIDTH_STORAGE_KEY)
+    if (raw === null) return null
+    const width = Number(raw)
+    return Number.isFinite(width) && width >= MIN_SIDEBAR_WIDTH_PX && width <= MAX_STORED_SIDEBAR_WIDTH_PX
+      ? width
+      : null
+  } catch (error) {
+    console.warn('[workspace-layout] Unable to restore the Writing sidebar width', { error })
+    return null
+  }
+}
+
+function persistWorkspaceSidebarWidth(width: number) {
+  if (typeof window === 'undefined' || !Number.isFinite(width) || width <= 0) return
+  try {
+    window.localStorage.setItem(SIDEBAR_WIDTH_STORAGE_KEY, String(Math.round(width)))
+  } catch (error) {
+    console.warn('[workspace-layout] Unable to persist the Writing sidebar width', { error })
+  }
 }

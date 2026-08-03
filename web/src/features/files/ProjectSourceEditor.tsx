@@ -6,7 +6,7 @@ import type { IDisposable, editor } from 'monaco-editor'
 import { EmptyState } from '@/components/common/EmptyState'
 import { ImagePreviewDialog } from '@/components/common/ImagePreviewDialog'
 import { DenovaMonacoEditor } from '@/components/monaco/DenovaMonaco'
-import { projectFileAssetURL, type ProjectFileDocument } from './api'
+import { projectFileAssetURL, type ProjectFileDocument } from '@/lib/api-client/project-files'
 import { projectFileLanguage } from './file-language'
 
 interface ProjectSourceEditorProps {

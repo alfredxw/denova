@@ -3,10 +3,10 @@ import { createRef } from 'react'
 import { fireEvent, render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { describe, expect, it, vi } from 'vitest'
-import type { ProjectFileExplorerNode } from './project-file-explorer-model'
-import { ProjectFileTree } from './ProjectFileTree'
+import type { ProjectFileExplorerNode } from './model'
+import { ProjectExplorerTree } from './ProjectExplorerTree'
 
-describe('ProjectFileTree', () => {
+describe('ProjectExplorerTree', () => {
   it('keeps a large directory DOM bounded through virtualization', () => {
     const nodes: ProjectFileExplorerNode[] = Array.from({ length: 2_000 }, (_, index) => ({
       id: `file-${index}.ts`,
@@ -19,7 +19,7 @@ describe('ProjectFileTree', () => {
       loading: false,
     }))
     render(
-      <ProjectFileTree
+      <ProjectExplorerTree
         treeRef={createRef<TreeApi<ProjectFileExplorerNode>>()}
         nodes={nodes}
         workspace="/projects/one"
@@ -70,7 +70,7 @@ describe('ProjectFileTree', () => {
       },
     ]
     render(
-      <ProjectFileTree
+      <ProjectExplorerTree
         treeRef={createRef<TreeApi<ProjectFileExplorerNode>>()}
         nodes={nodes}
         workspace="/projects/one"
@@ -121,7 +121,7 @@ describe('ProjectFileTree', () => {
       loading: false,
     }]
     render(
-      <ProjectFileTree
+      <ProjectExplorerTree
         treeRef={createRef<TreeApi<ProjectFileExplorerNode>>()}
         nodes={nodes}
         workspace="/projects/one"

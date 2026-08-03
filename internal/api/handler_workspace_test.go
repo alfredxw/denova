@@ -4,20 +4,23 @@ import (
 	"context"
 	"denova/internal/book"
 	"net/http"
+	"net/url"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
 )
 
-func TestWorkspaceDeleteCreatesRestorableVersion(t *testing.T) {
+func TestCurrentBookProjectDeleteCreatesRestorableVersion(t *testing.T) {
 	application := newTestApplication(t)
 	server := NewServer(application, "0")
 	if err := application.BookService().Create("chapters/ch01.md", "file", "正文"); err != nil {
 		t.Fatalf("创建测试文件失败: %v", err)
 	}
 
-	deleteResp := performJSONRequest(t, server, http.MethodPost, "/api/workspace/delete", map[string]string{"path": "chapters/ch01.md"})
+	deleteResp := performJSONRequest(t, server, http.MethodPost, "/api/projects/"+url.PathEscape(application.ProjectID())+"/files/operations", map[string]any{
+		"operations": []map[string]string{{"kind": "delete", "path": "chapters/ch01.md"}},
+	})
 	if deleteResp.Code != http.StatusOK {
 		t.Fatalf("delete status = %d body=%s", deleteResp.Code, deleteResp.Body.String())
 	}

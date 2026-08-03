@@ -31,6 +31,40 @@ func newPathBoundary(workspace, cwd string) (pathBoundary, bool) {
 	return pathBoundary{workspace: root, cwd: current}, true
 }
 
+func (boundary pathBoundary) changeDirectory(args []string) (pathBoundary, bool) {
+	operands := make([]string, 0, 1)
+	flagsEnded := false
+	for _, arg := range args {
+		if !flagsEnded && arg == "--" {
+			flagsEnded = true
+			continue
+		}
+		if !flagsEnded && (arg == "-L" || arg == "-P") {
+			continue
+		}
+		if !flagsEnded && strings.HasPrefix(arg, "-") {
+			return pathBoundary{}, false
+		}
+		operands = append(operands, arg)
+	}
+	if len(operands) != 1 || strings.TrimSpace(operands[0]) == "" || operands[0] == "-" {
+		return pathBoundary{}, false
+	}
+	candidate := filepath.FromSlash(operands[0])
+	if !filepath.IsAbs(candidate) {
+		candidate = filepath.Join(boundary.cwd, candidate)
+	}
+	canonical, err := filepath.EvalSymlinks(candidate)
+	if err != nil || !withinRoot(boundary.workspace, canonical) {
+		return pathBoundary{}, false
+	}
+	info, err := os.Stat(canonical)
+	if err != nil || !info.IsDir() {
+		return pathBoundary{}, false
+	}
+	return pathBoundary{workspace: boundary.workspace, cwd: canonical}, true
+}
+
 func (boundary pathBoundary) containsLiteral(value string) bool {
 	value = strings.TrimSpace(value)
 	if value == "" || value == "-" {

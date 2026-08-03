@@ -45,7 +45,7 @@ export function ModelProfileSwitcher({ agentKey, workspace, conversationConfig, 
         <button
           type="button"
           disabled={disabled || !selector.settings || !conversationConfig?.initialized || selector.saving}
-          className="group flex h-8 max-w-44 shrink-0 items-center gap-1.5 rounded-md border-0 bg-transparent px-1.5 text-xs leading-none text-[var(--nova-text)] outline-none transition-colors hover:text-[var(--nova-text)] focus-visible:bg-[var(--nova-hover)] disabled:pointer-events-none disabled:opacity-50"
+          className="group flex h-8 min-w-0 max-w-44 flex-[0_1_auto] items-center gap-1.5 rounded-md border-0 bg-transparent px-1.5 text-xs leading-none text-[var(--nova-text)] outline-none transition-colors hover:text-[var(--nova-text)] focus-visible:bg-[var(--nova-hover)] disabled:pointer-events-none disabled:opacity-50"
           aria-label={selector.t('chat.modelProfile.switch', { model: selector.currentSelectionLabel })}
           title={selector.t('chat.modelProfile.switch', { model: selector.currentSelectionLabel })}
           data-model-profile-trigger="true"

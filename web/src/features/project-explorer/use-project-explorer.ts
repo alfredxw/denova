@@ -6,25 +6,25 @@ import {
   type ProjectFileOperation,
   type ProjectFileTreeResolveResult,
   type ProjectFileTreeResolveTarget,
-} from './api'
+} from '@/lib/api-client/project-files'
 import {
   buildProjectFileExplorerNodes,
   mergeProjectDirectories,
   type CachedProjectDirectory,
   type ProjectFileExplorerNode,
-} from './project-file-explorer-model'
+} from './model'
 
-export type { ProjectFileExplorerNode } from './project-file-explorer-model'
+export type { ProjectFileExplorerNode } from './model'
 
 const TREE_ENTRY_BUDGET = 4096
 const MAX_TARGETS_PER_REQUEST = 256
-interface ProjectFileExplorerOptions {
+interface ProjectExplorerOptions {
   projectId: string
   expandedPaths: readonly string[]
   selectedPath: string | null
 }
 
-export interface ProjectFileExplorerState {
+export interface ProjectExplorerState {
   nodes: ProjectFileExplorerNode[]
   loading: boolean
   loadingPaths: ReadonlySet<string>
@@ -49,11 +49,11 @@ interface ResolveOptions {
  * mutations invalidate only their affected parents, keeping large projects
  * responsive without coupling explorer state to editor drafts.
  */
-export function useProjectFileExplorer({
+export function useProjectExplorer({
   projectId,
   expandedPaths,
   selectedPath,
-}: ProjectFileExplorerOptions): ProjectFileExplorerState {
+}: ProjectExplorerOptions): ProjectExplorerState {
   const [directories, setDirectories] = useState<ReadonlyMap<string, CachedProjectDirectory>>(() => new Map())
   const directoriesRef = useRef(directories)
   directoriesRef.current = directories
@@ -126,7 +126,7 @@ export function useProjectFileExplorer({
         if (root && !root.ok) setError(root.error ?? null)
       })
       .catch((cause) => {
-        console.error('[features/files/use-project-file-explorer.ts] loading project tree failed', {
+        console.error('[features/project-explorer/use-project-explorer.ts] loading project tree failed', {
           projectId,
           cause,
         })
@@ -165,8 +165,24 @@ export function useProjectFileExplorer({
   }, [refreshDirectories, resolveTargets])
 
   const refresh = useCallback(async () => {
-    await refreshDirectories(['', ...directoriesRef.current.keys()])
-  }, [refreshDirectories])
+    const paths = ['', ...directoriesRef.current.keys()]
+    const results = await resolveTargets(
+      [...new Set(paths)].map((path) => ({ path })),
+      { surfaceErrors: false },
+    )
+    const failedBranches = results
+      .filter((result) => result.path !== '' && !result.ok)
+      .map((result) => result.path)
+    if (failedBranches.length > 0) {
+      // External writers may remove a loaded branch between refreshes. Its
+      // authoritative parent remains usable, so evict the stale cache branch
+      // without turning a successful project refresh into an operation error.
+      setDirectories((current) => removeDirectoryBranches(current, failedBranches))
+    }
+    const root = results.find((result) => result.path === '')
+    setError(root && !root.ok ? root.error ?? null : null)
+    throwForFailedTarget(results, '')
+  }, [resolveTargets])
 
   const applyOperation = useCallback(async (
     operation: ProjectFileOperation,

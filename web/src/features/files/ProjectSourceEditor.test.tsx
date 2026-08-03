@@ -1,6 +1,6 @@
 import { render } from '@testing-library/react'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
-import type { ProjectFileDocument } from './api'
+import type { ProjectFileDocument } from '@/lib/api-client/project-files'
 import { ProjectSourceEditor, projectFileModelPath } from './ProjectSourceEditor'
 
 const { editorProps } = vi.hoisted(() => ({ editorProps: [] as Array<Record<string, unknown>> }))

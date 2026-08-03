@@ -154,6 +154,18 @@ vi.mock('@/features/interactive/stores/interactive-store', () => ({
   }),
 }))
 
+vi.mock('@/features/project-explorer/WritingProjectExplorer', () => ({
+  WritingProjectExplorer: ({ projectId, onSelectFile }: {
+    projectId: string
+    onSelectFile: (path: string) => void
+  }) => (
+    <div data-testid="writing-project-explorer" data-project-id={projectId}>
+      <button type="button">lore</button>
+      <button type="button" onClick={() => onSelectFile('setting/lore/items.json')}>items.json</button>
+    </div>
+  ),
+}))
+
 vi.mock('@/features/changes/use-writing-change-review', () => ({
   useWritingChangeReview: () => writingChangeReviewMock,
 }))
@@ -544,6 +556,7 @@ function modeRouterProps(
     booksReturnMode: 'ide',
     currentBookName: 'Book A',
     workspace: '/book-a',
+    projectId: 'project-book-a',
     appVersion: 'test',
     summary: null,
     chapterStats: {},
@@ -604,6 +617,7 @@ function modeRouterProps(
     onRenameItem: vi.fn(),
     onCopyItem: vi.fn(),
     onMoveItem: vi.fn(),
+    onRefreshWorkspace: vi.fn(),
     onActivateTab: vi.fn(),
     onCloseTab: vi.fn(),
     onToggleTabPin: vi.fn(),

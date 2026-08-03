@@ -1,8 +1,8 @@
 import { fireEvent, render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { describe, expect, it, vi } from 'vitest'
-import type { ProjectFileExplorerNode } from './project-file-explorer-model'
-import { ProjectFilesSidebar } from './ProjectFilesSidebar'
+import type { ProjectFileExplorerNode } from './model'
+import { ProjectExplorerPane } from './ProjectExplorerPane'
 
 const selectedPath = 'chapters/volume/chapter.md'
 
@@ -39,10 +39,10 @@ function explorerNodes(): ProjectFileExplorerNode[] {
   }]
 }
 
-describe('ProjectFilesSidebar', () => {
+describe('ProjectExplorerPane', () => {
   it('reveals the selected file again after collapsing every directory', async () => {
     render(
-      <ProjectFilesSidebar
+      <ProjectExplorerPane
         nodes={explorerNodes()}
         workspace="/projects/one"
         selectedPath={selectedPath}
@@ -75,7 +75,7 @@ describe('ProjectFilesSidebar', () => {
     const user = userEvent.setup()
     const onCreateItem = vi.fn().mockResolvedValue(undefined)
     render(
-      <ProjectFilesSidebar
+      <ProjectExplorerPane
         nodes={explorerNodes()}
         workspace="/projects/one"
         selectedPath={selectedPath}
@@ -113,7 +113,7 @@ describe('ProjectFilesSidebar', () => {
     const user = userEvent.setup()
     const onCreateItem = vi.fn().mockResolvedValue(undefined)
     render(
-      <ProjectFilesSidebar
+      <ProjectExplorerPane
         nodes={[]}
         workspace="/projects/one"
         selectedPath={null}
@@ -140,5 +140,46 @@ describe('ProjectFilesSidebar', () => {
     await user.type(await screen.findByRole('textbox'), 'drafts{Enter}')
 
     await waitFor(() => expect(onCreateItem).toHaveBeenCalledWith('drafts', 'dir'))
+  })
+
+  it('keeps writing-only metadata and actions behind explorer extension points', async () => {
+    const user = userEvent.setup()
+    const onReferenceFile = vi.fn()
+    render(
+      <ProjectExplorerPane
+        nodes={explorerNodes()}
+        workspace="/projects/one"
+        selectedPath={selectedPath}
+        expandedPaths={['chapters', 'chapters/volume']}
+        loading={false}
+        loadingPaths={new Set()}
+        error={null}
+        onSelectFile={vi.fn()}
+        onDirectoryExpand={vi.fn()}
+        onDirectoryExpandedChange={vi.fn()}
+        onCollapseAll={vi.fn()}
+        onLoadMore={vi.fn()}
+        onCreateItem={vi.fn()}
+        onDeleteItem={vi.fn()}
+        onRenameItem={vi.fn()}
+        onCopyItem={vi.fn()}
+        onMoveItem={vi.fn()}
+        onRefresh={vi.fn()}
+        extensions={{
+          deleteRecovery: 'version-history',
+          renderNodeMeta: (node) => node.path === selectedPath ? <span>1.2k · draft</span> : null,
+          getNodeActions: ({ node, paths }) => node.type === 'file' && paths.length === 1 ? [{
+            id: 'reference',
+            label: '引用到对话',
+            onSelect: () => onReferenceFile(node.path),
+          }] : [],
+        }}
+      />,
+    )
+
+    expect(await screen.findByText('1.2k · draft')).toBeInTheDocument()
+    fireEvent.contextMenu(screen.getByText('chapter.md'))
+    await user.click(await screen.findByRole('menuitem', { name: '引用到对话' }))
+    expect(onReferenceFile).toHaveBeenCalledWith(selectedPath)
   })
 })
