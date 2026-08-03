@@ -6,6 +6,7 @@ import { ProjectSourceEditor, projectFileModelPath } from './ProjectSourceEditor
 const { editorProps } = vi.hoisted(() => ({ editorProps: [] as Array<Record<string, unknown>> }))
 
 vi.mock('@monaco-editor/react', () => ({
+  DiffEditor: () => null,
   Editor: (props: Record<string, unknown>) => {
     editorProps.push(props)
     return <div data-testid="monaco-editor" />
@@ -57,6 +58,16 @@ describe('ProjectSourceEditor', () => {
       renderLineHighlight: 'line',
       smoothScrolling: false,
       stickyScroll: { enabled: true },
+      unicodeHighlight: {
+        nonBasicASCII: false,
+        invisibleCharacters: true,
+        ambiguousCharacters: true,
+        allowedLocales: {
+          'zh-hans': true,
+          'zh-hant': true,
+          ja: true,
+        },
+      },
       wordWrap: 'on',
       wrappingStrategy: 'simple',
     })

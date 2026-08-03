@@ -1,5 +1,4 @@
-import { DiffEditor } from '@monaco-editor/react'
-import { useTheme } from 'next-themes'
+import { DenovaMonacoDiffEditor } from '@/components/monaco/DenovaMonaco'
 import { useIsMobile } from '@/hooks/useIsMobile'
 
 export type ChapterDiffViewProps = {
@@ -19,14 +18,11 @@ export function ChapterDiffView({
   className = '',
 }: ChapterDiffViewProps) {
   const compact = useIsMobile()
-  const { resolvedTheme } = useTheme()
-  const monacoTheme = resolvedTheme === 'light' ? 'light' : 'vs-dark'
 
   return (
     <div className={`h-full min-h-[360px] w-full overflow-hidden bg-[var(--nova-bg)] ${className}`}>
-      <DiffEditor
+      <DenovaMonacoDiffEditor
         height="100%"
-        theme={monacoTheme}
         language={language}
         original={original}
         modified={modified}

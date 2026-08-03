@@ -21,6 +21,7 @@ const { configManagerChatProps, monacoEditorActions } = vi.hoisted(() => ({
 }))
 
 vi.mock('@monaco-editor/react', () => ({
+  DiffEditor: () => null,
   Editor: ({ value, onChange, onMount, language, theme, options }: {
     value?: string
     onChange?: (value?: string) => void

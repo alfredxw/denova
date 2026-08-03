@@ -1,9 +1,10 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
-import { DiffEditor, Editor, loader, type DiffOnMount, type Monaco, type OnMount } from '@monaco-editor/react'
+import { loader, type DiffOnMount, type Monaco, type OnMount } from '@monaco-editor/react'
 import { AlertTriangle, Loader2 } from 'lucide-react'
 import { useTheme } from 'next-themes'
 import { useTranslation } from 'react-i18next'
+import { DenovaMonacoDiffEditor, DenovaMonacoEditor } from '@/components/monaco/DenovaMonaco'
 import type {
   CreateWorkspaceChangeCommentRequest,
   ReviewThreadFile,
@@ -19,11 +20,6 @@ import {
 } from './monaco/review-editor-adapter'
 import { scheduleDetachedReviewModelDisposal } from './monaco/review-model-lifecycle'
 import { fitReviewEditorToHost, type ReviewEditorLayoutTarget } from './monaco/review-editor-dom'
-import {
-  installReviewMonacoThemes,
-  REVIEW_MONACO_THEME_DARK,
-  REVIEW_MONACO_THEME_LIGHT,
-} from './monaco/review-monaco-theme'
 import { UnifiedReviewEditorAdapter } from './monaco/unified-review-editor-adapter'
 import { buildUnifiedReviewProjection } from './monaco/unified-review-projection'
 import { Utf8OffsetIndex } from './monaco/utf8-offset-index'
@@ -91,7 +87,6 @@ export function ReviewDiffEditor({ threadID, file, comments, layout, busy = fals
   const unifiedModelPath = reviewModelPath(threadID, file, 'unified')
   const language = languageForPath(file.path)
   const lightTheme = resolvedTheme === 'light'
-  const reviewTheme = lightTheme ? REVIEW_MONACO_THEME_LIGHT : REVIEW_MONACO_THEME_DARK
 
   const { threads, outdated } = useMemo(() => resolveCommentThreads(file, comments), [comments, file])
   const draftDescriptors = useMemo<ReviewZoneDescriptor[]>(() => drafts.flatMap((draft) => {
@@ -336,14 +331,12 @@ export function ReviewDiffEditor({ threadID, file, comments, layout, busy = fals
       {commentError && <div role="alert" className="shrink-0 border-b border-[var(--nova-danger-border)] bg-[var(--nova-danger-bg)] px-3 py-2 text-xs text-[var(--nova-danger)]">{commentError}</div>}
       <div ref={codeHostRef} className="min-h-0 flex-1 overflow-hidden">
         {layout === 'unified' ? (
-          <Editor
+          <DenovaMonacoEditor
             height="100%"
-            theme={reviewTheme}
             language={language}
             path={unifiedModelPath}
             value={unifiedProjection.value}
             keepCurrentModel
-            beforeMount={installReviewMonacoThemes}
             onMount={handleUnifiedMount}
             loading={<ReviewEditorLoading label={t('changes.loading')} />}
             options={{
@@ -362,11 +355,6 @@ export function ReviewDiffEditor({ threadID, file, comments, layout, busy = fals
               scrollBeyondLastLine: false,
               wordWrap: 'on',
               wrappingStrategy: 'advanced',
-              unicodeHighlight: {
-                ambiguousCharacters: false,
-                nonBasicASCII: false,
-                invisibleCharacters: true,
-              },
               padding: { top: 12, bottom: 16 },
               stickyScroll: { enabled: false },
               scrollbar: {
@@ -379,9 +367,8 @@ export function ReviewDiffEditor({ threadID, file, comments, layout, busy = fals
             }}
           />
         ) : (
-          <DiffEditor
+          <DenovaMonacoDiffEditor
             height="100%"
-            theme={reviewTheme}
             language={language}
             original={file.before_content}
             modified={file.after_content}
@@ -389,7 +376,6 @@ export function ReviewDiffEditor({ threadID, file, comments, layout, busy = fals
             modifiedModelPath={modifiedModelPath}
             keepCurrentOriginalModel
             keepCurrentModifiedModel
-            beforeMount={installReviewMonacoThemes}
             onMount={handleSplitMount}
             loading={<ReviewEditorLoading label={t('changes.loading')} />}
             options={{
@@ -411,11 +397,6 @@ export function ReviewDiffEditor({ threadID, file, comments, layout, busy = fals
               folding: false,
               scrollBeyondLastLine: false,
               lineNumbersMinChars: 3,
-              unicodeHighlight: {
-                ambiguousCharacters: false,
-                nonBasicASCII: false,
-                invisibleCharacters: true,
-              },
               padding: { top: 12, bottom: 16 },
               hideUnchangedRegions: {
                 enabled: true,

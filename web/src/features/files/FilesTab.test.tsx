@@ -7,6 +7,7 @@ import { server } from '@/test/msw/server'
 import { FilesTab } from './FilesTab'
 
 vi.mock('@monaco-editor/react', () => ({
+  DiffEditor: () => null,
   Editor: ({ defaultValue, onChange, options }: {
     defaultValue: string
     onChange: (value: string) => void

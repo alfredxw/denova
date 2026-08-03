@@ -5,6 +5,7 @@ import { ChapterDiffView } from './chapter-diff-view'
 const themeState = vi.hoisted(() => ({ resolvedTheme: 'dark' }))
 
 vi.mock('@monaco-editor/react', () => ({
+  Editor: () => null,
   DiffEditor: ({ original, modified, language, theme, options }: {
     original: string
     modified: string
@@ -35,7 +36,7 @@ describe('ChapterDiffView', () => {
 
     const editor = screen.getByTestId('diff-editor')
     expect(editor).toHaveAttribute('data-language', 'markdown')
-    expect(editor).toHaveAttribute('data-theme', 'vs-dark')
+    expect(editor).toHaveAttribute('data-theme', 'denova-dark')
     expect(editor).toHaveAttribute('data-side-by-side', 'true')
     expect(screen.getByText('旧章节')).toBeInTheDocument()
     expect(screen.getByText('新章节')).toBeInTheDocument()
@@ -45,6 +46,6 @@ describe('ChapterDiffView', () => {
     themeState.resolvedTheme = 'light'
     render(<ChapterDiffView original="旧章节" modified="新章节" />)
 
-    expect(screen.getByTestId('diff-editor')).toHaveAttribute('data-theme', 'light')
+    expect(screen.getByTestId('diff-editor')).toHaveAttribute('data-theme', 'denova-light')
   })
 })

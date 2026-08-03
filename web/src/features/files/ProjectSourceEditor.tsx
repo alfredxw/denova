@@ -1,11 +1,11 @@
-import { Editor, type Monaco, type OnMount } from '@monaco-editor/react'
+import { type Monaco, type OnMount } from '@monaco-editor/react'
 import { FileWarning, Maximize2 } from 'lucide-react'
-import { useTheme } from 'next-themes'
 import { useCallback, useEffect, useMemo, useRef } from 'react'
 import { useTranslation } from 'react-i18next'
 import type { IDisposable, editor } from 'monaco-editor'
 import { EmptyState } from '@/components/common/EmptyState'
 import { ImagePreviewDialog } from '@/components/common/ImagePreviewDialog'
+import { DenovaMonacoEditor } from '@/components/monaco/DenovaMonaco'
 import { projectFileAssetURL, type ProjectFileDocument } from './api'
 import { projectFileLanguage } from './file-language'
 
@@ -36,7 +36,6 @@ function ProjectTextEditor({
   onSave,
 }: ProjectSourceEditorProps) {
   const { t } = useTranslation()
-  const { resolvedTheme } = useTheme()
   const editorRef = useRef<editor.IStandaloneCodeEditor | null>(null)
   const actionDisposablesRef = useRef<IDisposable[]>([])
   const initialValueRef = useRef(value)
@@ -119,11 +118,10 @@ function ProjectTextEditor({
       // keeps those invalidations inside the editor without clipping widgets.
       style={{ contain: 'size layout style' }}
     >
-      <Editor
+      <DenovaMonacoEditor
         height="100%"
         path={projectFileModelPath(projectId, document.path)}
         language={projectFileLanguage(document.path)}
-        theme={resolvedTheme === 'light' ? 'light' : 'vs-dark'}
         defaultValue={initialValueRef.current}
         keepCurrentModel={false}
         saveViewState={false}

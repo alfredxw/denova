@@ -5,6 +5,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { PresetConfigSectionEditor } from './PresetConfigSectionEditor'
 
 vi.mock('@monaco-editor/react', () => ({
+  DiffEditor: () => null,
   Editor: ({ value, onChange, options }: {
     value?: string
     onChange?: (value?: string) => void
