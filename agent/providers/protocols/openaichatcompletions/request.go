@@ -15,9 +15,7 @@ import (
 )
 
 func (model *ChatModel) request(input []*agent.Message, stream bool, opts ...agent.ModelOption) (sdk.ChatCompletionNewParams, []option.RequestOption, error) {
-	replayReasoningContent := model.config.Provider == providers.ProviderDeepSeek &&
-		model.config.ThinkingLevel != providers.ThinkingLevelOff
-	messages, err := requestMessages(input, replayReasoningContent)
+	messages, err := requestMessages(input, model.compatibility, model.config.ThinkingLevel)
 	if err != nil {
 		return sdk.ChatCompletionNewParams{}, nil, err
 	}
@@ -30,7 +28,7 @@ func (model *ChatModel) request(input []*agent.Message, stream bool, opts ...age
 	if err != nil {
 		return sdk.ChatCompletionNewParams{}, nil, err
 	}
-	toolChoice, err := requestToolChoice(common.ToolChoice, len(requestTools))
+	toolChoice, err := requestToolChoice(common.ToolChoice, len(requestTools), *model.compatibility.SupportsToolChoice)
 	if err != nil {
 		return sdk.ChatCompletionNewParams{}, nil, err
 	}
@@ -49,22 +47,27 @@ func (model *ChatModel) request(input []*agent.Message, stream bool, opts ...age
 		maxTokens = common.MaxTokens
 	}
 	if maxTokens != nil {
-		params.MaxTokens = sdk.Int(int64(*maxTokens))
+		switch model.compatibility.MaxTokensField {
+		case MaxTokensFieldMaxCompletionTokens:
+			params.MaxCompletionTokens = sdk.Int(int64(*maxTokens))
+		case MaxTokensFieldMaxTokens:
+			params.MaxTokens = sdk.Int(int64(*maxTokens))
+		}
 	}
-	if stream {
+	if stream && *model.compatibility.SupportsStreamUsage {
 		params.StreamOptions.IncludeUsage = sdk.Bool(true)
 	}
 
 	return params, model.requestOptions(), nil
 }
 
-func requestMessages(messages []*agent.Message, replayReasoningContent bool) ([]sdk.ChatCompletionMessageParamUnion, error) {
+func requestMessages(messages []*agent.Message, compatibility Compatibility, thinkingLevel providers.ThinkingLevel) ([]sdk.ChatCompletionMessageParamUnion, error) {
 	result := make([]sdk.ChatCompletionMessageParamUnion, 0, len(messages))
 	for index, message := range messages {
 		if message == nil {
 			return nil, fmt.Errorf("openai request message %d: nil message", index)
 		}
-		mapped, err := requestMessage(message, replayReasoningContent)
+		mapped, err := requestMessage(message, compatibility, thinkingLevel)
 		if err != nil {
 			return nil, fmt.Errorf("openai request message %d: %w", index, err)
 		}
@@ -73,7 +76,7 @@ func requestMessages(messages []*agent.Message, replayReasoningContent bool) ([]
 	return result, nil
 }
 
-func requestMessage(message *agent.Message, replayReasoningContent bool) (sdk.ChatCompletionMessageParamUnion, error) {
+func requestMessage(message *agent.Message, compatibility Compatibility, thinkingLevel providers.ThinkingLevel) (sdk.ChatCompletionMessageParamUnion, error) {
 	switch message.Role {
 	case agent.System:
 		result := sdk.SystemMessage(message.Content)
@@ -89,17 +92,14 @@ func requestMessage(message *agent.Message, replayReasoningContent bool) (sdk.Ch
 		return result, nil
 	case agent.Assistant:
 		assistant := sdk.ChatCompletionAssistantMessageParam{}
-		if message.Content != "" || len(message.ToolCalls) == 0 {
+		if message.Content != "" || len(message.ToolCalls) == 0 || compatibility.RequiresAssistantToolContent {
 			assistant.Content.OfString = sdk.String(message.Content)
 		}
 		if message.Name != "" {
 			assistant.Name = sdk.String(message.Name)
 		}
-		// DeepSeek requires the complete reasoning_content to be replayed after
-		// assistant tool calls. Other OpenAI-compatible providers may reject the
-		// extension, so the protocol caller enables it only for DeepSeek thinking.
-		if replayReasoningContent && message.ReasoningContent != "" {
-			assistant.SetExtraFields(map[string]any{"reasoning_content": message.ReasoningContent})
+		if compatibility.shouldReplayReasoning(message, thinkingLevel) && message.ReasoningContent != "" {
+			assistant.SetExtraFields(map[string]any{compatibility.ReasoningContentField: message.ReasoningContent})
 		}
 		for callIndex, call := range message.ToolCalls {
 			if call.Type != "" && call.Type != "function" {
@@ -218,9 +218,12 @@ func filterTools(tools []*agent.ToolInfo, names []string) []*agent.ToolInfo {
 	return result
 }
 
-func requestToolChoice(choice *agent.ToolChoice, toolCount int) (sdk.ChatCompletionToolChoiceOptionUnionParam, error) {
+func requestToolChoice(choice *agent.ToolChoice, toolCount int, supported bool) (sdk.ChatCompletionToolChoiceOptionUnionParam, error) {
 	if choice == nil {
 		return sdk.ChatCompletionToolChoiceOptionUnionParam{}, nil
+	}
+	if !supported {
+		return sdk.ChatCompletionToolChoiceOptionUnionParam{}, fmt.Errorf("openai request: endpoint does not support tool_choice")
 	}
 	result := sdk.ChatCompletionToolChoiceOptionUnionParam{}
 	switch *choice {
@@ -240,48 +243,29 @@ func requestToolChoice(choice *agent.ToolChoice, toolCount int) (sdk.ChatComplet
 }
 
 func (model *ChatModel) requestOptions() []option.RequestOption {
-	result := make([]option.RequestOption, 0, len(model.extraFields)+2)
-	if effort, ok := chatReasoningEffort(model.config); ok {
+	extraFields := make(map[string]any, len(model.extraFields)+1)
+	for key, value := range model.extraFields {
+		extraFields[key] = value
+	}
+	for key, value := range model.compatibility.thinkingFields(model.config.ThinkingLevel) {
+		extraFields[key] = value
+	}
+	result := make([]option.RequestOption, 0, len(extraFields)+2)
+	if effort, ok := model.compatibility.mappedEffort(model.config.ThinkingLevel); ok {
 		result = append(result, option.WithJSONSet("reasoning_effort", effort))
 	}
 	if format := chatResponseFormat(model.config.OutputFormat); format != nil {
 		result = append(result, option.WithJSONSet("response_format", format))
 	}
-	keys := make([]string, 0, len(model.extraFields))
-	for key := range model.extraFields {
+	keys := make([]string, 0, len(extraFields))
+	for key := range extraFields {
 		keys = append(keys, key)
 	}
 	sort.Strings(keys)
 	for _, key := range keys {
-		result = append(result, option.WithJSONSet(escapeJSONPathKey(key), model.extraFields[key]))
+		result = append(result, option.WithJSONSet(escapeJSONPathKey(key), extraFields[key]))
 	}
 	return result
-}
-
-func chatReasoningEffort(config providers.ModelConfig) (string, bool) {
-	level := config.ThinkingLevel
-	if level == "" || level == providers.ThinkingLevelDefault {
-		return "", false
-	}
-	if config.Provider == providers.ProviderDeepSeek {
-		// DeepSeek disables thinking through the nested thinking object instead
-		// of accepting reasoning_effort=none. Minimal and medium are normalized
-		// to supported levels; xhigh remains a documented compatibility alias.
-		switch level {
-		case providers.ThinkingLevelOff:
-			return "", false
-		case providers.ThinkingLevelMinimal:
-			return string(providers.ThinkingLevelLow), true
-		case providers.ThinkingLevelMedium:
-			return string(providers.ThinkingLevelHigh), true
-		default:
-			return string(level), true
-		}
-	}
-	if level == providers.ThinkingLevelOff {
-		return string(shared.ReasoningEffortNone), true
-	}
-	return string(level), true
 }
 
 func chatResponseFormat(format *providers.OutputFormat) any {

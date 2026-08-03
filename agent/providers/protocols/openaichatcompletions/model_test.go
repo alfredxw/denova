@@ -24,7 +24,11 @@ func newTestModel(ctx context.Context, config *providers.ModelConfig) (agent.Too
 	return NewAdapter().New(ctx, *config)
 }
 
-func TestChatReasoningEffortCoversUnifiedThinkingLevels(t *testing.T) {
+func TestCompatibilityReasoningEffortCoversUnifiedThinkingLevels(t *testing.T) {
+	defaultCompatibility, err := resolveCompatibility(providers.ModelConfig{})
+	if err != nil {
+		t.Fatal(err)
+	}
 	openAITests := []struct {
 		level providers.ThinkingLevel
 		want  string
@@ -41,13 +45,21 @@ func TestChatReasoningEffortCoversUnifiedThinkingLevels(t *testing.T) {
 	}
 	for _, test := range openAITests {
 		t.Run(string(test.level), func(t *testing.T) {
-			got, ok := chatReasoningEffort(providers.ModelConfig{
-				Provider: providers.ProviderOpenAI, ThinkingLevel: test.level,
-			})
+			got, ok := defaultCompatibility.mappedEffort(test.level)
 			if got != test.want || ok != test.ok {
-				t.Fatalf("chatReasoningEffort(%q) = %q, %t; want %q, %t", test.level, got, ok, test.want, test.ok)
+				t.Fatalf("mappedEffort(%q) = %q, %t; want %q, %t", test.level, got, ok, test.want, test.ok)
 			}
 		})
+	}
+	deepSeekOptions, err := providers.EncodeProtocolOptions(Compatibility{EffortMap: map[string]string{
+		"off": "", "minimal": "low", "medium": "high", "xhigh": "high",
+	}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	deepSeekCompatibility, err := resolveCompatibility(providers.ModelConfig{ProtocolOptions: deepSeekOptions})
+	if err != nil {
+		t.Fatal(err)
 	}
 	deepSeekTests := []struct {
 		level providers.ThinkingLevel
@@ -60,16 +72,14 @@ func TestChatReasoningEffortCoversUnifiedThinkingLevels(t *testing.T) {
 		{level: providers.ThinkingLevelLow, want: "low", ok: true},
 		{level: providers.ThinkingLevelMedium, want: "high", ok: true},
 		{level: providers.ThinkingLevelHigh, want: "high", ok: true},
-		{level: providers.ThinkingLevelXHigh, want: "xhigh", ok: true},
+		{level: providers.ThinkingLevelXHigh, want: "high", ok: true},
 		{level: providers.ThinkingLevelMax, want: "max", ok: true},
 	}
 	for _, test := range deepSeekTests {
 		t.Run("deepseek_"+string(test.level), func(t *testing.T) {
-			got, ok := chatReasoningEffort(providers.ModelConfig{
-				Provider: providers.ProviderDeepSeek, ThinkingLevel: test.level,
-			})
+			got, ok := deepSeekCompatibility.mappedEffort(test.level)
 			if got != test.want || ok != test.ok {
-				t.Fatalf("DeepSeek chatReasoningEffort(%q) = %q, %t; want %q, %t", test.level, got, ok, test.want, test.ok)
+				t.Fatalf("DeepSeek mappedEffort(%q) = %q, %t; want %q, %t", test.level, got, ok, test.want, test.ok)
 			}
 		})
 	}
@@ -90,6 +100,17 @@ func TestDeepSeekThinkingRequestUsesV4WireFormat(t *testing.T) {
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
+			protocolOptions, err := providers.EncodeProtocolOptions(Compatibility{
+				ThinkingToggle:        ThinkingToggleNested,
+				ReasoningReplay:       ReasoningReplayToolCalls,
+				ReasoningContentField: "reasoning_content",
+				EffortMap: map[string]string{
+					"off": "", "minimal": "low", "medium": "high", "xhigh": "high",
+				},
+			})
+			if err != nil {
+				t.Fatal(err)
+			}
 			requestBody := make(chan []byte, 1)
 			server := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
 				body, err := io.ReadAll(request.Body)
@@ -104,7 +125,7 @@ func TestDeepSeekThinkingRequestUsesV4WireFormat(t *testing.T) {
 
 			model, err := newTestModel(context.Background(), &providers.ModelConfig{
 				Provider: providers.ProviderDeepSeek, APIKey: "secret", Model: "deepseek-v4-flash",
-				BaseURL: server.URL + "/v1", HTTPClient: server.Client(), ThinkingLevel: test.level,
+				BaseURL: server.URL + "/v1", HTTPClient: server.Client(), ThinkingLevel: test.level, ProtocolOptions: protocolOptions,
 			})
 			if err != nil {
 				t.Fatal(err)
@@ -391,7 +412,7 @@ func TestRequestToolChoiceMapping(t *testing.T) {
 	} {
 		t.Run(test.name, func(t *testing.T) {
 			choice := test.choice
-			got, err := requestToolChoice(&choice, test.toolCount)
+			got, err := requestToolChoice(&choice, test.toolCount, true)
 			if (err != nil) != test.wantError {
 				t.Fatalf("error = %v, wantError=%t", err, test.wantError)
 			}

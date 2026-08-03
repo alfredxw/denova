@@ -74,7 +74,7 @@ describe('AgentsView', () => {
       .mockResolvedValueOnce(settingsSnapshot({
         effective: {
           openai_model: 'deepseek-chat',
-          model_profiles: [{ id: 'deepseek', name: 'DeepSeek V3', openai_model: 'deepseek-v3' }],
+          model_profiles: [{ id: 'deepseek', name: 'DeepSeek V3', model: 'deepseek-v3' }],
         },
       }))
 

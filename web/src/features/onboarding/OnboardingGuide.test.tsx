@@ -42,7 +42,7 @@ describe('OnboardingGuide', () => {
   it('prefills the first chapter prompt only after the user clicks the Agent action', async () => {
     const onNavigate = vi.fn()
     vi.mocked(fetchSettings).mockResolvedValue(layeredSettings({
-      model_profiles: [{ id: 'default', openai_api_key: 'key', openai_model: 'gpt-4.1' }],
+      model_profiles: [{ id: 'default', api_key: 'key', model: 'gpt-4.1' }],
     }))
 
     renderGuide({

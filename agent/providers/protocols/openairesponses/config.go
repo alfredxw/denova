@@ -8,10 +8,10 @@ import (
 	"strings"
 
 	sdk "github.com/openai/openai-go/v3"
-	"github.com/openai/openai-go/v3/option"
 
 	agent "github.com/alfredxw/denova/agent"
 	"github.com/alfredxw/denova/agent/providers"
+	"github.com/alfredxw/denova/agent/providers/protocols/internal/openaiclient"
 )
 
 // Adapter constructs models that speak the OpenAI Responses protocol.
@@ -22,9 +22,10 @@ func NewAdapter() *Adapter { return &Adapter{} }
 func (*Adapter) ID() providers.ProtocolID { return providers.ProtocolOpenAIResponses }
 
 type ChatModel struct {
-	client  sdk.Client
-	config  providers.ModelConfig
-	options *agent.Options
+	client        sdk.Client
+	config        providers.ModelConfig
+	compatibility Compatibility
+	options       *agent.Options
 }
 
 var (
@@ -51,16 +52,14 @@ func (*Adapter) New(_ context.Context, config providers.ModelConfig) (agent.Tool
 	if err != nil {
 		return nil, fmt.Errorf("openai responses config: %w", err)
 	}
-	clientOptions := []option.RequestOption{option.WithAPIKey(cloned.APIKey)}
-	if cloned.BaseURL != "" {
-		clientOptions = append(clientOptions, option.WithBaseURL(cloned.BaseURL))
-	}
-	if cloned.HTTPClient != nil {
-		clientOptions = append(clientOptions, option.WithHTTPClient(cloned.HTTPClient))
+	compatibility, err := resolveCompatibility(cloned)
+	if err != nil {
+		return nil, err
 	}
 	return &ChatModel{
-		client:  sdk.NewClient(clientOptions...),
-		config:  cloned,
-		options: &agent.Options{},
+		client:        sdk.NewClient(openaiclient.Options(cloned)...),
+		config:        cloned,
+		compatibility: compatibility,
+		options:       &agent.Options{},
 	}, nil
 }

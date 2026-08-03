@@ -22,6 +22,8 @@ const (
 
 	ProtocolOpenAIChatCompletions ProtocolID = "openai-chat-completions"
 	ProtocolOpenAIResponses       ProtocolID = "openai-responses"
+	ProtocolAnthropicMessages     ProtocolID = "anthropic-messages"
+	ProtocolGoogleGenerativeAI    ProtocolID = "google-generative-ai"
 )
 
 // OutputFormatType is the provider-neutral structured-output mode.
@@ -51,6 +53,13 @@ type ModelConfig struct {
 	Model    string
 	BaseURL  string
 	APIKey   string
+	// Headers contains explicit endpoint headers. Provider presets supply only
+	// non-secret defaults; profile values win case-insensitively.
+	Headers map[string]string
+	// ProtocolOptions is an adapter-owned JSON object. The registry merges a
+	// provider endpoint preset with the profile override, while only the selected
+	// protocol adapter knows and validates its schema.
+	ProtocolOptions json.RawMessage
 	// HTTPClient is an optional caller-owned transport dependency. Adapters may
 	// retain it, so callers must not mutate the client after registration.
 	HTTPClient      *http.Client
@@ -67,6 +76,8 @@ func (config ModelConfig) Clone() (ModelConfig, error) {
 
 func cloneModelConfig(config ModelConfig) (ModelConfig, error) {
 	clone := config
+	clone.Headers = cloneHeaders(config.Headers)
+	clone.ProtocolOptions = append(json.RawMessage(nil), config.ProtocolOptions...)
 	if config.Temperature != nil {
 		value := *config.Temperature
 		clone.Temperature = &value
@@ -94,10 +105,33 @@ func cloneModelConfig(config ModelConfig) (ModelConfig, error) {
 	}
 	clone.Model = strings.TrimSpace(clone.Model)
 	clone.BaseURL = strings.TrimSpace(clone.BaseURL)
+	if len(clone.ProtocolOptions) != 0 {
+		if !json.Valid(clone.ProtocolOptions) {
+			return ModelConfig{}, fmt.Errorf("protocol options must be valid JSON")
+		}
+		var value any
+		if err := json.Unmarshal(clone.ProtocolOptions, &value); err != nil {
+			return ModelConfig{}, fmt.Errorf("decode protocol options: %w", err)
+		}
+		if _, ok := value.(map[string]any); !ok {
+			return ModelConfig{}, fmt.Errorf("protocol options must be a JSON object")
+		}
+	}
 	level, err := ParseThinkingLevel(string(clone.ThinkingLevel))
 	if err != nil {
 		return ModelConfig{}, err
 	}
 	clone.ThinkingLevel = level
 	return clone, nil
+}
+
+func cloneHeaders(headers map[string]string) map[string]string {
+	if headers == nil {
+		return nil
+	}
+	clone := make(map[string]string, len(headers))
+	for name, value := range headers {
+		clone[name] = value
+	}
+	return clone
 }

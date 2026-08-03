@@ -376,7 +376,7 @@ func TestAgentProfileReadNeverReturnsSecrets(t *testing.T) {
 	workspace := t.TempDir()
 	if err := config.WriteSettingsFile(config.UserConfigPath(novaDir), config.Settings{
 		OpenAIAPIKey:  "top-secret",
-		ModelProfiles: []config.ModelProfileSettings{{ID: "model", OpenAIAPIKey: "profile-secret", OpenAIModel: "model-v1"}},
+		ModelProfiles: []config.ModelProfileSettings{{ID: "model", APIKey: "profile-secret", Model: "model-v1"}},
 	}); err != nil {
 		t.Fatal(err)
 	}

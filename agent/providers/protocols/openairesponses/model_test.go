@@ -20,6 +20,12 @@ import (
 )
 
 func TestApplyThinkingLevelCoversOpenAIResponsesEfforts(t *testing.T) {
+	compatibility, err := resolveCompatibility(providers.ModelConfig{ProtocolOptions: mustProtocolOptions(t, Compatibility{
+		ReasoningSummary: ReasoningSummaryAuto,
+	})})
+	if err != nil {
+		t.Fatal(err)
+	}
 	tests := []struct {
 		level       providers.ThinkingLevel
 		wantEffort  shared.ReasoningEffort
@@ -37,12 +43,21 @@ func TestApplyThinkingLevelCoversOpenAIResponsesEfforts(t *testing.T) {
 	for _, test := range tests {
 		t.Run(string(test.level), func(t *testing.T) {
 			params := responses.ResponseNewParams{}
-			applyThinkingLevel(&params, test.level)
+			applyThinkingLevel(&params, compatibility, test.level)
 			if params.Reasoning.Effort != test.wantEffort || params.Reasoning.Summary != test.wantSummary {
 				t.Fatalf("reasoning = %#v, want effort %q summary %q", params.Reasoning, test.wantEffort, test.wantSummary)
 			}
 		})
 	}
+}
+
+func mustProtocolOptions(t *testing.T, compatibility Compatibility) json.RawMessage {
+	t.Helper()
+	options, err := providers.EncodeProtocolOptions(compatibility)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return options
 }
 
 func TestGenerateMapsRequestResponseAndReplaysOutputItems(t *testing.T) {
@@ -95,6 +110,11 @@ func TestGenerateMapsRequestResponseAndReplaysOutputItems(t *testing.T) {
 		MaxOutputTokens: &configuredMaxTokens,
 		ThinkingLevel:   providers.ThinkingLevelHigh,
 		OutputFormat:    &providers.OutputFormat{Type: providers.OutputFormatJSONObject},
+		ProtocolOptions: mustProtocolOptions(t, Compatibility{
+			Store:                     StoreModeFalse,
+			IncludeEncryptedReasoning: true,
+			ReasoningSummary:          ReasoningSummaryAuto,
+		}),
 	}
 	model, err := NewAdapter().New(context.Background(), modelConfig)
 	if err != nil {

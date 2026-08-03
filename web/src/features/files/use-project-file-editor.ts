@@ -52,6 +52,8 @@ export function useProjectFileEditor({
   documentRef.current = document
   draftRef.current = draft
 
+  const dirty = Boolean(document?.kind === 'text' && draft !== (document.content ?? ''))
+
   const autosaveDraft = useMemo<ProjectFileDraft | null>(() => (
     document?.kind === 'text' && document.editable
       ? { id: document.path, content: draft, updated_at: document.revision }
@@ -60,7 +62,10 @@ export function useProjectFileEditor({
 
   const autosave = useResourceAutosave<ProjectFileDraft, ProjectFileDraft, ProjectFileDraft>({
     draft: autosaveDraft,
-    active: Boolean(autoSaveEnabled && autosaveDraft && !loading),
+    // A loaded document is only a save baseline. The lane becomes active
+    // after its content actually diverges, so opening or model hydration can
+    // never manufacture an autosave request.
+    active: Boolean(autoSaveEnabled && autosaveDraft && dirty && !loading),
     scopeKey: `${projectId}\u0000${selectedPath || ''}`,
     delayMs: autoSaveDelayMs,
     makePayload: (value) => value,
@@ -187,7 +192,6 @@ export function useProjectFileEditor({
     }
   }, [projectId, selectedPath])
 
-  const dirty = Boolean(document?.kind === 'text' && draft !== (document.content ?? ''))
   const dirtyRef = useRef(dirty)
   const autosaveStatusRef = useRef(autosave.status)
   dirtyRef.current = dirty
@@ -195,6 +199,11 @@ export function useProjectFileEditor({
   const flush = useCallback(async (force = false) => {
     if (!documentRef.current || documentRef.current.kind !== 'text' || !documentRef.current.editable) return true
     try {
+      if (!dirtyRef.current && autosaveStatusRef.current !== 'saving') {
+        autosave.cancelPending()
+        setError(null)
+        return true
+      }
       const pending = autosave.flushPending()
       if (pending) await pending
       else if (force || dirtyRef.current || autosaveStatusRef.current === 'error') await autosave.saveNow('manual')
@@ -204,7 +213,7 @@ export function useProjectFileEditor({
       setError(cause instanceof Error ? cause.message : String(cause))
       return false
     }
-  }, [autosave.flushPending, autosave.saveNow])
+  }, [autosave.cancelPending, autosave.flushPending, autosave.saveNow])
 
   const status: AutosaveStatus = dirty && autosave.status === 'saved' ? 'pending' : autosave.status
   return {

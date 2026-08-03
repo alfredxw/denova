@@ -6,13 +6,22 @@ export const MODEL_PROVIDER_DEEPSEEK = 'deepseek'
 export const MODEL_PROVIDER_OPENAI_COMPATIBLE = 'openai-compatible'
 export const MODEL_PROTOCOL_CHAT_COMPLETIONS = 'openai-chat-completions'
 export const MODEL_PROTOCOL_RESPONSES = 'openai-responses'
+export const MODEL_PROTOCOL_ANTHROPIC_MESSAGES = 'anthropic-messages'
+export const MODEL_PROTOCOL_GOOGLE_GENERATIVE_AI = 'google-generative-ai'
+
+export const FALLBACK_MODEL_PROTOCOLS = [
+  MODEL_PROTOCOL_CHAT_COMPLETIONS,
+  MODEL_PROTOCOL_RESPONSES,
+  MODEL_PROTOCOL_ANTHROPIC_MESSAGES,
+  MODEL_PROTOCOL_GOOGLE_GENERATIVE_AI,
+]
 
 export function modelProfileID(profile?: ModelProfileSettings): string {
-  return profile?.id?.trim() || profile?.openai_model?.trim() || ''
+  return profile?.id?.trim() || profile?.model?.trim() || ''
 }
 
 export function modelProfileLabel(profile?: ModelProfileSettings): string {
-  return profile?.name?.trim() || profile?.openai_model?.trim() || modelProfileID(profile)
+  return profile?.name?.trim() || profile?.model?.trim() || modelProfileID(profile)
 }
 
 function defaultModelProfileFromSettings(settings?: {
@@ -26,9 +35,9 @@ function defaultModelProfileFromSettings(settings?: {
     id: DEFAULT_MODEL_PROFILE_ID,
     provider,
     protocol: MODEL_PROTOCOL_CHAT_COMPLETIONS,
-    openai_api_key: settings?.openai_api_key,
-    openai_base_url: settings?.openai_base_url,
-    openai_model: settings?.openai_model,
+    api_key: settings?.openai_api_key,
+    base_url: settings?.openai_base_url,
+    model: settings?.openai_model,
     context_window_tokens: settings?.openai_context_window_tokens,
   }
 }
@@ -40,25 +49,12 @@ export function inferModelProvider(baseUrl?: string): string {
   return MODEL_PROVIDER_OPENAI_COMPATIBLE
 }
 
-export function defaultModelProviderBaseURL(provider?: string): string {
-  switch (provider?.trim()) {
-    case MODEL_PROVIDER_OPENAI:
-      return 'https://api.openai.com/v1'
-    case MODEL_PROVIDER_DEEPSEEK:
-      return 'https://api.deepseek.com'
-    default:
-      return ''
-  }
-}
-
 function normalizeModelProfileRouting(profile: ModelProfileSettings, routingSource = profile): ModelProfileSettings {
   const explicitProvider = routingSource.provider?.trim()
-  const provider = explicitProvider || inferModelProvider(profile.openai_base_url)
-  const protocol = routingSource.protocol?.trim() || (
-    explicitProvider === MODEL_PROVIDER_OPENAI
-      ? MODEL_PROTOCOL_RESPONSES
-      : MODEL_PROTOCOL_CHAT_COMPLETIONS
-  )
+  const provider = explicitProvider || inferModelProvider(profile.base_url)
+  // Only legacy URL-based profiles are pinned to Chat Completions. Explicit
+  // providers leave the protocol empty so the backend preset owns its default.
+  const protocol = routingSource.protocol?.trim() || (explicitProvider ? '' : MODEL_PROTOCOL_CHAT_COMPLETIONS)
   return { ...profile, provider, protocol }
 }
 
@@ -79,8 +75,8 @@ export function modelProfilesWithDefault(settings?: {
       hasDefault = true
       const merged = { ...defaultProfile, ...profile, id }
       const explicitProvider = profile.provider?.trim()
-      if (explicitProvider && explicitProvider !== defaultProfile.provider && !profile.openai_base_url?.trim()) {
-        merged.openai_base_url = defaultModelProviderBaseURL(explicitProvider)
+      if (explicitProvider && explicitProvider !== defaultProfile.provider && !profile.base_url?.trim()) {
+        merged.base_url = ''
       }
       out.push(normalizeModelProfileRouting(merged, profile))
     } else if (id) {

@@ -39,7 +39,11 @@ func InferChapterSplitRegex(ctx context.Context, cfg *config.Config, sample stri
 		"sample_chars": len([]rune(sample)),
 	})
 	defer func() { finishTrace(runErr) }()
-	jsonModelCfg := modelio.ConfigForAgent(cfg, config.AgentKindToolAgent)
+	jsonModelCfg, err := modelio.ConfigForAgent(cfg, config.AgentKindToolAgent)
+	if err != nil {
+		runErr = err
+		return "", fmt.Errorf("resolve tool Agent model configuration: %w", err)
+	}
 	jsonModelCfg = modelio.WithJSONObjectOutput(jsonModelCfg)
 	instruction := buildChapterSplitRegexInstruction(sample)
 	slog.InfoContext(ctx, fmt.Sprintf("[tool-agent] infer chapter split regex begin sample_chars=%d", len([]rune(sample))))
@@ -52,7 +56,11 @@ func InferChapterSplitRegex(ctx context.Context, cfg *config.Config, sample stri
 		return "", err
 	}
 	slog.ErrorContext(ctx, fmt.Sprintf("[tool-agent] json_mode failed, retry without response_format err=%v", err))
-	plainModelCfg := modelio.ConfigForAgent(cfg, config.AgentKindToolAgent)
+	plainModelCfg, configErr := modelio.ConfigForAgent(cfg, config.AgentKindToolAgent)
+	if configErr != nil {
+		runErr = configErr
+		return "", fmt.Errorf("resolve tool Agent fallback model configuration: %w", configErr)
+	}
 	regex, retryErr := generateChapterSplitRegex(traceCtx, cfg, plainModelCfg, instruction, "plain_text_retry")
 	if retryErr != nil {
 		runErr = retryErr

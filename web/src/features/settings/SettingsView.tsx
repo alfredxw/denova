@@ -795,7 +795,7 @@ function preserveDraftOnlyModelProfiles(profiles: ModelProfileSettings[], draftP
 }
 
 function stripInheritedModelSecret(profile: ModelProfileSettings): ModelProfileSettings {
-  return { ...profile, openai_api_key: '' }
+  return { ...profile, api_key: '' }
 }
 
 function imageAPIProfilesForEditor(draft: Settings, effective: Settings): ImageAPIProfileSettings[] {

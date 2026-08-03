@@ -1,4 +1,4 @@
-import { useMemo, useRef, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import type { ReactNode } from 'react'
 import { Plus, Trash2 } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
@@ -8,23 +8,27 @@ import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Separator } from '@/components/ui/separator'
 import { Select, SelectContent, SelectGroup, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
+import { fetchModelCatalog } from './api'
+import { ModelProfilePingButton } from './ModelProfilePingButton'
 import {
   DEFAULT_MODEL_PROFILE_ID,
+  FALLBACK_MODEL_PROTOCOLS,
+  MODEL_PROTOCOL_ANTHROPIC_MESSAGES,
   MODEL_PROTOCOL_CHAT_COMPLETIONS,
+  MODEL_PROTOCOL_GOOGLE_GENERATIVE_AI,
   MODEL_PROTOCOL_RESPONSES,
-  MODEL_PROVIDER_DEEPSEEK,
-  MODEL_PROVIDER_OPENAI,
-  MODEL_PROVIDER_OPENAI_COMPATIBLE,
-  defaultModelProviderBaseURL,
   modelProfileID,
   modelProfileLabel,
 } from './model-profiles'
-import type { ModelProfileSettings } from './types'
+import type { ModelCatalog, ModelProfileSettings } from './types'
 
 const DEFAULT_CONTEXT_WINDOW_TOKENS = 400000
 const MIN_CONTEXT_WINDOW_TOKENS = 1024
 const MAX_CONTEXT_WINDOW_TOKENS = 2000000
 const CONTEXT_WINDOW_PRESETS = [200000, DEFAULT_CONTEXT_WINDOW_TOKENS, 1000000]
+const PROVIDER_DEFAULT_PROTOCOL = '__provider_default__'
+const MODEL_PROVIDER_DATALIST_ID = 'nova-model-provider-presets'
+const EMPTY_MODEL_CATALOG: ModelCatalog = { providers: [], protocols: FALLBACK_MODEL_PROTOCOLS }
 
 export function ModelProfilesEditor({ profiles, effectiveProfiles, onChange }: {
   profiles: ModelProfileSettings[]
@@ -32,6 +36,7 @@ export function ModelProfilesEditor({ profiles, effectiveProfiles, onChange }: {
   onChange: (profiles: ModelProfileSettings[]) => void
 }) {
   const { t } = useTranslation()
+  const [catalog, setCatalog] = useState<ModelCatalog>(EMPTY_MODEL_CATALOG)
   const profileKeysRef = useRef<string[]>([])
   const profileKeys = useMemo(() => {
     if (profileKeysRef.current.length > profiles.length) {
@@ -43,33 +48,49 @@ export function ModelProfilesEditor({ profiles, effectiveProfiles, onChange }: {
     return profileKeysRef.current
   }, [profiles.length])
 
+  useEffect(() => {
+    const request = new AbortController()
+    void fetchModelCatalog(request.signal).then(
+      (nextCatalog) => setCatalog({
+        providers: nextCatalog.providers ?? [],
+        protocols: nextCatalog.protocols?.length ? nextCatalog.protocols : FALLBACK_MODEL_PROTOCOLS,
+      }),
+      () => undefined,
+    )
+    return () => request.abort()
+  }, [])
+
   const addProfile = () => {
     onChange([...profiles, {
-      provider: MODEL_PROVIDER_OPENAI_COMPATIBLE,
-      protocol: MODEL_PROTOCOL_CHAT_COMPLETIONS,
       context_window_tokens: DEFAULT_CONTEXT_WINDOW_TOKENS,
     }])
   }
   const updateProfile = (index: number, patch: Partial<ModelProfileSettings>) => {
     onChange(profiles.map((profile, profileIndex) => (profileIndex === index ? { ...profile, ...patch } : profile)))
   }
-  const updateProfileModel = (index: number, openaiModel: string) => {
+  const updateProfileModel = (index: number, model: string) => {
     const profile = profiles[index]
     const previousID = modelProfileID(profile)
-    const previousModel = profile?.openai_model?.trim() ?? ''
+    const previousModel = profile?.model?.trim() ?? ''
     const shouldSyncID = !previousID || previousID === previousModel
     updateProfile(index, {
-      id: shouldSyncID ? openaiModel : profile?.id,
-      openai_model: openaiModel,
+      id: shouldSyncID ? model : profile?.id,
+      model,
     })
   }
   const updateProfileProvider = (index: number, provider: string) => {
+    const profile = profiles[index]
     updateProfile(index, {
       provider,
-      protocol: provider === MODEL_PROVIDER_OPENAI
-        ? MODEL_PROTOCOL_RESPONSES
-        : MODEL_PROTOCOL_CHAT_COMPLETIONS,
-      openai_base_url: baseURLAfterProviderChange(profiles[index]?.openai_base_url, provider),
+      base_url: baseURLAfterRouteChange(profile?.base_url, catalog, provider, profile?.protocol),
+    })
+  }
+  const updateProfileProtocol = (index: number, protocol: string) => {
+    const profile = profiles[index]
+    const nextProtocol = protocol === PROVIDER_DEFAULT_PROTOCOL ? '' : protocol
+    updateProfile(index, {
+      protocol: nextProtocol,
+      base_url: baseURLAfterRouteChange(profile?.base_url, catalog, profile?.provider, nextProtocol),
     })
   }
   const removeProfile = (index: number) => {
@@ -84,6 +105,9 @@ export function ModelProfilesEditor({ profiles, effectiveProfiles, onChange }: {
         {t('settings.model.routingHint')}
       </div>
       <div className="flex flex-col gap-2">
+        <datalist id={MODEL_PROVIDER_DATALIST_ID}>
+          {catalog.providers.map((provider) => <option key={provider.id} value={provider.id}>{provider.name}</option>)}
+        </datalist>
         {profiles.length === 0 && (
           <div className="rounded-[var(--nova-radius)] border border-dashed border-[var(--nova-border)] bg-[var(--nova-surface-2)] px-2.5 py-2 text-[var(--nova-text-faint)]">
             {t('settings.model.profileEmpty', { count: effectiveProfiles.length || 1 })}
@@ -102,7 +126,7 @@ export function ModelProfilesEditor({ profiles, effectiveProfiles, onChange }: {
                     {modelProfileLabel(profile) || t('settings.model.profileUntitled')}
                   </div>
                   <div className="truncate text-[11px] text-[var(--nova-text-faint)]">
-                    {profile.openai_model?.trim() || t('settings.model.profileModelMissing')}
+                    {profile.model?.trim() || t('settings.model.profileModelMissing')}
                   </div>
                 </div>
                 <Button
@@ -120,14 +144,14 @@ export function ModelProfilesEditor({ profiles, effectiveProfiles, onChange }: {
               <div className="grid gap-2 p-2.5 md:grid-cols-12">
                 <ModelProfileField label={t('common.baseUrl')} className="md:col-span-5">
                   <Input
-                    value={profile.openai_base_url ?? ''}
+                    value={profile.base_url ?? ''}
                     placeholder={t('common.baseUrl')}
-                    onChange={(event) => updateProfile(index, { openai_base_url: event.target.value })}
+                    onChange={(event) => updateProfile(index, { base_url: event.target.value })}
                   />
                 </ModelProfileField>
                 <ModelProfileField label={t('settings.model.profileModelLabel')} className="md:col-span-4">
                   <Input
-                    value={profile.openai_model ?? ''}
+                    value={profile.model ?? ''}
                     placeholder={t('settings.model.profileModelPlaceholder')}
                     onChange={(event) => updateProfileModel(index, event.target.value)}
                   />
@@ -139,37 +163,33 @@ export function ModelProfilesEditor({ profiles, effectiveProfiles, onChange }: {
                     onChange={(event) => updateProfile(index, { name: event.target.value })}
                   />
                 </ModelProfileField>
-                <ModelProfileField label={t('settings.model.profileProviderLabel')} className="md:col-span-5">
-                  <Select value={profile.provider || MODEL_PROVIDER_OPENAI_COMPATIBLE} onValueChange={(value) => updateProfileProvider(index, value)}>
-                    <SelectTrigger size="sm" className="w-full">
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent className="nova-panel border text-[var(--nova-text)]">
-                      <SelectItem value={MODEL_PROVIDER_OPENAI}>{t('settings.model.profileProviderOpenAI')}</SelectItem>
-                      <SelectItem value={MODEL_PROVIDER_DEEPSEEK}>{t('settings.model.profileProviderDeepSeek')}</SelectItem>
-                      <SelectItem value={MODEL_PROVIDER_OPENAI_COMPATIBLE}>{t('settings.model.profileProviderCompatible')}</SelectItem>
-                    </SelectContent>
-                  </Select>
+                <ModelProfileField label={t('settings.model.profileProviderLabel')} className="md:col-span-4">
+                  <Input
+                    list={MODEL_PROVIDER_DATALIST_ID}
+                    value={profile.provider ?? ''}
+                    placeholder={t('settings.model.profileProviderPlaceholder')}
+                    onChange={(event) => updateProfileProvider(index, event.target.value)}
+                  />
                 </ModelProfileField>
                 <ModelProfileField label={t('settings.model.profileProtocolLabel')} className="md:col-span-4">
-                  <Select value={profile.protocol || MODEL_PROTOCOL_CHAT_COMPLETIONS} onValueChange={(value) => updateProfile(index, { protocol: value })}>
+                  <Select value={profile.protocol || PROVIDER_DEFAULT_PROTOCOL} onValueChange={(value) => updateProfileProtocol(index, value)}>
                     <SelectTrigger size="sm" className="w-full">
                       <SelectValue />
                     </SelectTrigger>
                     <SelectContent className="nova-panel border text-[var(--nova-text)]">
-                      <SelectItem value={MODEL_PROTOCOL_CHAT_COMPLETIONS}>{t('settings.model.profileProtocolChatCompletions')}</SelectItem>
-                      <SelectItem value={MODEL_PROTOCOL_RESPONSES} disabled={profile.provider === MODEL_PROVIDER_DEEPSEEK}>
-                        {t('settings.model.profileProtocolResponses')}
-                      </SelectItem>
+                      <SelectItem value={PROVIDER_DEFAULT_PROTOCOL}>{t('settings.model.profileProtocolProviderDefault')}</SelectItem>
+                      {catalog.protocols.map((protocol) => (
+                        <SelectItem key={protocol} value={protocol}>{modelProtocolLabel(protocol, t)}</SelectItem>
+                      ))}
                     </SelectContent>
                   </Select>
                 </ModelProfileField>
-                <ModelProfileField label={t('settings.model.profileKeyLabel')} className="md:col-span-3">
+                <ModelProfileField label={t('settings.model.profileKeyLabel')} className="md:col-span-4">
                   <Input
                     type="password"
-                    value={profile.openai_api_key ?? ''}
+                    value={profile.api_key ?? ''}
                     placeholder={t('settings.model.profileKeyInheritPlaceholder')}
-                    onChange={(event) => updateProfile(index, { openai_api_key: event.target.value })}
+                    onChange={(event) => updateProfile(index, { api_key: event.target.value })}
                   />
                 </ModelProfileField>
                 <ModelProfileField label={t('settings.model.profileTemperatureLabel')} className="md:col-span-2">
@@ -190,6 +210,22 @@ export function ModelProfilesEditor({ profiles, effectiveProfiles, onChange }: {
                     onChange={(value) => updateProfile(index, { context_window_tokens: value })}
                   />
                 </ModelProfileField>
+                <ModelProfileField label={t('settings.model.maxOutputTokens')} className="md:col-span-5">
+                  <Input
+                    type="number"
+                    min={1}
+                    step={1}
+                    value={profile.max_output_tokens ?? ''}
+                    placeholder={t('settings.model.maxOutputTokensPlaceholder')}
+                    onChange={(event) => updateProfile(index, {
+                      max_output_tokens: event.target.value === '' ? null : Math.max(1, Math.trunc(Number(event.target.value))),
+                    })}
+                  />
+                </ModelProfileField>
+              </div>
+              <Separator />
+              <div className="px-2.5 py-2">
+                <ModelProfilePingButton profile={profile} />
               </div>
             </div>
           )
@@ -203,15 +239,35 @@ export function ModelProfilesEditor({ profiles, effectiveProfiles, onChange }: {
   )
 }
 
-function baseURLAfterProviderChange(currentValue: string | undefined, provider: string) {
+function baseURLAfterRouteChange(currentValue: string | undefined, catalog: ModelCatalog, providerID?: string, protocolID?: string) {
   const current = currentValue?.trim() ?? ''
-  const normalized = current.toLowerCase().replace(/\/+$/, '')
-  const isKnownProviderURL = current === '' ||
-    normalized === 'https://api.openai.com/v1' ||
-    normalized === 'https://api.deepseek.com'
-  if (!isKnownProviderURL) return current
+  const knownBaseURLs = new Set(catalog.providers.flatMap((provider) =>
+    Object.values(provider.endpoints).map((endpoint) => normalizeBaseURL(endpoint.base_url)).filter(Boolean),
+  ))
+  if (current && !knownBaseURLs.has(normalizeBaseURL(current))) return current
 
-  return defaultModelProviderBaseURL(provider)
+  const provider = catalog.providers.find((candidate) => candidate.id === providerID?.trim())
+  const protocol = protocolID?.trim() || provider?.default_protocol
+  return (protocol && provider?.endpoints[protocol]?.base_url?.trim()) || ''
+}
+
+function normalizeBaseURL(value?: string) {
+  return value?.trim().toLowerCase().replace(/\/+$/, '') ?? ''
+}
+
+function modelProtocolLabel(protocol: string, t: (key: string) => string) {
+  switch (protocol) {
+    case MODEL_PROTOCOL_CHAT_COMPLETIONS:
+      return t('settings.model.profileProtocolChatCompletions')
+    case MODEL_PROTOCOL_RESPONSES:
+      return t('settings.model.profileProtocolResponses')
+    case MODEL_PROTOCOL_ANTHROPIC_MESSAGES:
+      return t('settings.model.profileProtocolAnthropicMessages')
+    case MODEL_PROTOCOL_GOOGLE_GENERATIVE_AI:
+      return t('settings.model.profileProtocolGoogleGenerativeAI')
+    default:
+      return protocol
+  }
 }
 
 function ModelProfileField({ label, className, children }: { label: string; className?: string; children: ReactNode }) {

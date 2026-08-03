@@ -15,7 +15,7 @@ interface WritingProjectExplorerProps {
   workspace: string
   selectedPath: string | null
   chapterStats: Readonly<Record<string, ChapterSummary>>
-  refreshSignal: number
+  structureRefreshSignal: number
   onSelectFile: (path: string) => boolean | void | Promise<boolean | void>
   onReferenceFile: (path: string) => void
   onCreateItem: (path: string, type: 'file' | 'dir') => Promise<void>
@@ -32,7 +32,7 @@ export function WritingProjectExplorer({
   workspace,
   selectedPath,
   chapterStats,
-  refreshSignal,
+  structureRefreshSignal,
   onSelectFile,
   onReferenceFile,
   onCreateItem,
@@ -49,7 +49,7 @@ export function WritingProjectExplorer({
     expandedPaths: preferences.preferences.expandedPaths,
     selectedPath,
   })
-  const refreshSignalRef = useRef(refreshSignal)
+  const structureRefreshSignalRef = useRef(structureRefreshSignal)
 
   const surfaceFailure = useCallback((operation: string, cause: unknown) => {
     console.error('[features/project-explorer/WritingProjectExplorer.tsx] writing file operation failed', {
@@ -77,15 +77,15 @@ export function WritingProjectExplorer({
   }, [onRefreshWorkspace, projectId, t, tree.refresh])
 
   useEffect(() => {
-    if (refreshSignalRef.current === refreshSignal) return
-    refreshSignalRef.current = refreshSignal
+    if (structureRefreshSignalRef.current === structureRefreshSignal) return
+    structureRefreshSignalRef.current = structureRefreshSignal
     void tree.refresh().catch((cause) => {
       console.error('[features/project-explorer/WritingProjectExplorer.tsx] synchronizing writing project files failed', {
         projectId,
         cause,
       })
     })
-  }, [projectId, refreshSignal, tree.refresh])
+  }, [projectId, structureRefreshSignal, tree.refresh])
 
   const runMutation = useCallback(async (operation: string, mutate: () => Promise<void>) => {
     try {

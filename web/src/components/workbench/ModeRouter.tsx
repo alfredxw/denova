@@ -26,6 +26,7 @@ import { workspaceFileKind } from '@/lib/workspace-file-kind'
 import { isLoreItemsPath } from '@/lib/workspace-path'
 import { useWritingChangeReview } from '@/features/changes/use-writing-change-review'
 import type { ReviewFeedbackBatch, ReviewFeedbackSelection } from '@/features/changes/agent/ReviewFeedbackTray'
+import type { WorkspaceChangeMetadata } from '@/features/changes/types'
 import { useDocumentReview } from '@/features/document-review/use-document-review'
 import { loreImportanceLabel, loreLoadModeLabel, loreTypeLabel } from '@/features/lore/options'
 import { ChangeReviewWorkspace } from '@/features/changes/review/ChangeReviewWorkspace'
@@ -57,6 +58,8 @@ const StableChangeReviewWorkspace = memo(ChangeReviewWorkspace)
 const StableTabController = memo(TabController)
 const EMPTY_CHAPTERS: ChapterSummary[] = []
 const EMPTY_CHAPTER_PLANS: DocumentPreview[] = []
+const EXTERNAL_CONTENT_CHANGE = { impact: 'content', origin: 'external' } satisfies WorkspaceChangeMetadata
+const EXTERNAL_STRUCTURE_CHANGE = { impact: 'structure', origin: 'external' } satisfies WorkspaceChangeMetadata
 type MainRouteId = 'settings' | 'skills' | 'agents' | 'automations' | 'agentchat' | 'books' | 'interactive' | 'versions' | 'ide-lore' | 'ide-teller' | 'ide-writing'
 const PRESENTED_LAYOUT_BY_ROUTE = {
   settings: 'full',
@@ -114,6 +117,7 @@ interface ModeRouterProps {
   saveSignal: number
   editorAutoSaveEnabled: boolean
   editorAutoSaveDelayMs: number
+  projectExplorerRefreshSignal: number
   versionRefreshSignal: number
   messages: AgentUIMessage[]
   sessions: SessionSummary[]
@@ -157,7 +161,7 @@ interface ModeRouterProps {
   onOpenLoreTab: () => Promise<boolean>
   onSaveCurrentFile: (path: string, content: string, baseRevision: string) => Promise<{ revision?: string }>
   onEditorFlushHandlerChange: (handler: EditorFlushHandler | null) => void
-  onWorkspaceChanged: (paths: string[]) => void | Promise<void>
+  onWorkspaceChanged: (paths: string[], metadata: WorkspaceChangeMetadata) => void | Promise<void>
   onQuoteSelection: (selection: TextSelection) => void
   onCreateChatSession: (title?: string) => void | Promise<void>
   onSwitchChatSession: (id: string) => void | Promise<void>
@@ -222,6 +226,7 @@ export function ModeRouter(props: ModeRouterProps) {
     saveSignal,
     editorAutoSaveEnabled,
     editorAutoSaveDelayMs,
+    projectExplorerRefreshSignal,
     versionRefreshSignal,
     messages,
     sessions,
@@ -291,6 +296,15 @@ export function ModeRouter(props: ModeRouterProps) {
     onExitChatPlanMode,
     onDismissNotice,
   } = props
+
+  const notifyExternalContentChange = useCallback(
+    (paths: string[]) => onWorkspaceChanged(paths, EXTERNAL_CONTENT_CHANGE),
+    [onWorkspaceChanged],
+  )
+  const notifyExternalStructureChange = useCallback(
+    (paths: string[]) => onWorkspaceChanged(paths, EXTERNAL_STRUCTURE_CHANGE),
+    [onWorkspaceChanged],
+  )
 
   const readingTypographyDraft = useLayeredSettingsDraft({
     layer: 'user',
@@ -742,7 +756,7 @@ export function ModeRouter(props: ModeRouterProps) {
       onReviewFeedbackSubmitted={submitActiveReviewFeedback}
       onReviewFeedbackSubmissionFailed={restoreActiveReviewFeedback}
       onOpenChangeReview={openAgentChangeReview}
-      onWorkspaceChanged={onWorkspaceChanged}
+      onWorkspaceChanged={notifyExternalStructureChange}
       onClose={closeIdeWorkspacePanel}
       onSubAgentDetailsChange={setAgentSubAgentDetailsOpen}
     />
@@ -815,7 +829,7 @@ export function ModeRouter(props: ModeRouterProps) {
                 <StableSearchPanel
                   workspace={workspace}
                   onSelectResult={selectWorkspaceSearchResult}
-                  onWorkspaceChanged={onWorkspaceChanged}
+                  onWorkspaceChanged={notifyExternalContentChange}
                 />
               </div>
             ) : !projectId ? (
@@ -827,7 +841,7 @@ export function ModeRouter(props: ModeRouterProps) {
                 workspace={workspace}
                 selectedPath={selectedFile}
                 chapterStats={chapterStats}
-                refreshSignal={versionRefreshSignal}
+                structureRefreshSignal={projectExplorerRefreshSignal}
                 onSelectFile={selectWorkspacePath}
                 onReferenceFile={onReferenceFile}
                 onCreateItem={onCreateItem}
@@ -858,7 +872,7 @@ export function ModeRouter(props: ModeRouterProps) {
             onToggleAgent={toggleAgent}
             onClose={closeChangeReview}
             onOpenFile={openReviewFile}
-            onWorkspaceChanged={onWorkspaceChanged}
+            onWorkspaceChanged={notifyExternalStructureChange}
             onFeedbackCommentsChange={selectReviewFeedback}
             hiddenCommentIDs={submittedReviewCommentIDs}
           />

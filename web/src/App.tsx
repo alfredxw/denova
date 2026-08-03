@@ -37,7 +37,14 @@ import { APP_VERSION } from '@/app-version'
 import { RemoteAccessLogin } from '@/components/RemoteAccessLogin'
 import { OnboardingGuide, type OnboardingNavigationTarget } from '@/features/onboarding/OnboardingGuide'
 import { SETTINGS_SECTION_EVENT, WRITING_AGENT_INIT_EVENT } from '@/features/onboarding/events'
-import { isWorkspaceChangeForWorkspace, type WorkspaceChangeEvent } from '@/features/changes/types'
+import {
+  isWorkspaceChangeForWorkspace,
+  workspaceChangeImpact,
+  workspaceChangePaths,
+  type WorkspaceChangeEvent,
+  type WorkspaceChangeImpact,
+  type WorkspaceChangeMetadata,
+} from '@/features/changes/types'
 import {
   AUTOSAVE_CONFLICT_PRESERVED_EVENT,
   type AutosaveConflictPreservedDetail,
@@ -64,6 +71,7 @@ function App() {
   const [activityBarExpanded, setActivityBarExpanded] = useState(() => readLayoutBoolean(ACTIVITY_BAR_EXPANDED_KEY, true))
   const [interactiveRightVisible, setInteractiveRightVisible] = useState(() => readLayoutBoolean(INTERACTIVE_RIGHT_VISIBLE_KEY, true))
   const [saveSignal, setSaveSignal] = useState(0)
+  const [projectExplorerRefreshSignal, setProjectExplorerRefreshSignal] = useState(0)
   const [versionRefreshSignal, setVersionRefreshSignal] = useState(0)
   const [settingsOpen, setSettingsOpen] = useState(() => readLayoutBoolean(SETTINGS_OPEN_KEY, false))
   const [openTabs, setOpenTabs] = useState<Tab[]>([])
@@ -127,6 +135,10 @@ function App() {
     setVersionRefreshSignal(value => value + 1)
   }, [])
 
+  const notifyProjectStructureChange = useCallback(() => {
+    setProjectExplorerRefreshSignal(value => value + 1)
+  }, [])
+
   const handleEditorFlushHandlerChange = useCallback((handler: EditorFlushHandler | null) => {
     editorFlushHandlerRef.current = handler
   }, [])
@@ -143,27 +155,34 @@ function App() {
     }
   }, [t])
 
-  const handleAgentFileChange = useCallback(async (path?: string) => {
+  const handleAgentFileChange = useCallback(async (
+    path?: string,
+    impact: WorkspaceChangeImpact = 'structure',
+  ) => {
     try {
-      await refreshAfterAgentFileChange(path)
+      await refreshAfterAgentFileChange(path, impact)
     } finally {
       // Lore tools persist outside the workspace file tree, so Agent completion
       // invalidates Lore projections explicitly as well as file summaries.
       notifyLoreUpdated({ source: 'writing-agent' })
       notifyVersionChange()
+      if (impact === 'structure') notifyProjectStructureChange()
     }
-  }, [notifyVersionChange, refreshAfterAgentFileChange])
+  }, [notifyProjectStructureChange, notifyVersionChange, refreshAfterAgentFileChange])
 
-  const handleReviewedWorkspaceChange = useCallback(async (paths: string[]) => {
+  const handleReviewedWorkspaceChange = useCallback(async (
+    paths: string[],
+    metadata: WorkspaceChangeMetadata,
+  ) => {
     const currentPath = selectedFile && paths.includes(selectedFile) ? selectedFile : undefined
-    await handleAgentFileChange(currentPath)
+    await handleAgentFileChange(currentPath, metadata.impact)
   }, [handleAgentFileChange, selectedFile])
 
   const handleWorkspaceChangeEvent = useCallback(async (event: WorkspaceChangeEvent) => {
     if (!isWorkspaceChangeForWorkspace(event, workspace)) return
-    const paths = Array.from(new Set([...(event.affected_paths ?? []), ...(event.paths ?? []), ...(event.path ? [event.path] : [])]))
+    const paths = workspaceChangePaths(event)
     const path = selectedFile && paths.includes(selectedFile) ? selectedFile : paths[0]
-    await handleAgentFileChange(path)
+    await handleAgentFileChange(path, workspaceChangeImpact(event))
   }, [handleAgentFileChange, selectedFile, workspace])
 
   const {
@@ -413,6 +432,7 @@ function App() {
     setMode(booksReturnModeRef.current)
     refreshAll()
     notifyVersionChange()
+    notifyProjectStructureChange()
   }
 
   const handleQuickWorkspaceSwitch = useCallback(async (newPath: string): Promise<boolean> => {
@@ -425,6 +445,7 @@ function App() {
       setWorkspace(nextWorkspace)
       await refreshAll()
       notifyVersionChange()
+      notifyProjectStructureChange()
       return true
     } catch (error) {
       console.error('[App.tsx] 标题栏切换书籍失败', { from: workspace, to: newPath, error })
@@ -433,7 +454,7 @@ function App() {
       })
       return false
     }
-  }, [flushEditorDraft, notifyVersionChange, refreshAll, setWorkspace, t, workspace])
+  }, [flushEditorDraft, notifyProjectStructureChange, notifyVersionChange, refreshAll, setWorkspace, t, workspace])
 
   const handleSaveCurrentFile = useCallback(async (path: string, content: string, baseRevision: string) => {
     const saved = await saveFileDraft(path, content, baseRevision)
@@ -444,14 +465,16 @@ function App() {
   const handleCreateItem = useCallback(async (path: string, type: 'file' | 'dir') => {
     await createItem(path, type)
     notifyVersionChange()
-  }, [createItem, notifyVersionChange])
+    notifyProjectStructureChange()
+  }, [createItem, notifyProjectStructureChange, notifyVersionChange])
 
   const handleDeleteItem = useCallback(async (path: string) => {
     if ((selectedFile === path || selectedFile?.startsWith(`${path}/`)) && !(await flushEditorDraft())) return
     await deleteItem(path)
     setOpenTabs((prev) => prev.filter((tab) => tab.kind !== 'file' || (tab.path !== path && !tab.path.startsWith(`${path}/`))))
     notifyVersionChange()
-  }, [deleteItem, flushEditorDraft, notifyVersionChange, selectedFile])
+    notifyProjectStructureChange()
+  }, [deleteItem, flushEditorDraft, notifyProjectStructureChange, notifyVersionChange, selectedFile])
 
   const handleRenameItem = useCallback(async (path: string, newName: string) => {
     if ((selectedFile === path || selectedFile?.startsWith(`${path}/`)) && !(await flushEditorDraft())) return
@@ -465,12 +488,14 @@ function App() {
       return tab
     })))
     notifyVersionChange()
-  }, [flushEditorDraft, notifyVersionChange, renameItem, selectedFile])
+    notifyProjectStructureChange()
+  }, [flushEditorDraft, notifyProjectStructureChange, notifyVersionChange, renameItem, selectedFile])
 
   const handleCopyItem = useCallback(async (from: string, to: string) => {
     await copyItem(from, to)
     notifyVersionChange()
-  }, [copyItem, notifyVersionChange])
+    notifyProjectStructureChange()
+  }, [copyItem, notifyProjectStructureChange, notifyVersionChange])
 
   const handleMoveItem = useCallback(async (from: string, to: string) => {
     if ((selectedFile === from || selectedFile?.startsWith(`${from}/`)) && !(await flushEditorDraft())) return
@@ -482,7 +507,8 @@ function App() {
       return tab
     })))
     notifyVersionChange()
-  }, [flushEditorDraft, moveItem, notifyVersionChange, selectedFile])
+    notifyProjectStructureChange()
+  }, [flushEditorDraft, moveItem, notifyProjectStructureChange, notifyVersionChange, selectedFile])
 
   const handleSelectFile = useCallback(async (path: string) => {
     const key = `file:${path}`
@@ -606,6 +632,7 @@ function App() {
         window.dispatchEvent(new CustomEvent(LORE_UPDATED_EVENT, { detail: result }))
       }, 0)
       notifyVersionChange()
+      notifyProjectStructureChange()
       setCharacterCardDialogOpen(false)
       resetCharacterCardImport()
     } catch (e) {
@@ -615,7 +642,7 @@ function App() {
     } finally {
       setCharacterCardImporting(false)
     }
-  }, [characterCardBookTitle, characterCardFile, characterCardPreview, characterCardSemanticClassification, characterCardTargetMode, characterCardUserName, notifyVersionChange, refresh, refreshAll, resetCharacterCardImport, setMode, t, workspace])
+  }, [characterCardBookTitle, characterCardFile, characterCardPreview, characterCardSemanticClassification, characterCardTargetMode, characterCardUserName, notifyProjectStructureChange, notifyVersionChange, refresh, refreshAll, resetCharacterCardImport, setMode, t, workspace])
 
   const handleActivateTab = useCallback(async (tab: Tab) => {
     const key = tabKey(tab)
@@ -826,6 +853,7 @@ function App() {
         saveSignal={saveSignal}
         editorAutoSaveEnabled={editorAutoSaveEnabled}
         editorAutoSaveDelayMs={editorAutoSaveDelayMs}
+        projectExplorerRefreshSignal={projectExplorerRefreshSignal}
         versionRefreshSignal={versionRefreshSignal}
         messages={messages}
         sessions={sessions}

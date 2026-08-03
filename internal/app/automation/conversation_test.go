@@ -23,8 +23,8 @@ func TestAutomationConversationInheritsRecentSelectionAndAppliesItToRuntime(t *t
 				Automation: config.AgentModelOverride{ProfileID: "fast", ThinkingLevel: "low"},
 			},
 			ModelProfiles: []config.ModelProfileSettings{
-				{ID: "fast", Name: "Fast", OpenAIModel: "fast-model"},
-				{ID: "quality", Name: "Quality", OpenAIModel: "quality-model"},
+				{ID: "fast", Name: "Fast", Model: "fast-model"},
+				{ID: "quality", Name: "Quality", Model: "quality-model"},
 			},
 		},
 	}
@@ -58,7 +58,7 @@ func TestAutomationConversationInheritsRecentSelectionAndAppliesItToRuntime(t *t
 	}
 	secondRuntime := secondConversation.RuntimeConfig()
 	resolved := config.ResolveAgentModel(&secondRuntime, config.AgentKindAutomation)
-	if resolved.ProfileID != "quality" || resolved.OpenAIModel != "quality-model" || resolved.ThinkingLevel != "high" {
+	if resolved.ProfileID != "quality" || resolved.Model != "quality-model" || resolved.ThinkingLevel != "high" {
 		t.Fatalf("inherited automation model = %#v, want quality profile", resolved)
 	}
 	if secondConversation.RuntimeConfig().AgentApprovalMode != config.AgentApprovalFullAccess {

@@ -7,6 +7,7 @@ import { ConfirmDialog } from '@/components/common/ConfirmDialog'
 import type { WritingComposerSettingsController } from '@/components/Chat/AgentPanel'
 import type { EditorFlushHandler } from '@/components/Editor/useEditorDraftPersistence'
 import type { ReviewFeedbackBatch, ReviewFeedbackComment, ReviewFeedbackSelection } from '@/features/changes/agent/ReviewFeedbackTray'
+import type { WorkspaceChangeMetadata } from '@/features/changes/types'
 import type { ImagePreset, Teller } from '@/features/interactive/types'
 import {
   addAgentChatProject,
@@ -72,13 +73,22 @@ interface AgentChatViewProps {
   onDocumentReviewFeedbackSubmissionFailed?: (feedback: ReviewFeedbackBatch) => void
   onActivateWorkspace?: (workspace: string) => Promise<boolean>
   onFlushHandlerChange?: (handler: EditorFlushHandler | null) => void
-  onWorkspaceChanged?: (workspace: string, paths: string[]) => void | Promise<void>
+  onWorkspaceChanged?: (workspace: string, paths: string[], metadata: WorkspaceChangeMetadata) => void | Promise<void>
 }
 
 function pendingSessionTitle(message: string) {
   const normalized = message.replace(/^\/plan\s*/, '').trim()
   const characters = Array.from(normalized)
   return characters.length > 60 ? `${characters.slice(0, 60).join('')}...` : normalized
+}
+
+function incrementProjectRefreshSignals(
+  current: ReadonlyMap<string, number>,
+  projectIDs: readonly string[],
+): ReadonlyMap<string, number> {
+  const next = new Map(current)
+  projectIDs.forEach((projectID) => next.set(projectID, (next.get(projectID) ?? 0) + 1))
+  return next
 }
 
 /**
@@ -123,7 +133,8 @@ export function AgentChatView({
   const liveRunningBindingsRef = useRef<ReadonlySet<string>>(new Set())
   const refreshSequenceRef = useRef(0)
   const tabFlushHandlersRef = useRef(new Map<string, EditorFlushHandler>())
-  const [filesRefreshSignals, setFilesRefreshSignals] = useState<ReadonlyMap<string, number>>(() => new Map())
+  const [filesEditorRefreshSignals, setFilesEditorRefreshSignals] = useState<ReadonlyMap<string, number>>(() => new Map())
+  const [filesTreeRefreshSignals, setFilesTreeRefreshSignals] = useState<ReadonlyMap<string, number>>(() => new Map())
   const navigationNonceRef = useRef(0)
   const [documentReviewNavigation, setDocumentReviewNavigation] = useState<AgentChatDocumentReviewNavigation | null>(null)
   const { bindTerminalSession, markTerminalTabsClosing } = useTerminalSessionLifecycle(workbench, projectsLoading, setWorkbench)
@@ -405,16 +416,19 @@ export function AgentChatView({
     openProjectFiles(project, existing ? tabGroup(existing) : preferredGroup, path)
   }, [openProjectFiles, projects])
 
-  const handleWorkspaceChanged = useCallback(async (changedWorkspace: string, paths: string[]) => {
+  const handleWorkspaceChanged = useCallback(async (
+    changedWorkspace: string,
+    paths: string[],
+    metadata: WorkspaceChangeMetadata,
+  ) => {
     const projectIDs = projects.filter((project) => project.path === changedWorkspace).map((project) => project.id)
-    if (projectIDs.length > 0) {
-      setFilesRefreshSignals((current) => {
-        const next = new Map(current)
-        projectIDs.forEach((projectID) => next.set(projectID, (next.get(projectID) ?? 0) + 1))
-        return next
-      })
+    if (projectIDs.length > 0 && metadata.origin !== 'files-tab') {
+      setFilesEditorRefreshSignals((current) => incrementProjectRefreshSignals(current, projectIDs))
+      if (metadata.impact === 'structure') {
+        setFilesTreeRefreshSignals((current) => incrementProjectRefreshSignals(current, projectIDs))
+      }
     }
-    await onWorkspaceChanged?.(changedWorkspace, paths)
+    await onWorkspaceChanged?.(changedWorkspace, paths, metadata)
   }, [onWorkspaceChanged, projects])
 
   const activateProjectWorkspace = useCallback(
@@ -639,7 +653,8 @@ export function AgentChatView({
             imagePresets={imagePresets}
             autoSaveEnabled={autoSaveEnabled}
             autoSaveDelayMs={autoSaveDelayMs}
-            filesRefreshSignal={filesRefreshSignals.get(project.id) ?? 0}
+            filesEditorRefreshSignal={filesEditorRefreshSignals.get(project.id) ?? 0}
+            filesTreeRefreshSignal={filesTreeRefreshSignals.get(project.id) ?? 0}
             renderPage={renderPage}
             renderReview={renderReview}
             navigationIntent={documentReviewNavigation?.workspace === tab.workspace ? documentReviewNavigation : null}

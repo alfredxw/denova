@@ -1,9 +1,11 @@
 import type { TreeApi } from 'react-arborist'
 import { createRef } from 'react'
-import { fireEvent, render, screen, waitFor } from '@testing-library/react'
+import { fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { describe, expect, it, vi } from 'vitest'
 import type { ProjectFileExplorerNode } from './model'
+import { ProjectExplorerDragPreview } from './ProjectExplorerDragPreview'
+import { ProjectExplorerRenderContext } from './ProjectExplorerNode'
 import { ProjectExplorerTree } from './ProjectExplorerTree'
 
 describe('ProjectExplorerTree', () => {
@@ -88,7 +90,7 @@ describe('ProjectExplorerTree', () => {
       />,
     )
 
-    fireEvent.contextMenu(screen.getByText('notes.md'))
+    fireEvent.contextMenu(screen.getByLabelText('notes.md'))
     expect(screen.queryByRole('menuitem', { name: /^移动$/ })).not.toBeInTheDocument()
     await user.click(await screen.findByRole('menuitem', { name: /^复制$/ }))
     expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
@@ -98,7 +100,7 @@ describe('ProjectExplorerTree', () => {
 
     await waitFor(() => expect(onCopyItem).toHaveBeenCalledWith('notes.md', 'docs/notes.md'))
 
-    fireEvent.contextMenu(screen.getByText('notes.md'))
+    fireEvent.contextMenu(screen.getByLabelText('notes.md'))
     await user.click(await screen.findByRole('menuitem', { name: /^剪切$/ }))
     fireEvent.contextMenu(screen.getByText('docs'))
     await user.click(await screen.findByRole('menuitem', { name: /^粘贴$/ }))
@@ -139,7 +141,7 @@ describe('ProjectExplorerTree', () => {
       />,
     )
 
-    await user.click(screen.getByText('chapter.md'))
+    await user.click(screen.getByLabelText('chapter.md'))
     fireEvent.keyDown(screen.getByRole('tree'), { key: 'Enter' })
     expect(onSelectFile).toHaveBeenLastCalledWith('chapter.md')
     expect(screen.queryByRole('textbox')).not.toBeInTheDocument()
@@ -151,5 +153,134 @@ describe('ProjectExplorerTree', () => {
     await user.type(input, 'renamed.md{Enter}')
 
     await waitFor(() => expect(onRenameItem).toHaveBeenCalledWith('chapter.md', 'renamed.md'))
+  })
+
+  it('selects an unselected row as soon as its drag gesture begins', () => {
+    const nodes: ProjectFileExplorerNode[] = [{
+      id: 'chapter.md',
+      path: 'chapter.md',
+      name: 'chapter.md',
+      type: 'file',
+      ignored: false,
+      symlink: false,
+      loaded: false,
+      loading: false,
+    }]
+    render(
+      <ProjectExplorerTree
+        treeRef={createRef<TreeApi<ProjectFileExplorerNode>>()}
+        nodes={nodes}
+        workspace="/projects/one"
+        selectedPath={null}
+        expandedPaths={[]}
+        onSelectFile={vi.fn()}
+        onDirectoryExpand={vi.fn()}
+        onDirectoryExpandedChange={vi.fn()}
+        onLoadMore={vi.fn()}
+        onCreateItem={vi.fn()}
+        onDeleteItem={vi.fn()}
+        onRenameItem={vi.fn()}
+        onCopyItem={vi.fn()}
+        onMoveItem={vi.fn()}
+      />,
+    )
+
+    const row = screen.getByRole('treeitem', { name: /chapter\.md/ })
+    expect(row).toHaveAttribute('aria-selected', 'false')
+    fireEvent.pointerDown(screen.getByLabelText('chapter.md'), { button: 0 })
+    expect(row).toHaveAttribute('aria-selected', 'true')
+  })
+
+  it('constrains deep rows to the viewport and truncates the filename before its extension', () => {
+    const longName = 'automation_test_with_a_very_long_name.go'
+    const nodes: ProjectFileExplorerNode[] = [{
+      id: 'automation',
+      path: 'automation',
+      name: 'automation',
+      type: 'dir',
+      ignored: false,
+      symlink: false,
+      loaded: true,
+      loading: false,
+      children: [{
+        id: `automation/${longName}`,
+        path: `automation/${longName}`,
+        name: longName,
+        type: 'file',
+        ignored: false,
+        symlink: false,
+        loaded: false,
+        loading: false,
+      }],
+    }]
+    render(
+      <ProjectExplorerTree
+        treeRef={createRef<TreeApi<ProjectFileExplorerNode>>()}
+        nodes={nodes}
+        workspace="/projects/one"
+        selectedPath={`automation/${longName}`}
+        expandedPaths={['automation']}
+        onSelectFile={vi.fn()}
+        onDirectoryExpand={vi.fn()}
+        onDirectoryExpandedChange={vi.fn()}
+        onLoadMore={vi.fn()}
+        onCreateItem={vi.fn()}
+        onDeleteItem={vi.fn()}
+        onRenameItem={vi.fn()}
+        onCopyItem={vi.fn()}
+        onMoveItem={vi.fn()}
+      />,
+    )
+
+    const name = screen.getByLabelText(longName)
+    const row = name.closest('[role="treeitem"]')
+    expect(row).toHaveStyle({ minWidth: '0px' })
+    expect(row).toHaveClass('min-w-0', 'overflow-hidden')
+    expect(within(name).getByText('automation_test_with_a_very_long_name')).toHaveClass('truncate')
+    expect(within(name).getByText('.go')).toHaveClass('shrink-0')
+  })
+
+  it('renders a lightweight pointer-anchored drag preview with the file identity', () => {
+    const node: ProjectFileExplorerNode = {
+      id: 'src/main.ts',
+      path: 'src/main.ts',
+      name: 'main.ts',
+      type: 'file',
+      ignored: false,
+      symlink: false,
+      loaded: false,
+      loading: false,
+    }
+    render(
+      <ProjectExplorerRenderContext.Provider value={{
+        actions: {
+          beginCreate: vi.fn(),
+          rename: vi.fn(),
+          stageClipboard: vi.fn(),
+          paste: vi.fn(),
+          copyPath: vi.fn(),
+          delete: vi.fn(),
+          cancelDraft: vi.fn(),
+          clipboard: null,
+        },
+        extensions: {},
+        nodesById: new Map([[node.id, node]]),
+        onLoadMore: vi.fn(),
+      }}>
+        <ProjectExplorerDragPreview
+          id={node.id}
+          dragIds={[node.id, 'src/other.ts']}
+          isDragging
+          mouse={{ x: 100, y: 120 }}
+          offset={{ x: 400, y: 500 }}
+        />
+      </ProjectExplorerRenderContext.Provider>,
+    )
+
+    const preview = screen.getByTestId('project-explorer-drag-preview')
+    expect(preview).toHaveStyle({ transform: 'translate3d(112px, 132px, 0)' })
+    expect(preview).toHaveTextContent('main.ts')
+    expect(preview).toHaveTextContent('2')
+    expect(within(preview).queryByRole('button')).not.toBeInTheDocument()
   })
 })

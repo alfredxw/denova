@@ -180,7 +180,7 @@ describe('useLayeredSettingsDraft', () => {
 
   it('treats its own save response as an acknowledgement while a newer draft waits', async () => {
     const initial = snapshot({
-      user: { model_profiles: [{ id: 'default', openai_model: 'model-a' }] },
+      user: { model_profiles: [{ id: 'default', model: 'model-a' }] },
       revisions: { user: 'r1' },
     })
     const firstSave = deferred<LayeredSettings>()
@@ -199,13 +199,13 @@ describe('useLayeredSettingsDraft', () => {
     await waitFor(() => expect(result.current.draft).toEqual(initial.user))
     vi.useFakeTimers()
 
-    act(() => result.current.setDraft({ model_profiles: [{ id: 'default', openai_model: 'model-b' }] }))
+    act(() => result.current.setDraft({ model_profiles: [{ id: 'default', model: 'model-b' }] }))
     act(() => { vi.advanceTimersByTime(1100) })
     expect(saveUserSettings).toHaveBeenCalledOnce()
 
-    act(() => result.current.setDraft({ model_profiles: [{ id: 'default', openai_model: 'model-c' }] }))
+    act(() => result.current.setDraft({ model_profiles: [{ id: 'default', model: 'model-c' }] }))
     const firstSaved = snapshot({
-      user: { model_profiles: [{ id: 'default', openai_model: 'model-b' }] },
+      user: { model_profiles: [{ id: 'default', model: 'model-b' }] },
       revisions: { user: 'r2' },
     })
     await act(async () => {
@@ -222,9 +222,9 @@ describe('useLayeredSettingsDraft', () => {
 
     expect(conflictCallCount).toBe(0)
     expect(queuedSave).toEqual([{
-      model_profiles: [{ id: 'default', openai_model: 'model-c' }],
+      model_profiles: [{ id: 'default', model: 'model-c' }],
     }, 'r2'])
-    expect(currentDraft).toEqual({ model_profiles: [{ id: 'default', openai_model: 'model-c' }] })
+    expect(currentDraft).toEqual({ model_profiles: [{ id: 'default', model: 'model-c' }] })
   })
 
   it('applies external snapshots without writing them back when there is no local edit', async () => {

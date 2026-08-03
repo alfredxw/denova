@@ -23,7 +23,11 @@ func GenerateAutomationTriggerEvaluation(ctx context.Context, cfg *config.Config
 		"instruction_chars": len([]rune(instruction)),
 	})
 	defer func() { finishTrace(runErr) }()
-	modelCfg := modelio.ConfigForAgent(cfg, config.AgentKindAutomation)
+	modelCfg, err := modelio.ConfigForAgent(cfg, config.AgentKindAutomation)
+	if err != nil {
+		runErr = err
+		return "", fmt.Errorf("resolve automation model configuration: %w", err)
+	}
 	modelCfg = modelio.WithJSONObjectOutput(modelCfg)
 	cm, err := modelio.NewChatModel(traceCtx, modelCfg)
 	if err != nil {

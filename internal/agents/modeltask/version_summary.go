@@ -24,7 +24,11 @@ func GenerateVersionSummary(ctx context.Context, cfg *config.Config, instruction
 		"instruction_chars": len([]rune(instruction)),
 	})
 	defer func() { finishTrace(runErr) }()
-	modelCfg := modelio.ConfigForAgent(cfg, config.AgentKindVersionSummary)
+	modelCfg, err := modelio.ConfigForAgent(cfg, config.AgentKindVersionSummary)
+	if err != nil {
+		runErr = err
+		return "", fmt.Errorf("resolve version summary model configuration: %w", err)
+	}
 	cm, err := modelio.NewChatModel(traceCtx, modelCfg)
 	if err != nil {
 		runErr = err

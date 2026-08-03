@@ -1,4 +1,4 @@
-import { type Monaco, type OnMount } from '@monaco-editor/react'
+import { type Monaco, type OnChange, type OnMount } from '@monaco-editor/react'
 import { FileWarning, Maximize2 } from 'lucide-react'
 import { useCallback, useEffect, useMemo, useRef } from 'react'
 import { useTranslation } from 'react-i18next'
@@ -79,7 +79,11 @@ function ProjectTextEditor({
     wrappingStrategy: 'simple',
   }), [document.editable, document.path, t, wordWrap])
 
-  const handleChange = useCallback((next: string | undefined) => {
+  const handleChange = useCallback<OnChange>((next, event) => {
+    // Monaco emits a flush event when a model is created or replaced through
+    // setValue. That is content synchronization, not a user edit, and must
+    // never enter the dirty/autosave lifecycle.
+    if (event?.isFlush) return
     onChange(next ?? '')
   }, [onChange])
 

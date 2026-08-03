@@ -12,12 +12,13 @@ import (
 )
 
 func (model *ChatModel) Generate(ctx context.Context, input []*agent.Message, opts ...agent.ModelOption) (*agent.Message, error) {
-	params, err := model.request(input, opts...)
+	params, requestOptions, err := model.request(input, opts...)
 	if err != nil {
 		return nil, err
 	}
 	var rawResponse *http.Response
-	response, err := model.client.Responses.New(ctx, params, option.WithResponseInto(&rawResponse))
+	requestOptions = append(requestOptions, option.WithResponseInto(&rawResponse))
+	response, err := model.client.Responses.New(ctx, params, requestOptions...)
 	if err != nil {
 		return nil, modelCallError(ctx, err)
 	}
@@ -32,12 +33,13 @@ func (model *ChatModel) Generate(ctx context.Context, input []*agent.Message, op
 }
 
 func (model *ChatModel) Stream(ctx context.Context, input []*agent.Message, opts ...agent.ModelOption) (*agent.StreamReader[*agent.Message], error) {
-	params, err := model.request(input, opts...)
+	params, requestOptions, err := model.request(input, opts...)
 	if err != nil {
 		return nil, err
 	}
 	var rawResponse *http.Response
-	providerStream := model.client.Responses.NewStreaming(ctx, params, option.WithResponseInto(&rawResponse))
+	requestOptions = append(requestOptions, option.WithResponseInto(&rawResponse))
+	providerStream := model.client.Responses.NewStreaming(ctx, params, requestOptions...)
 	if err := providerStream.Err(); err != nil {
 		_ = providerStream.Close()
 		return nil, modelCallError(ctx, err)

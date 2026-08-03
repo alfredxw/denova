@@ -2,7 +2,7 @@ import { act, fireEvent, render, screen } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { fetchSettings } from './api'
 import { modelProfilesForEditor, SettingsView, UpdatePanel } from './SettingsView'
-import { MODEL_PROTOCOL_CHAT_COMPLETIONS, MODEL_PROTOCOL_RESPONSES, MODEL_PROVIDER_OPENAI, modelProfilesWithDefault } from './model-profiles'
+import { MODEL_PROTOCOL_CHAT_COMPLETIONS, MODEL_PROVIDER_OPENAI, modelProfilesWithDefault } from './model-profiles'
 import { terminalCommandsForEditor } from './TerminalCommandsEditor'
 import type { LayeredSettings, UpdateCheckResult, UpdateInstallResult } from './types'
 
@@ -12,8 +12,10 @@ vi.mock('./api', () => {
   return {
     applyUpdate: vi.fn(),
     checkForUpdate: vi.fn(),
+    fetchModelCatalog: vi.fn().mockResolvedValue({ providers: [], protocols: [] }),
     fetchSettings: vi.fn(),
     installUpdateStream: vi.fn(),
+    pingModelProfile: vi.fn(),
     revokeAgentApprovalRule: vi.fn(),
     patchSettings: (_layer: string, changes: unknown, revision?: string) => revision === undefined
       ? updateUserSettings(changes)
@@ -34,7 +36,7 @@ describe('modelProfilesForEditor', () => {
   it('keeps a newly added blank language model profile visible before the model name is filled', () => {
     const profiles = modelProfilesForEditor({
       model_profiles: [
-        { id: 'default', openai_base_url: 'https://api.example.com/v1', openai_model: 'gpt-4.1', context_window_tokens: 400000 },
+        { id: 'default', base_url: 'https://api.example.com/v1', model: 'gpt-4.1', context_window_tokens: 400000 },
         { context_window_tokens: 400000 },
       ],
     }, {
@@ -50,7 +52,7 @@ describe('modelProfilesForEditor', () => {
   it('keeps an alias-only language model draft visible until it gets a model id', () => {
     const profiles = modelProfilesForEditor({
       model_profiles: [
-        { id: 'default', openai_model: 'gpt-4.1' },
+        { id: 'default', model: 'gpt-4.1' },
         { name: 'Draft model', context_window_tokens: 400000 },
       ],
     }, {})
@@ -59,7 +61,7 @@ describe('modelProfilesForEditor', () => {
     expect(profiles[1]).toEqual({ name: 'Draft model', context_window_tokens: 400000 })
   })
 
-  it('keeps legacy OpenAI endpoints on Chat Completions but defaults explicit OpenAI providers to Responses', () => {
+  it('keeps legacy endpoints on Chat Completions but delegates explicit provider defaults to the registry', () => {
     const legacy = modelProfilesWithDefault({
       openai_base_url: 'https://api.openai.com/v1',
       openai_model: 'gpt-4.1',
@@ -72,12 +74,12 @@ describe('modelProfilesForEditor', () => {
     const explicit = modelProfilesWithDefault({
       openai_base_url: 'https://api.deepseek.com',
       openai_model: 'deepseek-chat',
-      model_profiles: [{ id: 'default', provider: MODEL_PROVIDER_OPENAI, openai_model: 'gpt-5' }],
+      model_profiles: [{ id: 'default', provider: MODEL_PROVIDER_OPENAI, model: 'gpt-5' }],
     })
     expect(explicit[0]).toMatchObject({
       provider: MODEL_PROVIDER_OPENAI,
-      protocol: MODEL_PROTOCOL_RESPONSES,
-      openai_base_url: 'https://api.openai.com/v1',
+      protocol: '',
+      base_url: '',
     })
   })
 })

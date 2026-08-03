@@ -52,10 +52,11 @@ type safeModelProfileSettings struct {
 	Name                string   `json:"name,omitempty"`
 	Provider            string   `json:"provider,omitempty"`
 	Protocol            string   `json:"protocol,omitempty"`
-	OpenAIBaseURL       string   `json:"openai_base_url,omitempty"`
-	OpenAIModel         string   `json:"openai_model,omitempty"`
+	BaseURL             string   `json:"base_url,omitempty"`
+	Model               string   `json:"model,omitempty"`
 	Temperature         *float64 `json:"temperature,omitempty"`
 	ContextWindowTokens *int     `json:"context_window_tokens,omitempty"`
+	MaxOutputTokens     *int     `json:"max_output_tokens,omitempty"`
 }
 
 type safeImageAPIProfileSettings struct {
@@ -186,10 +187,11 @@ func safeModelProfiles(profiles []config.ModelProfileSettings) []safeModelProfil
 			Name:                profile.Name,
 			Provider:            profile.Provider,
 			Protocol:            profile.Protocol,
-			OpenAIBaseURL:       profile.OpenAIBaseURL,
-			OpenAIModel:         profile.OpenAIModel,
+			BaseURL:             profile.BaseURL,
+			Model:               profile.Model,
 			Temperature:         profile.Temperature,
 			ContextWindowTokens: profile.ContextWindowTokens,
+			MaxOutputTokens:     profile.MaxOutputTokens,
 		})
 	}
 	return out

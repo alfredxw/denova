@@ -113,11 +113,39 @@ export interface ModelProfileSettings {
   name?: string
   provider?: string
   protocol?: string
-  openai_api_key?: string
-  openai_base_url?: string
-  openai_model?: string
+  api_key?: string
+  base_url?: string
+  model?: string
+  headers?: Record<string, string>
+  protocol_options?: Record<string, unknown>
   temperature?: number | null
   context_window_tokens?: number | null
+  max_output_tokens?: number | null
+}
+
+export interface ModelEndpointPreset {
+  base_url?: string
+}
+
+export interface ModelProviderPreset {
+  id: string
+  name: string
+  default_protocol: string
+  endpoints: Record<string, ModelEndpointPreset>
+}
+
+export interface ModelCatalog {
+  providers: ModelProviderPreset[]
+  protocols: string[]
+}
+
+export interface ModelPingResult {
+  ok: boolean
+  latency_ms: number
+  provider: string
+  protocol: string
+  base_url: string
+  model: string
 }
 
 export interface ImageAPIProfileSettings {

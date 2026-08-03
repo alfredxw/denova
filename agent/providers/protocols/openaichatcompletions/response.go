@@ -22,7 +22,7 @@ const (
 	ExtraKeySystemFingerprint = "system_fingerprint"
 )
 
-func responseMessage(response *sdk.ChatCompletion, rawResponse *http.Response, provider string) *agent.Message {
+func responseMessage(response *sdk.ChatCompletion, rawResponse *http.Response, provider, reasoningField string) *agent.Message {
 	choice, found := responseChoice(response.Choices)
 	if !found {
 		return nil
@@ -30,7 +30,7 @@ func responseMessage(response *sdk.ChatCompletion, rawResponse *http.Response, p
 	message := &agent.Message{
 		Role:             responseRole(string(choice.Message.Role)),
 		Content:          choice.Message.Content,
-		ReasoningContent: rawReasoningContent(choice.Message.RawJSON()),
+		ReasoningContent: rawReasoningContent(choice.Message.RawJSON(), reasoningField),
 		ToolCalls:        responseToolCalls(choice.Message.ToolCalls),
 		ResponseMeta: &agent.ResponseMeta{
 			FinishReason: choice.FinishReason,
@@ -69,7 +69,7 @@ func streamChoice(choices []sdk.ChatCompletionChunkChoice) (sdk.ChatCompletionCh
 	return sdk.ChatCompletionChunkChoice{}, false
 }
 
-func streamMessage(chunk sdk.ChatCompletionChunk, rawResponse *http.Response, includeMetadata bool, provider string) (*agent.Message, bool) {
+func streamMessage(chunk sdk.ChatCompletionChunk, rawResponse *http.Response, includeMetadata bool, provider, reasoningField string) (*agent.Message, bool) {
 	choice, hasChoice := streamChoice(chunk.Choices)
 	hasUsage := chunk.JSON.Usage.Valid()
 	if !hasChoice && !hasUsage {
@@ -80,7 +80,7 @@ func streamMessage(chunk sdk.ChatCompletionChunk, rawResponse *http.Response, in
 	if hasChoice {
 		message.Role = responseRole(choice.Delta.Role)
 		message.Content = choice.Delta.Content
-		message.ReasoningContent = rawReasoningContent(choice.Delta.RawJSON())
+		message.ReasoningContent = rawReasoningContent(choice.Delta.RawJSON(), reasoningField)
 		message.ToolCalls = streamToolCalls(choice.Delta.ToolCalls)
 		if choice.FinishReason != "" {
 			message.ResponseMeta = &agent.ResponseMeta{FinishReason: choice.FinishReason}
@@ -169,17 +169,19 @@ func responseUsage(usage sdk.CompletionUsage) *agent.TokenUsage {
 	}
 }
 
-func rawReasoningContent(raw string) string {
-	if raw == "" {
+func rawReasoningContent(raw, field string) string {
+	if raw == "" || strings.TrimSpace(field) == "" {
 		return ""
 	}
-	value := struct {
-		ReasoningContent string `json:"reasoning_content"`
-	}{}
+	value := map[string]json.RawMessage{}
 	if err := json.Unmarshal([]byte(raw), &value); err != nil {
 		return ""
 	}
-	return value.ReasoningContent
+	var result string
+	if err := json.Unmarshal(value[field], &result); err != nil {
+		return ""
+	}
+	return result
 }
 
 func responseExtra(rawResponse *http.Response, provider, responseID, model string, created int64, serviceTier, fingerprint string) map[string]any {

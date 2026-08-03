@@ -68,3 +68,62 @@ func syncRuntimeDiagnostics(cfg *config.Config) {
 	agentrun.SetModelInputLoggingEnabled(cfg.DevMode && cfg.LLMInputLogEnabled)
 	agentrun.SetTraceRuntimeConfig(cfg.TraceCaptureLevel, cfg.TraceExporter, cfg.TraceRetentionRuns)
 }
+
+type modelHost struct{ app *App }
+
+func (host modelHost) ModelConfigSnapshot() config.Config {
+	if host.app == nil {
+		return config.Config{}
+	}
+	host.app.mu.RLock()
+	defer host.app.mu.RUnlock()
+	if host.app.cfg == nil {
+		return config.Config{}
+	}
+	snapshot := *host.app.cfg
+	snapshot.ModelProfiles = cloneModelProfiles(host.app.cfg.ModelProfiles)
+	return snapshot
+}
+
+func cloneModelProfiles(profiles []config.ModelProfileSettings) []config.ModelProfileSettings {
+	if profiles == nil {
+		return nil
+	}
+	cloned := make([]config.ModelProfileSettings, len(profiles))
+	for index, profile := range profiles {
+		cloned[index] = profile
+		if profile.Headers != nil {
+			cloned[index].Headers = make(map[string]string, len(profile.Headers))
+			for name, value := range profile.Headers {
+				cloned[index].Headers[name] = value
+			}
+		}
+		if profile.ProtocolOptions != nil {
+			cloned[index].ProtocolOptions = cloneModelProtocolOptions(profile.ProtocolOptions)
+		}
+	}
+	return cloned
+}
+
+func cloneModelProtocolOptions(options map[string]any) map[string]any {
+	cloned := make(map[string]any, len(options))
+	for key, value := range options {
+		cloned[key] = cloneModelProtocolValue(value)
+	}
+	return cloned
+}
+
+func cloneModelProtocolValue(value any) any {
+	switch typed := value.(type) {
+	case map[string]any:
+		return cloneModelProtocolOptions(typed)
+	case []any:
+		cloned := make([]any, len(typed))
+		for index, item := range typed {
+			cloned[index] = cloneModelProtocolValue(item)
+		}
+		return cloned
+	default:
+		return typed
+	}
+}

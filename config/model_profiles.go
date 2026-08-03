@@ -13,15 +13,18 @@ const (
 )
 
 type ModelProfileSettings struct {
-	ID                  string   `toml:"id,omitempty" json:"id,omitempty"`
-	Name                string   `toml:"name,omitempty" json:"name,omitempty"`
-	Provider            string   `toml:"provider,omitempty" json:"provider,omitempty"`
-	Protocol            string   `toml:"protocol,omitempty" json:"protocol,omitempty"`
-	OpenAIAPIKey        string   `toml:"openai_api_key,omitempty" json:"openai_api_key,omitempty"`
-	OpenAIBaseURL       string   `toml:"openai_base_url,omitempty" json:"openai_base_url,omitempty"`
-	OpenAIModel         string   `toml:"openai_model,omitempty" json:"openai_model,omitempty"`
-	Temperature         *float64 `toml:"temperature,omitempty" json:"temperature,omitempty"`
-	ContextWindowTokens *int     `toml:"context_window_tokens,omitempty" json:"context_window_tokens,omitempty"`
+	ID                  string            `toml:"id,omitempty" json:"id,omitempty"`
+	Name                string            `toml:"name,omitempty" json:"name,omitempty"`
+	Provider            string            `toml:"provider,omitempty" json:"provider,omitempty"`
+	Protocol            string            `toml:"protocol,omitempty" json:"protocol,omitempty"`
+	APIKey              string            `toml:"api_key,omitempty" json:"api_key,omitempty"`
+	BaseURL             string            `toml:"base_url,omitempty" json:"base_url,omitempty"`
+	Model               string            `toml:"model,omitempty" json:"model,omitempty"`
+	Headers             map[string]string `toml:"headers,omitempty" json:"headers,omitempty"`
+	ProtocolOptions     map[string]any    `toml:"protocol_options,omitempty" json:"protocol_options,omitempty"`
+	Temperature         *float64          `toml:"temperature,omitempty" json:"temperature,omitempty"`
+	ContextWindowTokens *int              `toml:"context_window_tokens,omitempty" json:"context_window_tokens,omitempty"`
+	MaxOutputTokens     *int              `toml:"max_output_tokens,omitempty" json:"max_output_tokens,omitempty"`
 }
 
 type AgentModelSettings struct {
@@ -48,11 +51,14 @@ type ResolvedModelSettings struct {
 	ProfileID           string
 	Provider            string
 	Protocol            string
-	OpenAIAPIKey        string
-	OpenAIBaseURL       string
-	OpenAIModel         string
+	APIKey              string
+	BaseURL             string
+	Model               string
+	Headers             map[string]string
+	ProtocolOptions     map[string]any
 	Temperature         *float64
 	ContextWindowTokens int
+	MaxOutputTokens     *int
 	ThinkingLevel       string
 }
 
@@ -90,17 +96,16 @@ func ResolveAgentModel(cfg *Config, agentKind string) ResolvedModelSettings {
 		profiles[id] = mergeModelProfile(base, profile)
 	}
 	defaultProfile := profiles["default"]
-	if defaultProfile.OpenAIAPIKey == "" {
-		defaultProfile.OpenAIAPIKey = cfg.OpenAIAPIKey
+	if defaultProfile.APIKey == "" {
+		defaultProfile.APIKey = cfg.OpenAIAPIKey
 	}
-	if defaultProfile.OpenAIBaseURL == "" {
-		defaultProfile.OpenAIBaseURL = defaultModelProviderBaseURL(defaultProfile.Provider)
-		if defaultProfile.OpenAIBaseURL == "" && defaultProfile.Provider == "" {
-			defaultProfile.OpenAIBaseURL = cfg.OpenAIBaseURL
+	if defaultProfile.BaseURL == "" {
+		if defaultProfile.Provider == "" {
+			defaultProfile.BaseURL = cfg.OpenAIBaseURL
 		}
 	}
-	if defaultProfile.OpenAIModel == "" {
-		defaultProfile.OpenAIModel = cfg.OpenAIModel
+	if defaultProfile.Model == "" {
+		defaultProfile.Model = cfg.OpenAIModel
 	}
 	if defaultProfile.ContextWindowTokens == nil {
 		contextWindowTokens := cfg.OpenAIContextWindowTokens
@@ -126,23 +131,26 @@ func ResolveAgentModel(cfg *Config, agentKind string) ResolvedModelSettings {
 		profile.Provider = defaultProfile.Provider
 	}
 	if profile.Protocol == "" {
-		profile.Protocol = defaultProfile.Protocol
-	}
-	if profile.OpenAIAPIKey == "" {
-		profile.OpenAIAPIKey = defaultProfile.OpenAIAPIKey
-	}
-	if profile.OpenAIBaseURL == "" {
-		if profile.Provider != "" && profile.Provider != defaultProfile.Provider {
-			profile.OpenAIBaseURL = defaultModelProviderBaseURL(profile.Provider)
-		} else {
-			profile.OpenAIBaseURL = defaultProfile.OpenAIBaseURL
+		if profile.Provider == "" || profile.Provider == defaultProfile.Provider {
+			profile.Protocol = defaultProfile.Protocol
 		}
 	}
-	if profile.OpenAIModel == "" {
-		profile.OpenAIModel = defaultProfile.OpenAIModel
+	if profile.APIKey == "" {
+		profile.APIKey = defaultProfile.APIKey
+	}
+	if profile.BaseURL == "" {
+		if profile.Provider == "" || profile.Provider == defaultProfile.Provider {
+			profile.BaseURL = defaultProfile.BaseURL
+		}
+	}
+	if profile.Model == "" {
+		profile.Model = defaultProfile.Model
 	}
 	if profile.ContextWindowTokens == nil {
 		profile.ContextWindowTokens = defaultProfile.ContextWindowTokens
+	}
+	if profile.MaxOutputTokens == nil {
+		profile.MaxOutputTokens = defaultProfile.MaxOutputTokens
 	}
 	temperature := profile.Temperature
 	if agentOverride.Temperature != nil {
@@ -152,13 +160,48 @@ func ResolveAgentModel(cfg *Config, agentKind string) ResolvedModelSettings {
 		ProfileID:           profileID,
 		Provider:            profile.Provider,
 		Protocol:            profile.Protocol,
-		OpenAIAPIKey:        profile.OpenAIAPIKey,
-		OpenAIBaseURL:       profile.OpenAIBaseURL,
-		OpenAIModel:         profile.OpenAIModel,
+		APIKey:              profile.APIKey,
+		BaseURL:             profile.BaseURL,
+		Model:               profile.Model,
+		Headers:             cloneModelProfileHeaders(profile.Headers),
+		ProtocolOptions:     cloneModelProfileOptions(profile.ProtocolOptions),
 		Temperature:         temperature,
 		ContextWindowTokens: *profile.ContextWindowTokens,
+		MaxOutputTokens:     cloneIntPointer(profile.MaxOutputTokens),
 		ThinkingLevel:       resolvedThinkingLevel(agentOverride.ThinkingLevel),
 	}
+}
+
+// ResolveModelProfile resolves an inline profile using the same inheritance as
+// an Agent selection. It is intended for validating unsaved settings drafts:
+// omitted secrets inherit from the stored profile/default, while routing and
+// model fields in the draft take precedence.
+func ResolveModelProfile(cfg *Config, draft ModelProfileSettings) (ResolvedModelSettings, error) {
+	if cfg == nil {
+		return ResolvedModelSettings{}, fmt.Errorf("config is nil")
+	}
+	originalID := modelProfileID(draft)
+	if originalID == "" {
+		return ResolvedModelSettings{}, fmt.Errorf("model profile requires an id or model")
+	}
+	base := ModelProfileSettings{}
+	for _, profile := range cfg.ModelProfiles {
+		if modelProfileID(profile) == originalID {
+			base = profile
+			break
+		}
+	}
+	draft = mergeModelProfile(base, draft)
+	const validationProfileID = "__model_validation__"
+	draft.ID = validationProfileID
+	temporary := *cfg
+	temporary.ModelProfiles = append(append([]ModelProfileSettings(nil), cfg.ModelProfiles...), draft)
+	temporary.AgentModels = AgentModelSettings{
+		Default: AgentModelOverride{ProfileID: validationProfileID},
+	}
+	resolved := ResolveAgentModel(&temporary, "")
+	resolved.ProfileID = originalID
+	return resolved, nil
 }
 
 // ApplyAgentModelSelection overrides only the model identity and reasoning
@@ -244,7 +287,7 @@ func sanitizeModelProfiles(profiles []ModelProfileSettings) []ModelProfileSettin
 	out := make([]ModelProfileSettings, 0, len(profiles))
 	for _, profile := range profiles {
 		profile = normalizeModelProfileRouting(profile)
-		profile.OpenAIModel = strings.TrimSpace(profile.OpenAIModel)
+		profile.Model = strings.TrimSpace(profile.Model)
 		profile.ID = modelProfileID(profile)
 		if profile.ID == "" {
 			// Settings autosave persists a newly added profile before the user has
@@ -256,16 +299,18 @@ func sanitizeModelProfiles(profiles []ModelProfileSettings) []ModelProfileSettin
 				continue
 			}
 			profile.Name = strings.TrimSpace(profile.Name)
-			profile.OpenAIBaseURL = strings.TrimSpace(profile.OpenAIBaseURL)
+			profile.BaseURL = strings.TrimSpace(profile.BaseURL)
 			profile.ContextWindowTokens = normalizeModelProfileContextWindow(profile.ContextWindowTokens)
+			profile.MaxOutputTokens = normalizeModelProfileMaxOutput(profile.MaxOutputTokens)
 			out = append(out, profile)
 			continue
 		}
-		if profile.OpenAIModel == "" && profile.ID != "default" {
-			profile.OpenAIModel = profile.ID
+		if profile.Model == "" && profile.ID != "default" {
+			profile.Model = profile.ID
 		}
 		profile.Name = strings.TrimSpace(profile.Name)
 		profile.ContextWindowTokens = normalizeModelProfileContextWindow(profile.ContextWindowTokens)
+		profile.MaxOutputTokens = normalizeModelProfileMaxOutput(profile.MaxOutputTokens)
 		out = append(out, profile)
 	}
 	return out
@@ -275,10 +320,13 @@ func hasModelProfileDraftFields(profile ModelProfileSettings) bool {
 	return strings.TrimSpace(profile.Name) != "" ||
 		strings.TrimSpace(profile.Provider) != "" ||
 		strings.TrimSpace(profile.Protocol) != "" ||
-		profile.OpenAIAPIKey != "" ||
-		strings.TrimSpace(profile.OpenAIBaseURL) != "" ||
+		profile.APIKey != "" ||
+		strings.TrimSpace(profile.BaseURL) != "" ||
+		len(profile.Headers) != 0 ||
+		len(profile.ProtocolOptions) != 0 ||
 		profile.Temperature != nil ||
-		profile.ContextWindowTokens != nil
+		profile.ContextWindowTokens != nil ||
+		profile.MaxOutputTokens != nil
 }
 
 func normalizeModelProfileContextWindow(tokens *int) *int {
@@ -290,6 +338,13 @@ func normalizeModelProfileContextWindow(tokens *int) *int {
 	}
 	if *tokens > MaxContextWindowTokens {
 		*tokens = MaxContextWindowTokens
+	}
+	return tokens
+}
+
+func normalizeModelProfileMaxOutput(tokens *int) *int {
+	if tokens == nil || *tokens <= 0 {
+		return nil
 	}
 	return tokens
 }
@@ -311,12 +366,12 @@ func mergeModelProfile(parent, child ModelProfileSettings) ModelProfileSettings 
 	out.Name = strings.TrimSpace(child.Name)
 	if child.Provider != "" {
 		inheritedProvider := strings.TrimSpace(out.Provider)
-		if inheritedProvider == "" && strings.TrimSpace(out.OpenAIBaseURL) != "" {
-			inheritedProvider = inferModelProvider(out.OpenAIBaseURL)
+		if inheritedProvider == "" && strings.TrimSpace(out.BaseURL) != "" {
+			inheritedProvider = inferModelProvider(out.BaseURL)
 		}
 		providerChanged := inheritedProvider != "" && strings.TrimSpace(child.Provider) != inheritedProvider
-		if providerChanged && child.OpenAIBaseURL == "" {
-			out.OpenAIBaseURL = ""
+		if providerChanged && child.BaseURL == "" {
+			out.BaseURL = ""
 		}
 		if providerChanged && child.Protocol == "" {
 			out.Protocol = ""
@@ -326,20 +381,29 @@ func mergeModelProfile(parent, child ModelProfileSettings) ModelProfileSettings 
 	if child.Protocol != "" {
 		out.Protocol = strings.TrimSpace(child.Protocol)
 	}
-	if child.OpenAIAPIKey != "" {
-		out.OpenAIAPIKey = child.OpenAIAPIKey
+	if child.APIKey != "" {
+		out.APIKey = child.APIKey
 	}
-	if child.OpenAIBaseURL != "" {
-		out.OpenAIBaseURL = child.OpenAIBaseURL
+	if child.BaseURL != "" {
+		out.BaseURL = child.BaseURL
 	}
-	if child.OpenAIModel != "" {
-		out.OpenAIModel = strings.TrimSpace(child.OpenAIModel)
+	if child.Model != "" {
+		out.Model = strings.TrimSpace(child.Model)
+	}
+	if child.Headers != nil {
+		out.Headers = mergeModelProfileHeaders(out.Headers, child.Headers)
+	}
+	if child.ProtocolOptions != nil {
+		out.ProtocolOptions = mergeModelProfileOptions(out.ProtocolOptions, child.ProtocolOptions)
 	}
 	if child.Temperature != nil {
 		out.Temperature = child.Temperature
 	}
 	if child.ContextWindowTokens != nil {
 		out.ContextWindowTokens = child.ContextWindowTokens
+	}
+	if child.MaxOutputTokens != nil {
+		out.MaxOutputTokens = child.MaxOutputTokens
 	}
 	return out
 }
@@ -373,9 +437,9 @@ func legacyModelProfile(cfg *Config) ModelProfileSettings {
 	return normalizeModelProfileRouting(ModelProfileSettings{
 		ID:                  "default",
 		Name:                "默认模型",
-		OpenAIAPIKey:        cfg.OpenAIAPIKey,
-		OpenAIBaseURL:       cfg.OpenAIBaseURL,
-		OpenAIModel:         cfg.OpenAIModel,
+		APIKey:              cfg.OpenAIAPIKey,
+		BaseURL:             cfg.OpenAIBaseURL,
+		Model:               cfg.OpenAIModel,
 		ContextWindowTokens: intPtr(contextWindowTokens),
 	})
 }
@@ -384,18 +448,14 @@ func normalizeModelProfileRouting(profile ModelProfileSettings) ModelProfileSett
 	profile.Provider = strings.TrimSpace(profile.Provider)
 	profile.Protocol = strings.TrimSpace(profile.Protocol)
 	explicitProvider := profile.Provider != ""
-	if profile.Provider == "" && strings.TrimSpace(profile.OpenAIBaseURL) != "" {
-		profile.Provider = inferModelProvider(profile.OpenAIBaseURL)
+	if profile.Provider == "" && strings.TrimSpace(profile.BaseURL) != "" {
+		profile.Provider = inferModelProvider(profile.BaseURL)
 	}
-	if profile.Protocol == "" && profile.Provider != "" {
+	if profile.Protocol == "" && profile.Provider != "" && !explicitProvider {
 		// Profiles written before provider/protocol existed always used Chat
-		// Completions. Preserve that behavior when provider was inferred. A new,
-		// explicit OpenAI provider adopts OpenAI's Responses default.
-		if explicitProvider && profile.Provider == string(providers.ProviderOpenAI) {
-			profile.Protocol = string(providers.ProtocolOpenAIResponses)
-		} else {
-			profile.Protocol = string(providers.ProtocolOpenAIChatCompletions)
-		}
+		// Completions. Preserve that behavior only when provider was inferred;
+		// explicit providers let the central registry select their preset default.
+		profile.Protocol = string(providers.ProtocolOpenAIChatCompletions)
 	}
 	return profile
 }
@@ -412,26 +472,75 @@ func inferModelProvider(baseURL string) string {
 	}
 }
 
-func defaultModelProviderBaseURL(provider string) string {
-	switch strings.TrimSpace(provider) {
-	case string(providers.ProviderOpenAI):
-		return "https://api.openai.com/v1"
-	case string(providers.ProviderDeepSeek):
-		return "https://api.deepseek.com"
-	default:
-		return ""
-	}
-}
-
 func normalizeModelProfileID(id string) string {
 	return strings.TrimSpace(id)
+}
+
+func cloneIntPointer(value *int) *int {
+	if value == nil {
+		return nil
+	}
+	clone := *value
+	return &clone
+}
+
+func cloneModelProfileHeaders(headers map[string]string) map[string]string {
+	if headers == nil {
+		return nil
+	}
+	clone := make(map[string]string, len(headers))
+	for key, value := range headers {
+		clone[key] = value
+	}
+	return clone
+}
+
+func mergeModelProfileHeaders(parent, child map[string]string) map[string]string {
+	result := cloneModelProfileHeaders(parent)
+	if result == nil {
+		result = make(map[string]string, len(child))
+	}
+	for key, value := range child {
+		result[key] = value
+	}
+	return result
+}
+
+func cloneModelProfileOptions(options map[string]any) map[string]any {
+	if options == nil {
+		return nil
+	}
+	return mergeModelProfileOptions(nil, options)
+}
+
+func mergeModelProfileOptions(parent, child map[string]any) map[string]any {
+	result := make(map[string]any, len(parent)+len(child))
+	for key, value := range parent {
+		if nested, ok := value.(map[string]any); ok {
+			result[key] = mergeModelProfileOptions(nil, nested)
+		} else {
+			result[key] = value
+		}
+	}
+	for key, value := range child {
+		if nested, ok := value.(map[string]any); ok {
+			if base, ok := result[key].(map[string]any); ok {
+				result[key] = mergeModelProfileOptions(base, nested)
+			} else {
+				result[key] = mergeModelProfileOptions(nil, nested)
+			}
+		} else {
+			result[key] = value
+		}
+	}
+	return result
 }
 
 func modelProfileID(profile ModelProfileSettings) string {
 	if id := normalizeModelProfileID(profile.ID); id != "" {
 		return id
 	}
-	return strings.TrimSpace(profile.OpenAIModel)
+	return strings.TrimSpace(profile.Model)
 }
 
 func normalizeThinkingLevel(value string) string {

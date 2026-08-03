@@ -43,7 +43,11 @@ func ClassifyLoreItems(ctx context.Context, cfg *config.Config, inputs []lore.Cl
 	var runErr error
 	defer func() { finishTrace(runErr) }()
 	instruction := "请对以下资料条目进行语义分类。名称是最重要信号；只有名称不明确时才参考标签、关键词、简介和正文片段。\n\n输入 JSON：\n" + string(data)
-	jsonCfg := modelio.ConfigForAgent(cfg, config.AgentKindToolAgent)
+	jsonCfg, err := modelio.ConfigForAgent(cfg, config.AgentKindToolAgent)
+	if err != nil {
+		runErr = err
+		return nil, fmt.Errorf("resolve lore classification model configuration: %w", err)
+	}
 	jsonCfg = modelio.WithJSONObjectOutput(jsonCfg)
 	result, err := generateLoreClassifications(traceCtx, cfg, jsonCfg, instruction, inputs, "json_mode")
 	if err == nil {
@@ -54,7 +58,11 @@ func ClassifyLoreItems(ctx context.Context, cfg *config.Config, inputs []lore.Cl
 		return nil, err
 	}
 	slog.ErrorContext(ctx, fmt.Sprintf("[tool-agent] lore classification json_mode failed, retry without response_format err=%v", err))
-	plainCfg := modelio.ConfigForAgent(cfg, config.AgentKindToolAgent)
+	plainCfg, configErr := modelio.ConfigForAgent(cfg, config.AgentKindToolAgent)
+	if configErr != nil {
+		runErr = configErr
+		return nil, fmt.Errorf("resolve lore classification fallback model configuration: %w", configErr)
+	}
 	result, runErr = generateLoreClassifications(traceCtx, cfg, plainCfg, instruction, inputs, "plain_text_retry")
 	return result, runErr
 }

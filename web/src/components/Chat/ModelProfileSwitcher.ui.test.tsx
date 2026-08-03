@@ -20,8 +20,8 @@ describe('ModelProfileSwitcher quick control', () => {
       user: { agent_models: { ide: { profile_id: 'fast', thinking_level: 'medium' } } },
       effective: {
         model_profiles: [
-          { id: 'default', name: 'GPT 4.1', openai_model: 'gpt-4.1' },
-          { id: 'fast', name: 'Turbo', openai_model: 'gpt-4.1-mini' },
+          { id: 'default', name: 'GPT 4.1', model: 'gpt-4.1' },
+          { id: 'fast', name: 'Turbo', model: 'gpt-4.1-mini' },
         ],
         agent_models: { ide: { profile_id: 'fast', thinking_level: 'medium' } },
       },

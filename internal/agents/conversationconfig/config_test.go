@@ -13,7 +13,7 @@ func TestApplyOverridesOnlyConversationOwnedRuntimeFields(t *testing.T) {
 		OpenAIModel:       "default-model",
 		AgentApprovalMode: config.AgentApprovalWrite,
 		ModelProfiles: []config.ModelProfileSettings{
-			{ID: "fast", OpenAIModel: "fast-model"},
+			{ID: "fast", Model: "fast-model"},
 		},
 		AgentModels: config.AgentModelSettings{
 			IDE:     config.AgentModelOverride{ProfileID: "default", ThinkingLevel: "medium", Temperature: &temperature},
@@ -29,7 +29,7 @@ func TestApplyOverridesOnlyConversationOwnedRuntimeFields(t *testing.T) {
 	}
 
 	resolved := config.ResolveAgentModel(&runtimeCfg, config.AgentKindIDE)
-	if resolved.ProfileID != "fast" || resolved.OpenAIModel != "fast-model" || resolved.ThinkingLevel != "high" {
+	if resolved.ProfileID != "fast" || resolved.Model != "fast-model" || resolved.ThinkingLevel != "high" {
 		t.Fatalf("resolved IDE selection = %#v", resolved)
 	}
 	if resolved.Temperature == nil || *resolved.Temperature != temperature {

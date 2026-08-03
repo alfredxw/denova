@@ -588,7 +588,7 @@ func TestAutomationRuntimeConfigUsesTaskModelProfile(t *testing.T) {
 			ModelProfiles: []config.ModelProfileSettings{{
 				ID:          "fast",
 				Name:        "Fast",
-				OpenAIModel: "fast-model",
+				Model: "fast-model",
 			}},
 		},
 		workspace: workspace,
@@ -601,13 +601,13 @@ func TestAutomationRuntimeConfigUsesTaskModelProfile(t *testing.T) {
 
 	cfg := runtimeConfigForTask(snap, automation.Task{ModelProfileID: "fast"})
 	resolved := config.ResolveAgentModel(&cfg, config.AgentKindAutomation)
-	if resolved.ProfileID != "fast" || resolved.OpenAIModel != "fast-model" {
+	if resolved.ProfileID != "fast" || resolved.Model != "fast-model" {
 		t.Fatalf("resolved model = %#v, want fast profile", resolved)
 	}
 
 	cfg = runtimeConfigForTask(snap, automation.Task{})
 	resolved = config.ResolveAgentModel(&cfg, config.AgentKindAutomation)
-	if resolved.ProfileID != "default" || resolved.OpenAIModel != "base-model" {
+	if resolved.ProfileID != "default" || resolved.Model != "base-model" {
 		t.Fatalf("resolved inherited model = %#v, want default base model", resolved)
 	}
 

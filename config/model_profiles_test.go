@@ -21,17 +21,17 @@ func TestResolveAgentModelProviderProtocolRouting(t *testing.T) {
 			wantProtocol: providers.ProtocolOpenAIChatCompletions,
 		},
 		{
-			name: "explicit OpenAI provider defaults to Responses",
+			name: "explicit OpenAI provider delegates its default protocol to the registry",
 			config: &Config{ModelProfiles: []ModelProfileSettings{{
-				ID: "default", Provider: string(providers.ProviderOpenAI), OpenAIModel: "gpt-5",
+				ID: "default", Provider: string(providers.ProviderOpenAI), Model: "gpt-5",
 			}}},
 			wantProvider: providers.ProviderOpenAI,
-			wantProtocol: providers.ProtocolOpenAIResponses,
+			wantProtocol: "",
 		},
 		{
 			name: "explicit OpenAI provider can retain Chat Completions",
 			config: &Config{ModelProfiles: []ModelProfileSettings{{
-				ID: "default", Provider: string(providers.ProviderOpenAI), Protocol: string(providers.ProtocolOpenAIChatCompletions), OpenAIModel: "gpt-4.1",
+				ID: "default", Provider: string(providers.ProviderOpenAI), Protocol: string(providers.ProtocolOpenAIChatCompletions), Model: "gpt-4.1",
 			}}},
 			wantProvider: providers.ProviderOpenAI,
 			wantProtocol: providers.ProtocolOpenAIChatCompletions,
@@ -136,7 +136,7 @@ func TestResolveAgentModelUsesUnifiedThinkingLevel(t *testing.T) {
 func TestResolveAgentModelUsesModelNameAsProfileID(t *testing.T) {
 	cfg := &Config{
 		ModelProfiles: []ModelProfileSettings{
-			{OpenAIBaseURL: "https://api.openai.com/v1", OpenAIModel: "gpt-4.1"},
+			{BaseURL: "https://api.openai.com/v1", Model: "gpt-4.1"},
 		},
 		AgentModels: AgentModelSettings{
 			IDE: AgentModelOverride{ProfileID: "gpt-4.1"},
@@ -146,7 +146,7 @@ func TestResolveAgentModelUsesModelNameAsProfileID(t *testing.T) {
 	if resolved.ProfileID != "gpt-4.1" {
 		t.Fatalf("profile id = %q, want model name", resolved.ProfileID)
 	}
-	if resolved.OpenAIBaseURL != "https://api.openai.com/v1" || resolved.OpenAIModel != "gpt-4.1" {
+	if resolved.BaseURL != "https://api.openai.com/v1" || resolved.Model != "gpt-4.1" {
 		t.Fatalf("resolved model mismatch: %#v", resolved)
 	}
 }
@@ -161,8 +161,8 @@ func TestResolveAgentModelAllowsDefaultProfileOverride(t *testing.T) {
 			{
 				ID:                  "default",
 				Name:                "Writing default",
-				OpenAIBaseURL:       "https://api.openai.com/v1",
-				OpenAIModel:         "gpt-4.1",
+				BaseURL:             "https://api.openai.com/v1",
+				Model:               "gpt-4.1",
 				ContextWindowTokens: &contextWindow,
 			},
 		},
@@ -171,7 +171,7 @@ func TestResolveAgentModelAllowsDefaultProfileOverride(t *testing.T) {
 	if resolved.ProfileID != "default" {
 		t.Fatalf("profile id = %q, want default", resolved.ProfileID)
 	}
-	if resolved.OpenAIBaseURL != "https://api.openai.com/v1" || resolved.OpenAIModel != "gpt-4.1" {
+	if resolved.BaseURL != "https://api.openai.com/v1" || resolved.Model != "gpt-4.1" {
 		t.Fatalf("default profile should override legacy fields: %#v", resolved)
 	}
 	if resolved.ContextWindowTokens != contextWindow {
@@ -185,14 +185,14 @@ func TestResolveAgentModelInheritsBlankFieldsFromDefaultProfile(t *testing.T) {
 		ModelProfiles: []ModelProfileSettings{
 			{
 				ID:                  "default",
-				OpenAIAPIKey:        "default-key",
-				OpenAIBaseURL:       "https://api.default.example/v1",
-				OpenAIModel:         "default-model",
+				APIKey:              "default-key",
+				BaseURL:             "https://api.default.example/v1",
+				Model:               "default-model",
 				ContextWindowTokens: &contextWindow,
 			},
 			{
-				ID:          "fast",
-				OpenAIModel: "fast-model",
+				ID:    "fast",
+				Model: "fast-model",
 			},
 		},
 		AgentModels: AgentModelSettings{
@@ -203,7 +203,7 @@ func TestResolveAgentModelInheritsBlankFieldsFromDefaultProfile(t *testing.T) {
 	if resolved.ProfileID != "fast" {
 		t.Fatalf("profile id = %q, want fast", resolved.ProfileID)
 	}
-	if resolved.OpenAIAPIKey != "default-key" || resolved.OpenAIBaseURL != "https://api.default.example/v1" || resolved.OpenAIModel != "fast-model" {
+	if resolved.APIKey != "default-key" || resolved.BaseURL != "https://api.default.example/v1" || resolved.Model != "fast-model" {
 		t.Fatalf("blank profile fields should inherit from default profile: %#v", resolved)
 	}
 	if resolved.ContextWindowTokens != contextWindow {
@@ -215,14 +215,14 @@ func TestResolveAgentModelInheritsProviderAndProtocolFromDefaultProfile(t *testi
 	cfg := &Config{
 		ModelProfiles: []ModelProfileSettings{
 			{
-				ID:          "default",
-				Provider:    string(providers.ProviderOpenAI),
-				Protocol:    string(providers.ProtocolOpenAIResponses),
-				OpenAIModel: "gpt-5",
+				ID:       "default",
+				Provider: string(providers.ProviderOpenAI),
+				Protocol: string(providers.ProtocolOpenAIResponses),
+				Model:    "gpt-5",
 			},
 			{
-				ID:          "fast",
-				OpenAIModel: "gpt-5-mini",
+				ID:    "fast",
+				Model: "gpt-5-mini",
 			},
 		},
 		AgentModels: AgentModelSettings{
@@ -234,31 +234,31 @@ func TestResolveAgentModelInheritsProviderAndProtocolFromDefaultProfile(t *testi
 	if resolved.Provider != string(providers.ProviderOpenAI) || resolved.Protocol != string(providers.ProtocolOpenAIResponses) {
 		t.Fatalf("inherited routing = %q/%q, want OpenAI Responses", resolved.Provider, resolved.Protocol)
 	}
-	if resolved.OpenAIBaseURL != "https://api.openai.com/v1" {
-		t.Fatalf("inherited base URL = %q", resolved.OpenAIBaseURL)
+	if resolved.BaseURL != "" {
+		t.Fatalf("inherited base URL = %q", resolved.BaseURL)
 	}
 }
 
 func TestMergeModelProfilesResetsInheritedRoutingDefaultsWhenProviderChanges(t *testing.T) {
 	for _, parent := range []ModelProfileSettings{
 		{
-			ID: "default", OpenAIBaseURL: "https://api.deepseek.com", OpenAIModel: "deepseek-chat",
+			ID: "default", BaseURL: "https://api.deepseek.com", Model: "deepseek-chat",
 		},
 		{
 			ID: "default", Provider: string(providers.ProviderDeepSeek), Protocol: string(providers.ProtocolOpenAIChatCompletions),
-			OpenAIBaseURL: "https://api.deepseek.com", OpenAIModel: "deepseek-chat",
+			BaseURL: "https://api.deepseek.com", Model: "deepseek-chat",
 		},
 	} {
 		profiles := mergeModelProfiles(
 			[]ModelProfileSettings{parent},
-			[]ModelProfileSettings{{ID: "default", Provider: string(providers.ProviderOpenAI), OpenAIModel: "gpt-5"}},
+			[]ModelProfileSettings{{ID: "default", Provider: string(providers.ProviderOpenAI), Model: "gpt-5"}},
 		)
 		resolved := ResolveAgentModel(&Config{ModelProfiles: profiles}, AgentKindIDE)
-		if resolved.Provider != string(providers.ProviderOpenAI) || resolved.Protocol != string(providers.ProtocolOpenAIResponses) {
+		if resolved.Provider != string(providers.ProviderOpenAI) || resolved.Protocol != "" {
 			t.Fatalf("merged routing = %q/%q", resolved.Provider, resolved.Protocol)
 		}
-		if resolved.OpenAIBaseURL != "https://api.openai.com/v1" {
-			t.Fatalf("provider change retained inherited endpoint %q", resolved.OpenAIBaseURL)
+		if resolved.BaseURL != "" {
+			t.Fatalf("provider change retained inherited endpoint %q", resolved.BaseURL)
 		}
 	}
 }
@@ -268,31 +268,31 @@ func TestResolveAgentModelDoesNotReuseLegacyEndpointForExplicitCompatibleProvide
 		OpenAIBaseURL: "https://api.deepseek.com",
 		OpenAIModel:   "deepseek-chat",
 		ModelProfiles: []ModelProfileSettings{{
-			ID:          "default",
-			Provider:    string(providers.ProviderOpenAICompatible),
-			OpenAIModel: "custom-model",
+			ID:       "default",
+			Provider: string(providers.ProviderOpenAICompatible),
+			Model:    "custom-model",
 		}},
 	}, AgentKindIDE)
 	if resolved.Provider != string(providers.ProviderOpenAICompatible) ||
-		resolved.Protocol != string(providers.ProtocolOpenAIChatCompletions) {
+		resolved.Protocol != "" {
 		t.Fatalf("routing = %q/%q", resolved.Provider, resolved.Protocol)
 	}
-	if resolved.OpenAIBaseURL != "" {
-		t.Fatalf("compatible provider inherited legacy endpoint %q", resolved.OpenAIBaseURL)
+	if resolved.BaseURL != "" {
+		t.Fatalf("compatible provider inherited legacy endpoint %q", resolved.BaseURL)
 	}
 }
 
 func TestResolveAgentModelClearsInheritedDefaultProfileAlias(t *testing.T) {
 	profiles := mergeModelProfiles(
-		[]ModelProfileSettings{{ID: "default", Name: "DeepSeek 写作", OpenAIModel: "deepseek-v4-pro"}},
-		[]ModelProfileSettings{{ID: "default", OpenAIModel: "deepseek-v4-pro"}},
+		[]ModelProfileSettings{{ID: "default", Name: "DeepSeek 写作", Model: "deepseek-v4-pro"}},
+		[]ModelProfileSettings{{ID: "default", Model: "deepseek-v4-pro"}},
 	)
 	if len(profiles) != 1 || profiles[0].Name != "" {
 		t.Fatalf("default profile alias should be cleared: %#v", profiles)
 	}
 
 	resolved := ResolveAgentModel(&Config{ModelProfiles: profiles}, AgentKindIDE)
-	if resolved.ProfileID != "default" || resolved.OpenAIModel != "deepseek-v4-pro" {
+	if resolved.ProfileID != "default" || resolved.Model != "deepseek-v4-pro" {
 		t.Fatalf("default profile should still resolve after alias is cleared: %#v", resolved)
 	}
 }
@@ -325,17 +325,17 @@ func TestSanitizeModelProfilesCapsContextWindow(t *testing.T) {
 func TestSanitizeModelProfilesDerivesIDFromModelName(t *testing.T) {
 	settings := sanitizeEditableSettings(Settings{
 		ModelProfiles: []ModelProfileSettings{
-			{OpenAIModel: " gpt-4.1 ", Name: " Fast model "},
+			{Model: " gpt-4.1 ", Name: " Fast model "},
 			{ID: " legacy "},
 		},
 	})
-	if settings.ModelProfiles[0].ID != "gpt-4.1" || settings.ModelProfiles[0].OpenAIModel != "gpt-4.1" {
+	if settings.ModelProfiles[0].ID != "gpt-4.1" || settings.ModelProfiles[0].Model != "gpt-4.1" {
 		t.Fatalf("model-name profile not normalized: %#v", settings.ModelProfiles[0])
 	}
 	if settings.ModelProfiles[0].Name != "Fast model" {
 		t.Fatalf("model alias not normalized: %#v", settings.ModelProfiles[0])
 	}
-	if settings.ModelProfiles[1].ID != "legacy" || settings.ModelProfiles[1].OpenAIModel != "legacy" {
+	if settings.ModelProfiles[1].ID != "legacy" || settings.ModelProfiles[1].Model != "legacy" {
 		t.Fatalf("legacy id profile should keep working: %#v", settings.ModelProfiles[1])
 	}
 }
@@ -346,8 +346,8 @@ func TestSanitizeModelProfilesKeepsIncompleteDraft(t *testing.T) {
 		ModelProfiles: []ModelProfileSettings{
 			{
 				Name:                "  Draft provider  ",
-				OpenAIAPIKey:        "draft-key",
-				OpenAIBaseURL:       " https://api.example.com/v1 ",
+				APIKey:              "draft-key",
+				BaseURL:             " https://api.example.com/v1 ",
 				ContextWindowTokens: &contextWindow,
 			},
 		},
@@ -357,10 +357,10 @@ func TestSanitizeModelProfilesKeepsIncompleteDraft(t *testing.T) {
 		t.Fatalf("sanitized model profiles length = %d, want 1", len(settings.ModelProfiles))
 	}
 	draft := settings.ModelProfiles[0]
-	if draft.ID != "" || draft.OpenAIModel != "" {
+	if draft.ID != "" || draft.Model != "" {
 		t.Fatalf("incomplete draft must stay ineligible for model resolution: %#v", draft)
 	}
-	if draft.Name != "Draft provider" || draft.OpenAIBaseURL != "https://api.example.com/v1" {
+	if draft.Name != "Draft provider" || draft.BaseURL != "https://api.example.com/v1" {
 		t.Fatalf("incomplete draft fields were not normalized: %#v", draft)
 	}
 	if draft.ContextWindowTokens == nil || *draft.ContextWindowTokens != DefaultContextWindowTokens {
@@ -374,8 +374,8 @@ func TestWriteSettingsFileKeepsIncompleteModelDraft(t *testing.T) {
 	if err := WriteSettingsFile(path, Settings{
 		ModelProfiles: []ModelProfileSettings{{
 			Name:                "Draft provider",
-			OpenAIAPIKey:        "draft-key",
-			OpenAIBaseURL:       "https://api.example.com/v1",
+			APIKey:              "draft-key",
+			BaseURL:             "https://api.example.com/v1",
 			ContextWindowTokens: &contextWindow,
 		}},
 	}); err != nil {
@@ -390,10 +390,10 @@ func TestWriteSettingsFileKeepsIncompleteModelDraft(t *testing.T) {
 		t.Fatalf("saved model profiles length = %d, want 1", len(saved.ModelProfiles))
 	}
 	draft := saved.ModelProfiles[0]
-	if draft.ID != "" || draft.OpenAIModel != "" {
+	if draft.ID != "" || draft.Model != "" {
 		t.Fatalf("incomplete draft must remain ineligible after a write/read round trip: %#v", draft)
 	}
-	if draft.Name != "Draft provider" || draft.OpenAIAPIKey != "draft-key" || draft.OpenAIBaseURL != "https://api.example.com/v1" {
+	if draft.Name != "Draft provider" || draft.APIKey != "draft-key" || draft.BaseURL != "https://api.example.com/v1" {
 		t.Fatalf("incomplete draft was not preserved after a write/read round trip: %#v", draft)
 	}
 }
@@ -407,7 +407,7 @@ func TestSanitizeDefaultModelProfileCanInheritModelFields(t *testing.T) {
 	if len(settings.ModelProfiles) != 1 {
 		t.Fatalf("sanitized model profiles length = %d, want 1", len(settings.ModelProfiles))
 	}
-	if settings.ModelProfiles[0].OpenAIModel != "" {
+	if settings.ModelProfiles[0].Model != "" {
 		t.Fatalf("default profile without model should keep inheriting model fields: %#v", settings.ModelProfiles[0])
 	}
 }
@@ -423,9 +423,9 @@ func TestSanitizeSettingsClearsLegacyModelFieldsWhenDefaultProfileExists(t *test
 			{
 				ID:                  "default",
 				Name:                "Main",
-				OpenAIAPIKey:        "profile-key",
-				OpenAIBaseURL:       "https://api.openai.com/v1",
-				OpenAIModel:         "gpt-4.1",
+				APIKey:              "profile-key",
+				BaseURL:             "https://api.openai.com/v1",
+				Model:               "gpt-4.1",
 				ContextWindowTokens: &contextWindow,
 			},
 		},

@@ -50,6 +50,7 @@ export interface ProjectExplorerTreeActions {
 interface ProjectExplorerRenderContextValue {
   actions: ProjectExplorerTreeActions
   extensions: ProjectExplorerExtensions
+  nodesById: ReadonlyMap<string, ProjectFileExplorerNode>
   onLoadMore: (path: string) => void | Promise<void>
 }
 
@@ -59,14 +60,17 @@ export function ExplorerRow({ node, attrs, innerRef, children }: RowRendererProp
   return (
     <div
       {...attrs}
+      style={{ ...attrs.style, minWidth: 0 }}
       ref={innerRef}
       onFocus={(event) => event.stopPropagation()}
       onClick={node.handleClick}
       className={cn(
-        'group/tree-row flex cursor-default items-center rounded-sm outline-none',
+        'group/tree-row flex min-w-0 cursor-default items-center overflow-hidden rounded-sm outline-none',
         node.isSelected && 'bg-[var(--nova-active)] text-[var(--nova-text)]',
         !node.isSelected && 'hover:bg-[var(--nova-hover)]',
         node.isFocused && 'ring-1 ring-inset ring-[var(--nova-accent)]',
+        node.isDragging && 'opacity-40',
+        node.willReceiveDrop && 'bg-[var(--nova-active)] ring-1 ring-inset ring-[var(--nova-accent)]',
       )}
     >
       {children}
@@ -109,10 +113,14 @@ export function ExplorerNode({ node, style, dragHandle }: NodeRendererProps<Proj
           ref={dragHandle}
           style={style}
           className={cn(
-            'flex h-full min-w-0 flex-1 items-center gap-1 pr-1 text-xs',
+            'flex h-full min-w-0 flex-1 items-center gap-1 overflow-hidden pr-1 text-xs',
             (data.ignored || cut) && 'opacity-55',
           )}
           title={data.draft ? undefined : data.path}
+          onPointerDown={(event) => {
+            if (event.button !== 0 || event.metaKey || event.ctrlKey || event.shiftKey || node.isSelected) return
+            node.select()
+          }}
           onContextMenu={() => {
             if (!node.isSelected) node.select()
             node.focus()
@@ -137,7 +145,7 @@ export function ExplorerNode({ node, style, dragHandle }: NodeRendererProps<Proj
             : <FileText className="size-4 shrink-0 text-[var(--nova-tree-icon)]" />}
           {node.isEditing
             ? <RenameInput node={node} onCancelDraft={actions.cancelDraft} />
-            : <span className="min-w-0 flex-1 truncate">{data.name}</span>}
+            : <ExplorerNodeName name={data.name} type={data.type} />}
           {!data.draft ? extensions.renderNodeMeta?.(data) : null}
           {data.symlink ? <span className="shrink-0 text-[9px] text-[var(--nova-text-faint)]">↗</span> : null}
           {!data.draft ? <NodeActionDropdown node={node} actionPaths={actionPaths} actions={actions} /> : null}
@@ -149,6 +157,20 @@ export function ExplorerNode({ node, style, dragHandle }: NodeRendererProps<Proj
         </ContextMenuContent>
       ) : null}
     </ContextMenu>
+  )
+}
+
+function ExplorerNodeName({ name, type }: { name: string; type: 'file' | 'dir' }) {
+  if (type === 'dir') return <span className="min-w-0 flex-1 truncate">{name}</span>
+  const extensionIndex = name.lastIndexOf('.')
+  const hasExtension = extensionIndex > 0 && extensionIndex < name.length - 1
+  const stem = hasExtension ? name.slice(0, extensionIndex) : name
+  const extension = hasExtension ? name.slice(extensionIndex) : ''
+  return (
+    <span className="flex min-w-0 flex-1" aria-label={name}>
+      <span className="truncate">{stem}</span>
+      {extension ? <span className="shrink-0">{extension}</span> : null}
+    </span>
   )
 }
 

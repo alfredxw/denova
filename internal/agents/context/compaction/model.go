@@ -29,7 +29,10 @@ func GenerateSummary(
 	})
 	defer func() { finishTrace(runErr) }()
 
-	modelCfg := modelio.ConfigForAgent(cfg, config.AgentKindContextCompaction)
+	modelCfg, err := modelio.ConfigForAgent(cfg, config.AgentKindContextCompaction)
+	if err != nil {
+		return "", fmt.Errorf("resolve context compaction model configuration: %w", err)
+	}
 	chatModel, err := modelio.NewChatModel(traceCtx, modelCfg)
 	if err != nil {
 		return "", fmt.Errorf("创建上下文压缩模型失败: %w", err)

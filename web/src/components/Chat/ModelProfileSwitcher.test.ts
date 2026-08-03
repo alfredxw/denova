@@ -6,10 +6,10 @@ describe('ModelProfileSwitcher profile options', () => {
   it('uses default as the stable id when the first model has no alias', () => {
     const options = buildModelProfileOptions(settingsSnapshot({
       effective: {
-        model_profiles: [{ id: 'default', openai_model: 'deepseek-v4-pro' }],
+        model_profiles: [{ id: 'default', model: 'deepseek-v4-pro' }],
       },
       workspace: {
-        model_profiles: [{ id: 'default', openai_model: 'deepseek-v4-pro' }],
+        model_profiles: [{ id: 'default', model: 'deepseek-v4-pro' }],
       },
     }), t)
 
@@ -20,7 +20,7 @@ describe('ModelProfileSwitcher profile options', () => {
   it('does not expose a removed profile in the selectable catalog', () => {
     const settings = settingsSnapshot({
       effective: {
-        model_profiles: [{ id: 'default', openai_model: 'deepseek-v4-pro' }],
+        model_profiles: [{ id: 'default', model: 'deepseek-v4-pro' }],
         agent_models: { default: { profile_id: 'DeepSeek 写作' } },
       },
     })

@@ -22,6 +22,7 @@ import (
 	imageapp "denova/internal/app/image"
 	interactiveapp "denova/internal/app/interactive"
 	loreapp "denova/internal/app/lore"
+	modelsapp "denova/internal/app/models"
 	projectfilesapp "denova/internal/app/projectfiles"
 	resourcecatalogapp "denova/internal/app/resourcecatalog"
 	settingsapp "denova/internal/app/settings"
@@ -86,6 +87,7 @@ type App struct {
 	bookApp         *bookapp.Service
 	resourceCatalog *resourcecatalogapp.Service
 	settingsApp     *settingsapp.Service
+	modelsApp       *modelsapp.Service
 	imageApp        *imageapp.Service
 	projectFiles    *projectfilesapp.Service
 	servicesOnce    sync.Once
@@ -223,6 +225,7 @@ func (a *App) ensureServices() {
 		a.bookApp = bookapp.NewService(dataDir, a.projectRegistry, a.bookMetaStore)
 		a.resourceCatalog = resourcecatalogapp.NewService(dataDir, resourceCatalogHost{app: a})
 		a.settingsApp = settingsapp.NewService(settingsHost{app: a})
+		a.modelsApp = modelsapp.NewService(modelHost{app: a})
 		a.imageApp = imageapp.NewService(imageHost{app: a})
 		a.loreApp = loreapp.NewService(loreHost{app: a}, a.imageApp)
 		a.projectFiles = projectfilesapp.NewServiceWithBookVersioning(a.projectRegistry, a)
@@ -306,6 +309,13 @@ func (a *App) ResourceCatalog() *resourcecatalogapp.Service {
 func (a *App) SettingsService() *settingsapp.Service {
 	a.ensureServices()
 	return a.settingsApp
+}
+
+// Models exposes provider discovery and connection validation shared by all
+// writing and game model configuration surfaces.
+func (a *App) Models() *modelsapp.Service {
+	a.ensureServices()
+	return a.modelsApp
 }
 
 func (a *App) applyRuntime(runtime *runtimeState) {

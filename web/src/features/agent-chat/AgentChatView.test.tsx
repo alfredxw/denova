@@ -3,6 +3,7 @@ import userEvent from '@testing-library/user-event'
 import type { ReactNode } from 'react'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { TooltipProvider } from '@/components/ui/tooltip'
+import type { WorkspaceChangeMetadata } from '@/features/changes/types'
 import {
   addAgentChatProject,
   createAgentChatSession,
@@ -33,6 +34,7 @@ vi.mock('./AgentChatConversationTab', () => ({
     draft,
     reviewFeedback,
     onReviewFeedbackOpen,
+    onWorkspaceChanged,
   }: {
     workspace: string
     sessionId: string
@@ -46,6 +48,7 @@ vi.mock('./AgentChatConversationTab', () => ({
       }>
     }>
     onReviewFeedbackOpen?: (selection: unknown, comment: unknown) => void
+    onWorkspaceChanged?: (workspace: string, paths: string[], metadata: WorkspaceChangeMetadata) => void
   }) => {
     const selection = reviewFeedback?.[0]
     const comment = selection?.comments[0]
@@ -57,6 +60,12 @@ vi.mock('./AgentChatConversationTab', () => ({
             open pending document feedback
           </button>
         ) : null}
+        <button type="button" onClick={() => onWorkspaceChanged?.(workspace, ['src/main.ts'], { impact: 'content', origin: 'external' })}>
+          simulate external content
+        </button>
+        <button type="button" onClick={() => onWorkspaceChanged?.(workspace, ['src/new.ts'], { impact: 'structure', origin: 'external' })}>
+          simulate external structure
+        </button>
       </div>
     )
   },
@@ -77,8 +86,23 @@ vi.mock('./terminal/TerminalTabView', () => ({
 }))
 
 vi.mock('@/features/files/FilesTab', () => ({
-  FilesTab: ({ selectedPath }: { selectedPath: string | null }) => (
-    <div data-testid="project-files-tab">{selectedPath || 'no-selection'}</div>
+  FilesTab: ({ selectedPath, workspace, editorRefreshSignal, treeRefreshSignal, onWorkspaceChanged }: {
+    selectedPath: string | null
+    workspace: string
+    editorRefreshSignal: number
+    treeRefreshSignal: number
+    onWorkspaceChanged?: (workspace: string, paths: string[], metadata: WorkspaceChangeMetadata) => void
+  }) => (
+    <div data-testid="project-files-tab">
+      {selectedPath || 'no-selection'}
+      <output data-testid="project-files-refresh">editor:{editorRefreshSignal}|tree:{treeRefreshSignal}</output>
+      <button type="button" onClick={() => onWorkspaceChanged?.(workspace, ['src/main.ts'], { impact: 'content', origin: 'files-tab' })}>
+        simulate local save
+      </button>
+      <button type="button" onClick={() => onWorkspaceChanged?.(workspace, ['src/new.ts'], { impact: 'structure', origin: 'files-tab' })}>
+        simulate local file operation
+      </button>
+    </div>
   ),
 }))
 
@@ -534,6 +558,40 @@ describe('AgentChatView project workbenches', () => {
     expect(readStoredWorkbenchState().projects['project-a'].tabs).toEqual(expect.arrayContaining([
       expect.objectContaining({ kind: 'files', group: 'secondary' }),
     ]))
+  })
+
+  it('separates editor and tree invalidation without echoing Files-tab mutations', async () => {
+    const user = userEvent.setup()
+    const general = project('/books/a', 'Project A', 'session-a', 'Chat A')
+    general.type = 'general'
+    vi.mocked(getAgentChatProjects).mockResolvedValue([general])
+    persistWorkbenchState({
+      activeProjectId: 'project-a',
+      projects: {
+        'project-a': {
+          tabs: [agentTabForProject('agent-tab', 'project-a', '/books/a', 'session-a')],
+          activeTabIds: { primary: 'agent-tab', secondary: null },
+          focusedGroup: 'primary',
+          secondaryVisible: false,
+        },
+      },
+    })
+
+    renderView(<AgentChatView composerSettings={{} as never} tellers={[]} imagePresets={[]} renderPage={() => null} renderReview={() => null} />)
+    await user.click(await screen.findByRole('button', { name: '显示右侧工作区' }))
+    await user.click(await screen.findByRole('menuitem', { name: '文件' }))
+
+    const files = await screen.findByTestId('project-files-tab')
+    expect(screen.getByTestId('project-files-refresh')).toHaveTextContent('editor:0|tree:0')
+    await user.click(within(files).getByRole('button', { name: 'simulate local save' }))
+    await user.click(within(files).getByRole('button', { name: 'simulate local file operation' }))
+    expect(screen.getByTestId('project-files-refresh')).toHaveTextContent('editor:0|tree:0')
+
+    const conversation = screen.getByTestId('conversation:/books/a:session-a')
+    await user.click(within(conversation).getByRole('button', { name: 'simulate external content' }))
+    await waitFor(() => expect(screen.getByTestId('project-files-refresh')).toHaveTextContent('editor:1|tree:0'))
+    await user.click(within(conversation).getByRole('button', { name: 'simulate external structure' }))
+    await waitFor(() => expect(screen.getByTestId('project-files-refresh')).toHaveTextContent('editor:2|tree:1'))
   })
 
   it('routes a reviewed source file into the reusable Files tab in the same pane', async () => {

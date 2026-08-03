@@ -92,4 +92,26 @@ describe('ProjectSourceEditor', () => {
       'file:///denova-project/project%20one/src/main%20file.ts',
     )
   })
+
+  it('ignores Monaco model flushes while forwarding real user edits', () => {
+    const onChange = vi.fn()
+    render(
+      <ProjectSourceEditor
+        projectId="project one"
+        document={document}
+        value="before\n"
+        wordWrap
+        onWordWrapToggle={vi.fn()}
+        onChange={onChange}
+        onSave={vi.fn()}
+      />,
+    )
+
+    const handleChange = editorProps.at(-1)?.onChange as (value: string, event: { isFlush: boolean }) => void
+    handleChange('hydrated by Monaco\n', { isFlush: true })
+    expect(onChange).not.toHaveBeenCalled()
+
+    handleChange('typed by the user\n', { isFlush: false })
+    expect(onChange).toHaveBeenCalledWith('typed by the user\n')
+  })
 })

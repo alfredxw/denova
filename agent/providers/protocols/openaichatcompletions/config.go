@@ -8,10 +8,10 @@ import (
 	"strings"
 
 	sdk "github.com/openai/openai-go/v3"
-	"github.com/openai/openai-go/v3/option"
 
 	agent "github.com/alfredxw/denova/agent"
 	"github.com/alfredxw/denova/agent/providers"
+	"github.com/alfredxw/denova/agent/providers/protocols/internal/openaiclient"
 	"github.com/alfredxw/denova/agent/providers/protocols/openaichatcompletions/internal/compat"
 )
 
@@ -26,10 +26,11 @@ func (*Adapter) ID() providers.ProtocolID { return providers.ProtocolOpenAIChatC
 
 // ChatModel implements agent.ToolCallingChatModel against Chat Completions.
 type ChatModel struct {
-	client      sdk.Client
-	config      providers.ModelConfig
-	extraFields map[string]any
-	options     *agent.Options
+	client        sdk.Client
+	config        providers.ModelConfig
+	compatibility Compatibility
+	extraFields   map[string]any
+	options       *agent.Options
 }
 
 var (
@@ -57,31 +58,31 @@ func (*Adapter) New(_ context.Context, config providers.ModelConfig) (agent.Tool
 	if err != nil {
 		return nil, fmt.Errorf("openai chat completions config: %w", err)
 	}
+	compatibility, err := resolveCompatibility(cloned)
+	if err != nil {
+		return nil, err
+	}
 	compatConfig := compat.Config{
-		Provider:      cloned.Provider,
-		BaseURL:       cloned.BaseURL,
-		Model:         cloned.Model,
-		ThinkingLevel: cloned.ThinkingLevel,
+		Model:                 cloned.Model,
+		RepairTextToolCalls:   compatibility.RepairTextToolCalls,
+		RepairInlineThinking:  compatibility.RepairInlineThinking,
+		RequestReasoningSplit: compatibility.RequestReasoningSplit,
 	}
 	cloned.HTTPClient = compat.WrapHTTPClient(cloned.HTTPClient)
 
-	clientOptions := []option.RequestOption{option.WithAPIKey(cloned.APIKey)}
-	if cloned.BaseURL != "" {
-		clientOptions = append(clientOptions, option.WithBaseURL(cloned.BaseURL))
+	extraFields := make(map[string]any, len(compatibility.ExtraBody)+1)
+	for key, value := range compatibility.ExtraBody {
+		extraFields[key] = value
 	}
-	if cloned.HTTPClient != nil {
-		clientOptions = append(clientOptions, option.WithHTTPClient(cloned.HTTPClient))
-	}
-
-	extraFields := compat.ExtraRequestFields(compatConfig)
-	for key, value := range compat.ThinkingExtraFields(compatConfig) {
+	for key, value := range compat.ExtraRequestFields(compatConfig) {
 		extraFields[key] = value
 	}
 	model := &ChatModel{
-		client:      sdk.NewClient(clientOptions...),
-		config:      cloned,
-		extraFields: extraFields,
-		options:     &agent.Options{},
+		client:        sdk.NewClient(openaiclient.Options(cloned)...),
+		config:        cloned,
+		compatibility: compatibility,
+		extraFields:   extraFields,
+		options:       &agent.Options{},
 	}
 	return compat.Wrap(model, compatConfig), nil
 }

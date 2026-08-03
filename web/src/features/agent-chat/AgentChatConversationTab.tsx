@@ -2,6 +2,11 @@ import { memo, useCallback, useEffect, useMemo, useRef } from 'react'
 import { AgentPanel, type WritingComposerSettingsController } from '@/components/Chat/AgentPanel'
 import type { ImagePreset, Teller } from '@/features/interactive/types'
 import type { ReviewFeedbackBatch, ReviewFeedbackComment, ReviewFeedbackSelection } from '@/features/changes/agent/ReviewFeedbackTray'
+import {
+  workspaceChangeImpact,
+  workspaceChangePaths,
+  type WorkspaceChangeMetadata,
+} from '@/features/changes/types'
 import { useAgentChat } from '@/hooks/useAgentChat'
 import { createProjectAgentChatClient } from '@/hooks/agent-chat-client'
 
@@ -22,7 +27,7 @@ interface AgentChatConversationTabProps {
   onReviewFeedbackSubmitted?: (feedback: ReviewFeedbackBatch) => void
   onReviewFeedbackSubmissionFailed?: (feedback: ReviewFeedbackBatch) => void
   onOpenChangeReview?: (reviewThreadID: string, groupID: string) => void
-  onWorkspaceChanged?: (workspace: string, paths: string[]) => void | Promise<void>
+  onWorkspaceChanged?: (workspace: string, paths: string[], metadata: WorkspaceChangeMetadata) => void | Promise<void>
   onRunningChange?: (projectID: string, sessionId: string, running: boolean | null) => void
   onDraftCommitted?: (message: string) => void
 }
@@ -58,9 +63,14 @@ function AgentChatConversationTabComponent({
   const chat = useAgentChat({
     workspace,
     client,
-    onAgentFileChange: () => onWorkspaceChanged?.(workspace, []),
-    onWorkspaceChange: (event) =>
-      onWorkspaceChanged?.(workspace, event.affected_paths || event.paths || event.changes?.map((change) => change.path) || (event.path ? [event.path] : [])),
+    onAgentFileChange: () => onWorkspaceChanged?.(workspace, [], {
+      impact: 'structure',
+      origin: 'external',
+    }),
+    onWorkspaceChange: (event) => onWorkspaceChanged?.(workspace, workspaceChangePaths(event), {
+      impact: workspaceChangeImpact(event),
+      origin: 'external',
+    }),
   })
   const initializedRef = useRef(false)
   const draftCommittedRef = useRef(false)
@@ -167,7 +177,10 @@ function AgentChatConversationTabComponent({
       onApproveProposedPlan={chat.approveProposedPlan}
       onExitPlanMode={chat.exitPlanMode}
       onOpenChangeReview={onOpenChangeReview}
-      onWorkspaceChanged={(paths) => onWorkspaceChanged?.(workspace, paths)}
+      onWorkspaceChanged={(paths) => onWorkspaceChanged?.(workspace, paths, {
+        impact: 'structure',
+        origin: 'external',
+      })}
       onClose={() => {}}
     />
   )

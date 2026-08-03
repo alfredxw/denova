@@ -1,8 +1,9 @@
 import { fireEvent, render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { http, HttpResponse } from 'msw'
-import { useState, type ReactNode } from 'react'
+import { useEffect, useState, type ReactNode } from 'react'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
+import type { WorkspaceChangeMetadata } from '@/features/changes/types'
 import { server } from '@/test/msw/server'
 import { FilesTab } from './FilesTab'
 
@@ -10,10 +11,13 @@ vi.mock('@monaco-editor/react', () => ({
   DiffEditor: () => null,
   Editor: ({ defaultValue, onChange, options }: {
     defaultValue: string
-    onChange: (value: string) => void
+    onChange: (value: string, event?: { isFlush: boolean }) => void
     options?: { ariaLabel?: string }
   }) => {
     const [value, setValue] = useState(defaultValue)
+    useEffect(() => {
+      onChange(defaultValue, { isFlush: true })
+    }, [defaultValue, onChange])
     return (
       <textarea
         aria-label={options?.ariaLabel}
@@ -45,9 +49,15 @@ vi.mock('@/components/layout/adaptive-surface', () => ({
 function FilesHarness({
   initialPath = null,
   onWorkspaceChanged = vi.fn(),
+  autoSaveEnabled = false,
+  editorRefreshSignal = 0,
+  treeRefreshSignal = 0,
 }: {
   initialPath?: string | null
-  onWorkspaceChanged?: (workspace: string, paths: string[]) => void
+  onWorkspaceChanged?: (workspace: string, paths: string[], metadata: WorkspaceChangeMetadata) => void
+  autoSaveEnabled?: boolean
+  editorRefreshSignal?: number
+  treeRefreshSignal?: number
 }) {
   const [selectedPath, setSelectedPath] = useState<string | null>(initialPath)
   return (
@@ -55,8 +65,10 @@ function FilesHarness({
       projectId="project-one"
       workspace="/projects/one"
       selectedPath={selectedPath}
-      autoSaveEnabled={false}
+      autoSaveEnabled={autoSaveEnabled}
       autoSaveDelayMs={50}
+      editorRefreshSignal={editorRefreshSignal}
+      treeRefreshSignal={treeRefreshSignal}
       onSelectedPathChange={setSelectedPath}
       onWorkspaceChanged={onWorkspaceChanged}
     />
@@ -106,7 +118,7 @@ describe('FilesTab', () => {
 
     render(<FilesHarness onWorkspaceChanged={onWorkspaceChanged} />)
     await user.click(await screen.findByRole('button', { name: '展开 src' }))
-    await user.click(await screen.findByText('main.ts'))
+    await user.click(await screen.findByLabelText('main.ts'))
 
     const editor = await screen.findByRole('textbox', { name: 'src/main.ts 的源码编辑器' })
     fireEvent.change(editor, { target: { value: 'after\n' } })
@@ -117,7 +129,10 @@ describe('FilesTab', () => {
       content: 'after\n',
       base_revision: 'r1',
     }))
-    await waitFor(() => expect(onWorkspaceChanged).toHaveBeenCalledWith('/projects/one', ['src/main.ts']))
+    await waitFor(() => expect(onWorkspaceChanged).toHaveBeenCalledWith('/projects/one', ['src/main.ts'], {
+      impact: 'content',
+      origin: 'files-tab',
+    }))
   })
 
   it('rebases a stale save over the latest external content before retrying', async () => {
@@ -208,5 +223,88 @@ describe('FilesTab', () => {
     await user.click(wrap)
     expect(screen.getByRole('button', { name: '启用自动换行' })).toHaveAttribute('aria-pressed', 'false')
     expect(JSON.parse(window.localStorage.getItem('nova.project-file-editor.preferences.v1') ?? '{}')).toEqual({ wordWrap: false })
+  })
+
+  it('reloads external content without resolving loaded directories again', async () => {
+    let resolveRequests = 0
+    let fileReads = 0
+    server.use(
+      http.post('/api/projects/project-one/files/resolve', async ({ request }) => {
+        resolveRequests += 1
+        const body = await request.json() as { targets: Array<{ path: string }> }
+        return HttpResponse.json({
+          project_id: 'project-one',
+          results: body.targets.map((target) => ({
+            path: target.path,
+            ok: true,
+            directories: [{
+              path: target.path,
+              revision: `tree-${resolveRequests}-${target.path || 'root'}`,
+              entries: target.path === '' ? [{ name: 'main.ts', path: 'main.ts', type: 'file' }] : [],
+              children_state: 'complete',
+            }],
+          })),
+        })
+      }),
+      http.get('/api/projects/project-one/files/file', () => {
+        fileReads += 1
+        return HttpResponse.json({
+          project_id: 'project-one',
+          path: 'main.ts',
+          content: `revision ${fileReads}`,
+          revision: `r${fileReads}`,
+          kind: 'text',
+          mime_type: 'text/typescript',
+          size: 10,
+          editable: true,
+        })
+      }),
+    )
+
+    const { rerender } = render(<FilesHarness initialPath="main.ts" />)
+    await waitFor(() => expect(fileReads).toBe(1))
+    await waitFor(() => expect(resolveRequests).toBe(1))
+
+    rerender(<FilesHarness initialPath="main.ts" editorRefreshSignal={1} />)
+    await waitFor(() => expect(fileReads).toBe(2))
+    expect(resolveRequests).toBe(1)
+
+    rerender(<FilesHarness initialPath="main.ts" editorRefreshSignal={1} treeRefreshSignal={1} />)
+    await waitFor(() => expect(resolveRequests).toBe(2))
+  })
+
+  it('does not autosave when a file is only opened and Monaco hydrates its model', async () => {
+    let saves = 0
+    server.use(
+      http.post('/api/projects/project-one/files/resolve', () => HttpResponse.json({
+        project_id: 'project-one',
+        results: [{
+          path: '',
+          ok: true,
+          directories: [{ path: '', revision: 'tree-root', entries: [], children_state: 'complete' }],
+        }],
+      })),
+      http.get('/api/projects/project-one/files/file', () => HttpResponse.json({
+        project_id: 'project-one',
+        path: 'main.ts',
+        content: 'unchanged\n',
+        revision: 'r1',
+        kind: 'text',
+        mime_type: 'text/typescript',
+        size: 10,
+        editable: true,
+      })),
+      http.put('/api/projects/project-one/files/file', () => {
+        saves += 1
+        return HttpResponse.json({ project_id: 'project-one', path: 'main.ts', revision: 'r2', changed: false })
+      }),
+    )
+
+    render(<FilesHarness initialPath="main.ts" autoSaveEnabled />)
+    await screen.findByRole('textbox', { name: 'main.ts 的源码编辑器' })
+    await new Promise((resolve) => window.setTimeout(resolve, 100))
+
+    expect(saves).toBe(0)
+    expect(screen.getByRole('button', { name: '保存文件' })).toBeDisabled()
   })
 })

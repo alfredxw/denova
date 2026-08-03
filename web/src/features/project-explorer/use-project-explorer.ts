@@ -60,6 +60,7 @@ export function useProjectExplorer({
   const [loadingPaths, setLoadingPaths] = useState<ReadonlySet<string>>(() => new Set())
   const [error, setError] = useState<string | null>(null)
   const sourceVersionRef = useRef(0)
+  const selectionHintRef = useRef(selectedPath)
   const requestVersionsRef = useRef(new Map<string, number>())
   const loadingCountsRef = useRef(new Map<string, number>())
 
@@ -91,7 +92,11 @@ export function useProjectExplorer({
       const results = responses.flatMap((response) => response.results).filter((result) => (
         requestVersionsRef.current.get(result.path) === requestVersions.get(result.path)
       ))
-      setDirectories((current) => mergeProjectDirectories(current, results, options.appendPath))
+      setDirectories((current) => {
+        const next = mergeProjectDirectories(current, results, options.appendPath)
+        directoriesRef.current = next
+        return next
+      })
       const failed = results.find((result) => !result.ok && result.code !== 'cursor_stale')
       if (options.surfaceErrors !== false) setError(failed?.error ?? null)
       return results
@@ -114,9 +119,12 @@ export function useProjectExplorer({
 
   useEffect(() => {
     sourceVersionRef.current += 1
+    selectionHintRef.current = selectedPath
     requestVersionsRef.current.clear()
     loadingCountsRef.current.clear()
-    setDirectories(new Map())
+    const emptyDirectories = new Map<string, CachedProjectDirectory>()
+    directoriesRef.current = emptyDirectories
+    setDirectories(emptyDirectories)
     setLoadingPaths(new Set())
     setError(null)
     const targets = bootstrapTargets(expandedPaths, selectedPath)
@@ -135,6 +143,22 @@ export function useProjectExplorer({
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [projectId, resolveTargets])
 
+  useEffect(() => {
+    if (selectionHintRef.current === selectedPath) return
+    selectionHintRef.current = selectedPath
+    const targets = ancestorDirectories(selectedPath)
+      .filter((path) => !directoriesRef.current.has(path))
+      .map((path) => ({ path }))
+    if (targets.length === 0) return
+    void resolveTargets(targets, { surfaceErrors: false }).catch((cause) => {
+      console.error('[features/project-explorer/use-project-explorer.ts] resolving selected file ancestors failed', {
+        projectId,
+        selectedPath,
+        cause,
+      })
+    })
+  }, [projectId, resolveTargets, selectedPath])
+
   const loadDirectory = useCallback(async (path: string) => {
     if (directoriesRef.current.has(path)) return
     const results = await resolveTargets([{ path }])
@@ -146,7 +170,11 @@ export function useProjectExplorer({
     const results = await resolveTargets(targets)
     const failedPaths = new Set(results.filter((result) => !result.ok).map((result) => result.path))
     if (failedPaths.size > 0) {
-      setDirectories((current) => removeDirectoryBranches(current, [...failedPaths]))
+      setDirectories((current) => {
+        const next = removeDirectoryBranches(current, [...failedPaths])
+        directoriesRef.current = next
+        return next
+      })
     }
     const firstFailure = results.find((result) => !result.ok)
     if (firstFailure) throw new Error(firstFailure.error || 'Project directory refresh failed')
@@ -177,7 +205,11 @@ export function useProjectExplorer({
       // External writers may remove a loaded branch between refreshes. Its
       // authoritative parent remains usable, so evict the stale cache branch
       // without turning a successful project refresh into an operation error.
-      setDirectories((current) => removeDirectoryBranches(current, failedBranches))
+      setDirectories((current) => {
+        const next = removeDirectoryBranches(current, failedBranches)
+        directoriesRef.current = next
+        return next
+      })
     }
     const root = results.find((result) => result.path === '')
     setError(root && !root.ok ? root.error ?? null : null)
@@ -192,15 +224,29 @@ export function useProjectExplorer({
     const [result] = await applyProjectFileOperations(projectId, [operation])
     if (!result?.ok) throw new Error(result?.error || 'Project file operation failed')
     if (evictedBranches.length > 0) {
-      setDirectories((current) => removeDirectoryBranches(current, evictedBranches))
+      setDirectories((current) => {
+        const next = removeDirectoryBranches(current, evictedBranches)
+        directoriesRef.current = next
+        return next
+      })
     }
     await refreshDirectories(affectedParents)
     return result.path || operation.path
   }, [projectId, refreshDirectories])
 
   const createItem = useCallback(async (path: string, type: ProjectFileEntryType) => {
-    await applyOperation({ kind: 'create', path, type }, [parentPath(path)])
-  }, [applyOperation])
+    const hierarchy = directoryHierarchy(parentPath(path))
+    const refreshParent = hierarchy.findLast((candidate) => directoriesRef.current.has(candidate)) ?? ''
+    await applyOperation({ kind: 'create', path, type }, [refreshParent])
+    const unresolvedParents = hierarchy.filter((candidate) => (
+      candidate !== refreshParent && !directoriesRef.current.has(candidate)
+    ))
+    if (unresolvedParents.length > 0) {
+      const results = await resolveTargets(unresolvedParents.map((candidate) => ({ path: candidate })))
+      const failure = results.find((result) => !result.ok)
+      if (failure) throw new Error(failure.error || 'Created project directory could not be resolved')
+    }
+  }, [applyOperation, resolveTargets])
   const deleteItem = useCallback(async (path: string) => {
     await applyOperation({ kind: 'delete', path }, [parentPath(path)], [path])
   }, [applyOperation])
@@ -247,6 +293,11 @@ function ancestorDirectories(path: string | null): string[] {
     ancestors.push(components.slice(0, index).join('/'))
   }
   return ancestors
+}
+
+function directoryHierarchy(path: string): string[] {
+  const components = path.split('/').filter(Boolean)
+  return ['', ...components.map((_, index) => components.slice(0, index + 1).join('/'))]
 }
 
 function deduplicateTargets(targets: readonly ProjectFileTreeResolveTarget[]) {

@@ -7,6 +7,7 @@ import (
 	"strings"
 
 	sdk "github.com/openai/openai-go/v3"
+	"github.com/openai/openai-go/v3/option"
 	"github.com/openai/openai-go/v3/responses"
 	"github.com/openai/openai-go/v3/shared"
 
@@ -14,10 +15,10 @@ import (
 	"github.com/alfredxw/denova/agent/providers"
 )
 
-func (model *ChatModel) request(input []*agent.Message, opts ...agent.ModelOption) (responses.ResponseNewParams, error) {
+func (model *ChatModel) request(input []*agent.Message, opts ...agent.ModelOption) (responses.ResponseNewParams, []option.RequestOption, error) {
 	items, err := requestInput(input, model.config)
 	if err != nil {
-		return responses.ResponseNewParams{}, err
+		return responses.ResponseNewParams{}, nil, err
 	}
 	common := agent.GetCommonOptions(model.options, opts...)
 	tools := common.Tools
@@ -26,11 +27,11 @@ func (model *ChatModel) request(input []*agent.Message, opts ...agent.ModelOptio
 	}
 	requestTools, err := requestTools(tools)
 	if err != nil {
-		return responses.ResponseNewParams{}, err
+		return responses.ResponseNewParams{}, nil, err
 	}
-	toolChoice, err := requestToolChoice(common.ToolChoice, len(requestTools))
+	toolChoice, err := requestToolChoice(common.ToolChoice, len(requestTools), *model.compatibility.SupportsToolChoice)
 	if err != nil {
-		return responses.ResponseNewParams{}, err
+		return responses.ResponseNewParams{}, nil, err
 	}
 
 	params := responses.ResponseNewParams{
@@ -38,10 +39,15 @@ func (model *ChatModel) request(input []*agent.Message, opts ...agent.ModelOptio
 		Model:      shared.ResponsesModel(model.config.Model),
 		Tools:      requestTools,
 		ToolChoice: toolChoice,
-		Store:      sdk.Bool(false),
-		Include: []responses.ResponseIncludable{
-			responses.ResponseIncludableReasoningEncryptedContent,
-		},
+	}
+	switch model.compatibility.Store {
+	case StoreModeFalse:
+		params.Store = sdk.Bool(false)
+	case StoreModeTrue:
+		params.Store = sdk.Bool(true)
+	}
+	if model.compatibility.IncludeEncryptedReasoning {
+		params.Include = []responses.ResponseIncludable{responses.ResponseIncludableReasoningEncryptedContent}
 	}
 	if model.config.Temperature != nil {
 		params.Temperature = sdk.Float(float64(*model.config.Temperature))
@@ -53,11 +59,11 @@ func (model *ChatModel) request(input []*agent.Message, opts ...agent.ModelOptio
 	if maxTokens != nil {
 		params.MaxOutputTokens = sdk.Int(int64(*maxTokens))
 	}
-	applyThinkingLevel(&params, model.config.ThinkingLevel)
+	applyThinkingLevel(&params, model.compatibility, model.config.ThinkingLevel)
 	if err := applyOutputFormat(&params, model.config.OutputFormat); err != nil {
-		return responses.ResponseNewParams{}, err
+		return responses.ResponseNewParams{}, nil, err
 	}
-	return params, nil
+	return params, model.requestOptions(), nil
 }
 
 func requestInput(messages []*agent.Message, config providers.ModelConfig) (responses.ResponseInputParam, error) {
@@ -230,10 +236,13 @@ func filterTools(tools []*agent.ToolInfo, names []string) []*agent.ToolInfo {
 	return result
 }
 
-func requestToolChoice(choice *agent.ToolChoice, toolCount int) (responses.ResponseNewParamsToolChoiceUnion, error) {
+func requestToolChoice(choice *agent.ToolChoice, toolCount int, supported bool) (responses.ResponseNewParamsToolChoiceUnion, error) {
 	result := responses.ResponseNewParamsToolChoiceUnion{}
 	if choice == nil {
 		return result, nil
+	}
+	if !supported {
+		return result, fmt.Errorf("openai responses: endpoint does not support tool_choice")
 	}
 	switch *choice {
 	case agent.ToolChoiceForbidden:
@@ -251,27 +260,33 @@ func requestToolChoice(choice *agent.ToolChoice, toolCount int) (responses.Respo
 	return result, nil
 }
 
-func applyThinkingLevel(params *responses.ResponseNewParams, level providers.ThinkingLevel) {
-	switch level {
-	case providers.ThinkingLevelDefault, "":
+func applyThinkingLevel(params *responses.ResponseNewParams, compatibility Compatibility, level providers.ThinkingLevel) {
+	effort, ok := compatibility.mappedEffort(level)
+	if !ok {
 		return
-	case providers.ThinkingLevelOff:
-		params.Reasoning.Effort = shared.ReasoningEffortNone
-		return
-	case providers.ThinkingLevelMinimal:
-		params.Reasoning.Effort = shared.ReasoningEffortMinimal
-	case providers.ThinkingLevelLow:
-		params.Reasoning.Effort = shared.ReasoningEffortLow
-	case providers.ThinkingLevelMedium:
-		params.Reasoning.Effort = shared.ReasoningEffortMedium
-	case providers.ThinkingLevelHigh:
-		params.Reasoning.Effort = shared.ReasoningEffortHigh
-	case providers.ThinkingLevelXHigh:
-		params.Reasoning.Effort = shared.ReasoningEffortXhigh
-	case providers.ThinkingLevelMax:
-		params.Reasoning.Effort = shared.ReasoningEffortMax
 	}
-	params.Reasoning.Summary = shared.ReasoningSummaryAuto
+	params.Reasoning.Effort = shared.ReasoningEffort(effort)
+	if level != providers.ThinkingLevelOff && compatibility.ReasoningSummary == ReasoningSummaryAuto {
+		params.Reasoning.Summary = shared.ReasoningSummaryAuto
+	}
+}
+
+func (model *ChatModel) requestOptions() []option.RequestOption {
+	keys := make([]string, 0, len(model.compatibility.ExtraBody))
+	for key := range model.compatibility.ExtraBody {
+		keys = append(keys, key)
+	}
+	sort.Strings(keys)
+	result := make([]option.RequestOption, 0, len(keys))
+	for _, key := range keys {
+		result = append(result, option.WithJSONSet(escapeJSONPathKey(key), model.compatibility.ExtraBody[key]))
+	}
+	return result
+}
+
+func escapeJSONPathKey(key string) string {
+	replacer := strings.NewReplacer(`\`, `\\`, `.`, `\.`, `:`, `\:`, `#`, `\#`, `@`, `\@`)
+	return replacer.Replace(key)
 }
 
 func applyOutputFormat(params *responses.ResponseNewParams, format *providers.OutputFormat) error {

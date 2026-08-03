@@ -3,6 +3,7 @@ import type { WritingComposerSettingsController } from '@/components/Chat/AgentP
 import type { EditorFlushHandler } from '@/components/Editor/useEditorDraftPersistence'
 import type { AgentChatProjectType } from './api'
 import type { ReviewFeedbackBatch, ReviewFeedbackComment, ReviewFeedbackSelection } from '@/features/changes/agent/ReviewFeedbackTray'
+import type { WorkspaceChangeMetadata } from '@/features/changes/types'
 import type { ImagePreset, Teller } from '@/features/interactive/types'
 import { AgentChatConversationTab } from './AgentChatConversationTab'
 import { TerminalTabView, type AgentChatTerminalStatus } from './terminal/TerminalTabView'
@@ -31,7 +32,8 @@ interface AgentChatTabContentProps {
   imagePresets: ImagePreset[]
   autoSaveEnabled: boolean
   autoSaveDelayMs: number
-  filesRefreshSignal: number
+  filesEditorRefreshSignal: number
+  filesTreeRefreshSignal: number
   renderPage: (workspace: string, pageId: AgentChatPageId, context: AgentChatPageRenderContext) => ReactNode
   renderReview: (tab: AgentChatReviewTab, disabled: boolean, context: AgentChatReviewRenderContext) => ReactNode
   navigationIntent: AgentChatDocumentReviewNavigation | null
@@ -46,7 +48,7 @@ interface AgentChatTabContentProps {
   onFilesSelectedPathChange: (projectID: string, tabId: string, path: string | null) => void
   onOpenProjectFile: (projectID: string, path: string, group: AgentChatGroupId) => void
   onOpenChangeReview: (projectID: string, workspace: string, reviewThreadID: string, groupID: string) => void
-  onWorkspaceChanged?: (workspace: string, paths: string[]) => void | Promise<void>
+  onWorkspaceChanged?: (workspace: string, paths: string[], metadata: WorkspaceChangeMetadata) => void | Promise<void>
   onRunningChange: (projectID: string, sessionId: string, running: boolean | null) => void
   onDraftCommitted: (message: string) => void
   onTerminalSessionEstablished: (tabId: string, session: TerminalSessionInfo) => boolean
@@ -66,7 +68,8 @@ export function AgentChatTabContent({
   imagePresets,
   autoSaveEnabled,
   autoSaveDelayMs,
-  filesRefreshSignal,
+  filesEditorRefreshSignal,
+  filesTreeRefreshSignal,
   renderPage,
   renderReview,
   navigationIntent,
@@ -153,7 +156,8 @@ export function AgentChatTabContent({
             selectedPath={tab.selectedPath ?? null}
             autoSaveEnabled={autoSaveEnabled}
             autoSaveDelayMs={autoSaveDelayMs}
-            refreshSignal={filesRefreshSignal}
+            editorRefreshSignal={filesEditorRefreshSignal}
+            treeRefreshSignal={filesTreeRefreshSignal}
             onSelectedPathChange={(path) => onFilesSelectedPathChange(tab.projectId, tab.id, path)}
             onFlushHandlerChange={handlePageFlushHandlerChange}
             onWorkspaceChanged={onWorkspaceChanged}
@@ -174,7 +178,10 @@ export function AgentChatTabContent({
     case 'review':
       return <>{renderReview(tab, running, {
         openFile: (path) => onOpenProjectFile(tab.projectId, path, tabGroup(tab)),
-        onWorkspaceChanged: (paths) => onWorkspaceChanged?.(tab.workspace, paths),
+        onWorkspaceChanged: (paths) => onWorkspaceChanged?.(tab.workspace, paths, {
+          impact: 'structure',
+          origin: 'external',
+        }),
       })}</>
   }
 }

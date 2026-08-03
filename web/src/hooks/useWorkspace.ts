@@ -10,7 +10,7 @@ import {
 } from '@/lib/api'
 import type { BookRecord, BookSortMode } from '@/lib/api'
 import type { WorkspaceSummary } from '@/lib/api'
-import type { WorkspaceChangeEvent, WorkspaceFileChange } from '@/features/changes/types'
+import type { WorkspaceChangeEvent, WorkspaceChangeImpact, WorkspaceFileChange } from '@/features/changes/types'
 import { WorkspaceFileRevisionConflictError } from '@/lib/autosave/workspace-file-revision-conflict'
 import { workspaceFileKind } from '@/lib/workspace-file-kind'
 import { MISSING_WORKSPACE_REVISION } from '@/lib/api-client/workspace'
@@ -394,8 +394,11 @@ export function useWorkspace(options: UseWorkspaceOptions = {}) {
     }
   }, [beginFileRead, isLatestFileRead, recordFileVersion, setFileDocument])
 
-  /** Agent 写入或创建文件后，刷新目录树并同步当前打开文件内容。 */
-  const refreshAfterAgentFileChange = useCallback(async (changedPath?: string) => {
+  /** Refreshes only the projections invalidated by an Agent or review mutation. */
+  const refreshAfterAgentFileChange = useCallback(async (
+    changedPath?: string,
+    impact: WorkspaceChangeImpact = 'structure',
+  ) => {
     const targetWorkspace = workspace
     if (!targetWorkspace) return
     const currentFile = selectedFileRef.current
@@ -403,7 +406,7 @@ export function useWorkspace(options: UseWorkspaceOptions = {}) {
       !changedPath || changedPath === currentFile || changedPath.endsWith('/' + currentFile)
     ) ? refreshSelectedFile(targetWorkspace, currentFile) : Promise.resolve()
     await Promise.all([
-      fetchTree(),
+      impact === 'structure' ? fetchTree() : Promise.resolve(),
       fetchSummary(),
       selectedRefresh,
     ])

@@ -179,11 +179,39 @@ export interface WorkspaceChangeEvent {
   action?: string
 }
 
+/** Describes the minimum UI invalidation required after a workspace mutation. */
+export type WorkspaceChangeImpact = 'content' | 'structure'
+
+/** Identifies whether a change originated inside the mounted Files tab. */
+export type WorkspaceChangeOrigin = 'external' | 'files-tab'
+
+export interface WorkspaceChangeMetadata {
+  impact: WorkspaceChangeImpact
+  origin: WorkspaceChangeOrigin
+}
+
 export type WorkspaceFileChangeType = 'added' | 'updated' | 'deleted'
 
 export interface WorkspaceFileChange {
   path: string
   type: WorkspaceFileChangeType
+}
+
+export function workspaceChangeImpact(event: WorkspaceChangeEvent): WorkspaceChangeImpact {
+  if (event.resync) return 'structure'
+  const changes = event.changes ?? []
+  return changes.length > 0 && changes.every((change) => change.type === 'updated')
+    ? 'content'
+    : 'structure'
+}
+
+export function workspaceChangePaths(event: WorkspaceChangeEvent): string[] {
+  return Array.from(new Set([
+    ...(event.affected_paths ?? []),
+    ...(event.paths ?? []),
+    ...((event.changes ?? []).map((change) => change.path)),
+    ...(event.path ? [event.path] : []),
+  ].filter(Boolean)))
 }
 
 export function isWorkspaceChangeForWorkspace(event: Pick<WorkspaceChangeEvent, 'workspace'> | null | undefined, workspace: string): boolean {

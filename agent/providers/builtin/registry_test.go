@@ -4,6 +4,7 @@ import (
 	"testing"
 
 	"github.com/alfredxw/denova/agent/providers"
+	"github.com/alfredxw/denova/agent/providers/protocols/openairesponses"
 )
 
 func TestRegistrySeparatesProviderDefaultsFromProtocolSelection(t *testing.T) {
@@ -55,18 +56,47 @@ func TestRegistrySeparatesProviderDefaultsFromProtocolSelection(t *testing.T) {
 	}
 }
 
-func TestRegistryRejectsUnsupportedProviderProtocolPair(t *testing.T) {
+func TestRegistrySupportsDeepSeekResponses(t *testing.T) {
 	registry, err := NewRegistry()
 	if err != nil {
 		t.Fatal(err)
 	}
-	_, err = registry.Resolve(providers.ModelConfig{
+	resolved, err := registry.Resolve(providers.ModelConfig{
 		Provider: providers.ProviderDeepSeek,
 		Protocol: providers.ProtocolOpenAIResponses,
-		Model:    "deepseek-chat",
+		Model:    "deepseek-v4-flash",
 	})
-	if err == nil {
-		t.Fatal("expected unsupported provider/protocol error")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if resolved.BaseURL != "https://api.deepseek.com" {
+		t.Fatalf("base URL = %q", resolved.BaseURL)
+	}
+	var compatibility openairesponses.Compatibility
+	if err := providers.DecodeProtocolOptions(resolved.ProtocolOptions, &compatibility); err != nil {
+		t.Fatal(err)
+	}
+	if compatibility.Store != openairesponses.StoreModeOmit || compatibility.ReasoningSummary != openairesponses.ReasoningSummaryOmit || compatibility.IncludeEncryptedReasoning {
+		t.Fatalf("DeepSeek Responses compatibility = %#v", compatibility)
+	}
+}
+
+func TestRegistryAllowsCustomProviderWithAnyInstalledProtocol(t *testing.T) {
+	registry, err := NewRegistry()
+	if err != nil {
+		t.Fatal(err)
+	}
+	resolved, err := registry.Resolve(providers.ModelConfig{
+		Provider: "private-gateway",
+		Protocol: providers.ProtocolGoogleGenerativeAI,
+		BaseURL:  "https://models.example.test",
+		Model:    "private-model",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if resolved.Provider != "private-gateway" || resolved.Protocol != providers.ProtocolGoogleGenerativeAI {
+		t.Fatalf("resolved = %#v", resolved)
 	}
 }
 

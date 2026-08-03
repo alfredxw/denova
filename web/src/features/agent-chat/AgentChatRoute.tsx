@@ -8,6 +8,7 @@ import type {
   ReviewFeedbackBatch,
   ReviewFeedbackSelection,
 } from '@/features/changes/agent/ReviewFeedbackTray'
+import type { WorkspaceChangeMetadata } from '@/features/changes/types'
 import type { DocumentReviewController } from '@/features/document-review/controller'
 import type { ImagePreset, Teller } from '@/features/interactive/types'
 import type { FileNode } from '@/hooks/useWorkspace'
@@ -48,7 +49,7 @@ interface AgentChatRouteProps {
   onActivateWorkspace: (workspace: string) => Promise<boolean>
   /** Registers every mounted project-page draft with the workbench navigation guard. */
   onFlushHandlerChange?: (handler: EditorFlushHandler | null) => void
-  onWorkspaceChanged?: (paths: string[]) => void | Promise<void>
+  onWorkspaceChanged?: (paths: string[], metadata: WorkspaceChangeMetadata) => void | Promise<void>
 }
 
 /**
@@ -182,8 +183,8 @@ function AgentChatRouteComponent({
       onDocumentReviewFeedbackSubmissionFailed={onDocumentReviewFeedbackSubmissionFailed}
       onActivateWorkspace={onActivateWorkspace}
       onFlushHandlerChange={onFlushHandlerChange}
-      onWorkspaceChanged={(changedWorkspace, paths) => (
-        changedWorkspace === workspace ? onWorkspaceChanged?.(paths) : undefined
+      onWorkspaceChanged={(changedWorkspace, paths, metadata) => (
+        changedWorkspace === workspace ? onWorkspaceChanged?.(paths, metadata) : undefined
       )}
     />
   )

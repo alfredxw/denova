@@ -23,7 +23,7 @@ func (model *ChatModel) Generate(ctx context.Context, input []*agent.Message, op
 	if err != nil {
 		return nil, modelCallError(ctx, err)
 	}
-	message := responseMessage(response, rawResponse, string(model.config.Provider))
+	message := responseMessage(response, rawResponse, string(model.config.Provider), model.compatibility.ReasoningContentField)
 	if message == nil {
 		return nil, fmt.Errorf("openai chat completion: response has no choice with index 0")
 	}
@@ -58,7 +58,13 @@ func (model *ChatModel) Stream(ctx context.Context, input []*agent.Message, opts
 
 		metadataPending := true
 		for providerStream.Next() {
-			message, emit := streamMessage(providerStream.Current(), rawResponse, metadataPending, string(model.config.Provider))
+			message, emit := streamMessage(
+				providerStream.Current(),
+				rawResponse,
+				metadataPending,
+				string(model.config.Provider),
+				model.compatibility.ReasoningContentField,
+			)
 			if !emit {
 				continue
 			}

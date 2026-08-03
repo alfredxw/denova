@@ -59,7 +59,7 @@ describe('WritingProjectExplorer', () => {
           volume_path: '',
         },
       },
-      refreshSignal: 0,
+      structureRefreshSignal: 0,
       onSelectFile: vi.fn(),
       onReferenceFile,
       onCreateItem: vi.fn().mockResolvedValue(undefined),
@@ -74,17 +74,17 @@ describe('WritingProjectExplorer', () => {
     expect(await screen.findByText('1.2k')).toBeInTheDocument()
     expect(screen.getByText('draft')).toBeInTheDocument()
 
-    fireEvent.contextMenu(screen.getByText('第一章.md'))
+    fireEvent.contextMenu(screen.getByLabelText('第一章.md'))
     await user.click(await screen.findByRole('menuitem', { name: '引用到 Chat' }))
     expect(onReferenceFile).toHaveBeenCalledWith(chapterPath)
 
-    fireEvent.contextMenu(screen.getByText('第一章.md'))
+    fireEvent.contextMenu(screen.getByLabelText('第一章.md'))
     await user.click(await screen.findByRole('menuitem', { name: '删除' }))
     expect(await screen.findByText(/版本历史恢复/)).toBeInTheDocument()
     await user.click(screen.getByRole('button', { name: '取消' }))
 
     const requestsBeforeSignal = resolveRequests
-    rerender(<WritingProjectExplorer {...props} refreshSignal={1} />)
+    rerender(<WritingProjectExplorer {...props} structureRefreshSignal={1} />)
     await waitFor(() => expect(resolveRequests).toBeGreaterThan(requestsBeforeSignal))
 
     await user.click(screen.getByRole('button', { name: '刷新' }))

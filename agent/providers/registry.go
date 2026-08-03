@@ -2,97 +2,107 @@ package providers
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
+	"net/http"
 	"sort"
 	"strings"
 
 	agent "github.com/alfredxw/denova/agent"
 )
 
-// Provider describes vendor defaults and the protocols the vendor supports.
-// It is immutable after registration.
-type Provider struct {
-	ID              ProviderID
-	Name            string
-	DefaultBaseURL  string
-	DefaultProtocol ProtocolID
-	Protocols       []ProtocolID
+// EndpointPreset supplies optional defaults for one provider/protocol route.
+// Its presence documents a known route but never acts as an allowlist.
+type EndpointPreset struct {
+	BaseURL         string            `json:"base_url,omitempty"`
+	Headers         map[string]string `json:"-"`
+	ProtocolOptions json.RawMessage   `json:"-"`
+}
+
+// ProviderPreset is catalog data: display identity and route defaults only.
+// Arbitrary provider IDs remain valid when callers supply explicit routing.
+type ProviderPreset struct {
+	ID              ProviderID                    `json:"id"`
+	Name            string                        `json:"name"`
+	DefaultProtocol ProtocolID                    `json:"default_protocol"`
+	Endpoints       map[ProtocolID]EndpointPreset `json:"endpoints"`
 }
 
 // ProtocolAdapter hides one wire protocol behind the agent model contract.
-// Implementations must clone all mutable config they retain.
+// Implementations must clone all mutable config they retain and strictly
+// validate their own ProtocolOptions schema.
 type ProtocolAdapter interface {
 	ID() ProtocolID
 	New(context.Context, ModelConfig) (agent.ToolCallingChatModel, error)
 }
 
-// Registry owns explicit provider and protocol registrations. It has no
-// package-global state, making alternative catalogs straightforward to test or
-// embed.
-type Registry struct {
-	providers map[ProviderID]registeredProvider
-	protocols map[ProtocolID]ProtocolAdapter
+// Catalog is the immutable user-facing provider/protocol inventory. Protocols
+// are executable adapters; providers are optional convenience presets.
+type Catalog struct {
+	Providers []ProviderPreset `json:"providers"`
+	Protocols []ProtocolID     `json:"protocols"`
 }
 
-type registeredProvider struct {
-	definition Provider
-	supported  map[ProtocolID]struct{}
+// Registry owns provider presets and executable protocol adapters. It has no
+// package-global state and does not constrain provider/protocol combinations.
+type Registry struct {
+	presets   map[ProviderID]ProviderPreset
+	protocols map[ProtocolID]ProtocolAdapter
 }
 
 // NewRegistry returns an empty registry.
 func NewRegistry() *Registry {
 	return &Registry{
-		providers: make(map[ProviderID]registeredProvider),
+		presets:   make(map[ProviderID]ProviderPreset),
 		protocols: make(map[ProtocolID]ProtocolAdapter),
 	}
 }
 
-// RegisterProvider adds one provider definition and rejects ambiguous catalog
-// entries early.
-func (registry *Registry) RegisterProvider(provider Provider) error {
+// RegisterProviderPreset adds optional catalog defaults. Endpoints describe
+// known-good routes, not the complete set of routes a provider may expose.
+func (registry *Registry) RegisterProviderPreset(preset ProviderPreset) error {
 	if registry == nil {
-		return fmt.Errorf("register provider: nil registry")
+		return fmt.Errorf("register provider preset: nil registry")
 	}
-	provider.ID = ProviderID(strings.TrimSpace(string(provider.ID)))
-	provider.Name = strings.TrimSpace(provider.Name)
-	provider.DefaultBaseURL = strings.TrimSpace(provider.DefaultBaseURL)
-	provider.DefaultProtocol = ProtocolID(strings.TrimSpace(string(provider.DefaultProtocol)))
-	if provider.ID == "" {
-		return fmt.Errorf("register provider: id is required")
+	preset.ID = ProviderID(strings.TrimSpace(string(preset.ID)))
+	preset.Name = strings.TrimSpace(preset.Name)
+	preset.DefaultProtocol = ProtocolID(strings.TrimSpace(string(preset.DefaultProtocol)))
+	if preset.ID == "" {
+		return fmt.Errorf("register provider preset: id is required")
 	}
-	if provider.Name == "" {
-		return fmt.Errorf("register provider %q: name is required", provider.ID)
+	if preset.Name == "" {
+		return fmt.Errorf("register provider preset %q: name is required", preset.ID)
 	}
-	if _, exists := registry.providers[provider.ID]; exists {
-		return fmt.Errorf("register provider %q: duplicate id", provider.ID)
+	if preset.DefaultProtocol == "" {
+		return fmt.Errorf("register provider preset %q: default protocol is required", preset.ID)
+	}
+	if _, exists := registry.presets[preset.ID]; exists {
+		return fmt.Errorf("register provider preset %q: duplicate id", preset.ID)
 	}
 
-	supported := make(map[ProtocolID]struct{}, len(provider.Protocols))
-	protocols := make([]ProtocolID, 0, len(provider.Protocols))
-	for _, protocol := range provider.Protocols {
+	endpoints := make(map[ProtocolID]EndpointPreset, len(preset.Endpoints))
+	for protocol, endpoint := range preset.Endpoints {
 		protocol = ProtocolID(strings.TrimSpace(string(protocol)))
 		if protocol == "" {
-			return fmt.Errorf("register provider %q: empty protocol", provider.ID)
+			return fmt.Errorf("register provider preset %q: empty endpoint protocol", preset.ID)
 		}
-		if _, duplicate := supported[protocol]; duplicate {
-			return fmt.Errorf("register provider %q: duplicate protocol %q", provider.ID, protocol)
+		endpoint.BaseURL = strings.TrimSpace(endpoint.BaseURL)
+		endpoint.Headers = cloneHeaders(endpoint.Headers)
+		endpoint.ProtocolOptions = append(json.RawMessage(nil), endpoint.ProtocolOptions...)
+		if _, err := mergeProtocolOptions(endpoint.ProtocolOptions, nil); err != nil {
+			return fmt.Errorf("register provider preset %q protocol %q: %w", preset.ID, protocol, err)
 		}
-		supported[protocol] = struct{}{}
-		protocols = append(protocols, protocol)
+		endpoints[protocol] = endpoint
 	}
-	if len(protocols) == 0 {
-		return fmt.Errorf("register provider %q: at least one protocol is required", provider.ID)
+	if _, ok := endpoints[preset.DefaultProtocol]; !ok {
+		return fmt.Errorf("register provider preset %q: default protocol %q has no endpoint preset", preset.ID, preset.DefaultProtocol)
 	}
-	if _, ok := supported[provider.DefaultProtocol]; !ok {
-		return fmt.Errorf("register provider %q: default protocol %q is not supported", provider.ID, provider.DefaultProtocol)
-	}
-	sort.Slice(protocols, func(i, j int) bool { return protocols[i] < protocols[j] })
-	provider.Protocols = protocols
-	registry.providers[provider.ID] = registeredProvider{definition: provider, supported: supported}
+	preset.Endpoints = endpoints
+	registry.presets[preset.ID] = preset
 	return nil
 }
 
-// RegisterProtocol adds one protocol implementation.
+// RegisterProtocol adds one executable protocol adapter.
 func (registry *Registry) RegisterProtocol(adapter ProtocolAdapter) error {
 	if registry == nil {
 		return fmt.Errorf("register protocol: nil registry")
@@ -111,8 +121,29 @@ func (registry *Registry) RegisterProtocol(adapter ProtocolAdapter) error {
 	return nil
 }
 
-// Resolve applies provider defaults and validates that the selected protocol
-// has both catalog support and an installed adapter.
+// Catalog returns detached, stable-sorted provider presets and installed
+// protocol IDs for settings UIs and configuration tools.
+func (registry *Registry) Catalog() Catalog {
+	if registry == nil {
+		return Catalog{}
+	}
+	result := Catalog{
+		Providers: make([]ProviderPreset, 0, len(registry.presets)),
+		Protocols: make([]ProtocolID, 0, len(registry.protocols)),
+	}
+	for _, preset := range registry.presets {
+		result.Providers = append(result.Providers, cloneProviderPreset(preset))
+	}
+	for protocol := range registry.protocols {
+		result.Protocols = append(result.Protocols, protocol)
+	}
+	sort.Slice(result.Providers, func(i, j int) bool { return result.Providers[i].Name < result.Providers[j].Name })
+	sort.Slice(result.Protocols, func(i, j int) bool { return result.Protocols[i] < result.Protocols[j] })
+	return result
+}
+
+// Resolve applies optional provider/endpoint defaults, then validates only the
+// executable protocol seam and the complete route required by its adapter.
 func (registry *Registry) Resolve(config ModelConfig) (ModelConfig, error) {
 	if registry == nil {
 		return ModelConfig{}, fmt.Errorf("resolve model: nil registry")
@@ -126,24 +157,30 @@ func (registry *Registry) Resolve(config ModelConfig) (ModelConfig, error) {
 	if resolved.Provider == "" {
 		return ModelConfig{}, fmt.Errorf("resolve model: provider is required")
 	}
-	provider, ok := registry.providers[resolved.Provider]
-	if !ok {
-		return ModelConfig{}, fmt.Errorf("resolve model: provider %q is not registered", resolved.Provider)
-	}
+	preset, knownProvider := registry.presets[resolved.Provider]
 	if resolved.Protocol == "" {
-		resolved.Protocol = provider.definition.DefaultProtocol
-	}
-	if _, ok := provider.supported[resolved.Protocol]; !ok {
-		return ModelConfig{}, fmt.Errorf("resolve model: provider %q does not support protocol %q", resolved.Provider, resolved.Protocol)
+		if !knownProvider {
+			return ModelConfig{}, fmt.Errorf("resolve model: protocol is required for custom provider %q", resolved.Provider)
+		}
+		resolved.Protocol = preset.DefaultProtocol
 	}
 	if _, ok := registry.protocols[resolved.Protocol]; !ok {
 		return ModelConfig{}, fmt.Errorf("resolve model: protocol %q has no registered adapter", resolved.Protocol)
 	}
-	if resolved.BaseURL == "" {
-		resolved.BaseURL = provider.definition.DefaultBaseURL
+	if knownProvider {
+		if endpoint, ok := preset.Endpoints[resolved.Protocol]; ok {
+			if resolved.BaseURL == "" {
+				resolved.BaseURL = endpoint.BaseURL
+			}
+			resolved.Headers = mergeHeaders(endpoint.Headers, resolved.Headers)
+			resolved.ProtocolOptions, err = mergeProtocolOptions(endpoint.ProtocolOptions, resolved.ProtocolOptions)
+			if err != nil {
+				return ModelConfig{}, fmt.Errorf("resolve model: %w", err)
+			}
+		}
 	}
 	if resolved.BaseURL == "" {
-		return ModelConfig{}, fmt.Errorf("resolve model: provider %q requires a base URL", resolved.Provider)
+		return ModelConfig{}, fmt.Errorf("resolve model: provider %q protocol %q requires a base URL", resolved.Provider, resolved.Protocol)
 	}
 	if resolved.Model == "" {
 		return ModelConfig{}, fmt.Errorf("resolve model: model is required")
@@ -159,15 +196,65 @@ func (registry *Registry) Resolve(config ModelConfig) (ModelConfig, error) {
 
 // NewChatModel resolves config and dispatches to exactly one protocol adapter.
 func (registry *Registry) NewChatModel(ctx context.Context, config ModelConfig) (agent.ToolCallingChatModel, error) {
+	model, _, err := registry.NewChatModelWithResolvedConfig(ctx, config)
+	return model, err
+}
+
+// NewChatModelWithResolvedConfig resolves the effective route and returns it
+// alongside the model. Diagnostics such as connection validation use this to
+// report the exact preset defaults that were exercised without resolving the
+// same configuration twice.
+func (registry *Registry) NewChatModelWithResolvedConfig(ctx context.Context, config ModelConfig) (agent.ToolCallingChatModel, ModelConfig, error) {
 	resolved, err := registry.Resolve(config)
 	if err != nil {
-		return nil, err
+		return nil, ModelConfig{}, err
 	}
 	model, err := registry.protocols[resolved.Protocol].New(ctx, resolved)
 	if err != nil {
-		return nil, fmt.Errorf("create %s model for provider %s: %w", resolved.Protocol, resolved.Provider, err)
+		return nil, ModelConfig{}, fmt.Errorf("create %s model for provider %s: %w", resolved.Protocol, resolved.Provider, err)
 	}
-	return model, nil
+	return model, resolved, nil
+}
+
+func cloneProviderPreset(preset ProviderPreset) ProviderPreset {
+	clone := preset
+	clone.Endpoints = make(map[ProtocolID]EndpointPreset, len(preset.Endpoints))
+	for protocol, endpoint := range preset.Endpoints {
+		endpoint.Headers = cloneHeaders(endpoint.Headers)
+		endpoint.ProtocolOptions = append(json.RawMessage(nil), endpoint.ProtocolOptions...)
+		clone.Endpoints[protocol] = endpoint
+	}
+	return clone
+}
+
+func mergeHeaders(defaults, overrides map[string]string) map[string]string {
+	if len(defaults) == 0 && len(overrides) == 0 {
+		return nil
+	}
+	result := make(map[string]string, len(defaults)+len(overrides))
+	canonical := make(map[string]string, len(defaults)+len(overrides))
+	for name, value := range defaults {
+		trimmed := strings.TrimSpace(name)
+		if trimmed == "" {
+			continue
+		}
+		key := http.CanonicalHeaderKey(trimmed)
+		result[key] = value
+		canonical[strings.ToLower(key)] = key
+	}
+	for name, value := range overrides {
+		trimmed := strings.TrimSpace(name)
+		if trimmed == "" {
+			continue
+		}
+		key := http.CanonicalHeaderKey(trimmed)
+		if previous, ok := canonical[strings.ToLower(key)]; ok && previous != key {
+			delete(result, previous)
+		}
+		result[key] = value
+		canonical[strings.ToLower(key)] = key
+	}
+	return result
 }
 
 func validateOutputFormat(format *OutputFormat) error {

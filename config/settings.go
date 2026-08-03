@@ -755,13 +755,13 @@ func sanitizeEditableSettings(s Settings) Settings {
 	s.ModelProfiles = sanitizeModelProfiles(s.ModelProfiles)
 	s.ImageAPIProfiles = sanitizeImageAPIProfiles(s.ImageAPIProfiles)
 	if defaultProfile, ok := defaultModelProfile(s.ModelProfiles); ok {
-		if defaultProfile.OpenAIAPIKey != "" {
+		if defaultProfile.APIKey != "" {
 			s.OpenAIAPIKey = ""
 		}
-		if defaultProfile.OpenAIBaseURL != "" {
+		if defaultProfile.BaseURL != "" {
 			s.OpenAIBaseURL = ""
 		}
-		if defaultProfile.OpenAIModel != "" {
+		if defaultProfile.Model != "" {
 			s.OpenAIModel = ""
 		}
 		if defaultProfile.ContextWindowTokens != nil {

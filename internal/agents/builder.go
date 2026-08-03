@@ -238,7 +238,10 @@ func buildAgent(ctx context.Context, cfg *config.Config, spec agentBuildSpec) (a
 	if err != nil {
 		return nil, err
 	}
-	modelCfg := modelio.ConfigForAgent(cfg, spec.Kind)
+	modelCfg, err := modelio.ConfigForAgent(cfg, spec.Kind)
+	if err != nil {
+		return nil, fmt.Errorf("resolve model configuration: %w", err)
+	}
 	toolSettings := config.ResolveAgentTools(cfg, spec.Kind)
 	chatModel, err := modelio.NewChatModel(ctx, modelCfg)
 	if err != nil {
@@ -500,7 +503,10 @@ func buildConfiguredSubAgent(ctx context.Context, cfg *config.Config, parent age
 		return nil, fmt.Errorf("assemble sub Agent system prompt id=%s: %w", sub.ID, err)
 	}
 	resolvedModel := config.ResolveSubAgentModel(cfg, parent.Kind, sub)
-	modelCfg := modelio.ConfigFromResolved(resolvedModel)
+	modelCfg, err := modelio.ConfigFromResolved(resolvedModel)
+	if err != nil {
+		return nil, fmt.Errorf("resolve sub Agent model configuration id=%s: %w", sub.ID, err)
+	}
 	subChatModel, err := modelio.NewChatModel(ctx, modelCfg)
 	if err != nil {
 		return nil, fmt.Errorf("创建子 Agent 模型失败 id=%s: %w", sub.ID, err)

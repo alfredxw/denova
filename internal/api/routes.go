@@ -214,6 +214,8 @@ func (s *Server) registerRoutes(h *hertzserver.Hertz) {
 		api.GET("/settings", apiHandlers.HandleSettingsGet)
 		api.PATCH("/settings", apiHandlers.HandleSettingsPatch)
 		api.DELETE("/settings/agent-approval-rules/:id", apiHandlers.HandleAgentApprovalRuleDelete)
+		api.GET("/models/catalog", apiHandlers.HandleModelCatalog)
+		api.POST("/models/ping", apiHandlers.HandleModelPing)
 		api.GET("/conversation-config", apiHandlers.HandleConversationConfigGet)
 		api.PATCH("/conversation-config", apiHandlers.HandleConversationConfigPatch)
 		api.GET("/update/check", apiHandlers.HandleUpdateCheck)

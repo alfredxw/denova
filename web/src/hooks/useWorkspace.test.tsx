@@ -524,6 +524,31 @@ describe('useWorkspace', () => {
     expect(screen.getByTestId('workspace-state')).toHaveTextContent('chapters/ch01.md|最新内容')
   })
 
+  it('skips the legacy directory tree for content-only Agent invalidations', async () => {
+    apiMock.readFile.mockResolvedValue({
+      workspace: '/books/demo',
+      path: 'chapters/ch01.md',
+      content: 'Agent content',
+      revision: 'rev-2',
+    })
+    let workspace: ReturnType<typeof useWorkspace> | null = null
+    render(<WorkspaceHarness onChange={(value) => { workspace = value }} />)
+    await waitFor(() => expect(screen.getByTestId('workspace-meta')).toHaveTextContent('/books/demo'))
+    await act(async () => {
+      await workspace?.selectFile('chapters/ch01.md')
+    })
+    const treeRequests = apiMock.getWorkspaceTree.mock.calls.length
+    const summaryRequests = apiMock.getWorkspaceSummary.mock.calls.length
+
+    await act(async () => {
+      await workspace?.refreshAfterAgentFileChange('chapters/ch01.md', 'content')
+    })
+
+    expect(apiMock.getWorkspaceTree).toHaveBeenCalledTimes(treeRequests)
+    expect(apiMock.getWorkspaceSummary).toHaveBeenCalledTimes(summaryRequests + 1)
+    expect(screen.getByTestId('workspace-state')).toHaveTextContent('chapters/ch01.md|Agent content')
+  })
+
   it('文件刷新先观察到新 revision 时忽略迟到的保存响应', async () => {
     const firstSave = deferred<{ path: string; message: string; revision: string }>()
     apiMock.readFile

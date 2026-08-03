@@ -155,11 +155,12 @@ vi.mock('@/features/interactive/stores/interactive-store', () => ({
 }))
 
 vi.mock('@/features/project-explorer/WritingProjectExplorer', () => ({
-  WritingProjectExplorer: ({ projectId, onSelectFile }: {
+  WritingProjectExplorer: ({ projectId, structureRefreshSignal, onSelectFile }: {
     projectId: string
+    structureRefreshSignal: number
     onSelectFile: (path: string) => void
   }) => (
-    <div data-testid="writing-project-explorer" data-project-id={projectId}>
+    <div data-testid="writing-project-explorer" data-project-id={projectId} data-structure-refresh-signal={structureRefreshSignal}>
       <button type="button">lore</button>
       <button type="button" onClick={() => onSelectFile('setting/lore/items.json')}>items.json</button>
     </div>
@@ -430,7 +431,11 @@ describe('ModeRouter autosave navigation policy', () => {
       }],
       onOpenLoreTab,
       onSelectFile,
+      projectExplorerRefreshSignal: 7,
+      versionRefreshSignal: 11,
     })} />))
+
+    expect(screen.getByTestId('writing-project-explorer')).toHaveAttribute('data-structure-refresh-signal', '7')
 
     await user.click(screen.getByText('lore'))
     await user.click(screen.getByText('items.json'))
@@ -582,6 +587,7 @@ function modeRouterProps(
     saveSignal: 0,
     editorAutoSaveEnabled: true,
     editorAutoSaveDelayMs: 1000,
+    projectExplorerRefreshSignal: 0,
     versionRefreshSignal: 0,
     messages: [],
     sessions: [],

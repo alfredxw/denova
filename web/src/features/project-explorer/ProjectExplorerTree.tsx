@@ -10,6 +10,7 @@ import {
   useRef,
   useState,
   type KeyboardEvent,
+  type MouseEvent,
   type RefObject,
 } from 'react'
 import { useTranslation } from 'react-i18next'
@@ -23,6 +24,7 @@ import {
   ContextMenuTrigger,
 } from '@/components/ui/context-menu'
 import type { ProjectFileExplorerNode } from './model'
+import { ProjectExplorerDragPreview } from './ProjectExplorerDragPreview'
 import {
   ExplorerNode,
   ExplorerRow,
@@ -42,6 +44,16 @@ import {
   type ProjectFileDraft,
 } from './operations'
 import type { ProjectExplorerExtensions } from './types'
+import {
+  actionableFocusedNode,
+  actionableSelection,
+  applyExplorerSelection,
+  disableProjectFileDrag,
+  disableProjectFileDrop,
+  disableProjectFileEdit,
+  insertionDirectory,
+  selectionAfterDeletion,
+} from './tree-behavior'
 
 interface ProjectExplorerTreeProps {
   nodes: readonly ProjectFileExplorerNode[]
@@ -87,18 +99,35 @@ export const ProjectExplorerTree = forwardRef<ProjectExplorerTreeHandle, Project
   const hostRef = useRef<HTMLDivElement>(null)
   const size = useElementSize(hostRef)
   const draftSequenceRef = useRef(0)
+  const pendingSelectionRef = useRef<readonly string[] | null>(null)
   const [draft, setDraft] = useState<ProjectFileDraft | null>(null)
   const [clipboard, setClipboard] = useState<ProjectFileClipboard | null>(null)
   const [deletePaths, setDeletePaths] = useState<string[]>([])
   const renderedNodes = useMemo(() => insertProjectFileDraft(nodes, draft), [draft, nodes])
+  const nodesById = useMemo(() => {
+    const index = new Map<string, ProjectFileExplorerNode>()
+    const visit = (items: readonly ProjectFileExplorerNode[]) => {
+      for (const item of items) {
+        index.set(item.id, item)
+        if (item.children) visit(item.children)
+      }
+    }
+    visit(renderedNodes)
+    return index
+  }, [renderedNodes])
   const initialOpenState = useMemo(
     () => Object.fromEntries(expandedPaths.map((path) => [path, true])),
     [expandedPaths],
   )
 
+  const requestSelection = useCallback((paths: readonly string[]) => {
+    pendingSelectionRef.current = paths
+    if (applyExplorerSelection(treeRef.current, paths)) pendingSelectionRef.current = null
+  }, [treeRef])
+
   const beginCreate = useCallback((type: 'file' | 'dir', explicitParent?: string) => {
     const tree = treeRef.current
-    const parentPath = explicitParent ?? insertionDirectory(tree, selectedPath)
+    const parentPath = explicitParent ?? insertionDirectory(tree)
     if (parentPath) tree?.open(parentPath)
     if (tree?.editingId) tree.reset()
     draftSequenceRef.current += 1
@@ -108,7 +137,7 @@ export const ProjectExplorerTree = forwardRef<ProjectExplorerTreeHandle, Project
       type,
       index: 0,
     })
-  }, [selectedPath, treeRef])
+  }, [treeRef])
 
   useImperativeHandle(ref, () => ({
     beginCreate: (type) => beginCreate(type),
@@ -123,6 +152,12 @@ export const ProjectExplorerTree = forwardRef<ProjectExplorerTreeHandle, Project
     tree.focus(node)
     void node.edit()
   }, [draft, renderedNodes, treeRef])
+
+  useEffect(() => {
+    const paths = pendingSelectionRef.current
+    if (!paths) return
+    if (applyExplorerSelection(treeRef.current, paths)) pendingSelectionRef.current = null
+  }, [renderedNodes, treeRef])
 
   const handleToggle = useCallback((id: string) => {
     const node = treeRef.current?.get(id)
@@ -165,23 +200,30 @@ export const ProjectExplorerTree = forwardRef<ProjectExplorerTreeHandle, Project
       .map((node) => node.data)
       .filter((node) => node.type !== 'more' && !node.draft)
       .map((node) => node.path))
+    const destinations: string[] = []
     for (const source of sources) {
       const destination = joinProjectPath(parent, projectBaseName(source))
-      if (source !== destination) await onMoveItem(source, destination)
+      if (source === destination) continue
+      await onMoveItem(source, destination)
+      destinations.push(destination)
     }
-  }, [onMoveItem])
+    if (destinations.length > 0) requestSelection(destinations)
+  }, [onMoveItem, requestSelection])
 
   const handleRename = useCallback(async ({ node, name }: {
     node: NodeApi<ProjectFileExplorerNode>
     name: string
   }) => {
     if (node.data.draft && draft) {
-      await onCreateItem(joinProjectPath(draft.parentPath, name), draft.type)
+      const createdPath = joinProjectPath(draft.parentPath, name)
+      await onCreateItem(createdPath, draft.type)
       setDraft(null)
+      requestSelection([createdPath])
       return
     }
     await onRenameItem(node.data.path, name)
-  }, [draft, onCreateItem, onRenameItem])
+    requestSelection([joinProjectPath(projectParentPath(node.data.path), name)])
+  }, [draft, onCreateItem, onRenameItem, requestSelection])
 
   const stageClipboard = useCallback((mode: ProjectFileClipboard['mode'], paths: string[]) => {
     const actionable = removeNestedProjectPaths(paths)
@@ -196,7 +238,8 @@ export const ProjectExplorerTree = forwardRef<ProjectExplorerTreeHandle, Project
       else await onMoveItem(transfer.source, transfer.destination)
     }
     if (clipboard.mode === 'cut' && transfers.length > 0) setClipboard(null)
-  }, [clipboard, nodes, onCopyItem, onMoveItem])
+    if (transfers.length > 0) requestSelection(transfers.map((transfer) => transfer.destination))
+  }, [clipboard, nodes, onCopyItem, onMoveItem, requestSelection])
 
   const copyPath = useCallback((path: string, relative: boolean) => {
     const value = relative ? path : absoluteProjectPath(workspace, path)
@@ -227,7 +270,10 @@ export const ProjectExplorerTree = forwardRef<ProjectExplorerTreeHandle, Project
     cancelDraft: () => setDraft(null),
     clipboard,
   }), [beginCreate, clipboard, copyPath, pasteInto, stageClipboard])
-  const renderContext = useMemo(() => ({ actions, extensions, onLoadMore }), [actions, extensions, onLoadMore])
+  const renderContext = useMemo(
+    () => ({ actions, extensions, nodesById, onLoadMore }),
+    [actions, extensions, nodesById, onLoadMore],
+  )
 
   const handleKeyDownCapture = useCallback((event: KeyboardEvent<HTMLDivElement>) => {
     if (event.target instanceof HTMLInputElement || event.target instanceof HTMLTextAreaElement) return
@@ -266,11 +312,18 @@ export const ProjectExplorerTree = forwardRef<ProjectExplorerTreeHandle, Project
     }
     if (command && event.key.toLowerCase() === 'v' && clipboard) {
       consumeKeyboardEvent(event)
-      void pasteInto(insertionDirectory(tree, selectedPath)).catch((cause) => {
+      void pasteInto(insertionDirectory(tree)).catch((cause) => {
         console.error('[features/project-explorer/ProjectExplorerTree.tsx] keyboard paste failed', { cause })
       })
     }
-  }, [clipboard, onSelectFile, pasteInto, selectedPath, stageClipboard, treeRef])
+  }, [clipboard, onSelectFile, pasteInto, stageClipboard, treeRef])
+
+  const handleBlankAreaInteraction = useCallback((event: MouseEvent<HTMLDivElement>) => {
+    const target = event.target as { closest?: (selector: string) => Element | null; parentElement?: Element | null }
+    const element = typeof target.closest === 'function' ? target : target.parentElement
+    if (element?.closest?.('[role="treeitem"]')) return
+    treeRef.current?.deselectAll()
+  }, [treeRef])
 
   return (
     <>
@@ -280,6 +333,8 @@ export const ProjectExplorerTree = forwardRef<ProjectExplorerTreeHandle, Project
             ref={hostRef}
             className="relative h-full min-h-0 min-w-0 overflow-hidden"
             onKeyDownCapture={handleKeyDownCapture}
+            onClick={handleBlankAreaInteraction}
+            onContextMenu={handleBlankAreaInteraction}
           >
             <ProjectExplorerRenderContext.Provider value={renderContext}>
               <Tree<ProjectFileExplorerNode>
@@ -304,6 +359,7 @@ export const ProjectExplorerTree = forwardRef<ProjectExplorerTreeHandle, Project
                 onRename={handleRename}
                 onMove={handleMove}
                 renderRow={ExplorerRow}
+                renderDragPreview={ProjectExplorerDragPreview}
               >
                 {ExplorerNode}
               </Tree>
@@ -330,37 +386,15 @@ export const ProjectExplorerTree = forwardRef<ProjectExplorerTreeHandle, Project
           if (!open) setDeletePaths([])
         }}
         onConfirm={async () => {
+          const nextSelection = selectionAfterDeletion(treeRef.current, deletePaths)
           for (const path of removeNestedProjectPaths(deletePaths)) await onDeleteItem(path)
           setDeletePaths([])
+          requestSelection(nextSelection)
         }}
       />
     </>
   )
 })
-
-function insertionDirectory(
-  tree: TreeApi<ProjectFileExplorerNode> | null,
-  selectedPath: string | null,
-): string {
-  const node = tree?.focusedNode ?? (selectedPath ? tree?.get(selectedPath) : null)
-  if (!node || node.data.type === 'more' || node.data.draft) return ''
-  return node.data.type === 'dir' ? node.data.path : projectParentPath(node.data.path)
-}
-
-function actionableFocusedNode(tree: TreeApi<ProjectFileExplorerNode>) {
-  const node = tree.focusedNode
-  return node && node.data.type !== 'more' && !node.data.draft ? node : null
-}
-
-function actionableSelection(tree: TreeApi<ProjectFileExplorerNode>): string[] {
-  const selected = tree.selectedNodes
-    .map((node) => node.data)
-    .filter((node) => node.type !== 'more' && !node.draft)
-    .map((node) => node.path)
-  if (selected.length > 0) return removeNestedProjectPaths(selected)
-  const focused = actionableFocusedNode(tree)
-  return focused ? [focused.data.path] : []
-}
 
 function consumeKeyboardEvent(event: KeyboardEvent) {
   event.preventDefault()
@@ -389,16 +423,4 @@ function useElementSize(ref: RefObject<HTMLElement | null>) {
     return () => observer.disconnect()
   }, [ref])
   return size
-}
-
-function disableProjectFileEdit(node: ProjectFileExplorerNode) {
-  return node.type !== 'file' && node.type !== 'dir'
-}
-
-function disableProjectFileDrag(node: ProjectFileExplorerNode) {
-  return node.type === 'more' || node.draft === true
-}
-
-function disableProjectFileDrop({ parentNode }: { parentNode: NodeApi<ProjectFileExplorerNode> }) {
-  return !parentNode.isRoot && (parentNode.data.type !== 'dir' || parentNode.data.symlink || parentNode.data.draft === true)
 }

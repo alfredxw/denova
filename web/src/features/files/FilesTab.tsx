@@ -8,6 +8,7 @@ import type { EditorFlushHandler } from '@/components/Editor/useEditorDraftPersi
 import { AutosaveStatusIndicator } from '@/components/forms/autosave-status'
 import { AdaptiveSurface } from '@/components/layout/adaptive-surface'
 import { Button } from '@/components/ui/button'
+import type { WorkspaceChangeMetadata } from '@/features/changes/types'
 import { ProjectExplorerPane } from '@/features/project-explorer/ProjectExplorerPane'
 import { useProjectExplorerPreferences } from '@/features/project-explorer/preferences'
 import { useProjectExplorer } from '@/features/project-explorer/use-project-explorer'
@@ -27,10 +28,11 @@ interface FilesTabProps {
   selectedPath: string | null
   autoSaveEnabled: boolean
   autoSaveDelayMs: number
-  refreshSignal?: number
+  editorRefreshSignal?: number
+  treeRefreshSignal?: number
   onSelectedPathChange: (path: string | null) => void
   onFlushHandlerChange?: (handler: EditorFlushHandler | null) => void
-  onWorkspaceChanged?: (workspace: string, paths: string[]) => void | Promise<void>
+  onWorkspaceChanged?: (workspace: string, paths: string[], metadata: WorkspaceChangeMetadata) => void | Promise<void>
 }
 
 /** A general project tab: Monaco on the left, an adaptive project file tree on the right. */
@@ -40,7 +42,8 @@ export function FilesTab({
   selectedPath,
   autoSaveEnabled,
   autoSaveDelayMs,
-  refreshSignal = 0,
+  editorRefreshSignal = 0,
+  treeRefreshSignal = 0,
   onSelectedPathChange,
   onFlushHandlerChange,
   onWorkspaceChanged,
@@ -66,9 +69,13 @@ export function FilesTab({
     selectedPath,
     autoSaveEnabled,
     autoSaveDelayMs,
-    onSaved: (path) => onWorkspaceChanged?.(workspace, [path]),
+    onSaved: (path) => onWorkspaceChanged?.(workspace, [path], {
+      impact: 'content',
+      origin: 'files-tab',
+    }),
   })
-  const refreshSignalRef = useRef(refreshSignal)
+  const editorRefreshSignalRef = useRef(editorRefreshSignal)
+  const treeRefreshSignalRef = useRef(treeRefreshSignal)
 
   useEffect(() => {
     persistProjectFileEditorPreferences(editorPreferences)
@@ -91,10 +98,20 @@ export function FilesTab({
   }, [editor.reload, projectId, t, tree.refresh])
 
   useEffect(() => {
-    if (refreshSignalRef.current === refreshSignal) return
-    refreshSignalRef.current = refreshSignal
-    void refresh()
-  }, [refresh, refreshSignal])
+    if (editorRefreshSignalRef.current === editorRefreshSignal) return
+    editorRefreshSignalRef.current = editorRefreshSignal
+    void editor.reload().catch((cause) => {
+      console.error('[features/files/FilesTab.tsx] synchronizing the selected file failed', { projectId, cause })
+    })
+  }, [editor.reload, editorRefreshSignal, projectId])
+
+  useEffect(() => {
+    if (treeRefreshSignalRef.current === treeRefreshSignal) return
+    treeRefreshSignalRef.current = treeRefreshSignal
+    void tree.refresh().catch((cause) => {
+      console.error('[features/files/FilesTab.tsx] synchronizing the project tree failed', { projectId, cause })
+    })
+  }, [projectId, tree.refresh, treeRefreshSignal])
 
   const selectFile = useCallback(async (path: string) => {
     if (path === selectedPath) return
@@ -120,7 +137,10 @@ export function FilesTab({
   const runOperation = useCallback(async <Result,>(paths: string[], operation: () => Promise<Result>): Promise<Result> => {
     try {
       const result = await operation()
-      await onWorkspaceChanged?.(workspace, paths)
+      await onWorkspaceChanged?.(workspace, paths, {
+        impact: 'structure',
+        origin: 'files-tab',
+      })
       return result
     } catch (cause) {
       console.error('[features/files/FilesTab.tsx] project file operation failed', { projectId, paths, cause })

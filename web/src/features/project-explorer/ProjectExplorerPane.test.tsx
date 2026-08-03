@@ -142,6 +142,54 @@ describe('ProjectExplorerPane', () => {
     await waitFor(() => expect(onCreateItem).toHaveBeenCalledWith('drafts', 'dir'))
   })
 
+  it('uses the selected folder as the create target and resets to root after clicking empty space', async () => {
+    const user = userEvent.setup()
+    const onCreateItem = vi.fn().mockResolvedValue(undefined)
+    const nodes: ProjectFileExplorerNode[] = [{
+      id: 'docs',
+      path: 'docs',
+      name: 'docs',
+      type: 'dir',
+      ignored: false,
+      symlink: false,
+      loaded: true,
+      loading: false,
+      children: [],
+    }]
+    render(
+      <ProjectExplorerPane
+        nodes={nodes}
+        workspace="/projects/one"
+        selectedPath={null}
+        expandedPaths={[]}
+        loading={false}
+        loadingPaths={new Set()}
+        error={null}
+        onSelectFile={vi.fn()}
+        onDirectoryExpand={vi.fn()}
+        onDirectoryExpandedChange={vi.fn()}
+        onCollapseAll={vi.fn()}
+        onLoadMore={vi.fn()}
+        onCreateItem={onCreateItem}
+        onDeleteItem={vi.fn()}
+        onRenameItem={vi.fn()}
+        onCopyItem={vi.fn()}
+        onMoveItem={vi.fn()}
+        onRefresh={vi.fn()}
+      />,
+    )
+
+    await user.click(screen.getByText('docs'))
+    await user.click(screen.getByRole('button', { name: '新建目录' }))
+    await user.type(await screen.findByRole('textbox'), 'guides{Enter}')
+    await waitFor(() => expect(onCreateItem).toHaveBeenLastCalledWith('docs/guides', 'dir'))
+
+    fireEvent.click(screen.getByRole('tree'))
+    await user.click(screen.getByRole('button', { name: '新建文件' }))
+    await user.type(await screen.findByRole('textbox'), 'nested/deep/story.md{Enter}')
+    await waitFor(() => expect(onCreateItem).toHaveBeenLastCalledWith('nested/deep/story.md', 'file'))
+  })
+
   it('keeps writing-only metadata and actions behind explorer extension points', async () => {
     const user = userEvent.setup()
     const onReferenceFile = vi.fn()
@@ -178,7 +226,7 @@ describe('ProjectExplorerPane', () => {
     )
 
     expect(await screen.findByText('1.2k · draft')).toBeInTheDocument()
-    fireEvent.contextMenu(screen.getByText('chapter.md'))
+    fireEvent.contextMenu(screen.getByLabelText('chapter.md'))
     await user.click(await screen.findByRole('menuitem', { name: '引用到对话' }))
     expect(onReferenceFile).toHaveBeenCalledWith(selectedPath)
   })

@@ -33,13 +33,13 @@ func TestApplySettingsMergePatchSupportsClearAndArrayReplacement(t *testing.T) {
 	existing := Settings{
 		Theme: "dark",
 		ModelProfiles: []ModelProfileSettings{
-			{ID: "first", OpenAIModel: "model-a"},
-			{ID: "second", OpenAIModel: "model-b"},
+			{ID: "first", Model: "model-a"},
+			{ID: "second", Model: "model-b"},
 		},
 	}
 	next, err := ApplySettingsMergePatch(existing, json.RawMessage(`{
 		"theme":null,
-		"model_profiles":[{"id":"only","openai_model":"model-c"}]
+		"model_profiles":[{"id":"only","model":"model-c"}]
 	}`))
 	if err != nil {
 		t.Fatal(err)

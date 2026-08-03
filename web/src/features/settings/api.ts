@@ -1,5 +1,5 @@
 import { fetchAPI, jsonHeaders, parseSSEStream, readErrorMessage, requestJSON } from '@/lib/api-client'
-import type { LayeredSettings, Settings, SettingsLayer, UpdateApplyResult, UpdateCheckResult } from './types'
+import type { LayeredSettings, ModelCatalog, ModelPingResult, ModelProfileSettings, Settings, SettingsLayer, UpdateApplyResult, UpdateCheckResult } from './types'
 import type { SSEEvent } from '@/lib/api-client'
 
 type JSONMergePatch<T> = T extends readonly unknown[]
@@ -132,4 +132,18 @@ export async function installUpdateStream(signal?: AbortSignal): Promise<Readabl
 
 export async function applyUpdate(): Promise<UpdateApplyResult> {
   return requestJSON('/api/update/apply', { method: 'POST' })
+}
+
+export function fetchModelCatalog(signal?: AbortSignal): Promise<ModelCatalog> {
+  return requestJSON('/api/models/catalog', { signal })
+}
+
+/** Validates an unsaved profile through the same resolver and adapter as a real Agent run. */
+export function pingModelProfile(profile: ModelProfileSettings, signal?: AbortSignal): Promise<ModelPingResult> {
+  return requestJSON('/api/models/ping', {
+    method: 'POST',
+    headers: jsonHeaders,
+    body: JSON.stringify({ profile }),
+    signal,
+  })
 }

@@ -14,15 +14,14 @@ import (
 	"strings"
 
 	agent "github.com/alfredxw/denova/agent"
-	"github.com/alfredxw/denova/agent/providers"
 )
 
 // Config contains only the endpoint traits needed by compatibility repairs.
 type Config struct {
-	Provider      providers.ProviderID
-	BaseURL       string
-	Model         string
-	ThinkingLevel providers.ThinkingLevel
+	Model                 string
+	RepairTextToolCalls   bool
+	RepairInlineThinking  bool
+	RequestReasoningSplit bool
 }
 
 // Wrap returns a possibly-decorated chat model that hides provider-specific
@@ -41,33 +40,12 @@ func Wrap(cm agent.ToolCallingChatModel, cfg Config) agent.ToolCallingChatModel 
 // building the chat model config, before any request is sent.
 func ExtraRequestFields(cfg Config) map[string]any {
 	out := map[string]any{}
-	if needsRepair(cfg) {
+	if cfg.RequestReasoningSplit {
 		// Ask the provider to return thinking via the standard
 		// reasoning_content field, instead of embedding it in content.
 		out["reasoning_split"] = true
 	}
 	return out
-}
-
-// ThinkingExtraFields maps Denova's unified level to provider-specific
-// thinking toggles that are not represented by the OpenAI SDK. DeepSeek V4
-// uses the nested thinking object; legacy compatible endpoints continue to use
-// enable_thinking. Official OpenAI and Gemini endpoints need neither field.
-func ThinkingExtraFields(cfg Config) map[string]any {
-	if cfg.ThinkingLevel == "" || cfg.ThinkingLevel == providers.ThinkingLevelDefault {
-		return nil
-	}
-	if cfg.Provider == providers.ProviderDeepSeek {
-		mode := "enabled"
-		if cfg.ThinkingLevel == providers.ThinkingLevelOff {
-			mode = "disabled"
-		}
-		return map[string]any{"thinking": map[string]any{"type": mode}}
-	}
-	if cfg.Provider == providers.ProviderOpenAI || usesGeminiOpenAICompatibility(cfg) {
-		return nil
-	}
-	return map[string]any{"enable_thinking": cfg.ThinkingLevel != providers.ThinkingLevelOff}
 }
 
 type polyfill interface {
@@ -78,10 +56,10 @@ type polyfill interface {
 // Order matters: later polyfills see output of earlier ones.
 func detect(cfg Config) []polyfill {
 	var out []polyfill
-	if needsRepair(cfg) {
-		// Both polyfills needed: tool-call text-to-struct, then think-tag cleanup
-		// (in case reasoning_split is ignored or falls back to inline tags).
+	if cfg.RepairTextToolCalls {
 		out = append(out, toolCallTextPolyfill{})
+	}
+	if cfg.RepairInlineThinking {
 		out = append(out, inlineThinkPolyfill{})
 	}
 	return out
@@ -92,32 +70,6 @@ func chain(cm agent.ToolCallingChatModel, ps []polyfill) agent.ToolCallingChatMo
 		cm = p.apply(cm)
 	}
 	return cm
-}
-
-// needsRepair returns true when the provider's OpenAI-compatible endpoint
-// does not return standard tool_calls or wraps thinking in <think> tags.
-// Detection is by base URL or model name matching a known non-standard
-// marker. "minimax" is a known host keyword of an OpenAI-compatible
-// provider that exhibits these quirks; "non-standard" and
-// "incompatible" are generic markers users can opt into via their
-// base URL or model name. Cheap, called once per Wrap.
-func needsRepair(cfg Config) bool {
-	base := strings.ToLower(cfg.BaseURL)
-	model := strings.ToLower(cfg.Model)
-	for _, marker := range []string{"minimax", "non-standard", "incompatible"} {
-		if strings.Contains(base, marker) || strings.Contains(model, marker) {
-			return true
-		}
-	}
-	return false
-}
-
-func usesGeminiOpenAICompatibility(cfg Config) bool {
-	base := strings.ToLower(strings.TrimSpace(cfg.BaseURL))
-	model := strings.ToLower(strings.TrimSpace(cfg.Model))
-	return strings.Contains(base, "generativelanguage.googleapis.com") ||
-		strings.Contains(base, "aiplatform.googleapis.com") ||
-		strings.HasPrefix(model, "gemini-")
 }
 
 // -----------------------------------------------------------------------------
