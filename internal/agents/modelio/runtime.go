@@ -5,6 +5,8 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"net/url"
+	"strings"
 	"sync"
 	"time"
 
@@ -124,10 +126,11 @@ func (runtime *Runtime) Probe(ctx context.Context, resolved config.ResolvedModel
 	if err != nil {
 		return ProbeResult{}, err
 	}
+	logBaseURL := loggableModelBaseURL(effective.BaseURL)
 
 	slog.InfoContext(ctx, fmt.Sprintf(
 		"[agents/modelio] model probe begin provider=%s protocol=%s model=%q base_url=%q",
-		effective.Provider, effective.Protocol, effective.Model, effective.BaseURL,
+		effective.Provider, effective.Protocol, effective.Model, logBaseURL,
 	))
 	startedAt := time.Now()
 	response, err := model.Generate(
@@ -139,7 +142,7 @@ func (runtime *Runtime) Probe(ctx context.Context, resolved config.ResolvedModel
 	if err != nil {
 		slog.WarnContext(ctx, fmt.Sprintf(
 			"[agents/modelio] model probe failed provider=%s protocol=%s model=%q base_url=%q latency_ms=%d err=%v",
-			effective.Provider, effective.Protocol, effective.Model, effective.BaseURL, latency.Milliseconds(), err,
+			effective.Provider, effective.Protocol, effective.Model, logBaseURL, latency.Milliseconds(), err,
 		))
 		return ProbeResult{}, &ProbeRequestError{cause: fmt.Errorf("provider request: %w", err)}
 	}
@@ -147,13 +150,13 @@ func (runtime *Runtime) Probe(ctx context.Context, resolved config.ResolvedModel
 		err = fmt.Errorf("provider returned no response")
 		slog.WarnContext(ctx, fmt.Sprintf(
 			"[agents/modelio] model probe failed provider=%s protocol=%s model=%q base_url=%q latency_ms=%d err=%v",
-			effective.Provider, effective.Protocol, effective.Model, effective.BaseURL, latency.Milliseconds(), err,
+			effective.Provider, effective.Protocol, effective.Model, logBaseURL, latency.Milliseconds(), err,
 		))
 		return ProbeResult{}, &ProbeRequestError{cause: err}
 	}
 	slog.InfoContext(ctx, fmt.Sprintf(
 		"[agents/modelio] model probe succeeded provider=%s protocol=%s model=%q base_url=%q latency_ms=%d",
-		effective.Provider, effective.Protocol, effective.Model, effective.BaseURL, latency.Milliseconds(),
+		effective.Provider, effective.Protocol, effective.Model, logBaseURL, latency.Milliseconds(),
 	))
 	return ProbeResult{
 		Latency:  latency,
@@ -162,6 +165,18 @@ func (runtime *Runtime) Probe(ctx context.Context, resolved config.ResolvedModel
 		BaseURL:  effective.BaseURL,
 		Model:    effective.Model,
 	}, nil
+}
+
+func loggableModelBaseURL(value string) string {
+	parsed, err := url.Parse(strings.TrimSpace(value))
+	if err != nil || parsed.Scheme == "" || parsed.Host == "" {
+		return "<invalid>"
+	}
+	parsed.User = nil
+	parsed.RawQuery = ""
+	parsed.ForceQuery = false
+	parsed.Fragment = ""
+	return parsed.String()
 }
 
 func (runtime *Runtime) NewChatModel(ctx context.Context, modelConfig providers.ModelConfig) (agent.ToolCallingChatModel, error) {

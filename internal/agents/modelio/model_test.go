@@ -45,3 +45,13 @@ func TestChatModelConfigFromResolvedKeepsOffThinkingLevel(t *testing.T) {
 		t.Fatalf("thinking level = %q, want off", modelCfg.ThinkingLevel)
 	}
 }
+
+func TestLoggableModelBaseURLRemovesCredentialsAndQuery(t *testing.T) {
+	got := loggableModelBaseURL("https://user:password@api.example.test/v1?api_key=secret#fragment")
+	if got != "https://api.example.test/v1" {
+		t.Fatalf("loggable base URL = %q", got)
+	}
+	if got := loggableModelBaseURL("not a URL?api_key=secret"); got != "<invalid>" {
+		t.Fatalf("invalid loggable base URL = %q", got)
+	}
+}
