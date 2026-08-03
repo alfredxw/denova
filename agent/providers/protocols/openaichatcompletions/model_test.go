@@ -52,7 +52,7 @@ func TestCompatibilityReasoningEffortCoversUnifiedThinkingLevels(t *testing.T) {
 		})
 	}
 	deepSeekOptions, err := providers.EncodeProtocolOptions(Compatibility{EffortMap: map[string]string{
-		"off": "", "minimal": "low", "medium": "high", "xhigh": "high",
+		"off": "", "minimal": "low", "medium": "high",
 	}})
 	if err != nil {
 		t.Fatal(err)
@@ -72,7 +72,7 @@ func TestCompatibilityReasoningEffortCoversUnifiedThinkingLevels(t *testing.T) {
 		{level: providers.ThinkingLevelLow, want: "low", ok: true},
 		{level: providers.ThinkingLevelMedium, want: "high", ok: true},
 		{level: providers.ThinkingLevelHigh, want: "high", ok: true},
-		{level: providers.ThinkingLevelXHigh, want: "high", ok: true},
+		{level: providers.ThinkingLevelXHigh, want: "xhigh", ok: true},
 		{level: providers.ThinkingLevelMax, want: "max", ok: true},
 	}
 	for _, test := range deepSeekTests {
@@ -97,6 +97,7 @@ func TestDeepSeekThinkingRequestUsesV4WireFormat(t *testing.T) {
 		{name: "off", level: providers.ThinkingLevelOff, wantThinking: "disabled"},
 		{name: "minimal", level: providers.ThinkingLevelMinimal, wantThinking: "enabled", wantEffort: "low", wantReasoningContent: true},
 		{name: "high", level: providers.ThinkingLevelHigh, wantThinking: "enabled", wantEffort: "high", wantReasoningContent: true},
+		{name: "xhigh", level: providers.ThinkingLevelXHigh, wantThinking: "enabled", wantEffort: "xhigh", wantReasoningContent: true},
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
@@ -105,7 +106,7 @@ func TestDeepSeekThinkingRequestUsesV4WireFormat(t *testing.T) {
 				ReasoningReplay:       ReasoningReplayToolCalls,
 				ReasoningContentField: "reasoning_content",
 				EffortMap: map[string]string{
-					"off": "", "minimal": "low", "medium": "high", "xhigh": "high",
+					"off": "", "minimal": "low", "medium": "high",
 				},
 			})
 			if err != nil {

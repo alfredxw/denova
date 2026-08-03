@@ -21,7 +21,7 @@ func TestDeepSeekThinkingRequestAndSignedContinuationReplay(t *testing.T) {
 		ThinkingMode:           ThinkingModeBudget,
 		DefaultThinkingBudget:  8192,
 		DefaultMaxOutputTokens: 65536,
-		EffortMap:              map[string]string{"xhigh": "high"},
+		EffortMap:              map[string]string{"minimal": "low", "medium": "high"},
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -60,7 +60,7 @@ func TestDeepSeekThinkingRequestAndSignedContinuationReplay(t *testing.T) {
 		t.Fatalf("thinking = %#v", thinking)
 	}
 	outputConfig := request["output_config"].(map[string]any)
-	if outputConfig["effort"] != "high" {
+	if outputConfig["effort"] != "xhigh" {
 		t.Fatalf("output_config = %#v", outputConfig)
 	}
 	toolChoice := request["tool_choice"].(map[string]any)

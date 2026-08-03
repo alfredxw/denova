@@ -342,6 +342,7 @@ func TestMergeModelProfilesResetsInheritedRoutingDefaultsWhenProviderChanges(t *
 
 func TestResolveAgentModelDoesNotReuseLegacyEndpointForExplicitCompatibleProvider(t *testing.T) {
 	resolved := ResolveAgentModel(&Config{
+		OpenAIAPIKey:  "legacy-secret",
 		OpenAIBaseURL: "https://api.deepseek.com",
 		OpenAIModel:   "deepseek-chat",
 		ModelProfiles: []ModelProfileSettings{{
@@ -356,6 +357,9 @@ func TestResolveAgentModelDoesNotReuseLegacyEndpointForExplicitCompatibleProvide
 	}
 	if resolved.BaseURL != "" {
 		t.Fatalf("compatible provider inherited legacy endpoint %q", resolved.BaseURL)
+	}
+	if resolved.APIKey != "" {
+		t.Fatalf("compatible provider inherited legacy API key %q", resolved.APIKey)
 	}
 }
 
