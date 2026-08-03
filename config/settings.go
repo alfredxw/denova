@@ -61,6 +61,7 @@ type Settings struct {
 	ChapterFilenameFormat       string `toml:"chapter_filename_format,omitempty" json:"chapter_filename_format,omitempty"`
 	VolumeDirFormat             string `toml:"volume_dir_format,omitempty" json:"volume_dir_format,omitempty"`
 	MaxOpenTabs                 *int   `toml:"max_open_tabs,omitempty" json:"max_open_tabs,omitempty"`
+	ProjectFileTreeEntryLimit   *int   `toml:"project_file_tree_entry_limit,omitempty" json:"project_file_tree_entry_limit,omitempty"`
 	ChapterGroupMin             *int   `toml:"chapter_group_min,omitempty" json:"chapter_group_min,omitempty"`
 	ChapterGroupMax             *int   `toml:"chapter_group_max,omitempty" json:"chapter_group_max,omitempty"`
 	VersionTimedEnabled         *bool  `toml:"version_timed_enabled,omitempty" json:"version_timed_enabled,omitempty"`
@@ -135,10 +136,15 @@ const (
 	DefaultTraceCaptureLevel      = "summary"
 	DefaultTraceExporter          = "local"
 	DefaultTraceRetentionRuns     = 100
-	DefaultTerminalMaxSessions    = 8
-	MaxTerminalSessions           = 64
-	DefaultTerminalScrollbackKB   = 256
-	MaxTerminalScrollbackKB       = 4096
+	// An ordinary creator project should fit comfortably in one response. The
+	// hard ceiling keeps an accidental generated tree from growing without
+	// bound even when the user raises the normal limit.
+	DefaultProjectFileTreeEntryLimit = 100_000
+	MaxProjectFileTreeEntryLimit     = 1_000_000
+	DefaultTerminalMaxSessions       = 8
+	MaxTerminalSessions              = 64
+	DefaultTerminalScrollbackKB      = 256
+	MaxTerminalScrollbackKB          = 4096
 )
 
 // DefaultSettings 返回内置默认配置（最低优先级）。
@@ -162,6 +168,7 @@ func DefaultSettings() Settings {
 		ChapterFilenameFormat:       "ch{order:05}-{chapter}-{title}.md",
 		VolumeDirFormat:             "v{order:05}-{volume}",
 		MaxOpenTabs:                 intPtr(5),
+		ProjectFileTreeEntryLimit:   intPtr(DefaultProjectFileTreeEntryLimit),
 		ChapterGroupMin:             intPtr(3),
 		ChapterGroupMax:             intPtr(8),
 		VersionTimedEnabled:         boolPtr(true),
@@ -295,6 +302,9 @@ func Merge(parent, child Settings) Settings {
 	}
 	if child.MaxOpenTabs != nil {
 		out.MaxOpenTabs = child.MaxOpenTabs
+	}
+	if child.ProjectFileTreeEntryLimit != nil {
+		out.ProjectFileTreeEntryLimit = child.ProjectFileTreeEntryLimit
 	}
 	if child.ChapterGroupMin != nil {
 		out.ChapterGroupMin = child.ChapterGroupMin
@@ -616,6 +626,7 @@ func LoadLayeredWithGlobalAt(novaDir, workspace, projectConfigPath string, globa
 	}
 	global.AgentToolResultLimitKB = normalizeAgentToolResultLimitKB(global.AgentToolResultLimitKB)
 	global.AgentToolParallelism = normalizeAgentToolParallelism(global.AgentToolParallelism)
+	global.ProjectFileTreeEntryLimit = normalizeProjectFileTreeEntryLimit(global.ProjectFileTreeEntryLimit)
 	user, err := ReadSettingsFile(UserConfigPath(novaDir))
 	if err != nil {
 		return LayeredSettings{}, err
@@ -739,6 +750,7 @@ func sanitizeEditableSettings(s Settings) Settings {
 	s.AgentIdleTimeoutSeconds = normalizeAgentIdleTimeoutSeconds(s.AgentIdleTimeoutSeconds)
 	s.AgentToolResultLimitKB = normalizeAgentToolResultLimitKB(s.AgentToolResultLimitKB)
 	s.AgentToolParallelism = normalizeAgentToolParallelism(s.AgentToolParallelism)
+	s.ProjectFileTreeEntryLimit = normalizeProjectFileTreeEntryLimit(s.ProjectFileTreeEntryLimit)
 	if s.AgentApprovalMode != "" {
 		s.AgentApprovalMode = NormalizeAgentApprovalMode(s.AgentApprovalMode)
 	}
@@ -806,6 +818,19 @@ func normalizeAgentToolParallelism(value *int) *int {
 	}
 	if *value > MaxAgentToolParallelism {
 		return intPtr(MaxAgentToolParallelism)
+	}
+	return value
+}
+
+func normalizeProjectFileTreeEntryLimit(value *int) *int {
+	if value == nil {
+		return nil
+	}
+	if *value <= 0 {
+		return intPtr(DefaultProjectFileTreeEntryLimit)
+	}
+	if *value > MaxProjectFileTreeEntryLimit {
+		return intPtr(MaxProjectFileTreeEntryLimit)
 	}
 	return value
 }

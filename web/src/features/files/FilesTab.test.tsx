@@ -78,7 +78,7 @@ function FilesHarness({
 describe('FilesTab', () => {
   beforeEach(() => window.localStorage.clear())
 
-  it('resolves a single-child directory chain in one request and saves Monaco edits with the selected revision', async () => {
+  it('recursively resolves the directory tree in one request and saves Monaco edits with the selected revision', async () => {
     const user = userEvent.setup()
     const onWorkspaceChanged = vi.fn()
     let savedBody: unknown
@@ -86,7 +86,7 @@ describe('FilesTab', () => {
       http.post('/api/projects/project-one/files/resolve', async ({ request }) => {
         expect(await request.json()).toMatchObject({
           targets: [{ path: '' }],
-          follow_single_child_directories: true,
+          recursive: true,
         })
         return HttpResponse.json({
           project_id: 'project-one',

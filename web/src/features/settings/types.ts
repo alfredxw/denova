@@ -34,6 +34,7 @@ export interface Settings {
   chapter_filename_format?: string
   volume_dir_format?: string
   max_open_tabs?: number | null
+  project_file_tree_entry_limit?: number | null
   chapter_group_min?: number | null
   chapter_group_max?: number | null
   version_timed_enabled?: boolean | null

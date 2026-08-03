@@ -1,7 +1,4 @@
 const agentApproval = {
-  'agentApproval.loadErrorTitle': '无法加载安全模式',
-  'agentApproval.loadFailed': 'Denova 无法确认当前安全模式。重试成功前不会启动新的 Agent 运行。',
-  'agentApproval.retry': '重试',
   'agentApproval.mode.ask.label': 'Ask',
   'agentApproval.mode.ask.description': '工作区编辑和常用只读命令自动执行；联网、外部写入和非白名单 Shell 命令先询问。',
   'agentApproval.mode.write.label': 'Write',

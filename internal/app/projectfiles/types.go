@@ -49,7 +49,11 @@ type TreeResolveRequest struct {
 	Targets                      []TreeResolveTarget `json:"targets"`
 	IncludeIgnored               bool                `json:"include_ignored,omitempty"`
 	FollowSingleChildDirectories bool                `json:"follow_single_child_directories,omitempty"`
-	EntryBudget                  int                 `json:"entry_budget,omitempty"`
+	// Recursive asks the service to breadth-first resolve every reachable
+	// directory that fits within the configured entry limit. Directories left
+	// outside that limit remain valid targets for later on-demand resolution.
+	Recursive   bool `json:"recursive,omitempty"`
+	EntryBudget int  `json:"entry_budget,omitempty"`
 }
 
 type TreeResolveResult struct {

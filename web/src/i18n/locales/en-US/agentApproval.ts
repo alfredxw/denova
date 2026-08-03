@@ -1,7 +1,4 @@
 const agentApproval = {
-  'agentApproval.loadErrorTitle': 'Safety mode unavailable',
-  'agentApproval.loadFailed': 'Denova could not confirm the current safety mode. New Agent runs stay blocked until retry succeeds.',
-  'agentApproval.retry': 'Retry',
   'agentApproval.mode.ask.label': 'Ask',
   'agentApproval.mode.ask.description': 'Workspace edits and common read-only commands run automatically. Network access, external writes, and unlisted shell commands ask first.',
   'agentApproval.mode.write.label': 'Write',

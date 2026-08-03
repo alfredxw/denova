@@ -31,6 +31,7 @@ export interface ProjectFileTreeResolveRequest {
   targets: ProjectFileTreeResolveTarget[]
   include_ignored?: boolean
   follow_single_child_directories?: boolean
+  recursive?: boolean
   entry_budget?: number
 }
 

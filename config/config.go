@@ -77,6 +77,7 @@ type Config struct {
 	TerminalClaudeCommand       string                    `toml:"terminal_claude_command"`
 	TerminalMaxSessions         int                       `toml:"terminal_max_sessions"`
 	TerminalScrollbackKB        int                       `toml:"terminal_scrollback_kb"`
+	ProjectFileTreeEntryLimit   int                       `toml:"project_file_tree_entry_limit"`
 	ChapterFilenameFormat       string                    `toml:"-"`
 	VolumeDirFormat             string                    `toml:"-"`
 	HideChapterBodyLiveOutput   bool                      `toml:"-"`
@@ -146,6 +147,7 @@ func LoadWithWorkspace(workspace string) (*Config, LayeredSettings, error) {
 		TerminalCommands:            append([]TerminalCommandSettings(nil), s.TerminalCommands...),
 		TerminalMaxSessions:         settingsTerminalMaxSessions(s.TerminalMaxSessions),
 		TerminalScrollbackKB:        settingsTerminalScrollbackKB(s.TerminalScrollbackKB),
+		ProjectFileTreeEntryLimit:   settingsProjectFileTreeEntryLimit(s.ProjectFileTreeEntryLimit),
 		LLMInputLogEnabled:          settingsBool(s.LLMInputLogEnabled, false),
 		TraceCaptureLevel:           settingsString(s.TraceCaptureLevel, DefaultTraceCaptureLevel),
 		TraceExporter:               settingsString(s.TraceExporter, DefaultTraceExporter),
@@ -301,6 +303,9 @@ func settingsFromConfig(cfg *Config) Settings {
 	if cfg.TerminalScrollbackKB > 0 {
 		settings.TerminalScrollbackKB = &cfg.TerminalScrollbackKB
 	}
+	if cfg.ProjectFileTreeEntryLimit > 0 {
+		settings.ProjectFileTreeEntryLimit = &cfg.ProjectFileTreeEntryLimit
+	}
 	if cfg.TerminalShell != "" {
 		settings.TerminalShell = cfg.TerminalShell
 	}
@@ -383,6 +388,7 @@ func Load() *Config {
 			TerminalCommands:            append([]TerminalCommandSettings(nil), d.TerminalCommands...),
 			TerminalMaxSessions:         settingsTerminalMaxSessions(d.TerminalMaxSessions),
 			TerminalScrollbackKB:        settingsTerminalScrollbackKB(d.TerminalScrollbackKB),
+			ProjectFileTreeEntryLimit:   settingsProjectFileTreeEntryLimit(d.ProjectFileTreeEntryLimit),
 			LLMInputLogEnabled:          settingsBool(d.LLMInputLogEnabled, false),
 			TraceCaptureLevel:           settingsString(d.TraceCaptureLevel, DefaultTraceCaptureLevel),
 			TraceExporter:               settingsString(d.TraceExporter, DefaultTraceExporter),
@@ -466,6 +472,16 @@ func settingsTerminalScrollbackKB(value *int) int {
 	return *value
 }
 
+func settingsProjectFileTreeEntryLimit(value *int) int {
+	if value == nil || *value <= 0 {
+		return DefaultProjectFileTreeEntryLimit
+	}
+	if *value > MaxProjectFileTreeEntryLimit {
+		return MaxProjectFileTreeEntryLimit
+	}
+	return *value
+}
+
 func settingsBool(v *bool, fallback bool) bool {
 	if v == nil {
 		return fallback
@@ -518,6 +534,11 @@ func overrideFromEnv(cfg *Config) {
 	if v := envCompat("DENOVA_FRONTEND_PORT", "NOVA_FRONTEND_PORT"); v != "" {
 		if port, err := strconv.Atoi(v); err == nil && port >= 1 && port <= 65535 {
 			cfg.FrontendPort = port
+		}
+	}
+	if v := strings.TrimSpace(os.Getenv("DENOVA_PROJECT_FILE_TREE_ENTRY_LIMIT")); v != "" {
+		if limit, err := strconv.Atoi(v); err == nil {
+			cfg.ProjectFileTreeEntryLimit = settingsProjectFileTreeEntryLimit(&limit)
 		}
 	}
 	if v := envCompat("DENOVA_AGENT_IDLE_TIMEOUT_SECONDS", "NOVA_AGENT_IDLE_TIMEOUT_SECONDS"); v != "" {

@@ -16,7 +16,6 @@ import {
 
 export type { ProjectFileExplorerNode } from './model'
 
-const TREE_ENTRY_BUDGET = 4096
 const MAX_TARGETS_PER_REQUEST = 256
 interface ProjectExplorerOptions {
   projectId: string
@@ -42,6 +41,7 @@ export interface ProjectExplorerState {
 interface ResolveOptions {
   appendPath?: string
   surfaceErrors?: boolean
+  recursive?: boolean
 }
 
 /**
@@ -85,8 +85,7 @@ export function useProjectExplorer({
       const responses = await Promise.all(chunks.map((chunk) => resolveProjectFileTree(projectId, {
         targets: chunk,
         include_ignored: true,
-        follow_single_child_directories: true,
-        entry_budget: TREE_ENTRY_BUDGET,
+        recursive: options.recursive === true,
       })))
       if (sourceVersionRef.current !== sourceVersion) return []
       const results = responses.flatMap((response) => response.results).filter((result) => (
@@ -127,11 +126,22 @@ export function useProjectExplorer({
     setDirectories(emptyDirectories)
     setLoadingPaths(new Set())
     setError(null)
-    const targets = bootstrapTargets(expandedPaths, selectedPath)
-    void resolveTargets(targets, { surfaceErrors: false })
-      .then((results) => {
+    const hints = bootstrapTargets(expandedPaths, selectedPath).filter((target) => target.path !== '')
+    void resolveTargets([{ path: '' }], { surfaceErrors: false, recursive: true })
+      .then(async (results) => {
         const root = results.find((result) => result.path === '')
         if (root && !root.ok) setError(root.error ?? null)
+        if (!root?.ok || hints.length === 0) return
+        const resolvedPaths = new Set(
+          results.flatMap((result) => result.ok ? result.directories.map((directory) => directory.path) : []),
+        )
+        const unresolvedHints = hints.filter((target) => !resolvedPaths.has(target.path))
+        if (unresolvedHints.length === 0) return
+        console.info('[features/project-explorer/use-project-explorer.ts] recursive bootstrap reached its boundary; resolving restored branches', {
+          projectId,
+          paths: unresolvedHints.map((target) => target.path),
+        })
+        await resolveTargets(unresolvedHints, { surfaceErrors: false, recursive: true })
       })
       .catch((cause) => {
         console.error('[features/project-explorer/use-project-explorer.ts] loading project tree failed', {
@@ -150,7 +160,7 @@ export function useProjectExplorer({
       .filter((path) => !directoriesRef.current.has(path))
       .map((path) => ({ path }))
     if (targets.length === 0) return
-    void resolveTargets(targets, { surfaceErrors: false }).catch((cause) => {
+    void resolveTargets(targets, { surfaceErrors: false, recursive: true }).catch((cause) => {
       console.error('[features/project-explorer/use-project-explorer.ts] resolving selected file ancestors failed', {
         projectId,
         selectedPath,
@@ -161,7 +171,7 @@ export function useProjectExplorer({
 
   const loadDirectory = useCallback(async (path: string) => {
     if (directoriesRef.current.has(path)) return
-    const results = await resolveTargets([{ path }])
+    const results = await resolveTargets([{ path }], { recursive: true })
     throwForFailedTarget(results, path)
   }, [resolveTargets])
 
@@ -183,7 +193,7 @@ export function useProjectExplorer({
   const loadMore = useCallback(async (path: string) => {
     const continuation = directoriesRef.current.get(path)?.continuation
     if (!continuation) return
-    const results = await resolveTargets([{ path, cursor: continuation }], { appendPath: path })
+    const results = await resolveTargets([{ path, cursor: continuation }], { appendPath: path, recursive: true })
     const result = results.find((item) => item.path === path)
     if (result?.code === 'cursor_stale') {
       await refreshDirectories([path])
@@ -242,7 +252,10 @@ export function useProjectExplorer({
       candidate !== refreshParent && !directoriesRef.current.has(candidate)
     ))
     if (unresolvedParents.length > 0) {
-      const results = await resolveTargets(unresolvedParents.map((candidate) => ({ path: candidate })))
+      const results = await resolveTargets(
+        unresolvedParents.map((candidate) => ({ path: candidate })),
+        { recursive: true },
+      )
       const failure = results.find((result) => !result.ok)
       if (failure) throw new Error(failure.error || 'Created project directory could not be resolved')
     }

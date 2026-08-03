@@ -1702,6 +1702,7 @@ function mergeSettingsLayer(parent: Settings, child: Settings): Settings {
   override('chapter_filename_format', isNonEmptyString)
   override('volume_dir_format', isNonEmptyString)
   override('max_open_tabs', isNonNull)
+  override('project_file_tree_entry_limit', isNonNull)
   override('chapter_group_min', isNonNull)
   override('chapter_group_max', isNonNull)
   override('version_timed_enabled', isNonNull)

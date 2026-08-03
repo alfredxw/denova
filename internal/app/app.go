@@ -228,7 +228,11 @@ func (a *App) ensureServices() {
 		a.modelsApp = modelsapp.NewService(modelHost{app: a})
 		a.imageApp = imageapp.NewService(imageHost{app: a})
 		a.loreApp = loreapp.NewService(loreHost{app: a}, a.imageApp)
-		a.projectFiles = projectfilesapp.NewServiceWithBookVersioning(a.projectRegistry, a)
+		projectFileOptions := []projectfilesapp.ServiceOption(nil)
+		if a.cfg != nil {
+			projectFileOptions = append(projectFileOptions, projectfilesapp.WithTreeEntryLimit(a.cfg.ProjectFileTreeEntryLimit))
+		}
+		a.projectFiles = projectfilesapp.NewServiceWithBookVersioning(a.projectRegistry, a, projectFileOptions...)
 	})
 }
 

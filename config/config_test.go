@@ -162,6 +162,41 @@ func TestLoadWithWorkspaceAllowsUnlimitedAgentIdleTimeout(t *testing.T) {
 	}
 }
 
+func TestLoadWithWorkspaceNormalizesUserProjectFileTreeEntryLimit(t *testing.T) {
+	novaDir := t.TempDir()
+	workspace := t.TempDir()
+	t.Setenv("DENOVA_DIR", novaDir)
+	t.Setenv("NOVA_DIR", "")
+	t.Setenv("OPENAI_API_KEY", "")
+	t.Setenv("OPENAI_MODEL", "")
+
+	configured := MaxProjectFileTreeEntryLimit + 1
+	if err := WriteSettingsFile(filepath.Join(novaDir, "config.toml"), Settings{
+		ProjectFileTreeEntryLimit: intPtr(configured),
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if err := WriteSettingsFile(filepath.Join(workspace, ".denova", "config.toml"), Settings{
+		ProjectFileTreeEntryLimit: intPtr(10),
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	cfg, layered, err := LoadWithWorkspace(workspace)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if cfg.ProjectFileTreeEntryLimit != MaxProjectFileTreeEntryLimit {
+		t.Fatalf("project file tree limit = %d, want %d", cfg.ProjectFileTreeEntryLimit, MaxProjectFileTreeEntryLimit)
+	}
+	if layered.User.ProjectFileTreeEntryLimit == nil || *layered.User.ProjectFileTreeEntryLimit != MaxProjectFileTreeEntryLimit {
+		t.Fatalf("user project file tree limit was not normalized: %#v", layered.User.ProjectFileTreeEntryLimit)
+	}
+	if layered.Workspace.ProjectFileTreeEntryLimit != nil {
+		t.Fatalf("workspace must not override the user-scoped project file tree limit")
+	}
+}
+
 func TestLoadWithWorkspaceMapsZeroToolResultLimitToDefault(t *testing.T) {
 	novaDir := t.TempDir()
 	ws := t.TempDir()

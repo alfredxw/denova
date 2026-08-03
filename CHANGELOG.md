@@ -170,6 +170,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Fixed
 
+- 移除设置读取失败时不可关闭的「无法加载安全模式」阻断弹窗；现在会记录明确错误并临时回退到权限最小的 Ask 模式，Agent 与其他页面仍可继续使用，后续设置刷新会恢复用户实际配置。
+- Removed the non-dismissible “Safety mode unavailable” dialog shown when settings cannot be read. Denova now logs the failure and temporarily falls back to the least-permissive Ask mode so Agent and the rest of the app remain usable; a later settings refresh restores the user's actual configuration.
+- 修复共享项目文件树在普通多分支目录中仍需逐层请求的问题。首次加载现在会在一次有界请求中按广度尽可能解析完整目录树，默认用户级上限为 100,000 条、硬上限为 1,000,000 条；只有真正超限时才保留未解析分支和游标分页继续按需加载。`project_file_tree_entry_limit` 可在用户配置中调整，写作与工作台 Files 共用该行为。
+- Fixed the shared project explorer still requiring one request per directory level in ordinary multi-branch trees. Initial loading now breadth-first resolves as much of the tree as possible in one bounded request, with a user-level default of 100,000 entries and a 1,000,000 hard ceiling; unresolved branches and cursor pagination remain available only when that limit is genuinely exceeded. `project_file_tree_entry_limit` configures the boundary for both Writing and Workspace Files.
 - 修复旧版 Model Profile 中 `openai_api_key` / `openai_base_url` / `openai_model` 在新版被忽略、保存后可能丢失的问题；读取时会默认迁移到通用字段，明确配置的新字段优先，下次写入使用标准字段名。火山方舟和 Gemini 旧 Base URL 会分别归一到对应的内置服务商。
 - Fixed legacy `openai_api_key`, `openai_base_url`, and `openai_model` fields in Model Profiles being ignored by the new schema and potentially lost on save. Reads now migrate them into generic fields by default, canonical fields win when both exist, and the next write uses canonical names. Legacy Volcengine Ark and Gemini Base URLs are normalized to their respective built-in providers.
 - 修复设置页服务商选择器使用可编辑 datalist 导致选中后难以再切换的问题；现在复用通用弹层与列表交互、只展示内置服务商目录，支持反复切换。列表一次性渲染全部选项，最多显示 8 项后在固定容器内普通滚动，不再因自动对齐导致可见数量和高度突变。

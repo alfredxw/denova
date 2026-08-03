@@ -1,5 +1,4 @@
 import { render, screen, waitFor } from '@testing-library/react'
-import userEvent from '@testing-library/user-event'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import type { AgentApprovalMode, LayeredSettings } from '@/features/settings/types'
 import { AgentApprovalProvider, useAgentApprovalMode } from './AgentApprovalProvider'
@@ -43,11 +42,8 @@ describe('AgentApprovalProvider', () => {
     expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
   })
 
-  it('blocks initialization on load failure and recovers through retry', async () => {
-    const user = userEvent.setup()
-    fetchSettings
-      .mockRejectedValueOnce(new Error('offline'))
-      .mockResolvedValueOnce(settingsSnapshot(undefined))
+  it('falls back to Ask without blocking the UI when settings loading fails', async () => {
+    fetchSettings.mockRejectedValueOnce(new Error('offline'))
 
     render(
       <AgentApprovalProvider>
@@ -55,12 +51,9 @@ describe('AgentApprovalProvider', () => {
       </AgentApprovalProvider>,
     )
 
-    expect(await screen.findByRole('dialog')).toHaveTextContent('无法加载安全模式')
-    expect(screen.getByTestId('mode')).toHaveTextContent('write:false')
-    await user.click(screen.getByRole('button', { name: '重试' }))
-
-    await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument())
-    expect(screen.getByTestId('mode')).toHaveTextContent('write:true')
+    await waitFor(() => expect(screen.getByTestId('mode')).toHaveTextContent('ask:true'))
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
+    expect(updateAgentApprovalMode).not.toHaveBeenCalled()
   })
 })
 

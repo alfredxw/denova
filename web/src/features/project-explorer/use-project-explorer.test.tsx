@@ -5,6 +5,57 @@ import { server } from '@/test/msw/server'
 import { useProjectExplorer } from './use-project-explorer'
 
 describe('useProjectExplorer', () => {
+  it('loads an ordinary nested tree in one recursive bootstrap request', async () => {
+    const requestBodies: unknown[] = []
+    server.use(
+      http.post('/api/projects/project-one/files/resolve', async ({ request }) => {
+        requestBodies.push(await request.json())
+        return HttpResponse.json({
+          project_id: 'project-one',
+          results: [{
+            path: '',
+            ok: true,
+            directories: [
+              {
+                path: '',
+                revision: 'root',
+                entries: [{ name: 'a', path: 'a', type: 'dir' }],
+                children_state: 'complete',
+              },
+              {
+                path: 'a',
+                revision: 'a',
+                entries: [{ name: 'nested', path: 'a/nested', type: 'dir' }],
+                children_state: 'complete',
+              },
+              {
+                path: 'a/nested',
+                revision: 'nested',
+                entries: [{ name: 'one.md', path: 'a/nested/one.md', type: 'file' }],
+                children_state: 'complete',
+              },
+            ],
+          }],
+        })
+      }),
+    )
+
+    const { result } = renderHook(() => useProjectExplorer({
+      projectId: 'project-one',
+      expandedPaths: ['a', 'a/nested'],
+      selectedPath: 'a/nested/one.md',
+    }))
+
+    await waitFor(() => expect(result.current.nodes[0]?.children?.[0]?.children?.[0]?.path).toBe('a/nested/one.md'))
+    await act(() => result.current.loadDirectory('a/nested'))
+
+    expect(requestBodies).toEqual([{
+      targets: [{ path: '' }],
+      include_ignored: true,
+      recursive: true,
+    }])
+  })
+
   it('batches bootstrap resolution and refreshes only mutation parents', async () => {
     const resolvedTargets: string[][] = []
     const includeIgnoredValues: unknown[] = []
@@ -42,8 +93,8 @@ describe('useProjectExplorer', () => {
     await waitFor(() => expect(result.current.loading).toBe(false))
     await act(() => result.current.createItem('a/new.ts', 'file'))
 
-    expect(resolvedTargets).toEqual([['', 'a', 'b'], ['a']])
-    expect(includeIgnoredValues).toEqual([true, true])
+    expect(resolvedTargets).toEqual([[''], ['a', 'b'], ['a']])
+    expect(includeIgnoredValues).toEqual([true, true, true])
   })
 
   it('keeps loaded branches cached across file switches and resolves only missing ancestors', async () => {
@@ -78,14 +129,14 @@ describe('useProjectExplorer', () => {
     }), { initialProps: { selectedPath: 'a/one.md' } })
 
     await waitFor(() => expect(result.current.loading).toBe(false))
-    expect(resolvedTargets).toEqual([['', 'a']])
+    expect(resolvedTargets).toEqual([[''], ['a']])
 
     rerender({ selectedPath: 'a/two.md' })
     await waitFor(() => expect(result.current.nodes[0]?.children?.[1]?.path).toBe('a/two.md'))
-    expect(resolvedTargets).toEqual([['', 'a']])
+    expect(resolvedTargets).toEqual([[''], ['a']])
 
     rerender({ selectedPath: 'b/three.md' })
-    await waitFor(() => expect(resolvedTargets).toEqual([['', 'a'], ['b']]))
+    await waitFor(() => expect(resolvedTargets).toEqual([[''], ['a'], ['b']]))
   })
 
   it('evicts a stale loaded branch without failing an otherwise successful refresh', async () => {

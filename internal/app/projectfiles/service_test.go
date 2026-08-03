@@ -59,6 +59,68 @@ func TestServiceResolvesBatchedBranchesAndSingleChildChains(t *testing.T) {
 	}
 }
 
+func TestServiceRecursivelyResolvesOrdinaryTreeWithinConfiguredLimit(t *testing.T) {
+	service, projectID, workspace := projectFilesTestService(t)
+	mustWriteProjectFile(t, workspace, "a/nested/one.md", "one")
+	mustWriteProjectFile(t, workspace, "a/two.md", "two")
+	mustWriteProjectFile(t, workspace, "b/three.md", "three")
+
+	resolved, err := service.ResolveTree(context.Background(), projectID, TreeResolveRequest{
+		Targets:   []TreeResolveTarget{{Path: ""}},
+		Recursive: true,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(resolved.Results) != 1 || !resolved.Results[0].OK {
+		t.Fatalf("unexpected recursive resolve result: %#v", resolved.Results)
+	}
+	directories := resolved.Results[0].Directories
+	paths := make([]string, 0, len(directories))
+	for _, directory := range directories {
+		paths = append(paths, directory.Path)
+		if directory.ChildrenState != DirectoryChildrenComplete || directory.Continuation != "" {
+			t.Fatalf("ordinary recursive tree should be complete: %#v", directory)
+		}
+	}
+	if want := []string{"", "a", "b", "a/nested"}; !slices.Equal(paths, want) {
+		t.Fatalf("recursive directory order = %v, want %v", paths, want)
+	}
+}
+
+func TestServiceFallsBackToUnresolvedBranchesAfterConfiguredTreeLimit(t *testing.T) {
+	service, projectID, workspace := projectFilesTestServiceWithOptions(t, WithTreeEntryLimit(3))
+	mustWriteProjectFile(t, workspace, "a/one.md", "one")
+	mustWriteProjectFile(t, workspace, "a/two.md", "two")
+	mustWriteProjectFile(t, workspace, "b/three.md", "three")
+
+	resolved, err := service.ResolveTree(context.Background(), projectID, TreeResolveRequest{
+		Targets:   []TreeResolveTarget{{Path: ""}},
+		Recursive: true,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	directories := resolved.Results[0].Directories
+	if len(directories) != 2 || directories[0].Path != "" || directories[1].Path != "a" {
+		t.Fatalf("tree limit should leave later branches unresolved: %#v", directories)
+	}
+	if directories[1].ChildrenState != DirectoryChildrenPartial || len(directories[1].Entries) != 1 || directories[1].Continuation == "" {
+		t.Fatalf("tree limit should retain the existing paged fallback: %#v", directories[1])
+	}
+
+	branch, err := service.ResolveTree(context.Background(), projectID, TreeResolveRequest{
+		Targets:   []TreeResolveTarget{{Path: "b"}},
+		Recursive: true,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !branch.Results[0].OK || len(branch.Results[0].Directories) != 1 || branch.Results[0].Directories[0].Entries[0].Path != "b/three.md" {
+		t.Fatalf("unresolved branch should remain loadable on demand: %#v", branch.Results)
+	}
+}
+
 func TestServicePaginatesLargeDirectoriesAndRejectsStaleContinuations(t *testing.T) {
 	service, projectID, workspace := projectFilesTestService(t)
 	for _, name := range []string{"a.txt", "b.txt", "c.txt"} {
@@ -331,6 +393,10 @@ func TestServiceCanManageASymlinkWithoutFollowingIt(t *testing.T) {
 }
 
 func projectFilesTestService(t *testing.T) (*Service, string, string) {
+	return projectFilesTestServiceWithOptions(t)
+}
+
+func projectFilesTestServiceWithOptions(t *testing.T, options ...ServiceOption) (*Service, string, string) {
 	t.Helper()
 	root := t.TempDir()
 	workspace := filepath.Join(root, "workspace")
@@ -345,7 +411,7 @@ func projectFilesTestService(t *testing.T) (*Service, string, string) {
 	if _, err := registry.EnsureState(record); err != nil {
 		t.Fatal(err)
 	}
-	return NewService(registry), record.ID, workspace
+	return NewService(registry, options...), record.ID, workspace
 }
 
 func mustWriteProjectFile(t *testing.T, root, relative, content string) {

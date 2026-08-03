@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"io"
 	"io/fs"
+	"log/slog"
 	"mime"
 	"net/http"
 	"os"
@@ -23,9 +24,12 @@ import (
 )
 
 const (
-	maxAssetBytes            = 32 * 1024 * 1024
-	defaultTreeEntryBudget   = 4096
-	maximumTreeEntryBudget   = 16384
+	maxAssetBytes = 32 * 1024 * 1024
+	// DefaultTreeEntryLimit intentionally sits far above an ordinary creator
+	// project. It bounds response size without turning normal directory depth
+	// into repeated network round trips.
+	DefaultTreeEntryLimit    = 100_000
+	MaximumTreeEntryLimit    = 1_000_000
 	maximumTreeResolveTarget = 256
 	maximumResolvedDirChain  = 64
 )
@@ -51,6 +55,20 @@ var defaultIgnoredDirectories = map[string]struct{}{
 type Service struct {
 	registry               *projectdomain.Registry
 	bookVersioningProvider BookMutationVersioningProvider
+	treeEntryLimit         int
+}
+
+// ServiceOption configures a project-file service without exposing its
+// internal cache and filesystem boundaries.
+type ServiceOption func(*Service)
+
+// WithTreeEntryLimit sets the per-request ceiling used by recursive tree
+// resolution. Invalid values fall back to the safe default and values above
+// the hard ceiling are clamped.
+func WithTreeEntryLimit(limit int) ServiceOption {
+	return func(service *Service) {
+		service.treeEntryLimit = normalizeTreeEntryLimit(limit)
+	}
 }
 
 // BookMutationVersioning preserves Writing's version-history contract while
@@ -73,14 +91,28 @@ type projectRuntime struct {
 	changes *workspacechange.Service
 }
 
-func NewService(registry *projectdomain.Registry) *Service {
-	return &Service{registry: registry}
+func NewService(registry *projectdomain.Registry, options ...ServiceOption) *Service {
+	return newService(registry, nil, options...)
 }
 
 // NewServiceWithBookVersioning enables restore points only for Book mutations
 // whose host provides a live Writing version service.
-func NewServiceWithBookVersioning(registry *projectdomain.Registry, provider BookMutationVersioningProvider) *Service {
-	return &Service{registry: registry, bookVersioningProvider: provider}
+func NewServiceWithBookVersioning(registry *projectdomain.Registry, provider BookMutationVersioningProvider, options ...ServiceOption) *Service {
+	return newService(registry, provider, options...)
+}
+
+func newService(registry *projectdomain.Registry, provider BookMutationVersioningProvider, options ...ServiceOption) *Service {
+	service := &Service{
+		registry:               registry,
+		bookVersioningProvider: provider,
+		treeEntryLimit:         DefaultTreeEntryLimit,
+	}
+	for _, option := range options {
+		if option != nil {
+			option(service)
+		}
+	}
+	return service
 }
 
 // ResolveTree resolves several explorer branches in one bounded request. Each
@@ -97,12 +129,7 @@ func (service *Service) ResolveTree(ctx context.Context, projectID string, reque
 		return TreeResolveResponse{}, fmt.Errorf("project tree request exceeds %d targets", maximumTreeResolveTarget)
 	}
 
-	budget := request.EntryBudget
-	if budget <= 0 {
-		budget = defaultTreeEntryBudget
-	} else if budget > maximumTreeEntryBudget {
-		budget = maximumTreeEntryBudget
-	}
+	budget := resolveTreeEntryBudget(request.EntryBudget, service.treeEntryLimit)
 	root, err := os.OpenRoot(runtime.layout.ContentRoot)
 	if err != nil {
 		return TreeResolveResponse{}, fmt.Errorf("open project directory: %w", err)
@@ -132,7 +159,15 @@ func (service *Service) ResolveTree(ctx context.Context, projectID string, reque
 		if targetBudget == 0 {
 			targetBudget = 1
 		}
-		result, used := resolveTreeTarget(ctx, root, target, request.IncludeIgnored, request.FollowSingleChildDirectories, targetBudget)
+		result, used := resolveTreeTarget(
+			ctx,
+			root,
+			target,
+			request.IncludeIgnored,
+			request.FollowSingleChildDirectories,
+			request.Recursive,
+			targetBudget,
+		)
 		if err := ctx.Err(); err != nil {
 			return TreeResolveResponse{}, err
 		}
@@ -141,6 +176,20 @@ func (service *Service) ResolveTree(ctx context.Context, projectID string, reque
 			remainingBudget = 0
 		}
 		response.Results = append(response.Results, result)
+		if request.Recursive {
+			attributes := []any{
+				"project_id", runtime.record.ID,
+				"target_path", result.Path,
+				"resolved_entries", used,
+				"resolved_directories", len(result.Directories),
+				"entry_limit", targetBudget,
+			}
+			if recursiveTreeResultComplete(result) {
+				slog.DebugContext(ctx, "[internal/app/projectfiles/service.go] recursively resolved project file tree", attributes...)
+			} else if result.OK {
+				slog.InfoContext(ctx, "[internal/app/projectfiles/service.go] recursive project file tree reached its boundary; leaving branches for on-demand loading", attributes...)
+			}
+		}
 	}
 	return response, nil
 }
@@ -159,7 +208,15 @@ type treeResolveFailure struct {
 func (failure *treeResolveFailure) Error() string { return failure.err.Error() }
 func (failure *treeResolveFailure) Unwrap() error { return failure.err }
 
-func resolveTreeTarget(ctx context.Context, root *os.Root, target TreeResolveTarget, includeIgnored, followSingleChildDirectories bool, budget int) (TreeResolveResult, int) {
+func resolveTreeTarget(
+	ctx context.Context,
+	root *os.Root,
+	target TreeResolveTarget,
+	includeIgnored bool,
+	followSingleChildDirectories bool,
+	recursive bool,
+	budget int,
+) (TreeResolveResult, int) {
 	result := TreeResolveResult{ID: target.ID, Path: strings.TrimSpace(target.Path)}
 	path, err := normalizeRelativePath(target.Path, true)
 	if err != nil {
@@ -168,6 +225,9 @@ func resolveTreeTarget(ctx context.Context, root *os.Root, target TreeResolveTar
 		return result, 0
 	}
 	result.Path = path
+	if recursive {
+		return resolveTreeTargetRecursive(ctx, root, result, path, strings.TrimSpace(target.Cursor), includeIgnored, budget)
+	}
 	currentPath := path
 	cursor := strings.TrimSpace(target.Cursor)
 	used := 0

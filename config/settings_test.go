@@ -32,6 +32,9 @@ func TestDefaultSettingsValues(t *testing.T) {
 	if s.VersionTimedIntervalMinutes == nil || *s.VersionTimedIntervalMinutes != 10 {
 		t.Fatalf("VersionTimedIntervalMinutes should default to 10")
 	}
+	if s.ProjectFileTreeEntryLimit == nil || *s.ProjectFileTreeEntryLimit != DefaultProjectFileTreeEntryLimit {
+		t.Fatalf("ProjectFileTreeEntryLimit default")
+	}
 	if s.HideChapterBodyLiveOutput == nil || *s.HideChapterBodyLiveOutput {
 		t.Fatalf("HideChapterBodyLiveOutput should default off")
 	}

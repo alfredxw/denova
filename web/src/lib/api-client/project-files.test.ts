@@ -45,6 +45,7 @@ describe('project files API', () => {
       targets: [{ id: 'source', path: 'src' }],
       include_ignored: true,
       follow_single_child_directories: true,
+      recursive: true,
       entry_budget: 4096,
     })).resolves.toMatchObject({ results: [{ directories: [{ entries: [] }] }] })
     const document = await readProjectFile('project one', 'src/main file.ts')
@@ -58,6 +59,7 @@ describe('project files API', () => {
           targets: [{ id: 'source', path: 'src' }],
           include_ignored: true,
           follow_single_child_directories: true,
+          recursive: true,
           entry_budget: 4096,
         },
       },
