@@ -239,6 +239,83 @@ func TestResolveAgentModelInheritsProviderAndProtocolFromDefaultProfile(t *testi
 	}
 }
 
+func TestResolveAgentModelScopesInheritedAPIKeyToEndpointOrigin(t *testing.T) {
+	cfg := &Config{
+		ModelProfiles: []ModelProfileSettings{
+			{
+				ID:       "default",
+				Provider: string(providers.ProviderDeepSeek),
+				APIKey:   "deepseek-secret",
+				BaseURL:  "https://api.deepseek.com",
+				Model:    "deepseek-v4-pro",
+			},
+			{
+				ID:       "same-origin",
+				Provider: string(providers.ProviderDeepSeek),
+				Protocol: string(providers.ProtocolAnthropicMessages),
+				BaseURL:  "https://api.deepseek.com/anthropic",
+				Model:    "deepseek-v4-pro",
+			},
+			{
+				ID:       "other-origin",
+				Provider: string(providers.ProviderDeepSeek),
+				BaseURL:  "https://gateway.example.test/v1",
+				Model:    "deepseek-v4-pro",
+			},
+			{
+				ID:       "other-provider",
+				Provider: "google",
+				Model:    "gemini-2.5-pro",
+			},
+		},
+	}
+
+	cfg.AgentModels.IDE.ProfileID = "same-origin"
+	if got := ResolveAgentModel(cfg, AgentKindIDE).APIKey; got != "deepseek-secret" {
+		t.Fatalf("same-origin route API key = %q, want inherited secret", got)
+	}
+	cfg.AgentModels.IDE.ProfileID = "other-origin"
+	if got := ResolveAgentModel(cfg, AgentKindIDE).APIKey; got != "" {
+		t.Fatalf("other-origin route inherited API key %q", got)
+	}
+	cfg.AgentModels.IDE.ProfileID = "other-provider"
+	if got := ResolveAgentModel(cfg, AgentKindIDE).APIKey; got != "" {
+		t.Fatalf("other-provider route inherited API key %q", got)
+	}
+}
+
+func TestMergeModelProfilesScopesRouteOwnedSettings(t *testing.T) {
+	parent := ModelProfileSettings{
+		ID:              "default",
+		Provider:        string(providers.ProviderDeepSeek),
+		Protocol:        string(providers.ProtocolOpenAIChatCompletions),
+		APIKey:          "secret",
+		BaseURL:         "https://api.deepseek.com",
+		Headers:         map[string]string{"X-Tenant": "tenant"},
+		ProtocolOptions: map[string]any{"thinking_toggle": "nested"},
+	}
+
+	otherOrigin := mergeModelProfiles([]ModelProfileSettings{parent}, []ModelProfileSettings{{
+		ID:      "default",
+		BaseURL: "https://gateway.example.test/v1",
+	}})[0]
+	if otherOrigin.APIKey != "" || otherOrigin.Headers != nil || otherOrigin.ProtocolOptions != nil {
+		t.Fatalf("endpoint change retained route-owned settings: %#v", otherOrigin)
+	}
+
+	sameOriginNewProtocol := mergeModelProfiles([]ModelProfileSettings{parent}, []ModelProfileSettings{{
+		ID:       "default",
+		Protocol: string(providers.ProtocolAnthropicMessages),
+		BaseURL:  "https://api.deepseek.com/anthropic",
+	}})[0]
+	if sameOriginNewProtocol.APIKey != "secret" || sameOriginNewProtocol.Headers["X-Tenant"] != "tenant" {
+		t.Fatalf("same-origin protocol change lost credentials: %#v", sameOriginNewProtocol)
+	}
+	if sameOriginNewProtocol.ProtocolOptions != nil {
+		t.Fatalf("protocol change retained incompatible options: %#v", sameOriginNewProtocol.ProtocolOptions)
+	}
+}
+
 func TestMergeModelProfilesResetsInheritedRoutingDefaultsWhenProviderChanges(t *testing.T) {
 	for _, parent := range []ModelProfileSettings{
 		{

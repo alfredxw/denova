@@ -1,6 +1,7 @@
 package builtin
 
 import (
+	"encoding/json"
 	"testing"
 
 	"github.com/alfredxw/denova/agent/providers"
@@ -78,6 +79,41 @@ func TestRegistrySupportsDeepSeekResponses(t *testing.T) {
 	}
 	if compatibility.Store != openairesponses.StoreModeOmit || compatibility.ReasoningSummary != openairesponses.ReasoningSummaryOmit || compatibility.IncludeEncryptedReasoning {
 		t.Fatalf("DeepSeek Responses compatibility = %#v", compatibility)
+	}
+}
+
+func TestDeepSeekPresetsKeepModelAwareXHighEffort(t *testing.T) {
+	registry, err := NewRegistry()
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, protocol := range []providers.ProtocolID{
+		providers.ProtocolOpenAIChatCompletions,
+		providers.ProtocolOpenAIResponses,
+		providers.ProtocolAnthropicMessages,
+	} {
+		t.Run(string(protocol), func(t *testing.T) {
+			resolved, err := registry.Resolve(providers.ModelConfig{
+				Provider: providers.ProviderDeepSeek,
+				Protocol: protocol,
+				Model:    "deepseek-v4-pro",
+			})
+			if err != nil {
+				t.Fatal(err)
+			}
+			var options struct {
+				EffortMap map[string]string `json:"effort_map"`
+			}
+			if err := json.Unmarshal(resolved.ProtocolOptions, &options); err != nil {
+				t.Fatal(err)
+			}
+			if mapped, exists := options.EffortMap["xhigh"]; exists {
+				t.Fatalf("xhigh must reach DeepSeek unchanged for model-aware mapping, got %q", mapped)
+			}
+			if options.EffortMap["minimal"] != "low" || options.EffortMap["medium"] != "high" {
+				t.Fatalf("unsupported neutral efforts were not normalized: %#v", options.EffortMap)
+			}
+		})
 	}
 }
 

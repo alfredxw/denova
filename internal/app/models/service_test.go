@@ -59,6 +59,34 @@ func TestPingUsesStoredSecretAndRealAgentAdapter(t *testing.T) {
 	}
 }
 
+func TestPingDoesNotForwardStoredCredentialsToChangedOrigin(t *testing.T) {
+	headers := make(chan http.Header, 1)
+	server := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
+		headers <- request.Header.Clone()
+		writer.Header().Set("Content-Type", "application/json")
+		_, _ = io.WriteString(writer, `{
+  "id":"ping","object":"chat.completion","created":1,"model":"provider-model",
+  "choices":[{"index":0,"finish_reason":"stop","message":{"role":"assistant","content":"OK"}}]
+}`)
+	}))
+	defer server.Close()
+
+	service := NewService(testHost{config: config.Config{ModelProfiles: []config.ModelProfileSettings{{
+		ID: "private", Provider: "private-provider", Protocol: string(providers.ProtocolOpenAIChatCompletions),
+		APIKey: "stored-secret", BaseURL: "https://original.example.test/v1", Model: "private-model",
+		Headers: map[string]string{"X-Private": "stored-header"},
+	}}}})
+	if _, err := service.Ping(context.Background(), config.ModelProfileSettings{
+		ID: "private", BaseURL: server.URL,
+	}); err != nil {
+		t.Fatal(err)
+	}
+	requestHeaders := <-headers
+	if requestHeaders.Get("Authorization") == "Bearer stored-secret" || requestHeaders.Get("X-Private") != "" {
+		t.Fatalf("changed endpoint received stored credentials: %#v", requestHeaders)
+	}
+}
+
 func TestPingPreservesProviderAPIErrors(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, _ *http.Request) {
 		writer.Header().Set("Content-Type", "application/json")

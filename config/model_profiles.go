@@ -2,6 +2,7 @@ package config
 
 import (
 	"fmt"
+	"net/url"
 	"strings"
 
 	"github.com/alfredxw/denova/agent/providers"
@@ -82,8 +83,9 @@ func ResolveAgentModel(cfg *Config, agentKind string) ResolvedModelSettings {
 	if cfg == nil {
 		return ResolvedModelSettings{}
 	}
+	legacyProfile := legacyModelProfile(cfg)
 	profiles := map[string]ModelProfileSettings{
-		"default": legacyModelProfile(cfg),
+		"default": legacyProfile,
 	}
 	for _, profile := range cfg.ModelProfiles {
 		id := modelProfileID(profile)
@@ -96,13 +98,13 @@ func ResolveAgentModel(cfg *Config, agentKind string) ResolvedModelSettings {
 		profiles[id] = mergeModelProfile(base, profile)
 	}
 	defaultProfile := profiles["default"]
-	if defaultProfile.APIKey == "" {
-		defaultProfile.APIKey = cfg.OpenAIAPIKey
-	}
 	if defaultProfile.BaseURL == "" {
 		if defaultProfile.Provider == "" {
 			defaultProfile.BaseURL = cfg.OpenAIBaseURL
 		}
+	}
+	if defaultProfile.APIKey == "" && sameModelCredentialScope(defaultProfile, legacyProfile) {
+		defaultProfile.APIKey = legacyProfile.APIKey
 	}
 	if defaultProfile.Model == "" {
 		defaultProfile.Model = cfg.OpenAIModel
@@ -135,13 +137,13 @@ func ResolveAgentModel(cfg *Config, agentKind string) ResolvedModelSettings {
 			profile.Protocol = defaultProfile.Protocol
 		}
 	}
-	if profile.APIKey == "" {
-		profile.APIKey = defaultProfile.APIKey
-	}
 	if profile.BaseURL == "" {
 		if profile.Provider == "" || profile.Provider == defaultProfile.Provider {
 			profile.BaseURL = defaultProfile.BaseURL
 		}
+	}
+	if profile.APIKey == "" && sameModelCredentialScope(profile, defaultProfile) {
+		profile.APIKey = defaultProfile.APIKey
 	}
 	if profile.Model == "" {
 		profile.Model = defaultProfile.Model
@@ -360,6 +362,8 @@ func defaultModelProfile(profiles []ModelProfileSettings) (ModelProfileSettings,
 
 func mergeModelProfile(parent, child ModelProfileSettings) ModelProfileSettings {
 	out := parent
+	previousProtocol := strings.TrimSpace(out.Protocol)
+	previousScope := modelCredentialScope(out)
 	if id := modelProfileID(child); id != "" {
 		out.ID = id
 	}
@@ -381,11 +385,22 @@ func mergeModelProfile(parent, child ModelProfileSettings) ModelProfileSettings 
 	if child.Protocol != "" {
 		out.Protocol = strings.TrimSpace(child.Protocol)
 	}
-	if child.APIKey != "" {
-		out.APIKey = child.APIKey
-	}
 	if child.BaseURL != "" {
 		out.BaseURL = child.BaseURL
+	}
+	// Credentials and compatibility settings may be inherited across settings
+	// layers, but never silently cross an endpoint origin. Protocol options are
+	// additionally scoped to their wire protocol. Explicit child values below
+	// can establish the new route after inherited values have been discarded.
+	if previousScope != modelCredentialScope(out) {
+		out.APIKey = ""
+		out.Headers = nil
+		out.ProtocolOptions = nil
+	} else if previousProtocol != strings.TrimSpace(out.Protocol) {
+		out.ProtocolOptions = nil
+	}
+	if child.APIKey != "" {
+		out.APIKey = child.APIKey
 	}
 	if child.Model != "" {
 		out.Model = strings.TrimSpace(child.Model)
@@ -406,6 +421,24 @@ func mergeModelProfile(parent, child ModelProfileSettings) ModelProfileSettings 
 		out.MaxOutputTokens = child.MaxOutputTokens
 	}
 	return out
+}
+
+func sameModelCredentialScope(left, right ModelProfileSettings) bool {
+	return modelCredentialScope(left) == modelCredentialScope(right)
+}
+
+func modelCredentialScope(profile ModelProfileSettings) string {
+	baseURL := strings.TrimSpace(profile.BaseURL)
+	if baseURL != "" {
+		if parsed, err := url.Parse(baseURL); err == nil && parsed.Scheme != "" && parsed.Host != "" {
+			// API credentials are generally valid across protocol paths on one
+			// origin (for example DeepSeek's root and /anthropic endpoints), but
+			// must not follow a draft to another network destination.
+			return "origin:" + strings.ToLower(parsed.Scheme) + "://" + strings.ToLower(parsed.Host)
+		}
+		return "endpoint:" + strings.ToLower(strings.TrimRight(baseURL, "/"))
+	}
+	return "provider:" + strings.ToLower(strings.TrimSpace(profile.Provider))
 }
 
 func mergeAgentModelOverride(parent, child AgentModelOverride) AgentModelOverride {
