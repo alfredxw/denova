@@ -170,6 +170,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Fixed
 
+- 修复 OpenAI Responses 无状态续传在回放 assistant output message 时被 SDK union 解码静默丢弃 `content`、`id`、`status` 与 `phase`，导致 DeepSeek 等严格 endpoint 在工具调用后的下一轮返回 `input: missing field content` 400 的问题；该故障与 thinking 档位无关，在 `off` 与 `minimal` 下均可复现。持久化 output item 现在先校验再通过 SDK raw override 原样发送，并补充 `thinking=off` 工具续轮回归测试，写作与游戏模式共用此修复。
+- Fixed stateless OpenAI Responses continuation silently losing assistant output-message `content`, `id`, `status`, and `phase` through SDK union decoding, which made strict endpoints such as DeepSeek return `input: missing field content` with HTTP 400 on the turn after tool calls. The failure was independent of the thinking level and reproduced with both `off` and `minimal`. Persisted output items are now validated and replayed unchanged through the SDK raw override path, with a `thinking=off` tool-continuation regression test covering the fix for both Writing and Game modes.
 - 移除设置读取失败时不可关闭的「无法加载安全模式」阻断弹窗；现在会记录明确错误并临时回退到权限最小的 Ask 模式，Agent 与其他页面仍可继续使用，后续设置刷新会恢复用户实际配置。
 - Removed the non-dismissible “Safety mode unavailable” dialog shown when settings cannot be read. Denova now logs the failure and temporarily falls back to the least-permissive Ask mode so Agent and the rest of the app remain usable; a later settings refresh restores the user's actual configuration.
 - 修复共享项目文件树在普通多分支目录中仍需逐层请求的问题。首次加载现在会在一次有界请求中按广度尽可能解析完整目录树，默认用户级上限为 100,000 条、硬上限为 1,000,000 条；只有真正超限时才保留未解析分支和游标分页继续按需加载。`project_file_tree_entry_limit` 可在用户配置中调整，写作与工作台 Files 共用该行为。

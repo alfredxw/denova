@@ -51,6 +51,70 @@ func TestApplyThinkingLevelCoversOpenAIResponsesEfforts(t *testing.T) {
 	}
 }
 
+func TestThinkingOffToolContinuationPreservesAssistantOutput(t *testing.T) {
+	modelConfig := providers.ModelConfig{
+		Provider:      providers.ProviderDeepSeek,
+		Protocol:      providers.ProtocolOpenAIResponses,
+		APIKey:        "secret",
+		Model:         "deepseek-v4-flash",
+		BaseURL:       "https://api.deepseek.com",
+		ThinkingLevel: providers.ThinkingLevelOff,
+		ProtocolOptions: mustProtocolOptions(t, Compatibility{
+			ReasoningSummary: ReasoningSummaryAuto,
+		}),
+	}
+	continuation, err := providers.NewContinuation(modelConfig, []json.RawMessage{
+		json.RawMessage(`{"id":"message_off","type":"message","status":"completed","role":"assistant","phase":"commentary","content":[{"type":"output_text","text":"loading context","annotations":[],"logprobs":[]}]}`),
+		json.RawMessage(`{"id":"function_off","type":"function_call","call_id":"call_off","name":"read","arguments":"{\"path\":\"progress.md\"}","status":"completed"}`),
+	})
+	if err != nil {
+		t.Fatalf("new continuation: %v", err)
+	}
+	assistant := agent.AssistantMessage("loading context", nil)
+	assistant.Extra = map[string]any{providers.ExtraKeyContinuation: continuation}
+
+	created, err := NewAdapter().New(context.Background(), modelConfig)
+	if err != nil {
+		t.Fatalf("new model: %v", err)
+	}
+	model := created.(*ChatModel)
+	params, _, err := model.request([]*agent.Message{
+		assistant,
+		agent.ToolMessage(agent.TextToolResult("context loaded"), "call_off", agent.WithToolName("read")),
+	})
+	if err != nil {
+		t.Fatalf("build continuation request: %v", err)
+	}
+	data, err := json.Marshal(params)
+	if err != nil {
+		t.Fatalf("marshal continuation request: %v", err)
+	}
+	var request map[string]any
+	if err := json.Unmarshal(data, &request); err != nil {
+		t.Fatalf("decode continuation request: %v", err)
+	}
+
+	reasoning, _ := request["reasoning"].(map[string]any)
+	if reasoning["effort"] != "none" || reasoning["summary"] != nil {
+		t.Fatalf("thinking-off reasoning = %#v", reasoning)
+	}
+	input, _ := request["input"].([]any)
+	if len(input) != 3 {
+		t.Fatalf("continuation input = %#v", request["input"])
+	}
+	replayedMessage := input[0].(map[string]any)
+	replayedContent, _ := replayedMessage["content"].([]any)
+	if len(replayedContent) != 1 || replayedContent[0].(map[string]any)["text"] != "loading context" {
+		t.Fatalf("assistant output content was not replayed: %#v", replayedMessage)
+	}
+	if replayedMessage["id"] != "message_off" || replayedMessage["phase"] != "commentary" {
+		t.Fatalf("assistant output identity was not replayed: %#v", replayedMessage)
+	}
+	if input[1].(map[string]any)["type"] != "function_call" || input[2].(map[string]any)["type"] != "function_call_output" {
+		t.Fatalf("tool continuation order changed: %#v", input)
+	}
+}
+
 func mustProtocolOptions(t *testing.T, compatibility Compatibility) json.RawMessage {
 	t.Helper()
 	options, err := providers.EncodeProtocolOptions(compatibility)
@@ -82,7 +146,7 @@ func TestGenerateMapsRequestResponseAndReplaysOutputItems(t *testing.T) {
   "id":"resp_1","object":"response","created_at":1700000000,"status":"completed","model":"provider-model",
   "output":[
     {"id":"reason_1","type":"reasoning","summary":[{"type":"summary_text","text":"checked facts"}],"content":[],"encrypted_content":"encrypted-state","status":"completed"},
-    {"id":"message_1","type":"message","status":"completed","role":"assistant","content":[{"type":"output_text","text":"answer","annotations":[],"logprobs":[]}]},
+    {"id":"message_1","type":"message","status":"completed","role":"assistant","phase":"commentary","content":[{"type":"output_text","text":"answer","annotations":[],"logprobs":[]}]},
     {"id":"function_1","type":"function_call","call_id":"call_new","name":"lookup","arguments":"{\"q\":\"new\"}","status":"completed"}
   ],
   "usage":{"input_tokens":11,"input_tokens_details":{"cached_tokens":5},"output_tokens":7,"output_tokens_details":{"reasoning_tokens":3},"total_tokens":18}
@@ -236,6 +300,18 @@ func TestGenerateMapsRequestResponseAndReplaysOutputItems(t *testing.T) {
 	}
 	if input[0].(map[string]any)["encrypted_content"] != "encrypted-state" {
 		t.Fatalf("encrypted reasoning was not replayed: %#v", input[0])
+	}
+	replayedMessage := input[1].(map[string]any)
+	replayedContent, _ := replayedMessage["content"].([]any)
+	if len(replayedContent) != 1 || replayedContent[0].(map[string]any)["text"] != "answer" {
+		t.Fatalf("assistant output content was not replayed: %#v", replayedMessage)
+	}
+	if replayedMessage["id"] != "message_1" || replayedMessage["status"] != "completed" || replayedMessage["phase"] != "commentary" {
+		t.Fatalf("assistant output identity was not replayed: %#v", replayedMessage)
+	}
+	replayedCall := input[2].(map[string]any)
+	if replayedCall["id"] != "function_1" || replayedCall["status"] != "completed" {
+		t.Fatalf("function call identity was not replayed: %#v", replayedCall)
 	}
 	if input[3].(map[string]any)["output"] != `{"ok":true}` {
 		t.Fatalf("tool output changed type or content: %#v", input[3])

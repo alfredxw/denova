@@ -8,6 +8,7 @@ import (
 
 	sdk "github.com/openai/openai-go/v3"
 	"github.com/openai/openai-go/v3/option"
+	"github.com/openai/openai-go/v3/packages/param"
 	"github.com/openai/openai-go/v3/responses"
 	"github.com/openai/openai-go/v3/shared"
 
@@ -135,11 +136,16 @@ func replayResponseOutput(message *agent.Message, config providers.ModelConfig) 
 	}
 	items := make([]responses.ResponseInputItemUnionParam, 0, len(rawItems))
 	for index, raw := range rawItems {
-		var item responses.ResponseInputItemUnionParam
-		if err := json.Unmarshal(raw, &item); err != nil {
+		var validated responses.ResponseInputItemUnionParam
+		if err := json.Unmarshal(raw, &validated); err != nil {
 			return nil, true, fmt.Errorf("decode stored Responses output item %d: %w", index, err)
 		}
-		items = append(items, item)
+		// Output and input message variants share the same `type: message`
+		// discriminator. The SDK union decoder therefore selects its first message
+		// variant and can silently discard output-only content parts, IDs, status,
+		// and phase. Validate the durable JSON above, then use the SDK's supported
+		// raw override so stateless continuation replay remains byte-for-byte exact.
+		items = append(items, param.Override[responses.ResponseInputItemUnionParam](append(json.RawMessage(nil), raw...)))
 	}
 	return items, true, nil
 }
