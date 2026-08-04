@@ -110,10 +110,10 @@ export function ToolApprovalPanel({ message, onResolve, embedded = false, onLayo
       )}
 
       {approval.command && (
-        <pre className="m-0 max-h-40 overflow-auto whitespace-pre-wrap break-words rounded-md border border-[var(--nova-border)] bg-[var(--nova-surface)] px-2.5 py-2 font-mono text-[11px] leading-5 text-[var(--nova-text)]">{approval.command}</pre>
+        <pre className="m-0 min-w-0 max-w-full max-h-40 overflow-x-hidden overflow-y-auto whitespace-pre-wrap rounded-md border border-[var(--nova-border)] bg-[var(--nova-surface)] px-2.5 py-2 font-mono text-[11px] leading-5 text-[var(--nova-text)] [overflow-wrap:anywhere]">{approval.command}</pre>
       )}
       {!approval.command && approval.details && (
-        <pre className="m-0 max-h-40 overflow-auto whitespace-pre-wrap break-words rounded-md border border-[var(--nova-border)] bg-[var(--nova-surface)] px-2.5 py-2 font-mono text-[11px] leading-5 text-[var(--nova-text)]">{approval.details}</pre>
+        <pre className="m-0 min-w-0 max-w-full max-h-40 overflow-x-hidden overflow-y-auto whitespace-pre-wrap rounded-md border border-[var(--nova-border)] bg-[var(--nova-surface)] px-2.5 py-2 font-mono text-[11px] leading-5 text-[var(--nova-text)] [overflow-wrap:anywhere]">{approval.details}</pre>
       )}
 
       <div className="grid gap-1 text-[11px] leading-4 text-[var(--nova-text-muted)]">

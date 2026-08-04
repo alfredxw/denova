@@ -1,4 +1,4 @@
-import { render } from '@testing-library/react'
+import { render, waitFor } from '@testing-library/react'
 import { describe, expect, it, vi } from 'vitest'
 import type { AgentUIMessage } from '@/lib/agent-ui'
 import { MessageList } from './AgentMessageList'
@@ -74,5 +74,32 @@ describe('Agent MessageList bottom following', () => {
 
     expect(virtuosoBoundary.followOutput).toBeTypeOf('function')
     expect((virtuosoBoundary.followOutput as (atBottom: boolean) => 'auto' | false)(true)).toBe('auto')
+  })
+
+  it('suspends streaming follow while a persistent chat tab is hidden', async () => {
+    const renderList = (visible: boolean) => (
+      <MessageList
+        isStreaming
+        visible={visible}
+        activityContent=""
+        messages={[
+          {
+            id: 'streaming-answer',
+            role: 'assistant',
+            parts: [{ type: 'text', text: '持续输出', state: 'streaming' }],
+          },
+        ] as AgentUIMessage[]}
+      />
+    )
+    const { rerender } = render(renderList(false))
+
+    expect(virtuosoBoundary.followOutput).toBeTypeOf('function')
+    expect((virtuosoBoundary.followOutput as (atBottom: boolean) => 'auto' | false)(true)).toBe(false)
+
+    rerender(renderList(true))
+
+    await waitFor(() => {
+      expect((virtuosoBoundary.followOutput as (atBottom: boolean) => 'auto' | false)(true)).toBe('auto')
+    })
   })
 })

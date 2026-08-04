@@ -633,7 +633,7 @@ function ContextCompactionBlock({ message }: { message: ChatMessage }) {
           onWheel={summaryScrollLock.onWheel}
           onKeyDown={summaryScrollLock.onKeyDown}
           data-nova-scroll-lock="context-compaction-summary"
-          className="max-h-40 overflow-auto border-t border-[var(--nova-border)] bg-[var(--nova-surface-2)] px-3 py-2.5 text-[11px] leading-relaxed text-[var(--nova-text-muted)] whitespace-pre-wrap [overflow-anchor:none]"
+          className="min-w-0 max-w-full max-h-40 overflow-x-hidden overflow-y-auto border-t border-[var(--nova-border)] bg-[var(--nova-surface-2)] px-3 py-2.5 text-[11px] leading-relaxed text-[var(--nova-text-muted)] whitespace-pre-wrap [overflow-anchor:none] [overflow-wrap:anywhere]"
         >
           {summary || (isRunning ? t('chat.contextCompaction.waiting') : t('chat.contextCompaction.empty'))}
         </div>
@@ -655,7 +655,7 @@ function LegacyPlanQuestionBlock({ message }: { message: ChatMessage }) {
       <PlanShell icon={<ClipboardList className="h-3.5 w-3.5" />} title={t('chat.plan.questionTitle')} badge={t('chat.plan.legacyBadge')}>
         <div className="space-y-2 text-xs leading-relaxed text-[var(--nova-text-muted)]">
           <p>{t('chat.plan.legacyDescription')}</p>
-          {fallback && <div className="max-h-72 overflow-auto whitespace-pre-wrap">{fallback}</div>}
+          {fallback && <div className="min-w-0 max-w-full max-h-72 overflow-x-hidden overflow-y-auto whitespace-pre-wrap [overflow-wrap:anywhere]">{fallback}</div>}
         </div>
       </PlanShell>
     )
@@ -942,13 +942,13 @@ function ToolExecutionBlock({ message, onResolve, onLayoutChange }: { message: C
             onWheel={streamPreviewScrollLock.onWheel}
             onKeyDown={streamPreviewScrollLock.onKeyDown}
             data-nova-scroll-lock="tool-stream-preview"
-            className="max-h-32 overflow-auto border-t border-[var(--nova-border)] bg-[var(--nova-surface-2)] px-3 py-2.5 font-mono text-[11px] leading-relaxed text-[var(--nova-accent-green)] whitespace-pre-wrap [overflow-anchor:none]"
+            className="min-w-0 max-w-full max-h-32 overflow-x-hidden overflow-y-auto border-t border-[var(--nova-border)] bg-[var(--nova-surface-2)] px-3 py-2.5 font-mono text-[11px] leading-relaxed text-[var(--nova-accent-green)] whitespace-pre-wrap [overflow-anchor:none] [overflow-wrap:anywhere]"
           >
             {streamPreview}
           </div>
         )}
         {!isStreamingContent && (
-          <ToolContent className={`grid gap-2 overflow-auto border-t border-[var(--nova-border)] bg-[var(--nova-surface-2)] px-3 py-2.5 font-mono text-[11px] leading-relaxed text-[var(--nova-text-muted)] ${approvalInteraction ? 'max-h-80' : 'max-h-48'}`}>
+          <ToolContent className={`grid min-w-0 max-w-full gap-2 overflow-x-hidden overflow-y-auto border-t border-[var(--nova-border)] bg-[var(--nova-surface-2)] px-3 py-2.5 font-mono text-[11px] leading-relaxed text-[var(--nova-text-muted)] ${approvalInteraction ? 'max-h-80' : 'max-h-48'}`}>
             {approvalInteraction && <ToolApprovalPanel message={message} onResolve={onResolve} embedded onLayoutChange={onLayoutChange} />}
             {isChapterBodyHidden && (
               <div className="grid gap-1 font-sans">
@@ -966,9 +966,9 @@ function ToolExecutionBlock({ message, onResolve, onLayoutChange }: { message: C
                 <div className="text-[var(--nova-text-faint)]">{t(isDirectorPlanHidden ? 'chat.tool.fileBodyHidden' : 'chat.tool.chapterBodyHidden')}</div>
               </div>
             )}
-            {detailArgs && !approvalInteraction?.approval?.command && <pre className="whitespace-pre-wrap">{detailArgs}</pre>}
+            {detailArgs && !approvalInteraction?.approval?.command && <pre className="m-0 min-w-0 max-w-full whitespace-pre-wrap [overflow-wrap:anywhere]">{detailArgs}</pre>}
             {taskSubAgent && result && <div className="text-[var(--nova-text-muted)]">{t('chat.subagent.result')}</div>}
-            {result && <pre className={`whitespace-pre-wrap ${resultSeverity === 'error' ? 'text-[var(--nova-danger)]' : resultSeverity === 'warning' ? 'text-[var(--nova-warning)]' : 'text-[var(--nova-accent-green)]'}`}>{detailResult}</pre>}
+            {result && <pre className={`m-0 min-w-0 max-w-full whitespace-pre-wrap [overflow-wrap:anywhere] ${resultSeverity === 'error' ? 'text-[var(--nova-danger)]' : resultSeverity === 'warning' ? 'text-[var(--nova-warning)]' : 'text-[var(--nova-accent-green)]'}`}>{detailResult}</pre>}
           </ToolContent>
         )}
       </Tool>
@@ -1393,7 +1393,7 @@ function ToolResultBlock({ content }: { content: string }) {
           </div>
         </div>
         {expanded && (
-          <pre className="max-h-56 overflow-auto border-t border-[var(--nova-border)] bg-[var(--nova-surface-2)] px-3 py-2.5 font-mono text-[11px] leading-relaxed text-[var(--nova-text-muted)]">
+          <pre className="m-0 min-w-0 max-w-full max-h-56 overflow-x-hidden overflow-y-auto whitespace-pre-wrap border-t border-[var(--nova-border)] bg-[var(--nova-surface-2)] px-3 py-2.5 font-mono text-[11px] leading-relaxed text-[var(--nova-text-muted)] [overflow-wrap:anywhere]">
             {content}
           </pre>
         )}

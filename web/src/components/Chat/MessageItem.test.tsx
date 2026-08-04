@@ -308,6 +308,32 @@ describe('MessageItem', () => {
     expect(screen.getByText('写入完成')).toBeInTheDocument()
   })
 
+  it('工具卡详情随卡片宽度换行且仅保留纵向滚动', async () => {
+    const user = userEvent.setup()
+    const longToken = 'a'.repeat(240)
+    const { container } = render(
+      <MessageItem
+        message={{
+          role: 'tool_call',
+          content: 'read',
+          name: 'read',
+          args: JSON.stringify({ path: `chapters/${longToken}.md` }),
+          status: 'success',
+          result: longToken,
+        }}
+      />,
+    )
+
+    await user.click(screen.getByRole('button', { name: '详情' }))
+
+    const detail = container.querySelector('[data-slot="collapsible-content"]')
+    expect(detail).toHaveClass('min-w-0', 'max-w-full', 'overflow-x-hidden', 'overflow-y-auto')
+    expect(detail).not.toHaveClass('overflow-auto')
+    detail?.querySelectorAll('pre').forEach((element) => {
+      expect(element).toHaveClass('min-w-0', 'max-w-full', 'whitespace-pre-wrap', '[overflow-wrap:anywhere]')
+    })
+  })
+
   it('失败的工具卡片在折叠态直接展示错误原因', () => {
     render(
       <MessageItem
@@ -388,6 +414,20 @@ describe('MessageItem', () => {
     expect(screen.getByText('warning')).toBeInTheDocument()
     expect(screen.getByText('命令已结束（退出码 1）')).toBeInTheDocument()
     expect(screen.queryByText('工具执行失败')).not.toBeInTheDocument()
+  })
+
+  it('独立工具结果详情不会被超长无空格内容撑宽', async () => {
+    const user = userEvent.setup()
+    const longToken = 'b'.repeat(240)
+    const { container } = render(
+      <MessageItem message={{ role: 'tool_result', content: longToken }} />,
+    )
+
+    await user.click(screen.getByRole('button', { name: '展开' }))
+
+    const detail = container.querySelector('pre')
+    expect(detail).toHaveClass('max-w-full', 'overflow-x-hidden', 'overflow-y-auto', 'whitespace-pre-wrap', '[overflow-wrap:anywhere]')
+    expect(detail).not.toHaveClass('overflow-auto')
   })
 
   it('网页工具卡片把结构化恢复状态显示为可读摘要', async () => {
@@ -947,7 +987,7 @@ describe('MessageItem', () => {
   })
 
   it('上下文压缩消息渲染为单个带 Loading 的简洁小窗', () => {
-    render(
+    const { container } = render(
       <MessageItem
         message={{
           role: 'context_compaction',
@@ -971,6 +1011,9 @@ describe('MessageItem', () => {
     expect(screen.getByText('压缩摘要流式片段')).toBeInTheDocument()
     expect(screen.queryByText('90%')).not.toBeInTheDocument()
     expect(screen.queryByText('阈值 90%')).not.toBeInTheDocument()
+    expect(container.querySelector('[data-nova-scroll-lock="context-compaction-summary"]')).toHaveClass(
+      'max-w-full', 'overflow-x-hidden', 'overflow-y-auto', '[overflow-wrap:anywhere]',
+    )
   })
 
   it('旧版 Plan 问题卡只读展示，不再创建第二套交互状态', () => {
@@ -1167,7 +1210,7 @@ describe('MessageItem', () => {
         selected_options: [{ id: 'allow-workspace', label: 'Always allow' }],
       }],
     })
-    render(
+    const { container } = render(
       <MessageItem
         message={{
           id: 'tool-1', role: 'tool_call', name: 'bash', args: '{"command":"npm test"}', status: 'running', ask: {
@@ -1194,6 +1237,9 @@ describe('MessageItem', () => {
     )
 
     expect(screen.getByText('npm test')).toBeInTheDocument()
+    expect(container.querySelector('pre')).toHaveClass(
+      'max-w-full', 'overflow-x-hidden', 'overflow-y-auto', '[overflow-wrap:anywhere]',
+    )
   expect(screen.getByText('此命令不在当前安全模式的自动允许范围内。')).toBeInTheDocument()
   expect(screen.getByText(/工作区规则：npm test/)).toBeInTheDocument()
     expect(screen.queryByRole('radio', { name: /其他/ })).not.toBeInTheDocument()

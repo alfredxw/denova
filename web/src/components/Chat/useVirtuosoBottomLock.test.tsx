@@ -98,6 +98,67 @@ describe('useVirtuosoBottomLock', () => {
     expect(scrollToIndex).toHaveBeenCalledWith({ index: 'LAST', align: 'end', behavior: 'auto' })
   })
 
+  it('restores a locked streaming viewport after its persistent tab becomes visible again', () => {
+    const scroller = document.createElement('div')
+    let scrollHeight = 500
+    Object.defineProperty(scroller, 'scrollHeight', { configurable: true, get: () => scrollHeight })
+    Object.defineProperty(scroller, 'clientHeight', { configurable: true, value: 100 })
+    scroller.scrollTop = 400
+    const scrollToIndex = vi.fn()
+    const { result, rerender } = renderHook(
+      ({ visible }) => useVirtuosoBottomLock({
+        itemCount: 1,
+        autoFollowEnabled: true,
+        visible,
+        resolveScroller: () => scroller,
+      }),
+      { initialProps: { visible: true } },
+    )
+    act(() => {
+      result.current.virtuosoRef.current = { scrollToIndex } as unknown as VirtuosoHandle
+    })
+    flushAnimationFrames(frames)
+    scrollToIndex.mockClear()
+
+    rerender({ visible: false })
+    scrollHeight = 680
+    rerender({ visible: true })
+    flushAnimationFrames(frames)
+
+    expect(scrollToIndex).toHaveBeenCalledWith({ index: 'LAST', align: 'end', behavior: 'auto' })
+  })
+
+  it('preserves a manual scroll-away while a persistent tab is hidden and restored', () => {
+    const scroller = document.createElement('div')
+    Object.defineProperty(scroller, 'scrollHeight', { configurable: true, value: 680 })
+    Object.defineProperty(scroller, 'clientHeight', { configurable: true, value: 100 })
+    scroller.scrollTop = 300
+    const scrollToIndex = vi.fn()
+    const { result, rerender } = renderHook(
+      ({ visible }) => useVirtuosoBottomLock({
+        itemCount: 1,
+        autoFollowEnabled: true,
+        visible,
+        resolveScroller: () => scroller,
+      }),
+      { initialProps: { visible: true } },
+    )
+    act(() => {
+      result.current.virtuosoRef.current = { scrollToIndex } as unknown as VirtuosoHandle
+      result.current.releaseBottomLock()
+    })
+    flushAnimationFrames(frames)
+    scrollToIndex.mockClear()
+
+    rerender({ visible: false })
+    rerender({ visible: true })
+    act(() => result.current.onAtBottomStateChange(true))
+    flushAnimationFrames(frames)
+
+    expect(scrollToIndex).not.toHaveBeenCalled()
+    expect(result.current.followOutput(true)).toBe(false)
+  })
+
   it('synchronously compensates a committed streaming row height change before browser measurement', () => {
     let observerCallback: ResizeObserverCallback | undefined
     const observe = vi.fn()

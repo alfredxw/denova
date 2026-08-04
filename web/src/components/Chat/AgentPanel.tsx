@@ -507,6 +507,7 @@ function AgentPanelComponent({
   const messageListProps = {
     messages,
     isStreaming,
+    visible: active,
     isExecutionActive,
     activityContent: runtimeRecovering ? t('chat.activity.recovering') : recoveryPaused ? t('chat.activity.recoveryPaused') : activityContent,
     scrollResetKey: `${workspace || 'none'}:${activeSessionId || 'current'}`,

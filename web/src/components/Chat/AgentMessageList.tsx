@@ -32,6 +32,8 @@ import { Button } from '@/components/ui/button'
 interface MessageListProps {
   messages: AgentUIMessage[]
   isStreaming: boolean
+  /** Whether the persistently mounted chat surface currently has measurable layout geometry. */
+  visible?: boolean
   /** 后端确认的真实执行态；恢复探测可保持交互忙碌，但不能展开历史执行过程。 */
   isExecutionActive?: boolean
   activityContent: string
@@ -112,7 +114,7 @@ interface MessageListVirtuosoContext {
   onLoadEarlierMessages?: () => void | Promise<void>
 }
 
-export function MessageList({ messages, isStreaming, isExecutionActive = isStreaming, activityContent, highlightDialogue = false, scrollResetKey, bottomPaddingClassName = '', bottomPaddingPx, afterContent, hasEarlierMessages = false, isLoadingEarlierMessages = false, onLoadEarlierMessages, timelineAttachments = [], messageStyle, collapseTraceGroups = false, activeTraceDisplay = 'expanded', canMutateMessage, onEditMessage, onEditAssistantReply, onCreateBranch, onRegenerateMessage, onSwitchMessageVersion, onOpenSubAgentSession, onInsertIllustration, onGenerateInteractiveImage, generatingInteractiveImageTurnId, activeSubAgentSessionKey, onApprovePlan, onContinuePlan, onExitPlanMode, onOpenTrace, onResolveAsk, turnScrollRequest, onVisibleTurnAnchorChange }: MessageListProps) {
+export function MessageList({ messages, isStreaming, visible = true, isExecutionActive = isStreaming, activityContent, highlightDialogue = false, scrollResetKey, bottomPaddingClassName = '', bottomPaddingPx, afterContent, hasEarlierMessages = false, isLoadingEarlierMessages = false, onLoadEarlierMessages, timelineAttachments = [], messageStyle, collapseTraceGroups = false, activeTraceDisplay = 'expanded', canMutateMessage, onEditMessage, onEditAssistantReply, onCreateBranch, onRegenerateMessage, onSwitchMessageVersion, onOpenSubAgentSession, onInsertIllustration, onGenerateInteractiveImage, generatingInteractiveImageTurnId, activeSubAgentSessionKey, onApprovePlan, onContinuePlan, onExitPlanMode, onOpenTrace, onResolveAsk, turnScrollRequest, onVisibleTurnAnchorChange }: MessageListProps) {
   const { t } = useTranslation()
   const containerRef = useRef<HTMLDivElement | null>(null)
   const renderedItemsRef = useRef<ListItem<AgentChatListItem>[]>([])
@@ -151,6 +153,7 @@ export function MessageList({ messages, isStreaming, isExecutionActive = isStrea
     resetKey: scrollResetKey,
     itemCount: listItems.length,
     autoFollowEnabled: isStreaming,
+    visible,
     resolveScroller: resolveMessageScroller,
   })
   const latestInteractiveCardAnchor = useMemo(
