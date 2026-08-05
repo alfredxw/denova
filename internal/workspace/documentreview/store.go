@@ -14,7 +14,6 @@ import (
 	"time"
 
 	"denova/internal/localfs"
-	workspacelayout "denova/internal/workspace"
 )
 
 const (
@@ -35,23 +34,23 @@ type eventStore struct {
 	root       *os.Root
 }
 
-func newEventStore(workspace string) (*eventStore, error) {
-	workspaceRoot, err := os.OpenRoot(workspace)
+func newEventStore(stateRoot string) (*eventStore, error) {
+	stateRootHandle, err := os.OpenRoot(stateRoot)
 	if err != nil {
 		return nil, err
 	}
-	defer workspaceRoot.Close()
+	defer stateRootHandle.Close()
 
-	rel := workspacelayout.Rel(workspace, "reviews")
-	if err := ensurePrivateDirectory(workspaceRoot, rel); err != nil {
+	const rel = "reviews"
+	if err := ensurePrivateDirectory(stateRootHandle, rel); err != nil {
 		return nil, err
 	}
-	reviewRoot, err := workspaceRoot.OpenRoot(filepath.FromSlash(rel))
+	reviewRoot, err := stateRootHandle.OpenRoot(rel)
 	if err != nil {
 		return nil, err
 	}
 	store := &eventStore{
-		ledgerPath: filepath.Join(workspace, filepath.FromSlash(rel), "ledger.jsonl"),
+		ledgerPath: filepath.Join(stateRoot, rel, "ledger.jsonl"),
 		root:       reviewRoot,
 	}
 	if err := store.ensureLedger(); err != nil {

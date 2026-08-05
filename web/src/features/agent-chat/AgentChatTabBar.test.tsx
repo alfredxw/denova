@@ -1,8 +1,9 @@
 import type { ReactNode } from 'react'
-import { render, screen } from '@testing-library/react'
+import { fireEvent, render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { describe, expect, it, vi } from 'vitest'
 import { TooltipProvider } from '@/components/ui/tooltip'
+import { WorkbenchTabDragContext } from '@/components/workbench/WorkbenchTabDrag'
 import type { AgentChatTab } from './types'
 import { AgentChatTabBar } from './AgentChatTabBar'
 
@@ -24,13 +25,18 @@ const tabs: AgentChatTab[] = [
 ]
 
 function renderTabBar(ui: ReactNode) {
-  return render(<TooltipProvider delayDuration={0}>{ui}</TooltipProvider>)
+  return render(
+    <TooltipProvider delayDuration={0}>
+      <WorkbenchTabDragContext onDragEnd={vi.fn()}>{ui}</WorkbenchTabDragContext>
+    </TooltipProvider>,
+  )
 }
 
 describe('AgentChatTabBar', () => {
   it('shows the active workbench tab with its selected fill and accent rule', () => {
     renderTabBar(
       <AgentChatTabBar
+        projectId="project-one"
         group="primary"
         tabs={tabs}
         activeTabId="skills-tab"
@@ -56,11 +62,46 @@ describe('AgentChatTabBar', () => {
     expect(activeTab.className).toContain('aria-selected:bg-[var(--nova-active)]')
     expect(activeTab.querySelector('[aria-hidden="true"]')?.className).toContain('group-aria-[selected=true]/tab:opacity-100')
     expect(screen.getByRole('tab', { name: /Reader tab/ })).toHaveAttribute('aria-selected', 'false')
-    expect(activeTab).toHaveClass('min-w-28', 'max-w-40', 'flex-[1_1_10rem]')
-    expect(screen.getByRole('tab', { name: /Reader tab/ })).toHaveClass('min-w-28', 'max-w-40', 'flex-[1_1_10rem]')
+    expect(activeTab.parentElement).toHaveClass('min-w-28', 'max-w-40', 'flex-[1_1_10rem]')
+    expect(screen.getByRole('tab', { name: /Reader tab/ }).parentElement).toHaveClass('min-w-28', 'max-w-40', 'flex-[1_1_10rem]')
+    expect(activeTab).toHaveAttribute('aria-roledescription', '可排序标签页')
     expect(screen.getByRole('tablist')).toHaveClass('overflow-x-auto', '[&::-webkit-scrollbar]:hidden')
     expect(screen.getByRole('tablist')).toHaveStyle({ scrollbarWidth: 'none' })
     expect(screen.getByRole('button', { name: '新建标签页' })).toHaveClass('mx-1', 'h-7', 'w-8', 'self-center', 'rounded-lg')
+  })
+
+  it('renders the shared tab preview while keyboard dragging', async () => {
+    const user = userEvent.setup()
+    renderTabBar(
+      <AgentChatTabBar
+        projectId="project-one"
+        group="primary"
+        tabs={tabs}
+        activeTabId="reader-tab"
+        terminalCommands={[]}
+        tabTitle={(tab) => (tab.id === 'reader-tab' ? 'Reader tab' : 'Skills tab')}
+        onActivate={vi.fn()}
+        onClose={vi.fn()}
+        onCloseOthers={vi.fn()}
+        onCloseToRight={vi.fn()}
+        onRename={vi.fn()}
+        onTogglePin={vi.fn()}
+        onMoveTab={vi.fn()}
+        onNewAgentTab={vi.fn()}
+        onNewTerminalTab={vi.fn()}
+        onOpenFiles={vi.fn()}
+        onOpenPage={vi.fn()}
+      />,
+    )
+
+    const tab = screen.getByRole('tab', { name: /Reader tab/ })
+    tab.focus()
+    fireEvent.keyDown(tab, { key: ' ', code: 'Space' })
+
+    await waitFor(() => expect(document.querySelector('[data-slot="workbench-tab-drag-overlay"]')).toHaveTextContent('Reader tab'))
+
+    await user.keyboard('{Escape}')
+    await waitFor(() => expect(document.querySelector('[data-slot="workbench-tab-drag-overlay"]')).not.toBeInTheDocument())
   })
 
   it('keeps Review closing on the real workbench tab', async () => {
@@ -75,6 +116,7 @@ describe('AgentChatTabBar', () => {
     }
     renderTabBar(
       <AgentChatTabBar
+        projectId="project-one"
         group="primary"
         tabs={[reviewTab]}
         activeTabId="review-tab"
@@ -106,6 +148,7 @@ describe('AgentChatTabBar', () => {
     try {
       renderTabBar(
         <AgentChatTabBar
+          projectId="project-one"
           group="primary"
           tabs={tabs}
           activeTabId="reader-tab"
@@ -143,6 +186,7 @@ describe('AgentChatTabBar', () => {
     try {
       renderTabBar(
         <AgentChatTabBar
+          projectId="project-one"
           group="primary"
           tabs={tabs}
           activeTabId="reader-tab"
@@ -177,6 +221,7 @@ describe('AgentChatTabBar', () => {
     const onNewTerminalTab = vi.fn()
     renderTabBar(
       <AgentChatTabBar
+        projectId="project-one"
         group="primary"
         tabs={tabs}
         activeTabId="skills-tab"

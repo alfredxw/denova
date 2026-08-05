@@ -1,6 +1,8 @@
 import type { DocumentReviewNavigationIntent } from '@/features/document-review/controller'
 import type { DocumentReviewTarget } from '@/features/document-review/types'
 import type { EditorFlushHandler } from '@/components/Editor/useEditorDraftPersistence'
+import type { DocumentReviewController } from '@/features/document-review/controller'
+import type { WorkspaceChangeMetadata } from '@/features/changes/types'
 
 /**
  * Tab model for the AgentChat workspace.
@@ -18,16 +20,18 @@ export const AGENT_CHAT_PAGE_IDS: readonly AgentChatPageId[] = ['reader', 'lore'
 
 /** A persisted review target plus a nonce for revealing it inside an AgentChat project page. */
 export interface AgentChatDocumentReviewNavigation extends DocumentReviewNavigationIntent {
-  workspace: string
+  projectId: string
   target: DocumentReviewTarget
 }
 
 /** Capabilities supplied by the workbench to one mounted project-page tab. */
 export interface AgentChatPageRenderContext {
   navigationIntent: AgentChatDocumentReviewNavigation | null
+  documentReview: DocumentReviewController
+  refreshSignal: number
   onFlushHandlerChange: (handler: EditorFlushHandler | null) => void
   openPage: (pageId: AgentChatPageId) => void
-  activateWorkspace: () => Promise<boolean>
+  onWorkspaceChanged: (paths: string[], metadata: WorkspaceChangeMetadata) => void | Promise<void>
 }
 
 /** Menu-safe terminal command metadata; executable command lines remain backend-only. */
@@ -64,8 +68,8 @@ interface AgentChatTabCommon {
 }
 
 /**
- * Built-in agent conversation tab. A tab carries its project because AgentChat spans the
- * whole library: opening the tab is what makes that project's workspace the live one.
+ * Built-in agent conversation tab. A tab carries its Project identity because AgentChat
+ * spans the whole library without changing the foreground Writing Book.
  */
 export interface AgentChatAgentTab extends AgentChatTabCommon {
   kind: 'agent'

@@ -2,6 +2,7 @@ package api
 
 import (
 	"net/http"
+	"net/url"
 	"path/filepath"
 	"testing"
 
@@ -14,6 +15,8 @@ func TestDocumentReviewCommentLifecycleAPI(t *testing.T) {
 	application := newTestApplication(t)
 	server := NewServer(application, "0")
 	workspace := application.Workspace()
+	projectID := application.ProjectID()
+	base := "/api/projects/" + url.PathEscape(projectID) + "/book"
 	path := "chapters/review.md"
 	content := "第一段。\n\n第二段需要审阅。\n"
 	if err := application.BookService().WriteFile(path, content); err != nil {
@@ -27,7 +30,7 @@ func TestDocumentReviewCommentLifecycleAPI(t *testing.T) {
 		"quote": quote, "suffix": "\n", "display_quote": quote, "editor_from": 5, "editor_to": 13,
 	}
 
-	created := performWorkspaceChangeRequest(t, server, http.MethodPost, "/api/workspace/document-comments", workspace, map[string]any{
+	created := performJSONRequest(t, server, http.MethodPost, base+"/document-comments", map[string]any{
 		"target": map[string]any{"kind": documentreview.TargetKindWorkspaceFile, "id": path},
 		"body":   "补充人物动机", "anchor": anchor,
 	})
@@ -35,16 +38,17 @@ func TestDocumentReviewCommentLifecycleAPI(t *testing.T) {
 		t.Fatalf("create status=%d body=%s", created.Code, created.Body.String())
 	}
 	var createBody struct {
+		ProjectID    string                 `json:"project_id"`
 		Workspace    string                 `json:"workspace"`
 		ReviewThread documentreview.Thread  `json:"review_thread"`
 		Comment      documentreview.Comment `json:"comment"`
 	}
 	decodeResponse(t, created.Body.Bytes(), &createBody)
-	if createBody.Workspace != workspace || createBody.ReviewThread.ID == "" || createBody.Comment.ThreadID != createBody.ReviewThread.ID {
+	if createBody.ProjectID != projectID || createBody.Workspace != workspace || createBody.ReviewThread.ID == "" || createBody.Comment.ThreadID != createBody.ReviewThread.ID {
 		t.Fatalf("unexpected create response: %#v", createBody)
 	}
 
-	listed := performWorkspaceChangeRequest(t, server, http.MethodGet, "/api/workspace/document-review", workspace, nil)
+	listed := performJSONRequest(t, server, http.MethodGet, base+"/document-review", nil)
 	if listed.Code != http.StatusOK {
 		t.Fatalf("list status=%d body=%s", listed.Code, listed.Body.String())
 	}
@@ -56,22 +60,22 @@ func TestDocumentReviewCommentLifecycleAPI(t *testing.T) {
 		t.Fatalf("unexpected review thread: %#v", listBody.ReviewThread)
 	}
 
-	updated := performWorkspaceChangeRequest(t, server, http.MethodPatch, "/api/workspace/document-comments/"+createBody.Comment.ID, workspace, map[string]any{"body": "补充更明确的人物动机"})
+	updated := performJSONRequest(t, server, http.MethodPatch, base+"/document-comments/"+createBody.Comment.ID, map[string]any{"body": "补充更明确的人物动机"})
 	if updated.Code != http.StatusOK {
 		t.Fatalf("update status=%d body=%s", updated.Code, updated.Body.String())
 	}
-	deleted := performWorkspaceChangeRequest(t, server, http.MethodDelete, "/api/workspace/document-comments/"+createBody.Comment.ID, workspace, nil)
+	deleted := performJSONRequest(t, server, http.MethodDelete, base+"/document-comments/"+createBody.Comment.ID, nil)
 	if deleted.Code != http.StatusOK {
 		t.Fatalf("delete status=%d body=%s", deleted.Code, deleted.Body.String())
 	}
 
-	empty := performWorkspaceChangeRequest(t, server, http.MethodGet, "/api/workspace/document-review", workspace, nil)
+	empty := performJSONRequest(t, server, http.MethodGet, base+"/document-review", nil)
 	decodeResponse(t, empty.Body.Bytes(), &listBody)
 	if listBody.ReviewThread.ID != "" || len(listBody.ReviewThread.Comments) != 0 {
 		t.Fatalf("deleted comment remained pending: %#v", listBody.ReviewThread)
 	}
 
-	forged := performWorkspaceChangeRequest(t, server, http.MethodPost, "/api/workspace/document-comments", workspace, map[string]any{
+	forged := performJSONRequest(t, server, http.MethodPost, base+"/document-comments", map[string]any{
 		"target": map[string]any{"kind": documentreview.TargetKindWorkspaceFile, "id": path},
 		"body":   "伪造评论", "anchor": map[string]any{
 			"kind": documentreview.AnchorKindTextRange, "encoding": documentreview.AnchorEncodingUTF8,
@@ -87,7 +91,8 @@ func TestDocumentReviewCommentLifecycleAPI(t *testing.T) {
 func TestLoreReviewCommentLifecycleAPI(t *testing.T) {
 	application := newTestApplication(t)
 	server := NewServer(application, "0")
-	workspace := application.Workspace()
+	projectID := application.ProjectID()
+	base := "/api/projects/" + url.PathEscape(projectID) + "/book"
 	item, err := application.Lore().CreateItem(lore.ItemInput{
 		ID: "gatekeeper", Type: "character", Name: "守门人", Content: "Aldren guards the northern gate.",
 	})
@@ -96,7 +101,7 @@ func TestLoreReviewCommentLifecycleAPI(t *testing.T) {
 	}
 	quote := "guards the northern gate"
 	start := len("Aldren ")
-	created := performWorkspaceChangeRequest(t, server, http.MethodPost, "/api/workspace/document-comments", workspace, map[string]any{
+	created := performJSONRequest(t, server, http.MethodPost, base+"/document-comments", map[string]any{
 		"target": map[string]any{
 			"kind":  documentreview.TargetKindLoreItem,
 			"id":    item.ID,
@@ -120,7 +125,7 @@ func TestLoreReviewCommentLifecycleAPI(t *testing.T) {
 		t.Fatalf("unexpected lore review target: %#v", createBody.Comment.Target)
 	}
 
-	listed := performWorkspaceChangeRequest(t, server, http.MethodGet, "/api/workspace/document-review", workspace, nil)
+	listed := performJSONRequest(t, server, http.MethodGet, base+"/document-review", nil)
 	if listed.Code != http.StatusOK {
 		t.Fatalf("list status=%d body=%s", listed.Code, listed.Body.String())
 	}

@@ -5,7 +5,7 @@ import { checkForUpdate, fetchSettings, refreshSettings } from '@/features/setti
 import { applyFontSettings, fontSettingsFromEffective } from '@/features/settings/font-variables'
 import { markAutoUpdateChecked, shouldRunAutoUpdateCheck, UPDATE_CHECK_RESULT_EVENT } from '@/features/settings/update-check-cache'
 import type { UpdateCheckResult } from '@/features/settings/types'
-import { getLoreItems, importCharacterCard, previewCharacterCard, setChapterConfirmed, switchWorkspace, type CharacterCardPreview, type LoreItem, type WorkspaceSearchResult } from '@/lib/api'
+import { getProjectLoreItems, importCharacterCard, previewCharacterCard, setProjectChapterConfirmed, switchWorkspace, type CharacterCardPreview, type LoreItem, type WorkspaceSearchResult } from '@/lib/api'
 import { CommandPalette } from '@/components/common/command-palette'
 import { useWorkspace } from '@/hooks/useWorkspace'
 import { useAgentChat } from '@/hooks/useAgentChat'
@@ -23,6 +23,7 @@ import {
   persistTabsFor,
   readActiveTabKeyFor,
   readTabsFor,
+  reorderTabs,
   setTabPinned,
   tabKey,
   type Tab,
@@ -50,7 +51,7 @@ import {
   type AutosaveConflictPreservedDetail,
 } from '@/lib/autosave/rebase-with-recovery'
 import { useWorkbenchNotice } from '@/features/notices/use-workbench-notice'
-import { LORE_UPDATED_EVENT, notifyLoreUpdated } from '@/features/lore/events'
+import { LORE_UPDATED_EVENT, notifyLoreUpdated, type LoreUpdatedDetail } from '@/features/lore/events'
 
 const PROJECT_VISIBLE_KEY = 'nova.layout.projectVisible'
 const ACTIVITY_BAR_EXPANDED_KEY = 'nova.layout.activityBarExpanded'
@@ -149,7 +150,7 @@ function App() {
     try {
       return await handler()
     } catch (error) {
-      console.error('导航前保存编辑器草稿失败', error)
+      console.error('[App.tsx] failed to flush the editor draft before navigation', error)
       toast.error(t('editor.saveFailed'))
       return false
     }
@@ -164,11 +165,11 @@ function App() {
     } finally {
       // Lore tools persist outside the workspace file tree, so Agent completion
       // invalidates Lore projections explicitly as well as file summaries.
-      notifyLoreUpdated({ source: 'writing-agent' })
+      notifyLoreUpdated({ projectId, source: 'writing-agent' })
       notifyVersionChange()
       if (impact === 'structure') notifyProjectStructureChange()
     }
-  }, [notifyProjectStructureChange, notifyVersionChange, refreshAfterAgentFileChange])
+  }, [notifyProjectStructureChange, notifyVersionChange, projectId, refreshAfterAgentFileChange])
 
   const handleReviewedWorkspaceChange = useCallback(async (
     paths: string[],
@@ -242,21 +243,24 @@ function App() {
   }, [togglePlanMode])
 
   const refreshLoreItems = useCallback(async () => {
-    if (!workspace) {
+    if (!projectId) {
       setLoreItems([])
       return
     }
     try {
-      setLoreItems(await getLoreItems(workspace))
+      setLoreItems(await getProjectLoreItems(projectId))
     } catch (e) {
-      console.warn('加载资料库条目失败', e)
+      console.warn('[App.tsx] failed to load lore items', e)
       setLoreItems([])
     }
-  }, [workspace])
+  }, [projectId])
 
   useEffect(() => {
     void refreshLoreItems()
-    const onLoreUpdated = () => void refreshLoreItems()
+    const onLoreUpdated = (event: Event) => {
+      const detail = (event as CustomEvent<LoreUpdatedDetail>).detail
+      if (detail?.projectId === projectId) void refreshLoreItems()
+    }
     window.addEventListener(LORE_UPDATED_EVENT, onLoreUpdated)
     return () => window.removeEventListener(LORE_UPDATED_EVENT, onLoreUpdated)
   }, [refreshLoreItems])
@@ -348,7 +352,7 @@ function App() {
       .then((result) => {
         applyUpdateCheckResult(result)
       })
-      .catch((e) => console.warn('[updates] 自动检查更新失败', e))
+      .catch((e) => console.warn('[App.tsx] automatic update check failed', e))
       .finally(() => {
         markAutoUpdateChecked()
         updateCheckInFlightRef.current = false
@@ -409,7 +413,7 @@ function App() {
     try {
       persistTabsFor(workspace, openTabs)
     } catch (e) {
-      console.warn('保存 tab 列表失败', e)
+      console.warn('[App.tsx] failed to persist the tab list', e)
     }
   }, [openTabs, workspace])
 
@@ -441,14 +445,14 @@ function App() {
     try {
       const result = await switchWorkspace(newPath)
       const nextWorkspace = result.workspace || newPath
-      console.info('[App.tsx] 标题栏切换书籍完成', { from: workspace, to: nextWorkspace })
+      console.info('[App.tsx] title-bar Book switch completed', { from: workspace, to: nextWorkspace })
       setWorkspace(nextWorkspace)
       await refreshAll()
       notifyVersionChange()
       notifyProjectStructureChange()
       return true
     } catch (error) {
-      console.error('[App.tsx] 标题栏切换书籍失败', { from: workspace, to: newPath, error })
+      console.error('[App.tsx] title-bar Book switch failed', { from: workspace, to: newPath, error })
       toast.error(t('workbench.bookSwitcher.switchError'), {
         description: error instanceof Error ? error.message : String(error),
       })
@@ -629,7 +633,11 @@ function App() {
       setMode('interactive')
       useInteractiveStore.getState().setSubmode('lore')
       window.setTimeout(() => {
-        window.dispatchEvent(new CustomEvent(LORE_UPDATED_EVENT, { detail: result }))
+        notifyLoreUpdated({
+          projectId: result.project_id || projectId,
+          ids: result.item_ids,
+          source: 'character-card-import',
+        })
       }, 0)
       notifyVersionChange()
       notifyProjectStructureChange()
@@ -642,7 +650,7 @@ function App() {
     } finally {
       setCharacterCardImporting(false)
     }
-  }, [characterCardBookTitle, characterCardFile, characterCardPreview, characterCardSemanticClassification, characterCardTargetMode, characterCardUserName, notifyProjectStructureChange, notifyVersionChange, refresh, refreshAll, resetCharacterCardImport, setMode, t, workspace])
+  }, [characterCardBookTitle, characterCardFile, characterCardPreview, characterCardSemanticClassification, characterCardTargetMode, characterCardUserName, notifyProjectStructureChange, notifyVersionChange, projectId, refresh, refreshAll, resetCharacterCardImport, setMode, t, workspace])
 
   const handleActivateTab = useCallback(async (tab: Tab) => {
     const key = tabKey(tab)
@@ -676,6 +684,10 @@ function App() {
 
   const handleToggleTabPin = useCallback((tab: Tab) => {
     setOpenTabs((current) => setTabPinned(current, tabKey(tab), !tab.pinned))
+  }, [])
+
+  const handleMoveTab = useCallback((sourceKey: string, targetKey: string) => {
+    setOpenTabs((current) => reorderTabs(current, sourceKey, targetKey))
   }, [])
 
   const triggerSave = useCallback(() => setSaveSignal((value) => value + 1), [])
@@ -718,9 +730,10 @@ function App() {
   }, [handleSetRightPanel, mode, setMode])
 
   const handleSetChapterConfirmed = useCallback(async (path: string, confirmed: boolean) => {
-    await setChapterConfirmed(path, confirmed)
+    if (!projectId) return
+    await setProjectChapterConfirmed(projectId, path, confirmed)
     await refreshSummary({ showLoading: false, clearOnError: false })
-  }, [refreshSummary])
+  }, [projectId, refreshSummary])
 
   const handleOpenGlobalSearch = useCallback(() => {
     setSettingsOpen(false)
@@ -895,6 +908,7 @@ function App() {
         onActivateTab={handleActivateTab}
         onCloseTab={handleCloseTab}
         onToggleTabPin={handleToggleTabPin}
+        onMoveTab={handleMoveTab}
         onOpenLoreTab={handleOpenLoreTab}
         onSaveCurrentFile={handleSaveCurrentFile}
         onEditorFlushHandlerChange={handleEditorFlushHandlerChange}

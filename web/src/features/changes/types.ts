@@ -182,8 +182,8 @@ export interface WorkspaceChangeEvent {
 /** Describes the minimum UI invalidation required after a workspace mutation. */
 export type WorkspaceChangeImpact = 'content' | 'structure'
 
-/** Identifies whether a change originated inside the mounted Files tab. */
-export type WorkspaceChangeOrigin = 'external' | 'files-tab'
+/** Identifies the mounted surface that already owns the canonical mutation result. */
+export type WorkspaceChangeOrigin = 'external' | 'files-tab' | 'project-page'
 
 export interface WorkspaceChangeMetadata {
   impact: WorkspaceChangeImpact

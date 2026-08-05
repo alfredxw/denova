@@ -2,9 +2,7 @@ package handlers
 
 import (
 	"context"
-	"encoding/json"
 	"errors"
-	"strings"
 
 	"github.com/cloudwego/hertz/pkg/app"
 	"github.com/cloudwego/hertz/pkg/protocol/consts"
@@ -14,108 +12,6 @@ import (
 	loreapp "denova/internal/app/lore"
 	"denova/internal/book/lore"
 )
-
-func (h *Handlers) HandleLoreItems(ctx context.Context, c *app.RequestContext) {
-	if !h.requireWorkspace(c) {
-		return
-	}
-	var items []lore.Item
-	_, ok := h.withLoreStore(c, func(store *lore.Store) error {
-		var err error
-		items, err = store.ListAll()
-		return err
-	})
-	if !ok {
-		return
-	}
-	writeJSON(c, consts.StatusOK, map[string]any{"items": items})
-}
-
-func (h *Handlers) HandleLoreItemCreate(ctx context.Context, c *app.RequestContext) {
-	if !h.requireWorkspace(c) {
-		return
-	}
-	var body lore.ItemInput
-	if err := c.BindJSON(&body); err != nil {
-		writeErrorKey(c, consts.StatusBadRequest, "api.common.invalidRequestWithDetail", "detail", err.Error())
-		return
-	}
-	var item lore.Item
-	_, ok := h.withLoreStore(c, func(store *lore.Store) error {
-		var err error
-		item, err = store.Create(body)
-		return err
-	})
-	if !ok {
-		return
-	}
-	writeJSON(c, consts.StatusOK, item)
-}
-
-// HandleLoreItemUpdate replaces every user-editable field of one Lore item.
-func (h *Handlers) HandleLoreItemUpdate(ctx context.Context, c *app.RequestContext) {
-	if !h.requireWorkspace(c) {
-		return
-	}
-	var body lore.ItemInput
-	if err := c.BindJSON(&body); err != nil {
-		writeErrorKey(c, consts.StatusBadRequest, "api.common.invalidRequestWithDetail", "detail", err.Error())
-		return
-	}
-	var fields map[string]json.RawMessage
-	if err := json.Unmarshal(c.Request.Body(), &fields); err != nil {
-		writeErrorKey(c, consts.StatusBadRequest, "api.common.invalidRequestWithDetail", "detail", err.Error())
-		return
-	}
-	required := [...]string{"enabled", "type", "name", "importance", "tags", "brief_description", "keywords", "load_mode", "content"}
-	missing := make([]string, 0, len(required))
-	for _, field := range required {
-		if _, ok := fields[field]; !ok {
-			missing = append(missing, field)
-		}
-	}
-	if len(missing) > 0 {
-		writeErrorKey(c, consts.StatusBadRequest, "api.common.invalidRequestWithDetail", "detail",
-			"Lore PUT 缺少完整字段 / Lore PUT is missing required fields: "+strings.Join(missing, ", "))
-		return
-	}
-	id := strings.TrimSpace(c.Param("id"))
-	if bodyID := strings.TrimSpace(body.ID); bodyID != "" && bodyID != id {
-		writeErrorKey(c, consts.StatusBadRequest, "api.common.invalidRequestWithDetail", "detail",
-			"Lore 请求正文 ID 与路径不一致 / Lore body ID does not match the resource path")
-		return
-	}
-	var item lore.Item
-	_, err := h.app.WithLoreStore(workspaceChangeExpectedWorkspace(c), func(store *lore.Store) error {
-		var updateErr error
-		item, updateErr = store.Update(id, body)
-		return updateErr
-	})
-	if err != nil {
-		if errors.Is(err, novaApp.ErrWorkspaceChanged) || errors.Is(err, novaApp.ErrNoWorkspace) {
-			h.writeWorkspaceChangeLeaseError(c, workspaceChangeExpectedWorkspace(c), err)
-			return
-		}
-		if errors.Is(err, lore.ErrRevisionConflict) {
-			writeErrorKey(c, consts.StatusConflict, "api.resource.revisionConflict")
-			return
-		}
-		writeError(c, consts.StatusBadRequest, err.Error())
-		return
-	}
-	writeJSON(c, consts.StatusOK, item)
-}
-
-func (h *Handlers) HandleLoreItemDelete(ctx context.Context, c *app.RequestContext) {
-	if !h.requireWorkspace(c) {
-		return
-	}
-	_, ok := h.withLoreStore(c, func(store *lore.Store) error { return store.Delete(c.Param("id")) })
-	if !ok {
-		return
-	}
-	writeJSON(c, consts.StatusOK, map[string]string{"status": "ok"})
-}
 
 func (h *Handlers) HandleLoreClassificationPreview(ctx context.Context, c *app.RequestContext) {
 	if !h.requireWorkspace(c) {

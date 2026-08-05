@@ -13,7 +13,6 @@ import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip
 import { cn } from '@/lib/utils'
 
 const TAB_TITLE_TOOLTIP_DELAY_MS = 500
-
 const WORKBENCH_TAB_CLASS = [
   'group/tab relative h-full min-w-28 max-w-40 flex-[1_1_10rem] justify-start gap-1.5 px-3 text-xs',
   'rounded-none border-0 border-r border-[var(--nova-border)] after:hidden',

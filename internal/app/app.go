@@ -23,6 +23,7 @@ import (
 	interactiveapp "denova/internal/app/interactive"
 	loreapp "denova/internal/app/lore"
 	modelsapp "denova/internal/app/models"
+	projectbookapp "denova/internal/app/projectbook"
 	projectfilesapp "denova/internal/app/projectfiles"
 	resourcecatalogapp "denova/internal/app/resourcecatalog"
 	settingsapp "denova/internal/app/settings"
@@ -89,6 +90,7 @@ type App struct {
 	settingsApp     *settingsapp.Service
 	modelsApp       *modelsapp.Service
 	imageApp        *imageapp.Service
+	projectBook     *projectbookapp.Service
 	projectFiles    *projectfilesapp.Service
 	servicesOnce    sync.Once
 
@@ -228,6 +230,7 @@ func (a *App) ensureServices() {
 		a.modelsApp = modelsapp.NewService(modelHost{app: a})
 		a.imageApp = imageapp.NewService(imageHost{app: a})
 		a.loreApp = loreapp.NewService(loreHost{app: a}, a.imageApp)
+		a.projectBook = projectbookapp.NewService(a.projectRegistry)
 		projectFileOptions := []projectfilesapp.ServiceOption(nil)
 		if a.cfg != nil {
 			projectFileOptions = append(projectFileOptions, projectfilesapp.WithTreeEntryLimit(a.cfg.ProjectFileTreeEntryLimit))
@@ -250,6 +253,13 @@ func (a *App) chat() *ChatAppService {
 func (a *App) AgentChat() *agentchatapp.Service {
 	a.ensureServices()
 	return a.agentChatApp
+}
+
+// ProjectBook exposes Book resources through stable Project identity without
+// changing the foreground Writing workspace.
+func (a *App) ProjectBook() *projectbookapp.Service {
+	a.ensureServices()
+	return a.projectBook
 }
 
 // ProjectFiles exposes Project-scoped file browsing and editing without
@@ -425,6 +435,9 @@ func (a *App) Close() {
 		}
 		if a.agentChatApp != nil {
 			a.agentChatApp.Close(context.Background())
+		}
+		if a.projectFiles != nil {
+			a.projectFiles.Close()
 		}
 		a.abortOwnedAgentTasks(context.Background())
 		a.stopWorkspaceDirectorTasks()

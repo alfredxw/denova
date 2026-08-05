@@ -48,10 +48,11 @@ func TestCharacterCardImportAsNewBookAboveRecommendation(t *testing.T) {
 	}
 	var result struct {
 		Workspace string `json:"workspace"`
+		ProjectID string `json:"project_id"`
 		ItemCount int    `json:"item_count"`
 	}
 	decodeResponse(t, resp.Body.Bytes(), &result)
-	if result.Workspace == "" || result.ItemCount == 0 {
+	if result.Workspace == "" || result.ProjectID == "" || result.ProjectID != application.ProjectID() || result.ItemCount == 0 {
 		t.Fatalf("new-book import result mismatch: %#v", result)
 	}
 	residentBytes, err := lore.NewStore(result.Workspace).ResidentContentBytes()

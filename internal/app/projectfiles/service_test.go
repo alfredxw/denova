@@ -9,6 +9,7 @@ import (
 	"slices"
 	"testing"
 
+	"denova/internal/book"
 	projectdomain "denova/internal/project"
 	workspacechange "denova/internal/workspace/change"
 )
@@ -281,6 +282,41 @@ func TestServiceReadsAndSavesWithProjectScopedRevision(t *testing.T) {
 	var changeErr *workspacechange.Error
 	if err == nil || !errors.As(err, &changeErr) || changeErr.Code != workspacechange.ErrorCodeRevisionConflict {
 		t.Fatalf("expected revision conflict, got %v", err)
+	}
+}
+
+func TestServiceOwnsVersionSchedulerForBackgroundBookSaves(t *testing.T) {
+	root := t.TempDir()
+	workspace := filepath.Join(root, "book")
+	if err := book.NewState(workspace).InitWorkspace(); err != nil {
+		t.Fatal(err)
+	}
+	registry := projectdomain.NewRegistry(filepath.Join(root, "denova"))
+	record, err := registry.Add(workspace, projectdomain.TypeBook, "Book")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := registry.EnsureState(record); err != nil {
+		t.Fatal(err)
+	}
+	service := NewService(registry)
+	t.Cleanup(service.Close)
+	mustWriteProjectFile(t, workspace, "chapters/ch01.md", "before\n")
+	document, err := service.ReadFile(context.Background(), record.ID, "chapters/ch01.md")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := service.SaveFile(context.Background(), record.ID, SaveRequest{
+		Path: "chapters/ch01.md", Content: "after\n", BaseRevision: document.Revision,
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	service.versions.mu.Lock()
+	cached := service.versions.entries[record.ID]
+	service.versions.mu.Unlock()
+	if cached.service == nil || filepath.Clean(cached.workspace) != filepath.Clean(record.WorkspacePath) {
+		t.Fatalf("background Book save did not retain a scoped version scheduler: %#v", cached)
 	}
 }
 

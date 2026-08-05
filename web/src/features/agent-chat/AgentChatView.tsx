@@ -6,7 +6,7 @@ import { EmptyState } from '@/components/common/EmptyState'
 import { ConfirmDialog } from '@/components/common/ConfirmDialog'
 import type { WritingComposerSettingsController } from '@/components/Chat/AgentPanel'
 import type { EditorFlushHandler } from '@/components/Editor/useEditorDraftPersistence'
-import type { ReviewFeedbackBatch, ReviewFeedbackComment, ReviewFeedbackSelection } from '@/features/changes/agent/ReviewFeedbackTray'
+import type { ReviewFeedbackComment, ReviewFeedbackSelection } from '@/features/changes/agent/ReviewFeedbackTray'
 import type { WorkspaceChangeMetadata } from '@/features/changes/types'
 import type { ImagePreset, Teller } from '@/features/interactive/types'
 import {
@@ -29,11 +29,14 @@ import {
 } from './AgentChatProjectGroup'
 import { AgentChatSessionHistoryDialog } from './AgentChatSessionHistoryDialog'
 import { AgentChatTabContent } from './AgentChatTabContent'
+import { AgentChatTabDragContext } from './AgentChatTabDragContext'
 import { AgentChatWorkspaceSurface } from './AgentChatWorkspaceSurface'
 import { agentChatSessionBindingKey } from './sidebar-activity'
 import {
   createTabId,
+  draftSessionTitle,
   emptyProjectTabState,
+  incrementProjectRefreshSignals,
   persistWorkbenchState,
   readStoredWorkbenchState,
   reconcileWorkbenchProjects,
@@ -64,31 +67,15 @@ interface AgentChatViewProps {
   autoSaveEnabled?: boolean
   autoSaveDelayMs?: number
   /** Project pages receive their tab's project, never the foreground Writing book. */
-  renderPage: (workspace: string, pageId: AgentChatPageId, context: AgentChatPageRenderContext) => ReactNode
+  renderPage: (projectId: string, workspace: string, pageId: AgentChatPageId, context: AgentChatPageRenderContext) => ReactNode
   renderReview: (tab: AgentChatReviewTab, disabled: boolean, context: AgentChatReviewRenderContext) => ReactNode
-  documentReviewWorkspace?: string
-  documentReviewFeedback?: ReviewFeedbackSelection | null
-  onDocumentReviewFeedbackRemove?: (selection: ReviewFeedbackSelection, commentID: string) => void
-  onDocumentReviewFeedbackSubmitted?: (feedback: ReviewFeedbackBatch) => void
-  onDocumentReviewFeedbackSubmissionFailed?: (feedback: ReviewFeedbackBatch) => void
-  onActivateWorkspace?: (workspace: string) => Promise<boolean>
   onFlushHandlerChange?: (handler: EditorFlushHandler | null) => void
-  onWorkspaceChanged?: (workspace: string, paths: string[], metadata: WorkspaceChangeMetadata) => void | Promise<void>
-}
-
-function pendingSessionTitle(message: string) {
-  const normalized = message.replace(/^\/plan\s*/, '').trim()
-  const characters = Array.from(normalized)
-  return characters.length > 60 ? `${characters.slice(0, 60).join('')}...` : normalized
-}
-
-function incrementProjectRefreshSignals(
-  current: ReadonlyMap<string, number>,
-  projectIDs: readonly string[],
-): ReadonlyMap<string, number> {
-  const next = new Map(current)
-  projectIDs.forEach((projectID) => next.set(projectID, (next.get(projectID) ?? 0) + 1))
-  return next
+  onWorkspaceChanged?: (
+    projectId: string,
+    workspace: string,
+    paths: string[],
+    metadata: WorkspaceChangeMetadata,
+  ) => void | Promise<void>
 }
 
 /**
@@ -105,12 +92,6 @@ export function AgentChatView({
   autoSaveDelayMs = 1200,
   renderPage,
   renderReview,
-  documentReviewWorkspace,
-  documentReviewFeedback,
-  onDocumentReviewFeedbackRemove,
-  onDocumentReviewFeedbackSubmitted,
-  onDocumentReviewFeedbackSubmissionFailed,
-  onActivateWorkspace,
   onFlushHandlerChange,
   onWorkspaceChanged,
 }: AgentChatViewProps) {
@@ -135,6 +116,7 @@ export function AgentChatView({
   const tabFlushHandlersRef = useRef(new Map<string, EditorFlushHandler>())
   const [filesEditorRefreshSignals, setFilesEditorRefreshSignals] = useState<ReadonlyMap<string, number>>(() => new Map())
   const [filesTreeRefreshSignals, setFilesTreeRefreshSignals] = useState<ReadonlyMap<string, number>>(() => new Map())
+  const [projectPageRefreshSignals, setProjectPageRefreshSignals] = useState<ReadonlyMap<string, number>>(() => new Map())
   const navigationNonceRef = useRef(0)
   const [documentReviewNavigation, setDocumentReviewNavigation] = useState<AgentChatDocumentReviewNavigation | null>(null)
   const { bindTerminalSession, markTerminalTabsClosing } = useTerminalSessionLifecycle(workbench, projectsLoading, setWorkbench)
@@ -231,6 +213,11 @@ export function AgentChatView({
     return true
   }, [])
 
+  const flushProjectDrafts = useCallback((projectID: string) => {
+    const tabs = workbenchRef.current.projects[projectID]?.tabs ?? []
+    return flushTabDrafts(new Set(tabs.map((tab) => mountedAgentChatTabKey(projectID, tab.id))))
+  }, [flushTabDrafts])
+
   useEffect(() => {
     onFlushHandlerChange?.(flushTabDrafts)
     return () => onFlushHandlerChange?.(null)
@@ -318,7 +305,7 @@ export function AgentChatView({
                   ? {
                       ...tab,
                       draft: undefined,
-                      pendingTitle: pendingSessionTitle(message),
+                      pendingTitle: draftSessionTitle(message),
                     }
                   : tab,
               ),
@@ -417,33 +404,28 @@ export function AgentChatView({
   }, [openProjectFiles, projects])
 
   const handleWorkspaceChanged = useCallback(async (
+    changedProjectId: string,
     changedWorkspace: string,
     paths: string[],
     metadata: WorkspaceChangeMetadata,
   ) => {
-    const projectIDs = projects.filter((project) => project.path === changedWorkspace).map((project) => project.id)
-    if (projectIDs.length > 0 && metadata.origin !== 'files-tab') {
-      setFilesEditorRefreshSignals((current) => incrementProjectRefreshSignals(current, projectIDs))
+    if (changedProjectId && metadata.origin !== 'files-tab') {
+      setFilesEditorRefreshSignals((current) => incrementProjectRefreshSignals(current, [changedProjectId]))
       if (metadata.impact === 'structure') {
-        setFilesTreeRefreshSignals((current) => incrementProjectRefreshSignals(current, projectIDs))
+        setFilesTreeRefreshSignals((current) => incrementProjectRefreshSignals(current, [changedProjectId]))
       }
     }
-    await onWorkspaceChanged?.(changedWorkspace, paths, metadata)
-  }, [onWorkspaceChanged, projects])
-
-  const activateProjectWorkspace = useCallback(
-    async (workspace: string): Promise<boolean> => {
-      if (!(await flushTabDrafts())) return false
-      return onActivateWorkspace ? onActivateWorkspace(workspace) : false
-    },
-    [flushTabDrafts, onActivateWorkspace],
-  )
+    if (changedProjectId && metadata.origin !== 'project-page') {
+      setProjectPageRefreshSignals((current) => incrementProjectRefreshSignals(current, [changedProjectId]))
+    }
+    await onWorkspaceChanged?.(changedProjectId, changedWorkspace, paths, metadata)
+  }, [onWorkspaceChanged])
 
   const openDocumentReviewFeedback = useCallback(
-    (workspace: string, selection: ReviewFeedbackSelection, comment: ReviewFeedbackComment) => {
+    (projectID: string, selection: ReviewFeedbackSelection, comment: ReviewFeedbackComment) => {
       const resource = comment.target
-      if (selection.source !== 'document' || workspace !== documentReviewWorkspace || !resource?.id) return
-      const project = projects.find((candidate) => candidate.path === workspace && candidate.type === 'book')
+      if (selection.source !== 'document' || !resource?.id) return
+      const project = projects.find((candidate) => candidate.id === projectID && candidate.type === 'book')
       if (!project) return
       const pageId: AgentChatPageId = resource.kind === 'lore_item' ? 'lore' : 'reader'
       const state = workbenchRef.current.projects[project.id] ?? emptyProjectTabState()
@@ -456,13 +438,13 @@ export function AgentChatView({
       openProjectPage(project, targetGroup, pageId)
       navigationNonceRef.current += 1
       setDocumentReviewNavigation({
-        workspace,
+        projectId: project.id,
         target: resource.kind === 'lore_item' ? { kind: 'lore_item', id: resource.id, field: 'content' } : { kind: 'workspace_file', id: resource.id },
         commentID: comment.id,
         nonce: navigationNonceRef.current,
       })
     },
-    [documentReviewWorkspace, openProjectPage, projects],
+    [openProjectPage, projects],
   )
 
   const openChangeReview = useCallback(
@@ -571,6 +553,7 @@ export function AgentChatView({
         const selection = await selectAgentChatProjectDirectory(relinkTarget?.path)
         if (selection.canceled || !selection.path) return
         if (relinkTarget) {
+          if (!(await flushProjectDrafts(relinkTarget.id))) return
           await relinkAgentChatProject(relinkTarget.id, selection.path)
           await refreshProjects()
           return
@@ -592,15 +575,17 @@ export function AgentChatView({
         setProjectDirectoryBusy(false)
       }
     },
-    [refreshProjects, selectProject, t],
+    [flushProjectDrafts, refreshProjects, selectProject, t],
   )
 
-  const archiveProject = useCallback(async () => {
+  const archiveProject = useCallback(async (): Promise<boolean> => {
     const target = archiveTarget
-    if (!target) return
+    if (!target) return false
+    if (!(await flushProjectDrafts(target.id))) return false
     await archiveAgentChatProject(target.id)
     await refreshProjects()
-  }, [archiveTarget, refreshProjects])
+    return true
+  }, [archiveTarget, flushProjectDrafts, refreshProjects])
 
   const treeProps = {
     projects,
@@ -655,19 +640,15 @@ export function AgentChatView({
             autoSaveDelayMs={autoSaveDelayMs}
             filesEditorRefreshSignal={filesEditorRefreshSignals.get(project.id) ?? 0}
             filesTreeRefreshSignal={filesTreeRefreshSignals.get(project.id) ?? 0}
+            projectPageRefreshSignal={projectPageRefreshSignals.get(project.id) ?? 0}
             renderPage={renderPage}
             renderReview={renderReview}
-            navigationIntent={documentReviewNavigation?.workspace === tab.workspace ? documentReviewNavigation : null}
-            documentReviewFeedback={tab.workspace === documentReviewWorkspace ? documentReviewFeedback : null}
+            navigationIntent={documentReviewNavigation?.projectId === tab.projectId ? documentReviewNavigation : null}
             onDocumentReviewFeedbackOpen={openDocumentReviewFeedback}
-            onDocumentReviewFeedbackRemove={onDocumentReviewFeedbackRemove}
-            onDocumentReviewFeedbackSubmitted={onDocumentReviewFeedbackSubmitted}
-            onDocumentReviewFeedbackSubmissionFailed={onDocumentReviewFeedbackSubmissionFailed}
             onOpenPage={(projectID, groupID, pageID) => {
               const target = projects.find((candidate) => candidate.id === projectID)
               if (target) openProjectPage(target, groupID, pageID)
             }}
-            onActivateWorkspace={activateProjectWorkspace}
             onFlushHandlerChange={registerTabFlushHandler}
             onFilesSelectedPathChange={setFilesSelectedPath}
             onOpenProjectFile={openProjectFile}
@@ -714,63 +695,68 @@ export function AgentChatView({
 
   return (
     <>
-      <AgentChatWorkspaceSurface
-        sidebarProps={treeProps}
-        secondaryPane={{
-          content: <div className="relative h-full min-h-0">{secondaryProjectLayers}</div>,
-          visible: secondaryVisible,
-          layoutKey: `nova-agent-chat-secondary-layout:v1:${activeProjectId || 'empty'}`,
-          onOpen: () => {
-            if (activeProject) showSecondaryPane(activeProject.id)
-          },
-          onClose: () => {
-            if (activeProject) hideSecondaryPane(activeProject.id)
-          },
-        }}
-        createDisabled={!activeProject || activeProject.status !== 'available'}
-        onCreateDefaultSession={() => {
-          if (activeProject?.status === 'available') openDraftSessionInProject(activeProject)
-        }}
+      <AgentChatTabDragContext
+        workbench={workbench}
+        onMoveTab={relocateTab}
       >
-        {(controls) => {
-          const projectLayers = projects.map((project) => {
-            const state = workbench.projects[project.id] ?? emptyProjectTabState()
-            const visible = project.id === activeProjectId
-            return (
-              <section key={project.id} hidden={!visible} aria-hidden={!visible} className="absolute inset-0 flex min-h-0 flex-col">
-                {renderProjectGroup(project, state, 'primary', visible, controls)}
-              </section>
-            )
-          })
+        <AgentChatWorkspaceSurface
+          sidebarProps={treeProps}
+          secondaryPane={{
+            content: <div className="relative h-full min-h-0">{secondaryProjectLayers}</div>,
+            visible: secondaryVisible,
+            layoutKey: `nova-agent-chat-secondary-layout:v1:${activeProjectId || 'empty'}`,
+            onOpen: () => {
+              if (activeProject) showSecondaryPane(activeProject.id)
+            },
+            onClose: () => {
+              if (activeProject) hideSecondaryPane(activeProject.id)
+            },
+          }}
+          createDisabled={!activeProject || activeProject.status !== 'available'}
+          onCreateDefaultSession={() => {
+            if (activeProject?.status === 'available') openDraftSessionInProject(activeProject)
+          }}
+        >
+          {(controls) => {
+            const projectLayers = projects.map((project) => {
+              const state = workbench.projects[project.id] ?? emptyProjectTabState()
+              const visible = project.id === activeProjectId
+              return (
+                <section key={project.id} hidden={!visible} aria-hidden={!visible} className="absolute inset-0 flex min-h-0 flex-col">
+                  {renderProjectGroup(project, state, 'primary', visible, controls)}
+                </section>
+              )
+            })
 
-          const workbenchContent =
-            activeProject?.status === 'missing' ? (
-              <EmptyState
-                variant="page"
-                icon={MessageSquareText}
-                title={t('agentChat.project.missing')}
-                description={activeProject.path}
-                action={{
-                  label: t(projectDirectoryBusy ? 'agentChat.project.selectingDirectory' : 'agentChat.project.relink'),
-                  onClick: () => void chooseProjectDirectory(activeProject),
-                }}
-              />
-            ) : activeProject ? (
-              <div className="relative h-full min-h-0">{projectLayers}</div>
-            ) : (
-              <EmptyState
-                variant="page"
-                icon={MessageSquareText}
-                title={t('agentChat.empty.noWorkspace')}
-                action={{
-                  label: t(projectDirectoryBusy ? 'agentChat.project.selectingDirectory' : 'agentChat.project.add'),
-                  onClick: () => void chooseProjectDirectory(),
-                }}
-              />
-            )
-          return workbenchContent
-        }}
-      </AgentChatWorkspaceSurface>
+            const workbenchContent =
+              activeProject?.status === 'missing' ? (
+                <EmptyState
+                  variant="page"
+                  icon={MessageSquareText}
+                  title={t('agentChat.project.missing')}
+                  description={activeProject.path}
+                  action={{
+                    label: t(projectDirectoryBusy ? 'agentChat.project.selectingDirectory' : 'agentChat.project.relink'),
+                    onClick: () => void chooseProjectDirectory(activeProject),
+                  }}
+                />
+              ) : activeProject ? (
+                <div className="relative h-full min-h-0">{projectLayers}</div>
+              ) : (
+                <EmptyState
+                  variant="page"
+                  icon={MessageSquareText}
+                  title={t('agentChat.empty.noWorkspace')}
+                  action={{
+                    label: t(projectDirectoryBusy ? 'agentChat.project.selectingDirectory' : 'agentChat.project.add'),
+                    onClick: () => void chooseProjectDirectory(),
+                  }}
+                />
+              )
+            return workbenchContent
+          }}
+        </AgentChatWorkspaceSurface>
+      </AgentChatTabDragContext>
       <AgentChatSessionHistoryDialog
         open={historyOpen}
         projects={projects}

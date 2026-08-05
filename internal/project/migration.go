@@ -13,7 +13,7 @@ import (
 	workspacelayout "denova/internal/workspace"
 )
 
-const stateMigrationVersion = 1
+const stateMigrationVersion = 2
 
 type migrationReceipt struct {
 	Version     int       `json:"version"`
@@ -26,6 +26,12 @@ type migrationReceipt struct {
 // migration from legacy workspace-private state. Source files are retained as
 // an explicit rollback path; subsequent calls are idempotent.
 func (registry *Registry) EnsureState(record Record) (Layout, error) {
+	// Multiple project surfaces can resolve the same project concurrently. Keep
+	// the one-time legacy migration serialized so each caller observes either the
+	// legacy source or the completed atomic destination, never a competing rename.
+	registry.stateMu.Lock()
+	defer registry.stateMu.Unlock()
+
 	layout, err := registry.Layout(record)
 	if err != nil {
 		return Layout{}, err
@@ -48,6 +54,7 @@ func (registry *Registry) EnsureState(record Record) (Layout, error) {
 		{name: "sessions", source: workspacelayout.Path(layout.ContentRoot, "sessions"), destination: layout.SessionsDir()},
 		{name: "config", source: workspacelayout.Path(layout.ContentRoot, "config.toml"), destination: layout.ConfigPath()},
 		{name: "changes", source: workspacelayout.Path(layout.ContentRoot, "changes"), destination: layout.ChangesDir()},
+		{name: "reviews", source: workspacelayout.Path(layout.ContentRoot, "reviews"), destination: layout.ReviewsDir()},
 		{name: "runs", source: workspacelayout.Path(layout.ContentRoot, "runs"), destination: layout.RunsDir()},
 		{name: "artifacts", source: workspacelayout.Path(layout.ContentRoot, "artifacts"), destination: layout.ArtifactsDir()},
 		{name: "automations", source: workspacelayout.Path(layout.ContentRoot, "automations"), destination: layout.AutomationsDir()},

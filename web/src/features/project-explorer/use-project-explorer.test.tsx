@@ -81,6 +81,7 @@ describe('useProjectExplorer', () => {
         })
       }),
       http.post('/api/projects/project-one/files/operations', () => HttpResponse.json({
+        project_id: 'project-one',
         results: [{ kind: 'create', ok: true, path: 'a/new.ts' }],
       })),
     )
@@ -208,6 +209,7 @@ describe('useProjectExplorer', () => {
       http.post('/api/projects/project-one/files/operations', () => {
         created = true
         return HttpResponse.json({
+          project_id: 'project-one',
           results: [{ kind: 'create', ok: true, path: 'nested/deep/story.md' }],
         })
       }),

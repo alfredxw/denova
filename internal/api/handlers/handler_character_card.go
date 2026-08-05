@@ -110,6 +110,7 @@ func (h *Handlers) HandleWorkspaceImportCharacterCard(ctx context.Context, c *ap
 		writeErrorKey(c, status, "api.characterCard.importFailed", "detail", err.Error())
 		return
 	}
+	result.ProjectID = h.app.ProjectID()
 	result.Message = messageKey(c, "api.characterCard.imported", "name", result.Name)
 	slog.InfoContext(ctx, fmt.Sprintf("[api] 导入酒馆角色卡完成 name=%q target=%q entries=%d items=%d", result.Name, result.TargetPath, result.EntryCount, result.ItemCount))
 	writeJSON(c, consts.StatusOK, result)

@@ -1,5 +1,6 @@
 import { BookMarked, Pin, PinOff, X } from 'lucide-react'
 import type { ReactNode } from 'react'
+import { SortableContext, horizontalListSortingStrategy } from '@dnd-kit/sortable'
 import { useTranslation } from 'react-i18next'
 import {
   ContextMenu,
@@ -9,7 +10,14 @@ import {
   ContextMenuTrigger,
 } from '@/components/ui/context-menu'
 import type { WorkspaceSummary } from '@/lib/api'
-import { WorkbenchTab, WorkbenchTabStrip } from './WorkbenchTabStrip'
+import {
+  SortableWorkbenchTabItem,
+  WorkbenchTabDragContext,
+} from './WorkbenchTabDrag'
+import {
+  WorkbenchTab,
+  WorkbenchTabStrip,
+} from './WorkbenchTabStrip'
 
 const TABS_STORAGE_PREFIX = 'nova.layout.tabs:'
 const ACTIVE_TAB_STORAGE_PREFIX = 'nova.layout.activeTab:'
@@ -71,6 +79,17 @@ export function setTabPinned(tabs: Tab[], key: string, pinned: boolean): Tab[] {
   return orderTabs(tabs.map((tab) => (
     tabKey(tab) === key ? { ...tab, pinned: pinned || undefined } : tab
   )))
+}
+
+/** Move one tab onto another tab's rendered position, preserving the pinned/unpinned boundary. */
+export function reorderTabs(tabs: Tab[], sourceKey: string, targetKey: string): Tab[] {
+  const sourceIndex = tabs.findIndex((tab) => tabKey(tab) === sourceKey)
+  const targetIndex = tabs.findIndex((tab) => tabKey(tab) === targetKey)
+  if (sourceIndex < 0 || targetIndex < 0 || sourceIndex === targetIndex) return tabs
+  const reordered = [...tabs]
+  const [source] = reordered.splice(sourceIndex, 1)
+  reordered.splice(targetIndex, 0, source)
+  return orderTabs(reordered)
 }
 
 /** 按 max 限制裁剪 tab 列表，循环淘汰最久未激活的 tab；副作用：从 activations 删除被淘汰项。 */
@@ -149,6 +168,7 @@ interface TabControllerProps {
   onActivateTab: (tab: Tab) => void
   onCloseTab: (tab: Tab) => void
   onTogglePin: (tab: Tab) => void
+  onMoveTab: (sourceKey: string, targetKey: string) => void
 }
 
 export function TabController({
@@ -159,6 +179,7 @@ export function TabController({
   onActivateTab,
   onCloseTab,
   onTogglePin,
+  onMoveTab,
 }: TabControllerProps) {
   const { t } = useTranslation()
   const activateTabKey = (key: string) => {
@@ -167,59 +188,73 @@ export function TabController({
   }
 
   return (
-    <WorkbenchTabStrip
-      value={activeTabKey ?? ''}
-      onValueChange={activateTabKey}
-      endActions={actions}
+    <WorkbenchTabDragContext
+      onDragEnd={({ active, over }) => {
+        if (over && active.id !== over.id) onMoveTab(String(active.id), String(over.id))
+      }}
     >
-      {tabs.length === 0 ? (
-        <div className="flex h-full items-center px-3 text-[var(--nova-text-faint)]">{t('tab.empty')}</div>
-      ) : tabs.map((tab) => {
-        const key = tabKey(tab)
-        const label = formatChapterTabLabel(tab, summary, t('tab.lore'))
-        return (
-          <ContextMenu key={key}>
-            <ContextMenuTrigger asChild>
-              <div className="group/tab relative h-full min-w-28 max-w-40 flex-[1_1_10rem]">
-                <WorkbenchTab
-                  value={key}
-                  label={label}
-                  icon={tab.kind === 'lore' ? <BookMarked className="size-3.5 text-emerald-500" /> : undefined}
-                  className="h-full w-full min-w-0 max-w-none flex-none"
-                  trailing={tab.pinned ? (
-                    <Pin className="size-3 shrink-0 text-[var(--nova-text-faint)]" aria-hidden="true" />
-                  ) : (
-                    <span className="size-4 shrink-0" aria-hidden="true" />
-                  )}
-                />
-                {!tab.pinned ? (
-                  <button
-                    type="button"
-                    onPointerDown={(event) => event.stopPropagation()}
-                    onKeyDown={(event) => event.stopPropagation()}
-                    onClick={(event) => { event.stopPropagation(); onCloseTab(tab) }}
-                    className="nova-nav-item absolute right-3 top-1/2 z-10 -translate-y-1/2 rounded p-0.5 opacity-0 group-hover/tab:opacity-100 max-md:opacity-100"
-                    aria-label={t('tab.close', { label })}
-                    title={t('common.close')}
-                  >
-                    <X className="size-3" />
-                  </button>
-                ) : null}
-              </div>
-            </ContextMenuTrigger>
-            <ContextMenuContent className="min-w-40">
-              <ContextMenuItem onSelect={() => onTogglePin(tab)}>
-                {tab.pinned ? <PinOff /> : <Pin />}
-                {t(tab.pinned ? 'tab.unpin' : 'tab.pin')}
-              </ContextMenuItem>
-              <ContextMenuSeparator />
-              <ContextMenuItem onSelect={() => onCloseTab(tab)}>
-                {t('tab.closeCurrent')}
-              </ContextMenuItem>
-            </ContextMenuContent>
-          </ContextMenu>
-        )
-      })}
-    </WorkbenchTabStrip>
+      <SortableContext items={tabs.map(tabKey)} strategy={horizontalListSortingStrategy}>
+        <WorkbenchTabStrip
+          value={activeTabKey ?? ''}
+          onValueChange={activateTabKey}
+          endActions={actions}
+        >
+          {tabs.length === 0 ? (
+            <div className="flex h-full items-center px-3 text-[var(--nova-text-faint)]">{t('tab.empty')}</div>
+          ) : tabs.map((tab) => {
+            const key = tabKey(tab)
+            const label = formatChapterTabLabel(tab, summary, t('tab.lore'))
+            const icon = tab.kind === 'lore' ? <BookMarked className="size-3.5 text-emerald-500" /> : undefined
+            return (
+              <SortableWorkbenchTabItem key={key} id={key} label={label} previewIcon={icon}>
+                {(dragHandleProps) => (
+                  <ContextMenu>
+                    <ContextMenuTrigger asChild>
+                      <div className="group/tab relative h-full w-full">
+                        <WorkbenchTab
+                          {...dragHandleProps}
+                          value={key}
+                          label={label}
+                          icon={icon}
+                          className="h-full w-full min-w-0 max-w-none flex-none"
+                          trailing={tab.pinned ? (
+                            <Pin className="size-3 shrink-0 text-[var(--nova-text-faint)]" aria-hidden="true" />
+                          ) : (
+                            <span className="size-4 shrink-0" aria-hidden="true" />
+                          )}
+                        />
+                        {!tab.pinned ? (
+                          <button
+                            type="button"
+                            onPointerDown={(event) => event.stopPropagation()}
+                            onKeyDown={(event) => event.stopPropagation()}
+                            onClick={(event) => { event.stopPropagation(); onCloseTab(tab) }}
+                            className="nova-nav-item absolute right-3 top-1/2 z-10 -translate-y-1/2 rounded p-0.5 opacity-0 group-hover/tab:opacity-100 max-md:opacity-100"
+                            aria-label={t('tab.close', { label })}
+                            title={t('common.close')}
+                          >
+                            <X className="size-3" />
+                          </button>
+                        ) : null}
+                      </div>
+                    </ContextMenuTrigger>
+                    <ContextMenuContent className="min-w-40">
+                      <ContextMenuItem onSelect={() => onTogglePin(tab)}>
+                        {tab.pinned ? <PinOff /> : <Pin />}
+                        {t(tab.pinned ? 'tab.unpin' : 'tab.pin')}
+                      </ContextMenuItem>
+                      <ContextMenuSeparator />
+                      <ContextMenuItem onSelect={() => onCloseTab(tab)}>
+                        {t('tab.closeCurrent')}
+                      </ContextMenuItem>
+                    </ContextMenuContent>
+                  </ContextMenu>
+                )}
+              </SortableWorkbenchTabItem>
+            )
+          })}
+        </WorkbenchTabStrip>
+      </SortableContext>
+    </WorkbenchTabDragContext>
   )
 }

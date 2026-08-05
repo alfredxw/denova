@@ -3,9 +3,9 @@ import { toast } from 'sonner'
 import { useTranslation } from 'react-i18next'
 import type { EditorFlushHandler } from '@/components/Editor/useEditorDraftPersistence'
 import {
-  createLoreItem,
-  deleteLoreItem,
-  getLoreItems,
+  createProjectLoreItem,
+  deleteProjectLoreItem,
+  getProjectLoreItems,
   type LoreItem,
   type LoreItemInput,
 } from '@/lib/api'
@@ -24,17 +24,21 @@ import {
   type LoreAutosaveDraft,
 } from './use-lore-item-autosave'
 
-const SELECTION_STORAGE_PREFIX = 'nova.lore.workspace.selection:'
-const EVENT_SOURCE = 'writing-lore-tab'
+const SELECTION_STORAGE_PREFIX = 'nova.lore.project.selection:'
+let loreWorkspaceSourceSequence = 0
 
 interface UseLoreWorkspaceOptions {
+  projectId: string
   workspace: string
+  refreshSignal?: number
   onFlushHandlerChange: (handler: EditorFlushHandler | null) => void
 }
 
 /** State and persistence boundary for the focused writing-workspace lore tab. */
 export function useLoreWorkspace({
+  projectId,
   workspace,
+  refreshSignal = 0,
   onFlushHandlerChange,
 }: UseLoreWorkspaceOptions) {
   const { t } = useTranslation()
@@ -46,11 +50,13 @@ export function useLoreWorkspace({
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
   const requestRef = useRef(0)
+  const refreshSignalRef = useRef(refreshSignal)
   const rebaseSequenceRef = useRef(0)
   const itemsRef = useRef<LoreItem[]>([])
   const draftRef = useRef<LoreItem | null>(null)
   const tagDraftRef = useRef('')
   const baselineRef = useRef<LoreAutosaveDraft | null>(null)
+  const [eventSource] = useState(() => `project-lore-${++loreWorkspaceSourceSequence}`)
 
   itemsRef.current = items
   draftRef.current = draft
@@ -60,7 +66,7 @@ export function useLoreWorkspace({
   const applyCanonicalItems = useCallback(
     async (nextItems: LoreItem[], preferredID?: string) => {
       const sequence = ++rebaseSequenceRef.current
-      const storedID = preferredID || readSelectedLoreID(workspace)
+      const storedID = preferredID || readSelectedLoreID(projectId)
       const nextID = nextItems.some((item) => item.id === storedID)
         ? storedID
         : firstVisibleLoreItemId(nextItems) || ''
@@ -87,7 +93,7 @@ export function useLoreWorkspace({
         // dirty local copy before moving to the next available resource.
         await rebaseJSONWithRecovery<LoreAutosaveDraft | null>({
           resource: 'lore_item',
-          scope: workspace,
+          scope: projectId,
           id: current.id,
           baseline: { revision: previousBaseline.updated_at, value: previousBaseline },
           local: { revision: previousBaseline.updated_at, value: deletedLocal },
@@ -98,7 +104,7 @@ export function useLoreWorkspace({
         ? previousBaseline?.id === nextBaseline.id && rebasedFromAutosave
           ? await rebaseJSONWithRecovery({
               resource: 'lore_item',
-              scope: workspace,
+              scope: projectId,
               id: nextBaseline.id,
               baseline: { revision: previousBaseline.updated_at, value: previousBaseline },
               local: { revision: previousBaseline.updated_at, value: rebasedFromAutosave },
@@ -120,7 +126,7 @@ export function useLoreWorkspace({
         }
         rebased = await rebaseJSONWithRecovery({
           resource: 'lore_item',
-          scope: workspace,
+          scope: projectId,
           id: rebased.id,
           baseline: { revision: rebasedFromAutosave.updated_at, value: rebasedFromAutosave },
           local: { revision: rebasedFromAutosave.updated_at, value: latestAutosave },
@@ -133,7 +139,7 @@ export function useLoreWorkspace({
       if (sequence !== rebaseSequenceRef.current) return
       setItems(nextItems)
       setActiveId(nextID)
-      persistSelectedLoreID(workspace, nextID)
+      persistSelectedLoreID(projectId, nextID)
       if (rebased) {
         const { tag_draft: nextTags, ...nextDraft } = rebased
         setDraft(nextDraft)
@@ -144,13 +150,13 @@ export function useLoreWorkspace({
       }
       setBaseline(nextBaseline)
     },
-    [workspace],
+    [projectId],
   )
 
   const reload = useCallback(
     async (preferredID?: string) => {
       const request = ++requestRef.current
-      if (!workspace) {
+      if (!projectId) {
         await applyCanonicalItems([])
         setLoading(false)
         return
@@ -158,7 +164,7 @@ export function useLoreWorkspace({
       setLoading(true)
       setError('')
       try {
-        const nextItems = await getLoreItems(workspace)
+        const nextItems = await getProjectLoreItems(projectId)
         if (request !== requestRef.current) return
         await applyCanonicalItems(nextItems, preferredID)
       } catch (cause) {
@@ -172,15 +178,15 @@ export function useLoreWorkspace({
         if (request === requestRef.current) setLoading(false)
       }
     },
-    [applyCanonicalItems, workspace],
+    [applyCanonicalItems, projectId, workspace],
   )
 
   const autosave = useLoreItemAutosave({
     draft,
     tagDraft,
     baseline,
-    active: Boolean(workspace && draft),
-    workspace,
+    active: Boolean(projectId && draft),
+    projectId,
     onSaved: (saved, submitted) => {
       const savedBaseline = loreAutosaveDraft(saved)
       const current = draftRef.current
@@ -200,7 +206,7 @@ export function useLoreWorkspace({
       setDraft(nextDraft)
       setTagDraft(nextTags)
       setBaseline(savedBaseline)
-      notifyLoreUpdated({ ids: [saved.id], source: EVENT_SOURCE })
+      notifyLoreUpdated({ projectId, ids: [saved.id], source: eventSource })
     },
     onAutoSaveError: (cause) => {
       console.error('[LoreWorkspaceTab] failed to autosave lore item', {
@@ -238,6 +244,7 @@ export function useLoreWorkspace({
   }, [flush, onFlushHandlerChange])
 
   useEffect(() => {
+    refreshSignalRef.current = refreshSignal
     setItems([])
     setActiveId('')
     setDraft(null)
@@ -248,17 +255,24 @@ export function useLoreWorkspace({
     return () => {
       requestRef.current += 1
     }
-  }, [reload, workspace])
+  }, [projectId, reload])
+
+  useEffect(() => {
+    if (refreshSignalRef.current === refreshSignal) return
+    refreshSignalRef.current = refreshSignal
+    void reload(activeId)
+  }, [activeId, refreshSignal, reload])
 
   useEffect(() => {
     const onLoreUpdated = (event: Event) => {
       const detail = (event as CustomEvent<LoreUpdatedDetail>).detail
-      if (detail?.source === EVENT_SOURCE) return
+      if (detail?.projectId !== projectId) return
+      if (detail?.source === eventSource) return
       void reload(activeId)
     }
     window.addEventListener(LORE_UPDATED_EVENT, onLoreUpdated)
     return () => window.removeEventListener(LORE_UPDATED_EVENT, onLoreUpdated)
-  }, [activeId, reload])
+  }, [activeId, eventSource, projectId, reload])
 
   const selectItem = useCallback(
     async (id: string) => {
@@ -272,17 +286,17 @@ export function useLoreWorkspace({
       setDraft({ ...item, tags: [...(item.tags || [])] })
       setTagDraft((item.tags || []).join('，'))
       setBaseline(nextBaseline)
-      persistSelectedLoreID(workspace, id)
+      persistSelectedLoreID(projectId, id)
       return true
     },
-    [activeId, flush, items, workspace],
+    [activeId, flush, items, projectId],
   )
 
   const createItem = useCallback(
     async (input: Partial<LoreItemInput>) => {
       if (!(await flush())) return null
       try {
-        const created = await createLoreItem(workspace, input)
+        const created = await createProjectLoreItem(projectId, input)
         const nextBaseline = loreAutosaveDraft(created)
         rebaseSequenceRef.current += 1
         // Preserve any state committed by the flush above. Building a list from
@@ -296,8 +310,8 @@ export function useLoreWorkspace({
         setDraft({ ...created, tags: [...(created.tags || [])] })
         setTagDraft((created.tags || []).join('，'))
         setBaseline(nextBaseline)
-        persistSelectedLoreID(workspace, created.id)
-        notifyLoreUpdated({ ids: [created.id], source: EVENT_SOURCE })
+        persistSelectedLoreID(projectId, created.id)
+        notifyLoreUpdated({ projectId, ids: [created.id], source: eventSource })
         return created
       } catch (cause) {
         console.error('[LoreWorkspaceTab] failed to create lore item', {
@@ -310,7 +324,7 @@ export function useLoreWorkspace({
         return null
       }
     },
-    [flush, t, workspace],
+    [eventSource, flush, projectId, t, workspace],
   )
 
   const deleteItem = useCallback(
@@ -320,7 +334,7 @@ export function useLoreWorkspace({
       if (draftRef.current?.id !== id) return false
       autosave.cancelPending()
       try {
-        await deleteLoreItem(workspace, id)
+        await deleteProjectLoreItem(projectId, id)
       } catch (cause) {
         console.error('[LoreWorkspaceTab] failed to delete lore item', {
           workspace,
@@ -352,11 +366,11 @@ export function useLoreWorkspace({
       setDraft(nextDraft)
       setTagDraft(nextTagDraft)
       setBaseline(nextBaseline)
-      persistSelectedLoreID(workspace, nextID)
-      notifyLoreUpdated({ ids: [id], source: EVENT_SOURCE })
+      persistSelectedLoreID(projectId, nextID)
+      notifyLoreUpdated({ projectId, ids: [id], source: eventSource })
       return true
     },
-    [autosave.cancelPending, flush, workspace],
+    [autosave.cancelPending, eventSource, flush, projectId, workspace],
   )
 
   const prepareSnapshot =
@@ -364,7 +378,7 @@ export function useLoreWorkspace({
       const itemID = draftRef.current?.id
       if (!itemID || !(await flush()))
         throw new Error('The lore draft could not be saved')
-      const canonical = (await getLoreItems(workspace)).find(
+      const canonical = (await getProjectLoreItems(projectId)).find(
         (item) => item.id === itemID,
       )
       if (!canonical?.updated_at)
@@ -376,7 +390,7 @@ export function useLoreWorkspace({
         content: canonical.content || '',
         revision: canonical.updated_at,
       }
-    }, [flush, workspace])
+    }, [flush, projectId])
 
   return useMemo(
     () => ({
@@ -416,13 +430,13 @@ export function useLoreWorkspace({
   )
 }
 
-function readSelectedLoreID(workspace: string): string {
-  if (!workspace || typeof window === 'undefined') return ''
-  return window.localStorage.getItem(SELECTION_STORAGE_PREFIX + workspace) || ''
+function readSelectedLoreID(projectId: string): string {
+  if (!projectId || typeof window === 'undefined') return ''
+  return window.localStorage.getItem(SELECTION_STORAGE_PREFIX + projectId) || ''
 }
 
-function persistSelectedLoreID(workspace: string, id: string) {
-  if (!workspace || typeof window === 'undefined') return
-  if (id) window.localStorage.setItem(SELECTION_STORAGE_PREFIX + workspace, id)
-  else window.localStorage.removeItem(SELECTION_STORAGE_PREFIX + workspace)
+function persistSelectedLoreID(projectId: string, id: string) {
+  if (!projectId || typeof window === 'undefined') return
+  if (id) window.localStorage.setItem(SELECTION_STORAGE_PREFIX + projectId, id)
+  else window.localStorage.removeItem(SELECTION_STORAGE_PREFIX + projectId)
 }

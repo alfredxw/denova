@@ -13,13 +13,15 @@ import (
 	"strings"
 	"sync"
 	"time"
+
+	workspacelayout "denova/internal/workspace"
 )
 
 const (
 	maxCommentBodyBytes = 64 * 1024
 )
 
-var workspaceServices = struct {
+var reviewServices = struct {
 	sync.Mutex
 	items map[string]*Service
 }{items: map[string]*Service{}}
@@ -33,11 +35,12 @@ type eventLog interface {
 	close()
 }
 
-// Service owns one workspace's durable author-created text-resource comments.
+// Service owns one Project's durable author-created text-resource comments.
 // Resource stores retain mutation ownership; this service records review
 // metadata only and never rewrites manuscripts or lore entries.
 type Service struct {
 	workspace string
+	stateRoot string
 	store     eventLog
 
 	mu       sync.RWMutex
@@ -55,16 +58,40 @@ func ForWorkspace(workspace string) (*Service, error) {
 	if err != nil {
 		return nil, err
 	}
-	workspaceServices.Lock()
-	defer workspaceServices.Unlock()
-	if existing := workspaceServices.items[canonical]; existing != nil {
-		return existing, nil
-	}
-	service, err := newService(canonical)
+	stateRoot, err := normalizeStateRoot(workspacelayout.Dir(canonical))
 	if err != nil {
 		return nil, err
 	}
-	workspaceServices.items[canonical] = service
+	return forWorkspaceAt(canonical, stateRoot)
+}
+
+// ForWorkspaceAt returns the process-wide review service identified by the
+// stable Project state root. The content path is presentation context and may
+// be rebound after a Project directory is relinked.
+func ForWorkspaceAt(workspace, stateRoot string) (*Service, error) {
+	canonical, err := normalizeWorkspace(workspace)
+	if err != nil {
+		return nil, err
+	}
+	canonicalStateRoot, err := normalizeStateRoot(stateRoot)
+	if err != nil {
+		return nil, err
+	}
+	return forWorkspaceAt(canonical, canonicalStateRoot)
+}
+
+func forWorkspaceAt(workspace, stateRoot string) (*Service, error) {
+	reviewServices.Lock()
+	defer reviewServices.Unlock()
+	if existing := reviewServices.items[stateRoot]; existing != nil {
+		existing.bindWorkspace(workspace)
+		return existing, nil
+	}
+	service, err := newService(workspace, stateRoot)
+	if err != nil {
+		return nil, err
+	}
+	reviewServices.items[stateRoot] = service
 	return service, nil
 }
 
@@ -74,16 +101,21 @@ func NewService(workspace string) (*Service, error) {
 	if err != nil {
 		return nil, err
 	}
-	return newService(canonical)
+	stateRoot, err := normalizeStateRoot(workspacelayout.Dir(canonical))
+	if err != nil {
+		return nil, err
+	}
+	return newService(canonical, stateRoot)
 }
 
-func newService(workspace string) (*Service, error) {
-	store, err := newEventStore(workspace)
+func newService(workspace, stateRoot string) (*Service, error) {
+	store, err := newEventStore(stateRoot)
 	if err != nil {
 		return nil, err
 	}
 	service := &Service{
 		workspace:      workspace,
+		stateRoot:      stateRoot,
 		store:          store,
 		threads:        map[string]*Thread{},
 		comments:       map[string]*Comment{},
@@ -126,11 +158,53 @@ func normalizeWorkspace(workspace string) (string, error) {
 	return filepath.Clean(canonical), nil
 }
 
+func normalizeStateRoot(stateRoot string) (string, error) {
+	stateRoot = strings.TrimSpace(stateRoot)
+	if stateRoot == "" {
+		return "", newError(ErrorCodeConflict, "project state root is empty", nil)
+	}
+	abs, err := filepath.Abs(stateRoot)
+	if err != nil {
+		return "", err
+	}
+	if err := os.MkdirAll(abs, 0o700); err != nil {
+		return "", err
+	}
+	info, err := os.Stat(abs)
+	if err != nil {
+		return "", err
+	}
+	if !info.IsDir() {
+		return "", newError(ErrorCodeConflict, "project state root is not a directory", map[string]any{"state_root": abs})
+	}
+	canonical, err := filepath.EvalSymlinks(abs)
+	if err != nil {
+		return "", err
+	}
+	return filepath.Clean(canonical), nil
+}
+
 func (s *Service) Workspace() string {
 	if s == nil {
 		return ""
 	}
+	s.mu.RLock()
+	defer s.mu.RUnlock()
 	return s.workspace
+}
+
+// StateRoot returns the stable Project-state boundary holding the ledger.
+func (s *Service) StateRoot() string {
+	if s == nil {
+		return ""
+	}
+	return s.stateRoot
+}
+
+func (s *Service) bindWorkspace(workspace string) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.workspace = workspace
 }
 
 func (s *Service) CurrentThread(ctx context.Context) (Thread, error) {

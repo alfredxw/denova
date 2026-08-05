@@ -9,6 +9,7 @@ import (
 	"testing"
 	"time"
 
+	workspacelayout "denova/internal/workspace"
 	workspacechange "denova/internal/workspace/change"
 )
 
@@ -71,6 +72,58 @@ func TestDocumentReviewCommentLifecyclePersistsAndRotatesThread(t *testing.T) {
 	}
 	if nextThread.ID == thread.ID {
 		t.Fatalf("consumed review thread was reused: %q", thread.ID)
+	}
+}
+
+func TestProjectDocumentReviewStorageFollowsStateRootAcrossRelink(t *testing.T) {
+	contentParent := t.TempDir()
+	workspace := filepath.Join(contentParent, "book-before-relink")
+	if err := os.Mkdir(workspace, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	stateRoot := filepath.Join(t.TempDir(), "project-state")
+	service, err := ForWorkspaceAt(workspace, stateRoot)
+	if err != nil {
+		t.Fatalf("create project review service: %v", err)
+	}
+	snapshot := Snapshot{Content: "正文内容", Revision: workspacechange.Revision([]byte("正文内容"))}
+	thread, comment, err := service.AddComment(context.Background(), AddCommentRequest{
+		Target: fileReviewTarget("chapters/ch01.md"), Body: "保留这条批注", Anchor: testAnchor(snapshot, "正文"),
+	}, snapshot)
+	if err != nil {
+		t.Fatalf("add project review comment: %v", err)
+	}
+	if _, err := os.Stat(filepath.Join(service.StateRoot(), "reviews", "ledger.jsonl")); err != nil {
+		t.Fatalf("project review ledger missing: %v", err)
+	}
+	if _, err := os.Stat(filepath.Join(workspace, ".denova")); !errors.Is(err, os.ErrNotExist) {
+		t.Fatalf("project review state leaked into content workspace: %v", err)
+	}
+
+	relinkedWorkspace := filepath.Join(contentParent, "book-after-relink")
+	if err := os.Rename(workspace, relinkedWorkspace); err != nil {
+		t.Fatal(err)
+	}
+	rebound, err := ForWorkspaceAt(relinkedWorkspace, stateRoot)
+	if err != nil {
+		t.Fatalf("rebind project review service: %v", err)
+	}
+	if rebound != service {
+		t.Fatal("relink created a second service for the same Project state")
+	}
+	canonicalRelinkedWorkspace, err := filepath.EvalSymlinks(relinkedWorkspace)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if rebound.Workspace() != canonicalRelinkedWorkspace {
+		t.Fatalf("rebound workspace=%q, want %q", rebound.Workspace(), canonicalRelinkedWorkspace)
+	}
+	persisted, err := rebound.CurrentThread(context.Background())
+	if err != nil {
+		t.Fatalf("read review thread after relink: %v", err)
+	}
+	if persisted.ID != thread.ID || len(persisted.Comments) != 1 || persisted.Comments[0].ID != comment.ID {
+		t.Fatalf("review thread changed across relink: %#v", persisted)
 	}
 }
 
@@ -254,7 +307,11 @@ func TestDocumentReviewIndexSkipsThreadsWithOnlyDeletedComments(t *testing.T) {
 
 func TestDocumentReviewReplaysLegacyThreadEmbeddedInCommentsUpserted(t *testing.T) {
 	workspace := t.TempDir()
-	store, err := newEventStore(workspace)
+	stateRoot := workspacelayout.Dir(workspace)
+	if err := os.MkdirAll(stateRoot, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	store, err := newEventStore(stateRoot)
 	if err != nil {
 		t.Fatalf("new store: %v", err)
 	}

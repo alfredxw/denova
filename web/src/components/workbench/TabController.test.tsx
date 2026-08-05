@@ -7,6 +7,7 @@ import {
   enforceTabLimit,
   persistTabsFor,
   readTabsFor,
+  reorderTabs,
   setTabPinned,
   TabController,
   type Tab,
@@ -36,13 +37,15 @@ describe('TabController', () => {
         onActivateTab={vi.fn()}
         onCloseTab={vi.fn()}
         onTogglePin={vi.fn()}
+        onMoveTab={vi.fn()}
       />,
     )
     const loreTab = screen.getByRole('tab', { name: /设定/ })
     expect(loreTab).not.toHaveAttribute('title')
     expect(loreTab).toHaveAttribute('aria-selected', 'true')
     expect(loreTab.className).toContain('aria-selected:bg-[var(--nova-active)]')
-    expect(loreTab.parentElement).toHaveClass('min-w-28', 'max-w-40', 'flex-[1_1_10rem]')
+    expect(loreTab.parentElement?.parentElement).toHaveClass('min-w-28', 'max-w-40', 'flex-[1_1_10rem]')
+    expect(loreTab).toHaveAttribute('aria-roledescription', '可排序标签页')
     expect(screen.getByRole('tablist')).toHaveClass('overflow-x-auto', '[&::-webkit-scrollbar]:hidden')
   })
 
@@ -58,6 +61,7 @@ describe('TabController', () => {
         onActivateTab={onActivateTab}
         onCloseTab={vi.fn()}
         onTogglePin={vi.fn()}
+        onMoveTab={vi.fn()}
       />,
     )
 
@@ -78,6 +82,7 @@ describe('TabController', () => {
         onActivateTab={onActivateTab}
         onCloseTab={onCloseTab}
         onTogglePin={vi.fn()}
+        onMoveTab={vi.fn()}
       />,
     )
 
@@ -102,6 +107,7 @@ describe('TabController', () => {
         onActivateTab={onActivateTab}
         onCloseTab={vi.fn()}
         onTogglePin={vi.fn()}
+        onMoveTab={vi.fn()}
       />,
     )
 
@@ -121,6 +127,7 @@ describe('TabController', () => {
         onActivateTab={vi.fn()}
         onCloseTab={vi.fn()}
         onTogglePin={onTogglePin}
+        onMoveTab={vi.fn()}
       />,
     )
 
@@ -145,4 +152,16 @@ describe('TabController', () => {
 
     expect(result).toEqual([pinned, next])
   })
+
+  it('reorders tabs at the drop target and keeps pinned tabs in their leading group', () => {
+    expect(reorderTabs(tabs, 'file:chapters/alpha.md', 'file:chapters/beta.md')).toEqual([tabs[1], tabs[0]])
+
+    const pinned: Tab = { ...tabs[0], pinned: true }
+    expect(reorderTabs([pinned, tabs[1]], 'file:chapters/beta.md', 'file:chapters/alpha.md')).toEqual([
+      pinned,
+      tabs[1],
+    ])
+    expect(reorderTabs(tabs, 'missing', 'file:chapters/beta.md')).toBe(tabs)
+  })
+
 })

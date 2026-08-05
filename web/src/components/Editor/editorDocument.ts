@@ -66,10 +66,10 @@ export function isMarkdownFile(name: string | null): boolean {
   return !!name && /\.(md|markdown)$/i.test(name)
 }
 
-export function createWorkspaceImageExtension() {
+export function createWorkspaceImageExtension(resolveAsset: (path: string) => string = workspaceAssetURL) {
   return Image.extend({
     renderHTML({ HTMLAttributes }) {
-      const src = resolveWorkspaceImageSrc(HTMLAttributes.src)
+      const src = resolveWorkspaceImageSrc(HTMLAttributes.src, resolveAsset)
       return ['img', mergeAttributes(this.options.HTMLAttributes, HTMLAttributes, { src })]
     },
   }).configure({
@@ -113,11 +113,11 @@ export function createIndentedHardBreakExtension() {
   })
 }
 
-function resolveWorkspaceImageSrc(src: unknown) {
+function resolveWorkspaceImageSrc(src: unknown, resolveAsset: (path: string) => string) {
   if (typeof src !== 'string' || src.trim() === '') return src
   const value = src.trim()
   if (/^(https?:|data:|blob:|\/)/i.test(value)) return value
-  if (value.startsWith('assets/')) return workspaceAssetURL(value)
+  if (value.startsWith('assets/')) return resolveAsset(value)
   return value
 }
 

@@ -45,6 +45,7 @@ import {
 import type { SearchMatch, SearchState } from './editorDecorations'
 import { useEditorDraftPersistence, type EditorFlushHandler } from './useEditorDraftPersistence'
 import { MISSING_WORKSPACE_REVISION, readFile } from '@/lib/api-client/workspace'
+import { projectFileAssetURL, readProjectFile } from '@/lib/api-client/project-files'
 import { sameDocumentReviewTarget } from '@/features/document-review/types'
 import type { DocumentReviewController, DocumentReviewNavigationIntent } from '@/features/document-review/controller'
 import { DocumentReviewAnnotations, type DocumentReviewAnnotationsHandle } from './DocumentReviewAnnotations'
@@ -55,7 +56,9 @@ export type { EditorFlushHandler } from './useEditorDraftPersistence'
 export type { DocumentReviewController, DocumentReviewNavigationIntent } from '@/features/document-review/controller'
 
 interface MarkdownEditorProps {
-  /** Canonical workspace identity. Save tasks never cross this boundary. */
+  /** Stable resource identity used for reads, assets, review snapshots, and caches. */
+  projectId?: string
+  /** Display and draft-recovery scope; resource authority comes from projectId. */
   workspace?: string
   fileName: string | null
   content: string
@@ -90,6 +93,7 @@ interface EditorSearchIntent {
 
 /** TipTap 编辑器组件，支持 Markdown 和纯文本格式 */
 export function MarkdownEditor({
+  projectId = '',
   workspace = '',
   fileName,
   content,
@@ -133,7 +137,11 @@ export function MarkdownEditor({
   const searchStateRef = useRef<SearchState>({ query: '', index: 0, useRegex: false })
   const searchExtension = useMemo(() => createSearchHighlightExtension(searchStateRef), [])
   const dialogueHighlightExtension = useMemo(() => createDialogueHighlightExtension(), [])
-  const workspaceImageExtension = useMemo(() => createWorkspaceImageExtension(), [])
+  const resourceScope = projectId || workspace
+  const workspaceImageExtension = useMemo(
+    () => createWorkspaceImageExtension(projectId ? (path) => projectFileAssetURL(projectId, path) : undefined),
+    [projectId],
+  )
   const editorContainerRef = useRef<HTMLDivElement>(null)
   const reviewAnnotationsRef = useRef<DocumentReviewAnnotationsHandle>(null)
   const reviewDecorationStateRef = useRef<DocumentReviewDecorationState>({ enabled: false, decorations: [] })
@@ -141,7 +149,7 @@ export function MarkdownEditor({
   if (!parsedMarkdownDocumentsRef.current) {
     parsedMarkdownDocumentsRef.current = new ParsedMarkdownDocumentCache()
   }
-  const initialDocumentRef = useRef({ workspace, fileName, content })
+  const initialDocumentRef = useRef({ resourceScope, fileName, content })
   const documentReviewTarget = useMemo(() => fileName ? { kind: 'workspace_file' as const, id: fileName } : null, [fileName])
   const updateReviewPortalTargets = useCallback((targets: DocumentReviewPortalTarget[]) => {
     setReviewPortalTargets((current) => sameReviewPortalTargets(current, targets) ? current : targets)
@@ -188,7 +196,7 @@ export function MarkdownEditor({
       const initial = initialDocumentRef.current
       if (!initial.fileName || !isMarkdownFile(initial.fileName)) return
       parsedMarkdownDocumentsRef.current?.set(
-        `${initial.workspace}\u0000${initial.fileName}`,
+        `${initial.resourceScope}\u0000${initial.fileName}`,
         initial.content,
         createdEditor.getJSON(),
       )
@@ -229,7 +237,7 @@ export function MarkdownEditor({
       options.resetHistory && !options.preserveSelection && isMarkdownFile(nextFile) && markdownManager,
     )
     if (replaceWithFreshState && markdownManager) {
-      const cacheKey = `${workspace}\u0000${nextFile}`
+      const cacheKey = `${resourceScope}\u0000${nextFile}`
       let parsedDocument = parsedMarkdownDocumentsRef.current?.get(cacheKey, nextContent)
       if (!parsedDocument) {
         parsedDocument = markdownManager.parse(nextContent)
@@ -253,7 +261,7 @@ export function MarkdownEditor({
     updateCharacterStats(editor, setSelectedCharacters)
     onLineChange?.(getLineNumber(editor.state.doc, editor.state.selection.head))
     updateSearch(searchStateRef.current.query, 0)
-  }, [editor, onLineChange, updateSearch, workspace])
+  }, [editor, onLineChange, resourceScope, updateSearch])
 
   const {
     saveStatus,
@@ -264,7 +272,7 @@ export function MarkdownEditor({
     loadExternalVersion,
     keepLocalVersion,
   } = useEditorDraftPersistence({
-    workspace,
+    workspace: resourceScope,
     fileName,
     content,
     revision,
@@ -284,14 +292,19 @@ export function MarkdownEditor({
       throw new Error('Document comments are unavailable')
     }
     if (!(await flushCurrentDraft())) throw new Error('The current draft could not be saved')
-    const document = await readFile(fileName)
-    if (!document.revision || (workspace && document.workspace !== workspace)) {
+    const document = projectId
+      ? await readProjectFile(projectId, fileName)
+      : await readFile(fileName)
+    const matchesScope = projectId
+      ? 'project_id' in document && document.project_id === projectId
+      : 'workspace' in document && (!workspace || document.workspace === workspace)
+    if (!document.revision || !matchesScope) {
       throw new Error('The canonical document snapshot is unavailable')
     }
     // TipTap can insert equivalent blank lines or normalize Markdown markers.
     // The anchor builder validates the selected range against this canonical snapshot.
-    return { content: document.content, revision: document.revision }
-  }, [documentReview, editor, fileName, flushCurrentDraft, workspace])
+    return { content: document.content || '', revision: document.revision }
+  }, [documentReview, editor, fileName, flushCurrentDraft, projectId, workspace])
 
   // 监听 TipTap 内容和选区变化，实时更新选区字数与光标行号。
   useEffect(() => {
@@ -533,7 +546,7 @@ export function MarkdownEditor({
           </div>
         </div>
       )}
-      {externalConflict?.workspace === workspace && externalConflict.fileName === fileName && (
+      {externalConflict?.workspace === resourceScope && externalConflict.fileName === fileName && (
         <div role="alert" className="flex shrink-0 flex-wrap items-center gap-2 border-b border-[var(--nova-warning)]/30 bg-[var(--nova-warning-bg)] px-3 py-2 text-[11px] text-[var(--nova-text-muted)]">
           <TriangleAlert className="h-4 w-4 shrink-0 text-[var(--nova-warning)]" />
           <div className="min-w-[180px] flex-1">

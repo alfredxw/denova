@@ -59,6 +59,7 @@ type Layout struct {
 func (layout Layout) SessionsDir() string    { return joinState(layout.StateRoot, "sessions") }
 func (layout Layout) ConfigPath() string     { return joinState(layout.StateRoot, "config.toml") }
 func (layout Layout) ChangesDir() string     { return joinState(layout.StateRoot, "changes") }
+func (layout Layout) ReviewsDir() string     { return joinState(layout.StateRoot, "reviews") }
 func (layout Layout) RunsDir() string        { return joinState(layout.StateRoot, "runs") }
 func (layout Layout) ArtifactsDir() string   { return joinState(layout.StateRoot, "artifacts") }
 func (layout Layout) AutomationsDir() string { return joinState(layout.StateRoot, "automations") }

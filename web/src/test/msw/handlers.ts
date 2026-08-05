@@ -160,13 +160,17 @@ export const handlers = [
       content: '# Characters',
     }),
   ),
-  http.get('/api/workspace/summary', () =>
+  http.get('/api/projects/:projectId/book/summary', ({ params }) =>
     HttpResponse.json({
-      title: '末日开端',
-      author: '',
-      chapter_count: 0,
-      total_words: 0,
-      chapters: [],
+      project_id: String(params.projectId),
+      workspace: `/tmp/${String(params.projectId)}`,
+      summary: {
+        title: '末日开端',
+        author: '',
+        chapter_count: 0,
+        total_words: 0,
+        chapters: [],
+      },
     }),
   ),
   http.get('/api/settings', () =>
@@ -255,7 +259,10 @@ export const handlers = [
       revision: (body.base_revision || 0) + 1,
     })
   }),
-  http.get('/api/lore/items', () => HttpResponse.json({ items: [] })),
+  http.get('/api/projects/:projectId/book/lore/items', ({ params }) => HttpResponse.json({
+    project_id: String(params.projectId),
+    items: [],
+  })),
   http.get('/api/config-manager/messages', () => HttpResponse.json([])),
   http.post('/api/command', async ({ request }) => {
     const body = (await request.json()) as { command?: string }

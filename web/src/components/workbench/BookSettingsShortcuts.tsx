@@ -39,7 +39,7 @@ interface BookSettingLoreItem {
 type BookSettingItem = BookSettingFileItem | BookSettingLoreItem
 
 interface BookSettingsShortcutsProps {
-  workspace: string
+  projectId: string
   tree: FileNode[]
   outline?: DocumentPreview
   ideas?: DocumentPreview
@@ -63,7 +63,7 @@ interface BookSettingsShortcutsProps {
 
 /** 工作区级书籍设定收藏：动态发现文件，并持久化 Pin 与排序偏好。 */
 export function BookSettingsShortcuts({
-  workspace,
+  projectId,
   tree,
   outline,
   ideas,
@@ -86,7 +86,7 @@ export function BookSettingsShortcuts({
 }: BookSettingsShortcutsProps) {
   const { t } = useTranslation()
   const [query, setQuery] = useState('')
-  const [pinnedPaths, setPinnedPaths] = useState<string[]>(() => readPinnedPaths(workspace))
+  const [pinnedPaths, setPinnedPaths] = useState<string[]>(() => readPinnedPaths(projectId))
   const [missingItem, setMissingItem] = useState<BookSettingItem | null>(null)
   const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 6 } }))
   const candidates = useMemo(() => discoverBookSettings({ tree, outline, ideas, chapterPlans, t }), [chapterPlans, ideas, outline, t, tree])
@@ -97,14 +97,14 @@ export function BookSettingsShortcuts({
     : null
 
   useEffect(() => {
-    setPinnedPaths(readPinnedPaths(workspace))
+    setPinnedPaths(readPinnedPaths(projectId))
     setMissingItem(null)
-  }, [workspace])
+  }, [projectId])
 
   useEffect(() => {
-    if (!workspace) return
-    window.localStorage.setItem(STORAGE_PREFIX + workspace, JSON.stringify({ version: PINNED_STORAGE_VERSION, paths: pinnedPaths }))
-  }, [pinnedPaths, workspace])
+    if (!projectId) return
+    window.localStorage.setItem(STORAGE_PREFIX + projectId, JSON.stringify({ version: PINNED_STORAGE_VERSION, paths: pinnedPaths }))
+  }, [pinnedPaths, projectId])
 
   const pinnedItems = pinnedPaths.map((key) => candidatesByPinKey.get(key)).filter((item): item is BookSettingItem => Boolean(item))
   const orderedCandidates = [...pinnedItems, ...candidates.filter((item) => !pinnedPaths.includes(bookSettingPinKey(item)))]
@@ -377,10 +377,10 @@ function isBookSettingSelected(item: BookSettingItem, selectedFile: string | nul
   return item.kind === 'lore' ? loreTabActive : item.exists && selectedFile === item.path
 }
 
-function readPinnedPaths(workspace: string) {
-  if (!workspace) return DEFAULT_PINNED_PATHS
+function readPinnedPaths(projectId: string) {
+  if (!projectId) return DEFAULT_PINNED_PATHS
   try {
-    const parsed = JSON.parse(window.localStorage.getItem(STORAGE_PREFIX + workspace) || 'null')
+    const parsed = JSON.parse(window.localStorage.getItem(STORAGE_PREFIX + projectId) || 'null')
     if (parsed?.version === PINNED_STORAGE_VERSION && isStringArray(parsed.paths)) {
       return parsed.paths
     }

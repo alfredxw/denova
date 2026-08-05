@@ -247,6 +247,23 @@ export function persistWorkbenchState(state: AgentChatWorkbenchState) {
   writeStorage(WORKBENCH_STORAGE_KEY, JSON.stringify({ ...state, projects }))
 }
 
+/** Derives the temporary title shown before the first message is persisted. */
+export function draftSessionTitle(message: string) {
+  const normalized = message.replace(/^\/plan\s*/, '').trim()
+  const characters = Array.from(normalized)
+  return characters.length > 60 ? `${characters.slice(0, 60).join('')}...` : normalized
+}
+
+/** Advances refresh generations without coupling mounted surfaces to each other. */
+export function incrementProjectRefreshSignals(
+  current: ReadonlyMap<string, number>,
+  projectIDs: readonly string[],
+): ReadonlyMap<string, number> {
+  const next = new Map(current)
+  projectIDs.forEach((projectID) => next.set(projectID, (next.get(projectID) ?? 0) + 1))
+  return next
+}
+
 const SIDEBAR_VISIBLE_STORAGE_KEY = 'nova.agentchat.sidebarVisible.v1'
 
 /** The conversation tree is shown until the user collapses it. */

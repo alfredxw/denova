@@ -442,6 +442,7 @@ export interface WorkspaceReplaceResult {
 }
 
 export interface CharacterCardImportResult {
+  project_id?: string
   name: string
   target_path: string
   entry_count: number

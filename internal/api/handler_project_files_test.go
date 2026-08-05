@@ -125,13 +125,17 @@ func TestProjectFileOperationsAPIReportsPartialSuccess(t *testing.T) {
 		t.Fatalf("operations status = %d body=%s", response.Code, response.Body.String())
 	}
 	var body struct {
-		Results []struct {
+		ProjectID string `json:"project_id"`
+		Results   []struct {
 			ID   string `json:"id"`
 			OK   bool   `json:"ok"`
 			Code string `json:"code"`
 		} `json:"results"`
 	}
 	decodeResponse(t, response.Body.Bytes(), &body)
+	if body.ProjectID != record.ID {
+		t.Fatalf("operation project_id = %q, want %q", body.ProjectID, record.ID)
+	}
 	if len(body.Results) != 2 || !body.Results[0].OK || body.Results[1].OK || body.Results[1].Code != "target_exists" {
 		t.Fatalf("unexpected operation results: %#v", body.Results)
 	}

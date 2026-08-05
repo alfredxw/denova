@@ -56,6 +56,7 @@ type Service struct {
 	registry               *projectdomain.Registry
 	bookVersioningProvider BookMutationVersioningProvider
 	treeEntryLimit         int
+	versions               bookVersioningCache
 }
 
 // ServiceOption configures a project-file service without exposing its
@@ -81,7 +82,7 @@ type BookMutationVersioning struct {
 // BookMutationVersioningProvider resolves version behavior without coupling
 // this project-scoped service to the foreground App package.
 type BookMutationVersioningProvider interface {
-	ProjectFileBookMutationVersioning(projectID, workspace string) BookMutationVersioning
+	ProjectFileBookMutationVersioning(projectID, workspace, stateRoot string) BookMutationVersioning
 }
 
 type projectRuntime struct {
@@ -95,8 +96,8 @@ func NewService(registry *projectdomain.Registry, options ...ServiceOption) *Ser
 	return newService(registry, nil, options...)
 }
 
-// NewServiceWithBookVersioning enables restore points only for Book mutations
-// whose host provides a live Writing version service.
+// NewServiceWithBookVersioning reuses a foreground Book scheduler when the host
+// has one and owns a scoped scheduler for every background Book it mutates.
 func NewServiceWithBookVersioning(registry *projectdomain.Registry, provider BookMutationVersioningProvider, options ...ServiceOption) *Service {
 	return newService(registry, provider, options...)
 }
@@ -475,6 +476,12 @@ func (service *Service) SaveFile(ctx context.Context, projectID string, request 
 	if err != nil {
 		return SaveResult{}, err
 	}
+	if saved.Changed {
+		versioning := service.bookMutationVersioning(runtime)
+		if versioning.Service != nil {
+			versioning.Service.ScheduleAutoVersion(versioning.Settings)
+		}
+	}
 	return SaveResult{
 		ProjectID: runtime.record.ID,
 		Path:      rel,
@@ -490,28 +497,38 @@ func (service *Service) ApplyOperations(ctx context.Context, projectID string, o
 	if err != nil {
 		return nil, err
 	}
+	versioning := service.bookMutationVersioning(runtime)
+	changed := false
 	results := make([]OperationResult, 0, len(operations))
 	for _, operation := range operations {
 		result := OperationResult{ID: operation.ID, Kind: operation.Kind}
-		result.Path, err = service.applyOperation(ctx, runtime, operation)
+		result.Path, err = service.applyOperation(ctx, runtime, versioning, operation)
 		if err == nil {
 			result.OK = true
+			changed = true
 		} else {
 			result.Code = operationErrorCode(err)
 			result.Error = err.Error()
 		}
 		results = append(results, result)
 	}
+	if changed && versioning.Service != nil {
+		versioning.Service.ScheduleAutoVersion(versioning.Settings)
+	}
 	return results, nil
 }
 
-func (service *Service) applyOperation(ctx context.Context, runtime projectRuntime, operation Operation) (string, error) {
+func (service *Service) applyOperation(
+	ctx context.Context,
+	runtime projectRuntime,
+	versioning BookMutationVersioning,
+	operation Operation,
+) (string, error) {
 	path, err := normalizeRelativePath(operation.Path, false)
 	if err != nil {
 		return "", err
 	}
 	resultPath := path
-	versioning := service.bookMutationVersioning(runtime)
 	err = runtime.changes.WithExclusiveWorkspace(ctx, func() error {
 		switch operation.Kind {
 		case OperationCreate:
@@ -579,17 +596,7 @@ func (service *Service) applyOperation(ctx context.Context, runtime projectRunti
 			return fmt.Errorf("unsupported project file operation %q", operation.Kind)
 		}
 	})
-	if err == nil && versioning.Service != nil {
-		versioning.Service.ScheduleAutoVersion(versioning.Settings)
-	}
 	return resultPath, err
-}
-
-func (service *Service) bookMutationVersioning(runtime projectRuntime) BookMutationVersioning {
-	if runtime.record.Type != projectdomain.TypeBook || service.bookVersioningProvider == nil {
-		return BookMutationVersioning{}
-	}
-	return service.bookVersioningProvider.ProjectFileBookMutationVersioning(runtime.record.ID, runtime.layout.ContentRoot)
 }
 
 func (service *Service) resolve(projectID string) (projectRuntime, error) {

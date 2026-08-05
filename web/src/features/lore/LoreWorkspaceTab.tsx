@@ -15,16 +15,18 @@ import type {
   DocumentReviewController,
   DocumentReviewNavigationIntent,
 } from '@/features/document-review/controller'
-import { workspaceAssetURL, type LoreItem } from '@/lib/api'
+import { projectFileAssetURL, type LoreItem } from '@/lib/api'
 import { KNOWLEDGE_SECTIONS, sectionItems } from './knowledge-sections'
 import { loreLoadModeLabel } from './options'
 import { LoreWorkspaceEditor } from './LoreWorkspaceEditor'
 import { useLoreWorkspace } from './use-lore-workspace'
 
 interface LoreWorkspaceTabProps {
+  projectId: string
   workspace: string
   documentReview: DocumentReviewController
   navigationIntent?: DocumentReviewNavigationIntent | null
+  refreshSignal?: number
   onEditorFlushHandlerChange: (handler: EditorFlushHandler | null) => void
   onOpenLibrary?: () => void
   onReferenceItem?: (id: string) => void
@@ -32,9 +34,11 @@ interface LoreWorkspaceTabProps {
 
 /** Writing-side projection of the lore library: quick editing, review and Agent handoff. */
 export function LoreWorkspaceTab({
+  projectId,
   workspace,
   documentReview,
   navigationIntent,
+  refreshSignal = 0,
   onEditorFlushHandlerChange,
   onOpenLibrary,
   onReferenceItem,
@@ -42,7 +46,9 @@ export function LoreWorkspaceTab({
   const { t } = useTranslation()
   const [searchQuery, setSearchQuery] = useState('')
   const lore = useLoreWorkspace({
+    projectId,
     workspace,
+    refreshSignal,
     onFlushHandlerChange: onEditorFlushHandlerChange,
   })
   const navigationTargetID = navigationIntent
@@ -61,7 +67,7 @@ export function LoreWorkspaceTab({
         label: t(section.labelKey),
         icon: section.icon,
         items: sectionItems(lore.items, section).map((item) =>
-          loreDirectoryItem(item, t),
+          loreDirectoryItem(item, projectId, t),
         ),
         onCreate: () => {
           void lore.createItem({
@@ -81,7 +87,7 @@ export function LoreWorkspaceTab({
         }),
         toggleOnHeaderClick: true,
       })),
-    [lore.createItem, lore.items, t],
+    [lore.createItem, lore.items, projectId, t],
   )
 
   const directory = (
@@ -258,6 +264,7 @@ export function LoreWorkspaceTab({
 
 function loreDirectoryItem(
   item: LoreItem,
+  projectId: string,
   t: (key: string) => string,
 ): ResourceDirectoryItem {
   const imagePath = item.image?.image_path || ''
@@ -265,7 +272,7 @@ function loreDirectoryItem(
     id: item.id,
     title: item.name,
     summary: item.brief_description || undefined,
-    thumbnailUrl: imagePath ? workspaceAssetURL(imagePath) : null,
+    thumbnailUrl: imagePath ? projectFileAssetURL(projectId, imagePath) : null,
     disabled: item.enabled === false,
     searchText: `${(item.tags || []).join(' ')} ${(item.keywords || []).join(' ')} ${item.content || ''}`,
     badges: [

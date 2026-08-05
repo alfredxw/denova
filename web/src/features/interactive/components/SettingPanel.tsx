@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { BookMarked, Bot, Database, Image as ImageIcon, Images, Search, SlidersHorizontal, Sparkles, Tags, Trash2 } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import { toast } from 'sonner'
-import { abortLoreImagesGenerate, APIError, clearLoreItemImage, createLoreItem, deleteLoreItem, generateLoreItemImage, getLoreItems, readFile, streamLoreImagesGenerate, workspaceAssetURL, type LoreImageProgressEvent, type LoreItem, type SSEEvent } from '@/lib/api'
+import { abortLoreImagesGenerate, APIError, clearLoreItemImage, createProjectLoreItem, deleteProjectLoreItem, generateLoreItemImage, getProjectLoreItems, readFile, streamLoreImagesGenerate, workspaceAssetURL, type LoreImageProgressEvent, type LoreItem, type SSEEvent } from '@/lib/api'
 import { rebaseJSONValue, rebaseText } from '@/lib/three-way-rebase'
 import { rebaseJSONWithRecovery, rebaseTextWithRecovery } from '@/lib/autosave/rebase-with-recovery'
 import { cn } from '@/lib/utils'
@@ -50,6 +50,7 @@ const LORE_TYPE_FILTER_OPTIONS: LoreType[] = ['character', 'world', 'location', 
 
 interface SettingPanelProps {
   mode?: SettingPanelMode
+  projectId: string
   workspace?: string
   tellers?: Teller[]
   storyDirectors?: StoryDirector[]
@@ -65,6 +66,7 @@ interface SettingPanelProps {
 
 export function SettingPanel({
   mode,
+  projectId,
   workspace = '',
   tellers = EMPTY_TELLERS,
   storyDirectors = EMPTY_STORY_DIRECTORS,
@@ -94,11 +96,12 @@ export function SettingPanel({
       />
     )
   }
-  return <LoreSettingPanel mode={activeMode} workspace={workspace} imagePresets={imagePresets} onImagePresetsChange={onImagePresetsChange} embedded={embedded} onClose={onClose} onFlushHandlerChange={onFlushHandlerChange} />
+  return <LoreSettingPanel mode={activeMode} projectId={projectId} workspace={workspace} imagePresets={imagePresets} onImagePresetsChange={onImagePresetsChange} embedded={embedded} onClose={onClose} onFlushHandlerChange={onFlushHandlerChange} />
 }
 
 function LoreSettingPanel({
   mode,
+  projectId,
   workspace,
   imagePresets: externalImagePresets,
   onImagePresetsChange,
@@ -107,6 +110,7 @@ function LoreSettingPanel({
   onFlushHandlerChange,
 }: {
   mode: Exclude<SettingPanelMode, 'teller'>
+  projectId: string
   workspace: string
   imagePresets: ImagePreset[]
   onImagePresetsChange?: (presets: ImagePreset[]) => void
@@ -175,7 +179,7 @@ function LoreSettingPanel({
       && activeId !== CREATOR_ENTRY_ID
       && activeId !== INTERACTIVE_OPENING_PRESET_ENTRY_ID
       && activeId !== LORE_CONFIG_AGENT_ENTRY_ID,
-    workspace,
+    projectId,
     onSaved: (item, submitted) => {
       setItems((current) => current.map((entry) => entry.id === item.id ? item : entry))
       const currentDraft = loreDraftRef.current
@@ -307,7 +311,7 @@ function LoreSettingPanel({
   }, [openingPresetAutosave.resetBaseline, workspace])
 
   const loadLoreItems = useCallback(async () => {
-    if (!workspace) {
+    if (!projectId) {
       setItems([])
       setActiveId('')
       setLoadError(null)
@@ -317,7 +321,7 @@ function LoreSettingPanel({
     setLoading(true)
     setLoadError(null)
     try {
-      const data = await getLoreItems(workspace)
+      const data = await getProjectLoreItems(projectId)
       setItems(data)
       // 默认落地到第一个可见资料条目；全库为空时交由空态引导（activeId 置空）
       setActiveId(firstVisibleLoreItemId(data) ?? '')
@@ -328,7 +332,7 @@ function LoreSettingPanel({
     } finally {
       setLoading(false)
     }
-  }, [workspace])
+  }, [projectId, workspace])
 
   useEffect(() => {
     setItems([])
@@ -358,7 +362,7 @@ function LoreSettingPanel({
       ) {
         await rebaseJSONWithRecovery<LoreAutosaveDraft | null>({
           resource: 'lore_item',
-          scope: workspace,
+          scope: projectId,
           id: currentDraft.id,
           baseline: { revision: previousBaseline.updated_at, value: previousBaseline },
           local: {
@@ -375,7 +379,7 @@ function LoreSettingPanel({
         ? previousBaseline?.id === nextBaseline.id && currentAutosaveDraft
           ? await rebaseJSONWithRecovery({
               resource: 'lore_item',
-              scope: workspace,
+              scope: projectId,
               id: nextBaseline.id,
               baseline: { revision: previousBaseline.updated_at, value: previousBaseline },
               local: { revision: previousBaseline.updated_at, value: currentAutosaveDraft },
@@ -399,7 +403,7 @@ function LoreSettingPanel({
         }
         rebased = await rebaseJSONWithRecovery({
           resource: 'lore_item',
-          scope: workspace,
+          scope: projectId,
           id: rebased.id,
           baseline: { revision: rebasedFromAutosaveDraft.updated_at, value: rebasedFromAutosaveDraft },
           local: { revision: rebasedFromAutosaveDraft.updated_at, value: latestAutosaveDraft },
@@ -423,7 +427,7 @@ function LoreSettingPanel({
     return () => {
       if (loreRebaseSequenceRef.current === sequence) loreRebaseSequenceRef.current += 1
     }
-  }, [activeId, items, workspace])
+  }, [activeId, items, projectId])
 
   useEffect(() => {
     loreDraftRef.current = draft
@@ -590,7 +594,7 @@ function LoreSettingPanel({
   }, [externalImagePresets, workspace])
 
   const refreshItems = useCallback(async (nextActiveId?: string) => {
-    const data = await getLoreItems(workspace)
+    const data = await getProjectLoreItems(projectId)
     setItems(data)
     // 缺省保持当前选中（仍存在则保留，含伪条目）；否则选中第一个可见条目，全库为空时置空走空态
     setActiveId((current) => {
@@ -599,16 +603,17 @@ function LoreSettingPanel({
       if (current && data.some((item) => item.id === current)) return current
       return firstVisibleLoreItemId(data) ?? ''
     })
-  }, [workspace])
+  }, [projectId])
 
   useEffect(() => {
     const onLoreUpdated = (event: Event) => {
       const detail = (event as CustomEvent<LoreUpdatedDetail>).detail
-      void refreshItems(detail?.ids?.[0] || detail?.item_ids?.[0])
+      if (detail?.projectId !== projectId) return
+      void refreshItems(detail.ids?.[0])
     }
     window.addEventListener(LORE_UPDATED_EVENT, onLoreUpdated)
     return () => window.removeEventListener(LORE_UPDATED_EVENT, onLoreUpdated)
-  }, [refreshItems])
+  }, [projectId, refreshItems])
 
   const mergeSavedLoreItem = (item: LoreItem) => {
     setItems((current) => current.map((entry) => (entry.id === item.id ? item : entry)))
@@ -624,7 +629,7 @@ function LoreSettingPanel({
     setSaving(true)
     try {
       const createName = t(section.createNameKey)
-      const item = await createLoreItem(workspace, {
+      const item = await createProjectLoreItem(projectId, {
         enabled: true,
         type: section.createType,
         name: createName,
@@ -635,7 +640,7 @@ function LoreSettingPanel({
         content: `## ${createName}\n\n`,
       })
       await refreshItems(item.id)
-      notifyLoreUpdated({ ids: [item.id] })
+      notifyLoreUpdated({ projectId, ids: [item.id] })
     } finally {
       setSaving(false)
     }
@@ -652,9 +657,9 @@ function LoreSettingPanel({
     try {
       await flushLoreAutosave()
       loreAutosave.cancelPending()
-      await deleteLoreItem(workspace, deleteLoreTarget.id)
+      await deleteProjectLoreItem(projectId, deleteLoreTarget.id)
       await refreshItems()
-      notifyLoreUpdated({ ids: [deleteLoreTarget.id] })
+      notifyLoreUpdated({ projectId, ids: [deleteLoreTarget.id] })
       setDeleteLoreTarget(null)
     } finally {
       setSaving(false)
@@ -680,7 +685,7 @@ function LoreSettingPanel({
       }
       const item = await flushLoreAutosave()
       if (item) {
-        notifyLoreUpdated({ ids: [item.id] })
+        notifyLoreUpdated({ projectId, ids: [item.id] })
       }
       return true
     } catch (err) {
@@ -695,6 +700,7 @@ function LoreSettingPanel({
     flushLoreAutosave,
     openingPresetAutosave.flushPending,
     openingPresetAutosave.saveNow,
+    projectId,
     t,
   ])
 
@@ -738,7 +744,7 @@ function LoreSettingPanel({
         image_preset_id: selectedLoreImagePresetId(),
       })
       mergeSavedLoreItem(item)
-      notifyLoreUpdated({ ids: [item.id] })
+      notifyLoreUpdated({ projectId, ids: [item.id] })
       toast.success(t('settingPanel.loreImage.generated'))
     } catch (err) {
       toast.error((err as Error).message || t('settingPanel.loreImage.failed'))
@@ -755,7 +761,7 @@ function LoreSettingPanel({
       const target = saved || loreDraftRef.current || draft
       const item = await clearLoreItemImage(workspace, target.id)
       mergeSavedLoreItem(item)
-      notifyLoreUpdated({ ids: [item.id] })
+      notifyLoreUpdated({ projectId, ids: [item.id] })
       toast.success(t('settingPanel.loreImage.cleared'))
     } catch (err) {
       toast.error((err as Error).message || t('settingPanel.loreImage.failed'))
@@ -1036,7 +1042,7 @@ function LoreSettingPanel({
                       context={{ item_count: String(items.length) }}
                       onMutated={() => {
                         void refreshItems()
-                        notifyLoreUpdated()
+                        notifyLoreUpdated({ projectId })
                       }}
                     />
                   ) : activeId === CREATOR_ENTRY_ID ? (
@@ -1062,7 +1068,7 @@ function LoreSettingPanel({
           setItems(nextItems)
           const selectedItem = nextItems.find((item) => item.id === activeId)
           if (selectedItem) mergeSavedLoreItem(selectedItem)
-          notifyLoreUpdated({ ids: selectedItem ? [selectedItem.id] : [] })
+          notifyLoreUpdated({ projectId, ids: selectedItem ? [selectedItem.id] : [] })
         }}
       />
       <LoreImageBatchDialog

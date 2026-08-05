@@ -32,6 +32,7 @@ type registryData struct {
 // an event, so moving a directory never destroys its user-owned state.
 type Registry struct {
 	mu              sync.Mutex
+	stateMu         sync.Mutex
 	path            string
 	legacyBooksPath string
 	denovaDir       string

@@ -1,4 +1,5 @@
 import { jsonHeaders, requestJSON } from '@/lib/api-client/client'
+import { assertProjectScope } from '@/lib/api-client/project-scope'
 
 export type ProjectFileEntryType = 'file' | 'dir'
 export type ProjectFileDocumentKind = 'text' | 'image' | 'binary'
@@ -95,45 +96,55 @@ export function resolveProjectFileTree(
     method: 'POST',
     headers: jsonHeaders,
     body: JSON.stringify(request),
-  }).then((response) => ({
-    ...response,
-    results: (response.results ?? []).map((result) => ({
-      ...result,
-      directories: (result.directories ?? []).map((directory) => ({
-        ...directory,
-        entries: directory.entries ?? [],
+  }).then((response) => {
+    assertProjectScope(projectId, response.project_id, 'Project files response')
+    return {
+      ...response,
+      results: (response.results ?? []).map((result) => ({
+        ...result,
+        directories: (result.directories ?? []).map((directory) => ({
+          ...directory,
+          entries: directory.entries ?? [],
+        })),
       })),
-    })),
-  }))
+    }
+  })
 }
 
-export function readProjectFile(projectId: string, path: string): Promise<ProjectFileDocument> {
+export async function readProjectFile(projectId: string, path: string): Promise<ProjectFileDocument> {
   const params = new URLSearchParams({ path })
-  return requestJSON<ProjectFileDocument>(`${projectFilesURL(projectId)}/file?${params.toString()}`)
+  const response = await requestJSON<ProjectFileDocument>(`${projectFilesURL(projectId)}/file?${params.toString()}`)
+  assertProjectScope(projectId, response.project_id, 'Project file response')
+  return response
 }
 
-export function saveProjectFile(
+export async function saveProjectFile(
   projectId: string,
   path: string,
   content: string,
   baseRevision: string,
 ): Promise<ProjectFileSaveResult> {
-  return requestJSON<ProjectFileSaveResult>(`${projectFilesURL(projectId)}/file`, {
+  const response = await requestJSON<ProjectFileSaveResult>(`${projectFilesURL(projectId)}/file`, {
     method: 'PUT',
     headers: jsonHeaders,
     body: JSON.stringify({ path, content, base_revision: baseRevision }),
   })
+  assertProjectScope(projectId, response.project_id, 'Project file response')
+  return response
 }
 
 export function applyProjectFileOperations(
   projectId: string,
   operations: ProjectFileOperation[],
 ): Promise<ProjectFileOperationResult[]> {
-  return requestJSON<{ results?: ProjectFileOperationResult[] }>(`${projectFilesURL(projectId)}/operations`, {
+  return requestJSON<{ project_id: string; results?: ProjectFileOperationResult[] }>(`${projectFilesURL(projectId)}/operations`, {
     method: 'POST',
     headers: jsonHeaders,
     body: JSON.stringify({ operations }),
-  }).then((response) => response.results ?? [])
+  }).then((response) => {
+    assertProjectScope(projectId, response.project_id, 'Project file operations response')
+    return response.results ?? []
+  })
 }
 
 export function projectFileAssetURL(projectId: string, path: string, revision = '') {

@@ -1,4 +1,6 @@
-import { useState, type DragEvent, type ReactNode } from 'react'
+import { useRef, useState, type ReactNode } from 'react'
+import { useDroppable } from '@dnd-kit/core'
+import { SortableContext, horizontalListSortingStrategy } from '@dnd-kit/sortable'
 import { useTranslation } from 'react-i18next'
 import {
   FileDiff,
@@ -16,8 +18,20 @@ import { ContextMenu, ContextMenuContent, ContextMenuItem, ContextMenuSeparator,
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { DropdownMenu, DropdownMenuContent, DropdownMenuTrigger } from '@/components/ui/dropdown-menu'
 import { Input } from '@/components/ui/input'
-import { WorkbenchTab, WorkbenchTabAddButton, WorkbenchTabStrip } from '@/components/workbench/WorkbenchTabStrip'
+import { SortableWorkbenchTabItem } from '@/components/workbench/WorkbenchTabDrag'
+import {
+  WorkbenchTab,
+  WorkbenchTabAddButton,
+  WorkbenchTabStrip,
+} from '@/components/workbench/WorkbenchTabStrip'
+import { cn } from '@/lib/utils'
 import { AGENT_CHAT_PAGE_ICONS, AgentChatNewTabMenuItems } from './AgentChatNewTabMenuItems'
+import {
+  agentChatTabSortableId,
+  agentChatTabStripDropId,
+  type AgentChatTabDragData,
+  type AgentChatTabStripDropData,
+} from './AgentChatTabDragContext'
 import {
   type AgentChatGroupId,
   type AgentChatPageId,
@@ -26,13 +40,9 @@ import {
   type TerminalProfileId,
 } from './types'
 
-/**
- * Private mime type for tab drags. `dataTransfer.getData` is unreadable during `dragover`, so
- * the type itself is what tells a strip whether the thing being dragged is one of its tabs.
- */
-const TAB_DRAG_MIME = 'application/x-nova-agentchat-tab'
-
 interface AgentChatTabBarProps {
+  /** Stable owner used to namespace drag targets even when several project layers stay mounted. */
+  projectId: string
   /** Which side of the split this strip drives. */
   group: AgentChatGroupId
   /** Tabs of this group only, already in display order. */
@@ -67,6 +77,7 @@ function oppositeGroup(group: AgentChatGroupId): AgentChatGroupId {
 }
 
 export function AgentChatTabBar({
+  projectId,
   group,
   tabs,
   activeTabId,
@@ -92,8 +103,20 @@ export function AgentChatTabBar({
     id: string
     value: string
   } | null>(null)
-  /** Tab the pointer is currently over during a drag, used to draw the insertion marker. */
-  const [dropTargetId, setDropTargetId] = useState<string | null>(null)
+  const stripDropIndicatorRef = useRef<HTMLSpanElement | null>(null)
+  const stripDropId = agentChatTabStripDropId(projectId, group)
+  const stripDropData = {
+    kind: 'agent-chat-tab-strip',
+    projectId,
+    group,
+    label: t(group === 'primary' ? 'agentChat.tabs.primaryWorkspace' : 'agentChat.tabs.secondaryWorkspace'),
+    workbenchTabContainerId: stripDropId,
+    workbenchTabDropIndicatorRect: () => stripDropIndicatorRef.current?.getBoundingClientRect() ?? null,
+  } satisfies AgentChatTabStripDropData
+  const { isOver: isStripDropTarget, setNodeRef: setStripDropRef } = useDroppable({
+    id: stripDropId,
+    data: stripDropData,
+  })
   const tabIcon = (tab: AgentChatTab) => {
     switch (tab.kind) {
       case 'agent':
@@ -113,36 +136,6 @@ export function AgentChatTabBar({
     if (!renaming) return
     onRename(renaming.id, renaming.value)
     setRenaming(null)
-  }
-
-  const acceptsTabDrag = (event: DragEvent) => event.dataTransfer.types.includes(TAB_DRAG_MIME)
-
-  const startDrag = (event: DragEvent<HTMLElement>, tab: AgentChatTab) => {
-    event.dataTransfer.setData(TAB_DRAG_MIME, tab.id)
-    event.dataTransfer.effectAllowed = 'move'
-  }
-
-  /** Drop onto a tab: the pointer's side of its midpoint decides which edge it lands on. */
-  const dropOnTab = (event: DragEvent<HTMLElement>, target: AgentChatTab) => {
-    if (!acceptsTabDrag(event)) return
-    event.preventDefault()
-    event.stopPropagation()
-    setDropTargetId(null)
-    const sourceId = event.dataTransfer.getData(TAB_DRAG_MIME)
-    if (!sourceId) return
-    const rect = event.currentTarget.getBoundingClientRect()
-    const index = tabs.findIndex((tab) => tab.id === target.id)
-    const after = event.clientX > rect.left + rect.width / 2
-    onMoveTab(sourceId, group, after ? (tabs[index + 1]?.id ?? null) : target.id)
-  }
-
-  /** Drop onto the empty part of the strip: the tab joins this group at the end. */
-  const dropOnStrip = (event: DragEvent<HTMLElement>) => {
-    if (!acceptsTabDrag(event)) return
-    event.preventDefault()
-    setDropTargetId(null)
-    const sourceId = event.dataTransfer.getData(TAB_DRAG_MIME)
-    if (sourceId) onMoveTab(sourceId, group, null)
   }
 
   /**
@@ -171,85 +164,106 @@ export function AgentChatTabBar({
 
   return (
     <>
-      <WorkbenchTabStrip
-        value={activeTabId ?? ''}
-        onValueChange={onActivate}
-        flowAction={newTabMenu}
-        endActions={endActions}
-        // Tabs sit flush against the pane edge; only the trailing new-tab button gets breathing room.
-        className="pr-1"
-        onDragOver={(event) => {
-          if (acceptsTabDrag(event)) event.preventDefault()
-        }}
-        onDrop={dropOnStrip}
-      >
-        {tabs.map((tab) => {
-          const label = tabTitle(tab)
-          return (
-            <ContextMenu key={tab.id}>
-              <ContextMenuTrigger asChild>
-                <WorkbenchTab
-                  value={tab.id}
+      <div ref={setStripDropRef} className="h-full">
+        <SortableContext
+          id={stripDropId}
+          items={tabs.map((tab) => agentChatTabSortableId(projectId, tab.id))}
+          strategy={horizontalListSortingStrategy}
+        >
+          <WorkbenchTabStrip
+            value={activeTabId ?? ''}
+            onValueChange={onActivate}
+            flowAction={newTabMenu}
+            endActions={endActions}
+            // Tabs sit flush against the pane edge; only the trailing new-tab button gets breathing room.
+            className={cn('pr-1', isStripDropTarget && 'bg-[var(--nova-hover)]')}
+          >
+            {tabs.map((tab) => {
+              const label = tabTitle(tab)
+              const icon = tabIcon(tab)
+              const dragData = {
+                kind: 'agent-chat-tab',
+                projectId,
+                group,
+                tabId: tab.id,
+                label,
+              } satisfies AgentChatTabDragData
+              return (
+                <SortableWorkbenchTabItem
+                  key={tab.id}
+                  id={agentChatTabSortableId(projectId, tab.id)}
                   label={label}
-                  icon={tabIcon(tab)}
-                  trailing={
-                    tab.pinned ? (
-                      <Pin className="size-3 shrink-0 text-[var(--nova-text-faint)]" aria-hidden="true" />
-                    ) : (
-                      <span
-                        role="button"
-                        tabIndex={-1}
-                        aria-label={t('agentChat.tabs.close', { title: label })}
-                        className="grid size-4 shrink-0 place-items-center rounded-sm opacity-0 transition-opacity hover:bg-[var(--nova-hover)] group-hover/tab:opacity-100"
-                        // Radix activates a trigger on pointer down, so the close hit area has to
-                        // stop the event or closing a background tab would select it first.
-                        onPointerDown={(event) => event.stopPropagation()}
-                        onClick={(event) => {
-                          event.stopPropagation()
-                          onClose(tab.id)
-                        }}
-                      >
-                        <X className="size-3" />
-                      </span>
-                    )
-                  }
-                  draggable
-                  className={dropTargetId === tab.id ? 'shadow-[inset_2px_0_0_0_var(--nova-accent)]' : undefined}
-                  onDragStart={(event) => startDrag(event, tab)}
-                  onDragOver={(event) => {
-                    if (!acceptsTabDrag(event)) return
-                    event.preventDefault()
-                    event.stopPropagation()
-                    setDropTargetId(tab.id)
-                  }}
-                  onDragLeave={() => setDropTargetId((current) => (current === tab.id ? null : current))}
-                  onDragEnd={() => setDropTargetId(null)}
-                  onDrop={(event) => dropOnTab(event, tab)}
-                  onDoubleClick={() => setRenaming({ id: tab.id, value: label })}
-                />
-              </ContextMenuTrigger>
-              <ContextMenuContent className="min-w-44">
-                <ContextMenuItem onSelect={() => setRenaming({ id: tab.id, value: label })}>
-                  <Pencil />
-                  {t('agentChat.tabs.rename')}
-                </ContextMenuItem>
-                <ContextMenuItem onSelect={() => onTogglePin(tab.id)}>
-                  {tab.pinned ? <PinOff /> : <Pin />}
-                  {tab.pinned ? t('agentChat.tabs.unpin') : t('agentChat.tabs.pin')}
-                </ContextMenuItem>
-                <ContextMenuItem onSelect={() => onMoveTab(tab.id, oppositeGroup(group), null)}>
-                  <SplitSquareHorizontal />
-                  {group === 'primary' ? t('agentChat.tabs.moveRight') : t('agentChat.tabs.moveLeft')}
-                </ContextMenuItem>
-                <ContextMenuSeparator />
-                <ContextMenuItem onSelect={() => onClose(tab.id)}>{t('agentChat.tabs.closeTab')}</ContextMenuItem>
-                <ContextMenuItem onSelect={() => onCloseOthers(tab.id)}>{t('agentChat.tabs.closeOthers')}</ContextMenuItem>
-                <ContextMenuItem onSelect={() => onCloseToRight(tab.id)}>{t('agentChat.tabs.closeToRight')}</ContextMenuItem>
-              </ContextMenuContent>
-            </ContextMenu>
-          )
-        })}
-      </WorkbenchTabStrip>
+                  data={dragData}
+                  containerId={stripDropId}
+                  previewIcon={icon}
+                >
+                  {(dragHandleProps) => (
+                    <ContextMenu>
+                      <ContextMenuTrigger asChild>
+                        <WorkbenchTab
+                          {...dragHandleProps}
+                          value={tab.id}
+                          label={label}
+                          icon={icon}
+                          className="h-full w-full min-w-0 max-w-none flex-none"
+                          trailing={
+                            tab.pinned ? (
+                              <Pin className="size-3 shrink-0 text-[var(--nova-text-faint)]" aria-hidden="true" />
+                            ) : (
+                              <span
+                                role="button"
+                                tabIndex={-1}
+                                aria-label={t('agentChat.tabs.close', { title: label })}
+                                className="grid size-4 shrink-0 place-items-center rounded-sm opacity-0 transition-opacity hover:bg-[var(--nova-hover)] group-hover/tab:opacity-100"
+                                // Radix activates a trigger on pointer down, so the close hit area has to
+                                // stop the event or closing a background tab would select it first.
+                                onPointerDown={(event) => event.stopPropagation()}
+                                onClick={(event) => {
+                                  event.stopPropagation()
+                                  onClose(tab.id)
+                                }}
+                              >
+                                <X className="size-3" />
+                              </span>
+                            )
+                          }
+                          onDoubleClick={() => setRenaming({ id: tab.id, value: label })}
+                        />
+                      </ContextMenuTrigger>
+                      <ContextMenuContent className="min-w-44">
+                        <ContextMenuItem onSelect={() => setRenaming({ id: tab.id, value: label })}>
+                          <Pencil />
+                          {t('agentChat.tabs.rename')}
+                        </ContextMenuItem>
+                        <ContextMenuItem onSelect={() => onTogglePin(tab.id)}>
+                          {tab.pinned ? <PinOff /> : <Pin />}
+                          {tab.pinned ? t('agentChat.tabs.unpin') : t('agentChat.tabs.pin')}
+                        </ContextMenuItem>
+                        <ContextMenuItem onSelect={() => onMoveTab(tab.id, oppositeGroup(group), null)}>
+                          <SplitSquareHorizontal />
+                          {group === 'primary' ? t('agentChat.tabs.moveRight') : t('agentChat.tabs.moveLeft')}
+                        </ContextMenuItem>
+                        <ContextMenuSeparator />
+                        <ContextMenuItem onSelect={() => onClose(tab.id)}>{t('agentChat.tabs.closeTab')}</ContextMenuItem>
+                        <ContextMenuItem onSelect={() => onCloseOthers(tab.id)}>{t('agentChat.tabs.closeOthers')}</ContextMenuItem>
+                        <ContextMenuItem onSelect={() => onCloseToRight(tab.id)}>{t('agentChat.tabs.closeToRight')}</ContextMenuItem>
+                      </ContextMenuContent>
+                    </ContextMenu>
+                  )}
+                </SortableWorkbenchTabItem>
+              )
+            })}
+            {isStripDropTarget ? (
+              <span
+                ref={stripDropIndicatorRef}
+                data-slot="workbench-tab-strip-drop-indicator"
+                aria-hidden="true"
+                className="h-full w-0.5 shrink-0 opacity-0"
+              />
+            ) : null}
+          </WorkbenchTabStrip>
+        </SortableContext>
+      </div>
 
       <Dialog
         open={renaming !== null}

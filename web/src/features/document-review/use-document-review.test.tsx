@@ -32,8 +32,8 @@ describe('useDocumentReview', () => {
     const thread = { id: 'thread-1', comments: [comment] }
     apiMocks.createDocumentComment.mockResolvedValue({ workspace: '/book', reviewThread: thread, comment })
     const showAgent = vi.fn()
-    const { result } = renderHook(() => useDocumentReview({ workspace: '/book', agentVisible: false, onShowAgent: showAgent }))
-    await waitFor(() => expect(apiMocks.getDocumentReview).toHaveBeenCalledWith('/book'))
+  const { result } = renderHook(() => useDocumentReview({ projectId: 'book-1', workspace: '/book', agentVisible: false, onShowAgent: showAgent }))
+  await waitFor(() => expect(apiMocks.getDocumentReview).toHaveBeenCalledWith('book-1'))
 
     await act(async () => {
       await result.current.addComment({ target: comment.target, body: comment.body, anchor })
@@ -58,7 +58,7 @@ describe('useDocumentReview', () => {
       .mockResolvedValueOnce({ id: 'thread-1', comments: [comment] })
       .mockResolvedValueOnce({ id: '', comments: [] })
 
-    const { result } = renderHook(() => useDocumentReview({ workspace: '/book', agentVisible: true, onShowAgent: vi.fn() }))
+  const { result } = renderHook(() => useDocumentReview({ projectId: 'book-1', workspace: '/book', agentVisible: true, onShowAgent: vi.fn() }))
     await waitFor(() => expect(result.current.feedback?.comments).toEqual([comment]))
     expect(result.current.visibleComments).toEqual([comment])
 

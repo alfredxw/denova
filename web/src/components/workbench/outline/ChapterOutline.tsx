@@ -13,7 +13,7 @@ export interface OutlineRevealRequest {
 }
 
 interface ChapterOutlineProps {
-  workspace: string
+  projectId: string
   tree: FileNode[]
   chapters: ChapterSummary[]
   ideas?: DocumentPreview
@@ -43,7 +43,7 @@ const BACK_TO_TOP_THRESHOLD_PX = 320
  * 长目录在固定区提供最新章与回顶；来自面板外部的章节切换会自动定位到当前章节。
  */
 export function ChapterOutline({
-  workspace,
+  projectId,
   tree,
   chapters,
   ideas,
@@ -188,7 +188,7 @@ export function ChapterOutline({
   const bookSettingsHeaderFrame = (
     <div data-testid="book-settings-header-frame" className="shrink-0 border-b border-[var(--nova-border)] bg-[var(--nova-surface)] p-2">
       <BookSettingsShortcuts
-        workspace={workspace}
+        projectId={projectId}
         tree={tree}
         outline={outline}
         ideas={ideas}

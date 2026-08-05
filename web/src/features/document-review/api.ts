@@ -1,4 +1,5 @@
 import { jsonHeaders, requestJSON } from '@/lib/api-client/client'
+import { assertProjectScope } from '@/lib/api-client/project-scope'
 import type {
   CreateDocumentCommentRequest,
   DocumentReviewComment,
@@ -6,48 +7,46 @@ import type {
   DocumentReviewThread,
 } from './types'
 
-const WORKSPACE_HEADER = 'X-Denova-Workspace'
-
 interface ReviewEnvelope {
+  project_id: string
   workspace?: string
   review_thread?: DocumentReviewThread
   comment?: DocumentReviewComment
 }
 
-export async function getDocumentReview(workspace: string): Promise<DocumentReviewThread> {
-  const data = await requestJSON<ReviewEnvelope>('/api/workspace/document-review', {
-    headers: documentReviewHeaders(workspace),
-  })
+export async function getDocumentReview(projectId: string): Promise<DocumentReviewThread> {
+  const data = await requestJSON<ReviewEnvelope>(`${projectReviewURL(projectId)}/document-review`)
+  assertProjectScope(projectId, data.project_id, 'Document review')
   return normalizeThread(data.review_thread)
 }
 
-export async function createDocumentComment(workspace: string, request: CreateDocumentCommentRequest): Promise<DocumentReviewMutationResult> {
-  const data = await requestJSON<ReviewEnvelope>('/api/workspace/document-comments', {
+export async function createDocumentComment(projectId: string, request: CreateDocumentCommentRequest): Promise<DocumentReviewMutationResult> {
+  const data = await requestJSON<ReviewEnvelope>(`${projectReviewURL(projectId)}/document-comments`, {
     method: 'POST',
-    headers: documentReviewHeaders(workspace, true),
+    headers: jsonHeaders,
     body: JSON.stringify(request),
   })
-  return normalizeMutation(data)
+  return normalizeMutation(projectId, data)
 }
 
-export async function updateDocumentComment(workspace: string, id: string, body: string): Promise<DocumentReviewMutationResult> {
-  const data = await requestJSON<ReviewEnvelope>(`/api/workspace/document-comments/${encodeURIComponent(id)}`, {
+export async function updateDocumentComment(projectId: string, id: string, body: string): Promise<DocumentReviewMutationResult> {
+  const data = await requestJSON<ReviewEnvelope>(`${projectReviewURL(projectId)}/document-comments/${encodeURIComponent(id)}`, {
     method: 'PATCH',
-    headers: documentReviewHeaders(workspace, true),
+    headers: jsonHeaders,
     body: JSON.stringify({ body }),
   })
-  return normalizeMutation(data)
+  return normalizeMutation(projectId, data)
 }
 
-export async function deleteDocumentComment(workspace: string, id: string): Promise<DocumentReviewMutationResult> {
-  const data = await requestJSON<ReviewEnvelope>(`/api/workspace/document-comments/${encodeURIComponent(id)}`, {
+export async function deleteDocumentComment(projectId: string, id: string): Promise<DocumentReviewMutationResult> {
+  const data = await requestJSON<ReviewEnvelope>(`${projectReviewURL(projectId)}/document-comments/${encodeURIComponent(id)}`, {
     method: 'DELETE',
-    headers: documentReviewHeaders(workspace),
   })
-  return normalizeMutation(data)
+  return normalizeMutation(projectId, data)
 }
 
-function normalizeMutation(data: ReviewEnvelope): DocumentReviewMutationResult {
+function normalizeMutation(projectId: string, data: ReviewEnvelope): DocumentReviewMutationResult {
+  assertProjectScope(projectId, data.project_id, 'Document review')
   if (!data.comment?.id) throw new Error('Invalid document review comment response')
   return {
     workspace: data.workspace || '',
@@ -64,9 +63,6 @@ function normalizeThread(thread: DocumentReviewThread | undefined): DocumentRevi
   }
 }
 
-function documentReviewHeaders(workspace: string, includeJSON = false): HeadersInit {
-  return {
-    ...(includeJSON ? jsonHeaders : {}),
-    [WORKSPACE_HEADER]: encodeURIComponent(workspace),
-  }
+function projectReviewURL(projectId: string) {
+  return `/api/projects/${encodeURIComponent(projectId)}/book`
 }

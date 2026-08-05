@@ -46,7 +46,7 @@ function renderOutline(props: Partial<Parameters<typeof ChapterOutline>[0]> = {}
   const onSelectFile = vi.fn()
   const result = render(
     <ChapterOutline
-      workspace="demo"
+      projectId="project-demo"
       tree={[]}
       chapters={chapters}
       chapterPlans={chapterPlans}
@@ -242,7 +242,7 @@ describe('ChapterOutline', () => {
 function rerenderOutline(rerender: (ui: ReactElement) => void, props: Partial<Parameters<typeof ChapterOutline>[0]>) {
   rerender(
     <ChapterOutline
-      workspace="demo"
+      projectId="project-demo"
       tree={[]}
       chapters={chapters}
       chapterPlans={chapterPlans}

@@ -143,6 +143,7 @@ export function AgentChatProjectGroup({
         )}
         <div className="min-w-0 flex-1">
           <AgentChatTabBar
+            projectId={project.id}
             group={group}
             tabs={groupTabs}
             activeTabId={activeID}

@@ -85,6 +85,7 @@ describe('project files API', () => {
           ],
         })
         return HttpResponse.json({
+          project_id: 'p1',
           results: [
             { id: 'one', kind: 'create', ok: true, path: 'one.txt' },
             { id: 'two', kind: 'delete', ok: false, path: 'missing.txt', code: 'not_found', error: 'Missing' },
@@ -100,5 +101,24 @@ describe('project files API', () => {
       { id: 'one', kind: 'create', ok: true, path: 'one.txt' },
       { id: 'two', kind: 'delete', ok: false, path: 'missing.txt', code: 'not_found', error: 'Missing' },
     ])
+  })
+
+  it('rejects responses from a different Project scope', async () => {
+    server.use(
+      http.get('/api/projects/project-one/files/file', () => HttpResponse.json({
+        project_id: 'project-two',
+        path: 'story.md',
+        content: 'wrong project',
+        revision: 'r1',
+        kind: 'text',
+        mime_type: 'text/markdown',
+        size: 13,
+        editable: true,
+      })),
+    )
+
+    await expect(readProjectFile('project-one', 'story.md')).rejects.toThrow(
+      'Project file response scope mismatch',
+    )
   })
 })

@@ -1,37 +1,43 @@
-import { render, screen, waitFor } from '@testing-library/react'
-import userEvent from '@testing-library/user-event'
+import { render, screen } from '@testing-library/react'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { AgentChatRoute } from './AgentChatRoute'
 
-const view = vi.hoisted(() => ({ workspace: '/books/a', pageId: 'lore' as const }))
+const view = vi.hoisted(() => ({
+  projectId: 'book-b',
+  workspace: '/books/b',
+  pageId: 'lore' as 'lore' | 'reader',
+}))
 
 vi.mock('./AgentChatView', () => ({
   AgentChatView: (props: {
-    renderPage: (workspace: string, pageId: string, context: unknown) => React.ReactNode
-    onActivateWorkspace?: (workspace: string) => Promise<boolean>
-  }) => props.renderPage(view.workspace, view.pageId, {
+    renderPage: (projectId: string, workspace: string, pageId: 'lore' | 'reader', context: unknown) => React.ReactNode
+  }) => props.renderPage(view.projectId, view.workspace, view.pageId, {
     navigationIntent: null,
+    documentReview: { comments: [{ id: 'comment-1' }] },
+    refreshSignal: 7,
     onFlushHandlerChange: vi.fn(),
     openPage: vi.fn(),
-    activateWorkspace: () => props.onActivateWorkspace?.(view.workspace) || Promise.resolve(false),
+    onWorkspaceChanged: vi.fn(),
   }),
 }))
 
 vi.mock('@/features/lore/LoreWorkspaceTab', () => ({
-  LoreWorkspaceTab: ({ workspace, documentReview, onOpenLibrary, onReferenceItem }: {
+  LoreWorkspaceTab: ({ projectId, workspace, documentReview, refreshSignal }: {
+    projectId: string
     workspace: string
     documentReview: { comments: unknown[] }
-    onOpenLibrary?: () => void
-    onReferenceItem?: () => void
+    refreshSignal: number
   }) => (
     <div data-testid="shared-lore-workspace">
-      {workspace}|{documentReview.comments.length}|{String(Boolean(onOpenLibrary))}|{String(Boolean(onReferenceItem))}
+      {projectId}|{workspace}|{documentReview.comments.length}|{refreshSignal}
     </div>
   ),
 }))
 
-vi.mock('./AgentChatReader', () => ({
-  AgentChatReader: () => <div data-testid="shared-agent-chat-reader">reader</div>,
+vi.mock('@/features/writing/ProjectWritingSurface', () => ({
+  ProjectWritingSurface: ({ projectId, workspace }: { projectId: string; workspace: string }) => (
+    <div data-testid="shared-project-writing">{projectId}|{workspace}</div>
+  ),
 }))
 
 vi.mock('@/features/interactive/components/SettingPanel', () => ({
@@ -43,46 +49,35 @@ vi.mock('@/features/agents/AgentsView', () => ({ AgentsView: () => null }))
 vi.mock('@/features/automations/AutomationsView', () => ({ AutomationsView: () => null }))
 vi.mock('@/features/changes/review/ChangeReviewWorkspace', () => ({ ChangeReviewWorkspace: () => null }))
 
-function routeProps(overrides: Partial<React.ComponentProps<typeof AgentChatRoute>> = {}): React.ComponentProps<typeof AgentChatRoute> {
+function routeProps(): React.ComponentProps<typeof AgentChatRoute> {
   return {
-    workspace: '/books/a',
+    projectId: 'book-a',
     composerSettings: {} as never,
-    tree: [],
-    summary: null,
-    selectedFile: null,
     tellers: [],
     imagePresets: [],
-    documentReview: { comments: [{ id: 'comment-1' }] } as never,
     onTellersChange: vi.fn(),
     onImagePresetsChange: vi.fn(),
-    onSetChapterConfirmed: vi.fn(),
-    onSaveFile: vi.fn(async () => ({ revision: 'saved' })),
-    onActivateWorkspace: vi.fn(async () => true),
-    ...overrides,
   }
 }
 
 describe('AgentChatRoute resource pages', () => {
   beforeEach(() => {
-    view.workspace = '/books/a'
+    view.projectId = 'book-b'
+    view.workspace = '/books/b'
     view.pageId = 'lore'
   })
 
-  it('hosts the focused Lore workspace instead of embedding the full Lore library', async () => {
+  it('opens a background Book lore tab through its stable Project ID', async () => {
     render(<AgentChatRoute {...routeProps()} />)
 
-    expect(await screen.findByTestId('shared-lore-workspace')).toHaveTextContent('/books/a|1|false|false')
+    expect(await screen.findByTestId('shared-lore-workspace')).toHaveTextContent('book-b|/books/b|1|7')
     expect(screen.queryByTestId('setting-panel:lore')).not.toBeInTheDocument()
   })
 
-  it('requires an explicit book switch before editing a background project', async () => {
-    const user = userEvent.setup()
-    const onActivateWorkspace = vi.fn(async () => true)
-    view.workspace = '/books/b'
-    render(<AgentChatRoute {...routeProps({ onActivateWorkspace })} />)
+  it('uses the shared Project Writing surface without activating the background Book', async () => {
+    view.pageId = 'reader'
+    render(<AgentChatRoute {...routeProps()} />)
 
-    await user.click(await screen.findByRole('button', { name: '切换到此书' }))
-    await waitFor(() => expect(onActivateWorkspace).toHaveBeenCalledWith('/books/b'))
-    expect(screen.queryByTestId('shared-lore-workspace')).not.toBeInTheDocument()
+    expect(await screen.findByTestId('shared-project-writing')).toHaveTextContent('book-b|/books/b')
   })
 })

@@ -2,32 +2,51 @@ package app
 
 import (
 	"context"
+	"log/slog"
 	"path/filepath"
 	"strings"
 
 	"denova/config"
 	projectfilesapp "denova/internal/app/projectfiles"
+	appsettings "denova/internal/app/settings"
 	"denova/internal/book"
 )
 
 // ProjectFileBookMutationVersioning binds the shared Explorer's mutations to
 // the current Writing runtime without giving general projects version-history
 // semantics they do not expose in the UI.
-func (a *App) ProjectFileBookMutationVersioning(projectID, workspace string) projectfilesapp.BookMutationVersioning {
+func (a *App) ProjectFileBookMutationVersioning(projectID, workspace, stateRoot string) projectfilesapp.BookMutationVersioning {
+	fallback := projectfilesapp.BookMutationVersioning{Settings: book.DefaultVersionAutoSettings()}
 	if a == nil {
-		return projectfilesapp.BookMutationVersioning{}
+		return fallback
 	}
 	a.mu.RLock()
-	defer a.mu.RUnlock()
-	if a.cfg == nil || a.versionService == nil || strings.TrimSpace(projectID) == "" {
-		return projectfilesapp.BookMutationVersioning{}
+	if a.cfg == nil || strings.TrimSpace(projectID) == "" {
+		a.mu.RUnlock()
+		return fallback
 	}
-	if a.cfg.ProjectID != projectID || filepath.Clean(a.workspace) != filepath.Clean(workspace) {
-		return projectfilesapp.BookMutationVersioning{}
+	cfg := *a.cfg
+	if a.versionService != nil && a.cfg.ProjectID == projectID && filepath.Clean(a.workspace) == filepath.Clean(workspace) {
+		versioning := projectfilesapp.BookMutationVersioning{
+			Service:  a.versionService,
+			Settings: versionAutoSettingsForConfig(a.cfg),
+		}
+		a.mu.RUnlock()
+		return versioning
 	}
+	a.mu.RUnlock()
+	refreshed, err := appsettings.RefreshProject(cfg, workspace, stateRoot)
+	if err != nil {
+		slog.WarnContext(context.Background(), "[app/projectfiles] failed to load Project version settings; using runtime defaults",
+			"project_id", projectID,
+			"workspace", workspace,
+			"error", err,
+		)
+		return fallback
+	}
+	cfg = refreshed
 	return projectfilesapp.BookMutationVersioning{
-		Service:  a.versionService,
-		Settings: versionAutoSettingsForConfig(a.cfg),
+		Settings: versionAutoSettingsForConfig(&cfg),
 	}
 }
 

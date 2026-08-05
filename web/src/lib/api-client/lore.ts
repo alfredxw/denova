@@ -1,33 +1,7 @@
 import { fetchAPI, jsonHeaders, parseSSEStream, readErrorMessage, requestJSON } from './client'
-import type { LoreClassificationApplyRequest, LoreClassificationPreview, LoreClassificationPreviewRequest, LoreImagesGenerateRequest, LoreItem, LoreItemImageGenerateRequest, LoreItemInput, LoreTypeApplyResult, SSEEvent } from './types'
+import type { LoreClassificationApplyRequest, LoreClassificationPreview, LoreClassificationPreviewRequest, LoreImagesGenerateRequest, LoreItem, LoreItemImageGenerateRequest, LoreTypeApplyResult, SSEEvent } from './types'
 
 const WORKSPACE_HEADER = 'X-Denova-Workspace'
-
-export async function getLoreItems(workspace: string): Promise<LoreItem[]> {
-  const data = await requestJSON<{ items: LoreItem[] }>('/api/lore/items', { headers: loreHeaders(workspace) })
-  return data.items || []
-}
-
-export async function createLoreItem(workspace: string, item: Partial<LoreItemInput>): Promise<LoreItem> {
-  return requestJSON('/api/lore/items', {
-    method: 'POST',
-    headers: loreHeaders(workspace, true),
-    body: JSON.stringify(item),
-  })
-}
-
-/** Replaces all user-editable fields of one Lore item using its current canonical snapshot. */
-export async function updateLoreItem(workspace: string, id: string, item: LoreItemInput, baseRevision?: string): Promise<LoreItem> {
-  return requestJSON(`/api/lore/items/${encodeURIComponent(id)}`, {
-    method: 'PUT',
-    headers: loreHeaders(workspace, true),
-    body: JSON.stringify(baseRevision ? { ...item, base_revision: baseRevision } : item),
-  })
-}
-
-export async function deleteLoreItem(workspace: string, id: string): Promise<void> {
-  await requestJSON(`/api/lore/items/${encodeURIComponent(id)}`, { method: 'DELETE', headers: loreHeaders(workspace) })
-}
 
 export async function previewLoreClassification(workspace: string, input: LoreClassificationPreviewRequest = {}): Promise<LoreClassificationPreview> {
   return requestJSON('/api/lore/classification/preview', {

@@ -1,209 +1,53 @@
-import { render, screen, waitFor, within } from '@testing-library/react'
+import { screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
-import type { ReactNode } from 'react'
+import { useEffect } from 'react'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
-import { TooltipProvider } from '@/components/ui/tooltip'
-import type { WorkspaceChangeMetadata } from '@/features/changes/types'
+import type { EditorFlushHandler } from '@/components/Editor/useEditorDraftPersistence'
+import {
+  agentTabForProject,
+  project,
+  renderView,
+  setDocumentReviewFeedback,
+  terminalSession,
+} from './AgentChatView.test-harness'
 import {
   addAgentChatProject,
+  archiveAgentChatProject,
   createAgentChatSession,
   getAgentChatHistory,
   getAgentChatProjects,
+  relinkAgentChatProject,
   selectAgentChatProjectDirectory,
-  type AgentChatProject,
 } from './api'
 import { persistWorkbenchState, readStoredWorkbenchState } from './tab-state'
-import { closeTerminalSession, getTerminalRuntimeStatus, type TerminalSessionInfo } from './terminal/api'
+import { closeTerminalSession, getTerminalRuntimeStatus } from './terminal/api'
 import { AgentChatView } from './AgentChatView'
 
-vi.mock('./api', () => ({
-  addAgentChatProject: vi.fn(),
-  createAgentChatSession: vi.fn(),
-  deleteAgentChatSession: vi.fn(),
-  getAgentChatHistory: vi.fn(),
-  getAgentChatProjects: vi.fn(),
-  renameAgentChatSession: vi.fn(),
-  selectAgentChatProjectDirectory: vi.fn(),
-}))
-
-vi.mock('./AgentChatConversationTab', () => ({
-  AgentChatConversationTab: ({
-    workspace,
-    sessionId,
-    active,
-    draft,
-    reviewFeedback,
-    onReviewFeedbackOpen,
-    onWorkspaceChanged,
-  }: {
-    workspace: string
-    sessionId: string
-    active: boolean
-    draft?: boolean
-    reviewFeedback?: Array<{
-      comments: Array<{
-        id: string
-        body: string
-        target?: { kind: 'workspace_file' | 'lore_item'; id: string }
-      }>
-    }>
-    onReviewFeedbackOpen?: (selection: unknown, comment: unknown) => void
-    onWorkspaceChanged?: (workspace: string, paths: string[], metadata: WorkspaceChangeMetadata) => void
-  }) => {
-    const selection = reviewFeedback?.[0]
-    const comment = selection?.comments[0]
-    return (
-      <div data-testid={draft ? 'draft-conversation' : `conversation:${workspace}:${sessionId}`}>
-        {active ? 'active' : 'hidden'}
-        {selection && comment ? (
-          <button type="button" onClick={() => onReviewFeedbackOpen?.(selection, comment)}>
-            open pending document feedback
-          </button>
-        ) : null}
-        <button type="button" onClick={() => onWorkspaceChanged?.(workspace, ['src/main.ts'], { impact: 'content', origin: 'external' })}>
-          simulate external content
-        </button>
-        <button type="button" onClick={() => onWorkspaceChanged?.(workspace, ['src/new.ts'], { impact: 'structure', origin: 'external' })}>
-          simulate external structure
-        </button>
-      </div>
-    )
-  },
-}))
-
-vi.mock('./terminal/api', () => ({
-  closeTerminalSession: vi.fn(),
-  getTerminalRuntimeStatus: vi.fn(),
-}))
-
-function renderView(ui: ReactNode) {
-  return render(<TooltipProvider delayDuration={0}>{ui}</TooltipProvider>)
-}
-
-vi.mock('./terminal/TerminalTabView', () => ({
-  TerminalTabView: () => <div>terminal</div>,
-  terminalTabLabel: () => 'Terminal',
-}))
-
-vi.mock('@/features/files/FilesTab', () => ({
-  FilesTab: ({ selectedPath, workspace, editorRefreshSignal, treeRefreshSignal, onWorkspaceChanged }: {
-    selectedPath: string | null
-    workspace: string
-    editorRefreshSignal: number
-    treeRefreshSignal: number
-    onWorkspaceChanged?: (workspace: string, paths: string[], metadata: WorkspaceChangeMetadata) => void
-  }) => (
-    <div data-testid="project-files-tab">
-      {selectedPath || 'no-selection'}
-      <output data-testid="project-files-refresh">editor:{editorRefreshSignal}|tree:{treeRefreshSignal}</output>
-      <button type="button" onClick={() => onWorkspaceChanged?.(workspace, ['src/main.ts'], { impact: 'content', origin: 'files-tab' })}>
-        simulate local save
-      </button>
-      <button type="button" onClick={() => onWorkspaceChanged?.(workspace, ['src/new.ts'], { impact: 'structure', origin: 'files-tab' })}>
-        simulate local file operation
-      </button>
-    </div>
-  ),
-}))
-
-vi.mock('@/components/layout/adaptive-surface', () => ({
-  AdaptiveSurface: ({
-    left,
-    right,
-    rightResize,
-    children,
-  }: {
-    left: { enabled?: boolean; content: ReactNode; desktopVisible?: boolean; desktopCollapsedContent?: ReactNode }
-    right?: { content: ReactNode; desktopVisible?: boolean }
-    rightResize?: { label: string }
-    children: ReactNode | ((controls: {
-      isMobile: boolean
-      openPaneId: string | null
-      openLeft: () => void
-      openRight: () => void
-      closePane: () => void
-    }) => ReactNode)
-  }) => (
-    <div>
-      {left.enabled === false ? null : left.desktopVisible === false ? left.desktopCollapsedContent : left.content}
-      <main>{typeof children === 'function' ? children({
-        isMobile: false,
-        openPaneId: null,
-        openLeft: vi.fn(),
-        openRight: vi.fn(),
-        closePane: vi.fn(),
-      }) : children}</main>
-      {right ? (
-        <aside hidden={right.desktopVisible === false}>
-          {right.desktopVisible === false || !rightResize ? null : (
-            <div
-              role="separator"
-              aria-label={rightResize.label}
-              className="nova-resize-handle nova-resize-divider nova-resize-divider-vertical w-2"
-            />
-          )}
-          {right.content}
-        </aside>
-      ) : null}
-    </div>
-  ),
-}))
-
-function project(path: string, name: string, sessionId: string, title: string): AgentChatProject {
-  return {
-    id: `project-${path.split('/').pop()}`,
-    type: 'book',
-    status: 'available',
-    path,
-    name,
-    current: false,
-    total: 1,
-    sessions: [
-      {
-        id: sessionId,
-        title,
-        active: false,
-        running: false,
-        message_count: 0,
-        created_at: '2026-07-26T00:00:00Z',
-        updated_at: '2026-07-26T00:00:00Z',
-      },
-    ],
-  }
-}
-
-function agentTabForProject(id: string, projectId: string, workspace: string, sessionId: string) {
-  return { kind: 'agent' as const, id, projectId, workspace, sessionId }
-}
-
-function terminalSession(id: string, ownerTabId: string | undefined, attached = 0): TerminalSessionInfo {
-  return {
-    id,
-    owner_tab_id: ownerTabId,
-    profile_id: 'shell',
-    title: 'shell',
-    command: '/bin/sh',
-    args: [],
-    cwd: '/books/a',
-    workspace: '/books/a',
-    cols: 80,
-    rows: 24,
-    created_at: '2026-07-26T00:00:00Z',
-    attached,
-    exited: false,
-    exit_code: 0,
-    token: `token-${id}`,
-  }
+function FlushableProjectPage({
+  flush,
+  onFlushHandlerChange,
+}: {
+  flush: EditorFlushHandler
+  onFlushHandlerChange: (handler: EditorFlushHandler | null) => void
+}) {
+  useEffect(() => {
+    onFlushHandlerChange(flush)
+    return () => onFlushHandlerChange(null)
+  }, [flush, onFlushHandlerChange])
+  return <div data-testid="flushable-project-page">project page</div>
 }
 
 describe('AgentChatView project workbenches', () => {
   beforeEach(() => {
     window.localStorage.clear()
+    setDocumentReviewFeedback(null)
     vi.mocked(getAgentChatProjects)
       .mockReset()
       .mockResolvedValue([project('/books/a', 'Project A', 'session-a', 'Chat A'), project('/books/b', 'Project B', 'session-b', 'Chat B')])
     vi.mocked(createAgentChatSession).mockReset()
     vi.mocked(addAgentChatProject).mockReset()
+    vi.mocked(archiveAgentChatProject).mockReset().mockResolvedValue()
+    vi.mocked(relinkAgentChatProject).mockReset()
     vi.mocked(selectAgentChatProjectDirectory).mockReset()
     vi.mocked(getAgentChatHistory).mockReset().mockResolvedValue({ items: [], total: 0, offset: 0, has_more: false })
     vi.mocked(closeTerminalSession).mockReset().mockResolvedValue()
@@ -241,6 +85,93 @@ describe('AgentChatView project workbenches', () => {
     expect(selectAgentChatProjectDirectory).toHaveBeenCalledWith(undefined)
     expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
     expect(await screen.findByTitle('/projects/story')).toBeInTheDocument()
+  })
+
+  it('does not relink a Project when one mounted page draft cannot flush', async () => {
+    const user = userEvent.setup()
+    const flush = vi.fn<EditorFlushHandler>().mockResolvedValue(false)
+    persistWorkbenchState({
+      activeProjectId: 'project-a',
+      projects: {
+        'project-a': {
+          tabs: [{
+            kind: 'page',
+            id: 'reader-tab',
+            projectId: 'project-a',
+            workspace: '/books/a',
+            pageId: 'reader',
+          }],
+          activeTabIds: { primary: 'reader-tab', secondary: null },
+          focusedGroup: 'primary',
+          secondaryVisible: false,
+        },
+      },
+    })
+    vi.mocked(selectAgentChatProjectDirectory).mockResolvedValue({ path: '/books/a-moved', canceled: false })
+
+    renderView(
+      <AgentChatView
+        composerSettings={{} as never}
+        tellers={[]}
+        imagePresets={[]}
+        renderPage={(_projectId, _workspace, _pageId, context) => (
+          <FlushableProjectPage flush={flush} onFlushHandlerChange={context.onFlushHandlerChange} />
+        )}
+        renderReview={() => null}
+      />,
+    )
+
+    expect(await screen.findByTestId('flushable-project-page')).toBeInTheDocument()
+    await user.click(screen.getByRole('button', { name: 'Project A 的项目操作' }))
+    await user.click(await screen.findByRole('menuitem', { name: '重新关联目录' }))
+
+    await waitFor(() => expect(flush).toHaveBeenCalledTimes(1))
+    expect(selectAgentChatProjectDirectory).toHaveBeenCalledWith('/books/a')
+    expect(relinkAgentChatProject).not.toHaveBeenCalled()
+  })
+
+  it('keeps the archive confirmation open when one mounted page draft cannot flush', async () => {
+    const user = userEvent.setup()
+    const flush = vi.fn<EditorFlushHandler>().mockResolvedValue(false)
+    persistWorkbenchState({
+      activeProjectId: 'project-a',
+      projects: {
+        'project-a': {
+          tabs: [{
+            kind: 'page',
+            id: 'lore-tab',
+            projectId: 'project-a',
+            workspace: '/books/a',
+            pageId: 'lore',
+          }],
+          activeTabIds: { primary: 'lore-tab', secondary: null },
+          focusedGroup: 'primary',
+          secondaryVisible: false,
+        },
+      },
+    })
+
+    renderView(
+      <AgentChatView
+        composerSettings={{} as never}
+        tellers={[]}
+        imagePresets={[]}
+        renderPage={(_projectId, _workspace, _pageId, context) => (
+          <FlushableProjectPage flush={flush} onFlushHandlerChange={context.onFlushHandlerChange} />
+        )}
+        renderReview={() => null}
+      />,
+    )
+
+    expect(await screen.findByTestId('flushable-project-page')).toBeInTheDocument()
+    await user.click(screen.getByRole('button', { name: 'Project A 的项目操作' }))
+    await user.click(await screen.findByRole('menuitem', { name: '从项目中移除' }))
+    const dialog = await screen.findByRole('alertdialog')
+    await user.click(within(dialog).getByRole('button', { name: '从项目中移除' }))
+
+    await waitFor(() => expect(flush).toHaveBeenCalledTimes(1))
+    expect(archiveAgentChatProject).not.toHaveBeenCalled()
+    expect(screen.getByRole('alertdialog')).toBeInTheDocument()
   })
 
   it('toggles the activity tree into a persistent compact rail', async () => {
@@ -519,7 +450,7 @@ describe('AgentChatView project workbenches', () => {
         composerSettings={{} as never}
         tellers={[]}
         imagePresets={[]}
-        renderPage={(_workspace, pageId) => <div data-testid="secondary-page">{pageId}</div>}
+        renderPage={(_projectId, _workspace, pageId) => <div data-testid="secondary-page">{pageId}</div>}
         renderReview={() => null}
       />,
     )
@@ -560,11 +491,11 @@ describe('AgentChatView project workbenches', () => {
     ]))
   })
 
-  it('separates editor and tree invalidation without echoing Files-tab mutations', async () => {
+  it('synchronizes Files and project pages without echoing the mutation owner', async () => {
     const user = userEvent.setup()
-    const general = project('/books/a', 'Project A', 'session-a', 'Chat A')
-    general.type = 'general'
-    vi.mocked(getAgentChatProjects).mockResolvedValue([general])
+    vi.mocked(getAgentChatProjects).mockResolvedValue([
+      project('/books/a', 'Project A', 'session-a', 'Chat A'),
+    ])
     persistWorkbenchState({
       activeProjectId: 'project-a',
       projects: {
@@ -577,7 +508,28 @@ describe('AgentChatView project workbenches', () => {
       },
     })
 
-    renderView(<AgentChatView composerSettings={{} as never} tellers={[]} imagePresets={[]} renderPage={() => null} renderReview={() => null} />)
+    renderView(
+      <AgentChatView
+        composerSettings={{} as never}
+        tellers={[]}
+        imagePresets={[]}
+        renderPage={(_projectId, _workspace, _pageId, context) => (
+          <div data-testid="project-page">
+            <output data-testid="project-page-refresh">page:{context.refreshSignal}</output>
+            <button
+              type="button"
+              onClick={() => context.onWorkspaceChanged(
+                ['chapters/ch01.md'],
+                { impact: 'content', origin: 'project-page' },
+              )}
+            >
+              simulate page save
+            </button>
+          </div>
+        )}
+        renderReview={() => null}
+      />,
+    )
     await user.click(await screen.findByRole('button', { name: '显示右侧工作区' }))
     await user.click(await screen.findByRole('menuitem', { name: '文件' }))
 
@@ -587,11 +539,23 @@ describe('AgentChatView project workbenches', () => {
     await user.click(within(files).getByRole('button', { name: 'simulate local file operation' }))
     expect(screen.getByTestId('project-files-refresh')).toHaveTextContent('editor:0|tree:0')
 
+    const secondaryPane = files.closest('aside')
+    expect(secondaryPane).not.toBeNull()
+    await user.click(within(secondaryPane as HTMLElement).getByRole('button', { name: '新建标签页' }))
+    await user.click(await screen.findByRole('menuitem', { name: '阅读器' }))
+    expect(await screen.findByTestId('project-page-refresh')).toHaveTextContent('page:2')
+
+    await user.click(screen.getByRole('button', { name: 'simulate page save' }))
+    await waitFor(() => expect(screen.getByTestId('project-files-refresh')).toHaveTextContent('editor:1|tree:0'))
+    expect(screen.getByTestId('project-page-refresh')).toHaveTextContent('page:2')
+
     const conversation = screen.getByTestId('conversation:/books/a:session-a')
     await user.click(within(conversation).getByRole('button', { name: 'simulate external content' }))
-    await waitFor(() => expect(screen.getByTestId('project-files-refresh')).toHaveTextContent('editor:1|tree:0'))
+    await waitFor(() => expect(screen.getByTestId('project-files-refresh')).toHaveTextContent('editor:2|tree:0'))
+    expect(screen.getByTestId('project-page-refresh')).toHaveTextContent('page:3')
     await user.click(within(conversation).getByRole('button', { name: 'simulate external structure' }))
-    await waitFor(() => expect(screen.getByTestId('project-files-refresh')).toHaveTextContent('editor:2|tree:1'))
+    await waitFor(() => expect(screen.getByTestId('project-files-refresh')).toHaveTextContent('editor:3|tree:1'))
+    expect(screen.getByTestId('project-page-refresh')).toHaveTextContent('page:4')
   })
 
   it('routes a reviewed source file into the reusable Files tab in the same pane', async () => {
@@ -725,15 +689,14 @@ describe('AgentChatView project workbenches', () => {
         },
       ],
     }
+    setDocumentReviewFeedback(feedback)
 
     renderView(
       <AgentChatView
         composerSettings={{} as never}
         tellers={[]}
         imagePresets={[]}
-        documentReviewWorkspace="/books/a"
-        documentReviewFeedback={feedback}
-        renderPage={(_workspace, pageId, context) => (
+        renderPage={(_projectId, _workspace, pageId, context) => (
           <div data-testid="review-target-page">
             {pageId}|{context.navigationIntent?.target.id || 'none'}|{context.navigationIntent?.commentID || 'none'}|{context.navigationIntent?.nonce || 0}
           </div>

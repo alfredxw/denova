@@ -3,12 +3,14 @@ import { useMemo } from 'react'
 import { useTranslation } from 'react-i18next'
 import { ImagePreviewDialog } from '@/components/common/ImagePreviewDialog'
 import { MISSING_WORKSPACE_REVISION, versionedWorkspaceAssetURL } from '@/lib/api-client/workspace'
+import { projectFileAssetURL } from '@/lib/api-client/project-files'
 import { workspaceFileKind, type WorkspaceFileKind } from '@/lib/workspace-file-kind'
 
 const JSON_FORMAT_INPUT_LIMIT = 1_000_000
 const TEXT_PREVIEW_LIMIT = 400_000
 
 interface FilePreviewProps {
+  projectId?: string
   path: string
   content: string
   revision?: string
@@ -20,7 +22,7 @@ interface TextPreview {
   issueOptions?: Record<string, string | number>
 }
 
-export function FilePreview({ path, content, revision = '' }: FilePreviewProps) {
+export function FilePreview({ projectId = '', path, content, revision = '' }: FilePreviewProps) {
   const { t } = useTranslation()
   const kind = workspaceFileKind(path)
   const title = fileName(path)
@@ -47,7 +49,7 @@ export function FilePreview({ path, content, revision = '' }: FilePreviewProps) 
         </div>
       )}
       {kind === 'image' ? (
-        <ImageFilePreview path={path} revision={revision} />
+        <ImageFilePreview projectId={projectId} path={path} revision={revision} />
       ) : (
         <StructuredTextPreview path={path} content={content} kind={kind} />
       )}
@@ -55,9 +57,9 @@ export function FilePreview({ path, content, revision = '' }: FilePreviewProps) 
   )
 }
 
-function ImageFilePreview({ path, revision }: { path: string; revision: string }) {
+function ImageFilePreview({ projectId, path, revision }: { projectId: string; path: string; revision: string }) {
   const { t } = useTranslation()
-  const src = versionedWorkspaceAssetURL(path, revision)
+  const src = projectId ? projectFileAssetURL(projectId, path, revision) : versionedWorkspaceAssetURL(path, revision)
   const title = t('editor.preview.imageTitle', { file: fileName(path) })
 
   return (

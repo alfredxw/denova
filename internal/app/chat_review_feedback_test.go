@@ -26,7 +26,7 @@ import (
 func bookReviewRuntime(workspace string, sess *session.Session) ideChatRuntime {
 	return ideChatRuntime{
 		agentKind: agentrun.AgentKindIDE, projectType: ProjectTypeBook,
-		workspace: workspace, state: book.NewState(workspace),
+		workspace: workspace, projectState: workspacelayout.Dir(workspace), state: book.NewState(workspace),
 		bookService: book.NewService(workspace), sess: sess,
 	}
 }
@@ -160,7 +160,8 @@ func TestReviewFeedbackResolvesAndConsumesDocumentAndDiffSelectionsTogether(t *t
 		t.Fatal(err)
 	}
 
-	changes, err := workspacechange.ForWorkspace(workspace)
+	stateRoot := workspacelayout.Dir(workspace)
+	changes, err := workspacechange.ForWorkspaceAt(workspace, stateRoot)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -184,7 +185,7 @@ func TestReviewFeedbackResolvesAndConsumesDocumentAndDiffSelectionsTogether(t *t
 		t.Fatal(err)
 	}
 
-	documents, err := documentreview.ForWorkspace(workspace)
+	documents, err := documentreview.ForWorkspaceAt(workspace, stateRoot)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -270,7 +271,8 @@ func assertMixedReviewFeedbackRollback(t *testing.T, order []string, failingLedg
 		t.Fatal(err)
 	}
 
-	changes, err := workspacechange.ForWorkspace(workspace)
+	stateRoot := workspacelayout.Dir(workspace)
+	changes, err := workspacechange.ForWorkspaceAt(workspace, stateRoot)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -290,7 +292,7 @@ func assertMixedReviewFeedbackRollback(t *testing.T, order []string, failingLedg
 		t.Fatal(err)
 	}
 
-	documents, err := documentreview.ForWorkspace(workspace)
+	documents, err := documentreview.ForWorkspaceAt(workspace, stateRoot)
 	if err != nil {
 		t.Fatal(err)
 	}

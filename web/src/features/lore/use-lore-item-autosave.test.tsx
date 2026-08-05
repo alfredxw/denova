@@ -2,15 +2,15 @@ import { act, render } from '@testing-library/react'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { APIError } from '@/lib/api-client'
 import { preserveAutosaveConflict } from '@/lib/api-client/autosave-conflicts'
-import { getLoreItems, updateLoreItem, type LoreItem } from '@/lib/api'
+import { getProjectLoreItems, updateProjectLoreItem, type LoreItem } from '@/lib/api'
 import {
   useLoreItemAutosave,
   type LoreAutosaveDraft,
 } from './use-lore-item-autosave'
 
 vi.mock('@/lib/api', () => ({
-  getLoreItems: vi.fn(),
-  updateLoreItem: vi.fn(),
+  getProjectLoreItems: vi.fn(),
+  updateProjectLoreItem: vi.fn(),
 }))
 
 vi.mock('@/lib/api-client/autosave-conflicts', () => ({
@@ -39,7 +39,7 @@ describe('useLoreItemAutosave', () => {
       await vi.advanceTimersByTimeAsync(1300)
     })
 
-    expect(updateLoreItem).not.toHaveBeenCalled()
+  expect(updateProjectLoreItem).not.toHaveBeenCalled()
     vi.useRealTimers()
   })
 
@@ -60,8 +60,8 @@ describe('useLoreItemAutosave', () => {
       content: 'External body',
       updated_at: 'r3',
     })
-    vi.mocked(getLoreItems).mockResolvedValue([latest])
-    vi.mocked(updateLoreItem)
+  vi.mocked(getProjectLoreItems).mockResolvedValue([latest])
+  vi.mocked(updateProjectLoreItem)
       .mockRejectedValueOnce(new APIError('revision conflict', { status: 409 }))
       .mockResolvedValueOnce(saved)
     const onSaved = vi.fn()
@@ -77,10 +77,10 @@ describe('useLoreItemAutosave', () => {
       await controls?.saveNow('manual')
     })
 
-    expect(getLoreItems).toHaveBeenCalledWith('/books/demo')
-    expect(updateLoreItem).toHaveBeenNthCalledWith(
+  expect(getProjectLoreItems).toHaveBeenCalledWith('book-demo')
+  expect(updateProjectLoreItem).toHaveBeenNthCalledWith(
       1,
-      '/books/demo',
+    'book-demo',
       'lore-1',
       expect.objectContaining({
         name: 'Local name',
@@ -88,9 +88,9 @@ describe('useLoreItemAutosave', () => {
       }),
       'r1',
     )
-    expect(updateLoreItem).toHaveBeenNthCalledWith(
+  expect(updateProjectLoreItem).toHaveBeenNthCalledWith(
       2,
-      '/books/demo',
+    'book-demo',
       'lore-1',
       expect.objectContaining({
         name: 'Local name',
@@ -98,7 +98,7 @@ describe('useLoreItemAutosave', () => {
       }),
       'r2',
     )
-    expect(vi.mocked(updateLoreItem).mock.calls[1]?.[2]).not.toHaveProperty(
+  expect(vi.mocked(updateProjectLoreItem).mock.calls[1]?.[2]).not.toHaveProperty(
       'updated_at',
     )
     expect(onSaved).toHaveBeenCalledWith(
@@ -116,8 +116,8 @@ describe('useLoreItemAutosave', () => {
     const baseline = loreItem({ name: 'Original', updated_at: 'r1' })
     const draft = loreItem({ name: 'Local name', updated_at: 'r1' })
     const latest = loreItem({ name: 'External name', updated_at: 'r2' })
-    vi.mocked(getLoreItems).mockResolvedValue([latest])
-    vi.mocked(updateLoreItem)
+  vi.mocked(getProjectLoreItems).mockResolvedValue([latest])
+  vi.mocked(updateProjectLoreItem)
       .mockRejectedValueOnce(new APIError('revision conflict', { status: 409 }))
       .mockResolvedValueOnce(loreItem({ name: 'Local name', updated_at: 'r3' }))
     render(
@@ -135,7 +135,7 @@ describe('useLoreItemAutosave', () => {
     expect(preserveAutosaveConflict).toHaveBeenCalledWith(
       expect.objectContaining({
         resource: 'lore_item',
-        scope: '/books/demo',
+    scope: 'book-demo',
         id: 'lore-1',
         base: {
           revision: 'r1',
@@ -159,9 +159,9 @@ describe('useLoreItemAutosave', () => {
         conflict_paths: [['name']],
       }),
     )
-    expect(updateLoreItem).toHaveBeenNthCalledWith(
+  expect(updateProjectLoreItem).toHaveBeenNthCalledWith(
       2,
-      '/books/demo',
+    'book-demo',
       'lore-1',
       expect.objectContaining({ name: 'Local name' }),
       'r2',
@@ -185,7 +185,7 @@ function Harness({
     tagDraft: '',
     baseline,
     active: true,
-    workspace: '/books/demo',
+  projectId: 'book-demo',
     onSaved,
     onAutoSaveError: vi.fn(),
   })

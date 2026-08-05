@@ -14,9 +14,8 @@ import (
 )
 
 func (h *Handlers) HandleProjectFileTreeResolve(ctx context.Context, c *app.RequestContext) {
-	projectID := strings.TrimSpace(c.Param("project_id"))
-	if projectID == "" {
-		writeErrorKey(c, consts.StatusBadRequest, "api.projectFiles.projectIDRequired")
+	projectID, ok := requireProjectID(c)
+	if !ok {
 		return
 	}
 	var request projectfilesapp.TreeResolveRequest
@@ -38,12 +37,11 @@ func (h *Handlers) HandleProjectFileTreeResolve(ctx context.Context, c *app.Requ
 }
 
 func (h *Handlers) HandleProjectFileRead(ctx context.Context, c *app.RequestContext) {
-	projectID := strings.TrimSpace(c.Param("project_id"))
-	path := strings.TrimSpace(c.Query("path"))
-	if projectID == "" {
-		writeErrorKey(c, consts.StatusBadRequest, "api.projectFiles.projectIDRequired")
+	projectID, ok := requireProjectID(c)
+	if !ok {
 		return
 	}
+	path := strings.TrimSpace(c.Query("path"))
 	if path == "" {
 		writeErrorKey(c, consts.StatusBadRequest, "api.workspace.pathMissing")
 		return
@@ -57,12 +55,11 @@ func (h *Handlers) HandleProjectFileRead(ctx context.Context, c *app.RequestCont
 }
 
 func (h *Handlers) HandleProjectFileAsset(ctx context.Context, c *app.RequestContext) {
-	projectID := strings.TrimSpace(c.Param("project_id"))
-	path := strings.TrimSpace(c.Query("path"))
-	if projectID == "" {
-		writeErrorKey(c, consts.StatusBadRequest, "api.projectFiles.projectIDRequired")
+	projectID, ok := requireProjectID(c)
+	if !ok {
 		return
 	}
+	path := strings.TrimSpace(c.Query("path"))
 	if path == "" {
 		writeErrorKey(c, consts.StatusBadRequest, "api.workspace.pathMissing")
 		return
@@ -77,9 +74,8 @@ func (h *Handlers) HandleProjectFileAsset(ctx context.Context, c *app.RequestCon
 }
 
 func (h *Handlers) HandleProjectFileSave(ctx context.Context, c *app.RequestContext) {
-	projectID := strings.TrimSpace(c.Param("project_id"))
-	if projectID == "" {
-		writeErrorKey(c, consts.StatusBadRequest, "api.projectFiles.projectIDRequired")
+	projectID, ok := requireProjectID(c)
+	if !ok {
 		return
 	}
 	var request projectfilesapp.SaveRequest
@@ -102,9 +98,8 @@ func (h *Handlers) HandleProjectFileSave(ctx context.Context, c *app.RequestCont
 }
 
 func (h *Handlers) HandleProjectFileOperations(ctx context.Context, c *app.RequestContext) {
-	projectID := strings.TrimSpace(c.Param("project_id"))
-	if projectID == "" {
-		writeErrorKey(c, consts.StatusBadRequest, "api.projectFiles.projectIDRequired")
+	projectID, ok := requireProjectID(c)
+	if !ok {
 		return
 	}
 	var request struct {
@@ -133,7 +128,7 @@ func (h *Handlers) HandleProjectFileOperations(ctx context.Context, c *app.Reque
 		}
 		items = append(items, item)
 	}
-	writeJSON(c, consts.StatusOK, map[string]any{"results": items})
+	writeJSON(c, consts.StatusOK, map[string]any{"project_id": projectID, "results": items})
 }
 
 func writeProjectFilesError(c *app.RequestContext, err error, fallbackKey string) {

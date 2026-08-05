@@ -4,6 +4,7 @@ import type { EditorFlushHandler } from '@/components/Editor/useEditorDraftPersi
 import type { AgentChatProjectType } from './api'
 import type { ReviewFeedbackBatch, ReviewFeedbackComment, ReviewFeedbackSelection } from '@/features/changes/agent/ReviewFeedbackTray'
 import type { WorkspaceChangeMetadata } from '@/features/changes/types'
+import { useDocumentReview } from '@/features/document-review/use-document-review'
 import type { ImagePreset, Teller } from '@/features/interactive/types'
 import { AgentChatConversationTab } from './AgentChatConversationTab'
 import { TerminalTabView, type AgentChatTerminalStatus } from './terminal/TerminalTabView'
@@ -34,21 +35,22 @@ interface AgentChatTabContentProps {
   autoSaveDelayMs: number
   filesEditorRefreshSignal: number
   filesTreeRefreshSignal: number
-  renderPage: (workspace: string, pageId: AgentChatPageId, context: AgentChatPageRenderContext) => ReactNode
+  projectPageRefreshSignal: number
+  renderPage: (projectId: string, workspace: string, pageId: AgentChatPageId, context: AgentChatPageRenderContext) => ReactNode
   renderReview: (tab: AgentChatReviewTab, disabled: boolean, context: AgentChatReviewRenderContext) => ReactNode
   navigationIntent: AgentChatDocumentReviewNavigation | null
-  documentReviewFeedback?: ReviewFeedbackSelection | null
-  onDocumentReviewFeedbackOpen: (workspace: string, selection: ReviewFeedbackSelection, comment: ReviewFeedbackComment) => void
-  onDocumentReviewFeedbackRemove?: (selection: ReviewFeedbackSelection, commentID: string) => void
-  onDocumentReviewFeedbackSubmitted?: (feedback: ReviewFeedbackBatch) => void
-  onDocumentReviewFeedbackSubmissionFailed?: (feedback: ReviewFeedbackBatch) => void
+  onDocumentReviewFeedbackOpen: (projectId: string, selection: ReviewFeedbackSelection, comment: ReviewFeedbackComment) => void
   onOpenPage: (projectID: string, group: AgentChatGroupId, pageId: AgentChatPageId) => void
-  onActivateWorkspace: (workspace: string) => Promise<boolean>
   onFlushHandlerChange: (projectID: string, tabId: string, handler: EditorFlushHandler | null) => void
   onFilesSelectedPathChange: (projectID: string, tabId: string, path: string | null) => void
   onOpenProjectFile: (projectID: string, path: string, group: AgentChatGroupId) => void
   onOpenChangeReview: (projectID: string, workspace: string, reviewThreadID: string, groupID: string) => void
-  onWorkspaceChanged?: (workspace: string, paths: string[], metadata: WorkspaceChangeMetadata) => void | Promise<void>
+  onWorkspaceChanged?: (
+    projectId: string,
+    workspace: string,
+    paths: string[],
+    metadata: WorkspaceChangeMetadata,
+  ) => void | Promise<void>
   onRunningChange: (projectID: string, sessionId: string, running: boolean | null) => void
   onDraftCommitted: (message: string) => void
   onTerminalSessionEstablished: (tabId: string, session: TerminalSessionInfo) => boolean
@@ -70,16 +72,12 @@ export function AgentChatTabContent({
   autoSaveDelayMs,
   filesEditorRefreshSignal,
   filesTreeRefreshSignal,
+  projectPageRefreshSignal,
   renderPage,
   renderReview,
   navigationIntent,
-  documentReviewFeedback,
   onDocumentReviewFeedbackOpen,
-  onDocumentReviewFeedbackRemove,
-  onDocumentReviewFeedbackSubmitted,
-  onDocumentReviewFeedbackSubmissionFailed,
   onOpenPage,
-  onActivateWorkspace,
   onFlushHandlerChange,
   onFilesSelectedPathChange,
   onOpenProjectFile,
@@ -91,13 +89,36 @@ export function AgentChatTabContent({
   onTerminalTitleChange,
   onTerminalStatusChange,
 }: AgentChatTabContentProps) {
-  const reviewFeedback = useMemo<ReviewFeedbackBatch | null>(() => (documentReviewFeedback ? [documentReviewFeedback] : null), [documentReviewFeedback])
+  const documentReview = useDocumentReview({
+    projectId: projectType === 'book' && (tab.kind === 'agent' || tab.kind === 'page') ? tab.projectId : '',
+    workspace: tab.workspace,
+    agentVisible: true,
+    onShowAgent: noop,
+  })
+  const documentReviewController = useMemo(() => ({
+    comments: documentReview.visibleComments,
+    onCreate: documentReview.addComment,
+    onUpdate: documentReview.editComment,
+    onDelete: documentReview.removeComment,
+  }), [documentReview.addComment, documentReview.editComment, documentReview.removeComment, documentReview.visibleComments])
+  const reviewFeedback = useMemo<ReviewFeedbackBatch | null>(() => (
+    documentReview.feedback ? [documentReview.feedback] : null
+  ), [documentReview.feedback])
   const handleReviewFeedbackOpen = useCallback(
     (selection: ReviewFeedbackSelection, comment: ReviewFeedbackComment) => {
-      onDocumentReviewFeedbackOpen(tab.workspace, selection, comment)
+      onDocumentReviewFeedbackOpen(tab.projectId, selection, comment)
     },
-    [onDocumentReviewFeedbackOpen, tab.workspace],
+    [onDocumentReviewFeedbackOpen, tab.projectId],
   )
+  const removeDocumentReviewFeedback = useCallback((_selection: ReviewFeedbackSelection, commentID: string) => {
+    documentReview.removeFeedback(commentID)
+  }, [documentReview.removeFeedback])
+  const submitDocumentReviewFeedback = useCallback((feedback: ReviewFeedbackBatch) => {
+    feedback.forEach(documentReview.submitFeedback)
+  }, [documentReview.submitFeedback])
+  const restoreDocumentReviewFeedback = useCallback((feedback: ReviewFeedbackBatch) => {
+    feedback.forEach(documentReview.restoreFeedback)
+  }, [documentReview.restoreFeedback])
   const handlePageFlushHandlerChange = useCallback(
     (handler: EditorFlushHandler | null) => {
       onFlushHandlerChange(tab.projectId, tab.id, handler)
@@ -110,8 +131,11 @@ export function AgentChatTabContent({
     },
     [onOpenPage, tab.group, tab.projectId],
   )
-  const activateWorkspace = useCallback(() => onActivateWorkspace(tab.workspace), [onActivateWorkspace, tab.workspace])
-
+  const handleWorkspaceChanged = useCallback((
+    changedWorkspace: string,
+    paths: string[],
+    metadata: WorkspaceChangeMetadata,
+  ) => onWorkspaceChanged?.(tab.projectId, changedWorkspace, paths, metadata), [onWorkspaceChanged, tab.projectId])
   switch (tab.kind) {
     case 'agent':
       return (
@@ -128,11 +152,11 @@ export function AgentChatTabContent({
           imagePresets={imagePresets}
           reviewFeedback={projectType === 'book' ? reviewFeedback : null}
           onReviewFeedbackOpen={projectType === 'book' ? handleReviewFeedbackOpen : undefined}
-          onReviewFeedbackRemove={projectType === 'book' ? onDocumentReviewFeedbackRemove : undefined}
-          onReviewFeedbackSubmitted={projectType === 'book' ? onDocumentReviewFeedbackSubmitted : undefined}
-          onReviewFeedbackSubmissionFailed={projectType === 'book' ? onDocumentReviewFeedbackSubmissionFailed : undefined}
+          onReviewFeedbackRemove={projectType === 'book' ? removeDocumentReviewFeedback : undefined}
+          onReviewFeedbackSubmitted={projectType === 'book' ? submitDocumentReviewFeedback : undefined}
+          onReviewFeedbackSubmissionFailed={projectType === 'book' ? restoreDocumentReviewFeedback : undefined}
           onOpenChangeReview={projectType === 'book' ? (threadID, groupID) => onOpenChangeReview(tab.projectId, tab.workspace, threadID, groupID) : undefined}
-          onWorkspaceChanged={onWorkspaceChanged}
+          onWorkspaceChanged={handleWorkspaceChanged}
           onRunningChange={onRunningChange}
           onDraftCommitted={onDraftCommitted}
         />
@@ -160,28 +184,34 @@ export function AgentChatTabContent({
             treeRefreshSignal={filesTreeRefreshSignal}
             onSelectedPathChange={(path) => onFilesSelectedPathChange(tab.projectId, tab.id, path)}
             onFlushHandlerChange={handlePageFlushHandlerChange}
-            onWorkspaceChanged={onWorkspaceChanged}
+            onWorkspaceChanged={handleWorkspaceChanged}
           />
         </Suspense>
       )
     case 'page':
       return (
         <>
-          {renderPage(tab.workspace, tab.pageId, {
+          {renderPage(tab.projectId, tab.workspace, tab.pageId, {
             navigationIntent,
+            documentReview: documentReviewController,
+            refreshSignal: projectPageRefreshSignal,
             onFlushHandlerChange: handlePageFlushHandlerChange,
             openPage,
-            activateWorkspace,
+            onWorkspaceChanged: (paths, metadata) => (
+              onWorkspaceChanged?.(tab.projectId, tab.workspace, paths, metadata)
+            ),
           })}
         </>
       )
     case 'review':
       return <>{renderReview(tab, running, {
         openFile: (path) => onOpenProjectFile(tab.projectId, path, tabGroup(tab)),
-        onWorkspaceChanged: (paths) => onWorkspaceChanged?.(tab.workspace, paths, {
+        onWorkspaceChanged: (paths) => onWorkspaceChanged?.(tab.projectId, tab.workspace, paths, {
           impact: 'structure',
           origin: 'external',
         }),
       })}</>
   }
 }
+
+function noop() {}

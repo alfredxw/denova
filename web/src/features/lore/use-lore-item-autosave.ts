@@ -1,7 +1,7 @@
 import { useEffect, useMemo } from 'react'
 import { normalizeEditorText } from '@/components/Editor/editorDocument'
 import { useResourceAutosave } from '@/hooks/use-resource-autosave'
-import { getLoreItems, updateLoreItem } from '@/lib/api'
+import { getProjectLoreItems, updateProjectLoreItem } from '@/lib/api'
 import type { LoreItem, LoreItemInput } from '@/lib/api'
 import { rebaseJSONWithRecovery } from '@/lib/autosave/rebase-with-recovery'
 import { isRevisionConflict } from '@/lib/revision-conflict'
@@ -17,7 +17,7 @@ interface LoreItemAutosaveOptions {
   tagDraft: string
   baseline: LoreAutosaveDraft | null
   active: boolean
-  workspace: string
+  projectId: string
   onSaved: (item: LoreItem, submitted: LoreAutosaveDraft) => void
   onAutoSaveError: (error: unknown) => void
 }
@@ -28,7 +28,7 @@ export function useLoreItemAutosave({
   tagDraft,
   baseline,
   active,
-  workspace,
+  projectId,
   onSaved,
   onAutoSaveError,
 }: LoreItemAutosaveOptions) {
@@ -50,12 +50,12 @@ export function useLoreItemAutosave({
   >({
     draft: autosaveDraft,
     active,
-    scopeKey: workspace,
+    scopeKey: projectId,
     makePayload: loreAutosavePayload,
     baselineFromSaved: (saved) => loreAutosaveDraft(saved),
     signature: loreResourceSignature,
     save: (id, payload, baseRevision) =>
-      updateLoreItem(workspace, id, payload, baseRevision),
+      updateProjectLoreItem(projectId, id, payload, baseRevision),
     resolveConflict: async ({
       error,
       baseline: previous,
@@ -63,14 +63,14 @@ export function useLoreItemAutosave({
       baseRevision,
     }) => {
       if (!isRevisionConflict(error)) return null
-      const latest = (await getLoreItems(workspace)).find(
+      const latest = (await getProjectLoreItems(projectId)).find(
         (item) => item.id === submitted.id,
       )
       if (!latest) throw new Error(`Lore item ${submitted.id} no longer exists`)
       const latestDraft = loreAutosaveDraft(latest)
       const rebased = await rebaseJSONWithRecovery({
         resource: 'lore_item',
-        scope: workspace,
+        scope: projectId,
         id: submitted.id,
         baseline: {
           revision: previous?.updated_at || baseRevision || latest.updated_at,

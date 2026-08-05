@@ -1,15 +1,18 @@
 package api
 
 import (
-	"denova/internal/book/lore"
 	"net/http"
+	"net/url"
 	"testing"
+
+	"denova/internal/book/lore"
 )
 
 func TestLoreItemUpdateUsesFullPutContract(t *testing.T) {
 	application := newTestApplication(t)
 	server := NewServer(application, "0")
-	workspace := application.Workspace()
+	projectID := application.ProjectID()
+	base := "/api/projects/" + url.PathEscape(projectID) + "/book/lore/items/"
 	created, err := application.Lore().CreateItem(lore.ItemInput{
 		ID:               "hero",
 		Type:             "character",
@@ -39,12 +42,19 @@ func TestLoreItemUpdateUsesFullPutContract(t *testing.T) {
 		"content":           "新正文",
 		"base_revision":     created.UpdatedAt,
 	}
-	response := performWorkspaceChangeRequest(t, server, http.MethodPut, "/api/lore/items/"+created.ID, workspace, update)
+	response := performJSONRequest(t, server, http.MethodPut, base+created.ID, update)
 	if response.Code != http.StatusOK {
 		t.Fatalf("PUT update status=%d body=%s", response.Code, response.Body.String())
 	}
-	var updated lore.Item
-	decodeResponse(t, response.Body.Bytes(), &updated)
+	var updateEnvelope struct {
+		ProjectID string    `json:"project_id"`
+		Item      lore.Item `json:"item"`
+	}
+	decodeResponse(t, response.Body.Bytes(), &updateEnvelope)
+	if updateEnvelope.ProjectID != projectID {
+		t.Fatalf("PUT response lost Project scope: %#v", updateEnvelope)
+	}
+	updated := updateEnvelope.Item
 	if updated.Name != "林川（成年）" || updated.Content != "新正文" {
 		t.Fatalf("unexpected updated lore item: %#v", updated)
 	}
@@ -54,7 +64,7 @@ func TestLoreItemUpdateUsesFullPutContract(t *testing.T) {
 	if len(updated.Tags) != len(created.Tags) || len(updated.Keywords) != len(created.Keywords) {
 		t.Fatalf("full update lost list fields: %#v", updated)
 	}
-	partial := performWorkspaceChangeRequest(t, server, http.MethodPut, "/api/lore/items/"+created.ID, workspace, map[string]any{
+	partial := performJSONRequest(t, server, http.MethodPut, base+created.ID, map[string]any{
 		"name":          "不完整更新",
 		"base_revision": updated.UpdatedAt,
 	})
@@ -69,7 +79,7 @@ func TestLoreItemUpdateUsesFullPutContract(t *testing.T) {
 		t.Fatalf("rejected partial PUT mutated canonical Lore: %#v", items)
 	}
 
-	patch := performWorkspaceChangeRequest(t, server, http.MethodPatch, "/api/lore/items/"+created.ID, workspace, update)
+	patch := performJSONRequest(t, server, http.MethodPatch, base+created.ID, update)
 	if patch.Code != http.StatusNotFound {
 		t.Fatalf("legacy PATCH must not remain a second update contract: status=%d body=%s", patch.Code, patch.Body.String())
 	}

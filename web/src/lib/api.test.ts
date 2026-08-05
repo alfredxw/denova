@@ -10,7 +10,6 @@ import {
   getMessages,
   getMessagesPage,
   getSessions,
-  getWorkspaceSummary,
   renameSession,
   recoverChatAgentRuntime,
   saveSkillDocument,
@@ -40,24 +39,6 @@ describe('api', () => {
       { path: '/api/session/asks/ask%2F1/answer', body: { session_id: 'session-a', answers: [{ question_id: 'q1', selected_option_ids: ['safe'] }] } },
       { path: '/api/session/asks/ask%2F1/cancel', body: { session_id: 'session-a', reason: 'user_cancelled' } },
     ])
-  })
-
-  it('作品统计接口将空章节列表标准化为空数组', async () => {
-    server.use(
-      http.get('/api/workspace/summary', () =>
-        HttpResponse.json({
-          title: '空作品',
-          author: '',
-          chapter_count: 0,
-          total_words: 0,
-          chapters: null,
-        }),
-      ),
-    )
-
-    await expect(getWorkspaceSummary()).resolves.toMatchObject({
-      chapters: [],
-    })
   })
 
   it('通过 MSW 获取会话和活跃任务', async () => {

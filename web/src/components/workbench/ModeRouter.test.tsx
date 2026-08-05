@@ -72,9 +72,8 @@ vi.mock('@/components/Chat/AgentPanel', () => ({
 }))
 
 vi.mock('@/features/agent-chat/AgentChatRoute', () => ({
-  AgentChatRoute: ({ selectedFile, summary, onFlushHandlerChange }: {
-    selectedFile?: string | null
-    summary?: { title?: string } | null
+  AgentChatRoute: ({ projectId, onFlushHandlerChange }: {
+    projectId: string
     onFlushHandlerChange?: (handler: (() => Promise<boolean>) | null) => void
   }) => {
     agentChatRouteLifecycle.renders += 1
@@ -85,8 +84,7 @@ vi.mock('@/features/agent-chat/AgentChatRoute', () => ({
     return (
       <div
         data-testid="agent-chat-route"
-        data-selected-file={selectedFile || ''}
-        data-summary-title={summary?.title || ''}
+        data-project-id={projectId}
       >
         project-scoped agent route
       </div>
@@ -506,7 +504,7 @@ describe('ModeRouter autosave navigation policy', () => {
     const { rerender } = render(withAppProviders(<ModeRouter {...baseProps} />))
 
     const agentChatRoute = await screen.findByTestId('agent-chat-route')
-    expect(agentChatRoute).toHaveAttribute('data-selected-file', firstPath)
+    expect(agentChatRoute).toHaveAttribute('data-project-id', baseProps.projectId)
 
     rerender(withAppProviders(<ModeRouter {...baseProps} mode="ide" />))
     await waitFor(() => expect(agentChatRoute.closest('section')).toHaveAttribute('hidden'))
@@ -517,8 +515,9 @@ describe('ModeRouter autosave navigation policy', () => {
     expect(agentChatRouteLifecycle.renders).toBe(rendersAfterHiding)
 
     rerender(withAppProviders(<ModeRouter {...baseProps} mode="agentchat" selectedFile={secondPath} summary={updatedSummary} />))
-    await waitFor(() => expect(agentChatRoute).toHaveAttribute('data-selected-file', secondPath))
-    expect(agentChatRoute).toHaveAttribute('data-summary-title', updatedSummary.title)
+    await waitFor(() => expect(agentChatRoute.closest('section')).not.toHaveAttribute('hidden'))
+    expect(agentChatRouteLifecycle.renders).toBe(rendersAfterHiding)
+    expect(agentChatRoute).toHaveAttribute('data-project-id', baseProps.projectId)
   })
 
   it('keeps the text editor mounted while switching files so per-file view positions survive', async () => {
@@ -627,6 +626,7 @@ function modeRouterProps(
     onActivateTab: vi.fn(),
     onCloseTab: vi.fn(),
     onToggleTabPin: vi.fn(),
+    onMoveTab: vi.fn(),
     onOpenLoreTab: vi.fn(async () => true),
     onSaveCurrentFile: vi.fn(),
     onEditorFlushHandlerChange: vi.fn(),

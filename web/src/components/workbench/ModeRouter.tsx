@@ -158,6 +158,7 @@ interface ModeRouterProps {
   onActivateTab: (tab: Tab) => void
   onCloseTab: (tab: Tab) => void
   onToggleTabPin: (tab: Tab) => void
+  onMoveTab: (sourceKey: string, targetKey: string) => void
   onOpenLoreTab: () => Promise<boolean>
   onSaveCurrentFile: (path: string, content: string, baseRevision: string) => Promise<{ revision?: string }>
   onEditorFlushHandlerChange: (handler: EditorFlushHandler | null) => void
@@ -267,6 +268,7 @@ export function ModeRouter(props: ModeRouterProps) {
     onActivateTab,
     onCloseTab,
     onToggleTabPin,
+    onMoveTab,
     onOpenLoreTab,
     onSaveCurrentFile,
     onEditorFlushHandlerChange,
@@ -549,6 +551,7 @@ export function ModeRouter(props: ModeRouterProps) {
     onShowAgent: showAgent,
   })
   const documentReview = useDocumentReview({
+    projectId,
     workspace,
     // AgentChat owns its own conversation surface. Creating a comment there must not reveal
     // the hidden foreground Writing Agent panel.
@@ -804,7 +807,7 @@ export function ModeRouter(props: ModeRouterProps) {
           <div className="h-full overflow-y-auto px-2 py-4 text-center text-[var(--nova-text-muted)]">{t('router.loading')}</div>
         ) : sidebarView === 'outline' ? (
           <StableChapterOutline
-            workspace={workspace}
+            projectId={projectId}
             tree={tree}
             chapters={chapters}
             ideas={summary?.ideas}
@@ -886,11 +889,13 @@ export function ModeRouter(props: ModeRouterProps) {
               onActivateTab={onActivateTab}
               onCloseTab={onCloseTab}
               onTogglePin={onToggleTabPin}
+              onMoveTab={onMoveTab}
             />
             <div className="flex min-h-0 flex-1 flex-col">
               {activeTab ? (
                 activeTab.kind === 'lore' ? (
                   <LoreWorkspaceTab
+                    projectId={projectId}
                     workspace={workspace}
                     documentReview={documentReviewController}
                     navigationIntent={documentReviewNavigationTarget?.target.kind === 'lore_item' ? documentReviewNavigationTarget : null}
@@ -899,9 +904,10 @@ export function ModeRouter(props: ModeRouterProps) {
                     onReferenceItem={referenceLoreFromWorkspace}
                   />
                 ) : activeFileKind === 'image' || activeFileKind === 'json' || activeFileKind === 'jsonl' ? (
-                  <StableFilePreview path={selectedFile || activeTab.path} content={fileContent} revision={fileRevision} />
+                  <StableFilePreview projectId={projectId} path={selectedFile || activeTab.path} content={fileContent} revision={fileRevision} />
                 ) : (
                   <StableMarkdownEditor
+                    projectId={projectId}
                     workspace={workspace}
                     fileName={selectedFile}
                     content={fileContent}
@@ -947,6 +953,7 @@ export function ModeRouter(props: ModeRouterProps) {
       {renderedRoutes.has('interactive') && (
         <MainRouteLayer visible={presentedMainRoute === 'interactive'} loadingLabel={t('router.loading')}>
           <InteractiveLayout
+            projectId={projectId}
             workspace={workspace}
             active={presentedMainRoute === 'interactive'}
             recentNarrativeStyleID={composerSettings.values.interactive_story_teller_id}
@@ -976,6 +983,7 @@ export function ModeRouter(props: ModeRouterProps) {
         <MainRouteLayer visible={presentedMainRoute === 'ide-lore'} loadingLabel={t('router.loading')}>
           <SettingPanel
             mode="lore"
+            projectId={projectId}
             workspace={workspace}
             onClose={closeIdeWorkspacePanel}
             onFlushHandlerChange={handleLoreLibraryFlushHandlerChange}
@@ -984,7 +992,7 @@ export function ModeRouter(props: ModeRouterProps) {
       )}
       {renderedRoutes.has('ide-teller') && (
         <MainRouteLayer visible={presentedMainRoute === 'ide-teller'} loadingLabel={t('router.loading')}>
-          <SettingPanel mode="teller" workspace={workspace} presetUsageMode="writing" tellers={tellers} imagePresets={imagePresets} onTellersChange={setTellers} onImagePresetsChange={setImagePresets} onClose={closeIdeWorkspacePanel} />
+          <SettingPanel projectId={projectId} mode="teller" workspace={workspace} presetUsageMode="writing" tellers={tellers} imagePresets={imagePresets} onTellersChange={setTellers} onImagePresetsChange={setImagePresets} onClose={closeIdeWorkspacePanel} />
         </MainRouteLayer>
       )}
 
@@ -1025,25 +1033,14 @@ export function ModeRouter(props: ModeRouterProps) {
           retentionKey={workspace}
         >
           <AgentChatRoute
-            workspace={workspace}
+            projectId={projectId}
             composerSettings={composerSettings}
-            tree={tree}
-            summary={summary}
-            selectedFile={selectedFile}
             tellers={tellers}
             imagePresets={imagePresets}
             autoSaveEnabled={editorAutoSaveEnabled}
             autoSaveDelayMs={editorAutoSaveDelayMs}
-            documentReview={documentReviewController}
-            documentReviewFeedback={documentReview.feedback}
-            onDocumentReviewFeedbackRemove={removeActiveReviewFeedback}
-            onDocumentReviewFeedbackSubmitted={submitActiveReviewFeedback}
-            onDocumentReviewFeedbackSubmissionFailed={restoreActiveReviewFeedback}
             onTellersChange={setTellers}
             onImagePresetsChange={setImagePresets}
-            onSetChapterConfirmed={onSetChapterConfirmed}
-            onSaveFile={onSaveCurrentFile}
-            onActivateWorkspace={quickSwitchBook}
             onFlushHandlerChange={handleAgentChatFlushHandlerChange}
             onWorkspaceChanged={onWorkspaceChanged}
           />

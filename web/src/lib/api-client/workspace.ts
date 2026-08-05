@@ -4,7 +4,6 @@ import type {
   CharacterCardPreview,
   WorkspaceReplaceResult,
   WorkspaceSearchResult,
-  WorkspaceSummary,
 } from './types'
 
 export const MISSING_WORKSPACE_REVISION = 'missing'
@@ -19,28 +18,6 @@ export async function switchWorkspace(path: string): Promise<{ workspace: string
 
 export async function getCurrentWorkspace(): Promise<{ workspace: string; project_id: string; has_state: boolean }> {
   return requestJSON('/api/workspace/current')
-}
-
-export async function getWorkspaceSummary(): Promise<WorkspaceSummary> {
-  const summary = await requestJSON<WorkspaceSummary>('/api/workspace/summary')
-  return {
-    ...summary,
-    chapters: Array.isArray(summary.chapters) ? summary.chapters : [],
-    chapter_plans: Array.isArray(summary.chapter_plans) ? summary.chapter_plans : [],
-  }
-}
-
-export async function setChapterConfirmed(path: string, confirmed: boolean): Promise<{ path: string; confirmed: boolean; message: string }> {
-  return requestJSON('/api/workspace/chapter-status', {
-    method: 'PATCH',
-    headers: jsonHeaders,
-    body: JSON.stringify({ path, confirmed }),
-  })
-}
-
-export async function getWorkspaceTree(): Promise<unknown[]> {
-  const data = await requestJSON<unknown[]>('/api/workspace/tree')
-  return Array.isArray(data) ? data : []
 }
 
 export interface WorkspaceFileDocument {

@@ -11,7 +11,7 @@ describe('BookSettingsShortcuts', () => {
     const onOpenLoreTab = vi.fn()
     render(
       <BookSettingsShortcuts
-        workspace="/books/demo"
+        projectId="project-demo"
         tree={[
           { name: 'CREATOR.md', type: 'file' },
           { name: 'setting', type: 'dir', children: [
@@ -50,14 +50,14 @@ describe('BookSettingsShortcuts', () => {
     await user.click(screen.getByRole('button', { name: 'Pin 人物关系' }))
 
     expect(screen.getByRole('button', { name: '人物关系' })).toBeInTheDocument()
-    expect(JSON.parse(window.localStorage.getItem('nova.outline.pinned-settings:/books/demo') || '{}').paths).toContain('setting/人物关系.md')
+    expect(JSON.parse(window.localStorage.getItem('nova.outline.pinned-settings:project-demo') || '{}').paths).toContain('setting/人物关系.md')
   })
 
   it('按工作区恢复用户的 Pin 顺序', () => {
-    window.localStorage.setItem('nova.outline.pinned-settings:/books/demo', JSON.stringify(['ideas.md', 'CREATOR.md']))
+    window.localStorage.setItem('nova.outline.pinned-settings:project-demo', JSON.stringify(['ideas.md', 'CREATOR.md']))
     render(
       <BookSettingsShortcuts
-        workspace="/books/demo"
+        projectId="project-demo"
         tree={[]}
         chapterPlans={[]}
         selectedFile={null}
@@ -71,8 +71,8 @@ describe('BookSettingsShortcuts', () => {
   })
 
   it('把旧版未自定义的默认三项迁移为包含设定工作区的新默认项', () => {
-    window.localStorage.setItem('nova.outline.pinned-settings:/books/demo', JSON.stringify(['setting/outline.md', 'CREATOR.md', 'setting/progress.md']))
-    render(<BookSettingsShortcuts workspace="/books/demo" tree={[]} chapterPlans={[]} selectedFile={null} headerPinned onSelectFile={vi.fn()} onToggleHeaderPinned={vi.fn()} />)
+    window.localStorage.setItem('nova.outline.pinned-settings:project-demo', JSON.stringify(['setting/outline.md', 'CREATOR.md', 'setting/progress.md']))
+    render(<BookSettingsShortcuts projectId="project-demo" tree={[]} chapterPlans={[]} selectedFile={null} headerPinned onSelectFile={vi.fn()} onToggleHeaderPinned={vi.fn()} />)
 
     expect(screen.getByRole('button', { name: /^灵感尚未创建/ })).toBeInTheDocument()
     expect(screen.getByRole('button', { name: '设定' })).toBeInTheDocument()
@@ -85,7 +85,7 @@ describe('BookSettingsShortcuts', () => {
     const onRequestCreate = vi.fn()
     render(
       <BookSettingsShortcuts
-        workspace="/books/demo"
+        projectId="project-demo"
         tree={[{ name: 'CREATOR.md', type: 'file' }]}
         chapterPlans={[]}
         selectedFile={null}
@@ -118,7 +118,7 @@ describe('BookSettingsShortcuts', () => {
     const user = userEvent.setup()
     render(
       <BookSettingsShortcuts
-        workspace="/books/demo"
+        projectId="project-demo"
         tree={[{ name: 'CREATOR.md', type: 'file' }]}
         chapterPlans={[]}
         selectedFile={null}
@@ -145,7 +145,7 @@ describe('BookSettingsShortcuts', () => {
     ]
     const { rerender } = render(
       <BookSettingsShortcuts
-        workspace="/books/demo"
+        projectId="project-demo"
         tree={[]}
         chapterPlans={firstPlans}
         selectedFile={null}
@@ -160,7 +160,7 @@ describe('BookSettingsShortcuts', () => {
     expect(screen.getByText('setting/chapter-plans/group-2.md')).toBeInTheDocument()
     await user.click(screen.getByRole('button', { name: 'Pin 当前细纲' }))
     expect(within(screen.getByTestId('book-setting-shortcuts')).getByRole('button', { name: '当前细纲' })).toBeInTheDocument()
-    expect(JSON.parse(window.localStorage.getItem('nova.outline.pinned-settings:/books/demo') || '{}').paths).toContain('@current-chapter-plan')
+    expect(JSON.parse(window.localStorage.getItem('nova.outline.pinned-settings:project-demo') || '{}').paths).toContain('@current-chapter-plan')
 
     const latestPlans = [
       ...firstPlans,
@@ -168,7 +168,7 @@ describe('BookSettingsShortcuts', () => {
     ]
     rerender(
       <BookSettingsShortcuts
-        workspace="/books/demo"
+        projectId="project-demo"
         tree={[]}
         chapterPlans={latestPlans}
         selectedFile={null}
@@ -187,7 +187,7 @@ describe('BookSettingsShortcuts', () => {
     const onReferenceFile = vi.fn()
     render(
       <BookSettingsShortcuts
-        workspace="/books/demo"
+        projectId="project-demo"
         tree={[{ name: 'CREATOR.md', type: 'file' }]}
         chapterPlans={[]}
         selectedFile={null}

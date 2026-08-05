@@ -12,6 +12,7 @@ var pngSignature = []byte{0x89, 'P', 'N', 'G', '\r', '\n', 0x1a, '\n'}
 
 // ImportResult 描述酒馆角色卡导入结果。
 type ImportResult struct {
+	ProjectID            string              `json:"project_id,omitempty"`
 	Name                 string              `json:"name"`
 	TargetPath           string              `json:"target_path"`
 	EntryCount           int                 `json:"entry_count"`
