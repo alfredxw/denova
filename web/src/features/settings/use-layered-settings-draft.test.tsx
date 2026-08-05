@@ -3,11 +3,18 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { APIError } from '@/lib/api-client'
 import { preserveAutosaveConflict } from '@/lib/api-client/autosave-conflicts'
 import type { LayeredSettings, Settings, SettingsLayer } from './types'
-import { useLayeredSettingsDraft } from './use-layered-settings-draft'
+import { projectSettingsTarget } from './api'
+import { useLayeredSettingsDraft as useProjectLayeredSettingsDraft } from './use-layered-settings-draft'
 
 vi.mock('@/lib/api-client/autosave-conflicts', () => ({
   preserveAutosaveConflict: vi.fn(async () => ({ id: 'conflict-1', path: '/conflicts/conflict-1.json', storage: 'server' as const })),
 }))
+
+function useLayeredSettingsDraft(
+  options: Omit<Parameters<typeof useProjectLayeredSettingsDraft>[0], 'target'>,
+) {
+  return useProjectLayeredSettingsDraft({ ...options, target: projectSettingsTarget('project-settings') })
+}
 
 describe('useLayeredSettingsDraft', () => {
   beforeEach(() => {
@@ -59,7 +66,7 @@ describe('useLayeredSettingsDraft', () => {
 
     await waitFor(() => expect(result.current.draft).toEqual({ theme: 'dark' }))
 
-    act(() => result.current.notifyUpdated())
+    act(() => result.current.notifyUpdated('user'))
     expect(loadSettings).toHaveBeenCalledTimes(1)
 
     act(() => window.dispatchEvent(new CustomEvent('nova:settings-updated', { detail: { source: 'another-view' } })))

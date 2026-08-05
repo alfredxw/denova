@@ -1,8 +1,8 @@
 import { useEffect, useMemo } from 'react'
 import { useQuery, type QueryClient } from '@tanstack/react-query'
-import { fetchSettings, refreshSettings } from '@/features/settings/api'
+import { fetchProjectSettings } from '@/features/settings/api'
 import type { LayeredSettings } from '@/features/settings/types'
-import { getSkills } from '@/lib/api'
+import { getSkills, projectSkillTarget } from '@/lib/api'
 import type { SkillSnapshot } from '@/lib/api'
 import { queryClient } from '@/lib/query-client'
 
@@ -13,16 +13,16 @@ interface AgentSkillCatalog {
 
 type AgentSkillCatalogSubscription = {
   consumers: number
-  onSkillsUpdated: () => void
-  onSettingsUpdated: () => void
+  onSkillsUpdated: (event: Event) => void
+  onSettingsUpdated: (event: Event) => void
 }
 
 export const agentSkillCatalogKeys = {
   all: ['agent-skill-catalog'] as const,
   skills: () => [...agentSkillCatalogKeys.all, 'skills'] as const,
-  skillsForWorkspace: (workspace: string) => [...agentSkillCatalogKeys.skills(), workspace] as const,
+  skillsForProject: (projectId: string) => [...agentSkillCatalogKeys.skills(), projectId] as const,
   settings: () => [...agentSkillCatalogKeys.all, 'settings'] as const,
-  settingsForWorkspace: (workspace: string) => [...agentSkillCatalogKeys.settings(), workspace] as const,
+  settingsForProject: (projectId: string) => [...agentSkillCatalogKeys.settings(), projectId] as const,
 }
 
 const subscriptions = new WeakMap<QueryClient, AgentSkillCatalogSubscription>()
@@ -32,21 +32,21 @@ const subscriptions = new WeakMap<QueryClient, AgentSkillCatalogSubscription>()
  *
  * A workbench can keep several conversations mounted, and each conversation
  * consumes this catalog in more than one place. React Query owns one request
- * per workspace while this module owns one pair of global invalidation
+ * per Project while this module owns one pair of global invalidation
  * listeners per QueryClient, preventing a global event from creating an
  * N-conversation request fan-out.
  */
-export function useAgentSkillCatalog(workspace?: string, enabled = true) {
-  const scope = workspace?.trim() || ''
+export function useAgentSkillCatalog(projectId: string, enabled = true) {
+  const scope = projectId.trim()
   const skills = useQuery({
-    queryKey: agentSkillCatalogKeys.skillsForWorkspace(scope),
-    queryFn: getSkills,
-    enabled,
+    queryKey: agentSkillCatalogKeys.skillsForProject(scope),
+    queryFn: () => getSkills(projectSkillTarget(scope)),
+    enabled: enabled && Boolean(scope),
   }, queryClient)
   const settings = useQuery({
-    queryKey: agentSkillCatalogKeys.settingsForWorkspace(scope),
-    queryFn: fetchSettings,
-    enabled,
+    queryKey: agentSkillCatalogKeys.settingsForProject(scope),
+    queryFn: () => fetchProjectSettings(scope),
+    enabled: enabled && Boolean(scope),
   }, queryClient)
 
   useEffect(() => {
@@ -54,8 +54,8 @@ export function useAgentSkillCatalog(workspace?: string, enabled = true) {
     return subscribeAgentSkillCatalogEvents(queryClient)
   }, [enabled])
   const data = useMemo<AgentSkillCatalog | undefined>(
-    () => enabled && skills.data && settings.data ? { skills: skills.data, settings: settings.data } : undefined,
-    [enabled, settings.data, skills.data],
+    () => enabled && scope && skills.data && settings.data ? { skills: skills.data, settings: settings.data } : undefined,
+    [enabled, scope, settings.data, skills.data],
   )
   return { data }
 }
@@ -69,14 +69,22 @@ function subscribeAgentSkillCatalogEvents(queryClient: QueryClient) {
 
   const subscription: AgentSkillCatalogSubscription = {
     consumers: 1,
-    onSkillsUpdated: () => {
-      void queryClient.invalidateQueries({ queryKey: agentSkillCatalogKeys.skills() })
+    onSkillsUpdated: (event) => {
+      const targetKey = (event as CustomEvent<{ targetKey?: string }>).detail?.targetKey
+      const projectId = targetKey?.startsWith('project:') ? targetKey.slice('project:'.length) : ''
+      void queryClient.invalidateQueries({
+        queryKey: projectId
+          ? agentSkillCatalogKeys.skillsForProject(projectId)
+          : agentSkillCatalogKeys.skills(),
+      })
     },
-    onSettingsUpdated: () => {
-      void refreshSettings().then(
-        (snapshot) => { queryClient.setQueriesData({ queryKey: agentSkillCatalogKeys.settings() }, snapshot) },
-        () => { void queryClient.invalidateQueries({ queryKey: agentSkillCatalogKeys.settings() }) },
-      )
+    onSettingsUpdated: (event) => {
+      const projectId = (event as CustomEvent<{ projectId?: string }>).detail?.projectId?.trim()
+      void queryClient.invalidateQueries({
+        queryKey: projectId
+          ? agentSkillCatalogKeys.settingsForProject(projectId)
+          : agentSkillCatalogKeys.settings(),
+      })
     },
   }
   subscriptions.set(queryClient, subscription)

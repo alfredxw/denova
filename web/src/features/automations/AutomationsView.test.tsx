@@ -4,7 +4,12 @@ import { http, HttpResponse } from 'msw'
 import { describe, expect, it } from 'vitest'
 import i18n from '@/i18n'
 import { server } from '@/test/msw/server'
-import { AutomationsView } from './AutomationsView'
+import { AutomationsView as ProjectAutomationsView } from './AutomationsView'
+
+function AutomationsView({ workspace }: { workspace: string }) {
+  const name = workspace.split('/').filter(Boolean).at(-1) || 'current'
+  return <ProjectAutomationsView projectId={`workspace-${name}`} workspace={workspace} />
+}
 
 const taskBase = {
   enabled: true,
@@ -40,12 +45,12 @@ describe('AutomationsView', () => {
     const user = userEvent.setup()
     server.use(
       http.get('/api/books', () => HttpResponse.json({ books: [
-        { name: 'Book A', path: '/books/a', author: '', last_opened_at: '' },
-        { name: 'Book B', path: '/books/b', author: '', last_opened_at: '' },
+        { project_id: 'workspace-a', name: 'Book A', path: '/books/a', author: '', last_opened_at: '' },
+        { project_id: 'workspace-b', name: 'Book B', path: '/books/b', author: '', last_opened_at: '' },
       ] })),
       http.get('/api/automations', () => HttpResponse.json({ tasks: [
-        { ...taskBase, id: 'same', catalog_id: 'workspace-a:same', scope: 'workspace', name: 'Review A', target: { kind: 'workspace', workspace: '/books/a', workspace_id: 'workspace-a' } },
-        { ...taskBase, id: 'same', catalog_id: 'workspace-b:same', scope: 'workspace', name: 'Review B', target: { kind: 'workspace', workspace: '/books/b', workspace_id: 'workspace-b' } },
+        { ...taskBase, id: 'same', catalog_id: 'workspace-a:same', scope: 'workspace', name: 'Review A', target: { kind: 'workspace', workspace: '/books/a', project_id: 'workspace-a' } },
+        { ...taskBase, id: 'same', catalog_id: 'workspace-b:same', scope: 'workspace', name: 'Review B', target: { kind: 'workspace', workspace: '/books/b', project_id: 'workspace-b' } },
         { ...taskBase, id: 'global', catalog_id: 'global', scope: 'user', name: 'Global research', target: { kind: 'user' } },
       ] })),
       http.get('/api/automations/templates', () => HttpResponse.json({ templates: [reviewTemplate] })),
@@ -80,7 +85,7 @@ describe('AutomationsView', () => {
     let createdTask: Record<string, unknown> | null = null
     server.use(
       http.get('/api/books', () => HttpResponse.json({ books: [
-        { name: 'Book A', path: '/books/a', author: '', last_opened_at: '' },
+        { project_id: 'workspace-a', name: 'Book A', path: '/books/a', author: '', last_opened_at: '' },
       ] })),
       http.get('/api/automations', () => HttpResponse.json({ tasks: [] })),
       http.get('/api/automations/templates', () => HttpResponse.json({ templates: [reviewTemplate] })),
@@ -125,7 +130,7 @@ describe('AutomationsView', () => {
     const createGate = deferred<void>()
     let submitted: Record<string, unknown> | null = null
     server.use(
-      http.get('/api/books', () => HttpResponse.json({ books: [{ name: 'Book A', path: '/books/a', author: '', last_opened_at: '' }] })),
+      http.get('/api/books', () => HttpResponse.json({ books: [{ project_id: 'workspace-a', name: 'Book A', path: '/books/a', author: '', last_opened_at: '' }] })),
       http.get('/api/automations', () => HttpResponse.json({ tasks: [] })),
       http.get('/api/automations/templates', () => HttpResponse.json({ templates: [reviewTemplate] })),
       http.get('/api/automations/inbox', () => HttpResponse.json({ items: [] })),
@@ -165,13 +170,13 @@ describe('AutomationsView', () => {
       revision: 'rev-1',
       scope: 'workspace',
       name: 'Review',
-      target: { kind: 'workspace', workspace: '/books/a', workspace_id: 'workspace-a' },
+      target: { kind: 'workspace', workspace: '/books/a', project_id: 'workspace-a' },
       trigger_state: { schedule: { last_checked_at: 'today' } },
       last_run: { id: 'run-1' },
       recent_runs: [{ id: 'run-1' }],
     }
     server.use(
-      http.get('/api/books', () => HttpResponse.json({ books: [{ name: 'Book A', path: '/books/a', author: '', last_opened_at: '' }] })),
+      http.get('/api/books', () => HttpResponse.json({ books: [{ project_id: 'workspace-a', name: 'Book A', path: '/books/a', author: '', last_opened_at: '' }] })),
       http.get('/api/automations', () => HttpResponse.json({ tasks: [existing] })),
       http.get('/api/automations/templates', () => HttpResponse.json({ templates: [] })),
       http.get('/api/automations/inbox', () => HttpResponse.json({ items: [] })),
@@ -208,14 +213,14 @@ describe('AutomationsView', () => {
       scope: 'workspace',
       name: 'Review',
       prompt: 'original prompt',
-      target: { kind: 'workspace', workspace: '/books/a', workspace_id: 'workspace-a' },
+      target: { kind: 'workspace', workspace: '/books/a', project_id: 'workspace-a' },
     }
     const external = { ...baseline, revision: 'rev-2', name: 'Agent review', prompt: 'agent prompt' }
     let listRequests = 0
     const patchBodies: Record<string, unknown>[] = []
     let archived: Record<string, unknown> | null = null
     server.use(
-      http.get('/api/books', () => HttpResponse.json({ books: [{ name: 'Book A', path: '/books/a', author: '', last_opened_at: '' }] })),
+      http.get('/api/books', () => HttpResponse.json({ books: [{ project_id: 'workspace-a', name: 'Book A', path: '/books/a', author: '', last_opened_at: '' }] })),
       http.get('/api/automations', () => {
         listRequests += 1
         return HttpResponse.json({ tasks: [listRequests === 1 ? baseline : external] })
@@ -266,10 +271,10 @@ describe('AutomationsView', () => {
       catalog_id: 'workspace-a:review',
       scope: 'workspace',
       name: 'Review',
-      target: { kind: 'workspace', workspace: '/books/a', workspace_id: 'workspace-a' },
+      target: { kind: 'workspace', workspace: '/books/a', project_id: 'workspace-a' },
     }
     server.use(
-      http.get('/api/books', () => HttpResponse.json({ books: [{ name: 'Book A', path: '/books/a', author: '', last_opened_at: '' }] })),
+      http.get('/api/books', () => HttpResponse.json({ books: [{ project_id: 'workspace-a', name: 'Book A', path: '/books/a', author: '', last_opened_at: '' }] })),
       http.get('/api/automations', () => HttpResponse.json({ tasks: [existing] })),
       http.get('/api/automations/templates', () => HttpResponse.json({ templates: [] })),
       http.get('/api/automations/inbox', () => HttpResponse.json({ items: [] })),
@@ -304,8 +309,8 @@ describe('AutomationsView', () => {
     let automationRequests = 0
     server.use(
       http.get('/api/books', () => HttpResponse.json({ books: [
-        { name: 'Book A', path: '/books/a', author: '', last_opened_at: '' },
-        { name: 'Book B', path: '/books/b', author: '', last_opened_at: '' },
+        { project_id: 'workspace-a', name: 'Book A', path: '/books/a', author: '', last_opened_at: '' },
+        { project_id: 'workspace-b', name: 'Book B', path: '/books/b', author: '', last_opened_at: '' },
       ] })),
       http.get('/api/automations', async () => {
         automationRequests += 1
@@ -318,7 +323,7 @@ describe('AutomationsView', () => {
           catalog_id: 'workspace-b:workspace-b',
           scope: 'workspace',
           name: 'Newest workspace task',
-          target: { kind: 'workspace', workspace: '/books/b', workspace_id: 'workspace-b' },
+          target: { kind: 'workspace', workspace: '/books/b', project_id: 'workspace-b' },
         }] })
       }),
       http.get('/api/automations/templates', () => HttpResponse.json({ templates: [] })),
@@ -338,7 +343,7 @@ describe('AutomationsView', () => {
         catalog_id: 'workspace-a:workspace-a',
         scope: 'workspace',
         name: 'Stale workspace task',
-        target: { kind: 'workspace', workspace: '/books/a', workspace_id: 'workspace-a' },
+        target: { kind: 'workspace', workspace: '/books/a', project_id: 'workspace-a' },
       }])
       await firstLoad.promise
       await Promise.resolve()
@@ -355,7 +360,7 @@ describe('AutomationsView', () => {
     let activeRunResponses = 0
     server.use(
       http.get('/api/books', () => HttpResponse.json({ books: [
-        { name: 'Book A', path: '/books/a', author: '', last_opened_at: '' },
+        { project_id: 'workspace-a', name: 'Book A', path: '/books/a', author: '', last_opened_at: '' },
       ] })),
       http.get('/api/automations', () => {
         automationRequests += 1
@@ -366,7 +371,7 @@ describe('AutomationsView', () => {
           scope: 'workspace',
           name: 'Server task name',
           prompt: automationRequests === 1 ? 'Initial server prompt' : 'Externally updated prompt',
-          target: { kind: 'workspace', workspace: '/books/a', workspace_id: 'workspace-a' },
+          target: { kind: 'workspace', workspace: '/books/a', project_id: 'workspace-a' },
         }] })
       }),
       http.get('/api/automations/templates', () => HttpResponse.json({ templates: [] })),
@@ -420,7 +425,7 @@ describe('AutomationsView', () => {
     const user = userEvent.setup()
     let automationRequests = 0
     server.use(
-      http.get('/api/books', () => HttpResponse.json({ books: [{ name: 'Book A', path: '/books/a', author: '', last_opened_at: '' }] })),
+      http.get('/api/books', () => HttpResponse.json({ books: [{ project_id: 'workspace-a', name: 'Book A', path: '/books/a', author: '', last_opened_at: '' }] })),
       http.get('/api/automations', () => {
         automationRequests += 1
         return HttpResponse.json({ tasks: [{
@@ -431,7 +436,7 @@ describe('AutomationsView', () => {
           scope: 'workspace',
           name: 'Server name',
           prompt: automationRequests === 1 ? 'Initial prompt' : 'Agent prompt',
-          target: { kind: 'workspace', workspace: '/books/a', workspace_id: 'workspace-a' },
+          target: { kind: 'workspace', workspace: '/books/a', project_id: 'workspace-a' },
         }] })
       }),
       http.get('/api/automations/templates', () => HttpResponse.json({ templates: [] })),
@@ -446,7 +451,7 @@ describe('AutomationsView', () => {
 
     act(() => {
       window.dispatchEvent(new CustomEvent('nova:workspace-change', {
-        detail: { workspace: '/books/a', paths: ['.nova/automations/tasks.json'] },
+        detail: { project_id: 'workspace-a', workspace: '/books/a', paths: ['.nova/automations/tasks.json'] },
       }))
     })
 
@@ -463,7 +468,7 @@ describe('AutomationsView', () => {
     let automationRequests = 0
     server.use(
       http.get('/api/books', () => HttpResponse.json({ books: [
-        { name: 'Book A', path: '/books/a', author: '', last_opened_at: '' },
+        { project_id: 'workspace-a', name: 'Book A', path: '/books/a', author: '', last_opened_at: '' },
       ] })),
       http.get('/api/automations', () => {
         automationRequests += 1
@@ -475,7 +480,7 @@ describe('AutomationsView', () => {
           scope: 'workspace',
           name: automationRequests === 1 ? 'Server name' : 'Agent name',
           prompt: automationRequests === 1 ? 'Initial prompt' : 'Agent prompt',
-          target: { kind: 'workspace', workspace: '/books/a', workspace_id: 'workspace-a' },
+          target: { kind: 'workspace', workspace: '/books/a', project_id: 'workspace-a' },
         }] })
       }),
       http.get('/api/automations/templates', () => HttpResponse.json({ templates: [] })),
@@ -488,7 +493,7 @@ describe('AutomationsView', () => {
       }),
       http.patch('/api/automations/:id', async ({ request }) => {
         const body = await request.json() as Record<string, unknown>
-        return HttpResponse.json({ ...body, id: 'archive-race', catalog_id: 'workspace-a:archive-race', revision: 'rev-3', scope: 'workspace', target: { kind: 'workspace', workspace: '/books/a', workspace_id: 'workspace-a' }, recent_runs: [] })
+        return HttpResponse.json({ ...body, id: 'archive-race', catalog_id: 'workspace-a:archive-race', revision: 'rev-3', scope: 'workspace', target: { kind: 'workspace', workspace: '/books/a', project_id: 'workspace-a' }, recent_runs: [] })
       }),
     )
 

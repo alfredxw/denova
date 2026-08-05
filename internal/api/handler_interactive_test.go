@@ -686,14 +686,30 @@ func TestInteractiveDisabledStoryDirectorModulesAPI(t *testing.T) {
 	}
 }
 
-func TestPresetUpdateRejectsStaleWorkspaceIdentity(t *testing.T) {
+func TestGlobalPresetUpdateDoesNotUseWorkspaceIdentity(t *testing.T) {
 	application := newTestApplication(t)
 	server := NewServer(application, "0")
-	resp := performJSONRequest(t, server, http.MethodPatch, "/api/actor-states/default", map[string]any{
-		"workspace": filepath.Join(t.TempDir(), "different-workspace"),
+	current, err := application.ResourceCatalog().ActorState("default")
+	if err != nil {
+		t.Fatal(err)
+	}
+	foreignWorkspace := filepath.Join(t.TempDir(), "different-workspace")
+	resp := performJSONRequest(t, server, http.MethodPatch, "/api/actor-states/default", struct {
+		interactive.ActorStateModule
+		BaseRevision string `json:"base_revision"`
+		Workspace    string `json:"workspace"`
+	}{
+		ActorStateModule: current,
+		BaseRevision:     current.Revision,
+		Workspace:        foreignWorkspace,
 	})
-	if resp.Code != http.StatusConflict {
-		t.Fatalf("stale workspace update status=%d body=%s", resp.Code, resp.Body.String())
+	if resp.Code != http.StatusOK {
+		t.Fatalf("global preset update status=%d body=%s", resp.Code, resp.Body.String())
+	}
+	var updated interactive.ActorStateModule
+	decodeResponse(t, resp.Body.Bytes(), &updated)
+	if strings.Contains(updated.Path, foreignWorkspace) {
+		t.Fatalf("global preset path must not be derived from workspace metadata: %#v", updated)
 	}
 }
 

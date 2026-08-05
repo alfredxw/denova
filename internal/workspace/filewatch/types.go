@@ -19,6 +19,7 @@ type Change struct {
 // Event is an ephemeral synchronization hint. Callers must re-read canonical
 // workspace state; events are intentionally not a durable change journal.
 type Event struct {
+	ProjectID string   `json:"project_id"`
 	Workspace string   `json:"workspace"`
 	Source    string   `json:"source"`
 	Changes   []Change `json:"changes,omitempty"`

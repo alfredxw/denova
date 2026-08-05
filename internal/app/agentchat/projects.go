@@ -49,37 +49,6 @@ func (service *Service) RenameProject(id, name string) (projectdomain.Record, er
 	return service.registry.Rename(id, name)
 }
 
-// ArchiveProject closes all project-scoped runtime bindings before hiding the
-// project from the active catalog.
-func (service *Service) ArchiveProject(id string) (projectdomain.Record, error) {
-	if service == nil || service.registry == nil {
-		return projectdomain.Record{}, fmt.Errorf("project registry is unavailable")
-	}
-	if err := service.CloseProject(context.Background(), id); err != nil {
-		return projectdomain.Record{}, err
-	}
-	return service.registry.Archive(id)
-}
-
-// RelinkProject fences the old runtime before changing the content directory
-// behind a stable project identity.
-func (service *Service) RelinkProject(id, path string) (projectdomain.Record, error) {
-	if service == nil || service.registry == nil {
-		return projectdomain.Record{}, fmt.Errorf("project registry is unavailable")
-	}
-	if err := service.CloseProject(context.Background(), id); err != nil {
-		return projectdomain.Record{}, err
-	}
-	record, err := service.registry.Relink(id, path)
-	if err != nil {
-		return projectdomain.Record{}, err
-	}
-	if _, err := service.registry.EnsureState(record); err != nil {
-		return projectdomain.Record{}, err
-	}
-	return record, nil
-}
-
 func (service *Service) ReorderProjects(ids []string) error {
 	if service == nil || service.registry == nil {
 		return fmt.Errorf("project registry is unavailable")

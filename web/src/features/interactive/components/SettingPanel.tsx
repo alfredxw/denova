@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { BookMarked, Bot, Database, Image as ImageIcon, Images, Search, SlidersHorizontal, Sparkles, Tags, Trash2 } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import { toast } from 'sonner'
-import { abortLoreImagesGenerate, APIError, clearLoreItemImage, createProjectLoreItem, deleteProjectLoreItem, generateLoreItemImage, getProjectLoreItems, readFile, streamLoreImagesGenerate, workspaceAssetURL, type LoreImageProgressEvent, type LoreItem, type SSEEvent } from '@/lib/api'
+import { abortLoreImagesGenerate, APIError, clearLoreItemImage, createProjectLoreItem, deleteProjectLoreItem, generateLoreItemImage, getProjectLoreItems, projectFileAssetURL, readProjectFile, streamLoreImagesGenerate, type LoreImageProgressEvent, type LoreItem, type SSEEvent } from '@/lib/api'
 import { rebaseJSONValue, rebaseText } from '@/lib/three-way-rebase'
 import { rebaseJSONWithRecovery, rebaseTextWithRecovery } from '@/lib/autosave/rebase-with-recovery'
 import { cn } from '@/lib/utils'
@@ -35,9 +35,12 @@ import { presetActionButtonClassName as actionButtonClassName, presetIconActionC
 import { PresetSettingsPanel } from './setting-panel/PresetSettingsPanel'
 import { loreAutosaveDraft, useLoreItemAutosave, type LoreAutosaveDraft } from '@/features/lore/use-lore-item-autosave'
 import { LORE_UPDATED_EVENT, notifyLoreUpdated, type LoreUpdatedDetail } from '@/features/lore/events'
-import { useWorkspaceFileAutosave } from './setting-panel/use-workspace-file-autosave'
+import { useProjectFileAutosave } from './setting-panel/use-project-file-autosave'
 import { EMPTY_IMAGE_PRESETS, EMPTY_STORY_DIRECTORS, EMPTY_TELLERS } from './setting-panel/presetResources'
 import { firstVisibleLoreItemId, KNOWLEDGE_SECTIONS, sectionItems, type KnowledgeSection, type LoreLoadModeFilter, type LoreType } from '@/features/lore/knowledge-sections'
+import { isProjectChangeForProject, type WorkspaceChangeEvent } from '@/features/changes/types'
+import type { DocumentReviewController, DocumentReviewNavigationIntent } from '@/features/document-review/controller'
+import type { DocumentReviewSnapshot } from '@/components/Editor/documentReviewAnchors'
 
 const CREATOR_PATH = 'CREATOR.md'
 const CREATOR_ENTRY_ID = '__creator__'
@@ -51,7 +54,6 @@ const LORE_TYPE_FILTER_OPTIONS: LoreType[] = ['character', 'world', 'location', 
 interface SettingPanelProps {
   mode?: SettingPanelMode
   projectId: string
-  workspace?: string
   tellers?: Teller[]
   storyDirectors?: StoryDirector[]
   imagePresets?: ImagePreset[]
@@ -59,6 +61,9 @@ interface SettingPanelProps {
   onTellersChange?: (tellers: Teller[]) => void
   onStoryDirectorsChange?: (directors: StoryDirector[]) => void
   onImagePresetsChange?: (presets: ImagePreset[]) => void
+  documentReview?: DocumentReviewController
+  documentReviewNavigationIntent?: DocumentReviewNavigationIntent | null
+  refreshSignal?: number
   embedded?: boolean
   onClose?: () => void
   onFlushHandlerChange?: (handler: (() => Promise<boolean>) | null) => void
@@ -67,7 +72,6 @@ interface SettingPanelProps {
 export function SettingPanel({
   mode,
   projectId,
-  workspace = '',
   tellers = EMPTY_TELLERS,
   storyDirectors = EMPTY_STORY_DIRECTORS,
   imagePresets = EMPTY_IMAGE_PRESETS,
@@ -75,6 +79,9 @@ export function SettingPanel({
   onTellersChange,
   onStoryDirectorsChange,
   onImagePresetsChange,
+  documentReview,
+  documentReviewNavigationIntent,
+  refreshSignal = 0,
   embedded = false,
   onClose,
   onFlushHandlerChange,
@@ -83,7 +90,7 @@ export function SettingPanel({
   if (activeMode === 'teller') {
     return (
       <PresetSettingsPanel
-        workspace={workspace}
+        projectId={projectId}
         tellers={tellers}
         storyDirectors={storyDirectors}
         imagePresets={imagePresets}
@@ -96,24 +103,28 @@ export function SettingPanel({
       />
     )
   }
-  return <LoreSettingPanel mode={activeMode} projectId={projectId} workspace={workspace} imagePresets={imagePresets} onImagePresetsChange={onImagePresetsChange} embedded={embedded} onClose={onClose} onFlushHandlerChange={onFlushHandlerChange} />
+  return <LoreSettingPanel mode={activeMode} projectId={projectId} imagePresets={imagePresets} onImagePresetsChange={onImagePresetsChange} documentReview={documentReview} documentReviewNavigationIntent={documentReviewNavigationIntent} refreshSignal={refreshSignal} embedded={embedded} onClose={onClose} onFlushHandlerChange={onFlushHandlerChange} />
 }
 
 function LoreSettingPanel({
   mode,
   projectId,
-  workspace,
   imagePresets: externalImagePresets,
   onImagePresetsChange,
+  documentReview,
+  documentReviewNavigationIntent,
+  refreshSignal,
   embedded,
   onClose,
   onFlushHandlerChange,
 }: {
   mode: Exclude<SettingPanelMode, 'teller'>
   projectId: string
-  workspace: string
   imagePresets: ImagePreset[]
   onImagePresetsChange?: (presets: ImagePreset[]) => void
+  documentReview?: DocumentReviewController
+  documentReviewNavigationIntent?: DocumentReviewNavigationIntent | null
+  refreshSignal: number
   embedded: boolean
   onClose?: () => void
   onFlushHandlerChange?: (handler: (() => Promise<boolean>) | null) => void
@@ -130,10 +141,10 @@ function LoreSettingPanel({
   const [loadModeFilter, setLoadModeFilter] = useState<LoreLoadModeFilter>('all')
   const [creatorContent, setCreatorContent] = useState('')
   const [creatorRevision, setCreatorRevision] = useState('')
-  const [creatorWorkspace, setCreatorWorkspace] = useState('')
+  const [creatorProjectId, setCreatorProjectId] = useState('')
   const [openingPresets, setOpeningPresets] = useState<BookOpeningPreset[]>([])
   const [openingPresetRevision, setOpeningPresetRevision] = useState('')
-  const [openingPresetWorkspace, setOpeningPresetWorkspace] = useState('')
+  const [openingPresetProjectId, setOpeningPresetProjectId] = useState('')
   const [activeOpeningPresetId, setActiveOpeningPresetId] = useState('')
   const [imagePresets, setImagePresets] = useState<ImagePreset[]>(externalImagePresets)
   const [activeImagePresetId, setActiveImagePresetId] = useState('')
@@ -162,7 +173,13 @@ function LoreSettingPanel({
   const openingPresetBaselineRevisionRef = useRef('')
   const loreRebaseSequenceRef = useRef(0)
   const loreImageBatchAbortRef = useRef<AbortController | null>(null)
+  const refreshSignalRef = useRef(refreshSignal)
   const isCreatorActive = activeMode === 'creator' || (activeMode === 'lore' && activeId === CREATOR_ENTRY_ID)
+  const documentReviewLoreID = useMemo(() => {
+    if (!documentReview || !documentReviewNavigationIntent) return ''
+    const target = documentReview.comments.find((comment) => comment.id === documentReviewNavigationIntent.commentID)?.target
+    return target?.kind === 'lore_item' ? target.id : ''
+  }, [documentReview, documentReviewNavigationIntent])
   creatorContentRef.current = creatorContent
   openingPresetsRef.current = openingPresets
 
@@ -170,6 +187,13 @@ function LoreSettingPanel({
     const item = items.find((entry) => entry.id === activeId)
     return item ? loreAutosaveDraft(item) : null
   }, [activeId, items])
+  const residentLoreBytes = useMemo(() => {
+    const persistedBytes = items
+      .filter((item) => item.id !== draft?.id && item.enabled !== false && item.load_mode === 'resident')
+      .reduce((total, item) => total + UTF8_ENCODER.encode((item.content || '').trim()).length, 0)
+    if (draft?.enabled === false || draft?.load_mode !== 'resident') return persistedBytes
+    return persistedBytes + UTF8_ENCODER.encode((draft.content || '').trim()).length
+  }, [draft, items])
   const loreAutosave = useLoreItemAutosave({
     draft,
     tagDraft,
@@ -199,15 +223,15 @@ function LoreSettingPanel({
     },
   })
 
-  const creatorAutosave = useWorkspaceFileAutosave({
+  const creatorAutosave = useProjectFileAutosave({
+    projectId,
     path: CREATOR_PATH,
     content: creatorContent,
     revision: creatorRevision,
-    fileWorkspace: creatorWorkspace,
+    fileProjectId: creatorProjectId,
     active: isCreatorActive,
-    scopeKey: workspace,
     onSaved: (saved, submitted) => {
-      if (saved.workspace !== workspace) return
+      if (saved.project_id !== projectId) return
       creatorBaselineContentRef.current = saved.content
       creatorBaselineRevisionRef.current = saved.updated_at || ''
       setCreatorContent((current) => current === submitted.content ? saved.content : current)
@@ -219,15 +243,15 @@ function LoreSettingPanel({
     },
   })
 
-  const openingPresetAutosave = useWorkspaceFileAutosave({
+  const openingPresetAutosave = useProjectFileAutosave({
+    projectId,
     path: INTERACTIVE_OPENING_PRESET_PATH,
     content: serializeBookOpeningPresets(openingPresets),
     revision: openingPresetRevision,
-    fileWorkspace: openingPresetWorkspace,
+    fileProjectId: openingPresetProjectId,
     active: activeMode === 'lore' && activeId === INTERACTIVE_OPENING_PRESET_ENTRY_ID,
-    scopeKey: workspace,
     onSaved: (saved, submitted) => {
-      if (saved.workspace !== workspace) return
+      if (saved.project_id !== projectId) return
       openingPresetBaselineContentRef.current = saved.content
       openingPresetBaselineRevisionRef.current = saved.updated_at || ''
       setOpeningPresets((current) => (
@@ -244,44 +268,45 @@ function LoreSettingPanel({
     },
   })
 
-  const reconcileCreatorFile = useCallback(async (file: Awaited<ReturnType<typeof readFile>>) => {
-    if (file.workspace !== workspace) return
+  const reconcileCreatorFile = useCallback(async (file: Awaited<ReturnType<typeof readProjectFile>>) => {
+    if (file.project_id !== projectId) return
+    const fileContent = file.content || ''
     const previousBaseline = creatorBaselineContentRef.current
     const previousRevision = creatorBaselineRevisionRef.current
     const capturedDraft = creatorContentRef.current
     let rebasedContent = await rebaseTextWithRecovery({
-      resource: 'workspace_file',
-      scope: file.workspace,
+      resource: 'project_file',
+      scope: file.project_id,
       id: CREATOR_PATH,
       baseline: { revision: previousRevision, value: previousBaseline },
       local: { revision: previousRevision, value: capturedDraft },
-      external: { revision: file.revision, value: file.content },
+      external: { revision: file.revision, value: fileContent },
     })
     if (creatorContentRef.current !== capturedDraft) {
       rebasedContent = rebaseText(capturedDraft, creatorContentRef.current, rebasedContent)
     }
     creatorAutosave.resetBaseline({
       id: CREATOR_PATH,
-      content: file.content,
-      workspace: file.workspace,
+      content: fileContent,
+      project_id: file.project_id,
       updated_at: file.revision || '',
     })
-    creatorBaselineContentRef.current = file.content
+    creatorBaselineContentRef.current = fileContent
     creatorBaselineRevisionRef.current = file.revision || ''
     setCreatorContent(rebasedContent)
     setCreatorRevision(file.revision || '')
-    setCreatorWorkspace(file.workspace)
-  }, [creatorAutosave.resetBaseline, workspace])
+    setCreatorProjectId(file.project_id)
+  }, [creatorAutosave.resetBaseline, projectId])
 
-  const reconcileOpeningPresetFile = useCallback(async (file: Awaited<ReturnType<typeof readFile>>) => {
-    if (file.workspace !== workspace) return
-    const nextPresets = parseBookOpeningPresets(file.content)
+  const reconcileOpeningPresetFile = useCallback(async (file: Awaited<ReturnType<typeof readProjectFile>>) => {
+    if (file.project_id !== projectId) return
+    const nextPresets = parseBookOpeningPresets(file.content || '')
     const nextContent = serializeBookOpeningPresets(nextPresets)
     const currentContent = serializeBookOpeningPresets(openingPresetsRef.current)
     const previousRevision = openingPresetBaselineRevisionRef.current
     let rebasedContent = await rebaseTextWithRecovery({
-      resource: 'workspace_file',
-      scope: file.workspace,
+      resource: 'project_file',
+      scope: file.project_id,
       id: INTERACTIVE_OPENING_PRESET_PATH,
       baseline: { revision: previousRevision, value: openingPresetBaselineContentRef.current },
       local: { revision: previousRevision, value: currentContent },
@@ -295,20 +320,20 @@ function LoreSettingPanel({
     openingPresetAutosave.resetBaseline({
       id: INTERACTIVE_OPENING_PRESET_PATH,
       content: nextContent,
-      workspace: file.workspace,
+      project_id: file.project_id,
       updated_at: file.revision || '',
     })
     openingPresetBaselineContentRef.current = nextContent
     openingPresetBaselineRevisionRef.current = file.revision || ''
     setOpeningPresets(rebasedPresets)
     setOpeningPresetRevision(file.revision || '')
-    setOpeningPresetWorkspace(file.workspace)
+    setOpeningPresetProjectId(file.project_id)
     setActiveOpeningPresetId((current) => (
       current && rebasedPresets.some((preset) => preset.id === current)
         ? current
         : rebasedPresets[0]?.id || ''
     ))
-  }, [openingPresetAutosave.resetBaseline, workspace])
+  }, [openingPresetAutosave.resetBaseline, projectId])
 
   const loadLoreItems = useCallback(async () => {
     if (!projectId) {
@@ -323,7 +348,7 @@ function LoreSettingPanel({
     try {
       const data = await getProjectLoreItems(projectId)
       setItems(data)
-      // 默认落地到第一个可见资料条目；全库为空时交由空态引导（activeId 置空）
+      // Select the first visible lore item; an empty catalog is handled by the empty state.
       setActiveId(firstVisibleLoreItemId(data) ?? '')
     } catch (error) {
       setItems([])
@@ -332,7 +357,7 @@ function LoreSettingPanel({
     } finally {
       setLoading(false)
     }
-  }, [projectId, workspace])
+  }, [projectId])
 
   useEffect(() => {
     setItems([])
@@ -442,12 +467,12 @@ function LoreSettingPanel({
     creatorBaselineRevisionRef.current = ''
     setCreatorContent('')
     setCreatorRevision('')
-    setCreatorWorkspace('')
-    if (!workspace)
+    setCreatorProjectId('')
+    if (!projectId)
       return () => {
         cancelled = true
       }
-    readFile(CREATOR_PATH)
+    readProjectFile(projectId, CREATOR_PATH)
       .then(async (data) => {
         if (!cancelled) await reconcileCreatorFile(data)
       })
@@ -458,7 +483,7 @@ function LoreSettingPanel({
             creatorAutosave.resetBaseline({
               id: CREATOR_PATH,
               content: '',
-              workspace,
+              project_id: projectId,
               updated_at: 'missing',
             })
             creatorBaselineContentRef.current = ''
@@ -466,13 +491,13 @@ function LoreSettingPanel({
           }
           setCreatorContent('')
           setCreatorRevision(missing ? 'missing' : '')
-          setCreatorWorkspace(missing ? workspace : '')
+          setCreatorProjectId(missing ? projectId : '')
         }
       })
     return () => {
       cancelled = true
     }
-  }, [creatorAutosave.resetBaseline, isCreatorActive, reconcileCreatorFile, workspace])
+  }, [creatorAutosave.resetBaseline, isCreatorActive, projectId, reconcileCreatorFile])
 
   useEffect(() => {
     if (activeMode !== 'lore' || activeId !== INTERACTIVE_OPENING_PRESET_ENTRY_ID) return
@@ -482,13 +507,13 @@ function LoreSettingPanel({
     openingPresetBaselineRevisionRef.current = ''
     setOpeningPresets([])
     setOpeningPresetRevision('')
-    setOpeningPresetWorkspace('')
+    setOpeningPresetProjectId('')
     setActiveOpeningPresetId('')
-    if (!workspace)
+    if (!projectId)
       return () => {
         cancelled = true
       }
-    readFile(INTERACTIVE_OPENING_PRESET_PATH)
+    readProjectFile(projectId, INTERACTIVE_OPENING_PRESET_PATH)
       .then(async (data) => {
         if (!cancelled) await reconcileOpeningPresetFile(data)
       })
@@ -497,27 +522,27 @@ function LoreSettingPanel({
           if (!cancelled) {
             setOpeningPresets([])
             setOpeningPresetRevision('')
-            setOpeningPresetWorkspace('')
+            setOpeningPresetProjectId('')
             setActiveOpeningPresetId('')
           }
           return
         }
         try {
-          const legacy = await readFile(LEGACY_INTERACTIVE_OPENING_PRESET_PATH)
+          const legacy = await readProjectFile(projectId, LEGACY_INTERACTIVE_OPENING_PRESET_PATH)
           if (cancelled) return
-          const presets = parseBookOpeningPresets(legacy.content)
+          const presets = parseBookOpeningPresets(legacy.content || '')
           const content = serializeBookOpeningPresets(presets)
           openingPresetAutosave.resetBaseline({
             id: INTERACTIVE_OPENING_PRESET_PATH,
             content,
-            workspace: legacy.workspace,
+            project_id: legacy.project_id,
             updated_at: 'missing',
           })
           openingPresetBaselineContentRef.current = content
           openingPresetBaselineRevisionRef.current = 'missing'
           setOpeningPresets(presets)
           setOpeningPresetRevision('missing')
-          setOpeningPresetWorkspace(legacy.workspace)
+          setOpeningPresetProjectId(legacy.project_id)
           setActiveOpeningPresetId((current) => (current && presets.some((preset) => preset.id === current) ? current : presets[0]?.id || ''))
         } catch (legacyError) {
           if (!cancelled) {
@@ -527,14 +552,14 @@ function LoreSettingPanel({
               openingPresetAutosave.resetBaseline({
                 id: INTERACTIVE_OPENING_PRESET_PATH,
                 content: serializeBookOpeningPresets([]),
-                workspace,
+                project_id: projectId,
                 updated_at: 'missing',
               })
               openingPresetBaselineContentRef.current = serializeBookOpeningPresets([])
               openingPresetBaselineRevisionRef.current = 'missing'
             }
             setOpeningPresetRevision(legacyMissing ? 'missing' : '')
-            setOpeningPresetWorkspace(legacyMissing ? workspace : '')
+            setOpeningPresetProjectId(legacyMissing ? projectId : '')
             setActiveOpeningPresetId('')
           }
         }
@@ -542,15 +567,15 @@ function LoreSettingPanel({
     return () => {
       cancelled = true
     }
-  }, [activeId, activeMode, openingPresetAutosave.resetBaseline, reconcileOpeningPresetFile, workspace])
+  }, [activeId, activeMode, openingPresetAutosave.resetBaseline, projectId, reconcileOpeningPresetFile])
 
   useEffect(() => {
     const onWorkspaceChange = (event: Event) => {
-      const detail = (event as CustomEvent<{ workspace?: string; paths?: string[] }>).detail
-      if (detail?.workspace && detail.workspace !== workspace) return
+      const detail = (event as CustomEvent<WorkspaceChangeEvent>).detail
+      if (!isProjectChangeForProject(detail, projectId)) return
       const paths = detail?.paths
       if (isCreatorActive && (!paths || paths.includes(CREATOR_PATH))) {
-        void readFile(CREATOR_PATH)
+        void readProjectFile(projectId, CREATOR_PATH)
           .then(reconcileCreatorFile)
           .catch((error) => console.warn('[creator-editor] failed to reload external CREATOR.md update', error))
       }
@@ -559,17 +584,17 @@ function LoreSettingPanel({
         && activeId === INTERACTIVE_OPENING_PRESET_ENTRY_ID
         && (!paths || paths.includes(INTERACTIVE_OPENING_PRESET_PATH))
       ) {
-        void readFile(INTERACTIVE_OPENING_PRESET_PATH)
+        void readProjectFile(projectId, INTERACTIVE_OPENING_PRESET_PATH)
           .then(reconcileOpeningPresetFile)
           .catch((error) => console.warn('[opening-preset-editor] failed to reload external opening preset update', error))
       }
     }
     window.addEventListener('nova:workspace-change', onWorkspaceChange)
     return () => window.removeEventListener('nova:workspace-change', onWorkspaceChange)
-  }, [activeId, activeMode, isCreatorActive, reconcileCreatorFile, reconcileOpeningPresetFile, workspace])
+  }, [activeId, activeMode, isCreatorActive, projectId, reconcileCreatorFile, reconcileOpeningPresetFile])
 
   useEffect(() => {
-    if (activeMode !== 'lore' || onImagePresetsChange || externalImagePresets.length > 0 || !workspace) return
+    if (activeMode !== 'lore' || onImagePresetsChange || externalImagePresets.length > 0) return
     let cancelled = false
     getImagePresets()
       .then((data) => {
@@ -583,7 +608,7 @@ function LoreSettingPanel({
     return () => {
       cancelled = true
     }
-  }, [activeMode, externalImagePresets.length, onImagePresetsChange, workspace])
+  }, [activeMode, externalImagePresets.length, onImagePresetsChange])
 
   useEffect(() => {
     setImagePresets(externalImagePresets)
@@ -591,12 +616,12 @@ function LoreSettingPanel({
       if (current && externalImagePresets.some((preset) => preset.id === current)) return current
       return externalImagePresets[0]?.id || ''
     })
-  }, [externalImagePresets, workspace])
+  }, [externalImagePresets])
 
   const refreshItems = useCallback(async (nextActiveId?: string) => {
     const data = await getProjectLoreItems(projectId)
     setItems(data)
-    // 缺省保持当前选中（仍存在则保留，含伪条目）；否则选中第一个可见条目，全库为空时置空走空态
+    // Preserve an existing selection, including virtual entries, then fall back to the first visible item.
     setActiveId((current) => {
       if (nextActiveId && data.some((item) => item.id === nextActiveId)) return nextActiveId
       if (current === CREATOR_ENTRY_ID || current === INTERACTIVE_OPENING_PRESET_ENTRY_ID || current === LORE_CONFIG_AGENT_ENTRY_ID) return current
@@ -614,6 +639,12 @@ function LoreSettingPanel({
     window.addEventListener(LORE_UPDATED_EVENT, onLoreUpdated)
     return () => window.removeEventListener(LORE_UPDATED_EVENT, onLoreUpdated)
   }, [projectId, refreshItems])
+
+  useEffect(() => {
+    if (refreshSignalRef.current === refreshSignal) return
+    refreshSignalRef.current = refreshSignal
+    void refreshItems()
+  }, [refreshItems, refreshSignal])
 
   const mergeSavedLoreItem = (item: LoreItem) => {
     setItems((current) => current.map((entry) => (entry.id === item.id ? item : entry)))
@@ -704,6 +735,19 @@ function LoreSettingPanel({
     t,
   ])
 
+  const prepareLoreReviewSnapshot = useCallback(async (): Promise<DocumentReviewSnapshot> => {
+    const itemID = loreDraftRef.current?.id
+    if (!itemID || !(await flushActiveAutosave())) {
+      throw new Error('The lore draft could not be saved')
+    }
+    const canonical = (await getProjectLoreItems(projectId)).find((item) => item.id === itemID)
+    if (!canonical?.updated_at) {
+      throw new Error('The canonical lore snapshot is unavailable')
+    }
+    setItems((current) => current.map((item) => item.id === canonical.id ? canonical : item))
+    return { content: canonical.content || '', revision: canonical.updated_at }
+  }, [flushActiveAutosave, projectId])
+
   useEffect(() => {
     onFlushHandlerChange?.(flushActiveAutosave)
     return () => onFlushHandlerChange?.(null)
@@ -714,7 +758,7 @@ function LoreSettingPanel({
     onClose()
   }
 
-  const handleSelectLore = async (id: string) => {
+  const handleSelectLore = useCallback(async (id: string) => {
     if (id === activeId) return
     try {
       if (activeId === CREATOR_ENTRY_ID) {
@@ -729,7 +773,12 @@ function LoreSettingPanel({
       console.error('[lore-editor] failed to flush autosave before switching resources', error)
       toast.error((error as Error).message || t('editor.saveFailed'))
     }
-  }
+  }, [activeId, creatorAutosave.flushPending, creatorAutosave.saveNow, flushLoreAutosave, openingPresetAutosave.flushPending, openingPresetAutosave.saveNow, t])
+
+  useEffect(() => {
+    if (!documentReviewLoreID || documentReviewLoreID === activeId || !items.some((item) => item.id === documentReviewLoreID)) return
+    void handleSelectLore(documentReviewLoreID)
+  }, [activeId, documentReviewLoreID, handleSelectLore, items])
 
   const selectedLoreImagePresetId = () => activeImagePresetId || imagePresets.find((preset) => !preset.invalid)?.id || 'game-cg'
 
@@ -739,7 +788,7 @@ function LoreSettingPanel({
     try {
       const saved = await flushLoreAutosave()
       const target = saved || loreDraftRef.current || draft
-      const item = await generateLoreItemImage(workspace, target.id, {
+      const item = await generateLoreItemImage(projectId, target.id, {
         instruction: loreImageInstruction,
         image_preset_id: selectedLoreImagePresetId(),
       })
@@ -759,7 +808,7 @@ function LoreSettingPanel({
     try {
       const saved = await flushLoreAutosave()
       const target = saved || loreDraftRef.current || draft
-      const item = await clearLoreItemImage(workspace, target.id)
+      const item = await clearLoreItemImage(projectId, target.id)
       mergeSavedLoreItem(item)
       notifyLoreUpdated({ projectId, ids: [item.id] })
       toast.success(t('settingPanel.loreImage.cleared'))
@@ -787,7 +836,7 @@ function LoreSettingPanel({
     setLoreImageBatchRunning(true)
     setLoreImageBatchProgress({})
     try {
-      const stream = await streamLoreImagesGenerate(workspace, {
+      const stream = await streamLoreImagesGenerate(projectId, {
         item_ids: loreImageBatchSelectedIds,
         instruction: loreImageBatchInstruction,
         overwrite_existing: loreImageBatchOverwrite,
@@ -838,8 +887,8 @@ function LoreSettingPanel({
   }
 
   const handleAbortLoreImageBatch = () => {
-    void abortLoreImagesGenerate(workspace).catch((err) => {
-      console.warn('[lore-image] 中止批量生成请求失败', err)
+    void abortLoreImagesGenerate(projectId).catch((err) => {
+      console.warn('[lore-image] failed to abort batch generation request', err)
     })
     loreImageBatchAbortRef.current?.abort()
     loreImageBatchAbortRef.current = null
@@ -890,7 +939,7 @@ function LoreSettingPanel({
     id: section.id,
     label: t(section.labelKey),
     icon: section.icon,
-    items: sectionItems(items, section, query, loadModeFilter).map((item) => loreItemToDirectoryItem(item, t)),
+    items: sectionItems(items, section, query, loadModeFilter).map((item) => loreItemToDirectoryItem(item, projectId, t)),
     onCreate: () => void handleCreateLore(section),
     createLabel: `${t('chat.new')}${t(section.labelKey)}`,
     toggleOnHeaderClick: true,
@@ -1036,7 +1085,7 @@ function LoreSettingPanel({
                     />
                   ) : activeId === LORE_CONFIG_AGENT_ENTRY_ID ? (
                     <ConfigManagerChat
-                      workspace={workspace}
+                      projectId={projectId}
                       origin="lore"
                       resourceId={LORE_CONFIG_AGENT_ENTRY_ID}
                       context={{ item_count: String(items.length) }}
@@ -1050,7 +1099,27 @@ function LoreSettingPanel({
                   ) : activeId === INTERACTIVE_OPENING_PRESET_ENTRY_ID ? (
                     <OpeningPresetEditor presets={openingPresets} activeId={activeOpeningPresetId} setActiveId={setActiveOpeningPresetId} setPresets={setOpeningPresets} onSave={flushActiveAutosave} />
                   ) : (
-                    <LoreEditor draft={draft} tagDraft={tagDraft} residentTotalBytes={items.filter((item) => item.enabled !== false && item.load_mode === 'resident' && item.id !== draft?.id).reduce((total, item) => total + UTF8_ENCODER.encode((item.content || '').trim()).length, draft?.enabled !== false && draft?.load_mode === 'resident' ? UTF8_ENCODER.encode((draft.content || '').trim()).length : 0)} imagePresets={imagePresets} imagePresetId={selectedLoreImagePresetId()} imageInstruction={loreImageInstruction} imageGenerating={loreImageGeneratingId === draft?.id} searchQuery={query} setDraft={setDraft} setTagDraft={setTagDraft} onImagePresetChange={setActiveImagePresetId} setImageInstruction={setLoreImageInstruction} onGenerateImage={() => void handleGenerateLoreImage()} onClearImage={() => void handleClearLoreImage()} onSave={flushActiveAutosave} />
+                    <LoreEditor
+                      projectId={projectId}
+                      draft={draft}
+                      tagDraft={tagDraft}
+                      residentTotalBytes={residentLoreBytes}
+                      imagePresets={imagePresets}
+                      imagePresetId={selectedLoreImagePresetId()}
+                      imageInstruction={loreImageInstruction}
+                      imageGenerating={loreImageGeneratingId === draft?.id}
+                      searchQuery={query}
+                      setDraft={setDraft}
+                      setTagDraft={setTagDraft}
+                      onImagePresetChange={setActiveImagePresetId}
+                      setImageInstruction={setLoreImageInstruction}
+                      onGenerateImage={() => void handleGenerateLoreImage()}
+                      onClearImage={() => void handleClearLoreImage()}
+                      onSave={flushActiveAutosave}
+                      documentReview={documentReview}
+                      documentReviewNavigationIntent={documentReviewNavigationIntent}
+                      onPrepareReviewSnapshot={prepareLoreReviewSnapshot}
+                    />
                   )}
                 </>
               ) : (
@@ -1062,7 +1131,7 @@ function LoreSettingPanel({
       </AdaptiveSurface>
       <LoreClassificationDialog
         open={loreClassificationOpen}
-        workspace={workspace}
+        projectId={projectId}
         onOpenChange={setLoreClassificationOpen}
         onApplied={(nextItems) => {
           setItems(nextItems)
@@ -1073,6 +1142,7 @@ function LoreSettingPanel({
       />
       <LoreImageBatchDialog
         open={loreImageBatchOpen}
+        projectId={projectId}
         items={items}
         query={loreImageBatchQuery}
         type={loreImageBatchType}
@@ -1110,6 +1180,7 @@ function LoreSettingPanel({
 
 interface LoreImageBatchDialogProps {
   open: boolean
+  projectId: string
   items: LoreItem[]
   query: string
   type: LoreType | 'all'
@@ -1133,6 +1204,7 @@ interface LoreImageBatchDialogProps {
 
 function LoreImageBatchDialog({
   open,
+  projectId,
   items,
   query,
   type,
@@ -1238,7 +1310,7 @@ function LoreImageBatchDialog({
                     onChange={() => toggleSelected(item.id)}
                     aria-label={item.name}
                   />
-                  <LoreImageBatchThumb item={item} />
+                  <LoreImageBatchThumb projectId={projectId} item={item} />
                   <span className="min-w-0 flex-1">
                     <span className="block truncate font-medium text-[var(--nova-text)]">{item.name}</span>
                     <span className="mt-0.5 block truncate text-[11px] text-[var(--nova-text-faint)]">{loreTypeLabel(item.type, t)} · {item.brief_description || t('settingPanel.loreImage.missingImage')}</span>
@@ -1308,7 +1380,7 @@ function LoreImageBatchDialog({
   )
 }
 
-function LoreImageBatchThumb({ item }: { item: LoreItem }) {
+function LoreImageBatchThumb({ projectId, item }: { projectId: string; item: LoreItem }) {
   const imagePath = item.image?.image_path || ''
   if (!imagePath) {
     return (
@@ -1319,7 +1391,7 @@ function LoreImageBatchThumb({ item }: { item: LoreItem }) {
   }
   return (
     <span className="h-10 w-10 shrink-0 overflow-hidden rounded-md border border-[var(--nova-border)] bg-[var(--nova-surface)]">
-      <img src={workspaceAssetURL(imagePath)} alt="" className="h-full w-full object-cover" />
+      <img src={projectFileAssetURL(projectId, imagePath)} alt="" className="h-full w-full object-cover" />
     </span>
   )
 }
@@ -1353,7 +1425,7 @@ function parseSSEData<T>(event: SSEEvent): T | null {
   try {
     return JSON.parse(event.data) as T
   } catch (err) {
-    console.warn('[lore-image] SSE 数据解析失败', event.event, err)
+    console.warn('[lore-image] failed to parse SSE payload', event.event, err)
     return null
   }
 }
@@ -1374,7 +1446,7 @@ function ModeIcon({ mode }: { mode: SettingPanelMode }) {
   return <Database className="h-3.5 w-3.5 shrink-0 text-[var(--nova-text-muted)]" />
 }
 
-function loreItemToDirectoryItem(item: LoreItem, t: (key: string) => string): ResourceDirectoryItem {
+function loreItemToDirectoryItem(item: LoreItem, projectId: string, t: (key: string) => string): ResourceDirectoryItem {
   const imagePath = item.image?.image_path || ''
   const badges: ResourceDirectoryBadge[] = [{
     label: item.load_mode === 'resident' ? t('settingPanel.lore.loadModeBadge.resident') : t('settingPanel.lore.loadModeBadge.onDemand'),
@@ -1387,7 +1459,7 @@ function loreItemToDirectoryItem(item: LoreItem, t: (key: string) => string): Re
   return {
     id: item.id,
     title: item.name,
-    thumbnailUrl: imagePath ? workspaceAssetURL(imagePath) : null,
+    thumbnailUrl: imagePath ? projectFileAssetURL(projectId, imagePath) : null,
     badges,
     disabled: item.enabled === false,
   }

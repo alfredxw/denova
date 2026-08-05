@@ -41,7 +41,6 @@ describe('useLoreWorkspace', () => {
     const { result, rerender } = renderHook(
       ({ refreshSignal }) => useLoreWorkspace({
         projectId: 'book-demo',
-        workspace: '/books/demo',
         refreshSignal,
         onFlushHandlerChange: vi.fn(),
       }),
@@ -62,13 +61,12 @@ describe('useLoreWorkspace', () => {
       content: 'Agent body',
       updated_at: 'r2',
     })
-  vi.mocked(getProjectLoreItems)
+    vi.mocked(getProjectLoreItems)
       .mockResolvedValueOnce([initial])
       .mockResolvedValueOnce([external])
 
     const { result } = renderHook(() => useLoreWorkspace({
-    projectId: 'book-demo',
-      workspace: '/books/demo',
+      projectId: 'book-demo',
       onFlushHandlerChange: vi.fn(),
     }))
     await waitFor(() => expect(result.current.draft?.id).toBe('lore-1'))
@@ -76,9 +74,9 @@ describe('useLoreWorkspace', () => {
     act(() => {
       result.current.setDraft({ ...result.current.draft!, name: 'Local name' })
     })
-  act(() => notifyLoreUpdated({ projectId: 'book-demo', source: 'writing-agent' }))
+    act(() => notifyLoreUpdated({ projectId: 'book-demo', source: 'writing-agent' }))
 
-  await waitFor(() => expect(getProjectLoreItems).toHaveBeenCalledTimes(2))
+    await waitFor(() => expect(getProjectLoreItems).toHaveBeenCalledTimes(2))
     await waitFor(() => expect(result.current.draft).toMatchObject({
       name: 'Local name',
       content: 'Agent body\n',
@@ -86,21 +84,20 @@ describe('useLoreWorkspace', () => {
     }))
     expect(preserveAutosaveConflict).toHaveBeenCalledWith(expect.objectContaining({
       resource: 'lore_item',
-    scope: 'book-demo',
+      scope: 'book-demo',
       id: 'lore-1',
       conflict_paths: [['name']],
     }))
-  expect(updateProjectLoreItem).not.toHaveBeenCalled()
+    expect(updateProjectLoreItem).not.toHaveBeenCalled()
   })
 
   it('archives a dirty local draft before accepting an Agent deletion', async () => {
-  vi.mocked(getProjectLoreItems)
+    vi.mocked(getProjectLoreItems)
       .mockResolvedValueOnce([loreItem()])
       .mockResolvedValueOnce([])
 
     const { result } = renderHook(() => useLoreWorkspace({
-    projectId: 'book-demo',
-      workspace: '/books/demo',
+      projectId: 'book-demo',
       onFlushHandlerChange: vi.fn(),
     }))
     await waitFor(() => expect(result.current.draft?.id).toBe('lore-1'))
@@ -108,7 +105,7 @@ describe('useLoreWorkspace', () => {
     act(() => {
       result.current.setDraft({ ...result.current.draft!, content: 'Unsaved local body' })
     })
-  act(() => notifyLoreUpdated({ projectId: 'book-demo', source: 'writing-agent' }))
+    act(() => notifyLoreUpdated({ projectId: 'book-demo', source: 'writing-agent' }))
 
     await waitFor(() => expect(result.current.draft).toBeNull())
     expect(preserveAutosaveConflict).toHaveBeenCalledWith(expect.objectContaining({
@@ -116,7 +113,7 @@ describe('useLoreWorkspace', () => {
       id: 'lore-1',
       external: { revision: 'deleted', value: null },
     }))
-  expect(updateProjectLoreItem).not.toHaveBeenCalled()
+    expect(updateProjectLoreItem).not.toHaveBeenCalled()
   })
 
   it('preserves the item flushed immediately before creating another item', async () => {
@@ -128,13 +125,12 @@ describe('useLoreWorkspace', () => {
       created_at: 'r3',
       updated_at: 'r3',
     })
-  vi.mocked(getProjectLoreItems).mockResolvedValue([initial])
-  vi.mocked(updateProjectLoreItem).mockResolvedValue(saved)
-  vi.mocked(createProjectLoreItem).mockResolvedValue(created)
+    vi.mocked(getProjectLoreItems).mockResolvedValue([initial])
+    vi.mocked(updateProjectLoreItem).mockResolvedValue(saved)
+    vi.mocked(createProjectLoreItem).mockResolvedValue(created)
 
     const { result } = renderHook(() => useLoreWorkspace({
-    projectId: 'book-demo',
-      workspace: '/books/demo',
+      projectId: 'book-demo',
       onFlushHandlerChange: vi.fn(),
     }))
     await waitFor(() => expect(result.current.draft?.id).toBe('lore-1'))
@@ -146,8 +142,8 @@ describe('useLoreWorkspace', () => {
       await result.current.createItem({ name: 'New character' })
     })
 
-  expect(updateProjectLoreItem).toHaveBeenCalledWith(
-    'book-demo',
+    expect(updateProjectLoreItem).toHaveBeenCalledWith(
+      'book-demo',
       'lore-1',
       expect.objectContaining({ name: 'Saved name' }),
       'r1',
@@ -165,13 +161,12 @@ describe('useLoreWorkspace', () => {
       updated_at: 'r2',
     })
     const saved = loreItem({ name: 'Saved before delete', updated_at: 'r3' })
-  vi.mocked(getProjectLoreItems).mockResolvedValue([initial, next])
-  vi.mocked(updateProjectLoreItem).mockResolvedValue(saved)
-  vi.mocked(deleteProjectLoreItem).mockResolvedValue(undefined)
+    vi.mocked(getProjectLoreItems).mockResolvedValue([initial, next])
+    vi.mocked(updateProjectLoreItem).mockResolvedValue(saved)
+    vi.mocked(deleteProjectLoreItem).mockResolvedValue(undefined)
 
     const { result } = renderHook(() => useLoreWorkspace({
-    projectId: 'book-demo',
-      workspace: '/books/demo',
+      projectId: 'book-demo',
       onFlushHandlerChange: vi.fn(),
     }))
     await waitFor(() => expect(result.current.draft?.id).toBe('lore-1'))
@@ -186,15 +181,15 @@ describe('useLoreWorkspace', () => {
       expect(await result.current.deleteItem('lore-1')).toBe(true)
     })
 
-  expect(updateProjectLoreItem).toHaveBeenCalledWith(
-    'book-demo',
+    expect(updateProjectLoreItem).toHaveBeenCalledWith(
+      'book-demo',
       'lore-1',
       expect.objectContaining({ name: 'Saved before delete' }),
       'r1',
     )
-  expect(deleteProjectLoreItem).toHaveBeenCalledWith('book-demo', 'lore-1')
-  expect(vi.mocked(updateProjectLoreItem).mock.invocationCallOrder[0]).toBeLessThan(
-    vi.mocked(deleteProjectLoreItem).mock.invocationCallOrder[0],
+    expect(deleteProjectLoreItem).toHaveBeenCalledWith('book-demo', 'lore-1')
+    expect(vi.mocked(updateProjectLoreItem).mock.invocationCallOrder[0]).toBeLessThan(
+      vi.mocked(deleteProjectLoreItem).mock.invocationCallOrder[0],
     )
     expect(result.current.items).toEqual([next])
     expect(result.current.activeId).toBe('lore-2')
@@ -202,17 +197,16 @@ describe('useLoreWorkspace', () => {
       id: 'lore-2',
       name: 'Next character',
     })
-  expect(window.localStorage.getItem('nova.lore.project.selection:book-demo'))
+    expect(window.localStorage.getItem('nova.lore.project.selection:book-demo'))
       .toBe('lore-2')
   })
 
   it('clears the editor after deleting the final lore item', async () => {
-  vi.mocked(getProjectLoreItems).mockResolvedValue([loreItem()])
-  vi.mocked(deleteProjectLoreItem).mockResolvedValue(undefined)
+    vi.mocked(getProjectLoreItems).mockResolvedValue([loreItem()])
+    vi.mocked(deleteProjectLoreItem).mockResolvedValue(undefined)
 
     const { result } = renderHook(() => useLoreWorkspace({
-    projectId: 'book-demo',
-      workspace: '/books/demo',
+      projectId: 'book-demo',
       onFlushHandlerChange: vi.fn(),
     }))
     await waitFor(() => expect(result.current.draft?.id).toBe('lore-1'))
@@ -224,7 +218,7 @@ describe('useLoreWorkspace', () => {
     expect(result.current.items).toEqual([])
     expect(result.current.activeId).toBe('')
     expect(result.current.draft).toBeNull()
-  expect(window.localStorage.getItem('nova.lore.project.selection:book-demo'))
+    expect(window.localStorage.getItem('nova.lore.project.selection:book-demo'))
       .toBeNull()
   })
 })

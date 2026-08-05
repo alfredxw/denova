@@ -26,9 +26,10 @@ type ActiveView struct {
 	PendingAsk          *session.AskInteraction
 }
 
-func runOptions(workspace, stateRoot, sessionID string) agentrun.Options {
+func runOptions(projectID, workspace, stateRoot, sessionID string) agentrun.Options {
 	return agentrun.Options{
 		AgentKind: agentrun.AgentKindConfigManager,
+		ProjectID: projectID,
 		StateRoot: stateRoot,
 		Workspace: workspace,
 		SessionID: sessionID,
@@ -46,23 +47,27 @@ func (service *Service) ActiveView(ctx context.Context, request Request) ActiveV
 	if err != nil {
 		return ActiveView{}
 	}
-	runtime := service.host.Snapshot()
+	runtime, err := service.runtime(ctx, request)
+	if err != nil {
+		return ActiveView{}
+	}
+	projectID := runtime.ProjectID
 	workspace := strings.TrimSpace(runtime.Workspace)
 	if workspace == "" || runtime.ChatService == nil {
 		return ActiveView{}
 	}
-	operation, err := service.host.AcquireWorkspaceOperation(ctx, workspace)
+	operation, err := service.host.AcquireProjectOperation(ctx, projectID)
 	if err != nil {
 		return ActiveView{}
 	}
 	defer operation.Release()
 
 	runtimeSnapshot, projected := projectRuntime(
-		operation.Context(), runtime.ChatService, runOptions(workspace, runtime.Config.ProjectStateDir, sessionID),
+		operation.Context(), runtime.ChatService, runOptions(projectID, workspace, runtime.Config.ProjectStateDir, sessionID),
 	)
 	record, recoverySelected := selectDisplayRecord(
-		latestStartTask(&service.starts, workspace, sessionID),
-		service.recoveries.current(workspace, sessionID),
+		latestStartTask(&service.starts, projectID, sessionID),
+		service.recoveries.current(projectID, sessionID),
 	)
 	if recoverySelected {
 		record.CommandID = runtimeCommandID(runtimeSnapshot)
@@ -112,25 +117,29 @@ func (service *Service) DisplayTask(ctx context.Context, request Request, taskID
 	if err != nil {
 		return nil
 	}
-	runtime := service.host.Snapshot()
+	runtime, err := service.runtime(ctx, request)
+	if err != nil {
+		return nil
+	}
+	projectID := runtime.ProjectID
 	workspace := strings.TrimSpace(runtime.Workspace)
 	if workspace == "" || runtime.ChatService == nil {
 		return nil
 	}
-	operation, err := service.host.AcquireWorkspaceOperation(ctx, workspace)
+	operation, err := service.host.AcquireProjectOperation(ctx, projectID)
 	if err != nil {
 		return nil
 	}
 	defer operation.Release()
 	runtimeSnapshot, projected := projectRuntime(
-		operation.Context(), runtime.ChatService, runOptions(workspace, runtime.Config.ProjectStateDir, sessionID),
+		operation.Context(), runtime.ChatService, runOptions(projectID, workspace, runtime.Config.ProjectStateDir, sessionID),
 	)
 	if !projected {
 		return nil
 	}
 	record, recoverySelected := selectDisplayRecord(
-		latestStartTask(&service.starts, workspace, sessionID),
-		service.recoveries.current(workspace, sessionID),
+		latestStartTask(&service.starts, projectID, sessionID),
+		service.recoveries.current(projectID, sessionID),
 	)
 	if recoverySelected {
 		record.CommandID = runtimeCommandID(runtimeSnapshot)
@@ -255,18 +264,22 @@ func (service *Service) ClearContext(ctx context.Context, request Request) error
 	if err != nil {
 		return err
 	}
-	runtime := service.host.Snapshot()
+	runtime, err := service.runtime(ctx, request)
+	if err != nil {
+		return err
+	}
+	projectID := runtime.ProjectID
 	workspace := strings.TrimSpace(runtime.Workspace)
 	if workspace == "" || runtime.SessionStore == nil {
 		return appagentruntime.ErrNoWorkspace
 	}
-	operation, err := service.host.AcquireWorkspaceOperation(ctx, workspace)
+	operation, err := service.host.AcquireProjectOperation(ctx, projectID)
 	if err != nil {
 		return err
 	}
 	defer operation.Release()
-	recovery := service.recoveries.current(workspace, sessionID)
-	startTask := latestStartTask(&service.starts, workspace, sessionID).Task
+	recovery := service.recoveries.current(projectID, sessionID)
+	startTask := latestStartTask(&service.starts, projectID, sessionID).Task
 	if recovery != nil && recovery.task != nil {
 		if err := appagentruntime.AbortAndWait(operation.Context(), recovery.task); err != nil {
 			return err
@@ -289,8 +302,8 @@ func (service *Service) ClearContext(ctx context.Context, request Request) error
 	if err := sess.Clear(); err != nil {
 		return err
 	}
-	service.starts.ReleaseScope(workspace, sessionID)
-	service.recoveries.releaseScope(workspace, sessionID)
+	service.starts.ReleaseScope(projectID, sessionID)
+	service.recoveries.releaseScope(projectID, sessionID)
 	return nil
 }
 
@@ -308,12 +321,16 @@ func (service *Service) Recover(
 	if err != nil {
 		return appagentruntime.RecoveryResult{}, err
 	}
-	runtime := service.host.Snapshot()
+	runtime, err := service.runtime(ctx, scope)
+	if err != nil {
+		return appagentruntime.RecoveryResult{}, err
+	}
+	projectID := runtime.ProjectID
 	workspace := strings.TrimSpace(runtime.Workspace)
 	if workspace == "" || runtime.ChatService == nil || runtime.SessionStore == nil {
 		return appagentruntime.RecoveryResult{}, appagentruntime.ErrNoWorkspace
 	}
-	operation, err := service.host.AcquireWorkspaceOperation(ctx, workspace)
+	operation, err := service.host.AcquireProjectOperation(ctx, projectID)
 	if err != nil {
 		return appagentruntime.RecoveryResult{}, err
 	}
@@ -323,7 +340,7 @@ func (service *Service) Recover(
 		return appagentruntime.RecoveryResult{}, err
 	}
 
-	existing := service.recoveries.current(workspace, sessionID)
+	existing := service.recoveries.current(projectID, sessionID)
 	if existing != nil && existing.task != nil && existing.recovery != nil {
 		current, currentErr := appagentruntime.FinishedRecoveryActionStillCurrent(
 			operation.Context(), existing.task, existing.recovery, request.Action,
@@ -338,11 +355,11 @@ func (service *Service) Recover(
 	if existing != nil && existing.task != nil && !existing.task.Finished() {
 		return appagentruntime.RecoveryResult{}, appagentruntime.ErrOperationActive
 	}
-	if active := latestStartTask(&service.starts, workspace, sessionID).Task; active != nil && !active.Finished() {
+	if active := latestStartTask(&service.starts, projectID, sessionID).Task; active != nil && !active.Finished() {
 		return appagentruntime.RecoveryResult{}, appagentruntime.ErrOperationActive
 	}
 
-	options := runOptions(workspace, runtime.Config.ProjectStateDir, sessionID)
+	options := runOptions(projectID, workspace, runtime.Config.ProjectStateDir, sessionID)
 	recovery, err := runtime.ChatService.OpenRecoveryObservation(operation.Context(), options)
 	if err != nil {
 		return appagentruntime.RecoveryResult{}, err
@@ -357,7 +374,7 @@ func (service *Service) Recover(
 	}
 	structural, isStructural := appagentruntime.StructuralRecoveryAction(request.Action.Kind)
 	run := &recoveryRun{
-		workspace: workspace, sessionID: sessionID, recovery: recovery,
+		projectID: projectID, sessionID: sessionID, recovery: recovery,
 		recoveryActions: make(map[string]agentrun.CommandReceipt),
 	}
 	task, err := apptask.NewDeferredWithContext(ctx, func(task *apptask.Task) error {

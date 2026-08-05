@@ -44,7 +44,8 @@ func TestConfigManagerColdRecoveryAttachesAndAbortsSameDisplayTask(t *testing.T)
 		t.Fatal(err)
 	}
 	t.Cleanup(application.Close)
-	scope := configmanagerapp.Request{Origin: "settings", ResourceID: "resource-cold-recovery"}
+	projectID := application.ProjectID()
+	scope := configmanagerapp.Request{ProjectID: projectID, Origin: "settings", ResourceID: "resource-cold-recovery"}
 
 	view := application.ConfigManager().ActiveView(context.Background(), scope)
 	actions := agentharness.RuntimeRecoveryActions(view.Runtime)
@@ -88,7 +89,7 @@ func TestConfigManagerColdRecoveryAttachesAndAbortsSameDisplayTask(t *testing.T)
 		t.Fatalf("aborted Config Manager recovery status = %#v", status)
 	}
 
-	clearScope := configmanagerapp.Request{Origin: "settings", ResourceID: "resource-cold-clear"}
+	clearScope := configmanagerapp.Request{ProjectID: projectID, Origin: "settings", ResourceID: "resource-cold-clear"}
 	clearView := application.ConfigManager().ActiveView(context.Background(), clearScope)
 	clearActions := agentharness.RuntimeRecoveryActions(clearView.Runtime)
 	if !clearView.Runtime.RecoveryPaused || clearView.StreamAttached || len(clearActions) < 1 || clearActions[0].Kind != agentharness.RuntimeRecoveryAttach {
@@ -129,13 +130,15 @@ func runConfigManagerRecoveryCrashSeed(t *testing.T) {
 	}
 	application.mu.RLock()
 	workspace := application.workspace
+	projectID := application.cfg.ProjectID
+	stateRoot := application.cfg.ProjectStateDir
 	application.mu.RUnlock()
 	seeds := []struct {
 		scope     configmanagerapp.Request
 		commandID string
 	}{
-		{scope: configmanagerapp.Request{Origin: "settings", ResourceID: "resource-cold-recovery"}, commandID: "config-manager-recovery-start"},
-		{scope: configmanagerapp.Request{Origin: "settings", ResourceID: "resource-cold-clear"}, commandID: "config-manager-clear-start"},
+		{scope: configmanagerapp.Request{ProjectID: projectID, Origin: "settings", ResourceID: "resource-cold-recovery"}, commandID: "config-manager-recovery-start"},
+		{scope: configmanagerapp.Request{ProjectID: projectID, Origin: "settings", ResourceID: "resource-cold-clear"}, commandID: "config-manager-clear-start"},
 	}
 	vanished := make([]chan struct{}, 0, len(seeds))
 	for _, seed := range seeds {
@@ -154,7 +157,7 @@ func runConfigManagerRecoveryCrashSeed(t *testing.T) {
 			&interactiveCrashConversation{vanished: reachedContext}, application.bookService,
 			agentchat.ChatRequest{CommandID: seed.commandID, Message: "persist Config Manager work before crash"},
 			agentrun.Options{
-				AgentKind: agentrun.AgentKindConfigManager, Workspace: workspace,
+				AgentKind: agentrun.AgentKindConfigManager, ProjectID: projectID, StateRoot: stateRoot, Workspace: workspace,
 				SessionID: sessionID, Mode: configmanagerapp.RuntimeMode,
 			}, nil,
 		); err != nil {

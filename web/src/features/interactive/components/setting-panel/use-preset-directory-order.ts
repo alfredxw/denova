@@ -1,42 +1,27 @@
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useState } from 'react'
 import type { ResourceDirectorySection } from '@/components/resource-directory/types'
 import type { PresetResourceKind } from '../../preset-ownership'
 
-const PRESET_DIRECTORY_ORDER_STORAGE_PREFIX = 'nova.preset-directory-order:'
+const PRESET_DIRECTORY_ORDER_STORAGE_KEY = 'nova.preset-directory-order'
 const PRESET_DIRECTORY_ORDER_VERSION = 1
 const PRESET_RESOURCE_KINDS: PresetResourceKind[] = ['teller', 'image', 'director', 'event', 'rule', 'actor-state']
 
 export type PresetDirectoryOrder = Partial<Record<PresetResourceKind, string[]>>
 
-interface PresetDirectoryOrderSnapshot {
-  workspace: string
-  order: PresetDirectoryOrder
-}
-
-/** 工作区级前端偏好：排序不修改预设内容，也不会为内置预设创建覆盖。 */
-export function usePresetDirectoryOrder(workspace: string) {
-  const [snapshot, setSnapshot] = useState<PresetDirectoryOrderSnapshot>(() => ({
-    workspace,
-    order: readPresetDirectoryOrder(workspace),
-  }))
-
-  useEffect(() => {
-    setSnapshot({ workspace, order: readPresetDirectoryOrder(workspace) })
-  }, [workspace])
-
-  const order = snapshot.workspace === workspace ? snapshot.order : {}
+/** 用户级前端偏好：全局预设使用一份排序，不随 Project 切换。 */
+export function usePresetDirectoryOrder() {
+  const [order, setOrder] = useState<PresetDirectoryOrder>(readPresetDirectoryOrder)
 
   const reorderItems = useCallback((kind: PresetResourceKind, visibleItemIds: string[], allItemIds: string[]) => {
-    setSnapshot((current) => {
-      const currentOrder = current.workspace === workspace ? current.order : readPresetDirectoryOrder(workspace)
+    setOrder((currentOrder) => {
       const nextOrder: PresetDirectoryOrder = {
         ...currentOrder,
         [kind]: mergeVisiblePresetDirectoryOrder(allItemIds, currentOrder[kind], visibleItemIds),
       }
-      writePresetDirectoryOrder(workspace, nextOrder)
-      return { workspace, order: nextOrder }
+      writePresetDirectoryOrder(nextOrder)
+      return nextOrder
     })
-  }, [workspace])
+  }, [])
 
   return { order, reorderItems }
 }
@@ -73,10 +58,10 @@ function orderKnownIDs(ids: string[], storedOrder: string[] | undefined): string
   return [...ordered, ...ids.filter((id) => !orderedSet.has(id))]
 }
 
-function readPresetDirectoryOrder(workspace: string): PresetDirectoryOrder {
-  if (!workspace || typeof window === 'undefined') return {}
+function readPresetDirectoryOrder(): PresetDirectoryOrder {
+  if (typeof window === 'undefined') return {}
   try {
-    const raw = window.localStorage.getItem(PRESET_DIRECTORY_ORDER_STORAGE_PREFIX + workspace)
+    const raw = window.localStorage.getItem(PRESET_DIRECTORY_ORDER_STORAGE_KEY)
     if (!raw) return {}
     const parsed = JSON.parse(raw) as { version?: unknown; sections?: unknown }
     if (parsed.version !== PRESET_DIRECTORY_ORDER_VERSION || !parsed.sections || typeof parsed.sections !== 'object') return {}
@@ -86,20 +71,20 @@ function readPresetDirectoryOrder(workspace: string): PresetDirectoryOrder {
       return Array.isArray(value) ? [[kind, uniqueStrings(value)]] : []
     })) as PresetDirectoryOrder
   } catch (error) {
-    console.warn('[use-preset-directory-order] failed to read preset directory order', { workspace, error })
+    console.warn('[use-preset-directory-order] failed to read preset directory order', { error })
     return {}
   }
 }
 
-function writePresetDirectoryOrder(workspace: string, order: PresetDirectoryOrder) {
-  if (!workspace || typeof window === 'undefined') return
+function writePresetDirectoryOrder(order: PresetDirectoryOrder) {
+  if (typeof window === 'undefined') return
   try {
-    window.localStorage.setItem(PRESET_DIRECTORY_ORDER_STORAGE_PREFIX + workspace, JSON.stringify({
+    window.localStorage.setItem(PRESET_DIRECTORY_ORDER_STORAGE_KEY, JSON.stringify({
       version: PRESET_DIRECTORY_ORDER_VERSION,
       sections: order,
     }))
   } catch (error) {
-    console.warn('[use-preset-directory-order] failed to save preset directory order', { workspace, error })
+    console.warn('[use-preset-directory-order] failed to save preset directory order', { error })
   }
 }
 

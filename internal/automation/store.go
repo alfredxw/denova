@@ -560,9 +560,9 @@ func (s *Store) normalizeTaskTarget(task Task) (Task, error) {
 			return Task{}, fmt.Errorf("workspace target is required")
 		}
 		if strings.TrimSpace(s.projectID) != "" {
-			normalized.Target.WorkspaceID = s.projectID
+			normalized.Target.ProjectID = s.projectID
 		} else {
-			normalized.Target.WorkspaceID = workspaceTargetID(normalized.Target.Workspace)
+			normalized.Target.ProjectID = workspaceTargetID(normalized.Target.Workspace)
 		}
 		normalized.Scope = ScopeWorkspace
 	} else {
@@ -620,12 +620,12 @@ func taskDefinitionRevision(task Task) (string, error) {
 
 func catalogTaskID(task Task) string {
 	if task.Target.Kind == TargetKindWorkspace {
-		workspaceID := strings.TrimSpace(task.Target.WorkspaceID)
-		if workspaceID == "" {
-			workspaceID = workspaceTargetID(task.Target.Workspace)
+		projectID := strings.TrimSpace(task.Target.ProjectID)
+		if projectID == "" {
+			projectID = workspaceTargetID(task.Target.Workspace)
 		}
-		if workspaceID != "" {
-			return workspaceID + ":" + strings.TrimSpace(task.ID)
+		if projectID != "" {
+			return projectID + ":" + strings.TrimSpace(task.ID)
 		}
 	}
 	return strings.TrimSpace(task.ID)
@@ -704,11 +704,11 @@ func NormalizeTask(task Task) (Task, error) {
 	if task.Target.Kind == TargetKindUser {
 		task.Scope = ScopeUser
 		task.Target.Workspace = ""
-		task.Target.WorkspaceID = ""
+		task.Target.ProjectID = ""
 	} else {
 		task.Scope = ScopeWorkspace
 		task.Target.Workspace = strings.TrimSpace(task.Target.Workspace)
-		task.Target.WorkspaceID = strings.TrimSpace(task.Target.WorkspaceID)
+		task.Target.ProjectID = strings.TrimSpace(task.Target.ProjectID)
 	}
 	task.Name = strings.TrimSpace(task.Name)
 	if task.Name == "" {

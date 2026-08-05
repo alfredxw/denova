@@ -2,6 +2,7 @@ package task
 
 import (
 	"context"
+	"fmt"
 	"log/slog"
 	"strings"
 	"time"
@@ -166,6 +167,31 @@ func (t *Task) Context() context.Context {
 		return context.Background()
 	}
 	return t.ctx
+}
+
+// BindLifetime replaces the provisional detached request context with the
+// lifecycle context admitted by the task's owner. Registration callbacks call
+// this before Start so background work keeps request correlation values while
+// following Project/App shutdown instead of the initiating HTTP request.
+func (t *Task) BindLifetime(ctx context.Context) error {
+	if t == nil {
+		return fmt.Errorf("task is nil")
+	}
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	t.mu.Lock()
+	if t.started || t.finished {
+		t.mu.Unlock()
+		return fmt.Errorf("task %s is already started or finished", t.id)
+	}
+	previousCancel := t.cancel
+	t.ctx, t.cancel = context.WithCancel(ctx)
+	t.mu.Unlock()
+	if previousCancel != nil {
+		previousCancel()
+	}
+	return nil
 }
 
 // StartedAt returns the immutable admission time used to order competing

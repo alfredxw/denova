@@ -6,18 +6,28 @@ import { MODEL_PROTOCOL_CHAT_COMPLETIONS, MODEL_PROVIDER_OPENAI, modelProfilesWi
 import { terminalCommandsForEditor } from './TerminalCommandsEditor'
 import type { LayeredSettings, UpdateCheckResult, UpdateInstallResult } from './types'
 
-const { updateUserSettings } = vi.hoisted(() => ({ updateUserSettings: vi.fn() }))
+const { fetchSettingsMock, updateUserSettings } = vi.hoisted(() => ({
+  fetchSettingsMock: vi.fn(),
+  updateUserSettings: vi.fn(),
+}))
 
 vi.mock('./api', () => {
   return {
+    GLOBAL_SETTINGS_TARGET: { kind: 'global' },
     applyUpdate: vi.fn(),
     checkForUpdate: vi.fn(),
     fetchModelCatalog: vi.fn().mockResolvedValue({ providers: [], protocols: [] }),
-    fetchSettings: vi.fn(),
+    fetchSettings: fetchSettingsMock,
+    fetchSettingsTarget: fetchSettingsMock,
+    refreshSettings: fetchSettingsMock,
+    refreshSettingsTarget: fetchSettingsMock,
     installUpdateStream: vi.fn(),
     pingModelProfile: vi.fn(),
     revokeAgentApprovalRule: vi.fn(),
     patchSettings: (_layer: string, changes: unknown, revision?: string) => revision === undefined
+      ? updateUserSettings(changes)
+      : updateUserSettings(changes, revision),
+    patchSettingsTarget: (_target: unknown, _layer: string, changes: unknown, revision?: string) => revision === undefined
       ? updateUserSettings(changes)
       : updateUserSettings(changes, revision),
     createSettingsMergePatch: (_baseline: unknown, draft: unknown) => draft,

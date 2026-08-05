@@ -33,6 +33,7 @@ import {
   RawMarkdown,
   readMarkdownSourceDocument,
 } from './markdownSourceDocument'
+import { projectFileAssetURL } from '@/lib/api-client/project-files'
 
 export type MarkdownContentMode = 'rich' | 'source'
 
@@ -45,6 +46,8 @@ export interface MarkdownRichEditorReview {
 }
 
 export interface MarkdownEditorProps {
+  /** Stable owner for relative assets embedded in the Markdown. */
+  projectId: string
   /** The canonical Markdown draft shared by both visual and source representations. */
   value: string
   onChange: (markdown: string) => void
@@ -70,6 +73,7 @@ export function MarkdownRichEditor(props: MarkdownRichEditorProps) {
  * only a document/UI representation and never a second draft owner.
  */
 export function MarkdownEditor({
+  projectId,
   value,
   onChange,
   mode,
@@ -102,7 +106,10 @@ export function MarkdownEditor({
   })
 
   const searchExtension = useMemo(() => createSearchHighlightExtension(searchStateRef), [])
-  const workspaceImageExtension = useMemo(() => createWorkspaceImageExtension(), [])
+  const workspaceImageExtension = useMemo(
+    () => createWorkspaceImageExtension((path) => projectFileAssetURL(projectId, path)),
+    [projectId],
+  )
   const updateReviewPortalTargets = useCallback((targets: DocumentReviewPortalTarget[]) => {
     setReviewPortalTargets((current) => sameReviewPortalTargets(current, targets) ? current : targets)
   }, [])

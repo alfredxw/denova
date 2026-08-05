@@ -99,7 +99,6 @@ describe('ProjectWritingSurface', () => {
     render(
       <ProjectWritingSurface
         projectId="book-b"
-        workspace="/stale/books/b"
         documentReview={{ comments: [], onCreate: vi.fn(), onUpdate: vi.fn(), onDelete: vi.fn() }}
         onFlushHandlerChange={vi.fn()}
         onWorkspaceChanged={onWorkspaceChanged}

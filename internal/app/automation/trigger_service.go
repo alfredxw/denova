@@ -48,6 +48,24 @@ func (s *Service) CheckTriggersAfterWorkspaceMutation(ctx context.Context, sourc
 	s.checkTriggersAfterWorkspaceMutation(ctx, snap, source, paths)
 }
 
+// CheckTriggersAfterProjectMutation evaluates content triggers for one stable
+// Project without consulting the foreground Book.
+func (s *Service) CheckTriggersAfterProjectMutation(ctx context.Context, projectID, source string, paths []string) {
+	_ = ctx // Request cancellation must not own process background trigger work.
+	projectID = strings.TrimSpace(projectID)
+	if projectID == "" {
+		return
+	}
+	target := automation.ExecutionTarget{Kind: automation.TargetKindWorkspace, ProjectID: projectID}
+	snap, operation, err := s.acquireTargetRuntime(context.Background(), target)
+	if err != nil {
+		slog.ErrorContext(ctx, fmt.Sprintf("[automation-trigger] Project mutation check admission failed source=%s project_id=%q err=%v", source, projectID, err))
+		return
+	}
+	defer operation.Release()
+	s.checkTriggersAfterWorkspaceMutation(ctx, snap, source, paths)
+}
+
 // checkTriggersAfterWorkspaceMutation evaluates content triggers for an
 // explicit workspace/editor mutation bound to the given snapshot. Agent tool
 // mutations reach trigger evaluation only through the durable HostEffect
@@ -87,8 +105,12 @@ func (s *Service) ConfirmInboxItem(ctx context.Context, id string) (automation.I
 		return automation.InboxActionResult{}, err
 	}
 	target := automation.ExecutionTarget{Kind: automation.TargetKindUser}
-	if strings.TrimSpace(item.Workspace) != "" {
-		target = automation.ExecutionTarget{Kind: automation.TargetKindWorkspace, Workspace: item.Workspace}
+	if strings.TrimSpace(item.ProjectID) != "" || strings.TrimSpace(item.Workspace) != "" {
+		target = automation.ExecutionTarget{
+			Kind:      automation.TargetKindWorkspace,
+			ProjectID: item.ProjectID,
+			Workspace: item.Workspace,
+		}
 	}
 	snap, operation, err := s.acquireTargetRuntime(ctx, target)
 	if err != nil {
@@ -123,7 +145,7 @@ func (s *Service) processTriggersMatching(ctx context.Context, snap *automationW
 	defer unlock()
 	target := automation.ExecutionTarget{Kind: automation.TargetKindUser}
 	if workspace := strings.TrimSpace(snap.workspace); workspace != "" {
-		target = automation.ExecutionTarget{Kind: automation.TargetKindWorkspace, Workspace: workspace}
+		target = automation.ExecutionTarget{Kind: automation.TargetKindWorkspace, ProjectID: snap.projectID, Workspace: workspace}
 	}
 	store := storeForSnapshot(snap)
 	tasks, err := store.ListForTriggerEvaluation(target)

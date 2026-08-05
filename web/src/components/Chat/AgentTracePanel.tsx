@@ -10,6 +10,7 @@ type TraceFilter = 'all' | 'llm' | 'tools' | 'context' | 'errors'
 type TraceCategory = 'run' | 'llm' | 'tools' | 'context' | 'verification' | 'errors' | 'event'
 
 interface AgentTracePanelProps {
+  projectId: string
   disabled?: boolean
   selectedRunId?: string
 }
@@ -23,7 +24,7 @@ const SPAN_RECORD_TYPES = new Set([
   'post_run_verification',
 ])
 
-export function AgentTracePanel({ disabled, selectedRunId }: AgentTracePanelProps) {
+export function AgentTracePanel({ projectId, disabled, selectedRunId }: AgentTracePanelProps) {
   const { t } = useTranslation()
   const [runs, setRuns] = useState<AgentRunTraceSummary[]>([])
   const [selectedID, setSelectedID] = useState(selectedRunId || '')
@@ -36,11 +37,11 @@ export function AgentTracePanel({ disabled, selectedRunId }: AgentTracePanelProp
     setLoading(true)
     setError('')
     try {
-      const list = await getAgentRunTraces(30)
+      const list = await getAgentRunTraces(projectId, 30)
       setRuns(list)
       const nextID = preferredID || selectedRunId || selectedID || list[0]?.id || ''
       setSelectedID(nextID)
-      setTrace(nextID ? await getAgentRunTrace(nextID) : null)
+      setTrace(nextID ? await getAgentRunTrace(projectId, nextID) : null)
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e))
     } finally {
@@ -49,8 +50,11 @@ export function AgentTracePanel({ disabled, selectedRunId }: AgentTracePanelProp
   }
 
   useEffect(() => {
+    setRuns([])
+    setSelectedID(selectedRunId || '')
+    setTrace(null)
     void loadRuns(selectedRunId)
-  }, [])
+  }, [projectId])
 
   useEffect(() => {
     if (selectedRunId && selectedRunId !== selectedID) {
@@ -66,7 +70,7 @@ export function AgentTracePanel({ disabled, selectedRunId }: AgentTracePanelProp
     let cancelled = false
     setLoading(true)
     setError('')
-    getAgentRunTrace(selectedID)
+    getAgentRunTrace(projectId, selectedID)
       .then((next) => {
         if (!cancelled) setTrace(next)
       })
@@ -77,7 +81,7 @@ export function AgentTracePanel({ disabled, selectedRunId }: AgentTracePanelProp
         if (!cancelled) setLoading(false)
       })
     return () => { cancelled = true }
-  }, [selectedID])
+  }, [projectId, selectedID])
 
   const stats = useMemo(() => trace ? summarizeTrace(trace.records) : emptyTraceStats(), [trace])
   const timelineRecords = useMemo(() => {
@@ -143,7 +147,7 @@ export function AgentTracePanel({ disabled, selectedRunId }: AgentTracePanelProp
           {error && <div className="mb-2 rounded border border-[var(--nova-danger)] px-2 py-1.5 text-xs text-[var(--nova-danger)]">{error}</div>}
           {trace ? (
             <div className="space-y-3">
-              <TraceRunActions runID={trace.summary.id} />
+              <TraceRunActions projectId={projectId} runID={trace.summary.id} />
               <TraceSummaryGrid trace={trace} stats={stats} />
               <div className="flex flex-wrap gap-1">
                 {filterItems.map((item) => (
@@ -180,14 +184,14 @@ export function AgentTracePanel({ disabled, selectedRunId }: AgentTracePanelProp
   )
 }
 
-function TraceRunActions({ runID }: { runID: string }) {
+function TraceRunActions({ projectId, runID }: { projectId: string; runID: string }) {
   const { t } = useTranslation()
   const [exporting, setExporting] = useState(false)
 
   const handleExport = async () => {
     setExporting(true)
     try {
-      const file = await exportAgentRunTrace(runID)
+      const file = await exportAgentRunTrace(projectId, runID)
       downloadAgentRunTrace(file)
       toast.success(t('chat.tracePanel.exportSuccess', { filename: file.filename }))
     } catch (error) {

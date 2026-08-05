@@ -102,6 +102,7 @@ func (l *chatAgentLoop) handleToolOutput(messageOutput *agent.MessageVariant, ev
 		data["workspace_change"] = receipt
 		workspaceChangeData := eventMeta.appendTo(map[string]interface{}{
 			"id":               receipt.ChangeSetID,
+			"project_id":       run.options.ProjectID,
 			"workspace":        receipt.Workspace,
 			"change_group_id":  receipt.ChangeGroupID,
 			"review_thread_id": receipt.ReviewThreadID,
@@ -241,7 +242,7 @@ func populateToolResultDomainData(run *chatRun, toolName, payload string, eventM
 	if receipt, ok := workspacechange.ParseToolReceipt(toolName, payload); ok {
 		data["workspace_change"] = receipt
 		workspaceChangeData := eventMeta.appendTo(map[string]interface{}{
-			"id": receipt.ChangeSetID, "workspace": receipt.Workspace,
+			"id": receipt.ChangeSetID, "project_id": run.options.ProjectID, "workspace": receipt.Workspace,
 			"change_group_id": receipt.ChangeGroupID, "review_thread_id": receipt.ReviewThreadID,
 			"change_set_id": receipt.ChangeSetID, "path": receipt.Path,
 			"affected_paths": []string{receipt.Path}, "base_revision": receipt.BaseRevision,

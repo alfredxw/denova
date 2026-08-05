@@ -82,7 +82,7 @@ func (registry *Registry) Get(id string) (Record, error) {
 			return projectStatus(record), nil
 		}
 	}
-	return Record{}, fmt.Errorf("project %s not found", id)
+	return Record{}, fmt.Errorf("%w: %s", ErrNotFound, id)
 }
 
 // Resolve returns one non-archived project and its durable layout. When
@@ -98,10 +98,10 @@ func (registry *Registry) Resolve(id string, requireAvailable bool) (Record, Lay
 		return Record{}, Layout{}, err
 	}
 	if record.Status == StatusArchived {
-		return Record{}, Layout{}, fmt.Errorf("project %s is archived", id)
+		return Record{}, Layout{}, fmt.Errorf("%w: %s", ErrArchived, id)
 	}
 	if requireAvailable && record.Status != StatusAvailable {
-		return Record{}, Layout{}, fmt.Errorf("project directory is unavailable: %s", record.WorkspacePath)
+		return Record{}, Layout{}, fmt.Errorf("%w: %s", ErrUnavailable, record.WorkspacePath)
 	}
 	layout, err := registry.EnsureState(record)
 	if err != nil {
@@ -215,7 +215,7 @@ func (registry *Registry) EnsureBook(path string) (Record, error) {
 	for _, record := range data.Projects {
 		if samePath(record.WorkspacePath, canonical) {
 			if record.ArchivedAt != nil {
-				return Record{}, fmt.Errorf("project %s is archived", record.ID)
+				return Record{}, fmt.Errorf("%w: %s", ErrArchived, record.ID)
 			}
 			if record.Type != TypeBook {
 				return Record{}, fmt.Errorf("project %s is not a book", record.ID)
@@ -341,7 +341,7 @@ func (registry *Registry) Relink(id, path string) (Record, error) {
 		}
 		return projectStatus(data.Projects[index]), nil
 	}
-	return Record{}, fmt.Errorf("project %s not found", id)
+	return Record{}, fmt.Errorf("%w: %s", ErrNotFound, id)
 }
 
 func (registry *Registry) Reorder(ids []string) error {
@@ -436,7 +436,7 @@ func (registry *Registry) updateRecord(id string, mutate func(*Record, time.Time
 		}
 		return projectStatus(data.Projects[index]), nil
 	}
-	return Record{}, fmt.Errorf("project %s not found", id)
+	return Record{}, fmt.Errorf("%w: %s", ErrNotFound, id)
 }
 
 func (registry *Registry) loadAndDiscoverLocked() (registryData, bool, error) {

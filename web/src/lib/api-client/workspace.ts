@@ -1,4 +1,5 @@
 import { jsonHeaders, requestJSON } from './client'
+import { projectAPIPath } from './project-scope'
 import type {
   CharacterCardImportResult,
   CharacterCardPreview,
@@ -20,53 +21,25 @@ export async function getCurrentWorkspace(): Promise<{ workspace: string; projec
   return requestJSON('/api/workspace/current')
 }
 
-export interface WorkspaceFileDocument {
-  workspace: string
-  path: string
-  content: string
-  revision?: string
-}
-
-export async function readFile(path: string): Promise<WorkspaceFileDocument> {
-  return requestJSON(`/api/workspace/file?path=${encodeURIComponent(path)}`)
-}
-
-export function workspaceAssetURL(path: string): string {
-  return `/api/workspace/asset?path=${encodeURIComponent(path)}`
-}
-
-export function versionedWorkspaceAssetURL(path: string, revision?: string): string {
-  const url = workspaceAssetURL(path)
-  return revision ? `${url}&revision=${encodeURIComponent(revision)}` : url
-}
-
-export async function searchWorkspace(query: string, limit = 100, options: { regex?: boolean } = {}): Promise<WorkspaceSearchResult[]> {
+export async function searchWorkspace(projectId: string, query: string, limit = 100, options: { regex?: boolean } = {}): Promise<WorkspaceSearchResult[]> {
   const params = new URLSearchParams({ q: query, limit: String(limit) })
   if (options.regex) params.set('regex', '1')
-  const data = await requestJSON<{ results: WorkspaceSearchResult[] }>(`/api/workspace/search?${params.toString()}`)
+  const data = await requestJSON<{ results: WorkspaceSearchResult[] }>(`${projectAPIPath(projectId, 'workspace/search')}?${params.toString()}`)
   return Array.isArray(data.results) ? data.results : []
 }
 
-export async function replaceWorkspace(req: { query: string; replacement: string; regex: boolean; workspace: string }): Promise<WorkspaceReplaceResult> {
-  return requestJSON('/api/workspace/replace', {
+export async function replaceWorkspace(projectId: string, req: { query: string; replacement: string; regex: boolean }): Promise<WorkspaceReplaceResult> {
+  return requestJSON(projectAPIPath(projectId, 'workspace/replace'), {
     method: 'POST',
     headers: jsonHeaders,
     body: JSON.stringify(req),
   })
 }
 
-export async function saveFile(path: string, content: string, baseRevision: string, workspace: string): Promise<{ path: string; message: string; revision?: string }> {
-  return requestJSON('/api/workspace/file', {
-    method: 'POST',
-    headers: jsonHeaders,
-    body: JSON.stringify({ path, content, base_revision: baseRevision || '', workspace }),
-  })
-}
-
 export async function previewCharacterCard(file: File): Promise<CharacterCardPreview> {
   const form = new FormData()
   form.append('file', file)
-  return requestJSON('/api/workspace/import-character-card/preview', {
+  return requestJSON('/api/imports/character-card/preview', {
     method: 'POST',
     body: form,
   })
@@ -74,15 +47,17 @@ export async function previewCharacterCard(file: File): Promise<CharacterCardPre
 
 export async function importCharacterCard(
   file: File,
-  options: { targetMode?: 'current' | 'new_book'; bookTitle?: string; userCharacterName?: string; loreClassification?: 'heuristic' | 'semantic' } = {},
+  options: { targetMode: 'current' | 'new_book'; projectId?: string; bookTitle?: string; userCharacterName?: string; loreClassification?: 'heuristic' | 'semantic' },
 ): Promise<CharacterCardImportResult> {
   const form = new FormData()
   form.append('file', file)
-  if (options.targetMode) form.append('target_mode', options.targetMode)
   if (options.bookTitle) form.append('book_title', options.bookTitle)
   if (options.userCharacterName) form.append('user_character_name', options.userCharacterName)
   if (options.loreClassification) form.append('lore_classification', options.loreClassification)
-  return requestJSON('/api/workspace/import-character-card', {
+  const path = options.targetMode === 'new_book'
+    ? '/api/books/import-character-card'
+    : projectAPIPath(options.projectId || '', 'book/import-character-card')
+  return requestJSON(path, {
     method: 'POST',
     body: form,
   })

@@ -3,6 +3,7 @@ import { fetchAPI, jsonHeaders, parseUIMessageStream, readErrorMessage, requestJ
 import type { AgentAskAnswer, AgentAskInteraction, AgentAskResolution, AgentRunTrace, AgentRunTraceSummary, ContextAnalysis, IDEContext, SessionSummary, TextSelection } from './types'
 import type { AgentUIMessage } from '@/lib/agent-ui'
 import { isKnownAgentCommandOutcome } from '@/lib/agent-command'
+import { projectAPIPath } from './project-scope'
 
 const chatStructuralCommandIDs = new Map<string, string>()
 
@@ -334,17 +335,17 @@ export async function getSessions(): Promise<SessionSummary[]> {
   return data.sessions || []
 }
 
-export async function getAgentRunTraces(limit = 20): Promise<AgentRunTraceSummary[]> {
-  const data = await requestJSON<{ runs: AgentRunTraceSummary[] }>(`/api/agent-runs?limit=${encodeURIComponent(String(limit))}`)
+export async function getAgentRunTraces(projectId: string, limit = 20): Promise<AgentRunTraceSummary[]> {
+  const data = await requestJSON<{ runs: AgentRunTraceSummary[] }>(`${projectAPIPath(projectId, 'agent-runs')}?limit=${encodeURIComponent(String(limit))}`)
   return data.runs || []
 }
 
-export async function getAgentRunTrace(id: string): Promise<AgentRunTrace> {
-  return requestJSON(`/api/agent-runs/${encodeURIComponent(id)}`)
+export async function getAgentRunTrace(projectId: string, id: string): Promise<AgentRunTrace> {
+  return requestJSON(projectAPIPath(projectId, `agent-runs/${encodeURIComponent(id)}`))
 }
 
-export async function exportAgentRunTrace(id: string): Promise<AgentRunTraceExportFile> {
-  const res = await fetchAPI(`/api/agent-runs/${encodeURIComponent(id)}/export`)
+export async function exportAgentRunTrace(projectId: string, id: string): Promise<AgentRunTraceExportFile> {
+  const res = await fetchAPI(projectAPIPath(projectId, `agent-runs/${encodeURIComponent(id)}/export`))
   if (!res.ok) throw new Error(await readErrorMessage(res))
   return {
     filename: `${id}.jsonl`,

@@ -1,18 +1,23 @@
 import { renderHook, waitFor } from '@testing-library/react'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
-import { fetchSettings } from '@/features/settings/api'
+import { fetchProjectSettings } from '@/features/settings/api'
 import type { LayeredSettings, ResolvedAgentToolCapability } from '@/features/settings/types'
 import { getSkills } from '@/lib/api'
 import { queryClient } from '@/lib/query-client'
 import { useSkillCommands } from './useSkillCommands'
 
-vi.mock('@/features/settings/api', () => ({ fetchSettings: vi.fn() }))
-vi.mock('@/lib/api', () => ({ getSkills: vi.fn() }))
+vi.mock('@/features/settings/api', () => ({ fetchProjectSettings: vi.fn() }))
+vi.mock('@/lib/api', () => ({
+  getSkills: vi.fn(),
+  projectSkillTarget: (projectId: string) => ({ kind: 'project', projectId }),
+}))
+
+const PROJECT_ID = 'project-book'
 
 describe('useSkillCommands', () => {
   beforeEach(() => {
     queryClient.clear()
-    vi.mocked(fetchSettings).mockReset()
+    vi.mocked(fetchProjectSettings).mockReset()
     vi.mocked(getSkills).mockReset()
     vi.mocked(getSkills).mockResolvedValue({
       scopes: [],
@@ -31,27 +36,27 @@ describe('useSkillCommands', () => {
   })
 
   it('fails closed when the selected agent manifest has no Skills capability', async () => {
-    vi.mocked(fetchSettings).mockResolvedValue(settingsWithManifest())
+    vi.mocked(fetchProjectSettings).mockResolvedValue(settingsWithManifest())
 
-    const { result } = renderHook(() => useSkillCommands({ agentKey: 'ide' }))
+    const { result } = renderHook(() => useSkillCommands({ agentKey: 'ide', projectId: PROJECT_ID }))
 
-    await waitFor(() => expect(fetchSettings).toHaveBeenCalledOnce())
+    await waitFor(() => expect(fetchProjectSettings).toHaveBeenCalledWith(PROJECT_ID))
     expect(result.current).toEqual([])
   })
 
   it('hides commands when the backend manifest disables Skills', async () => {
-    vi.mocked(fetchSettings).mockResolvedValue(settingsWithManifest(skillsCapability(false)))
+    vi.mocked(fetchProjectSettings).mockResolvedValue(settingsWithManifest(skillsCapability(false)))
 
-    const { result } = renderHook(() => useSkillCommands({ agentKey: 'ide' }))
+    const { result } = renderHook(() => useSkillCommands({ agentKey: 'ide', projectId: PROJECT_ID }))
 
-    await waitFor(() => expect(fetchSettings).toHaveBeenCalledOnce())
+    await waitFor(() => expect(fetchProjectSettings).toHaveBeenCalledWith(PROJECT_ID))
     expect(result.current).toEqual([])
   })
 
   it('returns active commands only when the backend manifest enables Skills', async () => {
-    vi.mocked(fetchSettings).mockResolvedValue(settingsWithManifest(skillsCapability(true)))
+    vi.mocked(fetchProjectSettings).mockResolvedValue(settingsWithManifest(skillsCapability(true)))
 
-    const { result } = renderHook(() => useSkillCommands({ agentKey: 'ide' }))
+    const { result } = renderHook(() => useSkillCommands({ agentKey: 'ide', projectId: PROJECT_ID }))
 
     await waitFor(() => expect(result.current).toEqual([
       { name: 'novel-outline', description: 'Build an outline' },

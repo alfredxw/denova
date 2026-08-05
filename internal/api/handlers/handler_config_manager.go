@@ -17,6 +17,10 @@ import (
 )
 
 func (h *Handlers) HandleConfigManagerStream(ctx context.Context, c *app.RequestContext) {
+	layout, ok := requireProjectScope(c)
+	if !ok {
+		return
+	}
 	var req configmanagerapp.Request
 	if err := c.BindJSON(&req); err != nil {
 		writeError(c, consts.StatusBadRequest, err.Error())
@@ -34,9 +38,7 @@ func (h *Handlers) HandleConfigManagerStream(ctx context.Context, c *app.Request
 		writeAgentRuntimeError(c, consts.StatusBadRequest, "agent_runtime.invalid_command", "command_id 请求标识无效 / invalid request identifier command_id", nil)
 		return
 	}
-	if !h.requireWorkspace(c) {
-		return
-	}
+	req.ProjectID = layout.ProjectID
 	req.Locale = requestLocale(c)
 	task, err := h.app.ConfigManager().StartTaskWithError(ctx, req)
 	if err != nil {
@@ -49,9 +51,6 @@ func (h *Handlers) HandleConfigManagerStream(ctx context.Context, c *app.Request
 // HandleConfigManagerTaskStream reattaches only to the exact scoped display
 // Task selected by /active; a stale task ID can never cross Config scopes.
 func (h *Handlers) HandleConfigManagerTaskStream(ctx context.Context, c *app.RequestContext) {
-	if !h.requireWorkspace(c) {
-		return
-	}
 	taskID := strings.TrimSpace(c.Query("task_id"))
 	if taskID == "" {
 		writeAgentRuntimeError(c, consts.StatusBadRequest, "agent_runtime.invalid_command", "缺少 task_id，无法精确恢复 Agent 流 / task_id is required for exact Agent stream recovery", nil)
@@ -67,9 +66,6 @@ func (h *Handlers) HandleConfigManagerTaskStream(ctx context.Context, c *app.Req
 }
 
 func (h *Handlers) HandleConfigManagerActive(ctx context.Context, c *app.RequestContext) {
-	if !h.requireWorkspace(c) {
-		return
-	}
 	view := h.app.ConfigManager().ActiveView(ctx, configManagerRequestFromQuery(c))
 	response := map[string]any{"active": false}
 	if view.PendingAsk != nil {
@@ -89,9 +85,6 @@ func (h *Handlers) HandleConfigManagerActive(ctx context.Context, c *app.Request
 }
 
 func (h *Handlers) HandleConfigManagerRecovery(ctx context.Context, c *app.RequestContext) {
-	if !h.requireWorkspace(c) {
-		return
-	}
 	request, ok := bindAgentRecoveryRequest(c, false)
 	if !ok {
 		return
@@ -106,14 +99,6 @@ func (h *Handlers) HandleConfigManagerRecovery(ctx context.Context, c *app.Reque
 
 func (h *Handlers) HandleConfigManagerMessages(ctx context.Context, c *app.RequestContext) {
 	limitRaw := strings.TrimSpace(c.Query("limit"))
-	if !h.app.HasWorkspace() {
-		if limitRaw != "" {
-			writeJSON(c, consts.StatusOK, sessionMessagesPageDTO{Messages: []agentui.Message{}})
-			return
-		}
-		writeJSON(c, consts.StatusOK, []agentui.Message{})
-		return
-	}
 	if limitRaw != "" {
 		limit, parseErr := strconv.Atoi(limitRaw)
 		if parseErr != nil || limit <= 0 {
@@ -149,9 +134,6 @@ func (h *Handlers) HandleConfigManagerMessages(ctx context.Context, c *app.Reque
 }
 
 func (h *Handlers) HandleConfigManagerClear(ctx context.Context, c *app.RequestContext) {
-	if !h.requireWorkspace(c) {
-		return
-	}
 	if err := h.app.ConfigManager().ClearContext(ctx, configManagerRequestFromQuery(c)); err != nil {
 		writeError(c, consts.StatusBadRequest, err.Error())
 		return
@@ -161,6 +143,7 @@ func (h *Handlers) HandleConfigManagerClear(ctx context.Context, c *app.RequestC
 
 func configManagerRequestFromQuery(c *app.RequestContext) configmanagerapp.Request {
 	return configmanagerapp.Request{
+		ProjectID:  projectScope(c).ProjectID,
 		Origin:     strings.TrimSpace(c.Query("origin")),
 		ResourceID: strings.TrimSpace(c.Query("resource_id")),
 		StoryID:    strings.TrimSpace(c.Query("story_id")),

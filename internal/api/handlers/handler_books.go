@@ -12,6 +12,7 @@ import (
 	"github.com/cloudwego/hertz/pkg/protocol/consts"
 
 	bookapp "denova/internal/app/book"
+	appsettings "denova/internal/app/settings"
 	"denova/internal/book"
 	projectdomain "denova/internal/project"
 )
@@ -41,7 +42,7 @@ func (h *Handlers) HandleCreateBook(ctx context.Context, c *app.RequestContext) 
 		writeErrorKey(c, consts.StatusBadRequest, "api.books.titleRequired")
 		return
 	}
-	layered, err := h.app.SettingsService().Snapshot()
+	layered, err := h.app.SettingsService().Snapshot(appsettings.Global())
 	if err != nil {
 		writeError(c, consts.StatusInternalServerError, err.Error())
 		return
@@ -50,7 +51,7 @@ func (h *Handlers) HandleCreateBook(ctx context.Context, c *app.RequestContext) 
 		writeErrorKey(c, consts.StatusInternalServerError, "api.books.novaDirMissing")
 		return
 	}
-	workspace, meta, err := h.app.CreateBook(ctx, layered.Paths.DenovaDir, req.Title, req.Author, req.Description)
+	created, err := h.app.CreateBook(ctx, layered.Paths.DenovaDir, req.Title, req.Author, req.Description)
 	if err != nil {
 		status := consts.StatusInternalServerError
 		if strings.Contains(err.Error(), "已存在") {
@@ -60,8 +61,9 @@ func (h *Handlers) HandleCreateBook(ctx context.Context, c *app.RequestContext) 
 		return
 	}
 	writeJSON(c, consts.StatusOK, map[string]interface{}{
-		"workspace": workspace,
-		"book_meta": meta,
+		"project_id": created.ProjectID,
+		"workspace":  created.Workspace,
+		"book_meta":  created.Meta,
 	})
 }
 

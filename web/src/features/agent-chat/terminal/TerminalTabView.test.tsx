@@ -131,8 +131,8 @@ describe('TerminalTabView session lifecycle', () => {
     )
 
     await waitFor(() => expect(apiMocks.createTerminalSession).toHaveBeenCalledTimes(1))
-    expect(apiMocks.createTerminalSession).toHaveBeenCalledWith(expect.objectContaining({ owner_tab_id: tab.id }))
-    const request = apiMocks.createTerminalSession.mock.calls[0][0]
+    expect(apiMocks.createTerminalSession).toHaveBeenCalledWith(tab.projectId, expect.objectContaining({ owner_tab_id: tab.id }))
+    const request = apiMocks.createTerminalSession.mock.calls[0][1]
     expect(request).not.toHaveProperty('command')
     expect(request).not.toHaveProperty('args')
     await act(async () => {
@@ -155,12 +155,13 @@ describe('TerminalTabView session lifecycle', () => {
 
     await waitFor(() => expect(apiMocks.createTerminalSession).toHaveBeenCalledTimes(1))
     expect(apiMocks.createTerminalSession).toHaveBeenCalledWith(
+      configuredTab.projectId,
       expect.objectContaining({
         profile_id: 'aider-sonnet',
         owner_tab_id: configuredTab.id,
       }),
     )
-    const request = apiMocks.createTerminalSession.mock.calls[0][0]
+    const request = apiMocks.createTerminalSession.mock.calls[0][1]
     expect(request).not.toHaveProperty('command')
     expect(request).not.toHaveProperty('args')
     expect(terminalTabLabel(configuredTab, (key) => key)).toBe('Aider Sonnet')
@@ -223,7 +224,7 @@ describe('TerminalTabView session lifecycle', () => {
 
     await waitFor(() => expect(apiMocks.closeTerminalSession).toHaveBeenCalledWith('session-1'))
     await waitFor(() => expect(apiMocks.createTerminalSession).toHaveBeenCalledTimes(2))
-    expect(apiMocks.createTerminalSession).toHaveBeenLastCalledWith(expect.objectContaining({ owner_tab_id: tab.id }))
+    expect(apiMocks.createTerminalSession).toHaveBeenLastCalledWith(tab.projectId, expect.objectContaining({ owner_tab_id: tab.id }))
   })
 
   it('reports a bounded OSC window title for the owning tab', async () => {

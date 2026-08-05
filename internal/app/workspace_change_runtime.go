@@ -7,6 +7,7 @@ import (
 	"path/filepath"
 	"strings"
 
+	projectdomain "denova/internal/project"
 	workspacechange "denova/internal/workspace/change"
 )
 
@@ -150,4 +151,68 @@ func (a *App) WithWorkspaceChangeMutation(
 		a.Automation().CheckTriggersAfterWorkspaceMutation(operation.Context(), hooks.AutomationSource, hooks.Paths)
 	}
 	return actualWorkspace, nil
+}
+
+// WithProjectChangeService runs one read/review operation against an explicit
+// stable Project identity. It never consults or changes the foreground Book.
+func (a *App) WithProjectChangeService(
+	ctx context.Context,
+	projectID string,
+	action func(*workspacechange.Service) error,
+) (projectdomain.Layout, error) {
+	operation, err := a.AcquireProjectOperation(ctx, projectID)
+	if err != nil {
+		return projectdomain.Layout{}, err
+	}
+	defer operation.Release()
+	layout := operation.Layout()
+	service, err := workspaceChangeService(layout.ContentRoot, layout.StateRoot)
+	if err != nil {
+		return projectdomain.Layout{}, err
+	}
+	if err := action(service); err != nil {
+		return projectdomain.Layout{}, err
+	}
+	if err := operation.Context().Err(); err != nil {
+		return projectdomain.Layout{}, err
+	}
+	return layout, nil
+}
+
+// WithProjectChangeMutation keeps the durable change, version scheduling, and
+// automation trigger admission bound to one Project generation.
+func (a *App) WithProjectChangeMutation(
+	ctx context.Context,
+	projectID string,
+	action func(*workspacechange.Service) (WorkspaceChangeMutationHooks, error),
+) (projectdomain.Layout, error) {
+	a.ensureServices()
+	operation, err := a.AcquireProjectOperation(ctx, projectID)
+	if err != nil {
+		return projectdomain.Layout{}, err
+	}
+	defer operation.Release()
+	layout := operation.Layout()
+	service, err := workspaceChangeService(layout.ContentRoot, layout.StateRoot)
+	if err != nil {
+		return projectdomain.Layout{}, err
+	}
+	hooks, err := action(service)
+	if err != nil {
+		return projectdomain.Layout{}, err
+	}
+	if err := operation.Context().Err(); err != nil {
+		return projectdomain.Layout{}, err
+	}
+	if hooks.ScheduleAutoVersion {
+		if err := a.ProjectFiles().ScheduleBookAutoVersion(layout.ProjectID); err != nil {
+			return projectdomain.Layout{}, err
+		}
+	}
+	if strings.TrimSpace(hooks.AutomationSource) != "" && len(hooks.Paths) > 0 {
+		a.Automation().CheckTriggersAfterProjectMutation(
+			operation.Context(), layout.ProjectID, hooks.AutomationSource, hooks.Paths,
+		)
+	}
+	return layout, nil
 }

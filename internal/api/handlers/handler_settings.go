@@ -11,11 +11,12 @@ import (
 
 	"denova/config"
 	appsvc "denova/internal/app"
+	appsettings "denova/internal/app/settings"
 )
 
 // HandleSettingsGet returns persisted layers and their resolved runtime view.
 func (h *Handlers) HandleSettingsGet(ctx context.Context, c *app.RequestContext) {
-	layered, err := h.app.SettingsService().Snapshot()
+	layered, err := h.app.SettingsService().Snapshot(settingsTarget(c))
 	if err != nil {
 		writeError(c, consts.StatusInternalServerError, err.Error())
 		return
@@ -56,7 +57,7 @@ func (h *Handlers) HandleSettingsPatch(ctx context.Context, c *app.RequestContex
 		writeErrorKey(c, consts.StatusBadRequest, "api.common.invalidRequestWithDetail", "detail", err.Error())
 		return
 	}
-	layered, err := h.app.SettingsService().Patch(layer, body.Changes, body.BaseRevision)
+	layered, err := h.app.SettingsService().Patch(settingsTarget(c), layer, body.Changes, body.BaseRevision)
 	if err != nil {
 		switch {
 		case errors.Is(err, config.ErrSettingsRevisionConflict):
@@ -77,6 +78,13 @@ func (h *Handlers) HandleSettingsPatch(ctx context.Context, c *app.RequestContex
 		return
 	}
 	writeJSON(c, consts.StatusOK, layered)
+}
+
+func settingsTarget(c *app.RequestContext) appsettings.Target {
+	if layout := projectScope(c); layout.ProjectID != "" {
+		return appsettings.Project(layout.ProjectID)
+	}
+	return appsettings.Global()
 }
 
 func settingsErrorKey(err error) string {

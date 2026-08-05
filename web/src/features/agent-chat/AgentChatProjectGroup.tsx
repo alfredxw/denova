@@ -16,6 +16,7 @@ import type {
   TerminalCommandProfile,
   TerminalProfileId,
 } from './types'
+import { agentChatPageIdsForProjectType } from './types'
 
 export type AgentChatPaneControls = Pick<
   AdaptiveSurfaceControls,
@@ -87,6 +88,7 @@ export function AgentChatProjectGroup({
   onHideSecondary,
 }: AgentChatProjectGroupProps) {
   const { t } = useTranslation()
+  const pageIds = agentChatPageIdsForProjectType(project.type)
   const groupTabs = tabsInGroup(state.tabs, group)
   const secondaryTabs = tabsInGroup(state.tabs, 'secondary')
   const activeID = state.activeTabIds[group]
@@ -105,7 +107,7 @@ export function AgentChatProjectGroup({
       busy={secondaryBusy}
       newChatDisabled={project.status !== 'available'}
       terminalCommands={terminalCommands}
-      pagesEnabled={project.type === 'book'}
+      pageIds={pageIds}
       onShow={() => (mobileControls.isMobile ? mobileControls.openRight() : onShowSecondary())}
       onHide={() => (mobileControls.isMobile ? mobileControls.closePane() : onHideSecondary())}
       onNewAgentTab={(target) => openInGroup(() => onNewAgentTab(target), target)}
@@ -149,7 +151,7 @@ export function AgentChatProjectGroup({
             activeTabId={activeID}
             tabTitle={tabTitle}
             terminalCommands={terminalCommands}
-            pagesEnabled={project.type === 'book'}
+            pageIds={pageIds}
             newChatDisabled={project.status !== 'available'}
             endActions={tabBarEndActions}
             onActivate={(tabID) => onActivate(group, tabID)}

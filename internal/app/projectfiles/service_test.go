@@ -320,6 +320,59 @@ func TestServiceOwnsVersionSchedulerForBackgroundBookSaves(t *testing.T) {
 	}
 }
 
+func TestServiceBookVersionHistoryFollowsStableProjectRelink(t *testing.T) {
+	root := t.TempDir()
+	workspaceA := filepath.Join(root, "book-a")
+	workspaceB := filepath.Join(root, "book-b")
+	for _, workspace := range []string{workspaceA, workspaceB} {
+		if err := book.NewState(workspace).InitWorkspace(); err != nil {
+			t.Fatal(err)
+		}
+	}
+	registry := projectdomain.NewRegistry(filepath.Join(root, "denova"))
+	record, err := registry.Add(workspaceA, projectdomain.TypeBook, "Book")
+	if err != nil {
+		t.Fatal(err)
+	}
+	layout, err := registry.EnsureState(record)
+	if err != nil {
+		t.Fatal(err)
+	}
+	service := NewService(registry)
+	t.Cleanup(service.Close)
+	mustWriteProjectFile(t, workspaceA, "chapters/ch01.md", "before relink\n")
+	first, err := service.CreateVersion(context.Background(), record.ID, "before relink", book.VersionSourceManual)
+	if err != nil || first.Version == nil {
+		t.Fatalf("create version before relink: result=%#v err=%v", first, err)
+	}
+
+	service.CloseProject(record.ID)
+	if _, err := registry.Relink(record.ID, workspaceB); err != nil {
+		t.Fatal(err)
+	}
+	mustWriteProjectFile(t, workspaceB, "chapters/ch01.md", "after relink\n")
+	history, err := service.VersionHistory(record.ID, 10)
+	if err != nil || len(history) != 1 || history[0].ID != first.Version.ID {
+		t.Fatalf("version history after relink=%#v err=%v", history, err)
+	}
+	second, err := service.CreateVersion(context.Background(), record.ID, "after relink", book.VersionSourceManual)
+	if err != nil || second.Version == nil {
+		t.Fatalf("create version after relink: result=%#v err=%v", second, err)
+	}
+	history, err = service.VersionHistory(record.ID, 10)
+	if err != nil || len(history) != 2 {
+		t.Fatalf("version history after second snapshot=%#v err=%v", history, err)
+	}
+	if _, err := os.Stat(layout.VersionRepositoryDir()); err != nil {
+		t.Fatalf("Project-owned version repository missing: %v", err)
+	}
+	for _, workspace := range []string{workspaceA, workspaceB} {
+		if _, err := os.Stat(filepath.Join(workspace, ".git")); !errors.Is(err, os.ErrNotExist) {
+			t.Fatalf("content workspace received a .git path workspace=%s err=%v", workspace, err)
+		}
+	}
+}
+
 func TestServicePreviewsOnlySafeRasterAssets(t *testing.T) {
 	service, projectID, workspace := projectFilesTestService(t)
 	mustWriteProjectFile(t, workspace, "cover.png", "\x89PNG\r\n\x1a\n")
@@ -345,6 +398,9 @@ func TestServicePreviewsOnlySafeRasterAssets(t *testing.T) {
 	}
 	if _, _, err := service.ReadAsset(context.Background(), projectID, "diagram.svg"); err == nil {
 		t.Fatal("expected SVG asset preview to be rejected")
+	}
+	if _, _, err := service.ReadAsset(context.Background(), projectID, "images/../cover.png"); err == nil {
+		t.Fatal("expected parent directory segment to be rejected")
 	}
 }
 

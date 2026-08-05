@@ -11,6 +11,7 @@ import type { ActiveChatTask, AgentRuntimeRecoveryAction } from '@/lib/api'
 import { ConfigManagerChat } from './ConfigManagerChat'
 
 const streamMock = vi.hoisted(() => ({ consume: vi.fn(), setMessages: vi.fn() }))
+const projectID = 'project-book'
 
 vi.mock('@/lib/api', () => ({
   clearConfigManagerSession: vi.fn(),
@@ -101,7 +102,7 @@ describe('ConfigManagerChat durable runtime control', () => {
   it('blocks a new start until the exact scope inspection has settled', async () => {
     let resolveInspection!: (projection: ActiveChatTask) => void
     vi.mocked(getActiveConfigManagerTask).mockReturnValue(new Promise((resolve) => { resolveInspection = resolve }))
-    render(<ConfigManagerChat workspace="/book" origin="settings" />)
+    render(<ConfigManagerChat projectId={projectID} origin="settings" />)
 
     expect(screen.getByRole('button', { name: 'send config' })).toBeDisabled()
     resolveInspection(idleProjection())
@@ -112,7 +113,7 @@ describe('ConfigManagerChat durable runtime control', () => {
     vi.mocked(runConfigManagerStream)
       .mockRejectedValueOnce(new TypeError('Failed to fetch'))
       .mockResolvedValueOnce(emptyStream())
-    render(<ConfigManagerChat workspace="/book" origin="settings" />)
+    render(<ConfigManagerChat projectId={projectID} origin="settings" />)
     await waitFor(() => expect(getActiveConfigManagerTask).toHaveBeenCalledTimes(1))
 
     fireEvent.click(screen.getByRole('button', { name: 'send config' }))
@@ -121,7 +122,7 @@ describe('ConfigManagerChat durable runtime control', () => {
     fireEvent.click(screen.getByRole('button', { name: 'send config' }))
     await waitFor(() => expect(runConfigManagerStream).toHaveBeenCalledTimes(2))
 
-    expect(vi.mocked(runConfigManagerStream).mock.calls.map(([request]) => request.command_id)).toEqual([
+    expect(vi.mocked(runConfigManagerStream).mock.calls.map(([, request]) => request.command_id)).toEqual([
       'config-command-1',
       'config-command-1',
     ])
@@ -131,7 +132,7 @@ describe('ConfigManagerChat durable runtime control', () => {
     vi.mocked(runConfigManagerStream)
       .mockRejectedValueOnce(Object.assign(new Error('rejected'), { status: 400 }))
       .mockResolvedValueOnce(emptyStream())
-    render(<ConfigManagerChat workspace="/book" origin="settings" />)
+    render(<ConfigManagerChat projectId={projectID} origin="settings" />)
     await waitFor(() => expect(getActiveConfigManagerTask).toHaveBeenCalledTimes(1))
 
     fireEvent.click(screen.getByRole('button', { name: 'send config' }))
@@ -140,7 +141,7 @@ describe('ConfigManagerChat durable runtime control', () => {
     fireEvent.click(screen.getByRole('button', { name: 'send config' }))
     await waitFor(() => expect(runConfigManagerStream).toHaveBeenCalledTimes(2))
 
-    expect(vi.mocked(runConfigManagerStream).mock.calls.map(([request]) => request.command_id)).toEqual([
+    expect(vi.mocked(runConfigManagerStream).mock.calls.map(([, request]) => request.command_id)).toEqual([
       'config-command-1',
       'config-command-2',
     ])
@@ -148,7 +149,7 @@ describe('ConfigManagerChat durable runtime control', () => {
 
   it('drops local command identity as soon as a normal run is accepted', async () => {
     vi.mocked(runConfigManagerStream).mockResolvedValue(emptyStream())
-    render(<ConfigManagerChat workspace="/book" origin="settings" />)
+    render(<ConfigManagerChat projectId={projectID} origin="settings" />)
     await waitFor(() => expect(getActiveConfigManagerTask).toHaveBeenCalledTimes(1))
 
     fireEvent.click(screen.getByRole('button', { name: 'send config' }))
@@ -157,7 +158,7 @@ describe('ConfigManagerChat durable runtime control', () => {
     fireEvent.click(screen.getByRole('button', { name: 'send config' }))
     await waitFor(() => expect(runConfigManagerStream).toHaveBeenCalledTimes(2))
 
-    expect(vi.mocked(runConfigManagerStream).mock.calls.map(([request]) => request.command_id)).toEqual([
+    expect(vi.mocked(runConfigManagerStream).mock.calls.map(([, request]) => request.command_id)).toEqual([
       'config-command-1',
       'config-command-2',
     ])
@@ -169,7 +170,7 @@ describe('ConfigManagerChat durable runtime control', () => {
       .mockRejectedValueOnce(new TypeError('projection connection reset'))
     vi.mocked(runConfigManagerStream).mockResolvedValue(emptyStream())
     streamMock.consume.mockImplementation(neverSettles)
-    render(<ConfigManagerChat workspace="/book" origin="settings" />)
+    render(<ConfigManagerChat projectId={projectID} origin="settings" />)
     await waitFor(() => expect(screen.getByRole('button', { name: 'send config' })).toBeEnabled())
 
     fireEvent.click(screen.getByRole('button', { name: 'send config' }))
@@ -183,7 +184,7 @@ describe('ConfigManagerChat durable runtime control', () => {
     const active = { ...idleProjection(), active: true, status: 'running', task_id: 'accepted-config-task', stream_attached: true }
     vi.mocked(runConfigManagerStream).mockResolvedValue(emptyStream())
     streamMock.consume.mockImplementation(neverSettles)
-    const first = render(<ConfigManagerChat workspace="/book" origin="settings" />)
+    const first = render(<ConfigManagerChat projectId={projectID} origin="settings" />)
     await waitFor(() => expect(getActiveConfigManagerTask).toHaveBeenCalledTimes(1))
     vi.mocked(getActiveConfigManagerTask).mockResolvedValue(active)
 
@@ -192,8 +193,9 @@ describe('ConfigManagerChat durable runtime control', () => {
     expect(reconnectConfigManagerStream).not.toHaveBeenCalled()
     first.unmount()
 
-    render(<ConfigManagerChat workspace="/book" origin="settings" />)
+    render(<ConfigManagerChat projectId={projectID} origin="settings" />)
     await waitFor(() => expect(reconnectConfigManagerStream).toHaveBeenCalledWith(
+      projectID,
       expect.objectContaining({ origin: 'settings' }),
       'accepted-config-task',
     ))
@@ -216,15 +218,15 @@ describe('ConfigManagerChat durable runtime control', () => {
       .mockResolvedValueOnce(receipt(followUp))
     streamMock.consume.mockImplementation(neverSettles)
 
-    render(<ConfigManagerChat workspace="/book" origin="settings" resourceId="resource-1" />)
+    render(<ConfigManagerChat projectId={projectID} origin="settings" resourceId="resource-1" />)
 
     await waitFor(() => expect(recoverConfigManagerRuntime).toHaveBeenCalledTimes(2))
     expect(vi.mocked(recoverConfigManagerRuntime).mock.calls).toEqual([
-      [expect.objectContaining({ origin: 'settings', resource_id: 'resource-1' }), attach],
-      [expect.objectContaining({ origin: 'settings', resource_id: 'resource-1' }), followUp],
+      [projectID, expect.objectContaining({ origin: 'settings', resource_id: 'resource-1' }), attach],
+      [projectID, expect.objectContaining({ origin: 'settings', resource_id: 'resource-1' }), followUp],
     ])
     expect(reconnectConfigManagerStream).toHaveBeenCalledTimes(1)
-    expect(reconnectConfigManagerStream).toHaveBeenCalledWith(expect.any(Object), 'config-recovery-task')
+    expect(reconnectConfigManagerStream).toHaveBeenCalledWith(projectID, expect.any(Object), 'config-recovery-task')
     expect(runConfigManagerStream).not.toHaveBeenCalled()
   })
 
@@ -243,14 +245,14 @@ describe('ConfigManagerChat durable runtime control', () => {
       .mockResolvedValueOnce(receipt(attach))
       .mockResolvedValueOnce(receipt(abort))
     streamMock.consume.mockImplementation(neverSettles)
-    render(<ConfigManagerChat workspace="/book" origin="settings" />)
+    render(<ConfigManagerChat projectId={projectID} origin="settings" />)
 
     await waitFor(() => expect(screen.getByRole('button', { name: 'stop recovery' })).toBeInTheDocument())
     expect(reconnectConfigManagerStream).toHaveBeenCalledTimes(1)
     fireEvent.click(screen.getByRole('button', { name: 'stop recovery' }))
 
     await waitFor(() => expect(recoverConfigManagerRuntime).toHaveBeenCalledTimes(2))
-    expect(vi.mocked(recoverConfigManagerRuntime).mock.calls.map(([, action]) => action)).toEqual([attach, abort])
+    expect(vi.mocked(recoverConfigManagerRuntime).mock.calls.map(([, , action]) => action)).toEqual([attach, abort])
     expect(reconnectConfigManagerStream).toHaveBeenCalledTimes(1)
   })
 
@@ -267,11 +269,11 @@ describe('ConfigManagerChat durable runtime control', () => {
     streamMock.consume
       .mockRejectedValueOnce(new TypeError('connection reset'))
       .mockImplementationOnce(neverSettles)
-    render(<ConfigManagerChat workspace="/book" origin="settings" />)
+    render(<ConfigManagerChat projectId={projectID} origin="settings" />)
 
     await waitFor(() => expect(reconnectConfigManagerStream).toHaveBeenCalledTimes(2))
-    expect(reconnectConfigManagerStream).toHaveBeenNthCalledWith(1, expect.any(Object), 'disconnect-task')
-    expect(reconnectConfigManagerStream).toHaveBeenNthCalledWith(2, expect.any(Object), 'disconnect-task')
+    expect(reconnectConfigManagerStream).toHaveBeenNthCalledWith(1, projectID, expect.any(Object), 'disconnect-task')
+    expect(reconnectConfigManagerStream).toHaveBeenNthCalledWith(2, projectID, expect.any(Object), 'disconnect-task')
 
     fireEvent(window, new Event('focus'))
     await waitFor(() => expect(getActiveConfigManagerTask).toHaveBeenCalledTimes(3))
@@ -291,17 +293,18 @@ describe('ConfigManagerChat durable runtime control', () => {
         stream_attached: true,
       })
     streamMock.consume.mockImplementation(neverSettles)
-    const view = render(<ConfigManagerChat workspace="/book" origin="scope-a" />)
+    const view = render(<ConfigManagerChat projectId={projectID} origin="scope-a" />)
     await waitFor(() => expect(getActiveConfigManagerTask).toHaveBeenCalledTimes(1))
 
-    view.rerender(<ConfigManagerChat workspace="/book" origin="scope-b" />)
+    view.rerender(<ConfigManagerChat projectId={projectID} origin="scope-b" />)
 
     await waitFor(() => expect(getActiveConfigManagerTask).toHaveBeenCalledTimes(2))
     await waitFor(() => expect(reconnectConfigManagerStream).toHaveBeenCalledWith(
+      projectID,
       expect.objectContaining({ origin: 'scope-b' }),
       'scope-b-task',
     ))
     resolveFirst(idleProjection())
-    expect(vi.mocked(getActiveConfigManagerTask).mock.calls.map(([scope]) => scope?.origin)).toEqual(['scope-a', 'scope-b'])
+    expect(vi.mocked(getActiveConfigManagerTask).mock.calls.map(([, scope]) => scope?.origin)).toEqual(['scope-a', 'scope-b'])
   })
 })

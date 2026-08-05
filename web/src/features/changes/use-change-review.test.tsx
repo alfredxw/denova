@@ -1,43 +1,43 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { render, waitFor } from '@testing-library/react'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
-import { prefetchWorkspaceChangeReviewThread, useWorkspaceChangeGroup, useWorkspaceChangeGroups, useWorkspaceChangeReviewThread } from './use-change-review'
+import { prefetchProjectChangeReviewThread, useProjectChangeGroup, useProjectChangeGroups, useProjectChangeReviewThread } from './use-change-review'
 
 const apiMocks = vi.hoisted(() => ({
-  listWorkspaceChangeGroups: vi.fn(),
-  getWorkspaceChangeGroup: vi.fn(),
-  getWorkspaceChangeReviewThread: vi.fn(),
+  listProjectChangeGroups: vi.fn(),
+  getProjectChangeGroup: vi.fn(),
+  getProjectChangeReviewThread: vi.fn(),
 }))
 
 vi.mock('./api', () => ({
   ...apiMocks,
 }))
 
-describe('useWorkspaceChangeGroups', () => {
+describe('useProjectChangeGroups', () => {
   beforeEach(() => {
     vi.clearAllMocks()
-    apiMocks.listWorkspaceChangeGroups.mockResolvedValue([])
-    apiMocks.getWorkspaceChangeGroup.mockResolvedValue({ id: 'group-1', created_at: '', review_status: 'pending', apply_state: 'applied', change_sets: [] })
-    apiMocks.getWorkspaceChangeReviewThread.mockResolvedValue({ id: 'thread-1', latest_group_id: '', groups: [], comments: [], files: [] })
+    apiMocks.listProjectChangeGroups.mockResolvedValue([])
+    apiMocks.getProjectChangeGroup.mockResolvedValue({ id: 'group-1', created_at: '', review_status: 'pending', apply_state: 'applied', change_sets: [] })
+    apiMocks.getProjectChangeReviewThread.mockResolvedValue({ id: 'thread-1', latest_group_id: '', groups: [], comments: [], files: [] })
   })
 
-  it('refreshes only for events carrying the active canonical workspace', async () => {
+  it('refreshes only for events carrying the active Project identity', async () => {
     const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } })
     render(
       <QueryClientProvider client={queryClient}>
-        <Harness workspace="/books/current" />
+        <Harness projectId="project-current" />
       </QueryClientProvider>,
     )
-    await waitFor(() => expect(apiMocks.listWorkspaceChangeGroups).toHaveBeenCalledTimes(1))
-    expect(apiMocks.listWorkspaceChangeGroups).toHaveBeenLastCalledWith('/books/current', {})
+    await waitFor(() => expect(apiMocks.listProjectChangeGroups).toHaveBeenCalledTimes(1))
+    expect(apiMocks.listProjectChangeGroups).toHaveBeenLastCalledWith('project-current', {})
 
     window.dispatchEvent(new CustomEvent('nova:workspace-change', { detail: { paths: ['chapters/ch01.md'] } }))
-    window.dispatchEvent(new CustomEvent('nova:workspace-change', { detail: { workspace: '/books/old', paths: ['chapters/ch01.md'] } }))
+    window.dispatchEvent(new CustomEvent('nova:workspace-change', { detail: { project_id: 'project-old', paths: ['chapters/ch01.md'] } }))
     await Promise.resolve()
-    expect(apiMocks.listWorkspaceChangeGroups).toHaveBeenCalledTimes(1)
+    expect(apiMocks.listProjectChangeGroups).toHaveBeenCalledTimes(1)
 
-    window.dispatchEvent(new CustomEvent('nova:workspace-change', { detail: { workspace: '/books/current', paths: ['chapters/ch01.md'] } }))
-    await waitFor(() => expect(apiMocks.listWorkspaceChangeGroups).toHaveBeenCalledTimes(2))
+    window.dispatchEvent(new CustomEvent('nova:workspace-change', { detail: { project_id: 'project-current', paths: ['chapters/ch01.md'] } }))
+    await waitFor(() => expect(apiMocks.listProjectChangeGroups).toHaveBeenCalledTimes(2))
   })
 
   it('shares one global event invalidation across multiple hook consumers', async () => {
@@ -45,15 +45,15 @@ describe('useWorkspaceChangeGroups', () => {
     const invalidateSpy = vi.spyOn(queryClient, 'invalidateQueries')
     render(
       <QueryClientProvider client={queryClient}>
-        <Harness workspace="/books/current" />
-        <Harness workspace="/books/current" />
+        <Harness projectId="project-current" />
+        <Harness projectId="project-current" />
       </QueryClientProvider>,
     )
-    await waitFor(() => expect(apiMocks.listWorkspaceChangeGroups).toHaveBeenCalledTimes(1))
+    await waitFor(() => expect(apiMocks.listProjectChangeGroups).toHaveBeenCalledTimes(1))
 
-    window.dispatchEvent(new CustomEvent('nova:workspace-change', { detail: { workspace: '/books/current' } }))
+    window.dispatchEvent(new CustomEvent('nova:workspace-change', { detail: { project_id: 'project-current' } }))
 
-    await waitFor(() => expect(apiMocks.listWorkspaceChangeGroups).toHaveBeenCalledTimes(2))
+    await waitFor(() => expect(apiMocks.listProjectChangeGroups).toHaveBeenCalledTimes(2))
     expect(invalidateSpy).toHaveBeenCalledTimes(1)
   })
 
@@ -61,54 +61,54 @@ describe('useWorkspaceChangeGroups', () => {
     const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } })
     render(
       <QueryClientProvider client={queryClient}>
-        <ThreadHarness workspace="/books/current" threadID="thread-1" />
+        <ThreadHarness projectId="project-current" threadID="thread-1" />
       </QueryClientProvider>,
     )
-    await waitFor(() => expect(apiMocks.getWorkspaceChangeReviewThread).toHaveBeenCalledWith('/books/current', 'thread-1'))
+    await waitFor(() => expect(apiMocks.getProjectChangeReviewThread).toHaveBeenCalledWith('project-current', 'thread-1'))
 
-    window.dispatchEvent(new CustomEvent('nova:workspace-change', { detail: { workspace: '/books/current' } }))
-    await waitFor(() => expect(apiMocks.getWorkspaceChangeReviewThread).toHaveBeenCalledTimes(2))
+    window.dispatchEvent(new CustomEvent('nova:workspace-change', { detail: { project_id: 'project-current' } }))
+    await waitFor(() => expect(apiMocks.getProjectChangeReviewThread).toHaveBeenCalledTimes(2))
   })
 
   it('reuses a prefetched review thread when the review surface mounts', async () => {
     const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } })
-    await prefetchWorkspaceChangeReviewThread(queryClient, '/books/current', 'thread-1')
+    await prefetchProjectChangeReviewThread(queryClient, 'project-current', 'thread-1')
 
     render(
       <QueryClientProvider client={queryClient}>
-        <ThreadHarness workspace="/books/current" threadID="thread-1" />
+        <ThreadHarness projectId="project-current" threadID="thread-1" />
       </QueryClientProvider>,
     )
 
-    await waitFor(() => expect(apiMocks.getWorkspaceChangeReviewThread).toHaveBeenCalledTimes(1))
-    expect(apiMocks.getWorkspaceChangeReviewThread).toHaveBeenCalledWith('/books/current', 'thread-1')
+    await waitFor(() => expect(apiMocks.getProjectChangeReviewThread).toHaveBeenCalledTimes(1))
+    expect(apiMocks.getProjectChangeReviewThread).toHaveBeenCalledWith('project-current', 'thread-1')
   })
 
   it('loads one historical review group and refreshes it from the shared workspace event', async () => {
     const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } })
     render(
       <QueryClientProvider client={queryClient}>
-        <GroupHarness workspace="/books/current" groupID="group-1" />
+        <GroupHarness projectId="project-current" groupID="group-1" />
       </QueryClientProvider>,
     )
-    await waitFor(() => expect(apiMocks.getWorkspaceChangeGroup).toHaveBeenCalledWith('/books/current', 'group-1'))
+    await waitFor(() => expect(apiMocks.getProjectChangeGroup).toHaveBeenCalledWith('project-current', 'group-1'))
 
-    window.dispatchEvent(new CustomEvent('nova:workspace-change', { detail: { workspace: '/books/current' } }))
-    await waitFor(() => expect(apiMocks.getWorkspaceChangeGroup).toHaveBeenCalledTimes(2))
+    window.dispatchEvent(new CustomEvent('nova:workspace-change', { detail: { project_id: 'project-current' } }))
+    await waitFor(() => expect(apiMocks.getProjectChangeGroup).toHaveBeenCalledTimes(2))
   })
 })
 
-function Harness({ workspace }: { workspace: string }) {
-  useWorkspaceChangeGroups(workspace)
+function Harness({ projectId }: { projectId: string }) {
+  useProjectChangeGroups(projectId)
   return null
 }
 
-function ThreadHarness({ workspace, threadID }: { workspace: string; threadID: string }) {
-  useWorkspaceChangeReviewThread(workspace, threadID)
+function ThreadHarness({ projectId, threadID }: { projectId: string; threadID: string }) {
+  useProjectChangeReviewThread(projectId, threadID)
   return null
 }
 
-function GroupHarness({ workspace, groupID }: { workspace: string; groupID: string }) {
-  useWorkspaceChangeGroup(workspace, groupID)
+function GroupHarness({ projectId, groupID }: { projectId: string; groupID: string }) {
+  useProjectChangeGroup(projectId, groupID)
   return null
 }

@@ -1,8 +1,8 @@
 import { screen, waitFor } from '@testing-library/react'
-import { useState } from 'react'
+import { useState, type ComponentProps } from 'react'
 import { VirtuosoMockContext } from 'react-virtuoso'
 import { expect, type Mock } from 'vitest'
-import { StoryStage } from '../StoryStage'
+import { StoryStage as ProjectStoryStage } from '../StoryStage'
 import { mergeInteractiveTurnPersistedSnapshot, useInteractiveStore } from '../../stores/interactive-store'
 import type { InteractiveTurnPersistedEvent, Snapshot, StorySummary, TurnEvent } from '../../types'
 
@@ -15,6 +15,10 @@ export interface StoryStageTestMocks {
   submitInteractiveAgentCommandMock: Mock
   updateInteractiveTurnNarrativeMock: Mock
   useSkillCommandsMock: Mock
+}
+
+function StoryStage(props: Omit<ComponentProps<typeof ProjectStoryStage>, 'projectId'>) {
+  return <ProjectStoryStage {...props} projectId="project-story" />
 }
 
 /** Resets only shared DOM/store state and mock defaults; each suite owns its module mocks. */

@@ -47,10 +47,11 @@ import { useKeyboardInset } from '@/hooks/useKeyboardInset'
 const DEFAULT_READING_FONT_SIZE = 18
 const EMPTY_STAGE_RUN = emptyStoryStageRun()
 
-export function StoryStage({ workspace, styleSceneSuggestions = [], stories = [], story, tellers = [], storyDirectors = [], imagePresets = [], recentNarrativeStyleID = DEFAULT_NARRATIVE_STYLE_ID, narrativeStyleLoading = false, storyId, branchId, snapshot, snapshotLoading = false, loreEmpty = false, bookOpeningPresets = [], directorPanelVisible = true, stateDisplayPreference = DEFAULT_STORY_STATE_DISPLAY, onStorySelect = noop, onStoryCreate = noop, onStorySetupUpdate = noop, onNarrativeStyleChange, onStoryDelete = noop, onDirectorChange = noop, onReplyTargetCharsChange, onImageSettingsChange, onRequestLoreInit, onOpenDirectorConfig, onToggleDirectorPanel, onOpenDirectorState, onRequestCreateBranch, onStateDisplayPreferenceChange = noopStateDisplayPreferenceChange, onTurnPersisted = noopTurnPersisted, onDone }: StoryStageProps) {
+export function StoryStage({ projectId, workspace, styleSceneSuggestions = [], stories = [], story, tellers = [], storyDirectors = [], imagePresets = [], recentNarrativeStyleID = DEFAULT_NARRATIVE_STYLE_ID, narrativeStyleLoading = false, storyId, branchId, snapshot, snapshotLoading = false, loreEmpty = false, bookOpeningPresets = [], directorPanelVisible = true, stateDisplayPreference = DEFAULT_STORY_STATE_DISPLAY, onStorySelect = noop, onStoryCreate = noop, onStorySetupUpdate = noop, onNarrativeStyleChange, onStoryDelete = noop, onDirectorChange = noop, onReplyTargetCharsChange, onImageSettingsChange, onRequestLoreInit, onOpenDirectorConfig, onToggleDirectorPanel, onOpenDirectorState, onRequestCreateBranch, onStateDisplayPreferenceChange = noopStateDisplayPreferenceChange, onTurnPersisted = noopTurnPersisted, onDone }: StoryStageProps) {
   const { t } = useTranslation()
   const conversationConfig = useConversationConfig(storyId ? {
     mode: 'interactive',
+    project_id: projectId,
     story_id: storyId,
     branch_id: branchId || snapshot?.branch_id || 'main',
   } : undefined)
@@ -70,7 +71,7 @@ export function StoryStage({ workspace, styleSceneSuggestions = [], stories = []
   const inputFloatRef = useRef<HTMLDivElement | null>(null)
   const skillCommands = useSkillCommands({
     agentKey: 'interactive_story',
-    workspace,
+    projectId,
   })
   const snapshotKey = storyStageSnapshotKey(storyId, branchId, snapshot)
   const stageKey = `${workspace || 'current'}:${storyId || 'none'}:${branchId || snapshot?.branch_id || 'main'}`
@@ -124,7 +125,7 @@ export function StoryStage({ workspace, styleSceneSuggestions = [], stories = []
     if (streaming && !historyWindow.followLatest) resetHistoryToLatest()
   }, [historyWindow.followLatest, resetHistoryToLatest, streaming])
   const previousSnapshotKeyRef = useRef(snapshotKey)
-  const stagePreferences = useStagePreferences()
+  const stagePreferences = useStagePreferences(projectId)
   const stageTextStyle = useMemo<CSSProperties>(
     () => ({
       fontSize: `var(--nova-reading-font-size, ${DEFAULT_READING_FONT_SIZE}px)`,
@@ -717,6 +718,7 @@ export function StoryStage({ workspace, styleSceneSuggestions = [], stories = []
               />
             ) : (
               <MessageList
+                projectId={projectId}
                 messages={agentMessages}
                 isStreaming={streaming}
                 activityContent={stageRun.runtime.recoveryPaused ? t('storyStage.activity.recoveryPaused') : activityContent}
@@ -756,6 +758,7 @@ export function StoryStage({ workspace, styleSceneSuggestions = [], stories = []
             {activeSubAgentSessionKey && (
               <div className="absolute inset-y-0 right-0 z-30 w-[min(420px,92vw)] border-l border-[var(--nova-border)] shadow-[var(--nova-shadow)]">
                 <AgentSubAgentSessionPanel
+                  projectId={projectId}
                   messages={agentMessages}
                   sessionKey={activeSubAgentSessionKey}
                   onClose={() => setActiveSubAgentSessionKey('')}
@@ -768,7 +771,7 @@ export function StoryStage({ workspace, styleSceneSuggestions = [], stories = []
         </div>
       </div>
       <StoryStageComposer
-        layout={{ creatingStory, isMobile, keyboardInset, inputTextStyle, workspace, inputFloatRef, inputRef, t }}
+        layout={{ projectId, creatingStory, isMobile, keyboardInset, inputTextStyle, workspace, inputFloatRef, inputRef, t }}
         editor={{ input, editingTurn, styleScenes, styleSceneQuery, styleSceneSuggestions, showSkillCommands, activeSkillCommandIndex, skillCommands, filteredSkillCommands, filteredBuiltInCommandItems, filteredSkillCommandItems, setStyleSceneQuery, setShowSkillCommands, setSkillCommandQuery, setActiveSkillCommandIndex }}
         story={{ storyId, story, imagePresets, onImageSettingsChange, branchTerminal, directorBlocking, directorPlanStatus, directorStatusVisible, directorRetrying, directorRetryError, hotChoices, hotChoicesExpanded, showHotChoices, canUseHotChoices, setHotChoicesExpanded }}
         runtime={{ streaming, approvalReady, conversationConfig, abortPending: stageRun.runtime.abortPending, recoveryPaused: stageRun.runtime.recoveryPaused, recoveryAbortAvailable: stageRun.runtime.recoveryAbortAvailable, operationId: stageRun.runtime.operationId, connection: stageRun.runtime.connection, commandSubmitting, queue: stageRun.runtime.queue, queueActionPendingCommandID }}

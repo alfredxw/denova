@@ -14,15 +14,31 @@ import (
 	"denova/internal/book"
 )
 
-// ErrWorkspaceRequired means a workspace-scoped settings mutation was
-// requested while no Book is open.
-var ErrWorkspaceRequired = errors.New("no workspace is open")
+// ErrProjectRequired means a Project-layer settings mutation was requested
+// through the global settings catalog.
+var ErrProjectRequired = errors.New("Project settings require an explicit Project")
+
+// Target identifies the layered settings projection used by one operation.
+// The zero value is global (default + global + user); a Project target also
+// loads that Project's durable config layer.
+type Target struct {
+	projectID string
+}
+
+func Global() Target { return Target{} }
+
+func Project(projectID string) Target {
+	return Target{projectID: strings.TrimSpace(projectID)}
+}
+
+func (target Target) ProjectID() string { return target.projectID }
 
 // Runtime is an immutable settings projection captured under the composition
 // root lock. It prevents settings I/O and prompt construction from observing a
 // mixture of two workspace generations.
 type Runtime struct {
 	Config            config.Config
+	ProjectID         string
 	Workspace         string
 	ProjectConfigPath string
 	BookState         *book.State
@@ -30,7 +46,7 @@ type Runtime struct {
 
 // Host owns the process-local effects of a persisted settings mutation.
 type Host interface {
-	SettingsRuntime() Runtime
+	SettingsRuntime(Target) (Runtime, error)
 	ApplySettings(config.LayeredSettings, config.SettingsLayer)
 }
 
@@ -41,8 +57,11 @@ func NewService(host Host) *Service { return &Service{host: host} }
 
 // Snapshot returns the canonical persisted layers, runtime URLs, and built-in
 // Agent prompt projections for the current workspace generation.
-func (service *Service) Snapshot() (config.LayeredSettings, error) {
-	runtime := service.runtime()
+func (service *Service) Snapshot(target Target) (config.LayeredSettings, error) {
+	runtime, err := service.runtime(target)
+	if err != nil {
+		return config.LayeredSettings{}, err
+	}
 	layered, err := config.LoadLayeredWithStartupConfigAt(
 		runtime.Config.DataDir(), runtime.Workspace, runtime.ProjectConfigPath,
 	)
@@ -70,18 +89,21 @@ func (service *Service) Snapshot() (config.LayeredSettings, error) {
 // Patch applies a presence-aware partial mutation to exactly one persisted
 // settings layer, then refreshes the process-local runtime from the canonical
 // post-write snapshot.
-func (service *Service) Patch(layer config.SettingsLayer, changes json.RawMessage, baseRevision string) (config.LayeredSettings, error) {
+func (service *Service) Patch(target Target, layer config.SettingsLayer, changes json.RawMessage, baseRevision string) (config.LayeredSettings, error) {
 	switch layer {
 	case config.SettingsLayerUser:
-		return service.patchUser(changes, baseRevision)
+		return service.patchUser(target, changes, baseRevision)
 	case config.SettingsLayerWorkspace:
-		return service.patchWorkspace(changes, baseRevision)
+		return service.patchProject(target, changes, baseRevision)
 	}
 	return config.LayeredSettings{}, fmt.Errorf("%w: %q", config.ErrUnsupportedSettingsLayer, layer)
 }
 
-func (service *Service) patchUser(changes json.RawMessage, baseRevision string) (config.LayeredSettings, error) {
-	runtime := service.runtime()
+func (service *Service) patchUser(target Target, changes json.RawMessage, baseRevision string) (config.LayeredSettings, error) {
+	runtime, err := service.runtime(target)
+	if err != nil {
+		return config.LayeredSettings{}, err
+	}
 	path := config.UserConfigPath(runtime.Config.DataDir())
 	if _, err := config.MutateSettingsFile(path, baseRevision, func(existing config.Settings) (config.Settings, error) {
 		merged, err := config.ApplySettingsMergePatch(existing, changes)
@@ -93,16 +115,19 @@ func (service *Service) patchUser(changes json.RawMessage, baseRevision string) 
 		return config.LayeredSettings{}, err
 	}
 	slog.InfoContext(context.Background(), fmt.Sprintf("[app/settings] applied partial user settings mutation path=%s", path))
-	return service.refresh(config.SettingsLayerUser)
+	return service.refresh(target, config.SettingsLayerUser)
 }
 
-func (service *Service) patchWorkspace(changes json.RawMessage, baseRevision string) (config.LayeredSettings, error) {
+func (service *Service) patchProject(target Target, changes json.RawMessage, baseRevision string) (config.LayeredSettings, error) {
 	if err := config.ValidateWorkspaceSettingsPatch(changes); err != nil {
 		return config.LayeredSettings{}, err
 	}
-	runtime := service.runtime()
-	if runtime.Workspace == "" {
-		return config.LayeredSettings{}, ErrWorkspaceRequired
+	if target.ProjectID() == "" {
+		return config.LayeredSettings{}, ErrProjectRequired
+	}
+	runtime, err := service.runtime(target)
+	if err != nil {
+		return config.LayeredSettings{}, err
 	}
 	if runtime.ProjectConfigPath == "" {
 		return config.LayeredSettings{}, fmt.Errorf("project config path is unavailable")
@@ -117,7 +142,7 @@ func (service *Service) patchWorkspace(changes json.RawMessage, baseRevision str
 		return config.LayeredSettings{}, err
 	}
 	slog.InfoContext(context.Background(), fmt.Sprintf("[app/settings] applied partial workspace settings mutation path=%s", runtime.ProjectConfigPath))
-	return service.refresh(config.SettingsLayerWorkspace)
+	return service.refresh(target, config.SettingsLayerWorkspace)
 }
 
 // EnsureAgentApprovalRule atomically adds one server-generated user rule. The
@@ -129,7 +154,10 @@ func (service *Service) EnsureAgentApprovalRule(rule config.AgentApprovalRule) (
 		return false, err
 	}
 	rule = rules[0]
-	runtime := service.runtime()
+	runtime, err := service.runtime(Global())
+	if err != nil {
+		return false, err
+	}
 	path := config.UserConfigPath(runtime.Config.DataDir())
 	created := false
 	if _, err := config.MutateSettingsFile(path, "", func(existing config.Settings) (config.Settings, error) {
@@ -156,7 +184,7 @@ func (service *Service) EnsureAgentApprovalRule(rule config.AgentApprovalRule) (
 		"[app/settings] persisted workspace command approval rule id=%s project_id=%s pattern=%q path=%s",
 		rule.ID, rule.ProjectID, rule.CommandPattern, path,
 	))
-	_, err := service.refresh(config.SettingsLayerUser)
+	_, err = service.refresh(Global(), config.SettingsLayerUser)
 	return created, err
 }
 
@@ -168,7 +196,10 @@ func (service *Service) RemoveAgentApprovalRule(id string) (bool, config.Layered
 	if id == "" {
 		return false, config.LayeredSettings{}, fmt.Errorf("agent approval rule id is required")
 	}
-	runtime := service.runtime()
+	runtime, err := service.runtime(Global())
+	if err != nil {
+		return false, config.LayeredSettings{}, err
+	}
 	path := config.UserConfigPath(runtime.Config.DataDir())
 	removed := false
 	if _, err := config.MutateSettingsFile(path, "", func(existing config.Settings) (config.Settings, error) {
@@ -190,12 +221,12 @@ func (service *Service) RemoveAgentApprovalRule(id string) (bool, config.Layered
 			"[app/settings] removed workspace command approval rule id=%s path=%s", id, path,
 		))
 	}
-	layered, err := service.refresh(config.SettingsLayerUser)
+	layered, err := service.refresh(Global(), config.SettingsLayerUser)
 	return removed, layered, err
 }
 
-func (service *Service) refresh(layer config.SettingsLayer) (config.LayeredSettings, error) {
-	layered, err := service.Snapshot()
+func (service *Service) refresh(target Target, layer config.SettingsLayer) (config.LayeredSettings, error) {
+	layered, err := service.Snapshot(target)
 	if err != nil {
 		return config.LayeredSettings{}, err
 	}
@@ -205,9 +236,9 @@ func (service *Service) refresh(layer config.SettingsLayer) (config.LayeredSetti
 	return layered, nil
 }
 
-func (service *Service) runtime() Runtime {
+func (service *Service) runtime(target Target) (Runtime, error) {
 	if service == nil || service.host == nil {
-		return Runtime{}
+		return Runtime{}, errors.New("settings host is not configured")
 	}
-	return service.host.SettingsRuntime()
+	return service.host.SettingsRuntime(target)
 }

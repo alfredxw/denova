@@ -15,10 +15,12 @@ import { useInteractiveStore } from '@/features/interactive/stores/interactive-s
 import type { ImagePreset, Teller } from '@/features/interactive/types'
 import type { FileNode } from '@/hooks/useWorkspace'
 import type { ActiveChatTask, AgentRuntimeQueuedCommand, BookRecord, BookSortMode, ChapterIllustration, ChapterSummary, ContextAnalysis, DocumentPreview, LoreItem, SessionSummary, TextSelection, WorkspaceSearchResult, WorkspaceSummary } from '@/lib/api'
+import { GLOBAL_RESOURCE_TARGET, projectResourceTarget } from '@/lib/api'
 import type { AgentUIMessage } from '@/lib/agent-ui'
 import type { ChatSendOptions } from '@/hooks/useAgentChat'
 import { usePersistedUserSettings } from '@/hooks/usePersistedUserSettings'
 import { useLayeredSettingsDraft } from '@/features/settings/use-layered-settings-draft'
+import { GLOBAL_SETTINGS_TARGET } from '@/features/settings/api'
 import { applyReadingTypographySettings } from '@/features/settings/font-variables'
 import type { AgentPartRef } from '@/lib/agent-message-view'
 import type { RightPanel, WorkspaceMode } from '@/stores/workspace-store'
@@ -298,6 +300,10 @@ export function ModeRouter(props: ModeRouterProps) {
     onExitChatPlanMode,
     onDismissNotice,
   } = props
+  const resourceTarget = useMemo(
+    () => projectId.trim() ? projectResourceTarget(projectId) : GLOBAL_RESOURCE_TARGET,
+    [projectId],
+  )
 
   const notifyExternalContentChange = useCallback(
     (paths: string[]) => onWorkspaceChanged(paths, EXTERNAL_CONTENT_CHANGE),
@@ -309,6 +315,7 @@ export function ModeRouter(props: ModeRouterProps) {
   )
 
   const readingTypographyDraft = useLayeredSettingsDraft({
+    target: GLOBAL_SETTINGS_TARGET,
     layer: 'user',
     sourcePrefix: 'editor-reading-typography',
   })
@@ -552,7 +559,6 @@ export function ModeRouter(props: ModeRouterProps) {
   })
   const documentReview = useDocumentReview({
     projectId,
-    workspace,
     // AgentChat owns its own conversation surface. Creating a comment there must not reveal
     // the hidden foreground Writing Agent panel.
     agentVisible: aiVisible || mode === 'agentchat',
@@ -702,6 +708,7 @@ export function ModeRouter(props: ModeRouterProps) {
   // or re-pointing this foreground instance.
   const agentPanel = (
     <AgentPanel
+      projectId={projectId}
       workspace={workspace}
       chrome="panel"
       composerSettings={composerSettings}
@@ -830,8 +837,9 @@ export function ModeRouter(props: ModeRouterProps) {
             {sidebarView === 'search' ? (
               <div className="h-full overflow-y-auto p-2">
                 <StableSearchPanel
-                  workspace={workspace}
+                  projectId={projectId}
                   onSelectResult={selectWorkspaceSearchResult}
+                  onBeforeReplace={flushBeforeWorkspaceSwitch}
                   onWorkspaceChanged={notifyExternalContentChange}
                 />
               </div>
@@ -866,7 +874,7 @@ export function ModeRouter(props: ModeRouterProps) {
       <MainRouteLayer visible={presentedMainRoute === 'ide-writing'} loadingLabel={t('router.loading')}>
         {activeReviewThreadID ? (
           <StableChangeReviewWorkspace
-            workspace={workspace}
+            projectId={projectId}
             threadID={activeReviewThreadID}
             scopeRequest={activeReviewRequest}
             disabled={isStreaming}
@@ -896,7 +904,6 @@ export function ModeRouter(props: ModeRouterProps) {
                 activeTab.kind === 'lore' ? (
                   <LoreWorkspaceTab
                     projectId={projectId}
-                    workspace={workspace}
                     documentReview={documentReviewController}
                     navigationIntent={documentReviewNavigationTarget?.target.kind === 'lore_item' ? documentReviewNavigationTarget : null}
                     onEditorFlushHandlerChange={onEditorFlushHandlerChange}
@@ -908,7 +915,6 @@ export function ModeRouter(props: ModeRouterProps) {
                 ) : (
                   <StableMarkdownEditor
                     projectId={projectId}
-                    workspace={workspace}
                     fileName={selectedFile}
                     content={fileContent}
                     revision={fileRevision}
@@ -972,6 +978,7 @@ export function ModeRouter(props: ModeRouterProps) {
       {renderedRoutes.has('versions') && (
         <MainRouteLayer visible={presentedMainRoute === 'versions'} loadingLabel={t('router.loading')}>
           <VersionPanel
+            projectId={projectId}
             workspace={workspace}
             refreshSignal={versionRefreshSignal}
             visible={versionsVisible}
@@ -984,7 +991,8 @@ export function ModeRouter(props: ModeRouterProps) {
           <SettingPanel
             mode="lore"
             projectId={projectId}
-            workspace={workspace}
+            documentReview={documentReviewController}
+            documentReviewNavigationIntent={documentReviewNavigationTarget?.target.kind === 'lore_item' ? documentReviewNavigationTarget : null}
             onClose={closeIdeWorkspacePanel}
             onFlushHandlerChange={handleLoreLibraryFlushHandlerChange}
           />
@@ -992,7 +1000,7 @@ export function ModeRouter(props: ModeRouterProps) {
       )}
       {renderedRoutes.has('ide-teller') && (
         <MainRouteLayer visible={presentedMainRoute === 'ide-teller'} loadingLabel={t('router.loading')}>
-          <SettingPanel projectId={projectId} mode="teller" workspace={workspace} presetUsageMode="writing" tellers={tellers} imagePresets={imagePresets} onTellersChange={setTellers} onImagePresetsChange={setImagePresets} onClose={closeIdeWorkspacePanel} />
+          <SettingPanel projectId={projectId} mode="teller" presetUsageMode="writing" tellers={tellers} imagePresets={imagePresets} onTellersChange={setTellers} onImagePresetsChange={setImagePresets} onClose={closeIdeWorkspacePanel} />
         </MainRouteLayer>
       )}
 
@@ -1013,17 +1021,17 @@ export function ModeRouter(props: ModeRouterProps) {
       )}
       {renderedRoutes.has('skills') && (
         <MainRouteLayer visible={presentedMainRoute === 'skills'} loadingLabel={t('router.loading')}>
-          <SkillsView workspace={workspace} onClose={returnToContentMode} />
+          <SkillsView target={resourceTarget} onClose={returnToContentMode} />
         </MainRouteLayer>
       )}
       {renderedRoutes.has('agents') && (
         <MainRouteLayer visible={presentedMainRoute === 'agents'} loadingLabel={t('router.loading')}>
-          <AgentsView onClose={returnToContentMode} />
+          <AgentsView target={resourceTarget} onClose={returnToContentMode} />
         </MainRouteLayer>
       )}
       {renderedRoutes.has('automations') && (
         <MainRouteLayer visible={presentedMainRoute === 'automations'} loadingLabel={t('router.loading')}>
-          <AutomationsView workspace={workspace} onClose={returnToContentMode} />
+          <AutomationsView projectId={projectId} workspace={workspace} onClose={returnToContentMode} />
         </MainRouteLayer>
       )}
       {renderedRoutes.has('agentchat') && (

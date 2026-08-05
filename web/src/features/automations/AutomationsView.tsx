@@ -32,10 +32,15 @@ import {
   type BookRecord,
 } from '@/lib/api'
 import { useSkillCommands } from '@/hooks/useSkillCommands'
-import { fetchSettings } from '@/features/settings/api'
+import { fetchProjectSettings } from '@/features/settings/api'
 import { rebaseJSONWithRecovery } from '@/lib/autosave/rebase-with-recovery'
 import { rebaseJSONValue } from '@/lib/three-way-rebase'
 import type { Settings } from '@/features/settings/types'
+import {
+  isProjectChangeForProject,
+  workspaceChangePaths,
+  type WorkspaceChangeEvent,
+} from '@/features/changes/types'
 import { useAutomationRunStream } from './useAutomationRunStream'
 import { InboxPanel } from './AutomationInboxPanel'
 import { AutomationConfigPanel } from './AutomationConfigPanel'
@@ -61,8 +66,12 @@ import { buildAutomationModelProfileOptions, inheritedAutomationModelProfileLabe
 
 type AutomationPanelView = 'config' | 'inbox' | 'run' | 'agent'
 
-export function AutomationsView({ workspace, onClose }: { workspace: string; onClose?: () => void }) {
+export function AutomationsView({ projectId, workspace, onClose }: { projectId: string; workspace: string; onClose?: () => void }) {
   const { t, i18n } = useTranslation()
+  const projectTarget = useMemo(
+    () => defaultAutomationTarget({ projectId, workspace }),
+    [projectId, workspace],
+  )
   const [tasks, setTasks] = useState<AutomationTask[]>([])
   const [templates, setTemplates] = useState<AutomationTaskTemplate[]>([])
   const [books, setBooks] = useState<BookRecord[]>([])
@@ -71,7 +80,7 @@ export function AutomationsView({ workspace, onClose }: { workspace: string; onC
   const [effectiveSettings, setEffectiveSettings] = useState<Settings | null>(null)
   const [activeId, setActiveId] = useState<string>('')
   const activeIdRef = useRef('')
-  const [draft, setDraft] = useState<AutomationTask>(() => newAutomationTask(defaultAutomationTarget(workspace), t('automations.defaultName')))
+  const [draft, setDraft] = useState<AutomationTask>(() => newAutomationTask(projectTarget, t('automations.defaultName')))
   const [creating, setCreating] = useState(false)
   const [templateDialogOpen, setTemplateDialogOpen] = useState(false)
   const [panelView, setPanelView] = useState<AutomationPanelView>('config')
@@ -98,12 +107,12 @@ export function AutomationsView({ workspace, onClose }: { workspace: string; onC
         getAutomations(),
         getAutomationTemplates(locale),
         getAutomationInbox(),
-        fetchSettings(),
+        fetchProjectSettings(projectId),
         getBooks(),
         getActiveAutomationRuns(),
       ])
       if (!mountedRef.current || sequence !== loadSequenceRef.current) return
-      const normalized = data.map((task) => normalizeAutomationTaskShape(task, workspace))
+      const normalized = data.map((task) => normalizeAutomationTaskShape(task, projectTarget))
       // Automation tasks have explicit targets and may be global. A book switch
       // must not discard an existing or not-yet-created dirty definition.
       const preserveDraft = draftDirtyRef.current && Boolean(activeIdRef.current || creatingRef.current)
@@ -114,7 +123,10 @@ export function AutomationsView({ workspace, onClose }: { workspace: string; onC
       setInboxItems(inbox)
       setEffectiveSettings(settings.effective)
       const selected = normalized.find((task) => automationTaskKey(task) === activeIdRef.current)
-        ?? normalized.find((task) => task.target?.kind === 'workspace' && task.target.workspace === workspace)
+        ?? normalized.find((task) => task.target?.kind === 'workspace' && (
+          task.target.project_id === projectId
+          || (!task.target.project_id && task.target.workspace === workspace)
+        ))
         ?? normalized[0]
       if (preserveDraft && selected && automationTaskKey(selected) === activeIdRef.current) {
         const previousBaseline = taskBaselineRef.current
@@ -122,7 +134,7 @@ export function AutomationsView({ workspace, onClose }: { workspace: string; onC
         const nextDraft = previousBaseline && automationTaskKey(previousBaseline) === activeIdRef.current
           ? await rebaseJSONWithRecovery({
               resource: 'automation',
-              scope: workspace,
+              scope: projectId,
               id: activeIdRef.current,
               baseline: { revision: previousBaseline.revision, value: previousBaseline },
               local: { revision: draftAtReloadStart.revision, value: draftAtReloadStart },
@@ -130,12 +142,12 @@ export function AutomationsView({ workspace, onClose }: { workspace: string; onC
             })
           : draftRef.current
         if (!mountedRef.current || sequence !== loadSequenceRef.current) return
-        taskBaselineRef.current = cloneAutomationTask(selected, workspace)
+        taskBaselineRef.current = cloneAutomationTask(selected, projectTarget)
         const latestDraft = draftRef.current
         const draftWithNewerEdits = latestDraft === draftAtReloadStart
           ? nextDraft
           : rebaseJSONValue(draftAtReloadStart, latestDraft, nextDraft)
-        const clonedDraft = cloneAutomationTask(draftWithNewerEdits, workspace)
+        const clonedDraft = cloneAutomationTask(draftWithNewerEdits, projectTarget)
         draftRef.current = clonedDraft
         setDraft(clonedDraft)
       } else if (!preserveDraft) {
@@ -144,8 +156,8 @@ export function AutomationsView({ workspace, onClose }: { workspace: string; onC
           const key = automationTaskKey(selected)
           activeIdRef.current = key
           setActiveId(key)
-          taskBaselineRef.current = cloneAutomationTask(selected, workspace)
-          const clonedDraft = cloneAutomationTask(selected, workspace)
+          taskBaselineRef.current = cloneAutomationTask(selected, projectTarget)
+          const clonedDraft = cloneAutomationTask(selected, projectTarget)
           draftRef.current = clonedDraft
           setDraft(clonedDraft)
           setCreating(false)
@@ -153,7 +165,7 @@ export function AutomationsView({ workspace, onClose }: { workspace: string; onC
           activeIdRef.current = ''
           setActiveId('')
           taskBaselineRef.current = null
-          const emptyDraft = newAutomationTask(defaultAutomationTarget(workspace), t('automations.defaultName'))
+          const emptyDraft = newAutomationTask(projectTarget, t('automations.defaultName'))
           draftRef.current = emptyDraft
           setDraft(emptyDraft)
           setCreating(false)
@@ -163,7 +175,7 @@ export function AutomationsView({ workspace, onClose }: { workspace: string; onC
       if (!mountedRef.current || sequence !== loadSequenceRef.current) return
       setError((e as Error).message)
     }
-  }, [i18n.language, i18n.resolvedLanguage, t, workspace])
+  }, [i18n.language, i18n.resolvedLanguage, projectId, projectTarget, t, workspace])
 
   const runStream = useAutomationRunStream({ onFinished: load })
   const { loadHistory: loadAutomationRunHistory, resume: resumeAutomationRun } = runStream
@@ -174,8 +186,10 @@ export function AutomationsView({ workspace, onClose }: { workspace: string; onC
     return [...activeRuns, { task_id: live.task_id, run: live }]
   }, [activeRuns, runStream.activeRun])
   const automationWorkspace = draft.target?.kind === 'workspace' ? draft.target.workspace || '' : ''
+  const automationProjectId = draft.target?.kind === 'workspace' ? draft.target.project_id || '' : ''
   const runConversationWorkspace = runStream.activeRun?.workspace || automationWorkspace
-  const skillCommands = useSkillCommands({ agentKey: 'automation', workspace: runConversationWorkspace })
+  const runConversationProjectId = runStream.activeRun?.project_id || automationProjectId
+  const skillCommands = useSkillCommands({ agentKey: 'automation', projectId })
   const runMessageListBottomPadding = runInputAreaHeight > 0 ? runInputAreaHeight + 20 : undefined
 
   useEffect(() => {
@@ -201,16 +215,15 @@ export function AutomationsView({ workspace, onClose }: { workspace: string; onC
 
   useEffect(() => {
     const reloadChangedAutomation = (event: Event) => {
-      const detail = (event as CustomEvent<{ paths?: unknown }>).detail
-      const paths = Array.isArray(detail?.paths)
-        ? detail.paths.filter((path): path is string => typeof path === 'string')
-        : []
+      const detail = (event as CustomEvent<WorkspaceChangeEvent>).detail
+      if (!isProjectChangeForProject(detail, projectId)) return
+      const paths = workspaceChangePaths(detail)
       if (paths.length > 0 && !paths.some(isAutomationTaskFile)) return
       void load()
     }
     window.addEventListener('nova:workspace-change', reloadChangedAutomation)
     return () => window.removeEventListener('nova:workspace-change', reloadChangedAutomation)
-  }, [load])
+  }, [load, projectId])
 
   useEffect(() => {
     if (running || tasks.length === 0) return
@@ -227,7 +240,7 @@ export function AutomationsView({ workspace, onClose }: { workspace: string; onC
           const key = automationTaskKey(task)
           activeIdRef.current = key
           setActiveId(key)
-          const nextDraft = cloneAutomationTask(task, workspace)
+          const nextDraft = cloneAutomationTask(task, projectTarget)
           taskBaselineRef.current = nextDraft
           draftRef.current = nextDraft
           setDraft(nextDraft)
@@ -241,7 +254,7 @@ export function AutomationsView({ workspace, onClose }: { workspace: string; onC
       }
     })()
     return () => { cancelled = true }
-  }, [resumeAutomationRun, running, t, tasks, workspace])
+  }, [projectTarget, resumeAutomationRun, running, t, tasks])
 
   const unreadInboxCount = useMemo(() => inboxItems.filter((item) => !item.read_at && item.status === 'pending').length, [inboxItems])
   const modelProfileOptions = useMemo(() => buildAutomationModelProfileOptions(effectiveSettings, draft.model_profile_id, t), [draft.model_profile_id, effectiveSettings, t])
@@ -252,12 +265,12 @@ export function AutomationsView({ workspace, onClose }: { workspace: string; onC
     creating,
     draft,
     tasks,
-    workspace,
+    fallbackTarget: projectTarget,
     onSaved: (saved, _submitted, submittedIsCurrent) => {
       setTasks((current) => upsertAutomationTask(current, saved))
-      taskBaselineRef.current = cloneAutomationTask(saved, workspace)
+      taskBaselineRef.current = cloneAutomationTask(saved, projectTarget)
       if (submittedIsCurrent) {
-        const nextDraft = cloneAutomationTask(saved, workspace)
+        const nextDraft = cloneAutomationTask(saved, projectTarget)
         draftRef.current = nextDraft
         setDraft(nextDraft)
         draftDirtyRef.current = false
@@ -278,7 +291,7 @@ export function AutomationsView({ workspace, onClose }: { workspace: string; onC
     const key = automationTaskKey(task)
     activeIdRef.current = key
     setActiveId(key)
-    const nextDraft = cloneAutomationTask(task, workspace)
+    const nextDraft = cloneAutomationTask(task, projectTarget)
     taskBaselineRef.current = nextDraft
     draftRef.current = nextDraft
     setDraft(nextDraft)
@@ -313,16 +326,16 @@ export function AutomationsView({ workspace, onClose }: { workspace: string; onC
     setError(null)
     try {
       const saved = await createAutomation(submitted)
-      const normalized = normalizeAutomationTaskShape(saved, workspace)
+      const normalized = normalizeAutomationTaskShape(saved, projectTarget)
       const key = automationTaskKey(normalized)
       activeIdRef.current = key
       setActiveId(key)
-      const canonical = cloneAutomationTask(normalized, workspace)
+      const canonical = cloneAutomationTask(normalized, projectTarget)
       taskBaselineRef.current = canonical
       const latestDraft = draftRef.current
       const nextDraft = latestDraft === submitted
         ? canonical
-        : cloneAutomationTask(rebaseJSONValue(submitted, latestDraft, canonical), workspace)
+        : cloneAutomationTask(rebaseJSONValue(submitted, latestDraft, canonical), projectTarget)
       draftRef.current = nextDraft
       setDraft(nextDraft)
       draftDirtyRef.current = automationTaskDraftSignature(nextDraft) !== automationTaskDraftSignature(canonical)
@@ -353,7 +366,7 @@ export function AutomationsView({ workspace, onClose }: { workspace: string; onC
       const fallbackID = fallback ? automationTaskKey(fallback) : ''
       activeIdRef.current = fallbackID
       setActiveId(fallbackID)
-      const nextDraft = fallback ? cloneAutomationTask(fallback, workspace) : newAutomationTask(defaultAutomationTarget(workspace), t('automations.defaultName'))
+      const nextDraft = fallback ? cloneAutomationTask(fallback, projectTarget) : newAutomationTask(projectTarget, t('automations.defaultName'))
       taskBaselineRef.current = fallback ? nextDraft : null
       draftRef.current = nextDraft
       setDraft(nextDraft)
@@ -412,12 +425,12 @@ export function AutomationsView({ workspace, onClose }: { workspace: string; onC
     void (async () => {
       if (!await flushAutomationAutosave() || cancelled) return
       const task = tasks.find((candidate) => automationTaskKey(candidate) === navigationTarget.taskId)
-        || findAutomationTaskByTarget(tasks, navigationTarget.taskId, navigationTarget.workspace)
+        || findAutomationTaskByTarget(tasks, navigationTarget.taskId, navigationTarget.workspace, navigationTarget.projectId)
       if (!task || cancelled) return
       const key = automationTaskKey(task)
       activeIdRef.current = key
       setActiveId(key)
-      const nextDraft = cloneAutomationTask(task, workspace)
+      const nextDraft = cloneAutomationTask(task, projectTarget)
       taskBaselineRef.current = nextDraft
       draftRef.current = nextDraft
       setDraft(nextDraft)
@@ -435,7 +448,7 @@ export function AutomationsView({ workspace, onClose }: { workspace: string; onC
       setNavigationTarget(null)
     })()
     return () => { cancelled = true }
-  }, [flushAutomationAutosave, navigationTarget, openRun, tasks, workspace])
+  }, [flushAutomationAutosave, navigationTarget, openRun, projectTarget, tasks])
 
   const sendRunMessage = async (message: string) => {
     setError(null)
@@ -662,6 +675,7 @@ export function AutomationsView({ workspace, onClose }: { workspace: string; onC
             <section className="relative flex min-h-0 flex-1 flex-col overflow-hidden">
               <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
                 <MessageList
+                  projectId={runConversationProjectId}
                   messages={runStream.messages}
                   isStreaming={runStream.isStreaming}
                   activityContent={runStream.activityContent}
@@ -695,7 +709,7 @@ export function AutomationsView({ workspace, onClose }: { workspace: string; onC
             </section>
           ) : (
             <ConfigManagerChat
-              workspace={automationWorkspace}
+              projectId={projectId}
               origin="automation"
               resourceId={activeId}
               context={{
@@ -713,6 +727,7 @@ export function AutomationsView({ workspace, onClose }: { workspace: string; onC
       </AdaptiveSurface>
       <AutomationTemplateDialog
         open={templateDialogOpen}
+        projectId={projectId}
         workspace={workspace}
         books={books}
         templates={templates}

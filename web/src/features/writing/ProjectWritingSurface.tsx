@@ -3,6 +3,7 @@ import { BookOpen } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import { EmptyState } from '@/components/common/EmptyState'
 import { InlineErrorNotice } from '@/components/common/inline-error-notice'
+import { SearchPanel } from '@/components/Sidebar/SearchPanel'
 import { MarkdownEditor } from '@/components/Editor/MarkdownEditor'
 import type { EditorFlushHandler } from '@/components/Editor/useEditorDraftPersistence'
 import { AdaptiveSurface } from '@/components/layout/adaptive-surface'
@@ -18,14 +19,13 @@ import {
   saveProjectFile,
   setProjectChapterConfirmed,
   type ProjectBookFileNode,
+  type WorkspaceSearchResult,
   type WorkspaceSummary,
 } from '@/lib/api'
 import { WorkspaceFileRevisionConflictError } from '@/lib/autosave/workspace-file-revision-conflict'
 
 interface ProjectWritingSurfaceProps {
   projectId: string
-  /** Current display path; the server remains authoritative after relinks. */
-  workspace: string
   initialPath?: string | null
   autoSaveEnabled?: boolean
   autoSaveDelayMs?: number
@@ -53,7 +53,6 @@ const EMPTY_DOCUMENT: OpenDocument = { path: '', content: '', revision: '' }
  */
 export function ProjectWritingSurface({
   projectId,
-  workspace,
   initialPath,
   autoSaveEnabled = true,
   autoSaveDelayMs,
@@ -65,11 +64,12 @@ export function ProjectWritingSurface({
   onWorkspaceChanged,
 }: ProjectWritingSurfaceProps) {
   const { t } = useTranslation()
-  const [canonicalWorkspace, setCanonicalWorkspace] = useState(workspace)
   const [tree, setTree] = useState<ProjectBookFileNode[]>([])
   const [summary, setSummary] = useState<WorkspaceSummary | null>(null)
   const [selectedPath, setSelectedPath] = useState(initialPath || '')
   const [document, setDocument] = useState<OpenDocument>(EMPTY_DOCUMENT)
+  const [sidebarView, setSidebarView] = useState<'outline' | 'search'>('outline')
+  const [searchIntent, setSearchIntent] = useState<{ path: string; query: string; line: number; nonce: number } | null>(null)
   const [loadingBook, setLoadingBook] = useState(Boolean(projectId))
   const [loadingDocument, setLoadingDocument] = useState(false)
   const [error, setError] = useState('')
@@ -97,7 +97,6 @@ export function ProjectWritingSurface({
     try {
       const snapshot = await getProjectBookSnapshot(projectId)
       if (request !== snapshotRequestRef.current) return
-      setCanonicalWorkspace(snapshot.workspace)
       setTree(snapshot.tree)
       setSummary(snapshot.summary)
       setSelectedPath((current) => {
@@ -109,7 +108,6 @@ export function ProjectWritingSurface({
       if (request !== snapshotRequestRef.current) return
       console.error('[features/writing/ProjectWritingSurface.tsx] loading project Book failed', {
         projectId,
-        workspace,
         cause,
       })
       setError(cause instanceof Error ? cause.message : String(cause))
@@ -118,7 +116,7 @@ export function ProjectWritingSurface({
     } finally {
       if (request === snapshotRequestRef.current) setLoadingBook(false)
     }
-  }, [initialPath, projectId, workspace])
+  }, [initialPath, projectId])
 
   const loadSummary = useCallback(async () => {
     const request = ++summaryRequestRef.current
@@ -166,7 +164,6 @@ export function ProjectWritingSurface({
   }, [projectId])
 
   useEffect(() => {
-    setCanonicalWorkspace(workspace)
     setTree([])
     setSummary(null)
     setSelectedPath(initialPath || '')
@@ -178,7 +175,7 @@ export function ProjectWritingSurface({
       summaryRequestRef.current += 1
       documentRequestRef.current += 1
     }
-  }, [initialPath, loadSnapshot, projectId, workspace])
+  }, [initialPath, loadSnapshot, projectId])
 
   useEffect(() => {
     void loadDocument(selectedPath)
@@ -239,21 +236,64 @@ export function ProjectWritingSurface({
     await onWorkspaceChanged?.([path], { impact: 'content', origin: 'project-page' })
   }, [loadSummary, onWorkspaceChanged, projectId])
 
+  const selectSearchResult = useCallback(async (result: WorkspaceSearchResult, query: string) => {
+    if (!await selectFile(result.path)) return
+    setSearchIntent((current) => ({
+      path: result.path,
+      query,
+      line: result.line,
+      nonce: (current?.nonce || 0) + 1,
+    }))
+  }, [selectFile])
+
+  const handleSearchMutation = useCallback(async (paths: string[]) => {
+    await onWorkspaceChanged?.(paths, { impact: 'content', origin: 'project-page' })
+    await Promise.all([
+      loadSnapshot(),
+      selectedPath && paths.includes(selectedPath) ? loadDocument(selectedPath) : Promise.resolve(),
+    ])
+  }, [loadDocument, loadSnapshot, onWorkspaceChanged, selectedPath])
+
   const displayedChapter = chapters.find((chapter) => chapter.path === document.path)
   const directory = (
-    <div className="nova-sidebar h-full min-h-0 bg-[var(--nova-surface-2)]">
-      <ChapterOutline
-        projectId={projectId}
-        tree={tree}
-        chapters={chapters}
-        ideas={summary?.ideas}
-        outline={summary?.outline}
-        chapterPlans={summary?.chapter_plans || []}
-        selectedFile={selectedPath || null}
-        onSelectFile={(path) => { void selectFile(path) }}
-        onOpenLoreTab={onOpenLoreTab}
-        onSetChapterConfirmed={setChapterConfirmed}
-      />
+    <div className="nova-sidebar flex h-full min-h-0 flex-col bg-[var(--nova-surface-2)]">
+      <div className="grid shrink-0 grid-cols-2 gap-1 border-b border-[var(--nova-border)] p-2">
+        {(['outline', 'search'] as const).map((view) => (
+          <button
+            key={view}
+            type="button"
+            onClick={() => setSidebarView(view)}
+            className={`nova-nav-item h-7 min-w-0 truncate px-2 text-[11px] ${sidebarView === view ? 'is-active' : 'bg-[var(--nova-surface)]'}`}
+          >
+            {t(view === 'outline' ? 'router.outline' : 'router.search')}
+          </button>
+        ))}
+      </div>
+      <div className="min-h-0 flex-1">
+        {sidebarView === 'search' ? (
+          <div className="h-full min-h-0 p-2">
+            <SearchPanel
+              projectId={projectId}
+              onSelectResult={selectSearchResult}
+              onBeforeReplace={() => editorFlushRef.current?.() ?? true}
+              onWorkspaceChanged={handleSearchMutation}
+            />
+          </div>
+        ) : (
+          <ChapterOutline
+            projectId={projectId}
+            tree={tree}
+            chapters={chapters}
+            ideas={summary?.ideas}
+            outline={summary?.outline}
+            chapterPlans={summary?.chapter_plans || []}
+            selectedFile={selectedPath || null}
+            onSelectFile={(path) => { void selectFile(path) }}
+            onOpenLoreTab={onOpenLoreTab}
+            onSetChapterConfirmed={setChapterConfirmed}
+          />
+        )}
+      </div>
     </div>
   )
 
@@ -292,11 +332,11 @@ export function ProjectWritingSurface({
               <div className="relative flex min-h-0 flex-1 flex-col">
                 <MarkdownEditor
                   projectId={projectId}
-                  workspace={canonicalWorkspace}
                   fileName={document.path}
                   content={document.content}
                   revision={document.revision}
                   chapterSummary={displayedChapter}
+                  searchIntent={searchIntent?.path === document.path ? searchIntent : null}
                   autoSaveEnabled={autoSaveEnabled}
                   autoSaveDelayMs={autoSaveDelayMs}
                   onSave={save}

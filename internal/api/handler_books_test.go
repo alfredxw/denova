@@ -35,11 +35,11 @@ func TestCharacterCardImportAsNewBookAboveRecommendation(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	body, contentType := characterCardImportBody(t, card, map[string]string{"target_mode": "new_book", "book_title": "五十 KB 新书"})
+	body, contentType := characterCardImportBody(t, card, map[string]string{"book_title": "五十 KB 新书"})
 	resp := ut.PerformRequest(
 		server.engine.Engine,
 		http.MethodPost,
-		"/api/workspace/import-character-card",
+		"/api/books/import-character-card",
 		&ut.Body{Body: bytes.NewReader(body), Len: len(body)},
 		ut.Header{Key: "Content-Type", Value: contentType},
 	)
@@ -61,6 +61,55 @@ func TestCharacterCardImportAsNewBookAboveRecommendation(t *testing.T) {
 	}
 	if residentBytes <= lore.ResidentLoreWarningBytes {
 		t.Fatalf("fixture should exceed warning recommendation: %d", residentBytes)
+	}
+}
+
+func TestCharacterCardImportUsesProjectRouteWhenAnotherBookIsForeground(t *testing.T) {
+	application := newTestApplication(t)
+	server := NewServer(application, "0")
+	backgroundProjectID := application.ProjectID()
+	backgroundWorkspace := application.Workspace()
+	created := performJSONRequest(t, server, http.MethodPost, "/api/books/create", map[string]string{"title": "Foreground Character Card Book"})
+	if created.Code != http.StatusOK || application.ProjectID() == backgroundProjectID {
+		t.Fatalf("create foreground Book status=%d project_id=%q body=%s", created.Code, application.ProjectID(), created.Body.String())
+	}
+	foregroundWorkspace := application.Workspace()
+	card := []byte(`{
+		"spec": "chara_card_v2",
+		"data": {
+			"name": "Background Character",
+			"description": "Belongs only to the selected Project"
+		}
+	}`)
+	body, contentType := characterCardImportBody(t, card, map[string]string{"lore_classification": "heuristic"})
+	resp := ut.PerformRequest(
+		server.engine.Engine,
+		http.MethodPost,
+		"/api/projects/"+url.PathEscape(backgroundProjectID)+"/book/import-character-card",
+		&ut.Body{Body: bytes.NewReader(body), Len: len(body)},
+		ut.Header{Key: "Content-Type", Value: contentType},
+	)
+	if resp.Code != http.StatusOK {
+		t.Fatalf("background import status=%d body=%s", resp.Code, resp.Body.String())
+	}
+	var result struct {
+		ProjectID string `json:"project_id"`
+		Workspace string `json:"workspace"`
+	}
+	decodeResponse(t, resp.Body.Bytes(), &result)
+	if result.ProjectID != backgroundProjectID || result.Workspace != backgroundWorkspace {
+		t.Fatalf("character card import used the wrong Project: %#v", result)
+	}
+	backgroundItems, err := lore.NewStore(backgroundWorkspace).ListAll()
+	if err != nil || len(backgroundItems) != 1 || backgroundItems[0].Name != "Background Character" {
+		t.Fatalf("background Project lore=%#v err=%v", backgroundItems, err)
+	}
+	foregroundItems, err := lore.NewStore(foregroundWorkspace).ListAll()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(foregroundItems) != 0 {
+		t.Fatalf("character card import leaked into the foreground Book: %#v", foregroundItems)
 	}
 }
 

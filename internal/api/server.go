@@ -59,7 +59,7 @@ func newServer(application *app.App, port string, listener net.Listener) *Server
 	// they arrive even when their automatic Accept-Encoding header includes gzip.
 	h.Use(gzip.Gzip(gzip.DefaultCompression, gzip.WithExcludedPathRegexes([]string{
 		`^/api/.*/stream(?:\?.*)?$`,
-		`^/api/(?:chat|interactive/chat|agent-chat/chat|workspace/events)(?:\?.*)?$`,
+		`^/api/(?:chat|interactive/chat|projects/[^/]+/agent-chat/chat|workspace/events)(?:\?.*)?$`,
 	})))
 	s.registerRoutes(h)
 	s.engine = h

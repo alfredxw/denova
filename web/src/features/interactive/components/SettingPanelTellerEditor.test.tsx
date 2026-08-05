@@ -1,10 +1,10 @@
-import { fireEvent, render, screen, waitFor, within } from '@testing-library/react'
+import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import { useState } from 'react'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { runConfigManagerStream } from '@/lib/api'
 import { APIError } from '@/lib/api-client'
 import { ImagePresetEditor } from './setting-panel/ImagePresetEditor'
-import { TellerEditor } from './SettingPanelTellerEditor'
+import { STYLE_REFERENCES_UPDATED_EVENT, TellerEditor } from './SettingPanelTellerEditor'
 import { getStyleReferences, readStyleReferenceFile, saveStyleReference, updateStyleReferenceFile } from '../api'
 import type { ImagePreset, Teller } from '../types'
 
@@ -343,9 +343,11 @@ describe('TellerEditor style contents', () => {
     const dialog = await screen.findByRole('dialog')
     const editor = await within(dialog).findByPlaceholderText('编辑 Markdown 文风参考内容。')
     expect(editor).toHaveValue('# Initial\n')
-    window.dispatchEvent(new CustomEvent('nova:workspace-change', {
-      detail: { paths: [existing.display_path] },
-    }))
+    act(() => {
+      window.dispatchEvent(new CustomEvent(STYLE_REFERENCES_UPDATED_EVENT, {
+        detail: { source: 'another-editor', paths: [existing.display_path] },
+      }))
+    })
 
     await waitFor(() => expect(editor).toHaveValue('# External\n'))
     expect(updateStyleReferenceFile).not.toHaveBeenCalled()
@@ -451,7 +453,7 @@ function Harness({ initial, onChange, onSave }: { initial: Teller; onChange: (dr
   }
   return (
     <TellerEditor
-      workspace="/tmp/book"
+      projectId="project-book"
       draft={draft}
       setDraft={setDraft}
       activeSlotId="identity"

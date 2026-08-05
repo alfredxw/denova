@@ -14,7 +14,7 @@ import (
 )
 
 func (h *Handlers) HandleProjectFileTreeResolve(ctx context.Context, c *app.RequestContext) {
-	projectID, ok := requireProjectID(c)
+	scope, ok := requireProjectScope(c)
 	if !ok {
 		return
 	}
@@ -23,7 +23,7 @@ func (h *Handlers) HandleProjectFileTreeResolve(ctx context.Context, c *app.Requ
 		writeErrorKey(c, consts.StatusBadRequest, "api.projectFiles.resolveTargetsRequired")
 		return
 	}
-	response, err := h.app.ProjectFiles().ResolveTree(ctx, projectID, request)
+	response, err := h.app.ProjectFiles().ResolveTree(ctx, scope.ProjectID, request)
 	if err != nil {
 		writeProjectFilesError(c, err, "api.projectFiles.resolveFailed")
 		return
@@ -37,7 +37,7 @@ func (h *Handlers) HandleProjectFileTreeResolve(ctx context.Context, c *app.Requ
 }
 
 func (h *Handlers) HandleProjectFileRead(ctx context.Context, c *app.RequestContext) {
-	projectID, ok := requireProjectID(c)
+	scope, ok := requireProjectScope(c)
 	if !ok {
 		return
 	}
@@ -46,7 +46,7 @@ func (h *Handlers) HandleProjectFileRead(ctx context.Context, c *app.RequestCont
 		writeErrorKey(c, consts.StatusBadRequest, "api.workspace.pathMissing")
 		return
 	}
-	document, err := h.app.ProjectFiles().ReadFile(ctx, projectID, path)
+	document, err := h.app.ProjectFiles().ReadFile(ctx, scope.ProjectID, path)
 	if err != nil {
 		writeProjectFilesError(c, err, "api.projectFiles.readFailed")
 		return
@@ -55,7 +55,7 @@ func (h *Handlers) HandleProjectFileRead(ctx context.Context, c *app.RequestCont
 }
 
 func (h *Handlers) HandleProjectFileAsset(ctx context.Context, c *app.RequestContext) {
-	projectID, ok := requireProjectID(c)
+	scope, ok := requireProjectScope(c)
 	if !ok {
 		return
 	}
@@ -64,7 +64,7 @@ func (h *Handlers) HandleProjectFileAsset(ctx context.Context, c *app.RequestCon
 		writeErrorKey(c, consts.StatusBadRequest, "api.workspace.pathMissing")
 		return
 	}
-	data, contentType, err := h.app.ProjectFiles().ReadAsset(ctx, projectID, path)
+	data, contentType, err := h.app.ProjectFiles().ReadAsset(ctx, scope.ProjectID, path)
 	if err != nil {
 		writeProjectFilesError(c, err, "api.projectFiles.readFailed")
 		return
@@ -74,7 +74,7 @@ func (h *Handlers) HandleProjectFileAsset(ctx context.Context, c *app.RequestCon
 }
 
 func (h *Handlers) HandleProjectFileSave(ctx context.Context, c *app.RequestContext) {
-	projectID, ok := requireProjectID(c)
+	scope, ok := requireProjectScope(c)
 	if !ok {
 		return
 	}
@@ -83,7 +83,7 @@ func (h *Handlers) HandleProjectFileSave(ctx context.Context, c *app.RequestCont
 		writeErrorKey(c, consts.StatusBadRequest, "api.workspace.pathContentRequired")
 		return
 	}
-	result, err := h.app.ProjectFiles().SaveFile(ctx, projectID, request)
+	result, err := h.app.ProjectFiles().SaveFile(ctx, scope.ProjectID, request)
 	if err != nil {
 		writeProjectFilesError(c, err, "api.projectFiles.saveFailed")
 		return
@@ -98,7 +98,7 @@ func (h *Handlers) HandleProjectFileSave(ctx context.Context, c *app.RequestCont
 }
 
 func (h *Handlers) HandleProjectFileOperations(ctx context.Context, c *app.RequestContext) {
-	projectID, ok := requireProjectID(c)
+	scope, ok := requireProjectScope(c)
 	if !ok {
 		return
 	}
@@ -109,7 +109,7 @@ func (h *Handlers) HandleProjectFileOperations(ctx context.Context, c *app.Reque
 		writeErrorKey(c, consts.StatusBadRequest, "api.projectFiles.operationsRequired")
 		return
 	}
-	results, err := h.app.ProjectFiles().ApplyOperations(ctx, projectID, request.Operations)
+	results, err := h.app.ProjectFiles().ApplyOperations(ctx, scope.ProjectID, request.Operations)
 	if err != nil {
 		writeProjectFilesError(c, err, "api.projectFiles.operationFailed")
 		return
@@ -128,7 +128,7 @@ func (h *Handlers) HandleProjectFileOperations(ctx context.Context, c *app.Reque
 		}
 		items = append(items, item)
 	}
-	writeJSON(c, consts.StatusOK, map[string]any{"project_id": projectID, "results": items})
+	writeJSON(c, consts.StatusOK, map[string]any{"project_id": scope.ProjectID, "results": items})
 }
 
 func writeProjectFilesError(c *app.RequestContext, err error, fallbackKey string) {

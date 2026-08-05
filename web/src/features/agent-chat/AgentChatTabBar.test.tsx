@@ -4,7 +4,7 @@ import userEvent from '@testing-library/user-event'
 import { describe, expect, it, vi } from 'vitest'
 import { TooltipProvider } from '@/components/ui/tooltip'
 import { WorkbenchTabDragContext } from '@/components/workbench/WorkbenchTabDrag'
-import type { AgentChatTab } from './types'
+import { AGENT_CHAT_PAGE_IDS, type AgentChatTab } from './types'
 import { AgentChatTabBar } from './AgentChatTabBar'
 
 const tabs: AgentChatTab[] = [
@@ -41,6 +41,7 @@ describe('AgentChatTabBar', () => {
         tabs={tabs}
         activeTabId="skills-tab"
         terminalCommands={[]}
+        pageIds={AGENT_CHAT_PAGE_IDS}
         tabTitle={(tab) => (tab.id === 'skills-tab' ? 'Skills tab' : 'Reader tab')}
         onActivate={vi.fn()}
         onClose={vi.fn()}
@@ -79,6 +80,7 @@ describe('AgentChatTabBar', () => {
         tabs={tabs}
         activeTabId="reader-tab"
         terminalCommands={[]}
+        pageIds={AGENT_CHAT_PAGE_IDS}
         tabTitle={(tab) => (tab.id === 'reader-tab' ? 'Reader tab' : 'Skills tab')}
         onActivate={vi.fn()}
         onClose={vi.fn()}
@@ -121,6 +123,7 @@ describe('AgentChatTabBar', () => {
         tabs={[reviewTab]}
         activeTabId="review-tab"
         terminalCommands={[]}
+        pageIds={AGENT_CHAT_PAGE_IDS}
         tabTitle={() => 'Review'}
         onActivate={vi.fn()}
         onClose={onClose}
@@ -153,6 +156,7 @@ describe('AgentChatTabBar', () => {
           tabs={tabs}
           activeTabId="reader-tab"
           terminalCommands={[]}
+          pageIds={AGENT_CHAT_PAGE_IDS}
           tabTitle={(tab) => (tab.id === 'reader-tab' ? longTitle : 'Skills')}
           onActivate={vi.fn()}
           onClose={vi.fn()}
@@ -191,6 +195,7 @@ describe('AgentChatTabBar', () => {
           tabs={tabs}
           activeTabId="reader-tab"
           terminalCommands={[]}
+          pageIds={AGENT_CHAT_PAGE_IDS}
           tabTitle={(tab) => (tab.id === 'reader-tab' ? 'Reader' : 'Skills')}
           onActivate={vi.fn()}
           onClose={vi.fn()}
@@ -230,6 +235,7 @@ describe('AgentChatTabBar', () => {
           { id: 'claude', name: 'Claude Code' },
           { id: 'aider', name: 'Aider' },
         ]}
+        pageIds={AGENT_CHAT_PAGE_IDS}
         tabTitle={(tab) => tab.id}
         onActivate={vi.fn()}
         onClose={vi.fn()}

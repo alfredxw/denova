@@ -3,6 +3,9 @@ export type PresetResourceKind = 'teller' | 'event' | 'rule' | 'actor-state' | '
 export type PresetModuleOwnership = 'shared' | 'gameOnly' | 'writingOnly'
 export type PresetUsageMode = 'writing' | 'game'
 
+/** All preset catalogs are user-wide resources, independent of the active Project. */
+export const PRESET_RESOURCE_SCOPE = 'global'
+
 const PRESET_RESOURCE_OWNERSHIP: Record<PresetResourceKind, PresetModuleOwnership> = {
   teller: 'shared',
   image: 'shared',

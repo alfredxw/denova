@@ -34,7 +34,7 @@ export function AutomationTaskCatalog({
   const taskByKey = useMemo(() => new Map(tasks.map((task) => [automationTaskKey(task), task])), [tasks])
   const sections = useMemo<ResourceDirectorySection[]>(() => (
     groupAutomationTasks(tasks, books, activeRuns).map((group) => ({
-      id: group.kind === 'user' ? 'user' : `workspace:${group.workspace}`,
+      id: group.kind === 'user' ? 'user' : `project:${group.projectId || group.workspace}`,
       label: group.kind === 'user' ? t('automations.group.global') : group.label,
       description: group.kind === 'workspace' ? group.workspace : undefined,
       icon: group.kind === 'user' ? Clock3 : FileText,

@@ -2,13 +2,12 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { toast } from 'sonner'
 import type { ReviewFeedbackSelection } from '@/features/changes/agent/ReviewFeedbackTray'
-import { isWorkspaceChangeForWorkspace, type WorkspaceChangeEvent } from '@/features/changes/types'
+import { isProjectChangeForProject, type WorkspaceChangeEvent } from '@/features/changes/types'
 import { createDocumentComment, deleteDocumentComment, getDocumentReview, updateDocumentComment } from './api'
 import type { CreateDocumentCommentRequest, DocumentReviewComment, DocumentReviewThread } from './types'
 
 interface UseDocumentReviewOptions {
   projectId: string
-  workspace: string
   agentVisible: boolean
   onShowAgent: () => void
 }
@@ -26,7 +25,7 @@ interface DocumentReviewUpdatedDetail {
 }
 
 /** Owns author-created text-resource comments and their one-shot Agent queue. */
-export function useDocumentReview({ projectId, workspace, agentVisible, onShowAgent }: UseDocumentReviewOptions) {
+export function useDocumentReview({ projectId, agentVisible, onShowAgent }: UseDocumentReviewOptions) {
   const { t } = useTranslation()
   const [thread, setThread] = useState<DocumentReviewThread>(EMPTY_THREAD)
   const [hiddenCommentIDs, setHiddenCommentIDs] = useState<ReadonlySet<string>>(() => new Set())
@@ -58,13 +57,12 @@ export function useDocumentReview({ projectId, workspace, agentVisible, onShowAg
     } catch (error) {
       console.error('[features/document-review/use-document-review.ts] failed to load document review comments', {
         projectId,
-        workspace,
         error,
       })
       if (requestEpochRef.current === epoch) setThread(EMPTY_THREAD)
       return EMPTY_THREAD
     }
-  }, [projectId, updateHiddenCommentIDs, workspace])
+  }, [projectId, updateHiddenCommentIDs])
 
   useEffect(() => {
     setThread(EMPTY_THREAD)
@@ -95,12 +93,12 @@ export function useDocumentReview({ projectId, workspace, agentVisible, onShowAg
   useEffect(() => {
     const onWorkspaceChange = (event: Event) => {
       const detail = (event as CustomEvent<WorkspaceChangeEvent>).detail
-      if (detail?.action !== 'review_feedback_consumed' || !isWorkspaceChangeForWorkspace(detail, workspace)) return
+      if (detail?.action !== 'review_feedback_consumed' || !isProjectChangeForProject(detail, projectId)) return
       void refresh()
     }
     window.addEventListener('nova:workspace-change', onWorkspaceChange)
     return () => window.removeEventListener('nova:workspace-change', onWorkspaceChange)
-  }, [refresh, workspace])
+  }, [projectId, refresh])
 
   const addComment = useCallback(async (request: CreateDocumentCommentRequest) => {
     const result = await createDocumentComment(projectId, request)
@@ -140,13 +138,12 @@ export function useDocumentReview({ projectId, workspace, agentVisible, onShowAg
     void removeComment(comment).catch((error) => {
       console.error('[features/document-review/use-document-review.ts] failed to delete document review comment', {
         projectId,
-        workspace,
         commentID,
         error,
       })
       toast.error(t('editor.review.deleteFailed'))
     })
-  }, [projectId, removeComment, t, thread.comments, workspace])
+  }, [projectId, removeComment, t, thread.comments])
 
   const feedback = useMemo<ReviewFeedbackSelection | null>(() => {
     if (!thread.id) return null

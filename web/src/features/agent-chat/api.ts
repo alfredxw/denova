@@ -1,4 +1,5 @@
 import { jsonHeaders, requestJSON } from '@/lib/api-client/client'
+import { projectAPIPath } from '@/lib/api-client/project-scope'
 
 /** One conversation in the AgentChat project tree. */
 export interface AgentChatSession {
@@ -92,19 +93,18 @@ export function getAgentChatHistory(
 
 /** Create a conversation inside any project, open or not. */
 export async function createAgentChatSession(projectId: string, title = ''): Promise<AgentChatSession> {
-  return requestJSON<AgentChatSession>('/api/agent-chat/sessions', {
+  return requestJSON<AgentChatSession>(projectAPIPath(projectId, 'agent-chat/sessions'), {
     method: 'POST',
     headers: jsonHeaders,
-    body: JSON.stringify({ project_id: projectId, title }),
+    body: JSON.stringify({ title }),
   })
 }
 
 export async function renameAgentChatSession(projectId: string, sessionId: string, title: string): Promise<void> {
-  await requestJSON('/api/agent-chat/sessions/rename', {
+  await requestJSON(projectAPIPath(projectId, 'agent-chat/sessions/rename'), {
     method: 'POST',
     headers: jsonHeaders,
     body: JSON.stringify({
-      project_id: projectId,
       session_id: sessionId,
       title,
     }),
@@ -112,10 +112,10 @@ export async function renameAgentChatSession(projectId: string, sessionId: strin
 }
 
 export async function deleteAgentChatSession(projectId: string, sessionId: string): Promise<void> {
-  await requestJSON('/api/agent-chat/sessions/delete', {
+  await requestJSON(projectAPIPath(projectId, 'agent-chat/sessions/delete'), {
     method: 'POST',
     headers: jsonHeaders,
-    body: JSON.stringify({ project_id: projectId, session_id: sessionId }),
+    body: JSON.stringify({ session_id: sessionId }),
   })
 }
 

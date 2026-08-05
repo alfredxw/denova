@@ -5,7 +5,21 @@
 // the product behavior (for example the Writing Agent or General Agent).
 package project
 
-import "time"
+import (
+	"errors"
+	"time"
+)
+
+var (
+	// ErrNotFound means no durable Project owns the requested stable identity.
+	ErrNotFound = errors.New("project not found")
+	// ErrArchived means the Project still owns durable user state but is hidden
+	// from active use until explicitly restored or relinked.
+	ErrArchived = errors.New("project is archived")
+	// ErrUnavailable means the Project record exists but its content directory
+	// cannot currently be opened.
+	ErrUnavailable = errors.New("project directory is unavailable")
+)
 
 type Type string
 
@@ -63,3 +77,6 @@ func (layout Layout) ReviewsDir() string     { return joinState(layout.StateRoot
 func (layout Layout) RunsDir() string        { return joinState(layout.StateRoot, "runs") }
 func (layout Layout) ArtifactsDir() string   { return joinState(layout.StateRoot, "artifacts") }
 func (layout Layout) AutomationsDir() string { return joinState(layout.StateRoot, "automations") }
+func (layout Layout) VersionRepositoryDir() string {
+	return joinState(layout.StateRoot, "versions", "repository")
+}

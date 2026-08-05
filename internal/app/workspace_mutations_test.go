@@ -14,7 +14,7 @@ import (
 
 func TestWorkspaceTreeMutationWaitsForSharedExclusiveLease(t *testing.T) {
 	workspace := t.TempDir()
-	application := newWorkspaceMutationTestApp(workspace)
+	application := newWorkspaceMutationTestApp(t, workspace)
 	changeService, err := workspacechange.ForWorkspace(workspace)
 	if err != nil {
 		t.Fatalf("create workspace change service: %v", err)
@@ -42,7 +42,7 @@ func TestWorkspaceTreeMutationWaitsForSharedExclusiveLease(t *testing.T) {
 
 func TestVersionRestoreWaitsForSharedExclusiveLease(t *testing.T) {
 	workspace := t.TempDir()
-	application := newWorkspaceMutationTestApp(workspace)
+	application := newWorkspaceMutationTestApp(t, workspace)
 	if err := application.BookService().Create("draft.md", "file", "first"); err != nil {
 		t.Fatalf("create draft: %v", err)
 	}
@@ -81,7 +81,7 @@ func TestVersionRestoreWaitsForSharedExclusiveLease(t *testing.T) {
 
 func TestCreateVersionWaitsForSharedExclusiveLease(t *testing.T) {
 	workspace := t.TempDir()
-	application := newWorkspaceMutationTestApp(workspace)
+	application := newWorkspaceMutationTestApp(t, workspace)
 	if err := application.BookService().Create("draft.md", "file", "first"); err != nil {
 		t.Fatalf("create draft: %v", err)
 	}
@@ -111,12 +111,13 @@ func TestCreateVersionWaitsForSharedExclusiveLease(t *testing.T) {
 	}
 }
 
-func newWorkspaceMutationTestApp(workspace string) *App {
+func newWorkspaceMutationTestApp(t *testing.T, workspace string) *App {
+	t.Helper()
 	return &App{
 		cfg:            &config.Config{VersionTimedEnabled: false},
 		workspace:      workspace,
 		bookService:    book.NewService(workspace),
-		versionService: book.NewVersionService(workspace),
+		versionService: book.NewVersionService(workspace, filepath.Join(t.TempDir(), "repository")),
 	}
 }
 

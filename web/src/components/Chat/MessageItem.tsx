@@ -1,10 +1,10 @@
-import { Children, Fragment, cloneElement, isValidElement, memo, useEffect, useLayoutEffect, useRef, useState } from 'react'
+import { Children, Fragment, cloneElement, isValidElement, memo, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import type { CSSProperties, ReactNode } from 'react'
 import { Activity, AlertTriangle, Check, CheckCircle2, ChevronDown, ChevronLeft, ChevronRight, Circle, CircleDot, ClipboardCheck, ClipboardList, Copy, Dice5, FileText, GitBranch, ImagePlus, ListTodo, Loader2, PanelRightOpen, Pencil, RefreshCw, X } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import { ImagePreviewDialog } from '@/components/common/ImagePreviewDialog'
 import { MarkdownRenderer, type MarkdownRendererComponents } from '@/components/common/MarkdownRenderer'
-import { workspaceAssetURL, type ChapterIllustration, type ChatMessage, type InteractiveImage, type InteractiveImageError } from '@/lib/api'
+import { projectFileAssetURL, type ChapterIllustration, type ChatMessage, type InteractiveImage, type InteractiveImageError } from '@/lib/api'
 import type { UserMessageReference } from '@/lib/api-client/types'
 import { findDialogueHighlightRanges } from '@/lib/dialogue-highlight'
 import { decodeToolResultEnvelope, type ToolResultEnvelope } from '@/lib/tool-result-envelope'
@@ -25,6 +25,7 @@ import { AskInteractionCard, type AskInteractionResolver } from './AskInteractio
 import { ToolApprovalCard, ToolApprovalPanel } from './ToolApprovalCard'
 
 interface MessageItemProps {
+  projectId?: string
   message: ChatMessage
   highlightDialogue?: boolean
   messageStyle?: CSSProperties
@@ -54,7 +55,7 @@ const messageActionTooltipSideOffset = 3
 const planThinkingPreviewStaleMs = 3500
 
 /** 单条消息组件，根据 role 渲染不同样式 */
-export const MessageItem = memo(function MessageItem({ message, highlightDialogue = false, messageStyle, onEdit, onEditAssistantReply, onCreateBranch, onRegenerate, onSwitchVersion, onOpenSubAgentSession, onInsertIllustration, onGenerateInteractiveImage, generatingInteractiveImageTurnId, activeSubAgentSessionKey, subAgentPresentation = 'card', onApprovePlan, onContinuePlan, onExitPlanMode, onOpenTrace, onInteractiveCardLayoutChange, onResolveAsk }: MessageItemProps) {
+export const MessageItem = memo(function MessageItem({ projectId = '', message, highlightDialogue = false, messageStyle, onEdit, onEditAssistantReply, onCreateBranch, onRegenerate, onSwitchVersion, onOpenSubAgentSession, onInsertIllustration, onGenerateInteractiveImage, generatingInteractiveImageTurnId, activeSubAgentSessionKey, subAgentPresentation = 'card', onApprovePlan, onContinuePlan, onExitPlanMode, onOpenTrace, onInteractiveCardLayoutChange, onResolveAsk }: MessageItemProps) {
   const { role, content = '' } = message
   const canEdit = role === 'user' && Boolean(message.turn_id) && Boolean(onEdit)
   const canEditAssistantReply = role === 'assistant' && !message.subagent && Boolean(message.turn_id) && Boolean(onEditAssistantReply) && !message.streaming
@@ -88,6 +89,7 @@ export const MessageItem = memo(function MessageItem({ message, highlightDialogu
             content={content}
             highlightDialogue={highlightDialogue}
             messageStyle={messageStyle}
+            projectId={projectId}
             onOpen={onOpenSubAgentSession}
             active={Boolean(activeSubAgentSessionKey && activeSubAgentSessionKey === subAgentSessionKey(message))}
           />
@@ -110,11 +112,11 @@ export const MessageItem = memo(function MessageItem({ message, highlightDialogu
                   <StreamingPlaceholder />
                 ) : (
                   <StreamingContentStage content={content} targetContent={streamingTargetContent} streaming={message.streaming === true}>
-                    {(value) => <MarkdownContent content={value} highlightDialogue={highlightDialogue} />}
+                    {(value) => <MarkdownContent content={value} highlightDialogue={highlightDialogue} projectId={projectId} />}
                   </StreamingContentStage>
                 )}
               </AIMessageContent>
-              <InteractiveImageStrip message={message} />
+              <InteractiveImageStrip message={message} projectId={projectId} />
               <MessageInlineMeta
                 message={message}
                 content={content}
@@ -142,10 +144,10 @@ export const MessageItem = memo(function MessageItem({ message, highlightDialogu
 
     case 'tool_call':
       if ((message.name || '') === 'generate_interactive_image') {
-        return <InteractiveImageBlock message={message} onRegenerate={onGenerateInteractiveImage} />
+        return <InteractiveImageBlock message={message} projectId={projectId} onRegenerate={onGenerateInteractiveImage} />
       }
       if (['generate_image', 'generate_chapter_illustration'].includes(message.name || '') && message.illustration) {
-        return <ChapterIllustrationBlock message={message} onInsert={onInsertIllustration} />
+        return <ChapterIllustrationBlock message={message} projectId={projectId} onInsert={onInsertIllustration} />
       }
       if ((message.name || '') === 'todo') {
         return <TodoListBlock message={message} />
@@ -165,10 +167,10 @@ export const MessageItem = memo(function MessageItem({ message, highlightDialogu
 
     case 'tool_result':
       if ((message.name || '') === 'generate_interactive_image' || message.interactive_image) {
-        return <InteractiveImageBlock message={message} onRegenerate={onGenerateInteractiveImage} />
+        return <InteractiveImageBlock message={message} projectId={projectId} onRegenerate={onGenerateInteractiveImage} />
       }
       if (message.illustration) {
-        return <ChapterIllustrationBlock message={message} onInsert={onInsertIllustration} />
+        return <ChapterIllustrationBlock message={message} projectId={projectId} onInsert={onInsertIllustration} />
       }
       return <ToolResultBlock content={content} />
 
@@ -179,7 +181,7 @@ export const MessageItem = memo(function MessageItem({ message, highlightDialogu
       return <LegacyPlanQuestionBlock message={message} />
 
     case 'proposed_plan':
-      return <ProposedPlanBlock message={message} highlightDialogue={highlightDialogue} onApprove={onApprovePlan} onContinue={onContinuePlan} onExit={onExitPlanMode} onLayoutChange={onInteractiveCardLayoutChange} />
+      return <ProposedPlanBlock projectId={projectId} message={message} highlightDialogue={highlightDialogue} onApprove={onApprovePlan} onContinue={onContinuePlan} onExit={onExitPlanMode} onLayoutChange={onInteractiveCardLayoutChange} />
 
     case 'system':
       if (!content.trim()) return null
@@ -486,6 +488,7 @@ function SubAgentOutputWindow({
   content,
   highlightDialogue,
   messageStyle,
+  projectId,
   onOpen,
   active,
 }: {
@@ -493,6 +496,7 @@ function SubAgentOutputWindow({
   content: string
   highlightDialogue: boolean
   messageStyle?: CSSProperties
+  projectId: string
   onOpen?: (message: ChatMessage) => void
   active?: boolean
 }) {
@@ -550,7 +554,7 @@ function SubAgentOutputWindow({
           {hasContent ? (
             <div className="chat-agent-message text-sm text-[var(--nova-text)]" style={messageStyle}>
               <StreamingContentStage content={shownContent} targetContent={shownTargetContent} streaming={message.streaming === true}>
-                {(value) => <MarkdownContent content={value} highlightDialogue={highlightDialogue} />}
+                {(value) => <MarkdownContent content={value} highlightDialogue={highlightDialogue} projectId={projectId} />}
               </StreamingContentStage>
             </div>
           ) : (
@@ -694,7 +698,7 @@ function LegacyPlanQuestionBlock({ message }: { message: ChatMessage }) {
   )
 }
 
-function ProposedPlanBlock({ message, highlightDialogue, onApprove, onContinue, onExit, onLayoutChange }: { message: ChatMessage; highlightDialogue?: boolean; onApprove?: (message: ChatMessage) => void; onContinue?: (message: ChatMessage) => void; onExit?: () => void; onLayoutChange?: () => void }) {
+function ProposedPlanBlock({ projectId, message, highlightDialogue, onApprove, onContinue, onExit, onLayoutChange }: { projectId: string; message: ChatMessage; highlightDialogue?: boolean; onApprove?: (message: ChatMessage) => void; onContinue?: (message: ChatMessage) => void; onExit?: () => void; onLayoutChange?: () => void }) {
   const { t } = useTranslation()
   const display = planDisplayContent(message.content || '')
   const [localAction, setLocalAction] = useState<ChatMessage['plan_action']>(message.plan_action)
@@ -713,7 +717,7 @@ function ProposedPlanBlock({ message, highlightDialogue, onApprove, onContinue, 
     <PlanShell icon={<ClipboardCheck className="h-3.5 w-3.5" />} title={t('chat.plan.proposalTitle')} badge={t('chat.plan.proposalBadge')}>
       <div className="flex max-h-[min(680px,calc(100vh-220px))] min-h-0 flex-col">
         <div className="chat-agent-message min-h-0 flex-1 overflow-y-auto overscroll-contain pr-1 text-sm leading-6 text-[var(--nova-text)] [scrollbar-gutter:stable]">
-          <MarkdownContent content={display} highlightDialogue={highlightDialogue === true} />
+          <MarkdownContent content={display} highlightDialogue={highlightDialogue === true} projectId={projectId} />
         </div>
         {planAction ? (
           <PlanActionStatus text={planActionStatusText(t, planAction)} />
@@ -976,7 +980,7 @@ function ToolExecutionBlock({ message, onResolve, onLayoutChange }: { message: C
   )
 }
 
-function ChapterIllustrationBlock({ message, onInsert }: { message: ChatMessage; onInsert?: (illustration: ChapterIllustration) => void }) {
+function ChapterIllustrationBlock({ projectId, message, onInsert }: { projectId: string; message: ChatMessage; onInsert?: (illustration: ChapterIllustration) => void }) {
   const { t } = useTranslation()
   const illustration = message.illustration
   if (!illustration) return <ToolExecutionBlock message={message} />
@@ -984,7 +988,7 @@ function ChapterIllustrationBlock({ message, onInsert }: { message: ChatMessage;
   const status = message.status || 'running'
   const isMarkdownChapter = isMarkdownPath(illustration.chapter_path)
   const canInsert = status === 'success' && isMarkdownChapter && Boolean(onInsert)
-  const imageSrc = workspaceAssetURL(illustration.image_path)
+  const imageSrc = chatAssetURL(projectId, illustration.image_path)
   const imageTitle = illustration.alt_text || t('chat.illustration.previewAlt')
 
   return (
@@ -1032,17 +1036,17 @@ function ChapterIllustrationBlock({ message, onInsert }: { message: ChatMessage;
   )
 }
 
-function InteractiveImageBlock({ message }: { message: ChatMessage; onRegenerate?: (message: ChatMessage) => void }) {
+function InteractiveImageBlock({ projectId, message }: { projectId: string; message: ChatMessage; onRegenerate?: (message: ChatMessage) => void }) {
   return (
     <div className="flex justify-start">
       <div className="w-full">
-        <InteractiveImageStrip message={message} />
+        <InteractiveImageStrip message={message} projectId={projectId} />
       </div>
     </div>
   )
 }
 
-function InteractiveImageStrip({ message }: { message: ChatMessage }) {
+function InteractiveImageStrip({ message, projectId }: { message: ChatMessage; projectId: string }) {
   const { t } = useTranslation()
   const images = interactiveImagesFromMessage(message)
   const error = message.interactive_image_error || readInteractiveImageErrorFromMessage(message)
@@ -1081,7 +1085,7 @@ function InteractiveImageStrip({ message }: { message: ChatMessage }) {
   const safeIndex = Math.min(index, images.length - 1)
   const image = images[safeIndex]
   const title = image.alt_text || t('chat.interactiveImage.previewAlt')
-  const src = workspaceAssetURL(image.image_path)
+  const src = chatAssetURL(projectId, image.image_path)
   const canSwitch = images.length > 1
 
   return (
@@ -1706,9 +1710,13 @@ function sanitizeThinkTags(text: string): string {
   return result.replace(/<\/?\s*think\s*>/gi, '')
 }
 
-const MarkdownContent = memo(function MarkdownContent({ content, highlightDialogue }: { content: string; highlightDialogue: boolean }) {
+const MarkdownContent = memo(function MarkdownContent({ content, highlightDialogue, projectId }: { content: string; highlightDialogue: boolean; projectId: string }) {
+  const components = useMemo<MarkdownRendererComponents>(() => ({
+    ...(highlightDialogue ? dialogueMarkdownComponents : markdownComponents),
+    img: (props) => <ChatMarkdownImage {...props} projectId={projectId} />,
+  }), [highlightDialogue, projectId])
   return (
-    <MarkdownRenderer content={content} components={highlightDialogue ? dialogueMarkdownComponents : markdownComponents} />
+    <MarkdownRenderer content={content} components={components} />
   )
 })
 
@@ -1743,9 +1751,9 @@ function ChatMarkdownLink({ href, title, children }: { href?: string; title?: st
   )
 }
 
-function ChatMarkdownImage({ src = '', alt = '', title = '' }: { src?: string; alt?: string; title?: string }) {
+function ChatMarkdownImage({ src = '', alt = '', title = '', projectId = '' }: { src?: string; alt?: string; title?: string; projectId?: string }) {
   const { t } = useTranslation()
-  const imageSrc = normalizeChatImageSrc(src)
+  const imageSrc = normalizeChatImageSrc(src, projectId)
   if (!imageSrc) return null
   const imageTitle = alt || title || t('chat.image.previewTitle')
   const imagePath = shouldShowImagePath(src) ? src : undefined
@@ -1759,12 +1767,16 @@ function ChatMarkdownImage({ src = '', alt = '', title = '' }: { src?: string; a
   )
 }
 
-function normalizeChatImageSrc(src: string) {
+function normalizeChatImageSrc(src: string, projectId: string) {
   const trimmed = src.trim()
   if (!trimmed) return ''
   if (/^(https?:|data:|blob:|\/)/i.test(trimmed)) return trimmed
-  if (isWorkspaceImagePath(trimmed)) return workspaceAssetURL(trimmed)
+  if (isWorkspaceImagePath(trimmed)) return chatAssetURL(projectId, trimmed)
   return trimmed
+}
+
+function chatAssetURL(projectId: string, path: string) {
+  return projectId ? projectFileAssetURL(projectId, path) : ''
 }
 
 function shouldShowImagePath(src: string) {

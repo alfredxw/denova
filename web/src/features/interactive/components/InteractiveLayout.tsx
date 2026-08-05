@@ -5,7 +5,7 @@ import { motion } from 'motion/react'
 import { Panel } from 'react-resizable-panels'
 import { toast } from 'sonner'
 import { useShallow } from 'zustand/react/shallow'
-import { readFile } from '@/lib/api'
+import { readProjectFile } from '@/lib/api'
 import { createInteractiveBranch, createInteractiveStory, deleteInteractiveBranch, deleteInteractiveStory, getInteractiveBranches, getInteractiveSnapshot, getInteractiveStories, getInteractiveTellers, getStoryDirectors, selectInteractiveStory, switchInteractiveBranch, updateInteractiveStory } from '../api'
 import { useInteractiveStore } from '../stores/interactive-store'
 import { BranchTimeline } from './BranchTimeline'
@@ -133,22 +133,22 @@ export function InteractiveLayout({ projectId = '', workspace, active = true, re
   }, [setStories])
 
   const reloadBookOpeningPreset = useCallback(async () => {
-    if (!workspace) {
+    if (!projectId) {
       setBookOpeningPresets([])
       return
     }
     try {
-      const data = await readFile(INTERACTIVE_OPENING_PRESET_PATH)
+      const data = await readProjectFile(projectId, INTERACTIVE_OPENING_PRESET_PATH)
       setBookOpeningPresets(parseBookOpeningPresets(data.content || ''))
     } catch {
       try {
-        const legacy = await readFile(LEGACY_INTERACTIVE_OPENING_PRESET_PATH)
+        const legacy = await readProjectFile(projectId, LEGACY_INTERACTIVE_OPENING_PRESET_PATH)
         setBookOpeningPresets(parseBookOpeningPresets(legacy.content || ''))
       } catch {
         setBookOpeningPresets([])
       }
     }
-  }, [workspace])
+  }, [projectId])
 
   const reloadSnapshot = useCallback(
     async (branchOverride?: string, storyOverride?: string, options?: { silent?: boolean }) => {
@@ -391,6 +391,7 @@ export function InteractiveLayout({ projectId = '', workspace, active = true, re
   const directorPanelVisible = isMobile ? mobileSnapshotOpen : rightPanelVisible
   const storyStage = (
     <StoryStage
+      projectId={projectId}
       workspace={workspace}
       styleSceneSuggestions={styleSceneSuggestions}
       stories={stories}
@@ -436,9 +437,9 @@ export function InteractiveLayout({ projectId = '', workspace, active = true, re
           <div className="flex min-w-0 flex-1 flex-col bg-[var(--nova-surface-2)]">
             <motion.div key={contentKey} variants={panelPresence} initial="initial" animate="animate" transition={{ duration: 0.2, ease: novaEase }} className="flex min-h-0 flex-1 flex-col">
               {settingsWorkspaceVisible ? (
-                <SettingPanel mode={settingMode} projectId={projectId} workspace={workspace} presetUsageMode="game" tellers={tellers} storyDirectors={storyDirectors} imagePresets={imagePresets} onTellersChange={setTellers} onStoryDirectorsChange={setStoryDirectors} onImagePresetsChange={onImagePresetsChange} />
+                <SettingPanel mode={settingMode} projectId={projectId} presetUsageMode="game" tellers={tellers} storyDirectors={storyDirectors} imagePresets={imagePresets} onTellersChange={setTellers} onStoryDirectorsChange={setStoryDirectors} onImagePresetsChange={onImagePresetsChange} />
               ) : submode === 'director' ? (
-                <DirectorBackstage storyId={currentStoryId} branchId={currentBranchId} snapshot={displaySnapshot} loading={snapshotPending} onSnapshotRefresh={() => reloadSnapshot(currentBranchId, currentStoryId, { silent: true })} />
+                <DirectorBackstage projectId={projectId} storyId={currentStoryId} branchId={currentBranchId} snapshot={displaySnapshot} loading={snapshotPending} onSnapshotRefresh={() => reloadSnapshot(currentBranchId, currentStoryId, { silent: true })} />
               ) : submode === 'timeline' ? (
                 <BranchTimeline snapshot={displaySnapshot} branches={branches} currentBranchId={currentBranchId} onSwitchBranch={handleSwitchBranch} onCreateBranch={handleCreateBranch} onDeleteBranch={handleDeleteBranch} fill variant="workspace" onBackToStory={() => setSubmode('story')} headerControls={<StoryPicker stories={stories} currentStoryId={currentStoryId} onSelect={handleStorySelect} onCreate={() => undefined} onDeleteStories={handleDeleteStories} hideCreate />} />
               ) : isMobile ? (

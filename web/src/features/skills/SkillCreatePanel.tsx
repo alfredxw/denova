@@ -6,7 +6,7 @@ import { InlineErrorNotice } from '@/components/common/inline-error-notice'
 import { FormSectionHeader } from '@/components/forms/form-section-header'
 import { Button } from '@/components/ui/button'
 import { createSkill } from '@/lib/api'
-import type { SkillDocument, SkillScope, SkillScopeInfo } from '@/lib/api'
+import type { SkillCatalogTarget, SkillDocument, SkillScope, SkillScopeInfo } from '@/lib/api'
 import { AGENTS } from '@/features/agents/agent-registry'
 import type { VisibleAgentKey } from '@/features/agents/agent-registry'
 import { PreviewRow, SkillAgentSelector, SkillClassificationFields } from './skill-form-fields'
@@ -14,15 +14,16 @@ import { SkillIdentityFields } from './SkillIdentityFields'
 import { scopeLabel, skillCategoryLabel, skillFilePath, skillNamePattern, writingWorkflowCapability } from './skill-utils'
 
 interface SkillCreatePanelProps {
+  target: SkillCatalogTarget
   /** 可写 scope 列表；为空时展示不可写提示 */
   scopes: SkillScopeInfo[]
   defaultScope: SkillScope
   onCreated: (document: SkillDocument) => void | Promise<void>
-  onAskAgent: () => void
+  onAskAgent?: () => void
 }
 
 /** 新建 Skill 整页表单：自持表单状态与提交，成功后回调宿主刷新列表。 */
-export function SkillCreatePanel({ scopes, defaultScope, onCreated, onAskAgent }: SkillCreatePanelProps) {
+export function SkillCreatePanel({ target, scopes, defaultScope, onCreated, onAskAgent }: SkillCreatePanelProps) {
   const { t } = useTranslation()
   const [name, setName] = useState('')
   const [description, setDescription] = useState('')
@@ -45,7 +46,7 @@ export function SkillCreatePanel({ scopes, defaultScope, onCreated, onAskAgent }
     setSaving(true)
     setError(null)
     try {
-      const document = await createSkill(scope, trimmedName, description.trim(), agents, { category, capabilities })
+      const document = await createSkill(target, scope, trimmedName, description.trim(), agents, { category, capabilities })
       await onCreated(document)
     } catch (e) {
       setError((e as Error).message)
@@ -143,16 +144,18 @@ export function SkillCreatePanel({ scopes, defaultScope, onCreated, onAskAgent }
                   {saving ? <Loader2 data-icon="inline-start" className="animate-spin" /> : <Plus data-icon="inline-start" />}
                   {t('skills.create.submit')}
                 </Button>
-                <Button
-                  type="button"
-                  size="sm"
-                  variant="outline"
-                  onClick={onAskAgent}
-                  className="nova-nav-item h-8 rounded-[var(--nova-radius)] border-[var(--nova-border)] bg-[var(--nova-surface-2)] px-3"
-                >
-                  <Bot data-icon="inline-start" />
-                  {t('skills.create.askAgent')}
-                </Button>
+                {onAskAgent && (
+                  <Button
+                    type="button"
+                    size="sm"
+                    variant="outline"
+                    onClick={onAskAgent}
+                    className="nova-nav-item h-8 rounded-[var(--nova-radius)] border-[var(--nova-border)] bg-[var(--nova-surface-2)] px-3"
+                  >
+                    <Bot data-icon="inline-start" />
+                    {t('skills.create.askAgent')}
+                  </Button>
+                )}
               </div>
             </section>
           </>

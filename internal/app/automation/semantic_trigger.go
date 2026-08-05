@@ -267,6 +267,7 @@ func (s *Service) reconcileDurableTriggerAction(
 			TaskID:       record.TaskID,
 			TriggerID:    record.TriggerID,
 			Scope:        record.Scope,
+			ProjectID:    record.ProjectID,
 			Workspace:    record.Workspace,
 			Status:       status,
 			ActionPolicy: plan.ActionPolicy,

@@ -56,9 +56,6 @@ func (h *Handlers) HandleSessionAskCancel(ctx context.Context, c *app.RequestCon
 }
 
 func (h *Handlers) HandleConfigManagerAskAnswer(ctx context.Context, c *app.RequestContext) {
-	if !h.requireWorkspace(c) {
-		return
-	}
 	var request askAnswerRequest
 	if err := c.BindJSON(&request); err != nil {
 		writeErrorKey(c, consts.StatusBadRequest, "api.common.invalidBody")
@@ -73,9 +70,6 @@ func (h *Handlers) HandleConfigManagerAskAnswer(ctx context.Context, c *app.Requ
 }
 
 func (h *Handlers) HandleConfigManagerAskCancel(ctx context.Context, c *app.RequestContext) {
-	if !h.requireWorkspace(c) {
-		return
-	}
 	var request askCancelRequest
 	if err := c.BindJSON(&request); err != nil {
 		writeErrorKey(c, consts.StatusBadRequest, "api.common.invalidBody")

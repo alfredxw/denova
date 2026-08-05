@@ -30,12 +30,15 @@ func (service *Service) PatchConversationConfig(request Request, patch conversat
 	if err != nil {
 		return conversationconfig.Snapshot{}, err
 	}
-	runtime := service.host.Snapshot()
-	workspace := runtime.Workspace
-	if active := latestStartTask(&service.starts, workspace, sessionID).Task; active != nil && !active.Finished() {
+	runtime, err := service.runtime(context.Background(), request)
+	if err != nil {
+		return conversationconfig.Snapshot{}, err
+	}
+	projectID := runtime.ProjectID
+	if active := latestStartTask(&service.starts, projectID, sessionID).Task; active != nil && !active.Finished() {
 		return conversationconfig.Snapshot{}, appagentruntime.ErrOperationActive
 	}
-	if recovery := service.recoveries.current(workspace, sessionID); recovery != nil && recovery.task != nil && !recovery.task.Finished() {
+	if recovery := service.recoveries.current(projectID, sessionID); recovery != nil && recovery.task != nil && !recovery.task.Finished() {
 		return conversationconfig.Snapshot{}, appagentruntime.ErrOperationActive
 	}
 	sess, current, err := agentconversation.GetOrCreateSession(
@@ -70,7 +73,10 @@ func (service *Service) resolveAsk(
 	if err != nil {
 		return agentconversation.HostAskResolution{}, err
 	}
-	runtime := service.host.Snapshot()
+	runtime, err := service.runtime(ctx, request)
+	if err != nil {
+		return agentconversation.HostAskResolution{}, err
+	}
 	return service.host.ResolveAsk(
 		ctx, sess, runtime.Config.ProjectID, runtime.Workspace, askID, status, answers, cancelReason,
 	)

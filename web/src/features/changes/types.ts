@@ -163,6 +163,8 @@ export interface ReviewThread {
 }
 
 export interface WorkspaceChangeEvent {
+  /** Stable Project identity for routing background and AgentChat events. */
+  project_id?: string
   /** Canonical workspace identity emitted by the backend. */
   workspace?: string
   /** Ephemeral filesystem invalidations use watcher; durable Agent events omit it. */
@@ -220,6 +222,10 @@ export function isWorkspaceChangeForWorkspace(event: Pick<WorkspaceChangeEvent, 
   return workspace ? event?.workspace === workspace : !event?.workspace
 }
 
+export function isProjectChangeForProject(event: Pick<WorkspaceChangeEvent, 'project_id'> | null | undefined, projectId: string): boolean {
+  return projectId ? event?.project_id === projectId : !event?.project_id
+}
+
 export interface ReviewWorkspaceChangeRequest {
   decision: ChangeReviewDecision
   change_set_id?: string
@@ -237,6 +243,8 @@ export interface CreateWorkspaceChangeCommentRequest {
 }
 
 export interface WorkspaceChangeMutationResult {
+  /** Stable Project identity that held the server-side mutation lease. */
+  project_id?: string
   /** Canonical workspace that held the server-side mutation lease. */
   workspace?: string
   group?: WorkspaceChangeGroup

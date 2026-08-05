@@ -13,7 +13,7 @@ func TestLoreItemUpdateUsesFullPutContract(t *testing.T) {
 	server := NewServer(application, "0")
 	projectID := application.ProjectID()
 	base := "/api/projects/" + url.PathEscape(projectID) + "/book/lore/items/"
-	created, err := application.Lore().CreateItem(lore.ItemInput{
+	created, err := application.ProjectBook().CreateLoreItem(projectID, lore.ItemInput{
 		ID:               "hero",
 		Type:             "character",
 		Name:             "林川",
@@ -71,7 +71,7 @@ func TestLoreItemUpdateUsesFullPutContract(t *testing.T) {
 	if partial.Code != http.StatusBadRequest {
 		t.Fatalf("partial PUT must be rejected before it can clear omitted fields: status=%d body=%s", partial.Code, partial.Body.String())
 	}
-	items, err := application.Lore().Items()
+	items, err := application.ProjectBook().LoreItems(projectID)
 	if err != nil {
 		t.Fatal(err)
 	}

@@ -1,8 +1,13 @@
 import { act, render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { VirtuosoMockContext } from 'react-virtuoso'
+import type { ComponentProps } from 'react'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
-import { StoryStage } from './StoryStage'
+import { StoryStage as ProjectStoryStage } from './StoryStage'
+
+function StoryStage(props: Omit<ComponentProps<typeof ProjectStoryStage>, 'projectId'> & { projectId?: string }) {
+  return <ProjectStoryStage {...props} projectId={props.projectId || 'project-story'} />
+}
 import { useInteractiveStore } from '../stores/interactive-store'
 import type { Snapshot, TurnEvent } from '../types'
 import {

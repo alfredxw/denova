@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"log/slog"
 	"os"
-	"path/filepath"
 	"strings"
 
 	"denova/config"
@@ -73,66 +72,6 @@ func (a *App) TerminalDefaultCwd() string {
 		return ""
 	}
 	return cwd
-}
-
-// ResolveTerminalWorkspace binds a Workspace terminal tab to its own registered
-// project. Empty input retains the foreground terminal behavior used outside
-// AgentChat; explicit project input never changes App.workspace.
-func (a *App) ResolveTerminalWorkspace(requested string) (string, error) {
-	requested = strings.TrimSpace(requested)
-	if requested != "" {
-		return a.AgentChat().ResolveWorkspace(requested)
-	}
-	if a == nil {
-		return "", ErrNoWorkspace
-	}
-	a.mu.RLock()
-	workspace := a.workspace
-	a.mu.RUnlock()
-	return workspace, nil
-}
-
-// ResolveTerminalProject resolves the stable owner and content directory for
-// an AgentChat terminal without changing the foreground Book.
-func (a *App) ResolveTerminalProject(projectID, legacyWorkspace string) (string, string, error) {
-	projectID = strings.TrimSpace(projectID)
-	if projectID != "" {
-		record, layout, err := a.resolveProject(projectID, true)
-		if err != nil {
-			return "", "", err
-		}
-		return record.ID, layout.ContentRoot, nil
-	}
-	legacyWorkspace = strings.TrimSpace(legacyWorkspace)
-	if legacyWorkspace != "" {
-		record, layout, err := a.resolveProjectByWorkspace(legacyWorkspace)
-		if err != nil {
-			return "", "", err
-		}
-		return record.ID, layout.ContentRoot, nil
-	}
-	workspace, err := a.ResolveTerminalWorkspace("")
-	return "", workspace, err
-}
-
-// ResolveTerminalCwd validates the working directory sent by the frontend and falls back to the
-// default when it is invalid or missing. The terminal already lets the user run arbitrary
-// commands, so this only checks that the directory exists rather than sandboxing it.
-func (a *App) ResolveTerminalCwd(requested string) string {
-	requested = strings.TrimSpace(requested)
-	if requested == "" {
-		return a.TerminalDefaultCwd()
-	}
-	absolute, err := filepath.Abs(requested)
-	if err != nil {
-		slog.ErrorContext(context.Background(), fmt.Sprintf("[app/terminal_app_service.go] resolve terminal cwd failed path=%q err=%v", requested, err))
-		return a.TerminalDefaultCwd()
-	}
-	if dir := usableDirectory(absolute); dir != "" {
-		return dir
-	}
-	slog.InfoContext(context.Background(), fmt.Sprintf("[app/terminal_app_service.go] terminal cwd not usable, falling back path=%q", absolute))
-	return a.TerminalDefaultCwd()
 }
 
 func usableDirectory(path string) string {

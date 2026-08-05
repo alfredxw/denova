@@ -80,6 +80,9 @@ func (a *App) ConversationConfig(ctx context.Context, binding ConversationConfig
 	}
 	switch normalizeConversationMode(binding.Mode) {
 	case ConversationModeWriting:
+		if err := a.requireForegroundConversationProject(binding.ProjectID); err != nil {
+			return conversationconfig.Snapshot{}, err
+		}
 		return a.writingConversationConfig(binding)
 	case ConversationModeAgentChat:
 		return a.AgentChat().ConversationConfig(ctx, agentchatapp.Binding{
@@ -88,6 +91,9 @@ func (a *App) ConversationConfig(ctx context.Context, binding ConversationConfig
 	case ConversationModeConfigManager:
 		return a.ConfigManager().ConversationConfig(configManagerConfigRequest(binding))
 	case ConversationModeInteractive:
+		if err := a.requireForegroundConversationProject(binding.ProjectID); err != nil {
+			return conversationconfig.Snapshot{}, err
+		}
 		return a.interactiveConversationConfig(binding)
 	case ConversationModeAutomation:
 		return a.Automation().ConversationConfig(ctx, automationapp.ConversationBinding{
@@ -109,6 +115,9 @@ func (a *App) PatchConversationConfig(ctx context.Context, binding ConversationC
 	}
 	switch normalizeConversationMode(binding.Mode) {
 	case ConversationModeWriting:
+		if err := a.requireForegroundConversationProject(binding.ProjectID); err != nil {
+			return conversationconfig.Snapshot{}, err
+		}
 		return a.patchWritingConversationConfig(binding, change, baseRevision)
 	case ConversationModeAgentChat:
 		return a.AgentChat().PatchConversationConfig(ctx, agentchatapp.Binding{
@@ -117,6 +126,9 @@ func (a *App) PatchConversationConfig(ctx context.Context, binding ConversationC
 	case ConversationModeConfigManager:
 		return a.ConfigManager().PatchConversationConfig(configManagerConfigRequest(binding), change, baseRevision)
 	case ConversationModeInteractive:
+		if err := a.requireForegroundConversationProject(binding.ProjectID); err != nil {
+			return conversationconfig.Snapshot{}, err
+		}
 		return a.patchInteractiveConversationConfig(binding, change, baseRevision)
 	case ConversationModeAutomation:
 		return a.Automation().PatchConversationConfig(ctx, automationapp.ConversationBinding{
@@ -125,6 +137,23 @@ func (a *App) PatchConversationConfig(ctx context.Context, binding ConversationC
 	default:
 		return conversationconfig.Snapshot{}, fmt.Errorf("unsupported conversation mode %q", binding.Mode)
 	}
+}
+
+func (a *App) requireForegroundConversationProject(projectID string) error {
+	projectID = strings.TrimSpace(projectID)
+	if projectID == "" {
+		return errors.New("Project ID is required for a foreground conversation")
+	}
+	a.mu.RLock()
+	foregroundProjectID := ""
+	if a.cfg != nil {
+		foregroundProjectID = strings.TrimSpace(a.cfg.ProjectID)
+	}
+	a.mu.RUnlock()
+	if foregroundProjectID == "" || foregroundProjectID != projectID {
+		return fmt.Errorf("foreground conversation Project mismatch: requested=%s current=%s", projectID, foregroundProjectID)
+	}
+	return nil
 }
 
 func (a *App) writingConversationConfig(binding ConversationConfigBinding) (conversationconfig.Snapshot, error) {
@@ -173,7 +202,7 @@ func (a *App) patchWritingConversationConfig(binding ConversationConfigBinding, 
 
 func configManagerConfigRequest(binding ConversationConfigBinding) configmanagerapp.Request {
 	return configmanagerapp.Request{
-		Origin: binding.Origin, ResourceID: binding.ResourceID,
+		ProjectID: binding.ProjectID, Origin: binding.Origin, ResourceID: binding.ResourceID,
 		StoryID: binding.StoryID, BranchID: binding.BranchID,
 	}
 }

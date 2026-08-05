@@ -14,6 +14,7 @@ func TestAgentChatHistorySearchAndPagination(t *testing.T) {
 		t.Fatalf("create book status = %d body=%s", createBook.Code, createBook.Body.String())
 	}
 	var createdBook struct {
+		ProjectID string `json:"project_id"`
 		Workspace string `json:"workspace"`
 	}
 	decodeResponse(t, createBook.Body.Bytes(), &createdBook)
@@ -29,7 +30,7 @@ func TestAgentChatHistorySearchAndPagination(t *testing.T) {
 		} `json:"projects"`
 	}
 	decodeResponse(t, projects.Body.Bytes(), &projectList)
-	projectID := ""
+	projectID := createdBook.ProjectID
 	for _, project := range projectList.Projects {
 		if project.Path == workspace {
 			projectID = project.ID
@@ -39,11 +40,11 @@ func TestAgentChatHistorySearchAndPagination(t *testing.T) {
 	if projectID == "" {
 		t.Fatalf("created workspace %q was not registered as a project: %#v", workspace, projectList)
 	}
-	created, err := application.AgentChat().CreateSession(workspace, "Needle conversation")
+	created, err := application.AgentChat().CreateSession(projectID, "Needle conversation")
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err := application.AgentChat().CreateSession(workspace, "Other conversation"); err != nil {
+	if _, err := application.AgentChat().CreateSession(projectID, "Other conversation"); err != nil {
 		t.Fatal(err)
 	}
 
@@ -78,10 +79,19 @@ func TestAgentChatHistorySearchAndPagination(t *testing.T) {
 		t.Fatalf("create other book status = %d body=%s", otherBook.Code, otherBook.Body.String())
 	}
 	var createdOtherBook struct {
+		ProjectID string `json:"project_id"`
 		Workspace string `json:"workspace"`
 	}
 	decodeResponse(t, otherBook.Body.Bytes(), &createdOtherBook)
-	if _, err := application.AgentChat().CreateSession(createdOtherBook.Workspace, "Newest conversation"); err != nil {
+	if createdOtherBook.ProjectID == "" {
+		for _, project := range application.AgentChat().Projects() {
+			if project.Path == createdOtherBook.Workspace {
+				createdOtherBook.ProjectID = project.ID
+				break
+			}
+		}
+	}
+	if _, err := application.AgentChat().CreateSession(createdOtherBook.ProjectID, "Newest conversation"); err != nil {
 		t.Fatal(err)
 	}
 

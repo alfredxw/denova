@@ -8,11 +8,15 @@ import (
 	"github.com/cloudwego/hertz/pkg/protocol/consts"
 )
 
-// HandleAgentRunTraces GET /api/agent-runs — 返回最近 Agent run trace 摘要。
+// HandleAgentRunTraces returns recent traces for the scoped Project.
 func (h *Handlers) HandleAgentRunTraces(ctx context.Context, c *app.RequestContext) {
 	_ = ctx
+	scope, ok := requireProjectScope(c)
+	if !ok {
+		return
+	}
 	limit, _ := strconv.Atoi(c.Query("limit"))
-	traces, err := h.app.AgentRunTraces(limit)
+	traces, err := h.app.ProjectAgentRunTraces(scope.ProjectID, limit)
 	if err != nil {
 		writeError(c, consts.StatusInternalServerError, err.Error())
 		return
@@ -20,14 +24,15 @@ func (h *Handlers) HandleAgentRunTraces(ctx context.Context, c *app.RequestConte
 	writeJSON(c, consts.StatusOK, map[string]any{"runs": traces})
 }
 
-// HandleAgentRunTrace GET /api/agent-runs/:id — 返回单轮 Agent run trace 明细。
+// HandleAgentRunTrace returns one trace from the scoped Project.
 func (h *Handlers) HandleAgentRunTrace(ctx context.Context, c *app.RequestContext) {
 	_ = ctx
-	if !h.requireWorkspace(c) {
+	scope, ok := requireProjectScope(c)
+	if !ok {
 		return
 	}
 	id := c.Param("id")
-	trace, err := h.app.AgentRunTrace(id)
+	trace, err := h.app.ProjectAgentRunTrace(scope.ProjectID, id)
 	if err != nil {
 		writeError(c, consts.StatusNotFound, err.Error())
 		return
@@ -35,13 +40,14 @@ func (h *Handlers) HandleAgentRunTrace(ctx context.Context, c *app.RequestContex
 	writeJSON(c, consts.StatusOK, trace)
 }
 
-// HandleAgentRunTraceExport GET /api/agent-runs/:id/export — 下载完整 JSONL trace 文件。
+// HandleAgentRunTraceExport downloads one Project trace as JSONL.
 func (h *Handlers) HandleAgentRunTraceExport(ctx context.Context, c *app.RequestContext) {
 	_ = ctx
-	if !h.requireWorkspace(c) {
+	scope, ok := requireProjectScope(c)
+	if !ok {
 		return
 	}
-	trace, err := h.app.ExportAgentRunTrace(c.Param("id"))
+	trace, err := h.app.ExportProjectAgentRunTrace(scope.ProjectID, c.Param("id"))
 	if err != nil {
 		writeError(c, consts.StatusNotFound, err.Error())
 		return

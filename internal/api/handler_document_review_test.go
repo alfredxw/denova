@@ -93,7 +93,7 @@ func TestLoreReviewCommentLifecycleAPI(t *testing.T) {
 	server := NewServer(application, "0")
 	projectID := application.ProjectID()
 	base := "/api/projects/" + url.PathEscape(projectID) + "/book"
-	item, err := application.Lore().CreateItem(lore.ItemInput{
+	item, err := application.ProjectBook().CreateLoreItem(projectID, lore.ItemInput{
 		ID: "gatekeeper", Type: "character", Name: "守门人", Content: "Aldren guards the northern gate.",
 	})
 	if err != nil {

@@ -22,21 +22,21 @@ describe('conversation config API', () => {
     })
 
     expect(apiClientMocks.requestJSON).toHaveBeenCalledWith(
-      '/api/conversation-config?mode=automation&project_id=project-1&session_id=automation-run-1&run_id=run-1',
+      '/api/projects/project-1/conversation-config?mode=automation&session_id=automation-run-1&run_id=run-1',
     )
   })
 
   it('sends a compare-and-swap partial patch', async () => {
     apiClientMocks.requestJSON.mockResolvedValueOnce({ revision: 8 })
-    const binding = { mode: 'writing' as const, session_id: 'session-1' }
+    const binding = { mode: 'writing' as const, project_id: 'project-1', session_id: 'session-1' }
 
     await patchConversationConfig(binding, { approval_mode: 'full_access' }, 7)
 
-    expect(apiClientMocks.requestJSON).toHaveBeenCalledWith('/api/conversation-config', {
+    expect(apiClientMocks.requestJSON).toHaveBeenCalledWith('/api/projects/project-1/conversation-config', {
       method: 'PATCH',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
-        binding,
+        binding: { mode: 'writing', session_id: 'session-1' },
         base_revision: 7,
         changes: { approval_mode: 'full_access' },
       }),

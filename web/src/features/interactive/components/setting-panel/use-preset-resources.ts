@@ -3,13 +3,13 @@ import { useEffect, useMemo, useRef, useState, type Dispatch, type SetStateActio
 import { rebaseJSONWithRecovery } from '@/lib/autosave/rebase-with-recovery'
 import { rebaseJSONValue } from '@/lib/three-way-rebase'
 import { getActorStates, getEventPackages, getImagePresets, getInteractiveTellers, getRuleSystems, getStoryDirectors } from '../../api'
+import { PRESET_RESOURCE_SCOPE } from '../../preset-ownership'
 import type { ActorStateModule, EventPackageModule, ImagePreset, RuleSystemModule, StoryDirector, Teller } from '../../types'
 import { cloneActorState, cloneEventPackage, cloneImagePreset, cloneRuleSystem, cloneStoryDirector, cloneTeller, EMPTY_ACTOR_STATES, EMPTY_EVENT_PACKAGES, EMPTY_IMAGE_PRESETS, EMPTY_RULE_SYSTEMS, EMPTY_STORY_DIRECTORS, EMPTY_TELLERS, TELLER_CONFIG_AGENT_ENTRY_ID, type PresetDrafts } from './presetResources'
 import { presetResourceRevision } from './usePresetResourceAutosave'
 
-/** 外部传入列表优先；未传入时按 workspace 自行加载。 */
+/** 外部传入列表优先；未传入时加载用户级全局预设目录。 */
 export function usePresetResources({
-  workspace,
   externalTellers = EMPTY_TELLERS,
   externalStoryDirectors = EMPTY_STORY_DIRECTORS,
   externalImagePresets = EMPTY_IMAGE_PRESETS,
@@ -17,7 +17,6 @@ export function usePresetResources({
   onStoryDirectorsChange,
   onImagePresetsChange,
 }: {
-  workspace: string
   externalTellers?: Teller[]
   externalStoryDirectors?: StoryDirector[]
   externalImagePresets?: ImagePreset[]
@@ -46,7 +45,7 @@ export function usePresetResources({
   const [actorStateDraft, setActorStateDraft] = useState<ActorStateModule | null>(null)
 
   useEffect(() => {
-    if (onTellersChange || externalTellers.length > 0 || !workspace) return
+    if (onTellersChange || externalTellers.length > 0) return
     let cancelled = false
     getInteractiveTellers()
       .then((data) => {
@@ -60,10 +59,10 @@ export function usePresetResources({
     return () => {
       cancelled = true
     }
-  }, [externalTellers.length, onTellersChange, workspace])
+  }, [externalTellers.length, onTellersChange])
 
   useEffect(() => {
-    if (onStoryDirectorsChange || externalStoryDirectors.length > 0 || !workspace) return
+    if (onStoryDirectorsChange || externalStoryDirectors.length > 0) return
     let cancelled = false
     getStoryDirectors()
       .then((data) => {
@@ -77,10 +76,10 @@ export function usePresetResources({
     return () => {
       cancelled = true
     }
-  }, [externalStoryDirectors.length, onStoryDirectorsChange, workspace])
+  }, [externalStoryDirectors.length, onStoryDirectorsChange])
 
   useEffect(() => {
-    if (onImagePresetsChange || externalImagePresets.length > 0 || !workspace) return
+    if (onImagePresetsChange || externalImagePresets.length > 0) return
     let cancelled = false
     getImagePresets()
       .then((data) => {
@@ -94,10 +93,9 @@ export function usePresetResources({
     return () => {
       cancelled = true
     }
-  }, [externalImagePresets.length, onImagePresetsChange, workspace])
+  }, [externalImagePresets.length, onImagePresetsChange])
 
   useEffect(() => {
-    if (!workspace) return
     let cancelled = false
     getEventPackages()
       .then((data) => {
@@ -111,10 +109,9 @@ export function usePresetResources({
     return () => {
       cancelled = true
     }
-  }, [workspace])
+  }, [])
 
   useEffect(() => {
-    if (!workspace) return
     let cancelled = false
     getRuleSystems()
       .then((data) => {
@@ -128,10 +125,9 @@ export function usePresetResources({
     return () => {
       cancelled = true
     }
-  }, [workspace])
+  }, [])
 
   useEffect(() => {
-    if (!workspace) return
     let cancelled = false
     getActorStates()
       .then((data) => {
@@ -145,7 +141,7 @@ export function usePresetResources({
     return () => {
       cancelled = true
     }
-  }, [workspace])
+  }, [])
 
   useEffect(() => {
     setTellers(externalTellers)
@@ -154,7 +150,7 @@ export function usePresetResources({
       if (current && externalTellers.some((teller) => teller.id === current)) return current
       return externalTellers[0]?.id || ''
     })
-  }, [externalTellers, workspace])
+  }, [externalTellers])
 
   useEffect(() => {
     setStoryDirectors(externalStoryDirectors)
@@ -162,7 +158,7 @@ export function usePresetResources({
       if (current && externalStoryDirectors.some((director) => director.id === current)) return current
       return externalStoryDirectors[0]?.id || ''
     })
-  }, [externalStoryDirectors, workspace])
+  }, [externalStoryDirectors])
 
   useEffect(() => {
     setImagePresets(externalImagePresets)
@@ -170,31 +166,7 @@ export function usePresetResources({
       if (current && externalImagePresets.some((preset) => preset.id === current)) return current
       return externalImagePresets[0]?.id || ''
     })
-  }, [externalImagePresets, workspace])
-
-  useEffect(() => {
-    setActiveEventPackageId((current) => {
-      if (current && eventPackages.some((item) => item.id === current)) return current
-      return eventPackages[0]?.id || ''
-    })
-    setEventPackageDraft(null)
-  }, [workspace])
-
-  useEffect(() => {
-    setActiveRuleSystemId((current) => {
-      if (current && ruleSystems.some((item) => item.id === current)) return current
-      return ruleSystems[0]?.id || ''
-    })
-    setRuleSystemDraft(null)
-  }, [workspace])
-
-  useEffect(() => {
-    setActiveActorStateId((current) => {
-      if (current && actorStates.some((item) => item.id === current)) return current
-      return actorStates[0]?.id || ''
-    })
-    setActorStateDraft(null)
-  }, [workspace])
+  }, [externalImagePresets])
 
   const presetDrafts: PresetDrafts = useMemo(() => ({
     teller: tellerDraft,
@@ -300,7 +272,6 @@ export function usePresetResources({
   }
 
   return {
-    workspace,
     tellers,
     activeTellerId,
     setActiveTellerId,
@@ -368,7 +339,6 @@ interface DraftSyncAutosave<T> {
 /** 草稿同步：activeId/列表变化时克隆草稿并对齐 autosave 基线（config agent 伪条目清空草稿）。 */
 export function usePresetDraftSync(resources: PresetResources, autosaves: DraftSyncAutosaves) {
   const {
-    workspace,
     tellers,
     activeTellerId,
     tellerDraft,
@@ -405,12 +375,12 @@ export function usePresetDraftSync(resources: PresetResources, autosaves: DraftS
   const ruleSystem = ruleSystems.find((entry) => entry.id === activeRuleSystemId) || null
   const actorState = actorStates.find((entry) => entry.id === activeActorStateId) || null
 
-  useRebasedPresetDraft({ resource: 'teller', scopeKey: workspace, baseline: teller, draft: tellerDraft, setDraft: setTellerDraft, clone: cloneTeller, ...autosaves.teller })
-  useRebasedPresetDraft({ resource: 'story_director', scopeKey: workspace, baseline: director, draft: storyDirectorDraft, setDraft: setStoryDirectorDraft, clone: cloneStoryDirector, ...autosaves.director })
-  useRebasedPresetDraft({ resource: 'image_preset', scopeKey: workspace, baseline: imagePreset, draft: imagePresetDraft, setDraft: setImagePresetDraft, clone: cloneImagePreset, ...autosaves.image })
-  useRebasedPresetDraft({ resource: 'event_package', scopeKey: workspace, baseline: eventPackage, draft: eventPackageDraft, setDraft: setEventPackageDraft, clone: cloneEventPackage, ...autosaves.event })
-  useRebasedPresetDraft({ resource: 'rule_system', scopeKey: workspace, baseline: ruleSystem, draft: ruleSystemDraft, setDraft: setRuleSystemDraft, clone: cloneRuleSystem, ...autosaves.rule })
-  useRebasedPresetDraft({ resource: 'actor_state', scopeKey: workspace, baseline: actorState, draft: actorStateDraft, setDraft: setActorStateDraft, clone: cloneActorState, ...autosaves['actor-state'] })
+  useRebasedPresetDraft({ resource: 'teller', scopeKey: PRESET_RESOURCE_SCOPE, baseline: teller, draft: tellerDraft, setDraft: setTellerDraft, clone: cloneTeller, ...autosaves.teller })
+  useRebasedPresetDraft({ resource: 'story_director', scopeKey: PRESET_RESOURCE_SCOPE, baseline: director, draft: storyDirectorDraft, setDraft: setStoryDirectorDraft, clone: cloneStoryDirector, ...autosaves.director })
+  useRebasedPresetDraft({ resource: 'image_preset', scopeKey: PRESET_RESOURCE_SCOPE, baseline: imagePreset, draft: imagePresetDraft, setDraft: setImagePresetDraft, clone: cloneImagePreset, ...autosaves.image })
+  useRebasedPresetDraft({ resource: 'event_package', scopeKey: PRESET_RESOURCE_SCOPE, baseline: eventPackage, draft: eventPackageDraft, setDraft: setEventPackageDraft, clone: cloneEventPackage, ...autosaves.event })
+  useRebasedPresetDraft({ resource: 'rule_system', scopeKey: PRESET_RESOURCE_SCOPE, baseline: ruleSystem, draft: ruleSystemDraft, setDraft: setRuleSystemDraft, clone: cloneRuleSystem, ...autosaves.rule })
+  useRebasedPresetDraft({ resource: 'actor_state', scopeKey: PRESET_RESOURCE_SCOPE, baseline: actorState, draft: actorStateDraft, setDraft: setActorStateDraft, clone: cloneActorState, ...autosaves['actor-state'] })
 
   useEffect(() => {
     setActiveSlotId((current) => {

@@ -25,7 +25,6 @@ const FilesTab = lazy(() => import('@/features/files/FilesTab').then((module) =>
 interface AgentChatTabContentProps {
   tab: AgentChatTab
   projectType: AgentChatProjectType
-  workspaceCurrent: boolean
   active: boolean
   running: boolean
   composerSettings: WritingComposerSettingsController
@@ -62,7 +61,6 @@ interface AgentChatTabContentProps {
 export function AgentChatTabContent({
   tab,
   projectType,
-  workspaceCurrent,
   active,
   running,
   composerSettings,
@@ -91,7 +89,6 @@ export function AgentChatTabContent({
 }: AgentChatTabContentProps) {
   const documentReview = useDocumentReview({
     projectId: projectType === 'book' && (tab.kind === 'agent' || tab.kind === 'page') ? tab.projectId : '',
-    workspace: tab.workspace,
     agentVisible: true,
     onShowAgent: noop,
   })
@@ -143,7 +140,6 @@ export function AgentChatTabContent({
           projectId={tab.projectId}
           projectType={projectType}
           workspace={tab.workspace}
-          workspaceCurrent={workspaceCurrent}
           sessionId={tab.sessionId}
           draft={tab.draft}
           active={active}

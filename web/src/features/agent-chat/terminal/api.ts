@@ -1,4 +1,5 @@
 import { jsonHeaders, requestJSON } from '@/lib/api-client/client'
+import { projectAPIPath } from '@/lib/api-client/project-scope'
 import type { TerminalCommandProfile } from '../types'
 
 /** Backend snapshot of one live terminal session. */
@@ -37,15 +38,11 @@ export interface TerminalRuntimeStatus {
 export interface CreateTerminalSessionRequest {
   /** Stable tab identity used by the backend to make creation idempotent. */
   owner_tab_id: string
-  /** Project that owns the tab; independent from the foreground Writing book. */
-  project_id: string
-  workspace?: string
   profile_id: string
   title?: string
   /** Only used by legacy `custom` tabs; built-in profiles resolve from backend settings. */
   command?: string
   args?: string[]
-  cwd?: string
   cols: number
   rows: number
 }
@@ -54,8 +51,8 @@ export async function getTerminalRuntimeStatus(): Promise<TerminalRuntimeStatus>
   return requestJSON<TerminalRuntimeStatus>('/api/terminal/sessions')
 }
 
-export async function createTerminalSession(request: CreateTerminalSessionRequest): Promise<TerminalSessionInfo> {
-  return requestJSON<TerminalSessionInfo>('/api/terminal/sessions', {
+export async function createTerminalSession(projectId: string, request: CreateTerminalSessionRequest): Promise<TerminalSessionInfo> {
+  return requestJSON<TerminalSessionInfo>(projectAPIPath(projectId, 'terminal/sessions'), {
     method: 'POST',
     headers: jsonHeaders,
     body: JSON.stringify(request),

@@ -59,9 +59,6 @@ func (runtime *projectRuntime) close() {
 				slog.ErrorContext(context.Background(), fmt.Sprintf("[app/agentchat] close project session store failed workspace=%q err=%v", runtime.workspace, err))
 			}
 		}
-		if runtime.versionService != nil {
-			runtime.versionService.Close()
-		}
 	})
 }
 
@@ -99,11 +96,7 @@ func NewService(host Host, registry *projectdomain.Registry) *Service {
 }
 
 func bindingKey(binding Binding) string {
-	owner := strings.TrimSpace(binding.ProjectID)
-	if owner == "" {
-		owner = strings.TrimSpace(binding.Workspace)
-	}
-	return owner + "\x00" + strings.TrimSpace(binding.SessionID)
+	return strings.TrimSpace(binding.ProjectID) + "\x00" + strings.TrimSpace(binding.SessionID)
 }
 
 func runtimeOptions(binding Binding, taskID string) agentrun.Options {
@@ -114,28 +107,17 @@ func runtimeOptions(binding Binding, taskID string) agentrun.Options {
 	}
 }
 
-// ResolveBinding upgrades compatibility paths to stable Project identity and
+// ResolveBinding derives runtime paths from stable Project identity and
 // validates the complete conversation scope.
 func (service *Service) ResolveBinding(binding Binding) (Binding, error) {
 	if service == nil || service.registry == nil {
 		return Binding{}, appagentruntime.ErrNoWorkspace
 	}
 	projectID := strings.TrimSpace(binding.ProjectID)
-	var (
-		record projectdomain.Record
-		layout projectdomain.Layout
-		err    error
-	)
-	if projectID == "" && strings.TrimSpace(binding.Workspace) != "" {
-		record, layout, err = service.registry.ResolveByPath(binding.Workspace, true)
-	} else {
-		record, layout, err = service.registry.Resolve(projectID, true)
-		if err != nil && strings.TrimSpace(binding.Workspace) == "" && projectID != "" {
-			// Temporary compatibility for callers that still pass a directory in
-			// the project field. The returned binding is immediately upgraded.
-			record, layout, err = service.registry.ResolveByPath(projectID, true)
-		}
+	if projectID == "" {
+		return Binding{}, fmt.Errorf("AgentChat Project ID is required / AgentChat 项目标识不能为空")
 	}
+	record, layout, err := service.registry.Resolve(projectID, true)
 	if err != nil {
 		return Binding{}, err
 	}
@@ -155,23 +137,6 @@ func (service *Service) ResolveBinding(binding Binding) (Binding, error) {
 		return Binding{}, fmt.Errorf("AgentChat session is required / AgentChat 会话不能为空")
 	}
 	return binding, nil
-}
-
-// ResolveWorkspace validates a temporary path-based client binding without
-// changing the foreground Book.
-func (service *Service) ResolveWorkspace(workspace string) (string, error) {
-	if service == nil || service.registry == nil {
-		return "", appagentruntime.ErrNoWorkspace
-	}
-	workspace = strings.TrimSpace(workspace)
-	if workspace == "" {
-		return "", fmt.Errorf("AgentChat project workspace is required / AgentChat 项目目录不能为空")
-	}
-	_, layout, err := service.registry.ResolveByPath(workspace, true)
-	if err != nil {
-		return "", fmt.Errorf("AgentChat project is not registered / AgentChat 项目尚未注册: %s: %w", workspace, err)
-	}
-	return layout.ContentRoot, nil
 }
 
 // ProjectRuntime returns a stable dependency snapshot while the Service keeps
@@ -221,14 +186,14 @@ func (service *Service) projectRuntime(ctx context.Context, projectID string) (*
 		if err := changes.WithExclusiveWorkspace(ctx, state.InitWorkspace); err != nil {
 			return nil, err
 		}
-		versionService = book.NewVersionService(workspace)
+		versionService, err = service.host.ProjectVersionService(record.ID)
+		if err != nil {
+			return nil, fmt.Errorf("resolve shared Project version service: %w", err)
+		}
 		agentKind = agentrun.AgentKindIDE
 	}
 	store, err := session.NewStore(layout.SessionsDir())
 	if err != nil {
-		if versionService != nil {
-			versionService.Close()
-		}
 		return nil, err
 	}
 	runtimeCfg.Workspace = workspace
@@ -237,9 +202,6 @@ func (service *Service) projectRuntime(ctx context.Context, projectID string) (*
 	runtimeCfg, err = appsettings.RefreshProject(runtimeCfg, workspace, layout.StateRoot)
 	if err != nil {
 		_ = store.Close()
-		if versionService != nil {
-			versionService.Close()
-		}
 		return nil, err
 	}
 	runtimeCfg.ProjectID = record.ID

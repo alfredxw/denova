@@ -108,7 +108,7 @@ export function AutomationConfigPanel({
               <SelectContent>
                 <SelectGroup>
                   <SelectItem value="user">{t('automations.target.global')}</SelectItem>
-                  {automationTargetOptions(books, draft).map((book) => <SelectItem key={book.path} value={`workspace:${book.path}`}>{t('automations.target.workspace', { name: book.name })}</SelectItem>)}
+                  {automationTargetOptions(books, draft).map((book) => <SelectItem key={book.project_id || book.path} value={`workspace:${book.project_id || book.path}`}>{t('automations.target.workspace', { name: book.name })}</SelectItem>)}
                 </SelectGroup>
               </SelectContent>
             </Select>

@@ -16,11 +16,11 @@ import (
 )
 
 func (h *Handlers) HandleProjectBookSnapshot(ctx context.Context, c *app.RequestContext) {
-	projectID, ok := requireProjectID(c)
+	scope, ok := requireProjectScope(c)
 	if !ok {
 		return
 	}
-	snapshot, err := h.app.ProjectBook().Snapshot(ctx, projectID)
+	snapshot, err := h.app.ProjectBook().Snapshot(ctx, scope.ProjectID)
 	if err != nil {
 		writeProjectBookError(c, err, "api.projectBook.readFailed")
 		return
@@ -29,33 +29,33 @@ func (h *Handlers) HandleProjectBookSnapshot(ctx context.Context, c *app.Request
 }
 
 func (h *Handlers) HandleProjectBookTree(ctx context.Context, c *app.RequestContext) {
-	projectID, ok := requireProjectID(c)
+	scope, ok := requireProjectScope(c)
 	if !ok {
 		return
 	}
-	workspace, tree, err := h.app.ProjectBook().Tree(ctx, projectID)
+	workspace, tree, err := h.app.ProjectBook().Tree(ctx, scope.ProjectID)
 	if err != nil {
 		writeProjectBookError(c, err, "api.projectBook.readFailed")
 		return
 	}
-	writeJSON(c, consts.StatusOK, map[string]any{"project_id": projectID, "workspace": workspace, "tree": tree})
+	writeJSON(c, consts.StatusOK, map[string]any{"project_id": scope.ProjectID, "workspace": workspace, "tree": tree})
 }
 
 func (h *Handlers) HandleProjectBookSummary(ctx context.Context, c *app.RequestContext) {
-	projectID, ok := requireProjectID(c)
+	scope, ok := requireProjectScope(c)
 	if !ok {
 		return
 	}
-	workspace, summary, err := h.app.ProjectBook().Summary(ctx, projectID)
+	workspace, summary, err := h.app.ProjectBook().Summary(ctx, scope.ProjectID)
 	if err != nil {
 		writeProjectBookError(c, err, "api.workspace.summaryFailed")
 		return
 	}
-	writeJSON(c, consts.StatusOK, map[string]any{"project_id": projectID, "workspace": workspace, "summary": summary})
+	writeJSON(c, consts.StatusOK, map[string]any{"project_id": scope.ProjectID, "workspace": workspace, "summary": summary})
 }
 
 func (h *Handlers) HandleProjectBookChapterStatus(_ context.Context, c *app.RequestContext) {
-	projectID, ok := requireProjectID(c)
+	scope, ok := requireProjectScope(c)
 	if !ok {
 		return
 	}
@@ -71,12 +71,12 @@ func (h *Handlers) HandleProjectBookChapterStatus(_ context.Context, c *app.Requ
 		writeErrorKey(c, consts.StatusBadRequest, "api.workspace.chapterStatusPathRequired")
 		return
 	}
-	if err := h.app.ProjectBook().SetChapterConfirmed(projectID, request.Path, request.Confirmed); err != nil {
+	if err := h.app.ProjectBook().SetChapterConfirmed(scope.ProjectID, request.Path, request.Confirmed); err != nil {
 		writeProjectBookError(c, err, "api.workspace.chapterStatusFailed")
 		return
 	}
 	writeJSON(c, consts.StatusOK, map[string]any{
-		"project_id": projectID,
+		"project_id": scope.ProjectID,
 		"path":       request.Path,
 		"confirmed":  request.Confirmed,
 		"message":    messageKey(c, "api.workspace.chapterStatusSaved"),
@@ -84,20 +84,20 @@ func (h *Handlers) HandleProjectBookChapterStatus(_ context.Context, c *app.Requ
 }
 
 func (h *Handlers) HandleProjectLoreItems(_ context.Context, c *app.RequestContext) {
-	projectID, ok := requireProjectID(c)
+	scope, ok := requireProjectScope(c)
 	if !ok {
 		return
 	}
-	items, err := h.app.ProjectBook().LoreItems(projectID)
+	items, err := h.app.ProjectBook().LoreItems(scope.ProjectID)
 	if err != nil {
 		writeProjectBookError(c, err, "api.projectBook.loreFailed")
 		return
 	}
-	writeJSON(c, consts.StatusOK, map[string]any{"project_id": projectID, "items": items})
+	writeJSON(c, consts.StatusOK, map[string]any{"project_id": scope.ProjectID, "items": items})
 }
 
 func (h *Handlers) HandleProjectLoreItemCreate(_ context.Context, c *app.RequestContext) {
-	projectID, ok := requireProjectID(c)
+	scope, ok := requireProjectScope(c)
 	if !ok {
 		return
 	}
@@ -106,16 +106,16 @@ func (h *Handlers) HandleProjectLoreItemCreate(_ context.Context, c *app.Request
 		writeErrorKey(c, consts.StatusBadRequest, "api.common.invalidRequestWithDetail", "detail", err.Error())
 		return
 	}
-	item, err := h.app.ProjectBook().CreateLoreItem(projectID, input)
+	item, err := h.app.ProjectBook().CreateLoreItem(scope.ProjectID, input)
 	if err != nil {
 		writeProjectBookError(c, err, "api.projectBook.loreFailed")
 		return
 	}
-	writeJSON(c, consts.StatusOK, map[string]any{"project_id": projectID, "item": item})
+	writeJSON(c, consts.StatusOK, map[string]any{"project_id": scope.ProjectID, "item": item})
 }
 
 func (h *Handlers) HandleProjectLoreItemUpdate(_ context.Context, c *app.RequestContext) {
-	projectID, ok := requireProjectID(c)
+	scope, ok := requireProjectScope(c)
 	if !ok {
 		return
 	}
@@ -123,7 +123,7 @@ func (h *Handlers) HandleProjectLoreItemUpdate(_ context.Context, c *app.Request
 	if !ok {
 		return
 	}
-	item, err := h.app.ProjectBook().UpdateLoreItem(projectID, c.Param("id"), input)
+	item, err := h.app.ProjectBook().UpdateLoreItem(scope.ProjectID, c.Param("id"), input)
 	if err != nil {
 		if errors.Is(err, booklore.ErrRevisionConflict) {
 			writeErrorKey(c, consts.StatusConflict, "api.resource.revisionConflict")
@@ -132,28 +132,28 @@ func (h *Handlers) HandleProjectLoreItemUpdate(_ context.Context, c *app.Request
 		writeProjectBookError(c, err, "api.projectBook.loreFailed")
 		return
 	}
-	writeJSON(c, consts.StatusOK, map[string]any{"project_id": projectID, "item": item})
+	writeJSON(c, consts.StatusOK, map[string]any{"project_id": scope.ProjectID, "item": item})
 }
 
 func (h *Handlers) HandleProjectLoreItemDelete(_ context.Context, c *app.RequestContext) {
-	projectID, ok := requireProjectID(c)
+	scope, ok := requireProjectScope(c)
 	if !ok {
 		return
 	}
-	if err := h.app.ProjectBook().DeleteLoreItem(projectID, c.Param("id")); err != nil {
+	if err := h.app.ProjectBook().DeleteLoreItem(scope.ProjectID, c.Param("id")); err != nil {
 		writeProjectBookError(c, err, "api.projectBook.loreFailed")
 		return
 	}
-	writeJSON(c, consts.StatusOK, map[string]string{"project_id": projectID, "status": "ok"})
+	writeJSON(c, consts.StatusOK, map[string]string{"project_id": scope.ProjectID, "status": "ok"})
 }
 
 func (h *Handlers) HandleProjectDocumentReview(ctx context.Context, c *app.RequestContext) {
-	projectID, ok := requireProjectID(c)
+	scope, ok := requireProjectScope(c)
 	if !ok {
 		return
 	}
 	var thread documentreview.Thread
-	workspace, err := h.app.ProjectBook().WithDocumentReview(projectID, func(service *documentreview.Service, _ documentreview.SnapshotResolver) error {
+	workspace, err := h.app.ProjectBook().WithDocumentReview(scope.ProjectID, func(service *documentreview.Service, _ documentreview.SnapshotResolver) error {
 		var readErr error
 		thread, readErr = service.CurrentThread(ctx)
 		return readErr
@@ -162,11 +162,11 @@ func (h *Handlers) HandleProjectDocumentReview(ctx context.Context, c *app.Reque
 		h.writeProjectDocumentReviewError(c, err)
 		return
 	}
-	writeJSON(c, consts.StatusOK, map[string]any{"project_id": projectID, "workspace": workspace, "review_thread": thread})
+	writeJSON(c, consts.StatusOK, map[string]any{"project_id": scope.ProjectID, "workspace": workspace, "review_thread": thread})
 }
 
 func (h *Handlers) HandleProjectDocumentCommentCreate(ctx context.Context, c *app.RequestContext) {
-	projectID, ok := requireProjectID(c)
+	scope, ok := requireProjectScope(c)
 	if !ok {
 		return
 	}
@@ -177,7 +177,7 @@ func (h *Handlers) HandleProjectDocumentCommentCreate(ctx context.Context, c *ap
 	}
 	var thread documentreview.Thread
 	var comment documentreview.Comment
-	workspace, err := h.app.ProjectBook().WithDocumentReview(projectID, func(service *documentreview.Service, resolver documentreview.SnapshotResolver) error {
+	workspace, err := h.app.ProjectBook().WithDocumentReview(scope.ProjectID, func(service *documentreview.Service, resolver documentreview.SnapshotResolver) error {
 		resolved, resolveErr := resolver.ResolveReviewTarget(ctx, request.Target)
 		if resolveErr != nil {
 			return resolveErr
@@ -191,12 +191,12 @@ func (h *Handlers) HandleProjectDocumentCommentCreate(ctx context.Context, c *ap
 		return
 	}
 	writeJSON(c, consts.StatusCreated, map[string]any{
-		"project_id": projectID, "workspace": workspace, "review_thread": thread, "comment": comment,
+		"project_id": scope.ProjectID, "workspace": workspace, "review_thread": thread, "comment": comment,
 	})
 }
 
 func (h *Handlers) HandleProjectDocumentCommentUpdate(ctx context.Context, c *app.RequestContext) {
-	projectID, ok := requireProjectID(c)
+	scope, ok := requireProjectScope(c)
 	if !ok {
 		return
 	}
@@ -208,7 +208,7 @@ func (h *Handlers) HandleProjectDocumentCommentUpdate(ctx context.Context, c *ap
 	request.ID = c.Param("id")
 	var thread documentreview.Thread
 	var comment documentreview.Comment
-	workspace, err := h.app.ProjectBook().WithDocumentReview(projectID, func(service *documentreview.Service, _ documentreview.SnapshotResolver) error {
+	workspace, err := h.app.ProjectBook().WithDocumentReview(scope.ProjectID, func(service *documentreview.Service, _ documentreview.SnapshotResolver) error {
 		var updateErr error
 		thread, comment, updateErr = service.UpdateComment(ctx, request)
 		return updateErr
@@ -218,18 +218,18 @@ func (h *Handlers) HandleProjectDocumentCommentUpdate(ctx context.Context, c *ap
 		return
 	}
 	writeJSON(c, consts.StatusOK, map[string]any{
-		"project_id": projectID, "workspace": workspace, "review_thread": thread, "comment": comment,
+		"project_id": scope.ProjectID, "workspace": workspace, "review_thread": thread, "comment": comment,
 	})
 }
 
 func (h *Handlers) HandleProjectDocumentCommentDelete(ctx context.Context, c *app.RequestContext) {
-	projectID, ok := requireProjectID(c)
+	scope, ok := requireProjectScope(c)
 	if !ok {
 		return
 	}
 	var thread documentreview.Thread
 	var comment documentreview.Comment
-	workspace, err := h.app.ProjectBook().WithDocumentReview(projectID, func(service *documentreview.Service, _ documentreview.SnapshotResolver) error {
+	workspace, err := h.app.ProjectBook().WithDocumentReview(scope.ProjectID, func(service *documentreview.Service, _ documentreview.SnapshotResolver) error {
 		var deleteErr error
 		thread, comment, deleteErr = service.DeleteComment(ctx, documentreview.DeleteCommentRequest{ID: c.Param("id")})
 		return deleteErr
@@ -239,7 +239,7 @@ func (h *Handlers) HandleProjectDocumentCommentDelete(ctx context.Context, c *ap
 		return
 	}
 	writeJSON(c, consts.StatusOK, map[string]any{
-		"project_id": projectID, "workspace": workspace, "review_thread": thread, "comment": comment,
+		"project_id": scope.ProjectID, "workspace": workspace, "review_thread": thread, "comment": comment,
 	})
 }
 

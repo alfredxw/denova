@@ -4,7 +4,7 @@ import type { SSEEvent } from '@/lib/api-client/types'
 const WORKSPACE_CHANGE_TYPES = new Set<WorkspaceFileChangeType>(['added', 'updated', 'deleted'])
 
 export type WorkspaceEventClientMessage =
-  | { type: 'subscribe'; workspace: string; authorization?: string }
+  | { type: 'subscribe'; projectId: string; authorization?: string }
   | { type: 'authorization'; authorization?: string }
   | { type: 'unsubscribe' }
 
@@ -29,8 +29,8 @@ export function isWorkspaceEventClientMessage(value: unknown): value is Workspac
     return message.authorization === undefined || typeof message.authorization === 'string'
   }
   return message.type === 'subscribe' &&
-    typeof message.workspace === 'string' &&
-    message.workspace.length > 0 &&
+    typeof message.projectId === 'string' &&
+    message.projectId.length > 0 &&
     (message.authorization === undefined || typeof message.authorization === 'string')
 }
 
@@ -52,7 +52,7 @@ export function parseWorkspaceChangeSSE(event: SSEEvent): WorkspaceChangeEvent |
   }
   if (!value || typeof value !== 'object' || Array.isArray(value)) return null
   const raw = value as Record<string, unknown>
-  if (typeof raw.workspace !== 'string') return null
+  if (typeof raw.project_id !== 'string' || !raw.project_id || typeof raw.workspace !== 'string') return null
 
   const changes = Array.isArray(raw.changes)
     ? raw.changes.map(parseWorkspaceFileChange).filter((change): change is WorkspaceFileChange => change !== null)
@@ -62,6 +62,7 @@ export function parseWorkspaceChangeSSE(event: SSEEvent): WorkspaceChangeEvent |
     ...changes.map(change => change.path),
   ]))
   const normalized: WorkspaceChangeEvent = {
+    project_id: raw.project_id,
     workspace: raw.workspace,
     source: typeof raw.source === 'string' ? raw.source : undefined,
     resync: raw.resync === true,

@@ -83,7 +83,7 @@ export async function importNovel(
   })
 }
 
-export async function createBook(title: string, author?: string, description?: string): Promise<{ workspace: string; book_meta: BookMeta }> {
+export async function createBook(title: string, author?: string, description?: string): Promise<{ project_id: string; workspace: string; book_meta: BookMeta }> {
   return requestJSON('/api/books/create', {
     method: 'POST',
     headers: jsonHeaders,

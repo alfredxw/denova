@@ -2,9 +2,9 @@ import { describe, expect, it, vi } from 'vitest'
 
 import type { SSEEvent } from '@/lib/api-client/types'
 import {
-  SharedWorkspaceEventHub,
-  WorkspaceEventStreamHTTPError,
-  type WorkspaceEventStreamFactory,
+  ProjectEventStreamHTTPError,
+  SharedProjectEventHub,
+  type ProjectEventStreamFactory,
 } from './shared-worker-hub'
 import type {
   WorkspaceEventClientMessage,
@@ -12,24 +12,24 @@ import type {
   WorkspaceEventWorkerMessage,
 } from './protocol'
 
-describe('SharedWorkspaceEventHub', () => {
+describe('SharedProjectEventHub', () => {
   it('shares one stream across ports and closes it only after the last subscriber leaves', async () => {
     const events = controlledStream<SSEEvent>()
-    const openStream = vi.fn<WorkspaceEventStreamFactory>(async () => events.stream)
-    const hub = new SharedWorkspaceEventHub({ openStream })
+    const openStream = vi.fn<ProjectEventStreamFactory>(async () => events.stream)
+    const hub = new SharedProjectEventHub({ openStream })
     const first = new FakePort()
     const second = new FakePort()
 
     hub.connect(first)
-    first.receive({ type: 'subscribe', workspace: '/books/demo' })
+    first.receive({ type: 'subscribe', projectId: 'project-demo' })
     await eventually(() => expect(openStream).toHaveBeenCalledTimes(1))
 
     hub.connect(second)
-    second.receive({ type: 'subscribe', workspace: '/books/demo' })
+    second.receive({ type: 'subscribe', projectId: 'project-demo' })
     await flushMicrotasks()
     expect(openStream).toHaveBeenCalledTimes(1)
 
-    events.enqueue(workspaceChangeSSE('/books/demo', 'chapters/ch01.md'))
+    events.enqueue(workspaceChangeSSE('project-demo', '/books/demo', 'chapters/ch01.md'))
     await eventually(() => {
       expect(workspaceChanges(first)).toContainEqual(expect.objectContaining({
         changes: [{ path: 'chapters/ch01.md', type: 'updated' }],
@@ -45,45 +45,57 @@ describe('SharedWorkspaceEventHub', () => {
     await eventually(() => expect(events.cancel).toHaveBeenCalledTimes(1))
   })
 
-  it('filters events by workspace and resyncs a subscriber joining an established stream', async () => {
-    const events = controlledStream<SSEEvent>()
-    const openStream = vi.fn<WorkspaceEventStreamFactory>(async () => events.stream)
-    const hub = new SharedWorkspaceEventHub({ openStream })
+  it('opens independent streams for different Projects and resyncs a late same-Project subscriber', async () => {
+    const demoEvents = controlledStream<SSEEvent>()
+    const otherEvents = controlledStream<SSEEvent>()
+    const openStream = vi.fn<ProjectEventStreamFactory>(async ({ projectId }) => (
+      projectId === 'project-demo' ? demoEvents.stream : otherEvents.stream
+    ))
+    const hub = new SharedProjectEventHub({ openStream })
     const first = new FakePort()
     const second = new FakePort()
+    const late = new FakePort()
 
     hub.connect(first)
-    first.receive({ type: 'subscribe', workspace: '/books/demo' })
-    events.enqueue(workspaceChangeSSE('/books/demo', 'chapters/ch01.md'))
+    first.receive({ type: 'subscribe', projectId: 'project-demo' })
+    demoEvents.enqueue(workspaceChangeSSE('project-demo', '/books/demo', 'chapters/ch01.md'))
     await eventually(() => expect(workspaceChanges(first)).toHaveLength(1))
 
     hub.connect(second)
-    second.receive({ type: 'subscribe', workspace: '/books/other' })
-    await eventually(() => expect(workspaceChanges(second)).toEqual([{
-      workspace: '/books/other',
+    second.receive({ type: 'subscribe', projectId: 'project-other' })
+    await eventually(() => expect(openStream).toHaveBeenCalledTimes(2))
+    otherEvents.enqueue(workspaceChangeSSE('project-other', '/books/other', 'notes.md'))
+    await eventually(() => expect(workspaceChanges(second)).toHaveLength(1))
+
+    hub.connect(late)
+    late.receive({ type: 'subscribe', projectId: 'project-demo' })
+    await eventually(() => expect(workspaceChanges(late)).toEqual([{
+      project_id: 'project-demo',
       source: 'shared-worker',
       resync: true,
       changes: [],
     }]))
 
-    events.enqueue(workspaceChangeSSE('/books/demo', 'chapters/ch02.md'))
+    demoEvents.enqueue(workspaceChangeSSE('project-demo', '/books/demo', 'chapters/ch02.md'))
     await eventually(() => expect(workspaceChanges(first)).toHaveLength(2))
     expect(workspaceChanges(second)).toHaveLength(1)
+    expect(workspaceChanges(late)).toHaveLength(2)
 
     first.receive({ type: 'unsubscribe' })
     second.receive({ type: 'unsubscribe' })
+    late.receive({ type: 'unsubscribe' })
   })
 
   it('pauses on a Basic auth challenge and reconnects with updated credentials', async () => {
     const events = controlledStream<SSEEvent>()
-    const openStream = vi.fn<WorkspaceEventStreamFactory>()
-      .mockRejectedValueOnce(new WorkspaceEventStreamHTTPError(401, true))
+    const openStream = vi.fn<ProjectEventStreamFactory>()
+      .mockRejectedValueOnce(new ProjectEventStreamHTTPError(401, true))
       .mockResolvedValueOnce(events.stream)
-    const hub = new SharedWorkspaceEventHub({ openStream })
+    const hub = new SharedProjectEventHub({ openStream })
     const port = new FakePort()
 
     hub.connect(port)
-    port.receive({ type: 'subscribe', workspace: '/books/demo' })
+    port.receive({ type: 'subscribe', projectId: 'project-demo' })
     await eventually(() => expect(port.sent).toContainEqual({ type: 'remote-access-required' }))
     expect(openStream).toHaveBeenCalledTimes(1)
 
@@ -117,10 +129,11 @@ function workspaceChanges(port: FakePort) {
   return port.sent.flatMap(message => message.type === 'workspace-change' ? [message.event] : [])
 }
 
-function workspaceChangeSSE(workspace: string, path: string): SSEEvent {
+function workspaceChangeSSE(projectId: string, workspace: string, path: string): SSEEvent {
   return {
     event: 'workspace-change',
     data: JSON.stringify({
+      project_id: projectId,
       workspace,
       source: 'watcher',
       changes: [{ path, type: 'updated' }],

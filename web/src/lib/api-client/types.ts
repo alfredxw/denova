@@ -355,6 +355,7 @@ export interface SSEEvent {
 }
 
 export interface BookRecord {
+  project_id: string
   name: string
   path: string
   author: string
@@ -808,7 +809,7 @@ type AutomationInboxPurpose = 'trigger' | 'write_confirmation'
 
 export interface AutomationExecutionTarget {
   kind: 'user' | 'workspace'
-  workspace_id?: string
+  project_id?: string
   workspace?: string
 }
 
@@ -946,6 +947,7 @@ export interface AutomationInboxItem {
   trigger_id: string
   purpose?: AutomationInboxPurpose
   scope: AutomationScope
+  project_id?: string
   workspace?: string
   status: AutomationInboxStatus
   action_policy: AutomationActionPolicy

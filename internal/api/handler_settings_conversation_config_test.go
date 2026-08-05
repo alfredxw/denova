@@ -100,10 +100,11 @@ func TestSettingsAPIRevokesOneApprovalRuleWithoutReplacingConcurrentRules(t *tes
 func TestConversationConfigAPIKeepsOlderSessionsIndependentAndSeedsNewSessions(t *testing.T) {
 	application := newTestApplication(t)
 	server := NewServer(application, "0")
+	projectID := application.ProjectID()
 	firstSessionID := application.Session().ID
 
-	first := readWritingConversationConfig(t, server, firstSessionID)
-	configuredResponse := performJSONRequest(t, server, http.MethodPatch, "/api/conversation-config", map[string]any{
+	first := readWritingConversationConfig(t, server, projectID, firstSessionID)
+	configuredResponse := performJSONRequest(t, server, http.MethodPatch, projectConversationConfigPath(projectID), map[string]any{
 		"binding":       map[string]any{"mode": "writing", "session_id": firstSessionID},
 		"base_revision": first.Revision,
 		"changes": map[string]any{
@@ -123,12 +124,12 @@ func TestConversationConfigAPIKeepsOlderSessionsIndependentAndSeedsNewSessions(t
 	}
 	var created testSessionDTO
 	decodeResponse(t, createdResponse.Body.Bytes(), &created)
-	inherited := readWritingConversationConfig(t, server, created.ID)
+	inherited := readWritingConversationConfig(t, server, projectID, created.ID)
 	if inherited.Revision != 1 || inherited.Config != configured.Config {
 		t.Fatalf("new session config = %#v, want inherited %#v", inherited, configured.Config)
 	}
 
-	updatedResponse := performJSONRequest(t, server, http.MethodPatch, "/api/conversation-config", map[string]any{
+	updatedResponse := performJSONRequest(t, server, http.MethodPatch, projectConversationConfigPath(projectID), map[string]any{
 		"binding":       map[string]any{"mode": "writing", "session_id": created.ID},
 		"base_revision": inherited.Revision,
 		"changes": map[string]any{
@@ -140,15 +141,15 @@ func TestConversationConfigAPIKeepsOlderSessionsIndependentAndSeedsNewSessions(t
 		t.Fatalf("configure second session status = %d body=%s", updatedResponse.Code, updatedResponse.Body.String())
 	}
 
-	firstAfter := readWritingConversationConfig(t, server, firstSessionID)
+	firstAfter := readWritingConversationConfig(t, server, projectID, firstSessionID)
 	if firstAfter != configured {
 		t.Fatalf("older session changed with newer session: before=%#v after=%#v", configured, firstAfter)
 	}
 }
 
-func readWritingConversationConfig(t *testing.T, server *Server, sessionID string) conversationconfig.Snapshot {
+func readWritingConversationConfig(t *testing.T, server *Server, projectID, sessionID string) conversationconfig.Snapshot {
 	t.Helper()
-	path := "/api/conversation-config?mode=writing&session_id=" + url.QueryEscape(sessionID)
+	path := projectConversationConfigPath(projectID) + "?mode=writing&session_id=" + url.QueryEscape(sessionID)
 	response := performJSONRequest(t, server, http.MethodGet, path, nil)
 	if response.Code != http.StatusOK {
 		t.Fatalf("conversation config status = %d body=%s", response.Code, response.Body.String())
@@ -156,4 +157,8 @@ func readWritingConversationConfig(t *testing.T, server *Server, sessionID strin
 	var snapshot conversationconfig.Snapshot
 	decodeResponse(t, response.Body.Bytes(), &snapshot)
 	return snapshot
+}
+
+func projectConversationConfigPath(projectID string) string {
+	return "/api/projects/" + url.PathEscape(projectID) + "/conversation-config"
 }

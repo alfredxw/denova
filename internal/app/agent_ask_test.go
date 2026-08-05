@@ -12,6 +12,7 @@ import (
 
 	"denova/internal/agents/session"
 	configmanagerapp "denova/internal/app/configmanager"
+	projectdomain "denova/internal/project"
 )
 
 func TestPermanentToolApprovalPersistsBeforeWaiterResumes(t *testing.T) {
@@ -120,20 +121,25 @@ func TestResolveSessionAskResumesExactIDEWaiter(t *testing.T) {
 }
 
 func TestResolveConfigManagerAskCannotCrossScope(t *testing.T) {
-	store, err := session.NewStore(t.TempDir())
+	root := t.TempDir()
+	application, err := New(context.Background(), &config.Config{
+		OpenAIModel: "test-model", NovaDir: root, Workspace: root, ResumeLastWorkspace: false,
+	})
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer store.Close()
-	chat := agentharness.NewEphemeralService()
-	t.Cleanup(func() { _ = chat.Close(context.Background()) })
-	application := &App{workspace: "/book", sessionStore: store, chatService: chat}
-	scope := configmanagerapp.Request{Origin: "settings", ResourceID: "agent-a"}
+	t.Cleanup(application.Close)
+	projectID := application.ProjectID()
+	runtime, err := application.AgentChat().ProjectRuntime(context.Background(), projectID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	scope := configmanagerapp.Request{ProjectID: projectID, Origin: "settings", ResourceID: "agent-a"}
 	sessionID, err := configmanagerapp.SessionID(scope)
 	if err != nil {
 		t.Fatal(err)
 	}
-	sess, err := store.GetOrCreate(sessionID)
+	sess, err := runtime.SessionStore.GetOrCreate(sessionID)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -142,7 +148,7 @@ func TestResolveConfigManagerAskCannotCrossScope(t *testing.T) {
 		t.Fatalf("Config Manager active projection omitted pending Ask: %#v", view)
 	}
 
-	otherScope := configmanagerapp.Request{Origin: "settings", ResourceID: "agent-b"}
+	otherScope := configmanagerapp.Request{ProjectID: projectID, Origin: "settings", ResourceID: "agent-b"}
 	if _, err := application.ConfigManager().CancelAsk(context.Background(), otherScope, "ask-config", "user_cancelled"); err == nil {
 		t.Fatal("another Config Manager scope resolved the pending Ask")
 	}
@@ -224,23 +230,74 @@ func TestActiveViewsHideColdPendingAskWhenRuntimeProjectionUnavailable(t *testin
 	})
 
 	t.Run("config_manager", func(t *testing.T) {
-		scope := configmanagerapp.Request{Origin: "settings", ResourceID: "agent-cold"}
+		dataDir := t.TempDir()
+		workspace := t.TempDir()
+		registry := projectdomain.NewRegistry(dataDir)
+		record, err := registry.EnsureBook(workspace)
+		if err != nil {
+			t.Fatal(err)
+		}
+		layout, err := registry.EnsureState(record)
+		if err != nil {
+			t.Fatal(err)
+		}
+		scope := configmanagerapp.Request{ProjectID: record.ID, Origin: "settings", ResourceID: "agent-cold"}
 		sessionID, err := configmanagerapp.SessionID(scope)
 		if err != nil {
 			t.Fatal(err)
 		}
-		store, sess := reopenAppAskWithoutWaiterForSession(t, sessionID, "ask-cold-config-view", "config_manager", session.AskCycleIdentity{
-			CommandID: "command-config", OperationID: "operation-config", Cycle: 1,
-		})
-		application := &App{
-			workspace: "/book", sessionStore: store,
-			chatService: &agentharness.Service{},
+		store, err := session.NewStore(layout.SessionsDir())
+		if err != nil {
+			t.Fatal(err)
 		}
+		sess, err := store.GetOrCreate(sessionID)
+		if err != nil {
+			t.Fatal(err)
+		}
+		waitContext, cancelWait := context.WithCancel(context.Background())
+		waitDone := make(chan error, 1)
+		go func() {
+			_, awaitErr := sess.AwaitAsk(waitContext, session.AskInteraction{
+				ID: "ask-cold-config-view", ToolCallID: "ask-cold-config-view", AgentKind: "config_manager",
+				AgentCommandID: "command-config", AgentOperationID: "operation-config", AgentCycle: 1,
+				Questions: []session.AskQuestion{{ID: "choice", Question: "Choose", Options: []session.AskOption{{ID: "a", Label: "A"}, {ID: "b", Label: "B"}}}},
+			})
+			waitDone <- awaitErr
+		}()
+		deadline := time.Now().Add(time.Second)
+		for time.Now().Before(deadline) && sess.PendingAsk("ask-cold-config-view") == nil {
+			time.Sleep(time.Millisecond)
+		}
+		if sess.PendingAsk("ask-cold-config-view") == nil {
+			t.Fatal("cold Config Manager Ask did not become pending")
+		}
+		if err := store.Close(); err != nil {
+			t.Fatal(err)
+		}
+		cancelWait()
+		if awaitErr := <-waitDone; !errors.Is(awaitErr, context.Canceled) {
+			t.Fatalf("closed Config Manager Ask waiter error = %v", awaitErr)
+		}
+		application := &App{
+			cfg: &config.Config{
+				NovaDir: dataDir, Workspace: workspace, ProjectID: record.ID, ProjectStateDir: layout.StateRoot,
+			},
+			workspace: workspace, projectRegistry: registry, chatService: &agentharness.Service{},
+		}
+		t.Cleanup(application.Close)
 		view := application.ConfigManager().ActiveView(context.Background(), scope)
 		if view.RuntimeProjectionOK || view.PendingAsk != nil {
 			t.Fatalf("cold Config Manager active view = %#v", view)
 		}
-		if pending := sess.PendingAsk(""); pending == nil || pending.Status != session.AskPending {
+		runtime, err := application.AgentChat().ProjectRuntime(context.Background(), record.ID)
+		if err != nil {
+			t.Fatal(err)
+		}
+		reopened, err := runtime.SessionStore.Get(sessionID)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if pending := reopened.PendingAsk(""); pending == nil || pending.Status != session.AskPending {
 			t.Fatalf("unavailable projection unexpectedly changed durable Ask: %#v", pending)
 		}
 	})

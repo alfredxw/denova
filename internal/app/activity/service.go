@@ -280,6 +280,7 @@ func automationRunMessage(task automation.Task, run automation.RunRecord, locale
 		PublishedAt: formatAutomationMessageTime(publishedAt),
 		TaskID:      automationCatalogID(task),
 		RunID:       run.ID,
+		ProjectID:   firstNonEmpty(run.ProjectID, task.Target.ProjectID),
 		Workspace:   firstNonEmpty(run.Workspace, task.Target.Workspace),
 		Status:      run.Status,
 	}
@@ -316,6 +317,7 @@ func automationInboxMessage(task automation.Task, item automation.TriggerInboxIt
 		TaskID:         automationCatalogID(task),
 		RunID:          item.RunID,
 		InboxID:        item.ID,
+		ProjectID:      firstNonEmpty(item.ProjectID, task.Target.ProjectID),
 		Workspace:      firstNonEmpty(item.Workspace, task.Target.Workspace),
 		Status:         item.Status,
 		ActionRequired: true,
@@ -323,9 +325,16 @@ func automationInboxMessage(task automation.Task, item automation.TriggerInboxIt
 }
 
 func automationTaskForInbox(tasks []automation.Task, item automation.TriggerInboxItem) automation.Task {
+	projectID := strings.TrimSpace(item.ProjectID)
 	workspace := lifecycleWorkspaceKey(item.Workspace)
 	for _, task := range tasks {
 		if task.ID != item.TaskID {
+			continue
+		}
+		if projectID != "" && strings.TrimSpace(task.Target.ProjectID) == projectID {
+			return task
+		}
+		if projectID != "" {
 			continue
 		}
 		if lifecycleWorkspaceKey(task.Target.Workspace) == workspace {

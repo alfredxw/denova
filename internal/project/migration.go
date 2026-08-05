@@ -10,10 +10,11 @@ import (
 	"strings"
 	"time"
 
+	"denova/internal/book/versions"
 	workspacelayout "denova/internal/workspace"
 )
 
-const stateMigrationVersion = 2
+const stateMigrationVersion = 3
 
 type migrationReceipt struct {
 	Version     int       `json:"version"`
@@ -60,6 +61,18 @@ func (registry *Registry) EnsureState(record Record) (Layout, error) {
 		{name: "automations", source: workspacelayout.Path(layout.ContentRoot, "automations"), destination: layout.AutomationsDir()},
 	}
 	copied := make([]string, 0, len(legacy))
+	if layout.Type == TypeBook {
+		migrated, migrationErr := versions.MigrateLegacyRepository(
+			layout.ContentRoot,
+			layout.VersionRepositoryDir(),
+		)
+		if migrationErr != nil {
+			return Layout{}, fmt.Errorf("migrate released Project versions: %w", migrationErr)
+		}
+		if migrated {
+			copied = append(copied, "versions")
+		}
+	}
 	for _, item := range legacy {
 		if _, statErr := os.Lstat(item.source); errors.Is(statErr, os.ErrNotExist) {
 			continue

@@ -53,8 +53,8 @@ interface AgentChatTabBarProps {
   /** No project means there is nothing to start a conversation in yet. */
   newChatDisabled?: boolean
   terminalCommands: TerminalCommandProfile[]
-  /** Writing-only resource pages are not valid inside a General Project. */
-  pagesEnabled?: boolean
+  /** Page capabilities valid for this Project type. */
+  pageIds: readonly AgentChatPageId[]
   /** Persistent controls remain reachable when document tabs overflow. */
   endActions?: ReactNode
   onActivate: (tabId: string) => void
@@ -84,7 +84,7 @@ export function AgentChatTabBar({
   tabTitle,
   newChatDisabled = false,
   terminalCommands,
-  pagesEnabled = true,
+  pageIds,
   endActions,
   onActivate,
   onClose,
@@ -152,7 +152,7 @@ export function AgentChatTabBar({
           group={group}
           newChatDisabled={newChatDisabled}
           terminalCommands={terminalCommands}
-          pagesEnabled={pagesEnabled}
+          pageIds={pageIds}
           onNewAgentTab={onNewAgentTab}
           onNewTerminalTab={onNewTerminalTab}
           onOpenFiles={onOpenFiles}

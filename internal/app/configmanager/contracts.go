@@ -18,6 +18,7 @@ import (
 const RuntimeMode = "config_manager"
 
 type Request struct {
+	ProjectID   string            `json:"-"`
 	CommandID   string            `json:"command_id"`
 	Instruction string            `json:"instruction"`
 	Origin      string            `json:"origin,omitempty"`
@@ -29,9 +30,11 @@ type Request struct {
 	Locale      string            `json:"-"`
 }
 
-// Runtime is an immutable foreground-workspace dependency snapshot captured
-// under the root App lock before admission begins.
+// Runtime is an immutable explicit-Project dependency snapshot. Config Manager
+// pages can therefore run inside AgentChat without changing the foreground
+// Writing Book.
 type Runtime struct {
+	ProjectID       string
 	Config          config.Config
 	Workspace       string
 	State           *book.State
@@ -47,12 +50,12 @@ type Operation interface {
 	Release()
 }
 
-// Host centralizes the foreground workspace generation fence. Service owns
-// Config Manager policy; Host only validates and registers captured resources.
+// Host centralizes Project runtime resolution and lifecycle fencing. Service
+// owns Config Manager policy; Host never consults foreground navigation state.
 type Host interface {
-	Snapshot() Runtime
+	ProjectRuntime(context.Context, string) (Runtime, error)
 	ResolveAsk(context.Context, *session.Session, string, string, string, string, []agentconversation.HostAskAnswer, string) (agentconversation.HostAskResolution, error)
-	AcquireWorkspaceOperation(context.Context, string) (Operation, error)
+	AcquireProjectOperation(context.Context, string) (Operation, error)
 	IsCurrent(Runtime) bool
 	RegisterTask(*apptask.Task, Runtime) error
 	UnregisterTask(*apptask.Task)

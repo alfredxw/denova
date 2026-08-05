@@ -2,9 +2,10 @@ package automationapp
 
 import (
 	"context"
-	apptask "denova/internal/app/task"
 	"fmt"
+	"strings"
 
+	apptask "denova/internal/app/task"
 	"denova/internal/automation"
 )
 
@@ -15,7 +16,11 @@ func (s *Service) confirmInboxItemWithStarter(ctx context.Context, store *automa
 	if err != nil {
 		return automation.InboxActionResult{}, err
 	}
-	task, err := store.Get(automation.CatalogTaskID(item.Scope, item.Workspace, item.TaskID))
+	taskID := automation.CatalogTaskID(item.Scope, item.Workspace, item.TaskID)
+	if projectID := strings.TrimSpace(item.ProjectID); item.Scope == automation.ScopeWorkspace && projectID != "" {
+		taskID = projectID + ":" + strings.TrimSpace(item.TaskID)
+	}
+	task, err := store.Get(taskID)
 	if err != nil {
 		return automation.InboxActionResult{}, err
 	}

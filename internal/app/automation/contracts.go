@@ -66,6 +66,7 @@ type Host interface {
 	RuntimeForTarget(context.Context, automation.ExecutionTarget) (Runtime, error)
 	Catalog() (Catalog, error)
 	AcquireRootOperation(context.Context) (Operation, error)
+	AcquireProjectOperation(context.Context, string) (Operation, error)
 	AcquireWorkspaceOperation(context.Context, string) (Operation, error)
 	RegisterTask(*apptask.Task, string) error
 	UnregisterTask(*apptask.Task)

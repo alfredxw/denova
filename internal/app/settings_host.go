@@ -1,55 +1,142 @@
 package app
 
 import (
+	"context"
+	"log/slog"
+	"strings"
+
 	"denova/config"
 	agentrun "denova/internal/agents/run"
 	novaskills "denova/internal/agents/skills"
+	resourcecatalogapp "denova/internal/app/resourcecatalog"
 	appsettings "denova/internal/app/settings"
+	"denova/internal/book"
+	"denova/internal/concurrency"
+	projectdomain "denova/internal/project"
 )
 
 type resourceCatalogHost struct{ app *App }
 
-func (host resourceCatalogHost) SkillDirectories() []novaskills.Directory {
+func (host resourceCatalogHost) SkillDirectories(target resourcecatalogapp.SkillTarget) ([]novaskills.Directory, error) {
 	if host.app == nil {
-		return nil
+		return nil, concurrency.ErrClosed
 	}
 	host.app.mu.RLock()
-	defer host.app.mu.RUnlock()
 	if host.app.cfg == nil {
-		return nil
+		host.app.mu.RUnlock()
+		return nil, ErrAgentDataDirRequired
 	}
-	return novaskills.NewDirectories(host.app.cfg.SkillsDir, host.app.cfg.DataDir(), host.app.workspace)
+	builtinDir := host.app.cfg.SkillsDir
+	dataDir := host.app.cfg.DataDir()
+	registry := host.app.projectRegistry
+	host.app.mu.RUnlock()
+
+	projectID := target.ProjectID()
+	if projectID == "" {
+		return novaskills.NewDirectories(builtinDir, dataDir, ""), nil
+	}
+	if registry == nil {
+		return nil, projectdomain.ErrNotFound
+	}
+	_, layout, err := registry.Resolve(projectID, true)
+	if err != nil {
+		return nil, err
+	}
+	return novaskills.NewDirectories(builtinDir, dataDir, layout.ContentRoot), nil
 }
 
 type settingsHost struct{ app *App }
 
-func (host settingsHost) SettingsRuntime() appsettings.Runtime {
+func (host settingsHost) SettingsRuntime(target appsettings.Target) (appsettings.Runtime, error) {
 	if host.app == nil {
-		return appsettings.Runtime{}
+		return appsettings.Runtime{}, concurrency.ErrClosed
 	}
 	host.app.mu.RLock()
-	runtime := appsettings.Runtime{Workspace: host.app.workspace, BookState: host.app.bookState}
-	if host.app.cfg != nil {
-		runtime.Config = *host.app.cfg
-		runtime.ProjectConfigPath = config.ProjectConfigPath(host.app.cfg.ProjectStateDir)
+	if host.app.cfg == nil {
+		host.app.mu.RUnlock()
+		return appsettings.Runtime{}, ErrAgentDataDirRequired
 	}
+	dataDir := host.app.cfg.DataDir()
+	runtimeWebPort := host.app.cfg.RuntimeWebPort
+	devMode := host.app.cfg.DevMode
+	automationWorkspaces := append([]string(nil), host.app.cfg.AutomationWorkspaces...)
+	imagePresetToolPrompt := host.app.cfg.ImagePresetToolPrompt
 	registry := host.app.projectRegistry
 	host.app.mu.RUnlock()
 
-	if runtime.ProjectConfigPath == "" && runtime.Workspace != "" && registry != nil {
-		if _, layout, err := registry.ResolveByPath(runtime.Workspace, true); err == nil {
-			runtime.ProjectConfigPath = layout.ConfigPath()
+	projectID := target.ProjectID()
+	workspace := ""
+	projectConfigPath := ""
+	var state *book.State
+	var layout projectdomain.Layout
+	if projectID != "" {
+		if registry == nil {
+			return appsettings.Runtime{}, projectdomain.ErrNotFound
+		}
+		record, resolved, err := registry.Resolve(projectID, true)
+		if err != nil {
+			return appsettings.Runtime{}, err
+		}
+		layout = resolved
+		workspace = layout.ContentRoot
+		projectConfigPath = layout.ConfigPath()
+		if record.Type == projectdomain.TypeBook {
+			state = book.NewState(workspace)
 		}
 	}
-	return runtime
+	runtimeConfig, _, err := config.LoadWithProject(dataDir, workspace, projectConfigPath)
+	if err != nil {
+		return appsettings.Runtime{}, err
+	}
+	runtimeConfig.RuntimeWebPort = runtimeWebPort
+	runtimeConfig.DevMode = devMode
+	runtimeConfig.AutomationWorkspaces = automationWorkspaces
+	runtimeConfig.ImagePresetToolPrompt = imagePresetToolPrompt
+	runtimeConfig.ProjectID = projectID
+	runtimeConfig.ProjectStateDir = layout.StateRoot
+	runtimeConfig.Workspace = workspace
+	return appsettings.Runtime{
+		Config:            *runtimeConfig,
+		ProjectID:         projectID,
+		Workspace:         workspace,
+		ProjectConfigPath: projectConfigPath,
+		BookState:         state,
+	}, nil
 }
 
-func (host settingsHost) ApplySettings(layered config.LayeredSettings, layer config.SettingsLayer) {
+func (host settingsHost) ApplySettings(_ config.LayeredSettings, layer config.SettingsLayer) {
 	if host.app == nil {
 		return
 	}
+	host.app.mu.RLock()
+	projectID := ""
+	if host.app.cfg != nil {
+		projectID = strings.TrimSpace(host.app.cfg.ProjectID)
+	}
+	host.app.mu.RUnlock()
+	target := appsettings.Global()
+	if projectID != "" {
+		target = appsettings.Project(projectID)
+	}
+	runtime, err := host.SettingsRuntime(target)
+	if err != nil {
+		slog.ErrorContext(context.Background(), "[internal/app/settings_host.go] reload foreground settings after persistence failed",
+			"project_id", projectID,
+			"error", err,
+		)
+		return
+	}
+
 	host.app.mu.Lock()
-	appsettings.ApplyLayered(host.app.cfg, layered)
+	currentProjectID := ""
+	if host.app.cfg != nil {
+		currentProjectID = strings.TrimSpace(host.app.cfg.ProjectID)
+	}
+	if currentProjectID != projectID || host.app.cfg == nil {
+		host.app.mu.Unlock()
+		return
+	}
+	*host.app.cfg = runtime.Config
 	syncRuntimeDiagnostics(host.app.cfg)
 	versionService := host.app.versionService
 	autoSettings := versionAutoSettingsForConfig(host.app.cfg)

@@ -4,7 +4,7 @@ import { ChevronDown, ChevronUp, Download, ExternalLink, Loader2, Plus, RefreshC
 import { useTranslation } from 'react-i18next'
 import { toast } from 'sonner'
 import type { AgentApprovalMode, ImageAPIProfileSettings, LayeredSettings, ModelProfileSettings, Settings, SettingsLayer, ShellEnvironmentMode, UpdateApplyResult, UpdateCheckResult, UpdateInstallProgress, UpdateInstallResult, WebAccessSettings } from './types'
-import { applyUpdate, checkForUpdate, installUpdateStream, revokeAgentApprovalRule } from './api'
+import { applyUpdate, checkForUpdate, GLOBAL_SETTINGS_TARGET, installUpdateStream, revokeAgentApprovalRule } from './api'
 import { FONT_OPTIONS, fontLabelKeyFor } from './font-options'
 import { useLayeredSettingsDraft } from './use-layered-settings-draft'
 import { getInteractiveTellers } from '@/features/interactive/api'
@@ -69,6 +69,7 @@ export function SettingsView({ onClose }: { onClose?: () => void }) {
   const { t } = useTranslation()
   const approval = useAgentApprovalMode()
   const { layered, draft, setDraft, error, autosaveStatus, autosaveError, saveNow, reload, notifyUpdated } = useLayeredSettingsDraft({
+    target: GLOBAL_SETTINGS_TARGET,
     layer: 'user',
     sourcePrefix: 'settings-view',
   })
@@ -124,7 +125,7 @@ export function SettingsView({ onClose }: { onClose?: () => void }) {
     try {
       await revokeAgentApprovalRule(id)
       await reload()
-      notifyUpdated()
+      notifyUpdated('user')
       toast.success(t('agentApproval.rules.revokeSucceeded'))
     } catch (cause) {
       console.error(`[settings] failed to revoke agent approval rule id=${id}`, cause)

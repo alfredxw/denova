@@ -1,33 +1,33 @@
 import { useEffect } from 'react'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import type { QueryClient } from '@tanstack/react-query'
-import { getWorkspaceChangeGroup, getWorkspaceChangeReviewThread, listWorkspaceChangeGroups, type ListWorkspaceChangeGroupsOptions } from './api'
+import { getProjectChangeGroup, getProjectChangeReviewThread, listProjectChangeGroups, type ListProjectChangeGroupsOptions } from './api'
 import type { WorkspaceChangeEvent } from './types'
 
-export const workspaceChangeKeys = {
-  all: ['workspace-change-groups'] as const,
-  lists: () => [...workspaceChangeKeys.all, 'list'] as const,
-  list: (workspace: string, options: ListWorkspaceChangeGroupsOptions) => [...workspaceChangeKeys.lists(), workspace, options] as const,
-  details: () => [...workspaceChangeKeys.all, 'detail'] as const,
-  detail: (workspace: string, id: string) => [...workspaceChangeKeys.details(), workspace, id] as const,
-  reviewThreads: () => [...workspaceChangeKeys.all, 'thread'] as const,
-  reviewThread: (workspace: string, id: string) => [...workspaceChangeKeys.reviewThreads(), workspace, id] as const,
+export const projectChangeKeys = {
+  all: ['project-change-groups'] as const,
+  lists: () => [...projectChangeKeys.all, 'list'] as const,
+  list: (projectId: string, options: ListProjectChangeGroupsOptions) => [...projectChangeKeys.lists(), projectId, options] as const,
+  details: () => [...projectChangeKeys.all, 'detail'] as const,
+  detail: (projectId: string, id: string) => [...projectChangeKeys.details(), projectId, id] as const,
+  reviewThreads: () => [...projectChangeKeys.all, 'thread'] as const,
+  reviewThread: (projectId: string, id: string) => [...projectChangeKeys.reviewThreads(), projectId, id] as const,
 }
 
 const REVIEW_THREAD_STALE_TIME = 5_000
 
-function workspaceChangeReviewThreadQueryOptions(workspace: string, id: string) {
+function projectChangeReviewThreadQueryOptions(projectId: string, id: string) {
   return {
-    queryKey: workspaceChangeKeys.reviewThread(workspace, id),
-    queryFn: () => getWorkspaceChangeReviewThread(workspace, id),
+    queryKey: projectChangeKeys.reviewThread(projectId, id),
+    queryFn: () => getProjectChangeReviewThread(projectId, id),
     staleTime: REVIEW_THREAD_STALE_TIME,
   }
 }
 
 /** Warms the same cache entry consumed by the full review surface. */
-export function prefetchWorkspaceChangeReviewThread(queryClient: QueryClient, workspace: string, id: string) {
-  if (!workspace || !id) return Promise.resolve()
-  return queryClient.prefetchQuery(workspaceChangeReviewThreadQueryOptions(workspace, id))
+export function prefetchProjectChangeReviewThread(queryClient: QueryClient, projectId: string, id: string) {
+  if (!projectId || !id) return Promise.resolve()
+  return queryClient.prefetchQuery(projectChangeReviewThreadQueryOptions(projectId, id))
 }
 
 type WorkspaceChangeSubscription = {
@@ -37,10 +37,10 @@ type WorkspaceChangeSubscription = {
 
 const workspaceChangeSubscriptions = new WeakMap<QueryClient, WorkspaceChangeSubscription>()
 
-export function invalidateWorkspaceChangeQueries(queryClient: QueryClient, workspace: string) {
-  if (!workspace) return Promise.resolve()
+export function invalidateProjectChangeQueries(queryClient: QueryClient, projectId: string) {
+  if (!projectId) return Promise.resolve()
   return queryClient.invalidateQueries({
-    predicate: (query) => query.queryKey[0] === workspaceChangeKeys.all[0] && query.queryKey[2] === workspace,
+    predicate: (query) => query.queryKey[0] === projectChangeKeys.all[0] && query.queryKey[2] === projectId,
   })
 }
 
@@ -60,8 +60,8 @@ function subscribeWorkspaceChangeEvents(queryClient: QueryClient) {
     consumers: 1,
     listener: (rawEvent) => {
       const event = rawEvent as CustomEvent<WorkspaceChangeEvent>
-      if (!event.detail?.workspace) return
-      void invalidateWorkspaceChangeQueries(queryClient, event.detail.workspace)
+      if (!event.detail?.project_id) return
+      void invalidateProjectChangeQueries(queryClient, event.detail.project_id)
     },
   }
   workspaceChangeSubscriptions.set(queryClient, subscription)
@@ -74,12 +74,12 @@ function subscribeWorkspaceChangeEvents(queryClient: QueryClient) {
   }
 }
 
-export function useWorkspaceChangeGroups(workspace: string, options: ListWorkspaceChangeGroupsOptions = {}) {
+export function useProjectChangeGroups(projectId: string, options: ListProjectChangeGroupsOptions = {}) {
   const queryClient = useQueryClient()
   const query = useQuery({
-    queryKey: workspaceChangeKeys.list(workspace, options),
-    queryFn: () => listWorkspaceChangeGroups(workspace, options),
-    enabled: Boolean(workspace),
+    queryKey: projectChangeKeys.list(projectId, options),
+    queryFn: () => listProjectChangeGroups(projectId, options),
+    enabled: Boolean(projectId),
     staleTime: 10_000,
   })
 
@@ -88,11 +88,11 @@ export function useWorkspaceChangeGroups(workspace: string, options: ListWorkspa
   return query
 }
 
-export function useWorkspaceChangeReviewThread(workspace: string, id: string) {
+export function useProjectChangeReviewThread(projectId: string, id: string) {
   const queryClient = useQueryClient()
   const query = useQuery({
-    ...workspaceChangeReviewThreadQueryOptions(workspace, id),
-    enabled: Boolean(workspace && id),
+    ...projectChangeReviewThreadQueryOptions(projectId, id),
+    enabled: Boolean(projectId && id),
   })
 
   useEffect(() => subscribeWorkspaceChangeEvents(queryClient), [queryClient])
@@ -100,12 +100,12 @@ export function useWorkspaceChangeReviewThread(workspace: string, id: string) {
   return query
 }
 
-export function useWorkspaceChangeGroup(workspace: string, id: string) {
+export function useProjectChangeGroup(projectId: string, id: string) {
   const queryClient = useQueryClient()
   const query = useQuery({
-    queryKey: workspaceChangeKeys.detail(workspace, id),
-    queryFn: () => getWorkspaceChangeGroup(workspace, id),
-    enabled: Boolean(workspace && id),
+    queryKey: projectChangeKeys.detail(projectId, id),
+    queryFn: () => getProjectChangeGroup(projectId, id),
+    enabled: Boolean(projectId && id),
     staleTime: 5_000,
   })
 

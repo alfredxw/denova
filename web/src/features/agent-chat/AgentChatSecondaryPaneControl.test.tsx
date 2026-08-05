@@ -2,13 +2,14 @@ import { render, screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { describe, expect, it, vi } from 'vitest'
 import { AgentChatSecondaryPaneControl } from './AgentChatSecondaryPaneControl'
+import { AGENT_CHAT_PAGE_IDS, agentChatPageIdsForProjectType } from './types'
 
 const baseProps = {
   visible: false,
   hasTabs: false,
   busy: false,
   terminalCommands: [],
-  pagesEnabled: true,
+  pageIds: AGENT_CHAT_PAGE_IDS,
   onShow: vi.fn(),
   onHide: vi.fn(),
   onNewAgentTab: vi.fn(),
@@ -38,6 +39,23 @@ describe('AgentChatSecondaryPaneControl', () => {
 
     expect(onHide).toHaveBeenCalledTimes(1)
     expect(baseProps.onNewAgentTab).not.toHaveBeenCalled()
+  })
+
+  it('keeps reusable pages available for General Projects and hides Book-only pages', async () => {
+    const user = userEvent.setup()
+    render(
+      <AgentChatSecondaryPaneControl
+        {...baseProps}
+        pageIds={agentChatPageIdsForProjectType('general')}
+      />,
+    )
+
+    await user.click(screen.getByRole('button', { name: '显示右侧工作区' }))
+
+    expect(await screen.findByRole('menuitem', { name: 'Skills' })).toBeInTheDocument()
+    expect(screen.getByRole('menuitem', { name: '预设' })).toBeInTheDocument()
+    expect(screen.queryByRole('menuitem', { name: '阅读器' })).not.toBeInTheDocument()
+    expect(screen.queryByRole('menuitem', { name: '版本管理' })).not.toBeInTheDocument()
   })
 
   it('announces running work when a populated pane is hidden', () => {

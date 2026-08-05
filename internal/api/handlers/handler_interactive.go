@@ -3,7 +3,6 @@ package handlers
 import (
 	"context"
 	"errors"
-	"path/filepath"
 	"strconv"
 	"strings"
 
@@ -417,13 +416,9 @@ func (h *Handlers) HandleInteractiveTellerUpdate(ctx context.Context, c *app.Req
 	var body struct {
 		teller.Definition
 		BaseRevision string `json:"base_revision"`
-		Workspace    string `json:"workspace"`
 	}
 	if err := c.BindJSON(&body); err != nil {
 		writeErrorKey(c, consts.StatusBadRequest, "api.common.invalidRequestWithDetail", "detail", err.Error())
-		return
-	}
-	if !h.ensurePresetMutationWorkspace(c, body.Workspace) {
 		return
 	}
 	updated, err := h.app.ResourceCatalog().UpdateTeller(c.Param("id"), body.Definition, body.BaseRevision)
@@ -482,13 +477,9 @@ func (h *Handlers) HandleStoryDirectorUpdate(ctx context.Context, c *app.Request
 	var body struct {
 		interactive.StoryDirector
 		BaseRevision string `json:"base_revision"`
-		Workspace    string `json:"workspace"`
 	}
 	if err := c.BindJSON(&body); err != nil {
 		writeErrorKey(c, consts.StatusBadRequest, "api.common.invalidRequestWithDetail", "detail", err.Error())
-		return
-	}
-	if !h.ensurePresetMutationWorkspace(c, body.Workspace) {
 		return
 	}
 	director, err := h.app.ResourceCatalog().UpdateStoryDirector(c.Param("id"), body.StoryDirector, body.BaseRevision)
@@ -547,13 +538,9 @@ func (h *Handlers) HandleEventPackageUpdate(ctx context.Context, c *app.RequestC
 	var body struct {
 		interactive.EventPackageModule
 		BaseRevision string `json:"base_revision"`
-		Workspace    string `json:"workspace"`
 	}
 	if err := c.BindJSON(&body); err != nil {
 		writeErrorKey(c, consts.StatusBadRequest, "api.common.invalidRequestWithDetail", "detail", err.Error())
-		return
-	}
-	if !h.ensurePresetMutationWorkspace(c, body.Workspace) {
 		return
 	}
 	item, err := h.app.ResourceCatalog().UpdateEventPackage(c.Param("id"), body.EventPackageModule, body.BaseRevision)
@@ -612,13 +599,9 @@ func (h *Handlers) HandleRuleSystemUpdate(ctx context.Context, c *app.RequestCon
 	var body struct {
 		interactive.RuleSystemModule
 		BaseRevision string `json:"base_revision"`
-		Workspace    string `json:"workspace"`
 	}
 	if err := c.BindJSON(&body); err != nil {
 		writeErrorKey(c, consts.StatusBadRequest, "api.common.invalidRequestWithDetail", "detail", err.Error())
-		return
-	}
-	if !h.ensurePresetMutationWorkspace(c, body.Workspace) {
 		return
 	}
 	item, err := h.app.ResourceCatalog().UpdateRuleSystem(c.Param("id"), body.RuleSystemModule, body.BaseRevision)
@@ -677,13 +660,9 @@ func (h *Handlers) HandleActorStateUpdate(ctx context.Context, c *app.RequestCon
 	var body struct {
 		interactive.ActorStateModule
 		BaseRevision string `json:"base_revision"`
-		Workspace    string `json:"workspace"`
 	}
 	if err := c.BindJSON(&body); err != nil {
 		writeErrorKey(c, consts.StatusBadRequest, "api.common.invalidRequestWithDetail", "detail", err.Error())
-		return
-	}
-	if !h.ensurePresetMutationWorkspace(c, body.Workspace) {
 		return
 	}
 	item, err := h.app.ResourceCatalog().UpdateActorState(c.Param("id"), body.ActorStateModule, body.BaseRevision)
@@ -742,13 +721,9 @@ func (h *Handlers) HandleImagePresetUpdate(ctx context.Context, c *app.RequestCo
 	var body struct {
 		imagepreset.Preset
 		BaseRevision string `json:"base_revision"`
-		Workspace    string `json:"workspace"`
 	}
 	if err := c.BindJSON(&body); err != nil {
 		writeErrorKey(c, consts.StatusBadRequest, "api.common.invalidRequestWithDetail", "detail", err.Error())
-		return
-	}
-	if !h.ensurePresetMutationWorkspace(c, body.Workspace) {
 		return
 	}
 	preset, err := h.app.ResourceCatalog().UpdateImagePreset(c.Param("id"), body.Preset, body.BaseRevision)
@@ -761,19 +736,6 @@ func (h *Handlers) HandleImagePresetUpdate(ctx context.Context, c *app.RequestCo
 		return
 	}
 	writeJSON(c, consts.StatusOK, preset)
-}
-
-func (h *Handlers) ensurePresetMutationWorkspace(c *app.RequestContext, expected string) bool {
-	expected = strings.TrimSpace(expected)
-	if expected == "" {
-		return true
-	}
-	current := strings.TrimSpace(h.app.Workspace())
-	if current != "" && filepath.Clean(current) == filepath.Clean(expected) {
-		return true
-	}
-	writeErrorKey(c, consts.StatusConflict, "api.workspace.changedDuringRequest")
-	return false
 }
 
 func (h *Handlers) HandleImagePresetDelete(ctx context.Context, c *app.RequestContext) {

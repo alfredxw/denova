@@ -44,7 +44,7 @@ import {
 } from './editorDecorations'
 import type { SearchMatch, SearchState } from './editorDecorations'
 import { useEditorDraftPersistence, type EditorFlushHandler } from './useEditorDraftPersistence'
-import { MISSING_WORKSPACE_REVISION, readFile } from '@/lib/api-client/workspace'
+import { MISSING_WORKSPACE_REVISION } from '@/lib/api-client/workspace'
 import { projectFileAssetURL, readProjectFile } from '@/lib/api-client/project-files'
 import { sameDocumentReviewTarget } from '@/features/document-review/types'
 import type { DocumentReviewController, DocumentReviewNavigationIntent } from '@/features/document-review/controller'
@@ -57,9 +57,7 @@ export type { DocumentReviewController, DocumentReviewNavigationIntent } from '@
 
 interface MarkdownEditorProps {
   /** Stable resource identity used for reads, assets, review snapshots, and caches. */
-  projectId?: string
-  /** Display and draft-recovery scope; resource authority comes from projectId. */
-  workspace?: string
+  projectId: string
   fileName: string | null
   content: string
   revision?: string
@@ -93,8 +91,7 @@ interface EditorSearchIntent {
 
 /** TipTap 编辑器组件，支持 Markdown 和纯文本格式 */
 export function MarkdownEditor({
-  projectId = '',
-  workspace = '',
+  projectId,
   fileName,
   content,
   revision = '',
@@ -137,9 +134,9 @@ export function MarkdownEditor({
   const searchStateRef = useRef<SearchState>({ query: '', index: 0, useRegex: false })
   const searchExtension = useMemo(() => createSearchHighlightExtension(searchStateRef), [])
   const dialogueHighlightExtension = useMemo(() => createDialogueHighlightExtension(), [])
-  const resourceScope = projectId || workspace
+  const resourceScope = projectId
   const workspaceImageExtension = useMemo(
-    () => createWorkspaceImageExtension(projectId ? (path) => projectFileAssetURL(projectId, path) : undefined),
+    () => createWorkspaceImageExtension((path) => projectFileAssetURL(projectId, path)),
     [projectId],
   )
   const editorContainerRef = useRef<HTMLDivElement>(null)
@@ -292,19 +289,14 @@ export function MarkdownEditor({
       throw new Error('Document comments are unavailable')
     }
     if (!(await flushCurrentDraft())) throw new Error('The current draft could not be saved')
-    const document = projectId
-      ? await readProjectFile(projectId, fileName)
-      : await readFile(fileName)
-    const matchesScope = projectId
-      ? 'project_id' in document && document.project_id === projectId
-      : 'workspace' in document && (!workspace || document.workspace === workspace)
-    if (!document.revision || !matchesScope) {
+    const document = await readProjectFile(projectId, fileName)
+    if (!document.revision || document.project_id !== projectId) {
       throw new Error('The canonical document snapshot is unavailable')
     }
     // TipTap can insert equivalent blank lines or normalize Markdown markers.
     // The anchor builder validates the selected range against this canonical snapshot.
     return { content: document.content || '', revision: document.revision }
-  }, [documentReview, editor, fileName, flushCurrentDraft, projectId, workspace])
+  }, [documentReview, editor, fileName, flushCurrentDraft, projectId])
 
   // 监听 TipTap 内容和选区变化，实时更新选区字数与光标行号。
   useEffect(() => {

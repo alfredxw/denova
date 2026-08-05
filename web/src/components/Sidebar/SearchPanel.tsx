@@ -9,9 +9,10 @@ import { TooltipIconButton } from '@/components/common/tooltip-icon-button'
 import { replaceWorkspace, searchWorkspace, type WorkspaceSearchResult } from '@/lib/api'
 
 interface SearchPanelProps {
-  workspace: string
+  projectId: string
   onSelectResult: (result: WorkspaceSearchResult, query: string) => void | Promise<void>
-  /** 全局替换成功后通知外层刷新受影响的打开文件与版本信息 */
+  onBeforeReplace?: () => boolean | Promise<boolean>
+  /** Notifies the host so open editors and version state can refresh. */
   onWorkspaceChanged?: (paths: string[]) => void | Promise<void>
 }
 
@@ -23,8 +24,8 @@ interface SearchResultGroup {
 const SEARCH_LIMIT = 100
 const SEARCH_DEBOUNCE_MS = 260
 
-/** 当前书籍 workspace 的扫描式全局搜索面板，支持正则匹配与全局替换。 */
-export function SearchPanel({ workspace, onSelectResult, onWorkspaceChanged }: SearchPanelProps) {
+/** Project-scoped text/path search with regex and recoverable replace-all. */
+export function SearchPanel({ projectId, onSelectResult, onBeforeReplace, onWorkspaceChanged }: SearchPanelProps) {
   const { t } = useTranslation()
   const [query, setQuery] = useState('')
   const [results, setResults] = useState<WorkspaceSearchResult[]>([])
@@ -39,14 +40,14 @@ export function SearchPanel({ workspace, onSelectResult, onWorkspaceChanged }: S
 
   const trimmedQuery = query.trim()
   const groups = useMemo(() => groupSearchResults(results), [results])
-  const canReplace = Boolean(workspace && trimmedQuery && results.length > 0)
+  const canReplace = Boolean(projectId && trimmedQuery && results.length > 0)
 
   useEffect(() => {
     requestSeq.current += 1
     const seq = requestSeq.current
     setError('')
 
-    if (!workspace || !trimmedQuery) {
+    if (!projectId || !trimmedQuery) {
       setResults([])
       setLoading(false)
       return
@@ -54,7 +55,7 @@ export function SearchPanel({ workspace, onSelectResult, onWorkspaceChanged }: S
 
     setLoading(true)
     const timer = window.setTimeout(() => {
-      searchWorkspace(trimmedQuery, SEARCH_LIMIT, { regex: useRegex })
+      searchWorkspace(projectId, trimmedQuery, SEARCH_LIMIT, { regex: useRegex })
         .then((items) => {
           if (requestSeq.current !== seq) return
           setResults(items)
@@ -70,10 +71,11 @@ export function SearchPanel({ workspace, onSelectResult, onWorkspaceChanged }: S
     }, SEARCH_DEBOUNCE_MS)
 
     return () => window.clearTimeout(timer)
-  }, [t, trimmedQuery, useRegex, workspace, refreshSeq])
+  }, [projectId, refreshSeq, t, trimmedQuery, useRegex])
 
   const handleConfirmReplace = async () => {
-    const data = await replaceWorkspace({ query: trimmedQuery, replacement: replaceText, regex: useRegex, workspace })
+    if (onBeforeReplace && !await onBeforeReplace()) return false
+    const data = await replaceWorkspace(projectId, { query: trimmedQuery, replacement: replaceText, regex: useRegex })
     const paths = data.files.map((file) => file.path)
     if (data.total_replacements > 0) {
       toast.success(t('search.replaceDone', { count: data.total_replacements, files: data.files.length }))
@@ -87,6 +89,7 @@ export function SearchPanel({ workspace, onSelectResult, onWorkspaceChanged }: S
       await onWorkspaceChanged?.(paths)
     }
     setRefreshSeq((value) => value + 1)
+    return true
   }
 
   return (
@@ -161,7 +164,7 @@ export function SearchPanel({ workspace, onSelectResult, onWorkspaceChanged }: S
       </div>
 
       <div className="min-h-0 flex-1 overflow-y-auto px-1 pb-2">
-        {!workspace ? (
+        {!projectId ? (
           <SearchEmptyState text={t('search.noWorkspace')} />
         ) : error ? (
           <SearchEmptyState text={error} />

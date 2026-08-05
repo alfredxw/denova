@@ -44,11 +44,21 @@ type ClassificationApplyRequest struct {
 	Changes  []booklore.TypeChange `json:"changes"`
 }
 
-func (service *Service) PreviewClassification(ctx context.Context, expectedWorkspace string, request ClassificationPreviewRequest) (ClassificationPreview, error) {
+// ClassifyItems runs semantic classification with the selected Project's
+// settings and durable Tool Agent session. It never consults the foreground
+// Book, so imports can safely target a background AgentChat Project.
+func (service *Service) ClassifyItems(ctx context.Context, projectID string, inputs []booklore.ClassificationInput) ([]booklore.ClassificationSuggestion, error) {
+	if service == nil || service.host == nil {
+		return nil, ErrNoWorkspace
+	}
+	return service.host.ClassifyLoreItems(ctx, projectID, inputs)
+}
+
+func (service *Service) PreviewClassification(ctx context.Context, projectID string, request ClassificationPreviewRequest) (ClassificationPreview, error) {
 	if service == nil || service.images == nil || service.host == nil {
 		return ClassificationPreview{}, ErrNoWorkspace
 	}
-	runtime, err := service.images.AcquireRuntime(ctx, expectedWorkspace)
+	runtime, err := service.images.AcquireProjectRuntime(ctx, projectID)
 	if err != nil {
 		return ClassificationPreview{}, err
 	}
@@ -102,7 +112,7 @@ func (service *Service) PreviewClassification(ctx context.Context, expectedWorks
 		semanticInputs = append(semanticInputs, input)
 	}
 	if mode == booklore.ClassificationModeSemantic && len(semanticInputs) > 0 {
-		suggestions, classifyErr := service.host.ClassifyLoreItems(runtime.Context(), semanticInputs)
+		suggestions, classifyErr := service.host.ClassifyLoreItems(runtime.Context(), projectID, semanticInputs)
 		if classifyErr != nil {
 			preview.Warning = "Semantic classification is temporarily unavailable; local name analysis is shown. / 语义分类暂时不可用，当前展示本地名称分析结果：" + classifyErr.Error()
 		} else {
@@ -133,19 +143,9 @@ func (service *Service) PreviewClassification(ctx context.Context, expectedWorks
 	return preview, nil
 }
 
-func (service *Service) PreviewClassificationForWorkspace(ctx context.Context, expectedWorkspace string, request ClassificationPreviewRequest) (ClassificationPreview, error) {
-	if service == nil || service.host == nil {
-		return ClassificationPreview{}, ErrNoWorkspace
-	}
-	if _, err := service.host.ValidateLoreWorkspace(expectedWorkspace); err != nil {
-		return ClassificationPreview{}, err
-	}
-	return service.PreviewClassification(ctx, expectedWorkspace, request)
-}
-
-func (service *Service) ApplyClassification(expectedWorkspace string, request ClassificationApplyRequest) (booklore.TypeApplyResult, error) {
+func (service *Service) ApplyClassification(ctx context.Context, projectID string, request ClassificationApplyRequest) (booklore.TypeApplyResult, error) {
 	var result booklore.TypeApplyResult
-	_, err := service.withStore(expectedWorkspace, func(store *booklore.Store) error {
+	_, err := service.withStore(ctx, projectID, func(store *booklore.Store) error {
 		var applyErr error
 		result, applyErr = store.ApplyTypeChanges(request.Revision, request.Changes)
 		return applyErr

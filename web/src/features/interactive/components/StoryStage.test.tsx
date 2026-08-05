@@ -1,9 +1,13 @@
 import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
-import { Profiler } from 'react'
+import { Profiler, type ComponentProps } from 'react'
 import { VirtuosoMockContext } from 'react-virtuoso'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
-import { StoryStage } from './StoryStage'
+import { StoryStage as ProjectStoryStage } from './StoryStage'
+
+function StoryStage(props: Omit<ComponentProps<typeof ProjectStoryStage>, 'projectId'> & { projectId?: string }) {
+  return <ProjectStoryStage {...props} projectId={props.projectId || 'project-story'} />
+}
 import { useInteractiveStore } from '../stores/interactive-store'
 import type { TurnEvent } from '../types'
 import {
@@ -798,7 +802,7 @@ describe('StoryStage interactive image rendering', () => {
     await user.click(screen.getByRole('button', { name: '生成互动图像' }))
 
     await waitFor(() => {
-      expect(screen.getByRole('img', { name: '即时互动图像' })).toHaveAttribute('src', '/api/workspace/asset?path=assets%2Finteractive%2Fimages%2Fstory-1%2Fmain%2Fturn-1%2Frun-a%2Fimage.png')
+      expect(screen.getByRole('img', { name: '即时互动图像' })).toHaveAttribute('src', '/api/projects/project-story/files/asset?path=assets%2Finteractive%2Fimages%2Fstory-1%2Fmain%2Fturn-1%2Frun-a%2Fimage.png')
     })
     expect(handleDone).toHaveBeenCalled()
     expect(handleDone).toHaveBeenCalledWith({ silent: true })

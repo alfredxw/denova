@@ -92,12 +92,23 @@ type Config struct {
 
 // LoadWithWorkspace 在已知 workspace 时读取分层配置（默认 < 用户级 < 工作区级 < 环境变量）。
 func LoadWithWorkspace(workspace string) (*Config, LayeredSettings, error) {
-	novaDir := startupNovaDir()
-	layered, err := LoadLayeredWithStartupConfig(novaDir, workspace)
+	return LoadWithProject(startupNovaDir(), workspace, "")
+}
+
+// LoadWithProject constructs a clean runtime configuration for an explicit
+// Project state path. It is the Project-ID-era equivalent of
+// LoadWithWorkspace and prevents a background Project from inheriting fields
+// already merged into the foreground runtime.
+func LoadWithProject(novaDir, workspace, projectConfigPath string) (*Config, LayeredSettings, error) {
+	layered, err := LoadLayeredWithStartupConfigAt(novaDir, workspace, projectConfigPath)
 	if err != nil {
 		return nil, LayeredSettings{}, err
 	}
+	novaDir = layered.Paths.DenovaDir
+	return configFromLayered(novaDir, workspace, layered), layered, nil
+}
 
+func configFromLayered(novaDir, workspace string, layered LayeredSettings) *Config {
 	s := layered.Effective
 	cfg := &Config{
 		OpenAIAPIKey:                s.OpenAIAPIKey,
@@ -176,7 +187,7 @@ func LoadWithWorkspace(workspace string) (*Config, LayeredSettings, error) {
 		cfg.SkillsDir = normalizePath(cfg.SkillsDir)
 	}
 	normalizeConfigDataDir(cfg)
-	return cfg, layered, nil
+	return cfg
 }
 
 // LoadLayeredWithStartupConfig reads layered settings with the same global

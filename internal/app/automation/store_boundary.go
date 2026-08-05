@@ -91,7 +91,7 @@ func automationTaskStoreID(task automation.Task) string {
 // workspace, not the definition's global target, owns recovery and control.
 func automationTargetForRun(task automation.Task, run automation.RunRecord) automation.ExecutionTarget {
 	if workspace := strings.TrimSpace(run.Workspace); workspace != "" {
-		return automation.ExecutionTarget{Kind: automation.TargetKindWorkspace, WorkspaceID: run.ProjectID, Workspace: workspace}
+		return automation.ExecutionTarget{Kind: automation.TargetKindWorkspace, ProjectID: run.ProjectID, Workspace: workspace}
 	}
 	if strings.TrimSpace(task.Target.Kind) != "" {
 		return task.Target

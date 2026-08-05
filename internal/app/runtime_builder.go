@@ -128,7 +128,7 @@ func buildRuntime(ctx context.Context, cfg *config.Config, layout ProjectLayout)
 		session:                sess,
 		agentRunner:            agentRunner,
 		interactiveStoryRunner: interactiveStoryRunner,
-		versionService:         book.NewVersionService(absWorkspace),
+		versionService:         book.NewVersionService(absWorkspace, layout.VersionRepositoryDir()),
 	}
 	keepStore = true
 	return runtime, nil

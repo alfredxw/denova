@@ -30,6 +30,17 @@ func (host agentChatHost) BaseRuntime() (config.Config, *agentharness.Service) {
 	return cfg, host.app.chatService
 }
 
+func (host agentChatHost) ProjectVersionService(projectID string) (*book.VersionService, error) {
+	if host.app == nil {
+		return nil, ErrNoWorkspace
+	}
+	resources, err := host.app.ProjectFiles().BookVersions(projectID)
+	if err != nil {
+		return nil, err
+	}
+	return resources.VersionService, nil
+}
+
 func (host agentChatHost) CurrentWorkspace() string {
 	if host.app == nil {
 		return ""

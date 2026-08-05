@@ -1,5 +1,5 @@
 import type { WorkspaceChangeEvent } from '@/features/changes/types'
-import { isWorkspaceChangeForWorkspace } from '@/features/changes/types'
+import { isProjectChangeForProject } from '@/features/changes/types'
 import {
   getRemoteAccessAuthorization,
   handleRemoteAccessChallenge,
@@ -11,17 +11,17 @@ import {
   type WorkspaceEventWorkerMessage,
 } from './protocol'
 
-const SHARED_WORKER_NAME = 'denova-workspace-events-v1'
+const SHARED_WORKER_NAME = 'denova-project-events-v2'
 const SETTINGS_UPDATED_EVENT = 'nova:settings-updated'
 
 /** Subscribes one page to the origin-wide SharedWorker-owned event stream. */
-export function subscribeWorkspaceFileEvents(
-  workspace: string,
+export function subscribeProjectFileEvents(
+  projectId: string,
   onChange: (event: WorkspaceChangeEvent) => void | Promise<void>,
 ): () => void {
   if (typeof SharedWorker === 'undefined') {
     console.warn('[workspace-events/client.ts] SharedWorker is unavailable; foreground refresh remains active', {
-      workspace,
+      projectId,
     })
     return () => {}
   }
@@ -35,7 +35,7 @@ export function subscribeWorkspaceFileEvents(
     })
   } catch (error) {
     console.warn('[workspace-events/client.ts] failed to start SharedWorker; foreground refresh remains active', {
-      workspace,
+      projectId,
       error,
     })
     return () => {}
@@ -53,7 +53,7 @@ export function subscribeWorkspaceFileEvents(
       try {
         await onChange(nextEvent)
       } catch (error) {
-        console.warn('[workspace-events/client.ts] workspace event consumer failed', { workspace, error })
+        console.warn('[workspace-events/client.ts] Project event consumer failed', { projectId, error })
       }
       nextEvent = queuedEvent
       queuedEvent = null
@@ -68,12 +68,12 @@ export function subscribeWorkspaceFileEvents(
     }
     // File events are invalidation hints. One canonical resync safely replaces
     // any number of events received while this page is still refreshing.
-    queuedEvent = { workspace, source: 'shared-worker', resync: true, changes: [] }
+    queuedEvent = { project_id: projectId, source: 'shared-worker', resync: true, changes: [] }
   }
 
   port.onmessage = (messageEvent: MessageEvent<WorkspaceEventWorkerMessage>) => {
     if (!isWorkspaceEventWorkerMessage(messageEvent.data)) {
-      console.warn('[workspace-events/client.ts] ignored malformed SharedWorker message', { workspace })
+      console.warn('[workspace-events/client.ts] ignored malformed SharedWorker message', { projectId })
       return
     }
     const message = messageEvent.data
@@ -81,16 +81,16 @@ export function subscribeWorkspaceFileEvents(
       handleRemoteAccessChallenge()
       return
     }
-    if (!isWorkspaceChangeForWorkspace(message.event, workspace)) return
+    if (!isProjectChangeForProject(message.event, projectId)) return
     enqueue(message.event)
   }
   port.onmessageerror = () => {
-    console.warn('[workspace-events/client.ts] SharedWorker message could not be decoded', { workspace })
+    console.warn('[workspace-events/client.ts] SharedWorker message could not be decoded', { projectId })
   }
   port.start()
 
   const post = (message: WorkspaceEventClientMessage) => port.postMessage(message)
-  post({ type: 'subscribe', workspace, authorization: getRemoteAccessAuthorization() })
+  post({ type: 'subscribe', projectId, authorization: getRemoteAccessAuthorization() })
 
   const updateAuthorization = () => {
     post({ type: 'authorization', authorization: getRemoteAccessAuthorization() })
@@ -107,7 +107,7 @@ export function subscribeWorkspaceFileEvents(
     try {
       post({ type: 'unsubscribe' })
     } catch (error) {
-      console.warn('[workspace-events/client.ts] failed to unsubscribe SharedWorker port', { workspace, error })
+      console.warn('[workspace-events/client.ts] failed to unsubscribe SharedWorker port', { projectId, error })
       port.close()
     }
     port.onmessage = null

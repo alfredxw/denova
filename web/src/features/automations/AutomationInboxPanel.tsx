@@ -21,7 +21,10 @@ export function InboxPanel({
   onOpenRun: (runId: string) => void
 }) {
   const { t } = useTranslation()
-  const taskNames = useMemo(() => new Map(items.map((item) => [item.id, findAutomationTaskByTarget(tasks, item.task_id, item.workspace)?.name || item.task_id])), [items, tasks])
+  const taskNames = useMemo(() => new Map(items.map((item) => [
+    item.id,
+    findAutomationTaskByTarget(tasks, item.task_id, item.workspace, item.project_id)?.name || item.task_id,
+  ])), [items, tasks])
   if (items.length === 0) {
     return <EmptyState variant="page" icon={Inbox} title={t('automations.inbox.empty')} className="min-h-0 flex-1 text-[var(--nova-text-faint)]" />
   }

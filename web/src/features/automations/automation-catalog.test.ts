@@ -26,13 +26,14 @@ const baseTask: AutomationTask = {
 describe('automation catalog', () => {
   it('groups user-owned tasks by explicit execution target and keeps IDs unique', () => {
     const books: BookRecord[] = [
-      { name: 'Book A', path: '/books/a', author: '', last_opened_at: '' },
-      { name: 'Book B', path: '/books/b', author: '', last_opened_at: '' },
+      { project_id: 'workspace-a', name: 'Book A', path: '/books/a', author: '', last_opened_at: '' },
+      { project_id: 'workspace-b', name: 'Book B', path: '/books/b', author: '', last_opened_at: '' },
     ]
+    const fallback = { kind: 'workspace' as const, project_id: 'workspace-a', workspace: '/books/a' }
     const tasks = [
-      normalizeAutomationTask({ ...baseTask, id: 'same', catalog_id: 'workspace-a:same', name: 'A', target: { kind: 'workspace', workspace: '/books/a', workspace_id: 'workspace-a' } }, ''),
-      normalizeAutomationTask({ ...baseTask, id: 'same', catalog_id: 'workspace-b:same', name: 'B', target: { kind: 'workspace', workspace: '/books/b', workspace_id: 'workspace-b' } }, ''),
-      normalizeAutomationTask({ ...baseTask, id: 'global', scope: 'user', name: 'Global', target: { kind: 'user' } }, ''),
+      normalizeAutomationTask({ ...baseTask, id: 'same', catalog_id: 'workspace-a:same', name: 'A', target: { kind: 'workspace', workspace: '/books/a', project_id: 'workspace-a' } }, fallback),
+      normalizeAutomationTask({ ...baseTask, id: 'same', catalog_id: 'workspace-b:same', name: 'B', target: { kind: 'workspace', workspace: '/books/b', project_id: 'workspace-b' } }, fallback),
+      normalizeAutomationTask({ ...baseTask, id: 'global', scope: 'user', name: 'Global', target: { kind: 'user' } }, fallback),
     ]
     const activeRuns: AutomationActiveRun[] = [{
       task_id: 'same',
@@ -50,8 +51,8 @@ describe('automation catalog', () => {
   })
 
   it('upgrades legacy scope data without depending on the active tab at runtime', () => {
-    const task = normalizeAutomationTask({ ...baseTask, id: 'legacy' }, '/books/current')
-    expect(task.target).toEqual({ kind: 'workspace', workspace: '/books/current' })
+    const task = normalizeAutomationTask({ ...baseTask, id: 'legacy' }, { kind: 'workspace', project_id: 'workspace-current', workspace: '/books/current' })
+    expect(task.target).toEqual({ kind: 'workspace', project_id: 'workspace-current', workspace: '/books/current' })
     expect(automationTaskKey(task)).toBe('legacy')
   })
 })

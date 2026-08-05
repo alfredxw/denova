@@ -4,12 +4,12 @@ import { useTranslation } from 'react-i18next'
 import { toast } from 'sonner'
 import { createAgentCommandID } from '@/lib/api'
 import type { AgentQueuedCommandAction, AgentRuntimeQueuedCommand, ContextAnalysis, IDEContext, SessionSummary, TextSelection } from '@/lib/api'
-import { fetchSettings } from '@/features/settings/api'
+import { fetchProjectSettings, fetchSettings } from '@/features/settings/api'
 import { formatApprovedPlanExecutionMessage } from '@/lib/plan-mode'
 import { agentCommandErrorMessage, agentCommandRetryKey, isKnownAgentCommandOutcome, mergeProjectedAgentQueue, rememberAgentCommandID } from '@/lib/agent-command'
 import { AgentChatTransport, buildAgentChatRequestBody, normalizeAgentUIMessages, type AgentUIMessage } from '@/lib/agent-ui'
 import { agentViewContent, type AgentPartRef } from '@/lib/agent-message-view'
-import { isWorkspaceChangeForWorkspace, type WorkspaceChangeEvent } from '@/features/changes/types'
+import { isProjectChangeForProject, type WorkspaceChangeEvent } from '@/features/changes/types'
 import {
   agentBypassCommand,
   appendDataMessage,
@@ -33,7 +33,7 @@ import {
 import { writingAgentChatClient, type AgentChatClient } from './agent-chat-client'
 
 interface ChatOptions {
-  workspace?: string
+  projectId?: string
   /** Explicit API binding. AgentChat supplies one immutable project/session client per tab. */
   client?: AgentChatClient
   onAgentFileChange?: (path?: string) => void | Promise<void>
@@ -78,7 +78,7 @@ interface QueuedComposerDraft {
 
 export function useAgentChat(options: ChatOptions = {}) {
   const { t } = useTranslation()
-  const { workspace = '', client = writingAgentChatClient, onAgentFileChange, onWorkspaceChange } = options
+  const { projectId = '', client = writingAgentChatClient, onAgentFileChange, onWorkspaceChange } = options
   const transport = useMemo(() => new AgentChatTransport(client.transportOptions), [client])
   const [runtimeRecoverySignal, setRuntimeRecoverySignal] = useState(0)
   const [displayRehydrateRequest, setDisplayRehydrateRequest] = useState<WritingDisplayRehydrateRequest | null>(null)
@@ -126,7 +126,7 @@ export function useAgentChat(options: ChatOptions = {}) {
       }
       if (part.type !== 'data-agent-workspace-change') return
       const event = part.data as WorkspaceChangeEvent
-      if (!isWorkspaceChangeForWorkspace(event, workspace)) return
+      if (!projectId || !isProjectChangeForProject(event, projectId)) return
       window.dispatchEvent(new CustomEvent('nova:workspace-change', { detail: event }))
       void onWorkspaceChange?.(event)
     },
@@ -172,7 +172,8 @@ export function useAgentChat(options: ChatOptions = {}) {
 
   useEffect(() => {
     let cancelled = false
-    fetchSettings()
+    const request = projectId?.trim() ? fetchProjectSettings(projectId) : fetchSettings()
+    request
       .then((data) => {
         if (!cancelled) setDefaultPlanMode(data.effective?.plan_mode_default === true)
       })
@@ -180,7 +181,7 @@ export function useAgentChat(options: ChatOptions = {}) {
     return () => {
       cancelled = true
     }
-  }, [])
+  }, [projectId])
 
   const setSessionPlanMode = useCallback((sessionId: string, value: boolean) => {
     const id = sessionId || 'default'

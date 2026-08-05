@@ -31,13 +31,10 @@ const terminalWriteWait = 30 * time.Second
 
 type terminalCreateRequest struct {
 	OwnerTabID string   `json:"owner_tab_id"`
-	ProjectID  string   `json:"project_id"`
-	Workspace  string   `json:"workspace"`
 	ProfileID  string   `json:"profile_id"`
 	Title      string   `json:"title"`
 	Command    string   `json:"command"`
 	Args       []string `json:"args"`
-	Cwd        string   `json:"cwd"`
 	Cols       int      `json:"cols"`
 	Rows       int      `json:"rows"`
 }
@@ -80,6 +77,10 @@ func (h *Handlers) HandleTerminalSessions(_ context.Context, c *hertzapp.Request
 
 // HandleTerminalSessionCreate starts a new terminal session.
 func (h *Handlers) HandleTerminalSessionCreate(ctx context.Context, c *hertzapp.RequestContext) {
+	scope, ok := requireProjectScope(c)
+	if !ok {
+		return
+	}
 	manager := h.app.Terminals()
 	if manager == nil {
 		writeErrorKey(c, consts.StatusServiceUnavailable, "api.terminal.disabled")
@@ -95,15 +96,6 @@ func (h *Handlers) HandleTerminalSessionCreate(ctx context.Context, c *hertzapp.
 		writeErrorKey(c, consts.StatusBadRequest, "api.common.invalidBody")
 		return
 	}
-	projectID, workspace, err := h.app.ResolveTerminalProject(req.ProjectID, req.Workspace)
-	if err != nil {
-		writeError(c, consts.StatusBadRequest, err.Error())
-		return
-	}
-	requestedCwd := req.Cwd
-	if strings.TrimSpace(requestedCwd) == "" {
-		requestedCwd = workspace
-	}
 	profileID := strings.TrimSpace(req.ProfileID)
 	launch, err := manager.ResolveLaunchProfile(profileID, req.Command, req.Args)
 	if err != nil {
@@ -117,11 +109,11 @@ func (h *Handlers) HandleTerminalSessionCreate(ctx context.Context, c *hertzapp.
 		Command:        launch.Command,
 		Args:           launch.Args,
 		StartupCommand: launch.StartupCommand,
-		Cwd:            h.app.ResolveTerminalCwd(requestedCwd),
+		Cwd:            scope.ContentRoot,
 		Cols:           req.Cols,
 		Rows:           req.Rows,
-		Workspace:      workspace,
-		ProjectID:      projectID,
+		Workspace:      scope.ContentRoot,
+		ProjectID:      scope.ProjectID,
 	}
 	session, err := manager.Create(spec)
 	if err != nil {
@@ -378,6 +370,9 @@ func writeTerminalError(ctx context.Context, c *hertzapp.RequestContext, err err
 		writeErrorKey(c, consts.StatusNotFound, "api.terminal.notFound")
 	case errors.Is(err, terminal.ErrTooManySessions):
 		writeErrorKey(c, consts.StatusTooManyRequests, "api.terminal.tooMany")
+	case errors.Is(err, terminal.ErrOwnerConflict):
+		slog.WarnContext(ctx, fmt.Sprintf("[api/handlers/handler_terminal.go] terminal owner belongs to another project err=%v", err))
+		writeErrorKey(c, consts.StatusConflict, "api.terminal.ownerConflict")
 	case errors.Is(err, terminal.ErrInvalidProfile):
 		slog.WarnContext(ctx, fmt.Sprintf("[api/handlers/handler_terminal.go] terminal command unavailable err=%v", err))
 		writeErrorKey(c, consts.StatusBadRequest, "api.terminal.invalidProfile")

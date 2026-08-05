@@ -3,6 +3,7 @@ package automation
 import (
 	"encoding/json"
 	"errors"
+	"fmt"
 	"strings"
 	"time"
 )
@@ -86,9 +87,40 @@ const (
 // Every task is user-managed; workspace is an explicit target rather than an
 // implicit dependency on whichever book happens to be open.
 type ExecutionTarget struct {
-	Kind        string `json:"kind"`
-	WorkspaceID string `json:"workspace_id,omitempty"`
-	Workspace   string `json:"workspace,omitempty"`
+	Kind      string `json:"kind"`
+	ProjectID string `json:"project_id,omitempty"`
+	Workspace string `json:"workspace,omitempty"`
+}
+
+// UnmarshalJSON keeps released automation definitions readable while making
+// project_id the only canonical field written by current versions.
+func (target *ExecutionTarget) UnmarshalJSON(data []byte) error {
+	if target == nil {
+		return errors.New("automation execution target is nil")
+	}
+	var decoded struct {
+		Kind              string `json:"kind"`
+		ProjectID         string `json:"project_id,omitempty"`
+		LegacyWorkspaceID string `json:"workspace_id,omitempty"`
+		Workspace         string `json:"workspace,omitempty"`
+	}
+	if err := json.Unmarshal(data, &decoded); err != nil {
+		return err
+	}
+	projectID := strings.TrimSpace(decoded.ProjectID)
+	legacyID := strings.TrimSpace(decoded.LegacyWorkspaceID)
+	if projectID != "" && legacyID != "" && projectID != legacyID {
+		return fmt.Errorf("automation target has conflicting project_id and legacy workspace_id")
+	}
+	if projectID == "" {
+		projectID = legacyID
+	}
+	*target = ExecutionTarget{
+		Kind:      decoded.Kind,
+		ProjectID: projectID,
+		Workspace: decoded.Workspace,
+	}
+	return nil
 }
 
 const (
@@ -293,6 +325,7 @@ type TriggerInboxItem struct {
 	TriggerID    string            `json:"trigger_id"`
 	Purpose      string            `json:"purpose,omitempty"`
 	Scope        string            `json:"scope"`
+	ProjectID    string            `json:"project_id,omitempty"`
 	Workspace    string            `json:"workspace,omitempty"`
 	Status       string            `json:"status"`
 	ActionPolicy string            `json:"action_policy"`

@@ -40,7 +40,7 @@ func TestAutomationAbortReplaysPersistedReceiptAfterRestart(t *testing.T) {
 	const commandID = "abort-command-replay"
 	run := automation.RunRecord{
 		ID: runID, TaskID: taskDef.ID, SessionID: automationRunSessionID(runID),
-		ProjectID: taskDef.Target.WorkspaceID,
+		ProjectID: taskDef.Target.ProjectID,
 		Scope:     taskDef.Scope, Workspace: application.Workspace(), Trigger: automation.TriggerManual,
 		RuntimeCommandID: automationRunAgentCommandID(runID), RuntimeOperationID: string(operationID),
 		RuntimeReceiptCursor: 1, Status: automation.RunStatusAborted,

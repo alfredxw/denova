@@ -38,6 +38,7 @@ describe('LoreWorkspaceEditor', () => {
 
     render(
       <LoreWorkspaceEditor
+        projectId="project-lore-test"
         draft={loreItem()}
         tagDraft=""
         autosaveStatus="saved"
@@ -89,6 +90,7 @@ describe('LoreWorkspaceEditor', () => {
 
     render(
       <LoreWorkspaceEditor
+        projectId="project-lore-test"
         draft={loreItem()}
         tagDraft=""
         autosaveStatus="saved"
@@ -119,6 +121,7 @@ describe('LoreWorkspaceEditor', () => {
 
     render(
       <LoreWorkspaceEditor
+        projectId="project-lore-test"
         draft={loreItem()}
         tagDraft=""
         autosaveStatus="saved"

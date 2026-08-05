@@ -8,7 +8,7 @@ import { Button } from '@/components/ui/button'
 import type { VisibleAgentKey } from '@/features/agents/agent-registry'
 import { useResourceAutosave } from '@/hooks/use-resource-autosave'
 import { getSkillDocument, saveSkillDocument } from '@/lib/api'
-import type { SkillDocument, SkillScope, SkillScopeInfo } from '@/lib/api'
+import { skillCatalogTargetKey, type SkillCatalogTarget, type SkillDocument, type SkillScope, type SkillScopeInfo } from '@/lib/api'
 import { isRevisionConflict, saveWithRevisionRecovery } from '@/lib/revision-conflict'
 import { rebaseTextWithRecovery } from '@/lib/autosave/rebase-with-recovery'
 import { SkillAgentSelector, SkillClassificationFields } from './skill-form-fields'
@@ -16,6 +16,7 @@ import { SkillIdentityFields } from './SkillIdentityFields'
 import { parseAgentKeys, skillFilePath, skillNamePattern, updateSkillConfigContent } from './skill-utils'
 
 interface SkillConfigPanelProps {
+  target: SkillCatalogTarget
   document: SkillDocument
   /** Current editor content. Configuration autosave rewrites only its frontmatter. */
   content: string
@@ -48,6 +49,7 @@ function configSignature(value: Partial<SkillConfigAutosaveDraft>) {
 
 /** Autosaves metadata while keeping directory rename/move as an explicit command. */
 export const SkillConfigPanel = forwardRef<SkillConfigPanelHandle, SkillConfigPanelProps>(function SkillConfigPanel({
+  target,
   document,
   content,
   scopes,
@@ -85,7 +87,7 @@ export const SkillConfigPanel = forwardRef<SkillConfigPanelHandle, SkillConfigPa
   const configAutosave = useResourceAutosave<SkillConfigAutosaveDraft, SkillConfigAutosaveDraft, SkillConfigAutosaveSaved>({
     draft: configDraft,
     active: document.editable && !identityChanged,
-    scopeKey: configDraft.id,
+    scopeKey: `${skillCatalogTargetKey(target)}\u0000${configDraft.id}`,
     valid: Boolean(trimmedDescription),
     makePayload: (value) => value,
     baselineFromSaved: (saved, submitted) => ({
@@ -95,12 +97,12 @@ export const SkillConfigPanel = forwardRef<SkillConfigPanelHandle, SkillConfigPa
     }),
     signature: configSignature,
     save: async (_id, payload, baseRevision) => {
-      const saved = await saveSkillDocument(document.scope, document.name, payload.content, undefined, baseRevision)
+      const saved = await saveSkillDocument(target, document.scope, document.name, payload.content, undefined, baseRevision)
       return { content: saved.content, document: saved, updated_at: saved.revision }
     },
     resolveConflict: async ({ error: saveError, baseline, draft: submitted }) => {
       if (!isRevisionConflict(saveError)) return null
-      const latest = await getSkillDocument(document.scope, document.name)
+      const latest = await getSkillDocument(target, document.scope, document.name)
       const rebasedContent = await rebaseTextWithRecovery({
         resource: 'skill_config',
         scope: document.scope,
@@ -167,7 +169,7 @@ export const SkillConfigPanel = forwardRef<SkillConfigPanelHandle, SkillConfigPa
     setError(null)
     try {
       const nextContent = updateSkillConfigContent(content, trimmedName, trimmedDescription, agents, category, capabilities)
-      const target = { scope, name: trimmedName }
+      const saveTarget = { scope, name: trimmedName }
       let recoveryBaselineRevision = document.revision
       let latestRevision: string | undefined
       const saved = await saveWithRevisionRecovery({
@@ -175,14 +177,15 @@ export const SkillConfigPanel = forwardRef<SkillConfigPanelHandle, SkillConfigPa
         draft: nextContent,
         revision: document.revision,
         save: (nextDraft, revision) => saveSkillDocument(
+          target,
           document.scope,
           document.name,
           nextDraft,
-          target,
+          saveTarget,
           revision,
         ),
         loadLatest: async () => {
-          const latest = await getSkillDocument(document.scope, document.name)
+          const latest = await getSkillDocument(target, document.scope, document.name)
           latestRevision = latest.revision
           return { value: latest.content, revision: latest.revision }
         },

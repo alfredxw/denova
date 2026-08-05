@@ -9,6 +9,7 @@ import type { AutomationExecutionTarget, AutomationTaskTemplate, BookRecord } fr
 
 interface AutomationTemplateDialogProps {
   open: boolean
+  projectId: string
   workspace: string
   books: BookRecord[]
   templates: AutomationTaskTemplate[]
@@ -18,6 +19,7 @@ interface AutomationTemplateDialogProps {
 
 export function AutomationTemplateDialog({
   open,
+  projectId,
   workspace,
   books,
   templates,
@@ -25,20 +27,24 @@ export function AutomationTemplateDialog({
   onChoose,
 }: AutomationTemplateDialogProps) {
   const { t } = useTranslation()
-  const defaultTargetValue = workspace ? `workspace:${workspace}` : 'user'
+  const defaultTargetValue = projectId ? `workspace:${projectId}` : 'user'
   const [targetValue, setTargetValue] = useState(defaultTargetValue)
   useEffect(() => {
     if (open) setTargetValue(defaultTargetValue)
   }, [defaultTargetValue, open])
 
   const workspaceOptions = useMemo(() => {
-    if (!workspace || books.some((book) => book.path === workspace)) return books
+    if (!projectId || books.some((book) => book.project_id === projectId)) return books
     const name = workspace.split('/').filter(Boolean).at(-1) || workspace
-    return [{ name, path: workspace, author: '', last_opened_at: '' }, ...books]
-  }, [books, workspace])
+    return [{ project_id: projectId, name, path: workspace, author: '', last_opened_at: '' }, ...books]
+  }, [books, projectId, workspace])
+  const targetProjectID = targetValue.startsWith('workspace:')
+    ? targetValue.slice('workspace:'.length)
+    : ''
+  const targetBook = workspaceOptions.find((book) => book.project_id === targetProjectID)
   const target: AutomationExecutionTarget = targetValue === 'user'
     ? { kind: 'user' }
-    : { kind: 'workspace', workspace: targetValue.slice('workspace:'.length) }
+    : { kind: 'workspace', project_id: targetProjectID, workspace: targetBook?.path || '' }
   const availableTemplates = templates.filter((template) => template.target_kinds.includes(target.kind))
   const choose = (template: AutomationTaskTemplate | null) => {
     onChoose(template, target)
@@ -65,7 +71,7 @@ export function AutomationTemplateDialog({
                 <SelectGroup>
                   <SelectItem value="user">{t('automations.target.global')}</SelectItem>
                   {workspaceOptions.map((book) => (
-                    <SelectItem key={book.path} value={`workspace:${book.path}`}>
+                    <SelectItem key={book.project_id} value={`workspace:${book.project_id}`}>
                       {t('automations.target.workspace', { name: book.name })}
                     </SelectItem>
                   ))}

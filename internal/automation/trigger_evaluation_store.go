@@ -343,6 +343,7 @@ func triggerInboxIntentHash(item TriggerInboxItem) string {
 		TriggerID    string            `json:"trigger_id"`
 		Purpose      string            `json:"purpose"`
 		Scope        string            `json:"scope"`
+		ProjectID    string            `json:"project_id,omitempty"`
 		Workspace    string            `json:"workspace,omitempty"`
 		ActionPolicy string            `json:"action_policy"`
 		NotifyPolicy string            `json:"notify_policy"`
@@ -351,7 +352,7 @@ func triggerInboxIntentHash(item TriggerInboxItem) string {
 		Evidence     []TriggerEvidence `json:"evidence"`
 		Fingerprint  string            `json:"fingerprint"`
 	}{
-		strings.TrimSpace(item.TaskID), strings.TrimSpace(item.TriggerID), normalizeInboxPurpose(item.Purpose), item.Scope,
+		strings.TrimSpace(item.TaskID), strings.TrimSpace(item.TriggerID), normalizeInboxPurpose(item.Purpose), item.Scope, strings.TrimSpace(item.ProjectID),
 		canonicalStoreRoot(item.Workspace), normalizeActionPolicy(item.ActionPolicy, ActionPolicyConfirm), normalizeNotifyPolicy(item.NotifyPolicy, NotifyPolicyInbox),
 		strings.TrimSpace(item.Title), strings.TrimSpace(item.Summary), item.Evidence, strings.TrimSpace(item.Fingerprint),
 	})

@@ -11,15 +11,18 @@ import { Textarea } from '@/components/ui/textarea'
 import { ImagePreviewDialog } from '@/components/common/ImagePreviewDialog'
 import { SearchHighlightTextarea } from '@/components/common/SearchHighlightTextarea'
 import { MarkdownRichEditor } from '@/components/Editor/MarkdownRichEditor'
-import { workspaceAssetURL, type LoreItem } from '@/lib/api'
+import { projectFileAssetURL, type LoreItem } from '@/lib/api'
 import type { ImagePreset } from '../../types'
 import { presetActionButtonClassName as actionButtonClassName, presetIconActionClassName as iconActionClassName, presetInputClassName as inputClassName, presetSelectClassName as selectClassName } from '../preset-config/editor-styles'
 import { PresetEmptyState as EmptyState } from '../preset-config/PresetEmptyState'
 import { PresetField as Field } from '../preset-config/PresetField'
 import { BooleanSwitchField } from './BooleanSwitchField'
 import { IMPORTANCE_OPTIONS, LOAD_MODE_OPTIONS, loadModeDescription, LORE_RESIDENT_TOTAL_WARNING_BYTES, loreImportanceLabel, loreLoadModeLabel, loreTypeLabel, TYPE_OPTIONS } from '@/features/lore/options'
+import type { DocumentReviewController, DocumentReviewNavigationIntent } from '@/features/document-review/controller'
+import type { DocumentReviewSnapshot } from '@/components/Editor/documentReviewAnchors'
 
 export function LoreEditor({
+  projectId,
   draft,
   tagDraft,
   residentTotalBytes,
@@ -35,7 +38,11 @@ export function LoreEditor({
   onGenerateImage,
   onClearImage,
   onSave,
+  documentReview,
+  documentReviewNavigationIntent,
+  onPrepareReviewSnapshot,
 }: {
+  projectId: string
   draft: LoreItem | null
   tagDraft: string
   residentTotalBytes: number
@@ -51,10 +58,13 @@ export function LoreEditor({
   onGenerateImage: () => void
   onClearImage: () => void
   onSave: () => void
+  documentReview?: DocumentReviewController
+  documentReviewNavigationIntent?: DocumentReviewNavigationIntent | null
+  onPrepareReviewSnapshot?: () => Promise<DocumentReviewSnapshot>
 }) {
   const { t } = useTranslation()
   const [imageDialogOpen, setImageDialogOpen] = useState(false)
-  // 正文编辑模式：默认富文本，可切换为 Markdown 源码（Raw）编辑；切换条目时保留选择。
+  // Default to rich text while retaining the chosen mode when switching lore entries.
   const [contentMode, setContentMode] = useState<'rich' | 'raw'>('rich')
   if (!draft) {
     return <EmptyState title={t('settingPanel.editor.noLoreSelected')} description={t('settingPanel.editor.noLoreSelectedDesc')} />
@@ -62,7 +72,7 @@ export function LoreEditor({
 
   const residentWarning = draft.enabled !== false && draft.load_mode === 'resident' && residentTotalBytes > LORE_RESIDENT_TOTAL_WARNING_BYTES
   const imagePath = draft.image?.image_path || ''
-  const imageSrc = imagePath ? workspaceAssetURL(imagePath) : ''
+  const imageSrc = imagePath ? projectFileAssetURL(projectId, imagePath) : ''
   const hasImage = Boolean(imageSrc)
   const validImagePresets = imagePresets.filter((preset) => !preset.invalid)
   const selectedImagePresetId = imagePresetId || validImagePresets[0]?.id || 'game-cg'
@@ -184,7 +194,7 @@ export function LoreEditor({
               </div>
             </div>
           </div>
-          {/* 切换按钮与正文编辑区同处一个背景容器：不做整宽分隔条，避免与正文产生割裂感。 */}
+          {/* Keep the mode switch and editor on one surface so the content remains visually connected. */}
           <div className="flex min-h-[420px] min-w-0 flex-1 flex-col bg-[var(--nova-bg)]">
             <div className="flex shrink-0 items-center px-3 pt-2.5 sm:px-4">
               <div role="group" aria-label={t('settingPanel.field.content')} className="inline-flex shrink-0 overflow-hidden rounded-[var(--nova-radius)] border border-[var(--nova-border)] bg-[var(--nova-surface-2)] p-0.5">
@@ -227,11 +237,19 @@ export function LoreEditor({
               />
             ) : (
               <MarkdownRichEditor
+                projectId={projectId}
                 key={draft.id}
                 value={draft.content || ''}
                 onChange={(content) => setDraft({ ...draft, content })}
                 highlightQuery={searchQuery}
                 onSaveShortcut={onSave}
+                review={documentReview && onPrepareReviewSnapshot ? {
+                  target: { kind: 'lore_item', id: draft.id, field: 'content' },
+                  resourceLabel: draft.name,
+                  controller: documentReview,
+                  prepareSnapshot: onPrepareReviewSnapshot,
+                  navigationIntent: documentReviewNavigationIntent,
+                } : undefined}
                 aria-label={t('settingPanel.field.content')}
                 className="flex min-h-0 min-w-0 flex-1 flex-col text-xs leading-5 [&_.tiptap]:min-h-0 [&_.tiptap]:min-w-0 [&_.tiptap]:flex-1 [&_.tiptap]:px-5 [&_.tiptap]:pb-4 [&_.tiptap]:pt-2 sm:[&_.tiptap]:px-6"
               />

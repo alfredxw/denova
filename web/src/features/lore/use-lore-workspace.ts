@@ -29,7 +29,6 @@ let loreWorkspaceSourceSequence = 0
 
 interface UseLoreWorkspaceOptions {
   projectId: string
-  workspace: string
   refreshSignal?: number
   onFlushHandlerChange: (handler: EditorFlushHandler | null) => void
 }
@@ -37,7 +36,6 @@ interface UseLoreWorkspaceOptions {
 /** State and persistence boundary for the focused writing-workspace lore tab. */
 export function useLoreWorkspace({
   projectId,
-  workspace,
   refreshSignal = 0,
   onFlushHandlerChange,
 }: UseLoreWorkspaceOptions) {
@@ -170,7 +168,7 @@ export function useLoreWorkspace({
       } catch (cause) {
         if (request !== requestRef.current) return
         console.error('[LoreWorkspaceTab] failed to load lore items', {
-          workspace,
+          projectId,
           cause,
         })
         setError(cause instanceof Error ? cause.message : String(cause))
@@ -178,7 +176,7 @@ export function useLoreWorkspace({
         if (request === requestRef.current) setLoading(false)
       }
     },
-    [applyCanonicalItems, projectId, workspace],
+    [applyCanonicalItems, projectId],
   )
 
   const autosave = useLoreItemAutosave({
@@ -210,7 +208,7 @@ export function useLoreWorkspace({
     },
     onAutoSaveError: (cause) => {
       console.error('[LoreWorkspaceTab] failed to autosave lore item', {
-        workspace,
+        projectId,
         itemID: draftRef.current?.id,
         cause,
       })
@@ -227,7 +225,7 @@ export function useLoreWorkspace({
       return true
     } catch (cause) {
       console.error('[LoreWorkspaceTab] failed to flush lore draft', {
-        workspace,
+        projectId,
         itemID: draftRef.current?.id,
         cause,
       })
@@ -236,7 +234,7 @@ export function useLoreWorkspace({
       )
       return false
     }
-  }, [autosave.saveNow, t, workspace])
+  }, [autosave.saveNow, projectId, t])
 
   useEffect(() => {
     onFlushHandlerChange(flush)
@@ -315,7 +313,7 @@ export function useLoreWorkspace({
         return created
       } catch (cause) {
         console.error('[LoreWorkspaceTab] failed to create lore item', {
-          workspace,
+          projectId,
           cause,
         })
         toast.error(
@@ -324,7 +322,7 @@ export function useLoreWorkspace({
         return null
       }
     },
-    [eventSource, flush, projectId, t, workspace],
+    [eventSource, flush, projectId, t],
   )
 
   const deleteItem = useCallback(
@@ -337,7 +335,7 @@ export function useLoreWorkspace({
         await deleteProjectLoreItem(projectId, id)
       } catch (cause) {
         console.error('[LoreWorkspaceTab] failed to delete lore item', {
-          workspace,
+          projectId,
           itemID: id,
           cause,
         })
@@ -370,7 +368,7 @@ export function useLoreWorkspace({
       notifyLoreUpdated({ projectId, ids: [id], source: eventSource })
       return true
     },
-    [autosave.cancelPending, eventSource, flush, projectId, workspace],
+    [autosave.cancelPending, eventSource, flush, projectId],
   )
 
   const prepareSnapshot =

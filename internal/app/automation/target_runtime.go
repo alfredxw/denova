@@ -30,8 +30,15 @@ func (s *Service) acquireTargetRuntime(ctx context.Context, target automation.Ex
 			return nil, nil, resolveErr
 		}
 		target = resolved
-		workspace := canonicalAutomationWorkspace(resolved.Workspace)
-		operation, err = s.host.AcquireWorkspaceOperation(ctx, workspace)
+		if projectID := strings.TrimSpace(resolved.ProjectID); projectID != "" {
+			operation, err = s.host.AcquireProjectOperation(ctx, projectID)
+		} else {
+			// Released automation definitions may still carry only a directory.
+			// ResolveTarget normally upgrades them to Project ID; this fallback
+			// preserves data until the durable definition is rewritten.
+			workspace := canonicalAutomationWorkspace(resolved.Workspace)
+			operation, err = s.host.AcquireWorkspaceOperation(ctx, workspace)
+		}
 	}
 	if err != nil {
 		return nil, nil, err

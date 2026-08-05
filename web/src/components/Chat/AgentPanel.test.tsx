@@ -8,7 +8,7 @@ import { usePersistedUserSettings } from '@/hooks/usePersistedUserSettings'
 import { AgentPanel, WRITING_COMPOSER_SETTING_DEFAULTS, type WritingComposerSettingsController } from './AgentPanel'
 
 const useWritingSkillOptionsMock = vi.hoisted(() => vi.fn())
-const useWorkspaceChangeGroupsMock = vi.hoisted(() => vi.fn())
+const useProjectChangeGroupsMock = vi.hoisted(() => vi.fn())
 const updateUserSettings = vi.hoisted(() => vi.fn().mockResolvedValue(undefined))
 
 vi.mock('@/features/settings/api', () => {
@@ -52,7 +52,7 @@ vi.mock('@/hooks/useWritingSkillOptions', () => ({
 }))
 
 vi.mock('@/features/changes/use-change-review', () => ({
-  useWorkspaceChangeGroups: useWorkspaceChangeGroupsMock,
+  useProjectChangeGroups: useProjectChangeGroupsMock,
 }))
 
 describe('AgentPanel', () => {
@@ -82,8 +82,8 @@ describe('AgentPanel', () => {
       },
     }))
     useWritingSkillOptionsMock.mockReset()
-    useWorkspaceChangeGroupsMock.mockReset()
-    useWorkspaceChangeGroupsMock.mockReturnValue({ data: [] })
+    useProjectChangeGroupsMock.mockReset()
+    useProjectChangeGroupsMock.mockReturnValue({ data: [] })
     useWritingSkillOptionsMock.mockReturnValue([
       {
         name: 'novel-lite',
@@ -120,8 +120,8 @@ describe('AgentPanel', () => {
     const user = userEvent.setup()
     renderAgentPanel()
 
-    expect(useWritingSkillOptionsMock).toHaveBeenCalledWith('/workspace', true)
-    expect(useWorkspaceChangeGroupsMock).toHaveBeenCalledWith('/workspace', {
+    expect(useWritingSkillOptionsMock).toHaveBeenCalledWith('project-workspace', true)
+    expect(useProjectChangeGroupsMock).toHaveBeenCalledWith('project-workspace', {
       sessionID: 'session-1',
     })
     expect(screen.getByRole('button', { name: '对话' })).toBeInTheDocument()
@@ -135,25 +135,25 @@ describe('AgentPanel', () => {
     expect(screen.queryByRole('button', { name: 'Review' })).not.toBeInTheDocument()
   })
 
-  it('General Agent 不读取前台 Book 的变更审阅范围', () => {
+  it('General Agent 读取自身 Project 的变更审阅范围', () => {
     renderAgentPanel({ agentKind: 'general' })
 
-    expect(useWorkspaceChangeGroupsMock).toHaveBeenCalledWith('', {
+    expect(useProjectChangeGroupsMock).toHaveBeenCalledWith('project-workspace', {
       sessionID: 'session-1',
     })
   })
 
-  it('后台 Project 不读取前台工作区的 Skills 和变更审阅', () => {
-    renderAgentPanel({ workspaceContextActive: false })
+  it('后台 Project 读取自身 Skills 和变更审阅', () => {
+    renderAgentPanel()
 
-    expect(useWritingSkillOptionsMock).toHaveBeenCalledWith('/workspace', false)
-    expect(useWorkspaceChangeGroupsMock).toHaveBeenCalledWith('', {
+    expect(useWritingSkillOptionsMock).toHaveBeenCalledWith('project-workspace', true)
+    expect(useProjectChangeGroupsMock).toHaveBeenCalledWith('project-workspace', {
       sessionID: 'session-1',
     })
   })
 
-  it('工作区水合前不读取 Skills', () => {
-    renderAgentPanel({ workspace: '' })
+  it('Project 标识水合前不读取 Skills', () => {
+    renderAgentPanel({ projectId: '' })
 
     expect(useWritingSkillOptionsMock).toHaveBeenCalledWith('', false)
   })
@@ -781,5 +781,6 @@ function defaultAgentPanelProps(overrides: AgentPanelOverrides, composerSettings
     onExitPlanMode: vi.fn(),
     onClose: vi.fn(),
     ...overrides,
+    projectId: overrides.projectId ?? 'project-workspace',
   }
 }

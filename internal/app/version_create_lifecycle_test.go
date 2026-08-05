@@ -23,7 +23,9 @@ func TestCreateVersionCancellationDoesNotCommitFallbackOrAgentJournal(t *testing
 	}
 	application := &App{
 		cfg: &config.Config{Workspace: workspace, NovaDir: t.TempDir()}, workspace: workspace,
-		bookService: bookService, versionService: book.NewVersionService(workspace), sessionStore: store,
+		bookService:    bookService,
+		versionService: book.NewVersionService(workspace, filepath.Join(t.TempDir(), "repository")),
+		sessionStore:   store,
 	}
 	started := make(chan struct{})
 	restoreGenerator := application.setVersionSummaryGeneratorForTest(func(ctx context.Context, _ *config.Config, _ string) (string, error) {
@@ -78,7 +80,7 @@ func TestCreateVersionSummaryUsesCapturedWorkspaceAndSessionStore(t *testing.T) 
 		t.Fatal(err)
 	}
 	cfg := &config.Config{Workspace: workspaceA, NovaDir: t.TempDir()}
-	versionA := book.NewVersionService(workspaceA)
+	versionA := book.NewVersionService(workspaceA, filepath.Join(t.TempDir(), "repository-a"))
 	application := &App{
 		cfg: cfg, workspace: workspaceA, bookService: bookA,
 		versionService: versionA, sessionStore: storeA,
@@ -105,7 +107,7 @@ func TestCreateVersionSummaryUsesCapturedWorkspaceAndSessionStore(t *testing.T) 
 	application.mu.Lock()
 	application.workspace = workspaceB
 	application.bookService = book.NewService(workspaceB)
-	application.versionService = book.NewVersionService(workspaceB)
+	application.versionService = book.NewVersionService(workspaceB, filepath.Join(t.TempDir(), "repository-b"))
 	application.sessionStore = storeB
 	application.mu.Unlock()
 	close(release)

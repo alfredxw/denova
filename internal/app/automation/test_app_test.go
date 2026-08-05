@@ -429,11 +429,11 @@ func (application *App) ResolveTarget(target automation.ExecutionTarget) (automa
 		if workspace == "" {
 			return automation.ExecutionTarget{}, ErrNoWorkspace
 		}
-		return automation.ExecutionTarget{Kind: automation.TargetKindWorkspace, WorkspaceID: target.WorkspaceID, Workspace: workspace}, nil
+		return automation.ExecutionTarget{Kind: automation.TargetKindWorkspace, ProjectID: target.ProjectID, Workspace: workspace}, nil
 	}
-	if id := strings.TrimSpace(target.WorkspaceID); id != "" {
+	if id := strings.TrimSpace(target.ProjectID); id != "" {
 		if record, err := application.projectRegistry.Get(id); err == nil {
-			return automation.ExecutionTarget{Kind: automation.TargetKindWorkspace, WorkspaceID: record.ID, Workspace: record.WorkspacePath}, nil
+			return automation.ExecutionTarget{Kind: automation.TargetKindWorkspace, ProjectID: record.ID, Workspace: record.WorkspacePath}, nil
 		}
 	}
 	record, found, err := application.projectRegistry.FindByPath(target.Workspace, false)
@@ -443,7 +443,7 @@ func (application *App) ResolveTarget(target automation.ExecutionTarget) (automa
 	if !found {
 		return automation.ExecutionTarget{}, errors.New("directory is not a registered project")
 	}
-	return automation.ExecutionTarget{Kind: automation.TargetKindWorkspace, WorkspaceID: record.ID, Workspace: record.WorkspacePath}, nil
+	return automation.ExecutionTarget{Kind: automation.TargetKindWorkspace, ProjectID: record.ID, Workspace: record.WorkspacePath}, nil
 }
 
 func (application *App) RuntimeForTarget(ctx context.Context, target automation.ExecutionTarget) (Runtime, error) {
@@ -452,10 +452,10 @@ func (application *App) RuntimeForTarget(ctx context.Context, target automation.
 		return Runtime{}, err
 	}
 	if current, currentErr := application.CurrentRuntime(); currentErr == nil &&
-		(current.ProjectID == resolved.WorkspaceID || canonicalAutomationWorkspace(current.Workspace) == canonicalAutomationWorkspace(resolved.Workspace)) {
+		(current.ProjectID == resolved.ProjectID || canonicalAutomationWorkspace(current.Workspace) == canonicalAutomationWorkspace(resolved.Workspace)) {
 		return current, nil
 	}
-	key := strings.TrimSpace(resolved.WorkspaceID)
+	key := strings.TrimSpace(resolved.ProjectID)
 	application.mu.RLock()
 	cached := application.runtimes[key]
 	application.mu.RUnlock()
@@ -534,6 +534,13 @@ func (application *App) Catalog() (Catalog, error) {
 
 func (application *App) AcquireRootOperation(ctx context.Context) (Operation, error) {
 	return application.acquireOperation(ctx, "")
+}
+func (application *App) AcquireProjectOperation(ctx context.Context, projectID string) (Operation, error) {
+	resolved, err := application.ResolveTarget(automation.ExecutionTarget{Kind: automation.TargetKindWorkspace, ProjectID: projectID})
+	if err != nil {
+		return nil, err
+	}
+	return application.acquireOperation(ctx, resolved.Workspace)
 }
 func (application *App) AcquireWorkspaceOperation(ctx context.Context, workspace string) (Operation, error) {
 	return application.acquireOperation(ctx, workspace)

@@ -49,14 +49,14 @@ describe('LoreClassificationDialog', () => {
 
   it('previews suggestions and applies only the selected type changes', async () => {
     const onApplied = vi.fn()
-    render(<LoreClassificationDialog open workspace="/workspace" onOpenChange={vi.fn()} onApplied={onApplied} />)
+    render(<LoreClassificationDialog open projectId="project-workspace" onOpenChange={vi.fn()} onApplied={onApplied} />)
 
     expect(await screen.findByText('人物详情：沈凝')).toBeInTheDocument()
-    expect(previewLoreClassification).toHaveBeenCalledWith('/workspace', { mode: 'semantic' })
+    expect(previewLoreClassification).toHaveBeenCalledWith('project-workspace', { mode: 'semantic' })
     expect(screen.getByText('将更新 1 项')).toBeInTheDocument()
     fireEvent.click(screen.getByRole('button', { name: '应用所选分类' }))
 
-    await waitFor(() => expect(applyLoreClassification).toHaveBeenCalledWith('/workspace', {
+    await waitFor(() => expect(applyLoreClassification).toHaveBeenCalledWith('project-workspace', {
       revision: 'rev-1',
       changes: [{ id: 'shen', type: 'character' }],
     }))

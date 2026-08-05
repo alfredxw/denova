@@ -7,6 +7,7 @@ import (
 	"log/slog"
 	"strings"
 
+	projectfilesapp "denova/internal/app/projectfiles"
 	"denova/internal/book"
 	"denova/internal/workspace/autosave"
 )
@@ -135,5 +136,36 @@ func (a *App) RecordAutosaveConflict(ctx context.Context, input autosave.Input) 
 		return autosave.AppendResult{}, fmt.Errorf("record autosave conflict: %w", err)
 	}
 	slog.InfoContext(ctx, fmt.Sprintf("[autosave-conflict] recorded resource=%q scope=%q id=%q record_id=%q path=%q", input.Resource, input.Scope, input.ID, result.Record.ID, result.Path))
+	return result, nil
+}
+
+func (a *App) SearchProjectWorkspace(ctx context.Context, projectID, query string, limit int, options book.SearchOptions) ([]book.SearchResult, error) {
+	operation, err := a.AcquireProjectOperation(ctx, projectID)
+	if err != nil {
+		return nil, err
+	}
+	defer operation.Release()
+	return a.ProjectFiles().Search(operation.Context(), operation.Layout().ProjectID, query, limit, options)
+}
+
+func (a *App) ReplaceProjectWorkspace(ctx context.Context, projectID string, request projectfilesapp.ReplaceRequest) (projectfilesapp.ReplaceResult, error) {
+	operation, err := a.AcquireProjectOperation(ctx, projectID)
+	if err != nil {
+		return projectfilesapp.ReplaceResult{}, err
+	}
+	defer operation.Release()
+	result, err := a.ProjectFiles().Replace(operation.Context(), operation.Layout().ProjectID, request)
+	if err != nil {
+		return projectfilesapp.ReplaceResult{}, err
+	}
+	if len(result.Files) > 0 {
+		paths := make([]string, 0, len(result.Files))
+		for _, file := range result.Files {
+			paths = append(paths, file.Path)
+		}
+		a.Automation().CheckTriggersAfterProjectMutation(
+			operation.Context(), operation.Layout().ProjectID, "workspace_replace", paths,
+		)
+	}
 	return result, nil
 }

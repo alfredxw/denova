@@ -5,6 +5,7 @@ import type { StoryStateDisplayPreference } from '../story-state/display-prefere
 
 /** Stable integration surface between the interactive workspace and the story stage. */
 export interface StoryStageProps {
+  projectId: string
   workspace?: string
   styleSceneSuggestions?: string[]
   stories?: StorySummary[]

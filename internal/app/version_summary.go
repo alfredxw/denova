@@ -10,6 +10,7 @@ import (
 
 	"denova/config"
 	agentmodeltask "denova/internal/agents/modeltask"
+	"denova/internal/agents/session"
 	"denova/internal/book"
 )
 
@@ -50,6 +51,22 @@ func (a *App) versionSummaryGeneratorSnapshot() versionSummaryGeneratorFunc {
 }
 
 func (s *workspaceService) inferVersionMessage(ctx context.Context, explicitMessage, source string, runtime *versionCreateRuntime) (string, error) {
+	return s.app.inferVersionMessageForResources(ctx, explicitMessage, source, versionSummaryResources{
+		workspace: runtime.workspace, cfg: &runtime.cfg, bookService: runtime.bookService,
+		versionService: runtime.versionService, sessionStore: runtime.sessionStore, settings: runtime.settings,
+	})
+}
+
+type versionSummaryResources struct {
+	workspace      string
+	cfg            *config.Config
+	bookService    *book.Service
+	versionService *book.VersionService
+	sessionStore   *session.Store
+	settings       book.VersionAutoSettings
+}
+
+func (a *App) inferVersionMessageForResources(ctx context.Context, explicitMessage, source string, runtime versionSummaryResources) (string, error) {
 	if ctx == nil {
 		ctx = context.Background()
 	}
@@ -67,8 +84,8 @@ func (s *workspaceService) inferVersionMessage(ctx context.Context, explicitMess
 
 	instruction := buildVersionSummaryInstruction(status, source, runtime.bookService, runtime.versionService)
 	if instruction != "" {
-		generator := s.app.versionSummaryGeneratorSnapshot()
-		if summary, err := generator(ctx, &runtime.cfg, instruction); err == nil && strings.TrimSpace(summary) != "" {
+		generator := a.versionSummaryGeneratorSnapshot()
+		if summary, err := generator(ctx, runtime.cfg, instruction); err == nil && strings.TrimSpace(summary) != "" {
 			persistAgentCallWithStore(runtime.sessionStore, config.AgentKindVersionSummary, instruction, summary)
 			return strings.TrimSpace(summary), nil
 		} else if err != nil {

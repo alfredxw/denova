@@ -26,18 +26,19 @@ const RuntimeMode = "agent_chat"
 // by one Project runtime. Project identity and session state stay in Service.
 type Host interface {
 	BaseRuntime() (config.Config, *agentharness.Service)
+	ProjectVersionService(string) (*book.VersionService, error)
 	CurrentWorkspace() string
 	ResolveAsk(context.Context, *session.Session, string, string, string, string, []agentconversation.HostAskAnswer, string) (agentconversation.HostAskResolution, error)
 	OnVerifiedMutations(context.Context, string, *book.VersionService, config.Config, []agenttool.Mutation, agenttool.Verification)
 }
 
 // Binding is the explicit Project conversation identity carried by every
-// AgentChat operation. Workspace remains a temporary compatibility input;
-// resolved bindings always use ProjectID as their durable owner.
+// AgentChat operation. Workspace is derived from ProjectID and never accepted
+// as caller authority.
 type Binding struct {
 	ProjectID string `json:"project_id"`
 	SessionID string `json:"session_id"`
-	Workspace string `json:"workspace,omitempty"`
+	Workspace string `json:"-"`
 
 	agentKind string
 	stateRoot string

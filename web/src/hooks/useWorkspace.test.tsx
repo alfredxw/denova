@@ -6,7 +6,7 @@ import { WorkspaceFileRevisionConflictError } from '@/lib/autosave/workspace-fil
 import { useWorkspace } from './useWorkspace'
 
 const workspaceEventsMock = vi.hoisted(() => ({
-  subscribeWorkspaceFileEvents: vi.fn(),
+  subscribeProjectFileEvents: vi.fn(),
 }))
 
 const projectFilesApiMock = vi.hoisted(() => ({
@@ -71,7 +71,7 @@ describe('useWorkspace', () => {
           : operation.to || operation.path,
       }))
     ))
-    workspaceEventsMock.subscribeWorkspaceFileEvents.mockReturnValue(vi.fn())
+    workspaceEventsMock.subscribeProjectFileEvents.mockReturnValue(vi.fn())
   })
 
   afterEach(() => {
@@ -221,7 +221,7 @@ describe('useWorkspace', () => {
 
     let workspace: ReturnType<typeof useWorkspace> | null = null
     render(<WorkspaceHarness onChange={(value) => { workspace = value }} />)
-    await waitFor(() => expect(workspaceEventsMock.subscribeWorkspaceFileEvents).toHaveBeenCalledTimes(1))
+    await waitFor(() => expect(workspaceEventsMock.subscribeProjectFileEvents).toHaveBeenCalledTimes(1))
     await act(async () => {
       await workspace?.selectFile('notes/reference.md')
     })
@@ -246,7 +246,7 @@ describe('useWorkspace', () => {
 
     let workspace: ReturnType<typeof useWorkspace> | null = null
     render(<WorkspaceHarness onChange={(value) => { workspace = value }} />)
-    await waitFor(() => expect(workspaceEventsMock.subscribeWorkspaceFileEvents).toHaveBeenCalledTimes(1))
+    await waitFor(() => expect(workspaceEventsMock.subscribeProjectFileEvents).toHaveBeenCalledTimes(1))
     await act(async () => {
       await workspace?.selectFile('chapters/ch01.md')
     })
@@ -276,7 +276,7 @@ describe('useWorkspace', () => {
 
     let workspace: ReturnType<typeof useWorkspace> | null = null
     render(<WorkspaceHarness onChange={(value) => { workspace = value }} />)
-    await waitFor(() => expect(workspaceEventsMock.subscribeWorkspaceFileEvents).toHaveBeenCalledTimes(1))
+    await waitFor(() => expect(workspaceEventsMock.subscribeProjectFileEvents).toHaveBeenCalledTimes(1))
     await act(async () => {
       await workspace?.selectFile('chapters/ch01.md')
     })
@@ -698,8 +698,8 @@ describe('useWorkspace', () => {
   })
 
   it('只应用最后一次 current workspace 请求', async () => {
-    const oldWorkspace = deferred<{ workspace: string; has_state: boolean }>()
-    const newWorkspace = deferred<{ workspace: string; has_state: boolean }>()
+    const oldWorkspace = deferred<{ workspace: string; project_id: string; has_state: boolean }>()
+    const newWorkspace = deferred<{ workspace: string; project_id: string; has_state: boolean }>()
     apiMock.getCurrentWorkspace.mockImplementationOnce(() => oldWorkspace.promise).mockImplementationOnce(() => newWorkspace.promise)
 
     let workspace: ReturnType<typeof useWorkspace> | null = null
@@ -711,13 +711,13 @@ describe('useWorkspace', () => {
     await waitFor(() => expect(apiMock.getCurrentWorkspace).toHaveBeenCalledTimes(2))
 
     await act(async () => {
-      newWorkspace.resolve({ workspace: '/books/new', has_state: true })
+      newWorkspace.resolve({ workspace: '/books/new', project_id: 'project-new', has_state: true })
       await newWorkspace.promise
     })
     await waitFor(() => expect(screen.getByTestId('workspace-meta')).toHaveTextContent('/books/new'))
 
     await act(async () => {
-      oldWorkspace.resolve({ workspace: '/books/old', has_state: true })
+      oldWorkspace.resolve({ workspace: '/books/old', project_id: 'project-old', has_state: true })
       await oldWorkspace.promise
     })
     expect(screen.getByTestId('workspace-meta')).toHaveTextContent('/books/new')
@@ -769,11 +769,12 @@ async function emitWorkspaceChange(
   changes: Array<{ path: string; type: 'added' | 'updated' | 'deleted' }>,
   resync = false,
 ) {
-  const subscriber = workspaceEventsMock.subscribeWorkspaceFileEvents.mock.calls.at(-1)?.[1] as
+  const subscriber = workspaceEventsMock.subscribeProjectFileEvents.mock.calls.at(-1)?.[1] as
     | ((event: WorkspaceChangeEvent) => void | Promise<void>)
     | undefined
   if (!subscriber) throw new Error('workspace event subscriber was not registered')
   await subscriber({
+    project_id: 'project-demo',
     workspace: '/books/demo',
     source: 'watcher',
     changes,

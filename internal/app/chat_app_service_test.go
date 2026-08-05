@@ -216,7 +216,9 @@ func TestConfigAndAutomationStartFailureRollBackTaskRegistration(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	if task := application.ConfigManager().StartTask(context.Background(), configmanagerapp.Request{Instruction: "inspect config"}); task != nil {
+	if task := application.ConfigManager().StartTask(context.Background(), configmanagerapp.Request{
+		ProjectID: application.ProjectID(), CommandID: "config-manager-closed-runtime", Instruction: "inspect config",
+	}); task != nil {
 		t.Fatalf("config manager start against closed durable runtime returned task %s", task.ID())
 	}
 	if task, _, startErr := application.Automation().StartTaskWithEvidence(context.Background(), automationTask.ID, automation.TriggerManual, nil); startErr == nil || task != nil {

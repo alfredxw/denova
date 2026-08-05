@@ -1,4 +1,4 @@
-import { AGENT_CHAT_GROUP_IDS, AGENT_CHAT_PAGE_IDS, type AgentChatGroupId, type AgentChatPageId, type AgentChatTab } from './types'
+import { AGENT_CHAT_GROUP_IDS, AGENT_CHAT_PAGE_IDS, agentChatPageIdsForProjectType, type AgentChatGroupId, type AgentChatPageId, type AgentChatTab } from './types'
 import type { AgentChatProject } from './api'
 
 /**
@@ -197,9 +197,11 @@ export function reconcileWorkbenchProjects(state: AgentChatWorkbenchState, proje
     if (!source) continue
     const visibleSessionIDs = new Set(project.sessions.map((session) => session.id))
     const sessionListComplete = project.total <= project.sessions.length
-    const projectTabs = project.type === 'general'
-      ? source.tabs.filter((tab) => tab.kind === 'agent' || tab.kind === 'terminal' || tab.kind === 'files')
-      : source.tabs
+    const allowedPages = agentChatPageIdsForProjectType(project.type)
+    const projectTabs = source.tabs.filter((tab) => {
+      if (tab.kind === 'page') return allowedPages.includes(tab.pageId)
+      return project.type === 'book' || tab.kind === 'agent' || tab.kind === 'terminal' || tab.kind === 'files'
+    })
     // Durable sessions are authoritative only when the project response is complete. If the
     // backend truncated a large history, keep unknown tabs rather than discarding valid data.
     const eligibleTabs = projectTabs.filter((tab) =>

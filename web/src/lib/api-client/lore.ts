@@ -1,40 +1,43 @@
 import { fetchAPI, jsonHeaders, parseSSEStream, readErrorMessage, requestJSON } from './client'
 import type { LoreClassificationApplyRequest, LoreClassificationPreview, LoreClassificationPreviewRequest, LoreImagesGenerateRequest, LoreItem, LoreItemImageGenerateRequest, LoreTypeApplyResult, SSEEvent } from './types'
+import { projectAPIPath } from './project-scope'
 
-const WORKSPACE_HEADER = 'X-Denova-Workspace'
+function lorePath(projectId: string, suffix: string): string {
+  return projectAPIPath(projectId, `book/lore/${suffix.replace(/^\/+/, '')}`)
+}
 
-export async function previewLoreClassification(workspace: string, input: LoreClassificationPreviewRequest = {}): Promise<LoreClassificationPreview> {
-  return requestJSON('/api/lore/classification/preview', {
+export async function previewLoreClassification(projectId: string, input: LoreClassificationPreviewRequest = {}): Promise<LoreClassificationPreview> {
+  return requestJSON(lorePath(projectId, 'classification/preview'), {
     method: 'POST',
-    headers: loreHeaders(workspace, true),
+    headers: jsonHeaders,
     body: JSON.stringify(input),
   })
 }
 
-export async function applyLoreClassification(workspace: string, input: LoreClassificationApplyRequest): Promise<LoreTypeApplyResult> {
-  return requestJSON('/api/lore/classification/apply', {
+export async function applyLoreClassification(projectId: string, input: LoreClassificationApplyRequest): Promise<LoreTypeApplyResult> {
+  return requestJSON(lorePath(projectId, 'classification/apply'), {
     method: 'POST',
-    headers: loreHeaders(workspace, true),
+    headers: jsonHeaders,
     body: JSON.stringify(input),
   })
 }
 
-export async function generateLoreItemImage(workspace: string, id: string, input: LoreItemImageGenerateRequest = {}): Promise<LoreItem> {
-  return requestJSON(`/api/lore/items/${encodeURIComponent(id)}/image/generate`, {
+export async function generateLoreItemImage(projectId: string, id: string, input: LoreItemImageGenerateRequest = {}): Promise<LoreItem> {
+  return requestJSON(lorePath(projectId, `items/${encodeURIComponent(id)}/image/generate`), {
     method: 'POST',
-    headers: loreHeaders(workspace, true),
+    headers: jsonHeaders,
     body: JSON.stringify(input),
   })
 }
 
-export async function clearLoreItemImage(workspace: string, id: string): Promise<LoreItem> {
-  return requestJSON(`/api/lore/items/${encodeURIComponent(id)}/image`, { method: 'DELETE', headers: loreHeaders(workspace) })
+export async function clearLoreItemImage(projectId: string, id: string): Promise<LoreItem> {
+  return requestJSON(lorePath(projectId, `items/${encodeURIComponent(id)}/image`), { method: 'DELETE' })
 }
 
-export async function streamLoreImagesGenerate(workspace: string, input: LoreImagesGenerateRequest, signal?: AbortSignal): Promise<ReadableStream<SSEEvent>> {
-  const res = await fetchAPI('/api/lore/images/generate/stream', {
+export async function streamLoreImagesGenerate(projectId: string, input: LoreImagesGenerateRequest, signal?: AbortSignal): Promise<ReadableStream<SSEEvent>> {
+  const res = await fetchAPI(lorePath(projectId, 'images/generate/stream'), {
     method: 'POST',
-    headers: loreHeaders(workspace, true),
+    headers: jsonHeaders,
     body: JSON.stringify(input),
     signal,
   })
@@ -47,13 +50,6 @@ export async function streamLoreImagesGenerate(workspace: string, input: LoreIma
   return parseSSEStream(res.body)
 }
 
-export async function abortLoreImagesGenerate(workspace: string): Promise<void> {
-  await requestJSON('/api/lore/images/generate/abort', { method: 'POST', headers: loreHeaders(workspace) })
-}
-
-function loreHeaders(workspace: string, includeJSON = false): HeadersInit {
-  return {
-    ...(includeJSON ? jsonHeaders : {}),
-    [WORKSPACE_HEADER]: encodeURIComponent(workspace),
-  }
+export async function abortLoreImagesGenerate(projectId: string): Promise<void> {
+  await requestJSON(lorePath(projectId, 'images/generate/abort'), { method: 'POST' })
 }

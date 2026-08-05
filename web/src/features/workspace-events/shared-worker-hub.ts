@@ -10,22 +10,23 @@ import {
 const INITIAL_RECONNECT_DELAY_MS = 250
 const MAX_RECONNECT_DELAY_MS = 5_000
 
-export interface WorkspaceEventStreamOptions {
+export interface ProjectEventStreamOptions {
+  projectId: string
   signal: AbortSignal
   authorization?: string
 }
 
-export type WorkspaceEventStreamFactory = (
-  options: WorkspaceEventStreamOptions,
+export type ProjectEventStreamFactory = (
+  options: ProjectEventStreamOptions,
 ) => Promise<ReadableStream<SSEEvent>>
 
-export class WorkspaceEventStreamHTTPError extends Error {
+export class ProjectEventStreamHTTPError extends Error {
   readonly status: number
   readonly basicAuthChallenge: boolean
 
   constructor(status: number, basicAuthChallenge: boolean) {
-    super(`Workspace event stream returned HTTP ${status}`)
-    this.name = 'WorkspaceEventStreamHTTPError'
+    super(`Project event stream returned HTTP ${status}`)
+    this.name = 'ProjectEventStreamHTTPError'
     this.status = status
     this.basicAuthChallenge = basicAuthChallenge
   }
@@ -33,18 +34,23 @@ export class WorkspaceEventStreamHTTPError extends Error {
 
 type StreamPhase = 'idle' | 'connecting' | 'open' | 'auth-required'
 
-/** Owns the single SSE connection shared by every same-origin browser tab. */
-export class SharedWorkspaceEventHub {
-  private readonly subscribers = new Map<WorkspaceEventPort, string>()
-  private readonly openStream: WorkspaceEventStreamFactory
-  private authorization: string | undefined
-  private streamPhase: StreamPhase = 'idle'
-  private streamGeneration = 0
-  private streamTask: Promise<void> | null = null
-  private abortController: AbortController | null = null
-  private activeReader: ReadableStreamDefaultReader<SSEEvent> | null = null
+interface ProjectStreamState {
+  phase: StreamPhase
+  generation: number
+  task: Promise<void> | null
+  abortController: AbortController | null
+  activeReader: ReadableStreamDefaultReader<SSEEvent> | null
+}
 
-  constructor(options: { openStream: WorkspaceEventStreamFactory }) {
+/** Owns one shared SSE connection per subscribed Project across every
+ * same-origin browser tab. Different Projects remain independently observable. */
+export class SharedProjectEventHub {
+  private readonly subscribers = new Map<WorkspaceEventPort, string>()
+  private readonly streams = new Map<string, ProjectStreamState>()
+  private readonly openStream: ProjectEventStreamFactory
+  private authorization: string | undefined
+
+  constructor(options: { openStream: ProjectEventStreamFactory }) {
     this.openStream = options.openStream
   }
 
@@ -57,7 +63,7 @@ export class SharedWorkspaceEventHub {
       const message = event.data
       switch (message.type) {
         case 'subscribe':
-          this.subscribe(port, message.workspace, message.authorization)
+          this.subscribe(port, message.projectId, message.authorization)
           return
         case 'authorization':
           this.updateAuthorization(message.authorization)
@@ -74,116 +80,144 @@ export class SharedWorkspaceEventHub {
     port.start()
   }
 
-  private subscribe(port: WorkspaceEventPort, workspace: string, authorization?: string) {
-    const streamWasOpen = this.streamPhase === 'open'
-    const streamNeedsAuthorization = this.streamPhase === 'auth-required'
+  private subscribe(port: WorkspaceEventPort, projectId: string, authorization?: string) {
+    const previousProjectId = this.subscribers.get(port)
+    if (previousProjectId && previousProjectId !== projectId) {
+      this.subscribers.delete(port)
+      this.stopIfUnused(previousProjectId)
+    }
     const firstSubscriber = this.subscribers.size === 0
-    this.subscribers.set(port, workspace)
+    this.subscribers.set(port, projectId)
 
+    const state = this.projectState(projectId)
+    const streamWasOpen = state.phase === 'open'
+    const streamNeedsAuthorization = state.phase === 'auth-required'
     const shouldAdoptAuthorization = firstSubscriber || Boolean(authorization)
     const authorizationChanged = shouldAdoptAuthorization && authorization !== this.authorization
     if (shouldAdoptAuthorization) this.authorization = authorization
 
-    if (authorizationChanged && (this.streamTask || streamNeedsAuthorization)) this.restartStream()
-    else this.ensureStream()
+    if (authorizationChanged) this.restartAllStreams()
+    else this.ensureStream(projectId)
 
     if (streamNeedsAuthorization && !authorizationChanged) {
       this.post(port, { type: 'remote-access-required' })
     }
 
-    // An established stream already emitted its backend-provided initial
-    // resync. Give a later tab the same canonical-refresh guarantee.
     if (streamWasOpen) {
       this.post(port, {
         type: 'workspace-change',
-        event: { workspace, source: 'shared-worker', resync: true, changes: [] },
+        event: { project_id: projectId, source: 'shared-worker', resync: true, changes: [] },
       })
     }
   }
 
   private updateAuthorization(authorization?: string) {
-    if (authorization === this.authorization && this.streamPhase !== 'auth-required') return
+    if (authorization === this.authorization && !this.hasAuthRequiredStream()) return
     this.authorization = authorization
-    if (this.subscribers.size > 0) this.restartStream()
+    this.restartAllStreams()
   }
 
   private unsubscribe(port: WorkspaceEventPort) {
+    const projectId = this.subscribers.get(port)
     if (!this.subscribers.delete(port)) return
     port.onmessage = null
     port.onmessageerror = null
     port.close()
-    if (this.subscribers.size === 0) {
-      this.authorization = undefined
-      this.stopStream()
+    if (projectId) this.stopIfUnused(projectId)
+    if (this.subscribers.size === 0) this.authorization = undefined
+  }
+
+  private projectState(projectId: string): ProjectStreamState {
+    const existing = this.streams.get(projectId)
+    if (existing) return existing
+    const state: ProjectStreamState = {
+      phase: 'idle',
+      generation: 0,
+      task: null,
+      abortController: null,
+      activeReader: null,
     }
+    this.streams.set(projectId, state)
+    return state
   }
 
-  private ensureStream() {
-    if (this.subscribers.size === 0 || this.streamTask || this.streamPhase === 'auth-required') return
-    const generation = ++this.streamGeneration
+  private ensureStream(projectId: string) {
+    if (!this.hasSubscribers(projectId)) return
+    const state = this.projectState(projectId)
+    if (state.task || state.phase === 'auth-required') return
+    const generation = ++state.generation
     const abortController = new AbortController()
-    this.abortController = abortController
-    const task = this.observe(generation, abortController.signal)
+    state.abortController = abortController
+    const task = this.observe(projectId, state, generation, abortController.signal)
       .finally(() => {
-        if (this.streamTask !== task) return
-        this.streamTask = null
-        this.abortController = null
-        if (this.streamPhase !== 'auth-required') this.streamPhase = 'idle'
+        if (state.task !== task) return
+        state.task = null
+        state.abortController = null
+        if (state.phase !== 'auth-required') state.phase = 'idle'
       })
-    this.streamTask = task
+    state.task = task
   }
 
-  private restartStream() {
-    this.stopStream()
-    this.ensureStream()
+  private restartAllStreams() {
+    const projectIds = Array.from(new Set(this.subscribers.values()))
+    for (const projectId of projectIds) this.stopStream(projectId)
+    for (const projectId of projectIds) this.ensureStream(projectId)
   }
 
-  private stopStream() {
-    this.streamGeneration += 1
-    this.streamPhase = 'idle'
-    this.abortController?.abort()
-    this.abortController = null
-    const reader = this.activeReader
-    this.activeReader = null
+  private stopIfUnused(projectId: string) {
+    if (this.hasSubscribers(projectId)) return
+    this.stopStream(projectId)
+    this.streams.delete(projectId)
+  }
+
+  private stopStream(projectId: string) {
+    const state = this.streams.get(projectId)
+    if (!state) return
+    state.generation += 1
+    state.phase = 'idle'
+    state.abortController?.abort()
+    state.abortController = null
+    const reader = state.activeReader
+    state.activeReader = null
     if (reader) void reader.cancel().catch(() => {})
-    this.streamTask = null
+    state.task = null
   }
 
-  private async observe(generation: number, signal: AbortSignal) {
+  private async observe(projectId: string, state: ProjectStreamState, generation: number, signal: AbortSignal) {
     let reconnectDelay = INITIAL_RECONNECT_DELAY_MS
-    while (this.isActive(generation, signal)) {
+    while (this.isActive(projectId, state, generation, signal)) {
       let reader: ReadableStreamDefaultReader<SSEEvent> | null = null
       try {
-        this.streamPhase = 'connecting'
-        const stream = await this.openStream({ signal, authorization: this.authorization })
-        if (!this.isActive(generation, signal)) {
+        state.phase = 'connecting'
+        const stream = await this.openStream({ projectId, signal, authorization: this.authorization })
+        if (!this.isActive(projectId, state, generation, signal)) {
           await stream.cancel()
           return
         }
         reconnectDelay = INITIAL_RECONNECT_DELAY_MS
-        this.streamPhase = 'open'
+        state.phase = 'open'
         reader = stream.getReader()
-        this.activeReader = reader
-        while (this.isActive(generation, signal)) {
+        state.activeReader = reader
+        while (this.isActive(projectId, state, generation, signal)) {
           const { done, value } = await reader.read()
           if (done) break
           const event = parseWorkspaceChangeSSE(value)
-          if (event) this.broadcastWorkspaceChange(event)
+          if (event?.project_id === projectId) this.broadcastProjectChange(projectId, event)
         }
       } catch (error) {
-        if (!this.isActive(generation, signal)) return
-        if (error instanceof WorkspaceEventStreamHTTPError && error.status === 401 && error.basicAuthChallenge) {
-          this.streamPhase = 'auth-required'
-          this.broadcastRemoteAccessRequired()
+        if (!this.isActive(projectId, state, generation, signal)) return
+        if (error instanceof ProjectEventStreamHTTPError && error.status === 401 && error.basicAuthChallenge) {
+          state.phase = 'auth-required'
+          this.broadcastRemoteAccessRequired(projectId)
           return
         }
-        console.warn('[workspace-events/shared-worker-hub.ts] workspace event stream disconnected; retrying', {
-          workspaces: Array.from(new Set(this.subscribers.values())),
+        console.warn('[workspace-events/shared-worker-hub.ts] Project event stream disconnected; retrying', {
+          projectId,
           error,
         })
       } finally {
         if (reader) {
-          if (this.activeReader === reader) this.activeReader = null
+          if (state.activeReader === reader) state.activeReader = null
           try {
             reader.releaseLock()
           } catch {
@@ -192,26 +226,40 @@ export class SharedWorkspaceEventHub {
         }
       }
 
-      if (!this.isActive(generation, signal)) return
+      if (!this.isActive(projectId, state, generation, signal)) return
       await waitForReconnect(reconnectDelay, signal)
       reconnectDelay = Math.min(reconnectDelay * 2, MAX_RECONNECT_DELAY_MS)
     }
   }
 
-  private isActive(generation: number, signal: AbortSignal) {
-    return generation === this.streamGeneration && !signal.aborted && this.subscribers.size > 0
+  private isActive(projectId: string, state: ProjectStreamState, generation: number, signal: AbortSignal) {
+    return this.streams.get(projectId) === state && generation === state.generation && !signal.aborted && this.hasSubscribers(projectId)
   }
 
-  private broadcastWorkspaceChange(event: WorkspaceChangeEvent) {
-    for (const [port, workspace] of this.subscribers) {
-      if (event.workspace !== workspace) continue
+  private hasSubscribers(projectId: string) {
+    for (const subscribedProjectId of this.subscribers.values()) {
+      if (subscribedProjectId === projectId) return true
+    }
+    return false
+  }
+
+  private hasAuthRequiredStream() {
+    for (const state of this.streams.values()) {
+      if (state.phase === 'auth-required') return true
+    }
+    return false
+  }
+
+  private broadcastProjectChange(projectId: string, event: WorkspaceChangeEvent) {
+    for (const [port, subscribedProjectId] of this.subscribers) {
+      if (subscribedProjectId !== projectId) continue
       this.post(port, { type: 'workspace-change', event })
     }
   }
 
-  private broadcastRemoteAccessRequired() {
-    for (const port of this.subscribers.keys()) {
-      this.post(port, { type: 'remote-access-required' })
+  private broadcastRemoteAccessRequired(projectId: string) {
+    for (const [port, subscribedProjectId] of this.subscribers) {
+      if (subscribedProjectId === projectId) this.post(port, { type: 'remote-access-required' })
     }
   }
 

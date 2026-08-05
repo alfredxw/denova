@@ -24,7 +24,7 @@ func (service *Service) replayDurableStart(
 	if runtime.ChatService == nil {
 		return nil, false, nil
 	}
-	options := runOptions(runtime.Workspace, runtime.Config.ProjectStateDir, sessionID)
+	options := runOptions(runtime.ProjectID, runtime.Workspace, runtime.Config.ProjectStateDir, sessionID)
 	status, err := runtime.ChatService.RuntimeStatusProjection(ctx, options)
 	if err != nil {
 		return nil, false, err
@@ -40,7 +40,7 @@ func (service *Service) replayDurableStart(
 		return nil, true, err
 	}
 	identity := apptask.StartIdentity{
-		CommandID: request.CommandID, Scope: runtime.Workspace,
+		CommandID: request.CommandID, Scope: runtime.ProjectID,
 		SessionID: sessionID, Fingerprint: fingerprint,
 	}
 	reservation, err := service.starts.Reserve(apptask.StartRecord{Identity: identity, Task: task})

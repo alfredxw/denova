@@ -2,6 +2,7 @@ package api
 
 import (
 	"net/http"
+	"net/url"
 	"testing"
 
 	loreapp "denova/internal/app/lore"
@@ -11,21 +12,22 @@ import (
 func TestLoreClassificationPreviewAndApplyAPI(t *testing.T) {
 	application := newTestApplication(t)
 	server := NewServer(application, "0")
-	workspace := application.Workspace()
-	item, err := application.Lore().CreateItem(lore.ItemInput{
+	projectID := application.ProjectID()
+	base := "/api/projects/" + url.PathEscape(projectID) + "/book/lore"
+	item, err := application.ProjectBook().CreateLoreItem(projectID, lore.ItemInput{
 		ID: "shen", Type: "other", TypeSource: lore.TypeSourceHeuristic, Name: "人物详情：沈凝", Content: "沈凝负责见证公开比试。",
 		Provenance: &lore.Provenance{Kind: "tavern_worldbook_entry", SourceName: "card.json", SourceRecordID: "1"},
 	})
 	if err != nil {
 		t.Fatal(err)
 	}
-	legacyItem, err := application.Lore().CreateItem(lore.ItemInput{
+	legacyItem, err := application.ProjectBook().CreateLoreItem(projectID, lore.ItemInput{
 		ID: "legacy", Type: "world", TypeSource: lore.TypeSourceManual, Name: "人物详情：旧资料", Content: "旧资料也应当可以重新分类。",
 	})
 	if err != nil {
 		t.Fatal(err)
 	}
-	previewResp := performWorkspaceChangeRequest(t, server, http.MethodPost, "/api/lore/classification/preview", workspace, map[string]any{"mode": "heuristic"})
+	previewResp := performJSONRequest(t, server, http.MethodPost, base+"/classification/preview", map[string]any{"mode": "heuristic"})
 	if previewResp.Code != http.StatusOK {
 		t.Fatalf("preview status=%d body=%s", previewResp.Code, previewResp.Body.String())
 	}
@@ -39,7 +41,7 @@ func TestLoreClassificationPreviewAndApplyAPI(t *testing.T) {
 		t.Fatalf("unexpected classification preview: %#v", preview)
 	}
 
-	applyResp := performWorkspaceChangeRequest(t, server, http.MethodPost, "/api/lore/classification/apply", workspace, loreapp.ClassificationApplyRequest{
+	applyResp := performJSONRequest(t, server, http.MethodPost, base+"/classification/apply", loreapp.ClassificationApplyRequest{
 		Revision: preview.Revision,
 		Changes:  []lore.TypeChange{{ID: item.ID, Type: preview.Items[0].SuggestedType}},
 	})
@@ -52,7 +54,7 @@ func TestLoreClassificationPreviewAndApplyAPI(t *testing.T) {
 		t.Fatalf("confirmed classification should persist as manual metadata: %#v", result)
 	}
 
-	staleResp := performWorkspaceChangeRequest(t, server, http.MethodPost, "/api/lore/classification/apply", workspace, loreapp.ClassificationApplyRequest{
+	staleResp := performJSONRequest(t, server, http.MethodPost, base+"/classification/apply", loreapp.ClassificationApplyRequest{
 		Revision: preview.Revision,
 		Changes:  []lore.TypeChange{{ID: item.ID, Type: "world"}},
 	})

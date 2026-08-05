@@ -32,6 +32,7 @@ type Operation interface {
 // Host. Services must not re-resolve any of these adapters while it is leased.
 type Runtime struct {
 	Operation    Operation
+	ProjectID    string
 	Workspace    string
 	Config       config.Config
 	BookState    *book.State
@@ -64,6 +65,7 @@ func (runtime *Runtime) requireAgentAdapters() error {
 // Host owns workspace generation fencing; Service owns all image behavior.
 type Host interface {
 	AcquireImageRuntime(context.Context, string) (*Runtime, error)
+	AcquireProjectImageRuntime(context.Context, string) (*Runtime, error)
 }
 
 type Service struct {
@@ -81,4 +83,14 @@ func (service *Service) AcquireRuntime(ctx context.Context, expectedWorkspace st
 		return nil, ErrNoWorkspace
 	}
 	return service.host.AcquireImageRuntime(ctx, expectedWorkspace)
+}
+
+// AcquireProjectRuntime leases one explicit registered Project. It is used by
+// pages mounted outside foreground Writing, where a directory path must never
+// select authority implicitly.
+func (service *Service) AcquireProjectRuntime(ctx context.Context, projectID string) (*Runtime, error) {
+	if service == nil || service.host == nil {
+		return nil, ErrNoWorkspace
+	}
+	return service.host.AcquireProjectImageRuntime(ctx, projectID)
 }

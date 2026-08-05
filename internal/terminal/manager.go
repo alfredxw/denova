@@ -54,6 +54,13 @@ var ErrInvalidProfile = errors.New("invalid terminal profile")
 // ErrInvalidLaunchCommand reports a malformed or empty configured CLI command.
 var ErrInvalidLaunchCommand = errors.New("invalid terminal launch command")
 
+// ErrOwnerConflict reports an idempotency key reused by another Project.
+var ErrOwnerConflict = errors.New("terminal owner belongs to another project")
+
+// ErrProjectSessionsActive prevents Project relink/archive from leaving a
+// live process bound to a superseded content directory.
+var ErrProjectSessionsActive = errors.New("project has active terminal sessions")
+
 // ResolvedLaunchProfile separates the long-lived PTY root from an optional command entered into
 // it. Configured CLI profiles keep an interactive shell as the root; legacy custom profiles still
 // launch their configured executable directly.
@@ -260,6 +267,10 @@ func (m *Manager) Create(spec Spec) (*Session, error) {
 	if spec.OwnerTabID != "" {
 		if id, ok := m.sessionsByOwner[spec.OwnerTabID]; ok {
 			if session, exists := m.sessions[id]; exists {
+				if existingProjectID := strings.TrimSpace(session.Info().ProjectID); existingProjectID != strings.TrimSpace(spec.ProjectID) {
+					m.mu.Unlock()
+					return nil, fmt.Errorf("%w: owner_tab_id=%s", ErrOwnerConflict, spec.OwnerTabID)
+				}
 				m.mu.Unlock()
 				slog.InfoContext(context.Background(), fmt.Sprintf("[terminal/manager.go] reused session id=%s owner_tab_id=%s", id, spec.OwnerTabID))
 				return session, nil
@@ -341,6 +352,38 @@ func (m *Manager) Close(id string) error {
 		return ErrNotFound
 	}
 	session.Close()
+	return nil
+}
+
+// CloseProject removes exited sessions owned by one Project and rejects the
+// transition while any owned process is still running. Callers fence new
+// Project-scoped creation before invoking this method.
+func (m *Manager) CloseProject(projectID string) error {
+	projectID = strings.TrimSpace(projectID)
+	if projectID == "" {
+		return errors.New("terminal Project ID is required")
+	}
+	m.mu.Lock()
+	for _, session := range m.sessions {
+		info := session.Info()
+		if info.ProjectID == projectID && !info.Exited {
+			m.mu.Unlock()
+			return fmt.Errorf("%w: project_id=%s session_id=%s", ErrProjectSessionsActive, projectID, info.ID)
+		}
+	}
+	exited := make([]*Session, 0)
+	for id, session := range m.sessions {
+		info := session.Info()
+		if info.ProjectID != projectID {
+			continue
+		}
+		m.removeSessionLocked(id, session)
+		exited = append(exited, session)
+	}
+	m.mu.Unlock()
+	for _, session := range exited {
+		session.Close()
+	}
 	return nil
 }
 

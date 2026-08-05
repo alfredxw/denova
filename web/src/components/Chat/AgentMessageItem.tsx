@@ -5,6 +5,7 @@ import { agentViewToRenderMessage, type AgentMessageView, type AgentPartRef } fr
 import { MessageItem } from './MessageItem'
 
 interface AgentMessageItemProps {
+  projectId?: string
   view: AgentMessageView
   highlightDialogue?: boolean
   messageStyle?: CSSProperties
@@ -28,6 +29,7 @@ interface AgentMessageItemProps {
 }
 
 export const AgentMessageItem = memo(function AgentMessageItem({
+  projectId,
   view,
   highlightDialogue = false,
   messageStyle,
@@ -53,6 +55,7 @@ export const AgentMessageItem = memo(function AgentMessageItem({
   if (!message) return null
   return (
     <MessageItem
+      projectId={projectId}
       message={message}
       highlightDialogue={highlightDialogue}
       messageStyle={messageStyle}

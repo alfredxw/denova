@@ -62,6 +62,7 @@ describe('HomeView book covers', () => {
       model: 'gpt-image-1',
     })
     vi.mocked(createBook).mockResolvedValue({
+      project_id: 'book-new',
       workspace: '/books/new',
       book_meta: {
         title: '新书',
@@ -98,6 +99,7 @@ describe('HomeView book covers', () => {
 
   it('tries the fixed book cover endpoint even when the book list has no cover version', async () => {
     renderHome({ books: [{
+      project_id: 'book-star',
       name: '星河边境',
       path: '/books/star',
       author: '',
@@ -267,6 +269,7 @@ function homeViewElement(overrides: Partial<Parameters<typeof HomeView>[0]> = {}
       workspace="/books/star"
       novaDir="/nova"
       books={[{
+        project_id: 'book-star',
         name: '星河边境',
         path: '/books/star',
         author: '',

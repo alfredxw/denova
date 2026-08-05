@@ -13,7 +13,9 @@ import (
 )
 
 // automationTriggerCoordinator owns mutation-trigger evaluation for the process
-// lifetime. One worker is active per canonical workspace; saves that arrive
+// lifetime. One worker is active per stable Project; released path-only
+// targets use the canonical workspace as a temporary compatibility identity.
+// Saves that arrive
 // while evaluation is running are coalesced into at most one follow-up pass.
 type automationTriggerCoordinator struct {
 	ctx    context.Context
@@ -71,11 +73,24 @@ func (c *automationTriggerCoordinator) enqueue(service *Service, snapshot *autom
 	if c == nil || service == nil || service.host == nil || snapshot == nil {
 		return false
 	}
-	workspace := canonicalAutomationWorkspace(snapshot.workspace)
-	if workspace == "" {
+	identity := strings.TrimSpace(snapshot.projectID)
+	if identity != "" {
+		identity = "project:" + identity
+	} else if workspace := canonicalAutomationWorkspace(snapshot.workspace); workspace != "" {
+		identity = "workspace:" + workspace
+	}
+	if identity == "" {
 		return false
 	}
-	operation, err := service.host.AcquireWorkspaceOperation(c.ctx, workspace)
+	var (
+		operation Operation
+		err       error
+	)
+	if projectID := strings.TrimSpace(snapshot.projectID); projectID != "" {
+		operation, err = service.host.AcquireProjectOperation(c.ctx, projectID)
+	} else {
+		operation, err = service.host.AcquireWorkspaceOperation(c.ctx, snapshot.workspace)
+	}
 	if err != nil {
 		return false
 	}
@@ -85,7 +100,7 @@ func (c *automationTriggerCoordinator) enqueue(service *Service, snapshot *autom
 		operation.Release()
 		return false
 	}
-	request := c.entries[workspace]
+	request := c.entries[identity]
 	if request == nil {
 		request = &automationTriggerRequest{
 			service:   service,
@@ -94,9 +109,9 @@ func (c *automationTriggerCoordinator) enqueue(service *Service, snapshot *autom
 			sources:   make(map[string]struct{}),
 			targets:   make(map[string]struct{}),
 		}
-		c.entries[workspace] = request
+		c.entries[identity] = request
 		c.wg.Add(1)
-		go c.run(workspace, request)
+		go c.run(identity, request)
 	} else {
 		// A later immutable snapshot for the same canonical workspace is safe
 		// to prefer and avoids retaining superseded runtime references.

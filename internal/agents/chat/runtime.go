@@ -272,6 +272,7 @@ func (r *chatRun) prepareContext() ([]*agent.Message, string, agentrun.Outcome, 
 			return nil, "", r.outcomeFor(agentrun.OutcomeFailed, err, err.Error()), true
 		}
 		r.emit(agentrun.Event{Type: "workspace_change", Data: map[string]interface{}{
+			"project_id":       r.options.ProjectID,
 			"workspace":        r.options.Workspace,
 			"review_thread_id": r.options.ReviewThreadID,
 			"action":           "review_feedback_consumed",

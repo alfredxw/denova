@@ -5,8 +5,6 @@ import { EditorState, Selection } from '@tiptap/pm/state'
 import type { EditorView } from '@tiptap/pm/view'
 import type { Editor } from '@tiptap/react'
 
-import { workspaceAssetURL } from '@/lib/api'
-
 interface ParsedMarkdownDocumentEntry {
   source: string
   document: JSONContent
@@ -66,7 +64,7 @@ export function isMarkdownFile(name: string | null): boolean {
   return !!name && /\.(md|markdown)$/i.test(name)
 }
 
-export function createWorkspaceImageExtension(resolveAsset: (path: string) => string = workspaceAssetURL) {
+export function createWorkspaceImageExtension(resolveAsset: (path: string) => string) {
   return Image.extend({
     renderHTML({ HTMLAttributes }) {
       const src = resolveWorkspaceImageSrc(HTMLAttributes.src, resolveAsset)

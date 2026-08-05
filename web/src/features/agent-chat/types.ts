@@ -3,6 +3,7 @@ import type { DocumentReviewTarget } from '@/features/document-review/types'
 import type { EditorFlushHandler } from '@/components/Editor/useEditorDraftPersistence'
 import type { DocumentReviewController } from '@/features/document-review/controller'
 import type { WorkspaceChangeMetadata } from '@/features/changes/types'
+import type { AgentChatProjectType } from './api'
 
 /**
  * Tab model for the AgentChat workspace.
@@ -14,9 +15,16 @@ import type { WorkspaceChangeMetadata } from '@/features/changes/types'
  */
 
 /** Project pages that can be hosted inside an AgentChat tab. */
-export type AgentChatPageId = 'reader' | 'lore' | 'presets' | 'skills' | 'agents' | 'automations'
+export type AgentChatPageId = 'reader' | 'lore' | 'presets' | 'skills' | 'agents' | 'automations' | 'versions'
 
-export const AGENT_CHAT_PAGE_IDS: readonly AgentChatPageId[] = ['reader', 'lore', 'presets', 'skills', 'agents', 'automations']
+export const AGENT_CHAT_PAGE_IDS: readonly AgentChatPageId[] = ['reader', 'lore', 'presets', 'skills', 'agents', 'automations', 'versions']
+
+const GENERAL_PROJECT_PAGE_IDS: readonly AgentChatPageId[] = ['presets', 'skills', 'agents', 'automations']
+
+/** Declares page availability independently from tab-menu presentation. */
+export function agentChatPageIdsForProjectType(projectType: AgentChatProjectType): readonly AgentChatPageId[] {
+  return projectType === 'book' ? AGENT_CHAT_PAGE_IDS : GENERAL_PROJECT_PAGE_IDS
+}
 
 /** A persisted review target plus a nonce for revealing it inside an AgentChat project page. */
 export interface AgentChatDocumentReviewNavigation extends DocumentReviewNavigationIntent {

@@ -13,8 +13,8 @@ import { Input } from '@/components/ui/input'
 import type { AgentContextOverride, AgentModelOverride, AgentPromptOverride, AgentSkillOverride, AgentToolOverride, LayeredSettings, ModelProfileSettings, Settings, SettingsLayer, SubAgentConfig } from '@/features/settings/types'
 import { modelProfileID, modelProfileLabel, modelProfilesWithDefault } from '@/features/settings/model-profiles'
 import { useLayeredSettingsDraft } from '@/features/settings/use-layered-settings-draft'
-import { getSkills } from '@/lib/api'
-import type { SkillSummary } from '@/lib/api'
+import { getSkills, resourceTargetKey } from '@/lib/api'
+import type { ResourceTarget, SkillSummary } from '@/lib/api'
 import { AgentRuntimeContextSection } from './AgentRuntimeContextSection'
 import { AgentBuiltInCapabilitySection, AgentContextSection, AgentModelOnlySection, AgentModelSection, AgentPromptSection, AgentSkillSection, AgentToolSection, mergeAgentModelOverride, mergeAgentPromptOverride } from './agent-configuration-sections'
 import { AgentSubAgentSection, isSubAgentParent, previewGeneralSubAgentSettings } from './agent-subagent-section'
@@ -23,10 +23,20 @@ import type { AgentViewDefinition, SubAgentParentKey, ToolKey, VisibleAgentKey }
 
 const tabCls = 'nova-nav-item rounded-[var(--nova-radius)] px-2.5 py-1 text-xs'
 
-export function AgentsView({ onClose }: { onClose?: () => void }) {
+export function AgentsView({ target, onClose }: { target: ResourceTarget; onClose?: () => void }) {
   const { t } = useTranslation()
-  const [activeLayer, setActiveLayer] = useState<SettingsLayer>('user')
+  const targetKind = target.kind
+  const projectId = target.kind === 'project' ? target.projectId : ''
+  const resourceTarget = useMemo<ResourceTarget>(
+    () => targetKind === 'project' ? { kind: 'project', projectId } : { kind: 'global' },
+    [projectId, targetKind],
+  )
+  const targetKey = resourceTargetKey(resourceTarget)
+  const agentAvailable = targetKind === 'project'
+  const [selectedLayer, setActiveLayer] = useState<SettingsLayer>('user')
+  const activeLayer: SettingsLayer = targetKind === 'project' ? selectedLayer : 'user'
   const { layered, draft, setDraft, error, autosaveStatus, autosaveError, reload, notifyUpdated, saveNow } = useLayeredSettingsDraft({
+    target: resourceTarget,
     layer: activeLayer,
     sourcePrefix: 'agents-view',
   })
@@ -37,7 +47,7 @@ export function AgentsView({ onClose }: { onClose?: () => void }) {
   useEffect(() => {
     let cancelled = false
     const loadSkills = () => {
-      getSkills()
+      getSkills(resourceTarget)
         .then((snapshot) => {
           if (!cancelled) setSkills(snapshot.skills.filter((skill) => skill.active))
         })
@@ -45,13 +55,18 @@ export function AgentsView({ onClose }: { onClose?: () => void }) {
           if (!cancelled) console.warn('[agents] load skills failed', error)
         })
     }
+    const onSkillsUpdated = (event: Event) => {
+      const changedTargetKey = (event as CustomEvent<{ targetKey?: string }>).detail?.targetKey
+      if (changedTargetKey && changedTargetKey !== targetKey && changedTargetKey !== 'global') return
+      loadSkills()
+    }
     loadSkills()
-    window.addEventListener('nova:skills-updated', loadSkills)
+    window.addEventListener('nova:skills-updated', onSkillsUpdated)
     return () => {
       cancelled = true
-      window.removeEventListener('nova:skills-updated', loadSkills)
+      window.removeEventListener('nova:skills-updated', onSkillsUpdated)
     }
-  }, [])
+  }, [resourceTarget, targetKey])
 
   const effective = layered?.effective ?? {}
   const selected = AGENTS.find((agent) => agent.key === activeAgent) ?? AGENTS[0]
@@ -74,7 +89,6 @@ export function AgentsView({ onClose }: { onClose?: () => void }) {
   const inheritedToolParallelism = resolveInheritedToolParallelism(layered, activeLayer)
   const previewGeneralSubAgents = useMemo(() => previewGeneralSubAgentSettings(layered, activeLayer, draft), [activeLayer, draft, layered])
   const subAgents = draft.sub_agents ?? []
-  const configManagerWorkspaceKey = layered?.paths.workspace_config || layered?.paths.user_config || 'agents'
   const configManagerContext = useMemo(() => ({
     active_settings_layer: activeLayer,
     active_agent: activeAgent,
@@ -87,10 +101,10 @@ export function AgentsView({ onClose }: { onClose?: () => void }) {
     void saveNow()
       .then(async () => {
         await reload()
-        notifyUpdated()
+        notifyUpdated(activeLayer)
       })
       .catch(() => undefined)
-  }, [notifyUpdated, reload, saveNow])
+  }, [activeLayer, notifyUpdated, reload, saveNow])
 
   const switchLayer = async (layer: SettingsLayer) => {
     if (layer === activeLayer) return
@@ -192,7 +206,7 @@ export function AgentsView({ onClose }: { onClose?: () => void }) {
       onSaveShortcut={() => saveNow().catch(() => undefined)}
       headerContent={(
         <div className="flex shrink-0 gap-1 border-l border-[var(--nova-border)] pl-2 sm:ml-3 sm:pl-3">
-          {(['user', 'workspace'] as SettingsLayer[]).map((layer) => (
+          {(targetKind === 'project' ? ['user', 'workspace'] as SettingsLayer[] : ['user'] as SettingsLayer[]).map((layer) => (
             <Button
               key={layer}
               type="button"
@@ -213,16 +227,18 @@ export function AgentsView({ onClose }: { onClose?: () => void }) {
             error={autosaveError}
             onRetry={() => saveNow().catch(() => undefined)}
           />
-          <Button
-            type="button"
-            onClick={() => setAgentChatOpen((value) => !value)}
-            variant={agentChatOpen ? 'secondary' : 'outline'}
-            size="sm"
-            aria-pressed={agentChatOpen}
-          >
-            <Bot data-icon="inline-start" />
-            {t('agents.configAgent.button')}
-          </Button>
+          {agentAvailable && (
+            <Button
+              type="button"
+              onClick={() => setAgentChatOpen((value) => !value)}
+              variant={agentChatOpen ? 'secondary' : 'outline'}
+              size="sm"
+              aria-pressed={agentChatOpen}
+            >
+              <Bot data-icon="inline-start" />
+              {t('agents.configAgent.button')}
+            </Button>
+          )}
         </>
       )}
     >
@@ -236,7 +252,7 @@ export function AgentsView({ onClose }: { onClose?: () => void }) {
           desktopClassName: 'min-h-0 border-r border-[var(--nova-border)]',
           mobileClassName: 'w-[min(88vw,340px)]',
         }}
-        right={agentChatOpen ? {
+        right={agentAvailable && agentChatOpen ? {
           id: 'agents-config-manager',
           title: t('agents.configAgent.title'),
           side: 'right',
@@ -244,7 +260,7 @@ export function AgentsView({ onClose }: { onClose?: () => void }) {
           content: (
             <div className="h-full min-h-0 bg-[var(--nova-surface)]">
               <ConfigManagerChat
-                workspace={configManagerWorkspaceKey}
+                projectId={projectId}
                 origin="agents"
                 resourceId={`${activeLayer}:${activeAgent}`}
                 context={configManagerContext}
@@ -278,7 +294,7 @@ export function AgentsView({ onClose }: { onClose?: () => void }) {
             <div className="sticky top-0 z-10 flex h-10 items-center gap-2 border-b border-[var(--nova-border)] bg-[var(--nova-surface)] px-3 md:hidden">
               <MobilePaneTrigger side="left" label={t('workbench.mobile.openSidePanel', { label: 'Agents' })} onClick={openLeft} />
               <span className="min-w-0 truncate text-[11px] text-[var(--nova-text-muted)]">{t(selected.titleKey)}</span>
-              {agentChatOpen && (
+              {agentAvailable && agentChatOpen && (
                 <MobilePaneTrigger side="right" label={t('workbench.mobile.openSidePanel', { label: t('agents.configAgent.title') })} onClick={openRight} className="ml-auto" />
               )}
             </div>

@@ -10,7 +10,8 @@ import { directorPlanTotals, directorStatusFallback, displayEventToChatMessage, 
 
 // 导演执行过程：以消息流形式展示后台导演的规划、工具调用记录。消息列表为虚拟滚动，
 // 必须有确定高度，因此保留有界容器（区别于文档预览的自然高度）。
-export function DirectorProcessCard({ status, metadata, loading, displayEvents }: {
+export function DirectorProcessCard({ projectId, status, metadata, loading, displayEvents }: {
+  projectId: string
   status?: DirectorStatusLike
   metadata?: DirectorPlanMetadata
   loading: boolean
@@ -30,6 +31,7 @@ export function DirectorProcessCard({ status, metadata, loading, displayEvents }
         {process.messages.length > 0 || process.streaming ? (
           <div className="flex h-[380px] min-h-[240px] flex-col overflow-hidden rounded-[10px] border border-[var(--nova-border)] bg-[var(--nova-surface)]">
             <MessageList
+              projectId={projectId}
               messages={process.messages}
               isStreaming={process.streaming}
               activityContent={process.activityContent}

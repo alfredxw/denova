@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"net/url"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -19,13 +20,14 @@ func TestLoreItemImageGenerateAPIUpdatesItem(t *testing.T) {
 	application, imageServer := newLoreImageTestApplication(t)
 	defer imageServer.Close()
 	server := NewServer(application, "0")
-	workspace := application.Workspace()
-	item, err := application.Lore().CreateItem(lore.ItemInput{ID: "hero", Type: "character", Name: "林川", Importance: "major", Content: "谨慎。"})
+	projectID := application.ProjectID()
+	base := "/api/projects/" + url.PathEscape(projectID) + "/book/lore"
+	item, err := application.ProjectBook().CreateLoreItem(projectID, lore.ItemInput{ID: "hero", Type: "character", Name: "林川", Importance: "major", Content: "谨慎。"})
 	if err != nil {
 		t.Fatal(err)
 	}
 
-	resp := performWorkspaceChangeRequest(t, server, http.MethodPost, "/api/lore/items/"+item.ID+"/image/generate", workspace, map[string]string{
+	resp := performJSONRequest(t, server, http.MethodPost, base+"/items/"+item.ID+"/image/generate", map[string]string{
 		"instruction": "夜色氛围",
 	})
 	if resp.Code != http.StatusOK {
@@ -48,12 +50,13 @@ func TestLoreImagesGenerateStreamSkipsExistingByDefault(t *testing.T) {
 	application, imageServer := newLoreImageTestApplication(t)
 	defer imageServer.Close()
 	server := NewServer(application, "0")
-	workspace := application.Workspace()
-	withImage, err := application.Lore().CreateItem(lore.ItemInput{ID: "with-image", Type: "character", Name: "已有图", Importance: "major", Content: "已有。"})
+	projectID := application.ProjectID()
+	base := "/api/projects/" + url.PathEscape(projectID) + "/book/lore"
+	withImage, err := application.ProjectBook().CreateLoreItem(projectID, lore.ItemInput{ID: "with-image", Type: "character", Name: "已有图", Importance: "major", Content: "已有。"})
 	if err != nil {
 		t.Fatal(err)
 	}
-	withoutImage, err := application.Lore().CreateItem(lore.ItemInput{ID: "without-image", Type: "location", Name: "无图地点", Importance: "important", Content: "地点。"})
+	withoutImage, err := application.ProjectBook().CreateLoreItem(projectID, lore.ItemInput{ID: "without-image", Type: "location", Name: "无图地点", Importance: "important", Content: "地点。"})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -68,7 +71,7 @@ func TestLoreImagesGenerateStreamSkipsExistingByDefault(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	resp := performWorkspaceChangeRequest(t, server, http.MethodPost, "/api/lore/images/generate/stream", workspace, map[string]any{
+	resp := performJSONRequest(t, server, http.MethodPost, base+"/images/generate/stream", map[string]any{
 		"item_ids": []string{withImage.ID, withoutImage.ID},
 	})
 	if resp.Code != http.StatusOK {
@@ -81,7 +84,7 @@ func TestLoreImagesGenerateStreamSkipsExistingByDefault(t *testing.T) {
 	if !strings.Contains(body, `"status":"success"`) || !strings.Contains(body, `"item_id":"without-image"`) {
 		t.Fatalf("stream should report generated item:\n%s", body)
 	}
-	items, err := application.Lore().Items()
+	items, err := application.ProjectBook().LoreItems(projectID)
 	if err != nil {
 		t.Fatal(err)
 	}

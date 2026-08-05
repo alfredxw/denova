@@ -19,6 +19,7 @@ import (
 	agentrun "denova/internal/agents/run"
 	"denova/internal/agents/session"
 	configmanagerapp "denova/internal/app/configmanager"
+	projectdomain "denova/internal/project"
 
 	runstate "github.com/alfredxw/denova/agent/runtime"
 )
@@ -34,6 +35,7 @@ func TestConfigManagerInitialStartReusesExactTaskAndRejectsConflict(t *testing.T
 	t.Cleanup(application.Close)
 
 	request := configmanagerapp.Request{
+		ProjectID:   application.ProjectID(),
 		CommandID:   "config-manager-same-start",
 		Instruction: "update the selected resource",
 		Origin:      "settings", ResourceID: "resource-1",
@@ -98,6 +100,7 @@ func TestConfigManagerReplayCapacityRejectsBeforeRuntimeAdmission(t *testing.T) 
 	})
 
 	request := configmanagerapp.Request{
+		ProjectID: application.ProjectID(),
 		CommandID: "config-capacity-pre-admission", Instruction: "update settings",
 		Origin: "settings", ResourceID: "resource-capacity",
 	}
@@ -135,9 +138,14 @@ func TestConfigManagerOlderSettledStartColdReplayWithoutModel(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	registry := projectdomain.NewRegistry(root)
+	record, err := registry.EnsureBook(workspace)
+	if err != nil {
+		t.Fatal(err)
+	}
 	requests := []configmanagerapp.Request{
-		{CommandID: "config-older-settled", Instruction: "first update"},
-		{CommandID: "config-newer-settled", Instruction: "second update"},
+		{ProjectID: record.ID, CommandID: "config-older-settled", Instruction: "first update"},
+		{ProjectID: record.ID, CommandID: "config-newer-settled", Instruction: "second update"},
 	}
 	answers := []string{"first config answer", "second config answer"}
 	sessionID, err := configmanagerapp.SessionID(requests[0])
@@ -145,7 +153,7 @@ func TestConfigManagerOlderSettledStartColdReplayWithoutModel(t *testing.T) {
 		t.Fatal(err)
 	}
 	options := agentrun.Options{
-		AgentKind: agentrun.AgentKindConfigManager, Workspace: workspace,
+		AgentKind: agentrun.AgentKindConfigManager, ProjectID: record.ID, Workspace: workspace,
 		SessionID: sessionID, Mode: "config_manager",
 	}
 	for index := range requests {

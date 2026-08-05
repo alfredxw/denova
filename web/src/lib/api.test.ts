@@ -10,6 +10,7 @@ import {
   getMessages,
   getMessagesPage,
   getSessions,
+  projectSkillTarget,
   renameSession,
   recoverChatAgentRuntime,
   saveSkillDocument,
@@ -246,7 +247,7 @@ describe('api', () => {
   it('保存 Skill 配置时可提交目标 scope、名称和基础 revision', async () => {
     let requestBody: unknown
     server.use(
-      http.put('/api/skills/document', async ({ request }) => {
+      http.put('/api/projects/project-demo/skills/document', async ({ request }) => {
         requestBody = await request.json()
         return HttpResponse.json({
           name: 'beat-plan',
@@ -261,7 +262,7 @@ describe('api', () => {
       }),
     )
 
-    await expect(saveSkillDocument('user', 'draft-plan', 'content', { scope: 'workspace', name: 'beat-plan' }, 'skill-r1')).resolves.toMatchObject({
+    await expect(saveSkillDocument(projectSkillTarget('project-demo'), 'user', 'draft-plan', 'content', { scope: 'workspace', name: 'beat-plan' }, 'skill-r1')).resolves.toMatchObject({
       scope: 'workspace',
       name: 'beat-plan',
     })

@@ -3,34 +3,40 @@ import { useEffect } from 'react'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { APIError } from '@/lib/api-client'
 import { preserveAutosaveConflict } from '@/lib/api-client/autosave-conflicts'
-import { readFile, saveFile } from '@/lib/api'
-import { useWorkspaceFileAutosave, type WorkspaceFileDraft } from './use-workspace-file-autosave'
+import { readProjectFile, saveProjectFile } from '@/lib/api'
+import { useProjectFileAutosave, type ProjectFileDraft } from './use-project-file-autosave'
 
 vi.mock('@/lib/api', () => ({
-  readFile: vi.fn(),
-  saveFile: vi.fn(),
+  readProjectFile: vi.fn(),
+  saveProjectFile: vi.fn(),
 }))
 
 vi.mock('@/lib/api-client/autosave-conflicts', () => ({
   preserveAutosaveConflict: vi.fn(),
 }))
 
-describe('useWorkspaceFileAutosave', () => {
+const PROJECT_ID = 'project-demo'
+
+describe('useProjectFileAutosave', () => {
   beforeEach(() => {
     vi.clearAllMocks()
     controls = null
   })
 
   it('reloads, rebases, and retries a workspace file revision conflict', async () => {
-    vi.mocked(readFile).mockResolvedValue({
-      workspace: '/books/demo',
+    vi.mocked(readProjectFile).mockResolvedValue({
+      project_id: PROJECT_ID,
       path: 'CREATOR.md',
       content: 'Title\n\nExternal detail\n',
       revision: 'r2',
+      kind: 'text',
+      mime_type: 'text/markdown',
+      size: 24,
+      editable: true,
     })
-    vi.mocked(saveFile)
+    vi.mocked(saveProjectFile)
       .mockRejectedValueOnce(new APIError('revision conflict', { status: 409 }))
-      .mockResolvedValueOnce({ path: 'CREATOR.md', message: 'saved', revision: 'r3' })
+      .mockResolvedValueOnce({ project_id: PROJECT_ID, path: 'CREATOR.md', changed: true, revision: 'r3' })
     const onSaved = vi.fn()
     render(
       <Harness
@@ -44,9 +50,9 @@ describe('useWorkspaceFileAutosave', () => {
       await controls?.saveNow('manual')
     })
 
-    expect(readFile).toHaveBeenCalledWith('CREATOR.md')
-    expect(saveFile).toHaveBeenNthCalledWith(1, 'CREATOR.md', 'Local title\n\nDetail\n', 'r1', '/books/demo')
-    expect(saveFile).toHaveBeenNthCalledWith(2, 'CREATOR.md', 'Local title\n\nExternal detail\n', 'r2', '/books/demo')
+    expect(readProjectFile).toHaveBeenCalledWith(PROJECT_ID, 'CREATOR.md')
+    expect(saveProjectFile).toHaveBeenNthCalledWith(1, PROJECT_ID, 'CREATOR.md', 'Local title\n\nDetail\n', 'r1')
+    expect(saveProjectFile).toHaveBeenNthCalledWith(2, PROJECT_ID, 'CREATOR.md', 'Local title\n\nExternal detail\n', 'r2')
     expect(onSaved).toHaveBeenCalledWith(
       expect.objectContaining({ content: 'Local title\n\nExternal detail\n', updated_at: 'r3' }),
       expect.objectContaining({ content: 'Local title\n\nDetail\n', updated_at: 'r1' }),
@@ -59,15 +65,19 @@ describe('useWorkspaceFileAutosave', () => {
       path: 'conflicts/conflict-1.json',
       storage: 'server',
     })
-    vi.mocked(readFile).mockResolvedValue({
-      workspace: '/books/demo',
+    vi.mocked(readProjectFile).mockResolvedValue({
+      project_id: PROJECT_ID,
       path: 'CREATOR.md',
       content: 'External title\n',
       revision: 'r2',
+      kind: 'text',
+      mime_type: 'text/markdown',
+      size: 15,
+      editable: true,
     })
-    vi.mocked(saveFile)
+    vi.mocked(saveProjectFile)
       .mockRejectedValueOnce(new APIError('revision conflict', { status: 409 }))
-      .mockResolvedValueOnce({ path: 'CREATOR.md', message: 'saved', revision: 'r3' })
+      .mockResolvedValueOnce({ project_id: PROJECT_ID, path: 'CREATOR.md', changed: true, revision: 'r3' })
     render(
       <Harness
         content={'Local title\n'}
@@ -81,8 +91,8 @@ describe('useWorkspaceFileAutosave', () => {
     })
 
     expect(preserveAutosaveConflict).toHaveBeenCalledWith(expect.objectContaining({
-      resource: 'workspace_file',
-      scope: '/books/demo',
+      resource: 'project_file',
+      scope: PROJECT_ID,
       id: 'CREATOR.md',
       base: { revision: 'r1', value: 'Original title\n' },
       local: { revision: 'r1', value: 'Local title\n' },
@@ -90,11 +100,11 @@ describe('useWorkspaceFileAutosave', () => {
       merged: { revision: 'r2', value: 'Local title\n' },
       conflict_paths: [[]],
     }))
-    expect(saveFile).toHaveBeenNthCalledWith(2, 'CREATOR.md', 'Local title\n', 'r2', '/books/demo')
+    expect(saveProjectFile).toHaveBeenNthCalledWith(2, PROJECT_ID, 'CREATOR.md', 'Local title\n', 'r2')
   })
 })
 
-let controls: ReturnType<typeof useWorkspaceFileAutosave> | null = null
+let controls: ReturnType<typeof useProjectFileAutosave> | null = null
 
 function Harness({
   content,
@@ -103,22 +113,22 @@ function Harness({
 }: {
   content: string
   baselineContent: string
-  onSaved: (saved: WorkspaceFileDraft, submitted: WorkspaceFileDraft) => void
+  onSaved: (saved: ProjectFileDraft, submitted: ProjectFileDraft) => void
 }) {
-  const autosave = useWorkspaceFileAutosave({
+  const autosave = useProjectFileAutosave({
+    projectId: PROJECT_ID,
     path: 'CREATOR.md',
     content,
     revision: 'r1',
-    fileWorkspace: '/books/demo',
+    fileProjectId: PROJECT_ID,
     active: true,
-    scopeKey: '/books/demo',
     onSaved,
   })
   useEffect(() => {
     autosave.resetBaseline({
       id: 'CREATOR.md',
       content: baselineContent,
-      workspace: '/books/demo',
+      project_id: PROJECT_ID,
       updated_at: 'r1',
     })
   }, [autosave.resetBaseline, baselineContent])

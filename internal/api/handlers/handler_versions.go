@@ -15,12 +15,13 @@ type versionRestoreRequest struct {
 	Paths []string `json:"paths"`
 }
 
-// handleVersionStatus GET /api/versions/status — 返回当前书籍本地版本状态。
+// HandleVersionStatus returns local version state for the scoped Book Project.
 func (h *Handlers) HandleVersionStatus(ctx context.Context, c *app.RequestContext) {
-	if !h.requireWorkspace(c) {
+	scope, ok := requireProjectScope(c)
+	if !ok {
 		return
 	}
-	status, err := h.app.VersionStatus(ctx)
+	status, err := h.app.ProjectVersionStatus(ctx, scope.ProjectID)
 	if err != nil {
 		writeVersionError(c, err)
 		return
@@ -28,9 +29,10 @@ func (h *Handlers) HandleVersionStatus(ctx context.Context, c *app.RequestContex
 	writeJSON(c, consts.StatusOK, status)
 }
 
-// handleVersionHistory GET /api/versions?limit=30 — 返回版本历史。
+// HandleVersionHistory returns version history for the scoped Book Project.
 func (h *Handlers) HandleVersionHistory(ctx context.Context, c *app.RequestContext) {
-	if !h.requireWorkspace(c) {
+	scope, ok := requireProjectScope(c)
+	if !ok {
 		return
 	}
 	limit := 30
@@ -39,7 +41,7 @@ func (h *Handlers) HandleVersionHistory(ctx context.Context, c *app.RequestConte
 			limit = parsed
 		}
 	}
-	versions, err := h.app.VersionHistory(ctx, limit)
+	versions, err := h.app.ProjectVersionHistory(ctx, scope.ProjectID, limit)
 	if err != nil {
 		writeVersionError(c, err)
 		return
@@ -47,9 +49,10 @@ func (h *Handlers) HandleVersionHistory(ctx context.Context, c *app.RequestConte
 	writeJSON(c, consts.StatusOK, map[string]any{"versions": versions})
 }
 
-// handleVersionCreate POST /api/versions — 创建手动版本。
+// HandleVersionCreate creates a manual version for the scoped Book Project.
 func (h *Handlers) HandleVersionCreate(ctx context.Context, c *app.RequestContext) {
-	if !h.requireWorkspace(c) {
+	scope, ok := requireProjectScope(c)
+	if !ok {
 		return
 	}
 	var req struct {
@@ -61,7 +64,7 @@ func (h *Handlers) HandleVersionCreate(ctx context.Context, c *app.RequestContex
 			return
 		}
 	}
-	result, err := h.app.CreateVersion(ctx, req.Message)
+	result, err := h.app.CreateProjectVersion(ctx, scope.ProjectID, req.Message)
 	if err != nil {
 		writeVersionError(c, err)
 		return
@@ -69,9 +72,10 @@ func (h *Handlers) HandleVersionCreate(ctx context.Context, c *app.RequestContex
 	writeJSON(c, consts.StatusOK, result)
 }
 
-// handleVersionDiff GET /api/versions/:id/diff?path=optional — 返回版本差异。
+// HandleVersionDiff returns a Project version diff, optionally for one path.
 func (h *Handlers) HandleVersionDiff(ctx context.Context, c *app.RequestContext) {
-	if !h.requireWorkspace(c) {
+	scope, ok := requireProjectScope(c)
+	if !ok {
 		return
 	}
 	id := c.Param("id")
@@ -79,7 +83,7 @@ func (h *Handlers) HandleVersionDiff(ctx context.Context, c *app.RequestContext)
 		writeErrorKey(c, consts.StatusBadRequest, "api.versions.idRequired")
 		return
 	}
-	diff, err := h.app.VersionDiff(ctx, id, c.Query("path"))
+	diff, err := h.app.ProjectVersionDiff(ctx, scope.ProjectID, id, c.Query("path"))
 	if err != nil {
 		writeVersionError(c, err)
 		return
@@ -87,9 +91,10 @@ func (h *Handlers) HandleVersionDiff(ctx context.Context, c *app.RequestContext)
 	writeJSON(c, consts.StatusOK, diff)
 }
 
-// HandleVersionRestorePlan POST /api/versions/:id/restore-plan — 返回版本恢复影响预览。
+// HandleVersionRestorePlan previews a restore against the scoped Book Project.
 func (h *Handlers) HandleVersionRestorePlan(ctx context.Context, c *app.RequestContext) {
-	if !h.requireWorkspace(c) {
+	scope, ok := requireProjectScope(c)
+	if !ok {
 		return
 	}
 	id := c.Param("id")
@@ -101,7 +106,7 @@ func (h *Handlers) HandleVersionRestorePlan(ctx context.Context, c *app.RequestC
 	if !ok {
 		return
 	}
-	plan, err := h.app.VersionRestorePlan(ctx, id, req.Paths)
+	plan, err := h.app.ProjectVersionRestorePlan(ctx, scope.ProjectID, id, req.Paths)
 	if err != nil {
 		writeVersionError(c, err)
 		return
@@ -109,9 +114,10 @@ func (h *Handlers) HandleVersionRestorePlan(ctx context.Context, c *app.RequestC
 	writeJSON(c, consts.StatusOK, plan)
 }
 
-// handleVersionRestore POST /api/versions/:id/restore — 恢复整本书或指定文件到目标版本。
+// HandleVersionRestore restores the scoped Book Project or selected paths.
 func (h *Handlers) HandleVersionRestore(ctx context.Context, c *app.RequestContext) {
-	if !h.requireWorkspace(c) {
+	scope, ok := requireProjectScope(c)
+	if !ok {
 		return
 	}
 	id := c.Param("id")
@@ -123,7 +129,7 @@ func (h *Handlers) HandleVersionRestore(ctx context.Context, c *app.RequestConte
 	if !ok {
 		return
 	}
-	result, err := h.app.RestoreVersion(ctx, id, req.Paths)
+	result, err := h.app.RestoreProjectVersion(ctx, scope.ProjectID, id, req.Paths)
 	if err != nil {
 		writeVersionError(c, err)
 		return

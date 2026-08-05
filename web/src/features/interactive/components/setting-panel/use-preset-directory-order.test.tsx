@@ -25,18 +25,17 @@ describe('preset directory order', () => {
     )).toEqual(['teller:b', 'teller:game-only', 'teller:a'])
   })
 
-  it('persists each workspace independently', () => {
-    const { result, rerender } = renderHook(({ workspace }) => usePresetDirectoryOrder(workspace), {
-      initialProps: { workspace: '/books/one' },
-    })
+  it('persists one global order for global presets', () => {
+    const { result, unmount } = renderHook(() => usePresetDirectoryOrder())
 
     act(() => result.current.reorderItems('image', ['image:b', 'image:a'], ['image:a', 'image:b']))
-    expect(JSON.parse(window.localStorage.getItem('nova.preset-directory-order:/books/one') || '{}')).toMatchObject({
+    expect(JSON.parse(window.localStorage.getItem('nova.preset-directory-order') || '{}')).toMatchObject({
       version: 1,
       sections: { image: ['image:b', 'image:a'] },
     })
 
-    rerender({ workspace: '/books/two' })
-    expect(result.current.order).toEqual({})
+    unmount()
+    const restored = renderHook(() => usePresetDirectoryOrder())
+    expect(restored.result.current.order).toEqual({ image: ['image:b', 'image:a'] })
   })
 })

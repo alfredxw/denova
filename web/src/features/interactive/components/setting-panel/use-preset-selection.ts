@@ -13,7 +13,6 @@ type ModeSelection = { kind: PresetResourceKind; id: string }
  * 切模式时记存旧模式选中、恢复新模式记忆，无记忆时按兜底顺序选第一个可见可用条目。
  */
 export function usePresetSelection({
-  workspace,
   presetUsageMode,
   presetResourceKind,
   setPresetResourceKind,
@@ -25,7 +24,6 @@ export function usePresetSelection({
   flushPresetResourceAutoSave,
   closeDirectory,
 }: {
-  workspace: string
   presetUsageMode: PresetUsageMode
   presetResourceKind: PresetResourceKind
   setPresetResourceKind: (kind: PresetResourceKind) => void
@@ -38,10 +36,6 @@ export function usePresetSelection({
   closeDirectory: () => void
 }) {
   const lastSelectionByMode = useRef<Partial<Record<PresetUsageMode, ModeSelection>>>({})
-
-  useEffect(() => {
-    lastSelectionByMode.current = {}
-  }, [workspace])
 
   const handleSelectTeller = async (id: string) => {
     if (presetResourceKind === 'teller' && activeTellerId === id) {

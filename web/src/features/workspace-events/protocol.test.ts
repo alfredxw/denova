@@ -2,11 +2,12 @@ import { describe, expect, it, vi } from 'vitest'
 
 import { parseWorkspaceChangeSSE } from '@/features/workspace-events/protocol'
 
-describe('parseWorkspaceChangeSSE', () => {
+describe('Project workspace event protocol', () => {
   it('normalizes watcher changes and derives unique paths', () => {
     expect(parseWorkspaceChangeSSE({
       event: 'workspace-change',
       data: JSON.stringify({
+        project_id: 'project-demo',
         workspace: '/books/demo',
         source: 'watcher',
         changes: [
@@ -16,6 +17,7 @@ describe('parseWorkspaceChangeSSE', () => {
         paths: ['chapters/ch01.md'],
       }),
     })).toEqual({
+      project_id: 'project-demo',
       workspace: '/books/demo',
       source: 'watcher',
       resync: false,
@@ -35,11 +37,12 @@ describe('parseWorkspaceChangeSSE', () => {
     expect(warn).toHaveBeenCalledTimes(1)
   })
 
-  it('keeps resync pathless so existing workspace consumers reload canonical state', () => {
+  it('keeps resync pathless so Project consumers reload canonical state', () => {
     expect(parseWorkspaceChangeSSE({
       event: 'workspace-change',
-      data: JSON.stringify({ workspace: '/books/demo', source: 'watcher', resync: true }),
+      data: JSON.stringify({ project_id: 'project-demo', workspace: '/books/demo', source: 'watcher', resync: true }),
     })).toEqual({
+      project_id: 'project-demo',
       workspace: '/books/demo',
       source: 'watcher',
       resync: true,

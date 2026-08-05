@@ -9,6 +9,7 @@ export interface ProductMessage {
   task_id?: string
   run_id?: string
   inbox_id?: string
+  project_id?: string
   workspace?: string
   status?: string
   action_required?: boolean
@@ -23,5 +24,6 @@ export interface AutomationMessageNavigation {
   taskId: string
   runId?: string
   inboxId?: string
+  projectId?: string
   workspace?: string
 }

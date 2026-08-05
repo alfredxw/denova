@@ -3,6 +3,7 @@ import { fetchAPI, jsonHeaders, parseUIMessageStream, requestJSON, responseAPIEr
 import type { ActiveChatTask, AgentRuntimeRecoveryAction, AgentRuntimeRecoveryReceipt } from './chat'
 import type { AgentAskAnswer, AgentAskResolution } from './types'
 import type { AgentUIMessage } from '@/lib/agent-ui'
+import { projectAPIPath } from './project-scope'
 
 export interface ConfigManagerRunRequest {
   command_id: string
@@ -17,8 +18,12 @@ export interface ConfigManagerRunRequest {
 
 export type ConfigManagerScope = Omit<ConfigManagerRunRequest, 'command_id' | 'instruction' | 'references' | 'context'>
 
-export async function runConfigManagerStream(req: ConfigManagerRunRequest): Promise<ReadableStream<UIMessageChunk>> {
-  const res = await fetchAPI('/api/config-manager/stream', {
+function configManagerPath(projectId: string, suffix: string): string {
+  return projectAPIPath(projectId, `config-manager/${suffix.replace(/^\/+/, '')}`)
+}
+
+export async function runConfigManagerStream(projectId: string, req: ConfigManagerRunRequest): Promise<ReadableStream<UIMessageChunk>> {
+  const res = await fetchAPI(configManagerPath(projectId, 'stream'), {
     method: 'POST',
     headers: jsonHeaders,
     body: JSON.stringify(req),
@@ -30,8 +35,8 @@ export async function runConfigManagerStream(req: ConfigManagerRunRequest): Prom
   return parseUIMessageStream(res.body)
 }
 
-export function getConfigManagerMessages(scope: ConfigManagerScope = {}): Promise<AgentUIMessage[]> {
-  return requestJSON(`/api/config-manager/messages${configManagerScopeQuery(scope)}`)
+export function getConfigManagerMessages(projectId: string, scope: ConfigManagerScope = {}): Promise<AgentUIMessage[]> {
+  return requestJSON(`${configManagerPath(projectId, 'messages')}${configManagerScopeQuery(scope)}`)
 }
 
 export interface ConfigManagerMessagesPage {
@@ -42,6 +47,7 @@ export interface ConfigManagerMessagesPage {
 }
 
 export async function getConfigManagerMessagesPage(
+  projectId: string,
   scope: ConfigManagerScope = {},
   options: { before?: string; limit?: number } = {},
 ): Promise<ConfigManagerMessagesPage> {
@@ -51,7 +57,7 @@ export async function getConfigManagerMessagesPage(
   const data = await requestJSON<
     | AgentUIMessage[]
     | { messages?: AgentUIMessage[]; page?: { next_before?: string; has_more?: boolean; total?: number } }
-  >(`/api/config-manager/messages?${params.toString()}`)
+  >(`${configManagerPath(projectId, 'messages')}?${params.toString()}`)
   if (Array.isArray(data)) {
     return { messages: data, nextBefore: '0', hasMore: false, total: data.length }
   }
@@ -64,12 +70,13 @@ export async function getConfigManagerMessagesPage(
 }
 
 /** Inspect one exact Config Manager scope without exposing durable input. */
-export function getActiveConfigManagerTask(scope: ConfigManagerScope = {}): Promise<ActiveChatTask> {
-  return requestJSON(`/api/config-manager/active${configManagerScopeQuery(scope)}`)
+export function getActiveConfigManagerTask(projectId: string, scope: ConfigManagerScope = {}): Promise<ActiveChatTask> {
+  return requestJSON(`${configManagerPath(projectId, 'active')}${configManagerScopeQuery(scope)}`)
 }
 
 /** Attach to the server-selected display Task for this exact scope. */
 export async function reconnectConfigManagerStream(
+  projectId: string,
   scope: ConfigManagerScope,
   taskId: string,
   after = 0,
@@ -79,7 +86,7 @@ export async function reconnectConfigManagerStream(
   const params = configManagerScopeParams(scope)
   params.set('task_id', taskID)
   if (after > 0) params.set('after', String(after))
-  const res = await fetchAPI(`/api/config-manager/stream?${params.toString()}`)
+  const res = await fetchAPI(`${configManagerPath(projectId, 'stream')}?${params.toString()}`)
   if (!res.ok) throw await responseAPIError(res)
   if (!res.body) throw new Error('No response body')
   return parseUIMessageStream(res.body)
@@ -87,30 +94,31 @@ export async function reconnectConfigManagerStream(
 
 /** Execute only a payload-free recovery identity projected by the server. */
 export function recoverConfigManagerRuntime(
+  projectId: string,
   scope: ConfigManagerScope,
   action: AgentRuntimeRecoveryAction,
 ): Promise<AgentRuntimeRecoveryReceipt> {
-  return requestJSON(`/api/config-manager/recovery${configManagerScopeQuery(scope)}`, {
+  return requestJSON(`${configManagerPath(projectId, 'recovery')}${configManagerScopeQuery(scope)}`, {
     method: 'POST',
     headers: jsonHeaders,
     body: JSON.stringify({ action }),
   })
 }
 
-export async function clearConfigManagerSession(scope: ConfigManagerScope = {}): Promise<void> {
-  await requestJSON(`/api/config-manager/clear${configManagerScopeQuery(scope)}`, { method: 'POST' })
+export async function clearConfigManagerSession(projectId: string, scope: ConfigManagerScope = {}): Promise<void> {
+  await requestJSON(`${configManagerPath(projectId, 'clear')}${configManagerScopeQuery(scope)}`, { method: 'POST' })
 }
 
-export function answerConfigManagerAsk(scope: ConfigManagerScope, askId: string, answers: AgentAskAnswer[]): Promise<AgentAskResolution> {
-  return requestJSON(`/api/config-manager/asks/${encodeURIComponent(askId)}/answer${configManagerScopeQuery(scope)}`, {
+export function answerConfigManagerAsk(projectId: string, scope: ConfigManagerScope, askId: string, answers: AgentAskAnswer[]): Promise<AgentAskResolution> {
+  return requestJSON(`${configManagerPath(projectId, `asks/${encodeURIComponent(askId)}/answer`)}${configManagerScopeQuery(scope)}`, {
     method: 'POST',
     headers: jsonHeaders,
     body: JSON.stringify({ answers }),
   })
 }
 
-export function cancelConfigManagerAsk(scope: ConfigManagerScope, askId: string): Promise<AgentAskResolution> {
-  return requestJSON(`/api/config-manager/asks/${encodeURIComponent(askId)}/cancel${configManagerScopeQuery(scope)}`, {
+export function cancelConfigManagerAsk(projectId: string, scope: ConfigManagerScope, askId: string): Promise<AgentAskResolution> {
+  return requestJSON(`${configManagerPath(projectId, `asks/${encodeURIComponent(askId)}/cancel`)}${configManagerScopeQuery(scope)}`, {
     method: 'POST',
     headers: jsonHeaders,
     body: JSON.stringify({ reason: 'user_cancelled' }),

@@ -39,7 +39,7 @@ func TestWorkspaceFileMutationDefersAutomaticGitVersion(t *testing.T) {
 			VersionTimedIntervalMinutes: 10,
 		},
 		workspace:      workspace,
-		versionService: book.NewVersionService(workspace),
+		versionService: book.NewVersionService(workspace, filepath.Join(t.TempDir(), "repository")),
 	}
 	t.Cleanup(application.Close)
 

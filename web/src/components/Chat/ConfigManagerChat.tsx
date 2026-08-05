@@ -23,7 +23,7 @@ import { normalizeAgentUIMessages } from '@/lib/agent-ui'
 import { resolveAgentAskAndRefresh } from '@/lib/agent-ask'
 
 interface ConfigManagerChatProps {
-  workspace?: string
+  projectId: string
   origin: string
   resourceId?: string
   storyId?: string
@@ -33,7 +33,7 @@ interface ConfigManagerChatProps {
   className?: string
 }
 
-export function ConfigManagerChat({ workspace = '', origin, resourceId, storyId, branchId, context, onMutated, className = '' }: ConfigManagerChatProps) {
+export function ConfigManagerChat({ projectId, origin, resourceId, storyId, branchId, context, onMutated, className = '' }: ConfigManagerChatProps) {
   const { t } = useTranslation()
   const activeKeyRef = useRef('')
   const handledToolViewsRef = useRef(new Set<string>())
@@ -52,7 +52,7 @@ export function ConfigManagerChat({ workspace = '', origin, resourceId, storyId,
   const [hasEarlierMessages, setHasEarlierMessages] = useState(false)
   const [historyLoading, setHistoryLoading] = useState(false)
   const [inputAreaHeight, setInputAreaHeight] = useState(0)
-  const skills = useSkillCommands({ agentKey: 'config_manager', workspace })
+  const skills = useSkillCommands({ agentKey: 'config_manager', projectId })
   const scope = useMemo(() => ({
     origin,
     resource_id: resourceId,
@@ -61,12 +61,12 @@ export function ConfigManagerChat({ workspace = '', origin, resourceId, storyId,
   }), [branchId, origin, resourceId, storyId])
   const chatKey = useMemo(() => [
     'config-manager',
-    workspace,
+    projectId,
     origin,
     resourceId || '',
     storyId || '',
     branchId || '',
-  ].join(':'), [branchId, origin, resourceId, storyId, workspace])
+  ].join(':'), [branchId, origin, projectId, resourceId, storyId])
 
   const handleStreamView = useCallback((view: AgentMessageView) => {
     if (view.kind === 'tool' && view.status === 'success') {
@@ -97,13 +97,9 @@ export function ConfigManagerChat({ workspace = '', origin, resourceId, storyId,
   const messageListBottomPadding = inputAreaHeight > 0 ? inputAreaHeight + 20 : undefined
 
   const loadMessages = useCallback(async () => {
-    if (!workspace) {
-      setMessages([])
-      return
-    }
     const key = chatKey
     try {
-      const page = await getConfigManagerMessagesPage(scope)
+      const page = await getConfigManagerMessagesPage(projectId, scope)
       if (activeKeyRef.current === key) {
         setMessages(page.messages)
         setHistoryBefore(page.nextBefore)
@@ -114,7 +110,7 @@ export function ConfigManagerChat({ workspace = '', origin, resourceId, storyId,
         setError(`${t('configManager.historyLoadFailed')}: ${errorMessage(err)}`)
       }
     }
-  }, [chatKey, scope, setMessages, t, workspace])
+  }, [chatKey, projectId, scope, setMessages, t])
 
   const loadEarlierMessages = useCallback(async () => {
     if (!hasEarlierMessages || historyLoading) return
@@ -122,7 +118,7 @@ export function ConfigManagerChat({ workspace = '', origin, resourceId, storyId,
     const before = historyBefore
     setHistoryLoading(true)
     try {
-      const page = await getConfigManagerMessagesPage(scope, { before })
+      const page = await getConfigManagerMessagesPage(projectId, scope, { before })
       if (activeKeyRef.current !== key) return
       setMessages((current) => normalizeAgentUIMessages([...page.messages, ...current]))
       setHistoryBefore(page.nextBefore)
@@ -134,7 +130,7 @@ export function ConfigManagerChat({ workspace = '', origin, resourceId, storyId,
     } finally {
       if (activeKeyRef.current === key) setHistoryLoading(false)
     }
-  }, [chatKey, hasEarlierMessages, historyBefore, historyLoading, scope, setMessages, t])
+  }, [chatKey, hasEarlierMessages, historyBefore, historyLoading, projectId, scope, setMessages, t])
 
   const setRuntimeProjection = useCallback((projection: ActiveChatTask | null) => {
     runtimeProjectionRef.current = projection
@@ -156,7 +152,7 @@ export function ConfigManagerChat({ workspace = '', origin, resourceId, storyId,
     if (activeKeyRef.current !== key) return
     await loadMessages()
     try {
-      const projection = await getActiveConfigManagerTask(scope)
+      const projection = await getActiveConfigManagerTask(projectId, scope)
       if (activeKeyRef.current !== key) return
       setRuntimeProjection(projection)
       const projectedTaskID = projection.task_id?.trim() || ''
@@ -175,7 +171,7 @@ export function ConfigManagerChat({ workspace = '', origin, resourceId, storyId,
         setError(`${t('configManager.reconnectFailed')}: ${errorMessage(err)}`)
       }
     }
-  }, [loadMessages, scope, setRuntimeProjection, t])
+  }, [loadMessages, projectId, scope, setRuntimeProjection, t])
 
   const consumeScopedStream = useCallback(async (
     stream: ReadableStream<UIMessageChunk>,
@@ -202,7 +198,7 @@ export function ConfigManagerChat({ workspace = '', origin, resourceId, storyId,
     attachedTaskIDRef.current = exactTaskID
     setRecoveryPending(true)
     try {
-      const stream = await reconnectConfigManagerStream(scope, exactTaskID)
+      const stream = await reconnectConfigManagerStream(projectId, scope, exactTaskID)
       if (activeKeyRef.current !== key) {
         if (attachedTaskIDRef.current === exactTaskID) attachedTaskIDRef.current = ''
         return
@@ -216,11 +212,10 @@ export function ConfigManagerChat({ workspace = '', origin, resourceId, storyId,
         setError(`${t('configManager.reconnectFailed')}: ${errorMessage(err)}`)
       }
     }
-  }, [consumeScopedStream, scope, t])
+  }, [consumeScopedStream, projectId, scope, t])
   attachScopedTaskRef.current = attachScopedTask
 
   const inspectRuntime = useCallback(async (attachStream: boolean) => {
-    if (!workspace) return
     const key = chatKey
     if (activeKeyRef.current !== key) return
     if (runtimeInspectionRef.current?.key === key) {
@@ -229,12 +224,12 @@ export function ConfigManagerChat({ workspace = '', origin, resourceId, storyId,
     }
     const inspection = (async () => {
       try {
-        let projection = await getActiveConfigManagerTask(scope)
+        let projection = await getActiveConfigManagerTask(projectId, scope)
         if (activeKeyRef.current !== key) return
         let taskID = projection.task_id?.trim() || ''
         const actions = configManagerRecoveryActionsToSubmit(projection)
         for (const action of actions) {
-          const receipt = await recoverConfigManagerRuntime(scope, action)
+          const receipt = await recoverConfigManagerRuntime(projectId, scope, action)
           if (!sameRecoveryAction(receipt.recovery_action, action)) {
             throw new Error('Config Manager recovery identity changed')
           }
@@ -259,7 +254,7 @@ export function ConfigManagerChat({ workspace = '', origin, resourceId, storyId,
     } finally {
       if (runtimeInspectionRef.current === trackedInspection) runtimeInspectionRef.current = null
     }
-  }, [attachScopedTask, chatKey, scope, setRuntimeProjection, t, workspace])
+  }, [attachScopedTask, chatKey, projectId, scope, setRuntimeProjection, t])
   inspectRuntimeRef.current = inspectRuntime
 
   useEffect(() => {
@@ -272,7 +267,7 @@ export function ConfigManagerChat({ workspace = '', origin, resourceId, storyId,
     // Admission stays closed until the exact scope has been inspected. This
     // prevents an initial /active request from opening a duplicate reconnect
     // stream beside a newly accepted POST stream.
-    setRecoveryPending(Boolean(workspace))
+    setRecoveryPending(true)
     setAbortPending(false)
     setHistoryBefore('0')
     setHasEarlierMessages(false)
@@ -311,7 +306,7 @@ export function ConfigManagerChat({ workspace = '', origin, resourceId, storyId,
     if (instruction === '/clear') {
       setError(null)
       try {
-        await clearConfigManagerSession(scope)
+        await clearConfigManagerSession(projectId, scope)
         setRuntimeProjection(null)
         setHistoryBefore('0')
         setHasEarlierMessages(false)
@@ -335,7 +330,7 @@ export function ConfigManagerChat({ workspace = '', origin, resourceId, storyId,
     }
     let stream: ReadableStream<UIMessageChunk>
     try {
-      stream = await runConfigManagerStream(req)
+      stream = await runConfigManagerStream(projectId, req)
     } catch (err) {
       if (isKnownAgentCommandOutcome(err)) startCommandIDsRef.current.delete(retryKey)
       if (activeKeyRef.current === activeChatKey) {
@@ -348,7 +343,7 @@ export function ConfigManagerChat({ workspace = '', origin, resourceId, storyId,
     // refresh and reconnect identity even if this component is remounted.
     startCommandIDsRef.current.delete(retryKey)
     try {
-      const projection = await getActiveConfigManagerTask(scope)
+      const projection = await getActiveConfigManagerTask(projectId, scope)
       if (activeKeyRef.current !== activeChatKey) {
         await stream.cancel().catch(() => {})
         return
@@ -376,7 +371,7 @@ export function ConfigManagerChat({ workspace = '', origin, resourceId, storyId,
     setAbortPending(true)
     const activeChatKey = chatKey
     try {
-      const receipt = await recoverConfigManagerRuntime(scope, action)
+      const receipt = await recoverConfigManagerRuntime(projectId, scope, action)
       if (!sameRecoveryAction(receipt.recovery_action, action)) throw new Error('Config Manager abort identity changed')
       const taskID = receipt.task_id?.trim() || ''
       setRuntimeProjection({
@@ -405,15 +400,16 @@ export function ConfigManagerChat({ workspace = '', origin, resourceId, storyId,
     const askID = agentViewAskID(view)
     if (!askID) throw new Error('Cannot resolve an Ask without its interaction ID')
     return resolveAgentAskAndRefresh(action, {
-      answer: (answers) => answerConfigManagerAsk(scope, askID, answers),
-      cancel: () => cancelConfigManagerAsk(scope, askID),
+      answer: (answers) => answerConfigManagerAsk(projectId, scope, askID, answers),
+      cancel: () => cancelConfigManagerAsk(projectId, scope, askID),
     }, loadMessages)
-  }, [loadMessages, scope])
+  }, [loadMessages, projectId, scope])
 
   return (
     <div className={`relative flex h-full min-h-0 flex-col overflow-hidden ${className}`}>
       {error && <div className="border-b border-[var(--nova-border)] px-3 py-2 text-xs text-red-400">{error}</div>}
       <MessageList
+        projectId={projectId}
         messages={messages}
         isStreaming={running}
         activityContent=""
@@ -441,9 +437,9 @@ export function ConfigManagerChat({ workspace = '', origin, resourceId, storyId,
         disabledPlaceholder={t('configManager.executing')}
         tokenUsageMessages={tokenUsageMessages}
         agentKey="config_manager"
-        workspace={workspace}
-        conversationBinding={workspace ? {
+        conversationBinding={projectId ? {
           mode: 'config_manager',
+          project_id: projectId,
           origin,
           resource_id: resourceId,
           story_id: storyId,

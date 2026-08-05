@@ -108,14 +108,14 @@ func TestRecoveryRegistryRejectsUnboundedActiveRuns(t *testing.T) {
 		task, _ := apptask.NewDeferred(nil)
 		tasks = append(tasks, task)
 		if err := registry.install(&recoveryRun{
-			workspace: "/book", sessionID: fmt.Sprintf("scope-%d", index), task: task,
+			projectID: "book", sessionID: fmt.Sprintf("scope-%d", index), task: task,
 		}); err != nil {
 			t.Fatalf("install recovery %d: %v", index, err)
 		}
 	}
 	overflow, _ := apptask.NewDeferred(nil)
 	tasks = append(tasks, overflow)
-	err := registry.install(&recoveryRun{workspace: "/book", sessionID: "overflow", task: overflow})
+	err := registry.install(&recoveryRun{projectID: "book", sessionID: "overflow", task: overflow})
 	if !errors.Is(err, apptask.ErrReplayCapacity) || len(registry.runs) != maxRememberedRecoveries {
 		t.Fatalf("overflow err=%v records=%d", err, len(registry.runs))
 	}

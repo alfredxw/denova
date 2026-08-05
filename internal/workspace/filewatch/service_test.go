@@ -20,13 +20,13 @@ func TestServiceObservesRecursiveAndAtomicWorkspaceChanges(t *testing.T) {
 
 	service := NewService()
 	t.Cleanup(service.Close)
-	if err := service.SetWorkspace(root); err != nil {
+	events, unsubscribe, err := service.Subscribe("project-one", root)
+	if err != nil {
 		t.Fatal(err)
 	}
-	events, unsubscribe := service.Subscribe()
 	t.Cleanup(unsubscribe)
 	initial := <-events
-	if !initial.Resync || initial.Workspace != root {
+	if !initial.Resync || initial.ProjectID != "project-one" || initial.Workspace != root {
 		t.Fatalf("initial event = %#v", initial)
 	}
 
@@ -77,13 +77,18 @@ func TestServiceObservesRecursiveAndAtomicWorkspaceChanges(t *testing.T) {
 func TestServiceReplacesLaggingSubscriberSuffixWithResync(t *testing.T) {
 	service := NewService()
 	t.Cleanup(service.Close)
-	events, unsubscribe := service.Subscribe()
+	events, unsubscribe, err := service.Subscribe("project-demo", t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
 	t.Cleanup(unsubscribe)
 	<-events
 
 	service.mu.Lock()
+	entry := service.projects["project-demo"]
 	for index := 0; index < 9; index++ {
-		service.broadcastLocked(Event{
+		broadcastProjectEvent(entry, Event{
+			ProjectID: "project-demo",
 			Workspace: "/books/demo",
 			Source:    eventSource,
 			Changes:   []Change{{Path: "chapters/ch01.md", Type: ChangeUpdated}},
@@ -100,44 +105,49 @@ func TestServiceReplacesLaggingSubscriberSuffixWithResync(t *testing.T) {
 	}
 }
 
-func TestServiceRejectsPreviousWorkspaceGenerationAfterSwitch(t *testing.T) {
+func TestServiceRejectsPreviousProjectGenerationAfterRelink(t *testing.T) {
 	service := NewService()
 	t.Cleanup(service.Close)
 	first := t.TempDir()
 	second := t.TempDir()
-	if err := service.SetWorkspace(first); err != nil {
+	firstEvents, unsubscribeFirst, err := service.Subscribe("project-one", first)
+	if err != nil {
 		t.Fatal(err)
 	}
-	events, unsubscribe := service.Subscribe()
-	t.Cleanup(unsubscribe)
-	<-events
+	<-firstEvents
 	service.mu.Lock()
-	previousGeneration := service.generation
+	previousGeneration := service.projects["project-one"].generation
 	service.mu.Unlock()
 
-	if err := service.SetWorkspace(second); err != nil {
+	service.CloseProject("project-one")
+	unsubscribeFirst()
+	secondEvents, unsubscribeSecond, err := service.Subscribe("project-one", second)
+	if err != nil {
 		t.Fatal(err)
 	}
-	switchEvent := <-events
-	if !switchEvent.Resync || switchEvent.Workspace != second {
-		t.Fatalf("workspace switch event = %#v", switchEvent)
+	t.Cleanup(unsubscribeSecond)
+	relinkEvent := <-secondEvents
+	if !relinkEvent.Resync || relinkEvent.ProjectID != "project-one" || relinkEvent.Workspace != second {
+		t.Fatalf("Project relink event = %#v", relinkEvent)
 	}
 	service.mu.Lock()
-	currentGeneration := service.generation
+	currentGeneration := service.projects["project-one"].generation
 	service.mu.Unlock()
 
-	service.publish(previousGeneration, Event{
+	service.publish("project-one", previousGeneration, Event{
+		ProjectID: "project-one",
 		Workspace: first,
 		Source:    eventSource,
 		Changes:   []Change{{Path: "old.md", Type: ChangeUpdated}},
 	})
-	service.publish(currentGeneration, Event{
+	service.publish("project-one", currentGeneration, Event{
+		ProjectID: "project-one",
 		Workspace: second,
 		Source:    eventSource,
 		Changes:   []Change{{Path: "new.md", Type: ChangeUpdated}},
 	})
 
-	event := <-events
+	event := <-secondEvents
 	if event.Workspace != second || len(event.Changes) != 1 || event.Changes[0].Path != "new.md" {
 		t.Fatalf("received stale workspace generation: %#v", event)
 	}

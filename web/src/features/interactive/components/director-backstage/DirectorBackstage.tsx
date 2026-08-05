@@ -18,7 +18,8 @@ import { useDirectorBackstage } from './useDirectorBackstage'
 
 // 导演台：主区全屏子模式，承载所有幕后内容（节拍表、事件编排、执行过程、
 // 规则审计、状态结构），让重内容摆脱窄侧栏。防剧透揭示一次、按故事持久化。
-export function DirectorBackstage({ storyId, branchId, snapshot, loading = false, onSnapshotRefresh }: {
+export function DirectorBackstage({ projectId, storyId, branchId, snapshot, loading = false, onSnapshotRefresh }: {
+  projectId: string
   storyId?: string
   branchId: string
   snapshot: Snapshot | null
@@ -136,7 +137,7 @@ export function DirectorBackstage({ storyId, branchId, snapshot, loading = false
               {hasRuleAudit ? (
                 <RuleAuditCard ruleResolution={ruleResolution} terminalOutcome={terminalOutcome} error={ruleError} rerolling={rerolling} onReroll={() => void rerollRules()} />
               ) : null}
-              <DirectorProcessCard status={directorStatus} metadata={directorMetadata} loading={busy} displayEvents={directorDisplayEvents} />
+              <DirectorProcessCard projectId={projectId} status={directorStatus} metadata={directorMetadata} loading={busy} displayEvents={directorDisplayEvents} />
               <StateSchemaCard snapshot={snapshot} />
             </div>
           </div>

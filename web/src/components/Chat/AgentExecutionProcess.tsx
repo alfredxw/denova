@@ -19,6 +19,7 @@ import { StreamingContentStage } from './StreamingContentStage'
 import { buildSubAgentProgressMessage } from './subagent-session'
 
 interface AgentExecutionProcessProps {
+  projectId?: string
   active: boolean
   activeSubAgentSessionKey?: string
   activeTraceDisplay: 'expanded' | 'collapsed'
@@ -35,6 +36,7 @@ interface AgentExecutionProcessProps {
 
 /** One disclosure for every non-terminal display segment in an Agent run. */
 export function AgentExecutionProcess({
+  projectId,
   active,
   activeSubAgentSessionKey,
   activeTraceDisplay,
@@ -86,6 +88,7 @@ export function AgentExecutionProcess({
         if (pendingApprovalView) {
           processItems.push(
             <AgentMessageItem
+              projectId={projectId}
               key={`subagent-approval-${subAgentGroup.key}`}
               view={pendingApprovalView}
               highlightDialogue={highlightDialogue}
@@ -102,6 +105,7 @@ export function AgentExecutionProcess({
         if (progress) {
           processItems.push(
             <MessageItem
+              projectId={projectId}
               key={`subagent-${subAgentGroup.key}`}
               message={progress}
               highlightDialogue={highlightDialogue}
@@ -130,6 +134,7 @@ export function AgentExecutionProcess({
           )
           : (
             <AgentMessageItem
+              projectId={projectId}
               key={agentViewStableKey(view) || index}
               view={view}
               highlightDialogue={highlightDialogue}

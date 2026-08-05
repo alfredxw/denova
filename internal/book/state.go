@@ -43,12 +43,14 @@ func (s *State) NovaDir() string {
 	return workspacelayout.Dir(s.workspace)
 }
 
-// SessionDir 返回内部 sessions/ 目录路径（会话存储）。
+// SessionDir returns the released workspace-private session path for migration
+// and recovery only. New Project runtimes store sessions under Project state.
 func (s *State) SessionDir() string {
 	return workspacelayout.Path(s.workspace, "sessions")
 }
 
-// BackupDir 返回内部 backups/ 目录路径。
+// BackupDir returns the released workspace-private backup path. It remains a
+// read/migration locator and is not created for new Project runtimes.
 func (s *State) BackupDir() string {
 	return workspacelayout.Path(s.workspace, "backups")
 }
@@ -83,8 +85,6 @@ const CharacterStatesFileName = "character-states.md"
 func (s *State) InitWorkspace() error {
 	dirs := []string{
 		s.NovaDir(),
-		s.BackupDir(),
-		s.SessionDir(),
 		s.LoreDir(),
 		s.SettingDir(),
 		s.ChapterGroupDir(),

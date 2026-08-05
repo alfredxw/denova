@@ -21,6 +21,7 @@ type Message struct {
 	TaskID         string     `json:"task_id,omitempty"`
 	RunID          string     `json:"run_id,omitempty"`
 	InboxID        string     `json:"inbox_id,omitempty"`
+	ProjectID      string     `json:"project_id,omitempty"`
 	Workspace      string     `json:"workspace,omitempty"`
 	Status         string     `json:"status,omitempty"`
 	ActionRequired bool       `json:"action_required,omitempty"`

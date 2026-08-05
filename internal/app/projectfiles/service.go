@@ -634,7 +634,13 @@ func normalizeRelativePath(path string, allowRoot bool) (string, error) {
 	if filepath.IsAbs(path) {
 		return "", fmt.Errorf("absolute project file paths are not allowed")
 	}
-	rel := filepath.Clean(filepath.FromSlash(path))
+	raw := filepath.FromSlash(path)
+	for _, component := range strings.Split(raw, string(filepath.Separator)) {
+		if component == ".." {
+			return "", fmt.Errorf("project file path cannot contain parent directory segments")
+		}
+	}
+	rel := filepath.Clean(raw)
 	if rel == "." && allowRoot {
 		return "", nil
 	}

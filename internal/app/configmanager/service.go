@@ -73,7 +73,10 @@ func (service *Service) StartTaskWithError(ctx context.Context, request Request)
 	if service == nil || service.host == nil {
 		return nil, appagentruntime.ErrNoWorkspace
 	}
-	runtime := service.host.Snapshot()
+	runtime, err := service.runtime(ctx, request)
+	if err != nil {
+		return nil, err
+	}
 	if strings.TrimSpace(runtime.Workspace) == "" {
 		return nil, appagentruntime.ErrNoWorkspace
 	}
@@ -88,7 +91,7 @@ func (service *Service) StartTaskWithError(ctx context.Context, request Request)
 	})
 	fingerprint := agentharness.RequestSemanticFingerprint(chatRequest)
 	identity := apptask.StartIdentity{
-		CommandID: request.CommandID, Scope: runtime.Workspace,
+		CommandID: request.CommandID, Scope: runtime.ProjectID,
 		SessionID: sessionID, Fingerprint: fingerprint,
 	}
 	if replay, ok, err := service.starts.Replay(identity); err != nil {
@@ -96,13 +99,16 @@ func (service *Service) StartTaskWithError(ctx context.Context, request Request)
 	} else if ok {
 		return replay, nil
 	}
-	operation, err := service.host.AcquireWorkspaceOperation(ctx, runtime.Workspace)
+	operation, err := service.host.AcquireProjectOperation(ctx, runtime.ProjectID)
 	if err != nil {
 		return nil, err
 	}
 	defer operation.Release()
 	ctx = operation.Context()
-	runtime = service.host.Snapshot()
+	runtime, err = service.runtime(operation.Context(), request)
+	if err != nil {
+		return nil, err
+	}
 	if replay, matched, err := service.replayDurableStart(ctx, runtime, chatRequest, sessionID, fingerprint); err != nil {
 		return nil, err
 	} else if matched {
@@ -166,7 +172,8 @@ func (service *Service) StartTaskWithError(ctx context.Context, request Request)
 		acceptCtx, runner, conversation, runtime.BookService, chatRequest,
 		agentrun.Options{
 			AgentKind: agentrun.AgentKindConfigManager, StateRoot: runtimeConfig.ProjectStateDir,
-			TaskID: task.ID(), SessionID: sess.ID, Workspace: runtime.Workspace,
+			ProjectID: runtime.ProjectID,
+			TaskID:    task.ID(), SessionID: sess.ID, Workspace: runtime.Workspace,
 			Mode: RuntimeMode, IdleTimeout: appagentruntime.IdleTimeout(runtimeConfig),
 			ToolResultMaxBytes: appagentruntime.ToolResultMaxBytes(runtimeConfig), SystemPromptLog: systemPrompt,
 			OnMutationsVerified: func(callbackCtx context.Context, mutations []agenttool.Mutation, verification agenttool.Verification) {
@@ -203,8 +210,19 @@ func (service *Service) StartTaskWithError(ctx context.Context, request Request)
 }
 
 func (runtime Runtime) available() bool {
-	return runtime.Config.DataDir() != "" && runtime.State != nil && runtime.SessionStore != nil &&
+	return runtime.Config.DataDir() != "" && runtime.SessionStore != nil &&
 		runtime.ChatService != nil && strings.TrimSpace(runtime.Workspace) != ""
+}
+
+func (service *Service) runtime(ctx context.Context, request Request) (Runtime, error) {
+	if service == nil || service.host == nil {
+		return Runtime{}, appagentruntime.ErrNoWorkspace
+	}
+	projectID := strings.TrimSpace(request.ProjectID)
+	if projectID == "" {
+		return Runtime{}, fmt.Errorf("Config Manager Project ID is required")
+	}
+	return service.host.ProjectRuntime(ctx, projectID)
 }
 
 func (service *Service) Messages(request Request) ([]session.HistoryEntry, error) {
@@ -239,7 +257,10 @@ func (service *Service) conversationSession(request Request) (*session.Session, 
 	if err != nil {
 		return nil, err
 	}
-	runtime := service.host.Snapshot()
+	runtime, err := service.runtime(context.Background(), request)
+	if err != nil {
+		return nil, err
+	}
 	if runtime.SessionStore != nil && runtime.SessionStore.Exists(sessionID) {
 		return runtime.SessionStore.Get(sessionID)
 	}
@@ -261,7 +282,10 @@ func (service *Service) conversationRuntime(request Request) (*session.Store, co
 	if err != nil {
 		return nil, config.Config{}, "", err
 	}
-	runtime := service.host.Snapshot()
+	runtime, err := service.runtime(context.Background(), request)
+	if err != nil {
+		return nil, config.Config{}, "", err
+	}
 	if runtime.SessionStore == nil || strings.TrimSpace(runtime.Workspace) == "" {
 		return nil, config.Config{}, "", appagentruntime.ErrNoWorkspace
 	}

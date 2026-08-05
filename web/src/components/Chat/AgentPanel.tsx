@@ -40,7 +40,7 @@ import { CONTEXT_ANALYSIS_SIMULATED_MESSAGE, ContextAnalysisDialog } from './Con
 import type { ReferencePickerItem } from './FileReferencePicker'
 import { WritingComposerSettingsMenu } from './WritingComposerSettingsMenu'
 import { formatPlanDiscussionMessage } from '@/lib/plan-mode'
-import { useWorkspaceChangeGroups } from '@/features/changes/use-change-review'
+import { useProjectChangeGroups } from '@/features/changes/use-change-review'
 import { AgentChangeSummaryCard } from '@/features/changes/agent/AgentChangeSummaryCard'
 import {
   MAX_REVIEW_FEEDBACK_COMMENT_COUNT,
@@ -70,13 +70,13 @@ export const WRITING_COMPOSER_SETTING_DEFAULTS = {
 export type WritingComposerSettingsController = PersistedUserSettingsController<typeof WRITING_COMPOSER_SETTING_DEFAULTS>
 
 interface AgentPanelProps {
+  /** Stable identity for every project-owned API and cache key. */
+  projectId: string
   workspace: string
   /** Selects project-neutral controls and the General Agent configuration surface. */
   agentKind?: 'writing' | 'general'
   /** Hidden AgentChat tabs remain mounted for parallel streams but ignore global UI intents. */
   active?: boolean
-  /** Enables capabilities backed by the foreground workspace runtime, such as Skills and review. */
-  workspaceContextActive?: boolean
   /**
    * Frame around the panel. `panel` is the docked IDE sidebar; `workbench` embeds the same
    * conversation as a full-width surface (AgentChat tab), where the host owns closing.
@@ -166,10 +166,10 @@ interface AgentPanelProps {
  * `chrome` selects which frame it renders with.
  */
 function AgentPanelComponent({
+  projectId,
   workspace,
   agentKind = 'writing',
   active = true,
-  workspaceContextActive = true,
   chrome = 'panel',
   composerSettings: persistedSettings,
   currentChapter,
@@ -260,19 +260,15 @@ function AgentPanelComponent({
   const ideTellerId = persistedSettings.values.ide_story_teller_id
   const imagePresetId = persistedSettings.values.ide_image_preset_id
   const configuredWritingSkill = persistedSettings.values.writing_skill_default
-  const skillCatalogEnabled = workspaceContextActive && Boolean(workspace.trim())
+  const skillCatalogEnabled = Boolean(projectId.trim())
   const skillCommands = useSkillCommands({
     agentKey: generalAgent ? 'general' : 'ide',
-    workspace,
+    projectId,
     enabled: skillCatalogEnabled,
   })
-  const writingSkillOptions = useWritingSkillOptions(workspace, skillCatalogEnabled)
+  const writingSkillOptions = useWritingSkillOptions(projectId, skillCatalogEnabled)
   const writingSkill = useMemo(() => resolveWritingSkillSelection(configuredWritingSkill, writingSkillOptions), [configuredWritingSkill, writingSkillOptions])
-  // Change review is still a Writing Project surface: its undo/version hooks
-  // are bound to the explicitly active Book workspace. General Projects keep
-  // their mutation journal centrally, but must not query or mutate another
-  // foreground Book through that legacy endpoint.
-  const changeGroupsQuery = useWorkspaceChangeGroups(workspaceContextActive && !generalAgent && activeSessionId && !sessionDraft ? workspace : '', { sessionID: activeSessionId })
+  const changeGroupsQuery = useProjectChangeGroups(projectId && activeSessionId && !sessionDraft ? projectId : '', { sessionID: activeSessionId })
   const tokenUsageMessages = useMemo(() => selectAgentTokenUsageRecords(messages), [messages])
   const activeRunID = useMemo(() => {
     if (!isExecutionActive) return ''
@@ -409,7 +405,7 @@ function AgentPanelComponent({
           runId: summary.run_id || '',
           content: (
             <AgentChangeSummaryCard
-              workspace={workspace}
+              projectId={projectId}
               summary={summary}
               disabled={isStreaming}
               eagerPreload={!isStreaming && index === 0}
@@ -418,7 +414,7 @@ function AgentPanelComponent({
             />
           ),
         })),
-    [activeRunID, changeGroupsQuery.data, isStreaming, onOpenChangeReview, onWorkspaceChanged, workspace],
+    [activeRunID, changeGroupsQuery.data, isStreaming, onOpenChangeReview, onWorkspaceChanged, projectId],
   )
 
   const sendWithWritingSkill = async (message: string) => {
@@ -505,6 +501,7 @@ function AgentPanelComponent({
     [activeSessionId, onAnswerAsk, onCancelAsk, onRefreshHistory],
   )
   const messageListProps = {
+    projectId,
     messages,
     isStreaming,
     visible: active,
@@ -572,7 +569,7 @@ function AgentPanelComponent({
     agentKey: generalAgent ? ('general' as const) : ('ide' as const),
     workspace,
     conversationBinding: conversationBinding ?? (activeSessionId
-      ? { mode: 'writing' as const, session_id: activeSessionId }
+      ? { mode: 'writing' as const, project_id: projectId, session_id: activeSessionId }
       : undefined),
     writingSkillControl: generalAgent ? undefined : (
       <WritingComposerSettingsMenu
@@ -706,11 +703,11 @@ function AgentPanelComponent({
                   </Panel>
                   <SubAgentDetailsResizeHandle label={t('chat.subagent.resizeSession')} />
                   <Panel id="subagent-details" defaultSize="48%" minSize="300px" maxSize="68%" className="min-w-[300px]">
-                    <AgentSubAgentSessionPanel messages={messages} sessionKey={activeSubAgentSessionKey} onClose={() => setActiveSubAgentSessionKey('')} onResolveAsk={resolveAsk} />
+                    <AgentSubAgentSessionPanel projectId={projectId} messages={messages} sessionKey={activeSubAgentSessionKey} onClose={() => setActiveSubAgentSessionKey('')} onResolveAsk={resolveAsk} />
                   </Panel>
                 </Group>
                 <div className="absolute inset-0 z-30 lg:hidden">
-                  <AgentSubAgentSessionPanel messages={messages} sessionKey={activeSubAgentSessionKey} onClose={() => setActiveSubAgentSessionKey('')} onResolveAsk={resolveAsk} />
+                  <AgentSubAgentSessionPanel projectId={projectId} messages={messages} sessionKey={activeSubAgentSessionKey} onClose={() => setActiveSubAgentSessionKey('')} onResolveAsk={resolveAsk} />
                 </div>
               </>
             )}
@@ -736,7 +733,7 @@ function AgentPanelComponent({
           onEnterChat={() => setView('chat')}
         />
       ) : (
-        <AgentTracePanel disabled={isStreaming} selectedRunId={selectedTraceRunId} />
+        <AgentTracePanel projectId={projectId} disabled={isStreaming} selectedRunId={selectedTraceRunId} />
       )}
       {chatPanePortal}
     </aside>

@@ -19,7 +19,7 @@ import {
   type ProjectFileOperation,
   type ProjectFileOperationResult,
 } from '@/lib/api-client/project-files'
-import { useWorkspaceFileEvents } from './useWorkspaceFileEvents'
+import { useProjectFileEvents } from './useProjectFileEvents'
 
 export interface FileNode {
   name: string
@@ -429,7 +429,7 @@ export function useWorkspace(options: UseWorkspaceOptions = {}) {
   const refreshAfterWorkspaceFileEvent = useCallback(async (event: WorkspaceChangeEvent) => {
     const targetWorkspace = workspaceRef.current
     const targetProjectId = projectIdRef.current
-    if (!targetWorkspace || !targetProjectId || event.workspace !== targetWorkspace) return
+    if (!targetWorkspace || !targetProjectId || event.project_id !== targetProjectId) return
     const changes = event.changes ?? []
     const backgroundOptions = { showLoading: false, clearOnError: false }
     const refreshes: Promise<void>[] = []
@@ -457,7 +457,7 @@ export function useWorkspace(options: UseWorkspaceOptions = {}) {
     await Promise.all(refreshes)
   }, [fetchBookSnapshot, refreshSelectedFile])
 
-  useWorkspaceFileEvents(workspace, refreshAfterWorkspaceFileEvent)
+  useProjectFileEvents(projectId, refreshAfterWorkspaceFileEvent)
 
   /** Saves an editor draft against the revision captured with that draft. Typed API errors propagate to the editor adapter. */
   const saveFileDraft = useCallback(async (path: string, content: string, draftBaseRevision: string) => {

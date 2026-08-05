@@ -145,7 +145,7 @@ function booksForSwitcher(books: BookRecord[], workspace: string, currentBookNam
   if (!workspace) return books
   const currentIndex = books.findIndex((book) => book.path === workspace)
   if (currentIndex === -1) {
-    return [{ name: currentBookName, path: workspace, author: '', last_opened_at: '' }, ...books]
+    return [{ project_id: '', name: currentBookName, path: workspace, author: '', last_opened_at: '' }, ...books]
   }
   return books.map((book, index) => (
     index === currentIndex ? { ...book, name: currentBookName || book.name } : book

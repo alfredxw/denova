@@ -21,32 +21,25 @@ vi.mock('./AgentChatView', () => ({
   }),
 }))
 
-vi.mock('@/features/lore/LoreWorkspaceTab', () => ({
-  LoreWorkspaceTab: ({ projectId, workspace, documentReview, refreshSignal }: {
-    projectId: string
-    workspace: string
-    documentReview: { comments: unknown[] }
-    refreshSignal: number
-  }) => (
-    <div data-testid="shared-lore-workspace">
-      {projectId}|{workspace}|{documentReview.comments.length}|{refreshSignal}
-    </div>
-  ),
-}))
-
 vi.mock('@/features/writing/ProjectWritingSurface', () => ({
-  ProjectWritingSurface: ({ projectId, workspace }: { projectId: string; workspace: string }) => (
-    <div data-testid="shared-project-writing">{projectId}|{workspace}</div>
+  ProjectWritingSurface: ({ projectId }: { projectId: string }) => (
+    <div data-testid="shared-project-writing">{projectId}</div>
   ),
 }))
 
 vi.mock('@/features/interactive/components/SettingPanel', () => ({
-  SettingPanel: ({ mode }: { mode: string }) => <div data-testid={`setting-panel:${mode}`}>{mode}</div>,
+  SettingPanel: ({ projectId, mode, documentReview, refreshSignal }: {
+    projectId: string
+    mode: string
+    documentReview?: { comments: unknown[] }
+    refreshSignal?: number
+  }) => <div data-testid={`setting-panel:${mode}`}>{projectId}|{documentReview?.comments.length || 0}|{refreshSignal}</div>,
 }))
 
 vi.mock('@/features/skills/SkillsView', () => ({ SkillsView: () => null }))
 vi.mock('@/features/agents/AgentsView', () => ({ AgentsView: () => null }))
 vi.mock('@/features/automations/AutomationsView', () => ({ AutomationsView: () => null }))
+vi.mock('@/components/Versions/VersionPanel', () => ({ VersionPanel: () => null }))
 vi.mock('@/features/changes/review/ChangeReviewWorkspace', () => ({ ChangeReviewWorkspace: () => null }))
 
 function routeProps(): React.ComponentProps<typeof AgentChatRoute> {
@@ -67,17 +60,16 @@ describe('AgentChatRoute resource pages', () => {
     view.pageId = 'lore'
   })
 
-  it('opens a background Book lore tab through its stable Project ID', async () => {
+  it('opens the shared full library through the background Book Project ID', async () => {
     render(<AgentChatRoute {...routeProps()} />)
 
-    expect(await screen.findByTestId('shared-lore-workspace')).toHaveTextContent('book-b|/books/b|1|7')
-    expect(screen.queryByTestId('setting-panel:lore')).not.toBeInTheDocument()
+    expect(await screen.findByTestId('setting-panel:lore')).toHaveTextContent('book-b|1|7')
   })
 
   it('uses the shared Project Writing surface without activating the background Book', async () => {
     view.pageId = 'reader'
     render(<AgentChatRoute {...routeProps()} />)
 
-    expect(await screen.findByTestId('shared-project-writing')).toHaveTextContent('book-b|/books/b')
+    expect(await screen.findByTestId('shared-project-writing')).toHaveTextContent('book-b')
   })
 })

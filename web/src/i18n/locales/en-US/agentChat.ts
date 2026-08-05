@@ -101,6 +101,7 @@ const agentChat = {
   'agentChat.page.skills': 'Skills',
   'agentChat.page.agents': 'Agents',
   'agentChat.page.automations': 'Automations',
+  'agentChat.page.versions': 'Versions',
   'agentChat.reader.outline': 'Contents',
   'agentChat.reader.noChapters': 'No chapters yet.',
   'agentChat.reader.noSelection': 'Pick a chapter to read.',

@@ -3,7 +3,6 @@ package handlers
 import (
 	"context"
 	"errors"
-	"fmt"
 	"io"
 	"log/slog"
 	"os"
@@ -12,6 +11,7 @@ import (
 	"github.com/cloudwego/hertz/pkg/app"
 	"github.com/cloudwego/hertz/pkg/protocol/consts"
 
+	appsettings "denova/internal/app/settings"
 	"denova/internal/book/character"
 	"denova/internal/book/lore"
 )
@@ -19,8 +19,8 @@ import (
 // MaxCharacterCardUploadBytes limits tavern character card uploads.
 const MaxCharacterCardUploadBytes int64 = 32 * 1024 * 1024
 
-// handleWorkspacePreviewCharacterCard POST /api/workspace/import-character-card/preview — 预览酒馆角色卡 PNG/JSON，不写入文件。
-func (h *Handlers) HandleWorkspacePreviewCharacterCard(ctx context.Context, c *app.RequestContext) {
+// HandleCharacterCardPreview parses an upload without selecting or mutating a Project.
+func (h *Handlers) HandleCharacterCardPreview(ctx context.Context, c *app.RequestContext) {
 	filename, data, ok := readCharacterCardUpload(c)
 	if !ok {
 		return
@@ -63,46 +63,79 @@ func readCharacterCardUpload(c *app.RequestContext) (string, []byte, bool) {
 	return fileHeader.Filename, data, true
 }
 
-// handleWorkspaceImportCharacterCard POST /api/workspace/import-character-card — 导入酒馆角色卡 PNG/JSON 到互动资料库。
-func (h *Handlers) HandleWorkspaceImportCharacterCard(ctx context.Context, c *app.RequestContext) {
-	filename, data, ok := readCharacterCardUpload(c)
-	if !ok {
-		return
-	}
+type characterCardImportFields struct {
+	bookTitle          string
+	userCharacterName  string
+	classificationMode string
+}
 
-	targetMode := strings.TrimSpace(string(c.FormValue("target_mode")))
-	if targetMode == "" {
-		targetMode = "current"
-	}
+func readCharacterCardImportFields(c *app.RequestContext) characterCardImportFields {
 	classificationMode := strings.TrimSpace(string(c.FormValue("lore_classification")))
 	if classificationMode == "" {
 		classificationMode = lore.ClassificationModeSemantic
 	}
-	importOptions := character.ImportOptions{
-		UserCharacterName:  strings.TrimSpace(string(c.FormValue("user_character_name"))),
-		ClassificationMode: classificationMode,
+	return characterCardImportFields{
+		bookTitle:          strings.TrimSpace(string(c.FormValue("book_title"))),
+		userCharacterName:  strings.TrimSpace(string(c.FormValue("user_character_name"))),
+		classificationMode: classificationMode,
+	}
+}
+
+func (h *Handlers) characterCardImportOptions(ctx context.Context, projectID string, fields characterCardImportFields) character.ImportOptions {
+	return character.ImportOptions{
+		UserCharacterName:  fields.userCharacterName,
+		ClassificationMode: fields.classificationMode,
 		ClassifyLore: func(inputs []lore.ClassificationInput) ([]lore.ClassificationSuggestion, error) {
-			return h.app.ClassifyLoreItems(ctx, inputs)
+			return h.app.Lore().ClassifyItems(ctx, projectID, inputs)
 		},
 	}
-	slog.InfoContext(ctx, fmt.Sprintf("[api] 导入酒馆角色卡 filename=%q size=%d workspace=%q target_mode=%q lore_classification=%q", filename, len(data), h.app.Workspace(), targetMode, classificationMode))
+}
 
-	var result character.ImportResult
-	var err error
-	switch targetMode {
-	case "current":
-		if !h.requireWorkspace(c) {
-			return
-		}
-		result, err = character.NewService(h.app.BookService().Workspace()).ImportTavernCard(filename, data, importOptions)
-	case "new_book":
-		result, err = h.importCharacterCardToNewBook(ctx, filename, data, strings.TrimSpace(string(c.FormValue("book_title"))), importOptions)
-	default:
-		writeErrorKey(c, consts.StatusBadRequest, "api.characterCard.invalidTarget")
+// HandleProjectCharacterCardImport imports directly into the Book Project
+// resolved by middleware; foreground navigation is never consulted.
+func (h *Handlers) HandleProjectCharacterCardImport(ctx context.Context, c *app.RequestContext) {
+	scope, ok := requireProjectScope(c)
+	if !ok {
 		return
 	}
+	filename, data, ok := readCharacterCardUpload(c)
+	if !ok {
+		return
+	}
+	fields := readCharacterCardImportFields(c)
+	slog.InfoContext(ctx, "[internal/api/handlers/handler_character_card.go] importing character card into Project",
+		"project_id", scope.ProjectID,
+		"filename", filename,
+		"size", len(data),
+		"classification_mode", fields.classificationMode,
+	)
+	result, err := character.NewService(scope.ContentRoot).ImportTavernCard(
+		filename, data, h.characterCardImportOptions(ctx, scope.ProjectID, fields),
+	)
+	result.ProjectID = scope.ProjectID
+	result.Workspace = scope.ContentRoot
+	h.writeCharacterCardImportResult(ctx, c, filename, result, err)
+}
+
+// HandleNewBookCharacterCardImport creates a Book and returns its stable
+// Project identity as part of the import result.
+func (h *Handlers) HandleNewBookCharacterCardImport(ctx context.Context, c *app.RequestContext) {
+	filename, data, ok := readCharacterCardUpload(c)
+	if !ok {
+		return
+	}
+	fields := readCharacterCardImportFields(c)
+	result, err := h.importCharacterCardToNewBook(ctx, filename, data, fields)
+	h.writeCharacterCardImportResult(ctx, c, filename, result, err)
+}
+
+func (h *Handlers) writeCharacterCardImportResult(ctx context.Context, c *app.RequestContext, filename string, result character.ImportResult, err error) {
 	if err != nil {
-		slog.ErrorContext(ctx, fmt.Sprintf("[api] 导入酒馆角色卡失败 filename=%q target_mode=%q error=%v", filename, targetMode, err))
+		slog.ErrorContext(ctx, "[internal/api/handlers/handler_character_card.go] character card import failed",
+			"filename", filename,
+			"project_id", result.ProjectID,
+			"error", err,
+		)
 		status := consts.StatusBadRequest
 		if strings.Contains(err.Error(), "已存在") {
 			status = consts.StatusConflict
@@ -110,45 +143,62 @@ func (h *Handlers) HandleWorkspaceImportCharacterCard(ctx context.Context, c *ap
 		writeErrorKey(c, status, "api.characterCard.importFailed", "detail", err.Error())
 		return
 	}
-	result.ProjectID = h.app.ProjectID()
 	result.Message = messageKey(c, "api.characterCard.imported", "name", result.Name)
-	slog.InfoContext(ctx, fmt.Sprintf("[api] 导入酒馆角色卡完成 name=%q target=%q entries=%d items=%d", result.Name, result.TargetPath, result.EntryCount, result.ItemCount))
+	slog.InfoContext(ctx, "[internal/api/handlers/handler_character_card.go] character card import completed",
+		"project_id", result.ProjectID,
+		"name", result.Name,
+		"target", result.TargetPath,
+		"entries", result.EntryCount,
+		"items", result.ItemCount,
+	)
 	writeJSON(c, consts.StatusOK, result)
 }
 
-func (h *Handlers) importCharacterCardToNewBook(ctx context.Context, filename string, data []byte, title string, options character.ImportOptions) (character.ImportResult, error) {
+func (h *Handlers) importCharacterCardToNewBook(ctx context.Context, filename string, data []byte, fields characterCardImportFields) (character.ImportResult, error) {
 	preview, err := character.PreviewTavernCard(filename, data)
 	if err != nil {
 		return character.ImportResult{}, err
 	}
-	if title == "" {
-		title = preview.Name
+	if fields.bookTitle == "" {
+		fields.bookTitle = preview.Name
 	}
-	layered, err := h.app.SettingsService().Snapshot()
+	layered, err := h.app.SettingsService().Snapshot(appsettings.Global())
 	if err != nil {
 		return character.ImportResult{}, err
 	}
 	if layered.Paths.DenovaDir == "" {
-		return character.ImportResult{}, errors.New("Denova 数据目录未配置")
+		return character.ImportResult{}, errors.New("Denova data directory is not configured")
 	}
-	workspace, meta, err := h.app.CreateBook(ctx, layered.Paths.DenovaDir, title, "", "")
+	created, err := h.app.CreateBook(ctx, layered.Paths.DenovaDir, fields.bookTitle, "", "")
 	if err != nil {
 		return character.ImportResult{}, err
 	}
+	failedResult := character.ImportResult{ProjectID: created.ProjectID, Workspace: created.Workspace}
 	cleanup := func() {
-		if _, removeErr := h.app.RemoveBook(workspace); removeErr != nil {
-			slog.ErrorContext(ctx, fmt.Sprintf("[api] 清理导入失败的新书记录失败 workspace=%q err=%v", workspace, removeErr))
+		if _, removeErr := h.app.RemoveBook(created.Workspace); removeErr != nil {
+			slog.ErrorContext(ctx, "[internal/api/handlers/handler_character_card.go] failed to archive a new Book after character card import failed",
+				"project_id", created.ProjectID,
+				"workspace", created.Workspace,
+				"error", removeErr,
+			)
 		}
-		if removeErr := os.RemoveAll(workspace); removeErr != nil {
-			slog.ErrorContext(ctx, fmt.Sprintf("[api] 清理导入失败的新书目录失败 workspace=%q err=%v", workspace, removeErr))
+		if removeErr := os.RemoveAll(created.Workspace); removeErr != nil {
+			slog.ErrorContext(ctx, "[internal/api/handlers/handler_character_card.go] failed to remove a new Book directory after character card import failed",
+				"project_id", created.ProjectID,
+				"workspace", created.Workspace,
+				"error", removeErr,
+			)
 		}
 	}
-	result, err := character.NewService(workspace).ImportTavernCard(filename, data, options)
+	result, err := character.NewService(created.Workspace).ImportTavernCard(
+		filename, data, h.characterCardImportOptions(ctx, created.ProjectID, fields),
+	)
 	if err != nil {
 		cleanup()
-		return character.ImportResult{}, err
+		return failedResult, err
 	}
-	result.Workspace = workspace
-	result.BookMeta = &meta
+	result.ProjectID = created.ProjectID
+	result.Workspace = created.Workspace
+	result.BookMeta = &created.Meta
 	return result, nil
 }

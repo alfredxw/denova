@@ -38,6 +38,7 @@ func (s *Service) createWriteConfirmationInboxIfNeeded(snap *automationWorkspace
 		TriggerID:    automation.InboxPurposeWriteConfirmation,
 		Purpose:      automation.InboxPurposeWriteConfirmation,
 		Scope:        task.Scope,
+		ProjectID:    run.ProjectID,
 		Workspace:    run.Workspace,
 		Status:       automation.InboxStatusPending,
 		ActionPolicy: automation.ActionPolicyConfirm,

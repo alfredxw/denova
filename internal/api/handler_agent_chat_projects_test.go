@@ -47,8 +47,8 @@ func TestAgentChatProjectManagementKeepsStableIdentityAndState(t *testing.T) {
 		t.Fatalf("book project should be inferred from its folder: %#v", book)
 	}
 
-	createdSession := performJSONRequest(t, server, http.MethodPost, "/api/agent-chat/sessions", map[string]any{
-		"project_id": general.ID,
+	createdSession := performJSONRequest(t, server, http.MethodPost, "/api/projects/"+general.ID+"/agent-chat/sessions", map[string]any{
+		"project_id": book.ID,
 		"title":      "Stable conversation",
 	})
 	if createdSession.Code != http.StatusOK {

@@ -68,15 +68,6 @@ func messageKey(c *app.RequestContext, key string, args ...any) string {
 	return requestLocalizer(c).T(key, args...)
 }
 
-func requireProjectID(c *app.RequestContext) (string, bool) {
-	projectID := strings.TrimSpace(c.Param("project_id"))
-	if projectID == "" {
-		writeErrorKey(c, consts.StatusBadRequest, "api.projectFiles.projectIDRequired")
-		return "", false
-	}
-	return projectID, true
-}
-
 // requireWorkspace 校验当前 App 是否已绑定 workspace；
 // 未绑定时直接写入 409 错误并返回 false，由调用方 return 终止处理。
 func (h *Handlers) requireWorkspace(c *app.RequestContext) bool {

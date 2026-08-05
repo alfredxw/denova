@@ -67,6 +67,10 @@ type App struct {
 	rootScope                       *concurrency.Scope
 	workspaceScopes                 map[string]*concurrency.Scope
 	workspaceScopeSequence          uint64
+	projectScopes                   map[string]*concurrency.Scope
+	projectScopeSequence            uint64
+	projectTransitions              map[string]struct{}
+	projectTasks                    map[*apptask.Task]*projectTaskRegistration
 	workspaceGeneration             uint64
 	closed                          bool
 	closeOnce                       sync.Once
@@ -179,7 +183,6 @@ func New(ctx context.Context, cfg *config.Config) (*App, error) {
 	}
 	app.applyRuntime(runtime)
 	app.mu.Unlock()
-	app.syncWorkspaceFileWatcher(runtime.workspace)
 	app.Automation().StartScheduler(ctx)
 	return app, nil
 }
@@ -192,7 +195,7 @@ var ErrNoWorkspace = appagentruntime.ErrNoWorkspace
 var ErrAgentDataDirRequired = errors.New("agent runtime data directory is required")
 
 // ErrNoWorkspaceOpen means a request requires an open workspace.
-var ErrNoWorkspaceOpen = settingsapp.ErrWorkspaceRequired
+var ErrNoWorkspaceOpen = settingsapp.ErrProjectRequired
 
 // ErrAgentOperationActive rejects implicit replacement. Callers must target
 // the running operation with Follow Up, Steer, or Abort before starting a new
@@ -472,7 +475,7 @@ func (a *App) abortOwnedAgentTasks(ctx context.Context) {
 		return
 	}
 	a.mu.RLock()
-	unique := make(map[*apptask.Task]struct{}, 3+len(a.workspaceTasks))
+	unique := make(map[*apptask.Task]struct{}, 3+len(a.workspaceTasks)+len(a.projectTasks))
 	add := func(task *apptask.Task) {
 		if task != nil {
 			unique[task] = struct{}{}
@@ -485,6 +488,9 @@ func (a *App) abortOwnedAgentTasks(ctx context.Context) {
 		add(a.activeInteractiveRun.task)
 	}
 	for task := range a.workspaceTasks {
+		add(task)
+	}
+	for task := range a.projectTasks {
 		add(task)
 	}
 	a.mu.RUnlock()

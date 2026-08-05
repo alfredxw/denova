@@ -1,15 +1,20 @@
 import { act, renderHook, waitFor } from '@testing-library/react'
 import { StrictMode, type ReactNode } from 'react'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
-import { fetchSettings, refreshSettings } from '@/features/settings/api'
+import { fetchProjectSettings } from '@/features/settings/api'
 import type { LayeredSettings, ResolvedAgentToolCapability } from '@/features/settings/types'
 import { getSkills } from '@/lib/api'
 import { queryClient } from '@/lib/query-client'
 import { useSkillCommands } from './useSkillCommands'
 import { useWritingSkillOptions } from './useWritingSkillOptions'
 
-vi.mock('@/features/settings/api', () => ({ fetchSettings: vi.fn(), refreshSettings: vi.fn() }))
-vi.mock('@/lib/api', () => ({ getSkills: vi.fn() }))
+vi.mock('@/features/settings/api', () => ({ fetchProjectSettings: vi.fn() }))
+vi.mock('@/lib/api', () => ({
+  getSkills: vi.fn(),
+  projectSkillTarget: (projectId: string) => ({ kind: 'project', projectId }),
+}))
+
+const PROJECT_ID = 'project-book'
 
 describe('useAgentSkillCatalog', () => {
   beforeEach(() => {
@@ -21,16 +26,15 @@ describe('useAgentSkillCatalog', () => {
         editable: false, active: true, capabilities: ['writing-workflow'],
       }],
     })
-    vi.mocked(fetchSettings).mockReset().mockResolvedValue(settingsWithSkills())
-    vi.mocked(refreshSettings).mockReset().mockResolvedValue(settingsWithSkills())
+    vi.mocked(fetchProjectSettings).mockReset().mockResolvedValue(settingsWithSkills())
   })
 
   it('shares one request and one invalidation lane across mounted conversation consumers', async () => {
     const { result } = renderHook(() => ({
-      commands: useSkillCommands({ agentKey: 'ide', workspace: '/book' }),
-      writing: useWritingSkillOptions('/book'),
-      secondConversationCommands: useSkillCommands({ agentKey: 'ide', workspace: '/book' }),
-      secondConversationWriting: useWritingSkillOptions('/book'),
+      commands: useSkillCommands({ agentKey: 'ide', projectId: PROJECT_ID }),
+      writing: useWritingSkillOptions(PROJECT_ID),
+      secondConversationCommands: useSkillCommands({ agentKey: 'ide', projectId: PROJECT_ID }),
+      secondConversationWriting: useWritingSkillOptions(PROJECT_ID),
     }), { wrapper: strictWrapper })
 
     await waitFor(() => expect(result.current).toEqual({
@@ -40,32 +44,32 @@ describe('useAgentSkillCatalog', () => {
       secondConversationWriting: [expect.objectContaining({ name: 'novel-lite' })],
     }))
     expect(getSkills).toHaveBeenCalledOnce()
-    expect(fetchSettings).toHaveBeenCalledOnce()
+    expect(fetchProjectSettings).toHaveBeenCalledOnce()
+    expect(fetchProjectSettings).toHaveBeenCalledWith(PROJECT_ID)
 
     act(() => window.dispatchEvent(new CustomEvent('nova:conversation-config-updated')))
     expect(getSkills).toHaveBeenCalledOnce()
-    expect(fetchSettings).toHaveBeenCalledOnce()
+    expect(fetchProjectSettings).toHaveBeenCalledOnce()
 
     act(() => window.dispatchEvent(new CustomEvent('nova:skills-updated')))
     await waitFor(() => expect(getSkills).toHaveBeenCalledTimes(2))
-    expect(fetchSettings).toHaveBeenCalledOnce()
+    expect(fetchProjectSettings).toHaveBeenCalledOnce()
 
-    act(() => window.dispatchEvent(new CustomEvent('nova:settings-updated')))
-    await waitFor(() => expect(refreshSettings).toHaveBeenCalledOnce())
-    expect(fetchSettings).toHaveBeenCalledOnce()
+    act(() => window.dispatchEvent(new CustomEvent('nova:settings-updated', { detail: { projectId: PROJECT_ID } })))
+    await waitFor(() => expect(fetchProjectSettings).toHaveBeenCalledTimes(2))
     expect(getSkills).toHaveBeenCalledTimes(2)
   })
 
   it('does not load a catalog while its owning surface is disabled', async () => {
     const { result } = renderHook(() => ({
-      commands: useSkillCommands({ agentKey: 'ide', workspace: '', enabled: false }),
+      commands: useSkillCommands({ agentKey: 'ide', projectId: '', enabled: false }),
       writing: useWritingSkillOptions('', false),
     }), { wrapper: strictWrapper })
 
     expect(result.current).toEqual({ commands: [], writing: [] })
     await act(async () => { await Promise.resolve() })
     expect(getSkills).not.toHaveBeenCalled()
-    expect(fetchSettings).not.toHaveBeenCalled()
+    expect(fetchProjectSettings).not.toHaveBeenCalled()
   })
 })
 

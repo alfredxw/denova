@@ -150,6 +150,40 @@ func (a *App) ExportAgentRunTrace(id string) (agentrun.RunTraceExport, error) {
 	return agentrun.ExportRunTrace(location, id)
 }
 
+// ProjectAgentRunTraces reads trace summaries from one stable Project without
+// consulting or switching the foreground Book.
+func (a *App) ProjectAgentRunTraces(projectID string, limit int) ([]agentrun.RunTraceSummary, error) {
+	location, err := a.projectAgentRunTraceLocation(projectID)
+	if err != nil {
+		return nil, err
+	}
+	return agentrun.ListRunTraces(location, limit)
+}
+
+func (a *App) ProjectAgentRunTrace(projectID, id string) (agentrun.RunTrace, error) {
+	location, err := a.projectAgentRunTraceLocation(projectID)
+	if err != nil {
+		return agentrun.RunTrace{}, err
+	}
+	return agentrun.ReadRunTrace(location, id)
+}
+
+func (a *App) ExportProjectAgentRunTrace(projectID, id string) (agentrun.RunTraceExport, error) {
+	location, err := a.projectAgentRunTraceLocation(projectID)
+	if err != nil {
+		return agentrun.RunTraceExport{}, err
+	}
+	return agentrun.ExportRunTrace(location, id)
+}
+
+func (a *App) projectAgentRunTraceLocation(projectID string) (agentrun.TraceLocation, error) {
+	_, layout, err := a.resolveProject(strings.TrimSpace(projectID), true)
+	if err != nil {
+		return agentrun.TraceLocation{}, err
+	}
+	return agentrun.TraceLocation{Workspace: layout.ContentRoot, StateRoot: layout.StateRoot}, nil
+}
+
 func (a *App) agentRunTraceLocation() (agentrun.TraceLocation, bool) {
 	a.mu.RLock()
 	defer a.mu.RUnlock()

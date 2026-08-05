@@ -91,6 +91,38 @@ func ForWorkspaceAt(workspace, stateRoot string) (*Service, error) {
 	return forWorkspaceAt(workspace, filepath.Clean(absoluteStateRoot))
 }
 
+// ForgetWorkspace removes the process cache entry for a content directory.
+// Project relink/archive calls this after its lifecycle has drained. Durable
+// ledgers remain untouched beneath the Project state root and are reopened for
+// the new directory on demand.
+func ForgetWorkspace(workspace string) error {
+	workspace = strings.TrimSpace(workspace)
+	if workspace == "" {
+		return newError(ErrorCodeConflict, "workspace path is empty", nil)
+	}
+	abs, err := filepath.Abs(workspace)
+	if err != nil {
+		return err
+	}
+	if canonical, canonicalErr := filepath.EvalSymlinks(abs); canonicalErr == nil {
+		abs = canonical
+	}
+	abs = filepath.Clean(abs)
+	workspaceServices.Lock()
+	service := workspaceServices.items[abs]
+	delete(workspaceServices.items, abs)
+	workspaceServices.Unlock()
+	if service == nil {
+		return nil
+	}
+	service.mu.Lock()
+	if service.store != nil {
+		service.store.close()
+	}
+	service.mu.Unlock()
+	return nil
+}
+
 func forWorkspaceAt(workspace, stateRoot string) (*Service, error) {
 	abs, err := normalizeWorkspace(workspace)
 	if err != nil {

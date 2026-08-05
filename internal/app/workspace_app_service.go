@@ -178,7 +178,6 @@ func (s *workspaceService) SwitchWorkspace(ctx context.Context, path string) (st
 	a.cfg.Workspace = runtime.workspace
 	chatApp.clearRecoveryRefreshObligations(runtime.workspace)
 	a.mu.Unlock()
-	a.syncWorkspaceFileWatcher(runtime.workspace)
 	if previousInteractiveStore != nil && previousInteractiveStore != runtime.interactive {
 		if closeErr := previousInteractiveStore.Close(); closeErr != nil {
 			slog.ErrorContext(ctx, fmt.Sprintf("[app] flush previous interactive journals failed workspace=%s err=%v", currentWorkspace, closeErr))
@@ -213,25 +212,33 @@ func (s *workspaceService) RemoveBook(path string) (string, error) {
 	if err != nil {
 		return "", err
 	}
-	if found && record.Type == projectdomain.TypeBook {
-		if _, err := a.AgentChat().ArchiveProject(record.ID); err != nil {
+	resultWorkspace := a.Workspace()
+	if wasCurrent && found && record.Type == projectdomain.TypeBook {
+		resultWorkspace, err = s.activateFallbackWorkspaceExcluding(context.Background(), record.ID)
+		if err != nil {
 			return "", err
 		}
 	}
-	if wasCurrent {
-		return s.activateFallbackWorkspace(context.Background())
+	if found && record.Type == projectdomain.TypeBook {
+		if _, err := a.ArchiveProject(context.Background(), record.ID); err != nil {
+			return "", err
+		}
 	}
-	return a.Workspace(), nil
+	return resultWorkspace, nil
 }
 
 func (s *workspaceService) activateFallbackWorkspace(ctx context.Context) (string, error) {
+	return s.activateFallbackWorkspaceExcluding(ctx, "")
+}
+
+func (s *workspaceService) activateFallbackWorkspaceExcluding(ctx context.Context, excludedProjectID string) (string, error) {
 	a := s.app
 	records, err := a.projectRegistry.Books()
 	if err != nil {
 		return "", err
 	}
 	for _, record := range records {
-		if record.WorkspacePath == "" {
+		if record.WorkspacePath == "" || record.ID == excludedProjectID {
 			continue
 		}
 		workspace, err := s.SwitchWorkspace(ctx, record.WorkspacePath)
@@ -271,7 +278,6 @@ func (s *workspaceService) activateFallbackWorkspace(ctx context.Context) (strin
 	delete(a.workspaceScopes, lifecycleWorkspaceKey(currentWorkspace))
 	a.clearRuntime()
 	a.mu.Unlock()
-	a.syncWorkspaceFileWatcher("")
 	if previousInteractiveStore != nil {
 		if closeErr := previousInteractiveStore.Close(); closeErr != nil {
 			slog.ErrorContext(ctx, fmt.Sprintf("[app] flush interactive journals while clearing workspace failed workspace=%s err=%v", currentWorkspace, closeErr))
@@ -288,12 +294,21 @@ func (s *workspaceService) activateFallbackWorkspace(ctx context.Context) (strin
 	return "", nil
 }
 
-// CreateBook 创建新书籍工作区：在 parentDir 下创建以 title 命名的子目录，初始化工作区结构和元信息，然后切换到该工作区。
-func (a *App) CreateBook(ctx context.Context, parentDir, title, author, description string) (string, book.BookMeta, error) {
+// BookCreationResult returns the stable identity together with the new content
+// directory. Callers never need to rediscover the created Project through the
+// mutable foreground Book.
+type BookCreationResult struct {
+	ProjectID string
+	Workspace string
+	Meta      book.BookMeta
+}
+
+// CreateBook creates and selects a new Book Project below parentDir.
+func (a *App) CreateBook(ctx context.Context, parentDir, title, author, description string) (BookCreationResult, error) {
 	return a.workspaceService().CreateBook(ctx, parentDir, title, author, description)
 }
 
-func (s *workspaceService) CreateBook(ctx context.Context, parentDir, title, author, description string) (string, book.BookMeta, error) {
+func (s *workspaceService) CreateBook(ctx context.Context, parentDir, title, author, description string) (BookCreationResult, error) {
 	a := s.app
 	novaDir := ""
 	if a.cfg != nil {
@@ -301,48 +316,51 @@ func (s *workspaceService) CreateBook(ctx context.Context, parentDir, title, aut
 	}
 	absParent, err := projectdomain.BookCreationParent(parentDir, novaDir)
 	if err != nil {
-		return "", book.BookMeta{}, fmt.Errorf("路径无效: %w", err)
+		return BookCreationResult{}, fmt.Errorf("路径无效: %w", err)
 	}
 
 	dir := filepath.Join(absParent, title)
 	if _, err := os.Stat(dir); err == nil {
-		return "", book.BookMeta{}, fmt.Errorf("目录已存在: %s", dir)
+		return BookCreationResult{}, fmt.Errorf("目录已存在: %s", dir)
 	}
 	if novaDir != "" {
 		if absNovaDir, err := filepath.Abs(novaDir); err == nil && absParent == filepath.Join(absNovaDir, projectdomain.ContentDirectoryName) {
 			legacyDir := filepath.Join(absNovaDir, title)
 			legacyType, detectErr := projectdomain.DetectType(legacyDir)
 			if legacyDir != dir && detectErr == nil && legacyType == projectdomain.TypeBook {
-				return "", book.BookMeta{}, fmt.Errorf("目录已存在: %s", legacyDir)
+				return BookCreationResult{}, fmt.Errorf("目录已存在: %s", legacyDir)
 			}
 		}
 	}
 
 	if err := os.MkdirAll(dir, 0o755); err != nil {
-		return "", book.BookMeta{}, fmt.Errorf("创建目录失败: %w", err)
+		return BookCreationResult{}, fmt.Errorf("创建目录失败: %w", err)
 	}
 
 	state := book.NewState(dir)
 	if err := state.InitWorkspace(); err != nil {
-		return "", book.BookMeta{}, fmt.Errorf("初始化工作目录失败: %w", err)
+		return BookCreationResult{}, fmt.Errorf("初始化工作目录失败: %w", err)
 	}
 
 	meta := book.BookMeta{Title: title, Author: author, Description: description}
 	meta, err = a.bookMetaStore.Write(dir, meta)
 	if err != nil {
-		return "", book.BookMeta{}, fmt.Errorf("写入书籍元信息失败: %w", err)
+		return BookCreationResult{}, fmt.Errorf("写入书籍元信息失败: %w", err)
 	}
 
 	if _, err := interactive.NewStore(dir).CreateStory(interactive.CreateStoryRequest{}); err != nil {
-		return "", book.BookMeta{}, fmt.Errorf("初始化默认故事线失败: %w", err)
+		return BookCreationResult{}, fmt.Errorf("初始化默认故事线失败: %w", err)
 	}
 
 	workspace, switchErr := s.SwitchWorkspace(ctx, dir)
 	if switchErr != nil {
-		return "", book.BookMeta{}, fmt.Errorf("切换工作区失败: %w", switchErr)
+		return BookCreationResult{}, fmt.Errorf("切换工作区失败: %w", switchErr)
 	}
-
-	return workspace, meta, nil
+	project, _, err := a.resolveProjectByWorkspace(workspace)
+	if err != nil {
+		return BookCreationResult{}, fmt.Errorf("resolve created Book Project: %w", err)
+	}
+	return BookCreationResult{ProjectID: project.ID, Workspace: workspace, Meta: meta}, nil
 }
 
 // Status 返回当前作品状态摘要。
@@ -361,28 +379,19 @@ func (s *workspaceService) Status() (bool, string) {
 	return state.HasState(), state.CompactContext()
 }
 
-// syncWorkspaceFileWatcher follows the committed runtime workspace. Watcher
-// failure is non-fatal because visibility refresh remains authoritative.
-func (a *App) syncWorkspaceFileWatcher(workspace string) {
-	if a == nil || a.workspaceFiles == nil {
-		return
-	}
-	if err := a.workspaceFiles.SetWorkspace(workspace); err != nil {
-		slog.WarnContext(context.Background(), fmt.Sprintf("[filewatch] workspace watcher unavailable; foreground refresh remains active workspace=%q err=%v", workspace, err))
-		return
-	}
-	if workspace != "" {
-		slog.InfoContext(context.Background(), fmt.Sprintf("[filewatch] workspace watcher active workspace=%q", workspace))
-	}
-}
-
-// SubscribeWorkspaceFileChanges returns ephemeral invalidations. Every
-// subscription begins with resync, so clients re-read canonical state.
-func (a *App) SubscribeWorkspaceFileChanges() (<-chan filewatch.Event, func()) {
+// SubscribeProjectFileChanges returns ephemeral invalidations for one stable
+// Project identity. Every subscription begins with resync.
+func (a *App) SubscribeProjectFileChanges(projectID string) (<-chan filewatch.Event, func(), error) {
 	if a == nil || a.workspaceFiles == nil {
 		closed := make(chan filewatch.Event)
 		close(closed)
-		return closed, func() {}
+		return closed, func() {}, nil
 	}
-	return a.workspaceFiles.Subscribe()
+	_, layout, err := a.resolveProject(projectID, true)
+	if err != nil {
+		closed := make(chan filewatch.Event)
+		close(closed)
+		return closed, func() {}, err
+	}
+	return a.workspaceFiles.Subscribe(layout.ProjectID, layout.ContentRoot)
 }

@@ -30,62 +30,58 @@ func (host configManagerHost) ResolveAsk(
 	return host.app.resolveAgentAsk(ctx, target, projectID, workspace, askID, status, answers, cancelReason)
 }
 
-func (host configManagerHost) Snapshot() configmanagerapp.Runtime {
+func (host configManagerHost) ProjectRuntime(ctx context.Context, projectID string) (configmanagerapp.Runtime, error) {
 	if host.app == nil {
-		return configmanagerapp.Runtime{}
+		return configmanagerapp.Runtime{}, appagentruntime.ErrNoWorkspace
 	}
+	projectRuntime, err := host.app.AgentChat().ProjectRuntime(ctx, projectID)
+	if err != nil {
+		return configmanagerapp.Runtime{}, err
+	}
+	runtime := projectRuntime.Conversation
 	host.app.mu.RLock()
-	defer host.app.mu.RUnlock()
-	var cfg config.Config
-	if host.app.cfg != nil {
-		cfg = *host.app.cfg
-	}
+	registry := host.app.projectRegistry
+	host.app.mu.RUnlock()
 	return configmanagerapp.Runtime{
-		Config: cfg, Workspace: host.app.workspace, State: host.app.bookState,
-		SessionStore: host.app.sessionStore, BookService: host.app.bookService,
-		VersionService: host.app.versionService, ChatService: host.app.chatService,
-		ProjectRegistry: host.app.projectRegistry,
-	}
+		ProjectID: projectID, Config: runtime.Config, Workspace: runtime.Workspace, State: runtime.State,
+		SessionStore: projectRuntime.SessionStore, BookService: runtime.BookService,
+		VersionService: runtime.VersionService, ChatService: runtime.ChatService,
+		ProjectRegistry: registry,
+	}, nil
 }
 
-func (host configManagerHost) AcquireWorkspaceOperation(ctx context.Context, workspace string) (configmanagerapp.Operation, error) {
+func (host configManagerHost) AcquireProjectOperation(ctx context.Context, projectID string) (configmanagerapp.Operation, error) {
 	if host.app == nil {
 		return nil, appagentruntime.ErrNoWorkspace
 	}
-	return host.app.acquireWorkspaceOperation(ctx, workspace, true)
+	return host.app.AcquireProjectOperation(ctx, projectID)
 }
 
 func (host configManagerHost) IsCurrent(expected configmanagerapp.Runtime) bool {
 	if host.app == nil {
 		return false
 	}
-	host.app.mu.RLock()
-	defer host.app.mu.RUnlock()
-	return !host.app.workspaceTransition &&
-		lifecycleWorkspaceKey(host.app.workspace) == lifecycleWorkspaceKey(expected.Workspace) &&
-		host.app.bookState == expected.State && host.app.sessionStore == expected.SessionStore &&
-		host.app.bookService == expected.BookService && host.app.versionService == expected.VersionService &&
-		host.app.chatService == expected.ChatService
+	_, layout, err := host.app.resolveProject(expected.ProjectID, true)
+	return err == nil && projectLayoutMatchesRuntime(
+		layout, expected.ProjectID, expected.Workspace, expected.Config.ProjectStateDir,
+	)
 }
 
 func (host configManagerHost) RegisterTask(task *apptask.Task, expected configmanagerapp.Runtime) error {
 	if host.app == nil {
 		return appagentruntime.ErrNoWorkspace
 	}
-	host.app.mu.Lock()
-	defer host.app.mu.Unlock()
-	if host.app.workspaceTransition || lifecycleWorkspaceKey(host.app.workspace) != lifecycleWorkspaceKey(expected.Workspace) ||
-		host.app.bookState != expected.State || host.app.sessionStore != expected.SessionStore ||
-		host.app.bookService != expected.BookService || host.app.versionService != expected.VersionService ||
-		host.app.chatService != expected.ChatService {
+	if !host.IsCurrent(expected) {
 		return appagentruntime.ErrContextChanged
 	}
-	return host.app.registerWorkspaceTaskLocked(task, expected.Workspace, true)
+	return host.app.registerProjectTask(
+		task, expected.ProjectID, expected.Workspace, expected.Config.ProjectStateDir,
+	)
 }
 
 func (host configManagerHost) UnregisterTask(task *apptask.Task) {
 	if host.app != nil {
-		host.app.unregisterWorkspaceTask(task)
+		host.app.unregisterProjectTask(task)
 	}
 }
 

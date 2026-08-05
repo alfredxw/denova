@@ -4,15 +4,15 @@ import { AlertTriangle, ChevronDown, ChevronUp, FileDiff, Loader2, RefreshCw, Ro
 import { useTranslation } from 'react-i18next'
 import { toast } from 'sonner'
 import { Button } from '@/components/ui/button'
-import { getWorkspaceChangeGroup, undoWorkspaceChangeGroup } from '../api'
-import { invalidateWorkspaceChangeQueries, prefetchWorkspaceChangeReviewThread, workspaceChangeKeys } from '../use-change-review'
+import { getProjectChangeGroup, undoProjectChangeGroup } from '../api'
+import { invalidateProjectChangeQueries, prefetchProjectChangeReviewThread, projectChangeKeys } from '../use-change-review'
 import type { WorkspaceChangeGroup, WorkspaceChangeGroupSummary, WorkspaceChangeSet } from '../types'
 import { logWorkspaceChangeError, workspaceChangeErrorMessage } from '../errors'
 import { lineDiffStats } from '../diff-stats'
 import { preloadReviewDiffEditor } from '../review/review-editor-loader'
 
 interface AgentChangeSummaryCardProps {
-  workspace: string
+  projectId: string
   summary: WorkspaceChangeGroupSummary
   disabled?: boolean
   eagerPreload?: boolean
@@ -27,14 +27,14 @@ interface FileChangeSummary {
 }
 
 /** Codex-style, durable summary for one Agent run. */
-export function AgentChangeSummaryCard({ workspace, summary, disabled = false, eagerPreload = false, onReview, onWorkspaceChanged }: AgentChangeSummaryCardProps) {
+export function AgentChangeSummaryCard({ projectId, summary, disabled = false, eagerPreload = false, onReview, onWorkspaceChanged }: AgentChangeSummaryCardProps) {
   const { t } = useTranslation()
   const queryClient = useQueryClient()
   const [expanded, setExpanded] = useState(false)
   const groupQuery = useQuery({
-    queryKey: workspaceChangeKeys.detail(workspace, summary.id),
-    queryFn: () => getWorkspaceChangeGroup(workspace, summary.id),
-    enabled: Boolean(workspace && summary.id),
+    queryKey: projectChangeKeys.detail(projectId, summary.id),
+    queryFn: () => getProjectChangeGroup(projectId, summary.id),
+    enabled: Boolean(projectId && summary.id),
     staleTime: 10_000,
   })
   const files = useMemo(() => summarizeGroupFiles(groupQuery.data), [groupQuery.data])
@@ -45,18 +45,18 @@ export function AgentChangeSummaryCard({ workspace, summary, disabled = false, e
   const visibleFiles = expanded ? files : files.slice(0, 3)
   const reviewThreadID = summary.review_thread_id || groupQuery.data?.review_thread_id || summary.id
   const preloadReview = useCallback(() => {
-    if (!workspace || !reviewThreadID) return
+    if (!projectId || !reviewThreadID) return
     void Promise.all([
-      prefetchWorkspaceChangeReviewThread(queryClient, workspace, reviewThreadID),
+      prefetchProjectChangeReviewThread(queryClient, projectId, reviewThreadID),
       preloadReviewDiffEditor(),
     ]).catch((error) => {
       console.warn('[AgentChangeSummaryCard.tsx] failed to preload Diff review; the click path will retry', {
-        workspace,
+        projectId,
         reviewThreadID,
         error,
       })
     })
-  }, [queryClient, reviewThreadID, workspace])
+  }, [projectId, queryClient, reviewThreadID])
 
   useEffect(() => {
     if (eagerPreload) preloadReview()
@@ -66,10 +66,10 @@ export function AgentChangeSummaryCard({ workspace, summary, disabled = false, e
     if (groupQuery.isError) logWorkspaceChangeError('Agent 变更摘要加载失败', groupQuery.error)
   }, [groupQuery.error, groupQuery.isError])
   const undoMutation = useMutation({
-    mutationFn: () => undoWorkspaceChangeGroup(workspace, summary.id),
+    mutationFn: () => undoProjectChangeGroup(projectId, summary.id),
     onSuccess: async (result) => {
-      await invalidateWorkspaceChangeQueries(queryClient, workspace)
-      if (result.workspace !== workspace) return
+      await invalidateProjectChangeQueries(queryClient, projectId)
+      if (result.project_id !== projectId) return
       const paths = Array.from(new Set([
         ...(result.affected_paths ?? []),
         ...(result.paths ?? []),

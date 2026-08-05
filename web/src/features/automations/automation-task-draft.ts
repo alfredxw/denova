@@ -64,19 +64,25 @@ export function newAutomationTaskFromTemplate(
     scope: target.kind === 'user' ? 'user' : 'workspace',
     target,
     recent_runs: [],
-  }, target.kind === 'workspace' ? target.workspace || '' : '')
+  }, target)
 }
 
-export function cloneAutomationTask(task: AutomationTask, workspace: string): AutomationTask {
-  return normalizeAutomationTaskShape(JSON.parse(JSON.stringify(task)) as AutomationTask, workspace)
+export function cloneAutomationTask(
+  task: AutomationTask,
+  fallbackTarget: NonNullable<AutomationTask['target']>,
+): AutomationTask {
+  return normalizeAutomationTaskShape(JSON.parse(JSON.stringify(task)) as AutomationTask, fallbackTarget)
 }
 
 // normalizeAutomationTaskShape canonicalizes a task for the UI. It still migrates
 // the legacy write_policy field (read-side only) so persisted tasks created before
 // write_mode/write_scope existed render correctly. New tasks and patch builders
 // below never emit write_policy.
-export function normalizeAutomationTaskShape(task: AutomationTask, workspace: string): AutomationTask {
-  task = normalizeAutomationTask(task, workspace)
+export function normalizeAutomationTaskShape(
+  task: AutomationTask,
+  fallbackTarget: NonNullable<AutomationTask['target']>,
+): AutomationTask {
+  task = normalizeAutomationTask(task, fallbackTarget)
   if (task.write_mode && task.write_scope) {
     return { ...task, default_action_policy: defaultAutomationActionPolicy }
   }
@@ -110,23 +116,30 @@ export function upsertAutomationTask(tasks: AutomationTask[], task: AutomationTa
   return next
 }
 
-export function defaultAutomationTarget(workspace: string): NonNullable<AutomationTask['target']> {
-  return workspace ? { kind: 'workspace', workspace } : { kind: 'user' }
+export function defaultAutomationTarget(project: { projectId: string; workspace: string }): NonNullable<AutomationTask['target']> {
+  const projectId = project.projectId.trim()
+  const workspace = project.workspace.trim()
+  return projectId
+    ? { kind: 'workspace', project_id: projectId, ...(workspace ? { workspace } : {}) }
+    : { kind: 'user' }
 }
 
 export function automationTargetValue(task: AutomationTask): string {
-  return task.target?.kind === 'workspace' ? `workspace:${task.target.workspace || ''}` : 'user'
+  if (task.target?.kind !== 'workspace') return 'user'
+  return `workspace:${task.target.project_id || task.target.workspace || ''}`
 }
 
 export function automationTargetOptions(books: BookRecord[], task: AutomationTask): BookRecord[] {
+  const projectId = task.target?.kind === 'workspace' ? task.target.project_id?.trim() : ''
   const workspace = task.target?.kind === 'workspace' ? task.target.workspace?.trim() : ''
-  if (!workspace || books.some((book) => book.path === workspace)) return books
-  return [{ name: workspace.split('/').filter(Boolean).at(-1) || workspace, path: workspace, author: '', last_opened_at: '' }, ...books]
+  if ((!projectId && !workspace) || books.some((book) => projectId ? book.project_id === projectId : book.path === workspace)) return books
+  return [{ project_id: projectId || '', name: workspace?.split('/').filter(Boolean).at(-1) || workspace || projectId || '', path: workspace || '', author: '', last_opened_at: '' }, ...books]
 }
 
 export function automationTargetLabel(task: AutomationTask, books: BookRecord[], t: (key: string, options?: Record<string, unknown>) => string) {
   if (task.target?.kind !== 'workspace') return t('automations.target.global')
+  const projectId = task.target.project_id || ''
   const workspace = task.target.workspace || ''
-  const name = books.find((book) => book.path === workspace)?.name || workspace.split('/').filter(Boolean).at(-1) || workspace
+  const name = books.find((book) => projectId ? book.project_id === projectId : book.path === workspace)?.name || workspace.split('/').filter(Boolean).at(-1) || workspace || projectId
   return t('automations.target.workspace', { name })
 }

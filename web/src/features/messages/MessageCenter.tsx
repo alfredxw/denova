@@ -224,6 +224,7 @@ export function MessageCenterButton({ className = '', unreadCount: reportedUnrea
                           taskId: activeItem.task_id || '',
                           runId: activeItem.run_id,
                           inboxId: activeItem.inbox_id,
+                          projectId: activeItem.project_id,
                           workspace: activeItem.workspace,
                         })
                         setOpen(false)

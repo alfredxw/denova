@@ -3,15 +3,22 @@ package api
 import (
 	"encoding/json"
 	"net/http"
+	"net/url"
 	"strings"
 	"testing"
+
+	runtimeapp "denova/internal/app"
 )
+
+func configManagerAPIPath(application *runtimeapp.App, suffix string) string {
+	return "/api/projects/" + url.PathEscape(application.ProjectID()) + "/config-manager" + suffix
+}
 
 func TestConfigManagerRequiresCallerCommandIDBeforeStartingTask(t *testing.T) {
 	application := newTestApplication(t)
 	server := NewServer(application, "0")
 
-	response := performJSONRequest(t, server, http.MethodPost, "/api/config-manager/stream", map[string]any{
+	response := performJSONRequest(t, server, http.MethodPost, configManagerAPIPath(application, "/stream"), map[string]any{
 		"instruction": "update configuration",
 	})
 	if response.Code != http.StatusBadRequest {
@@ -27,7 +34,7 @@ func TestConfigManagerRejectsOversizedCommandIDAsBilingualBadRequest(t *testing.
 	application := newTestApplication(t)
 	server := NewServer(application, "0")
 
-	response := performJSONRequest(t, server, http.MethodPost, "/api/config-manager/stream", map[string]any{
+	response := performJSONRequest(t, server, http.MethodPost, configManagerAPIPath(application, "/stream"), map[string]any{
 		"command_id":  strings.Repeat("x", 4097),
 		"instruction": "update configuration",
 	})
@@ -45,7 +52,7 @@ func TestConfigManagerActiveExposesExplicitIdleRuntimeForExactScope(t *testing.T
 	server := NewServer(application, "0")
 
 	for _, origin := range []string{"settings", "story-settings", "agent-settings"} {
-		response := performJSONRequest(t, server, http.MethodGet, "/api/config-manager/active?origin="+origin+"&resource_id=resource-1", nil)
+		response := performJSONRequest(t, server, http.MethodGet, configManagerAPIPath(application, "/active")+"?origin="+origin+"&resource_id=resource-1", nil)
 		if response.Code != http.StatusOK {
 			t.Fatalf("origin=%s status=%d body=%s", origin, response.Code, response.Body.String())
 		}
@@ -57,13 +64,13 @@ func TestConfigManagerTaskStreamRequiresExactScopedTaskID(t *testing.T) {
 	application := newTestApplication(t)
 	server := NewServer(application, "0")
 
-	missing := performJSONRequest(t, server, http.MethodGet, "/api/config-manager/stream?origin=settings", nil)
+	missing := performJSONRequest(t, server, http.MethodGet, configManagerAPIPath(application, "/stream")+"?origin=settings", nil)
 	if missing.Code != http.StatusBadRequest || !strings.Contains(missing.Body.String(), "task_id") ||
 		!strings.Contains(missing.Body.String(), "精确恢复") || !strings.Contains(missing.Body.String(), "exact Agent stream recovery") {
 		t.Fatalf("missing task identity status=%d body=%s", missing.Code, missing.Body.String())
 	}
 
-	stale := performJSONRequest(t, server, http.MethodGet, "/api/config-manager/stream?origin=settings&resource_id=resource-1&task_id=task-from-old-scope", nil)
+	stale := performJSONRequest(t, server, http.MethodGet, configManagerAPIPath(application, "/stream")+"?origin=settings&resource_id=resource-1&task_id=task-from-old-scope", nil)
 	if stale.Code != http.StatusConflict {
 		t.Fatalf("stale task status=%d body=%s", stale.Code, stale.Body.String())
 	}
@@ -80,7 +87,7 @@ func TestConfigManagerTaskStreamRequiresExactScopedTaskID(t *testing.T) {
 func TestConfigManagerRecoveryDoesNotTrustOrEchoCallerPayload(t *testing.T) {
 	application := newTestApplication(t)
 	server := NewServer(application, "0")
-	response := performJSONRequest(t, server, http.MethodPost, "/api/config-manager/recovery?origin=settings&resource_id=resource-1", map[string]any{
+	response := performJSONRequest(t, server, http.MethodPost, configManagerAPIPath(application, "/recovery")+"?origin=settings&resource_id=resource-1", map[string]any{
 		"action": map[string]any{
 			"kind": "follow_up", "command_id": "not-durable", "operation_id": "not-durable",
 			"input": map[string]any{"message": "CONFIG_MANAGER_SECRET"},

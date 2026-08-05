@@ -28,6 +28,7 @@ func NormalizeInboxItem(item TriggerInboxItem) (TriggerInboxItem, error) {
 	if item.Scope != ScopeUser && item.Scope != ScopeWorkspace {
 		return TriggerInboxItem{}, fmt.Errorf("invalid scope %q", item.Scope)
 	}
+	item.ProjectID = strings.TrimSpace(item.ProjectID)
 	item.Workspace = strings.TrimSpace(item.Workspace)
 	item.Purpose = normalizeInboxPurpose(item.Purpose)
 	item.SourceRunID = strings.TrimSpace(item.SourceRunID)

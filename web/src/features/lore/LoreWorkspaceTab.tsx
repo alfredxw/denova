@@ -23,7 +23,6 @@ import { useLoreWorkspace } from './use-lore-workspace'
 
 interface LoreWorkspaceTabProps {
   projectId: string
-  workspace: string
   documentReview: DocumentReviewController
   navigationIntent?: DocumentReviewNavigationIntent | null
   refreshSignal?: number
@@ -35,7 +34,6 @@ interface LoreWorkspaceTabProps {
 /** Writing-side projection of the lore library: quick editing, review and Agent handoff. */
 export function LoreWorkspaceTab({
   projectId,
-  workspace,
   documentReview,
   navigationIntent,
   refreshSignal = 0,
@@ -47,7 +45,6 @@ export function LoreWorkspaceTab({
   const [searchQuery, setSearchQuery] = useState('')
   const lore = useLoreWorkspace({
     projectId,
-    workspace,
     refreshSignal,
     onFlushHandlerChange: onEditorFlushHandlerChange,
   })
@@ -203,6 +200,7 @@ export function LoreWorkspaceTab({
             </div>
           ) : lore.draft ? (
             <LoreWorkspaceEditor
+              projectId={projectId}
               draft={lore.draft}
               tagDraft={lore.tagDraft}
               autosaveStatus={lore.autosaveStatus}

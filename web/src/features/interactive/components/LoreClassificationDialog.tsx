@@ -13,12 +13,12 @@ const LORE_TYPES: LoreItem['type'][] = ['character', 'world', 'location', 'facti
 
 export function LoreClassificationDialog({
   open,
-  workspace,
+  projectId,
   onOpenChange,
   onApplied,
 }: {
   open: boolean
-  workspace: string
+  projectId: string
   onOpenChange: (open: boolean) => void
   onApplied: (items: LoreItem[]) => void
 }) {
@@ -37,7 +37,7 @@ export function LoreClassificationDialog({
     let cancelled = false
     setLoading(true)
     setError('')
-    previewLoreClassification(workspace, { mode })
+    previewLoreClassification(projectId, { mode })
       .then((result) => {
         if (cancelled) return
         const nextTypes: Record<string, LoreItem['type']> = {}
@@ -62,7 +62,7 @@ export function LoreClassificationDialog({
     return () => {
       cancelled = true
     }
-  }, [mode, open, refreshToken, t, workspace])
+  }, [mode, open, projectId, refreshToken, t])
 
   const changes = useMemo(() => {
     if (!preview) return []
@@ -86,7 +86,7 @@ export function LoreClassificationDialog({
     setApplying(true)
     setError('')
     try {
-      const result = await applyLoreClassification(workspace, { revision: preview.revision, changes })
+      const result = await applyLoreClassification(projectId, { revision: preview.revision, changes })
       onApplied(result.items)
       toast.success(t('settingPanel.loreClassification.applied', { count: result.updated.length }))
       onOpenChange(false)

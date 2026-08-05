@@ -12,6 +12,7 @@ import (
 
 // Record is the stable projection shared by every Book selection surface.
 type Record struct {
+	ProjectID      string `json:"project_id"`
 	Name           string `json:"name"`
 	Path           string `json:"path"`
 	Author         string `json:"author"`
@@ -101,5 +102,5 @@ func bookRecord(project projectdomain.Record) Record {
 	if !project.LastOpenedAt.IsZero() {
 		openedAt = project.LastOpenedAt.Format(time.RFC3339Nano)
 	}
-	return Record{Name: project.Name, Path: project.WorkspacePath, LastOpenedAt: openedAt}
+	return Record{ProjectID: project.ID, Name: project.Name, Path: project.WorkspacePath, LastOpenedAt: openedAt}
 }

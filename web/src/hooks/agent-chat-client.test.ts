@@ -17,9 +17,9 @@ describe('project AgentChat client', () => {
 
     expect(client.fixedSessionId).toBe('session-a')
     expect(client.transportOptions).toEqual({
-      api: '/api/agent-chat/chat',
-      streamApi: '/api/agent-chat/chat/stream',
-      scope: { project_id: 'project-alpha', session_id: 'session-a' },
+      api: '/api/projects/project-alpha/agent-chat/chat',
+      streamApi: '/api/projects/project-alpha/agent-chat/chat/stream',
+      scope: { session_id: 'session-a' },
     })
   })
 
@@ -36,10 +36,9 @@ describe('project AgentChat client', () => {
 
     expect(requestJSON).toHaveBeenNthCalledWith(
       1,
-      '/api/agent-chat/chat/commands',
+      '/api/projects/project-alpha/agent-chat/chat/commands',
       expect.objectContaining({
         body: JSON.stringify({
-          project_id: 'project-alpha',
           session_id: 'session-a',
           type: 'abort',
           command_id: 'control',
@@ -48,13 +47,12 @@ describe('project AgentChat client', () => {
         }),
       }),
     )
-    expect(requestJSON).toHaveBeenNthCalledWith(2, '/api/agent-chat/session/messages?project_id=project-alpha&session_id=session-a&limit=5&before=7')
+    expect(requestJSON).toHaveBeenNthCalledWith(2, '/api/projects/project-alpha/agent-chat/session/messages?session_id=session-a&limit=5&before=7')
     expect(requestJSON).toHaveBeenNthCalledWith(
       3,
-      '/api/agent-chat/session/asks/ask-a/cancel',
+      '/api/projects/project-alpha/agent-chat/session/asks/ask-a/cancel',
       expect.objectContaining({
         body: JSON.stringify({
-          project_id: 'project-alpha',
           session_id: 'session-a',
           reason: 'user_cancelled',
         }),

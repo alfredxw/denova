@@ -9,7 +9,106 @@ import (
 	"strings"
 
 	"denova/internal/concurrency"
+	projectdomain "denova/internal/project"
 )
+
+// projectTaskRegistration keeps a background Project task inside both the
+// Project lifecycle barrier and the process-wide durable replay budget. It is
+// intentionally separate from foreground workspaceTasks: changing the open
+// Book must not cancel AgentChat-owned work for that same Project.
+type projectTaskRegistration struct {
+	operation *ProjectOperation
+	replay    *apptask.ReplayReservation
+	stop      func() bool
+}
+
+func (a *App) registerProjectTask(task *apptask.Task, projectID, workspace, stateRoot string) error {
+	if a == nil || task == nil {
+		return fmt.Errorf("cannot register an empty Project task")
+	}
+	projectID = strings.TrimSpace(projectID)
+	// A background task owns its lifecycle admission. Its context may carry the
+	// initiating request's borrowed ProjectOperation for correlation, but that
+	// request lease ends as soon as the SSE handler returns.
+	// The owned Project operation must not depend on the Task's provisional
+	// cancel function because BindLifetime replaces and cancels that context.
+	operation, err := a.acquireOwnedProjectOperation(context.WithoutCancel(task.Context()), projectID)
+	if err != nil {
+		return err
+	}
+	layout := operation.Layout()
+	if lifecycleWorkspaceKey(layout.ContentRoot) != lifecycleWorkspaceKey(workspace) ||
+		strings.TrimSpace(layout.StateRoot) != strings.TrimSpace(stateRoot) {
+		operation.Release()
+		return fmt.Errorf("%w: Project layout changed before task registration", ErrWorkspaceChanged)
+	}
+	if err := task.BindLifetime(operation.Context()); err != nil {
+		operation.Release()
+		return err
+	}
+	replay, err := a.activeTaskReplay.Reserve(task)
+	if err != nil {
+		operation.Release()
+		return err
+	}
+	registration := &projectTaskRegistration{
+		operation: operation,
+		replay:    replay,
+		stop:      context.AfterFunc(operation.Context(), task.Abort),
+	}
+	a.mu.Lock()
+	if a.closed {
+		a.mu.Unlock()
+		registration.release()
+		return fmt.Errorf("App is closed")
+	}
+	if a.projectTasks == nil {
+		a.projectTasks = make(map[*apptask.Task]*projectTaskRegistration)
+	}
+	if _, exists := a.projectTasks[task]; exists {
+		a.mu.Unlock()
+		registration.release()
+		return fmt.Errorf("Project task %q is already registered", task.ID())
+	}
+	a.projectTasks[task] = registration
+	a.mu.Unlock()
+	return nil
+}
+
+func (a *App) unregisterProjectTask(task *apptask.Task) {
+	if a == nil || task == nil {
+		return
+	}
+	a.mu.Lock()
+	registration := a.projectTasks[task]
+	delete(a.projectTasks, task)
+	a.mu.Unlock()
+	registration.release()
+	if registration != nil {
+		a.Automation().SignalReconciliation()
+	}
+}
+
+func (registration *projectTaskRegistration) release() {
+	if registration == nil {
+		return
+	}
+	if registration.stop != nil {
+		registration.stop()
+	}
+	if registration.operation != nil {
+		registration.operation.Release()
+	}
+	if registration.replay != nil {
+		registration.replay.Release()
+	}
+}
+
+func projectLayoutMatchesRuntime(layout projectdomain.Layout, runtimeProjectID, workspace, stateRoot string) bool {
+	return layout.ProjectID == strings.TrimSpace(runtimeProjectID) &&
+		lifecycleWorkspaceKey(layout.ContentRoot) == lifecycleWorkspaceKey(workspace) &&
+		strings.TrimSpace(layout.StateRoot) == strings.TrimSpace(stateRoot)
+}
 
 // registerWorkspaceTaskLocked records a background task against the exact
 // workspace resources it captured. The caller must hold a.mu. strictCurrent

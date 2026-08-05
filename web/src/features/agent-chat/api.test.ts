@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
-import { addAgentChatProject, getAgentChatHistory, getAgentChatProjects, selectAgentChatProjectDirectory, type AgentChatProject } from './api'
+import { addAgentChatProject, createAgentChatSession, deleteAgentChatSession, getAgentChatHistory, getAgentChatProjects, renameAgentChatSession, selectAgentChatProjectDirectory, type AgentChatProject } from './api'
 
 const apiClientMocks = vi.hoisted(() => ({ requestJSON: vi.fn() }))
 
@@ -83,5 +83,23 @@ describe('AgentChat project folder API', () => {
       headers: {},
       body: JSON.stringify({ path: '/projects/story' }),
     })
+  })
+})
+
+describe('AgentChat conversation API', () => {
+  beforeEach(() => apiClientMocks.requestJSON.mockReset())
+
+  it('takes Project identity only from the route scope', async () => {
+    apiClientMocks.requestJSON.mockResolvedValue({ id: 'session-one' })
+
+    await createAgentChatSession('project-one', 'Draft')
+    await renameAgentChatSession('project-one', 'session-one', 'Chapter plan')
+    await deleteAgentChatSession('project-one', 'session-one')
+
+    expect(apiClientMocks.requestJSON.mock.calls).toEqual([
+      ['/api/projects/project-one/agent-chat/sessions', expect.objectContaining({ body: JSON.stringify({ title: 'Draft' }) })],
+      ['/api/projects/project-one/agent-chat/sessions/rename', expect.objectContaining({ body: JSON.stringify({ session_id: 'session-one', title: 'Chapter plan' }) })],
+      ['/api/projects/project-one/agent-chat/sessions/delete', expect.objectContaining({ body: JSON.stringify({ session_id: 'session-one' }) })],
+    ])
   })
 })

@@ -3,26 +3,25 @@ package handlers
 import (
 	"context"
 	"errors"
-	"net/url"
 	"strings"
 
 	"github.com/cloudwego/hertz/pkg/app"
 	"github.com/cloudwego/hertz/pkg/protocol/consts"
 
 	denovaapp "denova/internal/app"
+	projectdomain "denova/internal/project"
 	workspacechange "denova/internal/workspace/change"
 )
-
-const workspaceChangeWorkspaceHeader = "X-Denova-Workspace"
 
 // HandleWorkspaceChangeGroups lists durable workspace changes without loading
 // manuscript blobs. Full before/after content is loaded only by the detail API.
 func (h *Handlers) HandleWorkspaceChangeGroups(ctx context.Context, c *app.RequestContext) {
-	if !h.requireWorkspace(c) {
+	scope, ok := requireProjectScope(c)
+	if !ok {
 		return
 	}
 	var groups []workspacechange.ChangeGroupSummary
-	workspace, ok := h.withWorkspaceChangeService(c, func(service *workspacechange.Service) error {
+	layout, ok := h.withProjectChangeService(ctx, c, scope.ProjectID, func(service *workspacechange.Service) error {
 		var err error
 		groups, err = service.ListGroups(ctx, workspacechange.ChangeFilter{
 			Status:         c.Query("status"),
@@ -36,17 +35,18 @@ func (h *Handlers) HandleWorkspaceChangeGroups(ctx context.Context, c *app.Reque
 	if !ok {
 		return
 	}
-	writeJSON(c, consts.StatusOK, map[string]any{"workspace": workspace, "groups": groups})
+	writeJSON(c, consts.StatusOK, map[string]any{"project_id": layout.ProjectID, "workspace": layout.ContentRoot, "groups": groups})
 }
 
 // HandleWorkspaceChangeReviewThread returns the cumulative, cross-run review
 // projection while preserving each group's independent undo boundary.
 func (h *Handlers) HandleWorkspaceChangeReviewThread(ctx context.Context, c *app.RequestContext) {
-	if !h.requireWorkspace(c) {
+	scope, ok := requireProjectScope(c)
+	if !ok {
 		return
 	}
 	var thread workspacechange.ReviewThread
-	workspace, ok := h.withWorkspaceChangeService(c, func(service *workspacechange.Service) error {
+	layout, ok := h.withProjectChangeService(ctx, c, scope.ProjectID, func(service *workspacechange.Service) error {
 		var err error
 		thread, err = service.GetReviewThread(ctx, c.Param("id"))
 		return err
@@ -54,16 +54,17 @@ func (h *Handlers) HandleWorkspaceChangeReviewThread(ctx context.Context, c *app
 	if !ok {
 		return
 	}
-	writeJSON(c, consts.StatusOK, map[string]any{"workspace": workspace, "review_thread": thread})
+	writeJSON(c, consts.StatusOK, map[string]any{"project_id": layout.ProjectID, "workspace": layout.ContentRoot, "review_thread": thread})
 }
 
 // HandleWorkspaceChangeGroup returns one review group with hydrated diff text.
 func (h *Handlers) HandleWorkspaceChangeGroup(ctx context.Context, c *app.RequestContext) {
-	if !h.requireWorkspace(c) {
+	scope, ok := requireProjectScope(c)
+	if !ok {
 		return
 	}
 	var group workspacechange.ChangeGroup
-	workspace, ok := h.withWorkspaceChangeService(c, func(service *workspacechange.Service) error {
+	layout, ok := h.withProjectChangeService(ctx, c, scope.ProjectID, func(service *workspacechange.Service) error {
 		var err error
 		group, err = service.GetGroup(ctx, c.Param("id"))
 		return err
@@ -71,11 +72,12 @@ func (h *Handlers) HandleWorkspaceChangeGroup(ctx context.Context, c *app.Reques
 	if !ok {
 		return
 	}
-	writeJSON(c, consts.StatusOK, map[string]any{"workspace": workspace, "group": group})
+	writeJSON(c, consts.StatusOK, map[string]any{"project_id": layout.ProjectID, "workspace": layout.ContentRoot, "group": group})
 }
 
 func (h *Handlers) HandleWorkspaceChangeReview(ctx context.Context, c *app.RequestContext) {
-	if !h.requireWorkspace(c) {
+	scope, ok := requireProjectScope(c)
+	if !ok {
 		return
 	}
 	var req workspacechange.ReviewRequest
@@ -87,9 +89,9 @@ func (h *Handlers) HandleWorkspaceChangeReview(ctx context.Context, c *app.Reque
 	rejectDecision := strings.EqualFold(strings.TrimSpace(req.Decision), workspacechange.ReviewDecisionReject)
 	var group workspacechange.ChangeGroup
 	var affectedPaths []string
-	workspace, err := h.app.WithWorkspaceChangeMutation(
+	layout, err := h.app.WithProjectChangeMutation(
 		ctx,
-		workspaceChangeExpectedWorkspace(c),
+		scope.ProjectID,
 		func(service *workspacechange.Service) (denovaapp.WorkspaceChangeMutationHooks, error) {
 			result, reviewErr := service.ReviewWithResult(ctx, req)
 			if reviewErr != nil {
@@ -108,10 +110,10 @@ func (h *Handlers) HandleWorkspaceChangeReview(ctx context.Context, c *app.Reque
 		},
 	)
 	if err != nil {
-		h.writeWorkspaceChangeLeaseError(c, workspaceChangeExpectedWorkspace(c), err)
+		h.writeProjectChangeError(c, scope.ProjectID, err)
 		return
 	}
-	writeJSON(c, consts.StatusOK, workspaceChangeMutationResponse(workspace, group, affectedPaths))
+	writeJSON(c, consts.StatusOK, workspaceChangeMutationResponse(layout.ProjectID, layout.ContentRoot, group, affectedPaths))
 }
 
 func (h *Handlers) HandleWorkspaceChangeUndo(ctx context.Context, c *app.RequestContext) {
@@ -123,15 +125,16 @@ func (h *Handlers) HandleWorkspaceChangeRedo(ctx context.Context, c *app.Request
 }
 
 func (h *Handlers) handleWorkspaceChangeHistory(ctx context.Context, c *app.RequestContext, redo bool) {
-	if !h.requireWorkspace(c) {
+	scope, ok := requireProjectScope(c)
+	if !ok {
 		return
 	}
 	req := workspacechange.HistoryRequest{GroupID: c.Param("id")}
 	var group workspacechange.ChangeGroup
 	var affectedPaths []string
-	workspace, err := h.app.WithWorkspaceChangeMutation(
+	layout, err := h.app.WithProjectChangeMutation(
 		ctx,
-		workspaceChangeExpectedWorkspace(c),
+		scope.ProjectID,
 		func(service *workspacechange.Service) (denovaapp.WorkspaceChangeMutationHooks, error) {
 			var historyErr error
 			if redo {
@@ -158,14 +161,15 @@ func (h *Handlers) handleWorkspaceChangeHistory(ctx context.Context, c *app.Requ
 		},
 	)
 	if err != nil {
-		h.writeWorkspaceChangeLeaseError(c, workspaceChangeExpectedWorkspace(c), err)
+		h.writeProjectChangeError(c, scope.ProjectID, err)
 		return
 	}
-	writeJSON(c, consts.StatusOK, workspaceChangeMutationResponse(workspace, group, affectedPaths))
+	writeJSON(c, consts.StatusOK, workspaceChangeMutationResponse(layout.ProjectID, layout.ContentRoot, group, affectedPaths))
 }
 
 func (h *Handlers) HandleWorkspaceChangeCommentCreate(ctx context.Context, c *app.RequestContext) {
-	if !h.requireWorkspace(c) {
+	scope, ok := requireProjectScope(c)
+	if !ok {
 		return
 	}
 	var req workspacechange.AddCommentRequest
@@ -174,7 +178,7 @@ func (h *Handlers) HandleWorkspaceChangeCommentCreate(ctx context.Context, c *ap
 		return
 	}
 	var comment workspacechange.Comment
-	workspace, ok := h.withWorkspaceChangeService(c, func(service *workspacechange.Service) error {
+	layout, ok := h.withProjectChangeService(ctx, c, scope.ProjectID, func(service *workspacechange.Service) error {
 		var err error
 		comment, err = service.AddComment(ctx, req)
 		return err
@@ -182,11 +186,12 @@ func (h *Handlers) HandleWorkspaceChangeCommentCreate(ctx context.Context, c *ap
 	if !ok {
 		return
 	}
-	writeJSON(c, consts.StatusCreated, map[string]any{"workspace": workspace, "comment": comment})
+	writeJSON(c, consts.StatusCreated, map[string]any{"project_id": layout.ProjectID, "workspace": layout.ContentRoot, "comment": comment})
 }
 
 func (h *Handlers) HandleWorkspaceChangeCommentUpdate(ctx context.Context, c *app.RequestContext) {
-	if !h.requireWorkspace(c) {
+	scope, ok := requireProjectScope(c)
+	if !ok {
 		return
 	}
 	var req workspacechange.UpdateCommentRequest
@@ -196,7 +201,7 @@ func (h *Handlers) HandleWorkspaceChangeCommentUpdate(ctx context.Context, c *ap
 	}
 	req.ID = c.Param("id")
 	var comment workspacechange.Comment
-	workspace, ok := h.withWorkspaceChangeService(c, func(service *workspacechange.Service) error {
+	layout, ok := h.withProjectChangeService(ctx, c, scope.ProjectID, func(service *workspacechange.Service) error {
 		var err error
 		comment, err = service.UpdateComment(ctx, req)
 		return err
@@ -204,15 +209,16 @@ func (h *Handlers) HandleWorkspaceChangeCommentUpdate(ctx context.Context, c *ap
 	if !ok {
 		return
 	}
-	writeJSON(c, consts.StatusOK, map[string]any{"workspace": workspace, "comment": comment})
+	writeJSON(c, consts.StatusOK, map[string]any{"project_id": layout.ProjectID, "workspace": layout.ContentRoot, "comment": comment})
 }
 
 func (h *Handlers) HandleWorkspaceChangeCommentDelete(ctx context.Context, c *app.RequestContext) {
-	if !h.requireWorkspace(c) {
+	scope, ok := requireProjectScope(c)
+	if !ok {
 		return
 	}
 	var comment workspacechange.Comment
-	workspace, ok := h.withWorkspaceChangeService(c, func(service *workspacechange.Service) error {
+	layout, ok := h.withProjectChangeService(ctx, c, scope.ProjectID, func(service *workspacechange.Service) error {
 		var err error
 		comment, err = service.DeleteComment(ctx, workspacechange.DeleteCommentRequest{ID: c.Param("id")})
 		return err
@@ -220,11 +226,12 @@ func (h *Handlers) HandleWorkspaceChangeCommentDelete(ctx context.Context, c *ap
 	if !ok {
 		return
 	}
-	writeJSON(c, consts.StatusOK, map[string]any{"workspace": workspace, "comment": comment})
+	writeJSON(c, consts.StatusOK, map[string]any{"project_id": layout.ProjectID, "workspace": layout.ContentRoot, "comment": comment})
 }
 
-func workspaceChangeMutationResponse(workspace string, group workspacechange.ChangeGroup, affectedPaths []string) map[string]any {
+func workspaceChangeMutationResponse(projectID, workspace string, group workspacechange.ChangeGroup, affectedPaths []string) map[string]any {
 	return map[string]any{
+		"project_id":     projectID,
 		"workspace":      workspace,
 		"group":          group,
 		"change_group":   group,
@@ -232,30 +239,30 @@ func workspaceChangeMutationResponse(workspace string, group workspacechange.Cha
 	}
 }
 
-func workspaceChangeExpectedWorkspace(c *app.RequestContext) string {
-	raw := strings.TrimSpace(string(c.Request.Header.Peek(workspaceChangeWorkspaceHeader)))
-	if raw == "" {
-		return ""
-	}
-	decoded, err := url.PathUnescape(raw)
+func (h *Handlers) withProjectChangeService(
+	ctx context.Context,
+	c *app.RequestContext,
+	projectID string,
+	action func(*workspacechange.Service) error,
+) (projectdomain.Layout, bool) {
+	layout, err := h.app.WithProjectChangeService(ctx, projectID, action)
 	if err != nil {
-		return raw
+		h.writeProjectChangeError(c, projectID, err)
+		return projectdomain.Layout{}, false
 	}
-	return strings.TrimSpace(decoded)
+	return layout, true
 }
 
-func (h *Handlers) withWorkspaceChangeService(c *app.RequestContext, action func(*workspacechange.Service) error) (string, bool) {
-	expectedWorkspace := workspaceChangeExpectedWorkspace(c)
-	canonicalWorkspace := ""
-	err := h.app.WithWorkspaceChangeService(expectedWorkspace, func(service *workspacechange.Service) error {
-		canonicalWorkspace = service.Workspace()
-		return action(service)
-	})
-	if err != nil {
-		h.writeWorkspaceChangeLeaseError(c, expectedWorkspace, err)
-		return "", false
+func (h *Handlers) writeProjectChangeError(c *app.RequestContext, projectID string, err error) {
+	if errors.Is(err, denovaapp.ErrWorkspaceTransition) {
+		writeJSON(c, consts.StatusConflict, map[string]any{
+			"error":   messageKey(c, "api.project.transitioning"),
+			"code":    "project_transitioning",
+			"details": map[string]string{"project_id": strings.TrimSpace(projectID)},
+		})
+		return
 	}
-	return canonicalWorkspace, true
+	writeWorkspaceChangeError(c, err)
 }
 
 func (h *Handlers) writeWorkspaceChangeLeaseError(c *app.RequestContext, expectedWorkspace string, err error) {

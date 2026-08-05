@@ -89,10 +89,10 @@ func (host automationHost) ResolveTarget(target automation.ExecutionTarget) (aut
 	if host.app == nil {
 		return automation.ExecutionTarget{}, fmt.Errorf("project registry is unavailable")
 	}
-	if projectID := strings.TrimSpace(target.WorkspaceID); projectID != "" {
+	if projectID := strings.TrimSpace(target.ProjectID); projectID != "" {
 		if record, _, err := host.app.resolveProject(projectID, true); err == nil {
 			return automation.ExecutionTarget{
-				Kind: automation.TargetKindWorkspace, WorkspaceID: record.ID, Workspace: record.WorkspacePath,
+				Kind: automation.TargetKindWorkspace, ProjectID: record.ID, Workspace: record.WorkspacePath,
 			}, nil
 		}
 	}
@@ -101,7 +101,7 @@ func (host automationHost) ResolveTarget(target automation.ExecutionTarget) (aut
 		return automation.ExecutionTarget{}, err
 	}
 	return automation.ExecutionTarget{
-		Kind: automation.TargetKindWorkspace, WorkspaceID: record.ID, Workspace: record.WorkspacePath,
+		Kind: automation.TargetKindWorkspace, ProjectID: record.ID, Workspace: record.WorkspacePath,
 	}, nil
 }
 
@@ -114,10 +114,10 @@ func (host automationHost) RuntimeForTarget(ctx context.Context, target automati
 		return automationapp.Runtime{}, err
 	}
 	if current, currentErr := host.CurrentRuntime(); currentErr == nil &&
-		(current.ProjectID == resolved.WorkspaceID || lifecycleWorkspaceKey(current.Workspace) == lifecycleWorkspaceKey(resolved.Workspace)) {
+		(current.ProjectID == resolved.ProjectID || lifecycleWorkspaceKey(current.Workspace) == lifecycleWorkspaceKey(resolved.Workspace)) {
 		return current, nil
 	}
-	project, err := host.app.AgentChat().ProjectRuntime(ctx, resolved.WorkspaceID)
+	project, err := host.app.AgentChat().ProjectRuntime(ctx, resolved.ProjectID)
 	if err != nil {
 		return automationapp.Runtime{}, fmt.Errorf("build automation project runtime: %w", err)
 	}
@@ -164,6 +164,10 @@ func (host automationHost) Catalog() (automationapp.Catalog, error) {
 
 func (host automationHost) AcquireRootOperation(ctx context.Context) (automationapp.Operation, error) {
 	return host.app.acquireRootOperation(ctx)
+}
+
+func (host automationHost) AcquireProjectOperation(ctx context.Context, projectID string) (automationapp.Operation, error) {
+	return host.app.AcquireProjectOperation(ctx, projectID)
 }
 
 func (host automationHost) AcquireWorkspaceOperation(ctx context.Context, workspace string) (automationapp.Operation, error) {

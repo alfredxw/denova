@@ -30,7 +30,7 @@ func (host imageHost) AcquireImageRuntime(ctx context.Context, expectedWorkspace
 		return nil, fmt.Errorf("%w: expected=%q actual=%q", ErrWorkspaceChanged, expectedWorkspace, workspace)
 	}
 	runtime := &imageapp.Runtime{
-		Workspace: workspace, Config: *app.cfg, BookState: app.bookState,
+		ProjectID: app.cfg.ProjectID, Workspace: workspace, Config: *app.cfg, BookState: app.bookState,
 		BookService: app.bookService, Interactive: app.interactive,
 		SessionStore: app.sessionStore, ChatService: app.chatService,
 	}
@@ -47,6 +47,40 @@ func (host imageHost) AcquireImageRuntime(ctx context.Context, expectedWorkspace
 	}
 	runtime.Config.Workspace = workspace
 	return runtime, nil
+}
+
+// AcquireProjectImageRuntime resolves every adapter from stable Project
+// identity while a Project-generation lease prevents relink/archive races.
+func (host imageHost) AcquireProjectImageRuntime(ctx context.Context, projectID string) (*imageapp.Runtime, error) {
+	app := host.app
+	if app == nil {
+		return nil, ErrNoWorkspace
+	}
+	operation, err := app.AcquireProjectOperation(ctx, projectID)
+	if err != nil {
+		return nil, err
+	}
+	projectRuntime, err := app.AgentChat().ProjectRuntime(operation.Context(), projectID)
+	if err != nil {
+		operation.Release()
+		return nil, err
+	}
+	conversation := projectRuntime.Conversation
+	if conversation.State == nil || conversation.BookService == nil || conversation.ChatService == nil {
+		operation.Release()
+		return nil, fmt.Errorf("Project %q is not a Book Project", projectID)
+	}
+	layout := operation.Layout()
+	if strings.TrimSpace(conversation.ProjectID) != strings.TrimSpace(projectID) ||
+		lifecycleWorkspaceKey(conversation.Workspace) != lifecycleWorkspaceKey(layout.ContentRoot) {
+		operation.Release()
+		return nil, ErrWorkspaceChanged
+	}
+	return &imageapp.Runtime{
+		Operation: operation, ProjectID: conversation.ProjectID, Workspace: conversation.Workspace,
+		Config: conversation.Config, BookState: conversation.State, BookService: conversation.BookService,
+		SessionStore: projectRuntime.SessionStore, ChatService: conversation.ChatService,
+	}, nil
 }
 
 func imageRuntimeMatches(app *App, runtime *imageapp.Runtime) bool {

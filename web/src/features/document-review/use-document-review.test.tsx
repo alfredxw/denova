@@ -32,8 +32,8 @@ describe('useDocumentReview', () => {
     const thread = { id: 'thread-1', comments: [comment] }
     apiMocks.createDocumentComment.mockResolvedValue({ workspace: '/book', reviewThread: thread, comment })
     const showAgent = vi.fn()
-  const { result } = renderHook(() => useDocumentReview({ projectId: 'book-1', workspace: '/book', agentVisible: false, onShowAgent: showAgent }))
-  await waitFor(() => expect(apiMocks.getDocumentReview).toHaveBeenCalledWith('book-1'))
+    const { result } = renderHook(() => useDocumentReview({ projectId: 'book-1', agentVisible: false, onShowAgent: showAgent }))
+    await waitFor(() => expect(apiMocks.getDocumentReview).toHaveBeenCalledWith('book-1'))
 
     await act(async () => {
       await result.current.addComment({ target: comment.target, body: comment.body, anchor })
@@ -52,26 +52,26 @@ describe('useDocumentReview', () => {
     expect(result.current.visibleComments).toEqual([comment])
   })
 
-  it('removes consumed comments from both the Agent queue and lore editor for the active workspace', async () => {
+  it('removes consumed comments from both the Agent queue and lore editor for the active Project', async () => {
     const comment = { id: 'comment-1', thread_id: 'thread-1', target: { kind: 'lore_item' as const, id: 'hero', field: 'content' as const }, body: '修改这里', anchor, created_at: '', updated_at: '' }
     apiMocks.getDocumentReview
       .mockResolvedValueOnce({ id: 'thread-1', comments: [comment] })
       .mockResolvedValueOnce({ id: '', comments: [] })
 
-  const { result } = renderHook(() => useDocumentReview({ projectId: 'book-1', workspace: '/book', agentVisible: true, onShowAgent: vi.fn() }))
+    const { result } = renderHook(() => useDocumentReview({ projectId: 'book-1', agentVisible: true, onShowAgent: vi.fn() }))
     await waitFor(() => expect(result.current.feedback?.comments).toEqual([comment]))
     expect(result.current.visibleComments).toEqual([comment])
 
     act(() => {
       window.dispatchEvent(new CustomEvent('nova:workspace-change', {
-        detail: { workspace: '/another-book', action: 'review_feedback_consumed' },
+        detail: { project_id: 'book-2', workspace: '/another-book', action: 'review_feedback_consumed' },
       }))
     })
     expect(apiMocks.getDocumentReview).toHaveBeenCalledTimes(1)
 
     act(() => {
       window.dispatchEvent(new CustomEvent('nova:workspace-change', {
-        detail: { workspace: '/book', action: 'review_feedback_consumed' },
+        detail: { project_id: 'book-1', workspace: '/book', action: 'review_feedback_consumed' },
       }))
     })
     await waitFor(() => expect(result.current.feedback).toBeNull())

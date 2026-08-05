@@ -1,8 +1,13 @@
 import { act, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
+import type { ComponentProps } from 'react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { WorkspaceFileRevisionConflictError } from '@/lib/autosave/workspace-file-revision-conflict'
-import { MarkdownEditor } from './MarkdownEditor'
+import { MarkdownEditor as ProjectMarkdownEditor } from './MarkdownEditor'
+
+function MarkdownEditor({ workspace, ...props }: Omit<ComponentProps<typeof ProjectMarkdownEditor>, 'projectId'> & { projectId?: string; workspace?: string }) {
+  return <ProjectMarkdownEditor {...props} projectId={props.projectId || workspace || 'project-editor-test'} />
+}
 
 const toastMock = vi.hoisted(() => ({
   error: vi.fn(),
@@ -154,8 +159,17 @@ vi.mock('@tiptap/markdown', () => ({ Markdown: { configure: () => ({}) } }))
 vi.mock('sonner', () => ({ toast: toastMock }))
 vi.mock('@/lib/api-client/workspace', () => ({
   MISSING_WORKSPACE_REVISION: 'missing',
-  readFile: workspaceApiMock.readFile,
 }))
+vi.mock('@/lib/api-client/project-files', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('@/lib/api-client/project-files')>()
+  return {
+    ...actual,
+    readProjectFile: async (projectId: string, path: string) => ({
+      ...await workspaceApiMock.readFile(path),
+      project_id: projectId,
+    }),
+  }
+})
 vi.mock('@/lib/api-client/autosave-conflicts', () => ({ preserveAutosaveConflict: conflictArchiveMock.preserve }))
 vi.mock('./DocumentReviewAnnotations', async () => {
   const { forwardRef, useImperativeHandle } = await import('react')

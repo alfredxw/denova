@@ -290,7 +290,7 @@ function workbenchProps(main: ReactNode) {
     booksReturnMode: 'interactive' as const,
     currentBookName: 'Test book',
     workspace: '/tmp/test-book',
-    books: [{ name: 'Test book', path: '/tmp/test-book', author: '', last_opened_at: '' }],
+    books: [{ project_id: 'book-test', name: 'Test book', path: '/tmp/test-book', author: '', last_opened_at: '' }],
     appVersion: 'test',
     summary: null,
     isStreaming: false,

@@ -14,7 +14,6 @@ interface AgentChatConversationTabProps {
   projectId: string
   projectType: 'book' | 'general'
   workspace: string
-  workspaceCurrent?: boolean
   sessionId: string
   draft?: boolean
   active: boolean
@@ -42,7 +41,6 @@ function AgentChatConversationTabComponent({
   projectId,
   projectType,
   workspace,
-  workspaceCurrent = true,
   sessionId,
   draft = false,
   active,
@@ -61,7 +59,7 @@ function AgentChatConversationTabComponent({
 }: AgentChatConversationTabProps) {
   const client = useMemo(() => createProjectAgentChatClient(projectId, sessionId), [projectId, sessionId])
   const chat = useAgentChat({
-    workspace,
+    projectId,
     client,
     onAgentFileChange: () => onWorkspaceChanged?.(workspace, [], {
       impact: 'structure',
@@ -115,10 +113,10 @@ function AgentChatConversationTabComponent({
 
   return (
     <AgentPanel
+      projectId={projectId}
       active={active}
       agentKind={projectType === 'general' ? 'general' : 'writing'}
       workspace={workspace}
-      workspaceContextActive={workspaceCurrent}
       chrome="workbench"
       composerSettings={composerSettings}
       selectedFile={null}

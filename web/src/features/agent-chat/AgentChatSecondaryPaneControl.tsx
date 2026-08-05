@@ -16,7 +16,7 @@ interface AgentChatSecondaryPaneControlProps {
   busy: boolean
   newChatDisabled?: boolean
   terminalCommands: TerminalCommandProfile[]
-  pagesEnabled: boolean
+  pageIds: readonly AgentChatPageId[]
   onShow: () => void
   onHide: () => void
   onNewAgentTab: (group: AgentChatGroupId) => void
@@ -37,7 +37,7 @@ export function AgentChatSecondaryPaneControl({
   busy,
   newChatDisabled = false,
   terminalCommands,
-  pagesEnabled,
+  pageIds,
   onShow,
   onHide,
   onNewAgentTab,
@@ -82,7 +82,7 @@ export function AgentChatSecondaryPaneControl({
           group="secondary"
           newChatDisabled={newChatDisabled}
           terminalCommands={terminalCommands}
-          pagesEnabled={pagesEnabled}
+          pageIds={pageIds}
           onNewAgentTab={onNewAgentTab}
           onNewTerminalTab={onNewTerminalTab}
           onOpenFiles={onOpenFiles}

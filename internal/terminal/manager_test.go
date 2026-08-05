@@ -274,6 +274,12 @@ func TestManagerCreateIsIdempotentForOneOwnerTab(t *testing.T) {
 	if got := first.session.Info().OwnerTabID; got != spec.OwnerTabID {
 		t.Fatalf("expected owner tab %q, got %q", spec.OwnerTabID, got)
 	}
+	if _, err := manager.Create(Spec{
+		OwnerTabID: spec.OwnerTabID, ProjectID: "foreign-project",
+		Command: "/bin/sh", Args: []string{"-c", "exit 0"}, Cwd: t.TempDir(),
+	}); !errors.Is(err, ErrOwnerConflict) {
+		t.Fatalf("cross-Project owner reuse error = %v, want ErrOwnerConflict", err)
+	}
 
 	oldID := first.session.ID()
 	if err := manager.Close(oldID); err != nil {
@@ -285,6 +291,40 @@ func TestManagerCreateIsIdempotentForOneOwnerTab(t *testing.T) {
 	}
 	if replacement.ID() == oldID {
 		t.Fatal("expected closing an owner session to allow a fresh replacement")
+	}
+}
+
+func TestManagerCloseProjectRejectsRunningProcessesAndCleansExitedSessions(t *testing.T) {
+	manager := newTestManager(t)
+	live, err := manager.Create(Spec{
+		ProjectID: "project-live", Command: "/bin/sh", Args: []string{"-c", "read line"}, Cwd: t.TempDir(),
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	exited, err := manager.Create(Spec{
+		ProjectID: "project-exited", Command: "/bin/sh", Args: []string{"-c", "exit 0"}, Cwd: t.TempDir(),
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	select {
+	case <-exited.Exited():
+	case <-time.After(2 * time.Second):
+		t.Fatal("timed out waiting for terminal exit")
+	}
+
+	if err := manager.CloseProject("project-live"); !errors.Is(err, ErrProjectSessionsActive) {
+		t.Fatalf("CloseProject error = %v, want ErrProjectSessionsActive", err)
+	}
+	if _, err := manager.Get(live.ID()); err != nil {
+		t.Fatalf("running Project session was removed: %v", err)
+	}
+	if err := manager.CloseProject("project-exited"); err != nil {
+		t.Fatalf("clean exited Project sessions: %v", err)
+	}
+	if _, err := manager.Get(exited.ID()); !errors.Is(err, ErrNotFound) {
+		t.Fatalf("exited Project session remains registered: %v", err)
 	}
 }
 

@@ -13,6 +13,7 @@ interface SkillListPanelProps {
   snapshot: SkillSnapshot
   selectedKey: string | null
   loading: boolean
+  agentAvailable: boolean
   agentOpen: boolean
   mode: SkillsMode
   onToggleAgent: () => void
@@ -21,11 +22,12 @@ interface SkillListPanelProps {
   onSelect: (key: string) => void
 }
 
-/** Skills 左侧栏：Agent/新建/导入入口 + ResourceDirectory 分组列表。 */
+/** Skill navigation, creation/import actions, and the grouped resource directory. */
 export function SkillListPanel({
   snapshot,
   selectedKey,
   loading,
+  agentAvailable,
   agentOpen,
   mode,
   onToggleAgent,
@@ -91,15 +93,17 @@ export function SkillListPanel({
 
   return (
     <div className="flex h-full min-h-0 flex-col bg-[var(--nova-surface-2)]">
-      <div className="grid shrink-0 grid-cols-3 gap-2 p-3">
-        <button
-          type="button"
-          onClick={onToggleAgent}
-          className={`nova-nav-item inline-flex h-8 items-center justify-center gap-1.5 rounded border border-[var(--nova-border)] px-2 ${agentOpen ? 'is-active' : 'bg-[var(--nova-surface)]'}`}
-        >
-          <Bot className="h-3.5 w-3.5" />
-          <span className="min-w-0 truncate">{t('skills.agent.button')}</span>
-        </button>
+      <div className={`grid shrink-0 gap-2 p-3 ${agentAvailable ? 'grid-cols-3' : 'grid-cols-2'}`}>
+        {agentAvailable && (
+          <button
+            type="button"
+            onClick={onToggleAgent}
+            className={`nova-nav-item inline-flex h-8 items-center justify-center gap-1.5 rounded border border-[var(--nova-border)] px-2 ${agentOpen ? 'is-active' : 'bg-[var(--nova-surface)]'}`}
+          >
+            <Bot className="h-3.5 w-3.5" />
+            <span className="min-w-0 truncate">{t('skills.agent.button')}</span>
+          </button>
+        )}
         <button
           type="button"
           onClick={onCreate}

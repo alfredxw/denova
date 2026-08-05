@@ -5,14 +5,15 @@ import type { EditorFlushHandler } from '@/components/Editor/useEditorDraftPersi
 import type { WorkspaceChangeMetadata } from '@/features/changes/types'
 import type { ImagePreset, Teller } from '@/features/interactive/types'
 import { ProjectWritingSurface } from '@/features/writing/ProjectWritingSurface'
+import { projectResourceTarget } from '@/lib/api'
 import { AgentChatView } from './AgentChatView'
 import type { AgentChatPageId, AgentChatPageRenderContext, AgentChatReviewRenderContext, AgentChatReviewTab } from './types'
 
-const LoreWorkspaceTab = lazy(() => import('@/features/lore/LoreWorkspaceTab').then((module) => ({ default: module.LoreWorkspaceTab })))
 const SettingPanel = lazy(() => import('@/features/interactive/components/SettingPanel').then((module) => ({ default: module.SettingPanel })))
 const SkillsView = lazy(() => import('@/features/skills/SkillsView').then((module) => ({ default: module.SkillsView })))
 const AgentsView = lazy(() => import('@/features/agents/AgentsView').then((module) => ({ default: module.AgentsView })))
 const AutomationsView = lazy(() => import('@/features/automations/AutomationsView').then((module) => ({ default: module.AutomationsView })))
+const VersionPanel = lazy(() => import('@/components/Versions/VersionPanel').then((module) => ({ default: module.VersionPanel })))
 const ChangeReviewWorkspace = lazy(() => import('@/features/changes/review/ChangeReviewWorkspace').then((module) => ({ default: module.ChangeReviewWorkspace })))
 
 interface AgentChatRouteProps {
@@ -60,7 +61,6 @@ function AgentChatRouteComponent({
           <ProjectWritingSurface
             key={projectId}
             projectId={projectId}
-            workspace={tabWorkspace}
             autoSaveEnabled={autoSaveEnabled}
             autoSaveDelayMs={autoSaveDelayMs}
             documentReview={context.documentReview}
@@ -75,13 +75,16 @@ function AgentChatRouteComponent({
         )
       case 'lore':
         return (
-          <LoreWorkspaceTab
+          <SettingPanel
             projectId={projectId}
-            workspace={tabWorkspace}
+            mode="lore"
+            embedded
+            imagePresets={imagePresets}
+            onImagePresetsChange={onImagePresetsChange}
             documentReview={context.documentReview}
-            navigationIntent={context.navigationIntent?.target.kind === 'lore_item' ? context.navigationIntent : null}
+            documentReviewNavigationIntent={context.navigationIntent?.target.kind === 'lore_item' ? context.navigationIntent : null}
             refreshSignal={context.refreshSignal}
-            onEditorFlushHandlerChange={context.onFlushHandlerChange}
+            onFlushHandlerChange={context.onFlushHandlerChange}
           />
         )
       case 'presets':
@@ -89,7 +92,6 @@ function AgentChatRouteComponent({
           <SettingPanel
             projectId={projectId}
             mode="teller"
-            workspace={tabWorkspace}
             presetUsageMode="writing"
             tellers={tellers}
             imagePresets={imagePresets}
@@ -98,11 +100,19 @@ function AgentChatRouteComponent({
           />
         )
       case 'skills':
-        return <SkillsView workspace={tabWorkspace} />
+        return <SkillsView target={projectResourceTarget(projectId)} />
       case 'agents':
-        return <AgentsView />
+        return <AgentsView target={projectResourceTarget(projectId)} />
       case 'automations':
-        return <AutomationsView workspace={tabWorkspace} />
+        return <AutomationsView projectId={projectId} workspace={tabWorkspace} />
+      case 'versions':
+        return (
+          <VersionPanel
+            projectId={projectId}
+            workspace={tabWorkspace}
+            onWorkspaceChanged={(paths) => context.onWorkspaceChanged(paths, { impact: 'structure', origin: 'project-page' })}
+          />
+        )
     }
   }, [autoSaveDelayMs, autoSaveEnabled, imagePresets, onImagePresetsChange, onTellersChange, tellers])
 
@@ -121,7 +131,7 @@ function AgentChatRouteComponent({
   const renderReview = useCallback((tab: AgentChatReviewTab, disabled: boolean, context: AgentChatReviewRenderContext): ReactNode => (
     <Suspense fallback={<div className="flex h-full items-center justify-center text-xs text-[var(--nova-text-muted)]">{t('router.loading')}</div>}>
       <ChangeReviewWorkspace
-        workspace={tab.workspace}
+        projectId={tab.projectId}
         threadID={tab.threadID}
         scopeRequest={tab.groupID ? { id: 0, threadID: tab.threadID, groupID: tab.groupID } : null}
         disabled={disabled}

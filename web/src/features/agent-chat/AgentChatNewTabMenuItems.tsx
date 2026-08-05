@@ -6,6 +6,7 @@ import {
   Clock3,
   Database,
   FolderTree,
+  History,
   MessageSquareText,
   SlidersHorizontal,
   Sparkles,
@@ -13,7 +14,6 @@ import {
 } from 'lucide-react'
 import { DropdownMenuItem, DropdownMenuSeparator } from '@/components/ui/dropdown-menu'
 import {
-  AGENT_CHAT_PAGE_IDS,
   type AgentChatGroupId,
   type AgentChatPageId,
   type TerminalCommandProfile,
@@ -28,13 +28,14 @@ export const AGENT_CHAT_PAGE_ICONS: Record<AgentChatPageId, ReactNode> = {
   skills: <Sparkles className="size-3.5" />,
   agents: <Bot className="size-3.5" />,
   automations: <Clock3 className="size-3.5" />,
+  versions: <History className="size-3.5" />,
 }
 
 interface AgentChatNewTabMenuItemsProps {
   group: AgentChatGroupId
   newChatDisabled?: boolean
   terminalCommands: TerminalCommandProfile[]
-  pagesEnabled: boolean
+  pageIds: readonly AgentChatPageId[]
   onNewAgentTab: (group: AgentChatGroupId) => void
   onNewTerminalTab: (group: AgentChatGroupId, profileId: TerminalProfileId, profileName?: string) => void
   onOpenFiles: (group: AgentChatGroupId) => void
@@ -46,7 +47,7 @@ export function AgentChatNewTabMenuItems({
   group,
   newChatDisabled = false,
   terminalCommands,
-  pagesEnabled,
+  pageIds,
   onNewAgentTab,
   onNewTerminalTab,
   onOpenFiles,
@@ -73,9 +74,9 @@ export function AgentChatNewTabMenuItems({
         <FolderTree />
         {t('files.title')}
       </DropdownMenuItem>
-      {pagesEnabled ? <DropdownMenuSeparator /> : null}
-      {pagesEnabled
-        ? AGENT_CHAT_PAGE_IDS.map((pageId) => (
+      {pageIds.length > 0 ? <DropdownMenuSeparator /> : null}
+      {pageIds.length > 0
+        ? pageIds.map((pageId) => (
             <DropdownMenuItem key={pageId} onSelect={() => onOpenPage(group, pageId)}>
               {AGENT_CHAT_PAGE_ICONS[pageId]}
               {t(`agentChat.page.${pageId}`)}

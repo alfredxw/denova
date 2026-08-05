@@ -1,8 +1,13 @@
 import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { renderToStaticMarkup } from 'react-dom/server'
+import type { ComponentProps } from 'react'
 import { describe, expect, it, vi } from 'vitest'
-import { MessageItem } from './MessageItem'
+import { MessageItem as ProjectMessageItem } from './MessageItem'
+
+function MessageItem(props: ComponentProps<typeof ProjectMessageItem>) {
+  return <ProjectMessageItem {...props} projectId={props.projectId || 'project-message'} />
+}
 
 function mockScrollMetrics(element: HTMLElement, initial = { scrollHeight: 520, clientHeight: 128, scrollTop: 0 }) {
   let scrollHeight = initial.scrollHeight
@@ -599,10 +604,10 @@ describe('MessageItem', () => {
 
     expect(screen.getByText('章节插画')).toBeInTheDocument()
     expect(screen.getByText('assets/illustrations/ch01/run/image.png')).toBeInTheDocument()
-    expect(screen.getByRole('img', { name: '雨夜' })).toHaveAttribute('src', '/api/workspace/asset?path=assets%2Fillustrations%2Fch01%2Frun%2Fimage.png')
+    expect(screen.getByRole('img', { name: '雨夜' })).toHaveAttribute('src', '/api/projects/project-message/files/asset?path=assets%2Fillustrations%2Fch01%2Frun%2Fimage.png')
 
     await user.click(screen.getByRole('button', { name: '放大查看章节插画' }))
-    expect(within(screen.getByRole('dialog')).getByRole('img', { name: '雨夜' })).toHaveAttribute('src', '/api/workspace/asset?path=assets%2Fillustrations%2Fch01%2Frun%2Fimage.png')
+    expect(within(screen.getByRole('dialog')).getByRole('img', { name: '雨夜' })).toHaveAttribute('src', '/api/projects/project-message/files/asset?path=assets%2Fillustrations%2Fch01%2Frun%2Fimage.png')
     await user.keyboard('{Escape}')
     await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument())
 
@@ -614,12 +619,12 @@ describe('MessageItem', () => {
     const user = userEvent.setup()
     render(<MessageItem message={{ role: 'assistant', content: '![封面](assets/image/generated/cover.png)' }} />)
 
-    expect(screen.getByRole('img', { name: '封面' })).toHaveAttribute('src', '/api/workspace/asset?path=assets%2Fimage%2Fgenerated%2Fcover.png')
+    expect(screen.getByRole('img', { name: '封面' })).toHaveAttribute('src', '/api/projects/project-message/files/asset?path=assets%2Fimage%2Fgenerated%2Fcover.png')
 
     await user.click(screen.getByRole('button', { name: '放大查看图像' }))
 
     const dialog = screen.getByRole('dialog')
-    expect(within(dialog).getByRole('img', { name: '封面' })).toHaveAttribute('src', '/api/workspace/asset?path=assets%2Fimage%2Fgenerated%2Fcover.png')
+    expect(within(dialog).getByRole('img', { name: '封面' })).toHaveAttribute('src', '/api/projects/project-message/files/asset?path=assets%2Fimage%2Fgenerated%2Fcover.png')
     expect(within(dialog).queryByTitle('assets/image/generated/cover.png')).not.toBeInTheDocument()
     expect(within(dialog).getByRole('button', { name: '放大' })).toBeInTheDocument()
   })
@@ -661,10 +666,10 @@ describe('MessageItem', () => {
     expect(screen.queryByText('互动图像')).not.toBeInTheDocument()
     expect(screen.queryByText((text) => text.includes('assets/interactive/images'))).not.toBeInTheDocument()
     expect(screen.queryByRole('button', { name: '重新生成' })).not.toBeInTheDocument()
-    expect(screen.getByRole('img', { name: '第二张互动图像' })).toHaveAttribute('src', '/api/workspace/asset?path=assets%2Finteractive%2Fimages%2Fstory-1%2Fmain%2Fturn-1%2Frun-b%2Fimage.png')
+    expect(screen.getByRole('img', { name: '第二张互动图像' })).toHaveAttribute('src', '/api/projects/project-message/files/asset?path=assets%2Finteractive%2Fimages%2Fstory-1%2Fmain%2Fturn-1%2Frun-b%2Fimage.png')
 
     await user.click(screen.getByRole('button', { name: '上一张互动图像' }))
-    expect(screen.getByRole('img', { name: '第一张互动图像' })).toHaveAttribute('src', '/api/workspace/asset?path=assets%2Finteractive%2Fimages%2Fstory-1%2Fmain%2Fturn-1%2Frun-a%2Fimage.png')
+    expect(screen.getByRole('img', { name: '第一张互动图像' })).toHaveAttribute('src', '/api/projects/project-message/files/asset?path=assets%2Finteractive%2Fimages%2Fstory-1%2Fmain%2Fturn-1%2Frun-a%2Fimage.png')
   })
 
   it('assistant 回合互动图像新增版本后自动切到最新图像', async () => {
@@ -721,7 +726,7 @@ describe('MessageItem', () => {
       />,
     )
 
-    expect(screen.getByRole('img', { name: '第三张互动图像' })).toHaveAttribute('src', '/api/workspace/asset?path=assets%2Finteractive%2Fimages%2Fstory-1%2Fmain%2Fturn-1%2Frun-c%2Fimage.png')
+    expect(screen.getByRole('img', { name: '第三张互动图像' })).toHaveAttribute('src', '/api/projects/project-message/files/asset?path=assets%2Finteractive%2Fimages%2Fstory-1%2Fmain%2Fturn-1%2Frun-c%2Fimage.png')
   })
 
   it('assistant 回合元信息显示手动生成互动图像按钮', async () => {

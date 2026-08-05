@@ -15,7 +15,7 @@ const maxRememberedRecoveries = 128
 // configManagerRecoveryRun owns the single reconnectable display observer for
 // one Config Manager binding after a cold Runtime recovery boundary.
 type recoveryRun struct {
-	workspace       string
+	projectID       string
 	sessionID       string
 	task            *apptask.Task
 	recovery        *agentharness.RecoveryObservation
@@ -29,15 +29,15 @@ type recoveryRegistry struct {
 	replayByteLimit int
 }
 
-func recoveryScopeKey(workspace, sessionID string) string {
-	return strings.TrimSpace(workspace) + "\x00" + strings.TrimSpace(sessionID)
+func recoveryScopeKey(projectID, sessionID string) string {
+	return strings.TrimSpace(projectID) + "\x00" + strings.TrimSpace(sessionID)
 }
 
-func (r *recoveryRegistry) current(workspace, sessionID string) *recoveryRun {
+func (r *recoveryRegistry) current(projectID, sessionID string) *recoveryRun {
 	if r == nil {
 		return nil
 	}
-	key := recoveryScopeKey(workspace, sessionID)
+	key := recoveryScopeKey(projectID, sessionID)
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	r.pruneLocked()
@@ -52,7 +52,7 @@ func (r *recoveryRegistry) install(run *recoveryRun) error {
 	if r == nil || run == nil || run.task == nil {
 		return fmt.Errorf("cannot register an empty Config Manager recovery run")
 	}
-	key := recoveryScopeKey(run.workspace, run.sessionID)
+	key := recoveryScopeKey(run.projectID, run.sessionID)
 	if key == "\x00" {
 		return fmt.Errorf("cannot register Config Manager recovery without a binding")
 	}
@@ -97,7 +97,7 @@ func (r *recoveryRegistry) rollback(run *recoveryRun) {
 	if r == nil || run == nil {
 		return
 	}
-	key := recoveryScopeKey(run.workspace, run.sessionID)
+	key := recoveryScopeKey(run.projectID, run.sessionID)
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	if r.runs[key] != run {
@@ -107,11 +107,11 @@ func (r *recoveryRegistry) rollback(run *recoveryRun) {
 	r.removeOrderKeyLocked(key)
 }
 
-func (r *recoveryRegistry) releaseScope(workspace, sessionID string) *apptask.Task {
+func (r *recoveryRegistry) releaseScope(projectID, sessionID string) *apptask.Task {
 	if r == nil {
 		return nil
 	}
-	key := recoveryScopeKey(workspace, sessionID)
+	key := recoveryScopeKey(projectID, sessionID)
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	run := r.runs[key]

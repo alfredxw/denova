@@ -90,7 +90,7 @@ func (s *Service) conversationRuntime(
 	target := automation.ExecutionTarget{Kind: automation.TargetKindUser}
 	if strings.TrimSpace(run.Workspace) != "" {
 		target = automation.ExecutionTarget{
-			Kind: automation.TargetKindWorkspace, WorkspaceID: run.ProjectID, Workspace: run.Workspace,
+			Kind: automation.TargetKindWorkspace, ProjectID: run.ProjectID, Workspace: run.Workspace,
 		}
 	}
 	snap, operation, err := s.acquireTargetRuntime(ctx, target)

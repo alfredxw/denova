@@ -12,6 +12,7 @@ import { VIRTUOSO_BOTTOM_THRESHOLD, useVirtuosoBottomLock } from './useVirtuosoB
 import { ScrollToBottomButton } from './ScrollToBottomButton'
 
 interface AgentSubAgentSessionPanelProps {
+  projectId?: string
   messages: AgentUIMessage[]
   sessionKey: string
   onClose: () => void
@@ -25,7 +26,7 @@ const SUBAGENT_SESSION_COMPONENTS: Components<AgentMessageView> = {
   Footer: SubAgentSessionListPadding,
 }
 
-export function AgentSubAgentSessionPanel({ messages, sessionKey, onClose, highlightDialogue = false, messageStyle, onResolveAsk }: AgentSubAgentSessionPanelProps) {
+export function AgentSubAgentSessionPanel({ projectId, messages, sessionKey, onClose, highlightDialogue = false, messageStyle, onResolveAsk }: AgentSubAgentSessionPanelProps) {
   const { t } = useTranslation()
   const sessionViews = useMemo(() => {
     const views = buildAgentMessageViews(messages)
@@ -46,6 +47,7 @@ export function AgentSubAgentSessionPanel({ messages, sessionKey, onClose, highl
     if (!resolvedView) return null
     return (
       <SubAgentSessionRow
+        projectId={projectId}
         view={resolvedView}
         streamingTail={running && index === sessionViews.length - 1}
         streamingRowRef={scrollLock.streamingRowRef}
@@ -55,7 +57,7 @@ export function AgentSubAgentSessionPanel({ messages, sessionKey, onClose, highl
         onResolveAsk={onResolveAsk}
       />
     )
-  }, [highlightDialogue, messageStyle, onResolveAsk, running, scrollLock.streamingRowRef, scrollLock.syncStreamingRowHeight, sessionViews])
+  }, [highlightDialogue, messageStyle, onResolveAsk, projectId, running, scrollLock.streamingRowRef, scrollLock.syncStreamingRowHeight, sessionViews])
 
   return (
     <section className="flex h-full min-h-0 flex-col border-l border-[var(--nova-border)] bg-[var(--nova-surface-2)] shadow-[-12px_0_26px_-24px_rgba(0,0,0,0.72)]">
@@ -116,7 +118,8 @@ export function AgentSubAgentSessionPanel({ messages, sessionKey, onClose, highl
   )
 }
 
-function SubAgentSessionRow({ view, streamingTail, streamingRowRef, syncStreamingRowHeight, highlightDialogue, messageStyle, onResolveAsk }: {
+function SubAgentSessionRow({ projectId, view, streamingTail, streamingRowRef, syncStreamingRowHeight, highlightDialogue, messageStyle, onResolveAsk }: {
+  projectId?: string
   view: AgentMessageView
   streamingTail: boolean
   streamingRowRef: RefCallback<HTMLElement>
@@ -136,6 +139,7 @@ function SubAgentSessionRow({ view, streamingTail, streamingRowRef, syncStreamin
       className="min-w-0 px-4 pb-3 last:pb-0"
     >
       <AgentMessageItem
+        projectId={projectId}
         view={view}
         highlightDialogue={highlightDialogue}
         messageStyle={messageStyle}

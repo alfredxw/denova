@@ -18,11 +18,31 @@ import (
 // Denova data directory.
 var ErrDataDirRequired = errors.New("resource catalog data directory is required")
 
-// SkillDirectorySource supplies the current user/workspace Skill search path.
-// Unlike global catalogs, workspace Skills follow the foreground workspace, so
-// the source is evaluated for every operation.
+// SkillTarget identifies which layers participate in one Skill catalog
+// operation. The zero value is the global catalog (builtin + user); a Project
+// target additionally exposes that Project's workspace layer.
+type SkillTarget struct {
+	projectID string
+}
+
+// GlobalSkills returns the process-wide builtin + user Skill target.
+func GlobalSkills() SkillTarget { return SkillTarget{} }
+
+// ProjectSkills returns the merged builtin + user + Project Skill target.
+// Project identity is resolved by the application host; callers never supply a
+// workspace path.
+func ProjectSkills(projectID string) SkillTarget {
+	return SkillTarget{projectID: strings.TrimSpace(projectID)}
+}
+
+// ProjectID returns the stable Project identity, or an empty string for the
+// global catalog.
+func (target SkillTarget) ProjectID() string { return target.projectID }
+
+// SkillDirectorySource supplies the Skill search path for an explicit target.
+// It must never infer a Project from foreground navigation state.
 type SkillDirectorySource interface {
-	SkillDirectories() []novaskills.Directory
+	SkillDirectories(SkillTarget) ([]novaskills.Directory, error)
 }
 
 // Service owns all reusable resource libraries that share the same durable

@@ -4,10 +4,10 @@ import { readUIMessageStream } from 'ai'
 import { useTranslation } from 'react-i18next'
 import { createAgentCommandID, runConfigManagerStream } from '@/lib/api'
 import { agentCommandRetryKey, isKnownAgentCommandOutcome, rememberAgentCommandID } from '@/lib/agent-command'
+import { rebaseTextWithRecovery } from '@/lib/autosave/rebase-with-recovery'
 import { isSaveShortcut } from '@/lib/keyboard'
 import { readTextFile } from '@/lib/text-file'
 import { rebaseText } from '@/lib/three-way-rebase'
-import { rebaseTextWithRecovery } from '@/lib/autosave/rebase-with-recovery'
 import { MessageList } from '@/components/Chat/MessageList'
 import { AutosaveStatusIndicator } from '@/components/forms/autosave-status'
 import { agentViewContent, buildAgentMessageViews } from '@/lib/agent-message-view'
@@ -35,18 +35,28 @@ type TellerTarget = TellerPromptSlot['target']
 const STYLE_SOURCE_LIMIT = 40000
 const STYLE_FILE_ACCEPT = '.txt,.md,.markdown,text/plain,text/markdown,text/x-markdown'
 const STYLE_MARKDOWN_TAG = 'style_reference_markdown'
+export const STYLE_REFERENCES_UPDATED_EVENT = 'nova:style-references-updated'
 
-export function TellerEditor({ workspace, draft, setDraft, activeSlotId, setActiveSlotId, onSave }: { workspace: string; draft: Teller | null; setDraft: (draft: Teller | null) => void; activeSlotId: string; setActiveSlotId: (id: string) => void; onSave: () => void }) {
+interface StyleReferencesUpdatedDetail {
+  source?: string
+  paths?: string[]
+}
+
+let nextStyleReferenceSourceID = 1
+
+function notifyStyleReferencesUpdated(source: string, path: string) {
+  window.dispatchEvent(new CustomEvent<StyleReferencesUpdatedDetail>(STYLE_REFERENCES_UPDATED_EVENT, {
+    detail: { source, paths: path ? [path] : undefined },
+  }))
+}
+
+export function TellerEditor({ projectId, draft, setDraft, activeSlotId, setActiveSlotId, onSave }: { projectId: string; draft: Teller | null; setDraft: (draft: Teller | null) => void; activeSlotId: string; setActiveSlotId: (id: string) => void; onSave: () => void }) {
   const { t } = useTranslation()
   const activeSlot = draft?.slots?.find((slot) => slot.id === activeSlotId) || draft?.slots?.[0] || null
   const [targetPickerOpen, setTargetPickerOpen] = useState(false)
 	const [styleReferences, setStyleReferences] = useState<StyleReference[]>([])
 
   const refreshStyleReferences = async () => {
-    if (!workspace) {
-      setStyleReferences([])
-      return []
-    }
     try {
       const refs = await getStyleReferences()
       setStyleReferences(refs)
@@ -60,7 +70,7 @@ export function TellerEditor({ workspace, draft, setDraft, activeSlotId, setActi
 
   useEffect(() => {
     void refreshStyleReferences()
-  }, [workspace])
+  }, [])
 
   useEffect(() => {
     setTargetPickerOpen(false)
@@ -152,6 +162,7 @@ export function TellerEditor({ workspace, draft, setDraft, activeSlotId, setActi
             <div className="mt-1 text-[11px] leading-5 text-[var(--nova-text-faint)]">{t('settingPanel.styleRules.desc')}</div>
           </div>
           <InteractiveStyleReferencesEditor
+            projectId={projectId}
             references={styleReferences}
             refreshReferences={refreshStyleReferences}
             globalRefs={draft.style_refs ?? []}
@@ -276,7 +287,7 @@ export function TellerEditor({ workspace, draft, setDraft, activeSlotId, setActi
   )
 }
 
-function InteractiveStyleReferencesEditor({ references, refreshReferences, globalRefs, onGlobalRefsChange, rules, onRulesChange }: { references: StyleReference[]; refreshReferences: () => Promise<StyleReference[]>; globalRefs: string[]; onGlobalRefsChange: (refs: string[]) => void; rules: StyleRule[]; onRulesChange: (rules: StyleRule[]) => void }) {
+function InteractiveStyleReferencesEditor({ projectId, references, refreshReferences, globalRefs, onGlobalRefsChange, rules, onRulesChange }: { projectId: string; references: StyleReference[]; refreshReferences: () => Promise<StyleReference[]>; globalRefs: string[]; onGlobalRefsChange: (refs: string[]) => void; rules: StyleRule[]; onRulesChange: (rules: StyleRule[]) => void }) {
   const { t } = useTranslation()
   const addRule = () => onRulesChange([...rules, { scene: '', style_refs: [] }])
   const removeRule = (index: number) => onRulesChange(rules.filter((_, i) => i !== index))
@@ -286,11 +297,11 @@ function InteractiveStyleReferencesEditor({ references, refreshReferences, globa
 
   return (
     <div className="flex flex-col gap-2">
-      <InteractiveGlobalStyleRuleRow references={references} refreshReferences={refreshReferences} refs={globalRefs} onChange={onGlobalRefsChange} />
+      <InteractiveGlobalStyleRuleRow projectId={projectId} references={references} refreshReferences={refreshReferences} refs={globalRefs} onChange={onGlobalRefsChange} />
       {rules.length > 0 && (
         <div className="flex flex-col gap-2">
           {rules.map((rule, index) => (
-            <InteractiveStyleRuleRow key={index} references={references} refreshReferences={refreshReferences} rule={rule} onChange={(patch) => updateRule(index, patch)} onRemove={() => removeRule(index)} />
+            <InteractiveStyleRuleRow key={index} projectId={projectId} references={references} refreshReferences={refreshReferences} rule={rule} onChange={(patch) => updateRule(index, patch)} onRemove={() => removeRule(index)} />
           ))}
         </div>
       )}
@@ -306,11 +317,12 @@ function InteractiveStyleReferencesEditor({ references, refreshReferences, globa
   )
 }
 
-function InteractiveGlobalStyleRuleRow({ references, refreshReferences, refs, onChange }: { references: StyleReference[]; refreshReferences: () => Promise<StyleReference[]>; refs: string[]; onChange: (refs: string[]) => void }) {
+function InteractiveGlobalStyleRuleRow({ projectId, references, refreshReferences, refs, onChange }: { projectId: string; references: StyleReference[]; refreshReferences: () => Promise<StyleReference[]>; refs: string[]; onChange: (refs: string[]) => void }) {
   const { t } = useTranslation()
   return (
     <div className="rounded-[var(--nova-radius)] border border-[var(--nova-border)] bg-[var(--nova-surface-2)] p-2">
       <StyleReferenceControls
+        projectId={projectId}
         references={references}
         refreshReferences={refreshReferences}
         refs={refs}
@@ -321,11 +333,12 @@ function InteractiveGlobalStyleRuleRow({ references, refreshReferences, refs, on
   )
 }
 
-function InteractiveStyleRuleRow({ references, refreshReferences, rule, onChange, onRemove }: { references: StyleReference[]; refreshReferences: () => Promise<StyleReference[]>; rule: StyleRule; onChange: (patch: Partial<StyleRule>) => void; onRemove: () => void }) {
+function InteractiveStyleRuleRow({ projectId, references, refreshReferences, rule, onChange, onRemove }: { projectId: string; references: StyleReference[]; refreshReferences: () => Promise<StyleReference[]>; rule: StyleRule; onChange: (patch: Partial<StyleRule>) => void; onRemove: () => void }) {
   const { t } = useTranslation()
   return (
     <div className="rounded-[var(--nova-radius)] border border-[var(--nova-border)] bg-[var(--nova-surface-2)] p-2">
       <StyleReferenceControls
+        projectId={projectId}
         references={references}
         refreshReferences={refreshReferences}
         refs={rule.style_refs || []}
@@ -344,7 +357,7 @@ function InteractiveStyleRuleRow({ references, refreshReferences, rule, onChange
   )
 }
 
-function StyleReferenceControls({ references, refreshReferences, refs, contents = [], onRefsChange, onContentsChange, prefix, extraActions }: { references: StyleReference[]; refreshReferences: () => Promise<StyleReference[]>; refs: string[]; contents?: string[]; onRefsChange: (refs: string[]) => void; onContentsChange?: (contents: string[]) => void; prefix?: ReactNode; extraActions?: ReactNode }) {
+function StyleReferenceControls({ projectId, references, refreshReferences, refs, contents = [], onRefsChange, onContentsChange, prefix, extraActions }: { projectId: string; references: StyleReference[]; refreshReferences: () => Promise<StyleReference[]>; refs: string[]; contents?: string[]; onRefsChange: (refs: string[]) => void; onContentsChange?: (contents: string[]) => void; prefix?: ReactNode; extraActions?: ReactNode }) {
   const { t } = useTranslation()
   const fileInputRef = useRef<HTMLInputElement | null>(null)
   const [pickerOpen, setPickerOpen] = useState(false)
@@ -361,6 +374,7 @@ function StyleReferenceControls({ references, refreshReferences, refs, contents 
   const [editDocument, setEditDocument] = useState<StyleReferenceFileDocument | null>(null)
   const [editContent, setEditContent] = useState('')
   const [editPath, setEditPath] = useState('')
+  const [eventSource] = useState(() => `style-reference-controls-${nextStyleReferenceSourceID++}`)
   const editBaselineContentRef = useRef('')
   const editBaselineRevisionRef = useRef('')
   const editContentRef = useRef('')
@@ -379,6 +393,7 @@ function StyleReferenceControls({ references, refreshReferences, refs, contents 
       setUploadDraft((current) => current?.content === submittedContent
         ? { ...current, content: saved.content }
         : current)
+      notifyStyleReferencesUpdated(eventSource, saved.reference.display_path)
       void refreshReferences()
     },
     onError: setUploadError,
@@ -392,6 +407,7 @@ function StyleReferenceControls({ references, refreshReferences, refs, contents 
       editBaselineRevisionRef.current = saved.revision
       setEditDocument(saved)
       setEditContent((current) => current === submittedContent ? saved.content : current)
+      notifyStyleReferencesUpdated(eventSource, saved.reference.display_path)
       void refreshReferences()
     },
     onError: setEditError,
@@ -462,9 +478,9 @@ function StyleReferenceControls({ references, refreshReferences, refs, contents 
 
   useEffect(() => {
     if (!editOpen || !editPath) return
-    const onWorkspaceChange = (event: Event) => {
-      const paths = (event as CustomEvent<{ paths?: string[] }>).detail?.paths
-      if (paths && !paths.includes(editPath)) return
+    const onStyleReferencesUpdated = (event: Event) => {
+      const detail = (event as CustomEvent<StyleReferencesUpdatedDetail>).detail
+      if (detail?.source === eventSource || (detail?.paths && !detail.paths.includes(editPath))) return
       const requestedPath = editPath
       void readStyleReferenceFile(requestedPath)
         .then(async (latest) => {
@@ -472,7 +488,7 @@ function StyleReferenceControls({ references, refreshReferences, refs, contents 
           const capturedDraft = editContentRef.current
           let rebased = await rebaseTextWithRecovery({
             resource: 'style_reference',
-            scope: 'workspace',
+            scope: 'user',
             id: requestedPath,
             baseline: { revision: editBaselineRevisionRef.current, value: editBaselineContentRef.current },
             local: { revision: editBaselineRevisionRef.current, value: capturedDraft },
@@ -486,12 +502,13 @@ function StyleReferenceControls({ references, refreshReferences, refs, contents 
           editBaselineContentRef.current = latest.content
           editBaselineRevisionRef.current = latest.revision
           setEditDocument(latest)
+          void refreshReferences()
         })
-        .catch((error) => console.warn('[teller-editor] 重新加载外部文风参考更新失败', error))
+        .catch((error) => console.warn('[teller-editor] failed to reload an external style reference update', error))
     }
-    window.addEventListener('nova:workspace-change', onWorkspaceChange)
-    return () => window.removeEventListener('nova:workspace-change', onWorkspaceChange)
-  }, [editOpen, editPath])
+    window.addEventListener(STYLE_REFERENCES_UPDATED_EVENT, onStyleReferencesUpdated)
+    return () => window.removeEventListener(STYLE_REFERENCES_UPDATED_EVENT, onStyleReferencesUpdated)
+  }, [editOpen, editPath, eventSource, refreshReferences])
 
   const closeUploadDialog = async () => {
     if (uploading || !await uploadAutosave.flush()) return
@@ -529,6 +546,7 @@ function StyleReferenceControls({ references, refreshReferences, refs, contents 
     try {
       const request = normalizeStyleUploadDraft(uploadDraft)
       const ref = await saveStyleReference(request)
+      notifyStyleReferencesUpdated(eventSource, ref.display_path)
       await refreshReferences()
       addRef(ref.display_path)
       setUploadOpen(false)
@@ -562,7 +580,7 @@ function StyleReferenceControls({ references, refreshReferences, refs, contents 
         createAgentTextMessage('user', `${t('settingPanel.style.extractSave')}: ${request.name}`),
         createAgentTextMessage('system', t('settingPanel.style.extractProgress.connecting')),
       ])
-      const stream = await runConfigManagerStream({
+      const stream = await runConfigManagerStream(projectId, {
         command_id: commandID,
         origin: 'teller',
         resource_id: '__style_reference_extract__',
@@ -593,6 +611,7 @@ function StyleReferenceControls({ references, refreshReferences, refs, contents 
       const markdownFromTool = extractStyleReferenceMarkdownFromToolArgs(toolArgsByKey)
       const fallbackMarkdown = normalizeExtractedStyleMarkdown(markdownFromTool || generated, request)
       const doc = await readExtractedStyleReferenceDocument(targetPath, request, fallbackMarkdown, t('settingPanel.style.extractMissing'))
+      notifyStyleReferencesUpdated(eventSource, doc.reference.display_path)
       const updated = await refreshReferences()
       const created = updated.find((item) => item.display_path === doc.reference.display_path) || doc.reference
       addRef(created.display_path)
@@ -749,7 +768,7 @@ function StyleReferenceControls({ references, refreshReferences, refs, contents 
                 <span className={`min-w-0 truncate text-left ${uploadError ? 'text-[var(--nova-danger)]' : uploadNotice ? 'text-[var(--nova-accent-green)]' : ''}`}>{uploadError || uploadNotice}</span>
               </div>
             </div>
-            <StyleExtractionChatPanel messages={extractMessages} active={uploading === 'extract'} />
+            <StyleExtractionChatPanel projectId={projectId} messages={extractMessages} active={uploading === 'extract'} />
           </div>
           <DialogFooter className="!mx-0 !mb-0 rounded-none border-t border-[var(--nova-border)] bg-[var(--nova-surface)]/95 !px-4 !py-3">
             <Button className={actionButtonClassName} variant="outline" size="sm" onClick={() => void closeUploadDialog()} disabled={uploading !== null}>{uploadDocument ? t('common.close') : t('common.cancel')}</Button>
@@ -828,7 +847,7 @@ interface StyleUploadDraft {
   content: string
 }
 
-function StyleExtractionChatPanel({ messages, active }: { messages: AgentUIMessage[]; active: boolean }) {
+function StyleExtractionChatPanel({ projectId, messages, active }: { projectId: string; messages: AgentUIMessage[]; active: boolean }) {
   const { t } = useTranslation()
   return (
     <aside className="flex min-h-[220px] min-w-0 flex-col overflow-hidden rounded-[var(--nova-radius)] border border-[var(--nova-border)] bg-[var(--nova-surface)]/75">
@@ -843,6 +862,7 @@ function StyleExtractionChatPanel({ messages, active }: { messages: AgentUIMessa
           <div className="m-2 rounded-md border border-dashed border-[var(--nova-border)] px-3 py-4 text-xs leading-5 text-[var(--nova-text-faint)]">{t('settingPanel.style.extractProgress.empty')}</div>
         ) : (
           <MessageList
+            projectId={projectId}
             messages={messages}
             isStreaming={active}
             activityContent=""

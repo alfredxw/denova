@@ -19,20 +19,22 @@ import { RollbackDialog } from '@/features/versions/components/rollback-dialog'
 import { VersionDiffDialog } from '@/features/versions/components/version-diff-dialog'
 
 interface VersionPanelProps {
+  projectId: string
   workspace: string
-  refreshSignal: number
-  visible: boolean
-  onClose: () => void
+  refreshSignal?: number
+  visible?: boolean
+  onClose?: () => void
+  onWorkspaceChanged?: (paths: string[]) => void | Promise<void>
 }
 
 const versionKeys = {
   all: ['versions'] as const,
-  status: (workspace: string) => ['versions', 'status', workspace] as const,
-  history: (workspace: string) => ['versions', 'history', workspace] as const,
+  status: (projectId: string) => ['versions', 'status', projectId] as const,
+  history: (projectId: string) => ['versions', 'history', projectId] as const,
 }
 
-/** VersionPanel 展示 Nova 原生快照版本状态、历史和恢复操作。 */
-export function VersionPanel({ workspace, refreshSignal, visible, onClose }: VersionPanelProps) {
+/** Project-scoped version status, history, diff, and restore surface. */
+export function VersionPanel({ projectId, workspace, refreshSignal = 0, visible = true, onClose, onWorkspaceChanged }: VersionPanelProps) {
   const { t } = useTranslation()
   const queryClient = useQueryClient()
   const [error, setError] = useState('')
@@ -48,16 +50,16 @@ export function VersionPanel({ workspace, refreshSignal, visible, onClose }: Ver
   const restorePlanRequestRef = useRef(0)
 
   const statusQuery = useQuery({
-    queryKey: versionKeys.status(workspace),
-    queryFn: getVersionStatus,
-    enabled: Boolean(workspace && visible),
+    queryKey: versionKeys.status(projectId),
+    queryFn: () => getVersionStatus(projectId),
+    enabled: Boolean(projectId && visible),
   })
   const status = statusQuery.data ?? null
 
   const historyQuery = useQuery({
-    queryKey: versionKeys.history(workspace),
-    queryFn: () => getVersions(30),
-    enabled: Boolean(workspace && visible),
+    queryKey: versionKeys.history(projectId),
+    queryFn: () => getVersions(projectId, 30),
+    enabled: Boolean(projectId && visible),
   })
   const versions = historyQuery.data ?? []
 
@@ -66,13 +68,13 @@ export function VersionPanel({ workspace, refreshSignal, visible, onClose }: Ver
   }, [queryClient])
 
   const refresh = useCallback(async () => {
-    if (!workspace || !visible) return
+    if (!projectId || !visible) return
     await invalidateVersionQueries()
-  }, [invalidateVersionQueries, visible, workspace])
+  }, [invalidateVersionQueries, projectId, visible])
 
   useEffect(() => {
     setError('')
-  }, [workspace])
+  }, [projectId])
 
   useEffect(() => {
     void refresh()
@@ -86,7 +88,7 @@ export function VersionPanel({ workspace, refreshSignal, visible, onClose }: Ver
   }, [refresh, visible])
 
   const createMutation = useMutation({
-    mutationFn: () => createVersion(),
+    mutationFn: () => createVersion(projectId),
     onSuccess: async (result) => {
       setError('')
       toast.success(t('versions.saved', { message: result.version?.message || result.message }))
@@ -96,13 +98,14 @@ export function VersionPanel({ workspace, refreshSignal, visible, onClose }: Ver
   })
 
   const restoreMutation = useMutation({
-    mutationFn: ({ id, paths }: { id: string; paths?: string[] }) => restoreVersion(id, paths),
-    onSuccess: async () => {
+    mutationFn: ({ id, paths }: { id: string; paths?: string[] }) => restoreVersion(projectId, id, paths),
+    onSuccess: async (result) => {
       setRollbackVersion(null)
       setRestorePaths(undefined)
       setRestorePlan(null)
       setError('')
       toast.success(t('versions.restoreSuccess'))
+      if (result.restored_paths.length > 0) await onWorkspaceChanged?.(result.restored_paths)
       await invalidateVersionQueries()
     },
     onError: (e) => showOperationError(e, t('versions.restoreFailed'), setError),
@@ -110,7 +113,7 @@ export function VersionPanel({ workspace, refreshSignal, visible, onClose }: Ver
 
   const loading = statusQuery.isFetching || historyQuery.isFetching || createMutation.isPending || restoreMutation.isPending || restorePlanLoading
   const changes = status?.changes ?? []
-  const canCreate = !loading && Boolean(workspace)
+  const canCreate = !loading && Boolean(projectId)
   const timelineItems = useMemo(() => versions.map((version) => versionToTimelineItem(version, t)), [t, versions])
   const currentVersionItem = useMemo(() => status?.latest ? versionToTimelineItem(status.latest, t) : null, [status?.latest, t])
 
@@ -124,7 +127,7 @@ export function VersionPanel({ workspace, refreshSignal, visible, onClose }: Ver
       setDiffVersion(version)
       let selectedPath = path || ''
       if (!selectedPath) {
-        const summary = await getVersionDiff(version.id)
+        const summary = await getVersionDiff(projectId, version.id)
         selectedPath = summary.changes[0]?.path || ''
       }
       setDiffPath(selectedPath)
@@ -133,7 +136,7 @@ export function VersionPanel({ workspace, refreshSignal, visible, onClose }: Ver
         toast.info(t('versions.noComparableFiles'))
         return
       }
-      const diff = await getVersionDiff(version.id, selectedPath)
+      const diff = await getVersionDiff(projectId, version.id, selectedPath)
       if (diff.text) {
         setDiffText({ original: diff.original || '', modified: diff.modified || '' })
       } else {
@@ -153,7 +156,7 @@ export function VersionPanel({ workspace, refreshSignal, visible, onClose }: Ver
     setRestorePlan(null)
     setRestorePlanLoading(true)
     try {
-      const plan = await getVersionRestorePlan(version.id, paths)
+      const plan = await getVersionRestorePlan(projectId, version.id, paths)
       if (restorePlanRequestRef.current !== requestID) return
       setRestorePlan(plan)
       setError('')
@@ -176,9 +179,11 @@ export function VersionPanel({ workspace, refreshSignal, visible, onClose }: Ver
         <TooltipIconButton label={t('versions.refresh')} className="ml-auto text-[var(--nova-text-faint)] hover:bg-[var(--nova-hover)] hover:text-[var(--nova-text)]" onClick={refresh} disabled={loading}>
           <RefreshCw className={`h-3.5 w-3.5 ${loading ? 'animate-spin' : ''}`} />
         </TooltipIconButton>
-        <TooltipIconButton label={t('versions.close')} className="text-[var(--nova-text-faint)] hover:bg-[var(--nova-hover)] hover:text-[var(--nova-text)]" onClick={onClose}>
-          <MoreHorizontal className="h-3.5 w-3.5" />
-        </TooltipIconButton>
+        {onClose && (
+          <TooltipIconButton label={t('versions.close')} className="text-[var(--nova-text-faint)] hover:bg-[var(--nova-hover)] hover:text-[var(--nova-text)]" onClick={onClose}>
+            <MoreHorizontal className="h-3.5 w-3.5" />
+          </TooltipIconButton>
+        )}
       </div>
 
       <ScrollArea className="min-h-0 flex-1 overflow-x-hidden">

@@ -2,11 +2,13 @@ package app
 
 import (
 	"context"
+	"fmt"
 	"log/slog"
 	"path/filepath"
 	"strings"
 
 	"denova/config"
+	"denova/internal/agents/session"
 	projectfilesapp "denova/internal/app/projectfiles"
 	appsettings "denova/internal/app/settings"
 	"denova/internal/book"
@@ -208,4 +210,153 @@ func versionAutoSettingsForConfig(cfg *config.Config) book.VersionAutoSettings {
 	settings.TimedEnabled = cfg.VersionTimedEnabled
 	settings.TimedIntervalMinutes = cfg.VersionTimedIntervalMinutes
 	return settings
+}
+
+// ProjectVersionStatus returns version state for one stable Book Project.
+func (a *App) ProjectVersionStatus(ctx context.Context, projectID string) (book.VersionStatus, error) {
+	operation, err := a.AcquireProjectOperation(ctx, projectID)
+	if err != nil {
+		return book.VersionStatus{}, err
+	}
+	defer operation.Release()
+	return a.ProjectFiles().VersionStatus(operation.Context(), operation.Layout().ProjectID)
+}
+
+func (a *App) ProjectVersionHistory(ctx context.Context, projectID string, limit int) ([]book.VersionEntry, error) {
+	operation, err := a.AcquireProjectOperation(ctx, projectID)
+	if err != nil {
+		return nil, err
+	}
+	defer operation.Release()
+	if err := operation.Context().Err(); err != nil {
+		return nil, err
+	}
+	return a.ProjectFiles().VersionHistory(operation.Layout().ProjectID, limit)
+}
+
+func (a *App) CreateProjectVersion(ctx context.Context, projectID, message string) (book.VersionCommandResult, error) {
+	runtime, err := a.acquireProjectVersionCreateRuntime(ctx, projectID)
+	if err != nil {
+		return book.VersionCommandResult{}, err
+	}
+	defer runtime.Release()
+
+	message, err = a.inferVersionMessageForResources(runtime.operation.Context(), message, book.VersionSourceManual, versionSummaryResources{
+		workspace: runtime.resources.Workspace,
+		cfg:       &runtime.cfg, bookService: runtime.resources.Files,
+		versionService: runtime.resources.VersionService, sessionStore: runtime.sessionStore,
+		settings: runtime.resources.Settings,
+	})
+	if err != nil {
+		return book.VersionCommandResult{}, err
+	}
+	if err := runtime.operation.Context().Err(); err != nil {
+		return book.VersionCommandResult{}, err
+	}
+	return a.ProjectFiles().CreateVersion(
+		runtime.operation.Context(), runtime.resources.ProjectID, message, book.VersionSourceManual,
+	)
+}
+
+func (a *App) ProjectVersionDiff(ctx context.Context, projectID, versionID, path string) (book.VersionDiff, error) {
+	operation, err := a.AcquireProjectOperation(ctx, projectID)
+	if err != nil {
+		return book.VersionDiff{}, err
+	}
+	defer operation.Release()
+	return a.ProjectFiles().VersionDiff(operation.Context(), operation.Layout().ProjectID, versionID, path)
+}
+
+func (a *App) ProjectVersionRestorePlan(ctx context.Context, projectID, versionID string, paths []string) (book.VersionRestorePlan, error) {
+	operation, err := a.AcquireProjectOperation(ctx, projectID)
+	if err != nil {
+		return book.VersionRestorePlan{}, err
+	}
+	defer operation.Release()
+	return a.ProjectFiles().VersionRestorePlan(operation.Context(), operation.Layout().ProjectID, versionID, paths)
+}
+
+func (a *App) RestoreProjectVersion(ctx context.Context, projectID, versionID string, paths []string) (book.VersionRestoreResult, error) {
+	operation, err := a.AcquireProjectOperation(ctx, projectID)
+	if err != nil {
+		return book.VersionRestoreResult{}, err
+	}
+	defer operation.Release()
+	result, err := a.ProjectFiles().RestoreVersion(operation.Context(), operation.Layout().ProjectID, versionID, paths)
+	if err != nil {
+		return book.VersionRestoreResult{}, err
+	}
+	if len(result.RestoredPaths) > 0 {
+		a.Automation().CheckTriggersAfterProjectMutation(
+			operation.Context(), operation.Layout().ProjectID, "version_restore", result.RestoredPaths,
+		)
+	}
+	return result, nil
+}
+
+type projectVersionCreateRuntime struct {
+	operation        *ProjectOperation
+	resources        projectfilesapp.BookVersionResources
+	cfg              config.Config
+	sessionStore     *session.Store
+	ownsSessionStore bool
+}
+
+func (a *App) acquireProjectVersionCreateRuntime(ctx context.Context, projectID string) (*projectVersionCreateRuntime, error) {
+	operation, err := a.AcquireProjectOperation(ctx, projectID)
+	if err != nil {
+		return nil, err
+	}
+	releaseWithError := func(err error) (*projectVersionCreateRuntime, error) {
+		operation.Release()
+		return nil, err
+	}
+	resources, err := a.ProjectFiles().BookVersions(operation.Layout().ProjectID)
+	if err != nil {
+		return releaseWithError(err)
+	}
+
+	a.mu.RLock()
+	var runtimeConfig config.Config
+	if a.cfg != nil {
+		runtimeConfig = *a.cfg
+	}
+	var store *session.Store
+	if a.cfg != nil && a.cfg.ProjectID == resources.ProjectID {
+		store = a.sessionStore
+	}
+	a.mu.RUnlock()
+	if runtimeConfig.DataDir() == "" {
+		return releaseWithError(fmt.Errorf("application data directory is unavailable"))
+	}
+	runtimeConfig.Workspace = resources.Workspace
+	runtimeConfig.ProjectID = resources.ProjectID
+	runtimeConfig.ProjectStateDir = resources.StateRoot
+	runtimeConfig, err = appsettings.RefreshProject(runtimeConfig, resources.Workspace, resources.StateRoot)
+	if err != nil {
+		return releaseWithError(fmt.Errorf("load Project settings for version creation: %w", err))
+	}
+	runtime := &projectVersionCreateRuntime{
+		operation: operation, resources: resources, cfg: runtimeConfig, sessionStore: store,
+	}
+	if runtime.sessionStore == nil {
+		runtime.sessionStore, err = session.NewStore(operation.Layout().SessionsDir())
+		if err != nil {
+			return releaseWithError(fmt.Errorf("open Project Agent session store: %w", err))
+		}
+		runtime.ownsSessionStore = true
+	}
+	return runtime, nil
+}
+
+func (runtime *projectVersionCreateRuntime) Release() {
+	if runtime == nil {
+		return
+	}
+	if runtime.ownsSessionStore && runtime.sessionStore != nil {
+		_ = runtime.sessionStore.Close()
+	}
+	if runtime.operation != nil {
+		runtime.operation.Release()
+	}
 }

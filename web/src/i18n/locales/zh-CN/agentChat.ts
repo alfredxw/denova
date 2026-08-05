@@ -101,6 +101,7 @@ const agentChat = {
   'agentChat.page.skills': 'Skills',
   'agentChat.page.agents': 'Agents',
   'agentChat.page.automations': '自动化',
+  'agentChat.page.versions': '版本管理',
   'agentChat.reader.outline': '目录',
   'agentChat.reader.noChapters': '还没有章节。',
   'agentChat.reader.noSelection': '选择一个章节开始阅读。',

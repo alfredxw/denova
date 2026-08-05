@@ -349,14 +349,11 @@ async function resolveSession(tab: AgentChatTerminalTab, established: TerminalSe
   // Configured profiles are deliberately resolved by the backend from user settings. `custom`
   // remains only so terminal tabs persisted by earlier beta builds can still be restored.
   const legacyCustomLaunch = tab.profileId === 'custom' ? { command: tab.command || '', args: [] } : {}
-  return createTerminalSession({
+  return createTerminalSession(tab.projectId, {
     owner_tab_id: tab.id,
-    project_id: tab.projectId,
-    workspace: tab.workspace,
     profile_id: tab.profileId,
     title: tab.title,
     ...legacyCustomLaunch,
-    cwd: tab.workspace,
     cols,
     rows,
   })

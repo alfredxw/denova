@@ -2,10 +2,10 @@ import { afterEach, describe, expect, it, vi } from 'vitest'
 
 import type { WorkspaceChangeEvent } from '@/features/changes/types'
 
-import { subscribeWorkspaceFileEvents } from './client'
+import { subscribeProjectFileEvents } from './client'
 import type { WorkspaceEventClientMessage, WorkspaceEventWorkerMessage } from './protocol'
 
-describe('subscribeWorkspaceFileEvents', () => {
+describe('subscribeProjectFileEvents', () => {
   afterEach(() => {
     vi.unstubAllGlobals()
     window.sessionStorage.clear()
@@ -16,15 +16,15 @@ describe('subscribeWorkspaceFileEvents', () => {
     const constructorCalls: Array<{ url: string; options?: WorkerOptions }> = []
     installSharedWorker(port, constructorCalls)
 
-    const dispose = subscribeWorkspaceFileEvents('/books/demo', vi.fn())
+    const dispose = subscribeProjectFileEvents('project-demo', vi.fn())
 
     expect(constructorCalls).toEqual([{
       url: expect.stringContaining('/workspace-events/shared-worker.ts'),
-      options: expect.objectContaining({ name: 'denova-workspace-events-v1', type: 'module' }),
+      options: expect.objectContaining({ name: 'denova-project-events-v2', type: 'module' }),
     }])
     expect(port.sent).toEqual([{
       type: 'subscribe',
-      workspace: '/books/demo',
+      projectId: 'project-demo',
       authorization: undefined,
     }])
 
@@ -39,7 +39,7 @@ describe('subscribeWorkspaceFileEvents', () => {
     const onChange = vi.fn()
       .mockReturnValueOnce(firstRefresh.promise)
       .mockResolvedValue(undefined)
-    const dispose = subscribeWorkspaceFileEvents('/books/demo', onChange)
+    const dispose = subscribeProjectFileEvents('project-demo', onChange)
 
     port.emit(workspaceChange('chapters/ch01.md'))
     await eventually(() => expect(onChange).toHaveBeenCalledTimes(1))
@@ -50,7 +50,7 @@ describe('subscribeWorkspaceFileEvents', () => {
     firstRefresh.resolve()
     await eventually(() => expect(onChange).toHaveBeenCalledTimes(2))
     expect(onChange.mock.calls[1]?.[0]).toEqual({
-      workspace: '/books/demo',
+      project_id: 'project-demo',
       source: 'shared-worker',
       resync: true,
       changes: [],
@@ -94,6 +94,7 @@ function installSharedWorker(
 
 function workspaceChange(path: string): WorkspaceEventWorkerMessage {
   const event: WorkspaceChangeEvent = {
+    project_id: 'project-demo',
     workspace: '/books/demo',
     source: 'watcher',
     changes: [{ path, type: 'updated' }],

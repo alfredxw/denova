@@ -7,9 +7,9 @@ import type { BookRecord } from '@/lib/api'
 import { BookSwitcher } from './BookSwitcher'
 
 const books: BookRecord[] = [
-  { name: '目录名', path: '/books/current', author: '', cover_updated_at: 'cover-1', last_opened_at: '2026-07-18T12:00:00Z' },
-  { name: '命定之诗', path: '/books/poem', author: '', cover_updated_at: 'cover-2', last_opened_at: '2026-07-17T12:00:00Z' },
-  { name: '枫江月', path: '/books/moon', author: '未名', last_opened_at: '' },
+  { project_id: 'book-current', name: '目录名', path: '/books/current', author: '', cover_updated_at: 'cover-1', last_opened_at: '2026-07-18T12:00:00Z' },
+  { project_id: 'book-poem', name: '命定之诗', path: '/books/poem', author: '', cover_updated_at: 'cover-2', last_opened_at: '2026-07-17T12:00:00Z' },
+  { project_id: 'book-moon', name: '枫江月', path: '/books/moon', author: '未名', last_opened_at: '' },
 ]
 
 describe('BookSwitcher', () => {

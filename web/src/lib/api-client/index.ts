@@ -1,5 +1,6 @@
 export * from './types'
 export * from './client'
+export * from './project-scope'
 export * from './chat'
 export * from './skills'
 export * from './workspace'

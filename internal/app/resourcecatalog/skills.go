@@ -8,20 +8,36 @@ import (
 	novaskills "denova/internal/agents/skills"
 )
 
-func (s *Service) SkillSnapshot(ctx context.Context) (novaskills.Snapshot, error) {
-	return novaskills.SnapshotFor(ctx, s.skillDirectories())
+func (s *Service) SkillSnapshot(ctx context.Context, target SkillTarget) (novaskills.Snapshot, error) {
+	directories, err := s.skillDirectories(target)
+	if err != nil {
+		return novaskills.Snapshot{}, err
+	}
+	return novaskills.SnapshotFor(ctx, directories)
 }
 
-func (s *Service) SkillDocument(ctx context.Context, scope novaskills.Scope, name string) (novaskills.Document, error) {
-	return novaskills.ReadDocument(ctx, s.skillDirectories(), scope, name)
+func (s *Service) SkillDocument(ctx context.Context, target SkillTarget, scope novaskills.Scope, name string) (novaskills.Document, error) {
+	directories, err := s.skillDirectories(target)
+	if err != nil {
+		return novaskills.Document{}, err
+	}
+	return novaskills.ReadDocument(ctx, directories, scope, name)
 }
 
-func (s *Service) SkillFileDocument(ctx context.Context, scope novaskills.Scope, name, path string) (novaskills.FileDocument, error) {
-	return novaskills.ReadSkillFile(ctx, s.skillDirectories(), scope, name, path)
+func (s *Service) SkillFileDocument(ctx context.Context, target SkillTarget, scope novaskills.Scope, name, path string) (novaskills.FileDocument, error) {
+	directories, err := s.skillDirectories(target)
+	if err != nil {
+		return novaskills.FileDocument{}, err
+	}
+	return novaskills.ReadSkillFile(ctx, directories, scope, name, path)
 }
 
-func (s *Service) CreateSkill(ctx context.Context, scope novaskills.Scope, name string, metadata novaskills.CreateMetadata) (novaskills.Document, error) {
-	document, err := novaskills.CreateDocumentWithMetadata(ctx, s.skillDirectories(), scope, name, metadata)
+func (s *Service) CreateSkill(ctx context.Context, target SkillTarget, scope novaskills.Scope, name string, metadata novaskills.CreateMetadata) (novaskills.Document, error) {
+	directories, err := s.skillDirectories(target)
+	if err != nil {
+		return novaskills.Document{}, err
+	}
+	document, err := novaskills.CreateDocumentWithMetadata(ctx, directories, scope, name, metadata)
 	if err != nil {
 		return novaskills.Document{}, err
 	}
@@ -29,8 +45,12 @@ func (s *Service) CreateSkill(ctx context.Context, scope novaskills.Scope, name 
 	return document, nil
 }
 
-func (s *Service) SaveSkillFile(ctx context.Context, scope novaskills.Scope, name, path, content, baseRevision string) (novaskills.FileDocument, error) {
-	document, err := novaskills.SaveSkillFileIfRevision(ctx, s.skillDirectories(), scope, name, path, content, baseRevision)
+func (s *Service) SaveSkillFile(ctx context.Context, target SkillTarget, scope novaskills.Scope, name, path, content, baseRevision string) (novaskills.FileDocument, error) {
+	directories, err := s.skillDirectories(target)
+	if err != nil {
+		return novaskills.FileDocument{}, err
+	}
+	document, err := novaskills.SaveSkillFileIfRevision(ctx, directories, scope, name, path, content, baseRevision)
 	if err != nil {
 		return novaskills.FileDocument{}, err
 	}
@@ -38,8 +58,12 @@ func (s *Service) SaveSkillFile(ctx context.Context, scope novaskills.Scope, nam
 	return document, nil
 }
 
-func (s *Service) SaveSkillAs(ctx context.Context, scope novaskills.Scope, name string, targetScope novaskills.Scope, targetName, content, baseRevision string) (novaskills.Document, error) {
-	document, err := novaskills.SaveDocumentAsIfRevision(ctx, s.skillDirectories(), scope, name, targetScope, targetName, content, baseRevision)
+func (s *Service) SaveSkillAs(ctx context.Context, target SkillTarget, scope novaskills.Scope, name string, targetScope novaskills.Scope, targetName, content, baseRevision string) (novaskills.Document, error) {
+	directories, err := s.skillDirectories(target)
+	if err != nil {
+		return novaskills.Document{}, err
+	}
+	document, err := novaskills.SaveDocumentAsIfRevision(ctx, directories, scope, name, targetScope, targetName, content, baseRevision)
 	if err != nil {
 		return novaskills.Document{}, err
 	}
@@ -47,20 +71,32 @@ func (s *Service) SaveSkillAs(ctx context.Context, scope novaskills.Scope, name 
 	return document, nil
 }
 
-func (s *Service) DeleteSkill(ctx context.Context, scope novaskills.Scope, name string) error {
-	if err := novaskills.DeleteDocument(ctx, s.skillDirectories(), scope, name); err != nil {
+func (s *Service) DeleteSkill(ctx context.Context, target SkillTarget, scope novaskills.Scope, name string) error {
+	directories, err := s.skillDirectories(target)
+	if err != nil {
+		return err
+	}
+	if err := novaskills.DeleteDocument(ctx, directories, scope, name); err != nil {
 		return err
 	}
 	slog.InfoContext(ctx, fmt.Sprintf("[app/resourcecatalog] Skill deleted scope=%s name=%s", scope, name))
 	return nil
 }
 
-func (s *Service) PreviewSkillZip(ctx context.Context, scope novaskills.Scope, data []byte) (novaskills.InstallPreview, error) {
-	return novaskills.PreviewZip(ctx, s.skillDirectories(), scope, data)
+func (s *Service) PreviewSkillZip(ctx context.Context, target SkillTarget, scope novaskills.Scope, data []byte) (novaskills.InstallPreview, error) {
+	directories, err := s.skillDirectories(target)
+	if err != nil {
+		return novaskills.InstallPreview{}, err
+	}
+	return novaskills.PreviewZip(ctx, directories, scope, data)
 }
 
-func (s *Service) InstallSkillZip(ctx context.Context, scope novaskills.Scope, data []byte, candidateIDs []string) (novaskills.InstallResult, error) {
-	result, err := novaskills.InstallZip(ctx, s.skillDirectories(), scope, data, candidateIDs)
+func (s *Service) InstallSkillZip(ctx context.Context, target SkillTarget, scope novaskills.Scope, data []byte, candidateIDs []string) (novaskills.InstallResult, error) {
+	directories, err := s.skillDirectories(target)
+	if err != nil {
+		return novaskills.InstallResult{}, err
+	}
+	result, err := novaskills.InstallZip(ctx, directories, scope, data, candidateIDs)
 	if err != nil {
 		return novaskills.InstallResult{}, err
 	}
@@ -68,12 +104,20 @@ func (s *Service) InstallSkillZip(ctx context.Context, scope novaskills.Scope, d
 	return result, nil
 }
 
-func (s *Service) PreviewSkillRemoteArchive(ctx context.Context, scope novaskills.Scope, source novaskills.RemoteArchiveSource) (novaskills.InstallPreview, error) {
-	return novaskills.PreviewRemoteArchive(ctx, s.skillDirectories(), scope, source)
+func (s *Service) PreviewSkillRemoteArchive(ctx context.Context, target SkillTarget, scope novaskills.Scope, source novaskills.RemoteArchiveSource) (novaskills.InstallPreview, error) {
+	directories, err := s.skillDirectories(target)
+	if err != nil {
+		return novaskills.InstallPreview{}, err
+	}
+	return novaskills.PreviewRemoteArchive(ctx, directories, scope, source)
 }
 
-func (s *Service) InstallSkillRemoteArchive(ctx context.Context, scope novaskills.Scope, source novaskills.RemoteArchiveSource, candidateIDs []string) (novaskills.InstallResult, error) {
-	result, err := novaskills.InstallRemoteArchive(ctx, s.skillDirectories(), scope, source, candidateIDs)
+func (s *Service) InstallSkillRemoteArchive(ctx context.Context, target SkillTarget, scope novaskills.Scope, source novaskills.RemoteArchiveSource, candidateIDs []string) (novaskills.InstallResult, error) {
+	directories, err := s.skillDirectories(target)
+	if err != nil {
+		return novaskills.InstallResult{}, err
+	}
+	result, err := novaskills.InstallRemoteArchive(ctx, directories, scope, source, candidateIDs)
 	if err != nil {
 		return novaskills.InstallResult{}, err
 	}
@@ -81,12 +125,20 @@ func (s *Service) InstallSkillRemoteArchive(ctx context.Context, scope novaskill
 	return result, nil
 }
 
-func (s *Service) PreviewSkillGitHub(ctx context.Context, scope novaskills.Scope, source novaskills.GitHubSource) (novaskills.InstallPreview, error) {
-	return novaskills.PreviewGitHub(ctx, s.skillDirectories(), scope, source)
+func (s *Service) PreviewSkillGitHub(ctx context.Context, target SkillTarget, scope novaskills.Scope, source novaskills.GitHubSource) (novaskills.InstallPreview, error) {
+	directories, err := s.skillDirectories(target)
+	if err != nil {
+		return novaskills.InstallPreview{}, err
+	}
+	return novaskills.PreviewGitHub(ctx, directories, scope, source)
 }
 
-func (s *Service) InstallSkillGitHub(ctx context.Context, scope novaskills.Scope, source novaskills.GitHubSource, candidateIDs []string) (novaskills.InstallResult, error) {
-	result, err := novaskills.InstallGitHub(ctx, s.skillDirectories(), scope, source, candidateIDs)
+func (s *Service) InstallSkillGitHub(ctx context.Context, target SkillTarget, scope novaskills.Scope, source novaskills.GitHubSource, candidateIDs []string) (novaskills.InstallResult, error) {
+	directories, err := s.skillDirectories(target)
+	if err != nil {
+		return novaskills.InstallResult{}, err
+	}
+	result, err := novaskills.InstallGitHub(ctx, directories, scope, source, candidateIDs)
 	if err != nil {
 		return novaskills.InstallResult{}, err
 	}
@@ -94,9 +146,9 @@ func (s *Service) InstallSkillGitHub(ctx context.Context, scope novaskills.Scope
 	return result, nil
 }
 
-func (s *Service) skillDirectories() []novaskills.Directory {
+func (s *Service) skillDirectories(target SkillTarget) ([]novaskills.Directory, error) {
 	if s == nil || s.skillSource == nil {
-		return nil
+		return nil, fmt.Errorf("Skill directory source is not configured")
 	}
-	return s.skillSource.SkillDirectories()
+	return s.skillSource.SkillDirectories(target)
 }

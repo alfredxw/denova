@@ -14,6 +14,28 @@ import (
 	"time"
 )
 
+func TestExecutionTargetMigratesReleasedWorkspaceIDToProjectID(t *testing.T) {
+	var target ExecutionTarget
+	if err := json.Unmarshal([]byte(`{"kind":"workspace","workspace_id":"project-legacy","workspace":"/books/legacy"}`), &target); err != nil {
+		t.Fatal(err)
+	}
+	if target.ProjectID != "project-legacy" || target.Workspace != "/books/legacy" {
+		t.Fatalf("released target was not migrated: %#v", target)
+	}
+	persisted, err := json.Marshal(target)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(string(persisted), "workspace_id") || !strings.Contains(string(persisted), `"project_id":"project-legacy"`) {
+		t.Fatalf("current target persisted a non-canonical identity: %s", persisted)
+	}
+
+	conflicting := []byte(`{"kind":"workspace","project_id":"project-new","workspace_id":"project-old"}`)
+	if err := json.Unmarshal(conflicting, &target); err == nil {
+		t.Fatal("conflicting canonical and released target identities were accepted")
+	}
+}
+
 func TestStoreUpdateIfRevisionRejectsStaleDefinition(t *testing.T) {
 	root := t.TempDir()
 	store := NewStore(filepath.Join(root, "user"), filepath.Join(root, "workspace"))

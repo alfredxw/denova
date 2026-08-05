@@ -12,6 +12,7 @@ import (
 	"github.com/cloudwego/hertz/pkg/app"
 	"github.com/cloudwego/hertz/pkg/protocol/consts"
 
+	appsettings "denova/internal/app/settings"
 	"denova/internal/book"
 )
 
@@ -129,7 +130,7 @@ func (h *Handlers) HandleNovelImport(ctx context.Context, c *app.RequestContext)
 	author := strings.TrimSpace(string(c.FormValue("author")))
 	description := strings.TrimSpace(string(c.FormValue("description")))
 
-	layered, err := h.app.SettingsService().Snapshot()
+	layered, err := h.app.SettingsService().Snapshot(appsettings.Global())
 	if err != nil {
 		writeError(c, consts.StatusInternalServerError, err.Error())
 		return
@@ -140,7 +141,7 @@ func (h *Handlers) HandleNovelImport(ctx context.Context, c *app.RequestContext)
 	}
 
 	slog.InfoContext(ctx, fmt.Sprintf("[api] 导入小说 filename=%q size=%d title=%q strategy=%s regex=%q chapters=%d", filename, len(data), title, preview.SplitStrategy, preview.SplitRegex, preview.ChapterCount))
-	workspace, meta, err := h.app.CreateBook(ctx, layered.Paths.DenovaDir, title, author, description)
+	created, err := h.app.CreateBook(ctx, layered.Paths.DenovaDir, title, author, description)
 	if err != nil {
 		status := consts.StatusInternalServerError
 		if strings.Contains(err.Error(), "已存在") {
@@ -149,17 +150,17 @@ func (h *Handlers) HandleNovelImport(ctx context.Context, c *app.RequestContext)
 		writeErrorKey(c, status, "api.novelImport.importFailed", "detail", err.Error())
 		return
 	}
-	importPreview, paths, err := book.ImportNovelToWorkspace(workspace, filename, data, opts)
+	importPreview, paths, err := book.ImportNovelToWorkspace(created.Workspace, filename, data, opts)
 	if err != nil {
-		slog.ErrorContext(ctx, fmt.Sprintf("[api] 小说导入确认 import failed filename=%q workspace=%q err=%v", filename, workspace, err))
+		slog.ErrorContext(ctx, fmt.Sprintf("[api] 小说导入确认 import failed filename=%q workspace=%q err=%v", filename, created.Workspace, err))
 		writeErrorKey(c, consts.StatusInternalServerError, "api.novelImport.importFailed", "detail", err.Error())
 		return
 	}
 
-	slog.WarnContext(ctx, fmt.Sprintf("[api] 导入小说完成 workspace=%q strategy=%s regex=%q chapters=%d paths=%d warnings=%v", workspace, importPreview.SplitStrategy, importPreview.SplitRegex, importPreview.ChapterCount, len(paths), importPreview.Warnings))
+	slog.WarnContext(ctx, fmt.Sprintf("[api] 导入小说完成 workspace=%q strategy=%s regex=%q chapters=%d paths=%d warnings=%v", created.Workspace, importPreview.SplitStrategy, importPreview.SplitRegex, importPreview.ChapterCount, len(paths), importPreview.Warnings))
 	writeJSON(c, consts.StatusOK, book.NovelImportResult{
-		Workspace:    workspace,
-		BookMeta:     &meta,
+		Workspace:    created.Workspace,
+		BookMeta:     &created.Meta,
 		Title:        importPreview.Title,
 		ChapterCount: importPreview.ChapterCount,
 		TotalChars:   importPreview.TotalChars,

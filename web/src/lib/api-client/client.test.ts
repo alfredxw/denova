@@ -101,7 +101,7 @@ describe('api client backend availability toast', () => {
       details: { path: 'chapters/ch01.md', expected: 'sha256:old', actual: 'sha256:new' },
     }), { status: 409, headers: { 'Content-Type': 'application/json' } })))
 
-    const error = await requestJSON('/api/workspace/change-groups/group-1/review').catch((reason) => reason)
+    const error = await requestJSON('/api/projects/project-one/changes/groups/group-1/review').catch((reason) => reason)
 
     expect(error).toBeInstanceOf(APIError)
     if (!(error instanceof APIError)) {

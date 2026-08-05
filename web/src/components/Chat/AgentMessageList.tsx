@@ -30,6 +30,7 @@ import { scheduleChatRowBottomAnchor, scheduleResolvedChatRowBottomAnchor } from
 import { Button } from '@/components/ui/button'
 
 interface MessageListProps {
+  projectId?: string
   messages: AgentUIMessage[]
   isStreaming: boolean
   /** Whether the persistently mounted chat surface currently has measurable layout geometry. */
@@ -114,7 +115,7 @@ interface MessageListVirtuosoContext {
   onLoadEarlierMessages?: () => void | Promise<void>
 }
 
-export function MessageList({ messages, isStreaming, visible = true, isExecutionActive = isStreaming, activityContent, highlightDialogue = false, scrollResetKey, bottomPaddingClassName = '', bottomPaddingPx, afterContent, hasEarlierMessages = false, isLoadingEarlierMessages = false, onLoadEarlierMessages, timelineAttachments = [], messageStyle, collapseTraceGroups = false, activeTraceDisplay = 'expanded', canMutateMessage, onEditMessage, onEditAssistantReply, onCreateBranch, onRegenerateMessage, onSwitchMessageVersion, onOpenSubAgentSession, onInsertIllustration, onGenerateInteractiveImage, generatingInteractiveImageTurnId, activeSubAgentSessionKey, onApprovePlan, onContinuePlan, onExitPlanMode, onOpenTrace, onResolveAsk, turnScrollRequest, onVisibleTurnAnchorChange }: MessageListProps) {
+export function MessageList({ projectId, messages, isStreaming, visible = true, isExecutionActive = isStreaming, activityContent, highlightDialogue = false, scrollResetKey, bottomPaddingClassName = '', bottomPaddingPx, afterContent, hasEarlierMessages = false, isLoadingEarlierMessages = false, onLoadEarlierMessages, timelineAttachments = [], messageStyle, collapseTraceGroups = false, activeTraceDisplay = 'expanded', canMutateMessage, onEditMessage, onEditAssistantReply, onCreateBranch, onRegenerateMessage, onSwitchMessageVersion, onOpenSubAgentSession, onInsertIllustration, onGenerateInteractiveImage, generatingInteractiveImageTurnId, activeSubAgentSessionKey, onApprovePlan, onContinuePlan, onExitPlanMode, onOpenTrace, onResolveAsk, turnScrollRequest, onVisibleTurnAnchorChange }: MessageListProps) {
   const { t } = useTranslation()
   const containerRef = useRef<HTMLDivElement | null>(null)
   const renderedItemsRef = useRef<ListItem<AgentChatListItem>[]>([])
@@ -253,6 +254,7 @@ export function MessageList({ messages, isStreaming, visible = true, isExecution
     if (!resolvedItem) return null
     return (
       <AgentChatListRow
+        projectId={projectId}
         item={resolvedItem}
         isLast={index === firstItemIndex + listItems.length - 1}
         isStreaming={isStreaming}
@@ -280,7 +282,7 @@ export function MessageList({ messages, isStreaming, visible = true, isExecution
         syncStreamingRowHeight={isStreaming ? scrollLock.syncStreamingRowHeight : undefined}
       />
     )
-  }, [activeSubAgentSessionKey, activeTraceDisplay, anchorLatestInteractiveCardBottom, canMutateMessage, firstItemIndex, generatingInteractiveImageTurnId, highlightDialogue, isStreaming, listItems, messageStyle, onApprovePlan, onContinuePlan, onCreateBranch, onEditAssistantReply, onEditMessage, onExitPlanMode, onGenerateInteractiveImage, onInsertIllustration, onOpenSubAgentSession, onOpenTrace, onRegenerateMessage, onResolveAsk, onSwitchMessageVersion, scrollLock.streamingRowRef, scrollLock.syncStreamingRowHeight])
+  }, [activeSubAgentSessionKey, activeTraceDisplay, anchorLatestInteractiveCardBottom, canMutateMessage, firstItemIndex, generatingInteractiveImageTurnId, highlightDialogue, isStreaming, listItems, messageStyle, onApprovePlan, onContinuePlan, onCreateBranch, onEditAssistantReply, onEditMessage, onExitPlanMode, onGenerateInteractiveImage, onInsertIllustration, onOpenSubAgentSession, onOpenTrace, onRegenerateMessage, onResolveAsk, onSwitchMessageVersion, projectId, scrollLock.streamingRowRef, scrollLock.syncStreamingRowHeight])
 
   return (
     <div ref={containerRef} className="relative flex min-h-0 flex-1 flex-col">
@@ -389,7 +391,8 @@ function MessageListFooter({ context }: ContextProp<MessageListVirtuosoContext>)
   )
 }
 
-function AgentChatListRow({ item, isLast, isStreaming, activeTraceDisplay, highlightDialogue, messageStyle, canMutateMessage, onEditMessage, onEditAssistantReply, onCreateBranch, onRegenerateMessage, onSwitchMessageVersion, onOpenSubAgentSession, onInsertIllustration, onGenerateInteractiveImage, generatingInteractiveImageTurnId, activeSubAgentSessionKey, onApprovePlan, onContinuePlan, onExitPlanMode, onOpenTrace, onResolveAsk, onInteractiveCardLayoutChange, streamingRowRef, syncStreamingRowHeight }: {
+function AgentChatListRow({ projectId, item, isLast, isStreaming, activeTraceDisplay, highlightDialogue, messageStyle, canMutateMessage, onEditMessage, onEditAssistantReply, onCreateBranch, onRegenerateMessage, onSwitchMessageVersion, onOpenSubAgentSession, onInsertIllustration, onGenerateInteractiveImage, generatingInteractiveImageTurnId, activeSubAgentSessionKey, onApprovePlan, onContinuePlan, onExitPlanMode, onOpenTrace, onResolveAsk, onInteractiveCardLayoutChange, streamingRowRef, syncStreamingRowHeight }: {
+  projectId?: string
   item: AgentChatListItem
   isLast: boolean
   isStreaming: boolean
@@ -422,6 +425,7 @@ function AgentChatListRow({ item, isLast, isStreaming, activeTraceDisplay, highl
     const mutationsAllowed = canMutateMessage?.(view) !== false
     return (
       <AgentMessageItem
+        projectId={projectId}
         key={key}
         view={view}
         highlightDialogue={highlightDialogue}
@@ -447,6 +451,7 @@ function AgentChatListRow({ item, isLast, isStreaming, activeTraceDisplay, highl
   }
   const renderExecutionProcess = (key: string, views: AgentMessageView[], active: boolean) => views.length > 0 ? (
     <AgentExecutionProcess
+      projectId={projectId}
       key={key}
       views={views}
       active={active}
@@ -496,6 +501,7 @@ function AgentChatListRow({ item, isLast, isStreaming, activeTraceDisplay, highl
         <ContextClearDivider createdAt={item.createdAt} />
       ) : item.kind === 'trace' ? (
         <AgentExecutionProcess
+          projectId={projectId}
           views={item.views}
           active={item.activeStreamingTrace}
           activeSubAgentSessionKey={activeSubAgentSessionKey}
@@ -519,6 +525,7 @@ function AgentChatListRow({ item, isLast, isStreaming, activeTraceDisplay, highl
         item.content
       ) : item.kind === 'legacy-message' ? (
         <MessageItem
+          projectId={projectId}
           message={item.message}
           highlightDialogue={highlightDialogue}
           messageStyle={messageStyle}

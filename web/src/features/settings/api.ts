@@ -1,6 +1,9 @@
 import { fetchAPI, jsonHeaders, parseSSEStream, readErrorMessage, requestJSON } from '@/lib/api-client'
 import type { LayeredSettings, ModelCatalog, ModelDiscoveryResult, ModelPingResult, ModelProfileSettings, Settings, SettingsLayer, UpdateApplyResult, UpdateCheckResult } from './types'
 import type { SSEEvent } from '@/lib/api-client'
+import { projectAPIPath } from '@/lib/api-client/project-scope'
+import { GLOBAL_RESOURCE_TARGET, projectResourceTarget } from '@/lib/api-client/project-scope'
+import type { ResourceTarget } from '@/lib/api-client/project-scope'
 
 type JSONMergePatch<T> = T extends readonly unknown[]
   ? T | null
@@ -10,38 +13,68 @@ type JSONMergePatch<T> = T extends readonly unknown[]
 
 export type SettingsPatch = JSONMergePatch<Settings>
 
-let settingsReadInFlight: Promise<LayeredSettings> | null = null
-let settingsRefreshBatch: Promise<LayeredSettings> | null = null
-let settingsReadCache: LayeredSettings | null = null
-let settingsReadGeneration = 0
+/** Selects a settings projection without inferring foreground navigation state. */
+export type SettingsTarget = ResourceTarget
+
+export const GLOBAL_SETTINGS_TARGET: SettingsTarget = GLOBAL_RESOURCE_TARGET
+
+export function projectSettingsTarget(projectId: string): SettingsTarget {
+  return projectResourceTarget(projectId)
+}
+
+interface SettingsCacheEntry {
+  readInFlight: Promise<LayeredSettings> | null
+  refreshBatch: Promise<LayeredSettings> | null
+  snapshot: LayeredSettings | null
+  generation: number
+}
+
+const GLOBAL_SETTINGS_SCOPE = 'global'
+const settingsCaches = new Map<string, SettingsCacheEntry>()
+
+function settingsCache(scope: string): SettingsCacheEntry {
+  const existing = settingsCaches.get(scope)
+  if (existing) return existing
+  const created: SettingsCacheEntry = { readInFlight: null, refreshBatch: null, snapshot: null, generation: 0 }
+  settingsCaches.set(scope, created)
+  return created
+}
 
 /** Shares the current settings snapshot across startup consumers. */
 export function fetchSettings(): Promise<LayeredSettings> {
-  if (settingsReadCache) return Promise.resolve(settingsReadCache)
-  if (settingsReadInFlight) return settingsReadInFlight
-  return startSettingsRead(settingsReadGeneration)
+  return fetchSettingsForScope(GLOBAL_SETTINGS_SCOPE, '/api/settings')
+}
+
+/** Returns the user layer merged with exactly one Project layer. */
+export function fetchProjectSettings(projectId: string): Promise<LayeredSettings> {
+  const scope = projectSettingsScope(projectId)
+  return fetchSettingsForScope(scope, projectAPIPath(projectId, 'settings'))
 }
 
 /** Invalidates once while sharing the read between synchronous listeners of one update event. */
 export function refreshSettings(): Promise<LayeredSettings> {
-  if (settingsRefreshBatch) return settingsRefreshBatch
-  settingsReadGeneration += 1
-  settingsReadCache = null
-  settingsReadInFlight = null
-  const generation = settingsReadGeneration
-  const promise = startSettingsRead(generation)
-  settingsRefreshBatch = promise
-  queueMicrotask(() => {
-    if (settingsRefreshBatch === promise) settingsRefreshBatch = null
-  })
-  return promise
+  return refreshSettingsForScope(GLOBAL_SETTINGS_SCOPE, '/api/settings')
 }
 
-export function invalidateSettingsCache() {
-  settingsReadGeneration += 1
-  settingsReadCache = null
-  settingsReadInFlight = null
-  settingsRefreshBatch = null
+export function refreshProjectSettings(projectId: string): Promise<LayeredSettings> {
+  const scope = projectSettingsScope(projectId)
+  return refreshSettingsForScope(scope, projectAPIPath(projectId, 'settings'))
+}
+
+export function fetchSettingsTarget(target: SettingsTarget): Promise<LayeredSettings> {
+  return target.kind === 'project' ? fetchProjectSettings(target.projectId) : fetchSettings()
+}
+
+export function refreshSettingsTarget(target: SettingsTarget): Promise<LayeredSettings> {
+  return target.kind === 'project' ? refreshProjectSettings(target.projectId) : refreshSettings()
+}
+
+export function invalidateSettingsCache(projectId?: string) {
+  if (projectId === undefined) {
+    settingsCaches.clear()
+    return
+  }
+  settingsCaches.delete(projectSettingsScope(projectId))
 }
 
 export async function patchSettings(layer: SettingsLayer, changes: SettingsPatch, baseRevision?: string): Promise<LayeredSettings> {
@@ -50,8 +83,30 @@ export async function patchSettings(layer: SettingsLayer, changes: SettingsPatch
     headers: jsonHeaders,
     body: JSON.stringify({ layer, changes, ...(baseRevision ? { base_revision: baseRevision } : {}) }),
   })
-  primeSettingsCache(snapshot)
+  primeSettingsCache(GLOBAL_SETTINGS_SCOPE, snapshot, layer === 'user')
   return snapshot
+}
+
+export async function patchProjectSettings(projectId: string, layer: SettingsLayer, changes: SettingsPatch, baseRevision?: string): Promise<LayeredSettings> {
+  const scope = projectSettingsScope(projectId)
+  const snapshot = await requestJSON<LayeredSettings>(projectAPIPath(projectId, 'settings'), {
+    method: 'PATCH',
+    headers: jsonHeaders,
+    body: JSON.stringify({ layer, changes, ...(baseRevision ? { base_revision: baseRevision } : {}) }),
+  })
+  primeSettingsCache(scope, snapshot, layer === 'user')
+  return snapshot
+}
+
+export function patchSettingsTarget(
+  target: SettingsTarget,
+  layer: SettingsLayer,
+  changes: SettingsPatch,
+  baseRevision?: string,
+): Promise<LayeredSettings> {
+  return target.kind === 'project'
+    ? patchProjectSettings(target.projectId, layer, changes, baseRevision)
+    : patchSettings(layer, changes, baseRevision)
 }
 
 /** Revokes one saved rule by stable ID so concurrent rule additions cannot be
@@ -60,28 +115,59 @@ export async function revokeAgentApprovalRule(id: string): Promise<LayeredSettin
   const snapshot = await requestJSON<LayeredSettings>(`/api/settings/agent-approval-rules/${encodeURIComponent(id)}`, {
     method: 'DELETE',
   })
-  primeSettingsCache(snapshot)
+  primeSettingsCache(GLOBAL_SETTINGS_SCOPE, snapshot, true)
   return snapshot
 }
 
-function startSettingsRead(generation: number): Promise<LayeredSettings> {
-  const promise = requestJSON<LayeredSettings>('/api/settings').then((snapshot) => {
-    if (generation === settingsReadGeneration) settingsReadCache = snapshot
+function fetchSettingsForScope(scope: string, path: string): Promise<LayeredSettings> {
+  const cache = settingsCache(scope)
+  if (cache.snapshot) return Promise.resolve(cache.snapshot)
+  if (cache.readInFlight) return cache.readInFlight
+  return startSettingsRead(scope, path, cache.generation)
+}
+
+function refreshSettingsForScope(scope: string, path: string): Promise<LayeredSettings> {
+  const cache = settingsCache(scope)
+  if (cache.refreshBatch) return cache.refreshBatch
+  cache.generation += 1
+  cache.snapshot = null
+  cache.readInFlight = null
+  const generation = cache.generation
+  const promise = startSettingsRead(scope, path, generation)
+  cache.refreshBatch = promise
+  queueMicrotask(() => {
+    if (cache.refreshBatch === promise) cache.refreshBatch = null
+  })
+  return promise
+}
+
+function startSettingsRead(scope: string, path: string, generation: number): Promise<LayeredSettings> {
+  const cache = settingsCache(scope)
+  const promise = requestJSON<LayeredSettings>(path).then((snapshot) => {
+    if (generation === cache.generation) cache.snapshot = snapshot
     return snapshot
   })
-  settingsReadInFlight = promise
+  cache.readInFlight = promise
   void promise.then(
-    () => { if (settingsReadInFlight === promise) settingsReadInFlight = null },
-    () => { if (settingsReadInFlight === promise) settingsReadInFlight = null },
+    () => { if (cache.readInFlight === promise) cache.readInFlight = null },
+    () => { if (cache.readInFlight === promise) cache.readInFlight = null },
   )
   return promise
 }
 
-function primeSettingsCache(snapshot: LayeredSettings) {
-  settingsReadGeneration += 1
-  settingsReadCache = snapshot
-  settingsReadInFlight = null
-  settingsRefreshBatch = null
+function primeSettingsCache(scope: string, snapshot: LayeredSettings, invalidateAll: boolean) {
+  if (invalidateAll) settingsCaches.clear()
+  const cache = settingsCache(scope)
+  cache.generation += 1
+  cache.snapshot = snapshot
+  cache.readInFlight = null
+  cache.refreshBatch = null
+}
+
+function projectSettingsScope(projectId: string): string {
+  const normalized = projectId.trim()
+  if (!normalized) throw new Error('Project ID is required')
+  return `project:${normalized}`
 }
 
 /** Builds the minimal RFC 7386 object needed to transform baseline into draft. */

@@ -5,18 +5,18 @@ import type { ReviewThread, WorkspaceChangeGroup } from '../types'
 import { ChangeReviewWorkspace, deriveFeedbackComments } from './ChangeReviewWorkspace'
 
 const apiMocks = vi.hoisted(() => ({
-  createWorkspaceChangeComment: vi.fn(),
-  deleteWorkspaceChangeComment: vi.fn(),
-  redoWorkspaceChangeGroup: vi.fn(),
-  reviewWorkspaceChangeGroup: vi.fn(),
-  undoWorkspaceChangeGroup: vi.fn(),
-  updateWorkspaceChangeComment: vi.fn(),
+  createProjectChangeComment: vi.fn(),
+  deleteProjectChangeComment: vi.fn(),
+  redoProjectChangeGroup: vi.fn(),
+  reviewProjectChangeGroup: vi.fn(),
+  undoProjectChangeGroup: vi.fn(),
+  updateProjectChangeComment: vi.fn(),
 }))
 
 const queryMocks = vi.hoisted(() => ({
-  invalidateWorkspaceChangeQueries: vi.fn(),
-  useWorkspaceChangeGroup: vi.fn(),
-  useWorkspaceChangeReviewThread: vi.fn(),
+  invalidateProjectChangeQueries: vi.fn(),
+  useProjectChangeGroup: vi.fn(),
+  useProjectChangeReviewThread: vi.fn(),
 }))
 
 vi.mock('../api', () => apiMocks)
@@ -37,9 +37,9 @@ describe('ChangeReviewWorkspace', () => {
     vi.clearAllMocks()
     window.localStorage.clear()
     Object.defineProperty(HTMLElement.prototype, 'scrollIntoView', { configurable: true, value: vi.fn() })
-    queryMocks.invalidateWorkspaceChangeQueries.mockResolvedValue(undefined)
-    queryMocks.useWorkspaceChangeGroup.mockReturnValue(emptyGroupQuery())
-    queryMocks.useWorkspaceChangeReviewThread.mockReturnValue({
+    queryMocks.invalidateProjectChangeQueries.mockResolvedValue(undefined)
+    queryMocks.useProjectChangeGroup.mockReturnValue(emptyGroupQuery())
+    queryMocks.useProjectChangeReviewThread.mockReturnValue({
       data: reviewThread(),
       isLoading: false,
       isError: false,
@@ -66,21 +66,21 @@ describe('ChangeReviewWorkspace', () => {
   })
 
   it('reviews exactly the selected group and refreshes receipt paths only for byte-changing decisions', async () => {
-    apiMocks.reviewWorkspaceChangeGroup.mockResolvedValue({ workspace: '/books/demo', affected_paths: ['chapters/ch01.md'] })
+    apiMocks.reviewProjectChangeGroup.mockResolvedValue({ project_id: 'project-demo', workspace: '/books/demo', affected_paths: ['chapters/ch01.md'] })
     const onWorkspaceChanged = vi.fn()
     renderWorkspace({ onWorkspaceChanged })
     await screen.findByTestId('review-diff-editor')
 
     fireEvent.click(screen.getByRole('button', { name: /驳回本轮|Reject run/i }))
-    await waitFor(() => expect(apiMocks.reviewWorkspaceChangeGroup).toHaveBeenCalledWith('/books/demo', 'group-2', { decision: 'reject' }))
+    await waitFor(() => expect(apiMocks.reviewProjectChangeGroup).toHaveBeenCalledWith('project-demo', 'group-2', { decision: 'reject' }))
     await waitFor(() => expect(onWorkspaceChanged).toHaveBeenCalledWith(['chapters/ch01.md']))
-    expect(queryMocks.invalidateWorkspaceChangeQueries).toHaveBeenCalledWith(expect.anything(), '/books/demo')
+    expect(queryMocks.invalidateProjectChangeQueries).toHaveBeenCalledWith(expect.anything(), 'project-demo')
   })
 
   it('exposes unresolved comments with derived path/line metadata and renders continuity conflicts explicitly', async () => {
     const thread = reviewThread()
     thread.files[0].continuity = 'conflicted'
-    queryMocks.useWorkspaceChangeReviewThread.mockReturnValue({
+    queryMocks.useProjectChangeReviewThread.mockReturnValue({
       data: thread,
       isLoading: false,
       isError: false,
@@ -99,7 +99,7 @@ describe('ChangeReviewWorkspace', () => {
   })
 
   it('does not duplicate the workbench Review tab when loading fails', () => {
-    queryMocks.useWorkspaceChangeReviewThread.mockReturnValue({
+    queryMocks.useProjectChangeReviewThread.mockReturnValue({
       data: undefined,
       isLoading: false,
       isError: true,
@@ -140,7 +140,7 @@ describe('ChangeReviewWorkspace', () => {
       { ...thread.files[0], path: 'chapters/a.md', latest_group_id: 'group-1', latest_change_set_id: 'set-1', group_ids: ['group-1'], change_set_ids: ['set-1'] },
       { ...thread.files[0], path: 'chapters/b.md', base_group_id: 'group-2', base_change_set_id: 'set-2', latest_group_id: 'group-2', latest_change_set_id: 'set-2', group_ids: ['group-2'], change_set_ids: ['set-2'] },
     ]
-    queryMocks.useWorkspaceChangeReviewThread.mockReturnValue({
+    queryMocks.useProjectChangeReviewThread.mockReturnValue({
       data: thread,
       isLoading: false,
       isError: false,
@@ -187,7 +187,7 @@ describe('ChangeReviewWorkspace', () => {
       change_set_ids: ['set-3'],
       pending_edit_ids: ['edit-3'],
     })
-    queryMocks.useWorkspaceChangeReviewThread.mockReturnValue({
+    queryMocks.useProjectChangeReviewThread.mockReturnValue({
       data: thread,
       isLoading: false,
       isError: false,
@@ -256,7 +256,7 @@ describe('ChangeReviewWorkspace', () => {
 
   it('switches the review surface to a historical Agent run from the scope menu', async () => {
     const historical = reviewGroup()
-    queryMocks.useWorkspaceChangeGroup.mockImplementation((_workspace: string, groupID: string) => (
+    queryMocks.useProjectChangeGroup.mockImplementation((_projectId: string, groupID: string) => (
       groupID === historical.id
         ? { ...emptyGroupQuery(), data: historical }
         : emptyGroupQuery()
@@ -267,7 +267,7 @@ describe('ChangeReviewWorkspace', () => {
     fireEvent.pointerDown(scopeButton(), { button: 0, ctrlKey: false })
     fireEvent.click(await screen.findByRole('menuitemcheckbox', { name: /第 1 轮修改|Agent edit 1/i }))
 
-    await waitFor(() => expect(queryMocks.useWorkspaceChangeGroup).toHaveBeenCalledWith('/books/demo', 'group-1'))
+    await waitFor(() => expect(queryMocks.useProjectChangeGroup).toHaveBeenCalledWith('project-demo', 'group-1'))
     expect(await screen.findByTestId('review-diff-editor')).toHaveTextContent('history/round-one.md')
     expect(scopeButton()).toHaveTextContent(/第 1 轮修改|Agent edit 1/i)
   })
@@ -285,7 +285,7 @@ describe('ChangeReviewWorkspace', () => {
         path: 'history/round-two.md',
       })),
     }
-    queryMocks.useWorkspaceChangeGroup.mockImplementation((_workspace: string, groupID: string) => (
+    queryMocks.useProjectChangeGroup.mockImplementation((_projectId: string, groupID: string) => (
       groupID === historical.id
         ? { ...emptyGroupQuery(), data: historical }
         : groupID === secondHistorical.id
@@ -296,34 +296,34 @@ describe('ChangeReviewWorkspace', () => {
     const view = render(
       <QueryClientProvider client={queryClient}>
         <ChangeReviewWorkspace
-          workspace="/books/demo"
+          projectId="project-demo"
           threadID="thread-1"
           scopeRequest={{ id: 1, threadID: 'thread-1', groupID: 'group-1' }}
         />
       </QueryClientProvider>,
     )
 
-    await waitFor(() => expect(queryMocks.useWorkspaceChangeGroup).toHaveBeenCalledWith('/books/demo', 'group-1'))
+    await waitFor(() => expect(queryMocks.useProjectChangeGroup).toHaveBeenCalledWith('project-demo', 'group-1'))
     expect(await screen.findByTestId('review-diff-editor')).toHaveTextContent('history/round-one.md')
     expect(scopeButton()).toHaveTextContent(/第 1 轮修改|Agent edit 1/i)
 
     view.rerender(
       <QueryClientProvider client={queryClient}>
         <ChangeReviewWorkspace
-          workspace="/books/demo"
+          projectId="project-demo"
           threadID="thread-1"
           scopeRequest={{ id: 2, threadID: 'thread-1', groupID: 'group-2' }}
         />
       </QueryClientProvider>,
     )
-    await waitFor(() => expect(queryMocks.useWorkspaceChangeGroup).toHaveBeenCalledWith('/books/demo', 'group-2'))
+    await waitFor(() => expect(queryMocks.useProjectChangeGroup).toHaveBeenCalledWith('project-demo', 'group-2'))
     expect(await screen.findByTestId('review-diff-editor')).toHaveTextContent('history/round-two.md')
     expect(scopeButton()).toHaveTextContent(/第 2 轮修改|Agent edit 2/i)
   })
 
   it('freezes the displayed snapshot while a comment draft is open and adopts refreshes after cancel', async () => {
     let currentThread = reviewThread()
-    queryMocks.useWorkspaceChangeReviewThread.mockImplementation(() => ({
+    queryMocks.useProjectChangeReviewThread.mockImplementation(() => ({
       data: currentThread,
       isLoading: false,
       isError: false,
@@ -396,7 +396,7 @@ function renderWorkspace(overrides: Partial<React.ComponentProps<typeof ChangeRe
   return render(
     <QueryClientProvider client={queryClient}>
       <ChangeReviewWorkspace
-        workspace="/books/demo"
+        projectId="project-demo"
         threadID="thread-1"
         {...overrides}
       />

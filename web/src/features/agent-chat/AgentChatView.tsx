@@ -7,8 +7,9 @@ import { ConfirmDialog } from '@/components/common/ConfirmDialog'
 import type { WritingComposerSettingsController } from '@/components/Chat/AgentPanel'
 import type { EditorFlushHandler } from '@/components/Editor/useEditorDraftPersistence'
 import type { ReviewFeedbackComment, ReviewFeedbackSelection } from '@/features/changes/agent/ReviewFeedbackTray'
-import type { WorkspaceChangeMetadata } from '@/features/changes/types'
+import { workspaceChangeImpact, workspaceChangePaths, type WorkspaceChangeMetadata } from '@/features/changes/types'
 import type { ImagePreset, Teller } from '@/features/interactive/types'
+import { useProjectFileEvents } from '@/hooks/useProjectFileEvents'
 import {
   addAgentChatProject,
   archiveAgentChatProject,
@@ -51,6 +52,7 @@ import { mountedAgentChatTabKey, useAgentChatTabWorkbench } from './use-agent-ch
 import { useAgentChatTerminalTabs } from './use-agent-chat-terminal-tabs'
 import {
   AGENT_CHAT_GROUP_IDS,
+  agentChatPageIdsForProjectType,
   type AgentChatDocumentReviewNavigation,
   type AgentChatGroupId,
   type AgentChatPageId,
@@ -348,7 +350,7 @@ export function AgentChatView({
 
   const openProjectPage = useCallback(
     (project: AgentChatProject, group: AgentChatGroupId, pageId: AgentChatPageId) => {
-      if (project.type !== 'book') return
+      if (!agentChatPageIdsForProjectType(project.type).includes(pageId)) return
       openTab({
         kind: 'page',
         id: createTabId('page'),
@@ -420,6 +422,16 @@ export function AgentChatView({
     }
     await onWorkspaceChanged?.(changedProjectId, changedWorkspace, paths, metadata)
   }, [onWorkspaceChanged])
+
+  useProjectFileEvents(activeProjectId, async event => {
+    if (!activeProject || event.project_id !== activeProject.id) return
+    await handleWorkspaceChanged(
+      activeProject.id,
+      event.workspace || activeProject.path,
+      workspaceChangePaths(event),
+      { impact: workspaceChangeImpact(event), origin: 'external' },
+    )
+  })
 
   const openDocumentReviewFeedback = useCallback(
     (projectID: string, selection: ReviewFeedbackSelection, comment: ReviewFeedbackComment) => {
@@ -630,7 +642,6 @@ export function AgentChatView({
           <AgentChatTabContent
             tab={tab}
             projectType={project.type}
-            workspaceCurrent={project.current}
             active={active}
             running={projectRunning}
             composerSettings={composerSettings}

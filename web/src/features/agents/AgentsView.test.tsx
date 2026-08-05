@@ -4,7 +4,11 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { getSkills } from '@/lib/api'
 import { fetchSettings } from '@/features/settings/api'
 import type { AgentToolCapability, LayeredSettings, ResolvedAgentContextSettings, ResolvedAgentToolCapability } from '@/features/settings/types'
-import { AgentsView } from './AgentsView'
+import { AgentsView as ProjectAgentsView } from './AgentsView'
+
+function AgentsView() {
+  return <ProjectAgentsView target={{ kind: 'project', projectId: 'project-agents' }} />
+}
 
 const { configManagerChatProps } = vi.hoisted(() => ({
   configManagerChatProps: [] as Array<{
@@ -23,9 +27,14 @@ vi.mock('@/features/settings/api', () => {
   const fetchSettings = vi.fn()
   return {
     fetchSettings,
+    fetchSettingsTarget: fetchSettings,
     refreshSettings: (...args: unknown[]) => fetchSettings(...args),
+    refreshSettingsTarget: (...args: unknown[]) => fetchSettings(...args),
     createSettingsMergePatch: (_baseline: unknown, draft: unknown) => draft,
     patchSettings: (layer: string, changes: unknown, revision?: string) => layer === 'workspace'
+      ? revision === undefined ? updateWorkspaceSettings(changes) : updateWorkspaceSettings(changes, revision)
+      : revision === undefined ? updateUserSettings(changes) : updateUserSettings(changes, revision),
+    patchSettingsTarget: (_target: unknown, layer: string, changes: unknown, revision?: string) => layer === 'workspace'
       ? revision === undefined ? updateWorkspaceSettings(changes) : updateWorkspaceSettings(changes, revision)
       : revision === undefined ? updateUserSettings(changes) : updateUserSettings(changes, revision),
   }
@@ -49,6 +58,7 @@ vi.mock('@/components/Chat/ConfigManagerChat', () => ({
 
 vi.mock('@/lib/api', () => ({
   getSkills: vi.fn(),
+  resourceTargetKey: (target: { kind: string; projectId?: string }) => target.kind === 'project' ? `project:${target.projectId}` : 'global',
 }))
 
 describe('AgentsView', () => {

@@ -3,9 +3,11 @@ package project
 import (
 	"os"
 	"path/filepath"
+	"strings"
 	"sync"
 	"testing"
 
+	bookversions "denova/internal/book/versions"
 	workspacelayout "denova/internal/workspace"
 )
 
@@ -105,6 +107,47 @@ func TestEnsureStateUpgradesOlderReceiptToMigrateReviews(t *testing.T) {
 	}
 	if _, err := os.Stat(legacyLedger); err != nil {
 		t.Fatalf("legacy rollback source missing: %v", err)
+	}
+}
+
+func TestEnsureStateMigratesReleasedVersionRepositoryWithoutDeletingSource(t *testing.T) {
+	denovaDir := t.TempDir()
+	workspace := t.TempDir()
+	chapter := filepath.Join(workspace, "chapters", "ch0001.md")
+	if err := os.MkdirAll(filepath.Dir(chapter), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(chapter, []byte("released content"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	legacyRepository := filepath.Join(workspace, ".git")
+	legacy := bookversions.NewService(workspace, legacyRepository)
+	created, err := legacy.Create("released version", bookversions.VersionSourceManual, bookversions.DefaultAutoSettings())
+	if err != nil {
+		t.Fatal(err)
+	}
+	legacy.Close()
+
+	registry := NewRegistry(denovaDir)
+	record, err := registry.Add(workspace, TypeBook, "Book")
+	if err != nil {
+		t.Fatal(err)
+	}
+	layout, err := registry.EnsureState(record)
+	if err != nil {
+		t.Fatal(err)
+	}
+	migrated := bookversions.NewService(workspace, layout.VersionRepositoryDir())
+	history, err := migrated.History(10)
+	if err != nil || len(history) != 1 || history[0].ID != created.Version.ID {
+		t.Fatalf("migrated Project history=%#v err=%v", history, err)
+	}
+	if _, err := os.Stat(legacyRepository); err != nil {
+		t.Fatalf("released version source must remain available: %v", err)
+	}
+	receipt, err := os.ReadFile(filepath.Join(layout.StateRoot, "migration.json"))
+	if err != nil || !strings.Contains(string(receipt), `"versions"`) {
+		t.Fatalf("version migration receipt=%q err=%v", receipt, err)
 	}
 }
 

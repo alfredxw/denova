@@ -3,11 +3,10 @@ import type { AgentCommandReceipt, AgentRuntimeActiveOutput, AgentRuntimeOpenToo
 import { isKnownAgentCommandOutcome } from '@/lib/agent-command'
 import type { ActorStateModule, ActorTraitRollRequest, ActorTraitRollResult, BranchSummary, DirectorPlan, DirectorPlanStatus, EventPackageModule, ImagePreset, InitialActorTraitRoll, InteractiveSSEEvent, RuleResolution, RuleResolutionRerollInput, RuleSystemModule, Snapshot, StoryDirector, StoryDirectorModuleRefs, StoryDirectorRunPolicy, StoryHistoryPage, StoryStateSchemaPolicy, StyleReference, StyleReferenceFileDocument, StoryImageSettings, StoryIndex, StoryOpeningConfig, StorySummary, Teller, UpdateDirectorPlanInput, UpdateTurnNarrativeResult } from './types'
 
-function presetMutationBody<T extends object>(input: T, baseRevision?: string, workspace?: string) {
+function presetMutationBody<T extends object>(input: T, baseRevision?: string) {
   return {
     ...input,
     ...(baseRevision ? { base_revision: baseRevision } : {}),
-    ...(workspace ? { workspace } : {}),
   }
 }
 
@@ -134,11 +133,11 @@ export function createInteractiveTeller(input: Partial<Teller>): Promise<Teller>
   })
 }
 
-export function updateInteractiveTeller(id: string, input: Partial<Teller>, baseRevision?: string, workspace?: string): Promise<Teller> {
+export function updateInteractiveTeller(id: string, input: Partial<Teller>, baseRevision?: string): Promise<Teller> {
   return requestJSON(`/api/interactive/tellers/${encodeURIComponent(id)}`, {
     method: 'PATCH',
     headers: jsonHeaders,
-    body: JSON.stringify(presetMutationBody(input, baseRevision, workspace)),
+    body: JSON.stringify(presetMutationBody(input, baseRevision)),
   })
 }
 
@@ -186,11 +185,11 @@ export function createStoryDirector(input: Partial<StoryDirector>): Promise<Stor
   })
 }
 
-export function updateStoryDirector(id: string, input: Partial<StoryDirector>, baseRevision?: string, workspace?: string): Promise<StoryDirector> {
+export function updateStoryDirector(id: string, input: Partial<StoryDirector>, baseRevision?: string): Promise<StoryDirector> {
   return requestJSON(`/api/story-directors/${encodeURIComponent(id)}`, {
     method: 'PATCH',
     headers: jsonHeaders,
-    body: JSON.stringify(presetMutationBody(input, baseRevision, workspace)),
+    body: JSON.stringify(presetMutationBody(input, baseRevision)),
   })
 }
 
@@ -213,11 +212,11 @@ export function createEventPackage(input: Partial<EventPackageModule>): Promise<
   })
 }
 
-export function updateEventPackage(id: string, input: Partial<EventPackageModule>, baseRevision?: string, workspace?: string): Promise<EventPackageModule> {
+export function updateEventPackage(id: string, input: Partial<EventPackageModule>, baseRevision?: string): Promise<EventPackageModule> {
   return requestJSON(`/api/event-packages/${encodeURIComponent(id)}`, {
     method: 'PATCH',
     headers: jsonHeaders,
-    body: JSON.stringify(presetMutationBody(input, baseRevision, workspace)),
+    body: JSON.stringify(presetMutationBody(input, baseRevision)),
   })
 }
 
@@ -240,11 +239,11 @@ export function createRuleSystem(input: Partial<RuleSystemModule>): Promise<Rule
   })
 }
 
-export function updateRuleSystem(id: string, input: Partial<RuleSystemModule>, baseRevision?: string, workspace?: string): Promise<RuleSystemModule> {
+export function updateRuleSystem(id: string, input: Partial<RuleSystemModule>, baseRevision?: string): Promise<RuleSystemModule> {
   return requestJSON(`/api/rule-systems/${encodeURIComponent(id)}`, {
     method: 'PATCH',
     headers: jsonHeaders,
-    body: JSON.stringify(presetMutationBody(input, baseRevision, workspace)),
+    body: JSON.stringify(presetMutationBody(input, baseRevision)),
   })
 }
 
@@ -267,11 +266,11 @@ export function createActorState(input: Partial<ActorStateModule>): Promise<Acto
   })
 }
 
-export function updateActorState(id: string, input: Partial<ActorStateModule>, baseRevision?: string, workspace?: string): Promise<ActorStateModule> {
+export function updateActorState(id: string, input: Partial<ActorStateModule>, baseRevision?: string): Promise<ActorStateModule> {
   return requestJSON(`/api/actor-states/${encodeURIComponent(id)}`, {
     method: 'PATCH',
     headers: jsonHeaders,
-    body: JSON.stringify(presetMutationBody(input, baseRevision, workspace)),
+    body: JSON.stringify(presetMutationBody(input, baseRevision)),
   })
 }
 
@@ -294,11 +293,11 @@ export function createImagePreset(input: Partial<ImagePreset>): Promise<ImagePre
   })
 }
 
-export function updateImagePreset(id: string, input: Partial<ImagePreset>, baseRevision?: string, workspace?: string): Promise<ImagePreset> {
+export function updateImagePreset(id: string, input: Partial<ImagePreset>, baseRevision?: string): Promise<ImagePreset> {
   return requestJSON(`/api/image-presets/${encodeURIComponent(id)}`, {
     method: 'PATCH',
     headers: jsonHeaders,
-    body: JSON.stringify(presetMutationBody(input, baseRevision, workspace)),
+    body: JSON.stringify(presetMutationBody(input, baseRevision)),
   })
 }
 

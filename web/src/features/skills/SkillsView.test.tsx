@@ -4,7 +4,14 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { createSkill, deleteSkillDocument, getSkillDocument, getSkillFileDocument, getSkills, installSkillRemote, installSkillZip, previewSkillRemoteInstall, previewSkillZipInstall, saveSkillDocument, saveSkillFileDocument } from '@/lib/api'
 import { APIError } from '@/lib/api-client'
 import type { SkillDocument, SkillFileDocument, SkillSnapshot } from '@/lib/api'
-import { SkillsView } from './SkillsView'
+import { SkillsView as ProjectSkillsView } from './SkillsView'
+
+const PROJECT_ID = 'project-demo'
+const PROJECT_TARGET = { kind: 'project', projectId: PROJECT_ID } as const
+
+function SkillsView(_props: { workspace?: string }) {
+  return <ProjectSkillsView target={PROJECT_TARGET} />
+}
 
 vi.mock('@/components/Chat/ConfigManagerChat', () => ({
   ConfigManagerChat: () => <div data-testid="config-manager-chat" />,
@@ -22,6 +29,7 @@ vi.mock('@/lib/api', () => ({
   previewSkillZipInstall: vi.fn(),
   saveSkillDocument: vi.fn(),
   saveSkillFileDocument: vi.fn(),
+  skillCatalogTargetKey: (target: { kind: string; projectId?: string }) => target.kind === 'project' ? `project:${target.projectId}` : 'global',
 }))
 
 describe('SkillsView', () => {
@@ -38,7 +46,7 @@ describe('SkillsView', () => {
     vi.mocked(saveSkillDocument).mockReset()
     vi.mocked(saveSkillFileDocument).mockReset()
     vi.mocked(getSkills).mockResolvedValue(skillsSnapshot())
-    vi.mocked(createSkill).mockImplementation(async (scope, name, description, agents = [], metadata = {}) => skillDocument({
+    vi.mocked(createSkill).mockImplementation(async (_projectId, scope, name, description, agents = [], metadata = {}) => skillDocument({
       scope,
       name,
       description,
@@ -69,7 +77,7 @@ describe('SkillsView', () => {
     await user.click(screen.getByRole('button', { name: '创建 SKILL.md' }))
 
     await waitFor(() => {
-      expect(vi.mocked(createSkill)).toHaveBeenCalledWith('user', 'draft-plan', '规划章节草稿', ['ide'], {
+      expect(vi.mocked(createSkill)).toHaveBeenCalledWith(PROJECT_TARGET, 'user', 'draft-plan', '规划章节草稿', ['ide'], {
         category: 'general',
         capabilities: [],
       })
@@ -89,7 +97,7 @@ describe('SkillsView', () => {
     await user.click(screen.getByRole('button', { name: '创建 SKILL.md' }))
 
     await waitFor(() => {
-      expect(vi.mocked(createSkill)).toHaveBeenCalledWith('user', 'slow-burn', '慢节奏写作流程', ['ide'], {
+      expect(vi.mocked(createSkill)).toHaveBeenCalledWith(PROJECT_TARGET, 'user', 'slow-burn', '慢节奏写作流程', ['ide'], {
         category: 'writing',
         capabilities: ['writing-workflow'],
       })
@@ -100,7 +108,7 @@ describe('SkillsView', () => {
     const writing = skillDocument({ name: 'slow-burn', description: 'Writing', category: 'writing' })
     const image = skillDocument({ name: 'image-helper', description: 'Image', category: 'image' })
     vi.mocked(getSkills).mockResolvedValue(skillsSnapshot({ skills: [writing, image] }))
-    vi.mocked(getSkillDocument).mockImplementation(async (_scope, name) => name === image.name ? image : writing)
+    vi.mocked(getSkillDocument).mockImplementation(async (_projectId, _scope, name) => name === image.name ? image : writing)
     const user = userEvent.setup()
 
     render(<SkillsView workspace="/books/demo" />)
@@ -139,7 +147,7 @@ describe('SkillsView', () => {
       active: true,
       content,
     }))
-    vi.mocked(saveSkillDocument).mockImplementation(async (scope, name, savedContent) => skillDocument({
+    vi.mocked(saveSkillDocument).mockImplementation(async (_projectId, scope, name, savedContent) => skillDocument({
       scope,
       name,
       path: `/nova/skills/${name}/SKILL.md`,
@@ -153,7 +161,7 @@ describe('SkillsView', () => {
     await user.click(await screen.findByRole('button', { name: '创建用户覆盖' }))
 
     await waitFor(() => {
-      expect(vi.mocked(saveSkillDocument)).toHaveBeenCalledWith('builtin', 'outline', content, { scope: 'user', name: 'outline' }, 'skill-r1')
+      expect(vi.mocked(saveSkillDocument)).toHaveBeenCalledWith(PROJECT_TARGET, 'builtin', 'outline', content, { scope: 'user', name: 'outline' }, 'skill-r1')
     })
   })
 
@@ -178,7 +186,7 @@ describe('SkillsView', () => {
       .mockResolvedValueOnce(external)
     vi.mocked(saveSkillDocument)
       .mockRejectedValueOnce(new APIError('revision conflict', { status: 409 }))
-      .mockImplementationOnce(async (_scope, name, savedContent, target) => skillDocument({
+      .mockImplementationOnce(async (_projectId, _scope, name, savedContent, target) => skillDocument({
         ...external,
         scope: target?.scope || 'user',
         name,
@@ -195,6 +203,7 @@ describe('SkillsView', () => {
     await waitFor(() => expect(vi.mocked(saveSkillDocument)).toHaveBeenCalledTimes(2))
     expect(vi.mocked(saveSkillDocument)).toHaveBeenNthCalledWith(
       2,
+      PROJECT_TARGET,
       'builtin',
       'outline',
       externalContent,
@@ -217,7 +226,7 @@ describe('SkillsView', () => {
     })
     vi.mocked(getSkills).mockResolvedValue(skillsSnapshot({ skills: [doc] }))
     vi.mocked(getSkillDocument).mockResolvedValue(doc)
-    vi.mocked(saveSkillDocument).mockImplementation(async (scope, name, savedContent, target) => skillDocument({
+    vi.mocked(saveSkillDocument).mockImplementation(async (_projectId, scope, name, savedContent, target) => skillDocument({
       scope: target?.scope || scope,
       name: target?.name || name,
       description: 'Beat planning',
@@ -240,6 +249,7 @@ describe('SkillsView', () => {
 
     await waitFor(() => {
       expect(vi.mocked(saveSkillDocument)).toHaveBeenCalledWith(
+        PROJECT_TARGET,
         'user',
         'draft-plan',
         expect.stringContaining('name: "beat-plan"'),
@@ -247,7 +257,7 @@ describe('SkillsView', () => {
         'skill-r1',
       )
     })
-    expect(vi.mocked(saveSkillDocument).mock.calls[0][2]).toContain('description: "Beat planning"')
+    expect(vi.mocked(saveSkillDocument).mock.calls[0][3]).toContain('description: "Beat planning"')
   })
 
   it('transparently rebases and retries a Skill rename conflict', async () => {
@@ -273,7 +283,7 @@ describe('SkillsView', () => {
       .mockResolvedValueOnce(external)
     vi.mocked(saveSkillDocument)
       .mockRejectedValueOnce(new APIError('revision conflict', { status: 409 }))
-      .mockImplementationOnce(async (_scope, _name, content, target) => skillDocument({
+      .mockImplementationOnce(async (_projectId, _scope, _name, content, target) => skillDocument({
         ...external,
         scope: target?.scope || 'user',
         name: target?.name || 'draft-plan',
@@ -290,10 +300,10 @@ describe('SkillsView', () => {
 
     await waitFor(() => expect(vi.mocked(saveSkillDocument)).toHaveBeenCalledTimes(2))
     const retry = vi.mocked(saveSkillDocument).mock.calls[1]
-    expect(retry?.slice(0, 2)).toEqual(['user', 'draft-plan'])
-    expect(retry?.[2]).toContain('name: "beat-plan"')
-    expect(retry?.[2]).toContain('External body.')
-    expect(retry?.slice(3)).toEqual([{ scope: 'user', name: 'beat-plan' }, 'skill-r2'])
+    expect(retry?.slice(0, 3)).toEqual([PROJECT_TARGET, 'user', 'draft-plan'])
+    expect(retry?.[3]).toContain('name: "beat-plan"')
+    expect(retry?.[3]).toContain('External body.')
+    expect(retry?.slice(4)).toEqual([{ scope: 'user', name: 'beat-plan' }, 'skill-r2'])
     expect(screen.queryByText('revision conflict')).not.toBeInTheDocument()
   })
 
@@ -310,7 +320,7 @@ describe('SkillsView', () => {
     })
     vi.mocked(getSkills).mockResolvedValue(skillsSnapshot({ skills: [doc] }))
     vi.mocked(getSkillDocument).mockResolvedValue(doc)
-    vi.mocked(saveSkillDocument).mockImplementation(async (scope, name, savedContent) => skillDocument({
+    vi.mocked(saveSkillDocument).mockImplementation(async (_projectId, scope, name, savedContent) => skillDocument({
       ...doc,
       scope,
       name,
@@ -332,6 +342,7 @@ describe('SkillsView', () => {
 
     await waitFor(() => {
       expect(vi.mocked(saveSkillDocument)).toHaveBeenCalledWith(
+        PROJECT_TARGET,
         'user',
         'draft-plan',
         expect.stringContaining('description: "Beat planning"'),
@@ -339,7 +350,7 @@ describe('SkillsView', () => {
         'skill-r1',
       )
     })
-    const savedContent = vi.mocked(saveSkillDocument).mock.calls.at(-1)?.[2] || ''
+    const savedContent = vi.mocked(saveSkillDocument).mock.calls.at(-1)?.[3] || ''
     expect(savedContent).toContain('category: "writing"')
     expect(savedContent).toContain('capabilities: ["writing-workflow"]')
   })
@@ -355,7 +366,7 @@ describe('SkillsView', () => {
       .mockResolvedValueOnce(external)
     vi.mocked(saveSkillDocument)
       .mockRejectedValueOnce(new APIError('revision conflict', { status: 409 }))
-      .mockImplementationOnce(async (scope, name, content) => skillDocument({
+      .mockImplementationOnce(async (_projectId, scope, name, content) => skillDocument({
         ...external,
         scope,
         name,
@@ -374,11 +385,11 @@ describe('SkillsView', () => {
 
     await waitFor(() => expect(vi.mocked(saveSkillDocument)).toHaveBeenCalledTimes(2))
     const retry = vi.mocked(saveSkillDocument).mock.calls[1]
-    expect(retry?.slice(0, 2)).toEqual(['user', 'draft-plan'])
-    expect(retry?.[2]).toContain('description: "Beat planning"')
-    expect(retry?.[2]).toContain('agent: "ide"')
-    expect(retry?.[2]).toContain('Body updated externally.')
-    expect(retry?.slice(3)).toEqual([undefined, 'skill-r2'])
+    expect(retry?.slice(0, 3)).toEqual([PROJECT_TARGET, 'user', 'draft-plan'])
+    expect(retry?.[3]).toContain('description: "Beat planning"')
+    expect(retry?.[3]).toContain('agent: "ide"')
+    expect(retry?.[3]).toContain('Body updated externally.')
+    expect(retry?.slice(4)).toEqual([undefined, 'skill-r2'])
     expect(screen.getByRole('status')).toHaveAccessibleName('所有更改均已保存')
   })
 
@@ -446,7 +457,7 @@ describe('SkillsView', () => {
       .mockResolvedValueOnce(external)
     vi.mocked(saveSkillDocument)
       .mockRejectedValueOnce(new APIError('revision conflict', { status: 409 }))
-      .mockImplementationOnce(async (scope, name, content) => skillDocument({
+      .mockImplementationOnce(async (_projectId, scope, name, content) => skillDocument({
         ...external,
         scope,
         name,
@@ -462,8 +473,8 @@ describe('SkillsView', () => {
     fireEvent.keyDown(editor, { key: 's', ctrlKey: true })
 
     await waitFor(() => expect(vi.mocked(saveSkillDocument)).toHaveBeenCalledTimes(2))
-    expect(vi.mocked(saveSkillDocument)).toHaveBeenNthCalledWith(1, 'user', 'draft-plan', localContent, undefined, 'skill-r1')
-    expect(vi.mocked(saveSkillDocument)).toHaveBeenNthCalledWith(2, 'user', 'draft-plan', mergedContent, undefined, 'skill-r2')
+    expect(vi.mocked(saveSkillDocument)).toHaveBeenNthCalledWith(1, PROJECT_TARGET, 'user', 'draft-plan', localContent, undefined, 'skill-r1')
+    expect(vi.mocked(saveSkillDocument)).toHaveBeenNthCalledWith(2, PROJECT_TARGET, 'user', 'draft-plan', mergedContent, undefined, 'skill-r2')
     await waitFor(() => expect(editor.value).toBe(mergedContent))
     expect(screen.getByRole('status')).toHaveAccessibleName('所有更改均已保存')
   })
@@ -502,7 +513,7 @@ describe('SkillsView', () => {
     expect(await screen.findByRole('button', { name: '目录文件' })).toHaveAttribute('aria-pressed', 'true')
     await user.click(await screen.findByRole('button', { name: /style\.md/ }))
     await waitFor(() => {
-      expect(vi.mocked(getSkillFileDocument)).toHaveBeenCalledWith('user', 'draft-plan', 'references/style.md')
+      expect(vi.mocked(getSkillFileDocument)).toHaveBeenCalledWith(PROJECT_TARGET, 'user', 'draft-plan', 'references/style.md')
     })
     await user.click(screen.getByRole('button', { name: 'Raw' }))
     const editor = container.querySelector('textarea') as HTMLTextAreaElement
@@ -515,7 +526,7 @@ describe('SkillsView', () => {
     await user.click(screen.getByRole('button', { name: 'SKILL.md' }))
 
     await waitFor(() => {
-      expect(vi.mocked(saveSkillFileDocument)).toHaveBeenCalledWith('user', 'draft-plan', 'references/style.md', '# Updated\n', 'file-r1')
+      expect(vi.mocked(saveSkillFileDocument)).toHaveBeenCalledWith(PROJECT_TARGET, 'user', 'draft-plan', 'references/style.md', '# Updated\n', 'file-r1')
     })
     expect(vi.mocked(saveSkillDocument)).not.toHaveBeenCalled()
   })
@@ -590,7 +601,7 @@ describe('SkillsView', () => {
     await user.click(screen.getByRole('button', { name: '扫描' }))
 
     await waitFor(() => {
-      expect(vi.mocked(previewSkillRemoteInstall)).toHaveBeenCalledWith({
+      expect(vi.mocked(previewSkillRemoteInstall)).toHaveBeenCalledWith(PROJECT_TARGET, {
         url: 'owner/repo',
         ref: '',
         subdir: '',
@@ -601,7 +612,7 @@ describe('SkillsView', () => {
     await user.click(screen.getByRole('button', { name: '安装 1 个' }))
 
     await waitFor(() => {
-      expect(vi.mocked(installSkillRemote)).toHaveBeenCalledWith({
+      expect(vi.mocked(installSkillRemote)).toHaveBeenCalledWith(PROJECT_TARGET, {
         url: 'owner/repo',
         ref: '',
         subdir: '',
@@ -631,12 +642,12 @@ describe('SkillsView', () => {
     await user.click(screen.getByRole('button', { name: '扫描' }))
 
     await waitFor(() => {
-      expect(vi.mocked(previewSkillZipInstall)).toHaveBeenCalledWith(file, 'user')
+      expect(vi.mocked(previewSkillZipInstall)).toHaveBeenCalledWith(PROJECT_TARGET, file, 'user')
     })
     await user.click(screen.getByRole('button', { name: '安装 1 个' }))
 
     await waitFor(() => {
-      expect(vi.mocked(installSkillZip)).toHaveBeenCalledWith(file, 'user', ['zip-one'])
+      expect(vi.mocked(installSkillZip)).toHaveBeenCalledWith(PROJECT_TARGET, file, 'user', ['zip-one'])
     })
   })
 
@@ -662,7 +673,7 @@ describe('SkillsView', () => {
     await user.click(within(dialog).getByRole('button', { name: '删除' }))
 
     await waitFor(() => {
-      expect(vi.mocked(deleteSkillDocument)).toHaveBeenCalledWith('user', 'draft-plan')
+      expect(vi.mocked(deleteSkillDocument)).toHaveBeenCalledWith(PROJECT_TARGET, 'user', 'draft-plan')
     })
   })
 
@@ -689,7 +700,7 @@ describe('SkillsView', () => {
     vi.mocked(getSkills)
       .mockResolvedValueOnce(skillsSnapshot({ skills: [override, builtin] }))
       .mockResolvedValueOnce(skillsSnapshot({ skills: [{ ...builtin, active: true }] }))
-    vi.mocked(getSkillDocument).mockImplementation(async (scope) => (scope === 'workspace' ? override : { ...builtin, active: true }))
+    vi.mocked(getSkillDocument).mockImplementation(async (_projectId, scope) => (scope === 'workspace' ? override : { ...builtin, active: true }))
 
     render(<SkillsView workspace="/books/demo" />)
 
@@ -698,7 +709,7 @@ describe('SkillsView', () => {
     await user.click(within(dialog).getByRole('button', { name: '恢复内置' }))
 
     await waitFor(() => {
-      expect(vi.mocked(deleteSkillDocument)).toHaveBeenCalledWith('workspace', 'novel-standard')
+      expect(vi.mocked(deleteSkillDocument)).toHaveBeenCalledWith(PROJECT_TARGET, 'workspace', 'novel-standard')
     })
   })
 })

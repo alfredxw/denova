@@ -24,6 +24,20 @@ func TestInitWorkspaceDoesNotCreateCharacterStates(t *testing.T) {
 	}
 }
 
+func TestInitWorkspaceDoesNotCreateWorkspacePrivateRuntimeState(t *testing.T) {
+	dir := t.TempDir()
+	state := NewState(dir)
+
+	if err := state.InitWorkspace(); err != nil {
+		t.Fatalf("InitWorkspace failed: %v", err)
+	}
+	for _, path := range []string{state.SessionDir(), state.BackupDir()} {
+		if _, err := os.Stat(path); !os.IsNotExist(err) {
+			t.Fatalf("workspace-private runtime path should not be created: path=%s err=%v", path, err)
+		}
+	}
+}
+
 func TestInitWorkspaceCreatesIdeasMarkdown(t *testing.T) {
 	dir := t.TempDir()
 	state := NewState(dir)

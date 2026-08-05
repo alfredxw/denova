@@ -29,6 +29,7 @@ import {
   type TextSelection,
 } from '@/lib/api'
 import { jsonHeaders, requestJSON } from '@/lib/api-client/client'
+import { projectAPIPath } from '@/lib/api-client/project-scope'
 import type { AgentChatTransportOptions } from '@/lib/agent-ui'
 
 /**
@@ -102,15 +103,16 @@ export const writingAgentChatClient: AgentChatClient = {
 
 /** Build an immutable project/session API binding for one AgentChat conversation tab. */
 export function createProjectAgentChatClient(projectId: string, sessionId: string): AgentChatClient {
-  const scope = { project_id: projectId, session_id: sessionId }
+  const basePath = projectAPIPath(projectId, 'agent-chat')
+  const scope = { session_id: sessionId }
   const unsupportedSessionMutation = async (): Promise<never> => {
     throw new Error('AgentChat 对话由项目侧栏管理 / AgentChat conversations are managed from the project sidebar')
   }
 
   return {
     transportOptions: {
-      api: '/api/agent-chat/chat',
-      streamApi: '/api/agent-chat/chat/stream',
+      api: `${basePath}/chat`,
+      streamApi: `${basePath}/chat/stream`,
       scope,
     },
     fixedSessionId: sessionId,
@@ -131,7 +133,7 @@ export function createProjectAgentChatClient(projectId: string, sessionId: strin
       const data = await requestJSON<{
         messages?: SessionMessagesPage['messages']
         page?: { next_before?: string; has_more?: boolean; total?: number }
-      }>(`/api/agent-chat/session/messages?${query.toString()}`)
+      }>(`${basePath}/session/messages?${query.toString()}`)
       return {
         messages: data.messages || [],
         nextBefore: data.page?.next_before || '0',
@@ -139,15 +141,15 @@ export function createProjectAgentChatClient(projectId: string, sessionId: strin
         total: data.page?.total || 0,
       }
     },
-    getActiveChatTask: () => requestJSON(`/api/agent-chat/chat/active?${new URLSearchParams(scope).toString()}`),
+    getActiveChatTask: () => requestJSON(`${basePath}/chat/active?${new URLSearchParams(scope).toString()}`),
     recoverChatAgentRuntime: (action) =>
-      requestJSON('/api/agent-chat/chat/recovery', {
+      requestJSON(`${basePath}/chat/recovery`, {
         method: 'POST',
         headers: jsonHeaders,
         body: JSON.stringify({ ...scope, action }),
       }),
     submitChatCommand: (type, commandId, targetOperationId, input, reason) =>
-      requestJSON('/api/agent-chat/chat/commands', {
+      requestJSON(`${basePath}/chat/commands`, {
         method: 'POST',
         headers: jsonHeaders,
         body: JSON.stringify({
@@ -160,7 +162,7 @@ export function createProjectAgentChatClient(projectId: string, sessionId: strin
         }),
       }),
     submitQueuedChatCommand: (action, commandId, targetOperationId, targetCommandId, reason) =>
-      requestJSON('/api/agent-chat/chat/commands', {
+      requestJSON(`${basePath}/chat/commands`, {
         method: 'POST',
         headers: jsonHeaders,
         body: JSON.stringify({
@@ -173,7 +175,7 @@ export function createProjectAgentChatClient(projectId: string, sessionId: strin
         }),
       }),
     executeCommand: async (command) => {
-      const data = await requestJSON<{ result?: string }>('/api/agent-chat/command', {
+      const data = await requestJSON<{ result?: string }>(`${basePath}/command`, {
         method: 'POST',
         headers: jsonHeaders,
         body: JSON.stringify({ ...scope, command }),
@@ -192,7 +194,7 @@ export function createProjectAgentChatClient(projectId: string, sessionId: strin
       imagePresetId,
       tellerId,
     ) =>
-      requestJSON('/api/agent-chat/chat/context-analysis', {
+      requestJSON(`${basePath}/chat/context-analysis`, {
         method: 'POST',
         headers: jsonHeaders,
         body: JSON.stringify({
@@ -229,13 +231,13 @@ export function createProjectAgentChatClient(projectId: string, sessionId: strin
     renameSession: unsupportedSessionMutation,
     deleteSession: unsupportedSessionMutation,
     answerSessionAsk: (_requestedSessionId, askId, answers) =>
-      requestJSON(`/api/agent-chat/session/asks/${encodeURIComponent(askId)}/answer`, {
+      requestJSON(`${basePath}/session/asks/${encodeURIComponent(askId)}/answer`, {
         method: 'POST',
         headers: jsonHeaders,
         body: JSON.stringify({ ...scope, answers }),
       }),
     cancelSessionAsk: (_requestedSessionId, askId) =>
-      requestJSON(`/api/agent-chat/session/asks/${encodeURIComponent(askId)}/cancel`, {
+      requestJSON(`${basePath}/session/asks/${encodeURIComponent(askId)}/cancel`, {
         method: 'POST',
         headers: jsonHeaders,
         body: JSON.stringify({ ...scope, reason: 'user_cancelled' }),

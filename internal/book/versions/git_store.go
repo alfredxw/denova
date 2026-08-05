@@ -2,28 +2,43 @@ package versions
 
 import (
 	"errors"
+	"fmt"
 	"io"
+	"os"
+	"path/filepath"
 	"strings"
 	"time"
 
+	"github.com/go-git/go-billy/v5/osfs"
 	git "github.com/go-git/go-git/v5"
 	"github.com/go-git/go-git/v5/plumbing"
+	"github.com/go-git/go-git/v5/plumbing/cache"
 	"github.com/go-git/go-git/v5/plumbing/object"
+	gitstorage "github.com/go-git/go-git/v5/storage"
+	"github.com/go-git/go-git/v5/storage/filesystem"
 )
 
 // GitStore owns the go-git repository operations used by Denova versions.
 type GitStore struct {
-	workspace string
+	workspace  string
+	repository string
 }
 
 func (s *Service) gitStore() GitStore {
-	return GitStore{workspace: s.workspace}
+	return GitStore{workspace: s.workspace, repository: s.repository}
 }
 
 func (g GitStore) OpenExisting() (*git.Repository, error) {
-	repo, err := git.PlainOpen(g.workspace)
+	repo, err := openStateRepository(g.workspace, g.repository)
 	if errors.Is(err, git.ErrRepositoryNotExists) {
-		return nil, nil
+		migrated, migrationErr := MigrateLegacyRepository(g.workspace, g.repository)
+		if migrationErr != nil {
+			return nil, migrationErr
+		}
+		if !migrated {
+			return nil, nil
+		}
+		return openStateRepository(g.workspace, g.repository)
 	}
 	if err != nil {
 		return nil, err
@@ -32,18 +47,163 @@ func (g GitStore) OpenExisting() (*git.Repository, error) {
 }
 
 func (g GitStore) Open() (*git.Repository, error) {
-	repo, err := git.PlainOpen(g.workspace)
-	if err == nil {
-		return repo, nil
+	repo, err := g.OpenExisting()
+	if repo != nil || err != nil {
+		return repo, err
 	}
-	if !errors.Is(err, git.ErrRepositoryNotExists) {
-		return nil, err
-	}
-	repo, err = git.PlainInit(g.workspace, false)
+	repo, err = initializeStateRepository(g.workspace, g.repository)
 	if err != nil {
 		return nil, err
 	}
 	return repo, nil
+}
+
+func openStateRepository(workspace, repository string) (*git.Repository, error) {
+	if strings.TrimSpace(workspace) == "" || strings.TrimSpace(repository) == "" {
+		return nil, fmt.Errorf("version workspace and repository are required")
+	}
+	if _, err := os.Stat(repository); err != nil {
+		if errors.Is(err, os.ErrNotExist) {
+			return nil, git.ErrRepositoryNotExists
+		}
+		return nil, err
+	}
+	return git.Open(detachedRepositoryStorage(repository), osfs.New(workspace))
+}
+
+// detachedStorage intentionally exposes only the stable storage.Storer
+// contract. Hiding filesystem.Storage's extra Filesystem method prevents
+// go-git from creating a .git indirection file in user content.
+type detachedStorage struct {
+	gitstorage.Storer
+}
+
+func detachedRepositoryStorage(repository string) gitstorage.Storer {
+	return detachedStorage{Storer: filesystem.NewStorage(
+		osfs.New(repository),
+		cache.NewObjectLRUDefault(),
+	)}
+}
+
+func initializeStateRepository(workspace, repository string) (*git.Repository, error) {
+	if strings.TrimSpace(workspace) == "" || strings.TrimSpace(repository) == "" {
+		return nil, fmt.Errorf("version workspace and repository are required")
+	}
+	if err := os.MkdirAll(filepath.Dir(repository), 0o700); err != nil {
+		return nil, err
+	}
+	temp, err := os.MkdirTemp(filepath.Dir(repository), ".version-repository-*")
+	if err != nil {
+		return nil, err
+	}
+	removeTemp := true
+	defer func() {
+		if removeTemp {
+			_ = os.RemoveAll(temp)
+		}
+	}()
+	if _, err := git.Init(detachedRepositoryStorage(temp), osfs.New(workspace)); err != nil {
+		return nil, err
+	}
+	if err := os.Rename(temp, repository); err != nil {
+		if existing, openErr := openStateRepository(workspace, repository); openErr == nil {
+			return existing, nil
+		}
+		return nil, err
+	}
+	removeTemp = false
+	return openStateRepository(workspace, repository)
+}
+
+// MigrateLegacyRepository copies the released workspace-local .git repository
+// into Project-owned state. The source repository is deliberately retained as
+// a rollback path. Copying through go-git also supports .git indirection files
+// and linked worktrees without persisting paths back to their original root.
+func MigrateLegacyRepository(workspace, repository string) (bool, error) {
+	if _, err := openStateRepository(workspace, repository); err == nil {
+		return false, nil
+	} else if !errors.Is(err, git.ErrRepositoryNotExists) {
+		return false, fmt.Errorf("open Project version repository: %w", err)
+	}
+	legacy, err := git.PlainOpen(workspace)
+	if errors.Is(err, git.ErrRepositoryNotExists) {
+		return false, nil
+	}
+	if err != nil {
+		return false, fmt.Errorf("open released workspace version repository: %w", err)
+	}
+	if err := os.MkdirAll(filepath.Dir(repository), 0o700); err != nil {
+		return false, err
+	}
+	temp, err := os.MkdirTemp(filepath.Dir(repository), ".version-migration-*")
+	if err != nil {
+		return false, err
+	}
+	removeTemp := true
+	defer func() {
+		if removeTemp {
+			_ = os.RemoveAll(temp)
+		}
+	}()
+	destination, err := git.Init(detachedRepositoryStorage(temp), osfs.New(workspace))
+	if err != nil {
+		return false, err
+	}
+	objects, err := legacy.Storer.IterEncodedObjects(plumbing.AnyObject)
+	if err != nil {
+		return false, err
+	}
+	if err := objects.ForEach(func(object plumbing.EncodedObject) error {
+		_, copyErr := destination.Storer.SetEncodedObject(object)
+		return copyErr
+	}); err != nil {
+		objects.Close()
+		return false, fmt.Errorf("copy released version objects: %w", err)
+	}
+	objects.Close()
+	references, err := legacy.References()
+	if err != nil {
+		return false, err
+	}
+	if err := references.ForEach(func(reference *plumbing.Reference) error {
+		return destination.Storer.SetReference(reference)
+	}); err != nil {
+		references.Close()
+		return false, fmt.Errorf("copy released version references: %w", err)
+	}
+	references.Close()
+	if err := validateMigratedRepository(legacy, destination); err != nil {
+		return false, err
+	}
+	if err := os.Rename(temp, repository); err != nil {
+		if _, openErr := openStateRepository(workspace, repository); openErr == nil {
+			return false, nil
+		}
+		return false, err
+	}
+	removeTemp = false
+	return true, nil
+}
+
+func validateMigratedRepository(source, destination *git.Repository) error {
+	sourceHead, sourceErr := source.Head()
+	if errors.Is(sourceErr, plumbing.ErrReferenceNotFound) {
+		return nil
+	}
+	if sourceErr != nil {
+		return sourceErr
+	}
+	destinationHead, err := destination.Head()
+	if err != nil {
+		return fmt.Errorf("read migrated version HEAD: %w", err)
+	}
+	if destinationHead.Hash() != sourceHead.Hash() {
+		return fmt.Errorf("migrated version HEAD does not match released repository")
+	}
+	if _, err := destination.CommitObject(destinationHead.Hash()); err != nil {
+		return fmt.Errorf("validate migrated version commit: %w", err)
+	}
+	return nil
 }
 
 func (g GitStore) CheckoutWhole(repo *git.Repository, id string) error {

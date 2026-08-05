@@ -2,6 +2,7 @@ package app
 
 import (
 	"context"
+	"denova/config"
 	agentrun "denova/internal/agents/run"
 	apptask "denova/internal/app/task"
 	"errors"
@@ -265,30 +266,55 @@ func TestWorkspaceTransitionFencesStartsAndWaitsForAdmittedTaskExit(t *testing.T
 	}
 }
 
-func TestLoreHostUnregisterReleasesWorkspaceGenerationLease(t *testing.T) {
-	application := &App{workspace: "/workspace-a"}
-	task, err := apptask.NewDeferred(nil)
+func TestLoreHostUnregisterReleasesProjectGenerationLease(t *testing.T) {
+	root := t.TempDir()
+	application, err := New(context.Background(), &config.Config{
+		OpenAIModel: "test-model", NovaDir: root, Workspace: root, ResumeLastWorkspace: false,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(application.Close)
+	requestContext, cancelRequest := context.WithCancel(context.Background())
+	requestOperation, err := application.AcquireProjectOperation(requestContext, application.ProjectID())
+	if err != nil {
+		t.Fatal(err)
+	}
+	task, err := apptask.NewDeferredWithContext(requestOperation.Context(), nil)
 	if err != nil {
 		t.Fatal(err)
 	}
 	defer task.RejectStart(errors.New("test cleanup"))
-	application.mu.Lock()
-	if err := application.registerWorkspaceTaskLocked(task, application.workspace, true); err != nil {
-		application.mu.Unlock()
+	projectID := application.ProjectID()
+	_, layout, err := application.resolveProject(projectID, true)
+	if err != nil {
 		t.Fatal(err)
 	}
-	scope := application.workspaceScopes[lifecycleWorkspaceKey(application.workspace)]
-	application.mu.Unlock()
+	if err := application.registerProjectTask(task, projectID, layout.ContentRoot, layout.StateRoot); err != nil {
+		t.Fatal(err)
+	}
+	application.mu.RLock()
+	scope := application.projectScopes[projectID]
+	registration := application.projectTasks[task]
+	application.mu.RUnlock()
+	if registration == nil {
+		t.Fatal("Lore task was not registered against its Project")
+	}
+	if registration.operation == nil || registration.operation.lease == nil {
+		t.Fatal("detached Lore task borrowed the request lease instead of owning a Project lease")
+	}
+	cancelRequest()
+	requestOperation.Release()
+	if err := task.Context().Err(); err != nil {
+		t.Fatalf("request cancellation leaked into detached Lore task: %v", err)
+	}
 
 	(loreHost{app: application}).UnregisterLoreTask(task)
 	application.mu.RLock()
-	_, registered := application.workspaceTasks[task]
-	_, hasLease := application.workspaceTaskLeases[task]
-	_, hasStop := application.workspaceTaskStops[task]
-	_, hasReplay := application.workspaceTaskReplayReservations[task]
+	_, registered := application.projectTasks[task]
 	application.mu.RUnlock()
-	if registered || hasLease || hasStop || hasReplay {
-		t.Fatalf("lore task cleanup left registry state: registered=%t lease=%t stop=%t replay=%t", registered, hasLease, hasStop, hasReplay)
+	if registered {
+		t.Fatal("Lore task cleanup left Project registry state")
 	}
 
 	scope.BeginClose()

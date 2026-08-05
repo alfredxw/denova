@@ -27,6 +27,7 @@ type StateSetter<T> = Dispatch<SetStateAction<T>>
 
 interface StoryStageComposerProps {
   layout: {
+    projectId: string
     creatingStory: boolean
     isMobile: boolean
     keyboardInset: number
@@ -126,7 +127,7 @@ interface StoryStageComposerProps {
 }
 
 export function StoryStageComposer({ layout, editor, story, runtime, dialogs, actions }: StoryStageComposerProps) {
-  const { creatingStory, isMobile, keyboardInset, inputTextStyle, workspace, inputFloatRef, inputRef, t } = layout
+  const { projectId, creatingStory, isMobile, keyboardInset, inputTextStyle, workspace, inputFloatRef, inputRef, t } = layout
   const { input, editingTurn, styleScenes, styleSceneQuery, styleSceneSuggestions, showSkillCommands, activeSkillCommandIndex, skillCommands, filteredSkillCommands, filteredBuiltInCommandItems, filteredSkillCommandItems, setStyleSceneQuery, setShowSkillCommands, setSkillCommandQuery, setActiveSkillCommandIndex } = editor
   const { storyId, story: currentStory, imagePresets, onImageSettingsChange, branchTerminal, directorBlocking, directorPlanStatus, directorStatusVisible, directorRetrying, directorRetryError, hotChoices, hotChoicesExpanded, showHotChoices, canUseHotChoices, setHotChoicesExpanded } = story
   const { streaming, approvalReady, conversationConfig, abortPending, recoveryPaused, recoveryAbortAvailable, operationId, connection, commandSubmitting, queue, queueActionPendingCommandID } = runtime
@@ -300,7 +301,7 @@ export function StoryStageComposer({ layout, editor, story, runtime, dialogs, ac
         <Dialog open={traceOpen} onOpenChange={setTraceOpen}>
           <DialogContent className="flex h-[min(88vh,760px)] max-w-[min(96vw,1120px)] flex-col gap-0 overflow-hidden border-[var(--nova-border)] bg-[var(--nova-bg)] p-0 text-[var(--nova-text)]">
             <DialogHeader className="border-b border-[var(--nova-border)] px-4 py-3"><DialogTitle className="flex items-center gap-2 text-sm"><Activity className="h-4 w-4 text-[var(--nova-text-muted)]" />{t('chat.tracePanel.title')}</DialogTitle></DialogHeader>
-            <div className="min-h-0 flex-1"><AgentTracePanel selectedRunId={selectedTraceRunId} /></div>
+            <div className="min-h-0 flex-1"><AgentTracePanel projectId={projectId} selectedRunId={selectedTraceRunId} /></div>
           </DialogContent>
         </Dialog>
         {replyEditTarget ? <EditInteractiveReplyDialog key={replyEditTarget.turnId} turnId={replyEditTarget.turnId} initialContent={replyEditTarget.initialContent} onClose={closeReplyEditor} onSave={saveReply} /> : null}

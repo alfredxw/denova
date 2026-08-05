@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { useTheme } from 'next-themes'
-import { checkForUpdate, fetchSettings, refreshSettings } from '@/features/settings/api'
+import { checkForUpdate, fetchProjectSettings, fetchSettings, refreshProjectSettings, refreshSettings } from '@/features/settings/api'
 import { applyFontSettings, fontSettingsFromEffective } from '@/features/settings/font-variables'
 import { markAutoUpdateChecked, shouldRunAutoUpdateCheck, UPDATE_CHECK_RESULT_EVENT } from '@/features/settings/update-check-cache'
 import type { UpdateCheckResult } from '@/features/settings/types'
@@ -39,7 +39,7 @@ import { RemoteAccessLogin } from '@/components/RemoteAccessLogin'
 import { OnboardingGuide, type OnboardingNavigationTarget } from '@/features/onboarding/OnboardingGuide'
 import { SETTINGS_SECTION_EVENT, WRITING_AGENT_INIT_EVENT } from '@/features/onboarding/events'
 import {
-  isWorkspaceChangeForWorkspace,
+  isProjectChangeForProject,
   workspaceChangeImpact,
   workspaceChangePaths,
   type WorkspaceChangeEvent,
@@ -180,11 +180,11 @@ function App() {
   }, [handleAgentFileChange, selectedFile])
 
   const handleWorkspaceChangeEvent = useCallback(async (event: WorkspaceChangeEvent) => {
-    if (!isWorkspaceChangeForWorkspace(event, workspace)) return
+    if (!isProjectChangeForProject(event, projectId)) return
     const paths = workspaceChangePaths(event)
     const path = selectedFile && paths.includes(selectedFile) ? selectedFile : paths[0]
     await handleAgentFileChange(path, workspaceChangeImpact(event))
-  }, [handleAgentFileChange, selectedFile, workspace])
+  }, [handleAgentFileChange, projectId, selectedFile])
 
   const {
     messages,
@@ -230,7 +230,7 @@ function App() {
     removeStyleScene,
     addTextSelection,
     removeTextSelection,
-  } = useAgentChat({ workspace, onAgentFileChange: handleAgentFileChange, onWorkspaceChange: handleWorkspaceChangeEvent })
+  } = useAgentChat({ projectId, onAgentFileChange: handleAgentFileChange, onWorkspaceChange: handleWorkspaceChangeEvent })
 
   const { notice, applyUpdateCheckResult, dismissNotice } = useWorkbenchNotice({ messages, isStreaming })
 
@@ -293,7 +293,9 @@ function App() {
   useEffect(() => {
     let cancelled = false
     const reload = (fresh = false) => {
-      const request = fresh ? refreshSettings() : fetchSettings()
+      const request = projectId
+        ? (fresh ? refreshProjectSettings(projectId) : fetchProjectSettings(projectId))
+        : (fresh ? refreshSettings() : fetchSettings())
       request
         .then((data) => {
           if (cancelled) return
@@ -313,16 +315,20 @@ function App() {
     }
     const workspaceChanged = workspaceLoaded
       && settingsWorkspaceRef.current !== null
-      && settingsWorkspaceRef.current !== workspace
-    if (workspaceLoaded) settingsWorkspaceRef.current = workspace
+      && settingsWorkspaceRef.current !== projectId
+    if (workspaceLoaded) settingsWorkspaceRef.current = projectId
     reload(workspaceChanged)
-    const onUpdated = () => reload(true)
+    const onUpdated = (event: Event) => {
+      const changedProjectId = (event as CustomEvent<{ projectId?: string }>).detail?.projectId
+      if (changedProjectId && changedProjectId !== projectId) return
+      reload(true)
+    }
     window.addEventListener('nova:settings-updated', onUpdated)
     return () => {
       cancelled = true
       window.removeEventListener('nova:settings-updated', onUpdated)
     }
-  }, [setTheme, workspace, workspaceLoaded])
+  }, [projectId, setTheme, workspaceLoaded])
 
   useEffect(() => {
     const onUpdateCheckResult = (event: Event) => {
@@ -611,7 +617,7 @@ function App() {
       setCharacterCardError(t('importCard.chooseFileFirst'))
       return
     }
-    if (characterCardTargetMode === 'current' && !workspace) {
+    if (characterCardTargetMode === 'current' && !projectId) {
       setCharacterCardError(t('importCard.noCurrentBookImportNew'))
       return
     }
@@ -620,6 +626,7 @@ function App() {
     try {
       const result = await importCharacterCard(characterCardFile, {
         targetMode: characterCardTargetMode,
+        projectId: characterCardTargetMode === 'current' ? projectId : undefined,
         bookTitle: characterCardTargetMode === 'new_book' ? characterCardBookTitle.trim() : undefined,
         userCharacterName: characterCardPreview?.user_placeholder_found ? characterCardUserName.trim() : undefined,
         loreClassification: characterCardSemanticClassification ? 'semantic' : 'heuristic',
@@ -650,7 +657,7 @@ function App() {
     } finally {
       setCharacterCardImporting(false)
     }
-  }, [characterCardBookTitle, characterCardFile, characterCardPreview, characterCardSemanticClassification, characterCardTargetMode, characterCardUserName, notifyProjectStructureChange, notifyVersionChange, projectId, refresh, refreshAll, resetCharacterCardImport, setMode, t, workspace])
+  }, [characterCardBookTitle, characterCardFile, characterCardPreview, characterCardSemanticClassification, characterCardTargetMode, characterCardUserName, notifyProjectStructureChange, notifyVersionChange, projectId, refresh, refreshAll, resetCharacterCardImport, setMode, t])
 
   const handleActivateTab = useCallback(async (tab: Tab) => {
     const key = tabKey(tab)

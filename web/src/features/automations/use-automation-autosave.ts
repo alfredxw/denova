@@ -19,7 +19,7 @@ interface AutomationAutosaveOptions {
   creating: boolean
   draft: AutomationTask
   tasks: AutomationTask[]
-  workspace: string
+  fallbackTarget: NonNullable<AutomationTask['target']>
   onSaved: (saved: AutomationTask, submitted: AutomationTask, submittedIsCurrent: boolean) => void
   onError: (error: unknown) => void
 }
@@ -30,7 +30,7 @@ export function useAutomationAutosave({
   creating,
   draft,
   tasks,
-  workspace,
+  fallbackTarget,
   onSaved,
   onError,
 }: AutomationAutosaveOptions) {
@@ -52,7 +52,7 @@ export function useAutomationAutosave({
       'automation',
       activeId,
       target?.kind || draft.scope || 'unknown',
-      target?.workspace_id || target?.workspace || '',
+      target?.project_id || target?.workspace || '',
     ].join('\u0000')
   }, [activeId, draft.scope, draft.target])
 
@@ -72,10 +72,12 @@ export function useAutomationAutosave({
       const latestTask = (await getAutomations())
         .find((task) => automationTaskKey(task) === submitted.id)
       if (!latestTask) return null
-      const latest = { ...cloneAutomationTask(latestTask, workspace), id: submitted.id }
+      const latest = { ...cloneAutomationTask(latestTask, fallbackTarget), id: submitted.id }
       const rebased = await rebaseJSONWithRecovery({
         resource: 'automation',
-        scope: latest.target?.kind === 'workspace' ? latest.target.workspace || workspace : 'user',
+        scope: latest.target?.kind === 'workspace'
+          ? latest.target.project_id || latest.target.workspace || 'unknown-project'
+          : 'user',
         id: submitted.id,
         baseline: { revision: baseline.revision, value: baseline },
         local: { revision: submitted.revision, value: submitted },
@@ -87,7 +89,7 @@ export function useAutomationAutosave({
       }
     },
     onSaved: (saved, _mode, submitted) => {
-      const normalized = normalizeAutomationTaskShape(saved, workspace)
+      const normalized = normalizeAutomationTaskShape(saved, fallbackTarget)
       const submittedIsCurrent = automationTaskDraftSignature(draftRef.current) === automationTaskDraftSignature(submitted)
       onSavedRef.current(normalized, submitted, submittedIsCurrent)
     },
@@ -100,8 +102,8 @@ export function useAutomationAutosave({
       return
     }
     const baseline = tasks.find((task) => automationTaskKey(task) === activeId)
-    if (baseline) autosave.resetBaseline({ ...cloneAutomationTask(baseline, workspace), id: activeId })
-  }, [activeId, autosave.resetBaseline, creating, tasks, workspace])
+    if (baseline) autosave.resetBaseline({ ...cloneAutomationTask(baseline, fallbackTarget), id: activeId })
+  }, [activeId, autosave.resetBaseline, creating, fallbackTarget, tasks])
 
   const flush = useCallback(async () => {
     try {

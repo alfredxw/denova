@@ -50,6 +50,7 @@ import {
 } from './options'
 
 interface LoreWorkspaceEditorProps {
+  projectId: string
   draft: LoreItem
   tagDraft: string
   autosaveStatus: AutosaveStatus
@@ -69,6 +70,7 @@ interface LoreWorkspaceEditorProps {
 
 /** Focused lore editor for the writing workspace; bulk/library operations stay on the full page. */
 export function LoreWorkspaceEditor({
+  projectId,
   draft,
   tagDraft,
   autosaveStatus,
@@ -330,6 +332,7 @@ export function LoreWorkspaceEditor({
 
       <div className="flex min-h-0 min-w-0 flex-1 flex-col bg-[var(--nova-bg)]">
         <MarkdownEditor
+          projectId={projectId}
           key={draft.id}
           mode={contentMode === 'raw' ? 'source' : 'rich'}
           value={draft.content || ''}

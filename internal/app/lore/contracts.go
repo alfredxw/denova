@@ -1,6 +1,6 @@
-// Package lore owns application-level lore catalog operations, semantic
-// classification, and lore image generation. Workspace generation fencing
-// remains a host responsibility so this package never depends on the root App.
+// Package lore owns Project-scoped lore classification and image generation.
+// Stable Project resolution and generation fencing remain host responsibilities
+// so this package never depends on foreground navigation state or the root App.
 package loreapp
 
 import (
@@ -44,15 +44,15 @@ type ImageProgressEvent struct {
 // Host is the narrow lifecycle boundary required by lore operations. It owns
 // workspace identity and task leases; Service owns lore behavior and state.
 type Host interface {
-	WithLoreStore(expectedWorkspace string, action func(*booklore.Store) error) (string, error)
-	ValidateLoreWorkspace(expectedWorkspace string) (string, error)
-	RegisterLoreTask(task *task.Task, expectedWorkspace string) (string, error)
+	WithLoreStore(context.Context, string, func(*booklore.Store) error) (string, error)
+	RegisterLoreTask(task *task.Task, projectID string) (string, error)
 	UnregisterLoreTask(task *task.Task)
-	ClassifyLoreItems(context.Context, []booklore.ClassificationInput) ([]booklore.ClassificationSuggestion, error)
+	ClassifyLoreItems(context.Context, string, []booklore.ClassificationInput) ([]booklore.ClassificationSuggestion, error)
 }
 
 type activeImageTask struct {
 	task      *task.Task
+	projectID string
 	workspace string
 }
 
@@ -61,9 +61,9 @@ type Service struct {
 	images *imageapp.Service
 
 	activeMu sync.Mutex
-	active   *activeImageTask
+	active   map[string]*activeImageTask
 }
 
 func NewService(host Host, images *imageapp.Service) *Service {
-	return &Service{host: host, images: images}
+	return &Service{host: host, images: images, active: make(map[string]*activeImageTask)}
 }
