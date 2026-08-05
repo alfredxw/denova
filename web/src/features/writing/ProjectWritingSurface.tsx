@@ -73,6 +73,7 @@ export function ProjectWritingSurface({
   const [loadingBook, setLoadingBook] = useState(Boolean(projectId))
   const [loadingDocument, setLoadingDocument] = useState(false)
   const [error, setError] = useState('')
+  const selectedPathRef = useRef(selectedPath)
   const snapshotRequestRef = useRef(0)
   const summaryRequestRef = useRef(0)
   const documentRequestRef = useRef(0)
@@ -101,8 +102,11 @@ export function ProjectWritingSurface({
       setSummary(snapshot.summary)
       setSelectedPath((current) => {
         const preferred = current || initialPath || ''
-        if (preferred && projectTreeContainsPath(snapshot.tree, preferred)) return preferred
-        return snapshot.summary.chapters[0]?.path || ''
+        const nextPath = preferred && projectTreeContainsPath(snapshot.tree, preferred)
+          ? preferred
+          : snapshot.summary.chapters[0]?.path || ''
+        selectedPathRef.current = nextPath
+        return nextPath
       })
     } catch (cause) {
       if (request !== snapshotRequestRef.current) return
@@ -166,7 +170,8 @@ export function ProjectWritingSurface({
   useEffect(() => {
     setTree([])
     setSummary(null)
-    setSelectedPath(initialPath || '')
+    selectedPathRef.current = initialPath || ''
+    setSelectedPath(selectedPathRef.current)
     setDocument(EMPTY_DOCUMENT)
     refreshSignalRef.current = refreshSignal
     void loadSnapshot()
@@ -193,11 +198,16 @@ export function ProjectWritingSurface({
   }, [onFlushHandlerChange])
 
   const selectFile = useCallback(async (path: string) => {
-    if (!path || path === selectedPath) return true
+    if (!path || path === selectedPathRef.current) return true
     if (editorFlushRef.current && !(await editorFlushRef.current())) return false
+    selectedPathRef.current = path
     setSelectedPath(path)
     return true
-  }, [selectedPath])
+  }, [])
+
+  const selectOutlineFile = useCallback((path: string) => {
+    void selectFile(path)
+  }, [selectFile])
 
   const navigationPath = navigationIntent?.projectId === projectId
     && navigationIntent.target.kind === 'workspace_file'
@@ -288,7 +298,7 @@ export function ProjectWritingSurface({
             outline={summary?.outline}
             chapterPlans={summary?.chapter_plans || []}
             selectedFile={selectedPath || null}
-            onSelectFile={(path) => { void selectFile(path) }}
+            onSelectFile={selectOutlineFile}
             onOpenLoreTab={onOpenLoreTab}
             onSetChapterConfirmed={setChapterConfirmed}
           />

@@ -1,6 +1,7 @@
 import type { ReactElement } from 'react'
 import { fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
+import { VirtuosoMockContext } from 'react-virtuoso'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { ChapterSummary, DocumentPreview } from '@/lib/api'
 import { ChapterOutline } from './ChapterOutline'
@@ -45,17 +46,19 @@ const chapterPlans = [
 function renderOutline(props: Partial<Parameters<typeof ChapterOutline>[0]> = {}) {
   const onSelectFile = vi.fn()
   const result = render(
-    <ChapterOutline
-      projectId="project-demo"
-      tree={[]}
-      chapters={chapters}
-      chapterPlans={chapterPlans}
-      selectedFile={null}
-      onSelectFile={onSelectFile}
-      onRequestBookSettingCreate={vi.fn()}
-      onSetChapterConfirmed={vi.fn()}
-      {...props}
-    />,
+    <VirtuosoMockContext.Provider value={{ viewportHeight: 720, itemHeight: 72 }}>
+      <ChapterOutline
+        projectId="project-demo"
+        tree={[]}
+        chapters={chapters}
+        chapterPlans={chapterPlans}
+        selectedFile={null}
+        onSelectFile={onSelectFile}
+        onRequestBookSettingCreate={vi.fn()}
+        onSetChapterConfirmed={vi.fn()}
+        {...props}
+      />
+    </VirtuosoMockContext.Provider>,
   )
   return { onSelectFile, ...result }
 }
@@ -237,20 +240,56 @@ describe('ChapterOutline', () => {
     await user.click(within(screen.getByRole('alertdialog')).getByRole('button', { name: '删除' }))
     await waitFor(() => expect(onDeleteItem).toHaveBeenCalledWith('chapters/ch2.md'))
   })
+
+  it('长篇作品只挂载视口附近的章节条目', async () => {
+    const longBook = Array.from({ length: 300 }, (_, index) => makeChapter({
+      path: `chapters/ch${index + 1}.md`,
+      display_title: `第 ${index + 1} 章`,
+      index: index + 1,
+    }))
+    renderOutline({ chapters: longBook, chapterPlans: [] })
+
+    await waitFor(() => expect(document.querySelectorAll('[data-chapter-path]').length).toBeGreaterThan(0))
+    expect(document.querySelectorAll('[data-chapter-path]').length).toBeLessThan(80)
+  })
+
+  it('切换选中章节不会重渲染无关的可见章节', async () => {
+    let unrelatedTitleReads = 0
+    const unrelatedChapter = makeChapter({ path: 'chapters/ch3.md', index: 3 })
+    Object.defineProperty(unrelatedChapter, 'display_title', {
+      configurable: true,
+      enumerable: true,
+      get: () => {
+        unrelatedTitleReads += 1
+        return '第 3 章 无关章节'
+      },
+    })
+    const testChapters = [...chapters, unrelatedChapter]
+    const { rerender } = renderOutline({ chapters: testChapters, selectedFile: 'chapters/ch1.md' })
+    await screen.findByText('第 3 章 无关章节')
+    const initialReads = unrelatedTitleReads
+
+    rerenderOutline(rerender, { chapters: testChapters, selectedFile: 'chapters/ch2.md' })
+
+    await waitFor(() => expect(screen.getByText('第 2 章 转折').closest('[data-chapter-path]')).toHaveClass('is-active'))
+    expect(unrelatedTitleReads).toBe(initialReads)
+  })
 })
 
 function rerenderOutline(rerender: (ui: ReactElement) => void, props: Partial<Parameters<typeof ChapterOutline>[0]>) {
   rerender(
-    <ChapterOutline
-      projectId="project-demo"
-      tree={[]}
-      chapters={chapters}
-      chapterPlans={chapterPlans}
-      selectedFile={null}
-      onSelectFile={vi.fn()}
-      onRequestBookSettingCreate={vi.fn()}
-      onSetChapterConfirmed={vi.fn()}
-      {...props}
-    />,
+    <VirtuosoMockContext.Provider value={{ viewportHeight: 720, itemHeight: 72 }}>
+      <ChapterOutline
+        projectId="project-demo"
+        tree={[]}
+        chapters={chapters}
+        chapterPlans={chapterPlans}
+        selectedFile={null}
+        onSelectFile={vi.fn()}
+        onRequestBookSettingCreate={vi.fn()}
+        onSetChapterConfirmed={vi.fn()}
+        {...props}
+      />
+    </VirtuosoMockContext.Provider>,
   )
 }

@@ -4,7 +4,7 @@ import type { Node as ProseMirrorNode } from '@tiptap/pm/model'
 import { Plugin, PluginKey, TextSelection as PmTextSelection } from '@tiptap/pm/state'
 import { Decoration, DecorationSet } from '@tiptap/pm/view'
 
-import { findDialogueHighlightRanges } from '@/lib/dialogue-highlight'
+import { createDialogueHighlightPlugin } from './editorDialogueDecorations'
 
 export interface SearchState {
   query: string
@@ -18,7 +18,6 @@ export interface SearchMatch {
 }
 
 export const searchPluginKey = new PluginKey<DecorationSet>('nova-search-highlight')
-const dialogueHighlightPluginKey = new PluginKey<DecorationSet>('nova-editor-dialogue-highlight')
 
 /** 创建编辑器搜索高亮扩展，使用 ProseMirror Decoration 标记匹配项。 */
 export function createSearchHighlightExtension(searchStateRef: { current: SearchState }) {
@@ -54,33 +53,10 @@ export function createDialogueHighlightExtension() {
 
     addProseMirrorPlugins() {
       return [
-        new Plugin<DecorationSet>({
-          key: dialogueHighlightPluginKey,
-          state: {
-            init: (_, state) => createDialogueDecorations(state.doc),
-            apply: (tr, previousDecorations, _oldState, newState) => {
-              if (tr.docChanged) return createDialogueDecorations(newState.doc)
-              return previousDecorations.map(tr.mapping, tr.doc)
-            },
-          },
-          props: {
-            decorations: (state) => dialogueHighlightPluginKey.getState(state) ?? DecorationSet.empty,
-          },
-        }),
+        createDialogueHighlightPlugin(),
       ]
     },
   })
-}
-
-function createDialogueDecorations(doc: ProseMirrorNode) {
-  const decorations: Decoration[] = []
-  doc.descendants((node, pos) => {
-    if (!node.isText || !node.text) return
-    for (const range of findDialogueHighlightRanges(node.text)) {
-      decorations.push(Decoration.inline(pos + range.from, pos + range.to, { class: 'nova-editor-dialogue-highlight' }))
-    }
-  })
-  return decorations.length > 0 ? DecorationSet.create(doc, decorations) : DecorationSet.empty
 }
 
 function createSearchDecorations(doc: ProseMirrorNode, searchState: SearchState) {

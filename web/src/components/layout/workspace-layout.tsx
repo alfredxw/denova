@@ -222,6 +222,7 @@ export function WorkspaceLayout({
             <Panel id="center" minSize={rightPanelWide ? '260px' : '30%'} className="min-w-0">
               <Group
                 id="nova-workspace-main-vertical"
+                disableCursor
                 defaultLayout={verticalPanelLayout.defaultLayout}
                 onLayoutChanged={(layout) => {
                   verticalPanelLayout.persistUserLayout(layout)

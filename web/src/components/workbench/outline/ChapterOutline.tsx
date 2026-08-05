@@ -1,10 +1,14 @@
 import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { BookOpen, ChevronDown, ChevronRight, FileText } from 'lucide-react'
+import { ChevronDown, ChevronRight, FileText } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import type { FileNode } from '@/hooks/useWorkspace'
 import type { ChapterSummary, DocumentPreview } from '@/lib/api'
 import { BookSettingsShortcuts } from '@/components/workbench/BookSettingsShortcuts'
-import { ChapterOutlineItem } from './ChapterOutlineItem'
+import {
+  ChapterOutlineList,
+  type ChapterOutlineListHandle,
+  type ChapterOutlineVolume,
+} from './ChapterOutlineList'
 import { OutlineFileActions } from './OutlineFileActions'
 
 export interface OutlineRevealRequest {
@@ -34,13 +38,12 @@ interface ChapterOutlineProps {
 
 const BOOK_SETTINGS_HEADER_PINNED_KEY = 'nova.outline.book-settings-header-pinned'
 
-// 下滑超过该距离后启用顶部「回到顶部」动作。不能用视口高度做阈值：
-// 内容高度不足 2 倍视口时 scrollTop 永远到不了一个视口高。
+// A fixed threshold also works when content is less than two viewport heights tall.
 const BACK_TO_TOP_THRESHOLD_PX = 320
 
 /**
- * 写作页「大纲」tab：书籍设定可固定，当前细纲与章节留在同一滚动目录中。
- * 长目录在固定区提供最新章与回顶；来自面板外部的章节切换会自动定位到当前章节。
+ * Writing outline with a pinnable book-settings frame and windowed chapter navigation.
+ * External chapter selections are located automatically without mounting the full book.
  */
 export function ChapterOutline({
   projectId,
@@ -74,7 +77,7 @@ export function ChapterOutline({
     try {
       window.localStorage.setItem(BOOK_SETTINGS_HEADER_PINNED_KEY, String(headerPinned))
     } catch (error) {
-      console.warn('保存作品目录固定区偏好失败', error)
+      console.warn('Failed to save the book-settings header pin preference', error)
     }
   }, [headerPinned])
 
@@ -84,78 +87,109 @@ export function ChapterOutline({
     }
   }, [historicalChapterPlans, selectedFile])
 
-  const toggleVolume = (key: string) => {
+  const toggleVolume = useCallback((key: string) => {
     setCollapsedVolumes(prev => {
       const next = new Set(prev)
       if (next.has(key)) next.delete(key)
       else next.add(key)
       return next
     })
+  }, [])
+
+  // Keep row callbacks stable so selecting one chapter cannot invalidate every mounted row.
+  const callbackRef = useRef({
+    onSelectFile,
+    onOpenLoreTab,
+    onReferenceFile,
+    onRevealFile,
+    onRenameItem,
+    onDeleteItem,
+    onRequestBookSettingCreate,
+    onSetChapterConfirmed,
+  })
+  callbackRef.current = {
+    onSelectFile,
+    onOpenLoreTab,
+    onReferenceFile,
+    onRevealFile,
+    onRenameItem,
+    onDeleteItem,
+    onRequestBookSettingCreate,
+    onSetChapterConfirmed,
   }
 
-  // ---- 滚动定位：最新章 / 已打开章节 / 顶部 ----
-  const rootRef = useRef<HTMLDivElement>(null)
-  const scrollContainerRef = useRef<HTMLDivElement>(null)
-  // 面板内点击选中的章节本来就在视野里，标记后跳过自动定位
+  const listRef = useRef<ChapterOutlineListHandle>(null)
   const panelSelectionRef = useRef(false)
   const lastAutoLocatedRef = useRef<string | null>(null)
   const didLocateOnceRef = useRef(false)
+  const locateFrameRef = useRef<number | null>(null)
   const [backToTopVisible, setBackToTopVisible] = useState(false)
 
   const handleSelectFileFromPanel = useCallback((path: string) => {
     panelSelectionRef.current = true
-    void onSelectFile(path)
-  }, [onSelectFile])
-
-  const findChapterElement = useCallback((path: string) => {
-    const root = rootRef.current
-    if (!root) return null
-    for (const element of root.querySelectorAll<HTMLElement>('[data-chapter-path]')) {
-      if (element.dataset.chapterPath === path) return element
-    }
-    return null
+    void callbackRef.current.onSelectFile(path)
   }, [])
 
-  const locateChapter = useCallback((path: string, behavior: ScrollBehavior) => {
-    const chapter = chapters.find((item) => item.path === path)
-    if (!chapter) return
-    const volumeKey = chapter.volume_path || chapter.volume || 'chapters'
+  const handleSetChapterConfirmed = useCallback((path: string, confirmed: boolean) => {
+    return callbackRef.current.onSetChapterConfirmed(path, confirmed)
+  }, [])
+  const handleReferenceFile = useCallback((path: string) => {
+    callbackRef.current.onReferenceFile?.(path)
+  }, [])
+  const handleRevealFile = useCallback((path: string) => {
+    return callbackRef.current.onRevealFile?.(path)
+  }, [])
+  const handleRenameItem = useCallback((path: string, newName: string) => {
+    return callbackRef.current.onRenameItem?.(path, newName) ?? Promise.resolve()
+  }, [])
+  const handleDeleteItem = useCallback((path: string) => {
+    return callbackRef.current.onDeleteItem?.(path) ?? Promise.resolve()
+  }, [])
+  const handleOpenLoreTab = useCallback(() => callbackRef.current.onOpenLoreTab?.(), [])
+  const handleRequestBookSettingCreate = useCallback((item: { path: string; title: string }) => {
+    callbackRef.current.onRequestBookSettingCreate?.(item)
+  }, [])
+
+  const chapterVolumeByPath = useMemo(() => {
+    const result = new Map<string, string>()
+    for (const volume of volumes) {
+      for (const chapter of volume.chapters) result.set(chapter.path, volume.key)
+    }
+    return result
+  }, [volumes])
+
+  const cancelScheduledLocate = useCallback(() => {
+    if (locateFrameRef.current === null) return
+    cancelAnimationFrame(locateFrameRef.current)
+    locateFrameRef.current = null
+  }, [])
+
+  const locateChapter = useCallback((path: string, behavior: 'auto' | 'smooth') => {
+    const volumeKey = chapterVolumeByPath.get(path)
+    if (!volumeKey) return
     setCollapsedVolumes((prev) => {
       if (!prev.has(volumeKey)) return prev
       const next = new Set(prev)
       next.delete(volumeKey)
       return next
     })
-    // 目标章节可能因卷折叠刚被渲染，等两帧确保 DOM 提交后再滚动
-    requestAnimationFrame(() => {
-      requestAnimationFrame(() => {
-        findChapterElement(path)?.scrollIntoView({ block: 'center', behavior })
+    // A collapsed volume needs one render before Virtuoso can resolve the row index.
+    cancelScheduledLocate()
+    locateFrameRef.current = requestAnimationFrame(() => {
+      locateFrameRef.current = requestAnimationFrame(() => {
+        locateFrameRef.current = null
+        listRef.current?.scrollToChapter(path, behavior)
       })
     })
-  }, [chapters, findChapterElement])
+  }, [cancelScheduledLocate, chapterVolumeByPath])
 
-  // 下滑超过固定距离后启用「回到顶部」。
-  useEffect(() => {
-    const container = scrollContainerRef.current
-    if (!container) return
-    let raf = 0
-    const update = () => {
-      raf = 0
-      setBackToTopVisible(container.scrollTop > BACK_TO_TOP_THRESHOLD_PX)
-    }
-    const handleScroll = () => {
-      if (raf !== 0) return
-      raf = requestAnimationFrame(update)
-    }
-    container.addEventListener('scroll', handleScroll, { passive: true })
-    update()
-    return () => {
-      container.removeEventListener('scroll', handleScroll)
-      if (raf !== 0) cancelAnimationFrame(raf)
-    }
+  useEffect(() => cancelScheduledLocate, [cancelScheduledLocate])
+
+  const handleScrollTopChange = useCallback((scrollTop: number) => {
+    setBackToTopVisible(scrollTop > BACK_TO_TOP_THRESHOLD_PX)
   }, [])
 
-  const selectedIsChapter = selectedFile !== null && chapters.some((chapter) => chapter.path === selectedFile)
+  const selectedIsChapter = selectedFile !== null && chapterVolumeByPath.has(selectedFile)
 
   // 章节切换来自面板外部（编辑器 tab、搜索、切回大纲 tab 重挂载等）时，自动把当前章节滚到视野中央
   useEffect(() => {
@@ -169,7 +203,7 @@ export function ChapterOutline({
     }
     if (lastAutoLocatedRef.current === selectedFile) return
     lastAutoLocatedRef.current = selectedFile
-    const behavior: ScrollBehavior = didLocateOnceRef.current ? 'smooth' : 'auto'
+    const behavior = didLocateOnceRef.current ? 'smooth' : 'auto'
     didLocateOnceRef.current = true
     locateChapter(selectedFile, behavior)
   }, [chapters.length, locateChapter, revealRequest?.path, selectedFile, selectedIsChapter])
@@ -181,9 +215,17 @@ export function ChapterOutline({
     locateChapter(revealRequest.path, 'smooth')
   }, [locateChapter, revealRequest?.nonce, revealRequest?.path])
 
-  const scrollToTop = () => {
-    scrollContainerRef.current?.scrollTo({ top: 0, behavior: 'smooth' })
-  }
+  const scrollToTop = useCallback(() => listRef.current?.scrollToTop('smooth'), [])
+  const locateLatestChapter = useCallback(() => {
+    if (latestChapterPath) locateChapter(latestChapterPath, 'smooth')
+  }, [latestChapterPath, locateChapter])
+  const toggleHeaderPinned = useCallback(() => setHeaderPinned((pinned) => !pinned), [])
+
+  const stableReferenceFile = onReferenceFile ? handleReferenceFile : undefined
+  const stableRevealFile = onRevealFile ? handleRevealFile : undefined
+  const stableRenameItem = onRenameItem ? handleRenameItem : undefined
+  const stableDeleteItem = onDeleteItem ? handleDeleteItem : undefined
+  const chapterCountLabel = useCallback((count: number) => t('common.chapters', { count }), [t])
 
   const bookSettingsHeaderFrame = (
     <div data-testid="book-settings-header-frame" className="shrink-0 border-b border-[var(--nova-border)] bg-[var(--nova-surface)] p-2">
@@ -197,34 +239,26 @@ export function ChapterOutline({
         loreTabActive={loreTabActive}
         headerPinned={headerPinned}
         onSelectFile={handleSelectFileFromPanel}
-        onOpenLoreTab={onOpenLoreTab}
+        onOpenLoreTab={onOpenLoreTab ? handleOpenLoreTab : undefined}
         latestChapterAvailable={Boolean(latestChapterPath)}
         backToTopAvailable={backToTopVisible}
-        onLocateLatestChapter={() => { if (latestChapterPath) locateChapter(latestChapterPath, 'smooth') }}
+        onLocateLatestChapter={locateLatestChapter}
         onBackToTop={scrollToTop}
-        onToggleHeaderPinned={() => setHeaderPinned((pinned) => !pinned)}
-        onReferenceFile={onReferenceFile}
-        onRevealFile={onRevealFile}
-        onRenameItem={onRenameItem}
-        onDeleteItem={onDeleteItem}
-        onRequestCreate={onRequestBookSettingCreate}
+        onToggleHeaderPinned={toggleHeaderPinned}
+        onReferenceFile={stableReferenceFile}
+        onRevealFile={stableRevealFile}
+        onRenameItem={stableRenameItem}
+        onDeleteItem={stableDeleteItem}
+        onRequestCreate={onRequestBookSettingCreate ? handleRequestBookSettingCreate : undefined}
       />
     </div>
   )
 
-  return (
-    <div ref={rootRef} className="flex h-full min-h-0 flex-col">
-      {headerPinned ? bookSettingsHeaderFrame : null}
-      <div
-        ref={scrollContainerRef}
-        role="navigation"
-        aria-label={t('planning.outlineNavigation')}
-        className="min-h-0 flex-1 overflow-y-auto"
-      >
-        {!headerPinned ? bookSettingsHeaderFrame : null}
-        <div className="p-2">
-          <div className="space-y-3">
-
+  const navigationHeader = (
+    <>
+      {!headerPinned ? bookSettingsHeaderFrame : null}
+      <div className="p-2">
+        <div className="space-y-3">
           {chapterPlans.length === 0 ? (
             <section className="flex items-center justify-between gap-2 px-1 py-1 text-[11px] font-medium text-[var(--nova-text-faint)]">
               <span>{t('planning.chapterPlans')}</span>
@@ -241,10 +275,10 @@ export function ChapterOutline({
                     document={latestChapterPlan}
                     selected={selectedFile === latestChapterPlan.path}
                     onSelectFile={handleSelectFileFromPanel}
-                    onReferenceFile={onReferenceFile}
-                    onRevealFile={onRevealFile}
-                    onRenameItem={onRenameItem}
-                    onDeleteItem={onDeleteItem}
+                    onReferenceFile={stableReferenceFile}
+                    onRevealFile={stableRevealFile}
+                    onRenameItem={stableRenameItem}
+                    onDeleteItem={stableDeleteItem}
                   />
                 </div>
               ) : null}
@@ -273,10 +307,10 @@ export function ChapterOutline({
                           document={plan}
                           selected={selectedFile === plan.path}
                           onSelectFile={handleSelectFileFromPanel}
-                          onReferenceFile={onReferenceFile}
-                          onRevealFile={onRevealFile}
-                          onRenameItem={onRenameItem}
-                          onDeleteItem={onDeleteItem}
+                          onReferenceFile={stableReferenceFile}
+                          onRevealFile={stableRevealFile}
+                          onRenameItem={stableRenameItem}
+                          onDeleteItem={stableDeleteItem}
                         />
                       ))}
                     </div>
@@ -288,56 +322,33 @@ export function ChapterOutline({
 
           <section className="space-y-1.5">
             <div className="px-1 text-[11px] font-medium text-[var(--nova-text-faint)]">{t('planning.volumeChapters')}</div>
-            {volumes.length === 0 ? (
-              <PlanningEmptyState text={t('planning.noChapters')} />
-            ) : (
-              <div className="space-y-1.5">
-                {volumes.map((volume) => {
-                  const expanded = !collapsedVolumes.has(volume.key)
-                  return (
-                    <div key={volume.key} className="space-y-1">
-                      <button
-                        type="button"
-                        className="nova-nav-item flex w-full items-center gap-2 border border-transparent bg-[var(--nova-surface)] px-2 py-1.5 text-left"
-                        aria-label={`${volume.label} ${t('common.chapters', { count: volume.chapters.length })}`}
-                        onClick={() => toggleVolume(volume.key)}
-                      >
-                        {expanded ? (
-                          <ChevronDown className="h-3.5 w-3.5 shrink-0 text-[var(--nova-text-muted)]" />
-                        ) : (
-                          <ChevronRight className="h-3.5 w-3.5 shrink-0 text-[var(--nova-text-muted)]" />
-                        )}
-                        <BookOpen className="h-3.5 w-3.5 shrink-0 text-[var(--nova-text-muted)]" />
-                        <span className="min-w-0 flex-1 truncate text-xs font-medium text-[var(--nova-text)]">{volume.label}</span>
-                        <span className="shrink-0 text-[11px] text-[var(--nova-text-faint)]">{t('common.chapters', { count: volume.chapters.length })}</span>
-                      </button>
-                      {expanded ? (
-                        <div className="space-y-1 pl-4">
-                          {volume.chapters.map((chapter) => (
-                            <ChapterOutlineItem
-                              key={chapter.path}
-                              chapter={chapter}
-                              active={selectedFile === chapter.path}
-                              onSelectFile={handleSelectFileFromPanel}
-                              onSetChapterConfirmed={onSetChapterConfirmed}
-                              onReferenceFile={onReferenceFile}
-                              onRevealFile={onRevealFile}
-                              onRenameItem={onRenameItem}
-                              onDeleteItem={onDeleteItem}
-                            />
-                          ))}
-                        </div>
-                      ) : null}
-                    </div>
-                  )
-                })}
-              </div>
-            )}
+            {volumes.length === 0 ? <PlanningEmptyState text={t('planning.noChapters')} /> : null}
           </section>
-
-          </div>
         </div>
       </div>
+    </>
+  )
+
+  return (
+    <div className="flex h-full min-h-0 flex-col">
+      {headerPinned ? bookSettingsHeaderFrame : null}
+      <ChapterOutlineList
+        ref={listRef}
+        header={navigationHeader}
+        navigationLabel={t('planning.outlineNavigation')}
+        volumes={volumes}
+        collapsedVolumes={collapsedVolumes}
+        selectedFile={selectedFile}
+        chapterCountLabel={chapterCountLabel}
+        onToggleVolume={toggleVolume}
+        onScrollTopChange={handleScrollTopChange}
+        onSelectFile={handleSelectFileFromPanel}
+        onSetChapterConfirmed={handleSetChapterConfirmed}
+        onReferenceFile={stableReferenceFile}
+        onRevealFile={stableRevealFile}
+        onRenameItem={stableRenameItem}
+        onDeleteItem={stableDeleteItem}
+      />
     </div>
   )
 }
@@ -394,8 +405,8 @@ function PlanningEmptyState({ text }: { text: string }) {
   )
 }
 
-function groupChaptersByVolume(chapters: ChapterSummary[], t: (key: string) => string) {
-  const map = new Map<string, { key: string; label: string; chapters: ChapterSummary[] }>()
+function groupChaptersByVolume(chapters: ChapterSummary[], t: (key: string) => string): ChapterOutlineVolume[] {
+  const map = new Map<string, ChapterOutlineVolume>()
   for (const chapter of chapters) {
     const key = chapter.volume_path || chapter.volume || 'chapters'
     const label = chapter.volume || t('planning.unvolumed')
@@ -414,7 +425,7 @@ function readBookSettingsHeaderPinned() {
   try {
     return window.localStorage.getItem(BOOK_SETTINGS_HEADER_PINNED_KEY) !== 'false'
   } catch (error) {
-    console.warn('读取作品目录固定区偏好失败', error)
+    console.warn('Failed to read the book-settings header pin preference', error)
     return true
   }
 }

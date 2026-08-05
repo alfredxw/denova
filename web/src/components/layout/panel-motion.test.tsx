@@ -7,17 +7,20 @@ import { CollapsibleResizablePanel, PanelMotionGroup } from './panel-motion'
 const panelHarness = vi.hoisted(() => ({
   reportedPixels: 368,
   groupRenders: 0,
+  groupDisableCursor: false,
   collapse: vi.fn(),
   expand: vi.fn(),
   resize: vi.fn(),
 }))
 
 vi.mock('react-resizable-panels', () => ({
-  Group: ({ children, orientation: _orientation, ...props }: HTMLAttributes<HTMLDivElement> & {
+  Group: ({ children, orientation: _orientation, disableCursor, ...props }: HTMLAttributes<HTMLDivElement> & {
     children?: ReactNode
     orientation?: 'horizontal' | 'vertical'
+    disableCursor?: boolean
   }) => {
     panelHarness.groupRenders += 1
+    panelHarness.groupDisableCursor = disableCursor === true
     return <div {...props}>{children}</div>
   },
   Panel: ({
@@ -115,6 +118,17 @@ describe('CollapsibleResizablePanel', () => {
 describe('PanelMotionGroup', () => {
   beforeEach(() => {
     panelHarness.groupRenders = 0
+    panelHarness.groupDisableCursor = false
+  })
+
+  it('disables the library-wide cursor stylesheet', () => {
+    render(
+      <PanelMotionGroup orientation="horizontal">
+        <div />
+      </PanelMotionGroup>,
+    )
+
+    expect(panelHarness.groupDisableCursor).toBe(true)
   })
 
   it('tracks only its direct separator resize without a relational CSS selector', async () => {

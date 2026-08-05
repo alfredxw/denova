@@ -695,6 +695,7 @@ function AgentPanelComponent({
                 <Group
                   id="nova-agent-subagent-details"
                   orientation="horizontal"
+                  disableCursor
                   resizeTargetMinimumSize={{ coarse: 16, fine: 1 }}
                   className="absolute inset-0 hidden lg:flex"
                 >

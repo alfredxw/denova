@@ -721,6 +721,7 @@ export function WorkbenchShell({
         {mobileAgentDocked ? (
           <Group
             orientation="vertical"
+            disableCursor
             resizeTargetMinimumSize={{ coarse: 16, fine: 1 }}
             className="flex min-h-0 flex-1 flex-col"
           >

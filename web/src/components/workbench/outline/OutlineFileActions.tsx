@@ -1,4 +1,4 @@
-import { useState, type ReactNode } from 'react'
+import { useCallback, useState, type MouseEvent, type ReactNode } from 'react'
 import { AtSign, FolderSearch, MoreHorizontal, Pencil, Trash2 } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import {
@@ -8,13 +8,6 @@ import {
   ContextMenuSeparator,
   ContextMenuTrigger,
 } from '@/components/ui/context-menu'
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuSeparator,
-  DropdownMenuTrigger,
-} from '@/components/ui/dropdown-menu'
 import { DeleteConfirmDialog } from '@/components/Sidebar/DeleteConfirmDialog'
 import { FileOperationDialog } from '@/components/Sidebar/FileOperationDialog'
 import { workspaceFileName } from '@/lib/workspace-path'
@@ -46,7 +39,7 @@ const MENU_DANGER_CLASS =
   'text-[var(--nova-danger)] focus:bg-[var(--nova-danger-bg)] focus:text-[var(--nova-danger)] data-[highlighted]:bg-[var(--nova-danger-bg)] data-[highlighted]:text-[var(--nova-danger)] [&_svg]:text-[var(--nova-danger)]'
 const MENU_SEPARATOR_CLASS = 'mx-1 my-1 h-px bg-[var(--nova-border)]'
 
-/** 为作品目录中的文件型条目提供右键菜单，并可按场景展示可发现的更多按钮。 */
+/** File actions shared by the discoverable trigger and the native context-menu gesture. */
 export function OutlineFileActions({
   path,
   children,
@@ -68,6 +61,18 @@ export function OutlineFileActions({
     ...(onDeleteItem ? [{ label: t('sidebar.delete'), icon: <Trash2 className="h-3.5 w-3.5" />, danger: true, onSelect: () => setDeleteOpen(true) }] : []),
   ])
 
+  const openContextMenuFromTrigger = useCallback((event: MouseEvent<HTMLButtonElement>) => {
+    event.preventDefault()
+    event.stopPropagation()
+    const rect = event.currentTarget.getBoundingClientRect()
+    event.currentTarget.dispatchEvent(new window.MouseEvent('contextmenu', {
+      bubbles: true,
+      cancelable: true,
+      clientX: rect.right,
+      clientY: rect.bottom,
+    }))
+  }, [])
+
   if (actions.length === 0) return <>{children}</>
 
   return (
@@ -77,28 +82,22 @@ export function OutlineFileActions({
           <div className="group relative min-w-0">
             {children}
             {showTrigger ? (
-              <DropdownMenu>
-                <DropdownMenuTrigger asChild>
-                  <button
-                    type="button"
-                    aria-label={t('sidebar.moreActions')}
-                    title={t('sidebar.moreActions')}
-                    className={`pointer-events-none absolute right-1 z-10 flex h-6 w-6 items-center justify-center rounded text-[var(--nova-text-faint)] opacity-0 transition-opacity hover:bg-[var(--nova-hover)] hover:text-[var(--nova-text)] focus-visible:pointer-events-auto focus-visible:opacity-100 group-hover:pointer-events-auto group-hover:opacity-100 data-[state=open]:pointer-events-auto data-[state=open]:opacity-100 max-md:pointer-events-auto max-md:opacity-100 ${triggerPlacement === 'top' ? 'top-1' : 'top-1/2 -translate-y-1/2'}`}
-                    onPointerDown={(event) => event.stopPropagation()}
-                    onClick={(event) => event.stopPropagation()}
-                  >
-                    <MoreHorizontal className="h-3.5 w-3.5" />
-                  </button>
-                </DropdownMenuTrigger>
-                <DropdownMenuContent className={MENU_CONTENT_CLASS} align="end" sideOffset={6}>
-                  {renderActions(actions, 'dropdown')}
-                </DropdownMenuContent>
-              </DropdownMenu>
+              <button
+                type="button"
+                aria-label={t('sidebar.moreActions')}
+                aria-haspopup="menu"
+                title={t('sidebar.moreActions')}
+                className={`pointer-events-none absolute right-1 z-10 flex h-6 w-6 items-center justify-center rounded text-[var(--nova-text-faint)] opacity-0 transition-opacity hover:bg-[var(--nova-hover)] hover:text-[var(--nova-text)] focus-visible:pointer-events-auto focus-visible:opacity-100 group-hover:pointer-events-auto group-hover:opacity-100 max-md:pointer-events-auto max-md:opacity-100 ${triggerPlacement === 'top' ? 'top-1' : 'top-1/2 -translate-y-1/2'}`}
+                onPointerDown={(event) => event.stopPropagation()}
+                onClick={openContextMenuFromTrigger}
+              >
+                <MoreHorizontal className="h-3.5 w-3.5" />
+              </button>
             ) : null}
           </div>
         </ContextMenuTrigger>
         <ContextMenuContent className={MENU_CONTENT_CLASS}>
-          {renderActions(actions, 'context')}
+          {renderActions(actions)}
         </ContextMenuContent>
       </ContextMenu>
       {onRenameItem && renameOpen ? (
@@ -136,24 +135,17 @@ function compactActions(actions: OutlineFileAction[]) {
   return compacted
 }
 
-function renderActions(actions: OutlineFileAction[], type: 'context' | 'dropdown') {
+function renderActions(actions: OutlineFileAction[]) {
   return actions.map((action, index) => {
     if (action.separator) {
-      return type === 'context'
-        ? <ContextMenuSeparator key={index} className={MENU_SEPARATOR_CLASS} />
-        : <DropdownMenuSeparator key={index} className={MENU_SEPARATOR_CLASS} />
+      return <ContextMenuSeparator key={index} className={MENU_SEPARATOR_CLASS} />
     }
     const className = `${MENU_ITEM_CLASS} ${action.danger ? MENU_DANGER_CLASS : ''}`
-    return type === 'context' ? (
+    return (
       <ContextMenuItem key={action.label} className={className} onSelect={action.onSelect}>
         {action.icon}
         {action.label}
       </ContextMenuItem>
-    ) : (
-      <DropdownMenuItem key={action.label} className={className} onSelect={action.onSelect}>
-        {action.icon}
-        {action.label}
-      </DropdownMenuItem>
     )
   })
 }

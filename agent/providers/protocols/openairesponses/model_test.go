@@ -70,7 +70,10 @@ func TestThinkingOffToolContinuationPreservesAssistantOutput(t *testing.T) {
 	if err != nil {
 		t.Fatalf("new continuation: %v", err)
 	}
-	assistant := agent.AssistantMessage("loading context", nil)
+	assistant := agent.AssistantMessage("loading context", []agent.ToolCall{{
+		ID: "call_off", Type: "function",
+		Function: agent.FunctionCall{Name: "read", Arguments: `{"path":"progress.md"}`},
+	}})
 	assistant.Extra = map[string]any{providers.ExtraKeyContinuation: continuation}
 
 	created, err := NewAdapter().New(context.Background(), modelConfig)
@@ -112,6 +115,42 @@ func TestThinkingOffToolContinuationPreservesAssistantOutput(t *testing.T) {
 	}
 	if input[1].(map[string]any)["type"] != "function_call" || input[2].(map[string]any)["type"] != "function_call_output" {
 		t.Fatalf("tool continuation order changed: %#v", input)
+	}
+}
+
+func TestContinuationDoesNotReplayToolCallRemovedByContextNormalization(t *testing.T) {
+	modelConfig := providers.ModelConfig{
+		Provider: providers.ProviderDeepSeek,
+		Protocol: providers.ProtocolOpenAIResponses,
+		Model:    "deepseek-v4-flash",
+	}
+	continuation, err := providers.NewContinuation(modelConfig, []json.RawMessage{
+		json.RawMessage(`{"id":"message_invalid","type":"message","status":"completed","role":"assistant","content":[{"type":"output_text","text":"working","annotations":[],"logprobs":[]}]}`),
+		json.RawMessage(`{"id":"function_invalid","type":"function_call","call_id":"call_invalid","name":"write_lore_items","arguments":"{\"items\":" ,"status":"completed"}`),
+	})
+	if err != nil {
+		t.Fatalf("new continuation: %v", err)
+	}
+	// The provider-neutral normalizer atomically removes a malformed call and
+	// its synthetic error result. The raw continuation must not reintroduce the
+	// removed call without its result on the next Responses request.
+	assistant := agent.AssistantMessage("working", nil)
+	assistant.Extra = map[string]any{providers.ExtraKeyContinuation: continuation}
+
+	items, err := requestInput([]*agent.Message{assistant}, modelConfig)
+	if err != nil {
+		t.Fatalf("build normalized continuation input: %v", err)
+	}
+	data, err := json.Marshal(items)
+	if err != nil {
+		t.Fatalf("marshal normalized continuation input: %v", err)
+	}
+	var input []map[string]any
+	if err := json.Unmarshal(data, &input); err != nil {
+		t.Fatalf("decode normalized continuation input: %v", err)
+	}
+	if len(input) != 1 || input[0]["type"] != "message" || input[0]["id"] != "message_invalid" {
+		t.Fatalf("removed tool call was replayed from raw continuation: %#v", input)
 	}
 }
 

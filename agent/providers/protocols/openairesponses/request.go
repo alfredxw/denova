@@ -134,8 +134,32 @@ func replayResponseOutput(message *agent.Message, config providers.ModelConfig) 
 	if err != nil || !matched {
 		return nil, matched, err
 	}
+	// The provider-neutral context normalizer may atomically remove malformed or
+	// ambiguous tool call/result pairs. Continuation output is the provider's raw
+	// response, so replaying it without consulting the normalized ToolCalls would
+	// resurrect a removed function_call without its function_call_output. Strict
+	// Responses endpoints reject that transcript and would turn a recoverable
+	// tool error into a terminal model error.
+	retainedToolCalls := make(map[string]struct{}, len(message.ToolCalls))
+	for _, call := range message.ToolCalls {
+		if callID := strings.TrimSpace(call.ID); callID != "" {
+			retainedToolCalls[callID] = struct{}{}
+		}
+	}
 	items := make([]responses.ResponseInputItemUnionParam, 0, len(rawItems))
 	for index, raw := range rawItems {
+		var identity struct {
+			Type   string `json:"type"`
+			CallID string `json:"call_id"`
+		}
+		if err := json.Unmarshal(raw, &identity); err != nil {
+			return nil, true, fmt.Errorf("decode stored Responses output item %d identity: %w", index, err)
+		}
+		if identity.Type == "function_call" {
+			if _, retained := retainedToolCalls[strings.TrimSpace(identity.CallID)]; !retained {
+				continue
+			}
+		}
 		var validated responses.ResponseInputItemUnionParam
 		if err := json.Unmarshal(raw, &validated); err != nil {
 			return nil, true, fmt.Errorf("decode stored Responses output item %d: %w", index, err)

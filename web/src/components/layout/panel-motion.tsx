@@ -72,6 +72,9 @@ export function PanelMotionGroup({ onPointerDownCapture, ...groupProps }: GroupP
   return (
     <Group
       {...groupProps}
+      // Separators already provide explicit cursor classes. Disabling the library cursor manager
+      // prevents it from injecting `*, *:hover` rules that invalidate styles for the whole app.
+      disableCursor
       data-nova-panel-motion-group="true"
       onPointerDownCapture={handlePointerDownCapture}
     />

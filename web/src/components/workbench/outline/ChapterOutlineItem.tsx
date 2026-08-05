@@ -16,10 +16,7 @@ interface ChapterOutlineItemProps {
   onDeleteItem?: (path: string) => Promise<void>
 }
 
-/**
- * 目录栏里的单个章节条目。
- * 根节点带 data-chapter-path，供「定位当前章节」在滚动容器内查找目标元素。
- */
+/** One windowed outline row; the data path lets navigation find an already mounted target. */
 export const ChapterOutlineItem = memo(function ChapterOutlineItem({
   chapter,
   active,
@@ -41,7 +38,7 @@ export const ChapterOutlineItem = memo(function ChapterOutlineItem({
     try {
       await onSetChapterConfirmed(chapter.path, !chapter.confirmed)
     } catch (error) {
-      console.error('更新章节确认状态失败', error)
+      console.error('Failed to update chapter confirmation state', error)
     } finally {
       setSaving(false)
     }
