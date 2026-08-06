@@ -9,19 +9,20 @@ import {
 
 /** Display-only projection for one contiguous root Agent run. */
 export interface AgentRunPresentation {
-  active: boolean
-  afterResultViews: AgentMessageView[]
-  beforeResultViews: AgentMessageView[]
   key: string
   nextIndex: number
-  resultView?: AgentMessageView
   runID: string
+  sections: AgentRunPresentationSection[]
 }
 
+export type AgentRunPresentationSection =
+  | { active: boolean; key: string; kind: 'process'; views: AgentMessageView[] }
+  | { key: string; kind: 'message'; view: AgentMessageView }
+
 /**
- * Builds a stable process/result boundary without changing persisted history.
- * Explicit backend phases win; legacy history falls back to the last root
- * assistant segment once the run is complete.
+ * Builds stable ordered process/prose sections without changing persisted
+ * history. Active runs expose every root prose segment; completed runs expose
+ * only the terminal segment and aggregate everything else into one process.
  */
 export function buildAgentRunPresentation(
   views: AgentMessageView[],
@@ -51,17 +52,15 @@ export function buildAgentRunPresentation(
   if (runViews.length === 0) return null
 
   const active = isActiveRunSlice(views, nextIndex, isStreaming)
-  const resultIndex = selectResultIndex(runViews, active)
-  const resultView = resultIndex >= 0 ? runViews[resultIndex] : undefined
+  const resultIndex = selectTerminalResultIndex(runViews, active)
 
   return {
-    active,
-    afterResultViews: resultIndex < 0 ? [] : runViews.slice(resultIndex + 1),
-    beforeResultViews: resultIndex < 0 ? runViews : runViews.slice(0, resultIndex),
     key: `run-${runID}-${agentViewStableKey(runViews[0])}`,
     nextIndex,
-    resultView,
     runID,
+    sections: resultIndex >= 0
+      ? buildTerminalSections(runViews, resultIndex)
+      : buildActiveSections(runViews),
   }
 }
 
@@ -70,31 +69,75 @@ function isRootRunView(view?: AgentMessageView) {
   return view.kind === 'assistant' || isAgentTraceView(view)
 }
 
-function selectResultIndex(views: AgentMessageView[], active: boolean) {
+function selectTerminalResultIndex(views: AgentMessageView[], active: boolean) {
   for (let index = views.length - 1; index >= 0; index -= 1) {
     const view = views[index]
     if (view.metadata.subagent || view.kind !== 'assistant' || !agentViewContent(view).trim()) continue
     if (view.metadata.display_phase === 'final' || view.metadata.display_phase === 'partial') return index
   }
 
-  // Streaming root prose starts as a candidate. It remains the visible result
-  // anchor even when Game continues with post-narrative thinking/tools.
-  if (active) {
-    for (let index = views.length - 1; index >= 0; index -= 1) {
-      const view = views[index]
-      if (view.metadata.subagent || view.kind !== 'assistant' || !agentViewContent(view).trim()) continue
-      if (view.metadata.display_phase === 'candidate') return index
-    }
-  }
+  if (active) return -1
 
   for (let index = views.length - 1; index >= 0; index -= 1) {
     const view = views[index]
     if (view.metadata.subagent || view.kind !== 'assistant' || !agentViewContent(view).trim()) continue
-    if (!active) return index
-    if (view.metadata.display_phase === 'progress') return -1
     return index
   }
   return -1
+}
+
+// While a run is active, every root prose segment remains visible. The trace
+// that led to it becomes an independently collapsible process section, and the
+// unfinished trailing trace stays active until the next prose segment arrives.
+function buildActiveSections(views: AgentMessageView[]): AgentRunPresentationSection[] {
+  const sections: AgentRunPresentationSection[] = []
+  let pendingProcess: AgentMessageView[] = []
+
+  for (const view of views) {
+    if (!view.metadata.subagent && view.kind === 'assistant' && agentViewContent(view).trim()) {
+      appendProcessSection(sections, pendingProcess, false)
+      pendingProcess = []
+      sections.push({
+        key: `message-${agentViewStableKey(view)}`,
+        kind: 'message',
+        view,
+      })
+      continue
+    }
+    pendingProcess.push(view)
+  }
+
+  appendProcessSection(sections, pendingProcess, true)
+  return sections
+}
+
+// Once the terminal prose is known, the entire non-terminal timeline becomes
+// one execution disclosure. This intentionally includes progress emitted
+// before the result and any post-result bookkeeping tools.
+function buildTerminalSections(views: AgentMessageView[], resultIndex: number): AgentRunPresentationSection[] {
+  const sections: AgentRunPresentationSection[] = []
+  appendProcessSection(sections, views.filter((_, index) => index !== resultIndex), false)
+  const resultView = views[resultIndex]
+  sections.push({
+    key: `message-${agentViewStableKey(resultView)}`,
+    kind: 'message',
+    view: resultView,
+  })
+  return sections
+}
+
+function appendProcessSection(
+  sections: AgentRunPresentationSection[],
+  views: AgentMessageView[],
+  active: boolean,
+) {
+  if (views.length === 0) return
+  sections.push({
+    active,
+    key: `process-${agentViewStableKey(views[0])}`,
+    kind: 'process',
+    views,
+  })
 }
 
 function isActiveRunSlice(views: AgentMessageView[], afterRunIndex: number, isStreaming: boolean) {

@@ -25,7 +25,7 @@ import { ScrollToBottomButton } from './ScrollToBottomButton'
 import { AgentMessageItem } from './AgentMessageItem'
 import { AgentActivityShimmer, MessageItem } from './MessageItem'
 import { AgentExecutionProcess } from './AgentExecutionProcess'
-import { buildAgentRunPresentation } from './agent-run-presentation'
+import { buildAgentRunPresentation, type AgentRunPresentationSection } from './agent-run-presentation'
 import { scheduleChatRowBottomAnchor, scheduleResolvedChatRowBottomAnchor } from './chat-row-bottom-anchor'
 import { Button } from '@/components/ui/button'
 
@@ -95,7 +95,7 @@ type AgentChatListItem =
   | { kind: 'message'; key: string; view: AgentMessageView; sourceIndex: number }
   | { kind: 'legacy-message'; key: string; message: ChatMessage; sourceIndex: number; openView?: AgentMessageView }
   | { kind: 'trace'; key: string; views: AgentMessageView[]; activeStreamingTrace: boolean }
-  | { kind: 'run'; key: string; runId: string; beforeResultViews: AgentMessageView[]; resultView?: AgentMessageView; afterResultViews: AgentMessageView[]; active: boolean; sourceIndex: number }
+  | { kind: 'run'; key: string; runId: string; sections: AgentRunPresentationSection[]; sourceIndex: number }
   | { kind: 'attachment'; key: string; runId: string; content: ReactNode }
 
 const MESSAGE_LIST_OVERSCAN = { main: 520, reverse: 260 }
@@ -518,9 +518,9 @@ function AgentChatListRow({ projectId, item, isLast, isStreaming, activeTraceDis
         />
       ) : item.kind === 'run' ? (
         <div className="space-y-2">
-          {renderExecutionProcess('before-result', item.beforeResultViews, item.active && !item.resultView)}
-          {item.resultView ? renderMessageView(item.resultView, agentViewStableKey(item.resultView)) : null}
-          {renderExecutionProcess('after-result', item.afterResultViews, item.active)}
+          {item.sections.map(section => section.kind === 'process'
+            ? renderExecutionProcess(section.key, section.views, section.active)
+            : renderMessageView(section.view, section.key))}
         </div>
       ) : item.kind === 'attachment' ? (
         item.content
@@ -583,10 +583,7 @@ function buildAgentChatListItems({ views, isStreaming, isExecutionActive, visibl
           kind: 'run',
           key: run.key,
           runId: run.runID,
-          beforeResultViews: run.beforeResultViews,
-          resultView: run.resultView,
-          afterResultViews: run.afterResultViews,
-          active: run.active,
+          sections: run.sections,
           sourceIndex: index,
         })
         index = run.nextIndex - 1
@@ -700,11 +697,7 @@ function chatListItemViews(item: AgentChatListItem): AgentMessageView[] {
   if (item.kind === 'legacy-message') return item.openView ? [item.openView] : []
   if (item.kind === 'trace') return item.views
   if (item.kind === 'run') {
-    return [
-      ...item.beforeResultViews,
-      ...(item.resultView ? [item.resultView] : []),
-      ...item.afterResultViews,
-    ]
+    return item.sections.flatMap(section => section.kind === 'process' ? section.views : [section.view])
   }
   return []
 }
@@ -714,12 +707,11 @@ function chatListItemNavigationAnchor(item?: AgentChatListItem) {
   if (item.kind === 'message') return agentViewNavigationAnchor(item.view)
   if (item.kind === 'legacy-message') return item.message.navigation_turn_id || item.message.turn_id || ''
   if (item.kind === 'run') {
-    const resultAnchor = item.resultView ? agentViewNavigationAnchor(item.resultView) : ''
-    if (resultAnchor) return resultAnchor
-    const processSections = [item.afterResultViews, item.beforeResultViews]
-    for (const views of processSections) {
-      for (let index = views.length - 1; index >= 0; index -= 1) {
-        const anchor = agentViewNavigationAnchor(views[index])
+    for (let sectionIndex = item.sections.length - 1; sectionIndex >= 0; sectionIndex -= 1) {
+      const section = item.sections[sectionIndex]
+      const views = section.kind === 'process' ? section.views : [section.view]
+      for (let viewIndex = views.length - 1; viewIndex >= 0; viewIndex -= 1) {
+        const anchor = agentViewNavigationAnchor(views[viewIndex])
         if (anchor) return anchor
       }
     }

@@ -15,8 +15,8 @@ import (
 const maxGrepCommandBytes = 64 * 1024
 
 // compileGrepCommand turns Denova's literal command language into an argv plan
-// before any process starts. Explicit paths must follow --, which keeps the
-// pattern/path distinction unambiguous without reproducing ripgrep's parser.
+// before any process starts. Positional arguments follow ripgrep's native
+// PATTERN [PATH ...] contract; -e/--regexp makes every positional a path.
 func (workspace *LocalWorkspace) compileGrepCommand(input string) (compiledGrepCommand, error) {
 	input = strings.TrimSpace(input)
 	if input == "" {
@@ -37,23 +37,36 @@ func (workspace *LocalWorkspace) compileGrepCommand(input string) (compiledGrepC
 		return compiledGrepCommand{}, grepCommandError("invalid_command", "command must begin with the literal executable rg", "命令必须以字面量 rg 开头")
 	}
 	command := compiledGrepCommand{mode: grepOutputContent}
-	pathIndex := len(words)
+	positionals := make([]string, 0, len(words)-1)
+	optionsEnded := false
 	for index := 1; index < len(words); index++ {
-		if words[index] == "--" {
-			pathIndex = index + 1
-			break
+		token := words[index]
+		if !optionsEnded && token == "--" {
+			optionsEnded = true
+			continue
 		}
-		consumed, parseErr := command.consumeArgument(words, index)
+		if optionsEnded || token == "" || token == "-" || !strings.HasPrefix(token, "-") {
+			positionals = append(positionals, token)
+			continue
+		}
+		consumed, parseErr := command.consumeFlag(words, index)
 		if parseErr != nil {
 			return compiledGrepCommand{}, parseErr
 		}
 		command.args = append(command.args, words[index:index+consumed]...)
 		index += consumed - 1
 	}
-	if !command.hasRegexp && !command.barePattern {
-		return compiledGrepCommand{}, grepCommandError("invalid_pattern", "rg command must contain a pattern or -e/--regexp", "rg 命令必须包含 pattern 或 -e/--regexp")
+	paths := positionals
+	if !command.hasRegexp {
+		if len(positionals) == 0 {
+			return compiledGrepCommand{}, grepCommandError("invalid_pattern", "rg command must contain a pattern or -e/--regexp", "rg 命令必须包含 pattern 或 -e/--regexp")
+		}
+		// Canonicalizing the positional pattern through -e also preserves native
+		// `rg -- -leading-dash path` behavior after Denova appends its invariants.
+		command.args = append(command.args, "-e", positionals[0])
+		command.hasRegexp = true
+		paths = positionals[1:]
 	}
-	paths := words[pathIndex:]
 	validated, warnings, err := workspace.validateGrepPaths(paths)
 	if err != nil {
 		return compiledGrepCommand{}, err
@@ -62,18 +75,8 @@ func (workspace *LocalWorkspace) compileGrepCommand(input string) (compiledGrepC
 	return command, nil
 }
 
-func (command *compiledGrepCommand) consumeArgument(words []string, index int) (int, error) {
+func (command *compiledGrepCommand) consumeFlag(words []string, index int) (int, error) {
 	token := words[index]
-	if token == "" || token == "-" || !strings.HasPrefix(token, "-") {
-		if command.hasRegexp {
-			return 0, grepCommandError("ambiguous_path", fmt.Sprintf("explicit path %q must follow --", token), fmt.Sprintf("显式路径 %q 必须放在 -- 之后", token))
-		}
-		if command.barePattern {
-			return 0, grepCommandError("ambiguous_path", fmt.Sprintf("only one bare pattern is allowed before --; put path %q after --", token), fmt.Sprintf("-- 前只能有一个裸 pattern；请将路径 %q 放到 -- 之后", token))
-		}
-		command.barePattern = true
-		return 1, nil
-	}
 	if strings.HasPrefix(token, "--") {
 		return command.consumeLongFlag(words, index)
 	}
@@ -209,8 +212,8 @@ func (workspace *LocalWorkspace) validateGrepPaths(inputs []string) ([]string, [
 			if hasGlobMeta(plain) {
 				return nil, nil, grepCommandError(
 					"path_glob",
-					fmt.Sprintf("path glob %q is not expanded after --; use -g/--glob to filter files", input),
-					fmt.Sprintf("-- 之后不会展开路径 glob %q；请使用 -g/--glob 过滤文件", input),
+					fmt.Sprintf("path glob %q is not expanded; use -g/--glob to filter files", input),
+					fmt.Sprintf("路径 glob %q 不会被展开；请使用 -g/--glob 过滤文件", input),
 				)
 			}
 			if !errors.Is(err, fs.ErrNotExist) {

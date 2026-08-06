@@ -3,6 +3,7 @@ package tools
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"os"
 	"os/exec"
@@ -94,6 +95,105 @@ func TestReadRoutesLocalTextAndDirectoryWithAdapterSpecificArguments(t *testing.
 	}
 	if _, err := definition.Tool.Run(context.Background(), `{"path":"chapters/one.md","mystery":true}`); err != nil {
 		t.Fatalf("read rejected harmless unknown parameter: %v", err)
+	}
+}
+
+func TestReadReportsMissingResourcesAsSuccessfulObservations(t *testing.T) {
+	root := t.TempDir()
+	workspace := mustOpenTestWorkspace(t, root)
+	textAdapter, err := LocalTextAdapter(workspace)
+	if err != nil {
+		t.Fatal(err)
+	}
+	directoryAdapter, err := DirectoryAdapter(workspace)
+	if err != nil {
+		t.Fatal(err)
+	}
+	definition, err := Read([]ReadAdapter{textAdapter, directoryAdapter})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	_, _, expectedErr := workspace.stat("missing.md", false)
+	if expectedErr == nil {
+		t.Fatal("missing workspace path unexpectedly exists")
+	}
+	result, err := definition.Tool.Run(context.Background(), `{"path":"missing.md"}`)
+	if err != nil {
+		t.Fatalf("missing read returned a tool error: %v", err)
+	}
+	if result.Status != agent.ToolResultSuccess || result.IsError() {
+		t.Fatalf("missing read status = %q", result.Status)
+	}
+	var envelope readEnvelope
+	if err := json.Unmarshal(result.Details, &envelope); err != nil {
+		t.Fatal(err)
+	}
+	if envelope.Status != "not_found" || envelope.Source.Path != "missing.md" || envelope.Source.Kind != "unresolved" {
+		t.Fatalf("missing read envelope = %#v", envelope)
+	}
+	if !strings.Contains(result.ModelContent, expectedErr.Error()) {
+		t.Fatalf("missing read did not preserve the filesystem diagnostic: %q", result.ModelContent)
+	}
+}
+
+func TestReadReportsAdapterNotFoundWithoutMaskingOtherFailures(t *testing.T) {
+	type referenceInput struct {
+		Path string `json:"path"`
+	}
+	missingErr := fmt.Errorf("read missing reference: %w", os.ErrNotExist)
+	missingAdapter, err := NewReadAdapter(
+		"reference",
+		func(context.Context, string) (bool, error) { return true, nil },
+		func(context.Context, referenceInput) (ReadResult, error) { return ReadResult{}, missingErr },
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	definition, err := Read([]ReadAdapter{missingAdapter})
+	if err != nil {
+		t.Fatal(err)
+	}
+	result, err := definition.Tool.Run(context.Background(), `{"path":"reference://missing"}`)
+	if err != nil {
+		t.Fatalf("adapter absence returned a tool error: %v", err)
+	}
+	if result.Status != agent.ToolResultSuccess || !strings.Contains(result.ModelContent, missingErr.Error()) ||
+		!strings.Contains(result.ModelContent, `"status":"not_found"`) {
+		t.Fatalf("adapter absence result = %#v", result)
+	}
+	boundedDefinition, err := Read([]ReadAdapter{missingAdapter}, WithMaxResultBytes(16))
+	if err != nil {
+		t.Fatal(err)
+	}
+	bounded, err := boundedDefinition.Tool.Run(context.Background(), `{"path":"reference://missing"}`)
+	if err != nil || bounded.Status != agent.ToolResultSuccess || len(bounded.ModelContent) > 16 {
+		t.Fatalf("bounded adapter absence result = %#v, err=%v", bounded, err)
+	}
+
+	permissionErr := errors.New("permission denied")
+	brokenAdapter, err := NewReadAdapter(
+		"broken",
+		func(context.Context, string) (bool, error) { return false, permissionErr },
+		func(context.Context, referenceInput) (ReadResult, error) { return ReadResult{}, nil },
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	missingMatcher, err := NewReadAdapter(
+		"missing",
+		func(context.Context, string) (bool, error) { return false, os.ErrNotExist },
+		func(context.Context, referenceInput) (ReadResult, error) { return ReadResult{}, nil },
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	definition, err = Read([]ReadAdapter{missingMatcher, brokenAdapter})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := definition.Tool.Run(context.Background(), `{"path":"reference://blocked"}`); !errors.Is(err, permissionErr) {
+		t.Fatalf("missing matcher masked inspection failure: %v", err)
 	}
 }
 
@@ -420,6 +520,15 @@ func TestLocalWorkspaceGlobAndGrep(t *testing.T) {
 	files, err := unpaged.Grep(context.Background(), GrepRequest{Command: "rg -l dragon"})
 	if err != nil || strings.Join(files.Entries, ",") != "chapters/one.md,chapters/two.md" {
 		t.Fatalf("grep files mode = %#v, %v", files, err)
+	}
+	scoped, err := unpaged.Grep(context.Background(), GrepRequest{Command: "rg dragon chapters"})
+	// Like native rg, an explicit path overrides ignore rules within that path.
+	if err != nil || len(scoped.Entries) != 3 {
+		t.Fatalf("grep native positional path = %#v, %v", scoped, err)
+	}
+	leadingDash, err := unpaged.Grep(context.Background(), GrepRequest{Command: "rg -- '-dragon' chapters"})
+	if err != nil || len(leadingDash.Entries) != 1 || !strings.Contains(leadingDash.Entries[0], "-dragon") {
+		t.Fatalf("grep delimiter pattern = %#v, %v", leadingDash, err)
 	}
 	counts, err := unpaged.Grep(context.Background(), GrepRequest{Command: "rg --count-matches dragon"})
 	if err != nil || strings.Join(counts.Entries, ",") != "chapters/one.md:1,chapters/two.md:1" {

@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io/fs"
 	"sort"
 	"strings"
 	"unicode/utf8"
@@ -188,10 +189,15 @@ func (tool *readTool) Run(ctx context.Context, arguments string, _ ...agent.Tool
 	}
 	var matched ReadAdapter
 	var matchErr error
+	var notFoundErr error
 	for _, adapter := range tool.adapters {
 		owns, err := adapter.Match(ctx, resourcePath)
 		if err != nil {
-			if matchErr == nil {
+			if errors.Is(err, fs.ErrNotExist) {
+				if notFoundErr == nil {
+					notFoundErr = err
+				}
+			} else if matchErr == nil {
 				matchErr = err
 			}
 			continue
@@ -208,10 +214,16 @@ func (tool *readTool) Run(ctx context.Context, arguments string, _ ...agent.Tool
 		if matchErr != nil {
 			return agent.ToolResult{}, matchErr
 		}
+		if notFoundErr != nil {
+			return projectReadNotFound(resourcePath, "unresolved", notFoundErr, tool.maxResultBytes), nil
+		}
 		return agent.ToolResult{}, fmt.Errorf("no read adapter accepts path %q", resourcePath)
 	}
 	result, err := matched.Read(ctx, arguments)
 	if err != nil {
+		if errors.Is(err, fs.ErrNotExist) {
+			return projectReadNotFound(resourcePath, matched.Name(), err, tool.maxResultBytes), nil
+		}
 		return agent.ToolResult{}, err
 	}
 	if strings.TrimSpace(result.Path) == "" {
@@ -221,6 +233,39 @@ func (tool *readTool) Run(ctx context.Context, arguments string, _ ...agent.Tool
 		result.Kind = matched.Name()
 	}
 	return projectReadResult(result, tool.maxResultBytes)
+}
+
+// projectReadNotFound keeps resource absence as a successful observation from
+// the read operation. Agents need the original filesystem diagnostic to reason
+// about optional or not-yet-created paths, while actual inspection failures
+// such as permission errors must still use the tool error channel.
+func projectReadNotFound(resourcePath, kind string, cause error, maxResultBytes int) agent.ToolResult {
+	diagnostic := strings.ToValidUTF8(cause.Error(), "\uFFFD")
+	metadata := readEnvelope{
+		Schema: "resource.read.v1", Status: "not_found",
+		Source: readSource{Kind: kind, Path: resourcePath},
+		Limits: readLimits{Truncated: false},
+	}
+	modelContent := diagnostic
+	var details json.RawMessage
+	encoded, err := json.Marshal(metadata)
+	if err == nil {
+		details = encoded
+		candidate := string(encoded) + "\n" + diagnostic
+		if maxResultBytes <= 0 || len(candidate) <= maxResultBytes {
+			modelContent = candidate
+		}
+		if maxResultBytes > 0 && len(details) > maxResultBytes {
+			details = nil
+		}
+	}
+	if maxResultBytes > 0 && len(modelContent) > maxResultBytes {
+		modelContent = truncateUTF8(modelContent, maxResultBytes)
+	}
+	return agent.ToolResult{
+		ModelContent: modelContent, DisplayContent: modelContent, Details: details,
+		Status: agent.ToolResultSuccess,
+	}
 }
 
 func projectReadResult(result ReadResult, maxResultBytes int) (agent.ToolResult, error) {

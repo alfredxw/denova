@@ -8,7 +8,7 @@ import (
 
 // grepCommandPolicyVersion invalidates cursors whenever parsing, safety, or
 // canonical output semantics change.
-const grepCommandPolicyVersion = 2
+const grepCommandPolicyVersion = 3
 
 type grepOutputMode uint8
 
@@ -39,13 +39,12 @@ type grepFlagSpec struct {
 }
 
 type compiledGrepCommand struct {
-	args        []string
-	paths       []string
-	warnings    []string
-	mode        grepOutputMode
-	modeFlag    string
-	hasRegexp   bool
-	barePattern bool
+	args      []string
+	paths     []string
+	warnings  []string
+	mode      grepOutputMode
+	modeFlag  string
+	hasRegexp bool
 
 	contextBefore int
 	contextAfter  int

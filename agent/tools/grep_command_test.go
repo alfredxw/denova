@@ -11,7 +11,7 @@ import (
 
 func TestCompileGrepCommandSupportsNativeSearchSyntax(t *testing.T) {
 	root := t.TempDir()
-	for _, directory := range []string{"agent", "internal", "docs/Guide With Spaces"} {
+	for _, directory := range []string{"agent", "internal", "docs/Guide With Spaces", "chapters/v00008-卷八-天下篇"} {
 		if err := os.MkdirAll(filepath.Join(root, filepath.FromSlash(directory)), 0o755); err != nil {
 			t.Fatal(err)
 		}
@@ -36,6 +36,10 @@ func TestCompileGrepCommandSupportsNativeSearchSyntax(t *testing.T) {
 	if args[len(args)-2] != "agent" || args[len(args)-1] != "internal" {
 		t.Fatalf("compiled grep targets are not normalized: %v", args)
 	}
+	nativePaths, err := workspace.compileGrepCommand(`rg -n "封侯|男爵|灵州城主" chapters/v00008-卷八-天下篇`)
+	if err != nil || len(nativePaths.paths) != 1 || nativePaths.paths[0] != "chapters/v00008-卷八-天下篇" {
+		t.Fatalf("native positional grep paths = %#v, %v", nativePaths, err)
+	}
 
 	spaced, err := workspace.compileGrepCommand(`rg -F -e '-draft' -- 'docs/Guide With Spaces'`)
 	if err != nil || len(spaced.paths) != 1 || spaced.paths[0] != "docs/Guide With Spaces" || !spaced.hasRegexp {
@@ -44,6 +48,10 @@ func TestCompileGrepCommandSupportsNativeSearchSyntax(t *testing.T) {
 	files, err := workspace.compileGrepCommand(`rg -l -e TODO -e FIXME -- agent`)
 	if err != nil || files.mode != grepOutputFiles {
 		t.Fatalf("files grep command = %#v, %v", files, err)
+	}
+	nativeRegexpPaths, err := workspace.compileGrepCommand(`rg -l -e TODO -e FIXME agent internal`)
+	if err != nil || nativeRegexpPaths.mode != grepOutputFiles || strings.Join(nativeRegexpPaths.paths, ",") != "agent,internal" {
+		t.Fatalf("native regexp grep paths = %#v, %v", nativeRegexpPaths, err)
 	}
 	count, err := workspace.compileGrepCommand(`rg --count-matches dragon -- agent`)
 	if err != nil || count.mode != grepOutputCount {
@@ -84,7 +92,7 @@ func TestCompileGrepCommandRejectsShellAuthorityAndUnsafeRipgrepFlags(t *testing
 		{name: "raw json", command: `rg --json TODO`, code: "unsafe_flag"},
 		{name: "passthru", command: `rg --passthru TODO`, code: "unsafe_flag"},
 		{name: "unknown flag", command: `rg --future-flag TODO`, code: "unsupported_flag"},
-		{name: "path before separator", command: `rg TODO agent`, code: "ambiguous_path"},
+		{name: "missing native path", command: `rg TODO agent`, code: "path_not_found"},
 		{name: "parent path", command: `rg TODO -- ../outside`, code: "unsafe_path"},
 		{name: "absolute path", command: `rg TODO -- /tmp`, code: "unsafe_path"},
 		{name: "windows path", command: `rg TODO -- 'C:\\outside'`, code: "unsafe_path"},

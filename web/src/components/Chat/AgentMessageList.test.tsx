@@ -713,6 +713,69 @@ describe('Agent MessageList', () => {
     expect(screen.getByText('submit_actor_state_patches')).toBeInTheDocument()
   })
 
+  it('流式运行保留每段进展并在完成后统一折叠为执行过程', async () => {
+    const progressMessages = [
+      { id: 'reason-1', role: 'assistant', metadata: { run_id: 'run-progress' }, parts: [{ type: 'reasoning', text: '思考1' }] },
+      { id: 'tool-1', role: 'assistant', metadata: { run_id: 'run-progress' }, parts: [{ type: 'dynamic-tool', toolName: 'read', toolCallId: 'tool-1', state: 'output-available', input: {}, output: 'ok' }] },
+      { id: 'tool-2', role: 'assistant', metadata: { run_id: 'run-progress' }, parts: [{ type: 'dynamic-tool', toolName: 'bash', toolCallId: 'tool-2', state: 'output-available', input: {}, output: 'ok' }] },
+      { id: 'progress-1', role: 'assistant', metadata: { run_id: 'run-progress', display_phase: 'candidate' }, parts: [{ type: 'text', id: 'progress-1', text: '进展一' }] },
+      { id: 'reason-2', role: 'assistant', metadata: { run_id: 'run-progress' }, parts: [{ type: 'reasoning', text: '思考2' }] },
+      { id: 'tool-3', role: 'assistant', metadata: { run_id: 'run-progress' }, parts: [{ type: 'dynamic-tool', toolName: 'read', toolCallId: 'tool-3', state: 'output-available', input: {}, output: 'ok' }] },
+      { id: 'tool-4', role: 'assistant', metadata: { run_id: 'run-progress' }, parts: [{ type: 'dynamic-tool', toolName: 'bash', toolCallId: 'tool-4', state: 'output-available', input: {}, output: 'ok' }] },
+      { id: 'progress-2', role: 'assistant', metadata: { run_id: 'run-progress', display_phase: 'candidate' }, parts: [{ type: 'text', id: 'progress-2', text: '进展二' }] },
+      { id: 'reason-3', role: 'assistant', metadata: { run_id: 'run-progress' }, parts: [{ type: 'reasoning', text: '思考3' }] },
+      { id: 'tool-5', role: 'assistant', metadata: { run_id: 'run-progress' }, parts: [{ type: 'dynamic-tool', toolName: 'read', toolCallId: 'tool-5', state: 'output-available', input: {}, output: 'ok' }] },
+      { id: 'tool-6', role: 'assistant', metadata: { run_id: 'run-progress' }, parts: [{ type: 'dynamic-tool', toolName: 'bash', toolCallId: 'tool-6', state: 'output-available', input: {}, output: 'ok' }] },
+      { id: 'progress-3', role: 'assistant', metadata: { run_id: 'run-progress', display_phase: 'candidate' }, parts: [{ type: 'text', id: 'progress-3', text: '进展三' }] },
+    ] as AgentUIMessage[]
+    const renderProgress = (messages: AgentUIMessage[], isStreaming: boolean) => (
+      <VirtuosoMockContext.Provider value={{ viewportHeight: 180, itemHeight: 52 }}>
+        <MessageList
+          isStreaming={isStreaming}
+          activityContent=""
+          collapseTraceGroups
+          activeTraceDisplay="expanded"
+          messages={messages}
+        />
+      </VirtuosoMockContext.Provider>
+    )
+    const { container, rerender } = render(renderProgress([
+      { id: 'reason-1', role: 'assistant', metadata: { run_id: 'run-progress' }, parts: [{ type: 'reasoning', text: '思考1', state: 'streaming' }] },
+    ] as AgentUIMessage[], true))
+
+    expect(screen.getByText('思考1')).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: /^正在执行$/ })).toHaveAttribute('aria-expanded', 'true')
+
+    rerender(renderProgress([
+      ...progressMessages,
+      { id: 'reason-4', role: 'assistant', metadata: { run_id: 'run-progress' }, parts: [{ type: 'reasoning', text: '当前流式思考', state: 'streaming' }] },
+    ] as AgentUIMessage[], true))
+
+    expect(screen.getByText('进展一')).toBeInTheDocument()
+    expect(screen.getByText('进展二')).toBeInTheDocument()
+    expect(screen.getByText('进展三')).toBeInTheDocument()
+    expect(screen.getByText('当前流式思考')).toBeInTheDocument()
+    expect(screen.getAllByRole('button', { name: /^执行过程 · 2 次工具调用$/ })).toHaveLength(3)
+    expect(screen.getByRole('button', { name: /^正在执行$/ })).toHaveAttribute('aria-expanded', 'true')
+    expect(container.querySelectorAll('[data-agent-execution-process]')).toHaveLength(4)
+    await waitFor(() => expect(screen.queryByText('思考1')).not.toBeInTheDocument())
+
+    rerender(renderProgress([
+      ...progressMessages.map(message => message.metadata?.display_phase === 'candidate'
+        ? { ...message, metadata: { ...message.metadata, display_phase: 'progress' as const } }
+        : message),
+      { id: 'reason-4', role: 'assistant', metadata: { run_id: 'run-progress' }, parts: [{ type: 'reasoning', text: '最后确认' }] },
+      { id: 'final', role: 'assistant', metadata: { run_id: 'run-progress', display_phase: 'final' }, parts: [{ type: 'text', id: 'final', text: '最终结论' }] },
+    ] as AgentUIMessage[], false))
+
+    await waitFor(() => expect(screen.queryByText('进展一')).not.toBeInTheDocument())
+    expect(screen.queryByText('进展二')).not.toBeInTheDocument()
+    expect(screen.queryByText('进展三')).not.toBeInTheDocument()
+    expect(screen.getByText('最终结论')).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: /^执行过程 · 3 段进展 · 6 次工具调用$/ })).toHaveAttribute('aria-expanded', 'false')
+    expect(container.querySelectorAll('[data-agent-execution-process]')).toHaveLength(1)
+  })
+
   it('把同一次运行的中间正文、思考和工具统一折叠，只保留最终正文', () => {
     renderMessageList(
       <MessageList
@@ -742,7 +805,7 @@ describe('Agent MessageList', () => {
     expect(screen.getByText('核对修复结果。')).toBeInTheDocument()
   })
 
-  it('按原始时序保留同一次运行中结果正文前后的执行过程', () => {
+  it('运行完成后将结果正文前后的执行过程统一折叠', () => {
     renderMessageList(
       <MessageList
         isStreaming={false}
@@ -759,11 +822,14 @@ describe('Agent MessageList', () => {
 
     const narrative = screen.getByText('门后传来锁链拖地的声音。')
     const processButtons = screen.getAllByRole('button', { name: /执行过程/ })
-    expect(processButtons).toHaveLength(2)
+    expect(processButtons).toHaveLength(1)
     expect(processButtons[0].compareDocumentPosition(narrative) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
-    expect(narrative.compareDocumentPosition(processButtons[1]) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
     expect(screen.queryByText('正文前思考。')).not.toBeInTheDocument()
     expect(screen.queryByText('正文后核对状态。')).not.toBeInTheDocument()
+
+    fireEvent.click(processButtons[0])
+    expect(screen.getByText('正文前思考。')).toBeInTheDocument()
+    expect(screen.getByText('正文后核对状态。')).toBeInTheDocument()
   })
 
   it('流式结果被持久化历史替换时保持 Run 与结果正文稳定挂载', async () => {
@@ -814,7 +880,7 @@ describe('Agent MessageList', () => {
     const persistedNarrative = await screen.findByText('雨幕中的城门缓缓打开。')
     expect(persistedNarrative.closest('[data-nova-chat-item="run"]')).toBe(liveRow)
     expect(persistedNarrative).toBe(liveNarrative)
-    expect(screen.getAllByRole('button', { name: /执行过程/ })).toHaveLength(2)
+    expect(screen.getAllByRole('button', { name: /执行过程/ })).toHaveLength(1)
   })
 
   it('旧历史没有正文阶段时仍把同一运行的最后一段正文作为结果', () => {
