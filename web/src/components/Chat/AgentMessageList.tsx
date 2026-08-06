@@ -279,10 +279,10 @@ export function MessageList({ projectId, messages, isStreaming, visible = true, 
         onResolveAsk={onResolveAsk}
         onInteractiveCardLayoutChange={anchorLatestInteractiveCardBottom}
         streamingRowRef={isStreaming ? scrollLock.streamingRowRef : undefined}
-        syncStreamingRowHeight={isStreaming ? scrollLock.syncStreamingRowHeight : undefined}
+        syncStreamingTailLayout={isStreaming ? scrollLock.syncStreamingTailLayout : undefined}
       />
     )
-  }, [activeSubAgentSessionKey, activeTraceDisplay, anchorLatestInteractiveCardBottom, canMutateMessage, firstItemIndex, generatingInteractiveImageTurnId, highlightDialogue, isStreaming, listItems, messageStyle, onApprovePlan, onContinuePlan, onCreateBranch, onEditAssistantReply, onEditMessage, onExitPlanMode, onGenerateInteractiveImage, onInsertIllustration, onOpenSubAgentSession, onOpenTrace, onRegenerateMessage, onResolveAsk, onSwitchMessageVersion, projectId, scrollLock.streamingRowRef, scrollLock.syncStreamingRowHeight])
+  }, [activeSubAgentSessionKey, activeTraceDisplay, anchorLatestInteractiveCardBottom, canMutateMessage, firstItemIndex, generatingInteractiveImageTurnId, highlightDialogue, isStreaming, listItems, messageStyle, onApprovePlan, onContinuePlan, onCreateBranch, onEditAssistantReply, onEditMessage, onExitPlanMode, onGenerateInteractiveImage, onInsertIllustration, onOpenSubAgentSession, onOpenTrace, onRegenerateMessage, onResolveAsk, onSwitchMessageVersion, projectId, scrollLock.streamingRowRef, scrollLock.syncStreamingTailLayout])
 
   return (
     <div ref={containerRef} className="relative flex min-h-0 flex-1 flex-col">
@@ -391,7 +391,7 @@ function MessageListFooter({ context }: ContextProp<MessageListVirtuosoContext>)
   )
 }
 
-function AgentChatListRow({ projectId, item, isLast, isStreaming, activeTraceDisplay, highlightDialogue, messageStyle, canMutateMessage, onEditMessage, onEditAssistantReply, onCreateBranch, onRegenerateMessage, onSwitchMessageVersion, onOpenSubAgentSession, onInsertIllustration, onGenerateInteractiveImage, generatingInteractiveImageTurnId, activeSubAgentSessionKey, onApprovePlan, onContinuePlan, onExitPlanMode, onOpenTrace, onResolveAsk, onInteractiveCardLayoutChange, streamingRowRef, syncStreamingRowHeight }: {
+function AgentChatListRow({ projectId, item, isLast, isStreaming, activeTraceDisplay, highlightDialogue, messageStyle, canMutateMessage, onEditMessage, onEditAssistantReply, onCreateBranch, onRegenerateMessage, onSwitchMessageVersion, onOpenSubAgentSession, onInsertIllustration, onGenerateInteractiveImage, generatingInteractiveImageTurnId, activeSubAgentSessionKey, onApprovePlan, onContinuePlan, onExitPlanMode, onOpenTrace, onResolveAsk, onInteractiveCardLayoutChange, streamingRowRef, syncStreamingTailLayout }: {
   projectId?: string
   item: AgentChatListItem
   isLast: boolean
@@ -417,7 +417,7 @@ function AgentChatListRow({ projectId, item, isLast, isStreaming, activeTraceDis
   onResolveAsk?: (view: AgentMessageView, action: { status: 'answered'; answers: AgentAskAnswer[] } | { status: 'cancelled' }) => Promise<AgentAskResolution>
   onInteractiveCardLayoutChange?: (element?: HTMLElement) => void
   streamingRowRef?: RefCallback<HTMLDivElement>
-  syncStreamingRowHeight?: () => void
+  syncStreamingTailLayout?: () => void
 }) {
   const { t } = useTranslation()
   const turnAnchor = chatListItemNavigationAnchor(item)
@@ -468,9 +468,10 @@ function AgentChatListRow({ projectId, item, isLast, isStreaming, activeTraceDis
     />
   ) : null
   useLayoutEffect(() => {
-    if (isLast && isStreaming) syncStreamingRowHeight?.()
-  }, [isLast, isStreaming, item, syncStreamingRowHeight])
+    if (isLast && isStreaming) syncStreamingTailLayout?.()
+  }, [isLast, isStreaming, item, syncStreamingTailLayout])
 
+  // A translated active tail would visibly move after its bottom anchor is captured.
   return (
     <motion.div
       ref={isLast ? streamingRowRef : undefined}
@@ -479,7 +480,7 @@ function AgentChatListRow({ projectId, item, isLast, isStreaming, activeTraceDis
       data-nova-chat-turn-anchor={turnAnchor}
       className={`min-w-0 px-6 ${isLast ? 'pb-0' : 'pb-4'}`}
       variants={listItem}
-      initial="initial"
+      initial={isLast && isStreaming ? false : 'initial'}
       animate="animate"
       transition={{ duration: 0.18, ease: novaEase }}
     >

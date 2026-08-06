@@ -72,7 +72,11 @@ describe('Agent MessageList', () => {
     const originalRect = HTMLElement.prototype.getBoundingClientRect
     const rectSpy = vi.spyOn(HTMLElement.prototype, 'getBoundingClientRect').mockImplementation(function getBoundingClientRect(this: HTMLElement) {
       if (this.hasAttribute('data-nova-chat-row-key')) {
-        return { height: rowHeight } as DOMRect
+        const scroller = this.closest<HTMLElement>('.nova-chat-canvas')
+        return {
+          bottom: 60 + rowHeight - ((scroller?.scrollTop || 0) - 400),
+          height: rowHeight,
+        } as DOMRect
       }
       return originalRect.call(this)
     })
@@ -105,6 +109,59 @@ describe('Agent MessageList', () => {
       rerender(renderList('第一行\n第二行'))
 
       expect(scroller.scrollTop).toBe(430)
+    } finally {
+      rectSpy.mockRestore()
+    }
+  })
+
+  it('keeps the bottom fixed when the activity placeholder becomes multiline thinking', () => {
+    let rowHeight = 28
+    let rowExtent = 500
+    let scrollHeight = 500
+    const originalRect = HTMLElement.prototype.getBoundingClientRect
+    const rectSpy = vi.spyOn(HTMLElement.prototype, 'getBoundingClientRect').mockImplementation(function getBoundingClientRect(this: HTMLElement) {
+      if (this.classList.contains('nova-chat-canvas')) return { top: 0 } as DOMRect
+      if (this.hasAttribute('data-nova-chat-row-key')) {
+        const scroller = this.closest<HTMLElement>('.nova-chat-canvas')
+        return { bottom: rowExtent - (scroller?.scrollTop || 0), height: rowHeight } as DOMRect
+      }
+      return originalRect.call(this)
+    })
+    const renderList = (messages: AgentUIMessage[]) => (
+      <VirtuosoMockContext.Provider value={{ viewportHeight: 180, itemHeight: 52 }}>
+        <MessageList
+          isStreaming
+          activityContent="正在思考…"
+          collapseTraceGroups
+          messages={messages}
+        />
+      </VirtuosoMockContext.Provider>
+    )
+
+    try {
+      const { container, rerender } = render(renderList([]))
+      const scroller = container.querySelector<HTMLElement>('.nova-chat-canvas')
+      if (!scroller) throw new Error('Expected message scroller')
+      Object.defineProperty(scroller, 'scrollHeight', { configurable: true, get: () => scrollHeight })
+      Object.defineProperty(scroller, 'clientHeight', { configurable: true, value: 100 })
+      scroller.scrollTop = 400
+      fireEvent.scroll(scroller)
+
+      rowHeight = 98
+      rowExtent = 570
+      scrollHeight = 570
+      rerender(renderList([{
+        id: 'streaming-thinking',
+        role: 'assistant',
+        metadata: { run_id: 'run-thinking' },
+        parts: [{
+          type: 'reasoning',
+          text: '第一行思考\n第二行思考\n第三行思考',
+          state: 'streaming',
+        }],
+      }] as AgentUIMessage[]))
+
+      expect(scroller.scrollTop).toBe(470)
     } finally {
       rectSpy.mockRestore()
     }

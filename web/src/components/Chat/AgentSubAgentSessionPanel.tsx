@@ -51,13 +51,13 @@ export function AgentSubAgentSessionPanel({ projectId, messages, sessionKey, onC
         view={resolvedView}
         streamingTail={running && index === sessionViews.length - 1}
         streamingRowRef={scrollLock.streamingRowRef}
-        syncStreamingRowHeight={scrollLock.syncStreamingRowHeight}
+        syncStreamingTailLayout={scrollLock.syncStreamingTailLayout}
         highlightDialogue={highlightDialogue}
         messageStyle={messageStyle}
         onResolveAsk={onResolveAsk}
       />
     )
-  }, [highlightDialogue, messageStyle, onResolveAsk, projectId, running, scrollLock.streamingRowRef, scrollLock.syncStreamingRowHeight, sessionViews])
+  }, [highlightDialogue, messageStyle, onResolveAsk, projectId, running, scrollLock.streamingRowRef, scrollLock.syncStreamingTailLayout, sessionViews])
 
   return (
     <section className="flex h-full min-h-0 flex-col border-l border-[var(--nova-border)] bg-[var(--nova-surface-2)] shadow-[-12px_0_26px_-24px_rgba(0,0,0,0.72)]">
@@ -118,19 +118,19 @@ export function AgentSubAgentSessionPanel({ projectId, messages, sessionKey, onC
   )
 }
 
-function SubAgentSessionRow({ projectId, view, streamingTail, streamingRowRef, syncStreamingRowHeight, highlightDialogue, messageStyle, onResolveAsk }: {
+function SubAgentSessionRow({ projectId, view, streamingTail, streamingRowRef, syncStreamingTailLayout, highlightDialogue, messageStyle, onResolveAsk }: {
   projectId?: string
   view: AgentMessageView
   streamingTail: boolean
   streamingRowRef: RefCallback<HTMLElement>
-  syncStreamingRowHeight: () => void
+  syncStreamingTailLayout: () => void
   highlightDialogue: boolean
   messageStyle?: CSSProperties
   onResolveAsk?: AgentSubAgentSessionPanelProps['onResolveAsk']
 }) {
   useLayoutEffect(() => {
-    if (streamingTail) syncStreamingRowHeight()
-  }, [streamingTail, syncStreamingRowHeight, view])
+    if (streamingTail) syncStreamingTailLayout()
+  }, [streamingTail, syncStreamingTailLayout, view])
 
   return (
     <div

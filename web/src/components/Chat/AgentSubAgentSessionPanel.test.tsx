@@ -71,7 +71,11 @@ describe('AgentSubAgentSessionPanel', () => {
     const originalRect = HTMLElement.prototype.getBoundingClientRect
     const rectSpy = vi.spyOn(HTMLElement.prototype, 'getBoundingClientRect').mockImplementation(function getBoundingClientRect(this: HTMLElement) {
       if (this.getAttribute('data-nova-chat-item') === 'subagent-message') {
-        return { height: rowHeight } as DOMRect
+        const scroller = this.closest<HTMLElement>('[data-virtuoso-scroller]')
+        return {
+          bottom: 60 + rowHeight - ((scroller?.scrollTop || 0) - 400),
+          height: rowHeight,
+        } as DOMRect
       }
       return originalRect.call(this)
     })

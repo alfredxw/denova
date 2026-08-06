@@ -178,7 +178,10 @@ describe('useVirtuosoBottomLock', () => {
     scroller.scrollTop = 400
     const streamingRow = document.createElement('div')
     let rowHeight = 40
-    streamingRow.getBoundingClientRect = () => ({ height: rowHeight }) as DOMRect
+    streamingRow.getBoundingClientRect = () => ({
+      bottom: 60 + rowHeight - (scroller.scrollTop - 400),
+      height: rowHeight,
+    }) as DOMRect
     const { result } = renderHook(() => useVirtuosoBottomLock({
       itemCount: 1,
       autoFollowEnabled: true,
@@ -190,7 +193,7 @@ describe('useVirtuosoBottomLock', () => {
 
     rowHeight = 70
     scrollHeight = 530
-    act(() => result.current.syncStreamingRowHeight())
+    act(() => result.current.syncStreamingTailLayout())
 
     expect(scroller.scrollTop).toBe(430)
 
@@ -210,7 +213,10 @@ describe('useVirtuosoBottomLock', () => {
     scroller.scrollTop = 400
     const streamingRow = document.createElement('div')
     let rowHeight = 40
-    streamingRow.getBoundingClientRect = () => ({ height: rowHeight }) as DOMRect
+    streamingRow.getBoundingClientRect = () => ({
+      bottom: 60 + rowHeight - (scroller.scrollTop - 400),
+      height: rowHeight,
+    }) as DOMRect
     const { result } = renderHook(() => useVirtuosoBottomLock({
       itemCount: 1,
       autoFollowEnabled: true,
@@ -223,10 +229,68 @@ describe('useVirtuosoBottomLock', () => {
     scrollHeight = 530
     act(() => {
       result.current.streamingRowRef(streamingRow)
-      result.current.syncStreamingRowHeight()
+      result.current.syncStreamingTailLayout()
     })
 
     expect(scroller.scrollTop).toBe(430)
+  })
+
+  it('preserves the bottom anchor when the streaming tail row is replaced', () => {
+    const scroller = document.createElement('div')
+    let scrollHeight = 500
+    Object.defineProperty(scroller, 'scrollHeight', { configurable: true, get: () => scrollHeight })
+    Object.defineProperty(scroller, 'clientHeight', { configurable: true, value: 100 })
+    scroller.getBoundingClientRect = () => ({ top: 0 }) as DOMRect
+    scroller.scrollTop = 400
+    const activityRow = document.createElement('div')
+    activityRow.getBoundingClientRect = () => ({ bottom: 100, height: 28 }) as DOMRect
+    const thinkingRow = document.createElement('div')
+    thinkingRow.getBoundingClientRect = () => ({ bottom: 170, height: 98 }) as DOMRect
+    const { result } = renderHook(() => useVirtuosoBottomLock({
+      itemCount: 1,
+      autoFollowEnabled: true,
+      resolveScroller: () => scroller,
+    }))
+
+    act(() => result.current.streamingRowRef(activityRow))
+    scrollHeight = 570
+    act(() => {
+      result.current.streamingRowRef(null)
+      result.current.streamingRowRef(thinkingRow)
+      result.current.syncStreamingTailLayout()
+    })
+
+    expect(scroller.scrollTop).toBe(470)
+  })
+
+  it('starts a fresh tail anchor when the message list reset key changes', () => {
+    const scroller = document.createElement('div')
+    Object.defineProperty(scroller, 'scrollHeight', { configurable: true, value: 800 })
+    Object.defineProperty(scroller, 'clientHeight', { configurable: true, value: 100 })
+    scroller.getBoundingClientRect = () => ({ top: 0 }) as DOMRect
+    scroller.scrollTop = 400
+    const firstSessionRow = document.createElement('div')
+    firstSessionRow.getBoundingClientRect = () => ({ bottom: 100 }) as DOMRect
+    const nextSessionRow = document.createElement('div')
+    nextSessionRow.getBoundingClientRect = () => ({ bottom: 300 }) as DOMRect
+    const { result, rerender } = renderHook(
+      ({ resetKey }) => useVirtuosoBottomLock({
+        resetKey,
+        itemCount: 1,
+        autoFollowEnabled: true,
+        resolveScroller: () => scroller,
+      }),
+      { initialProps: { resetKey: 'session-a' } },
+    )
+
+    act(() => result.current.streamingRowRef(firstSessionRow))
+    rerender({ resetKey: 'session-b' })
+    act(() => {
+      result.current.streamingRowRef(nextSessionRow)
+      result.current.syncStreamingTailLayout()
+    })
+
+    expect(scroller.scrollTop).toBe(400)
   })
 
   it('keeps imperative navigation relative to the current data', () => {
