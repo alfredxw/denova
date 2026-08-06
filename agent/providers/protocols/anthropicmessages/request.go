@@ -55,7 +55,7 @@ func (model *ChatModel) request(input []*agent.Message, opts ...agent.ModelOptio
 	if err := applyOutputFormat(&params, model.config.OutputFormat); err != nil {
 		return anthropic.MessageNewParams{}, nil, err
 	}
-	return params, requestOptions(model.compatibility.ExtraBody), nil
+	return params, requestOptions(model.compatibility.ExtraBody, model.config.SessionKeyMapping, common.SessionKey), nil
 }
 
 func requestMessages(input []*agent.Message, config providers.ModelConfig) ([]anthropic.TextBlockParam, []anthropic.MessageParam, error) {
@@ -245,7 +245,7 @@ func applyOutputFormat(params *anthropic.MessageNewParams, format *providers.Out
 	return nil
 }
 
-func requestOptions(extraBody map[string]any) []option.RequestOption {
+func requestOptions(extraBody map[string]any, mapping *providers.SessionKeyMapping, sessionKey string) []option.RequestOption {
 	keys := make([]string, 0, len(extraBody))
 	for key := range extraBody {
 		keys = append(keys, key)
@@ -254,6 +254,14 @@ func requestOptions(extraBody map[string]any) []option.RequestOption {
 	result := make([]option.RequestOption, 0, len(keys))
 	for _, key := range keys {
 		result = append(result, option.WithJSONSet(escapeJSONPathKey(key), extraBody[key]))
+	}
+	if mapping != nil && sessionKey != "" {
+		switch mapping.Location {
+		case providers.SessionKeyLocationHeader:
+			result = append(result, option.WithHeader(mapping.Name, sessionKey))
+		case providers.SessionKeyLocationBody:
+			result = append(result, option.WithJSONSet(escapeJSONPathKey(mapping.Name), sessionKey))
+		}
 	}
 	return result
 }

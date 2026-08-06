@@ -55,12 +55,15 @@ func buildCleanupPlan(messages []*agent.Message, groups []*toolInteractionGroup,
 	sort.SliceStable(groups, func(i, j int) bool {
 		// Remove semantically obsolete transfer data before ordinary evidence.
 		// The cache mutation gate still rejects an old candidate when changing its
-		// suffix would be too expensive; within one semantic tier, prefer the
-		// newest result to preserve the longest possible stable prefix.
+		// suffix would be too expensive; within one semantic tier, reclaim the
+		// largest result first and use recency only as the tie-breaker.
 		leftPriority := cleanupSemanticPriority(groups[i])
 		rightPriority := cleanupSemanticPriority(groups[j])
 		if leftPriority != rightPriority {
 			return leftPriority < rightPriority
+		}
+		if groups[i].reclaimed != groups[j].reclaimed {
+			return groups[i].reclaimed > groups[j].reclaimed
 		}
 		return groups[i].start > groups[j].start
 	})

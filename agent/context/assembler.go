@@ -16,16 +16,17 @@ const (
 	// lower or raise them, but an unset budget must not silently squeeze ordinary
 	// context into a small implicit limit.
 	DefaultMaxFragmentBytes      = 256 * 1024
-	DefaultMaxTotalBytes         = 1024 * 1024
+	DefaultMaxTotalBytes         = 4 * 1024 * 1024
 	DefaultMaxFragments          = 256
 	DefaultMaxMetadataFieldBytes = 4 * 1024
 )
 
 // Budget is the hard context boundary enforced by Assembler. MaxFragmentBytes
-// limits each content body, while MaxTotalBytes counts every newly rendered
-// model-visible byte, including titles, wrappers, and separators. The existing
-// transcript is not charged to this injection budget. MaxMetadataFieldBytes is
-// applied independently to every caller-controlled metadata string.
+// limits each content body, while MaxTotalBytes rejects a set of fragments whose
+// complete rendered form is too large; it never chooses fragments to truncate by
+// arrival order. The existing transcript is not charged to this injection safety
+// ceiling. MaxMetadataFieldBytes is applied independently to every
+// caller-controlled metadata string.
 type Budget struct {
 	MaxFragmentBytes      int `json:"max_fragment_bytes"`
 	MaxTotalBytes         int `json:"max_total_bytes"`
@@ -177,12 +178,13 @@ func (a *Assembler) Assemble(ctx stdcontext.Context, req AssembleRequest) (Resul
 		}
 		var renderedBytes int
 		if resolved.Included && resolved.Placement != PlacementAuditOnly && resolved.Content != "" {
-			resolved, renderedBytes = fitFragmentToRenderedBudget(
-				resolved,
-				budget.MaxTotalBytes-injectedBytes,
-				renderer,
-				finalUser,
-			)
+			renderedBytes = renderedFragmentBytes(renderer, resolved, finalUser)
+			if renderedBytes > budget.MaxTotalBytes-injectedBytes {
+				return Result{}, fmt.Errorf(
+					"context injected bytes exceed limit: source=%s required=%d remaining=%d limit=%d",
+					resolved.Source, renderedBytes, max(0, budget.MaxTotalBytes-injectedBytes), budget.MaxTotalBytes,
+				)
+			}
 		}
 		resolved = boundFragmentMetadata(resolved, budget.MaxMetadataFieldBytes)
 		resolved.Hash = fragmentContentHash(resolved.Content)
@@ -225,76 +227,6 @@ func (a *Assembler) Assemble(ctx stdcontext.Context, req AssembleRequest) (Resul
 		Fragments:     fragments,
 		InjectedBytes: injectedBytes,
 	}, nil
-}
-
-func fitFragmentToRenderedBudget(fragment Fragment, remaining int, renderer Renderer, priorFinalUser []Fragment) (Fragment, int) {
-	if remaining <= 0 {
-		fragment.Content = ""
-		fragment.Included = false
-		fragment.Truncated = true
-		fragment.Note = appendFragmentNote(fragment.Note, "total_budget_exhausted")
-		fragment.Note = appendFragmentNote(fragment.Note, "empty_after_budget")
-		return fragment, 0
-	}
-
-	renderedBytes := renderedFragmentBytes(renderer, fragment, priorFinalUser)
-	if renderedBytes <= remaining {
-		return fragment, renderedBytes
-	}
-
-	content := fragment.Content
-	boundaries := make([]int, 0, utf8.RuneCountInString(content)+1)
-	boundaries = append(boundaries, 0)
-	for index := range content {
-		if index > 0 {
-			boundaries = append(boundaries, index)
-		}
-	}
-	boundaries = append(boundaries, len(content))
-	low, high := 0, len(boundaries)-1
-	best := -1
-	for low <= high {
-		middle := low + (high-low)/2
-		candidate := fragment
-		candidate.Content = strings.TrimSpace(content[:boundaries[middle]])
-		// Price the model-visible notice as part of every truncation candidate.
-		// Otherwise content can consume the bytes reserved for that notice.
-		candidate.Truncated = true
-		if candidate.Content == "" {
-			low = middle + 1
-			continue
-		}
-		if renderedFragmentBytes(renderer, candidate, priorFinalUser) <= remaining {
-			best = middle
-			low = middle + 1
-		} else {
-			high = middle - 1
-		}
-	}
-	if best < 0 {
-		fragment.Content = ""
-		fragment.Included = false
-		fragment.Truncated = true
-		fragment.Note = appendFragmentNote(fragment.Note, "total_budget_exhausted")
-		fragment.Note = appendFragmentNote(fragment.Note, "empty_after_budget")
-		return fragment, 0
-	}
-	fragment.Content = strings.TrimSpace(content[:boundaries[best]])
-	fragment.Truncated = true
-	fragment.Note = appendFragmentNote(fragment.Note, "total_budget_applied")
-	if fragment.Content == "" {
-		fragment.Included = false
-		fragment.Note = appendFragmentNote(fragment.Note, "empty_after_budget")
-		return fragment, 0
-	}
-	renderedBytes = renderedFragmentBytes(renderer, fragment, priorFinalUser)
-	if renderedBytes > remaining {
-		fragment.Content = ""
-		fragment.Included = false
-		fragment.Note = appendFragmentNote(fragment.Note, "empty_after_budget")
-		return fragment, 0
-	}
-	return fragment, renderedBytes
 }
 
 func renderedFragmentBytes(renderer Renderer, fragment Fragment, priorFinalUser []Fragment) int {

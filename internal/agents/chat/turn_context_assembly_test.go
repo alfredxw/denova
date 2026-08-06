@@ -177,7 +177,7 @@ func TestSessionConversationAssemblesTurnAndRuntimeFragmentsUnderOneBudget(t *te
 		t.Fatal(err)
 	}
 	maxFragmentBytes := 256
-	maxTotalBytes := 700
+	maxTotalBytes := 4096
 	cfg := &config.Config{AgentContexts: config.AgentContextSettings{IDE: config.AgentContextOverride{
 		MaxFragmentBytes:      &maxFragmentBytes,
 		MaxTotalInjectedBytes: &maxTotalBytes,

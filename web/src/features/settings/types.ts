@@ -119,9 +119,15 @@ export interface ModelProfileSettings {
   model?: string
   headers?: Record<string, string>
   protocol_options?: Record<string, unknown>
+  session_key_mapping?: ModelSessionKeyMapping
   temperature?: number | null
   context_window_tokens?: number | null
   max_output_tokens?: number | null
+}
+
+export interface ModelSessionKeyMapping {
+  location: 'none' | 'header' | 'body'
+  name?: string
 }
 
 export interface ModelEndpointPreset {

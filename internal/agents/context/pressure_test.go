@@ -51,14 +51,14 @@ func TestContextPressurePolicyMergesDurableProviderUsageConservatively(t *testin
 func TestContextPressureProtectsErrorsAndRecentGroups(t *testing.T) {
 	messages := pressureHistory(8, 7000, agent.ToolResultDeferred, agent.ToolResultContextNormal)
 	messages[3].ToolResult.Status = agent.ToolResultError
-	policy := pressureTestPolicy(80_000)
+	policy := pressureTestPolicy(120_000)
 	policy.ProviderCacheState = ProviderCacheCold
 	decision := PlanContextPressure(messages, nil, policy)
 	if decision.ProtectedResultCount == 0 {
 		t.Fatalf("error result was not protected: %#v", decision)
 	}
-	if decision.Action != ContextMaintenanceCompaction {
-		t.Fatalf("recent/error protection should prevent partial cleanup at hard pressure: %#v", decision)
+	if decision.Action != ContextMaintenanceCleanup {
+		t.Fatalf("normal pressure should clean only eligible older results: %#v", decision)
 	}
 	for _, replacement := range decision.Cleanup.Replacements {
 		if replacement.MessageIndex == 3 || replacement.MessageIndex >= len(messages)-11 {
@@ -445,6 +445,60 @@ func TestCleanupPlanPrefersSupersededResultBeforeNewerOrdinaryEvidence(t *testin
 	}
 	if got := plan.Replacements[0].ToolCallID; got != "old" {
 		t.Fatalf("first cleanup target = %q, want superseded old result", got)
+	}
+}
+
+func TestCleanupPlanPrefersLargestResultWithinSameSemanticTier(t *testing.T) {
+	largeCall := pressureCall("large", 0)
+	smallCall := pressureCall("small", 1)
+	largeResult := pressureToolResult("large", strings.Repeat("large ", 6000), agent.ToolResultDeferred, agent.ToolResultContextNormal)
+	smallResult := pressureToolResult("small", strings.Repeat("small ", 800), agent.ToolResultDeferred, agent.ToolResultContextNormal)
+	largeResult.ToolResult.ContextHints.SupersessionKey = "read:large"
+	smallResult.ToolResult.ContextHints.SupersessionKey = "read:small"
+	messages := []*agent.Message{
+		agent.UserMessage("large"), agent.AssistantMessage("", []agent.ToolCall{largeCall}), largeResult, agent.AssistantMessage("used large", nil),
+		agent.UserMessage("small"), agent.AssistantMessage("", []agent.ToolCall{smallCall}), smallResult, agent.AssistantMessage("used small", nil),
+		agent.UserMessage("current turn"),
+	}
+	policy := pressureTestPolicy(100_000)
+	policy.KeepRecentGroups = 0
+	policy.KeepRecentTokens = 0
+	policy.ProviderCacheState = ProviderCacheCold
+	groups, _ := collectToolInteractionGroups(messages, policy)
+	markSupersededGroups(messages, groups)
+	prepareCleanupReplacements(messages, groups)
+	plan, ok := buildCleanupPlan(messages, groups, 6000, 0, 6000, policy, false)
+	if !ok || len(plan.Replacements) == 0 {
+		t.Fatalf("cleanup plan missing: %#v", plan)
+	}
+	if got := plan.Replacements[0].ToolCallID; got != "large" {
+		t.Fatalf("first cleanup target = %q, want largest result", got)
+	}
+}
+
+func TestContextPressureHardOverflowReclaimsRecentRecoverableResult(t *testing.T) {
+	large := pressureToolResult(
+		"large", strings.Repeat("recoverable overflow ", 20_000),
+		agent.ToolResultDeferred, agent.ToolResultContextNormal,
+	)
+	messages := []*agent.Message{
+		agent.UserMessage("inspect"),
+		agent.AssistantMessage("", []agent.ToolCall{pressureCall("large", 0)}),
+		large,
+		agent.AssistantMessage("result consumed", nil),
+		agent.UserMessage("current turn"),
+	}
+	policy := pressureTestPolicy(20_000)
+	policy.ProviderCacheState = ProviderCacheWarm
+	decision := PlanContextPressure(messages, nil, policy)
+	if decision.FullPressure < 1 {
+		t.Fatalf("fixture is not over the hard window: %#v", decision)
+	}
+	if decision.Action != ContextMaintenanceCleanup {
+		t.Fatalf("recoverable result should resolve hard overflow before compaction: %#v", decision)
+	}
+	if len(decision.Cleanup.Replacements) != 1 || decision.Cleanup.Replacements[0].ToolCallID != "large" {
+		t.Fatalf("hard overflow cleanup = %#v, want consumed recent result", decision.Cleanup)
 	}
 }
 

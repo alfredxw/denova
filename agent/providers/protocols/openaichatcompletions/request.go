@@ -58,7 +58,7 @@ func (model *ChatModel) request(input []*agent.Message, stream bool, opts ...age
 		params.StreamOptions.IncludeUsage = sdk.Bool(true)
 	}
 
-	return params, model.requestOptions(), nil
+	return params, model.requestOptions(common.SessionKey), nil
 }
 
 func requestMessages(messages []*agent.Message, compatibility Compatibility, thinkingLevel providers.ThinkingLevel) ([]sdk.ChatCompletionMessageParamUnion, error) {
@@ -242,7 +242,7 @@ func requestToolChoice(choice *agent.ToolChoice, toolCount int, supported bool) 
 	return result, nil
 }
 
-func (model *ChatModel) requestOptions() []option.RequestOption {
+func (model *ChatModel) requestOptions(sessionKey string) []option.RequestOption {
 	extraFields := make(map[string]any, len(model.extraFields)+1)
 	for key, value := range model.extraFields {
 		extraFields[key] = value
@@ -264,6 +264,14 @@ func (model *ChatModel) requestOptions() []option.RequestOption {
 	sort.Strings(keys)
 	for _, key := range keys {
 		result = append(result, option.WithJSONSet(escapeJSONPathKey(key), extraFields[key]))
+	}
+	if mapping := model.config.SessionKeyMapping; mapping != nil && sessionKey != "" {
+		switch mapping.Location {
+		case providers.SessionKeyLocationHeader:
+			result = append(result, option.WithHeader(mapping.Name, sessionKey))
+		case providers.SessionKeyLocationBody:
+			result = append(result, option.WithJSONSet(escapeJSONPathKey(mapping.Name), sessionKey))
+		}
 	}
 	return result
 }

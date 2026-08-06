@@ -11,6 +11,7 @@ import {
   MODEL_PROTOCOL_RESPONSES,
   MODEL_PROVIDER_DEEPSEEK,
   MODEL_PROVIDER_OPENAI,
+  MODEL_PROVIDER_OPENAI_COMPATIBLE,
 } from './model-profiles'
 import type { ModelCatalog, ModelProfileSettings } from './types'
 
@@ -44,6 +45,15 @@ const catalog: ModelCatalog = {
         [MODEL_PROTOCOL_CHAT_COMPLETIONS]: { base_url: 'https://api.deepseek.com' },
         [MODEL_PROTOCOL_RESPONSES]: { base_url: 'https://api.deepseek.com' },
         [MODEL_PROTOCOL_ANTHROPIC_MESSAGES]: { base_url: 'https://api.deepseek.com/anthropic' },
+      },
+    },
+    {
+      id: MODEL_PROVIDER_OPENAI_COMPATIBLE,
+      name: 'Compatible / Custom Endpoint',
+      default_protocol: MODEL_PROTOCOL_CHAT_COMPLETIONS,
+      endpoints: {
+        [MODEL_PROTOCOL_CHAT_COMPLETIONS]: {},
+        [MODEL_PROTOCOL_RESPONSES]: {},
       },
     },
     ...Array.from({ length: 10 }, (_, index) => ({
@@ -160,6 +170,35 @@ it('pings the current unsaved profile and reports the resolved route', async () 
     model: 'gpt-5',
   }), expect.any(AbortSignal)))
   expect(await screen.findByText(/连接成功，耗时 42 ms/)).toBeInTheDocument()
+})
+
+it('configures a custom SessionKey mapping for compatible endpoints', async () => {
+  const user = userEvent.setup()
+  const onChange = vi.fn()
+  render(<EditorHarness onChange={onChange} />)
+
+  await user.click(await screen.findByRole('combobox', { name: '服务商' }))
+  await user.click(screen.getByRole('option', { name: /Compatible/ }))
+
+  const mappingPicker = screen.getByRole('combobox', { name: 'SessionKey 映射' })
+  await user.click(mappingPicker)
+  await user.click(screen.getByRole('option', { name: '请求 Header' }))
+  expect(screen.getByDisplayValue('X-Session-Id')).toBeInTheDocument()
+  expect(onChange).toHaveBeenLastCalledWith([
+    expect.objectContaining({
+      provider: MODEL_PROVIDER_OPENAI_COMPATIBLE,
+      session_key_mapping: { location: 'header', name: 'X-Session-Id' },
+    }),
+  ])
+
+  const fieldName = screen.getByDisplayValue('X-Session-Id')
+  await user.clear(fieldName)
+  await user.type(fieldName, 'X-Custom-Session')
+  expect(onChange).toHaveBeenLastCalledWith([
+    expect.objectContaining({
+      session_key_mapping: { location: 'header', name: 'X-Custom-Session' },
+    }),
+  ])
 })
 
 function EditorHarness({ onChange = () => undefined }: { onChange?: (profiles: ModelProfileSettings[]) => void }) {

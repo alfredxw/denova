@@ -53,6 +53,9 @@ func TestRegistryMergesPresetDefaultsWithoutRestrictingOverrides(t *testing.T) {
 				BaseURL:         "https://known.example/v1",
 				Headers:         map[string]string{"X-Route": "preset", "X-Keep": "yes"},
 				ProtocolOptions: presetOptions,
+				SessionKeyMapping: &SessionKeyMapping{
+					Location: SessionKeyLocationHeader, Name: "x-session-id",
+				},
 			},
 		},
 	}); err != nil {
@@ -81,6 +84,31 @@ func TestRegistryMergesPresetDefaultsWithoutRestrictingOverrides(t *testing.T) {
 	if nested["preset"] != true || nested["value"] != "override" || options["mode"] != "profile" {
 		t.Fatalf("protocol options = %#v", options)
 	}
+	if resolved.SessionKeyMapping == nil || resolved.SessionKeyMapping.Location != SessionKeyLocationHeader || resolved.SessionKeyMapping.Name != "X-Session-Id" {
+		t.Fatalf("session key mapping = %#v", resolved.SessionKeyMapping)
+	}
+
+	resolved, err = registry.Resolve(ModelConfig{
+		Provider: "known", Model: "model",
+		SessionKeyMapping: &SessionKeyMapping{Location: SessionKeyLocationBody, Name: "session_id"},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if resolved.SessionKeyMapping == nil || resolved.SessionKeyMapping.Location != SessionKeyLocationBody || resolved.SessionKeyMapping.Name != "session_id" {
+		t.Fatalf("overridden session key mapping = %#v", resolved.SessionKeyMapping)
+	}
+
+	resolved, err = registry.Resolve(ModelConfig{
+		Provider: "known", Model: "model",
+		SessionKeyMapping: &SessionKeyMapping{Location: SessionKeyLocationNone},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if resolved.SessionKeyMapping == nil || resolved.SessionKeyMapping.Location != SessionKeyLocationNone {
+		t.Fatalf("disabled session key mapping = %#v", resolved.SessionKeyMapping)
+	}
 
 	// A known provider may use an installed protocol absent from its preset as
 	// long as the caller supplies the complete route.
@@ -93,6 +121,25 @@ func TestRegistryMergesPresetDefaultsWithoutRestrictingOverrides(t *testing.T) {
 	}
 	if resolved.BaseURL != "https://custom.example/api" {
 		t.Fatalf("custom route = %#v", resolved)
+	}
+}
+
+func TestRegistryRejectsInvalidSessionKeyMapping(t *testing.T) {
+	registry := NewRegistry()
+	if err := registry.RegisterProtocol(stubAdapter{id: ProtocolOpenAIChatCompletions}); err != nil {
+		t.Fatal(err)
+	}
+	err := registry.RegisterProviderPreset(ProviderPreset{
+		ID: "invalid", Name: "Invalid", DefaultProtocol: ProtocolOpenAIChatCompletions,
+		Endpoints: map[ProtocolID]EndpointPreset{
+			ProtocolOpenAIChatCompletions: {
+				BaseURL:           "https://invalid.example",
+				SessionKeyMapping: &SessionKeyMapping{Location: SessionKeyLocationHeader, Name: "bad header"},
+			},
+		},
+	})
+	if err == nil || !strings.Contains(err.Error(), "invalid session key header name") {
+		t.Fatalf("registration error = %v", err)
 	}
 }
 

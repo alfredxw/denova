@@ -171,6 +171,7 @@ func prepareContextMaintenance(
 	pressureConversation, plansPressure := controller.conversation.(ContextPressureConversation)
 	var pressureDecision agentcontext.ContextPressureDecision
 	plannedObservedPromptTokens := 0
+	cleanupAppliedBeforeCompaction := false
 	if plansPressure {
 		pressurePolicy := pressureConversation.ContextPressurePolicy(messages)
 		resolvedOptions := snapshot.ResolvedOptions()
@@ -190,6 +191,25 @@ func prepareContextMaintenance(
 		) {
 			pressureDecision.Action = agentcontext.ContextMaintenanceCompaction
 			pressureDecision.Reason = "compaction_capacity_reserve"
+		}
+		if pressureDecision.Action == agentcontext.ContextMaintenanceCompaction &&
+			pressureDecision.FullPressure >= 1 && len(pressureDecision.Cleanup.Replacements) > 0 {
+			// At a hard overflow, recoverable tool bodies are the first transient
+			// projection. If they cannot restore the normal cleanup target, the
+			// checkpoint supersedes that projection as the run's sole durable
+			// structural operation. This avoids publishing cleanup and compaction
+			// records for one model step while still giving compaction the smallest
+			// safe primary request.
+			emitContextCleanupEvent(controller.emit, "started", pressureDecision, 0, nil)
+			cleaned := toolresult.ApplyCleanupPlan(messages, pressureDecision.Cleanup)
+			actualReclaimed := max(0, agentcontext.EstimateTokens(messages, tools)-agentcontext.EstimateTokens(cleaned, tools))
+			next := *call
+			next.Messages = cleaned
+			call = &next
+			snapshot = call.Snapshot()
+			messages = cleaned
+			cleanupAppliedBeforeCompaction = true
+			emitContextCleanupEvent(controller.emit, "completed", pressureDecision, actualReclaimed, nil)
 		}
 		switch pressureDecision.Action {
 		case agentcontext.ContextMaintenanceNone:
@@ -237,7 +257,9 @@ func prepareContextMaintenance(
 			// Preserve that skipped-cleanup attribution before the checkpoint
 			// event; otherwise the durable ledger cannot explain why cleanup was
 			// considered but not selected.
-			emitContextCleanupEvent(controller.emit, "skipped", pressureDecision, 0, nil)
+			if !cleanupAppliedBeforeCompaction {
+				emitContextCleanupEvent(controller.emit, "skipped", pressureDecision, 0, nil)
+			}
 			// Continue below. The pressure planner, not the older per-conversation
 			// threshold check, owns the cleanup-versus-checkpoint choice.
 		default:

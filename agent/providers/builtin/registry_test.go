@@ -59,6 +59,38 @@ func TestRegistrySeparatesProviderDefaultsFromProtocolSelection(t *testing.T) {
 	}
 }
 
+func TestRegistryMapsSessionKeyForDocumentedProviderCacheAffinity(t *testing.T) {
+	registry, err := NewRegistry()
+	if err != nil {
+		t.Fatal(err)
+	}
+	tests := []struct {
+		name     string
+		provider providers.ProviderID
+		protocol providers.ProtocolID
+		location providers.SessionKeyLocation
+		field    string
+	}{
+		{name: "OpenAI Responses", provider: providers.ProviderOpenAI, protocol: providers.ProtocolOpenAIResponses, location: providers.SessionKeyLocationBody, field: "prompt_cache_key"},
+		{name: "OpenAI Chat Completions", provider: providers.ProviderOpenAI, protocol: providers.ProtocolOpenAIChatCompletions, location: providers.SessionKeyLocationBody, field: "prompt_cache_key"},
+		{name: "OpenRouter", provider: "openrouter", protocol: providers.ProtocolOpenAIChatCompletions, location: providers.SessionKeyLocationHeader, field: "X-Session-Id"},
+		{name: "Fireworks", provider: "fireworks", protocol: providers.ProtocolOpenAIChatCompletions, location: providers.SessionKeyLocationHeader, field: "X-Session-Affinity"},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			resolved, resolveErr := registry.Resolve(providers.ModelConfig{
+				Provider: test.provider, Protocol: test.protocol, Model: "test-model",
+			})
+			if resolveErr != nil {
+				t.Fatal(resolveErr)
+			}
+			if resolved.SessionKeyMapping == nil || resolved.SessionKeyMapping.Location != test.location || resolved.SessionKeyMapping.Name != test.field {
+				t.Fatalf("session key mapping = %#v", resolved.SessionKeyMapping)
+			}
+		})
+	}
+}
+
 func TestRegistrySupportsDeepSeekResponses(t *testing.T) {
 	registry, err := NewRegistry()
 	if err != nil {

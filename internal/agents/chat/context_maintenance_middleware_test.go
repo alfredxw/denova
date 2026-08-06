@@ -437,6 +437,48 @@ func TestContextMaintenancePlannerRoutesHardPressureThroughSnapshotFork(t *testi
 	}
 }
 
+func TestContextMaintenanceHardOverflowCleansToolResultsBeforeCompaction(t *testing.T) {
+	messages := pressureHistory(5, 9000, agent.ToolResultDeferred, agent.ToolResultContextNormal)
+	messages = append(messages[:len(messages)-1], agent.UserMessage(strings.Repeat("non-cleanable history ", 30_000)), messages[len(messages)-1])
+	policy := pressureTestPolicy(40_000)
+	policy.ProviderCacheState = agentcontext.ProviderCacheWarm
+	conversation := &maintenancePlanningConversation{
+		policy: policy,
+		compacted: []*agent.Message{
+			agentcontext.NewCompactionSummaryMessage(1, "checkpoint"),
+			agent.UserMessage("current turn"),
+		},
+	}
+	call := &agent.ModelCall{
+		Model: &compactionForkCaptureModel{}, Messages: messages,
+		Options: []agent.ModelOption{agent.WithTools(nil)},
+	}
+
+	next, result, err := prepareContextMaintenance(
+		context.Background(), &contextCompactionController{conversation: conversation}, call, &agent.ModelContext{},
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if result.Action != agentcontext.ContextMaintenanceCompaction || conversation.compactionRuns != 1 {
+		t.Fatalf("maintenance result=%#v compaction_runs=%d", result, conversation.compactionRuns)
+	}
+	if conversation.stageCalls != 0 {
+		t.Fatalf("cleanup superseded by compaction must not stage a second structural record: %d", conversation.stageCalls)
+	}
+	if len(result.Cleanup.Cleanup.Replacements) == 0 {
+		t.Fatalf("hard overflow did not plan tool-result cleanup: %#v", result.Cleanup)
+	}
+	for _, replacement := range result.Cleanup.Cleanup.Replacements {
+		if got := conversation.compactionIn.Messages[replacement.MessageIndex].Content; got != replacement.Placeholder {
+			t.Fatalf("compaction input kept rich tool result at %d: %q", replacement.MessageIndex, got)
+		}
+	}
+	if len(next.Messages) != 2 || !agentcontext.IsCompactionSummaryMessage(next.Messages[0]) {
+		t.Fatalf("compacted request = %#v", next.Messages)
+	}
+}
+
 func TestContextMaintenanceAdvancesCompactionBeforeForkCapacityIsExhausted(t *testing.T) {
 	messages := []*agent.Message{agent.SystemMessage("stable"), agent.UserMessage(strings.Repeat("x", 120_000))}
 	policy := pressureTestPolicy(100_000)

@@ -32,6 +32,22 @@ func TestAssemblerAccountsForDefaultRendererAndTruncatesContent(t *testing.T) {
 	}
 }
 
+func TestAssemblerRejectsTotalBudgetOverflowInsteadOfSilentlyTruncating(t *testing.T) {
+	_, err := NewAssembler(Budget{
+		MaxFragmentBytes: 64,
+		MaxTotalBytes:    16,
+	}).Assemble(stdcontext.Background(), AssembleRequest{
+		Messages: []*agent.Message{agent.UserMessage("continue")},
+		Fragments: []Fragment{{
+			Source: "workspace.state", Title: "State", Purpose: "resume work",
+			Content: "complete bounded state", Placement: PlacementFinalUserPrefix, Included: true,
+		}},
+	})
+	if err == nil || !strings.Contains(err.Error(), "context injected bytes") {
+		t.Fatalf("total budget error = %v", err)
+	}
+}
+
 func TestAssemblerKeepsAuditOnlyContentOutOfModelMessages(t *testing.T) {
 	input := agent.UserMessage("write")
 	input.Extra = map[string]any{"nested": []any{"original"}}

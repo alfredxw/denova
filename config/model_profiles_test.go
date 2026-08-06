@@ -366,13 +366,16 @@ func TestMergeModelProfilesScopesRouteOwnedSettings(t *testing.T) {
 		BaseURL:         "https://api.deepseek.com",
 		Headers:         map[string]string{"X-Tenant": "tenant"},
 		ProtocolOptions: map[string]any{"thinking_toggle": "nested"},
+		SessionKeyMapping: &providers.SessionKeyMapping{
+			Location: providers.SessionKeyLocationHeader, Name: "X-Session-Id",
+		},
 	}
 
 	otherOrigin := mergeModelProfiles([]ModelProfileSettings{parent}, []ModelProfileSettings{{
 		ID:      "default",
 		BaseURL: "https://gateway.example.test/v1",
 	}})[0]
-	if otherOrigin.APIKey != "" || otherOrigin.Headers != nil || otherOrigin.ProtocolOptions != nil {
+	if otherOrigin.APIKey != "" || otherOrigin.Headers != nil || otherOrigin.ProtocolOptions != nil || otherOrigin.SessionKeyMapping != nil {
 		t.Fatalf("endpoint change retained route-owned settings: %#v", otherOrigin)
 	}
 
@@ -386,6 +389,20 @@ func TestMergeModelProfilesScopesRouteOwnedSettings(t *testing.T) {
 	}
 	if sameOriginNewProtocol.ProtocolOptions != nil {
 		t.Fatalf("protocol change retained incompatible options: %#v", sameOriginNewProtocol.ProtocolOptions)
+	}
+	if sameOriginNewProtocol.SessionKeyMapping != nil {
+		t.Fatalf("protocol change retained incompatible session key mapping: %#v", sameOriginNewProtocol.SessionKeyMapping)
+	}
+
+	explicitMapping := mergeModelProfiles([]ModelProfileSettings{parent}, []ModelProfileSettings{{
+		ID:       "default",
+		Protocol: string(providers.ProtocolOpenAIResponses),
+		SessionKeyMapping: &providers.SessionKeyMapping{
+			Location: providers.SessionKeyLocationBody, Name: "session_id",
+		},
+	}})[0]
+	if explicitMapping.SessionKeyMapping == nil || explicitMapping.SessionKeyMapping.Location != providers.SessionKeyLocationBody || explicitMapping.SessionKeyMapping.Name != "session_id" {
+		t.Fatalf("explicit session key mapping = %#v", explicitMapping.SessionKeyMapping)
 	}
 }
 

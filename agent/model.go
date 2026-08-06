@@ -1,6 +1,9 @@
 package agent
 
-import "context"
+import (
+	"context"
+	"strings"
+)
 
 // ToolChoice controls whether a model may emit tool calls.
 type ToolChoice string
@@ -17,6 +20,9 @@ type Options struct {
 	MaxTokens        *int
 	ToolChoice       *ToolChoice
 	AllowedToolNames []string
+	// SessionKey is the stable, provider-neutral cache-routing identity for
+	// this conversation. Protocol adapters map it to provider wire fields.
+	SessionKey string
 }
 
 // ModelOption immutably describes one per-call model setting.
@@ -53,6 +59,15 @@ func WithToolChoice(choice ToolChoice, allowedToolNames ...string) ModelOption {
 	}}
 }
 
+// WithSessionKey binds one stable conversation identity to a model call.
+// Provider adapters decide whether it becomes a header or JSON body field.
+func WithSessionKey(sessionKey string) ModelOption {
+	sessionKey = strings.TrimSpace(sessionKey)
+	return ModelOption{apply: func(options *Options) {
+		options.SessionKey = sessionKey
+	}}
+}
+
 // GetCommonOptions applies opts to a defensive copy of base.
 func GetCommonOptions(base *Options, opts ...ModelOption) *Options {
 	result := cloneModelOptions(base)
@@ -60,6 +75,21 @@ func GetCommonOptions(base *Options, opts ...ModelOption) *Options {
 		if option.apply != nil {
 			option.apply(result)
 		}
+	}
+	return result
+}
+
+// BindContextSessionKey returns detached call options that preserve an
+// explicit SessionKey and otherwise inherit the caller's context value. Model
+// adapters use this at their public Generate/Stream boundary so direct model
+// calls and native Agent calls share the same behavior.
+func BindContextSessionKey(ctx context.Context, base *Options, opts ...ModelOption) []ModelOption {
+	result := append([]ModelOption(nil), opts...)
+	if GetCommonOptions(base, opts...).SessionKey != "" {
+		return result
+	}
+	if sessionKey, ok := SessionKeyFromContext(ctx); ok {
+		result = append(result, WithSessionKey(sessionKey))
 	}
 	return result
 }

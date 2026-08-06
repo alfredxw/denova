@@ -187,6 +187,16 @@ func PlanContextPressure(messages []*agent.Message, tools []*agent.ToolInfo, pol
 	effective := max(local, policy.ObservedPromptTokens+max(0, policy.ReservedTokens))
 	prefix := stableModelPrefixTokens(messages, tools)
 	pressure, fullPressure, budget := contextPressureRatios(effective, prefix, policy)
+	cleanupPolicy := policy
+	if fullPressure >= 1 {
+		// A request that already exceeds the model window cannot preserve a warm
+		// mutable suffix or recently consumed recoverable results. Pending,
+		// unsuccessful, and otherwise non-recoverable tool groups remain protected
+		// by collectToolInteractionGroups; only cache/recency preferences yield.
+		cleanupPolicy.ProviderCacheState = ProviderCacheCold
+		cleanupPolicy.KeepRecentGroups = 0
+		cleanupPolicy.KeepRecentTokens = 0
+	}
 	minimum := max(policy.CleanupMinTokens, budget/10)
 	decision.LocalProjectedTokens = local
 	decision.ObservedPromptTokens = policy.ObservedPromptTokens
@@ -200,7 +210,7 @@ func PlanContextPressure(messages []*agent.Message, tools []*agent.ToolInfo, pol
 	var groups []*toolInteractionGroup
 	protected := 0
 	if policy.CleanupEnabled {
-		groups, protected = collectToolInteractionGroups(messages, policy)
+		groups, protected = collectToolInteractionGroups(messages, cleanupPolicy)
 	}
 	decision.ProtectedResultCount = protected
 	markSupersededGroups(messages, groups)
@@ -215,7 +225,7 @@ func PlanContextPressure(messages []*agent.Message, tools []*agent.ToolInfo, pol
 			decision.DiscardableCount++
 		}
 	}
-	protectRecentToolGroups(groups, policy)
+	protectRecentToolGroups(groups, cleanupPolicy)
 	prepareCleanupReplacements(messages, groups)
 
 	var eagerGroups, ordinaryGroups []*toolInteractionGroup
@@ -229,7 +239,7 @@ func PlanContextPressure(messages []*agent.Message, tools []*agent.ToolInfo, pol
 		}
 		ordinaryGroups = append(ordinaryGroups, group)
 	}
-	cacheViableGroups := cacheViableCleanupGroups(messages, ordinaryGroups, policy)
+	cacheViableGroups := cacheViableCleanupGroups(messages, ordinaryGroups, cleanupPolicy)
 	decision.CleanupSkippedWarmSuffixCount = max(0, len(ordinaryGroups)-len(cacheViableGroups))
 	for _, group := range cacheViableGroups {
 		decision.CacheViableCandidateTokens += group.reclaimed
@@ -242,7 +252,7 @@ func PlanContextPressure(messages []*agent.Message, tools []*agent.ToolInfo, pol
 	// An eager transition may happen below the general pressure threshold, but
 	// still uses the same cache mutation gate and one structural operation.
 	if pressure < policy.CleanupThreshold && fullPressure < policy.CompactionThreshold && !capacityAtRisk {
-		plan, ok := buildCleanupPlan(messages, eagerGroups, effective, prefix, budget, policy, true)
+		plan, ok := buildCleanupPlan(messages, eagerGroups, effective, prefix, budget, cleanupPolicy, true)
 		if !ok {
 			decision.Reason = "below_cleanup_threshold"
 			return decision
@@ -253,7 +263,7 @@ func PlanContextPressure(messages []*agent.Message, tools []*agent.ToolInfo, pol
 		return decision
 	}
 
-	plan, cleanupOK := buildCleanupPlan(messages, ordinaryGroups, effective, prefix, budget, policy, false)
+	plan, cleanupOK := buildCleanupPlan(messages, ordinaryGroups, effective, prefix, budget, cleanupPolicy, false)
 	if cleanupOK {
 		decision.Cleanup = plan
 	}

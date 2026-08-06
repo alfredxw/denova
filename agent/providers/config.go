@@ -7,6 +7,8 @@ import (
 	"fmt"
 	"net/http"
 	"strings"
+
+	"golang.org/x/net/http/httpguts"
 )
 
 // ProviderID identifies a registered API vendor or compatibility preset.
@@ -14,6 +16,10 @@ type ProviderID string
 
 // ProtocolID identifies the wire protocol used for model requests.
 type ProtocolID string
+
+// SessionKeyLocation identifies where a protocol adapter writes the
+// provider-neutral per-call SessionKey.
+type SessionKeyLocation string
 
 const (
 	ProviderOpenAI           ProviderID = "openai"
@@ -25,7 +31,19 @@ const (
 	ProtocolOpenAIChatCompletions ProtocolID = "openai-chat-completions"
 	ProtocolOpenAIResponses       ProtocolID = "openai-responses"
 	ProtocolAnthropicMessages     ProtocolID = "anthropic-messages"
+
+	SessionKeyLocationNone   SessionKeyLocation = "none"
+	SessionKeyLocationHeader SessionKeyLocation = "header"
+	SessionKeyLocationBody   SessionKeyLocation = "body"
 )
+
+// SessionKeyMapping configures the provider wire field for SessionKey. A nil
+// mapping inherits the provider preset; Location=none explicitly disables it.
+// Header and body mappings write one top-level field named by Name.
+type SessionKeyMapping struct {
+	Location SessionKeyLocation `toml:"location" json:"location"`
+	Name     string             `toml:"name,omitempty" json:"name,omitempty"`
+}
 
 // OutputFormatType is the provider-neutral structured-output mode.
 type OutputFormatType string
@@ -61,6 +79,9 @@ type ModelConfig struct {
 	// provider endpoint preset with the profile override, while only the selected
 	// protocol adapter knows and validates its schema.
 	ProtocolOptions json.RawMessage
+	// SessionKeyMapping maps the provider-neutral per-call SessionKey to the
+	// selected endpoint. Nil inherits the provider endpoint preset.
+	SessionKeyMapping *SessionKeyMapping
 	// HTTPClient is an optional caller-owned transport dependency. Adapters may
 	// retain it, so callers must not mutate the client after registration.
 	HTTPClient      *http.Client
@@ -79,6 +100,11 @@ func cloneModelConfig(config ModelConfig) (ModelConfig, error) {
 	clone := config
 	clone.Headers = cloneHeaders(config.Headers)
 	clone.ProtocolOptions = append(json.RawMessage(nil), config.ProtocolOptions...)
+	var err error
+	clone.SessionKeyMapping, err = normalizeSessionKeyMapping(config.SessionKeyMapping)
+	if err != nil {
+		return ModelConfig{}, err
+	}
 	if config.Temperature != nil {
 		value := *config.Temperature
 		clone.Temperature = &value
@@ -124,6 +150,55 @@ func cloneModelConfig(config ModelConfig) (ModelConfig, error) {
 	}
 	clone.ThinkingLevel = level
 	return clone, nil
+}
+
+func normalizeSessionKeyMapping(mapping *SessionKeyMapping) (*SessionKeyMapping, error) {
+	if mapping == nil {
+		return nil, nil
+	}
+	clone := *mapping
+	clone.Location = SessionKeyLocation(strings.ToLower(strings.TrimSpace(string(clone.Location))))
+	clone.Name = strings.TrimSpace(clone.Name)
+	switch clone.Location {
+	case SessionKeyLocationNone:
+		clone.Name = ""
+	case SessionKeyLocationHeader:
+		if clone.Name == "" {
+			return nil, fmt.Errorf("session key header name is required")
+		}
+		if len(clone.Name) > 128 || !httpguts.ValidHeaderFieldName(clone.Name) {
+			return nil, fmt.Errorf("invalid session key header name %q", clone.Name)
+		}
+		clone.Name = http.CanonicalHeaderKey(clone.Name)
+	case SessionKeyLocationBody:
+		if !validSessionKeyBodyFieldName(clone.Name) {
+			return nil, fmt.Errorf("invalid session key body field name %q", clone.Name)
+		}
+	default:
+		return nil, fmt.Errorf("unsupported session key mapping location %q", clone.Location)
+	}
+	return &clone, nil
+}
+
+func cloneSessionKeyMapping(mapping *SessionKeyMapping) *SessionKeyMapping {
+	if mapping == nil {
+		return nil
+	}
+	clone := *mapping
+	return &clone
+}
+
+func validSessionKeyBodyFieldName(name string) bool {
+	if name == "" || len(name) > 128 {
+		return false
+	}
+	for _, char := range name {
+		if char >= 'a' && char <= 'z' || char >= 'A' && char <= 'Z' || char >= '0' && char <= '9' || char == '_' || char == '-' {
+			continue
+		}
+		return false
+	}
+	return true
 }
 
 func cloneHeaders(headers map[string]string) map[string]string {

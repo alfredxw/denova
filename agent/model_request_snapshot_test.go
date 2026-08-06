@@ -33,6 +33,7 @@ func TestModelRequestSnapshotForkPreservesPrefixAndOptions(t *testing.T) {
 			WithTools([]*ToolInfo{tool}),
 			WithMaxTokens(4096),
 			WithToolChoice(ToolChoiceAllowed, "read"),
+			WithSessionKey("conversation-123"),
 		},
 	}
 	snapshot := call.Snapshot()
@@ -65,6 +66,9 @@ func TestModelRequestSnapshotForkPreservesPrefixAndOptions(t *testing.T) {
 	}
 	if resolved.ToolChoice == nil || *resolved.ToolChoice != ToolChoiceAllowed || !reflect.DeepEqual(resolved.AllowedToolNames, []string{"read"}) {
 		t.Fatalf("tool choice = %#v allowed=%#v", resolved.ToolChoice, resolved.AllowedToolNames)
+	}
+	if resolved.SessionKey != "conversation-123" {
+		t.Fatalf("session key = %q", resolved.SessionKey)
 	}
 	if got := snapshot.Messages(); !reflect.DeepEqual(got, wantPrefix) {
 		t.Fatalf("snapshot mutated after fork: %#v", got)
@@ -118,7 +122,8 @@ func TestRunnerPrepareModelRequestUsesFinalAssemblyWithoutCallingProvider(t *tes
 		t.Fatal(err)
 	}
 	runner := NewRunner(RunnerConfig{Agent: built, EnableStreaming: true})
-	snapshot, err := runner.PrepareModelRequest(context.Background(), []*Message{UserMessage("source")})
+	ctx := ContextWithSessionKey(context.Background(), "conversation-prepare")
+	snapshot, err := runner.PrepareModelRequest(ctx, []*Message{UserMessage("source")})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -128,5 +133,8 @@ func TestRunnerPrepareModelRequestUsesFinalAssemblyWithoutCallingProvider(t *tes
 	}
 	if len(model.inputs) != 0 {
 		t.Fatalf("request preparation invoked provider %d time(s)", len(model.inputs))
+	}
+	if got := snapshot.ResolvedOptions().SessionKey; got != "conversation-prepare" {
+		t.Fatalf("prepared session key = %q", got)
 	}
 }

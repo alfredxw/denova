@@ -60,6 +60,11 @@ model = "deepseek-v4-pro"
 # X-Tenant = "example"
 # [model_profiles.protocol_options]
 # supports_stream_usage = false
+# 可选：将稳定的 SessionKey 映射到兼容端点的 Header 或 JSON Body 字段。
+# Optional: map the stable SessionKey to a compatible endpoint header or JSON body field.
+# [model_profiles.session_key_mapping]
+# location = "header" # "header" | "body" | "none"
+# name = "X-Session-Id"
 #
 # [agent_models.ide]
 # profile_id = "gemini"

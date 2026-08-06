@@ -333,6 +333,7 @@ func (e *harnessEngine) run(
 	runCtx = agent.ContextWithInvocationIdentity(runCtx, agent.InvocationIdentity{
 		Scope: string(bindingIdentity), OperationID: string(request.Snapshot.OperationID), Cycle: request.Snapshot.Cycle,
 	})
+	runCtx = agent.ContextWithSessionKey(runCtx, agentrun.SessionKeyForBinding(request.Binding))
 	var toolObserver agenttoolruntime.ToolLifecycleObserver = harnessToolLifecycleObserver{
 		sink: sink, binding: request.Binding, operationID: request.Snapshot.OperationID,
 		cycle: request.Snapshot.Cycle, options: spec.Options,

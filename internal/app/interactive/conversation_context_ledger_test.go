@@ -117,7 +117,7 @@ func TestInteractiveConversationSharesOneBudgetAcrossTurnRuntimeAndResidentLore(
 		t.Fatal(err)
 	}
 	maxFragmentBytes := 4 * 1024
-	maxTotalBytes := 10 * 1024
+	maxTotalBytes := 64 * 1024
 	cfg := &config.Config{AgentContexts: config.AgentContextSettings{InteractiveStory: config.AgentContextOverride{
 		MaxFragmentBytes: &maxFragmentBytes, MaxTotalInjectedBytes: &maxTotalBytes,
 	}}}

@@ -20,6 +20,7 @@ import {
   MODEL_PROTOCOL_ANTHROPIC_MESSAGES,
   MODEL_PROTOCOL_CHAT_COMPLETIONS,
   MODEL_PROTOCOL_RESPONSES,
+  MODEL_PROVIDER_OPENAI_COMPATIBLE,
   modelProfileID,
   modelProfileLabel,
 } from './model-profiles'
@@ -30,6 +31,7 @@ const MIN_CONTEXT_WINDOW_TOKENS = 1024
 const MAX_CONTEXT_WINDOW_TOKENS = 2000000
 const CONTEXT_WINDOW_PRESETS = [200000, DEFAULT_CONTEXT_WINDOW_TOKENS, 1000000]
 const PROVIDER_DEFAULT_PROTOCOL = '__provider_default__'
+const PROVIDER_DEFAULT_SESSION_KEY_MAPPING = '__provider_default__'
 const EMPTY_MODEL_CATALOG: ModelCatalog = { providers: [], protocols: FALLBACK_MODEL_PROTOCOLS }
 
 export function ModelProfilesEditor({ profiles, effectiveProfiles, onChange }: {
@@ -85,6 +87,7 @@ export function ModelProfilesEditor({ profiles, effectiveProfiles, onChange }: {
     updateProfile(index, {
       provider,
       base_url: baseURLAfterRouteChange(profile?.base_url, catalog, provider, profile?.protocol),
+      session_key_mapping: profile?.provider === provider ? profile.session_key_mapping : undefined,
     })
   }
   const updateProfileProtocol = (index: number, protocol: string) => {
@@ -194,6 +197,49 @@ export function ModelProfilesEditor({ profiles, effectiveProfiles, onChange }: {
                     onChange={(apiKey) => updateProfile(index, { api_key: apiKey })}
                   />
                 </ModelProfileField>
+                {profile.provider === MODEL_PROVIDER_OPENAI_COMPATIBLE && (
+                  <>
+                    <ModelProfileField label={t('settings.model.sessionKeyMappingLabel')} className="md:col-span-4">
+                      <Select
+                        value={profile.session_key_mapping?.location ?? PROVIDER_DEFAULT_SESSION_KEY_MAPPING}
+                        onValueChange={(location) => updateProfile(index, {
+                          session_key_mapping: location === PROVIDER_DEFAULT_SESSION_KEY_MAPPING
+                            ? undefined
+                            : location === 'none'
+                              ? { location: 'none' }
+                              : {
+                                  location: location as 'header' | 'body',
+                                  name: location === 'header' ? 'X-Session-Id' : 'session_id',
+                                },
+                        })}
+                      >
+                        <SelectTrigger size="sm" className="w-full" aria-label={t('settings.model.sessionKeyMappingLabel')}>
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent className="nova-panel border text-[var(--nova-text)]">
+                          <SelectItem value={PROVIDER_DEFAULT_SESSION_KEY_MAPPING}>{t('settings.model.sessionKeyMappingProviderDefault')}</SelectItem>
+                          <SelectItem value="none">{t('settings.model.sessionKeyMappingDisabled')}</SelectItem>
+                          <SelectItem value="header">{t('settings.model.sessionKeyMappingHeader')}</SelectItem>
+                          <SelectItem value="body">{t('settings.model.sessionKeyMappingBody')}</SelectItem>
+                        </SelectContent>
+                      </Select>
+                    </ModelProfileField>
+                    {(profile.session_key_mapping?.location === 'header' || profile.session_key_mapping?.location === 'body') && (
+                      <ModelProfileField label={t('settings.model.sessionKeyFieldLabel')} className="md:col-span-4">
+                        <Input
+                          value={profile.session_key_mapping.name ?? ''}
+                          placeholder={profile.session_key_mapping.location === 'header' ? 'X-Session-Id' : 'session_id'}
+                          onChange={(event) => updateProfile(index, {
+                            session_key_mapping: { ...profile.session_key_mapping!, name: event.target.value },
+                          })}
+                        />
+                      </ModelProfileField>
+                    )}
+                    <div className="text-[11px] leading-5 text-[var(--nova-text-faint)] md:col-span-12">
+                      {t('settings.model.sessionKeyMappingHint')}
+                    </div>
+                  </>
+                )}
                 <ModelProfileField label={t('settings.model.profileTemperatureLabel')} className="md:col-span-2">
                   <Input
                     type="number"

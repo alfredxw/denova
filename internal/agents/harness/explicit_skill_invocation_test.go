@@ -181,7 +181,9 @@ func TestIDEContextAnalysisIncludesTheSameExplicitSkillBodiesAsRuntime(t *testin
 func TestExplicitSkillFailsClosedWhenTheTurnContextCannotFitIt(t *testing.T) {
 	skillsDir := t.TempDir()
 	writeExplicitSkillFixture(t, skillsDir, "alpha", "Alpha instructions", strings.Repeat("ALPHA_BODY", 100))
-	maxTotalBytes := 128
+	// Leave enough room for the runtime envelope so the explicit Skill is the
+	// fragment that crosses the complete assembled-context ceiling.
+	maxTotalBytes := 1024
 	cfg := &config.Config{SkillsDir: skillsDir, Workspace: t.TempDir(), DenovaDir: t.TempDir()}
 	cfg.AgentContexts.IDE.MaxTotalInjectedBytes = &maxTotalBytes
 	store, err := session.NewStore(t.TempDir())
@@ -205,7 +207,7 @@ func TestExplicitSkillFailsClosedWhenTheTurnContextCannotFitIt(t *testing.T) {
 		agentrun.Options{AgentKind: config.AgentKindIDE, RootAgentName: "explicit-skill-budget", Workspace: cfg.Workspace, SessionID: sess.ID},
 		nil,
 	)
-	if outcome.Error == nil || !strings.Contains(outcome.Error.Error(), `显式 Skill "alpha" 未能完整进入模型上下文`) {
+	if outcome.Error == nil || !strings.Contains(outcome.Error.Error(), "context injected bytes exceed limit: source=turn.skill.explicit") {
 		t.Fatalf("context budget outcome = %#v", outcome)
 	}
 }

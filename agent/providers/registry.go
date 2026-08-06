@@ -14,9 +14,10 @@ import (
 
 // EndpointPreset supplies optional defaults for one provider/protocol route.
 type EndpointPreset struct {
-	BaseURL         string            `json:"base_url,omitempty"`
-	Headers         map[string]string `json:"-"`
-	ProtocolOptions json.RawMessage   `json:"-"`
+	BaseURL           string             `json:"base_url,omitempty"`
+	Headers           map[string]string  `json:"-"`
+	ProtocolOptions   json.RawMessage    `json:"-"`
+	SessionKeyMapping *SessionKeyMapping `json:"-"`
 }
 
 // ProviderPreset is the registered provider identity exposed to callers and
@@ -106,6 +107,11 @@ func (registry *Registry) RegisterProviderPreset(preset ProviderPreset) error {
 		endpoint.BaseURL = strings.TrimSpace(endpoint.BaseURL)
 		endpoint.Headers = cloneHeaders(endpoint.Headers)
 		endpoint.ProtocolOptions = append(json.RawMessage(nil), endpoint.ProtocolOptions...)
+		var err error
+		endpoint.SessionKeyMapping, err = normalizeSessionKeyMapping(endpoint.SessionKeyMapping)
+		if err != nil {
+			return fmt.Errorf("register provider preset %q protocol %q: %w", preset.ID, protocol, err)
+		}
 		if _, err := mergeProtocolOptions(endpoint.ProtocolOptions, nil); err != nil {
 			return fmt.Errorf("register provider preset %q protocol %q: %w", preset.ID, protocol, err)
 		}
@@ -193,6 +199,9 @@ func (registry *Registry) resolve(config ModelConfig, requireModel bool) (ModelC
 			resolved.BaseURL = endpoint.BaseURL
 		}
 		resolved.Headers = mergeHeaders(endpoint.Headers, resolved.Headers)
+		if resolved.SessionKeyMapping == nil {
+			resolved.SessionKeyMapping = cloneSessionKeyMapping(endpoint.SessionKeyMapping)
+		}
 		resolved.ProtocolOptions, err = mergeProtocolOptions(endpoint.ProtocolOptions, resolved.ProtocolOptions)
 		if err != nil {
 			return ModelConfig{}, fmt.Errorf("resolve model: %w", err)
@@ -260,6 +269,7 @@ func cloneProviderPreset(preset ProviderPreset) ProviderPreset {
 	for protocol, endpoint := range preset.Endpoints {
 		endpoint.Headers = cloneHeaders(endpoint.Headers)
 		endpoint.ProtocolOptions = append(json.RawMessage(nil), endpoint.ProtocolOptions...)
+		endpoint.SessionKeyMapping = cloneSessionKeyMapping(endpoint.SessionKeyMapping)
 		clone.Endpoints[protocol] = endpoint
 	}
 	return clone

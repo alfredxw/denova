@@ -10,16 +10,21 @@ import (
 )
 
 func TestChatModelConfigFromResolvedKeepsNeutralThinkingLevel(t *testing.T) {
+	mapping := &providers.SessionKeyMapping{Location: providers.SessionKeyLocationHeader, Name: "X-Session-Id"}
 	modelCfg, err := ConfigFromResolved(config.ResolvedModelSettings{
-		BaseURL:       "https://generativelanguage.googleapis.com/v1beta/openai/",
-		Model:         "gemini-3.5-flash",
-		ThinkingLevel: "xhigh",
+		BaseURL:           "https://generativelanguage.googleapis.com/v1beta/openai/",
+		Model:             "gemini-3.5-flash",
+		ThinkingLevel:     "xhigh",
+		SessionKeyMapping: mapping,
 	})
 	if err != nil {
 		t.Fatal(err)
 	}
 	if modelCfg.ThinkingLevel != providers.ThinkingLevelXHigh {
 		t.Fatalf("thinking level = %q, want xhigh", modelCfg.ThinkingLevel)
+	}
+	if modelCfg.SessionKeyMapping != mapping {
+		t.Fatalf("session key mapping = %#v", modelCfg.SessionKeyMapping)
 	}
 }
 

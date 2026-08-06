@@ -23,14 +23,15 @@ func ConfigFromResolved(resolved config.ResolvedModelSettings) (providers.ModelC
 		provider = providers.ProviderOpenAICompatible
 	}
 	modelConfig := providers.ModelConfig{
-		Provider:        provider,
-		Protocol:        protocol,
-		APIKey:          resolved.APIKey,
-		Model:           resolved.Model,
-		BaseURL:         resolved.BaseURL,
-		Headers:         resolved.Headers,
-		MaxOutputTokens: resolved.MaxOutputTokens,
-		ThinkingLevel:   providers.ThinkingLevel(resolved.ThinkingLevel),
+		Provider:          provider,
+		Protocol:          protocol,
+		APIKey:            resolved.APIKey,
+		Model:             resolved.Model,
+		BaseURL:           resolved.BaseURL,
+		Headers:           resolved.Headers,
+		SessionKeyMapping: resolved.SessionKeyMapping,
+		MaxOutputTokens:   resolved.MaxOutputTokens,
+		ThinkingLevel:     providers.ThinkingLevel(resolved.ThinkingLevel),
 	}
 	if len(resolved.ProtocolOptions) != 0 {
 		options, err := providers.EncodeProtocolOptions(resolved.ProtocolOptions)

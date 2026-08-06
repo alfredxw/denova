@@ -24,14 +24,15 @@ type ModelProfileSettings struct {
 	// LegacyOpenAI* are decode-only aliases for profiles persisted before the
 	// provider/protocol split. Sanitization moves them into the generic fields
 	// and clears them, so every subsequent write uses the canonical schema.
-	LegacyOpenAIAPIKey  string            `toml:"openai_api_key,omitempty" json:"openai_api_key,omitempty"`
-	LegacyOpenAIBaseURL string            `toml:"openai_base_url,omitempty" json:"openai_base_url,omitempty"`
-	LegacyOpenAIModel   string            `toml:"openai_model,omitempty" json:"openai_model,omitempty"`
-	Headers             map[string]string `toml:"headers,omitempty" json:"headers,omitempty"`
-	ProtocolOptions     map[string]any    `toml:"protocol_options,omitempty" json:"protocol_options,omitempty"`
-	Temperature         *float64          `toml:"temperature,omitempty" json:"temperature,omitempty"`
-	ContextWindowTokens *int              `toml:"context_window_tokens,omitempty" json:"context_window_tokens,omitempty"`
-	MaxOutputTokens     *int              `toml:"max_output_tokens,omitempty" json:"max_output_tokens,omitempty"`
+	LegacyOpenAIAPIKey  string                       `toml:"openai_api_key,omitempty" json:"openai_api_key,omitempty"`
+	LegacyOpenAIBaseURL string                       `toml:"openai_base_url,omitempty" json:"openai_base_url,omitempty"`
+	LegacyOpenAIModel   string                       `toml:"openai_model,omitempty" json:"openai_model,omitempty"`
+	Headers             map[string]string            `toml:"headers,omitempty" json:"headers,omitempty"`
+	ProtocolOptions     map[string]any               `toml:"protocol_options,omitempty" json:"protocol_options,omitempty"`
+	SessionKeyMapping   *providers.SessionKeyMapping `toml:"session_key_mapping,omitempty" json:"session_key_mapping,omitempty"`
+	Temperature         *float64                     `toml:"temperature,omitempty" json:"temperature,omitempty"`
+	ContextWindowTokens *int                         `toml:"context_window_tokens,omitempty" json:"context_window_tokens,omitempty"`
+	MaxOutputTokens     *int                         `toml:"max_output_tokens,omitempty" json:"max_output_tokens,omitempty"`
 }
 
 type AgentModelSettings struct {
@@ -63,6 +64,7 @@ type ResolvedModelSettings struct {
 	Model               string
 	Headers             map[string]string
 	ProtocolOptions     map[string]any
+	SessionKeyMapping   *providers.SessionKeyMapping
 	Temperature         *float64
 	ContextWindowTokens int
 	MaxOutputTokens     *int
@@ -173,6 +175,7 @@ func ResolveAgentModel(cfg *Config, agentKind string) ResolvedModelSettings {
 		Model:               profile.Model,
 		Headers:             cloneModelProfileHeaders(profile.Headers),
 		ProtocolOptions:     cloneModelProfileOptions(profile.ProtocolOptions),
+		SessionKeyMapping:   cloneModelProfileSessionKeyMapping(profile.SessionKeyMapping),
 		Temperature:         temperature,
 		ContextWindowTokens: *profile.ContextWindowTokens,
 		MaxOutputTokens:     cloneIntPointer(profile.MaxOutputTokens),
@@ -351,6 +354,7 @@ func hasModelProfileDraftFields(profile ModelProfileSettings) bool {
 		strings.TrimSpace(profile.BaseURL) != "" ||
 		len(profile.Headers) != 0 ||
 		len(profile.ProtocolOptions) != 0 ||
+		profile.SessionKeyMapping != nil ||
 		profile.Temperature != nil ||
 		profile.ContextWindowTokens != nil ||
 		profile.MaxOutputTokens != nil
@@ -387,6 +391,7 @@ func defaultModelProfile(profiles []ModelProfileSettings) (ModelProfileSettings,
 
 func mergeModelProfile(parent, child ModelProfileSettings) ModelProfileSettings {
 	out := parent
+	previousProvider := strings.TrimSpace(out.Provider)
 	previousProtocol := strings.TrimSpace(out.Protocol)
 	previousScope := modelCredentialScope(out)
 	if id := modelProfileID(child); id != "" {
@@ -421,8 +426,13 @@ func mergeModelProfile(parent, child ModelProfileSettings) ModelProfileSettings 
 		out.APIKey = ""
 		out.Headers = nil
 		out.ProtocolOptions = nil
+		out.SessionKeyMapping = nil
 	} else if previousProtocol != strings.TrimSpace(out.Protocol) {
 		out.ProtocolOptions = nil
+		out.SessionKeyMapping = nil
+	}
+	if previousProvider != strings.TrimSpace(out.Provider) {
+		out.SessionKeyMapping = nil
 	}
 	if child.APIKey != "" {
 		out.APIKey = child.APIKey
@@ -435,6 +445,9 @@ func mergeModelProfile(parent, child ModelProfileSettings) ModelProfileSettings 
 	}
 	if child.ProtocolOptions != nil {
 		out.ProtocolOptions = mergeModelProfileOptions(out.ProtocolOptions, child.ProtocolOptions)
+	}
+	if child.SessionKeyMapping != nil {
+		out.SessionKeyMapping = cloneModelProfileSessionKeyMapping(child.SessionKeyMapping)
 	}
 	if child.Temperature != nil {
 		out.Temperature = child.Temperature
@@ -506,6 +519,11 @@ func normalizeModelProfileRouting(profile ModelProfileSettings) ModelProfileSett
 	profile = migrateLegacyModelProfile(profile)
 	profile.Provider = strings.TrimSpace(profile.Provider)
 	profile.Protocol = strings.TrimSpace(profile.Protocol)
+	if profile.SessionKeyMapping != nil {
+		profile.SessionKeyMapping = cloneModelProfileSessionKeyMapping(profile.SessionKeyMapping)
+		profile.SessionKeyMapping.Location = providers.SessionKeyLocation(strings.ToLower(strings.TrimSpace(string(profile.SessionKeyMapping.Location))))
+		profile.SessionKeyMapping.Name = strings.TrimSpace(profile.SessionKeyMapping.Name)
+	}
 	explicitProvider := profile.Provider != ""
 	if profile.Provider == "" && strings.TrimSpace(profile.BaseURL) != "" {
 		profile.Provider = inferModelProvider(profile.BaseURL)
@@ -556,6 +574,14 @@ func cloneModelProfileHeaders(headers map[string]string) map[string]string {
 		clone[key] = value
 	}
 	return clone
+}
+
+func cloneModelProfileSessionKeyMapping(mapping *providers.SessionKeyMapping) *providers.SessionKeyMapping {
+	if mapping == nil {
+		return nil
+	}
+	clone := *mapping
+	return &clone
 }
 
 func mergeModelProfileHeaders(parent, child map[string]string) map[string]string {

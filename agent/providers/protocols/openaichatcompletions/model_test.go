@@ -24,6 +24,68 @@ func newTestModel(ctx context.Context, config *providers.ModelConfig) (agent.Too
 	return NewAdapter().New(ctx, *config)
 }
 
+func TestGenerateMapsSessionKeyToConfiguredChatCompletionsField(t *testing.T) {
+	tests := []struct {
+		name     string
+		mapping  *providers.SessionKeyMapping
+		wantHead string
+		wantBody string
+	}{
+		{
+			name: "header",
+			mapping: &providers.SessionKeyMapping{
+				Location: providers.SessionKeyLocationHeader, Name: "X-Session-Id",
+			},
+			wantHead: "conversation-123",
+		},
+		{
+			name: "body",
+			mapping: &providers.SessionKeyMapping{
+				Location: providers.SessionKeyLocationBody, Name: "session_id",
+			},
+			wantBody: "conversation-123",
+		},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			requestBody := make(chan []byte, 1)
+			server := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
+				if got := request.Header.Get("X-Session-Id"); got != test.wantHead {
+					t.Errorf("session header = %q, want %q", got, test.wantHead)
+				}
+				body, _ := io.ReadAll(request.Body)
+				requestBody <- body
+				writer.Header().Set("Content-Type", "application/json")
+				_, _ = io.WriteString(writer, `{"id":"session-test","choices":[{"index":0,"finish_reason":"stop","message":{"role":"assistant","content":"ok"}}]}`)
+			}))
+			defer server.Close()
+
+			headers := map[string]string(nil)
+			if test.mapping.Location == providers.SessionKeyLocationHeader {
+				headers = map[string]string{"X-Session-Id": "stale"}
+			}
+			model, err := newTestModel(context.Background(), &providers.ModelConfig{
+				BaseURL: server.URL + "/v1", Model: "test-model", HTTPClient: server.Client(),
+				Headers: headers, SessionKeyMapping: test.mapping,
+			})
+			if err != nil {
+				t.Fatal(err)
+			}
+			ctx := agent.ContextWithSessionKey(context.Background(), "conversation-123")
+			if _, err := model.Generate(ctx, []*agent.Message{agent.UserMessage("ping")}); err != nil {
+				t.Fatal(err)
+			}
+			var body map[string]any
+			if err := json.Unmarshal(<-requestBody, &body); err != nil {
+				t.Fatal(err)
+			}
+			if got, _ := body["session_id"].(string); got != test.wantBody {
+				t.Fatalf("session body field = %q, want %q; body=%#v", got, test.wantBody, body)
+			}
+		})
+	}
+}
+
 func TestCompatibilityReasoningEffortCoversUnifiedThinkingLevels(t *testing.T) {
 	defaultCompatibility, err := resolveCompatibility(providers.ModelConfig{})
 	if err != nil {

@@ -64,7 +64,7 @@ func (model *ChatModel) request(input []*agent.Message, opts ...agent.ModelOptio
 	if err := applyOutputFormat(&params, model.config.OutputFormat); err != nil {
 		return responses.ResponseNewParams{}, nil, err
 	}
-	return params, model.requestOptions(), nil
+	return params, model.requestOptions(common.SessionKey), nil
 }
 
 func requestInput(messages []*agent.Message, config providers.ModelConfig) (responses.ResponseInputParam, error) {
@@ -301,7 +301,7 @@ func applyThinkingLevel(params *responses.ResponseNewParams, compatibility Compa
 	}
 }
 
-func (model *ChatModel) requestOptions() []option.RequestOption {
+func (model *ChatModel) requestOptions(sessionKey string) []option.RequestOption {
 	keys := make([]string, 0, len(model.compatibility.ExtraBody))
 	for key := range model.compatibility.ExtraBody {
 		keys = append(keys, key)
@@ -310,6 +310,14 @@ func (model *ChatModel) requestOptions() []option.RequestOption {
 	result := make([]option.RequestOption, 0, len(keys))
 	for _, key := range keys {
 		result = append(result, option.WithJSONSet(escapeJSONPathKey(key), model.compatibility.ExtraBody[key]))
+	}
+	if mapping := model.config.SessionKeyMapping; mapping != nil && sessionKey != "" {
+		switch mapping.Location {
+		case providers.SessionKeyLocationHeader:
+			result = append(result, option.WithHeader(mapping.Name, sessionKey))
+		case providers.SessionKeyLocationBody:
+			result = append(result, option.WithJSONSet(escapeJSONPathKey(mapping.Name), sessionKey))
+		}
 	}
 	return result
 }

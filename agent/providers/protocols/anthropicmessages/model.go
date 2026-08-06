@@ -16,6 +16,7 @@ import (
 // non-streaming helper injects a model-dependent timeout; Denova leaves model
 // execution unbounded except for caller context cancellation.
 func (model *ChatModel) Generate(ctx context.Context, input []*agent.Message, opts ...agent.ModelOption) (*agent.Message, error) {
+	opts = agent.BindContextSessionKey(ctx, model.options, opts...)
 	params, requestOptions, err := model.request(input, opts...)
 	if err != nil {
 		return nil, err
@@ -37,6 +38,7 @@ func (model *ChatModel) Generate(ctx context.Context, input []*agent.Message, op
 }
 
 func (model *ChatModel) Stream(ctx context.Context, input []*agent.Message, opts ...agent.ModelOption) (*agent.StreamReader[*agent.Message], error) {
+	opts = agent.BindContextSessionKey(ctx, model.options, opts...)
 	params, requestOptions, err := model.request(input, opts...)
 	if err != nil {
 		return nil, err

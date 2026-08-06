@@ -242,6 +242,9 @@ func (agent *Agent) run(parent context.Context, input *AgentInput, options *agen
 			return
 		}
 		modelOptions := []ModelOption{WithTools(state.ToolInfos)}
+		if sessionKey, ok := SessionKeyFromContext(ctx); ok {
+			modelOptions = append(modelOptions, WithSessionKey(sessionKey))
+		}
 		modelCall := &ModelCall{
 			Model: modelForCall, Messages: cloneMessages(state.Messages),
 			Options: modelOptions, Streaming: input.EnableStreaming,

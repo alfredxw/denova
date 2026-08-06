@@ -109,7 +109,7 @@ func TestGenerateUsesMessagesStreamingEndpointWithoutSDKTimeout(t *testing.T) {
 		if request.URL.Path != "/v1/messages" {
 			t.Errorf("path = %q", request.URL.Path)
 		}
-		if request.Header.Get("X-Api-Key") != "secret" || request.Header.Get("X-Custom") != "custom" {
+		if request.Header.Get("X-Api-Key") != "secret" || request.Header.Get("X-Custom") != "custom" || request.Header.Get("X-Session-Id") != "conversation-123" {
 			t.Errorf("headers = %#v", request.Header)
 		}
 		body, _ := io.ReadAll(request.Body)
@@ -134,11 +134,16 @@ func TestGenerateUsesMessagesStreamingEndpointWithoutSDKTimeout(t *testing.T) {
 		Provider: "anthropic-test", Protocol: providers.ProtocolAnthropicMessages,
 		BaseURL: server.URL, Model: "test-model", APIKey: "secret",
 		Headers: map[string]string{"X-Custom": "custom"}, HTTPClient: server.Client(),
+		SessionKeyMapping: &providers.SessionKeyMapping{
+			Location: providers.SessionKeyLocationHeader, Name: "X-Session-Id",
+		},
 	})
 	if err != nil {
 		t.Fatal(err)
 	}
-	message, err := model.Generate(context.Background(), []*agent.Message{agent.UserMessage("ping")})
+	message, err := model.Generate(
+		context.Background(), []*agent.Message{agent.UserMessage("ping")}, agent.WithSessionKey("conversation-123"),
+	)
 	if err != nil {
 		t.Fatal(err)
 	}

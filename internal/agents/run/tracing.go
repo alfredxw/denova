@@ -123,6 +123,9 @@ func ContextWithRunTrace(ctx context.Context, traceID string, sink TraceSink, pa
 }
 
 func WithStandaloneTrace(ctx context.Context, cfg *config.Config, agentKind, source, mode string, attrs map[string]any) (context.Context, func(error)) {
+	if _, ok := agent.SessionKeyFromContext(ctx); !ok {
+		ctx = agent.ContextWithSessionKey(ctx, StandaloneSessionKey(cfg, agentKind, source))
+	}
 	if traceContextFromContext(ctx).sink != nil {
 		return ctx, func(error) {}
 	}

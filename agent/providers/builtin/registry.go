@@ -133,10 +133,19 @@ func providerPresets() ([]providers.ProviderPreset, error) {
 		return nil, err
 	}
 
-	chatEndpoint := func(baseURL string) map[providers.ProtocolID]providers.EndpointPreset {
+	chatEndpointWithSessionKey := func(baseURL string, mapping *providers.SessionKeyMapping) map[providers.ProtocolID]providers.EndpointPreset {
 		return map[providers.ProtocolID]providers.EndpointPreset{
-			providers.ProtocolOpenAIChatCompletions: {BaseURL: baseURL, ProtocolOptions: openAIChat},
+			providers.ProtocolOpenAIChatCompletions: {
+				BaseURL: baseURL, ProtocolOptions: openAIChat, SessionKeyMapping: mapping,
+			},
 		}
+	}
+	chatEndpoint := func(baseURL string) map[providers.ProtocolID]providers.EndpointPreset {
+		return chatEndpointWithSessionKey(baseURL, nil)
+	}
+	openAISessionKey := &providers.SessionKeyMapping{
+		Location: providers.SessionKeyLocationBody,
+		Name:     "prompt_cache_key",
 	}
 	return []providers.ProviderPreset{
 		{
@@ -144,8 +153,12 @@ func providerPresets() ([]providers.ProviderPreset, error) {
 			Name:            "OpenAI",
 			DefaultProtocol: providers.ProtocolOpenAIResponses,
 			Endpoints: map[providers.ProtocolID]providers.EndpointPreset{
-				providers.ProtocolOpenAIResponses:       {BaseURL: "https://api.openai.com/v1", ProtocolOptions: openAIResponses},
-				providers.ProtocolOpenAIChatCompletions: {BaseURL: "https://api.openai.com/v1", ProtocolOptions: openAIChat},
+				providers.ProtocolOpenAIResponses: {
+					BaseURL: "https://api.openai.com/v1", ProtocolOptions: openAIResponses, SessionKeyMapping: openAISessionKey,
+				},
+				providers.ProtocolOpenAIChatCompletions: {
+					BaseURL: "https://api.openai.com/v1", ProtocolOptions: openAIChat, SessionKeyMapping: openAISessionKey,
+				},
 			},
 		},
 		{
@@ -192,8 +205,18 @@ func providerPresets() ([]providers.ProviderPreset, error) {
 		{ID: "novita", Name: "Novita AI", DefaultProtocol: providers.ProtocolOpenAIChatCompletions, Endpoints: chatEndpoint("https://api.novita.ai/openai/v1")},
 		{ID: "xai", Name: "xAI", DefaultProtocol: providers.ProtocolOpenAIChatCompletions, Endpoints: chatEndpoint("https://api.x.ai/v1")},
 		{ID: "mistral", Name: "Mistral AI", DefaultProtocol: providers.ProtocolOpenAIChatCompletions, Endpoints: chatEndpoint("https://api.mistral.ai/v1")},
-		{ID: "fireworks", Name: "Fireworks AI", DefaultProtocol: providers.ProtocolOpenAIChatCompletions, Endpoints: chatEndpoint("https://api.fireworks.ai/inference/v1")},
-		{ID: "openrouter", Name: "OpenRouter", DefaultProtocol: providers.ProtocolOpenAIChatCompletions, Endpoints: chatEndpoint("https://openrouter.ai/api/v1")},
+		{
+			ID: "fireworks", Name: "Fireworks AI", DefaultProtocol: providers.ProtocolOpenAIChatCompletions,
+			Endpoints: chatEndpointWithSessionKey("https://api.fireworks.ai/inference/v1", &providers.SessionKeyMapping{
+				Location: providers.SessionKeyLocationHeader, Name: "X-Session-Affinity",
+			}),
+		},
+		{
+			ID: "openrouter", Name: "OpenRouter", DefaultProtocol: providers.ProtocolOpenAIChatCompletions,
+			Endpoints: chatEndpointWithSessionKey("https://openrouter.ai/api/v1", &providers.SessionKeyMapping{
+				Location: providers.SessionKeyLocationHeader, Name: "X-Session-Id",
+			}),
+		},
 		{ID: "moonshot", Name: "Moonshot AI", DefaultProtocol: providers.ProtocolOpenAIChatCompletions, Endpoints: chatEndpoint("https://api.moonshot.ai/v1")},
 		{ID: "alibaba", Name: "Alibaba Cloud Model Studio", DefaultProtocol: providers.ProtocolOpenAIChatCompletions, Endpoints: chatEndpoint("https://coding-intl.dashscope.aliyuncs.com/v1")},
 		{ID: "zhipu", Name: "Zhipu AI", DefaultProtocol: providers.ProtocolOpenAIChatCompletions, Endpoints: chatEndpoint("https://open.bigmodel.cn/api/coding/paas/v4")},

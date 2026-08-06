@@ -24,7 +24,7 @@ const (
 	// They are injection limits, not transcript limits: persisted conversation
 	// history is governed by compaction and is never silently rewritten here.
 	DefaultAgentContextMaxFragmentBytes      = 256 * 1024
-	DefaultAgentContextMaxTotalInjectedBytes = 1024 * 1024
+	DefaultAgentContextMaxTotalInjectedBytes = 4 * 1024 * 1024
 	DefaultAgentContextMaxFragments          = 256
 	DefaultAgentContextMaxMetadataFieldBytes = 4 * 1024
 	// Provider input is a non-disableable safety boundary over the complete

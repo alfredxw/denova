@@ -62,7 +62,7 @@ A map from exact Skill name to boolean. `true` explicitly enables an otherwise a
 | `compaction_threshold` | ratio clamped to 0.50–0.98 |
 | `tool_result_context_enabled` | boolean; allows recoverable tool results to remain in model context until backend-managed cleanup |
 | `max_fragment_bytes` | positive, max 16 MiB; default 256 KiB |
-| `max_total_injected_bytes` | positive, max 64 MiB; default 1 MiB |
+| `max_total_injected_bytes` | positive, max 64 MiB; default 4 MiB |
 | `max_fragments` | positive, max 4096; default 256 |
 | `max_metadata_field_bytes` | positive, max 64 KiB; default 4 KiB |
 | `max_provider_input_bytes` | positive, max 64 MiB; default 4 MiB |

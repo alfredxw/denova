@@ -163,6 +163,44 @@ func mustProtocolOptions(t *testing.T, compatibility Compatibility) json.RawMess
 	return options
 }
 
+func TestGenerateMapsSessionKeyToResponsesBody(t *testing.T) {
+	requestBody := make(chan []byte, 1)
+	server := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
+		body, _ := io.ReadAll(request.Body)
+		requestBody <- body
+		writer.Header().Set("Content-Type", "application/json")
+		_, _ = io.WriteString(writer, `{
+  "id":"resp_session","object":"response","created_at":1700000000,"status":"completed","model":"test-model",
+  "output":[{"id":"message_session","type":"message","status":"completed","role":"assistant","content":[{"type":"output_text","text":"ok","annotations":[],"logprobs":[]}]}],
+  "usage":{"input_tokens":1,"output_tokens":1,"total_tokens":2}
+}`)
+	}))
+	defer server.Close()
+
+	model, err := NewAdapter().New(context.Background(), providers.ModelConfig{
+		Provider: providers.ProviderOpenAI, Protocol: providers.ProtocolOpenAIResponses,
+		BaseURL: server.URL + "/v1", Model: "test-model", HTTPClient: server.Client(),
+		SessionKeyMapping: &providers.SessionKeyMapping{
+			Location: providers.SessionKeyLocationBody, Name: "prompt_cache_key",
+		},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := model.Generate(
+		context.Background(), []*agent.Message{agent.UserMessage("ping")}, agent.WithSessionKey("conversation-123"),
+	); err != nil {
+		t.Fatal(err)
+	}
+	var body map[string]any
+	if err := json.Unmarshal(<-requestBody, &body); err != nil {
+		t.Fatal(err)
+	}
+	if body["prompt_cache_key"] != "conversation-123" {
+		t.Fatalf("prompt_cache_key = %#v; body=%#v", body["prompt_cache_key"], body)
+	}
+}
+
 func TestGenerateMapsRequestResponseAndReplaysOutputItems(t *testing.T) {
 	requests := make(chan []byte, 2)
 	var callCount atomic.Int32
