@@ -86,7 +86,6 @@ export function OutlineFileActions({
                 type="button"
                 aria-label={t('sidebar.moreActions')}
                 aria-haspopup="menu"
-                title={t('sidebar.moreActions')}
                 className={`pointer-events-none absolute right-1 z-10 flex h-6 w-6 items-center justify-center rounded text-[var(--nova-text-faint)] opacity-0 transition-opacity hover:bg-[var(--nova-hover)] hover:text-[var(--nova-text)] focus-visible:pointer-events-auto focus-visible:opacity-100 group-hover:pointer-events-auto group-hover:opacity-100 max-md:pointer-events-auto max-md:opacity-100 ${triggerPlacement === 'top' ? 'top-1' : 'top-1/2 -translate-y-1/2'}`}
                 onPointerDown={(event) => event.stopPropagation()}
                 onClick={openContextMenuFromTrigger}

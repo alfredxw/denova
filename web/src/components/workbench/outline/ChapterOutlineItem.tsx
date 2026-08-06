@@ -76,7 +76,6 @@ export const ChapterOutlineItem = memo(function ChapterOutlineItem({
           type="button"
           className={`absolute bottom-1.5 right-1.5 inline-flex h-5 w-5 items-center justify-center rounded-[var(--nova-radius)] text-[var(--nova-text-faint)] hover:bg-[var(--nova-surface-2)] hover:text-[var(--nova-text)] disabled:cursor-not-allowed disabled:opacity-40 ${saving ? 'opacity-70' : ''}`}
           disabled={chapter.words === 0}
-          title={toggleTitle}
           aria-label={toggleTitle}
           aria-busy={saving}
           aria-disabled={saving || chapter.words === 0}

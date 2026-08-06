@@ -21,6 +21,25 @@ func (a *App) SubmitChatAgentCommand(ctx context.Context, command ChatAgentComma
 }
 
 func (s *ChatAppService) SubmitAgentCommand(ctx context.Context, command ChatAgentCommand) (agentrun.CommandReceipt, error) {
+	return s.submitAgentCommand(ctx, command)
+}
+
+// SubmitChatAgentCommandForSession prevents a control intended for the
+// visible Session from being delivered to a different foreground runtime.
+func (a *App) SubmitChatAgentCommandForSession(ctx context.Context, sessionID string, command ChatAgentCommand) (agentrun.CommandReceipt, error) {
+	return a.chat().SubmitAgentCommandForSession(ctx, sessionID, command)
+}
+
+func (s *ChatAppService) SubmitAgentCommandForSession(ctx context.Context, sessionID string, command ChatAgentCommand) (agentrun.CommandReceipt, error) {
+	s.admission.RLock()
+	defer s.admission.RUnlock()
+	if err := s.confirmSelectedSessionID(sessionID); err != nil {
+		return agentrun.CommandReceipt{}, err
+	}
+	return s.submitAgentCommand(ctx, command)
+}
+
+func (s *ChatAppService) submitAgentCommand(ctx context.Context, command ChatAgentCommand) (agentrun.CommandReceipt, error) {
 	if command.Kind == agentharness.CommandAbort || command.Kind == agentharness.CommandSteerQueued || command.Kind == agentharness.CommandCancelQueued {
 		runtime, task, err := s.activeCommandRuntime()
 		if err != nil {

@@ -20,9 +20,17 @@ func (h *Handlers) HandleChat(ctx context.Context, c *app.RequestContext) {
 	if !h.requireWorkspace(c) {
 		return
 	}
-	var req novaApp.AgentChatRequest
-	if err := c.BindJSON(&req); err != nil {
+	var body struct {
+		novaApp.AgentChatRequest
+		SessionID string `json:"session_id"`
+	}
+	if err := c.BindJSON(&body); err != nil {
 		writeErrorKey(c, consts.StatusBadRequest, "api.common.invalidBody")
+		return
+	}
+	req := body.AgentChatRequest
+	sessionID, ok := requiredWritingSessionID(c, body.SessionID)
+	if !ok {
 		return
 	}
 	if strings.TrimSpace(req.Message) == "" {
@@ -35,12 +43,12 @@ func (h *Handlers) HandleChat(ctx context.Context, c *app.RequestContext) {
 	}
 	req.Locale = requestLocale(c)
 
-	task, err := h.app.StartTaskWithError(ctx, req)
+	task, err := h.app.StartTaskForSessionWithError(ctx, sessionID, req)
 	if err != nil {
 		h.writeChatPreparationError(c, err)
 		return
 	}
-	slog.InfoContext(ctx, fmt.Sprintf("[agent-ui-sse] attach new chat task_id=%s", task.ID()))
+	slog.InfoContext(ctx, fmt.Sprintf("[agent-ui-sse] attach new chat task_id=%s session_id=%s", task.ID(), sessionID))
 	sse.StreamTaskUI(ctx, c, task, h.chatSSEStreamOptions()...)
 }
 
@@ -151,23 +159,39 @@ func (h *Handlers) HandleChatContextCompactionRemove(ctx context.Context, c *app
 
 // handleChatStream 重连到当前活跃任务的 UIMessage 事件流（回放已有事件 + 继续接收新事件）。
 func (h *Handlers) HandleChatStream(ctx context.Context, c *app.RequestContext) {
+	sessionID, ok := requiredWritingSessionID(c, c.Query("session_id"))
+	if !ok {
+		return
+	}
 	taskID := strings.TrimSpace(c.Query("task_id"))
 	if taskID == "" {
 		writeError(c, consts.StatusBadRequest, "缺少 task_id，无法精确恢复 Agent 流 / task_id is required for exact Agent stream recovery")
 		return
 	}
-	task := h.app.ActiveTask()
+	task, err := h.app.ActiveTaskForSession(sessionID)
+	if err != nil {
+		h.writeChatPreparationError(c, err)
+		return
+	}
 	if task == nil || task.ID() != taskID {
 		writeAgentRuntimeError(c, consts.StatusConflict, "agent_runtime.rehydrate_required", "旧的任务流已失效，请从 active projection 重新挂接 / The old task stream is stale; rehydrate from the active projection", map[string]any{"task_id": taskID})
 		return
 	}
-	slog.InfoContext(ctx, fmt.Sprintf("[agent-ui-sse] attach active chat task_id=%s status=%s", task.ID(), task.Status()))
+	slog.InfoContext(ctx, fmt.Sprintf("[agent-ui-sse] attach active chat task_id=%s session_id=%s status=%s", task.ID(), sessionID, task.Status()))
 	sse.StreamTaskUI(ctx, c, task, h.chatSSEStreamOptions()...)
 }
 
 // handleChatActive 查询当前是否有活跃任务。
 func (h *Handlers) HandleChatActive(ctx context.Context, c *app.RequestContext) {
+	sessionID, ok := requiredWritingSessionID(c, c.Query("session_id"))
+	if !ok {
+		return
+	}
 	view := h.app.WritingAgentActiveView(ctx)
+	if strings.TrimSpace(view.SessionID) != sessionID {
+		h.writeChatPreparationError(c, novaApp.ErrAgentContextChanged)
+		return
+	}
 	if view.Task == nil {
 		response := map[string]interface{}{
 			"active": false,
@@ -194,6 +218,15 @@ func (h *Handlers) HandleChatActive(ctx context.Context, c *app.RequestContext) 
 		Available: view.RuntimeProjectionOK, StreamAttached: true, RecoveryActions: view.RecoveryActions,
 	})
 	c.JSON(consts.StatusOK, response)
+}
+
+func requiredWritingSessionID(c *app.RequestContext, value string) (string, bool) {
+	sessionID := strings.TrimSpace(value)
+	if sessionID == "" {
+		writeAgentRuntimeError(c, consts.StatusBadRequest, "agent_runtime.invalid_binding", "缺少 session_id，无法绑定创作会话 / session_id is required to bind the Writing session", nil)
+		return "", false
+	}
+	return sessionID, true
 }
 
 func (h *Handlers) chatSSEStreamOptions() []sse.StreamOption {

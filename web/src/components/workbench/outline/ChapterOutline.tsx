@@ -121,7 +121,6 @@ export function ChapterOutline({
   const listRef = useRef<ChapterOutlineListHandle>(null)
   const panelSelectionRef = useRef(false)
   const lastAutoLocatedRef = useRef<string | null>(null)
-  const didLocateOnceRef = useRef(false)
   const locateFrameRef = useRef<number | null>(null)
   const [backToTopVisible, setBackToTopVisible] = useState(false)
 
@@ -164,7 +163,7 @@ export function ChapterOutline({
     locateFrameRef.current = null
   }, [])
 
-  const locateChapter = useCallback((path: string, behavior: 'auto' | 'smooth') => {
+  const locateChapter = useCallback((path: string) => {
     const volumeKey = chapterVolumeByPath.get(path)
     if (!volumeKey) return
     setCollapsedVolumes((prev) => {
@@ -178,7 +177,7 @@ export function ChapterOutline({
     locateFrameRef.current = requestAnimationFrame(() => {
       locateFrameRef.current = requestAnimationFrame(() => {
         locateFrameRef.current = null
-        listRef.current?.scrollToChapter(path, behavior)
+        listRef.current?.scrollToChapter(path)
       })
     })
   }, [cancelScheduledLocate, chapterVolumeByPath])
@@ -203,21 +202,19 @@ export function ChapterOutline({
     }
     if (lastAutoLocatedRef.current === selectedFile) return
     lastAutoLocatedRef.current = selectedFile
-    const behavior = didLocateOnceRef.current ? 'smooth' : 'auto'
-    didLocateOnceRef.current = true
-    locateChapter(selectedFile, behavior)
+    locateChapter(selectedFile)
   }, [chapters.length, locateChapter, revealRequest?.path, selectedFile, selectedIsChapter])
 
   const latestChapterPath = latestChapter?.path ?? null
 
   useEffect(() => {
     if (!revealRequest?.path) return
-    locateChapter(revealRequest.path, 'smooth')
+    locateChapter(revealRequest.path)
   }, [locateChapter, revealRequest?.nonce, revealRequest?.path])
 
-  const scrollToTop = useCallback(() => listRef.current?.scrollToTop('smooth'), [])
+  const scrollToTop = useCallback(() => listRef.current?.scrollToTop(), [])
   const locateLatestChapter = useCallback(() => {
-    if (latestChapterPath) locateChapter(latestChapterPath, 'smooth')
+    if (latestChapterPath) locateChapter(latestChapterPath)
   }, [latestChapterPath, locateChapter])
   const toggleHeaderPinned = useCallback(() => setHeaderPinned((pinned) => !pinned), [])
 

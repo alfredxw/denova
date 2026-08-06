@@ -633,7 +633,8 @@ describe('StoryStage composer', () => {
     )
 
     await user.type(getStageInput(), '准备 #激')
-    await user.click(screen.getByText('#激烈打斗'))
+    expect(screen.getByText('#激烈打斗').closest('[cmdk-item]')).toHaveClass('whitespace-nowrap', 'sm:min-h-9')
+    await user.keyboard('{ArrowDown}{Enter}')
 
     const textbox = getStageInput()
     expect(within(textbox).getByText('#激烈打斗')).toHaveClass('nova-composer-token')

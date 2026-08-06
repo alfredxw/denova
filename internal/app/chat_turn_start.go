@@ -37,6 +37,25 @@ func (a *App) StartTaskWithError(ctx context.Context, req agentchat.ChatRequest)
 }
 
 func (s *ChatAppService) StartTaskWithError(ctx context.Context, req agentchat.ChatRequest) (*apptask.Task, error) {
+	return s.startTaskWithError(ctx, "", req)
+}
+
+// StartTaskForSessionWithError binds a new Writing turn to the exact Session
+// displayed by the caller. The admission lock makes this check atomic with
+// create, switch, and delete operations.
+func (a *App) StartTaskForSessionWithError(ctx context.Context, sessionID string, req agentchat.ChatRequest) (*apptask.Task, error) {
+	return a.chat().StartTaskForSessionWithError(ctx, sessionID, req)
+}
+
+func (s *ChatAppService) StartTaskForSessionWithError(ctx context.Context, sessionID string, req agentchat.ChatRequest) (*apptask.Task, error) {
+	sessionID = strings.TrimSpace(sessionID)
+	if sessionID == "" {
+		return nil, ErrInvalidAgentBinding
+	}
+	return s.startTaskWithError(ctx, sessionID, req)
+}
+
+func (s *ChatAppService) startTaskWithError(ctx context.Context, expectedSessionID string, req agentchat.ChatRequest) (*apptask.Task, error) {
 	s.admission.Lock()
 	defer s.admission.Unlock()
 	req.CommandID = strings.TrimSpace(req.CommandID)
@@ -57,6 +76,9 @@ func (s *ChatAppService) StartTaskWithError(ctx context.Context, req agentchat.C
 		sessionID = a.session.ID
 	}
 	a.mu.RUnlock()
+	if expectedSessionID != "" && sessionID != expectedSessionID {
+		return nil, ErrAgentContextChanged
+	}
 	if workspace == "" || sessionID == "" {
 		return nil, ErrNoWorkspace
 	}
@@ -135,7 +157,7 @@ func (s *ChatAppService) StartTaskWithError(ctx context.Context, req agentchat.C
 	var accepted *agentharness.AcceptedRun
 	runAccepted := func(ctx context.Context, task *apptask.Task, emit func(agentrun.Event)) {
 		defer a.unregisterWorkspaceTask(task)
-		slog.InfoContext(ctx, fmt.Sprintf("[agent-task] run begin id=%s message_len=%d references=%d lore_references=%d style_scenes=%d style_rules=%d selections=%d plan_mode=%v teller_id=%s writing_skill=%s", task.ID(), len(req.Message), len(req.References), len(req.LoreReferences), len(req.StyleScenes), len(req.StyleRules), len(req.Selections), req.PlanMode, req.TellerID, req.WritingSkill))
+		slog.InfoContext(ctx, fmt.Sprintf("[agent-task] run begin id=%s session_id=%s message_len=%d references=%d lore_references=%d style_scenes=%d style_rules=%d selections=%d plan_mode=%v teller_id=%s writing_skill=%s", task.ID(), runtime.sess.ID, len(req.Message), len(req.References), len(req.LoreReferences), len(req.StyleScenes), len(req.StyleRules), len(req.Selections), req.PlanMode, req.TellerID, req.WritingSkill))
 		accepted.Wait(ctx)
 		_, outputCommitted := conversation.LastAgentCycleCommitReceipt(agentrun.DomainCommitOutput)
 		postSettlementCtx := ctx
@@ -153,7 +175,7 @@ func (s *ChatAppService) StartTaskWithError(ctx context.Context, req agentchat.C
 		if cycleCommitted && len(verifiedMutations) > 0 {
 			mutationCallback(postSettlementCtx, verifiedMutations, postRunVerification)
 		}
-		slog.InfoContext(ctx, fmt.Sprintf("[agent-task] run end id=%s status=%s", task.ID(), task.Status()))
+		slog.InfoContext(ctx, fmt.Sprintf("[agent-task] run end id=%s session_id=%s status=%s", task.ID(), runtime.sess.ID, task.Status()))
 	}
 
 	task, err := apptask.NewDeferredWithContext(ctx, func(task *apptask.Task) error {

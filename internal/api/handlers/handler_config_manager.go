@@ -85,7 +85,7 @@ func (h *Handlers) HandleConfigManagerActive(ctx context.Context, c *app.Request
 }
 
 func (h *Handlers) HandleConfigManagerRecovery(ctx context.Context, c *app.RequestContext) {
-	request, ok := bindAgentRecoveryRequest(c, false)
+	request, _, ok := bindAgentRecoveryRequest(c, agentRecoveryConfigManager)
 	if !ok {
 		return
 	}

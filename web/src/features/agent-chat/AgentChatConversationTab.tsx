@@ -79,7 +79,7 @@ function AgentChatConversationTabComponent({
     initializedRef.current = true
     void (async () => {
       await Promise.all([chat.loadSessions(), chat.loadHistory(sessionId)])
-      await chat.resumeActiveChat()
+      await chat.resumeActiveChat(sessionId)
     })()
   }, [chat, draft, sessionId])
 

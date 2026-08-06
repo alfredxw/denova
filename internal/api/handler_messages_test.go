@@ -219,7 +219,7 @@ func TestActivitySummarySupportsGzipWithoutCompressingEventStreams(t *testing.T)
 	streamRoute := ut.PerformRequest(
 		server.engine.Engine,
 		http.MethodGet,
-		"/api/chat/stream?task_id=missing",
+		"/api/chat/stream?task_id=missing&session_id="+activeWritingSessionID(t, application),
 		nil,
 		ut.Header{Key: "Accept-Encoding", Value: "gzip"},
 	)

@@ -99,8 +99,23 @@ describe('useAgentChat', () => {
     toastMock.info.mockReset()
   })
 
-  it('stops the old stream and selects the target immediately when switching sessions', async () => {
+  it('keeps the confirmed session selected and blocks sends while a switch is pending', async () => {
     chatMock.status = 'streaming'
+    vi.mocked(getSessions).mockResolvedValueOnce([
+      {
+        id: 'current',
+        title: 'current chat',
+        active: true,
+        message_count: 4,
+        created_at: '2026-07-02T13:20:00Z',
+        updated_at: '2026-07-02T13:20:00Z',
+      },
+    ])
+    const { result } = renderHook(() => useAgentChat())
+    await act(async () => {
+      await result.current.loadSessions()
+    })
+
     let finishSwitch!: (session: SessionSummary) => void
     vi.mocked(switchSession).mockReturnValue(
       new Promise((resolve) => {
@@ -123,7 +138,6 @@ describe('useAgentChat', () => {
       hasMore: false,
       total: 0,
     })
-    const { result } = renderHook(() => useAgentChat())
 
     let request!: Promise<void>
     act(() => {
@@ -131,7 +145,12 @@ describe('useAgentChat', () => {
     })
 
     expect(chatMock.stop).toHaveBeenCalledTimes(1)
-    expect(result.current.activeSessionId).toBe('target')
+    expect(result.current.activeSessionId).toBe('current')
+    expect(result.current.sessionTransitionPending).toBe(true)
+    await act(async () => {
+      expect(await result.current.send('must not leak')).toBe(false)
+    })
+    expect(chatMock.sendMessage).not.toHaveBeenCalled()
 
     await act(async () => {
       finishSwitch({
@@ -144,6 +163,72 @@ describe('useAgentChat', () => {
       })
       await request
     })
+    expect(result.current.activeSessionId).toBe('target')
+    expect(result.current.sessionTransitionPending).toBe(false)
+  })
+
+  it('binds a new turn to the exact confirmed session', async () => {
+    vi.mocked(getSessions).mockResolvedValue([
+      {
+        id: 'session-exact',
+        title: 'exact chat',
+        active: true,
+        message_count: 2,
+        created_at: '2026-07-02T13:20:00Z',
+        updated_at: '2026-07-02T13:20:00Z',
+      },
+    ])
+    chatMock.sendMessage.mockResolvedValue(undefined)
+    const { result } = renderHook(() => useAgentChat())
+    await act(async () => {
+      await result.current.loadSessions()
+    })
+    await act(async () => {
+      expect(await result.current.send('continue exactly here')).toBe(true)
+    })
+
+    expect(chatMock.sendMessage.mock.calls.at(-1)?.[1]?.body).toMatchObject({
+      session_id: 'session-exact',
+      message: 'continue exactly here',
+    })
+  })
+
+  it('does not let an interrupted Session inspection block or overwrite the confirmed target', async () => {
+    const staleInspection = deferred<{ active: true; active_operation_id: string }>()
+    const current = {
+      id: 'session-a', title: 'A', active: true, message_count: 2,
+      created_at: '2026-07-02T13:20:00Z', updated_at: '2026-07-02T13:20:00Z',
+    }
+    const target = { ...current, id: 'session-b', title: 'B' }
+    vi.mocked(getSessions).mockResolvedValueOnce([current]).mockResolvedValue([target])
+    vi.mocked(switchSession).mockResolvedValue(target)
+    vi.mocked(getActiveChatTask).mockImplementation((sessionID: string) => (
+      sessionID === 'session-a' ? staleInspection.promise : Promise.resolve({ active: false })
+    ))
+    const { result } = renderHook(() => useAgentChat())
+    await act(async () => {
+      await result.current.loadSessions()
+    })
+
+    let oldInspection!: Promise<void>
+    act(() => {
+      oldInspection = result.current.resumeActiveChat('session-a')
+    })
+    await waitFor(() => expect(getActiveChatTask).toHaveBeenCalledWith('session-a'))
+
+    await act(async () => {
+      await result.current.switchChatSession('session-b')
+    })
+    expect(result.current.activeSessionId).toBe('session-b')
+    expect(result.current.sessionTransitionPending).toBe(false)
+    expect(getActiveChatTask).toHaveBeenCalledWith('session-b')
+
+    await act(async () => {
+      staleInspection.resolve({ active: true, active_operation_id: 'operation-from-a' })
+      await oldInspection
+    })
+    expect(result.current.activeSessionId).toBe('session-b')
+    expect(result.current.runtimeProjection).toEqual({ active: false })
   })
 
   it('moves the submitted reference snapshot into the user message immediately', async () => {
@@ -271,6 +356,7 @@ describe('useAgentChat', () => {
       'follow_up',
       expect.any(String),
       'operation-7',
+      '',
       expect.objectContaining({
         message: '再补一个反转',
         references: ['chapters/ch01.md'],
@@ -320,6 +406,7 @@ describe('useAgentChat', () => {
       'follow_up',
       'queued-3',
       'operation-queue',
+      '',
       expect.objectContaining({ message: 'Third queued instruction' }),
     )
     expect(result.current.runtimeProjection?.queue?.map((item) => item.command_id)).toEqual([
@@ -402,6 +489,7 @@ describe('useAgentChat', () => {
       'follow_up',
       expect.any(String),
       'operation-visible',
+      '',
       expect.objectContaining({ message: '继续当前画面' }),
     )
   })
@@ -437,6 +525,7 @@ describe('useAgentChat', () => {
       expect.any(String),
       'operation-7',
       'queued-7',
+      '',
       undefined,
     )
     expect(result.current.runtimeProjection?.queue).toEqual([{ ...queued, steer_requested: true }])
@@ -487,6 +576,7 @@ describe('useAgentChat', () => {
       expect.any(String),
       'operation-8',
       'queued-command-8',
+      '',
       'returned_to_editor',
     )
     expect(result.current.runtimeProjection?.queue).toEqual([])
@@ -520,6 +610,7 @@ describe('useAgentChat', () => {
       'abort',
       expect.any(String),
       'operation-streaming-9',
+      '',
       undefined,
       'user_requested',
     )
@@ -563,7 +654,7 @@ describe('useAgentChat', () => {
 
     await act(async () => result.current.stop())
 
-    expect(submitChatCommand).toHaveBeenCalledWith('abort', expect.any(String), 'operation-9', undefined, 'user_requested')
+    expect(submitChatCommand).toHaveBeenCalledWith('abort', expect.any(String), 'operation-9', '', undefined, 'user_requested')
     expect(chatMock.stop).not.toHaveBeenCalled()
     expect(result.current.abortPending).toBe(true)
   })
@@ -581,7 +672,7 @@ describe('useAgentChat', () => {
 
     await act(async () => result.current.stop())
 
-    expect(submitChatCommand).toHaveBeenCalledWith('abort', expect.any(String), 'operation-visible', undefined, 'user_requested')
+    expect(submitChatCommand).toHaveBeenCalledWith('abort', expect.any(String), 'operation-visible', '', undefined, 'user_requested')
     expect(chatMock.stop).not.toHaveBeenCalled()
   })
 
@@ -724,7 +815,7 @@ describe('useAgentChat', () => {
 
     await waitFor(() => expect(chatMock.resumeStream).toHaveBeenCalledTimes(1))
     expect(getActiveChatTask).toHaveBeenCalledTimes(1)
-    expect(setTarget).toHaveBeenCalledWith('task-exact-9')
+    expect(setTarget).toHaveBeenCalledWith('task-exact-9', undefined, { session_id: '' })
     expect(getMessagesPage).toHaveBeenCalledTimes(1)
     expect(vi.mocked(getMessagesPage).mock.invocationCallOrder[0]).toBeLessThan(chatMock.resumeStream.mock.invocationCallOrder[0])
     expect(chatMock.setMessages).toHaveBeenCalledWith(canonicalMessages)
@@ -817,7 +908,7 @@ describe('useAgentChat', () => {
     })
 
     await waitFor(() => expect(chatMock.resumeStream).toHaveBeenCalledTimes(1))
-    expect(setTarget).toHaveBeenCalledWith('task-checkpoint-41', 41)
+    expect(setTarget).toHaveBeenCalledWith('task-checkpoint-41', 41, { session_id: '' })
     expect(chatMock.setMessages).toHaveBeenNthCalledWith(1, canonicalMessages)
     expect(vi.mocked(getMessagesPage).mock.invocationCallOrder[0]).toBeLessThan(chatMock.resumeStream.mock.invocationCallOrder[0])
     expect(result.current.isStreaming).toBe(true)
@@ -1001,9 +1092,9 @@ describe('useAgentChat', () => {
     act(() => window.dispatchEvent(new Event('online')))
 
     await waitFor(() => expect(recoverChatAgentRuntime).toHaveBeenCalledTimes(2))
-    expect(vi.mocked(recoverChatAgentRuntime).mock.calls).toEqual([[action], [action]])
+    expect(vi.mocked(recoverChatAgentRuntime).mock.calls).toEqual([[action, ''], [action, '']])
     expect(vi.mocked(recoverChatAgentRuntime).mock.calls.flat()).not.toContain(laterAction)
-    expect(setTarget).toHaveBeenCalledWith('recovery-task-1')
+    expect(setTarget).toHaveBeenCalledWith('recovery-task-1', undefined, { session_id: '' })
     expect(chatMock.resumeStream).toHaveBeenCalledTimes(1)
     expect(chatMock.sendMessage).not.toHaveBeenCalled()
     expect(result.current.runtimeProjection).toMatchObject({
@@ -1065,7 +1156,7 @@ describe('useAgentChat', () => {
 
     await act(async () => result.current.stop())
 
-    expect(vi.mocked(recoverChatAgentRuntime).mock.calls).toEqual([[attachAction], [abortAction]])
+    expect(vi.mocked(recoverChatAgentRuntime).mock.calls).toEqual([[attachAction, ''], [abortAction, '']])
     expect(submitChatCommand).not.toHaveBeenCalled()
     expect(chatMock.sendMessage).not.toHaveBeenCalled()
   })
@@ -1099,7 +1190,7 @@ describe('useAgentChat', () => {
 
     await waitFor(() => expect(chatMock.resumeStream).toHaveBeenCalledTimes(1))
     expect(recoverChatAgentRuntime).not.toHaveBeenCalled()
-    expect(setTarget).toHaveBeenCalledWith('already-attached-task')
+    expect(setTarget).toHaveBeenCalledWith('already-attached-task', undefined, { session_id: '' })
     expect(result.current.runtimeProjection).toMatchObject({
       recovery_paused: true,
       runtime_recoverable: true,
@@ -1147,7 +1238,7 @@ describe('useAgentChat', () => {
     await act(async () => result.current.resumeActiveChat())
 
     await waitFor(() => expect(chatMock.resumeStream).toHaveBeenCalledTimes(1))
-    expect(vi.mocked(recoverChatAgentRuntime).mock.calls).toEqual([[stateAction]])
+    expect(vi.mocked(recoverChatAgentRuntime).mock.calls).toEqual([[stateAction, '']])
     expect(vi.mocked(recoverChatAgentRuntime).mock.calls.flat()).not.toContain(attachAction)
     expect(vi.mocked(recoverChatAgentRuntime).mock.calls.flat()).not.toContain(laterAction)
     expect(result.current.runtimeProjection).toMatchObject({
@@ -1221,7 +1312,7 @@ describe('useAgentChat', () => {
     )
 
     await waitFor(() => expect(recoverChatAgentRuntime).toHaveBeenCalledTimes(2))
-    expect(vi.mocked(recoverChatAgentRuntime).mock.calls).toEqual([[firstAction], [secondAction]])
+    expect(vi.mocked(recoverChatAgentRuntime).mock.calls).toEqual([[firstAction, ''], [secondAction, '']])
     expect(chatMock.resumeStream).toHaveBeenCalledTimes(1)
     expect(chatMock.sendMessage).not.toHaveBeenCalled()
     expect(result.current.runtimeProjection).toMatchObject({
@@ -1326,7 +1417,7 @@ describe('useAgentChat', () => {
 
     await act(async () => result.current.stop())
 
-    expect(recoverChatAgentRuntime).toHaveBeenCalledWith(abortAction)
+    expect(recoverChatAgentRuntime).toHaveBeenCalledWith(abortAction, '')
     expect(chatMock.resumeStream).not.toHaveBeenCalled()
     expect(result.current.abortPending).toBe(true)
   })
@@ -1376,7 +1467,7 @@ describe('useAgentChat', () => {
 
     await waitFor(() => expect(chatMock.resumeStream).toHaveBeenCalledTimes(2))
     expect(getActiveChatTask).toHaveBeenCalledTimes(2)
-    expect(recoverChatAgentRuntime).toHaveBeenCalledWith(nextAction)
+    expect(recoverChatAgentRuntime).toHaveBeenCalledWith(nextAction, '')
     expect(result.current.isStreaming).toBe(true)
   })
 
@@ -1424,11 +1515,12 @@ describe('useAgentChat', () => {
     })
 
     expect(recoverChatAgentRuntime).toHaveBeenCalledTimes(1)
-    expect(recoverChatAgentRuntime).toHaveBeenCalledWith(attachAction)
+    expect(recoverChatAgentRuntime).toHaveBeenCalledWith(attachAction, '')
     expect(submitChatCommand).toHaveBeenCalledWith(
       'follow_up',
       expect.any(String),
       'operation-recovery',
+      '',
       expect.objectContaining({ message: '采用新的恢复方向' }),
     )
     expect(chatMock.sendMessage).not.toHaveBeenCalled()
@@ -1469,7 +1561,7 @@ describe('useAgentChat', () => {
 
     await act(async () => result.current.stop())
 
-    expect(recoverChatAgentRuntime).toHaveBeenCalledWith(abortAction)
+    expect(recoverChatAgentRuntime).toHaveBeenCalledWith(abortAction, '')
     expect(submitChatCommand).not.toHaveBeenCalled()
     expect(chatMock.sendMessage).not.toHaveBeenCalled()
     expect(result.current.abortPending).toBe(true)

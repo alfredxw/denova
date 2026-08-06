@@ -190,6 +190,7 @@ function App() {
     messages,
     sessions,
     activeSessionId,
+    sessionTransitionPending,
     isStreaming,
     isExecutionActive,
     runtimeProjection,
@@ -287,7 +288,10 @@ function App() {
   useEffect(() => {
     if (!workspaceLoaded || !workspace || chatWorkspaceRef.current === workspace) return
     chatWorkspaceRef.current = workspace
-    void Promise.all([loadSessions(), loadHistory()]).then(() => resumeActiveChat())
+    void Promise.all([loadSessions(), loadHistory()]).then(([loadedSessions]) => {
+      const sessionID = loadedSessions.find((session) => session.active)?.id || loadedSessions[0]?.id || ''
+      if (sessionID) return resumeActiveChat(sessionID)
+    })
   }, [loadHistory, loadSessions, resumeActiveChat, workspace, workspaceLoaded])
 
   useEffect(() => {
@@ -848,6 +852,7 @@ function App() {
         currentChapter={currentChapter}
         chapterStats={chapterStats}
         isStreaming={isStreaming}
+        sessionTransitionPending={sessionTransitionPending}
         isExecutionActive={isExecutionActive}
         runtimeProjection={runtimeProjection}
         abortPending={abortPending}

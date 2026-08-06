@@ -44,12 +44,13 @@ export interface AgentChatClient {
   fixedSessionId?: string
   getSessions: () => Promise<SessionSummary[]>
   getMessagesPage: (sessionId?: string, options?: { limit?: number; before?: string }) => Promise<SessionMessagesPage>
-  getActiveChatTask: () => Promise<ActiveChatTask>
-  recoverChatAgentRuntime: (action: AgentRuntimeRecoveryAction) => Promise<AgentRuntimeRecoveryReceipt>
+  getActiveChatTask: (sessionId: string) => Promise<ActiveChatTask>
+  recoverChatAgentRuntime: (action: AgentRuntimeRecoveryAction, sessionId: string) => Promise<AgentRuntimeRecoveryReceipt>
   submitChatCommand: (
     type: AgentCommandDelivery | 'abort',
     commandId: string,
     targetOperationId: string,
+    sessionId: string,
     input?: Record<string, unknown>,
     reason?: string,
   ) => Promise<AgentCommandReceipt>
@@ -58,6 +59,7 @@ export interface AgentChatClient {
     commandId: string,
     targetOperationId: string,
     targetCommandId: string,
+    sessionId: string,
     reason?: string,
   ) => Promise<AgentCommandReceipt>
   executeCommand: (command: string) => Promise<string>
@@ -148,7 +150,7 @@ export function createProjectAgentChatClient(projectId: string, sessionId: strin
         headers: jsonHeaders,
         body: JSON.stringify({ ...scope, action }),
       }),
-    submitChatCommand: (type, commandId, targetOperationId, input, reason) =>
+    submitChatCommand: (type, commandId, targetOperationId, _requestedSessionId, input, reason) =>
       requestJSON(`${basePath}/chat/commands`, {
         method: 'POST',
         headers: jsonHeaders,
@@ -161,7 +163,7 @@ export function createProjectAgentChatClient(projectId: string, sessionId: strin
           ...(reason ? { reason } : {}),
         }),
       }),
-    submitQueuedChatCommand: (action, commandId, targetOperationId, targetCommandId, reason) =>
+    submitQueuedChatCommand: (action, commandId, targetOperationId, targetCommandId, _requestedSessionId, reason) =>
       requestJSON(`${basePath}/chat/commands`, {
         method: 'POST',
         headers: jsonHeaders,

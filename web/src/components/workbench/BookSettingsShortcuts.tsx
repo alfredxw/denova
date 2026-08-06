@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useId, useMemo, useState } from 'react'
 import { DndContext, PointerSensor, closestCenter, useSensor, useSensors, type DragEndEvent } from '@dnd-kit/core'
 import { SortableContext, arrayMove, useSortable, verticalListSortingStrategy } from '@dnd-kit/sortable'
 import { CSS } from '@dnd-kit/utilities'
@@ -9,7 +9,9 @@ import type { DocumentPreview } from '@/lib/api'
 import { Button } from '@/components/ui/button'
 import { TooltipIconButton } from '@/components/common/tooltip-icon-button'
 import { Input } from '@/components/ui/input'
+import { Label } from '@/components/ui/label'
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
+import { Switch } from '@/components/ui/switch'
 import { OutlineFileActions } from './outline/OutlineFileActions'
 import { flattenFileTree } from './workbench-utils'
 
@@ -19,6 +21,7 @@ const LEGACY_DEFAULT_PINNED_PATHS = ['setting/outline.md', 'CREATOR.md', 'settin
 const LORE_TAB_PIN_KEY = '@lore-tab'
 const DEFAULT_PINNED_PATHS = [...LEGACY_DEFAULT_PINNED_PATHS, 'ideas.md', LORE_TAB_PIN_KEY, 'setting/character-states.md']
 const CURRENT_CHAPTER_PLAN_PIN_KEY = '@current-chapter-plan'
+const HEADER_ACTION_TOOLTIP_DELAY_MS = 700
 
 interface BookSettingFileItem {
   kind: 'file'
@@ -88,6 +91,7 @@ export function BookSettingsShortcuts({
   const [query, setQuery] = useState('')
   const [pinnedPaths, setPinnedPaths] = useState<string[]>(() => readPinnedPaths(projectId))
   const [missingItem, setMissingItem] = useState<BookSettingItem | null>(null)
+  const headerPinnedSwitchId = useId()
   const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 6 } }))
   const candidates = useMemo(() => discoverBookSettings({ tree, outline, ideas, chapterPlans, t }), [chapterPlans, ideas, outline, t, tree])
   const candidatesByPinKey = useMemo(() => new Map(candidates.map((item) => [bookSettingPinKey(item), item])), [candidates])
@@ -149,6 +153,7 @@ export function BookSettingsShortcuts({
             <TooltipIconButton
               label={t('planning.locateLatestChapter')}
               size="icon-sm"
+              tooltipDelayMs={HEADER_ACTION_TOOLTIP_DELAY_MS}
               tooltipSide="bottom"
               className="text-[var(--nova-text-faint)] hover:bg-[var(--nova-hover)] hover:text-[var(--nova-text)]"
               disabled={!latestChapterAvailable}
@@ -161,6 +166,7 @@ export function BookSettingsShortcuts({
             <TooltipIconButton
               label={t('planning.backToTop')}
               size="icon-sm"
+              tooltipDelayMs={HEADER_ACTION_TOOLTIP_DELAY_MS}
               tooltipSide="bottom"
               disabled={!backToTopAvailable}
               className="text-[var(--nova-text-faint)] hover:bg-[var(--nova-hover)] hover:text-[var(--nova-text)] disabled:opacity-35"
@@ -169,16 +175,6 @@ export function BookSettingsShortcuts({
               <ArrowUp className="h-3.5 w-3.5" />
             </TooltipIconButton>
           ) : null}
-          <TooltipIconButton
-            label={t(headerPinned ? 'planning.unpinBookSettingsHeader' : 'planning.pinBookSettingsHeader')}
-            size="icon-sm"
-            tooltipSide="bottom"
-            aria-pressed={headerPinned}
-            className="text-[var(--nova-text-faint)] hover:bg-[var(--nova-hover)] hover:text-[var(--nova-text)]"
-            onClick={onToggleHeaderPinned}
-          >
-            {headerPinned ? <PinOff className="h-3.5 w-3.5" /> : <Pin className="h-3.5 w-3.5" />}
-          </TooltipIconButton>
           <Popover>
             <PopoverTrigger asChild>
               <Button variant="ghost" size="sm" className="h-7 gap-1 px-2 text-[10px] text-[var(--nova-text-faint)]" aria-label={t('planning.manageBookSettings')} title={t('planning.manageBookSettings')}>
@@ -191,6 +187,20 @@ export function BookSettingsShortcuts({
                 <div>
                   <div className="text-xs font-medium text-[var(--nova-text)]">{t('planning.manageBookSettingsTitle')}</div>
                   <p className="mt-0.5 text-[10px] text-[var(--nova-text-faint)]">{t('planning.manageBookSettingsDescription')}</p>
+                </div>
+                <div className="flex items-center gap-2 rounded-md border border-[var(--nova-border)] bg-[var(--nova-surface)] px-2.5 py-2">
+                  <Pin aria-hidden="true" className="h-3.5 w-3.5 shrink-0 text-[var(--nova-text-faint)]" />
+                  <Label htmlFor={headerPinnedSwitchId} className="min-w-0 flex-1 cursor-pointer flex-col items-start gap-0">
+                    <span className="text-[11px] font-medium text-[var(--nova-text)]">{t('planning.bookSettingsHeaderPinned')}</span>
+                    <span className="text-[10px] font-normal leading-4 text-[var(--nova-text-faint)]">{t('planning.bookSettingsHeaderPinnedDescription')}</span>
+                  </Label>
+                  <Switch
+                    id={headerPinnedSwitchId}
+                    size="sm"
+                    checked={headerPinned}
+                    aria-label={t('planning.bookSettingsHeaderPinned')}
+                    onCheckedChange={onToggleHeaderPinned}
+                  />
                 </div>
                 <div className="relative">
                   <Search className="pointer-events-none absolute left-2 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-[var(--nova-text-faint)]" />

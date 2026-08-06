@@ -62,6 +62,10 @@ interface ComposerTokenInputProps {
 type TokenEntry = ComposerTokenSpec & { key: string }
 type ActiveTriggerRange = ComposerTrigger & { from: number; to: number }
 
+// Chinese keyboards commonly place `/` and `、` on the same key. Treat both
+// as composer shortcuts while keeping the serialized Skill syntax canonical.
+const slashTriggerPattern = /(^|\s)[/、]([^\s/、]*)$/
+
 const tokenExtension = Node.create({
   name: 'composerToken',
   group: 'inline',
@@ -678,7 +682,7 @@ function findActiveTrigger(editor: Editor): ActiveTriggerRange | null {
   const cursor = docPositionToTextOffset(editor.state.doc, selection.from)
   const before = serialized.slice(0, cursor)
   const matches: Array<{ kind: ComposerTriggerKind; match: RegExpExecArray | null }> = [
-    { kind: 'slash', match: /(^|\s)\/([^\s/]*)$/.exec(before) },
+    { kind: 'slash', match: slashTriggerPattern.exec(before) },
     { kind: 'reference', match: /(^|\s)@([^\s@]*)$/.exec(before) },
     { kind: 'style', match: /(^|\s)#([^\s#]*)$/.exec(before) },
   ]
@@ -699,7 +703,7 @@ function findActiveTrigger(editor: Editor): ActiveTriggerRange | null {
 
 function findTrailingTrigger(text: string): ActiveTriggerRange | null {
   const matches: Array<{ kind: ComposerTriggerKind; match: RegExpExecArray | null }> = [
-    { kind: 'slash', match: /(^|\s)\/([^\s/]*)$/.exec(text) },
+    { kind: 'slash', match: slashTriggerPattern.exec(text) },
     { kind: 'reference', match: /(^|\s)@([^\s@]*)$/.exec(text) },
     { kind: 'style', match: /(^|\s)#([^\s#]*)$/.exec(text) },
   ]

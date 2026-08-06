@@ -90,7 +90,7 @@ describe('ChapterOutline', () => {
     expect(onSelectFile).toHaveBeenCalledWith('setting/chapter-plans/group-2.md')
   })
 
-  it('可取消固定书籍设定区域，当前细纲始终留在滚动目录中', async () => {
+  it('可在管理中取消固定书籍设定区域，当前细纲始终留在滚动目录中', async () => {
     const user = userEvent.setup()
     renderOutline()
 
@@ -99,16 +99,19 @@ describe('ChapterOutline', () => {
     expect(navigation).toContainElement(latestPlan)
     expect(screen.getByTestId('book-settings-header-frame')).not.toContainElement(latestPlan)
     const pinnedFrameClass = screen.getByTestId('book-settings-header-frame').className
-    expect(screen.getByRole('button', { name: '取消固定顶部区域' }).querySelector('.lucide-pin-off')).toBeInTheDocument()
-    expect(screen.getByRole('button', { name: '取消固定顶部区域' })).not.toHaveClass('bg-[var(--nova-active)]')
+    expect(screen.queryByRole('button', { name: '取消固定顶部区域' })).not.toBeInTheDocument()
+    await user.click(screen.getByRole('button', { name: '管理' }))
+    const headerPinnedSwitch = screen.getByRole('switch', { name: '固定顶部区域' })
+    expect(headerPinnedSwitch).toBeChecked()
 
-    await user.click(screen.getByRole('button', { name: '取消固定顶部区域' }))
+    await user.click(headerPinnedSwitch)
 
     expect(navigation).toContainElement(screen.getByRole('button', { name: '第 6-10 章细纲' }))
-    expect(screen.getByRole('button', { name: '固定顶部区域' })).toHaveAttribute('aria-pressed', 'false')
-    expect(screen.getByRole('button', { name: '固定顶部区域' }).querySelector('.lucide-pin')).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: '固定顶部区域' })).not.toBeInTheDocument()
     expect(screen.getByTestId('book-settings-header-frame')).toHaveClass(...pinnedFrameClass.split(' '))
     expect(window.localStorage.getItem('nova.outline.book-settings-header-pinned')).toBe('false')
+    await user.click(screen.getByRole('button', { name: '管理' }))
+    expect(screen.getByRole('switch', { name: '固定顶部区域' })).not.toBeChecked()
   })
 
   it('下方只展示历史细纲，不重复最新细纲', async () => {
@@ -164,17 +167,18 @@ describe('ChapterOutline', () => {
     expect(locateLatest).not.toHaveTextContent('最新章')
     expect(screen.getByTestId('book-settings-header-frame')).toContainElement(locateLatest)
     await user.hover(locateLatest)
+    expect(screen.queryByRole('tooltip')).not.toBeInTheDocument()
     expect(await screen.findByRole('tooltip')).toHaveTextContent('跳到最新章')
     await user.click(locateLatest)
 
     await waitFor(() => {
-      expect(scrollIntoView).toHaveBeenCalledWith({ block: 'center', behavior: 'smooth' })
+      expect(scrollIntoView).toHaveBeenCalledWith({ block: 'center', behavior: 'auto' })
     })
     expect(screen.getByText('第 2 章 转折')).toBeInTheDocument()
     expect(onSelectFile).not.toHaveBeenCalled()
   })
 
-  it('下滑超过阈值后启用固定区回顶动作，点击平滑回顶', async () => {
+  it('下滑超过阈值后启用固定区回顶动作，点击直接回顶', async () => {
     renderOutline()
     const scrollContainer = screen.getByRole('navigation', { name: '作品大纲' })
     const scrollTo = vi.fn()
@@ -191,7 +195,7 @@ describe('ChapterOutline', () => {
     })
 
     fireEvent.click(backToTop)
-    expect(scrollTo).toHaveBeenCalledWith({ top: 0, behavior: 'smooth' })
+    expect(scrollTo).toHaveBeenCalledWith({ top: 0, behavior: 'auto' })
   })
 
   it('响应编辑器发出的目录定位请求，并展开目标章节所在卷', async () => {
@@ -203,7 +207,7 @@ describe('ChapterOutline', () => {
     rerenderOutline(rerender, { revealRequest: { path: 'chapters/ch2.md', nonce: 1 } })
 
     await waitFor(() => {
-      expect(scrollIntoView).toHaveBeenCalledWith({ block: 'center', behavior: 'smooth' })
+      expect(scrollIntoView).toHaveBeenCalledWith({ block: 'center', behavior: 'auto' })
     })
     expect(screen.getByText('第 2 章 转折')).toBeInTheDocument()
   })
@@ -227,7 +231,12 @@ describe('ChapterOutline', () => {
     const chapterRow = screen.getByText('第 2 章 转折').closest('[data-chapter-path]')?.parentElement
     if (!chapterRow) throw new Error('chapter action row is not rendered')
 
-    await user.click(within(chapterRow).getByRole('button', { name: '更多操作' }))
+    const moreActions = within(chapterRow).getByRole('button', { name: '更多操作' })
+    const confirmChapter = within(chapterRow).getByRole('button', { name: '确认成章' })
+    expect(moreActions).not.toHaveAttribute('title')
+    expect(confirmChapter).not.toHaveAttribute('title')
+
+    await user.click(moreActions)
     await user.click(await screen.findByRole('menuitem', { name: '重命名文件' }))
     const renameInput = screen.getByLabelText('新名称')
     await user.clear(renameInput)
@@ -251,6 +260,26 @@ describe('ChapterOutline', () => {
 
     await waitFor(() => expect(document.querySelectorAll('[data-chapter-path]').length).toBeGreaterThan(0))
     expect(document.querySelectorAll('[data-chapter-path]').length).toBeLessThan(80)
+  })
+
+  it('长篇作品回顶使用瞬时定位，避免虚拟行沿途测量造成卡顿', async () => {
+    const longBook = Array.from({ length: 300 }, (_, index) => makeChapter({
+      path: `chapters/ch${index + 1}.md`,
+      display_title: `第 ${index + 1} 章`,
+      index: index + 1,
+    }))
+    renderOutline({ chapters: longBook, chapterPlans: [] })
+    const scrollContainer = screen.getByRole('navigation', { name: '作品大纲' })
+    const scrollTo = vi.fn()
+    Object.assign(scrollContainer, { scrollTo })
+    Object.defineProperty(scrollContainer, 'scrollTop', { configurable: true, writable: true, value: 400 })
+
+    fireEvent.scroll(scrollContainer)
+    const backToTop = screen.getByRole('button', { name: '回到顶部' })
+    await waitFor(() => expect(backToTop).toBeEnabled())
+    fireEvent.click(backToTop)
+
+    expect(scrollTo).toHaveBeenCalledWith({ top: 0, behavior: 'auto' })
   })
 
   it('切换选中章节不会重渲染无关的可见章节', async () => {

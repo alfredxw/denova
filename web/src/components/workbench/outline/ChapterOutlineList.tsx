@@ -19,8 +19,8 @@ export interface ChapterOutlineVolume {
 }
 
 export interface ChapterOutlineListHandle {
-  scrollToChapter: (path: string, behavior: 'auto' | 'smooth') => void
-  scrollToTop: (behavior: 'auto' | 'smooth') => void
+  scrollToChapter: (path: string) => void
+  scrollToTop: () => void
 }
 
 interface ChapterOutlineListProps {
@@ -107,19 +107,21 @@ export const ChapterOutlineList = forwardRef<ChapterOutlineListHandle, ChapterOu
   rowIndexByPathRef.current = rowIndexByPath
 
   useImperativeHandle(forwardedRef, () => ({
-    scrollToChapter: (path, behavior) => {
+    scrollToChapter: (path) => {
       const visibleElement = Array.from(scrollerRef.current?.querySelectorAll<HTMLElement>('[data-chapter-path]') ?? [])
         .find((element) => element.dataset.chapterPath === path)
       if (visibleElement) {
-        visibleElement.scrollIntoView({ block: 'center', behavior })
+        visibleElement.scrollIntoView({ block: 'center', behavior: 'auto' })
         return
       }
       const index = rowIndexByPathRef.current.get(path)
       if (index === undefined) return
-      virtuosoRef.current?.scrollToIndex({ index, align: 'center', behavior })
+      // Smooth traversal mounts and measures intermediate virtual rows, repeatedly
+      // correcting the target position. An index jump reaches the destination once.
+      virtuosoRef.current?.scrollToIndex({ index, align: 'center', behavior: 'auto' })
     },
-    scrollToTop: (behavior) => {
-      scrollerRef.current?.scrollTo({ top: 0, behavior })
+    scrollToTop: () => {
+      scrollerRef.current?.scrollTo({ top: 0, behavior: 'auto' })
     },
   }), [])
 

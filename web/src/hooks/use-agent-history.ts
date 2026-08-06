@@ -21,6 +21,7 @@ export function useWritingAgentHistory({ setMessages, client = writingAgentChatC
   const [hasEarlierMessages, setHasEarlierMessages] = useState(false)
   const [isLoadingEarlierHistory, setIsLoadingEarlierHistory] = useState(false)
   const historyRequestGenerationRef = useRef(0)
+  const sessionsRequestGenerationRef = useRef(0)
   const earlierHistoryRequestRef = useRef(0)
   const earlierHistoryLoadingRef = useRef(false)
   const historyPageRef = useRef<{
@@ -33,8 +34,11 @@ export function useWritingAgentHistory({ setMessages, client = writingAgentChatC
   })
 
   const loadSessions = useCallback(async () => {
+    const generation = sessionsRequestGenerationRef.current + 1
+    sessionsRequestGenerationRef.current = generation
     try {
       const list = await client.getSessions()
+      if (generation !== sessionsRequestGenerationRef.current) return list
       setSessions(list)
       setActiveSessionId(fixedSessionId || list.find((item) => item.active)?.id || list[0]?.id || '')
       return list

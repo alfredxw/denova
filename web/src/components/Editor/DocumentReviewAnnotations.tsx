@@ -1,6 +1,6 @@
 import { forwardRef, useCallback, useEffect, useImperativeHandle, useLayoutEffect, useMemo, useRef, useState, type RefObject } from 'react'
 import { createPortal } from 'react-dom'
-import { Loader2, MessageSquarePlus } from 'lucide-react'
+import { Loader2, Plus } from 'lucide-react'
 import type { Editor } from '@tiptap/react'
 import { useTranslation } from 'react-i18next'
 import { toast } from 'sonner'
@@ -54,6 +54,10 @@ interface AnnotationGroup {
   showWidget: boolean
   draft?: DraftComment
 }
+
+const QUICK_ACTION_WIDTH_PX = 28
+const QUICK_ACTION_EDGE_GAP_PX = 8
+const QUICK_ACTION_REVEAL_MARGIN_PX = 8
 
 /** Renders durable comments into ProseMirror widget hosts without changing Markdown. */
 export const DocumentReviewAnnotations = forwardRef<DocumentReviewAnnotationsHandle, DocumentReviewAnnotationsProps>(function DocumentReviewAnnotations({
@@ -254,16 +258,28 @@ export const DocumentReviewAnnotations = forwardRef<DocumentReviewAnnotationsHan
         setQuickAction(null)
         return
       }
+      const containerRect = container.getBoundingClientRect()
+      const editorRect = editor.view.dom.getBoundingClientRect()
+      const left = Math.max(
+        4,
+        Math.min(
+          container.clientWidth - QUICK_ACTION_WIDTH_PX - 4,
+          editorRect.right - containerRect.left + QUICK_ACTION_EDGE_GAP_PX,
+        ),
+      )
+      const viewportLeft = containerRect.left + left - container.scrollLeft
+      if (event.clientX < viewportLeft - QUICK_ACTION_REVEAL_MARGIN_PX
+        || event.clientX > viewportLeft + QUICK_ACTION_WIDTH_PX + QUICK_ACTION_REVEAL_MARGIN_PX) {
+        setQuickAction(null)
+        return
+      }
       const range = documentReviewRangeAtCoordinates(editor, event.clientX, event.clientY)
       if (!range) {
         setQuickAction(null)
         return
       }
-      const containerRect = container.getBoundingClientRect()
-      const editorRect = editor.view.dom.getBoundingClientRect()
       const line = editor.view.coordsAtPos(range.from)
       const top = (line.top + line.bottom) / 2 - containerRect.top + container.scrollTop - 12
-      const left = Math.max(4, Math.min(container.clientWidth - 32, editorRect.right - containerRect.left + 8))
       setQuickAction((current) => {
         if (current?.range.from === range.from
           && current.range.to === range.to
@@ -314,7 +330,7 @@ export const DocumentReviewAnnotations = forwardRef<DocumentReviewAnnotationsHan
         <button
           type="button"
           data-document-review-quick-action
-          className="absolute z-20 flex h-6 w-7 items-center justify-center rounded-md border border-[var(--nova-border)] bg-[var(--nova-surface)] text-[var(--nova-text-muted)] shadow-md transition-colors hover:border-[var(--nova-border-strong)] hover:bg-[var(--nova-hover)] hover:text-[var(--nova-text)] disabled:cursor-wait disabled:opacity-70"
+          className="absolute z-20 flex h-6 w-7 items-center justify-center rounded-md border-0 bg-transparent p-0 text-[var(--nova-text-faint)] shadow-none outline-none transition-[color,background-color,transform] hover:bg-[var(--nova-hover)] hover:text-[var(--nova-text)] focus-visible:bg-[var(--nova-hover)] focus-visible:text-[var(--nova-text)] active:scale-95 disabled:cursor-wait disabled:opacity-70"
           style={{ top: quickAction.top, left: quickAction.left }}
           aria-label={t('editor.review.commentCurrentLine')}
           title={t('editor.review.commentCurrentLine')}
@@ -322,7 +338,7 @@ export const DocumentReviewAnnotations = forwardRef<DocumentReviewAnnotationsHan
           onPointerDown={(event) => event.preventDefault()}
           onClick={() => { void startDraft(quickAction.range) }}
         >
-          {preparing ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <MessageSquarePlus className="h-3.5 w-3.5" />}
+          {preparing ? <Loader2 className="size-3.5 animate-spin" /> : <Plus className="size-4" />}
         </button>
       )}
       {groups.map((group) => {

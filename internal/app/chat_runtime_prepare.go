@@ -2,6 +2,7 @@ package app
 
 import (
 	"context"
+	"strings"
 
 	"denova/config"
 	agentchat "denova/internal/agents/chat"
@@ -70,4 +71,30 @@ func (service *ChatAppService) ActiveTask() *task.Task {
 		return nil
 	}
 	return app.activeTask
+}
+
+// ActiveTaskForSession returns a display Task only for the exact foreground
+// Writing Session requested by the browser.
+func (app *App) ActiveTaskForSession(sessionID string) (*task.Task, error) {
+	return app.chat().ActiveTaskForSession(sessionID)
+}
+
+func (service *ChatAppService) ActiveTaskForSession(sessionID string) (*task.Task, error) {
+	service.admission.RLock()
+	defer service.admission.RUnlock()
+	if err := service.confirmSelectedSessionID(sessionID); err != nil {
+		return nil, err
+	}
+	app := service.app
+	app.mu.RLock()
+	defer app.mu.RUnlock()
+	if app.activeWritingRun != nil && !app.activeWritingRun.matchesCurrent(app) {
+		return nil, ErrAgentContextChanged
+	}
+	if app.activeWritingRun != nil {
+		if app.activeWritingRun.runtime.sess == nil || strings.TrimSpace(app.activeWritingRun.runtime.sess.ID) != strings.TrimSpace(sessionID) {
+			return nil, ErrAgentContextChanged
+		}
+	}
+	return app.activeTask, nil
 }

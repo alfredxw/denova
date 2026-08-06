@@ -18,11 +18,20 @@ type agentRecoveryActionRequest struct {
 }
 
 type agentRecoveryRequest struct {
-	Action   agentRecoveryActionRequest `json:"action"`
-	StoryID  string                     `json:"story_id,omitempty"`
-	BranchID string                     `json:"branch_id,omitempty"`
-	Branch   string                     `json:"branch,omitempty"`
+	Action    agentRecoveryActionRequest `json:"action"`
+	SessionID string                     `json:"session_id,omitempty"`
+	StoryID   string                     `json:"story_id,omitempty"`
+	BranchID  string                     `json:"branch_id,omitempty"`
+	Branch    string                     `json:"branch,omitempty"`
 }
+
+type agentRecoveryBinding int
+
+const (
+	agentRecoveryWriting agentRecoveryBinding = iota
+	agentRecoveryInteractive
+	agentRecoveryConfigManager
+)
 
 type agentRecoveryResponse struct {
 	TaskID         string                        `json:"task_id"`
@@ -37,11 +46,11 @@ func (h *Handlers) HandleChatRecovery(ctx context.Context, c *app.RequestContext
 	if !h.requireWorkspace(c) {
 		return
 	}
-	request, ok := bindAgentRecoveryRequest(c, false)
+	request, sessionID, ok := bindAgentRecoveryRequest(c, agentRecoveryWriting)
 	if !ok {
 		return
 	}
-	result, err := h.app.RecoverWritingAgent(ctx, request)
+	result, err := h.app.RecoverWritingAgentForSession(ctx, sessionID, request)
 	if err != nil {
 		h.writeAgentRecoveryError(c, err, request.Action)
 		return
@@ -53,7 +62,7 @@ func (h *Handlers) HandleInteractiveChatRecovery(ctx context.Context, c *app.Req
 	if !h.requireWorkspace(c) {
 		return
 	}
-	request, ok := bindAgentRecoveryRequest(c, true)
+	request, _, ok := bindAgentRecoveryRequest(c, agentRecoveryInteractive)
 	if !ok {
 		return
 	}
@@ -65,11 +74,11 @@ func (h *Handlers) HandleInteractiveChatRecovery(ctx context.Context, c *app.Req
 	writeAgentRecoveryResponse(c, result)
 }
 
-func bindAgentRecoveryRequest(c *app.RequestContext, interactive bool) (novaApp.AgentRuntimeRecoveryRequest, bool) {
+func bindAgentRecoveryRequest(c *app.RequestContext, binding agentRecoveryBinding) (novaApp.AgentRuntimeRecoveryRequest, string, bool) {
 	var body agentRecoveryRequest
 	if err := c.BindJSON(&body); err != nil {
 		writeAgentRuntimeError(c, consts.StatusBadRequest, "agent_runtime.invalid_recovery", "恢复请求格式无效 / Invalid recovery request", nil)
-		return novaApp.AgentRuntimeRecoveryRequest{}, false
+		return novaApp.AgentRuntimeRecoveryRequest{}, "", false
 	}
 	action := novaApp.AgentRuntimeRecoveryAction{
 		Kind:        novaApp.AgentRuntimeRecoveryActionKind(strings.TrimSpace(body.Action.Kind)),
@@ -79,10 +88,12 @@ func bindAgentRecoveryRequest(c *app.RequestContext, interactive bool) (novaApp.
 	if !validRecoveryActionKind(action.Kind) ||
 		novaApp.ValidateAgentRecoveryIdentity(string(action.CommandID), string(action.OperationID)) != nil {
 		writeAgentRuntimeError(c, consts.StatusBadRequest, "agent_runtime.invalid_recovery", "恢复操作 identity 不完整 / Recovery action identity is incomplete", nil)
-		return novaApp.AgentRuntimeRecoveryRequest{}, false
+		return novaApp.AgentRuntimeRecoveryRequest{}, "", false
 	}
 	request := novaApp.AgentRuntimeRecoveryRequest{Action: action}
-	if interactive {
+	sessionID := ""
+	switch binding {
+	case agentRecoveryInteractive:
 		request.StoryID = strings.TrimSpace(body.StoryID)
 		request.BranchID = strings.TrimSpace(body.BranchID)
 		if request.BranchID == "" {
@@ -90,10 +101,18 @@ func bindAgentRecoveryRequest(c *app.RequestContext, interactive bool) (novaApp.
 		}
 		if request.StoryID == "" {
 			writeAgentRuntimeError(c, consts.StatusBadRequest, "agent_runtime.invalid_recovery", "story_id 为必填项 / story_id is required", nil)
-			return novaApp.AgentRuntimeRecoveryRequest{}, false
+			return novaApp.AgentRuntimeRecoveryRequest{}, "", false
 		}
+	case agentRecoveryWriting:
+		var ok bool
+		sessionID, ok = requiredWritingSessionID(c, body.SessionID)
+		if !ok {
+			return novaApp.AgentRuntimeRecoveryRequest{}, "", false
+		}
+	case agentRecoveryConfigManager:
+		// Config Manager identity comes from the project-scoped route/query.
 	}
-	return request, true
+	return request, sessionID, true
 }
 
 func validRecoveryActionKind(kind novaApp.AgentRuntimeRecoveryActionKind) bool {

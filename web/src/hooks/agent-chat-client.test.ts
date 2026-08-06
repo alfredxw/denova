@@ -30,7 +30,7 @@ describe('project AgentChat client', () => {
       .mockResolvedValueOnce({ schema: 'ask.result.v1', id: 'ask-a', status: 'cancelled' })
     const client = createProjectAgentChatClient('project-alpha', 'session-a')
 
-    await client.submitChatCommand('abort', 'control', 'operation', undefined, 'user_requested')
+    await client.submitChatCommand('abort', 'control', 'operation', 'session-a', undefined, 'user_requested')
     await client.getMessagesPage(undefined, { limit: 5, before: '7' })
     await client.cancelSessionAsk('foreign-session', 'ask-a')
 

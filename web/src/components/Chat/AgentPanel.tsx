@@ -96,6 +96,8 @@ interface AgentPanelProps {
   /** AgentChat supplies its project-bound identity; Writing derives it from activeSessionId. */
   conversationBinding?: ConversationConfigBinding
   isStreaming: boolean
+  /** Session mutations are server-confirmed before the visible binding changes. */
+  sessionTransitionPending?: boolean
   /** Real execution state, excluding an idle startup/recovery inspection. */
   isExecutionActive: boolean
   runtimeProjection?: ActiveChatTask | null
@@ -182,6 +184,7 @@ function AgentPanelComponent({
   sessionDraft = false,
   conversationBinding,
   isStreaming,
+  sessionTransitionPending = false,
   isExecutionActive,
   runtimeProjection = null,
   abortPending = false,
@@ -528,8 +531,8 @@ function AgentPanelComponent({
   const inputAreaProps = {
     onSend: sendWithWritingSkill,
     onStop,
-    disabled: false,
-    sendBlocked: persistedSettings.loading,
+    disabled: sessionTransitionPending,
+    sendBlocked: persistedSettings.loading || sessionTransitionPending,
     generationActive: isStreaming,
     queuedCommands: runtimeProjection?.queue || [],
     queueActionPendingCommandID,
@@ -652,7 +655,7 @@ function AgentPanelComponent({
           </div>
           <button
             type="button"
-            disabled={isStreaming}
+            disabled={isStreaming || sessionTransitionPending}
             onClick={() => void onCreateSession()}
             className="nova-nav-item flex h-7 w-7 shrink-0 items-center justify-center rounded border border-[var(--nova-border)] bg-[var(--nova-surface-2)] disabled:cursor-not-allowed disabled:opacity-45"
             aria-label={t('chat.newSession')}
@@ -726,7 +729,7 @@ function AgentPanelComponent({
         <SessionManagementPanel
           sessions={sessions}
           activeSessionId={activeSessionId}
-          disabled={isStreaming}
+          disabled={isStreaming || sessionTransitionPending}
           onCreate={onCreateSession}
           onSwitch={onSwitchSession}
           onRename={onRenameSession}

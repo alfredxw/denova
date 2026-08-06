@@ -162,8 +162,10 @@ export function useAgentChat(options: ChatOptions = {}) {
   const [planModes, setPlanModes] = useState<Record<string, boolean>>(() => readChatPlanModes())
   const [abortPending, setAbortPending] = useState(false)
   const [commandSubmitting, setCommandSubmitting] = useState(false)
+  const [sessionTransitionPending, setSessionTransitionPending] = useState(false)
   const [queueActionPendingCommandID, setQueueActionPendingCommandID] = useState('')
   const commandSubmittingRef = useRef(false)
+  const sessionTransitionPendingRef = useRef(false)
   const retryCommandIDsRef = useRef(new Map<string, string>())
   const initialStartCommandIDsRef = useRef(new Map<string, string>())
   const queuedComposerDraftsRef = useRef(new Map<string, QueuedComposerDraft>())
@@ -333,6 +335,8 @@ export function useAgentChat(options: ChatOptions = {}) {
 
   const send = useCallback(
     async (input: string, sendOptions: ChatSendOptions = {}) => {
+      if (sessionTransitionPendingRef.current) return false
+      const targetSessionID = (client.fixedSessionId || activeSessionId).trim()
       const command = isStreaming ? '' : agentBypassCommand(input)
       if (command) {
         const result = await client.executeCommand(command)
@@ -383,6 +387,7 @@ export function useAgentChat(options: ChatOptions = {}) {
         message: string
       }) as Record<string, unknown>
       body.message = prepared.message
+      body.session_id = targetSessionID
 
       const userReferences = buildUserMessageReferences(prepared, sendOptions)
       if (isStreaming) {
@@ -398,7 +403,7 @@ export function useAgentChat(options: ChatOptions = {}) {
         commandSubmittingRef.current = true
         setCommandSubmitting(true)
         try {
-          const receipt = await client.submitChatCommand(delivery, commandID, operationID, body)
+          const receipt = await client.submitChatCommand(delivery, commandID, operationID, targetSessionID, body)
           retryCommandIDsRef.current.delete(retryKey)
           queuedComposerDraftsRef.current.set(commandID, {
             message: prepared.message,
@@ -483,6 +488,7 @@ export function useAgentChat(options: ChatOptions = {}) {
     },
     [
       abortPending,
+      activeSessionId,
       activePlanMode,
       client,
       isStreaming,
@@ -502,6 +508,7 @@ export function useAgentChat(options: ChatOptions = {}) {
     async (item: AgentRuntimeQueuedCommand, action: AgentQueuedCommandAction, reason?: string) => {
       if (abortPending || commandSubmittingRef.current) return false
       const operationID = runtimeProjection?.active_operation_id?.trim()
+      const targetSessionID = (client.fixedSessionId || activeSessionId).trim()
       if (!runtimeProjection?.active || !operationID || item.operation_id !== operationID) {
         toast.error(t('chat.runtime.operationUnavailable'))
         return false
@@ -520,7 +527,7 @@ export function useAgentChat(options: ChatOptions = {}) {
       setCommandSubmitting(true)
       setQueueActionPendingCommandID(item.command_id)
       try {
-        const receipt = await client.submitQueuedChatCommand(action, commandID, operationID, item.command_id, reason)
+        const receipt = await client.submitQueuedChatCommand(action, commandID, operationID, item.command_id, targetSessionID, reason)
         retryCommandIDsRef.current.delete(retryKey)
         setRuntimeProjection((current) => {
           if (!current || current.active_operation_id !== operationID) return current
@@ -552,7 +559,7 @@ export function useAgentChat(options: ChatOptions = {}) {
         setQueueActionPendingCommandID('')
       }
     },
-    [abortPending, client, runtimeProjection, setRuntimeProjection, t],
+    [abortPending, activeSessionId, client, runtimeProjection, setRuntimeProjection, t],
   )
 
   const steerQueuedCommand = useCallback(
@@ -621,7 +628,7 @@ export function useAgentChat(options: ChatOptions = {}) {
   }, [setActivePlanMode])
 
   const stop = useCallback(async () => {
-    if (abortPending || commandSubmittingRef.current) return
+    if (abortPending || commandSubmittingRef.current || sessionTransitionPendingRef.current) return
     let retryKey = ''
     commandSubmittingRef.current = true
     setCommandSubmitting(true)
@@ -639,7 +646,8 @@ export function useAgentChat(options: ChatOptions = {}) {
         reason: 'user_requested',
       })
       const commandID = rememberAgentCommandID(retryCommandIDsRef.current, retryKey, createAgentCommandID)
-      const receipt = await client.submitChatCommand('abort', commandID, operationID, undefined, 'user_requested')
+      const targetSessionID = (client.fixedSessionId || activeSessionId).trim()
+      const receipt = await client.submitChatCommand('abort', commandID, operationID, targetSessionID, undefined, 'user_requested')
       retryCommandIDsRef.current.delete(retryKey)
       setAbortPending(true)
       setRuntimeProjection((current) =>
@@ -658,38 +666,41 @@ export function useAgentChat(options: ChatOptions = {}) {
       commandSubmittingRef.current = false
       setCommandSubmitting(false)
     }
-  }, [abortPending, abortRecovery, client, runtimeProjection, t])
+  }, [abortPending, abortRecovery, activeSessionId, client, runtimeProjection, t])
+
+  const runSessionTransition = useCallback(async (mutation: () => Promise<SessionSummary>) => {
+    if (sessionTransitionPendingRef.current) return
+    sessionTransitionPendingRef.current = true
+    setSessionTransitionPending(true)
+    stopAIStream()
+    try {
+      const session = await mutation()
+      setActiveSessionId(session.id)
+      // The server binding has changed. Clear the previous Session display
+      // before loading so a failed history request cannot leave A visible while
+      // subsequent controls and recovery are bound to B.
+      setUIMessages([])
+      await Promise.all([loadSessions(), loadHistoryAuthoritative(session.id)])
+      await resumeActiveChat(session.id)
+    } finally {
+      sessionTransitionPendingRef.current = false
+      setSessionTransitionPending(false)
+    }
+  }, [loadHistoryAuthoritative, loadSessions, resumeActiveChat, setActiveSessionId, setUIMessages, stopAIStream])
 
   const createChatSession = useCallback(
     async (title?: string) => {
-      const session = await client.createSession(title)
-      setActiveSessionId(session.id)
-      await Promise.all([loadSessions(), loadHistory(session.id)])
-      await resumeActiveChat()
+      await runSessionTransition(() => client.createSession(title))
     },
-    [client, loadHistory, loadSessions, resumeActiveChat],
+    [client, runSessionTransition],
   )
 
   const switchChatSession = useCallback(
     async (id: string) => {
       if (!id || id === activeSessionId) return
-      const previousSessionId = activeSessionId
-      if (isStreaming) stopAIStream()
-      setActiveSessionId(id)
-
-      let session: SessionSummary
-      try {
-        session = await client.switchSession(id)
-      } catch (error) {
-        setActiveSessionId((current) => (current === id ? previousSessionId : current))
-        throw error
-      }
-
-      setActiveSessionId(session.id)
-      await Promise.all([loadSessions(), loadHistory(session.id)])
-      await resumeActiveChat()
+      await runSessionTransition(() => client.switchSession(id))
     },
-    [activeSessionId, client, isStreaming, loadHistory, loadSessions, resumeActiveChat, stopAIStream],
+    [activeSessionId, client, runSessionTransition],
   )
 
   const renameChatSession = useCallback(
@@ -702,19 +713,16 @@ export function useAgentChat(options: ChatOptions = {}) {
 
   const deleteChatSession = useCallback(
     async (id: string) => {
-      stopAIStream()
-      const session = await client.deleteSession(id)
-      setActiveSessionId(session.id)
-      await Promise.all([loadSessions(), loadHistory(session.id)])
-      await resumeActiveChat()
+      await runSessionTransition(() => client.deleteSession(id))
     },
-    [client, loadHistory, loadSessions, resumeActiveChat, stopAIStream],
+    [client, runSessionTransition],
   )
 
   return {
     messages,
     sessions,
     activeSessionId,
+    sessionTransitionPending,
     isStreaming,
     isExecutionActive,
     runtimeProjection,

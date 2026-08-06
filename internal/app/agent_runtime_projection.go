@@ -17,6 +17,7 @@ import (
 )
 
 type WritingAgentActiveView struct {
+	SessionID           string
 	Task                *apptask.Snapshot
 	Runtime             agentrun.RuntimeStatus
 	RuntimeProjectionOK bool
@@ -111,7 +112,7 @@ func (a *App) WritingAgentActiveView(ctx context.Context) WritingAgentActiveView
 	}
 	a.mu.RUnlock()
 	return WritingAgentActiveView{
-		Task: taskSnapshot, Runtime: runtimeSnapshot, RuntimeProjectionOK: projected,
+		SessionID: sessionID, Task: taskSnapshot, Runtime: runtimeSnapshot, RuntimeProjectionOK: projected,
 		RecoveryActions: recoveryActions, PendingAsk: pendingAsk,
 	}
 }

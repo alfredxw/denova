@@ -10,7 +10,7 @@ import (
 func TestStaleWritingTaskStreamRequiresTypedRehydration(t *testing.T) {
 	application := newTestApplication(t)
 	server := NewServer(application, "0")
-	response := performJSONRequest(t, server, http.MethodGet, "/api/chat/stream?task_id=task-from-old-process", nil)
+	response := performJSONRequest(t, server, http.MethodGet, "/api/chat/stream?task_id=task-from-old-process&session_id="+activeWritingSessionID(t, application), nil)
 	if response.Code != http.StatusConflict {
 		t.Fatalf("status=%d body=%s", response.Code, response.Body.String())
 	}
@@ -51,6 +51,7 @@ func TestRecoveryEndpointDoesNotEchoOrTrustCallerPayload(t *testing.T) {
 	application := newTestApplication(t)
 	server := NewServer(application, "0")
 	request := map[string]any{
+		"session_id": activeWritingSessionID(t, application),
 		"action": map[string]any{
 			"kind": "follow_up", "command_id": "not-durable", "operation_id": "not-durable",
 			"descriptor": map[string]any{"secret": "DO_NOT_ECHO"},

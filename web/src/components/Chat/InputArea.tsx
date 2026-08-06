@@ -2,7 +2,7 @@ import { useState, useRef, useEffect, useLayoutEffect, useMemo, useCallback, typ
 import type { LucideIcon } from 'lucide-react'
 import { Archive, BadgeHelp, BarChart3, ClipboardList, Eraser, List, ScrollText, Sparkles } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
-import { FileReferencePicker, type ReferencePickerItem } from './FileReferencePicker'
+import { FileReferencePicker, type FileReferencePickerHandle, type ReferencePickerItem } from './FileReferencePicker'
 import { TokenUsageDialog, type TokenUsageRecord } from './TokenUsagePanel'
 import type { AgentRuntimeQueuedCommand, TextSelection } from '@/lib/api'
 import type { VisibleAgentKey } from '@/features/agents/agent-registry'
@@ -170,6 +170,8 @@ export function InputArea({
   const [styleSceneQuery, setStyleSceneQuery] = useState<string | null>(null)
   const [submitting, setSubmitting] = useState(false)
   const inputRef = useRef<ComposerTokenInputHandle>(null)
+  const referencePickerRef = useRef<FileReferencePickerHandle>(null)
+  const stylePickerRef = useRef<FileReferencePickerHandle>(null)
   const rootRef = useRef<HTMLDivElement>(null)
   const submittingRef = useRef(false)
   const effectiveCommandScope: CommandScope = commandsEnabled ? commandScope : 'none'
@@ -227,6 +229,13 @@ export function InputArea({
     for (const id of loreReferences) byID.set(id, loreReferenceLabels[id] || byID.get(id) || id)
     return Array.from(byID.entries()).map(([id, label]) => ({ id, label }))
   }, [loreReferenceLabels, loreReferences, loreSuggestions])
+  const referencePickerItems = useMemo<ReferencePickerItem[]>(() => [
+    ...loreSuggestions.map((item) => ({ ...item, kind: 'lore' as const })),
+    ...fileSuggestions.map((path) => {
+      const label = workspaceFileName(path)
+      return { value: path, label, description: label === path ? undefined : path, kind: 'file' as const }
+    }),
+  ], [fileSuggestions, loreSuggestions])
   const externalTokens = useMemo<ComposerTokenSpec[]>(() => [
     ...referencedFiles.map((path) => ({ kind: 'file' as const, value: path, label: workspaceFileName(path) })),
     ...loreReferences.map((id) => ({ kind: 'lore' as const, value: id, label: loreReferenceLabels[id] || knownLoreTokens.find((item) => item.id === id)?.label || id })),
@@ -346,6 +355,14 @@ export function InputArea({
       return true
     }
 
+    if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
+      const picker = referenceQuery !== null ? referencePickerRef.current : styleSceneQuery !== null ? stylePickerRef.current : null
+      if (picker?.moveActive(e.key === 'ArrowDown' ? 1 : -1)) {
+        e.preventDefault()
+        return true
+      }
+    }
+
     // Enter 发送
     if (e.key === 'Enter' && !e.shiftKey) {
       if (isNativeComposingKeyboardEvent(e)) return false
@@ -354,14 +371,23 @@ export function InputArea({
         selectCommand(filteredCommands[activeCommandIndex]?.cmd || filteredCommands[0].cmd)
         return true
       }
+      if (referenceQuery !== null && referencePickerRef.current?.selectActive()) return true
+      if (styleSceneQuery !== null && stylePickerRef.current?.selectActive()) return true
       handleSend()
       return true
     }
 
-    if (canPickCommand && e.key === 'Tab') {
-      e.preventDefault()
-      selectCommand(filteredCommands[activeCommandIndex]?.cmd || filteredCommands[0].cmd)
-      return true
+    if (e.key === 'Tab' && !e.shiftKey) {
+      if (canPickCommand) {
+        e.preventDefault()
+        selectCommand(filteredCommands[activeCommandIndex]?.cmd || filteredCommands[0].cmd)
+        return true
+      }
+      const picker = referenceQuery !== null ? referencePickerRef.current : styleSceneQuery !== null ? stylePickerRef.current : null
+      if (picker?.selectActive()) {
+        e.preventDefault()
+        return true
+      }
     }
 
     // Escape 关闭菜单
@@ -464,20 +490,19 @@ export function InputArea({
   }
 
   /** 选择引用文件：输入框只显示文件名，发送值仍保留完整 workspace 路径。 */
-  const selectReference = (path: string) => {
-    const loreItem = loreSuggestions.find((item) => item.value === path)
-    if (loreItem) {
-      inputRef.current?.replaceActiveTriggerWithToken({ kind: 'lore', value: loreItem.value, label: loreItem.label })
-      onLoreReferenceAdd?.(path)
+  const selectReference = (item: ReferencePickerItem) => {
+    if (item.kind === 'lore') {
+      inputRef.current?.replaceActiveTriggerWithToken({ kind: 'lore', value: item.value, label: item.label })
+      onLoreReferenceAdd?.(item.value)
     } else {
-      inputRef.current?.replaceActiveTriggerWithToken({ kind: 'file', value: path, label: workspaceFileName(path) })
+      inputRef.current?.replaceActiveTriggerWithToken({ kind: 'file', value: item.value, label: item.label })
     }
     setReferenceQuery(null)
     inputRef.current?.focus()
   }
 
   /** 选择场景风格并插入 #scene 标签 */
-  const selectStyleScene = (scene: string) => {
+  const selectStyleScene = ({ value: scene }: ReferencePickerItem) => {
     inputRef.current?.replaceActiveTriggerWithToken({ kind: 'style', value: scene, label: scene })
     onStyleSceneAdd?.(scene)
     setStyleSceneQuery(null)
@@ -508,19 +533,18 @@ export function InputArea({
       />
 
       <FileReferencePicker
-        open={referenceQuery !== null && (fileSuggestions.length > 0 || loreSuggestions.length > 0)}
+        ref={referencePickerRef}
+        open={referenceQuery !== null && referencePickerItems.length > 0}
         query={referenceQuery || ''}
-        files={[
-          ...loreSuggestions,
-          ...fileSuggestions,
-        ]}
+        items={referencePickerItems}
         onSelect={selectReference}
       />
 
       <FileReferencePicker
+        ref={stylePickerRef}
         open={styleSceneQuery !== null && styleSceneSuggestions.length > 0}
         query={styleSceneQuery || ''}
-        files={styleSceneSuggestions}
+        items={styleSceneSuggestions}
         onSelect={selectStyleScene}
         trigger="#"
         placeholder={t('chat.styleReference.placeholder')}

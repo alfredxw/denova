@@ -12,6 +12,7 @@ import (
 )
 
 type chatAgentCommandRequest struct {
+	SessionID         string                   `json:"session_id"`
 	Type              string                   `json:"type"`
 	CommandID         string                   `json:"command_id"`
 	TargetOperationID string                   `json:"target_operation_id"`
@@ -41,6 +42,10 @@ func (h *Handlers) HandleChatCommand(ctx context.Context, c *app.RequestContext)
 		writeAgentRuntimeError(c, consts.StatusBadRequest, "agent_runtime.invalid_command", "命令格式无效 / Invalid agent command", nil)
 		return
 	}
+	sessionID, ok := requiredWritingSessionID(c, body.SessionID)
+	if !ok {
+		return
+	}
 	kind, err := writingAgentCommandKind(body.Type)
 	if err != nil || strings.TrimSpace(body.CommandID) == "" || strings.TrimSpace(body.TargetOperationID) == "" {
 		writeAgentRuntimeError(c, consts.StatusBadRequest, "agent_runtime.invalid_command", "命令类型、command_id 和 target_operation_id 为必填项 / Command type, command_id, and target_operation_id are required", nil)
@@ -56,7 +61,7 @@ func (h *Handlers) HandleChatCommand(ctx context.Context, c *app.RequestContext)
 		return
 	}
 	body.Input.Locale = requestLocale(c)
-	receipt, err := h.app.SubmitChatAgentCommand(ctx, novaApp.ChatAgentCommand{
+	receipt, err := h.app.SubmitChatAgentCommandForSession(ctx, sessionID, novaApp.ChatAgentCommand{
 		Kind: kind, CommandID: strings.TrimSpace(body.CommandID),
 		OperationID:     novaApp.AgentOperationID(strings.TrimSpace(body.TargetOperationID)),
 		TargetCommandID: novaApp.AgentCommandID(strings.TrimSpace(body.TargetCommandID)),

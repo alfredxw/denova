@@ -1,11 +1,11 @@
-import type { CSSProperties, Dispatch, RefObject, SetStateAction } from 'react'
+import { useRef, type CSSProperties, type Dispatch, type RefObject, type SetStateAction } from 'react'
 import type { TFunction } from 'i18next'
 import { Activity, Archive, BarChart3, ChevronDown, ChevronUp, Compass, List, Loader2, Pencil, Plus, RefreshCw, ScrollText, Sparkles, X } from 'lucide-react'
 import { AgentComposerControls } from '@/components/Chat/AgentComposerControls'
 import { AgentComposerShell } from '@/components/Chat/AgentComposerShell'
 import { AgentQueuedCommandList } from '@/components/Chat/AgentQueuedCommandList'
 import { ContextAnalysisDialog } from '@/components/Chat/ContextAnalysisDialog'
-import { FileReferencePicker } from '@/components/Chat/FileReferencePicker'
+import { FileReferencePicker, type FileReferencePickerHandle } from '@/components/Chat/FileReferencePicker'
 import { InputCommandMenu, type IndexedInputCommandOption } from '@/components/Chat/InputCommandMenu'
 import { ModelProfileSwitcher } from '@/components/Chat/ModelProfileSwitcher'
 import { TokenUsageDialog } from '@/components/Chat/TokenUsagePanel'
@@ -134,6 +134,7 @@ export function StoryStageComposer({ layout, editor, story, runtime, dialogs, ac
   const { contextAnalysisOpen, contextAnalysisLoading, contextAnalysisError, contextAnalysis, tokenUsageOpen, tokenUsageMessages, traceOpen, selectedTraceRunId, replyEditTarget, setContextAnalysisOpen, setTokenUsageOpen, setTraceOpen, closeReplyEditor, saveReply } = dialogs
   const { cancelEditing, retryDirectorPlanning, selectHotChoice, selectStyleScene, selectSkillCommand, handleInputChange, handleInputTriggerChange, handleTokenRemove, toggleHotChoices, openMobileNavigation, openContextAnalysis, removeContextCompaction, openTraceRun, send, steerQueuedCommand, deleteQueuedCommand, stop } = actions
   const activeControlsDisabled = streaming && (!operationId || connection !== 'connected')
+  const stylePickerRef = useRef<FileReferencePickerHandle>(null)
   const builtInCommandOptions: IndexedInputCommandOption[] = filteredBuiltInCommandItems.map(({ command, index }) => ({
     index,
     command: {
@@ -219,7 +220,7 @@ export function StoryStageComposer({ layout, editor, story, runtime, dialogs, ac
           onDelete={deleteQueuedCommand}
         />
         <div className="relative min-w-0">
-          <FileReferencePicker open={styleSceneQuery !== null && styleSceneSuggestions.length > 0} query={styleSceneQuery || ''} files={styleSceneSuggestions} onSelect={selectStyleScene} trigger="#" placeholder={t('chat.styleReference.placeholder')} emptyText={t('chat.styleReference.empty')} heading={t('chat.styleReference.heading')} />
+          <FileReferencePicker ref={stylePickerRef} open={styleSceneQuery !== null && styleSceneSuggestions.length > 0} query={styleSceneQuery || ''} items={styleSceneSuggestions} onSelect={(item) => selectStyleScene(item.value)} trigger="#" placeholder={t('chat.styleReference.placeholder')} emptyText={t('chat.styleReference.empty')} heading={t('chat.styleReference.heading')} />
           <InputCommandMenu
             open={showSkillCommands && filteredSkillCommands.length > 0}
             skillsOnly={false}
@@ -244,19 +245,29 @@ export function StoryStageComposer({ layout, editor, story, runtime, dialogs, ac
                   setActiveSkillCommandIndex((current) => (current + (event.key === 'ArrowDown' ? 1 : -1) + filteredSkillCommands.length) % filteredSkillCommands.length)
                   return true
                 }
+                if ((event.key === 'ArrowDown' || event.key === 'ArrowUp') && stylePickerRef.current?.moveActive(event.key === 'ArrowDown' ? 1 : -1)) {
+                  event.preventDefault()
+                  return true
+                }
                 if (event.key === 'Escape') {
                   setStyleSceneQuery(null); setShowSkillCommands(false); setSkillCommandQuery(null); setActiveSkillCommandIndex(0)
                   return true
                 }
-                if (canPickSkill && event.key === 'Tab') {
-                  event.preventDefault(); selectSkillCommand(filteredSkillCommands[activeSkillCommandIndex]?.name || filteredSkillCommands[0].name)
-                  return true
+                if (event.key === 'Tab' && !event.shiftKey) {
+                  if (canPickSkill) {
+                    event.preventDefault(); selectSkillCommand(filteredSkillCommands[activeSkillCommandIndex]?.name || filteredSkillCommands[0].name)
+                    return true
+                  }
+                  if (stylePickerRef.current?.selectActive()) {
+                    event.preventDefault()
+                    return true
+                  }
                 }
                 if (event.key === 'Enter' && !event.shiftKey) {
                   if (isNativeComposingKeyboardEvent(event)) return false
                   event.preventDefault()
                   if (canPickSkill) selectSkillCommand(filteredSkillCommands[activeSkillCommandIndex]?.name || filteredSkillCommands[0].name)
-                  else void send()
+                  else if (!stylePickerRef.current?.selectActive()) void send()
                   return true
                 }
                 return false

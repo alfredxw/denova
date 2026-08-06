@@ -13,6 +13,7 @@ export interface AgentRunTraceExportFile {
 }
 
 export async function sendMessage(
+  sessionId: string,
   message: string,
   references: string[] = [],
   loreReferences: string[] = [],
@@ -30,6 +31,7 @@ export async function sendMessage(
     method: 'POST',
     headers: jsonHeaders,
     body: JSON.stringify({
+      session_id: sessionId,
       command_id: commandId,
       message,
       references,
@@ -208,8 +210,8 @@ export function createAgentCommandID(): string {
   return `agent-command-${Date.now()}-${Math.random().toString(36).slice(2)}`
 }
 
-export async function getActiveChatTask(): Promise<ActiveChatTask> {
-  return requestJSON('/api/chat/active')
+export async function getActiveChatTask(sessionId: string): Promise<ActiveChatTask> {
+  return requestJSON(`/api/chat/active?session_id=${encodeURIComponent(sessionId)}`)
 }
 
 export function answerSessionAsk(sessionId: string, askId: string, answers: AgentAskAnswer[]): Promise<AgentAskResolution> {
@@ -229,11 +231,11 @@ export function cancelSessionAsk(sessionId: string, askId: string): Promise<Agen
 }
 
 /** Resume only the exact payload-free action selected by the backend. */
-export function recoverChatAgentRuntime(action: AgentRuntimeRecoveryAction): Promise<AgentRuntimeRecoveryReceipt> {
+export function recoverChatAgentRuntime(action: AgentRuntimeRecoveryAction, sessionId: string): Promise<AgentRuntimeRecoveryReceipt> {
   return requestJSON('/api/chat/recovery', {
     method: 'POST',
     headers: jsonHeaders,
-    body: JSON.stringify({ action }),
+    body: JSON.stringify({ session_id: sessionId, action }),
   })
 }
 
@@ -242,6 +244,7 @@ export async function submitChatCommand(
   type: AgentCommandDelivery | 'abort',
   commandId: string,
   targetOperationId: string,
+  sessionId: string,
   input?: Record<string, unknown>,
   reason?: string,
 ): Promise<AgentCommandReceipt> {
@@ -249,6 +252,7 @@ export async function submitChatCommand(
     method: 'POST',
     headers: jsonHeaders,
     body: JSON.stringify({
+      session_id: sessionId,
       type,
       command_id: commandId,
       target_operation_id: targetOperationId,
@@ -264,12 +268,14 @@ export async function submitQueuedChatCommand(
   commandId: string,
   targetOperationId: string,
   targetCommandId: string,
+  sessionId: string,
   reason?: string,
 ): Promise<AgentCommandReceipt> {
   return requestJSON('/api/chat/commands', {
     method: 'POST',
     headers: jsonHeaders,
     body: JSON.stringify({
+      session_id: sessionId,
       type: action,
       command_id: commandId,
       target_operation_id: targetOperationId,

@@ -45,7 +45,7 @@ describe('api', () => {
   it('通过 MSW 获取会话和活跃任务', async () => {
     await expect(getMessages()).resolves.toEqual([])
     await expect(getSessions()).resolves.toEqual([])
-    await expect(getActiveChatTask()).resolves.toEqual({ active: false })
+    await expect(getActiveChatTask('session-a')).resolves.toEqual({ active: false })
   })
 
   it('恢复已接受运行时只回传服务器投影的 identity', async () => {
@@ -73,8 +73,8 @@ describe('api', () => {
       operation_id: 'operation-1',
     }
 
-    await expect(recoverChatAgentRuntime(action)).resolves.toMatchObject({ task_id: 'recovery-task-1' })
-    expect(requestBody).toEqual({ action })
+    await expect(recoverChatAgentRuntime(action, 'session-a')).resolves.toMatchObject({ task_id: 'recovery-task-1' })
+    expect(requestBody).toEqual({ session_id: 'session-a', action })
     expect(JSON.stringify(requestBody)).not.toContain('message')
   })
 
@@ -294,6 +294,7 @@ describe('api', () => {
     )
 
     const stream = await sendMessage(
+      'session-a',
       '写下一章',
       ['chapters/ch01.md'],
       [],
@@ -329,6 +330,7 @@ describe('api', () => {
     })
 
     expect(requestBody).toEqual({
+      session_id: 'session-a',
       command_id: 'command-direct-chat',
       message: '写下一章',
       references: ['chapters/ch01.md'],
@@ -356,6 +358,6 @@ describe('api', () => {
   it('聊天接口失败时抛出 HTTP 错误', async () => {
     server.use(http.post('/api/chat', () => HttpResponse.text('bad gateway', { status: 502 })))
 
-    await expect(sendMessage('失败场景')).rejects.toThrow('HTTP 502')
+    await expect(sendMessage('session-a', '失败场景')).rejects.toThrow('HTTP 502')
   })
 })

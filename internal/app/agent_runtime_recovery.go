@@ -29,10 +29,16 @@ func recoveryStructuralAction(kind agentharness.RuntimeRecoveryActionKind) (agen
 }
 
 func (a *App) RecoverWritingAgent(ctx context.Context, request AgentRuntimeRecoveryRequest) (AgentRuntimeRecoveryResult, error) {
-	return a.chat().RecoverAgentRuntime(ctx, request)
+	return a.chat().RecoverAgentRuntime(ctx, "", request)
 }
 
-func (s *ChatAppService) RecoverAgentRuntime(ctx context.Context, request AgentRuntimeRecoveryRequest) (AgentRuntimeRecoveryResult, error) {
+// RecoverWritingAgentForSession binds recovery to the exact foreground
+// Writing Session selected when the browser requested the projection.
+func (a *App) RecoverWritingAgentForSession(ctx context.Context, sessionID string, request AgentRuntimeRecoveryRequest) (AgentRuntimeRecoveryResult, error) {
+	return a.chat().RecoverAgentRuntime(ctx, strings.TrimSpace(sessionID), request)
+}
+
+func (s *ChatAppService) RecoverAgentRuntime(ctx context.Context, expectedSessionID string, request AgentRuntimeRecoveryRequest) (AgentRuntimeRecoveryResult, error) {
 	if s == nil || s.app == nil {
 		return AgentRuntimeRecoveryResult{}, ErrNoWorkspace
 	}
@@ -50,6 +56,9 @@ func (s *ChatAppService) RecoverAgentRuntime(ctx context.Context, request AgentR
 		stateRoot = a.cfg.ProjectStateDir
 	}
 	a.mu.RUnlock()
+	if expectedSessionID != "" && (sess == nil || strings.TrimSpace(sess.ID) != expectedSessionID) {
+		return AgentRuntimeRecoveryResult{}, ErrAgentContextChanged
+	}
 	if workspace == "" || sess == nil || chatService == nil {
 		return AgentRuntimeRecoveryResult{}, ErrNoWorkspace
 	}

@@ -1,13 +1,40 @@
 package app
 
 import (
+	"context"
+	"errors"
 	"testing"
 
 	"denova/config"
 	agents "denova/internal/agents"
+	agentchat "denova/internal/agents/chat"
 	"denova/internal/agents/session"
 	configmanagerapp "denova/internal/app/configmanager"
 )
+
+func TestWritingStartRejectsAStaleExplicitSessionBinding(t *testing.T) {
+	store, err := session.NewStore(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	first, err := store.GetOrCreate("session-a")
+	if err != nil {
+		t.Fatal(err)
+	}
+	second, err := store.Create("session-b")
+	if err != nil {
+		t.Fatal(err)
+	}
+	application := &App{sessionStore: store, session: second}
+
+	task, startErr := application.StartTaskForSessionWithError(context.Background(), first.ID, agentchat.ChatRequest{
+		CommandID: "stale-session-start",
+		Message:   "continue session A",
+	})
+	if task != nil || !errors.Is(startErr, ErrAgentContextChanged) {
+		t.Fatalf("stale explicit Session start = task=%v err=%v, want ErrAgentContextChanged", task, startErr)
+	}
+}
 
 func TestAppSwitchSessionUsesCurrentSessionHistoryOnly(t *testing.T) {
 	store, err := session.NewStore(t.TempDir())

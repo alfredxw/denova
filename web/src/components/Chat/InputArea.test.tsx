@@ -56,6 +56,35 @@ describe('InputArea command menu', () => {
     expect(clearCommand.compareDocumentPosition(skillCommand) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
   })
 
+  it('opens the same command menu with the Chinese enumeration comma and inserts canonical Skill text', async () => {
+    const user = userEvent.setup()
+    const handleSend = vi.fn()
+    render(
+      <InputArea
+        onSend={handleSend}
+        disabled={false}
+        commandScope="all"
+        builtinCommands={['/clear']}
+        skills={[{ name: 'scene-tone', description: '场景语气' }]}
+      />,
+    )
+
+    const textbox = screen.getByRole('textbox')
+    await user.type(textbox, '、')
+
+    expect(screen.getByText('/clear')).toBeInTheDocument()
+    expect(screen.getByText('/scene-tone')).toBeInTheDocument()
+
+    await user.type(textbox, 'scene')
+    await user.click(screen.getByText('/scene-tone'))
+
+    expect(within(textbox).getByText('/scene-tone')).toHaveClass('nova-composer-token')
+    expect(textbox).not.toHaveTextContent('、')
+
+    await user.click(screen.getByRole('button', { name: '发送' }))
+    expect(handleSend).toHaveBeenCalledWith('/scene-tone')
+  })
+
   it('keeps long Skill choices in one compact, truncatable row', async () => {
     const user = userEvent.setup()
     const name = 'scene-continuity-and-character-voice'
@@ -79,6 +108,56 @@ describe('InputArea command menu', () => {
     expect(screen.getByText(description)).toHaveClass('truncate')
     expect(within(item as HTMLElement).getByText('加载 Skill')).toBeInTheDocument()
     expect(screen.getAllByText('可用 Skills')).toHaveLength(1)
+  })
+
+  it('renders files and lore as compact single-line reference choices', async () => {
+    const user = userEvent.setup()
+    render(
+      <InputArea
+        onSend={vi.fn()}
+        disabled={false}
+        fileSuggestions={['chapters/very-long-chapter-name.md']}
+        loreSuggestions={[{ value: 'lore-hero', label: '主角', description: '人物资料与长期关系设定' }]}
+      />,
+    )
+
+    await user.type(screen.getByRole('textbox'), '@')
+
+    const loreItem = screen.getByText('@主角').closest('[cmdk-item]')
+    const fileItem = screen.getByText('@very-long-chapter-name.md').closest('[cmdk-item]')
+    expect(screen.getByText('文件与资料')).toBeInTheDocument()
+    expect(loreItem).toHaveAttribute('data-reference-kind', 'lore')
+    expect(fileItem).toHaveAttribute('data-reference-kind', 'file')
+    expect(loreItem).toHaveClass('whitespace-nowrap', 'sm:min-h-9')
+    expect(fileItem).toHaveClass('whitespace-nowrap', 'sm:min-h-9')
+    expect(screen.getByText('人物资料与长期关系设定')).toHaveClass('truncate')
+    expect(screen.getByText('chapters/very-long-chapter-name.md')).toHaveClass('truncate')
+
+    await user.type(screen.getByRole('textbox'), 'missing')
+    expect(screen.getByText('未找到文件或资料')).toBeInTheDocument()
+  })
+
+  it('selects reference choices with arrow keys, Enter, and Tab', async () => {
+    const user = userEvent.setup()
+    const handleSend = vi.fn()
+    render(
+      <InputArea
+        onSend={handleSend}
+        disabled={false}
+        fileSuggestions={['chapters/ch01.md', 'chapters/ch02.md']}
+        loreSuggestions={[{ value: 'lore-hero', label: '主角', description: '人物资料' }]}
+      />,
+    )
+
+    const textbox = screen.getByRole('textbox')
+    await user.type(textbox, '@')
+    await user.keyboard('{ArrowDown}{Enter}')
+    expect(within(textbox).getByText('@ch01.md')).toHaveAttribute('data-token-value', 'chapters/ch01.md')
+
+    await user.type(textbox, '@')
+    await user.keyboard('{ArrowUp}{Tab}')
+    expect(within(textbox).getByText('@ch02.md')).toHaveAttribute('data-token-value', 'chapters/ch02.md')
+    expect(handleSend).not.toHaveBeenCalled()
   })
 
   it('inserts selected Skills as inline tokens and sends compatible text', async () => {

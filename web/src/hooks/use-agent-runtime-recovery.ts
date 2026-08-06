@@ -56,7 +56,7 @@ export function useWritingAgentRuntimeRecovery({
   const [recoveryAttempt, setRecoveryAttempt] = useState(0)
   const runtimeProjectionRef = useRef<ActiveChatTask | null>(null)
   const recoveryActionInFlightRef = useRef(false)
-  const checkInFlightRef = useRef<Promise<void> | null>(null)
+  const checkInFlightRef = useRef<{ sessionID: string; promise: Promise<void> } | null>(null)
   const attachedRecoveryRetryNeededRef = useRef(false)
   const retryNeededRef = useRef(false)
   const immediateRetryProjectionRef = useRef('')
@@ -69,6 +69,9 @@ export function useWritingAgentRuntimeRecovery({
   const transportErrorRef = useRef<Error | undefined>(transportError)
   const transportStatusRef = useRef(transportStatus)
   const onSettledRef = useRef(onSettled)
+  const activeSessionIdRef = useRef(activeSessionId)
+  const explicitlyResumedSessionIdRef = useRef('')
+  activeSessionIdRef.current = activeSessionId
   transportStatusRef.current = transportStatus
   transportErrorRef.current = transportError
   runtimeProjectionRef.current = runtimeProjection
@@ -88,7 +91,7 @@ export function useWritingAgentRuntimeRecovery({
   }, [])
 
   const attachDisplayStream = useCallback(
-    async (failureContext: string, beforeResume?: () => void): Promise<boolean> => {
+    async (failureContext: string, sessionID: string, beforeResume?: () => void): Promise<boolean> => {
       const statusAtStart = transportStatusRef.current
       const errorAtStart = transportErrorRef.current
       const projectionAtStart = writingRecoveryProjectionFingerprint(runtimeProjectionRef.current)
@@ -97,7 +100,8 @@ export function useWritingAgentRuntimeRecovery({
         // with authoritative history first. AI SDK reconnect streams append new
         // parts; without this reset, partial `hel` followed by replayed `hello`
         // renders as `helhello` and tool arguments can be duplicated as well.
-        await loadHistoryAuthoritative(activeSessionId || undefined)
+        await loadHistoryAuthoritative(sessionID)
+        if (activeSessionIdRef.current !== sessionID) return false
         if (displayOmissionActiveRef.current) onDisplayRehydrated()
         beforeResume?.()
         await Promise.resolve(resumeStream())
@@ -109,6 +113,7 @@ export function useWritingAgentRuntimeRecovery({
         markRecoveryRetry(true, projectionAtStart)
         return false
       } catch (error) {
+        if (activeSessionIdRef.current !== sessionID) return false
         if (isAbortError(error)) return false
         console.warn(`[use-agent-runtime-recovery.ts] ${failureContext}`, error)
         markRecoveryRetry(false)
@@ -116,16 +121,19 @@ export function useWritingAgentRuntimeRecovery({
         return false
       }
     },
-    [activeSessionId, loadHistoryAuthoritative, markRecoveryRetry, onDisplayRehydrated, resumeStream],
+    [loadHistoryAuthoritative, markRecoveryRetry, onDisplayRehydrated, resumeStream],
   )
 
   const inspectAndAttach = useCallback(
-    async (canonicalizeWhenIdle: boolean, attachStream = true) => {
-      while (checkInFlightRef.current) await checkInFlightRef.current
+    async (canonicalizeWhenIdle: boolean, attachStream = true, requestedSessionID = activeSessionIdRef.current) => {
+      const sessionID = requestedSessionID.trim()
+      while (checkInFlightRef.current?.sessionID === sessionID) await checkInFlightRef.current.promise
+      if (activeSessionIdRef.current !== sessionID) return
       const inspection = (async () => {
         if (attachStream) setRecoveryPending(true)
         try {
-          let projection = await client.getActiveChatTask()
+          let projection = await client.getActiveChatTask(sessionID)
+          if (activeSessionIdRef.current !== sessionID) return
           runtimeProjectionRef.current = projection
           setRuntimeProjection(projection)
           const shouldObserve = Boolean(projection.active || projection.task_id?.trim() || projection.runtime_recoverable)
@@ -141,12 +149,13 @@ export function useWritingAgentRuntimeRecovery({
               return
             }
             try {
-              recovered = await recoverWritingProjection(projection, client.recoverChatAgentRuntime)
+              recovered = await recoverWritingProjection(projection, (action) => client.recoverChatAgentRuntime(action, sessionID))
               break
             } catch (error) {
               if (attachStream || !isRecoveryProjectionRefreshError(error)) throw error
               failedProjection = projectionFingerprint
-              projection = await client.getActiveChatTask()
+              projection = await client.getActiveChatTask(sessionID)
+              if (activeSessionIdRef.current !== sessionID) return
               runtimeProjectionRef.current = projection
               setRuntimeProjection(projection)
             }
@@ -156,8 +165,8 @@ export function useWritingAgentRuntimeRecovery({
           if (recovered.taskID) {
             retryNeededRef.current = false
             if (attachStream) {
-              transport.setActiveStreamTarget(recovered.taskID)
-              void attachDisplayStream('failed to attach writing Agent stream; preserving recovery state')
+              transport.setActiveStreamTarget(recovered.taskID, undefined, { session_id: sessionID })
+              void attachDisplayStream('failed to attach writing Agent stream; preserving recovery state', sessionID)
             } else {
               attachedRecoveryRetryNeededRef.current = false
               setRecoveryPending(false)
@@ -176,11 +185,13 @@ export function useWritingAgentRuntimeRecovery({
           if (attachStream) transport.clearActiveStreamTarget()
           onSettledRef.current()
           if (canonicalizeWhenIdle) {
-            await loadHistoryAuthoritative(activeSessionId || undefined)
+            await loadHistoryAuthoritative(sessionID)
+            if (activeSessionIdRef.current !== sessionID) return
             displayOmissionActiveRef.current = false
           }
           setRecoveryPending(false)
         } catch (error) {
+          if (activeSessionIdRef.current !== sessionID) return
           if (!isAbortError(error)) {
             console.warn(
               '[use-agent-runtime-recovery.ts] failed to inspect or recover writing Agent runtime; waiting for a safe retry opportunity',
@@ -193,14 +204,15 @@ export function useWritingAgentRuntimeRecovery({
           }
         }
       })()
-      checkInFlightRef.current = inspection
+      const trackedInspection = { sessionID, promise: inspection }
+      checkInFlightRef.current = trackedInspection
       try {
         await inspection
       } finally {
-        if (checkInFlightRef.current === inspection) checkInFlightRef.current = null
+        if (checkInFlightRef.current === trackedInspection) checkInFlightRef.current = null
       }
     },
-    [activeSessionId, attachDisplayStream, client, loadHistoryAuthoritative, transport],
+    [attachDisplayStream, client, loadHistoryAuthoritative, transport],
   )
 
   useEffect(() => {
@@ -224,8 +236,13 @@ export function useWritingAgentRuntimeRecovery({
     }
 
     if (request.settled) {
-      void loadHistoryAuthoritative(activeSessionId || undefined)
+      const sessionID = activeSessionIdRef.current.trim()
+      void loadHistoryAuthoritative(sessionID)
         .then(() => {
+          if (activeSessionIdRef.current !== sessionID) {
+            finish(false)
+            return
+          }
           onDisplayTerminalRestored(request)
           transport.clearActiveStreamTarget()
           displayOmissionActiveRef.current = false
@@ -245,8 +262,9 @@ export function useWritingAgentRuntimeRecovery({
       return
     }
 
-    void attachDisplayStream('failed to canonically rehydrate and resume the same Writing Task', () => {
-      transport.setActiveStreamTarget(request.taskID, request.cursor)
+    const sessionID = activeSessionIdRef.current.trim()
+    void attachDisplayStream('failed to canonically rehydrate and resume the same Writing Task', sessionID, () => {
+      transport.setActiveStreamTarget(request.taskID, request.cursor, { session_id: sessionID })
     }).then(finish)
   }, [
     activeSessionId,
@@ -265,7 +283,18 @@ export function useWritingAgentRuntimeRecovery({
     // Omission belongs to one Writing session. A manual session switch must
     // never carry the previous run's warning into another conversation.
     displayOmissionActiveRef.current = false
-  }, [activeSessionId])
+    if (explicitlyResumedSessionIdRef.current === activeSessionId) {
+      explicitlyResumedSessionIdRef.current = ''
+      return
+    }
+    displayRehydrateInFlightRef.current = false
+    retryNeededRef.current = false
+    attachedRecoveryRetryNeededRef.current = false
+    runtimeProjectionRef.current = null
+    setRuntimeProjection(null)
+    setRecoveryPending(false)
+    transport.clearActiveStreamTarget()
+  }, [activeSessionId, transport])
 
   useEffect(() => {
     if (transportStatus !== 'error' || !wasStreamingRef.current) return
@@ -288,13 +317,14 @@ export function useWritingAgentRuntimeRecovery({
       retryNeededRef.current = false
       setRecoveryPending(false)
       let cancelled = false
-      client.getActiveChatTask()
+      const sessionID = activeSessionIdRef.current.trim()
+      client.getActiveChatTask(sessionID)
         .then((projection) => {
-          if (cancelled) return
+          if (cancelled || activeSessionIdRef.current !== sessionID) return
           runtimeProjectionRef.current = projection
           setRuntimeProjection(projection)
           const taskID = projection.task_id?.trim()
-          if (taskID) transport.setActiveStreamTarget(taskID)
+          if (taskID) transport.setActiveStreamTarget(taskID, undefined, { session_id: sessionID })
         })
         .catch((error) => {
           if (!cancelled && !isAbortError(error))
@@ -345,10 +375,26 @@ export function useWritingAgentRuntimeRecovery({
     }
   }, [inspectAndAttach, recoveryPending, transportStreaming])
 
-  const resumeActiveChat = useCallback(async () => {
+  const resumeActiveChat = useCallback(async (sessionID = activeSessionIdRef.current) => {
     if (transportStreaming) return
-    await inspectAndAttach(false)
-  }, [inspectAndAttach, transportStreaming])
+    const targetSessionID = sessionID.trim()
+    // Explicit callers use the Session identity just confirmed by the server.
+    // Advance the async fence immediately instead of waiting for React to
+    // commit the matching state render; this also invalidates late work from A.
+    explicitlyResumedSessionIdRef.current = targetSessionID
+    if (activeSessionIdRef.current !== targetSessionID) {
+      displayOmissionActiveRef.current = false
+      displayRehydrateInFlightRef.current = false
+      retryNeededRef.current = false
+      attachedRecoveryRetryNeededRef.current = false
+      runtimeProjectionRef.current = null
+      setRuntimeProjection(null)
+      setRecoveryPending(false)
+      transport.clearActiveStreamTarget()
+      activeSessionIdRef.current = targetSessionID
+    }
+    await inspectAndAttach(false, true, targetSessionID)
+  }, [inspectAndAttach, transport, transportStreaming])
 
   const abortRecovery = useCallback(async () => {
     const action = runtimeProjection?.recovery_actions?.find((candidate) => candidate.kind === 'abort')
@@ -356,7 +402,9 @@ export function useWritingAgentRuntimeRecovery({
     if (recoveryActionInFlightRef.current) return true
     recoveryActionInFlightRef.current = true
     try {
-      const receipt = await client.recoverChatAgentRuntime(action)
+      const sessionID = activeSessionIdRef.current.trim()
+      const receipt = await client.recoverChatAgentRuntime(action, sessionID)
+      if (activeSessionIdRef.current !== sessionID) return false
       if (!sameRecoveryAction(receipt.recovery_action, action)) {
         throw new Error('The writing Agent recovery action changed while aborting')
       }
@@ -383,8 +431,8 @@ export function useWritingAgentRuntimeRecovery({
       // the typed abort receipt will arrive on that stream. Opening a second
       // resume subscription here races the current reader and duplicates UI.
       if (!transportStreaming) {
-        transport.setActiveStreamTarget(taskID)
-        void attachDisplayStream('failed to attach recovered writing Agent abort stream')
+        transport.setActiveStreamTarget(taskID, undefined, { session_id: sessionID })
+        void attachDisplayStream('failed to attach recovered writing Agent abort stream', sessionID)
       }
       return true
     } finally {

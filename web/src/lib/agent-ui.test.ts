@@ -429,11 +429,11 @@ describe('agent-ui', () => {
       const transport = new AgentChatTransport()
       const stream = await transport.sendMessages(agentSendOptions())
       await readStream(stream)
-      transport.setActiveStreamTarget('task/exact 1')
+      transport.setActiveStreamTarget('task/exact 1', undefined, { session_id: 'session-a' })
 
       await expect(transport.reconnectToStream({ chatId: 'chat-1' })).resolves.toBeNull()
 
-      expect(requests.at(-1)).toBe('GET /api/chat/stream?task_id=task%2Fexact+1')
+      expect(requests.at(-1)).toBe('GET /api/chat/stream?task_id=task%2Fexact+1&session_id=session-a')
     } finally {
       fetchSpy.mockRestore()
     }

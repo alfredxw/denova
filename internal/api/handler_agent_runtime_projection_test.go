@@ -9,7 +9,7 @@ func TestActiveEndpointsExposeDurableRuntimeProjection(t *testing.T) {
 	application := newTestApplication(t)
 	server := NewServer(application, "0")
 
-	writingResponse := performJSONRequest(t, server, http.MethodGet, "/api/chat/active", nil)
+	writingResponse := performJSONRequest(t, server, http.MethodGet, "/api/chat/active?session_id="+activeWritingSessionID(t, application), nil)
 	if writingResponse.Code != http.StatusOK {
 		t.Fatalf("writing active status=%d body=%s", writingResponse.Code, writingResponse.Body.String())
 	}

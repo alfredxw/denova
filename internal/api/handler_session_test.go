@@ -397,6 +397,21 @@ func newTestApplication(t *testing.T) *runtimeapp.App {
 	return application
 }
 
+func activeWritingSessionID(t *testing.T, application *runtimeapp.App) string {
+	t.Helper()
+	sessions, err := application.Sessions()
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, session := range sessions {
+		if session.Active {
+			return session.ID
+		}
+	}
+	t.Fatal("test application has no active Writing Session")
+	return ""
+}
+
 func performJSONRequest(t *testing.T, server *Server, method, path string, body any) *ut.ResponseRecorder {
 	t.Helper()
 	var requestBody *ut.Body

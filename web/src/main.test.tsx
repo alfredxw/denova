@@ -20,6 +20,7 @@ vi.mock('next-themes', () => ({ ThemeProvider: ({ children }: { children: unknow
 vi.mock('@/components/RuntimeErrorBoundary', () => ({ RuntimeErrorBoundary: ({ children }: { children: unknown }) => children }))
 vi.mock('@/components/ui/sonner', () => ({ Toaster: () => null }))
 vi.mock('@/components/ui/tooltip', () => ({ TooltipProvider: ({ children }: { children: unknown }) => children }))
+vi.mock('@/components/common/native-title-tooltip', () => ({ NativeTitleTooltip: () => null }))
 vi.mock('@/lib/query-client', () => ({ queryClient: {} }))
 vi.mock('@/i18n', () => ({ setConfiguredLocale: vi.fn() }))
 vi.mock('@/features/settings/font-variables', () => ({

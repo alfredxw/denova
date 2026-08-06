@@ -6,6 +6,33 @@ import { BookSettingsShortcuts } from './BookSettingsShortcuts'
 describe('BookSettingsShortcuts', () => {
   beforeEach(() => window.localStorage.clear())
 
+  it('keeps header pinning in Manage and defaults to pinned', async () => {
+    const user = userEvent.setup()
+    const onToggleHeaderPinned = vi.fn()
+    render(
+      <BookSettingsShortcuts
+        projectId="project-demo"
+        tree={[]}
+        chapterPlans={[]}
+        selectedFile={null}
+        headerPinned
+        onSelectFile={vi.fn()}
+        onToggleHeaderPinned={onToggleHeaderPinned}
+      />,
+    )
+
+    expect(screen.queryByRole('button', { name: '取消固定顶部区域' })).not.toBeInTheDocument()
+    expect(screen.queryByRole('switch', { name: '固定顶部区域' })).not.toBeInTheDocument()
+
+    await user.click(screen.getByRole('button', { name: '管理' }))
+    const headerPinnedSwitch = screen.getByRole('switch', { name: '固定顶部区域' })
+    expect(headerPinnedSwitch).toBeChecked()
+    expect(screen.getByText('保持书籍设定始终可见；关闭后将随目录滚动。')).toBeInTheDocument()
+
+    await user.click(headerPinnedSwitch)
+    expect(onToggleHeaderPinned).toHaveBeenCalledTimes(1)
+  })
+
   it('默认 Pin 设定工作区与五个文件入口，并可 Pin 动态发现的 Markdown 文件', async () => {
     const user = userEvent.setup()
     const onOpenLoreTab = vi.fn()

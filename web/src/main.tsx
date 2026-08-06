@@ -8,6 +8,7 @@ import App from './App'
 import { RuntimeErrorBoundary } from '@/components/RuntimeErrorBoundary'
 import { Toaster } from '@/components/ui/sonner'
 import { TooltipProvider } from '@/components/ui/tooltip'
+import { NativeTitleTooltip } from '@/components/common/native-title-tooltip'
 import { queryClient } from '@/lib/query-client'
 import { installGlobalRuntimeLoggers, recordRuntimeLog, scheduleWhiteScreenCheck } from '@/lib/runtimeLog'
 import { fetchSettings } from '@/features/settings/api'
@@ -31,6 +32,7 @@ createRoot(root).render(
     <QueryClientProvider client={queryClient}>
       <ThemeProvider attribute="data-theme" defaultTheme="dark" enableSystem themes={['light', 'dark']}>
         <TooltipProvider>
+          <NativeTitleTooltip />
           <RuntimeErrorBoundary>
             <AgentApprovalProvider>
               <App />

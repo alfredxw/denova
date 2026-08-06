@@ -2,6 +2,7 @@ package app
 
 import (
 	agentharness "denova/internal/agents/harness"
+	"strings"
 	"sync"
 
 	"denova/config"
@@ -11,6 +12,32 @@ import (
 	apptask "denova/internal/app/task"
 	"denova/internal/book"
 )
+
+// confirmSelectedSessionID rejects requests whose explicit browser binding no
+// longer matches the foreground Writing session. Callers that must linearize
+// against session switches also hold the Chat admission lock.
+func (s *ChatAppService) confirmSelectedSessionID(expectedSessionID string) error {
+	if s == nil || s.app == nil {
+		return ErrNoWorkspace
+	}
+	expectedSessionID = strings.TrimSpace(expectedSessionID)
+	if expectedSessionID == "" {
+		return ErrInvalidAgentBinding
+	}
+	a := s.app
+	a.mu.RLock()
+	defer a.mu.RUnlock()
+	if a.workspaceTransition {
+		return ErrWorkspaceTransition
+	}
+	if a.session == nil {
+		return ErrNoWorkspace
+	}
+	if strings.TrimSpace(a.session.ID) != expectedSessionID {
+		return ErrAgentContextChanged
+	}
+	return nil
+}
 
 // ChatAppService 负责普通创作 Agent 任务与会话管理。
 type ChatAppService struct {

@@ -86,6 +86,7 @@ export class AgentChatTransport implements ChatTransport<AgentUIMessage> {
   private readonly transport: DefaultChatTransport<AgentUIMessage>
   private activeStreamTaskID = ''
   private activeStreamAfter = 0
+  private activeStreamScope: Record<string, string> = {}
   private readonly initialSubmissionOutcomes = new Map<string, InitialSubmissionOutcome>()
 
   private readonly streamApi: string
@@ -123,6 +124,7 @@ export class AgentChatTransport implements ChatTransport<AgentUIMessage> {
     // before any reconnect can target a stream.
     this.activeStreamTaskID = ''
     this.activeStreamAfter = 0
+    this.activeStreamScope = {}
     return this.transport.sendMessages(options)
   }
 
@@ -131,7 +133,7 @@ export class AgentChatTransport implements ChatTransport<AgentUIMessage> {
   }
 
   /** Select the exact backend task and optional server-issued display cursor. */
-  setActiveStreamTarget(taskID: string, after?: number) {
+  setActiveStreamTarget(taskID: string, after?: number, scope: Record<string, string> = {}) {
     const nextTaskID = taskID.trim()
     if (!nextTaskID) throw new Error('Cannot select an empty Agent stream task')
     const nextAfter = after ?? 0
@@ -140,11 +142,13 @@ export class AgentChatTransport implements ChatTransport<AgentUIMessage> {
     }
     this.activeStreamTaskID = nextTaskID
     this.activeStreamAfter = nextAfter
+    this.activeStreamScope = { ...scope }
   }
 
   clearActiveStreamTarget() {
     this.activeStreamTaskID = ''
     this.activeStreamAfter = 0
+    this.activeStreamScope = {}
   }
 
   /** Consume the acceptance classification captured at the HTTP boundary. */
@@ -158,6 +162,7 @@ export class AgentChatTransport implements ChatTransport<AgentUIMessage> {
   private activeStreamURL() {
     if (!this.activeStreamTaskID) throw new Error('Cannot reconnect without an exact Agent stream task')
     const query = new URLSearchParams({ task_id: this.activeStreamTaskID })
+    for (const [key, value] of Object.entries(this.activeStreamScope)) query.set(key, value)
     for (const [key, value] of Object.entries(this.scope)) query.set(key, value)
     if (this.activeStreamAfter > 0) query.set('after', String(this.activeStreamAfter))
     // The recovery cursor is a one-connection hand-off. If that connection is
