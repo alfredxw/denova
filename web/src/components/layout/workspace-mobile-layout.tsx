@@ -148,7 +148,6 @@ function MobileNavButton({ item }: { item: MobileNavItem }) {
       className={`nova-mobile-nav-item flex min-h-[48px] flex-1 flex-col items-center justify-center gap-0.5 rounded-[var(--nova-radius)] px-1 text-[10px] text-[var(--nova-text-faint)] transition-colors hover:bg-[var(--nova-hover)] hover:text-[var(--nova-text-muted)] disabled:opacity-45 ${item.active ? 'is-active bg-[var(--nova-active)] text-[var(--nova-text)]' : ''} ${item.expanded && !item.active ? 'is-expanded border border-[var(--nova-border)] text-[var(--nova-text-muted)]' : ''}`}
       disabled={item.disabled}
       aria-label={item.label}
-      title={item.label}
       aria-current={item.active ? 'page' : undefined}
       aria-expanded={item.expanded || undefined}
       onClick={item.onClick}

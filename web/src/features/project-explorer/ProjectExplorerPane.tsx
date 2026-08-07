@@ -84,13 +84,13 @@ export const ProjectExplorerPane = memo(function ProjectExplorerPane({
   return (
     <aside className="flex h-full min-h-0 min-w-0 flex-col bg-[var(--nova-surface)] text-[var(--nova-text)]">
       <div className="flex h-10 shrink-0 items-center gap-1 border-b border-[var(--nova-border)] px-2">
-        <Button type="button" variant="ghost" size="icon-xs" className={`${actionButtonClass} ml-auto`} onClick={() => explorerRef.current?.beginCreate('file')} aria-label={t('sidebar.createFile')} title={t('sidebar.createFile')}>
+        <Button type="button" variant="ghost" size="icon-xs" className={`${actionButtonClass} ml-auto`} onClick={() => explorerRef.current?.beginCreate('file')} aria-label={t('sidebar.createFile')}>
           <FilePlus />
         </Button>
-        <Button type="button" variant="ghost" size="icon-xs" className={actionButtonClass} onClick={() => explorerRef.current?.beginCreate('dir')} aria-label={t('sidebar.createDir')} title={t('sidebar.createDir')}>
+        <Button type="button" variant="ghost" size="icon-xs" className={actionButtonClass} onClick={() => explorerRef.current?.beginCreate('dir')} aria-label={t('sidebar.createDir')}>
           <FolderPlus />
         </Button>
-        <Button type="button" variant="ghost" size="icon-xs" className={actionButtonClass} onClick={() => void onRefresh()} aria-label={t('common.refresh')} title={t('common.refresh')}>
+        <Button type="button" variant="ghost" size="icon-xs" className={actionButtonClass} onClick={() => void onRefresh()} aria-label={t('common.refresh')}>
           <RefreshCw className={loadingPaths.size > 0 ? 'animate-spin' : undefined} />
         </Button>
         <Button
@@ -103,7 +103,6 @@ export const ProjectExplorerPane = memo(function ProjectExplorerPane({
             onCollapseAll()
           }}
           aria-label={t('files.tree.collapseAll')}
-          title={`${t('files.tree.collapseAll')} · ${t('files.tree.recursiveFoldHint')}`}
         >
           <ListCollapse />
         </Button>
@@ -115,7 +114,6 @@ export const ProjectExplorerPane = memo(function ProjectExplorerPane({
           disabled={!selectedPath}
           onClick={() => void revealCurrentFile()}
           aria-label={t('files.tree.revealCurrent')}
-          title={t('files.tree.revealCurrent')}
         >
           <LocateFixed />
         </Button>

@@ -13,6 +13,7 @@ import (
 	"unicode/utf8"
 
 	"github.com/invopop/jsonschema"
+	"github.com/kaptinlin/jsonrepair"
 )
 
 // ToolArgumentIssue is one machine-readable reason a tool call could not be
@@ -43,9 +44,9 @@ func toolArgumentError(code, path, format string, values ...any) error {
 	}}}
 }
 
-// NormalizeToolArguments applies only stable, unambiguous schema corrections
-// and returns canonical JSON. Domain-specific validation remains owned by the
-// concrete tool implementation.
+// NormalizeToolArguments repairs malformed JSON syntax only after strict
+// decoding fails, then applies stable, unambiguous schema corrections and
+// returns canonical JSON. Domain validation remains owned by the concrete tool.
 func NormalizeToolArguments(info *ToolInfo, arguments string) (string, error) {
 	if info == nil {
 		return "", toolArgumentError("schema_unavailable", "$", "tool info is nil")
@@ -61,7 +62,7 @@ func normalizeToolArgumentsWithSchema(arguments string, schema *jsonschema.Schem
 	if strings.TrimSpace(arguments) == "" {
 		return "", toolArgumentError("invalid_json", "$", "empty JSON input")
 	}
-	value, err := decodeJSONValue(arguments)
+	value, err := decodeToolArgumentsJSON(arguments)
 	if err != nil {
 		return "", toolArgumentError("invalid_json", "$", "%v", err)
 	}
@@ -77,6 +78,25 @@ func normalizeToolArgumentsWithSchema(arguments string, schema *jsonschema.Schem
 		return "", toolArgumentError("invalid_json", "$", "encode normalized arguments: %v", err)
 	}
 	return string(encoded), nil
+}
+
+// decodeToolArgumentsJSON keeps valid model output on the standard library's
+// strict path. Malformed output gets one deterministic syntax-repair pass and
+// must then survive the same strict decoder before schema normalization.
+func decodeToolArgumentsJSON(arguments string) (any, error) {
+	value, strictErr := decodeJSONValue(arguments)
+	if strictErr == nil {
+		return value, nil
+	}
+	repaired, repairErr := jsonrepair.Repair(arguments)
+	if repairErr != nil {
+		return nil, fmt.Errorf("strict JSON decode failed: %v; automatic repair failed: %w", strictErr, repairErr)
+	}
+	value, repairedErr := decodeJSONValue(repaired)
+	if repairedErr != nil {
+		return nil, fmt.Errorf("strict JSON decode failed: %v; repaired JSON is still invalid: %w", strictErr, repairedErr)
+	}
+	return value, nil
 }
 
 func decodeJSONValue(arguments string) (any, error) {

@@ -188,11 +188,10 @@ export function ResourceDirectory({
                     onClick={() => toggleSection(section, items)}
                     aria-label={`${collapsed ? t('common.expand') : t('common.collapse')}${section.label}`}
                     aria-expanded={!collapsed}
-                    title={`${collapsed ? t('common.expand') : t('common.collapse')}${section.label}`}
                   >
                     <ChevronDown className={cn('h-3.5 w-3.5 shrink-0 text-[var(--nova-text-faint)] transition-transform', collapsed && '-rotate-90')} />
                     {SectionIcon && <SectionIcon className="h-3.5 w-3.5 shrink-0 text-[var(--nova-text-faint)]" />}
-                    <span className="min-w-0 flex-1 truncate font-medium" title={section.description}>{section.label}</span>
+                    <span className="min-w-0 flex-1 truncate font-medium">{section.label}</span>
                     <span className="shrink-0 text-[11px] text-[var(--nova-text-faint)]">{items.length}</span>
                     {section.headerMeta}
                   </button>
@@ -204,12 +203,11 @@ export function ResourceDirectory({
                       onClick={() => toggleSection(section, items)}
                       aria-label={`${collapsed ? t('common.expand') : t('common.collapse')}${section.label}`}
                       aria-expanded={!collapsed}
-                      title={`${collapsed ? t('common.expand') : t('common.collapse')}${section.label}`}
                     >
                       <ChevronDown className={cn('h-3.5 w-3.5 transition-transform', collapsed && '-rotate-90')} />
                     </button>
                     {SectionIcon && <SectionIcon className="h-3.5 w-3.5 text-[var(--nova-text-faint)]" />}
-                    <span className="min-w-0 flex-1 truncate font-medium" title={section.description}>{section.label}</span>
+                    <span className="min-w-0 flex-1 truncate font-medium">{section.label}</span>
                     <span className="text-[11px] text-[var(--nova-text-faint)]">{items.length}</span>
                     {section.headerMeta}
                   </>
@@ -296,7 +294,6 @@ export function ResourceDirectory({
               size="icon"
               onClick={toggleAllSections}
               aria-label={allCollapsed ? t('common.expandAll') : t('common.collapseAll')}
-              title={allCollapsed ? t('common.expandAll') : t('common.collapseAll')}
             >
               {allCollapsed ? <ChevronsUpDown data-icon="inline-start" /> : <ChevronsDownUp data-icon="inline-start" />}
             </Button>
@@ -403,7 +400,6 @@ function StatusIndicator({ status }: { status: NonNullable<ResourceDirectoryItem
     <span
       role="img"
       aria-label={status.label}
-      title={status.label}
       className={cn(
         'absolute -right-1 -top-1 size-2 rounded-full ring-2 ring-background',
         status.tone === 'success' && 'bg-[var(--nova-success)]',
@@ -419,7 +415,7 @@ function StatusIndicator({ status }: { status: NonNullable<ResourceDirectoryItem
 function ItemBadge({ badge }: { badge: ResourceDirectoryBadge }) {
   if (badge.tone === 'muted') {
     return (
-      <span className="shrink-0 text-[10px] text-[var(--nova-text-faint)]" title={badge.title}>
+      <span className="shrink-0 text-[10px] text-[var(--nova-text-faint)]">
         {badge.label}
       </span>
     )
@@ -428,7 +424,6 @@ function ItemBadge({ badge }: { badge: ResourceDirectoryBadge }) {
     <Badge
       variant={badge.tone === 'outline' || badge.tone === 'warning' ? 'outline' : 'secondary'}
       className={cn('shrink-0', badge.tone === 'warning' && 'border-transparent bg-[var(--nova-warning-bg)] text-[var(--nova-warning)]')}
-      title={badge.title}
       aria-label={badge.title}
     >
       {badge.label}

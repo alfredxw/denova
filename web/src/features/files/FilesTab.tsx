@@ -243,7 +243,7 @@ export function FilesTab({
             <FileCode2 className="size-4 shrink-0 text-[var(--nova-text-muted)]" aria-hidden="true" />
             <div className="min-w-0 flex-1">
               <div className="truncate text-xs font-medium">{selectedPath?.split('/').at(-1) || t('files.title')}</div>
-              <div className="truncate font-mono text-[10px] text-[var(--nova-text-faint)]" title={selectedPath || workspace}>
+              <div className="truncate font-mono text-[10px] text-[var(--nova-text-faint)]">
                 {selectedPath || workspace}
               </div>
             </div>
@@ -262,7 +262,6 @@ export function FilesTab({
                 aria-pressed={editorPreferences.wordWrap}
                 onClick={toggleWordWrap}
                 aria-label={t(editorPreferences.wordWrap ? 'files.editor.disableWordWrap' : 'files.editor.enableWordWrap')}
-                title={`${t(editorPreferences.wordWrap ? 'files.editor.disableWordWrap' : 'files.editor.enableWordWrap')} · Alt+Z`}
                 className={editorPreferences.wordWrap ? 'bg-[var(--nova-active)] text-[var(--nova-text)]' : 'text-[var(--nova-text-muted)] hover:bg-[var(--nova-hover)] hover:text-[var(--nova-text)]'}
               >
                 <WrapText />
@@ -283,7 +282,6 @@ export function FilesTab({
                 disabled={!editor.dirty || editor.status === 'saving'}
                 onClick={() => void editor.flush(true)}
                 aria-label={t('files.editor.save')}
-                title={t('files.editor.save')}
                 className="text-[var(--nova-text-muted)] hover:bg-[var(--nova-hover)] hover:text-[var(--nova-text)]"
               >
                 <Save />
@@ -298,7 +296,6 @@ export function FilesTab({
                 else setTreeVisible(!preferences.treeVisible)
               }}
               aria-label={t(preferences.treeVisible && !controls.isMobile ? 'files.tree.hide' : 'files.tree.open')}
-              title={t(preferences.treeVisible && !controls.isMobile ? 'files.tree.hide' : 'files.tree.open')}
               className="text-[var(--nova-text-muted)] hover:bg-[var(--nova-hover)] hover:text-[var(--nova-text)]"
             >
               {preferences.treeVisible && !controls.isMobile ? <PanelRightClose /> : <PanelRightOpen />}

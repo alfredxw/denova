@@ -78,7 +78,6 @@ export function AutomationConfigPanel({
               disabled={saving || running}
               className="nova-nav-item h-8 shrink-0 rounded-[var(--nova-radius)] border border-[var(--nova-border)] px-3"
               aria-label={t('automations.deleteTask')}
-              title={t('automations.deleteTask')}
             >
               <Trash2 data-icon="inline-start" />
               {t('automations.deleteTask')}

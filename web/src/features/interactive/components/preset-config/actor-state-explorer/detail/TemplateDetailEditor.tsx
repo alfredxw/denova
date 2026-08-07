@@ -197,7 +197,6 @@ export function TemplateDetailEditor({
                       checked={Boolean(rule)}
                       onCheckedChange={(checked) => toggleTraitPool(pool.id, checked)}
                       aria-label={switchLabel}
-                      title={switchLabel}
                     />
                   </div>
                   {rule ? (

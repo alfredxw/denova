@@ -23,7 +23,7 @@ describe('LedgerFieldView', () => {
     )
 
     expect(screen.getByRole('region', { name: '技能与能力' })).toBeInTheDocument()
-    const ability = screen.getByTitle('太初阴阳诀').closest('li')
+    const ability = screen.getByText('太初阴阳诀:').closest('li')
     expect(ability).not.toBeNull()
     expect(within(ability!).getAllByRole('listitem')).toHaveLength(3)
     expect(within(ability!).getByText('掌握或当前状态:')).toBeInTheDocument()

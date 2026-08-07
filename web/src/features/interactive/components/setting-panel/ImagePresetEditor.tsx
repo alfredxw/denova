@@ -114,7 +114,6 @@ export function ImagePresetEditor({
                     checked={slot.enabled}
                     onCheckedChange={(enabled) => updateSlotById(slot.id, { enabled })}
                     aria-label={slot.enabled ? t('settingPanel.switch.disableRule') : t('settingPanel.switch.enableRule')}
-                    title={slot.enabled ? t('settingPanel.switch.disableRule') : t('settingPanel.switch.enableRule')}
                   />
                 </div>
               ))}

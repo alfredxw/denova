@@ -94,7 +94,6 @@ export function StateTreeGroupHeader({
               onAdd()
             }}
             aria-label={addLabel || t('settingPanel.actorState.explorer.addChild')}
-            title={addLabel || t('settingPanel.actorState.explorer.addChild')}
           >
             <Plus className="h-3.5 w-3.5" />
           </Button>

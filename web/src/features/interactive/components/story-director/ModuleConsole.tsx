@@ -164,9 +164,9 @@ function ModuleRefRow({
       <span className="w-24 shrink-0 text-[11px] text-[var(--nova-text-muted)]">{label}</span>
       <span className="min-w-0 flex-1">
         {children}
-        {summary ? <span className="mt-0.5 block truncate text-[10px] text-[var(--nova-text-faint)]" title={summary}>{summary}</span> : null}
+        {summary ? <span className="mt-0.5 block truncate text-[10px] text-[var(--nova-text-faint)]">{summary}</span> : null}
       </span>
-      <Switch checked={enabled} onCheckedChange={onEnabledChange} aria-label={switchLabel} title={switchLabel} />
+      <Switch checked={enabled} onCheckedChange={onEnabledChange} aria-label={switchLabel} />
     </div>
   )
 }

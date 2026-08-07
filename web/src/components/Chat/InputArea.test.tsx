@@ -199,7 +199,7 @@ describe('InputArea command menu', () => {
     const token = await within(textbox).findByText('@ch01.md')
     expect(token).toHaveClass('nova-composer-token')
     expect(token).toHaveAttribute('data-token-value', 'chapters/ch01.md')
-    expect(token).toHaveAttribute('title', 'chapters/ch01.md')
+    expect(token).not.toHaveAttribute('title')
     expect(document.querySelector('.nova-agent-composer-references')).toBeNull()
 
     textbox.focus()

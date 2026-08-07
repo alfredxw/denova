@@ -236,7 +236,6 @@ export function AgentToolSection({ value, rows, onChange }: {
                   {(isRuntimeCheck || isUnavailable) && (
                     <span
                       className={`shrink-0 rounded px-1.5 py-0.5 text-[10px] ${isUnavailable ? 'bg-[var(--nova-danger-bg)] text-[var(--nova-danger)]' : 'bg-[var(--nova-warning-bg)] text-[var(--nova-warning)]'}`}
-                      title={availabilityHint}
                     >
                       {availabilityLabel}
                     </span>
@@ -246,7 +245,7 @@ export function AgentToolSection({ value, rows, onChange }: {
                   {tool.toolNames.length > 0 ? tool.toolNames.join(' / ') : t(tool.subtitleKey)}
                 </div>
                 {isUnavailable && availabilityHint && (
-                  <div className="mt-0.5 truncate text-[10px] text-[var(--nova-danger)]" title={availabilityHint}>{availabilityHint}</div>
+                  <div className="mt-0.5 truncate text-[10px] text-[var(--nova-danger)]">{availabilityHint}</div>
                 )}
               </div>
               <SwitchWithInheritance
@@ -296,7 +295,7 @@ export function AgentSkillSection({ agent, skills, value, effective, onChange }:
                       {current ? t('agents.skills.available') : t('agents.skills.unavailable')}
                     </span>
                   </div>
-                  <div className="mt-0.5 truncate text-[11px] text-[var(--nova-text-faint)]" title={skill.description}>{skill.description}</div>
+                  <div className="mt-0.5 truncate text-[11px] text-[var(--nova-text-faint)]">{skill.description}</div>
                   <div className="mt-0.5 truncate text-[10px] text-[var(--nova-text-faint)]">
                     {defaultAvailable ? t('agents.skills.defaultAvailable') : t('agents.skills.defaultUnavailable')}
                     {skill.agent ? ` · ${skill.agent}` : ''}

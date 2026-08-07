@@ -229,7 +229,6 @@ export function BranchTimeline({
                   className={`nova-nav-item flex h-7 max-md:min-h-9 shrink-0 items-center gap-2 rounded-[var(--nova-radius)] border px-2 text-xs transition ${row.branchId === currentBranchId ? 'is-active text-[var(--nova-text)]' : 'border-[var(--nova-border)] bg-[var(--nova-surface)] text-[var(--nova-text-muted)] hover:text-[var(--nova-text)]'}`}
                   style={row.branchId === currentBranchId ? { borderColor: row.color, background: row.colorSoft } : undefined}
                   onClick={() => onSwitchBranch(row.branchId)}
-                  title={formatBranchName(row.branch, t)}
                 >
                   <span className="h-2.5 w-2.5 rounded-full shadow-[0_0_10px_currentColor]" style={{ background: row.color, color: row.color }} />
                   <span className="max-w-32 truncate">{formatBranchName(row.branch, t)}</span>
@@ -292,7 +291,6 @@ export function BranchTimeline({
 								title: node.title,
 								state: node.current ? t('branchTimeline.currentNode') : node.terminal ? t('branchTimeline.terminalNode') : '',
 							})}
-	                  title={`${node.title}\n${node.summary}${node.terminal ? `\n${t('branchTimeline.terminalNode')}` : ''}`}
 	                >
                   <span className="h-2.5 w-2.5 shrink-0 rounded-full shadow-[0_0_14px_currentColor]" style={{ background: color, color }} />
                   <span className="min-w-0 flex-1 overflow-hidden">
@@ -311,14 +309,13 @@ export function BranchTimeline({
                   style={{ left: empty.x, top: empty.y + 5, width: layout.metrics.nodeCardWidth, borderColor: empty.color, background: empty.colorSoft }}
                 >
                   <span className="h-2.5 w-2.5 rounded-full" style={{ background: empty.color }} />
-                  <span className="min-w-0 flex-1 truncate" title={formatBranchName(empty.branch, t)}>{t('branchTimeline.emptyBranch')}</span>
+                  <span className="min-w-0 flex-1 truncate">{t('branchTimeline.emptyBranch')}</span>
                   <button
                     type="button"
                     data-no-drag
                     className="rounded p-1 text-[var(--nova-danger)] opacity-75 hover:bg-[var(--nova-danger-bg)] hover:opacity-100"
                     onClick={() => deleteBranch(empty.branch)}
                     aria-label={t('branchTimeline.deleteEmptyBranchWithName', { name: formatBranchName(empty.branch, t) })}
-                    title={t('branchTimeline.deleteEmptyBranch')}
                   >
                     <Trash2 className="h-3.5 w-3.5" />
                   </button>
@@ -338,7 +335,7 @@ export function BranchTimeline({
             ) : (
               <span>{t('branchTimeline.selectHint')}</span>
             )}
-            <Button size="xs" variant="outline" className="nova-nav-item shrink-0 gap-1.5 border-[var(--nova-border)] bg-[var(--nova-surface-2)] text-[var(--nova-text-muted)] hover:bg-[var(--nova-hover)] hover:text-[var(--nova-text)] sm:hidden" onClick={recenter} disabled={!currentPositionedNode} aria-label={t('branchTimeline.recenter')} title={t('branchTimeline.recenter')}>
+            <Button size="xs" variant="outline" className="nova-nav-item shrink-0 gap-1.5 border-[var(--nova-border)] bg-[var(--nova-surface-2)] text-[var(--nova-text-muted)] hover:bg-[var(--nova-hover)] hover:text-[var(--nova-text)] sm:hidden" onClick={recenter} disabled={!currentPositionedNode} aria-label={t('branchTimeline.recenter')}>
               <Crosshair className="h-3.5 w-3.5" />
             </Button>
 			{linearRoute ? <div className="hidden flex-1 text-center text-[11px] text-[var(--nova-text-faint)] sm:block">{t('branchTimeline.linearRoute')}</div> : <MiniMap layout={layout} scrollRef={scrollRef} ariaLabel={t('branchTimeline.minimap')} />}

@@ -144,7 +144,6 @@ export function CharacterCardImportDialog({
                   className={`nova-nav-item h-8 px-3 text-xs ${targetMode === 'current' ? 'is-active' : ''}`}
                   onClick={() => onTargetModeChange('current')}
                   disabled={!workspace || importing}
-                  title={workspace ? t('importCard.importCurrentTitle') : t('importCard.noCurrentBookTitle')}
                 >
                   {t('importCard.importCurrent')}
                 </button>

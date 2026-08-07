@@ -4,12 +4,12 @@ import { useTranslation } from 'react-i18next'
 export function InfoLine({ label, value }: { label: string; value: string }) {
   return (
     <div className="grid grid-cols-[64px_minmax(0,1fr)] gap-2">
-      <span className="truncate text-[var(--nova-text-faint)]" title={label}>{label}</span>
+      <span className="truncate text-[var(--nova-text-faint)]">{label}</span>
       <span className="min-w-0 break-words text-[var(--nova-text-muted)] [overflow-wrap:anywhere]">{value}</span>
     </div>
   )
 }
-export function SyncBadge({ status, error, loading }: { status?: string; error?: string; loading?: boolean }) {
+export function SyncBadge({ status, loading }: { status?: string; error?: string; loading?: boolean }) {
   const { t } = useTranslation()
   if (loading || status === 'pending' || status === 'running') {
     return (
@@ -20,7 +20,7 @@ export function SyncBadge({ status, error, loading }: { status?: string; error?:
     )
   }
   if (status === 'failed') {
-    return <span className="inline-flex max-w-[120px] shrink-0 truncate rounded-full border border-[var(--nova-danger)] bg-[var(--nova-danger-bg)] px-2 py-0.5 text-[11px] text-[var(--nova-danger)]" title={error}>{t('directorPanel.failed')}</span>
+    return <span className="inline-flex max-w-[120px] shrink-0 truncate rounded-full border border-[var(--nova-danger)] bg-[var(--nova-danger-bg)] px-2 py-0.5 text-[11px] text-[var(--nova-danger)]">{t('directorPanel.failed')}</span>
   }
   return <span className="inline-flex shrink-0 rounded-full border border-[var(--nova-border)] bg-[var(--nova-surface-2)] px-2 py-0.5 text-[11px] text-[var(--nova-text-muted)]">{t('directorPanel.ready')}</span>
 }

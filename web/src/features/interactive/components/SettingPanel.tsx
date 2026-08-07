@@ -953,7 +953,6 @@ function LoreSettingPanel({
           loadModeFilter !== 'all' && 'bg-muted text-foreground',
         )}
         aria-label={loadModeFilterAriaLabel}
-        title={loadModeFilterAriaLabel}
       >
         <SlidersHorizontal />
         <span className="sr-only">{loadModeFilterLabel}</span>
@@ -969,10 +968,10 @@ function LoreSettingPanel({
   )
   const loreDirectoryActions = (
     <>
-      <Button className={iconActionClassName} variant="outline" size="icon" disabled={saving || items.length === 0} onClick={handleOpenLoreImageBatch} aria-label={t('settingPanel.loreImage.batchOpen')} title={t('settingPanel.loreImage.batchOpen')}>
+      <Button className={iconActionClassName} variant="outline" size="icon" disabled={saving || items.length === 0} onClick={handleOpenLoreImageBatch} aria-label={t('settingPanel.loreImage.batchOpen')}>
         <Images data-icon="inline-start" />
       </Button>
-      <Button className={iconActionClassName} variant="outline" size="icon" disabled={saving || items.length === 0} onClick={() => setLoreClassificationOpen(true)} aria-label={t('settingPanel.loreClassification.open')} title={t('settingPanel.loreClassification.open')}>
+      <Button className={iconActionClassName} variant="outline" size="icon" disabled={saving || items.length === 0} onClick={() => setLoreClassificationOpen(true)} aria-label={t('settingPanel.loreClassification.open')}>
         <Tags data-icon="inline-start" />
       </Button>
     </>

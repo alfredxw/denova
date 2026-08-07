@@ -222,7 +222,7 @@ const settings = {
   'settings.terminal.deleteCommand': 'Delete “{{name}}”',
   'settings.terminal.maxSessions': 'Max Concurrent Sessions (1–64)',
   'settings.terminal.scrollbackKB': 'Scrollback Buffer (KB, 1–4096)',
-  'settings.terminal.hint': 'Shortcuts are stored in user settings and appear in the New menu in both Writing and Game modes. Launch commands accept program names, full paths, and quoted arguments, and run on this machine as your account. Presets can be edited or disabled; custom shortcuts can be deleted.',
+  'settings.terminal.hint': 'Shortcuts are stored in user settings and appear in the New menu in both Writing and Game modes. Launch commands accept program names, full paths, and quoted arguments, and run on this machine as your account. Presets and custom shortcuts can all be edited, disabled, reordered, or deleted.',
   'settings.title': 'Settings',
   'settings.theme.dark': 'Dark',
   'settings.theme.light': 'Light',

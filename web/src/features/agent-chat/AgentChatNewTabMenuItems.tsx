@@ -2,12 +2,12 @@ import type { ReactNode } from 'react'
 import { useTranslation } from 'react-i18next'
 import {
   Bot,
-  BookOpen,
   Clock3,
   Database,
   FolderTree,
   History,
   MessageSquareText,
+  PenLine,
   SlidersHorizontal,
   Sparkles,
   TerminalSquare,
@@ -22,7 +22,7 @@ import {
 
 /** Every project page uses the same icon in tabs and in creation menus. */
 export const AGENT_CHAT_PAGE_ICONS: Record<AgentChatPageId, ReactNode> = {
-  reader: <BookOpen className="size-3.5" />,
+  reader: <PenLine className="size-3.5" />,
   lore: <Database className="size-3.5" />,
   presets: <SlidersHorizontal className="size-3.5" />,
   skills: <Sparkles className="size-3.5" />,
@@ -70,11 +70,7 @@ export function AgentChatNewTabMenuItems({
           {command.name}
         </DropdownMenuItem>
       ))}
-      <DropdownMenuItem onSelect={() => onOpenFiles(group)}>
-        <FolderTree />
-        {t('files.title')}
-      </DropdownMenuItem>
-      {pageIds.length > 0 ? <DropdownMenuSeparator /> : null}
+      <DropdownMenuSeparator />
       {pageIds.length > 0
         ? pageIds.map((pageId) => (
             <DropdownMenuItem key={pageId} onSelect={() => onOpenPage(group, pageId)}>
@@ -83,6 +79,10 @@ export function AgentChatNewTabMenuItems({
             </DropdownMenuItem>
           ))
         : null}
+      <DropdownMenuItem onSelect={() => onOpenFiles(group)}>
+        <FolderTree />
+        {t('files.title')}
+      </DropdownMenuItem>
     </>
   )
 }

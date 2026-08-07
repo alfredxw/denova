@@ -170,7 +170,6 @@ function ActorRow({ actorId, actor, schema, expanded, onToggle }: { actorId: str
                 {traits.map((trait) => (
                   <span
                     key={`${trait.pool_id}:${trait.trait_id}`}
-                    title={trait.summary || trait.name}
                     className="max-w-full truncate rounded-full border border-[color-mix(in_srgb,var(--director-brass)_35%,var(--nova-border))] bg-[color-mix(in_srgb,var(--director-brass)_9%,transparent)] px-2.5 py-1 text-[10px] text-[var(--nova-text-muted)]"
                   >
                     {trait.name}
@@ -203,11 +202,8 @@ function ActorRow({ actorId, actor, schema, expanded, onToggle }: { actorId: str
 function MiniMeter({ field, value }: { field: ActorStateField; value: unknown }) {
   const meter = resolveNumberMeter(field, value)
   if (!meter || typeof value !== 'number') return null
-  const title = meter.zeroPercent === undefined
-    ? `${field.name} ${value}/${field.max}`
-    : `${field.name} ${value} (${field.min}–${field.max})`
   return (
-    <span className="flex items-center gap-1.5" title={title}>
+    <span className="flex items-center gap-1.5">
       <span className="max-w-[52px] truncate text-[9px] text-[var(--nova-text-faint)]">{field.name}</span>
       <NumberMeterTrack meter={meter} className="h-1 w-9" />
       <span className="font-mono text-[10px] tabular-nums text-[var(--nova-text-muted)]">{value}</span>
@@ -221,7 +217,7 @@ function ActorField({ field, value }: { field: ActorStateField; value: unknown }
     <section className="min-w-0 bg-[var(--director-panel)] px-3 py-2.5">
       <div className="mb-1.5 flex min-w-0 items-start justify-between gap-2">
         <div className="min-w-0">
-          <h5 className="truncate text-[11px] font-medium text-[var(--nova-text-muted)]" title={field.name}>{field.name}</h5>
+          <h5 className="truncate text-[11px] font-medium text-[var(--nova-text-muted)]">{field.name}</h5>
           {field.description ? <p className="mt-0.5 line-clamp-1 text-[9px] leading-3.5 text-[var(--nova-text-faint)]">{field.description}</p> : null}
         </div>
         <span className="shrink-0 font-mono text-[8px] uppercase tracking-[0.08em] text-[var(--nova-text-faint)]">{field.type}</span>
@@ -252,7 +248,7 @@ function NumberMeterTrack({ meter, className }: { meter: NumberMeterGeometry; cl
 function StateFact({ label, value }: { label: string; value: unknown }) {
   return (
     <article className="min-w-0 bg-[var(--director-panel)] px-3 py-2.5">
-      <h4 className="mb-1.5 truncate text-[10px] font-medium text-[var(--nova-text-faint)]" title={label}>{label}</h4>
+      <h4 className="mb-1.5 truncate text-[10px] font-medium text-[var(--nova-text-faint)]">{label}</h4>
       <StateValue value={value} />
     </article>
   )

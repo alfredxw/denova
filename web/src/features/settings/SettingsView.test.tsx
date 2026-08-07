@@ -245,7 +245,7 @@ describe('SettingsView user scope', () => {
     expect(await screen.findByText('CLI 快捷命令')).toBeInTheDocument()
     expect(await screen.findByText('Codex CLI')).toBeInTheDocument()
     expect(screen.getByText('Claude Code')).toBeInTheDocument()
-    expect(screen.queryByRole('button', { name: '删除“Codex CLI”' })).not.toBeInTheDocument()
+    expect(screen.getByRole('button', { name: '删除“Codex CLI”' })).toBeInTheDocument()
 
     vi.useFakeTimers()
     fireEvent.click(screen.getByRole('button', { name: '添加 CLI 快捷命令' }))
@@ -267,6 +267,28 @@ describe('SettingsView user scope', () => {
       'user-rev',
     )
     vi.useRealTimers()
+  })
+
+  it('persists an explicitly empty terminal command registry after removing every preset', async () => {
+    const settings = layeredSettings({ devMode: false })
+    vi.mocked(fetchSettings).mockResolvedValue(settings)
+    vi.mocked(updateUserSettings).mockResolvedValue(settings)
+
+    render(<SettingsView />)
+
+    expect(await screen.findByText('CLI 快捷命令')).toBeInTheDocument()
+    const deleteCodex = await screen.findByRole('button', { name: '删除“Codex CLI”' })
+    vi.useFakeTimers()
+    fireEvent.click(deleteCodex)
+    fireEvent.click(screen.getByRole('button', { name: '删除“Claude Code”' }))
+
+    expect(screen.getByText('还没有 CLI 快捷命令。添加后即可从新建菜单快速启动。')).toBeInTheDocument()
+    await act(async () => { await vi.advanceTimersByTimeAsync(1100) })
+
+    expect(updateUserSettings).toHaveBeenCalledWith(
+      expect.objectContaining({ terminal_commands: [] }),
+      'user-rev',
+    )
   })
 })
 

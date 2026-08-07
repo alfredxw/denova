@@ -110,7 +110,6 @@ export function AgentTracePanel({ projectId, disabled, selectedRunId }: AgentTra
           onClick={() => void loadRuns(selectedID)}
           className="nova-nav-item rounded p-1 disabled:cursor-not-allowed disabled:opacity-45"
           aria-label={t('chat.tracePanel.refresh')}
-          title={t('chat.tracePanel.refresh')}
         >
           <RefreshCw className={`h-3.5 w-3.5 ${loading ? 'animate-spin' : ''}`} />
         </button>
@@ -207,7 +206,7 @@ function TraceRunActions({ projectId, runID }: { projectId: string; runID: strin
     <div className="flex flex-wrap items-center justify-between gap-2 rounded-[6px] border border-[var(--nova-border)] bg-[var(--nova-surface-2)] p-2">
       <div className="flex min-w-0 items-center gap-2 text-[11px]">
         <span className="shrink-0 text-[var(--nova-text-faint)]">{t('chat.tracePanel.runId')}</span>
-        <code className="min-w-0 truncate font-mono text-[var(--nova-text)]" title={runID}>{runID}</code>
+        <code className="min-w-0 truncate font-mono text-[var(--nova-text)]">{runID}</code>
       </div>
       <div className="flex shrink-0 items-center gap-1">
         <ContextCopyButton
@@ -223,7 +222,6 @@ function TraceRunActions({ projectId, runID }: { projectId: string; runID: strin
           onClick={() => void handleExport()}
           className="inline-flex h-7 items-center gap-1.5 rounded-[6px] border border-[var(--nova-border)] bg-[var(--nova-surface)] px-2 text-[11px] text-[var(--nova-text-muted)] transition-colors hover:bg-[var(--nova-hover)] hover:text-[var(--nova-text)] disabled:cursor-not-allowed disabled:opacity-45"
           aria-label={exporting ? t('chat.tracePanel.exporting') : t('chat.tracePanel.export')}
-          title={exporting ? t('chat.tracePanel.exporting') : t('chat.tracePanel.export')}
         >
           <Download className="h-3.5 w-3.5" />
           <span>{exporting ? t('chat.tracePanel.exporting') : t('chat.tracePanel.export')}</span>

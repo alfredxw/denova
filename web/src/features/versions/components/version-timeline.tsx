@@ -54,7 +54,7 @@ export function VersionTimeline({
               className="w-full text-left"
               onClick={() => onSelectVersion?.(version)}
             >
-              <div className="flex min-w-0 items-center gap-1 truncate text-[var(--nova-text)]" title={version.title}>
+              <div className="flex min-w-0 items-center gap-1 truncate text-[var(--nova-text)]">
                 <History className="h-3 w-3 shrink-0 text-[var(--nova-text-muted)]" />
                 <span className="truncate">{version.title || t('versions.emptyMessage')}</span>
               </div>
@@ -69,14 +69,13 @@ export function VersionTimeline({
                 {version.changedPaths.slice(0, 5).map((path) => (
                   <div key={path} className="group flex min-w-0 items-center gap-1 rounded px-1 py-0.5 text-[10px] text-[var(--nova-text-faint)] hover:bg-[var(--nova-hover)]">
                     <FileText className="h-3 w-3 shrink-0 text-[var(--nova-text-faint)]" />
-                    <span className="min-w-0 flex-1 truncate" title={path}>{pathFileName(path)}</span>
+                    <span className="min-w-0 flex-1 truncate">{pathFileName(path)}</span>
                     <span className="hidden max-w-[34%] truncate text-[var(--nova-text-faint)] sm:inline">{pathDirName(path)}</span>
                     {onOpenDiffPath && (
                       <button
                         type="button"
                         className="flex h-5 w-5 shrink-0 items-center justify-center rounded text-[var(--nova-text-muted)] opacity-80 hover:bg-[var(--nova-active)] hover:text-[var(--nova-text)]"
                         onClick={() => onOpenDiffPath(version, path)}
-                        title={t('versions.diffFile')}
                         aria-label={t('versions.diffFile')}
                       >
                         <FileText className="h-3 w-3" />
@@ -88,7 +87,6 @@ export function VersionTimeline({
                         className="flex h-5 w-5 shrink-0 items-center justify-center rounded text-[var(--nova-text-muted)] opacity-80 hover:bg-[var(--nova-active)] hover:text-[var(--nova-accent)] disabled:cursor-not-allowed disabled:opacity-40"
                         onClick={() => onRestorePath(version, path)}
                         disabled={loading}
-                        title={t('versions.restoreFile')}
                         aria-label={t('versions.restoreFile')}
                       >
                         <Undo2 className="h-3 w-3" />
@@ -119,7 +117,6 @@ export function VersionTimeline({
                   className="flex items-center gap-1 rounded px-1.5 py-0.5 text-[11px] text-[var(--nova-text-muted)] hover:bg-[var(--nova-hover)] hover:text-[var(--nova-accent)] disabled:cursor-not-allowed disabled:opacity-40"
                   onClick={() => onRollback(version)}
                   disabled={loading || !canRollback}
-                  title={!canRollback ? t('versions.rollbackDisabled') : t('versions.rollbackTo')}
                 >
                   <RotateCcw className="h-3 w-3" />
                   {t('versions.rollback')}

@@ -41,6 +41,30 @@ const reviewTemplate = {
 }
 
 describe('AutomationsView', () => {
+  it('collapses and restores the automation sidebar from the page header', async () => {
+    const user = userEvent.setup()
+    server.use(
+      http.get('/api/books', () => HttpResponse.json({ books: [] })),
+      http.get('/api/automations', () => HttpResponse.json({ tasks: [] })),
+      http.get('/api/automations/templates', () => HttpResponse.json({ templates: [] })),
+      http.get('/api/automations/inbox', () => HttpResponse.json({ items: [] })),
+      http.get('/api/automations/runs/active', () => HttpResponse.json({ runs: [] })),
+    )
+
+    render(<AutomationsView workspace="/books/a" />)
+
+    const collapse = await screen.findByRole('button', { name: '收起侧边栏' })
+    const separator = screen.getByRole('separator', { name: '调整侧边栏宽度' })
+    await user.click(collapse)
+
+    expect(screen.getByRole('button', { name: '展开侧边栏' })).toHaveAttribute('aria-pressed', 'false')
+    expect(separator).toHaveAttribute('aria-hidden', 'true')
+
+    await user.click(screen.getByRole('button', { name: '展开侧边栏' }))
+    expect(screen.getByRole('button', { name: '收起侧边栏' })).toHaveAttribute('aria-pressed', 'true')
+    expect(separator).toHaveAttribute('aria-hidden', 'false')
+  })
+
   it('shows one user catalog grouped by global and every workspace', async () => {
     const user = userEvent.setup()
     server.use(

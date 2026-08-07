@@ -125,7 +125,6 @@ export function MessageCenterButton({ className = '', unreadCount: reportedUnrea
         type="button"
         className={`nova-icon-button relative flex items-center justify-center rounded-[var(--nova-radius)] text-[var(--nova-text-muted)] hover:bg-[var(--nova-hover)] hover:text-[var(--nova-text)] ${className}`}
         aria-label={t('messages.open')}
-        title={t('messages.open')}
         onClick={() => setOpen(true)}
       >
         <Bell className="h-4 w-4" />
@@ -153,7 +152,6 @@ export function MessageCenterButton({ className = '', unreadCount: reportedUnrea
                 type="button"
                 className="nova-ui-compact inline-flex shrink-0 items-center gap-1.5 rounded-[var(--nova-radius)] border border-[var(--nova-border)] bg-[var(--nova-surface)] px-2 py-1 text-xs text-[var(--nova-text-muted)] transition-colors hover:bg-[var(--nova-hover)] hover:text-[var(--nova-text)] disabled:cursor-not-allowed disabled:opacity-50"
                 aria-label={t('messages.markAllRead')}
-                title={t('messages.markAllRead')}
                 disabled={unreadCount <= 0 || markingAllRead}
                 onClick={markAllRead}
               >

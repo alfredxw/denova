@@ -77,6 +77,25 @@ describe('AgentsView', () => {
     vi.useRealTimers()
   })
 
+  it('collapses and restores the Agent sidebar from the page header', async () => {
+    const user = userEvent.setup()
+    vi.mocked(fetchSettings).mockResolvedValue(settingsSnapshot({}))
+
+    render(<AgentsView />)
+
+    const collapse = await screen.findByRole('button', { name: '收起侧边栏' })
+    expect(collapse).not.toHaveAttribute('title')
+    const separator = screen.getByRole('separator', { name: '调整侧边栏宽度' })
+    await user.click(collapse)
+
+    expect(screen.getByRole('button', { name: '展开侧边栏' })).toHaveAttribute('aria-pressed', 'false')
+    expect(separator).toHaveAttribute('aria-hidden', 'true')
+
+    await user.click(screen.getByRole('button', { name: '展开侧边栏' }))
+    expect(screen.getByRole('button', { name: '收起侧边栏' })).toHaveAttribute('aria-pressed', 'true')
+    expect(separator).toHaveAttribute('aria-hidden', 'false')
+  })
+
   it('reloads model profiles when settings are updated elsewhere', async () => {
     const user = userEvent.setup()
     vi.mocked(fetchSettings)

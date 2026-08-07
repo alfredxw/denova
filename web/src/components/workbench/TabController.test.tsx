@@ -70,6 +70,24 @@ describe('TabController', () => {
     expect(onActivateTab).toHaveBeenCalledWith(tabs[1])
   })
 
+  it('keeps ordinary trailing actions separated from document tabs', () => {
+    renderTabController(
+      <TabController
+        tabs={tabs}
+        activeTabKey="file:chapters/alpha.md"
+        summary={null}
+        actions={<button type="button">Workspace actions</button>}
+        onActivateTab={vi.fn()}
+        onCloseTab={vi.fn()}
+        onTogglePin={vi.fn()}
+        onMoveTab={vi.fn()}
+      />,
+    )
+
+    expect(screen.getByRole('button', { name: 'Workspace actions' }).parentElement)
+      .toHaveClass('border-l', 'px-2')
+  })
+
   it('does not activate the tab when clicking its close button', () => {
     const onActivateTab = vi.fn()
     const onCloseTab = vi.fn()

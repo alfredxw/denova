@@ -23,7 +23,6 @@ export function MobilePaneTrigger({ side, label, onClick, children, className, a
       size={children ? 'sm' : compact ? 'icon-xs' : 'icon'}
       className={cn(!compact && 'nova-icon-button', 'text-muted-foreground', className)}
       aria-label={label}
-      title={children ? undefined : label}
       onClick={onClick}
     >
       <Icon data-icon="inline-start" />

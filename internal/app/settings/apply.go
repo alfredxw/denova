@@ -154,7 +154,12 @@ func ApplyLayered(cfg *config.Config, layered config.LayeredSettings) {
 		cfg.TerminalEnabled = *effective.TerminalEnabled
 	}
 	cfg.TerminalShell = effective.TerminalShell
-	cfg.TerminalCommands = append([]config.TerminalCommandSettings(nil), effective.TerminalCommands...)
+	if effective.TerminalCommands == nil {
+		cfg.TerminalCommands = nil
+	} else {
+		cfg.TerminalCommands = make([]config.TerminalCommandSettings, len(effective.TerminalCommands))
+		copy(cfg.TerminalCommands, effective.TerminalCommands)
+	}
 	if effective.TerminalMaxSessions != nil {
 		cfg.TerminalMaxSessions = positiveInt(effective.TerminalMaxSessions, config.DefaultTerminalMaxSessions)
 	}

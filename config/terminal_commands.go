@@ -40,6 +40,26 @@ func DefaultTerminalCommands() []TerminalCommandSettings {
 	}
 }
 
+// cloneTerminalCommands preserves nil versus an explicitly empty registry.
+// That distinction decides whether defaults are inherited or intentionally removed.
+func cloneTerminalCommands(commands []TerminalCommandSettings) []TerminalCommandSettings {
+	if commands == nil {
+		return nil
+	}
+	result := make([]TerminalCommandSettings, len(commands))
+	copy(result, commands)
+	return result
+}
+
+func preserveTerminalCommandRegistryPresence(settings Settings) Settings {
+	if settings.TerminalCommands != nil {
+		settings.TerminalCommandsConfigured = true
+	} else if settings.TerminalCommandsConfigured {
+		settings.TerminalCommands = []TerminalCommandSettings{}
+	}
+	return settings
+}
+
 // normalizeTerminalCommands trims presentation input without dropping,
 // truncating, reordering, or otherwise hiding user configuration.
 func normalizeTerminalCommands(commands []TerminalCommandSettings) []TerminalCommandSettings {
@@ -112,6 +132,7 @@ func validateTerminalCommandID(id string) error {
 // shared registry. It is invoked on read and before merge, so the next normal
 // settings save rewrites legacy files without losing either preset.
 func migrateLegacyTerminalCommands(settings Settings) Settings {
+	settings = preserveTerminalCommandRegistryPresence(settings)
 	codex := strings.TrimSpace(settings.TerminalCodexCommand)
 	claude := strings.TrimSpace(settings.TerminalClaudeCommand)
 	if codex == "" && claude == "" {
@@ -134,6 +155,7 @@ func migrateLegacyTerminalCommands(settings Settings) Settings {
 		})
 	}
 	settings.TerminalCommands = commands
+	settings.TerminalCommandsConfigured = true
 	settings.TerminalCodexCommand = ""
 	settings.TerminalClaudeCommand = ""
 	return settings

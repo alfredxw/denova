@@ -9,10 +9,14 @@ import {
 import { Plus } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs'
-import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
+import {
+  DEFAULT_TOOLTIP_DELAY_MS,
+  Tooltip,
+  TooltipContent,
+  TooltipTrigger,
+} from '@/components/ui/tooltip'
 import { cn } from '@/lib/utils'
 
-const TAB_TITLE_TOOLTIP_DELAY_MS = 500
 const WORKBENCH_TAB_CLASS = [
   'group/tab relative h-full min-w-28 max-w-40 flex-[1_1_10rem] justify-start gap-1.5 px-3 text-xs',
   'rounded-none border-0 border-r border-[var(--nova-border)] after:hidden',
@@ -42,6 +46,8 @@ interface WorkbenchTabStripProps extends Omit<ComponentProps<'div'>, 'children'>
   flowAction?: ReactNode
   /** Persistent controls that remain outside the scrollable document tabs. */
   endActions?: ReactNode
+  /** Whether trailing controls form a separate action cluster or continue the tab-strip flow. */
+  endActionsVariant?: 'separated' | 'inline'
 }
 
 /**
@@ -56,6 +62,7 @@ export function WorkbenchTabStrip({
   children,
   flowAction,
   endActions,
+  endActionsVariant = 'separated',
   className,
   ...props
 }: WorkbenchTabStripProps) {
@@ -105,7 +112,14 @@ export function WorkbenchTabStrip({
       </Tabs>
       {overflowing ? flowAction : null}
       {endActions ? (
-        <div className="flex shrink-0 items-center gap-1 border-l border-[var(--nova-border)] px-2">
+        <div
+          className={cn(
+            'flex shrink-0 items-center',
+            endActionsVariant === 'separated'
+              ? 'gap-1 border-l border-[var(--nova-border)] px-2'
+              : 'px-1',
+          )}
+        >
           {endActions}
         </div>
       ) : null}
@@ -186,7 +200,7 @@ function OverflowTabTitle({ label }: { label: string }) {
     <Tooltip
       open={truncated && tooltipOpen}
       onOpenChange={(open) => setTooltipOpen(truncated && open)}
-      delayDuration={TAB_TITLE_TOOLTIP_DELAY_MS}
+      delayDuration={DEFAULT_TOOLTIP_DELAY_MS}
     >
       <TooltipTrigger asChild>
         <span ref={titleRef} className="min-w-0 flex-1 truncate text-left">{label}</span>

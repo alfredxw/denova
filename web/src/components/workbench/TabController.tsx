@@ -231,7 +231,6 @@ export function TabController({
                             onClick={(event) => { event.stopPropagation(); onCloseTab(tab) }}
                             className="nova-nav-item absolute right-3 top-1/2 z-10 -translate-y-1/2 rounded p-0.5 opacity-0 group-hover/tab:opacity-100 max-md:opacity-100"
                             aria-label={t('tab.close', { label })}
-                            title={t('common.close')}
                           >
                             <X className="size-3" />
                           </button>

@@ -1524,7 +1524,6 @@ function ImageAPIProfilesEditor({ profiles, effectiveProfiles, defaultProfileID,
                 size="icon-sm"
                 onClick={() => removeProfile(index)}
                 aria-label={t('settings.imageApi.deleteProfile')}
-                title={t('settings.imageApi.deleteProfile')}
               >
                 <Trash2 data-icon="inline-start" />
               </Button>

@@ -33,7 +33,6 @@ export function AgentChatHistoryProjectSidebar({
           className="shrink-0"
           onClick={onCollapse}
           aria-label={t('agentChat.history.hideProjects')}
-          title={t('agentChat.history.hideProjects')}
         >
           <PanelLeftClose />
         </Button>
@@ -54,7 +53,6 @@ export function AgentChatHistoryProjectSidebar({
                 name,
                 count: project.total,
               })}
-              title={project.path}
               className={`relative flex w-full min-w-0 items-center gap-1.5 rounded-[var(--nova-radius)] px-2 py-1.5 text-left outline-none transition-colors focus-visible:ring-1 focus-visible:ring-[var(--nova-accent)] ${
                 selected
                   ? 'bg-[var(--nova-active)] text-[var(--nova-text)]'
@@ -70,7 +68,6 @@ export function AgentChatHistoryProjectSidebar({
               {current ? (
                 <span
                   aria-label={t('agentChat.history.currentProject')}
-                  title={t('agentChat.history.currentProject')}
                   className="size-1.5 shrink-0 rounded-full bg-[var(--nova-text-muted)]"
                 />
               ) : null}

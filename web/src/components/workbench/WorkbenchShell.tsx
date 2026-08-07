@@ -560,6 +560,7 @@ export function WorkbenchShell({
           label={activityBarExpanded ? t('workbench.activity.toggleCollapse') : t('workbench.activity.toggleExpand')}
           onClick={onToggleActivityBarExpanded}
           className="nova-icon-button"
+          showTooltip={false}
         >
           <PanelLeft className={`h-4 w-4 transition-transform ${activityBarExpanded ? '' : 'rotate-180'}`} />
         </ActivityButton>
@@ -650,7 +651,6 @@ export function WorkbenchShell({
               onClick={() => setCommandOpen(true)}
               className="nova-icon-button flex h-8 w-8 items-center justify-center rounded-[var(--nova-radius)] text-[var(--nova-text-muted)] hover:bg-[var(--nova-hover)] hover:text-[var(--nova-text)]"
               aria-label={t('command.openButton')}
-              title={t('command.openButton')}
             >
               <Search className="h-4 w-4" />
             </button>
@@ -831,17 +831,19 @@ function ActivityButton({
   children,
   className,
   active = false,
+  showTooltip,
   ...props
 }: React.ComponentProps<'button'> & {
   expanded: boolean
   label: string
   children: ReactNode
   active?: boolean
+  showTooltip?: boolean
 }) {
   return (
     <TooltipIconButton
       label={label}
-      showTooltip={!expanded}
+      showTooltip={showTooltip ?? !expanded}
       className={`${className || ''} relative overflow-hidden ${expanded ? 'w-full gap-3 px-3' : ''} ${active ? 'is-active' : ''}`}
       {...props}
       aria-current={active ? 'page' : undefined}

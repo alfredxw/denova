@@ -5,7 +5,6 @@ import type { AdaptiveSurfaceControls } from '@/components/layout/adaptive-surfa
 import { MobilePaneTrigger } from '@/components/layout/mobile-pane-trigger'
 import { EmptyState } from '@/components/common/EmptyState'
 import type { AgentChatProject } from './api'
-import { AgentChatSecondaryPaneControl } from './AgentChatSecondaryPaneControl'
 import { AgentChatTabBar } from './AgentChatTabBar'
 import { mountedAgentChatTabKey } from './use-agent-chat-tab-workbench'
 import { otherTabIds, tabIdsAfter, tabsInGroup, type AgentChatProjectTabState } from './tab-state'
@@ -40,7 +39,7 @@ interface AgentChatProjectGroupProps {
   mobileControls: AgentChatPaneControls
   mountedTabKeys: ReadonlySet<string>
   terminalCommands: TerminalCommandProfile[]
-  secondaryBusy: boolean
+  secondaryControl: ReactNode
   tabTitle: (tab: AgentChatTab) => string
   renderTab: (tab: AgentChatTab, active: boolean) => ReactNode
   onFocus: (group: AgentChatGroupId) => void
@@ -58,8 +57,6 @@ interface AgentChatProjectGroupProps {
   ) => void
   onOpenFiles: (group: AgentChatGroupId) => void
   onOpenPage: (group: AgentChatGroupId, pageID: AgentChatPageId) => void
-  onShowSecondary: () => void
-  onHideSecondary: () => void
 }
 
 /** Renders one workbench pane without knowing the runtime owned by each tab kind. */
@@ -71,7 +68,7 @@ export function AgentChatProjectGroup({
   mobileControls,
   mountedTabKeys,
   terminalCommands,
-  secondaryBusy,
+  secondaryControl,
   tabTitle,
   renderTab,
   onFocus,
@@ -84,8 +81,6 @@ export function AgentChatProjectGroup({
   onNewTerminalTab,
   onOpenFiles,
   onOpenPage,
-  onShowSecondary,
-  onHideSecondary,
 }: AgentChatProjectGroupProps) {
   const { t } = useTranslation()
   const pageIds = agentChatPageIdsForProjectType(project.type)
@@ -96,35 +91,13 @@ export function AgentChatProjectGroup({
     action()
     if (target === 'secondary' && mobileControls.isMobile) mobileControls.openRight()
   }
-  const secondaryControl = (
-    <AgentChatSecondaryPaneControl
-      visible={secondaryTabs.length > 0 && (
-        mobileControls.isMobile
-          ? mobileControls.openPaneId === 'agent-chat-secondary'
-          : state.secondaryVisible
-      )}
-      hasTabs={secondaryTabs.length > 0}
-      busy={secondaryBusy}
-      newChatDisabled={project.status !== 'available'}
-      terminalCommands={terminalCommands}
-      pageIds={pageIds}
-      onShow={() => (mobileControls.isMobile ? mobileControls.openRight() : onShowSecondary())}
-      onHide={() => (mobileControls.isMobile ? mobileControls.closePane() : onHideSecondary())}
-      onNewAgentTab={(target) => openInGroup(() => onNewAgentTab(target), target)}
-      onNewTerminalTab={(target, profileID, profileName) => (
-        openInGroup(() => onNewTerminalTab(target, profileID, profileName), target)
-      )}
-      onOpenFiles={(target) => openInGroup(() => onOpenFiles(target), target)}
-      onOpenPage={(target, pageID) => openInGroup(() => onOpenPage(target, pageID), target)}
-    />
-  )
-  const primaryOwnsSecondaryControl = group === 'primary'
-    && (mobileControls.isMobile || !state.secondaryVisible || secondaryTabs.length === 0)
-  const secondaryOwnsSecondaryControl = group === 'secondary' && paneVisible
-  const tabBarEndActions = primaryOwnsSecondaryControl
-    ? secondaryControl
-    : secondaryOwnsSecondaryControl
-      ? <div className="hidden lg:flex">{secondaryControl}</div>
+  const rightmostDesktopGroup = state.secondaryVisible && secondaryTabs.length > 0
+    ? 'secondary'
+    : 'primary'
+  const tabBarEndActions = mobileControls.isMobile
+    ? group === 'primary' ? secondaryControl : undefined
+    : group === rightmostDesktopGroup
+      ? <span data-slot="secondary-pane-control-spacer" aria-hidden="true" className="block h-7 w-8" />
       : undefined
 
   return (

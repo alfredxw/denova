@@ -98,10 +98,10 @@ export function InputCommandMenu({
         }`}>
           <Icon className="size-3.5" />
         </span>
-        <span className="max-w-[42%] shrink-0 truncate font-mono text-xs font-medium text-[var(--nova-text)]" title={cmd}>
+        <span className="max-w-[42%] shrink-0 truncate font-mono text-xs font-medium text-[var(--nova-text)]">
           {cmd}
         </span>
-        <span className="min-w-0 flex-1 truncate text-xs text-[var(--nova-text-muted)]" title={description}>
+        <span className="min-w-0 flex-1 truncate text-xs text-[var(--nova-text-muted)]">
           {description}
         </span>
         <span className="ml-1 shrink-0 text-[11px] text-[var(--nova-text-faint)]">

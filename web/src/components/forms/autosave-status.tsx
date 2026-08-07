@@ -39,7 +39,7 @@ export function AutosaveStatusIndicator({ status, error, onRetry, className }: A
       {status === 'saving' && <Loader2 className="size-3.5 shrink-0 animate-spin" aria-hidden="true" />}
       {status === 'blocked' && <AlertTriangle className="size-3.5 shrink-0" aria-hidden="true" />}
       {status === 'error' && <AlertCircle className="size-3.5 shrink-0" aria-hidden="true" />}
-      <span className="hidden max-w-56 truncate sm:inline" title={label}>{label}</span>
+      <span className="hidden max-w-56 truncate sm:inline">{label}</span>
       {status === 'error' && onRetry ? (
         <Button
           type="button"
@@ -47,7 +47,6 @@ export function AutosaveStatusIndicator({ status, error, onRetry, className }: A
           size="xs"
           onClick={() => void Promise.resolve(onRetry()).catch(() => undefined)}
           aria-label={t('common.autosave.retry')}
-          title={t('common.autosave.retry')}
           className="h-6 gap-1 px-1.5 text-current hover:text-current"
         >
           <RotateCcw className="size-3" aria-hidden="true" />

@@ -333,7 +333,6 @@ export const DocumentReviewAnnotations = forwardRef<DocumentReviewAnnotationsHan
           className="absolute z-20 flex h-6 w-7 items-center justify-center rounded-md border-0 bg-transparent p-0 text-[var(--nova-text-faint)] shadow-none outline-none transition-[color,background-color,transform] hover:bg-[var(--nova-hover)] hover:text-[var(--nova-text)] focus-visible:bg-[var(--nova-hover)] focus-visible:text-[var(--nova-text)] active:scale-95 disabled:cursor-wait disabled:opacity-70"
           style={{ top: quickAction.top, left: quickAction.left }}
           aria-label={t('editor.review.commentCurrentLine')}
-          title={t('editor.review.commentCurrentLine')}
           disabled={preparing}
           onPointerDown={(event) => event.preventDefault()}
           onClick={() => { void startDraft(quickAction.range) }}

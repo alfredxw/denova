@@ -648,7 +648,6 @@ function AgentPanelComponent({
               onClick={() => setView('traces')}
               className={`rounded-[6px] px-1.5 py-0.5 text-[11px] transition-colors ${view === 'traces' ? 'bg-[var(--nova-active)] text-[var(--nova-text)]' : 'text-[var(--nova-text-faint)] hover:text-[var(--nova-text-muted)]'}`}
               aria-label={t('chat.view.traces')}
-              title={t('chat.view.traces')}
             >
               <Activity className="h-3 w-3" />
             </button>
@@ -659,12 +658,11 @@ function AgentPanelComponent({
             onClick={() => void onCreateSession()}
             className="nova-nav-item flex h-7 w-7 shrink-0 items-center justify-center rounded border border-[var(--nova-border)] bg-[var(--nova-surface-2)] disabled:cursor-not-allowed disabled:opacity-45"
             aria-label={t('chat.newSession')}
-            title={t('chat.newSession')}
           >
             <Plus className="h-3.5 w-3.5" />
           </button>
           <div className="min-w-0 flex-1" />
-          <button type="button" onClick={onClose} className="nova-nav-item rounded p-1" aria-label={t('chat.closeAgent')} title={t('common.close')}>
+          <button type="button" onClick={onClose} className="nova-nav-item rounded p-1" aria-label={t('chat.closeAgent')}>
             <X className="h-3.5 w-3.5" />
           </button>
         </div>

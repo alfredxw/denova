@@ -84,12 +84,11 @@ export function ReviewFeedbackTray({ feedback, onRemove, onOpen }: ReviewFeedbac
                 type="button"
                 onClick={() => onOpen(selection, comment)}
                 className="max-w-56 truncate rounded-sm text-left hover:text-[var(--nova-accent)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--nova-accent)]"
-                title={comment.body}
               >
                 {reviewFeedbackCommentLabel(selection, comment, t)}
               </button>
             ) : (
-              <span className="max-w-56 truncate" title={comment.body}>
+              <span className="max-w-56 truncate">
                 {reviewFeedbackCommentLabel(selection, comment, t)}
               </span>
             )}

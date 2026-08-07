@@ -1544,8 +1544,8 @@ describe('SettingPanel', () => {
 
     const residentButton = await screen.findByRole('button', { name: /常驻人物/ })
     expect(within(residentButton).getByText('常驻')).toBeInTheDocument()
-    expect(within(screen.getByRole('button', { name: /自动人物/ })).getByText('按需')).toHaveAttribute('title', '简介自动匹配')
-    expect(within(screen.getByRole('button', { name: /手动人物/ })).getByText('按需')).toHaveAttribute('title', '手动引用')
+    expect(within(screen.getByRole('button', { name: /自动人物/ })).getByText('按需')).not.toHaveAttribute('title')
+    expect(within(screen.getByRole('button', { name: /手动人物/ })).getByText('按需')).not.toHaveAttribute('title')
 
     const loadModeFilter = screen.getByRole('combobox', { name: /按加载策略筛选/ })
     const searchGroup = loadModeFilter.closest('[data-slot="input-group"]')

@@ -108,7 +108,6 @@ export function ReviewToolbar({ thread, selectedGroup, selectedScopeID, fileCoun
           disabled={fileCount === 0}
           onClick={onToggleAllDiffs}
           aria-label={t(allDiffsCollapsed ? 'changes.expandAllDiffs' : 'changes.collapseAllDiffs')}
-          title={t(allDiffsCollapsed ? 'changes.expandAllDiffs' : 'changes.collapseAllDiffs')}
         >
           <CollapseIcon />
         </Button>
@@ -119,7 +118,6 @@ export function ReviewToolbar({ thread, selectedGroup, selectedScopeID, fileCoun
           onClick={onToggleNavigator}
           aria-pressed={navigatorVisible}
           aria-label={t(navigatorVisible ? 'changes.hideFileNavigator' : 'changes.showFileNavigator')}
-          title={t(navigatorVisible ? 'changes.hideFileNavigator' : 'changes.showFileNavigator')}
         >
           <NavigatorIcon />
         </Button>
@@ -134,14 +132,13 @@ export function ReviewToolbar({ thread, selectedGroup, selectedScopeID, fileCoun
             onClick={onToggleAgent}
             aria-pressed={agentVisible}
             aria-label={t(agentVisible ? 'router.hideAgent' : 'router.showAgent')}
-            title={t(agentVisible ? 'router.hideAgent' : 'router.showAgent')}
             className={agentVisible ? 'bg-[var(--nova-active)] text-[var(--nova-text)]' : undefined}
           >
             <Bot />
           </Button>
         )}
         {onClose ? (
-          <Button type="button" size="icon-xs" variant="ghost" onClick={onClose} aria-label={t('common.close')} title={t('common.close')}>
+          <Button type="button" size="icon-xs" variant="ghost" onClick={onClose} aria-label={t('common.close')}>
             <X />
           </Button>
         ) : null}

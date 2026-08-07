@@ -196,7 +196,7 @@ function TokenUsageRequestGroup({ group, requestIndex, onOpenTrace }: { group: T
           <div className="mt-0.5 flex flex-wrap gap-x-3 gap-y-1 text-[var(--nova-text-faint)]">
             <span>{message.agent_kind || '-'}</span>
             <span>{formatTimestamp(message.created_at)}</span>
-            <span>{t('chat.tokenUsage.columns.run')}: <span className="font-mono" title={runID}>{runID || '-'}</span></span>
+            <span>{t('chat.tokenUsage.columns.run')}: <span className="font-mono">{runID || '-'}</span></span>
           </div>
         </div>
         <div className="flex flex-wrap items-center gap-x-3 gap-y-1 font-mono text-[var(--nova-text-muted)]">

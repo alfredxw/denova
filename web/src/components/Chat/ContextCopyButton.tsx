@@ -45,7 +45,6 @@ export function ContextCopyButton({ content, label, copiedLabel, failedLabel, sh
       size={showLabel ? 'xs' : 'icon-xs'}
       disabled={!content || state === 'copying'}
       aria-label={currentLabel}
-      title={currentLabel}
       className={showLabel ? 'h-7 shrink-0 gap-1.5 px-2 text-[11px]' : 'size-7 shrink-0 text-[var(--nova-text-faint)]'}
       onClick={() => void handleCopy()}
     >

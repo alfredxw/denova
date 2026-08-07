@@ -32,3 +32,13 @@ func TestTerminalConfigFromAppConfigMapsWholeCommandRegistry(t *testing.T) {
 		}
 	}
 }
+
+func TestTerminalConfigFromAppConfigPreservesExplicitlyEmptyCommandRegistry(t *testing.T) {
+	resolved := terminalConfigFromAppConfig(&config.Config{
+		TerminalEnabled:  true,
+		TerminalCommands: []config.TerminalCommandSettings{},
+	})
+	if resolved.Commands == nil || len(resolved.Commands) != 0 {
+		t.Fatalf("explicit empty terminal registry restored defaults: %#v", resolved.Commands)
+	}
+}

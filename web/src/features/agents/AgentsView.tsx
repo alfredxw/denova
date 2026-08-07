@@ -7,6 +7,7 @@ import { SettingsFieldRow } from '@/components/forms/settings-field-row'
 import { AdaptiveSurface } from '@/components/layout/adaptive-surface'
 import { FeaturePageShell } from '@/components/layout/feature-page-shell'
 import { MobilePaneTrigger } from '@/components/layout/mobile-pane-trigger'
+import { SidebarVisibilityToggle } from '@/components/layout/sidebar-visibility-toggle'
 import { SectionedNavigation } from '@/components/navigation/sectioned-navigation'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -43,6 +44,7 @@ export function AgentsView({ target, onClose }: { target: ResourceTarget; onClos
   const [activeAgent, setActiveAgent] = useState<VisibleAgentKey>('ide')
   const [skills, setSkills] = useState<SkillSummary[]>([])
   const [agentChatOpen, setAgentChatOpen] = useState(false)
+  const [sidebarVisible, setSidebarVisible] = useState(true)
 
   useEffect(() => {
     let cancelled = false
@@ -195,6 +197,12 @@ export function AgentsView({ target, onClose }: { target: ResourceTarget; onClos
     <FeaturePageShell
       icon={Bot}
       title="Agents"
+      leadingContent={(
+        <SidebarVisibilityToggle
+          visible={sidebarVisible}
+          onToggle={() => setSidebarVisible((visible) => !visible)}
+        />
+      )}
       className="bg-[var(--nova-bg)]"
       topbarClassName="max-md:flex-wrap max-md:overflow-x-hidden"
       error={error}
@@ -250,6 +258,7 @@ export function AgentsView({ target, onClose }: { target: ResourceTarget; onClos
           icon: <Bot className="h-4 w-4" />,
           content: <div className="h-full min-h-0 overflow-y-auto bg-[var(--nova-surface-2)] p-3"><AgentList active={activeAgent} onSelect={setActiveAgent} /></div>,
           desktopClassName: 'min-h-0 border-r border-[var(--nova-border)]',
+          desktopVisible: sidebarVisible,
           mobileClassName: 'w-[min(88vw,340px)]',
         }}
         right={agentAvailable && agentChatOpen ? {
@@ -289,15 +298,17 @@ export function AgentsView({ target, onClose }: { target: ResourceTarget; onClos
           mainMinSize: '240px',
         }}
       >
-        {({ openLeft, openRight }) => (
+        {({ isMobile, openLeft, openRight }) => (
           <main className="h-full min-h-0 overflow-y-auto overflow-x-hidden">
-            <div className="sticky top-0 z-10 flex h-10 items-center gap-2 border-b border-[var(--nova-border)] bg-[var(--nova-surface)] px-3 md:hidden">
-              <MobilePaneTrigger side="left" label={t('workbench.mobile.openSidePanel', { label: 'Agents' })} onClick={openLeft} />
-              <span className="min-w-0 truncate text-[11px] text-[var(--nova-text-muted)]">{t(selected.titleKey)}</span>
-              {agentAvailable && agentChatOpen && (
-                <MobilePaneTrigger side="right" label={t('workbench.mobile.openSidePanel', { label: t('agents.configAgent.title') })} onClick={openRight} className="ml-auto" />
-              )}
-            </div>
+            {isMobile && (
+              <div className="sticky top-0 z-10 flex h-10 items-center gap-2 border-b border-[var(--nova-border)] bg-[var(--nova-surface)] px-3">
+                <MobilePaneTrigger side="left" label={t('workbench.mobile.openSidePanel', { label: 'Agents' })} onClick={openLeft} />
+                <span className="min-w-0 truncate text-[11px] text-[var(--nova-text-muted)]">{t(selected.titleKey)}</span>
+                {agentAvailable && agentChatOpen && (
+                  <MobilePaneTrigger side="right" label={t('workbench.mobile.openSidePanel', { label: t('agents.configAgent.title') })} onClick={openRight} className="ml-auto" />
+                )}
+              </div>
+            )}
             <div className="mx-auto flex w-full min-w-0 max-w-5xl flex-col gap-5 px-4 py-5 sm:px-6">
               <AgentHeader agent={selected} />
               <AgentToolSchedulingSection

@@ -73,7 +73,6 @@ export function SelectionToolbar({ editor, mode = 'quote', onAction }: { editor:
         type="button"
         className="flex items-center gap-1 rounded px-1.5 py-0.5 text-xs text-[var(--nova-text-muted)] hover:bg-[var(--nova-menu-item-hover-bg)] hover:text-[var(--nova-text)]"
         onClick={onAction}
-        title={t(mode === 'comment' ? 'editor.review.commentSelection' : 'editor.quoteSelectionShortcut')}
       >
         {mode === 'comment' ? <MessageSquarePlus className="h-3.5 w-3.5" /> : <MessageSquareQuote className="h-3.5 w-3.5" />}
         <span>{t(mode === 'comment' ? 'editor.review.addComment' : 'editor.quoteSelection')}</span>

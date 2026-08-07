@@ -630,7 +630,6 @@ export function InputArea({
                   className="nova-agent-composer-icon h-8 w-8 shrink-0 rounded-[10px] border border-[var(--nova-border)] bg-[var(--nova-surface)] text-[var(--nova-text-muted)] hover:bg-[var(--nova-hover)] hover:text-[var(--nova-text)] disabled:opacity-45"
                   disabled={!onTogglePlanMode && !writingSkillControl && !onContextAnalyze && tokenUsageMessages.length === 0}
                   aria-label={t('chat.input.actions')}
-                  title={t('chat.input.actions')}
                 >
                   <List className="h-3.5 w-3.5" />
                 </Button>
@@ -643,7 +642,6 @@ export function InputArea({
                       disabled={disabled || isGenerationActive}
                       onCheckedChange={() => onTogglePlanMode()}
                       className="cursor-pointer pr-1.5 text-xs focus:bg-[var(--nova-active)] focus:text-[var(--nova-text)] [&_[data-slot=dropdown-menu-checkbox-item-indicator]]:static [&_[data-slot=dropdown-menu-checkbox-item-indicator]]:order-2 [&_[data-slot=dropdown-menu-checkbox-item-indicator]]:size-4"
-                      title={t('chat.plan.shiftTabHint')}
                     >
                       <ClipboardList className="h-3.5 w-3.5" />
                       <span className="min-w-0 flex-1">{t('chat.plan.short')}</span>
@@ -676,7 +674,6 @@ export function InputArea({
               <span
                 className="inline-flex h-8 shrink-0 items-center gap-1.5 border-l border-[var(--nova-border-soft)] pl-2 text-sm text-[var(--nova-text-muted)]"
                 aria-label={t('chat.plan.modeOn')}
-                title={t('chat.plan.shiftTabHint')}
               >
                 <ClipboardList className="h-3.5 w-3.5" />
                 {t('chat.plan.short')}

@@ -231,7 +231,6 @@ export function AgentChatSessionHistoryDialog({
                       className="shrink-0"
                       onClick={() => setProjectsCollapsed(false)}
                       aria-label={t('agentChat.history.showProjects')}
-                      title={t('agentChat.history.showProjects')}
                     >
                       <PanelLeftOpen />
                     </Button>

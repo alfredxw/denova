@@ -38,6 +38,8 @@ interface AdaptiveSurfaceProps {
   left?: AdaptiveSurfacePane
   right?: AdaptiveSurfacePane
   children: ReactNode | ((controls: AdaptiveSurfaceControls) => ReactNode)
+  /** Desktop-only controls anchored to the surface instead of a resizing pane. */
+  desktopOverlay?: ReactNode
   className?: string
   mainClassName?: string
   desktopGridClassName?: string
@@ -71,6 +73,7 @@ export function AdaptiveSurface({
   left,
   right,
   children,
+  desktopOverlay,
   className = 'h-full min-h-0',
   mainClassName = 'min-h-0 min-w-0',
   desktopGridClassName,
@@ -295,10 +298,16 @@ export function AdaptiveSurface({
       {surface}
     </div>
   )
+  const surfaceWithDesktopOverlay = desktopOverlay !== undefined ? (
+    <div data-nova-adaptive-overlay-host="true" className="relative h-full min-h-0 min-w-0">
+      {renderedSurface}
+      {isMobile ? null : desktopOverlay}
+    </div>
+  ) : renderedSurface
 
   return (
     <>
-      {renderedSurface}
+      {surfaceWithDesktopOverlay}
       {mainContentPortal}
     </>
   )

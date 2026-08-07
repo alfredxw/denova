@@ -137,7 +137,6 @@ export function ModelProfilesEditor({ profiles, effectiveProfiles, onChange }: {
                   size="icon-sm"
                   onClick={() => removeProfile(index)}
                   aria-label={t('settings.model.deleteProfile')}
-                  title={t('settings.model.deleteProfile')}
                 >
                   <Trash2 data-icon="inline-start" />
                 </Button>
@@ -428,7 +427,6 @@ function ContextWindowInput({ value, onChange }: {
           size="sm"
           className="min-w-0 flex-1"
           aria-label={t('settings.model.contextWindow')}
-          title={t('settings.model.contextWindow')}
         >
           <SelectValue />
         </SelectTrigger>

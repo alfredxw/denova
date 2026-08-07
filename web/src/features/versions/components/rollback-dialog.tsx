@@ -83,7 +83,7 @@ export function RollbackDialog({
                 ) : changes.map(change => (
                   <div key={`${change.status}:${change.path}`} className="flex min-w-0 items-center gap-2 rounded px-1.5 py-1 text-[11px] text-[var(--nova-text-muted)]">
                     <FileText className="h-3 w-3 shrink-0 text-[var(--nova-text-faint)]" />
-                    <span className="min-w-0 flex-1 truncate" title={change.path}>{change.path}</span>
+                    <span className="min-w-0 flex-1 truncate">{change.path}</span>
                     <span className="shrink-0 text-[var(--nova-text-faint)]">{t(`versions.change.${change.status}`)}</span>
                   </div>
                 ))}

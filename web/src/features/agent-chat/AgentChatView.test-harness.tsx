@@ -121,11 +121,13 @@ vi.mock('@/components/layout/adaptive-surface', () => ({
     left,
     right,
     rightResize,
+    desktopOverlay,
     children,
   }: {
     left: { enabled?: boolean; content: ReactNode; desktopVisible?: boolean; desktopCollapsedContent?: ReactNode }
     right?: { content: ReactNode; desktopVisible?: boolean }
     rightResize?: { label: string }
+    desktopOverlay?: ReactNode
     children: ReactNode | ((controls: {
       isMobile: boolean
       openPaneId: string | null
@@ -155,6 +157,7 @@ vi.mock('@/components/layout/adaptive-surface', () => ({
           {right.content}
         </aside>
       ) : null}
+      {desktopOverlay}
     </div>
   ),
 }))

@@ -84,7 +84,7 @@ describe('AgentChatView project workbenches', () => {
     await waitFor(() => expect(addAgentChatProject).toHaveBeenCalledWith('/projects/story'))
     expect(selectAgentChatProjectDirectory).toHaveBeenCalledWith(undefined)
     expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
-    expect(await screen.findByTitle('/projects/story')).toBeInTheDocument()
+    expect(await screen.findByRole('button', { name: 'story' })).toBeInTheDocument()
   })
 
   it('does not relink a Project when one mounted page draft cannot flush', async () => {
@@ -235,7 +235,7 @@ describe('AgentChatView project workbenches', () => {
     expect(screen.getByTestId('conversation:/books/a:session-a')).toHaveTextContent('active')
     expect(screen.getByRole('button', { name: /^Chat A/ })).toHaveAttribute('aria-current', 'page')
 
-    await user.click(screen.getByTitle('/books/b'))
+    await user.click(screen.getByRole('button', { name: '展开 Project B' }))
     expect(
       within(screen.getAllByRole('tablist')[0]).getByRole('tab', {
         name: /Chat B/,
@@ -244,7 +244,7 @@ describe('AgentChatView project workbenches', () => {
     expect(screen.getByTestId('conversation:/books/a:session-a')).toHaveTextContent('hidden')
     expect(screen.getByTestId('conversation:/books/b:session-b')).toHaveTextContent('active')
 
-    await user.click(screen.getByTitle('/books/a'))
+    await user.click(screen.getByRole('button', { name: '收起 Project A' }))
     expect(
       within(screen.getAllByRole('tablist')[0]).getByRole('tab', {
         name: /Chat A/,
@@ -408,19 +408,21 @@ describe('AgentChatView project workbenches', () => {
     renderView(<AgentChatView composerSettings={{} as never} tellers={[]} imagePresets={[]} renderPage={() => null} renderReview={() => null} />)
 
     const hideButton = await screen.findByRole('button', { name: '隐藏右侧工作区' })
-    expect(hideButton.closest('[data-agent-chat-group]')).toHaveAttribute('data-agent-chat-group', 'secondary')
+    const fixedControlHost = hideButton.closest('[data-slot="agent-chat-secondary-pane-control-host"]')
+    expect(fixedControlHost).toBeInTheDocument()
+    expect(hideButton.closest('[data-agent-chat-group]')).toBeNull()
     await user.click(hideButton)
     expect(screen.queryByRole('separator', { name: '调整分栏宽度' })).not.toBeInTheDocument()
     expect(screen.getByTestId('conversation:/books/a:session-secondary')).toHaveTextContent('hidden')
     await waitFor(() => expect(readStoredWorkbenchState().projects['project-a'].secondaryVisible).toBe(false))
 
     const showButton = screen.getByRole('button', { name: '显示右侧工作区' })
-    expect(showButton.closest('[data-agent-chat-group]')).toHaveAttribute('data-agent-chat-group', 'primary')
+    expect(showButton).toBe(hideButton)
+    expect(showButton.closest('[data-slot="agent-chat-secondary-pane-control-host"]')).toBe(fixedControlHost)
     await user.click(showButton)
     expect(await screen.findByRole('separator', { name: '调整分栏宽度' })).toBeInTheDocument()
     expect(screen.getByTestId('conversation:/books/a:session-secondary')).toHaveTextContent('active')
-    expect(screen.getByRole('button', { name: '隐藏右侧工作区' }).closest('[data-agent-chat-group]'))
-      .toHaveAttribute('data-agent-chat-group', 'secondary')
+    expect(screen.getByRole('button', { name: '隐藏右侧工作区' })).toBe(hideButton)
   })
 
   it('lets the first secondary-pane click choose what to open there', async () => {
@@ -456,7 +458,7 @@ describe('AgentChatView project workbenches', () => {
     )
 
     await user.click(await screen.findByRole('button', { name: '显示右侧工作区' }))
-    await user.click(await screen.findByRole('menuitem', { name: '阅读器' }))
+    await user.click(await screen.findByRole('menuitem', { name: '写作' }))
 
     expect(await screen.findByRole('separator', { name: '调整分栏宽度' })).toBeInTheDocument()
     expect(screen.getByTestId('secondary-page')).toHaveTextContent('reader')
@@ -542,7 +544,7 @@ describe('AgentChatView project workbenches', () => {
     const secondaryPane = files.closest('aside')
     expect(secondaryPane).not.toBeNull()
     await user.click(within(secondaryPane as HTMLElement).getByRole('button', { name: '新建标签页' }))
-    await user.click(await screen.findByRole('menuitem', { name: '阅读器' }))
+    await user.click(await screen.findByRole('menuitem', { name: '写作' }))
     expect(await screen.findByTestId('project-page-refresh')).toHaveTextContent('page:2')
 
     await user.click(screen.getByRole('button', { name: 'simulate page save' }))

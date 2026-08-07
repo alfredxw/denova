@@ -83,6 +83,7 @@ func (s *Store) readStoryRecentLocked(storyID, branchID string) (StoryMeta, []St
 	if err != nil {
 		return StoryMeta{}, nil, err
 	}
+	loaded.records = boundStoryRecentCacheRecords(loaded.meta, branchID, loaded.records)
 	handle, err = s.openStoryJournalLocked(storyID)
 	if err != nil {
 		return StoryMeta{}, nil, err
@@ -97,9 +98,7 @@ func cacheStoryRecentLoaded(handle *storyJournalHandle, branchID string, meta St
 	if handle == nil || handle.journal == nil {
 		return nil
 	}
-	if len(records) > storyRecentCacheRecordLimit {
-		records = records[len(records)-storyRecentCacheRecordLimit:]
-	}
+	records = boundStoryRecentCacheRecords(meta, branchID, records)
 	cachedMeta, err := cloneStoryMeta(meta)
 	if err != nil {
 		return err
@@ -146,11 +145,76 @@ func advanceStoryRecentCaches(handle *storyJournalHandle, cursor conversationjou
 				cached.records = append(cached.records, event)
 			}
 		}
-		if len(cached.records) > storyRecentCacheRecordLimit {
-			cached.records = append([]StoryEventRecord(nil), cached.records[len(cached.records)-storyRecentCacheRecordLimit:]...)
-		}
+		cached.records = boundStoryRecentCacheRecords(meta, branchID, cached.records)
 		handle.recent[branchID] = cached
 	}
+}
+
+// boundStoryRecentCacheRecords keeps the bounded cache useful as a branch
+// graph, not merely as a physical journal tail. Display and audit side events
+// can outnumber the record limit while branch.Head remains unchanged; dropping
+// that old head makes a current player input look detached from active ancestry.
+// The active backbone and recent durable Agent side commits therefore take
+// priority over older presentation-only records.
+func boundStoryRecentCacheRecords(meta StoryMeta, branchID string, records []StoryEventRecord) []StoryEventRecord {
+	if len(records) <= storyRecentCacheRecordLimit {
+		return records
+	}
+	branchID = strings.TrimSpace(branchID)
+	if branchID == "" {
+		branchID = meta.CurrentBranch
+	}
+	branch, ok := meta.Branches[branchID]
+	if !ok {
+		return append([]StoryEventRecord(nil), records[len(records)-storyRecentCacheRecordLimit:]...)
+	}
+
+	_, activePath := eventPath(branch.Head, eventsByID(records))
+	if len(activePath) == 0 {
+		return append([]StoryEventRecord(nil), records[len(records)-storyRecentCacheRecordLimit:]...)
+	}
+	keep := make([]bool, len(records))
+	kept := 0
+
+	// Player inputs and rich tool batches are bounded independently by the same
+	// recent-commit budget as the journal projection. Keeping the newest ones
+	// prevents a long display stream from evicting the accepted input before its
+	// first tool result is committed.
+	commitCount := 0
+	for index := len(records) - 1; index >= 0 && commitCount < storyRecentCommitLimit; index-- {
+		if keep[index] {
+			continue
+		}
+		switch records[index].Envelope.Type {
+		case StoryEventTypePlayerInput, StoryEventTypeModelContextBatch:
+			keep[index] = true
+			kept++
+			commitCount++
+		}
+	}
+	// Retain the newest reachable backbone records within the remaining cache
+	// budget. Walking the physical records backwards favors the branch head and
+	// keeps the cache strictly bounded even after a very long warm session.
+	for index := len(records) - 1; index >= 0 && kept < storyRecentCacheRecordLimit; index-- {
+		if !keep[index] && activePath[records[index].Envelope.ID] {
+			keep[index] = true
+			kept++
+		}
+	}
+	for index := len(records) - 1; index >= 0 && kept < storyRecentCacheRecordLimit; index-- {
+		if !keep[index] {
+			keep[index] = true
+			kept++
+		}
+	}
+
+	bounded := make([]StoryEventRecord, 0, kept)
+	for index, record := range records {
+		if keep[index] {
+			bounded = append(bounded, record)
+		}
+	}
+	return bounded
 }
 
 func (s *Store) storyBranchProjectionLocked(storyID, branchID string) (*storyBranchProjection, error) {

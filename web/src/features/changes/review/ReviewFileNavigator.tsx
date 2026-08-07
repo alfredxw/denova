@@ -29,7 +29,6 @@ export function ReviewFileNavigator({ files, selectedPath, onSelect, onCollapse 
             type="button"
             onClick={onCollapse}
             aria-label={t('changes.hideFileNavigator')}
-            title={t('changes.hideFileNavigator')}
             className="nova-nav-item flex size-6 items-center justify-center"
           >
             <PanelRightClose className="size-3.5" />
@@ -47,7 +46,6 @@ export function ReviewFileNavigator({ files, selectedPath, onSelect, onCollapse 
                 aria-label={t('changes.jumpToFile', { path: file.path })}
                 onClick={() => onSelect(file.path)}
                 className={`nova-review-file-option mb-1 flex w-full min-w-0 items-center gap-2 rounded-md border px-2 py-2 text-left transition-colors ${selected ? 'border-[var(--nova-accent-blue)] bg-[var(--nova-active)]' : 'border-transparent hover:border-[var(--nova-border)] hover:bg-[var(--nova-hover)]'}`}
-                title={t('changes.jumpToFile', { path: file.path })}
               >
                 <ReviewFileItem file={file} />
               </button>
@@ -89,7 +87,6 @@ export function ReviewFileNavigator({ files, selectedPath, onSelect, onCollapse 
           variant="ghost"
           onClick={onCollapse}
           aria-label={t('changes.hideFileNavigator')}
-          title={t('changes.hideFileNavigator')}
         >
           <PanelRightClose />
         </Button>

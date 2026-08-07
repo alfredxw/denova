@@ -8,9 +8,9 @@ func defaultActorStatePresetSpec() actorStatePresetSpec {
 	return actorStatePresetSpec{
 		ID:                   DefaultActorStateModuleID,
 		Name:                 "默认状态系统",
-		Description:          "以故事、主角和世界实体三个初始 Actor 集中维护关键状态；默认角色采用 TRPG 检定面板与动态状态字段，均可直接分组展示和单独配置。",
-		PanelFields:          defaultTRPGPanelFields(),
-		StateFields:          defaultTRPGStateFields(),
+		Description:          "以故事、主角和世界实体三个初始 Actor 集中维护关键状态；角色只预置最通用的等级与生命，其他面板和动态状态由开局 Agent 按故事实际需要主动添加。",
+		PanelFields:          defaultActorPanelFields(),
+		StateFields:          defaultActorDynamicStateFields(),
 		AbilityGuidance:      "类型使用战斗、社交、探索、制造或其他符合故事设定的分类。",
 		ItemGuidance:         "类型使用装备、消耗品、资源、任务物、线索或其他符合故事设定的分类。",
 		RelationshipGuidance: "关系类型按故事实际使用亲属、朋友、同伴、竞争、敌对、恋爱、主从或师徒等自然语言。",
@@ -163,35 +163,15 @@ func actorPanelAndStateFields(spec actorStatePresetSpec) []ActorStateField {
 	return fields
 }
 
-func defaultTRPGPanelFields() []ActorStateField {
-	fields := []ActorStateField{
+func defaultActorPanelFields() []ActorStateField {
+	return []ActorStateField{
 		openEndedNumberStateField("panel.level", "等级", "角色当前规则等级。", "面板", 1, 1, "1–4 初阶；5–10 中阶；11–16 高阶；17 及以上传奇。", "等级只随明确的升级、降级或规则结算改变。"),
 	}
-	for _, attribute := range []struct {
-		path string
-		name string
-	}{
-		{path: "panel.strength", name: "力量"},
-		{path: "panel.dexterity", name: "敏捷"},
-		{path: "panel.constitution", name: "体质"},
-		{path: "panel.intelligence", name: "智力"},
-		{path: "panel.wisdom", name: "感知"},
-		{path: "panel.charisma", name: "魅力"},
-	} {
-		fields = append(fields, openEndedNumberStateField(attribute.path, attribute.name, "参与相关检定的有效属性值，已经包含装备与持续状态修正。", "面板", 10, 1, "1–5 极弱；6–9 偏弱；10–11 常人；12–15 优秀；16–19 卓越；20 及以上超凡。", "基础能力、装备或持续效果改变时更新有效值；临时一次性加值不写入。"))
-	}
-	return append(fields,
-		openEndedNumberStateField("panel.attack_ac", "攻击 AC", "参与攻击相关检定的有效值。", "面板", 10, 0, "0–5 极低；6–9 偏低；10–13 常规；14–17 高；18 及以上极高。", "装备、等级或持续效果改变攻击结算时更新；一次性加值不写入。"),
-		openEndedNumberStateField("panel.defense_dc", "防御 DC", "参与防御相关检定的有效值。", "面板", 10, 0, "0–5 极低；6–9 偏低；10–13 常规；14–17 高；18 及以上极高。", "装备、等级或持续效果改变防御结算时更新；一次性加值不写入。"),
-	)
 }
 
-func defaultTRPGStateFields() []ActorStateField {
+func defaultActorDynamicStateFields() []ActorStateField {
 	return []ActorStateField{
 		textStateFieldWithDefaultInstruction("state.health", "生命", "使用“当前值/上限”表达可恢复的生命资源；例如 8/12。", "状态", "inline", "10/10", "受伤、治疗或上限改变时更新；没有生命数值规则时改用作品中的等价状态。"),
-		textStateFieldWithDefaultInstruction("state.mana", "法力", "使用“当前值/上限”表达法力、能量或等价施法资源；例如 3/6。", "状态", "inline", "0/0", "消耗、恢复或上限改变时更新；作品没有此类资源时保持 0/0。"),
-		listStateFieldWithInstruction("state.effects", "持续效果", "只列仍在生效且会影响后续行动的增益、减益、异常或伤势。", "状态", "每项使用“名称｜影响｜剩余条件或时长”；结束后立即移除，瞬时效果不保留。"),
-		listStateFieldWithInstruction("state.cooldowns", "冷却状态", "只列尚未恢复的技能或物品及其剩余冷却。", "状态", "每项使用稳定技能或物品名称及剩余回合、时间或恢复条件；冷却结束后移除。"),
 	}
 }
 

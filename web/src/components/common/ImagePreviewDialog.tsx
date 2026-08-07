@@ -74,18 +74,18 @@ export function ImagePreviewDialog({ src, title, alt, children }: ImagePreviewDi
           {({ zoomIn, zoomOut, resetTransform, setTransform, state }) => (
             <>
               <div className="absolute right-3 top-3 z-10 flex items-center gap-1 rounded-lg border border-white/15 bg-black/55 p-1 text-white shadow-lg backdrop-blur">
-                <Button type="button" variant="ghost" size="icon-sm" className="text-white hover:bg-white/15 hover:text-white disabled:opacity-35" disabled={zoom <= MIN_ZOOM} onClick={() => zoomOut(CONTROL_ZOOM_STEP, CONTROL_ZOOM_ANIMATION_MS)} aria-label={t('common.imageViewer.zoomOut')} title={t('common.imageViewer.zoomOut')}>
+                <Button type="button" variant="ghost" size="icon-sm" className="text-white hover:bg-white/15 hover:text-white disabled:opacity-35" disabled={zoom <= MIN_ZOOM} onClick={() => zoomOut(CONTROL_ZOOM_STEP, CONTROL_ZOOM_ANIMATION_MS)} aria-label={t('common.imageViewer.zoomOut')}>
                   <ZoomOut className="h-4 w-4" />
                 </Button>
                 <span className="min-w-12 select-none text-center font-mono text-[11px] text-white/80" aria-live="polite">{zoomLabel}</span>
-                <Button type="button" variant="ghost" size="icon-sm" className="text-white hover:bg-white/15 hover:text-white disabled:opacity-35" disabled={zoom >= MAX_ZOOM} onClick={() => zoomIn(CONTROL_ZOOM_STEP, CONTROL_ZOOM_ANIMATION_MS)} aria-label={t('common.imageViewer.zoomIn')} title={t('common.imageViewer.zoomIn')}>
+                <Button type="button" variant="ghost" size="icon-sm" className="text-white hover:bg-white/15 hover:text-white disabled:opacity-35" disabled={zoom >= MAX_ZOOM} onClick={() => zoomIn(CONTROL_ZOOM_STEP, CONTROL_ZOOM_ANIMATION_MS)} aria-label={t('common.imageViewer.zoomIn')}>
                   <ZoomIn className="h-4 w-4" />
                 </Button>
-                <Button type="button" variant="ghost" size="icon-sm" className="text-white hover:bg-white/15 hover:text-white disabled:opacity-35" disabled={zoom === 1} onClick={() => resetTransform(CONTROL_ZOOM_ANIMATION_MS)} aria-label={t('common.imageViewer.resetZoom')} title={t('common.imageViewer.resetZoom')}>
+                <Button type="button" variant="ghost" size="icon-sm" className="text-white hover:bg-white/15 hover:text-white disabled:opacity-35" disabled={zoom === 1} onClick={() => resetTransform(CONTROL_ZOOM_ANIMATION_MS)} aria-label={t('common.imageViewer.resetZoom')}>
                   <RotateCcw className="h-4 w-4" />
                 </Button>
                 <DialogClose asChild>
-                  <Button type="button" variant="ghost" size="icon-sm" className="text-white hover:bg-white/15 hover:text-white" aria-label={t('common.close')} title={t('common.close')}>
+                  <Button type="button" variant="ghost" size="icon-sm" className="text-white hover:bg-white/15 hover:text-white" aria-label={t('common.close')}>
                     <X className="h-4 w-4" />
                   </Button>
                 </DialogClose>

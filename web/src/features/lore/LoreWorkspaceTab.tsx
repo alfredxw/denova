@@ -142,7 +142,6 @@ export function LoreWorkspaceTab({
                     size="icon-sm"
                     onClick={onOpenLibrary}
                     aria-label={t('loreWorkspace.openLibrary')}
-                    title={t('loreWorkspace.openLibrary')}
                   >
                     <LibraryBig />
                   </Button>

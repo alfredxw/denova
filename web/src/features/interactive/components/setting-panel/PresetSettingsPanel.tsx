@@ -662,7 +662,7 @@ export function PresetSettingsPanel({
                     />
                   ) : null}
                   {canRestoreBuiltinPreset && (
-                    <Button className={actionButtonClassName} variant="outline" size="sm" disabled={busy} onClick={() => void handleRestoreBuiltinPreset()} aria-label={t('settingPanel.restoreBuiltin')} title={t('settingPanel.restoreBuiltin')}>
+                    <Button className={actionButtonClassName} variant="outline" size="sm" disabled={busy} onClick={() => void handleRestoreBuiltinPreset()} aria-label={t('settingPanel.restoreBuiltin')}>
                       <RotateCcw data-icon="inline-start" />
                       <span className="preset-action-label">{t('settingPanel.restoreBuiltin')}</span>
                     </Button>

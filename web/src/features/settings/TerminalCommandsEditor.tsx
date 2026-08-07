@@ -37,7 +37,6 @@ export function TerminalCommandsEditor({ commands, onChange }: {
     onChange(reordered)
   }
   const removeCommand = (index: number) => {
-    if (TERMINAL_COMMAND_PRESET_IDS.has(commands[index]?.id)) return
     onChange(commands.filter((_, commandIndex) => commandIndex !== index))
   }
   const addCommand = () => {
@@ -113,7 +112,6 @@ function TerminalCommandCard({ command, index, count, preset, onUpdate, onMove, 
           checked={command.enabled}
           onCheckedChange={(enabled) => onUpdate({ enabled })}
           aria-label={t('settings.terminal.toggleCommand', { name: displayName })}
-          title={t('settings.terminal.toggleCommand', { name: displayName })}
         />
         <div className="flex shrink-0 items-center gap-0.5">
           <Button
@@ -123,7 +121,6 @@ function TerminalCommandCard({ command, index, count, preset, onUpdate, onMove, 
             disabled={index === 0}
             onClick={() => onMove(-1)}
             aria-label={t('settings.terminal.moveCommandUp', { name: displayName })}
-            title={t('settings.terminal.moveCommandUp', { name: displayName })}
           >
             <ChevronUp />
           </Button>
@@ -134,22 +131,18 @@ function TerminalCommandCard({ command, index, count, preset, onUpdate, onMove, 
             disabled={index === count - 1}
             onClick={() => onMove(1)}
             aria-label={t('settings.terminal.moveCommandDown', { name: displayName })}
-            title={t('settings.terminal.moveCommandDown', { name: displayName })}
           >
             <ChevronDown />
           </Button>
-          {!preset && (
-            <Button
-              type="button"
-              variant="ghost"
-              size="icon-sm"
-              onClick={onRemove}
-              aria-label={t('settings.terminal.deleteCommand', { name: displayName })}
-              title={t('settings.terminal.deleteCommand', { name: displayName })}
-            >
-              <Trash2 />
-            </Button>
-          )}
+          <Button
+            type="button"
+            variant="ghost"
+            size="icon-sm"
+            onClick={onRemove}
+            aria-label={t('settings.terminal.deleteCommand', { name: displayName })}
+          >
+            <Trash2 />
+          </Button>
         </div>
       </div>
       <Separator />

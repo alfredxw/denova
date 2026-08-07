@@ -89,7 +89,6 @@ export class ReviewCommentGutter implements IDisposable {
     this.lineNumber = lineNumber
     const label = this.options.labelForLine(lineNumber)
     this.domNode.setAttribute('aria-label', label)
-    this.domNode.title = label
     this.domNode.dataset.visible = 'true'
     this.domNode.setAttribute('aria-hidden', 'false')
     this.domNode.tabIndex = 0

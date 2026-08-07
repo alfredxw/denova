@@ -83,6 +83,15 @@ func TestApplyActorStateSchemaAdaptationSupportsStorySpecificDimensions(t *testi
 
 func TestApplyActorStateSchemaAdaptationRejectsBrokenTRPGBinding(t *testing.T) {
 	base := defaultActorStateSystem()
+	for index := range base.Templates {
+		if base.Templates[index].ID == DefaultActorID {
+			base.Templates[index].Fields = append(base.Templates[index].Fields, ActorStateField{
+				Name: "力量", Type: "number", Default: float64(10),
+			})
+			break
+		}
+	}
+	base = normalizeActorStateSystem(base)
 	trpg := StoryDirectorTRPGSystem{RuleTemplates: []RuleCheck{{
 		ID: "attribute-check",
 		StateBindings: []RuleStateBinding{{

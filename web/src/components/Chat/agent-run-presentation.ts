@@ -111,18 +111,20 @@ function buildActiveSections(views: AgentMessageView[]): AgentRunPresentationSec
   return sections
 }
 
-// Once the terminal prose is known, the entire non-terminal timeline becomes
-// one execution disclosure. This intentionally includes progress emitted
-// before the result and any post-result bookkeeping tools.
+// Once the terminal prose is known, aggregate all earlier progress into one
+// disclosure while preserving post-result trace after the prose. Game emits
+// state/choice submission tools after its narrative, so moving those tools
+// ahead of the narrative would make the completed timeline non-chronological.
 function buildTerminalSections(views: AgentMessageView[], resultIndex: number): AgentRunPresentationSection[] {
   const sections: AgentRunPresentationSection[] = []
-  appendProcessSection(sections, views.filter((_, index) => index !== resultIndex), false)
+  appendProcessSection(sections, views.slice(0, resultIndex), false)
   const resultView = views[resultIndex]
   sections.push({
     key: `message-${agentViewStableKey(resultView)}`,
     kind: 'message',
     view: resultView,
   })
+  appendProcessSection(sections, views.slice(resultIndex + 1), false)
   return sections
 }
 

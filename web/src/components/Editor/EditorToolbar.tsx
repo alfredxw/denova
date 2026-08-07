@@ -94,6 +94,7 @@ export function EditorToolbar({
             label={t('planning.outlineNavigation')}
             onClick={onOpenOutline}
             size="icon-xs"
+            showTooltip={false}
             tooltipSide="bottom"
             className="text-[var(--nova-text-muted)] hover:bg-[var(--nova-hover)] hover:text-[var(--nova-text)]"
           >
@@ -103,14 +104,13 @@ export function EditorToolbar({
         <BookOpen className="h-3.5 w-3.5 shrink-0 text-[var(--nova-text-muted)]" />
         <span className="truncate font-medium text-[var(--nova-text)]">{displayTitle || fileName}</span>
       </div>
-      <TooltipProvider delayDuration={0}>
+      <TooltipProvider>
         <div className="flex shrink-0 items-center gap-1">
           {saveStatusMeta && (
             <span
               className={`inline-flex h-5 min-w-5 items-center justify-end gap-1 text-[11px] transition-colors ${saveStatusMeta.className}`}
               aria-live="polite"
               aria-label={saveStatusAriaLabel}
-              title={saveStatusAriaLabel}
             >
               {saveStatus === 'auto-saved' ? (
                 <Check className="h-3 w-3 opacity-45" />

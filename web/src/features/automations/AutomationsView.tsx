@@ -7,6 +7,7 @@ import { AutosaveStatusIndicator } from '@/components/forms/autosave-status'
 import { AdaptiveSurface } from '@/components/layout/adaptive-surface'
 import { FeaturePageShell } from '@/components/layout/feature-page-shell'
 import { MobilePaneTrigger } from '@/components/layout/mobile-pane-trigger'
+import { SidebarVisibilityToggle } from '@/components/layout/sidebar-visibility-toggle'
 import { ConfigManagerChat } from '@/components/Chat/ConfigManagerChat'
 import { MessageList } from '@/components/Chat/MessageList'
 import { InputArea } from '@/components/Chat/InputArea'
@@ -84,6 +85,7 @@ export function AutomationsView({ projectId, workspace, onClose }: { projectId: 
   const [creating, setCreating] = useState(false)
   const [templateDialogOpen, setTemplateDialogOpen] = useState(false)
   const [panelView, setPanelView] = useState<AutomationPanelView>('config')
+  const [sidebarVisible, setSidebarVisible] = useState(true)
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [deleteTarget, setDeleteTarget] = useState<{ id: string; name: string } | null>(null)
@@ -530,6 +532,12 @@ export function AutomationsView({ projectId, workspace, onClose }: { projectId: 
     <FeaturePageShell
       icon={Clock3}
       title={t('automations.title')}
+      leadingContent={(
+        <SidebarVisibilityToggle
+          visible={sidebarVisible}
+          onToggle={() => setSidebarVisible((visible) => !visible)}
+        />
+      )}
       subtitle={t('automations.summary', { tasks: tasks.length, running: catalogActiveRuns.length })}
       error={error}
       errorTitle={t('automations.error')}
@@ -548,22 +556,22 @@ export function AutomationsView({ projectId, workspace, onClose }: { projectId: 
               onRetry={flushAutomationAutosave}
             />
           ) : null}
-          <Button type="button" size="sm" variant="outline" onClick={checkTriggers} disabled={!activeId || running || saving} className="nova-nav-item border-[var(--nova-border)] bg-[var(--nova-surface-2)] text-[var(--nova-text-muted)]" aria-label={t('automations.checkTriggers')} title={t('automations.checkTriggers')}>
+          <Button type="button" size="sm" variant="outline" onClick={checkTriggers} disabled={!activeId || running || saving} className="nova-nav-item border-[var(--nova-border)] bg-[var(--nova-surface-2)] text-[var(--nova-text-muted)]" aria-label={t('automations.checkTriggers')}>
             <RefreshCw data-icon="inline-start" />
             <span className="hidden sm:inline">{t('automations.checkTriggers')}</span>
           </Button>
-          <Button type="button" size="sm" variant="secondary" onClick={runNow} disabled={!activeId || running || saving} className="nova-nav-item border border-[var(--nova-border)] bg-[var(--nova-active)]" aria-label={running ? t('automations.running') : t('automations.runNow')} title={running ? t('automations.running') : t('automations.runNow')}>
+          <Button type="button" size="sm" variant="secondary" onClick={runNow} disabled={!activeId || running || saving} className="nova-nav-item border border-[var(--nova-border)] bg-[var(--nova-active)]" aria-label={running ? t('automations.running') : t('automations.runNow')}>
             <Play data-icon="inline-start" />
             <span className="hidden sm:inline">{running ? t('automations.running') : t('automations.runNow')}</span>
           </Button>
           {running ? (
-            <Button type="button" size="sm" variant="outline" onClick={runStream.stop} className="nova-nav-item border-[var(--nova-border)] bg-[var(--nova-surface-2)] text-[var(--nova-text-muted)]" aria-label={t('automations.stopRun')} title={t('automations.stopRun')}>
+            <Button type="button" size="sm" variant="outline" onClick={runStream.stop} className="nova-nav-item border-[var(--nova-border)] bg-[var(--nova-surface-2)] text-[var(--nova-text-muted)]" aria-label={t('automations.stopRun')}>
               <Square data-icon="inline-start" />
               <span className="hidden sm:inline">{t('automations.stopRun')}</span>
             </Button>
           ) : null}
           {creating ? (
-            <Button type="button" size="sm" variant="secondary" onClick={createDraft} disabled={saving || running} className="nova-nav-item border border-[var(--nova-border)] bg-[var(--nova-active)]" aria-label={t('common.create')} title={t('common.create')}>
+            <Button type="button" size="sm" variant="secondary" onClick={createDraft} disabled={saving || running} className="nova-nav-item border border-[var(--nova-border)] bg-[var(--nova-active)]" aria-label={t('common.create')}>
               {saving ? <Loader2 data-icon="inline-start" className="animate-spin" /> : <Plus data-icon="inline-start" />}
               <span className="hidden sm:inline">{saving ? t('common.creating') : t('common.create')}</span>
             </Button>
@@ -579,6 +587,7 @@ export function AutomationsView({ projectId, workspace, onClose }: { projectId: 
           icon: <Clock3 className="h-4 w-4" />,
           content: taskListPanel,
           desktopClassName: 'min-h-0 border-r border-[var(--nova-border)]',
+          desktopVisible: sidebarVisible,
           mobileClassName: 'w-[min(90vw,360px)]',
         }}
         className="flex-1 text-xs"
@@ -591,15 +600,16 @@ export function AutomationsView({ projectId, workspace, onClose }: { projectId: 
           maxSize: '40%',
         }}
       >
-        {({ openLeft }) => (
+        {({ isMobile, openLeft }) => (
           <main className="flex h-full min-h-0 flex-col">
             <div className="flex h-10 shrink-0 items-center gap-2 overflow-x-auto border-b border-[var(--nova-border)] bg-[var(--nova-surface)] px-3 sm:px-4">
-              <MobilePaneTrigger
-                side="left"
-                label={t('workbench.mobile.openSidePanel', { label: t('automations.title') })}
-                onClick={openLeft}
-                className="md:hidden"
-              />
+              {isMobile && (
+                <MobilePaneTrigger
+                  side="left"
+                  label={t('workbench.mobile.openSidePanel', { label: t('automations.title') })}
+                  onClick={openLeft}
+                />
+              )}
               <div className="flex h-7 items-center rounded-[var(--nova-radius)] border border-[var(--nova-border)] bg-[var(--nova-surface-2)] p-0.5">
                 <button
                   type="button"

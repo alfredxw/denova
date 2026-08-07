@@ -145,7 +145,7 @@ export function AgentChatTabBar({
   const newTabMenu = (
     <DropdownMenu>
       <DropdownMenuTrigger asChild>
-        <WorkbenchTabAddButton aria-label={t('agentChat.tabs.new')} title={t('agentChat.tabs.new')} />
+        <WorkbenchTabAddButton aria-label={t('agentChat.tabs.new')} />
       </DropdownMenuTrigger>
       <DropdownMenuContent align="end" className="min-w-48">
         <AgentChatNewTabMenuItems
@@ -175,6 +175,7 @@ export function AgentChatTabBar({
             onValueChange={onActivate}
             flowAction={newTabMenu}
             endActions={endActions}
+            endActionsVariant="inline"
             // Tabs sit flush against the pane edge; only the trailing new-tab button gets breathing room.
             className={cn('pr-1', isStripDropTarget && 'bg-[var(--nova-hover)]')}
           >

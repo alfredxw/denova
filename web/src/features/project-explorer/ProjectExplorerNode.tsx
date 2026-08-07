@@ -116,7 +116,6 @@ export function ExplorerNode({ node, style, dragHandle }: NodeRendererProps<Proj
             'flex h-full min-w-0 flex-1 items-center gap-1 overflow-hidden pr-1 text-xs',
             (data.ignored || cut) && 'opacity-55',
           )}
-          title={data.draft ? undefined : data.path}
           onPointerDown={(event) => {
             if (event.button !== 0 || event.metaKey || event.ctrlKey || event.shiftKey || node.isSelected) return
             node.select()

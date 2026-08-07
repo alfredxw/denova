@@ -61,7 +61,7 @@ describe('StateView', () => {
     const card = within(actorCard)
     expect(card.queryByText('主角')).not.toBeInTheDocument()
     expect(card.queryByText(/修行者/)).not.toBeInTheDocument()
-    expect(card.getByText('来自失落纪元且尚未完全觉醒的古老血脉')).toHaveAttribute('title', '一条足够长、用于验证窄状态卡截断展示的词条说明。')
+    expect(card.getByText('来自失落纪元且尚未完全觉醒的古老血脉')).not.toHaveAttribute('title')
     expect(card.getByText('旧隐藏词条')).toBeInTheDocument()
     expect(card.getByText('旧剧透词条')).toBeInTheDocument()
     expect(card.getByText(/青石镇客栈/)).toBeInTheDocument()
@@ -205,11 +205,9 @@ describe('StateView', () => {
       />,
     )
 
-    const negative = within(screen.getByRole('article', { name: '林风' })).getByTitle('好感度 -40 (-100–100)')
-    const negativeFill = negative.querySelector('span[style*="width: 20%"]')
+    const negativeFill = screen.getByRole('article', { name: '林风' }).querySelector('span[style*="width: 20%"]')
     expect(negativeFill).toHaveClass('bg-[var(--nova-danger)]')
-    const positive = within(screen.getByRole('article', { name: '沈凝' })).getByTitle('好感度 60 (-100–100)')
-    const positiveFill = positive.querySelector('span[style*="width: 30%"]')
+    const positiveFill = screen.getByRole('article', { name: '沈凝' }).querySelector('span[style*="width: 30%"]')
     expect(positiveFill).toHaveClass('bg-[var(--nova-success)]')
   })
 

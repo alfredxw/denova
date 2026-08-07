@@ -369,12 +369,11 @@ function SubAgentEditor({ id, agent, subAgent, toolRows, profiles, onChange }: {
             const inherited = explicit === undefined || explicit === null
             const parentAllows = tool.allowed && tool.availability !== 'unavailable'
             const effective = parentAllows && (inherited || explicit)
-            const unavailableReason = tool.unavailableReasonKey ? t(tool.unavailableReasonKey) : t('agents.subAgents.note')
             return (
               <div key={tool.key} className="flex min-w-0 items-center gap-2 rounded-[var(--nova-radius)] border border-[var(--nova-border)] bg-[var(--nova-surface-2)] px-2 py-1.5">
                 <span className="min-w-0 flex-1 truncate text-[11px]">{t(tool.titleKey)}</span>
                 {!parentAllows && (
-                  <span className="shrink-0 rounded bg-[var(--nova-danger-bg)] px-1.5 py-0.5 text-[10px] text-[var(--nova-danger)]" title={unavailableReason}>
+                  <span className="shrink-0 rounded bg-[var(--nova-danger-bg)] px-1.5 py-0.5 text-[10px] text-[var(--nova-danger)]">
                     {t('agents.skills.unavailable')}
                   </span>
                 )}
@@ -387,7 +386,7 @@ function SubAgentEditor({ id, agent, subAgent, toolRows, profiles, onChange }: {
                     onReset={!inherited ? () => setTool(tool.key, null) : undefined}
                   />
                 ) : (
-                  <span className="inline-flex shrink-0 items-center gap-1.5" title={unavailableReason}>
+                  <span className="inline-flex shrink-0 items-center gap-1.5">
                     <Switch checked={false} disabled aria-label={t(tool.titleKey)} />
                     {inherited ? (
                       <span className="w-7 text-center text-[10px] leading-none text-[var(--nova-text-faint)]">{t('agents.badge.inherited')}</span>

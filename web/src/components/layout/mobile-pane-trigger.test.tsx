@@ -16,5 +16,6 @@ describe('MobilePaneTrigger', () => {
     const trigger = screen.getByRole('button', { name: 'Open lore directory' })
     expect(trigger).toHaveAttribute('data-size', 'icon-xs')
     expect(trigger).not.toHaveClass('nova-icon-button')
+    expect(trigger).not.toHaveAttribute('title')
   })
 })

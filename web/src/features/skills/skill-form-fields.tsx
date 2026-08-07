@@ -8,7 +8,7 @@ export function PreviewRow({ label, value, wide = false }: { label: string; valu
   return (
     <div className={`rounded-[var(--nova-radius)] border border-[var(--nova-border)] bg-[var(--nova-surface)] px-3 py-2 ${wide ? 'md:col-span-2' : ''}`}>
       <div className="text-[10px] uppercase text-[var(--nova-text-faint)]">{label}</div>
-      <div className="mt-1 truncate font-mono text-xs text-[var(--nova-text)]" title={value}>{value}</div>
+      <div className="mt-1 truncate font-mono text-xs text-[var(--nova-text)]">{value}</div>
     </div>
   )
 }

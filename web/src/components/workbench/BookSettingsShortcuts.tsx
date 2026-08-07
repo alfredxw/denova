@@ -8,6 +8,7 @@ import type { FileNode } from '@/hooks/useWorkspace'
 import type { DocumentPreview } from '@/lib/api'
 import { Button } from '@/components/ui/button'
 import { TooltipIconButton } from '@/components/common/tooltip-icon-button'
+import { DEFAULT_TOOLTIP_DELAY_MS } from '@/components/ui/tooltip'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
@@ -21,7 +22,7 @@ const LEGACY_DEFAULT_PINNED_PATHS = ['setting/outline.md', 'CREATOR.md', 'settin
 const LORE_TAB_PIN_KEY = '@lore-tab'
 const DEFAULT_PINNED_PATHS = [...LEGACY_DEFAULT_PINNED_PATHS, 'ideas.md', LORE_TAB_PIN_KEY, 'setting/character-states.md']
 const CURRENT_CHAPTER_PLAN_PIN_KEY = '@current-chapter-plan'
-const HEADER_ACTION_TOOLTIP_DELAY_MS = 700
+const HEADER_ACTION_TOOLTIP_DELAY_MS = DEFAULT_TOOLTIP_DELAY_MS
 
 interface BookSettingFileItem {
   kind: 'file'
@@ -177,7 +178,7 @@ export function BookSettingsShortcuts({
           ) : null}
           <Popover>
             <PopoverTrigger asChild>
-              <Button variant="ghost" size="sm" className="h-7 gap-1 px-2 text-[10px] text-[var(--nova-text-faint)]" aria-label={t('planning.manageBookSettings')} title={t('planning.manageBookSettings')}>
+              <Button variant="ghost" size="sm" className="h-7 gap-1 px-2 text-[10px] text-[var(--nova-text-faint)]" aria-label={t('planning.manageBookSettings')}>
                 <Settings2 className="h-3 w-3" />
                 <span className="nova-book-settings-manage-label">{t('planning.manageBookSettings')}</span>
               </Button>
@@ -240,7 +241,6 @@ export function BookSettingsShortcuts({
                 data-book-setting-state={item.exists ? 'ready' : 'missing'}
                 aria-label={item.kind === 'file' && !item.exists ? t('planning.bookSettingMissingTooltip', { title: item.title, path: item.path }) : undefined}
                 className={`nova-nav-item relative w-full max-w-full px-2.5 py-1 text-center text-[11px] font-medium ${selected ? 'is-active' : item.exists ? 'bg-[var(--nova-surface-2)] text-[var(--nova-text-muted)]' : 'border border-dashed border-[color-mix(in_srgb,var(--nova-warning)_45%,var(--nova-border))] bg-[color-mix(in_srgb,var(--nova-warning-bg)_42%,var(--nova-surface-2))] text-[var(--nova-text-muted)] hover:border-[var(--nova-warning)] hover:bg-[var(--nova-warning-bg)]'}`}
-                title={item.kind === 'file' && !item.exists ? t('planning.bookSettingMissingTooltip', { title: item.title, path: item.path }) : item.title}
                 onClick={() => selectItem(item)}
               >
                 <span className="flex items-center justify-center gap-1 truncate">
@@ -305,7 +305,7 @@ function SortableSettingRow({ item, pinned, selected, onSelect, onTogglePinned }
       <button type="button" disabled={!pinned} aria-label={t('planning.reorderBookSetting', { title: item.title })} className="cursor-grab p-1 text-[var(--nova-text-faint)] disabled:cursor-default disabled:opacity-20" {...attributes} {...listeners}>
         <GripVertical className="h-3.5 w-3.5" />
       </button>
-      <button type="button" data-book-setting-state={item.exists ? 'ready' : 'missing'} aria-label={item.exists ? undefined : missingTooltip} title={item.exists ? undefined : missingTooltip} className="min-w-0 flex-1 px-1 text-left" onClick={() => onSelect(item)}>
+      <button type="button" data-book-setting-state={item.exists ? 'ready' : 'missing'} aria-label={item.exists ? undefined : missingTooltip} className="min-w-0 flex-1 px-1 text-left" onClick={() => onSelect(item)}>
         <span className="flex items-center gap-1 truncate text-xs text-[var(--nova-text)]">
           {item.kind === 'lore' ? <BookMarked aria-hidden="true" className="h-3 w-3 shrink-0 text-emerald-500" /> : null}
           <span className="truncate">{item.title}</span>

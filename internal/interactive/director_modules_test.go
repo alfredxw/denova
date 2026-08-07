@@ -144,23 +144,30 @@ func TestActorStateLibraryMaterializesGenreBuiltins(t *testing.T) {
 		t.Fatalf("default actor state should expose centralized story, actor-owned, and world-entity fields: %#v", defaultActorState.ActorState.Templates)
 	}
 	wantDefaultFieldCounts := map[string]int{
-		DefaultActorID:                         21,
+		DefaultActorID:                         10,
 		ActorStateStoryContextTemplateID:       7,
-		ActorStateImportantCharacterTemplateID: 24,
-		ActorStateOpponentTemplateID:           21,
+		ActorStateImportantCharacterTemplateID: 13,
+		ActorStateOpponentTemplateID:           10,
 		ActorStateWorldEntitiesTemplateID:      2,
 	}
-	protagonist := actorStateTemplateByID(defaultActorState.ActorState, DefaultActorID)
-	for _, fieldPath := range []string{
-		"panel.level", "panel.strength", "panel.dexterity", "panel.constitution", "panel.intelligence",
-		"panel.wisdom", "panel.charisma", "panel.attack_ac", "panel.defense_dc",
-	} {
-		field, ok := actorStateFieldByPath(protagonist, fieldPath)
-		if !ok || field.Type != "number" || field.Group != "面板" {
-			t.Fatalf("default TRPG panel should use grouped ordinary number fields; %s = %#v", fieldPath, field)
+	for _, templateID := range []string{DefaultActorID, ActorStateImportantCharacterTemplateID, ActorStateOpponentTemplateID} {
+		template := actorStateTemplateByID(defaultActorState.ActorState, templateID)
+		level, hasLevel := actorStateFieldByPath(template, "panel.level")
+		if !hasLevel || level.Type != "number" || level.Group != "面板" || level.Max != nil {
+			t.Fatalf("default template %s should retain one open-ended level field: %#v", templateID, level)
 		}
-		if field.Max != nil {
-			t.Fatalf("default TRPG panel field %s should not impose a hard maximum: %#v", fieldPath, field)
+		health, hasHealth := actorStateFieldByPath(template, "state.health")
+		if !hasHealth || health.Group != "状态" || health.Type != "string" {
+			t.Fatalf("default template %s should retain one general health field: %#v", templateID, health)
+		}
+		for _, fieldPath := range []string{
+			"panel.strength", "panel.dexterity", "panel.constitution", "panel.intelligence",
+			"panel.wisdom", "panel.charisma", "panel.attack_ac", "panel.defense_dc",
+			"state.mana", "state.effects", "state.cooldowns",
+		} {
+			if actorStateTemplateHasField(defaultActorState, templateID, fieldPath) {
+				t.Fatalf("default template %s should not predeclare setting-specific field %s", templateID, fieldPath)
+			}
 		}
 	}
 	favorability, ok := actorStateFieldByPath(actorStateTemplateByID(defaultActorState.ActorState, ActorStateImportantCharacterTemplateID), "protagonist_relation.favorability")
@@ -171,12 +178,6 @@ func TestActorStateLibraryMaterializesGenreBuiltins(t *testing.T) {
 	for _, phrase := range []string{"路人基线", "1–100", "-1–-100", "不自动改变关系类型或关系阶段"} {
 		if !strings.Contains(favorability.Description, phrase) {
 			t.Fatalf("default favorability guidance should contain %q: %#v", phrase, favorability)
-		}
-	}
-	for _, fieldPath := range []string{"state.health", "state.mana", "state.effects", "state.cooldowns"} {
-		field, ok := actorStateFieldByPath(protagonist, fieldPath)
-		if !ok || field.Group != "状态" || field.Type == "object" {
-			t.Fatalf("default dynamic state should use grouped ordinary fields; %s = %#v", fieldPath, field)
 		}
 	}
 	for _, template := range defaultActorState.ActorState.Templates {

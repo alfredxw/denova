@@ -524,8 +524,8 @@ describe('AgentPanel', () => {
       ],
     })
 
-    expect(screen.getByTitle('调整 Diff 里的转场')).toHaveTextContent('Diff · chapters/ch01.md')
-    expect(screen.getByTitle('正文这里需要更克制')).toHaveTextContent('批注 · chapters/ch02.md')
+    expect(screen.getByText('Diff · chapters/ch01.md — 调整 Diff 里的转场')).toBeInTheDocument()
+    expect(screen.getByText('批注 · chapters/ch02.md — 正文这里需要更克制')).toBeInTheDocument()
     await user.click(screen.getByRole('button', { name: '发送' }))
 
     await waitFor(() =>

@@ -19,7 +19,6 @@ export interface PersistedSettingsMenuOption {
 interface PersistedSettingsMenuSubProps {
   icon: LucideIcon
   label: string
-  title: string
   currentLabel: string
   value: string
   options: PersistedSettingsMenuOption[]
@@ -33,7 +32,6 @@ interface PersistedSettingsMenuSubProps {
 export function PersistedSettingsMenuSub({
   icon: Icon,
   label,
-  title,
   currentLabel,
   value,
   options,
@@ -46,7 +44,7 @@ export function PersistedSettingsMenuSub({
     <>
       <DropdownMenuGroup>
         <DropdownMenuSub>
-          <DropdownMenuSubTrigger disabled={disabled || saving} className="cursor-pointer text-xs" title={title} aria-label={label}>
+          <DropdownMenuSubTrigger disabled={disabled || saving} className="cursor-pointer text-xs" aria-label={label}>
             <Icon />
             <span className="min-w-0 flex-1">{label}</span>
             <span className="max-w-36 truncate text-[10px] text-muted-foreground">{currentLabel}</span>

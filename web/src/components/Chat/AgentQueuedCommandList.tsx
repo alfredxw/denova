@@ -47,7 +47,7 @@ export function AgentQueuedCommandList({
           >
             <div className="flex min-w-0 flex-1 items-center gap-2 px-1">
               <ListEnd className="h-3.5 w-3.5 shrink-0 text-[var(--nova-text-faint)]" aria-hidden="true" />
-              <span className="line-clamp-2 min-w-0 text-xs leading-4 text-[var(--nova-text-muted)]" title={item.message}>
+              <span className="line-clamp-2 min-w-0 text-xs leading-4 text-[var(--nova-text-muted)]">
                 {item.message}
               </span>
             </div>
@@ -66,7 +66,6 @@ export function AgentQueuedCommandList({
                   onClick={() => void onSteer?.(item)}
                   className="h-8 rounded-[9px] px-2 text-xs text-[var(--nova-text-muted)] hover:bg-[var(--nova-hover)] hover:text-[var(--nova-text)]"
                   aria-label={t('chat.queue.steer')}
-                  title={t('chat.queue.steerDescription')}
                 >
                   <CornerDownRight data-icon="inline-start" />
                   {t('chat.queue.steer')}
@@ -81,7 +80,6 @@ export function AgentQueuedCommandList({
                   onClick={() => void onDelete(item)}
                   className="h-8 w-8 rounded-[9px] text-[var(--nova-text-faint)] hover:bg-[var(--nova-danger-bg)] hover:text-[var(--nova-danger)]"
                   aria-label={t('chat.queue.delete')}
-                  title={t('chat.queue.delete')}
                 >
                   {actionPending ? <Loader2 className="animate-spin" /> : <Trash2 />}
                 </Button>
@@ -96,7 +94,6 @@ export function AgentQueuedCommandList({
                       disabled={controlsDisabled}
                       className="h-8 w-8 rounded-[9px] text-[var(--nova-text-faint)] hover:bg-[var(--nova-hover)] hover:text-[var(--nova-text)]"
                       aria-label={t('chat.queue.more')}
-                      title={t('chat.queue.more')}
                     >
                       <MoreHorizontal />
                     </Button>
@@ -106,7 +103,6 @@ export function AgentQueuedCommandList({
                       disabled={editDisabled}
                       onSelect={() => void onEdit(item)}
                       className="cursor-pointer text-xs focus:bg-[var(--nova-active)] focus:text-[var(--nova-text)]"
-                      title={item.message_truncated ? t('chat.queue.editTruncated') : undefined}
                     >
                       <PenLine />
                       {t('chat.queue.edit')}

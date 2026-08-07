@@ -8,6 +8,7 @@ import { AutosaveStatusIndicator } from '@/components/forms/autosave-status'
 import { AdaptiveSurface } from '@/components/layout/adaptive-surface'
 import { FeaturePageShell } from '@/components/layout/feature-page-shell'
 import { MobilePaneTrigger } from '@/components/layout/mobile-pane-trigger'
+import { SidebarVisibilityToggle } from '@/components/layout/sidebar-visibility-toggle'
 import { Button } from '@/components/ui/button'
 import { useResourceAutosave } from '@/hooks/use-resource-autosave'
 import { deleteSkillDocument, getSkillDocument, getSkillFileDocument, getSkills, saveSkillDocument, saveSkillFileDocument, skillCatalogTargetKey } from '@/lib/api'
@@ -97,6 +98,7 @@ export function SkillsView({ target, onClose }: SkillsViewProps) {
   const [error, setError] = useState<string | null>(null)
   const [mode, setMode] = useState<SkillsMode>('editor')
   const [agentOpen, setAgentOpen] = useState(false)
+  const [sidebarVisible, setSidebarVisible] = useState(true)
   const [confirmRequest, setConfirmRequest] = useState<ConfirmRequest | null>(null)
   const [documentReloadVersion, setDocumentReloadVersion] = useState(0)
   const [eventSource] = useState(() => `skills-view-${nextSkillsViewSourceID++}`)
@@ -561,6 +563,12 @@ export function SkillsView({ target, onClose }: SkillsViewProps) {
     <FeaturePageShell
       icon={Sparkles}
       title={t('skills.title')}
+      leadingContent={(
+        <SidebarVisibilityToggle
+          visible={sidebarVisible}
+          onToggle={() => setSidebarVisible((visible) => !visible)}
+        />
+      )}
       subtitle={t('skills.subtitle')}
       error={error}
       errorTitle={t('skills.error')}
@@ -611,6 +619,7 @@ export function SkillsView({ target, onClose }: SkillsViewProps) {
             />
           ),
           desktopClassName: 'min-h-0 border-r border-[var(--nova-border)]',
+          desktopVisible: sidebarVisible,
           mobileClassName: 'w-[min(90vw,380px)]',
         }}
         right={
@@ -643,23 +652,25 @@ export function SkillsView({ target, onClose }: SkillsViewProps) {
           mainMinSize: '240px',
         }}
       >
-        {({ openLeft, openRight }) => (
+        {({ isMobile, openLeft, openRight }) => (
           <main className="flex h-full min-h-0 flex-col">
-            <div className="flex h-10 shrink-0 items-center gap-2 border-b border-[var(--nova-border)] bg-[var(--nova-surface)] px-3 md:hidden">
-              <MobilePaneTrigger
-                side="left"
-                label={t('workbench.mobile.openSidePanel', { label: t('skills.title') })}
-                onClick={openLeft}
-              />
-              <span className="min-w-0 flex-1 truncate text-[11px] text-[var(--nova-text-muted)]">{document?.name || t('skills.title')}</span>
-              {agentAvailable && agentOpen && (
+            {isMobile && (
+              <div className="flex h-10 shrink-0 items-center gap-2 border-b border-[var(--nova-border)] bg-[var(--nova-surface)] px-3">
                 <MobilePaneTrigger
-                  side="right"
-                  label={t('workbench.mobile.openSidePanel', { label: t('skills.agent.button') })}
-                  onClick={openRight}
+                  side="left"
+                  label={t('workbench.mobile.openSidePanel', { label: t('skills.title') })}
+                  onClick={openLeft}
                 />
-              )}
-            </div>
+                <span className="min-w-0 flex-1 truncate text-[11px] text-[var(--nova-text-muted)]">{document?.name || t('skills.title')}</span>
+                {agentAvailable && agentOpen && (
+                  <MobilePaneTrigger
+                    side="right"
+                    label={t('workbench.mobile.openSidePanel', { label: t('skills.agent.button') })}
+                    onClick={openRight}
+                  />
+                )}
+              </div>
+            )}
             {mode === 'create' ? (
               <SkillCreatePanel
                 target={catalogTarget}

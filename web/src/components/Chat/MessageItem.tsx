@@ -11,7 +11,11 @@ import { decodeToolResultEnvelope, type ToolResultEnvelope } from '@/lib/tool-re
 import { isWorkspaceImagePath } from '@/lib/workspace-file-kind'
 import { useBottomScrollLock } from '@/hooks/useBottomScrollLock'
 import { TooltipIconButton } from '@/components/common/tooltip-icon-button'
-import { TooltipProvider } from '@/components/ui/tooltip'
+import {
+  DEFAULT_TOOLTIP_DELAY_MS,
+  DEFAULT_TOOLTIP_SKIP_DELAY_MS,
+  TooltipProvider,
+} from '@/components/ui/tooltip'
 import { subAgentSessionKey } from './subagent-session'
 import { Button } from '@/components/ui/button'
 import { parsePlanQuestionSet, planDisplayContent } from '@/lib/plan-mode'
@@ -49,8 +53,8 @@ interface MessageItemProps {
 }
 
 const copyFeedbackDurationMs = 1200
-const messageActionTooltipDelayMs = 500
-const messageActionTooltipSkipDelayMs = 300
+const messageActionTooltipDelayMs = DEFAULT_TOOLTIP_DELAY_MS
+const messageActionTooltipSkipDelayMs = DEFAULT_TOOLTIP_SKIP_DELAY_MS
 const messageActionTooltipSideOffset = 3
 const planThinkingPreviewStaleMs = 3500
 
@@ -899,14 +903,12 @@ function ToolExecutionBlock({ message, onResolve, onLayoutChange }: { message: C
             <span className="shrink-0 font-medium text-[var(--nova-text)]">{t('chat.tool.calling')}</span>
             <code
               className="min-w-0 truncate rounded border border-[var(--nova-border)] bg-[var(--nova-surface-2)] px-1.5 py-0.5 font-mono text-[11px] text-[var(--nova-text-muted)]"
-              title={displayName}
             >
               {displayName}
             </code>
             {taskSubAgent && (
               <span
                 className="min-w-0 truncate rounded border border-[var(--nova-border)] bg-[var(--nova-surface-2)] px-1.5 py-0.5 text-[10px] text-[var(--nova-text-muted)]"
-                title={t('chat.subagent.delegating', { name: taskSubAgent })}
               >
                 {t('chat.subagent.delegating', { name: taskSubAgent })}
               </span>
@@ -918,7 +920,7 @@ function ToolExecutionBlock({ message, onResolve, onLayoutChange }: { message: C
               </span>
             )}
             {!showReadableOutcome && (
-              <span className="min-w-0 flex-1 truncate text-[var(--nova-text-faint)]" title={headerSummary}>
+              <span className="min-w-0 flex-1 truncate text-[var(--nova-text-faint)]">
                 {headerSummary}
               </span>
             )}
@@ -1013,7 +1015,7 @@ function ChapterIllustrationBlock({ projectId, message, onInsert }: { projectId:
           </button>
         </ImagePreviewDialog>
         <div className="flex min-w-0 flex-col gap-2 border-t border-[var(--nova-border)] bg-[var(--nova-surface-2)] px-3 py-2 sm:flex-row sm:items-center">
-          <code className="min-w-0 flex-1 truncate rounded border border-[var(--nova-border)] bg-[var(--nova-surface)] px-2 py-1 font-mono text-[10px] text-[var(--nova-text-muted)]" title={illustration.image_path}>
+          <code className="min-w-0 flex-1 truncate rounded border border-[var(--nova-border)] bg-[var(--nova-surface)] px-2 py-1 font-mono text-[10px] text-[var(--nova-text-muted)]">
             {illustration.image_path}
           </code>
           <div className="flex min-w-0 items-center justify-end gap-2">
@@ -1738,12 +1740,11 @@ const dialogueMarkdownComponents: MarkdownRendererComponents = {
   blockquote: ({ children }: { children?: ReactNode }) => <blockquote>{highlightDialogueNodes(children)}</blockquote>,
 }
 
-function ChatMarkdownLink({ href, title, children }: { href?: string; title?: string; children?: ReactNode }) {
+function ChatMarkdownLink({ href, children }: { href?: string; title?: string; children?: ReactNode }) {
   const external = /^https?:\/\//i.test(href?.trim() || '')
   return (
     <a
       href={href}
-      title={title}
       {...(external ? { target: '_blank', rel: 'noopener noreferrer' } : {})}
     >
       {children}
@@ -1761,7 +1762,7 @@ function ChatMarkdownImage({ src = '', alt = '', title = '', projectId = '' }: {
   return (
     <ImagePreviewDialog src={imageSrc} title={imageTitle} alt={alt || imageTitle} path={imagePath}>
       <button type="button" className="nova-chat-image-button" aria-label={t('chat.image.openPreview')}>
-        <img src={imageSrc} alt={alt || imageTitle} title={title || undefined} loading="lazy" />
+        <img src={imageSrc} alt={alt || imageTitle} loading="lazy" />
       </button>
     </ImagePreviewDialog>
   )

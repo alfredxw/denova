@@ -82,7 +82,7 @@ export function InlineCommentThread<T extends InlineReviewComment>({ comments = 
         )}
       </div>
       {quote && (
-        <blockquote className="mx-3 mt-2 line-clamp-3 border-l-2 border-[var(--nova-border-strong)] pl-2 text-[11px] leading-5 text-[var(--nova-text-muted)]" title={quote}>
+        <blockquote className="mx-3 mt-2 line-clamp-3 border-l-2 border-[var(--nova-border-strong)] pl-2 text-[11px] leading-5 text-[var(--nova-text-muted)]">
           {quote}
         </blockquote>
       )}

@@ -5,14 +5,21 @@ import { Tooltip as TooltipPrimitive } from "radix-ui"
 
 import { cn } from "@/lib/utils"
 
+/** Keeps incidental pointer movement from producing tooltip noise. */
+const DEFAULT_TOOLTIP_DELAY_MS = 1000
+/** Requires a fresh dwell for every trigger instead of opening adjacent hints immediately. */
+const DEFAULT_TOOLTIP_SKIP_DELAY_MS = 0
+
 function TooltipProvider({
-  delayDuration = 0,
+  delayDuration = DEFAULT_TOOLTIP_DELAY_MS,
+  skipDelayDuration = DEFAULT_TOOLTIP_SKIP_DELAY_MS,
   ...props
 }: React.ComponentProps<typeof TooltipPrimitive.Provider>) {
   return (
     <TooltipPrimitive.Provider
       data-slot="tooltip-provider"
       delayDuration={delayDuration}
+      skipDelayDuration={skipDelayDuration}
       {...props}
     />
   )
@@ -54,4 +61,11 @@ function TooltipContent({
   )
 }
 
-export { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger }
+export {
+  DEFAULT_TOOLTIP_DELAY_MS,
+  DEFAULT_TOOLTIP_SKIP_DELAY_MS,
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+}

@@ -1159,7 +1159,6 @@ function IdeWritingInfoActions({
         aria-label={projectLabel}
         aria-pressed={projectVisible}
         className={`nova-nav-item flex h-7 w-7 items-center justify-center ${projectVisible ? 'is-active' : ''}`}
-        title={projectLabel}
       >
         <ProjectIcon className="h-3.5 w-3.5" />
       </button>
@@ -1169,7 +1168,6 @@ function IdeWritingInfoActions({
         aria-label={agentLabel}
         aria-pressed={aiVisible}
         className={`nova-nav-item flex h-7 w-7 items-center justify-center ${aiVisible ? 'is-active' : ''}`}
-        title={agentLabel}
       >
         <AgentIcon className="h-3.5 w-3.5" />
       </button>

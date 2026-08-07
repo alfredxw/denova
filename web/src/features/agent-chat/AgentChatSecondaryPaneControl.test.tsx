@@ -25,7 +25,7 @@ describe('AgentChatSecondaryPaneControl', () => {
     render(<AgentChatSecondaryPaneControl {...baseProps} onOpenPage={onOpenPage} />)
 
     await user.click(screen.getByRole('button', { name: '显示右侧工作区' }))
-    await user.click(await screen.findByRole('menuitem', { name: '阅读器' }))
+    await user.click(await screen.findByRole('menuitem', { name: '写作' }))
 
     expect(onOpenPage).toHaveBeenCalledWith('secondary', 'reader')
   })
@@ -35,10 +35,30 @@ describe('AgentChatSecondaryPaneControl', () => {
     const onHide = vi.fn()
     render(<AgentChatSecondaryPaneControl {...baseProps} visible hasTabs onHide={onHide} />)
 
-    await user.click(screen.getByRole('button', { name: '隐藏右侧工作区' }))
+    const button = screen.getByRole('button', { name: '隐藏右侧工作区' })
+    expect(button).not.toHaveAttribute('title')
+    await user.click(button)
 
     expect(onHide).toHaveBeenCalledTimes(1)
     expect(baseProps.onNewAgentTab).not.toHaveBeenCalled()
+  })
+
+  it('marks a populated pane while it is folded away', () => {
+    const { rerender } = render(<AgentChatSecondaryPaneControl {...baseProps} hasTabs />)
+
+    expect(screen.getByRole('button', { name: '显示右侧工作区' }))
+      .toContainElement(document.querySelector('[data-slot="secondary-pane-presence-indicator"]'))
+
+    rerender(<AgentChatSecondaryPaneControl {...baseProps} visible hasTabs />)
+
+    expect(document.querySelector('[data-slot="secondary-pane-presence-indicator"]')).not.toBeInTheDocument()
+  })
+
+  it('does not mark an empty pane as populated', () => {
+    render(<AgentChatSecondaryPaneControl {...baseProps} />)
+
+    expect(screen.getByRole('button', { name: '显示右侧工作区' })).not.toHaveAttribute('title')
+    expect(document.querySelector('[data-slot="secondary-pane-presence-indicator"]')).not.toBeInTheDocument()
   })
 
   it('keeps reusable pages available for General Projects and hides Book-only pages', async () => {
@@ -54,7 +74,7 @@ describe('AgentChatSecondaryPaneControl', () => {
 
     expect(await screen.findByRole('menuitem', { name: 'Skills' })).toBeInTheDocument()
     expect(screen.getByRole('menuitem', { name: '预设' })).toBeInTheDocument()
-    expect(screen.queryByRole('menuitem', { name: '阅读器' })).not.toBeInTheDocument()
+    expect(screen.queryByRole('menuitem', { name: '写作' })).not.toBeInTheDocument()
     expect(screen.queryByRole('menuitem', { name: '版本管理' })).not.toBeInTheDocument()
   })
 
@@ -63,6 +83,7 @@ describe('AgentChatSecondaryPaneControl', () => {
 
     const button = screen.getByRole('button', { name: '显示右侧工作区，仍有任务运行' })
     expect(button).toHaveAttribute('aria-pressed', 'false')
-    expect(button.querySelector('[aria-hidden="true"]')).toBeInTheDocument()
+    expect(document.querySelector('[data-slot="secondary-pane-running-indicator"]')).toBeInTheDocument()
+    expect(document.querySelector('[data-slot="secondary-pane-presence-indicator"]')).not.toBeInTheDocument()
   })
 })

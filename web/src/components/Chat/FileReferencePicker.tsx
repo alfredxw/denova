@@ -117,10 +117,10 @@ export const FileReferencePicker = forwardRef<FileReferencePickerHandle, FileRef
               }`}>
                 <ItemIcon className="size-3.5" />
               </span>
-              <span className="max-w-[42%] shrink-0 truncate text-xs font-medium text-[var(--nova-text)]" title={file.label}>
+              <span className="max-w-[42%] shrink-0 truncate text-xs font-medium text-[var(--nova-text)]">
                 {trigger}{file.label}
               </span>
-              <span className="min-w-0 flex-1 truncate text-xs text-[var(--nova-text-muted)]" title={file.description}>
+              <span className="min-w-0 flex-1 truncate text-xs text-[var(--nova-text-muted)]">
                 {file.description}
               </span>
               <span className="ml-1 shrink-0 text-[11px] text-[var(--nova-text-faint)]">{kindLabel}</span>

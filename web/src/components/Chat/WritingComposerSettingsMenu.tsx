@@ -63,7 +63,6 @@ export function WritingComposerSettingsMenu({
         <PersistedSettingsMenuSub
           icon={SlidersHorizontal}
           label={t('chat.teller')}
-          title={t('chat.tellerTitle')}
           currentLabel={selectedTeller ? narrativeStyleName(selectedTeller, t) : tellerID}
           value={selectedTeller?.id || tellerID}
           options={writingTellers.map((item) => ({ id: item.id, label: narrativeStyleName(item, t) }))}
@@ -75,7 +74,6 @@ export function WritingComposerSettingsMenu({
       <PersistedSettingsMenuSub
         icon={Sparkles}
         label={t('chat.imagePreset')}
-        title={t('chat.imagePresetTitle')}
         currentLabel={selectedPreset?.name || imagePresetID}
         value={selectedPreset?.id || imagePresetID}
         options={normalizedPresets.map((item) => ({ id: item.id, label: item.name || item.id }))}
@@ -86,7 +84,6 @@ export function WritingComposerSettingsMenu({
       <PersistedSettingsMenuSub
         icon={Sparkles}
         label={t('chat.writingSkill')}
-        title={selectedSkill?.path || t('chat.writingSkillTitle')}
         currentLabel={skillLabel}
         value={selectedSkill?.name || writingSkill}
         options={normalizedSkills.map((option) => ({

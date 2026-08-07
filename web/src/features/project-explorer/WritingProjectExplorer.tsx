@@ -132,7 +132,6 @@ export function WritingProjectExplorer({
       return (
         <span
           className="flex shrink-0 items-center gap-1 text-[10px] text-[var(--nova-text-faint)]"
-          title={`${t('common.words', { count: chapter.words })} · ${chapter.status}`}
         >
           <span>{words}</span>
           <span className="rounded border border-[var(--nova-border)] bg-[var(--nova-surface-2)] px-1 text-[var(--nova-text-muted)]">

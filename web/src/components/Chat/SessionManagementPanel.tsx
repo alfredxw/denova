@@ -176,7 +176,6 @@ export function SessionManagementPanel({
                         onClick={() => void switchToSession(session.id)}
                         aria-current={active ? 'true' : undefined}
                         className="flex min-w-0 flex-1 items-start gap-2 rounded-sm text-left outline-none focus-visible:ring-2 focus-visible:ring-[var(--nova-accent)]"
-                        title={title}
                       >
                         <MessageSquareText className={`mt-0.5 h-3.5 w-3.5 shrink-0 ${active ? 'text-[var(--nova-text)]' : 'text-[var(--nova-text-muted)]'}`} />
                         <span className="min-w-0 flex-1">
@@ -194,7 +193,6 @@ export function SessionManagementPanel({
                             onClick={() => void submitRename(session.id)}
                             className="nova-nav-item rounded p-1"
                             aria-label={t('chat.saveSession', { title: displaySessionTitle(session, t) })}
-                            title={t('common.save')}
                           >
                             <Check className="h-3.5 w-3.5" />
                           </button>
@@ -203,7 +201,6 @@ export function SessionManagementPanel({
                             onClick={cancelRename}
                             className="nova-nav-item rounded p-1"
                             aria-label={t('chat.cancelRename')}
-                            title={t('common.cancel')}
                           >
                             <X className="h-3.5 w-3.5" />
                           </button>
@@ -216,7 +213,6 @@ export function SessionManagementPanel({
                             onClick={() => void enterSession(session.id)}
                             className="nova-nav-item rounded p-1 disabled:cursor-not-allowed disabled:opacity-40"
                             aria-label={t('chat.enterSession', { title: displaySessionTitle(session, t) })}
-                            title={t('chat.enterChat')}
                           >
                             <LogIn className="h-3.5 w-3.5" />
                           </button>
@@ -226,7 +222,6 @@ export function SessionManagementPanel({
                             onClick={() => beginRename(session)}
                             className="nova-nav-item rounded p-1 disabled:cursor-not-allowed disabled:opacity-40"
                             aria-label={`${t('chat.renameSession')} ${displaySessionTitle(session, t)}`}
-                            title={t('common.rename')}
                           >
                             <Edit3 className="h-3.5 w-3.5" />
                           </button>
@@ -236,7 +231,6 @@ export function SessionManagementPanel({
                             onClick={() => void handleDelete(session.id)}
                             className="nova-nav-item rounded p-1 hover:bg-[var(--nova-danger-bg)] hover:text-[var(--nova-danger)] disabled:cursor-not-allowed disabled:opacity-30"
                             aria-label={`${t('chat.deleteSession')} ${displaySessionTitle(session, t)}`}
-                            title={sessions.length <= 1 ? t('chat.keepOneSession') : t('common.delete')}
                           >
                             <Trash2 className="h-3.5 w-3.5" />
                           </button>

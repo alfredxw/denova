@@ -666,10 +666,10 @@ function DetailActions({ onCopy, onDelete }: { onCopy?: () => void; onDelete?: (
   const { t } = useTranslation()
   return (
     <div className="flex justify-end gap-2">
-      <Button className={iconActionClassName} variant="outline" size="icon-sm" disabled={!onCopy} onClick={onCopy} aria-label={t('settingPanel.presetConfig.copy')} title={t('settingPanel.presetConfig.copy')}>
+      <Button className={iconActionClassName} variant="outline" size="icon-sm" disabled={!onCopy} onClick={onCopy} aria-label={t('settingPanel.presetConfig.copy')}>
         <Copy data-icon="inline-start" />
       </Button>
-      <Button className={iconActionClassName} variant="outline" size="icon-sm" disabled={!onDelete} onClick={onDelete} aria-label={t('common.delete')} title={t('common.delete')}>
+      <Button className={iconActionClassName} variant="outline" size="icon-sm" disabled={!onDelete} onClick={onDelete} aria-label={t('common.delete')}>
         <Trash2 data-icon="inline-start" />
       </Button>
     </div>

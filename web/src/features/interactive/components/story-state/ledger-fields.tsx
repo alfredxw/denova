@@ -27,7 +27,6 @@ export function LedgerFieldView({ item }: { item: LedgerFieldItem }) {
       data-renderer={renderer}
       data-change-tone={change ? change.tone : undefined}
       className="story-state-ledger__field"
-      title={change?.reason}
     >
       {renderer === 'stat' ? (
         <StatFieldBody item={item} />
@@ -48,7 +47,7 @@ export function LedgerFieldView({ item }: { item: LedgerFieldItem }) {
 }
 
 function FieldLabel({ label }: { label: string }) {
-  return <h4 className="story-state-ledger__field-label" title={label}>{label}</h4>
+  return <h4 className="story-state-ledger__field-label">{label}</h4>
 }
 
 function StatFieldBody({ item }: { item: LedgerFieldItem }) {
@@ -222,7 +221,7 @@ function NestedObjectList({ value, depth }: { value: Record<string, unknown>; de
         const label = humanizeStateKey(key)
         return (
           <li key={key} className={cn('story-state-ledger__nested-object-item', structured && 'story-state-ledger__nested-object-item--branch')}>
-            <span className="story-state-ledger__nested-object-key" title={label}>{label}:</span>
+            <span className="story-state-ledger__nested-object-key">{label}:</span>
             <div className="story-state-ledger__nested-object-value">
               <ObjectValue value={item} depth={depth + 1} />
             </div>

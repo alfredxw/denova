@@ -144,7 +144,6 @@ export function LoreWorkspaceEditor({
             size="icon-sm"
             onClick={() => onReferenceItem(draft.id)}
             aria-label={t('loreWorkspace.referenceAgent')}
-            title={t('loreWorkspace.referenceAgent')}
           >
             <AtSign />
           </Button>
@@ -156,7 +155,6 @@ export function LoreWorkspaceEditor({
             size="icon-sm"
             onClick={onOpenLibrary}
             aria-label={t('loreWorkspace.openLibrary')}
-            title={t('loreWorkspace.openLibrary')}
           >
             <LibraryBig />
           </Button>
@@ -169,7 +167,6 @@ export function LoreWorkspaceEditor({
           onClick={() => setDeleteTarget({ id: draft.id, name: draft.name })}
           className="text-[var(--nova-text-faint)] hover:bg-[var(--nova-danger-bg)] hover:text-[var(--nova-danger)]"
           aria-label={t('settingPanel.deleteLore')}
-          title={t('settingPanel.deleteLore')}
         >
           <Trash2 />
         </Button>

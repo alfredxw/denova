@@ -41,7 +41,7 @@ describe('AgentTracePanel', () => {
     const user = userEvent.setup()
     render(<AgentTracePanel projectId={projectID} />)
 
-    expect(await screen.findByTitle(runID)).toHaveTextContent(runID)
+    expect(await screen.findByText(runID, { selector: 'code' })).toBeInTheDocument()
     await user.click(await screen.findByRole('button', { name: '复制运行 ID' }))
 
     expect(await screen.findByRole('button', { name: '已复制运行 ID' })).toBeInTheDocument()

@@ -74,7 +74,6 @@ export function AgentSubAgentSessionPanel({ projectId, messages, sessionKey, onC
           onClick={onClose}
           className="nova-nav-item rounded p-1"
           aria-label={t('chat.subagent.closeSession')}
-          title={t('common.close')}
         >
           <X className="h-3.5 w-3.5" />
         </button>

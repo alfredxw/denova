@@ -10,10 +10,20 @@ import (
 
 func TestAppendTurnWithStatePersistsTurnResultAndActorStateAtomically(t *testing.T) {
 	store := NewStore(t.TempDir())
+	system := defaultActorStateSystem()
+	for index := range system.Templates {
+		if system.Templates[index].ID == DefaultActorID {
+			system.Templates[index].Fields = append(system.Templates[index].Fields, ActorStateField{
+				Name: "持续效果", Type: "list", Default: []any{},
+			})
+			break
+		}
+	}
 	story, err := store.CreateStory(CreateStoryRequest{
 		Title:         "青冥试炼",
 		Origin:        "林风进入外门",
 		StoryTellerID: "classic",
+		ActorState:    &system,
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -25,16 +35,9 @@ func TestAppendTurnWithStatePersistsTurnResultAndActorStateAtomically(t *testing
 		Narrative: "苏灿灿替林风处理了掌心灼伤，并答应继续调查青冥灵根。",
 		TurnResult: &TurnResult{
 			StateUpdates: []interactivestate.Update{{
-				Op:   interactivestate.Create,
-				Path: "/protagonist",
-				Value: map[string]any{
-					"template_id": "protagonist",
-					"name":        "林风",
-					"state": map[string]any{
-						"生命":   "10/10",
-						"持续效果": []any{"掌心灼伤｜轻微影响抓握｜休息后解除"},
-					},
-				},
+				Op:    interactivestate.Replace,
+				Path:  "/protagonist/持续效果",
+				Value: []any{"掌心灼伤｜轻微影响抓握｜休息后解除"},
 			}},
 			Choices: testTurnChoices(),
 			DirectorUpdate: &DirectorUpdateHint{
@@ -46,7 +49,7 @@ func TestAppendTurnWithStatePersistsTurnResultAndActorStateAtomically(t *testing
 	if err != nil {
 		t.Fatalf("AppendTurnWithState failed: %v", err)
 	}
-	if turn.TurnResult == nil || len(turn.TurnResult.StateUpdates) != 1 || turn.TurnResult.StateUpdates[0].Path != "/protagonist" || turn.TurnResult.DirectorUpdate == nil || !turn.TurnResult.DirectorUpdate.Needed {
+	if turn.TurnResult == nil || len(turn.TurnResult.StateUpdates) != 1 || turn.TurnResult.StateUpdates[0].Path != "/protagonist/持续效果" || turn.TurnResult.DirectorUpdate == nil || !turn.TurnResult.DirectorUpdate.Needed {
 		t.Fatalf("turn result not persisted: %#v", turn.TurnResult)
 	}
 	if delta == nil || turn.StateDelta == nil || len(turn.StateDelta.ActorOps) == 0 {

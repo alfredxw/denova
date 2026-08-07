@@ -39,6 +39,40 @@ func TestNormalizeToolArgumentsEnforcesStableConstraints(t *testing.T) {
 	}
 }
 
+func TestNormalizeToolArgumentsRepairsCommonModelJSONSyntax(t *testing.T) {
+	info, err := GoStruct2ToolInfo[constrainedToolArguments]("constrained", "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	tests := []struct {
+		name      string
+		arguments string
+	}{
+		{name: "extra closing delimiter", arguments: `{"count":4,"code":"ABC"}}`},
+		{name: "unquoted keys and single quotes", arguments: `{count: 4, code: 'ABC'}`},
+		{name: "truncated object", arguments: `{"count":4,"code":"ABC"`},
+		{name: "markdown code fence", arguments: "```json\n{\"count\":4,\"code\":\"ABC\"}\n```"},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			normalized, err := NormalizeToolArguments(info, test.arguments)
+			if err != nil || normalized != `{"code":"ABC","count":4}` {
+				t.Fatalf("normalized=%s err=%v", normalized, err)
+			}
+		})
+	}
+}
+
+func TestNormalizeToolArgumentsRepairStillEnforcesSchema(t *testing.T) {
+	info, err := GoStruct2ToolInfo[constrainedToolArguments]("constrained", "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := NormalizeToolArguments(info, `{"count":8,"code":"ABC"}}`); err == nil || !strings.Contains(err.Error(), "maximum") {
+		t.Fatalf("repaired arguments must still pass schema validation: %v", err)
+	}
+}
+
 func TestNormalizeToolArgumentsAppliesDefaultsDropsForbiddenExtrasAndCoercesScalars(t *testing.T) {
 	info := toolInfoFromSchema(t, `{
 		"type":"object",

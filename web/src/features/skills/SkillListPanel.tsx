@@ -80,7 +80,7 @@ export function SkillListPanel({
             {scopeInfo?.writable ? t('skills.scope.editable') : t('skills.scope.readonly')}
           </span>
           {scopeInfo?.path && (
-            <span className="max-w-28 truncate font-mono text-[10px] text-[var(--nova-text-faint)]" title={scopeInfo.path}>
+            <span className="max-w-28 truncate font-mono text-[10px] text-[var(--nova-text-faint)]">
               {scopeInfo.path}
             </span>
           )}

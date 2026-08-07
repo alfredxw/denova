@@ -35,12 +35,11 @@ export function ToggleSwitch({ checked, onChange, ariaLabel, statusLabel }: {
   const label = statusLabel || (checked ? t('agents.option.on') : t('agents.option.off'))
   const dotClass = statusDotClass(label, checked, t)
   return (
-    <span className="inline-flex shrink-0 items-center gap-1.5" title={`${ariaLabel}: ${label}`}>
+    <span className="inline-flex shrink-0 items-center gap-1.5">
       <Switch
         checked={checked}
         onCheckedChange={onChange}
         aria-label={ariaLabel}
-        title={`${ariaLabel}: ${label}`}
       />
       <span aria-hidden="true" className={`size-1.5 shrink-0 rounded-full ${dotClass}`} />
     </span>

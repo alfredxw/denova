@@ -66,7 +66,6 @@ export function BookSwitcher({
         <button
           type="button"
           aria-label={triggerLabel}
-          title={triggerLabel}
           className={`flex min-w-0 items-center justify-center gap-1.5 rounded-[var(--nova-radius)] border border-[var(--nova-border)] bg-[var(--nova-surface-2)] text-[var(--nova-text-muted)] outline-none transition-colors hover:bg-[var(--nova-hover)] hover:text-[var(--nova-text)] focus-visible:ring-2 focus-visible:ring-[var(--nova-field-focus-border)] data-[state=open]:border-[var(--nova-field-focus-border)] data-[state=open]:bg-[var(--nova-active)] data-[state=open]:text-[var(--nova-text)] ${compact ? 'h-8 max-w-[34vw] px-2 text-[11px]' : 'h-7 max-w-[min(16rem,28vw)] px-2.5 text-[11px]'}`}
         >
           <BookOpen className={`h-3.5 w-3.5 shrink-0 ${compact ? 'hidden' : ''}`} />

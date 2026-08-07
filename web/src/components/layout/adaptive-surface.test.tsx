@@ -27,6 +27,29 @@ describe('AdaptiveSurface', () => {
     expect(container.querySelector('[data-nova-adaptive-container="true"]')).not.toBeInTheDocument()
   })
 
+  it('anchors desktop-only controls outside resizing pane content', () => {
+    const { container } = render(
+      <AdaptiveSurface desktopOverlay={<button type="button">Fixed control</button>}>
+        <div>Main content</div>
+      </AdaptiveSurface>,
+    )
+
+    expect(container.querySelector('[data-nova-adaptive-overlay-host="true"]'))
+      .toContainElement(screen.getByRole('button', { name: 'Fixed control' }))
+  })
+
+  it('omits desktop-only controls from compact layouts', () => {
+    setMobileViewport(true)
+
+    render(
+      <AdaptiveSurface desktopOverlay={<button type="button">Fixed control</button>}>
+        <div>Main content</div>
+      </AdaptiveSurface>,
+    )
+
+    expect(screen.queryByRole('button', { name: 'Fixed control' })).not.toBeInTheDocument()
+  })
+
   it('transitions a desktop pane into an accessible compact state', async () => {
     const user = userEvent.setup()
     const { container } = render(<CompactLeftPane><div>Main content</div></CompactLeftPane>)

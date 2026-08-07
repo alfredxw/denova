@@ -44,7 +44,7 @@ describe('AgentChatTabBar', () => {
         activeTabId="skills-tab"
         terminalCommands={[]}
         pageIds={AGENT_CHAT_PAGE_IDS}
-        tabTitle={(tab) => (tab.id === 'skills-tab' ? 'Skills tab' : 'Reader tab')}
+        tabTitle={(tab) => (tab.id === 'skills-tab' ? 'Skills tab' : 'Writing tab')}
         onActivate={vi.fn()}
         onClose={vi.fn()}
         onCloseOthers={vi.fn()}
@@ -64,9 +64,9 @@ describe('AgentChatTabBar', () => {
     expect(activeTab).toHaveAttribute('aria-selected', 'true')
     expect(activeTab.className).toContain('aria-selected:bg-[var(--nova-active)]')
     expect(activeTab.querySelector('[aria-hidden="true"]')?.className).toContain('group-aria-[selected=true]/tab:opacity-100')
-    expect(screen.getByRole('tab', { name: /Reader tab/ })).toHaveAttribute('aria-selected', 'false')
+    expect(screen.getByRole('tab', { name: /Writing tab/ })).toHaveAttribute('aria-selected', 'false')
     expect(activeTab.parentElement).toHaveClass('min-w-28', 'max-w-40', 'flex-[1_1_10rem]')
-    expect(screen.getByRole('tab', { name: /Reader tab/ }).parentElement).toHaveClass('min-w-28', 'max-w-40', 'flex-[1_1_10rem]')
+    expect(screen.getByRole('tab', { name: /Writing tab/ }).parentElement).toHaveClass('min-w-28', 'max-w-40', 'flex-[1_1_10rem]')
     expect(activeTab).toHaveAttribute('aria-roledescription', '可排序标签页')
     expect(screen.getByRole('tablist')).toHaveClass('overflow-x-auto', '[&::-webkit-scrollbar]:hidden')
     expect(screen.getByRole('tablist')).toHaveStyle({ scrollbarWidth: 'none' })
@@ -74,8 +74,7 @@ describe('AgentChatTabBar', () => {
     expect(document.querySelector('[data-slot="agent-chat-project-context"]')).not.toBeInTheDocument()
   })
 
-  it('renders the shared tab preview while keyboard dragging', async () => {
-    const user = userEvent.setup()
+  it('keeps a trailing pane toggle visually inline with the tabs', () => {
     renderTabBar(
       <AgentChatTabBar
         projectId={projectId}
@@ -84,7 +83,8 @@ describe('AgentChatTabBar', () => {
         activeTabId="reader-tab"
         terminalCommands={[]}
         pageIds={AGENT_CHAT_PAGE_IDS}
-        tabTitle={(tab) => (tab.id === 'reader-tab' ? 'Reader tab' : 'Skills tab')}
+        tabTitle={(tab) => tab.id}
+        endActions={<button type="button">Pane toggle</button>}
         onActivate={vi.fn()}
         onClose={vi.fn()}
         onCloseOthers={vi.fn()}
@@ -99,11 +99,42 @@ describe('AgentChatTabBar', () => {
       />,
     )
 
-    const tab = screen.getByRole('tab', { name: /Reader tab/ })
+    expect(screen.getByRole('button', { name: 'Pane toggle' }).parentElement)
+      .toHaveClass('px-1')
+    expect(screen.getByRole('button', { name: 'Pane toggle' }).parentElement)
+      .not.toHaveClass('border-l')
+  })
+
+  it('renders the shared tab preview while keyboard dragging', async () => {
+    const user = userEvent.setup()
+    renderTabBar(
+      <AgentChatTabBar
+        projectId={projectId}
+        group="primary"
+        tabs={tabs}
+        activeTabId="reader-tab"
+        terminalCommands={[]}
+        pageIds={AGENT_CHAT_PAGE_IDS}
+        tabTitle={(tab) => (tab.id === 'reader-tab' ? 'Writing tab' : 'Skills tab')}
+        onActivate={vi.fn()}
+        onClose={vi.fn()}
+        onCloseOthers={vi.fn()}
+        onCloseToRight={vi.fn()}
+        onRename={vi.fn()}
+        onTogglePin={vi.fn()}
+        onMoveTab={vi.fn()}
+        onNewAgentTab={vi.fn()}
+        onNewTerminalTab={vi.fn()}
+        onOpenFiles={vi.fn()}
+        onOpenPage={vi.fn()}
+      />,
+    )
+
+    const tab = screen.getByRole('tab', { name: /Writing tab/ })
     tab.focus()
     fireEvent.keyDown(tab, { key: ' ', code: 'Space' })
 
-    await waitFor(() => expect(document.querySelector('[data-slot="workbench-tab-drag-overlay"]')).toHaveTextContent('Reader tab'))
+    await waitFor(() => expect(document.querySelector('[data-slot="workbench-tab-drag-overlay"]')).toHaveTextContent('Writing tab'))
 
     await user.keyboard('{Escape}')
     await waitFor(() => expect(document.querySelector('[data-slot="workbench-tab-drag-overlay"]')).not.toBeInTheDocument())
@@ -199,7 +230,7 @@ describe('AgentChatTabBar', () => {
           activeTabId="reader-tab"
           terminalCommands={[]}
           pageIds={AGENT_CHAT_PAGE_IDS}
-          tabTitle={(tab) => (tab.id === 'reader-tab' ? 'Reader' : 'Skills')}
+          tabTitle={(tab) => (tab.id === 'reader-tab' ? 'Writing' : 'Skills')}
           onActivate={vi.fn()}
           onClose={vi.fn()}
           onCloseOthers={vi.fn()}
@@ -214,7 +245,7 @@ describe('AgentChatTabBar', () => {
         />,
       )
 
-      await user.hover(screen.getByText('Reader'))
+      await user.hover(screen.getByText('Writing'))
       await new Promise((resolve) => window.setTimeout(resolve, 600))
       expect(screen.queryByRole('tooltip')).not.toBeInTheDocument()
       expect(document.querySelector('[data-slot="tooltip-content"]')).not.toBeInTheDocument()
@@ -261,6 +292,21 @@ describe('AgentChatTabBar', () => {
     expect(screen.getByRole('menuitem', { name: 'Claude Code' })).toBeInTheDocument()
     expect(screen.queryByRole('menuitem', { name: 'Shell' })).not.toBeInTheDocument()
     expect(screen.getByRole('menuitem', { name: 'Aider' })).toBeInTheDocument()
+    expect(screen.getAllByRole('menuitem').map((item) => item.textContent)).toEqual([
+      '新建对话',
+      '终端',
+      'Codex CLI',
+      'Claude Code',
+      'Aider',
+      '写作',
+      '资料库',
+      '预设',
+      'Skills',
+      'Agents',
+      '自动化',
+      '版本管理',
+      '文件',
+    ])
 
     await user.click(screen.getByRole('menuitem', { name: '终端' }))
     expect(onNewTerminalTab).toHaveBeenLastCalledWith('primary', 'shell')

@@ -2,6 +2,7 @@ package interactive
 
 import (
 	"reflect"
+	"strings"
 	"testing"
 
 	agent "github.com/alfredxw/denova/agent"
@@ -60,6 +61,74 @@ func TestModelContextBatchPersistsWithoutAdvancingBranch(t *testing.T) {
 		t.Fatal(err)
 	}
 	assertPendingModelContextBatch(t, reloadedContext.Snapshot, messages)
+}
+
+func TestModelContextBatchPersistsAcrossRecentSideEventWindow(t *testing.T) {
+	for _, acceptBeforeSideEvents := range []bool{false, true} {
+		for _, reopen := range []bool{false, true} {
+			name := "head_before_window/warm_cache"
+			if acceptBeforeSideEvents {
+				name = "input_before_window/warm_cache"
+			}
+			if reopen {
+				name = strings.Replace(name, "warm_cache", "cold_cache", 1)
+			}
+			t.Run(name, func(t *testing.T) {
+				workspace := t.TempDir()
+				store := NewStore(workspace)
+				story, err := store.CreateStory(CreateStoryRequest{Title: "old active head", StoryTellerID: "classic"})
+				if err != nil {
+					t.Fatal(err)
+				}
+				turn, err := store.AppendTurn(story.ID, AppendTurnRequest{
+					BranchID: "main", User: "enter", Narrative: "The gate opens.",
+				})
+				if err != nil {
+					t.Fatal(err)
+				}
+				identity := DomainCommitIdentity{CommandID: "command-old-head", OperationID: "operation-old-head", Cycle: 1}
+				input, err := NewPlayerInputIntent(identity, "main", "inspect the gate")
+				if err != nil {
+					t.Fatal(err)
+				}
+				var receipt PlayerInputReceipt
+				if acceptBeforeSideEvents {
+					receipt, err = store.CommitPlayerInput(story.ID, input)
+					if err != nil {
+						t.Fatal(err)
+					}
+				}
+				appendModelInvisibleStoryEvents(t, store, story.ID, "main", storyRecentCacheRecordLimit+1)
+				if reopen {
+					store = NewStore(workspace)
+				}
+				if !acceptBeforeSideEvents {
+					receipt, err = store.CommitPlayerInput(story.ID, input)
+					if err != nil {
+						t.Fatal(err)
+					}
+				}
+				if receipt.Event.ParentID != turn.ID {
+					t.Fatalf("accepted input parent = %q, want active head %q", receipt.Event.ParentID, turn.ID)
+				}
+				intents, err := NewModelContextBatchIntents(identity, "main", 0, durableModelContextBatchFixture())
+				if err != nil {
+					t.Fatal(err)
+				}
+				if _, err := store.AppendModelContextBatch(story.ID, intents[0]); err != nil {
+					t.Fatalf("model context batch rejected an input attached to the active head: %v", err)
+				}
+				coldStore := NewStore(workspace)
+				_, recent, err := coldStore.readStoryRecentLocked(story.ID, "main")
+				if err != nil {
+					t.Fatal(err)
+				}
+				if len(recent) > storyRecentCacheRecordLimit {
+					t.Fatalf("cold recent records = %d, want at most %d", len(recent), storyRecentCacheRecordLimit)
+				}
+			})
+		}
+	}
 }
 
 func TestTurnAtomicallyAbsorbsDurableModelContextBatchOnce(t *testing.T) {

@@ -118,7 +118,7 @@ function ContextUsageSummary({ analysis }: { analysis: ContextAnalysis }) {
   return (
     <div className="grid gap-2 rounded-[var(--nova-radius)] border border-[var(--nova-border)] bg-[var(--nova-surface-2)] p-2 text-[11px] sm:grid-cols-5">
       {items.map((item) => (
-			<div key={item.label} className="min-w-0" title={'title' in item ? item.title : undefined}>
+			<div key={item.label} className="min-w-0">
           <div className="truncate text-[var(--nova-text-faint)]">{item.label}</div>
           <div className="mt-0.5 truncate font-medium text-[var(--nova-text)]">{item.value}</div>
         </div>

@@ -53,7 +53,6 @@ export function AgentComposerControls({
           ? 'nova-agent-composer-stop rounded-[10px]'
           : 'nova-agent-composer-submit rounded-[10px] bg-[var(--nova-active)] text-[var(--nova-text)] shadow-[inset_0_1px_0_rgba(255,255,255,0.12)] hover:bg-[var(--nova-hover)] disabled:bg-[var(--nova-active)]'}
         aria-label={actionLabel}
-        title={actionLabel}
       >
         {stopMode ? <Square className="fill-current" /> : sendIcon || <Send />}
       </Button>

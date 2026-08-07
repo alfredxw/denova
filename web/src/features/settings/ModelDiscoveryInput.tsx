@@ -97,7 +97,6 @@ export function ModelDiscoveryInput({ profile, defaultProtocol, value, placehold
             size="icon-sm"
             disabled={!available}
             aria-label={actionLabel}
-            title={actionLabel}
             className="shrink-0"
           >
             {state.status === 'loading' ? <Loader2 className="animate-spin" /> : <ListRestart />}
@@ -117,7 +116,6 @@ export function ModelDiscoveryInput({ profile, defaultProtocol, value, placehold
               size="icon-xs"
               disabled={state.status === 'loading'}
               aria-label={t('settings.model.discoveryRefresh')}
-              title={t('settings.model.discoveryRefresh')}
               onClick={() => void load()}
             >
               <RefreshCw className={cn(state.status === 'loading' && 'animate-spin')} />

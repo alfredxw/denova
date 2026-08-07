@@ -222,7 +222,7 @@ const settings = {
   'settings.terminal.deleteCommand': '删除“{{name}}”',
   'settings.terminal.maxSessions': '并发会话上限（1–64）',
   'settings.terminal.scrollbackKB': '回滚缓冲（KB，1–4096）',
-  'settings.terminal.hint': '快捷命令保存在用户配置中，会同时出现在写作和游戏模式的新建菜单。启动命令支持程序名、完整路径和带引号的参数；终端会以你的账号在本机执行它们。预置命令可编辑或停用，自定义命令可删除。',
+  'settings.terminal.hint': '快捷命令保存在用户配置中，会同时出现在写作和游戏模式的新建菜单。启动命令支持程序名、完整路径和带引号的参数；终端会以你的账号在本机执行它们。预置命令与自定义命令都可以编辑、停用、排序或删除。',
   'settings.title': '设置',
   'settings.theme.dark': '深色',
   'settings.theme.light': '浅色',

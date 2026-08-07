@@ -342,7 +342,7 @@ function FieldRowView({ label, gripLabel, innerRef, draggableProps, dragHandlePr
       >
         <GripVertical className="size-3.5" />
       </button>
-      <span className="min-w-0 flex-1 truncate text-xs text-[var(--nova-text)]" title={label}>{label}</span>
+      <span className="min-w-0 flex-1 truncate text-xs text-[var(--nova-text)]">{label}</span>
       {actions}
     </div>
   )
@@ -350,7 +350,7 @@ function FieldRowView({ label, gripLabel, innerRef, draggableProps, dragHandlePr
 
 function MoveButton({ icon: Icon, label, disabled, onClick }: { icon: typeof ArrowUp; label: string; disabled: boolean; onClick: () => void }) {
   return (
-    <Button type="button" variant="ghost" size="icon-sm" disabled={disabled} aria-label={label} title={label} onClick={onClick}>
+    <Button type="button" variant="ghost" size="icon-sm" disabled={disabled} aria-label={label} onClick={onClick}>
       <Icon className="size-3.5" />
     </Button>
   )

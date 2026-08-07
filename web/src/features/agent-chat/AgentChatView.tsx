@@ -28,6 +28,7 @@ import {
   DESKTOP_SECONDARY_PANE_CONTROLS,
   type AgentChatPaneControls,
 } from './AgentChatProjectGroup'
+import { AgentChatSecondaryPaneControl } from './AgentChatSecondaryPaneControl'
 import { AgentChatSessionHistoryDialog } from './AgentChatSessionHistoryDialog'
 import { AgentChatTabContent } from './AgentChatTabContent'
 import { AgentChatTabDragContext } from './AgentChatTabDragContext'
@@ -623,6 +624,43 @@ export function AgentChatView({
     onArchiveProject: (project: AgentChatProject) => setArchiveTarget(project),
   }
 
+  const renderSecondaryControl = (
+    project: AgentChatProject,
+    state: AgentChatProjectTabState,
+    paneControls: AgentChatPaneControls,
+  ) => {
+    const secondaryTabs = tabsInGroup(state.tabs, 'secondary')
+    const secondaryBusy = (activitiesByProject.get(project.id) ?? []).some(
+      (activity) => activity.group === 'secondary' && ['running', 'connecting', 'ready'].includes(activity.status),
+    )
+    const openInGroup = (action: () => void, target: AgentChatGroupId) => {
+      action()
+      if (target === 'secondary' && paneControls.isMobile) paneControls.openRight()
+    }
+    return (
+      <AgentChatSecondaryPaneControl
+        visible={secondaryTabs.length > 0 && (
+          paneControls.isMobile
+            ? paneControls.openPaneId === 'agent-chat-secondary'
+            : state.secondaryVisible
+        )}
+        hasTabs={secondaryTabs.length > 0}
+        busy={secondaryBusy}
+        newChatDisabled={project.status !== 'available'}
+        terminalCommands={terminalCommands}
+        pageIds={agentChatPageIdsForProjectType(project.type)}
+        onShow={() => (paneControls.isMobile ? paneControls.openRight() : showSecondaryPane(project.id))}
+        onHide={() => (paneControls.isMobile ? paneControls.closePane() : hideSecondaryPane(project.id))}
+        onNewAgentTab={(target) => openInGroup(() => openDraftSessionInProject(project, target), target)}
+        onNewTerminalTab={(target, profileID, profileName) => (
+          openInGroup(() => openTerminal(project, target, profileID, profileName), target)
+        )}
+        onOpenFiles={(target) => openInGroup(() => openProjectFiles(project, target), target)}
+        onOpenPage={(target, pageID) => openInGroup(() => openProjectPage(project, target, pageID), target)}
+      />
+    )
+  }
+
   const renderProjectGroup = (
     project: AgentChatProject,
     state: AgentChatProjectTabState,
@@ -631,9 +669,6 @@ export function AgentChatView({
     mobileControls: AgentChatPaneControls,
   ) => {
     const projectRunning = project.sessions.some((session) => isSessionRunning(project, session))
-    const secondaryBusy = (activitiesByProject.get(project.id) ?? []).some(
-      (activity) => activity.group === 'secondary' && ['running', 'connecting', 'ready'].includes(activity.status),
-    )
     return (
       <AgentChatProjectGroup
         project={project}
@@ -643,7 +678,9 @@ export function AgentChatView({
         mobileControls={mobileControls}
         mountedTabKeys={mountedTabKeys}
         terminalCommands={terminalCommands}
-        secondaryBusy={secondaryBusy}
+        secondaryControl={mobileControls.isMobile
+          ? renderSecondaryControl(project, state, mobileControls)
+          : null}
         tabTitle={tabTitle}
         renderTab={(tab, active) => (
           <AgentChatTabContent
@@ -691,13 +728,14 @@ export function AgentChatView({
         )}
         onOpenFiles={(target) => openProjectFiles(project, target)}
         onOpenPage={(target, pageID) => openProjectPage(project, target, pageID)}
-        onShowSecondary={() => showSecondaryPane(project.id)}
-        onHideSecondary={() => hideSecondaryPane(project.id)}
       />
     )
   }
 
   const activeProjectState = activeProject ? workbench.projects[activeProject.id] ?? emptyProjectTabState() : null
+  const desktopSecondaryControl = activeProject && activeProjectState
+    ? renderSecondaryControl(activeProject, activeProjectState, DESKTOP_SECONDARY_PANE_CONTROLS)
+    : null
   const secondaryVisible = Boolean(
     activeProjectState?.secondaryVisible && tabsInGroup(activeProjectState.tabs, 'secondary').length > 0,
   )
@@ -719,6 +757,7 @@ export function AgentChatView({
       >
         <AgentChatWorkspaceSurface
           sidebarProps={treeProps}
+          desktopSecondaryControl={desktopSecondaryControl}
           secondaryPane={{
             content: <div className="relative h-full min-h-0">{secondaryProjectLayers}</div>,
             visible: secondaryVisible,
@@ -807,7 +846,6 @@ export function AgentChatView({
           archiveTarget ? (
             <div
               className="truncate rounded border border-[var(--nova-border)] bg-[var(--nova-surface-2)] px-2.5 py-2 text-xs text-[var(--nova-text-faint)]"
-              title={archiveTarget.path}
             >
               {archiveTarget.path}
             </div>

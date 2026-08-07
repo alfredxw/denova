@@ -19,7 +19,7 @@ func terminalConfigFromAppConfig(cfg *config.Config) terminal.Config {
 	}
 	resolved.Enabled = cfg.TerminalEnabled
 	resolved.Shell = strings.TrimSpace(cfg.TerminalShell)
-	if len(cfg.TerminalCommands) > 0 {
+	if cfg.TerminalCommands != nil {
 		resolved.Commands = make([]terminal.CommandProfile, 0, len(cfg.TerminalCommands))
 		for _, command := range cfg.TerminalCommands {
 			resolved.Commands = append(resolved.Commands, terminal.CommandProfile{

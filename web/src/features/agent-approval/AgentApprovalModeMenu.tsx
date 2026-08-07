@@ -103,7 +103,6 @@ export function AgentApprovalModeMenu({ runActive, presentation = 'standalone', 
           disabled={approval.saving}
           className="flex cursor-pointer items-center gap-2 text-xs focus:bg-[var(--nova-active)] focus:text-[var(--nova-text)]"
           aria-label={`${t('agentApproval.input.section')}: ${t(`agentApproval.mode.${displayedMode}.label`)}`}
-          title={runActive ? t('agentApproval.input.changeBlocked') : t(`agentApproval.mode.${displayedMode}.description`)}
         >
           {approval.saving
             ? <Loader2 className="h-3.5 w-3.5 animate-spin" />
@@ -131,7 +130,6 @@ export function AgentApprovalModeMenu({ runActive, presentation = 'standalone', 
           disabled={approval.saving}
           className="nova-agent-composer-pill nova-agent-approval-trigger h-8 max-w-40 shrink-0 gap-1.5 rounded-[10px] border border-[var(--nova-border)] bg-[var(--nova-surface)] px-2 text-xs font-medium text-[var(--nova-text-muted)] hover:bg-[var(--nova-hover)] hover:text-[var(--nova-text)]"
           aria-label={`${t('agentApproval.input.section')}: ${t(`agentApproval.mode.${displayedMode}.label`)}`}
-          title={runActive ? t('agentApproval.input.changeBlocked') : t(`agentApproval.mode.${displayedMode}.description`)}
         >
           {approval.saving
             ? <Loader2 className="h-3.5 w-3.5 animate-spin" />

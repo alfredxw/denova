@@ -805,7 +805,7 @@ describe('Agent MessageList', () => {
     expect(screen.getByText('核对修复结果。')).toBeInTheDocument()
   })
 
-  it('运行完成后将结果正文前后的执行过程统一折叠', () => {
+  it('运行完成后仍按时间顺序保留结果正文前后的执行过程', () => {
     renderMessageList(
       <MessageList
         isStreaming={false}
@@ -822,13 +822,17 @@ describe('Agent MessageList', () => {
 
     const narrative = screen.getByText('门后传来锁链拖地的声音。')
     const processButtons = screen.getAllByRole('button', { name: /执行过程/ })
-    expect(processButtons).toHaveLength(1)
+    expect(processButtons).toHaveLength(2)
     expect(processButtons[0].compareDocumentPosition(narrative) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
+    expect(narrative.compareDocumentPosition(processButtons[1]) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
     expect(screen.queryByText('正文前思考。')).not.toBeInTheDocument()
     expect(screen.queryByText('正文后核对状态。')).not.toBeInTheDocument()
 
     fireEvent.click(processButtons[0])
     expect(screen.getByText('正文前思考。')).toBeInTheDocument()
+    expect(screen.queryByText('正文后核对状态。')).not.toBeInTheDocument()
+
+    fireEvent.click(processButtons[1])
     expect(screen.getByText('正文后核对状态。')).toBeInTheDocument()
   })
 
@@ -880,7 +884,10 @@ describe('Agent MessageList', () => {
     const persistedNarrative = await screen.findByText('雨幕中的城门缓缓打开。')
     expect(persistedNarrative.closest('[data-nova-chat-item="run"]')).toBe(liveRow)
     expect(persistedNarrative).toBe(liveNarrative)
-    expect(screen.getAllByRole('button', { name: /执行过程/ })).toHaveLength(1)
+    const processButtons = screen.getAllByRole('button', { name: /执行过程/ })
+    expect(processButtons).toHaveLength(2)
+    expect(processButtons[0].compareDocumentPosition(persistedNarrative) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
+    expect(persistedNarrative.compareDocumentPosition(processButtons[1]) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
   })
 
   it('旧历史没有正文阶段时仍把同一运行的最后一段正文作为结果', () => {

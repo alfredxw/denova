@@ -94,7 +94,6 @@ const tokenExtension = Node.create({
       mergeAttributes(HTMLAttributes, {
         'data-nova-composer-token': kind,
         'data-token-value': value,
-        title: kind === 'file' ? value : undefined,
         'aria-label': kind === 'file' ? `@${value}` : undefined,
         class: `nova-composer-token nova-composer-token-${kind}`,
       }),

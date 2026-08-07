@@ -25,7 +25,7 @@ export function ProjectMarkdownPreview({ projectId, path, content, onOpenFile }:
         event.preventDefault()
         onOpenFile(projectPath)
       }
-      return <a {...props} href="#" title={projectPath} onClick={open}>{children}</a>
+      return <a {...props} href="#" onClick={open}>{children}</a>
     },
     img: ({ src, alt, node: _node, ...props }) => {
       const projectPath = resolveMarkdownProjectPath(path, src)

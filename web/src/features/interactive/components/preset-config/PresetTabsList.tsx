@@ -54,7 +54,7 @@ export function PresetTabsList<T>({ items, activeId, getId, getTitle, getSubtitl
           <span className="rounded-full border border-[var(--nova-border)] bg-[var(--nova-surface)] px-2 py-0.5 text-[10px] text-[var(--nova-text-faint)]">{items.length}</span>
         </div>
         {addControl || (
-          <Button className={iconActionClassName} variant="outline" size="icon-sm" onClick={onAdd} aria-label={addLabel} title={addLabel}>
+          <Button className={iconActionClassName} variant="outline" size="icon-sm" onClick={onAdd} aria-label={addLabel}>
             <Plus />
           </Button>
         )}

@@ -43,7 +43,6 @@ export function ApiKeyInput({ label, value, placeholder, onChange }: {
           size="icon-xs"
           aria-label={visibilityLabel}
           aria-pressed={visible}
-          title={visibilityLabel}
           className="text-[var(--nova-text-faint)] hover:text-[var(--nova-text)]"
           onClick={() => setVisible((current) => !current)}
         >

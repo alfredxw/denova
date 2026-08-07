@@ -40,7 +40,7 @@ export function ChangesSummary({ changes, actors, schema }: { changes: StoryStat
       </span>
       <span className="min-w-0 truncate">
         {visible.map((item, index) => (
-          <span key={item.id} title={item.change.reason}>
+          <span key={item.id}>
             {index > 0 ? <span className="text-[var(--nova-text-faint)]"> · </span> : null}
             <span className="text-[var(--nova-text-muted)]">{item.label}</span>{' '}
             <SummaryItemValue change={item.change} />

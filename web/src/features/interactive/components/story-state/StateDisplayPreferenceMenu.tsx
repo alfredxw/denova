@@ -17,7 +17,6 @@ export function StateDisplayPreferenceMenu({ value, onChange, onCustomizeLayout,
           variant="ghost"
           size={compact ? 'icon-sm' : 'sm'}
           aria-label={t('storyStage.state.displayPreference')}
-          title={t('storyStage.state.displayPreference')}
         >
           <SlidersHorizontal data-icon="inline-start" />
           {compact ? null : <span>{t(`storyStage.state.display.${value}`)}</span>}

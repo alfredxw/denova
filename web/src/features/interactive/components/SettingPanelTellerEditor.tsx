@@ -666,7 +666,7 @@ function StyleReferenceControls({ projectId, references, refreshReferences, refs
                       <span className="mt-0.5 block truncate text-[11px] text-[var(--nova-text-faint)]">{ref.description || ref.display_path}</span>
                     </span>
                   </button>
-                  <Button className={`${iconActionClassName} m-1 shrink-0`} variant="outline" size="icon" onClick={() => void openStyleEditor(ref.display_path)} aria-label={t('settingPanel.style.editReference', { name: ref.name || ref.display_path })} title={t('settingPanel.style.editReference', { name: ref.name || ref.display_path })}>
+                  <Button className={`${iconActionClassName} m-1 shrink-0`} variant="outline" size="icon" onClick={() => void openStyleEditor(ref.display_path)} aria-label={t('settingPanel.style.editReference', { name: ref.name || ref.display_path })}>
                     <Edit3 data-icon="inline-start" />
                   </Button>
                 </div>
@@ -690,7 +690,7 @@ function StyleReferenceControls({ projectId, references, refreshReferences, refs
               <div key={path} className="flex min-w-0 items-center gap-2 rounded-[var(--nova-radius)] border border-[var(--nova-border)] bg-[var(--nova-surface)] px-2 py-1.5 text-xs">
                 <button type="button" className="flex min-w-0 flex-1 items-center gap-2 text-left" onClick={() => void openStyleEditor(path)} aria-label={t('settingPanel.style.editReference', { name: ref?.name || path })}>
                   <FileText className="h-3.5 w-3.5 shrink-0 text-[var(--nova-text-faint)]" />
-                  <span className="min-w-0 flex-1 truncate text-[var(--nova-text-muted)]" title={path}>{ref?.name || path}</span>
+                  <span className="min-w-0 flex-1 truncate text-[var(--nova-text-muted)]">{ref?.name || path}</span>
                   <span className="hidden max-w-56 truncate text-[11px] text-[var(--nova-text-faint)] md:block">{path}</span>
                 </button>
                 <Button className={`${iconActionClassName} hover:bg-[var(--nova-danger-bg)] hover:text-[var(--nova-danger)]`} variant="outline" size="icon" onClick={() => removeRef(path)} aria-label={t('common.delete')}>
@@ -702,7 +702,7 @@ function StyleReferenceControls({ projectId, references, refreshReferences, refs
           {contents.map((content, index) => (
             <div key={`legacy-${index}`} className="flex min-w-0 items-center gap-2 rounded-[var(--nova-radius)] border border-[var(--nova-border)] bg-[var(--nova-surface)] px-2 py-1.5 text-xs">
               <span className="rounded border border-[var(--nova-border)] px-1.5 py-0.5 text-[10px] text-[var(--nova-text-faint)]">{t('settingPanel.style.legacyInline')}</span>
-              <span className="min-w-0 flex-1 truncate text-[var(--nova-text-muted)]" title={content}>{contentPreview(content)}</span>
+              <span className="min-w-0 flex-1 truncate text-[var(--nova-text-muted)]">{contentPreview(content)}</span>
               {onContentsChange && (
                 <Button className={`${iconActionClassName} hover:bg-[var(--nova-danger-bg)] hover:text-[var(--nova-danger)]`} variant="outline" size="icon" onClick={() => removeLegacyContent(index)} aria-label={t('common.delete')}>
                   <Trash2 data-icon="inline-start" />
@@ -1033,7 +1033,7 @@ function ToggleSwitch({ checked, onChange }: { checked: boolean; onChange: (chec
   const { t } = useTranslation()
   const label = checked ? t('settingPanel.switch.disableRule') : t('settingPanel.switch.enableRule')
   return (
-    <Switch checked={checked} onCheckedChange={onChange} aria-label={label} title={label} />
+      <Switch checked={checked} onCheckedChange={onChange} aria-label={label} />
   )
 }
 

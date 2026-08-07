@@ -120,7 +120,6 @@ export function AgentChatActivitySidebar({
           disabled={projectDirectoryBusy}
           onClick={onAddProject}
           aria-label={t('agentChat.project.add')}
-          title={t('agentChat.project.add')}
         >
           {projectDirectoryBusy ? <Loader2 className="animate-spin" /> : <Plus />}
         </Button>
@@ -131,7 +130,6 @@ export function AgentChatActivitySidebar({
           className="shrink-0"
           onClick={() => onOpenHistory()}
           aria-label={t('agentChat.history.open')}
-          title={t('agentChat.history.open')}
         >
           <Clock3 />
         </Button>
@@ -144,7 +142,6 @@ export function AgentChatActivitySidebar({
             className="shrink-0"
             onClick={onCollapse}
             aria-label={t('agentChat.sidebar.hide')}
-            title={t('agentChat.sidebar.hide')}
           >
             <PanelLeft />
           </Button>
@@ -211,7 +208,6 @@ function SidebarSortMenu({ sortMode, onSortModeChange }: { sortMode: AgentChatSi
           size="icon-xs"
           className="shrink-0"
           aria-label={t('agentChat.sidebar.sort.label', { mode: label })}
-          title={t('agentChat.sidebar.sort.label', { mode: label })}
         >
           <ArrowDownUp />
         </Button>
@@ -293,7 +289,7 @@ export function AgentChatSidebarRail({ onExpand, onCreateDefaultSession, createD
       onFocusCapture={schedulePeek}
       onBlurCapture={closePeek}
     >
-      <Button type="button" variant="ghost" size="icon-xs" onClick={expandSidebar} aria-label={t('agentChat.sidebar.show')} title={t('agentChat.sidebar.show')}>
+      <Button type="button" variant="ghost" size="icon-xs" onClick={expandSidebar} aria-label={t('agentChat.sidebar.show')}>
         <PanelLeft className="rotate-180" />
       </Button>
       <Button
@@ -303,7 +299,6 @@ export function AgentChatSidebarRail({ onExpand, onCreateDefaultSession, createD
         disabled={createDisabled}
         onClick={onCreateDefaultSession}
         aria-label={t('agentChat.sidebar.newChat')}
-        title={t('agentChat.sidebar.newChat')}
       >
         <Plus />
       </Button>
@@ -313,7 +308,6 @@ export function AgentChatSidebarRail({ onExpand, onCreateDefaultSession, createD
         size="icon-xs"
         onClick={() => tree.onOpenHistory()}
         aria-label={t('agentChat.history.open')}
-        title={t('agentChat.history.open')}
       >
         <Clock3 />
       </Button>

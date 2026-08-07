@@ -88,7 +88,7 @@ export function BranchPreview({ branches, currentBranchId, snapshot, onSwitchBra
                   </span>
                   <span className="min-w-0 flex-1">
                     <span className="flex min-w-0 items-center gap-2">
-                      <span className="min-w-0 flex-1 truncate text-xs font-medium text-[var(--nova-text)]" title={name}>{name}</span>
+                      <span className="min-w-0 flex-1 truncate text-xs font-medium text-[var(--nova-text)]">{name}</span>
                       {busy ? <Loader2 className="h-3.5 w-3.5 animate-spin text-[var(--nova-text-muted)]" /> : null}
                       {current ? <span className="shrink-0 text-[10px] font-medium text-[var(--director-brass)]">{t('directorPanel.branches.current')}</span> : null}
                     </span>
@@ -97,7 +97,7 @@ export function BranchPreview({ branches, currentBranchId, snapshot, onSwitchBra
                       {empty ? <span>{t('directorPanel.branches.empty')}</span> : null}
                       {terminal ? <span className="text-[var(--director-ember)]">{t('branchTimeline.terminalBadge')}</span> : null}
                     </span>
-                    {origin ? <span className="mt-0.5 block truncate text-[10px] leading-4 text-[var(--nova-text-faint)]" title={origin.title}>{t('directorPanel.branches.from', { title: origin.title })}</span> : null}
+                    {origin ? <span className="mt-0.5 block truncate text-[10px] leading-4 text-[var(--nova-text-faint)]">{t('directorPanel.branches.from', { title: origin.title })}</span> : null}
                   </span>
                 </button>
               )

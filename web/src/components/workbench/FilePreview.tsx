@@ -100,7 +100,7 @@ function StructuredTextPreview({ path, content, kind }: { path: string; content:
         {preview.text || t('editor.preview.empty')}
       </pre>
       <div className="shrink-0 border-t border-[var(--nova-border)] bg-[var(--nova-surface)] px-3 py-2">
-        <code className="block truncate font-mono text-[11px] text-[var(--nova-text-faint)]" title={path}>{path}</code>
+        <code className="block truncate font-mono text-[11px] text-[var(--nova-text-faint)]">{path}</code>
       </div>
     </div>
   )

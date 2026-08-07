@@ -299,6 +299,28 @@ func TestMergeTerminalCommandsReplacesRegistryInConfiguredOrder(t *testing.T) {
 	}
 }
 
+func TestMergeTerminalCommandsPreservesExplicitlyEmptyRegistry(t *testing.T) {
+	child := Settings{TerminalCommands: []TerminalCommandSettings{}}
+	out := Merge(Settings{TerminalCommands: DefaultTerminalCommands()}, child)
+	if out.TerminalCommands == nil || len(out.TerminalCommands) != 0 {
+		t.Fatalf("explicit empty terminal registry should override defaults: %#v", out.TerminalCommands)
+	}
+}
+
+func TestWriteSettingsFilePreservesExplicitlyEmptyTerminalRegistry(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "config.toml")
+	if err := WriteSettingsFile(path, Settings{TerminalCommands: []TerminalCommandSettings{}}); err != nil {
+		t.Fatal(err)
+	}
+	out, err := ReadSettingsFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if out.TerminalCommands == nil || len(out.TerminalCommands) != 0 {
+		t.Fatalf("explicit empty terminal registry was not preserved: %#v", out.TerminalCommands)
+	}
+}
+
 func TestWriteSettingsFileMigratesAndTrimsLegacyTerminalCommands(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "config.toml")
 	in := Settings{

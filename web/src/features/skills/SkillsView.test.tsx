@@ -56,6 +56,42 @@ describe('SkillsView', () => {
     }))
   })
 
+  it('collapses and restores the Skills sidebar from the page header', async () => {
+    const user = userEvent.setup()
+    render(<SkillsView workspace="/books/demo" />)
+
+    const collapse = await screen.findByRole('button', { name: '收起侧边栏' })
+    const separator = screen.getByRole('separator', { name: '调整侧边栏宽度' })
+    await user.click(collapse)
+
+    expect(screen.getByRole('button', { name: '展开侧边栏' })).toHaveAttribute('aria-pressed', 'false')
+    expect(separator).toHaveAttribute('aria-hidden', 'true')
+
+    await user.click(screen.getByRole('button', { name: '展开侧边栏' }))
+    expect(screen.getByRole('button', { name: '收起侧边栏' })).toHaveAttribute('aria-pressed', 'true')
+    expect(separator).toHaveAttribute('aria-hidden', 'false')
+  })
+
+  it('keeps the Skill sidebar entry point available at tablet widths', async () => {
+    vi.stubGlobal('matchMedia', vi.fn((query: string) => ({
+      matches: query === '(max-width: 1023px)',
+      media: query,
+      onchange: null,
+      addListener: () => {},
+      removeListener: () => {},
+      addEventListener: () => {},
+      removeEventListener: () => {},
+      dispatchEvent: () => false,
+    })))
+
+    try {
+      render(<SkillsView workspace="/books/demo" />)
+      expect(await screen.findByRole('button', { name: '打开Skills面板' })).toBeInTheDocument()
+    } finally {
+      vi.unstubAllGlobals()
+    }
+  })
+
   it('opens the Config Agent in a resizable desktop pane', async () => {
     const user = userEvent.setup()
     render(<SkillsView workspace="/books/demo" />)

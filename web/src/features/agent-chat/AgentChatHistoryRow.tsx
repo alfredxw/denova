@@ -28,7 +28,6 @@ export function AgentChatHistoryRow({ item, onOpen, onRename, onDelete }: AgentC
         type="button"
         onClick={onOpen}
         aria-label={t('agentChat.history.openSession', { title })}
-        title={title}
         className="flex min-h-8 min-w-0 flex-1 items-center gap-2 rounded-[var(--nova-radius)] px-2 py-1.5 text-left outline-none focus-visible:ring-1 focus-visible:ring-[var(--nova-accent)]"
       >
         <MessageSquareText className={`size-3.5 shrink-0 ${item.session.running ? 'text-[var(--nova-success)]' : 'text-[var(--nova-text-faint)]'}`} />

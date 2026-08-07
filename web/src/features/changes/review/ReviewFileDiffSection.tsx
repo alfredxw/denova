@@ -112,7 +112,7 @@ export function ReviewFileDiffSection({
           className="flex min-w-0 flex-1 items-center gap-2 self-stretch px-2 text-left hover:bg-[var(--nova-hover)] focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-inset focus-visible:ring-[var(--nova-accent-blue)]"
         >
           {collapsed ? <ChevronRight className="h-3.5 w-3.5 shrink-0" /> : <ChevronDown className="h-3.5 w-3.5 shrink-0" />}
-          <span className="min-w-0 flex-1 truncate font-mono text-[11px] text-[var(--nova-text)]" title={file.path}>{file.path}</span>
+          <span className="min-w-0 flex-1 truncate font-mono text-[11px] text-[var(--nova-text)]">{file.path}</span>
         </button>
         {hasDraft && <span className="mr-2 hidden text-[10px] text-[var(--nova-accent-blue)] sm:inline">{t('changes.commentDraft')}</span>}
         {conflicted && <AlertTriangle className="mr-2 h-3.5 w-3.5 shrink-0 text-[var(--nova-warning)]" aria-label={t('changes.applyState.conflicted')} />}

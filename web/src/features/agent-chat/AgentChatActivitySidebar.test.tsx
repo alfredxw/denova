@@ -95,7 +95,7 @@ describe('AgentChatActivitySidebar', () => {
   it('keeps the current Project selected and exposes recent conversation navigation', async () => {
     const user = userEvent.setup()
     const { props } = renderSidebar()
-    const projectButton = screen.getByTitle(project.path)
+    const projectButton = screen.getByRole('button', { name: '收起 Alpha' })
     const activityButton = screen.getByRole('button', { name: /Active chat/ })
     const terminalButton = screen.getByRole('button', { name: /Shell/ })
 
@@ -116,6 +116,23 @@ describe('AgentChatActivitySidebar', () => {
     await user.click(screen.getByRole('button', { name: '查看 Alpha 的全部 2 个会话' }))
     expect(props.onOpenHistory).toHaveBeenCalledWith(project)
     expect(screen.getByRole('button', { name: '对话历史' })).toBeInTheDocument()
+  })
+
+  it('shows Project details in a right-side card without a tooltip', async () => {
+    const user = userEvent.setup()
+    renderSidebar()
+    const projectButton = screen.getByRole('button', { name: '收起 Alpha' })
+
+    expect(projectButton).not.toHaveAttribute('title')
+    expect(screen.queryByText(project.path)).not.toBeInTheDocument()
+    expect(screen.queryByRole('tooltip')).not.toBeInTheDocument()
+
+    await user.hover(projectButton)
+    const path = await screen.findByText(project.path, undefined, { timeout: 1600 })
+    const details = path.closest('[data-slot="agent-chat-project-details"]')
+    expect(details).toHaveAttribute('data-side', 'right')
+    expect(details).toHaveTextContent(project.name)
+    expect(screen.queryByRole('tooltip')).not.toBeInTheDocument()
   })
 
   it('keeps a recent conversation in place when it gains open-session state', () => {
@@ -220,7 +237,7 @@ describe('AgentChatActivitySidebar', () => {
     })
 
     expect(screen.queryByRole('button', { name: '打开 Beta history' })).not.toBeInTheDocument()
-    await user.click(screen.getByTitle(beta.path))
+    await user.click(screen.getByRole('button', { name: '展开 Beta' }))
     expect(props.onSelectProject).toHaveBeenCalledWith(beta)
     expect(screen.getByRole('button', { name: '打开 Beta history' })).toBeInTheDocument()
   })
@@ -231,7 +248,7 @@ describe('AgentChatActivitySidebar', () => {
     await user.click(screen.getByRole('button', { name: /Active chat/ }))
     expect(props.onOpenSession).toHaveBeenCalledWith(project, project.sessions[0])
 
-    const projectButton = screen.getByTitle(project.path)
+    const projectButton = screen.getByRole('button', { name: '收起 Alpha' })
     const projectContent = document.querySelector('[data-slot="agent-chat-project-content"]')
     expect(projectButton).toHaveAccessibleName('收起 Alpha')
     expect(projectButton.querySelector('[data-slot="agent-chat-project-chevron"]')?.closest('button')).toBe(projectButton)
@@ -261,7 +278,10 @@ describe('AgentChatActivitySidebar', () => {
         name: '手动排序',
       }),
     )
-    expect(screen.getByTitle(/books\/alpha.*长按拖拽排序/)).toHaveClass('cursor-default')
+    const projectButton = screen.getByRole('button', { name: '收起 Alpha' })
+    expect(projectButton).toHaveClass('cursor-default')
+    expect(projectButton).not.toHaveAttribute('title')
+    expect(projectButton).toHaveAttribute('aria-description', '长按拖拽排序')
   })
 
   it('does not mount the full peek tree when the expand action is clicked directly', () => {
@@ -285,7 +305,7 @@ describe('AgentChatActivitySidebar', () => {
       act(() => vi.advanceTimersByTime(200))
 
       expect(onExpand).toHaveBeenCalledTimes(1)
-      expect(screen.queryByTitle(project.path)).not.toBeInTheDocument()
+      expect(screen.queryByRole('button', { name: '收起 Alpha' })).not.toBeInTheDocument()
     } finally {
       vi.useRealTimers()
     }
@@ -306,10 +326,10 @@ describe('AgentChatActivitySidebar', () => {
 
       fireEvent.mouseEnter(rail)
       act(() => vi.advanceTimersByTime(119))
-      expect(screen.queryByTitle(project.path)).not.toBeInTheDocument()
+      expect(screen.queryByRole('button', { name: '收起 Alpha' })).not.toBeInTheDocument()
 
       act(() => vi.advanceTimersByTime(1))
-      expect(screen.getByTitle(project.path)).toBeInTheDocument()
+      expect(screen.getByRole('button', { name: '收起 Alpha' })).toBeInTheDocument()
     } finally {
       vi.useRealTimers()
     }

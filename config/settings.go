@@ -106,6 +106,10 @@ type Settings struct {
 	TerminalEnabled  *bool                     `toml:"terminal_enabled,omitempty" json:"terminal_enabled,omitempty"`
 	TerminalShell    string                    `toml:"terminal_shell,omitempty" json:"terminal_shell,omitempty"`
 	TerminalCommands []TerminalCommandSettings `toml:"terminal_commands,omitempty" json:"terminal_commands,omitempty"`
+	// TerminalCommandsConfigured distinguishes an intentionally empty registry
+	// from an older config that predates terminal_commands. It is an internal
+	// TOML presence marker; API clients continue to own only the array itself.
+	TerminalCommandsConfigured bool `toml:"terminal_commands_configured,omitempty" json:"-"`
 	// Deprecated scalar fields remain TOML-readable for one-way migration into
 	// TerminalCommands. They are never returned by the API or written back.
 	TerminalCodexCommand  string `toml:"terminal_codex_command,omitempty" json:"-"`
@@ -379,7 +383,8 @@ func Merge(parent, child Settings) Settings {
 		out.TerminalShell = child.TerminalShell
 	}
 	if child.TerminalCommands != nil {
-		out.TerminalCommands = append([]TerminalCommandSettings(nil), child.TerminalCommands...)
+		out.TerminalCommands = cloneTerminalCommands(child.TerminalCommands)
+		out.TerminalCommandsConfigured = child.TerminalCommandsConfigured
 	}
 	if child.TerminalMaxSessions != nil {
 		out.TerminalMaxSessions = child.TerminalMaxSessions
