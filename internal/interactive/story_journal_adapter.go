@@ -32,7 +32,13 @@ func (s *Store) openStoryJournalLocked(storyID string) (*storyJournalHandle, err
 	journal, err := conversationjournal.Open(
 		context.Background(), s.storyPath(storyID),
 		conversationjournal.Identity{ID: storyID, Generation: generation}, projection,
-		conversationjournal.Options{},
+		conversationjournal.Options{
+			// Game history pages scan in this same physical window. Matching the
+			// sparse stride prevents each backwards page from rereading an
+			// overlapping 1024-transaction prefix.
+			SparseEvery:   storyHistoryScanTransactions,
+			RecentRecords: storyHistoryScanTransactions * 2,
+		},
 	)
 	if err != nil {
 		return nil, err

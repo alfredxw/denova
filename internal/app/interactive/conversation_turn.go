@@ -360,7 +360,7 @@ func interactiveCompactionTurnMessages(turns []interactive.TurnEvent) []*agents.
 		if strings.TrimSpace(turn.User) != "" {
 			messages = append(messages, agents.UserMessage(source+"\n"+turn.User))
 		}
-		messages = append(messages, schemaMessagesFromInteractiveContext(turn.ModelContextMessages)...)
+		messages = append(messages, settledTurnToolContextMessages(turn.ModelContextMessages)...)
 		if strings.TrimSpace(turn.Narrative) != "" {
 			messages = append(messages, agents.AssistantMessage(source+"\n"+turn.Narrative, nil))
 		}

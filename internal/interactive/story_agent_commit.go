@@ -105,6 +105,10 @@ func (s *Store) AppendTurnWithState(storyID string, req AppendTurnWithStateReque
 	if !ok {
 		return TurnEvent{}, nil, fmt.Errorf("分支不存在: %s", branchID)
 	}
+	branchProjection, err := s.storyBranchProjectionLocked(storyID, branchID)
+	if err != nil {
+		return TurnEvent{}, nil, err
+	}
 	if existing, delta, found, err := committedAgentTurnForRequest(lines, branchID, req); err != nil {
 		return TurnEvent{}, nil, err
 	} else if found {
@@ -126,6 +130,7 @@ func (s *Store) AppendTurnWithState(storyID string, req AppendTurnWithStateReque
 		if pendingErr != nil {
 			return TurnEvent{}, nil, pendingErr
 		}
+		pendingInputs = pendingPlayerInputsFromProjection(pendingInputs, branchProjection.PendingPlayerInputIDs)
 		consumedPlayerInputIDs = make([]string, 0, len(pendingInputs))
 		currentInputIncluded := false
 		for _, pending := range pendingInputs {
@@ -166,10 +171,6 @@ func (s *Store) AppendTurnWithState(storyID string, req AppendTurnWithStateReque
 	parentID := any(nil)
 	if commitParentID != "" {
 		parentID = commitParentID
-	}
-	branchProjection, err := s.storyBranchProjectionLocked(storyID, branchID)
-	if err != nil {
-		return TurnEvent{}, nil, err
 	}
 	state := cloneStoryState(branchProjection.State)
 	if strings.TrimSpace(req.ReplaceTurnID) != "" {

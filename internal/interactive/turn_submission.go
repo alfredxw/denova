@@ -149,7 +149,7 @@ func PrepareTurnSubmission(validation TurnSubmissionContext, current *PreparedTu
 		}
 	}
 	if input.StateUpdates != nil && !prepared.stateUpdatesAccepted && !rejected[TurnSubmissionModuleStateChanges] {
-		updates := interactivestate.NormalizeUpdates(*input.StateUpdates)
+		updates := normalizeTurnSubmissionStateUpdateTargets(validation.ActorState, validation.CurrentState, *input.StateUpdates)
 		compileOptions := TurnStateUpdateCompileOptions{
 			RuleResolution:           validation.RuleResolution,
 			RuleStateConsumptionMode: validation.RuleStateConsumptionMode,

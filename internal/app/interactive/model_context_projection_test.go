@@ -259,3 +259,41 @@ func joinedInteractiveProjectionContent(messages []*agents.Message) string {
 	}
 	return builder.String()
 }
+
+func TestInteractiveModelProjectionDoesNotReplaySettledNarrativeInsideToolProtocol(t *testing.T) {
+	const narrative = "顾清欢接过账册，开始核对第一笔药材账。"
+	history := interactive.StoryModelHistory{
+		StartTurn:  0,
+		EndTurn:    1,
+		TotalTurns: 1,
+		Turns: []interactive.StoryModelTurn{{
+			User:      "开始管账",
+			Narrative: narrative,
+			ModelContextMessages: []interactive.ModelContextMessage{
+				{
+					Role: "assistant", Content: narrative,
+					ToolCalls: []interactive.ModelContextToolCall{{
+						ID: "submit-1", Type: "function",
+						Function: interactive.ModelContextFunctionCall{Name: "submit_interactive_turn", Arguments: `{"state_changes":[],"choices":[]}`},
+					}},
+				},
+				{Role: "tool", ToolCallID: "submit-1", ToolName: "submit_interactive_turn", Content: `{"ready":true}`},
+			},
+		}},
+	}
+	projection, err := BuildModelContextProjection(
+		history, nil, interactive.Snapshot{}, toolresult.ContextPolicy{Enabled: true, MaxResultBytes: 256 * 1024}, agentrun.CycleIdentity{},
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if count := strings.Count(joinedInteractiveProjectionContent(projection.Messages), narrative); count != 1 {
+		t.Fatalf("settled narrative occurrence count = %d, want 1: %#v", count, projection.Messages)
+	}
+	if len(projection.Messages) != 4 || len(projection.Messages[1].ToolCalls) != 1 || projection.Messages[1].Content != "" || projection.Messages[2].Role != agents.RoleTool {
+		t.Fatalf("tool protocol was not preserved without duplicate prose: %#v", projection.Messages)
+	}
+	if count := strings.Count(joinedInteractiveProjectionContent(projection.SourceMessages), narrative); count != 1 {
+		t.Fatalf("compaction source narrative occurrence count = %d, want 1: %#v", count, projection.SourceMessages)
+	}
+}

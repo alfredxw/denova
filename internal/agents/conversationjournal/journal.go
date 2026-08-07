@@ -114,6 +114,15 @@ func (journal *Journal) loadLocked(ctx context.Context) error {
 		if err := journal.scanLocked(ctx, journal.validOffset); err == nil {
 			journal.stats.TailBytesRead = journal.stats.BytesRead - beforeBytes
 			journal.stats.TailRecordsRead = journal.stats.TransactionsRead - beforeRecords
+			// Store handles are intentionally cheap and some runtime recovery
+			// paths open one only for a single query. Persist a successfully
+			// replayed tail now so every later handle does not pay for the same
+			// canonical prefix until an eventual Close that may never happen.
+			if journal.indexDirty {
+				if err := journal.persistIndexLocked(); err != nil {
+					slog.ErrorContext(ctx, fmt.Sprintf("[conversation-journal] tail checkpoint deferred path=%s error=%v", journal.indexPath, err))
+				}
+			}
 			return nil
 		}
 		// A valid physical checkpoint with an incompatible domain projection is

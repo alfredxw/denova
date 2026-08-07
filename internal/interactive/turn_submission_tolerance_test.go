@@ -118,6 +118,68 @@ func TestPrepareTurnSubmissionLosslesslyNormalizesNumericDelta(t *testing.T) {
 	}
 }
 
+func TestPrepareTurnSubmissionRepairsUniqueFoundationalActorTarget(t *testing.T) {
+	system := StoryDirectorActorStateSystem{
+		Templates: []ActorStateTemplate{
+			{ID: DefaultActorID, Fields: []ActorStateField{{Name: "当前处境", Type: "string"}}},
+			{ID: ActorStateStoryContextTemplateID, Fields: []ActorStateField{{Name: "当前事件", Type: "string"}, {Name: "当前任务", Type: "object"}}},
+		},
+		InitialActors: []ActorStateInitialActor{
+			{ID: DefaultActorID, TemplateID: DefaultActorID},
+			{ID: DefaultStoryContextActorID, TemplateID: ActorStateStoryContextTemplateID},
+		},
+	}
+	state, err := BuildActorStateInitialSnapshot(system, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	input := DecodeInteractiveTurnSubmissionInput(`{
+		"state_changes":[
+			{"op":"replace","actor_id":"protagonist","field_id":"当前任务","value":{"逃离追捕":{"状态":"完成"}}},
+			{"op":"replace","actor_id":"story","field_id":"当前事件","value":"追捕已经结束"}
+		],
+		"choices":["前进","观察","交谈","等待","后退"]
+	}`)
+
+	prepared, receipt := PrepareTurnSubmission(TurnSubmissionContext{
+		ActorState: system, CurrentState: state, ChoiceCount: 5,
+	}, nil, input)
+	if !receipt.Ready || !prepared.Ready() || len(receipt.Diagnostics) != 0 {
+		t.Fatalf("an unambiguous foundational Actor target should be repaired in one call: %#v", receipt)
+	}
+	updates := prepared.TurnResult().StateUpdates
+	if len(updates) != 2 || updates[0].Path != "/story/当前任务" {
+		t.Fatalf("canonical state updates = %#v, want the task attached to story", updates)
+	}
+}
+
+func TestPrepareTurnSubmissionDoesNotGuessAmbiguousActorTarget(t *testing.T) {
+	system := StoryDirectorActorStateSystem{
+		Templates: []ActorStateTemplate{
+			{ID: DefaultActorID, Fields: []ActorStateField{{Name: "共享字段", Type: "string"}}},
+			{ID: ActorStateStoryContextTemplateID, Fields: []ActorStateField{{Name: "共享字段", Type: "string"}}},
+			{ID: ActorStateWorldEntitiesTemplateID, Fields: []ActorStateField{{Name: "其它字段", Type: "string"}}},
+		},
+		InitialActors: []ActorStateInitialActor{
+			{ID: DefaultActorID, TemplateID: DefaultActorID},
+			{ID: DefaultStoryContextActorID, TemplateID: ActorStateStoryContextTemplateID},
+			{ID: DefaultWorldEntitiesActorID, TemplateID: ActorStateWorldEntitiesTemplateID},
+		},
+	}
+	state, err := BuildActorStateInitialSnapshot(system, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	updates := []interactivestate.Update{{Op: interactivestate.Replace, Path: "/world/共享字段", Value: "不能猜"}}
+	choices := testTurnChoices()
+	_, receipt := PrepareTurnSubmission(TurnSubmissionContext{
+		ActorState: system, CurrentState: state, ChoiceCount: 5,
+	}, nil, TurnSubmissionInput{StateUpdates: &updates, Choices: &choices})
+	if receipt.ModuleStatus.StateChanges != TurnSubmissionModuleRejected || len(receipt.Diagnostics) != 1 || receipt.Diagnostics[0].Code != "state_field_not_found" {
+		t.Fatalf("ambiguous target must remain a validation error: %#v", receipt)
+	}
+}
+
 func TestCompileTurnStateUpdatesLosslesslyNormalizesNumericDelta(t *testing.T) {
 	system, state := turnSubmissionTestState()
 	compiled, err := CompileTurnStateUpdates(system, state, []interactivestate.Update{{

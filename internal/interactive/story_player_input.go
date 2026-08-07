@@ -135,6 +135,34 @@ func (s *Store) FindPlayerInputCommit(
 	return findPlayerInputCommitInLines(lines, identity, strings.TrimSpace(branchID), strings.TrimSpace(hash))
 }
 
+// FindRecentPlayerInputCommit is the bounded counterpart used by active
+// runtime recovery. It proves new command IDs absent from the projection
+// window without scanning historical prose, thinking, or display records.
+func (s *Store) FindRecentPlayerInputCommit(
+	storyID, branchID string,
+	identity DomainCommitIdentity,
+	hash string,
+) (PlayerInputReceipt, bool, error) {
+	if s == nil {
+		return PlayerInputReceipt{}, false, fmt.Errorf("interactive store is nil")
+	}
+	identity.CommandID = strings.TrimSpace(identity.CommandID)
+	identity.OperationID = strings.TrimSpace(identity.OperationID)
+	branchID = strings.TrimSpace(branchID)
+	hash = strings.TrimSpace(hash)
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	record, locator, found, err := s.recentStoryCommitLocked(storyID, StoryEventTypePlayerInput, identity)
+	if err != nil || !found {
+		if locator.CommandID == identity.CommandID &&
+			(locator.OperationID != identity.OperationID || locator.Cycle != identity.Cycle) {
+			return PlayerInputReceipt{}, false, fmt.Errorf("%w: command_id=%q operation_id=%q cycle=%d", ErrPlayerInputIdentityConflict, identity.CommandID, identity.OperationID, identity.Cycle)
+		}
+		return PlayerInputReceipt{}, false, err
+	}
+	return findPlayerInputCommitInLines([]StoryEventRecord{record}, identity, branchID, hash)
+}
+
 func findPlayerInputCommitInLines(
 	lines []StoryEventRecord,
 	identity DomainCommitIdentity,

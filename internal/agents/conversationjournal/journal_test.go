@@ -230,7 +230,7 @@ func TestJournalRebuildsCorruptIndexAndReadsSparseRange(t *testing.T) {
 	}
 }
 
-func TestJournalReplaysOnlyCompleteUnindexedTail(t *testing.T) {
+func TestJournalReplaysAndImmediatelyCheckpointsOnlyCompleteUnindexedTail(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "session.jsonl")
 	writeLegacyJournal(t, path, 1)
 	identity := Identity{ID: "session-test", Generation: "generation-1"}
@@ -261,9 +261,6 @@ func TestJournalReplaysOnlyCompleteUnindexedTail(t *testing.T) {
 	if !stats.IndexLoaded || stats.IndexRebuilt || stats.TailRecordsRead != 1 || projection.Count != 2 || projection.Sum != 3 {
 		t.Fatalf("stale index tail replay stats=%#v projection=%#v", stats, projection)
 	}
-	if err := reopened.Close(); err != nil {
-		t.Fatal(err)
-	}
 
 	checkpointedProjection := &countingProjection{}
 	checkpointed, err := Open(context.Background(), path, identity, checkpointedProjection, Options{})
@@ -277,6 +274,9 @@ func TestJournalReplaysOnlyCompleteUnindexedTail(t *testing.T) {
 	}
 	if checkpointedProjection.Count != 2 || checkpointedProjection.Sum != 3 {
 		t.Fatalf("checkpointed tail projection = %#v", checkpointedProjection)
+	}
+	if err := reopened.Close(); err != nil {
+		t.Fatal(err)
 	}
 }
 

@@ -238,6 +238,28 @@ func pendingPlayerInputsForBranch(lines []StoryEventRecord, branchID string, act
 	return pending, nil
 }
 
+// pendingPlayerInputsFromProjection intersects a bounded recent-page result
+// with the journal reducer's complete pending-ID checkpoint. The page retains
+// the rich input payload; the reducer supplies the authoritative lifecycle.
+func pendingPlayerInputsFromProjection(inputs []PlayerInputAcceptedEvent, pendingPlayerInputIDs []string) []PlayerInputAcceptedEvent {
+	if len(inputs) == 0 || len(pendingPlayerInputIDs) == 0 {
+		return []PlayerInputAcceptedEvent{}
+	}
+	pending := make(map[string]bool, len(pendingPlayerInputIDs))
+	for _, playerInputID := range pendingPlayerInputIDs {
+		if playerInputID = strings.TrimSpace(playerInputID); playerInputID != "" {
+			pending[playerInputID] = true
+		}
+	}
+	result := make([]PlayerInputAcceptedEvent, 0, len(inputs))
+	for _, input := range inputs {
+		if pending[input.ID] {
+			result = append(result, input)
+		}
+	}
+	return result
+}
+
 func buildTurnVersionIndex(lines []StoryEventRecord) map[string][]TurnVersion {
 	result := map[string][]TurnVersion{}
 	for _, record := range lines {

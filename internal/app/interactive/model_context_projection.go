@@ -173,10 +173,25 @@ func projectInteractiveCompletedContext(
 	turnSpans := make([]messageSpan, len(history.Turns))
 	resolved := make([]interactiveResolvedContext, 0)
 	resolvedAt := make(map[int][]int)
+	settledPlayerInputIDs := make(map[string]bool, len(history.Turns))
+	for _, turn := range history.Turns {
+		if playerInputID := strings.TrimSpace(turn.PlayerInputID); playerInputID != "" {
+			settledPlayerInputIDs[playerInputID] = true
+		}
+	}
+	projectedResolvedInputIDs := make(map[string]bool)
 	for index, turn := range history.Turns {
 		ownerTurn := history.StartTurn + index
 		turns[index].turn = turn
 		for _, context := range turn.ResolvedPlayerInputContexts {
+			playerInputID := strings.TrimSpace(context.Input.ID)
+			// Older Beta journals may contain a resolved-input copy after that
+			// input was already represented by its own successful Turn, or repeat
+			// the same copy on more than one later Turn. Keep one semantic input.
+			if playerInputID == "" || settledPlayerInputIDs[playerInputID] || projectedResolvedInputIDs[playerInputID] {
+				continue
+			}
+			projectedResolvedInputIDs[playerInputID] = true
 			// The active checkpoint already owns every context whose closing Turn
 			// is before its source boundary. Retained raw Turns intentionally remain
 			// visible, but replaying their historical tool suffix would duplicate
@@ -217,7 +232,7 @@ func projectInteractiveCompletedContext(
 		turn := history.Turns[index]
 		start := len(raw)
 		raw = append(raw, agents.UserMessage(turn.User))
-		raw = append(raw, schemaMessagesFromInteractiveContext(turn.ModelContextMessages)...)
+		raw = append(raw, settledTurnToolContextMessages(turn.ModelContextMessages)...)
 		raw = append(raw, agents.AssistantMessage(turn.Narrative, nil))
 		turnSpans[index] = messageSpan{start: start, end: len(raw)}
 	}
@@ -239,6 +254,20 @@ func projectInteractiveCompletedContext(
 		resolved[index].messages = toolresult.ApplyContextPolicy(visible[span.start:span.end], policy)
 	}
 	return turns, resolved, checkpoint, nil
+}
+
+// settledTurnToolContextMessages keeps historical tool calls and results while
+// removing assistant prose from those protocol messages. In Game mode the
+// canonical final narrative is appended separately below, so replaying the
+// same prose inside submit_interactive_turn would duplicate every settled Turn.
+func settledTurnToolContextMessages(messages []interactive.ModelContextMessage) []*agents.Message {
+	projected := schemaMessagesFromInteractiveContext(messages)
+	for _, message := range projected {
+		if message != nil && message.Role == agents.RoleAssistant && len(message.ToolCalls) > 0 {
+			message.Content = ""
+		}
+	}
+	return projected
 }
 
 func projectInteractivePendingContext(

@@ -63,6 +63,65 @@ func TestPlayerInputAcceptedIsIdempotentPendingAndConsumedByTurn(t *testing.T) {
 	}
 }
 
+func TestJournalProjectionTracksOnlyUnconsumedPlayerInputIDs(t *testing.T) {
+	root := t.TempDir()
+	store := NewStore(root)
+	story, err := store.CreateStory(CreateStoryRequest{Title: "pending input projection", StoryTellerID: "classic"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	firstIdentity := DomainCommitIdentity{CommandID: "first-command", OperationID: "first-operation", Cycle: 1}
+	firstIntent, err := NewPlayerInputIntent(firstIdentity, "main", "打开门")
+	if err != nil {
+		t.Fatal(err)
+	}
+	first, err := store.CommitPlayerInput(story.ID, firstIntent)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := projectedPendingPlayerInputIDsForTest(t, store, story.ID); len(got) != 1 || got[0] != first.Event.ID {
+		t.Fatalf("pending projection after input = %#v", got)
+	}
+	if _, _, err := store.AppendTurnWithState(story.ID, AppendTurnWithStateRequest{
+		BranchID: "main", User: firstIntent.Text, Narrative: "门开了。",
+		AgentCommandID: firstIdentity.CommandID, AgentOperationID: firstIdentity.OperationID, AgentCycle: firstIdentity.Cycle,
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if got := projectedPendingPlayerInputIDsForTest(t, store, story.ID); len(got) != 0 {
+		t.Fatalf("consumed input remained in projection: %#v", got)
+	}
+
+	secondIdentity := DomainCommitIdentity{CommandID: "second-command", OperationID: "second-operation", Cycle: 1}
+	secondIntent, err := NewPlayerInputIntent(secondIdentity, "main", "进入走廊")
+	if err != nil {
+		t.Fatal(err)
+	}
+	second, err := store.CommitPlayerInput(story.ID, secondIntent)
+	if err != nil {
+		t.Fatal(err)
+	}
+	cold := NewStore(root)
+	if got := projectedPendingPlayerInputIDsForTest(t, cold, story.ID); len(got) != 1 || got[0] != second.Event.ID {
+		t.Fatalf("cold pending projection = %#v, want only %q", got, second.Event.ID)
+	}
+	filtered := pendingPlayerInputsFromProjection([]PlayerInputAcceptedEvent{first.Event, second.Event}, projectedPendingPlayerInputIDsForTest(t, cold, story.ID))
+	if len(filtered) != 1 || filtered[0].ID != second.Event.ID {
+		t.Fatalf("bounded page lifecycle filter = %#v", filtered)
+	}
+}
+
+func projectedPendingPlayerInputIDsForTest(t *testing.T, store *Store, storyID string) []string {
+	t.Helper()
+	store.mu.Lock()
+	defer store.mu.Unlock()
+	projection, err := store.storyBranchProjectionLocked(storyID, "main")
+	if err != nil {
+		t.Fatal(err)
+	}
+	return append([]string(nil), projection.PendingPlayerInputIDs...)
+}
+
 func TestAppendTurnWithStateIsIdempotentByDurableAgentIdentity(t *testing.T) {
 	store := NewStore(t.TempDir())
 	story, err := store.CreateStory(CreateStoryRequest{Title: "幂等回合", StoryTellerID: "classic"})
@@ -99,6 +158,54 @@ func TestAppendTurnWithStateIsIdempotentByDurableAgentIdentity(t *testing.T) {
 	}
 	if len(index.Stories) != 1 || index.Stories[0].Events != 2 {
 		t.Fatalf("index event projection drifted after retry: %#v", index.Stories)
+	}
+}
+
+func TestRecentRuntimeCommitLookupReadsOnlyLocatedTransaction(t *testing.T) {
+	root := t.TempDir()
+	store := NewStore(root)
+	story, err := store.CreateStory(CreateStoryRequest{Title: "有界恢复", StoryTellerID: "classic"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	request := AppendTurnWithStateRequest{
+		BranchID: "main", User: "推门", Narrative: "门后是一条长廊。",
+		AgentCommandID: "bounded-command", AgentOperationID: "bounded-operation", AgentCycle: 1,
+	}
+	commitPlayerInputForTurnTest(t, store, story.ID, request)
+	turn, _, err := store.AppendTurnWithState(story.ID, request)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := store.Close(); err != nil {
+		t.Fatal(err)
+	}
+
+	reopened := NewStore(root)
+	identity := DomainCommitIdentity{CommandID: request.AgentCommandID, OperationID: request.AgentOperationID, Cycle: request.AgentCycle}
+	inputHash, err := NewPlayerInputIntent(identity, "main", request.User)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, found, err := reopened.FindRecentPlayerInputCommit(story.ID, "main", identity, inputHash.Hash); err != nil || !found {
+		t.Fatalf("recent input lookup found=%t err=%v", found, err)
+	}
+	if stats := reopened.LastStoryJournalReplayStats(story.ID); stats.RecordsRead != 1 || stats.TransactionsRead != 1 {
+		t.Fatalf("recent input lookup replayed more than its located transaction: %#v", stats)
+	}
+	if receipt, found, err := reopened.FindRecentDomainTurnCommit(story.ID, "main", identity, turn.AgentCommitHash); err != nil || !found || receipt.Revision != turn.ID {
+		t.Fatalf("recent turn lookup receipt=%#v found=%t err=%v", receipt, found, err)
+	}
+	if stats := reopened.LastStoryJournalReplayStats(story.ID); stats.RecordsRead != 1 || stats.TransactionsRead != 1 {
+		t.Fatalf("recent turn lookup replayed more than its located transaction: %#v", stats)
+	}
+
+	missing := DomainCommitIdentity{CommandID: "new-command", OperationID: "new-operation", Cycle: 1}
+	if _, found, err := reopened.FindRecentDomainTurnCommit(story.ID, "main", missing, "new-hash"); err != nil || found {
+		t.Fatalf("missing recent turn found=%t err=%v", found, err)
+	}
+	if stats := reopened.LastStoryJournalReplayStats(story.ID); stats.BytesRead != 0 || stats.RecordsRead != 0 {
+		t.Fatalf("missing command replayed canonical history: %#v", stats)
 	}
 }
 

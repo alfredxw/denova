@@ -9,7 +9,11 @@ import (
 )
 
 const (
-	storyProjectionVersion      = 6
+	// Version 8 rebuilds sidecars with page-sized physical anchors and also
+	// checkpoints the small set of currently unconsumed player input IDs. This
+	// avoids overlapping 1024-transaction reads and keeps bounded recent pages
+	// from mistaking an old settled input for new work.
+	storyProjectionVersion      = 8
 	storyRecentTransactionLimit = 200
 	storyRecentCommitLimit      = 200
 	storyTurnAnchorEvery        = 256
@@ -32,18 +36,19 @@ type storyCommitLocator struct {
 }
 
 type storyBranchProjection struct {
-	Head               string                         `json:"head"`
-	ContextRevision    uint64                         `json:"context_revision"`
-	LatestTurnID       string                         `json:"latest_turn_id,omitempty"`
-	LatestTurnParentID string                         `json:"latest_turn_parent_id,omitempty"`
-	Depth              int                            `json:"depth"`
-	State              map[string]any                 `json:"state"`
-	StateBeforeLatest  map[string]any                 `json:"state_before_latest,omitempty"`
-	Compaction         *ContextCompactionEvent        `json:"compaction,omitempty"`
-	CompactionRemoval  *ContextCompactionRemovalEvent `json:"compaction_removal,omitempty"`
-	CompactionHealth   *ContextCompactionHealthEvent  `json:"compaction_health,omitempty"`
-	ToolResultCleanup  *ToolResultCleanupEvent        `json:"tool_result_cleanup,omitempty"`
-	TailCursor         conversationjournal.Cursor     `json:"tail_cursor,omitempty"`
+	Head                  string                         `json:"head"`
+	ContextRevision       uint64                         `json:"context_revision"`
+	LatestTurnID          string                         `json:"latest_turn_id,omitempty"`
+	LatestTurnParentID    string                         `json:"latest_turn_parent_id,omitempty"`
+	Depth                 int                            `json:"depth"`
+	State                 map[string]any                 `json:"state"`
+	StateBeforeLatest     map[string]any                 `json:"state_before_latest,omitempty"`
+	Compaction            *ContextCompactionEvent        `json:"compaction,omitempty"`
+	CompactionRemoval     *ContextCompactionRemovalEvent `json:"compaction_removal,omitempty"`
+	CompactionHealth      *ContextCompactionHealthEvent  `json:"compaction_health,omitempty"`
+	ToolResultCleanup     *ToolResultCleanupEvent        `json:"tool_result_cleanup,omitempty"`
+	PendingPlayerInputIDs []string                       `json:"pending_player_input_ids,omitempty"`
+	TailCursor            conversationjournal.Cursor     `json:"tail_cursor,omitempty"`
 }
 
 // storyJournalProjection is the bounded game reducer checkpoint. It stores
@@ -202,6 +207,7 @@ func (projection *storyJournalProjection) applyEvent(cursor conversationjournal.
 		if err := mapToStruct(record.Raw, &turn); err != nil {
 			return err
 		}
+		branch.consumePlayerInputs(turn.PlayerInputID, turn.ConsumedPlayerInputIDs)
 		if projection.TurnCount%storyTurnAnchorEvery == 0 {
 			projection.TurnAnchors = append(projection.TurnAnchors, storyTurnAnchor{Before: projection.TurnCount, Cursor: cursor})
 		}
@@ -284,6 +290,7 @@ func (projection *storyJournalProjection) applyEvent(cursor conversationjournal.
 		if err := mapToStruct(record.Raw, &event); err != nil {
 			return err
 		}
+		branch.rememberPendingPlayerInput(event.ID)
 		projection.rememberCommit(cursor, StoryEventTypePlayerInput, event.ID, event.BranchID, event.AgentCommandID, event.AgentOperationID, event.AgentCycle, event.AgentCommitHash)
 	case StoryEventTypeModelContextBatch:
 		var event ModelContextBatchEvent
@@ -358,6 +365,48 @@ func (projection *storyJournalProjection) applyEvent(cursor conversationjournal.
 		branch.ContextRevision++
 	}
 	return nil
+}
+
+func (branch *storyBranchProjection) rememberPendingPlayerInput(playerInputID string) {
+	playerInputID = strings.TrimSpace(playerInputID)
+	if playerInputID == "" {
+		return
+	}
+	for _, existing := range branch.PendingPlayerInputIDs {
+		if existing == playerInputID {
+			return
+		}
+	}
+	branch.PendingPlayerInputIDs = append(branch.PendingPlayerInputIDs, playerInputID)
+}
+
+func (branch *storyBranchProjection) consumePlayerInputs(currentPlayerInputID string, consumedPlayerInputIDs []string) {
+	if branch == nil || len(branch.PendingPlayerInputIDs) == 0 {
+		return
+	}
+	consumed := make(map[string]bool, len(consumedPlayerInputIDs)+1)
+	if currentPlayerInputID = strings.TrimSpace(currentPlayerInputID); currentPlayerInputID != "" {
+		consumed[currentPlayerInputID] = true
+	}
+	for _, playerInputID := range consumedPlayerInputIDs {
+		if playerInputID = strings.TrimSpace(playerInputID); playerInputID != "" {
+			consumed[playerInputID] = true
+		}
+	}
+	if len(consumed) == 0 {
+		return
+	}
+	pending := branch.PendingPlayerInputIDs[:0]
+	for _, playerInputID := range branch.PendingPlayerInputIDs {
+		if !consumed[playerInputID] {
+			pending = append(pending, playerInputID)
+		}
+	}
+	if len(pending) == 0 {
+		branch.PendingPlayerInputIDs = nil
+		return
+	}
+	branch.PendingPlayerInputIDs = pending
 }
 
 func (projection *storyJournalProjection) branch(branchID string) *storyBranchProjection {

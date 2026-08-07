@@ -21,6 +21,7 @@ type StoryModelHistoryQuery struct {
 type StoryModelTurn struct {
 	ID                          string
 	BranchID                    string
+	PlayerInputID               string
 	Ts                          string
 	User                        string
 	Narrative                   string
@@ -148,7 +149,7 @@ func (s *Store) ReadModelHistory(storyID string, query StoryModelHistoryQuery) (
 			return StoryModelHistory{}, err
 		}
 		result.Turns = append(result.Turns, StoryModelTurn{
-			ID: turn.ID, BranchID: turn.BranchID, Ts: turn.Ts, User: turn.User, Narrative: turn.Narrative,
+			ID: turn.ID, BranchID: turn.BranchID, PlayerInputID: turn.PlayerInputID, Ts: turn.Ts, User: turn.User, Narrative: turn.Narrative,
 			ResolvedPlayerInputContexts: resolved,
 			ModelContextMessages:        sanitizeModelContextMessages(turn.ModelContextMessages),
 		})

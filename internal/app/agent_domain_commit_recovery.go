@@ -168,7 +168,7 @@ func (a *App) sessionDirectoryForBinding(binding agentrun.RuntimeBinding) (strin
 func reconcileGameDomainCommit(request agentrun.DomainCommitReconcileRequest) (agentrun.DomainCommitReconcileResult, error) {
 	binding := request.Binding
 	if request.Commit.Identity.Stage == agentrun.DomainCommitInput {
-		receipt, found, err := interactive.NewStore(binding.Workspace).FindPlayerInputCommit(
+		receipt, found, err := interactive.NewStore(binding.Workspace).FindRecentPlayerInputCommit(
 			binding.StoryID,
 			binding.BranchID,
 			interactive.DomainCommitIdentity{
@@ -184,7 +184,7 @@ func reconcileGameDomainCommit(request agentrun.DomainCommitReconcileRequest) (a
 	if request.Commit.Identity.Stage != agentrun.DomainCommitOutput {
 		return agentrun.DomainCommitReconcileResult{}, fmt.Errorf("unsupported Game domain commit stage %q", request.Commit.Identity.Stage)
 	}
-	receipt, found, err := interactive.NewStore(binding.Workspace).FindDomainTurnCommit(
+	receipt, found, err := interactive.NewStore(binding.Workspace).FindRecentDomainTurnCommit(
 		binding.StoryID,
 		binding.BranchID,
 		interactive.DomainCommitIdentity{

@@ -358,6 +358,22 @@ func (s *Store) readStoryHistoryPageLocked(storyID, branchID, beforeCursor strin
 	if err != nil {
 		return loadedStoryHistoryPage{}, err
 	}
+	snapshot.PendingPlayerInputs = pendingPlayerInputsFromProjection(snapshot.PendingPlayerInputs, projection.PendingPlayerInputIDs)
+	pendingIDs := make(map[string]bool, len(snapshot.PendingPlayerInputs))
+	for _, input := range snapshot.PendingPlayerInputs {
+		pendingIDs[input.ID] = true
+	}
+	filteredBatches := snapshot.PendingModelContextBatches[:0]
+	for _, batch := range snapshot.PendingModelContextBatches {
+		if pendingIDs[batch.PlayerInputID] {
+			filteredBatches = append(filteredBatches, batch)
+		}
+	}
+	if len(filteredBatches) == 0 {
+		snapshot.PendingModelContextBatches = []ModelContextBatchEvent{}
+	} else {
+		snapshot.PendingModelContextBatches = filteredBatches
+	}
 	turns := snapshot.Turns
 	hasMore := nextTargetID != ""
 	nextCursor := ""
