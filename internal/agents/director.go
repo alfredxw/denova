@@ -55,7 +55,6 @@ func GenerateInteractiveDirectorWithTools(ctx context.Context, chatService *agen
 			ContextBudget: agentcontext.ContextBudgetForAgent(cfg, config.AgentKindInteractiveDirector),
 		},
 		Display: toolContext.DisplayConversation, DomainCommit: toolContext.DomainCommitParticipant,
-		HideToolInput: cfg.HideChapterBodyLiveOutput,
 	})
 	bookService := book.NewService(state.Workspace())
 	var runErr error

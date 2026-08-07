@@ -16,12 +16,26 @@ vi.mock('./api', () => ({
 describe('useProjectChangeGroups', () => {
   beforeEach(() => {
     vi.clearAllMocks()
-    apiMocks.listProjectChangeGroups.mockResolvedValue([])
-    apiMocks.getProjectChangeGroup.mockResolvedValue({ id: 'group-1', created_at: '', review_status: 'pending', apply_state: 'applied', change_sets: [] })
-    apiMocks.getProjectChangeReviewThread.mockResolvedValue({ id: 'thread-1', latest_group_id: '', groups: [], comments: [], files: [] })
+    apiMocks.listProjectChangeGroups.mockResolvedValue([
+      { id: 'group-1', created_at: '', review_status: 'pending', apply_state: 'applied', paths: ['chapters/ch01.md'] },
+    ])
+    apiMocks.getProjectChangeGroup.mockResolvedValue({
+      id: 'group-1',
+      created_at: '',
+      review_status: 'pending',
+      apply_state: 'applied',
+      change_sets: [{ path: 'chapters/ch01.md' }],
+    })
+    apiMocks.getProjectChangeReviewThread.mockResolvedValue({
+      id: 'thread-1',
+      latest_group_id: 'group-1',
+      groups: [],
+      comments: [],
+      files: [{ path: 'chapters/ch01.md' }],
+    })
   })
 
-  it('refreshes only for events carrying the active Project identity', async () => {
+  it('refreshes only active Project queries affected by watcher paths', async () => {
     const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } })
     render(
       <QueryClientProvider client={queryClient}>
@@ -36,7 +50,15 @@ describe('useProjectChangeGroups', () => {
     await Promise.resolve()
     expect(apiMocks.listProjectChangeGroups).toHaveBeenCalledTimes(1)
 
-    window.dispatchEvent(new CustomEvent('nova:workspace-change', { detail: { project_id: 'project-current', paths: ['chapters/ch01.md'] } }))
+    window.dispatchEvent(new CustomEvent('nova:workspace-change', {
+      detail: { project_id: 'project-current', source: 'watcher', paths: ['interactive/story/story-1.jsonl'] },
+    }))
+    await Promise.resolve()
+    expect(apiMocks.listProjectChangeGroups).toHaveBeenCalledTimes(1)
+
+    window.dispatchEvent(new CustomEvent('nova:workspace-change', {
+      detail: { project_id: 'project-current', source: 'watcher', paths: ['chapters/ch01.md'] },
+    }))
     await waitFor(() => expect(apiMocks.listProjectChangeGroups).toHaveBeenCalledTimes(2))
   })
 
@@ -51,7 +73,9 @@ describe('useProjectChangeGroups', () => {
     )
     await waitFor(() => expect(apiMocks.listProjectChangeGroups).toHaveBeenCalledTimes(1))
 
-    window.dispatchEvent(new CustomEvent('nova:workspace-change', { detail: { project_id: 'project-current' } }))
+    window.dispatchEvent(new CustomEvent('nova:workspace-change', {
+      detail: { project_id: 'project-current', change_group_id: 'group-1' },
+    }))
 
     await waitFor(() => expect(apiMocks.listProjectChangeGroups).toHaveBeenCalledTimes(2))
     expect(invalidateSpy).toHaveBeenCalledTimes(1)
@@ -66,7 +90,9 @@ describe('useProjectChangeGroups', () => {
     )
     await waitFor(() => expect(apiMocks.getProjectChangeReviewThread).toHaveBeenCalledWith('project-current', 'thread-1'))
 
-    window.dispatchEvent(new CustomEvent('nova:workspace-change', { detail: { project_id: 'project-current' } }))
+    window.dispatchEvent(new CustomEvent('nova:workspace-change', {
+      detail: { project_id: 'project-current', change_group_id: 'group-1' },
+    }))
     await waitFor(() => expect(apiMocks.getProjectChangeReviewThread).toHaveBeenCalledTimes(2))
   })
 
@@ -93,7 +119,9 @@ describe('useProjectChangeGroups', () => {
     )
     await waitFor(() => expect(apiMocks.getProjectChangeGroup).toHaveBeenCalledWith('project-current', 'group-1'))
 
-    window.dispatchEvent(new CustomEvent('nova:workspace-change', { detail: { project_id: 'project-current' } }))
+    window.dispatchEvent(new CustomEvent('nova:workspace-change', {
+      detail: { project_id: 'project-current', change_group_id: 'group-1' },
+    }))
     await waitFor(() => expect(apiMocks.getProjectChangeGroup).toHaveBeenCalledTimes(2))
   })
 })

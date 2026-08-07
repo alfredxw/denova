@@ -21,7 +21,7 @@ func (c *DirectorConversation) AppendDisplayEvent(event session.DisplayEvent) er
 		return nil
 	}
 	event = decorateDirectorDisplayEvent(event)
-	if c.hideDirectorToolInput && directorPlanWriteTool(event.Name) {
+	if c.shouldCompactDirectorTool(event.Name) {
 		event = c.recordDirectorToolEvent(event)
 	}
 	return c.forwardDisplayEvent(event)
@@ -31,7 +31,7 @@ func (c *DirectorConversation) AppendDisplayToolArgs(id, name, delta string) err
 	if c == nil || delta == "" {
 		return nil
 	}
-	if c.hideDirectorToolInput && c.shouldHideDirectorToolArgs(id, name) {
+	if c.shouldCompactDirectorToolArgs(id, name) {
 		event, ok := c.recordDirectorToolArgs(id, name, delta)
 		if !ok {
 			return nil
@@ -78,7 +78,7 @@ func (c *DirectorConversation) UpdateDisplayToolStatus(id, name, status string) 
 	if c == nil {
 		return nil
 	}
-	if c.hideDirectorToolInput {
+	if c.shouldCompactDirectorToolArgs(id, name) {
 		if event, ok := c.finishDirectorToolEvent(id, name, status, ""); ok {
 			if err := c.forwardDisplayEvent(event); err != nil {
 				return err
@@ -95,7 +95,7 @@ func (c *DirectorConversation) UpdateDisplayToolResult(id, name, status, result 
 	if c == nil {
 		return nil
 	}
-	if c.hideDirectorToolInput {
+	if c.shouldCompactDirectorToolArgs(id, name) {
 		if event, ok := c.finishDirectorToolEvent(id, name, status, result); ok {
 			if err := c.forwardDisplayEvent(event); err != nil {
 				return err
@@ -136,14 +136,21 @@ func (c *DirectorConversation) recordDirectorToolEvent(event session.DisplayEven
 	return projected
 }
 
-func (c *DirectorConversation) shouldHideDirectorToolArgs(id, name string) bool {
-	c.mu.Lock()
-	defer c.mu.Unlock()
-	if directorPlanWriteTool(name) {
+func (c *DirectorConversation) shouldCompactDirectorTool(name string) bool {
+	// Director writes are internal control payloads that may contain large
+	// Markdown patches. Always compact them independently of chapter display
+	// settings, including invalid write/edit calls before policy rejects them.
+	return directorPlanWriteTool(name)
+}
+
+func (c *DirectorConversation) shouldCompactDirectorToolArgs(id, name string) bool {
+	if c.shouldCompactDirectorTool(name) {
 		return true
 	}
+	c.mu.Lock()
+	defer c.mu.Unlock()
 	state := c.findDirectorToolStateLocked(id, name)
-	return state != nil && directorPlanWriteTool(state.name)
+	return state != nil && c.shouldCompactDirectorTool(state.name)
 }
 
 func (c *DirectorConversation) recordDirectorToolArgs(id, name, delta string) (session.DisplayEvent, bool) {

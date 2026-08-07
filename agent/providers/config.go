@@ -24,8 +24,11 @@ type SessionKeyLocation string
 const (
 	ProviderOpenAI           ProviderID = "openai"
 	ProviderDeepSeek         ProviderID = "deepseek"
+	ProviderAnthropic        ProviderID = "anthropic"
 	ProviderGoogle           ProviderID = "google"
 	ProviderVolcengine       ProviderID = "volcengine"
+	ProviderMiniMax          ProviderID = "minimax"
+	ProviderMiniMaxCN        ProviderID = "minimax-cn"
 	ProviderOpenAICompatible ProviderID = "openai-compatible"
 
 	ProtocolOpenAIChatCompletions ProtocolID = "openai-chat-completions"

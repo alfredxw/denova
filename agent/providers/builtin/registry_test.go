@@ -226,6 +226,36 @@ func TestRegistryCompatibleProviderSupportsEveryInstalledProtocol(t *testing.T) 
 	}
 }
 
+func TestRegistryAppliesKnownDeepSeekOutputLimitAndPreservesExplicitOverride(t *testing.T) {
+	registry, err := NewRegistry()
+	if err != nil {
+		t.Fatal(err)
+	}
+	resolved, err := registry.Resolve(providers.ModelConfig{
+		Provider: providers.ProviderDeepSeek,
+		Model:    "deepseek-v4-pro",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if resolved.MaxOutputTokens == nil || *resolved.MaxOutputTokens != 384*1024 {
+		t.Fatalf("DeepSeek V4 max output tokens = %#v", resolved.MaxOutputTokens)
+	}
+
+	explicit := 72_000
+	resolved, err = registry.Resolve(providers.ModelConfig{
+		Provider:        providers.ProviderDeepSeek,
+		Model:           "deepseek-v4-pro",
+		MaxOutputTokens: &explicit,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if resolved.MaxOutputTokens == nil || *resolved.MaxOutputTokens != explicit {
+		t.Fatalf("explicit max output tokens = %#v, want %d", resolved.MaxOutputTokens, explicit)
+	}
+}
+
 func TestRegistryRequiresEndpointForCompatibleProvider(t *testing.T) {
 	registry, err := NewRegistry()
 	if err != nil {

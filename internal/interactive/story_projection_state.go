@@ -1,6 +1,7 @@
 package interactive
 
 import (
+	"encoding/json"
 	"fmt"
 	"strings"
 )
@@ -55,6 +56,31 @@ func (s *Store) boundedStorySnapshotLocked(storyID, branchID string) (StoryMeta,
 // snapshots use the default page, while Director reconciliation may retain its
 // full bounded decision horizon without scanning the canonical prefix.
 func (s *Store) boundedStorySnapshotWithLimitLocked(storyID, branchID string, limit int) (StoryMeta, Snapshot, error) {
+	release, err := s.acquireStoryReadLeaseLocked(storyID)
+	if err != nil {
+		return StoryMeta{}, Snapshot{}, err
+	}
+	defer release()
+
+	handle, err := s.refreshStoryJournalLocked(storyID, true)
+	if err != nil {
+		return StoryMeta{}, Snapshot{}, err
+	}
+	if branchID == "" {
+		branchID = handle.projection.Meta.CurrentBranch
+	}
+	limit = normalizeStoryHistoryPageLimit(limit)
+	cacheKey := storySnapshotCacheKey{branchID: branchID, limit: limit}
+	head := handle.journal.Head().Cursor
+	if cached, ok := handle.snapshots[cacheKey]; ok && cached.cursor == head {
+		meta, snapshot, cloneErr := cloneStorySnapshotCache(cached.meta, cached.snapshot)
+		if cloneErr != nil {
+			return StoryMeta{}, Snapshot{}, cloneErr
+		}
+		s.rememberStoryReplayStats(storyID, StoryJournalReplayStats{})
+		return meta, snapshot, nil
+	}
+
 	loaded, err := s.readStoryHistoryPageLocked(storyID, branchID, "", limit, true)
 	if err != nil {
 		return StoryMeta{}, Snapshot{}, err
@@ -106,7 +132,46 @@ func (s *Store) boundedStorySnapshotWithLimitLocked(storyID, branchID string, li
 	snapshot.TurnStart = loaded.turnStart
 	snapshot.HistoryBeforeCursor = loaded.page.BeforeCursor
 	snapshot.HasEarlierTurns = loaded.page.HasMore
+	if cachedMeta, cachedSnapshot, cloneErr := cloneStorySnapshotCache(loaded.meta, snapshot); cloneErr != nil {
+		return StoryMeta{}, Snapshot{}, cloneErr
+	} else {
+		if handle.snapshots == nil {
+			handle.snapshots = make(map[storySnapshotCacheKey]storySnapshotCache)
+		}
+		handle.snapshots[cacheKey] = storySnapshotCache{
+			cursor: handle.journal.Head().Cursor, meta: cachedMeta, snapshot: cachedSnapshot,
+		}
+	}
 	return loaded.meta, snapshot, nil
+}
+
+// cloneStorySnapshotCache isolates callers from the hot projection cache. The
+// bounded core intentionally excludes Director-plan and token-usage overlays;
+// Snapshot and StoryContext attach those independently after this cache lookup.
+func cloneStorySnapshotCache(meta StoryMeta, snapshot Snapshot) (StoryMeta, Snapshot, error) {
+	payload, err := json.Marshal(struct {
+		Meta     StoryMeta `json:"meta"`
+		Snapshot Snapshot  `json:"snapshot"`
+	}{Meta: meta, Snapshot: snapshot})
+	if err != nil {
+		return StoryMeta{}, Snapshot{}, err
+	}
+	var cloned struct {
+		Meta     StoryMeta `json:"meta"`
+		Snapshot Snapshot  `json:"snapshot"`
+	}
+	if err := json.Unmarshal(payload, &cloned); err != nil {
+		return StoryMeta{}, Snapshot{}, err
+	}
+	// Preserve the established API distinction between an initialized empty
+	// pending collection and an absent collection across the JSON deep copy.
+	if snapshot.PendingPlayerInputs != nil && cloned.Snapshot.PendingPlayerInputs == nil {
+		cloned.Snapshot.PendingPlayerInputs = []PlayerInputAcceptedEvent{}
+	}
+	if snapshot.PendingModelContextBatches != nil && cloned.Snapshot.PendingModelContextBatches == nil {
+		cloned.Snapshot.PendingModelContextBatches = []ModelContextBatchEvent{}
+	}
+	return cloned.Meta, cloned.Snapshot, nil
 }
 
 func findEventBranch(lines []StoryEventRecord, eventID string) (string, bool) {

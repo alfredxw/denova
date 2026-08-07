@@ -91,19 +91,14 @@ type CompletionRetryReason struct {
 // producing a prose candidate.
 type TurnProtocolMiddleware struct {
 	*agent.BaseMiddleware
-	ready              func() bool
-	narrativeMaxTokens int
+	ready func() bool
 }
 
-func NewTurnProtocolMiddleware(ready func() bool, narrativeMaxTokens ...int) *TurnProtocolMiddleware {
-	middleware := &TurnProtocolMiddleware{
+func NewTurnProtocolMiddleware(ready func() bool) *TurnProtocolMiddleware {
+	return &TurnProtocolMiddleware{
 		BaseMiddleware: &agent.BaseMiddleware{},
 		ready:          ready,
 	}
-	if len(narrativeMaxTokens) > 0 && narrativeMaxTokens[0] > 0 {
-		middleware.narrativeMaxTokens = narrativeMaxTokens[0]
-	}
-	return middleware
 }
 
 func (m *TurnProtocolMiddleware) BeforeAgent(ctx context.Context, runCtx *agent.RunContext) (context.Context, *agent.RunContext, error) {
@@ -111,42 +106,10 @@ func (m *TurnProtocolMiddleware) BeforeAgent(ctx context.Context, runCtx *agent.
 }
 
 func (m *TurnProtocolMiddleware) WrapModel(_ context.Context, wrapped agent.BaseChatModel, _ *agent.ModelContext) (agent.BaseChatModel, error) {
-	if m != nil && m.narrativeMaxTokens > 0 {
-		wrapped = &interactiveNarrativeBudgetModel{BaseChatModel: wrapped, maxTokens: m.narrativeMaxTokens}
-	}
 	if m == nil || m.ready == nil || !m.ready() {
 		return wrapped, nil
 	}
 	return &interactiveNarrativeOnlyModel{BaseChatModel: wrapped}, nil
-}
-
-// interactiveNarrativeBudgetModel applies the story-derived completion reserve
-// only while producing the first visible narrative. Structured retries keep the
-// provider/model limit so a large but valid state submission is not truncated.
-type interactiveNarrativeBudgetModel struct {
-	agent.BaseChatModel
-	maxTokens int
-}
-
-func (m *interactiveNarrativeBudgetModel) Generate(ctx context.Context, messages []*agent.Message, opts ...agent.ModelOption) (*agent.Message, error) {
-	return m.BaseChatModel.Generate(ctx, messages, interactiveNarrativeBudgetOptions(ctx, m.maxTokens, opts)...)
-}
-
-func (m *interactiveNarrativeBudgetModel) Stream(ctx context.Context, messages []*agent.Message, opts ...agent.ModelOption) (*agent.StreamReader[*agent.Message], error) {
-	return m.BaseChatModel.Stream(ctx, messages, interactiveNarrativeBudgetOptions(ctx, m.maxTokens, opts)...)
-}
-
-func interactiveNarrativeBudgetOptions(ctx context.Context, maxTokens int, opts []agent.ModelOption) []agent.ModelOption {
-	state := interactiveTurnProtocolState(ctx)
-	if maxTokens <= 0 || (state != nil && state.narrativeCandidateReady.Load()) {
-		return opts
-	}
-	common := agent.GetCommonOptions(&agent.Options{}, opts...)
-	if common.MaxTokens != nil && *common.MaxTokens <= maxTokens {
-		return opts
-	}
-	bounded := append([]agent.ModelOption(nil), opts...)
-	return append(bounded, agent.WithMaxTokens(maxTokens))
 }
 
 func (m *TurnProtocolMiddleware) AfterModelRewriteState(ctx context.Context, state *agent.RunState, _ *agent.ModelContext) (context.Context, *agent.RunState, error) {

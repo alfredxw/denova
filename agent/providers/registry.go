@@ -213,6 +213,12 @@ func (registry *Registry) resolve(config ModelConfig, requireModel bool) (ModelC
 	if requireModel && resolved.Model == "" {
 		return ModelConfig{}, fmt.Errorf("resolve model: model is required")
 	}
+	if resolved.MaxOutputTokens == nil {
+		if limits, ok := LookupModelLimits(resolved.Provider, resolved.Model); ok && limits.MaxOutputTokens > 0 {
+			maxOutputTokens := limits.MaxOutputTokens
+			resolved.MaxOutputTokens = &maxOutputTokens
+		}
+	}
 	if resolved.MaxOutputTokens != nil && *resolved.MaxOutputTokens <= 0 {
 		return ModelConfig{}, fmt.Errorf("resolve model: max output tokens must be positive")
 	}

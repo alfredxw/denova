@@ -12,7 +12,7 @@ import (
 
 func TestInteractiveDirectorDisplayHidesDirectorPlanWriteInput(t *testing.T) {
 	display := &directorDisplayConversation{}
-	conversation := NewDirectorConversation(DirectorConversationOptions{Display: display, HideToolInput: true})
+	conversation := NewDirectorConversation(DirectorConversationOptions{Display: display})
 
 	if err := conversation.AppendDisplayEvent(session.DisplayEvent{
 		ID:     "call-1",
@@ -41,7 +41,7 @@ func TestInteractiveDirectorDisplayHidesDirectorPlanWriteInput(t *testing.T) {
 
 func TestInteractiveDirectorDisplayStreamsHiddenDirectorPlanCharCount(t *testing.T) {
 	display := &directorDisplayConversation{}
-	conversation := NewDirectorConversation(DirectorConversationOptions{Display: display, HideToolInput: true})
+	conversation := NewDirectorConversation(DirectorConversationOptions{Display: display})
 
 	if err := conversation.AppendDisplayEvent(session.DisplayEvent{ID: "call-1", Role: "tool_call", Name: "write", Status: "running"}); err != nil {
 		t.Fatal(err)
@@ -75,6 +75,37 @@ func TestInteractiveDirectorDisplayStreamsHiddenDirectorPlanCharCount(t *testing
 	}
 }
 
+func TestInteractiveDirectorDisplayCompactsStructuredPlanInputWithoutChapterBodyHiding(t *testing.T) {
+	display := &directorDisplayConversation{}
+	conversation := NewDirectorConversation(DirectorConversationOptions{Display: display})
+
+	if err := conversation.AppendDisplayEvent(session.DisplayEvent{
+		ID: "call-1", Role: "tool_call", Name: "submit_director_plan_update", Status: "running",
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if err := conversation.AppendDisplayToolArgs("call-1", "submit_director_plan_update", `{"decision":{"mode":"patch"},"updates":[{"document":"agent-brief.md","base_hash":"hash","edits":[{"op":"replace_section","section":"当前阶段","content":"`+strings.Repeat("字", 101)); err != nil {
+		t.Fatal(err)
+	}
+	if err := conversation.AppendDisplayToolArgs("call-1", "submit_director_plan_update", `"}]}],"finalize":true}`); err != nil {
+		t.Fatal(err)
+	}
+
+	if display.toolArgAppends != 0 {
+		t.Fatalf("structured Director plan deltas reached the raw display appender %d times, want 0", display.toolArgAppends)
+	}
+	got := display.latest()
+	if got.Args != `{"documents":1,"finalize":true,"mode":"patch"}` {
+		t.Fatalf("structured Director plan args = %q, want compact summary", got.Args)
+	}
+	if strings.Contains(got.Args, "字") {
+		t.Fatalf("structured Director plan args leaked generated content: %q", got.Args)
+	}
+	if got.SSEGeneratedChars != 101 {
+		t.Fatalf("generated chars = %d, want 101", got.SSEGeneratedChars)
+	}
+}
+
 func TestDirectorToolTextCounterCountsEveryBatchEditValue(t *testing.T) {
 	counter := directorToolTextCounter{}
 	keys := directorToolGeneratedTextKeys("edit")
@@ -104,7 +135,8 @@ func TestDirectorToolDisplayStateSynchronizesBatchEditCharacterCount(t *testing.
 }
 
 type directorDisplayConversation struct {
-	events []session.DisplayEvent
+	events         []session.DisplayEvent
+	toolArgAppends int
 }
 
 func (c *directorDisplayConversation) AssembleModelContext(ctx context.Context, _ string, input agentcontext.ModelContextInput) (agentcontext.ModelContextResult, error) {
@@ -127,6 +159,7 @@ func (c *directorDisplayConversation) AppendDisplayEvent(event session.DisplayEv
 }
 
 func (c *directorDisplayConversation) AppendDisplayToolArgs(id, _ string, delta string) error {
+	c.toolArgAppends++
 	for i := len(c.events) - 1; i >= 0; i-- {
 		if c.events[i].ID == id {
 			c.events[i].Args += delta

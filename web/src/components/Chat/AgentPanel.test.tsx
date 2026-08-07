@@ -152,6 +152,14 @@ describe('AgentPanel', () => {
     })
   })
 
+  it('隐藏的 Agent 面板不订阅变更审阅数据', () => {
+    renderAgentPanel({ active: false })
+
+    expect(useProjectChangeGroupsMock).toHaveBeenCalledWith('', {
+      sessionID: 'session-1',
+    })
+  })
+
   it('Project 标识水合前不读取 Skills', () => {
     renderAgentPanel({ projectId: '' })
 

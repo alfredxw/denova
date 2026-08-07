@@ -271,7 +271,7 @@ function AgentPanelComponent({
   })
   const writingSkillOptions = useWritingSkillOptions(projectId, skillCatalogEnabled)
   const writingSkill = useMemo(() => resolveWritingSkillSelection(configuredWritingSkill, writingSkillOptions), [configuredWritingSkill, writingSkillOptions])
-  const changeGroupsQuery = useProjectChangeGroups(projectId && activeSessionId && !sessionDraft ? projectId : '', { sessionID: activeSessionId })
+  const changeGroupsQuery = useProjectChangeGroups(active && projectId && activeSessionId && !sessionDraft ? projectId : '', { sessionID: activeSessionId })
   const tokenUsageMessages = useMemo(() => selectAgentTokenUsageRecords(messages), [messages])
   const activeRunID = useMemo(() => {
     if (!isExecutionActive) return ''

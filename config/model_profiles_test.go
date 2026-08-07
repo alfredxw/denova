@@ -167,6 +167,37 @@ func TestResolveAgentModelContextWindowDefaultsAndOverrides(t *testing.T) {
 	}
 }
 
+func TestResolveAgentModelUsesKnownOutputLimitWithoutOverridingExplicitProfile(t *testing.T) {
+	resolved := ResolveAgentModel(&Config{
+		OpenAIBaseURL: "https://api.deepseek.com",
+		OpenAIModel:   "deepseek-v4-pro",
+	}, AgentKindInteractiveStory)
+	if resolved.MaxOutputTokens == nil || *resolved.MaxOutputTokens != 384*1024 {
+		t.Fatalf("DeepSeek V4 max output tokens = %#v, want %d", resolved.MaxOutputTokens, 384*1024)
+	}
+
+	explicit := 96_000
+	resolved = ResolveAgentModel(&Config{
+		ModelProfiles: []ModelProfileSettings{{
+			ID: "deepseek", Provider: string(providers.ProviderDeepSeek), Model: "deepseek-v4-flash", MaxOutputTokens: &explicit,
+		}},
+		AgentModels: AgentModelSettings{InteractiveStory: AgentModelOverride{ProfileID: "deepseek"}},
+	}, AgentKindInteractiveStory)
+	if resolved.MaxOutputTokens == nil || *resolved.MaxOutputTokens != explicit {
+		t.Fatalf("explicit max output tokens = %#v, want %d", resolved.MaxOutputTokens, explicit)
+	}
+
+	resolved = ResolveAgentModel(&Config{
+		ModelProfiles: []ModelProfileSettings{{
+			ID: "custom", Provider: string(providers.ProviderOpenAICompatible), Model: "private-model",
+		}},
+		AgentModels: AgentModelSettings{IDE: AgentModelOverride{ProfileID: "custom"}},
+	}, AgentKindIDE)
+	if resolved.MaxOutputTokens != nil {
+		t.Fatalf("custom endpoint must keep provider-owned default, got %#v", resolved.MaxOutputTokens)
+	}
+}
+
 func TestResolveAgentModelUsesUnifiedThinkingLevel(t *testing.T) {
 	tests := []struct {
 		name   string

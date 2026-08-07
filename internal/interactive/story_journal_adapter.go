@@ -37,7 +37,10 @@ func (s *Store) openStoryJournalLocked(storyID string) (*storyJournalHandle, err
 	if err != nil {
 		return nil, err
 	}
-	handle := &storyJournalHandle{journal: journal, projection: projection, recent: make(map[string]storyRecentCache)}
+	handle := &storyJournalHandle{
+		journal: journal, projection: projection,
+		recent: make(map[string]storyRecentCache), snapshots: make(map[storySnapshotCacheKey]storySnapshotCache),
+	}
 	if s.storyJournals == nil {
 		s.storyJournals = make(map[string]*storyJournalHandle)
 	}

@@ -21,7 +21,7 @@ func sanitizeDisplayEvents(events []DisplayEvent) []DisplayEvent {
 		if role == "" {
 			continue
 		}
-		if role != "tool_call" && role != "tool_result" && role != "thinking" && role != DisplayEventRoleNarrative {
+		if role != "tool_call" && role != "tool_result" && role != "thinking" && role != DisplayEventRoleNarrative && !(role == "assistant" && event.SubAgent) {
 			continue
 		}
 		name := strings.TrimSpace(event.Name)

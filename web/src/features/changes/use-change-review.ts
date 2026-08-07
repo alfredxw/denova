@@ -2,7 +2,7 @@ import { useEffect } from 'react'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import type { QueryClient } from '@tanstack/react-query'
 import { getProjectChangeGroup, getProjectChangeReviewThread, listProjectChangeGroups, type ListProjectChangeGroupsOptions } from './api'
-import type { WorkspaceChangeEvent } from './types'
+import { workspaceChangePaths, type WorkspaceChangeEvent } from './types'
 
 export const projectChangeKeys = {
   all: ['project-change-groups'] as const,
@@ -37,11 +37,56 @@ type WorkspaceChangeSubscription = {
 
 const workspaceChangeSubscriptions = new WeakMap<QueryClient, WorkspaceChangeSubscription>()
 
-export function invalidateProjectChangeQueries(queryClient: QueryClient, projectId: string) {
+export function invalidateProjectChangeQueries(queryClient: QueryClient, projectId: string, event?: WorkspaceChangeEvent) {
   if (!projectId) return Promise.resolve()
+  const eventPaths = event ? workspaceChangePaths(event).map(normalizeWorkspacePath).filter(Boolean) : []
+  const pathScopedWatcherEvent = event?.source === 'watcher' && !event.resync && eventPaths.length > 0
   return queryClient.invalidateQueries({
-    predicate: (query) => query.queryKey[0] === projectChangeKeys.all[0] && query.queryKey[2] === projectId,
+    predicate: (query) => {
+      if (query.queryKey[0] !== projectChangeKeys.all[0] || query.queryKey[2] !== projectId) return false
+      if (!pathScopedWatcherEvent) return true
+      return cachedProjectChangePaths(query.state.data).some((cachedPath) =>
+        eventPaths.some((eventPath) => workspacePathsOverlap(cachedPath, eventPath)),
+      )
+    },
   })
+}
+
+function cachedProjectChangePaths(data: unknown): string[] {
+  const paths = new Set<string>()
+  const visit = (value: unknown, depth: number) => {
+    if (depth > 4 || value == null) return
+    if (Array.isArray(value)) {
+      value.forEach((item) => visit(item, depth + 1))
+      return
+    }
+    if (typeof value !== 'object') return
+    const record = value as Record<string, unknown>
+    if (typeof record.path === 'string') {
+      const path = normalizeWorkspacePath(record.path)
+      if (path) paths.add(path)
+    }
+    if (Array.isArray(record.paths)) {
+      record.paths.forEach((path) => {
+        if (typeof path !== 'string') return
+        const normalized = normalizeWorkspacePath(path)
+        if (normalized) paths.add(normalized)
+      })
+    }
+    for (const key of ['change_sets', 'files', 'groups']) {
+      visit(record[key], depth + 1)
+    }
+  }
+  visit(data, 0)
+  return [...paths]
+}
+
+function normalizeWorkspacePath(path: string): string {
+  return path.trim().replaceAll('\\', '/').replace(/^\.\//, '').replace(/\/+$/, '')
+}
+
+function workspacePathsOverlap(left: string, right: string): boolean {
+  return left === right || left.startsWith(`${right}/`) || right.startsWith(`${left}/`)
 }
 
 function subscribeWorkspaceChangeEvents(queryClient: QueryClient) {
@@ -61,7 +106,7 @@ function subscribeWorkspaceChangeEvents(queryClient: QueryClient) {
     listener: (rawEvent) => {
       const event = rawEvent as CustomEvent<WorkspaceChangeEvent>
       if (!event.detail?.project_id) return
-      void invalidateProjectChangeQueries(queryClient, event.detail.project_id)
+      void invalidateProjectChangeQueries(queryClient, event.detail.project_id, event.detail)
     },
   }
   workspaceChangeSubscriptions.set(queryClient, subscription)

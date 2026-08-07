@@ -172,7 +172,7 @@ func providerPresets() ([]providers.ProviderPreset, error) {
 			},
 		},
 		{
-			ID:              "anthropic",
+			ID:              providers.ProviderAnthropic,
 			Name:            "Anthropic",
 			DefaultProtocol: providers.ProtocolAnthropicMessages,
 			Endpoints: map[providers.ProtocolID]providers.EndpointPreset{
@@ -236,7 +236,7 @@ func providerPresets() ([]providers.ProviderPreset, error) {
 			},
 		},
 		{
-			ID:              "minimax",
+			ID:              providers.ProviderMiniMax,
 			Name:            "MiniMax",
 			DefaultProtocol: providers.ProtocolAnthropicMessages,
 			Endpoints: map[providers.ProtocolID]providers.EndpointPreset{
@@ -245,7 +245,7 @@ func providerPresets() ([]providers.ProviderPreset, error) {
 			},
 		},
 		{
-			ID:              "minimax-cn",
+			ID:              providers.ProviderMiniMaxCN,
 			Name:            "MiniMax China",
 			DefaultProtocol: providers.ProtocolAnthropicMessages,
 			Endpoints: map[providers.ProtocolID]providers.EndpointPreset{

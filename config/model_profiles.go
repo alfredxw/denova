@@ -162,6 +162,11 @@ func ResolveAgentModel(cfg *Config, agentKind string) ResolvedModelSettings {
 	if profile.MaxOutputTokens == nil {
 		profile.MaxOutputTokens = defaultProfile.MaxOutputTokens
 	}
+	if profile.MaxOutputTokens == nil {
+		if limits, ok := providers.LookupModelLimits(providers.ProviderID(profile.Provider), profile.Model); ok && limits.MaxOutputTokens > 0 {
+			profile.MaxOutputTokens = intPtr(limits.MaxOutputTokens)
+		}
+	}
 	temperature := profile.Temperature
 	if agentOverride.Temperature != nil {
 		temperature = agentOverride.Temperature

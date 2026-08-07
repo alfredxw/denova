@@ -71,6 +71,16 @@ func TestStoryHistoryPagesUseBoundedIndexedRangesWithoutDuplicates(t *testing.T)
 	if stats.BytesRead <= 0 || stats.BytesRead >= fileInfo.Size()/2 {
 		t.Fatalf("indexed recent page read %d of %d bytes", stats.BytesRead, fileInfo.Size())
 	}
+	refreshed, err := reopened.Snapshot(story.ID, "main")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if refreshed.CurrentTurn == nil || recent.CurrentTurn == nil || refreshed.CurrentTurn.ID != recent.CurrentTurn.ID {
+		t.Fatalf("hot snapshot current turn = %#v, want %#v", refreshed.CurrentTurn, recent.CurrentTurn)
+	}
+	if stats := reopened.LastStoryJournalReplayStats(story.ID); stats.BytesRead != 0 || stats.RecordsRead != 0 {
+		t.Fatalf("hot snapshot reread unchanged story history: %#v", stats)
+	}
 
 	all := append([]TurnEvent(nil), recent.Turns...)
 	cursor := recent.HistoryBeforeCursor
@@ -115,6 +125,13 @@ func TestStoryHistoryPagesUseBoundedIndexedRangesWithoutDuplicates(t *testing.T)
 	}
 	if stats := reopened.LastStoryJournalReplayStats(story.ID); stats.BytesRead != 0 || stats.RecordsRead != 0 {
 		t.Fatalf("hot append reread old story history: %#v", stats)
+	}
+	advanced, err := reopened.Snapshot(story.ID, "main")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if advanced.CurrentTurn == nil || advanced.CurrentTurn.ID != continued.ID || advanced.TurnCount != 1001 {
+		t.Fatalf("snapshot cache was not invalidated after append: current=%#v total=%d", advanced.CurrentTurn, advanced.TurnCount)
 	}
 	afterAppend, err := os.ReadFile(reopened.storyPath(story.ID))
 	if err != nil {

@@ -49,12 +49,24 @@ type storyJournalHandle struct {
 	journal    *conversationjournal.Journal
 	projection *storyJournalProjection
 	recent     map[string]storyRecentCache
+	snapshots  map[storySnapshotCacheKey]storySnapshotCache
 }
 
 type storyRecentCache struct {
 	cursor  conversationjournal.Cursor
 	meta    StoryMeta
 	records []StoryEventRecord
+}
+
+type storySnapshotCacheKey struct {
+	branchID string
+	limit    int
+}
+
+type storySnapshotCache struct {
+	cursor   conversationjournal.Cursor
+	meta     StoryMeta
+	snapshot Snapshot
 }
 
 // NewStore creates an interactive store rooted at the workspace directory.

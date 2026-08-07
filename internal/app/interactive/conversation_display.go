@@ -67,7 +67,15 @@ func (c *Conversation) AppendDisplayEvent(event session.DisplayEvent) error {
 		SSEDisplayNotice:  event.SSEDisplayNotice,
 		SSEGeneratedChars: event.SSEGeneratedChars,
 	}
+	replacesRunningEvent := status == "running" && findInteractiveDisplayEventIndex(c.displayEvents, next.ID, next.Role) >= 0
 	c.displayEvents = appendOrReplaceDisplayEvent(c.displayEvents, next)
+	// Streaming progress can replace the same display card hundreds of times.
+	// Keep those transient snapshots live in memory and persist the stable
+	// terminal replacement instead of rewriting the whole story journal for
+	// every progress tick.
+	if replacesRunningEvent {
+		return nil
+	}
 	turnID := ""
 	branchID := c.branchID
 	if c.lastTurn != nil {
@@ -96,7 +104,6 @@ func (c *Conversation) AppendDisplayToolArgs(id, name, delta string) error {
 	defer c.mu.Unlock()
 	if index := findInteractiveDisplayToolEventIndex(c.displayEvents, id, name); index >= 0 {
 		c.displayEvents[index].Args += delta
-		return c.persistLastTurnDisplayEventLocked(c.displayEvents[index])
 	}
 	return nil
 }
@@ -114,9 +121,35 @@ func (c *Conversation) AppendDisplayEventContent(id, role, delta string) error {
 	defer c.mu.Unlock()
 	if index := findInteractiveDisplayEventIndex(c.displayEvents, id, role); index >= 0 {
 		c.displayEvents[index].Content += delta
-		return c.persistLastTurnDisplayEventLocked(c.displayEvents[index])
 	}
 	return nil
+}
+
+// FlushDisplayEventContent persists the final streamed display tail at a part
+// boundary. The live event remains available from DisplayEventsSnapshot while
+// streaming, without forcing one full story-journal append per token.
+func (c *Conversation) FlushDisplayEventContent(id, role string) error {
+	if c == nil {
+		return nil
+	}
+	id = strings.TrimSpace(id)
+	role = strings.TrimSpace(role)
+	if id == "" || role == "" {
+		return nil
+	}
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	index := findInteractiveDisplayEventIndex(c.displayEvents, id, role)
+	if index < 0 {
+		return nil
+	}
+	if c.lastTurn != nil {
+		persistedIndex := findInteractiveDisplayEventIndex(c.lastTurn.DisplayEvents, id, role)
+		if persistedIndex >= 0 && c.lastTurn.DisplayEvents[persistedIndex].Content == c.displayEvents[index].Content {
+			return nil
+		}
+	}
+	return c.persistLastTurnDisplayEventLocked(c.displayEvents[index])
 }
 
 func (c *Conversation) appendTokenUsageEvent(event session.DisplayEvent) error {

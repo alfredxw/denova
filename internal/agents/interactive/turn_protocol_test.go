@@ -104,27 +104,18 @@ func TestInteractiveTurnProtocolMiddlewareKeepsStableToolsAndForbidsCallsAfterSu
 	}
 }
 
-func TestInteractiveTurnProtocolAppliesStoryCompletionBudgetOnlyToNarrativeCandidate(t *testing.T) {
-	middleware := NewTurnProtocolMiddleware(func() bool { return false }, 1234)
+func TestInteractiveTurnProtocolDoesNotOverrideConfiguredOutputLimit(t *testing.T) {
+	middleware := NewTurnProtocolMiddleware(func() bool { return false })
 	base := &interactiveProtocolOptionModel{}
 	wrapped, err := middleware.WrapModel(context.Background(), base, &agent.ModelContext{})
 	if err != nil {
 		t.Fatal(err)
 	}
-	state := &interactiveTurnProtocolRunState{}
-	ctx := context.WithValue(context.Background(), interactiveTurnProtocolStateKey{}, state)
-	if _, err := wrapped.Generate(ctx, nil, agent.WithMaxTokens(9999)); err != nil {
-		t.Fatal(err)
-	}
-	if base.maxTokens == nil || *base.maxTokens != 1234 {
-		t.Fatalf("first visible narrative should use the story-derived completion budget: %#v", base.maxTokens)
-	}
-	state.retainNarrativeCandidate("正文候选")
-	if _, err := wrapped.Generate(ctx, nil, agent.WithMaxTokens(9999)); err != nil {
+	if _, err := wrapped.Generate(context.Background(), nil, agent.WithMaxTokens(9999)); err != nil {
 		t.Fatal(err)
 	}
 	if base.maxTokens == nil || *base.maxTokens != 9999 {
-		t.Fatalf("structured retry must keep the provider/model budget: %#v", base.maxTokens)
+		t.Fatalf("turn protocol must preserve the provider/model output limit: %#v", base.maxTokens)
 	}
 }
 

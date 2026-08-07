@@ -11,7 +11,6 @@ import (
 	"github.com/alfredxw/denova/agent/providers"
 
 	"denova/config"
-	agentcompaction "denova/internal/agents/context/compaction"
 	"denova/internal/agents/modelio"
 	"denova/internal/agents/prompts"
 	agentrun "denova/internal/agents/run"
@@ -94,8 +93,7 @@ func BuildInteractiveStoryWithComposition(ctx context.Context, cfg *config.Confi
 	handlers := []agent.Middleware{agenttoolruntime.NewInteractiveStoryMiddleware()}
 	var outputGuard func(context.Context, *agent.RetryContext) *agent.RetryDecision
 	if len(toolContexts) > 0 && toolContexts[0].TurnResultReady != nil {
-		completionTokens, _ := agentcompaction.EstimateProjectionReserves(cfg, config.AgentKindInteractiveStory, teller.ReplyTargetChars)
-		handlers = append(handlers, agentinteractive.NewTurnProtocolMiddleware(toolContexts[0].TurnResultReady, completionTokens))
+		handlers = append(handlers, agentinteractive.NewTurnProtocolMiddleware(toolContexts[0].TurnResultReady))
 		outputGuard = agentinteractive.NewCompletionGuard(toolContexts[0].TurnResultReady)
 	}
 	composition, err := prompts.ComposeInteractiveStoryInstruction(cfg, state, teller)

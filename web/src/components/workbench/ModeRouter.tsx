@@ -712,6 +712,7 @@ export function ModeRouter(props: ModeRouterProps) {
     <AgentPanel
       projectId={projectId}
       workspace={workspace}
+      active={presentedRightPanel === 'ai' && presentedMainRoute !== 'agentchat'}
       chrome="panel"
       composerSettings={composerSettings}
       currentChapter={currentChapter}

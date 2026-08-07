@@ -12,21 +12,19 @@ import (
 // DirectorConversationOptions binds the reusable single-instruction model
 // conversation to optional display and durable domain-commit participants.
 type DirectorConversationOptions struct {
-	Instruction   conversation.InstructionOptions
-	Display       any
-	DomainCommit  agentrun.DomainCommitParticipant
-	HideToolInput bool
+	Instruction  conversation.InstructionOptions
+	Display      any
+	DomainCommit agentrun.DomainCommitParticipant
 }
 
 // DirectorConversation adapts an interactive Director maintenance task to the
 // shared chat runtime without mixing Director display policy into chat itself.
 type DirectorConversation struct {
 	*conversation.InstructionConversation
-	display               any
-	domainCommit          agentrun.DomainCommitParticipant
-	hideDirectorToolInput bool
-	mu                    sync.Mutex
-	directorTools         map[string]*directorToolDisplayState
+	display       any
+	domainCommit  agentrun.DomainCommitParticipant
+	mu            sync.Mutex
+	directorTools map[string]*directorToolDisplayState
 }
 
 // NewDirectorConversation creates a Director-specific conversation adapter.
@@ -35,7 +33,6 @@ func NewDirectorConversation(options DirectorConversationOptions) *DirectorConve
 		InstructionConversation: conversation.NewInstructionConversation(options.Instruction),
 		display:                 options.Display,
 		domainCommit:            options.DomainCommit,
-		hideDirectorToolInput:   options.HideToolInput,
 		directorTools:           make(map[string]*directorToolDisplayState),
 	}
 }
