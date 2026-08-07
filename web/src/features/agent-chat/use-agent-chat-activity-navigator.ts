@@ -147,6 +147,7 @@ export function useAgentChatActivityNavigator({
     activitiesByProject,
     isSessionRunning,
     openHistorySession,
+    openOrActivateSession,
     openSidebarActivity,
   }
 }

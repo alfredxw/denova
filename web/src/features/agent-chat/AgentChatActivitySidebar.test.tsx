@@ -50,15 +50,29 @@ const activity: AgentChatSidebarActivity = {
   focused: true,
 }
 
+const terminalActivity: AgentChatSidebarActivity = {
+  id: 'terminal:shell-tab',
+  projectId: project.id,
+  workspace: project.path,
+  kind: 'terminal',
+  title: 'Shell',
+  status: 'ready',
+  tabId: 'shell-tab',
+  group: 'secondary',
+  paneVisible: true,
+  focused: false,
+}
+
 function sidebarProps(overrides: Partial<ComponentProps<typeof AgentChatActivitySidebar>> = {}): ComponentProps<typeof AgentChatActivitySidebar> {
   return {
     projects: [project],
-    activitiesByProject: new Map([[project.id, [activity]]]),
+    activitiesByProject: new Map([[project.id, [activity, terminalActivity]]]),
     loading: false,
     error: '',
     activeProjectId: project.id,
     onSelectProject: vi.fn(),
     onOpenActivity: vi.fn(),
+    onOpenSession: vi.fn(),
     onCreateSession: vi.fn(),
     onOpenHistory: vi.fn(),
     onAddProject: vi.fn(),
@@ -78,30 +92,164 @@ function renderSidebar(overrides: Partial<ComponentProps<typeof AgentChatActivit
 describe('AgentChatActivitySidebar', () => {
   beforeEach(() => window.localStorage.clear())
 
-  it('shows active work but keeps historical conversations out of the project tree', () => {
-    renderSidebar()
+  it('keeps the current Project selected and exposes recent conversation navigation', async () => {
+    const user = userEvent.setup()
+    const { props } = renderSidebar()
     const projectButton = screen.getByTitle(project.path)
     const activityButton = screen.getByRole('button', { name: /Active chat/ })
+    const terminalButton = screen.getByRole('button', { name: /Shell/ })
 
-    expect(projectButton).not.toHaveAttribute('aria-current')
-    expect(projectButton.parentElement).not.toHaveClass('bg-[var(--nova-active)]')
+    expect(screen.queryByText('已打开')).not.toBeInTheDocument()
+    expect(screen.queryByText('最近会话')).not.toBeInTheDocument()
+    expect(projectButton).toHaveAttribute('aria-current', 'location')
+    expect(projectButton.parentElement).toHaveAttribute('data-current-project', 'true')
+    expect(projectButton.parentElement).toHaveClass('bg-[var(--nova-surface-2)]')
     expect(activityButton).toHaveAttribute('aria-current', 'page')
+    expect(activityButton).not.toHaveAttribute('title')
     expect(activityButton).toHaveClass('bg-[var(--nova-active)]')
-    expect(screen.queryByText('Historical chat')).not.toBeInTheDocument()
+    const recentSessionButton = screen.getByRole('button', { name: '打开 Historical chat' })
+    expect(recentSessionButton).not.toHaveAttribute('title')
+    await user.click(recentSessionButton)
+    expect(props.onOpenSession).toHaveBeenCalledWith(project, project.sessions[1])
+    await user.click(terminalButton)
+    expect(props.onOpenActivity).toHaveBeenCalledWith(project, terminalActivity)
+    await user.click(screen.getByRole('button', { name: '查看 Alpha 的全部 2 个会话' }))
+    expect(props.onOpenHistory).toHaveBeenCalledWith(project)
     expect(screen.getByRole('button', { name: '对话历史' })).toBeInTheDocument()
   })
 
-  it('opens an activity directly and uses the whole project row as the collapse target', async () => {
+  it('keeps a recent conversation in place when it gains open-session state', () => {
+    const view = renderSidebar()
+    const conversationOrder = () => Array.from(
+      document.querySelectorAll('[data-slot="agent-chat-conversation-row"]'),
+      (row) => row.textContent,
+    )
+    expect(conversationOrder()).toEqual(['Active chat运行中', 'Historical chat'])
+
+    const historicalActivity: AgentChatSidebarActivity = {
+      ...activity,
+      id: 'agent:history',
+      title: 'Historical chat',
+      tabId: 'history-tab',
+      sessionId: 'history',
+      focused: true,
+    }
+    view.rerender(
+      <AgentChatActivitySidebar
+        {...view.props}
+        activitiesByProject={new Map([[
+          project.id,
+          [{ ...activity, paneVisible: false, focused: false }, historicalActivity, terminalActivity],
+        ]])}
+      />,
+    )
+
+    expect(conversationOrder()).toEqual(['Active chat运行中', 'Historical chat运行中'])
+    expect(screen.getByRole('button', { name: /Historical chat/ })).toHaveAttribute('aria-current', 'page')
+  })
+
+  it('keeps an active conversation visible beyond the recent-session limit', () => {
+    const olderActiveSession = {
+      ...project.sessions[1],
+      id: 'older-active',
+      title: 'Older active chat',
+    }
+    const extendedProject: AgentChatProject = {
+      ...project,
+      total: 4,
+      sessions: [
+        ...project.sessions,
+        { ...project.sessions[1], id: 'third', title: 'Third recent chat' },
+        olderActiveSession,
+      ],
+    }
+    const olderActivity: AgentChatSidebarActivity = {
+      ...activity,
+      id: 'agent:older-active',
+      title: olderActiveSession.title,
+      sessionId: olderActiveSession.id,
+      tabId: 'older-active-tab',
+      paneVisible: false,
+      focused: false,
+    }
+
+    renderSidebar({
+      projects: [extendedProject],
+      activitiesByProject: new Map([[extendedProject.id, [activity, terminalActivity, olderActivity]]]),
+    })
+
+    expect(document.querySelectorAll('[data-slot="agent-chat-conversation-row"]')).toHaveLength(4)
+    expect(screen.getByRole('button', { name: /Older active chat/ })).toBeInTheDocument()
+  })
+
+  it('keeps a not-yet-persisted conversation draft in the same flat list', () => {
+    const draftActivity: AgentChatSidebarActivity = {
+      ...activity,
+      id: 'agent:draft-session',
+      title: 'New draft chat',
+      sessionId: 'draft-session',
+      tabId: 'draft-tab',
+      paneVisible: false,
+      focused: false,
+      status: 'idle',
+    }
+
+    renderSidebar({
+      activitiesByProject: new Map([[project.id, [activity, draftActivity, terminalActivity]]]),
+    })
+
+    expect(screen.getByRole('button', { name: /New draft chat/ })).toBeInTheDocument()
+    expect(screen.queryByText('已打开')).not.toBeInTheDocument()
+    expect(screen.queryByText('最近会话')).not.toBeInTheDocument()
+  })
+
+  it('starts with only the current Project expanded and reveals another Project when selected', async () => {
+    const user = userEvent.setup()
+    const beta: AgentChatProject = {
+      ...project,
+      id: 'project-beta',
+      path: '/books/beta',
+      name: 'Beta',
+      current: false,
+      sessions: [{ ...project.sessions[1], id: 'beta-history', title: 'Beta history' }],
+      total: 1,
+    }
+    const { props } = renderSidebar({
+      projects: [project, beta],
+      activitiesByProject: new Map([[project.id, [activity]], [beta.id, []]]),
+    })
+
+    expect(screen.queryByRole('button', { name: '打开 Beta history' })).not.toBeInTheDocument()
+    await user.click(screen.getByTitle(beta.path))
+    expect(props.onSelectProject).toHaveBeenCalledWith(beta)
+    expect(screen.getByRole('button', { name: '打开 Beta history' })).toBeInTheDocument()
+  })
+
+  it('toggles from the full Project row while preserving the current marker', async () => {
     const user = userEvent.setup()
     const { props } = renderSidebar()
     await user.click(screen.getByRole('button', { name: /Active chat/ }))
-    expect(props.onOpenActivity).toHaveBeenCalledWith(project, activity)
+    expect(props.onOpenSession).toHaveBeenCalledWith(project, project.sessions[0])
 
     const projectButton = screen.getByTitle(project.path)
+    const projectContent = document.querySelector('[data-slot="agent-chat-project-content"]')
+    expect(projectButton).toHaveAccessibleName('收起 Alpha')
+    expect(projectButton.querySelector('[data-slot="agent-chat-project-chevron"]')?.closest('button')).toBe(projectButton)
+    expect(projectContent).toHaveAttribute('data-state', 'open')
+    expect(projectContent).toHaveClass('grid-rows-[1fr]', 'duration-[var(--nova-motion-fast)]')
     await user.click(projectButton)
+    expect(props.onSelectProject).toHaveBeenCalledWith(project)
+    expect(projectButton).toHaveAccessibleName('展开 Alpha')
     expect(projectButton).toHaveAttribute('aria-expanded', 'false')
+    expect(projectContent).toHaveAttribute('data-state', 'closed')
+    expect(projectContent).toHaveAttribute('inert')
+    expect(projectContent).toHaveClass('grid-rows-[0fr]', 'opacity-0')
     expect(projectButton.parentElement?.querySelector('[data-slot="agent-chat-project-active-indicator"]')).not.toBeNull()
     expect(screen.queryByRole('button', { name: /Active chat/ })).not.toBeInTheDocument()
+
+    await user.click(projectButton)
+    expect(projectButton).toHaveAccessibleName('收起 Alpha')
+    expect(screen.getByRole('button', { name: /Active chat/ })).toBeInTheDocument()
   })
 
   it('keeps a neutral cursor while projects are draggable in manual mode', async () => {
@@ -128,7 +276,7 @@ describe('AgentChatActivitySidebar', () => {
           createDisabled={false}
         />,
       )
-      const expand = screen.getByRole('button', { name: '显示活动列表' })
+      const expand = screen.getByRole('button', { name: '显示项目导航' })
       const rail = expand.parentElement!
 
       fireEvent.mouseEnter(rail)
@@ -154,7 +302,7 @@ describe('AgentChatActivitySidebar', () => {
           createDisabled={false}
         />,
       )
-      const rail = screen.getByRole('button', { name: '显示活动列表' }).parentElement!
+      const rail = screen.getByRole('button', { name: '显示项目导航' }).parentElement!
 
       fireEvent.mouseEnter(rail)
       act(() => vi.advanceTimersByTime(119))

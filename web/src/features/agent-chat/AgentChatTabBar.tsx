@@ -41,7 +41,7 @@ import {
 } from './types'
 
 interface AgentChatTabBarProps {
-  /** Stable owner used to namespace drag targets even when several project layers stay mounted. */
+  /** Stable owner of this independently persisted workbench. */
   projectId: string
   /** Which side of the split this strip drives. */
   group: AgentChatGroupId

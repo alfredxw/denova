@@ -178,12 +178,12 @@ describe('AgentChatView project workbenches', () => {
     const user = userEvent.setup()
     renderView(<AgentChatView composerSettings={{} as never} tellers={[]} imagePresets={[]} renderPage={() => null} renderReview={() => null} />)
 
-    await user.click(await screen.findByRole('button', { name: '隐藏活动列表' }))
-    expect(screen.getByRole('button', { name: '显示活动列表' })).toBeInTheDocument()
+    await user.click(await screen.findByRole('button', { name: '隐藏项目导航' }))
+    expect(screen.getByRole('button', { name: '显示项目导航' })).toBeInTheDocument()
     expect(window.localStorage.getItem('nova.agentchat.sidebarVisible.v1')).toBe('false')
 
-    await user.click(screen.getByRole('button', { name: '显示活动列表' }))
-    expect(screen.getByRole('button', { name: '隐藏活动列表' })).toBeInTheDocument()
+    await user.click(screen.getByRole('button', { name: '显示项目导航' }))
+    expect(screen.getByRole('button', { name: '隐藏项目导航' })).toBeInTheDocument()
     expect(window.localStorage.getItem('nova.agentchat.sidebarVisible.v1')).toBe('true')
   })
 
@@ -235,7 +235,7 @@ describe('AgentChatView project workbenches', () => {
     expect(screen.getByTestId('conversation:/books/a:session-a')).toHaveTextContent('active')
     expect(screen.getByRole('button', { name: /^Chat A/ })).toHaveAttribute('aria-current', 'page')
 
-    await user.click(screen.getByRole('button', { name: /Chat B/ }))
+    await user.click(screen.getByTitle('/books/b'))
     expect(
       within(screen.getAllByRole('tablist')[0]).getByRole('tab', {
         name: /Chat B/,

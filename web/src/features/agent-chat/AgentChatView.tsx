@@ -105,6 +105,7 @@ export function AgentChatView({
   const workbenchRef = useRef(workbench)
   workbenchRef.current = workbench
   const [historyOpen, setHistoryOpen] = useState(false)
+  const [historyProjectId, setHistoryProjectId] = useState('')
   const [renameTarget, setRenameTarget] = useState<AgentChatProject | null>(null)
   const [projectDirectoryBusy, setProjectDirectoryBusy] = useState(false)
   const projectDirectoryBusyRef = useRef(false)
@@ -536,7 +537,7 @@ export function AgentChatView({
     [sessionTitles, t],
   )
 
-  const { activitiesByProject, isSessionRunning, openHistorySession, openSidebarActivity } = useAgentChatActivityNavigator({
+  const { activitiesByProject, isSessionRunning, openHistorySession, openOrActivateSession, openSidebarActivity } = useAgentChatActivityNavigator({
     projects,
     workbench,
     liveRunningBindings,
@@ -546,6 +547,11 @@ export function AgentChatView({
     activateTab,
     openSessionTab,
   })
+
+  const openHistory = useCallback((project?: AgentChatProject) => {
+    setHistoryProjectId(project?.id || activeProjectId)
+    setHistoryOpen(true)
+  }, [activeProjectId])
 
   const renameProject = useCallback(
     async (name: string) => {
@@ -607,8 +613,9 @@ export function AgentChatView({
     activeProjectId,
     onSelectProject: (project: AgentChatProject) => selectProject(project.id),
     onOpenActivity: openSidebarActivity,
+    onOpenSession: openOrActivateSession,
     onCreateSession: (project: AgentChatProject) => openDraftSessionInProject(project),
-    onOpenHistory: () => setHistoryOpen(true),
+    onOpenHistory: openHistory,
     onAddProject: () => void chooseProjectDirectory(),
     projectDirectoryBusy,
     onRenameProject: (project: AgentChatProject) => setRenameTarget(project),
@@ -772,6 +779,7 @@ export function AgentChatView({
         open={historyOpen}
         projects={projects}
         currentProjectId={activeProjectId}
+        initialProjectId={historyProjectId}
         onOpenChange={setHistoryOpen}
         onOpenSession={openHistorySession}
         onRenameSession={(item, title) => renameSession(item.project_id, item.session, title)}

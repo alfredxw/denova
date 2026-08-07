@@ -7,6 +7,8 @@ import { WorkbenchTabDragContext } from '@/components/workbench/WorkbenchTabDrag
 import { AGENT_CHAT_PAGE_IDS, type AgentChatTab } from './types'
 import { AgentChatTabBar } from './AgentChatTabBar'
 
+const projectId = 'project-one'
+
 const tabs: AgentChatTab[] = [
   {
     kind: 'page',
@@ -36,7 +38,7 @@ describe('AgentChatTabBar', () => {
   it('shows the active workbench tab with its selected fill and accent rule', () => {
     renderTabBar(
       <AgentChatTabBar
-        projectId="project-one"
+        projectId={projectId}
         group="primary"
         tabs={tabs}
         activeTabId="skills-tab"
@@ -69,13 +71,14 @@ describe('AgentChatTabBar', () => {
     expect(screen.getByRole('tablist')).toHaveClass('overflow-x-auto', '[&::-webkit-scrollbar]:hidden')
     expect(screen.getByRole('tablist')).toHaveStyle({ scrollbarWidth: 'none' })
     expect(screen.getByRole('button', { name: '新建标签页' })).toHaveClass('mx-1', 'h-7', 'w-8', 'self-center', 'rounded-lg')
+    expect(document.querySelector('[data-slot="agent-chat-project-context"]')).not.toBeInTheDocument()
   })
 
   it('renders the shared tab preview while keyboard dragging', async () => {
     const user = userEvent.setup()
     renderTabBar(
       <AgentChatTabBar
-        projectId="project-one"
+        projectId={projectId}
         group="primary"
         tabs={tabs}
         activeTabId="reader-tab"
@@ -118,7 +121,7 @@ describe('AgentChatTabBar', () => {
     }
     renderTabBar(
       <AgentChatTabBar
-        projectId="project-one"
+        projectId={projectId}
         group="primary"
         tabs={[reviewTab]}
         activeTabId="review-tab"
@@ -151,7 +154,7 @@ describe('AgentChatTabBar', () => {
     try {
       renderTabBar(
         <AgentChatTabBar
-          projectId="project-one"
+          projectId={projectId}
           group="primary"
           tabs={tabs}
           activeTabId="reader-tab"
@@ -190,7 +193,7 @@ describe('AgentChatTabBar', () => {
     try {
       renderTabBar(
         <AgentChatTabBar
-          projectId="project-one"
+          projectId={projectId}
           group="primary"
           tabs={tabs}
           activeTabId="reader-tab"
@@ -226,7 +229,7 @@ describe('AgentChatTabBar', () => {
     const onNewTerminalTab = vi.fn()
     renderTabBar(
       <AgentChatTabBar
-        projectId="project-one"
+        projectId={projectId}
         group="primary"
         tabs={tabs}
         activeTabId="skills-tab"

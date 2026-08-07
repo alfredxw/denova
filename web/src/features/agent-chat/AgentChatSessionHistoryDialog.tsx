@@ -18,6 +18,8 @@ interface AgentChatSessionHistoryDialogProps {
   open: boolean
   projects: readonly AgentChatProject[]
   currentProjectId: string
+  /** Project requested by an inline history entry; falls back to the active workbench Project. */
+  initialProjectId?: string
   onOpenChange: (open: boolean) => void
   onOpenSession: (item: AgentChatHistoryItem) => void
   onRenameSession: (item: AgentChatHistoryItem, title: string) => void | Promise<void>
@@ -29,6 +31,7 @@ export function AgentChatSessionHistoryDialog({
   open,
   projects,
   currentProjectId,
+  initialProjectId,
   onOpenChange,
   onOpenSession,
   onRenameSession,
@@ -37,7 +40,7 @@ export function AgentChatSessionHistoryDialog({
   const { t } = useTranslation()
   const [query, setQuery] = useState('')
   const [debouncedQuery, setDebouncedQuery] = useState('')
-  const [selectedProjectId, setSelectedProjectId] = useState(currentProjectId)
+  const [selectedProjectId, setSelectedProjectId] = useState(initialProjectId || currentProjectId)
   const [projectsCollapsed, setProjectsCollapsed] = useState(false)
   const [items, setItems] = useState<AgentChatHistoryItem[]>([])
   const [total, setTotal] = useState(0)
@@ -63,9 +66,11 @@ export function AgentChatSessionHistoryDialog({
     if (!open) return
     const selectionExists = projects.some((project) => project.id === selectedProjectId)
     if (!opening && selectionExists) return
-    const nextProject = projects.find((project) => project.id === currentProjectId) ?? projects[0]
+    const nextProject = projects.find((project) => project.id === initialProjectId)
+      ?? projects.find((project) => project.id === currentProjectId)
+      ?? projects[0]
     setSelectedProjectId(nextProject?.id ?? '')
-  }, [currentProjectId, open, projects, selectedProjectId])
+  }, [currentProjectId, initialProjectId, open, projects, selectedProjectId])
 
   useEffect(() => {
     if (!open) return

@@ -143,4 +143,31 @@ describe('AgentChatSessionHistoryDialog', () => {
     await user.click(screen.getByRole('button', { name: '展开项目列表' }))
     expect(screen.getByRole('navigation', { name: '项目' })).toBeInTheDocument()
   })
+
+  it('opens directly on the Project requested by an inline history entry', async () => {
+    vi.mocked(getAgentChatHistory).mockImplementation(async (options = {}) => ({
+      items: options.projectId === otherProjectItem.project_id ? [otherProjectItem] : [historyItem],
+      total: 1,
+      offset: 0,
+      has_more: false,
+    }))
+
+    render(
+      <TooltipProvider>
+        <AgentChatSessionHistoryDialog
+          open
+          projects={projects}
+          currentProjectId={historyItem.project_id}
+          initialProjectId={otherProjectItem.project_id}
+          onOpenChange={vi.fn()}
+          onOpenSession={vi.fn()}
+          onRenameSession={vi.fn()}
+          onDeleteSession={vi.fn()}
+        />
+      </TooltipProvider>,
+    )
+
+    expect(await screen.findByRole('button', { name: '打开 Beta chat' })).toBeInTheDocument()
+    expect(getAgentChatHistory).toHaveBeenCalledWith(expect.objectContaining({ projectId: otherProjectItem.project_id }))
+  })
 })
