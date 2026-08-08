@@ -1,20 +1,20 @@
-import { render } from '@testing-library/react'
+import { render, screen } from '@testing-library/react'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { AgentChatPane } from './AgentChatPane'
 
 const renderCounts = vi.hoisted(() => ({ inputArea: 0, messageList: 0 }))
 
 vi.mock('./InputArea', () => ({
-  InputArea: () => {
+  InputArea: ({ contentClassName }: { contentClassName?: string }) => {
     renderCounts.inputArea += 1
-    return <div data-testid="input-area" />
+    return <div data-content-class={contentClassName} data-testid="input-area" />
   },
 }))
 
 vi.mock('./MessageList', () => ({
-  MessageList: () => {
+  MessageList: ({ contentClassName }: { contentClassName?: string }) => {
     renderCounts.messageList += 1
-    return <div data-testid="message-list" />
+    return <div data-content-class={contentClassName} data-testid="message-list" />
   },
 }))
 
@@ -46,5 +46,19 @@ describe('AgentChatPane', () => {
 
     expect(renderCounts.messageList).toBe(1)
     expect(renderCounts.inputArea).toBe(2)
+  })
+
+  it('shares one adaptive content boundary between the timeline and composer', () => {
+    render(
+      <AgentChatPane
+        contentClassName="mx-auto w-full max-w-[56rem]"
+        messageListProps={{ messages: [], isStreaming: false, activityContent: '' }}
+        inputAreaProps={{ disabled: false, onSend: vi.fn() }}
+      />,
+    )
+
+    expect(screen.getByTestId('message-list')).toHaveAttribute('data-content-class', 'mx-auto w-full max-w-[56rem]')
+    expect(screen.getByTestId('input-area')).toHaveAttribute('data-content-class', 'mx-auto w-full max-w-[56rem]')
+    expect(screen.getByTestId('message-list').parentElement).not.toHaveClass('max-w-[56rem]')
   })
 })

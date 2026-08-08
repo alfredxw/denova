@@ -597,10 +597,8 @@ function AgentPanelComponent({
   }
   const chatPane = (
     <AgentChatPane
-      // The conversation fills whatever pane hosts it. Capping its width inside the AgentChat
-      // workbench left empty bands down both sides of the tab, and the pane is already narrow
-      // once the workbench is split.
       className="min-w-0 flex-1"
+      contentClassName={dockedChrome ? undefined : 'mx-auto w-full max-w-[56rem]'}
       emptyContent={emptyChatContent}
       messageListProps={messageListProps}
       inputAreaProps={inputAreaProps}

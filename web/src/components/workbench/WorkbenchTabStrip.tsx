@@ -22,7 +22,9 @@ const WORKBENCH_TAB_CLASS = [
   'rounded-[var(--nova-radius)] border border-transparent bg-transparent after:hidden',
   'text-[var(--nova-text-muted)] transition-[color,background-color,border-color]',
   'hover:bg-[var(--nova-hover)] hover:text-[var(--nova-text)]',
-  // Context-menu triggers also use data-state, so aria-selected is the stable active selector.
+  // Keep the workbench active surface stable whether Radix Tabs owns data-state or a nested
+  // context-menu trigger overwrites it. The important variants suppress the base Tabs skin.
+  'data-[state=active]:!border-[var(--nova-border-soft)] data-[state=active]:!bg-[var(--nova-active)] data-[state=active]:!text-[var(--nova-text)] data-[state=active]:!shadow-none',
   'aria-selected:border-[var(--nova-border-soft)] aria-selected:bg-[var(--nova-active)] aria-selected:text-[var(--nova-text)]',
   'dark:aria-selected:border-[var(--nova-border-soft)] dark:aria-selected:bg-[var(--nova-active)] dark:aria-selected:text-[var(--nova-text)]',
 ].join(' ')

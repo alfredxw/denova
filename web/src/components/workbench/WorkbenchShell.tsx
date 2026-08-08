@@ -348,7 +348,7 @@ export function WorkbenchShell({
   const interactiveActivityItems: ActivityItem[] = [
     {
       id: 'story',
-      label: t('workbench.activity.story'),
+      label: t('workbench.activity.game'),
       onClick: () => openInteractiveSubmode('story'),
       active: interactiveModeActive && (interactiveSubmode === 'story' || interactiveSubmode === 'director' || interactiveSubmode === 'timeline'),
       icon: <MessageSquareText className="h-4 w-4" />,

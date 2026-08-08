@@ -8,7 +8,7 @@ const workbench = {
   'workbench.activity.lore': '资料库',
   'workbench.activity.settings': '设置',
   'workbench.activity.skills': 'Skills',
-  'workbench.activity.story': '剧情',
+  'workbench.activity.game': '游戏',
   'workbench.activity.teller': '方案预设',
   'workbench.activity.toggleCollapse': '收起',
   'workbench.activity.toggleExpand': '展开',

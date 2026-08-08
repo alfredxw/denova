@@ -7,18 +7,26 @@ interface AgentChatPaneProps {
   emptyContent?: ReactNode
   messageListProps: ComponentProps<typeof MessageList>
   inputAreaProps: ComponentProps<typeof InputArea>
+  /** Optional shared reading boundary for the timeline and composer. */
+  contentClassName?: string
   className?: string
 }
 
 const StableMessageList = memo(MessageList)
 
 /** Shared assembly for the primary chat and the desktop split-chat pane. */
-export function AgentChatPane({ emptyContent, messageListProps, inputAreaProps, className }: AgentChatPaneProps) {
+export function AgentChatPane({ emptyContent, messageListProps, inputAreaProps, contentClassName, className }: AgentChatPaneProps) {
   return (
     <div className={cn('relative flex h-full min-h-0 flex-col', className)}>
       {emptyContent}
-      <StableMessageList {...messageListProps} />
-      <InputArea {...inputAreaProps} />
+      <StableMessageList
+        {...messageListProps}
+        contentClassName={contentClassName ?? messageListProps.contentClassName}
+      />
+      <InputArea
+        {...inputAreaProps}
+        contentClassName={contentClassName ?? inputAreaProps.contentClassName}
+      />
     </div>
   )
 }

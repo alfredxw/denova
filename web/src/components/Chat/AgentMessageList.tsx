@@ -28,6 +28,7 @@ import { AgentExecutionProcess } from './AgentExecutionProcess'
 import { buildAgentRunPresentation, type AgentRunPresentationSection } from './agent-run-presentation'
 import { scheduleChatRowBottomAnchor, scheduleResolvedChatRowBottomAnchor } from './chat-row-bottom-anchor'
 import { Button } from '@/components/ui/button'
+import { cn } from '@/lib/utils'
 
 interface MessageListProps {
   projectId?: string
@@ -42,6 +43,8 @@ interface MessageListProps {
   scrollResetKey?: string
   bottomPaddingClassName?: string
   bottomPaddingPx?: number
+  /** Shared adaptive boundary for every timeline row and trailing content. */
+  contentClassName?: string
   afterContent?: ReactNode
   afterContentKey?: string
   hasEarlierMessages?: boolean
@@ -108,6 +111,7 @@ const MESSAGE_LIST_COMPONENTS: Components<AgentChatListItem, MessageListVirtuoso
 interface MessageListVirtuosoContext {
   bottomPaddingClassName: string
   bottomPaddingPx?: number
+  contentClassName?: string
   afterContent?: ReactNode
   onAfterContentInteraction: () => void
   hasEarlierMessages: boolean
@@ -115,7 +119,7 @@ interface MessageListVirtuosoContext {
   onLoadEarlierMessages?: () => void | Promise<void>
 }
 
-export function MessageList({ projectId, messages, isStreaming, visible = true, isExecutionActive = isStreaming, activityContent, highlightDialogue = false, scrollResetKey, bottomPaddingClassName = '', bottomPaddingPx, afterContent, hasEarlierMessages = false, isLoadingEarlierMessages = false, onLoadEarlierMessages, timelineAttachments = [], messageStyle, collapseTraceGroups = false, activeTraceDisplay = 'expanded', canMutateMessage, onEditMessage, onEditAssistantReply, onCreateBranch, onRegenerateMessage, onSwitchMessageVersion, onOpenSubAgentSession, onInsertIllustration, onGenerateInteractiveImage, generatingInteractiveImageTurnId, activeSubAgentSessionKey, onApprovePlan, onContinuePlan, onExitPlanMode, onOpenTrace, onResolveAsk, turnScrollRequest, onVisibleTurnAnchorChange }: MessageListProps) {
+export function MessageList({ projectId, messages, isStreaming, visible = true, isExecutionActive = isStreaming, activityContent, highlightDialogue = false, scrollResetKey, bottomPaddingClassName = '', bottomPaddingPx, contentClassName, afterContent, hasEarlierMessages = false, isLoadingEarlierMessages = false, onLoadEarlierMessages, timelineAttachments = [], messageStyle, collapseTraceGroups = false, activeTraceDisplay = 'expanded', canMutateMessage, onEditMessage, onEditAssistantReply, onCreateBranch, onRegenerateMessage, onSwitchMessageVersion, onOpenSubAgentSession, onInsertIllustration, onGenerateInteractiveImage, generatingInteractiveImageTurnId, activeSubAgentSessionKey, onApprovePlan, onContinuePlan, onExitPlanMode, onOpenTrace, onResolveAsk, turnScrollRequest, onVisibleTurnAnchorChange }: MessageListProps) {
   const { t } = useTranslation()
   const containerRef = useRef<HTMLDivElement | null>(null)
   const renderedItemsRef = useRef<ListItem<AgentChatListItem>[]>([])
@@ -166,13 +170,14 @@ export function MessageList({ projectId, messages, isStreaming, visible = true, 
     () => ({
       bottomPaddingClassName,
       bottomPaddingPx,
+      contentClassName,
       afterContent,
       onAfterContentInteraction: scrollLock.releaseBottomLock,
       hasEarlierMessages,
       isLoadingEarlierMessages,
       onLoadEarlierMessages,
     }),
-    [afterContent, bottomPaddingClassName, bottomPaddingPx, hasEarlierMessages, isLoadingEarlierMessages, onLoadEarlierMessages, scrollLock.releaseBottomLock],
+    [afterContent, bottomPaddingClassName, bottomPaddingPx, contentClassName, hasEarlierMessages, isLoadingEarlierMessages, onLoadEarlierMessages, scrollLock.releaseBottomLock],
   )
   const scrollButtonBottomOffset = typeof bottomPaddingPx === 'number' ? Math.max(24, bottomPaddingPx + 12) : 24
   const anchorLatestInteractiveCardBottom = useCallback((element?: HTMLElement) => {
@@ -256,6 +261,7 @@ export function MessageList({ projectId, messages, isStreaming, visible = true, 
       <AgentChatListRow
         projectId={projectId}
         item={resolvedItem}
+        contentClassName={contentClassName}
         isLast={index === firstItemIndex + listItems.length - 1}
         isStreaming={isStreaming}
         activeTraceDisplay={activeTraceDisplay}
@@ -282,7 +288,7 @@ export function MessageList({ projectId, messages, isStreaming, visible = true, 
         syncStreamingTailLayout={isStreaming ? scrollLock.syncStreamingTailLayout : undefined}
       />
     )
-  }, [activeSubAgentSessionKey, activeTraceDisplay, anchorLatestInteractiveCardBottom, canMutateMessage, firstItemIndex, generatingInteractiveImageTurnId, highlightDialogue, isStreaming, listItems, messageStyle, onApprovePlan, onContinuePlan, onCreateBranch, onEditAssistantReply, onEditMessage, onExitPlanMode, onGenerateInteractiveImage, onInsertIllustration, onOpenSubAgentSession, onOpenTrace, onRegenerateMessage, onResolveAsk, onSwitchMessageVersion, projectId, scrollLock.streamingRowRef, scrollLock.syncStreamingTailLayout])
+  }, [activeSubAgentSessionKey, activeTraceDisplay, anchorLatestInteractiveCardBottom, canMutateMessage, contentClassName, firstItemIndex, generatingInteractiveImageTurnId, highlightDialogue, isStreaming, listItems, messageStyle, onApprovePlan, onContinuePlan, onCreateBranch, onEditAssistantReply, onEditMessage, onExitPlanMode, onGenerateInteractiveImage, onInsertIllustration, onOpenSubAgentSession, onOpenTrace, onRegenerateMessage, onResolveAsk, onSwitchMessageVersion, projectId, scrollLock.streamingRowRef, scrollLock.syncStreamingTailLayout])
 
   return (
     <div ref={containerRef} className="relative flex min-h-0 flex-1 flex-col">
@@ -376,7 +382,7 @@ function MessageListFooter({ context }: ContextProp<MessageListVirtuosoContext>)
       {context.afterContent ? (
         <div
           data-nova-chat-after-content
-          className="px-3 pb-4 sm:px-6"
+          className={cn('px-3 pb-4 sm:px-6', context.contentClassName)}
           onPointerDownCapture={context.onAfterContentInteraction}
           onKeyDownCapture={context.onAfterContentInteraction}
           onClickCapture={context.onAfterContentInteraction}
@@ -394,7 +400,7 @@ function MessageListFooter({ context }: ContextProp<MessageListVirtuosoContext>)
   )
 }
 
-function AgentChatListRow({ projectId, item, isLast, isStreaming, activeTraceDisplay, highlightDialogue, messageStyle, canMutateMessage, onEditMessage, onEditAssistantReply, onCreateBranch, onRegenerateMessage, onSwitchMessageVersion, onOpenSubAgentSession, onInsertIllustration, onGenerateInteractiveImage, generatingInteractiveImageTurnId, activeSubAgentSessionKey, onApprovePlan, onContinuePlan, onExitPlanMode, onOpenTrace, onResolveAsk, onInteractiveCardLayoutChange, streamingRowRef, syncStreamingTailLayout }: {
+function AgentChatListRow({ projectId, item, isLast, isStreaming, activeTraceDisplay, highlightDialogue, messageStyle, contentClassName, canMutateMessage, onEditMessage, onEditAssistantReply, onCreateBranch, onRegenerateMessage, onSwitchMessageVersion, onOpenSubAgentSession, onInsertIllustration, onGenerateInteractiveImage, generatingInteractiveImageTurnId, activeSubAgentSessionKey, onApprovePlan, onContinuePlan, onExitPlanMode, onOpenTrace, onResolveAsk, onInteractiveCardLayoutChange, streamingRowRef, syncStreamingTailLayout }: {
   projectId?: string
   item: AgentChatListItem
   isLast: boolean
@@ -402,6 +408,7 @@ function AgentChatListRow({ projectId, item, isLast, isStreaming, activeTraceDis
   activeTraceDisplay: 'expanded' | 'collapsed'
   highlightDialogue: boolean
   messageStyle?: CSSProperties
+  contentClassName?: string
   canMutateMessage?: (view: AgentMessageView) => boolean
   onEditMessage?: (view: AgentMessageView) => void
   onEditAssistantReply?: (view: AgentMessageView) => void
@@ -481,7 +488,7 @@ function AgentChatListRow({ projectId, item, isLast, isStreaming, activeTraceDis
       data-nova-chat-item={item.kind}
       data-nova-chat-row-key={item.key}
       data-nova-chat-turn-anchor={turnAnchor}
-      className={`min-w-0 px-6 ${isLast ? 'pb-0' : 'pb-4'}`}
+      className={cn('min-w-0 px-6', contentClassName, isLast ? 'pb-0' : 'pb-4')}
       variants={listItem}
       initial={isLast && isStreaming ? false : 'initial'}
       animate="animate"

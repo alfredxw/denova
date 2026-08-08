@@ -21,6 +21,21 @@ beforeEach(() => {
 })
 
 describe('InputArea command menu', () => {
+  it('aligns a bounded floating composer with the conversation text inset', () => {
+    const { container } = render(
+      <InputArea
+        onSend={vi.fn()}
+        disabled={false}
+        floating
+        contentClassName="mx-auto w-full max-w-[56rem]"
+      />,
+    )
+
+    const root = container.firstElementChild
+    expect(root).toHaveClass('nova-chat-input-area-floating', 'nova-chat-input-area-content-aligned')
+    expect(root?.firstElementChild).toHaveClass('mx-auto', 'w-full', 'max-w-[56rem]', 'px-6')
+  })
+
   it('keeps retired writing actions out of the built-in command list', async () => {
     const user = userEvent.setup()
     render(<InputArea onSend={vi.fn()} disabled={false} />)

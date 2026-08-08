@@ -1240,6 +1240,10 @@ html[data-nova-motion="off"] *::after {
   box-shadow: none;
 }
 
+.nova-chat-input-area-floating.nova-chat-input-area-content-aligned {
+  padding-inline: 0;
+}
+
 .nova-chat-input-area-floating .nova-agent-composer {
   pointer-events: auto;
 }

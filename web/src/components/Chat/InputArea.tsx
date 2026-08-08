@@ -22,6 +22,7 @@ import { AgentApprovalModeMenu } from '@/features/agent-approval/AgentApprovalMo
 import { InputCommandMenu, type InputCommandOption } from './InputCommandMenu'
 import { useConversationConfig } from '@/features/conversation-config/use-conversation-config'
 import type { ConversationConfigBinding } from '@/features/conversation-config/types'
+import { cn } from '@/lib/utils'
 
 /** 可用命令列表 */
 const COMMANDS: Array<{ cmd: string; descKey: string; hintKey: string; icon: LucideIcon }> = [
@@ -96,6 +97,8 @@ interface InputAreaProps {
   onboardingAnchor?: string
   floating?: boolean
   onHeightChange?: (height: number) => void
+  /** Keeps the composer and its attached UI aligned with the conversation timeline. */
+  contentClassName?: string
 }
 
 /** 输入区域组件，支持 Enter 发送和命令菜单 */
@@ -152,6 +155,7 @@ export function InputArea({
   onboardingAnchor,
   floating = false,
   onHeightChange,
+  contentClassName,
 }: InputAreaProps) {
   const { t } = useTranslation()
   const defaultApproval = useAgentApprovalMode()
@@ -520,185 +524,190 @@ export function InputArea({
       ref={rootRef}
       data-onboarding-anchor={onboardingAnchor}
       style={floating ? { bottom: keyboardInset } : undefined}
-      className={floating ? 'nova-chat-input-area nova-chat-input-area-floating' : 'nova-chat-input-area relative border-t border-[var(--nova-border)] p-3'}
+      className={cn(
+        floating ? 'nova-chat-input-area nova-chat-input-area-floating' : 'nova-chat-input-area relative border-t border-[var(--nova-border)] p-3',
+        floating && contentClassName && 'nova-chat-input-area-content-aligned',
+      )}
     >
-      <InputCommandMenu
-        open={showCommands && filteredCommands.length > 0}
-        skillsOnly={effectiveCommandScope === 'skills'}
-        builtinCommands={filteredBuiltinCommands}
-        skillCommands={filteredSkillCommands}
-        activeIndex={activeCommandIndex}
-        onActiveIndexChange={setActiveCommandIndex}
-        onSelect={(command) => selectCommand(command.cmd)}
-      />
+      <div className={cn('relative', contentClassName, contentClassName && 'px-6')}>
+        <InputCommandMenu
+          open={showCommands && filteredCommands.length > 0}
+          skillsOnly={effectiveCommandScope === 'skills'}
+          builtinCommands={filteredBuiltinCommands}
+          skillCommands={filteredSkillCommands}
+          activeIndex={activeCommandIndex}
+          onActiveIndexChange={setActiveCommandIndex}
+          onSelect={(command) => selectCommand(command.cmd)}
+        />
 
-      <FileReferencePicker
-        ref={referencePickerRef}
-        open={referenceQuery !== null && referencePickerItems.length > 0}
-        query={referenceQuery || ''}
-        items={referencePickerItems}
-        onSelect={selectReference}
-      />
+        <FileReferencePicker
+          ref={referencePickerRef}
+          open={referenceQuery !== null && referencePickerItems.length > 0}
+          query={referenceQuery || ''}
+          items={referencePickerItems}
+          onSelect={selectReference}
+        />
 
-      <FileReferencePicker
-        ref={stylePickerRef}
-        open={styleSceneQuery !== null && styleSceneSuggestions.length > 0}
-        query={styleSceneQuery || ''}
-        items={styleSceneSuggestions}
-        onSelect={selectStyleScene}
-        trigger="#"
-        placeholder={t('chat.styleReference.placeholder')}
-        emptyText={t('chat.styleReference.empty')}
-        heading={t('chat.styleReference.heading')}
-      />
+        <FileReferencePicker
+          ref={stylePickerRef}
+          open={styleSceneQuery !== null && styleSceneSuggestions.length > 0}
+          query={styleSceneQuery || ''}
+          items={styleSceneSuggestions}
+          onSelect={selectStyleScene}
+          trigger="#"
+          placeholder={t('chat.styleReference.placeholder')}
+          emptyText={t('chat.styleReference.empty')}
+          heading={t('chat.styleReference.heading')}
+        />
 
-      <AgentQueuedCommandList
-        items={queuedCommands}
-        pendingCommandID={queueActionPendingCommandID}
-        disabled={activeControlsDisabled || abortPending || commandSubmitting}
-        onSteer={onQueuedCommandSteer}
-        onDelete={onQueuedCommandDelete}
-        onEdit={onQueuedCommandEdit}
-      />
+        <AgentQueuedCommandList
+          items={queuedCommands}
+          pendingCommandID={queueActionPendingCommandID}
+          disabled={activeControlsDisabled || abortPending || commandSubmitting}
+          onSteer={onQueuedCommandSteer}
+          onDelete={onQueuedCommandDelete}
+          onEdit={onQueuedCommandEdit}
+        />
 
-      <AgentComposerShell
-        references={hasReferences ? (
-          <>
-            {reviewFeedback && onReviewFeedbackRemove ? (
-              <ReviewFeedbackTray feedback={reviewFeedback} onOpen={onReviewFeedbackOpen} onRemove={onReviewFeedbackRemove} />
-            ) : null}
-            {textSelections.length > 0 && (
-              <div className="mb-2 flex flex-wrap gap-1.5">
-                {textSelections.map((sel, idx) => (
-                  <span
-                    key={idx}
-                    className="inline-flex max-w-full items-center gap-1 rounded-md bg-[var(--nova-success-bg)] px-2 py-0.5 text-xs text-[var(--nova-success)]"
-                  >
-                    <span className="truncate">
-                      {sel.fileName}:L{sel.startLine}
-                      {sel.endLine !== sel.startLine && `-L${sel.endLine}`}
-                      {' '}
-                      <span className="text-[var(--nova-success-muted)]">
-                        {sel.content.length > 30 ? sel.content.slice(0, 30) + '…' : sel.content}
-                      </span>
-                    </span>
-                    {onTextSelectionRemove && (
-                      <button
-                        type="button"
-                        className="rounded text-[var(--nova-success-muted)] hover:text-[var(--nova-text)]"
-                        onClick={() => onTextSelectionRemove(idx)}
-                      >
-                        ×
-                      </button>
-                    )}
-                  </span>
-                ))}
-              </div>
-            )}
-          </>
-        ) : undefined}
-        input={
-          <ComposerTokenInput
-            ref={inputRef}
-            value={value}
-            onChange={handleChange}
-            onTriggerChange={handleTriggerChange}
-            onTokenRemove={handleTokenRemove}
-            onEditorKeyDown={handleKeyDown}
-            knownSkills={skills.map((skill) => skill.name)}
-            knownFiles={knownFileTokens}
-            knownLore={knownLoreTokens}
-            knownStyleScenes={styleSceneSuggestions}
-            externalTokens={externalTokens}
-            placeholder={disabled ? (disabledPlaceholder ?? t('chat.input.disabledPlaceholder')) : (placeholder ?? defaultPlaceholder)}
-            disabled={disabled}
-            rows={1}
-            minRows={1}
-            maxRows={isMobile ? 5 : 10}
-            multilineMode="always"
-            enterKeyHint="send"
-            className="nova-agent-composer-textarea nova-agent-token-input min-h-[42px] resize-none border-0 bg-transparent px-1 py-[9px] text-sm leading-6 text-[var(--nova-text)] shadow-none placeholder:text-[var(--nova-text-faint)] focus-visible:border-transparent focus-visible:ring-0 disabled:opacity-50"
-          />
-        }
-        toolbarStart={
-          <>
-            <DropdownMenu>
-              <DropdownMenuTrigger asChild>
-                <Button
-                  type="button"
-                  size="icon-sm"
-                  className="nova-agent-composer-icon h-8 w-8 shrink-0 rounded-[10px] border border-[var(--nova-border)] bg-[var(--nova-surface)] text-[var(--nova-text-muted)] hover:bg-[var(--nova-hover)] hover:text-[var(--nova-text)] disabled:opacity-45"
-                  disabled={!onTogglePlanMode && !writingSkillControl && !onContextAnalyze && tokenUsageMessages.length === 0}
-                  aria-label={t('chat.input.actions')}
-                >
-                  <List className="h-3.5 w-3.5" />
-                </Button>
-              </DropdownMenuTrigger>
-              <DropdownMenuContent align="start" side="top" className="w-80 border-[var(--nova-border)] bg-[var(--nova-surface-2)] p-2 text-[var(--nova-text)]">
-                {onTogglePlanMode ? (
-                  <>
-                    <DropdownMenuCheckboxItem
-                      checked={planMode}
-                      disabled={disabled || isGenerationActive}
-                      onCheckedChange={() => onTogglePlanMode()}
-                      className="cursor-pointer pr-1.5 text-xs focus:bg-[var(--nova-active)] focus:text-[var(--nova-text)] [&_[data-slot=dropdown-menu-checkbox-item-indicator]]:static [&_[data-slot=dropdown-menu-checkbox-item-indicator]]:order-2 [&_[data-slot=dropdown-menu-checkbox-item-indicator]]:size-4"
+        <AgentComposerShell
+          references={hasReferences ? (
+            <>
+              {reviewFeedback && onReviewFeedbackRemove ? (
+                <ReviewFeedbackTray feedback={reviewFeedback} onOpen={onReviewFeedbackOpen} onRemove={onReviewFeedbackRemove} />
+              ) : null}
+              {textSelections.length > 0 && (
+                <div className="mb-2 flex flex-wrap gap-1.5">
+                  {textSelections.map((sel, idx) => (
+                    <span
+                      key={idx}
+                      className="inline-flex max-w-full items-center gap-1 rounded-md bg-[var(--nova-success-bg)] px-2 py-0.5 text-xs text-[var(--nova-success)]"
                     >
-                      <ClipboardList className="h-3.5 w-3.5" />
-                      <span className="min-w-0 flex-1">{t('chat.plan.short')}</span>
-                      <span className="order-3 ml-auto shrink-0 text-[10px] text-[var(--nova-text-faint)]">Shift+Tab</span>
-                    </DropdownMenuCheckboxItem>
-                    <DropdownMenuSeparator className="bg-[var(--nova-border-soft)]" />
-                  </>
-                ) : null}
-                {writingSkillControl}
-                <DropdownMenuItem
-                  onSelect={() => setTokenUsageOpen(true)}
-                  className="cursor-pointer text-xs focus:bg-[var(--nova-active)] focus:text-[var(--nova-text)]"
+                      <span className="truncate">
+                        {sel.fileName}:L{sel.startLine}
+                        {sel.endLine !== sel.startLine && `-L${sel.endLine}`}
+                        {' '}
+                        <span className="text-[var(--nova-success-muted)]">
+                          {sel.content.length > 30 ? sel.content.slice(0, 30) + '…' : sel.content}
+                        </span>
+                      </span>
+                      {onTextSelectionRemove && (
+                        <button
+                          type="button"
+                          className="rounded text-[var(--nova-success-muted)] hover:text-[var(--nova-text)]"
+                          onClick={() => onTextSelectionRemove(idx)}
+                        >
+                          ×
+                        </button>
+                      )}
+                    </span>
+                  ))}
+                </div>
+              )}
+            </>
+          ) : undefined}
+          input={
+            <ComposerTokenInput
+              ref={inputRef}
+              value={value}
+              onChange={handleChange}
+              onTriggerChange={handleTriggerChange}
+              onTokenRemove={handleTokenRemove}
+              onEditorKeyDown={handleKeyDown}
+              knownSkills={skills.map((skill) => skill.name)}
+              knownFiles={knownFileTokens}
+              knownLore={knownLoreTokens}
+              knownStyleScenes={styleSceneSuggestions}
+              externalTokens={externalTokens}
+              placeholder={disabled ? (disabledPlaceholder ?? t('chat.input.disabledPlaceholder')) : (placeholder ?? defaultPlaceholder)}
+              disabled={disabled}
+              rows={1}
+              minRows={1}
+              maxRows={isMobile ? 5 : 10}
+              multilineMode="always"
+              enterKeyHint="send"
+              className="nova-agent-composer-textarea nova-agent-token-input min-h-[42px] resize-none border-0 bg-transparent px-1 py-[9px] text-sm leading-6 text-[var(--nova-text)] shadow-none placeholder:text-[var(--nova-text-faint)] focus-visible:border-transparent focus-visible:ring-0 disabled:opacity-50"
+            />
+          }
+          toolbarStart={
+            <>
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <Button
+                    type="button"
+                    size="icon-sm"
+                    className="nova-agent-composer-icon h-8 w-8 shrink-0 rounded-[10px] border border-[var(--nova-border)] bg-[var(--nova-surface)] text-[var(--nova-text-muted)] hover:bg-[var(--nova-hover)] hover:text-[var(--nova-text)] disabled:opacity-45"
+                    disabled={!onTogglePlanMode && !writingSkillControl && !onContextAnalyze && tokenUsageMessages.length === 0}
+                    aria-label={t('chat.input.actions')}
+                  >
+                    <List className="h-3.5 w-3.5" />
+                  </Button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="start" side="top" className="w-80 border-[var(--nova-border)] bg-[var(--nova-surface-2)] p-2 text-[var(--nova-text)]">
+                  {onTogglePlanMode ? (
+                    <>
+                      <DropdownMenuCheckboxItem
+                        checked={planMode}
+                        disabled={disabled || isGenerationActive}
+                        onCheckedChange={() => onTogglePlanMode()}
+                        className="cursor-pointer pr-1.5 text-xs focus:bg-[var(--nova-active)] focus:text-[var(--nova-text)] [&_[data-slot=dropdown-menu-checkbox-item-indicator]]:static [&_[data-slot=dropdown-menu-checkbox-item-indicator]]:order-2 [&_[data-slot=dropdown-menu-checkbox-item-indicator]]:size-4"
+                      >
+                        <ClipboardList className="h-3.5 w-3.5" />
+                        <span className="min-w-0 flex-1">{t('chat.plan.short')}</span>
+                        <span className="order-3 ml-auto shrink-0 text-[10px] text-[var(--nova-text-faint)]">Shift+Tab</span>
+                      </DropdownMenuCheckboxItem>
+                      <DropdownMenuSeparator className="bg-[var(--nova-border-soft)]" />
+                    </>
+                  ) : null}
+                  {writingSkillControl}
+                  <DropdownMenuItem
+                    onSelect={() => setTokenUsageOpen(true)}
+                    className="cursor-pointer text-xs focus:bg-[var(--nova-active)] focus:text-[var(--nova-text)]"
+                  >
+                    <BarChart3 className="h-3.5 w-3.5" />
+                    <span className="min-w-0 flex-1">{t('chat.tokenUsage.action')}</span>
+                    <span className="text-[10px] text-[var(--nova-text-faint)]">{t('chat.tokenUsage.subtitle', { count: tokenUsageCount })}</span>
+                  </DropdownMenuItem>
+                  <DropdownMenuSeparator className="bg-[var(--nova-border-soft)]" />
+                  <DropdownMenuItem
+                    disabled={disabled || isGenerationActive}
+                    onSelect={handleContextAnalyze}
+                    className="cursor-pointer text-xs focus:bg-[var(--nova-active)] focus:text-[var(--nova-text)]"
+                  >
+                    <ScrollText className="h-3.5 w-3.5" />
+                    {t('chat.contextAnalysis.action')}
+                  </DropdownMenuItem>
+                </DropdownMenuContent>
+              </DropdownMenu>
+              {planMode ? (
+                <span
+                  className="inline-flex h-8 shrink-0 items-center gap-1.5 border-l border-[var(--nova-border-soft)] pl-2 text-sm text-[var(--nova-text-muted)]"
+                  aria-label={t('chat.plan.modeOn')}
                 >
-                  <BarChart3 className="h-3.5 w-3.5" />
-                  <span className="min-w-0 flex-1">{t('chat.tokenUsage.action')}</span>
-                  <span className="text-[10px] text-[var(--nova-text-faint)]">{t('chat.tokenUsage.subtitle', { count: tokenUsageCount })}</span>
-                </DropdownMenuItem>
-                <DropdownMenuSeparator className="bg-[var(--nova-border-soft)]" />
-                <DropdownMenuItem
-                  disabled={disabled || isGenerationActive}
-                  onSelect={handleContextAnalyze}
-                  className="cursor-pointer text-xs focus:bg-[var(--nova-active)] focus:text-[var(--nova-text)]"
-                >
-                  <ScrollText className="h-3.5 w-3.5" />
-                  {t('chat.contextAnalysis.action')}
-                </DropdownMenuItem>
-              </DropdownMenuContent>
-            </DropdownMenu>
-            {planMode ? (
-              <span
-                className="inline-flex h-8 shrink-0 items-center gap-1.5 border-l border-[var(--nova-border-soft)] pl-2 text-sm text-[var(--nova-text-muted)]"
-                aria-label={t('chat.plan.modeOn')}
-              >
-                <ClipboardList className="h-3.5 w-3.5" />
-                {t('chat.plan.short')}
-              </span>
-            ) : null}
-            <AgentApprovalModeMenu runActive={isGenerationActive} conversationConfig={conversationBinding ? conversationConfig : undefined} />
-            <TokenUsageDialog open={tokenUsageOpen} messages={tokenUsageMessages} onOpenChange={setTokenUsageOpen} onOpenTrace={onOpenTrace} />
-          </>
-        }
-        toolbarEnd={<ModelProfileSwitcher agentKey={agentKey} workspace={workspace} conversationConfig={conversationBinding ? conversationConfig : undefined} disabled={disabled || isGenerationActive} />}
-        submitControl={(
-          <AgentComposerControls
-            generationActive={isGenerationActive}
-            hasSendableContent={Boolean(value.trim() || hasReviewFeedback)}
-            onStop={onStop}
-            onSend={handleSend}
-            sendDisabled={sendBlocked || !approvalReady || submitting || (!value.trim() && !hasReviewFeedback)}
-            disabled={disabled}
-            abortPending={abortPending}
-            actionPending={commandSubmitting}
-            activeControlsDisabled={activeControlsDisabled}
-            stopDisabled={activeStopDisabled}
-          />
-        )}
-      />
+                  <ClipboardList className="h-3.5 w-3.5" />
+                  {t('chat.plan.short')}
+                </span>
+              ) : null}
+              <AgentApprovalModeMenu runActive={isGenerationActive} conversationConfig={conversationBinding ? conversationConfig : undefined} />
+              <TokenUsageDialog open={tokenUsageOpen} messages={tokenUsageMessages} onOpenChange={setTokenUsageOpen} onOpenTrace={onOpenTrace} />
+            </>
+          }
+          toolbarEnd={<ModelProfileSwitcher agentKey={agentKey} workspace={workspace} conversationConfig={conversationBinding ? conversationConfig : undefined} disabled={disabled || isGenerationActive} />}
+          submitControl={(
+            <AgentComposerControls
+              generationActive={isGenerationActive}
+              hasSendableContent={Boolean(value.trim() || hasReviewFeedback)}
+              onStop={onStop}
+              onSend={handleSend}
+              sendDisabled={sendBlocked || !approvalReady || submitting || (!value.trim() && !hasReviewFeedback)}
+              disabled={disabled}
+              abortPending={abortPending}
+              actionPending={commandSubmitting}
+              activeControlsDisabled={activeControlsDisabled}
+              stopDisabled={activeStopDisabled}
+            />
+          )}
+        />
+      </div>
     </div>
   )
 

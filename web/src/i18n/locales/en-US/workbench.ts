@@ -8,7 +8,7 @@ const workbench = {
   'workbench.activity.lore': 'Lore',
   'workbench.activity.settings': 'Settings',
   'workbench.activity.skills': 'Skills',
-  'workbench.activity.story': 'Story',
+  'workbench.activity.game': 'Game',
   'workbench.activity.teller': 'Presets',
   'workbench.activity.toggleCollapse': 'Collapse',
   'workbench.activity.toggleExpand': 'Expand',
