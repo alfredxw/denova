@@ -27,6 +27,14 @@ vi.mock('@/features/writing/ProjectWritingSurface', () => ({
   ),
 }))
 
+vi.mock('@/features/lore/LoreWorkspaceTab', () => ({
+  LoreWorkspaceTab: ({ projectId, documentReview, refreshSignal }: {
+    projectId: string
+    documentReview: { comments: unknown[] }
+    refreshSignal?: number
+  }) => <div data-testid="shared-lore-workspace">{projectId}|{documentReview.comments.length}|{refreshSignal}</div>,
+}))
+
 vi.mock('@/features/interactive/components/SettingPanel', () => ({
   SettingPanel: ({ projectId, mode, documentReview, refreshSignal }: {
     projectId: string
@@ -60,10 +68,11 @@ describe('AgentChatRoute resource pages', () => {
     view.pageId = 'lore'
   })
 
-  it('opens the shared full library through the background Book Project ID', async () => {
+  it('opens the same focused Lore workspace as Writing through the background Book Project ID', async () => {
     render(<AgentChatRoute {...routeProps()} />)
 
-    expect(await screen.findByTestId('setting-panel:lore')).toHaveTextContent('book-b|1|7')
+    expect(await screen.findByTestId('shared-lore-workspace')).toHaveTextContent('book-b|1|7')
+    expect(screen.queryByTestId('setting-panel:lore')).not.toBeInTheDocument()
   })
 
   it('uses the shared Project Writing surface without activating the background Book', async () => {

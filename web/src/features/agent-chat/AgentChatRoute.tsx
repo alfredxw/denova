@@ -9,6 +9,7 @@ import { projectResourceTarget } from '@/lib/api'
 import { AgentChatView } from './AgentChatView'
 import type { AgentChatPageId, AgentChatPageRenderContext, AgentChatReviewRenderContext, AgentChatReviewTab } from './types'
 
+const LoreWorkspaceTab = lazy(() => import('@/features/lore/LoreWorkspaceTab').then((module) => ({ default: module.LoreWorkspaceTab })))
 const SettingPanel = lazy(() => import('@/features/interactive/components/SettingPanel').then((module) => ({ default: module.SettingPanel })))
 const SkillsView = lazy(() => import('@/features/skills/SkillsView').then((module) => ({ default: module.SkillsView })))
 const AgentsView = lazy(() => import('@/features/agents/AgentsView').then((module) => ({ default: module.AgentsView })))
@@ -75,16 +76,12 @@ function AgentChatRouteComponent({
         )
       case 'lore':
         return (
-          <SettingPanel
+          <LoreWorkspaceTab
             projectId={projectId}
-            mode="lore"
-            embedded
-            imagePresets={imagePresets}
-            onImagePresetsChange={onImagePresetsChange}
             documentReview={context.documentReview}
-            documentReviewNavigationIntent={context.navigationIntent?.target.kind === 'lore_item' ? context.navigationIntent : null}
+            navigationIntent={context.navigationIntent?.target.kind === 'lore_item' ? context.navigationIntent : null}
             refreshSignal={context.refreshSignal}
-            onFlushHandlerChange={context.onFlushHandlerChange}
+            onEditorFlushHandlerChange={context.onFlushHandlerChange}
           />
         )
       case 'presets':
