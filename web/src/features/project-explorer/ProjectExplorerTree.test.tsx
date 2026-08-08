@@ -189,6 +189,8 @@ describe('ProjectExplorerTree', () => {
     expect(row).toHaveAttribute('aria-selected', 'false')
     fireEvent.pointerDown(screen.getByLabelText('chapter.md'), { button: 0 })
     expect(row).toHaveAttribute('aria-selected', 'true')
+    expect(row).toHaveClass('bg-[var(--nova-active)]', 'text-[var(--nova-text)]')
+    expect(row).not.toHaveClass('ring-1', 'ring-[var(--nova-accent)]')
   })
 
   it('constrains deep rows to the viewport and truncates the filename before its extension', () => {

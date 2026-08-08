@@ -73,6 +73,7 @@ function sidebarProps(overrides: Partial<ComponentProps<typeof AgentChatActivity
     onSelectProject: vi.fn(),
     onOpenActivity: vi.fn(),
     onOpenSession: vi.fn(),
+    onRenameSession: vi.fn(),
     onCreateSession: vi.fn(),
     onOpenHistory: vi.fn(),
     onAddProject: vi.fn(),
@@ -116,6 +117,43 @@ describe('AgentChatActivitySidebar', () => {
     await user.click(screen.getByRole('button', { name: '查看 Alpha 的全部 2 个会话' }))
     expect(props.onOpenHistory).toHaveBeenCalledWith(project)
     expect(screen.getByRole('button', { name: '对话历史' })).toBeInTheDocument()
+  })
+
+  it('keeps all child rows on one compact text baseline while distinguishing terminals typographically', () => {
+    renderSidebar()
+    const projectButton = screen.getByRole('button', { name: '收起 Alpha' })
+    const projectActions = screen.getByRole('button', { name: 'Alpha 的项目操作' })
+    const newConversation = screen.getByRole('button', { name: '在 Alpha 中新建对话' })
+    const directButtons = projectButton.parentElement?.querySelectorAll(':scope > button')
+    const conversation = screen.getByRole('button', { name: /Active chat/ })
+    const terminal = screen.getByRole('button', { name: /Shell/ })
+    const history = screen.getByRole('button', { name: '查看 Alpha 的全部 2 个会话' })
+
+    expect(directButtons?.[1]).toBe(projectActions)
+    expect(directButtons?.[2]).toBe(newConversation)
+    expect(projectButton).toHaveTextContent('Alpha')
+    expect(conversation).toHaveClass('pl-1.5')
+    expect(conversation.querySelector('svg')).toBeNull()
+    expect(conversation.querySelector('span.min-w-0')).toHaveClass('text-[11px]')
+    expect(terminal).toHaveClass('pl-1.5')
+    expect(terminal.querySelector('svg')).toBeNull()
+    expect(terminal.querySelector('span.min-w-0')).toHaveClass('font-mono', 'text-[10px]')
+    expect(history).toHaveClass('px-1.5')
+    expect(history.querySelector('svg')).toBeNull()
+  })
+
+  it('offers rename from both Project and conversation context menus', async () => {
+    const user = userEvent.setup()
+    const { props } = renderSidebar()
+
+    fireEvent.contextMenu(screen.getByRole('button', { name: '收起 Alpha' }))
+    await user.click(await screen.findByRole('menuitem', { name: '重命名项目' }))
+    expect(props.onRenameProject).toHaveBeenCalledWith(project)
+
+    const conversation = screen.getByRole('button', { name: /Historical chat/ })
+    fireEvent.contextMenu(conversation)
+    await user.click(await screen.findByRole('menuitem', { name: '重命名会话' }))
+    expect(props.onRenameSession).toHaveBeenCalledWith(project, project.sessions[1])
   })
 
   it('shows Project details in a right-side card without a tooltip', async () => {

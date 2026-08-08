@@ -26,6 +26,7 @@ import { formatDateTime } from '@/i18n'
 import { BookSwitcher } from './BookSwitcher'
 import { WorkbenchNoticePill } from './WorkbenchNoticePill'
 import type { WorkbenchNotice } from '@/features/notices/use-workbench-notice'
+import { AgentChatProjectSwitcher, type AgentChatProjectNavigationState } from '@/features/agent-chat/AgentChatProjectSwitcher'
 
 export type WorkbenchPresentedLayout = 'writing' | 'interactive' | 'full'
 
@@ -49,6 +50,7 @@ interface WorkbenchShellProps {
   sidebar: ReactNode
   main: ReactNode
   rightPanelContent: ReactNode
+  agentChatProjectNavigation?: AgentChatProjectNavigationState | null
   rightPanelWide?: boolean
   centerFocus?: boolean
   notice?: WorkbenchNotice | null
@@ -127,6 +129,7 @@ export function WorkbenchShell({
   sidebar,
   main,
   rightPanelContent,
+  agentChatProjectNavigation = null,
   rightPanelWide = false,
   centerFocus = false,
   notice,
@@ -506,14 +509,18 @@ export function WorkbenchShell({
           </button>
         </div>
         </LayoutGroup>
-        <BookSwitcher
-          books={books}
-          currentBookName={currentBookName}
-          currentChapterCount={summary?.chapter_count}
-          workspace={workspace}
-          onSwitchBook={onQuickSwitchBook}
-          onManageBooks={manageBooks}
-        />
+        {agentChatActive ? (
+          <AgentChatProjectSwitcher navigation={agentChatProjectNavigation} />
+        ) : (
+          <BookSwitcher
+            books={books}
+            currentBookName={currentBookName}
+            currentChapterCount={summary?.chapter_count}
+            workspace={workspace}
+            onSwitchBook={onQuickSwitchBook}
+            onManageBooks={manageBooks}
+          />
+        )}
       </div>
       <div className="nova-ui-compact flex items-center justify-end gap-2 text-[var(--nova-text-faint)]">
         <MessageCenterButton className="!size-7 !min-w-7" unreadCount={messageUnread} onUnreadCountChange={setActivityMessageUnreadCount} onOpenAutomation={openAutomationNotification} />
@@ -634,15 +641,19 @@ export function WorkbenchShell({
         <div className="flex min-w-0 items-center justify-between gap-2">
           <div className="flex min-w-0 flex-1 items-center gap-2">
             <NovaBrandIcon />
-            <BookSwitcher
-              books={books}
-              currentBookName={currentBookName}
-              currentChapterCount={summary?.chapter_count}
-              workspace={workspace}
-              compact
-              onSwitchBook={onQuickSwitchBook}
-              onManageBooks={manageBooks}
-            />
+            {agentChatActive ? (
+              <AgentChatProjectSwitcher navigation={agentChatProjectNavigation} compact />
+            ) : (
+              <BookSwitcher
+                books={books}
+                currentBookName={currentBookName}
+                currentChapterCount={summary?.chapter_count}
+                workspace={workspace}
+                compact
+                onSwitchBook={onQuickSwitchBook}
+                onManageBooks={manageBooks}
+              />
+            )}
           </div>
           <div className="flex shrink-0 items-center gap-1.5">
             <MessageCenterButton className="!size-8 !min-w-8" unreadCount={messageUnread} onUnreadCountChange={setActivityMessageUnreadCount} onOpenAutomation={openAutomationNotification} />

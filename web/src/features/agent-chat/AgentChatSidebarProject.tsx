@@ -2,8 +2,9 @@ import type { CSSProperties } from 'react'
 import { useSortable } from '@dnd-kit/sortable'
 import { CSS } from '@dnd-kit/utilities'
 import { useTranslation } from 'react-i18next'
-import { CircleAlert, Bot, ChevronRight, Clock3, Folder, FolderOpen, MessageSquareText, MoreHorizontal, Pin, PinOff, Plus, TerminalSquare } from 'lucide-react'
+import { CircleAlert, Bot, ChevronRight, Folder, FolderOpen, MoreHorizontal, Pencil, Pin, PinOff, Plus } from 'lucide-react'
 import { Button } from '@/components/ui/button'
+import { ContextMenu, ContextMenuContent, ContextMenuItem, ContextMenuTrigger } from '@/components/ui/context-menu'
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu'
 import { cn } from '@/lib/utils'
 import type { AgentChatProject, AgentChatSession } from './api'
@@ -36,6 +37,7 @@ interface AgentChatSidebarProjectProps {
   onArchive: () => void
   onOpenHistory: () => void
   onOpenSession: (session: AgentChatSession) => void
+  onRenameSession: (session: AgentChatSession) => void
   onOpenActivity: (activity: AgentChatSidebarActivity) => void
 }
 
@@ -55,6 +57,7 @@ export function AgentChatSidebarProject({
   onArchive,
   onOpenHistory,
   onOpenSession,
+  onRenameSession,
   onOpenActivity,
 }: AgentChatSidebarProjectProps) {
   const { t } = useTranslation()
@@ -95,97 +98,115 @@ export function AgentChatSidebarProject({
 
   return (
     <div ref={setNodeRef} style={style} className={`mb-1 ${isDragging ? 'relative z-20 opacity-80' : ''}`}>
-      <AgentChatProjectDetailsCard project={project} active={active} manualSorting={manualSorting}>
-        <div
-          data-current-project={active ? 'true' : undefined}
-          className={cn(
-            'group relative flex items-center gap-0.5 rounded-[var(--nova-radius)] px-0.5 transition-colors',
-            active ? 'bg-[var(--nova-surface-2)]' : 'hover:bg-[var(--nova-hover)]',
-          )}
-        >
-          {active ? (
-            <span
-              data-slot="agent-chat-project-active-indicator"
-              aria-hidden="true"
-              className="absolute bottom-1.5 left-0 top-1.5 w-0.5 rounded-full bg-[var(--nova-accent)]"
-            />
-          ) : null}
-          <button
-            ref={setActivatorNodeRef}
-            data-slot="agent-chat-project-toggle"
-            data-project-id={project.id}
-            type="button"
-            {...(manualSorting ? attributes : {})}
-            {...(manualSorting ? listeners : {})}
-            onClick={onToggle}
-            aria-expanded={hasExpandableContent ? expanded : undefined}
-            aria-label={hasExpandableContent
-              ? t(expanded ? 'agentChat.sidebar.collapseProject' : 'agentChat.sidebar.expandProject', { name })
-              : name}
-            aria-current={active ? 'location' : undefined}
-            aria-description={manualSorting ? t('agentChat.sidebar.longPressToReorder') : undefined}
-            className={`flex min-w-0 flex-1 items-center gap-1.5 rounded-[var(--nova-radius)] py-1.5 pl-1 text-left outline-none focus-visible:ring-1 focus-visible:ring-[var(--nova-accent)] ${manualSorting ? 'cursor-default' : ''}`}
-          >
-            <ChevronRight
-              data-slot="agent-chat-project-chevron"
-              aria-hidden="true"
+      <ContextMenu>
+        <AgentChatProjectDetailsCard project={project} active={active} manualSorting={manualSorting}>
+          <ContextMenuTrigger asChild>
+            <div
+              data-current-project={active ? 'true' : undefined}
               className={cn(
-                'size-3.5 shrink-0 text-[var(--nova-text-faint)] transition-transform duration-[var(--nova-motion-fast)] ease-[var(--nova-panel-motion-ease)]',
-                expanded && 'rotate-90',
-                !hasExpandableContent && 'invisible',
+                'group relative flex items-center gap-0.5 rounded-[var(--nova-radius)] px-0.5 transition-colors',
+                active ? 'bg-[var(--nova-surface-2)]' : 'hover:bg-[var(--nova-hover)]',
               )}
-            />
-            {project.type === 'general' ? (
-              <Bot className={cn('size-3.5 shrink-0', active ? 'text-[var(--nova-accent)]' : 'text-[var(--nova-text-muted)]')} />
-            ) : expanded ? (
-              <FolderOpen className={cn('size-3.5 shrink-0', active ? 'text-[var(--nova-accent)]' : 'text-[var(--nova-text-muted)]')} />
-            ) : (
-              <Folder className={cn('size-3.5 shrink-0', active ? 'text-[var(--nova-accent)]' : 'text-[var(--nova-text-muted)]')} />
-            )}
-            <span className={cn('min-w-0 flex-1 truncate text-xs text-[var(--nova-text)]', active && 'font-medium')}>{name}</span>
-            {project.status === 'missing' ? (
-              <CircleAlert className="size-3 shrink-0 text-[var(--nova-warning)]" aria-label={t('agentChat.project.missing')} />
-            ) : null}
-            <ProjectActivitySummary expanded={expanded} summary={summary} />
-            {pinned ? <Pin className="size-3 shrink-0 text-[var(--nova-text-faint)]" aria-hidden="true" /> : null}
-          </button>
-          <Button
-            type="button"
-            variant="ghost"
-            size="icon-xs"
-            className="shrink-0 opacity-60 transition-opacity hover:opacity-100 focus-visible:opacity-100"
-            disabled={project.status !== 'available'}
-            onClick={onCreateSession}
-            aria-label={t('agentChat.sidebar.newChatIn', { name })}
-          >
-            <Plus />
-          </Button>
-          <DropdownMenu>
-            <DropdownMenuTrigger asChild>
+            >
+              {active ? (
+                <span
+                  data-slot="agent-chat-project-active-indicator"
+                  aria-hidden="true"
+                  className="absolute bottom-1.5 left-0 top-1.5 w-0.5 rounded-full bg-[var(--nova-accent)]"
+                />
+              ) : null}
+              <button
+                ref={setActivatorNodeRef}
+                data-slot="agent-chat-project-toggle"
+                data-project-id={project.id}
+                type="button"
+                {...(manualSorting ? attributes : {})}
+                {...(manualSorting ? listeners : {})}
+                onClick={onToggle}
+                aria-expanded={hasExpandableContent ? expanded : undefined}
+                aria-label={hasExpandableContent
+                  ? t(expanded ? 'agentChat.sidebar.collapseProject' : 'agentChat.sidebar.expandProject', { name })
+                  : name}
+                aria-current={active ? 'location' : undefined}
+                aria-description={manualSorting ? t('agentChat.sidebar.longPressToReorder') : undefined}
+                className={`flex min-w-0 flex-1 items-center gap-1.5 rounded-[var(--nova-radius)] py-1.5 pl-1 text-left outline-none focus-visible:ring-1 focus-visible:ring-[var(--nova-accent)] ${manualSorting ? 'cursor-default' : ''}`}
+              >
+                <ChevronRight
+                  data-slot="agent-chat-project-chevron"
+                  aria-hidden="true"
+                  className={cn(
+                    'size-3.5 shrink-0 text-[var(--nova-text-faint)] transition-transform duration-[var(--nova-motion-fast)] ease-[var(--nova-panel-motion-ease)]',
+                    expanded && 'rotate-90',
+                    !hasExpandableContent && 'invisible',
+                  )}
+                />
+                {project.type === 'general' ? (
+                  <Bot className={cn('size-3.5 shrink-0', active ? 'text-[var(--nova-accent)]' : 'text-[var(--nova-text-muted)]')} />
+                ) : expanded ? (
+                  <FolderOpen className={cn('size-3.5 shrink-0', active ? 'text-[var(--nova-accent)]' : 'text-[var(--nova-text-muted)]')} />
+                ) : (
+                  <Folder className={cn('size-3.5 shrink-0', active ? 'text-[var(--nova-accent)]' : 'text-[var(--nova-text-muted)]')} />
+                )}
+                <span className="min-w-0 flex-1 truncate text-xs font-medium text-[var(--nova-text)]">{name}</span>
+                {project.status === 'missing' ? (
+                  <CircleAlert className="size-3 shrink-0 text-[var(--nova-warning)]" aria-label={t('agentChat.project.missing')} />
+                ) : null}
+                <ProjectActivitySummary expanded={expanded} summary={summary} />
+                {pinned ? <Pin className="size-3 shrink-0 text-[var(--nova-text-faint)]" aria-hidden="true" /> : null}
+              </button>
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="icon-xs"
+                    className="shrink-0 opacity-0 transition-opacity group-hover:opacity-100 data-[state=open]:opacity-100 focus-visible:opacity-100"
+                    aria-label={t('agentChat.sidebar.projectActions', { name })}
+                  >
+                    <MoreHorizontal />
+                  </Button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="end" className="min-w-36">
+                  <DropdownMenuItem onSelect={onRename}>{t('agentChat.project.rename')}</DropdownMenuItem>
+                  <DropdownMenuItem onSelect={onRelink}>{t('agentChat.project.relink')}</DropdownMenuItem>
+                  <DropdownMenuItem onSelect={onTogglePinned}>
+                    {pinned ? <PinOff /> : <Pin />}
+                    {t(pinned ? 'agentChat.sidebar.unpinProject' : 'agentChat.sidebar.pinProject')}
+                  </DropdownMenuItem>
+                  <DropdownMenuItem className="text-[var(--nova-danger)]" onSelect={onArchive}>
+                    {t('agentChat.project.archive')}
+                  </DropdownMenuItem>
+                </DropdownMenuContent>
+              </DropdownMenu>
               <Button
                 type="button"
                 variant="ghost"
                 size="icon-xs"
-                className="shrink-0 opacity-0 transition-opacity group-hover:opacity-100 data-[state=open]:opacity-100 focus-visible:opacity-100"
-                aria-label={t('agentChat.sidebar.projectActions', { name })}
+                className="shrink-0 opacity-60 transition-opacity hover:opacity-100 focus-visible:opacity-100"
+                disabled={project.status !== 'available'}
+                onClick={onCreateSession}
+                aria-label={t('agentChat.sidebar.newChatIn', { name })}
               >
-                <MoreHorizontal />
+                <Plus />
               </Button>
-            </DropdownMenuTrigger>
-            <DropdownMenuContent align="end" className="min-w-36">
-              <DropdownMenuItem onSelect={onRename}>{t('agentChat.project.rename')}</DropdownMenuItem>
-              <DropdownMenuItem onSelect={onRelink}>{t('agentChat.project.relink')}</DropdownMenuItem>
-              <DropdownMenuItem onSelect={onTogglePinned}>
-                {pinned ? <PinOff /> : <Pin />}
-                {t(pinned ? 'agentChat.sidebar.unpinProject' : 'agentChat.sidebar.pinProject')}
-              </DropdownMenuItem>
-              <DropdownMenuItem className="text-[var(--nova-danger)]" onSelect={onArchive}>
-                {t('agentChat.project.archive')}
-              </DropdownMenuItem>
-            </DropdownMenuContent>
-          </DropdownMenu>
-        </div>
-      </AgentChatProjectDetailsCard>
+            </div>
+          </ContextMenuTrigger>
+        </AgentChatProjectDetailsCard>
+        <ContextMenuContent className="min-w-40">
+          <ContextMenuItem onSelect={onRename}>
+            <Pencil />
+            {t('agentChat.project.rename')}
+          </ContextMenuItem>
+          <ContextMenuItem onSelect={onRelink}>{t('agentChat.project.relink')}</ContextMenuItem>
+          <ContextMenuItem onSelect={onTogglePinned}>
+            {pinned ? <PinOff /> : <Pin />}
+            {t(pinned ? 'agentChat.sidebar.unpinProject' : 'agentChat.sidebar.pinProject')}
+          </ContextMenuItem>
+          <ContextMenuItem variant="destructive" onSelect={onArchive}>
+            {t('agentChat.project.archive')}
+          </ContextMenuItem>
+        </ContextMenuContent>
+      </ContextMenu>
 
       {hasExpandableContent ? (
         <div
@@ -211,6 +232,7 @@ export function AgentChatSidebarProject({
                       session={session}
                       activity={activityBySessionID.get(session.id)}
                       onOpen={() => onOpenSession(session)}
+                      onRename={() => onRenameSession(session)}
                     />
                   ))}
                   {supplementalActivities.map((activity) => (
@@ -219,16 +241,17 @@ export function AgentChatSidebarProject({
                 </div>
               ) : null}
               {project.total > 0 ? (
-                <button
-                  type="button"
-                  onClick={onOpenHistory}
-                  aria-label={t('agentChat.sidebar.allConversationsIn', { name, count: project.total })}
-                  className="flex w-full min-w-0 items-center gap-1.5 rounded-[var(--nova-radius)] px-1.5 py-1.5 text-left text-[11px] text-[var(--nova-text-faint)] outline-none transition-colors hover:bg-[var(--nova-hover)] hover:text-[var(--nova-text)] focus-visible:ring-1 focus-visible:ring-[var(--nova-accent)]"
-                >
-                  <Clock3 className="size-3.5 shrink-0" aria-hidden="true" />
-                  <span className="min-w-0 flex-1 truncate">{t('agentChat.sidebar.allConversations')}</span>
-                  <span className="shrink-0 tabular-nums">{project.total}</span>
-                </button>
+                <div className="mt-1 border-t border-[var(--nova-border-soft)] pt-1">
+                  <button
+                    type="button"
+                    onClick={onOpenHistory}
+                    aria-label={t('agentChat.sidebar.allConversationsIn', { name, count: project.total })}
+                    className="flex w-full min-w-0 items-center gap-1.5 rounded-[var(--nova-radius)] px-1.5 py-1.5 text-left text-[10px] font-medium text-[var(--nova-text-faint)] outline-none transition-colors hover:bg-[var(--nova-hover)] hover:text-[var(--nova-text)] focus-visible:ring-1 focus-visible:ring-[var(--nova-accent)]"
+                  >
+                    <span className="min-w-0 flex-1 truncate">{t('agentChat.sidebar.allConversations')}</span>
+                    <span className="shrink-0 tabular-nums">{project.total}</span>
+                  </button>
+                </div>
               ) : null}
             </div>
           </div>
@@ -242,42 +265,53 @@ function ConversationRow({
   session,
   activity,
   onOpen,
+  onRename,
 }: {
   session: AgentChatSession
   activity?: AgentChatSidebarActivity
   onOpen: () => void
+  onRename: () => void
 }) {
   const { t } = useTranslation()
   const title = session.title || t('chat.untitledSession')
   const focused = activity?.focused ?? false
   const statusLabel = activity ? t(`agentChat.sidebar.status.${activity.status}`) : ''
   return (
-    <button
-      data-slot="agent-chat-conversation-row"
-      type="button"
-      onClick={onOpen}
-      aria-label={activity
-        ? `${title} · ${statusLabel}`
-        : t('agentChat.history.openSession', { title })}
-      aria-current={focused ? 'page' : undefined}
-      className={cn(
-        'group/conversation relative flex w-full min-w-0 items-center gap-1.5 rounded-[var(--nova-radius)] px-1.5 py-1.5 text-left outline-none transition-colors focus-visible:ring-1 focus-visible:ring-[var(--nova-accent)]',
-        focused
-          ? 'bg-[var(--nova-active)] text-[var(--nova-text)]'
-          : 'text-[var(--nova-text-muted)] hover:bg-[var(--nova-hover)] hover:text-[var(--nova-text)]',
-      )}
-    >
-      <span
-        aria-hidden="true"
-        className={cn(
-          'absolute bottom-1.5 left-0 top-1.5 w-0.5 rounded-full',
-          focused ? 'bg-[var(--nova-text)]' : activity?.paneVisible ? 'bg-[var(--nova-text-faint)]' : 'bg-transparent',
-        )}
-      />
-      <MessageSquareText className="size-3.5 shrink-0 text-[var(--nova-text-faint)] group-hover/conversation:text-[var(--nova-text-muted)]" aria-hidden="true" />
-      <span className="min-w-0 flex-1 truncate text-xs">{title}</span>
-      {activity ? <ActivityStatus status={activity.status} label={statusLabel} /> : null}
-    </button>
+    <ContextMenu>
+      <ContextMenuTrigger asChild>
+        <button
+          data-slot="agent-chat-conversation-row"
+          type="button"
+          onClick={onOpen}
+          aria-label={activity
+            ? `${title} · ${statusLabel}`
+            : t('agentChat.history.openSession', { title })}
+          aria-current={focused ? 'page' : undefined}
+          className={cn(
+            'group/conversation relative flex w-full min-w-0 items-center gap-1.5 rounded-[var(--nova-radius)] py-1.5 pl-1.5 pr-1.5 text-left outline-none transition-colors focus-visible:ring-1 focus-visible:ring-[var(--nova-accent)]',
+            focused
+              ? 'bg-[var(--nova-active)] text-[var(--nova-text)]'
+              : 'text-[var(--nova-text-muted)] hover:bg-[var(--nova-hover)] hover:text-[var(--nova-text)]',
+          )}
+        >
+          <span
+            aria-hidden="true"
+            className={cn(
+              'absolute bottom-1.5 left-0 top-1.5 w-0.5 rounded-full',
+              focused ? 'bg-[var(--nova-text)]' : activity?.paneVisible ? 'bg-[var(--nova-text-faint)]' : 'bg-transparent',
+            )}
+          />
+          <span className="min-w-0 flex-1 truncate text-[11px]">{title}</span>
+          {activity ? <ActivityStatus status={activity.status} label={statusLabel} /> : null}
+        </button>
+      </ContextMenuTrigger>
+      <ContextMenuContent className="min-w-40">
+        <ContextMenuItem onSelect={onRename}>
+          <Pencil />
+          {t('chat.renameSession')}
+        </ContextMenuItem>
+      </ContextMenuContent>
+    </ContextMenu>
   )
 }
 
@@ -315,18 +349,20 @@ function ProjectActivitySummary({ expanded, summary }: { expanded: boolean; summ
 
 function LiveActivityRow({ activity, onOpen }: { activity: AgentChatSidebarActivity; onOpen: () => void }) {
   const { t } = useTranslation()
-  const Icon = activity.kind === 'agent' ? MessageSquareText : TerminalSquare
+  const isConversation = activity.kind === 'agent'
   const label = t(`agentChat.sidebar.status.${activity.status}`)
   return (
     <button
       type="button"
       onClick={onOpen}
       aria-current={activity.focused ? 'page' : undefined}
-      className={`group/activity relative flex w-full min-w-0 items-center gap-1.5 rounded-[var(--nova-radius)] px-1.5 py-1.5 text-left outline-none transition-colors focus-visible:ring-1 focus-visible:ring-[var(--nova-accent)] ${
+      className={cn(
+        'group/activity relative flex w-full min-w-0 items-center gap-1.5 rounded-[var(--nova-radius)] py-1.5 pr-1.5 text-left outline-none transition-colors focus-visible:ring-1 focus-visible:ring-[var(--nova-accent)]',
+        'pl-1.5',
         activity.focused
           ? 'bg-[var(--nova-active)] text-[var(--nova-text)]'
-          : 'text-[var(--nova-text-muted)] hover:bg-[var(--nova-hover)] hover:text-[var(--nova-text)]'
-      }`}
+          : 'text-[var(--nova-text-muted)] hover:bg-[var(--nova-hover)] hover:text-[var(--nova-text)]',
+      )}
     >
       <span
         aria-hidden="true"
@@ -334,8 +370,7 @@ function LiveActivityRow({ activity, onOpen }: { activity: AgentChatSidebarActiv
           activity.focused ? 'bg-[var(--nova-text)]' : activity.paneVisible ? 'bg-[var(--nova-text-faint)]' : 'bg-transparent'
         }`}
       />
-      <Icon className="size-3.5 shrink-0 text-[var(--nova-text-faint)] group-hover/activity:text-[var(--nova-text-muted)]" />
-      <span className="min-w-0 flex-1 truncate text-xs">{activity.title}</span>
+      <span className={cn('min-w-0 flex-1 truncate text-[11px]', !isConversation && 'font-mono text-[10px]')}>{activity.title}</span>
       <ActivityStatus status={activity.status} label={label} />
     </button>
   )

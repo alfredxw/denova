@@ -611,6 +611,7 @@ function modeRouterProps(
     onQuickSwitchBook: vi.fn(async () => true),
     onBeforeWorkspaceSwitch: vi.fn(async () => true),
     onBooksChange: vi.fn(),
+    onAgentChatBookCreated: vi.fn(),
     onOpenCharacterCardImport: vi.fn(),
     onSetSidebarView: vi.fn(),
     onSelectSearchResult: vi.fn(),

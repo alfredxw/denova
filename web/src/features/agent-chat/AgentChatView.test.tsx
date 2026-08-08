@@ -1,4 +1,4 @@
-import { screen, waitFor, within } from '@testing-library/react'
+import { act, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { useEffect } from 'react'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
@@ -22,6 +22,7 @@ import {
 import { persistWorkbenchState, readStoredWorkbenchState } from './tab-state'
 import { closeTerminalSession, getTerminalRuntimeStatus } from './terminal/api'
 import { AgentChatView } from './AgentChatView'
+import type { AgentChatProjectNavigationState } from './AgentChatProjectSwitcher'
 
 function FlushableProjectPage({
   flush,
@@ -67,7 +68,33 @@ describe('AgentChatView project workbenches', () => {
       })
   })
 
-  it('adds a selected folder without asking for a name or Agent type', async () => {
+  it('publishes its live Project selection to the shared header navigator', async () => {
+    const onProjectNavigationChange = vi.fn<(navigation: AgentChatProjectNavigationState | null) => void>()
+    renderView(
+      <AgentChatView
+        composerSettings={{} as never}
+        tellers={[]}
+        imagePresets={[]}
+        renderPage={() => null}
+        renderReview={() => null}
+        onProjectNavigationChange={onProjectNavigationChange}
+      />,
+    )
+
+    await waitFor(() => {
+      const navigation = onProjectNavigationChange.mock.calls.at(-1)?.[0]
+      expect(navigation?.projects).toHaveLength(2)
+      expect(navigation?.activeProjectId).toBe('project-a')
+    })
+
+    const navigation = onProjectNavigationChange.mock.calls.at(-1)?.[0]
+    act(() => navigation?.selectProject('project-b'))
+    await waitFor(() => {
+      expect(onProjectNavigationChange.mock.calls.at(-1)?.[0]?.activeProjectId).toBe('project-b')
+    })
+  })
+
+  it('offers both Project entry paths before adding a selected folder', async () => {
     const user = userEvent.setup()
     const added = project('/projects/story', 'story', '', '')
     added.id = 'project-story'
@@ -81,10 +108,38 @@ describe('AgentChatView project workbenches', () => {
     renderView(<AgentChatView composerSettings={{} as never} tellers={[]} imagePresets={[]} renderPage={() => null} renderReview={() => null} />)
 
     await user.click((await screen.findAllByRole('button', { name: '添加项目' }))[0])
+    const dialog = await screen.findByRole('dialog', { name: '添加项目' })
+    expect(within(dialog).getByRole('button', { name: /打开目录/ })).toBeInTheDocument()
+    expect(within(dialog).getByRole('button', { name: /创建新书籍/ })).toBeInTheDocument()
+    await user.click(within(dialog).getByRole('button', { name: /打开目录/ }))
     await waitFor(() => expect(addAgentChatProject).toHaveBeenCalledWith('/projects/story'))
     expect(selectAgentChatProjectDirectory).toHaveBeenCalledWith(undefined)
     expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
     expect(await screen.findByRole('button', { name: 'story' })).toBeInTheDocument()
+  })
+
+  it('opens the shared Book form after the creation guard succeeds', async () => {
+    const user = userEvent.setup()
+    const onBeforeCreateBook = vi.fn(async () => true)
+    vi.mocked(getAgentChatProjects).mockReset().mockResolvedValue([])
+
+    renderView(
+      <AgentChatView
+        composerSettings={{} as never}
+        tellers={[]}
+        imagePresets={[]}
+        novaDir="/nova"
+        renderPage={() => null}
+        renderReview={() => null}
+        onBeforeCreateBook={onBeforeCreateBook}
+      />,
+    )
+
+    await user.click((await screen.findAllByRole('button', { name: '添加项目' }))[0])
+    await user.click(within(await screen.findByRole('dialog', { name: '添加项目' })).getByRole('button', { name: /创建新书籍/ }))
+
+    expect(onBeforeCreateBook).toHaveBeenCalledOnce()
+    expect(await screen.findByRole('dialog', { name: '新建书籍' })).toBeInTheDocument()
   })
 
   it('does not relink a Project when one mounted page draft cannot flush', async () => {

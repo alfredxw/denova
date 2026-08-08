@@ -67,8 +67,9 @@ export function ExplorerRow({ node, attrs, innerRef, children }: RowRendererProp
       className={cn(
         'group/tree-row flex min-w-0 cursor-default items-center overflow-hidden rounded-sm outline-none',
         node.isSelected && 'bg-[var(--nova-active)] text-[var(--nova-text)]',
-        !node.isSelected && 'hover:bg-[var(--nova-hover)]',
-        node.isFocused && 'ring-1 ring-inset ring-[var(--nova-accent)]',
+        // Keyboard focus uses the same quiet fill language as hover; reserve the bright ring for drop targeting.
+        node.isFocused && !node.isSelected && 'bg-[var(--nova-hover)] text-[var(--nova-text)]',
+        !node.isSelected && !node.isFocused && 'hover:bg-[var(--nova-hover)]',
         node.isDragging && 'opacity-40',
         node.willReceiveDrop && 'bg-[var(--nova-active)] ring-1 ring-inset ring-[var(--nova-accent)]',
       )}

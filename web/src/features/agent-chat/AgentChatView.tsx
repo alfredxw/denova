@@ -22,7 +22,9 @@ import {
   type AgentChatProject,
   type AgentChatSession,
 } from './api'
-import { AgentChatProjectRenameDialog } from './AgentChatProjectRenameDialog'
+import { AgentChatAddProjectDialog } from './AgentChatAddProjectDialog'
+import { AgentChatRenameDialog } from './AgentChatRenameDialog'
+import type { AgentChatProjectNavigationState } from './AgentChatProjectSwitcher'
 import {
   AgentChatProjectGroup,
   DESKTOP_SECONDARY_PANE_CONTROLS,
@@ -67,12 +69,18 @@ interface AgentChatViewProps {
   composerSettings: WritingComposerSettingsController
   tellers: Teller[]
   imagePresets: ImagePreset[]
+  novaDir?: string
   autoSaveEnabled?: boolean
   autoSaveDelayMs?: number
   /** Project pages receive their tab's project, never the foreground Writing book. */
   renderPage: (projectId: string, workspace: string, pageId: AgentChatPageId, context: AgentChatPageRenderContext) => ReactNode
   renderReview: (tab: AgentChatReviewTab, disabled: boolean, context: AgentChatReviewRenderContext) => ReactNode
   onFlushHandlerChange?: (handler: EditorFlushHandler | null) => void
+  /** Publishes the same project selection used by the sidebar to the shared workbench header. */
+  onProjectNavigationChange?: (navigation: AgentChatProjectNavigationState | null) => void
+  onBeforeCreateBook?: () => Promise<boolean>
+  onBookCreated?: (workspace: string) => void | Promise<void>
+  onBooksChange?: () => void | Promise<void>
   onWorkspaceChanged?: (
     projectId: string,
     workspace: string,
@@ -91,11 +99,16 @@ export function AgentChatView({
   composerSettings,
   tellers,
   imagePresets,
+  novaDir = '',
   autoSaveEnabled = true,
   autoSaveDelayMs = 1200,
   renderPage,
   renderReview,
   onFlushHandlerChange,
+  onProjectNavigationChange,
+  onBeforeCreateBook,
+  onBookCreated,
+  onBooksChange,
   onWorkspaceChanged,
 }: AgentChatViewProps) {
   const { t } = useTranslation()
@@ -106,8 +119,13 @@ export function AgentChatView({
   const workbenchRef = useRef(workbench)
   workbenchRef.current = workbench
   const [historyOpen, setHistoryOpen] = useState(false)
+  const [addProjectOpen, setAddProjectOpen] = useState(false)
   const [historyProjectId, setHistoryProjectId] = useState('')
   const [renameTarget, setRenameTarget] = useState<AgentChatProject | null>(null)
+  const [sessionRenameTarget, setSessionRenameTarget] = useState<{
+    project: AgentChatProject
+    session: AgentChatSession
+  } | null>(null)
   const [projectDirectoryBusy, setProjectDirectoryBusy] = useState(false)
   const projectDirectoryBusyRef = useRef(false)
   const [archiveTarget, setArchiveTarget] = useState<AgentChatProject | null>(null)
@@ -262,6 +280,16 @@ export function AgentChatView({
       projects: current.projects[projectID] ? current.projects : { ...current.projects, [projectID]: emptyProjectTabState() },
     }))
   }, [])
+
+  useEffect(() => {
+    onProjectNavigationChange?.({
+      projects,
+      activeProjectId,
+      loading: projectsLoading,
+      selectProject,
+    })
+  }, [activeProjectId, onProjectNavigationChange, projects, projectsLoading, selectProject])
+  useEffect(() => () => onProjectNavigationChange?.(null), [onProjectNavigationChange])
 
   const openSessionTab = useCallback(
     (project: AgentChatProject, session: AgentChatSession) => {
@@ -597,6 +625,13 @@ export function AgentChatView({
     [flushProjectDrafts, refreshProjects, selectProject, t],
   )
 
+  const handleBookCreated = useCallback(async (workspace: string, projectID: string) => {
+    const nextProjects = await refreshProjects()
+    const createdProject = nextProjects?.find((project) => project.id === projectID || project.path === workspace)
+    if (createdProject) selectProject(createdProject.id)
+    await Promise.resolve(onBookCreated?.(workspace))
+  }, [onBookCreated, refreshProjects, selectProject])
+
   const archiveProject = useCallback(async (): Promise<boolean> => {
     const target = archiveTarget
     if (!target) return false
@@ -615,9 +650,10 @@ export function AgentChatView({
     onSelectProject: (project: AgentChatProject) => selectProject(project.id),
     onOpenActivity: openSidebarActivity,
     onOpenSession: openOrActivateSession,
+    onRenameSession: (project: AgentChatProject, session: AgentChatSession) => setSessionRenameTarget({ project, session }),
     onCreateSession: (project: AgentChatProject) => openDraftSessionInProject(project),
     onOpenHistory: openHistory,
-    onAddProject: () => void chooseProjectDirectory(),
+    onAddProject: () => setAddProjectOpen(true),
     projectDirectoryBusy,
     onRenameProject: (project: AgentChatProject) => setRenameTarget(project),
     onRelinkProject: (project: AgentChatProject) => void chooseProjectDirectory(project),
@@ -806,7 +842,7 @@ export function AgentChatView({
                   title={t('agentChat.empty.noWorkspace')}
                   action={{
                     label: t(projectDirectoryBusy ? 'agentChat.project.selectingDirectory' : 'agentChat.project.add'),
-                    onClick: () => void chooseProjectDirectory(),
+                    onClick: () => setAddProjectOpen(true),
                   }}
                 />
               )
@@ -814,6 +850,17 @@ export function AgentChatView({
           }}
         </AgentChatWorkspaceSurface>
       </AgentChatTabDragContext>
+      <AgentChatAddProjectDialog
+        open={addProjectOpen}
+        novaDir={novaDir}
+        imagePresets={imagePresets}
+        defaultImagePresetId={composerSettings.values?.ide_image_preset_id || 'game-cg'}
+        onOpenChange={setAddProjectOpen}
+        onOpenDirectory={() => chooseProjectDirectory()}
+        onBeforeCreateBook={onBeforeCreateBook}
+        onBookCreated={handleBookCreated}
+        onBooksChange={onBooksChange ?? (() => undefined)}
+      />
       <AgentChatSessionHistoryDialog
         open={historyOpen}
         projects={projects}
@@ -824,12 +871,34 @@ export function AgentChatView({
         onRenameSession={(item, title) => renameSession(item.project_id, item.session, title)}
         onDeleteSession={(item) => deleteSession(item.project_id, item.session)}
       />
-      <AgentChatProjectRenameDialog
-        project={renameTarget}
+      <AgentChatRenameDialog
+        open={Boolean(renameTarget)}
+        initialValue={renameTarget?.name || renameTarget?.path || ''}
+        title={t('agentChat.project.renameTitle')}
+        description={t('agentChat.project.renameDescription')}
+        label={t('agentChat.project.name')}
+        requiredMessage={t('agentChat.project.nameRequired')}
+        inputId="agent-chat-project-name"
         onOpenChange={(open) => {
           if (!open) setRenameTarget(null)
         }}
         onRename={renameProject}
+      />
+      <AgentChatRenameDialog
+        open={Boolean(sessionRenameTarget)}
+        initialValue={sessionRenameTarget?.session.title || ''}
+        title={t('chat.renameSession')}
+        description={t('agentChat.sidebar.renameSessionDescription')}
+        label={t('chat.sessionTitle')}
+        requiredMessage={t('agentChat.sidebar.sessionTitleRequired')}
+        inputId="agent-chat-session-title"
+        onOpenChange={(open) => {
+          if (!open) setSessionRenameTarget(null)
+        }}
+        onRename={(title) => {
+          if (!sessionRenameTarget) return
+          return renameSession(sessionRenameTarget.project.id, sessionRenameTarget.session, title)
+        }}
       />
       <ConfirmDialog
         open={Boolean(archiveTarget)}

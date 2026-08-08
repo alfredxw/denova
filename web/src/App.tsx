@@ -449,6 +449,15 @@ function App() {
     notifyProjectStructureChange()
   }
 
+  const handleAgentChatBookCreated = useCallback((newPath: string) => {
+    setWorkspace(newPath)
+    void refreshAll().catch((error) => {
+      console.error('[App.tsx] failed to refresh the Book created from Agent Chat', { workspace: newPath, error })
+    })
+    notifyVersionChange()
+    notifyProjectStructureChange()
+  }, [notifyProjectStructureChange, notifyVersionChange, refreshAll, setWorkspace])
+
   const handleQuickWorkspaceSwitch = useCallback(async (newPath: string): Promise<boolean> => {
     if (!newPath || newPath === workspace) return true
     if (!(await flushEditorDraft())) return false
@@ -905,6 +914,7 @@ function App() {
         onQuickSwitchBook={handleQuickWorkspaceSwitch}
         onBeforeWorkspaceSwitch={flushEditorDraft}
         onBooksChange={refreshBooks}
+        onAgentChatBookCreated={handleAgentChatBookCreated}
         onOpenCharacterCardImport={handleOpenCharacterCardImportFromBooks}
         onSetSidebarView={setSidebarView}
         onSelectSearchResult={handleSelectSearchResult}

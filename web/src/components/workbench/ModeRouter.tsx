@@ -33,6 +33,7 @@ import { useDocumentReview } from '@/features/document-review/use-document-revie
 import { loreImportanceLabel, loreLoadModeLabel, loreTypeLabel } from '@/features/lore/options'
 import { ChangeReviewWorkspace } from '@/features/changes/review/ChangeReviewWorkspace'
 import type { WorkbenchNotice } from '@/features/notices/use-workbench-notice'
+import type { AgentChatProjectNavigationState } from '@/features/agent-chat/AgentChatProjectSwitcher'
 import { createStablePortalHost, StablePortalSlot } from '@/components/layout/stable-portal-slot'
 import type { Tab } from './TabController'
 import { TabController, tabKey } from './TabController'
@@ -146,6 +147,8 @@ interface ModeRouterProps {
   onQuickSwitchBook: (path: string) => Promise<boolean>
   onBeforeWorkspaceSwitch: EditorFlushHandler
   onBooksChange: () => void | Promise<void>
+  /** Synchronizes a Book created inside Agent Chat without leaving the shared Agent Chat route. */
+  onAgentChatBookCreated: (workspace: string) => void | Promise<void>
   onOpenCharacterCardImport: () => void
   onSetSidebarView: (view: 'outline' | 'files' | 'search') => void
   onSelectSearchResult: (result: WorkspaceSearchResult, query: string) => void | Promise<void>
@@ -257,6 +260,7 @@ export function ModeRouter(props: ModeRouterProps) {
     onQuickSwitchBook,
     onBeforeWorkspaceSwitch,
     onBooksChange,
+    onAgentChatBookCreated,
     onOpenCharacterCardImport,
     onSetSidebarView,
     onSelectSearchResult,
@@ -354,6 +358,7 @@ export function ModeRouter(props: ModeRouterProps) {
   const [tellers, setTellers] = useState<Teller[]>([])
   const [imagePresets, setImagePresets] = useState<ImagePreset[]>([])
   const [agentSubAgentDetailsOpen, setAgentSubAgentDetailsOpen] = useState(false)
+  const [agentChatProjectNavigation, setAgentChatProjectNavigation] = useState<AgentChatProjectNavigationState | null>(null)
   const [agentPanelHost] = useState(() => createStablePortalHost('h-full min-h-0 w-full min-w-0 overflow-hidden'))
   const [illustrationInsertSignal, setIllustrationInsertSignal] = useState<{ illustration: ChapterIllustration; nonce: number } | null>(null)
   const [outlineRevealRequest, setOutlineRevealRequest] = useState<OutlineRevealRequest | null>(null)
@@ -1046,6 +1051,7 @@ export function ModeRouter(props: ModeRouterProps) {
         >
           <AgentChatRoute
             projectId={projectId}
+            novaDir={novaDir}
             composerSettings={composerSettings}
             tellers={tellers}
             imagePresets={imagePresets}
@@ -1053,7 +1059,11 @@ export function ModeRouter(props: ModeRouterProps) {
             autoSaveDelayMs={editorAutoSaveDelayMs}
             onTellersChange={setTellers}
             onImagePresetsChange={setImagePresets}
+            onBeforeCreateBook={flushBeforeWorkspaceSwitch}
+            onBookCreated={onAgentChatBookCreated}
+            onBooksChange={onBooksChange}
             onFlushHandlerChange={handleAgentChatFlushHandlerChange}
+            onProjectNavigationChange={setAgentChatProjectNavigation}
             onWorkspaceChanged={onWorkspaceChanged}
           />
         </RetainedMainRouteLayer>
@@ -1091,6 +1101,7 @@ export function ModeRouter(props: ModeRouterProps) {
       sidebar={sidebar}
       main={main}
       rightPanelContent={rightPanelContent}
+      agentChatProjectNavigation={agentChatProjectNavigation}
       notice={notice}
       onSetMode={onSetMode}
       onToggleActivityBarExpanded={onToggleActivityBarExpanded}

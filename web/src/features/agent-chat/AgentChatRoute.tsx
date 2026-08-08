@@ -7,6 +7,7 @@ import type { ImagePreset, Teller } from '@/features/interactive/types'
 import { ProjectWritingSurface } from '@/features/writing/ProjectWritingSurface'
 import { projectResourceTarget } from '@/lib/api'
 import { AgentChatView } from './AgentChatView'
+import type { AgentChatProjectNavigationState } from './AgentChatProjectSwitcher'
 import type { AgentChatPageId, AgentChatPageRenderContext, AgentChatReviewRenderContext, AgentChatReviewTab } from './types'
 
 const LoreWorkspaceTab = lazy(() => import('@/features/lore/LoreWorkspaceTab').then((module) => ({ default: module.LoreWorkspaceTab })))
@@ -20,6 +21,7 @@ const ChangeReviewWorkspace = lazy(() => import('@/features/changes/review/Chang
 interface AgentChatRouteProps {
   /** Stable identity of the foreground Writing Book, used only for outer projection refresh. */
   projectId: string
+  novaDir: string
   composerSettings: WritingComposerSettingsController
   tellers: Teller[]
   imagePresets: ImagePreset[]
@@ -27,8 +29,12 @@ interface AgentChatRouteProps {
   autoSaveDelayMs?: number
   onTellersChange: (tellers: Teller[]) => void
   onImagePresetsChange: (presets: ImagePreset[]) => void
+  onBeforeCreateBook: () => Promise<boolean>
+  onBookCreated: (workspace: string) => void | Promise<void>
+  onBooksChange: () => void | Promise<void>
   /** Registers every mounted project-page draft with the workbench navigation guard. */
   onFlushHandlerChange?: (handler: EditorFlushHandler | null) => void
+  onProjectNavigationChange?: (navigation: AgentChatProjectNavigationState | null) => void
   onWorkspaceChanged?: (paths: string[], metadata: WorkspaceChangeMetadata) => void | Promise<void>
 }
 
@@ -38,6 +44,7 @@ interface AgentChatRouteProps {
  */
 function AgentChatRouteComponent({
   projectId: foregroundProjectId,
+  novaDir,
   composerSettings,
   tellers,
   imagePresets,
@@ -45,7 +52,11 @@ function AgentChatRouteComponent({
   autoSaveDelayMs = 1200,
   onTellersChange,
   onImagePresetsChange,
+  onBeforeCreateBook,
+  onBookCreated,
+  onBooksChange,
   onFlushHandlerChange,
+  onProjectNavigationChange,
   onWorkspaceChanged,
 }: AgentChatRouteProps) {
   const { t } = useTranslation()
@@ -144,11 +155,16 @@ function AgentChatRouteComponent({
       composerSettings={composerSettings}
       tellers={tellers}
       imagePresets={imagePresets}
+      novaDir={novaDir}
       autoSaveEnabled={autoSaveEnabled}
       autoSaveDelayMs={autoSaveDelayMs}
       renderPage={renderPage}
       renderReview={renderReview}
       onFlushHandlerChange={onFlushHandlerChange}
+      onProjectNavigationChange={onProjectNavigationChange}
+      onBeforeCreateBook={onBeforeCreateBook}
+      onBookCreated={onBookCreated}
+      onBooksChange={onBooksChange}
       onWorkspaceChanged={(changedProjectId, _changedWorkspace, paths, metadata) => (
         changedProjectId === foregroundProjectId ? onWorkspaceChanged?.(paths, metadata) : undefined
       )}

@@ -4,34 +4,49 @@ import { Button } from '@/components/ui/button'
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
-import type { AgentChatProject } from './api'
 
-interface AgentChatProjectRenameDialogProps {
-  project: AgentChatProject | null
+interface AgentChatRenameDialogProps {
+  open: boolean
+  initialValue: string
+  title: string
+  description: string
+  label: string
+  requiredMessage: string
+  inputId: string
   onOpenChange: (open: boolean) => void
   onRename: (name: string) => void | Promise<void>
 }
 
-/** Rename only the Project label; folder selection is always delegated to the OS. */
-export function AgentChatProjectRenameDialog({ project, onOpenChange, onRename }: AgentChatProjectRenameDialogProps) {
+/** Shared rename flow for Project labels and durable conversation titles. */
+export function AgentChatRenameDialog({
+  open,
+  initialValue,
+  title,
+  description,
+  label,
+  requiredMessage,
+  inputId,
+  onOpenChange,
+  onRename,
+}: AgentChatRenameDialogProps) {
   const { t } = useTranslation()
   const [name, setName] = useState('')
   const [submitting, setSubmitting] = useState(false)
   const [error, setError] = useState('')
 
   useEffect(() => {
-    if (!project) return
-    setName(project.name)
+    if (!open) return
+    setName(initialValue)
     setSubmitting(false)
     setError('')
-  }, [project])
+  }, [initialValue, open])
 
   const submit = async (event: FormEvent) => {
     event.preventDefault()
-    if (!project || submitting) return
+    if (!open || submitting) return
     const nextName = name.trim()
     if (!nextName) {
-      setError(t('agentChat.project.nameRequired'))
+      setError(requiredMessage)
       return
     }
     setSubmitting(true)
@@ -48,9 +63,9 @@ export function AgentChatProjectRenameDialog({ project, onOpenChange, onRename }
 
   return (
     <Dialog
-      open={Boolean(project)}
-      onOpenChange={(open) => {
-        if (!submitting) onOpenChange(open)
+      open={open}
+      onOpenChange={(nextOpen) => {
+        if (!submitting) onOpenChange(nextOpen)
       }}
     >
       <DialogContent className="border-[var(--nova-border)] bg-[var(--nova-surface)] text-[var(--nova-text)] sm:max-w-md">
@@ -60,13 +75,13 @@ export function AgentChatProjectRenameDialog({ project, onOpenChange, onRename }
           }}
         >
           <DialogHeader>
-            <DialogTitle>{t('agentChat.project.renameTitle')}</DialogTitle>
-            <DialogDescription className="text-[var(--nova-text-muted)]">{t('agentChat.project.renameDescription')}</DialogDescription>
+            <DialogTitle>{title}</DialogTitle>
+            <DialogDescription className="text-[var(--nova-text-muted)]">{description}</DialogDescription>
           </DialogHeader>
           <div className="grid gap-2 py-4">
-            <Label htmlFor="agent-chat-project-name">{t('agentChat.project.name')}</Label>
+            <Label htmlFor={inputId}>{label}</Label>
             <Input
-              id="agent-chat-project-name"
+              id={inputId}
               autoFocus
               value={name}
               onChange={(event) => setName(event.target.value)}

@@ -53,11 +53,15 @@ vi.mock('@/features/changes/review/ChangeReviewWorkspace', () => ({ ChangeReview
 function routeProps(): React.ComponentProps<typeof AgentChatRoute> {
   return {
     projectId: 'book-a',
+    novaDir: '/books',
     composerSettings: {} as never,
     tellers: [],
     imagePresets: [],
     onTellersChange: vi.fn(),
     onImagePresetsChange: vi.fn(),
+    onBeforeCreateBook: vi.fn(async () => true),
+    onBookCreated: vi.fn(),
+    onBooksChange: vi.fn(),
   }
 }
 

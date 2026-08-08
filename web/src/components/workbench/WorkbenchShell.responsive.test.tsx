@@ -134,6 +134,40 @@ describe('WorkbenchShell responsive main content', () => {
     expect(screen.getByRole('button', { name: /游戏模式|Game Mode/ })).toHaveAttribute('aria-pressed', 'true')
   })
 
+  it('replaces the global book switcher with the AgentChat Project switcher across desktop and mobile layouts', () => {
+    const selectProject = vi.fn()
+    const props = {
+      ...workbenchProps(<div />),
+      mode: 'agentchat' as const,
+      presentedLayout: 'full' as const,
+      booksReturnMode: 'ide' as const,
+      agentChatProjectNavigation: {
+        projects: [{
+          id: 'agent-project',
+          type: 'book' as const,
+          path: '/projects/agent',
+          name: 'Agent Project',
+          status: 'available' as const,
+          current: false,
+          total: 4,
+          sessions: [],
+        }],
+        activeProjectId: 'agent-project',
+        loading: false,
+        selectProject,
+      },
+    }
+    const { rerender } = render(<WorkbenchShell {...props} />)
+
+    expect(screen.queryByRole('button', { name: /切换书籍|Switch book/ })).not.toBeInTheDocument()
+    expect(screen.getByRole('button', { name: '切换项目，当前：Agent Project' })).toBeInTheDocument()
+
+    responsiveState.mobile = true
+    rerender(<WorkbenchShell {...props} />)
+    expect(screen.queryByRole('button', { name: /切换书籍|Switch book/ })).not.toBeInTheDocument()
+    expect(screen.getByRole('button', { name: '切换项目，当前：Agent Project' })).toBeInTheDocument()
+  })
+
   it('uses the whole active menu button as the sortable drag target', () => {
     render(<WorkbenchShell {...workbenchProps(<div />)} />)
 
