@@ -34,7 +34,7 @@ type openingStateSchemaRequirementSourceToolInput struct {
 
 type openingStateSchemaRequirementReviewToolInput struct {
 	Source       openingStateSchemaRequirementSourceToolInput `json:"source"`
-	Requirement  string                                       `json:"requirement" jsonschema_description:"为什么本故事需要保留、新增或替换这个长期状态字段，或者为什么继承字段不适用于本故事。"`
+	Requirement  string                                       `json:"requirement,omitempty" jsonschema_description:"为什么本故事需要保留、新增或替换这个长期状态字段，或者为什么继承字段不适用于本故事。remove/ignored 误省略时会复用非空 reason，其它决策仍必填。"`
 	ValuePolicy  string                                       `json:"value_policy" jsonschema:"enum=schema_only" jsonschema_description:"开局结构工具固定为 schema_only；不得在此写 Actor 值。"`
 	ExpectedType string                                       `json:"expected_type,omitempty" jsonschema:"enum=number,enum=string,enum=bool,enum=enum,enum=object,enum=list" jsonschema_description:"covered/add/replace 必填，且必须与目标字段类型一致。remove/ignored 时可省略。"`
 	Min          *float64                                     `json:"min,omitempty" jsonschema_description:"仅当来源明确要求数值下界时填写，并与目标字段一致。"`
@@ -64,16 +64,20 @@ func (input openingStateSchemaBatchToolInput) batch() interactive.ActorStateSche
 			Requirements: make([]interactive.ActorStateSchemaRequirementReview, 0, len(item.Requirements)),
 			Adaptation: interactive.ActorStateSchemaAdaptation{
 				Summary:     item.Adaptation.Summary,
-				TemplateOps: append([]interactive.ActorStateTemplateSchemaOp(nil), item.Adaptation.TemplateOps...),
+				TemplateOps: normalizeOpeningStateSchemaTemplateOps(item.Adaptation.TemplateOps),
 			},
 		}
 		for _, requirement := range item.Requirements {
+			requirementText := requirement.Requirement
+			if strings.TrimSpace(requirementText) == "" && (requirement.Decision == "remove" || requirement.Decision == "ignored") {
+				requirementText = requirement.Reason
+			}
 			converted.Requirements = append(converted.Requirements, interactive.ActorStateSchemaRequirementReview{
 				Source: interactive.ActorStateSchemaRequirementSource{
 					Kind: requirement.Source.Kind,
 					ID:   requirement.Source.ID,
 				},
-				Requirement:  requirement.Requirement,
+				Requirement:  requirementText,
 				ValuePolicy:  requirement.ValuePolicy,
 				ExpectedType: requirement.ExpectedType,
 				Min:          requirement.Min,
@@ -87,6 +91,27 @@ func (input openingStateSchemaBatchToolInput) batch() interactive.ActorStateSche
 		batch.Items = append(batch.Items, converted)
 	}
 	return batch
+}
+
+// normalizeOpeningStateSchemaTemplateOps repairs one common model-only shape:
+// a boolean marker supplied as the default for a non-boolean field. Dropping
+// that optional marker keeps the field required by the initialization guide;
+// no user state or model context is invented or discarded.
+func normalizeOpeningStateSchemaTemplateOps(ops []interactive.ActorStateTemplateSchemaOp) []interactive.ActorStateTemplateSchemaOp {
+	normalized := append([]interactive.ActorStateTemplateSchemaOp(nil), ops...)
+	for templateIndex := range normalized {
+		normalized[templateIndex].FieldOps = append([]interactive.ActorStateFieldSchemaOp(nil), normalized[templateIndex].FieldOps...)
+		for fieldIndex := range normalized[templateIndex].FieldOps {
+			fieldOp := &normalized[templateIndex].FieldOps[fieldIndex]
+			if fieldOp.Op != "add" && fieldOp.Op != "replace" {
+				continue
+			}
+			if _, isBooleanMarker := fieldOp.Field.Default.(bool); isBooleanMarker && strings.TrimSpace(fieldOp.Field.Type) != "bool" {
+				fieldOp.Field.Default = nil
+			}
+		}
+	}
+	return normalized
 }
 
 func newInteractiveOpeningStateSchemaTools(ctx InteractiveContext) ([]agent.ToolDefinition, error) {

@@ -32,7 +32,10 @@ type ModelProfileSettings struct {
 	SessionKeyMapping   *providers.SessionKeyMapping `toml:"session_key_mapping,omitempty" json:"session_key_mapping,omitempty"`
 	Temperature         *float64                     `toml:"temperature,omitempty" json:"temperature,omitempty"`
 	ContextWindowTokens *int                         `toml:"context_window_tokens,omitempty" json:"context_window_tokens,omitempty"`
-	MaxOutputTokens     *int                         `toml:"max_output_tokens,omitempty" json:"max_output_tokens,omitempty"`
+	// LegacyMaxOutputTokens is decode-only compatibility for Beta settings that
+	// exposed a provider request limit as a user preference. Sanitization clears
+	// it so the provider registry remains the sole owner of output capabilities.
+	LegacyMaxOutputTokens *int `toml:"max_output_tokens,omitempty" json:"max_output_tokens,omitempty"`
 }
 
 type AgentModelSettings struct {
@@ -67,7 +70,6 @@ type ResolvedModelSettings struct {
 	SessionKeyMapping   *providers.SessionKeyMapping
 	Temperature         *float64
 	ContextWindowTokens int
-	MaxOutputTokens     *int
 	ThinkingLevel       string
 }
 
@@ -159,14 +161,6 @@ func ResolveAgentModel(cfg *Config, agentKind string) ResolvedModelSettings {
 	if profile.ContextWindowTokens == nil {
 		profile.ContextWindowTokens = defaultProfile.ContextWindowTokens
 	}
-	if profile.MaxOutputTokens == nil {
-		profile.MaxOutputTokens = defaultProfile.MaxOutputTokens
-	}
-	if profile.MaxOutputTokens == nil {
-		if limits, ok := providers.LookupModelLimits(providers.ProviderID(profile.Provider), profile.Model); ok && limits.MaxOutputTokens > 0 {
-			profile.MaxOutputTokens = intPtr(limits.MaxOutputTokens)
-		}
-	}
 	temperature := profile.Temperature
 	if agentOverride.Temperature != nil {
 		temperature = agentOverride.Temperature
@@ -183,7 +177,6 @@ func ResolveAgentModel(cfg *Config, agentKind string) ResolvedModelSettings {
 		SessionKeyMapping:   cloneModelProfileSessionKeyMapping(profile.SessionKeyMapping),
 		Temperature:         temperature,
 		ContextWindowTokens: *profile.ContextWindowTokens,
-		MaxOutputTokens:     cloneIntPointer(profile.MaxOutputTokens),
 		ThinkingLevel:       resolvedThinkingLevel(agentOverride.ThinkingLevel),
 	}
 }
@@ -318,7 +311,6 @@ func sanitizeModelProfiles(profiles []ModelProfileSettings) []ModelProfileSettin
 			profile.Name = strings.TrimSpace(profile.Name)
 			profile.BaseURL = strings.TrimSpace(profile.BaseURL)
 			profile.ContextWindowTokens = normalizeModelProfileContextWindow(profile.ContextWindowTokens)
-			profile.MaxOutputTokens = normalizeModelProfileMaxOutput(profile.MaxOutputTokens)
 			out = append(out, profile)
 			continue
 		}
@@ -327,14 +319,13 @@ func sanitizeModelProfiles(profiles []ModelProfileSettings) []ModelProfileSettin
 		}
 		profile.Name = strings.TrimSpace(profile.Name)
 		profile.ContextWindowTokens = normalizeModelProfileContextWindow(profile.ContextWindowTokens)
-		profile.MaxOutputTokens = normalizeModelProfileMaxOutput(profile.MaxOutputTokens)
 		out = append(out, profile)
 	}
 	return out
 }
 
 // migrateLegacyModelProfile accepts the former OpenAI-prefixed profile fields
-// without letting them override an explicitly configured canonical value.
+// without overriding canonical values and drops the retired Beta output ceiling.
 func migrateLegacyModelProfile(profile ModelProfileSettings) ModelProfileSettings {
 	if profile.APIKey == "" {
 		profile.APIKey = profile.LegacyOpenAIAPIKey
@@ -348,6 +339,7 @@ func migrateLegacyModelProfile(profile ModelProfileSettings) ModelProfileSetting
 	profile.LegacyOpenAIAPIKey = ""
 	profile.LegacyOpenAIBaseURL = ""
 	profile.LegacyOpenAIModel = ""
+	profile.LegacyMaxOutputTokens = nil
 	return profile
 }
 
@@ -361,8 +353,7 @@ func hasModelProfileDraftFields(profile ModelProfileSettings) bool {
 		len(profile.ProtocolOptions) != 0 ||
 		profile.SessionKeyMapping != nil ||
 		profile.Temperature != nil ||
-		profile.ContextWindowTokens != nil ||
-		profile.MaxOutputTokens != nil
+		profile.ContextWindowTokens != nil
 }
 
 func normalizeModelProfileContextWindow(tokens *int) *int {
@@ -378,13 +369,6 @@ func normalizeModelProfileContextWindow(tokens *int) *int {
 	return tokens
 }
 
-func normalizeModelProfileMaxOutput(tokens *int) *int {
-	if tokens == nil || *tokens <= 0 {
-		return nil
-	}
-	return tokens
-}
-
 func defaultModelProfile(profiles []ModelProfileSettings) (ModelProfileSettings, bool) {
 	for _, profile := range profiles {
 		if modelProfileID(profile) == "default" {
@@ -396,6 +380,7 @@ func defaultModelProfile(profiles []ModelProfileSettings) (ModelProfileSettings,
 
 func mergeModelProfile(parent, child ModelProfileSettings) ModelProfileSettings {
 	out := parent
+	out.LegacyMaxOutputTokens = nil
 	previousProvider := strings.TrimSpace(out.Provider)
 	previousProtocol := strings.TrimSpace(out.Protocol)
 	previousScope := modelCredentialScope(out)
@@ -459,9 +444,6 @@ func mergeModelProfile(parent, child ModelProfileSettings) ModelProfileSettings 
 	}
 	if child.ContextWindowTokens != nil {
 		out.ContextWindowTokens = child.ContextWindowTokens
-	}
-	if child.MaxOutputTokens != nil {
-		out.MaxOutputTokens = child.MaxOutputTokens
 	}
 	return out
 }

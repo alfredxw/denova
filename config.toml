@@ -55,7 +55,6 @@ model = "deepseek-v4-pro"
 # base_url = "https://models.example.com/v1"
 # api_key = ""
 # model = "private-model"
-# max_output_tokens 可按目标模型的官方能力显式覆盖；已知模型由 Denova 使用内置能力上限，其他模型留空时使用服务商默认值。
 # [model_profiles.headers]
 # X-Tenant = "example"
 # [model_profiles.protocol_options]

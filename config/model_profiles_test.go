@@ -17,6 +17,7 @@ name = "Doubao"
 openai_api_key = "legacy-key"
 openai_base_url = "https://ark.cn-beijing.volces.com/api/v3"
 openai_model = "doubao-seed"
+max_output_tokens = 2048
 `
 	if err := os.WriteFile(path, []byte(legacy), 0o644); err != nil {
 		t.Fatal(err)
@@ -36,6 +37,9 @@ openai_model = "doubao-seed"
 	if profile.Provider != string(providers.ProviderVolcengine) || profile.Protocol != string(providers.ProtocolOpenAIChatCompletions) {
 		t.Fatalf("legacy route = provider %q protocol %q", profile.Provider, profile.Protocol)
 	}
+	if profile.LegacyMaxOutputTokens != nil {
+		t.Fatalf("legacy max output tokens must be dropped: %#v", profile.LegacyMaxOutputTokens)
+	}
 
 	if err := WriteSettingsFile(path, settings); err != nil {
 		t.Fatal(err)
@@ -45,7 +49,7 @@ openai_model = "doubao-seed"
 		t.Fatal(err)
 	}
 	text := string(persisted)
-	if strings.Contains(text, "openai_api_key") || strings.Contains(text, "openai_base_url") || strings.Contains(text, "openai_model") {
+	if strings.Contains(text, "openai_api_key") || strings.Contains(text, "openai_base_url") || strings.Contains(text, "openai_model") || strings.Contains(text, "max_output_tokens") {
 		t.Fatalf("legacy model profile fields must not be written back:\n%s", text)
 	}
 	for _, field := range []string{`api_key = 'legacy-key'`, `base_url = 'https://ark.cn-beijing.volces.com/api/v3'`, `model = 'doubao-seed'`} {
@@ -164,37 +168,6 @@ func TestResolveAgentModelContextWindowDefaultsAndOverrides(t *testing.T) {
 	resolved = ResolveAgentModel(cfg, AgentKindInteractiveStory)
 	if resolved.ContextWindowTokens != mainContextWindow {
 		t.Fatalf("profile inherited context window = %d, want %d", resolved.ContextWindowTokens, mainContextWindow)
-	}
-}
-
-func TestResolveAgentModelUsesKnownOutputLimitWithoutOverridingExplicitProfile(t *testing.T) {
-	resolved := ResolveAgentModel(&Config{
-		OpenAIBaseURL: "https://api.deepseek.com",
-		OpenAIModel:   "deepseek-v4-pro",
-	}, AgentKindInteractiveStory)
-	if resolved.MaxOutputTokens == nil || *resolved.MaxOutputTokens != 384*1024 {
-		t.Fatalf("DeepSeek V4 max output tokens = %#v, want %d", resolved.MaxOutputTokens, 384*1024)
-	}
-
-	explicit := 96_000
-	resolved = ResolveAgentModel(&Config{
-		ModelProfiles: []ModelProfileSettings{{
-			ID: "deepseek", Provider: string(providers.ProviderDeepSeek), Model: "deepseek-v4-flash", MaxOutputTokens: &explicit,
-		}},
-		AgentModels: AgentModelSettings{InteractiveStory: AgentModelOverride{ProfileID: "deepseek"}},
-	}, AgentKindInteractiveStory)
-	if resolved.MaxOutputTokens == nil || *resolved.MaxOutputTokens != explicit {
-		t.Fatalf("explicit max output tokens = %#v, want %d", resolved.MaxOutputTokens, explicit)
-	}
-
-	resolved = ResolveAgentModel(&Config{
-		ModelProfiles: []ModelProfileSettings{{
-			ID: "custom", Provider: string(providers.ProviderOpenAICompatible), Model: "private-model",
-		}},
-		AgentModels: AgentModelSettings{IDE: AgentModelOverride{ProfileID: "custom"}},
-	}, AgentKindIDE)
-	if resolved.MaxOutputTokens != nil {
-		t.Fatalf("custom endpoint must keep provider-owned default, got %#v", resolved.MaxOutputTokens)
 	}
 }
 

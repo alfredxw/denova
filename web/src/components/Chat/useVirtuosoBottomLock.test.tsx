@@ -53,6 +53,98 @@ describe('useVirtuosoBottomLock', () => {
     expect(scrollToIndex).not.toHaveBeenCalled()
   })
 
+  it('cancels a pending automatic bottom follow when streaming ends before footer content mounts', () => {
+    const scrollToIndex = vi.fn()
+    const { result, rerender } = renderHook(
+      ({ autoFollowEnabled }) => useVirtuosoBottomLock({
+        itemCount: 1,
+        autoFollowEnabled,
+      }),
+      { initialProps: { autoFollowEnabled: true } },
+    )
+    act(() => {
+      result.current.virtuosoRef.current = { scrollToIndex } as unknown as VirtuosoHandle
+    })
+
+    rerender({ autoFollowEnabled: false })
+    flushAnimationFrames(frames)
+
+    expect(scrollToIndex).not.toHaveBeenCalled()
+  })
+
+  it('preserves the viewport when completed footer content changes the measured layout', () => {
+    const scroller = document.createElement('div')
+    Object.defineProperty(scroller, 'scrollHeight', { configurable: true, value: 700 })
+    Object.defineProperty(scroller, 'clientHeight', { configurable: true, value: 100 })
+    scroller.scrollTop = 400
+    const { result, rerender } = renderHook(
+      ({ autoFollowEnabled }) => useVirtuosoBottomLock({
+        itemCount: 1,
+        autoFollowEnabled,
+        resolveScroller: () => scroller,
+      }),
+      { initialProps: { autoFollowEnabled: true } },
+    )
+    act(() => {
+      result.current.onScroll({ currentTarget: scroller } as never)
+    })
+
+    // Virtuoso may correct the viewport while replacing the live row and
+    // mounting the completed state footer in the same React commit.
+    scroller.scrollTop = 310
+    rerender({ autoFollowEnabled: false })
+
+    expect(scroller.scrollTop).toBe(400)
+  })
+
+  it('does not mistake a layout-induced upward scroll for user intent', () => {
+    const scroller = document.createElement('div')
+    Object.defineProperty(scroller, 'scrollHeight', { configurable: true, value: 500 })
+    Object.defineProperty(scroller, 'clientHeight', { configurable: true, value: 100 })
+    scroller.scrollTop = 400
+    const { result } = renderHook(() => useVirtuosoBottomLock({
+      itemCount: 1,
+      autoFollowEnabled: true,
+      resolveScroller: () => scroller,
+    }))
+    flushAnimationFrames(frames)
+
+    scroller.scrollTop = 300
+    act(() => {
+      result.current.onScroll({ currentTarget: scroller } as never)
+    })
+
+    expect(result.current.followOutput(true)).toBe('auto')
+
+    act(() => {
+      result.current.onWheel({ deltaY: -10 } as never)
+    })
+    expect(result.current.followOutput(true)).toBe(false)
+  })
+
+  it('unlocks from an explicit upward touch-scroll gesture', () => {
+    const scroller = document.createElement('div')
+    const content = document.createElement('div')
+    scroller.appendChild(content)
+    const { result } = renderHook(() => useVirtuosoBottomLock({
+      itemCount: 1,
+      autoFollowEnabled: true,
+    }))
+
+    act(() => {
+      result.current.onPointerDown({
+        target: content,
+        currentTarget: scroller,
+        pointerType: 'touch',
+        clientY: 100,
+      } as never)
+      result.current.onPointerMove({ clientY: 116 } as never)
+      result.current.onPointerUp()
+    })
+
+    expect(result.current.followOutput(true)).toBe(false)
+  })
+
   it('still positions a newly populated list after an explicit reset while automatic following is disabled', () => {
     const scrollToIndex = vi.fn()
     const { result, rerender } = renderHook(

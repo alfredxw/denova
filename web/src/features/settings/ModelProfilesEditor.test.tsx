@@ -81,6 +81,13 @@ beforeEach(() => {
   vi.mocked(pingModelProfile).mockReset()
 })
 
+it('does not expose provider output limits as a user setting', async () => {
+  render(<EditorHarness />)
+
+  await screen.findByRole('combobox', { name: '服务商' })
+  expect(screen.queryByText('最大输出长度 (Token)')).not.toBeInTheDocument()
+})
+
 it('offers discovered models without restricting custom model input', async () => {
   const user = userEvent.setup()
   const onChange = vi.fn()

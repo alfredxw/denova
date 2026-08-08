@@ -122,7 +122,6 @@ export interface ModelProfileSettings {
   session_key_mapping?: ModelSessionKeyMapping
   temperature?: number | null
   context_window_tokens?: number | null
-  max_output_tokens?: number | null
 }
 
 export interface ModelSessionKeyMapping {

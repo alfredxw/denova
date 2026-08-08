@@ -155,8 +155,6 @@ const settings = {
   'settings.model.contextWindow1m': '1M',
   'settings.model.contextWindowCustom': 'Custom',
   'settings.model.contextWindowPlaceholder': 'Custom context length',
-  'settings.model.maxOutputTokens': 'Max Output (tokens)',
-  'settings.model.maxOutputTokensPlaceholder': 'Known model limit; otherwise provider default',
   'settings.model.pingAction': 'Test connection',
   'settings.model.pingTesting': 'Testing…',
   'settings.model.pingHint': 'Sends one minimal generation request using this unsaved profile.',

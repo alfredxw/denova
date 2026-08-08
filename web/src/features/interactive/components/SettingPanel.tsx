@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { BookMarked, Bot, Database, Image as ImageIcon, Images, Search, SlidersHorizontal, Sparkles, Tags, Trash2 } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import { toast } from 'sonner'
-import { abortLoreImagesGenerate, APIError, clearLoreItemImage, createProjectLoreItem, deleteProjectLoreItem, generateLoreItemImage, getProjectLoreItems, projectFileAssetURL, readProjectFile, streamLoreImagesGenerate, type LoreImageProgressEvent, type LoreItem, type SSEEvent } from '@/lib/api'
+import { abortLoreImagesGenerate, APIError, clearLoreItemImage, createProjectLoreItem, deleteProjectLoreItem, generateLoreItemImage, getProjectLoreItems, projectFileAssetURL, readOptionalProjectFile, readProjectFile, streamLoreImagesGenerate, type LoreImageProgressEvent, type LoreItem, type SSEEvent } from '@/lib/api'
 import { rebaseJSONValue, rebaseText } from '@/lib/three-way-rebase'
 import { rebaseJSONWithRecovery, rebaseTextWithRecovery } from '@/lib/autosave/rebase-with-recovery'
 import { cn } from '@/lib/utils'
@@ -513,23 +513,17 @@ function LoreSettingPanel({
       return () => {
         cancelled = true
       }
-    readProjectFile(projectId, INTERACTIVE_OPENING_PRESET_PATH)
-      .then(async (data) => {
-        if (!cancelled) await reconcileOpeningPresetFile(data)
-      })
-      .catch(async (error) => {
-        if (!(error instanceof APIError) || error.status !== 404) {
-          if (!cancelled) {
-            setOpeningPresets([])
-            setOpeningPresetRevision('')
-            setOpeningPresetProjectId('')
-            setActiveOpeningPresetId('')
-          }
+    void (async () => {
+      try {
+        const data = await readOptionalProjectFile(projectId, INTERACTIVE_OPENING_PRESET_PATH)
+        if (cancelled) return
+        if (data) {
+          await reconcileOpeningPresetFile(data)
           return
         }
-        try {
-          const legacy = await readProjectFile(projectId, LEGACY_INTERACTIVE_OPENING_PRESET_PATH)
-          if (cancelled) return
+        const legacy = await readOptionalProjectFile(projectId, LEGACY_INTERACTIVE_OPENING_PRESET_PATH)
+        if (cancelled) return
+        if (legacy) {
           const presets = parseBookOpeningPresets(legacy.content || '')
           const content = serializeBookOpeningPresets(presets)
           openingPresetAutosave.resetBaseline({
@@ -544,26 +538,29 @@ function LoreSettingPanel({
           setOpeningPresetRevision('missing')
           setOpeningPresetProjectId(legacy.project_id)
           setActiveOpeningPresetId((current) => (current && presets.some((preset) => preset.id === current) ? current : presets[0]?.id || ''))
-        } catch (legacyError) {
-          if (!cancelled) {
-            setOpeningPresets([])
-            const legacyMissing = legacyError instanceof APIError && legacyError.status === 404
-            if (legacyMissing) {
-              openingPresetAutosave.resetBaseline({
-                id: INTERACTIVE_OPENING_PRESET_PATH,
-                content: serializeBookOpeningPresets([]),
-                project_id: projectId,
-                updated_at: 'missing',
-              })
-              openingPresetBaselineContentRef.current = serializeBookOpeningPresets([])
-              openingPresetBaselineRevisionRef.current = 'missing'
-            }
-            setOpeningPresetRevision(legacyMissing ? 'missing' : '')
-            setOpeningPresetProjectId(legacyMissing ? projectId : '')
-            setActiveOpeningPresetId('')
-          }
+          return
         }
-      })
+        const content = serializeBookOpeningPresets([])
+        openingPresetAutosave.resetBaseline({
+          id: INTERACTIVE_OPENING_PRESET_PATH,
+          content,
+          project_id: projectId,
+          updated_at: 'missing',
+        })
+        openingPresetBaselineContentRef.current = content
+        openingPresetBaselineRevisionRef.current = 'missing'
+        setOpeningPresets([])
+        setOpeningPresetRevision('missing')
+        setOpeningPresetProjectId(projectId)
+        setActiveOpeningPresetId('')
+      } catch {
+        if (cancelled) return
+        setOpeningPresets([])
+        setOpeningPresetRevision('')
+        setOpeningPresetProjectId('')
+        setActiveOpeningPresetId('')
+      }
+    })()
     return () => {
       cancelled = true
     }

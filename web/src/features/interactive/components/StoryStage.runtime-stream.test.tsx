@@ -33,7 +33,9 @@ const {
 } = testMocks
 
 vi.mock('@/features/settings/api', () => ({
+  fetchProjectSettings: vi.fn().mockResolvedValue({ effective: {} }),
   fetchSettings: vi.fn().mockResolvedValue({ effective: {} }),
+  refreshProjectSettings: vi.fn().mockResolvedValue({ effective: {} }),
 }))
 
 vi.mock('@/features/agent-approval/AgentApprovalProvider', () => ({
@@ -423,14 +425,20 @@ describe('StoryStage runtime stream lifecycle', () => {
           event: 'thinking',
           data: JSON.stringify({ content: '正在回忆石门后的布局。' }),
         })
+        await Promise.resolve()
+      })
+      await expectVisibleText('正在回忆石门后的布局。')
+
+      await act(async () => {
         stream.enqueue({
           event: 'chunk',
           data: JSON.stringify({ content: '石门后亮起一盏灯。' }),
         })
         await Promise.resolve()
       })
-      await expectVisibleText('正在回忆石门后的布局。')
       await waitFor(() => expect(screen.getByText('石门后亮起一盏灯。')).toBeInTheDocument())
+      await waitFor(() => expect(screen.queryByText('正在回忆石门后的布局。')).not.toBeInTheDocument())
+      expect(screen.getByRole('button', { name: /^执行过程$/ })).toHaveAttribute('aria-expanded', 'false')
 
       const persisted = persistedTurnEvent()
       persisted.turn.user = '推开石门'

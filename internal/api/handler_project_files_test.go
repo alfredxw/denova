@@ -101,6 +101,48 @@ func TestProjectFilesAPIKeepsBackgroundProjectScoped(t *testing.T) {
 	}
 }
 
+func TestProjectFileOptionalReadReturnsMissingAsData(t *testing.T) {
+	application := newTestApplication(t)
+	server := NewServer(application, "0")
+	base := projectWorkspaceAPI(application, "/files/file?path=setting%2Foptional.json&optional=true")
+
+	response := performJSONRequest(t, server, http.MethodGet, base, nil)
+	if response.Code != http.StatusOK {
+		t.Fatalf("optional read status = %d body=%s", response.Code, response.Body.String())
+	}
+	var result struct {
+		ProjectID string `json:"project_id"`
+		Path      string `json:"path"`
+		Found     bool   `json:"found"`
+	}
+	decodeResponse(t, response.Body.Bytes(), &result)
+	if result.ProjectID != application.ProjectID() || result.Path != "setting/optional.json" || result.Found {
+		t.Fatalf("optional read result = %#v", result)
+	}
+	if err := os.MkdirAll(filepath.Join(application.Workspace(), "setting"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(application.Workspace(), "setting", "optional.json"), []byte("{}\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	foundResponse := performJSONRequest(t, server, http.MethodGet, base, nil)
+	if foundResponse.Code != http.StatusOK {
+		t.Fatalf("optional existing read status = %d body=%s", foundResponse.Code, foundResponse.Body.String())
+	}
+	var found struct {
+		Found    bool `json:"found"`
+		Document struct {
+			ProjectID string `json:"project_id"`
+			Path      string `json:"path"`
+			Content   string `json:"content"`
+		} `json:"document"`
+	}
+	decodeResponse(t, foundResponse.Body.Bytes(), &found)
+	if !found.Found || found.Document.ProjectID != application.ProjectID() || found.Document.Path != "setting/optional.json" || found.Document.Content != "{}\n" {
+		t.Fatalf("optional existing result = %#v", found)
+	}
+}
+
 func TestProjectFileOperationsAPIReportsPartialSuccess(t *testing.T) {
 	application := newTestApplication(t)
 	server := NewServer(application, "0")

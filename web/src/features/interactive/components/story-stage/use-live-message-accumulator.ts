@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef } from 'react'
 import { buildContextCompactionMessage, createContextCompactionMessageId, upsertContextCompactionMessage } from '@/components/Chat/context-compaction-message'
 import type { ChatMessage } from '@/lib/api'
-import { createRafUpdateBatcher } from '@/lib/streaming/raf-update-batcher'
+import { createRafUpdateBatcher, STREAMING_RENDER_INTERVAL_MS } from '@/lib/streaming/raf-update-batcher'
 import {
   appendBufferedLiveMessage,
   bindLiveToolEventKeys,
@@ -27,9 +27,6 @@ interface UseLiveMessageAccumulatorOptions {
 // Persisted history projection only receives stable render-key lookup methods, so
 // display recovery state cannot leak into the model/session context boundary.
 export function useLiveMessageAccumulator({ publicRuleRollVisible, setMessages }: UseLiveMessageAccumulatorOptions) {
-  const messageBufferRef = useRef<BufferedLiveMessage[]>([])
-  const messageRafRef = useRef<number | null>(null)
-  const promoteRafRef = useRef<number | null>(null)
   const toolKeyToMessageIdRef = useRef<Record<string, string>>({})
   const nonNarrativeStreamingRef = useRef(false)
   const stageKeyRef = useRef('')
@@ -38,50 +35,28 @@ export function useLiveMessageAccumulator({ publicRuleRollVisible, setMessages }
   const currentCompactionMessageIdRef = useRef<string | null>(null)
   const compactionIdCounterRef = useRef(0)
 
-  const toolArgsBatcher = useMemo(
-    () => createRafUpdateBatcher<ChatMessage[]>(setMessages),
+  // Text, thinking and tool-argument deltas share one ordered commit lane. The
+  // staged target is promoted once per batch so the presentation layer can
+  // identify prose immediately without adding another render per provider delta.
+  const updateBatcher = useMemo(
+    () => createRafUpdateBatcher<ChatMessage[]>(
+      (update) => setMessages((current) => promoteMessageTargets(update(current))),
+      { minIntervalMs: STREAMING_RENDER_INTERVAL_MS },
+    ),
     [setMessages],
   )
 
-  const promoteTargets = useCallback(() => {
-    setMessages((current) => promoteMessageTargets(current))
-  }, [setMessages])
-
-  const schedulePromotion = useCallback(() => {
-    if (promoteRafRef.current !== null) return
-    promoteRafRef.current = window.requestAnimationFrame(() => {
-      promoteRafRef.current = null
-      promoteTargets()
-    })
-  }, [promoteTargets])
-
   const flushMessageBuffer = useCallback(() => {
-    if (messageRafRef.current !== null) {
-      window.cancelAnimationFrame(messageRafRef.current)
-      messageRafRef.current = null
-    }
-    const buffered = messageBufferRef.current
-    if (buffered.length === 0) return
-    messageBufferRef.current = []
-    setMessages((current) => buffered.reduce(appendBufferedLiveMessage, current))
-    if (buffered.some((message) => message.role === 'assistant' || message.role === 'thinking')) {
-      schedulePromotion()
-    }
-  }, [schedulePromotion, setMessages])
+    updateBatcher.flush()
+  }, [updateBatcher])
 
   const flush = useCallback(() => {
     flushMessageBuffer()
-    toolArgsBatcher.flush()
-  }, [flushMessageBuffer, toolArgsBatcher])
+  }, [flushMessageBuffer])
 
   const queue = useCallback((message: BufferedLiveMessage) => {
-    messageBufferRef.current.push(message)
-    if (messageRafRef.current !== null) return
-    messageRafRef.current = window.requestAnimationFrame(() => {
-      messageRafRef.current = null
-      flushMessageBuffer()
-    })
-  }, [flushMessageBuffer])
+    updateBatcher.enqueue((current) => appendBufferedLiveMessage(current, message))
+  }, [updateBatcher])
 
   const appendAssistant = useCallback((content: string, navigationAnchorId: string, metadata: Partial<ChatMessage> = {}) => {
     if (!content) return
@@ -109,6 +84,7 @@ export function useLiveMessageAccumulator({ publicRuleRollVisible, setMessages }
   }, [queue])
 
   const appendToolCall = useCallback((payload: Record<string, unknown> & { id?: string; name?: string; args?: string }) => {
+    flush()
     const toolKeys = liveToolEventKeys(payload)
     const mappedId = findMappedLiveToolId(toolKeys, toolKeyToMessageIdRef.current)
     const id = payload.id || mappedId || `tool-${Date.now()}-${Math.random().toString(16).slice(2)}`
@@ -130,11 +106,11 @@ export function useLiveMessageAccumulator({ publicRuleRollVisible, setMessages }
         ...streamMetadataFromPayload(payload),
       },
     ])
-  }, [setMessages])
+  }, [flush, setMessages])
 
   const appendToolArgs = useCallback((payload: Record<string, unknown> & { id?: string; name?: string; args?: string; delta?: string }) => {
     if (!payload.id && !payload.name && liveToolEventKeys(payload).length === 0) return
-    toolArgsBatcher.enqueue((current) => {
+    updateBatcher.enqueue((current) => {
       const targetIndex = findToolMessageIndexForPayload(current, payload, toolKeyToMessageIdRef.current)
       if (targetIndex < 0) return current
       const matchedId = current[targetIndex].id
@@ -145,9 +121,10 @@ export function useLiveMessageAccumulator({ publicRuleRollVisible, setMessages }
         ? { ...message, args: payload.args !== undefined ? payload.args : `${message.args || ''}${payload.delta || ''}` }
         : message)
     })
-  }, [toolArgsBatcher])
+  }, [updateBatcher])
 
   const completeToolCall = useCallback((payload: Record<string, unknown> & { id?: string; name?: string }, result = '') => {
+    updateBatcher.flush()
     setMessages((current) => {
       const targetIndex = findToolMessageIndexForPayload(current, payload, toolKeyToMessageIdRef.current)
       if (targetIndex < 0) return current
@@ -159,10 +136,11 @@ export function useLiveMessageAccumulator({ publicRuleRollVisible, setMessages }
         ? { ...message, status: 'success' as const, result, streaming: false }
         : message)
     })
-  }, [setMessages])
+  }, [setMessages, updateBatcher])
 
   const appendRuleRoll = useCallback((payload: Record<string, unknown> & { name?: string; content?: string }) => {
     if (!publicRuleRollVisible || payload.name !== 'prepare_interactive_turn') return
+    flush()
     const ruleRoll = publicRuleRollFromToolOutput(payload.content || '')
     if (!ruleRoll) return
     setMessages((current) => {
@@ -170,30 +148,36 @@ export function useLiveMessageAccumulator({ publicRuleRollVisible, setMessages }
       if (current.some((message) => message.role === 'rule_roll' && message.id === id)) return current
       return [...current, { id, role: 'rule_roll', rule_roll: ruleRoll, streaming: false }]
     })
-  }, [publicRuleRollVisible, setMessages])
+  }, [flush, publicRuleRollVisible, setMessages])
 
   const appendContextCompaction = useCallback((data: Record<string, unknown>) => {
+    flush()
     const id = currentCompactionMessageIdRef.current || createContextCompactionMessageId(compactionIdCounterRef)
     currentCompactionMessageIdRef.current = id
     nonNarrativeStreamingRef.current = true
     setMessages((current) => upsertContextCompactionMessage(current, buildContextCompactionMessage(data, id)))
-  }, [setMessages])
+  }, [flush, setMessages])
 
   const collapseNonNarrative = useCallback(() => {
     if (!nonNarrativeStreamingRef.current) return
-    flush()
     nonNarrativeStreamingRef.current = false
-    setMessages((current) => current.map((message) => message.role === 'tool_call' || message.role === 'context_compaction'
-      ? { ...message, status: message.status === 'running' ? 'success' : message.status }
-      : message))
-  }, [flush, setMessages])
+    updateBatcher.enqueue((current) => current.map((message) => {
+      if (message.role === 'thinking') {
+        return { ...promoteMessageTarget(message), streaming: false }
+      }
+      if (message.role === 'tool_call' || message.role === 'context_compaction') {
+        return {
+          ...message,
+          streaming: false,
+          status: message.status === 'running' ? 'success' : message.status,
+        }
+      }
+      return message
+    }))
+  }, [updateBatcher])
 
   const finishMessages = useCallback(() => {
     flush()
-    if (promoteRafRef.current !== null) {
-      window.cancelAnimationFrame(promoteRafRef.current)
-      promoteRafRef.current = null
-    }
     nonNarrativeStreamingRef.current = false
     setMessages((current) => current.map((message) =>
       message.role === 'assistant' || message.role === 'thinking' || message.role === 'tool_call' || message.role === 'context_compaction'
@@ -208,22 +192,13 @@ export function useLiveMessageAccumulator({ publicRuleRollVisible, setMessages }
   }, [flush, setMessages])
 
   const resetForCheckpoint = useCallback(() => {
-    if (messageRafRef.current !== null) {
-      window.cancelAnimationFrame(messageRafRef.current)
-      messageRafRef.current = null
-    }
-    if (promoteRafRef.current !== null) {
-      window.cancelAnimationFrame(promoteRafRef.current)
-      promoteRafRef.current = null
-    }
-    messageBufferRef.current = []
-    toolArgsBatcher.discard()
+    updateBatcher.discard()
     toolKeyToMessageIdRef.current = {}
     nonNarrativeStreamingRef.current = false
     currentTurnRenderKeysRef.current = null
     currentCompactionMessageIdRef.current = null
     setMessages([])
-  }, [setMessages, toolArgsBatcher])
+  }, [setMessages, updateBatcher])
 
   const prepareTurn = useCallback((message: string, navigationAnchorId: string, mode: 'replace' | 'append') => {
     flush()
@@ -265,11 +240,8 @@ export function useLiveMessageAccumulator({ publicRuleRollVisible, setMessages }
   }, [])
 
   useEffect(() => () => {
-    if (messageRafRef.current !== null) window.cancelAnimationFrame(messageRafRef.current)
-    if (promoteRafRef.current !== null) window.cancelAnimationFrame(promoteRafRef.current)
-    messageBufferRef.current = []
-    toolArgsBatcher.discard()
-  }, [toolArgsBatcher])
+    updateBatcher.discard()
+  }, [updateBatcher])
 
   return {
     appendAssistant,
@@ -286,7 +258,6 @@ export function useLiveMessageAccumulator({ publicRuleRollVisible, setMessages }
     endRun,
     finishMessages,
     flush,
-    flushMessages: flushMessageBuffer,
     prepareTurn,
     renderKeyFor,
     resetAssistant,

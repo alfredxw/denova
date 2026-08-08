@@ -170,7 +170,7 @@ describe('StoryStage streaming rendering', () => {
     }
   })
 
-  it('keeps live thinking visible while narrative output starts', async () => {
+  it('separates live narrative from the completed thinking disclosure as soon as prose starts', async () => {
     const user = userEvent.setup()
     const stream = controllableInteractiveStream()
     const providerThinking = `正在判断门后的声响。${'继续核对现场线索。'.repeat(300)}供应商思考尾部必须完整展示。`
@@ -193,7 +193,19 @@ describe('StoryStage streaming rendering', () => {
       })
 
       await waitFor(() => expect(screen.getByText('门后传来脚步声。')).toBeInTheDocument())
+      await waitFor(() => expect(screen.queryByText(providerThinking)).not.toBeInTheDocument())
+      const trace = screen.getByRole('button', { name: /^执行过程$/ })
+      expect(trace).toHaveAttribute('aria-expanded', 'false')
+
+      await user.click(trace)
       expect(screen.getByText(providerThinking)).toBeInTheDocument()
+      expect(screen.getByText('门后传来脚步声。')).toBeInTheDocument()
+      const liveMessages = useInteractiveStore.getState().storyStageRuns['/tmp/book:story-1:main']?.liveMessages || []
+      expect(liveMessages.find((message) => message.role === 'assistant')).toMatchObject({
+        content: '门后传来脚步声。',
+        streaming: true,
+      })
+      expect(liveMessages.find((message) => message.role === 'assistant')).not.toHaveProperty('streaming_target_content')
     } finally {
       stream.close()
     }
@@ -216,7 +228,7 @@ describe('StoryStage streaming rendering', () => {
       })
       await waitFor(() => {
         const liveMessages = useInteractiveStore.getState().storyStageRuns['/tmp/book:story-1:main']?.liveMessages || []
-        expect(liveMessages.some((message) => message.role === 'assistant' && message.streaming_target_content === '我先检查资料，再开始写正文。')).toBe(true)
+        expect(liveMessages.some((message) => message.role === 'assistant' && message.content === '我先检查资料，再开始写正文。')).toBe(true)
       })
       expect(screen.queryByRole('button', { name: /执行过程/ })).not.toBeInTheDocument()
 

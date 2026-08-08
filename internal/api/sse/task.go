@@ -80,18 +80,16 @@ func StreamTask(ctx context.Context, c *app.RequestContext, task *apptask.Task, 
 			}
 		}
 
-		for _, item := range replay.Events {
+		for _, item := range coalesceTaskEvents(replay.Events) {
 			if err := writeSSE(item); err != nil {
 				slog.InfoContext(ctx, fmt.Sprintf("[agent-sse] stream interrupted task_id=%s phase=replay cursor=%d event=%s err=%v", task.ID(), item.Cursor, item.Event.Type, err))
 				return
 			}
 		}
 
-		for item := range subscription.Events() {
-			if err := writeSSE(item); err != nil {
-				slog.InfoContext(ctx, fmt.Sprintf("[agent-sse] stream interrupted task_id=%s phase=live cursor=%d event=%s err=%v", task.ID(), item.Cursor, item.Event.Type, err))
-				return
-			}
+		if item, err := writeCoalescedTaskEventStream(subscription.Events(), writeSSE); err != nil {
+			slog.InfoContext(ctx, fmt.Sprintf("[agent-sse] stream interrupted task_id=%s phase=live cursor=%d event=%s err=%v", task.ID(), item.Cursor, item.Event.Type, err))
+			return
 		}
 		slog.InfoContext(ctx, fmt.Sprintf("[agent-sse] stream end task_id=%s status=%s reason=%s", task.ID(), task.Status(), subscription.EndReason()))
 	}()
@@ -146,18 +144,16 @@ func StreamTaskUI(ctx context.Context, c *app.RequestContext, task *apptask.Task
 			}
 		}
 
-		for _, item := range replay.Events {
+		for _, item := range coalesceTaskEvents(replay.Events) {
 			if err := writeUI.Handle(item); err != nil {
 				slog.InfoContext(ctx, fmt.Sprintf("[agent-ui-sse] stream interrupted task_id=%s phase=replay cursor=%d event=%s err=%v", task.ID(), item.Cursor, item.Event.Type, err))
 				return
 			}
 		}
 
-		for item := range subscription.Events() {
-			if err := writeUI.Handle(item); err != nil {
-				slog.InfoContext(ctx, fmt.Sprintf("[agent-ui-sse] stream interrupted task_id=%s phase=live cursor=%d event=%s err=%v", task.ID(), item.Cursor, item.Event.Type, err))
-				return
-			}
+		if item, err := writeCoalescedTaskEventStream(subscription.Events(), writeUI.Handle); err != nil {
+			slog.InfoContext(ctx, fmt.Sprintf("[agent-ui-sse] stream interrupted task_id=%s phase=live cursor=%d event=%s err=%v", task.ID(), item.Cursor, item.Event.Type, err))
+			return
 		}
 		if subscription.EndReason() == apptask.SubscriptionTaskFinished {
 			_ = writeUI.Finish("stop")

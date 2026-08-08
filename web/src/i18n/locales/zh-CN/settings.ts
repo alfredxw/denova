@@ -155,8 +155,6 @@ const settings = {
   'settings.model.contextWindow1m': '1M',
   'settings.model.contextWindowCustom': '自定义',
   'settings.model.contextWindowPlaceholder': '自定义上下文长度',
-  'settings.model.maxOutputTokens': '最大输出长度 (Token)',
-  'settings.model.maxOutputTokensPlaceholder': '已知模型使用能力上限，其他使用服务商默认值',
   'settings.model.pingAction': '测试连接',
   'settings.model.pingTesting': '测试中…',
   'settings.model.pingHint': '使用当前未保存配置发送一次最小生成请求。',

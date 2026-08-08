@@ -3,6 +3,7 @@ import { createRafUpdateBatcher } from './raf-update-batcher'
 
 describe('createRafUpdateBatcher', () => {
   afterEach(() => {
+    vi.useRealTimers()
     vi.unstubAllGlobals()
   })
 
@@ -65,5 +66,37 @@ describe('createRafUpdateBatcher', () => {
 
     expect(value).toBe('stable')
     expect(cancelAnimationFrame).toHaveBeenCalledWith(9)
+  })
+
+  it('coalesces rapid updates behind a render interval while preserving order', async () => {
+    vi.useFakeTimers()
+    vi.setSystemTime(0)
+    const scheduledFrames: FrameRequestCallback[] = []
+    vi.stubGlobal('requestAnimationFrame', vi.fn((callback: FrameRequestCallback) => {
+      scheduledFrames.push(callback)
+      return scheduledFrames.length
+    }))
+    vi.stubGlobal('cancelAnimationFrame', vi.fn())
+    let value = 0
+    const commits: number[] = []
+    const batcher = createRafUpdateBatcher<number>((update) => {
+      value = update(value)
+      commits.push(value)
+    }, { minIntervalMs: 80 })
+
+    batcher.enqueue(current => current + 1)
+    scheduledFrames[0](0)
+    batcher.enqueue(current => current + 1)
+    batcher.enqueue(current => current * 3)
+
+    expect(commits).toEqual([1])
+    expect(scheduledFrames).toHaveLength(1)
+    await vi.advanceTimersByTimeAsync(79)
+    expect(scheduledFrames).toHaveLength(1)
+    await vi.advanceTimersByTimeAsync(1)
+    expect(scheduledFrames).toHaveLength(2)
+
+    scheduledFrames[1](80)
+    expect(commits).toEqual([1, 6])
   })
 })

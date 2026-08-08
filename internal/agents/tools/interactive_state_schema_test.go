@@ -64,4 +64,17 @@ func TestOpeningGameStateSchemaToolUsesDedicatedStructureOnlyEntry(t *testing.T)
 	if removed.Decision != "remove" || removed.TemplateID != "protagonist" || removed.FieldID != "力量" || removed.Reason != "改用境界体系" {
 		t.Fatalf("opening schema tool changed the explicit removal during conversion: %#v", removed)
 	}
+	if _, err := runToolForTest(context.Background(), tools[0], `{"items":[{"item_id":"remove-stamina","requirements":[{"source":{"kind":"opening","id":"opening-draft"},"value_policy":"schema_only","decision":"remove","template_id":"protagonist","field_id":"体力","reason":"本故事使用疲劳度追踪长期负担"}],"adaptation":{"template_ops":[{"op":"fields","template_id":"protagonist","field_ops":[{"op":"remove","field_id":"体力"}]}]}}],"finalize":false}`); err != nil {
+		t.Fatalf("repairable removal requirement should reach the batch boundary: %v", err)
+	}
+	if got := submitted.Items[0].Requirements[0].Requirement; got != "本故事使用疲劳度追踪长期负担" {
+		t.Fatalf("missing removal requirement was not recovered from its reason: %q", got)
+	}
+	if _, err := runToolForTest(context.Background(), tools[0], `{"items":[{"item_id":"add-fatigue","requirements":[{"source":{"kind":"opening","id":"opening-draft"},"requirement":"长期追踪主角疲劳","value_policy":"schema_only","expected_type":"number","decision":"add","template_id":"protagonist","field_id":"疲劳度"}],"adaptation":{"template_ops":[{"op":"fields","template_id":"protagonist","field_ops":[{"op":"add","field":{"name":"疲劳度","type":"number","default":true}}]}]}}],"finalize":false}`); err != nil {
+		t.Fatalf("repairable field default should reach the batch boundary: %v", err)
+	}
+	field := submitted.Items[0].Adaptation.TemplateOps[0].FieldOps[0].Field
+	if field.Default != nil {
+		t.Fatalf("boolean marker must not survive as a numeric field default: %#v", field.Default)
+	}
 }

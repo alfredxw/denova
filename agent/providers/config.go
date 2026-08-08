@@ -87,8 +87,10 @@ type ModelConfig struct {
 	SessionKeyMapping *SessionKeyMapping
 	// HTTPClient is an optional caller-owned transport dependency. Adapters may
 	// retain it, so callers must not mutate the client after registration.
-	HTTPClient      *http.Client
-	Temperature     *float32
+	HTTPClient  *http.Client
+	Temperature *float32
+	// MaxOutputTokens is an internal request capability resolved by the provider
+	// registry or a bounded operation. It is not a user Profile preference.
 	MaxOutputTokens *int
 	ThinkingLevel   ThinkingLevel
 	OutputFormat    *OutputFormat

@@ -284,7 +284,6 @@ export function createStoryStageStreamConsumer({
         }
         case 'tool_args_delta': {
           const data = JSON.parse(value.data)
-          liveAccumulator.flushMessages()
           liveAccumulator.appendToolArgs(data)
           break
         }

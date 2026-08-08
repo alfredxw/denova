@@ -239,7 +239,7 @@ export function ModelProfilesEditor({ profiles, effectiveProfiles, onChange }: {
                     </div>
                   </>
                 )}
-                <ModelProfileField label={t('settings.model.profileTemperatureLabel')} className="md:col-span-2">
+                <ModelProfileField label={t('settings.model.profileTemperatureLabel')} className="md:col-span-3">
                   <Input
                     type="number"
                     step={0.01}
@@ -251,22 +251,10 @@ export function ModelProfilesEditor({ profiles, effectiveProfiles, onChange }: {
                     className="max-w-24"
                   />
                 </ModelProfileField>
-                <ModelProfileField label={t('settings.model.contextWindow')} className="md:col-span-5">
+                <ModelProfileField label={t('settings.model.contextWindow')} className="md:col-span-9">
                   <ContextWindowInput
                     value={profile.context_window_tokens ?? DEFAULT_CONTEXT_WINDOW_TOKENS}
                     onChange={(value) => updateProfile(index, { context_window_tokens: value })}
-                  />
-                </ModelProfileField>
-                <ModelProfileField label={t('settings.model.maxOutputTokens')} className="md:col-span-5">
-                  <Input
-                    type="number"
-                    min={1}
-                    step={1}
-                    value={profile.max_output_tokens ?? ''}
-                    placeholder={t('settings.model.maxOutputTokensPlaceholder')}
-                    onChange={(event) => updateProfile(index, {
-                      max_output_tokens: event.target.value === '' ? null : Math.max(1, Math.trunc(Number(event.target.value))),
-                    })}
                   />
                 </ModelProfileField>
               </div>
@@ -411,7 +399,7 @@ function ContextWindowInput({ value, onChange }: {
   const customValue = customDraft ?? String(value)
 
   return (
-    <div className="flex min-w-0 flex-1 flex-col gap-2 sm:flex-row">
+    <div className="flex w-full min-w-0 flex-1 flex-col gap-2 sm:flex-row">
       <Select
         value={preset}
         onValueChange={(nextValue) => {
@@ -425,7 +413,7 @@ function ContextWindowInput({ value, onChange }: {
       >
         <SelectTrigger
           size="sm"
-          className="min-w-0 flex-1"
+          className="w-full min-w-0 flex-1"
           aria-label={t('settings.model.contextWindow')}
         >
           <SelectValue />

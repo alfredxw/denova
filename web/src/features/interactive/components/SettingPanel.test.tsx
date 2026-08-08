@@ -3,7 +3,7 @@ import userEvent from '@testing-library/user-event'
 import { useState, type ComponentProps } from 'react'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { toast, type Action } from 'sonner'
-import { APIError, deleteProjectLoreItem, generateLoreItemImage, getProjectLoreItems, readProjectFile, saveProjectFile, streamLoreImagesGenerate, updateProjectLoreItem, type LoreItem } from '@/lib/api'
+import { APIError, deleteProjectLoreItem, generateLoreItemImage, getProjectLoreItems, readOptionalProjectFile, readProjectFile, saveProjectFile, streamLoreImagesGenerate, updateProjectLoreItem, type LoreItem } from '@/lib/api'
 import { preserveAutosaveConflict } from '@/lib/api-client/autosave-conflicts'
 import { createActorState, createImagePreset, createInteractiveTeller, createStoryDirector, deleteActorState, deleteEventPackage, deleteImagePreset, deleteInteractiveTeller, deleteStoryDirector, getActorStates, getEventPackages, getImagePresets, getInteractiveTellers, getRuleSystems, getStoryDirectors, getStyleReferences, updateActorState, updateEventPackage, updateImagePreset, updateInteractiveTeller, updateRuleSystem, updateStoryDirector } from '../api'
 import type { EventPackageModule, ImagePreset, RuleSystemModule, StoryDirector, Teller } from '../types'
@@ -162,6 +162,7 @@ vi.mock('@/lib/api', async (importOriginal) => {
     deleteProjectLoreItem: vi.fn(),
     generateLoreItemImage: vi.fn(),
     getProjectLoreItems: vi.fn().mockResolvedValue([]),
+    readOptionalProjectFile: vi.fn().mockResolvedValue(null),
     readProjectFile: vi.fn().mockResolvedValue(projectFileDocument('', '', '')),
     saveProjectFile: vi.fn(),
     streamLoreImagesGenerate: vi.fn(),
@@ -217,6 +218,8 @@ describe('SettingPanel', () => {
     vi.mocked(streamLoreImagesGenerate).mockReset()
     vi.mocked(readProjectFile).mockReset()
     vi.mocked(readProjectFile).mockResolvedValue(projectFileDocument('', '', ''))
+    vi.mocked(readOptionalProjectFile).mockReset()
+    vi.mocked(readOptionalProjectFile).mockResolvedValue(null)
     vi.mocked(saveProjectFile).mockReset()
     vi.mocked(getInteractiveTellers).mockReset()
     vi.mocked(createInteractiveTeller).mockReset()
@@ -372,15 +375,15 @@ describe('SettingPanel', () => {
 
   it('loads a legacy opening preset without writing and saves it after an edit with the missing revision', async () => {
     const user = userEvent.setup()
-    vi.mocked(readProjectFile)
-      .mockRejectedValueOnce(new APIError('not found', { status: 404 }))
+    vi.mocked(readOptionalProjectFile)
+      .mockResolvedValueOnce(null)
       .mockResolvedValueOnce(projectFileDocument('setting/interactive-opening.md', '旧版开场白', 'legacy-revision'))
     vi.mocked(saveProjectFile).mockResolvedValue(projectFileSave('setting/interactive-openings.json', 'opening-rev-1'))
 
     render(<SettingPanel mode="lore" imagePresets={[]} />)
 
     await user.click(await screen.findByRole('button', { name: '书籍预设开场白' }))
-    await waitFor(() => expect(readProjectFile).toHaveBeenCalledTimes(2))
+    await waitFor(() => expect(readOptionalProjectFile).toHaveBeenCalledTimes(2))
     flushSettingPanelAutosave()
     expect(saveProjectFile).not.toHaveBeenCalled()
 

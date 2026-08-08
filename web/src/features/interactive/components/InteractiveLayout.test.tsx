@@ -3,7 +3,7 @@ import { Profiler } from 'react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { InteractiveLayout } from './InteractiveLayout'
 import { useInteractiveStore } from '../stores/interactive-store'
-import { createInteractiveBranch, createInteractiveStory, deleteInteractiveStory, getInteractiveBranches, getInteractiveSnapshot, getInteractiveStories, getInteractiveTellers, getStoryDirectors, selectInteractiveStory, updateInteractiveStory } from '../api'
+import { createInteractiveBranch, createInteractiveStory, deleteInteractiveStory, getInteractiveBranches, getInteractiveDirectorStatus, getInteractiveSnapshot, getInteractiveStories, getInteractiveTellers, getStoryDirectors, selectInteractiveStory, updateInteractiveStory } from '../api'
 import type { Snapshot, StoryDirector, StorySummary, Teller } from '../types'
 
 vi.mock('@/hooks/useIsMobile', () => ({
@@ -11,7 +11,7 @@ vi.mock('@/hooks/useIsMobile', () => ({
 }))
 
 vi.mock('@/lib/api', () => ({
-  readFile: vi.fn().mockRejectedValue(new Error('not found')),
+  readOptionalProjectFile: vi.fn().mockResolvedValue(null),
 }))
 
 vi.mock('../api', () => ({
@@ -20,6 +20,7 @@ vi.mock('../api', () => ({
   deleteInteractiveBranch: vi.fn(),
   deleteInteractiveStory: vi.fn(),
   getInteractiveBranches: vi.fn(),
+  getInteractiveDirectorStatus: vi.fn(),
   getInteractiveSnapshot: vi.fn(),
   getInteractiveStories: vi.fn(),
   getInteractiveTellers: vi.fn(),
@@ -114,6 +115,7 @@ beforeEach(() => {
   vi.mocked(selectInteractiveStory).mockReset()
   vi.mocked(getInteractiveSnapshot).mockReset()
   vi.mocked(getInteractiveBranches).mockReset()
+  vi.mocked(getInteractiveDirectorStatus).mockReset()
   vi.mocked(updateInteractiveStory).mockReset()
   vi.mocked(deleteInteractiveStory).mockResolvedValue(undefined)
   vi.mocked(getInteractiveTellers).mockResolvedValue([])
@@ -121,6 +123,7 @@ beforeEach(() => {
   vi.mocked(selectInteractiveStory).mockResolvedValue(undefined)
   vi.mocked(getInteractiveSnapshot).mockResolvedValue({ story_id: 'st_new', branch_id: 'main', turns: [], state: {} })
   vi.mocked(getInteractiveBranches).mockResolvedValue([{ id: 'main', head: '', title: '主线', created_at: '2026-07-04T00:00:00Z', current: true }])
+  vi.mocked(getInteractiveDirectorStatus).mockResolvedValue(directorStatus('ready'))
 })
 
 afterEach(() => {
@@ -189,6 +192,50 @@ describe('InteractiveLayout polling lifecycle', () => {
       await vi.advanceTimersByTimeAsync(1000)
     })
     expect(vi.mocked(getInteractiveSnapshot)).toHaveBeenCalledTimes(2)
+  })
+
+  it('polls Director progress through the lightweight status projection', async () => {
+    vi.useFakeTimers()
+    const runningSnapshot: Snapshot = {
+      story_id: 'st_new',
+      branch_id: 'main',
+      turns: [{ id: 'turn-1', parent_id: null, branch_id: 'main', ts: '2026-07-04T00:00:00Z', user: '继续', narrative: '结果' }],
+      state: {},
+      director_plan_status: directorStatus('running'),
+    }
+    useInteractiveStore.setState({
+      stories: [story('st_new', '故事')],
+      currentStoryId: 'st_new',
+      currentBranchId: 'main',
+      snapshot: runningSnapshot,
+    })
+    vi.mocked(getInteractiveStories).mockResolvedValue({ current_story_id: 'st_new', stories: useInteractiveStore.getState().stories })
+    vi.mocked(getInteractiveSnapshot).mockResolvedValue(runningSnapshot)
+    vi.mocked(getInteractiveDirectorStatus).mockResolvedValue(directorStatus('ready'))
+
+    render(<InteractiveLayout workspace="/workspace" active />)
+    await act(async () => {
+      await Promise.resolve()
+      await Promise.resolve()
+      await Promise.resolve()
+    })
+    vi.mocked(getInteractiveSnapshot).mockClear()
+    vi.mocked(getInteractiveBranches).mockClear()
+
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(1000)
+    })
+
+    expect(vi.mocked(getInteractiveDirectorStatus)).toHaveBeenCalledTimes(1)
+    expect(vi.mocked(getInteractiveDirectorStatus)).toHaveBeenCalledWith('st_new', 'main')
+    expect(vi.mocked(getInteractiveSnapshot)).not.toHaveBeenCalled()
+    expect(vi.mocked(getInteractiveBranches)).not.toHaveBeenCalled()
+    expect(useInteractiveStore.getState().snapshot?.director_plan_status?.status).toBe('ready')
+
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(2000)
+    })
+    expect(vi.mocked(getInteractiveDirectorStatus)).toHaveBeenCalledTimes(1)
   })
 })
 
@@ -388,6 +435,22 @@ function pendingInteractiveSnapshot(): Snapshot {
     turns: [turn],
     state: {},
     current_turn: turn,
+  }
+}
+
+function directorStatus(status: 'running' | 'ready') {
+  return {
+    story_id: 'st_new',
+    branch_id: 'main',
+    status,
+    summary: status === 'running' ? '规划中' : '规划完成',
+    updated_at: status === 'running' ? '2026-07-04T00:00:00Z' : '2026-07-04T00:00:01Z',
+    planned_docs: 3,
+    completed_docs: status === 'ready' ? 3 : 0,
+    doc_bytes: 1024,
+    visible_bytes: 256,
+    start_ready: status === 'ready',
+    blocking: false,
   }
 }
 

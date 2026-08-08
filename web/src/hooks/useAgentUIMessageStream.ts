@@ -2,7 +2,7 @@ import { useCallback, useEffect, useRef, useState, type Dispatch, type SetStateA
 import { readUIMessageStream, type UIMessageChunk } from 'ai'
 import { buildAgentMessageViews, type AgentMessageView } from '@/lib/agent-message-view'
 import { normalizeAgentUIMessages, type AgentDataParts, type AgentMessageMetadata, type AgentUIMessage } from '@/lib/agent-ui'
-import { createRafUpdateBatcher, type RafUpdateBatcher } from '@/lib/streaming/raf-update-batcher'
+import { createRafUpdateBatcher, STREAMING_RENDER_INTERVAL_MS, type RafUpdateBatcher } from '@/lib/streaming/raf-update-batcher'
 
 interface AgentUIMessageStreamOptions {
   onView?: (view: AgentMessageView) => void
@@ -20,7 +20,9 @@ export function useAgentUIMessageStream(options: AgentUIMessageStreamOptions = {
   const [activityContent, setActivityContent] = useState('')
   const abortControllerRef = useRef<AbortController | null>(null)
   const messageBatcherRef = useRef<RafUpdateBatcher<AgentUIMessage[]> | null>(null)
-  const messageBatcher = messageBatcherRef.current ?? createRafUpdateBatcher(rawSetMessages)
+  const messageBatcher = messageBatcherRef.current ?? createRafUpdateBatcher(rawSetMessages, {
+    minIntervalMs: STREAMING_RENDER_INTERVAL_MS,
+  })
   messageBatcherRef.current = messageBatcher
 
   const setMessages = useCallback((updater: AgentMessageUpdater) => {

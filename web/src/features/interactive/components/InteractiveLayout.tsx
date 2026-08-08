@@ -5,8 +5,8 @@ import { motion } from 'motion/react'
 import { Panel } from 'react-resizable-panels'
 import { toast } from 'sonner'
 import { useShallow } from 'zustand/react/shallow'
-import { readProjectFile } from '@/lib/api'
-import { createInteractiveBranch, createInteractiveStory, deleteInteractiveBranch, deleteInteractiveStory, getInteractiveBranches, getInteractiveSnapshot, getInteractiveStories, getInteractiveTellers, getStoryDirectors, selectInteractiveStory, switchInteractiveBranch, updateInteractiveStory } from '../api'
+import { readOptionalProjectFile } from '@/lib/api'
+import { createInteractiveBranch, createInteractiveStory, deleteInteractiveBranch, deleteInteractiveStory, getInteractiveBranches, getInteractiveDirectorStatus, getInteractiveSnapshot, getInteractiveStories, getInteractiveTellers, getStoryDirectors, selectInteractiveStory, switchInteractiveBranch, updateInteractiveStory } from '../api'
 import { useInteractiveStore } from '../stores/interactive-store'
 import { BranchTimeline } from './BranchTimeline'
 import { DirectorBackstage } from './director-backstage/DirectorBackstage'
@@ -64,6 +64,7 @@ export function InteractiveLayout({ projectId = '', workspace, active = true, re
     setStoryDirectors,
     setBranches,
     setSnapshot,
+    setDirectorPlanStatus,
     applyTurnPersisted,
     setCurrentStoryId,
     setCurrentBranchId,
@@ -83,6 +84,7 @@ export function InteractiveLayout({ projectId = '', workspace, active = true, re
     setStoryDirectors: state.setStoryDirectors,
     setBranches: state.setBranches,
     setSnapshot: state.setSnapshot,
+    setDirectorPlanStatus: state.setDirectorPlanStatus,
     applyTurnPersisted: state.applyTurnPersisted,
     setCurrentStoryId: state.setCurrentStoryId,
     setCurrentBranchId: state.setCurrentBranchId,
@@ -138,21 +140,22 @@ export function InteractiveLayout({ projectId = '', workspace, active = true, re
       return
     }
     try {
-      const data = await readProjectFile(projectId, INTERACTIVE_OPENING_PRESET_PATH)
-      setBookOpeningPresets(parseBookOpeningPresets(data.content || ''))
-    } catch {
-      try {
-        const legacy = await readProjectFile(projectId, LEGACY_INTERACTIVE_OPENING_PRESET_PATH)
-        setBookOpeningPresets(parseBookOpeningPresets(legacy.content || ''))
-      } catch {
-        setBookOpeningPresets([])
+      const data = await readOptionalProjectFile(projectId, INTERACTIVE_OPENING_PRESET_PATH)
+      if (data) {
+        setBookOpeningPresets(parseBookOpeningPresets(data.content || ''))
+        return
       }
+      const legacy = await readOptionalProjectFile(projectId, LEGACY_INTERACTIVE_OPENING_PRESET_PATH)
+      setBookOpeningPresets(legacy ? parseBookOpeningPresets(legacy.content || '') : [])
+    } catch {
+      setBookOpeningPresets([])
     }
   }, [projectId])
 
   const reloadSnapshot = useCallback(
-    async (branchOverride?: string, storyOverride?: string, options?: { silent?: boolean }) => {
+    async (branchOverride?: string, storyOverride?: string, options?: { silent?: boolean; includeBranches?: boolean }) => {
       const silent = options?.silent === true
+      const includeBranches = options?.includeBranches !== false
       const requestSeq = snapshotRequestSeqRef.current + 1
       snapshotRequestSeqRef.current = requestSeq
       const storyId = storyOverride || currentStoryId
@@ -169,10 +172,13 @@ export function InteractiveLayout({ projectId = '', workspace, active = true, re
       }
       const branchId = branchOverride ?? (snapshotStoryIdRef.current === storyId || currentBranchId !== 'main' ? currentBranchId : '')
       try {
-        const [nextSnapshot, nextBranches] = await Promise.all([getInteractiveSnapshot(storyId, branchId), getInteractiveBranches(storyId)])
+        const [nextSnapshot, nextBranches] = await Promise.all([
+          getInteractiveSnapshot(storyId, branchId),
+          includeBranches ? getInteractiveBranches(storyId) : Promise.resolve(null),
+        ])
         if (requestSeq !== snapshotRequestSeqRef.current) return
         setSnapshot(nextSnapshot)
-        setBranches(nextBranches)
+        if (nextBranches) setBranches(nextBranches)
         return nextSnapshot
       } catch (error) {
         if (requestSeq === snapshotRequestSeqRef.current) {
@@ -213,9 +219,11 @@ export function InteractiveLayout({ projectId = '', workspace, active = true, re
 
   useEffect(() => {
     const branchID = snapshot?.branch_id
+    const storyID = snapshot?.story_id
+    const statePending = snapshot?.current_turn?.state_status === 'pending'
     const directorStatus = snapshot?.director_plan_status?.status || ''
     const directorPending = directorStatus === 'running' || (directorStatus === 'waiting_opening' && (snapshot?.turns?.length || 0) > 0)
-    if (!active || !branchID || (snapshot?.current_turn?.state_status !== 'pending' && !directorPending)) return
+    if (!active || !storyID || !branchID || (!statePending && !directorPending)) return
     let cancelled = false
     let timer: number | null = null
     const clearTimer = () => {
@@ -228,7 +236,12 @@ export function InteractiveLayout({ projectId = '', workspace, active = true, re
       if (cancelled || document.visibilityState !== 'visible') return
       timer = window.setTimeout(() => {
         timer = null
-        void reloadSnapshot(branchID, undefined, { silent: true }).finally(schedule)
+        const refresh = statePending
+          ? reloadSnapshot(branchID, storyID, { silent: true, includeBranches: false })
+          : getInteractiveDirectorStatus(storyID, branchID)
+              .then((status) => setDirectorPlanStatus(storyID, branchID, status))
+              .catch((error) => console.error('[interactive-layout] Failed to refresh Director status', { storyID, branchID, error }))
+        void refresh.finally(schedule)
       }, SNAPSHOT_POLL_INTERVAL_MS)
     }
     const handleVisibilityChange = () => {
@@ -242,7 +255,7 @@ export function InteractiveLayout({ projectId = '', workspace, active = true, re
       clearTimer()
       document.removeEventListener('visibilitychange', handleVisibilityChange)
     }
-  }, [active, reloadSnapshot, snapshot?.branch_id, snapshot?.current_turn?.id, snapshot?.current_turn?.state_status, snapshot?.director_plan_status?.status, snapshot?.turns?.length])
+  }, [active, reloadSnapshot, setDirectorPlanStatus, snapshot?.branch_id, snapshot?.current_turn?.id, snapshot?.current_turn?.state_status, snapshot?.director_plan_status?.status, snapshot?.story_id, snapshot?.turns?.length])
 
   useEffect(() => {
     if (!isMobile || submode !== 'story') setMobileSnapshotOpen(false)

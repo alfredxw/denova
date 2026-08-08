@@ -88,6 +88,11 @@ export function getInteractiveDirector(storyId: string, branchId?: string): Prom
   return requestJSON(`/api/interactive/stories/${encodeURIComponent(storyId)}/director${query}`)
 }
 
+export function getInteractiveDirectorStatus(storyId: string, branchId?: string): Promise<DirectorPlanStatus> {
+  const query = branchId ? `?branch=${encodeURIComponent(branchId)}` : ''
+  return requestJSON(`/api/interactive/stories/${encodeURIComponent(storyId)}/director/status${query}`)
+}
+
 export function updateInteractiveDirector(storyId: string, input: UpdateDirectorPlanInput): Promise<DirectorPlan> {
   return requestJSON(`/api/interactive/stories/${encodeURIComponent(storyId)}/director`, {
     method: 'PATCH',

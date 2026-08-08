@@ -4,6 +4,7 @@ import { server } from '@/test/msw/server'
 import {
   applyProjectFileOperations,
   projectFileAssetURL,
+  readOptionalProjectFile,
   readProjectFile,
   resolveProjectFileTree,
   saveProjectFile,
@@ -101,6 +102,28 @@ describe('project files API', () => {
       { id: 'one', kind: 'create', ok: true, path: 'one.txt' },
       { id: 'two', kind: 'delete', ok: false, path: 'missing.txt', code: 'not_found', error: 'Missing' },
     ])
+  })
+
+  it('treats an optional missing file as data and shares concurrent reads', async () => {
+    let requests = 0
+    server.use(
+      http.get('/api/projects/project-one/files/file', ({ request }) => {
+        const url = new URL(request.url)
+        if (url.searchParams.get('optional') !== 'true') return new HttpResponse(null, { status: 500 })
+        requests += 1
+        return HttpResponse.json({
+          project_id: 'project-one',
+          path: 'setting/optional.json',
+          found: false,
+        })
+      }),
+    )
+
+    await expect(Promise.all([
+      readOptionalProjectFile('project-one', 'setting/optional.json'),
+      readOptionalProjectFile('project-one', 'setting/optional.json'),
+    ])).resolves.toEqual([null, null])
+    expect(requests).toBe(1)
   })
 
   it('rejects responses from a different Project scope', async () => {

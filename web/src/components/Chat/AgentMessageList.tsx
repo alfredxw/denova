@@ -293,6 +293,9 @@ export function MessageList({ projectId, messages, isStreaming, visible = true, 
         onWheel={scrollLock.onWheel}
         onKeyDown={scrollLock.onKeyDown}
         onPointerDown={scrollLock.onPointerDown}
+        onPointerMove={scrollLock.onPointerMove}
+        onPointerUp={scrollLock.onPointerUp}
+        onPointerCancel={scrollLock.onPointerCancel}
         atBottomStateChange={scrollLock.onAtBottomStateChange}
         atBottomThreshold={VIRTUOSO_BOTTOM_THRESHOLD}
         followOutput={isStreaming ? scrollLock.followOutput : false}
@@ -726,7 +729,10 @@ function isActiveStreamingTrace(views: AgentMessageView[], afterTraceIndex: numb
     if (view.kind === 'token-usage') continue
     if (view.kind === 'user') return false
     if (view.kind === 'assistant' && agentViewContent(view).trim()) {
-      return view.streaming
+      // A prose row is the semantic boundary after the preceding trace. The
+      // prose may still be streaming, but its thinking/tools disclosure is no
+      // longer the active tail and must match the completed presentation.
+      return false
     }
   }
   return true

@@ -48,7 +48,28 @@ func (h *Handlers) HandleProjectFileRead(ctx context.Context, c *app.RequestCont
 	}
 	document, err := h.app.ProjectFiles().ReadFile(ctx, scope.ProjectID, path)
 	if err != nil {
+		var changeErr *workspacechange.Error
+		notFound := os.IsNotExist(err) || (errors.As(err, &changeErr) && changeErr.Code == workspacechange.ErrorCodeNotFound)
+		// Optional reads retain path validation and Project scoping, but represent
+		// an expected missing configuration file as data instead of a noisy 404.
+		if strings.EqualFold(strings.TrimSpace(c.Query("optional")), "true") && notFound {
+			writeJSON(c, consts.StatusOK, map[string]any{
+				"project_id": scope.ProjectID,
+				"path":       path,
+				"found":      false,
+			})
+			return
+		}
 		writeProjectFilesError(c, err, "api.projectFiles.readFailed")
+		return
+	}
+	if strings.EqualFold(strings.TrimSpace(c.Query("optional")), "true") {
+		writeJSON(c, consts.StatusOK, map[string]any{
+			"project_id": document.ProjectID,
+			"path":       document.Path,
+			"found":      true,
+			"document":   document,
+		})
 		return
 	}
 	writeJSON(c, consts.StatusOK, document)

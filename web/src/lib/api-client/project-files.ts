@@ -61,6 +61,13 @@ export interface ProjectFileDocument {
   editable: boolean
 }
 
+interface OptionalProjectFileResponse {
+  project_id: string
+  path: string
+  found: boolean
+  document?: ProjectFileDocument
+}
+
 export interface ProjectFileSaveResult {
   project_id: string
   path: string
@@ -116,6 +123,32 @@ export async function readProjectFile(projectId: string, path: string): Promise<
   const response = await requestJSON<ProjectFileDocument>(`${projectFilesURL(projectId)}/file?${params.toString()}`)
   assertProjectScope(projectId, response.project_id, 'Project file response')
   return response
+}
+
+const optionalProjectFileReads = new Map<string, Promise<ProjectFileDocument | null>>()
+
+/** Reads an optional file without turning its expected absence into an HTTP error. */
+export function readOptionalProjectFile(projectId: string, path: string): Promise<ProjectFileDocument | null> {
+  const key = `${projectId}\u0000${path}`
+  const inFlight = optionalProjectFileReads.get(key)
+  if (inFlight) return inFlight
+
+  const params = new URLSearchParams({ path, optional: 'true' })
+  const request = requestJSON<OptionalProjectFileResponse>(`${projectFilesURL(projectId)}/file?${params.toString()}`)
+    .then((response) => {
+      assertProjectScope(projectId, response.project_id, 'Optional project file response')
+      if (response.found === false) return null
+      if (response.found !== true) throw new Error('Optional project file response omitted its found state')
+      if (!response.document) throw new Error('Optional project file response omitted its document')
+      assertProjectScope(projectId, response.document.project_id, 'Optional project file document')
+      return response.document
+    })
+  optionalProjectFileReads.set(key, request)
+  const clear = () => {
+    if (optionalProjectFileReads.get(key) === request) optionalProjectFileReads.delete(key)
+  }
+  void request.then(clear, clear)
+  return request
 }
 
 export async function saveProjectFile(
