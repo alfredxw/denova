@@ -301,7 +301,7 @@ export function SortableWorkbenchTabItem({
       style={style}
       data-dragging={isDragging ? 'true' : undefined}
       className={cn(
-        'relative h-full min-w-28 max-w-40 flex-[1_1_10rem]',
+        "relative h-7 min-w-24 max-w-40 flex-[1_1_10rem] self-center after:absolute after:-right-0.5 after:top-2 after:h-3 after:w-px after:rounded-full after:bg-[var(--nova-border-soft)] after:content-[''] last-of-type:after:hidden",
         isDragging && 'z-20 opacity-35',
         className,
       )}
@@ -333,7 +333,7 @@ function WorkbenchTabDragPreview({
       ref={nodeRef}
       data-slot="workbench-tab-drag-overlay"
       aria-hidden="true"
-      className="nova-sidebar pointer-events-none flex h-full w-full cursor-grabbing select-none items-center gap-1.5 overflow-hidden rounded-sm border border-[var(--nova-accent)]/60 bg-[var(--nova-surface-2)] px-3 text-xs text-[var(--nova-text)] shadow-[0_16px_38px_rgba(0,0,0,0.3)] ring-1 ring-[var(--nova-accent)]/20"
+      className="nova-sidebar pointer-events-none flex h-7 w-full cursor-grabbing select-none items-center gap-1.5 overflow-hidden rounded-[var(--nova-radius)] border border-[var(--nova-accent)]/60 bg-[var(--nova-surface-2)] px-2.5 text-xs text-[var(--nova-text)] shadow-[0_16px_38px_rgba(0,0,0,0.3)] ring-1 ring-[var(--nova-accent)]/20"
     >
       {icon ? <span className="shrink-0 text-[var(--nova-text-faint)]">{icon}</span> : null}
       <span className="min-w-0 flex-1 truncate text-left">{label}</span>

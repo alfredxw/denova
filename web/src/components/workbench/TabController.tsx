@@ -210,7 +210,10 @@ export function TabController({
                 {(dragHandleProps) => (
                   <ContextMenu>
                     <ContextMenuTrigger asChild>
-                      <div className="group/tab relative h-full w-full">
+                      <div
+                        data-selected={key === activeTabKey ? 'true' : undefined}
+                        className="group/tab relative h-full w-full"
+                      >
                         <WorkbenchTab
                           {...dragHandleProps}
                           value={key}
@@ -229,7 +232,7 @@ export function TabController({
                             onPointerDown={(event) => event.stopPropagation()}
                             onKeyDown={(event) => event.stopPropagation()}
                             onClick={(event) => { event.stopPropagation(); onCloseTab(tab) }}
-                            className="nova-nav-item absolute right-3 top-1/2 z-10 -translate-y-1/2 rounded p-0.5 opacity-0 group-hover/tab:opacity-100 max-md:opacity-100"
+                            className="nova-nav-item absolute right-2.5 top-1/2 z-10 -translate-y-1/2 rounded p-0.5 opacity-0 group-hover/tab:opacity-100 group-data-[selected=true]/tab:opacity-100 max-md:opacity-100"
                             aria-label={t('tab.close', { label })}
                           >
                             <X className="size-3" />

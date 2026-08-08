@@ -18,12 +18,13 @@ import {
 import { cn } from '@/lib/utils'
 
 const WORKBENCH_TAB_CLASS = [
-  'group/tab relative h-full min-w-28 max-w-40 flex-[1_1_10rem] justify-start gap-1.5 px-3 text-xs',
-  'rounded-none border-0 border-r border-[var(--nova-border)] after:hidden',
-  'text-[var(--nova-text-muted)] hover:bg-[var(--nova-hover)] hover:text-[var(--nova-text)]',
+  'group/tab relative h-full min-w-24 max-w-40 flex-[1_1_10rem] justify-start gap-1.5 px-2.5 text-xs',
+  'rounded-[var(--nova-radius)] border border-transparent bg-transparent after:hidden',
+  'text-[var(--nova-text-muted)] transition-[color,background-color,border-color]',
+  'hover:bg-[var(--nova-hover)] hover:text-[var(--nova-text)]',
   // Context-menu triggers also use data-state, so aria-selected is the stable active selector.
-  'aria-selected:bg-[var(--nova-active)] aria-selected:text-[var(--nova-text)]',
-  'dark:aria-selected:border-[var(--nova-border)] dark:aria-selected:bg-[var(--nova-active)] dark:aria-selected:text-[var(--nova-text)]',
+  'aria-selected:border-[var(--nova-border-soft)] aria-selected:bg-[var(--nova-active)] aria-selected:text-[var(--nova-text)]',
+  'dark:aria-selected:border-[var(--nova-border-soft)] dark:aria-selected:bg-[var(--nova-active)] dark:aria-selected:text-[var(--nova-text)]',
 ].join(' ')
 
 function revealActiveTab(strip: HTMLElement) {
@@ -103,7 +104,7 @@ export function WorkbenchTabStrip({
       <Tabs value={value} onValueChange={onValueChange} className="h-full min-w-0 flex-1 gap-0">
         <TabsList
           ref={stripRef}
-          className="!h-full w-full justify-start gap-0 overflow-x-auto overflow-y-hidden overscroll-x-contain rounded-none bg-transparent p-0 [&::-webkit-scrollbar]:hidden"
+          className="!h-full w-full justify-start gap-1 overflow-x-auto overflow-y-hidden overscroll-x-contain rounded-none bg-transparent px-1 py-0 [&::-webkit-scrollbar]:hidden"
           style={{ scrollbarWidth: 'none' }}
         >
           {children}
@@ -131,7 +132,6 @@ interface WorkbenchTabProps extends Omit<ComponentProps<typeof TabsTrigger>, 'ch
   label: string
   icon?: ReactNode
   trailing?: ReactNode
-  indicatorClassName?: string
 }
 
 /** Standard visual and overflow-title treatment for a workbench document tab. */
@@ -139,19 +139,11 @@ export function WorkbenchTab({
   label,
   icon,
   trailing,
-  indicatorClassName,
   className,
   ...props
 }: WorkbenchTabProps) {
   return (
     <TabsTrigger className={cn(WORKBENCH_TAB_CLASS, className)} {...props}>
-      <span
-        aria-hidden="true"
-        className={cn(
-          'pointer-events-none absolute inset-x-0 top-0 h-0.5 bg-[var(--nova-accent)] opacity-0 group-aria-[selected=true]/tab:opacity-100',
-          indicatorClassName,
-        )}
-      />
       {icon ? <span className="shrink-0 text-[var(--nova-text-faint)]">{icon}</span> : null}
       <OverflowTabTitle label={label} />
       {trailing}
@@ -167,7 +159,7 @@ export function WorkbenchTabAddButton({ className, children, ...props }: Compone
       variant="ghost"
       size="icon-xs"
       className={cn(
-        'mx-1 h-7 w-8 shrink-0 self-center rounded-lg border border-[var(--nova-border-soft)] bg-[var(--nova-surface-2)] hover:bg-[var(--nova-hover)]',
+        'h-7 w-7 shrink-0 self-center rounded-[var(--nova-radius)] border border-transparent bg-transparent text-[var(--nova-text-faint)] hover:bg-[var(--nova-hover)] hover:text-[var(--nova-text)]',
         className,
       )}
       {...props}

@@ -35,7 +35,7 @@ function renderTabBar(ui: ReactNode) {
 }
 
 describe('AgentChatTabBar', () => {
-  it('shows the active workbench tab with its selected fill and accent rule', () => {
+  it('shows the active workbench tab as a rounded filled surface', () => {
     renderTabBar(
       <AgentChatTabBar
         projectId={projectId}
@@ -63,14 +63,15 @@ describe('AgentChatTabBar', () => {
     expect(screen.getByRole('tablist')).toHaveClass('!h-full')
     expect(activeTab).toHaveAttribute('aria-selected', 'true')
     expect(activeTab.className).toContain('aria-selected:bg-[var(--nova-active)]')
-    expect(activeTab.querySelector('[aria-hidden="true"]')?.className).toContain('group-aria-[selected=true]/tab:opacity-100')
     expect(screen.getByRole('tab', { name: /Writing tab/ })).toHaveAttribute('aria-selected', 'false')
-    expect(activeTab.parentElement).toHaveClass('min-w-28', 'max-w-40', 'flex-[1_1_10rem]')
-    expect(screen.getByRole('tab', { name: /Writing tab/ }).parentElement).toHaveClass('min-w-28', 'max-w-40', 'flex-[1_1_10rem]')
+    expect(activeTab).toHaveClass('rounded-[var(--nova-radius)]')
+    expect(activeTab.parentElement).toHaveClass('h-7', 'min-w-24', 'max-w-40', 'flex-[1_1_10rem]', 'self-center', 'after:h-3')
+    expect(screen.getByRole('tab', { name: /Writing tab/ }).parentElement).toHaveClass('h-7', 'min-w-24', 'max-w-40', 'flex-[1_1_10rem]', 'self-center')
+    expect(screen.getByRole('button', { name: '关闭 Skills tab' })).toHaveClass('group-aria-[selected=true]/tab:opacity-100')
     expect(activeTab).toHaveAttribute('aria-roledescription', '可排序标签页')
     expect(screen.getByRole('tablist')).toHaveClass('overflow-x-auto', '[&::-webkit-scrollbar]:hidden')
     expect(screen.getByRole('tablist')).toHaveStyle({ scrollbarWidth: 'none' })
-    expect(screen.getByRole('button', { name: '新建标签页' })).toHaveClass('mx-1', 'h-7', 'w-8', 'self-center', 'rounded-lg')
+    expect(screen.getByRole('button', { name: '新建标签页' })).toHaveClass('h-7', 'w-7', 'self-center', 'rounded-[var(--nova-radius)]', 'border-transparent', 'bg-transparent')
     expect(document.querySelector('[data-slot="agent-chat-project-context"]')).not.toBeInTheDocument()
   })
 

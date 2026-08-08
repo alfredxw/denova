@@ -215,7 +215,7 @@ export function AgentChatTabBar({
                                 role="button"
                                 tabIndex={-1}
                                 aria-label={t('agentChat.tabs.close', { title: label })}
-                                className="grid size-4 shrink-0 place-items-center rounded-sm opacity-0 transition-opacity hover:bg-[var(--nova-hover)] group-hover/tab:opacity-100"
+                                className="grid size-4 shrink-0 place-items-center rounded-sm opacity-0 transition-opacity hover:bg-[var(--nova-hover)] group-hover/tab:opacity-100 group-aria-[selected=true]/tab:opacity-100"
                                 // Radix activates a trigger on pointer down, so the close hit area has to
                                 // stop the event or closing a background tab would select it first.
                                 onPointerDown={(event) => event.stopPropagation()}

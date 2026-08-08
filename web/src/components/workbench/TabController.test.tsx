@@ -44,9 +44,11 @@ describe('TabController', () => {
     expect(loreTab).not.toHaveAttribute('title')
     expect(loreTab).toHaveAttribute('aria-selected', 'true')
     expect(loreTab.className).toContain('aria-selected:bg-[var(--nova-active)]')
-    expect(loreTab.parentElement?.parentElement).toHaveClass('min-w-28', 'max-w-40', 'flex-[1_1_10rem]')
+    expect(loreTab).toHaveClass('rounded-[var(--nova-radius)]')
+    expect(loreTab.parentElement?.parentElement).toHaveClass('h-7', 'min-w-24', 'max-w-40', 'flex-[1_1_10rem]', 'self-center', 'after:h-3')
+    expect(screen.getByRole('button', { name: /关闭.*设定/ })).toHaveClass('group-data-[selected=true]/tab:opacity-100')
     expect(loreTab).toHaveAttribute('aria-roledescription', '可排序标签页')
-    expect(screen.getByRole('tablist')).toHaveClass('overflow-x-auto', '[&::-webkit-scrollbar]:hidden')
+    expect(screen.getByRole('tablist')).toHaveClass('gap-1', 'overflow-x-auto', '[&::-webkit-scrollbar]:hidden')
   })
 
   it('activates a tab when clicking the tab surface outside the label text', async () => {
