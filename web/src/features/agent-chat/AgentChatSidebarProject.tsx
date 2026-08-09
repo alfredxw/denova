@@ -1,17 +1,17 @@
-import type { CSSProperties } from 'react'
+import { useEffect, useState, type CSSProperties } from 'react'
 import { useSortable } from '@dnd-kit/sortable'
 import { CSS } from '@dnd-kit/utilities'
 import { useTranslation } from 'react-i18next'
-import { CircleAlert, Bot, ChevronRight, Folder, FolderOpen, MoreHorizontal, Pencil, Pin, PinOff, Plus } from 'lucide-react'
+import { CircleAlert, Bot, ChevronRight, Clock3, Folder, FolderOpen, MoreHorizontal, Pencil, Pin, PinOff, Plus } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { ContextMenu, ContextMenuContent, ContextMenuItem, ContextMenuTrigger } from '@/components/ui/context-menu'
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu'
 import { cn } from '@/lib/utils'
 import type { AgentChatProject, AgentChatSession } from './api'
 import { AgentChatProjectDetailsCard } from './AgentChatProjectDetailsCard'
-import { summarizeSidebarActivities, type AgentChatActivityStatus, type AgentChatSidebarActivity } from './sidebar-activity'
+import type { AgentChatActivityStatus, AgentChatSidebarActivity } from './sidebar-activity'
 
-const RECENT_CONVERSATION_LIMIT = 3
+const RECENT_CONVERSATION_PAGE_SIZE = 5
 
 export interface AgentChatSidebarProjectDragData {
   kind: 'project'
@@ -61,8 +61,11 @@ export function AgentChatSidebarProject({
   onOpenActivity,
 }: AgentChatSidebarProjectProps) {
   const { t } = useTranslation()
+  const [visibleConversationLimit, setVisibleConversationLimit] = useState(RECENT_CONVERSATION_PAGE_SIZE)
+  useEffect(() => {
+    if (!expanded) setVisibleConversationLimit(RECENT_CONVERSATION_PAGE_SIZE)
+  }, [expanded])
   const name = project.name || project.path
-  const summary = summarizeSidebarActivities(activities)
   const projectSessionIDs = new Set(project.sessions.map((session) => session.id))
   const activityBySessionID = new Map<string, AgentChatSidebarActivity>()
   const supplementalActivities: AgentChatSidebarActivity[] = []
@@ -74,12 +77,13 @@ export function AgentChatSidebarProject({
       supplementalActivities.push(activity)
     }
   }
-  const recentSessions = project.sessions.slice(0, RECENT_CONVERSATION_LIMIT)
+  const recentSessions = project.sessions.slice(0, visibleConversationLimit)
   const recentSessionIDs = new Set(recentSessions.map((session) => session.id))
   const additionalActiveSessions = project.sessions.filter(
     (session) => !recentSessionIDs.has(session.id) && activityBySessionID.has(session.id),
   )
   const visibleSessions = [...recentSessions, ...additionalActiveSessions]
+  const canShowMore = visibleConversationLimit < project.sessions.length
   const hasExpandableContent = Boolean(
     project.error || visibleSessions.length > 0 || supplementalActivities.length > 0 || project.total > 0,
   )
@@ -104,17 +108,10 @@ export function AgentChatSidebarProject({
             <div
               data-current-project={active ? 'true' : undefined}
               className={cn(
-                'group relative flex items-center gap-0.5 rounded-[var(--nova-radius)] px-0.5 transition-colors',
+                'group flex items-center gap-0.5 rounded-[var(--nova-radius)] px-0.5 transition-colors',
                 active ? 'bg-[var(--nova-surface-2)]' : 'hover:bg-[var(--nova-hover)]',
               )}
             >
-              {active ? (
-                <span
-                  data-slot="agent-chat-project-active-indicator"
-                  aria-hidden="true"
-                  className="absolute bottom-1.5 left-0 top-1.5 w-0.5 rounded-full bg-[var(--nova-accent)]"
-                />
-              ) : null}
               <button
                 ref={setActivatorNodeRef}
                 data-slot="agent-chat-project-toggle"
@@ -129,7 +126,7 @@ export function AgentChatSidebarProject({
                   : name}
                 aria-current={active ? 'location' : undefined}
                 aria-description={manualSorting ? t('agentChat.sidebar.longPressToReorder') : undefined}
-                className={`flex min-w-0 flex-1 items-center gap-1.5 rounded-[var(--nova-radius)] py-1.5 pl-1 text-left outline-none focus-visible:ring-1 focus-visible:ring-[var(--nova-accent)] ${manualSorting ? 'cursor-default' : ''}`}
+                className={`flex min-w-0 flex-1 items-center gap-1.5 rounded-[var(--nova-radius)] py-1.5 pl-1 text-left outline-none focus-visible:bg-[var(--nova-active)] ${manualSorting ? 'cursor-default' : ''}`}
               >
                 <ChevronRight
                   data-slot="agent-chat-project-chevron"
@@ -151,9 +148,20 @@ export function AgentChatSidebarProject({
                 {project.status === 'missing' ? (
                   <CircleAlert className="size-3 shrink-0 text-[var(--nova-warning)]" aria-label={t('agentChat.project.missing')} />
                 ) : null}
-                <ProjectActivitySummary expanded={expanded} summary={summary} />
                 {pinned ? <Pin className="size-3 shrink-0 text-[var(--nova-text-faint)]" aria-hidden="true" /> : null}
               </button>
+              {project.total > 0 ? (
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="icon-xs"
+                  className="shrink-0 opacity-0 transition-opacity group-hover:opacity-100 focus-visible:opacity-100"
+                  onClick={onOpenHistory}
+                  aria-label={t('agentChat.sidebar.openAllConversationsIn', { name })}
+                >
+                  <Clock3 />
+                </Button>
+              ) : null}
               <DropdownMenu>
                 <DropdownMenuTrigger asChild>
                   <Button
@@ -240,16 +248,15 @@ export function AgentChatSidebarProject({
                   ))}
                 </div>
               ) : null}
-              {project.total > 0 ? (
-                <div className="mt-1 border-t border-[var(--nova-border-soft)] pt-1">
+              {canShowMore ? (
+                <div className="px-1.5 py-1">
                   <button
                     type="button"
-                    onClick={onOpenHistory}
-                    aria-label={t('agentChat.sidebar.allConversationsIn', { name, count: project.total })}
-                    className="flex w-full min-w-0 items-center gap-1.5 rounded-[var(--nova-radius)] px-1.5 py-1.5 text-left text-[10px] font-medium text-[var(--nova-text-faint)] outline-none transition-colors hover:bg-[var(--nova-hover)] hover:text-[var(--nova-text)] focus-visible:ring-1 focus-visible:ring-[var(--nova-accent)]"
+                    onClick={() => setVisibleConversationLimit((current) => current + RECENT_CONVERSATION_PAGE_SIZE)}
+                    aria-label={t('agentChat.sidebar.showMoreIn', { name })}
+                    className="shrink-0 py-1 text-left text-[10px] font-medium text-[var(--nova-text-faint)] outline-none transition-colors hover:text-[var(--nova-text-muted)] focus-visible:text-[var(--nova-text)] focus-visible:underline focus-visible:underline-offset-2"
                   >
-                    <span className="min-w-0 flex-1 truncate">{t('agentChat.sidebar.allConversations')}</span>
-                    <span className="shrink-0 tabular-nums">{project.total}</span>
+                    {t('agentChat.sidebar.showMore')}
                   </button>
                 </div>
               ) : null}
@@ -288,19 +295,12 @@ function ConversationRow({
             : t('agentChat.history.openSession', { title })}
           aria-current={focused ? 'page' : undefined}
           className={cn(
-            'group/conversation relative flex w-full min-w-0 items-center gap-1.5 rounded-[var(--nova-radius)] py-1.5 pl-1.5 pr-1.5 text-left outline-none transition-colors focus-visible:ring-1 focus-visible:ring-[var(--nova-accent)]',
+            'group/conversation flex w-full min-w-0 items-center gap-1.5 rounded-[var(--nova-radius)] py-1.5 pl-1.5 pr-1.5 text-left outline-none transition-colors focus-visible:bg-[var(--nova-active)] focus-visible:text-[var(--nova-text)]',
             focused
               ? 'bg-[var(--nova-active)] text-[var(--nova-text)]'
               : 'text-[var(--nova-text-muted)] hover:bg-[var(--nova-hover)] hover:text-[var(--nova-text)]',
           )}
         >
-          <span
-            aria-hidden="true"
-            className={cn(
-              'absolute bottom-1.5 left-0 top-1.5 w-0.5 rounded-full',
-              focused ? 'bg-[var(--nova-text)]' : activity?.paneVisible ? 'bg-[var(--nova-text-faint)]' : 'bg-transparent',
-            )}
-          />
           <span className="min-w-0 flex-1 truncate text-[11px]">{title}</span>
           {activity ? <ActivityStatus status={activity.status} label={statusLabel} /> : null}
         </button>
@@ -315,38 +315,6 @@ function ConversationRow({
   )
 }
 
-function ProjectActivitySummary({ expanded, summary }: { expanded: boolean; summary: ReturnType<typeof summarizeSidebarActivities> }) {
-  const { t } = useTranslation()
-  if (summary.total === 0) return null
-  return (
-    <span className="flex shrink-0 items-center gap-1 text-[9px] tabular-nums text-[var(--nova-text-faint)]">
-      {summary.running > 0 ? (
-        <span
-          className="inline-flex items-center gap-0.5 text-[var(--nova-success)]"
-          aria-label={t('agentChat.sidebar.summary.running', {
-            count: summary.running,
-          })}
-        >
-          <span aria-hidden="true" className="size-1.5 animate-pulse rounded-full bg-current" />
-          {summary.running}
-        </span>
-      ) : null}
-      {summary.attention > 0 ? (
-        <span
-          className="inline-flex items-center gap-0.5 text-[var(--nova-danger)]"
-          aria-label={t('agentChat.sidebar.summary.attention', {
-            count: summary.attention,
-          })}
-        >
-          <CircleAlert aria-hidden="true" className="size-2.5" />
-          {summary.attention}
-        </span>
-      ) : null}
-      {!expanded && summary.running === 0 && summary.attention === 0 ? summary.total : null}
-    </span>
-  )
-}
-
 function LiveActivityRow({ activity, onOpen }: { activity: AgentChatSidebarActivity; onOpen: () => void }) {
   const { t } = useTranslation()
   const isConversation = activity.kind === 'agent'
@@ -357,19 +325,13 @@ function LiveActivityRow({ activity, onOpen }: { activity: AgentChatSidebarActiv
       onClick={onOpen}
       aria-current={activity.focused ? 'page' : undefined}
       className={cn(
-        'group/activity relative flex w-full min-w-0 items-center gap-1.5 rounded-[var(--nova-radius)] py-1.5 pr-1.5 text-left outline-none transition-colors focus-visible:ring-1 focus-visible:ring-[var(--nova-accent)]',
+        'group/activity flex w-full min-w-0 items-center gap-1.5 rounded-[var(--nova-radius)] py-1.5 pr-1.5 text-left outline-none transition-colors focus-visible:bg-[var(--nova-active)] focus-visible:text-[var(--nova-text)]',
         'pl-1.5',
         activity.focused
           ? 'bg-[var(--nova-active)] text-[var(--nova-text)]'
           : 'text-[var(--nova-text-muted)] hover:bg-[var(--nova-hover)] hover:text-[var(--nova-text)]',
       )}
     >
-      <span
-        aria-hidden="true"
-        className={`absolute bottom-1.5 left-0 top-1.5 w-0.5 rounded-full ${
-          activity.focused ? 'bg-[var(--nova-text)]' : activity.paneVisible ? 'bg-[var(--nova-text-faint)]' : 'bg-transparent'
-        }`}
-      />
       <span className={cn('min-w-0 flex-1 truncate text-[11px]', !isConversation && 'font-mono text-[10px]')}>{activity.title}</span>
       <ActivityStatus status={activity.status} label={label} />
     </button>

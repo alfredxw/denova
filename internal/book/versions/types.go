@@ -3,6 +3,8 @@ package versions
 import (
 	"errors"
 	"time"
+
+	"github.com/go-git/go-git/v5/plumbing/filemode"
 )
 
 const (
@@ -120,10 +122,21 @@ type VersionAutoResult struct {
 }
 
 type versionFileData struct {
-	Path  string
-	Abs   string
-	Hash  string
-	Size  int64
-	Chars int
-	Text  bool
+	Path       string
+	Abs        string
+	Hash       string
+	Size       int64
+	Chars      int
+	Text       bool
+	Mode       filemode.FileMode
+	ModifiedAt time.Time
+}
+
+// workspaceSnapshot is the immutable file projection shared by one version
+// operation. Keeping one projection prevents Status/Create/Diff from reading
+// and hashing the same workspace repeatedly.
+type workspaceSnapshot struct {
+	files      []versionFileData
+	byPath     map[string]versionFileData
+	totalBytes int64
 }

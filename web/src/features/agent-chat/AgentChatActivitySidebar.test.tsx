@@ -97,6 +97,7 @@ describe('AgentChatActivitySidebar', () => {
     const user = userEvent.setup()
     const { props } = renderSidebar()
     const projectButton = screen.getByRole('button', { name: '收起 Alpha' })
+    const projectHistory = screen.getByRole('button', { name: '打开 Alpha 的全部会话' })
     const activityButton = screen.getByRole('button', { name: /Active chat/ })
     const terminalButton = screen.getByRole('button', { name: /Shell/ })
 
@@ -114,7 +115,7 @@ describe('AgentChatActivitySidebar', () => {
     expect(props.onOpenSession).toHaveBeenCalledWith(project, project.sessions[1])
     await user.click(terminalButton)
     expect(props.onOpenActivity).toHaveBeenCalledWith(project, terminalActivity)
-    await user.click(screen.getByRole('button', { name: '查看 Alpha 的全部 2 个会话' }))
+    await user.click(projectHistory)
     expect(props.onOpenHistory).toHaveBeenCalledWith(project)
     expect(screen.getByRole('button', { name: '对话历史' })).toBeInTheDocument()
   })
@@ -122,24 +123,31 @@ describe('AgentChatActivitySidebar', () => {
   it('keeps all child rows on one compact text baseline while distinguishing terminals typographically', () => {
     renderSidebar()
     const projectButton = screen.getByRole('button', { name: '收起 Alpha' })
+    const projectHistory = screen.getByRole('button', { name: '打开 Alpha 的全部会话' })
     const projectActions = screen.getByRole('button', { name: 'Alpha 的项目操作' })
     const newConversation = screen.getByRole('button', { name: '在 Alpha 中新建对话' })
     const directButtons = projectButton.parentElement?.querySelectorAll(':scope > button')
     const conversation = screen.getByRole('button', { name: /Active chat/ })
     const terminal = screen.getByRole('button', { name: /Shell/ })
-    const history = screen.getByRole('button', { name: '查看 Alpha 的全部 2 个会话' })
 
-    expect(directButtons?.[1]).toBe(projectActions)
-    expect(directButtons?.[2]).toBe(newConversation)
+    expect(directButtons?.[1]).toBe(projectHistory)
+    expect(directButtons?.[2]).toBe(projectActions)
+    expect(directButtons?.[3]).toBe(newConversation)
     expect(projectButton).toHaveTextContent('Alpha')
+    expect(projectButton).not.toHaveTextContent('2')
+    expect(projectButton).toHaveClass('focus-visible:bg-[var(--nova-active)]')
+    expect(projectButton.className).not.toContain('focus-visible:ring')
+    expect(projectHistory).toHaveClass('opacity-0', 'group-hover:opacity-100')
+    expect(projectHistory.querySelector('svg')).not.toBeNull()
     expect(conversation).toHaveClass('pl-1.5')
+    expect(conversation.className).not.toContain('focus-visible:ring')
     expect(conversation.querySelector('svg')).toBeNull()
     expect(conversation.querySelector('span.min-w-0')).toHaveClass('text-[11px]')
     expect(terminal).toHaveClass('pl-1.5')
+    expect(terminal.className).not.toContain('focus-visible:ring')
     expect(terminal.querySelector('svg')).toBeNull()
     expect(terminal.querySelector('span.min-w-0')).toHaveClass('font-mono', 'text-[10px]')
-    expect(history).toHaveClass('px-1.5')
-    expect(history.querySelector('svg')).toBeNull()
+    expect(screen.queryByText('全部会话')).not.toBeInTheDocument()
   })
 
   it('offers rename from both Project and conversation context menus', async () => {
@@ -211,10 +219,13 @@ describe('AgentChatActivitySidebar', () => {
     }
     const extendedProject: AgentChatProject = {
       ...project,
-      total: 4,
+      total: 7,
       sessions: [
         ...project.sessions,
         { ...project.sessions[1], id: 'third', title: 'Third recent chat' },
+        { ...project.sessions[1], id: 'fourth', title: 'Fourth recent chat' },
+        { ...project.sessions[1], id: 'fifth', title: 'Fifth recent chat' },
+        { ...project.sessions[1], id: 'sixth', title: 'Sixth recent chat' },
         olderActiveSession,
       ],
     }
@@ -233,8 +244,45 @@ describe('AgentChatActivitySidebar', () => {
       activitiesByProject: new Map([[extendedProject.id, [activity, terminalActivity, olderActivity]]]),
     })
 
-    expect(document.querySelectorAll('[data-slot="agent-chat-conversation-row"]')).toHaveLength(4)
+    expect(document.querySelectorAll('[data-slot="agent-chat-conversation-row"]')).toHaveLength(6)
     expect(screen.getByRole('button', { name: /Older active chat/ })).toBeInTheDocument()
+  })
+
+  it('shows five recent conversations by default and reveals the next page inline', async () => {
+    const user = userEvent.setup()
+    const sessions = Array.from({ length: 8 }, (_, index) => ({
+      ...project.sessions[1],
+      id: `session-${index + 1}`,
+      title: `Chat ${index + 1}`,
+    }))
+    const extendedProject: AgentChatProject = {
+      ...project,
+      total: sessions.length,
+      sessions,
+    }
+
+    renderSidebar({
+      projects: [extendedProject],
+      activitiesByProject: new Map([[extendedProject.id, []]]),
+    })
+
+    expect(document.querySelectorAll('[data-slot="agent-chat-conversation-row"]')).toHaveLength(5)
+    const showMore = screen.getByRole('button', { name: '展示 Alpha 的更多会话' })
+    expect(showMore.parentElement).not.toHaveClass('border-t')
+    expect(screen.queryByText('全部会话')).not.toBeInTheDocument()
+
+    await user.click(showMore)
+
+    expect(document.querySelectorAll('[data-slot="agent-chat-conversation-row"]')).toHaveLength(8)
+    expect(screen.queryByRole('button', { name: '展示 Alpha 的更多会话' })).not.toBeInTheDocument()
+    expect(showMore).toHaveClass('text-[var(--nova-text-faint)]')
+    expect(showMore.className).not.toContain('hover:bg-')
+
+    await user.click(screen.getByRole('button', { name: '收起 Alpha' }))
+    await user.click(screen.getByRole('button', { name: '展开 Alpha' }))
+
+    expect(document.querySelectorAll('[data-slot="agent-chat-conversation-row"]')).toHaveLength(5)
+    expect(screen.getByRole('button', { name: '展示 Alpha 的更多会话' })).toBeInTheDocument()
   })
 
   it('keeps a not-yet-persisted conversation draft in the same flat list', () => {
@@ -299,7 +347,7 @@ describe('AgentChatActivitySidebar', () => {
     expect(projectContent).toHaveAttribute('data-state', 'closed')
     expect(projectContent).toHaveAttribute('inert')
     expect(projectContent).toHaveClass('grid-rows-[0fr]', 'opacity-0')
-    expect(projectButton.parentElement?.querySelector('[data-slot="agent-chat-project-active-indicator"]')).not.toBeNull()
+    expect(projectButton.parentElement?.querySelector('[data-slot="agent-chat-project-active-indicator"]')).toBeNull()
     expect(screen.queryByRole('button', { name: /Active chat/ })).not.toBeInTheDocument()
 
     await user.click(projectButton)

@@ -1,6 +1,7 @@
 package versions
 
 import (
+	"errors"
 	"fmt"
 	"time"
 )
@@ -12,22 +13,18 @@ func (s *Service) MaybeCreateTimed(settings VersionAutoSettings) (VersionAutoRes
 	if !settings.TimedEnabled {
 		return VersionAutoResult{Skipped: true, Reason: "自动版本已关闭"}, nil
 	}
-	items, err := s.loadVersions()
+	_, lastTimedAt, err := s.latestVersionTimes()
 	if err != nil {
 		return VersionAutoResult{}, err
 	}
-	retryAfter := timedVersionRetryAfter(items, settings.TimedIntervalMinutes, time.Now())
+	retryAfter := timedVersionRetryAfterTimestamp(lastTimedAt, settings.TimedIntervalMinutes, time.Now())
 	if retryAfter > 0 {
 		return VersionAutoResult{Skipped: true, Reason: "未到自动版本最小间隔", RetryAfter: retryAfter}, nil
 	}
-	status, err := s.statusLocked(settings)
-	if err != nil {
-		return VersionAutoResult{}, err
-	}
-	if status.Clean {
+	result, err := s.createLocked(fmt.Sprintf("自动版本：%s", time.Now().Format("2006-01-02 15:04")), VersionSourceTimer, settings)
+	if errors.Is(err, ErrVersionClean) {
 		return VersionAutoResult{Skipped: true, Reason: "工作区无变更"}, nil
 	}
-	result, err := s.createLocked(fmt.Sprintf("自动版本：%s", time.Now().Format("2006-01-02 15:04")), VersionSourceTimer, settings)
 	if err != nil {
 		return VersionAutoResult{}, err
 	}
@@ -45,38 +42,14 @@ func normalizeVersionAutoSettings(settings VersionAutoSettings) VersionAutoSetti
 	return settings
 }
 
-func lastAutoVersionAt(items []VersionEntry) string {
-	autoItems := []VersionEntry{}
-	for _, item := range items {
-		if item.Source == VersionSourceTimer || item.Source == VersionSourceAgent {
-			autoItems = append(autoItems, item)
-		}
+func timedVersionRetryAfterTimestamp(createdAt string, intervalMinutes int, now time.Time) time.Duration {
+	if createdAt == "" {
+		return 0
 	}
-	latest := latestVersion(autoItems)
-	if latest == nil {
-		return ""
-	}
-	return latest.CreatedAt
-}
-
-func timedVersionRetryAfter(items []VersionEntry, intervalMinutes int, now time.Time) time.Duration {
 	if intervalMinutes <= 0 {
 		intervalMinutes = DefaultTimedVersionIntervalMinutes
 	}
-	var latest *VersionEntry
-	for _, item := range items {
-		if item.Source != VersionSourceTimer {
-			continue
-		}
-		itemCopy := item
-		if latest == nil || itemCopy.CreatedAt > latest.CreatedAt {
-			latest = &itemCopy
-		}
-	}
-	if latest == nil {
-		return 0
-	}
-	t, err := time.Parse(time.RFC3339, latest.CreatedAt)
+	t, err := time.Parse(time.RFC3339, createdAt)
 	if err != nil {
 		return 0
 	}

@@ -137,24 +137,21 @@ func buildVersionSummaryInstruction(status book.VersionStatus, source string, bo
 func versionChangeContext(bookService *book.Service, versionService *book.VersionService, latest *book.VersionEntry, change book.VersionChange) string {
 	var sb strings.Builder
 	sb.WriteString(fmt.Sprintf("\n### %s %s\n", versionStatusLabel(change.Status), change.Path))
-	if latest != nil {
-		diff, err := versionService.Diff(latest.ID, change.Path)
-		if err == nil && diff.Text {
-			if diff.Original != "" {
-				sb.WriteString("旧内容片段：\n")
-				sb.WriteString(limitRunes(diff.Original, versionSummaryMaxSnippetRunes))
-				sb.WriteByte('\n')
-			}
-			if diff.Modified != "" {
-				sb.WriteString("新内容片段：\n")
-				sb.WriteString(limitRunes(diff.Modified, versionSummaryMaxSnippetRunes))
-				sb.WriteByte('\n')
-			}
-			return sb.String()
+	wroteText := false
+	if latest != nil && change.Status != "added" {
+		content, err := versionService.ReadFileAtVersion(latest.ID, change.Path)
+		text := string(content)
+		if err == nil && utf8.Valid(content) && !strings.ContainsRune(text, '\x00') {
+			sb.WriteString("旧内容片段：\n")
+			sb.WriteString(limitRunes(text, versionSummaryMaxSnippetRunes))
+			sb.WriteByte('\n')
+			wroteText = true
 		}
 	}
 	if change.Status == "deleted" {
-		sb.WriteString("文件已删除。\n")
+		if !wroteText {
+			sb.WriteString("文件已删除。\n")
+		}
 		return sb.String()
 	}
 	content, err := bookService.ReadFile(change.Path)
@@ -162,9 +159,13 @@ func versionChangeContext(bookService *book.Service, versionService *book.Versio
 		sb.WriteString(fmt.Sprintf("读取文件失败：%v\n", err))
 		return sb.String()
 	}
-	sb.WriteString("当前内容片段：\n")
-	sb.WriteString(limitRunes(content, versionSummaryMaxSnippetRunes))
-	sb.WriteByte('\n')
+	if utf8.ValidString(content) && !strings.ContainsRune(content, '\x00') {
+		sb.WriteString("新内容片段：\n")
+		sb.WriteString(limitRunes(content, versionSummaryMaxSnippetRunes))
+		sb.WriteByte('\n')
+	} else if !wroteText {
+		sb.WriteString("文件不是可摘要的文本内容。\n")
+	}
 	return sb.String()
 }
 

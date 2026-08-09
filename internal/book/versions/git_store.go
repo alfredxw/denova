@@ -13,6 +13,7 @@ import (
 	git "github.com/go-git/go-git/v5"
 	"github.com/go-git/go-git/v5/plumbing"
 	"github.com/go-git/go-git/v5/plumbing/cache"
+	"github.com/go-git/go-git/v5/plumbing/format/index"
 	"github.com/go-git/go-git/v5/plumbing/object"
 	gitstorage "github.com/go-git/go-git/v5/storage"
 	"github.com/go-git/go-git/v5/storage/filesystem"
@@ -225,38 +226,62 @@ func (s *Service) openVersionRepo() (*git.Repository, error) {
 	return s.gitStore().Open()
 }
 
-func (s *Service) commitWorkspaceSnapshot(repo *git.Repository, files []versionFileData, message, source string, now time.Time) (plumbing.Hash, error) {
-	if err := s.stageWorkspaceFiles(repo, files); err != nil {
+func (s *Service) commitWorkspaceSnapshot(repo *git.Repository, snapshot workspaceSnapshot, message, source string, metadata versionCommitMetadata, now time.Time) (plumbing.Hash, error) {
+	if err := stageWorkspaceSnapshot(repo, snapshot); err != nil {
 		return plumbing.ZeroHash, err
 	}
 	worktree, err := repo.Worktree()
 	if err != nil {
 		return plumbing.ZeroHash, err
 	}
-	return worktree.Commit(formatCommitMessage(message, source), &git.CommitOptions{
+	options := &git.CommitOptions{
 		AllowEmptyCommits: true,
 		Author: &object.Signature{
 			Name:  "Denova",
 			Email: "denova@local",
 			When:  now,
 		},
-	})
+	}
+	parent, parentErr := versionHistoryHeadHash(repo)
+	if parentErr == nil {
+		options.Parents = []plumbing.Hash{parent}
+	} else if !errors.Is(parentErr, plumbing.ErrReferenceNotFound) {
+		return plumbing.ZeroHash, parentErr
+	}
+	commitMessage, err := formatCommitMessage(message, source, metadata)
+	if err != nil {
+		return plumbing.ZeroHash, err
+	}
+	hash, err := worktree.Commit(commitMessage, options)
+	if err != nil {
+		return plumbing.ZeroHash, err
+	}
+	if err := repo.Storer.SetReference(plumbing.NewHashReference(versionHistoryReference, hash)); err != nil {
+		return plumbing.ZeroHash, err
+	}
+	if err := repo.Storer.SetReference(plumbing.NewHashReference(versionCurrentReference, hash)); err != nil {
+		return plumbing.ZeroHash, err
+	}
+	return hash, nil
 }
 
-func (s *Service) stageWorkspaceFiles(repo *git.Repository, files []versionFileData) error {
-	worktree, err := repo.Worktree()
-	if err != nil {
-		return err
+// stageWorkspaceSnapshot replaces the index in one write with the exact blob
+// hashes persisted during collection. This avoids go-git's worktree status
+// scan followed by a second per-file read, and naturally records deletions.
+func stageWorkspaceSnapshot(repo *git.Repository, snapshot workspaceSnapshot) error {
+	idx := &index.Index{
+		Version: 2,
+		Entries: make([]*index.Entry, 0, len(snapshot.files)),
 	}
-	if err := worktree.AddWithOptions(&git.AddOptions{All: true}); err != nil {
-		return err
+	for _, file := range snapshot.files {
+		entry := idx.Add(file.Path)
+		entry.Hash = plumbing.NewHash(file.Hash)
+		entry.CreatedAt = file.ModifiedAt
+		entry.ModifiedAt = file.ModifiedAt
+		entry.Mode = file.Mode
+		entry.Size = uint32(file.Size)
 	}
-	for _, file := range files {
-		if err := worktree.AddWithOptions(&git.AddOptions{Path: file.Path, SkipStatus: true}); err != nil {
-			return err
-		}
-	}
-	return removeVersionExcludedIndexEntries(repo)
+	return repo.Storer.SetIndex(idx)
 }
 
 func removeVersionExcludedIndexEntries(repo *git.Repository) error {
@@ -299,18 +324,52 @@ func (s *Service) commitFiles(id string) (map[string]versionFileData, error) {
 		if err != nil {
 			return err
 		}
-		defer reader.Close()
 		data, err := io.ReadAll(reader)
+		closeErr := reader.Close()
 		if err != nil {
 			return err
 		}
-		state := versionFileStateFromBytes(data)
+		if closeErr != nil {
+			return closeErr
+		}
+		state := versionFileStateFromBytes(data, file.Hash)
 		files[file.Name] = versionFileData{
 			Path:  file.Name,
 			Hash:  state.Hash,
 			Size:  state.Size,
 			Chars: state.Chars,
 			Text:  state.Text,
+		}
+		return nil
+	})
+	if err != nil {
+		return nil, err
+	}
+	return files, nil
+}
+
+// commitFileIndex projects a commit from tree/blob metadata only. Callers that
+// only compare versions never decompress or copy file contents into memory.
+func (s *Service) commitFileIndex(id string) (map[string]versionFileData, error) {
+	repo, err := s.openVersionRepo()
+	if err != nil {
+		return nil, err
+	}
+	commit, err := repo.CommitObject(plumbing.NewHash(strings.TrimSpace(id)))
+	if err != nil {
+		return nil, err
+	}
+	iter, err := commit.Files()
+	if err != nil {
+		return nil, err
+	}
+	files := map[string]versionFileData{}
+	err = iter.ForEach(func(file *object.File) error {
+		files[file.Name] = versionFileData{
+			Path: file.Name,
+			Hash: file.Hash.String(),
+			Size: file.Size,
+			Mode: file.Mode,
 		}
 		return nil
 	})
@@ -354,5 +413,8 @@ func (s *Service) restoreCommitToWorkspace(id string) error {
 	if err := removeVersionExcludedIndexEntries(repo); err != nil {
 		return err
 	}
-	return s.removeVisibleFilesAbsentFromCommit(id)
+	if err := s.removeVisibleFilesAbsentFromCommit(id); err != nil {
+		return err
+	}
+	return repo.Storer.SetReference(plumbing.NewHashReference(versionCurrentReference, plumbing.NewHash(strings.TrimSpace(id))))
 }

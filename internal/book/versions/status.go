@@ -7,33 +7,33 @@ func (s *Service) Status(settings VersionAutoSettings) (VersionStatus, error) {
 }
 
 func (s *Service) statusLocked(settings VersionAutoSettings) (VersionStatus, error) {
+	snapshot, err := s.collectWorkspaceSnapshot(nil)
+	if err != nil {
+		return VersionStatus{}, err
+	}
 	current, err := s.headVersion()
 	if err != nil {
 		return VersionStatus{}, err
 	}
 	changes := []VersionChange{}
 	if current != nil {
-		changes, err = s.diffChanges(*current)
+		changes, err = s.diffChangesFromSnapshot(snapshot, current.ID)
 		if err != nil {
 			return VersionStatus{}, err
 		}
 	} else {
-		files, err := s.collectVisibleFiles()
-		if err != nil {
-			return VersionStatus{}, err
-		}
-		changes = make([]VersionChange, 0, len(files))
-		for _, file := range files {
+		changes = make([]VersionChange, 0, len(snapshot.files))
+		for _, file := range snapshot.files {
 			changes = append(changes, VersionChange{Path: file.Path, Status: "added"})
 		}
 	}
-	items, err := s.loadVersions()
+	lastAutoAt, _, err := s.latestVersionTimes()
 	if err != nil {
 		return VersionStatus{}, err
 	}
 	settings = normalizeVersionAutoSettings(settings)
 	return VersionStatus{
-		HasVersions: len(items) > 0,
+		HasVersions: current != nil,
 		Clean:       len(changes) == 0,
 		Changes:     changes,
 		Latest:      current,
@@ -41,7 +41,7 @@ func (s *Service) statusLocked(settings VersionAutoSettings) (VersionStatus, err
 			TimedEnabled:         settings.TimedEnabled,
 			TimedIntervalMinutes: settings.TimedIntervalMinutes,
 			Retention:            settings.Retention,
-			LastAutoAt:           lastAutoVersionAt(items),
+			LastAutoAt:           lastAutoAt,
 		},
 	}, nil
 }
@@ -55,14 +55,9 @@ func (s *Service) History(limit int) ([]VersionEntry, error) {
 	if limit > 200 {
 		limit = 200
 	}
-	items, err := s.loadVersions()
+	items, err := s.loadVersionHistory(limit)
 	if err != nil {
 		return nil, err
-	}
-	items = append([]VersionEntry(nil), items...)
-	sortVersionsDesc(items)
-	if len(items) > limit {
-		items = items[:limit]
 	}
 	return items, nil
 }

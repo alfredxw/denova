@@ -22,32 +22,35 @@ func TestDefaultAutoSettingsEnablesAutomaticVersionsEveryTenMinutes(t *testing.T
 func TestScheduleAutoVersionDebouncesWorkspaceChanges(t *testing.T) {
 	dir := t.TempDir()
 	service := newVersionTestService(t, dir)
-	service.autoVersionIdleDelay = 30 * time.Millisecond
+	service.autoVersionIdleDelay = time.Hour
 	t.Cleanup(service.Close)
 	settings := DefaultAutoSettings()
 
 	writeFile(t, dir, "chapters/ch0001.md", "第一段")
 	service.ScheduleAutoVersion(settings)
-	time.Sleep(20 * time.Millisecond)
+	service.autoMu.Lock()
+	staleGeneration := service.autoGeneration
+	service.autoMu.Unlock()
 	writeFile(t, dir, "chapters/ch0001.md", "第一段，继续写作")
 	service.ScheduleAutoVersion(settings)
-	time.Sleep(20 * time.Millisecond)
+	service.autoMu.Lock()
+	currentGeneration := service.autoGeneration
+	service.stopAutoTimerLocked()
+	service.autoMu.Unlock()
+	service.runScheduledAutoVersion(staleGeneration)
 
 	history, err := service.History(10)
 	if err != nil {
 		t.Fatalf("History before idle failed: %v", err)
 	}
 	if len(history) != 0 {
-		t.Fatalf("automatic version should wait for the latest idle period: %#v", history)
+		t.Fatalf("stale automatic-version timer should not create history: %#v", history)
 	}
 
-	deadline := time.Now().Add(300 * time.Millisecond)
-	for len(history) == 0 && time.Now().Before(deadline) {
-		time.Sleep(10 * time.Millisecond)
-		history, err = service.History(10)
-		if err != nil {
-			t.Fatalf("History after idle failed: %v", err)
-		}
+	service.runScheduledAutoVersion(currentGeneration)
+	history, err = service.History(10)
+	if err != nil {
+		t.Fatalf("History after current generation failed: %v", err)
 	}
 	if len(history) != 1 || history[0].Source != VersionSourceTimer {
 		t.Fatalf("expected one automatic version after idle, got %#v", history)
@@ -174,7 +177,7 @@ func TestGoGitVersionCreateDiffAndRestore(t *testing.T) {
 		t.Fatalf("Status after restore failed: %v", err)
 	}
 	if !cleanStatus.Clean || cleanStatus.Latest == nil || cleanStatus.Latest.ID != first.Version.ID {
-		t.Fatalf("workspace should be clean at restored version: %#v", cleanStatus)
+		t.Fatalf("workspace should be clean at restored version: status=%#v latest=%#v first=%s", cleanStatus, cleanStatus.Latest, first.Version.ID)
 	}
 	history, err := service.History(10)
 	if err != nil {
@@ -184,6 +187,21 @@ func TestGoGitVersionCreateDiffAndRestore(t *testing.T) {
 		!historyContains(history, first.Version.ID) ||
 		!historyContainsSource(history, VersionSourceRollbackBackup) {
 		t.Fatalf("history should come from git commits, history=%#v latest=%#v", history, cleanStatus.Latest)
+	}
+
+	writeFile(t, dir, "chapters/ch0001.md", "恢复后继续创作")
+	continued, err := service.Create("恢复后版本", VersionSourceManual, settings)
+	if err != nil {
+		t.Fatalf("Create after restore failed: %v", err)
+	}
+	history, err = service.History(10)
+	if err != nil {
+		t.Fatalf("History after continued creation failed: %v", err)
+	}
+	if len(history) != 3 || history[0].ID != continued.Version.ID ||
+		!historyContains(history, first.Version.ID) ||
+		!historyContainsSource(history, VersionSourceRollbackBackup) {
+		t.Fatalf("continued history should preserve the restore backup chain: %#v", history)
 	}
 }
 
