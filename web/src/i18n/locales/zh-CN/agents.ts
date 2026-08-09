@@ -53,6 +53,8 @@ const agents = {
   'agents.tool.loreWrite.subtitle': 'write_lore_items',
   'agents.tool.todo.title': '任务清单',
   'agents.tool.todo.subtitle': 'todo',
+  'agents.tool.goal.title': '目标完成',
+  'agents.tool.goal.subtitle': 'goal_finish',
   'agents.tool.delegation.title': '委派任务',
   'agents.tool.delegation.subtitle': 'task',
   'agents.tool.configRead.title': '读取配置',

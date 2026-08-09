@@ -28,6 +28,13 @@ const projects: AgentChatProject[] = [
 ]
 
 describe('AgentChatProjectSwitcher', () => {
+  it('shows a loading label before navigation state is registered', () => {
+    render(<AgentChatProjectSwitcher navigation={null} />)
+
+    expect(screen.getByRole('button', { name: '切换项目，当前：正在加载项目…' })).toHaveAttribute('aria-busy', 'true')
+    expect(screen.queryByText('暂无项目')).not.toBeInTheDocument()
+  })
+
   it('shows the active Project and switches only through AgentChat navigation', async () => {
     const user = userEvent.setup()
     const selectProject = vi.fn()

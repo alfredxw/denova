@@ -15,6 +15,54 @@ function renderMessageList(ui: ReactElement) {
 }
 
 describe('Agent MessageList', () => {
+  it('首次恢复历史时定位到底部后才显示消息', () => {
+    const frameCallbacks: FrameRequestCallback[] = []
+    const clientHeightSpy = vi.spyOn(HTMLElement.prototype, 'clientHeight', 'get').mockImplementation(function clientHeight(this: HTMLElement) {
+      return this.classList.contains('nova-chat-canvas') ? 200 : 0
+    })
+    const scrollHeightSpy = vi.spyOn(HTMLElement.prototype, 'scrollHeight', 'get').mockImplementation(function scrollHeight(this: HTMLElement) {
+      return this.classList.contains('nova-chat-canvas') ? 900 : 0
+    })
+    const animationFrameSpy = vi.spyOn(window, 'requestAnimationFrame').mockImplementation((callback) => {
+      frameCallbacks.push(callback)
+      return frameCallbacks.length
+    })
+
+    try {
+      const { container } = renderMessageList(
+        <MessageList
+          isStreaming={false}
+          activityContent=""
+          messages={[{ id: 'restored-message', role: 'assistant', parts: [{ type: 'text', text: '恢复的末条消息' }] }]}
+          scrollResetKey="restored-session"
+        />,
+      )
+      const scroller = container.querySelector<HTMLElement>('.nova-chat-canvas')
+      if (!scroller) throw new Error('Expected message scroller')
+
+      expect(scroller).toHaveClass('opacity-0')
+      expect(scroller).toHaveAttribute('aria-busy', 'true')
+      expect(scroller).toHaveAttribute('aria-hidden', 'true')
+      expect(screen.getByText('加载中...')).toBeInTheDocument()
+
+      act(() => {
+        for (let frame = 0; frame < 4 && frameCallbacks.length > 0; frame += 1) {
+          frameCallbacks.splice(0).forEach(callback => callback(frame * 16))
+        }
+      })
+
+      expect(scroller.scrollTop).toBe(700)
+      expect(scroller).not.toHaveClass('opacity-0')
+      expect(scroller).toHaveAttribute('aria-busy', 'false')
+      expect(scroller).not.toHaveAttribute('aria-hidden')
+      expect(screen.queryByText('加载中...')).not.toBeInTheDocument()
+    } finally {
+      animationFrameSpy.mockRestore()
+      scrollHeightSpy.mockRestore()
+      clientHeightSpy.mockRestore()
+    }
+  })
+
   it('在历史窗口顶部按需加载更早消息', () => {
     const loadEarlier = vi.fn()
     renderMessageList(

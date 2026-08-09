@@ -48,6 +48,7 @@ type CommandSpec struct {
 	Options          agentrun.Options
 	Emit             func(agentrun.Event)
 	Prepare          TurnPreparer
+	Successor        SuccessorPolicy
 }
 
 // SubmitCommand durably accepts one command and returns without waiting for
@@ -140,6 +141,7 @@ func (s *Service) SubmitCommand(ctx context.Context, spec CommandSpec) (agentrun
 		BookService: spec.BookService, Request: spec.Request,
 		Options: spec.Options, Emit: spec.Emit,
 		Prepare:     spec.Prepare,
+		Successor:   spec.Successor,
 		CycleCommit: harnessCycleCommitForConversation(spec.Conversation),
 	})
 	if err != nil {
@@ -180,35 +182,37 @@ func harnessTurnSpecSemanticFingerprint(spec CommandSpec) string {
 	options.IdleTimeout = 0
 	options.ToolResultMaxBytes = 0
 	descriptor := struct {
-		Message        string                       `json:"message"`
-		References     []string                     `json:"references,omitempty"`
-		LoreReferences []string                     `json:"lore_references,omitempty"`
-		StyleScenes    []string                     `json:"style_scenes,omitempty"`
-		Selections     []agentchat.TextSelectionRef `json:"selections,omitempty"`
-		IDEContext     prompts.IDEContextRef        `json:"ide_context,omitempty"`
-		ReviewFeedback agentreview.Refs             `json:"review_feedback,omitempty"`
-		PlanMode       bool                         `json:"plan_mode"`
-		WritingSkill   string                       `json:"writing_skill,omitempty"`
-		ImagePresetID  string                       `json:"image_preset_id,omitempty"`
-		TellerID       string                       `json:"teller_id,omitempty"`
-		Locale         string                       `json:"locale,omitempty"`
-		Options        harnessTurnOptionsDescriptor `json:"options"`
-		Deferred       bool                         `json:"deferred"`
+		Message         string                       `json:"message"`
+		References      []string                     `json:"references,omitempty"`
+		LoreReferences  []string                     `json:"lore_references,omitempty"`
+		StyleScenes     []string                     `json:"style_scenes,omitempty"`
+		Selections      []agentchat.TextSelectionRef `json:"selections,omitempty"`
+		IDEContext      prompts.IDEContextRef        `json:"ide_context,omitempty"`
+		ReviewFeedback  agentreview.Refs             `json:"review_feedback,omitempty"`
+		PlanMode        bool                         `json:"plan_mode"`
+		WritingSkill    string                       `json:"writing_skill,omitempty"`
+		ImagePresetID   string                       `json:"image_preset_id,omitempty"`
+		TellerID        string                       `json:"teller_id,omitempty"`
+		Locale          string                       `json:"locale,omitempty"`
+		InputVisibility agentrun.InputVisibility     `json:"input_visibility,omitempty"`
+		Options         harnessTurnOptionsDescriptor `json:"options"`
+		Deferred        bool                         `json:"deferred"`
 	}{
-		Message:        caller.Message,
-		References:     caller.References,
-		LoreReferences: caller.LoreReferences,
-		StyleScenes:    caller.StyleScenes,
-		Selections:     caller.Selections,
-		IDEContext:     caller.IDEContext,
-		ReviewFeedback: caller.ReviewFeedback,
-		PlanMode:       caller.PlanMode,
-		WritingSkill:   caller.WritingSkill,
-		ImagePresetID:  caller.ImagePresetID,
-		TellerID:       caller.TellerID,
-		Locale:         caller.Locale,
-		Options:        options,
-		Deferred:       spec.Prepare != nil,
+		Message:         caller.Message,
+		References:      caller.References,
+		LoreReferences:  caller.LoreReferences,
+		StyleScenes:     caller.StyleScenes,
+		Selections:      caller.Selections,
+		IDEContext:      caller.IDEContext,
+		ReviewFeedback:  caller.ReviewFeedback,
+		PlanMode:        caller.PlanMode,
+		WritingSkill:    caller.WritingSkill,
+		ImagePresetID:   caller.ImagePresetID,
+		TellerID:        caller.TellerID,
+		Locale:          caller.Locale,
+		InputVisibility: spec.Request.InputVisibility,
+		Options:         options,
+		Deferred:        spec.Prepare != nil,
 	}
 	return semanticJSONFingerprint("agent-turn-spec.v1", descriptor)
 }

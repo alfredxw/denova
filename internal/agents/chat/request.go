@@ -22,19 +22,20 @@ type ChatRequest struct {
 	// agentrun.CommandID is the caller-owned idempotency key for a root turn. HTTP
 	// clients must retain it while acceptance is uncertain; server-side retry
 	// code must never replace it with a newly generated identity.
-	CommandID      string                `json:"command_id"`
-	Message        string                `json:"message"`
-	References     []string              `json:"references"`
-	LoreReferences []string              `json:"lore_references"`
-	StyleScenes    []string              `json:"style_scenes"`
-	Selections     []TextSelectionRef    `json:"selections"`
-	IDEContext     prompts.IDEContextRef `json:"ide_context,omitempty"`
-	ReviewFeedback agentreview.Refs      `json:"review_feedback,omitempty"`
-	PlanMode       bool                  `json:"plan_mode"`
-	WritingSkill   string                `json:"writing_skill"`
-	ImagePresetID  string                `json:"image_preset_id"`
-	TellerID       string                `json:"teller_id"`
-	Locale         string                `json:"-"`
+	CommandID       string                   `json:"command_id"`
+	Message         string                   `json:"message"`
+	References      []string                 `json:"references"`
+	LoreReferences  []string                 `json:"lore_references"`
+	StyleScenes     []string                 `json:"style_scenes"`
+	Selections      []TextSelectionRef       `json:"selections"`
+	IDEContext      prompts.IDEContextRef    `json:"ide_context,omitempty"`
+	ReviewFeedback  agentreview.Refs         `json:"review_feedback,omitempty"`
+	PlanMode        bool                     `json:"plan_mode"`
+	WritingSkill    string                   `json:"writing_skill"`
+	ImagePresetID   string                   `json:"image_preset_id"`
+	TellerID        string                   `json:"teller_id"`
+	Locale          string                   `json:"-"`
+	InputVisibility agentrun.InputVisibility `json:"-"`
 
 	// StyleRules 由后端按当前导演配置注入（场景 → 共享文风参考索引）。
 	// StyleScenes 非空时只注入用户本轮通过 # 指定的场景；为空时作为场景化建议参与本轮上下文。

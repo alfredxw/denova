@@ -28,6 +28,7 @@ type SessionConversation struct {
 	dynamicContextTitle string
 	dynamicContext      string
 	lastContextSummary  string
+	inputVisibility     agentrun.InputVisibility
 
 	cycleMu                 sync.Mutex
 	cycleIdentity           agentrun.CycleIdentity
@@ -41,6 +42,15 @@ type SessionConversation struct {
 	pendingCompactionHealth *preparedSessionContextCompactionHealth
 	pendingCleanup          *preparedSessionToolResultCleanup
 	compactionModelBase     *compactionModelBase
+}
+
+// WithInputVisibility binds the transcript projection chosen by the host for
+// this accepted turn. It must match durable input materialization semantics.
+func (c *SessionConversation) WithInputVisibility(visibility agentrun.InputVisibility) *SessionConversation {
+	if c != nil {
+		c.inputVisibility = visibility
+	}
+	return c
 }
 
 func (c *SessionConversation) BindHarnessAgentKind(agentKind string) {

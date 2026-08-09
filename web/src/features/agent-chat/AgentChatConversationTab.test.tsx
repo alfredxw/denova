@@ -16,11 +16,17 @@ vi.mock('@/components/Chat/AgentPanel', () => ({
   AgentPanel: ({
     onSend,
     sessionDraft,
+    initializing,
   }: {
     onSend: (message: string, options: { onSubmissionStart: () => void }) => Promise<boolean>
     sessionDraft?: boolean
+    initializing?: boolean
   }) => (
-    <button type="button" onClick={() => void onSend('First useful message', { onSubmissionStart: vi.fn() })}>
+    <button
+      type="button"
+      data-initializing={String(Boolean(initializing))}
+      onClick={() => void onSend('First useful message', { onSubmissionStart: vi.fn() })}
+    >
       {sessionDraft ? 'send draft' : 'send session'}
     </button>
   ),
@@ -104,6 +110,34 @@ describe('AgentChatConversationTab draft lifecycle', () => {
     rerender(<AgentChatConversationTab {...props} draft={false} />)
     expect(chat.loadHistory).not.toHaveBeenCalled()
     expect(chat.resumeActiveChat).not.toHaveBeenCalled()
+  })
+
+  it('keeps a restored conversation hidden until history loads across normal hook rerenders', async () => {
+    let resolveHistory: (() => void) | undefined
+    chat.loadHistory.mockImplementationOnce(() => new Promise<void>((resolve) => {
+      resolveHistory = resolve
+    }))
+
+    const props = {
+      projectId: 'project-a',
+      projectType: 'book' as const,
+      workspace: '/books/a',
+      sessionId: 'session-a',
+      active: true,
+      composerSettings: {} as never,
+      tellers: [],
+      imagePresets: [],
+    }
+    const { rerender } = render(<AgentChatConversationTab {...props} />)
+
+    expect(screen.getByRole('button', { name: 'send session' })).toHaveAttribute('data-initializing', 'true')
+    vi.mocked(useAgentChat).mockReturnValue({
+      ...vi.mocked(useAgentChat).mock.results.at(-1)?.value,
+      resumeActiveChat: vi.fn().mockResolvedValue(undefined),
+    } as never)
+    rerender(<AgentChatConversationTab {...props} />)
+    resolveHistory?.()
+    await waitFor(() => expect(screen.getByRole('button', { name: 'send session' })).toHaveAttribute('data-initializing', 'false'))
   })
 
   it('reloads and reattaches when an external turn changes the conversation revision', async () => {

@@ -44,7 +44,7 @@ func (a *App) restoreHarnessTurn(_ context.Context, request agentharness.TurnRes
 }
 
 func (a *App) restoreWritingHarnessTurn(request agentharness.TurnRestoreRequest, binding agentrun.RuntimeBinding) agentharness.TurnSpec {
-	return agentharness.TurnSpec{
+	spec := agentharness.TurnSpec{
 		Request: request.Request,
 		Options: request.Options,
 		Prepare: func(ctx context.Context) (agentharness.TurnExecution, error) {
@@ -61,6 +61,17 @@ func (a *App) restoreWritingHarnessTurn(request agentharness.TurnRestoreRequest,
 			return execution, nil
 		},
 	}
+	spec.Successor = func(ctx context.Context, parent agentrun.OperationID, outcome agentrun.Outcome) error {
+		runtime, task, err := a.chat().activeCommandRuntime()
+		if err != nil {
+			return err
+		}
+		if runtime.sess == nil || runtime.sess.ID != binding.SessionID || runtime.workspace != binding.Workspace {
+			return ErrAgentContextChanged
+		}
+		return a.chat().writingGoalSuccessor(runtime, task, request.Request.Locale)(ctx, parent, outcome)
+	}
+	return spec
 }
 
 func (a *App) restoreInteractiveHarnessTurn(request agentharness.TurnRestoreRequest, binding agentrun.RuntimeBinding) agentharness.TurnSpec {
@@ -101,8 +112,13 @@ func (s *ChatAppService) prepareWritingHarnessTurn(
 	if err != nil {
 		return agentharness.TurnExecution{}, ideChatRuntime{}, err
 	}
+	goalTools, err := appagentruntime.GoalTools(ctx, runtime.sess)
+	if err != nil {
+		return agentharness.TurnExecution{}, ideChatRuntime{}, err
+	}
 	runner, systemPrompt, err := appagentruntime.BuildConversation(
 		ctx, &runtime.cfg, runtime.state, runtime.ideTeller, agentrun.AgentKindIDE,
+		goalTools...,
 	)
 	if err != nil {
 		return agentharness.TurnExecution{}, ideChatRuntime{}, err
@@ -112,7 +128,7 @@ func (s *ChatAppService) prepareWritingHarnessTurn(
 		runtime.sess, &runtime.cfg, config.AgentKindIDE,
 		runtimeContexts.StableTitle, runtimeContexts.Stable,
 		runtimeContexts.DynamicTitle, runtimeContexts.Dynamic,
-	)
+	).WithInputVisibility(resolved.InputVisibility)
 	options := s.bindReviewFeedbackInputCommit(agentrun.Options{
 		AgentKind:          agentrun.AgentKindIDE,
 		StateRoot:          runtime.projectState,

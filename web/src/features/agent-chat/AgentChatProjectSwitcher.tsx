@@ -36,8 +36,9 @@ export function AgentChatProjectSwitcher({ navigation, compact = false }: AgentC
   const [open, setOpen] = useState(false)
   const projects = navigation?.projects ?? []
   const activeProject = projects.find((project) => project.id === navigation?.activeProjectId) ?? null
+  const loading = navigation === null || navigation.loading
   const label = activeProject?.name || activeProject?.path || t(
-    navigation?.loading ? 'agentChat.projectSwitcher.loading' : 'agentChat.projectSwitcher.empty',
+    loading ? 'agentChat.projectSwitcher.loading' : 'agentChat.projectSwitcher.empty',
   )
   const TriggerIcon = activeProject?.type === 'general' ? Bot : FolderOpen
 
@@ -59,6 +60,7 @@ export function AgentChatProjectSwitcher({ navigation, compact = false }: AgentC
           label={label}
           compact={compact}
           disabled={projects.length === 0}
+          aria-busy={loading}
         />
       </DropdownMenuTrigger>
       <DropdownMenuContent

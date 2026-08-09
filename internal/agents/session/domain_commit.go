@@ -139,7 +139,11 @@ func (s *Session) CommitDomainMessageContext(ctx context.Context, intent DomainC
 		metadata.AgentCycle = identity.Cycle
 		metadata.DomainCommitHash = actualHash
 		message := intent.Message
-		if err := s.appendMessageLocked(&message, metadata, historyTypeMessage); err != nil {
+		kind := historyTypeMessage
+		if metadata.ContextOnly {
+			kind = historyTypeContextMessage
+		}
+		if err := s.appendMessageLocked(&message, metadata, kind); err != nil {
 			recoveryErr := s.refreshCanonicalTailLocked()
 			if recoveryErr == nil {
 				reconciled, found, reconcileErr := s.findDomainCommitLocked(identity, intent.Message.Role, actualHash)
@@ -532,6 +536,7 @@ func domainMessageHash(message agent.Message, metadata MessageMetadata) (string,
 			SubAgentSessionID string                       `json:"subagent_session_id,omitempty"`
 			SubAgentType      string                       `json:"subagent_type,omitempty"`
 			UserReferences    []agentcontext.UserReference `json:"user_references,omitempty"`
+			ContextOnly       bool                         `json:"context_only,omitempty"`
 		} `json:"metadata"`
 	}{Message: message}
 	payload.Metadata.RunID = metadata.RunID
@@ -543,6 +548,7 @@ func domainMessageHash(message agent.Message, metadata MessageMetadata) (string,
 	payload.Metadata.SubAgentSessionID = metadata.SubAgentSessionID
 	payload.Metadata.SubAgentType = metadata.SubAgentType
 	payload.Metadata.UserReferences = append([]agentcontext.UserReference(nil), metadata.UserReferences...)
+	payload.Metadata.ContextOnly = metadata.ContextOnly
 	data, err := json.Marshal(payload)
 	if err != nil {
 		return "", fmt.Errorf("hash domain message: %w", err)
@@ -631,6 +637,7 @@ func (s *Session) replaceCanonicalStateLocked(recovered *Session) {
 	s.contextRevision = recovered.contextRevision
 	s.runtimeConfig = nil
 	s.runtimeConfigRevision = recovered.runtimeConfigRevision
+	s.goal = recovered.goal
 	if recovered.runtimeConfig != nil {
 		value := *recovered.runtimeConfig
 		s.runtimeConfig = &value

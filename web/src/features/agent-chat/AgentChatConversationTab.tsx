@@ -1,4 +1,4 @@
-import { memo, useCallback, useEffect, useMemo, useRef } from 'react'
+import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { AgentPanel, type WritingComposerSettingsController } from '@/components/Chat/AgentPanel'
 import type { ImagePreset, Teller } from '@/features/interactive/types'
 import type { ReviewFeedbackBatch, ReviewFeedbackComment, ReviewFeedbackSelection } from '@/features/changes/agent/ReviewFeedbackTray'
@@ -76,18 +76,41 @@ function AgentChatConversationTabComponent({
   const initializedRef = useRef(false)
   const draftCommittedRef = useRef(false)
   const observedSyncRevisionRef = useRef(syncRevision)
+  const [initialContentReady, setInitialContentReady] = useState(draft)
+  const mountedRef = useRef(false)
 
-  const synchronize = useCallback(async () => {
+  useEffect(() => {
+    mountedRef.current = true
+    return () => { mountedRef.current = false }
+  }, [])
+
+  const synchronize = useCallback(async (onHistoryLoaded?: () => void) => {
     await Promise.all([chat.loadSessions(), chat.loadHistory(sessionId)])
+    onHistoryLoaded?.()
     await chat.resumeActiveChat(sessionId)
   }, [chat.loadHistory, chat.loadSessions, chat.resumeActiveChat, sessionId])
 
   useEffect(() => {
-    if (draft) return
+    if (draft) {
+      setInitialContentReady(true)
+      return
+    }
     if (initializedRef.current) return
     initializedRef.current = true
-    void synchronize()
-  }, [draft, synchronize])
+    void synchronize(() => {
+      if (mountedRef.current) setInitialContentReady(true)
+    })
+      .catch((error) => {
+        console.error('[features/agent-chat/AgentChatConversationTab.tsx] initial conversation synchronization failed', {
+          projectId,
+          sessionId,
+          error,
+        })
+      })
+      .finally(() => {
+        if (mountedRef.current) setInitialContentReady(true)
+      })
+  }, [draft, projectId, sessionId, synchronize])
 
   useEffect(() => {
     if (observedSyncRevisionRef.current === syncRevision) return
@@ -133,6 +156,7 @@ function AgentChatConversationTabComponent({
       agentKind={projectType === 'general' ? 'general' : 'writing'}
       workspace={workspace}
       chrome="workbench"
+      initializing={!initialContentReady}
       composerSettings={composerSettings}
       selectedFile={null}
       tellers={tellers}

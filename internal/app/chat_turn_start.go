@@ -130,8 +130,13 @@ func (s *ChatAppService) startTaskWithError(ctx context.Context, expectedSession
 		return nil, ErrAgentOperationActive
 	}
 
+	goalTools, err := appagentruntime.GoalTools(ctx, runtime.sess)
+	if err != nil {
+		return nil, err
+	}
 	runner, systemPrompt, err := appagentruntime.BuildConversation(
 		ctx, &runtime.cfg, runtime.state, runtime.ideTeller, agentrun.AgentKindIDE,
+		goalTools...,
 	)
 	if err != nil {
 		slog.ErrorContext(ctx, fmt.Sprintf("[agent-task] 刷新 Agent Runner 失败 workspace=%s err=%v", runtime.workspace, err))
@@ -146,7 +151,7 @@ func (s *ChatAppService) startTaskWithError(ctx context.Context, expectedSession
 		runtimeContexts.Stable,
 		runtimeContexts.DynamicTitle,
 		runtimeContexts.Dynamic,
-	)
+	).WithInputVisibility(req.InputVisibility)
 	var verifiedMutations []agenttool.Mutation
 	var postRunVerification agenttool.Verification
 	mutationCallback := a.verifiedWorkspaceMutationCallback(
@@ -217,8 +222,9 @@ func (s *ChatAppService) startTaskWithError(ctx context.Context, expectedSession
 			postRunVerification = verification
 		},
 	}, runtime, req)
-	accepted, err = runtime.chatService.StartWithOptions(
+	accepted, err = runtime.chatService.StartWithOptionsAndSuccessor(
 		acceptCtx, runner, conversation, runtime.bookService, req, startOptions, task.Emit,
+		s.writingGoalSuccessor(runtime, task, req.Locale),
 	)
 	releaseAcceptance()
 	if err != nil {

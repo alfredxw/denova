@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useLayoutEffect, useMemo, useRef } from 'react'
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import type { CSSProperties, ReactNode, RefCallback, UIEvent } from 'react'
 import { useTranslation } from 'react-i18next'
 import { motion } from 'motion/react'
@@ -30,6 +30,7 @@ import { buildAgentRunPresentation, type AgentRunPresentationSection } from './a
 import { scheduleChatRowBottomAnchor, scheduleResolvedChatRowBottomAnchor } from './chat-row-bottom-anchor'
 import { Button } from '@/components/ui/button'
 import { cn } from '@/lib/utils'
+import { LoadingState } from '@/components/common/LoadingState'
 
 interface MessageListProps {
   projectId?: string
@@ -158,6 +159,10 @@ export function MessageList({ projectId, messages, isStreaming, visible = true, 
   // remains active and can still publish layout updates.
   const tailFollowActive = isStreaming || isExecutionActive
   const firstItemIndex = usePrependStableFirstItemIndex(listItems, scrollResetKey)
+  const initialPositionKey = scrollResetKey || 'default'
+  const hasInitialContent = messages.length > 0 || isStreaming || Boolean(activityContent)
+  const [positionedKey, setPositionedKey] = useState('')
+  const initialPositionReady = !visible || !hasInitialContent || positionedKey === initialPositionKey
   const resolveMessageScroller = useCallback(
     () => containerRef.current?.querySelector<HTMLElement>('.nova-chat-canvas') || null,
     [],
@@ -304,9 +309,35 @@ export function MessageList({ projectId, messages, isStreaming, visible = true, 
     )
   }, [activeSubAgentSessionKey, activeTraceDisplay, anchorLatestInteractiveCardBottom, canMutateMessage, contentClassName, firstItemIndex, generatingInteractiveImageTurnId, highlightDialogue, isStreaming, listItems, messageStyle, onApprovePlan, onContinuePlan, onCreateBranch, onEditAssistantReply, onEditMessage, onExitPlanMode, onGenerateInteractiveImage, onInsertIllustration, onOpenSubAgentSession, onOpenTrace, onRegenerateMessage, onResolveAsk, onSwitchMessageVersion, projectId, scrollLock.streamingRowRef, scrollLock.syncStreamingTailLayout, tailFollowActive])
 
+  useLayoutEffect(() => {
+    if (!visible || !hasInitialContent || positionedKey === initialPositionKey) return
+    const scroller = resolveMessageScroller()
+    if (!scroller || scroller.clientHeight <= 0) {
+      setPositionedKey(initialPositionKey)
+      return
+    }
+    let secondFrame = 0
+    const placeAtBottom = () => {
+      scroller.scrollTop = Math.max(0, scroller.scrollHeight - scroller.clientHeight)
+    }
+    placeAtBottom()
+    const firstFrame = window.requestAnimationFrame(() => {
+      placeAtBottom()
+      secondFrame = window.requestAnimationFrame(() => {
+        placeAtBottom()
+        setPositionedKey(initialPositionKey)
+      })
+    })
+    return () => {
+      window.cancelAnimationFrame(firstFrame)
+      if (secondFrame) window.cancelAnimationFrame(secondFrame)
+    }
+  }, [hasInitialContent, initialPositionKey, positionedKey, resolveMessageScroller, visible])
+
   return (
     <div ref={containerRef} className="relative flex min-h-0 flex-1 flex-col">
       <Virtuoso
+        key={scrollResetKey || 'default'}
         ref={scrollLock.virtuosoRef}
         scrollerRef={scrollLock.scrollerRef}
         onScroll={handleMessageScroll}
@@ -330,9 +361,21 @@ export function MessageList({ projectId, messages, isStreaming, visible = true, 
         overscan={MESSAGE_LIST_OVERSCAN}
         increaseViewportBy={MESSAGE_LIST_INCREASE_VIEWPORT_BY}
         data-stream-active={tailFollowActive ? '' : undefined}
-        className="nova-chat-canvas min-h-0 flex-1 overflow-y-auto overflow-x-hidden [overflow-anchor:none]"
+        className={cn(
+          'nova-chat-canvas min-h-0 flex-1 overflow-y-auto overflow-x-hidden [overflow-anchor:none]',
+          !initialPositionReady && 'pointer-events-none opacity-0',
+        )}
+        aria-busy={!initialPositionReady}
+        aria-hidden={!initialPositionReady || undefined}
         aria-label={t('common.messages', { count: messages.length })}
       />
+      {!initialPositionReady ? (
+        <LoadingState
+          label={t('common.loading')}
+          variant="panel"
+          className="pointer-events-none absolute inset-0 min-h-0 bg-[var(--nova-bg)]"
+        />
+      ) : null}
       <ScrollToBottomButton
         visible={scrollLock.isAwayFromBottom}
         onClick={scrollLock.scrollToBottom}

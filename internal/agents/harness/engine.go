@@ -32,6 +32,11 @@ type TurnExecution struct {
 
 type TurnPreparer func(context.Context) (TurnExecution, error)
 
+// SuccessorPolicy may durably accept one NextTurn after a successful domain
+// output commit and before the current operation settles. It keeps scheduling
+// policy in the owning app while closing the crash gap between operations.
+type SuccessorPolicy func(context.Context, agentrun.OperationID, agentrun.Outcome) error
+
 func harnessCycleCommitForConversation(conversation agentchat.Conversation) func(context.Context, agentrun.Outcome) error {
 	committer, ok := conversation.(agentrun.CycleCommitter)
 	if !ok || committer == nil {
@@ -58,7 +63,8 @@ type TurnSpec struct {
 	Emit         func(agentrun.Event)
 	// Prepare is called exactly once by Engine.Run after dequeue and before any
 	// model/tool effect. Binding identity remains fixed by Options above.
-	Prepare TurnPreparer
+	Prepare   TurnPreparer
+	Successor SuccessorPolicy
 	// CycleCommit is the application commit boundary for one model cycle. It is
 	// invoked exactly once after the legacy runtime has finished persisting its
 	// conversation output and before the durable coordinator settles the cycle.
@@ -418,6 +424,14 @@ func (e *harnessEngine) run(
 		outcome = agentrun.NewOutcome(agentrun.OutcomeFailed, commitErr, commitErr.Error(), outcome.Content, outcome.Thinking)
 		if spec.Emit != nil {
 			spec.Emit(agentrun.Event{Type: "error", Data: map[string]string{"message": commitErr.Error()}})
+		}
+	}
+	if commitErr == nil && outcome.Status == agentrun.OutcomeCompleted && spec.Successor != nil {
+		if successorErr := spec.Successor(ctx, agentrun.OperationID(request.Snapshot.OperationID), outcome); successorErr != nil {
+			outcome = agentrun.NewOutcome(agentrun.OutcomeFailed, successorErr, successorErr.Error(), outcome.Content, outcome.Thinking)
+			if spec.Emit != nil {
+				spec.Emit(agentrun.Event{Type: "error", Data: map[string]string{"message": successorErr.Error()}})
+			}
 		}
 	}
 	reportHarnessOutcome(ctx, spec, outcome)

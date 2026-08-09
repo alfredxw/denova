@@ -1,9 +1,9 @@
 package conversation
 
 import (
+	"bytes"
 	"context"
-	agentrun "denova/internal/agents/run"
-	"denova/internal/agents/toolresult"
+	"encoding/xml"
 	"errors"
 	"fmt"
 	"strings"
@@ -12,7 +12,9 @@ import (
 
 	agentcontext "denova/internal/agents/context"
 	agentcompaction "denova/internal/agents/context/compaction"
+	agentrun "denova/internal/agents/run"
 	"denova/internal/agents/session"
+	"denova/internal/agents/toolresult"
 )
 
 var ErrMissingAgentCycleIdentity = errors.New("session canonical write requires durable agent cycle identity")
@@ -66,6 +68,13 @@ func (c *SessionConversation) AssembleModelContext(ctx context.Context, _ string
 	fragments := make([]agentcontext.Fragment, 0, len(input.Fragments)+2)
 	fragments = append(fragments, input.Fragments...)
 	fragments = append(fragments, c.runtimeContextFragments()...)
+	goalFragment, err := c.goalContextFragment(ctx)
+	if err != nil {
+		return agentcontext.ModelContextResult{}, err
+	}
+	if goalFragment != nil {
+		fragments = append(fragments, *goalFragment)
+	}
 	canonicalMessages := c.modelMessagesWithAcceptedInput(snapshot, inputIndex, materialized, input.UserMessage)
 	assembled, err := agentcontext.NewAssembler(input.Budget).Assemble(ctx, agentcontext.AssembleRequest{
 		Messages:  canonicalMessages,
@@ -81,6 +90,30 @@ func (c *SessionConversation) AssembleModelContext(ctx context.Context, _ string
 			canonicalMessages: agentcontext.CloneMessages(canonicalMessages),
 			effectiveMessages: agentcontext.CloneMessages(assembled.Messages),
 		},
+	}, nil
+}
+
+func (c *SessionConversation) goalContextFragment(ctx context.Context) (*agentcontext.Fragment, error) {
+	current, ok, err := c.session.Goal(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("read active conversation goal: %w", err)
+	}
+	if !ok || !current.IsActive() {
+		return nil, nil
+	}
+	var objective bytes.Buffer
+	if err := xml.EscapeText(&objective, []byte(current.Objective)); err != nil {
+		return nil, fmt.Errorf("encode conversation goal objective: %w", err)
+	}
+	content := fmt.Sprintf(`<active_goal id=%q revision=%q>
+<objective>%s</objective>
+Continue working autonomously toward this complete objective. Treat each response as one progress cycle, not as permission to stop early. Call goal_finish with outcome "completed" only when the full objective and its measurable outcomes are achieved. Call goal_finish with outcome "blocked" only when further progress requires user input or an external state change. Do not call goal_finish for an intermediate milestone.
+</active_goal>`, current.ID, fmt.Sprint(current.Revision), objective.String())
+	return &agentcontext.Fragment{
+		ID: "active_conversation_goal", Source: "session.goal", Title: "Active goal",
+		Purpose: "provide the durable user-owned objective and its completion protocol",
+		Content: content, Placement: agentcontext.PlacementFinalUserPrefix, Included: true,
+		Note: "source=canonical session goal; placement=dynamic final-user prefix for prefix-cache stability",
 	}, nil
 }
 
@@ -141,7 +174,10 @@ func (c *SessionConversation) acceptedInputDomainCommitIntent(message string, re
 	}
 	return session.NewDomainCommitIntent(session.DomainCommitIdentity{
 		CommandID: string(identity.CommandID), OperationID: string(identity.OperationID), Cycle: identity.Cycle,
-	}, agent.UserMessage(message), session.MessageMetadata{AgentKind: c.agentKind, UserReferences: userReferences})
+	}, agent.UserMessage(message), session.MessageMetadata{
+		AgentKind: c.agentKind, UserReferences: userReferences,
+		ContextOnly: c.inputVisibility == agentrun.InputModelOnly,
+	})
 }
 
 func (c *SessionConversation) modelMessagesWithAcceptedInput(

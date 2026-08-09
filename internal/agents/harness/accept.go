@@ -42,10 +42,25 @@ func (s *Service) StartWithOptions(
 	options agentrun.Options,
 	emit func(agentrun.Event),
 ) (*AcceptedRun, error) {
+	return s.StartWithOptionsAndSuccessor(ctx, runner, conversation, bookService, req, options, emit, nil)
+}
+
+// StartWithOptionsAndSuccessor admits a root turn with an app-owned durable
+// continuation policy. Ordinary callers keep using StartWithOptions.
+func (s *Service) StartWithOptionsAndSuccessor(
+	ctx context.Context,
+	runner *agent.Runner,
+	conversation agentchat.Conversation,
+	bookService *book.Service,
+	req agentchat.ChatRequest,
+	options agentrun.Options,
+	emit func(agentrun.Event),
+	successor SuccessorPolicy,
+) (*AcceptedRun, error) {
 	if s == nil || s.coordinator == nil {
 		return nil, ErrUnavailable
 	}
-	return s.coordinator.start(ctx, runner, conversation, bookService, req, options, emit)
+	return s.coordinator.start(ctx, runner, conversation, bookService, req, options, emit, successor)
 }
 
 func (h *coordinator) run(
@@ -57,7 +72,7 @@ func (h *coordinator) run(
 	options agentrun.Options,
 	emit func(agentrun.Event),
 ) agentrun.Outcome {
-	accepted, err := h.start(ctx, runner, conversation, bookService, req, options, emit)
+	accepted, err := h.start(ctx, runner, conversation, bookService, req, options, emit, nil)
 	if err != nil {
 		if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
 			return agentrun.NewOutcome(agentrun.OutcomeAborted, err, err.Error(), "", "")
@@ -76,6 +91,7 @@ func (h *coordinator) start(
 	req agentchat.ChatRequest,
 	options agentrun.Options,
 	emit func(agentrun.Event),
+	successor SuccessorPolicy,
 ) (*AcceptedRun, error) {
 	if h == nil || h.runtime == nil || h.engine == nil {
 		return nil, fmt.Errorf("agent durable runtime is unavailable")
@@ -126,6 +142,7 @@ func (h *coordinator) start(
 		Runner: runner, Conversation: conversation, BookService: bookService,
 		Request: req, Options: options, Emit: emit, Outcome: outcomes,
 		CycleCommit: harnessCycleCommitForConversation(conversation),
+		Successor:   successor,
 	})
 	if err != nil {
 		stopObserving()

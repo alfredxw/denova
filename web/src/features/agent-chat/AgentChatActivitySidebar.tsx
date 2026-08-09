@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useLayoutEffect, useRef, useState } from 'react'
 import { DndContext, KeyboardSensor, MouseSensor, TouchSensor, closestCenter, useSensor, useSensors, type DragEndEvent } from '@dnd-kit/core'
 import { SortableContext, sortableKeyboardCoordinates, verticalListSortingStrategy } from '@dnd-kit/sortable'
 import { useTranslation } from 'react-i18next'
@@ -71,7 +71,7 @@ export function AgentChatActivitySidebar({
       coordinateGetter: sortableKeyboardCoordinates,
     }),
   )
-  useEffect(() => {
+  useLayoutEffect(() => {
     const knownProjectIDs = knownProjectIDsRef.current
     const visibleProjectIDs = new Set(projects.map((project) => project.id))
     const activeProjectChanged = previousActiveProjectIDRef.current !== activeProjectId

@@ -11,6 +11,7 @@ const panelHarness = vi.hoisted(() => ({
   collapse: vi.fn(),
   expand: vi.fn(),
   resize: vi.fn(),
+  renderedDefaultSize: undefined as number | string | undefined,
 }))
 
 vi.mock('react-resizable-panels', () => ({
@@ -28,12 +29,15 @@ vi.mock('react-resizable-panels', () => ({
     id,
     onResize,
     panelRef,
+    defaultSize,
   }: {
     children: ReactNode
     id?: string
     onResize?: (size: PanelSize, id: string | undefined, previousSize: PanelSize | undefined) => void
     panelRef?: RefObject<PanelImperativeHandle | null>
+    defaultSize?: number | string
   }) => {
+    panelHarness.renderedDefaultSize = defaultSize
     useLayoutEffect(() => {
       if (panelRef) {
         panelRef.current = {
@@ -61,6 +65,7 @@ describe('CollapsibleResizablePanel', () => {
     panelHarness.collapse.mockReset()
     panelHarness.expand.mockReset()
     panelHarness.resize.mockReset()
+    panelHarness.renderedDefaultSize = undefined
   })
 
   it('restores its last visible pixel width after a programmatic collapse', async () => {
@@ -82,6 +87,7 @@ describe('CollapsibleResizablePanel', () => {
 
   it('restores the configured layout when the panel starts hidden', async () => {
     const { rerender } = render(panel(false))
+    expect(panelHarness.renderedDefaultSize).toBe('0px')
     await waitFor(() => expect(panelHarness.collapse).toHaveBeenCalledTimes(1))
 
     panelHarness.reportedPixels = 0

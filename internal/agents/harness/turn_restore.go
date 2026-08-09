@@ -56,18 +56,19 @@ type harnessTurnRestoreDescriptor struct {
 }
 
 type harnessTurnRequestDescriptor struct {
-	Message        string                       `json:"message"`
-	References     []string                     `json:"references,omitempty"`
-	LoreReferences []string                     `json:"lore_references,omitempty"`
-	StyleScenes    []string                     `json:"style_scenes,omitempty"`
-	Selections     []agentchat.TextSelectionRef `json:"selections,omitempty"`
-	IDEContext     prompts.IDEContextRef        `json:"ide_context,omitempty"`
-	ReviewFeedback agentreview.Refs             `json:"review_feedback,omitempty"`
-	PlanMode       bool                         `json:"plan_mode,omitempty"`
-	WritingSkill   string                       `json:"writing_skill,omitempty"`
-	ImagePresetID  string                       `json:"image_preset_id,omitempty"`
-	TellerID       string                       `json:"teller_id,omitempty"`
-	Locale         string                       `json:"locale,omitempty"`
+	Message         string                       `json:"message"`
+	References      []string                     `json:"references,omitempty"`
+	LoreReferences  []string                     `json:"lore_references,omitempty"`
+	StyleScenes     []string                     `json:"style_scenes,omitempty"`
+	Selections      []agentchat.TextSelectionRef `json:"selections,omitempty"`
+	IDEContext      prompts.IDEContextRef        `json:"ide_context,omitempty"`
+	ReviewFeedback  agentreview.Refs             `json:"review_feedback,omitempty"`
+	PlanMode        bool                         `json:"plan_mode,omitempty"`
+	WritingSkill    string                       `json:"writing_skill,omitempty"`
+	ImagePresetID   string                       `json:"image_preset_id,omitempty"`
+	TellerID        string                       `json:"teller_id,omitempty"`
+	Locale          string                       `json:"locale,omitempty"`
+	InputVisibility agentrun.InputVisibility     `json:"input_visibility,omitempty"`
 }
 
 func encodeHarnessTurnRestoreDescriptor(spec CommandSpec) (json.RawMessage, error) {
@@ -200,12 +201,13 @@ func describeHarnessTurnRequest(request agentchat.ChatRequest) harnessTurnReques
 			CurrentFile: caller.IDEContext.CurrentFile,
 			OpenFiles:   append([]string(nil), caller.IDEContext.OpenFiles...),
 		},
-		ReviewFeedback: caller.ReviewFeedback.Clone(),
-		PlanMode:       caller.PlanMode,
-		WritingSkill:   caller.WritingSkill,
-		ImagePresetID:  caller.ImagePresetID,
-		TellerID:       caller.TellerID,
-		Locale:         caller.Locale,
+		ReviewFeedback:  caller.ReviewFeedback.Clone(),
+		PlanMode:        caller.PlanMode,
+		WritingSkill:    caller.WritingSkill,
+		ImagePresetID:   caller.ImagePresetID,
+		TellerID:        caller.TellerID,
+		Locale:          caller.Locale,
+		InputVisibility: request.InputVisibility,
 	}
 }
 
@@ -220,12 +222,13 @@ func (descriptor harnessTurnRequestDescriptor) chatRequest() agentchat.ChatReque
 			CurrentFile: descriptor.IDEContext.CurrentFile,
 			OpenFiles:   append([]string(nil), descriptor.IDEContext.OpenFiles...),
 		},
-		ReviewFeedback: append(agentreview.Refs(nil), descriptor.ReviewFeedback...),
-		PlanMode:       descriptor.PlanMode,
-		WritingSkill:   descriptor.WritingSkill,
-		ImagePresetID:  descriptor.ImagePresetID,
-		TellerID:       descriptor.TellerID,
-		Locale:         descriptor.Locale,
+		ReviewFeedback:  append(agentreview.Refs(nil), descriptor.ReviewFeedback...),
+		PlanMode:        descriptor.PlanMode,
+		WritingSkill:    descriptor.WritingSkill,
+		ImagePresetID:   descriptor.ImagePresetID,
+		TellerID:        descriptor.TellerID,
+		Locale:          descriptor.Locale,
+		InputVisibility: descriptor.InputVisibility,
 	}
 }
 

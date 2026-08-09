@@ -2,11 +2,13 @@ package app
 
 import (
 	"context"
+	"fmt"
+
+	"denova/config"
 	agentharness "denova/internal/agents/harness"
 	agentrun "denova/internal/agents/run"
 	appagentruntime "denova/internal/app/agentruntime"
 	apptask "denova/internal/app/task"
-	"fmt"
 )
 
 var ErrNoActiveAgentOperation = appagentruntime.ErrNoActiveOperation
@@ -82,6 +84,7 @@ func (s *ChatAppService) submitAgentCommand(ctx context.Context, command ChatAge
 		Kind: command.Kind, CommandID: command.CommandID,
 		OperationID: command.OperationID, AfterOperationID: command.OperationID,
 		Request: command.Input, Emit: task.Emit, Prepare: prepare,
+		Successor: s.writingGoalSuccessor(activeRuntime, task, command.Input.Locale),
 		Options: agentrun.Options{
 			AgentKind: agentrun.AgentKindIDE,
 			StateRoot: activeRuntime.projectState,
@@ -91,6 +94,44 @@ func (s *ChatAppService) submitAgentCommand(ctx context.Context, command ChatAge
 			Mode:      "ide",
 		},
 	})
+}
+
+func (s *ChatAppService) writingGoalSuccessor(runtime ideChatRuntime, task *apptask.Task, locale string) agentharness.SuccessorPolicy {
+	var successor agentharness.SuccessorPolicy
+	successor = func(ctx context.Context, parent agentrun.OperationID, _ agentrun.Outcome) error {
+		if !config.ResolveAgentTools(&runtime.cfg, config.AgentKindIDE).Allows(config.AgentToolGoal) {
+			return nil
+		}
+		current, ok, err := runtime.sess.Goal(ctx)
+		if err != nil || !ok || !current.IsActive() {
+			return err
+		}
+		commandID, input := appagentruntime.GoalContinuationRequest(current, parent, locale)
+		prepare := func(prepareCtx context.Context) (agentharness.TurnExecution, error) {
+			if err := s.confirmActiveCommandRuntime(runtime, task); err != nil {
+				return agentharness.TurnExecution{}, err
+			}
+			execution, preparedRuntime, err := s.prepareWritingHarnessTurn(prepareCtx, input, task.ID())
+			if err != nil {
+				return agentharness.TurnExecution{}, err
+			}
+			if preparedRuntime.workspace != runtime.workspace || preparedRuntime.sess != runtime.sess || preparedRuntime.chatService != runtime.chatService {
+				return agentharness.TurnExecution{}, ErrAgentContextChanged
+			}
+			return execution, s.confirmActiveCommandRuntime(runtime, task)
+		}
+		_, err = runtime.chatService.SubmitCommand(ctx, agentharness.CommandSpec{
+			Kind: agentharness.CommandNextTurn, CommandID: commandID,
+			AfterOperationID: parent, Request: input, Emit: task.Emit, Prepare: prepare,
+			Successor: successor,
+			Options: agentrun.Options{
+				AgentKind: agentrun.AgentKindIDE, StateRoot: runtime.projectState,
+				TaskID: task.ID(), SessionID: runtime.sess.ID, Workspace: runtime.workspace, Mode: "ide",
+			},
+		})
+		return err
+	}
+	return successor
 }
 
 func (s *ChatAppService) confirmActiveCommandRuntime(expected ideChatRuntime, task *apptask.Task) error {

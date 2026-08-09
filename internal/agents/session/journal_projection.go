@@ -15,6 +15,7 @@ import (
 
 	"denova/internal/agents/conversationconfig"
 	"denova/internal/agents/conversationjournal"
+	"denova/internal/agents/goal"
 )
 
 const (
@@ -86,6 +87,7 @@ type sessionJournalProjection struct {
 	ContextRevision       uint64                     `json:"context_revision"`
 	RuntimeConfig         *conversationconfig.Config `json:"runtime_config,omitempty"`
 	RuntimeConfigRevision uint64                     `json:"runtime_config_revision,omitempty"`
+	Goal                  *goal.State                `json:"goal,omitempty"`
 
 	RecentCursors              []conversationjournal.Cursor `json:"recent_cursors,omitempty"`
 	MessageLocators            []messageLocator             `json:"message_locators,omitempty"`
@@ -192,6 +194,21 @@ func (projection *sessionJournalProjection) Apply(record conversationjournal.Rec
 		return projection.applyLegacyMessage(record)
 	case historyTypeMessage, historyTypeContextMessage:
 		return projection.applyMessage(record, typed.Type)
+	case historyTypeGoalChanged:
+		var changed goalChangedRecord
+		if err := json.Unmarshal(record.Payload, &changed); err != nil {
+			return err
+		}
+		if changed.Goal.Revision == 0 || strings.TrimSpace(changed.Goal.ID) == "" {
+			return fmt.Errorf("goal change is missing identity or revision")
+		}
+		if projection.Goal != nil && changed.Goal.Revision <= projection.Goal.Revision {
+			return fmt.Errorf("goal revision is not monotonic")
+		}
+		value := changed.Goal
+		projection.Goal = &value
+		projection.advanceUpdatedAt(value.UpdatedAt)
+		return nil
 	case historyTypeClear:
 		var marker clearRecord
 		if err := json.Unmarshal(record.Payload, &marker); err != nil {

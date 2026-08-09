@@ -386,6 +386,7 @@ func TestHarnessEngineControlInterruptsBlockingPreparation(t *testing.T) {
 func TestHarnessEngineCycleCommitRunsOnceBeforeSettlementAndFailsOperation(t *testing.T) {
 	wantErr := errors.New("game projection unavailable")
 	commits := 0
+	successors := 0
 	engine := newHarnessEngine(newTestExecutor(agentrun.DefaultLoopPolicy()))
 	if err := registerAcceptedHarnessTurn(engine, "turn-commit-error", TurnSpec{
 		Runner:       newRunControlTestRunner(t, &runControlFixedModel{message: agent.AssistantMessage("persisted answer", nil)}, true),
@@ -399,6 +400,10 @@ func TestHarnessEngineCycleCommitRunsOnceBeforeSettlementAndFailsOperation(t *te
 			}
 			return wantErr
 		},
+		Successor: func(context.Context, agentrun.OperationID, agentrun.Outcome) error {
+			successors++
+			return nil
+		},
 	}); err != nil {
 		t.Fatalf("register turn spec: %v", err)
 	}
@@ -409,6 +414,49 @@ func TestHarnessEngineCycleCommitRunsOnceBeforeSettlementAndFailsOperation(t *te
 	}
 	if commits != 1 {
 		t.Fatalf("cycle commits = %d, want one", commits)
+	}
+	if successors != 0 {
+		t.Fatalf("successor ran %d times after a failed domain commit", successors)
+	}
+}
+
+func TestHarnessEngineAcceptsSuccessorAfterSuccessfulDomainCommit(t *testing.T) {
+	steps := make([]string, 0, 2)
+	engine := newHarnessEngine(newTestExecutor(agentrun.DefaultLoopPolicy()))
+	if err := registerAcceptedHarnessTurn(engine, "turn-successor", TurnSpec{
+		Runner:       newRunControlTestRunner(t, &runControlFixedModel{message: agent.AssistantMessage("progress", nil)}, true),
+		Conversation: &runControlConversation{},
+		Request:      agentchat.ChatRequest{Message: "continue"},
+		Options:      agentrun.Options{AgentKind: agentrun.AgentKindIDE, RootAgentName: "run-control-test"},
+		CycleCommit: func(_ context.Context, outcome agentrun.Outcome) error {
+			if outcome.Status != agentrun.OutcomeCompleted {
+				t.Fatalf("commit outcome = %#v", outcome)
+			}
+			steps = append(steps, "commit")
+			return nil
+		},
+		Successor: func(_ context.Context, parent agentrun.OperationID, outcome agentrun.Outcome) error {
+			if len(steps) != 1 || steps[0] != "commit" {
+				t.Fatalf("successor ran before domain commit: %#v", steps)
+			}
+			if parent == "" || outcome.Status != agentrun.OutcomeCompleted {
+				t.Fatalf("successor input = parent:%q outcome:%#v", parent, outcome)
+			}
+			steps = append(steps, "successor")
+			return nil
+		},
+	}); err != nil {
+		t.Fatalf("register turn spec: %v", err)
+	}
+
+	request := harnessEngineRequest("turn-successor", nil)
+	request.Snapshot.OperationID = "operation-successor"
+	result, err := runHarnessEngine(engine, context.Background(), request, func(runstate.EngineEvent) error { return nil })
+	if err != nil || result.Status != runstate.EngineCompleted {
+		t.Fatalf("run result = %#v err=%v", result, err)
+	}
+	if len(steps) != 2 || steps[0] != "commit" || steps[1] != "successor" {
+		t.Fatalf("settlement steps = %#v", steps)
 	}
 }
 

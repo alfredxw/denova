@@ -106,6 +106,8 @@ func (s *Server) registerRoutes(h *hertzserver.Hertz) {
 		projects.POST("/terminal/sessions", apiHandlers.HandleTerminalSessionCreate)
 		projects.GET("/conversation-config", apiHandlers.HandleConversationConfigGet)
 		projects.PATCH("/conversation-config", apiHandlers.HandleConversationConfigPatch)
+		projects.GET("/conversation-goal", apiHandlers.HandleConversationGoalGet)
+		projects.POST("/conversation-goal", apiHandlers.HandleConversationGoalMutate)
 		api.POST("/imports/character-card/preview", apiHandlers.HandleCharacterCardPreview)
 		api.POST("/books/import-character-card", apiHandlers.HandleNewBookCharacterCardImport)
 		api.POST("/workspace/switch", apiHandlers.HandleWorkspaceSwitch)

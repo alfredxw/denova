@@ -44,7 +44,7 @@ var agentKindRegistry = []AgentKindDefinition{
 		ToolCapabilities: []string{
 			AgentToolWorkspaceRead, AgentToolWorkspaceWrite, AgentToolShell,
 			AgentToolWebSearch, AgentToolWebFetch, AgentToolBrowser,
-			AgentToolAsk, AgentToolTodo, AgentToolSkills, AgentToolDelegation,
+			AgentToolAsk, AgentToolTodo, AgentToolGoal, AgentToolSkills, AgentToolDelegation,
 		},
 		ModelOverride:    func(settings AgentModelSettings) AgentModelOverride { return settings.General },
 		SetModelOverride: func(settings *AgentModelSettings, override AgentModelOverride) { settings.General = override },
@@ -58,7 +58,7 @@ var agentKindRegistry = []AgentKindDefinition{
 		ToolCapabilities: []string{
 			AgentToolWorkspaceRead, AgentToolWorkspaceWrite, AgentToolShell,
 			AgentToolWebSearch, AgentToolWebFetch, AgentToolBrowser,
-			AgentToolAsk, AgentToolTodo, AgentToolSkills, AgentToolDelegation,
+			AgentToolAsk, AgentToolTodo, AgentToolGoal, AgentToolSkills, AgentToolDelegation,
 			AgentToolLoreRead, AgentToolLoreWrite, AgentToolImageGeneration,
 		},
 		ModelOverride:    func(settings AgentModelSettings) AgentModelOverride { return settings.IDE },
@@ -213,6 +213,10 @@ var agentToolCapabilities = []AgentToolCapability{
 		agent.ToolRecoveryReconcilable, agent.SteeringFinishCurrent,
 	))),
 	subAgentUnavailableCapabilityDefinition(AgentToolTodo, "agents.tool.todo.title", "agents.tool.todo.subtitle", []string{"todo"}, transientDescriptorSummary(descriptorSummary(
+		agent.ToolExecutionSessionExclusive, agent.ToolMutationSession, agent.ToolPostCheckSessionState,
+		agent.ToolRecoveryIdempotent, agent.SteeringFinishCurrent,
+	))),
+	subAgentUnavailableCapabilityDefinition(AgentToolGoal, "agents.tool.goal.title", "agents.tool.goal.subtitle", []string{"goal_finish"}, transientDescriptorSummary(descriptorSummary(
 		agent.ToolExecutionSessionExclusive, agent.ToolMutationSession, agent.ToolPostCheckSessionState,
 		agent.ToolRecoveryIdempotent, agent.SteeringFinishCurrent,
 	))),

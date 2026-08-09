@@ -178,6 +178,7 @@ export function CollapsibleResizablePanel({
   return (
     <Panel
       {...panelProps}
+      defaultSize={visible ? panelProps.defaultSize : collapsedSize}
       panelRef={panelRef}
       onResize={handleResize}
       collapsedSize={collapsedSize}

@@ -12,8 +12,28 @@ import (
 	agentinteractive "denova/internal/agents/interactive"
 	"denova/internal/agents/prompts"
 	agentrun "denova/internal/agents/run"
+	"denova/internal/agents/session"
+	agenttools "denova/internal/agents/tools"
 	"denova/internal/book"
 )
+
+// GoalTools returns the root-only tool surface for one conversation. The tool
+// remains registered while no goal is active so model tool schemas stay stable
+// across turns; its captured revision fails closed if the goal changes.
+func GoalTools(ctx context.Context, sess *session.Session) ([]agents.ToolDefinition, error) {
+	if sess == nil {
+		return nil, fmt.Errorf("build goal tools: session is nil")
+	}
+	current, _, err := sess.Goal(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("read conversation goal: %w", err)
+	}
+	definition, err := agenttools.NewGoalFinish(sess, current)
+	if err != nil {
+		return nil, fmt.Errorf("build goal_finish tool: %w", err)
+	}
+	return []agents.ToolDefinition{definition}, nil
+}
 
 // BuildConversation creates either a writing or a general-purpose project
 // runner. Agent kind is explicit because it determines the prompt and tools.
@@ -23,11 +43,12 @@ func BuildConversation(
 	state *book.State,
 	teller prompts.IDEStoryTeller,
 	agentKind string,
+	rootTools ...agents.ToolDefinition,
 ) (*agents.Runner, prompts.SystemPromptComposition, error) {
 	switch agentKind {
 	case agentrun.AgentKindGeneral:
 		built, composition, err := agents.BuildGeneralAgentWithCompositionForHost(
-			ctx, cfg, agents.AgentHostCapabilities{Interactive: true},
+			ctx, cfg, agents.AgentHostCapabilities{Interactive: true, RootTools: rootTools},
 		)
 		if err != nil {
 			return nil, prompts.SystemPromptComposition{}, fmt.Errorf("build General Agent: %w", err)
@@ -35,7 +56,7 @@ func BuildConversation(
 		return agentchat.NewRunnerWithOptions(ctx, built, runnerOptions(cfg, agentKind)), composition, nil
 	case agentrun.AgentKindIDE:
 		built, composition, err := agents.BuildWithCompositionForHost(
-			ctx, cfg, state, teller, agents.AgentHostCapabilities{Interactive: true},
+			ctx, cfg, state, teller, agents.AgentHostCapabilities{Interactive: true, RootTools: rootTools},
 		)
 		if err != nil {
 			return nil, prompts.SystemPromptComposition{}, fmt.Errorf("build Writing Agent: %w", err)

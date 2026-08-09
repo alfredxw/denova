@@ -9,6 +9,7 @@ import (
 	agentcontext "denova/internal/agents/context"
 	"denova/internal/agents/conversationconfig"
 	"denova/internal/agents/conversationjournal"
+	"denova/internal/agents/goal"
 )
 
 const (
@@ -26,6 +27,7 @@ const (
 	historyTypeCompactionRemoved   = "context_compaction_removed"
 	historyTypeCompactionHealth    = "context_compaction_health"
 	historyTypeToolResultCleanup   = "tool_result_cleanup"
+	historyTypeGoalChanged         = "goal_changed"
 
 	InterruptionPending  = "pending"
 	InterruptionResolved = "resolved"
@@ -110,6 +112,9 @@ type MessageMetadata struct {
 	SubAgentSessionID string                       `json:"subagent_session_id,omitempty"`
 	SubAgentType      string                       `json:"subagent_type,omitempty"`
 	UserReferences    []agentcontext.UserReference `json:"user_references,omitempty"`
+	// ContextOnly keeps host-owned continuation instructions in model history
+	// without projecting them as user-authored chat messages.
+	ContextOnly bool `json:"context_only,omitempty"`
 	// ProviderContinuation is process-local model-visible state copied onto the
 	// canonical assistant Message. It is excluded from metadata serialization so
 	// the protocol payload has exactly one durable source of truth.
@@ -415,6 +420,7 @@ type Session struct {
 	lastReplayRecords      int
 	journal                *conversationjournal.Journal
 	projection             *sessionJournalProjection
+	goal                   goal.State
 	materializedCursor     conversationjournal.Cursor
 	messageBaseIndex       int
 	messageCount           int

@@ -209,8 +209,13 @@ func (service *Service) AcceptTurn(ctx context.Context, input TurnRequest) (*Acc
 	if err := applyTurnPolicy(&runtime, input.Policy); err != nil {
 		return nil, err
 	}
+	goalTools, err := appagentruntime.GoalTools(ctx, runtime.Session)
+	if err != nil {
+		return nil, fmt.Errorf("build AgentChat goal tool: %w", err)
+	}
 	runner, systemPrompt, err := appagentruntime.BuildConversation(
 		ctx, &runtime.Config, runtime.State, runtime.IDETeller, runtime.AgentKind,
+		goalTools...,
 	)
 	if err != nil {
 		return nil, fmt.Errorf("build AgentChat Project Agent: %w", err)
@@ -257,8 +262,9 @@ func (service *Service) AcceptTurn(ctx context.Context, input TurnRequest) (*Acc
 		turn.mutationMu.Unlock()
 	})
 	options = conversationapp.BindReviewFeedback(options, runtime, request)
-	accepted, err := runtime.ChatService.StartWithOptions(
+	accepted, err := runtime.ChatService.StartWithOptionsAndSuccessor(
 		acceptCtx, runner, conversation, runtime.BookService, request, options, emit,
+		service.goalSuccessor(active),
 	)
 	releaseAcceptance()
 	if err != nil {
@@ -375,7 +381,38 @@ func (service *Service) SubmitCommand(ctx context.Context, binding Binding, comm
 		Kind: command.Kind, CommandID: command.CommandID,
 		OperationID: command.OperationID, AfterOperationID: command.OperationID,
 		Request: command.Input, Emit: active.task.Emit, Prepare: prepare, Options: options,
+		Successor: service.goalSuccessor(active),
 	})
+}
+
+func (service *Service) goalSuccessor(active *run) agentharness.SuccessorPolicy {
+	var successor agentharness.SuccessorPolicy
+	successor = func(ctx context.Context, parent agentrun.OperationID, _ agentrun.Outcome) error {
+		if active == nil || active.task == nil || active.runtime.Session == nil {
+			return nil
+		}
+		if !config.ResolveAgentTools(&active.runtime.Config, active.runtime.AgentKind).Allows(config.AgentToolGoal) {
+			return nil
+		}
+		current, ok, err := active.runtime.Session.Goal(ctx)
+		if err != nil || !ok || !current.IsActive() {
+			return err
+		}
+		commandID, input := appagentruntime.GoalContinuationRequest(current, parent, active.request.Locale)
+		prepare := func(prepareCtx context.Context) (agentharness.TurnExecution, error) {
+			if service.activeRun(active.binding) != active || active.task.Finished() {
+				return agentharness.TurnExecution{}, appagentruntime.ErrContextChanged
+			}
+			return service.prepareCommandExecution(prepareCtx, active, input)
+		}
+		_, err = active.runtime.ChatService.SubmitCommand(ctx, agentharness.CommandSpec{
+			Kind: agentharness.CommandNextTurn, CommandID: commandID,
+			AfterOperationID: parent, Request: input, Emit: active.task.Emit, Prepare: prepare,
+			Successor: successor, Options: runtimeOptions(active.binding, active.task.ID()),
+		})
+		return err
+	}
+	return successor
 }
 
 func (service *Service) prepareCommandExecution(ctx context.Context, active *run, request chatagent.ChatRequest) (agentharness.TurnExecution, error) {
@@ -386,8 +423,13 @@ func (service *Service) prepareCommandExecution(ctx context.Context, active *run
 	if err := applyTurnPolicy(&runtime, active.policy); err != nil {
 		return agentharness.TurnExecution{}, err
 	}
+	goalTools, err := appagentruntime.GoalTools(ctx, runtime.Session)
+	if err != nil {
+		return agentharness.TurnExecution{}, err
+	}
 	runner, systemPrompt, err := appagentruntime.BuildConversation(
 		ctx, &runtime.Config, runtime.State, runtime.IDETeller, runtime.AgentKind,
+		goalTools...,
 	)
 	if err != nil {
 		return agentharness.TurnExecution{}, err

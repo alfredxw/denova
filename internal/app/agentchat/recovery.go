@@ -129,7 +129,7 @@ func runtimeCommandID(runtime agentrun.RuntimeStatus) string {
 // queued AgentChat command. The descriptor remains authoritative for input and
 // binding identity.
 func (service *Service) RestoreTurn(request agentharness.TurnRestoreRequest, binding agentrun.RuntimeBinding) agentharness.TurnSpec {
-	return agentharness.TurnSpec{
+	spec := agentharness.TurnSpec{
 		Request: request.Request,
 		Options: request.Options,
 		Prepare: func(ctx context.Context) (agentharness.TurnExecution, error) {
@@ -157,4 +157,18 @@ func (service *Service) RestoreTurn(request agentharness.TurnRestoreRequest, bin
 			return execution, nil
 		},
 	}
+	spec.Successor = func(ctx context.Context, parent agentrun.OperationID, outcome agentrun.Outcome) error {
+		scope, err := service.ResolveBinding(Binding{
+			ProjectID: strings.TrimSpace(binding.ProjectID), Workspace: strings.TrimSpace(binding.Workspace), SessionID: strings.TrimSpace(binding.SessionID),
+		})
+		if err != nil {
+			return err
+		}
+		active := service.activeRun(scope)
+		if active == nil {
+			return appagentruntime.ErrContextChanged
+		}
+		return service.goalSuccessor(active)(ctx, parent, outcome)
+	}
+	return spec
 }

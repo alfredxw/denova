@@ -185,7 +185,7 @@ export function AdaptiveSurface({
         id={rightResize.layoutKey}
         orientation="horizontal"
         resizeTargetMinimumSize={{ coarse: 16, fine: 1 }}
-        defaultLayout={rightPanelLayout.defaultLayout}
+        defaultLayout={desktopRightVisible ? rightPanelLayout.defaultLayout : undefined}
         onLayoutChanged={(layout) => {
           if (desktopRightVisible) rightPanelLayout.persistUserLayout(layout)
         }}
@@ -236,7 +236,7 @@ export function AdaptiveSurface({
             id={leftResize.layoutKey}
             orientation="horizontal"
             resizeTargetMinimumSize={{ coarse: 16, fine: 1 }}
-            defaultLayout={leftPanelLayout.defaultLayout}
+            defaultLayout={desktopLeftVisible ? leftPanelLayout.defaultLayout : undefined}
             onLayoutChanged={(layout) => {
               if (desktopLeftVisible) leftPanelLayout.persistUserLayout(layout)
             }}
@@ -360,7 +360,7 @@ function useWidthCollapse(collapseWidth: number | null) {
   const containerRef = useRef<HTMLDivElement>(null)
   const [widthCollapsed, setWidthCollapsed] = useState(false)
 
-  useEffect(() => {
+  useLayoutEffect(() => {
     if (collapseWidth === null) {
       setWidthCollapsed(false)
       return

@@ -33,6 +33,7 @@ import { useSkillCommands } from '@/hooks/useSkillCommands'
 import { DEFAULT_WRITING_SKILL, resolveWritingSkillSelection, useWritingSkillOptions } from '@/hooks/useWritingSkillOptions'
 import type { PersistedUserSettingsController } from '@/hooks/usePersistedUserSettings'
 import { AgentChatPane } from './AgentChatPane'
+import { LoadingState } from '@/components/common/LoadingState'
 import { SessionManagementPanel } from './SessionManagementPanel'
 import { AgentTracePanel } from './AgentTracePanel'
 import { AgentSubAgentSessionPanel } from './AgentSubAgentSessionPanel'
@@ -56,6 +57,7 @@ import { toast } from 'sonner'
 import type { ChatSendOptions } from '@/hooks/useAgentChat'
 import { resolveAgentAskAndRefresh } from '@/lib/agent-ask'
 import type { ConversationConfigBinding } from '@/features/conversation-config/types'
+import { useConversationGoal } from '@/features/agent-goal/use-conversation-goal'
 
 type AgentPanelView = 'chat' | 'sessions' | 'traces'
 export type AgentPanelChrome = 'panel' | 'workbench'
@@ -83,6 +85,8 @@ interface AgentPanelProps {
    * conversation as a full-width surface (AgentChat tab), where the host owns closing.
    */
   chrome?: AgentPanelChrome
+  /** Keeps first-load history hidden until the virtualized list can mount at its final position. */
+  initializing?: boolean
   /** Owned above the conditional panel so closing the panel cannot discard delayed saves. */
   composerSettings: WritingComposerSettingsController
   currentChapter?: ChapterSummary
@@ -174,6 +178,7 @@ function AgentPanelComponent({
   agentKind = 'writing',
   active = true,
   chrome = 'panel',
+  initializing = false,
   composerSettings: persistedSettings,
   currentChapter,
   selectedFile,
@@ -274,6 +279,10 @@ function AgentPanelComponent({
   const writingSkill = useMemo(() => resolveWritingSkillSelection(configuredWritingSkill, writingSkillOptions), [configuredWritingSkill, writingSkillOptions])
   const changeGroupsQuery = useProjectChangeGroups(active && projectId && activeSessionId && !sessionDraft ? projectId : '', { sessionID: activeSessionId })
   const tokenUsageMessages = useMemo(() => selectAgentTokenUsageRecords(messages), [messages])
+  const effectiveConversationBinding = useMemo<ConversationConfigBinding | undefined>(() => conversationBinding ?? (activeSessionId
+    ? { mode: generalAgent ? 'agent_chat' : 'writing', project_id: projectId, session_id: activeSessionId }
+    : undefined), [activeSessionId, conversationBinding, generalAgent, projectId])
+  const conversationGoal = useConversationGoal(effectiveConversationBinding, isExecutionActive)
   const activeRunID = useMemo(() => {
     if (!isExecutionActive) return ''
     const views = buildAgentMessageViews(messages)
@@ -474,6 +483,34 @@ function AgentPanelComponent({
     return accepted
   }
 
+  const submitGoal = async (objective: string) => {
+    if (planMode) onPlanModeChange(false)
+    const next = await conversationGoal.set(objective)
+    if (!next) {
+      toast.error(t('chat.goal.updateFailed'))
+      return false
+    }
+    return sendWithWritingSkill(objective)
+  }
+
+  const pauseGoal = async () => {
+    const next = await conversationGoal.pause()
+    if (!next) {
+      toast.error(t('chat.goal.updateFailed'))
+      return
+    }
+    if (isExecutionActive) onStop()
+  }
+
+  const clearGoal = async () => {
+    const next = await conversationGoal.clear()
+    if (!next) {
+      toast.error(t('chat.goal.updateFailed'))
+      return
+    }
+    if (isExecutionActive) onStop()
+  }
+
   const returnQueuedCommandToEditor = useCallback(async (item: AgentRuntimeQueuedCommand) => {
     const prompt = await onEditQueuedCommand?.(item)
     if (typeof prompt !== 'string') return
@@ -546,6 +583,11 @@ function AgentPanelComponent({
     activeStopDisabled: activeControlsDisabled && !recoveryAbortAvailable,
     planMode,
     onTogglePlanMode: onPlanModeToggle,
+    goal: conversationGoal.goal,
+    goalPending: conversationGoal.saving,
+    onGoalSubmit: submitGoal,
+    onGoalPause: pauseGoal,
+    onGoalClear: clearGoal,
     draftKey: `ide-agent:${workspace || 'global'}:${activeSessionId || 'current'}`,
     inputPrefill,
     onInputPrefillConsumed: () => setInputPrefill(null),
@@ -572,9 +614,7 @@ function AgentPanelComponent({
     onOpenTrace: openTraceRun,
     agentKey: generalAgent ? ('general' as const) : ('ide' as const),
     workspace,
-    conversationBinding: conversationBinding ?? (activeSessionId
-      ? { mode: 'writing' as const, project_id: projectId, session_id: activeSessionId }
-      : undefined),
+    conversationBinding: effectiveConversationBinding,
     composerSettingsControl: generalAgent ? undefined : (
       <>
         <ImageAgentModelSettingsMenu projectId={projectId} disabled={!workspace || persistedSettings.loading || isStreaming} />
@@ -599,7 +639,9 @@ function AgentPanelComponent({
     floating: true,
     onHeightChange: setInputAreaHeight,
   }
-  const chatPane = (
+  const chatPane = initializing ? (
+    <LoadingState label={t('router.loading')} className="h-full min-h-0" />
+  ) : (
     <AgentChatPane
       className="min-w-0 flex-1"
       contentClassName={dockedChrome ? undefined : 'mx-auto w-full max-w-[56rem]'}

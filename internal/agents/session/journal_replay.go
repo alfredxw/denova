@@ -68,6 +68,9 @@ func loadSession(filePath string) (*Session, error) {
 		messages: make([]*agent.Message, 0), records: make([]historyRecord, 0),
 		partialMaterialization: true,
 	}
+	if projection.Goal != nil {
+		sess.goal = *projection.Goal
+	}
 	if err := sess.migrateProjectionCompactionCursorsLocked(context.Background()); err != nil {
 		return nil, fmt.Errorf("迁移会话压缩游标 %s: %w", filePath, err)
 	}
@@ -243,6 +246,14 @@ func appendRecordLine(sess *Session, line []byte, lineNumber int) error {
 		return appendDisplayRecordLine(sess, line, lineNumber)
 	case historyTypeMessage, historyTypeContextMessage:
 		return appendMessageRecordLine(sess, line, typed.Type)
+	case historyTypeGoalChanged:
+		var changed goalChangedRecord
+		if err := json.Unmarshal(line, &changed); err != nil {
+			return err
+		}
+		sess.goal = changed.Goal
+		advanceUpdatedAt(sess, changed.Goal.UpdatedAt)
+		return nil
 	case historyTypeSessionPatch:
 		return applySessionPatchLine(sess, line)
 	case historyTypeDisplayPatch:

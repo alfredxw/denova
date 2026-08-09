@@ -4,7 +4,13 @@ import (
 	"time"
 
 	"denova/internal/agents/conversationconfig"
+	"denova/internal/agents/goal"
 )
+
+type goalChangedRecord struct {
+	Type string     `json:"type"`
+	Goal goal.State `json:"goal"`
+}
 
 const (
 	journalFormatVersion         = 2

@@ -1,6 +1,6 @@
 import { useState, useRef, useEffect, useLayoutEffect, useMemo, useCallback, type ReactNode } from 'react'
 import type { LucideIcon } from 'lucide-react'
-import { Archive, BadgeHelp, BarChart3, ClipboardList, Eraser, List, ScrollText, Sparkles } from 'lucide-react'
+import { Archive, BadgeHelp, BarChart3, ClipboardList, Eraser, List, ScrollText, Sparkles, Target, X } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import { FileReferencePicker, type FileReferencePickerHandle, type ReferencePickerItem } from './FileReferencePicker'
 import { TokenUsageDialog, type TokenUsageRecord } from './TokenUsagePanel'
@@ -17,15 +17,18 @@ import { useIsMobile } from '@/hooks/useIsMobile'
 import { ReviewFeedbackTray, reviewFeedbackCommentCount, type ReviewFeedbackBatch, type ReviewFeedbackComment, type ReviewFeedbackSelection } from '@/features/changes/agent/ReviewFeedbackTray'
 import { AgentComposerControls } from './AgentComposerControls'
 import { AgentQueuedCommandList } from './AgentQueuedCommandList'
+import { AgentGoalCard } from './AgentGoalCard'
 import { useAgentApprovalMode } from '@/features/agent-approval/AgentApprovalProvider'
 import { AgentApprovalModeMenu } from '@/features/agent-approval/AgentApprovalModeMenu'
 import { InputCommandMenu, type InputCommandOption } from './InputCommandMenu'
 import { useConversationConfig } from '@/features/conversation-config/use-conversation-config'
 import type { ConversationConfigBinding } from '@/features/conversation-config/types'
 import { cn } from '@/lib/utils'
+import type { ConversationGoal } from '@/features/agent-goal/types'
 
 /** 可用命令列表 */
 const COMMANDS: Array<{ cmd: string; descKey: string; hintKey: string; icon: LucideIcon }> = [
+  { cmd: '/goal', descKey: 'chat.command.goal.desc', hintKey: 'chat.command.goal.hint', icon: Target },
   { cmd: '/plan', descKey: 'chat.command.plan.desc', hintKey: 'chat.command.plan.hint', icon: ClipboardList },
   { cmd: '/clear', descKey: 'chat.command.clear.desc', hintKey: 'chat.command.clear.hint', icon: Eraser },
   { cmd: '/compact', descKey: 'chat.command.compact.desc', hintKey: 'chat.command.compact.hint', icon: Archive },
@@ -61,6 +64,11 @@ interface InputAreaProps {
   sendBlocked?: boolean
   planMode?: boolean
   onTogglePlanMode?: () => void
+  goal?: ConversationGoal | null
+  goalPending?: boolean
+  onGoalSubmit?: (objective: string) => boolean | void | Promise<boolean | void>
+  onGoalPause?: () => void | Promise<void>
+  onGoalClear?: () => void | Promise<void>
   draftKey?: string
   inputPrefill?: { prompt: string; nonce: number } | null
   onInputPrefillConsumed?: () => void
@@ -119,6 +127,11 @@ export function InputArea({
   sendBlocked = false,
   planMode = false,
   onTogglePlanMode,
+  goal,
+  goalPending = false,
+  onGoalSubmit,
+  onGoalPause,
+  onGoalClear,
   draftKey,
   inputPrefill,
   onInputPrefillConsumed,
@@ -173,6 +186,7 @@ export function InputArea({
   const [referenceQuery, setReferenceQuery] = useState<string | null>(null)
   const [styleSceneQuery, setStyleSceneQuery] = useState<string | null>(null)
   const [submitting, setSubmitting] = useState(false)
+  const [goalMode, setGoalMode] = useState(false)
   const inputRef = useRef<ComposerTokenInputHandle>(null)
   const referencePickerRef = useRef<FileReferencePickerHandle>(null)
   const stylePickerRef = useRef<FileReferencePickerHandle>(null)
@@ -186,6 +200,7 @@ export function InputArea({
     const allowedBuiltinCommands = builtinCommands ? new Set<string>(builtinCommands) : null
     const staticCommands = effectiveCommandScope === 'all'
       ? COMMANDS
+        .filter(({ cmd }) => cmd !== '/goal' || Boolean(onGoalSubmit))
         .filter(({ cmd }) => !allowedBuiltinCommands || allowedBuiltinCommands.has(cmd))
         .map(({ cmd, descKey, hintKey, icon }) => ({
           cmd,
@@ -212,7 +227,7 @@ export function InputArea({
     if (effectiveCommandScope === 'skills') return skillCommands
     if (effectiveCommandScope === 'none') return []
     return [...staticCommands, ...skillCommands]
-  }, [builtinCommands, effectiveCommandScope, skills, t])
+  }, [builtinCommands, effectiveCommandScope, onGoalSubmit, skills, t])
   const filteredCommands = useMemo(() => {
     if (commandQuery === null) return []
     const query = `/${commandQuery}`.toLowerCase()
@@ -257,6 +272,7 @@ export function InputArea({
     setActiveCommandIndex(0)
     setReferenceQuery(null)
     setStyleSceneQuery(null)
+    setGoalMode(false)
   }, [draftKey])
 
   useEffect(() => {
@@ -344,6 +360,7 @@ export function InputArea({
 
     if (e.key === 'Tab' && e.shiftKey && onTogglePlanMode && !disabled) {
       e.preventDefault()
+      if (!planMode) setGoalMode(false)
       onTogglePlanMode()
       return true
     }
@@ -441,7 +458,7 @@ export function InputArea({
     setSubmitting(true)
     let result: ReturnType<typeof onSend>
     try {
-      result = onSend(trimmed)
+      result = goalMode && onGoalSubmit ? onGoalSubmit(trimmed) : onSend(trimmed)
     } catch {
       submittingRef.current = false
       setSubmitting(false)
@@ -456,6 +473,7 @@ export function InputArea({
     if (result && typeof (result as PromiseLike<boolean | void>).then === 'function') {
       void Promise.resolve(result).then((accepted) => {
         if (accepted === false) setValue((current) => current || submittedValue)
+        else if (goalMode) setGoalMode(false)
       }).catch(() => {
         setValue((current) => current || submittedValue)
       }).finally(() => {
@@ -467,6 +485,7 @@ export function InputArea({
       submittingRef.current = false
       setSubmitting(false)
     } else {
+      if (goalMode) setGoalMode(false)
       submittingRef.current = false
       setSubmitting(false)
     }
@@ -479,7 +498,11 @@ export function InputArea({
   /** 选择命令 */
   const selectCommand = (cmd: string) => {
     const command = allCommands.find((item) => item.cmd === cmd)
-    if (command?.source === 'skill') {
+    if (cmd === '/goal' && onGoalSubmit) {
+      inputRef.current?.replaceActiveTriggerText('')
+      setGoalMode(true)
+      if (planMode) onTogglePlanMode?.()
+    } else if (command?.source === 'skill') {
       const name = cmd.replace(/^\//, '')
       inputRef.current?.replaceActiveTriggerWithToken({ kind: 'skill', value: name, label: name })
     } else {
@@ -489,6 +512,14 @@ export function InputArea({
     setCommandQuery(null)
     setActiveCommandIndex(0)
     inputRef.current?.focus()
+  }
+
+  const editGoal = () => {
+    if (!goal) return
+    setValue(goal.objective)
+    setGoalMode(true)
+    if (planMode) onTogglePlanMode?.()
+    window.requestAnimationFrame(() => inputRef.current?.focus())
   }
 
   /** 选择引用文件：输入框只显示文件名，发送值仍保留完整 workspace 路径。 */
@@ -567,6 +598,17 @@ export function InputArea({
           onEdit={onQueuedCommandEdit}
         />
 
+        {goal && onGoalPause && onGoalClear ? (
+          <AgentGoalCard
+            goal={goal}
+            pending={goalPending}
+            disabled={disabled || activeControlsDisabled}
+            onEdit={editGoal}
+            onPause={onGoalPause}
+            onClear={onGoalClear}
+          />
+        ) : null}
+
         <AgentComposerShell
           references={hasReferences ? (
             <>
@@ -616,7 +658,9 @@ export function InputArea({
               knownLore={knownLoreTokens}
               knownStyleScenes={styleSceneSuggestions}
               externalTokens={externalTokens}
-              placeholder={disabled ? (disabledPlaceholder ?? t('chat.input.disabledPlaceholder')) : (placeholder ?? defaultPlaceholder)}
+              placeholder={disabled
+                ? (disabledPlaceholder ?? t('chat.input.disabledPlaceholder'))
+                : goalMode ? t('chat.goal.placeholder') : (placeholder ?? defaultPlaceholder)}
               disabled={disabled}
               rows={1}
               minRows={1}
@@ -646,7 +690,10 @@ export function InputArea({
                       <DropdownMenuCheckboxItem
                         checked={planMode}
                         disabled={disabled || generationActive}
-                        onCheckedChange={() => onTogglePlanMode()}
+                        onCheckedChange={() => {
+                          if (!planMode) setGoalMode(false)
+                          onTogglePlanMode()
+                        }}
                         className="cursor-pointer pr-1.5 text-xs focus:bg-[var(--nova-active)] focus:text-[var(--nova-text)] [&_[data-slot=dropdown-menu-checkbox-item-indicator]]:static [&_[data-slot=dropdown-menu-checkbox-item-indicator]]:order-2 [&_[data-slot=dropdown-menu-checkbox-item-indicator]]:size-4"
                       >
                         <ClipboardList className="h-3.5 w-3.5" />
@@ -686,6 +733,31 @@ export function InputArea({
                 </span>
               ) : null}
               <AgentApprovalModeMenu runActive={generationActive} conversationConfig={conversationBinding ? conversationConfig : undefined} />
+              {onGoalSubmit ? (
+                <button
+                  type="button"
+                  disabled={disabled}
+                  onClick={() => {
+                    setGoalMode((selected) => {
+                      const next = !selected
+                      if (next && planMode) onTogglePlanMode?.()
+                      return next
+                    })
+                    window.requestAnimationFrame(() => inputRef.current?.focus())
+                  }}
+                  className={cn(
+                    'inline-flex h-8 shrink-0 items-center gap-1.5 rounded-full px-2 text-sm transition-colors disabled:opacity-45',
+                    goalMode
+                      ? 'bg-[var(--nova-active)] text-[var(--nova-text)]'
+                      : 'text-[var(--nova-text-muted)] hover:bg-[var(--nova-hover)] hover:text-[var(--nova-text)]',
+                  )}
+                  aria-pressed={goalMode}
+                  aria-label={goalMode ? t('chat.goal.exitMode') : t('chat.goal.enterMode')}
+                >
+                  {goalMode ? <X className="h-3.5 w-3.5" /> : <Target className="h-3.5 w-3.5" />}
+                  {t('chat.goal.short')}
+                </button>
+              ) : null}
               <TokenUsageDialog open={tokenUsageOpen} messages={tokenUsageMessages} onOpenChange={setTokenUsageOpen} onOpenTrace={onOpenTrace} />
             </>
           }

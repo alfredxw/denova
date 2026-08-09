@@ -52,7 +52,6 @@ import {
 } from '@/lib/autosave/rebase-with-recovery'
 import { useWorkbenchNotice } from '@/features/notices/use-workbench-notice'
 import { LORE_UPDATED_EVENT, notifyLoreUpdated, type LoreUpdatedDetail } from '@/features/lore/events'
-import { LoadingState } from '@/components/common/LoadingState'
 
 const PROJECT_VISIBLE_KEY = 'nova.layout.projectVisible'
 const ACTIVITY_BAR_EXPANDED_KEY = 'nova.layout.activityBarExpanded'
@@ -78,7 +77,6 @@ function App() {
   const [settingsOpen, setSettingsOpen] = useState(() => readLayoutBoolean(SETTINGS_OPEN_KEY, false))
   const [openTabs, setOpenTabs] = useState<Tab[]>([])
   const [activeTabKey, setActiveTabKey] = useState<string | null>(null)
-  const [workspaceViewReadyFor, setWorkspaceViewReadyFor] = useState<string | null>(null)
   const [maxOpenTabs, setMaxOpenTabs] = useState<number>(MAX_OPEN_TABS_FALLBACK)
   const [editorAutoSaveEnabled, setEditorAutoSaveEnabled] = useState(AUTO_SAVE_ENABLED_FALLBACK)
   const [editorAutoSaveDelayMs, setEditorAutoSaveDelayMs] = useState(AUTO_SAVE_DELAY_FALLBACK_MS)
@@ -128,7 +126,7 @@ function App() {
   }, [mode])
 
   const {
-    tree, loading, selectedFile, fileContent, fileRevision, workspace, projectId, workspaceLoaded, workspaceSnapshotLoaded, summary, books, booksLoaded, bookSortMode,
+    tree, loading, selectedFile, fileContent, fileRevision, workspace, projectId, workspaceLoaded, summary, books, bookSortMode,
     selectFile, clearSelectedFile, saveFileDraft, createItem, deleteItem, renameItem, copyItem, moveItem,
     refresh, refreshSummary, refreshAfterAgentFileChange, refreshAll, refreshBooks, setWorkspace,
   } = useWorkspace()
@@ -273,10 +271,12 @@ function App() {
     [summary?.chapters],
   )
   const currentChapter = selectedFile ? chapterStats[selectedFile] : undefined
-  const currentBookName = summary?.title?.trim() ||
-    books.find((book) => book.path === workspace)?.name?.trim() ||
-    workspace.replace(/\/+$/, '').split('/').pop() ||
-    t('workbench.noBook')
+  const currentBookName = workspaceLoaded
+    ? summary?.title?.trim() ||
+      books.find((book) => book.path === workspace)?.name?.trim() ||
+      workspace.replace(/\/+$/, '').split('/').pop() ||
+      t('workbench.noBook')
+    : t('common.loading')
 
   const touchTab = useCallback((key: string) => {
     tabActivationCounterRef.current += 1
@@ -397,11 +397,7 @@ function App() {
 
   useEffect(() => {
     if (!workspaceLoaded) return
-    let cancelled = false
-    if (!workspace) {
-      setWorkspaceViewReadyFor('')
-      return () => { cancelled = true }
-    }
+    if (!workspace) return
 
     const restoreWorkspaceView = async () => {
       const tabs = readTabsFor(workspace)
@@ -417,10 +413,8 @@ function App() {
       const target = activeKey ? tabs.find((tab) => tabKey(tab) === activeKey) : null
       if (target?.kind === 'file') await selectFile(target.path)
       else clearSelectedFile()
-      if (!cancelled) setWorkspaceViewReadyFor(workspace)
     }
     void restoreWorkspaceView()
-    return () => { cancelled = true }
   // This boundary intentionally follows workspace identity; callbacks remain stable.
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [workspace, workspaceLoaded])
@@ -854,18 +848,8 @@ function App() {
     },
   })
 
-  const appInitializing = !workspaceLoaded
-    || !booksLoaded
-    || workspaceViewReadyFor !== workspace
-    || Boolean(workspace && !workspaceSnapshotLoaded)
-
   return (
     <NovaMotionProvider intensity={motionIntensity}>
-      <div
-        className="contents"
-        aria-hidden={appInitializing || undefined}
-        inert={appInitializing || undefined}
-      >
       <ModeRouter
         mode={mode}
         booksReturnMode={booksReturnMode}
@@ -1029,14 +1013,7 @@ function App() {
         isStreaming={isStreaming}
         onNavigate={handleOnboardingNavigate}
       />
-      </div>
       <RemoteAccessLogin />
-      {appInitializing ? (
-        <LoadingState
-          label={t('common.preparingWorkspace')}
-          className="fixed inset-0 z-[900] h-dvh min-h-0 bg-[var(--nova-bg)]"
-        />
-      ) : null}
     </NovaMotionProvider>
   )
 }

@@ -10,6 +10,7 @@ import (
 	"denova/config"
 	agentconversation "denova/internal/agents/conversation"
 	"denova/internal/agents/conversationconfig"
+	"denova/internal/agents/goal"
 	"denova/internal/agents/session"
 	agentchatapp "denova/internal/app/agentchat"
 	configmanagerapp "denova/internal/app/configmanager"
@@ -46,6 +47,86 @@ type ConversationConfigPatch struct {
 	ProfileID     *string                   `json:"profile_id,omitempty"`
 	ThinkingLevel *string                   `json:"thinking_level,omitempty"`
 	ApprovalMode  *config.AgentApprovalMode `json:"approval_mode,omitempty"`
+}
+
+type ConversationGoalMutation struct {
+	Action           string `json:"action"`
+	Objective        string `json:"objective,omitempty"`
+	ExpectedRevision uint64 `json:"expected_revision,omitempty"`
+}
+
+func IsConversationGoalRevisionConflict(err error) bool {
+	return errors.Is(err, goal.ErrRevisionConflict) || agentchatapp.IsGoalRevisionConflict(err)
+}
+
+func IsConversationGoalStateChanged(err error) bool {
+	return errors.Is(err, goal.ErrNotFound) || errors.Is(err, goal.ErrNotActive)
+}
+
+func (a *App) ConversationGoal(ctx context.Context, binding ConversationConfigBinding) (goal.State, bool, error) {
+	switch normalizeConversationMode(binding.Mode) {
+	case ConversationModeWriting:
+		if err := a.requireForegroundConversationProject(binding.ProjectID); err != nil {
+			return goal.State{}, false, err
+		}
+		service := a.chat()
+		service.admission.Lock()
+		defer service.admission.Unlock()
+		sess, _, err := a.writingGoalSession(binding.SessionID)
+		if err != nil {
+			return goal.State{}, false, err
+		}
+		return sess.Goal(ctx)
+	case ConversationModeAgentChat:
+		return a.AgentChat().ConversationGoal(ctx, agentchatapp.Binding{ProjectID: binding.ProjectID, SessionID: binding.SessionID})
+	default:
+		return goal.State{}, false, fmt.Errorf("goal is unsupported for conversation mode %q", binding.Mode)
+	}
+}
+
+func (a *App) MutateConversationGoal(ctx context.Context, binding ConversationConfigBinding, mutation ConversationGoalMutation) (goal.State, error) {
+	action := strings.TrimSpace(mutation.Action)
+	switch normalizeConversationMode(binding.Mode) {
+	case ConversationModeWriting:
+		if err := a.requireForegroundConversationProject(binding.ProjectID); err != nil {
+			return goal.State{}, err
+		}
+		service := a.chat()
+		service.admission.Lock()
+		defer service.admission.Unlock()
+		sess, runtimeCfg, err := a.writingGoalSession(binding.SessionID)
+		if err != nil {
+			return goal.State{}, err
+		}
+		if (action == "set" || action == "resume") && !config.ResolveAgentTools(&runtimeCfg, config.AgentKindIDE).Allows(config.AgentToolGoal) {
+			return goal.State{}, errors.New("conversation goal is disabled for the Writing Agent")
+		}
+		switch action {
+		case "set":
+			return sess.SetGoal(ctx, mutation.Objective, mutation.ExpectedRevision)
+		case "pause":
+			return sess.PauseGoal(ctx, mutation.ExpectedRevision)
+		case "resume":
+			return sess.ResumeGoal(ctx, mutation.ExpectedRevision)
+		case "clear":
+			return sess.ClearGoal(ctx, mutation.ExpectedRevision)
+		default:
+			return goal.State{}, fmt.Errorf("unsupported goal action %q", action)
+		}
+	case ConversationModeAgentChat:
+		return a.AgentChat().MutateConversationGoal(ctx, agentchatapp.Binding{ProjectID: binding.ProjectID, SessionID: binding.SessionID}, action, mutation.Objective, mutation.ExpectedRevision)
+	default:
+		return goal.State{}, fmt.Errorf("goal is unsupported for conversation mode %q", binding.Mode)
+	}
+}
+
+func (a *App) writingGoalSession(requestedSessionID string) (*session.Session, config.Config, error) {
+	store, runtimeCfg, sessionID, err := a.foregroundConversationRuntime(requestedSessionID)
+	if err != nil {
+		return nil, config.Config{}, err
+	}
+	sess, err := store.Get(sessionID)
+	return sess, runtimeCfg, err
 }
 
 // UnmarshalJSON delegates the strict omitted-versus-null validation to the

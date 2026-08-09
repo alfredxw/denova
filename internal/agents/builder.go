@@ -24,6 +24,10 @@ var newNativeAgent = func(ctx context.Context, cfg agent.AgentConfig) (agent.Run
 	return agent.NewAgent(ctx, cfg)
 }
 
+// ToolDefinition keeps application packages on Denova's Agent boundary rather
+// than importing the provider runtime directly.
+type ToolDefinition = agent.ToolDefinition
+
 // Build 构建小说创作 Agent（native loop + 文件系统工具 + Skills）。
 func Build(ctx context.Context, cfg *config.Config, state *book.State, teller prompts.IDEStoryTeller) (agent.Runnable, error) {
 	built, _, err := BuildWithComposition(ctx, cfg, state, teller)
@@ -40,6 +44,9 @@ func BuildWithComposition(ctx context.Context, cfg *config.Config, state *book.S
 // settings authorize a capability; they cannot manufacture an interactive UI.
 type AgentHostCapabilities struct {
 	Interactive bool
+	// RootTools are host-owned session tools. They are intentionally excluded
+	// from every sub-Agent assembly.
+	RootTools []agent.ToolDefinition
 }
 
 // BuildWithCompositionForHost builds the top-level IDE Agent for a concrete
@@ -63,6 +70,7 @@ func BuildGeneralAgentWithCompositionForHost(ctx context.Context, cfg *config.Co
 		Composition:     composition,
 		EnableSkills:    true,
 		InteractiveHost: host.Interactive,
+		ExtraTools:      host.RootTools,
 	})
 	return built, composition, err
 }
@@ -79,6 +87,7 @@ func buildWithCompositionForHost(ctx context.Context, cfg *config.Config, state 
 		Composition:       composition,
 		EnableSkills:      true,
 		InteractiveHost:   host.Interactive,
+		ExtraTools:        host.RootTools,
 		ExtraToolsFactory: agenttoolruntime.NewCatalog(cfg).IDE(),
 	})
 	return built, composition, err

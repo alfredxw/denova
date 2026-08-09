@@ -475,6 +475,83 @@ describe('InputArea active generation controls', () => {
   })
 })
 
+describe('InputArea goal mode', () => {
+  it('shows Goal only on supported composers and submits through the goal action', async () => {
+    const user = userEvent.setup()
+    const handleSend = vi.fn()
+    const handleGoalSubmit = vi.fn().mockResolvedValue(true)
+    const { rerender } = render(
+      <InputArea
+        onSend={handleSend}
+        onGoalSubmit={handleGoalSubmit}
+        disabled={false}
+      />,
+    )
+
+    const goalToggle = screen.getByRole('button', { name: '设置目标' })
+    await user.click(goalToggle)
+    expect(screen.getByRole('button', { name: '退出目标模式' })).toHaveAttribute('aria-pressed', 'true')
+    expect(screen.getByRole('textbox').closest('[data-placeholder]')).toHaveAttribute('data-placeholder', '描述目标，并定义可衡量的完成结果')
+
+    rerender(
+      <InputArea
+        onSend={handleSend}
+        onGoalSubmit={handleGoalSubmit}
+        inputPrefill={{ prompt: 'Finish and verify the complete feature', nonce: 1 }}
+        disabled={false}
+      />,
+    )
+    await waitFor(() => expect(screen.getByRole('textbox')).toHaveTextContent('Finish and verify the complete feature'))
+    await user.click(screen.getByRole('button', { name: '发送' }))
+    await waitFor(() => expect(handleGoalSubmit).toHaveBeenCalledWith('Finish and verify the complete feature'))
+    expect(handleSend).not.toHaveBeenCalled()
+    await waitFor(() => expect(screen.getByRole('button', { name: '设置目标' })).toHaveAttribute('aria-pressed', 'false'))
+
+    rerender(<InputArea onSend={handleSend} disabled={false} />)
+    expect(screen.queryByRole('button', { name: '设置目标' })).not.toBeInTheDocument()
+  })
+
+  it('renders the durable goal above the composer and returns it to edit mode', async () => {
+    const user = userEvent.setup()
+    const handlePause = vi.fn()
+    const handleClear = vi.fn()
+    render(
+      <InputArea
+        onSend={vi.fn()}
+        onGoalSubmit={vi.fn()}
+        onGoalPause={handlePause}
+        onGoalClear={handleClear}
+        goal={{
+          id: 'goal-1',
+          objective: '检查所有状态并完成端到端验证',
+          status: 'active',
+          revision: 3,
+          created_at: '2026-08-10T00:00:00Z',
+          updated_at: '2026-08-10T00:00:00Z',
+          active_since: '2026-08-10T00:00:00Z',
+        }}
+        disabled={false}
+      />,
+    )
+
+    const goalCard = screen.getByRole('region', { name: '会话目标' })
+    const composer = screen.getByRole('textbox')
+    expect(goalCard).toHaveClass('pointer-events-auto')
+    expect(goalCard.compareDocumentPosition(composer) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
+    expect(within(goalCard).getByText('正在推进目标')).toBeInTheDocument()
+    expect(within(goalCard).getByText('检查所有状态并完成端到端验证')).toBeInTheDocument()
+
+    await user.click(within(goalCard).getByRole('button', { name: '编辑目标' }))
+    expect(composer).toHaveTextContent('检查所有状态并完成端到端验证')
+    expect(screen.getByRole('button', { name: '退出目标模式' })).toHaveAttribute('aria-pressed', 'true')
+
+    await user.click(within(goalCard).getByRole('button', { name: '暂停目标' }))
+    expect(handlePause).toHaveBeenCalledTimes(1)
+    await user.click(within(goalCard).getByRole('button', { name: '清除目标' }))
+    expect(handleClear).toHaveBeenCalledTimes(1)
+  })
+})
+
 describe('InputArea prefill clearing', () => {
   it('clears prefilled prompt after sending without disabled transition', async () => {
     const user = userEvent.setup()

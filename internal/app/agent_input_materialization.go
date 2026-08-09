@@ -112,6 +112,7 @@ func (a *App) sessionAcceptedInputIntent(
 		CommandID: string(request.Identity.CommandID), OperationID: string(request.Identity.OperationID), Cycle: request.Identity.Cycle,
 	}, agents.UserMessage(request.Message), session.MessageMetadata{
 		AgentKind: request.AgentKind, UserReferences: agentchat.UserMessageReferencesForRequest(resolved),
+		ContextOnly: request.Request.InputVisibility == agentrun.InputModelOnly,
 	})
 }
 

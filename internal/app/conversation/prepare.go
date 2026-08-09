@@ -107,14 +107,15 @@ func prepareWriting(ctx context.Context, runtime Runtime, request agentchat.Chat
 
 func ProjectConversation(runtime Runtime, request agentchat.ChatRequest) *agentconversation.SessionConversation {
 	if runtime.AgentKind == agentrun.AgentKindGeneral {
-		return agentconversation.NewSessionConversationForAgent(runtime.Session, &runtime.Config, config.AgentKindGeneral)
+		return agentconversation.NewSessionConversationForAgent(runtime.Session, &runtime.Config, config.AgentKindGeneral).
+			WithInputVisibility(request.InputVisibility)
 	}
 	runtimeContexts := prompts.IDEWorkspaceRuntimeContextsForContext(runtime.State, request.IDEContext)
 	return agentconversation.NewSessionConversationForAgentWithRuntimeContexts(
 		runtime.Session, &runtime.Config, config.AgentKindIDE,
 		runtimeContexts.StableTitle, runtimeContexts.Stable,
 		runtimeContexts.DynamicTitle, runtimeContexts.Dynamic,
-	)
+	).WithInputVisibility(request.InputVisibility)
 }
 
 func BindReviewFeedback(options agentrun.Options, runtime Runtime, request agentchat.ChatRequest) agentrun.Options {

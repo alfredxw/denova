@@ -14,7 +14,6 @@ const common = {
   'common.edit': 'Edit',
   'common.inherit': 'Inherit ({{value}})',
   'common.loading': 'Loading...',
-  'common.preparingWorkspace': 'Preparing your creative workspace…',
   'common.model': 'Model',
   'common.notSet': 'Not set',
   'common.yes': 'Yes',
