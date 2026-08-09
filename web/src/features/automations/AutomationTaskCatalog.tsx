@@ -18,6 +18,7 @@ interface AutomationTaskCatalogProps {
   agentActive: boolean
   onSelect: (task: AutomationTask) => void
   onCreate: () => void
+  onCreateForProject: (project: AutomationProjectOption) => void
   onOpenAgent: () => void
 }
 
@@ -30,6 +31,7 @@ export function AutomationTaskCatalog({
   agentActive,
   onSelect,
   onCreate,
+  onCreateForProject,
   onOpenAgent,
 }: AutomationTaskCatalogProps) {
   const { t } = useTranslation()
@@ -47,6 +49,8 @@ export function AutomationTaskCatalog({
         label: project.name,
         description: project.path,
         icon: FileText,
+        onCreate: project.status === 'available' ? () => onCreateForProject(project) : undefined,
+        createLabel: t('automations.project.createTask', { project: project.name }),
         items: orderedTasks.map((task) => {
           const running = isAutomationTaskRunning(task, activeRuns)
           return {
@@ -64,7 +68,7 @@ export function AutomationTaskCatalog({
         ) : undefined,
       }
     })
-  }, [activeRuns, projects, t, tasks])
+  }, [activeRuns, onCreateForProject, projects, t, tasks])
 
   return (
     <div className="flex h-full min-h-0 flex-col bg-[var(--nova-surface-2)]">

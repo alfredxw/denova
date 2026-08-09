@@ -307,9 +307,9 @@ export function AutomationsView({
     setPanelView('config')
   }
 
-  const createNew = async () => {
+  const createNew = async (owner?: AutomationProjectOption) => {
     if (!(await flushAutomationAutosave())) return
-    const project = defaultAutomationProject(projects, projectId)
+    const project = owner?.status === 'available' ? owner : defaultAutomationProject(projects, projectId)
     const target = project ? automationProjectTarget(project) : unassignedProjectTarget
     activeIdRef.current = ''
     setActiveId('')
@@ -550,7 +550,8 @@ export function AutomationsView({
       activeId={activeId}
       agentActive={panelView === 'agent'}
       onSelect={selectTask}
-      onCreate={createNew}
+      onCreate={() => void createNew()}
+      onCreateForProject={(project) => void createNew(project)}
       onOpenAgent={() => setPanelView('agent')}
     />
   )
@@ -683,7 +684,7 @@ export function AutomationsView({
                 icon={Plus}
                 title={t('automations.empty.title')}
                 description={t('automations.empty.description')}
-                action={{ label: t('automations.newTask'), onClick: createNew }}
+                action={{ label: t('automations.newTask'), onClick: () => void createNew() }}
                 className="min-h-0 flex-1 overflow-y-auto px-4 py-10"
               />
             ) : panelView === 'inbox' ? (

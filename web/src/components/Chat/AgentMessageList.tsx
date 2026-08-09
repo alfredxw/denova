@@ -149,6 +149,9 @@ export function MessageList({ projectId, messages, isStreaming, visible = true, 
     }),
     [collapseTraceGroups, isExecutionActive, isStreaming, onOpenSubAgentSession, timelineAttachments, views, visibleActivityContent],
   )
+  // Transport streaming may pause between tool/recovery phases while the turn
+  // remains active and can still publish layout updates.
+  const tailFollowActive = isStreaming || isExecutionActive
   const firstItemIndex = usePrependStableFirstItemIndex(listItems, scrollResetKey)
   const resolveMessageScroller = useCallback(
     () => containerRef.current?.querySelector<HTMLElement>('.nova-chat-canvas') || null,
@@ -157,7 +160,7 @@ export function MessageList({ projectId, messages, isStreaming, visible = true, 
   const scrollLock = useVirtuosoBottomLock({
     resetKey: scrollResetKey,
     itemCount: listItems.length,
-    autoFollowEnabled: isStreaming,
+    autoFollowEnabled: tailFollowActive,
     visible,
     bottomInsetPx: bottomPaddingPx,
     resolveScroller: resolveMessageScroller,
@@ -204,7 +207,7 @@ export function MessageList({ projectId, messages, isStreaming, visible = true, 
     const anchorKey = latestInteractiveCardAnchor ? `${latestInteractiveCardAnchor.anchorKey}:${Math.round(bottomInsetPx)}` : ''
     if (lastInteractiveCardAnchorKeyRef.current === null) {
       lastInteractiveCardAnchorKeyRef.current = anchorKey
-      if (latestInteractiveCardAnchor && isStreaming) {
+      if (latestInteractiveCardAnchor && tailFollowActive) {
         return scheduleChatRowBottomAnchor(containerRef.current, latestInteractiveCardAnchor.rowKey, bottomInsetPx, scrollLock.scrollElementBottomIntoView)
       }
       return undefined
@@ -216,7 +219,7 @@ export function MessageList({ projectId, messages, isStreaming, visible = true, 
     }
     lastInteractiveCardAnchorKeyRef.current = anchorKey
     return undefined
-  }, [bottomPaddingPx, isStreaming, latestInteractiveCardAnchor, scrollLock.scrollElementBottomIntoView])
+  }, [bottomPaddingPx, latestInteractiveCardAnchor, scrollLock.scrollElementBottomIntoView, tailFollowActive])
 
   useEffect(() => {
     if (!turnScrollRequest?.anchorId) return
@@ -265,6 +268,7 @@ export function MessageList({ projectId, messages, isStreaming, visible = true, 
         contentClassName={contentClassName}
         isLast={index === firstItemIndex + listItems.length - 1}
         isStreaming={isStreaming}
+        tailFollowActive={tailFollowActive}
         activeTraceDisplay={activeTraceDisplay}
         highlightDialogue={highlightDialogue}
         messageStyle={messageStyle}
@@ -285,11 +289,11 @@ export function MessageList({ projectId, messages, isStreaming, visible = true, 
         onOpenTrace={onOpenTrace}
         onResolveAsk={onResolveAsk}
         onInteractiveCardLayoutChange={anchorLatestInteractiveCardBottom}
-        streamingRowRef={isStreaming ? scrollLock.streamingRowRef : undefined}
-        syncStreamingTailLayout={isStreaming ? scrollLock.syncStreamingTailLayout : undefined}
+        streamingRowRef={tailFollowActive ? scrollLock.streamingRowRef : undefined}
+        syncStreamingTailLayout={tailFollowActive ? scrollLock.syncStreamingTailLayout : undefined}
       />
     )
-  }, [activeSubAgentSessionKey, activeTraceDisplay, anchorLatestInteractiveCardBottom, canMutateMessage, contentClassName, firstItemIndex, generatingInteractiveImageTurnId, highlightDialogue, isStreaming, listItems, messageStyle, onApprovePlan, onContinuePlan, onCreateBranch, onEditAssistantReply, onEditMessage, onExitPlanMode, onGenerateInteractiveImage, onInsertIllustration, onOpenSubAgentSession, onOpenTrace, onRegenerateMessage, onResolveAsk, onSwitchMessageVersion, projectId, scrollLock.streamingRowRef, scrollLock.syncStreamingTailLayout])
+  }, [activeSubAgentSessionKey, activeTraceDisplay, anchorLatestInteractiveCardBottom, canMutateMessage, contentClassName, firstItemIndex, generatingInteractiveImageTurnId, highlightDialogue, isStreaming, listItems, messageStyle, onApprovePlan, onContinuePlan, onCreateBranch, onEditAssistantReply, onEditMessage, onExitPlanMode, onGenerateInteractiveImage, onInsertIllustration, onOpenSubAgentSession, onOpenTrace, onRegenerateMessage, onResolveAsk, onSwitchMessageVersion, projectId, scrollLock.streamingRowRef, scrollLock.syncStreamingTailLayout, tailFollowActive])
 
   return (
     <div ref={containerRef} className="relative flex min-h-0 flex-1 flex-col">
@@ -305,7 +309,7 @@ export function MessageList({ projectId, messages, isStreaming, visible = true, 
         onPointerCancel={scrollLock.onPointerCancel}
         atBottomStateChange={scrollLock.onAtBottomStateChange}
         atBottomThreshold={VIRTUOSO_BOTTOM_THRESHOLD}
-        totalListHeightChanged={isStreaming ? scrollLock.syncStreamingTailLayout : undefined}
+        totalListHeightChanged={tailFollowActive ? scrollLock.syncStreamingTailLayout : undefined}
         initialItemCount={Math.min(listItems.length, 40)}
         firstItemIndex={firstItemIndex}
         data={listItems}
@@ -316,7 +320,7 @@ export function MessageList({ projectId, messages, isStreaming, visible = true, 
         itemsRendered={handleItemsRendered}
         overscan={MESSAGE_LIST_OVERSCAN}
         increaseViewportBy={MESSAGE_LIST_INCREASE_VIEWPORT_BY}
-        data-stream-active={isStreaming ? '' : undefined}
+        data-stream-active={tailFollowActive ? '' : undefined}
         className="nova-chat-canvas min-h-0 flex-1 overflow-y-auto overflow-x-hidden [overflow-anchor:none]"
         aria-label={t('common.messages', { count: messages.length })}
       />
@@ -402,11 +406,12 @@ function MessageListFooter({ context }: ContextProp<MessageListVirtuosoContext>)
   )
 }
 
-function AgentChatListRow({ projectId, item, isLast, isStreaming, activeTraceDisplay, highlightDialogue, messageStyle, contentClassName, canMutateMessage, onEditMessage, onEditAssistantReply, onCreateBranch, onRegenerateMessage, onSwitchMessageVersion, onOpenSubAgentSession, onInsertIllustration, onGenerateInteractiveImage, generatingInteractiveImageTurnId, activeSubAgentSessionKey, onApprovePlan, onContinuePlan, onExitPlanMode, onOpenTrace, onResolveAsk, onInteractiveCardLayoutChange, streamingRowRef, syncStreamingTailLayout }: {
+function AgentChatListRow({ projectId, item, isLast, isStreaming, tailFollowActive, activeTraceDisplay, highlightDialogue, messageStyle, contentClassName, canMutateMessage, onEditMessage, onEditAssistantReply, onCreateBranch, onRegenerateMessage, onSwitchMessageVersion, onOpenSubAgentSession, onInsertIllustration, onGenerateInteractiveImage, generatingInteractiveImageTurnId, activeSubAgentSessionKey, onApprovePlan, onContinuePlan, onExitPlanMode, onOpenTrace, onResolveAsk, onInteractiveCardLayoutChange, streamingRowRef, syncStreamingTailLayout }: {
   projectId?: string
   item: AgentChatListItem
   isLast: boolean
   isStreaming: boolean
+  tailFollowActive: boolean
   activeTraceDisplay: 'expanded' | 'collapsed'
   highlightDialogue: boolean
   messageStyle?: CSSProperties
@@ -480,8 +485,8 @@ function AgentChatListRow({ projectId, item, isLast, isStreaming, activeTraceDis
     />
   ) : null
   useLayoutEffect(() => {
-    if (isLast && isStreaming) syncStreamingTailLayout?.()
-  }, [isLast, isStreaming, item, syncStreamingTailLayout])
+    if (isLast && tailFollowActive) syncStreamingTailLayout?.()
+  }, [isLast, item, syncStreamingTailLayout, tailFollowActive])
 
   // A translated active tail would visibly move after its bottom anchor is captured.
   return (

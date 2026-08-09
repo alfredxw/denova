@@ -29,6 +29,7 @@ const automations = {
   'automations.field.prompt': 'Prompt',
   'automations.prompt.placeholder': 'Describe what this automation should do, including anything it should read, change, or produce. Leave empty to use the task default.',
   'automations.project.choose': 'Choose a Project',
+  'automations.project.createTask': 'Create automation in {{project}}',
   'automations.project.required': 'Choose the Project that owns this automation.',
   'automations.project.loadPartial': 'Automation catalogs for {{count}} Projects could not be loaded. Other Projects remain available.',
   'automations.project.unknown': 'Unknown Project',

@@ -29,6 +29,7 @@ const automations = {
   'automations.field.prompt': 'Prompt',
   'automations.prompt.placeholder': '描述这个自动化要做什么，包括需要读取、修改或输出的内容。留空则使用任务默认目标。',
   'automations.project.choose': '选择项目',
+  'automations.project.createTask': '在 {{project}} 中新建自动化',
   'automations.project.required': '请选择自动化所属项目。',
   'automations.project.loadPartial': '{{count}} 个项目的自动化目录加载失败，其他项目仍可正常使用。',
   'automations.project.unknown': '未知项目',

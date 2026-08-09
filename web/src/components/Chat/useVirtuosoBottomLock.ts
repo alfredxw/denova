@@ -344,7 +344,11 @@ export function useVirtuosoBottomLock({ resetKey, itemCount, autoFollowEnabled, 
     if (wasEnabled) return
     afterContentInteractionRef.current = false
     const element = currentScrollerElement()
-    lockedRef.current = !element || isNearBottom(element)
+    // The first streamed batch can change scrollHeight before the runway is
+    // committed. Never downgrade a lock from that post-content geometry; only
+    // explicit upward interaction may unlock it. An already-unlocked viewport
+    // may still relock when it was effectively at the end before streaming.
+    if (!lockedRef.current) lockedRef.current = !element || isNearBottom(element)
   }, [autoFollowEnabled, cancelScheduledScroll, currentScrollerElement, isNearBottom, itemCount, scrollToBottomNow, updateAwayFromBottom, visible])
 
   useLayoutEffect(() => {

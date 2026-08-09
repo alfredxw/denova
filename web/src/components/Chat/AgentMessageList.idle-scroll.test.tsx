@@ -79,6 +79,27 @@ describe('Agent MessageList bottom following', () => {
     expect(virtuosoBoundary.totalListHeightChanged).toBeTypeOf('function')
   })
 
+  it('keeps the layout retry active while execution continues between transport streams', () => {
+    render(
+      <MessageList
+        isStreaming={false}
+        isExecutionActive
+        activityContent=""
+        collapseTraceGroups
+        messages={[
+          {
+            id: 'running-tool',
+            role: 'assistant',
+            parts: [{ type: 'reasoning', text: '等待工具结果', state: 'streaming' }],
+          },
+        ] as AgentUIMessage[]}
+      />,
+    )
+
+    expect(virtuosoBoundary.followOutput).toBeUndefined()
+    expect(virtuosoBoundary.totalListHeightChanged).toBeTypeOf('function')
+  })
+
   it('keeps the streaming height retry registered while a persistent chat tab is hidden', async () => {
     const renderList = (visible: boolean) => (
       <MessageList

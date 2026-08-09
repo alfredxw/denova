@@ -220,6 +220,32 @@ describe('useVirtuosoBottomLock', () => {
     expect(scrollToIndex).not.toHaveBeenCalled()
   })
 
+  it('preserves an existing bottom lock when the first streamed batch changes layout before anchoring', () => {
+    const scroller = document.createElement('div')
+    let scrollHeight = 500
+    Object.defineProperty(scroller, 'scrollHeight', { configurable: true, get: () => scrollHeight })
+    Object.defineProperty(scroller, 'clientHeight', { configurable: true, value: 100 })
+    setScrollerViewport(scroller, 100)
+    scroller.scrollTop = 400
+    const { rerender } = renderHook(
+      ({ autoFollowEnabled }) => useVirtuosoBottomLock({
+        itemCount: 1,
+        autoFollowEnabled,
+        resolveScroller: () => scroller,
+      }),
+      { initialProps: { autoFollowEnabled: false } },
+    )
+    flushAnimationFrames(frames)
+
+    // React can commit a multiline first batch before the streaming runway is
+    // anchored. Geometry is temporarily away from the end even though the user
+    // never expressed upward-scroll intent.
+    scrollHeight = 560
+    rerender({ autoFollowEnabled: true })
+
+    expect(scroller.scrollTop).toBe(460)
+  })
+
   it('allocates a viewport-relative runway for a new streaming response', () => {
     const scroller = document.createElement('div')
     Object.defineProperty(scroller, 'scrollHeight', { configurable: true, value: 1500 })
