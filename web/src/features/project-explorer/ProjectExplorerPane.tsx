@@ -1,8 +1,9 @@
 import type { TreeApi } from 'react-arborist'
-import { FilePlus, FolderPlus, ListCollapse, Loader2, LocateFixed, RefreshCw } from 'lucide-react'
+import { FilePlus, FolderPlus, ListCollapse, LocateFixed, RefreshCw } from 'lucide-react'
 import { memo, useCallback, useEffect, useRef } from 'react'
 import { useTranslation } from 'react-i18next'
 import { Button } from '@/components/ui/button'
+import { LoadingState } from '@/components/common/LoadingState'
 import { ProjectExplorerTree, type ProjectExplorerTreeHandle } from './ProjectExplorerTree'
 import type { ProjectFileExplorerNode } from './model'
 import type { ProjectExplorerExtensions } from './types'
@@ -125,10 +126,7 @@ export const ProjectExplorerPane = memo(function ProjectExplorerPane({
       ) : null}
       <div className="min-h-0 flex-1 p-1">
         {loading ? (
-          <div className="flex items-center justify-center gap-2 py-8 text-xs text-[var(--nova-text-faint)]">
-            <Loader2 className="size-3.5 animate-spin" />
-            {t('files.tree.loading')}
-          </div>
+          <LoadingState label={t('files.tree.loading')} variant="panel" />
         ) : (
           <ProjectExplorerTree
             ref={explorerRef}

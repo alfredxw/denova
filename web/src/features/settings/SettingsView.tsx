@@ -11,6 +11,7 @@ import { getInteractiveTellers } from '@/features/interactive/api'
 import type { Teller } from '@/features/interactive/types'
 import { DEFAULT_NARRATIVE_STYLE_ID, narrativeStyleName, narrativeStylesForMode } from '@/features/interactive/narrative-style'
 import { InlineErrorNotice } from '@/components/common/inline-error-notice'
+import { LoadingState } from '@/components/common/LoadingState'
 import { AutosaveStatusIndicator } from '@/components/forms/autosave-status'
 import { SettingsFieldRow } from '@/components/forms/settings-field-row'
 import { AdaptiveSurface } from '@/components/layout/adaptive-surface'
@@ -718,6 +719,9 @@ export function SettingsView({ onClose }: { onClose?: () => void }) {
         />
       )}
     >
+      {!layered ? (
+        <LoadingState label={t('common.loading')} className="min-h-0 flex-1" />
+      ) : (
       <AdaptiveSurface
         left={{
           id: 'settings-nav',
@@ -768,6 +772,7 @@ export function SettingsView({ onClose }: { onClose?: () => void }) {
           </div>
         )}
       </AdaptiveSurface>
+      )}
     </FeaturePageShell>
   )
 }

@@ -99,6 +99,31 @@ describe('useWorkspace', () => {
     await waitFor(() => expect(screen.getByTestId('workspace-meta')).toHaveTextContent('|project-demo'))
   })
 
+  it('publishes readiness only after the bookshelf and initial workspace snapshot settle', async () => {
+    const bookshelf = deferred<{ books: never[]; sort_mode: 'recent' }>()
+    const tree = deferred<unknown[]>()
+    const summary = deferred<{ title: string; author: string; chapter_count: number; total_words: number; chapters: never[] }>()
+    apiMock.getBookshelf.mockReturnValue(bookshelf.promise)
+    apiMock.getProjectBookTree.mockReturnValue(tree.promise)
+    apiMock.getProjectBookSummary.mockReturnValue(summary.promise)
+
+    render(<WorkspaceHarness autoRefreshEnabled={false} onChange={() => {}} />)
+
+    await waitFor(() => expect(screen.getByTestId('workspace-readiness')).toHaveTextContent('true|false|false'))
+    await act(async () => {
+      bookshelf.resolve({ books: [], sort_mode: 'recent' })
+      await bookshelf.promise
+    })
+    expect(screen.getByTestId('workspace-readiness')).toHaveTextContent('true|true|false')
+
+    await act(async () => {
+      tree.resolve([])
+      summary.resolve({ title: '', author: '', chapter_count: 0, total_words: 0, chapters: [] })
+      await Promise.all([tree.promise, summary.promise])
+    })
+    expect(screen.getByTestId('workspace-readiness')).toHaveTextContent('true|true|true')
+  })
+
   it('routes every workspace tree mutation through the project-scoped operations API', async () => {
     let workspace: ReturnType<typeof useWorkspace> | null = null
     render(<WorkspaceHarness autoRefreshEnabled={false} onChange={(value) => { workspace = value }} />)
@@ -751,6 +776,7 @@ function WorkspaceHarness({
     <>
       <div data-testid="workspace-state">{workspace.selectedFile}|{workspace.fileContent}|{workspace.fileRevision}</div>
       <div data-testid="workspace-meta">{workspace.workspace}|{workspace.tree.map((node) => node.name).join(',')}|{workspace.summary?.title ?? ''}|{workspace.bookSortMode}|{workspace.projectId}</div>
+      <div data-testid="workspace-readiness">{String(workspace.workspaceLoaded)}|{String(workspace.booksLoaded)}|{String(workspace.workspaceSnapshotLoaded)}</div>
     </>
   )
 }

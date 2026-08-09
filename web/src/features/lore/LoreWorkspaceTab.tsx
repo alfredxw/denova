@@ -20,6 +20,7 @@ import { KNOWLEDGE_SECTIONS, sectionItems } from './knowledge-sections'
 import { loreLoadModeLabel } from './options'
 import { LoreWorkspaceEditor } from './LoreWorkspaceEditor'
 import { useLoreWorkspace } from './use-lore-workspace'
+import { LoadingState } from '@/components/common/LoadingState'
 
 interface LoreWorkspaceTabProps {
   projectId: string
@@ -89,14 +90,7 @@ export function LoreWorkspaceTab({
   const directory = (
     <div className="nova-sidebar flex h-full min-h-0 flex-col bg-[var(--nova-surface-2)]">
       {lore.loading && lore.items.length === 0 ? (
-        <div className="grid gap-2 p-3" aria-label={t('common.loading')}>
-          {Array.from({ length: 6 }).map((_, index) => (
-            <div
-              key={index}
-              className="h-8 animate-pulse rounded bg-[var(--nova-surface)]"
-            />
-          ))}
-        </div>
+        <LoadingState label={t('common.loading')} variant="panel" className="h-full min-h-0" />
       ) : lore.error && lore.items.length === 0 ? (
         <div className="grid gap-2 p-3">
           <InlineErrorNotice message={lore.error} />
@@ -186,9 +180,7 @@ export function LoreWorkspaceTab({
       >
         {({ isMobile, openLeft }) =>
           lore.loading && !lore.draft ? (
-            <div role="status" className="flex h-full items-center justify-center text-xs text-[var(--nova-text-muted)]">
-              {t('common.loading')}
-            </div>
+            <LoadingState label={t('common.loading')} className="h-full min-h-0" />
           ) : lore.error && lore.items.length === 0 ? (
             <div className="grid h-full place-content-center gap-3 px-6">
               <InlineErrorNotice message={lore.error} />

@@ -29,6 +29,7 @@ import { usePersistedPanelLayout } from '@/components/layout/use-persisted-panel
 import type { ImagePreset, InteractiveTurnPersistedEvent, Snapshot, StoryDirector, StoryImageSettings, StorySummary, Teller } from '../types'
 import { INTERACTIVE_OPENING_PRESET_PATH, INTERACTIVE_OPENING_PRESET_UPDATED_EVENT, LEGACY_INTERACTIVE_OPENING_PRESET_PATH, parseBookOpeningPresets, type BookOpeningPreset, type StoryCreateInput } from '../opening'
 import { DEFAULT_NARRATIVE_STYLE_ID, narrativeStylesForMode, resolveNarrativeStyle } from '../narrative-style'
+import { LoadingState } from '@/components/common/LoadingState'
 
 interface InteractiveLayoutProps {
   projectId?: string
@@ -102,6 +103,7 @@ export function InteractiveLayout({ projectId = '', workspace, active = true, re
   const lastStableSnapshotRef = useRef<Snapshot | null>(null)
   const [snapshotLoading, setSnapshotLoading] = useState(false)
   const [snapshotLoadFailed, setSnapshotLoadFailed] = useState(false)
+  const [storyIndexLoading, setStoryIndexLoading] = useState(true)
   const [mobileSnapshotOpen, setMobileSnapshotOpen] = useState(false)
   const [storyStateDisplayPreference, setStoryStateDisplayPreference] = useState(readStoryStateDisplayPreference)
   const [bookOpeningPresets, setBookOpeningPresets] = useState<BookOpeningPreset[]>([])
@@ -195,14 +197,26 @@ export function InteractiveLayout({ projectId = '', workspace, active = true, re
   )
 
   useEffect(() => {
+    let cancelled = false
     storyIndexRequestSeqRef.current += 1
     snapshotRequestSeqRef.current += 1
     snapshotStoryIdRef.current = ''
     if (workspace !== undefined) {
       resetWorkspaceState()
-      if (!workspace) return
+      if (!workspace) {
+        setStoryIndexLoading(false)
+        return () => { cancelled = true }
+      }
     }
+    setStoryIndexLoading(true)
     void Promise.all([reloadStories(), getInteractiveTellers().then(setTellers), getStoryDirectors().then(setStoryDirectors)])
+      .catch((error) => {
+        if (!cancelled) console.error('[InteractiveLayout.tsx] failed to load the interactive workspace index', { workspace, error })
+      })
+      .finally(() => {
+        if (!cancelled) setStoryIndexLoading(false)
+      })
+    return () => { cancelled = true }
   }, [reloadStories, resetWorkspaceState, setStoryDirectors, setTellers, workspace])
 
   useEffect(() => {
@@ -396,6 +410,15 @@ export function InteractiveLayout({ projectId = '', workspace, active = true, re
     }
     await reloadSnapshot(branchId === currentBranchId ? 'main' : undefined)
     await reloadStories()
+  }
+
+  if (storyIndexLoading) {
+    return (
+      <LoadingState
+        label={t('interactiveLayout.loading')}
+        className="h-full min-h-0 bg-[var(--nova-bg)]"
+      />
+    )
   }
 
   const settingMode: SettingPanelMode = submode === 'story' || submode === 'timeline' || submode === 'director' ? 'lore' : submode

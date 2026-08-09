@@ -40,6 +40,7 @@ import { TabController, tabKey } from './TabController'
 import { WorkbenchShell, type WorkbenchPresentedLayout } from './WorkbenchShell'
 import { flattenFileTree } from './workbench-utils'
 import { useReviewFeedbackNavigation } from './use-review-feedback-navigation'
+import { LoadingState } from '@/components/common/LoadingState'
 
 const WRITING_AGENT_INIT_EVENT = 'nova:writing-agent-init'
 const InteractiveLayout = memo(lazy(() => import('@/features/interactive/components/InteractiveLayout').then((module) => ({ default: module.InteractiveLayout }))))
@@ -821,7 +822,7 @@ export function ModeRouter(props: ModeRouterProps) {
       </div>
       <div className="min-h-0 flex-1 text-xs">
         {showSidebarLoading ? (
-          <div className="h-full overflow-y-auto px-2 py-4 text-center text-[var(--nova-text-muted)]">{t('router.loading')}</div>
+          <LoadingState label={t('router.loading')} variant="panel" className="h-full min-h-0" />
         ) : sidebarView === 'outline' ? (
           <StableChapterOutline
             projectId={projectId}
@@ -854,7 +855,7 @@ export function ModeRouter(props: ModeRouterProps) {
                 />
               </div>
             ) : !projectId ? (
-              <div className="px-2 py-4 text-center text-[var(--nova-text-muted)]">{t('router.loading')}</div>
+              <LoadingState label={t('router.loading')} variant="panel" className="h-full min-h-0" />
             ) : (
               <StableWritingProjectExplorer
                 key={projectId}
@@ -1134,7 +1135,7 @@ interface MainRouteLayerProps {
 function MainRouteLayer({ visible, loadingLabel, children }: MainRouteLayerProps) {
   return (
     <section hidden={!visible} aria-hidden={!visible} className="absolute inset-0 flex min-h-0 flex-col">
-      <Suspense fallback={<div className="flex h-full items-center justify-center text-xs text-[var(--nova-text-muted)]">{loadingLabel}</div>}>
+      <Suspense fallback={<LoadingState label={loadingLabel} className="h-full min-h-0" />}>
         {children}
       </Suspense>
     </section>

@@ -240,17 +240,32 @@ describe('InteractiveLayout polling lifecycle', () => {
 })
 
 describe('InteractiveLayout story creation', () => {
-  it('selects and lists a newly created story even when stale story indexes resolve later', async () => {
+  it('keeps the empty story surface hidden until the initial story index settles', async () => {
     const initialIndex = deferred<{ current_story_id: string; stories: StorySummary[] }>()
+    vi.mocked(getInteractiveStories).mockReturnValue(initialIndex.promise)
+
+    render(<InteractiveLayout workspace="/workspace" />)
+
+    expect(screen.getByRole('status')).toHaveTextContent('正在载入游戏世界…')
+    expect(screen.queryByTestId('story-stage-probe')).not.toBeInTheDocument()
+
+    await act(async () => {
+      initialIndex.resolve({ current_story_id: 'st_1', stories: [story('st_1', '故事线')] })
+      await initialIndex.promise
+    })
+    expect(await screen.findByTestId('story-stage-probe')).toHaveAttribute('data-story-id', 'st_1')
+  })
+
+  it('selects and lists a newly created story while its refreshed index is pending', async () => {
     const afterCreateIndex = deferred<{ current_story_id: string; stories: StorySummary[] }>()
     vi.mocked(getInteractiveStories)
-      .mockReturnValueOnce(initialIndex.promise)
+      .mockResolvedValueOnce({ current_story_id: '', stories: [] })
       .mockReturnValueOnce(afterCreateIndex.promise)
     vi.mocked(createInteractiveStory).mockResolvedValue(story('st_new', '新故事线'))
 
     render(<InteractiveLayout workspace="/workspace" />)
 
-    fireEvent.click(screen.getByRole('button', { name: 'mock create story' }))
+    fireEvent.click(await screen.findByRole('button', { name: 'mock create story' }))
 
     await waitFor(() => {
       expect(screen.getByTestId('story-stage-probe')).toHaveAttribute('data-story-id', 'st_new')
@@ -266,14 +281,6 @@ describe('InteractiveLayout story creation', () => {
       expect(screen.getByTestId('story-stage-probe')).toHaveAttribute('data-story-id', 'st_new')
       expect(screen.getByTestId('story-list')).toHaveTextContent('新故事线|旧故事线')
     })
-
-    await act(async () => {
-      initialIndex.resolve({ current_story_id: 'st_old', stories: [story('st_old', '旧故事线')] })
-      await initialIndex.promise
-    })
-
-    expect(screen.getByTestId('story-stage-probe')).toHaveAttribute('data-story-id', 'st_new')
-    expect(screen.getByTestId('story-list')).toHaveTextContent('新故事线|旧故事线')
   })
 
   it('updates the story director and follows the director narrative style', async () => {

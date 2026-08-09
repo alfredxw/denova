@@ -4,6 +4,7 @@ import { useTranslation } from 'react-i18next'
 import { ConfigManagerChat } from '@/components/Chat/ConfigManagerChat'
 import { ConfirmDialog } from '@/components/common/ConfirmDialog'
 import { EmptyState } from '@/components/common/EmptyState'
+import { LoadingState } from '@/components/common/LoadingState'
 import { AutosaveStatusIndicator } from '@/components/forms/autosave-status'
 import { AdaptiveSurface } from '@/components/layout/adaptive-surface'
 import { FeaturePageShell } from '@/components/layout/feature-page-shell'
@@ -93,7 +94,7 @@ export function SkillsView({ target, onClose }: SkillsViewProps) {
   const [contentViewMode, setContentViewMode] = useState<SkillContentViewMode>('preview')
   const [fileTreeOpen, setFileTreeOpen] = useState(false)
   const [fileLoading, setFileLoading] = useState(false)
-  const [loading, setLoading] = useState(false)
+  const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [mode, setMode] = useState<SkillsMode>('editor')
@@ -109,6 +110,9 @@ export function SkillsView({ target, onClose }: SkillsViewProps) {
   }, [eventSource, targetKey])
 
   const selectedSkill = useMemo(() => snapshot.skills.find((skill) => keyOf(skill) === selectedKey) ?? null, [selectedKey, snapshot.skills])
+  const selectedDocumentPending = Boolean(selectedSkill && (
+    !document || document.scope !== selectedSkill.scope || document.name !== selectedSkill.name
+  ))
   const selectedSkillScope = selectedSkill?.scope
   const selectedSkillName = selectedSkill?.name
   const editingEntryFile = selectedFilePath === skillEntryFile
@@ -725,10 +729,12 @@ export function SkillsView({ target, onClose }: SkillsViewProps) {
                 onRestoreBuiltin={() => void requestRestoreBuiltin()}
                 onCreateBuiltinOverride={() => void onCreateBuiltinOverride()}
               />
+            ) : loading || selectedDocumentPending ? (
+              <LoadingState label={t('skills.loading')} className="h-full min-h-0" />
             ) : (
               <EmptyState
                 icon={Sparkles}
-                title={loading ? t('skills.loading') : t('skills.empty')}
+                title={t('skills.empty')}
                 variant="page"
                 className="h-full text-xs text-[var(--nova-text-faint)]"
               />

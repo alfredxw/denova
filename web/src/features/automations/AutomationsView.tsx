@@ -3,6 +3,7 @@ import { Clock3, Inbox, Loader2, Play, Plus, RefreshCw, Settings2 } from 'lucide
 import { useTranslation } from 'react-i18next'
 import { ConfirmDialog } from '@/components/common/ConfirmDialog'
 import { EmptyState } from '@/components/common/EmptyState'
+import { LoadingState } from '@/components/common/LoadingState'
 import { AutosaveStatusIndicator } from '@/components/forms/autosave-status'
 import { AdaptiveSurface } from '@/components/layout/adaptive-surface'
 import { FeaturePageShell } from '@/components/layout/feature-page-shell'
@@ -98,6 +99,7 @@ export function AutomationsView({
   const [panelView, setPanelView] = useState<AutomationPanelView>('config')
   const [sidebarVisible, setSidebarVisible] = useState(true)
   const [saving, setSaving] = useState(false)
+  const [initialLoadComplete, setInitialLoadComplete] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [deleteTarget, setDeleteTarget] = useState<{ id: string; name: string } | null>(null)
   const [navigationTarget, setNavigationTarget] = useState<AutomationNavigationTarget | null>(null)
@@ -197,6 +199,8 @@ export function AutomationsView({
     } catch (e) {
       if (!mountedRef.current || sequence !== loadSequenceRef.current) return
       setError((e as Error).message)
+    } finally {
+      if (mountedRef.current && sequence === loadSequenceRef.current) setInitialLoadComplete(true)
     }
   }, [i18n.language, i18n.resolvedLanguage, t, unassignedProjectTarget])
 
@@ -601,6 +605,9 @@ export function AutomationsView({
         </>
       )}
     >
+      {!initialLoadComplete ? (
+        <LoadingState label={t('common.loading')} className="min-h-0 flex-1" />
+      ) : (
       <AdaptiveSurface
         left={{
           id: 'automation-tasks',
@@ -717,6 +724,7 @@ export function AutomationsView({
           </main>
         )}
       </AdaptiveSurface>
+      )}
       <ConfirmDialog
         open={Boolean(deleteTarget)}
         onOpenChange={(open) => { if (!open) setDeleteTarget(null) }}

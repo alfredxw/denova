@@ -9,6 +9,7 @@ import { projectResourceTarget } from '@/lib/api'
 import { AgentChatView } from './AgentChatView'
 import type { AgentChatProjectNavigationState } from './AgentChatProjectSwitcher'
 import type { AgentChatPageId, AgentChatPageRenderContext, AgentChatReviewRenderContext, AgentChatReviewTab } from './types'
+import { LoadingState } from '@/components/common/LoadingState'
 
 const LoreWorkspaceTab = lazy(() => import('@/features/lore/LoreWorkspaceTab').then((module) => ({ default: module.LoreWorkspaceTab })))
 const SettingPanel = lazy(() => import('@/features/interactive/components/SettingPanel').then((module) => ({ default: module.SettingPanel })))
@@ -131,13 +132,13 @@ function AgentChatRouteComponent({
     pageId: AgentChatPageId,
     context: AgentChatPageRenderContext,
   ): ReactNode => (
-    <Suspense fallback={<div className="flex h-full items-center justify-center text-xs text-[var(--nova-text-muted)]">{t('router.loading')}</div>}>
+    <Suspense fallback={<LoadingState label={t('router.loading')} className="h-full min-h-0" />}>
       {pageContent(projectId, tabWorkspace, pageId, context)}
     </Suspense>
   ), [pageContent, t])
 
   const renderReview = useCallback((tab: AgentChatReviewTab, disabled: boolean, context: AgentChatReviewRenderContext): ReactNode => (
-    <Suspense fallback={<div className="flex h-full items-center justify-center text-xs text-[var(--nova-text-muted)]">{t('router.loading')}</div>}>
+    <Suspense fallback={<LoadingState label={t('router.loading')} className="h-full min-h-0" />}>
       <ChangeReviewWorkspace
         projectId={tab.projectId}
         threadID={tab.threadID}

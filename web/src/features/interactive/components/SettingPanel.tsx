@@ -11,6 +11,7 @@ import { ConfigManagerChat } from '@/components/Chat/ConfigManagerChat'
 import { ConfirmDialog } from '@/components/common/ConfirmDialog'
 import { EmptyState } from '@/components/common/EmptyState'
 import { InlineErrorNotice } from '@/components/common/inline-error-notice'
+import { LoadingState } from '@/components/common/LoadingState'
 import { AutosaveStatusIndicator } from '@/components/forms/autosave-status'
 import { AdaptiveSurface } from '@/components/layout/adaptive-surface'
 import { FeaturePageShell } from '@/components/layout/feature-page-shell'
@@ -132,7 +133,7 @@ function LoreSettingPanel({
   const { t } = useTranslation()
   const activeMode = mode
   const [items, setItems] = useState<LoreItem[]>([])
-  const [loading, setLoading] = useState(false)
+  const [loading, setLoading] = useState(Boolean(projectId))
   const [loadError, setLoadError] = useState<string | null>(null)
   const [activeId, setActiveId] = useState('')
   const [draft, setDraft] = useState<LoreItem | null>(null)
@@ -976,11 +977,7 @@ function LoreSettingPanel({
     <div className="nova-sidebar flex h-full min-h-0 flex-col bg-[var(--nova-surface-2)]">
       {activeMode === 'lore' ? (
         loading ? (
-          <div className="flex flex-col gap-2 p-3" aria-label={t('common.loading')}>
-            {Array.from({ length: 6 }).map((_, index) => (
-              <div key={index} className="h-8 animate-pulse rounded-md bg-[var(--nova-surface)]" style={{ opacity: 1 - index * 0.12 }} />
-            ))}
-          </div>
+          <LoadingState label={t('common.loading')} variant="panel" className="h-full min-h-0" />
         ) : loadError ? (
           <div className="flex flex-col gap-2 p-3">
             <InlineErrorNotice message={loadError} />
@@ -1070,7 +1067,9 @@ function LoreSettingPanel({
             >
               {activeMode === 'lore' ? (
                 <>
-                  {items.length === 0 && !loading && !loadError && !activeId ? (
+                  {loading ? (
+                    <LoadingState label={t('common.loading')} className="h-full min-h-0" />
+                  ) : items.length === 0 && !loadError && !activeId ? (
                     <EmptyState
                       icon={Database}
                       title={t('settingPanel.lore.emptyTitle')}

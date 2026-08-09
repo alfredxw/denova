@@ -1,8 +1,9 @@
-import { FileCode2, FileWarning, Loader2, PanelRightClose, PanelRightOpen, Save, WrapText } from 'lucide-react'
+import { FileCode2, FileWarning, PanelRightClose, PanelRightOpen, Save, WrapText } from 'lucide-react'
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { toast } from 'sonner'
 import { EmptyState } from '@/components/common/EmptyState'
+import { LoadingState } from '@/components/common/LoadingState'
 import { MarkdownViewToggle } from '@/components/common/MarkdownEditPreview'
 import type { EditorFlushHandler } from '@/components/Editor/useEditorDraftPersistence'
 import { AutosaveStatusIndicator } from '@/components/forms/autosave-status'
@@ -303,10 +304,7 @@ export function FilesTab({
           </div>
           <div className="flex min-h-0 min-w-0 flex-1 flex-col">
             {editor.loading ? (
-              <div className="flex h-full items-center justify-center gap-2 text-xs text-[var(--nova-text-faint)]">
-                <Loader2 className="size-4 animate-spin" />
-                {t('files.editor.loading')}
-              </div>
+              <LoadingState label={t('files.editor.loading')} className="h-full min-h-0" />
             ) : editor.error ? (
               <EmptyState
                 variant="page"

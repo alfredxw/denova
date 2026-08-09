@@ -14,6 +14,7 @@ const common = {
   'common.edit': '编辑',
   'common.inherit': '继承（{{value}}）',
   'common.loading': '加载中...',
+  'common.preparingWorkspace': '正在准备创作空间…',
   'common.model': '模型',
   'common.notSet': '未设置',
   'common.yes': '是',

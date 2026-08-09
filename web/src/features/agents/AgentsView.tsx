@@ -10,6 +10,7 @@ import { MobilePaneTrigger } from '@/components/layout/mobile-pane-trigger'
 import { SidebarVisibilityToggle } from '@/components/layout/sidebar-visibility-toggle'
 import { SectionedNavigation } from '@/components/navigation/sectioned-navigation'
 import { Button } from '@/components/ui/button'
+import { LoadingState } from '@/components/common/LoadingState'
 import { Input } from '@/components/ui/input'
 import type { AgentContextOverride, AgentModelOverride, AgentPromptOverride, AgentSkillOverride, AgentToolOverride, ImageAPIProfileSettings, LayeredSettings, ModelProfileSettings, Settings, SettingsLayer, SubAgentConfig } from '@/features/settings/types'
 import { modelProfileID, modelProfileLabel, modelProfilesWithDefault } from '@/features/settings/model-profiles'
@@ -257,6 +258,9 @@ export function AgentsView({ target, onClose }: { target: ResourceTarget; onClos
         </>
       )}
     >
+      {!layered ? (
+        <LoadingState label={t('common.loading')} className="min-h-0 flex-1" />
+      ) : (
       <AdaptiveSurface
         left={{
           id: 'agents-list',
@@ -399,6 +403,7 @@ export function AgentsView({ target, onClose }: { target: ResourceTarget; onClos
           </main>
         )}
       </AdaptiveSurface>
+      )}
     </FeaturePageShell>
   )
 }

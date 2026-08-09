@@ -53,8 +53,10 @@ export function useWorkspace(options: UseWorkspaceOptions = {}) {
   const [workspace, setWorkspaceState] = useState<string>('')
   const [projectId, setProjectId] = useState<string>('')
   const [workspaceLoaded, setWorkspaceLoaded] = useState(false)
+  const [workspaceSnapshotLoaded, setWorkspaceSnapshotLoaded] = useState(false)
   const [summary, setSummary] = useState<WorkspaceSummary | null>(null)
   const [books, setBooks] = useState<BookRecord[]>([])
+  const [booksLoaded, setBooksLoaded] = useState(false)
   const [bookSortMode, setBookSortMode] = useState<BookSortMode>('recent')
 
   // 用 ref 追踪最新 selectedFile，避免异步回调闭包捕获旧值
@@ -101,6 +103,7 @@ export function useWorkspace(options: UseWorkspaceOptions = {}) {
     setFileDocument({ content: '', revision: '' })
     setSummary(null)
     setLoading(Boolean(nextWorkspace))
+    setWorkspaceSnapshotLoaded(false)
     projectIdRef.current = ''
     setProjectId('')
     setWorkspaceState(nextWorkspace)
@@ -139,6 +142,7 @@ export function useWorkspace(options: UseWorkspaceOptions = {}) {
     fileReadGenerationsRef.current.clear()
     filePreviewVersionRef.current = 0
     setSummary(null)
+    setWorkspaceSnapshotLoaded(true)
     projectIdRef.current = ''
     setProjectId('')
   }, [setFileDocument])
@@ -181,6 +185,7 @@ export function useWorkspace(options: UseWorkspaceOptions = {}) {
       if (projection !== 'summary') setTree([])
       if (projection !== 'tree') setSummary(null)
       if (projection !== 'summary') setLoading(false)
+      if (projection !== 'summary') setWorkspaceSnapshotLoaded(true)
       return
     }
     if (showLoading && projection !== 'summary') setLoading(true)
@@ -215,6 +220,7 @@ export function useWorkspace(options: UseWorkspaceOptions = {}) {
       if (showLoading && projection !== 'summary' && current()) {
         setLoading(false)
       }
+      if (projection !== 'summary' && current()) setWorkspaceSnapshotLoaded(true)
     }
   }, [projectId])
 
@@ -258,6 +264,8 @@ export function useWorkspace(options: UseWorkspaceOptions = {}) {
       console.error('[hooks/useWorkspace.ts] failed to load the bookshelf', e)
       setBooks([])
       setBookSortMode('recent')
+    } finally {
+      if (requestID === booksRequestRef.current) setBooksLoaded(true)
     }
   }, [])
 
@@ -627,8 +635,10 @@ export function useWorkspace(options: UseWorkspaceOptions = {}) {
     workspace,
     projectId,
     workspaceLoaded,
+    workspaceSnapshotLoaded,
     summary,
     books,
+    booksLoaded,
     bookSortMode,
     selectFile,
     clearSelectedFile,

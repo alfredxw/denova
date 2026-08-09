@@ -3,6 +3,7 @@ import { BookOpen } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import { EmptyState } from '@/components/common/EmptyState'
 import { InlineErrorNotice } from '@/components/common/inline-error-notice'
+import { LoadingState } from '@/components/common/LoadingState'
 import { SearchPanel } from '@/components/Sidebar/SearchPanel'
 import { MarkdownEditor } from '@/components/Editor/MarkdownEditor'
 import type { EditorFlushHandler } from '@/components/Editor/useEditorDraftPersistence'
@@ -356,15 +357,11 @@ export function ProjectWritingSurface({
                   onOpenOutline={isMobile ? openLeft : undefined}
                 />
                 {loadingDocument ? (
-                  <div role="status" className="absolute inset-0 z-10 flex items-center justify-center bg-[var(--nova-bg)]/80 text-xs text-[var(--nova-text-faint)] backdrop-blur-[1px]">
-                    {t('router.loading')}
-                  </div>
+                  <LoadingState label={t('router.loading')} className="absolute inset-0 z-10 min-h-0 bg-[var(--nova-bg)]/80 backdrop-blur-[1px]" />
                 ) : null}
               </div>
             ) : selectedPath || loadingBook || loadingDocument ? (
-              <div role="status" className="flex h-full items-center justify-center text-xs text-[var(--nova-text-faint)]">
-                {t('router.loading')}
-              </div>
+              <LoadingState label={t('router.loading')} className="h-full min-h-0" />
             ) : (
               <EmptyState variant="page" icon={BookOpen} title={t('agentChat.reader.noSelection')} />
             )}
