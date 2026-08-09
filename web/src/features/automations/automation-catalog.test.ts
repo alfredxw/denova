@@ -1,9 +1,8 @@
 import { describe, expect, it } from 'vitest'
-import type { AutomationActiveRun, AutomationTask, BookRecord } from '@/lib/api'
+import type { AutomationActiveRun, AutomationTask } from '@/lib/api'
 import {
   automationTaskKey,
   findAutomationTaskForRun,
-  groupAutomationTasks,
   normalizeAutomationTask,
 } from './automation-catalog'
 
@@ -18,35 +17,25 @@ const baseTask: AutomationTask = {
   default_action_policy: 'auto_run',
   write_mode: 'read_only',
   write_scope: 'none',
+  session_strategy: 'per_run',
   output_policy: 'run_record_only',
   output_path: '',
   recent_runs: [],
 }
 
 describe('automation catalog', () => {
-  it('groups user-owned tasks by explicit execution target and keeps IDs unique', () => {
-    const books: BookRecord[] = [
-      { project_id: 'workspace-a', name: 'Book A', path: '/books/a', author: '', last_opened_at: '' },
-      { project_id: 'workspace-b', name: 'Book B', path: '/books/b', author: '', last_opened_at: '' },
-    ]
+  it('keeps project-qualified task identities and resolves their runs', () => {
     const fallback = { kind: 'workspace' as const, project_id: 'workspace-a', workspace: '/books/a' }
     const tasks = [
       normalizeAutomationTask({ ...baseTask, id: 'same', catalog_id: 'workspace-a:same', name: 'A', target: { kind: 'workspace', workspace: '/books/a', project_id: 'workspace-a' } }, fallback),
       normalizeAutomationTask({ ...baseTask, id: 'same', catalog_id: 'workspace-b:same', name: 'B', target: { kind: 'workspace', workspace: '/books/b', project_id: 'workspace-b' } }, fallback),
-      normalizeAutomationTask({ ...baseTask, id: 'global', scope: 'user', name: 'Global', target: { kind: 'user' } }, fallback),
     ]
     const activeRuns: AutomationActiveRun[] = [{
       task_id: 'same',
       run: { id: 'run-b', task_id: 'same', scope: 'workspace', workspace: '/books/b', trigger: 'schedule', status: 'running', started_at: '2026-07-18T12:00:00Z', summary: '', tool_manifest: [] },
     }]
 
-    expect(tasks.map(automationTaskKey)).toEqual(['workspace-a:same', 'workspace-b:same', 'global'])
-    const groups = groupAutomationTasks(tasks, books, activeRuns)
-    expect(groups.map((group) => [group.kind, group.label, group.tasks.map((task) => task.name), group.runningCount])).toEqual([
-      ['user', '', ['Global'], 0],
-      ['workspace', 'Book A', ['A'], 0],
-      ['workspace', 'Book B', ['B'], 1],
-    ])
+    expect(tasks.map(automationTaskKey)).toEqual(['workspace-a:same', 'workspace-b:same'])
     expect(findAutomationTaskForRun(tasks, activeRuns[0].run)?.name).toBe('B')
   })
 

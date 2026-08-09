@@ -1,17 +1,13 @@
-import { useEffect, useMemo, useState, type ComponentType } from 'react'
+import type { ComponentType } from 'react'
 import { FilePlus2, PenLine, SearchCheck } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
-import { FormField } from '@/components/forms/form-field'
 import { Button } from '@/components/ui/button'
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@/components/ui/dialog'
-import { Select, SelectContent, SelectGroup, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
-import type { AutomationExecutionTarget, AutomationTaskTemplate, BookRecord } from '@/lib/api'
+import type { AutomationExecutionTarget, AutomationTaskTemplate } from '@/lib/api'
 
 interface AutomationTemplateDialogProps {
   open: boolean
-  projectId: string
-  workspace: string
-  books: BookRecord[]
+  target: AutomationExecutionTarget
   templates: AutomationTaskTemplate[]
   onOpenChange: (open: boolean) => void
   onChoose: (template: AutomationTaskTemplate | null, target: AutomationExecutionTarget) => void
@@ -19,32 +15,12 @@ interface AutomationTemplateDialogProps {
 
 export function AutomationTemplateDialog({
   open,
-  projectId,
-  workspace,
-  books,
+  target,
   templates,
   onOpenChange,
   onChoose,
 }: AutomationTemplateDialogProps) {
   const { t } = useTranslation()
-  const defaultTargetValue = projectId ? `workspace:${projectId}` : 'user'
-  const [targetValue, setTargetValue] = useState(defaultTargetValue)
-  useEffect(() => {
-    if (open) setTargetValue(defaultTargetValue)
-  }, [defaultTargetValue, open])
-
-  const workspaceOptions = useMemo(() => {
-    if (!projectId || books.some((book) => book.project_id === projectId)) return books
-    const name = workspace.split('/').filter(Boolean).at(-1) || workspace
-    return [{ project_id: projectId, name, path: workspace, author: '', last_opened_at: '' }, ...books]
-  }, [books, projectId, workspace])
-  const targetProjectID = targetValue.startsWith('workspace:')
-    ? targetValue.slice('workspace:'.length)
-    : ''
-  const targetBook = workspaceOptions.find((book) => book.project_id === targetProjectID)
-  const target: AutomationExecutionTarget = targetValue === 'user'
-    ? { kind: 'user' }
-    : { kind: 'workspace', project_id: targetProjectID, workspace: targetBook?.path || '' }
   const availableTemplates = templates.filter((template) => template.target_kinds.includes(target.kind))
   const choose = (template: AutomationTaskTemplate | null) => {
     onChoose(template, target)
@@ -62,24 +38,6 @@ export function AutomationTemplateDialog({
         </DialogHeader>
 
         <div className="flex flex-col gap-4 px-4 py-4">
-          <FormField label={t('automations.field.target')}>
-            <Select value={targetValue} onValueChange={setTargetValue}>
-              <SelectTrigger className="nova-field min-h-8 w-full rounded-[var(--nova-radius)] border text-xs" aria-label={t('automations.field.target')}>
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectGroup>
-                  <SelectItem value="user">{t('automations.target.global')}</SelectItem>
-                  {workspaceOptions.map((book) => (
-                    <SelectItem key={book.project_id} value={`workspace:${book.project_id}`}>
-                      {t('automations.target.workspace', { name: book.name })}
-                    </SelectItem>
-                  ))}
-                </SelectGroup>
-              </SelectContent>
-            </Select>
-          </FormField>
-
           <div>
             <div className="mb-2 text-xs font-medium text-[var(--nova-text)]">{t('automations.create.chooseTemplate')}</div>
             <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
@@ -101,11 +59,6 @@ export function AutomationTemplateDialog({
                 />
               ))}
             </div>
-            {target.kind === 'user' && (
-              <p className="mt-3 text-[11px] leading-5 text-[var(--nova-text-faint)]">
-                {t('automations.template.workspaceOnlyHelp')}
-              </p>
-            )}
           </div>
         </div>
       </DialogContent>

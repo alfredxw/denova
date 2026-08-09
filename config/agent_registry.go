@@ -15,8 +15,10 @@ const (
 	AgentKindVersionSummary      = "version_summary"
 	AgentKindToolAgent           = "tool_agent"
 	AgentKindImage               = "image"
-	AgentKindAutomation          = "automation"
-	AgentKindContextCompaction   = "context_compaction"
+	// AgentKindAutomation is retained only to decode Beta runtime journals.
+	// New automation turns always run as their owning Project Agent.
+	AgentKindAutomation        = "automation"
+	AgentKindContextCompaction = "context_compaction"
 )
 
 // AgentKindDefinition is the registry entry for one runtime Agent kind.
@@ -146,21 +148,6 @@ var agentKindRegistry = []AgentKindDefinition{
 		PromptOverride:   func(settings AgentPromptSettings) AgentPromptOverride { return settings.Image },
 		SkillOverride:    func(settings AgentSkillSettings) AgentSkillOverride { return settings.Image },
 		ContextOverride:  func(settings AgentContextSettings) AgentContextOverride { return settings.Image },
-	},
-	{
-		Kind: AgentKindAutomation,
-		ToolCapabilities: []string{
-			AgentToolWorkspaceRead, AgentToolWorkspaceWrite, AgentToolShell,
-			AgentToolWebSearch, AgentToolWebFetch, AgentToolBrowser,
-			AgentToolTodo, AgentToolSkills, AgentToolDelegation,
-			AgentToolLoreRead, AgentToolLoreWrite,
-		},
-		ModelOverride:    func(settings AgentModelSettings) AgentModelOverride { return settings.Automation },
-		SetModelOverride: func(settings *AgentModelSettings, override AgentModelOverride) { settings.Automation = override },
-		ToolOverride:     func(settings AgentToolSettings) AgentToolOverride { return settings.Automation },
-		PromptOverride:   func(settings AgentPromptSettings) AgentPromptOverride { return settings.Automation },
-		SkillOverride:    func(settings AgentSkillSettings) AgentSkillOverride { return settings.Automation },
-		ContextOverride:  func(settings AgentContextSettings) AgentContextOverride { return settings.Automation },
 	},
 	{
 		Kind:             AgentKindContextCompaction,

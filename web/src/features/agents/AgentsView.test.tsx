@@ -289,6 +289,37 @@ describe('AgentsView', () => {
     expect(thinkingLevel).toHaveTextContent('模型默认')
   })
 
+  it('selects the actual output image model from the Image Agent page', async () => {
+    const user = userEvent.setup()
+    vi.mocked(fetchSettings).mockResolvedValue(settingsSnapshot({
+      user: {
+        image_api_profiles: [
+          { id: 'flux', name: 'Flux Pro', openai_model: 'flux-pro' },
+        ],
+      },
+      effective: {
+        default_image_api_profile_id: 'default',
+        image_api_profiles: [
+          { id: 'flux', name: 'Flux Pro', openai_model: 'flux-pro' },
+        ],
+      },
+    }))
+
+    render(<AgentsView />)
+
+    await user.click(await screen.findByRole('button', { name: /图像 Agent/ }))
+    const imageModel = await screen.findByRole('combobox', { name: '出图模型' })
+    await user.click(imageModel)
+    await user.click(await screen.findByRole('option', { name: 'flux（Flux Pro）' }))
+    flushAgentsAutosave()
+
+    await waitFor(() => {
+      expect(vi.mocked(updateUserSettings)).toHaveBeenCalledWith(expect.objectContaining({
+        default_image_api_profile_id: 'flux',
+      }))
+    })
+  })
+
   it('shows SubAgent thinking level as inherited from the parent model', async () => {
     const user = userEvent.setup()
     vi.mocked(fetchSettings).mockResolvedValue(settingsSnapshot({
@@ -621,20 +652,21 @@ describe('AgentsView', () => {
     })
   })
 
-  it('defaults General SubAgent to writing and automation only', async () => {
+  it('defaults General SubAgent to both Project Agents', async () => {
     const user = userEvent.setup()
     vi.mocked(fetchSettings).mockResolvedValue(settingsSnapshot({}))
 
     render(<AgentsView />)
 
     expect(await screen.findByLabelText('通用 SubAgent 启用状态')).toBeChecked()
+    expect(screen.queryByRole('button', { name: /自动化Agent/ })).not.toBeInTheDocument()
 
     await user.click(screen.getByRole('button', { name: /游戏叙事 Agent/ }))
     await waitFor(() => {
       expect(screen.getByLabelText('通用 SubAgent 启用状态')).not.toBeChecked()
     })
 
-    await user.click(screen.getByRole('button', { name: /自动化Agent/ }))
+    await user.click(screen.getByRole('button', { name: /^General Agent/ }))
     await waitFor(() => {
       expect(screen.getByLabelText('通用 SubAgent 启用状态')).toBeChecked()
     })

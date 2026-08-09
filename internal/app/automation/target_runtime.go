@@ -3,10 +3,8 @@ package automationapp
 import (
 	"context"
 	"fmt"
-	"path/filepath"
 	"strings"
 
-	"denova/internal/agents/session"
 	"denova/internal/automation"
 )
 
@@ -18,27 +16,26 @@ func (s *Service) acquireTargetRuntime(ctx context.Context, target automation.Ex
 	if s == nil || s.host == nil {
 		return nil, nil, fmt.Errorf("automation app is unavailable")
 	}
+	if target.Kind == automation.TargetKindUser {
+		return nil, nil, fmt.Errorf("自动化任务必须绑定项目 / Automation tasks must target a Project")
+	}
 	var (
 		operation Operation
 		err       error
 	)
-	if target.Kind == automation.TargetKindUser {
-		operation, err = s.host.AcquireRootOperation(ctx)
+	resolved, resolveErr := s.resolveAutomationProjectTarget(target)
+	if resolveErr != nil {
+		return nil, nil, resolveErr
+	}
+	target = resolved
+	if projectID := strings.TrimSpace(resolved.ProjectID); projectID != "" {
+		operation, err = s.host.AcquireProjectOperation(ctx, projectID)
 	} else {
-		resolved, resolveErr := s.resolveAutomationProjectTarget(target)
-		if resolveErr != nil {
-			return nil, nil, resolveErr
-		}
-		target = resolved
-		if projectID := strings.TrimSpace(resolved.ProjectID); projectID != "" {
-			operation, err = s.host.AcquireProjectOperation(ctx, projectID)
-		} else {
-			// Released automation definitions may still carry only a directory.
-			// ResolveTarget normally upgrades them to Project ID; this fallback
-			// preserves data until the durable definition is rewritten.
-			workspace := canonicalAutomationWorkspace(resolved.Workspace)
-			operation, err = s.host.AcquireWorkspaceOperation(ctx, workspace)
-		}
+		// Released automation definitions may still carry only a directory.
+		// ResolveTarget normally upgrades them to Project ID; this fallback
+		// preserves data until the durable definition is rewritten.
+		workspace := canonicalAutomationWorkspace(resolved.Workspace)
+		operation, err = s.host.AcquireWorkspaceOperation(ctx, workspace)
 	}
 	if err != nil {
 		return nil, nil, err
@@ -72,44 +69,9 @@ func (s *Service) automationSnapshotForTarget(ctx context.Context, target automa
 	if s == nil || s.host == nil {
 		return nil, fmt.Errorf("automation app is unavailable")
 	}
-	if target.Kind == automation.TargetKindUser {
-		return s.globalAutomationSnapshot()
-	}
 	runtime, err := s.host.RuntimeForTarget(ctx, target)
 	if err != nil {
 		return nil, err
 	}
-	return snapshotFromRuntime(runtime), nil
-}
-
-func (s *Service) globalAutomationSnapshot() (*automationWorkspaceSnapshot, error) {
-	runtime := s.host.BaseRuntime()
-	runtime.Workspace = ""
-	runtime.ProjectID = ""
-	runtime.StateRoot = ""
-	runtime.ProjectType = ""
-	runtime.BookState = nil
-	runtime.BookService = nil
-	runtime.Config.Workspace = ""
-	runtime.Config.ProjectID = ""
-	runtime.Config.ProjectStateDir = ""
-	dataDir := strings.TrimSpace(runtime.DataDir)
-	if dataDir == "" {
-		dataDir = strings.TrimSpace(runtime.Config.DataDir())
-	}
-	if dataDir == "" {
-		return nil, fmt.Errorf("user data directory is required for global automation")
-	}
-	s.globalStoreMu.Lock()
-	defer s.globalStoreMu.Unlock()
-	if s.globalStore == nil {
-		store, err := session.NewStore(filepath.Join(dataDir, "automations", "sessions"))
-		if err != nil {
-			return nil, fmt.Errorf("open global automation sessions: %w", err)
-		}
-		s.globalStore = store
-	}
-	runtime.DataDir = dataDir
-	runtime.SessionStore = s.globalStore
 	return snapshotFromRuntime(runtime), nil
 }

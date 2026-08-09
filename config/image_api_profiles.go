@@ -3,6 +3,7 @@ package config
 import (
 	"errors"
 	"fmt"
+	"net/url"
 	"strings"
 )
 
@@ -116,6 +117,54 @@ func ResolveImageAPIProfile(cfg *Config, requestedID string) (ResolvedImageAPIPr
 	}, nil
 }
 
+// ResolveImageAPIProfileDraft resolves an inline, potentially unsaved profile
+// for connection validation. Stored credentials may follow edits on the same
+// endpoint origin, but are never copied to a different network destination.
+func ResolveImageAPIProfileDraft(cfg *Config, draft ImageAPIProfileSettings) (ResolvedImageAPIProfile, error) {
+	if cfg == nil {
+		return ResolvedImageAPIProfile{}, fmt.Errorf("config is nil")
+	}
+	originalID := imageAPIProfileID(draft)
+	if originalID == "" {
+		return ResolvedImageAPIProfile{}, fmt.Errorf("image API profile requires an id or model")
+	}
+	legacy := legacyImageAPIProfile(cfg)
+	base := ImageAPIProfileSettings{}
+	if originalID == DefaultImageAPIProfileID {
+		base = legacy
+	}
+	for _, profile := range cfg.ImageAPIProfiles {
+		if imageAPIProfileID(profile) == originalID {
+			base = profile
+			break
+		}
+	}
+	merged := mergeImageAPIProfile(base, draft)
+	if draft.OpenAIAPIKey == "" {
+		merged.OpenAIAPIKey = ""
+		for _, source := range []ImageAPIProfileSettings{base, legacy} {
+			if strings.TrimSpace(source.OpenAIAPIKey) != "" && imageAPICredentialScope(source) == imageAPICredentialScope(merged) {
+				merged.OpenAIAPIKey = source.OpenAIAPIKey
+				break
+			}
+		}
+	}
+	const validationProfileID = "__image_validation__"
+	merged.ID = validationProfileID
+	temporary := Config{
+		DefaultImageAPIProfileID: validationProfileID,
+		ImageAPIBaseURL:          cfg.ImageAPIBaseURL,
+		ImageAPIModel:            cfg.ImageAPIModel,
+		ImageAPIProfiles:         []ImageAPIProfileSettings{merged},
+	}
+	resolved, err := ResolveImageAPIProfile(&temporary, validationProfileID)
+	if err != nil {
+		return ResolvedImageAPIProfile{}, err
+	}
+	resolved.ProfileID = originalID
+	return resolved, nil
+}
+
 func mergeImageAPIProfiles(parent, child []ImageAPIProfileSettings) []ImageAPIProfileSettings {
 	if len(child) == 0 {
 		return parent
@@ -202,6 +251,17 @@ func mergeImageAPIProfile(parent, child ImageAPIProfileSettings) ImageAPIProfile
 		out.DefaultOutputFormat = normalizeImageAPIOutputFormat(child.DefaultOutputFormat)
 	}
 	return out
+}
+
+func imageAPICredentialScope(profile ImageAPIProfileSettings) string {
+	baseURL := strings.TrimSpace(profile.OpenAIBaseURL)
+	if baseURL == "" {
+		baseURL = DefaultImageAPIBaseURL
+	}
+	if parsed, err := url.Parse(baseURL); err == nil && parsed.Scheme != "" && parsed.Host != "" {
+		return "origin:" + strings.ToLower(parsed.Scheme) + "://" + strings.ToLower(parsed.Host)
+	}
+	return "endpoint:" + strings.ToLower(strings.TrimRight(baseURL, "/"))
 }
 
 func legacyImageAPIProfile(cfg *Config) ImageAPIProfileSettings {

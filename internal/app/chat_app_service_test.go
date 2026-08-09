@@ -203,15 +203,6 @@ func TestConfigAndAutomationStartFailureRollBackTaskRegistration(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	followUpRun := automation.RunRecord{
-		ID: "follow-up-acceptance", TaskID: automationTask.ID, Scope: automation.ScopeWorkspace,
-		Workspace: root, SessionID: "automation-follow-up-acceptance", Status: automation.RunStatusSuccess,
-	}
-	if _, err := automation.NewProjectStore(
-		application.cfg.DataDir(), application.cfg.ProjectID, application.workspace, application.cfg.ProjectStateDir,
-	).AppendRun(automationTask.ID, followUpRun); err != nil {
-		t.Fatal(err)
-	}
 	if err := application.chatService.Close(context.Background()); err != nil {
 		t.Fatal(err)
 	}
@@ -224,10 +215,6 @@ func TestConfigAndAutomationStartFailureRollBackTaskRegistration(t *testing.T) {
 	if task, _, startErr := application.Automation().StartTaskWithEvidence(context.Background(), automationTask.ID, automation.TriggerManual, nil); startErr == nil || task != nil {
 		t.Fatalf("automation start against closed durable runtime = task=%v err=%v", task, startErr)
 	}
-	if task, _, startErr := application.Automation().ContinueRun(context.Background(), followUpRun.ID, "follow-up-command", "continue"); startErr == nil || task != nil {
-		t.Fatalf("automation follow-up against closed durable runtime = task=%v err=%v", task, startErr)
-	}
-
 	application.mu.RLock()
 	registered := len(application.workspaceTasks)
 	application.mu.RUnlock()

@@ -1,4 +1,4 @@
-import { act, fireEvent, render, screen } from '@testing-library/react'
+import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { fetchSettings } from './api'
 import { modelProfilesForEditor, SettingsView, UpdatePanel } from './SettingsView'
@@ -6,8 +6,9 @@ import { MODEL_PROTOCOL_CHAT_COMPLETIONS, MODEL_PROVIDER_OPENAI, modelProfilesWi
 import { terminalCommandsForEditor } from './TerminalCommandsEditor'
 import type { LayeredSettings, UpdateCheckResult, UpdateInstallResult } from './types'
 
-const { fetchSettingsMock, updateUserSettings } = vi.hoisted(() => ({
+const { fetchSettingsMock, pingImageProfile, updateUserSettings } = vi.hoisted(() => ({
   fetchSettingsMock: vi.fn(),
+  pingImageProfile: vi.fn(),
   updateUserSettings: vi.fn(),
 }))
 
@@ -22,6 +23,7 @@ vi.mock('./api', () => {
     refreshSettings: fetchSettingsMock,
     refreshSettingsTarget: fetchSettingsMock,
     installUpdateStream: vi.fn(),
+    pingImageProfile,
     pingModelProfile: vi.fn(),
     revokeAgentApprovalRule: vi.fn(),
     patchSettings: (_layer: string, changes: unknown, revision?: string) => revision === undefined
@@ -195,6 +197,7 @@ describe('SettingsView debug section', () => {
 describe('SettingsView user scope', () => {
   beforeEach(() => {
     vi.mocked(fetchSettings).mockReset()
+    vi.mocked(pingImageProfile).mockReset()
     vi.mocked(updateUserSettings).mockReset()
   })
 
@@ -267,6 +270,34 @@ describe('SettingsView user scope', () => {
       'user-rev',
     )
     vi.useRealTimers()
+  })
+
+  it('tests an image model connection with the current unsaved profile', async () => {
+    const settings = layeredSettings({ devMode: false })
+    settings.user = {
+      image_api_profiles: [{
+        id: 'flux', name: 'Flux Pro', provider: 'openai', openai_base_url: 'https://images.example.com/v1',
+        openai_model: 'flux-pro', default_quality: 'high',
+      }],
+    }
+    settings.effective = { ...settings.effective, ...settings.user }
+    vi.mocked(fetchSettings).mockResolvedValue(settings)
+    vi.mocked(pingImageProfile).mockResolvedValue({
+      ok: true, latency_ms: 42, profile_id: 'flux', provider: 'openai',
+      base_url: 'https://images.example.com/v1', model: 'flux-pro',
+    })
+
+    render(<SettingsView />)
+
+    const fluxTitle = await screen.findByText('Flux Pro')
+    const fluxCard = fluxTitle.parentElement?.parentElement?.parentElement
+    expect(fluxCard).toBeTruthy()
+    await act(async () => { fireEvent.click(within(fluxCard as HTMLElement).getByRole('button', { name: '测试连接' })) })
+
+    await waitFor(() => expect(pingImageProfile).toHaveBeenCalledWith(expect.objectContaining({
+      id: 'flux', openai_model: 'flux-pro', default_quality: 'high',
+    }), expect.any(AbortSignal)))
+    expect(await screen.findByText('连接成功 · openai · 42 ms')).toBeInTheDocument()
   })
 
   it('persists an explicitly empty terminal command registry after removing every preset', async () => {

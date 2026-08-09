@@ -1069,6 +1069,24 @@ func TestNormalizeTaskTrimsModelProfileID(t *testing.T) {
 	}
 }
 
+func TestNormalizeTaskDefaultsAndPreservesSessionStrategy(t *testing.T) {
+	perRun, err := NormalizeTask(Task{Template: TemplateCustomPrompt})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if perRun.SessionStrategy != SessionStrategyPerRun {
+		t.Fatalf("default session strategy = %q, want %q", perRun.SessionStrategy, SessionStrategyPerRun)
+	}
+
+	perTask, err := NormalizeTask(Task{Template: TemplateCustomPrompt, SessionStrategy: SessionStrategyPerTask})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if perTask.SessionStrategy != SessionStrategyPerTask {
+		t.Fatalf("explicit session strategy = %q, want %q", perTask.SessionStrategy, SessionStrategyPerTask)
+	}
+}
+
 func TestTaskUnmarshalMigratesLegacyWritePolicy(t *testing.T) {
 	tests := []struct {
 		name      string

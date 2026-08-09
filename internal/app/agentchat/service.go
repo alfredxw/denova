@@ -67,6 +67,8 @@ type run struct {
 	commandID       string
 	task            *apptask.Task
 	runtime         conversationapp.Runtime
+	request         ChatRequest
+	policy          TurnPolicy
 	recovery        *agentharness.RecoveryObservation
 	recoveryActions map[string]agentrun.CommandReceipt
 }
@@ -362,11 +364,12 @@ func refreshRuntimeConfig(project *projectRuntime) (config.Config, error) {
 	return appsettings.RefreshProject(project.cfg, project.workspace, project.stateRoot)
 }
 
-func getOrCreateConversation(project *projectRuntime, binding Binding) (*session.Session, error) {
+func getOrCreateConversation(project *projectRuntime, binding Binding) (*session.Session, bool, error) {
 	runtimeCfg, err := refreshRuntimeConfig(project)
 	if err != nil {
-		return nil, err
+		return nil, false, err
 	}
+	created := !project.store.Exists(binding.SessionID)
 	sess, _, err := agentconversation.GetOrCreateSession(project.store, binding.SessionID, &runtimeCfg, binding.agentKind)
-	return sess, err
+	return sess, created, err
 }

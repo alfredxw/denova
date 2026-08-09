@@ -59,8 +59,8 @@ export function useAutomationAutosave({
   const autosave = useResourceAutosave<AutomationAutosaveDraft, AutomationTaskUpdate, AutomationTask>({
     draft: autosaveDraft,
     active: Boolean(activeId) && !creating,
-    // The task owns its lane. Opening another book must not reset a global or
-    // explicitly targeted task's pending definition save.
+    // The task owns its lane. Switching Projects must not reset its pending
+    // definition save.
     scopeKey: taskScopeKey,
     makePayload: automationTaskUpdate,
     baselineFromSaved: (saved, submitted) => ({ ...submitted, ...saved, id: automationTaskKey(saved) || submitted.id }),
@@ -69,7 +69,7 @@ export function useAutomationAutosave({
     save: updateAutomation,
     resolveConflict: async ({ error, baseline, draft: submitted }) => {
       if (!isRevisionConflict(error) || !baseline) return null
-      const latestTask = (await getAutomations())
+      const latestTask = (await getAutomations(fallbackTarget))
         .find((task) => automationTaskKey(task) === submitted.id)
       if (!latestTask) return null
       const latest = { ...cloneAutomationTask(latestTask, fallbackTarget), id: submitted.id }

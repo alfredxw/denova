@@ -1,11 +1,8 @@
-import type { UIMessageChunk } from 'ai'
-import { fetchAPI, jsonHeaders, parseUIMessageStream, requestJSON, responseAPIError } from './client'
-import type { AutomationActiveRun, AutomationInboxActionResult, AutomationInboxItem, AutomationTask, AutomationTaskTemplate, AutomationTaskUpdate, AutomationTriggerEvidence } from './types'
-import type { AgentUIMessage } from '@/lib/agent-ui'
-import type { AgentCommandReceipt } from './chat'
+import { jsonHeaders, requestJSON } from './client'
+import type { AutomationExecutionTarget, AutomationInboxActionResult, AutomationInboxItem, AutomationRunRecord, AutomationTask, AutomationTaskTemplate, AutomationTaskUpdate, AutomationTriggerEvidence } from './types'
 
-export async function getAutomations(): Promise<AutomationTask[]> {
-  const data = await requestJSON<{ tasks: AutomationTask[] }>('/api/automations')
+export async function getAutomations(target: AutomationExecutionTarget): Promise<AutomationTask[]> {
+  const data = await requestJSON<{ tasks: AutomationTask[] }>(`/api/automations?${automationProjectQuery(target)}`)
   return data.tasks || []
 }
 
@@ -22,8 +19,8 @@ export async function createAutomation(task: AutomationTask): Promise<Automation
   })
 }
 
-export async function getAutomationInbox(): Promise<AutomationInboxItem[]> {
-  const data = await requestJSON<{ items: AutomationInboxItem[] }>('/api/automations/inbox')
+export async function getAutomationInbox(target: AutomationExecutionTarget): Promise<AutomationInboxItem[]> {
+  const data = await requestJSON<{ items: AutomationInboxItem[] }>(`/api/automations/inbox?${automationProjectQuery(target)}`)
   return data.items || []
 }
 
@@ -56,60 +53,25 @@ export async function deleteAutomation(id: string): Promise<void> {
   await requestJSON(`/api/automations/${encodeURIComponent(id)}`, { method: 'DELETE' })
 }
 
-export async function streamAutomationRun(id: string, commandId: string, signal?: AbortSignal, triggerEvidence: AutomationTriggerEvidence[] = []): Promise<ReadableStream<UIMessageChunk>> {
-  const init: RequestInit = {
+export async function startAutomationRun(
+  id: string,
+  commandId: string,
+  triggerEvidence: AutomationTriggerEvidence[] = [],
+): Promise<AutomationRunRecord> {
+  const data = await requestJSON<{ run: AutomationRunRecord }>(`/api/automations/${encodeURIComponent(id)}/run`, {
     method: 'POST',
     headers: jsonHeaders,
     body: JSON.stringify({ command_id: commandId, trigger_evidence: triggerEvidence }),
-    signal,
+  })
+  return data.run
+}
+
+function automationProjectQuery(target: AutomationExecutionTarget): string {
+  if (target.kind !== 'workspace' || (!target.project_id?.trim() && !target.workspace?.trim())) {
+    throw new Error('自动化需要当前项目 / Automation requires a current Project')
   }
-  const res = await fetchAPI(`/api/automations/${encodeURIComponent(id)}/run/stream`, init)
-  if (!res.ok) throw await responseAPIError(res)
-  if (!res.body) throw new Error('No response body')
-  return parseUIMessageStream(res.body)
-}
-
-export async function getActiveAutomationRuns(): Promise<AutomationActiveRun[]> {
-  const data = await requestJSON<{ runs: AutomationActiveRun[] }>('/api/automations/runs/active')
-  return data.runs || []
-}
-
-export async function streamAutomationRunByID(runId: string, signal?: AbortSignal): Promise<ReadableStream<UIMessageChunk>> {
-  const res = await fetchAPI(`/api/automations/runs/${encodeURIComponent(runId)}/stream`, { signal })
-  if (!res.ok) throw await responseAPIError(res)
-  if (!res.body) throw new Error('No response body')
-  return parseUIMessageStream(res.body)
-}
-
-export async function streamAutomationRunMessage(runId: string, commandId: string, message: string, signal?: AbortSignal): Promise<ReadableStream<UIMessageChunk>> {
-  const res = await fetchAPI(`/api/automations/runs/${encodeURIComponent(runId)}/chat/stream`, {
-    method: 'POST',
-    headers: jsonHeaders,
-    body: JSON.stringify({ command_id: commandId, message }),
-    signal,
-  })
-  if (!res.ok) throw await responseAPIError(res)
-  if (!res.body) throw new Error('No response body')
-  return parseUIMessageStream(res.body)
-}
-
-export async function abortAutomationRun(
-  runId: string,
-  commandId: string,
-  targetOperationId: string,
-  reason = 'user_requested',
-): Promise<AgentCommandReceipt> {
-  return requestJSON(`/api/automations/runs/${encodeURIComponent(runId)}/abort`, {
-    method: 'POST',
-    headers: jsonHeaders,
-    body: JSON.stringify({
-      command_id: commandId,
-      target_operation_id: targetOperationId,
-      reason,
-    }),
-  })
-}
-
-export async function getAutomationRunMessages(runId: string): Promise<AgentUIMessage[]> {
-  return requestJSON(`/api/automations/runs/${encodeURIComponent(runId)}/messages`)
+  const params = new URLSearchParams()
+  if (target.project_id) params.set('project_id', target.project_id)
+  if (target.workspace) params.set('workspace', target.workspace)
+  return params.toString()
 }

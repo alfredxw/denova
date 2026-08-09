@@ -12,11 +12,13 @@ import (
 	"time"
 
 	"denova/config"
+	agentconversation "denova/internal/agents/conversation"
 	agentharness "denova/internal/agents/harness"
 	agentrun "denova/internal/agents/run"
 	"denova/internal/agents/session"
 	agenttool "denova/internal/agents/tool"
 	agenttoolruntime "denova/internal/agents/toolruntime"
+	agentchatapp "denova/internal/app/agentchat"
 	apptask "denova/internal/app/task"
 	"denova/internal/automation"
 	"denova/internal/book"
@@ -92,6 +94,7 @@ type App struct {
 	projectRegistry *projectdomain.Registry
 
 	automationApp         *Service
+	agentChatApp          *agentchatapp.Service
 	runtimes              map[string]*cachedTestRuntime
 	automationTriggers    *automationTriggerCoordinator
 	automationEffectWake  chan struct{}
@@ -189,6 +192,52 @@ func (application *App) ensureServices() {
 		application.automationTriggers = application.automationApp.triggers
 		application.activeAutomationTasks = application.automationApp.activeTasks
 	}
+	if application.agentChatApp == nil {
+		application.agentChatApp = agentchatapp.NewService(testAgentChatHost{app: application}, application.projectRegistry)
+	}
+}
+
+type testAgentChatHost struct {
+	app *App
+}
+
+func (host testAgentChatHost) BaseRuntime() (config.Config, *agentharness.Service) {
+	host.app.mu.RLock()
+	defer host.app.mu.RUnlock()
+	return *host.app.cfg, host.app.chatService
+}
+
+func (host testAgentChatHost) ProjectVersionService(projectID string) (*book.VersionService, error) {
+	record, layout, err := host.app.projectRegistry.Resolve(projectID, true)
+	if err != nil {
+		return nil, err
+	}
+	return book.NewVersionService(record.WorkspacePath, layout.VersionRepositoryDir()), nil
+}
+
+func (host testAgentChatHost) CurrentWorkspace() string {
+	return host.app.CurrentWorkspace()
+}
+
+func (host testAgentChatHost) ResolveAsk(
+	ctx context.Context,
+	target *session.Session,
+	_, _, askID, status string,
+	answers []agentconversation.HostAskAnswer,
+	cancelReason string,
+) (agentconversation.HostAskResolution, error) {
+	return agentconversation.ResolveAsk(ctx, target, askID, status, answers, cancelReason)
+}
+
+func (host testAgentChatHost) OnVerifiedMutations(
+	context.Context,
+	string,
+	*book.VersionService,
+	config.Config,
+	[]agenttool.Mutation,
+	agenttool.Verification,
+) {
+	host.app.automation().SignalReconciliation()
 }
 
 func NewServiceForTestHost(host Host) *Service {
@@ -212,6 +261,7 @@ func (application *App) Close() {
 		application.closed = true
 		rootScope := application.rootScope
 		service := application.automationApp
+		agentChatService := application.agentChatApp
 		chatService := application.chatService
 		store := application.sessionStore
 		runtimes := make([]*cachedTestRuntime, 0, len(application.runtimes))
@@ -229,6 +279,9 @@ func (application *App) Close() {
 		}
 		if rootScope != nil {
 			_ = rootScope.Wait(context.Background())
+		}
+		if agentChatService != nil {
+			agentChatService.Close(context.Background())
 		}
 		for _, runtime := range runtimes {
 			runtime.Close()
@@ -545,6 +598,38 @@ func (application *App) AcquireProjectOperation(ctx context.Context, projectID s
 func (application *App) AcquireWorkspaceOperation(ctx context.Context, workspace string) (Operation, error) {
 	return application.acquireOperation(ctx, workspace)
 }
+func (application *App) AcceptProjectConversationTurn(
+	ctx context.Context,
+	task *apptask.Task,
+	turn ProjectConversationTurn,
+	emit func(agentrun.Event),
+) (ProjectConversationExecution, error) {
+	application.ensureServices()
+	busyPolicy := agentchatapp.TurnBusyReject
+	if turn.SessionStrategy == automation.SessionStrategyPerTask {
+		busyPolicy = agentchatapp.TurnBusyWait
+	}
+	return application.agentChatApp.AcceptTurn(ctx, agentchatapp.TurnRequest{
+		Binding: agentchatapp.Binding{ProjectID: turn.ProjectID, SessionID: turn.SessionID},
+		ChatRequest: agentchatapp.ChatRequest{
+			CommandID: turn.CommandID,
+			Message:   turn.Message,
+		},
+		Task: task,
+		Policy: agentchatapp.TurnPolicy{
+			Origin:               agentchatapp.TurnOriginAutomation,
+			OriginID:             turn.AutomationTaskID,
+			TraceID:              turn.RunID,
+			SessionTitle:         turn.SessionTitle,
+			ModelProfileID:       turn.ModelProfileID,
+			WriteMode:            turn.WriteMode,
+			WriteScope:           turn.WriteScope,
+			BusyPolicy:           busyPolicy,
+			DisabledCapabilities: append([]string(nil), turn.DisabledCapabilities...),
+		},
+		Emit: emit,
+	})
+}
 func (application *App) RegisterTask(task *apptask.Task, workspace string) error {
 	return application.registerTask(task, workspace)
 }
@@ -589,9 +674,6 @@ func (application *App) ActiveAutomationTaskByRunID(runID string) (*apptask.Task
 }
 func (application *App) StartAutomationTaskCommand(ctx context.Context, id, commandID string, evidence []automation.TriggerEvidence) (*apptask.Task, automation.RunRecord, error) {
 	return application.automation().StartTaskCommand(ctx, id, commandID, evidence)
-}
-func (application *App) ContinueAutomationRun(ctx context.Context, runID, commandID, message string) (*apptask.Task, automation.RunRecord, error) {
-	return application.automation().ContinueRun(ctx, runID, commandID, message)
 }
 func (application *App) AbortAutomationRunCommand(ctx context.Context, runID, commandID string, operationID agentrun.OperationID, reason string) (agentrun.CommandReceipt, error) {
 	return application.automation().AbortRunCommand(ctx, runID, commandID, operationID, reason)
@@ -707,14 +789,14 @@ func appRuntimeBindingForTest(binding agentrun.RuntimeBinding) runstate.BindingR
 	return ref
 }
 
-func automationRuntimeBindingForTest(workspace, sessionID, taskID string, projectIDs ...string) runstate.BindingRef {
+func automationRuntimeBindingForTest(workspace, sessionID, _ string, projectIDs ...string) runstate.BindingRef {
 	projectID := ""
 	if len(projectIDs) > 0 {
 		projectID = projectIDs[0]
 	}
 	return appRuntimeBindingForTest(agentrun.RuntimeBinding{
-		AgentKind: agentrun.AgentKindAutomation, ProjectID: projectID,
-		Workspace: workspace, SessionID: sessionID, TaskID: taskID,
+		AgentKind: agentrun.AgentKindIDE, ProjectID: projectID, Mode: agentrun.ModeAgentChat,
+		Workspace: workspace, SessionID: sessionID,
 	})
 }
 

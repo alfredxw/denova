@@ -4,9 +4,17 @@ import (
 	"os"
 	"testing"
 
+	"denova/config"
 	"denova/internal/automation"
 	projectdomain "denova/internal/project"
 )
+
+func registeredAutomationProjectStoreForTest(t *testing.T, novaDir, workspace string) (*automation.Store, ProjectLayout) {
+	t.Helper()
+	application := &App{cfg: &config.Config{NovaDir: novaDir}}
+	layout := registerBookProjectForTest(t, application, workspace)
+	return automation.NewProjectStore(novaDir, layout.ProjectID, layout.ContentRoot, layout.StateRoot), layout
+}
 
 func registerAutomationProjectForTest(t *testing.T, application *App, workspace string) *automation.Store {
 	t.Helper()

@@ -209,12 +209,6 @@ func TestProductToolFactoriesDeclareEveryConcreteTool(t *testing.T) {
 				return agenttoolruntime.NewCatalog(cfg).Image()(config.ResolveAgentTools(cfg, config.AgentKindImage))
 			},
 		},
-		{
-			name: "automation",
-			build: func() ([]agent.ToolDefinition, error) {
-				return agenttoolruntime.NewCatalog(cfg).Lore(false)(config.ResolveAgentTools(cfg, config.AgentKindAutomation))
-			},
-		},
 		{name: "web access", build: func() ([]agent.ToolDefinition, error) {
 			return agenttoolruntime.NewCatalog(cfg).WebAccess(config.ResolveAgentTools(cfg, config.AgentKindIDE))
 		}},

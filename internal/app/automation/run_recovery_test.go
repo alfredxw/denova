@@ -25,7 +25,7 @@ func TestAutomationColdAcceptedRunStaysRecoveryRequiredUntilExplicitAbort(t *tes
 	if err := os.MkdirAll(workspace, 0o755); err != nil {
 		t.Fatal(err)
 	}
-	store := automation.NewStore(dataDir, workspace)
+	store, projectLayout := registeredAutomationProjectStoreForTest(t, dataDir, workspace)
 	taskDef, err := store.Create(automation.Task{
 		Scope: automation.ScopeWorkspace, Enabled: true, Name: "cold recovery", Template: automation.TemplateReview,
 		WriteMode: automation.WriteModeReadOnly, WriteScope: automation.WriteScopeNone,
@@ -44,7 +44,7 @@ func TestAutomationColdAcceptedRunStaysRecoveryRequiredUntilExplicitAbort(t *tes
 	evidence := []automation.TriggerEvidence{{Source: "schedule", Title: "daily", Snippet: "0 9 * * *"}}
 	run := automation.RunRecord{
 		ID: runID, TaskID: taskDef.ID, SessionID: automationRunSessionID(runID),
-		Scope: taskDef.Scope, Workspace: workspace, Trigger: automation.TriggerSchedule,
+		ProjectID: projectLayout.ProjectID, Scope: taskDef.Scope, Workspace: workspace, Trigger: automation.TriggerSchedule,
 		TriggerEvidence: evidence, Status: automation.RunStatusRunning, StartedAt: time.Now().UTC(),
 		RootRuntimeCommandID: commandID, RootRuntimeOperationID: string(operationID), RootRuntimeReceiptCursor: 1,
 		RuntimeCommandID: commandID, RuntimeOperationID: string(operationID), RuntimeReceiptCursor: 1,
@@ -139,7 +139,7 @@ func TestAutomationStartupScanFinalizesTerminalRuntimeEffectsExactlyOnce(t *test
 	if err := os.MkdirAll(workspace, 0o755); err != nil {
 		t.Fatal(err)
 	}
-	store := automation.NewStore(dataDir, workspace)
+	store, projectLayout := registeredAutomationProjectStoreForTest(t, dataDir, workspace)
 	taskDef, err := store.Create(automation.Task{
 		Scope: automation.ScopeWorkspace, Enabled: true, Name: "terminal recovery", Template: automation.TemplateReview,
 		WriteMode: automation.WriteModeConfirmWrite, WriteScope: automation.WriteScopeFile,
@@ -152,7 +152,7 @@ func TestAutomationStartupScanFinalizesTerminalRuntimeEffectsExactlyOnce(t *test
 	commandID := automationRunAgentCommandID(runID)
 	run := automation.RunRecord{
 		ID: runID, TaskID: taskDef.ID, SessionID: automationRunSessionID(runID),
-		Scope: taskDef.Scope, Workspace: workspace, Trigger: automation.TriggerSchedule,
+		ProjectID: projectLayout.ProjectID, Scope: taskDef.Scope, Workspace: workspace, Trigger: automation.TriggerSchedule,
 		Status: automation.RunStatusRunning, StartedAt: time.Now().UTC(),
 		RootRuntimeCommandID: commandID, RootRuntimeOperationID: string(operationID), RootRuntimeReceiptCursor: 1,
 		RuntimeCommandID: commandID, RuntimeOperationID: string(operationID), RuntimeReceiptCursor: 1,
@@ -200,7 +200,7 @@ func TestAutomationColdFollowUpPublishesAndAbortsCurrentOperation(t *testing.T) 
 	if err := os.MkdirAll(workspace, 0o755); err != nil {
 		t.Fatal(err)
 	}
-	store := automation.NewStore(dataDir, workspace)
+	store, projectLayout := registeredAutomationProjectStoreForTest(t, dataDir, workspace)
 	taskDef, err := store.Create(automation.Task{
 		Scope: automation.ScopeWorkspace, Enabled: true, Name: "recover follow-up", Template: automation.TemplateReview,
 		WriteMode: automation.WriteModeReadOnly, WriteScope: automation.WriteScopeNone,
@@ -215,7 +215,7 @@ func TestAutomationColdFollowUpPublishesAndAbortsCurrentOperation(t *testing.T) 
 	const currentCommandID = "cold-follow-up-command"
 	run := automation.RunRecord{
 		ID: runID, TaskID: taskDef.ID, SessionID: automationRunSessionID(runID),
-		Scope: taskDef.Scope, Workspace: workspace, Trigger: automation.TriggerManual,
+		ProjectID: projectLayout.ProjectID, Scope: taskDef.Scope, Workspace: workspace, Trigger: automation.TriggerManual,
 		Status: automation.RunStatusRunning, StartedAt: time.Now().UTC(),
 		RootRuntimeCommandID: rootCommandID, RootRuntimeOperationID: string(rootOperationID), RootRuntimeReceiptCursor: 1,
 		RuntimeCommandID: currentCommandID, RuntimeOperationID: string(currentOperationID), RuntimeReceiptCursor: 8,
@@ -294,7 +294,7 @@ func TestAutomationPendingFollowUpIntentRecoversActiveSuccessorAfterCrash(t *tes
 	if err := os.MkdirAll(workspace, 0o755); err != nil {
 		t.Fatal(err)
 	}
-	store := automation.NewStore(dataDir, workspace)
+	store, projectLayout := registeredAutomationProjectStoreForTest(t, dataDir, workspace)
 	taskDef, err := store.Create(automation.Task{
 		Scope: automation.ScopeWorkspace, Enabled: true, Name: "pending successor", Template: automation.TemplateReview,
 		WriteMode: automation.WriteModeReadOnly, WriteScope: automation.WriteScopeNone,
@@ -309,7 +309,7 @@ func TestAutomationPendingFollowUpIntentRecoversActiveSuccessorAfterCrash(t *tes
 	const successorCommandID = "pending-successor-command"
 	run := automation.RunRecord{
 		ID: runID, TaskID: taskDef.ID, SessionID: automationRunSessionID(runID),
-		Scope: taskDef.Scope, Workspace: workspace, Trigger: automation.TriggerManual,
+		ProjectID: projectLayout.ProjectID, Scope: taskDef.Scope, Workspace: workspace, Trigger: automation.TriggerManual,
 		Status: automation.RunStatusSuccess, StartedAt: time.Now().UTC().Add(-time.Minute), FinishedAt: time.Now().UTC(),
 		RootRuntimeCommandID: rootCommandID, RootRuntimeOperationID: string(rootOperationID), RootRuntimeReceiptCursor: 1,
 		RuntimeCommandID: rootCommandID, RuntimeOperationID: string(rootOperationID), RuntimeReceiptCursor: 4,
@@ -415,7 +415,11 @@ func TestAutomationRecoveryFailureCannotFinalizeAnActiveProjection(t *testing.T)
 
 func seedAutomationRuntimeJournal(t *testing.T, dataDir string, taskDef automation.Task, run automation.RunRecord, events []runstate.EventPayload) {
 	t.Helper()
-	ref := automationRuntimeBindingForTest(run.Workspace, run.SessionID, taskDef.ID)
+	projectID := run.ProjectID
+	if projectID == "" {
+		projectID = taskDef.Target.ProjectID
+	}
+	ref := automationRuntimeBindingForTest(run.Workspace, run.SessionID, run.ID, projectID)
 	key, err := json.Marshal(ref)
 	if err != nil {
 		t.Fatal(err)

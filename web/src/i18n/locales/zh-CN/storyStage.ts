@@ -138,6 +138,8 @@ const storyStage = {
   'storyStage.interactiveImage.currentInterval': '当前：每 {{count}} 轮',
   'storyStage.interactiveImage.saveFailed': '保存互动图像设置失败',
   'storyStage.interactiveImage.generateFailed': '互动图像生成失败',
+  'storyStage.interactiveImage.targetMissing': '这条消息还没有可用于生成图像的已保存回合',
+  'storyStage.interactiveImage.alreadyGenerating': '已有一张互动图像正在生成，请稍候',
   'storyStage.interactiveImage.generating': '正在生成互动图像…',
   'storyStage.imagePreset.menuTitle': '图像方案',
   'storyStage.inputPlaceholder': '你要做什么？',

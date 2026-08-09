@@ -800,6 +800,7 @@ type AutomationWritePolicy = 'read_only' | 'allow_lore_write' | 'allow_file_writ
 type AutomationWriteMode = 'read_only' | 'confirm_write' | 'auto_write'
 type AutomationWriteScope = 'none' | 'lore' | 'file' | 'lore_and_file'
 type AutomationOutputPolicy = 'run_record_only' | 'optional_file'
+export type AutomationSessionStrategy = 'per_run' | 'per_task'
 type AutomationScheduleKind = 'manual' | 'daily' | 'weekly' | 'monthly' | 'every_hours'
 export type AutomationTriggerType = 'manual' | 'schedule' | 'semantic' | 'chapter_batch'
 type AutomationActionPolicy = 'confirm' | 'auto_run' | 'notify_only'
@@ -845,7 +846,10 @@ interface AutomationTriggerState {
 export interface AutomationRunRecord {
   id: string
   task_id: string
+  task_revision?: string
   session_id?: string
+  session_strategy?: AutomationSessionStrategy
+  turn_id?: string
   project_id?: string
   scope: AutomationScope
   workspace?: string
@@ -884,6 +888,7 @@ export interface AutomationTask {
   write_scope: AutomationWriteScope
   output_policy: AutomationOutputPolicy
   output_path: string
+  session_strategy: AutomationSessionStrategy
   last_run?: AutomationRunRecord
   recent_runs: AutomationRunRecord[]
   created_at?: string
@@ -904,6 +909,7 @@ export type AutomationTaskUpdate = Pick<AutomationTask,
   | 'write_scope'
   | 'output_policy'
   | 'output_path'
+  | 'session_strategy'
 >
 
 export type AutomationTaskTemplateDefaults = Pick<AutomationTask,
@@ -919,6 +925,7 @@ export type AutomationTaskTemplateDefaults = Pick<AutomationTask,
   | 'write_scope'
   | 'output_policy'
   | 'output_path'
+  | 'session_strategy'
 >
 
 export interface AutomationTaskTemplate {

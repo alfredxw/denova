@@ -30,16 +30,16 @@ func TestProviderHardLimitRejectsLongHistoryWhenSemanticCompactionIsDisabled(t *
 
 func TestStandaloneProviderBoundaryUsesResolvedAgentLimit(t *testing.T) {
 	maxBytes := 32 * 1024
-	cfg := &config.Config{AgentContexts: config.AgentContextSettings{Automation: config.AgentContextOverride{
+	cfg := &config.Config{AgentContexts: config.AgentContextSettings{IDE: config.AgentContextOverride{
 		MaxProviderInputBytes: &maxBytes,
 	}}}
 	messages := []*agent.Message{
 		agent.SystemMessage("bounded standalone agent"),
 		agent.UserMessage(strings.Repeat("语义触发证据。", maxBytes)),
 	}
-	err := ValidateConfiguredInput(cfg, config.AgentKindAutomation, messages, nil)
+	err := ValidateConfiguredInput(cfg, config.AgentKindIDE, messages, nil)
 	var limitErr *ProviderInputLimitError
-	if !errors.As(err, &limitErr) || limitErr.AgentKind != config.AgentKindAutomation || limitErr.MaxBytes != maxBytes {
+	if !errors.As(err, &limitErr) || limitErr.AgentKind != config.AgentKindIDE || limitErr.MaxBytes != maxBytes {
 		t.Fatalf("standalone provider boundary = %#v, err=%v", limitErr, err)
 	}
 }

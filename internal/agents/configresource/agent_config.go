@@ -250,8 +250,6 @@ func setAgentModelOverride(settings *config.Settings, agent string, value config
 		settings.AgentModels.ToolAgent = value
 	case config.AgentKindImage:
 		settings.AgentModels.Image = value
-	case config.AgentKindAutomation:
-		settings.AgentModels.Automation = value
 	case config.AgentKindContextCompaction:
 		settings.AgentModels.ContextCompaction = value
 	}
@@ -277,8 +275,6 @@ func setAgentToolOverride(settings *config.Settings, agent string, value config.
 		settings.AgentTools.ToolAgent = value
 	case config.AgentKindImage:
 		settings.AgentTools.Image = value
-	case config.AgentKindAutomation:
-		settings.AgentTools.Automation = value
 	case config.AgentKindContextCompaction:
 		settings.AgentTools.ContextCompaction = value
 	}
@@ -304,8 +300,6 @@ func setAgentPromptOverride(settings *config.Settings, agent string, value confi
 		settings.AgentPrompts.ToolAgent = value
 	case config.AgentKindImage:
 		settings.AgentPrompts.Image = value
-	case config.AgentKindAutomation:
-		settings.AgentPrompts.Automation = value
 	case config.AgentKindContextCompaction:
 		settings.AgentPrompts.ContextCompaction = value
 	}
@@ -331,8 +325,6 @@ func setAgentSkillOverride(settings *config.Settings, agent string, value config
 		settings.AgentSkills.ToolAgent = value
 	case config.AgentKindImage:
 		settings.AgentSkills.Image = value
-	case config.AgentKindAutomation:
-		settings.AgentSkills.Automation = value
 	case config.AgentKindContextCompaction:
 		settings.AgentSkills.ContextCompaction = value
 	}
@@ -358,8 +350,6 @@ func setAgentContextOverride(settings *config.Settings, agent string, value conf
 		settings.AgentContexts.ToolAgent = value
 	case config.AgentKindImage:
 		settings.AgentContexts.Image = value
-	case config.AgentKindAutomation:
-		settings.AgentContexts.Automation = value
 	case config.AgentKindContextCompaction:
 		settings.AgentContexts.ContextCompaction = value
 	}
@@ -377,8 +367,6 @@ func setGeneralSubAgentOverride(settings *config.Settings, agent string, value *
 		settings.GeneralSubAgents.InteractiveStory = value
 	case config.AgentKindConfigManager:
 		settings.GeneralSubAgents.ConfigManager = value
-	case config.AgentKindAutomation:
-		settings.GeneralSubAgents.Automation = value
 	}
 }
 

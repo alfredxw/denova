@@ -22,6 +22,7 @@ import {
 import { persistWorkbenchState, readStoredWorkbenchState } from './tab-state'
 import { closeTerminalSession, getTerminalRuntimeStatus } from './terminal/api'
 import { AgentChatView } from './AgentChatView'
+import { consumeAgentChatSessionNavigation, requestAgentChatSessionNavigation } from './session-navigation'
 import type { AgentChatProjectNavigationState } from './AgentChatProjectSwitcher'
 
 function FlushableProjectPage({
@@ -41,6 +42,7 @@ function FlushableProjectPage({
 describe('AgentChatView project workbenches', () => {
   beforeEach(() => {
     window.localStorage.clear()
+    consumeAgentChatSessionNavigation()
     setDocumentReviewFeedback(null)
     vi.mocked(getAgentChatProjects)
       .mockReset()
@@ -66,6 +68,14 @@ describe('AgentChatView project workbenches', () => {
         scrollback_kb: 256,
         sessions: [],
       })
+  })
+
+  it('opens a queued durable conversation after its Project snapshot is reconciled', async () => {
+    requestAgentChatSessionNavigation({ projectId: 'project-a', sessionId: 'session-a' })
+
+    renderView(<AgentChatView composerSettings={{} as never} tellers={[]} imagePresets={[]} renderPage={() => null} renderReview={() => null} />)
+
+    expect(await screen.findByTestId('conversation:/books/a:session-a')).toHaveTextContent('active')
   })
 
   it('publishes its live Project selection to the shared header navigator', async () => {

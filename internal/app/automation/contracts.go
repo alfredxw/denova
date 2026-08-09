@@ -6,7 +6,9 @@ import (
 
 	"denova/config"
 	agentharness "denova/internal/agents/harness"
+	agentrun "denova/internal/agents/run"
 	"denova/internal/agents/session"
+	appagentruntime "denova/internal/app/agentruntime"
 	apptask "denova/internal/app/task"
 	"denova/internal/automation"
 	"denova/internal/book"
@@ -15,7 +17,7 @@ import (
 
 var (
 	// ErrNoWorkspace reports that an operation requires a selected workspace.
-	ErrNoWorkspace = errors.New("no workspace is selected")
+	ErrNoWorkspace = appagentruntime.ErrNoWorkspace
 	// ErrOperationActive rejects a second root operation for the same run.
 	ErrOperationActive = errors.New("agent operation is already active")
 	// ErrCommandIDRequired rejects commands that cannot be replayed safely.
@@ -56,6 +58,31 @@ type Catalog struct {
 	Projects         []automation.ProjectLocation
 }
 
+// ProjectConversationTurn is the complete automation-owned intent admitted by
+// the target Project's AgentChat runtime. Automation supplies scheduling and
+// permission policy; AgentChat owns conversation creation and execution.
+type ProjectConversationTurn struct {
+	ProjectID            string
+	SessionID            string
+	CommandID            string
+	Message              string
+	AutomationTaskID     string
+	RunID                string
+	SessionTitle         string
+	ModelProfileID       string
+	WriteMode            string
+	WriteScope           string
+	SessionStrategy      string
+	DisabledCapabilities []string
+}
+
+// ProjectConversationExecution is the durable AgentChat command accepted for
+// one automation run. The automation worker owns the single Wait call.
+type ProjectConversationExecution interface {
+	Receipt() agentrun.CommandReceipt
+	Wait(context.Context) agentrun.Outcome
+}
+
 // Host is the narrow process boundary used by automation. It owns workspace
 // generations and task admission; Service owns all automation state.
 type Host interface {
@@ -68,6 +95,7 @@ type Host interface {
 	AcquireRootOperation(context.Context) (Operation, error)
 	AcquireProjectOperation(context.Context, string) (Operation, error)
 	AcquireWorkspaceOperation(context.Context, string) (Operation, error)
+	AcceptProjectConversationTurn(context.Context, *apptask.Task, ProjectConversationTurn, func(agentrun.Event)) (ProjectConversationExecution, error)
 	RegisterTask(*apptask.Task, string) error
 	UnregisterTask(*apptask.Task)
 }

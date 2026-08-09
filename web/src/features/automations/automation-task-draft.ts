@@ -1,4 +1,4 @@
-import type { AutomationTask, AutomationTaskTemplate, AutomationTaskUpdate, BookRecord } from '@/lib/api'
+import type { AutomationTask, AutomationTaskTemplate, AutomationTaskUpdate } from '@/lib/api'
 import { automationTaskKey, normalizeAutomationTask } from './automation-catalog'
 import { defaultScheduleTrigger } from './automation-trigger'
 
@@ -22,6 +22,7 @@ export function automationTaskUpdate(task: AutomationTask): AutomationTaskUpdate
     write_scope: task.write_scope,
     output_policy: task.output_policy,
     output_path: task.output_path,
+    session_strategy: task.session_strategy,
   }
 }
 
@@ -46,6 +47,7 @@ export function newAutomationTask(target: NonNullable<AutomationTask['target']>,
     write_scope: 'none',
     output_policy: 'run_record_only',
     output_path: '',
+    session_strategy: 'per_run',
     recent_runs: [],
   }
 }
@@ -83,6 +85,10 @@ export function normalizeAutomationTaskShape(
   fallbackTarget: NonNullable<AutomationTask['target']>,
 ): AutomationTask {
   task = normalizeAutomationTask(task, fallbackTarget)
+  task = {
+    ...task,
+    session_strategy: task.session_strategy === 'per_task' ? 'per_task' : 'per_run',
+  }
   if (task.write_mode && task.write_scope) {
     return { ...task, default_action_policy: defaultAutomationActionPolicy }
   }
@@ -119,27 +125,5 @@ export function upsertAutomationTask(tasks: AutomationTask[], task: AutomationTa
 export function defaultAutomationTarget(project: { projectId: string; workspace: string }): NonNullable<AutomationTask['target']> {
   const projectId = project.projectId.trim()
   const workspace = project.workspace.trim()
-  return projectId
-    ? { kind: 'workspace', project_id: projectId, ...(workspace ? { workspace } : {}) }
-    : { kind: 'user' }
-}
-
-export function automationTargetValue(task: AutomationTask): string {
-  if (task.target?.kind !== 'workspace') return 'user'
-  return `workspace:${task.target.project_id || task.target.workspace || ''}`
-}
-
-export function automationTargetOptions(books: BookRecord[], task: AutomationTask): BookRecord[] {
-  const projectId = task.target?.kind === 'workspace' ? task.target.project_id?.trim() : ''
-  const workspace = task.target?.kind === 'workspace' ? task.target.workspace?.trim() : ''
-  if ((!projectId && !workspace) || books.some((book) => projectId ? book.project_id === projectId : book.path === workspace)) return books
-  return [{ project_id: projectId || '', name: workspace?.split('/').filter(Boolean).at(-1) || workspace || projectId || '', path: workspace || '', author: '', last_opened_at: '' }, ...books]
-}
-
-export function automationTargetLabel(task: AutomationTask, books: BookRecord[], t: (key: string, options?: Record<string, unknown>) => string) {
-  if (task.target?.kind !== 'workspace') return t('automations.target.global')
-  const projectId = task.target.project_id || ''
-  const workspace = task.target.workspace || ''
-  const name = books.find((book) => projectId ? book.project_id === projectId : book.path === workspace)?.name || workspace.split('/').filter(Boolean).at(-1) || workspace || projectId
-  return t('automations.target.workspace', { name })
+  return { kind: 'workspace', project_id: projectId, ...(workspace ? { workspace } : {}) }
 }

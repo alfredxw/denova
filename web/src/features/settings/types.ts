@@ -178,6 +178,15 @@ export interface ImageAPIProfileSettings {
   default_output_format?: string
 }
 
+export interface ImagePingResult {
+  ok: boolean
+  latency_ms: number
+  profile_id: string
+  provider: string
+  base_url: string
+  model: string
+}
+
 export interface AgentModelSettings {
   default?: AgentModelOverride
   general?: AgentModelOverride

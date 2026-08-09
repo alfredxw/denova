@@ -72,7 +72,7 @@ func TestAutomationManualCommandCanonicalizesTaskAliasBeforeAdmission(t *testing
 	if err := os.MkdirAll(workspace, 0o755); err != nil {
 		t.Fatal(err)
 	}
-	store := automation.NewStore(dataDir, workspace)
+	store, projectLayout := registeredAutomationProjectStoreForTest(t, dataDir, workspace)
 	taskDef, err := store.Create(automation.Task{
 		Scope: automation.ScopeWorkspace, Enabled: true, Name: "canonical manual command", Template: automation.TemplateReview,
 	})
@@ -87,7 +87,7 @@ func TestAutomationManualCommandCanonicalizesTaskAliasBeforeAdmission(t *testing
 	rootCommandID := automationRunAgentCommandID(runID)
 	run := automation.RunRecord{
 		ID: runID, TaskID: taskDef.ID, SessionID: automationRunSessionID(runID),
-		Scope: taskDef.Scope, Workspace: workspace, Trigger: automation.TriggerManual,
+		ProjectID: projectLayout.ProjectID, Scope: taskDef.Scope, Workspace: workspace, Trigger: automation.TriggerManual,
 		RootRuntimeCommandID: rootCommandID, RootRuntimeOperationID: "manual-root-operation", RootRuntimeReceiptCursor: 1,
 		RuntimeCommandID: rootCommandID, RuntimeOperationID: "manual-root-operation", RuntimeReceiptCursor: 1,
 		Status: automation.RunStatusSuccess, CompletionEffectsCompleted: true,
@@ -123,7 +123,7 @@ func TestAutomationManualCommandCanonicalizesTaskAliasBeforeAdmission(t *testing
 	<-secondTask.Done()
 	application.Close()
 
-	ref := automationRuntimeBindingForTest(workspace, run.SessionID, taskDef.ID)
+	ref := automationRuntimeBindingForTest(workspace, run.SessionID, run.ID, run.ProjectID)
 	key, err := json.Marshal(ref)
 	if err != nil {
 		t.Fatal(err)
@@ -151,53 +151,5 @@ func TestAutomationManualCommandCanonicalizesTaskAliasBeforeAdmission(t *testing
 	}
 	if accepted != 1 {
 		t.Fatalf("canonical task aliases admitted %d StartTurn commands, want 1", accepted)
-	}
-}
-
-func TestAutomationCompletedFollowUpReplaysFromDurableIntentAfterRestart(t *testing.T) {
-	root := t.TempDir()
-	workspace := filepath.Join(root, "workspace")
-	dataDir := filepath.Join(root, "nova")
-	if err := os.MkdirAll(workspace, 0o755); err != nil {
-		t.Fatal(err)
-	}
-	store := automation.NewStore(dataDir, workspace)
-	taskDef, err := store.Create(automation.Task{
-		Scope: automation.ScopeWorkspace, Enabled: true, Name: "follow-up replay", Template: automation.TemplateReview,
-	})
-	if err != nil {
-		t.Fatal(err)
-	}
-	identity, err := newAutomationFollowUpIdentity("completed-follow-up", "follow-up-command", "continue exactly")
-	if err != nil {
-		t.Fatal(err)
-	}
-	run := automation.RunRecord{
-		ID: identity.runID, TaskID: taskDef.ID, SessionID: automationRunSessionID(identity.runID),
-		Scope: taskDef.Scope, Workspace: workspace, Trigger: automation.TriggerManual,
-		RootRuntimeCommandID: automationRunAgentCommandID(identity.runID), RootRuntimeOperationID: "root-operation", RootRuntimeReceiptCursor: 1,
-		RuntimeCommandID: identity.commandID, RuntimeOperationID: "follow-up-operation", RuntimeReceiptCursor: 5,
-		RuntimeIntentHash: identity.fingerprint, RuntimeCommandFingerprint: "runtime-follow-up-fingerprint",
-		Status: automation.RunStatusSuccess, CompletionEffectsCompleted: true,
-	}
-	if _, err := store.AppendRun(taskDef.CatalogID, run); err != nil {
-		t.Fatal(err)
-	}
-
-	application, err := New(context.Background(), &config.Config{NovaDir: dataDir, Workspace: workspace, OpenAIModel: "test-model"})
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer application.Close()
-	replayedTask, replayed, err := application.ContinueAutomationRun(context.Background(), run.ID, identity.commandID, identity.message)
-	if err != nil {
-		t.Fatalf("exact durable follow-up replay failed: %v", err)
-	}
-	if replayedTask == nil || replayed.RuntimeOperationID != run.RuntimeOperationID || replayed.Status != automation.RunStatusSuccess {
-		t.Fatalf("durable replay task=%v run=%#v", replayedTask, replayed)
-	}
-	<-replayedTask.Done()
-	if conflictingTask, _, err := application.ContinueAutomationRun(context.Background(), run.ID, identity.commandID, "different payload"); !errors.Is(err, ErrAgentCommandConflict) || conflictingTask != nil {
-		t.Fatalf("same command with different payload task=%v err=%v", conflictingTask, err)
 	}
 }

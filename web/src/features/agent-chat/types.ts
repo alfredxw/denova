@@ -34,6 +34,7 @@ export interface AgentChatDocumentReviewNavigation extends DocumentReviewNavigat
 
 /** Capabilities supplied by the workbench to one mounted project-page tab. */
 export interface AgentChatPageRenderContext {
+  projectType: AgentChatProjectType
   navigationIntent: AgentChatDocumentReviewNavigation | null
   documentReview: DocumentReviewController
   refreshSignal: number

@@ -1,14 +1,15 @@
 import { act, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { http, HttpResponse } from 'msw'
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
 import i18n from '@/i18n'
 import { server } from '@/test/msw/server'
+import { consumeAgentChatSessionNavigation } from '@/features/agent-chat/session-navigation'
 import { AutomationsView as ProjectAutomationsView } from './AutomationsView'
 
-function AutomationsView({ workspace }: { workspace: string }) {
+function AutomationsView({ workspace, onOpenAgentChat = () => undefined }: { workspace: string; onOpenAgentChat?: () => void }) {
   const name = workspace.split('/').filter(Boolean).at(-1) || 'current'
-  return <ProjectAutomationsView projectId={`workspace-${name}`} workspace={workspace} />
+  return <ProjectAutomationsView projectId={`workspace-${name}`} workspace={workspace} onOpenAgentChat={onOpenAgentChat} />
 }
 
 const taskBase = {
@@ -41,6 +42,44 @@ const reviewTemplate = {
 }
 
 describe('AutomationsView', () => {
+  it('opens the admitted run in its Project AgentChat conversation', async () => {
+    const user = userEvent.setup()
+    const onOpenAgentChat = vi.fn()
+    server.use(
+      http.get('/api/books', () => HttpResponse.json({ books: [] })),
+      http.get('/api/automations', () => HttpResponse.json({ tasks: [{
+        ...taskBase,
+        id: 'run-in-agent-chat',
+        catalog_id: 'workspace-a:run-in-agent-chat',
+        scope: 'workspace',
+        name: 'Run in AgentChat',
+        target: { kind: 'workspace', workspace: '/books/a', project_id: 'workspace-a' },
+      }] })),
+      http.get('/api/automations/templates', () => HttpResponse.json({ templates: [] })),
+      http.get('/api/automations/inbox', () => HttpResponse.json({ items: [] })),
+      http.post('/api/automations/:id/run', () => HttpResponse.json({ run: {
+        id: 'run-1',
+        task_id: 'run-in-agent-chat',
+        project_id: 'workspace-a',
+        session_id: 'automation-run-1',
+        status: 'running',
+      } })),
+    )
+
+    try {
+      render(<AutomationsView workspace="/books/a" onOpenAgentChat={onOpenAgentChat} />)
+      await user.click(await screen.findByRole('button', { name: '立即运行' }))
+
+      await waitFor(() => expect(onOpenAgentChat).toHaveBeenCalledOnce())
+      expect(consumeAgentChatSessionNavigation()).toEqual({
+        projectId: 'workspace-a',
+        sessionId: 'automation-run-1',
+      })
+    } finally {
+      consumeAgentChatSessionNavigation()
+    }
+  })
+
   it('collapses and restores the automation sidebar from the page header', async () => {
     const user = userEvent.setup()
     server.use(
@@ -48,7 +87,6 @@ describe('AutomationsView', () => {
       http.get('/api/automations', () => HttpResponse.json({ tasks: [] })),
       http.get('/api/automations/templates', () => HttpResponse.json({ templates: [] })),
       http.get('/api/automations/inbox', () => HttpResponse.json({ items: [] })),
-      http.get('/api/automations/runs/active', () => HttpResponse.json({ runs: [] })),
     )
 
     render(<AutomationsView workspace="/books/a" />)
@@ -65,43 +103,30 @@ describe('AutomationsView', () => {
     expect(separator).toHaveAttribute('aria-hidden', 'false')
   })
 
-  it('shows one user catalog grouped by global and every workspace', async () => {
-    const user = userEvent.setup()
+  it('shows only automations owned by the current Project', async () => {
     server.use(
       http.get('/api/books', () => HttpResponse.json({ books: [
         { project_id: 'workspace-a', name: 'Book A', path: '/books/a', author: '', last_opened_at: '' },
         { project_id: 'workspace-b', name: 'Book B', path: '/books/b', author: '', last_opened_at: '' },
       ] })),
-      http.get('/api/automations', () => HttpResponse.json({ tasks: [
-        { ...taskBase, id: 'same', catalog_id: 'workspace-a:same', scope: 'workspace', name: 'Review A', target: { kind: 'workspace', workspace: '/books/a', project_id: 'workspace-a' } },
-        { ...taskBase, id: 'same', catalog_id: 'workspace-b:same', scope: 'workspace', name: 'Review B', target: { kind: 'workspace', workspace: '/books/b', project_id: 'workspace-b' } },
-        { ...taskBase, id: 'global', catalog_id: 'global', scope: 'user', name: 'Global research', target: { kind: 'user' } },
-      ] })),
+      http.get('/api/automations', ({ request }) => {
+        const query = new URL(request.url).searchParams
+        expect(query.get('project_id')).toBe('workspace-a')
+        expect(query.get('workspace')).toBe('/books/a')
+        return HttpResponse.json({ tasks: [
+          { ...taskBase, id: 'same', catalog_id: 'workspace-a:same', scope: 'workspace', name: 'Review A', target: { kind: 'workspace', workspace: '/books/a', project_id: 'workspace-a' } },
+        ] })
+      }),
       http.get('/api/automations/templates', () => HttpResponse.json({ templates: [reviewTemplate] })),
       http.get('/api/automations/inbox', () => HttpResponse.json({ items: [] })),
-      http.get('/api/automations/runs/active', () => HttpResponse.json({ runs: [] })),
     )
 
     render(<AutomationsView workspace="/books/a" />)
 
-    expect(await screen.findByText('Global research')).toBeInTheDocument()
-    expect(screen.getByText('Book A')).toBeInTheDocument()
-    expect(screen.getByText('Book B')).toBeInTheDocument()
+    expect(await screen.findByText('当前项目')).toBeInTheDocument()
     expect(screen.getAllByText('Review A').length).toBeGreaterThan(0)
-    expect(screen.getByText('Review B')).toBeInTheDocument()
-    expect(screen.queryByRole('button', { name: '工作区' })).not.toBeInTheDocument()
-    expect(screen.queryByRole('button', { name: '用户' })).not.toBeInTheDocument()
-
-    const bookBGroup = screen.getByRole('button', { name: /Book B/ })
-    expect(bookBGroup).toHaveAttribute('aria-expanded', 'true')
-    await user.click(bookBGroup)
-    expect(bookBGroup).toHaveAttribute('aria-expanded', 'false')
     expect(screen.queryByText('Review B')).not.toBeInTheDocument()
-    expect(screen.getAllByText('Review A').length).toBeGreaterThan(0)
-
-    await user.click(bookBGroup)
-    expect(bookBGroup).toHaveAttribute('aria-expanded', 'true')
-    expect(screen.getByText('Review B')).toBeInTheDocument()
+    expect(screen.queryByText('Global research')).not.toBeInTheDocument()
   })
 
   it('creates no task until a chosen template draft is saved', async () => {
@@ -114,7 +139,6 @@ describe('AutomationsView', () => {
       http.get('/api/automations', () => HttpResponse.json({ tasks: [] })),
       http.get('/api/automations/templates', () => HttpResponse.json({ templates: [reviewTemplate] })),
       http.get('/api/automations/inbox', () => HttpResponse.json({ items: [] })),
-      http.get('/api/automations/runs/active', () => HttpResponse.json({ runs: [] })),
       http.post('/api/automations', async ({ request }) => {
         createdTask = await request.json() as Record<string, unknown>
         return HttpResponse.json({ ...createdTask, id: 'auto-review', catalog_id: 'workspace-a:auto-review' })
@@ -158,7 +182,6 @@ describe('AutomationsView', () => {
       http.get('/api/automations', () => HttpResponse.json({ tasks: [] })),
       http.get('/api/automations/templates', () => HttpResponse.json({ templates: [reviewTemplate] })),
       http.get('/api/automations/inbox', () => HttpResponse.json({ items: [] })),
-      http.get('/api/automations/runs/active', () => HttpResponse.json({ runs: [] })),
       http.post('/api/automations', async ({ request }) => {
         submitted = await request.json() as Record<string, unknown>
         await createGate.promise
@@ -204,7 +227,6 @@ describe('AutomationsView', () => {
       http.get('/api/automations', () => HttpResponse.json({ tasks: [existing] })),
       http.get('/api/automations/templates', () => HttpResponse.json({ templates: [] })),
       http.get('/api/automations/inbox', () => HttpResponse.json({ items: [] })),
-      http.get('/api/automations/runs/active', () => HttpResponse.json({ runs: [] })),
       http.patch('/api/automations/:id', async ({ request }) => {
         updateBody = await request.json() as Record<string, unknown>
         return HttpResponse.json({ ...existing, ...updateBody, revision: 'rev-2', updated_at: '2026-07-18T12:00:00Z' })
@@ -251,7 +273,6 @@ describe('AutomationsView', () => {
       }),
       http.get('/api/automations/templates', () => HttpResponse.json({ templates: [] })),
       http.get('/api/automations/inbox', () => HttpResponse.json({ items: [] })),
-      http.get('/api/automations/runs/active', () => HttpResponse.json({ runs: [] })),
       http.post('/api/autosave-conflicts', async ({ request }) => {
         archived = await request.json() as Record<string, unknown>
         return HttpResponse.json({ id: 'conflict-1', path: '/conflicts/conflict-1.json' }, { status: 201 })
@@ -302,7 +323,6 @@ describe('AutomationsView', () => {
       http.get('/api/automations', () => HttpResponse.json({ tasks: [existing] })),
       http.get('/api/automations/templates', () => HttpResponse.json({ templates: [] })),
       http.get('/api/automations/inbox', () => HttpResponse.json({ items: [] })),
-      http.get('/api/automations/runs/active', () => HttpResponse.json({ runs: [] })),
       http.patch('/api/automations/:id', async ({ request }) => {
         patchStarted = true
         const update = await request.json() as Record<string, unknown>
@@ -352,7 +372,6 @@ describe('AutomationsView', () => {
       }),
       http.get('/api/automations/templates', () => HttpResponse.json({ templates: [] })),
       http.get('/api/automations/inbox', () => HttpResponse.json({ items: [] })),
-      http.get('/api/automations/runs/active', () => HttpResponse.json({ runs: [] })),
     )
 
     const view = render(<AutomationsView workspace="/books/a" />)
@@ -381,7 +400,6 @@ describe('AutomationsView', () => {
     const user = userEvent.setup()
     const previousLanguage = i18n.language
     let automationRequests = 0
-    let activeRunResponses = 0
     server.use(
       http.get('/api/books', () => HttpResponse.json({ books: [
         { project_id: 'workspace-a', name: 'Book A', path: '/books/a', author: '', last_opened_at: '' },
@@ -400,27 +418,6 @@ describe('AutomationsView', () => {
       }),
       http.get('/api/automations/templates', () => HttpResponse.json({ templates: [] })),
       http.get('/api/automations/inbox', () => HttpResponse.json({ items: [] })),
-      http.get('/api/automations/runs/active', () => {
-        if (activeRunResponses <= 0) return HttpResponse.json({ runs: [] })
-        activeRunResponses -= 1
-        return HttpResponse.json({ runs: [{
-          task_id: 'draft-protection',
-          run: {
-            id: 'background-run',
-            task_id: 'draft-protection',
-            scope: 'workspace',
-            workspace: '/books/a',
-            trigger: 'schedule',
-            status: 'running',
-            started_at: '2026-07-18T12:00:00Z',
-            summary: '',
-            tool_manifest: [],
-          },
-        }] })
-      }),
-      http.get('/api/automations/runs/background-run/stream', () => HttpResponse.text('', {
-        headers: { 'Content-Type': 'text/event-stream' },
-      })),
     )
 
     try {
@@ -429,8 +426,6 @@ describe('AutomationsView', () => {
       await user.clear(nameInput)
       await user.type(nameInput, 'Unsaved local name')
 
-      // One response is consumed by load(); the other exercises active-run resume.
-      activeRunResponses = 2
       await act(async () => {
         await i18n.changeLanguage(previousLanguage === 'en-US' ? 'zh-CN' : 'en-US')
       })
@@ -465,7 +460,6 @@ describe('AutomationsView', () => {
       }),
       http.get('/api/automations/templates', () => HttpResponse.json({ templates: [] })),
       http.get('/api/automations/inbox', () => HttpResponse.json({ items: [] })),
-      http.get('/api/automations/runs/active', () => HttpResponse.json({ runs: [] })),
     )
 
     render(<AutomationsView workspace="/books/a" />)
@@ -509,7 +503,6 @@ describe('AutomationsView', () => {
       }),
       http.get('/api/automations/templates', () => HttpResponse.json({ templates: [] })),
       http.get('/api/automations/inbox', () => HttpResponse.json({ items: [] })),
-      http.get('/api/automations/runs/active', () => HttpResponse.json({ runs: [] })),
       http.post('/api/autosave-conflicts', async () => {
         archiveStarted = true
         await archiveGate.promise

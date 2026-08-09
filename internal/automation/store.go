@@ -170,9 +170,8 @@ func (s *Store) List() ([]Task, error) {
 	return tasks, nil
 }
 
-// ListForTarget returns the tasks that execute in one explicit context. It is
-// the scheduler-facing view of the user catalog and never falls back to the
-// currently open workspacelayout.
+// ListForTarget returns the tasks that execute in one explicit context. It
+// never falls back to the currently open workspace.
 //
 // ListForTarget keeps each execution target's list exclusive: a workspace
 // target returns only workspace-scoped tasks for that workspace, and the user
@@ -188,14 +187,22 @@ func (s *Store) ListForTarget(target ExecutionTarget) ([]Task, error) {
 	if kind == "" {
 		kind = TargetKindUser
 	}
+	projectID := strings.TrimSpace(target.ProjectID)
 	workspace := canonicalStoreRoot(target.Workspace)
 	filtered := make([]Task, 0, len(tasks))
 	for _, task := range tasks {
 		if task.Target.Kind != kind {
 			continue
 		}
-		if kind == TargetKindWorkspace && canonicalStoreRoot(task.Target.Workspace) != workspace {
-			continue
+		if kind == TargetKindWorkspace {
+			taskProjectID := strings.TrimSpace(task.Target.ProjectID)
+			if projectID != "" && taskProjectID != "" {
+				if taskProjectID != projectID {
+					continue
+				}
+			} else if canonicalStoreRoot(task.Target.Workspace) != workspace {
+				continue
+			}
 		}
 		filtered = append(filtered, task)
 	}
@@ -596,6 +603,7 @@ func taskDefinitionRevision(task Task) (string, error) {
 		WriteScope          string              `json:"write_scope"`
 		OutputPolicy        string              `json:"output_policy"`
 		OutputPath          string              `json:"output_path"`
+		SessionStrategy     string              `json:"session_strategy"`
 	}{
 		Enabled:             task.Enabled,
 		Name:                task.Name,
@@ -609,6 +617,7 @@ func taskDefinitionRevision(task Task) (string, error) {
 		WriteScope:          task.WriteScope,
 		OutputPolicy:        task.OutputPolicy,
 		OutputPath:          task.OutputPath,
+		SessionStrategy:     task.SessionStrategy,
 	}
 	data, err := json.Marshal(definition)
 	if err != nil {
@@ -722,6 +731,7 @@ func NormalizeTask(task Task) (Task, error) {
 		return Task{}, fmt.Errorf("invalid template %q", task.Template)
 	}
 	task.ModelProfileID = strings.TrimSpace(task.ModelProfileID)
+	task.SessionStrategy = normalizeSessionStrategy(task.SessionStrategy)
 	schedule, err := NormalizeSchedule(task.Schedule)
 	if err != nil {
 		return Task{}, err
@@ -752,6 +762,15 @@ func NormalizeTask(task Task) (Task, error) {
 		task.RecentRuns = []RunRecord{}
 	}
 	return task, nil
+}
+
+func normalizeSessionStrategy(strategy string) string {
+	switch strings.TrimSpace(strategy) {
+	case SessionStrategyPerTask:
+		return SessionStrategyPerTask
+	default:
+		return SessionStrategyPerRun
+	}
 }
 
 func mergeTaskPatch(current, patch Task) Task {
@@ -793,6 +812,9 @@ func mergeTaskPatch(current, patch Task) Task {
 		next.OutputPolicy = patch.OutputPolicy
 	}
 	next.OutputPath = patch.OutputPath
+	if patch.SessionStrategy != "" {
+		next.SessionStrategy = patch.SessionStrategy
+	}
 	if patch.LastRun != nil {
 		next.LastRun = patch.LastRun
 	}

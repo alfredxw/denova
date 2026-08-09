@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import type { TFunction } from 'i18next'
+import { toast } from 'sonner'
 import { createAgentCommandID, type ChatMessage, type InteractiveImage } from '@/lib/api'
 import { agentCommandRetryKey, isKnownAgentCommandOutcome, rememberAgentCommandID } from '@/lib/agent-command'
 import { generateInteractiveImage } from '../../api'
@@ -13,7 +14,6 @@ interface UseStoryImagesOptions {
   t: TFunction
   onDone: (options?: { silent?: boolean }) => void | Promise<Snapshot | void>
   setActivity: (content: string) => void
-  setMessages: (updater: ChatMessage[] | ((current: ChatMessage[]) => ChatMessage[])) => void
 }
 
 // Keeps optimistic image projection and generation lifecycle separate from the
@@ -27,7 +27,6 @@ export function useStoryImages({
   t,
   onDone,
   setActivity,
-  setMessages,
 }: UseStoryImagesOptions) {
   const [optimisticImages, setOptimisticImages] = useState<Record<string, InteractiveImage[]>>({})
   const [generatingTurnId, setGeneratingTurnId] = useState<string | null>(null)
@@ -49,7 +48,15 @@ export function useStoryImages({
     source: 'manual' | 'auto' = 'manual',
     force = true,
   ) => {
-    if (!message.turn_id || !storyId || generatingTurnId) return null
+    if (!message.turn_id || !storyId) {
+      console.error(`[use-story-images.ts] interactive image target is unavailable story_id=${storyId || '<empty>'} turn_id=${message.turn_id || '<empty>'}`)
+      toast.error(t('storyStage.interactiveImage.targetMissing'))
+      return null
+    }
+    if (generatingTurnId) {
+      toast.warning(t('storyStage.interactiveImage.alreadyGenerating'))
+      return null
+    }
     const targetBranchID = branchId || snapshot?.branch_id || ''
     const retryKey = agentCommandRetryKey(stageKey, 'interactive-image', {
       storyId,
@@ -77,16 +84,15 @@ export function useStoryImages({
       return result
     } catch (error) {
       if (source === 'manual' && isKnownAgentCommandOutcome(error)) manualCommandIDsRef.current.delete(retryKey)
-      setMessages((current) => [
-        ...current,
-        { role: 'error', content: error instanceof Error ? error.message : t('storyStage.interactiveImage.generateFailed') },
-      ])
+      const messageText = error instanceof Error ? error.message : t('storyStage.interactiveImage.generateFailed')
+      console.error(`[use-story-images.ts] interactive image generation failed story_id=${storyId} turn_id=${message.turn_id}`, error)
+      toast.error(t('storyStage.interactiveImage.generateFailed'), { description: messageText })
       return null
     } finally {
       setGeneratingTurnId(null)
       setActivity('')
     }
-  }, [branchId, generatingTurnId, onDone, rememberImage, setActivity, setMessages, snapshot?.branch_id, stageKey, storyId, t])
+  }, [branchId, generatingTurnId, onDone, rememberImage, setActivity, snapshot?.branch_id, stageKey, storyId, t])
 
   const maybeGenerateAutomatically = useCallback(async (nextSnapshot: Snapshot | void) => {
     const targetSnapshot = nextSnapshot || snapshot
@@ -100,7 +106,7 @@ export function useStoryImages({
       source: 'auto',
       force: false,
     }).catch((error) => {
-      console.warn('[interactive-stage] 自动生成互动图像失败', error)
+      console.warn('[use-story-images.ts] automatic interactive image generation failed', error)
       return null
     })
     if (result && !result.skipped) {

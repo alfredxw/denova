@@ -104,3 +104,43 @@ type HistoryQuery struct {
 }
 
 type ChatRequest = chatagent.ChatRequest
+
+const TurnOriginAutomation = "automation"
+
+type TurnBusyPolicy string
+
+const (
+	// TurnBusyReject preserves interactive AgentChat's immediate feedback when
+	// another operation already owns the conversation.
+	TurnBusyReject TurnBusyPolicy = "reject"
+	// TurnBusyWait serializes durable background turns behind the current
+	// conversation operation without imposing an LLM timeout.
+	TurnBusyWait TurnBusyPolicy = "wait"
+)
+
+// TurnPolicy narrows one project-Agent turn without creating another Agent
+// kind. DisabledCapabilities is an invocation ceiling: it can remove project
+// capabilities but can never enable a capability disabled by project settings.
+type TurnPolicy struct {
+	Origin               string
+	OriginID             string
+	TraceID              string
+	SessionTitle         string
+	ModelProfileID       string
+	WriteMode            string
+	WriteScope           string
+	BusyPolicy           TurnBusyPolicy
+	DisabledCapabilities []string
+}
+
+// TurnRequest is the complete admission input shared by interactive AgentChat
+// and background project automation. Task is optional; callers that already
+// own a reconnectable display task may supply it so one task identity spans
+// automation accounting and AgentChat execution.
+type TurnRequest struct {
+	Binding Binding
+	ChatRequest
+	Task   *apptask.Task
+	Policy TurnPolicy
+	Emit   func(agentrun.Event)
+}

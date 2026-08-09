@@ -138,6 +138,8 @@ const storyStage = {
   'storyStage.interactiveImage.currentInterval': 'Current: every {{count}} turns',
   'storyStage.interactiveImage.saveFailed': 'Failed to save interactive image settings',
   'storyStage.interactiveImage.generateFailed': 'Failed to generate interactive image',
+  'storyStage.interactiveImage.targetMissing': 'This message does not have a saved turn available for image generation yet',
+  'storyStage.interactiveImage.alreadyGenerating': 'Another interactive image is already being generated',
   'storyStage.interactiveImage.generating': 'Generating interactive image...',
   'storyStage.imagePreset.menuTitle': 'Image Preset',
   'storyStage.inputPlaceholder': 'What do you do?',

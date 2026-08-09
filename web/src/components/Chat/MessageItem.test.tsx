@@ -743,6 +743,30 @@ describe('MessageItem', () => {
     expect(handleGenerate).toHaveBeenCalledWith(expect.objectContaining({ turn_id: 'turn-1' }))
   })
 
+  it('生成互动图像期间只在目标回合显示 loading，并禁用其他回合的重复请求', () => {
+    const { rerender } = render(
+      <MessageItem
+        message={{ role: 'assistant', content: '目标回合。', turn_id: 'turn-1' }}
+        onGenerateInteractiveImage={vi.fn()}
+        generatingInteractiveImageTurnId="turn-1"
+      />,
+    )
+
+    expect(screen.getByRole('button', { name: '生成互动图像' })).toBeDisabled()
+    expect(document.querySelector('.animate-spin')).toBeInTheDocument()
+
+    rerender(
+      <MessageItem
+        message={{ role: 'assistant', content: '其他回合。', turn_id: 'turn-2' }}
+        onGenerateInteractiveImage={vi.fn()}
+        generatingInteractiveImageTurnId="turn-1"
+      />,
+    )
+
+    expect(screen.getByRole('button', { name: '生成互动图像' })).toBeDisabled()
+    expect(document.querySelector('.animate-spin')).not.toBeInTheDocument()
+  })
+
   it('txt 章节插画卡片不允许一键插入 Markdown 图像', () => {
     const handleInsert = vi.fn()
 

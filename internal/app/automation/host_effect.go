@@ -65,7 +65,7 @@ func (s *Service) ReconcileHostEffect(ctx context.Context, committed agenttoolru
 	// Automation mutations can usually transfer into their run ledger without
 	// waiting for the scheduler. Failure is safe: the admitted generic outbox is
 	// still authoritative and the wake-up retries after run admission/restart.
-	if committed.Origin.AgentKind == agentrun.AgentKindAutomation {
+	if automationMutationOrigin(committed.Origin) {
 		if _, reconcileErr := s.reconcilePersistedHostEffect(context.WithoutCancel(ctx), admitted); reconcileErr != nil {
 			slog.WarnContext(ctx, fmt.Sprintf("[automation-host-effect] immediate transfer deferred effect_id=%s run_id=%s operation_id=%s err=%v", committed.EffectID, committed.Origin.TaskID, committed.RuntimeOperation, reconcileErr))
 		}
@@ -105,7 +105,7 @@ func (s *Service) reconcilePersistedHostEffect(ctx context.Context, effect autom
 	if err != nil {
 		return false, err
 	}
-	if payload.Origin.AgentKind == agentrun.AgentKindAutomation {
+	if automationMutationOrigin(payload.Origin) {
 		if s.hostEffectTransfer != nil {
 			return s.hostEffectTransfer(ctx, effect, payload)
 		}
@@ -212,10 +212,14 @@ func automationHostEffectOwnedByRun(effect automation.HostEffectObligation, runI
 	if err := json.Unmarshal(effect.Payload, &owner); err != nil {
 		return false, fmt.Errorf("classify admitted host effect %q: %w", effect.ID, err)
 	}
-	if owner.Origin.AgentKind != agentrun.AgentKindAutomation {
+	if !automationMutationOrigin(owner.Origin) {
 		return false, nil
 	}
 	return strings.TrimSpace(owner.Origin.TaskID) == strings.TrimSpace(runID), nil
+}
+
+func automationMutationOrigin(origin agenttoolruntime.ToolMutationOrigin) bool {
+	return strings.TrimSpace(origin.AutomationTaskID) != ""
 }
 
 func (s *Service) hostEffectOperationActive(ctx context.Context, payload admittedToolMutationPayload) bool {

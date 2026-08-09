@@ -56,6 +56,13 @@ func TestAutomationsListsTasksFromInactiveRegisteredWorkspaces(t *testing.T) {
 	if !seen[taskA.ID] || !seen[taskB.ID] {
 		t.Fatalf("global automation list omitted a registered workspace task: %#v", seen)
 	}
+	projectTasks, err := application.automation().ListForProject(taskA.Target.ProjectID, workspaceA)
+	if err != nil {
+		t.Fatalf("list Project A automations: %v", err)
+	}
+	if len(projectTasks) != 1 || projectTasks[0].ID != taskA.ID {
+		t.Fatalf("Project A automation list crossed Project ownership: %#v", projectTasks)
+	}
 }
 
 func TestSchedulerEvaluatesDueTasksInInactiveWorkspace(t *testing.T) {

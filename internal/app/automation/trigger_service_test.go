@@ -6,7 +6,6 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
-	"sync"
 	"testing"
 	"time"
 
@@ -14,6 +13,7 @@ import (
 	agenttool "denova/internal/agents/tool"
 	"denova/internal/automation"
 	"denova/internal/book"
+	projectdomain "denova/internal/project"
 )
 
 func TestAutomationCheckCreatesRetryableInboxWhenAutoRunCannotStart(t *testing.T) {
@@ -434,108 +434,41 @@ func TestAutomationMutationChecksCoalesceRapidSavesWithoutDuplicateInbox(t *test
 	}
 }
 
-func TestUserAutomationTriggerStateAndInboxAreWorkspaceScoped(t *testing.T) {
-	root := t.TempDir()
-	userDir := filepath.Join(root, "user")
-	workspaces := []string{filepath.Join(root, "one"), filepath.Join(root, "two")}
-	for _, workspace := range workspaces {
-		if err := os.MkdirAll(filepath.Join(workspace, "chapters"), 0o755); err != nil {
-			t.Fatal(err)
-		}
-		writeTestChapter(t, workspace, 1)
-	}
-	application := &App{cfg: &config.Config{NovaDir: userDir}}
-	application.ensureServices()
-	defer application.Close()
-	service := automationRegistryTestService(application)
-	snapshots := make([]*automationWorkspaceSnapshot, 0, len(workspaces))
-	for _, workspace := range workspaces {
-		snapshots = append(snapshots, &automationWorkspaceSnapshot{
-			workspace:   workspace,
-			novaDir:     userDir,
-			cfg:         config.Config{NovaDir: userDir, Workspace: workspace},
-			bookService: book.NewService(workspace),
-		})
-	}
-	task, err := service.Create(automation.Task{
-		Scope:      automation.ScopeUser,
-		Enabled:    true,
-		Name:       "Shared user review",
-		Template:   automation.TemplateReview,
-		WriteMode:  automation.WriteModeReadOnly,
-		WriteScope: automation.WriteScopeNone,
-		Triggers: []automation.TriggerDefinition{{
-			ID:               "chapter_batch_1",
-			Type:             automation.TriggerTypeChapterBatch,
-			ActionPolicy:     automation.ActionPolicyNotifyOnly,
-			Enabled:          true,
-			NotifyPolicy:     automation.NotifyPolicyInbox,
-			ChapterBatchSize: 1,
-		}},
+func TestUserScopedAutomationIsRejectedWithoutProjectAgent(t *testing.T) {
+	service := automationRegistryTestService(&App{})
+	_, err := service.Create(automation.Task{
+		Scope:  automation.ScopeUser,
+		Target: automation.ExecutionTarget{Kind: automation.TargetKindUser},
+		Name:   "Shared user review", Template: automation.TemplateReview,
 	})
-	if err != nil {
-		t.Fatalf("create user automation: %v", err)
-	}
-	var wg sync.WaitGroup
-	errs := make(chan error, len(snapshots))
-	for _, snap := range snapshots {
-		wg.Add(1)
-		go func(snap *automationWorkspaceSnapshot) {
-			defer wg.Done()
-			var processErr error
-			defer func() {
-				if recovered := recover(); recovered != nil {
-					processErr = fmt.Errorf("workspace trigger check panic: %v", recovered)
-				}
-				errs <- processErr
-			}()
-			_, _, processErr = service.processContentTriggers(context.Background(), snap, time.Now().UTC(), "test")
-		}(snap)
-	}
-	wg.Wait()
-	close(errs)
-	for err := range errs {
-		if err != nil {
-			t.Fatalf("workspace trigger check failed: %v", err)
-		}
-	}
-	fingerprints := map[string]bool{}
-	for index, snap := range snapshots {
-		items, err := storeForSnapshot(snap).ListInbox()
-		if err != nil {
-			t.Fatalf("workspace %d Inbox failed: %v", index, err)
-		}
-		if len(items) != 1 || items[0].TaskID != task.ID || items[0].Workspace != workspaces[index] {
-			t.Fatalf("workspace %d inbox = %#v", index, items)
-		}
-		fingerprints[items[0].Fingerprint] = true
-	}
-	if len(fingerprints) != len(workspaces) {
-		t.Fatalf("user-scope fingerprints collided across workspaces: %#v", fingerprints)
-	}
-	saved, err := automation.NewStore(userDir, "").Get(task.ID)
-	if err != nil {
-		t.Fatalf("load shared user task: %v", err)
-	}
-	if len(saved.TriggerState) != len(workspaces) {
-		t.Fatalf("trigger state count = %d, want %d: %#v", len(saved.TriggerState), len(workspaces), saved.TriggerState)
+	if err == nil || !strings.Contains(err.Error(), "must target a Project") {
+		t.Fatalf("user-scoped automation error = %v", err)
 	}
 }
 
 func TestAutomationWriteModeToolConstraints(t *testing.T) {
-	readOnly := constrainAutomationTools(config.Config{AgentTools: config.AgentToolSettings{Automation: config.AgentToolOverride{
-		config.AgentToolShell: true, config.AgentToolBrowser: true,
-	}}}, automation.WriteModeReadOnly, automation.WriteScopeNone)
-	readOnlyTools := config.ResolveAgentTools(&readOnly, config.AgentKindAutomation)
-	if readOnlyTools.Allows(config.AgentToolWorkspaceWrite) || readOnlyTools.Allows(config.AgentToolLoreWrite) {
+	snap := &automationWorkspaceSnapshot{
+		projectID: "project-1", projectType: projectdomain.TypeBook,
+		cfg: config.Config{AgentTools: config.AgentToolSettings{IDE: config.AgentToolOverride{
+			config.AgentToolShell: true, config.AgentToolBrowser: true,
+		}}},
+	}
+	_, readOnlyManifest, err := automationInvocationPolicy(snap, automation.WriteModeReadOnly, automation.WriteScopeNone)
+	if err != nil {
+		t.Fatal(err)
+	}
+	readOnlyTools := automationManifestMap(readOnlyManifest)
+	if readOnlyTools[config.AgentToolWorkspaceWrite] || readOnlyTools[config.AgentToolLoreWrite] {
 		t.Fatalf("read_only should disable writes: %#v", readOnlyTools)
 	}
-	for _, capability := range []string{
-		config.AgentToolShell, config.AgentToolBrowser, config.AgentToolWebSearch,
-		config.AgentToolWebFetch, config.AgentToolDelegation,
-	} {
-		if !readOnlyTools.Allows(capability) {
-			t.Fatalf("read_only should preserve %s capability: %#v", capability, readOnlyTools)
+	for _, capability := range []string{config.AgentToolWorkspaceRead, config.AgentToolWebSearch, config.AgentToolWebFetch, config.AgentToolDelegation} {
+		if !readOnlyTools[capability] {
+			t.Fatalf("read_only should preserve unattended %s capability: %#v", capability, readOnlyTools)
+		}
+	}
+	for _, capability := range []string{config.AgentToolShell, config.AgentToolBrowser, config.AgentToolAsk} {
+		if readOnlyTools[capability] {
+			t.Fatalf("unattended runs must disable %s: %#v", capability, readOnlyTools)
 		}
 	}
 	if path, err := (&AutomationAppService{}).writeOptionalOutput(nil, automation.Task{
@@ -544,25 +477,22 @@ func TestAutomationWriteModeToolConstraints(t *testing.T) {
 		t.Fatalf("read_only automatic file output path=%q error=%v", path, err)
 	}
 
-	fileOnly := constrainAutomationTools(config.Config{}, automation.WriteModeAutoWrite, automation.WriteScopeFile)
-	fileOnlyTools := config.ResolveAgentTools(&fileOnly, config.AgentKindAutomation)
-	if !fileOnlyTools.Allows(config.AgentToolWorkspaceWrite) || fileOnlyTools.Allows(config.AgentToolLoreWrite) {
+	_, fileOnlyManifest, err := automationInvocationPolicy(snap, automation.WriteModeAutoWrite, automation.WriteScopeFile)
+	if err != nil {
+		t.Fatal(err)
+	}
+	fileOnlyTools := automationManifestMap(fileOnlyManifest)
+	if !fileOnlyTools[config.AgentToolWorkspaceWrite] || fileOnlyTools[config.AgentToolLoreWrite] {
 		t.Fatalf("file scope tools = %#v, want file write only", fileOnlyTools)
 	}
 
-	loreAndFile := constrainAutomationTools(config.Config{}, automation.WriteModeAutoWrite, automation.WriteScopeLoreAndFile)
-	loreAndFileTools := config.ResolveAgentTools(&loreAndFile, config.AgentKindAutomation)
-	if !loreAndFileTools.Allows(config.AgentToolWorkspaceWrite) || !loreAndFileTools.Allows(config.AgentToolLoreWrite) {
+	_, loreAndFileManifest, err := automationInvocationPolicy(snap, automation.WriteModeAutoWrite, automation.WriteScopeLoreAndFile)
+	if err != nil {
+		t.Fatal(err)
+	}
+	loreAndFileTools := automationManifestMap(loreAndFileManifest)
+	if !loreAndFileTools[config.AgentToolWorkspaceWrite] || !loreAndFileTools[config.AgentToolLoreWrite] {
 		t.Fatalf("lore_and_file tools = %#v, want both write tools", loreAndFileTools)
-	}
-
-	global := constrainGlobalAutomationTools(config.Config{})
-	globalTools := config.ResolveAgentTools(&global, config.AgentKindAutomation)
-	if globalTools.Allows(config.AgentToolWorkspaceRead) || globalTools.Allows(config.AgentToolWorkspaceWrite) || globalTools.Allows(config.AgentToolShell) || globalTools.Allows(config.AgentToolLoreRead) || globalTools.Allows(config.AgentToolLoreWrite) {
-		t.Fatalf("global automation exposed workspace tools: %#v", globalTools)
-	}
-	if !globalTools.Allows(config.AgentToolSkills) || !globalTools.Allows(config.AgentToolTodo) || !globalTools.Allows(config.AgentToolWebSearch) {
-		t.Fatalf("global automation omitted user-level tools: %#v", globalTools)
 	}
 
 	firstRun := automation.RunRecord{Trigger: automation.TriggerCondition}
@@ -577,6 +507,14 @@ func TestAutomationWriteModeToolConstraints(t *testing.T) {
 	}
 }
 
+func automationManifestMap(manifest []automation.ToolManifestItem) map[string]bool {
+	result := make(map[string]bool, len(manifest))
+	for _, capability := range manifest {
+		result[capability.Source] = capability.Allowed
+	}
+	return result
+}
+
 func TestAutomationRuntimeConfigUsesTaskModelProfile(t *testing.T) {
 	root := t.TempDir()
 	workspace := filepath.Join(root, "workspace")
@@ -586,8 +524,8 @@ func TestAutomationRuntimeConfigUsesTaskModelProfile(t *testing.T) {
 			Workspace:   workspace,
 			OpenAIModel: "base-model",
 			ModelProfiles: []config.ModelProfileSettings{{
-				ID:          "fast",
-				Name:        "Fast",
+				ID:    "fast",
+				Name:  "Fast",
 				Model: "fast-model",
 			}},
 		},
@@ -600,13 +538,13 @@ func TestAutomationRuntimeConfigUsesTaskModelProfile(t *testing.T) {
 	}
 
 	cfg := runtimeConfigForTask(snap, automation.Task{ModelProfileID: "fast"})
-	resolved := config.ResolveAgentModel(&cfg, config.AgentKindAutomation)
+	resolved := config.ResolveAgentModel(&cfg, config.AgentKindIDE)
 	if resolved.ProfileID != "fast" || resolved.Model != "fast-model" {
 		t.Fatalf("resolved model = %#v, want fast profile", resolved)
 	}
 
 	cfg = runtimeConfigForTask(snap, automation.Task{})
-	resolved = config.ResolveAgentModel(&cfg, config.AgentKindAutomation)
+	resolved = config.ResolveAgentModel(&cfg, config.AgentKindIDE)
 	if resolved.ProfileID != "default" || resolved.Model != "base-model" {
 		t.Fatalf("resolved inherited model = %#v, want default base model", resolved)
 	}

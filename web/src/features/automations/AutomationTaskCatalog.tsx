@@ -5,12 +5,11 @@ import { EmptyState } from '@/components/common/EmptyState'
 import { ResourceDirectory } from '@/components/resource-directory/ResourceDirectory'
 import type { ResourceDirectorySection } from '@/components/resource-directory/types'
 import { Button } from '@/components/ui/button'
-import type { AutomationActiveRun, AutomationTask, BookRecord } from '@/lib/api'
-import { automationTaskKey, groupAutomationTasks, isAutomationTaskRunning } from './automation-catalog'
+import type { AutomationActiveRun, AutomationTask } from '@/lib/api'
+import { automationTaskKey, isAutomationTaskRunning } from './automation-catalog'
 
 interface AutomationTaskCatalogProps {
   tasks: AutomationTask[]
-  books: BookRecord[]
   activeRuns: AutomationActiveRun[]
   activeId: string
   agentActive: boolean
@@ -22,7 +21,6 @@ interface AutomationTaskCatalogProps {
 /** Domain adapter that maps automation targets and run state onto the shared resource directory. */
 export function AutomationTaskCatalog({
   tasks,
-  books,
   activeRuns,
   activeId,
   agentActive,
@@ -32,13 +30,17 @@ export function AutomationTaskCatalog({
 }: AutomationTaskCatalogProps) {
   const { t } = useTranslation()
   const taskByKey = useMemo(() => new Map(tasks.map((task) => [automationTaskKey(task), task])), [tasks])
-  const sections = useMemo<ResourceDirectorySection[]>(() => (
-    groupAutomationTasks(tasks, books, activeRuns).map((group) => ({
-      id: group.kind === 'user' ? 'user' : `project:${group.projectId || group.workspace}`,
-      label: group.kind === 'user' ? t('automations.group.global') : group.label,
-      description: group.kind === 'workspace' ? group.workspace : undefined,
-      icon: group.kind === 'user' ? Clock3 : FileText,
-      items: group.tasks.map((task) => {
+  const sections = useMemo<ResourceDirectorySection[]>(() => {
+    if (tasks.length === 0) return []
+    const orderedTasks = [...tasks].sort((left, right) => (
+      Number(isAutomationTaskRunning(right, activeRuns)) - Number(isAutomationTaskRunning(left, activeRuns))
+    ))
+    const runningCount = orderedTasks.filter((task) => isAutomationTaskRunning(task, activeRuns)).length
+    return [{
+      id: 'project',
+      label: t('automations.group.currentProject'),
+      icon: FileText,
+      items: orderedTasks.map((task) => {
         const running = isAutomationTaskRunning(task, activeRuns)
         return {
           id: automationTaskKey(task),
@@ -48,13 +50,13 @@ export function AutomationTaskCatalog({
           status: running ? { label: t('automations.running'), tone: 'success' as const } : undefined,
         }
       }),
-      headerMeta: group.runningCount > 0 ? (
+      headerMeta: runningCount > 0 ? (
         <span className="shrink-0 text-[10px] text-[var(--nova-success)]">
-          {t('automations.group.running', { count: group.runningCount })}
+          {t('automations.group.running', { count: runningCount })}
         </span>
       ) : undefined,
-    }))
-  ), [activeRuns, books, t, tasks])
+    }]
+  }, [activeRuns, t, tasks])
 
   return (
     <div className="flex h-full min-h-0 flex-col bg-[var(--nova-surface-2)]">

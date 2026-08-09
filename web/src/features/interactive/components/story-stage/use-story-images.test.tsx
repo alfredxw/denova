@@ -6,8 +6,14 @@ import { generateInteractiveImage } from '../../api'
 import type { Snapshot } from '../../types'
 import { automaticInteractiveImageCommandID, useStoryImages } from './use-story-images'
 
+const { toastError, toastWarning } = vi.hoisted(() => ({
+  toastError: vi.fn(),
+  toastWarning: vi.fn(),
+}))
+
 vi.mock('@/lib/api', () => ({ createAgentCommandID: vi.fn() }))
 vi.mock('../../api', () => ({ generateInteractiveImage: vi.fn() }))
+vi.mock('sonner', () => ({ toast: { error: toastError, warning: toastWarning } }))
 
 const snapshot: Snapshot = {
   story_id: 'story-1',
@@ -28,7 +34,6 @@ function renderStoryImages() {
     t: ((key: string) => key) as never,
     onDone: vi.fn().mockResolvedValue(snapshot),
     setActivity: vi.fn(),
-    setMessages: vi.fn(),
   }))
 }
 
@@ -85,5 +90,29 @@ describe('useStoryImages command identity', () => {
     const expected = automaticInteractiveImageCommandID('story-1', 'main', 'turn-1')
     expect(expected.length).toBeLessThan(256)
     expect(vi.mocked(generateInteractiveImage).mock.calls.map(([, request]) => request.command_id)).toEqual([expected, expected])
+  })
+
+  it('surfaces a manual generation failure outside the filtered live-message stream', async () => {
+    vi.mocked(generateInteractiveImage).mockRejectedValue(new Error('image provider rejected the request'))
+    const hook = renderStoryImages()
+
+    await act(async () => {
+      await hook.result.current.generateForMessage({ role: 'assistant', content: 'scene', turn_id: 'turn-1' })
+    })
+
+    expect(toastError).toHaveBeenCalledWith('storyStage.interactiveImage.generateFailed', {
+      description: 'image provider rejected the request',
+    })
+  })
+
+  it('explains why a generation request without a persisted turn cannot start', async () => {
+    const hook = renderStoryImages()
+
+    await act(async () => {
+      await hook.result.current.generateForMessage({ role: 'assistant', content: 'scene' })
+    })
+
+    expect(generateInteractiveImage).not.toHaveBeenCalled()
+    expect(toastError).toHaveBeenCalledWith('storyStage.interactiveImage.targetMissing')
   })
 })

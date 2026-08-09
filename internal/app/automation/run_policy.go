@@ -9,7 +9,9 @@ import (
 	"time"
 
 	"denova/config"
+	agentrun "denova/internal/agents/run"
 	"denova/internal/automation"
+	projectdomain "denova/internal/project"
 )
 
 // runtimeConfigForTask returns the runtime config from a snapshot, applying
@@ -17,9 +19,66 @@ import (
 func runtimeConfigForTask(snap *automationWorkspaceSnapshot, task automation.Task) config.Config {
 	runtimeCfg := snap.cfg
 	if profileID := strings.TrimSpace(task.ModelProfileID); profileID != "" {
-		runtimeCfg.AgentModels.Automation.ProfileID = profileID
+		switch projectAgentKind(snap) {
+		case agentrun.AgentKindIDE:
+			runtimeCfg.AgentModels.IDE.ProfileID = profileID
+		case agentrun.AgentKindGeneral:
+			runtimeCfg.AgentModels.General.ProfileID = profileID
+		}
 	}
 	return runtimeCfg
+}
+
+func projectAgentKind(snap *automationWorkspaceSnapshot) string {
+	if snap == nil {
+		return ""
+	}
+	switch snap.projectType {
+	case projectdomain.TypeBook:
+		return agentrun.AgentKindIDE
+	case projectdomain.TypeGeneral:
+		return agentrun.AgentKindGeneral
+	default:
+		return ""
+	}
+}
+
+// automationInvocationPolicy is the unattended capability ceiling applied to
+// a normal Project Agent turn. It never grants a capability disabled by the
+// Project Agent settings and keeps the exact effective policy in the run
+// ledger for inspection and recovery.
+func automationInvocationPolicy(snap *automationWorkspaceSnapshot, writeMode, writeScope string) ([]string, []automation.ToolManifestItem, error) {
+	agentKind := projectAgentKind(snap)
+	if agentKind == "" || snap == nil || strings.TrimSpace(snap.projectID) == "" {
+		return nil, nil, fmt.Errorf("automation execution requires a target Project Agent")
+	}
+	allowedByAutomation := map[string]bool{
+		config.AgentToolWorkspaceRead:  true,
+		config.AgentToolWebSearch:      true,
+		config.AgentToolWebFetch:       true,
+		config.AgentToolTodo:           true,
+		config.AgentToolSkills:         true,
+		config.AgentToolDelegation:     true,
+		config.AgentToolLoreRead:       true,
+		config.AgentToolWorkspaceWrite: automationTaskAllowsFileWrite(writeMode, writeScope),
+		config.AgentToolLoreWrite:      automationTaskAllowsLoreWrite(writeMode, writeScope),
+	}
+	projectTools := config.ResolveAgentTools(&snap.cfg, agentKind)
+	disabled := make([]string, 0, len(config.AgentToolCapabilities()))
+	effective := make(config.ResolvedAgentToolSettings, len(config.AgentToolCapabilities()))
+	for _, capability := range config.AgentToolCapabilities() {
+		allowed := projectTools.Allows(capability.Source) && allowedByAutomation[capability.Source]
+		effective[capability.Source] = allowed
+		if !allowedByAutomation[capability.Source] {
+			disabled = append(disabled, capability.Source)
+		}
+	}
+	manifest := config.ResolveAgentToolManifest(effective)
+	result := make([]automation.ToolManifestItem, 0, len(manifest))
+	for _, capability := range manifest {
+		result = append(result, automation.ToolManifestItem{Source: capability.Capability, Allowed: capability.Allowed})
+	}
+	return disabled, result, nil
 }
 
 func (s *Service) createWriteConfirmationInboxIfNeeded(snap *automationWorkspaceSnapshot, task automation.Task, run automation.RunRecord, output string) error {
@@ -72,8 +131,9 @@ func (s *Service) writeOptionalOutput(snap *automationWorkspaceSnapshot, task au
 	if !automationTaskAllowsFileWrite(writeMode, writeScope) {
 		return "", fmt.Errorf("task write mode/scope does not allow file output")
 	}
-	if !config.ResolveAgentTools(&cfg, config.AgentKindAutomation).Allows(config.AgentToolWorkspaceWrite) {
-		return "", fmt.Errorf("Automation Agent workspace_write capability is disabled")
+	agentKind := projectAgentKind(snap)
+	if agentKind == "" || !config.ResolveAgentTools(&cfg, agentKind).Allows(config.AgentToolWorkspaceWrite) {
+		return "", fmt.Errorf("Project Agent workspace_write capability is disabled")
 	}
 	bookService := snap.bookService
 	if bookService == nil {
@@ -128,41 +188,6 @@ func automationTaskAllowsLoreWrite(writeMode, writeScope string) bool {
 		return false
 	}
 	return writeScope == automation.WriteScopeLore || writeScope == automation.WriteScopeLoreAndFile
-}
-
-func constrainAutomationTools(cfg config.Config, writeMode, writeScope string) config.Config {
-	resolved := config.ResolveAgentTools(&cfg, config.AgentKindAutomation)
-	override := make(config.AgentToolOverride, len(config.AgentToolCapabilities()))
-	for _, capability := range config.AgentToolCapabilities() {
-		override[capability.Source] = resolved.Allows(capability.Source)
-	}
-	override[config.AgentToolWorkspaceWrite] = resolved.Allows(config.AgentToolWorkspaceWrite) && automationTaskAllowsFileWrite(writeMode, writeScope)
-	override[config.AgentToolLoreWrite] = resolved.Allows(config.AgentToolLoreWrite) && automationTaskAllowsLoreWrite(writeMode, writeScope)
-	cfg.AgentTools.Automation = override
-	return cfg
-}
-
-func constrainGlobalAutomationTools(cfg config.Config) config.Config {
-	resolved := config.ResolveAgentTools(&cfg, config.AgentKindAutomation)
-	override := make(config.AgentToolOverride, len(config.AgentToolCapabilities()))
-	for _, capability := range config.AgentToolCapabilities() {
-		override[capability.Source] = false
-	}
-	for _, capability := range []string{config.AgentToolSkills, config.AgentToolTodo, config.AgentToolWebSearch, config.AgentToolWebFetch} {
-		override[capability] = resolved.Allows(capability)
-	}
-	cfg.AgentTools.Automation = override
-	return cfg
-}
-
-func automationToolManifest(cfg *config.Config) []automation.ToolManifestItem {
-	tools := config.ResolveAgentTools(cfg, config.AgentKindAutomation)
-	capabilities := config.ResolveAgentToolManifest(tools)
-	result := make([]automation.ToolManifestItem, 0, len(capabilities))
-	for _, capability := range capabilities {
-		result = append(result, automation.ToolManifestItem{Source: capability.Capability, Allowed: capability.Allowed})
-	}
-	return result
 }
 
 func eventMessage(data interface{}) string {

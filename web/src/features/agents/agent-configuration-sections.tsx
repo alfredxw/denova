@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { Brain, Check, ChevronDown, ChevronRight, FolderOpen, ScrollText, Wrench } from 'lucide-react'
+import { Brain, Check, ChevronDown, ChevronRight, FolderOpen, ImagePlus, ScrollText, Wrench } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import { Input } from '@/components/ui/input'
 import { Select, SelectContent, SelectGroup, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
@@ -68,6 +68,44 @@ export function AgentModelSection({ value, inherited, profiles, onChange }: {
             </SelectContent>
           </Select>
         </Field>
+      </div>
+    </section>
+  )
+}
+
+/** Selects the image provider profile used by generate_image. This is separate
+ * from the language model above, which turns creative context into a prompt. */
+export function AgentImageModelSection({ value, inherited, profiles, onChange }: {
+  value: string
+  inherited: string
+  profiles: Array<{ id: string; label: string }>
+  onChange: (profileID: string) => void
+}) {
+  const { t } = useTranslation()
+  const hasOverride = hasTextOverride(value)
+  const effectiveProfile = hasOverride ? value : inherited || 'default'
+
+  return (
+    <section className="flex flex-col gap-3 border-b border-[var(--nova-border)] pb-5">
+      <SectionTitle icon={ImagePlus} title={t('agents.section.imageModel')} />
+      <Field
+        label={t('agents.field.imageModelProfile')}
+        inherited={!hasOverride}
+        onReset={hasOverride ? () => onChange('') : undefined}
+      >
+        <Select value={effectiveProfile} onValueChange={onChange}>
+          <SelectTrigger size="sm" className="min-w-0 flex-1" aria-label={t('agents.field.imageModelProfile')}>
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectGroup>
+              {profiles.map((profile) => <SelectItem key={profile.id} value={profile.id}>{profile.label}</SelectItem>)}
+            </SelectGroup>
+          </SelectContent>
+        </Select>
+      </Field>
+      <div className="rounded-[var(--nova-radius)] border border-[var(--nova-border)] bg-[var(--nova-surface-2)] px-3 py-2 text-[11px] leading-5 text-[var(--nova-text-faint)]">
+        {t('agents.imageModel.note')}
       </div>
     </section>
   )

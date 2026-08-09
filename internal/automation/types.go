@@ -51,6 +51,12 @@ const (
 	OutputPolicyRunRecordOnly = "run_record_only"
 	OutputPolicyOptionalFile  = "optional_file"
 
+	// SessionStrategyPerRun isolates every trigger occurrence in its own
+	// project conversation. SessionStrategyPerTask keeps one task-owned
+	// conversation so later runs can intentionally reuse prior context.
+	SessionStrategyPerRun  = "per_run"
+	SessionStrategyPerTask = "per_task"
+
 	RunStatusRunning = "running"
 	RunStatusSuccess = "success"
 	RunStatusFailed  = "failed"
@@ -83,9 +89,9 @@ const (
 	InboxPurposeWriteConfirmation = "write_confirmation"
 )
 
-// ExecutionTarget identifies the context in which an automation executes.
-// Every task is user-managed; workspace is an explicit target rather than an
-// implicit dependency on whichever book happens to be open.
+// ExecutionTarget identifies the Project in which an automation executes.
+// TargetKindUser remains readable only for Beta definitions created before
+// Automations became strictly Project-owned.
 type ExecutionTarget struct {
 	Kind      string `json:"kind"`
 	ProjectID string `json:"project_id,omitempty"`
@@ -148,6 +154,7 @@ type Task struct {
 	WriteScope          string                  `json:"write_scope"`
 	OutputPolicy        string                  `json:"output_policy"`
 	OutputPath          string                  `json:"output_path"`
+	SessionStrategy     string                  `json:"session_strategy"`
 	LastRun             *RunRecord              `json:"last_run,omitempty"`
 	RecentRuns          []RunRecord             `json:"recent_runs"`
 	CreatedAt           time.Time               `json:"created_at"`
@@ -183,6 +190,7 @@ type TaskTemplateDefaults struct {
 	WriteScope          string              `json:"write_scope"`
 	OutputPolicy        string              `json:"output_policy"`
 	OutputPath          string              `json:"output_path"`
+	SessionStrategy     string              `json:"session_strategy"`
 }
 
 // taskWithoutUnmarshal mirrors Task so UnmarshalJSON can decode without
@@ -249,9 +257,14 @@ type Schedule struct {
 
 // RunRecord is a persisted, bounded execution summary.
 type RunRecord struct {
-	ID              string            `json:"id"`
-	TaskID          string            `json:"task_id"`
-	SessionID       string            `json:"session_id,omitempty"`
+	ID              string `json:"id"`
+	TaskID          string `json:"task_id"`
+	TaskRevision    string `json:"task_revision,omitempty"`
+	SessionID       string `json:"session_id,omitempty"`
+	SessionStrategy string `json:"session_strategy,omitempty"`
+	// TurnID is the immutable root AgentChat command anchor. SessionID locates
+	// the conversation; TurnID locates this exact run inside a reused session.
+	TurnID          string            `json:"turn_id,omitempty"`
 	ProjectID       string            `json:"project_id,omitempty"`
 	Scope           string            `json:"scope"`
 	Workspace       string            `json:"workspace,omitempty"`

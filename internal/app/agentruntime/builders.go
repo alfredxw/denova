@@ -78,21 +78,6 @@ func BuildConfigManager(
 	return agentchat.NewRunnerWithOptions(ctx, built, runnerOptions(cfg, agentrun.AgentKindConfigManager)), composition, nil
 }
 
-// BuildAutomation creates the runner and exact system-prompt composition
-// persisted with the durable run receipt.
-func BuildAutomation(
-	ctx context.Context,
-	cfg *config.Config,
-	state *book.State,
-	task prompts.AutomationTaskInstruction,
-) (*agents.Runner, prompts.SystemPromptComposition, error) {
-	built, composition, err := agents.BuildAutomationAgentWithComposition(ctx, cfg, state, task)
-	if err != nil {
-		return nil, prompts.SystemPromptComposition{}, fmt.Errorf("build Automation Agent: %w", err)
-	}
-	return agentchat.NewRunnerWithOptions(ctx, built, runnerOptions(cfg, agentrun.AgentKindAutomation)), composition, nil
-}
-
 // BuildImage creates the image-generation runner and exact prompt composition.
 func BuildImage(
 	ctx context.Context,

@@ -51,6 +51,7 @@ import {
 import { terminalTabLabel } from './terminal/TerminalTabView'
 import { useTerminalSessionLifecycle } from './terminal/use-terminal-session-lifecycle'
 import { useAgentChatActivityNavigator } from './use-agent-chat-activity-navigator'
+import { useAgentChatSessionNavigation } from './use-agent-chat-session-navigation'
 import { mountedAgentChatTabKey, useAgentChatTabWorkbench } from './use-agent-chat-tab-workbench'
 import { useAgentChatTerminalTabs } from './use-agent-chat-terminal-tabs'
 import {
@@ -183,6 +184,12 @@ export function AgentChatView({
 
   useEffect(() => {
     void refreshProjects()
+  }, [refreshProjects])
+  useEffect(() => {
+    const interval = window.setInterval(() => {
+      void refreshProjects()
+    }, 10_000)
+    return () => window.clearInterval(interval)
   }, [refreshProjects])
   useEffect(() => {
     if (!projectsLoading) persistWorkbenchState(workbench)
@@ -576,6 +583,7 @@ export function AgentChatView({
     activateTab,
     openSessionTab,
   })
+  const conversationSyncSignals = useAgentChatSessionNavigation({ refreshProjects, openOrActivateSession })
 
   const openHistory = useCallback((project?: AgentChatProject) => {
     setHistoryProjectId(project?.id || activeProjectId)
@@ -718,40 +726,54 @@ export function AgentChatView({
           ? renderSecondaryControl(project, state, mobileControls)
           : null}
         tabTitle={tabTitle}
-        renderTab={(tab, active) => (
-          <AgentChatTabContent
-            tab={tab}
-            projectType={project.type}
-            active={active}
-            running={projectRunning}
-            composerSettings={composerSettings}
-            tellers={tellers}
-            imagePresets={imagePresets}
-            autoSaveEnabled={autoSaveEnabled}
-            autoSaveDelayMs={autoSaveDelayMs}
-            filesEditorRefreshSignal={filesEditorRefreshSignals.get(project.id) ?? 0}
-            filesTreeRefreshSignal={filesTreeRefreshSignals.get(project.id) ?? 0}
-            projectPageRefreshSignal={projectPageRefreshSignals.get(project.id) ?? 0}
-            renderPage={renderPage}
-            renderReview={renderReview}
-            navigationIntent={documentReviewNavigation?.projectId === tab.projectId ? documentReviewNavigation : null}
-            onDocumentReviewFeedbackOpen={openDocumentReviewFeedback}
-            onOpenPage={(projectID, groupID, pageID) => {
-              const target = projects.find((candidate) => candidate.id === projectID)
-              if (target) openProjectPage(target, groupID, pageID)
-            }}
-            onFlushHandlerChange={registerTabFlushHandler}
-            onFilesSelectedPathChange={setFilesSelectedPath}
-            onOpenProjectFile={openProjectFile}
-            onOpenChangeReview={openChangeReview}
-            onWorkspaceChanged={handleWorkspaceChanged}
-            onRunningChange={handleRunningChange}
-            onDraftCommitted={(message) => commitDraftSession(project.id, tab.id, message)}
-            onTerminalSessionEstablished={(tabID, session) => bindTerminalSession(project.id, tabID, session)}
-            onTerminalTitleChange={(tabID, title) => updateTerminalTitle(project.id, tabID, title)}
-            onTerminalStatusChange={handleTerminalStatusChange}
-          />
-        )}
+        renderTab={(tab, active) => {
+          const conversation = tab.kind === 'agent'
+            ? project.sessions.find((session) => session.id === tab.sessionId)
+            : undefined
+          const conversationSyncRevision = tab.kind === 'agent'
+            ? [
+                conversation?.updated_at ?? '',
+                conversation?.message_count ?? 0,
+                conversation?.running ? 'running' : 'idle',
+                conversationSyncSignals.get(agentChatSessionBindingKey(tab.projectId, tab.sessionId)) ?? 0,
+              ].join(':')
+            : ''
+          return (
+            <AgentChatTabContent
+              tab={tab}
+              projectType={project.type}
+              active={active}
+              running={projectRunning}
+              conversationSyncRevision={conversationSyncRevision}
+              composerSettings={composerSettings}
+              tellers={tellers}
+              imagePresets={imagePresets}
+              autoSaveEnabled={autoSaveEnabled}
+              autoSaveDelayMs={autoSaveDelayMs}
+              filesEditorRefreshSignal={filesEditorRefreshSignals.get(project.id) ?? 0}
+              filesTreeRefreshSignal={filesTreeRefreshSignals.get(project.id) ?? 0}
+              projectPageRefreshSignal={projectPageRefreshSignals.get(project.id) ?? 0}
+              renderPage={renderPage}
+              renderReview={renderReview}
+              navigationIntent={documentReviewNavigation?.projectId === tab.projectId ? documentReviewNavigation : null}
+              onDocumentReviewFeedbackOpen={openDocumentReviewFeedback}
+              onOpenPage={(projectID, groupID, pageID) => {
+                const target = projects.find((candidate) => candidate.id === projectID)
+                if (target) openProjectPage(target, groupID, pageID)
+              }}
+              onFlushHandlerChange={registerTabFlushHandler}
+              onFilesSelectedPathChange={setFilesSelectedPath}
+              onOpenProjectFile={openProjectFile}
+              onOpenChangeReview={openChangeReview}
+              onWorkspaceChanged={handleWorkspaceChanged}
+              onRunningChange={handleRunningChange}
+              onDraftCommitted={(message) => commitDraftSession(project.id, tab.id, message)}
+              onTerminalSessionEstablished={(tabID, session) => bindTerminalSession(project.id, tabID, session)}
+              onTerminalTitleChange={(tabID, title) => updateTerminalTitle(project.id, tabID, title)}
+              onTerminalStatusChange={handleTerminalStatusChange}
+            />
+          )
+        }}
         onFocus={(target) => focusGroup(project.id, target)}
         onActivate={(target, tabID) => activateTab(project.id, target, tabID)}
         onClose={(tabIDs) => { void closeTabs(project.id, tabIDs) }}

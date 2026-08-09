@@ -3,14 +3,12 @@ package agents
 import (
 	"context"
 	agentchat "denova/internal/agents/chat"
-	agentrun "denova/internal/agents/run"
 	agenttoolruntime "denova/internal/agents/toolruntime"
 	"strings"
 	"sync"
 	"testing"
 
 	"denova/config"
-	"denova/internal/agents/prompts"
 	producttools "denova/internal/agents/tools"
 
 	agent "github.com/alfredxw/denova/agent"
@@ -215,27 +213,6 @@ func TestBuildSubAgentInstructionInheritsParentSystemPrompt(t *testing.T) {
 	}
 	if parentIndex, subIndex := strings.Index(instruction, parentInstruction), strings.Index(instruction, "SubAgent 专属说明"); parentIndex < 0 || subIndex < 0 || parentIndex >= subIndex {
 		t.Fatalf("parent prompt should appear before subagent prompt:\n%s", instruction)
-	}
-}
-
-func TestAutomationSubAgentInheritsReadOnlyModeAndScope(t *testing.T) {
-	parent := agentBuildSpec{
-		Kind: config.AgentKindAutomation,
-		Composition: prompts.BuildAutomationInstructionComposition(&config.Config{}, nil, prompts.AutomationTaskInstruction{
-			Name: "Review", WriteMode: agentrun.WriteModeReadOnly, WriteScope: "none", Workspace: "/tmp/book",
-		}),
-	}
-	instruction, err := composeSubAgentInstruction(&config.Config{}, parent, config.SubAgentConfig{
-		ID: "reviewer", Name: "Reviewer", Description: "Reviews without direct writes.",
-	})
-	if err != nil {
-		t.Fatal(err)
-	}
-	text := instruction.Instruction()
-	for _, required := range []string{"执行模式：read_only", "写入范围：none", "read_only` 模式只能输出 review"} {
-		if !strings.Contains(text, required) {
-			t.Fatalf("automation subagent instruction missing %q:\n%s", required, text)
-		}
 	}
 }
 

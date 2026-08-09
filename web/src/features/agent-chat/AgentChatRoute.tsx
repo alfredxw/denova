@@ -112,7 +112,7 @@ function AgentChatRouteComponent({
       case 'agents':
         return <AgentsView target={projectResourceTarget(projectId)} />
       case 'automations':
-        return <AutomationsView projectId={projectId} workspace={tabWorkspace} />
+        return <AutomationsView projectId={projectId} projectType={context.projectType} workspace={tabWorkspace} />
       case 'versions':
         return (
           <VersionPanel

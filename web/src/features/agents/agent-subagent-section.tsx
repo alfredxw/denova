@@ -410,10 +410,10 @@ export function isSubAgentParent(agent: VisibleAgentKey): agent is SubAgentParen
   return (SUB_AGENT_PARENT_KEYS as string[]).includes(agent)
 }
 
-const GENERAL_SUB_AGENT_KEYS = ['default', 'ide', 'interactive_story', 'config_manager', 'automation'] as const
+const GENERAL_SUB_AGENT_KEYS = ['default', 'general', 'ide', 'interactive_story', 'config_manager'] as const
 
 function defaultGeneralSubAgentSettings(): Settings['general_sub_agents'] {
-  return { default: false, ide: true, automation: true }
+	return { default: false, general: true, ide: true }
 }
 
 export function previewGeneralSubAgentSettings(layered: LayeredSettings | null, activeLayer: SettingsLayer, draft: Settings): Settings['general_sub_agents'] {

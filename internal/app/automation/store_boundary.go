@@ -2,15 +2,14 @@ package automationapp
 
 import (
 	"context"
-	agentconversation "denova/internal/agents/conversation"
+	"crypto/sha256"
+	"encoding/hex"
 	"fmt"
 	"log/slog"
 	"strings"
 	"time"
 
-	"denova/config"
 	"denova/internal/automation"
-	"denova/internal/book"
 )
 
 func (s *Service) RunDue(ctx context.Context, now time.Time) []automation.RunResult {
@@ -21,7 +20,7 @@ func (s *Service) RunDue(ctx context.Context, now time.Time) []automation.RunRes
 	}
 	targets := map[string]automation.ExecutionTarget{}
 	for _, task := range tasks {
-		if !task.Enabled {
+		if !task.Enabled || task.Target.Kind == automation.TargetKindUser || task.Scope == automation.ScopeUser {
 			continue
 		}
 		key := task.Target.Kind + "\x00" + canonicalAutomationWorkspace(task.Target.Workspace)
@@ -49,8 +48,9 @@ func (s *Service) runDueWithSnapshot(ctx context.Context, snap *automationWorksp
 	return results
 }
 
-// storeAllWorkspaces builds a user catalog over registered Projects. Project
-// state roots own persistence; workspace paths remain execution targets only.
+// storeAllWorkspaces builds the compatibility catalog over registered
+// Projects. Project state roots own persistence; workspace paths remain
+// execution targets only.
 func (s *Service) storeAllWorkspaces() *automation.Store {
 	if s == nil || s.host == nil {
 		return automation.NewStore("", "")
@@ -86,9 +86,8 @@ func automationTaskStoreID(task automation.Task) string {
 	return strings.TrimSpace(task.ID)
 }
 
-// automationTargetForRun resolves the durable Agent binding. User-scoped
-// definitions may execute against a specific workspace; in that case the run
-// workspace, not the definition's global target, owns recovery and control.
+// automationTargetForRun resolves the durable Agent binding. Run identity is
+// authoritative for legacy records whose definition predates Project IDs.
 func automationTargetForRun(task automation.Task, run automation.RunRecord) automation.ExecutionTarget {
 	if workspace := strings.TrimSpace(run.Workspace); workspace != "" {
 		return automation.ExecutionTarget{Kind: automation.TargetKindWorkspace, ProjectID: run.ProjectID, Workspace: workspace}
@@ -101,43 +100,20 @@ func automationTargetForRun(task automation.Task, run automation.RunRecord) auto
 
 func (s *Service) newRunRecord(snap *automationWorkspaceSnapshot, task automation.Task, trigger string) automation.RunRecord {
 	run := automation.RunRecord{
-		ID:        automation.NewRunID(),
-		TaskID:    task.ID,
-		ProjectID: snap.projectID,
-		Scope:     task.Scope,
-		Workspace: snap.workspace,
-		Trigger:   normalizeAutomationTrigger(trigger),
-		Status:    automation.RunStatusRunning,
-		StartedAt: time.Now().UTC(),
+		ID:              automation.NewRunID(),
+		TaskID:          task.ID,
+		TaskRevision:    task.Revision,
+		SessionStrategy: task.SessionStrategy,
+		ProjectID:       snap.projectID,
+		Scope:           task.Scope,
+		Workspace:       snap.workspace,
+		Trigger:         normalizeAutomationTrigger(trigger),
+		Status:          automation.RunStatusRunning,
+		StartedAt:       time.Now().UTC(),
 	}
-	run.SessionID = automationRunSessionID(run.ID)
+	run.SessionID = automationSessionID(task, run.ID)
+	run.TurnID = automationRunAgentCommandID(run.ID)
 	return run
-}
-
-func (s *Service) newRunConversation(snap *automationWorkspaceSnapshot, run automation.RunRecord, task automation.Task) (*automationRunConversation, error) {
-	store := snap.sessionStore
-	if store == nil {
-		return nil, ErrNoWorkspace
-	}
-	runtimeCfg := runtimeConfigForTask(snap, task)
-	sess, _, err := agentconversation.GetOrCreateSession(store, run.SessionID, &runtimeCfg, config.AgentKindAutomation)
-	if err != nil {
-		return nil, err
-	}
-	if _, err := agentconversation.ApplySession(sess, &runtimeCfg, config.AgentKindAutomation); err != nil {
-		return nil, err
-	}
-	title := fmt.Sprintf("%s · %s · %s", strings.TrimSpace(task.Name), run.Trigger, run.StartedAt.Local().Format(book.DisplayTimeFormat))
-	if strings.TrimSpace(task.Name) == "" {
-		title = fmt.Sprintf("Automation · %s · %s", run.Trigger, run.StartedAt.Local().Format(book.DisplayTimeFormat))
-	}
-	if err := sess.Rename(title); err != nil {
-		return nil, err
-	}
-	return &automationRunConversation{
-		base:          agentconversation.NewSessionConversationForAgent(sess, &runtimeCfg, config.AgentKindAutomation),
-		runtimeConfig: runtimeCfg,
-	}, nil
 }
 
 func automationRunSessionID(runID string) string {
@@ -146,4 +122,16 @@ func automationRunSessionID(runID string) string {
 		runID = automation.NewRunID()
 	}
 	return "automation-run-" + runID
+}
+
+func automationSessionID(task automation.Task, runID string) string {
+	if task.SessionStrategy != automation.SessionStrategyPerTask {
+		return automationRunSessionID(runID)
+	}
+	identity := automationTaskStoreID(task)
+	if identity == "" {
+		identity = task.ID
+	}
+	sum := sha256.Sum256([]byte(identity))
+	return "automation-task-" + hex.EncodeToString(sum[:12])
 }

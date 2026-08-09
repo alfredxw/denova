@@ -104,7 +104,7 @@ func TestAutomationHostEffectBridgeSurvivesRunMaterializationGap(t *testing.T) {
 	}
 }
 
-func TestAutomationSuccessorFenceRejectsTransferFailureAndRecoversWithoutChangingOperation(t *testing.T) {
+func TestAutomationEffectDrainRejectsTransferFailureAndRecoversWithoutChangingOperation(t *testing.T) {
 	root := t.TempDir()
 	dataDir := filepath.Join(root, "data")
 	workspace := filepath.Join(root, "workspace")
@@ -144,7 +144,7 @@ func TestAutomationSuccessorFenceRejectsTransferFailureAndRecoversWithoutChangin
 		EffectID: "host-effect-before-failed-successor", RuntimeOperation: "operation-1", RuntimeCycle: 1,
 		ToolCallID: "tool-call-before-failed-successor",
 		Origin: agenttoolruntime.ToolMutationOrigin{
-			AgentKind: agentrun.AgentKindAutomation, TaskID: run.ID, AutomationTaskID: taskDef.ID,
+			AgentKind: agentrun.AgentKindIDE, TaskID: run.ID, AutomationTaskID: taskDef.ID,
 			SessionID: run.SessionID, Workspace: workspace, Mode: "automation",
 		},
 		Mutation: agenttool.Mutation{
@@ -156,8 +156,8 @@ func TestAutomationSuccessorFenceRejectsTransferFailureAndRecoversWithoutChangin
 		t.Fatal(err)
 	}
 	snap := &automationWorkspaceSnapshot{workspace: workspace, novaDir: dataDir}
-	if _, _, err := service.fenceAutomationRunSuccessor(context.Background(), snap, taskDef, run); !errors.Is(err, transferFailure) {
-		t.Fatalf("successor fence error = %v, want transfer failure", err)
+	if err := service.drainAutomationRunHostEffects(context.Background(), run.ID); !errors.Is(err, transferFailure) {
+		t.Fatalf("effect drain error = %v, want transfer failure", err)
 	}
 	_, blocked, err := store.GetRunByID(run.ID)
 	if err != nil {
@@ -168,9 +168,18 @@ func TestAutomationSuccessorFenceRejectsTransferFailureAndRecoversWithoutChangin
 	}
 
 	service.hostEffectTransfer = nil
-	_, recovered, err := service.fenceAutomationRunSuccessor(context.Background(), snap, taskDef, blocked)
+	if err := service.drainAutomationRunHostEffects(context.Background(), run.ID); err != nil {
+		t.Fatalf("recovered effect drain: %v", err)
+	}
+	_, recovered, err := store.GetRunByID(run.ID)
 	if err != nil {
-		t.Fatalf("recovered successor fence: %v", err)
+		t.Fatal(err)
+	}
+	if recovered.CompletionEffectsPending {
+		recovered, err = service.completeAutomationRunEffects(context.Background(), snap, taskDef, recovered)
+		if err != nil {
+			t.Fatalf("complete recovered effects: %v", err)
+		}
 	}
 	if recovered.RuntimeOperationID != "operation-1" || recovered.PendingRuntimeCommandID != "" ||
 		recovered.CompletionEffectsPending || !recovered.CompletionEffectsCompleted {

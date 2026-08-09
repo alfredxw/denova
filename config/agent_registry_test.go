@@ -81,7 +81,6 @@ func TestAgentKindRegistryDefinesUniqueKindsAndConfigAccessors(t *testing.T) {
 		InteractiveDirector: AgentModelOverride{ProfileID: AgentKindInteractiveDirector},
 		VersionSummary:      AgentModelOverride{ProfileID: AgentKindVersionSummary},
 		ToolAgent:           AgentModelOverride{ProfileID: AgentKindToolAgent},
-		Automation:          AgentModelOverride{ProfileID: AgentKindAutomation},
 		ContextCompaction:   AgentModelOverride{ProfileID: AgentKindContextCompaction},
 	}
 	prompts := AgentPromptSettings{
@@ -93,7 +92,6 @@ func TestAgentKindRegistryDefinesUniqueKindsAndConfigAccessors(t *testing.T) {
 		InteractiveDirector: AgentPromptOverride{SystemPrompt: AgentKindInteractiveDirector},
 		VersionSummary:      AgentPromptOverride{SystemPrompt: AgentKindVersionSummary},
 		ToolAgent:           AgentPromptOverride{SystemPrompt: AgentKindToolAgent},
-		Automation:          AgentPromptOverride{SystemPrompt: AgentKindAutomation},
 		ContextCompaction:   AgentPromptOverride{SystemPrompt: AgentKindContextCompaction},
 	}
 	tools := AgentToolSettings{
@@ -105,7 +103,6 @@ func TestAgentKindRegistryDefinesUniqueKindsAndConfigAccessors(t *testing.T) {
 		InteractiveDirector: AgentToolOverride{AgentToolLoreWrite: true},
 		VersionSummary:      AgentToolOverride{AgentToolTodo: true},
 		ToolAgent:           AgentToolOverride{AgentToolWebSearch: true},
-		Automation:          AgentToolOverride{AgentToolWorkspaceRead: true, AgentToolWebSearch: true},
 		ContextCompaction:   AgentToolOverride{AgentToolSkills: true},
 	}
 	thresholds := map[string]*float64{}
@@ -122,7 +119,6 @@ func TestAgentKindRegistryDefinesUniqueKindsAndConfigAccessors(t *testing.T) {
 		InteractiveDirector: AgentContextOverride{CompactionThreshold: thresholds[AgentKindInteractiveDirector]},
 		VersionSummary:      AgentContextOverride{CompactionThreshold: thresholds[AgentKindVersionSummary]},
 		ToolAgent:           AgentContextOverride{CompactionThreshold: thresholds[AgentKindToolAgent]},
-		Automation:          AgentContextOverride{CompactionThreshold: thresholds[AgentKindAutomation]},
 		ContextCompaction:   AgentContextOverride{CompactionThreshold: thresholds[AgentKindContextCompaction]},
 	}
 

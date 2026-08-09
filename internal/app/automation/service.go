@@ -2,8 +2,6 @@ package automationapp
 
 import (
 	"context"
-	agentrun "denova/internal/agents/run"
-	apptask "denova/internal/app/task"
 	"errors"
 	"fmt"
 	"log/slog"
@@ -11,7 +9,8 @@ import (
 	"sync"
 	"time"
 
-	"denova/internal/agents/session"
+	agentrun "denova/internal/agents/run"
+	apptask "denova/internal/app/task"
 	"denova/internal/automation"
 )
 
@@ -33,10 +32,6 @@ type Service struct {
 	semanticEvaluator  semanticTriggerEvaluationFunc
 	runtimeProjector   automationRuntimeProjectionFunc
 	hostEffectTransfer func(context.Context, automation.HostEffectObligation, admittedToolMutationPayload) (bool, error)
-	followUpAdmission  sync.Mutex
-	followUps          automationFollowUpRegistry
-	globalStoreMu      sync.Mutex
-	globalStore        *session.Store
 }
 
 // NewService creates the process-wide automation application service. The Host is
@@ -167,15 +162,6 @@ func (s *Service) Close(ctx context.Context) error {
 		}
 	}
 	s.schedulerWG.Wait()
-	s.globalStoreMu.Lock()
-	globalStore := s.globalStore
-	s.globalStore = nil
-	s.globalStoreMu.Unlock()
-	if globalStore != nil {
-		if err := globalStore.Close(); err != nil {
-			return fmt.Errorf("close global automation session store: %w", err)
-		}
-	}
 	return nil
 }
 
@@ -194,20 +180,58 @@ func (s *Service) List() ([]automation.Task, error) {
 	return s.storeAllWorkspaces().List()
 }
 
+// ListForProject is the project-facing automation catalog. Automations are
+// configured and observed through their owning Project Agent, so callers must
+// not mix definitions from unrelated Projects into one view.
+func (s *Service) ListForProject(projectID, workspace string) ([]automation.Task, error) {
+	return s.storeAllWorkspaces().ListForTarget(automation.ExecutionTarget{
+		Kind:      automation.TargetKindWorkspace,
+		ProjectID: strings.TrimSpace(projectID),
+		Workspace: strings.TrimSpace(workspace),
+	})
+}
+
 func (s *Service) Templates(locale string) []automation.TaskTemplate {
 	return automation.BuiltinTaskTemplates(locale)
 }
 
 func (s *Service) Create(task automation.Task) (automation.Task, error) {
+	if err := requireProjectAutomationTask(task); err != nil {
+		return automation.Task{}, err
+	}
 	return s.storeAllWorkspaces().Create(task)
 }
 
 func (s *Service) Update(id string, task automation.Task) (automation.Task, error) {
+	if err := s.requireProjectAutomationUpdate(id, task); err != nil {
+		return automation.Task{}, err
+	}
 	return s.storeAllWorkspaces().Update(id, task)
 }
 
 func (s *Service) UpdateIfRevision(id string, task automation.Task, baseRevision string) (automation.Task, error) {
+	if err := s.requireProjectAutomationUpdate(id, task); err != nil {
+		return automation.Task{}, err
+	}
 	return s.storeAllWorkspaces().UpdateIfRevision(id, task, baseRevision)
+}
+
+func requireProjectAutomationTask(task automation.Task) error {
+	if task.Scope == automation.ScopeUser || task.Target.Kind == automation.TargetKindUser {
+		return errors.New("自动化任务必须绑定项目 / Automation tasks must target a Project")
+	}
+	return nil
+}
+
+func (s *Service) requireProjectAutomationUpdate(id string, patch automation.Task) error {
+	if err := requireProjectAutomationTask(patch); err != nil {
+		return err
+	}
+	current, err := s.storeAllWorkspaces().Get(id)
+	if err != nil {
+		return err
+	}
+	return requireProjectAutomationTask(current)
 }
 
 func (s *Service) Delete(id string) error {
@@ -232,6 +256,9 @@ func (s *Service) StartTaskCommand(ctx context.Context, id, commandID string, ev
 	}
 	if task.ArchivedAt != nil {
 		return nil, automation.RunRecord{}, fmt.Errorf("%w: task_id=%s", automation.ErrTaskArchived, automationTaskStoreID(task))
+	}
+	if err := requireProjectAutomationTask(task); err != nil {
+		return nil, automation.RunRecord{}, err
 	}
 	// CatalogID and the per-workspace ID are aliases for one definition. Resolve
 	// the alias before deriving durable command identity so transport retries
@@ -284,6 +311,9 @@ func (s *Service) StartTaskWithEvidence(ctx context.Context, id, trigger string,
 	if task.ArchivedAt != nil {
 		return nil, automation.RunRecord{}, fmt.Errorf("%w: task_id=%s", automation.ErrTaskArchived, automationTaskStoreID(task))
 	}
+	if err := requireProjectAutomationTask(task); err != nil {
+		return nil, automation.RunRecord{}, err
+	}
 	snap, operation, err := s.acquireTargetRuntime(ctx, task.Target)
 	if err != nil {
 		return nil, automation.RunRecord{}, err
@@ -325,7 +355,8 @@ func (s *Service) startTaskWithSourceRunID(ctx context.Context, snap *automation
 	deterministicRunID = strings.TrimSpace(deterministicRunID)
 	if deterministicRunID != "" {
 		run.ID = deterministicRunID
-		run.SessionID = automationRunSessionID(deterministicRunID)
+		run.SessionID = automationSessionID(taskDef, deterministicRunID)
+		run.TurnID = automationRunAgentCommandID(deterministicRunID)
 		releaseRun, leaseErr := storeForSnapshot(snap).AcquireRunLease(ctx, automationTaskStoreID(taskDef), deterministicRunID)
 		if leaseErr != nil {
 			return nil, automation.RunRecord{}, leaseErr
@@ -419,12 +450,6 @@ func (s *Service) startTaskWithSourceRunID(ctx context.Context, snap *automation
 			s.releaseAutomationClaim(claim)
 		}
 	}()
-	conversation, err := s.newRunConversation(snap, run, taskDef)
-	if err != nil {
-		result, _ := s.failAutomationRun(snap, taskDef, run, nil, false, err)
-		return nil, result.Run, err
-	}
-
 	var execution *automationAcceptedRun
 	task, err := apptask.NewDeferredWithContext(ctx, func(task *apptask.Task) error {
 		if err := s.activateAutomationClaim(claim, task); err != nil {
@@ -441,7 +466,7 @@ func (s *Service) startTaskWithSourceRunID(ctx context.Context, snap *automation
 	}
 	task.Emit(agentrun.Event{Type: "automation_run", Data: run})
 	acceptCtx, releaseAcceptance := apptask.AcceptanceContext(ctx, task)
-	execution, err = s.startAutomationRun(acceptCtx, snap, taskDef, run, conversation, task.Emit)
+	execution, err = s.startAutomationRun(acceptCtx, snap, task, taskDef, run, task.Emit)
 	releaseAcceptance()
 	if err != nil {
 		if execution != nil {

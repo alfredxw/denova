@@ -62,11 +62,8 @@ func bindConversationConfigProject(c *app.RequestContext, binding *appsvc.Conver
 		binding.ProjectID = scope.ProjectID
 		return true
 	}
-	if binding.ProjectID != "" || binding.Mode != appsvc.ConversationModeAutomation {
-		writeErrorKey(c, consts.StatusBadRequest, "api.project.idRequired")
-		return false
-	}
-	return true
+	writeErrorKey(c, consts.StatusBadRequest, "api.project.idRequired")
+	return false
 }
 
 func writeConversationConfigError(c *app.RequestContext, err error) {

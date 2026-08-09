@@ -47,6 +47,7 @@ func BuiltinTaskTemplates(locale string) []TaskTemplate {
 				WriteMode:           WriteModeConfirmWrite,
 				WriteScope:          WriteScopeFile,
 				OutputPolicy:        OutputPolicyRunRecordOnly,
+				SessionStrategy:     SessionStrategyPerRun,
 			},
 		},
 		{
@@ -71,6 +72,7 @@ func BuiltinTaskTemplates(locale string) []TaskTemplate {
 				WriteMode:           WriteModeReadOnly,
 				WriteScope:          WriteScopeNone,
 				OutputPolicy:        OutputPolicyRunRecordOnly,
+				SessionStrategy:     SessionStrategyPerRun,
 			},
 		},
 	}
@@ -100,6 +102,7 @@ func legacyDefaultWorkspaceAutomations(now time.Time) []Task {
 			WriteScope:          defaults.WriteScope,
 			OutputPolicy:        defaults.OutputPolicy,
 			OutputPath:          defaults.OutputPath,
+			SessionStrategy:     defaults.SessionStrategy,
 			RecentRuns:          []RunRecord{},
 			CreatedAt:           now,
 			UpdatedAt:           now,

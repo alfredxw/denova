@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { Clock3, Inbox, Loader2, MessageSquareText, Play, Plus, RefreshCw, Settings2, Square } from 'lucide-react'
+import { Clock3, Inbox, Loader2, Play, Plus, RefreshCw, Settings2 } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import { ConfirmDialog } from '@/components/common/ConfirmDialog'
 import { EmptyState } from '@/components/common/EmptyState'
@@ -9,8 +9,6 @@ import { FeaturePageShell } from '@/components/layout/feature-page-shell'
 import { MobilePaneTrigger } from '@/components/layout/mobile-pane-trigger'
 import { SidebarVisibilityToggle } from '@/components/layout/sidebar-visibility-toggle'
 import { ConfigManagerChat } from '@/components/Chat/ConfigManagerChat'
-import { MessageList } from '@/components/Chat/MessageList'
-import { InputArea } from '@/components/Chat/InputArea'
 import { Button } from '@/components/ui/button'
 import {
   createAutomation,
@@ -21,19 +19,17 @@ import {
   getAutomationInbox,
   getAutomationTemplates,
   getAutomations,
-  getActiveAutomationRuns,
-  getBooks,
   markAutomationInboxItemRead,
-  type AutomationActiveRun,
+  startAutomationRun,
+  createAgentCommandID,
   type AutomationInboxItem,
   type AutomationRunRecord,
   type AutomationTask,
   type AutomationTaskTemplate,
   type AutomationTriggerDefinition,
-  type BookRecord,
 } from '@/lib/api'
-import { useSkillCommands } from '@/hooks/useSkillCommands'
 import { fetchProjectSettings } from '@/features/settings/api'
+import { requestAgentChatSessionNavigation } from '@/features/agent-chat/session-navigation'
 import { rebaseJSONWithRecovery } from '@/lib/autosave/rebase-with-recovery'
 import { rebaseJSONValue } from '@/lib/three-way-rebase'
 import type { Settings } from '@/features/settings/types'
@@ -42,7 +38,6 @@ import {
   workspaceChangePaths,
   type WorkspaceChangeEvent,
 } from '@/features/changes/types'
-import { useAutomationRunStream } from './useAutomationRunStream'
 import { InboxPanel } from './AutomationInboxPanel'
 import { AutomationConfigPanel } from './AutomationConfigPanel'
 import { AutomationTaskCatalog } from './AutomationTaskCatalog'
@@ -65,9 +60,21 @@ import {
 import { useAutomationAutosave } from './use-automation-autosave'
 import { buildAutomationModelProfileOptions, inheritedAutomationModelProfileLabel } from './automation-model-profiles'
 
-type AutomationPanelView = 'config' | 'inbox' | 'run' | 'agent'
+type AutomationPanelView = 'config' | 'inbox' | 'agent'
 
-export function AutomationsView({ projectId, workspace, onClose }: { projectId: string; workspace: string; onClose?: () => void }) {
+export function AutomationsView({
+  projectId = '',
+  projectType = 'book',
+  workspace,
+  onOpenAgentChat,
+  onClose,
+}: {
+  projectId?: string
+  projectType?: 'book' | 'general'
+  workspace: string
+  onOpenAgentChat?: () => void
+  onClose?: () => void
+}) {
   const { t, i18n } = useTranslation()
   const projectTarget = useMemo(
     () => defaultAutomationTarget({ projectId, workspace }),
@@ -75,8 +82,6 @@ export function AutomationsView({ projectId, workspace, onClose }: { projectId: 
   )
   const [tasks, setTasks] = useState<AutomationTask[]>([])
   const [templates, setTemplates] = useState<AutomationTaskTemplate[]>([])
-  const [books, setBooks] = useState<BookRecord[]>([])
-  const [activeRuns, setActiveRuns] = useState<AutomationActiveRun[]>([])
   const [inboxItems, setInboxItems] = useState<AutomationInboxItem[]>([])
   const [effectiveSettings, setEffectiveSettings] = useState<Settings | null>(null)
   const [activeId, setActiveId] = useState<string>('')
@@ -90,7 +95,6 @@ export function AutomationsView({ projectId, workspace, onClose }: { projectId: 
   const [error, setError] = useState<string | null>(null)
   const [deleteTarget, setDeleteTarget] = useState<{ id: string; name: string } | null>(null)
   const [navigationTarget, setNavigationTarget] = useState<AutomationNavigationTarget | null>(null)
-  const [runInputAreaHeight, setRunInputAreaHeight] = useState(0)
   const mountedRef = useRef(true)
   const loadSequenceRef = useRef(0)
   const draftDirtyRef = useRef(false)
@@ -105,31 +109,22 @@ export function AutomationsView({ projectId, workspace, onClose }: { projectId: 
     loadSequenceRef.current = sequence
     try {
       const locale = i18n.resolvedLanguage || i18n.language || 'zh-CN'
-      const [data, taskTemplates, inbox, settings, bookRecords, runningTasks] = await Promise.all([
-        getAutomations(),
+      const [data, taskTemplates, inbox, settings] = await Promise.all([
+        getAutomations(projectTarget),
         getAutomationTemplates(locale),
-        getAutomationInbox(),
+        getAutomationInbox(projectTarget),
         fetchProjectSettings(projectId),
-        getBooks(),
-        getActiveAutomationRuns(),
       ])
       if (!mountedRef.current || sequence !== loadSequenceRef.current) return
       const normalized = data.map((task) => normalizeAutomationTaskShape(task, projectTarget))
-      // Automation tasks have explicit targets and may be global. A book switch
-      // must not discard an existing or not-yet-created dirty definition.
+      // A Project switch must not discard an existing dirty definition while
+      // the current request is still settling.
       const preserveDraft = draftDirtyRef.current && Boolean(activeIdRef.current || creatingRef.current)
       setTasks(normalized)
       setTemplates(taskTemplates)
-      setBooks(bookRecords)
-      setActiveRuns(runningTasks)
       setInboxItems(inbox)
       setEffectiveSettings(settings.effective)
-      const selected = normalized.find((task) => automationTaskKey(task) === activeIdRef.current)
-        ?? normalized.find((task) => task.target?.kind === 'workspace' && (
-          task.target.project_id === projectId
-          || (!task.target.project_id && task.target.workspace === workspace)
-        ))
-        ?? normalized[0]
+      const selected = normalized.find((task) => automationTaskKey(task) === activeIdRef.current) ?? normalized[0]
       if (preserveDraft && selected && automationTaskKey(selected) === activeIdRef.current) {
         const previousBaseline = taskBaselineRef.current
         const draftAtReloadStart = draftRef.current
@@ -179,20 +174,17 @@ export function AutomationsView({ projectId, workspace, onClose }: { projectId: 
     }
   }, [i18n.language, i18n.resolvedLanguage, projectId, projectTarget, t, workspace])
 
-  const runStream = useAutomationRunStream({ onFinished: load })
-  const { loadHistory: loadAutomationRunHistory, resume: resumeAutomationRun } = runStream
-  const running = runStream.isStreaming
   const catalogActiveRuns = useMemo(() => {
-    const live = runStream.activeRun
-    if (!live || live.status !== 'running' || activeRuns.some((active) => active.run.id === live.id)) return activeRuns
-    return [...activeRuns, { task_id: live.task_id, run: live }]
-  }, [activeRuns, runStream.activeRun])
-  const automationWorkspace = draft.target?.kind === 'workspace' ? draft.target.workspace || '' : ''
-  const automationProjectId = draft.target?.kind === 'workspace' ? draft.target.project_id || '' : ''
-  const runConversationWorkspace = runStream.activeRun?.workspace || automationWorkspace
-  const runConversationProjectId = runStream.activeRun?.project_id || automationProjectId
-  const skillCommands = useSkillCommands({ agentKey: 'automation', projectId })
-  const runMessageListBottomPadding = runInputAreaHeight > 0 ? runInputAreaHeight + 20 : undefined
+    return tasks.flatMap((task) => (task.recent_runs || [])
+      .filter((run) => run.status === 'running')
+      .map((run) => ({ task_id: run.task_id, run })))
+  }, [tasks])
+  const selectedActiveRun = catalogActiveRuns.find((active) => {
+    const task = findAutomationTaskForRun(tasks, active.run)
+    return task ? automationTaskKey(task) === activeId : false
+  })?.run
+  const running = Boolean(selectedActiveRun)
+  const activeRunId = selectedActiveRun?.id || ''
 
   useEffect(() => {
     mountedRef.current = true
@@ -227,40 +219,12 @@ export function AutomationsView({ projectId, workspace, onClose }: { projectId: 
     return () => window.removeEventListener('nova:workspace-change', reloadChangedAutomation)
   }, [load, projectId])
 
-  useEffect(() => {
-    if (running || tasks.length === 0) return
-    let cancelled = false
-    void (async () => {
-      try {
-        const runs = await getActiveAutomationRuns()
-        if (cancelled) return
-        setActiveRuns(runs)
-        if (runs.length === 0) return
-        const active = runs[0]
-        const task = findAutomationTaskForRun(tasks, active.run)
-        if (task && !draftDirtyRef.current) {
-          const key = automationTaskKey(task)
-          activeIdRef.current = key
-          setActiveId(key)
-          const nextDraft = cloneAutomationTask(task, projectTarget)
-          taskBaselineRef.current = nextDraft
-          draftRef.current = nextDraft
-          setDraft(nextDraft)
-          draftDirtyRef.current = false
-          setCreating(false)
-        }
-        setPanelView('run')
-        await resumeAutomationRun(active.run, t('automations.run.attached', { name: task?.name || active.run.task_id }))
-      } catch (e) {
-        if (!cancelled) console.error('resume automation run failed', e)
-      }
-    })()
-    return () => { cancelled = true }
-  }, [projectTarget, resumeAutomationRun, running, t, tasks])
-
   const unreadInboxCount = useMemo(() => inboxItems.filter((item) => !item.read_at && item.status === 'pending').length, [inboxItems])
   const modelProfileOptions = useMemo(() => buildAutomationModelProfileOptions(effectiveSettings, draft.model_profile_id, t), [draft.model_profile_id, effectiveSettings, t])
-  const inheritedAutomationProfile = useMemo(() => inheritedAutomationModelProfileLabel(effectiveSettings, t), [effectiveSettings, t])
+  const inheritedAutomationProfile = useMemo(
+    () => inheritedAutomationModelProfileLabel(effectiveSettings, projectType, t),
+    [effectiveSettings, projectType, t],
+  )
 
   const automationAutosave = useAutomationAutosave({
     activeId,
@@ -386,11 +350,19 @@ export function AutomationsView({ projectId, workspace, onClose }: { projectId: 
     if (!activeId) return
     if (!(await flushAutomationAutosave())) return
     setError(null)
-    setPanelView('run')
+    setSaving(true)
     try {
-      await runStream.start(activeId, buildRunUserMessage(draft, t))
+      const run = await startAutomationRun(activeId, createAgentCommandID())
+      if (!run.project_id || !run.session_id) {
+        throw new Error(t('automations.run.missingConversation'))
+      }
+      requestAgentChatSessionNavigation({ projectId: run.project_id, sessionId: run.session_id })
+      onOpenAgentChat?.()
+      void load()
     } catch (e) {
       setError((e as Error).message)
+    } finally {
+      setSaving(false)
     }
   }
 
@@ -401,7 +373,7 @@ export function AutomationsView({ projectId, workspace, onClose }: { projectId: 
     setError(null)
     try {
       await checkAutomation(activeId)
-      const inbox = await getAutomationInbox()
+      const inbox = await getAutomationInbox(projectTarget)
       setInboxItems(inbox)
       setPanelView('inbox')
     } catch (e) {
@@ -411,15 +383,15 @@ export function AutomationsView({ projectId, workspace, onClose }: { projectId: 
     }
   }
 
-  const openRun = useCallback(async (run: AutomationRunRecord) => {
+  const openRun = useCallback((run: AutomationRunRecord) => {
     setError(null)
-    setPanelView('run')
-    try {
-      await loadAutomationRunHistory(run)
-    } catch (e) {
-      setError((e as Error).message)
+    if (!run.project_id || !run.session_id) {
+      setError(t('automations.run.missingConversation'))
+      return
     }
-  }, [loadAutomationRunHistory])
+    requestAgentChatSessionNavigation({ projectId: run.project_id, sessionId: run.session_id })
+    onOpenAgentChat?.()
+  }, [onOpenAgentChat, t])
 
   useEffect(() => {
     if (!navigationTarget || tasks.length === 0) return
@@ -442,8 +414,8 @@ export function AutomationsView({ projectId, workspace, onClose }: { projectId: 
         setPanelView('inbox')
       } else if (navigationTarget.runId) {
         const run = task.recent_runs?.find((candidate) => candidate.id === navigationTarget.runId)
-        if (run) void openRun(run)
-        else setPanelView('run')
+        if (run) openRun(run)
+        else setPanelView('config')
       } else {
         setPanelView('config')
       }
@@ -452,25 +424,14 @@ export function AutomationsView({ projectId, workspace, onClose }: { projectId: 
     return () => { cancelled = true }
   }, [flushAutomationAutosave, navigationTarget, openRun, projectTarget, tasks])
 
-  const sendRunMessage = async (message: string) => {
-    setError(null)
-    setPanelView('run')
-    try {
-      await runStream.send(message)
-    } catch (e) {
-      setError((e as Error).message)
-    }
-  }
-
   const confirmInboxItem = async (item: AutomationInboxItem) => {
     setError(null)
     try {
       const result = await confirmAutomationInboxItem(item.id)
       setInboxItems((current) => current.map((candidate) => candidate.id === result.item.id ? result.item : candidate))
       if (result.run) {
-        const task = findAutomationTaskForRun(tasks, result.run)
-        setPanelView('run')
-        await resumeAutomationRun(result.run, t('automations.run.attached', { name: task?.name || result.run.task_id }))
+        openRun(result.run)
+        void load()
       }
     } catch (e) {
       setError((e as Error).message)
@@ -518,7 +479,6 @@ export function AutomationsView({ projectId, workspace, onClose }: { projectId: 
   const taskListPanel = (
     <AutomationTaskCatalog
       tasks={tasks}
-      books={books}
       activeRuns={catalogActiveRuns}
       activeId={activeId}
       agentActive={panelView === 'agent'}
@@ -564,12 +524,6 @@ export function AutomationsView({ projectId, workspace, onClose }: { projectId: 
             <Play data-icon="inline-start" />
             <span className="hidden sm:inline">{running ? t('automations.running') : t('automations.runNow')}</span>
           </Button>
-          {running ? (
-            <Button type="button" size="sm" variant="outline" onClick={runStream.stop} className="nova-nav-item border-[var(--nova-border)] bg-[var(--nova-surface-2)] text-[var(--nova-text-muted)]" aria-label={t('automations.stopRun')}>
-              <Square data-icon="inline-start" />
-              <span className="hidden sm:inline">{t('automations.stopRun')}</span>
-            </Button>
-          ) : null}
           {creating ? (
             <Button type="button" size="sm" variant="secondary" onClick={createDraft} disabled={saving || running} className="nova-nav-item border border-[var(--nova-border)] bg-[var(--nova-active)]" aria-label={t('common.create')}>
               {saving ? <Loader2 data-icon="inline-start" className="animate-spin" /> : <Plus data-icon="inline-start" />}
@@ -628,19 +582,11 @@ export function AutomationsView({ projectId, workspace, onClose }: { projectId: 
                   {t('automations.view.inbox')}
                   {unreadInboxCount > 0 && <span className="rounded-full bg-[var(--nova-danger-border)] px-1.5 text-[10px] text-white">{unreadInboxCount}</span>}
                 </button>
-                <button
-                  type="button"
-                  onClick={() => setPanelView('run')}
-                  className={`inline-flex items-center gap-1.5 rounded-[6px] px-2 py-0.5 text-[11px] transition-colors ${panelView === 'run' ? 'bg-[var(--nova-active)] text-[var(--nova-text)]' : 'text-[var(--nova-text-faint)] hover:text-[var(--nova-text-muted)]'}`}
-                >
-                  <MessageSquareText className="h-3.5 w-3.5" />
-                  {t('automations.view.run')}
-                </button>
               </div>
               <div className="min-w-0 flex-1" />
-              {runStream.activeRun && (
+              {selectedActiveRun && (
                 <span className="truncate rounded border border-[var(--nova-border)] bg-[var(--nova-surface-2)] px-2 py-0.5 font-mono text-[11px] text-[var(--nova-text-faint)]">
-                  {runStream.activeRun.status || (running ? 'running' : '')} · {runStream.activeRun.id}
+                  {selectedActiveRun.status} · {selectedActiveRun.id}
                 </span>
               )}
             </div>
@@ -648,8 +594,7 @@ export function AutomationsView({ projectId, workspace, onClose }: { projectId: 
             {panelView === 'config' ? hasEditableDraft ? (
               <AutomationConfigPanel
                 activeId={activeId}
-                activeRunId={runStream.activeRun?.id || ''}
-                books={books}
+                activeRunId={activeRunId}
                 draft={draft}
                 inheritedModelProfile={inheritedAutomationProfile}
                 modelProfileOptions={modelProfileOptions}
@@ -681,42 +626,6 @@ export function AutomationsView({ projectId, workspace, onClose }: { projectId: 
                 if (run) void openRun(run)
               }}
             />
-          ) : panelView === 'run' ? (
-            <section className="relative flex min-h-0 flex-1 flex-col overflow-hidden">
-              <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
-                <MessageList
-                  projectId={runConversationProjectId}
-                  messages={runStream.messages}
-                  isStreaming={runStream.isStreaming}
-                  activityContent={runStream.activityContent}
-                  scrollResetKey={runStream.activeRun?.id || activeId || 'automation'}
-                  collapseTraceGroups
-                  bottomPaddingClassName="pb-36"
-                  bottomPaddingPx={runMessageListBottomPadding}
-                />
-              </div>
-              {runStream.activeRun ? (
-                <InputArea
-                  onSend={sendRunMessage}
-                  onStop={runStream.isStreaming ? runStream.stop : undefined}
-                  disabled={runStream.isStreaming}
-                  commandScope="skills"
-                  skills={skillCommands}
-                  agentKey="automation"
-                  workspace={runConversationWorkspace}
-                  conversationBinding={{
-                    mode: 'automation',
-                    run_id: runStream.activeRun.id,
-                    project_id: runStream.activeRun.project_id,
-                    session_id: runStream.activeRun.session_id,
-                  }}
-                  floating
-                  onHeightChange={setRunInputAreaHeight}
-                />
-              ) : (
-                <EmptyState variant="compact" title={t('automations.run.empty')} className="border-t border-[var(--nova-border)] text-[var(--nova-text-faint)]" />
-              )}
-            </section>
           ) : (
             <ConfigManagerChat
               projectId={projectId}
@@ -737,9 +646,7 @@ export function AutomationsView({ projectId, workspace, onClose }: { projectId: 
       </AdaptiveSurface>
       <AutomationTemplateDialog
         open={templateDialogOpen}
-        projectId={projectId}
-        workspace={workspace}
-        books={books}
+        target={projectTarget}
         templates={templates}
         onOpenChange={setTemplateDialogOpen}
         onChoose={chooseCreationTemplate}
@@ -755,11 +662,6 @@ export function AutomationsView({ projectId, workspace, onClose }: { projectId: 
       />
     </FeaturePageShell>
   )
-}
-
-function buildRunUserMessage(task: AutomationTask, t: (key: string, options?: Record<string, unknown>) => string) {
-  const prompt = task.prompt?.trim() || task.name
-  return `${t('automations.run.userMessage', { name: task.name })}\n\n${prompt}`
 }
 
 function isAutomationTaskFile(path: string): boolean {

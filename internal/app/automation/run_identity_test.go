@@ -2,14 +2,39 @@ package automationapp
 
 import (
 	"context"
-	agentrun "denova/internal/agents/run"
 	"errors"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
+	agentrun "denova/internal/agents/run"
 	"denova/internal/automation"
+	projectdomain "denova/internal/project"
 )
+
+func TestAutomationSessionStrategyOwnsStableConversationIdentity(t *testing.T) {
+	task := automation.Task{ID: "task-local", CatalogID: "project-a:task-local"}
+	perRunA := automationSessionID(task, "run-a")
+	perRunB := automationSessionID(task, "run-b")
+	if perRunA == perRunB || perRunA != automationRunSessionID("run-a") {
+		t.Fatalf("per-run conversations A=%q B=%q", perRunA, perRunB)
+	}
+
+	task.SessionStrategy = automation.SessionStrategyPerTask
+	perTaskA := automationSessionID(task, "run-a")
+	perTaskB := automationSessionID(task, "run-b")
+	if perTaskA != perTaskB || !strings.HasPrefix(perTaskA, "automation-task-") {
+		t.Fatalf("per-task conversations A=%q B=%q", perTaskA, perTaskB)
+	}
+
+	run := (&Service{}).newRunRecord(&automationWorkspaceSnapshot{projectID: "project-a", workspace: "/books/a"}, automation.Task{
+		ID: "task-local", Revision: "revision-7", SessionStrategy: automation.SessionStrategyPerTask,
+	}, automation.TriggerSchedule)
+	if run.ProjectID != "project-a" || run.TaskRevision != "revision-7" || run.SessionStrategy != automation.SessionStrategyPerTask || run.TurnID == "" {
+		t.Fatalf("run admission snapshot = %#v", run)
+	}
+}
 
 func TestAutomationDeterministicRunIDReplaysExactPersistedRun(t *testing.T) {
 	root := t.TempDir()
@@ -110,7 +135,7 @@ func TestAutomationWriteConfirmationStartsFromCleanRunRecord(t *testing.T) {
 	evidence := []automation.TriggerEvidence{{Source: "confirmation", Title: "verify write", Snippet: "review source changes"}}
 	_, confirmation, err := service.startTaskWithSourceRunID(
 		context.Background(),
-		&automationWorkspaceSnapshot{workspace: workspace, novaDir: novaDir},
+		&automationWorkspaceSnapshot{projectID: "project-test", projectType: projectdomain.TypeBook, workspace: workspace, novaDir: novaDir},
 		taskDef.ID,
 		automation.TriggerWriteConfirmation,
 		source.ID,
@@ -159,7 +184,7 @@ func TestAutomationPreAcceptanceRetryPreservesOriginalAdmissionTime(t *testing.T
 	}
 	_, retried, err := service.startTaskWithSourceRunID(
 		context.Background(),
-		&automationWorkspaceSnapshot{workspace: workspace, novaDir: novaDir},
+		&automationWorkspaceSnapshot{projectID: "project-test", projectType: projectdomain.TypeBook, workspace: workspace, novaDir: novaDir},
 		taskDef.CatalogID,
 		automation.TriggerManual,
 		"",

@@ -18,14 +18,13 @@ type SubAgentConfig struct {
 
 // AgentGeneralSubAgentSettings stores the built-in General SubAgent switch per
 // parent agent. Nil means inherit from default; built-in defaults only enable
-// the General SubAgent for writing and automation agents.
+// the General SubAgent for Project Agents.
 type AgentGeneralSubAgentSettings struct {
 	Default          *bool `toml:"default,omitempty" json:"default,omitempty"`
 	General          *bool `toml:"general,omitempty" json:"general,omitempty"`
 	IDE              *bool `toml:"ide,omitempty" json:"ide,omitempty"`
 	InteractiveStory *bool `toml:"interactive_story,omitempty" json:"interactive_story,omitempty"`
 	ConfigManager    *bool `toml:"config_manager,omitempty" json:"config_manager,omitempty"`
-	Automation       *bool `toml:"automation,omitempty" json:"automation,omitempty"`
 }
 
 var subAgentParentKinds = []string{
@@ -33,7 +32,6 @@ var subAgentParentKinds = []string{
 	AgentKindIDE,
 	AgentKindInteractiveStory,
 	AgentKindConfigManager,
-	AgentKindAutomation,
 }
 
 // SubAgentParentKinds returns the Agent kinds that support task delegation.
@@ -55,10 +53,9 @@ func IsSubAgentParentKind(kind string) bool {
 
 func DefaultAgentGeneralSubAgentSettings() AgentGeneralSubAgentSettings {
 	return AgentGeneralSubAgentSettings{
-		Default:    boolPtr(false),
-		General:    boolPtr(true),
-		IDE:        boolPtr(true),
-		Automation: boolPtr(true),
+		Default: boolPtr(false),
+		General: boolPtr(true),
+		IDE:     boolPtr(true),
 	}
 }
 
@@ -69,7 +66,6 @@ func MergeAgentGeneralSubAgentSettings(parent, child AgentGeneralSubAgentSetting
 		IDE:              mergeBoolOverride(parent.IDE, child.IDE),
 		InteractiveStory: mergeBoolOverride(parent.InteractiveStory, child.InteractiveStory),
 		ConfigManager:    mergeBoolOverride(parent.ConfigManager, child.ConfigManager),
-		Automation:       mergeBoolOverride(parent.Automation, child.Automation),
 	}
 }
 
@@ -95,8 +91,6 @@ func generalSubAgentOverrideFor(settings AgentGeneralSubAgentSettings, parentKin
 		return settings.InteractiveStory
 	case AgentKindConfigManager:
 		return settings.ConfigManager
-	case AgentKindAutomation:
-		return settings.Automation
 	default:
 		return nil
 	}

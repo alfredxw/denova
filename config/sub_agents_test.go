@@ -215,9 +215,6 @@ func TestGeneralSubAgentSettingsMergeAndResolve(t *testing.T) {
 	if GeneralSubAgentEnabled(cfg, AgentKindIDE) {
 		t.Fatalf("explicit IDE setting should disable the general subagent")
 	}
-	if !GeneralSubAgentEnabled(cfg, AgentKindAutomation) {
-		t.Fatalf("automation should use the enabled built-in default")
-	}
 	if GeneralSubAgentEnabled(cfg, AgentKindInteractiveStory) {
 		t.Fatalf("interactive story should inherit the disabled built-in default")
 	}

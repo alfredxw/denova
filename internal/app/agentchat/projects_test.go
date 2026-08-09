@@ -52,6 +52,31 @@ func TestCloseProjectRejectsRunningConversation(t *testing.T) {
 	}
 }
 
+func TestTurnBusyPolicyKeepsInteractiveAdmissionImmediateAndBackgroundWaitCancellable(t *testing.T) {
+	service, binding, _ := newInjectedService(t, nil, "busy-policy-session")
+	blocker, err := apptask.NewDeferred(nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	service.active[bindingKey(binding)] = &run{binding: binding, task: blocker}
+	t.Cleanup(func() { blocker.RejectStart(context.Canceled) })
+
+	request := TurnRequest{
+		Binding:     binding,
+		ChatRequest: ChatRequest{CommandID: "busy-policy-turn", Message: "continue"},
+	}
+	if _, err := service.AcceptTurn(context.Background(), request); !errors.Is(err, appagentruntime.ErrOperationActive) {
+		t.Fatalf("interactive busy admission error = %v, want ErrOperationActive", err)
+	}
+
+	waitCtx, cancel := context.WithCancel(context.Background())
+	cancel()
+	request.Policy.BusyPolicy = TurnBusyWait
+	if _, err := service.AcceptTurn(waitCtx, request); !errors.Is(err, context.Canceled) {
+		t.Fatalf("background busy admission error = %v, want context cancellation", err)
+	}
+}
+
 func newInjectedService(t *testing.T, store *session.Store, sessionID string) (*Service, Binding, *session.Store) {
 	t.Helper()
 	denovaDir := t.TempDir()

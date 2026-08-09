@@ -39,6 +39,7 @@ import { useAgentApprovalMode } from '@/features/agent-approval/AgentApprovalPro
 import { AGENT_APPROVAL_MODES } from '@/features/agent-approval/modes'
 import { ApprovalRulesEditor } from './ApprovalRulesEditor'
 import { ApiKeyInput } from './ApiKeyInput'
+import { ImageProfilePingButton } from './ImageProfilePingButton'
 
 type SettingsSectionId = 'model' | 'image' | 'paths' | 'access' | 'appearance' | 'updates' | 'agent' | 'terminal' | 'web-access' | 'debug' | 'ide-editor' | 'ide-output' | 'versions' | 'interactive'
 
@@ -1590,6 +1591,9 @@ function ImageAPIProfilesEditor({ profiles, effectiveProfiles, defaultProfileID,
                 className="md:col-span-3"
                 onChange={(value) => updateProfile(index, { default_output_format: value })}
               />
+            </div>
+            <div className="border-t border-[var(--nova-border)] px-2.5 py-2">
+              <ImageProfilePingButton profile={profile} />
             </div>
           </div>
         ))}

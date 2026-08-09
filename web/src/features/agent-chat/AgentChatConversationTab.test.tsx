@@ -1,4 +1,4 @@
-import { render, screen } from '@testing-library/react'
+import { render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { useAgentChat } from '@/hooks/useAgentChat'
@@ -42,6 +42,7 @@ describe('AgentChatConversationTab draft lifecycle', () => {
       sessions: [],
       activeSessionId: '',
       isStreaming: false,
+      isExecutionActive: false,
       runtimeProjection: null,
       abortPending: false,
       commandSubmitting: false,
@@ -103,5 +104,53 @@ describe('AgentChatConversationTab draft lifecycle', () => {
     rerender(<AgentChatConversationTab {...props} draft={false} />)
     expect(chat.loadHistory).not.toHaveBeenCalled()
     expect(chat.resumeActiveChat).not.toHaveBeenCalled()
+  })
+
+  it('reloads and reattaches when an external turn changes the conversation revision', async () => {
+    const props = {
+      projectId: 'project-a',
+      projectType: 'book' as const,
+      workspace: '/books/a',
+      sessionId: 'session-a',
+      active: true,
+      composerSettings: {} as never,
+      tellers: [],
+      imagePresets: [],
+      syncRevision: 'rev-1',
+    }
+    const { rerender } = render(<AgentChatConversationTab {...props} />)
+
+    expect(chat.loadHistory).toHaveBeenCalledTimes(1)
+    await waitFor(() => expect(chat.resumeActiveChat).toHaveBeenCalledTimes(1))
+
+    rerender(<AgentChatConversationTab {...props} syncRevision="rev-2" />)
+
+    expect(chat.loadHistory).toHaveBeenCalledTimes(2)
+    await waitFor(() => expect(chat.resumeActiveChat).toHaveBeenCalledTimes(2))
+  })
+
+  it('does not reattach metadata updates while the local hook owns a running turn', async () => {
+    const props = {
+      projectId: 'project-a',
+      projectType: 'book' as const,
+      workspace: '/books/a',
+      sessionId: 'session-a',
+      active: true,
+      composerSettings: {} as never,
+      tellers: [],
+      imagePresets: [],
+      syncRevision: 'rev-1',
+    }
+    const { rerender } = render(<AgentChatConversationTab {...props} />)
+    await waitFor(() => expect(chat.resumeActiveChat).toHaveBeenCalledTimes(1))
+
+    vi.mocked(useAgentChat).mockReturnValue({
+      ...vi.mocked(useAgentChat).mock.results.at(-1)?.value,
+      isExecutionActive: true,
+    } as never)
+    rerender(<AgentChatConversationTab {...props} syncRevision="rev-2" />)
+
+    expect(chat.loadHistory).toHaveBeenCalledTimes(1)
+    expect(chat.resumeActiveChat).toHaveBeenCalledTimes(1)
   })
 })

@@ -12,7 +12,6 @@ import (
 	"denova/internal/agents/conversationconfig"
 	"denova/internal/agents/session"
 	agentchatapp "denova/internal/app/agentchat"
-	automationapp "denova/internal/app/automation"
 	configmanagerapp "denova/internal/app/configmanager"
 	interactiveapp "denova/internal/app/interactive"
 	appsettings "denova/internal/app/settings"
@@ -24,7 +23,6 @@ const (
 	ConversationModeAgentChat     = "agent_chat"
 	ConversationModeInteractive   = "interactive"
 	ConversationModeConfigManager = "config_manager"
-	ConversationModeAutomation    = "automation"
 )
 
 // ConversationConfigBinding is the stable transport identity for every
@@ -95,10 +93,6 @@ func (a *App) ConversationConfig(ctx context.Context, binding ConversationConfig
 			return conversationconfig.Snapshot{}, err
 		}
 		return a.interactiveConversationConfig(binding)
-	case ConversationModeAutomation:
-		return a.Automation().ConversationConfig(ctx, automationapp.ConversationBinding{
-			ProjectID: binding.ProjectID, SessionID: binding.SessionID, RunID: binding.RunID,
-		})
 	default:
 		return conversationconfig.Snapshot{}, fmt.Errorf("unsupported conversation mode %q", binding.Mode)
 	}
@@ -130,10 +124,6 @@ func (a *App) PatchConversationConfig(ctx context.Context, binding ConversationC
 			return conversationconfig.Snapshot{}, err
 		}
 		return a.patchInteractiveConversationConfig(binding, change, baseRevision)
-	case ConversationModeAutomation:
-		return a.Automation().PatchConversationConfig(ctx, automationapp.ConversationBinding{
-			ProjectID: binding.ProjectID, SessionID: binding.SessionID, RunID: binding.RunID,
-		}, change, baseRevision)
 	default:
 		return conversationconfig.Snapshot{}, fmt.Errorf("unsupported conversation mode %q", binding.Mode)
 	}

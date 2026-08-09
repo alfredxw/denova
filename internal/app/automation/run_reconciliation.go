@@ -23,11 +23,15 @@ func (s *Service) automationRuntimeProjection(ctx context.Context, snap *automat
 	if snap == nil || snap.chatService == nil {
 		return agentrun.RuntimeStatus{}, agentharness.ErrRuntimeProjectionUnavailable
 	}
-	return snap.chatService.RuntimeRecoveryStatusProjection(ctx, agentrun.Options{
-		AgentKind: agentrun.AgentKindAutomation, ProjectID: snap.projectID, StateRoot: snap.stateRoot,
+	return snap.chatService.RuntimeRecoveryStatusProjection(ctx, automationRuntimeOptions(snap, task, run))
+}
+
+func automationRuntimeOptions(snap *automationWorkspaceSnapshot, task automation.Task, run automation.RunRecord) agentrun.Options {
+	return agentrun.Options{
+		AgentKind: projectAgentKind(snap), ProjectID: snap.projectID, StateRoot: snap.stateRoot,
 		TaskID: run.ID, AutomationTaskID: task.ID,
-		SessionID: run.SessionID, Workspace: run.Workspace, Mode: "automation",
-	})
+		SessionID: run.SessionID, Workspace: run.Workspace, Mode: agentrun.ModeAgentChat,
+	}
 }
 
 // persistAcceptedAutomationRun closes the cross-domain admission window: the

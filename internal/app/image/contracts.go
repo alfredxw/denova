@@ -68,6 +68,12 @@ type Host interface {
 	AcquireProjectImageRuntime(context.Context, string) (*Runtime, error)
 }
 
+// ConfigHost is optional because workspace-only test hosts do not need global
+// settings. Connection validation requires an immutable configuration snapshot.
+type ConfigHost interface {
+	ImageConfigSnapshot() config.Config
+}
+
 type Service struct {
 	host Host
 }

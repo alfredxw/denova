@@ -619,6 +619,7 @@ export function ModeRouter(props: ModeRouterProps) {
   const fileSuggestions = useMemo(() => flattenFileTree(tree), [tree])
   const closeIdeWorkspacePanel = useCallback(() => onSetRightPanel(null), [onSetRightPanel])
   const returnToContentMode = useCallback(() => onSetMode(booksReturnMode), [booksReturnMode, onSetMode])
+  const openAgentChatRoute = useCallback(() => onSetMode('agentchat'), [onSetMode])
   const selectOutlineFile = useCallback((path: string) => { void selectWorkspacePath(path) }, [selectWorkspacePath])
   const openLoreLibrary = useCallback(() => {
     void flushBeforeWorkspaceSwitch().then((saved) => {
@@ -1040,7 +1041,12 @@ export function ModeRouter(props: ModeRouterProps) {
       )}
       {renderedRoutes.has('automations') && (
         <MainRouteLayer visible={presentedMainRoute === 'automations'} loadingLabel={t('router.loading')}>
-          <AutomationsView projectId={projectId} workspace={workspace} onClose={returnToContentMode} />
+          <AutomationsView
+            projectId={projectId}
+            workspace={workspace}
+            onOpenAgentChat={openAgentChatRoute}
+            onClose={returnToContentMode}
+          />
         </MainRouteLayer>
       )}
       {renderedRoutes.has('agentchat') && (

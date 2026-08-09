@@ -13,12 +13,8 @@ import type {
   AutomationRunRecord,
   AutomationTask,
   AutomationTriggerDefinition,
-  BookRecord,
 } from '@/lib/api'
 import {
-  automationTargetLabel,
-  automationTargetOptions,
-  automationTargetValue,
   nextAutomationWriteModePatch,
   nextAutomationWriteScopePatch,
 } from './automation-task-draft'
@@ -29,7 +25,6 @@ const controlClassName = 'nova-field min-h-7 w-full min-w-0 rounded-[var(--nova-
 interface AutomationConfigPanelProps {
   activeId: string
   activeRunId: string
-  books: BookRecord[]
   draft: AutomationTask
   inheritedModelProfile: string
   modelProfileOptions: Array<{ id: string; label: string }>
@@ -45,7 +40,6 @@ interface AutomationConfigPanelProps {
 export function AutomationConfigPanel({
   activeId,
   activeRunId,
-  books,
   draft,
   inheritedModelProfile,
   modelProfileOptions,
@@ -57,7 +51,6 @@ export function AutomationConfigPanel({
   onTriggersChange,
 }: AutomationConfigPanelProps) {
   const { t } = useTranslation()
-  const globalTask = draft.target?.kind === 'user'
 
   return (
     <div className="min-h-0 flex-1 overflow-y-auto">
@@ -66,7 +59,7 @@ export function AutomationConfigPanel({
           <div className="min-w-0">
             <div className="truncate text-sm font-medium text-[var(--nova-text)]">{draft.name || t('automations.newTask')}</div>
             <div className="mt-1 truncate text-[11px] text-[var(--nova-text-faint)]">
-              {automationTargetLabel(draft, books, t)} · {draft.enabled ? t('automations.enabled') : t('automations.disabled')}
+              {t('automations.target.currentProject')} · {draft.enabled ? t('automations.enabled') : t('automations.disabled')}
             </div>
           </div>
           {activeId && (
@@ -99,19 +92,6 @@ export function AutomationConfigPanel({
               <span className="text-[11px] text-muted-foreground">{draft.enabled ? t('automations.enabled') : t('automations.disabled')}</span>
             </div>
           </FormField>
-          <FormField label={t('automations.field.target')}>
-            <Select value={automationTargetValue(draft)} disabled>
-              <SelectTrigger className={controlClassName} aria-label={t('automations.field.target')}>
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectGroup>
-                  <SelectItem value="user">{t('automations.target.global')}</SelectItem>
-                  {automationTargetOptions(books, draft).map((book) => <SelectItem key={book.project_id || book.path} value={`workspace:${book.project_id || book.path}`}>{t('automations.target.workspace', { name: book.name })}</SelectItem>)}
-                </SelectGroup>
-              </SelectContent>
-            </Select>
-          </FormField>
           <FormField label={t('automations.field.modelProfile')}>
             <Select value={draft.model_profile_id || '__inherit__'} onValueChange={(profileId) => onChange({ model_profile_id: profileId === '__inherit__' ? '' : profileId })}>
               <SelectTrigger className={controlClassName} aria-label={t('automations.field.modelProfile')}>
@@ -125,6 +105,22 @@ export function AutomationConfigPanel({
               </SelectContent>
             </Select>
           </FormField>
+          <FormField label={t('automations.field.sessionStrategy')}>
+            <Select value={draft.session_strategy} onValueChange={(strategy) => onChange({ session_strategy: strategy as AutomationTask['session_strategy'] })}>
+              <SelectTrigger className={controlClassName} aria-label={t('automations.field.sessionStrategy')}>
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectGroup>
+                  <SelectItem value="per_run">{t('automations.sessionStrategy.perRun')}</SelectItem>
+                  <SelectItem value="per_task">{t('automations.sessionStrategy.perTask')}</SelectItem>
+                </SelectGroup>
+              </SelectContent>
+            </Select>
+          </FormField>
+          <div className="flex items-end text-[11px] leading-5 text-[var(--nova-text-faint)]">
+            {t(draft.session_strategy === 'per_task' ? 'automations.sessionStrategy.perTaskHelp' : 'automations.sessionStrategy.perRunHelp')}
+          </div>
           <div className="md:col-span-2">
             <FormField label={t('automations.field.prompt')}>
               <Textarea autoResize value={draft.prompt} onChange={(event) => onChange({ prompt: event.target.value })} aria-label={t('automations.field.prompt')} placeholder={t('automations.prompt.placeholder')} className={`${controlClassName} min-h-32 resize-y leading-5 shadow-none focus-visible:ring-0`} />
@@ -134,7 +130,7 @@ export function AutomationConfigPanel({
 
         <section className="grid gap-3 border-b border-[var(--nova-border)] pb-5 md:grid-cols-2">
           <FormField label={t('automations.field.writeMode')}>
-            <Select value={draft.write_mode} disabled={globalTask} onValueChange={(mode) => onChange(nextAutomationWriteModePatch(draft, mode as AutomationTask['write_mode']))}>
+            <Select value={draft.write_mode} onValueChange={(mode) => onChange(nextAutomationWriteModePatch(draft, mode as AutomationTask['write_mode']))}>
               <SelectTrigger className={controlClassName} aria-label={t('automations.field.writeMode')}><SelectValue /></SelectTrigger>
               <SelectContent>
                 <SelectGroup>
@@ -146,7 +142,7 @@ export function AutomationConfigPanel({
             </Select>
           </FormField>
           <FormField label={t('automations.field.writeScope')}>
-            <Select value={draft.write_scope} disabled={globalTask || draft.write_mode === 'read_only'} onValueChange={(scope) => onChange(nextAutomationWriteScopePatch(draft, scope as AutomationTask['write_scope']))}>
+            <Select value={draft.write_scope} disabled={draft.write_mode === 'read_only'} onValueChange={(scope) => onChange(nextAutomationWriteScopePatch(draft, scope as AutomationTask['write_scope']))}>
               <SelectTrigger className={controlClassName} aria-label={t('automations.field.writeScope')}><SelectValue /></SelectTrigger>
               <SelectContent>
                 <SelectGroup>
@@ -159,7 +155,7 @@ export function AutomationConfigPanel({
             </Select>
           </FormField>
           <FormField label={t('automations.field.outputPolicy')}>
-            <Select value={draft.output_policy} disabled={globalTask} onValueChange={(policy) => onChange({ output_policy: policy as AutomationTask['output_policy'] })}>
+            <Select value={draft.output_policy} onValueChange={(policy) => onChange({ output_policy: policy as AutomationTask['output_policy'] })}>
               <SelectTrigger className={controlClassName} aria-label={t('automations.field.outputPolicy')}><SelectValue /></SelectTrigger>
               <SelectContent>
                 <SelectGroup>
@@ -171,10 +167,9 @@ export function AutomationConfigPanel({
           </FormField>
           <div className="md:col-span-2">
             <FormField htmlFor="automation-output-path" label={t('automations.field.outputPath')}>
-              <Input id="automation-output-path" value={draft.output_path} disabled={globalTask} onChange={(event) => onChange({ output_path: event.target.value })} placeholder="reports/automation-review.md" className={controlClassName} />
+              <Input id="automation-output-path" value={draft.output_path} onChange={(event) => onChange({ output_path: event.target.value })} placeholder="reports/automation-review.md" className={controlClassName} />
             </FormField>
           </div>
-          {globalTask && <div className="md:col-span-2 text-[11px] leading-5 text-[var(--nova-text-faint)]">{t('automations.target.globalHelp')}</div>}
         </section>
 
         <section className="flex flex-col gap-3 border-b border-[var(--nova-border)] pb-5">

@@ -7,7 +7,9 @@ import (
 	"strings"
 
 	"denova/config"
+	agentrun "denova/internal/agents/run"
 	agenttool "denova/internal/agents/tool"
+	agentchatapp "denova/internal/app/agentchat"
 	automationapp "denova/internal/app/automation"
 	appTask "denova/internal/app/task"
 	"denova/internal/automation"
@@ -172,6 +174,45 @@ func (host automationHost) AcquireProjectOperation(ctx context.Context, projectI
 
 func (host automationHost) AcquireWorkspaceOperation(ctx context.Context, workspace string) (automationapp.Operation, error) {
 	return host.app.acquireWorkspaceOperation(ctx, workspace, false)
+}
+
+func (host automationHost) AcceptProjectConversationTurn(
+	ctx context.Context,
+	task *appTask.Task,
+	turn automationapp.ProjectConversationTurn,
+	emit func(agentrun.Event),
+) (automationapp.ProjectConversationExecution, error) {
+	if host.app == nil {
+		return nil, fmt.Errorf("application runtime is unavailable")
+	}
+	projectID := strings.TrimSpace(turn.ProjectID)
+	if projectID == "" {
+		return nil, fmt.Errorf("automation execution requires a target Project")
+	}
+	busyPolicy := agentchatapp.TurnBusyReject
+	if turn.SessionStrategy == automation.SessionStrategyPerTask {
+		busyPolicy = agentchatapp.TurnBusyWait
+	}
+	return host.app.AgentChat().AcceptTurn(ctx, agentchatapp.TurnRequest{
+		Binding: agentchatapp.Binding{ProjectID: projectID, SessionID: turn.SessionID},
+		ChatRequest: agentchatapp.ChatRequest{
+			CommandID: turn.CommandID,
+			Message:   turn.Message,
+		},
+		Task: task,
+		Policy: agentchatapp.TurnPolicy{
+			Origin:               agentchatapp.TurnOriginAutomation,
+			OriginID:             turn.AutomationTaskID,
+			TraceID:              turn.RunID,
+			SessionTitle:         turn.SessionTitle,
+			ModelProfileID:       turn.ModelProfileID,
+			WriteMode:            turn.WriteMode,
+			WriteScope:           turn.WriteScope,
+			BusyPolicy:           busyPolicy,
+			DisabledCapabilities: append([]string(nil), turn.DisabledCapabilities...),
+		},
+		Emit: emit,
+	})
 }
 
 func (host automationHost) RegisterTask(task *appTask.Task, workspace string) error {

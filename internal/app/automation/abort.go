@@ -50,10 +50,6 @@ func (s *Service) AbortRunCommand(
 		CommandID:   commandID,
 		OperationID: targetOperationID,
 		Reason:      strings.TrimSpace(reason),
-		Options: agentrun.Options{
-			AgentKind: agentrun.AgentKindAutomation, ProjectID: snap.projectID, StateRoot: snap.stateRoot,
-			TaskID: run.ID, AutomationTaskID: taskDef.ID,
-			SessionID: run.SessionID, Workspace: run.Workspace, Mode: "automation",
-		},
+		Options:     automationRuntimeOptions(snap, taskDef, run),
 	})
 }

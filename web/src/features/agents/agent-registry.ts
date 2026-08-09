@@ -3,7 +3,6 @@ import {
   Archive,
   Bot,
   BookOpen,
-  Clock,
   Database,
   FileText,
   FolderOpen,
@@ -31,7 +30,7 @@ type AgentKey = keyof AgentModelSettings
 export type VisibleAgentKey = Exclude<AgentKey, 'default'>
 export type ToolKey = AgentToolCapability
 type AgentCapabilityMode = 'tools' | 'built_in' | 'model_only'
-export type SubAgentParentKey = Extract<VisibleAgentKey, 'general' | 'ide' | 'interactive_story' | 'config_manager' | 'automation'>
+export type SubAgentParentKey = Extract<VisibleAgentKey, 'general' | 'ide' | 'interactive_story' | 'config_manager'>
 
 export interface AgentViewDefinition {
   key: VisibleAgentKey
@@ -121,14 +120,6 @@ export const AGENTS: AgentViewDefinition[] = [
     icon: Wrench,
   },
   {
-    key: 'automation',
-    titleKey: 'agents.automation.title',
-    subtitleKey: 'agents.automation.subtitle',
-    groupKey: 'agents.group.utility',
-    capabilityMode: 'tools',
-    icon: Clock,
-  },
-  {
     key: 'context_compaction',
     titleKey: 'agents.contextCompaction.title',
     subtitleKey: 'agents.contextCompaction.subtitle',
@@ -138,7 +129,7 @@ export const AGENTS: AgentViewDefinition[] = [
   },
 ]
 
-export const SUB_AGENT_PARENT_KEYS: SubAgentParentKey[] = ['general', 'ide', 'interactive_story', 'config_manager', 'automation']
+export const SUB_AGENT_PARENT_KEYS: SubAgentParentKey[] = ['general', 'ide', 'interactive_story', 'config_manager']
 
 const TOOL_ICONS: Partial<Record<AgentToolCapability, LucideIcon>> = {
   workspace_read: Search,

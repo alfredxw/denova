@@ -1,5 +1,5 @@
 import { fetchAPI, jsonHeaders, parseSSEStream, readErrorMessage, requestJSON } from '@/lib/api-client'
-import type { LayeredSettings, ModelCatalog, ModelDiscoveryResult, ModelPingResult, ModelProfileSettings, Settings, SettingsLayer, UpdateApplyResult, UpdateCheckResult } from './types'
+import type { ImageAPIProfileSettings, ImagePingResult, LayeredSettings, ModelCatalog, ModelDiscoveryResult, ModelPingResult, ModelProfileSettings, Settings, SettingsLayer, UpdateApplyResult, UpdateCheckResult } from './types'
 import type { SSEEvent } from '@/lib/api-client'
 import { projectAPIPath } from '@/lib/api-client/project-scope'
 import { GLOBAL_RESOURCE_TARGET, projectResourceTarget } from '@/lib/api-client/project-scope'
@@ -238,6 +238,16 @@ export function discoverModels(profile: ModelProfileSettings, signal?: AbortSign
 /** Validates an unsaved profile through the same resolver and adapter as a real Agent run. */
 export function pingModelProfile(profile: ModelProfileSettings, signal?: AbortSignal): Promise<ModelPingResult> {
   return requestJSON('/api/models/ping', {
+    method: 'POST',
+    headers: jsonHeaders,
+    body: JSON.stringify({ profile }),
+    signal,
+  })
+}
+
+/** Validates an unsaved image profile through one minimal real Images API request. */
+export function pingImageProfile(profile: ImageAPIProfileSettings, signal?: AbortSignal): Promise<ImagePingResult> {
+  return requestJSON('/api/images/ping', {
     method: 'POST',
     headers: jsonHeaders,
     body: JSON.stringify({ profile }),

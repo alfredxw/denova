@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"strings"
 
+	"denova/config"
 	imageapp "denova/internal/app/image"
 )
 
@@ -12,6 +13,20 @@ import (
 // writing/game image service.
 type imageHost struct {
 	app *App
+}
+
+func (host imageHost) ImageConfigSnapshot() config.Config {
+	if host.app == nil {
+		return config.Config{}
+	}
+	host.app.mu.RLock()
+	defer host.app.mu.RUnlock()
+	if host.app.cfg == nil {
+		return config.Config{}
+	}
+	snapshot := *host.app.cfg
+	snapshot.ImageAPIProfiles = append([]config.ImageAPIProfileSettings(nil), host.app.cfg.ImageAPIProfiles...)
+	return snapshot
 }
 
 func (host imageHost) AcquireImageRuntime(ctx context.Context, expectedWorkspace string) (*imageapp.Runtime, error) {

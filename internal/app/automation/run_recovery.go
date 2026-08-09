@@ -92,11 +92,7 @@ func (s *Service) reconcilePersistedAutomationRuns(ctx context.Context) {
 }
 
 func automationRecoveryOptions(snap *automationWorkspaceSnapshot, task automation.Task, run automation.RunRecord) agentrun.Options {
-	return agentrun.Options{
-		AgentKind: agentrun.AgentKindAutomation, ProjectID: snap.projectID, StateRoot: snap.stateRoot,
-		TaskID: run.ID, AutomationTaskID: task.ID,
-		SessionID: run.SessionID, Workspace: run.Workspace, Mode: "automation",
-	}
+	return automationRuntimeOptions(snap, task, run)
 }
 
 // ensureAutomationRecoveryTask turns a cold, uncertain StartTurn into an owned

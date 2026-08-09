@@ -11,13 +11,14 @@ import { SidebarVisibilityToggle } from '@/components/layout/sidebar-visibility-
 import { SectionedNavigation } from '@/components/navigation/sectioned-navigation'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
-import type { AgentContextOverride, AgentModelOverride, AgentPromptOverride, AgentSkillOverride, AgentToolOverride, LayeredSettings, ModelProfileSettings, Settings, SettingsLayer, SubAgentConfig } from '@/features/settings/types'
+import type { AgentContextOverride, AgentModelOverride, AgentPromptOverride, AgentSkillOverride, AgentToolOverride, ImageAPIProfileSettings, LayeredSettings, ModelProfileSettings, Settings, SettingsLayer, SubAgentConfig } from '@/features/settings/types'
 import { modelProfileID, modelProfileLabel, modelProfilesWithDefault } from '@/features/settings/model-profiles'
+import { imageAPIProfileID, imageAPIProfileLabel, imageAPIProfilesWithDefault } from '@/features/settings/image-profiles'
 import { useLayeredSettingsDraft } from '@/features/settings/use-layered-settings-draft'
 import { getSkills, resourceTargetKey } from '@/lib/api'
 import type { ResourceTarget, SkillSummary } from '@/lib/api'
 import { AgentRuntimeContextSection } from './AgentRuntimeContextSection'
-import { AgentBuiltInCapabilitySection, AgentContextSection, AgentModelOnlySection, AgentModelSection, AgentPromptSection, AgentSkillSection, AgentToolSection, mergeAgentModelOverride, mergeAgentPromptOverride } from './agent-configuration-sections'
+import { AgentBuiltInCapabilitySection, AgentContextSection, AgentImageModelSection, AgentModelOnlySection, AgentModelSection, AgentPromptSection, AgentSkillSection, AgentToolSection, mergeAgentModelOverride, mergeAgentPromptOverride } from './agent-configuration-sections'
 import { AgentSubAgentSection, isSubAgentParent, previewGeneralSubAgentSettings } from './agent-subagent-section'
 import { AGENTS, toolDefinitionsFromManifest } from './agent-registry'
 import type { AgentViewDefinition, SubAgentParentKey, ToolKey, VisibleAgentKey } from './agent-registry'
@@ -73,6 +74,8 @@ export function AgentsView({ target, onClose }: { target: ResourceTarget; onClos
   const effective = layered?.effective ?? {}
   const selected = AGENTS.find((agent) => agent.key === activeAgent) ?? AGENTS[0]
   const profileOptions = useMemo(() => buildProfileOptions(draft, effective, t), [draft, effective, t])
+  const imageProfileOptions = useMemo(() => buildImageProfileOptions(draft, effective, t), [draft, effective, t])
+  const inheritedImageProfileID = resolveInheritedImageProfileID(layered, activeLayer)
   const modelValue = draft.agent_models?.[activeAgent] ?? {}
   const inheritedModel = mergeAgentModelOverride(effective.agent_models?.default ?? {}, effective.agent_models?.[activeAgent] ?? {})
   const promptValue = draft.agent_prompts?.[activeAgent] ?? {}
@@ -191,6 +194,10 @@ export function AgentsView({ target, onClose }: { target: ResourceTarget; onClos
 
   const setToolParallelism = (value: number | null) => {
     setDraft((current) => ({ ...current, agent_tool_parallelism: value }))
+  }
+
+  const setImageProfile = (profileID: string) => {
+    setDraft((current) => ({ ...current, default_image_api_profile_id: profileID }))
   }
 
   return (
@@ -328,6 +335,14 @@ export function AgentsView({ target, onClose }: { target: ResourceTarget; onClos
                   {t('agents.model.userScoped')}
                 </section>
               )}
+              {activeAgent === 'image' && (
+                <AgentImageModelSection
+                  value={draft.default_image_api_profile_id ?? ''}
+                  inherited={inheritedImageProfileID}
+                  profiles={imageProfileOptions}
+                  onChange={setImageProfile}
+                />
+              )}
               <AgentPromptSection
                 value={promptValue}
                 inherited={inheritedPrompt}
@@ -446,6 +461,18 @@ function resolveInheritedToolParallelism(layered: LayeredSettings | null, layer:
   return value
 }
 
+function resolveInheritedImageProfileID(layered: LayeredSettings | null, layer: SettingsLayer) {
+  const layers = layer === 'workspace'
+    ? [layered?.default, layered?.global, layered?.user]
+    : [layered?.default, layered?.global]
+  let value = 'default'
+  for (const settings of layers) {
+    const candidate = settings?.default_image_api_profile_id?.trim()
+    if (candidate) value = candidate
+  }
+  return value
+}
+
 function AgentList({ active, onSelect }: { active: VisibleAgentKey; onSelect: (agent: VisibleAgentKey) => void }) {
   const { t } = useTranslation()
   const groups = AGENTS.reduce<Array<{ group: string; agents: typeof AGENTS }>>((acc, agent) => {
@@ -502,6 +529,21 @@ function buildProfileOptions(draft: Settings, effective: Settings, t: (key: stri
   modelProfilesWithDefault(effective).forEach(add)
   ;(draft.model_profiles ?? []).forEach(add)
   if (!profiles.has('default')) profiles.set('default', t('agents.option.defaultModel'))
+  return Array.from(profiles.entries()).map(([id, label]) => ({
+    id,
+    label: id === 'default' ? t('agents.option.defaultProfile', { label }) : t('agents.option.profile', { id, label }),
+  }))
+}
+
+function buildImageProfileOptions(draft: Settings, effective: Settings, t: (key: string, options?: Record<string, unknown>) => string): Array<{ id: string; label: string }> {
+  const profiles = new Map<string, string>()
+  const add = (profile?: ImageAPIProfileSettings) => {
+    const id = imageAPIProfileID(profile)
+    if (!id) return
+    profiles.set(id, imageAPIProfileLabel(profile))
+  }
+  imageAPIProfilesWithDefault(effective).forEach(add)
+  ;(draft.image_api_profiles ?? []).forEach(add)
   return Array.from(profiles.entries()).map(([id, label]) => ({
     id,
     label: id === 'default' ? t('agents.option.defaultProfile', { label }) : t('agents.option.profile', { id, label }),

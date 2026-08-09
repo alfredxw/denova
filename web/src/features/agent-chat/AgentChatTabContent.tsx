@@ -27,6 +27,7 @@ interface AgentChatTabContentProps {
   projectType: AgentChatProjectType
   active: boolean
   running: boolean
+  conversationSyncRevision: string
   composerSettings: WritingComposerSettingsController
   tellers: Teller[]
   imagePresets: ImagePreset[]
@@ -63,6 +64,7 @@ export function AgentChatTabContent({
   projectType,
   active,
   running,
+  conversationSyncRevision,
   composerSettings,
   tellers,
   imagePresets,
@@ -141,6 +143,7 @@ export function AgentChatTabContent({
           projectType={projectType}
           workspace={tab.workspace}
           sessionId={tab.sessionId}
+          syncRevision={conversationSyncRevision}
           draft={tab.draft}
           active={active}
           composerSettings={composerSettings}
@@ -188,6 +191,7 @@ export function AgentChatTabContent({
       return (
         <>
           {renderPage(tab.projectId, tab.workspace, tab.pageId, {
+            projectType,
             navigationIntent,
             documentReview: documentReviewController,
             refreshSignal: projectPageRefreshSignal,

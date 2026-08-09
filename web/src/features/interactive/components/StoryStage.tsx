@@ -210,7 +210,6 @@ export function StoryStage({ projectId, workspace, styleSceneSuggestions = [], s
     t,
     onDone,
     setActivity: setStageActivityContent,
-    setMessages: setStageLiveMessages,
   })
   const liveTurnNavigationAnchorId = useMemo(() => `live:${stageKey}`, [stageKey])
   const {

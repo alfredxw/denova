@@ -285,7 +285,6 @@ func BuiltinAgentPrompts(cfg *config.Config, state *book.State, ideTeller IDESto
 	version, versionErr := ComposeBuiltinSystemInstruction(promptCfg, config.AgentKindVersionSummary, "version_summary", workspaceForPrompt(promptCfg, state), "builtin_base", "版本说明生成规则", "define the version summary task and output constraint", "你是 Denova 小说工作台的版本说明生成器。根据文件变更推理这次保存的核心创作变化。只输出一句中文版本说明，10 到 30 个汉字，不要编号、引号、冒号、句号或解释。")
 	toolAgent, toolErr := ComposeBuiltinSystemInstruction(promptCfg, config.AgentKindToolAgent, "tool_agent", workspaceForPrompt(promptCfg, state), "builtin_base", "章节分割正则任务", "define the structured chapter-regex inference task", ChapterSplitRegexSystemInstruction())
 	image, imageErr := ComposeImageInstruction(promptCfg, state, "")
-	automationPrompt, automationErr := ComposeAutomationInstruction(promptCfg, state, AutomationTaskInstruction{})
 	compaction, compactionErr := ComposeBuiltinSystemInstruction(promptCfg, config.AgentKindContextCompaction, "context_compaction", workspaceForPrompt(promptCfg, state), "builtin_base", "上下文压缩规则", "define the bounded context compaction task", ContextCompactionSystemInstruction())
 	return config.AgentPromptSettings{
 		General:             config.AgentPromptOverride{SystemPrompt: systemPromptPreview(general, generalErr)},
@@ -296,7 +295,6 @@ func BuiltinAgentPrompts(cfg *config.Config, state *book.State, ideTeller IDESto
 		VersionSummary:      config.AgentPromptOverride{SystemPrompt: systemPromptPreview(version, versionErr)},
 		ToolAgent:           config.AgentPromptOverride{SystemPrompt: systemPromptPreview(toolAgent, toolErr)},
 		Image:               config.AgentPromptOverride{SystemPrompt: systemPromptPreview(image, imageErr)},
-		Automation:          config.AgentPromptOverride{SystemPrompt: systemPromptPreview(automationPrompt, automationErr)},
 		ContextCompaction:   config.AgentPromptOverride{SystemPrompt: systemPromptPreview(compaction, compactionErr)},
 	}
 }
@@ -327,7 +325,6 @@ func BuiltinAgentPromptBlocks(cfg *config.Config, state *book.State, ideTeller I
 		VersionSummary:      builtinPromptBlocks(promptCfg, config.AgentKindVersionSummary, "你是 Denova 小说工作台的版本说明生成器。根据文件变更推理这次保存的核心创作变化。只输出一句中文版本说明，10 到 30 个汉字，不要编号、引号、冒号、句号或解释。"),
 		ToolAgent:           builtinPromptBlocks(promptCfg, config.AgentKindToolAgent, ChapterSplitRegexSystemInstruction()),
 		Image:               builtinPromptBlocks(promptCfg, config.AgentKindImage, ""),
-		Automation:          builtinPromptBlocks(promptCfg, config.AgentKindAutomation, editableAutomationBuiltinInstruction(promptCfg, state, AutomationTaskInstruction{})),
 		ContextCompaction:   builtinPromptBlocks(promptCfg, config.AgentKindContextCompaction, ContextCompactionSystemInstruction()),
 	}
 }
@@ -360,7 +357,6 @@ func BuiltinAgentPromptSources(cfg *config.Config, state *book.State, ideTeller 
 		VersionSummary:      builtinPromptSourceList(promptCfg, config.AgentKindVersionSummary, "你是 Denova 小说工作台的版本说明生成器。根据文件变更推理这次保存的核心创作变化。只输出一句中文版本说明，10 到 30 个汉字，不要编号、引号、冒号、句号或解释。"),
 		ToolAgent:           builtinPromptSourceList(promptCfg, config.AgentKindToolAgent, ChapterSplitRegexSystemInstruction()),
 		Image:               builtinPromptSourceList(promptCfg, config.AgentKindImage, ""),
-		Automation:          builtinPromptSourceList(promptCfg, config.AgentKindAutomation, editableAutomationBuiltinInstruction(promptCfg, state, AutomationTaskInstruction{})),
 		ContextCompaction:   builtinPromptSourceList(promptCfg, config.AgentKindContextCompaction, ContextCompactionSystemInstruction()),
 	}
 }

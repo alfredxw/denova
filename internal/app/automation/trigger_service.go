@@ -16,6 +16,29 @@ func (s *Service) Inbox() ([]automation.TriggerInboxItem, error) {
 	return s.storeAllWorkspaces().ListInbox()
 }
 
+// InboxForProject returns trigger decisions owned by one Project Agent.
+func (s *Service) InboxForProject(projectID, workspace string) ([]automation.TriggerInboxItem, error) {
+	items, err := s.storeAllWorkspaces().ListInbox()
+	if err != nil {
+		return nil, err
+	}
+	projectID = strings.TrimSpace(projectID)
+	workspace = canonicalAutomationWorkspace(workspace)
+	filtered := make([]automation.TriggerInboxItem, 0, len(items))
+	for _, item := range items {
+		itemProjectID := strings.TrimSpace(item.ProjectID)
+		if projectID != "" && itemProjectID != "" {
+			if itemProjectID != projectID {
+				continue
+			}
+		} else if canonicalAutomationWorkspace(item.Workspace) != workspace {
+			continue
+		}
+		filtered = append(filtered, item)
+	}
+	return filtered, nil
+}
+
 func (s *Service) CheckTriggers(ctx context.Context, id string) ([]automation.TriggerInboxItem, error) {
 	task, getErr := s.storeAllWorkspaces().Get(id)
 	if getErr != nil {
@@ -148,7 +171,7 @@ func (s *Service) processTriggersMatching(ctx context.Context, snap *automationW
 		target = automation.ExecutionTarget{Kind: automation.TargetKindWorkspace, ProjectID: snap.projectID, Workspace: workspace}
 	}
 	store := storeForSnapshot(snap)
-	tasks, err := store.ListForTriggerEvaluation(target)
+	tasks, err := store.ListForTarget(target)
 	if err != nil {
 		return nil, nil, err
 	}
@@ -158,7 +181,7 @@ func (s *Service) processTriggersMatching(ctx context.Context, snap *automationW
 		if onlyTaskID != "" && !automation.TaskMatchesID(task, onlyTaskID) {
 			continue
 		}
-		if !task.Enabled {
+		if !task.Enabled || task.Target.Kind == automation.TargetKindUser || task.Scope == automation.ScopeUser {
 			continue
 		}
 		for _, trigger := range task.Triggers {

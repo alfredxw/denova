@@ -38,15 +38,6 @@ func TestResolveAgentToolsDefaults(t *testing.T) {
 			allowed: []string{AgentToolSkills, AgentToolImageGeneration},
 			denied:  []string{AgentToolWorkspaceRead, AgentToolWorkspaceWrite, AgentToolShell, AgentToolWebSearch, AgentToolWebFetch, AgentToolBrowser, AgentToolAsk, AgentToolTodo, AgentToolDelegation, AgentToolLoreRead, AgentToolLoreWrite, AgentToolConfigRead, AgentToolConfigApply, AgentToolContextRewind},
 		},
-		{
-			kind: AgentKindAutomation,
-			allowed: []string{
-				AgentToolWorkspaceRead, AgentToolWorkspaceWrite, AgentToolWebSearch,
-				AgentToolWebFetch, AgentToolTodo, AgentToolSkills, AgentToolDelegation,
-				AgentToolLoreRead, AgentToolLoreWrite,
-			},
-			denied: []string{AgentToolShell, AgentToolBrowser, AgentToolAsk, AgentToolImageGeneration, AgentToolConfigRead, AgentToolConfigApply, AgentToolContextRewind},
-		},
 	}
 	for _, test := range tests {
 		t.Run(test.kind, func(t *testing.T) {

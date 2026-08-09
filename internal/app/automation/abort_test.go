@@ -55,7 +55,7 @@ func TestAutomationAbortReplaysPersistedReceiptAfterRestart(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	ref := automationRuntimeBindingForTest(run.Workspace, run.SessionID, taskDef.ID, run.ProjectID)
+	ref := automationRuntimeBindingForTest(run.Workspace, run.SessionID, run.ID, run.ProjectID)
 	key, err := json.Marshal(ref)
 	if err != nil {
 		application.Close()
@@ -98,7 +98,7 @@ func TestAutomationAbortReplaysPersistedReceiptAfterRestart(t *testing.T) {
 	if reopened.cfg.ProjectID != run.ProjectID {
 		t.Fatalf("reopened Project identity = %q, want %q", reopened.cfg.ProjectID, run.ProjectID)
 	}
-	reopenedRef := automationRuntimeBindingForTest(run.Workspace, run.SessionID, taskDef.ID, reopened.cfg.ProjectID)
+	reopenedRef := automationRuntimeBindingForTest(run.Workspace, run.SessionID, run.ID, reopened.cfg.ProjectID)
 	if !reopenedRef.Equal(ref) {
 		t.Fatalf("reopened runtime binding = %#v, seeded %#v", reopenedRef, ref)
 	}

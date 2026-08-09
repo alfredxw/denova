@@ -15,6 +15,8 @@ interface AgentChatConversationTabProps {
   projectType: 'book' | 'general'
   workspace: string
   sessionId: string
+  /** Changes when an external owner starts or settles a turn in this durable conversation. */
+  syncRevision?: string
   draft?: boolean
   active: boolean
   composerSettings: WritingComposerSettingsController
@@ -42,6 +44,7 @@ function AgentChatConversationTabComponent({
   projectType,
   workspace,
   sessionId,
+  syncRevision = '',
   draft = false,
   active,
   composerSettings,
@@ -72,16 +75,28 @@ function AgentChatConversationTabComponent({
   })
   const initializedRef = useRef(false)
   const draftCommittedRef = useRef(false)
+  const observedSyncRevisionRef = useRef(syncRevision)
+
+  const synchronize = useCallback(async () => {
+    await Promise.all([chat.loadSessions(), chat.loadHistory(sessionId)])
+    await chat.resumeActiveChat(sessionId)
+  }, [chat.loadHistory, chat.loadSessions, chat.resumeActiveChat, sessionId])
 
   useEffect(() => {
     if (draft) return
     if (initializedRef.current) return
     initializedRef.current = true
-    void (async () => {
-      await Promise.all([chat.loadSessions(), chat.loadHistory(sessionId)])
-      await chat.resumeActiveChat(sessionId)
-    })()
-  }, [chat, draft, sessionId])
+    void synchronize()
+  }, [draft, synchronize])
+
+  useEffect(() => {
+    if (observedSyncRevisionRef.current === syncRevision) return
+    observedSyncRevisionRef.current = syncRevision
+    // A locally-owned turn already streams into this hook. Only external owners need a history
+    // refresh and active-run inspection, otherwise a Project metadata poll could double-attach it.
+    if (draft || !initializedRef.current || chat.isExecutionActive) return
+    void synchronize()
+  }, [chat.isExecutionActive, draft, syncRevision, synchronize])
 
   const send = useCallback(
     (message: string, options?: Parameters<typeof chat.send>[1]) =>

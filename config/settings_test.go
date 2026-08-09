@@ -136,9 +136,6 @@ func TestDefaultSettingsValues(t *testing.T) {
 	if s.GeneralSubAgents.IDE == nil || !*s.GeneralSubAgents.IDE {
 		t.Fatalf("GeneralSubAgents should default enabled for IDE")
 	}
-	if s.GeneralSubAgents.Automation == nil || !*s.GeneralSubAgents.Automation {
-		t.Fatalf("GeneralSubAgents should default enabled for automation")
-	}
 	if s.GeneralSubAgents.InteractiveStory != nil || s.GeneralSubAgents.ConfigManager != nil {
 		t.Fatalf("GeneralSubAgents should not explicitly enable interactive story or config manager by default")
 	}

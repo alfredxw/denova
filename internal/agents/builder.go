@@ -170,28 +170,6 @@ func buildConfigManagerAgentWithCompositionForHost(ctx context.Context, cfg *con
 	return built, composition, err
 }
 
-// BuildAutomationAgent 构建后台自动化 Agent。工具权限由调用方按任务写入策略提前收敛到 cfg.AgentTools.Automation。
-func BuildAutomationAgent(ctx context.Context, cfg *config.Config, state *book.State, task prompts.AutomationTaskInstruction) (agent.Runnable, error) {
-	built, _, err := BuildAutomationAgentWithComposition(ctx, cfg, state, task)
-	return built, err
-}
-
-func BuildAutomationAgentWithComposition(ctx context.Context, cfg *config.Config, state *book.State, task prompts.AutomationTaskInstruction) (agent.Runnable, prompts.SystemPromptComposition, error) {
-	composition, err := prompts.ComposeAutomationInstruction(cfg, state, task)
-	if err != nil {
-		return nil, prompts.SystemPromptComposition{}, err
-	}
-	built, err := buildAgent(ctx, cfg, agentBuildSpec{
-		Kind:              config.AgentKindAutomation,
-		Name:              "DenovaAutomationAgent",
-		Description:       "AI 自动化任务助手",
-		Composition:       composition,
-		EnableSkills:      true,
-		ExtraToolsFactory: agenttoolruntime.NewCatalog(cfg).Lore(false),
-	})
-	return built, composition, err
-}
-
 // BuildImageAgent 构建通用图像 Agent。调用方通过运行时上下文和 Skill 约束具体用途。
 func BuildImageAgent(ctx context.Context, cfg *config.Config, state *book.State, systemPrompt string) (agent.Runnable, error) {
 	built, _, err := BuildImageAgentWithComposition(ctx, cfg, state, systemPrompt)

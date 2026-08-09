@@ -4,22 +4,24 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
-	"fmt"
-	"log/slog"
 	"strings"
 
 	"github.com/cloudwego/hertz/pkg/app"
 	"github.com/cloudwego/hertz/pkg/protocol/consts"
 
-	"denova/internal/api/agentui"
-	"denova/internal/api/sse"
 	appsvc "denova/internal/app"
 	automationapp "denova/internal/app/automation"
 	"denova/internal/automation"
 )
 
 func (h *Handlers) HandleAutomations(ctx context.Context, c *app.RequestContext) {
-	tasks, err := h.app.Automation().List()
+	projectID := strings.TrimSpace(c.Query("project_id"))
+	workspace := strings.TrimSpace(c.Query("workspace"))
+	if projectID == "" && workspace == "" {
+		writeError(c, consts.StatusBadRequest, "自动化目录需要项目范围 / Automation catalog requires a Project target")
+		return
+	}
+	tasks, err := h.app.Automation().ListForProject(projectID, workspace)
 	if err != nil {
 		writeError(c, consts.StatusInternalServerError, err.Error())
 		return
@@ -34,7 +36,13 @@ func (h *Handlers) HandleAutomationTemplates(ctx context.Context, c *app.Request
 }
 
 func (h *Handlers) HandleAutomationInbox(ctx context.Context, c *app.RequestContext) {
-	items, err := h.app.Automation().Inbox()
+	projectID := strings.TrimSpace(c.Query("project_id"))
+	workspace := strings.TrimSpace(c.Query("workspace"))
+	if projectID == "" && workspace == "" {
+		writeError(c, consts.StatusBadRequest, "自动化收件箱需要项目范围 / Automation inbox requires a Project target")
+		return
+	}
+	items, err := h.app.Automation().InboxForProject(projectID, workspace)
 	if err != nil {
 		writeError(c, consts.StatusInternalServerError, err.Error())
 		return
@@ -138,122 +146,46 @@ func (h *Handlers) HandleAutomationDelete(ctx context.Context, c *app.RequestCon
 	writeJSON(c, consts.StatusOK, map[string]string{"message": "deleted"})
 }
 
-func (h *Handlers) HandleAutomationRunStream(ctx context.Context, c *app.RequestContext) {
-	var req struct {
-		CommandID       string                       `json:"command_id"`
-		TriggerEvidence []automation.TriggerEvidence `json:"trigger_evidence"`
-	}
+type automationRunRequest struct {
+	CommandID       string                       `json:"command_id"`
+	TriggerEvidence []automation.TriggerEvidence `json:"trigger_evidence"`
+}
+
+func (h *Handlers) startAutomationRun(ctx context.Context, c *app.RequestContext) (automation.RunRecord, bool) {
+	var req automationRunRequest
 	if body := c.Request.Body(); len(body) > 0 {
 		if err := json.Unmarshal(body, &req); err != nil {
 			writeError(c, consts.StatusBadRequest, err.Error())
-			return
+			return automation.RunRecord{}, false
 		}
 	}
 	if strings.TrimSpace(req.CommandID) == "" {
 		writeAgentRuntimeError(c, consts.StatusBadRequest, "agent_runtime.invalid_command", "缺少 command_id，无法安全重试自动化运行 / command_id is required for safe automation retries", nil)
-		return
+		return automation.RunRecord{}, false
 	}
-	task, run, err := h.app.Automation().StartTaskCommand(ctx, c.Param("id"), req.CommandID, req.TriggerEvidence)
+	_, run, err := h.app.Automation().StartTaskCommand(ctx, c.Param("id"), req.CommandID, req.TriggerEvidence)
 	if err != nil {
 		if errors.Is(err, appsvc.ErrInvalidAgentCommand) {
 			writeAgentRuntimeError(c, consts.StatusBadRequest, "agent_runtime.invalid_command", err.Error(), nil)
-			return
+			return automation.RunRecord{}, false
 		}
 		if errors.Is(err, automation.ErrRunIdentityConflict) || errors.Is(err, automationapp.ErrCommandConflict) {
 			writeAgentRuntimeError(c, consts.StatusConflict, "agent_runtime.command_conflict", "command_id 已用于不同的自动化请求 / command_id was already used for a different automation request", nil)
-			return
+			return automation.RunRecord{}, false
 		}
 		writeError(c, consts.StatusInternalServerError, err.Error())
-		return
+		return automation.RunRecord{}, false
 	}
-	slog.InfoContext(ctx, fmt.Sprintf("[automation-sse] attach run task_id=%s run_id=%s backend_task_id=%s", run.TaskID, run.ID, task.ID()))
-	sse.StreamTaskUI(ctx, c, task)
+	return run, true
 }
 
-func (h *Handlers) HandleAutomationActiveRuns(ctx context.Context, c *app.RequestContext) {
-	writeJSON(c, consts.StatusOK, automation.ActiveRunsResult{Runs: h.app.Automation().ActiveAutomationRuns()})
-}
-
-func (h *Handlers) HandleAutomationRunStreamByID(ctx context.Context, c *app.RequestContext) {
-	task, run, ok := h.app.Automation().ActiveAutomationTaskByRunID(c.Param("run_id"))
+// HandleAutomationRun starts the project-Agent conversation in the background
+// and returns its durable navigation identity. Execution is observed and
+// controlled through AgentChat, not through an Automation-only chat surface.
+func (h *Handlers) HandleAutomationRun(ctx context.Context, c *app.RequestContext) {
+	run, ok := h.startAutomationRun(ctx, c)
 	if !ok {
-		writeError(c, consts.StatusNotFound, "automation run is not active")
 		return
 	}
-	slog.InfoContext(ctx, fmt.Sprintf("[automation-sse] attach active run task_id=%s run_id=%s backend_task_id=%s", run.TaskID, run.ID, task.ID()))
-	sse.StreamTaskUI(ctx, c, task)
-}
-
-func (h *Handlers) HandleAutomationRunChatStream(ctx context.Context, c *app.RequestContext) {
-	var req struct {
-		CommandID string `json:"command_id"`
-		Message   string `json:"message"`
-	}
-	if err := c.BindJSON(&req); err != nil {
-		writeError(c, consts.StatusBadRequest, err.Error())
-		return
-	}
-	if strings.TrimSpace(req.Message) == "" {
-		writeErrorKey(c, consts.StatusBadRequest, "api.common.messageRequired")
-		return
-	}
-	if strings.TrimSpace(req.CommandID) == "" {
-		writeAgentRuntimeError(c, consts.StatusBadRequest, "agent_runtime.invalid_command", "缺少 command_id，无法安全重试自动化追问 / command_id is required for safe automation follow-up retries", nil)
-		return
-	}
-	task, run, err := h.app.Automation().ContinueRun(ctx, c.Param("run_id"), req.CommandID, req.Message)
-	if err != nil {
-		if errors.Is(err, appsvc.ErrInvalidAgentCommand) {
-			writeAgentRuntimeError(c, consts.StatusBadRequest, "agent_runtime.invalid_command", err.Error(), nil)
-			return
-		}
-		if errors.Is(err, automationapp.ErrCommandConflict) {
-			writeAgentRuntimeError(c, consts.StatusConflict, "agent_runtime.command_conflict", "command_id 已用于不同的自动化追问 / command_id was already used for a different automation follow-up", nil)
-			return
-		}
-		if errors.Is(err, automationapp.ErrOperationActive) {
-			writeAgentRuntimeError(c, consts.StatusConflict, "agent_runtime.busy", "自动化运行已有活动操作 / The automation run already has an active operation", nil)
-			return
-		}
-		writeError(c, consts.StatusInternalServerError, err.Error())
-		return
-	}
-	slog.InfoContext(ctx, fmt.Sprintf("[automation-sse] attach run follow-up task_id=%s run_id=%s backend_task_id=%s", run.TaskID, run.ID, task.ID()))
-	sse.StreamTaskUI(ctx, c, task)
-}
-
-func (h *Handlers) HandleAutomationRunAbort(ctx context.Context, c *app.RequestContext) {
-	var req struct {
-		CommandID         string `json:"command_id"`
-		TargetOperationID string `json:"target_operation_id"`
-		Reason            string `json:"reason,omitempty"`
-	}
-	if err := c.BindJSON(&req); err != nil {
-		writeAgentRuntimeError(c, consts.StatusBadRequest, "agent_runtime.invalid_command", "命令格式无效 / Invalid agent command", nil)
-		return
-	}
-	if strings.TrimSpace(req.CommandID) == "" || strings.TrimSpace(req.TargetOperationID) == "" {
-		writeAgentRuntimeError(c, consts.StatusBadRequest, "agent_runtime.invalid_command", "command_id 和 target_operation_id 为必填项 / command_id and target_operation_id are required", nil)
-		return
-	}
-	receipt, err := h.app.Automation().AbortRunCommand(
-		ctx, c.Param("run_id"), req.CommandID,
-		appsvc.AgentOperationID(strings.TrimSpace(req.TargetOperationID)), req.Reason,
-	)
-	if err != nil {
-		h.writeAgentCommandError(c, err, req.TargetOperationID)
-		return
-	}
-	c.JSON(consts.StatusAccepted, agentCommandReceiptResponse{
-		CommandID: string(receipt.CommandID), OperationID: string(receipt.OperationID), Cursor: uint64(receipt.Cursor),
-	})
-}
-
-func (h *Handlers) HandleAutomationRunMessages(ctx context.Context, c *app.RequestContext) {
-	entries, err := h.app.Automation().AutomationRunMessages(c.Param("run_id"))
-	if err != nil {
-		writeError(c, consts.StatusNotFound, err.Error())
-		return
-	}
-	writeJSON(c, consts.StatusOK, agentui.MessagesFromHistory(entries))
+	writeJSON(c, consts.StatusAccepted, map[string]automation.RunRecord{"run": run})
 }
