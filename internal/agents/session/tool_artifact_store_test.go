@@ -43,13 +43,13 @@ func TestSessionToolArtifactIsImmutableAndDeletedWithSession(t *testing.T) {
 		t.Fatal(err)
 	}
 	digest := sha256.Sum256(content)
-	if reference.ByteSize != int64(len(content)) || reference.EstimatedBytes != int64(len(content)) ||
+	if reference.EstimatedBytes != int64(len(content)) ||
 		reference.EstimatedTokens <= 0 || !reference.Complete || reference.ReadablePath == "" ||
 		reference.ContentType == "" || reference.Purpose != agent.ToolArtifactPurposeCompleteModelOutput ||
-		reference.SHA256 != hex.EncodeToString(digest[:]) || reference.MIMEType == "" {
+		reference.SHA256 != hex.EncodeToString(digest[:]) {
 		t.Fatalf("artifact reference = %#v", reference)
 	}
-	stored, err := os.ReadFile(reference.URI)
+	stored, err := os.ReadFile(reference.ReadablePath)
 	if err != nil {
 		t.Fatal(err)
 	}

@@ -34,7 +34,7 @@ type PlayerInputAcceptedEvent struct {
 	// cannot place an interrupted input around later turns when its parent is a
 	// structural event. Keeping this logical boundary makes the model projection
 	// stable across settlement and cold reload.
-	AcceptedTurnCount *int   `json:"accepted_turn_count,omitempty"`
+	AcceptedTurnCount int    `json:"accepted_turn_count"`
 	AgentCommandID    string `json:"agent_command_id"`
 	AgentOperationID  string `json:"agent_operation_id"`
 	AgentCycle        int    `json:"agent_cycle"`
@@ -102,12 +102,11 @@ func (s *Store) CommitPlayerInput(storyID string, intent PlayerInputIntent) (Pla
 	if err != nil {
 		return PlayerInputReceipt{}, err
 	}
-	acceptedTurnCount := projection.Depth
 	now := time.Now().UTC().Format(time.RFC3339Nano)
 	event := PlayerInputAcceptedEvent{
 		V: schemaVersion, Type: StoryEventTypePlayerInput,
 		ID: deterministicPlayerInputID(canonical.Identity), ParentID: branch.Head,
-		BranchID: canonical.BranchID, Ts: now, Text: canonical.Text, AcceptedTurnCount: &acceptedTurnCount,
+		BranchID: canonical.BranchID, Ts: now, Text: canonical.Text, AcceptedTurnCount: projection.Depth,
 		AgentCommandID: canonical.Identity.CommandID, AgentOperationID: canonical.Identity.OperationID,
 		AgentCycle: canonical.Identity.Cycle, AgentCommitHash: canonical.Hash,
 	}

@@ -247,8 +247,7 @@ func protectedToolReceiptContext(messages, retained []*agent.Message) string {
 		if !protected {
 			continue
 		}
-		sanitizedArguments := result.RetainedArguments
-		outcomeReceipt := result.RetainedContent
+		var sanitizedArguments, outcomeReceipt string
 		if result.ProtectedReceipt != nil {
 			sanitizedArguments = result.ProtectedReceipt.SanitizedArguments
 			outcomeReceipt = result.ProtectedReceipt.Outcome

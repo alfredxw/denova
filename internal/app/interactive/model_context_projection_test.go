@@ -166,20 +166,17 @@ func TestInteractiveModelProjectionKeepsInterruptedBatchesStableAcrossSettlement
 
 func TestInteractiveAtomicSourceTurnCountDoesNotBisectResolvedIntervals(t *testing.T) {
 	resolved := []interactiveResolvedContext{
-		{sourceBoundary: 2, ownerTurn: 5},
-		{sourceBoundary: 1, ownerTurn: 3},
+		{acceptedBoundary: 2, ownerTurn: 5},
+		{acceptedBoundary: 1, ownerTurn: 3},
 	}
-	if got := interactiveAtomicSourceTurnCount(0, 6, resolved); got != 6 {
+	if got := interactiveAtomicSourceTurnCount(6, resolved); got != 6 {
 		t.Fatalf("complete source retreated to %d, want 6", got)
 	}
-	if got := interactiveAtomicSourceTurnCount(0, 5, resolved); got != 1 {
+	if got := interactiveAtomicSourceTurnCount(5, resolved); got != 1 {
 		t.Fatalf("bisected nested source retreated to %d, want oldest acceptance 1", got)
 	}
-	if got := interactiveAtomicSourceTurnCount(0, 1, resolved); got != 1 {
+	if got := interactiveAtomicSourceTurnCount(1, resolved); got != 1 {
 		t.Fatalf("source before both intervals moved to %d, want 1", got)
-	}
-	if got := interactiveAtomicSourceTurnCount(2, 5, resolved); got != 2 {
-		t.Fatalf("checkpoint-clamped interval retreated to %d, want checkpoint 2", got)
 	}
 }
 
@@ -198,7 +195,7 @@ func appendInterruptedGameBatchForProjectionTest(t *testing.T, store *interactiv
 	if err != nil {
 		t.Fatal(err)
 	}
-	if receipt.Event.AcceptedTurnCount == nil || *receipt.Event.AcceptedTurnCount != 1 {
+	if receipt.Event.AcceptedTurnCount != 1 {
 		t.Fatalf("accepted logical boundary = %#v, want 1", receipt.Event.AcceptedTurnCount)
 	}
 	callID := "interrupted-call-" + strconv.Itoa(index)

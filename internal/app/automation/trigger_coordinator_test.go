@@ -253,7 +253,7 @@ func TestAutomationCommittedMutationOutboxDrainsAfterFailedOrAbortedRestart(t *t
 				RootRuntimeCommandID: automationRunAgentCommandID("mutation-" + status), RootRuntimeOperationID: "operation-1", RootRuntimeReceiptCursor: 1,
 				RuntimeCommandID: automationRunAgentCommandID("mutation-" + status), RuntimeOperationID: "operation-1", RuntimeReceiptCursor: 1,
 				Status: status, CompletionEffectsPending: true, CompletionEffectsOperationID: "operation-1",
-				WriteConfirmationPolicyCaptured: true, CompletionMutationPaths: []string{"chapters/committed-before-terminal.md"},
+				CompletionMutationPaths: []string{"chapters/committed-before-terminal.md"},
 			}
 			if _, err := store.AppendRun(task.CatalogID, run); err != nil {
 				t.Fatal(err)

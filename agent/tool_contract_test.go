@@ -89,9 +89,8 @@ func TestToolDescriptorInterruptibleWaitIsReadOnly(t *testing.T) {
 	}
 }
 
-func TestToolDescriptorRequiresExplicitContextRetention(t *testing.T) {
+func TestToolDescriptorRequiresExplicitResultRetention(t *testing.T) {
 	descriptor := validDescriptorForScope(ToolMutationNone)
-	descriptor.ContextRetention = ""
 	descriptor.ResultRetention = ""
 	if err := descriptor.Validate(); err == nil {
 		t.Fatal("descriptor accepted an implicit cross-turn retention policy")
@@ -105,7 +104,6 @@ func TestToolDescriptorAcceptsStableResultRetentionModes(t *testing.T) {
 		ToolResultProtected,
 	} {
 		descriptor := validDescriptorForScope(ToolMutationNone)
-		descriptor.ContextRetention = ""
 		descriptor.ResultRetention = mode
 		if mode == ToolResultEagerCandidate {
 			descriptor.ResultRecoveryKind = ToolResultRecoveryRerun
@@ -113,30 +111,12 @@ func TestToolDescriptorAcceptsStableResultRetentionModes(t *testing.T) {
 		if err := descriptor.Validate(); err != nil {
 			t.Errorf("result retention %q: %v", mode, err)
 		}
-		if got := descriptor.EffectiveResultRetention(); got != mode {
-			t.Errorf("effective result retention = %q, want %q", got, mode)
-		}
 	}
 
 	descriptor := validDescriptorForScope(ToolMutationNone)
-	descriptor.ContextRetention = ""
 	descriptor.ResultRetention = ToolResultRetentionMode("future")
 	if err := descriptor.Validate(); err == nil {
 		t.Fatal("descriptor accepted an unknown result retention mode")
-	}
-}
-
-func TestLegacyContextRetentionReplaysAsDeferred(t *testing.T) {
-	for _, legacy := range []ToolContextRetention{ToolContextTransient, ToolContextReceipt} {
-		descriptor := validDescriptorForScope(ToolMutationNone)
-		descriptor.ResultRetention = ""
-		descriptor.ContextRetention = legacy
-		if err := descriptor.Validate(); err != nil {
-			t.Fatalf("legacy retention %q: %v", legacy, err)
-		}
-		if got := descriptor.EffectiveResultRetention(); got != ToolResultDeferred {
-			t.Fatalf("legacy retention %q mapped to %q", legacy, got)
-		}
 	}
 }
 
@@ -148,7 +128,7 @@ func validDescriptorForScope(scope ToolMutationScope) ToolDescriptor {
 		PostCheck:        ToolPostCheckNone,
 		Recovery:         ToolRecoveryReadOnly,
 		ResultProjection: ToolResultBoundedModelContext,
-		ContextRetention: ToolContextReceipt,
+		ResultRetention:  ToolResultDeferred,
 		Steering:         SteeringFinishCurrent,
 		MaxResultBytes:   1024,
 	}

@@ -346,14 +346,10 @@ async function resolveSession(tab: AgentChatTerminalTab, established: TerminalSe
     const existing = runtime.sessions.find((session) => session.id === tab.terminalSessionId)
     if (existing) return existing
   }
-  // Configured profiles are deliberately resolved by the backend from user settings. `custom`
-  // remains only so terminal tabs persisted by earlier beta builds can still be restored.
-  const legacyCustomLaunch = tab.profileId === 'custom' ? { command: tab.command || '', args: [] } : {}
   return createTerminalSession(tab.projectId, {
     owner_tab_id: tab.id,
     profile_id: tab.profileId,
     title: tab.title,
-    ...legacyCustomLaunch,
     cols,
     rows,
   })
@@ -362,7 +358,6 @@ async function resolveSession(tab: AgentChatTerminalTab, established: TerminalSe
 /** Human label for the status bar, including a snapshot for removed/renamed profiles. */
 export function terminalTabLabel(tab: AgentChatTerminalTab, t: (key: string) => string): string {
   if (tab.title) return tab.title
-  if (tab.profileId === 'custom') return tab.command || t('agentChat.terminal.profile.custom')
   if (tab.profileId === 'shell') return t('agentChat.terminal.profile.shell')
   return tab.profileName || tab.profileId
 }

@@ -121,10 +121,8 @@ const (
 )
 
 type ToolCallFinishedEvent struct {
-	CallID string
-	Name   string
-	// Result is a legacy replay field. New events persist ResultDescriptor only.
-	Result           string            `json:"result,omitempty"`
+	CallID           string
+	Name             string
 	ResultDescriptor PayloadDescriptor `json:"result_descriptor,omitempty"`
 	IsError          bool
 	RetrySafety      RetrySafety

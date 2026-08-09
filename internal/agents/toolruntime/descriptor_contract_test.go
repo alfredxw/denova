@@ -49,11 +49,11 @@ func TestUnknownToolManifestIsConservativeWithoutNameInference(t *testing.T) {
 func TestStructuredToolResultKeepsRecoveryContractOutOfModelText(t *testing.T) {
 	descriptor := producttools.WorkspaceWriteDescriptor(agent.ToolSourceWrite, config.AgentToolWorkspaceWrite, agent.ToolRecoveryReconcilable)
 	filtered := toolresult.FilterText("write", descriptor, `{"path":"chapters/ch01.md"}`, "ok", 0)
-	if filtered.Content != "ok" || filtered.Result.ModelContent != "ok" {
+	if filtered.Result.ModelContent != "ok" {
 		t.Fatalf("model content was polluted: %#v", filtered)
 	}
-	if strings.Contains(filtered.Content, "Denova tool result metadata") || strings.Contains(filtered.Content, "recovery:") {
-		t.Fatalf("descriptor leaked into model text: %q", filtered.Content)
+	if strings.Contains(filtered.Result.ModelContent, "Denova tool result metadata") || strings.Contains(filtered.Result.ModelContent, "recovery:") {
+		t.Fatalf("descriptor leaked into model text: %q", filtered.Result.ModelContent)
 	}
 	if filtered.Manifest.Execution != agent.ToolExecutionWorkspaceExclusive ||
 		filtered.Manifest.Recovery != agent.ToolRecoveryReconcilable ||
@@ -70,7 +70,7 @@ func TestStructuredToolResultPreservesEndpointTargetWithoutPathArgument(t *testi
 		Source: agent.ToolSourceWeb, Capability: config.AgentToolBrowser,
 		Execution: agent.ToolExecutionSessionExclusive, MutationScope: agent.ToolMutationExternal,
 		PostCheck: agent.ToolPostCheckExternalReceipt, Recovery: agent.ToolRecoveryNonIdempotent,
-		ResultProjection: agent.ToolResultBoundedModelContext, ContextRetention: agent.ToolContextReceipt,
+		ResultProjection: agent.ToolResultBoundedModelContext, ResultRetention: agent.ToolResultDeferred,
 		Steering:       agent.SteeringFinishCurrent,
 		MaxResultBytes: toolresult.DefaultMaxBytes,
 	}

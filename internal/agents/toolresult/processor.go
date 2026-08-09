@@ -86,7 +86,7 @@ func Process(
 	}
 	if artifact != nil {
 		result.Metadata.ArtifactPersistence = &agent.ToolArtifactPersistence{Attempted: true, Complete: true}
-		applyArtifactRecoveryHint(&result, *artifact, originalBytes, decision.Descriptor.EffectiveResultRetention())
+		applyArtifactRecoveryHint(&result, *artifact, originalBytes, decision.Descriptor.ResultRetention)
 		if originalBytes > limit {
 			result.ModelContent = toolResultHeadTailPreview(result.ModelContent, limit,
 				fmt.Sprintf("complete=true; artifact=%s", artifact.ReadablePath))
@@ -127,7 +127,7 @@ func applyEagerToolResultRetentionNotice(
 	policy ProcessingPolicy,
 ) {
 	minimumTokens := EagerMinimumTokens(policy.EagerMinTokens, policy.ContextWindowTokens, 0.15)
-	if result == nil || descriptor.EffectiveResultRetention() != agent.ToolResultEagerCandidate ||
+	if result == nil || descriptor.ResultRetention != agent.ToolResultEagerCandidate ||
 		result.Status != agent.ToolResultSuccess || result.SyntheticReason != "" ||
 		result.ContextHints == nil || result.ContextHints.Recovery.Kind == "" ||
 		EstimatedTokens(int64(originalBytes)) < minimumTokens {
@@ -195,7 +195,7 @@ func normalizeProcessedToolResult(decision Call, args string, result agent.ToolR
 }
 
 func toolResultRequiresLosslessMaterialization(descriptor agent.ToolDescriptor, result agent.ToolResult) bool {
-	if descriptor.EffectiveResultRetention() == agent.ToolResultProtected || result.Status != agent.ToolResultSuccess ||
+	if descriptor.ResultRetention == agent.ToolResultProtected || result.Status != agent.ToolResultSuccess ||
 		result.SyntheticReason == agent.ToolSyntheticEffectUnknown {
 		return true
 	}
@@ -290,12 +290,6 @@ func applyReplayRecoveryHint(result *agent.ToolResult, decision Call, args strin
 	hints := result.ContextHints
 	if hints.Recovery.Kind == "" {
 		kind := decision.Descriptor.ResultRecoveryKind
-		// Only replay-era descriptors may fall back to broad source inference.
-		// New descriptors must distinguish read from grep and fetch from search so
-		// every cleanup placeholder names an executable recovery operation.
-		if kind == "" && decision.Descriptor.ContextRetention != "" {
-			kind = recoveryKindForToolSource(decision.Descriptor.Source)
-		}
 		if kind != "" {
 			reference := boundedRecoveryArguments(args)
 			if target := strings.TrimSpace(TargetFromArguments(args)); len(reference) == 0 && target != "" {
@@ -311,7 +305,7 @@ func applyReplayRecoveryHint(result *agent.ToolResult, decision Call, args strin
 	}
 	if hints.ContextValue == "" {
 		hints.ContextValue = agent.ToolResultContextNormal
-		if decision.Descriptor.EffectiveResultRetention() == agent.ToolResultEagerCandidate {
+		if decision.Descriptor.ResultRetention == agent.ToolResultEagerCandidate {
 			hints.ContextValue = agent.ToolResultContextDiscardable
 		}
 	}
@@ -320,19 +314,6 @@ func applyReplayRecoveryHint(result *agent.ToolResult, decision Call, args strin
 	}
 	if hints.Recovery.Kind == "" && hints.SupersessionKey == "" && hints.ContextValue == agent.ToolResultContextNormal {
 		result.ContextHints = nil
-	}
-}
-
-func recoveryKindForToolSource(source agent.ToolSource) agent.ToolResultRecoveryKind {
-	switch source {
-	case agent.ToolSourceRead:
-		return agent.ToolResultRecoveryRead
-	case agent.ToolSourceWeb:
-		return agent.ToolResultRecoveryRefetch
-	case agent.ToolSourceLore, agent.ToolSourceHistory:
-		return agent.ToolResultRecoveryRerun
-	default:
-		return ""
 	}
 }
 

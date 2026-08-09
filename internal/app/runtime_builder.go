@@ -125,15 +125,6 @@ func buildRuntime(ctx context.Context, cfg *config.Config, layout ProjectLayout)
 	} else if interruptedDirectorRuns > 0 {
 		slog.InfoContext(ctx, fmt.Sprintf("[interactive-director] recovered interrupted runs workspace=%s runs=%d", absWorkspace, interruptedDirectorRuns))
 	}
-	if optimized, optimizeErr := interactiveStore.OptimizeBloatedStoryStorage(); optimizeErr != nil {
-		// Optimization is recoverable maintenance, never a reason to make the
-		// user's project unavailable. The canonical file is unchanged whenever
-		// the migration cannot complete.
-		slog.ErrorContext(ctx, fmt.Sprintf("[interactive-story] presentation compaction deferred workspace=%s error=%v", absWorkspace, optimizeErr))
-	} else if optimized > 0 {
-		slog.InfoContext(ctx, fmt.Sprintf("[interactive-story] optimized bloated story journals workspace=%s stories=%d", absWorkspace, optimized))
-	}
-
 	runtime := &runtimeState{
 		projectID:              layout.ProjectID,
 		projectStateRoot:       layout.StateRoot,

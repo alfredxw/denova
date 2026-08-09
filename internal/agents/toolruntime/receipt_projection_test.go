@@ -37,14 +37,14 @@ func TestGeneratedImageToolResultTracksMutationTarget(t *testing.T) {
 func TestWorkspaceChangeReceiptHidesInternalRevisionsFromModel(t *testing.T) {
 	raw := `{"schema":"workspace_change.tool_result.v1","status":"applied","workspace":"/workspace/book-a","change_group_id":"group-1","change_set_id":"change-1","path":"chapters/ch01.md","base_revision":"sha256:before","revision":"sha256:after","review_status":"pending","apply_state":"applied","file_stats":{"bytes":21,"characters":15,"non_whitespace_characters":13,"lines":2}}`
 	filtered := toolresult.Filter("edit", `{"path":"chapters/ch01.md","edits":[]}`, raw)
-	if !strings.Contains(filtered.Content, `"change_set_id":"change-1"`) {
-		t.Fatalf("model receipt lost public change identity: %s", filtered.Content)
+	if !strings.Contains(filtered.Result.ModelContent, `"change_set_id":"change-1"`) {
+		t.Fatalf("model receipt lost public change identity: %s", filtered.Result.ModelContent)
 	}
-	if strings.Contains(filtered.Content, "base_revision") || strings.Contains(filtered.Content, `"revision"`) || strings.Contains(filtered.Content, "sha256:") {
-		t.Fatalf("model receipt exposed internal revisions: %s", filtered.Content)
+	if strings.Contains(filtered.Result.ModelContent, "base_revision") || strings.Contains(filtered.Result.ModelContent, `"revision"`) || strings.Contains(filtered.Result.ModelContent, "sha256:") {
+		t.Fatalf("model receipt exposed internal revisions: %s", filtered.Result.ModelContent)
 	}
-	if !strings.Contains(filtered.Content, `"file_stats":{"bytes":21,"characters":15,"non_whitespace_characters":13,"lines":2}`) {
-		t.Fatalf("model receipt lost final file stats: %s", filtered.Content)
+	if !strings.Contains(filtered.Result.ModelContent, `"file_stats":{"bytes":21,"characters":15,"non_whitespace_characters":13,"lines":2}`) {
+		t.Fatalf("model receipt lost final file stats: %s", filtered.Result.ModelContent)
 	}
 }
 

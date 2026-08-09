@@ -17,7 +17,6 @@ name = "Doubao"
 openai_api_key = "legacy-key"
 openai_base_url = "https://ark.cn-beijing.volces.com/api/v3"
 openai_model = "doubao-seed"
-max_output_tokens = 2048
 `
 	if err := os.WriteFile(path, []byte(legacy), 0o644); err != nil {
 		t.Fatal(err)
@@ -37,10 +36,6 @@ max_output_tokens = 2048
 	if profile.Provider != string(providers.ProviderVolcengine) || profile.Protocol != string(providers.ProtocolOpenAIChatCompletions) {
 		t.Fatalf("legacy route = provider %q protocol %q", profile.Provider, profile.Protocol)
 	}
-	if profile.LegacyMaxOutputTokens != nil {
-		t.Fatalf("legacy max output tokens must be dropped: %#v", profile.LegacyMaxOutputTokens)
-	}
-
 	if err := WriteSettingsFile(path, settings); err != nil {
 		t.Fatal(err)
 	}
@@ -49,7 +44,7 @@ max_output_tokens = 2048
 		t.Fatal(err)
 	}
 	text := string(persisted)
-	if strings.Contains(text, "openai_api_key") || strings.Contains(text, "openai_base_url") || strings.Contains(text, "openai_model") || strings.Contains(text, "max_output_tokens") {
+	if strings.Contains(text, "openai_api_key") || strings.Contains(text, "openai_base_url") || strings.Contains(text, "openai_model") {
 		t.Fatalf("legacy model profile fields must not be written back:\n%s", text)
 	}
 	for _, field := range []string{`api_key = 'legacy-key'`, `base_url = 'https://ark.cn-beijing.volces.com/api/v3'`, `model = 'doubao-seed'`} {

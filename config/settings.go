@@ -107,15 +107,11 @@ type Settings struct {
 	TerminalShell    string                    `toml:"terminal_shell,omitempty" json:"terminal_shell,omitempty"`
 	TerminalCommands []TerminalCommandSettings `toml:"terminal_commands,omitempty" json:"terminal_commands,omitempty"`
 	// TerminalCommandsConfigured distinguishes an intentionally empty registry
-	// from an older config that predates terminal_commands. It is an internal
+	// from an omitted registry that should inherit defaults. It is an internal
 	// TOML presence marker; API clients continue to own only the array itself.
 	TerminalCommandsConfigured bool `toml:"terminal_commands_configured,omitempty" json:"-"`
-	// Deprecated scalar fields remain TOML-readable for one-way migration into
-	// TerminalCommands. They are never returned by the API or written back.
-	TerminalCodexCommand  string `toml:"terminal_codex_command,omitempty" json:"-"`
-	TerminalClaudeCommand string `toml:"terminal_claude_command,omitempty" json:"-"`
-	TerminalMaxSessions   *int   `toml:"terminal_max_sessions,omitempty" json:"terminal_max_sessions,omitempty"`
-	TerminalScrollbackKB  *int   `toml:"terminal_scrollback_kb,omitempty" json:"terminal_scrollback_kb,omitempty"`
+	TerminalMaxSessions        *int `toml:"terminal_max_sessions,omitempty" json:"terminal_max_sessions,omitempty"`
+	TerminalScrollbackKB       *int `toml:"terminal_scrollback_kb,omitempty" json:"terminal_scrollback_kb,omitempty"`
 
 	// 游戏模式
 	InteractiveStoryTellerID   string   `toml:"interactive_story_teller_id,omitempty" json:"interactive_story_teller_id,omitempty"`
@@ -225,8 +221,8 @@ func DefaultSettings() Settings {
 // Merge 用 child 的非零字段覆盖 parent 后返回新值。
 // 字符串：空串视为未设置；指针：nil 视为未设置。
 func Merge(parent, child Settings) Settings {
-	parent = migrateLegacyTerminalCommands(parent)
-	child = migrateLegacyTerminalCommands(child)
+	parent = preserveTerminalCommandRegistryPresence(parent)
+	child = preserveTerminalCommandRegistryPresence(child)
 	out := parent
 	if child.OpenAIAPIKey != "" {
 		out.OpenAIAPIKey = child.OpenAIAPIKey
@@ -732,7 +728,7 @@ func workspaceAgentSettings(settings Settings) Settings {
 }
 
 func sanitizeEditableSettings(s Settings) Settings {
-	s = migrateLegacyTerminalCommands(s)
+	s = preserveTerminalCommandRegistryPresence(s)
 	// denova_dir/nova_dir 是启动级定位参数，不能由用户级/工作区级配置反向修改自身位置。
 	s.DenovaDir = ""
 	s.NovaDir = ""

@@ -3,7 +3,6 @@ package interactive
 import (
 	interactivestate "denova/internal/interactive/state"
 	"errors"
-	"fmt"
 	"os"
 	"testing"
 )
@@ -257,41 +256,6 @@ func TestAppendTurnWithStateDoesNotReportProjectionFailureAsCanonicalFailure(t *
 	}
 	if len(snapshot.Turns) != 1 || snapshot.Turns[0].ID != turn.ID {
 		t.Fatalf("canonical turn missing after projection failure: %#v", snapshot.Turns)
-	}
-}
-
-func TestAppendTurnWithStateReconcilesAmbiguousCanonicalAppend(t *testing.T) {
-	store := NewStore(t.TempDir())
-	story, err := store.CreateStory(CreateStoryRequest{Title: "模糊提交", StoryTellerID: "classic"})
-	if err != nil {
-		t.Fatal(err)
-	}
-	request := AppendTurnWithStateRequest{
-		BranchID: "main", User: "继续", Narrative: "这一回合已经完成原子替换。",
-		AgentCommandID: "command-ambiguous", AgentOperationID: "operation-ambiguous", AgentCycle: 2,
-	}
-	commitPlayerInputForTurnTest(t, store, story.ID, request)
-	store.appendStoryRecord = func(path string, record []byte) error {
-		if err := appendStoryRecord(path, record); err != nil {
-			return err
-		}
-		return &storyAppendRecordError{directoryErr: fmt.Errorf("simulated directory sync result loss")}
-	}
-	turn, _, err := store.AppendTurnWithState(story.ID, request)
-	if err != nil {
-		t.Fatalf("ambiguous but committed rewrite returned failure: %v", err)
-	}
-	if turn.AgentCommandID != request.AgentCommandID {
-		t.Fatalf("reconciled turn = %#v", turn)
-	}
-
-	store.appendStoryRecord = nil
-	snapshot, err := store.Snapshot(story.ID, "main")
-	if err != nil {
-		t.Fatal(err)
-	}
-	if len(snapshot.Turns) != 1 || snapshot.Turns[0].ID != turn.ID {
-		t.Fatalf("canonical story contains duplicate or missing turn: %#v", snapshot.Turns)
 	}
 }
 

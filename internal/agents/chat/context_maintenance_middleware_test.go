@@ -253,8 +253,8 @@ func maintenanceToolDefinition() agent.ToolDefinition {
 		Source: agent.ToolSourceRead, Execution: agent.ToolExecutionParallelRead,
 		MutationScope: agent.ToolMutationNone, PostCheck: agent.ToolPostCheckNone,
 		Recovery: agent.ToolRecoveryReadOnly, ResultProjection: agent.ToolResultBoundedModelContext,
-		ContextRetention: agent.ToolContextReceipt,
-		Steering:         agent.SteeringFinishCurrent, MaxResultBytes: 1024,
+		ResultRetention: agent.ToolResultDeferred,
+		Steering:        agent.SteeringFinishCurrent, MaxResultBytes: 1024,
 	}}
 }
 

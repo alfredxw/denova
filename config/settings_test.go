@@ -318,31 +318,6 @@ func TestWriteSettingsFilePreservesExplicitlyEmptyTerminalRegistry(t *testing.T)
 	}
 }
 
-func TestWriteSettingsFileMigratesAndTrimsLegacyTerminalCommands(t *testing.T) {
-	path := filepath.Join(t.TempDir(), "config.toml")
-	in := Settings{
-		TerminalCodexCommand:  "  codex --full-auto  ",
-		TerminalClaudeCommand: "  claude --resume  ",
-	}
-	if err := WriteSettingsFile(path, in); err != nil {
-		t.Fatal(err)
-	}
-	out, err := ReadSettingsFile(path)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if len(out.TerminalCommands) != 2 || out.TerminalCommands[0].Command != "codex --full-auto" || out.TerminalCommands[1].Command != "claude --resume" {
-		t.Fatalf("legacy terminal commands should migrate and trim: %#v", out.TerminalCommands)
-	}
-	data, err := os.ReadFile(path)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if strings.Contains(string(data), "terminal_codex_command") || strings.Contains(string(data), "terminal_claude_command") {
-		t.Fatalf("legacy terminal command keys should not be written back: %s", data)
-	}
-}
-
 func TestPrepareUserSettingsForWriteAcceptsUnboundedTerminalRegistry(t *testing.T) {
 	commands := make([]TerminalCommandSettings, 48)
 	for index := range commands {
@@ -359,19 +334,6 @@ func TestPrepareUserSettingsForWriteAcceptsUnboundedTerminalRegistry(t *testing.
 	}
 	if len(prepared.TerminalCommands) != len(commands) {
 		t.Fatalf("terminal registry was truncated: got=%d want=%d", len(prepared.TerminalCommands), len(commands))
-	}
-}
-
-func TestPrepareUserSettingsForWritePreservesTerminalRegistryForOlderClients(t *testing.T) {
-	existing := Settings{TerminalCommands: []TerminalCommandSettings{
-		{ID: "aider", Name: "Aider", Command: "aider", Enabled: true},
-	}}
-	prepared, err := PrepareUserSettingsForWrite(existing, Settings{Language: "en-US"})
-	if err != nil {
-		t.Fatal(err)
-	}
-	if len(prepared.TerminalCommands) != 1 || prepared.TerminalCommands[0] != existing.TerminalCommands[0] {
-		t.Fatalf("older client erased terminal registry: %#v", prepared.TerminalCommands)
 	}
 }
 

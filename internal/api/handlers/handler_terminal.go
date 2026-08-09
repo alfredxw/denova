@@ -30,13 +30,11 @@ var terminalUpgrader = websocket.HertzUpgrader{
 const terminalWriteWait = 30 * time.Second
 
 type terminalCreateRequest struct {
-	OwnerTabID string   `json:"owner_tab_id"`
-	ProfileID  string   `json:"profile_id"`
-	Title      string   `json:"title"`
-	Command    string   `json:"command"`
-	Args       []string `json:"args"`
-	Cols       int      `json:"cols"`
-	Rows       int      `json:"rows"`
+	OwnerTabID string `json:"owner_tab_id"`
+	ProfileID  string `json:"profile_id"`
+	Title      string `json:"title"`
+	Cols       int    `json:"cols"`
+	Rows       int    `json:"rows"`
 }
 
 type terminalSessionResponse struct {
@@ -97,7 +95,7 @@ func (h *Handlers) HandleTerminalSessionCreate(ctx context.Context, c *hertzapp.
 		return
 	}
 	profileID := strings.TrimSpace(req.ProfileID)
-	launch, err := manager.ResolveLaunchProfile(profileID, req.Command, req.Args)
+	startupCommand, err := manager.ResolveStartupCommand(profileID)
 	if err != nil {
 		writeTerminalError(ctx, c, err)
 		return
@@ -106,9 +104,7 @@ func (h *Handlers) HandleTerminalSessionCreate(ctx context.Context, c *hertzapp.
 		OwnerTabID:     ownerTabID,
 		ProfileID:      profileID,
 		Title:          strings.TrimSpace(req.Title),
-		Command:        launch.Command,
-		Args:           launch.Args,
-		StartupCommand: launch.StartupCommand,
+		StartupCommand: startupCommand,
 		Cwd:            scope.ContentRoot,
 		Cols:           req.Cols,
 		Rows:           req.Rows,

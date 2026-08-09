@@ -102,8 +102,6 @@ func (s *Service) reconcileAutomationRunReceipt(ctx context.Context, snap *autom
 			candidate.Status = automation.RunStatusFailed
 			candidate.Error = "Runtime 未接受自动化命令，可使用同一命令安全重试。 / Runtime did not accept the automation command; retrying the same command is safe."
 			candidate.FinishedAt = time.Now().UTC()
-			candidate.WriteConfirmationRequired = false
-			candidate.WriteConfirmationPolicyCaptured = true
 			candidate.CompletionEffectsPending = false
 			candidate.CompletionEffectsCompleted = true
 			if _, persistErr := storeForSnapshot(snap).AppendRun(automationTaskStoreID(task), candidate); persistErr != nil {
@@ -137,19 +135,12 @@ func (s *Service) reconcileAutomationRunReceipt(ctx context.Context, snap *autom
 	if commandID == "" {
 		return automation.RunRecord{}, false, fmt.Errorf("automation runtime operation %s has no durable command identity", operationID)
 	}
-	receiptCursor := match.receiptCursor
-	if receiptCursor == 0 && pendingCommandID == "" {
-		// Compatibility for journals projected before acceptance metadata was
-		// added. Pending successor promotion never uses this fallback.
-		receiptCursor = status.Cursor
+	receipt := agentrun.CommandReceipt{
+		CommandID: agentrun.CommandID(commandID), OperationID: agentrun.OperationID(operationID),
+		Cursor: match.receiptCursor,
 	}
-	receipt := agentrun.CommandReceipt{CommandID: agentrun.CommandID(commandID), OperationID: agentrun.OperationID(operationID), Cursor: receiptCursor}
 	if candidate.RootRuntimeCommandID == "" && commandID == automationRunAgentCommandID(candidate.ID) {
-		rootReceipt := receipt
-		if legacy := automationRootReceipt(candidate); legacy.CommandID != "" {
-			rootReceipt = legacy
-		}
-		if err := applyAutomationRootReceipt(&candidate, rootReceipt); err != nil {
+		if err := applyAutomationRootReceipt(&candidate, receipt); err != nil {
 			return automation.RunRecord{}, false, err
 		}
 		if err := applyAutomationCurrentReceipt(&candidate, receipt, automationRunAgentCommandID(candidate.ID)); err != nil {
@@ -162,13 +153,10 @@ func (s *Service) reconcileAutomationRunReceipt(ctx context.Context, snap *autom
 		if pendingCommandID != "" {
 			if candidate.RuntimeCommandID == commandID && candidate.RuntimeOperationID == operationID {
 				pendingReplayedCurrent = true
-				if uint64(receipt.Cursor) < candidate.RuntimeReceiptCursor {
-					receipt.Cursor = agentrun.Cursor(candidate.RuntimeReceiptCursor)
-				}
 				if err := applyAutomationCurrentReceipt(&candidate, receipt, pendingCommandID); err != nil {
 					return automation.RunRecord{}, false, err
 				}
-			} else if err := advanceVerifiedAutomationCurrentReceipt(&candidate, receipt, pendingCommandID); err != nil {
+			} else if err := advanceAutomationCurrentReceipt(&candidate, receipt, pendingCommandID); err != nil {
 				return automation.RunRecord{}, false, err
 			}
 			candidate.RuntimeCommandFingerprint = match.fingerprint
@@ -181,9 +169,6 @@ func (s *Service) reconcileAutomationRunReceipt(ctx context.Context, snap *autom
 			expectedCurrent := strings.TrimSpace(candidate.RuntimeCommandID)
 			if expectedCurrent == "" {
 				expectedCurrent = commandID
-			}
-			if candidate.RuntimeOperationID == operationID && uint64(receipt.Cursor) < candidate.RuntimeReceiptCursor {
-				receipt.Cursor = agentrun.Cursor(candidate.RuntimeReceiptCursor)
 			}
 			if err := applyAutomationCurrentReceipt(&candidate, receipt, expectedCurrent); err != nil {
 				return automation.RunRecord{}, false, err
@@ -229,8 +214,6 @@ func (s *Service) reconcileAutomationRunReceipt(ctx context.Context, snap *autom
 		}
 		if candidate.Status == automation.RunStatusSuccess {
 			stageAutomationTerminalEffects(&candidate, candidate.CompletionMutationPaths)
-			candidate.WriteConfirmationRequired = false
-			candidate.WriteConfirmationPolicyCaptured = true
 		} else {
 			stageAutomationTerminalEffects(&candidate, candidate.CompletionMutationPaths)
 		}

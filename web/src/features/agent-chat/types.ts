@@ -72,8 +72,8 @@ interface AgentChatTabCommon {
   customTitle?: string
   /** Pinned tabs are held at the front of their strip and are spared by bulk closes. */
   pinned?: boolean
-  /** Group hosting the tab. Absent means the primary group, so old records stay valid. */
-  group?: AgentChatGroupId
+  /** Group hosting the tab. */
+  group: AgentChatGroupId
 }
 
 /**
@@ -98,8 +98,6 @@ export interface AgentChatTerminalTab extends AgentChatTabCommon {
   profileId: TerminalProfileId
   /** Display snapshot used while settings load or after the command is renamed/deleted. */
   profileName?: string
-  /** Custom command line; only used by the `custom` profile. */
-  command?: string
   /** Latest program-owned OSC window title, or the resolved launch title before one is emitted. */
   title: string
   terminalSessionId?: string

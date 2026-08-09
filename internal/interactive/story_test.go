@@ -638,14 +638,17 @@ func TestAppendTurnWithStatePersistsTurnAndDeltaAtomically(t *testing.T) {
 	if len(lines) != 2 {
 		t.Fatalf("jsonl line count = %d, want 2\n%s", len(lines), string(data))
 	}
-	var transaction storyAppendTransaction
-	if err := json.Unmarshal([]byte(lines[1]), &transaction); err != nil {
+	records, err := decodeConversationTransactionRecords([]byte(lines[1]))
+	if err != nil {
 		t.Fatalf("parse turn line failed: %v", err)
 	}
-	if len(transaction.Events) != 1 {
-		t.Fatalf("append transaction events = %d, want 1", len(transaction.Events))
+	if len(records) != 2 {
+		t.Fatalf("append transaction records = %d, want event + metadata", len(records))
 	}
-	turnLine := transaction.Events[0]
+	var turnLine map[string]any
+	if err := json.Unmarshal(records[0], &turnLine); err != nil {
+		t.Fatalf("parse turn record failed: %v", err)
+	}
 	if turnLine["type"] != "turn" {
 		t.Fatalf("unexpected event type: %#v", turnLine["type"])
 	}

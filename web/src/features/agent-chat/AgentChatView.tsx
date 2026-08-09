@@ -781,8 +781,8 @@ export function AgentChatView({
         onTogglePin={(tabID) => togglePinTab(project.id, tabID)}
         onMoveTab={(sourceID, target, beforeID) => relocateTab(project.id, sourceID, target, beforeID)}
         onNewAgentTab={(target) => openDraftSessionInProject(project, target)}
-        onNewTerminalTab={(target, profileID, profileName, command) => (
-          openTerminal(project, target, profileID, profileName, command)
+        onNewTerminalTab={(target, profileID, profileName) => (
+          openTerminal(project, target, profileID, profileName)
         )}
         onOpenFiles={(target) => openProjectFiles(project, target)}
         onOpenPage={(target, pageID) => openProjectPage(project, target, pageID)}

@@ -131,7 +131,7 @@ func TestAutomationColdAcceptedRunStaysRecoveryRequiredUntilExplicitAbort(t *tes
 	}
 }
 
-func TestAutomationStartupScanRetiresLegacyConfirmationEffect(t *testing.T) {
+func TestAutomationStartupScanCompletesRecoveredTerminalEffects(t *testing.T) {
 	root := t.TempDir()
 	workspace := filepath.Join(root, "workspace")
 	dataDir := filepath.Join(root, "nova")
@@ -308,7 +308,7 @@ func TestAutomationPendingFollowUpIntentRecoversActiveSuccessorAfterCrash(t *tes
 		ProjectID: projectLayout.ProjectID, Scope: taskDef.Scope, Workspace: workspace, Trigger: automation.TriggerManual,
 		Status: automation.RunStatusSuccess, StartedAt: time.Now().UTC().Add(-time.Minute), FinishedAt: time.Now().UTC(),
 		RootRuntimeCommandID: rootCommandID, RootRuntimeOperationID: string(rootOperationID), RootRuntimeReceiptCursor: 1,
-		RuntimeCommandID: rootCommandID, RuntimeOperationID: string(rootOperationID), RuntimeReceiptCursor: 4,
+		RuntimeCommandID: rootCommandID, RuntimeOperationID: string(rootOperationID), RuntimeReceiptCursor: 1,
 		PendingRuntimeCommandID: successorCommandID, PendingRuntimeIntentHash: "pending-successor-intent",
 		PendingRuntimeCommandFingerprint: "pending-successor",
 		CompletionEffectsCompleted:       true,
@@ -387,6 +387,7 @@ func TestAutomationRecoveryFailureCannotFinalizeAnActiveProjection(t *testing.T)
 		return agentrun.RuntimeStatus{
 			Cursor: 9, Phase: agentrun.RunPhaseRunning,
 			ActiveCommandID: agentrun.CommandID(run.RuntimeCommandID), ActiveOperation: agentrun.OperationID(run.RuntimeOperationID),
+			ActiveReceiptCursor: 1,
 		}, nil
 	}
 	snapshot := &automationWorkspaceSnapshot{workspace: workspace, novaDir: novaDir}
@@ -397,7 +398,7 @@ func TestAutomationRecoveryFailureCannotFinalizeAnActiveProjection(t *testing.T)
 	if err == nil {
 		t.Fatal("failed observer finalized a still-active runtime projection")
 	}
-	if finalized.Status != automation.RunStatusRunning || !finalized.RuntimeRecoveryRequired || finalized.RuntimeReceiptCursor != 9 {
+	if finalized.Status != automation.RunStatusRunning || !finalized.RuntimeRecoveryRequired || finalized.RuntimeReceiptCursor != 1 {
 		t.Fatalf("active recovery obligation was lost: %#v", finalized)
 	}
 	_, persisted, err := store.GetRunByID(run.ID)

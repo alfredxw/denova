@@ -70,17 +70,10 @@ func LANAddress() string {
 // replacing the user-level settings file. Blank password input preserves the
 // existing password hash.
 func PrepareUserSettingsForWrite(existing, incoming Settings) (Settings, error) {
-	existing = migrateLegacyTerminalCommands(existing)
-	out := migrateLegacyTerminalCommands(incoming)
+	out := preserveTerminalCommandRegistryPresence(incoming)
 	out.AgentApprovalRules = NormalizeAgentApprovalRules(out.AgentApprovalRules)
 	if err := ValidateAgentApprovalRules(out.AgentApprovalRules); err != nil {
 		return Settings{}, err
-	}
-	// Older clients do not know terminal_commands. Preserve the existing
-	// registry instead of treating an omitted field as a request to reset it.
-	if out.TerminalCommands == nil {
-		out.TerminalCommands = cloneTerminalCommands(existing.TerminalCommands)
-		out.TerminalCommandsConfigured = existing.TerminalCommandsConfigured
 	}
 	if err := validateTerminalCommands(out.TerminalCommands); err != nil {
 		return Settings{}, err

@@ -79,11 +79,11 @@ type retainedArgumentsFallback struct {
 }
 
 // ProjectReceipt creates the stable continuity evidence
-// consumed by checkpoint compaction. Unlike the deprecated retained-context
-// fields, this projection is produced for every protected, mutating,
-// unresolved, or artifact-backed result on the live execution path.
+// consumed by checkpoint compaction. This projection is produced for every
+// protected, mutating, unresolved, or artifact-backed result on the live
+// execution path.
 func ProjectReceipt(manifest Manifest, arguments string, result agent.ToolResult) agent.ToolResult {
-	protected := result.EffectiveResultRetention() == agent.ToolResultProtected ||
+	protected := result.ResultRetention == agent.ToolResultProtected ||
 		result.Status != agent.ToolResultSuccess || result.SyntheticReason != "" ||
 		manifest.MutationScope != agent.ToolMutationNone ||
 		result.Metadata.ArtifactPersistence != nil || len(result.Artifacts) > 0

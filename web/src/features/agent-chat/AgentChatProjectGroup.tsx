@@ -53,7 +53,6 @@ interface AgentChatProjectGroupProps {
     group: AgentChatGroupId,
     profileID: TerminalProfileId,
     profileName?: string,
-    command?: string,
   ) => void
   onOpenFiles: (group: AgentChatGroupId) => void
   onOpenPage: (group: AgentChatGroupId, pageID: AgentChatPageId) => void
@@ -135,8 +134,8 @@ export function AgentChatProjectGroup({
             onTogglePin={onTogglePin}
             onMoveTab={onMoveTab}
             onNewAgentTab={(target) => openInGroup(() => onNewAgentTab(target), target)}
-            onNewTerminalTab={(target, profileID, profileName, command) => (
-              openInGroup(() => onNewTerminalTab(target, profileID, profileName, command), target)
+            onNewTerminalTab={(target, profileID, profileName) => (
+              openInGroup(() => onNewTerminalTab(target, profileID, profileName), target)
             )}
             onOpenFiles={(target) => openInGroup(() => onOpenFiles(target), target)}
             onOpenPage={(target, pageID) => openInGroup(() => onOpenPage(target, pageID), target)}

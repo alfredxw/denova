@@ -81,6 +81,9 @@ func TestDurableSemanticTriggerResumesDecisionAcrossRunCrashWithoutDuplicates(t 
 		run.RuntimeCommandID = automationRunAgentCommandID(runID)
 		run.RuntimeOperationID = "operation-" + runID
 		run.RuntimeReceiptCursor = 1
+		run.RootRuntimeCommandID = run.RuntimeCommandID
+		run.RootRuntimeOperationID = run.RuntimeOperationID
+		run.RootRuntimeReceiptCursor = run.RuntimeReceiptCursor
 		createdRuns[runID] = run
 		return nil, run, nil
 	}
@@ -147,6 +150,7 @@ func TestDurableSemanticSilentAutoRunNeverCreatesInbox(t *testing.T) {
 		starts++
 		return nil, automation.RunRecord{
 			ID: runID, TaskID: taskID, Scope: task.Scope, Workspace: snap.workspace, Trigger: triggerName, TriggerEvidence: evidence, Status: automation.RunStatusRunning,
+			RootRuntimeCommandID: automationRunAgentCommandID(runID), RootRuntimeOperationID: "operation-" + runID, RootRuntimeReceiptCursor: 1,
 			RuntimeCommandID: automationRunAgentCommandID(runID), RuntimeOperationID: "operation-" + runID, RuntimeReceiptCursor: 1,
 		}, nil
 	}
@@ -204,6 +208,9 @@ func TestDurableScheduleTriggerResumesEffectBeforeCompletion(t *testing.T) {
 		run.RuntimeCommandID = automationRunAgentCommandID(runID)
 		run.RuntimeOperationID = "operation-" + runID
 		run.RuntimeReceiptCursor = 1
+		run.RootRuntimeCommandID = run.RuntimeCommandID
+		run.RootRuntimeOperationID = run.RuntimeOperationID
+		run.RootRuntimeReceiptCursor = run.RuntimeReceiptCursor
 		createdRuns[runID] = run
 		return nil, run, nil
 	}

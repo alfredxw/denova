@@ -61,7 +61,9 @@ type journalSnapshot struct {
 	Checksum string `json:"checksum"`
 }
 
-func (j *journal) legacyGeneration() journalGeneration {
+// baseGeneration is the manifest-free bootstrap layout used until the first
+// checkpoint activates an immutable generation manifest.
+func (j *journal) baseGeneration() journalGeneration {
 	return journalGeneration{TailFile: filepath.Base(j.path)}
 }
 
@@ -96,9 +98,9 @@ func (j *journal) loadGenerationLayoutLocked() error {
 	}
 	sort.Sort(sort.Reverse(sort.StringSlice(paths)))
 	if len(paths) == 0 {
-		legacy := j.legacyGeneration()
-		j.generationCandidates = []journalGeneration{legacy}
-		j.activeGeneration = legacy
+		base := j.baseGeneration()
+		j.generationCandidates = []journalGeneration{base}
+		j.activeGeneration = base
 		j.manifestSequence = 0
 		j.tailPath = j.path
 		return nil
@@ -322,7 +324,7 @@ func (j *journal) garbageCollectGenerationsLocked(active, previous journalGenera
 		}
 	}
 	if previous.Generation != 0 && strings.TrimSpace(previous.TailFile) != filepath.Base(j.path) {
-		// The legacy base tail is no longer a fallback after two successful
+		// The bootstrap tail is no longer recovery material after two successful
 		// generations. Remove it only after the new manifest is durable.
 		if err := os.Remove(j.path); err != nil && !errors.Is(err, os.ErrNotExist) {
 			joined = errors.Join(joined, err)

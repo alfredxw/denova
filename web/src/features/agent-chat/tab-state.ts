@@ -9,8 +9,7 @@ import type { AgentChatProject } from './api'
  * Nothing here lands in workspace files or enters the model context.
  */
 
-const WORKBENCH_STORAGE_KEY = 'nova.agentchat.workbenches.v4'
-const LEGACY_WORKBENCH_STORAGE_KEY = 'nova.agentchat.workbenches.v3'
+const WORKBENCH_STORAGE_KEY = 'nova.agentchat.workbenches.v1'
 const TAB_BAR_EXPANDED_STORAGE_KEY = 'nova.agentchat.tabBarExpanded.v1'
 
 /** Upper bound on open tabs so a long session cannot pile up unbounded panes. */
@@ -52,12 +51,15 @@ function isGroupId(value: unknown): value is AgentChatGroupId {
 
 /** The fields every persisted tab shares, read back defensively like the rest of the record. */
 function parseCommon(value: Record<string, unknown>) {
+  const projectId = typeof value.projectId === 'string' ? value.projectId.trim() : ''
+  const workspace = typeof value.workspace === 'string' ? value.workspace.trim() : ''
+  if (!projectId || !workspace || !isGroupId(value.group)) return null
   return {
-    projectId: typeof value.projectId === 'string' ? value.projectId.trim() : '',
-    workspace: typeof value.workspace === 'string' ? value.workspace.trim() : '',
+    projectId,
+    workspace,
     customTitle: typeof value.customTitle === 'string' && value.customTitle ? value.customTitle : undefined,
     pinned: value.pinned === true ? true : undefined,
-    group: isGroupId(value.group) ? value.group : undefined,
+    group: value.group,
   }
 }
 
@@ -66,22 +68,20 @@ function parseTab(raw: unknown): AgentChatTab | null {
   if (!raw || typeof raw !== 'object') return null
   const value = raw as Record<string, unknown>
   const id = typeof value.id === 'string' ? value.id : ''
-  const workspace = typeof value.workspace === 'string' ? value.workspace.trim() : ''
-  if (!id || !workspace) return null
-  const common = { id, ...parseCommon(value) }
+  const parsedCommon = parseCommon(value)
+  if (!id || !parsedCommon) return null
+  const common = { id, ...parsedCommon }
   switch (value.kind) {
     case 'agent':
       return typeof value.sessionId === 'string' && value.sessionId ? { kind: 'agent', ...common, sessionId: value.sessionId } : null
     case 'terminal': {
       const profileId = terminalProfileId(value.profileId)
       if (!profileId) return null
-      const storedProfileName = typeof value.profileName === 'string' ? value.profileName.trim() : ''
       return {
         kind: 'terminal',
         ...common,
         profileId,
-        profileName: storedProfileName || legacyTerminalProfileName(profileId),
-        command: typeof value.command === 'string' ? value.command : undefined,
+        profileName: typeof value.profileName === 'string' ? value.profileName.trim() || undefined : undefined,
         title: typeof value.title === 'string' ? value.title : '',
         terminalSessionId: typeof value.terminalSessionId === 'string' ? value.terminalSessionId : undefined,
       }
@@ -104,12 +104,6 @@ function parseTab(raw: unknown): AgentChatTab | null {
     default:
       return null
   }
-}
-
-function legacyTerminalProfileName(profileId: string): string | undefined {
-  if (profileId === 'codex') return 'Codex CLI'
-  if (profileId === 'claude') return 'Claude Code'
-  return undefined
 }
 
 /** The tab each group has in front. Both groups are tracked so a split survives a reload. */
@@ -141,11 +135,9 @@ export function emptyProjectTabState(): AgentChatProjectTabState {
   }
 }
 
-/** Read v4 state, falling back to v3 path keys for one-time reconciliation. */
+/** Read the current project-owned workbench state. */
 export function readStoredWorkbenchState(): AgentChatWorkbenchState {
-  const current = readStorage(WORKBENCH_STORAGE_KEY)
-  const raw = current ?? readStorage(LEGACY_WORKBENCH_STORAGE_KEY)
-  const legacy = current === null && raw !== null
+  const raw = readStorage(WORKBENCH_STORAGE_KEY)
   if (!raw) return { activeProjectId: '', projects: {} }
   try {
     const parsed: unknown = JSON.parse(raw)
@@ -153,14 +145,14 @@ export function readStoredWorkbenchState(): AgentChatWorkbenchState {
     const value = parsed as Record<string, unknown>
     const storedProjects = value.projects && typeof value.projects === 'object' ? (value.projects as Record<string, unknown>) : {}
     const projects: Record<string, AgentChatProjectTabState> = {}
-    for (const [rawPath, rawState] of Object.entries(storedProjects)) {
-      const path = rawPath.trim()
-      if (!path || !rawState || typeof rawState !== 'object') continue
+    for (const [rawProjectId, rawState] of Object.entries(storedProjects)) {
+      const projectId = rawProjectId.trim()
+      if (!projectId || !rawState || typeof rawState !== 'object') continue
       const state = rawState as Record<string, unknown>
       const rawTabs = Array.isArray(state.tabs) ? state.tabs : []
       const tabs = orderTabs(
         dedupeTabs(
-          rawTabs.map(parseTab).filter((tab): tab is AgentChatTab => tab !== null && (legacy ? tab.workspace === path : tab.projectId === path)),
+          rawTabs.map(parseTab).filter((tab): tab is AgentChatTab => tab !== null && tab.projectId === projectId),
         ).slice(0, MAX_AGENT_CHAT_TABS),
       )
       const active = state.activeTabIds && typeof state.activeTabIds === 'object' ? (state.activeTabIds as Record<string, unknown>) : {}
@@ -168,20 +160,17 @@ export function readStoredWorkbenchState(): AgentChatWorkbenchState {
         const id = typeof active[group] === 'string' ? active[group] : ''
         return tabs.some((tab) => tab.id === id && tabGroup(tab) === group) ? id : null
       }
-      projects[path] = {
+      projects[projectId] = {
         tabs,
         activeTabIds: {
           primary: validActiveID('primary'),
           secondary: validActiveID('secondary'),
         },
         focusedGroup: isGroupId(state.focusedGroup) ? state.focusedGroup : 'primary',
-        // Records written before visibility became explicit always showed a populated
-        // secondary group, so preserve that behavior during the in-place v4 upgrade.
-        secondaryVisible: tabsInGroup(tabs, 'secondary').length > 0 && state.secondaryVisible !== false,
+        secondaryVisible: state.secondaryVisible === true && tabsInGroup(tabs, 'secondary').length > 0,
       }
     }
-    const storedActive = legacy ? value.activeProjectPath : value.activeProjectId
-    const activeProjectId = typeof storedActive === 'string' && projects[storedActive] ? storedActive : ''
+    const activeProjectId = typeof value.activeProjectId === 'string' && projects[value.activeProjectId] ? value.activeProjectId : ''
     return { activeProjectId, projects }
   } catch (error) {
     console.warn('[features/agent-chat/tab-state.ts] parsing local workbench state failed', { error })
@@ -189,11 +178,11 @@ export function readStoredWorkbenchState(): AgentChatWorkbenchState {
   }
 }
 
-/** Convert legacy path-owned workbenches and refresh relinked tab paths. */
+/** Refresh project paths and discard tabs that no longer belong to a live project. */
 export function reconcileWorkbenchProjects(state: AgentChatWorkbenchState, projects: readonly AgentChatProject[]): AgentChatWorkbenchState {
   const reconciled: Record<string, AgentChatProjectTabState> = {}
   for (const project of projects) {
-    const source = state.projects[project.id] ?? state.projects[project.path]
+    const source = state.projects[project.id]
     if (!source) continue
     const visibleSessionIDs = new Set(project.sessions.map((session) => session.id))
     const sessionListComplete = project.total <= project.sessions.length
@@ -222,7 +211,7 @@ export function reconcileWorkbenchProjects(state: AgentChatWorkbenchState, proje
       secondaryVisible: source.secondaryVisible && tabsInGroup(tabs, 'secondary').length > 0,
     }
   }
-  const activeProject = projects.find((project) => project.id === state.activeProjectId || project.path === state.activeProjectId)
+  const activeProject = projects.find((project) => project.id === state.activeProjectId)
   return {
     activeProjectId: activeProject?.id ?? '',
     projects: reconciled,
@@ -328,9 +317,9 @@ export function dedupeTabs(tabs: AgentChatTab[]): AgentChatTab[] {
   return out
 }
 
-/** Group hosting a tab. Records written before the split have no group and belong to the left. */
+/** Group hosting a tab. */
 export function tabGroup(tab: AgentChatTab): AgentChatGroupId {
-  return tab.group ?? 'primary'
+  return tab.group
 }
 
 /** The tabs one strip renders, in the order it renders them. */

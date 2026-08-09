@@ -32,10 +32,6 @@ type ModelProfileSettings struct {
 	SessionKeyMapping   *providers.SessionKeyMapping `toml:"session_key_mapping,omitempty" json:"session_key_mapping,omitempty"`
 	Temperature         *float64                     `toml:"temperature,omitempty" json:"temperature,omitempty"`
 	ContextWindowTokens *int                         `toml:"context_window_tokens,omitempty" json:"context_window_tokens,omitempty"`
-	// LegacyMaxOutputTokens is decode-only compatibility for Beta settings that
-	// exposed a provider request limit as a user preference. Sanitization clears
-	// it so the provider registry remains the sole owner of output capabilities.
-	LegacyMaxOutputTokens *int `toml:"max_output_tokens,omitempty" json:"max_output_tokens,omitempty"`
 }
 
 type AgentModelSettings struct {
@@ -324,8 +320,8 @@ func sanitizeModelProfiles(profiles []ModelProfileSettings) []ModelProfileSettin
 	return out
 }
 
-// migrateLegacyModelProfile accepts the former OpenAI-prefixed profile fields
-// without overriding canonical values and drops the retired Beta output ceiling.
+// migrateLegacyModelProfile accepts the released OpenAI-prefixed profile
+// fields without overriding canonical values.
 func migrateLegacyModelProfile(profile ModelProfileSettings) ModelProfileSettings {
 	if profile.APIKey == "" {
 		profile.APIKey = profile.LegacyOpenAIAPIKey
@@ -339,7 +335,6 @@ func migrateLegacyModelProfile(profile ModelProfileSettings) ModelProfileSetting
 	profile.LegacyOpenAIAPIKey = ""
 	profile.LegacyOpenAIBaseURL = ""
 	profile.LegacyOpenAIModel = ""
-	profile.LegacyMaxOutputTokens = nil
 	return profile
 }
 
@@ -380,7 +375,6 @@ func defaultModelProfile(profiles []ModelProfileSettings) (ModelProfileSettings,
 
 func mergeModelProfile(parent, child ModelProfileSettings) ModelProfileSettings {
 	out := parent
-	out.LegacyMaxOutputTokens = nil
 	previousProvider := strings.TrimSpace(out.Provider)
 	previousProtocol := strings.TrimSpace(out.Protocol)
 	previousScope := modelCredentialScope(out)

@@ -48,7 +48,7 @@ interface InputAreaProps {
   onStop?: () => void
   disabled: boolean
   /** Agent execution and editor availability are independent: active runs can still accept instructions. */
-  generationActive?: boolean
+  generationActive: boolean
   queuedCommands?: AgentRuntimeQueuedCommand[]
   queueActionPendingCommandID?: string
   onQueuedCommandSteer?: (item: AgentRuntimeQueuedCommand) => boolean | void | Promise<boolean | void>
@@ -249,8 +249,6 @@ export function InputArea({
     () => Math.min(MAX_TOKEN_USAGE_MENU_COUNT, tokenUsageMessages.filter((message) => (!message.role || message.role === 'token_usage') && Number(message.model_calls || 0) > 0).length),
     [tokenUsageMessages],
   )
-  // Preserve stop controls for legacy callers that still model an active run as `disabled`.
-  const isGenerationActive = generationActive ?? Boolean(disabled && onStop)
   useEffect(() => {
     if (!draftKey) return
     setValue(inputDrafts.get(draftKey) || '')
@@ -271,10 +269,10 @@ export function InputArea({
   // visibly active, release the request-level composer lock so operation-scoped
   // Follow Up/Steer commands can be submitted independently.
   useEffect(() => {
-    if (!isGenerationActive || !submittingRef.current) return
+    if (!generationActive || !submittingRef.current) return
     submittingRef.current = false
     setSubmitting(false)
-  }, [isGenerationActive])
+  }, [generationActive])
 
   useEffect(() => {
     if (activeCommandIndex >= filteredCommands.length) setActiveCommandIndex(0)
@@ -647,7 +645,7 @@ export function InputArea({
                     <>
                       <DropdownMenuCheckboxItem
                         checked={planMode}
-                        disabled={disabled || isGenerationActive}
+                        disabled={disabled || generationActive}
                         onCheckedChange={() => onTogglePlanMode()}
                         className="cursor-pointer pr-1.5 text-xs focus:bg-[var(--nova-active)] focus:text-[var(--nova-text)] [&_[data-slot=dropdown-menu-checkbox-item-indicator]]:static [&_[data-slot=dropdown-menu-checkbox-item-indicator]]:order-2 [&_[data-slot=dropdown-menu-checkbox-item-indicator]]:size-4"
                       >
@@ -669,7 +667,7 @@ export function InputArea({
                   </DropdownMenuItem>
                   <DropdownMenuSeparator className="bg-[var(--nova-border-soft)]" />
                   <DropdownMenuItem
-                    disabled={disabled || isGenerationActive}
+                    disabled={disabled || generationActive}
                     onSelect={handleContextAnalyze}
                     className="cursor-pointer text-xs focus:bg-[var(--nova-active)] focus:text-[var(--nova-text)]"
                   >
@@ -687,14 +685,14 @@ export function InputArea({
                   {t('chat.plan.short')}
                 </span>
               ) : null}
-              <AgentApprovalModeMenu runActive={isGenerationActive} conversationConfig={conversationBinding ? conversationConfig : undefined} />
+              <AgentApprovalModeMenu runActive={generationActive} conversationConfig={conversationBinding ? conversationConfig : undefined} />
               <TokenUsageDialog open={tokenUsageOpen} messages={tokenUsageMessages} onOpenChange={setTokenUsageOpen} onOpenTrace={onOpenTrace} />
             </>
           }
-          toolbarEnd={<ModelProfileSwitcher agentKey={agentKey} workspace={workspace} conversationConfig={conversationBinding ? conversationConfig : undefined} disabled={disabled || isGenerationActive} />}
+          toolbarEnd={<ModelProfileSwitcher agentKey={agentKey} workspace={workspace} conversationConfig={conversationBinding ? conversationConfig : undefined} disabled={disabled || generationActive} />}
           submitControl={(
             <AgentComposerControls
-              generationActive={isGenerationActive}
+              generationActive={generationActive}
               hasSendableContent={Boolean(value.trim() || hasReviewFeedback)}
               onStop={onStop}
               onSend={handleSend}

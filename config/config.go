@@ -72,8 +72,6 @@ type Config struct {
 	TerminalEnabled             bool                      `toml:"terminal_enabled"`
 	TerminalShell               string                    `toml:"terminal_shell"`
 	TerminalCommands            []TerminalCommandSettings `toml:"terminal_commands"`
-	TerminalCodexCommand        string                    `toml:"terminal_codex_command"`
-	TerminalClaudeCommand       string                    `toml:"terminal_claude_command"`
 	TerminalMaxSessions         int                       `toml:"terminal_max_sessions"`
 	TerminalScrollbackKB        int                       `toml:"terminal_scrollback_kb"`
 	ProjectFileTreeEntryLimit   int                       `toml:"project_file_tree_entry_limit"`
@@ -274,8 +272,6 @@ func settingsFromConfig(cfg *Config) Settings {
 		IDEImagePresetID:         cfg.IDEImagePresetID,
 		WritingSkillDefault:      cfg.WritingSkillDefault,
 		TerminalCommands:         cloneTerminalCommands(cfg.TerminalCommands),
-		TerminalCodexCommand:     cfg.TerminalCodexCommand,
-		TerminalClaudeCommand:    cfg.TerminalClaudeCommand,
 		AgentApprovalMode:        cfg.AgentApprovalMode,
 		AgentApprovalRules:       NormalizeAgentApprovalRules(cfg.AgentApprovalRules),
 		ShellEnvironmentMode:     cfg.ShellEnvironmentMode,
@@ -334,7 +330,7 @@ func settingsFromConfig(cfg *Config) Settings {
 	if cfg.OpenAIContextWindowTokens > 0 {
 		settings.OpenAIContextWindowTokens = &cfg.OpenAIContextWindowTokens
 	}
-	return migrateLegacyTerminalCommands(settings)
+	return preserveTerminalCommandRegistryPresence(settings)
 }
 
 func globalConfigCandidates() []string {

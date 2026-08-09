@@ -24,6 +24,7 @@ function agentTab(id: string, sessionId: string, workspace = '/books/one'): Agen
     id,
     projectId: `project-${workspace.split('/').pop()}`,
     workspace,
+    group: 'primary',
     sessionId,
   }
 }
@@ -34,6 +35,7 @@ function terminalTab(id: string, workspace = '/books/one'): AgentChatTab {
     id,
     projectId: `project-${workspace.split('/').pop()}`,
     workspace,
+    group: 'primary',
     profileId: 'shell',
     title: '',
   }
@@ -45,6 +47,7 @@ function filesTab(id: string, workspace = '/books/one', selectedPath?: string): 
     id,
     projectId: `project-${workspace.split('/').pop()}`,
     workspace,
+    group: 'primary',
     selectedPath,
   }
 }
@@ -61,6 +64,7 @@ describe('agent-chat tab state', () => {
         id: 'p1',
         projectId: 'project-one',
         workspace: '/books/one',
+        group: 'primary',
         pageId: 'reader',
       },
       {
@@ -68,6 +72,7 @@ describe('agent-chat tab state', () => {
         id: 'p2',
         projectId: 'project-one',
         workspace: '/books/one',
+        group: 'primary',
         pageId: 'reader',
       },
       agentTab('a1', 's1'),
@@ -94,6 +99,7 @@ describe('agent-chat tab state', () => {
         id: 'p1',
         projectId: 'project-one',
         workspace: '/books/one',
+        group: 'primary',
         pageId: 'skills',
       }),
     ).toEqual({
@@ -104,6 +110,7 @@ describe('agent-chat tab state', () => {
           id: 'p1',
           projectId: 'project-one',
           workspace: '/books/one',
+          group: 'primary',
           pageId: 'skills',
         },
       ],
@@ -165,24 +172,6 @@ describe('agent-chat tab state', () => {
     expect(stored.projects['project-two'].tabs.map((tab) => tab.id)).toEqual(['a2', 't2'])
     expect(stored.projects['project-two'].focusedGroup).toBe('secondary')
 
-    window.localStorage.removeItem('nova.agentchat.workbenches.v4')
-    window.localStorage.setItem(
-      'nova.agentchat.workbenches.v3',
-      JSON.stringify({
-        activeProjectPath: '/books/one',
-        projects: {
-          '/books/one': {
-            tabs: [agentTab('foreign', 's9', '/books/two'), { kind: 'agent', id: 'missing-workspace', sessionId: 's1' }],
-            activeTabIds: { primary: 'foreign', secondary: null },
-            focusedGroup: 'primary',
-          },
-        },
-      }),
-    )
-    expect(readStoredWorkbenchState().projects['/books/one']).toMatchObject({
-      tabs: [],
-      activeTabIds: { primary: null, secondary: null },
-    })
   })
 
   it('restores configured terminal command IDs and display names without a hardcoded allowlist', () => {
@@ -196,6 +185,7 @@ describe('agent-chat tab state', () => {
               id: 'aider-tab',
               projectId: 'project-one',
               workspace: '/books/one',
+              group: 'primary',
               profileId: 'aider-sonnet',
               profileName: 'Aider Sonnet',
               title: '',
@@ -231,12 +221,6 @@ describe('agent-chat tab state', () => {
     expect(hidden.secondaryVisible).toBe(false)
     expect(tabsInGroup(hidden.tabs, 'secondary').map((tab) => tab.id)).toEqual(['secondary'])
 
-    const raw = JSON.parse(window.localStorage.getItem('nova.agentchat.workbenches.v4') || '{}')
-    delete raw.projects['project-one'].secondaryVisible
-    window.localStorage.setItem('nova.agentchat.workbenches.v4', JSON.stringify(raw))
-
-    // Older v4 records had no explicit visibility and always displayed a populated right group.
-    expect(readStoredWorkbenchState().projects['project-one'].secondaryVisible).toBe(true)
   })
 
   it('does not persist blank draft conversations', () => {
@@ -305,8 +289,8 @@ describe('agent-chat tab state', () => {
         'project-one': {
           tabs: [
             filesTab('files'),
-            { kind: 'page', id: 'reader', projectId: 'project-one', workspace: '/books/one', pageId: 'reader' },
-            { kind: 'page', id: 'skills', projectId: 'project-one', workspace: '/books/one', pageId: 'skills' },
+            { kind: 'page', id: 'reader', projectId: 'project-one', workspace: '/books/one', group: 'primary', pageId: 'reader' },
+            { kind: 'page', id: 'skills', projectId: 'project-one', workspace: '/books/one', group: 'primary', pageId: 'skills' },
           ],
           activeTabIds: { primary: 'files', secondary: null },
           focusedGroup: 'primary',
@@ -340,7 +324,7 @@ describe('agent-chat tab state', () => {
 describe('agent-chat tab groups', () => {
   const split: AgentChatTab[] = [terminalTab('t1'), terminalTab('t2'), { ...terminalTab('t3'), group: 'secondary' }]
 
-  it('treats a tab without a group as belonging to the left side', () => {
+  it('filters tabs by their explicit group', () => {
     expect(tabsInGroup(split, 'primary').map((tab) => tab.id)).toEqual(['t1', 't2'])
     expect(tabsInGroup(split, 'secondary').map((tab) => tab.id)).toEqual(['t3'])
   })

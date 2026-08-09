@@ -73,7 +73,7 @@ func TestNormalizeModelContextMessagesRepairsUniqueMissingResultDeterministicall
 		result.ToolResult.SyntheticReason != agent.ToolSyntheticEffectUnknown || !IsUnknownToolEffectResult(result.Content) {
 		t.Fatalf("unexpected effect_unknown completion: %#v", result)
 	}
-	if result.ToolResult.ResultRetention != "" || result.ToolResult.ContextRetention != "" {
+	if result.ToolResult.ResultRetention != "" {
 		t.Fatalf("normalizer assigned retention to a recovery result: %#v", result.ToolResult)
 	}
 }

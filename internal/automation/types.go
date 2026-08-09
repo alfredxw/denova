@@ -256,14 +256,10 @@ type RunRecord struct {
 	RuntimeRecoveryRequired bool `json:"runtime_recovery_required,omitempty"`
 	// CompletionEffectsPending makes terminal post-effects restartable. Those
 	// effects use deterministic downstream identities before this flag clears.
-	CompletionEffectsPending     bool   `json:"completion_effects_pending,omitempty"`
-	CompletionEffectsCompleted   bool   `json:"completion_effects_completed,omitempty"`
-	CompletionEffectsOperationID string `json:"completion_effects_operation_id,omitempty"`
-	WriteConfirmationRequired    bool   `json:"write_confirmation_required,omitempty"`
-	// WriteConfirmationPolicyCaptured distinguishes an intentionally false
-	// admission policy from legacy records that predate persisted effect plans.
-	WriteConfirmationPolicyCaptured bool     `json:"write_confirmation_policy_captured,omitempty"`
-	CompletionMutationPaths         []string `json:"completion_mutation_paths,omitempty"`
+	CompletionEffectsPending     bool     `json:"completion_effects_pending,omitempty"`
+	CompletionEffectsCompleted   bool     `json:"completion_effects_completed,omitempty"`
+	CompletionEffectsOperationID string   `json:"completion_effects_operation_id,omitempty"`
+	CompletionMutationPaths      []string `json:"completion_mutation_paths,omitempty"`
 	// CompletionMutationEffectIDs preserve the Runtime outbox identities that
 	// transferred ownership of mutation-trigger work into this run ledger.
 	// They are never inferred from display history or tool result previews.

@@ -116,17 +116,9 @@ func (projection *storyJournalProjection) Checkpoint() (json.RawMessage, error) 
 
 func (projection *storyJournalProjection) Apply(record conversationjournal.Record) error {
 	projection.rememberCursor(record.Location.Cursor)
-	meta, events, transaction, err := decodeStoryProjectionPayload(record.Payload)
+	meta, events, err := decodeStoryProjectionPayload(record.Payload)
 	if err != nil {
 		return err
-	}
-	if transaction {
-		for _, event := range events {
-			if err := projection.applyEvent(record.Location.Cursor, event); err != nil {
-				return err
-			}
-		}
-		return projection.applyMeta(record.Location.Cursor, meta)
 	}
 	if meta.StoryID != "" {
 		return projection.applyMeta(record.Location.Cursor, meta)
@@ -137,32 +129,29 @@ func (projection *storyJournalProjection) Apply(record conversationjournal.Recor
 	return projection.applyEvent(record.Location.Cursor, events[0])
 }
 
-func decodeStoryProjectionPayload(payload json.RawMessage) (StoryMeta, []StoryEventRecord, bool, error) {
-	meta, events, transaction, err := decodeStoryAppendTransaction(payload)
-	if transaction || err != nil {
-		return meta, events, transaction, err
-	}
+func decodeStoryProjectionPayload(payload json.RawMessage) (StoryMeta, []StoryEventRecord, error) {
+	var meta StoryMeta
 	var typed struct {
 		Type string `json:"type"`
 	}
 	if err := json.Unmarshal(payload, &typed); err != nil {
-		return StoryMeta{}, nil, false, err
+		return StoryMeta{}, nil, err
 	}
 	if typed.Type == StoryEventTypeMeta {
 		if err := json.Unmarshal(payload, &meta); err != nil {
-			return StoryMeta{}, nil, false, err
+			return StoryMeta{}, nil, err
 		}
 		meta = normalizeStoryMeta(meta)
 		if err := validateStoryMeta(meta); err != nil {
-			return StoryMeta{}, nil, false, err
+			return StoryMeta{}, nil, err
 		}
-		return meta, nil, false, nil
+		return meta, nil, nil
 	}
 	event, err := decodeStoryEventRecord(payload)
 	if err != nil {
-		return StoryMeta{}, nil, false, err
+		return StoryMeta{}, nil, err
 	}
-	return StoryMeta{}, []StoryEventRecord{event}, false, nil
+	return StoryMeta{}, []StoryEventRecord{event}, nil
 }
 
 func (projection *storyJournalProjection) applyMeta(cursor conversationjournal.Cursor, meta StoryMeta) error {

@@ -44,17 +44,11 @@ func ManifestForDefinition(name string, descriptor agent.ToolDescriptor) Manifes
 	return Manifest{Name: normalizeToolName(name), ToolDescriptor: descriptor}
 }
 
-// Filtered keeps compatibility for lifecycle consumers while the
-// ToolResult itself remains the source of truth for model/display/details.
+// Filtered carries the normalized result together with the immutable tool
+// manifest that governed it.
 type Filtered struct {
-	Result         agent.ToolResult `json:"result"`
-	Content        string           `json:"content"`
-	Manifest       Manifest         `json:"manifest"`
-	OriginalBytes  int              `json:"original_bytes"`
-	ReturnedBytes  int              `json:"returned_bytes"`
-	Truncated      bool             `json:"truncated"`
-	Target         string           `json:"target,omitempty"`
-	IdempotencyKey string           `json:"idempotency_key"`
+	Result   agent.ToolResult `json:"result"`
+	Manifest Manifest         `json:"manifest"`
 }
 
 // DefaultMaxBytes is the ordinary model-visible result budget.
@@ -90,13 +84,7 @@ func filterWithManifest(manifest Manifest, args string, result agent.ToolResult,
 		normalized, _ = agent.NormalizeToolResult(normalized, manifest.ToolDescriptor)
 	}
 	normalized = ProjectReceipt(manifest, args, normalized)
-	return Filtered{
-		Result: normalized, Content: normalized.ModelContent, Manifest: manifest,
-		OriginalBytes: normalized.Metadata.OriginalModelBytes,
-		ReturnedBytes: normalized.Metadata.ReturnedModelBytes,
-		Truncated:     normalized.Metadata.ModelTruncated,
-		Target:        normalized.Metadata.Target, IdempotencyKey: normalized.Metadata.IdempotencyKey,
-	}
+	return Filtered{Result: normalized, Manifest: manifest}
 }
 
 func prepareToolResultProjectionMetadata(manifest Manifest, args string, result *agent.ToolResult) {

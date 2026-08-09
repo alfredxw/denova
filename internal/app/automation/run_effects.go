@@ -54,8 +54,6 @@ func stageAutomationTerminalEffects(run *automation.RunRecord, mutationPaths []s
 		run.CompletionEffectsCompleted = false
 		return
 	}
-	run.WriteConfirmationRequired = false
-	run.WriteConfirmationPolicyCaptured = true
 	run.CompletionEffectsPending = len(paths) > 0
 	run.CompletionEffectsCompleted = len(paths) == 0
 }
@@ -89,27 +87,8 @@ func (s *Service) completeAutomationRunEffects(
 	if !run.CompletionEffectsPending && run.CompletionEffectsCompleted {
 		return run, nil
 	}
-	planChanged := false
-	if !run.WriteConfirmationPolicyCaptured || run.WriteConfirmationRequired {
-		// Older runs may have persisted the removed task-level write-confirmation
-		// policy. Retire that pending effect without blocking mutation receipts.
-		run.WriteConfirmationRequired = false
-		run.WriteConfirmationPolicyCaptured = true
-		planChanged = true
-	}
 	if strings.TrimSpace(run.CompletionEffectsOperationID) == "" {
-		// One-way migration for terminal records written before the outbox carried
-		// an operation epoch. Only the root operation inherits legacy confirmation
-		// policy; follow-ups never derive it from mutable task configuration.
-		run.CompletionEffectsOperationID = strings.TrimSpace(run.RuntimeOperationID)
-		run.CompletionEffectsPending = true
-		run.CompletionEffectsCompleted = false
-		planChanged = true
-	}
-	if planChanged {
-		if _, err := storeForSnapshot(snap).AppendRun(automationTaskStoreID(task), run); err != nil {
-			return run, fmt.Errorf("persist automation completion-effects plan: %w", err)
-		}
+		return run, fmt.Errorf("automation completion-effects operation is required for run %s", run.ID)
 	}
 	targets := s.chapterContentMutationPaths(snap, run.CompletionMutationPaths)
 	if len(targets) > 0 {

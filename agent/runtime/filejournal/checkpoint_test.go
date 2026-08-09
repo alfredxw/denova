@@ -433,7 +433,7 @@ func TestFileJournalColdReplayUsesSnapshotAndBoundedTailAfterGenerationGC(t *tes
 		t.Fatalf("generation = %d, want multiple checkpoints", journal.activeGeneration.Generation)
 	}
 	if _, err := os.Stat(journal.path); !errors.Is(err, os.ErrNotExist) {
-		t.Fatalf("legacy segment still retained after generation GC: %v", err)
+		t.Fatalf("bootstrap segment still retained after generation GC: %v", err)
 	}
 	if err := journal.Close(); err != nil {
 		t.Fatal(err)

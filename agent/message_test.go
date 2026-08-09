@@ -43,18 +43,15 @@ func TestMessageFullWireRoundTripAndClone(t *testing.T) {
 		ToolCallID: "parent-call",
 		ToolName:   "lookup",
 		ToolResult: &ToolResultSummary{
-			Status: ToolResultSuccess, ContextRetention: ToolContextReceipt,
-			ResultRetention: ToolResultEagerCandidate,
+			Status: ToolResultSuccess, ResultRetention: ToolResultEagerCandidate,
 			ContextHints: &ToolResultContextHints{
 				Recovery:     ToolResultRecoveryHint{Kind: ToolResultRecoveryRead, Reference: map[string]any{"path": "chapter.md"}},
 				ContextValue: ToolResultContextDiscardable, SupersessionKey: "read:chapter.md",
 			},
 			ArtifactPersistence: &ToolArtifactPersistence{Attempted: true, Complete: true},
-			RetainedContent:     `{"schema":"tool_result.receipt.v2"}`,
-			RetainedArguments:   `{"q":"x"}`,
 			Artifacts: []ToolArtifactRef{{
-				ID: "artifact-1", URI: "/workspace/.denova/sessions/artifact.log",
-				MIMEType: "text/plain", ByteSize: 12, SHA256: strings.Repeat("a", 64),
+				ID: "artifact-1", ReadablePath: "/workspace/.denova/sessions/artifact.log",
+				ContentType: "text/plain", EstimatedBytes: 12, SHA256: strings.Repeat("a", 64),
 			}},
 		},
 		ReasoningContent: "reason",
@@ -106,14 +103,14 @@ func TestMessageFullWireRoundTripAndClone(t *testing.T) {
 	clone.MultiContent[0][0] = '['
 	clone.ToolCalls[0].Function.Name = "changed"
 	clone.ToolCalls[0].Extra["provider"] = "changed"
-	clone.ToolResult.Artifacts[0].URI = "changed"
+	clone.ToolResult.Artifacts[0].ReadablePath = "changed"
 	clone.ToolResult.ContextHints.Recovery.Reference["path"] = "changed"
 	clone.ToolResult.ArtifactPersistence.Complete = false
 	clone.Extra["nested"].(map[string]any)["items"].([]any)[0] = "changed"
 	clone.ResponseMeta.Usage.TotalTokens = 99
 	if message.MultiContent[0][0] == '[' || message.ToolCalls[0].Function.Name != "lookup" ||
 		message.ToolCalls[0].Extra["provider"] != "p" ||
-		message.ToolResult.Artifacts[0].URI != "/workspace/.denova/sessions/artifact.log" ||
+		message.ToolResult.Artifacts[0].ReadablePath != "/workspace/.denova/sessions/artifact.log" ||
 		message.ToolResult.ContextHints.Recovery.Reference["path"] != "chapter.md" ||
 		!message.ToolResult.ArtifactPersistence.Complete ||
 		message.Extra["nested"].(map[string]any)["items"].([]any)[0] != "a" ||

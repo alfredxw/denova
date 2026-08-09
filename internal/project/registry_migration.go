@@ -1,12 +1,9 @@
 package project
 
 import (
-	"bytes"
-	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
-	"log/slog"
 	"os"
 	"path/filepath"
 	"time"
@@ -33,32 +30,15 @@ func (registry *Registry) loadOrMigrateLocked() (registryData, bool, error) {
 		if err := json.Unmarshal(raw, &data); err != nil {
 			return registryData{}, false, fmt.Errorf("decode project registry: %w", err)
 		}
-		if data.Version > registryVersion {
+		if data.Version != registryVersion {
 			return registryData{}, false, fmt.Errorf(
-				"project registry version %d is newer than supported version %d",
+				"project registry version %d does not match supported version %d",
 				data.Version,
 				registryVersion,
 			)
 		}
-		changed := false
-		if data.Version < registryVersion {
-			if err := registry.backupRegistryLocked(raw, data.Version); err != nil {
-				return registryData{}, false, fmt.Errorf("back up project registry: %w", err)
-			}
-			archived, err := registry.upgradeRegistryLocked(&data)
-			if err != nil {
-				return registryData{}, false, err
-			}
-			slog.InfoContext(context.Background(), fmt.Sprintf(
-				"[project/registry_migration.go] upgraded Project registry path=%s version=%d archived_stale_legacy=%d",
-				registry.path,
-				registryVersion,
-				archived,
-			))
-			changed = true
-		}
 		normalizeRegistryData(&data)
-		return data, changed, nil
+		return data, false, nil
 	}
 	if !errors.Is(err, os.ErrNotExist) {
 		return registryData{}, false, err
@@ -71,63 +51,13 @@ func (registry *Registry) loadOrMigrateLocked() (registryData, bool, error) {
 	return data, migrated, nil
 }
 
-// upgradeRegistryLocked keeps user-created missing Projects visible while
-// archiving stale entries that can be proven to originate in books.json.
-func (registry *Registry) upgradeRegistryLocked(data *registryData) (int, error) {
-	if data.Version < 0 {
-		return 0, fmt.Errorf("invalid project registry version %d", data.Version)
-	}
-	archived := 0
-	if data.Version < 2 {
-		count, err := registry.archiveStaleLegacyProjectsLocked(data)
-		if err != nil {
-			return 0, err
-		}
-		archived += count
-		data.Version = 2
-	}
-	return archived, nil
-}
-
-func (registry *Registry) archiveStaleLegacyProjectsLocked(data *registryData) (int, error) {
-	legacy, found, err := registry.readLegacyBookRegistryLocked()
-	if err != nil || !found {
-		return 0, err
-	}
-	bookPaths, hiddenPaths := legacyProjectPathSets(legacy)
-	now := time.Now().UTC()
-	archived := 0
-	for index := range data.Projects {
-		record := &data.Projects[index]
-		if record.Type != TypeBook || record.ArchivedAt != nil {
-			continue
-		}
-		canonical, canonicalErr := canonicalDirectory(record.WorkspacePath, false)
-		if canonicalErr != nil {
-			continue
-		}
-		_, wasLegacyBook := bookPaths[canonical]
-		_, wasHidden := hiddenPaths[canonical]
-		if !wasHidden && (!wasLegacyBook || projectDirectoryExists(canonical)) {
-			continue
-		}
-		record.ArchivedAt = timePointer(now)
-		record.UpdatedAt = now
-		if data.CurrentBookID == record.ID {
-			data.CurrentBookID = ""
-		}
-		archived++
-	}
-	return archived, nil
-}
-
 func (registry *Registry) importLegacyBooksLocked(data *registryData) (bool, error) {
 	legacy, found, err := registry.readLegacyBookRegistryLocked()
 	if err != nil || !found {
 		return false, err
 	}
 	now := time.Now().UTC()
-	_, hiddenPaths := legacyProjectPathSets(legacy)
+	hiddenPaths := legacyHiddenProjectPaths(legacy.Hidden)
 	pathToID := make(map[string]string, len(legacy.Books)+len(legacy.Hidden))
 	activeIDs := make(map[string]bool, len(legacy.Books))
 	for _, book := range legacy.Books {
@@ -197,61 +127,14 @@ func (registry *Registry) readLegacyBookRegistryLocked() (legacyBookRegistry, bo
 	return legacy, true, nil
 }
 
-func legacyProjectPathSets(legacy legacyBookRegistry) (map[string]struct{}, map[string]struct{}) {
-	books := make(map[string]struct{}, len(legacy.Books))
-	for _, book := range legacy.Books {
-		if canonical, err := canonicalDirectory(book.Path, false); err == nil && canonical != "" {
-			books[canonical] = struct{}{}
-		}
-	}
-	hidden := make(map[string]struct{}, len(legacy.Hidden))
-	for _, path := range legacy.Hidden {
+func legacyHiddenProjectPaths(paths []string) map[string]struct{} {
+	hidden := make(map[string]struct{}, len(paths))
+	for _, path := range paths {
 		if canonical, err := canonicalDirectory(path, false); err == nil && canonical != "" {
 			hidden[canonical] = struct{}{}
 		}
 	}
-	return books, hidden
-}
-
-func (registry *Registry) backupRegistryLocked(raw []byte, version int) error {
-	backupPath := filepath.Join(filepath.Dir(registry.path), fmt.Sprintf("projects.v%d.backup.json", version))
-	backup, err := os.OpenFile(backupPath, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0o600)
-	if errors.Is(err, os.ErrExist) {
-		existing, readErr := os.ReadFile(backupPath)
-		if readErr != nil {
-			return readErr
-		}
-		if !bytes.Equal(existing, raw) {
-			return fmt.Errorf("rollback backup already exists with different content: %s", backupPath)
-		}
-		return nil
-	}
-	if err != nil {
-		return err
-	}
-	removeBackup := true
-	defer func() {
-		_ = backup.Close()
-		if removeBackup {
-			_ = os.Remove(backupPath)
-		}
-	}()
-	if _, err := backup.Write(raw); err != nil {
-		return err
-	}
-	if err := backup.Sync(); err != nil {
-		return err
-	}
-	if err := backup.Close(); err != nil {
-		return err
-	}
-	removeBackup = false
-	slog.InfoContext(context.Background(), fmt.Sprintf(
-		"[project/registry_migration.go] saved Project registry rollback backup path=%s source_version=%d",
-		backupPath,
-		version,
-	))
-	return nil
+	return hidden
 }
 
 func projectDirectoryExists(path string) bool {

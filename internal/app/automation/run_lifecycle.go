@@ -51,8 +51,6 @@ func (s *Service) startAutomationRun(ctx context.Context, snap *automationWorksp
 		}
 	}()
 	slog.InfoContext(ctx, fmt.Sprintf("[automation] run begin task_id=%s scope=%s workspace=%q trigger=%s template=%s", task.ID, task.Scope, run.Workspace, run.Trigger, task.Template))
-	run.WriteConfirmationRequired = false
-	run.WriteConfirmationPolicyCaptured = true
 	toolManifest, policyErr := automationInvocationManifest(snap)
 	if policyErr != nil {
 		return nil, policyErr

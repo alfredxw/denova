@@ -227,7 +227,7 @@ func TestLaterSuccessfulTurnResolvesInterruptedInputsAndTheirBatches(t *testing.
 	if resolved.Input.ID != deterministicPlayerInputID(interrupted) || resolved.Input.Text != interruptedInput.Text {
 		t.Fatalf("resolved input changed: %#v", resolved.Input)
 	}
-	if resolved.Input.AcceptedTurnCount == nil || *resolved.Input.AcceptedTurnCount != 0 {
+	if resolved.Input.AcceptedTurnCount != 0 {
 		t.Fatalf("resolved accepted boundary = %#v, want 0", resolved.Input.AcceptedTurnCount)
 	}
 	if len(resolved.ModelContextBatches) != 1 || !reflect.DeepEqual(resolved.ModelContextBatches[0].Messages, messages) {
@@ -295,7 +295,7 @@ func TestResolvedPlayerInputContextsPreserveAcceptanceOrderAndCurrentTurnSuffix(
 	}
 	for index, wantBoundary := range []int{0, 1} {
 		input := turn.ResolvedPlayerInputContexts[index].Input
-		if input.AcceptedTurnCount == nil || *input.AcceptedTurnCount != wantBoundary {
+		if input.AcceptedTurnCount != wantBoundary {
 			t.Fatalf("resolved input %d boundary = %#v, want %d", index, input.AcceptedTurnCount, wantBoundary)
 		}
 	}
@@ -384,7 +384,7 @@ func durableModelContextBatchFixtureForCall(callID, evidence string) []ModelCont
 		{
 			Role: "tool", ToolCallID: callID, ToolName: "web_fetch", Content: evidence,
 			ToolResult: &agent.ToolResultSummary{
-				Status: agent.ToolResultSuccess, ContextRetention: agent.ToolContextTransient,
+				Status: agent.ToolResultSuccess, ResultRetention: agent.ToolResultEagerCandidate,
 				Artifacts: []agent.ToolArtifactRef{{ReadablePath: ".denova/artifacts/game/fetch.txt", EstimatedBytes: 4096, Complete: true}},
 			},
 		},

@@ -109,13 +109,11 @@ func (s *Store) readStoryConversationJournalLocked(storyID string, repairTornTai
 			seenPhysical[record.Location.Cursor] = true
 			stats.RecordsRead++
 		}
-		decodedMeta, decodedEvents, legacyTransaction, decodeErr := decodeStoryProjectionPayload(record.Payload)
+		decodedMeta, decodedEvents, decodeErr := decodeStoryProjectionPayload(record.Payload)
 		if decodeErr != nil {
 			return StoryMeta{}, nil, fmt.Errorf("解析故事事件失败 (cursor %d): %w", record.Location.Cursor, decodeErr)
 		}
-		if legacyTransaction {
-			stats.TransactionsRead++
-		} else if !record.Legacy && !seenCommonTransaction[record.Location.Cursor] {
+		if !record.Legacy && !seenCommonTransaction[record.Location.Cursor] {
 			seenCommonTransaction[record.Location.Cursor] = true
 			stats.TransactionsRead++
 		}
@@ -181,7 +179,7 @@ func backupStoryBeforeTailRepair(path string) error {
 	if err != nil {
 		return err
 	}
-	writeErr := writeAllStoryBytes(file, data)
+	_, writeErr := file.Write(data)
 	syncErr := file.Sync()
 	closeErr := file.Close()
 	if writeErr != nil || syncErr != nil || closeErr != nil {

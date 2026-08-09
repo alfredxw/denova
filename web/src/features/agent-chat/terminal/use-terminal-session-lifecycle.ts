@@ -79,7 +79,7 @@ export function useTerminalSessionLifecycle(
         const tabs = terminalTabSessions(readStoredWorkbenchState())
         const ownedSessionIds = new Set([...tabs.values()].filter((id): id is string => Boolean(id)))
         const orphaned = runtime.sessions.filter(
-          (session) => session.attached === 0 && !ownedSessionIds.has(session.id) && (!session.owner_tab_id || !tabs.has(session.owner_tab_id)),
+          (session) => session.attached === 0 && !ownedSessionIds.has(session.id) && !tabs.has(session.owner_tab_id),
         )
         if (orphaned.length > 0) {
           console.info('[features/agent-chat/terminal/use-terminal-session-lifecycle.ts] releasing orphaned sessions', {

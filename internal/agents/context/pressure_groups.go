@@ -233,13 +233,5 @@ func effectiveToolResultRetention(result *agent.ToolResultSummary) agent.ToolRes
 	if result == nil {
 		return ""
 	}
-	if result.ResultRetention != "" {
-		return result.ResultRetention
-	}
-	switch result.ContextRetention {
-	case agent.ToolContextTransient, agent.ToolContextReceipt:
-		return agent.ToolResultDeferred
-	default:
-		return ""
-	}
+	return result.ResultRetention
 }

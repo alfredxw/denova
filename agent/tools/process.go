@@ -263,13 +263,7 @@ func commandToolResult(result CommandResult, maxResultBytes int) (agent.ToolResu
 
 func completeCommandArtifact(artifact agent.ToolArtifactRef) bool {
 	path := strings.TrimSpace(artifact.ReadablePath)
-	if path == "" {
-		path = strings.TrimSpace(artifact.URI)
-	}
 	contentType := strings.TrimSpace(artifact.ContentType)
-	if contentType == "" {
-		contentType = strings.TrimSpace(artifact.MIMEType)
-	}
 	return artifact.Complete && artifact.Purpose == agent.ToolArtifactPurposeCompleteToolOutput && path != "" && contentType != ""
 }
 
@@ -278,17 +272,8 @@ func processModelArtifactRef(artifact *agent.ToolArtifactRef) *processArtifactRe
 		return nil
 	}
 	path := strings.TrimSpace(artifact.ReadablePath)
-	if path == "" {
-		path = strings.TrimSpace(artifact.URI)
-	}
 	contentType := strings.TrimSpace(artifact.ContentType)
-	if contentType == "" {
-		contentType = strings.TrimSpace(artifact.MIMEType)
-	}
 	estimatedBytes := artifact.EstimatedBytes
-	if estimatedBytes == 0 {
-		estimatedBytes = artifact.ByteSize
-	}
 	return &processArtifactRef{
 		Purpose: artifact.Purpose, ReadablePath: path, ContentType: contentType,
 		EstimatedBytes: estimatedBytes, EstimatedTokens: artifact.EstimatedTokens, Complete: artifact.Complete,

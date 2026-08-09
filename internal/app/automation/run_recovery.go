@@ -176,22 +176,8 @@ func (s *Service) ensureAutomationRecoveryTask(
 		return nil, automation.RunRecord{}, err
 	}
 	displayTask.Emit(agentrun.Event{Type: "automation_run", Data: run})
-	receipt, err := recovery.Resume(ctx, attach, displayTask.ID(), displayTask.Emit)
+	_, err = recovery.Resume(ctx, attach, displayTask.ID(), displayTask.Emit)
 	if err != nil {
-		recovery.Close()
-		displayTask.RejectStart(err)
-		s.host.UnregisterTask(displayTask)
-		s.clearActiveAutomationTask(snap, taskStoreID, run.ID)
-		return nil, automation.RunRecord{}, err
-	}
-	if err := applyAutomationCurrentReceipt(&run, receipt, strings.TrimSpace(run.RuntimeCommandID)); err != nil {
-		recovery.Close()
-		displayTask.RejectStart(err)
-		s.host.UnregisterTask(displayTask)
-		s.clearActiveAutomationTask(snap, taskStoreID, run.ID)
-		return nil, automation.RunRecord{}, err
-	}
-	if _, err := storeForSnapshot(snap).AppendRun(taskStoreID, run); err != nil {
 		recovery.Close()
 		displayTask.RejectStart(err)
 		s.host.UnregisterTask(displayTask)
@@ -270,8 +256,6 @@ func (s *Service) finalizeRecoveredAutomationRun(
 			run.Summary = summary
 		}
 		stageAutomationTerminalEffects(&run, run.CompletionMutationPaths)
-		run.WriteConfirmationRequired = false
-		run.WriteConfirmationPolicyCaptured = true
 	case agentrun.OutcomeAborted, agentrun.OutcomePreempted:
 		run.Status = automation.RunStatusAborted
 		run.Error = automationRunOutcomeError(outcome).Error()

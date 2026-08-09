@@ -304,14 +304,6 @@ func (s *Store) readStoryHistoryPageLocked(storyID, branchID, beforeCursor strin
 			physicalSeen[cursor] = true
 			if !physical.Legacy {
 				transactionSeen[cursor] = true
-				continue
-			}
-			_, _, legacyTransaction, decodeErr := decodeStoryProjectionPayload(physical.Payload)
-			if decodeErr != nil {
-				return loadedStoryHistoryPage{}, decodeErr
-			}
-			if legacyTransaction {
-				transactionSeen[cursor] = true
 			}
 		}
 		located, decodeErr := decodeLocatedStoryRecords(records)
@@ -415,7 +407,7 @@ func (s *Store) readStoryHistoryPageLocked(storyID, branchID, beforeCursor strin
 func decodeLocatedStoryRecords(records []conversationjournal.Record) ([]locatedStoryRecord, error) {
 	result := make([]locatedStoryRecord, 0, len(records))
 	for _, physical := range records {
-		_, events, _, err := decodeStoryProjectionPayload(physical.Payload)
+		_, events, err := decodeStoryProjectionPayload(physical.Payload)
 		if err != nil {
 			return nil, fmt.Errorf("解析故事历史失败 (cursor %d): %w", physical.Location.Cursor, err)
 		}

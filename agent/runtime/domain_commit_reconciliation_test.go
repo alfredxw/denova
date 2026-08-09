@@ -384,7 +384,11 @@ func appendAbortToPendingDomainCommit(t *testing.T, store runstate.JournalStore,
 	if err != nil {
 		t.Fatal(err)
 	}
-	events, err := journal.Load(context.Background())
+	var events []runstate.Event
+	_, err = journal.Replay(context.Background(), func(event runstate.Event) error {
+		events = append(events, event)
+		return nil
+	})
 	if err != nil {
 		_ = journal.Close()
 		t.Fatal(err)

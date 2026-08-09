@@ -101,7 +101,7 @@ func TestExternalConsumerComposesReusableAgent(t *testing.T) {
 			PostCheck:        agent.ToolPostCheckNone,
 			Recovery:         agent.ToolRecoveryReadOnly,
 			ResultProjection: agent.ToolResultBoundedModelContext,
-			ContextRetention: agent.ToolContextReceipt,
+			ResultRetention:  agent.ToolResultDeferred,
 			Steering:         agent.SteeringFinishCurrent,
 			MaxResultBytes:   4096,
 		},
@@ -196,7 +196,7 @@ func TestExternalConsumerComposesReusableAgent(t *testing.T) {
 	}
 
 	expectedLookupResult := agent.TextToolResult(`{"value":"portable answer"}`)
-	expectedLookupResult.ContextRetention = agent.ToolContextReceipt
+	expectedLookupResult.ResultRetention = agent.ToolResultDeferred
 	expectedEmitted := []*agent.Message{
 		agent.AssistantMessage("", []agent.ToolCall{{
 			ID: "lookup-1", Type: "function",

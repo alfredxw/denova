@@ -97,8 +97,8 @@ func testToolDefinition(tool Tool) ToolDefinition {
 		Source: ToolSourceRead, Execution: ToolExecutionParallelRead,
 		MutationScope: ToolMutationNone, PostCheck: ToolPostCheckNone,
 		Recovery: ToolRecoveryReadOnly, ResultProjection: ToolResultBoundedModelContext,
-		ContextRetention: ToolContextReceipt,
-		Steering:         SteeringFinishCurrent, MaxResultBytes: 1 << 20,
+		ResultRetention: ToolResultDeferred,
+		Steering:        SteeringFinishCurrent, MaxResultBytes: 1 << 20,
 	}}
 }
 

@@ -15,6 +15,7 @@ const tabs: AgentChatTab[] = [
     id: 'reader-tab',
     projectId: 'project-one',
     workspace: '/books/one',
+    group: 'primary',
     pageId: 'reader',
   },
   {
@@ -22,6 +23,7 @@ const tabs: AgentChatTab[] = [
     id: 'skills-tab',
     projectId: 'project-one',
     workspace: '/books/one',
+    group: 'primary',
     pageId: 'skills',
   },
 ]
@@ -149,6 +151,7 @@ describe('AgentChatTabBar', () => {
       id: 'review-tab',
       projectId: 'project-one',
       workspace: '/books/one',
+      group: 'primary',
       threadID: 'review-thread',
     }
     renderTabBar(

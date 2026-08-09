@@ -72,7 +72,7 @@ func TestEnsureStateCopiesLegacyProjectDataWithoutDeletingSource(t *testing.T) {
 	}
 }
 
-func TestEnsureStateUpgradesOlderReceiptToMigrateReviews(t *testing.T) {
+func TestEnsureStateRejectsUnsupportedIntermediateReceipt(t *testing.T) {
 	denovaDir := t.TempDir()
 	workspace := t.TempDir()
 	registry := NewRegistry(denovaDir)
@@ -90,23 +90,8 @@ func TestEnsureStateUpgradesOlderReceiptToMigrateReviews(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(layout.StateRoot, "migration.json"), []byte("{\"version\":1}\n"), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	legacyLedger := workspacelayout.Path(workspace, "reviews", "ledger.jsonl")
-	if err := os.MkdirAll(filepath.Dir(legacyLedger), 0o700); err != nil {
-		t.Fatal(err)
-	}
-	if err := os.WriteFile(legacyLedger, []byte("review\n"), 0o600); err != nil {
-		t.Fatal(err)
-	}
-
-	if _, err := registry.EnsureState(record); err != nil {
-		t.Fatalf("upgrade state migration: %v", err)
-	}
-	data, err := os.ReadFile(filepath.Join(layout.ReviewsDir(), "ledger.jsonl"))
-	if err != nil || string(data) != "review\n" {
-		t.Fatalf("migrated review ledger data=%q err=%v", data, err)
-	}
-	if _, err := os.Stat(legacyLedger); err != nil {
-		t.Fatalf("legacy rollback source missing: %v", err)
+	if _, err := registry.EnsureState(record); err == nil || !strings.Contains(err.Error(), "does not match supported version") {
+		t.Fatalf("unsupported receipt error = %v", err)
 	}
 }
 

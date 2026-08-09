@@ -35,9 +35,6 @@ func TestInteractiveToolResultSummaryRoundTripsThroughStorySchema(t *testing.T) 
 				ContextValue: agent.ToolResultContextDiscardable, SupersessionKey: "read:chapters/one.md",
 			},
 			ArtifactPersistence: &agent.ToolArtifactPersistence{Attempted: true, Complete: false, FailureReason: agent.ToolArtifactFailureWrite},
-			ContextRetention:    agent.ToolContextReceipt,
-			RetainedContent:     "legacy receipt",
-			RetainedArguments:   `{"path":"chapters/one.md"}`,
 			Artifacts: []agent.ToolArtifactRef{{
 				ID: "artifact-1", ReadablePath: ".denova/artifacts/story/call-read-1.log", ContentType: "text/plain",
 				EstimatedBytes: 64_000, EstimatedTokens: 16_000, Complete: true,
@@ -181,7 +178,7 @@ func durableInteractiveToolBatchFixture() []*agents.Message {
 	}})
 	result := agents.ToolMessage(agent.TextToolResult("The gate was opened recently."), "call-fetch", agents.WithToolName("web_fetch"))
 	result.ToolResult = &agent.ToolResultSummary{
-		Status: agent.ToolResultSuccess, ContextRetention: agent.ToolContextTransient,
+		Status: agent.ToolResultSuccess, ResultRetention: agent.ToolResultEagerCandidate,
 		Artifacts: []agent.ToolArtifactRef{{ReadablePath: ".denova/artifacts/game/fetch.txt", EstimatedBytes: 4096, Complete: true}},
 	}
 	return []*agents.Message{assistant, result}

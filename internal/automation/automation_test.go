@@ -521,7 +521,6 @@ func TestStoreCompletionEffectsReceiptIsMonotonicAgainstStaleWriter(t *testing.T
 		RootRuntimeCommandID: commandID, RootRuntimeOperationID: "operation-1", RootRuntimeReceiptCursor: 1,
 		RuntimeCommandID: commandID, RuntimeOperationID: "operation-1", RuntimeReceiptCursor: 1,
 		CompletionEffectsPending: true, CompletionEffectsOperationID: "operation-1",
-		WriteConfirmationPolicyCaptured: true, WriteConfirmationRequired: true,
 		CompletionMutationPaths: []string{"chapters/committed.md"},
 	}
 	if _, err := store.AppendRun(task.CatalogID, pending); err != nil {
@@ -535,16 +534,13 @@ func TestStoreCompletionEffectsReceiptIsMonotonicAgainstStaleWriter(t *testing.T
 	}
 	stale := pending
 	stale.CompletionEffectsOperationID = ""
-	stale.WriteConfirmationPolicyCaptured = false
-	stale.WriteConfirmationRequired = false
 	stale.CompletionMutationPaths = nil
 	updated, err := store.AppendRun(task.CatalogID, stale)
 	if err != nil {
 		t.Fatalf("stale append should merge acknowledged facts: %v", err)
 	}
 	if updated.LastRun == nil || !updated.LastRun.CompletionEffectsCompleted || updated.LastRun.CompletionEffectsPending ||
-		updated.LastRun.CompletionEffectsOperationID != "operation-1" || !updated.LastRun.WriteConfirmationPolicyCaptured ||
-		!updated.LastRun.WriteConfirmationRequired || len(updated.LastRun.CompletionMutationPaths) != 1 {
+		updated.LastRun.CompletionEffectsOperationID != "operation-1" || len(updated.LastRun.CompletionMutationPaths) != 1 {
 		t.Fatalf("stale writer regressed effects receipt: %#v", updated.LastRun)
 	}
 	lateMutation := acknowledged

@@ -293,11 +293,8 @@ type InputMaterializationRecovery struct {
 }
 
 type ToolCallState struct {
-	CallID string `json:"call_id"`
-	Name   string `json:"name"`
-	// Arguments is accepted only for replaying journals written before payload
-	// descriptors were introduced. New events clear it before persistence.
-	Arguments           json.RawMessage   `json:"arguments,omitempty"`
+	CallID              string            `json:"call_id"`
+	Name                string            `json:"name"`
 	ArgumentsDescriptor PayloadDescriptor `json:"arguments_descriptor,omitempty"`
 	OperationID         OperationID       `json:"operation_id"`
 	Cycle               int               `json:"cycle"`

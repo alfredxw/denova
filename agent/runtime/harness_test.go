@@ -7,6 +7,7 @@ import (
 	"fmt"
 	filejournal "github.com/alfredxw/denova/agent/runtime/filejournal"
 	"reflect"
+	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -653,8 +654,9 @@ func TestRecoveryNeverRetriesAnUnfinishedToolEffect(t *testing.T) {
 		}},
 		runstate.CycleStartedEvent{OperationID: operationID, Cycle: 1, SnapshotID: "snapshot-recover"},
 		runstate.ToolCallStartedEvent{Call: runstate.ToolCallState{
-			CallID: "tool-1", Name: "write", Arguments: []byte(`{"path":"chapter.md"}`),
-			OperationID: operationID, Cycle: 1,
+			CallID: "tool-1", Name: "write",
+			ArgumentsDescriptor: runstate.PayloadDescriptor{Bytes: len(`{"path":"chapter.md"}`), SHA256: strings.Repeat("a", 64)},
+			OperationID:         operationID, Cycle: 1,
 		}},
 	}); err != nil {
 		t.Fatalf("seed unfinished operation: %v", err)

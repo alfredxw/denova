@@ -66,7 +66,7 @@ interface AgentChatTabBarProps {
   /** Reorder inside the strip, or hand the tab to the other side of the split. */
   onMoveTab: (sourceId: string, group: AgentChatGroupId, beforeId: string | null) => void
   onNewAgentTab: (group: AgentChatGroupId) => void
-  onNewTerminalTab: (group: AgentChatGroupId, profileId: TerminalProfileId, profileName?: string, command?: string) => void
+  onNewTerminalTab: (group: AgentChatGroupId, profileId: TerminalProfileId, profileName?: string) => void
   onOpenFiles: (group: AgentChatGroupId) => void
   onOpenPage: (group: AgentChatGroupId, pageId: AgentChatPageId) => void
 }

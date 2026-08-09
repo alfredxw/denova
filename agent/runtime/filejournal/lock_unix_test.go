@@ -30,11 +30,11 @@ func TestFileJournalLockSerializesAnotherProcess(t *testing.T) {
 	if err != nil {
 		t.Fatalf("open file journal: %v", err)
 	}
-	journal := opened.(*journal)
+	parentJournal := opened.(*journal)
 	released := false
 	defer func() {
 		if !released {
-			_ = journal.Close()
+			_ = parentJournal.Close()
 		}
 	}()
 
@@ -72,7 +72,7 @@ func TestFileJournalLockSerializesAnotherProcess(t *testing.T) {
 		t.Fatalf("helper bypassed held file lock: %v", err)
 	case <-time.After(40 * time.Millisecond):
 	}
-	if err := journal.Close(); err != nil {
+	if err := parentJournal.Close(); err != nil {
 		t.Fatalf("release parent binding lease: %v", err)
 	}
 	released = true
@@ -91,7 +91,7 @@ func TestFileJournalLockSerializesAnotherProcess(t *testing.T) {
 		t.Fatalf("reopen file journal: %v", err)
 	}
 	defer reopened.Close()
-	events, err := reopened.Load(context.Background())
+	events, err := reopened.(*journal).Load(context.Background())
 	if err != nil {
 		t.Fatalf("load helper append: %v", err)
 	}

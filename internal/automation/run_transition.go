@@ -34,10 +34,6 @@ func preserveMonotonicRunReceipt(existing, next RunRecord, allowCompletionReopen
 		if next.CompletionEffectsOperationID == "" {
 			next.CompletionEffectsOperationID = existing.CompletionEffectsOperationID
 		}
-		if existing.WriteConfirmationPolicyCaptured {
-			next.WriteConfirmationPolicyCaptured = true
-			next.WriteConfirmationRequired = existing.WriteConfirmationRequired
-		}
 		callerCoveredMutationPaths := runMutationPathsSubset(existing.CompletionMutationPaths, next.CompletionMutationPaths)
 		callerCoveredMutationEffects := runMutationPathsSubset(existing.CompletionMutationEffectIDs, next.CompletionMutationEffectIDs)
 		next.CompletionMutationPaths = mergeRunMutationPaths(existing.CompletionMutationPaths, next.CompletionMutationPaths)
@@ -173,9 +169,6 @@ func validateRunAppendTransition(existing, next RunRecord, allowCompletionReopen
 			if !runMutationPathsSubset(next.CompletionMutationPaths, existing.CompletionMutationPaths) {
 				return conflict("completed effects acquired an unacknowledged mutation path")
 			}
-		}
-		if existing.WriteConfirmationPolicyCaptured && (!next.WriteConfirmationPolicyCaptured || next.WriteConfirmationRequired != existing.WriteConfirmationRequired) {
-			return conflict("captured write-confirmation policy changed")
 		}
 	}
 	if next.RuntimeAdmissionPending && (runHasRuntimeReceipt(existing) || runHasRuntimeReceipt(next)) {

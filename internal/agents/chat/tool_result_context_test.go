@@ -310,7 +310,8 @@ func TestToolResultContextRecorderPersistsAtomicBoundedRichBatchInSourceOrder(t 
 	bounded.Result.ContextHints = &agent.ToolResultContextHints{
 		Recovery: agent.ToolResultRecoveryHint{
 			Kind: agent.ToolResultRecoveryRead, Reference: map[string]any{"path": "chapter.md"},
-			EstimatedBytes: int64(bounded.OriginalBytes), EstimatedTokens: toolresult.EstimatedTokens(int64(bounded.OriginalBytes)),
+			EstimatedBytes:  int64(bounded.Result.Metadata.OriginalModelBytes),
+			EstimatedTokens: toolresult.EstimatedTokens(int64(bounded.Result.Metadata.OriginalModelBytes)),
 		},
 		ContextValue: agent.ToolResultContextNormal,
 	}
@@ -349,7 +350,7 @@ func TestToolResultContextRecorderPersistsAtomicBoundedRichBatchInSourceOrder(t 
 	if conversation.batches != 1 {
 		t.Fatalf("tool exchange batches = %d, want 1", conversation.batches)
 	}
-	if got := conversation.messages[1].Content; got != bounded.Content || strings.Contains(got, toolresult.ReceiptSchema) {
+	if got := conversation.messages[1].Content; got != bounded.Result.ModelContent || strings.Contains(got, toolresult.ReceiptSchema) {
 		t.Fatalf("recorded result is not the bounded rich result: %s", got)
 	}
 	if conversation.messages[1].ToolCallID != "call-read" || conversation.messages[1].ToolName != "read" ||
@@ -358,7 +359,7 @@ func TestToolResultContextRecorderPersistsAtomicBoundedRichBatchInSourceOrder(t 
 		t.Fatalf("parallel results were not restored to source order: %#v", conversation.messages)
 	}
 	if conversation.messages[1].ToolResult == nil || !conversation.messages[1].ToolResult.ModelTruncated ||
-		conversation.messages[1].ToolResult.ContextHints == nil || conversation.messages[1].ToolResult.RetainedContent != "" {
+		conversation.messages[1].ToolResult.ContextHints == nil {
 		t.Fatalf("stored rich summary should retain deterministic cleanup metadata: %#v", conversation.messages[1])
 	}
 }
@@ -602,7 +603,7 @@ func TestToolResultContextKeepsLoreErrorsInsteadOfPositiveReceipt(t *testing.T) 
 	filtered := toolresult.FilterStructured(
 		"read_lore_items", descriptor, `{}`, agent.ToolErrorResult(raw, raw), 0,
 	)
-	if filtered.Result.Status != agent.ToolResultError || filtered.Result.ModelContent != raw || filtered.Result.RetainedContent != "" {
+	if filtered.Result.Status != agent.ToolResultError || filtered.Result.ModelContent != raw {
 		t.Fatalf("failed lore read must remain a protected rich error: %#v", filtered.Result)
 	}
 }

@@ -78,6 +78,7 @@ const tab: AgentChatTerminalTab = {
   id: 'terminal-tab-1',
   projectId: 'project-a',
   workspace: '/books/a',
+  group: 'primary',
   profileId: 'shell',
   title: '',
 }
@@ -92,6 +93,7 @@ function session(id: string): TerminalSessionInfo {
     args: [],
     cwd: tab.workspace,
     workspace: tab.workspace,
+    project_id: tab.projectId,
     cols: 80,
     rows: 24,
     created_at: '2026-07-26T00:00:00Z',

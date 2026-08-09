@@ -13,7 +13,7 @@ func resultTestDescriptor(limit int) ToolDescriptor {
 		MutationScope: ToolMutationNone, PostCheck: ToolPostCheckNone,
 		Recovery: ToolRecoveryReadOnly, ResultRecoveryKind: ToolResultRecoveryRead,
 		ResultProjection: ToolResultBoundedModelContext,
-		ContextRetention: ToolContextReceipt,
+		ResultRetention:  ToolResultDeferred,
 		Steering:         SteeringFinishCurrent, MaxResultBytes: limit,
 	}
 }
@@ -67,9 +67,8 @@ func TestNormalizeToolResultRejectsInvalidStructuredFields(t *testing.T) {
 		{name: "success synthetic", result: ToolResult{Status: ToolResultSuccess, SyntheticReason: ToolSyntheticUnknownTool}},
 		{name: "invalid details", result: ToolResult{Status: ToolResultSuccess, Details: json.RawMessage(`{"broken"`)}},
 		{name: "oversized details", result: ToolResult{Status: ToolResultSuccess, Details: json.RawMessage(`{"value":"0123456789"}`)}},
-		{name: "invalid retained arguments", result: ToolResult{Status: ToolResultSuccess, RetainedArguments: `{"broken"`}},
 		{name: "invalid artifact digest", result: ToolResult{Status: ToolResultSuccess, Artifacts: []ToolArtifactRef{{
-			ID: "artifact", URI: "memory://artifact", MIMEType: "text/plain", ByteSize: 1, SHA256: "invalid",
+			ID: "artifact", ReadablePath: "memory://artifact", ContentType: "text/plain", EstimatedBytes: 1, SHA256: "invalid",
 		}}}},
 		{name: "invalid artifact purpose", result: ToolResult{Status: ToolResultSuccess, Artifacts: []ToolArtifactRef{{
 			ID: "artifact", Purpose: ToolArtifactPurpose("future"), ReadablePath: ".denova/artifacts/item.log",
@@ -87,7 +86,6 @@ func TestNormalizeToolResultRejectsInvalidStructuredFields(t *testing.T) {
 
 func TestNormalizeToolResultBoundsAndRedactsContextHints(t *testing.T) {
 	descriptor := resultTestDescriptor(16 * 1024)
-	descriptor.ContextRetention = ""
 	descriptor.ResultRetention = ToolResultEagerCandidate
 	reference := map[string]any{
 		"path":          "chapters/one.md",
@@ -170,7 +168,6 @@ func TestNormalizeToolResultBoundsAndRedactsContextHints(t *testing.T) {
 
 func TestNormalizeToolResultRejectsUnsafeContextHints(t *testing.T) {
 	descriptor := resultTestDescriptor(1024)
-	descriptor.ContextRetention = ""
 	descriptor.ResultRetention = ToolResultDeferred
 	tests := []ToolResultContextHints{
 		{Recovery: ToolResultRecoveryHint{Kind: ToolResultRecoveryKind("future")}},
@@ -200,9 +197,9 @@ func TestNormalizeToolResultArtifactContractDoesNotRequireDigest(t *testing.T) {
 		t.Fatal(err)
 	}
 	artifact := normalized.Artifacts[0]
-	if artifact.Purpose != ToolArtifactPurposeAttachment || artifact.URI != artifact.ReadablePath ||
-		artifact.MIMEType != artifact.ContentType || artifact.ByteSize != artifact.EstimatedBytes || artifact.SHA256 != "" {
-		t.Fatalf("artifact aliases were not normalized: %#v", artifact)
+	if artifact.Purpose != ToolArtifactPurposeAttachment || artifact.ReadablePath == "" ||
+		artifact.ContentType == "" || artifact.EstimatedBytes != 4096 || artifact.SHA256 != "" {
+		t.Fatalf("artifact was not normalized: %#v", artifact)
 	}
 }
 

@@ -43,9 +43,19 @@ func (registry *Registry) EnsureState(record Record) (Layout, error) {
 	receiptPath := filepath.Join(layout.StateRoot, "migration.json")
 	if raw, readErr := os.ReadFile(receiptPath); readErr == nil {
 		var receipt migrationReceipt
-		if json.Unmarshal(raw, &receipt) == nil && receipt.Version >= stateMigrationVersion {
-			return layout, nil
+		if err := json.Unmarshal(raw, &receipt); err != nil {
+			return Layout{}, fmt.Errorf("decode project state migration receipt: %w", err)
 		}
+		if receipt.Version != stateMigrationVersion {
+			return Layout{}, fmt.Errorf(
+				"project state migration receipt version %d does not match supported version %d",
+				receipt.Version,
+				stateMigrationVersion,
+			)
+		}
+		return layout, nil
+	} else if !errors.Is(readErr, os.ErrNotExist) {
+		return Layout{}, fmt.Errorf("read project state migration receipt: %w", readErr)
 	}
 	legacy := []struct {
 		name        string

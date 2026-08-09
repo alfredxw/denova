@@ -39,7 +39,6 @@ type Store struct {
 	novaDir                string
 	mu                     sync.Mutex
 	rewriteJSONL           func(string, []any) error
-	appendStoryRecord      func(string, []byte) error
 	lastStoryReplayByStory map[string]StoryJournalReplayStats
 	heldStoryLeases        map[string]int
 	storyJournals          map[string]*storyJournalHandle

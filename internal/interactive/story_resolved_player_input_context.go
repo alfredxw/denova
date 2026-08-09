@@ -116,19 +116,14 @@ func normalizePlayerInputAcceptedEvent(event PlayerInputAcceptedEvent) (PlayerIn
 		strings.TrimSpace(event.AgentCommitHash) != canonical.Hash {
 		return PlayerInputAcceptedEvent{}, fmt.Errorf("%w: persisted player input identity or hash changed", ErrPlayerInputIdentityConflict)
 	}
-	if event.AcceptedTurnCount != nil && *event.AcceptedTurnCount < 0 {
+	if event.AcceptedTurnCount < 0 {
 		return PlayerInputAcceptedEvent{}, fmt.Errorf("%w: accepted turn boundary is negative", ErrPlayerInputIdentityConflict)
-	}
-	acceptedTurnCount := event.AcceptedTurnCount
-	if acceptedTurnCount != nil {
-		value := *acceptedTurnCount
-		acceptedTurnCount = &value
 	}
 	return PlayerInputAcceptedEvent{
 		V: event.V, Type: StoryEventTypePlayerInput,
 		ID: deterministicPlayerInputID(identity), ParentID: strings.TrimSpace(event.ParentID),
 		BranchID: canonical.BranchID, Ts: strings.TrimSpace(event.Ts), Text: canonical.Text,
-		AcceptedTurnCount: acceptedTurnCount,
+		AcceptedTurnCount: event.AcceptedTurnCount,
 		AgentCommandID:    identity.CommandID, AgentOperationID: identity.OperationID,
 		AgentCycle: identity.Cycle, AgentCommitHash: canonical.Hash,
 	}, nil
@@ -141,10 +136,6 @@ func cloneResolvedPlayerInputContexts(contexts []ResolvedPlayerInputContext) []R
 	result := make([]ResolvedPlayerInputContext, 0, len(contexts))
 	for _, context := range contexts {
 		input := context.Input
-		if input.AcceptedTurnCount != nil {
-			value := *input.AcceptedTurnCount
-			input.AcceptedTurnCount = &value
-		}
 		batches := make([]ModelContextBatchEvent, 0, len(context.ModelContextBatches))
 		for _, batch := range context.ModelContextBatches {
 			batch.Messages = sanitizeModelContextMessages(batch.Messages)

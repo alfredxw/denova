@@ -97,16 +97,6 @@ const (
 	ToolResultProtected      ToolResultRetentionMode = "protected"
 )
 
-// ToolContextRetention is the deprecated immediate-receipt contract kept only
-// so existing descriptors and persisted histories can be replayed. New tools
-// must use ToolDescriptor.ResultRetention.
-type ToolContextRetention string
-
-const (
-	ToolContextTransient ToolContextRetention = "transient"
-	ToolContextReceipt   ToolContextRetention = "receipt"
-)
-
 // SteeringPolicy controls what a pending safe preemption may do to a call that
 // has already started.
 type SteeringPolicy string
@@ -130,11 +120,9 @@ type ToolDescriptor struct {
 	// from Recovery, which describes crash/durability semantics.
 	ResultRecoveryKind ToolResultRecoveryKind  `json:"result_recovery_kind,omitempty"`
 	ResultProjection   ToolResultProjection    `json:"result_projection"`
-	ResultRetention    ToolResultRetentionMode `json:"result_retention,omitempty"`
-	// Deprecated: retained for replaying pre-pressure-planner descriptors.
-	ContextRetention ToolContextRetention `json:"context_retention,omitempty"`
-	Steering         SteeringPolicy       `json:"steering"`
-	MaxResultBytes   int                  `json:"max_result_bytes"`
+	ResultRetention    ToolResultRetentionMode `json:"result_retention"`
+	Steering           SteeringPolicy          `json:"steering"`
+	MaxResultBytes     int                     `json:"max_result_bytes"`
 }
 
 // Validate rejects incomplete descriptors and inconsistent safety claims.
@@ -177,22 +165,10 @@ func (descriptor ToolDescriptor) Validate() error {
 	if descriptor.ResultProjection != ToolResultBoundedModelContext {
 		return fmt.Errorf("invalid tool result projection %q", descriptor.ResultProjection)
 	}
-	if descriptor.ResultRetention != "" {
-		switch descriptor.ResultRetention {
-		case ToolResultDeferred, ToolResultEagerCandidate, ToolResultProtected:
-		default:
-			return fmt.Errorf("invalid tool result retention %q", descriptor.ResultRetention)
-		}
-	}
-	if descriptor.ContextRetention != "" {
-		switch descriptor.ContextRetention {
-		case ToolContextTransient, ToolContextReceipt:
-		default:
-			return fmt.Errorf("invalid legacy tool context retention %q", descriptor.ContextRetention)
-		}
-	}
-	if descriptor.ResultRetention == "" && descriptor.ContextRetention == "" {
-		return errors.New("tool result retention must be explicit")
+	switch descriptor.ResultRetention {
+	case ToolResultDeferred, ToolResultEagerCandidate, ToolResultProtected:
+	default:
+		return fmt.Errorf("invalid tool result retention %q", descriptor.ResultRetention)
 	}
 	if descriptor.ResultRetention == ToolResultEagerCandidate && descriptor.ResultRecoveryKind == "" {
 		return errors.New("eager tool result requires an explicit result recovery kind")
@@ -222,21 +198,6 @@ func (descriptor ToolDescriptor) Validate() error {
 		return errors.New("interruptible wait must be read-only and non-mutating")
 	}
 	return nil
-}
-
-// EffectiveResultRetention returns the stable retention policy. Legacy
-// immediate-receipt descriptors replay as deferred so old history is never
-// made more disposable merely because it predates the pressure planner.
-func (descriptor ToolDescriptor) EffectiveResultRetention() ToolResultRetentionMode {
-	if descriptor.ResultRetention != "" {
-		return descriptor.ResultRetention
-	}
-	switch descriptor.ContextRetention {
-	case ToolContextTransient, ToolContextReceipt:
-		return ToolResultDeferred
-	default:
-		return ""
-	}
 }
 
 func validateToolExecutionMutation(execution ToolExecutionClass, scope ToolMutationScope) error {
@@ -417,12 +378,8 @@ type ToolArtifactRef struct {
 	EstimatedBytes  int64               `json:"estimated_bytes"`
 	EstimatedTokens int                 `json:"estimated_tokens"`
 	Complete        bool                `json:"complete"`
-	// Deprecated compatibility aliases. New consumers use ReadablePath,
-	// ContentType, and EstimatedBytes. SHA256 is optional diagnostic metadata.
-	URI      string `json:"uri,omitempty"`
-	MIMEType string `json:"mime_type,omitempty"`
-	ByteSize int64  `json:"byte_size,omitempty"`
-	SHA256   string `json:"sha256,omitempty"`
+	// SHA256 is optional diagnostic metadata.
+	SHA256 string `json:"sha256,omitempty"`
 }
 
 // ToolResultRecoveryKind identifies the ordinary capability that can recover
@@ -479,15 +436,10 @@ type ToolResult struct {
 	Status           ToolResultStatus            `json:"status"`
 	SyntheticReason  ToolSyntheticReason         `json:"synthetic_reason,omitempty"`
 	Metadata         ToolResultMetadata          `json:"metadata"`
-	ResultRetention  ToolResultRetentionMode     `json:"result_retention,omitempty"`
+	ResultRetention  ToolResultRetentionMode     `json:"result_retention"`
 	ContextHints     *ToolResultContextHints     `json:"context_hints,omitempty"`
 	ProtectedReceipt *ToolResultProtectedReceipt `json:"protected_receipt,omitempty"`
-	// Deprecated replay fields. New context planning uses ResultRetention and
-	// ContextHints without rewriting canonical history.
-	ContextRetention  ToolContextRetention `json:"context_retention,omitempty"`
-	RetainedContent   string               `json:"retained_content,omitempty"`
-	RetainedArguments string               `json:"retained_arguments,omitempty"`
-	Artifacts         []ToolArtifactRef    `json:"artifacts,omitempty"`
+	Artifacts        []ToolArtifactRef           `json:"artifacts,omitempty"`
 }
 
 // TextToolResult constructs the common successful text result.
@@ -515,20 +467,6 @@ func SyntheticToolResult(status ToolResultStatus, reason ToolSyntheticReason, co
 // IsError reports the provider/runtime error bit for this outcome.
 func (result ToolResult) IsError() bool { return result.Status != ToolResultSuccess }
 
-// EffectiveResultRetention resolves the new contract while keeping old
-// transcript summaries readable without rewriting them in place.
-func (result ToolResult) EffectiveResultRetention() ToolResultRetentionMode {
-	if result.ResultRetention != "" {
-		return result.ResultRetention
-	}
-	switch result.ContextRetention {
-	case ToolContextTransient, ToolContextReceipt:
-		return ToolResultDeferred
-	default:
-		return ""
-	}
-}
-
 // NormalizeToolResult validates and bounds a result using its descriptor. It is
 // safe to call more than once; metadata is recalculated from visible content.
 func NormalizeToolResult(result ToolResult, descriptor ToolDescriptor) (ToolResult, error) {
@@ -551,7 +489,6 @@ func NormalizeToolResult(result ToolResult, descriptor ToolDescriptor) (ToolResu
 		return ToolResult{}, errors.New("successful tool result cannot be synthetic")
 	}
 	result.ResultRetention = descriptor.ResultRetention
-	result.ContextRetention = descriptor.ContextRetention
 	normalizedHints, err := normalizeToolResultContextHints(result.ContextHints)
 	if err != nil {
 		return ToolResult{}, err
@@ -576,17 +513,6 @@ func NormalizeToolResult(result ToolResult, descriptor ToolDescriptor) (ToolResu
 			result.ProtectedReceipt = &receipt
 		}
 	}
-	result.RetainedContent = strings.ToValidUTF8(result.RetainedContent, "\uFFFD")
-	result.RetainedArguments = strings.TrimSpace(strings.ToValidUTF8(result.RetainedArguments, "\uFFFD"))
-	if len(result.RetainedContent) > descriptor.MaxResultBytes {
-		return ToolResult{}, fmt.Errorf("retained tool result exceeds %d bytes", descriptor.MaxResultBytes)
-	}
-	if len(result.RetainedArguments) > descriptor.MaxResultBytes {
-		return ToolResult{}, fmt.Errorf("retained tool arguments exceed %d bytes", descriptor.MaxResultBytes)
-	}
-	if result.RetainedArguments != "" && !json.Valid([]byte(result.RetainedArguments)) {
-		return ToolResult{}, errors.New("retained tool arguments must be valid JSON")
-	}
 	if len(result.Artifacts) > maxToolResultArtifacts {
 		return ToolResult{}, fmt.Errorf("tool result has %d artifacts; maximum is %d", len(result.Artifacts), maxToolResultArtifacts)
 	}
@@ -599,28 +525,14 @@ func NormalizeToolResult(result ToolResult, descriptor ToolDescriptor) (ToolResu
 		default:
 			return ToolResult{}, fmt.Errorf("tool artifact %d has invalid purpose %q", index, artifact.Purpose)
 		}
-		artifact.URI = strings.TrimSpace(artifact.URI)
 		artifact.ReadablePath = strings.TrimSpace(strings.ToValidUTF8(artifact.ReadablePath, "\uFFFD"))
-		if artifact.ReadablePath == "" {
-			artifact.ReadablePath = strings.ToValidUTF8(artifact.URI, "\uFFFD")
-		}
-		artifact.URI = artifact.ReadablePath
-		artifact.MIMEType = strings.TrimSpace(artifact.MIMEType)
 		artifact.ContentType = strings.TrimSpace(artifact.ContentType)
-		if artifact.ContentType == "" {
-			artifact.ContentType = artifact.MIMEType
-		}
-		artifact.MIMEType = artifact.ContentType
-		if artifact.EstimatedBytes == 0 && artifact.ByteSize > 0 {
-			artifact.EstimatedBytes = artifact.ByteSize
-		}
-		artifact.ByteSize = artifact.EstimatedBytes
 		if artifact.EstimatedTokens == 0 && artifact.EstimatedBytes > 0 {
 			artifact.EstimatedTokens = estimateToolResultTokens(artifact.EstimatedBytes)
 		}
 		artifact.SHA256 = strings.ToLower(strings.TrimSpace(artifact.SHA256))
 		if artifact.ID == "" || artifact.ReadablePath == "" || artifact.ContentType == "" ||
-			artifact.ByteSize < 0 || artifact.EstimatedBytes < 0 || artifact.EstimatedTokens < 0 ||
+			artifact.EstimatedBytes < 0 || artifact.EstimatedTokens < 0 ||
 			strings.ContainsRune(artifact.ReadablePath, '\x00') {
 			return ToolResult{}, fmt.Errorf("tool artifact %d is invalid", index)
 		}

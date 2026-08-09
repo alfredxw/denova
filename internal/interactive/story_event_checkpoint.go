@@ -164,7 +164,7 @@ func scanStoryEventsLocked(handle *storyJournalHandle, visit func(StoryEventReco
 			if physical.Location.Cursor > next {
 				next = physical.Location.Cursor
 			}
-			_, events, _, decodeErr := decodeStoryProjectionPayload(physical.Payload)
+			_, events, decodeErr := decodeStoryProjectionPayload(physical.Payload)
 			if decodeErr != nil {
 				return decodeErr
 			}

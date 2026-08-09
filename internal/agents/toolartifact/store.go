@@ -189,9 +189,6 @@ func (store *Store) VerifyToolArtifact(ctx context.Context, reference agent.Tool
 		return errors.New("tool artifact execution identity does not match")
 	}
 	readablePath := strings.TrimSpace(reference.ReadablePath)
-	if readablePath == "" {
-		readablePath = strings.TrimSpace(reference.URI)
-	}
 	absolutePath := filepath.Clean(readablePath)
 	if !filepath.IsAbs(absolutePath) {
 		absolutePath = filepath.Join(store.boundaryRoot, absolutePath)
@@ -352,7 +349,6 @@ func (w *writer) finish() agent.ToolArtifactRef {
 	reference := agent.ToolArtifactRef{
 		ID: w.id, Purpose: w.purpose, ReadablePath: readablePath, ContentType: w.contentType,
 		EstimatedBytes: w.byteSize, EstimatedTokens: estimatedTokens(w.byteSize), Complete: true,
-		URI: readablePath, MIMEType: w.contentType, ByteSize: w.byteSize,
 		SHA256: hex.EncodeToString(w.digest.Sum(nil)),
 	}
 	_ = w.closeRoot()

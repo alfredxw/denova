@@ -28,8 +28,8 @@ func schedulerReadDescriptor(steering SteeringPolicy) ToolDescriptor {
 		Source: ToolSourceRead, Execution: ToolExecutionParallelRead,
 		MutationScope: ToolMutationNone, PostCheck: ToolPostCheckNone,
 		Recovery: ToolRecoveryReadOnly, ResultProjection: ToolResultBoundedModelContext,
-		ContextRetention: ToolContextReceipt,
-		Steering:         steering, MaxResultBytes: 4096,
+		ResultRetention: ToolResultDeferred,
+		Steering:        steering, MaxResultBytes: 4096,
 	}
 }
 
@@ -38,8 +38,8 @@ func schedulerWriteDescriptor() ToolDescriptor {
 		Source: ToolSourceWrite, Execution: ToolExecutionWorkspaceExclusive,
 		MutationScope: ToolMutationWorkspace, PostCheck: ToolPostCheckWorkspaceChange,
 		Recovery: ToolRecoveryReconcilable, ResultProjection: ToolResultBoundedModelContext,
-		ContextRetention: ToolContextReceipt,
-		Steering:         SteeringFinishCurrent, MaxResultBytes: 4096,
+		ResultRetention: ToolResultProtected,
+		Steering:        SteeringFinishCurrent, MaxResultBytes: 4096,
 	}
 }
 
@@ -48,8 +48,8 @@ func schedulerChildDescriptor() ToolDescriptor {
 		Source: ToolSourceOther, Execution: ToolExecutionChild,
 		MutationScope: ToolMutationNone, PostCheck: ToolPostCheckNone,
 		Recovery: ToolRecoveryReadOnly, ResultProjection: ToolResultBoundedModelContext,
-		ContextRetention: ToolContextTransient,
-		Steering:         SteeringFinishCurrent, MaxResultBytes: 4096,
+		ResultRetention: ToolResultDeferred,
+		Steering:        SteeringFinishCurrent, MaxResultBytes: 4096,
 	}
 }
 

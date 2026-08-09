@@ -401,7 +401,8 @@ func (s *Service) startTaskWithSourceRunID(ctx context.Context, snap *automation
 					return s.ensureAutomationRecoveryTask(ctx, snap, taskDef, persisted)
 				}
 			}
-			if persisted.CompletionEffectsPending || (persisted.Status == automation.RunStatusSuccess && !persisted.CompletionEffectsCompleted) {
+			if automation.RunHasDurableObligation(persisted) &&
+				(persisted.CompletionEffectsPending || persisted.Status == automation.RunStatusSuccess && !persisted.CompletionEffectsCompleted) {
 				completed, completionErr := s.completeAutomationRunEffects(ctx, snap, taskDef, persisted)
 				return nil, completed, completionErr
 			}

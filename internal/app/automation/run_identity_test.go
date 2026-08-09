@@ -258,6 +258,7 @@ func TestAutomationDeterministicRunRecoversAcceptedRuntimeBeforeRunRecord(t *tes
 			Binding: agentrun.RuntimeBinding{AgentKind: agentrun.AgentKindAutomation, Workspace: workspace, SessionID: run.SessionID, TaskID: task.ID},
 			Cursor:  7, Phase: agentrun.RunPhaseRunning,
 			ActiveCommandID: agentrun.CommandID(automationRunAgentCommandID(run.ID)), ActiveOperation: "operation-accepted", ActiveCycle: 1,
+			ActiveReceiptCursor: 7,
 		}, nil
 	}
 	defer func() { service.runtimeProjector = nil }()
@@ -387,6 +388,7 @@ func TestAutomationDeterministicRunReconcilesPersistedRunningFromJournal(t *test
 	running := automation.RunRecord{
 		ID: "deterministic-terminal", TaskID: taskDef.ID, SessionID: automationRunSessionID("deterministic-terminal"),
 		Scope: taskDef.Scope, Workspace: workspace, Trigger: automation.TriggerSchedule, Status: automation.RunStatusRunning,
+		RootRuntimeCommandID: automationRunAgentCommandID("deterministic-terminal"), RootRuntimeOperationID: "operation-terminal", RootRuntimeReceiptCursor: 3,
 		RuntimeCommandID: automationRunAgentCommandID("deterministic-terminal"), RuntimeOperationID: "operation-terminal", RuntimeReceiptCursor: 3,
 	}
 	if _, err := store.AppendRun(taskDef.ID, running); err != nil {
@@ -396,7 +398,10 @@ func TestAutomationDeterministicRunReconcilesPersistedRunningFromJournal(t *test
 	service.runtimeProjector = func(_ context.Context, _ *automationWorkspaceSnapshot, _ automation.Task, _ automation.RunRecord) (agentrun.RuntimeStatus, error) {
 		return agentrun.RuntimeStatus{
 			Cursor: 9, Phase: agentrun.RunPhaseIdle,
-			LastOperation: &agentrun.OperationSummary{CommandID: agentrun.CommandID(automationRunAgentCommandID(running.ID)), OperationID: "operation-terminal", Status: agentrun.OperationSucceeded},
+			LastOperation: &agentrun.OperationSummary{
+				CommandID: agentrun.CommandID(automationRunAgentCommandID(running.ID)), OperationID: "operation-terminal",
+				ReceiptCursor: 3, Status: agentrun.OperationSucceeded,
+			},
 		}, nil
 	}
 	defer func() { service.runtimeProjector = nil }()
@@ -405,7 +410,7 @@ func TestAutomationDeterministicRunReconcilesPersistedRunningFromJournal(t *test
 	if err != nil {
 		t.Fatalf("terminal reconciliation failed: %v", err)
 	}
-	if task != nil || reconciled.Status != automation.RunStatusSuccess || reconciled.FinishedAt.IsZero() || reconciled.RuntimeReceiptCursor != 9 {
+	if task != nil || reconciled.Status != automation.RunStatusSuccess || reconciled.FinishedAt.IsZero() || reconciled.RuntimeReceiptCursor != 3 {
 		t.Fatalf("reconciled task=%v run=%#v", task, reconciled)
 	}
 	_, persisted, err := store.GetRunByID(running.ID)

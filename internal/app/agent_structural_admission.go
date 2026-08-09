@@ -83,12 +83,6 @@ func writingTaskForSessionLocked(a *App, workspace, sessionID string) *apptask.T
 		run.runtime.workspace == workspace && run.runtime.sess != nil && run.runtime.sess.ID == sessionID && !run.task.Finished() {
 		return run.task
 	}
-	// Preserve safe behavior for tests and legacy registrations that predate
-	// writingTaskRun: the only global writing task belongs to the selected
-	// session while that selection has not changed.
-	if a.activeTask != nil && !a.activeTask.Finished() && a.workspace == workspace && a.session != nil && a.session.ID == sessionID {
-		return a.activeTask
-	}
 	return nil
 }
 

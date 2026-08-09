@@ -6,7 +6,6 @@ import (
 	"denova/internal/agents/toolresult"
 	"fmt"
 	"strings"
-	"time"
 
 	agents "denova/internal/agents"
 	"denova/internal/interactive"
@@ -31,15 +30,12 @@ type interactiveProjectedTurn struct {
 
 // interactiveResolvedContext is an interrupted input made durable by the Turn
 // that eventually closed it. displayBoundary restores the original transcript
-// order. sourceBoundary may be clamped to the active checkpoint: a checkpoint
-// cannot move backwards, but a legacy checkpoint that ended inside this
-// interval can still be healed by compacting from that checkpoint through the
-// owner Turn atomically.
+// order. A valid checkpoint never bisects the interval between acceptance and
+// the owner Turn.
 type interactiveResolvedContext struct {
 	context          interactive.ResolvedPlayerInputContext
 	acceptedBoundary int
 	displayBoundary  int
-	sourceBoundary   int
 	ownerTurn        int
 	messages         []*agents.Message
 }
@@ -91,14 +87,14 @@ func BuildModelContextProjection(
 	if earliestPending < projection.SourceTurnCount {
 		projection.SourceTurnCount = earliestPending
 	}
-	// A checkpoint can never move backwards. Legacy records that predate the
-	// explicit acceptance boundary are rendered conservatively, but they block
-	// further checkpoint publication until their pending input settles.
 	if projection.SourceTurnCount < sourceStart {
-		projection.SourceTurnCount = sourceStart
+		return ModelContextProjection{}, fmt.Errorf(
+			"Game checkpoint bisects a pending player input: checkpoint=%d input=%d",
+			sourceStart, projection.SourceTurnCount,
+		)
 	}
 	projection.SourceTurnCount = interactiveAtomicSourceTurnCount(
-		sourceStart, projection.SourceTurnCount, resolved,
+		projection.SourceTurnCount, resolved,
 	)
 
 	projection.Messages = append(projection.Messages, checkpointMessages...)
@@ -118,8 +114,7 @@ func BuildModelContextProjection(
 		// A canonical owner Turn consumes every pending input that existed at its
 		// commit, so a surviving pending input must have been accepted at a later
 		// boundary than every context resolved by that owner. Resolved-first is
-		// therefore the stable order; it is also the conservative fallback for
-		// legacy records whose timestamp-derived boundaries collapse together.
+		// therefore the stable order.
 		projection.Messages = append(projection.Messages, resolvedAt[boundary]...)
 		projection.Messages = append(projection.Messages, pendingAt[boundary]...)
 		if boundary == history.EndTurn {
@@ -135,8 +130,8 @@ func BuildModelContextProjection(
 	// it. Pending inputs have already shortened SourceTurnCount above.
 	resolvedSourceAt := make(map[int][]interactiveResolvedContext, len(resolved))
 	for _, entry := range resolved {
-		if entry.sourceBoundary < projection.SourceTurnCount && entry.ownerTurn < projection.SourceTurnCount {
-			resolvedSourceAt[entry.sourceBoundary] = append(resolvedSourceAt[entry.sourceBoundary], entry)
+		if entry.acceptedBoundary < projection.SourceTurnCount && entry.ownerTurn < projection.SourceTurnCount {
+			resolvedSourceAt[entry.acceptedBoundary] = append(resolvedSourceAt[entry.acceptedBoundary], entry)
 		}
 	}
 	for boundary := sourceStart; boundary < projection.SourceTurnCount; boundary++ {
@@ -173,25 +168,10 @@ func projectInteractiveCompletedContext(
 	turnSpans := make([]messageSpan, len(history.Turns))
 	resolved := make([]interactiveResolvedContext, 0)
 	resolvedAt := make(map[int][]int)
-	settledPlayerInputIDs := make(map[string]bool, len(history.Turns))
-	for _, turn := range history.Turns {
-		if playerInputID := strings.TrimSpace(turn.PlayerInputID); playerInputID != "" {
-			settledPlayerInputIDs[playerInputID] = true
-		}
-	}
-	projectedResolvedInputIDs := make(map[string]bool)
 	for index, turn := range history.Turns {
 		ownerTurn := history.StartTurn + index
 		turns[index].turn = turn
 		for _, context := range turn.ResolvedPlayerInputContexts {
-			playerInputID := strings.TrimSpace(context.Input.ID)
-			// Older Beta journals may contain a resolved-input copy after that
-			// input was already represented by its own successful Turn, or repeat
-			// the same copy on more than one later Turn. Keep one semantic input.
-			if playerInputID == "" || settledPlayerInputIDs[playerInputID] || projectedResolvedInputIDs[playerInputID] {
-				continue
-			}
-			projectedResolvedInputIDs[playerInputID] = true
 			// The active checkpoint already owns every context whose closing Turn
 			// is before its source boundary. Retained raw Turns intentionally remain
 			// visible, but replaying their historical tool suffix would duplicate
@@ -209,13 +189,17 @@ func projectInteractiveCompletedContext(
 					context.Input.ID, boundary, ownerTurn,
 				)
 			}
-			displayBoundary := max(history.StartTurn, boundary)
-			sourceBoundary := max(sourceStart, boundary)
+			if boundary < sourceStart {
+				return nil, nil, nil, fmt.Errorf(
+					"Game checkpoint bisects resolved player input %s: accepted=%d checkpoint=%d owner=%d",
+					context.Input.ID, boundary, sourceStart, ownerTurn,
+				)
+			}
 			resolved = append(resolved, interactiveResolvedContext{
-				context: context, acceptedBoundary: boundary, displayBoundary: displayBoundary, sourceBoundary: sourceBoundary,
+				context: context, acceptedBoundary: boundary, displayBoundary: boundary,
 				ownerTurn: ownerTurn, messages: interactivePlayerInputContextMessages(context.Input, context.ModelContextBatches),
 			})
-			resolvedAt[displayBoundary] = append(resolvedAt[displayBoundary], len(resolved)-1)
+			resolvedAt[boundary] = append(resolvedAt[boundary], len(resolved)-1)
 		}
 	}
 	resolvedSpans := make([]messageSpan, len(resolved))
@@ -325,7 +309,6 @@ func interactivePlayerInputContextMessages(
 }
 
 func interactiveAtomicSourceTurnCount(
-	sourceStart int,
 	sourceEnd int,
 	resolved []interactiveResolvedContext,
 ) int {
@@ -335,8 +318,8 @@ func interactiveAtomicSourceTurnCount(
 	for {
 		next := sourceEnd
 		for _, entry := range resolved {
-			boundary := max(sourceStart, entry.sourceBoundary)
-			if entry.ownerTurn < sourceStart || sourceEnd <= boundary || sourceEnd > entry.ownerTurn {
+			boundary := entry.acceptedBoundary
+			if sourceEnd <= boundary || sourceEnd > entry.ownerTurn {
 				continue
 			}
 			if boundary < next {
@@ -351,40 +334,14 @@ func interactiveAtomicSourceTurnCount(
 }
 
 func interactivePlayerInputTurnBoundary(history interactive.StoryModelHistory, input interactive.PlayerInputAcceptedEvent) (int, error) {
-	if input.AcceptedTurnCount != nil {
-		boundary := *input.AcceptedTurnCount
-		if boundary < 0 || boundary > history.TotalTurns {
-			return 0, fmt.Errorf(
-				"invalid accepted-turn boundary for player input %s: boundary=%d total=%d",
-				input.ID, boundary, history.TotalTurns,
-			)
-		}
-		return boundary, nil
+	boundary := input.AcceptedTurnCount
+	if boundary < 0 || boundary > history.TotalTurns {
+		return 0, fmt.Errorf(
+			"invalid accepted-turn boundary for player input %s: boundary=%d total=%d",
+			input.ID, boundary, history.TotalTurns,
+		)
 	}
-	if strings.TrimSpace(input.ParentID) == "" {
-		return 0, nil
-	}
-	for index, turn := range history.Turns {
-		if turn.ID == input.ParentID {
-			return history.StartTurn + index + 1, nil
-		}
-	}
-
-	// Legacy input events did not persist a logical turn boundary. Their
-	// acceptance timestamp still provides a conservative position relative to
-	// completed turns; malformed timestamps block compaction at the oldest
-	// loaded boundary instead of risking summarizing the pending input.
-	acceptedAt, err := time.Parse(time.RFC3339Nano, strings.TrimSpace(input.Ts))
-	if err != nil {
-		return history.StartTurn, nil
-	}
-	for index, turn := range history.Turns {
-		turnAt, parseErr := time.Parse(time.RFC3339Nano, strings.TrimSpace(turn.Ts))
-		if parseErr != nil || !acceptedAt.After(turnAt) {
-			return history.StartTurn + index, nil
-		}
-	}
-	return history.EndTurn, nil
+	return boundary, nil
 }
 
 func interactiveLocatedResolvedContextMessages(entry interactiveResolvedContext) []*agents.Message {

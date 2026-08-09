@@ -136,7 +136,11 @@ func TestAutomationManualCommandCanonicalizesTaskAliasBeforeAdmission(t *testing
 	if err != nil {
 		t.Fatal(err)
 	}
-	events, err := journal.Load(context.Background())
+	var events []runstate.Event
+	_, err = journal.Replay(context.Background(), func(event runstate.Event) error {
+		events = append(events, event)
+		return nil
+	})
 	if closeErr := journal.Close(); err == nil {
 		err = closeErr
 	}

@@ -61,15 +61,6 @@ var ErrOwnerConflict = errors.New("terminal owner belongs to another project")
 // live process bound to a superseded content directory.
 var ErrProjectSessionsActive = errors.New("project has active terminal sessions")
 
-// ResolvedLaunchProfile separates the long-lived PTY root from an optional command entered into
-// it. Configured CLI profiles keep an interactive shell as the root; legacy custom profiles still
-// launch their configured executable directly.
-type ResolvedLaunchProfile struct {
-	Command        string
-	Args           []string
-	StartupCommand string
-}
-
 // CommandProfile is one backend-authoritative CLI shortcut. Browser tabs keep
 // only ID and display name; the executable command never enters local storage.
 type CommandProfile struct {
@@ -179,11 +170,10 @@ func (m *Manager) ResolveShell() string {
 	return resolveShell(configured)
 }
 
-// ResolveLaunchProfile turns the stable profile id into a PTY root plus an optional shell startup
-// command. Configured profiles intentionally ignore client-supplied commands:
-// their launch command is user-level and has one authoritative backend path.
-// The custom branch remains only for tabs persisted by earlier beta clients.
-func (m *Manager) ResolveLaunchProfile(profileID, customCommand string, customArgs []string) (ResolvedLaunchProfile, error) {
+// ResolveStartupCommand turns a stable profile ID into the configured command
+// entered into the user's interactive shell. Executable command lines remain
+// backend-authoritative and never cross the browser API.
+func (m *Manager) ResolveStartupCommand(profileID string) (string, error) {
 	m.mu.Lock()
 	cfg := m.cfg
 	m.mu.Unlock()
@@ -191,20 +181,17 @@ func (m *Manager) ResolveLaunchProfile(profileID, customCommand string, customAr
 	profileID = strings.TrimSpace(profileID)
 	switch profileID {
 	case "shell":
-		return ResolvedLaunchProfile{}, nil
-	case "custom":
-		command := strings.TrimSpace(customCommand)
-		if command == "" {
-			return ResolvedLaunchProfile{}, fmt.Errorf("%w: custom command is empty", ErrInvalidLaunchCommand)
-		}
-		return ResolvedLaunchProfile{Command: command, Args: append([]string(nil), customArgs...)}, nil
+		return "", nil
 	}
 	for _, profile := range cfg.Commands {
 		if profile.Enabled && profile.ID == profileID {
-			return shellLaunchProfile(profile.Command)
+			if err := validateLaunchCommand(profile.Command); err != nil {
+				return "", err
+			}
+			return profile.Command, nil
 		}
 	}
-	return ResolvedLaunchProfile{}, fmt.Errorf("%w: %q", ErrInvalidProfile, profileID)
+	return "", fmt.Errorf("%w: %q", ErrInvalidProfile, profileID)
 }
 
 // AvailableCommands returns enabled menu metadata in configured order. It
@@ -228,23 +215,15 @@ func (m *Manager) AvailableCommands() []CommandProfile {
 	return result
 }
 
-func shellLaunchProfile(commandLine string) (ResolvedLaunchProfile, error) {
-	commandLine = strings.TrimSpace(commandLine)
-	if _, _, err := parseLaunchCommand(commandLine); err != nil {
-		return ResolvedLaunchProfile{}, err
-	}
-	return ResolvedLaunchProfile{StartupCommand: commandLine}, nil
-}
-
-func parseLaunchCommand(commandLine string) (string, []string, error) {
+func validateLaunchCommand(commandLine string) error {
 	parts, err := shlex.Split(strings.TrimSpace(commandLine), true)
 	if err != nil {
-		return "", nil, fmt.Errorf("%w: %v", ErrInvalidLaunchCommand, err)
+		return fmt.Errorf("%w: %v", ErrInvalidLaunchCommand, err)
 	}
 	if len(parts) == 0 {
-		return "", nil, fmt.Errorf("%w: command is empty", ErrInvalidLaunchCommand)
+		return fmt.Errorf("%w: command is empty", ErrInvalidLaunchCommand)
 	}
-	return parts[0], append([]string(nil), parts[1:]...), nil
+	return nil
 }
 
 func resolveShell(configured string) string {

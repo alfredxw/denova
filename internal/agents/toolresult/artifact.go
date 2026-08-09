@@ -14,24 +14,12 @@ func RecoverableArtifactPurpose(purpose agent.ToolArtifactPurpose) bool {
 	return purpose == agent.ToolArtifactPurposeCompleteModelOutput || purpose == agent.ToolArtifactPurposeCompleteToolOutput
 }
 
-// CanonicalArtifact normalizes compatibility fields into one recovery
-// identity before verification, persistence, or context cleanup.
+// CanonicalArtifact normalizes one recovery identity before verification,
+// persistence, or context cleanup.
 func CanonicalArtifact(artifact agent.ToolArtifactRef) agent.ToolArtifactRef {
 	artifact.Purpose = agent.ToolArtifactPurpose(strings.TrimSpace(string(artifact.Purpose)))
 	artifact.ReadablePath = strings.TrimSpace(strings.ToValidUTF8(artifact.ReadablePath, "\uFFFD"))
-	if artifact.ReadablePath == "" {
-		artifact.ReadablePath = strings.TrimSpace(strings.ToValidUTF8(artifact.URI, "\uFFFD"))
-	}
-	artifact.URI = artifact.ReadablePath
 	artifact.ContentType = strings.TrimSpace(artifact.ContentType)
-	if artifact.ContentType == "" {
-		artifact.ContentType = strings.TrimSpace(artifact.MIMEType)
-	}
-	artifact.MIMEType = artifact.ContentType
-	if artifact.EstimatedBytes == 0 && artifact.ByteSize > 0 {
-		artifact.EstimatedBytes = artifact.ByteSize
-	}
-	artifact.ByteSize = artifact.EstimatedBytes
 	if artifact.EstimatedTokens == 0 && artifact.EstimatedBytes > 0 {
 		artifact.EstimatedTokens = EstimatedTokens(artifact.EstimatedBytes)
 	}

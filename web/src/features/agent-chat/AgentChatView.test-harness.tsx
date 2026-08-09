@@ -190,10 +190,10 @@ export function project(path: string, name: string, sessionId: string, title: st
 }
 
 export function agentTabForProject(id: string, projectId: string, workspace: string, sessionId: string) {
-  return { kind: 'agent' as const, id, projectId, workspace, sessionId }
+  return { kind: 'agent' as const, id, projectId, workspace, group: 'primary' as const, sessionId }
 }
 
-export function terminalSession(id: string, ownerTabId: string | undefined, attached = 0): TerminalSessionInfo {
+export function terminalSession(id: string, ownerTabId: string, attached = 0): TerminalSessionInfo {
   return {
     id,
     owner_tab_id: ownerTabId,
@@ -203,6 +203,7 @@ export function terminalSession(id: string, ownerTabId: string | undefined, atta
     args: [],
     cwd: '/books/a',
     workspace: '/books/a',
+    project_id: 'project-a',
     cols: 80,
     rows: 24,
     created_at: '2026-07-26T00:00:00Z',

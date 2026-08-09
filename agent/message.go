@@ -86,15 +86,11 @@ type ToolResultSummary struct {
 	SyntheticReason     ToolSyntheticReason         `json:"synthetic_reason,omitempty"`
 	ModelTruncated      bool                        `json:"model_truncated,omitempty"`
 	DisplayTruncated    bool                        `json:"display_truncated,omitempty"`
-	ResultRetention     ToolResultRetentionMode     `json:"result_retention,omitempty"`
+	ResultRetention     ToolResultRetentionMode     `json:"result_retention"`
 	ContextHints        *ToolResultContextHints     `json:"context_hints,omitempty"`
 	ArtifactPersistence *ToolArtifactPersistence    `json:"artifact_persistence,omitempty"`
 	ProtectedReceipt    *ToolResultProtectedReceipt `json:"protected_receipt,omitempty"`
-	// Deprecated replay fields.
-	ContextRetention  ToolContextRetention `json:"context_retention,omitempty"`
-	RetainedContent   string               `json:"retained_content,omitempty"`
-	RetainedArguments string               `json:"retained_arguments,omitempty"`
-	Artifacts         []ToolArtifactRef    `json:"artifacts,omitempty"`
+	Artifacts           []ToolArtifactRef           `json:"artifacts,omitempty"`
 }
 
 // Message is the stable session and model wire type.
@@ -180,9 +176,6 @@ func ToolMessage(result ToolResult, toolCallID string, opts ...ToolMessageOption
 			ContextHints:        cloneToolResultContextHints(result.ContextHints),
 			ArtifactPersistence: cloneToolArtifactPersistence(result.Metadata.ArtifactPersistence),
 			ProtectedReceipt:    cloneToolResultProtectedReceipt(result.ProtectedReceipt),
-			ContextRetention:    result.ContextRetention,
-			RetainedContent:     result.RetainedContent,
-			RetainedArguments:   result.RetainedArguments,
 			Artifacts:           append([]ToolArtifactRef(nil), result.Artifacts...),
 		},
 	}
@@ -206,9 +199,6 @@ func (m *Message) EffectiveToolResult() ToolResult {
 		result.ContextHints = cloneToolResultContextHints(m.ToolResult.ContextHints)
 		result.Metadata.ArtifactPersistence = cloneToolArtifactPersistence(m.ToolResult.ArtifactPersistence)
 		result.ProtectedReceipt = cloneToolResultProtectedReceipt(m.ToolResult.ProtectedReceipt)
-		result.ContextRetention = m.ToolResult.ContextRetention
-		result.RetainedContent = m.ToolResult.RetainedContent
-		result.RetainedArguments = m.ToolResult.RetainedArguments
 		result.Artifacts = append([]ToolArtifactRef(nil), m.ToolResult.Artifacts...)
 	}
 	return result

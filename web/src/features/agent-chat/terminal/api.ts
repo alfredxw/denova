@@ -5,14 +5,14 @@ import type { TerminalCommandProfile } from '../types'
 /** Backend snapshot of one live terminal session. */
 export interface TerminalSessionInfo {
   id: string
-  /** Stable workbench tab that owns this process; absent only on sessions created by older clients. */
-  owner_tab_id?: string
+  /** Stable workbench tab that owns this process. */
+  owner_tab_id: string
   profile_id: string
   title: string
   command: string
   args: string[]
   cwd: string
-  project_id?: string
+  project_id: string
   workspace: string
   cols: number
   rows: number
@@ -40,9 +40,6 @@ export interface CreateTerminalSessionRequest {
   owner_tab_id: string
   profile_id: string
   title?: string
-  /** Only used by legacy `custom` tabs; built-in profiles resolve from backend settings. */
-  command?: string
-  args?: string[]
   cols: number
   rows: number
 }

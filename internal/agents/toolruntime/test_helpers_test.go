@@ -48,7 +48,7 @@ func testToolContext(name, callID string) *agent.ToolContext {
 			Source: agent.ToolSourceShell, Capability: config.AgentToolShell,
 			Execution: agent.ToolExecutionWorkspaceExclusive, MutationScope: agent.ToolMutationExternal,
 			PostCheck: agent.ToolPostCheckExternalReceipt, Recovery: agent.ToolRecoveryNonIdempotent,
-			ResultProjection: agent.ToolResultBoundedModelContext, ContextRetention: agent.ToolContextReceipt,
+			ResultProjection: agent.ToolResultBoundedModelContext, ResultRetention: agent.ToolResultDeferred,
 			Steering: agent.SteeringFinishCurrent, MaxResultBytes: toolresult.DefaultMaxBytes,
 		}
 	default:

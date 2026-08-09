@@ -24,19 +24,10 @@ func validateAutomationReceipt(receipt agentrun.CommandReceipt, expectedCommandI
 }
 
 func automationRootReceipt(run automation.RunRecord) agentrun.CommandReceipt {
-	commandID := strings.TrimSpace(run.RootRuntimeCommandID)
-	operationID := strings.TrimSpace(run.RootRuntimeOperationID)
-	cursor := run.RootRuntimeReceiptCursor
-	// Records written before follow-up receipt support stored the root receipt
-	// in Runtime*. Infer it only when its command has the canonical root ID.
-	if commandID == "" && strings.TrimSpace(run.RuntimeCommandID) == automationRunAgentCommandID(run.ID) {
-		commandID = strings.TrimSpace(run.RuntimeCommandID)
-		operationID = strings.TrimSpace(run.RuntimeOperationID)
-		cursor = run.RuntimeReceiptCursor
-	}
 	return agentrun.CommandReceipt{
-		CommandID: agentrun.CommandID(commandID), OperationID: agentrun.OperationID(operationID),
-		Cursor: agentrun.Cursor(cursor),
+		CommandID:   agentrun.CommandID(strings.TrimSpace(run.RootRuntimeCommandID)),
+		OperationID: agentrun.OperationID(strings.TrimSpace(run.RootRuntimeOperationID)),
+		Cursor:      agentrun.Cursor(run.RootRuntimeReceiptCursor),
 	}
 }
 
@@ -127,46 +118,15 @@ func applyAutomationFollowUpReceipt(run *automation.RunRecord, receipt agentrun.
 		if current := strings.TrimSpace(run.RuntimeCommandFingerprint); current != "" && current != fingerprint {
 			return fmt.Errorf("%w: run_id=%s replayed successor fingerprint changed", automation.ErrRunIdentityConflict, run.ID)
 		}
-		if uint64(receipt.Cursor) < run.RuntimeReceiptCursor {
-			receipt.Cursor = agentrun.Cursor(run.RuntimeReceiptCursor)
-		}
 		if err := applyAutomationCurrentReceipt(run, receipt, expectedCommandID); err != nil {
 			return err
 		}
 		run.RuntimeCommandFingerprint = fingerprint
 		return nil
 	}
-	if err := advanceVerifiedAutomationCurrentReceipt(run, receipt, expectedCommandID); err != nil {
+	if err := advanceAutomationCurrentReceipt(run, receipt, expectedCommandID); err != nil {
 		return err
 	}
 	run.RuntimeCommandFingerprint = fingerprint
-	return nil
-}
-
-// advanceVerifiedAutomationCurrentReceipt is reserved for a successor whose
-// canonical runtime fingerprint was matched against the persisted write-ahead
-// intent. Legacy RuntimeReceiptCursor values sometimes tracked a later status
-// projection rather than the original accept cursor, so identity proof—not a
-// numeric comparison with that legacy value—authorizes promotion.
-func advanceVerifiedAutomationCurrentReceipt(run *automation.RunRecord, receipt agentrun.CommandReceipt, expectedCommandID string) error {
-	if run == nil {
-		return fmt.Errorf("automation run is required")
-	}
-	if err := validateAutomationReceipt(receipt, expectedCommandID); err != nil {
-		return err
-	}
-	if err := validateAutomationRunRootReceipt(*run); err != nil {
-		return err
-	}
-	if strings.TrimSpace(run.RuntimeCommandID) != "" &&
-		(run.RuntimeCommandID == string(receipt.CommandID) || run.RuntimeOperationID == string(receipt.OperationID)) {
-		return fmt.Errorf("%w: run_id=%s successor receipt reuses current identity", automation.ErrRunIdentityConflict, run.ID)
-	}
-	if uint64(receipt.Cursor) < run.RuntimeReceiptCursor {
-		receipt.Cursor = agentrun.Cursor(run.RuntimeReceiptCursor)
-	}
-	run.RuntimeCommandID = string(receipt.CommandID)
-	run.RuntimeOperationID = string(receipt.OperationID)
-	run.RuntimeReceiptCursor = uint64(receipt.Cursor)
 	return nil
 }

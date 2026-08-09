@@ -91,7 +91,7 @@ func TestAutomationFollowUpReceiptReplaysExactCurrentOperation(t *testing.T) {
 		RuntimeReceiptCursor: 9, RuntimeCommandFingerprint: "runtime-fingerprint",
 	}
 	replayed := agentrun.CommandReceipt{
-		CommandID: "follow-up-command", OperationID: "follow-up-operation", Cursor: 4, Replayed: true,
+		CommandID: "follow-up-command", OperationID: "follow-up-operation", Cursor: 9, Replayed: true,
 	}
 	if err := applyAutomationFollowUpReceipt(&run, replayed, "follow-up-command", "runtime-fingerprint"); err != nil {
 		t.Fatalf("exact current replay failed: %v", err)
@@ -177,7 +177,7 @@ func TestAutomationPendingReconciliationClearsExactCurrentReplay(t *testing.T) {
 			Cursor: 30,
 			LastOperation: &agentrun.OperationSummary{
 				CommandID: "follow-up-command", OperationID: "follow-up-operation", Status: agentrun.OperationSucceeded,
-				CommandFingerprint: "follow-up-runtime", ReceiptCursor: 4,
+				CommandFingerprint: "follow-up-runtime", ReceiptCursor: 9,
 			},
 		}, nil
 	}

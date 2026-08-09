@@ -3,6 +3,7 @@ package runtime
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"sync"
 )
@@ -13,7 +14,9 @@ import (
 // have committed, implementations must either reconcile and return the events
 // or return a non-context error so the Harness releases its lease and replays.
 type Journal interface {
-	Load(context.Context) ([]Event, error)
+	// Replay delivers durable events in cursor order without materializing a
+	// second complete timeline in memory.
+	Replay(context.Context, func(Event) error) (JournalReplayStats, error)
 	Append(context.Context, Cursor, []EventPayload) ([]Event, error)
 	// Close releases the exclusive binding lease acquired by OpenJournal. The
 	// lease is held for the whole Harness lifetime so another runtime cannot
@@ -32,20 +35,6 @@ type JournalReplayStats struct {
 	RecordsRead        int64
 	EventsRead         int64
 	SnapshotGeneration uint64
-}
-
-// StreamingJournal is the bounded event-history cold replay seam. Runtime
-// owners can reduce events directly into their retained projection instead of
-// first materializing the complete journal as []Event. Implementations may
-// still retain a compact command-receipt index to preserve historical
-// idempotency. Reducers are called in cursor order while the journal's
-// exclusive binding lease is held.
-//
-// Load remains part of Journal for compatibility with existing stores and
-// diagnostics. Callers that build retained state should prefer Replay when it
-// is available and fall back to Load otherwise.
-type StreamingJournal interface {
-	Replay(context.Context, func(Event) error) (JournalReplayStats, error)
 }
 
 // JournalCheckpointState is the opaque reducer seam used by checkpoint-aware
@@ -73,33 +62,9 @@ func replayHarnessJournalState(ctx context.Context, journal Journal, state *harn
 	if stateful, ok := journal.(checkpointJournal); ok {
 		return stateful.ReplayCheckpoint(ctx, journalCheckpointState{state: state})
 	}
-	return replayJournalState(ctx, journal, func(event Event) error {
+	return journal.Replay(ctx, func(event Event) error {
 		return state.reduce(event)
 	})
-}
-
-// replayJournalState prefers bounded-memory streaming replay while preserving
-// compatibility with Journal implementations that only expose Load. The
-// reducer owns retention; this helper never accumulates a second event slice
-// when Replay is available.
-func replayJournalState(ctx context.Context, journal Journal, reduce func(Event) error) (JournalReplayStats, error) {
-	if journal == nil || reduce == nil {
-		return JournalReplayStats{}, fmt.Errorf("journal and replay reducer are required")
-	}
-	if streaming, ok := journal.(StreamingJournal); ok {
-		return streaming.Replay(ctx, reduce)
-	}
-	events, err := journal.Load(ctx)
-	if err != nil {
-		return JournalReplayStats{}, err
-	}
-	stats := JournalReplayStats{EventsRead: int64(len(events))}
-	for _, event := range events {
-		if err := reduce(event); err != nil {
-			return stats, err
-		}
-	}
-	return stats, nil
 }
 
 type CommandRecord struct {
@@ -179,6 +144,23 @@ func (j *memoryJournal) Load(ctx context.Context) ([]Event, error) {
 	j.data.mu.Lock()
 	defer j.data.mu.Unlock()
 	return cloneEvents(j.data.events), nil
+}
+
+func (j *memoryJournal) Replay(ctx context.Context, reduce func(Event) error) (JournalReplayStats, error) {
+	if reduce == nil {
+		return JournalReplayStats{}, errors.New("journal replay reducer is required")
+	}
+	events, err := j.Load(ctx)
+	if err != nil {
+		return JournalReplayStats{}, err
+	}
+	stats := JournalReplayStats{RecordsRead: int64(len(events)), EventsRead: int64(len(events))}
+	for _, event := range events {
+		if err := reduce(event); err != nil {
+			return stats, err
+		}
+	}
+	return stats, nil
 }
 
 func (j *memoryJournal) Append(ctx context.Context, expected Cursor, payloads []EventPayload) ([]Event, error) {

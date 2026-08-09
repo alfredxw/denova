@@ -24,8 +24,8 @@ type Spec struct {
 	// OwnerTabID is the stable frontend tab identity. It makes session creation idempotent and
 	// lets the frontend distinguish reloadable sessions from processes whose tab no longer exists.
 	OwnerTabID string
-	// ProfileID records the resolved launch profile (shell / codex / claude / custom) for display
-	// and tab restoration. Manager.ResolveLaunchProfile applies its startup semantics beforehand.
+	// ProfileID records the resolved launch profile for display
+	// and tab restoration. Manager.ResolveStartupCommand applies its startup semantics beforehand.
 	ProfileID string
 	Title     string
 	Command   string
@@ -47,14 +47,14 @@ type Spec struct {
 // Info is the read-only session snapshot used by the list and create responses.
 type Info struct {
 	ID         string    `json:"id"`
-	OwnerTabID string    `json:"owner_tab_id,omitempty"`
+	OwnerTabID string    `json:"owner_tab_id"`
 	ProfileID  string    `json:"profile_id"`
 	Title      string    `json:"title"`
 	Command    string    `json:"command"`
 	Args       []string  `json:"args"`
 	Cwd        string    `json:"cwd"`
 	Workspace  string    `json:"workspace"`
-	ProjectID  string    `json:"project_id,omitempty"`
+	ProjectID  string    `json:"project_id"`
 	Cols       int       `json:"cols"`
 	Rows       int       `json:"rows"`
 	CreatedAt  time.Time `json:"created_at"`

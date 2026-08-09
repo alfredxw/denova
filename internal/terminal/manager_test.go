@@ -116,16 +116,14 @@ func TestCLIStartupReturnsToWorkspaceShell(t *testing.T) {
 		ScrollbackBytes: 4096,
 	})
 	t.Cleanup(manager.CloseAll)
-	launch, err := manager.ResolveLaunchProfile("claude", "", nil)
+	startupCommand, err := manager.ResolveStartupCommand("claude")
 	if err != nil {
 		t.Fatal(err)
 	}
 	workspace := t.TempDir()
 	session, err := manager.Create(Spec{
 		ProfileID:      "claude",
-		Command:        launch.Command,
-		Args:           launch.Args,
-		StartupCommand: launch.StartupCommand,
+		StartupCommand: startupCommand,
 		Cwd:            workspace,
 	})
 	if err != nil {
@@ -328,7 +326,7 @@ func TestManagerCloseProjectRejectsRunningProcessesAndCleansExitedSessions(t *te
 	}
 }
 
-func TestManagerResolveLaunchProfile(t *testing.T) {
+func TestManagerResolveStartupCommand(t *testing.T) {
 	manager := NewManager(Config{
 		Enabled: true,
 		Commands: []CommandProfile{
@@ -341,36 +339,36 @@ func TestManagerResolveLaunchProfile(t *testing.T) {
 		ScrollbackBytes: 4096,
 	})
 
-	launch, err := manager.ResolveLaunchProfile("codex", "ignored", []string{"--ignored"})
+	startupCommand, err := manager.ResolveStartupCommand("codex")
 	if err != nil {
 		t.Fatal(err)
 	}
-	if launch.Command != "" || len(launch.Args) != 0 || launch.StartupCommand != `npx @openai/codex --profile "deep work"` {
-		t.Fatalf("unexpected Codex launch: %#v", launch)
+	if startupCommand != `npx @openai/codex --profile "deep work"` {
+		t.Fatalf("unexpected Codex startup command: %q", startupCommand)
 	}
 
-	launch, err = manager.ResolveLaunchProfile("claude", "", nil)
+	startupCommand, err = manager.ResolveStartupCommand("claude")
 	if err != nil {
 		t.Fatal(err)
 	}
-	if launch.Command != "" || len(launch.Args) != 0 || launch.StartupCommand != `"/Applications/Claude Code/claude" --resume` {
-		t.Fatalf("unexpected Claude launch: %#v", launch)
+	if startupCommand != `"/Applications/Claude Code/claude" --resume` {
+		t.Fatalf("unexpected Claude startup command: %q", startupCommand)
 	}
 
-	launch, err = manager.ResolveLaunchProfile("aider", "client-controlled", []string{"--ignored"})
-	if err != nil || launch.StartupCommand != "aider --model sonnet" {
-		t.Fatalf("custom configured profile should resolve by backend ID: launch=%#v err=%v", launch, err)
+	startupCommand, err = manager.ResolveStartupCommand("aider")
+	if err != nil || startupCommand != "aider --model sonnet" {
+		t.Fatalf("configured profile should resolve by backend ID: command=%q err=%v", startupCommand, err)
 	}
-	if _, err = manager.ResolveLaunchProfile("disabled", "", nil); !errors.Is(err, ErrInvalidProfile) {
+	if _, err = manager.ResolveStartupCommand("disabled"); !errors.Is(err, ErrInvalidProfile) {
 		t.Fatalf("disabled profile should fail with ErrInvalidProfile, got %v", err)
 	}
 
-	launch, err = manager.ResolveLaunchProfile("shell", "ignored", []string{"--ignored"})
-	if err != nil || launch.Command != "" || len(launch.Args) != 0 || launch.StartupCommand != "" {
-		t.Fatalf("shell should defer to the configured login shell: launch=%#v err=%v", launch, err)
+	startupCommand, err = manager.ResolveStartupCommand("shell")
+	if err != nil || startupCommand != "" {
+		t.Fatalf("shell should defer to the configured login shell: command=%q err=%v", startupCommand, err)
 	}
 
-	if _, err = manager.ResolveLaunchProfile("unknown", "", nil); !errors.Is(err, ErrInvalidProfile) {
+	if _, err = manager.ResolveStartupCommand("unknown"); !errors.Is(err, ErrInvalidProfile) {
 		t.Fatalf("unknown profile should fail with ErrInvalidProfile, got %v", err)
 	}
 
@@ -381,7 +379,7 @@ func TestManagerResolveLaunchProfile(t *testing.T) {
 		},
 		MaxSessions: 2, ScrollbackBytes: 4096,
 	})
-	if _, err = manager.ResolveLaunchProfile("codex", "", nil); !errors.Is(err, ErrInvalidLaunchCommand) {
+	if _, err = manager.ResolveStartupCommand("codex"); !errors.Is(err, ErrInvalidLaunchCommand) {
 		t.Fatalf("malformed command should fail with ErrInvalidLaunchCommand, got %v", err)
 	}
 }

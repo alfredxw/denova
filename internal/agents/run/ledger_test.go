@@ -59,44 +59,43 @@ func TestFilterToolResultKeepsContentBelowDefaultLimit(t *testing.T) {
 	if filtered.Manifest.Capability != config.AgentToolWorkspaceWrite {
 		t.Fatalf("write capability = %q, want %s", filtered.Manifest.Capability, config.AgentToolWorkspaceWrite)
 	}
-	if filtered.Truncated {
+	if filtered.Result.Metadata.ModelTruncated {
 		t.Fatalf("tool result below the default limit should not truncate")
 	}
-	if filtered.Content != content || filtered.Result.ModelContent != content {
+	if filtered.Result.ModelContent != content {
 		t.Fatalf("model content below the limit changed")
 	}
 	if filtered.Result.Metadata.Target != "chapters/ch00001.md" ||
 		!strings.HasPrefix(filtered.Result.Metadata.IdempotencyKey, "write:") {
 		t.Fatalf("structured result metadata = %#v", filtered.Result.Metadata)
 	}
-	if strings.Contains(filtered.Content, "tool_result.v1") || strings.Contains(filtered.Content, "mutation_scope") {
-		t.Fatalf("execution metadata leaked into model content: %s", filtered.Content)
+	if strings.Contains(filtered.Result.ModelContent, "tool_result.v1") || strings.Contains(filtered.Result.ModelContent, "mutation_scope") {
+		t.Fatalf("execution metadata leaked into model content: %s", filtered.Result.ModelContent)
 	}
 }
 
 func TestFilterToolResultBoundsOutputAboveDefaultLimit(t *testing.T) {
 	content := strings.Repeat("x", toolresult.DefaultMaxBytes+1024)
 	filtered := toolresult.Filter("read", `{"path":"references/large.txt"}`, content)
-	if !filtered.Truncated || filtered.Manifest.MaxResultBytes != toolresult.DefaultMaxBytes {
+	if !filtered.Result.Metadata.ModelTruncated || filtered.Manifest.MaxResultBytes != toolresult.DefaultMaxBytes {
 		t.Fatalf("default tool result safety cap was not enforced: %#v", filtered)
 	}
-	if !strings.Contains(filtered.Content, "[tool result truncated]") || !filtered.Result.Metadata.ModelTruncated {
-		t.Fatalf("bounded result should explain its truncation: %s", filtered.Content[len(filtered.Content)-512:])
+	if !strings.Contains(filtered.Result.ModelContent, "[tool result truncated]") {
+		t.Fatalf("bounded result should explain its truncation: %s", filtered.Result.ModelContent[len(filtered.Result.ModelContent)-512:])
 	}
 }
 
 func TestFilterToolResultBoundsOutputWhenLimitConfigured(t *testing.T) {
 	content := strings.Repeat("章节正文", 4096)
 	filtered := toolresult.FilterWithLimit("write", `{"path":"chapters/ch00001.md"}`, content, 8*1024)
-	if !filtered.Truncated {
+	if !filtered.Result.Metadata.ModelTruncated {
 		t.Fatalf("expected long result to be truncated when limit is configured")
 	}
-	if !strings.Contains(filtered.Content, "[tool result truncated]") ||
-		!filtered.Result.Metadata.ModelTruncated {
-		t.Fatalf("filtered result should include truncation markers: %s", filtered.Content)
+	if !strings.Contains(filtered.Result.ModelContent, "[tool result truncated]") {
+		t.Fatalf("filtered result should include truncation markers: %s", filtered.Result.ModelContent)
 	}
-	if len(filtered.Content) > 8*1024+1024 {
-		t.Fatalf("filtered result should stay bounded, got %d bytes", len(filtered.Content))
+	if len(filtered.Result.ModelContent) > 8*1024+1024 {
+		t.Fatalf("filtered result should stay bounded, got %d bytes", len(filtered.Result.ModelContent))
 	}
 }
 

@@ -49,7 +49,7 @@ func (s *Store) recentStoryCommitLocked(
 				stats.RecordsRead++
 				stats.TransactionsRead++
 			}
-			_, events, _, decodeErr := decodeStoryProjectionPayload(item.Payload)
+			_, events, decodeErr := decodeStoryProjectionPayload(item.Payload)
 			if decodeErr != nil {
 				return StoryEventRecord{}, locator, false, decodeErr
 			}

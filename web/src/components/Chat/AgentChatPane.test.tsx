@@ -30,7 +30,7 @@ describe('AgentChatPane', () => {
     const { rerender } = render(
       <AgentChatPane
         messageListProps={messageListProps}
-        inputAreaProps={{ disabled: false, onSend: vi.fn() }}
+        inputAreaProps={{ disabled: false, generationActive: false, onSend: vi.fn() }}
       />,
     )
 
@@ -40,7 +40,7 @@ describe('AgentChatPane', () => {
     rerender(
       <AgentChatPane
         messageListProps={{ ...messageListProps }}
-        inputAreaProps={{ disabled: false, onSend: vi.fn() }}
+        inputAreaProps={{ disabled: false, generationActive: false, onSend: vi.fn() }}
       />,
     )
 
@@ -53,7 +53,7 @@ describe('AgentChatPane', () => {
       <AgentChatPane
         contentClassName="mx-auto w-full max-w-[56rem]"
         messageListProps={{ messages: [], isStreaming: false, activityContent: '' }}
-        inputAreaProps={{ disabled: false, onSend: vi.fn() }}
+        inputAreaProps={{ disabled: false, generationActive: false, onSend: vi.fn() }}
       />,
     )
 

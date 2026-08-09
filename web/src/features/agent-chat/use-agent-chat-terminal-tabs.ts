@@ -36,7 +36,6 @@ export function useAgentChatTerminalTabs({ setWorkbench, openTab }: AgentChatTer
     group: AgentChatGroupId,
     profileID: TerminalProfileId,
     profileName?: string,
-    command?: string,
   ) => {
     openTab({
       kind: 'terminal',
@@ -46,8 +45,7 @@ export function useAgentChatTerminalTabs({ setWorkbench, openTab }: AgentChatTer
       group,
       profileId: profileID,
       profileName,
-      command,
-      title: profileID === 'custom' ? command || '' : profileID === 'shell' ? '' : profileName || profileID,
+      title: profileID === 'shell' ? '' : profileName || profileID,
     })
   }, [openTab])
 

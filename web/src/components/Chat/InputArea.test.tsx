@@ -1,8 +1,16 @@
 import { fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
-import { useState } from 'react'
+import { useState, type ComponentProps } from 'react'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
-import { InputArea } from './InputArea'
+import { InputArea as ProductionInputArea } from './InputArea'
+
+type TestInputAreaProps = Omit<ComponentProps<typeof ProductionInputArea>, 'generationActive'> & {
+  generationActive?: boolean
+}
+
+function InputArea({ generationActive = false, ...props }: TestInputAreaProps) {
+  return <ProductionInputArea {...props} generationActive={generationActive} />
+}
 
 const { setApprovalMode } = vi.hoisted(() => ({ setApprovalMode: vi.fn() }))
 

@@ -1,12 +1,10 @@
 package interactive
 
 import (
-	"bufio"
 	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
-	"io"
 	"log/slog"
 	"os"
 	"path/filepath"
@@ -201,115 +199,6 @@ func (s *Store) readStoryJournalWithRepairLocked(storyID string, repairTornTail 
 	return s.readStoryConversationJournalLocked(storyID, repairTornTail)
 }
 
-// readStoryJournalLegacyWithRepairLocked is retained as a compatibility
-// oracle for focused migration tests. Production reads use the shared
-// conversation journal above.
-func (s *Store) readStoryJournalLegacyWithRepairLocked(storyID string, repairTornTail bool) (StoryMeta, []StoryEventRecord, error) {
-	file, err := os.Open(s.storyPath(storyID))
-	if err != nil {
-		return StoryMeta{}, nil, err
-	}
-	reader := bufio.NewReaderSize(file, 64*1024)
-	var stats StoryJournalReplayStats
-	first, readErr := reader.ReadBytes('\n')
-	stats.BytesRead += int64(len(first))
-	if len(first) == 0 {
-		_ = file.Close()
-		if readErr != nil && !errors.Is(readErr, io.EOF) {
-			return StoryMeta{}, nil, readErr
-		}
-		return StoryMeta{}, nil, fmt.Errorf("故事文件为空: %s", storyID)
-	}
-	if readErr != nil && !errors.Is(readErr, io.EOF) {
-		_ = file.Close()
-		return StoryMeta{}, nil, readErr
-	}
-	first = trimJSONLRecord(first)
-	if len(first) == 0 {
-		_ = file.Close()
-		return StoryMeta{}, nil, fmt.Errorf("故事元信息为空: %s", storyID)
-	}
-	var meta StoryMeta
-	if err := json.Unmarshal(first, &meta); err != nil {
-		_ = file.Close()
-		return StoryMeta{}, nil, fmt.Errorf("解析故事元信息失败: %w", err)
-	}
-	meta = normalizeStoryMeta(meta)
-	if err := validateStoryMeta(meta); err != nil {
-		_ = file.Close()
-		return StoryMeta{}, nil, fmt.Errorf("校验故事元信息失败: %w", err)
-	}
-	canonicalStoryID := meta.StoryID
-	stats.RecordsRead = 1
-	validBytes := stats.BytesRead
-	var lines []StoryEventRecord
-	lineNumber := 1
-	for {
-		recordBytes, recordErr := reader.ReadBytes('\n')
-		stats.BytesRead += int64(len(recordBytes))
-		if len(recordBytes) == 0 && errors.Is(recordErr, io.EOF) {
-			break
-		}
-		lineNumber++
-		hasNewline := len(recordBytes) > 0 && recordBytes[len(recordBytes)-1] == '\n'
-		line := trimJSONLRecord(recordBytes)
-		if len(line) == 0 {
-			_ = file.Close()
-			return StoryMeta{}, nil, fmt.Errorf("解析故事事件失败: line %d is empty", lineNumber)
-		}
-		transactionMeta, transactionEvents, isTransaction, decodeErr := decodeStoryAppendTransaction(line)
-		if decodeErr != nil {
-			if repairTornTail && errors.Is(recordErr, io.EOF) && !hasNewline && isTornStoryJSON(line, decodeErr) {
-				if closeErr := file.Close(); closeErr != nil {
-					return StoryMeta{}, nil, closeErr
-				}
-				file = nil
-				if repairErr := repairTornStoryTail(s.storyPath(storyID), validBytes); repairErr != nil {
-					return StoryMeta{}, nil, fmt.Errorf("备份并修复故事日志尾部失败: %w", repairErr)
-				}
-				stats.BytesRead = validBytes
-				break
-			}
-			_ = file.Close()
-			return StoryMeta{}, nil, fmt.Errorf("解析故事事件失败 (line %d): %w", lineNumber, decodeErr)
-		}
-		if isTransaction {
-			if transactionMeta.StoryID != canonicalStoryID {
-				_ = file.Close()
-				return StoryMeta{}, nil, fmt.Errorf("故事追加事务 identity 不匹配: have %s want %s", transactionMeta.StoryID, canonicalStoryID)
-			}
-			meta = transactionMeta
-			lines = append(lines, transactionEvents...)
-			stats.TransactionsRead++
-			stats.EventsRead += int64(len(transactionEvents))
-		} else {
-			record, err := decodeStoryEventRecord(line)
-			if err != nil {
-				_ = file.Close()
-				return StoryMeta{}, nil, fmt.Errorf("解析故事事件失败 (line %d): %w", lineNumber, err)
-			}
-			lines = append(lines, record)
-			stats.EventsRead++
-		}
-		stats.RecordsRead++
-		validBytes += int64(len(recordBytes))
-		if recordErr != nil && !errors.Is(recordErr, io.EOF) {
-			_ = file.Close()
-			return StoryMeta{}, nil, recordErr
-		}
-		if errors.Is(recordErr, io.EOF) {
-			break
-		}
-	}
-	if file != nil {
-		if err := file.Close(); err != nil {
-			return StoryMeta{}, nil, err
-		}
-	}
-	s.rememberStoryReplayStats(storyID, stats)
-	return meta, lines, nil
-}
-
 func trimJSONLRecord(record []byte) []byte {
 	if len(record) > 0 && record[len(record)-1] == '\n' {
 		record = record[:len(record)-1]
@@ -318,14 +207,6 @@ func trimJSONLRecord(record []byte) []byte {
 		record = record[:len(record)-1]
 	}
 	return record
-}
-
-func isTornStoryJSON(line []byte, decodeErr error) bool {
-	var syntaxErr *json.SyntaxError
-	if !errors.As(decodeErr, &syntaxErr) {
-		return false
-	}
-	return syntaxErr.Offset >= int64(len(line)) && strings.Contains(syntaxErr.Error(), "unexpected end of JSON input")
 }
 
 func (s *Store) rememberStoryReplayStats(storyID string, stats StoryJournalReplayStats) {

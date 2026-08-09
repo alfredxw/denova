@@ -56,6 +56,7 @@ func TestAutomationInboxConfirmationRetriesFailureBeforeRuntimeAcceptance(t *tes
 		}
 		return nil, automation.RunRecord{
 			ID: runID, TaskID: taskID, Trigger: trigger, SourceRunID: sourceRunID, TriggerEvidence: evidence, Status: automation.RunStatusRunning,
+			RootRuntimeCommandID: automationRunAgentCommandID(runID), RootRuntimeOperationID: "operation-" + runID, RootRuntimeReceiptCursor: 1,
 			RuntimeCommandID: automationRunAgentCommandID(runID), RuntimeOperationID: "operation-" + runID, RuntimeReceiptCursor: 1,
 		}, nil
 	}

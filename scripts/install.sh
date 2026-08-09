@@ -67,6 +67,30 @@ absolute_dir() {
   esac
 }
 
+choose_data_dir() {
+  default_data_dir="${HOME}/.denova"
+  if [ -f "${INSTALL_DIR}/${MANAGED_MARKER}" ]; then
+    installed_data_dir="$(sed -n '2p' "${INSTALL_DIR}/${MANAGED_MARKER}")"
+    case "${installed_data_dir}" in
+      /*) default_data_dir="${installed_data_dir}" ;;
+    esac
+  fi
+
+  selected_data_dir="${DENOVA_DIR:-}"
+  if [ -z "${selected_data_dir}" ] && [ -t 1 ]; then
+    printf 'Denova user data directory [%s]: ' "${default_data_dir}" > /dev/tty
+    IFS= read -r selected_data_dir < /dev/tty || fail "could not read the user data directory"
+  fi
+  [ -n "${selected_data_dir}" ] || selected_data_dir="${default_data_dir}"
+
+  case "${selected_data_dir}" in
+    '~') selected_data_dir="${HOME}" ;;
+    '~/'*) selected_data_dir="${HOME}/${selected_data_dir#\~/}" ;;
+  esac
+  DATA_DIR="$(absolute_dir "${selected_data_dir}" "DENOVA_DIR")"
+  [ "${DATA_DIR}" != "/" ] || fail "DENOVA_DIR cannot be /"
+}
+
 resolve_platform() {
   case "$(uname -s)" in
     Darwin) platform_os="darwin" ;;
@@ -122,19 +146,13 @@ shell_quote() {
 
 write_launcher() {
   executable_quoted="$(shell_quote "${INSTALL_DIR}/denova")"
+  data_dir_quoted="$(shell_quote "${DATA_DIR}")"
   {
     printf '%s\n' '#!/bin/sh'
     printf '%s\n' "${LAUNCHER_MARKER}"
     printf '%s\n' 'set -eu'
     printf '%s\n' 'if [ -z "${DENOVA_DIR:-}" ]; then'
-    printf '%s\n' '  if [ -n "${XDG_DATA_HOME:-}" ]; then'
-    printf '%s\n' '    DENOVA_DIR="${XDG_DATA_HOME}/denova"'
-    printf '%s\n' '  elif [ -n "${HOME:-}" ]; then'
-    printf '%s\n' '    DENOVA_DIR="${HOME}/.local/share/denova"'
-    printf '%s\n' '  else'
-    printf '%s\n' '    printf "Error: HOME or DENOVA_DIR is required to start Denova.\\n" >&2'
-    printf '%s\n' '    exit 1'
-    printf '%s\n' '  fi'
+    printf '  DENOVA_DIR=%s\n' "${data_dir_quoted}"
     printf '%s\n' '  export DENOVA_DIR'
     printf '%s\n' 'fi'
     printf 'exec %s "$@"\n' "${executable_quoted}"
@@ -177,6 +195,11 @@ fi
 if { [ -e "${LAUNCHER_PATH}" ] || [ -L "${LAUNCHER_PATH}" ]; } && ! grep -Fq "${LAUNCHER_MARKER}" "${LAUNCHER_PATH}" 2>/dev/null; then
   fail "${LAUNCHER_PATH} already exists and is not managed by this installer; choose another DENOVA_BIN_DIR"
 fi
+
+choose_data_dir
+case "${DATA_DIR}/" in
+  "${INSTALL_DIR}/"*) fail "DENOVA_DIR cannot be the application directory or one of its children" ;;
+esac
 
 resolve_platform
 resolve_version
@@ -228,7 +251,7 @@ INSTALL_PARENT="${INSTALL_DIR%/*}"
 mkdir -p "${INSTALL_PARENT}" "${BIN_DIR}"
 STAGE_DIR="$(mktemp -d "${INSTALL_PARENT}/.denova-stage.XXXXXX")"
 cp -R "${PACKAGE_DIR}/." "${STAGE_DIR}/"
-printf '%s\n' "${REPOSITORY}" > "${STAGE_DIR}/${MANAGED_MARKER}"
+printf '%s\n%s\n' "${REPOSITORY}" "${DATA_DIR}" > "${STAGE_DIR}/${MANAGED_MARKER}"
 
 if [ -f "${INSTALL_DIR}/config.toml" ]; then
   cp "${INSTALL_DIR}/config.toml" "${STAGE_DIR}/config.toml"
@@ -259,12 +282,6 @@ INSTALL_COMMITTED=1
 if [ -n "${BACKUP_ROOT}" ] && [ -d "${BACKUP_ROOT}" ]; then
   rm -rf "${BACKUP_ROOT}"
   BACKUP_ROOT=""
-fi
-
-if [ -n "${XDG_DATA_HOME:-}" ]; then
-  DATA_DIR="${XDG_DATA_HOME}/denova"
-else
-  DATA_DIR="${HOME}/.local/share/denova"
 fi
 
 log ""
