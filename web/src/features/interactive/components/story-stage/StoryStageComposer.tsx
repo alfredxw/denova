@@ -16,7 +16,8 @@ import { Button } from '@/components/ui/button'
 import { AgentApprovalModeMenu } from '@/features/agent-approval/AgentApprovalModeMenu'
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from '@/components/ui/dropdown-menu'
-import type { AgentRuntimeQueuedCommand, ChatMessage, ContextAnalysis } from '@/lib/api'
+import type { AgentRuntimeQueuedCommand, ContextAnalysis } from '@/lib/api'
+import type { AgentTokenUsageRecord } from '@/lib/agent-message-view'
 import type { DirectorPlanStatus, ImagePreset, StoryImageSettings, StorySummary } from '../../types'
 import { EditInteractiveReplyDialog } from '../EditInteractiveReplyDialog'
 import { InteractiveImageSettingsMenu, StoryImagePresetMenu } from './ImageSettingsMenus'
@@ -91,7 +92,7 @@ interface StoryStageComposerProps {
     contextAnalysisError: string | null
     contextAnalysis: ContextAnalysis | null
     tokenUsageOpen: boolean
-    tokenUsageMessages: ChatMessage[]
+    tokenUsageMessages: AgentTokenUsageRecord[]
     traceOpen: boolean
     selectedTraceRunId: string
     replyEditTarget: {

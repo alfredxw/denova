@@ -8,8 +8,10 @@ import { MessageList, type TurnScrollRequest } from '@/components/Chat/MessageLi
 import { AgentSubAgentSessionPanel } from '@/components/Chat/AgentSubAgentSessionPanel'
 import type { ComposerTokenInputHandle, ComposerTokenSpec, ComposerTrigger } from '@/components/Chat/composer-token-input'
 import { MOBILE_NAVIGATION_OPEN_EVENT } from '@/components/layout/workspace-mobile-layout'
-import type { ChatMessage, ContextAnalysis } from '@/lib/api'
-import { agentSubAgentSessionKey, agentViewToRenderMessage, type AgentMessageView } from '@/lib/agent-message-view'
+import type { ContextAnalysis } from '@/lib/api'
+import type { AgentUIMessage } from '@/lib/agent-ui'
+import { agentMessageDisplayText, createAgentDataMessage } from '@/lib/agent-ui-message'
+import { agentSubAgentSessionKey, agentViewContent, type AgentMessageView } from '@/lib/agent-message-view'
 import { useSkillCommands } from '@/hooks/useSkillCommands'
 import { useConversationConfig } from '@/features/conversation-config/use-conversation-config'
 import { analyzeInteractiveContext, getInteractiveHistoryPage, removeInteractiveContextCompaction, runInteractiveDirector, switchInteractiveTurnVersion, updateInteractiveTurnNarrative } from '../api'
@@ -189,7 +191,7 @@ export function StoryStage({ projectId, workspace, styleSceneSuggestions = [], s
   }, [])
 
   const setStageLiveMessages = useCallback(
-    (updater: ChatMessage[] | ((current: ChatMessage[]) => ChatMessage[])) => {
+    (updater: AgentUIMessage[] | ((current: AgentUIMessage[]) => AgentUIMessage[])) => {
       updateStageRun((current) => ({
         ...current,
         liveMessages: typeof updater === 'function' ? updater(current.liveMessages) : updater,
@@ -214,7 +216,6 @@ export function StoryStage({ projectId, workspace, styleSceneSuggestions = [], s
   const liveTurnNavigationAnchorId = useMemo(() => `live:${stageKey}`, [stageKey])
   const {
     agentMessages,
-    messages,
     tokenUsageMessages,
     turnNavigationItems,
     turnsById,
@@ -297,14 +298,14 @@ export function StoryStage({ projectId, workspace, styleSceneSuggestions = [], s
       prependHistoryPage(page)
     } catch (error) {
       console.error('[interactive-stage] load earlier story history failed', error)
-      setStageLiveMessages((current) => [...current, { role: 'error', content: error instanceof Error ? error.message : t('chat.history.loadEarlierFailed') }])
+      setStageLiveMessages((current) => [...current, errorMessage(error instanceof Error ? error.message : t('chat.history.loadEarlierFailed'))])
     } finally {
       setHistoryLoading(false)
     }
   }, [branchId, historyLoading, historyWindow.beforeCursor, prependHistoryPage, setStageLiveMessages, snapshot?.branch_id, storyId, t])
   const latestTurnID = snapshot?.current_turn?.id || snapshot?.turns?.at(-1)?.id || ''
   const canMutateStoryView = useCallback((view: AgentMessageView) => {
-    const turnID = agentViewToRenderMessage(view)?.turn_id
+    const turnID = view.metadata.turn_id
     return !turnID || !latestTurnID || turnID === latestTurnID
   }, [latestTurnID])
   const availableBookOpeningPresets = useMemo(() => bookOpeningPresets.filter((preset) => preset.content.trim()), [bookOpeningPresets])
@@ -423,30 +424,6 @@ export function StoryStage({ projectId, workspace, styleSceneSuggestions = [], s
     await analyzeCurrentContext(CONTEXT_ANALYSIS_SIMULATED_MESSAGE)
   }
 
-  const startEditingMessage = (message: ChatMessage) => {
-    if (!message.turn_id || streaming) return
-    setEditingTurn({ id: message.turn_id, content: message.content || '' })
-    setInput(message.content || '')
-    setShowSkillCommands(false)
-    setActiveSkillCommandIndex(0)
-    window.requestAnimationFrame(() => {
-      const length = message.content?.length || 0
-      inputRef.current?.focus()
-      inputRef.current?.setSelectionRange(length, length)
-    })
-  }
-
-  const regenerateMessage = (message: ChatMessage) => {
-    if (streaming) return
-    if (!message.turn_id) {
-      const source = stageRun.retryMessage || [...liveMessages].reverse().find((item) => item.role === 'user')?.content || ''
-      if (source.trim()) void send({ message: source })
-      return
-    }
-    const source = turnsById.get(message.turn_id)?.user || message.content || ''
-    void send({ message: source, rewindTurnId: message.turn_id })
-  }
-
   const startBookPresetOpening = () => {
     if (!storyId || streaming) return
     if (!selectedBookOpeningPreset?.content.trim()) return
@@ -492,18 +469,19 @@ export function StoryStage({ projectId, workspace, styleSceneSuggestions = [], s
     }
   }
 
-  const switchMessageVersion = async (message: ChatMessage, direction: -1 | 1) => {
-    if (!message.turn_id || !storyId || streaming || switchingVersionTurnId) return
-    const versions = message.turn_versions || []
-    const currentIndex = message.turn_version_index ?? versions.findIndex((version) => version.current)
+  const switchMessageVersion = async (view: AgentMessageView, direction: -1 | 1) => {
+    const turnId = view.metadata.turn_id
+    if (!turnId || !storyId || streaming || switchingVersionTurnId) return
+    const versions = view.metadata.turn_versions || []
+    const currentIndex = view.metadata.turn_version_index ?? versions.findIndex((version) => version.current)
     const nextVersion = versions[currentIndex + direction]
     if (!nextVersion) return
-    setSwitchingVersionTurnId(message.turn_id)
+    setSwitchingVersionTurnId(turnId)
     setStageActivityContent(direction > 0 ? t('storyStage.activity.switchNewer') : t('storyStage.activity.switchOlder'))
     try {
       await switchInteractiveTurnVersion(storyId, {
         branch_id: branchId,
-        turn_id: message.turn_id,
+        turn_id: turnId,
         version_turn_id: nextVersion.turn_id,
       })
       clearStoryStageRun(stageKey)
@@ -511,10 +489,7 @@ export function StoryStage({ projectId, workspace, styleSceneSuggestions = [], s
     } catch (error) {
       setStageLiveMessages((prev) => [
         ...prev,
-        {
-          role: 'error',
-          content: error instanceof Error ? error.message : t('storyStage.activity.switchFailed'),
-        },
+        errorMessage(error instanceof Error ? error.message : t('storyStage.activity.switchFailed')),
       ])
     } finally {
       setSwitchingVersionTurnId(null)
@@ -523,15 +498,24 @@ export function StoryStage({ projectId, workspace, styleSceneSuggestions = [], s
   }
 
   const startEditingView = (view: AgentMessageView) => {
-    const message = agentViewToRenderMessage(view)
-    if (message) startEditingMessage(message)
+    const turnId = view.metadata.turn_id
+    if (!turnId || streaming) return
+    const content = agentViewContent(view)
+    setEditingTurn({ id: turnId, content })
+    setInput(content)
+    setShowSkillCommands(false)
+    setActiveSkillCommandIndex(0)
+    window.requestAnimationFrame(() => {
+      inputRef.current?.focus()
+      inputRef.current?.setSelectionRange(content.length, content.length)
+    })
   }
 
   const startEditingAssistantReply = (view: AgentMessageView) => {
     if (streaming || storyImages.generatingTurnId || switchingVersionTurnId) return
-    const message = agentViewToRenderMessage(view)
-    if (!message?.turn_id) return
-    const turn = turnsById.get(message.turn_id)
+    const turnId = view.metadata.turn_id
+    if (!turnId) return
+    const turn = turnsById.get(turnId)
     if (!turn) return
     setReplyEditTarget({
       turnId: turn.id,
@@ -542,27 +526,33 @@ export function StoryStage({ projectId, workspace, styleSceneSuggestions = [], s
   }
 
   const startCreatingBranchFromView = (view: AgentMessageView) => {
-    const message = agentViewToRenderMessage(view)
-    if (!message?.turn_id || !onRequestCreateBranch) return
-    const turn = turnsById.get(message.turn_id)
+    const turnId = view.metadata.turn_id
+    if (!turnId || !onRequestCreateBranch) return
+    const turn = turnsById.get(turnId)
     onRequestCreateBranch(turn
       ? branchCreationSourceFromTurn(turn, t('branchTimeline.nodeFallback'))
-      : branchCreationSourceFromMessage(message.turn_id, message.content || '', t('branchTimeline.nodeFallback')))
+      : branchCreationSourceFromMessage(turnId, agentViewContent(view), t('branchTimeline.nodeFallback')))
   }
 
   const regenerateView = (view: AgentMessageView) => {
-    const message = agentViewToRenderMessage(view)
-    if (message) regenerateMessage(message)
+    if (streaming) return
+    const turnId = view.metadata.turn_id
+    if (!turnId) {
+      const liveUserMessage = [...liveMessages].reverse().find((item) => item.role === 'user')
+      const source = stageRun.retryMessage || (liveUserMessage ? agentMessageDisplayText(liveUserMessage) : '')
+      if (source.trim()) void send({ message: source })
+      return
+    }
+    const source = turnsById.get(turnId)?.user || agentViewContent(view)
+    void send({ message: source, rewindTurnId: turnId })
   }
 
   const switchViewVersion = (view: AgentMessageView, direction: -1 | 1) => {
-    const message = agentViewToRenderMessage(view)
-    if (message) void switchMessageVersion(message, direction)
+    void switchMessageVersion(view, direction)
   }
 
   const generateImageForView = (view: AgentMessageView) => {
-    const message = agentViewToRenderMessage(view)
-    if (message) void storyImages.generateForMessage(message, 'manual', true)
+    void storyImages.generateForTurn(view.metadata.turn_id || '', 'manual', true)
   }
 
   const cancelEditing = () => {
@@ -689,14 +679,14 @@ export function StoryStage({ projectId, workspace, styleSceneSuggestions = [], s
                   setEditingStorySetup(false)
                 }}
               />
-            ) : snapshotLoading && messages.length === 0 && !streaming ? (
+            ) : snapshotLoading && agentMessages.length === 0 && !streaming ? (
               <div className="m-5 flex min-h-0 flex-1 items-center justify-center rounded-[var(--nova-radius)] border border-dashed border-[var(--nova-border)] bg-[var(--nova-surface)] px-6 text-center text-sm text-[var(--nova-text-faint)] shadow-[inset_0_1px_0_rgba(255,255,255,0.03)]">
                 <div className="flex max-w-md flex-col items-center gap-3">
                   <RefreshCw className="h-4 w-4 animate-spin text-[var(--nova-text-muted)]" />
                   <div className="text-xs leading-5 text-[var(--nova-text-faint)]">{t('common.loading')}</div>
                 </div>
               </div>
-            ) : messages.length === 0 && !streaming ? (
+            ) : agentMessages.length === 0 && !streaming ? (
               <StoryOpeningPanel
                 story={story}
                 storyId={storyId}
@@ -786,4 +776,8 @@ function noopStateDisplayPreferenceChange(_value: StoryStateDisplayPreference) {
 
 function noopTurnPersisted() {
   return undefined
+}
+
+function errorMessage(content: string) {
+  return createAgentDataMessage({ type: 'agent-error', data: { role: 'error', content } })
 }

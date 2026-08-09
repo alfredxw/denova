@@ -75,6 +75,11 @@ func (j *journal) Append(ctx context.Context, expected runstate.Cursor, payloads
 	}
 	record := append(prefix, line...)
 	record = append(record, '\n')
+	_, statErr := os.Stat(j.tailPath)
+	tailCreated := errors.Is(statErr, os.ErrNotExist)
+	if statErr != nil && !tailCreated {
+		return nil, fmt.Errorf("stat file journal before append: %w", statErr)
+	}
 	file, err := os.OpenFile(j.tailPath, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0o600)
 	if err != nil {
 		return nil, fmt.Errorf("open file journal for append: %w", err)
@@ -99,20 +104,26 @@ func (j *journal) Append(ctx context.Context, expected runstate.Cursor, payloads
 		if !confirmed || syncErr != nil {
 			return nil, operationErr
 		}
-		if err := j.syncDirectory(filepath.Dir(j.tailPath)); err != nil {
-			return nil, fmt.Errorf("sync file journal directory: %w", err)
+		if tailCreated {
+			if err := j.syncDirectory(filepath.Dir(j.tailPath)); err != nil {
+				return nil, fmt.Errorf("sync file journal directory: %w", err)
+			}
 		}
 		return cloneJournalEvents(committed), nil
 	}
-	if err := j.syncDirectory(filepath.Dir(j.tailPath)); err != nil {
-		_, reconcileErr := j.reconcileAppend(expected, committed, encoded)
-		if reconcileErr != nil {
-			return nil, errors.Join(
-				fmt.Errorf("sync file journal directory: %w", err),
-				fmt.Errorf("reconcile directory-sync-uncertain append: %w", reconcileErr),
-			)
+	// File.Sync is the durability boundary for an existing append. Directory
+	// sync is needed only when O_CREATE publishes the tail's namespace entry.
+	if tailCreated {
+		if err := j.syncDirectory(filepath.Dir(j.tailPath)); err != nil {
+			_, reconcileErr := j.reconcileAppend(expected, committed, encoded)
+			if reconcileErr != nil {
+				return nil, errors.Join(
+					fmt.Errorf("sync file journal directory: %w", err),
+					fmt.Errorf("reconcile directory-sync-uncertain append: %w", reconcileErr),
+				)
+			}
+			return nil, fmt.Errorf("sync file journal directory: %w", err)
 		}
-		return nil, fmt.Errorf("sync file journal directory: %w", err)
 	}
 	j.cursor = committed[len(committed)-1].Cursor
 	j.needsNewline = false

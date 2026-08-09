@@ -16,11 +16,16 @@ import (
 	"denova/internal/localfs"
 )
 
+const maxResidentSessions = 32
+
 // Store 管理会话的 JSONL 文件持久化。
 type Store struct {
-	dir   string
-	mu    sync.Mutex
-	cache map[string]*Session
+	dir      string
+	mu       sync.Mutex
+	cache    map[string]*Session
+	used     map[string]uint64
+	sequence uint64
+	metadata map[string]cachedSessionMetadata
 }
 
 // NewStore 创建会话存储，目录不存在则自动创建。
@@ -29,8 +34,10 @@ func NewStore(dir string) (*Store, error) {
 		return nil, fmt.Errorf("创建会话目录失败: %w", err)
 	}
 	return &Store{
-		dir:   dir,
-		cache: make(map[string]*Session),
+		dir:      dir,
+		cache:    make(map[string]*Session),
+		used:     make(map[string]uint64),
+		metadata: make(map[string]cachedSessionMetadata),
 	}, nil
 }
 
@@ -113,7 +120,7 @@ func (s *Store) create(title string, seed *conversationconfig.Config) (*Session,
 		if err != nil {
 			return nil, err
 		}
-		s.cache[id] = sess
+		s.cacheSessionLocked(id, sess)
 		return sess, nil
 	}
 	return nil, fmt.Errorf("生成会话 ID 失败")
@@ -163,14 +170,17 @@ func (s *Store) List(activeID string) ([]SessionMeta, error) {
 		return nil, err
 	}
 	result := make([]SessionMeta, 0, len(files))
+	visible := make(map[string]struct{}, len(files))
 	for _, file := range files {
 		id := strings.TrimSuffix(filepath.Base(file), ".jsonl")
+		visible[id] = struct{}{}
 		meta, err := s.metadataLocked(id, file, activeID)
 		if err != nil {
 			return nil, err
 		}
 		result = append(result, meta)
 	}
+	s.discardMissingMetadataLocked(visible)
 	sort.Slice(result, func(i, j int) bool {
 		return result[i].UpdatedAt.After(result[j].UpdatedAt)
 	})
@@ -238,6 +248,7 @@ func (s *Store) Delete(id string) error {
 	if err := removeSessionJournal(s.sessionPath(id)); err != nil {
 		return fmt.Errorf("删除会话失败: %w", err)
 	}
+	delete(s.metadata, id)
 	return nil
 }
 
@@ -264,6 +275,7 @@ func (s *Store) DeleteByPrefix(prefix string) error {
 		if err := removeSessionJournal(file); err != nil && !errors.Is(err, os.ErrNotExist) {
 			return fmt.Errorf("删除会话失败: %w", err)
 		}
+		delete(s.metadata, id)
 	}
 	return nil
 }
@@ -286,6 +298,7 @@ func (s *Store) Close() error {
 func (s *Store) closeCachedLocked(id string) error {
 	sess := s.cache[strings.TrimSpace(id)]
 	delete(s.cache, strings.TrimSpace(id))
+	delete(s.used, strings.TrimSpace(id))
 	if sess == nil {
 		return nil
 	}
@@ -368,6 +381,7 @@ func (s *Store) getOrCreateLocked(id string) (*Session, error) {
 
 func (s *Store) getOrCreateLockedWithRuntimeConfig(id string, seed *conversationconfig.Config) (*Session, error) {
 	if sess, ok := s.cache[id]; ok {
+		s.touchSessionLocked(id)
 		return sess, nil
 	}
 
@@ -391,20 +405,50 @@ func (s *Store) getOrCreateLockedWithRuntimeConfig(id string, seed *conversation
 		return nil, err
 	}
 
-	s.cache[id] = sess
+	s.cacheSessionLocked(id, sess)
 	return sess, nil
 }
 
 func (s *Store) loadLocked(id string) (*Session, error) {
 	if sess, ok := s.cache[id]; ok {
+		s.touchSessionLocked(id)
 		return sess, nil
 	}
 	sess, err := loadSession(s.sessionPath(id))
 	if err != nil {
 		return nil, err
 	}
-	s.cache[id] = sess
+	s.cacheSessionLocked(id, sess)
 	return sess, nil
+}
+
+func (s *Store) cacheSessionLocked(id string, sess *Session) {
+	s.cache[id] = sess
+	s.touchSessionLocked(id)
+	if len(s.cache) <= maxResidentSessions {
+		return
+	}
+	victim := ""
+	var oldest uint64
+	for candidate := range s.cache {
+		if candidate == id {
+			continue
+		}
+		used := s.used[candidate]
+		if victim == "" || used < oldest {
+			victim, oldest = candidate, used
+		}
+	}
+	// Capacity eviction only releases Store ownership. An in-flight caller may
+	// safely finish with its Session; canonical mutations rendezvous through the
+	// journal lease if the same identity is opened again.
+	delete(s.cache, victim)
+	delete(s.used, victim)
+}
+
+func (s *Store) touchSessionLocked(id string) {
+	s.sequence++
+	s.used[id] = s.sequence
 }
 
 func (s *Store) exists(id string) bool {

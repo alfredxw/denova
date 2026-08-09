@@ -24,6 +24,8 @@ type Runtime struct {
 	done   chan struct{}
 
 	harness    map[string]*Harness
+	access     map[string]uint64
+	sequence   uint64
 	opening    map[string]*openCall
 	projecting map[string]*projectCall
 	closing    map[string]*closeCall
@@ -79,6 +81,7 @@ func NewRuntime(engines EngineFactory, journals JournalStore, config RuntimeConf
 		engines: engines, journals: journals, config: config,
 		ctx: ctx, cancel: cancel, done: make(chan struct{}),
 		harness: make(map[string]*Harness), opening: make(map[string]*openCall),
+		access:     make(map[string]uint64),
 		projecting: make(map[string]*projectCall), closing: make(map[string]*closeCall),
 		scopes: make(map[uint64]*scopeCloseCall),
 	}, nil
@@ -98,6 +101,9 @@ func (r *Runtime) ValidateCommandID(commandID string) error {
 func normalizeRuntimeConfig(config RuntimeConfig) RuntimeConfig {
 	if config.ObservationBuffer <= 0 {
 		config.ObservationBuffer = 256
+	}
+	if config.MaxOpenBindings <= 0 {
+		config.MaxOpenBindings = 32
 	}
 	if config.RetainedEventLimit <= 0 {
 		config.RetainedEventLimit = 4096
@@ -152,12 +158,18 @@ func (r *Runtime) Open(ctx context.Context, binding BindingRef) (*Harness, error
 		}
 		if h := r.harness[key]; h != nil {
 			if h.terminalError() == nil {
+				r.touchBindingLocked(key)
+				trim := len(r.harness) > r.config.MaxOpenBindings
 				r.mu.Unlock()
+				if trim {
+					r.trimIdleBindings(key)
+				}
 				return h, nil
 			}
 			// A terminal actor has already released, or is about to release, its
 			// lease. Never hand stale in-memory state back to another command.
 			delete(r.harness, key)
+			delete(r.access, key)
 		}
 		if pending := r.opening[key]; pending != nil {
 			r.mu.Unlock()
@@ -219,12 +231,22 @@ func (r *Runtime) finishOpen(ref BindingRef, key string, pending *openCall) {
 	}
 	if err == nil {
 		r.harness[key] = h
+		r.touchBindingLocked(key)
 		pending.harness = h
 	}
 	pending.err = err
 	close(pending.ready)
 	completed = true
+	trim := err == nil && len(r.harness) > r.config.MaxOpenBindings
 	r.mu.Unlock()
+	if trim {
+		r.trimIdleBindings(key)
+	}
+}
+
+func (r *Runtime) touchBindingLocked(key string) {
+	r.sequence++
+	r.access[key] = r.sequence
 }
 
 func waitOpenCall(ctx, lifecycle context.Context, pending *openCall) (*Harness, error) {

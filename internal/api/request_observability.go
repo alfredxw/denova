@@ -33,7 +33,7 @@ func requestObservabilityMiddleware(ctx context.Context, c *app.RequestContext) 
 	if strings.TrimSpace(route) == "" {
 		route = string(c.Request.Path())
 	}
-	level := slog.LevelInfo
+	level := slog.LevelDebug
 	if status >= 500 {
 		level = slog.LevelError
 	} else if status >= 400 {

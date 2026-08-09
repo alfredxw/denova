@@ -7,6 +7,7 @@ import (
 	"path/filepath"
 	"sort"
 	"strings"
+	"sync"
 
 	"denova/internal/book/lore"
 	"time"
@@ -16,7 +17,11 @@ import (
 
 // State 管理作品状态文件和内部目录。
 type State struct {
-	workspace string
+	workspace              string
+	chapterPathMu          sync.Mutex
+	chapterPathDirty       bool
+	chapterPathEntries     []chapterPathEntry
+	chapterPathDirectories map[string]int64
 }
 
 // CompactContextPart describes one bounded, model-visible workspace state source.
@@ -30,7 +35,7 @@ type CompactContextPart struct {
 
 // NewState 创建作品状态管理器。
 func NewState(workspace string) *State {
-	return &State{workspace: workspace}
+	return &State{workspace: workspace, chapterPathDirty: true}
 }
 
 // Workspace 返回作品工作目录。
@@ -341,54 +346,10 @@ func (s *State) ChapterPathContext(limit int) string {
 	if limit <= 0 {
 		limit = 12
 	}
-	root := filepath.Join(s.workspace, "chapters")
-	if _, err := os.Stat(root); err != nil {
-		return ""
-	}
-
-	type chapterEntry struct {
-		Path   string
-		Index  int
-		Volume string
-	}
-	var entries []chapterEntry
-	_ = filepath.WalkDir(root, func(path string, entry os.DirEntry, err error) error {
-		if err != nil {
-			return nil
-		}
-		name := entry.Name()
-		if strings.HasPrefix(name, ".") {
-			if entry.IsDir() {
-				return filepath.SkipDir
-			}
-			return nil
-		}
-		if entry.IsDir() {
-			return nil
-		}
-		ext := strings.ToLower(filepath.Ext(name))
-		if ext != ".md" && ext != ".txt" {
-			return nil
-		}
-		rel, err := filepath.Rel(s.workspace, path)
-		if err != nil {
-			return nil
-		}
-		rel = filepath.ToSlash(rel)
-		volume, _ := chapterVolume(rel)
-		entries = append(entries, chapterEntry{Path: rel, Index: chapterIndex(filepath.Base(rel)), Volume: volume})
-		return nil
-	})
+	entries := s.chapterPaths()
 	if len(entries) == 0 {
 		return ""
 	}
-	sort.Slice(entries, func(i, j int) bool {
-		left, right := entries[i], entries[j]
-		if cmp := compareChapterLikeNames(filepath.Base(left.Path), filepath.Base(right.Path)); cmp != 0 {
-			return cmp < 0
-		}
-		return left.Path < right.Path
-	})
 	if len(entries) > limit {
 		entries = entries[len(entries)-limit:]
 	}

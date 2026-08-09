@@ -7,7 +7,7 @@ import type { AgentQueuedCommandAction, AgentRuntimeQueuedCommand, ContextAnalys
 import { fetchProjectSettings, fetchSettings } from '@/features/settings/api'
 import { formatApprovedPlanExecutionMessage } from '@/lib/plan-mode'
 import { agentCommandErrorMessage, agentCommandRetryKey, isKnownAgentCommandOutcome, mergeProjectedAgentQueue, rememberAgentCommandID } from '@/lib/agent-command'
-import { AgentChatTransport, buildAgentChatRequestBody, normalizeAgentUIMessages, type AgentUIMessage } from '@/lib/agent-ui'
+import { AgentChatTransport, AgentUIMessageNormalizer, buildAgentChatRequestBody, type AgentUIMessage } from '@/lib/agent-ui'
 import { agentViewContent, type AgentPartRef } from '@/lib/agent-message-view'
 import { isProjectChangeForProject, type WorkspaceChangeEvent } from '@/features/changes/types'
 import {
@@ -81,6 +81,8 @@ export function useAgentChat(options: ChatOptions = {}) {
   const { projectId = '', client = writingAgentChatClient, onAgentFileChange, onWorkspaceChange } = options
   const transport = useMemo(() => new AgentChatTransport(client.transportOptions), [client])
   const [runtimeRecoverySignal, setRuntimeRecoverySignal] = useState(0)
+  const messageNormalizerRef = useRef<AgentUIMessageNormalizer | null>(null)
+  messageNormalizerRef.current ??= new AgentUIMessageNormalizer()
   const [displayRehydrateRequest, setDisplayRehydrateRequest] = useState<WritingDisplayRehydrateRequest | null>(null)
   const {
     messages: uiMessages,
@@ -135,7 +137,7 @@ export function useAgentChat(options: ChatOptions = {}) {
     },
   })
   const messages = useMemo(() => (
-    normalizeAgentUIMessages(uiMessages).flatMap<AgentUIMessage>((message) => {
+    messageNormalizerRef.current!.normalize(uiMessages).flatMap<AgentUIMessage>((message) => {
       const visibleParts = message.parts.filter((part) => part.type !== 'data-agent-error')
       if (visibleParts.length === message.parts.length) return [message]
       if (visibleParts.length === 0) return []

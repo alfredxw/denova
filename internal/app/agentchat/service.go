@@ -34,6 +34,7 @@ type projectRuntime struct {
 	versionService *book.VersionService
 	chatService    *agentharness.Service
 	cfg            config.Config
+	used           uint64
 	closeOnce      sync.Once
 }
 
@@ -73,20 +74,36 @@ type run struct {
 	recoveryActions map[string]agentrun.CommandReceipt
 }
 
+type cachedProjectSessionStore struct {
+	dir    string
+	store  *session.Store
+	used   uint64
+	pinned bool
+}
+
+const (
+	maxCachedProjectRuntimes      = 8
+	maxCachedProjectSessionStores = 16
+)
+
 // Service owns project runtime caching, scoped admission, reconnectable tasks,
 // and durable Agent commands for every AgentChat conversation.
 type Service struct {
 	host     Host
 	registry *projectdomain.Registry
 
-	admission    sync.Mutex
-	projectBuild sync.Mutex
-	starts       apptask.StartRegistry
+	admission     sync.Mutex
+	projectBuild  sync.Mutex
+	storeMu       sync.Mutex
+	storeSequence uint64
+	starts        apptask.StartRegistry
 
-	mu       sync.RWMutex
-	closed   bool
-	projects map[string]*projectRuntime
-	active   map[string]*run
+	mu              sync.RWMutex
+	closed          bool
+	projects        map[string]*projectRuntime
+	projectSequence uint64
+	active          map[string]*run
+	stores          map[string]cachedProjectSessionStore
 }
 
 func NewService(host Host, registry *projectdomain.Registry) *Service {
@@ -94,7 +111,63 @@ func NewService(host Host, registry *projectdomain.Registry) *Service {
 		host: host, registry: registry,
 		starts:   apptask.NewStartRegistry(apptask.StartRegistryOptions{Label: "Agent Chat"}),
 		projects: make(map[string]*projectRuntime), active: make(map[string]*run),
+		stores: make(map[string]cachedProjectSessionStore),
 	}
+}
+
+func (service *Service) projectSessionStore(projectID, dir string, pin bool) (*session.Store, error) {
+	projectID = strings.TrimSpace(projectID)
+	dir = filepath.Clean(dir)
+	service.storeMu.Lock()
+	if cached := service.stores[projectID]; cached.store != nil && cached.dir == dir {
+		service.storeSequence++
+		cached.used = service.storeSequence
+		cached.pinned = cached.pinned || pin
+		service.stores[projectID] = cached
+		service.storeMu.Unlock()
+		return cached.store, nil
+	}
+	store, err := session.NewStore(dir)
+	if err != nil {
+		service.storeMu.Unlock()
+		return nil, err
+	}
+	service.storeSequence++
+	service.stores[projectID] = cachedProjectSessionStore{dir: dir, store: store, used: service.storeSequence, pinned: pin}
+	for len(service.stores) > maxCachedProjectSessionStores {
+		victim := ""
+		var oldest uint64
+		for candidate, cached := range service.stores {
+			if candidate == projectID || cached.pinned {
+				continue
+			}
+			if victim == "" || cached.used < oldest {
+				victim, oldest = candidate, cached.used
+			}
+		}
+		if victim == "" {
+			break
+		}
+		delete(service.stores, victim)
+	}
+	service.storeMu.Unlock()
+	return store, nil
+}
+
+func (service *Service) evictProjectSessionStore(projectID string, store *session.Store) {
+	service.storeMu.Lock()
+	if cached := service.stores[strings.TrimSpace(projectID)]; cached.store == store {
+		delete(service.stores, strings.TrimSpace(projectID))
+	}
+	service.storeMu.Unlock()
+}
+
+func (service *Service) discardProjectSessionStore(projectID string) *session.Store {
+	service.storeMu.Lock()
+	defer service.storeMu.Unlock()
+	cached := service.stores[strings.TrimSpace(projectID)]
+	delete(service.stores, strings.TrimSpace(projectID))
+	return cached.store
 }
 
 func bindingKey(binding Binding) string {
@@ -154,10 +227,14 @@ func (service *Service) ProjectRuntime(ctx context.Context, projectID string) (P
 func (service *Service) projectRuntime(ctx context.Context, projectID string) (*projectRuntime, error) {
 	service.projectBuild.Lock()
 	defer service.projectBuild.Unlock()
-	service.mu.RLock()
+	service.mu.Lock()
 	project := service.projects[projectID]
 	closed := service.closed
-	service.mu.RUnlock()
+	if project != nil {
+		service.projectSequence++
+		project.used = service.projectSequence
+	}
+	service.mu.Unlock()
 	if closed {
 		return nil, fmt.Errorf("AgentChat service is closed")
 	}
@@ -194,7 +271,7 @@ func (service *Service) projectRuntime(ctx context.Context, projectID string) (*
 		}
 		agentKind = agentrun.AgentKindIDE
 	}
-	store, err := session.NewStore(layout.SessionsDir())
+	store, err := service.projectSessionStore(record.ID, layout.SessionsDir(), true)
 	if err != nil {
 		return nil, err
 	}
@@ -203,6 +280,7 @@ func (service *Service) projectRuntime(ctx context.Context, projectID string) (*
 	runtimeCfg.ProjectStateDir = layout.StateRoot
 	runtimeCfg, err = appsettings.RefreshProject(runtimeCfg, workspace, layout.StateRoot)
 	if err != nil {
+		service.evictProjectSessionStore(record.ID, store)
 		_ = store.Close()
 		return nil, err
 	}
@@ -215,17 +293,61 @@ func (service *Service) projectRuntime(ctx context.Context, projectID string) (*
 	service.mu.Lock()
 	if service.closed {
 		service.mu.Unlock()
+		service.evictProjectSessionStore(record.ID, store)
 		project.close()
 		return nil, fmt.Errorf("AgentChat service is closed")
 	}
 	if existing := service.projects[projectID]; existing != nil {
+		service.projectSequence++
+		existing.used = service.projectSequence
 		service.mu.Unlock()
 		project.close()
 		return existing, nil
 	}
+	service.projectSequence++
+	project.used = service.projectSequence
 	service.projects[projectID] = project
+	evictedID, evicted := service.evictProjectRuntimeLocked(projectID)
 	service.mu.Unlock()
+	if evicted != nil {
+		// Capacity eviction drops only cache ownership. In-flight callers keep a
+		// valid immutable dependency snapshot and canonical journals remain the
+		// synchronization boundary if this Project is opened again.
+		service.evictProjectSessionStore(evictedID, evicted.store)
+	}
 	return project, nil
+}
+
+func (service *Service) evictProjectRuntimeLocked(protected string) (string, *projectRuntime) {
+	if len(service.projects) <= maxCachedProjectRuntimes {
+		return "", nil
+	}
+	victim := ""
+	var oldest uint64
+	for projectID, project := range service.projects {
+		if projectID == protected || project == nil {
+			continue
+		}
+		running := false
+		for _, active := range service.active {
+			if active != nil && active.binding.ProjectID == projectID && active.task != nil && !active.task.Finished() {
+				running = true
+				break
+			}
+		}
+		if running {
+			continue
+		}
+		if victim == "" || project.used < oldest {
+			victim, oldest = projectID, project.used
+		}
+	}
+	if victim == "" {
+		return "", nil
+	}
+	evicted := service.projects[victim]
+	delete(service.projects, victim)
+	return victim, evicted
 }
 
 func (service *Service) activeRun(binding Binding) *run {
@@ -260,7 +382,29 @@ func (service *Service) releaseActiveRun(active *run) {
 	if service.active[key] == active {
 		delete(service.active, key)
 	}
+	evictedID, evicted := service.evictProjectRuntimeLocked("")
 	service.mu.Unlock()
+	if evicted != nil {
+		service.evictProjectSessionStore(evictedID, evicted.store)
+	}
+}
+
+// InvalidateBookSummary discards rebuildable Book projections for one cached
+// Project without opening a cold Project runtime.
+func (service *Service) InvalidateBookSummary(projectID string, paths []string, resync bool) {
+	if service == nil {
+		return
+	}
+	service.mu.RLock()
+	project := service.projects[strings.TrimSpace(projectID)]
+	service.mu.RUnlock()
+	if project == nil || project.bookService == nil {
+		return
+	}
+	project.bookService.InvalidateSummary(paths, resync)
+	if project.state != nil {
+		project.state.InvalidateChapterPaths(paths, resync)
+	}
 }
 
 // CloseProject drains one cached Project before archive or relink. A running
@@ -285,8 +429,15 @@ func (service *Service) CloseProject(ctx context.Context, projectID string) erro
 	project := service.projects[projectID]
 	delete(service.projects, projectID)
 	service.mu.Unlock()
+	store := service.discardProjectSessionStore(projectID)
 	if project != nil {
 		defer project.close()
+	} else if store != nil {
+		defer func() {
+			if err := store.Close(); err != nil {
+				slog.ErrorContext(context.Background(), fmt.Sprintf("[app/agentchat] close project session catalog failed project_id=%s err=%v", projectID, err))
+			}
+		}()
 	}
 	if service.host != nil {
 		_, chatService := service.host.BaseRuntime()
@@ -321,6 +472,13 @@ func (service *Service) Close(ctx context.Context) {
 	}
 	service.mu.Unlock()
 	service.admission.Unlock()
+	service.storeMu.Lock()
+	stores := make([]*session.Store, 0, len(service.stores))
+	for _, cached := range service.stores {
+		stores = append(stores, cached.store)
+	}
+	service.stores = make(map[string]cachedProjectSessionStore)
+	service.storeMu.Unlock()
 
 	for _, active := range runs {
 		if active != nil && active.task != nil {
@@ -339,6 +497,13 @@ func (service *Service) Close(ctx context.Context) {
 	}
 	for _, project := range projects {
 		project.close()
+	}
+	for _, store := range stores {
+		if store != nil {
+			if err := store.Close(); err != nil {
+				slog.ErrorContext(context.Background(), fmt.Sprintf("[app/agentchat] close cached project session store failed err=%v", err))
+			}
+		}
 	}
 }
 

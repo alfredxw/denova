@@ -3,6 +3,7 @@ import userEvent from '@testing-library/user-event'
 import { VirtuosoMockContext } from 'react-virtuoso'
 import type { ComponentProps } from 'react'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { buildAgentMessageViews } from '@/lib/agent-message-view'
 import { StoryStage as ProjectStoryStage } from './StoryStage'
 
 function StoryStage(props: Omit<ComponentProps<typeof ProjectStoryStage>, 'projectId'> & { projectId?: string }) {
@@ -201,11 +202,11 @@ describe('StoryStage streaming rendering', () => {
       expect(screen.getByText(providerThinking)).toBeInTheDocument()
       expect(screen.getByText('门后传来脚步声。')).toBeInTheDocument()
       const liveMessages = useInteractiveStore.getState().storyStageRuns['/tmp/book:story-1:main']?.liveMessages || []
-      expect(liveMessages.find((message) => message.role === 'assistant')).toMatchObject({
+      expect(buildAgentMessageViews(liveMessages).find((view) => view.kind === 'assistant')).toMatchObject({
         content: '门后传来脚步声。',
         streaming: true,
       })
-      expect(liveMessages.find((message) => message.role === 'assistant')).not.toHaveProperty('streaming_target_content')
+      expect(liveMessages.find((message) => message.role === 'assistant')?.metadata).not.toHaveProperty('streaming_target_content')
     } finally {
       stream.close()
     }
@@ -228,7 +229,7 @@ describe('StoryStage streaming rendering', () => {
       })
       await waitFor(() => {
         const liveMessages = useInteractiveStore.getState().storyStageRuns['/tmp/book:story-1:main']?.liveMessages || []
-        expect(liveMessages.some((message) => message.role === 'assistant' && message.content === '我先检查资料，再开始写正文。')).toBe(true)
+        expect(buildAgentMessageViews(liveMessages).some((view) => view.kind === 'assistant' && view.content === '我先检查资料，再开始写正文。')).toBe(true)
       })
       expect(screen.queryByRole('button', { name: /执行过程/ })).not.toBeInTheDocument()
 
@@ -241,7 +242,7 @@ describe('StoryStage streaming rendering', () => {
       expect(trace).toBeInTheDocument()
       expect(screen.getAllByText('我先检查资料，再开始写正文。')).toHaveLength(1)
       const liveMessages = useInteractiveStore.getState().storyStageRuns['/tmp/book:story-1:main']?.liveMessages || []
-      expect(liveMessages.some((message) => message.role === 'assistant' && (message.streaming_target_content || message.content))).toBe(false)
+      expect(buildAgentMessageViews(liveMessages).some((view) => view.kind === 'assistant' && view.content)).toBe(false)
     } finally {
       stream.close()
     }
@@ -525,12 +526,12 @@ describe('StoryStage streaming rendering', () => {
 
       await waitFor(() => {
         const liveMessages = useInteractiveStore.getState().storyStageRuns['/tmp/book:story-1:main']?.liveMessages || []
-        const executeMessages = liveMessages.filter((message) => message.role === 'tool_call' && message.name === 'bash')
+        const executeMessages = buildAgentMessageViews(liveMessages).filter((view) => view.kind === 'tool' && view.toolName === 'bash')
         expect(executeMessages).toHaveLength(1)
         expect(executeMessages[0]).toMatchObject({
-          args: completeArgs,
+          input: JSON.parse(completeArgs),
           status: 'success',
-          result: 'command done',
+          output: 'command done',
           streaming: false,
         })
       })
@@ -580,7 +581,7 @@ describe('StoryStage streaming rendering', () => {
       })
       const messages = useInteractiveStore.getState().storyStageRuns['/tmp/book:story-1:main']?.liveMessages || []
       expect(storeUpdates).toBe(1)
-      expect(messages.find((message) => message.id === 'call-execute')?.args).toBe('first-last')
+      expect(buildAgentMessageViews(messages).find((view) => view.partId === 'call-execute')?.input).toBe('first-last')
     } finally {
       unsubscribe()
       vi.restoreAllMocks()

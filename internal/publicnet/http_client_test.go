@@ -1,21 +1,15 @@
-package browser
+package publicnet_test
 
 import (
 	"context"
 	"net/netip"
 	"strings"
 	"testing"
+
+	"denova/internal/publicnet"
 )
 
-type staticNetIPResolver struct {
-	addresses []netip.Addr
-}
-
-func (resolver staticNetIPResolver) LookupNetIP(context.Context, string, string) ([]netip.Addr, error) {
-	return append([]netip.Addr(nil), resolver.addresses...), nil
-}
-
-func TestResolvePublicAddressesRejectsIPv4HiddenInTransitionAddresses(t *testing.T) {
+func TestValidateHostRejectsIPv4HiddenInTransitionAddresses(t *testing.T) {
 	tests := []struct {
 		name    string
 		address netip.Addr
@@ -29,17 +23,25 @@ func TestResolvePublicAddressesRejectsIPv4HiddenInTransitionAddresses(t *testing
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
-			_, err := resolvePublicAddresses(context.Background(), staticNetIPResolver{
-				addresses: []netip.Addr{test.address},
-			}, "ip", "attacker.example")
-			if err == nil || !strings.Contains(err.Error(), "blocked address") {
+			err := publicnet.ValidateHost(context.Background(), test.address.String())
+			if err == nil || !publicnet.IsPolicyError(err) || !strings.Contains(err.Error(), "blocked address") {
 				t.Fatalf("transition address %s was accepted: %v", test.address, err)
 			}
 		})
 	}
 }
 
-func TestPublicAddressPolicyAcceptsPublicIPv4TransitionMappings(t *testing.T) {
+func TestHTTPClientRejectsIPv4HiddenInTransitionAddress(t *testing.T) {
+	response, err := publicnet.NewHTTPClient().Get("http://[64:ff9b::a9fe:a9fe]/")
+	if response != nil {
+		_ = response.Body.Close()
+	}
+	if err == nil || !publicnet.IsPolicyError(err) || !strings.Contains(err.Error(), "blocked address") {
+		t.Fatalf("public HTTP client accepted NAT64 metadata address: response=%v err=%v", response, err)
+	}
+}
+
+func TestValidateHostAcceptsPublicIPv4TransitionMappings(t *testing.T) {
 	tests := []struct {
 		name    string
 		address netip.Addr
@@ -51,32 +53,59 @@ func TestPublicAddressPolicyAcceptsPublicIPv4TransitionMappings(t *testing.T) {
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
-			if !isPublicAddress(test.address) {
-				t.Fatalf("public transition mapping %s was rejected", test.address)
+			if err := publicnet.ValidateHost(context.Background(), test.address.String()); err != nil {
+				t.Fatalf("public transition mapping %s was rejected: %v", test.address, err)
 			}
 		})
 	}
 }
 
-func TestPublicAddressPolicyRejectsMalformedNAT64LocalUseEncoding(t *testing.T) {
+func TestValidateHostRejectsMalformedNAT64LocalUseEncoding(t *testing.T) {
 	address := nat64LocalUseAddress(netip.MustParseAddr("8.8.8.8"))
 	bytes := address.As16()
-	bytes[8] = 1 // RFC 6052 reserves this as the zero "u" octet.
+	bytes[8] = 1
 	malformed := netip.AddrFrom16(bytes)
-	if isPublicAddress(malformed) {
-		t.Fatalf("malformed NAT64 local-use address %s was accepted", malformed)
+	err := publicnet.ValidateHost(context.Background(), malformed.String())
+	if err == nil || !publicnet.IsPolicyError(err) {
+		t.Fatalf("malformed NAT64 local-use address %s was accepted: %v", malformed, err)
+	}
+}
+
+func TestValidateHostAppliesPublicAddressPolicy(t *testing.T) {
+	tests := []struct {
+		address string
+		allowed bool
+	}{
+		{address: "8.8.8.8", allowed: true},
+		{address: "2606:4700:4700::1111", allowed: true},
+		{address: "127.0.0.1"},
+		{address: "10.0.0.1"},
+		{address: "169.254.169.254"},
+		{address: "100.64.0.1"},
+		{address: "192.0.2.1"},
+		{address: "::1"},
+		{address: "fc00::1"},
+		{address: "2001:db8::1"},
+	}
+	for _, test := range tests {
+		t.Run(test.address, func(t *testing.T) {
+			err := publicnet.ValidateHost(context.Background(), test.address)
+			if (err == nil) != test.allowed {
+				t.Fatalf("ValidateHost(%s) error = %v, allowed = %v", test.address, err, test.allowed)
+			}
+		})
 	}
 }
 
 func nat64WellKnownAddress(ipv4 netip.Addr) netip.Addr {
-	bytes := nat64WellKnownPrefix.Addr().As16()
+	bytes := netip.MustParsePrefix("64:ff9b::/96").Addr().As16()
 	value := ipv4.Unmap().As4()
 	copy(bytes[12:], value[:])
 	return netip.AddrFrom16(bytes)
 }
 
 func nat64LocalUseAddress(ipv4 netip.Addr) netip.Addr {
-	bytes := nat64LocalUsePrefix.Addr().As16()
+	bytes := netip.MustParsePrefix("64:ff9b:1::/48").Addr().As16()
 	value := ipv4.Unmap().As4()
 	copy(bytes[6:8], value[:2])
 	bytes[8] = 0
@@ -85,19 +114,19 @@ func nat64LocalUseAddress(ipv4 netip.Addr) netip.Addr {
 }
 
 func sixToFourAddress(ipv4 netip.Addr) netip.Addr {
-	bytes := sixToFourPrefix.Addr().As16()
+	bytes := netip.MustParsePrefix("2002::/16").Addr().As16()
 	value := ipv4.Unmap().As4()
 	copy(bytes[2:6], value[:])
 	return netip.AddrFrom16(bytes)
 }
 
 func teredoAddress(serverIPv4, clientIPv4 netip.Addr) netip.Addr {
-	bytes := teredoPrefix.Addr().As16()
+	bytes := netip.MustParsePrefix("2001::/32").Addr().As16()
 	server := serverIPv4.Unmap().As4()
 	client := clientIPv4.Unmap().As4()
 	copy(bytes[4:8], server[:])
-	bytes[8], bytes[9] = 0, 0         // flags
-	bytes[10], bytes[11] = 0xed, 0xcb // an arbitrary obfuscated UDP port
+	bytes[8], bytes[9] = 0, 0
+	bytes[10], bytes[11] = 0xed, 0xcb
 	for index := range client {
 		bytes[12+index] = ^client[index]
 	}

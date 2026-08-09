@@ -17,7 +17,8 @@ import {
 import type { ActiveChatTask, AgentAskAnswer, AgentRuntimeRecoveryAction, ConfigManagerRunRequest } from '@/lib/api'
 import { useSkillCommands } from '@/hooks/useSkillCommands'
 import { agentViewAskID, selectAgentTokenUsageRecords, type AgentMessageView } from '@/lib/agent-message-view'
-import { createAgentDataMessage, createAgentTextMessage, useAgentUIMessageStream } from '@/hooks/useAgentUIMessageStream'
+import { useAgentUIMessageStream } from '@/hooks/useAgentUIMessageStream'
+import { createAgentDataMessage, createAgentTextMessage } from '@/lib/agent-ui-message'
 import { agentCommandRetryKey, isKnownAgentCommandOutcome, rememberAgentCommandID } from '@/lib/agent-command'
 import { normalizeAgentUIMessages } from '@/lib/agent-ui'
 import { resolveAgentAskAndRefresh } from '@/lib/agent-ask'
@@ -138,7 +139,7 @@ export function ConfigManagerChat({ projectId, origin, resourceId, storyId, bran
     if (projection?.pending_ask) {
       setMessages((current) => normalizeAgentUIMessages([
         ...current,
-        createAgentDataMessage('agent-ask', { ...projection.pending_ask }),
+        createAgentDataMessage({ type: 'agent-ask', data: { ...projection.pending_ask } }),
       ]))
     }
     setRecoveryPending(Boolean(
@@ -297,7 +298,7 @@ export function ConfigManagerChat({ projectId, origin, resourceId, storyId, bran
   }, [inspectRuntime, recoveryPending, running])
 
   const appendErrorMessage = (content: string) => {
-    setMessages((current) => [...current, createAgentDataMessage('agent-error', { content })])
+    setMessages((current) => [...current, createAgentDataMessage({ type: 'agent-error', data: { content } })])
   }
 
   const send = async (message: string) => {
@@ -310,13 +311,13 @@ export function ConfigManagerChat({ projectId, origin, resourceId, storyId, bran
         setRuntimeProjection(null)
         setHistoryBefore('0')
         setHasEarlierMessages(false)
-        setMessages([createAgentDataMessage('agent-clear', { created_at: new Date().toISOString() })])
+        setMessages([createAgentDataMessage({ type: 'agent-clear', data: { created_at: new Date().toISOString() } })])
       } catch (err) {
         appendErrorMessage(`${t('configManager.clearFailed')}: ${errorMessage(err)}`)
       }
       return
     }
-    setMessages((current) => [...current, createAgentTextMessage('user', instruction)])
+    setMessages((current) => [...current, createAgentTextMessage({ role: 'user', text: instruction })])
     setError(null)
     setRecoveryPending(true)
     const activeChatKey = chatKey

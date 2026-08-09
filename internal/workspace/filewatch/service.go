@@ -18,6 +18,7 @@ type Service struct {
 	mu       sync.Mutex
 	sequence uint64
 	projects map[string]*projectWatch
+	observer func(Event)
 	closed   bool
 }
 
@@ -32,6 +33,17 @@ type projectWatch struct {
 
 func NewService() *Service {
 	return &Service{projects: make(map[string]*projectWatch)}
+}
+
+// SetObserver installs the process-local projection invalidator. Files remain
+// canonical; observers only discard rebuildable caches and must return quickly.
+func (s *Service) SetObserver(observer func(Event)) {
+	if s == nil {
+		return
+	}
+	s.mu.Lock()
+	s.observer = observer
+	s.mu.Unlock()
 }
 
 // Subscribe starts a Project watcher on first use and returns an idempotent
@@ -97,6 +109,7 @@ func (s *Service) Subscribe(projectID, workspace string) (<-chan Event, func(), 
 		entry.forwarding = true
 	}
 	s.mu.Unlock()
+	s.observe(projectResyncEvent(entry))
 
 	if watcherToClose != nil {
 		if closeErr := watcherToClose.Close(); closeErr != nil {
@@ -220,12 +233,30 @@ func (s *Service) forwardSafely(projectID string, generation uint64, workspace s
 
 func (s *Service) publish(projectID string, generation uint64, event Event) {
 	s.mu.Lock()
-	defer s.mu.Unlock()
 	entry := s.projects[projectID]
 	if s.closed || entry == nil || entry.generation != generation {
+		s.mu.Unlock()
 		return
 	}
 	broadcastProjectEvent(entry, event)
+	s.mu.Unlock()
+	s.observe(event)
+}
+
+func (s *Service) observe(event Event) {
+	s.mu.Lock()
+	observer := s.observer
+	s.mu.Unlock()
+	if observer == nil {
+		return
+	}
+	defer func() {
+		if recovered := recover(); recovered != nil {
+			slog.ErrorContext(context.Background(), "[filewatch] projection observer panic recovered",
+				"project_id", event.ProjectID, "workspace", event.Workspace, "error", recovered)
+		}
+	}()
+	observer(event)
 }
 
 func broadcastProjectEvent(entry *projectWatch, event Event) {

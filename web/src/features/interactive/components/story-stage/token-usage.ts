@@ -1,43 +1,58 @@
-import type { ChatMessage } from '@/lib/api'
+import type { AgentUIMessage } from '@/lib/agent-ui'
+import { createAgentDataMessage } from '@/lib/agent-ui-message'
 import type { TokenUsageEvent } from '../../types'
 
-export function buildTokenUsageMessage(data: Record<string, unknown> | TokenUsageEvent, fallbackId?: string): ChatMessage {
+export function buildTokenUsageMessage(data: Record<string, unknown> | TokenUsageEvent, fallbackId?: string): AgentUIMessage {
   const runId = readString(data.run_id)
-  return {
-    role: 'token_usage',
-    id: runId || fallbackId || `token-usage-${Date.now()}`,
-    content: '',
-    run_id: runId,
-    agent_kind: readString(data.agent_kind),
-    prompt_tokens: readNumber(data.prompt_tokens),
-    cached_prompt_tokens: readNumber(data.cached_prompt_tokens),
-    uncached_prompt_tokens: readNumber(data.uncached_prompt_tokens),
-    cache_hit_rate: readNumber(data.cache_hit_rate),
-    completion_tokens: readNumber(data.completion_tokens),
-    reasoning_tokens: readNumber(data.reasoning_tokens),
-    total_tokens: readNumber(data.total_tokens),
-    model_calls: readNumber(data.model_calls),
-    generated_bytes: readNumber(data.generated_bytes),
-    usage_calls: readUsageCalls(data.usage_calls),
-    created_at: readString(data.created_at) || new Date().toISOString(),
-  }
+  const id = runId || fallbackId || `token-usage-${Date.now()}`
+  const createdAt = readString(data.created_at) || new Date().toISOString()
+  const agentKind = readString(data.agent_kind)
+  return createAgentDataMessage({
+    id,
+    type: 'agent-token-usage',
+    metadata: { run_id: runId || undefined, agent_kind: agentKind || undefined, created_at: createdAt },
+    data: {
+      id,
+      role: 'token_usage',
+      run_id: runId,
+      agent_kind: agentKind,
+      prompt_tokens: readNumber(data.prompt_tokens),
+      cached_prompt_tokens: readNumber(data.cached_prompt_tokens),
+      uncached_prompt_tokens: readNumber(data.uncached_prompt_tokens),
+      cache_hit_rate: readNumber(data.cache_hit_rate),
+      completion_tokens: readNumber(data.completion_tokens),
+      reasoning_tokens: readNumber(data.reasoning_tokens),
+      total_tokens: readNumber(data.total_tokens),
+      model_calls: readNumber(data.model_calls),
+      generated_bytes: readNumber(data.generated_bytes),
+      usage_calls: readUsageCalls(data.usage_calls),
+      created_at: createdAt,
+    },
+  })
 }
 
-export function upsertTokenUsageMessage(messages: ChatMessage[], next: ChatMessage) {
-  if (!next.run_id) return [...messages, next]
+export function upsertTokenUsageMessage(messages: AgentUIMessage[], next: AgentUIMessage) {
+  const nextRunId = tokenUsageRunID(next)
+  if (!nextRunId) return [...messages, next]
   let found = false
   const updated = messages.map((message) => {
-    if (message.role === 'token_usage' && message.run_id === next.run_id) {
+    if (tokenUsageRunID(message) === nextRunId) {
       found = true
-      return { ...message, ...next }
+      return next
     }
     return message
   })
   return found ? updated : [...updated, next]
 }
 
-export function mergeTokenUsageMessages(persisted: ChatMessage[], live: ChatMessage[]) {
+export function mergeTokenUsageMessages(persisted: AgentUIMessage[], live: AgentUIMessage[]) {
   return live.reduce((messages, message) => upsertTokenUsageMessage(messages, message), [...persisted])
+}
+
+function tokenUsageRunID(message: AgentUIMessage) {
+  const part = message.parts.find((candidate) => candidate.type === 'data-agent-token-usage') as Record<string, unknown> | undefined
+  const data = part?.data && typeof part.data === 'object' && !Array.isArray(part.data) ? part.data as Record<string, unknown> : undefined
+  return readString(data?.run_id) || message.metadata?.run_id || ''
 }
 
 function readUsageCalls(value: unknown) {

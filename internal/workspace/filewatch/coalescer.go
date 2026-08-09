@@ -66,15 +66,16 @@ func (c *changeCoalescer) take() []Change {
 }
 
 func (c *changeCoalescer) hasDeletedParent(path string) bool {
-	for candidate, change := range c.changes {
-		if candidate == path || change.Type != ChangeDeleted {
-			continue
+	for {
+		separator := strings.LastIndexByte(path, '/')
+		if separator < 0 {
+			return false
 		}
-		if strings.HasPrefix(path, candidate+"/") {
+		path = path[:separator]
+		if change, exists := c.changes[path]; exists && change.Type == ChangeDeleted {
 			return true
 		}
 	}
-	return false
 }
 
 func mergeChangeTypes(previous, next ChangeType) (ChangeType, bool) {

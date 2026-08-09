@@ -234,6 +234,9 @@ func (a *App) ensureServices() {
 		a.imageApp = imageapp.NewService(imageHost{app: a})
 		a.loreApp = loreapp.NewService(loreHost{app: a}, a.imageApp)
 		a.projectBook = projectbookapp.NewService(a.projectRegistry)
+		if a.workspaceFiles != nil {
+			a.workspaceFiles.SetObserver(a.observeProjectFileChange)
+		}
 		projectFileOptions := []projectfilesapp.ServiceOption(nil)
 		if a.cfg != nil {
 			projectFileOptions = append(projectFileOptions, projectfilesapp.WithTreeEntryLimit(a.cfg.ProjectFileTreeEntryLimit))

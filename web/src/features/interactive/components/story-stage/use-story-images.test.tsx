@@ -1,7 +1,6 @@
 import { act, renderHook } from '@testing-library/react'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { createAgentCommandID } from '@/lib/api'
-import type { ChatMessage } from '@/lib/api'
 import { generateInteractiveImage } from '../../api'
 import type { Snapshot } from '../../types'
 import { automaticInteractiveImageCommandID, useStoryImages } from './use-story-images'
@@ -48,11 +47,9 @@ describe('useStoryImages command identity', () => {
       .mockRejectedValueOnce(new TypeError('Failed to fetch'))
       .mockResolvedValue({ enabled: true, skipped: true })
     const hook = renderStoryImages()
-    const message = { role: 'assistant', content: 'scene', turn_id: 'turn-1' } as ChatMessage
-
-    await act(async () => { await hook.result.current.generateForMessage(message) })
-    await act(async () => { await hook.result.current.generateForMessage(message) })
-    await act(async () => { await hook.result.current.generateForMessage(message) })
+    await act(async () => { await hook.result.current.generateForTurn('turn-1') })
+    await act(async () => { await hook.result.current.generateForTurn('turn-1') })
+    await act(async () => { await hook.result.current.generateForTurn('turn-1') })
 
     expect(vi.mocked(generateInteractiveImage).mock.calls.map(([, request]) => request.command_id)).toEqual([
       'manual-image-1',
@@ -67,11 +64,9 @@ describe('useStoryImages command identity', () => {
       .mockRejectedValueOnce(Object.assign(new Error('rejected'), { status: 409 }))
       .mockResolvedValueOnce({ enabled: true, skipped: true })
     const hook = renderStoryImages()
-    const message = { role: 'assistant', content: 'scene', turn_id: 'turn-1' } as ChatMessage
-
-    await act(async () => { await hook.result.current.generateForMessage(message) })
-    await act(async () => { await hook.result.current.generateForMessage(message) })
-    await act(async () => { await hook.result.current.generateForMessage(message) })
+    await act(async () => { await hook.result.current.generateForTurn('turn-1') })
+    await act(async () => { await hook.result.current.generateForTurn('turn-1') })
+    await act(async () => { await hook.result.current.generateForTurn('turn-1') })
 
     expect(vi.mocked(generateInteractiveImage).mock.calls.map(([, request]) => request.command_id)).toEqual([
       'manual-image-1',
@@ -97,7 +92,7 @@ describe('useStoryImages command identity', () => {
     const hook = renderStoryImages()
 
     await act(async () => {
-      await hook.result.current.generateForMessage({ role: 'assistant', content: 'scene', turn_id: 'turn-1' })
+      await hook.result.current.generateForTurn('turn-1')
     })
 
     expect(toastError).toHaveBeenCalledWith('storyStage.interactiveImage.generateFailed', {
@@ -109,7 +104,7 @@ describe('useStoryImages command identity', () => {
     const hook = renderStoryImages()
 
     await act(async () => {
-      await hook.result.current.generateForMessage({ role: 'assistant', content: 'scene' })
+      await hook.result.current.generateForTurn('')
     })
 
     expect(generateInteractiveImage).not.toHaveBeenCalled()

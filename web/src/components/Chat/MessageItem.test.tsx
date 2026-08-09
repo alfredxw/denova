@@ -44,11 +44,15 @@ describe('MessageItem', () => {
     expect(container.querySelector('.chat-agent-message')).toHaveTextContent('直接展示正文')
   })
 
-  it('流式 assistant 消息即时渲染常见 Markdown 结构', () => {
-    render(<MessageItem message={{ role: 'assistant', content: '# 实时标题\n- 实时条目\n`cmd`', streaming: true }} />)
+  it('流式 assistant 以纯文本更新，完成后再解析 Markdown', () => {
+    const content = '# 实时标题\n- 实时条目\n`cmd`'
+    const { container, rerender } = render(<MessageItem message={{ role: 'assistant', content, streaming: true }} />)
 
+    expect(screen.queryByRole('heading', { name: '实时标题' })).toBeNull()
+    expect(container.querySelector('.chat-agent-message')).toHaveTextContent('# 实时标题 - 实时条目 `cmd`')
+
+    rerender(<MessageItem message={{ role: 'assistant', content, streaming: false }} />)
     expect(screen.getByRole('heading', { name: '实时标题' })).toBeInTheDocument()
-    expect(screen.getByText('实时标题')).toBeInTheDocument()
     expect(screen.getByText('实时条目')).toBeInTheDocument()
     expect(screen.getByText('cmd')).toBeInTheDocument()
   })
@@ -77,7 +81,7 @@ describe('MessageItem', () => {
     expect(container.querySelector('.chat-agent-message')).toHaveTextContent('第二行内容')
   })
 
-  it('流式和持久化 assistant 消息使用一致的 Markdown DOM 结构', () => {
+  it('流式正文保持单个文本节点，持久化后生成完整 Markdown DOM', () => {
     const content = '# 标题\n\n第一段。\n\n- 条目 A\n- 条目 B\n\n> 引用'
     const { container, rerender } = render(<MessageItem message={{ role: 'assistant', content, streaming: true }} />)
     const streamedTags = Array.from(container.querySelector('.chat-agent-message')?.children || []).map((node) => node.tagName)
@@ -85,13 +89,14 @@ describe('MessageItem', () => {
     rerender(<MessageItem message={{ role: 'assistant', content, streaming: false }} />)
     const persistedTags = Array.from(container.querySelector('.chat-agent-message')?.children || []).map((node) => node.tagName)
 
-    expect(streamedTags).toEqual(['H1', 'P', 'UL', 'BLOCKQUOTE'])
-    expect(persistedTags).toEqual(streamedTags)
+    expect(streamedTags).toEqual(['DIV'])
+    expect(persistedTags).toEqual(['H1', 'P', 'UL', 'BLOCKQUOTE'])
   })
 
-  it('流式和持久化 assistant 消息安全打开外部 Markdown 引用且保留站内链接行为', () => {
+  it('assistant 只在完成后激活 Markdown 链接行为', () => {
     const content = '结论。[SearXNG Search API](https://docs.searxng.org/dev/search_api.html)\n\n[站内文档](/docs/web-access)'
     const { rerender } = render(<MessageItem message={{ role: 'assistant', content, streaming: true }} />)
+    expect(screen.queryByRole('link')).toBeNull()
 
     const assertLinks = () => {
       expect(screen.getByRole('link', { name: 'SearXNG Search API' })).toHaveAttribute('href', 'https://docs.searxng.org/dev/search_api.html')
@@ -101,9 +106,14 @@ describe('MessageItem', () => {
       expect(screen.getByRole('link', { name: '站内文档' })).not.toHaveAttribute('rel')
     }
 
-    assertLinks()
     rerender(<MessageItem message={{ role: 'assistant', content, streaming: false }} />)
     assertLinks()
+  })
+
+  it('持久化 assistant 的 GFM 自动链接仍使用完整 Markdown 渲染', () => {
+    render(<MessageItem message={{ role: 'assistant', content: '参考 https://example.com/docs' }} />)
+
+    expect(screen.getByRole('link', { name: 'https://example.com/docs' })).toHaveAttribute('href', 'https://example.com/docs')
   })
 
   it('流式 assistant 不展示操作按钮但预留底部操作区，完成后再展示复制', () => {
@@ -224,16 +234,18 @@ describe('MessageItem', () => {
     expect(container.querySelector('.nova-dialogue-highlight')).toBeNull()
   })
 
-  it('流式互动消息同样高亮对白', () => {
-    const { container } = render(
+  it('流式互动消息完成后再高亮对白', () => {
+    const content = '他说：“走吧。”\n她答：「等等。」'
+    const { container, rerender } = render(
       <MessageItem
         highlightDialogue
-        message={{ role: 'assistant', content: '他说：“走吧。”\n她答：「等等。」', streaming: true }}
+        message={{ role: 'assistant', content, streaming: true }}
       />,
     )
 
-    const highlights = container.querySelectorAll('.nova-dialogue-highlight')
-    expect(highlights).toHaveLength(2)
+    expect(container.querySelectorAll('.nova-dialogue-highlight')).toHaveLength(0)
+    rerender(<MessageItem highlightDialogue message={{ role: 'assistant', content, streaming: false }} />)
+    expect(container.querySelectorAll('.nova-dialogue-highlight')).toHaveLength(2)
   })
 
   it('互动消息在最早版本缺少版本索引时仍显示下一版切换按钮', async () => {

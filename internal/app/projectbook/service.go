@@ -8,6 +8,7 @@ import (
 	"errors"
 	"fmt"
 	"strings"
+	"sync"
 
 	reviewapp "denova/internal/app/review"
 	"denova/internal/book"
@@ -31,10 +32,13 @@ type Snapshot struct {
 // General projects.
 type Service struct {
 	registry *projectdomain.Registry
+	mu       sync.Mutex
+	files    map[string]cachedBookFiles
+	sequence uint64
 }
 
 func NewService(registry *projectdomain.Registry) *Service {
-	return &Service{registry: registry}
+	return &Service{registry: registry, files: make(map[string]cachedBookFiles)}
 }
 
 func (service *Service) Snapshot(ctx context.Context, projectID string) (Snapshot, error) {
@@ -181,5 +185,53 @@ func (service *Service) resolve(projectID string) (runtime, error) {
 	if record.Type != projectdomain.TypeBook {
 		return runtime{}, fmt.Errorf("%w: project_id=%s", ErrBookProjectRequired, record.ID)
 	}
-	return runtime{record: record, layout: layout, files: book.NewService(layout.ContentRoot)}, nil
+	return runtime{record: record, layout: layout, files: service.bookFiles(record.ID, layout.ContentRoot)}, nil
+}
+
+const bookFilesCacheLimit = 8
+
+type cachedBookFiles struct {
+	workspace string
+	files     *book.Service
+	used      uint64
+}
+
+func (service *Service) bookFiles(projectID, workspace string) *book.Service {
+	service.mu.Lock()
+	defer service.mu.Unlock()
+	service.sequence++
+	if cached, exists := service.files[projectID]; exists && cached.workspace == workspace {
+		cached.used = service.sequence
+		service.files[projectID] = cached
+		return cached.files
+	}
+	files := book.NewService(workspace)
+	service.files[projectID] = cachedBookFiles{workspace: workspace, files: files, used: service.sequence}
+	if len(service.files) <= bookFilesCacheLimit {
+		return files
+	}
+	oldestID := ""
+	oldestUse := service.sequence
+	for id, candidate := range service.files {
+		if id != projectID && candidate.used <= oldestUse {
+			oldestID, oldestUse = id, candidate.used
+		}
+	}
+	delete(service.files, oldestID)
+	return files
+}
+
+// InvalidateSummary forwards an ephemeral filesystem invalidation to an
+// already-open Book projection. Cold projects need no work: their first read
+// builds from canonical files.
+func (service *Service) InvalidateSummary(projectID string, paths []string, resync bool) {
+	if service == nil {
+		return
+	}
+	service.mu.Lock()
+	cached, exists := service.files[strings.TrimSpace(projectID)]
+	service.mu.Unlock()
+	if exists {
+		cached.files.InvalidateSummary(paths, resync)
+	}
 }

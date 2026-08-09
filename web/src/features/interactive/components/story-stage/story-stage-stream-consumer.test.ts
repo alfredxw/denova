@@ -1,6 +1,8 @@
 import type { TFunction } from 'i18next'
 import { describe, expect, it, vi } from 'vitest'
-import type { ChatMessage } from '@/lib/api'
+import { buildAgentMessageViews } from '@/lib/agent-message-view'
+import type { AgentUIMessage } from '@/lib/agent-ui'
+import { createAgentReasoningMessage } from '@/lib/agent-ui-message'
 import type { InteractiveSSEEvent } from '../../types'
 import { createStoryStageStreamConsumer } from './story-stage-stream-consumer'
 import { INTERACTIVE_STREAM_EVENT_CONTRACT } from './story-stage-stream-events'
@@ -15,9 +17,9 @@ function eventStream(events: InteractiveSSEEvent[]) {
   })
 }
 
-function consumerFixture(initialMessages: ChatMessage[] = []) {
+function consumerFixture(initialMessages: AgentUIMessage[] = []) {
   let messages = initialMessages
-  const setMessages = vi.fn((updater: ChatMessage[] | ((current: ChatMessage[]) => ChatMessage[])) => {
+  const setMessages = vi.fn((updater: AgentUIMessage[] | ((current: AgentUIMessage[]) => AgentUIMessage[])) => {
     messages = typeof updater === 'function' ? updater(messages) : updater
   })
   const liveAccumulator = {
@@ -164,7 +166,7 @@ describe('story stage display checkpoint recovery', () => {
   })
 
   it('rebuilds a complete checkpoint before advancing to its committed cursor', async () => {
-    const fixture = consumerFixture([{ role: 'thinking', content: 'stale' }])
+    const fixture = consumerFixture([createAgentReasoningMessage({ text: 'stale' })])
     const outcome = await fixture.consumer.consume(
       eventStream([
         {
@@ -215,7 +217,7 @@ describe('story stage display checkpoint recovery', () => {
   })
 
   it('requests canonical rehydrate without terminalizing an active Task', async () => {
-    const fixture = consumerFixture([{ role: 'thinking', content: 'stale' }])
+    const fixture = consumerFixture([createAgentReasoningMessage({ text: 'stale' })])
     const outcome = await fixture.consumer.consume(
       eventStream([
         {
@@ -278,6 +280,6 @@ describe('story stage display checkpoint recovery', () => {
       terminalEventReceived: true,
       streamEventCursor: '6',
     })
-    expect(fixture.messages()).not.toEqual([{ role: 'error', content: 'storyStage.activity.persistenceMissing' }])
+    expect(buildAgentMessageViews(fixture.messages()).some((view) => view.kind === 'error')).toBe(false)
   })
 })

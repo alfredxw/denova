@@ -2,9 +2,8 @@ import { act, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import type { ReactElement } from 'react'
 import { VirtuosoMockContext } from 'react-virtuoso'
 import { describe, expect, it, vi } from 'vitest'
-import type { ChatMessage } from '@/lib/api'
-import { chatMessagesToAgentUIMessages } from '@/lib/agent-legacy-message'
 import type { AgentUIMessage } from '@/lib/agent-ui'
+import { createAgentReasoningMessage, createAgentTextMessage, createAgentToolMessage } from '@/lib/agent-ui-message'
 import { MessageList } from './MessageList'
 
 function renderMessageList(ui: ReactElement) {
@@ -898,29 +897,20 @@ describe('Agent MessageList', () => {
   })
 
   it('流式结果被持久化历史替换时保持 Run 与结果正文稳定挂载', async () => {
-    const list = (messages: ChatMessage[], isStreaming: boolean) => (
+    const list = (messages: AgentUIMessage[], isStreaming: boolean) => (
       <VirtuosoMockContext.Provider value={{ viewportHeight: 180, itemHeight: 52 }}>
         <MessageList
           isStreaming={isStreaming}
           activityContent=""
           collapseTraceGroups
-          messages={chatMessagesToAgentUIMessages(messages)}
+          messages={messages}
         />
       </VirtuosoMockContext.Provider>
     )
     const { rerender } = render(list([
-      {
-        role: 'thinking', content: '正在构建场景。', streaming: false,
-        run_id: 'run-stable', display_segment_id: 'reasoning-stable',
-      },
-      {
-        role: 'assistant', content: '雨幕中的城门缓缓打开。', streaming: true,
-        render_key: 'narrative-render-key', run_id: 'run-stable', display_phase: 'candidate',
-      },
-      {
-        id: 'tool-stable', role: 'tool_call', name: 'submit_choices', content: 'submit_choices',
-        status: 'running', streaming: true, run_id: 'run-stable',
-      },
+      createAgentReasoningMessage({ id: 'reasoning-stable', text: '正在构建场景。', metadata: { run_id: 'run-stable', display_segment_id: 'reasoning-stable' } }),
+      createAgentTextMessage({ id: 'narrative-render-key', role: 'assistant', text: '雨幕中的城门缓缓打开。', state: 'streaming', metadata: { run_id: 'run-stable', display_phase: 'candidate' } }),
+      createAgentToolMessage({ id: 'tool-stable', name: 'submit_choices', state: 'input-streaming', input: {}, metadata: { run_id: 'run-stable' } }),
     ], true))
 
     const liveNarrative = screen.getByText('雨幕中的城门缓缓打开。')
@@ -928,18 +918,9 @@ describe('Agent MessageList', () => {
     expect(liveRow).not.toBeNull()
 
     rerender(list([
-      {
-        id: 'reasoning-stable', role: 'thinking', content: '正在构建场景。', streaming: false,
-        run_id: 'run-stable', display_segment_id: 'reasoning-stable',
-      },
-      {
-        id: 'persisted-turn', role: 'assistant', content: '雨幕中的城门缓缓打开。', streaming: false,
-        render_key: 'narrative-render-key', run_id: 'run-stable',
-      },
-      {
-        id: 'tool-stable', role: 'tool_call', name: 'submit_choices', content: 'submit_choices',
-        status: 'success', result: 'ok', streaming: false, run_id: 'run-stable',
-      },
+      createAgentReasoningMessage({ id: 'reasoning-stable', text: '正在构建场景。', metadata: { run_id: 'run-stable', display_segment_id: 'reasoning-stable' } }),
+      createAgentTextMessage({ id: 'narrative-render-key', role: 'assistant', text: '雨幕中的城门缓缓打开。', metadata: { run_id: 'run-stable' } }),
+      createAgentToolMessage({ id: 'tool-stable', name: 'submit_choices', state: 'output-available', input: {}, output: 'ok', metadata: { run_id: 'run-stable' } }),
     ], false))
 
     const persistedNarrative = await screen.findByText('雨幕中的城门缓缓打开。')

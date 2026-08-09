@@ -42,6 +42,7 @@ func (r *Runtime) Project(ctx context.Context, binding BindingRef) (StatusSnapsh
 			continue
 		}
 		if h := r.harness[key]; h != nil && h.terminalError() == nil {
+			r.touchBindingLocked(key)
 			r.mu.Unlock()
 			return h.Status(ctx)
 		}

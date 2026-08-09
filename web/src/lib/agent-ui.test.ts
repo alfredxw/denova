@@ -1,6 +1,7 @@
 import { describe, expect, it, vi } from 'vitest'
 import {
   AgentChatTransport,
+  AgentUIMessageNormalizer,
   buildAgentChatRequestBody,
   initialSubmissionOutcomeForStatus,
   normalizeAgentUIMessages,
@@ -52,6 +53,41 @@ describe('agent-ui', () => {
     expect(normalized[1]).toBe(streamingMessage)
     expect(normalized[1].parts).toBe(streamingMessage.parts)
     expect(normalized[1].parts[0]).toBe(streamingPart)
+  })
+
+  it('增量归一化复用稳定历史，并在 part 结构变化时恢复完整去重', () => {
+    const normalizer = new AgentUIMessageNormalizer()
+    const history = {
+      id: 'history-tool',
+      role: 'assistant',
+      metadata: { run_id: 'run-1' },
+      parts: [{ type: 'dynamic-tool', toolName: 'read', toolCallId: 'call-1', state: 'input-available' }],
+    } as AgentUIMessage
+    const active = {
+      id: 'active-text',
+      role: 'assistant',
+      metadata: { run_id: 'run-1', display_segment_id: 'segment-1' },
+      parts: [{ type: 'text', text: 'first', state: 'streaming' }],
+    } as AgentUIMessage
+    const initial = normalizer.normalize([history, active])
+    const growing = {
+      ...active,
+      parts: [{ type: 'text', text: 'first second', state: 'streaming' }],
+    } as AgentUIMessage
+    const incremented = normalizer.normalize([history, growing])
+    expect(incremented[0]).toBe(initial[0])
+    expect(incremented[1].parts[0]).toMatchObject({ text: 'first second' })
+
+    const structural = {
+      ...growing,
+      parts: [
+        ...growing.parts,
+        { type: 'dynamic-tool', toolName: 'read', toolCallId: 'call-1', state: 'output-available', output: 'done' },
+      ],
+    } as AgentUIMessage
+    const deduped = normalizer.normalize([history, structural])
+    expect(deduped[0].parts[0]).toMatchObject({ toolCallId: 'call-1', state: 'output-available', output: 'done' })
+    expect(deduped[1].parts).toHaveLength(1)
   })
 
   it('不重复读取未变化历史消息的正文来生成去重指纹', () => {

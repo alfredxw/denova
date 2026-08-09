@@ -59,6 +59,12 @@ func (h *Handlers) HandleAgentChatProjects(_ context.Context, c *app.RequestCont
 	writeJSON(c, consts.StatusOK, map[string]any{"projects": h.app.AgentChat().Projects()})
 }
 
+// HandleAgentChatActivity is the lightweight detached-task heartbeat. Project
+// metadata remains event/refocus driven and is refreshed only on transitions.
+func (h *Handlers) HandleAgentChatActivity(_ context.Context, c *app.RequestContext) {
+	writeJSON(c, consts.StatusOK, map[string]any{"bindings": h.app.AgentChat().Activity()})
+}
+
 func (h *Handlers) HandleAgentChatProjectCreate(_ context.Context, c *app.RequestContext) {
 	var request struct {
 		Path string `json:"path"`

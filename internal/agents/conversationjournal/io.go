@@ -45,9 +45,8 @@ func appendAndSync(path string, validOffset int64, needsNewline bool, line []byt
 	if writeErr != nil || syncErr != nil || closeErr != nil {
 		return Location{}, 0, errors.Join(writeErr, syncErr, closeErr)
 	}
-	if err := localfs.SyncDirectory(filepath.Dir(path)); err != nil {
-		return Location{}, 0, err
-	}
+	// The session file and its directory entry are already durable before a
+	// Journal can open. File.Sync is sufficient for subsequent appends.
 	return Location{Offset: start, Length: len(line)}, validOffset + int64(len(payload)), nil
 }
 

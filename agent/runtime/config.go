@@ -8,6 +8,10 @@ import (
 
 type RuntimeConfig struct {
 	ObservationBuffer int
+	// MaxOpenBindings bounds actor goroutines and durable journal leases. The
+	// Runtime evicts only least-recently-used idle actors; active or observed
+	// bindings may temporarily exceed the limit until their state becomes idle.
+	MaxOpenBindings int
 	// These limits bound actor-owned display recovery memory only. Durable
 	// journals and model-visible context are unaffected.
 	RetainedEventLimit   int

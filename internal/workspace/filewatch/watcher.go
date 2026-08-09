@@ -22,7 +22,7 @@ const coalesceWindow = 50 * time.Millisecond
 // ordering, duplicate notifications, or dynamically created directories.
 type workspaceWatcher struct {
 	root      string
-	native    *fsnotify.Watcher
+	native    nativeWatcher
 	known     map[string]bool
 	events    chan batch
 	done      chan struct{}
@@ -38,7 +38,7 @@ func newWorkspaceWatcher(root string) (*workspaceWatcher, error) {
 	if !info.IsDir() {
 		return nil, fmt.Errorf("workspace watcher root is not a directory: %s", root)
 	}
-	native, err := fsnotify.NewBufferedWatcher(256)
+	native, err := newNativeWatcher(root)
 	if err != nil {
 		return nil, fmt.Errorf("create filesystem watcher: %w", err)
 	}
@@ -133,7 +133,7 @@ func (w *workspaceWatcher) run() {
 			return
 		case output <- outputValue:
 			ready = nil
-		case raw, ok := <-w.native.Events:
+		case raw, ok := <-w.native.Events():
 			if !ok {
 				w.deliverFinalResync()
 				return
@@ -141,7 +141,7 @@ func (w *workspaceWatcher) run() {
 			for _, change := range w.normalizeEvent(raw, queueResync) {
 				queueChange(change)
 			}
-		case err, ok := <-w.native.Errors:
+		case err, ok := <-w.native.Errors():
 			if !ok {
 				w.deliverFinalResync()
 				return
@@ -243,7 +243,7 @@ func (w *workspaceWatcher) watchDirectoryTree(root string, emit bool) ([]Change,
 		if walkErr != nil {
 			return walkErr
 		}
-		if path != root && strings.HasPrefix(entry.Name(), ".") {
+		if path != root && ignoredDirectoryEntry(entry) {
 			if entry.IsDir() {
 				return filepath.SkipDir
 			}
@@ -309,7 +309,7 @@ func (w *workspaceWatcher) relativeVisiblePath(path string) (string, bool) {
 		return "", false
 	}
 	rel = normalizeRelativePath(rel)
-	if rel == "" || hasHiddenSegment(rel) {
+	if rel == "" || isIgnoredPath(rel) {
 		return "", false
 	}
 	return rel, true
@@ -344,6 +344,37 @@ func (w *workspaceWatcher) removeDirectoryWatch(path string) {
 func hasHiddenSegment(path string) bool {
 	for _, segment := range strings.Split(filepath.ToSlash(path), "/") {
 		if strings.HasPrefix(segment, ".") {
+			return true
+		}
+	}
+	return false
+}
+
+var ignoredDirectoryNames = map[string]struct{}{
+	".git":         {},
+	".next":        {},
+	"build":        {},
+	"coverage":     {},
+	"dist":         {},
+	"node_modules": {},
+	"target":       {},
+	"vendor":       {},
+}
+
+func ignoredDirectoryEntry(entry fs.DirEntry) bool {
+	if entry == nil || !entry.IsDir() {
+		return false
+	}
+	_, ignored := ignoredDirectoryNames[entry.Name()]
+	return ignored || strings.HasPrefix(entry.Name(), ".")
+}
+
+func isIgnoredPath(path string) bool {
+	for _, segment := range strings.Split(filepath.ToSlash(path), "/") {
+		if strings.HasPrefix(segment, ".") {
+			return true
+		}
+		if _, ignored := ignoredDirectoryNames[segment]; ignored {
 			return true
 		}
 	}

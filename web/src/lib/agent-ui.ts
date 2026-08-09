@@ -1,11 +1,13 @@
 import type { ChatTransport, UIMessage } from 'ai'
 import { DefaultChatTransport } from 'ai'
 import { fetchAPI } from './api-client/client'
-import type { ChatMessage, UserMessageReference } from './api-client/types'
+import type { UserMessageReference } from './api-client/types'
+
+export type AgentDisplayRole = 'user' | 'assistant' | 'thinking' | 'tool_call' | 'tool_result' | 'ask' | 'rule_roll' | 'context_compaction' | 'token_usage' | 'plan_question' | 'proposed_plan' | 'system' | 'error'
 
 export interface AgentMessageMetadata {
 	created_at?: string
-	display_role?: ChatMessage['role']
+	display_role?: AgentDisplayRole
 	display_phase?: 'candidate' | 'progress' | 'final' | 'partial'
 	history_type?: string
   run_id?: string
@@ -233,6 +235,53 @@ export function normalizeAgentUIMessages(messages: AgentUIMessage[]): AgentUIMes
   return normalizeRepeatedAgentUIParts(normalizeRepeatedAgentUIMessageIDs(messages))
 }
 
+/**
+ * Reuses a normalized stable prefix while one cumulative streaming message is
+ * growing. Structural changes still take the complete dedupe path, so history
+ * replay and tool/data part replacement keep their canonical behavior.
+ */
+export class AgentUIMessageNormalizer {
+  private source: AgentUIMessage[] = []
+  private normalized: AgentUIMessage[] = []
+
+  normalize(messages: AgentUIMessage[]): AgentUIMessage[] {
+    const lastIndex = messages.length - 1
+    const previousLast = this.source[lastIndex]
+    const nextLast = messages[lastIndex]
+    let stableGrowingTail =
+      messages.length > 0 &&
+      messages.length === this.source.length &&
+      this.normalized.length === messages.length &&
+      nextLast.role === previousLast?.role &&
+      nextLast.parts.length === previousLast?.parts.length
+    for (let index = 0; stableGrowingTail && index < messages.length; index += 1) {
+      const message = messages[index]
+      stableGrowingTail =
+        Boolean(message.id) &&
+        message.id === this.source[index]?.id &&
+        message.id === this.normalized[index]?.id &&
+        this.normalized[index]?.parts.length === this.source[index]?.parts.length &&
+        (index === lastIndex || message === this.source[index])
+    }
+
+    let normalized: AgentUIMessage[]
+    if (stableGrowingTail) {
+      const tail = normalizeAgentUIMessages([nextLast])[0]
+      if (tail) {
+        normalized = [...this.normalized]
+        normalized[lastIndex] = tail
+      } else {
+        normalized = normalizeAgentUIMessages(messages)
+      }
+    } else {
+      normalized = normalizeAgentUIMessages(messages)
+    }
+    this.source = [...messages]
+    this.normalized = normalized
+    return normalized
+  }
+}
+
 function normalizeRepeatedAgentUIMessageIDs(messages: AgentUIMessage[]) {
   const indexByKey = new Map<string, number>()
   const normalized: AgentUIMessage[] = []
@@ -405,16 +454,21 @@ function agentUIPartDedupeIdentity(
   }
 
   if ((type === 'text' || type === 'reasoning') && runID) {
+    const segmentID = firstNonEmpty(metadata.display_segment_id || '', readString(raw.id))
+    if (segmentID) {
+      const stableContentKey = `run:${runID}:content:${type}:id:${segmentID}`
+      if (type !== 'reasoning') return { primaryKey: stableContentKey, stableContentKey }
+      const text = readString(raw.text).trim()
+      const legacyContentKey = text ? `run:${runID}:content:${type}:${contentPrefixFingerprint(text)}` : undefined
+      return { primaryKey: stableContentKey, legacyContentKey, stableContentKey }
+    }
     const text = readString(raw.text).trim()
     if (!text) return { primaryKey: '' }
     const fingerprint = type === 'reasoning' ? contentPrefixFingerprint(text) : textFingerprint(text)
     const legacyContentKey = `run:${runID}:content:${type}:${fingerprint}`
-    const segmentID = firstNonEmpty(metadata.display_segment_id || '', readString(raw.id))
-    const stableContentKey = segmentID ? `run:${runID}:content:${type}:id:${segmentID}` : ''
     return {
-      primaryKey: stableContentKey || legacyContentKey,
+      primaryKey: legacyContentKey,
       legacyContentKey,
-      stableContentKey,
     }
   }
 

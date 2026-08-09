@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"log/slog"
+	"os"
 	"path/filepath"
 	"strings"
 	"time"
@@ -12,19 +13,71 @@ import (
 	"denova/internal/agents/conversationjournal"
 )
 
+type sessionFileStamp struct {
+	size       int64
+	modifiedNS int64
+}
+
+type cachedSessionMetadata struct {
+	stamp sessionFileStamp
+	meta  SessionMeta
+}
+
 // metadataLocked returns a current session summary without materializing its
 // transcript. The caller holds Store.mu, so a resident Session can be sampled
 // directly while cold sessions use only the bounded journal projection.
 func (s *Store) metadataLocked(id, filePath, activeID string) (SessionMeta, error) {
 	if sess := s.cache[id]; sess != nil {
-		return sess.metadata(activeID), nil
+		// Keep the snapshot and its file stamp atomic with in-process appends. A
+		// stamp captured after releasing Session.mu could otherwise cache stale
+		// metadata under the newly appended file size.
+		sess.mu.Lock()
+		meta := sess.metadataLocked(activeID)
+		if stamp, err := currentSessionFileStamp(filePath); err == nil {
+			s.metadata[id] = cachedSessionMetadata{stamp: stamp, meta: withoutActiveSession(meta)}
+		}
+		sess.mu.Unlock()
+		return meta, nil
 	}
-	return loadSessionMetadata(filePath, activeID)
+	stamp, err := currentSessionFileStamp(filePath)
+	if err != nil {
+		return SessionMeta{}, err
+	}
+	if cached, ok := s.metadata[id]; ok && cached.stamp == stamp {
+		meta := cached.meta
+		meta.Active = id == activeID
+		return meta, nil
+	}
+	meta, err := loadSessionMetadata(filePath, activeID)
+	if err != nil {
+		return SessionMeta{}, err
+	}
+	s.metadata[id] = cachedSessionMetadata{stamp: stamp, meta: withoutActiveSession(meta)}
+	return meta, nil
 }
 
-func (s *Session) metadata(activeID string) SessionMeta {
-	s.mu.Lock()
-	defer s.mu.Unlock()
+func currentSessionFileStamp(path string) (sessionFileStamp, error) {
+	info, err := os.Stat(path)
+	if err != nil {
+		return sessionFileStamp{}, err
+	}
+	return sessionFileStamp{size: info.Size(), modifiedNS: info.ModTime().UnixNano()}, nil
+}
+
+func withoutActiveSession(meta SessionMeta) SessionMeta {
+	meta.Active = false
+	return meta
+}
+
+func (s *Store) discardMissingMetadataLocked(visible map[string]struct{}) {
+	for id := range s.metadata {
+		if _, ok := visible[id]; !ok {
+			delete(s.metadata, id)
+		}
+	}
+}
+
+func (s *Session) metadataLocked(activeID string) SessionMeta {
 	meta := SessionMeta{
 		ID: s.ID, Title: s.titleLocked(), CreatedAt: s.CreatedAt, UpdatedAt: s.UpdatedAt,
 		Active: s.ID == activeID, MessageCount: s.visibleMessageCountLocked(),

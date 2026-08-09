@@ -108,6 +108,63 @@ func TestDisplayUpdateAppendsPatchAndReloadsMaterializedState(t *testing.T) {
 	}
 }
 
+func TestStreamedDisplayContentPersistsInLargeBatchesAndFlushesAtBoundary(t *testing.T) {
+	dir := t.TempDir()
+	store, err := NewStore(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	sess, err := store.GetOrCreate("display-stream-batch")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := sess.AppendDisplayEvent(DisplayEvent{ID: "assistant-stream", Role: "assistant"}); err != nil {
+		t.Fatal(err)
+	}
+	path := filepath.Join(dir, "display-stream-batch.jsonl")
+	before, err := os.Stat(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	content := strings.Repeat("x", displayStreamPersistBatchBytes-1)
+	if err := sess.AppendDisplayEventContent("assistant-stream", "assistant", content); err != nil {
+		t.Fatal(err)
+	}
+	buffered, err := os.Stat(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if buffered.Size() != before.Size() {
+		t.Fatalf("sub-threshold stream changed journal size: before=%d after=%d", before.Size(), buffered.Size())
+	}
+	if err := sess.AppendDisplayEventContent("assistant-stream", "assistant", "y"); err != nil {
+		t.Fatal(err)
+	}
+	persisted, err := os.Stat(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if persisted.Size() <= buffered.Size() {
+		t.Fatal("display stream did not persist at the batch boundary")
+	}
+
+	reloadedStore, err := NewStore(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	reloaded, err := reloadedStore.Get("display-stream-batch")
+	if err != nil {
+		t.Fatal(err)
+	}
+	history := reloaded.History()
+	if len(history) != 1 {
+		t.Fatalf("reloaded streamed display history length = %d, want 1", len(history))
+	}
+	if history[0].Content != content+"y" {
+		t.Fatalf("reloaded streamed display content length = %d, want %d", len(history[0].Content), len(content)+1)
+	}
+}
+
 func TestFinalizeDisplayAssistantRunPersistsPresentationPhases(t *testing.T) {
 	dir := t.TempDir()
 	store, err := NewStore(dir)

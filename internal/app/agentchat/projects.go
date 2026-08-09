@@ -84,7 +84,7 @@ func (service *Service) Projects() []Project {
 			projects = append(projects, project)
 			continue
 		}
-		metas, readErr := readProjectSessions(layout.SessionsDir())
+		metas, readErr := service.readProjectSessions(record.ID, layout.SessionsDir())
 		if readErr != nil {
 			slog.ErrorContext(context.Background(), fmt.Sprintf("[app/agentchat] read project sessions failed project_id=%s err=%v", record.ID, readErr))
 			project.Error = readErr.Error()
@@ -103,7 +103,7 @@ func (service *Service) Projects() []Project {
 	for _, project := range projects {
 		totalSessions += project.Total
 	}
-	slog.InfoContext(context.Background(), fmt.Sprintf(
+	slog.DebugContext(context.Background(), fmt.Sprintf(
 		"[app/agentchat] listed project session metadata projects=%d sessions=%d duration=%s",
 		len(projects), totalSessions, time.Since(startedAt),
 	))
@@ -154,7 +154,7 @@ func (service *Service) History(query HistoryQuery) HistoryPage {
 		if layoutErr != nil {
 			continue
 		}
-		metas, err := readProjectSessions(layout.SessionsDir())
+		metas, err := service.readProjectSessions(record.ID, layout.SessionsDir())
 		if err != nil {
 			slog.ErrorContext(context.Background(), fmt.Sprintf("[app/agentchat] read project history failed project_id=%s err=%v", record.ID, err))
 			continue
@@ -189,23 +189,18 @@ func (service *Service) History(query HistoryQuery) HistoryPage {
 	end := min(page.Offset+query.Limit, page.Total)
 	page.Items = append(page.Items, items[page.Offset:end]...)
 	page.HasMore = end < page.Total
-	slog.InfoContext(context.Background(), fmt.Sprintf(
+	slog.DebugContext(context.Background(), fmt.Sprintf(
 		"[app/agentchat] searched conversation history query_length=%d total=%d offset=%d returned=%d duration=%s",
 		len([]rune(normalizedQuery)), page.Total, page.Offset, len(page.Items), time.Since(startedAt),
 	))
 	return page
 }
 
-func readProjectSessions(sessionsDir string) ([]session.SessionMeta, error) {
-	store, err := session.NewStore(sessionsDir)
+func (service *Service) readProjectSessions(projectID, sessionsDir string) ([]session.SessionMeta, error) {
+	store, err := service.projectSessionStore(projectID, sessionsDir, false)
 	if err != nil {
 		return nil, err
 	}
-	defer func() {
-		if closeErr := store.Close(); closeErr != nil {
-			slog.ErrorContext(context.Background(), fmt.Sprintf("[app/agentchat] close session metadata store failed sessions_dir=%q err=%v", sessionsDir, closeErr))
-		}
-	}()
 	metas, err := store.List("")
 	if err != nil {
 		return nil, err

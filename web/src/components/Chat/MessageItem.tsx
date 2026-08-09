@@ -111,12 +111,15 @@ export const MessageItem = memo(function MessageItem({ projectId = '', message, 
           <div className="w-full">
             <div className="nova-message-body-with-meta nova-message-body-with-meta-assistant">
               <AIMessageContent className="chat-agent-message block w-full gap-0 px-1 text-sm text-[var(--nova-text)]" style={messageStyle}>
-                {/* 流式与完成态共用同一棵 Markdown 组件树，历史回填时只更新内容，不重新挂载正文。 */}
+                {/* Streaming keeps one cheap text node. Plain completed text keeps that node mounted;
+                    only completed Markdown pays the parser cost. */}
                 {message.streaming && !visibleContent ? (
                   <StreamingPlaceholder />
                 ) : (
                   <StreamingContentStage content={content} targetContent={streamingTargetContent} streaming={message.streaming === true}>
-                    {(value) => <MarkdownContent content={value} highlightDialogue={highlightDialogue} projectId={projectId} />}
+                    {(value) => message.streaming || isPlainAssistantText(value)
+                      ? <PlainTextContent content={sanitizeThinkTags(value)} />
+                      : <MarkdownContent content={value} highlightDialogue={highlightDialogue} projectId={projectId} />}
                   </StreamingContentStage>
                 )}
               </AIMessageContent>
@@ -1711,6 +1714,15 @@ function sanitizeThinkTags(text: string): string {
   }
   // 清理任何残留 think 标签
   return result.replace(/<\/?\s*think\s*>/gi, '')
+}
+
+const PlainTextContent = memo(function PlainTextContent({ content }: { content: string }) {
+  return <div className="whitespace-pre-wrap break-words">{content}</div>
+})
+
+function isPlainAssistantText(content: string) {
+  return !(/[\n*_`~\[\]<>#]|^\s*(?:[-+>] |\d+[.)] |-{3,}|={3,})/.test(content)
+    || /\b(?:https?:\/\/|www\.)/i.test(content))
 }
 
 const MarkdownContent = memo(function MarkdownContent({ content, highlightDialogue, projectId }: { content: string; highlightDialogue: boolean; projectId: string }) {

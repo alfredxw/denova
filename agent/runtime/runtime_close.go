@@ -56,6 +56,7 @@ func (r *Runtime) finishCloseBinding(key string, pending *closeCall) {
 		if opening == nil && projection == nil {
 			h := r.harness[key]
 			delete(r.harness, key)
+			delete(r.access, key)
 			r.mu.Unlock()
 			if h != nil {
 				closeErr = safeHarnessClose(h)
@@ -163,6 +164,7 @@ func (r *Runtime) finishCloseBindings(id uint64, pending *scopeCloseCall) {
 			if pending.selector.matches(h.binding) {
 				harnesses = append(harnesses, h)
 				delete(r.harness, key)
+				delete(r.access, key)
 			}
 		}
 		closings := make([]*closeCall, 0)

@@ -74,6 +74,11 @@ func TestRequestObservabilityCorrelatesContextResponseAndLog(t *testing.T) {
 }
 
 func TestRequestObservabilityKeepsSuccessfulPayloadUnchanged(t *testing.T) {
+	previousLogger := slog.Default()
+	defer slog.SetDefault(previousLogger)
+	var logOutput bytes.Buffer
+	observability.ConfigureStructuredLogging(&logOutput)
+
 	server := hertzserver.Default()
 	server.Use(requestObservabilityMiddleware)
 	server.GET("/ok", func(_ context.Context, c *app.RequestContext) {
@@ -89,6 +94,9 @@ func TestRequestObservabilityKeepsSuccessfulPayloadUnchanged(t *testing.T) {
 	}
 	if _, exists := payload[observability.RequestIDField]; exists {
 		t.Fatalf("successful payload was unexpectedly changed: %#v", payload)
+	}
+	if strings.Contains(logOutput.String(), "http_request_completed") {
+		t.Fatalf("successful request polluted production logs: %s", logOutput.String())
 	}
 }
 

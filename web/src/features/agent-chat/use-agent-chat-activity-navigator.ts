@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo } from 'react'
-import type { AgentChatHistoryItem, AgentChatProject, AgentChatSession } from './api'
+import { getAgentChatActivity, type AgentChatHistoryItem, type AgentChatProject, type AgentChatSession } from './api'
 import { agentChatSessionBindingKey, projectSidebarActivities, type AgentChatSidebarActivity } from './sidebar-activity'
 import { emptyProjectTabState, tabGroup, type AgentChatWorkbenchState } from './tab-state'
 import type { AgentChatTerminalStatus } from './terminal/TerminalTabView'
@@ -51,23 +51,52 @@ export function useAgentChatActivityNavigator({
     return bindings
   }, [workbench.projects])
 
-  const hasDetachedRunningActivity = useMemo(() => {
+  const detachedRunningBindings = useMemo(() => {
+    const bindings = new Set<string>()
     for (const project of projects) {
       for (const session of project.sessions) {
         const key = agentChatSessionBindingKey(project.id, session.id)
-        if (isSessionRunning(project, session) && !openConversationBindings.has(key)) return true
+        if (isSessionRunning(project, session) && !openConversationBindings.has(key)) bindings.add(key)
       }
     }
-    return [...liveRunningBindings].some((key) => !openConversationBindings.has(key))
+    for (const key of liveRunningBindings) {
+      if (!openConversationBindings.has(key)) bindings.add(key)
+    }
+    return bindings
   }, [isSessionRunning, liveRunningBindings, openConversationBindings, projects])
 
   useEffect(() => {
-    if (!hasDetachedRunningActivity) return
+    if (detachedRunningBindings.size === 0) return
+    let stopped = false
+    let pending = false
+    const refreshActivity = async () => {
+      if (pending) return
+      pending = true
+      try {
+        const bindings = await getAgentChatActivity()
+        if (stopped) return
+        const current = new Set(
+          bindings
+            .map((binding) => agentChatSessionBindingKey(binding.project_id, binding.session_id))
+            .filter((key) => !openConversationBindings.has(key)),
+        )
+        if (current.size !== detachedRunningBindings.size || [...current].some((key) => !detachedRunningBindings.has(key))) {
+          await refreshProjects()
+        }
+      } catch (error) {
+        console.warn('[features/agent-chat/use-agent-chat-activity-navigator.ts] refreshing detached activity failed', { error })
+      } finally {
+        pending = false
+      }
+    }
     const interval = window.setInterval(() => {
-      void refreshProjects()
+      void refreshActivity()
     }, DETACHED_ACTIVITY_REFRESH_INTERVAL_MS)
-    return () => window.clearInterval(interval)
-  }, [hasDetachedRunningActivity, refreshProjects])
+    return () => {
+      stopped = true
+      window.clearInterval(interval)
+    }
+  }, [detachedRunningBindings, openConversationBindings, refreshProjects])
 
   const activitiesByProject = useMemo(() => {
     const activities = new Map<string, readonly AgentChatSidebarActivity[]>()

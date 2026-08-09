@@ -13,6 +13,7 @@ vi.mock('./api', () => ({
   createAgentChatSession: vi.fn(),
   deleteAgentChatSession: vi.fn(),
   getAgentChatHistory: vi.fn(),
+  getAgentChatActivity: vi.fn().mockResolvedValue([]),
   getAgentChatProjects: vi.fn(),
   relinkAgentChatProject: vi.fn(),
   renameAgentChatSession: vi.fn(),

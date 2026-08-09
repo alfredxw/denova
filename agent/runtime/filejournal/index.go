@@ -89,7 +89,7 @@ func (j *journal) rewriteCommandIndexLocked() error {
 	if err != nil {
 		return err
 	}
-	return writeAtomicFile(j.commandIndexPath(), append(line, '\n'), 0o600)
+	return writeRebuildableFile(j.commandIndexPath(), append(line, '\n'), 0o600)
 }
 
 func (j *journal) appendCommandIndexLocked(previous runstate.Cursor, events []runstate.Event) error {
@@ -120,12 +120,14 @@ func (j *journal) appendCommandIndexLocked(previous runstate.Cursor, events []ru
 		return err
 	}
 	writeErr := writeAll(file, append(line, '\n'))
-	syncErr := file.Sync()
 	closeErr := file.Close()
-	if writeErr != nil || syncErr != nil || closeErr != nil {
-		return errors.Join(writeErr, syncErr, closeErr)
+	if writeErr != nil || closeErr != nil {
+		return errors.Join(writeErr, closeErr)
 	}
-	return syncDirectory(filepath.Dir(j.commandIndexPath()))
+	// This index is checksummed and rebuilt from the canonical fsynced journal
+	// after any missing or torn write. Do not add a second durability barrier to
+	// every user-visible runtime event.
+	return nil
 }
 
 func commandIndexEntries(commands map[runstate.CommandID]runstate.CommandRecord) []journalCommandIndexEntry {
@@ -366,4 +368,35 @@ func writeAtomicFile(path string, data []byte, mode os.FileMode) error {
 	}
 	cleanup = false
 	return syncDirectory(directory)
+}
+
+func writeRebuildableFile(path string, data []byte, mode os.FileMode) error {
+	directory := filepath.Dir(path)
+	file, err := os.CreateTemp(directory, "."+filepath.Base(path)+".tmp-*")
+	if err != nil {
+		return err
+	}
+	temporary := file.Name()
+	cleanup := true
+	defer func() {
+		if cleanup {
+			_ = os.Remove(temporary)
+		}
+	}()
+	if err := file.Chmod(mode); err != nil {
+		_ = file.Close()
+		return err
+	}
+	if err := writeAll(file, data); err != nil {
+		_ = file.Close()
+		return err
+	}
+	if err := file.Close(); err != nil {
+		return err
+	}
+	if err := os.Rename(temporary, path); err != nil {
+		return err
+	}
+	cleanup = false
+	return nil
 }

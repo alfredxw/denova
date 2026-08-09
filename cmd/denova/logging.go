@@ -1,87 +1,128 @@
 package main
 
 import (
+	"errors"
 	"fmt"
 	"io"
 	"os"
 	"path/filepath"
-	"sync"
+	"sort"
+	"strings"
 	"time"
+
+	"gopkg.in/natefinch/lumberjack.v2"
+)
+
+const (
+	logFileName          = "denova.log"
+	logFileMaxMB         = 16
+	logFileMaxBackups    = 4
+	logFileMaxAgeDays    = 14
+	logDirectoryMaxMB    = logFileMaxMB * (logFileMaxBackups + 1)
+	logDirectoryMaxFiles = logFileMaxBackups + 1
 )
 
 func setupLogging(dir string) (string, io.Writer, func()) {
-	writer := newDailyLogWriter(dir)
-	if err := writer.openFor(time.Now()); err != nil {
-		fmt.Fprintf(os.Stderr, "警告: 初始化日志文件失败: %v\n", err)
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		fmt.Fprintf(os.Stderr, "warning: initialize log directory: %v\n", err)
 		return "", os.Stderr, func() {}
 	}
+
+	path := filepath.Join(dir, logFileName)
+	if err := ensureWritableLogFile(path); err != nil {
+		fmt.Fprintf(os.Stderr, "warning: initialize log file: %v\n", err)
+		return "", os.Stderr, func() {}
+	}
+	if err := pruneLogDirectory(dir, logDirectoryMaxMB<<20, logDirectoryMaxFiles, path); err != nil {
+		fmt.Fprintf(os.Stderr, "warning: prune old log files: %v\n", err)
+	}
+
+	writer := &lumberjack.Logger{
+		Filename:   path,
+		MaxSize:    logFileMaxMB,
+		MaxBackups: logFileMaxBackups,
+		MaxAge:     logFileMaxAgeDays,
+		LocalTime:  true,
+		Compress:   true,
+	}
 	output := io.MultiWriter(os.Stderr, writer)
-	return writer.Path(), output, func() {
+	return path, output, func() {
 		if err := writer.Close(); err != nil {
-			fmt.Fprintf(os.Stderr, "警告: 关闭日志文件失败: %v\n", err)
+			fmt.Fprintf(os.Stderr, "warning: close log file: %v\n", err)
 		}
 	}
 }
 
-type dailyLogWriter struct {
-	dir  string
-	mu   sync.Mutex
-	date string
-	file *os.File
-	path string
-}
-
-func newDailyLogWriter(dir string) *dailyLogWriter {
-	return &dailyLogWriter{dir: dir}
-}
-
-func (w *dailyLogWriter) Write(p []byte) (int, error) {
-	w.mu.Lock()
-	defer w.mu.Unlock()
-
-	if err := w.openFor(time.Now()); err != nil {
-		return 0, err
-	}
-	return w.file.Write(p)
-}
-
-func (w *dailyLogWriter) Path() string {
-	w.mu.Lock()
-	defer w.mu.Unlock()
-	return w.path
-}
-
-func (w *dailyLogWriter) Close() error {
-	w.mu.Lock()
-	defer w.mu.Unlock()
-
-	if w.file == nil {
-		return nil
-	}
-	err := w.file.Close()
-	w.file = nil
-	return err
-}
-
-func (w *dailyLogWriter) openFor(now time.Time) error {
-	date := now.Format("2006-01-02")
-	if w.file != nil && w.date == date {
-		return nil
-	}
-	if err := os.MkdirAll(w.dir, 0o755); err != nil {
-		return fmt.Errorf("创建日志目录 %s 失败: %w", w.dir, err)
-	}
-
-	path := filepath.Join(w.dir, date+".log")
+func ensureWritableLogFile(path string) error {
 	file, err := os.OpenFile(path, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0o644)
 	if err != nil {
-		return fmt.Errorf("打开日志文件 %s 失败: %w", path, err)
+		return fmt.Errorf("open %s: %w", path, err)
 	}
-	if w.file != nil {
-		_ = w.file.Close()
+	if err := file.Close(); err != nil {
+		return fmt.Errorf("close %s after checking access: %w", path, err)
 	}
-	w.file = file
-	w.date = date
-	w.path = path
 	return nil
+}
+
+type retainedLogFile struct {
+	path    string
+	name    string
+	size    int64
+	modTime time.Time
+}
+
+// pruneLogDirectory bounds logs left by any Denova version. Lumberjack owns
+// ongoing rotation; this startup pass also keeps pre-rotation daily logs from
+// consuming disk forever.
+func pruneLogDirectory(dir string, maxBytes int64, maxFiles int, currentPath string) error {
+	entries, err := os.ReadDir(dir)
+	if err != nil {
+		return err
+	}
+	currentPath = filepath.Clean(currentPath)
+	files := make([]retainedLogFile, 0, len(entries))
+	var totalBytes int64
+	for _, entry := range entries {
+		if entry.IsDir() || !isLogFile(entry.Name()) {
+			continue
+		}
+		path := filepath.Join(dir, entry.Name())
+		if filepath.Clean(path) == currentPath {
+			continue
+		}
+		info, infoErr := entry.Info()
+		if infoErr != nil {
+			return infoErr
+		}
+		files = append(files, retainedLogFile{
+			path:    path,
+			name:    entry.Name(),
+			size:    info.Size(),
+			modTime: info.ModTime(),
+		})
+		totalBytes += info.Size()
+	}
+	sort.Slice(files, func(i, j int) bool {
+		if files[i].modTime.Equal(files[j].modTime) {
+			return files[i].name < files[j].name
+		}
+		return files[i].modTime.Before(files[j].modTime)
+	})
+
+	var errs []error
+	for len(files) > 0 && (len(files) > maxFiles || totalBytes > maxBytes) {
+		oldest := files[0]
+		files = files[1:]
+		if removeErr := os.Remove(oldest.path); removeErr != nil {
+			errs = append(errs, fmt.Errorf("remove %s: %w", oldest.path, removeErr))
+			continue
+		}
+		totalBytes -= oldest.size
+	}
+	return errors.Join(errs...)
+}
+
+func isLogFile(name string) bool {
+	name = strings.ToLower(strings.TrimSpace(name))
+	return strings.HasSuffix(name, ".log") || strings.HasSuffix(name, ".log.gz")
 }

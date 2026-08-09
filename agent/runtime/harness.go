@@ -96,6 +96,8 @@ type closeRequest struct {
 	admitted chan struct{}
 }
 
+type closeIdleRequest struct{ response chan error }
+
 type harnessCloseCall struct {
 	ready chan struct{}
 	err   error
@@ -255,6 +257,43 @@ func (h *Harness) Close(ctx context.Context) error {
 		close(pending.ready)
 		h.closeMu.Unlock()
 		return err
+	}
+}
+
+// CloseIfIdle releases this actor only when it has no active operation and no
+// observer. It is the state-atomic eviction primitive used by Runtime capacity
+// management; unlike Close, it never aborts useful work.
+func (h *Harness) CloseIfIdle(ctx context.Context) (bool, error) {
+	if h == nil {
+		return true, nil
+	}
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	if err := h.terminalError(); err != nil {
+		if errors.Is(err, ErrHarnessClosed) {
+			return true, nil
+		}
+		return false, err
+	}
+	request := closeIdleRequest{response: make(chan error, 1)}
+	select {
+	case h.requests <- request:
+	case <-h.done:
+		return true, h.closeResult()
+	case <-ctx.Done():
+		return false, ctx.Err()
+	}
+	select {
+	case err := <-request.response:
+		if errors.Is(err, ErrBusy) {
+			return false, nil
+		}
+		return err == nil, err
+	case <-h.done:
+		return true, h.closeResult()
+	case <-ctx.Done():
+		return false, ctx.Err()
 	}
 }
 
@@ -540,6 +579,14 @@ func (h *Harness) run(state harnessState) {
 			if closeNow {
 				return
 			}
+		case closeIdleRequest:
+			if state.closing || state.phase != PhaseIdle || len(state.subscribers) > 0 {
+				request.response <- ErrBusy
+				continue
+			}
+			state.closing = true
+			state.closeWaiters = append(state.closeWaiters, request.response)
+			return
 		case engineEventRequest:
 			err := h.handleEngineEvent(&state, request)
 			if terminal, fatal := terminalJournalAppendError(err); fatal {

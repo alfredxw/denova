@@ -1,22 +1,26 @@
 import { useCallback, useEffect, useMemo, useRef } from 'react'
 import { buildContextCompactionMessage, createContextCompactionMessageId, upsertContextCompactionMessage } from '@/components/Chat/context-compaction-message'
-import type { ChatMessage } from '@/lib/api'
+import type { AgentMessageMetadata, AgentUIMessage } from '@/lib/agent-ui'
+import { createAgentDataMessage, createAgentTextMessage, createAgentToolMessage, parseAgentToolInput } from '@/lib/agent-ui-message'
 import { createRafUpdateBatcher, STREAMING_RENDER_INTERVAL_MS } from '@/lib/streaming/raf-update-batcher'
 import {
   appendBufferedLiveMessage,
   bindLiveToolEventKeys,
+  completeToolMessage,
   findMappedLiveToolId,
   findToolMessageIndexForPayload,
   liveToolEventKeys,
   promoteMessageTarget,
   promoteMessageTargets,
   streamMetadataFromPayload,
+  toolMessageInputText,
+  updateToolMessageInput,
   type BufferedLiveMessage,
 } from './live-stream-messages'
 import { publicRuleRollFromToolOutput } from './rule-roll'
 import { createLiveTurnRenderKeys, type LiveTurnRenderKeys } from './utils'
 
-type LiveMessageUpdater = (updater: ChatMessage[] | ((current: ChatMessage[]) => ChatMessage[])) => void
+type LiveMessageUpdater = (updater: AgentUIMessage[] | ((current: AgentUIMessage[]) => AgentUIMessage[])) => void
 
 interface UseLiveMessageAccumulatorOptions {
   publicRuleRollVisible: boolean
@@ -39,7 +43,7 @@ export function useLiveMessageAccumulator({ publicRuleRollVisible, setMessages }
   // staged target is promoted once per batch so the presentation layer can
   // identify prose immediately without adding another render per provider delta.
   const updateBatcher = useMemo(
-    () => createRafUpdateBatcher<ChatMessage[]>(
+    () => createRafUpdateBatcher<AgentUIMessage[]>(
       (update) => setMessages((current) => promoteMessageTargets(update(current))),
       { minIntervalMs: STREAMING_RENDER_INTERVAL_MS },
     ),
@@ -58,14 +62,15 @@ export function useLiveMessageAccumulator({ publicRuleRollVisible, setMessages }
     updateBatcher.enqueue((current) => appendBufferedLiveMessage(current, message))
   }, [updateBatcher])
 
-  const appendAssistant = useCallback((content: string, navigationAnchorId: string, metadata: Partial<ChatMessage> = {}) => {
+  const appendAssistant = useCallback((content: string, navigationAnchorId: string, metadata: AgentMessageMetadata = {}) => {
     if (!content) return
-    const renderKey = metadata.render_key || (metadata.subagent ? undefined : currentTurnRenderKeysRef.current?.assistant)
+    const renderKey = metadata.subagent ? undefined : currentTurnRenderKeysRef.current?.assistant
     const navigationMetadata = metadata.subagent ? metadata : { ...metadata, navigation_turn_id: navigationAnchorId }
     queue({
+      id: renderKey || metadata.display_segment_id,
       role: 'assistant',
       content,
-      metadata: renderKey ? { ...navigationMetadata, render_key: renderKey } : navigationMetadata,
+      metadata: navigationMetadata,
     })
   }, [queue])
 
@@ -73,14 +78,16 @@ export function useLiveMessageAccumulator({ publicRuleRollVisible, setMessages }
     flush()
     setMessages((current) => {
       const last = current[current.length - 1]
-      return last?.role === 'assistant' && last.streaming ? current.slice(0, -1) : current
+      return last?.parts.some((part) => part.type === 'text' && 'state' in part && part.state === 'streaming')
+        ? current.slice(0, -1)
+        : current
     })
   }, [flush, setMessages])
 
-  const appendThinking = useCallback((content: string, metadata: Partial<ChatMessage> = {}) => {
+  const appendThinking = useCallback((content: string, metadata: AgentMessageMetadata = {}) => {
     if (!content) return
     nonNarrativeStreamingRef.current = true
-    queue({ role: 'thinking', content, metadata })
+    queue({ id: metadata.display_segment_id, role: 'reasoning', content, metadata })
   }, [queue])
 
   const appendToolCall = useCallback((payload: Record<string, unknown> & { id?: string; name?: string; args?: string }) => {
@@ -95,16 +102,13 @@ export function useLiveMessageAccumulator({ publicRuleRollVisible, setMessages }
     nonNarrativeStreamingRef.current = true
     setMessages((current) => [
       ...current,
-      {
+      createAgentToolMessage({
         id,
-        role: 'tool_call',
-        content: name,
         name,
-        args: payload.args || '',
-        status: 'running',
-        streaming: true,
-        ...streamMetadataFromPayload(payload),
-      },
+        state: 'input-streaming',
+        input: parseAgentToolInput(payload.args || ''),
+        metadata: streamMetadataFromPayload(payload),
+      }),
     ])
   }, [flush, setMessages])
 
@@ -117,9 +121,11 @@ export function useLiveMessageAccumulator({ publicRuleRollVisible, setMessages }
       if (matchedId) {
         toolKeyToMessageIdRef.current = bindLiveToolEventKeys(liveToolEventKeys(payload), toolKeyToMessageIdRef.current, matchedId)
       }
-      return current.map((message, index) => index === targetIndex
-        ? { ...message, args: payload.args !== undefined ? payload.args : `${message.args || ''}${payload.delta || ''}` }
-        : message)
+      return current.map((message, index) => {
+        if (index !== targetIndex) return message
+        const args = payload.args !== undefined ? payload.args : `${toolMessageInputText(message)}${payload.delta || ''}`
+        return updateToolMessageInput(message, parseAgentToolInput(args))
+      })
     })
   }, [updateBatcher])
 
@@ -132,9 +138,7 @@ export function useLiveMessageAccumulator({ publicRuleRollVisible, setMessages }
       if (matchedId) {
         toolKeyToMessageIdRef.current = bindLiveToolEventKeys(liveToolEventKeys(payload), toolKeyToMessageIdRef.current, matchedId)
       }
-      return current.map((message, index) => index === targetIndex
-        ? { ...message, status: 'success' as const, result, streaming: false }
-        : message)
+      return current.map((message, index) => index === targetIndex ? completeToolMessage(message, result) : message)
     })
   }, [setMessages, updateBatcher])
 
@@ -145,8 +149,12 @@ export function useLiveMessageAccumulator({ publicRuleRollVisible, setMessages }
     if (!ruleRoll) return
     setMessages((current) => {
       const id = ruleRoll.resolution_id ? `live-rule-roll-${ruleRoll.resolution_id}` : `live-rule-roll-${Date.now()}`
-      if (current.some((message) => message.role === 'rule_roll' && message.id === id)) return current
-      return [...current, { id, role: 'rule_roll', rule_roll: ruleRoll, streaming: false }]
+      if (current.some((message) => message.id === id)) return current
+      return [...current, createAgentDataMessage({
+        id,
+        type: 'agent-rule-roll',
+        data: { id, role: 'rule_roll', rule_roll: ruleRoll },
+      })]
     })
   }, [flush, publicRuleRollVisible, setMessages])
 
@@ -161,34 +169,13 @@ export function useLiveMessageAccumulator({ publicRuleRollVisible, setMessages }
   const collapseNonNarrative = useCallback(() => {
     if (!nonNarrativeStreamingRef.current) return
     nonNarrativeStreamingRef.current = false
-    updateBatcher.enqueue((current) => current.map((message) => {
-      if (message.role === 'thinking') {
-        return { ...promoteMessageTarget(message), streaming: false }
-      }
-      if (message.role === 'tool_call' || message.role === 'context_compaction') {
-        return {
-          ...message,
-          streaming: false,
-          status: message.status === 'running' ? 'success' : message.status,
-        }
-      }
-      return message
-    }))
+    updateBatcher.enqueue((current) => current.map((message) => settleAgentMessage(promoteMessageTarget(message), false)))
   }, [updateBatcher])
 
   const finishMessages = useCallback(() => {
     flush()
     nonNarrativeStreamingRef.current = false
-    setMessages((current) => current.map((message) =>
-      message.role === 'assistant' || message.role === 'thinking' || message.role === 'tool_call' || message.role === 'context_compaction'
-        ? {
-            ...promoteMessageTarget(message),
-            streaming: false,
-            status: message.role === 'tool_call' || message.role === 'context_compaction'
-              ? (message.status === 'running' ? 'success' : message.status)
-              : message.status,
-          }
-        : message))
+    setMessages((current) => current.map((message) => settleAgentMessage(promoteMessageTarget(message), true)))
   }, [flush, setMessages])
 
   const resetForCheckpoint = useCallback(() => {
@@ -207,12 +194,12 @@ export function useLiveMessageAccumulator({ publicRuleRollVisible, setMessages }
     const renderKeys = createLiveTurnRenderKeys()
     currentTurnRenderKeysRef.current = renderKeys
     currentCompactionMessageIdRef.current = null
-    const userMessage: ChatMessage = {
+    const userMessage = createAgentTextMessage({
+      id: renderKeys.user,
       role: 'user',
-      content: message,
-      render_key: renderKeys.user,
-      navigation_turn_id: navigationAnchorId,
-    }
+      text: message,
+      metadata: { display_role: 'user', navigation_turn_id: navigationAnchorId },
+    })
     setMessages((current) => mode === 'replace' ? [userMessage] : [...current, userMessage])
   }, [flush, setMessages])
 
@@ -267,3 +254,24 @@ export function useLiveMessageAccumulator({ publicRuleRollVisible, setMessages }
 }
 
 export type LiveMessageAccumulator = ReturnType<typeof useLiveMessageAccumulator>
+
+function settleAgentMessage(message: AgentUIMessage, includeNarrative: boolean): AgentUIMessage {
+  let changed = false
+  const parts = message.parts.map((part) => {
+    if ((part.type === 'text' && includeNarrative) || part.type === 'reasoning') {
+      if (!('state' in part) || part.state !== 'streaming') return part
+      changed = true
+      return { ...part, state: 'done' as const }
+    }
+    if (part.type === 'dynamic-tool' && (part.state === 'input-streaming' || part.state === 'input-available')) {
+      changed = true
+      return { ...part, state: 'output-available' as const }
+    }
+    if (part.type === 'data-agent-context-compaction' && part.data.status === 'running') {
+      changed = true
+      return { ...part, data: { ...part.data, status: 'success' } }
+    }
+    return part
+  })
+  return changed ? { ...message, parts } as AgentUIMessage : message
+}

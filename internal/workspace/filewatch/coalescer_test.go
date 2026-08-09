@@ -81,3 +81,14 @@ func TestHiddenPathDetection(t *testing.T) {
 		t.Fatal("visible path was classified as hidden")
 	}
 }
+
+func TestIgnoredPathDetection(t *testing.T) {
+	for _, path := range []string{"node_modules/pkg/index.js", "app/dist/bundle.js", "vendor/module.go"} {
+		if !isIgnoredPath(path) {
+			t.Fatalf("isIgnoredPath(%q) = false", path)
+		}
+	}
+	if isIgnoredPath("chapters/building-a-world.md") {
+		t.Fatal("visible path was classified as ignored")
+	}
+}

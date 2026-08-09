@@ -1,5 +1,6 @@
 import type { TFunction } from 'i18next'
-import type { ChatMessage } from '@/lib/api'
+import type { AgentMessageMetadata, AgentUIMessage } from '@/lib/agent-ui'
+import { agentMessageHasDataPart, createAgentDataMessage } from '@/lib/agent-ui-message'
 import { createInteractiveNarrativeFilter } from '../../stream-parser'
 import type { StoryStageRunState } from '../../stores/interactive-store'
 import type { InteractiveSSEEvent, InteractiveTurnPersistedEvent, Snapshot } from '../../types'
@@ -49,7 +50,7 @@ interface StoryStageStreamConsumerOptions {
   onRuntimeRecoveryRequired: () => Promise<{ handoffTaskId?: string } | void>
   onTurnPersisted: (event: InteractiveTurnPersistedEvent) => Snapshot | void
   setActivity: (content: string) => void
-  setMessages: (updater: ChatMessage[] | ((current: ChatMessage[]) => ChatMessage[])) => void
+  setMessages: (updater: AgentUIMessage[] | ((current: AgentUIMessage[]) => AgentUIMessage[])) => void
   setStageRuntime: (runtime: StoryStageRuntimeUpdater) => void
   t: TFunction
   updateStageRun: (updater: Partial<StoryStageRunState> | ((current: StoryStageRunState) => StoryStageRunState)) => void
@@ -85,7 +86,7 @@ export function createStoryStageStreamConsumer({
   function settleInactiveProjection(previous: StoryStageStreamOutcome): StoryStageStreamOutcome {
     const next = { ...previous, terminalEventReceived: true }
     if (next.persistenceRequired) {
-      setMessages([{ role: 'error', content: t('storyStage.activity.persistenceMissing') }])
+      setMessages([errorMessage(t('storyStage.activity.persistenceMissing'))])
       next.finishedNormally = false
       next.streamFailed = true
       return next
@@ -93,11 +94,11 @@ export function createStoryStageStreamConsumer({
     if (next.streamFailed) return next
     switch (next.terminalStatus) {
       case 'error':
-        setMessages([{ role: 'error', content: next.terminalReason || t('storyStage.activity.unknownError') }])
+        setMessages([errorMessage(next.terminalReason || t('storyStage.activity.unknownError'))])
         next.streamFailed = true
         return next
       case 'aborted':
-        setMessages((current) => [...current, { role: 'error', content: t('storyStage.activity.aborted') }])
+        setMessages((current) => [...current, errorMessage(t('storyStage.activity.aborted'))])
         next.finishedNormally = false
         return next
       case 'running':
@@ -110,7 +111,7 @@ export function createStoryStageStreamConsumer({
 
   async function consume(stream: ReadableStream<InteractiveSSEEvent>, previous: StoryStageStreamOutcome): Promise<StoryStageStreamOutcome> {
     let narrativeFilter = createInteractiveNarrativeFilter()
-    let rootNarrativeMetadata: Partial<ChatMessage> = {}
+    let rootNarrativeMetadata: AgentMessageMetadata = {}
     let {
       finishedNormally,
       persistenceRequired,
@@ -210,7 +211,7 @@ export function createStoryStageStreamConsumer({
             streamFailed = true
             terminalEventReceived = true
             setActivity('')
-            setMessages([{ role: 'error', content: t('storyStage.activity.unknownError') }])
+            setMessages([errorMessage(t('storyStage.activity.unknownError'))])
           } else {
             // Cursor zero on the envelope deliberately does not certify the
             // omitted range. The runtime first reloads canonical story state,
@@ -329,7 +330,7 @@ export function createStoryStageStreamConsumer({
           persistedSnapshot = appliedSnapshot || persistedSnapshot
           if (appliedSnapshot) {
             liveAccumulator.finishMessages()
-            setMessages((current) => current.filter((message) => message.role === 'token_usage'))
+            setMessages((current) => current.filter((message) => agentMessageHasDataPart(message, 'agent-token-usage')))
           }
           setActivity('')
           break
@@ -367,10 +368,7 @@ export function createStoryStageStreamConsumer({
           terminalEventReceived = true
           setMessages((current) => [
             ...current,
-            {
-              role: 'error',
-              content: data.message || data.error || t('storyStage.activity.unknownError'),
-            },
+            errorMessage(data.message || data.error || t('storyStage.activity.unknownError')),
           ])
           break
         }
@@ -386,16 +384,11 @@ export function createStoryStageStreamConsumer({
             terminalStatus = 'aborted'
             terminalReason =
               typeof data.reason === 'string' ? data.reason.trim() : typeof data.message === 'string' ? data.message.trim() : undefined
-            setMessages((current) => [...current, { role: 'error', content: t('storyStage.activity.aborted') }])
+            setMessages((current) => [...current, errorMessage(t('storyStage.activity.aborted'))])
           } else if (persistenceRequired && !streamFailed) {
             terminalStatus = 'done'
             streamFailed = true
-            setMessages([
-              {
-                role: 'error',
-                content: t('storyStage.activity.persistenceMissing'),
-              },
-            ])
+            setMessages([errorMessage(t('storyStage.activity.persistenceMissing'))])
           } else if (!streamFailed) {
             terminalStatus = 'done'
             finishedNormally = true
@@ -482,4 +475,8 @@ function taskCheckpointStatus(value: unknown): TaskCheckpointStatus | undefined 
     default:
       return undefined
   }
+}
+
+function errorMessage(content: string) {
+  return createAgentDataMessage({ type: 'agent-error', data: { role: 'error', content } })
 }

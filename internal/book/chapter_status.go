@@ -36,7 +36,11 @@ func (s *Service) SetChapterConfirmed(relPath string, confirmed bool) error {
 	} else {
 		delete(store.Chapters, normalized)
 	}
-	return s.writeChapterStatusStore(store)
+	if err := s.writeChapterStatusStore(store); err != nil {
+		return err
+	}
+	s.InvalidateSummary([]string{normalized}, false)
+	return nil
 }
 
 func (s *Service) chapterConfirmedMap() map[string]bool {

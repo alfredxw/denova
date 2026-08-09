@@ -39,9 +39,12 @@ describe('useStoryStageMessages', () => {
       renderKeyFor: () => undefined,
     }))
 
-    expect(result.current.messages.find((message) => message.id === 'thinking-segment')).toMatchObject({
-      run_id: 'run-game',
-      display_segment_id: 'thinking-segment',
+    expect(result.current.agentMessages.find((message) => message.id === 'thinking-segment')).toMatchObject({
+      metadata: {
+        run_id: 'run-game',
+        display_segment_id: 'thinking-segment',
+      },
+      parts: [{ type: 'reasoning', text: '正在判断门后的动静。' }],
     })
   })
 })

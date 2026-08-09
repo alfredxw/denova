@@ -11,8 +11,8 @@ import { rebaseText } from '@/lib/three-way-rebase'
 import { MessageList } from '@/components/Chat/MessageList'
 import { AutosaveStatusIndicator } from '@/components/forms/autosave-status'
 import { agentViewContent, buildAgentMessageViews } from '@/lib/agent-message-view'
-import { normalizeAgentUIMessages, type AgentUIMessage } from '@/lib/agent-ui'
-import { createAgentDataMessage, createAgentTextMessage } from '@/hooks/useAgentUIMessageStream'
+import { AgentUIMessageNormalizer, normalizeAgentUIMessages, type AgentUIMessage } from '@/lib/agent-ui'
+import { createAgentDataMessage, createAgentTextMessage } from '@/lib/agent-ui-message'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { ScrollArea } from '@/components/ui/scroll-area'
@@ -380,6 +380,8 @@ function StyleReferenceControls({ projectId, references, refreshReferences, refs
   const editContentRef = useRef('')
   const editPathRef = useRef('')
   const extractionCommandIDsRef = useRef(new Map<string, string>())
+  const extractionMessageNormalizerRef = useRef<AgentUIMessageNormalizer | null>(null)
+  extractionMessageNormalizerRef.current ??= new AgentUIMessageNormalizer()
   editContentRef.current = editContent
   editPathRef.current = editPath
   const summary = refs.length === 0 && contents.length === 0 ? t('settingPanel.style.noSelected') : t('settingPanel.style.button', { count: refs.length + contents.length })
@@ -577,8 +579,8 @@ function StyleReferenceControls({ projectId, references, refreshReferences, refs
       })
       const commandID = rememberAgentCommandID(extractionCommandIDsRef.current, retryKey, createAgentCommandID)
       setExtractMessages([
-        createAgentTextMessage('user', `${t('settingPanel.style.extractSave')}: ${request.name}`),
-        createAgentTextMessage('system', t('settingPanel.style.extractProgress.connecting')),
+        createAgentTextMessage({ role: 'user', text: `${t('settingPanel.style.extractSave')}: ${request.name}` }),
+        createAgentTextMessage({ role: 'system', text: t('settingPanel.style.extractProgress.connecting') }),
       ])
       const stream = await runConfigManagerStream(projectId, {
         command_id: commandID,
@@ -597,7 +599,7 @@ function StyleReferenceControls({ projectId, references, refreshReferences, refs
       let generated = ''
       for await (const message of readUIMessageStream<AgentUIMessage>({ stream, terminateOnError: true })) {
         const normalized = normalizeAgentUIMessages([message])[0] || message
-        setExtractMessages(current => normalizeAgentUIMessages(upsertAgentUIMessage(current, normalized)))
+        setExtractMessages(current => extractionMessageNormalizerRef.current!.normalize(upsertAgentUIMessage(current, normalized)))
         for (const view of buildAgentMessageViews([normalized])) {
           if (view.kind === 'assistant') {
             generated = agentViewContent(view)
@@ -624,16 +626,18 @@ function StyleReferenceControls({ projectId, references, refreshReferences, refs
         content: limitStyleSource(doc.content),
       })
       setUploadNotice(t('settingPanel.style.extractSaved', { path: created.display_path }))
-      setExtractMessages((current) => [...current, createAgentDataMessage('agent-system', {
-        content: `${t('settingPanel.style.extractProgress.saved')}: ${created.display_path}`,
+      setExtractMessages((current) => [...current, createAgentDataMessage({
+        type: 'agent-system',
+        data: { content: `${t('settingPanel.style.extractProgress.saved')}: ${created.display_path}` },
       })])
     } catch (err) {
       // Definite client rejections are safe to submit as a fresh logical command;
       // network and server failures may have been accepted and retain their ID.
       if (retryKey && isKnownAgentCommandOutcome(err)) extractionCommandIDsRef.current.delete(retryKey)
       setUploadError(err instanceof Error ? err.message : t('settingPanel.style.extractFailed'))
-      setExtractMessages((current) => [...current, createAgentDataMessage('agent-error', {
-        content: err instanceof Error ? err.message : t('settingPanel.style.extractFailed'),
+      setExtractMessages((current) => [...current, createAgentDataMessage({
+        type: 'agent-error',
+        data: { content: err instanceof Error ? err.message : t('settingPanel.style.extractFailed') },
       })])
     } finally {
       setUploading(null)

@@ -1138,3 +1138,39 @@ func TestInterruptionPersistsPendingRecordAndCanResolve(t *testing.T) {
 		t.Fatalf("已解决的中断不应继续待恢复: %#v", got)
 	}
 }
+
+func TestStoreBoundsResidentSessionsWithoutInvalidatingInFlightHandles(t *testing.T) {
+	store, err := NewStore(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	first, err := store.GetOrCreate("resident-000")
+	if err != nil {
+		t.Fatal(err)
+	}
+	for index := 1; index <= maxResidentSessions; index++ {
+		if _, err := store.GetOrCreate(fmt.Sprintf("resident-%03d", index)); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if len(store.cache) != maxResidentSessions {
+		t.Fatalf("resident sessions = %d, want %d", len(store.cache), maxResidentSessions)
+	}
+	if store.cache[first.ID] != nil {
+		t.Fatal("least-recently-used session remained resident")
+	}
+	if err := first.Append(agent.UserMessage("still valid")); err != nil {
+		t.Fatalf("evicted in-flight session handle failed: %v", err)
+	}
+	reopened, err := store.Get(first.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	messages := reopened.GetMessages()
+	if len(messages) != 1 || messages[0].Content != "still valid" {
+		t.Fatalf("reopened evicted session messages = %#v", messages)
+	}
+	if err := first.Close(); err != nil {
+		t.Fatal(err)
+	}
+}

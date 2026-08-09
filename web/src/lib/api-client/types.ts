@@ -1,5 +1,5 @@
 // MessageItem render model. Agent API/history/stream payloads use AgentUIMessage;
-// this shape remains for the render adapter and local legacy interactive state.
+// this shape remains private to the presentation adapter.
 export interface ChatMessage {
   type?: 'message' | 'clear'
   role?: 'user' | 'assistant' | 'thinking' | 'tool_call' | 'tool_result' | 'ask' | 'rule_roll' | 'context_compaction' | 'token_usage' | 'plan_question' | 'proposed_plan' | 'system' | 'error'

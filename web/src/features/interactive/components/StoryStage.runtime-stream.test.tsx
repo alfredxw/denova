@@ -2,6 +2,7 @@ import { act, render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { StrictMode } from 'react'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { buildAgentMessageViews } from '@/lib/agent-message-view'
 import { useInteractiveStore } from '../stores/interactive-store'
 import {
   PersistedTurnHarness,
@@ -233,8 +234,8 @@ describe('StoryStage runtime stream lifecycle', () => {
       expect(
         useInteractiveStore
           .getState()
-          .storyStageRuns['/tmp/book:story-1:main']?.liveMessages.some(
-            (message) => message.role === 'system' && message.content?.includes('较早的实时轨迹已超出展示预算'),
+          .storyStageRuns['/tmp/book:story-1:main']?.liveMessages.some((message) =>
+            buildAgentMessageViews([message]).some((view) => view.kind === 'system' && view.content.includes('较早的实时轨迹已超出展示预算')),
           ),
       ).toBe(true)
       expect(screen.getByRole('button', { name: '中断 AI 执行' })).toBeEnabled()

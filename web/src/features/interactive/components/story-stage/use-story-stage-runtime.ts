@@ -1,7 +1,9 @@
 import { useRef, useState } from 'react'
 import type { TFunction } from 'i18next'
-import { createContextCompactionMessageId } from '@/components/Chat/context-compaction-message'
-import { createAgentCommandID, type AgentRuntimeQueuedCommand, type ChatMessage } from '@/lib/api'
+import { buildContextCompactionMessage, createContextCompactionMessageId, settleContextCompactionMessages } from '@/components/Chat/context-compaction-message'
+import { createAgentCommandID, type AgentRuntimeQueuedCommand } from '@/lib/api'
+import type { AgentUIMessage } from '@/lib/agent-ui'
+import { createAgentDataMessage } from '@/lib/agent-ui-message'
 import { agentCommandRetryKey, isKnownAgentCommandOutcome, rememberAgentCommandID } from '@/lib/agent-command'
 import {
   compactInteractiveContext,
@@ -55,7 +57,7 @@ interface UseStoryStageRuntimeOptions {
   updateStageRun: (updater: Partial<StoryStageRunState> | ((current: StoryStageRunState) => StoryStageRunState)) => void
   setStreaming: (value: boolean) => void
   setActivity: (content: string) => void
-  setMessages: (updater: ChatMessage[] | ((current: ChatMessage[]) => ChatMessage[])) => void
+  setMessages: (updater: AgentUIMessage[] | ((current: AgentUIMessage[]) => AgentUIMessage[])) => void
   clearComposer: () => void
   onTurnPersisted: (event: InteractiveTurnPersistedEvent) => Snapshot | void
   onDone: (options?: { silent?: boolean }) => void | Promise<Snapshot | void>
@@ -246,34 +248,18 @@ export function useStoryStageRuntime({
     setStreaming(true)
     setActivity('')
     liveAccumulator.resetCompaction()
-    setMessages([
-      {
-        role: 'context_compaction',
-        id: createContextCompactionMessageId(compactionIdCounterRef),
-        status: 'running',
-        content: '',
-        phase: 'pre_run',
-        streaming: true,
-      },
-    ])
+    setMessages([buildContextCompactionMessage({ status: 'started', phase: 'pre_run' }, createContextCompactionMessageId(compactionIdCounterRef))])
     try {
       await compactInteractiveContext(storyId, branchId)
       setMessages((current) => [
-        ...current.map((message) =>
-          message.role === 'context_compaction' ? { ...message, status: 'success' as const, streaming: false } : message,
-        ),
-        { role: 'system', content: t('storyStage.contextCompaction.done') },
+        ...settleContextCompactionMessages(current, 'success'),
+        systemMessage(t('storyStage.contextCompaction.done')),
       ])
       await onDone()
     } catch (error) {
       setMessages((current) => [
-        ...current.map((message) =>
-          message.role === 'context_compaction' ? { ...message, status: 'error' as const, streaming: false } : message,
-        ),
-        {
-          role: 'error',
-          content: error instanceof Error ? error.message : t('storyStage.contextCompaction.failed'),
-        },
+        ...settleContextCompactionMessages(current, 'error'),
+        errorMessage(error instanceof Error ? error.message : t('storyStage.contextCompaction.failed')),
       ])
     } finally {
       setStreaming(false)
@@ -406,10 +392,7 @@ export function useStoryStageRuntime({
         if (abortController.signal.aborted || isDisposed()) return progress
         setMessages((current) => [
           ...current,
-          {
-            role: 'system',
-            content: t('storyStage.activity.rehydrateRequired'),
-          },
+          systemMessage(t('storyStage.activity.rehydrateRequired')),
         ])
         progress = {
           ...progress,
@@ -559,14 +542,11 @@ export function useStoryStageRuntime({
     setActivity('')
     setMessages((current) => [
       ...current,
-      {
-        role: 'error',
-        content: isAbortError(error)
-          ? t('storyStage.activity.aborted')
-          : error instanceof Error
-            ? error.message
-            : t('storyStage.activity.runFailed'),
-      },
+      errorMessage(isAbortError(error)
+        ? t('storyStage.activity.aborted')
+        : error instanceof Error
+          ? error.message
+          : t('storyStage.activity.runFailed')),
     ])
   }
 
@@ -599,12 +579,17 @@ export function useStoryStageRuntime({
   function appendError(error: unknown) {
     setMessages((current) => [
       ...current,
-      {
-        role: 'error',
-        content: error instanceof Error ? error.message : t('storyStage.activity.runFailed'),
-      },
+      errorMessage(error instanceof Error ? error.message : t('storyStage.activity.runFailed')),
     ])
   }
 
   return { commandSubmitting, deleteQueuedCommand, queueActionPendingCommandID, compactCurrentContext, send, steerQueuedCommand, stop }
+}
+
+function systemMessage(content: string) {
+  return createAgentDataMessage({ type: 'agent-system', data: { role: 'system', content } })
+}
+
+function errorMessage(content: string) {
+  return createAgentDataMessage({ type: 'agent-error', data: { role: 'error', content } })
 }

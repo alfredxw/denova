@@ -1,6 +1,6 @@
 import { create } from 'zustand'
-import type { ChatMessage } from '@/lib/api'
 import type { AgentRuntimeActiveOutput, AgentRuntimeOpenTool, AgentRuntimeQueuedCommand } from '@/lib/api'
+import type { AgentUIMessage } from '@/lib/agent-ui'
 import type { BranchSummary, DirectorPlanStatus, InteractiveSubmode, InteractiveTurnPersistedEvent, Snapshot, StoryDirector, StorySummary, Teller, TurnEvent } from '../types'
 
 const CURRENT_STORY_STORAGE_KEY = 'nova.interactive.current_story.v1'
@@ -10,7 +10,7 @@ const SUBMODE_STORAGE_KEY = 'nova.interactive.submode.v1'
 export interface StoryStageRunState {
   streaming: boolean
   activityContent: string
-  liveMessages: ChatMessage[]
+  liveMessages: AgentUIMessage[]
   rewindTurnId?: string
   retryMessage?: string
   runtime: StoryStageRuntimeState

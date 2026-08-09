@@ -14,7 +14,7 @@ import (
 const (
 	defaultSessionID               = "default"
 	defaultSessionTitle            = "新会话"
-	displayStreamPersistBatchBytes = 4 * 1024
+	displayStreamPersistBatchBytes = 64 * 1024
 	maxTokenUsageDisplayEvents     = 10
 	historyTypeMessage             = "message"
 	historyTypeContextMessage      = "context_message"

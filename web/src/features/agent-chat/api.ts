@@ -45,6 +45,11 @@ export interface AgentChatHistoryPage {
   has_more: boolean
 }
 
+export interface AgentChatActivityBinding {
+  project_id: string
+  session_id: string
+}
+
 export interface HostDirectorySelection {
   path: string
   canceled: boolean
@@ -66,6 +71,11 @@ export function getAgentChatProjects(): Promise<AgentChatProject[]> {
       projectsReadInFlight = null
     })
   return projectsReadInFlight
+}
+
+/** Read only running conversation identities; no project or journal metadata is scanned. */
+export function getAgentChatActivity(): Promise<AgentChatActivityBinding[]> {
+  return requestJSON<{ bindings?: AgentChatActivityBinding[] }>('/api/agent-chat/activity').then((data) => data.bindings ?? [])
 }
 
 /** Search complete durable conversation metadata without switching the foreground workspace. */

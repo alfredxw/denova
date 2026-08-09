@@ -186,10 +186,15 @@ export function AgentChatView({
     void refreshProjects()
   }, [refreshProjects])
   useEffect(() => {
-    const interval = window.setInterval(() => {
-      void refreshProjects()
-    }, 10_000)
-    return () => window.clearInterval(interval)
+    const refreshVisibleProjects = () => {
+      if (document.visibilityState === 'visible') void refreshProjects()
+    }
+    window.addEventListener('focus', refreshVisibleProjects)
+    document.addEventListener('visibilitychange', refreshVisibleProjects)
+    return () => {
+      window.removeEventListener('focus', refreshVisibleProjects)
+      document.removeEventListener('visibilitychange', refreshVisibleProjects)
+    }
   }, [refreshProjects])
   useEffect(() => {
     if (!projectsLoading) persistWorkbenchState(workbench)

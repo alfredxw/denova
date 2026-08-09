@@ -395,3 +395,31 @@ func (a *App) SubscribeProjectFileChanges(projectID string) (<-chan filewatch.Ev
 	}
 	return a.workspaceFiles.Subscribe(layout.ProjectID, layout.ContentRoot)
 }
+
+func (a *App) observeProjectFileChange(event filewatch.Event) {
+	if a == nil {
+		return
+	}
+	a.mu.RLock()
+	activeFiles := a.bookService
+	activeState := a.bookState
+	activeWorkspace := a.workspace
+	projectBook := a.projectBook
+	agentChat := a.agentChatApp
+	a.mu.RUnlock()
+
+	if filepath.Clean(activeWorkspace) == filepath.Clean(event.Workspace) {
+		if activeFiles != nil {
+			activeFiles.InvalidateSummary(event.Paths, event.Resync)
+		}
+		if activeState != nil {
+			activeState.InvalidateChapterPaths(event.Paths, event.Resync)
+		}
+	}
+	if projectBook != nil {
+		projectBook.InvalidateSummary(event.ProjectID, event.Paths, event.Resync)
+	}
+	if agentChat != nil {
+		agentChat.InvalidateBookSummary(event.ProjectID, event.Paths, event.Resync)
+	}
+}

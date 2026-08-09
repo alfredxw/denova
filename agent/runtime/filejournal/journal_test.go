@@ -111,6 +111,26 @@ func TestFileJournalReturnsDirectorySyncFailure(t *testing.T) {
 	}
 }
 
+func TestFileJournalSyncsDirectoryOnlyWhenTailIsCreated(t *testing.T) {
+	t.Parallel()
+
+	journal := newTestFileJournal(t)
+	if _, err := journal.Load(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	syncDirectory := journal.syncDirectory
+	directorySyncs := 0
+	journal.syncDirectory = func(path string) error {
+		directorySyncs++
+		return syncDirectory(path)
+	}
+	appendTestJournalEvent(t, journal, 0, "first")
+	appendTestJournalEvent(t, journal, 1, "second")
+	if directorySyncs != 1 {
+		t.Fatalf("directory syncs = %d, want one namespace sync for the created tail", directorySyncs)
+	}
+}
+
 func TestFileJournalRepairsOnlySyntacticallyTornFinalRecord(t *testing.T) {
 	t.Parallel()
 

@@ -16,11 +16,12 @@ func TestWorkspaceWatcherTreatsDirectorySymlinkAsLeaf(t *testing.T) {
 	if err := os.Symlink(external, link); err != nil {
 		t.Skipf("directory symlinks unavailable: %v", err)
 	}
-	native, err := fsnotify.NewWatcher()
+	nativeWatcher, err := fsnotify.NewWatcher()
 	if err != nil {
 		t.Fatal(err)
 	}
-	t.Cleanup(func() { _ = native.Close() })
+	t.Cleanup(func() { _ = nativeWatcher.Close() })
+	native := &testNativeWatcher{Watcher: nativeWatcher}
 	watcher := &workspaceWatcher{
 		root:   root,
 		native: native,
@@ -46,11 +47,12 @@ func TestWorkspaceWatcherRemovesMovedDirectoryWatches(t *testing.T) {
 	if err := os.MkdirAll(nested, 0o755); err != nil {
 		t.Fatal(err)
 	}
-	native, err := fsnotify.NewWatcher()
+	nativeWatcher, err := fsnotify.NewWatcher()
 	if err != nil {
 		t.Fatal(err)
 	}
-	t.Cleanup(func() { _ = native.Close() })
+	t.Cleanup(func() { _ = nativeWatcher.Close() })
+	native := &testNativeWatcher{Watcher: nativeWatcher}
 	watcher := &workspaceWatcher{
 		root:   root,
 		native: native,
@@ -67,10 +69,47 @@ func TestWorkspaceWatcherRemovesMovedDirectoryWatches(t *testing.T) {
 		t.Fatalf("directory rename requested resync: %v", err)
 	})
 	removedPrefix := filepath.Clean(filepath.Join(root, "chapters"))
-	for _, watched := range native.WatchList() {
+	for _, watched := range nativeWatcher.WatchList() {
 		watched = filepath.Clean(watched)
 		if watched == removedPrefix || strings.HasPrefix(watched, removedPrefix+string(filepath.Separator)) {
 			t.Fatalf("moved directory watch remains registered: %q", watched)
+		}
+	}
+}
+
+type testNativeWatcher struct {
+	*fsnotify.Watcher
+}
+
+func (w *testNativeWatcher) Events() <-chan fsnotify.Event { return w.Watcher.Events }
+func (w *testNativeWatcher) Errors() <-chan error          { return w.Watcher.Errors }
+
+func TestWorkspaceWatcherSkipsGeneratedDirectories(t *testing.T) {
+	root := t.TempDir()
+	for _, rel := range []string{"chapters/ch01.md", "node_modules/pkg/index.js", "dist/app.js", ".git/config"} {
+		path := filepath.Join(root, filepath.FromSlash(rel))
+		if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(path, []byte(rel), 0o600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	nativeWatcher, err := fsnotify.NewWatcher()
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = nativeWatcher.Close() })
+	watcher := &workspaceWatcher{root: root, native: &testNativeWatcher{Watcher: nativeWatcher}, known: make(map[string]bool)}
+	if _, err := watcher.watchDirectoryTree(root, false); err != nil {
+		t.Fatal(err)
+	}
+	if _, exists := watcher.known["chapters/ch01.md"]; !exists {
+		t.Fatal("visible chapter was not indexed")
+	}
+	for _, ignored := range []string{"node_modules", "node_modules/pkg/index.js", "dist/app.js", ".git/config"} {
+		if _, exists := watcher.known[ignored]; exists {
+			t.Fatalf("ignored path was indexed: %q", ignored)
 		}
 	}
 }

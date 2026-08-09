@@ -1,4 +1,4 @@
-import type { ChatMessage, InteractiveImage, InteractiveImageError } from '@/lib/api'
+import type { InteractiveImage, InteractiveImageError } from '@/lib/api'
 
 export function readInteractiveImage(result?: string): InteractiveImage | undefined {
   const data = parseEventResult(result)
@@ -16,13 +16,6 @@ export function readInteractiveImageError(result?: string): InteractiveImageErro
   return record as unknown as InteractiveImageError
 }
 
-export function interactiveImages(messages: ChatMessage[]): InteractiveImage[] | undefined {
-  const images = messages
-    .map((message) => message.interactive_image)
-    .filter((image): image is InteractiveImage => Boolean(image?.image_path))
-  return images.length > 0 ? images : undefined
-}
-
 export function mergeInteractiveImages(persisted?: InteractiveImage[], optimistic?: InteractiveImage[]) {
   const merged: InteractiveImage[] = []
   for (const image of [...(persisted || []), ...(optimistic || [])]) {
@@ -34,22 +27,6 @@ export function mergeInteractiveImages(persisted?: InteractiveImage[], optimisti
 
 export function latestMergedInteractiveImage(images?: InteractiveImage[]) {
   return images?.[images.length - 1]
-}
-
-export function latestInteractiveImageError(messages: ChatMessage[]): InteractiveImageError | undefined {
-  for (let index = messages.length - 1; index >= 0; index -= 1) {
-    const error = messages[index].interactive_image_error
-    if (error) return error
-  }
-  return undefined
-}
-
-export function latestInteractiveImageStatus(messages: ChatMessage[]): 'running' | 'success' | 'error' | undefined {
-  for (let index = messages.length - 1; index >= 0; index -= 1) {
-    const status = messages[index].status
-    if (status === 'running' || status === 'success' || status === 'error') return status
-  }
-  return undefined
 }
 
 function parseEventResult(result?: string): unknown {

@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import type { TFunction } from 'i18next'
 import { toast } from 'sonner'
-import { createAgentCommandID, type ChatMessage, type InteractiveImage } from '@/lib/api'
+import { createAgentCommandID, type InteractiveImage } from '@/lib/api'
 import { agentCommandRetryKey, isKnownAgentCommandOutcome, rememberAgentCommandID } from '@/lib/agent-command'
 import { generateInteractiveImage } from '../../api'
 import type { Snapshot } from '../../types'
@@ -43,13 +43,13 @@ export function useStoryImages({
     })
   }, [])
 
-  const generateForMessage = useCallback(async (
-    message: ChatMessage,
+  const generateForTurn = useCallback(async (
+    turnId: string,
     source: 'manual' | 'auto' = 'manual',
     force = true,
   ) => {
-    if (!message.turn_id || !storyId) {
-      console.error(`[use-story-images.ts] interactive image target is unavailable story_id=${storyId || '<empty>'} turn_id=${message.turn_id || '<empty>'}`)
+    if (!turnId || !storyId) {
+      console.error(`[use-story-images.ts] interactive image target is unavailable story_id=${storyId || '<empty>'} turn_id=${turnId || '<empty>'}`)
       toast.error(t('storyStage.interactiveImage.targetMissing'))
       return null
     }
@@ -61,20 +61,20 @@ export function useStoryImages({
     const retryKey = agentCommandRetryKey(stageKey, 'interactive-image', {
       storyId,
       branchId: targetBranchID,
-      turnId: message.turn_id,
+      turnId,
       source,
       force,
     })
     const commandID = source === 'auto'
-      ? automaticInteractiveImageCommandID(storyId, targetBranchID, message.turn_id)
+      ? automaticInteractiveImageCommandID(storyId, targetBranchID, turnId)
       : rememberAgentCommandID(manualCommandIDsRef.current, retryKey, createAgentCommandID)
-    setGeneratingTurnId(message.turn_id)
+    setGeneratingTurnId(turnId)
     setActivity(t('storyStage.interactiveImage.generating'))
     try {
       const result = await generateInteractiveImage(storyId, {
         command_id: commandID,
         branch_id: targetBranchID,
-        turn_id: message.turn_id,
+        turn_id: turnId,
         source,
         force,
       })
@@ -85,7 +85,7 @@ export function useStoryImages({
     } catch (error) {
       if (source === 'manual' && isKnownAgentCommandOutcome(error)) manualCommandIDsRef.current.delete(retryKey)
       const messageText = error instanceof Error ? error.message : t('storyStage.interactiveImage.generateFailed')
-      console.error(`[use-story-images.ts] interactive image generation failed story_id=${storyId} turn_id=${message.turn_id}`, error)
+      console.error(`[use-story-images.ts] interactive image generation failed story_id=${storyId} turn_id=${turnId}`, error)
       toast.error(t('storyStage.interactiveImage.generateFailed'), { description: messageText })
       return null
     } finally {
@@ -116,7 +116,7 @@ export function useStoryImages({
   }, [branchId, onDone, rememberImage, snapshot, storyId])
 
   return {
-    generateForMessage,
+    generateForTurn,
     generatingTurnId,
     maybeGenerateAutomatically,
     optimisticImages,
