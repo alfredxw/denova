@@ -5,6 +5,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"io"
 	"os/exec"
 	"strings"
 	"unicode/utf8"
@@ -113,34 +114,90 @@ func (workspace *LocalWorkspace) runGrepCommand(
 	maxBytes int,
 	consume func(string) bool,
 ) (bool, error) {
-	command := exec.CommandContext(ctx, workspace.ripgrepExecutable, grepArguments(plan)...)
-	command.Dir = workspace.root
-	stdout, err := command.StdoutPipe()
-	if err != nil {
-		return false, fmt.Errorf("create grep stdout: %w", err)
+	if len(plan.stages) == 0 {
+		return false, errors.New("grep execution plan has no stages / grep 执行计划不包含命令")
 	}
-	stderr, err := command.StderrPipe()
-	if err != nil {
-		return false, fmt.Errorf("create grep stderr: %w", err)
+	commands := make([]*exec.Cmd, len(plan.stages))
+	stdoutPipes := make([]io.ReadCloser, len(plan.stages))
+	stderrPipes := make([]io.ReadCloser, len(plan.stages))
+	for index, stage := range plan.stages {
+		command := exec.CommandContext(ctx, workspace.ripgrepExecutable, grepArguments(stage, index > 0)...)
+		command.Dir = workspace.root
+		stdout, err := command.StdoutPipe()
+		if err != nil {
+			for previous := 0; previous < index; previous++ {
+				_ = stdoutPipes[previous].Close()
+				_ = stderrPipes[previous].Close()
+			}
+			return false, fmt.Errorf("create grep pipeline stage %d stdout: %w", index+1, err)
+		}
+		stderr, err := command.StderrPipe()
+		if err != nil {
+			_ = stdout.Close()
+			for previous := 0; previous < index; previous++ {
+				_ = stdoutPipes[previous].Close()
+				_ = stderrPipes[previous].Close()
+			}
+			return false, fmt.Errorf("create grep pipeline stage %d stderr: %w", index+1, err)
+		}
+		commands[index], stdoutPipes[index], stderrPipes[index] = command, stdout, stderr
+		if index > 0 {
+			command.Stdin = stdoutPipes[index-1]
+		}
 	}
 	if err := workspace.verifyRootIdentity(); err != nil {
+		for index := range commands {
+			_ = stdoutPipes[index].Close()
+			_ = stderrPipes[index].Close()
+		}
 		return false, err
 	}
-	if err := command.Start(); err != nil {
-		return false, fmt.Errorf("start ripgrep: %w", err)
+	diagnostics := make([]<-chan processDiagnostic, len(plan.stages))
+	for index, stderr := range stderrPipes {
+		diagnostics[index] = readProcessDiagnostics(stderr, maxBytes)
 	}
-	diagnostics := readProcessDiagnostics(stderr, maxBytes)
+	started := 0
+	for index, command := range commands {
+		if err := command.Start(); err != nil {
+			for running := 0; running < started; running++ {
+				_ = commands[running].Process.Kill()
+			}
+			for pipe := range commands {
+				_ = stdoutPipes[pipe].Close()
+				_ = stderrPipes[pipe].Close()
+			}
+			for running := 0; running < started; running++ {
+				_ = commands[running].Wait()
+			}
+			for diagnostic := range diagnostics {
+				<-diagnostics[diagnostic]
+			}
+			return false, fmt.Errorf("start ripgrep pipeline stage %d: %w", index+1, err)
+		}
+		started++
+	}
+	// Each downstream process has inherited its input descriptor after Start.
+	// Closing the parent's copies lets an early downstream exit propagate
+	// SIGPIPE instead of leaving an upstream rg blocked on a full pipe.
+	for index := 0; index < len(stdoutPipes)-1; index++ {
+		_ = stdoutPipes[index].Close()
+	}
 	stopped := false
 	var scanErr error
 	groupsContext := plan.groupsContext()
 	var block strings.Builder
+	stopPipeline := func() {
+		stopped = true
+		for _, command := range commands {
+			_ = command.Process.Kill()
+		}
+	}
 	emit := func(entry string) bool {
 		if entry == "" {
 			return true
 		}
 		if !consume(entry) {
-			stopped = true
-			_ = command.Process.Kill()
+			stopPipeline()
 			return false
 		}
 		return true
@@ -152,7 +209,7 @@ func (workspace *LocalWorkspace) runGrepCommand(
 		}
 		if block.Len()+additional > maxBytes {
 			scanErr = fmt.Errorf("grep context block exceeds the %d-byte result limit; reduce context or narrow the command / grep 上下文结果块超过 %d 字节上限；请减少上下文或缩小命令范围", maxBytes, maxBytes)
-			_ = command.Process.Kill()
+			stopPipeline()
 			return false
 		}
 		if block.Len() > 0 {
@@ -162,18 +219,18 @@ func (workspace *LocalWorkspace) runGrepCommand(
 		return true
 	}
 
-	scanner := bufio.NewScanner(stdout)
+	scanner := bufio.NewScanner(stdoutPipes[len(stdoutPipes)-1])
 	scanner.Buffer(make([]byte, 64*1024), maxBytes+1)
 	for scanner.Scan() {
 		if err := contextError(ctx); err != nil {
 			scanErr = err
-			_ = command.Process.Kill()
+			stopPipeline()
 			break
 		}
 		line := strings.TrimSuffix(scanner.Text(), "\r")
 		if !utf8.ValidString(line) {
 			scanErr = errors.New("grep encountered non-UTF-8 output; select a compatible encoding or narrow the command / grep 遇到非 UTF-8 输出；请选择兼容编码或缩小命令范围")
-			_ = command.Process.Kill()
+			stopPipeline()
 			break
 		}
 		if !groupsContext {
@@ -198,27 +255,33 @@ func (workspace *LocalWorkspace) runGrepCommand(
 	}
 	if scanErr == nil && scanner.Err() != nil {
 		scanErr = fmt.Errorf("read ripgrep output: %w", scanner.Err())
-		_ = command.Process.Kill()
+		stopPipeline()
 	}
 	if scanErr == nil && !stopped && block.Len() > 0 {
 		_ = emit(block.String())
 	}
-	diagnostic := <-diagnostics
-	waitErr := command.Wait()
+	diagnosticResults := make([]processDiagnostic, len(commands))
+	waitErrors := make([]error, len(commands))
+	for index := len(commands) - 1; index >= 0; index-- {
+		diagnosticResults[index] = <-diagnostics[index]
+		waitErrors[index] = commands[index].Wait()
+	}
 	if scanErr != nil {
 		return stopped, scanErr
 	}
-	if diagnostic.err != nil {
-		return stopped, diagnostic.err
-	}
-	if waitErr != nil && !stopped {
-		var exitError *exec.ExitError
-		if !errors.As(waitErr, &exitError) || exitError.ExitCode() != 1 {
-			message := strings.TrimSpace(diagnostic.content)
-			if message == "" {
-				message = waitErr.Error()
+	for index, diagnostic := range diagnosticResults {
+		if diagnostic.err != nil {
+			return stopped, fmt.Errorf("read ripgrep pipeline stage %d diagnostics: %w", index+1, diagnostic.err)
+		}
+		if waitErrors[index] != nil && !stopped {
+			var exitError *exec.ExitError
+			if !errors.As(waitErrors[index], &exitError) || exitError.ExitCode() != 1 {
+				message := strings.TrimSpace(diagnostic.content)
+				if message == "" {
+					message = waitErrors[index].Error()
+				}
+				return false, fmt.Errorf("ripgrep pipeline stage %d failed / ripgrep 管道第 %d 段执行失败: %s", index+1, index+1, boundedString(message, maxBytes))
 			}
-			return false, fmt.Errorf("ripgrep failed / ripgrep 执行失败: %s", boundedString(message, maxBytes))
 		}
 	}
 	return stopped, nil

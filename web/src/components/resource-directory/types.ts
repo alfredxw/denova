@@ -42,8 +42,6 @@ export interface ResourceDirectorySection {
   headerMeta?: ReactNode
   /** 允许条目在当前分组内拖拽排序；需配合 ResourceDirectory.onReorderItems。 */
   reorderable?: boolean
-  /** 点击分组标题整行即展开/折叠；右侧新建操作保持独立。 */
-  toggleOnHeaderClick?: boolean
 }
 
 /** 置顶固定条目（如 CREATOR.md、配置 Agent 等伪条目），渲染在搜索区下方 */

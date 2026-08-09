@@ -69,10 +69,11 @@ export function useAutomationAutosave({
     save: updateAutomation,
     resolveConflict: async ({ error, baseline, draft: submitted }) => {
       if (!isRevisionConflict(error) || !baseline) return null
-      const latestTask = (await getAutomations(fallbackTarget))
+      const taskTarget = submitted.target?.kind ? submitted.target : fallbackTarget
+      const latestTask = (await getAutomations(taskTarget))
         .find((task) => automationTaskKey(task) === submitted.id)
       if (!latestTask) return null
-      const latest = { ...cloneAutomationTask(latestTask, fallbackTarget), id: submitted.id }
+      const latest = { ...cloneAutomationTask(latestTask, taskTarget), id: submitted.id }
       const rebased = await rebaseJSONWithRecovery({
         resource: 'automation',
         scope: latest.target?.kind === 'workspace'
@@ -89,7 +90,7 @@ export function useAutomationAutosave({
       }
     },
     onSaved: (saved, _mode, submitted) => {
-      const normalized = normalizeAutomationTaskShape(saved, fallbackTarget)
+      const normalized = normalizeAutomationTaskShape(saved, submitted.target?.kind ? submitted.target : fallbackTarget)
       const submittedIsCurrent = automationTaskDraftSignature(draftRef.current) === automationTaskDraftSignature(submitted)
       onSavedRef.current(normalized, submitted, submittedIsCurrent)
     },
@@ -102,7 +103,10 @@ export function useAutomationAutosave({
       return
     }
     const baseline = tasks.find((task) => automationTaskKey(task) === activeId)
-    if (baseline) autosave.resetBaseline({ ...cloneAutomationTask(baseline, fallbackTarget), id: activeId })
+    if (baseline) autosave.resetBaseline({
+      ...cloneAutomationTask(baseline, baseline.target?.kind ? baseline.target : fallbackTarget),
+      id: activeId,
+    })
   }, [activeId, autosave.resetBaseline, creating, fallbackTarget, tasks])
 
   const flush = useCallback(async () => {

@@ -48,7 +48,6 @@ type Config struct {
 	// persist into user configuration or enter the content workspacelayout.
 	ProjectID                   string                    `toml:"-"`
 	ProjectStateDir             string                    `toml:"-"`
-	AutomationWorkspaces        []string                  `toml:"-"`
 	RuntimeWebPort              int                       `toml:"-"`
 	DevMode                     bool                      `toml:"-"`
 	LLMInputLogEnabled          bool                      `toml:"llm_input_log_enabled"`

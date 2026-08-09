@@ -13,10 +13,6 @@ type legacySeedDefinition struct {
 	Schedule            Schedule
 	Triggers            []TriggerDefinition
 	DefaultActionPolicy string
-	WriteMode           string
-	WriteScope          string
-	OutputPolicy        string
-	OutputPath          string
 }
 
 func removePristineLegacyWorkspaceSeeds(tasks []Task) ([]Task, bool) {
@@ -70,9 +66,5 @@ func legacySeedTaskDefinition(task Task) legacySeedDefinition {
 		Schedule:            task.Schedule,
 		Triggers:            task.Triggers,
 		DefaultActionPolicy: task.DefaultActionPolicy,
-		WriteMode:           task.WriteMode,
-		WriteScope:          task.WriteScope,
-		OutputPolicy:        task.OutputPolicy,
-		OutputPath:          task.OutputPath,
 	}
 }

@@ -28,7 +28,6 @@ func TestAutomationColdAcceptedRunStaysRecoveryRequiredUntilExplicitAbort(t *tes
 	store, projectLayout := registeredAutomationProjectStoreForTest(t, dataDir, workspace)
 	taskDef, err := store.Create(automation.Task{
 		Scope: automation.ScopeWorkspace, Enabled: true, Name: "cold recovery", Template: automation.TemplateReview,
-		WriteMode: automation.WriteModeReadOnly, WriteScope: automation.WriteScopeNone,
 		Triggers: []automation.TriggerDefinition{{
 			ID: "schedule", Type: automation.TriggerTypeSchedule, Enabled: true,
 			NotifyPolicy: automation.NotifyPolicySilent,
@@ -132,7 +131,7 @@ func TestAutomationColdAcceptedRunStaysRecoveryRequiredUntilExplicitAbort(t *tes
 	}
 }
 
-func TestAutomationStartupScanFinalizesTerminalRuntimeEffectsExactlyOnce(t *testing.T) {
+func TestAutomationStartupScanRetiresLegacyConfirmationEffect(t *testing.T) {
 	root := t.TempDir()
 	workspace := filepath.Join(root, "workspace")
 	dataDir := filepath.Join(root, "nova")
@@ -142,7 +141,6 @@ func TestAutomationStartupScanFinalizesTerminalRuntimeEffectsExactlyOnce(t *test
 	store, projectLayout := registeredAutomationProjectStoreForTest(t, dataDir, workspace)
 	taskDef, err := store.Create(automation.Task{
 		Scope: automation.ScopeWorkspace, Enabled: true, Name: "terminal recovery", Template: automation.TemplateReview,
-		WriteMode: automation.WriteModeConfirmWrite, WriteScope: automation.WriteScopeFile,
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -188,8 +186,8 @@ func TestAutomationStartupScanFinalizesTerminalRuntimeEffectsExactlyOnce(t *test
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(inbox) != 1 || inbox[0].SourceRunID != runID {
-		t.Fatalf("terminal effects were not exactly-once: %#v", inbox)
+	if len(inbox) != 0 {
+		t.Fatalf("removed write-confirmation policy created an inbox item: %#v", inbox)
 	}
 }
 
@@ -203,7 +201,6 @@ func TestAutomationColdFollowUpPublishesAndAbortsCurrentOperation(t *testing.T) 
 	store, projectLayout := registeredAutomationProjectStoreForTest(t, dataDir, workspace)
 	taskDef, err := store.Create(automation.Task{
 		Scope: automation.ScopeWorkspace, Enabled: true, Name: "recover follow-up", Template: automation.TemplateReview,
-		WriteMode: automation.WriteModeReadOnly, WriteScope: automation.WriteScopeNone,
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -297,7 +294,6 @@ func TestAutomationPendingFollowUpIntentRecoversActiveSuccessorAfterCrash(t *tes
 	store, projectLayout := registeredAutomationProjectStoreForTest(t, dataDir, workspace)
 	taskDef, err := store.Create(automation.Task{
 		Scope: automation.ScopeWorkspace, Enabled: true, Name: "pending successor", Template: automation.TemplateReview,
-		WriteMode: automation.WriteModeReadOnly, WriteScope: automation.WriteScopeNone,
 	})
 	if err != nil {
 		t.Fatal(err)

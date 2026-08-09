@@ -8,7 +8,7 @@ import (
 
 // grepCommandPolicyVersion invalidates cursors whenever parsing, safety, or
 // canonical output semantics change.
-const grepCommandPolicyVersion = 3
+const grepCommandPolicyVersion = 4
 
 type grepOutputMode uint8
 
@@ -39,9 +39,13 @@ type grepFlagSpec struct {
 }
 
 type compiledGrepCommand struct {
+	stages   []compiledGrepStage
+	warnings []string
+}
+
+type compiledGrepStage struct {
 	args      []string
 	paths     []string
-	warnings  []string
 	mode      grepOutputMode
 	modeFlag  string
 	hasRegexp bool
@@ -51,7 +55,14 @@ type compiledGrepCommand struct {
 }
 
 func (command compiledGrepCommand) groupsContext() bool {
-	return command.mode == grepOutputContent && (command.contextBefore > 0 || command.contextAfter > 0)
+	if len(command.stages) == 0 {
+		return false
+	}
+	return command.stages[len(command.stages)-1].groupsContext()
+}
+
+func (stage compiledGrepStage) groupsContext() bool {
+	return stage.mode == grepOutputContent && (stage.contextBefore > 0 || stage.contextAfter > 0)
 }
 
 func noValueGrepFlag(effect grepFlagEffect) grepFlagSpec {
@@ -250,26 +261,30 @@ var grepUnsafeShortFlags = map[byte]string{
 	'z': "this flag can start external decompression programs",
 }
 
-func grepArguments(command compiledGrepCommand) []string {
-	args := append([]string(nil), command.args...)
+func grepArguments(stage compiledGrepStage, pipelineInput bool) []string {
+	args := append([]string(nil), stage.args...)
 	args = append(args,
 		"--no-config", "--color=never", "--no-messages", "--no-require-git",
 		"--no-ignore-global", "--no-ignore-parent", "--no-follow", "--no-heading",
 		"--no-pre", "--no-search-zip", "--no-stats", "--sort=path",
 		"--path-separator=/", "--glob=!.git/**",
 	)
-	switch command.mode {
+	switch stage.mode {
 	case grepOutputCount:
-		args = append(args, "--with-filename")
+		if !pipelineInput {
+			args = append(args, "--with-filename")
+		}
 	case grepOutputFiles:
 	default:
-		args = append(args, "--with-filename", "--line-number")
-		if command.groupsContext() {
+		if !pipelineInput {
+			args = append(args, "--with-filename", "--line-number")
+		}
+		if stage.groupsContext() {
 			args = append(args, "--context-separator=--")
 		}
 	}
 	args = append(args, "--")
-	for _, target := range command.paths {
+	for _, target := range stage.paths {
 		args = append(args, filepath.FromSlash(target))
 	}
 	return args

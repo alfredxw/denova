@@ -95,7 +95,7 @@ func Glob(searcher GlobSearcher, options ...DefinitionOption) (agent.ToolDefinit
 }
 
 type grepInput struct {
-	Command string `json:"command" jsonschema:"minLength=3,maxLength=65536" jsonschema_description:"One literal ripgrep invocation beginning with rg. This is not a shell command: pipelines, redirects, substitutions, and external paths are rejected. Native PATTERN [PATH ...] and repeated -e/--regexp syntax are supported; use -- only to end option parsing. Example: rg -S -C 2 -g '*.go' 'TODO|FIXME' agent internal."`
+	Command string `json:"command" jsonschema:"minLength=3,maxLength=65536" jsonschema_description:"One literal ripgrep command or a pipeline containing only literal rg stages. This is not a shell command: only | between rg stages is supported; redirects, substitutions, and external paths are rejected. The first stage supports native PATTERN [PATH ...] and repeated -e/--regexp syntax. Later stages filter the preceding stdout and cannot specify workspace paths. Example: rg -n -e TODO -e FIXME agent internal | rg -i 'urgent|blocking'."`
 	Cursor  string `json:"cursor,omitempty" jsonschema:"maxLength=8192" jsonschema_description:"Opaque next_cursor returned by the same normalized grep command."`
 }
 
@@ -106,9 +106,9 @@ func Grep(searcher GrepSearcher, options ...DefinitionOption) (agent.ToolDefinit
 	}
 	descriptor := readDescriptor(options...)
 	descriptor.ResultRecoveryKind = agent.ToolResultRecoveryRerun
-	tool, err := agent.InferTool("grep", `Search workspace text with one controlled rg command. The command starts with rg but never runs through a shell. Safe ripgrep search flags and native PATTERN [PATH ...] or repeated -e/--regexp syntax are supported; use -- only when ending option parsing is necessary. Pipelines, redirects, substitutions, external configuration, process-spawning flags, and paths outside the workspace are rejected. Results are deterministic and bounded; repeat the identical command with next_cursor to continue after a partial result.
+	tool, err := agent.InferTool("grep", `Search workspace text with one controlled rg command or an rg-only pipeline. Commands never run through a shell. Safe ripgrep search flags and native PATTERN [PATH ...] or repeated -e/--regexp syntax are supported. The first stage searches workspace-relative paths; each later rg stage filters only the preceding stdout. Redirects, substitutions, non-rg pipeline stages, external configuration, process-spawning flags, and paths outside the workspace are rejected. Results are deterministic and bounded; repeat the identical command with next_cursor to continue after a partial result.
 
-使用一条受控的 rg 命令搜索工作区文本。命令虽然以 rg 开头，但绝不会经过 shell。支持安全的 ripgrep 搜索参数，以及原生 PATTERN [PATH ...] 和重复 -e/--regexp 语法；只有需要结束参数解析时才使用 --。管道、重定向、替换、外部配置、可启动进程的参数和工作区外路径都会被拒绝。结果稳定且有界；结果为 partial 时，用相同 command 携带 next_cursor 继续。`, func(ctx context.Context, input grepInput) (agent.ToolResult, error) {
+使用一条受控的 rg 命令或仅由 rg 组成的管道搜索工作区文本，命令绝不会经过 shell。支持安全的 ripgrep 参数，以及原生 PATTERN [PATH ...] 和重复 -e/--regexp 语法。第一段搜索工作区相对路径，后续每段 rg 只能过滤上一段的标准输出。重定向、替换、非 rg 管道段、外部配置、可启动进程的参数和工作区外路径都会被拒绝。结果稳定且有界；结果为 partial 时，用相同 command 携带 next_cursor 继续。`, func(ctx context.Context, input grepInput) (agent.ToolResult, error) {
 		request := normalizeGrepRequest(GrepRequest{Command: input.Command, Cursor: input.Cursor})
 		result, err := searcher.Grep(ctx, request)
 		if err != nil {

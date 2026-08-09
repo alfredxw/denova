@@ -1,17 +1,14 @@
 # Automation (`automation`)
 
-Automations are user- or workspace-scoped task definitions. Config Manager can edit definitions only; runtime IDs, trigger state, run history, timestamps, durable command identities, and derived action policy are never accepted by `config_apply`.
+Automations are Project-owned task definitions executed by that Project's Agent. Config Manager can edit definitions only; runtime IDs, trigger state, run history, timestamps, durable command identities, and derived action policy are never accepted by `config_apply`.
 
 Automation update is a sparse patch. Omitted fields remain unchanged, but a present `triggers` array replaces the complete trigger list. Update/delete require the exact scope and latest `revision` returned by `get`.
 
-## Scope and target
+## Project ownership
 
-| Scope | Create `target.kind` | Constraints |
-| --- | --- | --- |
-| `user` | `user` | Reusable personal task with no workspace file/Lore access. It is forced to `read_only`, `none`, `run_record_only`, and an empty output path. |
-| `workspace` | `workspace` | Bound by the host to the currently open workspace. Do not supply or trust a model-chosen workspace path. |
+The only supported scope is `workspace`, with `target.kind: "workspace"`. The host binds this resource to the Config Manager's current Project; a model-supplied workspace path never selects or authorizes another Project.
 
-`target` is required on create and immutable on update. Select the destination with top-level `scope`; a supplied `target.workspace` never authorizes another path.
+`target` is required on create and immutable on update. To manage another Project, the user must open Automation's Config Agent for that Project. Never create a user-scoped/global automation.
 
 ## Editable fields
 
@@ -23,14 +20,11 @@ Automation update is a sparse patch. Omitted fields remain unchanged, but a pres
 | `template` | `memory_consolidation`, `review`, `continue_writing`, `custom_prompt` | defaults to `custom_prompt` | replaces when present |
 | `prompt` | string | recommended | replaces when present; `""` clears it |
 | `model_profile_id` | string | optional | replaces when present; `""` clears the override |
+| `session_strategy` | `per_run`, `per_task` | defaults to `per_run` | `per_run` creates a conversation for every run; `per_task` serializes runs through one fixed conversation |
 | `schedule` | schedule object | optional compatibility field | replaces the fallback/primary schedule when present; prefer trigger-local schedules |
 | `triggers` | trigger[] | optional | complete array replacement when present |
-| `write_mode` | `read_only`, `confirm_write`, `auto_write` | defaults to `read_only` | replaces when present |
-| `write_scope` | `none`, `lore`, `file`, `lore_and_file` | paired with mode | replaces when present; `read_only` always resolves to `none` |
-| `output_policy` | `run_record_only`, `optional_file` | defaults to `run_record_only` | replaces when present |
-| `output_path` | workspace-relative string | only with `optional_file` | replaces when present; `""` clears it |
 
-`confirm_write` is the safe default for tasks that may propose file/Lore changes. Use `auto_write` only after an explicit user request naming a narrow write scope. Reviews should normally use `read_only` + `none` + `run_record_only`.
+There is no task-level execution, write-scope, or output policy. The Project Agent receives its normal configured tools. Put the complete requested behavior in `prompt`, including whether it should inspect, change, or create Project content and where any durable output belongs.
 
 ## Schedule fields
 
@@ -46,7 +40,7 @@ Never send derived `cron`; the backend computes it.
 
 ## Trigger fields
 
-Every trigger has stable `id`, `type`, `enabled`, optional `name`, and optional `notify_policy` (`inbox` or `silent`). Do not send trigger-level `action_policy`; execution action is derived from the task's write mode.
+Every trigger has stable `id`, `type`, `enabled`, optional `name`, and optional `notify_policy` (`inbox` or `silent`). Do not send trigger-level `action_policy`; current Project automations are admitted automatically when the trigger matches.
 
 | Trigger type | Additional fields | Meaning |
 | --- | --- | --- |
@@ -57,9 +51,9 @@ Every trigger has stable `id`, `type`, `enabled`, optional `name`, and optional 
 
 Stable trigger IDs preserve deduplication state. Replacing a trigger with a new ID creates a new trigger identity.
 
-## Safe workspace create example
+## Project automation create example
 
-This disabled manual task has no unattended side effects:
+This disabled manual task tells the Project Agent exactly what to do in its prompt:
 
 ```text
 config_apply({
@@ -72,6 +66,7 @@ config_apply({
     "name": "Continuity review",
     "template": "review",
     "prompt": "Review newly written chapters for continuity conflicts. Report findings with file references; do not edit files.",
+    "session_strategy": "per_run",
     "triggers": [
       {
         "id": "manual-review",
@@ -80,10 +75,7 @@ config_apply({
         "name": "Manual review",
         "notify_policy": "inbox"
       }
-    ],
-    "write_mode": "read_only",
-    "write_scope": "none",
-    "output_policy": "run_record_only"
+    ]
   }
 })
 ```
@@ -105,7 +97,7 @@ config_apply({
 })
 ```
 
-Verify that the prompt changed while the target, enabled flag, template, trigger IDs, write policy, and output policy stayed identical.
+Verify that the prompt changed while the target, enabled flag, template, conversation strategy, and trigger IDs stayed identical.
 
 ## Scheduled trigger replacement example
 
@@ -143,6 +135,6 @@ For semantic or chapter batching, use for example:
 
 ## Read-only and verification fields
 
-Never copy `id`, `catalog_id`, `revision`, `scope`, returned `target`, `default_action_policy`, derived `schedule.cron`, trigger `action_policy`, trigger state, last/recent runs, timestamps, or archive/runtime fields into `value`. Top-level mutation `id`, `scope`, and `revision` carry identity and concurrency.
+Never copy `id`, `catalog_id`, `revision`, `scope`, returned `target`, `default_action_policy`, derived `schedule.cron`, trigger `action_policy`, trigger state, last/recent runs, timestamps, historical `output_path`, or archive/runtime fields into `value`. Top-level mutation `id`, `scope`, and `revision` carry identity and concurrency.
 
 After every change, `get` the exact catalog ID in the same scope and verify the requested fields plus every preservation-sensitive field. Delete only on explicit request; a task with an active run may reject deletion until runtime reconciliation completes.

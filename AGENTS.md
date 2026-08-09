@@ -20,10 +20,16 @@
 - 所有面向用户的交互，都要支持双语（展示中文和英文）
 - 影响模型上下文相关设计的改动必须将缓存命中率（即前缀匹配）放在高优先级考虑事项。
 - 所有注入模型的片段都要有明确来源、用途、需要注意硬上限需要配置高一些（&gt;50KB），避免随意截断。
+- Do not preserve backward compatibility. Remove obsolete paths instead of adding compatibility layers, fallbacks, or migrations.
+- Choose the simplest implementation that fully meets the current requirements. Avoid speculative abstractions, configuration, and indirection.
+- Grow the system in layers. Start from the smallest version that works end to end, and add each new capability on top of a product that already works. Never trade a working product for unfinished complexity.
+- Keep components modular and concerns clearly separated.
+- Prefer established, well-maintained libraries when they reduce overall complexity or improve reliability. Do not reimplement common functionality without a clear reason.
+- Lean on the dependencies already in the project before writing your own implementation or adding packages. Do not assume a library lacks a capability without checking its documentation and types.
+- Make architectural decisions for the long term. Do not accept a stopgap that only works for now and is meant to be replaced later.
 
 # 项目约定
 
-- 前后端分离架构，web 应用
 - 不允许在任何情况下点击一级菜单的时候自动切换模式（特别是共享菜单），用户必须手动切换模式。且任何时候一级菜单只有一个亮着的，且所有菜单行为一致。
 - 优先复用项目已有抽象、组件和工具函数；只有能明显降低复杂度或匹配既有边界时才新增抽象。
 - 不允许存在单项运行超过3s的低效单元测试
@@ -44,6 +50,8 @@
 - 新增接口、状态类型、Agent 能力或跨模块抽象时，要补充简短说明职责和调用约束。
 - 不允许写死超时时间或最大运行时间，LLM运行总是耗时的，不能因为超时而中断，默认总是不限迭代次数和运行时间，涉及安全和无限循环问题可以在配置项里提供可配置超时时长
 
+
+
 # 前端与交互规范
 
 - 主题整体是一个 纯色（dark黑，light白）的设计，个别元素可以加点彩色点缀也应该用高级的红黄绿（根据暗色、浅色搭配）
@@ -53,6 +61,7 @@
 - 前端可见变更必须打开页面验证；布局相关改动要检查窄屏、宽屏、长文本和空数据状态。
 - 优先使用已有组件库和成熟依赖解决通用 UI/编辑器/目录树/对话区问题，不重复造轮子。优先使用shadcn/ui组件库，而不是自定义组件。且需要考虑到 light、dark 两个模式的展示效果。
 - 尽量使用Adaptive布局，适应用户不同的屏幕尺寸，避免使用固定宽度。
+- 所有列表展开逻辑，都是点击整个父项toggle，而不是点左侧的小箭头按钮。
 
 # API、配置与数据兼容面
 

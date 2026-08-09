@@ -943,6 +943,9 @@ func TestStoreRemovesPristineLegacyWorkspaceSeeds(t *testing.T) {
 	store := NewStore(filepath.Join(root, "user"), workspace)
 	now := time.Now().UTC()
 	tasks := legacyDefaultWorkspaceAutomations(now)
+	if got := taskByID(tasks, legacyReviewTaskID); got == nil || got.Prompt != legacyReviewPrompt || got.Prompt == DefaultReviewPrompt {
+		t.Fatalf("legacy review seed must retain the exact historical prompt: %#v", got)
+	}
 	tasks[0].Prompt = "" // Version 1 seeds did not persist editable prompts.
 	if err := store.writeScopeFile(ScopeWorkspace, storeFile{SeedVersion: 1, Tasks: tasks}); err != nil {
 		t.Fatalf("write legacy seed file failed: %v", err)
@@ -1087,60 +1090,6 @@ func TestNormalizeTaskDefaultsAndPreservesSessionStrategy(t *testing.T) {
 	}
 }
 
-func TestTaskUnmarshalMigratesLegacyWritePolicy(t *testing.T) {
-	tests := []struct {
-		name      string
-		policy    string
-		wantMode  string
-		wantScope string
-	}{
-		{"read-only", WritePolicyReadOnly, WriteModeReadOnly, WriteScopeNone},
-		{"file", WritePolicyAllowFileWrite, WriteModeAutoWrite, WriteScopeFile},
-		{"lore", WritePolicyAllowLoreWrite, WriteModeAutoWrite, WriteScopeLore},
-		{"both", WritePolicyAllowLoreAndFileWrite, WriteModeAutoWrite, WriteScopeLoreAndFile},
-	}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			raw := fmt.Sprintf(`{"id":"task-1","scope":"workspace","name":"Write","template":"review","write_policy":%q}`, tt.policy)
-			var task Task
-			if err := json.Unmarshal([]byte(raw), &task); err != nil {
-				t.Fatalf("Unmarshal failed: %v", err)
-			}
-			if task.WriteMode != tt.wantMode || task.WriteScope != tt.wantScope {
-				t.Fatalf("write config = %s/%s, want %s/%s", task.WriteMode, task.WriteScope, tt.wantMode, tt.wantScope)
-			}
-			normalized, err := NormalizeTask(task)
-			if err != nil {
-				t.Fatalf("NormalizeTask failed: %v", err)
-			}
-			if normalized.WriteMode != tt.wantMode || normalized.WriteScope != tt.wantScope {
-				t.Fatalf("normalized write config = %s/%s, want %s/%s", normalized.WriteMode, normalized.WriteScope, tt.wantMode, tt.wantScope)
-			}
-			if normalized.DefaultActionPolicy != ActionPolicyAutoRun {
-				t.Fatalf("default action = %q, want auto_run derived from execution mode", normalized.DefaultActionPolicy)
-			}
-		})
-	}
-}
-
-func TestTaskMarshalOmitsLegacyWritePolicy(t *testing.T) {
-	task, err := NormalizeTask(Task{Scope: ScopeWorkspace, Name: "Write", Template: TemplateReview, WriteMode: WriteModeAutoWrite, WriteScope: WriteScopeFile})
-	if err != nil {
-		t.Fatalf("NormalizeTask failed: %v", err)
-	}
-	data, err := json.Marshal(task)
-	if err != nil {
-		t.Fatalf("Marshal failed: %v", err)
-	}
-	var fields map[string]any
-	if err := json.Unmarshal(data, &fields); err != nil {
-		t.Fatalf("re-decode failed: %v", err)
-	}
-	if _, exists := fields["write_policy"]; exists {
-		t.Fatalf("serialized task still contains the retired write_policy field: %s", data)
-	}
-}
-
 func TestNormalizeTaskAcceptsChapterBatchTrigger(t *testing.T) {
 	task, err := NormalizeTask(Task{
 		Scope:    ScopeWorkspace,
@@ -1188,14 +1137,12 @@ func TestNormalizeTaskMigratesLegacyScheduleToTaskLevelSilentAutoRun(t *testing.
 	}
 }
 
-func TestNormalizeTaskClearsLegacyTriggerActionAndDerivesTaskActionFromWriteMode(t *testing.T) {
+func TestNormalizeTaskClearsLegacyTriggerActionAndUsesAutomaticRuns(t *testing.T) {
 	task, err := NormalizeTask(Task{
 		Scope:               ScopeWorkspace,
 		Name:                "Saved legacy schedule",
 		Template:            TemplateReview,
 		DefaultActionPolicy: ActionPolicyConfirm,
-		WriteMode:           WriteModeConfirmWrite,
-		WriteScope:          WriteScopeFile,
 		Triggers: []TriggerDefinition{{
 			Type:         TriggerTypeSchedule,
 			Enabled:      true,
@@ -1238,10 +1185,10 @@ func TestNormalizeTaskMigratesLegacyCharacterTriggerToSemantic(t *testing.T) {
 }
 
 func TestEffectiveTriggerPolicies(t *testing.T) {
-	task := Task{DefaultActionPolicy: ActionPolicyNotifyOnly, WriteMode: WriteModeReadOnly, WriteScope: WriteScopeNone}
+	task := Task{DefaultActionPolicy: ActionPolicyNotifyOnly}
 	trigger := TriggerDefinition{Type: TriggerTypeSchedule, NotifyPolicy: NotifyPolicySilent}
 	if got := EffectiveActionPolicy(task, trigger); got != ActionPolicyAutoRun {
-		t.Fatalf("effective action = %q, want auto_run derived from execution mode", got)
+		t.Fatalf("effective action = %q, want auto_run", got)
 	}
 	if got := EffectiveNotifyPolicy(task, trigger); got != NotifyPolicySilent {
 		t.Fatalf("schedule notify = %q, want silent", got)
@@ -1252,7 +1199,7 @@ func TestEffectiveTriggerPolicies(t *testing.T) {
 	}
 	task.DefaultActionPolicy = ActionPolicyConfirm
 	if got := EffectiveNotifyPolicy(task, trigger); got != NotifyPolicySilent {
-		t.Fatalf("execution mode should not force inbox notify, got %q", got)
+		t.Fatalf("task action metadata should not force inbox notify, got %q", got)
 	}
 }
 

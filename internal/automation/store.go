@@ -575,10 +575,6 @@ func (s *Store) normalizeTaskTarget(task Task) (Task, error) {
 	} else {
 		normalized.Target = ExecutionTarget{Kind: TargetKindUser}
 		normalized.Scope = ScopeUser
-		normalized.WriteMode = WriteModeReadOnly
-		normalized.WriteScope = WriteScopeNone
-		normalized.OutputPolicy = OutputPolicyRunRecordOnly
-		normalized.OutputPath = ""
 	}
 	normalized.CatalogID = catalogTaskID(normalized)
 	revision, err := taskDefinitionRevision(normalized)
@@ -599,10 +595,6 @@ func taskDefinitionRevision(task Task) (string, error) {
 		Schedule            Schedule            `json:"schedule"`
 		Triggers            []TriggerDefinition `json:"triggers"`
 		DefaultActionPolicy string              `json:"default_action_policy"`
-		WriteMode           string              `json:"write_mode"`
-		WriteScope          string              `json:"write_scope"`
-		OutputPolicy        string              `json:"output_policy"`
-		OutputPath          string              `json:"output_path"`
 		SessionStrategy     string              `json:"session_strategy"`
 	}{
 		Enabled:             task.Enabled,
@@ -613,10 +605,6 @@ func taskDefinitionRevision(task Task) (string, error) {
 		Schedule:            task.Schedule,
 		Triggers:            task.Triggers,
 		DefaultActionPolicy: task.DefaultActionPolicy,
-		WriteMode:           task.WriteMode,
-		WriteScope:          task.WriteScope,
-		OutputPolicy:        task.OutputPolicy,
-		OutputPath:          task.OutputPath,
 		SessionStrategy:     task.SessionStrategy,
 	}
 	data, err := json.Marshal(definition)
@@ -747,10 +735,7 @@ func NormalizeTask(task Task) (Task, error) {
 	if task.TriggerState == nil {
 		task.TriggerState = map[string]TriggerState{}
 	}
-	task.WriteMode, task.WriteScope = normalizeWriteModeScope(task.WriteMode, task.WriteScope)
-	task.DefaultActionPolicy = actionPolicyForWriteMode(task.WriteMode)
-	task.OutputPolicy = normalizeOutputPolicy(task.OutputPolicy)
-	task.OutputPath = filepath.ToSlash(strings.TrimSpace(task.OutputPath))
+	task.DefaultActionPolicy = ActionPolicyAutoRun
 	task.Prompt = strings.TrimSpace(task.Prompt)
 	if task.CreatedAt.IsZero() {
 		task.CreatedAt = time.Now().UTC()
@@ -802,16 +787,6 @@ func mergeTaskPatch(current, patch Task) Task {
 	if patch.TriggerState != nil {
 		next.TriggerState = patch.TriggerState
 	}
-	if patch.WriteMode != "" {
-		next.WriteMode = patch.WriteMode
-	}
-	if patch.WriteScope != "" {
-		next.WriteScope = patch.WriteScope
-	}
-	if patch.OutputPolicy != "" {
-		next.OutputPolicy = patch.OutputPolicy
-	}
-	next.OutputPath = patch.OutputPath
 	if patch.SessionStrategy != "" {
 		next.SessionStrategy = patch.SessionStrategy
 	}
@@ -822,54 +797,6 @@ func mergeTaskPatch(current, patch Task) Task {
 		next.RecentRuns = patch.RecentRuns
 	}
 	return next
-}
-
-func normalizeWritePolicy(policy string) string {
-	switch policy {
-	case WritePolicyAllowLoreWrite, WritePolicyAllowFileWrite, WritePolicyAllowLoreAndFileWrite:
-		return policy
-	default:
-		return WritePolicyReadOnly
-	}
-}
-
-func normalizeWriteModeScope(mode, scope string) (string, string) {
-	mode = strings.TrimSpace(mode)
-	scope = strings.TrimSpace(scope)
-	switch mode {
-	case WriteModeConfirmWrite, WriteModeAutoWrite:
-	default:
-		mode = WriteModeReadOnly
-	}
-	if mode == WriteModeReadOnly {
-		return WriteModeReadOnly, WriteScopeNone
-	}
-	switch scope {
-	case WriteScopeLore, WriteScopeFile, WriteScopeLoreAndFile:
-		return mode, scope
-	default:
-		return mode, WriteScopeFile
-	}
-}
-
-func writeModeScopeFromLegacyPolicy(policy string) (string, string) {
-	switch normalizeWritePolicy(policy) {
-	case WritePolicyAllowLoreWrite:
-		return WriteModeAutoWrite, WriteScopeLore
-	case WritePolicyAllowFileWrite:
-		return WriteModeAutoWrite, WriteScopeFile
-	case WritePolicyAllowLoreAndFileWrite:
-		return WriteModeAutoWrite, WriteScopeLoreAndFile
-	default:
-		return WriteModeReadOnly, WriteScopeNone
-	}
-}
-
-func normalizeOutputPolicy(policy string) string {
-	if policy == OutputPolicyOptionalFile {
-		return policy
-	}
-	return OutputPolicyRunRecordOnly
 }
 
 func validTemplate(template string) bool {

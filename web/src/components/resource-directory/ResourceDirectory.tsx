@@ -180,42 +180,24 @@ export function ResourceDirectory({
           ))
           return (
             <section key={section.id} className={items.length ? 'mb-2' : 'mb-1'}>
-              <div className={cn('flex h-8 items-center rounded text-xs', !section.toggleOnHeaderClick && 'gap-2 px-2', items.length ? 'text-[var(--nova-text-muted)]' : 'text-[var(--nova-text-faint)]')}>
-                {section.toggleOnHeaderClick ? (
-                  <button
-                    type="button"
-                    className="nova-nav-item flex h-full min-w-0 flex-1 items-center gap-2 rounded px-2 text-left hover:bg-[var(--nova-hover)] hover:text-[var(--nova-text)]"
-                    onClick={() => toggleSection(section, items)}
-                    aria-label={`${collapsed ? t('common.expand') : t('common.collapse')}${section.label}`}
-                    aria-expanded={!collapsed}
-                  >
-                    <ChevronDown className={cn('h-3.5 w-3.5 shrink-0 text-[var(--nova-text-faint)] transition-transform', collapsed && '-rotate-90')} />
-                    {SectionIcon && <SectionIcon className="h-3.5 w-3.5 shrink-0 text-[var(--nova-text-faint)]" />}
-                    <span className="min-w-0 flex-1 truncate font-medium">{section.label}</span>
-                    <span className="shrink-0 text-[11px] text-[var(--nova-text-faint)]">{items.length}</span>
-                    {section.headerMeta}
-                  </button>
-                ) : (
-                  <>
-                    <button
-                      type="button"
-                      className="nova-nav-item rounded p-0.5 text-[var(--nova-text-faint)] hover:bg-[var(--nova-hover)] hover:text-[var(--nova-text)]"
-                      onClick={() => toggleSection(section, items)}
-                      aria-label={`${collapsed ? t('common.expand') : t('common.collapse')}${section.label}`}
-                      aria-expanded={!collapsed}
-                    >
-                      <ChevronDown className={cn('h-3.5 w-3.5 transition-transform', collapsed && '-rotate-90')} />
-                    </button>
-                    {SectionIcon && <SectionIcon className="h-3.5 w-3.5 text-[var(--nova-text-faint)]" />}
-                    <span className="min-w-0 flex-1 truncate font-medium">{section.label}</span>
-                    <span className="text-[11px] text-[var(--nova-text-faint)]">{items.length}</span>
-                    {section.headerMeta}
-                  </>
-                )}
+              <div className={cn('flex h-8 items-center rounded text-xs', items.length ? 'text-[var(--nova-text-muted)]' : 'text-[var(--nova-text-faint)]')}>
+                <button
+                  type="button"
+                  className="nova-nav-item flex h-full min-w-0 flex-1 items-center gap-2 rounded px-2 text-left hover:bg-[var(--nova-hover)] hover:text-[var(--nova-text)]"
+                  onClick={() => toggleSection(section, items)}
+                  aria-label={`${collapsed ? t('common.expand') : t('common.collapse')}${section.label}`}
+                  aria-expanded={!collapsed}
+                >
+                  <ChevronDown className={cn('h-3.5 w-3.5 shrink-0 text-[var(--nova-text-faint)] transition-transform', collapsed && '-rotate-90')} />
+                  {SectionIcon && <SectionIcon className="h-3.5 w-3.5 shrink-0 text-[var(--nova-text-faint)]" />}
+                  <span className="min-w-0 flex-1 truncate font-medium">{section.label}</span>
+                  <span className="shrink-0 text-[11px] text-[var(--nova-text-faint)]">{items.length}</span>
+                  {section.headerMeta}
+                </button>
                 {section.onCreate && (
                   <button
                     type="button"
-                    className={cn('nova-nav-item rounded p-1 text-[var(--nova-text-faint)] hover:bg-[var(--nova-hover)] hover:text-[var(--nova-text)]', section.toggleOnHeaderClick && 'mr-1')}
+                    className="nova-nav-item mr-1 rounded p-1 text-[var(--nova-text-faint)] hover:bg-[var(--nova-hover)] hover:text-[var(--nova-text)]"
                     disabled={saving}
                     onClick={section.onCreate}
                     aria-label={section.createLabel ?? `${t('common.create')} ${section.label}`}

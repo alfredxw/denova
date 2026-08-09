@@ -3,7 +3,7 @@ import type { CSSProperties, RefCallback } from 'react'
 import { Bot, X } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import { Virtuoso } from 'react-virtuoso'
-import type { Components } from 'react-virtuoso'
+import type { Components, ContextProp } from 'react-virtuoso'
 import type { AgentUIMessage } from '@/lib/agent-ui'
 import type { AgentAskAnswer, AgentAskResolution } from '@/lib/api'
 import { agentSubAgentSessionKey, buildAgentMessageViews, buildAgentSubAgentTimelineGroups, type AgentMessageView } from '@/lib/agent-message-view'
@@ -21,9 +21,13 @@ interface AgentSubAgentSessionPanelProps {
   onResolveAsk?: (view: AgentMessageView, action: { status: 'answered'; answers: AgentAskAnswer[] } | { status: 'cancelled' }) => Promise<AgentAskResolution>
 }
 
-const SUBAGENT_SESSION_COMPONENTS: Components<AgentMessageView> = {
+interface SubAgentSessionVirtuosoContext {
+  streamingSpacerPx?: number
+}
+
+const SUBAGENT_SESSION_COMPONENTS: Components<AgentMessageView, SubAgentSessionVirtuosoContext> = {
   Header: SubAgentSessionListPadding,
-  Footer: SubAgentSessionListPadding,
+  Footer: SubAgentSessionListFooter,
 }
 
 export function AgentSubAgentSessionPanel({ projectId, messages, sessionKey, onClose, highlightDialogue = false, messageStyle, onResolveAsk }: AgentSubAgentSessionPanelProps) {
@@ -41,7 +45,11 @@ export function AgentSubAgentSessionPanel({ projectId, messages, sessionKey, onC
     resetKey: sessionKey,
     itemCount: sessionViews.length,
     autoFollowEnabled: running,
+    bottomInsetPx: 16,
   })
+  const virtuosoContext = useMemo<SubAgentSessionVirtuosoContext>(() => ({
+    streamingSpacerPx: scrollLock.streamingSpacerPx,
+  }), [scrollLock.streamingSpacerPx])
   const itemContent = useCallback((index: number, view?: AgentMessageView) => {
     const resolvedView = view || sessionViews[index]
     if (!resolvedView) return null
@@ -94,14 +102,16 @@ export function AgentSubAgentSessionPanel({ projectId, messages, sessionKey, onC
             onKeyDown={scrollLock.onKeyDown}
             atBottomStateChange={scrollLock.onAtBottomStateChange}
             atBottomThreshold={VIRTUOSO_BOTTOM_THRESHOLD}
-            followOutput={running ? scrollLock.followOutput : false}
+            totalListHeightChanged={running ? scrollLock.syncStreamingTailLayout : undefined}
             initialItemCount={Math.min(sessionViews.length, 40)}
             data={sessionViews}
+            context={virtuosoContext}
             components={SUBAGENT_SESSION_COMPONENTS}
             computeItemKey={(index, view) => subAgentSessionMessageKey(view, index)}
             itemContent={itemContent}
             overscan={{ main: 360, reverse: 180 }}
             increaseViewportBy={{ top: 300, bottom: 560 }}
+            data-stream-active={running ? '' : undefined}
             className="min-h-0 flex-1 overflow-y-auto overflow-x-hidden [overflow-anchor:none]"
             aria-label={t('chat.subagent.sessionTitle', { name })}
           />
@@ -151,6 +161,16 @@ function SubAgentSessionRow({ projectId, view, streamingTail, streamingRowRef, s
 
 function SubAgentSessionListPadding() {
   return <div aria-hidden="true" className="h-4 shrink-0" />
+}
+
+function SubAgentSessionListFooter({ context }: ContextProp<SubAgentSessionVirtuosoContext>) {
+  return (
+    <div
+      aria-hidden="true"
+      className="min-h-4 shrink-0"
+      style={typeof context.streamingSpacerPx === 'number' ? { height: context.streamingSpacerPx } : undefined}
+    />
+  )
 }
 
 function subAgentSessionMessageKey(view: AgentMessageView | undefined, index: number) {

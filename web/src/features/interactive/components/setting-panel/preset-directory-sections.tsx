@@ -64,7 +64,6 @@ export function buildPresetDirectorySections({
       createLabel: presetKindCreateLabel(kind, t),
       defaultCollapsed: false,
       reorderable: true,
-      toggleOnHeaderClick: true,
     }))
 }
 

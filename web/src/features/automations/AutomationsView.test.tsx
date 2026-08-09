@@ -1,7 +1,7 @@
 import { act, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { http, HttpResponse } from 'msw'
-import { describe, expect, it, vi } from 'vitest'
+import { beforeEach, describe, expect, it, vi } from 'vitest'
 import i18n from '@/i18n'
 import { server } from '@/test/msw/server'
 import { consumeAgentChatSessionNavigation } from '@/features/agent-chat/session-navigation'
@@ -19,11 +19,17 @@ const taskBase = {
   schedule: { kind: 'manual', hour: 9, minute: 0 },
   triggers: [],
   default_action_policy: 'auto_run',
-  write_mode: 'read_only',
-  write_scope: 'none',
-  output_policy: 'run_record_only',
-  output_path: '',
   recent_runs: [],
+}
+
+const projectA = {
+  id: 'workspace-a', type: 'book', path: '/books/a', name: 'Book A', status: 'available',
+  current: true, total: 0, sessions: [],
+}
+
+const projectB = {
+  id: 'workspace-b', type: 'book', path: '/books/b', name: 'Book B', status: 'available',
+  current: false, total: 0, sessions: [],
 }
 
 const reviewTemplate = {
@@ -42,6 +48,9 @@ const reviewTemplate = {
 }
 
 describe('AutomationsView', () => {
+  beforeEach(() => {
+    server.use(http.get('/api/agent-chat/projects', () => HttpResponse.json({ projects: [projectA] })))
+  })
   it('opens the admitted run in its Project AgentChat conversation', async () => {
     const user = userEvent.setup()
     const onOpenAgentChat = vi.fn()
@@ -103,18 +112,19 @@ describe('AutomationsView', () => {
     expect(separator).toHaveAttribute('aria-hidden', 'false')
   })
 
-  it('shows only automations owned by the current Project', async () => {
+  it('lists every Project catalog and toggles a Project from the full header row', async () => {
+    const user = userEvent.setup()
     server.use(
+      http.get('/api/agent-chat/projects', () => HttpResponse.json({ projects: [projectA, projectB] })),
       http.get('/api/books', () => HttpResponse.json({ books: [
         { project_id: 'workspace-a', name: 'Book A', path: '/books/a', author: '', last_opened_at: '' },
         { project_id: 'workspace-b', name: 'Book B', path: '/books/b', author: '', last_opened_at: '' },
       ] })),
       http.get('/api/automations', ({ request }) => {
         const query = new URL(request.url).searchParams
-        expect(query.get('project_id')).toBe('workspace-a')
-        expect(query.get('workspace')).toBe('/books/a')
+        const projectId = query.get('project_id')
         return HttpResponse.json({ tasks: [
-          { ...taskBase, id: 'same', catalog_id: 'workspace-a:same', scope: 'workspace', name: 'Review A', target: { kind: 'workspace', workspace: '/books/a', project_id: 'workspace-a' } },
+          { ...taskBase, id: 'same', catalog_id: `${projectId}:same`, scope: 'workspace', name: projectId === 'workspace-a' ? 'Review A' : 'Review B', target: { kind: 'workspace', workspace: projectId === 'workspace-a' ? '/books/a' : '/books/b', project_id: projectId } },
         ] })
       }),
       http.get('/api/automations/templates', () => HttpResponse.json({ templates: [reviewTemplate] })),
@@ -123,18 +133,56 @@ describe('AutomationsView', () => {
 
     render(<AutomationsView workspace="/books/a" />)
 
-    expect(await screen.findByText('当前项目')).toBeInTheDocument()
+    expect(await screen.findByRole('button', { name: '折叠Book A' })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: '折叠Book B' })).toBeInTheDocument()
     expect(screen.getAllByText('Review A').length).toBeGreaterThan(0)
-    expect(screen.queryByText('Review B')).not.toBeInTheDocument()
-    expect(screen.queryByText('Global research')).not.toBeInTheDocument()
+    expect(screen.getAllByText('Review B').length).toBeGreaterThan(0)
+
+    await user.click(screen.getByRole('button', { name: '折叠Book A' }))
+    expect(screen.getByRole('button', { name: '展开Book A' })).toHaveAttribute('aria-expanded', 'false')
+    await user.click(screen.getByRole('button', { name: '展开Book A' }))
+    expect(screen.getByRole('button', { name: '折叠Book A' })).toHaveAttribute('aria-expanded', 'true')
   })
 
-  it('creates no task until a chosen template draft is saved', async () => {
+  it('keeps healthy Project catalogs available when another Project fails to load', async () => {
+    const consoleError = vi.spyOn(console, 'error').mockImplementation(() => undefined)
+    server.use(
+      http.get('/api/agent-chat/projects', () => HttpResponse.json({ projects: [projectA, projectB] })),
+      http.get('/api/automations', ({ request }) => {
+        const projectId = new URL(request.url).searchParams.get('project_id')
+        if (projectId === 'workspace-b') return HttpResponse.json({ error: 'Project unavailable' }, { status: 503 })
+        return HttpResponse.json({ tasks: [{
+          ...taskBase,
+          id: 'healthy',
+          catalog_id: 'workspace-a:healthy',
+          scope: 'workspace',
+          name: 'Healthy Project task',
+          target: { kind: 'workspace', workspace: '/books/a', project_id: 'workspace-a' },
+        }] })
+      }),
+      http.get('/api/automations/templates', () => HttpResponse.json({ templates: [] })),
+      http.get('/api/automations/inbox', () => HttpResponse.json({ items: [] })),
+    )
+
+    try {
+      render(<AutomationsView workspace="/books/a" />)
+      expect((await screen.findAllByText('Healthy Project task')).length).toBeGreaterThan(0)
+      expect(screen.getByRole('button', { name: '折叠Book A' })).toBeInTheDocument()
+      expect(screen.getByRole('button', { name: '展开Book B' })).toBeInTheDocument()
+      expect(screen.getByText('1 个项目的自动化目录加载失败，其他项目仍可正常使用。')).toBeInTheDocument()
+    } finally {
+      consoleError.mockRestore()
+    }
+  })
+
+  it('opens an inline draft on the current Project and creates only after the user saves it', async () => {
     const user = userEvent.setup()
     let createdTask: Record<string, unknown> | null = null
     server.use(
+      http.get('/api/agent-chat/projects', () => HttpResponse.json({ projects: [projectA, projectB] })),
       http.get('/api/books', () => HttpResponse.json({ books: [
         { project_id: 'workspace-a', name: 'Book A', path: '/books/a', author: '', last_opened_at: '' },
+        { project_id: 'workspace-b', name: 'Book B', path: '/books/b', author: '', last_opened_at: '' },
       ] })),
       http.get('/api/automations', () => HttpResponse.json({ tasks: [] })),
       http.get('/api/automations/templates', () => HttpResponse.json({ templates: [reviewTemplate] })),
@@ -148,17 +196,17 @@ describe('AutomationsView', () => {
     render(<AutomationsView workspace="/books/a" />)
 
     expect(await screen.findByText('还没有自动化任务')).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: '展开Book A' })).toBeInTheDocument()
     expect(screen.queryByRole('button', { name: '保存' })).not.toBeInTheDocument()
     await user.click(screen.getAllByRole('button', { name: '新建自动化' })[0])
-    expect(await screen.findByText('选择起始模板')).toBeInTheDocument()
+    expect(await screen.findByDisplayValue('未命名自动化')).toBeInTheDocument()
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
+    expect(screen.getByRole('combobox', { name: '所属项目' })).toHaveTextContent('Book A')
+    expect(screen.getByRole('combobox', { name: '模板' })).toHaveTextContent('空白自动化')
     expect(createdTask).toBeNull()
 
-    await user.keyboard('{Escape}')
-    expect(screen.queryByText('选择起始模板')).not.toBeInTheDocument()
-    expect(createdTask).toBeNull()
-
-    await user.click(screen.getAllByRole('button', { name: '新建自动化' })[0])
-    await user.click(await screen.findByRole('button', { name: /自动 Review/ }))
+    await chooseProject(user, 'Book B')
+    await chooseTemplate(user, '自动 Review')
     expect(createdTask).toBeNull()
     expect(screen.getByDisplayValue('自动 Review')).toBeInTheDocument()
     expect(screen.getByRole('switch', { name: '状态' })).toHaveAttribute('data-state', 'unchecked')
@@ -168,7 +216,7 @@ describe('AutomationsView', () => {
     expect(createdTask).toMatchObject({
       enabled: false,
       name: '自动 Review',
-      target: { kind: 'workspace', workspace: '/books/a' },
+      target: { kind: 'workspace', project_id: 'workspace-b', workspace: '/books/b' },
       triggers: [{ type: 'chapter_batch', chapter_batch_size: 5 }],
     })
   })
@@ -192,7 +240,7 @@ describe('AutomationsView', () => {
     render(<AutomationsView workspace="/books/a" />)
     expect(await screen.findByText('还没有自动化任务')).toBeInTheDocument()
     await user.click(screen.getAllByRole('button', { name: '新建自动化' })[0])
-    await user.click(await screen.findByRole('button', { name: /自动 Review/ }))
+    await chooseTemplate(user, '自动 Review')
     await user.click(screen.getByRole('button', { name: '创建' }))
     await waitFor(() => expect(submitted).not.toBeNull())
 
@@ -247,6 +295,14 @@ describe('AutomationsView', () => {
     expect(updateBody).not.toHaveProperty('trigger_state')
     expect(updateBody).not.toHaveProperty('last_run')
     expect(updateBody).not.toHaveProperty('recent_runs')
+    expect(updateBody).not.toHaveProperty('write_mode')
+    expect(updateBody).not.toHaveProperty('write_scope')
+    expect(updateBody).not.toHaveProperty('output_policy')
+    expect(updateBody).not.toHaveProperty('output_path')
+    expect(screen.getByRole('combobox', { name: '所属项目' })).toBeDisabled()
+    expect(screen.queryByText('执行模式')).not.toBeInTheDocument()
+    expect(screen.queryByText('写入范围')).not.toBeInTheDocument()
+    expect(screen.queryByText('输出路径')).not.toBeInTheDocument()
   })
 
   it('rebases a stale save over the latest task, archives overlaps, and retries with local preference', async () => {
@@ -346,54 +402,6 @@ describe('AutomationsView', () => {
       await saveGate.promise
     })
     expect(await screen.findByRole('heading', { name: '删除自动化任务' })).toBeInTheDocument()
-  })
-
-  it('keeps the newest workspace result when an earlier load resolves last', async () => {
-    const firstLoad = deferred<Array<Record<string, unknown>>>()
-    let automationRequests = 0
-    server.use(
-      http.get('/api/books', () => HttpResponse.json({ books: [
-        { project_id: 'workspace-a', name: 'Book A', path: '/books/a', author: '', last_opened_at: '' },
-        { project_id: 'workspace-b', name: 'Book B', path: '/books/b', author: '', last_opened_at: '' },
-      ] })),
-      http.get('/api/automations', async () => {
-        automationRequests += 1
-        if (automationRequests === 1) {
-          return HttpResponse.json({ tasks: await firstLoad.promise })
-        }
-        return HttpResponse.json({ tasks: [{
-          ...taskBase,
-          id: 'workspace-b',
-          catalog_id: 'workspace-b:workspace-b',
-          scope: 'workspace',
-          name: 'Newest workspace task',
-          target: { kind: 'workspace', workspace: '/books/b', project_id: 'workspace-b' },
-        }] })
-      }),
-      http.get('/api/automations/templates', () => HttpResponse.json({ templates: [] })),
-      http.get('/api/automations/inbox', () => HttpResponse.json({ items: [] })),
-    )
-
-    const view = render(<AutomationsView workspace="/books/a" />)
-    await waitFor(() => expect(automationRequests).toBe(1))
-    view.rerender(<AutomationsView workspace="/books/b" />)
-
-    expect((await screen.findAllByText('Newest workspace task')).length).toBeGreaterThan(0)
-    await act(async () => {
-      firstLoad.resolve([{
-        ...taskBase,
-        id: 'workspace-a',
-        catalog_id: 'workspace-a:workspace-a',
-        scope: 'workspace',
-        name: 'Stale workspace task',
-        target: { kind: 'workspace', workspace: '/books/a', project_id: 'workspace-a' },
-      }])
-      await firstLoad.promise
-      await Promise.resolve()
-    })
-
-    expect(screen.getAllByText('Newest workspace task').length).toBeGreaterThan(0)
-    expect(screen.queryByText('Stale workspace task')).not.toBeInTheDocument()
   })
 
   it('keeps an unsaved task draft when a background reload completes', async () => {
@@ -541,6 +549,16 @@ describe('AutomationsView', () => {
     }
   })
 })
+
+async function chooseProject(user: ReturnType<typeof userEvent.setup>, name: string) {
+  await user.click(screen.getByRole('combobox', { name: '所属项目' }))
+  await user.click(await screen.findByRole('option', { name }))
+}
+
+async function chooseTemplate(user: ReturnType<typeof userEvent.setup>, name: string) {
+  await user.click(screen.getByRole('combobox', { name: '模板' }))
+  await user.click(await screen.findByRole('option', { name }))
+}
 
 function deferred<T>() {
   let resolve!: (value: T) => void

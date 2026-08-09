@@ -34,23 +34,6 @@ const (
 	TemplateContinueWriting     = "continue_writing"
 	TemplateCustomPrompt        = "custom_prompt"
 
-	WritePolicyReadOnly              = "read_only"
-	WritePolicyAllowLoreWrite        = "allow_lore_write"
-	WritePolicyAllowFileWrite        = "allow_file_write"
-	WritePolicyAllowLoreAndFileWrite = "allow_lore_and_file_write"
-
-	WriteModeReadOnly     = "read_only"
-	WriteModeConfirmWrite = "confirm_write"
-	WriteModeAutoWrite    = "auto_write"
-
-	WriteScopeNone        = "none"
-	WriteScopeLore        = "lore"
-	WriteScopeFile        = "file"
-	WriteScopeLoreAndFile = "lore_and_file"
-
-	OutputPolicyRunRecordOnly = "run_record_only"
-	OutputPolicyOptionalFile  = "optional_file"
-
 	// SessionStrategyPerRun isolates every trigger occurrence in its own
 	// project conversation. SessionStrategyPerTask keeps one task-owned
 	// conversation so later runs can intentionally reuse prior context.
@@ -134,7 +117,9 @@ const (
 	MaxInboxItems = 100
 )
 
-// Task describes one bounded, permission-aware automation definition.
+// Task describes one Project-owned automation definition. Its Prompt runs with
+// the owning Project Agent's configured capabilities; task configuration never
+// adds a second permission or output policy layer.
 type Task struct {
 	ID                  string                  `json:"id"`
 	CatalogID           string                  `json:"catalog_id,omitempty"`
@@ -150,10 +135,6 @@ type Task struct {
 	Triggers            []TriggerDefinition     `json:"triggers"`
 	DefaultActionPolicy string                  `json:"default_action_policy"`
 	TriggerState        map[string]TriggerState `json:"trigger_state,omitempty"`
-	WriteMode           string                  `json:"write_mode"`
-	WriteScope          string                  `json:"write_scope"`
-	OutputPolicy        string                  `json:"output_policy"`
-	OutputPath          string                  `json:"output_path"`
 	SessionStrategy     string                  `json:"session_strategy"`
 	LastRun             *RunRecord              `json:"last_run,omitempty"`
 	RecentRuns          []RunRecord             `json:"recent_runs"`
@@ -186,36 +167,7 @@ type TaskTemplateDefaults struct {
 	Schedule            Schedule            `json:"schedule"`
 	Triggers            []TriggerDefinition `json:"triggers"`
 	DefaultActionPolicy string              `json:"default_action_policy"`
-	WriteMode           string              `json:"write_mode"`
-	WriteScope          string              `json:"write_scope"`
-	OutputPolicy        string              `json:"output_policy"`
-	OutputPath          string              `json:"output_path"`
 	SessionStrategy     string              `json:"session_strategy"`
-}
-
-// taskWithoutUnmarshal mirrors Task so UnmarshalJSON can decode without
-// recursing into itself. It exists purely to break the method-set loop that
-// defining UnmarshalJSON on Task otherwise creates.
-type taskWithoutUnmarshal Task
-
-// UnmarshalJSON decodes Task JSON and migrates the legacy write_policy field
-// into write_mode/write_scope. write_policy stopped being written, but persisted
-// tasks created before this change still carry it; decoding them here keeps the
-// single representation (write_mode + write_scope) authoritative without losing
-// older permissions.
-func (t *Task) UnmarshalJSON(data []byte) error {
-	aux := struct {
-		taskWithoutUnmarshal
-		LegacyWritePolicy string `json:"write_policy,omitempty"`
-	}{}
-	if err := json.Unmarshal(data, &aux); err != nil {
-		return err
-	}
-	*t = Task(aux.taskWithoutUnmarshal)
-	if strings.TrimSpace(t.WriteMode) == "" && strings.TrimSpace(t.WriteScope) == "" && strings.TrimSpace(aux.LegacyWritePolicy) != "" {
-		t.WriteMode, t.WriteScope = writeModeScopeFromLegacyPolicy(aux.LegacyWritePolicy)
-	}
-	return nil
 }
 
 // TriggerDefinition describes one condition that can cause an automation task to notify or run.

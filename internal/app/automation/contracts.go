@@ -60,20 +60,17 @@ type Catalog struct {
 
 // ProjectConversationTurn is the complete automation-owned intent admitted by
 // the target Project's AgentChat runtime. Automation supplies scheduling and
-// permission policy; AgentChat owns conversation creation and execution.
+// run identity; AgentChat owns conversation creation, capabilities, and execution.
 type ProjectConversationTurn struct {
-	ProjectID            string
-	SessionID            string
-	CommandID            string
-	Message              string
-	AutomationTaskID     string
-	RunID                string
-	SessionTitle         string
-	ModelProfileID       string
-	WriteMode            string
-	WriteScope           string
-	SessionStrategy      string
-	DisabledCapabilities []string
+	ProjectID        string
+	SessionID        string
+	CommandID        string
+	Message          string
+	AutomationTaskID string
+	RunID            string
+	SessionTitle     string
+	ModelProfileID   string
+	SessionStrategy  string
 }
 
 // ProjectConversationExecution is the durable AgentChat command accepted for

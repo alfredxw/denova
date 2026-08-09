@@ -159,6 +159,7 @@ export function MessageList({ projectId, messages, isStreaming, visible = true, 
     itemCount: listItems.length,
     autoFollowEnabled: isStreaming,
     visible,
+    bottomInsetPx: bottomPaddingPx,
     resolveScroller: resolveMessageScroller,
   })
   const latestInteractiveCardAnchor = useMemo(
@@ -169,7 +170,7 @@ export function MessageList({ projectId, messages, isStreaming, visible = true, 
   const virtuosoContext = useMemo<MessageListVirtuosoContext>(
     () => ({
       bottomPaddingClassName,
-      bottomPaddingPx,
+      bottomPaddingPx: scrollLock.streamingSpacerPx ?? bottomPaddingPx,
       contentClassName,
       afterContent,
       onAfterContentInteraction: scrollLock.releaseBottomLock,
@@ -177,7 +178,7 @@ export function MessageList({ projectId, messages, isStreaming, visible = true, 
       isLoadingEarlierMessages,
       onLoadEarlierMessages,
     }),
-    [afterContent, bottomPaddingClassName, bottomPaddingPx, contentClassName, hasEarlierMessages, isLoadingEarlierMessages, onLoadEarlierMessages, scrollLock.releaseBottomLock],
+    [afterContent, bottomPaddingClassName, bottomPaddingPx, contentClassName, hasEarlierMessages, isLoadingEarlierMessages, onLoadEarlierMessages, scrollLock.releaseBottomLock, scrollLock.streamingSpacerPx],
   )
   const scrollButtonBottomOffset = typeof bottomPaddingPx === 'number' ? Math.max(24, bottomPaddingPx + 12) : 24
   const anchorLatestInteractiveCardBottom = useCallback((element?: HTMLElement) => {
@@ -304,7 +305,7 @@ export function MessageList({ projectId, messages, isStreaming, visible = true, 
         onPointerCancel={scrollLock.onPointerCancel}
         atBottomStateChange={scrollLock.onAtBottomStateChange}
         atBottomThreshold={VIRTUOSO_BOTTOM_THRESHOLD}
-        followOutput={isStreaming ? scrollLock.followOutput : false}
+        totalListHeightChanged={isStreaming ? scrollLock.syncStreamingTailLayout : undefined}
         initialItemCount={Math.min(listItems.length, 40)}
         firstItemIndex={firstItemIndex}
         data={listItems}
@@ -315,6 +316,7 @@ export function MessageList({ projectId, messages, isStreaming, visible = true, 
         itemsRendered={handleItemsRendered}
         overscan={MESSAGE_LIST_OVERSCAN}
         increaseViewportBy={MESSAGE_LIST_INCREASE_VIEWPORT_BY}
+        data-stream-active={isStreaming ? '' : undefined}
         className="nova-chat-canvas min-h-0 flex-1 overflow-y-auto overflow-x-hidden [overflow-anchor:none]"
         aria-label={t('common.messages', { count: messages.length })}
       />

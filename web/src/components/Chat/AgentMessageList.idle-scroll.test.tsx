@@ -5,14 +5,16 @@ import { MessageList } from './AgentMessageList'
 
 const virtuosoBoundary = vi.hoisted(() => ({
   followOutput: undefined as unknown,
+  totalListHeightChanged: undefined as unknown,
   scrollToIndex: vi.fn(),
 }))
 
 vi.mock('react-virtuoso', async () => {
   const React = await import('react')
   return {
-    Virtuoso: React.forwardRef<unknown, { className?: string; followOutput?: unknown }>(function VirtuosoBoundary(props, ref) {
+    Virtuoso: React.forwardRef<unknown, { className?: string; followOutput?: unknown; totalListHeightChanged?: unknown }>(function VirtuosoBoundary(props, ref) {
       virtuosoBoundary.followOutput = props.followOutput
+      virtuosoBoundary.totalListHeightChanged = props.totalListHeightChanged
       React.useImperativeHandle(ref, () => ({ scrollToIndex: virtuosoBoundary.scrollToIndex }))
       return React.createElement('div', { className: props.className })
     }),
@@ -31,7 +33,8 @@ describe('Agent MessageList bottom following', () => {
       />,
     )
 
-    expect(virtuosoBoundary.followOutput).toBe(false)
+    expect(virtuosoBoundary.followOutput).toBeUndefined()
+    expect(virtuosoBoundary.totalListHeightChanged).toBeUndefined()
   })
 
   it('does not run the message-list bottom scheduler for idle footer changes', () => {
@@ -52,7 +55,7 @@ describe('Agent MessageList bottom following', () => {
     expect(virtuosoBoundary.scrollToIndex).not.toHaveBeenCalled()
   })
 
-  it('delegates streaming size changes to the virtualizer bottom lock', () => {
+  it('retries streaming layout when Virtuoso publishes a new total height', () => {
     const renderList = (targetContent?: string) => (
       <MessageList
         isStreaming
@@ -72,11 +75,11 @@ describe('Agent MessageList bottom following', () => {
 
     rerender(renderList('正在分析下一条线索'))
 
-    expect(virtuosoBoundary.followOutput).toBeTypeOf('function')
-    expect((virtuosoBoundary.followOutput as (atBottom: boolean) => 'auto' | false)(true)).toBe('auto')
+    expect(virtuosoBoundary.followOutput).toBeUndefined()
+    expect(virtuosoBoundary.totalListHeightChanged).toBeTypeOf('function')
   })
 
-  it('suspends streaming follow while a persistent chat tab is hidden', async () => {
+  it('keeps the streaming height retry registered while a persistent chat tab is hidden', async () => {
     const renderList = (visible: boolean) => (
       <MessageList
         isStreaming
@@ -93,13 +96,13 @@ describe('Agent MessageList bottom following', () => {
     )
     const { rerender } = render(renderList(false))
 
-    expect(virtuosoBoundary.followOutput).toBeTypeOf('function')
-    expect((virtuosoBoundary.followOutput as (atBottom: boolean) => 'auto' | false)(true)).toBe(false)
+    expect(virtuosoBoundary.followOutput).toBeUndefined()
+    expect(virtuosoBoundary.totalListHeightChanged).toBeTypeOf('function')
 
     rerender(renderList(true))
 
     await waitFor(() => {
-      expect((virtuosoBoundary.followOutput as (atBottom: boolean) => 'auto' | false)(true)).toBe('auto')
+      expect(virtuosoBoundary.totalListHeightChanged).toBeTypeOf('function')
     })
   })
 })

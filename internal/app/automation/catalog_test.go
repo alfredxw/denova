@@ -79,12 +79,10 @@ func TestSchedulerEvaluatesDueTasksInInactiveWorkspace(t *testing.T) {
 	}
 	now := time.Now().UTC().Truncate(time.Minute)
 	_, err := projectAutomationStoreForTest(t, novaDir, registry.ProjectRegistry(), workspaceB).Create(automation.Task{
-		Scope:      automation.ScopeWorkspace,
-		Enabled:    true,
-		Name:       "Inactive workspace schedule",
-		Template:   automation.TemplateReview,
-		WriteMode:  automation.WriteModeReadOnly,
-		WriteScope: automation.WriteScopeNone,
+		Scope:    automation.ScopeWorkspace,
+		Enabled:  true,
+		Name:     "Inactive workspace schedule",
+		Template: automation.TemplateReview,
 		Triggers: []automation.TriggerDefinition{{
 			ID:           "schedule",
 			Type:         automation.TriggerTypeSchedule,
@@ -142,12 +140,10 @@ func TestCheckAutomationTriggersUsesCatalogIDForInactiveWorkspace(t *testing.T) 
 		t.Fatal(err)
 	}
 	task, err := projectAutomationStoreForTest(t, novaDir, registry.ProjectRegistry(), workspaceB).Create(automation.Task{
-		Scope:      automation.ScopeWorkspace,
-		Enabled:    true,
-		Name:       "Inactive workspace manual check",
-		Template:   automation.TemplateReview,
-		WriteMode:  automation.WriteModeReadOnly,
-		WriteScope: automation.WriteScopeNone,
+		Scope:    automation.ScopeWorkspace,
+		Enabled:  true,
+		Name:     "Inactive workspace manual check",
+		Template: automation.TemplateReview,
 		Triggers: []automation.TriggerDefinition{{
 			ID:           "schedule",
 			Type:         automation.TriggerTypeSchedule,

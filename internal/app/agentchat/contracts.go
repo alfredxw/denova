@@ -127,8 +127,6 @@ type TurnPolicy struct {
 	TraceID              string
 	SessionTitle         string
 	ModelProfileID       string
-	WriteMode            string
-	WriteScope           string
 	BusyPolicy           TurnBusyPolicy
 	DisabledCapabilities []string
 }

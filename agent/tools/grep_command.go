@@ -12,11 +12,14 @@ import (
 	"mvdan.cc/sh/v3/syntax"
 )
 
-const maxGrepCommandBytes = 64 * 1024
+const (
+	maxGrepCommandBytes   = 64 * 1024
+	maxGrepPipelineStages = 16
+)
 
 // compileGrepCommand turns Denova's literal command language into an argv plan
-// before any process starts. Positional arguments follow ripgrep's native
-// PATTERN [PATH ...] contract; -e/--regexp makes every positional a path.
+// before any process starts. A pipeline may contain only literal rg stages, so
+// execution can connect processes directly without granting shell authority.
 func (workspace *LocalWorkspace) compileGrepCommand(input string) (compiledGrepCommand, error) {
 	input = strings.TrimSpace(input)
 	if input == "" {
@@ -29,14 +32,41 @@ func (workspace *LocalWorkspace) compileGrepCommand(input string) (compiledGrepC
 			fmt.Sprintf("command 超过 %d 字节上限", maxGrepCommandBytes),
 		)
 	}
-	words, err := parseLiteralGrepCommand(input)
+	pipeline, err := parseLiteralGrepPipeline(input)
 	if err != nil {
 		return compiledGrepCommand{}, err
 	}
-	if words[0] != "rg" {
-		return compiledGrepCommand{}, grepCommandError("invalid_command", "command must begin with the literal executable rg", "命令必须以字面量 rg 开头")
+	if len(pipeline) > maxGrepPipelineStages {
+		return compiledGrepCommand{}, grepCommandError(
+			"invalid_command",
+			fmt.Sprintf("grep pipeline exceeds the %d-stage limit", maxGrepPipelineStages),
+			fmt.Sprintf("grep 管道超过 %d 段上限", maxGrepPipelineStages),
+		)
 	}
-	command := compiledGrepCommand{mode: grepOutputContent}
+	command := compiledGrepCommand{stages: make([]compiledGrepStage, 0, len(pipeline))}
+	for index, words := range pipeline {
+		stage, warnings, err := workspace.compileGrepStage(words, index)
+		if err != nil {
+			return compiledGrepCommand{}, err
+		}
+		command.stages = append(command.stages, stage)
+		command.warnings = append(command.warnings, warnings...)
+	}
+	return command, nil
+}
+
+// compileGrepStage preserves ripgrep's PATTERN [PATH ...] contract for the
+// first stage. Later stages receive only the preceding stdout and therefore
+// reject workspace paths instead of silently ignoring the pipeline input.
+func (workspace *LocalWorkspace) compileGrepStage(words []string, stageIndex int) (compiledGrepStage, []string, error) {
+	if len(words) == 0 || words[0] != "rg" {
+		return compiledGrepStage{}, nil, grepCommandError(
+			"invalid_command",
+			fmt.Sprintf("pipeline stage %d must begin with the literal executable rg", stageIndex+1),
+			fmt.Sprintf("管道第 %d 段命令必须以字面量 rg 开头", stageIndex+1),
+		)
+	}
+	stage := compiledGrepStage{mode: grepOutputContent}
 	positionals := make([]string, 0, len(words)-1)
 	optionsEnded := false
 	for index := 1; index < len(words); index++ {
@@ -49,33 +79,44 @@ func (workspace *LocalWorkspace) compileGrepCommand(input string) (compiledGrepC
 			positionals = append(positionals, token)
 			continue
 		}
-		consumed, parseErr := command.consumeFlag(words, index)
+		consumed, parseErr := stage.consumeFlag(words, index)
 		if parseErr != nil {
-			return compiledGrepCommand{}, parseErr
+			return compiledGrepStage{}, nil, parseErr
 		}
-		command.args = append(command.args, words[index:index+consumed]...)
+		stage.args = append(stage.args, words[index:index+consumed]...)
 		index += consumed - 1
 	}
 	paths := positionals
-	if !command.hasRegexp {
+	if !stage.hasRegexp {
 		if len(positionals) == 0 {
-			return compiledGrepCommand{}, grepCommandError("invalid_pattern", "rg command must contain a pattern or -e/--regexp", "rg 命令必须包含 pattern 或 -e/--regexp")
+			return compiledGrepStage{}, nil, grepCommandError("invalid_pattern", "rg command must contain a pattern or -e/--regexp", "rg 命令必须包含 pattern 或 -e/--regexp")
 		}
 		// Canonicalizing the positional pattern through -e also preserves native
 		// `rg -- -leading-dash path` behavior after Denova appends its invariants.
-		command.args = append(command.args, "-e", positionals[0])
-		command.hasRegexp = true
+		stage.args = append(stage.args, "-e", positionals[0])
+		stage.hasRegexp = true
 		paths = positionals[1:]
+	}
+	if stageIndex > 0 {
+		if len(paths) > 1 || (len(paths) == 1 && paths[0] != "-") {
+			return compiledGrepStage{}, nil, grepCommandError(
+				"pipeline_path",
+				fmt.Sprintf("pipeline stage %d must read only from the preceding rg stage", stageIndex+1),
+				fmt.Sprintf("管道第 %d 段只能读取上一段 rg 的输出", stageIndex+1),
+			)
+		}
+		stage.paths = []string{"-"}
+		return stage, nil, nil
 	}
 	validated, warnings, err := workspace.validateGrepPaths(paths)
 	if err != nil {
-		return compiledGrepCommand{}, err
+		return compiledGrepStage{}, nil, err
 	}
-	command.paths, command.warnings = validated, warnings
-	return command, nil
+	stage.paths = validated
+	return stage, warnings, nil
 }
 
-func (command *compiledGrepCommand) consumeFlag(words []string, index int) (int, error) {
+func (command *compiledGrepStage) consumeFlag(words []string, index int) (int, error) {
 	token := words[index]
 	if strings.HasPrefix(token, "--") {
 		return command.consumeLongFlag(words, index)
@@ -83,7 +124,7 @@ func (command *compiledGrepCommand) consumeFlag(words []string, index int) (int,
 	return command.consumeShortFlags(words, index)
 }
 
-func (command *compiledGrepCommand) consumeLongFlag(words []string, index int) (int, error) {
+func (command *compiledGrepStage) consumeLongFlag(words []string, index int) (int, error) {
 	token := words[index]
 	nameValue := strings.TrimPrefix(token, "--")
 	name, value, attached := strings.Cut(nameValue, "=")
@@ -112,7 +153,7 @@ func (command *compiledGrepCommand) consumeLongFlag(words []string, index int) (
 	return consumed, nil
 }
 
-func (command *compiledGrepCommand) consumeShortFlags(words []string, index int) (int, error) {
+func (command *compiledGrepStage) consumeShortFlags(words []string, index int) (int, error) {
 	token := words[index]
 	body := strings.TrimPrefix(token, "-")
 	if body == "" {
@@ -151,7 +192,7 @@ func (command *compiledGrepCommand) consumeShortFlags(words []string, index int)
 	return consumed, nil
 }
 
-func (command *compiledGrepCommand) applyFlag(name, value string, spec grepFlagSpec) error {
+func (command *compiledGrepStage) applyFlag(name, value string, spec grepFlagSpec) error {
 	if spec.validate != nil {
 		if err := spec.validate(value); err != nil {
 			return grepCommandError("invalid_flag_value", fmt.Sprintf("%s has invalid value %q: %v", name, value, err), fmt.Sprintf("%s 的参数值 %q 无效", name, value))
@@ -187,7 +228,7 @@ func (command *compiledGrepCommand) applyFlag(name, value string, spec grepFlagS
 	}
 }
 
-func (command *compiledGrepCommand) selectMode(mode grepOutputMode, flag string) error {
+func (command *compiledGrepStage) selectMode(mode grepOutputMode, flag string) error {
 	if command.modeFlag != "" && command.modeFlag != flag {
 		return grepCommandError("conflicting_flags", fmt.Sprintf("output modes %s and %s cannot be combined", command.modeFlag, flag), fmt.Sprintf("输出模式 %s 与 %s 不能同时使用", command.modeFlag, flag))
 	}
@@ -261,7 +302,7 @@ func isAbsoluteGrepPath(value string) bool {
 		value[1] == ':' && (value[2] == '/' || value[2] == '\\')
 }
 
-func parseLiteralGrepCommand(input string) ([]string, error) {
+func parseLiteralGrepPipeline(input string) ([][]string, error) {
 	file, err := syntax.NewParser(syntax.Variant(syntax.LangBash)).Parse(strings.NewReader(input), "")
 	if err != nil {
 		return nil, grepCommandError("shell_syntax", fmt.Sprintf("cannot parse command: %v", err), "无法解析命令；请检查引号和转义")
@@ -269,23 +310,43 @@ func parseLiteralGrepCommand(input string) ([]string, error) {
 	if len(file.Stmts) != 1 {
 		return nil, grepCommandError("shell_syntax", "grep accepts exactly one rg command", "grep 只接受一条 rg 命令")
 	}
-	statement := file.Stmts[0]
+	stages := make([][]string, 0, 1)
+	if err := appendLiteralGrepStages(file.Stmts[0], &stages); err != nil {
+		return nil, err
+	}
+	return stages, nil
+}
+
+func appendLiteralGrepStages(statement *syntax.Stmt, stages *[][]string) error {
+	if statement == nil {
+		return grepCommandError("shell_syntax", "grep pipeline contains an empty command", "grep 管道包含空命令")
+	}
 	if statement.Background || statement.Coprocess || statement.Disown || statement.Negated || len(statement.Redirs) != 0 {
-		return nil, grepCommandError("shell_syntax", "backgrounding, redirection, and shell control syntax are unsupported", "不支持后台执行、重定向或 shell 控制语法")
+		return grepCommandError("shell_syntax", "backgrounding, redirection, and shell control syntax are unsupported", "不支持后台执行、重定向或 shell 控制语法")
+	}
+	if binary, ok := statement.Cmd.(*syntax.BinaryCmd); ok {
+		if binary.Op != syntax.Pipe {
+			return grepCommandError("shell_syntax", "only pipelines between literal rg commands are supported", "仅支持字面量 rg 命令之间的管道")
+		}
+		if err := appendLiteralGrepStages(binary.X, stages); err != nil {
+			return err
+		}
+		return appendLiteralGrepStages(binary.Y, stages)
 	}
 	call, ok := statement.Cmd.(*syntax.CallExpr)
 	if !ok || len(call.Assigns) != 0 || len(call.Args) == 0 {
-		return nil, grepCommandError("shell_syntax", "grep accepts one literal rg invocation without assignments, pipelines, or substitutions", "grep 只接受不含赋值、管道或替换的一条字面 rg 调用")
+		return grepCommandError("shell_syntax", "grep accepts literal rg commands without assignments or substitutions", "grep 只接受不含赋值或替换的字面量 rg 命令")
 	}
 	words := make([]string, 0, len(call.Args))
 	for _, word := range call.Args {
 		literal, ok := literalGrepWord(word)
 		if !ok {
-			return nil, grepCommandError("shell_syntax", "variables, substitutions, and shell expansions are unsupported", "不支持变量、命令替换或 shell 展开")
+			return grepCommandError("shell_syntax", "variables, substitutions, and shell expansions are unsupported", "不支持变量、命令替换或 shell 展开")
 		}
 		words = append(words, literal)
 	}
-	return words, nil
+	*stages = append(*stages, words)
+	return nil
 }
 
 func literalGrepWord(word *syntax.Word) (string, bool) {

@@ -29,6 +29,7 @@ import {
   type AutomationTriggerDefinition,
 } from '@/lib/api'
 import { fetchProjectSettings } from '@/features/settings/api'
+import { getAgentChatProjects } from '@/features/agent-chat/api'
 import { requestAgentChatSessionNavigation } from '@/features/agent-chat/session-navigation'
 import { rebaseJSONWithRecovery } from '@/lib/autosave/rebase-with-recovery'
 import { rebaseJSONValue } from '@/lib/three-way-rebase'
@@ -41,7 +42,6 @@ import {
 import { InboxPanel } from './AutomationInboxPanel'
 import { AutomationConfigPanel } from './AutomationConfigPanel'
 import { AutomationTaskCatalog } from './AutomationTaskCatalog'
-import { AutomationTemplateDialog } from './AutomationTemplateDialog'
 import { automationTaskKey, findAutomationTaskByTarget, findAutomationTaskForRun } from './automation-catalog'
 import {
   AUTOMATION_NAVIGATION_EVENT,
@@ -59,13 +59,19 @@ import {
 } from './automation-task-draft'
 import { useAutomationAutosave } from './use-automation-autosave'
 import { buildAutomationModelProfileOptions, inheritedAutomationModelProfileLabel } from './automation-model-profiles'
+import {
+  automationProjectOptions,
+  automationProjectTarget,
+  automationTaskProjectID,
+  defaultAutomationProject,
+  type AutomationProjectOption,
+} from './automation-projects'
 
 type AutomationPanelView = 'config' | 'inbox' | 'agent'
 
 export function AutomationsView({
   projectId = '',
   projectType = 'book',
-  workspace,
   onOpenAgentChat,
   onClose,
 }: {
@@ -76,19 +82,19 @@ export function AutomationsView({
   onClose?: () => void
 }) {
   const { t, i18n } = useTranslation()
-  const projectTarget = useMemo(
-    () => defaultAutomationTarget({ projectId, workspace }),
-    [projectId, workspace],
+  const unassignedProjectTarget = useMemo(
+    () => defaultAutomationTarget({ projectId: '', workspace: '' }),
+    [],
   )
   const [tasks, setTasks] = useState<AutomationTask[]>([])
+  const [projects, setProjects] = useState<AutomationProjectOption[]>([])
   const [templates, setTemplates] = useState<AutomationTaskTemplate[]>([])
   const [inboxItems, setInboxItems] = useState<AutomationInboxItem[]>([])
   const [effectiveSettings, setEffectiveSettings] = useState<Settings | null>(null)
   const [activeId, setActiveId] = useState<string>('')
   const activeIdRef = useRef('')
-  const [draft, setDraft] = useState<AutomationTask>(() => newAutomationTask(projectTarget, t('automations.defaultName')))
+  const [draft, setDraft] = useState<AutomationTask>(() => newAutomationTask(unassignedProjectTarget, t('automations.defaultName')))
   const [creating, setCreating] = useState(false)
-  const [templateDialogOpen, setTemplateDialogOpen] = useState(false)
   const [panelView, setPanelView] = useState<AutomationPanelView>('config')
   const [sidebarVisible, setSidebarVisible] = useState(true)
   const [saving, setSaving] = useState(false)
@@ -109,21 +115,41 @@ export function AutomationsView({
     loadSequenceRef.current = sequence
     try {
       const locale = i18n.resolvedLanguage || i18n.language || 'zh-CN'
-      const [data, taskTemplates, inbox, settings] = await Promise.all([
-        getAutomations(projectTarget),
+      const projectDirectory = automationProjectOptions(await getAgentChatProjects())
+      const targets = projectDirectory.map((project) => automationProjectTarget(project))
+      const [taskTemplates, catalogGroups] = await Promise.all([
         getAutomationTemplates(locale),
-        getAutomationInbox(projectTarget),
-        fetchProjectSettings(projectId),
+        Promise.allSettled(targets.map(async (target) => {
+          const [projectTasks, projectInbox] = await Promise.all([
+            getAutomations(target),
+            getAutomationInbox(target),
+          ])
+          return {
+            tasks: projectTasks.map((task) => normalizeAutomationTaskShape(task, target)),
+            inbox: projectInbox,
+          }
+        })),
       ])
       if (!mountedRef.current || sequence !== loadSequenceRef.current) return
-      const normalized = data.map((task) => normalizeAutomationTaskShape(task, projectTarget))
+      const failedProjects: AutomationProjectOption[] = []
+      const normalized = catalogGroups.flatMap((group, index) => {
+        if (group.status === 'fulfilled') return group.value.tasks
+        const project = projectDirectory[index]
+        failedProjects.push(project)
+        console.error(`[automations] failed to load Project catalog project_id=${project.id}`, group.reason)
+        return []
+      })
+      const inbox = catalogGroups.flatMap((group) => group.status === 'fulfilled' ? group.value.inbox : [])
       // A Project switch must not discard an existing dirty definition while
       // the current request is still settling.
       const preserveDraft = draftDirtyRef.current && Boolean(activeIdRef.current || creatingRef.current)
       setTasks(normalized)
+      setProjects(projectDirectory)
       setTemplates(taskTemplates)
       setInboxItems(inbox)
-      setEffectiveSettings(settings.effective)
+      setError(failedProjects.length > 0
+        ? t('automations.project.loadPartial', { count: failedProjects.length })
+        : null)
       const selected = normalized.find((task) => automationTaskKey(task) === activeIdRef.current) ?? normalized[0]
       if (preserveDraft && selected && automationTaskKey(selected) === activeIdRef.current) {
         const previousBaseline = taskBaselineRef.current
@@ -139,12 +165,12 @@ export function AutomationsView({
             })
           : draftRef.current
         if (!mountedRef.current || sequence !== loadSequenceRef.current) return
-        taskBaselineRef.current = cloneAutomationTask(selected, projectTarget)
+        taskBaselineRef.current = cloneAutomationTask(selected, unassignedProjectTarget)
         const latestDraft = draftRef.current
         const draftWithNewerEdits = latestDraft === draftAtReloadStart
           ? nextDraft
           : rebaseJSONValue(draftAtReloadStart, latestDraft, nextDraft)
-        const clonedDraft = cloneAutomationTask(draftWithNewerEdits, projectTarget)
+        const clonedDraft = cloneAutomationTask(draftWithNewerEdits, unassignedProjectTarget)
         draftRef.current = clonedDraft
         setDraft(clonedDraft)
       } else if (!preserveDraft) {
@@ -153,8 +179,8 @@ export function AutomationsView({
           const key = automationTaskKey(selected)
           activeIdRef.current = key
           setActiveId(key)
-          taskBaselineRef.current = cloneAutomationTask(selected, projectTarget)
-          const clonedDraft = cloneAutomationTask(selected, projectTarget)
+          taskBaselineRef.current = cloneAutomationTask(selected, unassignedProjectTarget)
+          const clonedDraft = cloneAutomationTask(selected, unassignedProjectTarget)
           draftRef.current = clonedDraft
           setDraft(clonedDraft)
           setCreating(false)
@@ -162,7 +188,7 @@ export function AutomationsView({
           activeIdRef.current = ''
           setActiveId('')
           taskBaselineRef.current = null
-          const emptyDraft = newAutomationTask(projectTarget, t('automations.defaultName'))
+          const emptyDraft = newAutomationTask(unassignedProjectTarget, t('automations.defaultName'))
           draftRef.current = emptyDraft
           setDraft(emptyDraft)
           setCreating(false)
@@ -172,7 +198,22 @@ export function AutomationsView({
       if (!mountedRef.current || sequence !== loadSequenceRef.current) return
       setError((e as Error).message)
     }
-  }, [i18n.language, i18n.resolvedLanguage, projectId, projectTarget, t, workspace])
+  }, [i18n.language, i18n.resolvedLanguage, t, unassignedProjectTarget])
+
+  const draftProject = projects.find((project) => project.id === automationTaskProjectID(draft))
+  useEffect(() => {
+    let cancelled = false
+    setEffectiveSettings(null)
+    if (!draftProject) return () => { cancelled = true }
+    void fetchProjectSettings(draftProject.id)
+      .then((settings) => { if (!cancelled) setEffectiveSettings(settings.effective) })
+      .catch((cause) => {
+        if (cancelled) return
+        console.error('[automations] failed to load selected Project settings', cause)
+        setError(cause instanceof Error ? cause.message : String(cause))
+      })
+    return () => { cancelled = true }
+  }, [draftProject?.id])
 
   const catalogActiveRuns = useMemo(() => {
     return tasks.flatMap((task) => (task.recent_runs || [])
@@ -210,20 +251,20 @@ export function AutomationsView({
   useEffect(() => {
     const reloadChangedAutomation = (event: Event) => {
       const detail = (event as CustomEvent<WorkspaceChangeEvent>).detail
-      if (!isProjectChangeForProject(detail, projectId)) return
+      if (!projects.some((project) => isProjectChangeForProject(detail, project.id))) return
       const paths = workspaceChangePaths(detail)
       if (paths.length > 0 && !paths.some(isAutomationTaskFile)) return
       void load()
     }
     window.addEventListener('nova:workspace-change', reloadChangedAutomation)
     return () => window.removeEventListener('nova:workspace-change', reloadChangedAutomation)
-  }, [load, projectId])
+  }, [load, projects])
 
   const unreadInboxCount = useMemo(() => inboxItems.filter((item) => !item.read_at && item.status === 'pending').length, [inboxItems])
   const modelProfileOptions = useMemo(() => buildAutomationModelProfileOptions(effectiveSettings, draft.model_profile_id, t), [draft.model_profile_id, effectiveSettings, t])
   const inheritedAutomationProfile = useMemo(
-    () => inheritedAutomationModelProfileLabel(effectiveSettings, projectType, t),
-    [effectiveSettings, projectType, t],
+    () => inheritedAutomationModelProfileLabel(effectiveSettings, draftProject?.type || projectType, t),
+    [draftProject?.type, effectiveSettings, projectType, t],
   )
 
   const automationAutosave = useAutomationAutosave({
@@ -231,12 +272,12 @@ export function AutomationsView({
     creating,
     draft,
     tasks,
-    fallbackTarget: projectTarget,
+    fallbackTarget: draft.target?.kind ? draft.target : unassignedProjectTarget,
     onSaved: (saved, _submitted, submittedIsCurrent) => {
       setTasks((current) => upsertAutomationTask(current, saved))
-      taskBaselineRef.current = cloneAutomationTask(saved, projectTarget)
+      taskBaselineRef.current = cloneAutomationTask(saved, unassignedProjectTarget)
       if (submittedIsCurrent) {
-        const nextDraft = cloneAutomationTask(saved, projectTarget)
+        const nextDraft = cloneAutomationTask(saved, unassignedProjectTarget)
         draftRef.current = nextDraft
         setDraft(nextDraft)
         draftDirtyRef.current = false
@@ -257,7 +298,7 @@ export function AutomationsView({
     const key = automationTaskKey(task)
     activeIdRef.current = key
     setActiveId(key)
-    const nextDraft = cloneAutomationTask(task, projectTarget)
+    const nextDraft = cloneAutomationTask(task, unassignedProjectTarget)
     taskBaselineRef.current = nextDraft
     draftRef.current = nextDraft
     setDraft(nextDraft)
@@ -268,16 +309,12 @@ export function AutomationsView({
 
   const createNew = async () => {
     if (!(await flushAutomationAutosave())) return
-    setTemplateDialogOpen(true)
-  }
-
-  const chooseCreationTemplate = (template: AutomationTaskTemplate | null, target: NonNullable<AutomationTask['target']>) => {
+    const project = defaultAutomationProject(projects, projectId)
+    const target = project ? automationProjectTarget(project) : unassignedProjectTarget
     activeIdRef.current = ''
     setActiveId('')
     taskBaselineRef.current = null
-    const nextDraft = template
-      ? newAutomationTaskFromTemplate(template, target)
-      : newAutomationTask(target, t('automations.defaultName'))
+    const nextDraft = newAutomationTask(target, t('automations.defaultName'))
     draftRef.current = nextDraft
     setDraft(nextDraft)
     draftDirtyRef.current = true
@@ -285,23 +322,40 @@ export function AutomationsView({
     setPanelView('config')
   }
 
+  const setDraftTemplate = (templateId: string | null) => {
+    if (!creating) return
+    const target = draftRef.current.target?.kind ? draftRef.current.target : unassignedProjectTarget
+    const template = templateId ? templates.find((candidate) => candidate.id === templateId) : null
+    if (templateId && !template) return
+    const nextDraft = template
+      ? newAutomationTaskFromTemplate(template, target)
+      : newAutomationTask(target, t('automations.defaultName'))
+    draftRef.current = nextDraft
+    setDraft(nextDraft)
+    draftDirtyRef.current = true
+  }
+
   const createDraft = async () => {
     if (!creating) return
     const submitted = draftRef.current
+    if (!automationTaskProjectID(submitted)) {
+      setError(t('automations.project.required'))
+      return
+    }
     setSaving(true)
     setError(null)
     try {
       const saved = await createAutomation(submitted)
-      const normalized = normalizeAutomationTaskShape(saved, projectTarget)
+      const normalized = normalizeAutomationTaskShape(saved, unassignedProjectTarget)
       const key = automationTaskKey(normalized)
       activeIdRef.current = key
       setActiveId(key)
-      const canonical = cloneAutomationTask(normalized, projectTarget)
+      const canonical = cloneAutomationTask(normalized, unassignedProjectTarget)
       taskBaselineRef.current = canonical
       const latestDraft = draftRef.current
       const nextDraft = latestDraft === submitted
         ? canonical
-        : cloneAutomationTask(rebaseJSONValue(submitted, latestDraft, canonical), projectTarget)
+        : cloneAutomationTask(rebaseJSONValue(submitted, latestDraft, canonical), unassignedProjectTarget)
       draftRef.current = nextDraft
       setDraft(nextDraft)
       draftDirtyRef.current = automationTaskDraftSignature(nextDraft) !== automationTaskDraftSignature(canonical)
@@ -332,7 +386,7 @@ export function AutomationsView({
       const fallbackID = fallback ? automationTaskKey(fallback) : ''
       activeIdRef.current = fallbackID
       setActiveId(fallbackID)
-      const nextDraft = fallback ? cloneAutomationTask(fallback, projectTarget) : newAutomationTask(projectTarget, t('automations.defaultName'))
+      const nextDraft = fallback ? cloneAutomationTask(fallback, unassignedProjectTarget) : newAutomationTask(unassignedProjectTarget, t('automations.defaultName'))
       taskBaselineRef.current = fallback ? nextDraft : null
       draftRef.current = nextDraft
       setDraft(nextDraft)
@@ -373,8 +427,14 @@ export function AutomationsView({
     setError(null)
     try {
       await checkAutomation(activeId)
-      const inbox = await getAutomationInbox(projectTarget)
-      setInboxItems(inbox)
+      const target = draftRef.current.target
+      if (!target?.kind) throw new Error(t('automations.project.required'))
+      const inbox = await getAutomationInbox(target)
+      const targetProjectID = target.kind === 'workspace' ? target.project_id : ''
+      setInboxItems((current) => [
+        ...current.filter((item) => !targetProjectID || item.project_id !== targetProjectID),
+        ...inbox,
+      ])
       setPanelView('inbox')
     } catch (e) {
       setError((e as Error).message)
@@ -404,7 +464,7 @@ export function AutomationsView({
       const key = automationTaskKey(task)
       activeIdRef.current = key
       setActiveId(key)
-      const nextDraft = cloneAutomationTask(task, projectTarget)
+      const nextDraft = cloneAutomationTask(task, unassignedProjectTarget)
       taskBaselineRef.current = nextDraft
       draftRef.current = nextDraft
       setDraft(nextDraft)
@@ -422,7 +482,7 @@ export function AutomationsView({
       setNavigationTarget(null)
     })()
     return () => { cancelled = true }
-  }, [flushAutomationAutosave, navigationTarget, openRun, projectTarget, tasks])
+  }, [flushAutomationAutosave, navigationTarget, openRun, tasks, unassignedProjectTarget])
 
   const confirmInboxItem = async (item: AutomationInboxItem) => {
     setError(null)
@@ -475,10 +535,17 @@ export function AutomationsView({
       return next
     })
   }
+  const setDraftProject = (nextProjectId: string) => {
+    if (!creating) return
+    const project = projects.find((candidate) => candidate.id === nextProjectId && candidate.status === 'available')
+    if (!project) return
+    setDraftField({ scope: 'workspace', target: automationProjectTarget(project) })
+  }
   const hasEditableDraft = Boolean(activeId) || creating
   const taskListPanel = (
     <AutomationTaskCatalog
       tasks={tasks}
+      projects={projects}
       activeRuns={catalogActiveRuns}
       activeId={activeId}
       agentActive={panelView === 'agent'}
@@ -598,10 +665,15 @@ export function AutomationsView({
                 draft={draft}
                 inheritedModelProfile={inheritedAutomationProfile}
                 modelProfileOptions={modelProfileOptions}
+                projects={projects}
+                templates={templates}
+                creating={creating}
                 running={running}
                 saving={saving}
                 onChange={setDraftField}
                 onOpenRun={openRun}
+                onProjectChange={setDraftProject}
+                onTemplateChange={setDraftTemplate}
                 onRemove={() => void requestRemove()}
                 onTriggersChange={setDraftTriggers}
               />
@@ -628,7 +700,7 @@ export function AutomationsView({
             />
           ) : (
             <ConfigManagerChat
-              projectId={projectId}
+              projectId={draftProject?.id || projectId}
               origin="automation"
               resourceId={activeId}
               context={{
@@ -644,13 +716,6 @@ export function AutomationsView({
           </main>
         )}
       </AdaptiveSurface>
-      <AutomationTemplateDialog
-        open={templateDialogOpen}
-        target={projectTarget}
-        templates={templates}
-        onOpenChange={setTemplateDialogOpen}
-        onChoose={chooseCreationTemplate}
-      />
       <ConfirmDialog
         open={Boolean(deleteTarget)}
         onOpenChange={(open) => { if (!open) setDeleteTarget(null) }}

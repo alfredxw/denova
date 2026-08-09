@@ -2,6 +2,7 @@ import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react
 import type { KeyboardEvent, PointerEvent, UIEvent, WheelEvent } from 'react'
 import type { VirtuosoHandle } from 'react-virtuoso'
 import { createDeferredBottomScrollScheduler, DEFAULT_BOTTOM_THRESHOLD, isElementNearBottom, UPWARD_SCROLL_KEYS } from '@/lib/bottom-scroll-controller'
+import { useStreamingTailLayout } from './useStreamingTailLayout'
 
 export const VIRTUOSO_BOTTOM_THRESHOLD = DEFAULT_BOTTOM_THRESHOLD
 const VIRTUOSO_AWAY_FROM_BOTTOM_THRESHOLD = 160
@@ -19,11 +20,13 @@ interface VirtuosoBottomLockOptions {
   autoFollowEnabled: boolean
   /** Persistent AgentChat tabs stay mounted under `display: none`; hidden geometry is not measurable. */
   visible?: boolean
+  /** Height covered by the composer and its breathing room inside the message viewport. */
+  bottomInsetPx?: number
   awayFromBottomThreshold?: number
   resolveScroller?: () => HTMLElement | null
 }
 
-export function useVirtuosoBottomLock({ resetKey, itemCount, autoFollowEnabled, visible = true, awayFromBottomThreshold = VIRTUOSO_AWAY_FROM_BOTTOM_THRESHOLD, resolveScroller }: VirtuosoBottomLockOptions) {
+export function useVirtuosoBottomLock({ resetKey, itemCount, autoFollowEnabled, visible = true, bottomInsetPx, awayFromBottomThreshold = VIRTUOSO_AWAY_FROM_BOTTOM_THRESHOLD, resolveScroller }: VirtuosoBottomLockOptions) {
   const virtuosoRef = useRef<VirtuosoHandle | null>(null)
   const scrollerElementRef = useRef<HTMLElement | null>(null)
   const viewportScrollTopRef = useRef<number | null>(null)
@@ -37,11 +40,6 @@ export function useVirtuosoBottomLock({ resetKey, itemCount, autoFollowEnabled, 
   const visibilitySettlingRef = useRef(!visible)
   autoFollowEnabledRef.current = autoFollowEnabled
   visibleRef.current = visible
-  const streamingRowElementRef = useRef<HTMLElement | null>(null)
-  const streamingTailExtentRef = useRef<number | null>(null)
-  const streamingRowScrollerRef = useRef<HTMLElement | null>(null)
-  const streamingTailResetKeyRef = useRef(resetKey)
-  const streamingRowObserverRef = useRef<ResizeObserver | null>(null)
   const schedulerRef = useRef(createDeferredBottomScrollScheduler())
   const scheduleScrollRef = useRef<() => void>(() => {})
   const [isAwayFromBottom, setIsAwayFromBottom] = useState(false)
@@ -62,68 +60,45 @@ export function useVirtuosoBottomLock({ resetKey, itemCount, autoFollowEnabled, 
     return element
   }, [resolveScroller])
 
-  const disconnectStreamingRowObserver = useCallback(() => {
-    streamingRowObserverRef.current?.disconnect()
-    streamingRowObserverRef.current = null
+  const canAutoFollowStreamingTail = useCallback(() => (
+    autoFollowEnabledRef.current &&
+    visibleRef.current &&
+    lockedRef.current &&
+    !afterContentInteractionRef.current
+  ), [])
+
+  const recordScrollerPosition = useCallback((scroller: HTMLElement) => {
+    viewportScrollTopRef.current = scroller.scrollTop
   }, [])
 
-  /** Compensates a committed tail-layout delta before the browser can paint it. */
-  const syncStreamingTailLayout = useCallback(() => {
-    if (!isLayoutMeasurable()) return
-    const row = streamingRowElementRef.current
-    if (!row) return
-    const scroller = currentScrollerElement()
-    if (!scroller) return
-    const nextExtent = measureStreamingTailExtent(row, scroller)
-    const previousExtent = streamingTailExtentRef.current
-    streamingTailExtentRef.current = nextExtent
-    streamingRowScrollerRef.current = scroller
-    if (previousExtent === null || !autoFollowEnabled || !lockedRef.current || afterContentInteractionRef.current) return
-    const layoutDelta = nextExtent - previousExtent
-    if (Math.abs(layoutDelta) < 0.5) return
-    scroller.scrollTop += layoutDelta
-    viewportScrollTopRef.current = scroller.scrollTop
-  }, [autoFollowEnabled, currentScrollerElement, isLayoutMeasurable])
-
-  const compensateStreamingRowResize = useCallback((entries: ResizeObserverEntry[]) => {
-    const row = streamingRowElementRef.current
-    if (!row || !entries.some(entry => entry.target === row)) return
-    syncStreamingTailLayout()
-  }, [syncStreamingTailLayout])
-
-  /** Keeps the active row's visible bottom stable until Virtuoso commits its deferred size measurement. */
-  const streamingRowRef = useCallback((row: HTMLElement | null) => {
-    if (streamingRowElementRef.current === row) return
-    disconnectStreamingRowObserver()
-    streamingRowElementRef.current = row
-    if (!row) return
-    if (streamingTailResetKeyRef.current !== resetKey) {
-      streamingTailResetKeyRef.current = resetKey
-      streamingTailExtentRef.current = null
-      streamingRowScrollerRef.current = null
-    }
-    // A child ref is attached before Virtuoso publishes its parent scroller ref.
-    // Resolve the already-mounted ancestor so the first visible tail still
-    // establishes a baseline for a same-frame row replacement.
-    const scroller = currentScrollerElement() || row.closest<HTMLElement>('[data-virtuoso-scroller]')
-    if (scroller && scroller !== scrollerElementRef.current) scrollerElementRef.current = scroller
-    const layoutContextChanged = Boolean(scroller && streamingRowScrollerRef.current && streamingRowScrollerRef.current !== scroller)
-    // Preserve the previous tail extent across DOM identity changes. Waiting,
-    // thinking, tool, and prose rows can replace one another in a single commit;
-    // their content-coordinate delta is the scroll compensation for that frame.
-    if (scroller && (streamingTailExtentRef.current === null || layoutContextChanged || (visible && !previousVisibleRef.current))) {
-      streamingTailExtentRef.current = measureStreamingTailExtent(row, scroller)
-      streamingRowScrollerRef.current = scroller
-    }
-    if (!autoFollowEnabled || !visible || typeof ResizeObserver === 'undefined') return
-    const observer = new ResizeObserver(compensateStreamingRowResize)
-    streamingRowObserverRef.current = observer
-    observer.observe(row)
-  }, [autoFollowEnabled, compensateStreamingRowResize, currentScrollerElement, disconnectStreamingRowObserver, resetKey, visible])
+  const {
+    rowRef: streamingRowRef,
+    spacerPx: streamingSpacerPx,
+    syncLayout: syncStreamingTailLayout,
+    scrollLatestIntoView,
+  } = useStreamingTailLayout({
+    enabled: autoFollowEnabled,
+    visible,
+    resetKey,
+    bottomInsetPx,
+    resolveScroller: currentScrollerElement,
+    canAutoFollow: canAutoFollowStreamingTail,
+    onScrollTopChange: recordScrollerPosition,
+  })
 
   const updateAwayFromBottom = useCallback((element = currentScrollerElement()) => {
     if (!isLayoutMeasurable()) return
-    const away = Boolean(element && itemCount > 0 && element.scrollHeight > element.clientHeight && element.scrollHeight - element.scrollTop - element.clientHeight > awayFromBottomThreshold)
+    const layoutDistanceFromEnd = Boolean(
+      element &&
+      itemCount > 0 &&
+      element.scrollHeight > element.clientHeight &&
+      element.scrollHeight - element.scrollTop - element.clientHeight > awayFromBottomThreshold,
+    )
+    // A growing response deliberately leaves the absolute content end below
+    // the viewport. Only explicit user intent may expose the return button.
+    const away = autoFollowEnabledRef.current && lockedRef.current
+      ? false
+      : layoutDistanceFromEnd
     setIsAwayFromBottom(prev => prev === away ? prev : away)
   }, [awayFromBottomThreshold, currentScrollerElement, isLayoutMeasurable, itemCount])
 
@@ -133,6 +108,10 @@ export function useVirtuosoBottomLock({ resetKey, itemCount, autoFollowEnabled, 
 
   const scrollToBottomNow = useCallback(() => {
     if (itemCount <= 0) {
+      setIsAwayFromBottom(false)
+      return
+    }
+    if (autoFollowEnabledRef.current && scrollLatestIntoView()) {
       setIsAwayFromBottom(false)
       return
     }
@@ -146,24 +125,7 @@ export function useVirtuosoBottomLock({ resetKey, itemCount, autoFollowEnabled, 
       viewportScrollTopRef.current = element.scrollTop
       updateAwayFromBottom(element)
     }
-  }, [currentScrollerElement, itemCount, updateAwayFromBottom])
-
-  const refreshScrollPosition = useCallback(() => {
-    if (!isLayoutMeasurable()) return
-    const element = currentScrollerElement()
-    if (!element) return
-    updateAwayFromBottom(element)
-  }, [currentScrollerElement, isLayoutMeasurable, updateAwayFromBottom])
-
-  const scheduleScrollToBottom = useCallback(() => {
-    refreshScrollPosition()
-    if (!autoFollowEnabled || !isLayoutMeasurable()) {
-      cancelScheduledScroll()
-      return
-    }
-    if (!lockedRef.current || itemCount <= 0) return
-    schedulerRef.current.schedule(scrollToBottomNow, () => autoFollowEnabledRef.current && isLayoutMeasurable() && lockedRef.current && itemCount > 0)
-  }, [autoFollowEnabled, cancelScheduledScroll, isLayoutMeasurable, itemCount, refreshScrollPosition, scrollToBottomNow])
+  }, [currentScrollerElement, itemCount, scrollLatestIntoView, updateAwayFromBottom])
 
   const unlockFromBottom = useCallback(() => {
     lockedRef.current = false
@@ -318,14 +280,6 @@ export function useVirtuosoBottomLock({ resetKey, itemCount, autoFollowEnabled, 
     }
   }, [isLayoutMeasurable, isNearBottom, updateAwayFromBottom])
 
-  const followOutput = useCallback((_atBottom: boolean) => {
-    if (!isLayoutMeasurable()) return false
-    refreshScrollPosition()
-    // `atBottom` describes the layout before newly revealed footer content is
-    // measured. An explicit interaction unlock must win over that stale value.
-    return autoFollowEnabled && lockedRef.current && !afterContentInteractionRef.current ? 'auto' : false
-  }, [autoFollowEnabled, isLayoutMeasurable, refreshScrollPosition])
-
   const scrollerRef = useCallback((ref: HTMLElement | Window | null) => {
     const element = ref instanceof HTMLElement ? ref : null
     scrollerElementRef.current = element
@@ -356,19 +310,11 @@ export function useVirtuosoBottomLock({ resetKey, itemCount, autoFollowEnabled, 
       // measurable viewport. Restore only a lock that existed before hiding; a user's manual
       // scroll-away remains authoritative when they return to the tab.
       const restoreBottomLock = lockedRef.current
-      streamingTailExtentRef.current = null
-      streamingRowScrollerRef.current = null
       schedulerRef.current.schedule(() => {
         lockedRef.current = restoreBottomLock
         if (restoreBottomLock && itemCount > 0) {
           afterContentInteractionRef.current = false
           scrollToBottomNow()
-        }
-        const row = streamingRowElementRef.current
-        const scroller = currentScrollerElement()
-        if (row && scroller) {
-          streamingTailExtentRef.current = measureStreamingTailExtent(row, scroller)
-          streamingRowScrollerRef.current = scroller
         }
         visibilitySettlingRef.current = false
         updateAwayFromBottom()
@@ -399,8 +345,7 @@ export function useVirtuosoBottomLock({ resetKey, itemCount, autoFollowEnabled, 
     afterContentInteractionRef.current = false
     const element = currentScrollerElement()
     lockedRef.current = !element || isNearBottom(element)
-    scheduleScrollToBottom()
-  }, [autoFollowEnabled, cancelScheduledScroll, currentScrollerElement, isNearBottom, itemCount, scheduleScrollToBottom, scrollToBottomNow, updateAwayFromBottom, visible])
+  }, [autoFollowEnabled, cancelScheduledScroll, currentScrollerElement, isNearBottom, itemCount, scrollToBottomNow, updateAwayFromBottom, visible])
 
   useLayoutEffect(() => {
     afterContentInteractionRef.current = false
@@ -418,14 +363,7 @@ export function useVirtuosoBottomLock({ resetKey, itemCount, autoFollowEnabled, 
     updateAwayFromBottom()
   }, [itemCount, updateAwayFromBottom])
 
-  useLayoutEffect(() => {
-    if (autoFollowEnabled) return
-    streamingTailExtentRef.current = null
-    streamingRowScrollerRef.current = null
-  }, [autoFollowEnabled])
-
   useEffect(() => cancelScheduledScroll, [cancelScheduledScroll])
-  useEffect(() => disconnectStreamingRowObserver, [disconnectStreamingRowObserver])
 
   return {
     virtuosoRef,
@@ -438,9 +376,9 @@ export function useVirtuosoBottomLock({ resetKey, itemCount, autoFollowEnabled, 
     onPointerUp: onPointerEnd,
     onPointerCancel: onPointerEnd,
     onAtBottomStateChange,
-    followOutput,
     streamingRowRef,
     syncStreamingTailLayout,
+    streamingSpacerPx,
     isAwayFromBottom,
     scrollToBottom,
     releaseBottomLock,
@@ -452,9 +390,4 @@ export function useVirtuosoBottomLock({ resetKey, itemCount, autoFollowEnabled, 
 
 function isAfterContentEventTarget(target: EventTarget | null): boolean {
   return target instanceof Element && Boolean(target.closest('[data-nova-chat-after-content]'))
-}
-
-/** Measures the tail in scroll-content coordinates, independent of scrollTop. */
-function measureStreamingTailExtent(row: HTMLElement, scroller: HTMLElement): number {
-  return row.getBoundingClientRect().bottom - scroller.getBoundingClientRect().top + scroller.scrollTop
 }

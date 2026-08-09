@@ -30,12 +30,10 @@ func TestAutomationMutationEvaluatorIgnoresRequestCancelAndAppCloseDrains(t *tes
 	registerAutomationProjectForTest(t, application, workspace)
 	application.ensureServices()
 	if _, err := application.CreateAutomation(automation.Task{
-		Scope:      automation.ScopeWorkspace,
-		Enabled:    true,
-		Name:       "Lifecycle semantic review",
-		Template:   automation.TemplateReview,
-		WriteMode:  automation.WriteModeReadOnly,
-		WriteScope: automation.WriteScopeNone,
+		Scope:    automation.ScopeWorkspace,
+		Enabled:  true,
+		Name:     "Lifecycle semantic review",
+		Template: automation.TemplateReview,
 		Triggers: []automation.TriggerDefinition{{
 			ID:                "semantic_batch_1",
 			Type:              automation.TriggerTypeSemantic,
@@ -117,12 +115,10 @@ func TestWorkspaceChangeMutationAutomationUsesCapturedWorkspaceAfterSwitch(t *te
 	t.Cleanup(app.Close)
 
 	if _, err := app.CreateAutomation(automation.Task{
-		Scope:      automation.ScopeWorkspace,
-		Enabled:    true,
-		Name:       "Captured semantic review",
-		Template:   automation.TemplateReview,
-		WriteMode:  automation.WriteModeReadOnly,
-		WriteScope: automation.WriteScopeNone,
+		Scope:    automation.ScopeWorkspace,
+		Enabled:  true,
+		Name:     "Captured semantic review",
+		Template: automation.TemplateReview,
 		Triggers: []automation.TriggerDefinition{{
 			ID:                "semantic_batch_1",
 			Type:              automation.TriggerTypeSemantic,
@@ -231,12 +227,10 @@ func TestAutomationSemanticTriggerChecksOnlyCompletedChapterBatches(t *testing.T
 	defer func() { automationService.semanticEvaluator = previousEvaluator }()
 
 	task, err := app.CreateAutomation(automation.Task{
-		Scope:      automation.ScopeWorkspace,
-		Enabled:    true,
-		Name:       "Semantic batch",
-		Template:   automation.TemplateReview,
-		WriteMode:  automation.WriteModeReadOnly,
-		WriteScope: automation.WriteScopeNone,
+		Scope:    automation.ScopeWorkspace,
+		Enabled:  true,
+		Name:     "Semantic batch",
+		Template: automation.TemplateReview,
 		Triggers: []automation.TriggerDefinition{{
 			ID:                "semantic_batch_3",
 			Type:              automation.TriggerTypeSemantic,

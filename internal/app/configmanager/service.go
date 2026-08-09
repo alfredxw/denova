@@ -118,24 +118,12 @@ func (service *Service) StartTaskWithError(ctx context.Context, request Request)
 		return nil, appagentruntime.ErrNoWorkspace
 	}
 
-	bookWorkspaces := make([]string, 0)
-	if runtime.ProjectRegistry != nil {
-		books, listErr := runtime.ProjectRegistry.Books()
-		if listErr != nil {
-			slog.ErrorContext(ctx, fmt.Sprintf("[app/configmanager] list Book workspaces failed err=%v", listErr))
-		} else {
-			for _, record := range books {
-				bookWorkspaces = append(bookWorkspaces, record.WorkspacePath)
-			}
-		}
-	}
 	runtimeConfig, err := appsettings.RefreshProject(
 		runtime.Config, runtime.Workspace, runtime.Config.ProjectStateDir,
 	)
 	if err != nil {
 		return nil, fmt.Errorf("load Config Manager project settings: %w", err)
 	}
-	runtimeConfig.AutomationWorkspaces = append(runtimeConfig.AutomationWorkspaces, bookWorkspaces...)
 	appsettings.ApplyLocale(&runtimeConfig, request.Locale)
 	resourceSkills, err := loadResourceSkills(ctx, &runtimeConfig, request)
 	if err != nil {

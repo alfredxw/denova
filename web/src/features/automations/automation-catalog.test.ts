@@ -15,11 +15,7 @@ const baseTask: AutomationTask = {
   schedule: { kind: 'manual', hour: 9, minute: 0 },
   triggers: [],
   default_action_policy: 'auto_run',
-  write_mode: 'read_only',
-  write_scope: 'none',
   session_strategy: 'per_run',
-  output_policy: 'run_record_only',
-  output_path: '',
   recent_runs: [],
 }
 

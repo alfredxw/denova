@@ -207,14 +207,14 @@ func TestUserCatalogListsInboxItemsAcrossWorkspaces(t *testing.T) {
 	}
 }
 
-func TestGlobalAutomationAllowsContentTriggersAsReadOnly(t *testing.T) {
+func TestLegacyGlobalAutomationAllowsContentTriggers(t *testing.T) {
 	store := NewStore(filepath.Join(t.TempDir(), "user"), "")
 	task, err := store.Create(Task{
 		Target:   ExecutionTarget{Kind: TargetKindUser},
 		Name:     "Global research",
 		Template: TemplateCustomPrompt,
-		// Content triggers (semantic / chapter_batch) are allowed for user-scope
-		// automations: they are evaluated per workspace and never mutate content.
+		// Legacy user definitions remain readable so their trigger state can be
+		// retired without corrupting the catalog.
 		Triggers: []TriggerDefinition{{Type: TriggerTypeSemantic, Enabled: true}},
 	})
 	if err != nil {
@@ -222,9 +222,6 @@ func TestGlobalAutomationAllowsContentTriggersAsReadOnly(t *testing.T) {
 	}
 	if task.Scope != ScopeUser {
 		t.Fatalf("scope = %q, want user", task.Scope)
-	}
-	if task.WriteMode != WriteModeReadOnly || task.WriteScope != WriteScopeNone {
-		t.Fatalf("user-scope automation must stay read-only, got write_mode=%q write_scope=%q", task.WriteMode, task.WriteScope)
 	}
 	// The user-scope task is not part of any single workspace's exclusive list.
 	workspace := filepath.Join(t.TempDir(), "book")

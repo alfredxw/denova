@@ -65,11 +65,12 @@ describe('AgentSubAgentSessionPanel', () => {
     expect(screen.getByText('审稿完成。')).toBeInTheDocument()
   })
 
-  it('keeps the active sub-agent row bottom fixed during its layout commit', () => {
+  it('lets the active sub-agent row grow into its reserved response runway', () => {
     let rowHeight = 40
-    let scrollHeight = 500
+    let scrollHeight = 900
     const originalRect = HTMLElement.prototype.getBoundingClientRect
     const rectSpy = vi.spyOn(HTMLElement.prototype, 'getBoundingClientRect').mockImplementation(function getBoundingClientRect(this: HTMLElement) {
+      if (this.hasAttribute('data-virtuoso-scroller')) return { top: 0, bottom: 500, height: 500 } as DOMRect
       if (this.getAttribute('data-nova-chat-item') === 'subagent-message') {
         const scroller = this.closest<HTMLElement>('[data-virtuoso-scroller]')
         return {
@@ -103,15 +104,15 @@ describe('AgentSubAgentSessionPanel', () => {
       const scroller = container.querySelector<HTMLElement>('[data-testid="virtuoso-scroller"]')
       if (!scroller) throw new Error('Expected sub-agent message scroller')
       Object.defineProperty(scroller, 'scrollHeight', { configurable: true, get: () => scrollHeight })
-      Object.defineProperty(scroller, 'clientHeight', { configurable: true, value: 100 })
+      Object.defineProperty(scroller, 'clientHeight', { configurable: true, value: 500 })
       scroller.scrollTop = 400
       fireEvent.scroll(scroller)
 
       rowHeight = 70
-      scrollHeight = 530
+      scrollHeight = 930
       rerender(renderPanel('第一行\n第二行'))
 
-      expect(scroller.scrollTop).toBe(430)
+      expect(scroller.scrollTop).toBe(400)
     } finally {
       rectSpy.mockRestore()
     }

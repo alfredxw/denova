@@ -568,7 +568,7 @@ func TestGrepUsesDeterministicPathOrdering(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	args := grepArguments(command)
+	args := grepArguments(command.stages[0], false)
 	if !containsTestString(args, "--sort=path") || !containsTestString(args, "--path-separator=/") {
 		t.Fatalf("grep args are not deterministically sorted: %v", args)
 	}

@@ -124,9 +124,8 @@ func firstScheduleTrigger(triggers []TriggerDefinition) (TriggerDefinition, bool
 	return TriggerDefinition{}, false
 }
 
-func EffectiveActionPolicy(task Task, _ TriggerDefinition) string {
-	mode, _ := normalizeWriteModeScope(task.WriteMode, task.WriteScope)
-	return actionPolicyForWriteMode(mode)
+func EffectiveActionPolicy(_ Task, _ TriggerDefinition) string {
+	return ActionPolicyAutoRun
 }
 
 func EffectiveNotifyPolicy(task Task, trigger TriggerDefinition) string {
@@ -146,15 +145,6 @@ func normalizeActionPolicy(policy, fallback string) string {
 			return ActionPolicyConfirm
 		}
 		return fallback
-	}
-}
-
-func actionPolicyForWriteMode(mode string) string {
-	switch strings.TrimSpace(mode) {
-	case WriteModeReadOnly, WriteModeConfirmWrite, WriteModeAutoWrite:
-		return ActionPolicyAutoRun
-	default:
-		return ActionPolicyAutoRun
 	}
 }
 

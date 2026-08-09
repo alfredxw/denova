@@ -321,8 +321,6 @@ func startOptions(
 	}
 	options := runtimeOptions(active.binding, traceID)
 	options.AutomationTaskID = strings.TrimSpace(active.policy.OriginID)
-	options.WriteMode = strings.TrimSpace(active.policy.WriteMode)
-	options.WriteScope = strings.TrimSpace(active.policy.WriteScope)
 	options.ReviewThreadID = strings.TrimSpace(reviewThreadID)
 	options.IdleTimeout = appagentruntime.IdleTimeout(active.runtime.Config)
 	options.ToolResultMaxBytes = appagentruntime.ToolResultMaxBytes(active.runtime.Config)

@@ -103,7 +103,6 @@ describe('ResourceDirectory', () => {
   it('toggles a section from the full header row', async () => {
     const user = userEvent.setup()
     const sections = buildSections()
-    sections[0].toggleOnHeaderClick = true
     render(<ResourceDirectory sections={sections} activeId={null} onSelect={() => {}} />)
 
     await user.click(screen.getByText('角色'))

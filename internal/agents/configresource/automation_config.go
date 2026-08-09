@@ -5,18 +5,15 @@ import "denova/internal/automation"
 // automationTaskWriteInput is the user-editable definition surface. Runtime
 // identity, timestamps, trigger state, and run history never enter config_apply.
 type automationTaskWriteInput struct {
-	Target         *automationTargetWriteInput   `json:"target,omitempty"`
-	Enabled        *bool                         `json:"enabled,omitempty"`
-	Name           *string                       `json:"name,omitempty"`
-	Template       *string                       `json:"template,omitempty"`
-	Prompt         *string                       `json:"prompt,omitempty"`
-	ModelProfileID *string                       `json:"model_profile_id,omitempty"`
-	Schedule       *automationScheduleWriteInput `json:"schedule,omitempty"`
-	Triggers       []automationTriggerWriteInput `json:"triggers,omitempty"`
-	WriteMode      *string                       `json:"write_mode,omitempty"`
-	WriteScope     *string                       `json:"write_scope,omitempty"`
-	OutputPolicy   *string                       `json:"output_policy,omitempty"`
-	OutputPath     *string                       `json:"output_path,omitempty"`
+	Target          *automationTargetWriteInput   `json:"target,omitempty"`
+	Enabled         *bool                         `json:"enabled,omitempty"`
+	Name            *string                       `json:"name,omitempty"`
+	Template        *string                       `json:"template,omitempty"`
+	Prompt          *string                       `json:"prompt,omitempty"`
+	ModelProfileID  *string                       `json:"model_profile_id,omitempty"`
+	SessionStrategy *string                       `json:"session_strategy,omitempty"`
+	Schedule        *automationScheduleWriteInput `json:"schedule,omitempty"`
+	Triggers        []automationTriggerWriteInput `json:"triggers,omitempty"`
 }
 
 type automationTargetWriteInput struct {
@@ -75,6 +72,9 @@ func (input *automationTaskWriteInput) applyDefinition(task *automation.Task) {
 	if input.ModelProfileID != nil {
 		task.ModelProfileID = *input.ModelProfileID
 	}
+	if input.SessionStrategy != nil {
+		task.SessionStrategy = *input.SessionStrategy
+	}
 	if input.Schedule != nil {
 		task.Schedule = input.Schedule.toSchedule()
 	}
@@ -83,18 +83,6 @@ func (input *automationTaskWriteInput) applyDefinition(task *automation.Task) {
 		for index := range input.Triggers {
 			task.Triggers[index] = input.Triggers[index].toTrigger()
 		}
-	}
-	if input.WriteMode != nil {
-		task.WriteMode = *input.WriteMode
-	}
-	if input.WriteScope != nil {
-		task.WriteScope = *input.WriteScope
-	}
-	if input.OutputPolicy != nil {
-		task.OutputPolicy = *input.OutputPolicy
-	}
-	if input.OutputPath != nil {
-		task.OutputPath = *input.OutputPath
 	}
 }
 
@@ -115,9 +103,4 @@ func (input automationTriggerWriteInput) toTrigger() automation.TriggerDefinitio
 		trigger.Schedule = input.Schedule.toSchedule()
 	}
 	return trigger
-}
-
-func configManagerAutomationStore(novaDir, workspace string, workspaces []string) *automation.Store {
-	all := append([]string{workspace}, workspaces...)
-	return automation.NewStore(novaDir, workspace).WithWorkspaces(all...)
 }

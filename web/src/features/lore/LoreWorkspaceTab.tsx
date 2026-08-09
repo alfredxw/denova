@@ -82,7 +82,6 @@ export function LoreWorkspaceTab({
         createLabel: t('loreWorkspace.createInSection', {
           section: t(section.labelKey),
         }),
-        toggleOnHeaderClick: true,
       })),
     [lore.createItem, lore.items, projectId, t],
   )

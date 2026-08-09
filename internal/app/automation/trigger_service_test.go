@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"denova/config"
+	agentrun "denova/internal/agents/run"
 	agenttool "denova/internal/agents/tool"
 	"denova/internal/automation"
 	"denova/internal/book"
@@ -25,13 +26,11 @@ func TestAutomationCheckCreatesRetryableInboxWhenAutoRunCannotStart(t *testing.T
 
 	now := time.Now()
 	task, err := app.CreateAutomation(automation.Task{
-		Scope:      automation.ScopeWorkspace,
-		Enabled:    true,
-		Name:       "Read-only schedule",
-		Template:   automation.TemplateReview,
-		WriteMode:  automation.WriteModeReadOnly,
-		WriteScope: automation.WriteScopeNone,
-		Schedule:   automation.Schedule{Kind: automation.ScheduleManual, Hour: now.Hour(), Minute: now.Minute()},
+		Scope:    automation.ScopeWorkspace,
+		Enabled:  true,
+		Name:     "Read-only schedule",
+		Template: automation.TemplateReview,
+		Schedule: automation.Schedule{Kind: automation.ScheduleManual, Hour: now.Hour(), Minute: now.Minute()},
 		Triggers: []automation.TriggerDefinition{{
 			ID:           "schedule",
 			Type:         automation.TriggerTypeSchedule,
@@ -71,13 +70,11 @@ func TestAutomationCheckSkipsInboxForSilentScheduleTrigger(t *testing.T) {
 
 	now := time.Now()
 	task, err := app.CreateAutomation(automation.Task{
-		Scope:      automation.ScopeWorkspace,
-		Enabled:    true,
-		Name:       "Silent read-only",
-		Template:   automation.TemplateReview,
-		WriteMode:  automation.WriteModeReadOnly,
-		WriteScope: automation.WriteScopeNone,
-		Schedule:   automation.Schedule{Kind: automation.ScheduleManual, Hour: now.Hour(), Minute: now.Minute()},
+		Scope:    automation.ScopeWorkspace,
+		Enabled:  true,
+		Name:     "Silent read-only",
+		Template: automation.TemplateReview,
+		Schedule: automation.Schedule{Kind: automation.ScheduleManual, Hour: now.Hour(), Minute: now.Minute()},
 		Triggers: []automation.TriggerDefinition{{
 			ID:           "schedule",
 			Type:         automation.TriggerTypeSchedule,
@@ -122,12 +119,10 @@ func TestAutomationChapterBatchTriggerCreatesInboxAtBatchBoundaries(t *testing.T
 	app.bookService = book.NewService(workspace)
 
 	task, err := app.CreateAutomation(automation.Task{
-		Scope:      automation.ScopeWorkspace,
-		Enabled:    true,
-		Name:       "Batch review",
-		Template:   automation.TemplateReview,
-		WriteMode:  automation.WriteModeReadOnly,
-		WriteScope: automation.WriteScopeNone,
+		Scope:    automation.ScopeWorkspace,
+		Enabled:  true,
+		Name:     "Batch review",
+		Template: automation.TemplateReview,
 		Triggers: []automation.TriggerDefinition{{
 			ID:               "chapter_batch_5",
 			Type:             automation.TriggerTypeChapterBatch,
@@ -235,12 +230,10 @@ func TestAutomationMutationCheckRunsOnlyContentTriggersForChapterWrites(t *testi
 
 	now := time.Now()
 	if _, err := app.CreateAutomation(automation.Task{
-		Scope:      automation.ScopeWorkspace,
-		Enabled:    true,
-		Name:       "Due schedule",
-		Template:   automation.TemplateReview,
-		WriteMode:  automation.WriteModeReadOnly,
-		WriteScope: automation.WriteScopeNone,
+		Scope:    automation.ScopeWorkspace,
+		Enabled:  true,
+		Name:     "Due schedule",
+		Template: automation.TemplateReview,
 		Triggers: []automation.TriggerDefinition{{
 			ID:           "schedule",
 			Type:         automation.TriggerTypeSchedule,
@@ -252,12 +245,10 @@ func TestAutomationMutationCheckRunsOnlyContentTriggersForChapterWrites(t *testi
 		t.Fatalf("CreateAutomation schedule failed: %v", err)
 	}
 	batchTask, err := app.CreateAutomation(automation.Task{
-		Scope:      automation.ScopeWorkspace,
-		Enabled:    true,
-		Name:       "Batch review",
-		Template:   automation.TemplateReview,
-		WriteMode:  automation.WriteModeReadOnly,
-		WriteScope: automation.WriteScopeNone,
+		Scope:    automation.ScopeWorkspace,
+		Enabled:  true,
+		Name:     "Batch review",
+		Template: automation.TemplateReview,
 		Triggers: []automation.TriggerDefinition{{
 			ID:               "chapter_batch_1",
 			Type:             automation.TriggerTypeChapterBatch,
@@ -311,12 +302,10 @@ func TestAutomationMutationCallbackDoesNotEvaluateBeforeDurableHostEffect(t *tes
 	app.bookService = book.NewService(workspace)
 
 	task, err := app.CreateAutomation(automation.Task{
-		Scope:      automation.ScopeWorkspace,
-		Enabled:    true,
-		Name:       "Agent batch review",
-		Template:   automation.TemplateReview,
-		WriteMode:  automation.WriteModeReadOnly,
-		WriteScope: automation.WriteScopeNone,
+		Scope:    automation.ScopeWorkspace,
+		Enabled:  true,
+		Name:     "Agent batch review",
+		Template: automation.TemplateReview,
 		Triggers: []automation.TriggerDefinition{{
 			ID:               "chapter_batch_1",
 			Type:             automation.TriggerTypeChapterBatch,
@@ -408,12 +397,10 @@ func TestAutomationMutationChecksCoalesceRapidSavesWithoutDuplicateInbox(t *test
 	application.ensureServices()
 	defer application.Close()
 	task, err := application.CreateAutomation(automation.Task{
-		Scope:      automation.ScopeWorkspace,
-		Enabled:    true,
-		Name:       "Rapid-save review",
-		Template:   automation.TemplateReview,
-		WriteMode:  automation.WriteModeReadOnly,
-		WriteScope: automation.WriteScopeNone,
+		Scope:    automation.ScopeWorkspace,
+		Enabled:  true,
+		Name:     "Rapid-save review",
+		Template: automation.TemplateReview,
 		Triggers: []automation.TriggerDefinition{{
 			ID:               "chapter_batch_1",
 			Type:             automation.TriggerTypeChapterBatch,
@@ -446,64 +433,23 @@ func TestUserScopedAutomationIsRejectedWithoutProjectAgent(t *testing.T) {
 	}
 }
 
-func TestAutomationWriteModeToolConstraints(t *testing.T) {
+func TestAutomationUsesProjectAgentToolManifest(t *testing.T) {
 	snap := &automationWorkspaceSnapshot{
 		projectID: "project-1", projectType: projectdomain.TypeBook,
 		cfg: config.Config{AgentTools: config.AgentToolSettings{IDE: config.AgentToolOverride{
 			config.AgentToolShell: true, config.AgentToolBrowser: true,
 		}}},
 	}
-	_, readOnlyManifest, err := automationInvocationPolicy(snap, automation.WriteModeReadOnly, automation.WriteScopeNone)
+	manifest, err := automationInvocationManifest(snap)
 	if err != nil {
 		t.Fatal(err)
 	}
-	readOnlyTools := automationManifestMap(readOnlyManifest)
-	if readOnlyTools[config.AgentToolWorkspaceWrite] || readOnlyTools[config.AgentToolLoreWrite] {
-		t.Fatalf("read_only should disable writes: %#v", readOnlyTools)
-	}
-	for _, capability := range []string{config.AgentToolWorkspaceRead, config.AgentToolWebSearch, config.AgentToolWebFetch, config.AgentToolDelegation} {
-		if !readOnlyTools[capability] {
-			t.Fatalf("read_only should preserve unattended %s capability: %#v", capability, readOnlyTools)
+	got := automationManifestMap(manifest)
+	want := config.ResolveAgentTools(&snap.cfg, agentrun.AgentKindIDE)
+	for _, capability := range config.AgentToolCapabilities() {
+		if got[capability.Source] != want.Allows(capability.Source) {
+			t.Fatalf("manifest[%s] = %v, want Project Agent value %v", capability.Source, got[capability.Source], want.Allows(capability.Source))
 		}
-	}
-	for _, capability := range []string{config.AgentToolShell, config.AgentToolBrowser, config.AgentToolAsk} {
-		if readOnlyTools[capability] {
-			t.Fatalf("unattended runs must disable %s: %#v", capability, readOnlyTools)
-		}
-	}
-	if path, err := (&AutomationAppService{}).writeOptionalOutput(nil, automation.Task{
-		OutputPolicy: automation.OutputPolicyOptionalFile, OutputPath: "reports/daily.md",
-	}, "summary", config.Config{}, automation.WriteModeReadOnly, automation.WriteScopeNone); err != nil || path != "" {
-		t.Fatalf("read_only automatic file output path=%q error=%v", path, err)
-	}
-
-	_, fileOnlyManifest, err := automationInvocationPolicy(snap, automation.WriteModeAutoWrite, automation.WriteScopeFile)
-	if err != nil {
-		t.Fatal(err)
-	}
-	fileOnlyTools := automationManifestMap(fileOnlyManifest)
-	if !fileOnlyTools[config.AgentToolWorkspaceWrite] || fileOnlyTools[config.AgentToolLoreWrite] {
-		t.Fatalf("file scope tools = %#v, want file write only", fileOnlyTools)
-	}
-
-	_, loreAndFileManifest, err := automationInvocationPolicy(snap, automation.WriteModeAutoWrite, automation.WriteScopeLoreAndFile)
-	if err != nil {
-		t.Fatal(err)
-	}
-	loreAndFileTools := automationManifestMap(loreAndFileManifest)
-	if !loreAndFileTools[config.AgentToolWorkspaceWrite] || !loreAndFileTools[config.AgentToolLoreWrite] {
-		t.Fatalf("lore_and_file tools = %#v, want both write tools", loreAndFileTools)
-	}
-
-	firstRun := automation.RunRecord{Trigger: automation.TriggerCondition}
-	mode, scope := effectiveAutomationWriteModeScope(automation.Task{WriteMode: automation.WriteModeConfirmWrite, WriteScope: automation.WriteScopeFile}, firstRun)
-	if mode != automation.WriteModeReadOnly || scope != automation.WriteScopeNone {
-		t.Fatalf("confirm_write first run = %s/%s, want read_only/none", mode, scope)
-	}
-	confirmedRun := automation.RunRecord{Trigger: automation.TriggerWriteConfirmation}
-	mode, scope = effectiveAutomationWriteModeScope(automation.Task{WriteMode: automation.WriteModeConfirmWrite, WriteScope: automation.WriteScopeFile}, confirmedRun)
-	if mode != automation.WriteModeAutoWrite || scope != automation.WriteScopeFile {
-		t.Fatalf("confirm_write write run = %s/%s, want auto_write/file", mode, scope)
 	}
 }
 
@@ -570,12 +516,9 @@ func TestAutomationRuntimeConfigUsesTaskModelProfile(t *testing.T) {
 func TestAutomationReviewMessageTargetsTriggeredChapters(t *testing.T) {
 	service := &AutomationAppService{}
 	task := automation.Task{
-		Name:         "自动 Review",
-		Template:     automation.TemplateReview,
-		Prompt:       automation.DefaultReviewPrompt,
-		WriteMode:    automation.WriteModeReadOnly,
-		WriteScope:   automation.WriteScopeNone,
-		OutputPolicy: automation.OutputPolicyRunRecordOnly,
+		Name:     "自动 Review",
+		Template: automation.TemplateReview,
+		Prompt:   automation.DefaultReviewPrompt,
 	}
 	run := automation.RunRecord{
 		Trigger: automation.TriggerCondition,
@@ -587,7 +530,7 @@ func TestAutomationReviewMessageTargetsTriggeredChapters(t *testing.T) {
 		}},
 	}
 
-	message := service.buildAutomationUserMessage(task, run, automation.WriteModeReadOnly, automation.WriteScopeNone)
+	message := service.buildAutomationUserMessage(task, run)
 	for _, want := range []string{
 		"本次触发范围",
 		"chapters/ch05.md",
@@ -607,13 +550,10 @@ func TestAutomationReviewMessageTargetsTriggeredChapters(t *testing.T) {
 func TestAutomationMessageDoesNotFallbackToTemplatePrompt(t *testing.T) {
 	service := &AutomationAppService{}
 	task := automation.Task{
-		Name:         "Empty prompt review",
-		Template:     automation.TemplateReview,
-		WriteMode:    automation.WriteModeReadOnly,
-		WriteScope:   automation.WriteScopeNone,
-		OutputPolicy: automation.OutputPolicyRunRecordOnly,
+		Name:     "Empty prompt review",
+		Template: automation.TemplateReview,
 	}
-	message := service.buildAutomationUserMessage(task, automation.RunRecord{Trigger: automation.TriggerManual}, automation.WriteModeReadOnly, automation.WriteScopeNone)
+	message := service.buildAutomationUserMessage(task, automation.RunRecord{Trigger: automation.TriggerManual})
 	if strings.Contains(message, "对本次触发范围中的新增章节做自动 Review") {
 		t.Fatalf("empty task prompt should not fallback to template-specific prompt:\n%s", message)
 	}
@@ -625,15 +565,12 @@ func TestAutomationMessageDoesNotFallbackToTemplatePrompt(t *testing.T) {
 func TestGlobalAutomationMessageDoesNotRequestWorkspaceContext(t *testing.T) {
 	service := &AutomationAppService{}
 	task := automation.Task{
-		Name:         "Global research",
-		Target:       automation.ExecutionTarget{Kind: automation.TargetKindUser},
-		Template:     automation.TemplateCustomPrompt,
-		Prompt:       "检索公开资料并整理摘要",
-		WriteMode:    automation.WriteModeReadOnly,
-		WriteScope:   automation.WriteScopeNone,
-		OutputPolicy: automation.OutputPolicyRunRecordOnly,
+		Name:     "Global research",
+		Target:   automation.ExecutionTarget{Kind: automation.TargetKindUser},
+		Template: automation.TemplateCustomPrompt,
+		Prompt:   "检索公开资料并整理摘要",
 	}
-	message := service.buildAutomationUserMessage(task, automation.RunRecord{Trigger: automation.TriggerManual}, automation.WriteModeReadOnly, automation.WriteScopeNone)
+	message := service.buildAutomationUserMessage(task, automation.RunRecord{Trigger: automation.TriggerManual})
 	if strings.Contains(message, "读取完成任务所需的工作区文件") {
 		t.Fatalf("global task message requested workspace files:\n%s", message)
 	}

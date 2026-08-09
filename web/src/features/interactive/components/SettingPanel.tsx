@@ -939,7 +939,6 @@ function LoreSettingPanel({
     items: sectionItems(items, section, query, loadModeFilter).map((item) => loreItemToDirectoryItem(item, projectId, t)),
     onCreate: () => void handleCreateLore(section),
     createLabel: `${t('chat.new')}${t(section.labelKey)}`,
-    toggleOnHeaderClick: true,
   }))
   const loreLoadModeFilterControl = (
     <Select value={loadModeFilter} onValueChange={(value) => setLoadModeFilter(value as LoreLoadModeFilter)}>

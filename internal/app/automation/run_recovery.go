@@ -270,13 +270,7 @@ func (s *Service) finalizeRecoveredAutomationRun(
 			run.Summary = summary
 		}
 		stageAutomationTerminalEffects(&run, run.CompletionMutationPaths)
-		if run.RuntimeOperationID == run.RootRuntimeOperationID {
-			if !run.WriteConfirmationPolicyCaptured {
-				run.WriteConfirmationRequired = automationRunNeedsWriteConfirmation(taskDef, run)
-			}
-		} else {
-			run.WriteConfirmationRequired = false
-		}
+		run.WriteConfirmationRequired = false
 		run.WriteConfirmationPolicyCaptured = true
 	case agentrun.OutcomeAborted, agentrun.OutcomePreempted:
 		run.Status = automation.RunStatusAborted

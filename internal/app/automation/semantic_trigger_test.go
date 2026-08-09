@@ -175,7 +175,6 @@ func TestDurableScheduleTriggerResumesEffectBeforeCompletion(t *testing.T) {
 	now := time.Date(2026, 7, 22, 12, 0, 0, 0, time.UTC)
 	task, err := store.Create(automation.Task{
 		Scope: automation.ScopeWorkspace, Enabled: true, Name: "Durable schedule", Template: automation.TemplateReview,
-		WriteMode: automation.WriteModeReadOnly, WriteScope: automation.WriteScopeNone,
 		Triggers: []automation.TriggerDefinition{{
 			ID: "schedule", Type: automation.TriggerTypeSchedule, Enabled: true,
 			NotifyPolicy: automation.NotifyPolicySilent,
@@ -247,12 +246,10 @@ func newDurableSemanticTriggerTest(t *testing.T, notifyPolicy string) (*App, *Au
 	application.ensureServices()
 	t.Cleanup(application.Close)
 	task, err := application.CreateAutomation(automation.Task{
-		Scope:      automation.ScopeWorkspace,
-		Enabled:    true,
-		Name:       "Durable semantic",
-		Template:   automation.TemplateReview,
-		WriteMode:  automation.WriteModeReadOnly,
-		WriteScope: automation.WriteScopeNone,
+		Scope:    automation.ScopeWorkspace,
+		Enabled:  true,
+		Name:     "Durable semantic",
+		Template: automation.TemplateReview,
 		Triggers: []automation.TriggerDefinition{{
 			ID:                "semantic_1",
 			Type:              automation.TriggerTypeSemantic,

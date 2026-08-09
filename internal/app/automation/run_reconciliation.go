@@ -229,13 +229,7 @@ func (s *Service) reconcileAutomationRunReceipt(ctx context.Context, snap *autom
 		}
 		if candidate.Status == automation.RunStatusSuccess {
 			stageAutomationTerminalEffects(&candidate, candidate.CompletionMutationPaths)
-			if candidate.RuntimeOperationID == candidate.RootRuntimeOperationID {
-				if !candidate.WriteConfirmationPolicyCaptured {
-					candidate.WriteConfirmationRequired = automationRunNeedsWriteConfirmation(task, candidate)
-				}
-			} else {
-				candidate.WriteConfirmationRequired = false
-			}
+			candidate.WriteConfirmationRequired = false
 			candidate.WriteConfirmationPolicyCaptured = true
 		} else {
 			stageAutomationTerminalEffects(&candidate, candidate.CompletionMutationPaths)

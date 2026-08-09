@@ -59,7 +59,6 @@ func (host settingsHost) SettingsRuntime(target appsettings.Target) (appsettings
 	dataDir := host.app.cfg.DataDir()
 	runtimeWebPort := host.app.cfg.RuntimeWebPort
 	devMode := host.app.cfg.DevMode
-	automationWorkspaces := append([]string(nil), host.app.cfg.AutomationWorkspaces...)
 	imagePresetToolPrompt := host.app.cfg.ImagePresetToolPrompt
 	registry := host.app.projectRegistry
 	host.app.mu.RUnlock()
@@ -90,7 +89,6 @@ func (host settingsHost) SettingsRuntime(target appsettings.Target) (appsettings
 	}
 	runtimeConfig.RuntimeWebPort = runtimeWebPort
 	runtimeConfig.DevMode = devMode
-	runtimeConfig.AutomationWorkspaces = automationWorkspaces
 	runtimeConfig.ImagePresetToolPrompt = imagePresetToolPrompt
 	runtimeConfig.ProjectID = projectID
 	runtimeConfig.ProjectStateDir = layout.StateRoot

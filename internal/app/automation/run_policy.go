@@ -4,9 +4,7 @@ import (
 	"context"
 	"fmt"
 	"log/slog"
-	"path/filepath"
 	"strings"
-	"time"
 
 	"denova/config"
 	agentrun "denova/internal/agents/run"
@@ -14,8 +12,8 @@ import (
 	projectdomain "denova/internal/project"
 )
 
-// runtimeConfigForTask returns the runtime config from a snapshot, applying
-// task-specific model profile overrides.
+// runtimeConfigForTask applies the optional model override for semantic
+// trigger evaluation. AgentChat applies the same override for actual runs.
 func runtimeConfigForTask(snap *automationWorkspaceSnapshot, task automation.Task) config.Config {
 	runtimeCfg := snap.cfg
 	if profileID := strings.TrimSpace(task.ModelProfileID); profileID != "" {
@@ -43,110 +41,21 @@ func projectAgentKind(snap *automationWorkspaceSnapshot) string {
 	}
 }
 
-// automationInvocationPolicy is the unattended capability ceiling applied to
-// a normal Project Agent turn. It never grants a capability disabled by the
-// Project Agent settings and keeps the exact effective policy in the run
-// ledger for inspection and recovery.
-func automationInvocationPolicy(snap *automationWorkspaceSnapshot, writeMode, writeScope string) ([]string, []automation.ToolManifestItem, error) {
+// automationInvocationManifest captures the Project Agent's effective tools in
+// the run ledger. Automation adds no capability layer: its Prompt uses exactly
+// the tools enabled for the owning Project Agent.
+func automationInvocationManifest(snap *automationWorkspaceSnapshot) ([]automation.ToolManifestItem, error) {
 	agentKind := projectAgentKind(snap)
 	if agentKind == "" || snap == nil || strings.TrimSpace(snap.projectID) == "" {
-		return nil, nil, fmt.Errorf("automation execution requires a target Project Agent")
-	}
-	allowedByAutomation := map[string]bool{
-		config.AgentToolWorkspaceRead:  true,
-		config.AgentToolWebSearch:      true,
-		config.AgentToolWebFetch:       true,
-		config.AgentToolTodo:           true,
-		config.AgentToolSkills:         true,
-		config.AgentToolDelegation:     true,
-		config.AgentToolLoreRead:       true,
-		config.AgentToolWorkspaceWrite: automationTaskAllowsFileWrite(writeMode, writeScope),
-		config.AgentToolLoreWrite:      automationTaskAllowsLoreWrite(writeMode, writeScope),
+		return nil, fmt.Errorf("automation execution requires a target Project Agent")
 	}
 	projectTools := config.ResolveAgentTools(&snap.cfg, agentKind)
-	disabled := make([]string, 0, len(config.AgentToolCapabilities()))
-	effective := make(config.ResolvedAgentToolSettings, len(config.AgentToolCapabilities()))
-	for _, capability := range config.AgentToolCapabilities() {
-		allowed := projectTools.Allows(capability.Source) && allowedByAutomation[capability.Source]
-		effective[capability.Source] = allowed
-		if !allowedByAutomation[capability.Source] {
-			disabled = append(disabled, capability.Source)
-		}
-	}
-	manifest := config.ResolveAgentToolManifest(effective)
+	manifest := config.ResolveAgentToolManifest(projectTools)
 	result := make([]automation.ToolManifestItem, 0, len(manifest))
 	for _, capability := range manifest {
 		result = append(result, automation.ToolManifestItem{Source: capability.Capability, Allowed: capability.Allowed})
 	}
-	return disabled, result, nil
-}
-
-func (s *Service) createWriteConfirmationInboxIfNeeded(snap *automationWorkspaceSnapshot, task automation.Task, run automation.RunRecord, output string) error {
-	if task.WriteMode != automation.WriteModeConfirmWrite || run.Trigger == automation.TriggerWriteConfirmation {
-		return nil
-	}
-	if strings.TrimSpace(task.WriteScope) == "" || task.WriteScope == automation.WriteScopeNone {
-		return nil
-	}
-	store := storeForSnapshot(snap)
-	fingerprint := automation.EvidenceFingerprint(task.ID, automation.InboxPurposeWriteConfirmation, run.ID)
-	inboxID := "write-confirmation-" + fingerprint
-	item, created, err := store.EnsureInboxItem(context.Background(), automation.TriggerInboxItem{
-		ID:           inboxID,
-		TaskID:       task.ID,
-		TriggerID:    automation.InboxPurposeWriteConfirmation,
-		Purpose:      automation.InboxPurposeWriteConfirmation,
-		Scope:        task.Scope,
-		ProjectID:    run.ProjectID,
-		Workspace:    run.Workspace,
-		Status:       automation.InboxStatusPending,
-		ActionPolicy: automation.ActionPolicyConfirm,
-		NotifyPolicy: automation.NotifyPolicyInbox,
-		Title:        fmt.Sprintf("写入确认：%s", task.Name),
-		Summary:      trimForTriggerSnippet(output, 1400),
-		Evidence: []automation.TriggerEvidence{{
-			Source:  "automation_run",
-			Title:   run.ID,
-			Ref:     run.ID,
-			Snippet: trimForTriggerSnippet(output, 900),
-		}},
-		Fingerprint: fingerprint,
-		SourceRunID: run.ID,
-		CreatedAt:   time.Now().UTC(),
-		UpdatedAt:   time.Now().UTC(),
-	})
-	if err == nil && !created {
-		slog.InfoContext(context.Background(), fmt.Sprintf("[automation] write confirmation inbox replayed task_id=%s run_id=%s inbox_id=%s", task.ID, run.ID, item.ID))
-	}
-	return err
-}
-
-func (s *Service) writeOptionalOutput(snap *automationWorkspaceSnapshot, task automation.Task, output string, cfg config.Config, writeMode, writeScope string) (string, error) {
-	if task.OutputPolicy != automation.OutputPolicyOptionalFile || strings.TrimSpace(task.OutputPath) == "" {
-		return "", nil
-	}
-	if writeMode == automation.WriteModeReadOnly {
-		return "", nil
-	}
-	if !automationTaskAllowsFileWrite(writeMode, writeScope) {
-		return "", fmt.Errorf("task write mode/scope does not allow file output")
-	}
-	agentKind := projectAgentKind(snap)
-	if agentKind == "" || !config.ResolveAgentTools(&cfg, agentKind).Allows(config.AgentToolWorkspaceWrite) {
-		return "", fmt.Errorf("Project Agent workspace_write capability is disabled")
-	}
-	bookService := snap.bookService
-	if bookService == nil {
-		return "", ErrNoWorkspace
-	}
-	rel := filepath.ToSlash(strings.TrimPrefix(strings.TrimSpace(task.OutputPath), "/"))
-	if rel == "" {
-		return "", fmt.Errorf("output_path is required")
-	}
-	if err := bookService.WriteFile(rel, output); err != nil {
-		return "", err
-	}
-	return rel, nil
+	return result, nil
 }
 
 func normalizeAutomationTrigger(trigger string) string {
@@ -156,38 +65,6 @@ func normalizeAutomationTrigger(trigger string) string {
 	default:
 		return automation.TriggerManual
 	}
-}
-
-func effectiveAutomationWriteModeScope(task automation.Task, run automation.RunRecord) (string, string) {
-	mode := strings.TrimSpace(task.WriteMode)
-	if mode == "" {
-		mode = automation.WriteModeReadOnly
-	}
-	scope := strings.TrimSpace(task.WriteScope)
-	if mode == automation.WriteModeReadOnly {
-		return automation.WriteModeReadOnly, automation.WriteScopeNone
-	}
-	if mode == automation.WriteModeConfirmWrite && run.Trigger != automation.TriggerWriteConfirmation {
-		return automation.WriteModeReadOnly, automation.WriteScopeNone
-	}
-	if scope == "" || scope == automation.WriteScopeNone {
-		scope = automation.WriteScopeFile
-	}
-	return automation.WriteModeAutoWrite, scope
-}
-
-func automationTaskAllowsFileWrite(writeMode, writeScope string) bool {
-	if writeMode != automation.WriteModeAutoWrite {
-		return false
-	}
-	return writeScope == automation.WriteScopeFile || writeScope == automation.WriteScopeLoreAndFile
-}
-
-func automationTaskAllowsLoreWrite(writeMode, writeScope string) bool {
-	if writeMode != automation.WriteModeAutoWrite {
-		return false
-	}
-	return writeScope == automation.WriteScopeLore || writeScope == automation.WriteScopeLoreAndFile
 }
 
 func eventMessage(data interface{}) string {
@@ -203,7 +80,7 @@ func eventMessage(data interface{}) string {
 	}
 }
 
-func (s *Service) buildAutomationUserMessage(task automation.Task, run automation.RunRecord, writeMode, writeScope string) string {
+func (s *Service) buildAutomationUserMessage(task automation.Task, run automation.RunRecord) string {
 	var confirmedSummary string
 	if run.Trigger == automation.TriggerWriteConfirmation {
 		if sourceRunID := strings.TrimSpace(run.SourceRunID); sourceRunID != "" {
@@ -214,7 +91,7 @@ func (s *Service) buildAutomationUserMessage(task automation.Task, run automatio
 			}
 		}
 	}
-	return automation.BuildRunUserMessage(task, run, writeMode, writeScope, confirmedSummary)
+	return automation.BuildRunUserMessage(task, run, confirmedSummary)
 }
 
 func boundedRunTriggerEvidence(evidence []automation.TriggerEvidence) []automation.TriggerEvidence {

@@ -18,11 +18,10 @@ func TestSemanticTriggerEvaluationPersistsClaimDecisionAndCompletion(t *testing.
 	workspace := filepath.Join(root, "workspace")
 	store := NewStore(filepath.Join(root, "user"), workspace)
 	task, err := store.Create(Task{
-		Scope:     ScopeWorkspace,
-		Enabled:   true,
-		Name:      "Durable semantic trigger",
-		Template:  TemplateReview,
-		WriteMode: WriteModeReadOnly,
+		Scope:    ScopeWorkspace,
+		Enabled:  true,
+		Name:     "Durable semantic trigger",
+		Template: TemplateReview,
 		Triggers: []TriggerDefinition{{
 			ID:                "semantic_1",
 			Type:              TriggerTypeSemantic,
@@ -432,8 +431,7 @@ func newTriggerEvaluationTestStore(t *testing.T) (*Store, Task) {
 	store := NewStore(filepath.Join(root, "user"), workspace)
 	task, err := store.Create(Task{
 		Scope: ScopeWorkspace, Enabled: true, Name: "Semantic", Template: TemplateReview,
-		WriteMode: WriteModeReadOnly,
-		Triggers:  []TriggerDefinition{{ID: "semantic_1", Type: TriggerTypeSemantic, Enabled: true, SemanticCondition: "changed"}},
+		Triggers: []TriggerDefinition{{ID: "semantic_1", Type: TriggerTypeSemantic, Enabled: true, SemanticCondition: "changed"}},
 	})
 	if err != nil {
 		t.Fatalf("Create failed: %v", err)

@@ -8,12 +8,12 @@ import (
 	"denova/internal/automation"
 )
 
-func newAutomationResource(novaDir, workspace string, workspaces []string) Adapter {
-	store := configManagerAutomationStore(novaDir, workspace, workspaces)
+func newAutomationResource(novaDir, projectID, workspace, projectStateDir string) Adapter {
+	store := automation.NewProjectStore(novaDir, projectID, workspace, projectStateDir)
 	return configResourceAdapter{
 		descriptor: Descriptor{
-			Name: "automation", Description: "User and workspace automation definitions without runtime history fields.",
-			Scopes: []string{automation.ScopeUser, automation.ScopeWorkspace}, Operations: configCRUDOperations(),
+			Name: "automation", Description: "Automation definitions owned by the Config Manager's current Project, without runtime history fields.",
+			Scopes: []string{automation.ScopeWorkspace}, Operations: configCRUDOperations(),
 			RevisionField: "revision", Reference: "references/automation.md",
 		},
 		list: func(_ context.Context, request ReadRequest) (any, error) {
@@ -132,13 +132,10 @@ type automationDefinition struct {
 	Template            string                         `json:"template"`
 	Prompt              string                         `json:"prompt"`
 	ModelProfileID      string                         `json:"model_profile_id,omitempty"`
+	SessionStrategy     string                         `json:"session_strategy"`
 	Schedule            automation.Schedule            `json:"schedule"`
 	Triggers            []automation.TriggerDefinition `json:"triggers"`
 	DefaultActionPolicy string                         `json:"default_action_policy"`
-	WriteMode           string                         `json:"write_mode"`
-	WriteScope          string                         `json:"write_scope"`
-	OutputPolicy        string                         `json:"output_policy"`
-	OutputPath          string                         `json:"output_path"`
 }
 
 func automationDefinitions(tasks []automation.Task) []automationDefinition {
@@ -154,24 +151,20 @@ func automationDefinitionFromTask(task automation.Task) automationDefinition {
 		ID: task.ID, CatalogID: task.CatalogID, Revision: task.Revision, Scope: task.Scope,
 		Target: automationDefinitionTarget{Kind: task.Target.Kind}, Enabled: task.Enabled,
 		Name: task.Name, Template: task.Template, Prompt: task.Prompt, ModelProfileID: task.ModelProfileID,
-		Schedule: task.Schedule, Triggers: append([]automation.TriggerDefinition(nil), task.Triggers...),
-		DefaultActionPolicy: task.DefaultActionPolicy, WriteMode: task.WriteMode, WriteScope: task.WriteScope,
-		OutputPolicy: task.OutputPolicy, OutputPath: task.OutputPath,
+		SessionStrategy: task.SessionStrategy,
+		Schedule:        task.Schedule, Triggers: append([]automation.TriggerDefinition(nil), task.Triggers...),
+		DefaultActionPolicy: task.DefaultActionPolicy,
 	}
 }
 
 func automationConfigTarget(scope, workspace string) (string, automation.ExecutionTarget, error) {
 	scope = strings.TrimSpace(scope)
-	switch scope {
-	case automation.ScopeUser:
-		return scope, automation.ExecutionTarget{Kind: automation.TargetKindUser}, nil
-	case automation.ScopeWorkspace:
-		workspace = strings.TrimSpace(workspace)
-		if workspace == "" {
-			return "", automation.ExecutionTarget{}, fmt.Errorf("workspace is required for workspace-scoped automation")
-		}
-		return scope, automation.ExecutionTarget{Kind: automation.TargetKindWorkspace, Workspace: workspace}, nil
-	default:
-		return "", automation.ExecutionTarget{}, fmt.Errorf("automation scope must be %q or %q", automation.ScopeUser, automation.ScopeWorkspace)
+	if scope != automation.ScopeWorkspace {
+		return "", automation.ExecutionTarget{}, fmt.Errorf("automation scope must be %q", automation.ScopeWorkspace)
 	}
+	workspace = strings.TrimSpace(workspace)
+	if workspace == "" {
+		return "", automation.ExecutionTarget{}, fmt.Errorf("workspace is required for Project-owned automation")
+	}
+	return scope, automation.ExecutionTarget{Kind: automation.TargetKindWorkspace, Workspace: workspace}, nil
 }

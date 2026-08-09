@@ -8,7 +8,6 @@ import (
 	"strings"
 	"time"
 
-	"denova/config"
 	agentrun "denova/internal/agents/run"
 	apptask "denova/internal/app/task"
 	"denova/internal/automation"
@@ -38,9 +37,6 @@ type automationAcceptedRun struct {
 	task           automation.Task
 	run            automation.RunRecord
 	emit           func(agentrun.Event)
-	runtimeCfg     config.Config
-	writeMode      string
-	writeScope     string
 	accepted       ProjectConversationExecution
 	runError       string
 	errorForwarded bool
@@ -55,11 +51,9 @@ func (s *Service) startAutomationRun(ctx context.Context, snap *automationWorksp
 		}
 	}()
 	slog.InfoContext(ctx, fmt.Sprintf("[automation] run begin task_id=%s scope=%s workspace=%q trigger=%s template=%s", task.ID, task.Scope, run.Workspace, run.Trigger, task.Template))
-	runtimeCfg := runtimeConfigForTask(snap, task)
-	writeMode, writeScope := effectiveAutomationWriteModeScope(task, run)
-	run.WriteConfirmationRequired = automationRunNeedsWriteConfirmation(task, run)
+	run.WriteConfirmationRequired = false
 	run.WriteConfirmationPolicyCaptured = true
-	disabledCapabilities, toolManifest, policyErr := automationInvocationPolicy(snap, writeMode, writeScope)
+	toolManifest, policyErr := automationInvocationManifest(snap)
 	if policyErr != nil {
 		return nil, policyErr
 	}
@@ -69,7 +63,6 @@ func (s *Service) startAutomationRun(ctx context.Context, snap *automationWorksp
 	}
 	execution = &automationAcceptedRun{
 		snap: snap, task: task, run: run, emit: emit,
-		runtimeCfg: runtimeCfg, writeMode: writeMode, writeScope: writeScope,
 	}
 	forward := func(ev agentrun.Event) {
 		switch ev.Type {
@@ -86,18 +79,15 @@ func (s *Service) startAutomationRun(ctx context.Context, snap *automationWorksp
 		}
 	}
 	accepted, err := s.host.AcceptProjectConversationTurn(ctx, displayTask, ProjectConversationTurn{
-		ProjectID:            snap.projectID,
-		SessionID:            run.SessionID,
-		CommandID:            run.TurnID,
-		Message:              s.buildAutomationUserMessage(task, run, writeMode, writeScope),
-		AutomationTaskID:     task.ID,
-		RunID:                run.ID,
-		SessionTitle:         task.Name,
-		ModelProfileID:       task.ModelProfileID,
-		WriteMode:            writeMode,
-		WriteScope:           writeScope,
-		SessionStrategy:      task.SessionStrategy,
-		DisabledCapabilities: disabledCapabilities,
+		ProjectID:        snap.projectID,
+		SessionID:        run.SessionID,
+		CommandID:        run.TurnID,
+		Message:          s.buildAutomationUserMessage(task, run),
+		AutomationTaskID: task.ID,
+		RunID:            run.ID,
+		SessionTitle:     task.Name,
+		ModelProfileID:   task.ModelProfileID,
+		SessionStrategy:  task.SessionStrategy,
 	}, forward)
 	if err != nil {
 		return nil, err
@@ -168,11 +158,6 @@ func (s *Service) waitAutomationRun(ctx context.Context, execution *automationAc
 		output = "Automation completed without a text summary."
 	}
 	run.Summary = output
-	if path, writeErr := s.writeOptionalOutput(execution.snap, task, output, execution.runtimeCfg, execution.writeMode, execution.writeScope); writeErr != nil {
-		return result, writeErr
-	} else if path != "" {
-		run.OutputPath = path
-	}
 	run.Status = automation.RunStatusSuccess
 	run.FinishedAt = time.Now().UTC()
 	run.RuntimeRecoveryRequired = false
@@ -185,7 +170,7 @@ func (s *Service) waitAutomationRun(ctx context.Context, execution *automationAc
 	if err != nil {
 		return automation.RunResult{Task: updated, Run: run}, err
 	}
-	slog.InfoContext(ctx, fmt.Sprintf("[automation] run done task_id=%s scope=%s workspace=%q trigger=%s status=%s output_path=%q", task.ID, task.Scope, run.Workspace, run.Trigger, run.Status, run.OutputPath))
+	slog.InfoContext(ctx, fmt.Sprintf("[automation] run done task_id=%s scope=%s workspace=%q trigger=%s status=%s", task.ID, task.Scope, run.Workspace, run.Trigger, run.Status))
 	return automation.RunResult{Task: updated, Run: run}, nil
 }
 

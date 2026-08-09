@@ -251,14 +251,18 @@ func TestConfigApplyRejectsUnknownResourceValueFields(t *testing.T) {
 }
 
 func TestConfigAutomationResourceUsesDefinitionRevisionForCRUD(t *testing.T) {
-	cfg := &config.Config{NovaDir: t.TempDir(), Workspace: t.TempDir()}
+	cfg := &config.Config{
+		NovaDir: t.TempDir(), ProjectID: "project-contract",
+		Workspace: t.TempDir(), ProjectStateDir: t.TempDir(),
+	}
 	applyTool := configManagerToolByName(t, cfg, "config_apply")
 	readTool := configManagerToolByName(t, cfg, "config_read")
 	createdOutput, err := runToolForTest(context.Background(), applyTool, mustJSON(t, map[string]any{
-		"operation": "create", "resource": "automation", "scope": "user",
+		"operation": "create", "resource": "automation", "scope": "workspace",
 		"value": map[string]any{
-			"target": map[string]any{"kind": "user"}, "name": "Contract automation",
+			"target": map[string]any{"kind": "workspace"}, "name": "Contract automation",
 			"template": "custom_prompt", "prompt": "Review the current project.",
+			"session_strategy": "per_task",
 		},
 	}))
 	if err != nil {
@@ -269,12 +273,12 @@ func TestConfigAutomationResourceUsesDefinitionRevisionForCRUD(t *testing.T) {
 		t.Fatalf("create receipt = %#v", created)
 	}
 	if output, readErr := runToolForTest(context.Background(), readTool, mustJSON(t, map[string]any{
-		"operation": "get", "resource": "automation", "ids": []string{created.ID}, "scope": "user",
-	})); readErr != nil || !strings.Contains(output, "Contract automation") {
+		"operation": "get", "resource": "automation", "ids": []string{created.ID}, "scope": "workspace",
+	})); readErr != nil || !strings.Contains(output, "Contract automation") || !strings.Contains(output, `"session_strategy":"per_task"`) {
 		t.Fatalf("get output=%s error=%v", output, readErr)
 	}
 	updatedOutput, err := runToolForTest(context.Background(), applyTool, mustJSON(t, map[string]any{
-		"operation": "update", "resource": "automation", "id": created.ID, "scope": "user", "revision": created.Revision,
+		"operation": "update", "resource": "automation", "id": created.ID, "scope": "workspace", "revision": created.Revision,
 		"value": map[string]any{"name": "Updated automation"},
 	}))
 	if err != nil {
@@ -285,31 +289,32 @@ func TestConfigAutomationResourceUsesDefinitionRevisionForCRUD(t *testing.T) {
 		t.Fatalf("update receipt = %#v", updated)
 	}
 	if _, err := runToolForTest(context.Background(), applyTool, mustJSON(t, map[string]any{
-		"operation": "delete", "resource": "automation", "id": updated.ID, "scope": "user", "revision": updated.Revision,
+		"operation": "delete", "resource": "automation", "id": updated.ID, "scope": "workspace", "revision": updated.Revision,
 	})); err != nil {
 		t.Fatal(err)
 	}
 }
 
-func TestConfigAutomationResourceEnforcesScopeAndServerOwnedWorkspace(t *testing.T) {
+func TestConfigAutomationResourceBindsCurrentProjectAndRejectsUserScope(t *testing.T) {
 	novaDir := t.TempDir()
 	workspace := filepath.Join(t.TempDir(), "current-workspace")
+	projectStateDir := filepath.Join(t.TempDir(), "project-state")
 	outside := filepath.Join(t.TempDir(), "outside-workspace")
-	cfg := &config.Config{NovaDir: novaDir, Workspace: workspace, AutomationWorkspaces: []string{outside}}
+	cfg := &config.Config{
+		NovaDir: novaDir, ProjectID: "project-current", Workspace: workspace,
+		ProjectStateDir: projectStateDir,
+	}
 	applyTool := configManagerToolByName(t, cfg, "config_apply")
 	readTool := configManagerToolByName(t, cfg, "config_read")
 
-	userOutput, err := runToolForTest(context.Background(), applyTool, mustJSON(t, map[string]any{
+	if _, err := runToolForTest(context.Background(), applyTool, mustJSON(t, map[string]any{
 		"operation": "create", "resource": "automation", "scope": "user",
 		"value": map[string]any{
-			"target": map[string]any{"kind": "user"}, "name": "User-only automation",
-			"template": "custom_prompt", "prompt": "Review user configuration.",
+			"target": map[string]any{"kind": "user"}, "name": "Rejected user automation",
 		},
-	}))
-	if err != nil {
-		t.Fatal(err)
+	})); err == nil {
+		t.Fatal("Config Manager created a user-scoped automation")
 	}
-	userReceipt := decodeConfigMutationReceipt(t, userOutput)
 
 	workspaceOutput, err := runToolForTest(context.Background(), applyTool, mustJSON(t, map[string]any{
 		"operation": "create", "resource": "automation", "scope": "workspace",
@@ -322,49 +327,47 @@ func TestConfigAutomationResourceEnforcesScopeAndServerOwnedWorkspace(t *testing
 		t.Fatal(err)
 	}
 	workspaceReceipt := decodeConfigMutationReceipt(t, workspaceOutput)
-	if _, err := os.Stat(workspacelayout.Path(workspace, "automations", "tasks.json")); err != nil {
-		t.Fatalf("workspace-scoped automation was not stored in the active workspace: %v", err)
+	if !strings.HasPrefix(workspaceReceipt.ID, "project-current:") {
+		t.Fatalf("automation receipt did not use the bound Project identity: %#v", workspaceReceipt)
+	}
+	if _, err := os.Stat(filepath.Join(projectStateDir, "automations", "tasks.json")); err != nil {
+		t.Fatalf("Project-owned automation was not stored in central Project state: %v", err)
+	}
+	if _, err := os.Stat(workspacelayout.Path(workspace, "automations", "tasks.json")); !os.IsNotExist(err) {
+		t.Fatalf("Project-owned automation leaked into the content workspace: %v", err)
 	}
 	if _, err := os.Stat(workspacelayout.Path(outside, "automations", "tasks.json")); !os.IsNotExist(err) {
 		t.Fatalf("untrusted value.target.workspace was written: %v", err)
 	}
 
-	userList, err := runToolForTest(context.Background(), readTool, `{"operation":"list","resource":"automation","scope":"user"}`)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if !strings.Contains(userList, "User-only automation") || strings.Contains(userList, "Current workspace automation") {
-		t.Fatalf("user automation list crossed scope: %s", userList)
-	}
-	for _, runtimeField := range []string{"trigger_state", "last_run", "recent_runs", "runtime_command_id"} {
-		if strings.Contains(userList, `"`+runtimeField+`"`) {
-			t.Fatalf("automation definition projection leaked runtime field %q: %s", runtimeField, userList)
-		}
-	}
 	workspaceList, err := runToolForTest(context.Background(), readTool, `{"operation":"list","resource":"automation","scope":"workspace"}`)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !strings.Contains(workspaceList, "Current workspace automation") || strings.Contains(workspaceList, "User-only automation") || strings.Contains(workspaceList, outside) {
-		t.Fatalf("workspace automation list crossed scope or exposed an untrusted path: %s", workspaceList)
+	for _, runtimeField := range []string{"trigger_state", "last_run", "recent_runs", "runtime_command_id"} {
+		if strings.Contains(workspaceList, `"`+runtimeField+`"`) {
+			t.Fatalf("automation definition projection leaked runtime field %q: %s", runtimeField, workspaceList)
+		}
+	}
+	for _, removedField := range []string{"write_mode", "write_scope", "output_policy", "output_path"} {
+		if strings.Contains(workspaceList, `"`+removedField+`"`) {
+			t.Fatalf("automation definition projection retained removed field %q: %s", removedField, workspaceList)
+		}
+	}
+	if !strings.Contains(workspaceList, "Current workspace automation") || strings.Contains(workspaceList, outside) {
+		t.Fatalf("Project automation list exposed an untrusted path: %s", workspaceList)
 	}
 
 	if _, err := runToolForTest(context.Background(), readTool, mustJSON(t, map[string]any{
 		"operation": "get", "resource": "automation", "scope": "user", "ids": []string{workspaceReceipt.ID},
 	})); err == nil {
-		t.Fatal("user-scoped get resolved a workspace automation")
+		t.Fatal("user-scoped get resolved a Project automation")
 	}
 	if _, err := runToolForTest(context.Background(), applyTool, mustJSON(t, map[string]any{
 		"operation": "update", "resource": "automation", "scope": "user", "id": workspaceReceipt.ID,
 		"revision": workspaceReceipt.Revision, "value": map[string]any{"name": "scope escape"},
 	})); err == nil {
-		t.Fatal("user-scoped update mutated a workspace automation")
-	}
-	if _, err := runToolForTest(context.Background(), applyTool, mustJSON(t, map[string]any{
-		"operation": "delete", "resource": "automation", "scope": "workspace", "id": userReceipt.ID,
-		"revision": userReceipt.Revision,
-	})); err == nil {
-		t.Fatal("workspace-scoped delete removed a user automation")
+		t.Fatal("user-scoped update mutated a Project automation")
 	}
 	if _, err := runToolForTest(context.Background(), readTool, `{"operation":"list","resource":"automation"}`); err == nil {
 		t.Fatal("automation list accepted an omitted scope")

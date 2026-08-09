@@ -90,12 +90,10 @@ func (s *Service) completeAutomationRunEffects(
 		return run, nil
 	}
 	planChanged := false
-	if !run.WriteConfirmationPolicyCaptured {
-		if run.Status == automation.RunStatusSuccess && run.RuntimeOperationID == run.RootRuntimeOperationID {
-			run.WriteConfirmationRequired = automationRunNeedsWriteConfirmation(task, run)
-		} else {
-			run.WriteConfirmationRequired = false
-		}
+	if !run.WriteConfirmationPolicyCaptured || run.WriteConfirmationRequired {
+		// Older runs may have persisted the removed task-level write-confirmation
+		// policy. Retire that pending effect without blocking mutation receipts.
+		run.WriteConfirmationRequired = false
 		run.WriteConfirmationPolicyCaptured = true
 		planChanged = true
 	}
@@ -111,11 +109,6 @@ func (s *Service) completeAutomationRunEffects(
 	if planChanged {
 		if _, err := storeForSnapshot(snap).AppendRun(automationTaskStoreID(task), run); err != nil {
 			return run, fmt.Errorf("persist automation completion-effects plan: %w", err)
-		}
-	}
-	if run.Status == automation.RunStatusSuccess && run.WriteConfirmationRequired {
-		if err := s.createWriteConfirmationInboxIfNeeded(snap, task, run, run.Summary); err != nil {
-			return run, fmt.Errorf("complete automation write-confirmation effect: %w", err)
 		}
 	}
 	targets := s.chapterContentMutationPaths(snap, run.CompletionMutationPaths)
@@ -147,12 +140,6 @@ func (s *Service) completeAutomationRunEffects(
 		return run, nil
 	}
 	return persistAutomationRunEffectsReceipt(snap, task, run)
-}
-
-func automationRunNeedsWriteConfirmation(task automation.Task, run automation.RunRecord) bool {
-	return task.WriteMode == automation.WriteModeConfirmWrite &&
-		task.WriteScope != "" && task.WriteScope != automation.WriteScopeNone &&
-		run.Trigger != automation.TriggerWriteConfirmation
 }
 
 func persistAutomationRunEffectsReceipt(
