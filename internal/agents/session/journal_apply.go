@@ -56,21 +56,6 @@ func appendAskRecordLine(sess *Session, line []byte) error {
 	return nil
 }
 
-func appendContextBoundaryRecordLine(sess *Session, line []byte) error {
-	var record contextBoundaryRecord
-	if err := json.Unmarshal(line, &record); err != nil {
-		return err
-	}
-	if strings.TrimSpace(record.BoundaryID) == "" || len(record.BoundaryID) > maxContextLabelBytes {
-		return fmt.Errorf("context boundary id is invalid")
-	}
-	if err := validateContextBoundarySnapshot(&record.Boundary); err != nil {
-		return fmt.Errorf("context boundary %q: %w", record.BoundaryID, err)
-	}
-	advanceUpdatedAt(sess, record.CreatedAt)
-	return nil
-}
-
 func appendCompactionRecordLine(sess *Session, line []byte, lineNumber int) error {
 	var record ContextCompaction
 	if err := json.Unmarshal(line, &record); err != nil {

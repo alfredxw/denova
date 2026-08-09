@@ -22,7 +22,6 @@ const (
 	historyTypeClear               = "clear"
 	historyTypeInterrupt           = "interrupt"
 	historyTypeAsk                 = "ask"
-	historyTypeContextBoundary     = "context_boundary"
 	historyTypeCompaction          = "context_compaction"
 	historyTypeCompactionRemoved   = "context_compaction_removed"
 	historyTypeCompactionHealth    = "context_compaction_health"
@@ -111,75 +110,10 @@ type MessageMetadata struct {
 	SubAgentSessionID string                       `json:"subagent_session_id,omitempty"`
 	SubAgentType      string                       `json:"subagent_type,omitempty"`
 	UserReferences    []agentcontext.UserReference `json:"user_references,omitempty"`
-	ContextOperations []ContextOperation           `json:"context_operations,omitempty"`
 	// ProviderContinuation is process-local model-visible state copied onto the
 	// canonical assistant Message. It is excluded from metadata serialization so
 	// the protocol payload has exactly one durable source of truth.
 	ProviderContinuation map[string]any `json:"-"`
-}
-
-const (
-	ContextOperationCheckpoint = "checkpoint"
-	ContextOperationRewind     = "rewind"
-)
-
-// ContextOperation is committed atomically with one assistant message. It is
-// model-invisible metadata used to project future context without deleting the
-// canonical/display transcript.
-type ContextOperation struct {
-	Kind             string                   `json:"kind"`
-	AgentKind        string                   `json:"agent_kind"`
-	CheckpointID     string                   `json:"checkpoint_id"`
-	Purpose          string                   `json:"purpose,omitempty"`
-	MessageCount     int                      `json:"message_count,omitempty"`
-	BoundaryID       string                   `json:"boundary_id"`
-	BoundaryLocator  ContextBoundaryLocator   `json:"boundary_locator"`
-	Report           string                   `json:"report,omitempty"`
-	MutationReceipts []ContextMutationReceipt `json:"mutation_receipts,omitempty"`
-
-	// ResolvedBoundary is populated only after canonical journal lookup. It is
-	// never part of message metadata or the rebuildable sidecar projection.
-	ResolvedBoundary *ContextBoundarySnapshot `json:"-"`
-}
-
-// ContextBoundaryLocator identifies the one canonical journal record that owns
-// a frozen projection. SHA256 covers that exact record payload.
-type ContextBoundaryLocator struct {
-	Cursor      conversationjournal.Cursor `json:"cursor"`
-	RecordIndex int                        `json:"record_index,omitempty"`
-	SHA256      string                     `json:"sha256"`
-}
-
-// ContextBoundarySnapshot is captured synchronously before a model call.
-// EffectivePrefix resumes the current run; CanonicalPrefix excludes turn-only
-// fragments so future turns can assemble fresh runtime context.
-type ContextBoundarySnapshot struct {
-	Cursor          ContextCursor    `json:"cursor"`
-	LimitBytes      int              `json:"limit_bytes"`
-	EffectiveSource string           `json:"effective_source"`
-	CanonicalSource string           `json:"canonical_source"`
-	EffectivePrefix []*agent.Message `json:"effective_prefix"`
-	CanonicalPrefix []*agent.Message `json:"canonical_prefix"`
-	EffectiveBytes  int              `json:"effective_bytes"`
-	CanonicalBytes  int              `json:"canonical_bytes"`
-	EffectiveSHA256 string           `json:"effective_sha256"`
-	CanonicalSHA256 string           `json:"canonical_sha256"`
-}
-
-// ContextMutationReceipt preserves the fact of a committed side effect across
-// rewind. Rewind changes model context only and never reverts external state.
-type ContextMutationReceipt struct {
-	Tool    string `json:"tool"`
-	CallID  string `json:"call_id,omitempty"`
-	Scope   string `json:"scope"`
-	Summary string `json:"summary"`
-}
-
-type ContextWindowProjection struct {
-	Checkpoint       ContextOperation `json:"checkpoint"`
-	Rewind           ContextOperation `json:"rewind"`
-	RewindAfterIndex int              `json:"rewind_after_index"`
-	ContextRevision  uint64           `json:"context_revision"`
 }
 
 type historyRecord struct {

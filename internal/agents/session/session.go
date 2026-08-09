@@ -90,57 +90,7 @@ func sanitizeMessageMetadata(metadata MessageMetadata) MessageMetadata {
 		metadata.RunPath = out
 	}
 	metadata.UserReferences = sanitizeUserMessageReferences(metadata.UserReferences)
-	metadata.ContextOperations = sanitizeContextOperations(metadata.ContextOperations)
 	return metadata
-}
-
-const (
-	maxContextOperationsPerMessage = 16
-	maxContextLabelBytes           = 256
-	maxContextReportBytes          = 64 * 1024
-	maxContextMutationReceipts     = 64
-	maxContextMutationSummaryBytes = 4 * 1024
-)
-
-func sanitizeContextOperations(values []ContextOperation) []ContextOperation {
-	result := make([]ContextOperation, 0, min(len(values), maxContextOperationsPerMessage))
-	for _, value := range values {
-		if len(result) >= maxContextOperationsPerMessage {
-			break
-		}
-		value.Kind = strings.TrimSpace(value.Kind)
-		value.AgentKind = strings.TrimSpace(value.AgentKind)
-		value.CheckpointID = strings.TrimSpace(value.CheckpointID)
-		value.Purpose = truncateUTF8ByBytes(strings.TrimSpace(value.Purpose), maxContextLabelBytes)
-		value.Report = truncateUTF8ByBytes(strings.TrimSpace(value.Report), maxContextReportBytes)
-		value.BoundaryID = strings.TrimSpace(value.BoundaryID)
-		value.ResolvedBoundary = nil
-		if value.MessageCount < 0 {
-			value.MessageCount = 0
-		}
-		if (value.Kind != ContextOperationCheckpoint && value.Kind != ContextOperationRewind) ||
-			value.AgentKind == "" || value.CheckpointID == "" || value.BoundaryID == "" ||
-			len(value.BoundaryID) > maxContextLabelBytes || !validContextBoundaryLocator(value.BoundaryLocator) {
-			continue
-		}
-		receipts := make([]ContextMutationReceipt, 0, min(len(value.MutationReceipts), maxContextMutationReceipts))
-		for _, receipt := range value.MutationReceipts {
-			if len(receipts) >= maxContextMutationReceipts {
-				break
-			}
-			receipt.Tool = strings.TrimSpace(receipt.Tool)
-			receipt.CallID = strings.TrimSpace(receipt.CallID)
-			receipt.Scope = strings.TrimSpace(receipt.Scope)
-			receipt.Summary = truncateUTF8ByBytes(strings.TrimSpace(receipt.Summary), maxContextMutationSummaryBytes)
-			if receipt.Tool == "" || receipt.Scope == "" {
-				continue
-			}
-			receipts = append(receipts, receipt)
-		}
-		value.MutationReceipts = receipts
-		result = append(result, value)
-	}
-	return result
 }
 
 const (

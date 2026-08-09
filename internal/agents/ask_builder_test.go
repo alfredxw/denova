@@ -58,7 +58,7 @@ func askOnlyAgentConfig(t *testing.T, kind string) *config.Config {
 		config.AgentToolSkills: false, config.AgentToolDelegation: false,
 		config.AgentToolConfigRead: false, config.AgentToolConfigApply: false,
 		config.AgentToolLoreRead: false, config.AgentToolLoreWrite: false,
-		config.AgentToolImageGeneration: false, config.AgentToolContextRewind: false,
+		config.AgentToolImageGeneration: false,
 	}
 	override := config.AgentToolOverride{config.AgentToolAsk: true, config.AgentToolImageGeneration: false}
 	settings := config.AgentToolSettings{Default: allOff}

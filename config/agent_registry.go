@@ -45,7 +45,6 @@ var agentKindRegistry = []AgentKindDefinition{
 			AgentToolWorkspaceRead, AgentToolWorkspaceWrite, AgentToolShell,
 			AgentToolWebSearch, AgentToolWebFetch, AgentToolBrowser,
 			AgentToolAsk, AgentToolTodo, AgentToolSkills, AgentToolDelegation,
-			AgentToolContextRewind,
 		},
 		ModelOverride:    func(settings AgentModelSettings) AgentModelOverride { return settings.General },
 		SetModelOverride: func(settings *AgentModelSettings, override AgentModelOverride) { settings.General = override },
@@ -61,7 +60,6 @@ var agentKindRegistry = []AgentKindDefinition{
 			AgentToolWebSearch, AgentToolWebFetch, AgentToolBrowser,
 			AgentToolAsk, AgentToolTodo, AgentToolSkills, AgentToolDelegation,
 			AgentToolLoreRead, AgentToolLoreWrite, AgentToolImageGeneration,
-			AgentToolContextRewind,
 		},
 		ModelOverride:    func(settings AgentModelSettings) AgentModelOverride { return settings.IDE },
 		SetModelOverride: func(settings *AgentModelSettings, override AgentModelOverride) { settings.IDE = override },
@@ -90,7 +88,7 @@ var agentKindRegistry = []AgentKindDefinition{
 			AgentToolWorkspaceRead, AgentToolWorkspaceWrite, AgentToolShell,
 			AgentToolWebSearch, AgentToolWebFetch, AgentToolBrowser,
 			AgentToolAsk, AgentToolTodo, AgentToolSkills, AgentToolDelegation,
-			AgentToolConfigRead, AgentToolConfigApply, AgentToolContextRewind,
+			AgentToolConfigRead, AgentToolConfigApply,
 		},
 		ModelOverride:    func(settings AgentModelSettings) AgentModelOverride { return settings.ConfigManager },
 		SetModelOverride: func(settings *AgentModelSettings, override AgentModelOverride) { settings.ConfigManager = override },
@@ -232,10 +230,6 @@ var agentToolCapabilities = []AgentToolCapability{
 	capabilityDefinition(AgentToolLoreRead, "agents.tool.loreRead.title", "agents.tool.loreRead.subtitle", []string{"list_lore_items", "read_lore_items"}, readOnlyDescriptor()),
 	capabilityDefinition(AgentToolLoreWrite, "agents.tool.loreWrite.title", "agents.tool.loreWrite.subtitle", []string{"write_lore_items"}, workspaceWriteDescriptor(agent.ToolRecoveryReconcilable)),
 	capabilityDefinition(AgentToolImageGeneration, "agents.tool.imageGeneration.title", "agents.tool.imageGeneration.subtitle", []string{"generate_image"}, workspaceWriteDescriptor(agent.ToolRecoveryNonIdempotent)),
-	subAgentUnavailableCapabilityDefinition(AgentToolContextRewind, "agents.tool.contextRewind.title", "agents.tool.contextRewind.subtitle", []string{"checkpoint", "rewind"}, transientDescriptorSummary(descriptorSummary(
-		agent.ToolExecutionSessionExclusive, agent.ToolMutationSession, agent.ToolPostCheckSessionState,
-		agent.ToolRecoveryReconcilable, agent.SteeringFinishCurrent,
-	))),
 }
 
 func AgentToolCapabilities() []AgentToolCapability {

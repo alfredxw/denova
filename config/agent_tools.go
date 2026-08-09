@@ -20,7 +20,6 @@ const (
 	AgentToolLoreRead        = "lore_read"
 	AgentToolLoreWrite       = "lore_write"
 	AgentToolImageGeneration = "image_generation"
-	AgentToolContextRewind   = "context_rewind"
 )
 
 // AgentToolSettings stores capability overrides for every Agent kind.
@@ -85,13 +84,9 @@ func DefaultAgentToolSettings() AgentToolSettings {
 	defaults[AgentToolConfigApply] = false
 	defaults[AgentToolEventRead] = false
 	defaults[AgentToolImageGeneration] = false
-	defaults[AgentToolContextRewind] = false
 
 	return AgentToolSettings{
 		Default: defaults,
-		General: on(
-			AgentToolContextRewind,
-		),
 		IDE: on(
 			AgentToolImageGeneration,
 		),
@@ -108,7 +103,6 @@ func DefaultAgentToolSettings() AgentToolSettings {
 			AgentToolImageGeneration,
 			AgentToolConfigRead,
 			AgentToolConfigApply,
-			AgentToolContextRewind,
 		),
 		ConfigManager: mergeAgentToolOverride(noToolAgentOverride(), on(
 			AgentToolWorkspaceRead,

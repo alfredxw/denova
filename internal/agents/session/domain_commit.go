@@ -48,7 +48,6 @@ type ContextSnapshot struct {
 	Cursor            ContextCursor
 	Compaction        *ContextCompaction
 	ToolResultCleanup *ToolResultCleanupRecord
-	ContextWindow     *ContextWindowProjection
 }
 
 // DomainCommitIntent is staged by a conversation and authorized by the
@@ -286,13 +285,6 @@ func (s *Session) snapshotContextLocked(agentKind string) (ContextSnapshot, erro
 	}
 	if cleanup, ok := s.latestActiveToolResultCleanupLocked(agentKind); ok {
 		snapshot.ToolResultCleanup = &cleanup
-	}
-	projection, ok, err := s.latestContextWindowProjectionLocked(agentKind)
-	if err != nil {
-		return ContextSnapshot{}, err
-	}
-	if ok {
-		snapshot.ContextWindow = &projection
 	}
 	return snapshot, nil
 }
@@ -540,7 +532,6 @@ func domainMessageHash(message agent.Message, metadata MessageMetadata) (string,
 			SubAgentSessionID string                       `json:"subagent_session_id,omitempty"`
 			SubAgentType      string                       `json:"subagent_type,omitempty"`
 			UserReferences    []agentcontext.UserReference `json:"user_references,omitempty"`
-			ContextOperations []ContextOperation           `json:"context_operations,omitempty"`
 		} `json:"metadata"`
 	}{Message: message}
 	payload.Metadata.RunID = metadata.RunID
@@ -552,7 +543,6 @@ func domainMessageHash(message agent.Message, metadata MessageMetadata) (string,
 	payload.Metadata.SubAgentSessionID = metadata.SubAgentSessionID
 	payload.Metadata.SubAgentType = metadata.SubAgentType
 	payload.Metadata.UserReferences = append([]agentcontext.UserReference(nil), metadata.UserReferences...)
-	payload.Metadata.ContextOperations = append([]ContextOperation(nil), metadata.ContextOperations...)
 	data, err := json.Marshal(payload)
 	if err != nil {
 		return "", fmt.Errorf("hash domain message: %w", err)

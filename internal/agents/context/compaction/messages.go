@@ -11,13 +11,8 @@ import (
 
 	"denova/config"
 	agentcontext "denova/internal/agents/context"
-	"denova/internal/agents/session"
 	"denova/internal/agents/toolresult"
 )
-
-func isContextRewindMessage(msg *agent.Message) bool {
-	return msg != nil && strings.HasPrefix(strings.TrimSpace(msg.Content), agentcontext.RewindSummaryPrefix)
-}
 
 func compactionSourceMessages(messages []*agent.Message, keepLatestUser bool) []*agent.Message {
 	source := make([]*agent.Message, 0, len(messages))
@@ -91,12 +86,7 @@ func compactMessagesForModelThroughSource(
 		}
 		contextMessages = append(contextMessages, message)
 		if index < sourceEnd {
-			// A rewind report is source evidence for the new checkpoint, but it
-			// is an obsolete structural projection once that newer checkpoint is
-			// published. Do not replay it beside the new summary.
-			if !isContextRewindMessage(message) {
-				sourceMessages = append(sourceMessages, message)
-			}
+			sourceMessages = append(sourceMessages, message)
 		} else {
 			appendedMessages = append(appendedMessages, message)
 		}
@@ -392,49 +382,6 @@ func TailAfterSource(messages []*agent.Message, effectiveStart, sourceEndIndex, 
 	return tail
 }
 
-// TailAfterRewindSource applies a newer checkpoint over the
-// canonical branch selected by an older rewind. Raw messages on the discarded
-// exploration branch remain durable for display/audit, but never become a
-// retained model tail after reload.
-func TailAfterRewindSource(
-	messages []*agent.Message,
-	effectiveStart, sourceEndIndex, retainedTurns int,
-	projection session.ContextWindowProjection,
-) []*agent.Message {
-	sourceEndOffset := sourceEndIndex - effectiveStart
-	if sourceEndOffset < 0 {
-		sourceEndOffset = 0
-	}
-	if sourceEndOffset > len(messages) {
-		sourceEndOffset = len(messages)
-	}
-	var prefix []*agent.Message
-	if boundary := projection.Checkpoint.ResolvedBoundary; boundary != nil {
-		prefix = boundary.CanonicalPrefix
-	}
-	receipts := make([]agentcontext.RewindMutationReceipt, 0, len(projection.Rewind.MutationReceipts))
-	for _, receipt := range projection.Rewind.MutationReceipts {
-		receipts = append(receipts, agentcontext.RewindMutationReceipt{
-			Tool: receipt.Tool, CallID: receipt.CallID, Scope: receipt.Scope, Summary: receipt.Summary,
-		})
-	}
-	summary := agentcontext.NewRewindSummaryMessage(agentcontext.RewindSummaryInput{
-		CheckpointID:     projection.Rewind.CheckpointID,
-		Purpose:          projection.Rewind.Purpose,
-		Report:           projection.Rewind.Report,
-		MutationReceipts: receipts,
-	})
-	rewoundSource := agentcontext.ApplyWindowProjection(
-		messages[:sourceEndOffset], effectiveStart, prefix, projection.RewindAfterIndex, summary,
-	)
-	sourceTail := retainTailByUserTurns(compactionSourceTailMessages(rewoundSource), retainedTurns)
-	appended := compactionContextMessages(messages[sourceEndOffset:])
-	tail := make([]*agent.Message, 0, len(sourceTail)+len(appended))
-	tail = append(tail, sourceTail...)
-	tail = append(tail, appended...)
-	return tail
-}
-
 func compactionContextMessages(messages []*agent.Message) []*agent.Message {
 	filtered := make([]*agent.Message, 0, len(messages))
 	for _, msg := range messages {
@@ -442,16 +389,6 @@ func compactionContextMessages(messages []*agent.Message) []*agent.Message {
 			continue
 		}
 		filtered = append(filtered, msg)
-	}
-	return filtered
-}
-
-func compactionSourceTailMessages(messages []*agent.Message) []*agent.Message {
-	filtered := make([]*agent.Message, 0, len(messages))
-	for _, msg := range compactionContextMessages(messages) {
-		if !isContextRewindMessage(msg) {
-			filtered = append(filtered, msg)
-		}
 	}
 	return filtered
 }

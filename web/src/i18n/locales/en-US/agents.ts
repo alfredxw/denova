@@ -61,8 +61,6 @@ const agents = {
   'agents.tool.configApply.subtitle': 'config_apply',
   'agents.tool.eventRead.title': 'Read Event Cards',
   'agents.tool.eventRead.subtitle': 'read(event://...)',
-  'agents.tool.contextRewind.title': 'Context Recovery',
-  'agents.tool.contextRewind.subtitle': 'checkpoint / rewind',
   'agents.tool.unavailable.disabledByPolicy': 'Unavailable because this capability is disabled by the current Agent policy.',
   'agents.section.model': 'Model and Thinking',
   'agents.section.imageModel': 'Output Image Model',

@@ -307,7 +307,7 @@ func TestSessionConversationKeepsStableContextBeforeCompactionSummary(t *testing
 func TestSessionConversationPreparesIncrementalCompactionWithoutAdvancingCanonicalCheckpoint(t *testing.T) {
 	var capturedTranscript string
 	summarize := func(_ context.Context, _ *config.Config, request agentcompaction.SummaryRequest, _ func(int, string)) (string, error) {
-		capturedTranscript = joinedContextMessageContent(request.Messages)
+		capturedTranscript = strings.Join(messageContents(request.Messages), "\n")
 		return "新压缩摘要：旧目标与新增进展都已合并。", nil
 	}
 

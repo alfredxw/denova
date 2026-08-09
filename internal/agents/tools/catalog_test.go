@@ -255,34 +255,3 @@ func TestCatalogDefaultGrepBudgetPaginatesContextBlowingOutput(t *testing.T) {
 		t.Fatalf("grep did not expose a bounded continuation: %q", result[:min(len(result), 1024)])
 	}
 }
-
-func TestCatalogContextWindowRegistersCheckpointAndRewindAsOneCapability(t *testing.T) {
-	catalog := NewCatalog(nil, nil, RuntimeExecutables{})
-	disabled, err := catalog.ContextWindow(config.ResolvedAgentToolSettings{})
-	if err != nil || len(disabled) != 0 {
-		t.Fatalf("disabled context tools = %#v error=%v", disabled, err)
-	}
-	definitions, err := catalog.ContextWindow(config.ResolvedAgentToolSettings{config.AgentToolContextRewind: true})
-	if err != nil {
-		t.Fatal(err)
-	}
-	if len(definitions) != 2 {
-		t.Fatalf("context tool count = %d", len(definitions))
-	}
-	names := make([]string, 0, len(definitions))
-	for _, definition := range definitions {
-		info, infoErr := definition.Tool.Info(context.Background())
-		if infoErr != nil {
-			t.Fatal(infoErr)
-		}
-		names = append(names, info.Name)
-		if definition.Descriptor.Capability != config.AgentToolContextRewind ||
-			definition.Descriptor.Execution != agent.ToolExecutionSessionExclusive ||
-			definition.Descriptor.MutationScope != agent.ToolMutationSession {
-			t.Fatalf("descriptor for %s = %#v", info.Name, definition.Descriptor)
-		}
-	}
-	if strings.Join(names, ",") != "checkpoint,rewind" {
-		t.Fatalf("context tool names = %v", names)
-	}
-}

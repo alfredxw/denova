@@ -80,7 +80,7 @@ func toolAllowedByAccessMode(mode ToolAccessMode, descriptor agent.ToolDescripto
 		// another Agent kind in the future.
 		if descriptor.MutationScope == agent.ToolMutationSession {
 			switch descriptor.Capability {
-			case config.AgentToolAsk, config.AgentToolTodo, config.AgentToolContextRewind:
+			case config.AgentToolAsk, config.AgentToolTodo:
 				return true
 			}
 		}

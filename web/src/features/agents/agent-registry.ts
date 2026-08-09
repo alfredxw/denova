@@ -148,7 +148,6 @@ const TOOL_ICONS: Partial<Record<AgentToolCapability, LucideIcon>> = {
   lore_read: Database,
   lore_write: Wrench,
   image_generation: ImagePlus,
-  context_rewind: Archive,
 }
 
 // The backend manifest owns capability identity, order, effective policy and

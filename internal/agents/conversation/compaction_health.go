@@ -41,11 +41,6 @@ func (c *SessionConversation) compactionStructureFingerprint(input agentcompacti
 		fmt.Sprintf("candidate=%s|%d", strings.TrimSpace(input.CandidateFingerprint), input.CandidateGeneration),
 	}
 	if c.session != nil {
-		if snapshot, err := c.session.SnapshotContext(c.agentKind); err == nil && snapshot.ContextWindow != nil &&
-			(snapshot.Compaction == nil || snapshot.ContextWindow.ContextRevision > snapshot.Compaction.ContextRevision) {
-			anchors = append(anchors, fmt.Sprintf("rewind=%s|%d|%d", snapshot.ContextWindow.Rewind.CheckpointID,
-				snapshot.ContextWindow.RewindAfterIndex, snapshot.ContextWindow.ContextRevision))
-		}
 		if active, ok := c.session.LatestContextCompaction(c.agentKind); ok {
 			anchors = append(anchors, fmt.Sprintf("compaction=%s|%d|%d", active.ID, active.Epoch, active.SourceEndIndex))
 		}

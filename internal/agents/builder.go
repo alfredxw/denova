@@ -281,13 +281,6 @@ func buildAgent(ctx context.Context, cfg *config.Config, spec agentBuildSpec) (a
 	}
 
 	tools := append([]agent.ToolDefinition(nil), assembly.Tools...)
-	if spec.Kind == config.AgentKindGeneral || spec.Kind == config.AgentKindIDE || spec.Kind == config.AgentKindConfigManager {
-		contextTools, err := toolCatalog.ContextWindow(toolSettings)
-		if err != nil {
-			return nil, fmt.Errorf("创建上下文 checkpoint/rewind 工具失败: %w", err)
-		}
-		tools = append(tools, contextTools...)
-	}
 	if !spec.DisableWriteTodos && toolSettings.Allows(config.AgentToolTodo) {
 		todoTool, err := toolCatalog.Todo()
 		if err != nil {

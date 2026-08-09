@@ -200,24 +200,6 @@ func (agent *Agent) run(parent context.Context, input *AgentInput, options *agen
 			return
 		}
 
-		if controller, ok := ContextWindowControllerFromContext(ctx); ok {
-			rewritten, rewriteErr := controller.BeforeModel(ctx, cloneMessages(state.Messages))
-			if rewriteErr != nil {
-				events.Send(agent.errorEvent(fmt.Errorf("rewrite context window: %w", rewriteErr)))
-				return
-			}
-			if rewritten == nil {
-				events.Send(agent.errorEvent(errors.New("context window controller returned nil messages")))
-				return
-			}
-			state.Messages = cloneMessages(rewritten)
-			if source, ok := controller.(ContextWindowRewriteSource); ok {
-				if rewrite, changed := source.TakeContextWindowRewrite(); changed {
-					events.Send(&AgentEvent{AgentName: agent.name, Action: &AgentAction{CustomizedAction: rewrite}})
-				}
-			}
-		}
-
 		modelContext := &ModelContext{Tools: cloneToolInfos(state.ToolInfos), Retry: agent.retry, Iteration: iteration}
 		for _, middleware := range agent.middlewares {
 			ctx, state, err = middleware.BeforeModelRewriteState(ctx, state, modelContext)
@@ -327,21 +309,6 @@ func (agent *Agent) run(parent context.Context, input *AgentInput, options *agen
 		}
 
 		if len(assistant.ToolCalls) == 0 {
-			if controller, ok := ContextWindowControllerFromContext(ctx); ok {
-				rewritten, resume, completionErr := controller.BeforeComplete(ctx, cloneMessages(state.Messages))
-				if completionErr != nil {
-					events.Send(agent.errorEvent(fmt.Errorf("complete context window: %w", completionErr)))
-					return
-				}
-				if rewritten == nil {
-					events.Send(agent.errorEvent(errors.New("context window controller returned nil completion messages")))
-					return
-				}
-				state.Messages = cloneMessages(rewritten)
-				if resume {
-					continue
-				}
-			}
 			if cancelErr := options.cancel.safePoint(CancelAfterChatModel); cancelErr != nil {
 				events.Send(agent.errorEvent(cancelErr))
 				return
@@ -366,17 +333,7 @@ func (agent *Agent) run(parent context.Context, input *AgentInput, options *agen
 		} else {
 			toolResults, err = agent.executeToolBatch(ctx, registry, assistant.ToolCalls, modelResponseOrdinal, events, options.cancel)
 		}
-		for index, result := range toolResults {
-			if observer, ok := ContextMutationObserverFromContext(ctx); ok && index < len(assistant.ToolCalls) {
-				call := assistant.ToolCalls[index]
-				descriptor := fallbackToolResultDescriptor
-				if definition, exists := registry.Lookup(call.Function.Name); exists {
-					descriptor = definition.Descriptor
-				}
-				observer.ObserveTool(ctx, ContextToolObservation{
-					Name: call.Function.Name, CallID: result.executionID, Descriptor: descriptor, Result: result.result,
-				})
-			}
+		for _, result := range toolResults {
 			if result.message == nil {
 				continue
 			}

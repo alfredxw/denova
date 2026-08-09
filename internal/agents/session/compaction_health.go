@@ -62,8 +62,7 @@ func (s *Session) CommitContextCompactionHealthAtContext(
 }
 
 // LatestContextCompactionHealth carries the failure state across ordinary
-// transcript growth, but releases it when a newer rewind selects a different
-// model branch. Health rows remain in the append-only audit journal.
+// transcript growth. Health rows remain in the append-only audit journal.
 func (s *Session) LatestContextCompactionHealth(agentKind string) (ContextCompactionHealth, bool) {
 	if s == nil {
 		return ContextCompactionHealth{}, false
@@ -94,12 +93,6 @@ func (s *Session) latestContextCompactionHealthLocked(agentKind string) (Context
 		}
 	}
 	if !found {
-		return ContextCompactionHealth{}, false
-	}
-	if rewind, active, err := s.latestContextWindowProjectionLocked(agentKind); err == nil && active && rewind.ContextRevision > health.BasisRevision {
-		// A rewind selects a different model branch without deleting the prior
-		// health audit row. That structural change releases the old fuse while
-		// ordinary transcript growth intentionally does not.
 		return ContextCompactionHealth{}, false
 	}
 	return health, true

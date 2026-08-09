@@ -22,11 +22,7 @@ const displayPhaseEventKey = "display_phase"
 // appendAssistantIfAny persists generated output and returns the persistence
 // error to the run loop. A completed stream must never hide a failed commit.
 func appendAssistantIfAny(conversation Conversation, content, thinking *strings.Builder, metadata session.MessageMetadata) (string, error) {
-	structuralCommit := false
-	if pending, ok := conversation.(interface{ HasPendingContextOperations() bool }); ok {
-		structuralCommit = pending.HasPendingContextOperations()
-	}
-	if (content == nil || content.Len() == 0) && !structuralCommit {
+	if content == nil || content.Len() == 0 {
 		return "", nil
 	}
 	generated := ""

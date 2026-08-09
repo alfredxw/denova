@@ -40,8 +40,7 @@ type SessionConversation struct {
 	pendingCompaction       *preparedSessionContextCompaction
 	pendingCompactionHealth *preparedSessionContextCompactionHealth
 	pendingCleanup          *preparedSessionToolResultCleanup
-	pendingContextOps       []session.ContextOperation
-	contextWindowBase       *contextWindowModelBase
+	compactionModelBase     *compactionModelBase
 }
 
 func (c *SessionConversation) BindHarnessAgentKind(agentKind string) {
@@ -164,30 +163,13 @@ func (c *SessionConversation) CompactContextIfNeeded(ctx context.Context, input 
 	if strings.TrimSpace(input.Phase) == "" {
 		input.Phase = agentcompaction.PhasePreRun
 	}
-	if input.Automatic && c.hasPendingContextRewind() {
-		// One run may publish only one structural context mutation. The next turn
-		// can compact the durable rewind projection safely.
-		input.PreflightSkipReason = "staged_rewind_pending"
-		input.ObservedPromptTokens = 0
-		input.ObservedEstimateTokens = 0
-	}
-
-	source, providerSource, existingCheckpoint, sourceStart, sourceEnd, stagedRewind, err := c.stagedRewindCompactionSource(
-		input.Messages, input.KeepLatestUser,
-	)
+	source, existingCheckpoint, sourceStart, sourceEnd, err := c.compactionIncrementalSource(ctx, input.KeepLatestUser)
 	if err != nil {
-		return input.Messages, agentcompaction.Result{}, fmt.Errorf("read staged rewind compaction source: %w", err)
+		return input.Messages, agentcompaction.Result{}, fmt.Errorf("read canonical compaction source: %w", err)
 	}
-	if !stagedRewind {
-		source, existingCheckpoint, sourceStart, sourceEnd, err = c.compactionIncrementalSource(ctx, input.KeepLatestUser)
-		if err != nil {
-			return input.Messages, agentcompaction.Result{}, fmt.Errorf("read canonical compaction source: %w", err)
-		}
-		if mapped, ok := c.providerVisibleCompactionSource(source, sourceStart); ok {
-			providerSource = mapped
-		} else {
-			providerSource = source
-		}
+	providerSource := source
+	if mapped, ok := c.providerVisibleCompactionSource(source, sourceStart); ok {
+		providerSource = mapped
 	}
 	if strings.TrimSpace(input.ExistingCheckpoint) != "" {
 		existingCheckpoint = input.ExistingCheckpoint
@@ -217,7 +199,7 @@ func (c *SessionConversation) CompactContextIfNeeded(ctx context.Context, input 
 		input.ConsecutiveFailures = health.ConsecutiveFailures
 		input.FailureFuseOpen = true
 	}
-	if input.Automatic && input.PreflightSkipReason == "" && !c.hasActiveDurableContextRewind() {
+	if input.Automatic && input.PreflightSkipReason == "" {
 		cleanupMinimum := agentcontext.EffectiveToolResultCleanupMinimum(
 			input.Messages, input.Tools, resolveContextPressurePolicy(c.cfg, c.agentKind, input.Messages),
 		)
@@ -252,15 +234,6 @@ func (c *SessionConversation) CompactContextIfNeeded(ctx context.Context, input 
 	return newMessages, result, nil
 }
 
-func (c *SessionConversation) hasActiveDurableContextRewind() bool {
-	if c == nil || c.session == nil {
-		return false
-	}
-	snapshot, err := c.session.SnapshotContext(c.agentKind)
-	return err == nil && snapshot.ContextWindow != nil &&
-		(snapshot.Compaction == nil || snapshot.ContextWindow.ContextRevision > snapshot.Compaction.ContextRevision)
-}
-
 func (c *SessionConversation) compactionPolicy() agentcompaction.Policy {
 	if c == nil {
 		return agentcompaction.Policy{}
@@ -291,9 +264,7 @@ type SessionContextCompactionProjection struct {
 }
 
 // SnapshotContextCompaction returns one exact source/projection pair for both
-// automatic and manual compaction. In particular, an active rewind is resolved
-// before the source is exposed so discarded raw exploration cannot re-enter a
-// checkpoint through a cold/manual fallback.
+// automatic and manual compaction.
 func (c *SessionConversation) SnapshotContextCompaction(ctx context.Context, keepLatestUser bool) (SessionContextCompactionProjection, error) {
 	if c == nil || c.session == nil {
 		return SessionContextCompactionProjection{}, nil
@@ -341,14 +312,8 @@ func (c *SessionConversation) compactionIncrementalSourceFromSnapshot(
 	if sourceStart > total {
 		sourceStart = total
 	}
-	activeRewind := snapshot.ContextWindow != nil &&
-		(snapshot.Compaction == nil || snapshot.ContextWindow.ContextRevision > snapshot.Compaction.ContextRevision)
-	minimumSourceStart := sourceStart
-	if activeRewind {
-		minimumSourceStart = snapshot.Cursor.ClearAfterIndex
-	}
 	sourceEnd := total
-	if !keepLatestUser && sourceEnd > minimumSourceStart {
+	if !keepLatestUser && sourceEnd > sourceStart {
 		latest, err := c.session.ReadMessageRange(ctx, sourceEnd-1, sourceEnd)
 		if err != nil {
 			return nil, "", sourceStart, sourceEnd, err
@@ -357,23 +322,8 @@ func (c *SessionConversation) compactionIncrementalSourceFromSnapshot(
 			sourceEnd--
 		}
 	}
-	if sourceEnd < minimumSourceStart {
-		sourceEnd = minimumSourceStart
-	}
-	if activeRewind {
-		// A rewind defines a new canonical model branch without deleting the raw
-		// transcript. Compact the exact rewind projection; reading the raw range
-		// here would summarize discarded exploration and cannot match the final
-		// primary request. The newer compaction revision will supersede the rewind.
-		projected := c.modelHistory(snapshot)
-		if !keepLatestUser && sourceEnd < total && len(projected) > 0 && projected[len(projected)-1] != nil && projected[len(projected)-1].Role == agent.User {
-			projected = projected[:len(projected)-1]
-		}
-		if sourceEnd < snapshot.Cursor.ClearAfterIndex {
-			sourceEnd = snapshot.Cursor.ClearAfterIndex
-		}
-		source := compactionSourceMessages(projected, true)
-		return source, existingCheckpoint, snapshot.Cursor.ClearAfterIndex, sourceEnd, nil
+	if sourceEnd < sourceStart {
+		sourceEnd = sourceStart
 	}
 	messages, err := c.session.ReadMessageRange(ctx, sourceStart, sourceEnd)
 	if err != nil {
@@ -381,7 +331,7 @@ func (c *SessionConversation) compactionIncrementalSourceFromSnapshot(
 	}
 	// Match the exact projection already assembled for the primary provider
 	// request. Canonical rich results remain append-only, but a persisted cleanup
-	// placeholder is what both the checkpoint fork and the next model can see.
+	// placeholder is what both compaction and the next model can see.
 	if cleanup := snapshot.ToolResultCleanup; cleanup != nil {
 		messages = applyToolResultCleanupProjection(messages, sourceStart, *cleanup)
 	}
@@ -452,12 +402,6 @@ func (c *SessionConversation) AppendAssistantWithMetadata(content, _ string, met
 	if !agentrun.ValidCycleIdentity(identity) {
 		return ErrMissingAgentCycleIdentity
 	}
-	c.cycleMu.Lock()
-	metadata.ContextOperations = append(
-		append([]session.ContextOperation(nil), metadata.ContextOperations...),
-		c.pendingContextOps...,
-	)
-	c.cycleMu.Unlock()
 	message := agent.AssistantMessage(content, nil)
 	message.Extra = providers.ContinuationExtra(metadata.ProviderContinuation)
 	intent, err := session.NewDomainCommitIntent(session.DomainCommitIdentity{
@@ -495,56 +439,8 @@ func (c *SessionConversation) BindAgentCycleIdentity(identity agentrun.CycleIden
 	c.pendingCompaction = nil
 	c.pendingCompactionHealth = nil
 	c.pendingCleanup = nil
-	c.pendingContextOps = nil
-	c.contextWindowBase = nil
+	c.compactionModelBase = nil
 	c.cycleMu.Unlock()
-}
-
-func (c *SessionConversation) ActiveContextCheckpoints(agentKind string) ([]session.ContextOperation, error) {
-	if c == nil || c.session == nil {
-		return nil, nil
-	}
-	return c.session.ActiveContextCheckpoints(agentKind)
-}
-
-// StageContextOperation keeps structural context metadata process-local until
-// the assistant output is authorized and committed by the durable harness.
-func (c *SessionConversation) StageContextOperation(operation session.ContextOperation) error {
-	if c == nil || c.session == nil {
-		return fmt.Errorf("会话不存在")
-	}
-	c.cycleMu.Lock()
-	defer c.cycleMu.Unlock()
-	if !agentrun.ValidCycleIdentity(c.cycleIdentity) {
-		return ErrMissingAgentCycleIdentity
-	}
-	// Mutation observations enrich the active checkpoint while the run is
-	// still process-local. Replace that staged checkpoint so a preempted output
-	// commits the latest bounded receipts instead of an obsolete empty marker.
-	if operation.Kind == session.ContextOperationCheckpoint {
-		for index, pending := range c.pendingContextOps {
-			if pending.Kind == operation.Kind && pending.AgentKind == operation.AgentKind && pending.CheckpointID == operation.CheckpointID {
-				c.pendingContextOps[index] = operation
-				return nil
-			}
-		}
-	}
-	if len(c.pendingContextOps) >= 16 {
-		return fmt.Errorf("too many context operations in one agent cycle")
-	}
-	c.pendingContextOps = append(c.pendingContextOps, operation)
-	return nil
-}
-
-// HasPendingContextOperations reports whether an otherwise empty assistant
-// commit is still required to durably publish structural context metadata.
-func (c *SessionConversation) HasPendingContextOperations() bool {
-	if c == nil {
-		return false
-	}
-	c.cycleMu.Lock()
-	defer c.cycleMu.Unlock()
-	return len(c.pendingContextOps) > 0
 }
 
 func (c *SessionConversation) BindAgentCycleInputCommit(commit func() error) {

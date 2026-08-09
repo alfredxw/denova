@@ -149,7 +149,6 @@ func TestRestrictedAgentKindCapabilityCeilings(t *testing.T) {
 				AgentToolWorkspaceRead, AgentToolWorkspaceWrite, AgentToolShell,
 				AgentToolWebSearch, AgentToolWebFetch, AgentToolBrowser,
 				AgentToolAsk, AgentToolTodo, AgentToolSkills, AgentToolDelegation,
-				AgentToolContextRewind,
 			},
 		},
 		{

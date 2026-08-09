@@ -36,17 +36,6 @@ func captureAssistantBuilderDelta(target *strings.Builder, before, after string)
 	target.WriteString(after)
 }
 
-func (r *chatRun) resetEffectiveAssistantOutput() {
-	if r == nil {
-		return
-	}
-	r.effectiveContent.Reset()
-	r.effectiveThinking.Reset()
-	r.effectiveOutputSet = true
-	r.capturedContent = ""
-	r.capturedThinking = ""
-}
-
 func (r *chatRun) effectiveAssistantOutput() (string, string) {
 	if r == nil {
 		return "", ""

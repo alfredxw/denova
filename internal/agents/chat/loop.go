@@ -2,7 +2,6 @@ package chat
 
 import (
 	"context"
-	agentconversation "denova/internal/agents/conversation"
 	agentinteractive "denova/internal/agents/interactive"
 	agentrun "denova/internal/agents/run"
 	agenttool "denova/internal/agents/tool"
@@ -47,9 +46,6 @@ func newChatAgentLoop(run *chatRun, history []*agent.Message, agentMessage strin
 	}
 	if provider, ok := run.conversation.(toolArtifactStoreProvider); ok {
 		runCtx = agent.ContextWithToolArtifactStore(runCtx, provider.ToolArtifactStore())
-	}
-	if controller := agentconversation.NewContextWindowController(run.conversation, run.options.AgentKind); controller != nil {
-		runCtx = agent.ContextWithContextWindowController(runCtx, controller)
 	}
 	if run.req.PlanMode {
 		runCtx = agenttoolruntime.ContextWithToolAccessMode(runCtx, agenttoolruntime.ToolAccessModePlanReadOnly)
@@ -125,12 +121,6 @@ func (l *chatAgentLoop) next() chatLoopResult {
 	}
 	if event.Action != nil && event.Action.Interrupted != nil {
 		return l.runnerFailed(event.Action.Interrupted)
-	}
-	if event.Action != nil {
-		if _, ok := event.Action.CustomizedAction.(agent.ContextWindowRewrite); ok {
-			run.resetEffectiveAssistantOutput()
-			return chatLoopResult{action: chatLoopContinue}
-		}
 	}
 	if event.Err != nil {
 		return l.runnerFailed(event.Err)

@@ -5,22 +5,6 @@ import (
 	"testing"
 )
 
-type invocationContextController struct{}
-
-func (*invocationContextController) BeforeModel(_ context.Context, messages []*Message) ([]*Message, error) {
-	return messages, nil
-}
-func (*invocationContextController) BeforeComplete(_ context.Context, messages []*Message) ([]*Message, bool, error) {
-	return messages, false, nil
-}
-func (*invocationContextController) Checkpoint(context.Context, ContextCheckpointRequest) (ContextCheckpointResult, error) {
-	return ContextCheckpointResult{}, nil
-}
-func (*invocationContextController) Rewind(context.Context, ContextRewindRequest) (ContextRewindResult, error) {
-	return ContextRewindResult{}, nil
-}
-func (*invocationContextController) ObserveTool(context.Context, ContextToolObservation) {}
-
 func TestChildInvocationNamespacesCallsAndOwnsResources(t *testing.T) {
 	identityCtx := ContextWithInvocationIdentity(context.Background(), InvocationIdentity{
 		Scope: "workspace:one", OperationID: "operation-1", Cycle: 1,
@@ -138,25 +122,5 @@ func TestExecutionNamespaceReplaysDeterministicallyAndChangesByCycle(t *testing.
 	first := derive(1)
 	if first == "" || first != derive(1) || first == derive(2) {
 		t.Fatalf("execution IDs first=%q replay=%q next-cycle=%q", first, derive(1), derive(2))
-	}
-}
-
-func TestChildInvocationHidesRewriterButKeepsMutationObserver(t *testing.T) {
-	controller := &invocationContextController{}
-	rootCtx, finishRoot, err := beginRootInvocation(ContextWithContextWindowController(context.Background(), controller), "root")
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer func() { _ = finishRoot() }()
-	childCtx, finishChild, err := BeginChildInvocation(ContextWithToolCall(rootCtx, "task-1", "task"), "researcher")
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer func() { _ = finishChild() }()
-	if _, ok := ContextWindowControllerFromContext(childCtx); ok {
-		t.Fatal("child invocation inherited root transcript rewrite authority")
-	}
-	if observer, ok := ContextMutationObserverFromContext(childCtx); !ok || observer != controller {
-		t.Fatalf("child mutation observer = %#v available=%t", observer, ok)
 	}
 }

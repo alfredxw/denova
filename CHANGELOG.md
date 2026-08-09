@@ -6,6 +6,11 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### Removed
+
+- 移除模型可调用的 `checkpoint` / `rewind`（`context_rewind`）能力，以及对应的运行时上下文改写、会话 boundary 记录和持久化 rewind 投影。上下文管理统一由阈值驱动的 Tool Result Cleanup 与自动 Compaction 负责；运行时内部 journal checkpoint 和前端展示断点不受影响。Beta 不提供旧手动 rewind 状态的兼容或迁移层。
+- Removed the model-callable `checkpoint` / `rewind` (`context_rewind`) capability together with its runtime transcript rewriting, session boundary records, and durable rewind projection. Context management now relies exclusively on threshold-driven Tool Result Cleanup and automatic Compaction; internal journal checkpoints and UI display checkpoints are unchanged. As a Beta breaking change, existing manual rewind state has no compatibility or migration layer.
+
 ### Added
 
 - 新增面向 macOS/Linux 的 `scripts/install.sh` 一键安装器：自动识别 ARM64/x64，下载最新或指定版本 GitHub Release，依据发布清单校验 SHA-256，并以无需 sudo 的用户级目录原子安装；程序、命令入口与用户数据相互分离，重复安装会保留已有全局启动配置。README 已补充中英文 `curl -fsSL` 安装方式与目录覆盖参数，无需新增持久化配置。

@@ -339,8 +339,7 @@ func TestBuildChatModelAgentAssemblyPassesToolResultLimit(t *testing.T) {
 func TestRunSubAgentForwardsDrainedChildEvents(t *testing.T) {
 	child := &streamingSubAgent{}
 	var forwarded []*agent.AgentEvent
-	controller := &subagentContextController{}
-	ctx := agent.ContextWithContextWindowController(context.Background(), controller)
+	ctx := context.Background()
 	ctx = agent.ContextWithEventSink(ctx, func(event *agent.AgentEvent) {
 		forwarded = append(forwarded, event)
 	})
@@ -360,8 +359,8 @@ func TestRunSubAgentForwardsDrainedChildEvents(t *testing.T) {
 	if len(forwarded) != 1 || forwarded[0].AgentName != "reviewer" || len(forwarded[0].RunPath) != 1 {
 		t.Fatalf("forwarded events = %#v", forwarded)
 	}
-	if child.scope.Depth != 1 || child.hasRewriter || !child.hasMutationObserver {
-		t.Fatalf("child scope=%#v rewriter=%t mutation_observer=%t", child.scope, child.hasRewriter, child.hasMutationObserver)
+	if child.scope.Depth != 1 {
+		t.Fatalf("child scope=%#v", child.scope)
 	}
 	variant := forwarded[0].Output.MessageOutput
 	if variant == nil || variant.IsStreaming || variant.MessageStream != nil || variant.Message == nil || variant.Message.Content != "child result" {
@@ -403,19 +402,15 @@ func TestRunSubAgentPreservesParentPathForEveryNestedEvent(t *testing.T) {
 }
 
 type streamingSubAgent struct {
-	request             string
-	scope               agent.InvocationScope
-	hasRewriter         bool
-	hasMutationObserver bool
-	emitToolEvent       bool
+	request       string
+	scope         agent.InvocationScope
+	emitToolEvent bool
 }
 
 func (*streamingSubAgent) Name(context.Context) string        { return "reviewer" }
 func (*streamingSubAgent) Description(context.Context) string { return "Reviews delegated work." }
 func (child *streamingSubAgent) Run(ctx context.Context, input *agent.AgentInput, _ ...agent.AgentRunOption) *agent.AsyncIterator[*agent.AgentEvent] {
 	child.scope, _ = agent.InvocationScopeFromContext(ctx)
-	_, child.hasRewriter = agent.ContextWindowControllerFromContext(ctx)
-	_, child.hasMutationObserver = agent.ContextMutationObserverFromContext(ctx)
 	if input != nil && len(input.Messages) > 0 && input.Messages[0] != nil {
 		child.request = input.Messages[0].Content
 	}
@@ -442,22 +437,6 @@ func (child *streamingSubAgent) Run(ctx context.Context, input *agent.AgentInput
 	generator.Close()
 	return iterator
 }
-
-type subagentContextController struct{}
-
-func (*subagentContextController) BeforeModel(_ context.Context, messages []*agent.Message) ([]*agent.Message, error) {
-	return messages, nil
-}
-func (*subagentContextController) BeforeComplete(_ context.Context, messages []*agent.Message) ([]*agent.Message, bool, error) {
-	return messages, false, nil
-}
-func (*subagentContextController) Checkpoint(context.Context, agent.ContextCheckpointRequest) (agent.ContextCheckpointResult, error) {
-	return agent.ContextCheckpointResult{}, nil
-}
-func (*subagentContextController) Rewind(context.Context, agent.ContextRewindRequest) (agent.ContextRewindResult, error) {
-	return agent.ContextRewindResult{}, nil
-}
-func (*subagentContextController) ObserveTool(context.Context, agent.ContextToolObservation) {}
 
 type fakeAgent struct {
 	name        string

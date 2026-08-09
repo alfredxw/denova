@@ -4,7 +4,6 @@ import (
 	"context"
 	agentrun "denova/internal/agents/run"
 	"denova/internal/agents/toolresult"
-	"errors"
 	"fmt"
 
 	agent "github.com/alfredxw/denova/agent"
@@ -12,8 +11,6 @@ import (
 	agentcontext "denova/internal/agents/context"
 	"denova/internal/agents/session"
 )
-
-var errToolResultCleanupBlockedByRewind = errors.New("tool-result cleanup is deferred while a context rewind projection is active")
 
 // PostSettlementToolResultCleanupProvider commits a deterministic, reversible
 // context projection after the parent turn is durable. A missed cleanup is
@@ -32,27 +29,9 @@ func (c *SessionConversation) ContextPressurePolicy(messages []*agent.Message) a
 		return agentcontext.ContextPressurePolicy{}
 	}
 	policy := resolveContextPressurePolicy(c.cfg, c.agentKind, messages)
-	pendingRewind := c.hasPendingContextRewind()
-	if pendingRewind {
-		policy.CleanupEnabled = false
-		// Provider usage belongs to the pre-rewind request and must not force a
-		// second structural operation against the already rewritten in-run view.
-		policy.ObservedPromptTokens = 0
-	}
 	if c.session != nil {
-		if promptTokens, cachedTokens, ok := c.session.LatestModelPromptUsage(c.agentKind); ok && !pendingRewind {
+		if promptTokens, cachedTokens, ok := c.session.LatestModelPromptUsage(c.agentKind); ok {
 			policy = policy.ObservePromptUsage(promptTokens, cachedTokens)
-		}
-		// A rewind projects an older frozen prefix ahead of a newer append-only
-		// suffix. A CleanupRecord currently addresses raw journal indexes, so it
-		// cannot durably replace a result inside that frozen prefix. Disable both
-		// local and native cleanup until a newer compaction supersedes the rewind;
-		// hard pressure still routes directly to compaction.
-		if snapshot, err := c.session.SnapshotContext(c.agentKind); err != nil {
-			policy.CleanupEnabled = false
-		} else if snapshot.ContextWindow != nil &&
-			(snapshot.Compaction == nil || snapshot.ContextWindow.ContextRevision > snapshot.Compaction.ContextRevision) {
-			policy.CleanupEnabled = false
 		}
 	}
 	return policy
@@ -71,11 +50,6 @@ func (c *SessionConversation) StageToolResultCleanup(ctx context.Context, visibl
 	}
 	total := snapshot.Cursor.MessageCount
 	start := snapshot.Cursor.ClearAfterIndex
-	useRewind := c.hasPendingContextRewind() || (snapshot.ContextWindow != nil &&
-		(snapshot.Compaction == nil || snapshot.ContextWindow.ContextRevision > snapshot.Compaction.ContextRevision))
-	if useRewind {
-		return errToolResultCleanupBlockedByRewind
-	}
 	canonical, err := c.session.ReadMessageRange(ctx, start, total)
 	if err != nil {
 		return fmt.Errorf("resolve cleanup canonical range: %w", err)
@@ -115,20 +89,6 @@ func (c *SessionConversation) StageToolResultCleanup(ctx context.Context, visibl
 	c.pendingCleanup = &preparedSessionToolResultCleanup{record: record}
 	c.cycleMu.Unlock()
 	return nil
-}
-
-func (c *SessionConversation) hasPendingContextRewind() bool {
-	if c == nil {
-		return false
-	}
-	c.cycleMu.Lock()
-	defer c.cycleMu.Unlock()
-	for _, operation := range c.pendingContextOps {
-		if operation.Kind == session.ContextOperationRewind && operation.AgentKind == c.agentKind {
-			return true
-		}
-	}
-	return false
 }
 
 func (c *SessionConversation) CommitPostSettlementToolResultCleanup(ctx context.Context, settledOperationID agentrun.OperationID) error {

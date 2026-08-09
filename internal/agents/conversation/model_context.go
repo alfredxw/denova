@@ -122,7 +122,7 @@ func (c *SessionConversation) CommitModelInput(ctx context.Context, _ string, as
 	if appendErr != nil {
 		return appendErr
 	}
-	c.rememberContextWindowModelBase(state.canonicalMessages, state.effectiveMessages)
+	c.rememberCompactionModelBase(state.canonicalMessages, state.effectiveMessages)
 	c.rememberContextAssembly(assembled.Context)
 	return nil
 }
@@ -166,24 +166,13 @@ func (c *SessionConversation) modelHistory(snapshot session.ContextSnapshot) []*
 	if snapshot.ToolResultCleanup != nil {
 		history = applyToolResultCleanupProjection(history, effectiveStart, *snapshot.ToolResultCleanup)
 	}
-	useRewind := snapshot.ContextWindow != nil &&
-		(snapshot.Compaction == nil || snapshot.ContextWindow.ContextRevision > snapshot.Compaction.ContextRevision)
-	if useRewind {
-		history = applyContextWindowProjection(history, effectiveStart, *snapshot.ContextWindow)
-	} else if snapshot.Compaction != nil && strings.TrimSpace(snapshot.Compaction.Summary) != "" {
+	if snapshot.Compaction != nil && strings.TrimSpace(snapshot.Compaction.Summary) != "" {
 		compaction := *snapshot.Compaction
 		retainedTurns := compaction.RetainedTurns
 		if retainedTurns <= 0 {
 			retainedTurns = policy.RetainedTurns
 		}
-		var tail []*agent.Message
-		if snapshot.ContextWindow != nil && snapshot.ContextWindow.ContextRevision < compaction.ContextRevision {
-			tail = agentcompaction.TailAfterRewindSource(
-				history, effectiveStart, compaction.SourceEndIndex, retainedTurns, *snapshot.ContextWindow,
-			)
-		} else {
-			tail = agentcompaction.TailAfterSource(history, effectiveStart, compaction.SourceEndIndex, retainedTurns)
-		}
+		tail := agentcompaction.TailAfterSource(history, effectiveStart, compaction.SourceEndIndex, retainedTurns)
 		history = make([]*agent.Message, 0, 1+len(tail))
 		history = append(history, agentcontext.NewCompactionSummaryMessage(compaction.Epoch, compaction.Summary))
 		history = append(history, tail...)

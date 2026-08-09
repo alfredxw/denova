@@ -61,8 +61,6 @@ const agents = {
   'agents.tool.configApply.subtitle': 'config_apply',
   'agents.tool.eventRead.title': '读取事件卡',
   'agents.tool.eventRead.subtitle': 'read(event://...)',
-  'agents.tool.contextRewind.title': '上下文恢复',
-  'agents.tool.contextRewind.subtitle': 'checkpoint / rewind',
   'agents.tool.unavailable.disabledByPolicy': '当前 Agent 的工具策略已禁用此能力。',
   'agents.section.model': '模型与思考',
   'agents.section.imageModel': '出图模型',

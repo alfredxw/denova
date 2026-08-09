@@ -231,8 +231,6 @@ func appendRecordLine(sess *Session, line []byte, lineNumber int) error {
 		return appendInterruptionRecordLine(sess, line, lineNumber)
 	case historyTypeAsk:
 		return appendAskRecordLine(sess, line)
-	case historyTypeContextBoundary:
-		return appendContextBoundaryRecordLine(sess, line)
 	case historyTypeCompaction:
 		return appendCompactionRecordLine(sess, line, lineNumber)
 	case historyTypeCompactionRemoved:

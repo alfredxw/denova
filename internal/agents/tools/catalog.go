@@ -185,40 +185,6 @@ func (catalog *Catalog) Todo() (agent.ToolDefinition, error) { return newTodoToo
 
 func (catalog *Catalog) Ask() (agent.ToolDefinition, error) { return newAskTool() }
 
-func (catalog *Catalog) ContextWindow(settings config.ResolvedAgentToolSettings) ([]agent.ToolDefinition, error) {
-	if !settings.Allows(config.AgentToolContextRewind) {
-		return nil, nil
-	}
-	checkpoint, err := agenttools.Checkpoint()
-	if err != nil {
-		return nil, fmt.Errorf("create checkpoint tool: %w", err)
-	}
-	rewind, err := agenttools.Rewind()
-	if err != nil {
-		return nil, fmt.Errorf("create rewind tool: %w", err)
-	}
-	descriptor := agent.ToolDescriptor{
-		Source: agent.ToolSourceHistory, Capability: config.AgentToolContextRewind,
-		Execution:        agent.ToolExecutionSessionExclusive,
-		MutationScope:    agent.ToolMutationSession,
-		PostCheck:        agent.ToolPostCheckSessionState,
-		Recovery:         agent.ToolRecoveryReconcilable,
-		ResultProjection: agent.ToolResultBoundedModelContext,
-		ResultRetention:  agent.ToolResultProtected,
-		Steering:         agent.SteeringFinishCurrent,
-		MaxResultBytes:   defaultToolResultMaxBytes,
-	}
-	checkpointDefinition, err := defineTool(checkpoint, descriptor)
-	if err != nil {
-		return nil, err
-	}
-	rewindDefinition, err := defineTool(rewind, descriptor)
-	if err != nil {
-		return nil, err
-	}
-	return []agent.ToolDefinition{checkpointDefinition, rewindDefinition}, nil
-}
-
 func (catalog *Catalog) Task(ctx context.Context, subAgents []agent.Runnable) (agent.ToolDefinition, error) {
 	return newTaskTool(ctx, subAgents)
 }

@@ -54,7 +54,7 @@ Denova 面向长期创作项目和互动娱乐，把写作 IDE、互动故事、
 ## 核心能力
 
 - **写作模式**：面向小说创作，支持 Markdown 编辑、多 Tab、正则查找与替换、带自动备份的工作区全局替换、章节统计、大纲、章节组细纲、进度追踪、正文评论、Change Review 和现有小说导入。
-- **创作 Agent**：可读取选区、文件、资料库和可信审阅意见，调用工具生成或修改章节，并通过 Skills / SubAgents 适配不同写作任务、文风和工作流；通用工具采用 `read / write / edit / glob / grep / bash|pwsh / web_search / web_fetch / browser / todo / ask / skill / task` 的小接口，并可按 Agent policy 启用 context-only 的 `checkpoint / rewind`。写入仍进入累计 Diff，可审阅、评论与撤销。
+- **创作 Agent**：可读取选区、文件、资料库和可信审阅意见，调用工具生成或修改章节，并通过 Skills / SubAgents 适配不同写作任务、文风和工作流；通用工具采用 `read / write / edit / glob / grep / bash|pwsh / web_search / web_fetch / browser / todo / ask / skill / task` 的小接口。写入仍进入累计 Diff，可审阅、评论与撤销。
 - **游戏模式**：运行互动文字冒险，支持玩家输入、剧情分支、故事线切换、后台导演运行策略、行动建议、已保存 AI 回复修正、可检索回合历史、可归档恢复的 Actor State 与自定义状态布局，以及由全屏导演台管理的目标、压力、代价、事件卡包和规则检定。
 - **资料库与预设**：沉淀角色、世界观、地点、势力、规则、物品等稳定设定；叙事风格负责文风、提示词槽位和场景风格，故事导演可插拔组合叙事风格、事件包、TRPG 检定、状态系统和图像方案，且每个模块都可独立关闭；状态系统同时提供可复用词条库，模板决定各类 Actor 创建时的抽取规则。
 - **图像创作**：支持章节插画、互动图像和书籍封面生成，复用 OpenAI 兼容图像模型配置，并在界面中预览和管理结果。
