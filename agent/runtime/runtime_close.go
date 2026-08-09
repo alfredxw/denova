@@ -19,20 +19,33 @@ func (r *Runtime) CloseBinding(ctx context.Context, binding BindingRef) error {
 	if ctx == nil {
 		ctx = context.Background()
 	}
-	r.mu.Lock()
-	if scope := r.matchingScopeCloseLocked(ref); scope != nil {
+	for {
+		r.mu.Lock()
+		if scope := r.matchingScopeCloseLocked(ref); scope != nil {
+			r.mu.Unlock()
+			return waitScopeClose(ctx, nil, scope)
+		}
+		if pending := r.closing[key]; pending != nil {
+			kind := pending.kind
+			r.mu.Unlock()
+			if err := waitCloseCall(ctx, nil, pending); err != nil {
+				return err
+			}
+			switch kind {
+			case closeCallBinding:
+				return nil
+			case closeCallIdleEviction:
+				// An idle eviction can complete successfully without closing a
+				// busy actor. Retry so this caller installs an authoritative fence.
+				continue
+			}
+		}
+		pending := &closeCall{ready: make(chan struct{}), ref: ref, kind: closeCallBinding}
+		r.closing[key] = pending
 		r.mu.Unlock()
-		return waitScopeClose(ctx, nil, scope)
-	}
-	if pending := r.closing[key]; pending != nil {
-		r.mu.Unlock()
+		go r.finishCloseBinding(key, pending)
 		return waitCloseCall(ctx, nil, pending)
 	}
-	pending := &closeCall{ready: make(chan struct{}), ref: ref}
-	r.closing[key] = pending
-	r.mu.Unlock()
-	go r.finishCloseBinding(key, pending)
-	return waitCloseCall(ctx, nil, pending)
 }
 
 func (r *Runtime) finishCloseBinding(key string, pending *closeCall) {

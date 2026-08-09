@@ -232,6 +232,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Fixed
 
+- 修复 Agent Runtime 在容量淘汰忙碌 Binding 与显式关闭并发时可能错误报告关闭成功的问题；显式关闭现在会等待空闲淘汰探测完成并建立权威关闭屏障，确保 Actor 与 Journal lease 已真正释放。无需新增配置。
+- Fixed Agent Runtime incorrectly reporting success when explicit binding close raced with capacity eviction of a busy binding. Explicit close now waits for the idle-eviction probe and then establishes an authoritative close barrier, ensuring the actor and journal lease are actually released. No new setting is required.
+- 修复 Unix PTY 进程组回归测试在 Linux CI 上引用不可用 `syscall.Getsid` 而无法编译的问题；测试统一使用现有 `x/sys/unix` 平台 API，macOS 与 Linux 共用相同验证。
+- Fixed the Unix PTY process-group regression test failing to compile on Linux CI because `syscall.Getsid` is unavailable there. The test now uses the existing `x/sys/unix` platform APIs on both macOS and Linux.
 - 修复游戏状态表首次从默认页签切换到较矮页签时，消息列表因 Footer 高度骤减而把垂直滚动位置钳制到新的底部、返回原页签也无法恢复的问题。状态表现在以当前回合内已展示过的最大高度稳定消息尾部几何，并在页签、展开或折叠交互触发布局变化后恢复交互前的滚动位置；隐藏页签仍保持挂载和内部状态，写作及其他共享消息列表行为不变。无需新增配置。
 - Fixed the Game state ledger clamping the message list to a new bottom when its first switch from the default tab revealed a shorter panel, leaving the previous vertical position unrecoverable after switching back. The ledger now stabilizes the message-footer geometry to the tallest state shown in the current turn and restores the pre-interaction scroll position after tab, expand, or collapse layout changes; hidden tabs remain mounted with their local state, while Writing and other shared message-list behavior is unchanged. No new setting is required.
 - 修复 Agent 对话流式输出一次新增多行时，文字可能先出现在输入区上方的下一行、随后整体上抬造成抖动，以及首批多行内容或 transport 阶段切换后偶发断开底部锁定的问题。写作、游戏、工作台 AgentChat、配置管理及 SubAgent 会话现在共用按视口自适应的回复生长区：新回合先保留约三分之一前文、让输出在其余空间内自然向下生长，填满后才接管滚动；滚动校正改为维持绝对可见底部，并在 Virtuoso 延迟发布完整高度后继续应用未完成的差值，不再把被浏览器截断的多行补偿误记为完成。底部锁定只会被明确的用户上滚意图解除，并覆盖整个活跃执行阶段；短回复结束时仅保留尚未消费的空白，避免完成态跳动。无需新增配置。

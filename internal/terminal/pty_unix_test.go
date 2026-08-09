@@ -3,7 +3,6 @@
 package terminal
 
 import (
-	"syscall"
 	"testing"
 
 	"golang.org/x/sys/unix"
@@ -17,14 +16,14 @@ func TestSessionRootOwnsPTYForegroundProcessGroup(t *testing.T) {
 	}
 
 	pid := session.cmd.Process.Pid
-	sid, err := syscall.Getsid(pid)
+	sid, err := unix.Getsid(pid)
 	if err != nil {
 		t.Fatalf("get shell session id: %v", err)
 	}
 	if sid != pid {
 		t.Fatalf("shell inherited host session: pid=%d sid=%d", pid, sid)
 	}
-	pgid, err := syscall.Getpgid(pid)
+	pgid, err := unix.Getpgid(pid)
 	if err != nil {
 		t.Fatalf("get shell process group: %v", err)
 	}

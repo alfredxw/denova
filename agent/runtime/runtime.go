@@ -53,8 +53,20 @@ type projectCall struct {
 type closeCall struct {
 	ready chan struct{}
 	ref   BindingRef
+	kind  closeCallKind
 	err   error
 }
+
+type closeCallKind uint8
+
+const (
+	// closeCallBinding is an authoritative close barrier. Once it completes,
+	// callers may rely on the binding having released its actor and journal lease.
+	closeCallBinding closeCallKind = iota
+	// closeCallIdleEviction only probes whether capacity management can release an
+	// idle actor. A busy result is successful but does not close the binding.
+	closeCallIdleEviction
+)
 
 type scopeCloseCall struct {
 	ready    chan struct{}

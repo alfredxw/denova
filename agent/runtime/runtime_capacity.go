@@ -35,7 +35,11 @@ func (r *Runtime) trimIdleBindings(protected string) {
 			r.mu.Unlock()
 			return
 		}
-		pending := &closeCall{ready: make(chan struct{}), ref: candidate.binding.Clone()}
+		pending := &closeCall{
+			ready: make(chan struct{}),
+			ref:   candidate.binding.Clone(),
+			kind:  closeCallIdleEviction,
+		}
 		r.closing[candidateKey] = pending
 		r.mu.Unlock()
 
