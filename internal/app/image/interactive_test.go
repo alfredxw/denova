@@ -8,6 +8,9 @@ import (
 	"testing"
 
 	"denova/config"
+	agentconversation "denova/internal/agents/conversation"
+	agentrun "denova/internal/agents/run"
+	"denova/internal/agents/session"
 	apptask "denova/internal/app/task"
 	imagepreset "denova/internal/image/preset"
 	"denova/internal/interactive"
@@ -74,6 +77,54 @@ func TestImageAgentMessageDeterministicallyLoadsRequestedSkill(t *testing.T) {
 	}
 	if len(resolved) != 1 || resolved[0].Name != "interactive-image" || !strings.Contains(resolved[0].Instructions, "# 互动图像") {
 		t.Fatalf("resolved image Skills = %#v", resolved)
+	}
+}
+
+func TestPrepareImageAgentSessionCreatesCanonicalSessionBeforeAdmission(t *testing.T) {
+	store, err := session.NewStore(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	sess, err := prepareImageAgentSession(store)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if sess.ID != "image-agent" || !store.Exists(sess.ID) {
+		t.Fatalf("prepared Image Agent session = %q, exists=%v", sess.ID, store.Exists(sess.ID))
+	}
+	if snapshot, ok := sess.RuntimeConfig(); ok {
+		t.Fatalf("Image Agent journal must not freeze runtime selection: %#v", snapshot)
+	}
+}
+
+func TestImageAgentConversationCommitsAssistantThroughHarnessCycle(t *testing.T) {
+	store, err := session.NewStore(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	cfg := config.Config{AgentApprovalMode: config.AgentApprovalWrite}
+	sess, err := prepareImageAgentSession(store)
+	if err != nil {
+		t.Fatal(err)
+	}
+	conversation := &imageAgentConversation{
+		journal: agentconversation.NewSessionConversationForAgent(sess, &cfg, config.AgentKindImage),
+	}
+	identity := agentrun.CycleIdentity{CommandID: "image-command", OperationID: "image-operation", Cycle: 1}
+	conversation.BindAgentCycleIdentity(identity)
+	if err := conversation.AppendAssistantWithMetadata("generated", "", session.MessageMetadata{AgentKind: config.AgentKindImage}); err != nil {
+		t.Fatal(err)
+	}
+	intent, pending, err := conversation.PendingAgentCycleCommit(agentrun.DomainCommitOutput)
+	if err != nil || !pending || intent.Identity != identity || intent.Hash == "" {
+		t.Fatalf("pending Image Agent output = %#v, pending=%v, err=%v", intent, pending, err)
+	}
+	if err := conversation.CommitAgentCycleStage(context.Background(), agentrun.DomainCommitOutput, agentrun.Outcome{Status: agentrun.OutcomeCompleted}); err != nil {
+		t.Fatal(err)
+	}
+	history := sess.History()
+	if len(history) != 1 || history[0].Role != "assistant" || history[0].Content != "generated" {
+		t.Fatalf("canonical Image Agent output = %#v", history)
 	}
 }
 

@@ -171,7 +171,7 @@ describe('WorkbenchShell responsive main content', () => {
   it('uses the whole active menu button as the sortable drag target', () => {
     render(<WorkbenchShell {...workbenchProps(<div />)} />)
 
-    const storyButton = screen.getByRole('button', { name: /剧情|Story/ })
+    const storyButton = screen.getByRole('button', { name: /^(游戏|Game)$/ })
     expect(storyButton).toHaveAttribute('aria-current', 'page')
     expect(storyButton).toHaveAttribute('aria-roledescription', 'sortable')
     expect(storyButton.querySelector('[aria-roledescription="sortable"]')).toBeNull()
@@ -191,7 +191,7 @@ describe('WorkbenchShell responsive main content', () => {
 
     expect(onSetMode).not.toHaveBeenCalled()
     expect(screen.getByRole('button', { name: 'Skills' })).toHaveAttribute('aria-current', 'page')
-    expect(screen.getByRole('button', { name: /剧情|Story/ })).not.toHaveAttribute('aria-current')
+    expect(screen.getByRole('button', { name: /^(游戏|Game)$/ })).not.toHaveAttribute('aria-current')
     expect(document.querySelectorAll('.nova-activity-bar [aria-current="page"]')).toHaveLength(1)
 
     act(() => { frames.shift()?.(0) })

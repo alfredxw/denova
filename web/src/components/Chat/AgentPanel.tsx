@@ -39,6 +39,7 @@ import { AgentSubAgentSessionPanel } from './AgentSubAgentSessionPanel'
 import { CONTEXT_ANALYSIS_SIMULATED_MESSAGE, ContextAnalysisDialog } from './ContextAnalysisDialog'
 import type { ReferencePickerItem } from './FileReferencePicker'
 import { WritingComposerSettingsMenu } from './WritingComposerSettingsMenu'
+import { ImageAgentModelSettingsMenu } from './ImageAgentModelSettingsMenu'
 import { formatPlanDiscussionMessage } from '@/lib/plan-mode'
 import { useProjectChangeGroups } from '@/features/changes/use-change-review'
 import { AgentChangeSummaryCard } from '@/features/changes/agent/AgentChangeSummaryCard'
@@ -574,22 +575,25 @@ function AgentPanelComponent({
     conversationBinding: conversationBinding ?? (activeSessionId
       ? { mode: 'writing' as const, project_id: projectId, session_id: activeSessionId }
       : undefined),
-    writingSkillControl: generalAgent ? undefined : (
-      <WritingComposerSettingsMenu
-        enabled={Boolean(workspace) && !persistedSettings.loading && !isStreaming}
-        tellers={tellers}
-        tellerID={ideTellerId}
-        imagePresets={imagePresets}
-        imagePresetID={imagePresetId}
-        writingSkills={writingSkillOptions}
-        writingSkill={writingSkill}
-        savingTeller={persistedSettings.isSaving('ide_story_teller_id')}
-        savingImagePreset={persistedSettings.isSaving('ide_image_preset_id')}
-        savingWritingSkill={persistedSettings.isSaving('writing_skill_default')}
-        onTellerChange={(value) => persistedSettings.persist('ide_story_teller_id', value)}
-        onImagePresetChange={(value) => persistedSettings.persist('ide_image_preset_id', value)}
-        onWritingSkillChange={(value) => persistedSettings.persist('writing_skill_default', value)}
-      />
+    composerSettingsControl: generalAgent ? undefined : (
+      <>
+        <ImageAgentModelSettingsMenu projectId={projectId} disabled={!workspace || persistedSettings.loading || isStreaming} />
+        <WritingComposerSettingsMenu
+          enabled={Boolean(workspace) && !persistedSettings.loading && !isStreaming}
+          tellers={tellers}
+          tellerID={ideTellerId}
+          imagePresets={imagePresets}
+          imagePresetID={imagePresetId}
+          writingSkills={writingSkillOptions}
+          writingSkill={writingSkill}
+          savingTeller={persistedSettings.isSaving('ide_story_teller_id')}
+          savingImagePreset={persistedSettings.isSaving('ide_image_preset_id')}
+          savingWritingSkill={persistedSettings.isSaving('writing_skill_default')}
+          onTellerChange={(value) => persistedSettings.persist('ide_story_teller_id', value)}
+          onImagePresetChange={(value) => persistedSettings.persist('ide_image_preset_id', value)}
+          onWritingSkillChange={(value) => persistedSettings.persist('writing_skill_default', value)}
+        />
+      </>
     ),
     onboardingAnchor: 'agent-input',
     floating: true,

@@ -85,19 +85,15 @@ Denova 仍在快速迭代中，欢迎反馈问题、分享用法或一起讨论�
 
 ## 快速开始
 
-### 下载 Release
-
-从 [GitHub Releases](https://github.com/alfredxw/denova/releases) 下载对应平台压缩包，解压后运行：
+macOS / Linux 一键安装：
 
 ```bash
-./denova
+curl -fsSL https://raw.githubusercontent.com/alfredxw/denova/master/scripts/install.sh | sh
 ```
 
-Windows 用户运行 `denova.exe`。macOS 如果提示安全限制，可以执行：
+安装完成后运行 `denova`。
 
-```bash
-xattr -dr com.apple.quarantine denova
-```
+也可以从 [GitHub Releases](https://github.com/alfredxw/denova/releases) 手动下载对应平台的安装包。脚本仅支持 macOS 和 Linux，Windows 需要手动下载并运行 `denova.exe`。
 
 Release 包已内置经过 SHA-256 校验的 ripgrep，无需单独安装；Denova 的 `grep` 工具会优先使用包内版本。
 

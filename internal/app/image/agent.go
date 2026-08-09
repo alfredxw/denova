@@ -12,6 +12,7 @@ import (
 	"denova/config"
 	agents "denova/internal/agents"
 	agentcontext "denova/internal/agents/context"
+	agentconversation "denova/internal/agents/conversation"
 	agentrun "denova/internal/agents/run"
 	"denova/internal/agents/session"
 	novaskills "denova/internal/agents/skills"
@@ -87,11 +88,21 @@ func (service *Service) generateWithAgentUsingHooks(runtime *Runtime, req AgentG
 		slog.ErrorContext(context.Background(), fmt.Sprintf("[image-agent] load layered settings failed workspace=%s err=%v", runtime.Workspace, loadErr))
 	}
 	cfg.ImagePresetToolPrompt = strings.TrimSpace(req.ToolPrompt)
+	modelSelection := config.ResolveAgentModel(&cfg, config.AgentKindImage)
+	slog.InfoContext(runtime.Context(), fmt.Sprintf(
+		"[image-agent] preparing run workspace=%s profile_id=%s thinking_level=%s",
+		runtime.Workspace, strings.TrimSpace(modelSelection.ProfileID), strings.TrimSpace(modelSelection.ThinkingLevel),
+	))
+	sess, err := prepareImageAgentSession(runtime.SessionStore)
+	if err != nil {
+		return AgentGenerateResult{}, err
+	}
 	runner, systemPrompt, err := appagentruntime.BuildImage(runtime.Context(), &cfg, runtime.BookState, req.SystemPrompt)
 	if err != nil {
 		return AgentGenerateResult{}, err
 	}
 	conversation := &imageAgentConversation{
+		journal:       agentconversation.NewSessionConversationForAgent(sess, &cfg, config.AgentKindImage),
 		message:       imageAgentMessage(req),
 		sourceContext: strings.TrimSpace(req.SourceContext),
 		sourceSummary: imageAgentSourceSummary(req),
@@ -109,6 +120,7 @@ func (service *Service) generateWithAgentUsingHooks(runtime *Runtime, req AgentG
 	}, agentrun.Options{
 		AgentKind:          config.AgentKindImage,
 		StateRoot:          cfg.ProjectStateDir,
+		SessionID:          sess.ID,
 		Workspace:          runtime.Workspace,
 		StoryID:            req.StoryID,
 		BranchID:           req.BranchID,
@@ -172,17 +184,22 @@ func (service *Service) generateWithAgentUsingHooks(runtime *Runtime, req AgentG
 		}
 		return result, fmt.Errorf("image Agent did not generate an interactive image")
 	}
-	output := result.AssistantText
 	if result.InteractiveImage != nil {
-		output = firstNonEmpty(output, result.InteractiveImage.ImagePath)
 		slog.InfoContext(context.Background(), fmt.Sprintf("[image-agent] generated interactive image workspace=%s story_id=%s branch_id=%s turn_id=%s path=%s", runtime.Workspace, result.InteractiveImage.StoryID, result.InteractiveImage.BranchID, result.InteractiveImage.TurnID, result.InteractiveImage.ImagePath))
 	} else {
 		slog.InfoContext(context.Background(), fmt.Sprintf("[image-agent] completed image request workspace=%s purpose=%s", runtime.Workspace, strings.TrimSpace(req.Purpose)))
 	}
-	if !result.Replayed {
-		persistImageAgentCall(runtime.SessionStore, conversation.message, output)
-	}
 	return result, nil
+}
+
+// prepareImageAgentSession establishes the canonical journal before the
+// durable harness can accept or recover an input bound to it.
+func prepareImageAgentSession(store *session.Store) (*session.Session, error) {
+	sess, err := session.AgentSession(store, config.AgentKindImage)
+	if err != nil {
+		return nil, fmt.Errorf("initialize Image Agent session: %w", err)
+	}
+	return sess, nil
 }
 
 func validateAgentCommandID(commandID string) error {
@@ -194,6 +211,7 @@ func validateAgentCommandID(commandID string) error {
 }
 
 type imageAgentConversation struct {
+	journal       *agentconversation.SessionConversation
 	message       string
 	sourceContext string
 	sourceSummary string
@@ -240,7 +258,51 @@ func (c *imageAgentConversation) AssembleModelContext(ctx context.Context, _ str
 
 func (c *imageAgentConversation) AppendAssistant(content string) error {
 	c.assistant = strings.TrimSpace(content)
-	return nil
+	if c.journal == nil {
+		return fmt.Errorf("Image Agent journal is unavailable")
+	}
+	return c.journal.AppendAssistant(content)
+}
+
+func (c *imageAgentConversation) AppendAssistantWithMetadata(content, thinking string, metadata session.MessageMetadata) error {
+	c.assistant = strings.TrimSpace(content)
+	if c.journal == nil {
+		return fmt.Errorf("Image Agent journal is unavailable")
+	}
+	return c.journal.AppendAssistantWithMetadata(content, thinking, metadata)
+}
+
+func (c *imageAgentConversation) BindAgentCycleIdentity(identity agentrun.CycleIdentity) {
+	if c != nil && c.journal != nil {
+		c.journal.BindAgentCycleIdentity(identity)
+	}
+}
+
+func (c *imageAgentConversation) BindHarnessAgentKind(agentKind string) {
+	if c != nil && c.journal != nil {
+		c.journal.BindHarnessAgentKind(agentKind)
+	}
+}
+
+func (c *imageAgentConversation) PendingAgentCycleCommit(stage agentrun.DomainCommitStage) (agentrun.DomainCommitIntent, bool, error) {
+	if c == nil || c.journal == nil {
+		return agentrun.DomainCommitIntent{}, false, nil
+	}
+	return c.journal.PendingAgentCycleCommit(stage)
+}
+
+func (c *imageAgentConversation) CommitAgentCycleStage(ctx context.Context, stage agentrun.DomainCommitStage, outcome agentrun.Outcome) error {
+	if c == nil || c.journal == nil {
+		return nil
+	}
+	return c.journal.CommitAgentCycleStage(ctx, stage, outcome)
+}
+
+func (c *imageAgentConversation) LastAgentCycleCommitReceipt(stage agentrun.DomainCommitStage) (agentrun.DomainCommitReceipt, bool) {
+	if c == nil || c.journal == nil {
+		return agentrun.DomainCommitReceipt{}, false
+	}
+	return c.journal.LastAgentCycleCommitReceipt(stage)
 }
 
 func (c *imageAgentConversation) MarkInterrupted(_, _, _ string) error       { return nil }
@@ -325,16 +387,6 @@ func eventErrorMessage(data interface{}) string {
 		return firstNonEmpty(message, errorText, "image Agent execution failed")
 	}
 	return "image Agent execution failed"
-}
-
-func persistImageAgentCall(store *session.Store, instruction, response string) {
-	if store == nil {
-		slog.WarnContext(context.Background(), "[image-agent] skip persistence reason=no_session_store")
-		return
-	}
-	if err := session.PersistAgentCall(store, config.AgentKindImage, instruction, response); err != nil {
-		slog.ErrorContext(context.Background(), fmt.Sprintf("[image-agent] persist session call failed err=%v", err))
-	}
 }
 
 func firstNonEmpty(values ...string) string {

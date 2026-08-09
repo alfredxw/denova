@@ -93,7 +93,7 @@ interface InputAreaProps {
   agentKey?: VisibleAgentKey
   workspace?: string
   conversationBinding?: ConversationConfigBinding
-  writingSkillControl?: ReactNode
+  composerSettingsControl?: ReactNode
   onboardingAnchor?: string
   floating?: boolean
   onHeightChange?: (height: number) => void
@@ -151,7 +151,7 @@ export function InputArea({
   agentKey,
   workspace,
   conversationBinding,
-  writingSkillControl,
+  composerSettingsControl,
   onboardingAnchor,
   floating = false,
   onHeightChange,
@@ -636,7 +636,7 @@ export function InputArea({
                     type="button"
                     size="icon-sm"
                     className="nova-agent-composer-icon h-8 w-8 shrink-0 rounded-[10px] border border-[var(--nova-border)] bg-[var(--nova-surface)] text-[var(--nova-text-muted)] hover:bg-[var(--nova-hover)] hover:text-[var(--nova-text)] disabled:opacity-45"
-                    disabled={!onTogglePlanMode && !writingSkillControl && !onContextAnalyze && tokenUsageMessages.length === 0}
+                    disabled={!onTogglePlanMode && !composerSettingsControl && !onContextAnalyze && tokenUsageMessages.length === 0}
                     aria-label={t('chat.input.actions')}
                   >
                     <List className="h-3.5 w-3.5" />
@@ -658,7 +658,7 @@ export function InputArea({
                       <DropdownMenuSeparator className="bg-[var(--nova-border-soft)]" />
                     </>
                   ) : null}
-                  {writingSkillControl}
+                  {composerSettingsControl}
                   <DropdownMenuItem
                     onSelect={() => setTokenUsageOpen(true)}
                     className="cursor-pointer text-xs focus:bg-[var(--nova-active)] focus:text-[var(--nova-text)]"

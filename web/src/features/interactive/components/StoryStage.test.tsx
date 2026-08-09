@@ -52,6 +52,7 @@ const {
 
 vi.mock('@/features/settings/api', () => ({
   fetchSettings: vi.fn().mockResolvedValue({ effective: {} }),
+  fetchProjectSettings: vi.fn().mockResolvedValue({ effective: {}, user: {}, workspace: {} }),
 }))
 
 vi.mock('@/features/agent-approval/AgentApprovalProvider', () => ({
@@ -746,6 +747,8 @@ describe('StoryStage interactive image settings', () => {
 
     fireEvent.pointerDown(screen.getByRole('button', { name: '输入动作' }))
     await waitFor(() => expect(screen.getByText('互动图像')).toBeInTheDocument())
+    expect(screen.getByRole('menuitem', { name: 'Image Agent 语言模型' })).toBeInTheDocument()
+    expect(screen.getByRole('menuitem', { name: 'Image Agent 图像模型' })).toBeInTheDocument()
     await user.hover(screen.getByRole('menuitem', { name: /互动图像/ }))
     await waitFor(() => expect(screen.getByRole('menuitem', { name: /每 3 轮生成/ })).toBeInTheDocument())
     fireEvent.click(screen.getByRole('menuitem', { name: /每 3 轮生成/ }))

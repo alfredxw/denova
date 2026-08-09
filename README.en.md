@@ -85,19 +85,15 @@ Join the [Discord community](https://discord.gg/QuHu2aPya) to connect with other
 
 ## Quick Start
 
-### Download a Release
-
-Download the archive for your platform from [GitHub Releases](https://github.com/alfredxw/denova/releases), extract it, and run:
+One-command install for macOS / Linux:
 
 ```bash
-./denova
+curl -fsSL https://raw.githubusercontent.com/alfredxw/denova/master/scripts/install.sh | sh
 ```
 
-Windows users should run `denova.exe`. On macOS, if the system blocks the app for security reasons, run:
+Run `denova` after installation.
 
-```bash
-xattr -dr com.apple.quarantine denova
-```
+You can also download the package for your platform manually from [GitHub Releases](https://github.com/alfredxw/denova/releases). The script supports macOS and Linux only; Windows users must download the Release manually and run `denova.exe`.
 
 Release archives include a SHA-256-verified ripgrep binary, so no separate installation is needed. Denova's `grep` tool prefers this bundled version.
 

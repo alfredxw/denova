@@ -20,7 +20,16 @@ vi.mock('@/features/settings/api', () => {
       },
       user: {},
     }),
+    fetchProjectSettings: vi.fn().mockResolvedValue({
+      effective: {
+        ide_story_teller_id: 'classic',
+        writing_skill_default: 'novel-lite',
+      },
+      user: {},
+      workspace: {},
+    }),
     refreshSettings: vi.fn(),
+    refreshProjectSettings: vi.fn(),
     createSettingsMergePatch: (_baseline: unknown, draft: unknown) => draft,
     patchSettings: (_layer: string, changes: unknown, revision?: string) => revision === undefined
       ? updateUserSettings(changes)
@@ -132,6 +141,8 @@ describe('AgentPanel', () => {
     expect(screen.getByText('稳健叙事')).toBeInTheDocument()
     expect(screen.getByText('写作 Skill')).toBeInTheDocument()
     expect(screen.getByText(/Lite/)).toBeInTheDocument()
+    expect(await screen.findByRole('menuitem', { name: 'Image Agent 语言模型' })).toBeInTheDocument()
+    expect(screen.getByRole('menuitem', { name: 'Image Agent 图像模型' })).toBeInTheDocument()
     expect(screen.queryByRole('button', { name: 'Review' })).not.toBeInTheDocument()
   })
 

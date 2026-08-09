@@ -736,7 +736,7 @@ export function StoryStage({ projectId, workspace, styleSceneSuggestions = [], s
                     onOpenDirectorState={onOpenDirectorState}
                   />
                 ) : undefined}
-                afterContentKey={`${snapshot?.current_turn?.id || ''}:${snapshot?.current_turn?.state_status || ''}:${stateDisplayPreference}`}
+                afterContentKey={snapshot?.current_turn?.id || ''}
                 messageStyle={stageTextStyle}
                 collapseTraceGroups
                 turnScrollRequest={turnScrollRequest}

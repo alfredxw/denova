@@ -22,6 +22,7 @@ import { listItem, novaEase } from '@/features/motion/motion-tokens'
 import { buildSubAgentProgressMessage } from './subagent-session'
 import { VIRTUOSO_BOTTOM_THRESHOLD, useVirtuosoBottomLock } from './useVirtuosoBottomLock'
 import { ScrollToBottomButton } from './ScrollToBottomButton'
+import { StableAfterContentBoundary } from './StableAfterContentBoundary'
 import { AgentMessageItem } from './AgentMessageItem'
 import { AgentActivityShimmer, MessageItem } from './MessageItem'
 import { AgentExecutionProcess } from './AgentExecutionProcess'
@@ -113,13 +114,17 @@ interface MessageListVirtuosoContext {
   bottomPaddingPx?: number
   contentClassName?: string
   afterContent?: ReactNode
+  afterContentKey?: string
+  onAfterContentInteractionStart: () => void
   onAfterContentInteraction: () => void
+  onAfterContentInteractionReset: () => void
+  onAfterContentLayoutStabilized: () => void
   hasEarlierMessages: boolean
   isLoadingEarlierMessages: boolean
   onLoadEarlierMessages?: () => void | Promise<void>
 }
 
-export function MessageList({ projectId, messages, isStreaming, visible = true, isExecutionActive = isStreaming, activityContent, highlightDialogue = false, scrollResetKey, bottomPaddingClassName = '', bottomPaddingPx, contentClassName, afterContent, hasEarlierMessages = false, isLoadingEarlierMessages = false, onLoadEarlierMessages, timelineAttachments = [], messageStyle, collapseTraceGroups = false, activeTraceDisplay = 'expanded', canMutateMessage, onEditMessage, onEditAssistantReply, onCreateBranch, onRegenerateMessage, onSwitchMessageVersion, onOpenSubAgentSession, onInsertIllustration, onGenerateInteractiveImage, generatingInteractiveImageTurnId, activeSubAgentSessionKey, onApprovePlan, onContinuePlan, onExitPlanMode, onOpenTrace, onResolveAsk, turnScrollRequest, onVisibleTurnAnchorChange }: MessageListProps) {
+export function MessageList({ projectId, messages, isStreaming, visible = true, isExecutionActive = isStreaming, activityContent, highlightDialogue = false, scrollResetKey, bottomPaddingClassName = '', bottomPaddingPx, contentClassName, afterContent, afterContentKey, hasEarlierMessages = false, isLoadingEarlierMessages = false, onLoadEarlierMessages, timelineAttachments = [], messageStyle, collapseTraceGroups = false, activeTraceDisplay = 'expanded', canMutateMessage, onEditMessage, onEditAssistantReply, onCreateBranch, onRegenerateMessage, onSwitchMessageVersion, onOpenSubAgentSession, onInsertIllustration, onGenerateInteractiveImage, generatingInteractiveImageTurnId, activeSubAgentSessionKey, onApprovePlan, onContinuePlan, onExitPlanMode, onOpenTrace, onResolveAsk, turnScrollRequest, onVisibleTurnAnchorChange }: MessageListProps) {
   const { t } = useTranslation()
   const containerRef = useRef<HTMLDivElement | null>(null)
   const renderedItemsRef = useRef<ListItem<AgentChatListItem>[]>([])
@@ -176,12 +181,16 @@ export function MessageList({ projectId, messages, isStreaming, visible = true, 
       bottomPaddingPx: scrollLock.streamingSpacerPx ?? bottomPaddingPx,
       contentClassName,
       afterContent,
+      afterContentKey,
+      onAfterContentInteractionStart: scrollLock.beginAfterContentInteraction,
       onAfterContentInteraction: scrollLock.releaseBottomLock,
+      onAfterContentInteractionReset: scrollLock.resetAfterContentInteraction,
+      onAfterContentLayoutStabilized: scrollLock.restoreAfterContentScrollPosition,
       hasEarlierMessages,
       isLoadingEarlierMessages,
       onLoadEarlierMessages,
     }),
-    [afterContent, bottomPaddingClassName, bottomPaddingPx, contentClassName, hasEarlierMessages, isLoadingEarlierMessages, onLoadEarlierMessages, scrollLock.releaseBottomLock, scrollLock.streamingSpacerPx],
+    [afterContent, afterContentKey, bottomPaddingClassName, bottomPaddingPx, contentClassName, hasEarlierMessages, isLoadingEarlierMessages, onLoadEarlierMessages, scrollLock.beginAfterContentInteraction, scrollLock.releaseBottomLock, scrollLock.resetAfterContentInteraction, scrollLock.restoreAfterContentScrollPosition, scrollLock.streamingSpacerPx],
   )
   const scrollButtonBottomOffset = typeof bottomPaddingPx === 'number' ? Math.max(24, bottomPaddingPx + 12) : 24
   const anchorLatestInteractiveCardBottom = useCallback((element?: HTMLElement) => {
@@ -386,15 +395,16 @@ function MessageListFooter({ context }: ContextProp<MessageListVirtuosoContext>)
   return (
     <>
       {context.afterContent ? (
-        <div
-          data-nova-chat-after-content
+        <StableAfterContentBoundary
+          resetKey={context.afterContentKey}
           className={cn('px-3 pb-4 sm:px-6', context.contentClassName)}
-          onPointerDownCapture={context.onAfterContentInteraction}
-          onKeyDownCapture={context.onAfterContentInteraction}
-          onClickCapture={context.onAfterContentInteraction}
+          onInteractionStart={context.onAfterContentInteractionStart}
+          onInteraction={context.onAfterContentInteraction}
+          onInteractionReset={context.onAfterContentInteractionReset}
+          onLayoutStabilized={context.onAfterContentLayoutStabilized}
         >
           {context.afterContent}
-        </div>
+        </StableAfterContentBoundary>
       ) : null}
       <div
         aria-hidden="true"

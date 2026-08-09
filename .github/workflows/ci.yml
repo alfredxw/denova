@@ -47,6 +47,9 @@ jobs:
       - name: Check whitespace
         run: git diff --check
 
+      - name: Test installer
+        run: scripts/install_test.sh
+
       - name: Check Go module manifests
         shell: bash
         run: |

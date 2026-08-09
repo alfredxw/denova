@@ -126,9 +126,15 @@ write_release_notes() {
 
 ## Install / 安装
 
-Download the archive for your platform, verify it against `checksums.txt`, extract it, and run Denova from the extracted `denova` directory.
+macOS / Linux one-command install / 一键安装：
 
-下载对应平台压缩包，使用 `checksums.txt` 校验后解压，并在解压后的 `denova` 目录运行：
+```bash
+curl -fsSL https://raw.githubusercontent.com/alfredxw/denova/master/scripts/install.sh | sh
+```
+
+Or download the archive for your platform, verify it against `checksums.txt`, extract it, and run Denova from the extracted `denova` directory.
+
+也可以下载对应平台压缩包，使用 `checksums.txt` 校验后解压，并在解压后的 `denova` 目录运行：
 
 ```bash
 ./denova

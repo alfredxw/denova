@@ -62,8 +62,10 @@ describe('Agent MessageList', () => {
 
     const prose = screen.getByText('第一轮剧情')
     const state = screen.getByTestId('stage-state')
+    const footerContent = state.closest('[data-nova-chat-after-content]')
     expect(prose.compareDocumentPosition(state) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
-    expect(state.closest('[data-nova-chat-after-content]')?.nextElementSibling).toHaveAttribute('data-nova-chat-bottom-spacer')
+    expect(footerContent?.nextElementSibling).toHaveAttribute('data-nova-chat-after-content-reserve')
+    expect(footerContent?.parentElement?.querySelector('[data-nova-chat-bottom-spacer]')).toBeInTheDocument()
   })
 
   it('lets multiline prose grow into the reserved response runway without moving earlier text', () => {
@@ -200,6 +202,64 @@ describe('Agent MessageList', () => {
     fireEvent.scroll(scroller)
 
     expect(scroller.scrollTop).toBe(600)
+  })
+
+  it('keeps the message viewport stable when an interacted footer tab becomes shorter', () => {
+    const resizeCallbacks = new Map<Element, ResizeObserverCallback>()
+    vi.stubGlobal('ResizeObserver', class ResizeObserverHarness {
+      private readonly callback: ResizeObserverCallback
+
+      constructor(callback: ResizeObserverCallback) {
+        this.callback = callback
+      }
+
+      observe = (target: Element) => resizeCallbacks.set(target, this.callback)
+      unobserve = (target: Element) => resizeCallbacks.delete(target)
+      disconnect = vi.fn()
+    })
+
+    const { container } = renderMessageList(
+      <MessageList
+        isStreaming={false}
+        activityContent=""
+        messages={agentTurnMessages()}
+        afterContent={<button type="button">切换状态页签</button>}
+        afterContentKey="turn-2:expanded"
+        bottomPaddingPx={120}
+      />,
+    )
+    const scroller = container.querySelector<HTMLElement>('.nova-chat-canvas')
+    const footer = container.querySelector<HTMLElement>('[data-nova-chat-after-content]')
+    const reserve = container.querySelector<HTMLElement>('[data-nova-chat-after-content-reserve]')
+    if (!scroller || !footer || !reserve) throw new Error('Expected message footer scroll geometry')
+
+    let footerHeight = 200
+    let scrollTop = 480
+    footer.getBoundingClientRect = () => ({ height: footerHeight }) as DOMRect
+    Object.defineProperty(scroller, 'clientHeight', { configurable: true, value: 100 })
+    Object.defineProperty(scroller, 'scrollHeight', {
+      configurable: true,
+      get: () => 400 + footerHeight + Number.parseFloat(reserve.style.height || '0'),
+    })
+    Object.defineProperty(scroller, 'scrollTop', {
+      configurable: true,
+      get: () => scrollTop,
+      set: (value: number) => {
+        scrollTop = Math.max(0, Math.min(value, scroller.scrollHeight - scroller.clientHeight))
+      },
+    })
+
+    act(() => resizeCallbacks.get(footer)?.([{ target: footer } as unknown as ResizeObserverEntry], {} as ResizeObserver))
+    fireEvent.pointerDown(screen.getByRole('button', { name: '切换状态页签' }))
+
+    footerHeight = 80
+    scroller.scrollTop = scroller.scrollTop
+    expect(scroller.scrollTop).toBe(380)
+
+    act(() => resizeCallbacks.get(footer)?.([{ target: footer } as unknown as ResizeObserverEntry], {} as ResizeObserver))
+
+    expect(reserve).toHaveStyle({ height: '120px' })
+    expect(scroller.scrollTop).toBe(480)
   })
 
   it('有可见流式 thinking 时不再追加会被动态内容推动的活动卡片', () => {
