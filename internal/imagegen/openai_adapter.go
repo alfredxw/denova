@@ -172,14 +172,6 @@ func imageFormatFromContentType(contentType string) string {
 	}
 }
 
-func imageFormatFromBytes(data []byte) string {
-	contentType := http.DetectContentType(data)
-	if format := imageFormatFromContentType(contentType); format != "" {
-		return format
-	}
-	return ""
-}
-
 func imageFormatFromURL(target string) string {
 	parsed, err := url.Parse(target)
 	if err != nil {
@@ -194,17 +186,6 @@ func normalizeImageFormat(format string) string {
 		return "png"
 	case "jpg", "jpeg":
 		return "jpeg"
-	default:
-		return ""
-	}
-}
-
-func mimeTypeForFormat(format string) string {
-	switch normalizeImageFormat(format) {
-	case "png":
-		return "image/png"
-	case "jpeg":
-		return "image/jpeg"
 	default:
 		return ""
 	}

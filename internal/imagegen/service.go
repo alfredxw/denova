@@ -18,10 +18,23 @@ var (
 	ErrImageCountOutOfRange = errors.New("图像数量必须在 1 到 10 之间")
 )
 
+// supportedImageSizes 是 OpenAI 兼容 provider 共享的尺寸白名单。
+// MiniMax 走 aspect_ratio 协议，使用单独的 supportedMinimaxImageSizes。
 var supportedImageSizes = map[string]struct{}{
 	"2048x2048": {}, "2304x1728": {}, "1728x2304": {}, "2848x1600": {}, "1600x2848": {}, "2496x1664": {}, "1664x2496": {}, "3136x1344": {},
 	"3072x3072": {}, "3456x2592": {}, "2592x3456": {}, "4096x2304": {}, "2304x4096": {}, "2496x3744": {}, "3744x2496": {}, "4704x2016": {},
 	"4096x4096": {}, "3520x4704": {}, "4704x3520": {}, "5504x3040": {}, "3040x5504": {}, "3328x4992": {}, "4992x3328": {}, "6240x2656": {},
+}
+
+// supportedMinimaxImageSizes 是 MiniMax 图像生成支持的尺寸集合。
+// MiniMax 不接受直接尺寸字符串，但用户在 Denova 的设置里仍可配置这些值，
+// 适配器会按比例（size→aspect_ratio）转换为 MiniMax 协议。
+var supportedMinimaxImageSizes = map[string]struct{}{
+	"1024x1024": {}, "1280x720": {}, "1920x1080": {},
+	"720x1280": {}, "1080x1920": {},
+	"1152x864": {}, "864x1152": {},
+	"1248x832": {}, "832x1248": {},
+	"2048x2048": {}, // 也会落到 1:1，等价于 1024x1024
 }
 
 type Service struct {
@@ -31,6 +44,7 @@ type Service struct {
 func NewService() *Service {
 	return &Service{adapters: map[string]Adapter{
 		config.DefaultImageAPIProvider: NewOpenAIAdapter(nil),
+		"minimax":                      NewMiniMaxAdapter(nil), // MiniMax 原生支持
 	}}
 }
 
@@ -55,7 +69,7 @@ func (s *Service) Generate(ctx context.Context, cfg *config.Config, request Gene
 	if request.OutputFormat == "" {
 		request.OutputFormat = profile.OutputFormat
 	}
-	request, err = normalizeRequestOptions(request)
+	request, err = normalizeRequestOptionsForProvider(profile.Provider, request)
 	if err != nil {
 		return Result{}, err
 	}
@@ -75,8 +89,12 @@ func (s *Service) Generate(ctx context.Context, cfg *config.Config, request Gene
 }
 
 func normalizeRequestOptions(request GenerateRequest) (GenerateRequest, error) {
+	return normalizeRequestOptionsForProvider("", request)
+}
+
+func normalizeRequestOptionsForProvider(provider string, request GenerateRequest) (GenerateRequest, error) {
 	if request.Size != "" {
-		size, ok := normalizeSize(request.Size)
+		size, ok := NormalizeSizeForProvider(provider, request.Size)
 		if !ok {
 			return GenerateRequest{}, fmt.Errorf("不支持的图像尺寸: %s", request.Size)
 		}
@@ -97,6 +115,23 @@ func normalizeRequestOptions(request GenerateRequest) (GenerateRequest, error) {
 		request.OutputFormat = format
 	}
 	return request, nil
+}
+
+// NormalizeSizeForProvider 校验某个尺寸是否被指定 provider 接受。
+// 不同 provider 支持的尺寸集合不同：OpenAI 走 2K/3K/4K，MiniMax 走 1024 等。
+func NormalizeSizeForProvider(provider, size string) (string, bool) {
+	trimmed := strings.TrimSpace(size)
+	if trimmed == "" || trimmed == "auto" {
+		return "", true
+	}
+	set := supportedImageSizes
+	if strings.EqualFold(strings.TrimSpace(provider), "minimax") {
+		set = supportedMinimaxImageSizes
+	}
+	if _, ok := set[trimmed]; ok {
+		return trimmed, true
+	}
+	return "", false
 }
 
 func promptSummary(prompt string) string {
@@ -122,14 +157,7 @@ func truncateUTF8Bytes(value string, limit int) (string, bool) {
 }
 
 func normalizeSize(size string) (string, bool) {
-	trimmed := strings.TrimSpace(size)
-	if trimmed == "" || trimmed == "auto" {
-		return "", true
-	}
-	if _, ok := supportedImageSizes[trimmed]; ok {
-		return trimmed, true
-	}
-	return "", false
+	return NormalizeSizeForProvider("", size)
 }
 
 func normalizeQuality(quality string) string {
