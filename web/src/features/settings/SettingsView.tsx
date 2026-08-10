@@ -25,7 +25,7 @@ import { APP_VERSION } from '@/app-version'
 import { markAutoUpdateChecked, notifyUpdateCheckResult, shouldRunAutoUpdateCheck } from './update-check-cache'
 import { scheduleFrontendReloadAfterUpdate } from './update-reload'
 import { DEFAULT_MODEL_PROFILE_ID, modelProfileID, modelProfileLabel, modelProfilesWithDefault } from './model-profiles'
-import { DEFAULT_IMAGE_API_BASE_URL, DEFAULT_IMAGE_API_MODEL, DEFAULT_IMAGE_API_PROFILE_ID, DEFAULT_IMAGE_API_PROVIDER, imageAPIProfileID, imageAPIProfileLabel, imageAPIProfilesWithDefault } from './image-profiles'
+import { DEFAULT_IMAGE_API_BASE_URL, DEFAULT_IMAGE_API_MODEL, DEFAULT_IMAGE_API_PROFILE_ID, DEFAULT_IMAGE_API_PROVIDER, IMAGE_API_PROVIDERS, IMAGE_API_PROVIDER_DEFAULTS, imageAPIProfileID, imageAPIProfileLabel, imageAPIProfilesWithDefault } from './image-profiles'
 import { ONBOARDING_OPEN_EVENT, SETTINGS_SECTION_EVENT, type SettingsSectionRequest } from '@/features/onboarding/events'
 
 type SettingsSectionId = 'model' | 'image' | 'paths' | 'access' | 'appearance' | 'updates' | 'agent' | 'debug' | 'ide-editor' | 'ide-output' | 'versions' | 'interactive'
@@ -1362,6 +1362,21 @@ function ImageAPIProfilesEditor({ profiles, effectiveProfiles, defaultProfileID,
   const updateProfile = (index: number, patch: Partial<ImageAPIProfileSettings>) => {
     onChange(profiles.map((profile, i) => (i === index ? { ...profile, ...patch } : profile)))
   }
+  const updateProfileProvider = (index: number, provider: string) => {
+    const profile = profiles[index]
+    const defaults = IMAGE_API_PROVIDER_DEFAULTS[provider]
+    // 如果 base URL 和 model 还是空的，或者是上一个 provider 的默认值，就自动填充新 provider 的默认值
+    const currentBaseURL = (profile?.openai_base_url ?? '').trim()
+    const currentModel = (profile?.openai_model ?? '').trim()
+    const previousDefaults = IMAGE_API_PROVIDER_DEFAULTS[profile?.provider ?? DEFAULT_IMAGE_API_PROVIDER]
+    const shouldOverrideBaseURL = !currentBaseURL || currentBaseURL === previousDefaults?.baseUrl
+    const shouldOverrideModel = !currentModel || currentModel === previousDefaults?.model
+    updateProfile(index, {
+      provider,
+      ...(defaults && shouldOverrideBaseURL ? { openai_base_url: defaults.baseUrl } : {}),
+      ...(defaults && shouldOverrideModel ? { openai_model: defaults.model } : {}),
+    })
+  }
   const updateProfileModel = (index: number, openaiModel: string) => {
     const profile = profiles[index]
     const previousID = imageAPIProfileID(profile)
@@ -1435,14 +1450,16 @@ function ImageAPIProfilesEditor({ profiles, effectiveProfiles, defaultProfileID,
               <ModelProfileInput label={t('settings.imageApi.provider')} className="md:col-span-3">
                 <Select
                   value={profile.provider || DEFAULT_IMAGE_API_PROVIDER}
-                  onValueChange={(value) => updateProfile(index, { provider: value })}
+                  onValueChange={(value) => updateProfileProvider(index, value)}
                 >
                   <SelectTrigger size="sm" className="w-full">
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent className="nova-panel border text-[var(--nova-text)]">
                     <SelectGroup>
-                      <SelectItem value={DEFAULT_IMAGE_API_PROVIDER}>OpenAI</SelectItem>
+                      {IMAGE_API_PROVIDERS.map((p) => (
+                        <SelectItem key={p.value} value={p.value}>{p.label}</SelectItem>
+                      ))}
                     </SelectGroup>
                   </SelectContent>
                 </Select>
@@ -1450,14 +1467,14 @@ function ImageAPIProfilesEditor({ profiles, effectiveProfiles, defaultProfileID,
               <ModelProfileInput label={t('common.baseUrl')} className="md:col-span-5">
                 <Input
                   value={profile.openai_base_url ?? ''}
-                  placeholder={DEFAULT_IMAGE_API_BASE_URL}
+                  placeholder={IMAGE_API_PROVIDER_DEFAULTS[profile.provider || DEFAULT_IMAGE_API_PROVIDER]?.baseUrl || DEFAULT_IMAGE_API_BASE_URL}
                   onChange={(e) => updateProfile(index, { openai_base_url: e.target.value })}
                 />
               </ModelProfileInput>
               <ModelProfileInput label={t('settings.imageApi.profileModelLabel')} className="md:col-span-4">
                 <Input
                   value={profile.openai_model ?? ''}
-                  placeholder={DEFAULT_IMAGE_API_MODEL}
+                  placeholder={IMAGE_API_PROVIDER_DEFAULTS[profile.provider || DEFAULT_IMAGE_API_PROVIDER]?.model || DEFAULT_IMAGE_API_MODEL}
                   onChange={(e) => updateProfileModel(index, e.target.value)}
                 />
               </ModelProfileInput>

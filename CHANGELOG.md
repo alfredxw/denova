@@ -6,6 +6,11 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### Added
+
+- 图像生成新增 MiniMax provider 支持：可在设置页或 `[[image_api_profiles]]` 中添加 `provider = "minimax"` 的配置；后端通过 `MiniMaxAdapter` 调 MiniMax 原生 `image_generation` 接口，按 `size → aspect_ratio` 自动转换。
+- Image generation now supports the MiniMax provider: add a `provider = "minimax"` entry in Settings or under `[[image_api_profiles]]`. The backend uses a new `MiniMaxAdapter` to call MiniMax's native `image_generation` endpoint and converts `size` to `aspect_ratio` automatically.
+
 ## [v0.3.3] - 2026-07-25
 
 ### Fixed

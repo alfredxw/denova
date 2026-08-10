@@ -1,0 +1,64 @@
+# MiniMax 图像生成配置模板
+#
+# 复制本文件中 `[[image_api_profiles]]` 块到你的 config.toml 即可启用 MiniMax 图像生成。
+# 默认 provider 仍为 OpenAI（不会因为引入本模板而改变），如需切换默认请在设置页修改。
+
+# MiniMax 原生图像生成配置
+[[image_api_profiles]]
+id = "minimax-native"
+name = "MiniMax 图像生成"
+provider = "minimax"
+openai_api_key = "sk-your-minimax-api-key-here"     # 替换为你的 MiniMax API Key
+openai_base_url = "https://api.minimaxi.com/v1"   # 中国版端点；国际版改为 https://api.minimax.io/v1
+openai_model = "image-01"                        # MiniMax 图像生成模型
+default_size = "1024x1024"                       # 推荐尺寸：正方形 1:1
+default_quality = "standard"                     # 图像质量：standard / hd
+default_output_format = "png"                    # 输出格式：png / jpeg
+
+# （可选）添加 OpenAI 作为备用
+# [[image_api_profiles]]
+# id = "openai-backup"
+# name = "OpenAI 备用"
+# provider = "openai"
+# openai_base_url = "https://api.openai.com/v1"
+# openai_api_key = "sk-your-openai-key"
+# openai_model = "gpt-image-1"
+# default_size = "2048x2048"
+
+# ============================================
+# 支持的图像尺寸
+# ============================================
+# Denova 在适配器里把下表中的尺寸转成 MiniMax 的 aspect_ratio；
+# 列表外的尺寸会被校验为不支持。
+#
+# 正方形：
+# default_size = "1024x1024"  # 1:1
+# default_size = "2048x2048"  # 1:1
+#
+# 横向 16:9：
+# default_size = "1280x720"   # 720p
+# default_size = "1920x1080"  # 1080p
+#
+# 竖向 9:16：
+# default_size = "720x1280"   # 720p
+# default_size = "1080x1920"  # 1080p
+#
+# 4:3 / 3:4：
+# default_size = "1152x864"
+# default_size = "864x1152"
+#
+# 3:2 / 2:3：
+# default_size = "1248x832"
+# default_size = "832x1248"
+
+# ============================================
+# 重要提示
+# ============================================
+#
+# 1. API Key 格式：必须是 MiniMax 平台颁发的 sk- 开头密钥。
+# 2. 端点选择：
+#    - 中国版：https://api.minimaxi.com/v1
+#    - 国际版：https://api.minimax.io/v1
+# 3. MiniMax 不支持批量生成，n 参数会被忽略。
+# 4. 如需把 MiniMax 切换为默认图像 provider，请到设置页"图像模型"标签修改。
+# 5. 配置完成后重启 Denova 使其生效。

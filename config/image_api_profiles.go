@@ -79,17 +79,33 @@ func ResolveImageAPIProfile(cfg *Config, requestedID string) (ResolvedImageAPIPr
 	if profile.OpenAIAPIKey == "" {
 		profile.OpenAIAPIKey = cfg.ImageAPIKey
 	}
-	if profile.OpenAIBaseURL == "" {
-		profile.OpenAIBaseURL = cfg.ImageAPIBaseURL
-	}
-	if profile.OpenAIBaseURL == "" {
-		profile.OpenAIBaseURL = DefaultImageAPIBaseURL
-	}
-	if profile.OpenAIModel == "" {
-		profile.OpenAIModel = cfg.ImageAPIModel
-	}
-	if profile.OpenAIModel == "" {
-		profile.OpenAIModel = DefaultImageAPIModel
+	// MiniMax provider 使用自己的默认端点和模型，避免被 OpenAI 默认值覆盖
+	if strings.EqualFold(profile.Provider, "minimax") {
+		if strings.TrimSpace(profile.OpenAIBaseURL) == "" {
+			profile.OpenAIBaseURL = cfg.ImageAPIBaseURL
+		}
+		if strings.TrimSpace(profile.OpenAIBaseURL) == "" {
+			profile.OpenAIBaseURL = "https://api.minimaxi.com/v1"
+		}
+		if strings.TrimSpace(profile.OpenAIModel) == "" {
+			profile.OpenAIModel = cfg.ImageAPIModel
+		}
+		if strings.TrimSpace(profile.OpenAIModel) == "" {
+			profile.OpenAIModel = "image-01"
+		}
+	} else {
+		if profile.OpenAIBaseURL == "" {
+			profile.OpenAIBaseURL = cfg.ImageAPIBaseURL
+		}
+		if profile.OpenAIBaseURL == "" {
+			profile.OpenAIBaseURL = DefaultImageAPIBaseURL
+		}
+		if profile.OpenAIModel == "" {
+			profile.OpenAIModel = cfg.ImageAPIModel
+		}
+		if profile.OpenAIModel == "" {
+			profile.OpenAIModel = DefaultImageAPIModel
+		}
 	}
 	if profile.DefaultQuality == "" {
 		profile.DefaultQuality = DefaultImageAPIQuality
@@ -97,11 +113,20 @@ func ResolveImageAPIProfile(cfg *Config, requestedID string) (ResolvedImageAPIPr
 	if profile.DefaultOutputFormat == "" {
 		profile.DefaultOutputFormat = DefaultImageAPIFormat
 	}
-	if strings.EqualFold(profile.Provider, DefaultImageAPIProvider) && strings.TrimSpace(profile.OpenAIAPIKey) == "" {
-		return ResolvedImageAPIProfile{}, ErrImageAPIKeyMissing
+	// 验证 OpenAI provider 的必要参数
+	if strings.EqualFold(profile.Provider, DefaultImageAPIProvider) {
+		if strings.TrimSpace(profile.OpenAIAPIKey) == "" {
+			return ResolvedImageAPIProfile{}, ErrImageAPIKeyMissing
+		}
+		if strings.TrimSpace(profile.OpenAIModel) == "" {
+			return ResolvedImageAPIProfile{}, ErrImageAPIModelMissing
+		}
 	}
-	if strings.EqualFold(profile.Provider, DefaultImageAPIProvider) && strings.TrimSpace(profile.OpenAIModel) == "" {
-		return ResolvedImageAPIProfile{}, ErrImageAPIModelMissing
+	// 验证 MiniMax provider 的必要参数（API Key 必填，base URL 和 model 有默认值）
+	if strings.EqualFold(profile.Provider, "minimax") {
+		if strings.TrimSpace(profile.OpenAIAPIKey) == "" {
+			return ResolvedImageAPIProfile{}, ErrImageAPIKeyMissing
+		}
 	}
 	return ResolvedImageAPIProfile{
 		ProfileID:     profileID,
@@ -232,6 +257,8 @@ func normalizeImageAPIProvider(provider string) string {
 	switch strings.ToLower(strings.TrimSpace(provider)) {
 	case "", DefaultImageAPIProvider:
 		return DefaultImageAPIProvider
+	case "minimax":
+		return "minimax"
 	default:
 		return ""
 	}

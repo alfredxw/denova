@@ -49,6 +49,9 @@ openai_model = "deepseek-v4-pro"
 # temperature = 0.2
 
 # 图像模型。默认只接入 OpenAI 标准 Images API；可配置多个 profile。
+# MiniMax 通过原生 image_generation 接口生成，适配器在内部把 size 转换为 aspect_ratio：
+#   ① 自定义尺寸列表见 `config.minimax.template.toml`；
+#   ② 如需切换默认 provider，在设置页"图像模型"标签页修改。
 # 生成结果会保存到当前工作区 assets/image/generated/。
 default_image_api_profile_id = "default"
 

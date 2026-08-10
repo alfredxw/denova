@@ -5,6 +5,24 @@ export const DEFAULT_IMAGE_API_PROVIDER = 'openai'
 export const DEFAULT_IMAGE_API_BASE_URL = 'https://api.openai.com/v1'
 export const DEFAULT_IMAGE_API_MODEL = 'gpt-image-1'
 
+// MiniMax 原生图像生成 provider
+export const MINIMAX_IMAGE_API_PROVIDER = 'minimax'
+export const MINIMAX_IMAGE_API_BASE_URL = 'https://api.minimaxi.com/v1'
+export const MINIMAX_IMAGE_API_MODEL = 'image-01'
+
+// 各 provider 的默认配置，切换 provider 时用于预填表单
+export const IMAGE_API_PROVIDER_DEFAULTS: Record<string, { baseUrl: string; model: string }> = {
+  [DEFAULT_IMAGE_API_PROVIDER]: { baseUrl: DEFAULT_IMAGE_API_BASE_URL, model: DEFAULT_IMAGE_API_MODEL },
+  [MINIMAX_IMAGE_API_PROVIDER]: { baseUrl: MINIMAX_IMAGE_API_BASE_URL, model: MINIMAX_IMAGE_API_MODEL },
+}
+
+// 所有可选的图像 provider（用于设置页下拉菜单）。
+// 品牌名（OpenAI / MiniMax）在所有语言下保持原样，不需要走 i18n。
+export const IMAGE_API_PROVIDERS = [
+  { value: DEFAULT_IMAGE_API_PROVIDER, label: 'OpenAI' },
+  { value: MINIMAX_IMAGE_API_PROVIDER, label: 'MiniMax' },
+] as const
+
 export function imageAPIProfileID(profile?: ImageAPIProfileSettings): string {
   return profile?.id?.trim() || profile?.openai_model?.trim() || ''
 }
