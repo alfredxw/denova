@@ -11,7 +11,7 @@ import (
 	agentcontext "denova/internal/agents/context"
 	agentcompaction "denova/internal/agents/context/compaction"
 	agentstructural "denova/internal/agents/context/structural"
-	agentharness "denova/internal/agents/harness"
+	agentexecution "denova/internal/agents/execution"
 	agentrun "denova/internal/agents/run"
 	"denova/internal/interactive"
 )
@@ -87,7 +87,7 @@ func TestInteractivePostSettlementCompactionPublishesAtSettledTurnHead(t *testin
 		spec.RestorePlan.RecordID == "" || spec.RestorePlan.IntentHash == "" || len(spec.RestorePlan.Mutation) == 0 {
 		t.Fatalf("post-settlement Story compaction has no exact restore plan: %#v", spec.RestorePlan)
 	}
-	chat := agentharness.NewEphemeralService()
+	chat := agentexecution.NewEphemeralRuntime()
 	t.Cleanup(func() { _ = chat.Close(context.Background()) })
 	result, err := chat.ExecuteStructuralOperation(context.Background(), *spec)
 	if err != nil {

@@ -87,7 +87,7 @@ func (h *Handlers) HandleAutomationInboxRead(ctx context.Context, c *app.Request
 }
 
 func (h *Handlers) HandleAutomationCreate(ctx context.Context, c *app.RequestContext) {
-	var req automation.Task
+	var req automation.TaskDefinition
 	if err := c.BindJSON(&req); err != nil {
 		writeError(c, consts.StatusBadRequest, err.Error())
 		return

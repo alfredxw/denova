@@ -1,17 +1,18 @@
 import { useEffect, useState } from 'react'
 import { ChevronLeft, ChevronRight, Loader2, MessageCircleQuestion } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
-import type { AgentAskAnswer, AgentAskInteraction, AgentAskQuestion, AgentAskResolution, ChatMessage } from '@/lib/api'
+import type { AgentAskAnswer, AgentAskInteraction, AgentAskQuestion, AgentAskResolution, AskChatMessage, ToolCallChatMessage } from '@/lib/api'
 import { Button } from '@/components/ui/button'
 import { Textarea } from '@/components/ui/textarea'
 import type { AgentAskResolveAction } from '@/lib/agent-ask'
 
 export type AskResolveAction = AgentAskResolveAction
 
-export type AskInteractionResolver = (message: ChatMessage, action: AskResolveAction) => Promise<AgentAskResolution>
+export type AskInteractionMessage = AskChatMessage | ToolCallChatMessage
+export type AskInteractionResolver = (message: AskInteractionMessage, action: AskResolveAction) => Promise<AgentAskResolution>
 
 interface AskInteractionCardProps {
-  message: ChatMessage
+  message: AskInteractionMessage
   onResolve?: AskInteractionResolver
 }
 
@@ -236,8 +237,8 @@ function askAnswerSummary(answer: NonNullable<AgentAskInteraction['answers']>[nu
   return selections.join(' · ')
 }
 
-function parseAskToolInput(message: ChatMessage): AgentAskInteraction | undefined {
-  if ((message.name || '') !== 'ask' || !message.id) return undefined
+function parseAskToolInput(message: AskInteractionMessage): AgentAskInteraction | undefined {
+  if (message.role !== 'tool_call' || (message.name || '') !== 'ask' || !message.id) return undefined
   try {
     const input = JSON.parse(message.args || '') as { questions?: AgentAskQuestion[] }
     if (!Array.isArray(input.questions) || input.questions.length === 0) return undefined

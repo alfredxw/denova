@@ -195,11 +195,11 @@ func (s *Service) Templates(locale string) []automation.TaskTemplate {
 	return automation.BuiltinTaskTemplates(locale)
 }
 
-func (s *Service) Create(task automation.Task) (automation.Task, error) {
-	if err := requireProjectAutomationTask(task); err != nil {
+func (s *Service) Create(definition automation.TaskDefinition) (automation.Task, error) {
+	if err := requireProjectAutomationDefinition(definition); err != nil {
 		return automation.Task{}, err
 	}
-	return s.storeAllWorkspaces().Create(task)
+	return s.storeAllWorkspaces().Create(definition)
 }
 
 func (s *Service) Update(id string, task automation.Task) (automation.Task, error) {
@@ -218,6 +218,13 @@ func (s *Service) UpdateIfRevision(id string, task automation.Task, baseRevision
 
 func requireProjectAutomationTask(task automation.Task) error {
 	if task.Scope == automation.ScopeUser || task.Target.Kind == automation.TargetKindUser {
+		return errors.New("自动化任务必须绑定项目 / Automation tasks must target a Project")
+	}
+	return nil
+}
+
+func requireProjectAutomationDefinition(definition automation.TaskDefinition) error {
+	if definition.Scope == automation.ScopeUser || definition.Target.Kind == automation.TargetKindUser {
 		return errors.New("自动化任务必须绑定项目 / Automation tasks must target a Project")
 	}
 	return nil

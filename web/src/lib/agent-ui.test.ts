@@ -256,11 +256,6 @@ describe('agent-ui', () => {
             output: 'ok',
           },
           {
-            type: 'data-agent-plan-question',
-            id: 'question-1',
-            data: { content: '选择方向', status: 'running' },
-          },
-          {
             type: 'data-agent-token-usage',
             id: 'usage-1',
             data: {
@@ -301,7 +296,6 @@ describe('agent-ui', () => {
       'thinking',
       'assistant',
       'tool_call',
-      'plan_question',
       'token_usage',
       'rule_roll',
       'tool_result',
@@ -319,17 +313,12 @@ describe('agent-ui', () => {
       result: 'ok',
     })
     expect(converted[4]).toMatchObject({
-      id: 'question-1',
-      status: 'running',
-      streaming: true,
-    })
-    expect(converted[5]).toMatchObject({
       id: 'usage-1',
       total_tokens: 42,
       usage_calls: [{ index: 0, total_tokens: 42 }],
     })
-    expect(converted[6].rule_roll).toMatchObject({ label: '检定', total: 18 })
-    expect(converted[7]).toMatchObject({
+    expect(converted[5]).toMatchObject({ rule_roll: { label: '检定', total: 18 } })
+    expect(converted[6]).toMatchObject({
       id: 'image-1',
       name: 'generate_interactive_image',
       interactive_image_status: 'success',

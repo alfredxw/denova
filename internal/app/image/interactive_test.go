@@ -97,7 +97,7 @@ func TestPrepareImageAgentSessionCreatesCanonicalSessionBeforeAdmission(t *testi
 	}
 }
 
-func TestImageAgentConversationCommitsAssistantThroughHarnessCycle(t *testing.T) {
+func TestImageAgentConversationCommitsAssistantThroughExecutionCycle(t *testing.T) {
 	store, err := session.NewStore(t.TempDir())
 	if err != nil {
 		t.Fatal(err)

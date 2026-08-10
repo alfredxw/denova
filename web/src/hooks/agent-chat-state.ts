@@ -162,17 +162,7 @@ export function collectPlanUserContext(messages: AgentUIMessage[], target: Agent
 }
 
 export function filterInternalPlanUIMessages(messages: AgentUIMessage[]) {
-  return messages.filter((message) => {
-    const text = message.parts.map(part => part.type === 'text' ? part.text : '').join('')
-    // Pre-Ask sessions persisted hidden answer follow-ups. Keep suppressing
-    // those records during replay; new turns never produce this protocol.
-    if (message.role === 'user' && isPlanQuestionAnswerProtocol(text)) return false
-    return !message.parts.some(part => isPlanProtocolToolPart(part))
-  })
-}
-
-function isPlanQuestionAnswerProtocol(content: string) {
-  return content.includes('<plan_question_answers>') || content.includes('</plan_question_answers>')
+  return messages.filter(message => !message.parts.some(part => isPlanProtocolToolPart(part)))
 }
 
 function isPlanProtocolToolPart(part: AgentUIMessage['parts'][number]) {

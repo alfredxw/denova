@@ -25,7 +25,7 @@ func TestAutomationCheckCreatesRetryableInboxWhenAutoRunCannotStart(t *testing.T
 	app.ensureServices()
 
 	now := time.Now()
-	task, err := app.CreateAutomation(automation.Task{
+	task, err := app.CreateAutomation(automation.TaskDefinition{
 		Scope:    automation.ScopeWorkspace,
 		Enabled:  true,
 		Name:     "Read-only schedule",
@@ -69,7 +69,7 @@ func TestAutomationCheckSkipsInboxForSilentScheduleTrigger(t *testing.T) {
 	app.ensureServices()
 
 	now := time.Now()
-	task, err := app.CreateAutomation(automation.Task{
+	task, err := app.CreateAutomation(automation.TaskDefinition{
 		Scope:    automation.ScopeWorkspace,
 		Enabled:  true,
 		Name:     "Silent read-only",
@@ -118,7 +118,7 @@ func TestAutomationChapterBatchTriggerCreatesInboxAtBatchBoundaries(t *testing.T
 	t.Cleanup(app.Close)
 	app.bookService = book.NewService(workspace)
 
-	task, err := app.CreateAutomation(automation.Task{
+	task, err := app.CreateAutomation(automation.TaskDefinition{
 		Scope:    automation.ScopeWorkspace,
 		Enabled:  true,
 		Name:     "Batch review",
@@ -229,7 +229,7 @@ func TestAutomationMutationCheckRunsOnlyContentTriggersForChapterWrites(t *testi
 	app.bookService = book.NewService(workspace)
 
 	now := time.Now()
-	if _, err := app.CreateAutomation(automation.Task{
+	if _, err := app.CreateAutomation(automation.TaskDefinition{
 		Scope:    automation.ScopeWorkspace,
 		Enabled:  true,
 		Name:     "Due schedule",
@@ -244,7 +244,7 @@ func TestAutomationMutationCheckRunsOnlyContentTriggersForChapterWrites(t *testi
 	}); err != nil {
 		t.Fatalf("CreateAutomation schedule failed: %v", err)
 	}
-	batchTask, err := app.CreateAutomation(automation.Task{
+	batchTask, err := app.CreateAutomation(automation.TaskDefinition{
 		Scope:    automation.ScopeWorkspace,
 		Enabled:  true,
 		Name:     "Batch review",
@@ -301,7 +301,7 @@ func TestAutomationMutationCallbackDoesNotEvaluateBeforeDurableHostEffect(t *tes
 	t.Cleanup(app.Close)
 	app.bookService = book.NewService(workspace)
 
-	task, err := app.CreateAutomation(automation.Task{
+	task, err := app.CreateAutomation(automation.TaskDefinition{
 		Scope:    automation.ScopeWorkspace,
 		Enabled:  true,
 		Name:     "Agent batch review",
@@ -396,7 +396,7 @@ func TestAutomationMutationChecksCoalesceRapidSavesWithoutDuplicateInbox(t *test
 	registerAutomationProjectForTest(t, application, workspace)
 	application.ensureServices()
 	defer application.Close()
-	task, err := application.CreateAutomation(automation.Task{
+	task, err := application.CreateAutomation(automation.TaskDefinition{
 		Scope:    automation.ScopeWorkspace,
 		Enabled:  true,
 		Name:     "Rapid-save review",
@@ -423,7 +423,7 @@ func TestAutomationMutationChecksCoalesceRapidSavesWithoutDuplicateInbox(t *test
 
 func TestUserScopedAutomationIsRejectedWithoutProjectAgent(t *testing.T) {
 	service := automationRegistryTestService(&App{})
-	_, err := service.Create(automation.Task{
+	_, err := service.Create(automation.TaskDefinition{
 		Scope:  automation.ScopeUser,
 		Target: automation.ExecutionTarget{Kind: automation.TargetKindUser},
 		Name:   "Shared user review", Template: automation.TemplateReview,

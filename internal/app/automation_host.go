@@ -47,16 +47,16 @@ func (host automationHost) CurrentRuntime() (automationapp.Runtime, error) {
 	}
 	cfg := *host.app.cfg
 	runtime := automationapp.Runtime{
-		ProjectID:    cfg.ProjectID,
-		ProjectType:  projectdomain.TypeBook,
-		StateRoot:    cfg.ProjectStateDir,
-		Workspace:    host.app.workspace,
-		DataDir:      cfg.DataDir(),
-		Config:       cfg,
-		BookState:    host.app.bookState,
-		BookService:  host.app.bookService,
-		SessionStore: host.app.sessionStore,
-		ChatService:  host.app.chatService,
+		ProjectID:        cfg.ProjectID,
+		ProjectType:      projectdomain.TypeBook,
+		StateRoot:        cfg.ProjectStateDir,
+		Workspace:        host.app.workspace,
+		DataDir:          cfg.DataDir(),
+		Config:           cfg,
+		BookState:        host.app.bookState,
+		BookService:      host.app.bookService,
+		SessionStore:     host.app.sessionStore,
+		ExecutionRuntime: host.app.executionRuntime,
 	}
 	host.app.mu.RUnlock()
 	fresh, err := refreshConversationRuntimeConfig(runtime.Config, runtime.Workspace, runtime.StateRoot)
@@ -78,9 +78,9 @@ func (host automationHost) BaseRuntime() automationapp.Runtime {
 		cfg = *host.app.cfg
 	}
 	return automationapp.Runtime{
-		DataDir:     cfg.DataDir(),
-		Config:      cfg,
-		ChatService: host.app.chatService,
+		DataDir:          cfg.DataDir(),
+		Config:           cfg,
+		ExecutionRuntime: host.app.executionRuntime,
 	}
 }
 
@@ -125,16 +125,16 @@ func (host automationHost) RuntimeForTarget(ctx context.Context, target automati
 	}
 	runtime := project.Conversation
 	return automationapp.Runtime{
-		ProjectID:    runtime.ProjectID,
-		ProjectType:  runtime.ProjectType,
-		StateRoot:    runtime.ProjectState,
-		Workspace:    runtime.Workspace,
-		DataDir:      runtime.Config.DataDir(),
-		Config:       runtime.Config,
-		BookState:    runtime.State,
-		BookService:  runtime.BookService,
-		SessionStore: project.SessionStore,
-		ChatService:  runtime.ChatService,
+		ProjectID:        runtime.ProjectID,
+		ProjectType:      runtime.ProjectType,
+		StateRoot:        runtime.ProjectState,
+		Workspace:        runtime.Workspace,
+		DataDir:          runtime.Config.DataDir(),
+		Config:           runtime.Config,
+		BookState:        runtime.State,
+		BookService:      runtime.BookService,
+		SessionStore:     project.SessionStore,
+		ExecutionRuntime: runtime.ExecutionRuntime,
 	}, nil
 }
 

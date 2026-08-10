@@ -1,7 +1,7 @@
 package configmanager
 
 import (
-	agentharness "denova/internal/agents/harness"
+	agentexecution "denova/internal/agents/execution"
 	agentrun "denova/internal/agents/run"
 	appagentruntime "denova/internal/app/agentruntime"
 	apptask "denova/internal/app/task"
@@ -18,7 +18,7 @@ type recoveryRun struct {
 	projectID       string
 	sessionID       string
 	task            *apptask.Task
-	recovery        *agentharness.RecoveryObservation
+	recovery        *agentexecution.RecoveryObservation
 	recoveryActions map[string]agentrun.CommandReceipt
 }
 

@@ -4,7 +4,7 @@ import (
 	"context"
 	agentchat "denova/internal/agents/chat"
 	agentconversation "denova/internal/agents/conversation"
-	agentharness "denova/internal/agents/harness"
+	agentexecution "denova/internal/agents/execution"
 	"errors"
 	"os"
 	"path/filepath"
@@ -416,7 +416,7 @@ func TestCommittedReviewFeedbackPersistsWithUserMessageAndDisappearsAfterReload(
 		t.Fatal(err)
 	}
 	identity := agentrun.CycleIdentity{CommandID: "review-feedback-commit", OperationID: "review-feedback-operation", Cycle: 1}
-	plan, err := application.PlanHarnessInputMaterialization(context.Background(), agentharness.InputMaterializationRequest{
+	plan, err := planProfileInputForTest(application, context.Background(), agentexecution.InputMaterializationRequest{
 		Binding:  agentrun.RuntimeBinding{AgentKind: agentrun.AgentKindIDE, Workspace: workspace, SessionID: sess.ID},
 		Identity: identity, AgentKind: agentrun.AgentKindIDE,
 		Message: req.Message, Request: acceptedRequest,
@@ -464,7 +464,7 @@ func TestCommittedReviewFeedbackPersistsWithUserMessageAndDisappearsAfterReload(
 		callbackSawDurableReference = history[0].UserReferences[0].ID == comment.ID
 		return consumeFeedback(ctx)
 	}
-	agentharness.NewEphemeralService().RunWithOptions(
+	runExecutionCycle(agentexecution.NewEphemeralRuntime(),
 		ctx,
 		runner,
 		agentconversation.NewSessionConversation(sess),

@@ -272,7 +272,7 @@ func (service *Service) DeleteSession(projectID, sessionID string) error {
 	if err != nil {
 		return err
 	}
-	if err := project.chatService.CloseProjectSessionBindings(context.Background(), binding.ProjectID, binding.SessionID); err != nil {
+	if err := project.executionRuntime.CloseProjectSessionBindings(context.Background(), binding.ProjectID, binding.SessionID); err != nil {
 		return err
 	}
 	if err := project.store.Delete(binding.SessionID); err != nil {

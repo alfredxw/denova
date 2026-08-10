@@ -1,4 +1,4 @@
-import type { AgentAskInteraction, ChapterIllustration, ChatMessage, InteractiveImage, InteractiveImageError, PublicRuleRoll, TokenUsageCall } from './api-client/types'
+import type { AgentAskInteraction, ChapterIllustration, ChatMessage, ChatPlanAction, InteractiveImage, InteractiveImageError, InteractiveImageStatus, PublicRuleRoll, TokenUsageCall } from './api-client/types'
 import type { AgentMessageMetadata, AgentUIMessage } from './agent-ui'
 
 export type AgentMessageViewKind =
@@ -11,7 +11,6 @@ export type AgentMessageViewKind =
   | 'rule-roll'
   | 'context-compaction'
   | 'token-usage'
-  | 'plan-question'
   | 'proposed-plan'
   | 'system'
   | 'error'
@@ -314,9 +313,9 @@ export function agentViewStableKey(view: AgentMessageView) {
 }
 
 export function isPlanProtocolToolName(name: string) {
-  // Legacy names are replay-only: old providers emitted a tool call beside the
-  // persisted plan card, and rendering both would duplicate historical UI.
-  return name === 'plan_questions' || name === 'plan_question' || name === 'proposed_plan'
+  // The provider may emit a tool call beside the persisted plan card. Rendering
+  // both would duplicate the same proposal in the timeline.
+  return name === 'proposed_plan'
 }
 
 export function agentViewToRenderMessage(view: AgentMessageView, options: { forceDone?: boolean } = {}): ChatMessage | null {
@@ -378,8 +377,6 @@ export function agentViewToRenderMessage(view: AgentMessageView, options: { forc
       return { id, role: 'context_compaction', content: view.content, status, streaming, ...contextFields(data), ...meta }
     case 'token-usage':
       return { id, role: 'token_usage', content: view.content, ...tokenUsageFields(data), ...meta }
-    case 'plan-question':
-      return { id, role: 'plan_question', content: view.content, status, streaming, thinking_preview: readString(data.thinking_preview), plan_action: readPlanAction(data.plan_action), ...meta }
     case 'proposed-plan':
       return { id, role: 'proposed_plan', content: view.content, status, streaming, thinking_preview: readString(data.thinking_preview), plan_action: readPlanAction(data.plan_action), ...meta }
     case 'system':
@@ -485,8 +482,6 @@ function buildAgentMessageView(message: AgentUIMessage, part: AgentUIMessage['pa
       return { ...base, kind: 'context-compaction', data, content, status, streaming }
     case 'data-agent-token-usage':
       return { ...base, kind: 'token-usage', data, content, streaming: false }
-    case 'data-agent-plan-question':
-      return { ...base, kind: 'plan-question', data, content, status, streaming }
     case 'data-agent-proposed-plan':
       return { ...base, kind: 'proposed-plan', data, content, status, streaming }
     case 'data-agent-system':
@@ -723,14 +718,14 @@ function readRuleRoll(value: unknown): PublicRuleRoll | undefined {
   }
 }
 
-function readInteractiveImageStatus(data: Record<string, unknown>): ChatMessage['interactive_image_status'] {
+function readInteractiveImageStatus(data: Record<string, unknown>): InteractiveImageStatus | undefined {
   const status = readString(data.interactive_image_status) || readString(data.status)
   return status === 'running' || status === 'success' || status === 'error' ? status : undefined
 }
 
-function readPlanAction(value: unknown): ChatMessage['plan_action'] {
+function readPlanAction(value: unknown): ChatPlanAction | undefined {
   const action = readString(value)
-  return action === 'answered' || action === 'approved' || action === 'continue' || action === 'exited' ? action : undefined
+  return action === 'approved' || action === 'continue' || action === 'exited' ? action : undefined
 }
 
 function agentTokenUsageRecordFromView(view: AgentMessageView): AgentTokenUsageRecord {

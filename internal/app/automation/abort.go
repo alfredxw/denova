@@ -2,7 +2,7 @@ package automationapp
 
 import (
 	"context"
-	agentharness "denova/internal/agents/harness"
+	agentexecution "denova/internal/agents/execution"
 	"fmt"
 	"strings"
 
@@ -42,11 +42,11 @@ func (s *Service) AbortRunCommand(
 		return agentrun.CommandReceipt{}, err
 	}
 	defer operation.Release()
-	if snap.chatService == nil {
+	if snap.executionRuntime == nil {
 		return agentrun.CommandReceipt{}, ErrNoWorkspace
 	}
-	return snap.chatService.SubmitCommand(operation.Context(), agentharness.CommandSpec{
-		Kind:        agentharness.CommandAbort,
+	return snap.executionRuntime.SubmitCommand(operation.Context(), agentexecution.CommandRequest{
+		Kind:        agentexecution.CommandAbort,
 		CommandID:   commandID,
 		OperationID: targetOperationID,
 		Reason:      strings.TrimSpace(reason),

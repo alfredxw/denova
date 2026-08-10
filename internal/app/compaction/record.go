@@ -11,7 +11,7 @@ import (
 	"denova/config"
 	agentcompaction "denova/internal/agents/context/compaction"
 	agentstructural "denova/internal/agents/context/structural"
-	agentharness "denova/internal/agents/harness"
+	agentexecution "denova/internal/agents/execution"
 	agentrun "denova/internal/agents/run"
 	"denova/internal/agents/session"
 	"denova/internal/interactive"
@@ -66,12 +66,12 @@ func StoryBinding(workspace, storyID, branchID string) agentrun.RuntimeBinding {
 	return agentrun.RuntimeBinding{AgentKind: agentrun.AgentKindInteractiveStory, Workspace: workspace, StoryID: storyID, BranchID: branchID}
 }
 
-func RecoveryActionFor(action agentstructural.Action) agentharness.RuntimeRecoveryActionKind {
+func RecoveryActionFor(action agentstructural.Action) agentexecution.RuntimeRecoveryActionKind {
 	switch action {
 	case agentstructural.Compact:
-		return agentharness.RuntimeRecoveryCompactContext
+		return agentexecution.RuntimeRecoveryCompactContext
 	case agentstructural.Remove:
-		return agentharness.RuntimeRecoveryRemoveCompaction
+		return agentexecution.RuntimeRecoveryRemoveCompaction
 	default:
 		return ""
 	}

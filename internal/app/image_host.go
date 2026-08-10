@@ -47,7 +47,7 @@ func (host imageHost) AcquireImageRuntime(ctx context.Context, expectedWorkspace
 	runtime := &imageapp.Runtime{
 		ProjectID: app.cfg.ProjectID, Workspace: workspace, Config: *app.cfg, BookState: app.bookState,
 		BookService: app.bookService, Interactive: app.interactive,
-		SessionStore: app.sessionStore, ChatService: app.chatService,
+		SessionStore: app.sessionStore, ExecutionRuntime: app.executionRuntime,
 	}
 	app.mu.RUnlock()
 
@@ -81,7 +81,7 @@ func (host imageHost) AcquireProjectImageRuntime(ctx context.Context, projectID 
 		return nil, err
 	}
 	conversation := projectRuntime.Conversation
-	if conversation.State == nil || conversation.BookService == nil || conversation.ChatService == nil {
+	if conversation.State == nil || conversation.BookService == nil || conversation.ExecutionRuntime == nil {
 		operation.Release()
 		return nil, fmt.Errorf("Project %q is not a Book Project", projectID)
 	}
@@ -94,7 +94,7 @@ func (host imageHost) AcquireProjectImageRuntime(ctx context.Context, projectID 
 	return &imageapp.Runtime{
 		Operation: operation, ProjectID: conversation.ProjectID, Workspace: conversation.Workspace,
 		Config: conversation.Config, BookState: conversation.State, BookService: conversation.BookService,
-		SessionStore: projectRuntime.SessionStore, ChatService: conversation.ChatService,
+		SessionStore: projectRuntime.SessionStore, ExecutionRuntime: conversation.ExecutionRuntime,
 	}, nil
 }
 
@@ -107,5 +107,5 @@ func imageRuntimeMatches(app *App, runtime *imageapp.Runtime) bool {
 	return lifecycleWorkspaceKey(app.workspace) == lifecycleWorkspaceKey(runtime.Workspace) &&
 		app.bookState == runtime.BookState && app.bookService == runtime.BookService &&
 		app.interactive == runtime.Interactive && app.sessionStore == runtime.SessionStore &&
-		app.chatService == runtime.ChatService
+		app.executionRuntime == runtime.ExecutionRuntime
 }

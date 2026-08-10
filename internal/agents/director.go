@@ -3,7 +3,7 @@ package agents
 import (
 	"context"
 	agentchat "denova/internal/agents/chat"
-	agentharness "denova/internal/agents/harness"
+	agentexecution "denova/internal/agents/execution"
 	agentinteractive "denova/internal/agents/interactive"
 	agentrun "denova/internal/agents/run"
 	"fmt"
@@ -20,8 +20,8 @@ import (
 
 const interactiveDirectorToolResultMaxBytes = interactive.DirectorContextMaxBytes
 
-func GenerateInteractiveDirectorWithTools(ctx context.Context, chatService *agentharness.Service, cfg *config.Config, state *book.State, toolContext agentinteractive.InteractiveStoryToolContext, instruction string) (string, error) {
-	if chatService == nil {
+func GenerateInteractiveDirectorWithTools(ctx context.Context, executionRuntime *agentexecution.Runtime, cfg *config.Config, state *book.State, toolContext agentinteractive.InteractiveStoryToolContext, instruction string) (string, error) {
+	if executionRuntime == nil {
 		return "", fmt.Errorf("互动导演运行时不可用")
 	}
 	if cfg == nil {
@@ -59,14 +59,17 @@ func GenerateInteractiveDirectorWithTools(ctx context.Context, chatService *agen
 	bookService := book.NewService(state.Workspace())
 	var runErr error
 	runOptions.ToolResultMaxBytes = interactiveDirectorToolResultMaxBytes
-	outcome := chatService.RunWithOptions(ctx, runner, conversation, bookService, agentchat.ChatRequest{CommandID: toolContext.CommandID, Message: instruction}, runOptions, func(event agentrun.Event) {
+	outcome := executionRuntime.Run(ctx, agentexecution.StartRequest{Cycle: agentexecution.Cycle{
+		Runner: runner, Conversation: conversation, BookService: bookService,
+		Request: agentchat.ChatRequest{CommandID: toolContext.CommandID, Message: instruction}, Options: runOptions,
+	}, Emit: func(event agentrun.Event) {
 		if event.Type != "error" {
 			return
 		}
 		if data, ok := event.Data.(map[string]string); ok {
 			runErr = fmt.Errorf("%s", data["message"])
 		}
-	})
+	}})
 	if outcome.Status == agentrun.OutcomeFailed && outcome.Error != nil {
 		runErr = outcome.Error
 	}

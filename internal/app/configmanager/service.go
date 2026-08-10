@@ -13,7 +13,7 @@ import (
 	chatagent "denova/internal/agents/chat"
 	agentcontext "denova/internal/agents/context"
 	agentconversation "denova/internal/agents/conversation"
-	agentharness "denova/internal/agents/harness"
+	agentexecution "denova/internal/agents/execution"
 	agentrun "denova/internal/agents/run"
 	"denova/internal/agents/session"
 	agenttool "denova/internal/agents/tool"
@@ -89,7 +89,7 @@ func (service *Service) StartTaskWithError(ctx context.Context, request Request)
 		CommandID: request.CommandID, Message: message,
 		LoreReferences: append([]string(nil), request.References...), Locale: request.Locale,
 	})
-	fingerprint := agentharness.RequestSemanticFingerprint(chatRequest)
+	fingerprint := agentexecution.RequestSemanticFingerprint(chatRequest)
 	identity := apptask.StartIdentity{
 		CommandID: request.CommandID, Scope: runtime.ProjectID,
 		SessionID: sessionID, Fingerprint: fingerprint,
@@ -156,20 +156,25 @@ func (service *Service) StartTaskWithError(ctx context.Context, request Request)
 		return nil, err
 	}
 	acceptCtx, releaseAcceptance := apptask.AcceptanceContext(ctx, task)
-	accepted, err := runtime.ChatService.StartWithOptions(
-		acceptCtx, runner, conversation, runtime.BookService, chatRequest,
-		agentrun.Options{
-			AgentKind: agentrun.AgentKindConfigManager, StateRoot: runtimeConfig.ProjectStateDir,
-			ProjectID: runtime.ProjectID,
-			TaskID:    task.ID(), SessionID: sess.ID, Workspace: runtime.Workspace,
-			Mode: RuntimeMode, IdleTimeout: appagentruntime.IdleTimeout(runtimeConfig),
-			ToolResultMaxBytes: appagentruntime.ToolResultMaxBytes(runtimeConfig), SystemPromptLog: systemPrompt,
-			OnMutationsVerified: func(callbackCtx context.Context, mutations []agenttool.Mutation, verification agenttool.Verification) {
-				service.host.OnVerifiedMutations(callbackCtx, "config_manager_post_run", runtime.VersionService, runtimeConfig, mutations, verification)
+	accepted, err := runtime.ExecutionRuntime.Start(acceptCtx, agentexecution.StartRequest{
+		Cycle: agentexecution.Cycle{
+			Runner:       runner,
+			Conversation: conversation,
+			BookService:  runtime.BookService,
+			Request:      chatRequest,
+			Options: agentrun.Options{
+				AgentKind: agentrun.AgentKindConfigManager, StateRoot: runtimeConfig.ProjectStateDir,
+				ProjectID: runtime.ProjectID,
+				TaskID:    task.ID(), SessionID: sess.ID, Workspace: runtime.Workspace,
+				Mode: RuntimeMode, IdleTimeout: appagentruntime.IdleTimeout(runtimeConfig),
+				ToolResultMaxBytes: appagentruntime.ToolResultMaxBytes(runtimeConfig), SystemPromptLog: systemPrompt,
+				OnMutationsVerified: func(callbackCtx context.Context, mutations []agenttool.Mutation, verification agenttool.Verification) {
+					service.host.OnVerifiedMutations(callbackCtx, "config_manager_post_run", runtime.VersionService, runtimeConfig, mutations, verification)
+				},
 			},
 		},
-		task.Emit,
-	)
+		Emit: task.Emit,
+	})
 	releaseAcceptance()
 	if err != nil {
 		reservation.Rollback()
@@ -199,7 +204,7 @@ func (service *Service) StartTaskWithError(ctx context.Context, request Request)
 
 func (runtime Runtime) available() bool {
 	return runtime.Config.DataDir() != "" && runtime.SessionStore != nil &&
-		runtime.ChatService != nil && strings.TrimSpace(runtime.Workspace) != ""
+		runtime.ExecutionRuntime != nil && strings.TrimSpace(runtime.Workspace) != ""
 }
 
 func (service *Service) runtime(ctx context.Context, request Request) (Runtime, error) {

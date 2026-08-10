@@ -24,13 +24,13 @@ func TestAutomationsListsTasksFromInactiveRegisteredWorkspaces(t *testing.T) {
 		t.Fatalf("register workspace B: %v", err)
 	}
 
-	taskA, err := projectAutomationStoreForTest(t, novaDir, registry.ProjectRegistry(), workspaceA).Create(automation.Task{
+	taskA, err := projectAutomationStoreForTest(t, novaDir, registry.ProjectRegistry(), workspaceA).Create(automation.TaskDefinition{
 		Scope: automation.ScopeWorkspace, Name: "Task A", Template: automation.TemplateReview,
 	})
 	if err != nil {
 		t.Fatalf("create task A: %v", err)
 	}
-	taskB, err := projectAutomationStoreForTest(t, novaDir, registry.ProjectRegistry(), workspaceB).Create(automation.Task{
+	taskB, err := projectAutomationStoreForTest(t, novaDir, registry.ProjectRegistry(), workspaceB).Create(automation.TaskDefinition{
 		Scope: automation.ScopeWorkspace, Name: "Task B", Template: automation.TemplateReview,
 	})
 	if err != nil {
@@ -78,7 +78,7 @@ func TestSchedulerEvaluatesDueTasksInInactiveWorkspace(t *testing.T) {
 		t.Fatal(err)
 	}
 	now := time.Now().UTC().Truncate(time.Minute)
-	_, err := projectAutomationStoreForTest(t, novaDir, registry.ProjectRegistry(), workspaceB).Create(automation.Task{
+	_, err := projectAutomationStoreForTest(t, novaDir, registry.ProjectRegistry(), workspaceB).Create(automation.TaskDefinition{
 		Scope:    automation.ScopeWorkspace,
 		Enabled:  true,
 		Name:     "Inactive workspace schedule",
@@ -100,10 +100,10 @@ func TestSchedulerEvaluatesDueTasksInInactiveWorkspace(t *testing.T) {
 	}
 
 	application := &App{
-		cfg:          &config.Config{NovaDir: novaDir, Workspace: workspaceA},
-		workspace:    workspaceA,
-		bookRegistry: registry,
-		chatService:  nil,
+		cfg:              &config.Config{NovaDir: novaDir, Workspace: workspaceA},
+		workspace:        workspaceA,
+		bookRegistry:     registry,
+		executionRuntime: nil,
 	}
 	application.ensureServices()
 	t.Cleanup(application.Close)
@@ -139,7 +139,7 @@ func TestCheckAutomationTriggersUsesCatalogIDForInactiveWorkspace(t *testing.T) 
 	if err := registry.Touch(workspaceB); err != nil {
 		t.Fatal(err)
 	}
-	task, err := projectAutomationStoreForTest(t, novaDir, registry.ProjectRegistry(), workspaceB).Create(automation.Task{
+	task, err := projectAutomationStoreForTest(t, novaDir, registry.ProjectRegistry(), workspaceB).Create(automation.TaskDefinition{
 		Scope:    automation.ScopeWorkspace,
 		Enabled:  true,
 		Name:     "Inactive workspace manual check",

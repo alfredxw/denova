@@ -34,7 +34,7 @@ type CycleIdentityBinder interface {
 
 // AgentKindBinder aligns canonical input metadata with the accepted profile.
 type AgentKindBinder interface {
-	BindHarnessAgentKind(string)
+	BindAgentKind(string)
 }
 
 // CyclePreparer reconciles domain-owned outboxes after identity binding and

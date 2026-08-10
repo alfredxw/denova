@@ -533,7 +533,7 @@ func (s *InteractiveAppService) RunInteractiveDirectorPlan(storyID string, req i
 	store := a.interactive
 	state := a.bookState
 	sessionStore := a.sessionStore
-	chatService := a.chatService
+	executionRuntime := a.executionRuntime
 	runtimeCfg := *a.cfg
 	directorTasks := a.workspaceDirectorTasks
 	directorGenerator := a.directorGenerator
@@ -582,7 +582,7 @@ func (s *InteractiveAppService) RunInteractiveDirectorPlan(storyID string, req i
 		return interactive.DirectorPlanStatus{}, ErrWorkspaceTransition
 	}
 	slog.InfoContext(context.Background(), fmt.Sprintf("[interactive-director-agent] manual run scheduled story_id=%s branch_id=%s turn_id=%s source=%s", storyID, storyCtx.Snapshot.BranchID, turn.ID, firstNonEmpty(req.Source, "manual_retry")))
-	conversation := interactiveapp.NewConversation(store, novaDir, workspace, storyID, storyCtx.Snapshot.BranchID, turn.User, storyCtx.Meta.ReplyTargetChars, &runtimeCfg).BindDirectorRuntime(directorTasks, directorGenerator, chatService)
+	conversation := interactiveapp.NewConversation(store, novaDir, workspace, storyID, storyCtx.Snapshot.BranchID, turn.User, storyCtx.Meta.ReplyTargetChars, &runtimeCfg).BindDirectorRuntime(directorTasks, directorGenerator, executionRuntime)
 	interactiveapp.StartDirectorTask(&runtimeCfg, state, conversation, turn, sessionStore, token)
 	return store.DirectorPlanStatus(storyID, storyCtx.Snapshot.BranchID)
 }

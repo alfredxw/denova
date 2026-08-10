@@ -145,6 +145,41 @@ type Task struct {
 	ArchivedAt *time.Time `json:"archived_at,omitempty"`
 }
 
+// TaskDefinition is the complete caller-owned input for creating an
+// Automation. Runtime identity, scheduler state, run history, revisions,
+// timestamps, and archive tombstones are deliberately absent.
+type TaskDefinition struct {
+	Scope               string              `json:"scope"`
+	Target              ExecutionTarget     `json:"target"`
+	Enabled             bool                `json:"enabled"`
+	Name                string              `json:"name"`
+	Template            string              `json:"template"`
+	Prompt              string              `json:"prompt"`
+	ModelProfileID      string              `json:"model_profile_id,omitempty"`
+	Schedule            Schedule            `json:"schedule"`
+	Triggers            []TriggerDefinition `json:"triggers"`
+	DefaultActionPolicy string              `json:"default_action_policy"`
+	SessionStrategy     string              `json:"session_strategy"`
+}
+
+// Definition returns only user-editable creation fields. It is intentionally
+// lossy so callers cannot clone scheduler-owned state into a new task.
+func (task Task) Definition() TaskDefinition {
+	return TaskDefinition{
+		Scope:               task.Scope,
+		Target:              task.Target,
+		Enabled:             task.Enabled,
+		Name:                task.Name,
+		Template:            task.Template,
+		Prompt:              task.Prompt,
+		ModelProfileID:      task.ModelProfileID,
+		Schedule:            task.Schedule,
+		Triggers:            append([]TriggerDefinition(nil), task.Triggers...),
+		DefaultActionPolicy: task.DefaultActionPolicy,
+		SessionStrategy:     task.SessionStrategy,
+	}
+}
+
 // TaskTemplate is an immutable creation recipe. Selecting a template copies
 // Defaults into a new user-owned task; saved tasks never stay linked to it.
 type TaskTemplate struct {

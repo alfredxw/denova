@@ -325,7 +325,7 @@ func runInteractiveDirectorMaintenance(ctx context.Context, cfg *config.Config, 
 		}
 		return result, fmt.Errorf("生成后台导演维护失败: %w", err)
 	}
-	if conversation.customDirectorGenerator || conversation.directorChatService == nil {
+	if conversation.customDirectorGenerator || conversation.directorExecutionRuntime == nil {
 		if err = planCommit.commitCustomGenerator(ctx); err != nil {
 			persistAgentCall(sessionStore, config.AgentKindInteractiveDirector, instruction, "执行失败："+err.Error())
 			markInteractiveDirectorFailed(conversation, turn, err)

@@ -39,7 +39,7 @@ func TestExecutionTargetMigratesReleasedWorkspaceIDToProjectID(t *testing.T) {
 func TestStoreUpdateIfRevisionRejectsStaleDefinition(t *testing.T) {
 	root := t.TempDir()
 	store := NewStore(filepath.Join(root, "user"), filepath.Join(root, "workspace"))
-	created, err := store.Create(Task{
+	created, err := store.Create(TaskDefinition{
 		Scope:    ScopeWorkspace,
 		Name:     "Review",
 		Template: TemplateReview,
@@ -76,7 +76,7 @@ func TestStoreUpdateIfRevisionRejectsStaleDefinition(t *testing.T) {
 func TestStoreUpdateIfRevisionPreservesSchedulerRuntimeState(t *testing.T) {
 	root := t.TempDir()
 	store := NewStore(filepath.Join(root, "user"), filepath.Join(root, "workspace"))
-	created, err := store.Create(Task{
+	created, err := store.Create(TaskDefinition{
 		Scope:    ScopeWorkspace,
 		Name:     "Review",
 		Template: TemplateReview,
@@ -115,11 +115,11 @@ func TestStoreSeparatesUserAndWorkspaceTasks(t *testing.T) {
 	}
 	store := NewStore(userDir, workspace)
 
-	userTask, err := store.Create(Task{Scope: ScopeUser, Name: "User task", Template: TemplateCustomPrompt})
+	userTask, err := store.Create(TaskDefinition{Scope: ScopeUser, Name: "User task", Template: TemplateCustomPrompt})
 	if err != nil {
 		t.Fatalf("create user task: %v", err)
 	}
-	workspaceTask, err := store.Create(Task{Scope: ScopeWorkspace, Name: "Workspace task", Template: TemplateReview})
+	workspaceTask, err := store.Create(TaskDefinition{Scope: ScopeWorkspace, Name: "Workspace task", Template: TemplateReview})
 	if err != nil {
 		t.Fatalf("create workspace task: %v", err)
 	}
@@ -173,7 +173,7 @@ func TestStoreGetRunByIDResolvesRunAcrossScopes(t *testing.T) {
 	workspace := filepath.Join(root, "workspace")
 	store := NewStore(userDir, workspace)
 
-	userTask, err := store.Create(Task{Scope: ScopeUser, Name: "User task", Template: TemplateCustomPrompt})
+	userTask, err := store.Create(TaskDefinition{Scope: ScopeUser, Name: "User task", Template: TemplateCustomPrompt})
 	if err != nil {
 		t.Fatalf("Create user task failed: %v", err)
 	}
@@ -182,7 +182,7 @@ func TestStoreGetRunByIDResolvesRunAcrossScopes(t *testing.T) {
 		t.Fatalf("AppendRun user failed: %v", err)
 	}
 
-	workspaceTask, err := store.Create(Task{Scope: ScopeWorkspace, Name: "Workspace task", Template: TemplateReview})
+	workspaceTask, err := store.Create(TaskDefinition{Scope: ScopeWorkspace, Name: "Workspace task", Template: TemplateReview})
 	if err != nil {
 		t.Fatalf("Create workspace task failed: %v", err)
 	}
@@ -209,7 +209,7 @@ func TestStoreGetRunByIDResolvesRunAcrossScopes(t *testing.T) {
 func TestStoreDurableRunLedgerOutlivesRecentRunsProjection(t *testing.T) {
 	root := t.TempDir()
 	store := NewStore(filepath.Join(root, "user"), filepath.Join(root, "workspace"))
-	task, err := store.Create(Task{Scope: ScopeWorkspace, Name: "Durable ledger", Template: TemplateReview})
+	task, err := store.Create(TaskDefinition{Scope: ScopeWorkspace, Name: "Durable ledger", Template: TemplateReview})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -283,7 +283,7 @@ func TestStoreDurableRunLedgerOutlivesRecentRunsProjection(t *testing.T) {
 func TestStoreObligationScanIgnoresLegacySettledSuccess(t *testing.T) {
 	root := t.TempDir()
 	store := NewStore(filepath.Join(root, "user"), filepath.Join(root, "workspace"))
-	task, err := store.Create(Task{Scope: ScopeWorkspace, Name: "Legacy review", Template: TemplateReview})
+	task, err := store.Create(TaskDefinition{Scope: ScopeWorkspace, Name: "Legacy review", Template: TemplateReview})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -310,7 +310,7 @@ func TestStoreObligationScanIgnoresLegacySettledSuccess(t *testing.T) {
 func TestStoreObligationScanDoesNotResurrectStaleTaskProjection(t *testing.T) {
 	root := t.TempDir()
 	store := NewStore(filepath.Join(root, "user"), filepath.Join(root, "workspace"))
-	task, err := store.Create(Task{Scope: ScopeWorkspace, Name: "Crash ordering", Template: TemplateReview})
+	task, err := store.Create(TaskDefinition{Scope: ScopeWorkspace, Name: "Crash ordering", Template: TemplateReview})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -357,7 +357,7 @@ func TestStoreObligationScanDoesNotResurrectStaleTaskProjection(t *testing.T) {
 func TestStoreDeleteRejectsLiveRunAndArchivesPendingEffects(t *testing.T) {
 	root := t.TempDir()
 	store := NewStore(filepath.Join(root, "user"), filepath.Join(root, "workspace"))
-	liveTask, err := store.Create(Task{Scope: ScopeWorkspace, Name: "Live", Template: TemplateReview})
+	liveTask, err := store.Create(TaskDefinition{Scope: ScopeWorkspace, Name: "Live", Template: TemplateReview})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -375,7 +375,7 @@ func TestStoreDeleteRejectsLiveRunAndArchivesPendingEffects(t *testing.T) {
 		t.Fatalf("live task changed after rejected delete: task=%#v err=%v", task, err)
 	}
 
-	outboxTask, err := store.Create(Task{Scope: ScopeWorkspace, Name: "Outbox", Template: TemplateReview})
+	outboxTask, err := store.Create(TaskDefinition{Scope: ScopeWorkspace, Name: "Outbox", Template: TemplateReview})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -412,7 +412,7 @@ func TestStoreAppendRunUpdatesExistingRun(t *testing.T) {
 	root := t.TempDir()
 	workspace := filepath.Join(root, "workspace")
 	store := NewStore(filepath.Join(root, "nova"), workspace)
-	task, err := store.Create(Task{Scope: ScopeWorkspace, Name: "Review", Template: TemplateReview})
+	task, err := store.Create(TaskDefinition{Scope: ScopeWorkspace, Name: "Review", Template: TemplateReview})
 	if err != nil {
 		t.Fatalf("Create failed: %v", err)
 	}
@@ -438,7 +438,7 @@ func TestStoreAppendRunUpdatesExistingRun(t *testing.T) {
 func TestStoreRejectsStaleOperationAfterSuccessorPromotion(t *testing.T) {
 	root := t.TempDir()
 	store := NewStore(filepath.Join(root, "nova"), filepath.Join(root, "workspace"))
-	task, err := store.Create(Task{Scope: ScopeWorkspace, Name: "successor CAS", Template: TemplateReview})
+	task, err := store.Create(TaskDefinition{Scope: ScopeWorkspace, Name: "successor CAS", Template: TemplateReview})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -510,7 +510,7 @@ func TestStoreRejectsStaleOperationAfterSuccessorPromotion(t *testing.T) {
 func TestStoreCompletionEffectsReceiptIsMonotonicAgainstStaleWriter(t *testing.T) {
 	root := t.TempDir()
 	store := NewStore(filepath.Join(root, "user"), filepath.Join(root, "workspace"))
-	task, err := store.Create(Task{Scope: ScopeWorkspace, Name: "Effects CAS", Template: TemplateReview})
+	task, err := store.Create(TaskDefinition{Scope: ScopeWorkspace, Name: "Effects CAS", Template: TemplateReview})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -554,7 +554,7 @@ func TestTaskDefinitionRunAndEvaluationWritesShareFileLease(t *testing.T) {
 	root := t.TempDir()
 	workspace := filepath.Join(root, "workspace")
 	store := NewStore(filepath.Join(root, "nova"), workspace)
-	created, err := store.Create(Task{
+	created, err := store.Create(TaskDefinition{
 		Scope: ScopeWorkspace, Enabled: true, Name: "before lease", Template: TemplateReview,
 	})
 	if err != nil {
@@ -684,7 +684,7 @@ func TestTaskDefinitionRunAndEvaluationWritesShareProcessLease(t *testing.T) {
 	userDir := filepath.Join(root, "nova")
 	workspace := filepath.Join(root, "workspace")
 	store := NewStore(userDir, workspace)
-	created, err := store.Create(Task{Scope: ScopeWorkspace, Enabled: true, Name: "before subprocess", Template: TemplateReview})
+	created, err := store.Create(TaskDefinition{Scope: ScopeWorkspace, Enabled: true, Name: "before subprocess", Template: TemplateReview})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -780,7 +780,7 @@ func TestStoreConcurrentUserScopeCreatesDoNotLoseTasks(t *testing.T) {
 					errs <- fmt.Errorf("concurrent Create panic: %v", recovered)
 				}
 			}()
-			_, err := NewStore(userDir, workspaces[index%len(workspaces)]).Create(Task{
+			_, err := NewStore(userDir, workspaces[index%len(workspaces)]).Create(TaskDefinition{
 				Scope:    ScopeUser,
 				Name:     "Concurrent user task",
 				Template: TemplateCustomPrompt,
@@ -820,7 +820,7 @@ func TestStoreConcurrentAppendRunPreservesEveryRun(t *testing.T) {
 	workspace := filepath.Join(root, "workspace")
 	userDir := filepath.Join(root, "user")
 	store := NewStore(userDir, workspace)
-	task, err := store.Create(Task{Scope: ScopeWorkspace, Name: "Review", Template: TemplateReview})
+	task, err := store.Create(TaskDefinition{Scope: ScopeWorkspace, Name: "Review", Template: TemplateReview})
 	if err != nil {
 		t.Fatalf("Create failed: %v", err)
 	}

@@ -3,7 +3,7 @@ package app
 import (
 	"context"
 	agentchat "denova/internal/agents/chat"
-	agentharness "denova/internal/agents/harness"
+	agentexecution "denova/internal/agents/execution"
 	agentinteractive "denova/internal/agents/interactive"
 	"fmt"
 	"log/slog"
@@ -53,24 +53,24 @@ func (a *App) interactiveDirectorGenerator() interactiveapp.DirectorGenerator {
 // cycle owns the fresh conversation required to persist exactly one player
 // turn against the branch head observed during preparation.
 type interactiveAgentCycle struct {
-	app            *App
-	store          *interactive.Store
-	state          *book.State
-	bookService    *book.Service
-	versionService *book.VersionService
-	chatService    *agentharness.Service
-	sessionStore   *session.Store
-	runtimeCfg     config.Config
-	workspace      string
-	novaDir        string
-	storyID        string
-	branchID       string
-	storyContext   interactive.StoryContext
-	tellerInput    prompts.InteractiveStorySystemInstructionInput
-	runner         *agents.Runner
-	systemPrompt   prompts.SystemPromptComposition
-	conversation   *interactiveapp.Conversation
-	request        agentchat.ChatRequest
+	app              *App
+	store            *interactive.Store
+	state            *book.State
+	bookService      *book.Service
+	versionService   *book.VersionService
+	executionRuntime *agentexecution.Runtime
+	sessionStore     *session.Store
+	runtimeCfg       config.Config
+	workspace        string
+	novaDir          string
+	storyID          string
+	branchID         string
+	storyContext     interactive.StoryContext
+	tellerInput      prompts.InteractiveStorySystemInstructionInput
+	runner           *agents.Runner
+	systemPrompt     prompts.SystemPromptComposition
+	conversation     *interactiveapp.Conversation
+	request          agentchat.ChatRequest
 }
 
 type interactiveAgentCycleRequest struct {
@@ -88,13 +88,13 @@ func (s *InteractiveAppService) prepareInteractiveAgentCycle(ctx context.Context
 	}
 	a := s.app
 	a.mu.RLock()
-	if a.interactive == nil || a.bookState == nil || a.cfg == nil || a.chatService == nil {
+	if a.interactive == nil || a.bookState == nil || a.cfg == nil || a.executionRuntime == nil {
 		a.mu.RUnlock()
 		return nil, ErrNoWorkspace
 	}
 	cycle := &interactiveAgentCycle{
 		app: a, store: a.interactive, state: a.bookState, bookService: a.bookService,
-		versionService: a.versionService, chatService: a.chatService, sessionStore: a.sessionStore,
+		versionService: a.versionService, executionRuntime: a.executionRuntime, sessionStore: a.sessionStore,
 		runtimeCfg: *a.cfg, workspace: strings.TrimSpace(a.workspace),
 		storyID: strings.TrimSpace(request.StoryID),
 	}
@@ -150,7 +150,7 @@ func (s *InteractiveAppService) prepareInteractiveAgentCycle(ctx context.Context
 	cycle.conversation = interactiveapp.NewConversation(
 		cycle.store, cycle.novaDir, cycle.workspace, cycle.storyID, cycle.branchID,
 		cycle.request.Message, cycle.runtimeCfg.InteractiveReplyTargetChars, &cycle.runtimeCfg,
-	).BindDirectorRuntime(a.directorTasksForWorkspace(cycle.workspace), a.interactiveDirectorGenerator(), cycle.chatService).WithBaseParentID(expectedHead).WithRegenerateTarget(regenerateTurnID).WithExecutionParentPinning().WithOpeningStateSchema(storyContext)
+	).BindDirectorRuntime(a.directorTasksForWorkspace(cycle.workspace), a.interactiveDirectorGenerator(), cycle.executionRuntime).WithBaseParentID(expectedHead).WithRegenerateTarget(regenerateTurnID).WithExecutionParentPinning().WithOpeningStateSchema(storyContext)
 	cycle.bindDerivedProjectionBarrier()
 
 	var submitOpeningStateSchema func(context.Context, interactive.ActorStateSchemaBatch) (interactive.ActorStateSchemaBatchResult, error)
@@ -196,7 +196,7 @@ func (c *interactiveAgentCycle) options(taskID string) agentrun.Options {
 	}
 }
 
-// bindCommit installs the game projection commit before the TurnSpec is
+// bindCommit installs the game projection commit before the execution cycle is
 // registered. A fresh cycle/conversation therefore emits exactly its own turn
 // for Start, Steer, and FollowUp commands.
 func (c *interactiveAgentCycle) bindCommit(emit func(agentrun.Event)) {

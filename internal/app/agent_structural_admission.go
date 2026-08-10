@@ -2,7 +2,7 @@ package app
 
 import (
 	"context"
-	agentharness "denova/internal/agents/harness"
+	agentexecution "denova/internal/agents/execution"
 	apptask "denova/internal/app/task"
 	"fmt"
 	"strings"
@@ -23,7 +23,7 @@ type writingStructuralFence struct {
 	workspaceGeneration uint64
 	store               *session.Store
 	selected            *session.Session
-	chat                *agentharness.Service
+	chat                *agentexecution.Runtime
 	sessionID           string
 	task                *apptask.Task
 }
@@ -50,7 +50,7 @@ func (s *ChatAppService) drainWritingBinding(ctx context.Context, sessionID stri
 		workspaceGeneration: a.workspaceGeneration,
 		store:               a.sessionStore,
 		selected:            a.session,
-		chat:                a.chatService,
+		chat:                a.executionRuntime,
 		sessionID:           sessionID,
 	}
 	if a.cfg != nil {
@@ -67,7 +67,7 @@ func (s *ChatAppService) drainWritingBinding(ctx context.Context, sessionID stri
 	if err := s.retryPendingWritingRecoveryRefresh(ctx, fence.workspace, fence.selected); err != nil {
 		return writingStructuralFence{}, err
 	}
-	if err := closeAgentBindings(fence.chat, func(chat *agentharness.Service) error {
+	if err := closeAgentBindings(fence.chat, func(chat *agentexecution.Runtime) error {
 		return chat.CloseSessionBindings(ctx, agentrun.AgentKindIDE, fence.workspace, sessionID)
 	}); err != nil {
 		return writingStructuralFence{}, err
@@ -87,7 +87,7 @@ func writingTaskForSessionLocked(a *App, workspace, sessionID string) *apptask.T
 }
 
 func (f writingStructuralFence) validateLocked(a *App, requireSelected bool) error {
-	if a == nil || a.workspace != f.workspace || a.workspaceGeneration != f.workspaceGeneration || a.sessionStore != f.store || a.chatService != f.chat {
+	if a == nil || a.workspace != f.workspace || a.workspaceGeneration != f.workspaceGeneration || a.sessionStore != f.store || a.executionRuntime != f.chat {
 		return ErrAgentContextChanged
 	}
 	if requireSelected && a.session != f.selected {
@@ -105,7 +105,7 @@ type interactiveStructuralFence struct {
 	workspace           string
 	workspaceGeneration uint64
 	store               *interactive.Store
-	chat                *agentharness.Service
+	chat                *agentexecution.Runtime
 	directorTasks       *interactiveapp.DirectorTaskGroup
 	storyID             string
 	branchID            string
@@ -134,7 +134,7 @@ func (s *InteractiveAppService) drainInteractiveBinding(ctx context.Context, sto
 		workspace:           a.workspace,
 		workspaceGeneration: a.workspaceGeneration,
 		store:               a.interactive,
-		chat:                a.chatService,
+		chat:                a.executionRuntime,
 		directorTasks:       a.workspaceDirectorTasks,
 		storyID:             storyID,
 		branchID:            branchID,
@@ -145,7 +145,7 @@ func (s *InteractiveAppService) drainInteractiveBinding(ctx context.Context, sto
 	if err := abortAndWaitTask(ctx, fence.task); err != nil {
 		return interactiveStructuralFence{}, err
 	}
-	closeStoryBindings := func(chat *agentharness.Service) error {
+	closeStoryBindings := func(chat *agentexecution.Runtime) error {
 		return chat.CloseStoryBindings(ctx, fence.workspace, storyID, branchID)
 	}
 	if err := closeAgentBindings(fence.chat, closeStoryBindings); err != nil {
@@ -202,7 +202,7 @@ func (f interactiveStructuralFence) waitDirectorMaintenance(ctx context.Context)
 }
 
 func (f interactiveStructuralFence) validateLocked(a *App) error {
-	if a == nil || a.workspace != f.workspace || a.workspaceGeneration != f.workspaceGeneration || a.interactive != f.store || a.chatService != f.chat || a.workspaceDirectorTasks != f.directorTasks {
+	if a == nil || a.workspace != f.workspace || a.workspaceGeneration != f.workspaceGeneration || a.interactive != f.store || a.executionRuntime != f.chat || a.workspaceDirectorTasks != f.directorTasks {
 		return ErrAgentContextChanged
 	}
 	if task := interactiveTaskForScopeLocked(a, f.workspace, f.storyID, f.branchID); task != nil {
@@ -215,6 +215,6 @@ func abortAndWaitTask(ctx context.Context, task *apptask.Task) error {
 	return appagentruntime.AbortAndWait(ctx, task)
 }
 
-func closeAgentBindings(chat *agentharness.Service, close func(*agentharness.Service) error) error {
+func closeAgentBindings(chat *agentexecution.Runtime, close func(*agentexecution.Runtime) error) error {
 	return appagentruntime.CloseBindings(chat, close)
 }

@@ -5,7 +5,7 @@ import (
 	"fmt"
 
 	"denova/config"
-	agentharness "denova/internal/agents/harness"
+	agentexecution "denova/internal/agents/execution"
 	agentrun "denova/internal/agents/run"
 	appagentruntime "denova/internal/app/agentruntime"
 	apptask "denova/internal/app/task"
@@ -42,12 +42,12 @@ func (s *ChatAppService) SubmitAgentCommandForSession(ctx context.Context, sessi
 }
 
 func (s *ChatAppService) submitAgentCommand(ctx context.Context, command ChatAgentCommand) (agentrun.CommandReceipt, error) {
-	if command.Kind == agentharness.CommandAbort || command.Kind == agentharness.CommandSteerQueued || command.Kind == agentharness.CommandCancelQueued {
+	if command.Kind == agentexecution.CommandAbort || command.Kind == agentexecution.CommandSteerQueued || command.Kind == agentexecution.CommandCancelQueued {
 		runtime, task, err := s.activeCommandRuntime()
 		if err != nil {
 			return agentrun.CommandReceipt{}, err
 		}
-		return runtime.chatService.SubmitCommand(ctx, agentharness.CommandSpec{
+		return runtime.executionRuntime.SubmitCommand(ctx, agentexecution.CommandRequest{
 			Kind: command.Kind, CommandID: command.CommandID,
 			OperationID: command.OperationID, TargetCommandID: command.TargetCommandID, Reason: command.Reason,
 			Options: agentrun.Options{
@@ -57,34 +57,17 @@ func (s *ChatAppService) submitAgentCommand(ctx context.Context, command ChatAge
 			},
 		})
 	}
-	if command.Kind != agentharness.CommandSteer && command.Kind != agentharness.CommandFollowUp && command.Kind != agentharness.CommandNextTurn {
+	if command.Kind != agentexecution.CommandSteer && command.Kind != agentexecution.CommandFollowUp && command.Kind != agentexecution.CommandNextTurn {
 		return agentrun.CommandReceipt{}, fmt.Errorf("%w: unsupported writing command %q", agentrun.ErrInvalidCommand, command.Kind)
 	}
 	activeRuntime, task, err := s.activeCommandRuntime()
 	if err != nil {
 		return agentrun.CommandReceipt{}, err
 	}
-	prepare := func(prepareCtx context.Context) (agentharness.TurnExecution, error) {
-		if err := s.confirmActiveCommandRuntime(activeRuntime, task); err != nil {
-			return agentharness.TurnExecution{}, err
-		}
-		execution, runtime, err := s.prepareWritingHarnessTurn(prepareCtx, command.Input, task.ID())
-		if err != nil {
-			return agentharness.TurnExecution{}, err
-		}
-		if runtime.workspace != activeRuntime.workspace || runtime.sess != activeRuntime.sess || runtime.chatService != activeRuntime.chatService {
-			return agentharness.TurnExecution{}, ErrAgentContextChanged
-		}
-		if err := s.confirmActiveCommandRuntime(activeRuntime, task); err != nil {
-			return agentharness.TurnExecution{}, err
-		}
-		return execution, nil
-	}
-	return activeRuntime.chatService.SubmitCommand(ctx, agentharness.CommandSpec{
+	return activeRuntime.executionRuntime.SubmitCommand(ctx, agentexecution.CommandRequest{
 		Kind: command.Kind, CommandID: command.CommandID,
 		OperationID: command.OperationID, AfterOperationID: command.OperationID,
-		Request: command.Input, Emit: task.Emit, Prepare: prepare,
-		Successor: s.writingGoalSuccessor(activeRuntime, task, command.Input.Locale),
+		Request: command.Input, Emit: task.Emit,
 		Options: agentrun.Options{
 			AgentKind: agentrun.AgentKindIDE,
 			StateRoot: activeRuntime.projectState,
@@ -96,8 +79,8 @@ func (s *ChatAppService) submitAgentCommand(ctx context.Context, command ChatAge
 	})
 }
 
-func (s *ChatAppService) writingGoalSuccessor(runtime ideChatRuntime, task *apptask.Task, locale string) agentharness.SuccessorPolicy {
-	var successor agentharness.SuccessorPolicy
+func (s *ChatAppService) writingGoalSuccessor(runtime ideChatRuntime, task *apptask.Task, locale string) agentexecution.SuccessorPolicy {
+	var successor agentexecution.SuccessorPolicy
 	successor = func(ctx context.Context, parent agentrun.OperationID, _ agentrun.Outcome) error {
 		if !config.ResolveAgentTools(&runtime.cfg, config.AgentKindIDE).Allows(config.AgentToolGoal) {
 			return nil
@@ -107,23 +90,9 @@ func (s *ChatAppService) writingGoalSuccessor(runtime ideChatRuntime, task *appt
 			return err
 		}
 		commandID, input := appagentruntime.GoalContinuationRequest(current, parent, locale)
-		prepare := func(prepareCtx context.Context) (agentharness.TurnExecution, error) {
-			if err := s.confirmActiveCommandRuntime(runtime, task); err != nil {
-				return agentharness.TurnExecution{}, err
-			}
-			execution, preparedRuntime, err := s.prepareWritingHarnessTurn(prepareCtx, input, task.ID())
-			if err != nil {
-				return agentharness.TurnExecution{}, err
-			}
-			if preparedRuntime.workspace != runtime.workspace || preparedRuntime.sess != runtime.sess || preparedRuntime.chatService != runtime.chatService {
-				return agentharness.TurnExecution{}, ErrAgentContextChanged
-			}
-			return execution, s.confirmActiveCommandRuntime(runtime, task)
-		}
-		_, err = runtime.chatService.SubmitCommand(ctx, agentharness.CommandSpec{
-			Kind: agentharness.CommandNextTurn, CommandID: commandID,
-			AfterOperationID: parent, Request: input, Emit: task.Emit, Prepare: prepare,
-			Successor: successor,
+		_, err = runtime.executionRuntime.SubmitCommand(ctx, agentexecution.CommandRequest{
+			Kind: agentexecution.CommandNextTurn, CommandID: commandID,
+			AfterOperationID: parent, Request: input, Emit: task.Emit,
 			Options: agentrun.Options{
 				AgentKind: agentrun.AgentKindIDE, StateRoot: runtime.projectState,
 				TaskID: task.ID(), SessionID: runtime.sess.ID, Workspace: runtime.workspace, Mode: "ide",
@@ -139,7 +108,7 @@ func (s *ChatAppService) confirmActiveCommandRuntime(expected ideChatRuntime, ta
 	if err != nil {
 		return err
 	}
-	if currentTask != task || current.workspace != expected.workspace || current.sess != expected.sess || current.state != expected.state || current.chatService != expected.chatService {
+	if currentTask != task || current.workspace != expected.workspace || current.sess != expected.sess || current.state != expected.state || current.executionRuntime != expected.executionRuntime {
 		return ErrAgentContextChanged
 	}
 	return nil
@@ -155,7 +124,7 @@ func (s *ChatAppService) activeCommandRuntime() (ideChatRuntime, *apptask.Task, 
 	if a.workspaceTransition {
 		return ideChatRuntime{}, nil, ErrWorkspaceTransition
 	}
-	if a.session == nil || a.bookState == nil || a.chatService == nil || a.cfg == nil {
+	if a.session == nil || a.bookState == nil || a.executionRuntime == nil || a.cfg == nil {
 		return ideChatRuntime{}, nil, ErrNoWorkspace
 	}
 	run := a.activeWritingRun

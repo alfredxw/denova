@@ -161,7 +161,7 @@ func (s *ChatAppService) executeWritingContextCompaction(ctx context.Context, re
 			}
 			return agentstructural.Receipt{Revision: fmt.Sprintf("session-context:%d", committed.ContextRevision)}, true, nil
 		})
-	result, err := runtime.chatService.ExecuteStructuralOperation(ctx, agentstructural.Spec{
+	result, err := runtime.executionRuntime.ExecuteStructuralOperation(ctx, agentstructural.Spec{
 		CommandID: commandID, Action: agentstructural.Compact,
 		Ref: ref, Options: agentrun.Options{AgentKind: agentrun.AgentKindIDE, StateRoot: runtime.projectState, Workspace: runtime.workspace, SessionID: runtime.sess.ID, Mode: "ide"},
 		Operation: operation, RestorePlan: &plan,

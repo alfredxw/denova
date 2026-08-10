@@ -6,7 +6,7 @@ import (
 	"strings"
 
 	agentstructural "denova/internal/agents/context/structural"
-	agentharness "denova/internal/agents/harness"
+	agentexecution "denova/internal/agents/execution"
 	agentrun "denova/internal/agents/run"
 	compactionapp "denova/internal/app/compaction"
 )
@@ -17,7 +17,7 @@ func (service *ChatAppService) resumeWritingContextStructuralOperation(ctx conte
 	}
 	app := service.app
 	app.mu.RLock()
-	chat := app.chatService
+	chat := app.executionRuntime
 	workspace := app.workspace
 	stateRoot := ""
 	if app.cfg != nil {
@@ -40,7 +40,7 @@ func (service *ChatAppService) resumeWritingContextStructuralOperation(ctx conte
 	}
 	// Record the refresh obligation before refreshing independently restored
 	// Session state, so later starts remain fenced after any read failure.
-	recoveryAction := agentharness.RuntimeRecoveryAction{Kind: compactionapp.RecoveryActionFor(action)}
+	recoveryAction := agentexecution.RuntimeRecoveryAction{Kind: compactionapp.RecoveryActionFor(action)}
 	service.markRecoveryRefreshPending(workspace, sessionID, recoveryAction)
 	if err != nil {
 		return result, true, err
@@ -64,7 +64,7 @@ func (service *InteractiveAppService) resumeStoryContextStructuralOperation(
 		return agentstructural.Result{}, false, nil
 	}
 	service.app.mu.RLock()
-	chat := service.app.chatService
+	chat := service.app.executionRuntime
 	service.app.mu.RUnlock()
 	if chat == nil {
 		return agentstructural.Result{}, false, nil
@@ -75,6 +75,6 @@ func (service *InteractiveAppService) resumeStoryContextStructuralOperation(
 	}, action)
 }
 
-func (app *App) restoreContextStructuralOperation(ctx context.Context, request agentharness.StructuralRestoreRequest) (agentstructural.Spec, error) {
+func (app *App) restoreContextStructuralOperation(ctx context.Context, request agentexecution.StructuralRestoreRequest) (agentstructural.Spec, error) {
 	return compactionapp.RestoreSpec(ctx, request, app.sessionDirectoryForBinding)
 }

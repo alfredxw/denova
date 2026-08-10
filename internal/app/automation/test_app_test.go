@@ -13,7 +13,7 @@ import (
 
 	"denova/config"
 	agentconversation "denova/internal/agents/conversation"
-	agentharness "denova/internal/agents/harness"
+	agentexecution "denova/internal/agents/execution"
 	agentrun "denova/internal/agents/run"
 	"denova/internal/agents/session"
 	agenttool "denova/internal/agents/tool"
@@ -84,14 +84,14 @@ func (runtime *cachedTestRuntime) Close() {
 type App struct {
 	mu sync.RWMutex
 
-	cfg             *config.Config
-	workspace       string
-	bookState       *book.State
-	bookService     *book.Service
-	sessionStore    *session.Store
-	chatService     *agentharness.Service
-	bookRegistry    *BookRegistry
-	projectRegistry *projectdomain.Registry
+	cfg              *config.Config
+	workspace        string
+	bookState        *book.State
+	bookService      *book.Service
+	sessionStore     *session.Store
+	executionRuntime *agentexecution.Runtime
+	bookRegistry     *BookRegistry
+	projectRegistry  *projectdomain.Registry
 
 	automationApp         *Service
 	agentChatApp          *agentchatapp.Service
@@ -150,17 +150,17 @@ func New(ctx context.Context, cfg *config.Config) (*App, error) {
 		application.sessionStore = store
 	}
 	application.ensureServices()
-	chatService, err := agentharness.NewDurableService(
+	executionRuntime, err := agentexecution.NewDurableRuntime(
 		ctx,
 		dataDir,
-		agentharness.WithHostEffectReconciler(application.automationApp.ReconcileHostEffect),
+		agentexecution.WithHostEffectReconciler(application.automationApp.ReconcileHostEffect),
 	)
 	if err != nil {
 		application.Close()
 		return nil, err
 	}
 	application.mu.Lock()
-	application.chatService = chatService
+	application.executionRuntime = executionRuntime
 	application.mu.Unlock()
 	application.automationApp.StartScheduler(ctx)
 	return application, nil
@@ -201,10 +201,10 @@ type testAgentChatHost struct {
 	app *App
 }
 
-func (host testAgentChatHost) BaseRuntime() (config.Config, *agentharness.Service) {
+func (host testAgentChatHost) BaseRuntime() (config.Config, *agentexecution.Runtime) {
 	host.app.mu.RLock()
 	defer host.app.mu.RUnlock()
-	return *host.app.cfg, host.app.chatService
+	return *host.app.cfg, host.app.executionRuntime
 }
 
 func (host testAgentChatHost) ProjectVersionService(projectID string) (*book.VersionService, error) {
@@ -262,7 +262,7 @@ func (application *App) Close() {
 		rootScope := application.rootScope
 		service := application.automationApp
 		agentChatService := application.agentChatApp
-		chatService := application.chatService
+		executionRuntime := application.executionRuntime
 		store := application.sessionStore
 		runtimes := make([]*cachedTestRuntime, 0, len(application.runtimes))
 		for _, runtime := range application.runtimes {
@@ -289,8 +289,8 @@ func (application *App) Close() {
 		if store != nil {
 			_ = store.Close()
 		}
-		if chatService != nil {
-			_ = chatService.Close(context.Background())
+		if executionRuntime != nil {
+			_ = executionRuntime.Close(context.Background())
 		}
 	})
 }
@@ -447,7 +447,7 @@ func (application *App) CurrentRuntime() (Runtime, error) {
 		StateRoot: cfg.ProjectStateDir, Workspace: application.workspace,
 		DataDir: cfg.DataDir(), Config: cfg, BookState: application.bookState,
 		BookService: application.bookService, SessionStore: application.sessionStore,
-		ChatService: application.chatService,
+		ExecutionRuntime: application.executionRuntime,
 	}
 	application.mu.RUnlock()
 	if layered, err := config.LoadLayeredWithStartupConfigAt(
@@ -467,7 +467,7 @@ func (application *App) BaseRuntime() Runtime {
 	if application.cfg != nil {
 		cfg = *application.cfg
 	}
-	return Runtime{DataDir: cfg.DataDir(), Config: cfg, ChatService: application.chatService}
+	return Runtime{DataDir: cfg.DataDir(), Config: cfg, ExecutionRuntime: application.executionRuntime}
 }
 
 func (application *App) ResolveTarget(target automation.ExecutionTarget) (automation.ExecutionTarget, error) {
@@ -548,7 +548,7 @@ func (application *App) RuntimeForTarget(ctx context.Context, target automation.
 		ProjectID: record.ID, ProjectType: record.Type, StateRoot: layout.StateRoot,
 		Workspace: record.WorkspacePath, DataDir: cfg.DataDir(), Config: cfg,
 		BookState: state, BookService: book.NewService(record.WorkspacePath),
-		SessionStore: store, ChatService: application.BaseRuntime().ChatService,
+		SessionStore: store, ExecutionRuntime: application.BaseRuntime().ExecutionRuntime,
 	}
 	entry := &cachedTestRuntime{runtime: runtime}
 	application.mu.Lock()
@@ -648,8 +648,8 @@ func (application *App) Automations() ([]automation.Task, error) {
 func (application *App) AutomationInbox() ([]automation.TriggerInboxItem, error) {
 	return application.automation().Inbox()
 }
-func (application *App) CreateAutomation(task automation.Task) (automation.Task, error) {
-	return application.automation().Create(task)
+func (application *App) CreateAutomation(definition automation.TaskDefinition) (automation.Task, error) {
+	return application.automation().Create(definition)
 }
 func (application *App) UpdateAutomation(id string, task automation.Task) (automation.Task, error) {
 	return application.automation().Update(id, task)
@@ -675,7 +675,7 @@ func (application *App) StartAutomationTaskCommand(ctx context.Context, id, comm
 func (application *App) AbortAutomationRunCommand(ctx context.Context, runID, commandID string, operationID agentrun.OperationID, reason string) (agentrun.CommandReceipt, error) {
 	return application.automation().AbortRunCommand(ctx, runID, commandID, operationID, reason)
 }
-func (application *App) reconcileHarnessHostEffect(ctx context.Context, committed agenttoolruntime.CommittedToolMutation) error {
+func (application *App) reconcileExecutionHostEffect(ctx context.Context, committed agenttoolruntime.CommittedToolMutation) error {
 	return application.automation().ReconcileHostEffect(ctx, committed)
 }
 

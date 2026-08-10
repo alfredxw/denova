@@ -10,7 +10,7 @@ import (
 func TestMergeRunMutationEffectReopensOnlyExactTerminalOperation(t *testing.T) {
 	root := t.TempDir()
 	store := NewStore(filepath.Join(root, "user"), filepath.Join(root, "workspace"))
-	task, err := store.Create(Task{Scope: ScopeWorkspace, Name: "Late host effect", Template: TemplateReview})
+	task, err := store.Create(TaskDefinition{Scope: ScopeWorkspace, Name: "Late host effect", Template: TemplateReview})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -74,7 +74,7 @@ func TestMergeRunMutationEffectReopensOnlyExactTerminalOperation(t *testing.T) {
 func TestDurableRunRevisionOrdersStaleCleanupAndNewWriteAheadObligation(t *testing.T) {
 	root := t.TempDir()
 	store := NewStore(filepath.Join(root, "user"), filepath.Join(root, "workspace"))
-	task, err := store.Create(Task{Scope: ScopeWorkspace, Name: "Revision ordering", Template: TemplateReview})
+	task, err := store.Create(TaskDefinition{Scope: ScopeWorkspace, Name: "Revision ordering", Template: TemplateReview})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -139,7 +139,7 @@ func TestDurableRunRevisionOrdersStaleCleanupAndNewWriteAheadObligation(t *testi
 func TestFailedReceiptlessRunAllowsOnlyExplicitAdmissionRetry(t *testing.T) {
 	root := t.TempDir()
 	store := NewStore(filepath.Join(root, "user"), filepath.Join(root, "workspace"))
-	task, err := store.Create(Task{Scope: ScopeWorkspace, Name: "Admission retry", Template: TemplateReview})
+	task, err := store.Create(TaskDefinition{Scope: ScopeWorkspace, Name: "Admission retry", Template: TemplateReview})
 	if err != nil {
 		t.Fatal(err)
 	}

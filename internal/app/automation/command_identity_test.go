@@ -73,7 +73,7 @@ func TestAutomationManualCommandCanonicalizesTaskAliasBeforeAdmission(t *testing
 		t.Fatal(err)
 	}
 	store, projectLayout := registeredAutomationProjectStoreForTest(t, dataDir, workspace)
-	taskDef, err := store.Create(automation.Task{
+	taskDef, err := store.Create(automation.TaskDefinition{
 		Scope: automation.ScopeWorkspace, Enabled: true, Name: "canonical manual command", Template: automation.TemplateReview,
 	})
 	if err != nil {

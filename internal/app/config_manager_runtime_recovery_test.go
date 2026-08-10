@@ -3,7 +3,7 @@ package app
 import (
 	"context"
 	agentchat "denova/internal/agents/chat"
-	agentharness "denova/internal/agents/harness"
+	agentexecution "denova/internal/agents/execution"
 	agentrun "denova/internal/agents/run"
 	"os"
 	"os/exec"
@@ -48,10 +48,10 @@ func TestConfigManagerColdRecoveryAttachesAndAbortsSameDisplayTask(t *testing.T)
 	scope := configmanagerapp.Request{ProjectID: projectID, Origin: "settings", ResourceID: "resource-cold-recovery"}
 
 	view := application.ConfigManager().ActiveView(context.Background(), scope)
-	actions := agentharness.RuntimeRecoveryActions(view.Runtime)
+	actions := agentexecution.RuntimeRecoveryActions(view.Runtime)
 	if !view.RuntimeProjectionOK || !view.Runtime.RecoveryPaused || view.StreamAttached || len(actions) != 2 ||
-		actions[0].Kind != agentharness.RuntimeRecoveryAttach || actions[0].CommandID != "config-manager-recovery-start" ||
-		actions[1].Kind != agentharness.RuntimeRecoveryAbort {
+		actions[0].Kind != agentexecution.RuntimeRecoveryAttach || actions[0].CommandID != "config-manager-recovery-start" ||
+		actions[1].Kind != agentexecution.RuntimeRecoveryAbort {
 		t.Fatalf("cold Config Manager projection view=%#v actions=%#v", view, actions)
 	}
 	if view.Task != nil {
@@ -91,8 +91,8 @@ func TestConfigManagerColdRecoveryAttachesAndAbortsSameDisplayTask(t *testing.T)
 
 	clearScope := configmanagerapp.Request{ProjectID: projectID, Origin: "settings", ResourceID: "resource-cold-clear"}
 	clearView := application.ConfigManager().ActiveView(context.Background(), clearScope)
-	clearActions := agentharness.RuntimeRecoveryActions(clearView.Runtime)
-	if !clearView.Runtime.RecoveryPaused || clearView.StreamAttached || len(clearActions) < 1 || clearActions[0].Kind != agentharness.RuntimeRecoveryAttach {
+	clearActions := agentexecution.RuntimeRecoveryActions(clearView.Runtime)
+	if !clearView.Runtime.RecoveryPaused || clearView.StreamAttached || len(clearActions) < 1 || clearActions[0].Kind != agentexecution.RuntimeRecoveryAttach {
 		t.Fatalf("cold clear projection view=%#v actions=%#v", clearView, clearActions)
 	}
 	clearRecovery, err := application.ConfigManager().Recover(context.Background(), clearScope, AgentRuntimeRecoveryRequest{Action: clearActions[0]})
@@ -151,7 +151,7 @@ func runConfigManagerRecoveryCrashSeed(t *testing.T) {
 		}
 		reachedContext := make(chan struct{})
 		vanished = append(vanished, reachedContext)
-		if _, err := application.chatService.StartWithOptions(
+		if _, err := startExecutionCycle(application.executionRuntime,
 			context.Background(),
 			newInteractiveReplayRunner(t, &interactiveReplayModel{message: agents.AssistantMessage("must not run", nil)}),
 			&interactiveCrashConversation{vanished: reachedContext}, application.bookService,

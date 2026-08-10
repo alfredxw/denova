@@ -26,7 +26,7 @@ func TestAutomationColdAcceptedRunStaysRecoveryRequiredUntilExplicitAbort(t *tes
 		t.Fatal(err)
 	}
 	store, projectLayout := registeredAutomationProjectStoreForTest(t, dataDir, workspace)
-	taskDef, err := store.Create(automation.Task{
+	taskDef, err := store.Create(automation.TaskDefinition{
 		Scope: automation.ScopeWorkspace, Enabled: true, Name: "cold recovery", Template: automation.TemplateReview,
 		Triggers: []automation.TriggerDefinition{{
 			ID: "schedule", Type: automation.TriggerTypeSchedule, Enabled: true,
@@ -139,7 +139,7 @@ func TestAutomationStartupScanCompletesRecoveredTerminalEffects(t *testing.T) {
 		t.Fatal(err)
 	}
 	store, projectLayout := registeredAutomationProjectStoreForTest(t, dataDir, workspace)
-	taskDef, err := store.Create(automation.Task{
+	taskDef, err := store.Create(automation.TaskDefinition{
 		Scope: automation.ScopeWorkspace, Enabled: true, Name: "terminal recovery", Template: automation.TemplateReview,
 	})
 	if err != nil {
@@ -199,7 +199,7 @@ func TestAutomationColdFollowUpPublishesAndAbortsCurrentOperation(t *testing.T) 
 		t.Fatal(err)
 	}
 	store, projectLayout := registeredAutomationProjectStoreForTest(t, dataDir, workspace)
-	taskDef, err := store.Create(automation.Task{
+	taskDef, err := store.Create(automation.TaskDefinition{
 		Scope: automation.ScopeWorkspace, Enabled: true, Name: "recover follow-up", Template: automation.TemplateReview,
 	})
 	if err != nil {
@@ -292,7 +292,7 @@ func TestAutomationPendingFollowUpIntentRecoversActiveSuccessorAfterCrash(t *tes
 		t.Fatal(err)
 	}
 	store, projectLayout := registeredAutomationProjectStoreForTest(t, dataDir, workspace)
-	taskDef, err := store.Create(automation.Task{
+	taskDef, err := store.Create(automation.TaskDefinition{
 		Scope: automation.ScopeWorkspace, Enabled: true, Name: "pending successor", Template: automation.TemplateReview,
 	})
 	if err != nil {
@@ -365,7 +365,7 @@ func TestAutomationRecoveryFailureCannotFinalizeAnActiveProjection(t *testing.T)
 	workspace := filepath.Join(root, "workspace")
 	novaDir := filepath.Join(root, "nova")
 	store := automation.NewStore(novaDir, workspace)
-	taskDef, err := store.Create(automation.Task{Scope: automation.ScopeWorkspace, Name: "active recovery", Template: automation.TemplateReview})
+	taskDef, err := store.Create(automation.TaskDefinition{Scope: automation.ScopeWorkspace, Name: "active recovery", Template: automation.TemplateReview})
 	if err != nil {
 		t.Fatal(err)
 	}

@@ -7,7 +7,7 @@ import (
 
 	"denova/config"
 	agentconversation "denova/internal/agents/conversation"
-	agentharness "denova/internal/agents/harness"
+	agentexecution "denova/internal/agents/execution"
 	"denova/internal/agents/session"
 	agenttool "denova/internal/agents/tool"
 	apptask "denova/internal/app/task"
@@ -34,15 +34,15 @@ type Request struct {
 // pages can therefore run inside AgentChat without changing the foreground
 // Writing Book.
 type Runtime struct {
-	ProjectID       string
-	Config          config.Config
-	Workspace       string
-	State           *book.State
-	SessionStore    *session.Store
-	BookService     *book.Service
-	VersionService  *book.VersionService
-	ChatService     *agentharness.Service
-	ProjectRegistry *projectdomain.Registry
+	ProjectID        string
+	Config           config.Config
+	Workspace        string
+	State            *book.State
+	SessionStore     *session.Store
+	BookService      *book.Service
+	VersionService   *book.VersionService
+	ExecutionRuntime *agentexecution.Runtime
+	ProjectRegistry  *projectdomain.Registry
 }
 
 type Operation interface {

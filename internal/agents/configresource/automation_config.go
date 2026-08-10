@@ -53,6 +53,10 @@ func (input *automationTaskWriteInput) newTask() automation.Task {
 	return task
 }
 
+func (input *automationTaskWriteInput) newDefinition() automation.TaskDefinition {
+	return input.newTask().Definition()
+}
+
 func (input *automationTaskWriteInput) applyDefinition(task *automation.Task) {
 	if input == nil || task == nil {
 		return

@@ -2,7 +2,7 @@ package app
 
 import (
 	"context"
-	agentharness "denova/internal/agents/harness"
+	agentexecution "denova/internal/agents/execution"
 	apptask "denova/internal/app/task"
 	"os"
 	"path/filepath"
@@ -41,18 +41,18 @@ func TestWritingDrainRetriesPendingRecoveryRefreshBeforeSessionSwitch(t *testing
 		t.Fatal(err)
 	}
 
-	chat := agentharness.NewEphemeralService()
+	chat := agentexecution.NewEphemeralRuntime()
 	t.Cleanup(func() { _ = chat.Close(context.Background()) })
 	task := apptask.New(func(context.Context, *apptask.Task, func(agentrun.Event)) {})
 	<-task.Done()
 	run := &writingTaskRun{task: task, runtime: ideChatRuntime{workspace: "/book", sess: selected}}
-	action := agentharness.RuntimeRecoveryAction{
-		Kind: agentharness.RuntimeRecoveryCompactContext, CommandID: "refresh-before-switch",
+	action := agentexecution.RuntimeRecoveryAction{
+		Kind: agentexecution.RuntimeRecoveryCompactContext, CommandID: "refresh-before-switch",
 		OperationID: agentrun.OperationID("operation-refresh-before-switch"),
 	}
 	application := &App{
 		workspace: "/book", workspaceGeneration: 1, sessionStore: store,
-		session: selected, chatService: chat, activeTask: task, activeWritingRun: run,
+		session: selected, executionRuntime: chat, activeTask: task, activeWritingRun: run,
 	}
 	service := &ChatAppService{app: application}
 	service.markRecoveryRefreshPending("/book", selected.ID, action)
@@ -105,7 +105,7 @@ func TestClearSessionDrainsExactWritingTaskBeforeMutation(t *testing.T) {
 	if err := sess.Append(agents.UserMessage("keep in display history")); err != nil {
 		t.Fatal(err)
 	}
-	chat := agentharness.NewEphemeralService()
+	chat := agentexecution.NewEphemeralRuntime()
 	t.Cleanup(func() { _ = chat.Close(context.Background()) })
 	started := make(chan struct{})
 	task := apptask.New(func(ctx context.Context, _ *apptask.Task, _ func(agentrun.Event)) {
@@ -115,7 +115,7 @@ func TestClearSessionDrainsExactWritingTaskBeforeMutation(t *testing.T) {
 	<-started
 	application := &App{
 		workspace: "/book", workspaceGeneration: 1, sessionStore: store,
-		session: sess, chatService: chat, activeTask: task,
+		session: sess, executionRuntime: chat, activeTask: task,
 	}
 	application.activeWritingRun = &writingTaskRun{task: task, runtime: ideChatRuntime{workspace: "/book", sess: sess}}
 	service := &ChatAppService{app: application}
@@ -141,7 +141,7 @@ func TestAppendInteractiveTurnDrainsExactBranchTaskBeforeMutation(t *testing.T) 
 	if err != nil {
 		t.Fatal(err)
 	}
-	chat := agentharness.NewEphemeralService()
+	chat := agentexecution.NewEphemeralRuntime()
 	t.Cleanup(func() { _ = chat.Close(context.Background()) })
 	directorTasks := interactiveapp.NewDirectorTaskGroup()
 	t.Cleanup(directorTasks.Close)
@@ -153,7 +153,7 @@ func TestAppendInteractiveTurnDrainsExactBranchTaskBeforeMutation(t *testing.T) 
 	<-started
 	application := &App{
 		workspace: workspace, workspaceGeneration: 1, interactive: store,
-		chatService: chat, workspaceDirectorTasks: directorTasks,
+		executionRuntime: chat, workspaceDirectorTasks: directorTasks,
 		activeInteractiveRun: &interactiveTaskRun{task: task, info: InteractiveTaskInfo{
 			Workspace: workspace, StoryID: story.ID, BranchID: "main",
 		}},

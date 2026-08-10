@@ -226,11 +226,11 @@ func (s *Service) hostEffectOperationActive(ctx context.Context, payload admitte
 	if s == nil || s.host == nil {
 		return true
 	}
-	chatService := s.host.BaseRuntime().ChatService
-	if chatService == nil {
+	executionRuntime := s.host.BaseRuntime().ExecutionRuntime
+	if executionRuntime == nil {
 		return true
 	}
-	status, err := chatService.RuntimeStatusProjection(ctx, agentrun.Options{
+	status, err := executionRuntime.RuntimeStatusProjection(ctx, agentrun.Options{
 		AgentKind: payload.Origin.AgentKind, ProjectID: payload.Origin.ProjectID,
 		TaskID:           payload.Origin.TaskID,
 		AutomationTaskID: payload.Origin.AutomationTaskID, SessionID: payload.Origin.SessionID,

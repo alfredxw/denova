@@ -3,7 +3,7 @@ package app
 import (
 	"context"
 	agentchat "denova/internal/agents/chat"
-	agentharness "denova/internal/agents/harness"
+	agentexecution "denova/internal/agents/execution"
 	agentrun "denova/internal/agents/run"
 	appagentruntime "denova/internal/app/agentruntime"
 	apptask "denova/internal/app/task"
@@ -19,7 +19,7 @@ import (
 type writingTaskRun struct {
 	task               *apptask.Task
 	runtime            ideChatRuntime
-	recovery           *agentharness.RecoveryObservation
+	recovery           *agentexecution.RecoveryObservation
 	recoveryActions    map[string]agentrun.CommandReceipt
 	recoveryStructural bool
 
@@ -64,7 +64,7 @@ func (s *ChatAppService) replayDurableWritingStart(
 ) (*apptask.Task, bool, error) {
 	a := s.app
 	a.mu.RLock()
-	chatService := a.chatService
+	executionRuntime := a.executionRuntime
 	sess := a.session
 	bookService := a.bookService
 	stateRoot := ""
@@ -72,14 +72,14 @@ func (s *ChatAppService) replayDurableWritingStart(
 		stateRoot = a.cfg.ProjectStateDir
 	}
 	a.mu.RUnlock()
-	if chatService == nil || sess == nil || sess.ID != sessionID {
+	if executionRuntime == nil || sess == nil || sess.ID != sessionID {
 		return nil, false, nil
 	}
 	options := agentrun.Options{
 		AgentKind: agentrun.AgentKindIDE, SessionID: sessionID,
 		StateRoot: stateRoot, Workspace: workspace, Mode: "ide",
 	}
-	status, err := chatService.RuntimeStatusProjection(ctx, options)
+	status, err := executionRuntime.RuntimeStatusProjection(ctx, options)
 	if err != nil {
 		return nil, false, err
 	}
@@ -89,9 +89,9 @@ func (s *ChatAppService) replayDurableWritingStart(
 
 	runtime := ideChatRuntime{
 		app: a, sess: sess, bookService: bookService,
-		chatService: chatService, workspace: workspace, projectState: stateRoot,
+		executionRuntime: executionRuntime, workspace: workspace, projectState: stateRoot,
 	}
-	var accepted *agentharness.AcceptedRun
+	var accepted *agentexecution.Operation
 	task, err := apptask.NewDeferredWithContext(ctx, func(task *apptask.Task) error {
 		a.mu.Lock()
 		defer a.mu.Unlock()
@@ -115,7 +115,14 @@ func (s *ChatAppService) replayDurableWritingStart(
 		return nil, true, err
 	}
 	acceptCtx, releaseAcceptance := apptask.AcceptanceContext(ctx, task)
-	accepted, err = chatService.StartWithOptions(acceptCtx, nil, nil, bookService, req, options, task.Emit)
+	accepted, err = executionRuntime.Start(acceptCtx, agentexecution.StartRequest{
+		Cycle: agentexecution.Cycle{
+			BookService: bookService,
+			Request:     req,
+			Options:     options,
+		},
+		Emit: task.Emit,
+	})
 	releaseAcceptance()
 	if err != nil {
 		rollbackWritingReplayTask(a, task, err)

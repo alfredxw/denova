@@ -2,7 +2,7 @@ package automationapp
 
 import (
 	"context"
-	agentharness "denova/internal/agents/harness"
+	agentexecution "denova/internal/agents/execution"
 	agentrun "denova/internal/agents/run"
 	"errors"
 	"fmt"
@@ -20,10 +20,10 @@ func (s *Service) automationRuntimeProjection(ctx context.Context, snap *automat
 	if s.runtimeProjector != nil {
 		return s.runtimeProjector(ctx, snap, task, run)
 	}
-	if snap == nil || snap.chatService == nil {
-		return agentrun.RuntimeStatus{}, agentharness.ErrRuntimeProjectionUnavailable
+	if snap == nil || snap.executionRuntime == nil {
+		return agentrun.RuntimeStatus{}, agentexecution.ErrRuntimeProjectionUnavailable
 	}
-	return snap.chatService.RuntimeRecoveryStatusProjection(ctx, automationRuntimeOptions(snap, task, run))
+	return snap.executionRuntime.RuntimeRecoveryStatusProjection(ctx, automationRuntimeOptions(snap, task, run))
 }
 
 func automationRuntimeOptions(snap *automationWorkspaceSnapshot, task automation.Task, run automation.RunRecord) agentrun.Options {
@@ -88,7 +88,7 @@ func runHasRuntimeReceiptForAdmission(run automation.RunRecord) bool {
 func (s *Service) reconcileAutomationRunReceipt(ctx context.Context, snap *automationWorkspaceSnapshot, task automation.Task, candidate automation.RunRecord) (automation.RunRecord, bool, error) {
 	status, err := s.automationRuntimeProjection(ctx, snap, task, candidate)
 	if err != nil {
-		if errors.Is(err, agentharness.ErrRuntimeProjectionUnavailable) {
+		if errors.Is(err, agentexecution.ErrRuntimeProjectionUnavailable) {
 			return automation.RunRecord{}, false, nil
 		}
 		return automation.RunRecord{}, false, err

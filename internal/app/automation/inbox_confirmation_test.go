@@ -18,7 +18,7 @@ func TestAutomationInboxConfirmationRetriesFailureBeforeRuntimeAcceptance(t *tes
 	workspace := filepath.Join(root, "workspace")
 	novaDir := filepath.Join(root, "nova")
 	store := automation.NewStore(novaDir, workspace)
-	task, err := store.Create(automation.Task{Scope: automation.ScopeWorkspace, Name: "Confirm once", Template: automation.TemplateReview})
+	task, err := store.Create(automation.TaskDefinition{Scope: automation.ScopeWorkspace, Name: "Confirm once", Template: automation.TemplateReview})
 	if err != nil {
 		t.Fatalf("Create task failed: %v", err)
 	}
@@ -79,7 +79,7 @@ func TestAutomationInboxConfirmationRequiresDurableRuntimeReceipt(t *testing.T) 
 	workspace := filepath.Join(root, "workspace")
 	novaDir := filepath.Join(root, "nova")
 	store := automation.NewStore(novaDir, workspace)
-	task, err := store.Create(automation.Task{Scope: automation.ScopeWorkspace, Name: "Confirm durably", Template: automation.TemplateReview})
+	task, err := store.Create(automation.TaskDefinition{Scope: automation.ScopeWorkspace, Name: "Confirm durably", Template: automation.TemplateReview})
 	if err != nil {
 		t.Fatalf("Create task failed: %v", err)
 	}

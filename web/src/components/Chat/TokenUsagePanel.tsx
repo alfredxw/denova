@@ -3,7 +3,7 @@ import { useMemo } from 'react'
 import type { ReactNode } from 'react'
 import { useTranslation } from 'react-i18next'
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@/components/ui/dialog'
-import type { ChatMessage } from '@/lib/api'
+import type { TokenUsageChatMessage } from '@/lib/api'
 import type { AgentTokenUsageRecord } from '@/lib/agent-message-view'
 import { focusDialogContentOnOpen } from './dialog-focus'
 
@@ -49,7 +49,7 @@ type TokenUsageGroup = {
   rows: TokenUsageRow[]
 }
 
-export type TokenUsageRecord = AgentTokenUsageRecord | ChatMessage
+export type TokenUsageRecord = AgentTokenUsageRecord | TokenUsageChatMessage
 
 export function TokenUsageDialog({ open, messages, onOpenChange, onOpenTrace }: {
   open: boolean

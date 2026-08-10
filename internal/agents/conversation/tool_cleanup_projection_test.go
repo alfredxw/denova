@@ -47,7 +47,7 @@ func cleanupProjectionResult(callID, content string, retention agent.ToolResultR
 	result := agent.TextToolResult(content)
 	result.ResultRetention = retention
 	result.ContextHints = &agent.ToolResultContextHints{
-		Recovery: agent.ToolResultRecoveryHint{Kind: agent.ToolResultRecoveryRead},
+		Recovery:     agent.ToolResultRecoveryHint{Kind: agent.ToolResultRecoveryRead},
 		ContextValue: value,
 	}
 	return agent.ToolMessage(result, callID, agent.WithToolName("read"))

@@ -13,6 +13,7 @@ import (
 	agents "denova/internal/agents"
 	agentcontext "denova/internal/agents/context"
 	agentconversation "denova/internal/agents/conversation"
+	agentexecution "denova/internal/agents/execution"
 	agentrun "denova/internal/agents/run"
 	"denova/internal/agents/session"
 	novaskills "denova/internal/agents/skills"
@@ -114,35 +115,44 @@ func (service *Service) generateWithAgentUsingHooks(runtime *Runtime, req AgentG
 	var hookErr error
 	runCtx, cancelRun := context.WithCancel(runtime.Context())
 	defer cancelRun()
-	accepted, err := runtime.ChatService.StartWithOptions(runCtx, runner, conversation, runtime.BookService, agentchat.ChatRequest{
-		CommandID: req.CommandID,
-		Message:   conversation.message,
-	}, agentrun.Options{
-		AgentKind:          config.AgentKindImage,
-		StateRoot:          cfg.ProjectStateDir,
-		SessionID:          sess.ID,
-		Workspace:          runtime.Workspace,
-		StoryID:            req.StoryID,
-		BranchID:           req.BranchID,
-		TurnID:             req.TurnID,
-		Mode:               "image",
-		IdleTimeout:        appagentruntime.IdleTimeout(cfg),
-		ToolResultMaxBytes: appagentruntime.ToolResultMaxBytes(cfg),
-		SystemPromptLog:    systemPrompt,
-	}, func(ev agentrun.Event) {
-		switch ev.Type {
-		case "tool_result":
-			if image := eventInteractiveImage(ev.Data); image != nil {
-				result.InteractiveImage = image
-				if hooks.OnInteractiveImage != nil && hookErr == nil {
-					hookErr = hooks.OnInteractiveImage(image)
+	accepted, err := runtime.ExecutionRuntime.Start(runCtx, agentexecution.StartRequest{
+		Cycle: agentexecution.Cycle{
+			Runner:       runner,
+			Conversation: conversation,
+			BookService:  runtime.BookService,
+			Request: agentchat.ChatRequest{
+				CommandID: req.CommandID,
+				Message:   conversation.message,
+			},
+			Options: agentrun.Options{
+				AgentKind:          config.AgentKindImage,
+				StateRoot:          cfg.ProjectStateDir,
+				SessionID:          sess.ID,
+				Workspace:          runtime.Workspace,
+				StoryID:            req.StoryID,
+				BranchID:           req.BranchID,
+				TurnID:             req.TurnID,
+				Mode:               "image",
+				IdleTimeout:        appagentruntime.IdleTimeout(cfg),
+				ToolResultMaxBytes: appagentruntime.ToolResultMaxBytes(cfg),
+				SystemPromptLog:    systemPrompt,
+			},
+		},
+		Emit: func(ev agentrun.Event) {
+			switch ev.Type {
+			case "tool_result":
+				if image := eventInteractiveImage(ev.Data); image != nil {
+					result.InteractiveImage = image
+					if hooks.OnInteractiveImage != nil && hookErr == nil {
+						hookErr = hooks.OnInteractiveImage(image)
+					}
+				}
+			case "error":
+				if runErr == nil {
+					runErr = errors.New(eventErrorMessage(ev.Data))
 				}
 			}
-		case "error":
-			if runErr == nil {
-				runErr = errors.New(eventErrorMessage(ev.Data))
-			}
-		}
+		},
 	})
 	if err != nil {
 		if errors.Is(err, agentrun.ErrInvalidCommand) {
@@ -278,9 +288,9 @@ func (c *imageAgentConversation) BindAgentCycleIdentity(identity agentrun.CycleI
 	}
 }
 
-func (c *imageAgentConversation) BindHarnessAgentKind(agentKind string) {
+func (c *imageAgentConversation) BindAgentKind(agentKind string) {
 	if c != nil && c.journal != nil {
-		c.journal.BindHarnessAgentKind(agentKind)
+		c.journal.BindAgentKind(agentKind)
 	}
 }
 

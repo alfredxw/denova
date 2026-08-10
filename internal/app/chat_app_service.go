@@ -1,7 +1,7 @@
 package app
 
 import (
-	agentharness "denova/internal/agents/harness"
+	agentexecution "denova/internal/agents/execution"
 	"strings"
 	"sync"
 
@@ -49,30 +49,30 @@ type ChatAppService struct {
 	// a fresh canonical Session projection. Within one process it must outlive
 	// the display Task that discovered the durable structural recovery commit.
 	recoveryRefreshMu      sync.Mutex
-	recoveryRefreshPending map[string]agentharness.RuntimeRecoveryAction
+	recoveryRefreshPending map[string]agentexecution.RuntimeRecoveryAction
 }
 
 type ideChatRuntime struct {
-	app            *App
-	projectID      string
-	projectType    ProjectType
-	projectState   string
-	agentKind      string
-	sess           *session.Session
-	state          *book.State
-	bookService    *book.Service
-	chatService    *agentharness.Service
-	workspace      string
-	versionService *book.VersionService
-	cfg            config.Config
-	ideTeller      prompts.IDEStoryTeller
+	app              *App
+	projectID        string
+	projectType      ProjectType
+	projectState     string
+	agentKind        string
+	sess             *session.Session
+	state            *book.State
+	bookService      *book.Service
+	executionRuntime *agentexecution.Runtime
+	workspace        string
+	versionService   *book.VersionService
+	cfg              config.Config
+	ideTeller        prompts.IDEStoryTeller
 }
 
 func sharedConversationRuntime(runtime ideChatRuntime) conversationapp.Runtime {
 	return conversationapp.Runtime{
 		ProjectID: runtime.projectID, ProjectType: runtime.projectType, ProjectState: runtime.projectState,
 		AgentKind: runtime.agentKind, Session: runtime.sess, State: runtime.state,
-		BookService: runtime.bookService, ChatService: runtime.chatService, Workspace: runtime.workspace,
+		BookService: runtime.bookService, ExecutionRuntime: runtime.executionRuntime, Workspace: runtime.workspace,
 		VersionService: runtime.versionService, Config: runtime.cfg, IDETeller: runtime.ideTeller,
 	}
 }
@@ -85,7 +85,7 @@ func applySharedConversationRuntime(runtime ideChatRuntime, shared conversationa
 	runtime.sess = shared.Session
 	runtime.state = shared.State
 	runtime.bookService = shared.BookService
-	runtime.chatService = shared.ChatService
+	runtime.executionRuntime = shared.ExecutionRuntime
 	runtime.workspace = shared.Workspace
 	runtime.versionService = shared.VersionService
 	runtime.cfg = shared.Config

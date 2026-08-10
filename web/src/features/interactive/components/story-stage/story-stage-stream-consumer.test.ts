@@ -114,6 +114,29 @@ describe('story stage stream event contract', () => {
 
     expect(fixture.setActivity).toHaveBeenCalledWith('storyStage.activity.processingTool')
   })
+
+  it('rejects one malformed payload without aborting later stream events', async () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => undefined)
+    const fixture = consumerFixture()
+
+    const outcome = await fixture.consumer.consume(
+      eventStream([
+        { id: '1', event: 'thinking', data: '{broken' },
+        { id: '2', event: 'thinking', data: JSON.stringify({ content: '继续处理' }) },
+        { id: '3', event: 'done', data: '{}' },
+      ]),
+      fixture.consumer.initialOutcome(),
+    )
+
+    expect(warn).toHaveBeenCalledWith(
+      '[interactive-stage] rejected malformed stream event',
+      expect.objectContaining({ event: 'thinking', id: '1' }),
+    )
+    expect(fixture.setActivity).toHaveBeenCalledWith('storyStage.activity.invalidEvent')
+    expect(fixture.liveAccumulator.appendThinking).toHaveBeenCalledWith('继续处理', expect.any(Object))
+    expect(outcome).toMatchObject({ finishedNormally: true, streamFailed: false, terminalEventReceived: true })
+    warn.mockRestore()
+  })
 })
 
 describe('story stage display checkpoint recovery', () => {
@@ -198,7 +221,7 @@ describe('story stage display checkpoint recovery', () => {
         {
           id: '10',
           event: 'interactive_turn_persisted',
-          data: JSON.stringify({ turn: { id: 'turn-1' } }),
+          data: JSON.stringify({ story_id: 'story-1', branch_id: 'main', turn_count: 1, turn: { id: 'turn-1' } }),
         },
         { id: '11', event: 'done', data: '{}' },
       ]),

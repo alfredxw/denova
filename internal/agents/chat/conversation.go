@@ -7,7 +7,7 @@ import (
 	"denova/internal/agents/session"
 )
 
-// Conversation is the stable orchestration boundary used by chat and harness.
+// Conversation is the stable orchestration boundary used by chat and execution.
 // Concrete storage-backed implementations belong to the conversation package.
 type Conversation interface {
 	agentcontext.ModelContextAssembler

@@ -7,6 +7,7 @@ import (
 	"log/slog"
 
 	chatagent "denova/internal/agents/chat"
+	agentexecution "denova/internal/agents/execution"
 	agentrun "denova/internal/agents/run"
 	appagentruntime "denova/internal/app/agentruntime"
 	apptask "denova/internal/app/task"
@@ -21,11 +22,11 @@ func (service *Service) replayDurableStart(
 	sessionID string,
 	fingerprint string,
 ) (*apptask.Task, bool, error) {
-	if runtime.ChatService == nil {
+	if runtime.ExecutionRuntime == nil {
 		return nil, false, nil
 	}
 	options := runOptions(runtime.ProjectID, runtime.Workspace, runtime.Config.ProjectStateDir, sessionID)
-	status, err := runtime.ChatService.RuntimeStatusProjection(ctx, options)
+	status, err := runtime.ExecutionRuntime.RuntimeStatusProjection(ctx, options)
 	if err != nil {
 		return nil, false, err
 	}
@@ -49,9 +50,14 @@ func (service *Service) replayDurableStart(
 		return nil, true, err
 	}
 	acceptCtx, releaseAcceptance := apptask.AcceptanceContext(ctx, task)
-	accepted, err := runtime.ChatService.StartWithOptions(
-		acceptCtx, nil, nil, runtime.BookService, request, options, task.Emit,
-	)
+	accepted, err := runtime.ExecutionRuntime.Start(acceptCtx, agentexecution.StartRequest{
+		Cycle: agentexecution.Cycle{
+			BookService: runtime.BookService,
+			Request:     request,
+			Options:     options,
+		},
+		Emit: task.Emit,
+	})
 	releaseAcceptance()
 	if err != nil {
 		reservation.Rollback()

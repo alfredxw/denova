@@ -3,7 +3,7 @@ package app
 import (
 	"context"
 	agentchat "denova/internal/agents/chat"
-	agentharness "denova/internal/agents/harness"
+	agentexecution "denova/internal/agents/execution"
 	apptask "denova/internal/app/task"
 	"fmt"
 	"log/slog"
@@ -199,7 +199,7 @@ func (s *InteractiveAppService) startInteractiveTask(ctx context.Context, reques
 
 	a := s.app
 	a.mu.RLock()
-	if a.interactive == nil || a.bookState == nil || a.cfg == nil || a.chatService == nil {
+	if a.interactive == nil || a.bookState == nil || a.cfg == nil || a.executionRuntime == nil {
 		a.mu.RUnlock()
 		slog.InfoContext(ctx, "[interactive-agent-task] 未选择 workspace，无法启动任务")
 		return nil, ErrNoWorkspace
@@ -253,7 +253,7 @@ func (s *InteractiveAppService) startInteractiveTask(ctx context.Context, reques
 	resolvedRequest := cycle.request
 	cycle.request = identity.chatRequest
 	cycle.request.StyleRules = resolvedRequest.StyleRules
-	var accepted *agentharness.AcceptedRun
+	var accepted *agentexecution.Operation
 	runAccepted := func(ctx context.Context, task *apptask.Task, _ func(agentrun.Event)) {
 		defer a.unregisterWorkspaceTask(task)
 		slog.InfoContext(ctx, fmt.Sprintf("[interactive-agent-task] run begin id=%s command_id=%s story_id=%s branch_id=%s rewind_turn_id=%s message_len=%d style_scenes=%d", task.ID(), identity.request.CommandID, cycle.storyID, cycle.branchID, identity.request.RegenerateFromTurnID, len(identity.request.Message), len(identity.request.StyleScenes)))
@@ -266,7 +266,7 @@ func (s *InteractiveAppService) startInteractiveTask(ctx context.Context, reques
 		if a.workspaceTransition {
 			return ErrWorkspaceTransition
 		}
-		if a.workspace != cycle.workspace || a.interactive != cycle.store || a.bookState != cycle.state || a.chatService != cycle.chatService {
+		if a.workspace != cycle.workspace || a.interactive != cycle.store || a.bookState != cycle.state || a.executionRuntime != cycle.executionRuntime {
 			return ErrAgentContextChanged
 		}
 		if a.activeInteractiveRun != nil && a.activeInteractiveRun.task != nil && !a.activeInteractiveRun.task.Finished() {
@@ -286,7 +286,16 @@ func (s *InteractiveAppService) startInteractiveTask(ctx context.Context, reques
 	options := cycle.options(task.ID())
 	options.TurnID = identity.request.RegenerateFromTurnID
 	acceptCtx, releaseAcceptance := apptask.AcceptanceContext(ctx, task)
-	accepted, err = cycle.chatService.StartWithOptions(acceptCtx, cycle.runner, cycle.conversation, cycle.bookService, cycle.request, options, task.Emit)
+	accepted, err = cycle.executionRuntime.Start(acceptCtx, agentexecution.StartRequest{
+		Cycle: agentexecution.Cycle{
+			Runner:       cycle.runner,
+			Conversation: cycle.conversation,
+			BookService:  cycle.bookService,
+			Request:      cycle.request,
+			Options:      options,
+		},
+		Emit: task.Emit,
+	})
 	releaseAcceptance()
 	if err != nil {
 		task.RejectStart(err)

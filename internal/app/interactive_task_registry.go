@@ -4,7 +4,7 @@ import (
 	"context"
 	"crypto/sha256"
 	agentchat "denova/internal/agents/chat"
-	agentharness "denova/internal/agents/harness"
+	agentexecution "denova/internal/agents/execution"
 	agentrun "denova/internal/agents/run"
 	apptask "denova/internal/app/task"
 	"encoding/hex"
@@ -208,7 +208,7 @@ func (s *InteractiveAppService) resolveInteractiveStart(request InteractiveAgent
 	}{
 		Workspace: workspace, StoryID: request.StoryID, BranchID: request.BranchID,
 		RegenerateFromTurnID: request.RegenerateFromTurnID,
-		Request:              agentharness.RequestSemanticFingerprint(chatRequest),
+		Request:              agentexecution.RequestSemanticFingerprint(chatRequest),
 	}
 	encoded, _ := json.Marshal(descriptor)
 	sum := sha256.Sum256(encoded)
@@ -259,14 +259,14 @@ func (s *InteractiveAppService) replayDurableInteractiveStart(
 ) (*apptask.Task, bool, error) {
 	a := s.app
 	a.mu.RLock()
-	chatService := a.chatService
+	executionRuntime := a.executionRuntime
 	bookService := a.bookService
 	store := a.interactive
 	a.mu.RUnlock()
-	if chatService == nil || store == nil {
+	if executionRuntime == nil || store == nil {
 		return nil, false, nil
 	}
-	status, err := chatService.RuntimeStatusProjection(ctx, identity.options(""))
+	status, err := executionRuntime.RuntimeStatusProjection(ctx, identity.options(""))
 	if err != nil {
 		return nil, false, err
 	}
@@ -274,14 +274,14 @@ func (s *InteractiveAppService) replayDurableInteractiveStart(
 		return nil, false, nil
 	}
 
-	var accepted *agentharness.AcceptedRun
+	var accepted *agentexecution.Operation
 	task, err := apptask.NewDeferredWithContext(ctx, func(task *apptask.Task) error {
 		a.mu.Lock()
 		defer a.mu.Unlock()
 		if a.workspaceTransition {
 			return ErrWorkspaceTransition
 		}
-		if a.workspace != identity.workspace || a.interactive != store || a.chatService != chatService {
+		if a.workspace != identity.workspace || a.interactive != store || a.executionRuntime != executionRuntime {
 			return ErrAgentContextChanged
 		}
 		if a.activeInteractiveRun != nil && a.activeInteractiveRun.task != nil && !a.activeInteractiveRun.task.Finished() {
@@ -297,9 +297,14 @@ func (s *InteractiveAppService) replayDurableInteractiveStart(
 		return nil, true, err
 	}
 	acceptCtx, releaseAcceptance := apptask.AcceptanceContext(ctx, task)
-	accepted, err = chatService.StartWithOptions(
-		acceptCtx, nil, nil, bookService, identity.chatRequest, identity.options(task.ID()), task.Emit,
-	)
+	accepted, err = executionRuntime.Start(acceptCtx, agentexecution.StartRequest{
+		Cycle: agentexecution.Cycle{
+			BookService: bookService,
+			Request:     identity.chatRequest,
+			Options:     identity.options(task.ID()),
+		},
+		Emit: task.Emit,
+	})
 	releaseAcceptance()
 	if err != nil {
 		rollbackInteractiveReplayTask(a, task, err)
@@ -376,7 +381,7 @@ type InteractiveTaskInfo struct {
 type interactiveTaskRun struct {
 	task            *apptask.Task
 	info            InteractiveTaskInfo
-	recovery        *agentharness.RecoveryObservation
+	recovery        *agentexecution.RecoveryObservation
 	recoveryActions map[string]agentrun.CommandReceipt
 }
 

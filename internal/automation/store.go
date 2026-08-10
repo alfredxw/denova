@@ -243,11 +243,17 @@ func (s *Store) ListForTriggerEvaluation(target ExecutionTarget) ([]Task, error)
 	return filtered, nil
 }
 
-func (s *Store) Create(task Task) (Task, error) {
+func (s *Store) Create(definition TaskDefinition) (Task, error) {
 	now := time.Now().UTC()
-	task.ID = newID("auto")
-	task.CreatedAt = now
-	task.UpdatedAt = now
+	task := Task{
+		ID: newID("auto"), Scope: definition.Scope, Target: definition.Target,
+		Enabled: definition.Enabled, Name: definition.Name, Template: definition.Template,
+		Prompt: definition.Prompt, ModelProfileID: definition.ModelProfileID,
+		Schedule: definition.Schedule, Triggers: append([]TriggerDefinition(nil), definition.Triggers...),
+		DefaultActionPolicy: definition.DefaultActionPolicy, SessionStrategy: definition.SessionStrategy,
+		TriggerState: map[string]TriggerState{}, RecentRuns: []RunRecord{},
+		CreatedAt: now, UpdatedAt: now,
+	}
 	normalized, err := s.normalizeTaskTarget(task)
 	if err != nil {
 		return Task{}, err

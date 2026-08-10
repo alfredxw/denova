@@ -2,7 +2,7 @@ package app
 
 import (
 	"context"
-	agentharness "denova/internal/agents/harness"
+	agentexecution "denova/internal/agents/execution"
 	agentrun "denova/internal/agents/run"
 	"testing"
 
@@ -33,11 +33,11 @@ func TestWritingCompactionRemovalUsesDurableStructuralCommand(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	chat := agentharness.NewEphemeralService()
+	chat := agentexecution.NewEphemeralRuntime()
 	t.Cleanup(func() { _ = chat.Close(context.Background()) })
 	application := &App{
 		workspace: "/book", workspaceGeneration: 1, sessionStore: store,
-		session: sess, chatService: chat,
+		session: sess, executionRuntime: chat,
 	}
 	service := &ChatAppService{app: application}
 	removed, err := service.executeWritingContextCompactionRemoval(context.Background(), "client-remove-writing-1")
@@ -87,9 +87,9 @@ func TestInteractiveCompactionRemovalUsesDurableStructuralCommand(t *testing.T) 
 	if err != nil {
 		t.Fatal(err)
 	}
-	chat := agentharness.NewEphemeralService()
+	chat := agentexecution.NewEphemeralRuntime()
 	t.Cleanup(func() { _ = chat.Close(context.Background()) })
-	application := &App{workspace: workspace, workspaceGeneration: 1, interactive: store, chatService: chat}
+	application := &App{workspace: workspace, workspaceGeneration: 1, interactive: store, executionRuntime: chat}
 	service := &InteractiveAppService{app: application}
 	removed, err := service.executeInteractiveContextCompactionRemoval(context.Background(), story.ID, "main", "client-remove-game-1")
 	if err != nil || !removed {

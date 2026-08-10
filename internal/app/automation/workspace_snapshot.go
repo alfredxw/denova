@@ -1,7 +1,7 @@
 package automationapp
 
 import (
-	agentharness "denova/internal/agents/harness"
+	agentexecution "denova/internal/agents/execution"
 	"path/filepath"
 	"strings"
 
@@ -15,16 +15,16 @@ import (
 // resulting automation run to one workspace runtime. The Host keeps the
 // referenced generation alive with an Operation for as long as it is used.
 type automationWorkspaceSnapshot struct {
-	projectID    string
-	projectType  projectdomain.Type
-	stateRoot    string
-	workspace    string
-	novaDir      string
-	cfg          config.Config
-	bookState    *book.State
-	bookService  *book.Service
-	sessionStore *session.Store
-	chatService  *agentharness.Service
+	projectID        string
+	projectType      projectdomain.Type
+	stateRoot        string
+	workspace        string
+	novaDir          string
+	cfg              config.Config
+	bookState        *book.State
+	bookService      *book.Service
+	sessionStore     *session.Store
+	executionRuntime *agentexecution.Runtime
 }
 
 // runtimeSnapshot captures the currently selected immutable runtime through

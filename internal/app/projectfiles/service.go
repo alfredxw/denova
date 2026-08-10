@@ -93,16 +93,16 @@ type projectRuntime struct {
 }
 
 func NewService(registry *projectdomain.Registry, options ...ServiceOption) *Service {
-	return newService(registry, nil, options...)
+	return newRuntime(registry, nil, options...)
 }
 
 // NewServiceWithBookVersioning reuses a foreground Book scheduler when the host
 // has one and owns a scoped scheduler for every background Book it mutates.
 func NewServiceWithBookVersioning(registry *projectdomain.Registry, provider BookMutationVersioningProvider, options ...ServiceOption) *Service {
-	return newService(registry, provider, options...)
+	return newRuntime(registry, provider, options...)
 }
 
-func newService(registry *projectdomain.Registry, provider BookMutationVersioningProvider, options ...ServiceOption) *Service {
+func newRuntime(registry *projectdomain.Registry, provider BookMutationVersioningProvider, options ...ServiceOption) *Service {
 	service := &Service{
 		registry:               registry,
 		bookVersioningProvider: provider,

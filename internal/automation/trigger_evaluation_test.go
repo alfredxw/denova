@@ -17,7 +17,7 @@ func TestSemanticTriggerEvaluationPersistsClaimDecisionAndCompletion(t *testing.
 	root := t.TempDir()
 	workspace := filepath.Join(root, "workspace")
 	store := NewStore(filepath.Join(root, "user"), workspace)
-	task, err := store.Create(Task{
+	task, err := store.Create(TaskDefinition{
 		Scope:    ScopeWorkspace,
 		Enabled:  true,
 		Name:     "Durable semantic trigger",
@@ -429,7 +429,7 @@ func newTriggerEvaluationTestStore(t *testing.T) (*Store, Task) {
 	root := t.TempDir()
 	workspace := filepath.Join(root, "workspace")
 	store := NewStore(filepath.Join(root, "user"), workspace)
-	task, err := store.Create(Task{
+	task, err := store.Create(TaskDefinition{
 		Scope: ScopeWorkspace, Enabled: true, Name: "Semantic", Template: TemplateReview,
 		Triggers: []TriggerDefinition{{ID: "semantic_1", Type: TriggerTypeSemantic, Enabled: true, SemanticCondition: "changed"}},
 	})

@@ -87,7 +87,7 @@ func forWorkspaceAt(workspace, stateRoot string) (*Service, error) {
 		existing.bindWorkspace(workspace)
 		return existing, nil
 	}
-	service, err := newService(workspace, stateRoot)
+	service, err := newRuntime(workspace, stateRoot)
 	if err != nil {
 		return nil, err
 	}
@@ -105,10 +105,10 @@ func NewService(workspace string) (*Service, error) {
 	if err != nil {
 		return nil, err
 	}
-	return newService(canonical, stateRoot)
+	return newRuntime(canonical, stateRoot)
 }
 
-func newService(workspace, stateRoot string) (*Service, error) {
+func newRuntime(workspace, stateRoot string) (*Service, error) {
 	store, err := newEventStore(stateRoot)
 	if err != nil {
 		return nil, err

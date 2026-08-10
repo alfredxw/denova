@@ -3,7 +3,7 @@ package app
 import (
 	"context"
 	agentconversation "denova/internal/agents/conversation"
-	agentharness "denova/internal/agents/harness"
+	agentexecution "denova/internal/agents/execution"
 	apptask "denova/internal/app/task"
 	"errors"
 	"fmt"
@@ -24,7 +24,7 @@ type WritingAgentActiveView struct {
 	PendingAsk          *session.AskInteraction
 	// RecoveryActions can contain a process-local projection refresh action
 	// after the durable runtime has already settled to Idle.
-	RecoveryActions []agentharness.RuntimeRecoveryAction
+	RecoveryActions []agentexecution.RuntimeRecoveryAction
 }
 
 type InteractiveAgentActiveView struct {
@@ -54,7 +54,7 @@ func (a *App) WritingAgentActiveView(ctx context.Context) WritingAgentActiveView
 	defer operation.Release()
 
 	a.mu.RLock()
-	chatService := a.chatService
+	executionRuntime := a.executionRuntime
 	selectedSession := a.session
 	stateRoot := ""
 	if a.cfg != nil {
@@ -68,17 +68,17 @@ func (a *App) WritingAgentActiveView(ctx context.Context) WritingAgentActiveView
 	}
 	var runtimeSnapshot agentrun.RuntimeStatus
 	projected := false
-	if sessionID != "" && chatService != nil {
-		runtimeSnapshot, projected = projectAgentRuntime(operation.Context(), chatService, agentrun.Options{
+	if sessionID != "" && executionRuntime != nil {
+		runtimeSnapshot, projected = projectAgentRuntime(operation.Context(), executionRuntime, agentrun.Options{
 			AgentKind: agentrun.AgentKindIDE,
 			StateRoot: stateRoot,
 			Workspace: workspace,
 			SessionID: sessionID,
 		})
 	}
-	var recoveryActions []agentharness.RuntimeRecoveryAction
+	var recoveryActions []agentexecution.RuntimeRecoveryAction
 	if action, pending := chatApp.pendingRecoveryRefreshAction(workspace, sessionID); pending {
-		recoveryActions = []agentharness.RuntimeRecoveryAction{action}
+		recoveryActions = []agentexecution.RuntimeRecoveryAction{action}
 		// The selected projection remains paused at the application boundary even
 		// though the durable actor is already Idle: clients must exact-retry the
 		// refresh before this Session can be used again.
@@ -101,7 +101,7 @@ func (a *App) WritingAgentActiveView(ctx context.Context) WritingAgentActiveView
 	}
 
 	a.mu.RLock()
-	if lifecycleWorkspaceKey(a.workspace) != lifecycleWorkspaceKey(workspace) || a.chatService != chatService || a.session != selectedSession || activeWritingTaskLocked(a) != task {
+	if lifecycleWorkspaceKey(a.workspace) != lifecycleWorkspaceKey(workspace) || a.executionRuntime != executionRuntime || a.session != selectedSession || activeWritingTaskLocked(a) != task {
 		a.mu.RUnlock()
 		return WritingAgentActiveView{}
 	}
@@ -138,7 +138,7 @@ func (a *App) InteractiveAgentActiveView(ctx context.Context, storyID, branchID 
 	defer operation.Release()
 
 	a.mu.RLock()
-	chatService := a.chatService
+	executionRuntime := a.executionRuntime
 	store := a.interactive
 	task, info := activeInteractiveTaskLocked(a, storyID, branchID)
 	a.mu.RUnlock()
@@ -153,8 +153,8 @@ func (a *App) InteractiveAgentActiveView(ctx context.Context, storyID, branchID 
 	}
 	var runtimeSnapshot agentrun.RuntimeStatus
 	projected := false
-	if resolved != "" && chatService != nil {
-		runtimeSnapshot, projected = projectAgentRuntime(operation.Context(), chatService, agentrun.Options{
+	if resolved != "" && executionRuntime != nil {
+		runtimeSnapshot, projected = projectAgentRuntime(operation.Context(), executionRuntime, agentrun.Options{
 			AgentKind: agentrun.AgentKindInteractiveStory,
 			Workspace: workspace,
 			StoryID:   storyID,
@@ -164,7 +164,7 @@ func (a *App) InteractiveAgentActiveView(ctx context.Context, storyID, branchID 
 
 	a.mu.RLock()
 	currentTask, currentInfo := activeInteractiveTaskLocked(a, storyID, branchID)
-	if lifecycleWorkspaceKey(a.workspace) != lifecycleWorkspaceKey(workspace) || a.chatService != chatService || a.interactive != store || currentTask != task || currentInfo != info {
+	if lifecycleWorkspaceKey(a.workspace) != lifecycleWorkspaceKey(workspace) || a.executionRuntime != executionRuntime || a.interactive != store || currentTask != task || currentInfo != info {
 		a.mu.RUnlock()
 		return InteractiveAgentActiveView{}
 	}
@@ -229,6 +229,6 @@ func resolveInteractiveProjectionBranch(store *interactive.Store, storyID, reque
 	return "", errors.New("interactive story has no current branch")
 }
 
-func projectAgentRuntime(ctx context.Context, chatService *agentharness.Service, options agentrun.Options) (agentrun.RuntimeStatus, bool) {
-	return appagentruntime.RuntimeProjection(ctx, chatService, options)
+func projectAgentRuntime(ctx context.Context, executionRuntime *agentexecution.Runtime, options agentrun.Options) (agentrun.RuntimeStatus, bool) {
+	return appagentruntime.RuntimeProjection(ctx, executionRuntime, options)
 }

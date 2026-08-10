@@ -4,7 +4,7 @@ package conversationapp
 
 import (
 	"denova/config"
-	"denova/internal/agents/harness"
+	"denova/internal/agents/execution"
 	"denova/internal/agents/prompts"
 	"denova/internal/agents/session"
 	"denova/internal/book"
@@ -15,16 +15,16 @@ import (
 // replace Config and IDETeller in the returned value but never re-resolves host
 // state, preserving one project generation throughout admission.
 type Runtime struct {
-	ProjectID      string
-	ProjectType    projectdomain.Type
-	ProjectState   string
-	AgentKind      string
-	Session        *session.Session
-	State          *book.State
-	BookService    *book.Service
-	ChatService    *harness.Service
-	Workspace      string
-	VersionService *book.VersionService
-	Config         config.Config
-	IDETeller      prompts.IDEStoryTeller
+	ProjectID        string
+	ProjectType      projectdomain.Type
+	ProjectState     string
+	AgentKind        string
+	Session          *session.Session
+	State            *book.State
+	BookService      *book.Service
+	ExecutionRuntime *execution.Runtime
+	Workspace        string
+	VersionService   *book.VersionService
+	Config           config.Config
+	IDETeller        prompts.IDEStoryTeller
 }

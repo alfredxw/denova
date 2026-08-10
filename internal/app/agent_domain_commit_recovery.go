@@ -3,52 +3,19 @@ package app
 import (
 	"context"
 	agentstructural "denova/internal/agents/context/structural"
-	agentharness "denova/internal/agents/harness"
+	agentexecution "denova/internal/agents/execution"
 	agentrun "denova/internal/agents/run"
 	"fmt"
 	"path/filepath"
 	"strconv"
 	"strings"
 
-	"denova/config"
 	agents "denova/internal/agents"
 	"denova/internal/agents/session"
 	compactionapp "denova/internal/app/compaction"
 	"denova/internal/book"
 	"denova/internal/interactive"
 )
-
-// reconcileHarnessDomainCommit is the production host adapter for the
-// cross-store crash window. Every branch is query-only and reports Found only
-// after matching the exact durable identity and semantic hash available in the
-// corresponding canonical store.
-func (a *App) reconcileHarnessDomainCommit(
-	ctx context.Context,
-	request agentrun.DomainCommitReconcileRequest,
-) (agentrun.DomainCommitReconcileResult, error) {
-	if ctx != nil {
-		if err := ctx.Err(); err != nil {
-			return agentrun.DomainCommitReconcileResult{}, err
-		}
-	}
-	if err := validateDomainCommitReconcileRequest(request); err != nil {
-		return agentrun.DomainCommitReconcileResult{}, err
-	}
-	if request.Structural != nil {
-		return a.reconcileStructuralDomainCommit(ctx, request)
-	}
-	binding := request.Binding
-	switch binding.AgentKind {
-	case agentrun.AgentKindGeneral, agentrun.AgentKindIDE, agentrun.AgentKindConfigManager, agentrun.AgentKindImage, agentrun.AgentKindAutomation:
-		return a.reconcileSessionDomainCommit(request)
-	case agentrun.AgentKindInteractiveStory:
-		return reconcileGameDomainCommit(request)
-	case config.AgentKindInteractiveDirector:
-		return reconcileDirectorDomainCommit(request)
-	default:
-		return agentrun.DomainCommitReconcileResult{}, fmt.Errorf("unsupported Agent kind %q for domain commit reconciliation", binding.AgentKind)
-	}
-}
 
 func validateDomainCommitReconcileRequest(request agentrun.DomainCommitReconcileRequest) error {
 	identity := request.Commit.Identity
@@ -240,7 +207,7 @@ func (a *App) reconcileStructuralDomainCommit(
 	if request.Commit.Hash != plan.IntentHash {
 		return agentrun.DomainCommitReconcileResult{}, fmt.Errorf("structural canonical commit hash does not match frozen recovery plan")
 	}
-	operation, err := compactionapp.RestoreOperation(agentharness.StructuralRestoreRequest{
+	operation, err := compactionapp.RestoreOperation(agentexecution.StructuralRestoreRequest{
 		Binding: request.Binding, Snapshot: *snapshot, Plan: plan,
 	}, a.sessionDirectoryForBinding)
 	if err != nil {

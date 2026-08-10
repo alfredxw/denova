@@ -50,13 +50,13 @@ type ChatRequest struct {
 
 	// callerInput freezes the transport payload before the app resolves mutable
 	// defaults and canonical context. Durable command identity must describe what
-	// the caller retried, while TurnSpec.Request keeps the resolved values
+	// the caller retried, while CycleSpec.Request keeps the resolved values
 	// used by the first accepted execution.
 	callerInput *CallerInput
 }
 
 // CallerInput is the immutable, caller-controlled command identity used by the
-// durable harness. It is not model-visible context. Keep this list aligned with
+// durable execution. It is not model-visible context. Keep this list aligned with
 // the public caller-controlled ChatRequest fields.
 type CallerInput struct {
 	CommandID      string                `json:"command_id"`
@@ -128,7 +128,7 @@ type TextSelectionRef struct {
 }
 
 // Executor owns one task-level Agent loop. Durable production callers should
-// invoke it through harness.Service so command admission is never bypassed.
+// invoke it through execution.Service so command admission is never bypassed.
 type Executor struct {
 	policy agentrun.LoopPolicy
 }

@@ -748,7 +748,7 @@ function latestInteractiveCardBottomAnchorTarget(items: AgentChatListItem[]) {
           rowKey: item.key,
         }
       }
-      if (view.kind !== 'plan-question' && view.kind !== 'proposed-plan') continue
+      if (view.kind !== 'proposed-plan') continue
       const content = agentViewContent(view)
       const stableKey = view.partId || view.messageId || view.metadata.created_at || `${content.slice(0, 64)}:${content.length}`
       const dynamicKey = view.streaming || view.status === 'running'

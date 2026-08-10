@@ -31,7 +31,7 @@ func SessionKeyForBinding(binding runstate.BindingRef) string {
 }
 
 // StandaloneSessionKey derives a stable cache-routing key for model-backed
-// jobs that do not run inside a durable conversation harness.
+// jobs that do not run inside a durable conversation execution.
 func StandaloneSessionKey(cfg *config.Config, agentKind, source string) string {
 	projectScope := ""
 	if cfg != nil {

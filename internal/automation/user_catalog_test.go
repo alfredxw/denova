@@ -11,7 +11,7 @@ func TestUserCatalogListsTasksFromEveryWorkspaceWithExplicitTargets(t *testing.T
 	workspaceA := filepath.Join(root, "book-a")
 	workspaceB := filepath.Join(root, "book-b")
 
-	taskA, err := NewStore(userDir, workspaceA).Create(Task{
+	taskA, err := NewStore(userDir, workspaceA).Create(TaskDefinition{
 		Scope:    ScopeWorkspace,
 		Name:     "Review A",
 		Template: TemplateReview,
@@ -19,7 +19,7 @@ func TestUserCatalogListsTasksFromEveryWorkspaceWithExplicitTargets(t *testing.T
 	if err != nil {
 		t.Fatalf("create workspace A task: %v", err)
 	}
-	taskB, err := NewStore(userDir, workspaceB).Create(Task{
+	taskB, err := NewStore(userDir, workspaceB).Create(TaskDefinition{
 		Scope:    ScopeWorkspace,
 		Name:     "Review B",
 		Template: TemplateReview,
@@ -74,11 +74,11 @@ func TestCatalogLocatorsDisambiguateImportedTaskIDsAcrossWorkspaces(t *testing.T
 	workspaceB := filepath.Join(root, "book-b")
 	storeA := NewStore(userDir, workspaceA)
 	storeB := NewStore(userDir, workspaceB)
-	taskA, err := storeA.Create(Task{Scope: ScopeWorkspace, Name: "A", Template: TemplateReview})
+	taskA, err := storeA.Create(TaskDefinition{Scope: ScopeWorkspace, Name: "A", Template: TemplateReview})
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err := storeB.Create(Task{Scope: ScopeWorkspace, Name: "B", Template: TemplateReview}); err != nil {
+	if _, err := storeB.Create(TaskDefinition{Scope: ScopeWorkspace, Name: "B", Template: TemplateReview}); err != nil {
 		t.Fatal(err)
 	}
 	// Imported workspace data can legitimately preserve a task's compact ID.
@@ -135,13 +135,13 @@ func TestUserCatalogSelectsOnlyTasksForOneExecutionTarget(t *testing.T) {
 	workspaceA := filepath.Join(root, "book-a")
 	workspaceB := filepath.Join(root, "book-b")
 	storeA := NewStore(userDir, workspaceA)
-	if _, err := storeA.Create(Task{Scope: ScopeWorkspace, Name: "A", Template: TemplateReview}); err != nil {
+	if _, err := storeA.Create(TaskDefinition{Scope: ScopeWorkspace, Name: "A", Template: TemplateReview}); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := NewStore(userDir, workspaceB).Create(Task{Scope: ScopeWorkspace, Name: "B", Template: TemplateReview}); err != nil {
+	if _, err := NewStore(userDir, workspaceB).Create(TaskDefinition{Scope: ScopeWorkspace, Name: "B", Template: TemplateReview}); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := storeA.Create(Task{Scope: ScopeUser, Target: ExecutionTarget{Kind: TargetKindUser}, Name: "Global", Template: TemplateCustomPrompt}); err != nil {
+	if _, err := storeA.Create(TaskDefinition{Scope: ScopeUser, Target: ExecutionTarget{Kind: TargetKindUser}, Name: "Global", Template: TemplateCustomPrompt}); err != nil {
 		t.Fatal(err)
 	}
 
@@ -209,7 +209,7 @@ func TestUserCatalogListsInboxItemsAcrossWorkspaces(t *testing.T) {
 
 func TestLegacyGlobalAutomationAllowsContentTriggers(t *testing.T) {
 	store := NewStore(filepath.Join(t.TempDir(), "user"), "")
-	task, err := store.Create(Task{
+	task, err := store.Create(TaskDefinition{
 		Target:   ExecutionTarget{Kind: TargetKindUser},
 		Name:     "Global research",
 		Template: TemplateCustomPrompt,

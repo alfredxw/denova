@@ -3,43 +3,34 @@ package app
 import (
 	"context"
 	agentchat "denova/internal/agents/chat"
-	agentharness "denova/internal/agents/harness"
+	agentexecution "denova/internal/agents/execution"
 	"errors"
 	"testing"
 
 	"denova/config"
 	agentrun "denova/internal/agents/run"
 	"denova/internal/interactive"
+
+	runstate "github.com/alfredxw/denova/agent/runtime"
 )
 
 func TestAppRestoresWritingAndGameQueuedTurnDependencies(t *testing.T) {
-	root := t.TempDir()
-	application, err := New(context.Background(), &config.Config{
-		OpenAIModel: "test-model", NovaDir: root, Workspace: root,
-	})
-	if err != nil {
-		t.Fatal(err)
-	}
-	t.Cleanup(application.Close)
+	application := newExecutionProfileTestApp(t)
 
 	application.mu.RLock()
 	workspace := application.workspace
 	sessionID := application.session.ID
 	application.mu.RUnlock()
-	writingRequest := agentharness.TurnRestoreRequest{
+	writingRequest := agentexecution.CycleRestoreRequest{
 		Binding: agentrun.RuntimeBinding{AgentKind: agentrun.AgentKindIDE, Workspace: workspace, SessionID: sessionID},
-		Kind:    agentharness.CommandFollowUp, CommandID: "restore-writing-follow-up",
+		Kind:    agentexecution.CommandFollowUp, CommandID: "restore-writing-follow-up",
 		OperationID: "writing-operation", Request: agentchat.ChatRequest{Message: "continue", Locale: "en-US"},
 		Options: agentrun.Options{
 			AgentKind: agentrun.AgentKindIDE, Workspace: workspace, SessionID: sessionID, Mode: "ide",
 		},
 		Deferred: true,
 	}
-	writingSpec, err := application.restoreHarnessTurn(context.Background(), writingRequest)
-	if err != nil {
-		t.Fatal(err)
-	}
-	writing, err := writingSpec.Prepare(context.Background())
+	writing, err := prepareProfileCycleForTest(application, context.Background(), writingRequest)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -53,9 +44,9 @@ func TestAppRestoresWritingAndGameQueuedTurnDependencies(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	gameRequest := agentharness.TurnRestoreRequest{
+	gameRequest := agentexecution.CycleRestoreRequest{
 		Binding: agentrun.RuntimeBinding{AgentKind: agentrun.AgentKindInteractiveStory, Workspace: workspace, StoryID: story.ID, BranchID: "main"},
-		Kind:    agentharness.CommandSteer, CommandID: "restore-game-steer",
+		Kind:    agentexecution.CommandSteer, CommandID: "restore-game-steer",
 		OperationID: "game-operation", Request: agentchat.ChatRequest{Message: "open the door", Locale: "zh-CN"},
 		Options: agentrun.Options{
 			AgentKind: agentrun.AgentKindInteractiveStory, Workspace: workspace,
@@ -63,11 +54,7 @@ func TestAppRestoresWritingAndGameQueuedTurnDependencies(t *testing.T) {
 		},
 		Deferred: true,
 	}
-	gameSpec, err := application.restoreHarnessTurn(context.Background(), gameRequest)
-	if err != nil {
-		t.Fatal(err)
-	}
-	game, err := gameSpec.Prepare(context.Background())
+	game, err := prepareProfileCycleForTest(application, context.Background(), gameRequest)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -76,25 +63,64 @@ func TestAppRestoresWritingAndGameQueuedTurnDependencies(t *testing.T) {
 	}
 }
 
+func TestExecutionProfilesExposeOnlySupportedCapabilities(t *testing.T) {
+	application := newExecutionProfileTestApp(t)
+	want := map[agentexecution.ProfileID][4]bool{
+		agentexecution.ProfileWriting:       {true, true, true, true},
+		agentexecution.ProfileAgentChat:     {true, true, true, true},
+		agentexecution.ProfileGame:          {true, true, true, true},
+		agentexecution.ProfileConfigManager: {false, true, true, true},
+		agentexecution.ProfileImage:         {false, true, true, true},
+		agentexecution.ProfileDirector:      {false, false, true, true},
+		agentexecution.ProfileAutomation:    {false, true, true, false},
+	}
+	profiles := application.executionProfiles()
+	if len(profiles) != len(want) {
+		t.Fatalf("profile count = %d, want %d", len(profiles), len(want))
+	}
+	for _, profile := range profiles {
+		expected, ok := want[profile.ID()]
+		if !ok {
+			t.Fatalf("unexpected profile %q", profile.ID())
+		}
+		queued, input, domain, structural := assertExecutionProfileCapabilitiesForTest(profile)
+		got := [4]bool{queued, input, domain, structural}
+		if got != expected {
+			t.Fatalf("profile %q capabilities = %v, want %v", profile.ID(), got, expected)
+		}
+	}
+}
+
+func newExecutionProfileTestApp(t *testing.T) *App {
+	t.Helper()
+	root := t.TempDir()
+	application, err := New(context.Background(), &config.Config{
+		OpenAIModel: "test-model", NovaDir: root, Workspace: root,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(application.Close)
+	return application
+}
+
 func TestAppRejectsQueuedTurnRecoveryForUnsupportedProfile(t *testing.T) {
 	application := &App{}
-	_, err := application.restoreHarnessTurn(context.Background(), agentharness.TurnRestoreRequest{
+	_, err := prepareProfileCycleForTest(application, context.Background(), agentexecution.CycleRestoreRequest{
 		Binding: agentrun.RuntimeBinding{AgentKind: "unsupported"},
 	})
-	if !errors.Is(err, agentharness.ErrTurnRestoreUnavailable) {
+	if !errors.Is(err, runstate.ErrInvalidBinding) {
 		t.Fatalf("unsupported profile restore error = %v", err)
 	}
 }
 
 func TestAppRoutesGeneralQueuedTurnRecoveryToAgentChat(t *testing.T) {
 	application := &App{}
-	spec, err := application.restoreHarnessTurn(context.Background(), agentharness.TurnRestoreRequest{
-		Binding: agentrun.RuntimeBinding{
-			AgentKind: agentrun.AgentKindGeneral, ProjectID: "project-1",
-			Mode: "agent_chat", SessionID: "session-1",
-		},
+	profile, err := executionProfileForTest(application, agentrun.RuntimeBinding{
+		AgentKind: agentrun.AgentKindGeneral, ProjectID: "project-1",
+		Mode: "agent_chat", SessionID: "session-1",
 	})
-	if err != nil || spec.Prepare == nil {
-		t.Fatalf("General queued turn restore spec = %#v err=%v", spec, err)
+	if err != nil || profile.ID() != agentexecution.ProfileAgentChat {
+		t.Fatalf("General queued turn profile = %#v err=%v", profile, err)
 	}
 }

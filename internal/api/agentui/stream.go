@@ -96,11 +96,6 @@ func (e *StreamEncoder) WriteEvent(ev appsvc.AgentEvent) error {
 			return err
 		}
 		return e.writeData(DataTypeInteractiveImage, eventID(data, "interactive-image"), data)
-	case "plan_question":
-		if err := e.closeOpenContent(); err != nil {
-			return err
-		}
-		return e.writeData(DataTypePlanQuestion, eventID(data, "plan-question"), data)
 	case "proposed_plan":
 		if err := e.closeOpenContent(); err != nil {
 			return err

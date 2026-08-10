@@ -10,7 +10,7 @@ import (
 	"denova/config"
 	chatagent "denova/internal/agents/chat"
 	agentconversation "denova/internal/agents/conversation"
-	agentharness "denova/internal/agents/harness"
+	agentexecution "denova/internal/agents/execution"
 	agentrun "denova/internal/agents/run"
 	"denova/internal/agents/session"
 	agenttool "denova/internal/agents/tool"
@@ -25,7 +25,7 @@ const RuntimeMode = "agent_chat"
 // Host supplies the small amount of process-wide policy that cannot be owned
 // by one Project runtime. Project identity and session state stay in Service.
 type Host interface {
-	BaseRuntime() (config.Config, *agentharness.Service)
+	BaseRuntime() (config.Config, *agentexecution.Runtime)
 	ProjectVersionService(string) (*book.VersionService, error)
 	CurrentWorkspace() string
 	ResolveAsk(context.Context, *session.Session, string, string, string, string, []agentconversation.HostAskAnswer, string) (agentconversation.HostAskResolution, error)

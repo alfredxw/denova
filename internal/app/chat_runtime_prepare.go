@@ -21,7 +21,7 @@ func (service *ChatAppService) prepareIDEChatRuntime(ctx context.Context, reques
 		app: app, projectID: app.cfg.ProjectID, projectType: ProjectTypeBook,
 		projectState: app.cfg.ProjectStateDir, agentKind: config.AgentKindIDE,
 		sess: app.session, state: app.bookState, bookService: app.bookService,
-		chatService: app.chatService, workspace: app.workspace, versionService: app.versionService,
+		executionRuntime: app.executionRuntime, workspace: app.workspace, versionService: app.versionService,
 		cfg: *app.cfg,
 	}
 	runtime.cfg.Workspace = runtime.workspace

@@ -163,6 +163,7 @@ const storyStage = {
   'storyStage.activity.toolCall': 'tool call',
   'storyStage.activity.unknownError': 'Unknown error',
   'storyStage.activity.unsupportedEvent': 'Unsupported Agent event: {{event}}',
+  'storyStage.activity.invalidEvent': 'Ignored malformed Agent event: {{event}}',
   'storyStage.activity.persistenceMissing': 'This turn was not confirmed as persisted. The uncommitted response was discarded and the story was reloaded. Please retry.',
   'storyStage.activity.rehydrateRequired': 'Earlier live trace exceeded the display budget. Canonical story history was restored and the same game Agent run is still being observed.',
   'storyStage.activity.done': 'Done',

@@ -4,7 +4,7 @@ import (
 	"context"
 	"denova/config"
 	agentconversation "denova/internal/agents/conversation"
-	agentharness "denova/internal/agents/harness"
+	agentexecution "denova/internal/agents/execution"
 	agentrun "denova/internal/agents/run"
 	"errors"
 	"testing"
@@ -98,9 +98,9 @@ func TestResolveSessionAskResumesExactIDEWaiter(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	chat := agentharness.NewEphemeralService()
+	chat := agentexecution.NewEphemeralRuntime()
 	t.Cleanup(func() { _ = chat.Close(context.Background()) })
-	application := &App{workspace: "/book", sessionStore: store, session: sess, chatService: chat}
+	application := &App{workspace: "/book", sessionStore: store, session: sess, executionRuntime: chat}
 	done := startAppAskWaiter(t, sess, "ask-ide", "ide")
 	if view := application.WritingAgentActiveView(context.Background()); view.PendingAsk == nil || view.PendingAsk.ID != "ask-ide" {
 		t.Fatalf("Writing active projection omitted pending Ask: %#v", view)
@@ -218,7 +218,7 @@ func TestActiveViewsHideColdPendingAskWhenRuntimeProjectionUnavailable(t *testin
 		})
 		application := &App{
 			workspace: "/book", sessionStore: store, session: sess,
-			chatService: &agentharness.Service{},
+			executionRuntime: &agentexecution.Runtime{},
 		}
 		view := application.WritingAgentActiveView(context.Background())
 		if view.RuntimeProjectionOK || view.PendingAsk != nil {
@@ -282,7 +282,7 @@ func TestActiveViewsHideColdPendingAskWhenRuntimeProjectionUnavailable(t *testin
 			cfg: &config.Config{
 				NovaDir: dataDir, Workspace: workspace, ProjectID: record.ID, ProjectStateDir: layout.StateRoot,
 			},
-			workspace: workspace, projectRegistry: registry, chatService: &agentharness.Service{},
+			workspace: workspace, projectRegistry: registry, executionRuntime: &agentexecution.Runtime{},
 		}
 		t.Cleanup(application.Close)
 		view := application.ConfigManager().ActiveView(context.Background(), scope)

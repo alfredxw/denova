@@ -6,7 +6,7 @@ import (
 	"strings"
 
 	agentchat "denova/internal/agents/chat"
-	agentharness "denova/internal/agents/harness"
+	agentexecution "denova/internal/agents/execution"
 	agentrun "denova/internal/agents/run"
 	apptask "denova/internal/app/task"
 )
@@ -14,7 +14,7 @@ import (
 // InteractiveAgentCommand targets one exact game operation. Workspace and
 // durable binding identity are always derived from the active App runtime.
 type InteractiveAgentCommand struct {
-	Kind            agentharness.CommandKind
+	Kind            agentexecution.CommandKind
 	CommandID       string
 	OperationID     agentrun.OperationID
 	TargetCommandID agentrun.CommandID
@@ -34,44 +34,20 @@ func (s *InteractiveAppService) SubmitAgentCommand(ctx context.Context, command 
 		return agentrun.CommandReceipt{}, err
 	}
 	options := interactiveAgentCommandOptions(target)
-	if command.Kind == agentharness.CommandAbort || command.Kind == agentharness.CommandSteerQueued || command.Kind == agentharness.CommandCancelQueued {
-		return target.chatService.SubmitCommand(ctx, agentharness.CommandSpec{
+	if command.Kind == agentexecution.CommandAbort || command.Kind == agentexecution.CommandSteerQueued || command.Kind == agentexecution.CommandCancelQueued {
+		return target.executionRuntime.SubmitCommand(ctx, agentexecution.CommandRequest{
 			Kind: command.Kind, CommandID: command.CommandID,
 			OperationID: command.OperationID, TargetCommandID: command.TargetCommandID, Reason: command.Reason,
 			Options: options,
 		})
 	}
-	if command.Kind != agentharness.CommandFollowUp {
+	if command.Kind != agentexecution.CommandFollowUp {
 		return agentrun.CommandReceipt{}, fmt.Errorf("%w: unsupported game command %q", agentrun.ErrInvalidCommand, command.Kind)
 	}
-	prepare := func(prepareCtx context.Context) (agentharness.TurnExecution, error) {
-		if err := s.confirmActiveAgentCommandTarget(target); err != nil {
-			return agentharness.TurnExecution{}, err
-		}
-		cycle, err := s.prepareInteractiveAgentCycle(prepareCtx, interactiveAgentCycleRequest{
-			StoryID: target.info.StoryID, BranchID: target.info.BranchID,
-			Message: command.Input.Message, StyleScenes: command.Input.StyleScenes, Locale: command.Input.Locale,
-		})
-		if err != nil {
-			return agentharness.TurnExecution{}, err
-		}
-		if cycle.workspace != target.info.Workspace || cycle.storyID != target.info.StoryID || cycle.branchID != target.info.BranchID || cycle.chatService != target.chatService {
-			return agentharness.TurnExecution{}, ErrAgentContextChanged
-		}
-		if err := s.confirmActiveAgentCommandTarget(target); err != nil {
-			return agentharness.TurnExecution{}, err
-		}
-		cycle.bindCommit(target.task.Emit)
-		return agentharness.TurnExecution{
-			Runner: cycle.runner, Conversation: cycle.conversation,
-			BookService: cycle.bookService, Request: cycle.request,
-			Options: cycle.options(target.task.ID()),
-		}, nil
-	}
-	return target.chatService.SubmitCommand(ctx, agentharness.CommandSpec{
+	return target.executionRuntime.SubmitCommand(ctx, agentexecution.CommandRequest{
 		Kind: command.Kind, CommandID: command.CommandID,
 		OperationID: command.OperationID, AfterOperationID: command.OperationID,
-		Request: command.Input, Emit: target.task.Emit, Prepare: prepare,
+		Request: command.Input, Emit: target.task.Emit,
 		Options: options,
 	})
 }
@@ -85,9 +61,9 @@ func interactiveAgentCommandOptions(target interactiveAgentCommandTarget) agentr
 }
 
 type interactiveAgentCommandTarget struct {
-	task        *apptask.Task
-	info        InteractiveTaskInfo
-	chatService *agentharness.Service
+	task             *apptask.Task
+	info             InteractiveTaskInfo
+	executionRuntime *agentexecution.Runtime
 }
 
 func (s *InteractiveAppService) activeAgentCommandTarget(storyID, branchID string) (interactiveAgentCommandTarget, error) {
@@ -102,7 +78,7 @@ func (s *InteractiveAppService) activeAgentCommandTarget(storyID, branchID strin
 	if a.workspaceTransition {
 		return interactiveAgentCommandTarget{}, ErrWorkspaceTransition
 	}
-	if a.workspace == "" || a.chatService == nil || a.interactive == nil {
+	if a.workspace == "" || a.executionRuntime == nil || a.interactive == nil {
 		return interactiveAgentCommandTarget{}, ErrNoWorkspace
 	}
 	run := a.activeInteractiveRun
@@ -115,7 +91,7 @@ func (s *InteractiveAppService) activeAgentCommandTarget(storyID, branchID strin
 	if branchID != "" && run.info.BranchID != branchID {
 		return interactiveAgentCommandTarget{}, ErrNoActiveAgentOperation
 	}
-	return interactiveAgentCommandTarget{task: run.task, info: run.info, chatService: a.chatService}, nil
+	return interactiveAgentCommandTarget{task: run.task, info: run.info, executionRuntime: a.executionRuntime}, nil
 }
 
 func (s *InteractiveAppService) confirmActiveAgentCommandTarget(expected interactiveAgentCommandTarget) error {
@@ -123,7 +99,7 @@ func (s *InteractiveAppService) confirmActiveAgentCommandTarget(expected interac
 	if err != nil {
 		return err
 	}
-	if current.task != expected.task || current.chatService != expected.chatService || current.info.Workspace != expected.info.Workspace {
+	if current.task != expected.task || current.executionRuntime != expected.executionRuntime || current.info.Workspace != expected.info.Workspace {
 		return ErrAgentContextChanged
 	}
 	return nil

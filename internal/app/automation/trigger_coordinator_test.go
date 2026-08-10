@@ -146,7 +146,7 @@ func TestAutomationCompletionOutboxSurvivesCoordinatorFailureAndRetriesOnce(t *t
 		cfg:       config.Config{Workspace: workspace, NovaDir: novaDir},
 	}
 	store := automation.NewStore(novaDir, workspace)
-	task, err := store.Create(automation.Task{
+	task, err := store.Create(automation.TaskDefinition{
 		Scope: automation.ScopeWorkspace, Name: "durable effects", Template: automation.TemplateReview,
 	})
 	if err != nil {
@@ -243,7 +243,7 @@ func TestAutomationCommittedMutationOutboxDrainsAfterFailedOrAbortedRestart(t *t
 			workspace := filepath.Join(root, "workspace")
 			novaDir := filepath.Join(root, "nova")
 			store := automation.NewStore(novaDir, workspace)
-			task, err := store.Create(automation.Task{Scope: automation.ScopeWorkspace, Name: status, Template: automation.TemplateReview})
+			task, err := store.Create(automation.TaskDefinition{Scope: automation.ScopeWorkspace, Name: status, Template: automation.TemplateReview})
 			if err != nil {
 				t.Fatal(err)
 			}

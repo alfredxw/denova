@@ -9,7 +9,7 @@ import (
 
 	agentchat "denova/internal/agents/chat"
 	agentstructural "denova/internal/agents/context/structural"
-	agentharness "denova/internal/agents/harness"
+	agentexecution "denova/internal/agents/execution"
 	agentrun "denova/internal/agents/run"
 	apptask "denova/internal/app/task"
 )
@@ -25,7 +25,7 @@ var (
 // Command is the application-level command contract shared by every
 // conversation surface. Binding identity stays with the owning service.
 type Command struct {
-	Kind            agentharness.CommandKind
+	Kind            agentexecution.CommandKind
 	CommandID       string
 	OperationID     agentrun.OperationID
 	TargetCommandID agentrun.CommandID
@@ -36,41 +36,41 @@ type Command struct {
 // RecoveryRequest carries the exact durable action selected by the caller.
 // Story and branch scope are used only by the interactive owner.
 type RecoveryRequest struct {
-	Action   agentharness.RuntimeRecoveryAction
+	Action   agentexecution.RuntimeRecoveryAction
 	StoryID  string
 	BranchID string
 }
 
 type RecoveryResult struct {
 	Task    *apptask.Task
-	Action  agentharness.RuntimeRecoveryAction
+	Action  agentexecution.RuntimeRecoveryAction
 	Receipt agentrun.CommandReceipt
 }
 
-func RecoveryActionKey(action agentharness.RuntimeRecoveryAction) string {
+func RecoveryActionKey(action agentexecution.RuntimeRecoveryAction) string {
 	return strings.Join([]string{string(action.Kind), string(action.CommandID), string(action.OperationID)}, "\x00")
 }
 
-func ValidateRecoveryAction(status agentrun.RuntimeStatus, selected agentharness.RuntimeRecoveryAction) error {
-	for _, action := range agentharness.RuntimeRecoveryActions(status) {
+func ValidateRecoveryAction(status agentrun.RuntimeStatus, selected agentexecution.RuntimeRecoveryAction) error {
+	for _, action := range agentexecution.RuntimeRecoveryActions(status) {
 		if action == selected {
 			return nil
 		}
 	}
 	return fmt.Errorf(
 		"%w: kind=%q command_id=%q operation_id=%q",
-		agentharness.ErrRecoveryActionChanged,
+		agentexecution.ErrRecoveryActionChanged,
 		selected.Kind,
 		selected.CommandID,
 		selected.OperationID,
 	)
 }
 
-func StructuralRecoveryAction(kind agentharness.RuntimeRecoveryActionKind) (agentstructural.Action, bool) {
+func StructuralRecoveryAction(kind agentexecution.RuntimeRecoveryActionKind) (agentstructural.Action, bool) {
 	switch kind {
-	case agentharness.RuntimeRecoveryCompactContext:
+	case agentexecution.RuntimeRecoveryCompactContext:
 		return agentstructural.Compact, true
-	case agentharness.RuntimeRecoveryRemoveCompaction:
+	case agentexecution.RuntimeRecoveryRemoveCompaction:
 		return agentstructural.Remove, true
 	default:
 		return "", false
@@ -79,7 +79,7 @@ func StructuralRecoveryAction(kind agentharness.RuntimeRecoveryActionKind) (agen
 
 // RuntimeProjection reads the durable runtime without turning an unavailable
 // process-local projection into a user operation failure.
-func RuntimeProjection(ctx context.Context, service *agentharness.Service, options agentrun.Options) (agentrun.RuntimeStatus, bool) {
+func RuntimeProjection(ctx context.Context, service *agentexecution.Runtime, options agentrun.Options) (agentrun.RuntimeStatus, bool) {
 	if service == nil {
 		return agentrun.RuntimeStatus{}, false
 	}
@@ -87,7 +87,7 @@ func RuntimeProjection(ctx context.Context, service *agentharness.Service, optio
 	if err == nil {
 		return snapshot, true
 	}
-	if !errors.Is(err, agentharness.ErrRuntimeProjectionUnavailable) {
+	if !errors.Is(err, agentexecution.ErrRuntimeProjectionUnavailable) {
 		slog.WarnContext(ctx, fmt.Sprintf(
 			"[app/agentruntime] runtime projection unavailable kind=%s workspace=%s session_id=%s story_id=%s branch_id=%s err=%v",
 			options.AgentKind, options.Workspace, options.SessionID, options.StoryID, options.BranchID, err,
@@ -102,8 +102,8 @@ func RuntimeProjection(ctx context.Context, service *agentharness.Service, optio
 func FinishedRecoveryActionStillCurrent(
 	ctx context.Context,
 	task *apptask.Task,
-	recovery *agentharness.RecoveryObservation,
-	action agentharness.RuntimeRecoveryAction,
+	recovery *agentexecution.RecoveryObservation,
+	action agentexecution.RuntimeRecoveryAction,
 ) (bool, error) {
 	if task == nil || recovery == nil || !task.Finished() {
 		return false, nil
@@ -112,7 +112,7 @@ func FinishedRecoveryActionStillCurrent(
 	if err != nil {
 		return false, err
 	}
-	for _, current := range agentharness.RuntimeRecoveryActions(status) {
+	for _, current := range agentexecution.RuntimeRecoveryActions(status) {
 		if current == action {
 			return true, nil
 		}
@@ -152,12 +152,12 @@ func AbortAndWait(ctx context.Context, task *apptask.Task) error {
 	}
 }
 
-func CloseBindings(service *agentharness.Service, close func(*agentharness.Service) error) error {
+func CloseBindings(service *agentexecution.Runtime, close func(*agentexecution.Runtime) error) error {
 	if service == nil {
 		return nil
 	}
 	err := close(service)
-	if err == nil || errors.Is(err, agentharness.ErrRuntimeProjectionUnavailable) {
+	if err == nil || errors.Is(err, agentexecution.ErrRuntimeProjectionUnavailable) {
 		return nil
 	}
 	return fmt.Errorf("close Agent runtime binding: %w", err)

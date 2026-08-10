@@ -486,7 +486,7 @@ func (a *App) restoreWorkspaceGenerationAfterFailedTransition(currentWorkspace s
 // after the App workspace generation has drained. Project-scoped AgentChat
 // actors deliberately survive foreground Book changes.
 func (a *App) closeWorkspaceRuntimeBindings(ctx context.Context, workspaces ...string) error {
-	if a == nil || a.chatService == nil {
+	if a == nil || a.executionRuntime == nil {
 		return nil
 	}
 	seen := make(map[string]struct{}, len(workspaces))
@@ -499,7 +499,7 @@ func (a *App) closeWorkspaceRuntimeBindings(ctx context.Context, workspaces ...s
 			continue
 		}
 		seen[workspace] = struct{}{}
-		if err := a.chatService.CloseForegroundWorkspaceBindings(ctx, workspace); err != nil {
+		if err := a.executionRuntime.CloseForegroundWorkspaceBindings(ctx, workspace); err != nil {
 			return err
 		}
 	}

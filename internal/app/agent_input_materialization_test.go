@@ -3,7 +3,7 @@ package app
 import (
 	"context"
 	agentchat "denova/internal/agents/chat"
-	agentharness "denova/internal/agents/harness"
+	agentexecution "denova/internal/agents/execution"
 	"os"
 	"path/filepath"
 	"testing"
@@ -32,7 +32,7 @@ func TestAppMaterializesAcceptedWritingInputExactlyOnce(t *testing.T) {
 	if _, err := store.GetOrCreate("accepted-writing"); err != nil {
 		t.Fatal(err)
 	}
-	request := agentharness.InputMaterializationRequest{
+	request := agentexecution.InputMaterializationRequest{
 		Binding: agentrun.RuntimeBinding{AgentKind: agentrun.AgentKindIDE, Workspace: workspace, SessionID: "accepted-writing"},
 		Identity: agentrun.CycleIdentity{
 			CommandID: "writing-command", OperationID: "writing-operation", Cycle: 1,
@@ -44,15 +44,15 @@ func TestAppMaterializesAcceptedWritingInputExactlyOnce(t *testing.T) {
 		},
 	}
 	application := &App{cfg: &config.Config{NovaDir: root}}
-	plan, err := application.PlanHarnessInputMaterialization(context.Background(), request)
+	plan, err := planProfileInputForTest(application, context.Background(), request)
 	if err != nil || !plan.Required || plan.Hash == "" {
 		t.Fatalf("writing input plan = %#v err=%v", plan, err)
 	}
-	first, err := application.MaterializeHarnessInput(context.Background(), request, plan)
+	first, err := materializeProfileInputForTest(application, context.Background(), request, plan)
 	if err != nil {
 		t.Fatal(err)
 	}
-	second, err := application.MaterializeHarnessInput(context.Background(), request, plan)
+	second, err := materializeProfileInputForTest(application, context.Background(), request, plan)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -105,7 +105,7 @@ func TestAppMaterializesGeneralProjectInputInUserState(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	request := agentharness.InputMaterializationRequest{
+	request := agentexecution.InputMaterializationRequest{
 		Binding: agentrun.RuntimeBinding{
 			AgentKind: agentrun.AgentKindGeneral, ProjectID: record.ID,
 			Mode: "agent_chat", SessionID: "general-session",
@@ -120,15 +120,15 @@ func TestAppMaterializesGeneralProjectInputInUserState(t *testing.T) {
 	application := &App{
 		cfg: &config.Config{NovaDir: dataDir}, projectRegistry: registry,
 	}
-	plan, err := application.PlanHarnessInputMaterialization(context.Background(), request)
+	plan, err := planProfileInputForTest(application, context.Background(), request)
 	if err != nil || !plan.Required || plan.Hash == "" {
 		t.Fatalf("General input plan = %#v err=%v", plan, err)
 	}
-	first, err := application.MaterializeHarnessInput(context.Background(), request, plan)
+	first, err := materializeProfileInputForTest(application, context.Background(), request, plan)
 	if err != nil {
 		t.Fatal(err)
 	}
-	second, err := application.MaterializeHarnessInput(context.Background(), request, plan)
+	second, err := materializeProfileInputForTest(application, context.Background(), request, plan)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -152,8 +152,8 @@ func TestAppMaterializesGeneralProjectInputInUserState(t *testing.T) {
 		t.Fatalf("workspace-private session directory should not be created, err=%v", err)
 	}
 
-	result, err := application.reconcileHarnessDomainCommit(
-		context.Background(),
+	result, err := reconcileProfileDomainCommitForTest(
+		application, context.Background(),
 		domainRecoveryRequest(
 			request.Binding, string(request.Identity.CommandID), string(request.Identity.OperationID),
 			request.Identity.Cycle, agentrun.DomainCommitInput, plan.Hash,
@@ -173,7 +173,7 @@ func TestAppMaterializesAcceptedGameInputAsPendingWithoutNarrative(t *testing.T)
 	if err != nil {
 		t.Fatal(err)
 	}
-	request := agentharness.InputMaterializationRequest{
+	request := agentexecution.InputMaterializationRequest{
 		Binding: agentrun.RuntimeBinding{AgentKind: agentrun.AgentKindInteractiveStory, Workspace: workspace, StoryID: story.ID, BranchID: "main"},
 		Identity: agentrun.CycleIdentity{
 			CommandID: "game-command", OperationID: "game-operation", Cycle: 1,
@@ -183,15 +183,15 @@ func TestAppMaterializesAcceptedGameInputAsPendingWithoutNarrative(t *testing.T)
 		Request:   agentchat.ChatRequest{Message: "open the sealed door"},
 	}
 	application := &App{}
-	plan, err := application.PlanHarnessInputMaterialization(context.Background(), request)
+	plan, err := planProfileInputForTest(application, context.Background(), request)
 	if err != nil || !plan.Required || plan.Hash == "" {
 		t.Fatalf("game input plan = %#v err=%v", plan, err)
 	}
-	first, err := application.MaterializeHarnessInput(context.Background(), request, plan)
+	first, err := materializeProfileInputForTest(application, context.Background(), request, plan)
 	if err != nil {
 		t.Fatal(err)
 	}
-	second, err := application.MaterializeHarnessInput(context.Background(), request, plan)
+	second, err := materializeProfileInputForTest(application, context.Background(), request, plan)
 	if err != nil {
 		t.Fatal(err)
 	}

@@ -3,7 +3,7 @@ package app
 import (
 	"context"
 	agentchat "denova/internal/agents/chat"
-	agentharness "denova/internal/agents/harness"
+	agentexecution "denova/internal/agents/execution"
 	agentrun "denova/internal/agents/run"
 	apptask "denova/internal/app/task"
 	"os"
@@ -56,8 +56,8 @@ func TestConcurrentColdWritingRecoveryCreatesOneDisplayTask(t *testing.T) {
 	if !ok {
 		t.Fatal("writing recovery projection unavailable")
 	}
-	actions := agentharness.RuntimeRecoveryActions(status)
-	if status.Phase != agentrun.RunPhaseRunning || !status.RecoveryPaused || len(actions) != 2 || actions[0].Kind != agentharness.RuntimeRecoveryAttach || actions[0].CommandID != "writing-recovery-start" || actions[1].Kind != agentharness.RuntimeRecoveryAbort {
+	actions := agentexecution.RuntimeRecoveryActions(status)
+	if status.Phase != agentrun.RunPhaseRunning || !status.RecoveryPaused || len(actions) != 2 || actions[0].Kind != agentexecution.RuntimeRecoveryAttach || actions[0].CommandID != "writing-recovery-start" || actions[1].Kind != agentexecution.RuntimeRecoveryAbort {
 		t.Fatalf("cold recovery actions = %#v status=%#v", actions, status)
 	}
 	abortAction := actions[1]
@@ -135,7 +135,7 @@ func runWritingRecoveryCrashSeed(t *testing.T) {
 	workspace := application.workspace
 	application.mu.RUnlock()
 	vanished := make(chan struct{})
-	if _, err := application.chatService.StartWithOptions(
+	if _, err := startExecutionCycle(application.executionRuntime,
 		context.Background(),
 		newInteractiveReplayRunner(t, &interactiveReplayModel{message: agents.AssistantMessage("must not run", nil)}),
 		&interactiveCrashConversation{vanished: vanished},

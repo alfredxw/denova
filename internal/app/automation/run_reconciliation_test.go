@@ -108,7 +108,7 @@ func TestAutomationPendingReconciliationRequiresExactRuntimeFingerprint(t *testi
 	root := t.TempDir()
 	workspace := filepath.Join(root, "workspace")
 	store := automation.NewStore(filepath.Join(root, "user"), workspace)
-	task, err := store.Create(automation.Task{Scope: automation.ScopeWorkspace, Name: "Fingerprint", Template: automation.TemplateReview})
+	task, err := store.Create(automation.TaskDefinition{Scope: automation.ScopeWorkspace, Name: "Fingerprint", Template: automation.TemplateReview})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -153,7 +153,7 @@ func TestAutomationPendingReconciliationClearsExactCurrentReplay(t *testing.T) {
 	root := t.TempDir()
 	workspace := filepath.Join(root, "workspace")
 	store := automation.NewStore(filepath.Join(root, "user"), workspace)
-	task, err := store.Create(automation.Task{Scope: automation.ScopeWorkspace, Name: "Replay", Template: automation.TemplateReview})
+	task, err := store.Create(automation.TaskDefinition{Scope: automation.ScopeWorkspace, Name: "Replay", Template: automation.TemplateReview})
 	if err != nil {
 		t.Fatal(err)
 	}

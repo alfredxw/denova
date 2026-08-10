@@ -27,7 +27,7 @@ func TestAutomationRootReplayCapacityRejectsBeforeRunOrRuntimeAdmission(t *testi
 		t.Fatal(err)
 	}
 	t.Cleanup(application.Close)
-	taskDef, err := application.CreateAutomation(automation.Task{
+	taskDef, err := application.CreateAutomation(automation.TaskDefinition{
 		Scope: automation.ScopeWorkspace, Enabled: true, Name: "capacity root", Template: automation.TemplateReview,
 	})
 	if err != nil {
@@ -61,7 +61,7 @@ func TestAutomationRootReplayCapacityRejectsBeforeRunOrRuntimeAdmission(t *testi
 		t.Fatalf("capacity rejection persisted a run ledger entry: %v", err)
 	}
 
-	status, err := application.chatService.RuntimeStatusProjection(context.Background(), agentrun.Options{
+	status, err := application.executionRuntime.RuntimeStatusProjection(context.Background(), agentrun.Options{
 		AgentKind: agentrun.AgentKindAutomation, TaskID: runID, AutomationTaskID: taskDef.ID,
 		SessionID: automationRunSessionID(runID), Workspace: taskDef.Target.Workspace, Mode: "automation",
 	})

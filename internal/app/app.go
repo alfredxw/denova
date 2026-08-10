@@ -2,7 +2,7 @@ package app
 
 import (
 	"context"
-	agentharness "denova/internal/agents/harness"
+	agentexecution "denova/internal/agents/execution"
 	apptask "denova/internal/app/task"
 	"errors"
 	"fmt"
@@ -47,7 +47,7 @@ type App struct {
 	session                         *session.Session
 	agentRunner                     *agents.Runner
 	interactiveStoryRunner          *agents.Runner
-	chatService                     *agentharness.Service
+	executionRuntime                *agentexecution.Runtime
 	projectRegistry                 *projectdomain.Registry
 	bookMetaStore                   *book.MetaStore
 	versionService                  *book.VersionService
@@ -121,19 +121,16 @@ func New(ctx context.Context, cfg *config.Config) (*App, error) {
 		terminals:       terminal.NewManager(terminalConfigFromAppConfig(cfg)),
 	}
 	app.automationApp = automationapp.NewService(automationHost{app: app})
-	chatService, err := agentharness.NewDurableService(
+	executionRuntime, err := agentexecution.NewDurableRuntime(
 		ctx,
 		dataDir,
-		agentharness.WithDomainCommitReconciler(app.reconcileHarnessDomainCommit),
-		agentharness.WithInputMaterializer(app),
-		agentharness.WithTurnRestorer(app.restoreHarnessTurn),
-		agentharness.WithStructuralRestorer(app.restoreContextStructuralOperation),
-		agentharness.WithHostEffectReconciler(app.automationApp.ReconcileHostEffect),
+		agentexecution.WithProfiles(app.executionProfiles()...),
+		agentexecution.WithHostEffectReconciler(app.automationApp.ReconcileHostEffect),
 	)
 	if err != nil {
 		return nil, fmt.Errorf("initialize durable agent runtime: %w", err)
 	}
-	app.chatService = chatService
+	app.executionRuntime = executionRuntime
 	workspace := cfg.Workspace
 	if workspace == "" && cfg.ResumeLastWorkspace {
 		if lastWorkspace := registry.CurrentBookPath(); lastWorkspace != "" {
@@ -144,7 +141,7 @@ func New(ctx context.Context, cfg *config.Config) (*App, error) {
 	app.mu.Lock()
 	if err := app.initializeLifecycleLocked(); err != nil {
 		app.mu.Unlock()
-		_ = chatService.Close(context.Background())
+		_ = executionRuntime.Close(context.Background())
 		return nil, fmt.Errorf("initialize app lifecycle: %w", err)
 	}
 	app.mu.Unlock()
@@ -465,8 +462,8 @@ func (a *App) Close() {
 		if versionService != nil {
 			versionService.Close()
 		}
-		if a.chatService != nil {
-			if err := a.chatService.Close(context.Background()); err != nil {
+		if a.executionRuntime != nil {
+			if err := a.executionRuntime.Close(context.Background()); err != nil {
 				slog.ErrorContext(context.Background(), fmt.Sprintf("[app] close durable agent runtime failed: %v", err))
 			}
 		}

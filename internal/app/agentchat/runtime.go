@@ -20,8 +20,8 @@ func (service *Service) ActiveView(ctx context.Context, binding Binding) ActiveV
 	if err != nil || service.host == nil {
 		return ActiveView{}
 	}
-	_, chatService := service.host.BaseRuntime()
-	runtime, projected := appagentruntime.RuntimeProjection(ctx, chatService, runtimeOptions(binding, ""))
+	_, executionRuntime := service.host.BaseRuntime()
+	runtime, projected := appagentruntime.RuntimeProjection(ctx, executionRuntime, runtimeOptions(binding, ""))
 	active := service.activeRun(binding)
 	var taskSnapshot *apptask.Snapshot
 	var pendingAsk *session.AskInteraction
@@ -157,7 +157,7 @@ func (service *Service) ClearSession(ctx context.Context, binding Binding) error
 	if err != nil {
 		return err
 	}
-	if err := project.chatService.CloseProjectSessionBindings(ctx, binding.ProjectID, binding.SessionID); err != nil {
+	if err := project.executionRuntime.CloseProjectSessionBindings(ctx, binding.ProjectID, binding.SessionID); err != nil {
 		return err
 	}
 	sess, err := project.store.Get(binding.SessionID)

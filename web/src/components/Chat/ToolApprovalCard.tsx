@@ -1,15 +1,15 @@
 import { useEffect, useLayoutEffect, useRef, useState } from 'react'
 import { Check, Loader2, ShieldAlert, ShieldCheck, X } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
-import type { AgentAskResolution, ChatMessage } from '@/lib/api'
+import type { AgentAskResolution } from '@/lib/api'
 import { Button } from '@/components/ui/button'
 import { normalizeAgentApprovalMode } from '@/features/agent-approval/modes'
-import type { AskInteractionResolver } from './AskInteractionCard'
+import type { AskInteractionMessage, AskInteractionResolver } from './AskInteractionCard'
 
 type ApprovalOption = 'allow-once' | 'allow-workspace' | 'deny'
 
 interface ToolApprovalPanelProps {
-  message: ChatMessage
+  message: AskInteractionMessage
   onResolve?: AskInteractionResolver
   embedded?: boolean
   onLayoutChange?: (element: HTMLElement) => void

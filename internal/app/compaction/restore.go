@@ -10,7 +10,7 @@ import (
 	"strings"
 
 	agentstructural "denova/internal/agents/context/structural"
-	agentharness "denova/internal/agents/harness"
+	agentexecution "denova/internal/agents/execution"
 	agentrun "denova/internal/agents/run"
 	"denova/internal/agents/session"
 	"denova/internal/interactive"
@@ -21,7 +21,7 @@ type SessionDirectoryResolver func(agentrun.RuntimeBinding) (string, error)
 // RestoreSpec rebuilds deterministic canonical commit/reconcile behavior from
 // a frozen mutation. Cold recovery never invokes a model, tool, or current UI
 // state through this path.
-func RestoreSpec(ctx context.Context, request agentharness.StructuralRestoreRequest, sessionDirectory SessionDirectoryResolver) (agentstructural.Spec, error) {
+func RestoreSpec(ctx context.Context, request agentexecution.StructuralRestoreRequest, sessionDirectory SessionDirectoryResolver) (agentstructural.Spec, error) {
 	if ctx == nil {
 		ctx = context.Background()
 	}
@@ -43,11 +43,11 @@ func RestoreSpec(ctx context.Context, request agentharness.StructuralRestoreRequ
 
 // RestoreOperation exposes the same deterministic operation to domain-commit
 // reconciliation, which already owns the surrounding runtime snapshot.
-func RestoreOperation(request agentharness.StructuralRestoreRequest, sessionDirectory SessionDirectoryResolver) (agentstructural.Operation, error) {
+func RestoreOperation(request agentexecution.StructuralRestoreRequest, sessionDirectory SessionDirectoryResolver) (agentstructural.Operation, error) {
 	return restoreOperation(request, sessionDirectory)
 }
 
-func restoreOperation(request agentharness.StructuralRestoreRequest, sessionDirectory SessionDirectoryResolver) (agentstructural.Operation, error) {
+func restoreOperation(request agentexecution.StructuralRestoreRequest, sessionDirectory SessionDirectoryResolver) (agentstructural.Operation, error) {
 	switch request.Plan.Domain {
 	case agentstructural.DomainSession:
 		return restoreSessionOperation(request, sessionDirectory)
@@ -58,7 +58,7 @@ func restoreOperation(request agentharness.StructuralRestoreRequest, sessionDire
 	}
 }
 
-func restoreSessionOperation(request agentharness.StructuralRestoreRequest, sessionDirectory SessionDirectoryResolver) (agentstructural.Operation, error) {
+func restoreSessionOperation(request agentexecution.StructuralRestoreRequest, sessionDirectory SessionDirectoryResolver) (agentstructural.Operation, error) {
 	binding := request.Binding
 	if (binding.AgentKind != agentrun.AgentKindGeneral && binding.AgentKind != agentrun.AgentKindIDE &&
 		binding.AgentKind != agentrun.AgentKindConfigManager && binding.AgentKind != agentrun.AgentKindImage) ||
@@ -144,7 +144,7 @@ func restoreSessionOperation(request agentharness.StructuralRestoreRequest, sess
 	}
 }
 
-func restoreStoryOperation(request agentharness.StructuralRestoreRequest) (agentstructural.Operation, error) {
+func restoreStoryOperation(request agentexecution.StructuralRestoreRequest) (agentstructural.Operation, error) {
 	binding := request.Binding
 	if binding.AgentKind != agentrun.AgentKindInteractiveStory ||
 		strings.TrimSpace(binding.Workspace) == "" || strings.TrimSpace(binding.StoryID) == "" ||

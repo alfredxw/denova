@@ -3,7 +3,7 @@ import { DefaultChatTransport } from 'ai'
 import { fetchAPI } from './api-client/client'
 import type { UserMessageReference } from './api-client/types'
 
-export type AgentDisplayRole = 'user' | 'assistant' | 'thinking' | 'tool_call' | 'tool_result' | 'ask' | 'rule_roll' | 'context_compaction' | 'token_usage' | 'plan_question' | 'proposed_plan' | 'system' | 'error'
+export type AgentDisplayRole = 'user' | 'assistant' | 'thinking' | 'tool_call' | 'tool_result' | 'ask' | 'rule_roll' | 'context_compaction' | 'token_usage' | 'proposed_plan' | 'system' | 'error'
 
 export interface AgentMessageMetadata {
 	created_at?: string
@@ -41,7 +41,6 @@ export type AgentDataParts = {
   'agent-context-compaction': AgentDataPayload
   'agent-error': AgentDataPayload
   'agent-interactive-image': AgentDataPayload
-  'agent-plan-question': AgentDataPayload
   'agent-proposed-plan': AgentDataPayload
   'agent-rule-roll': AgentDataPayload
   'agent-system': AgentDataPayload

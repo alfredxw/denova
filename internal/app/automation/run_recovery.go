@@ -2,7 +2,7 @@ package automationapp
 
 import (
 	"context"
-	agentharness "denova/internal/agents/harness"
+	agentexecution "denova/internal/agents/execution"
 	agentrun "denova/internal/agents/run"
 	apptask "denova/internal/app/task"
 	"fmt"
@@ -107,8 +107,8 @@ func (s *Service) ensureAutomationRecoveryTask(
 	if !run.RuntimeRecoveryRequired {
 		return nil, run, nil
 	}
-	if snap == nil || snap.chatService == nil {
-		return nil, automation.RunRecord{}, agentharness.ErrRuntimeProjectionUnavailable
+	if snap == nil || snap.executionRuntime == nil {
+		return nil, automation.RunRecord{}, agentexecution.ErrRuntimeProjectionUnavailable
 	}
 	if activeTask, activeRun, ok := s.activeAutomationTaskByRunID(snap, run.ID); ok {
 		return activeTask, activeRun, nil
@@ -128,14 +128,14 @@ func (s *Service) ensureAutomationRecoveryTask(
 		}
 	}()
 
-	recovery, err := snap.chatService.OpenRecoveryObservation(ctx, automationRecoveryOptions(snap, taskDef, run))
+	recovery, err := snap.executionRuntime.OpenRecoveryObservation(ctx, automationRecoveryOptions(snap, taskDef, run))
 	if err != nil {
 		return nil, automation.RunRecord{}, err
 	}
 	status := recovery.InitialStatus()
-	var attach agentharness.RuntimeRecoveryAction
-	for _, action := range agentharness.RuntimeRecoveryActions(status) {
-		if action.Kind == agentharness.RuntimeRecoveryAttach {
+	var attach agentexecution.RuntimeRecoveryAction
+	for _, action := range agentexecution.RuntimeRecoveryActions(status) {
+		if action.Kind == agentexecution.RuntimeRecoveryAttach {
 			attach = action
 			break
 		}
@@ -185,8 +185,8 @@ func (s *Service) ensureAutomationRecoveryTask(
 		return nil, automation.RunRecord{}, err
 	}
 	s.updateActiveAutomationRun(snap, taskStoreID, run)
-	displayTask.Emit(agentrun.Event{Type: agentharness.RuntimeRecoveryRequiredEventType, Data: map[string]any{
-		"code":       agentharness.RuntimeRecoveryRequiredEventCode,
+	displayTask.Emit(agentrun.Event{Type: agentexecution.RuntimeRecoveryRequiredEventType, Data: map[string]any{
+		"code":       agentexecution.RuntimeRecoveryRequiredEventCode,
 		"message":    "自动化运行需要显式终止或等待持久化终态 / Automation run requires explicit control or durable terminal reconciliation",
 		"command_id": attach.CommandID, "operation_id": attach.OperationID,
 	}})

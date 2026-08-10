@@ -25,15 +25,15 @@ func TestConcreteToolsDoNotDependOnAgentOrchestration(t *testing.T) {
 
 func TestReusableAgentPackagesDoNotDependOnCompositionRoot(t *testing.T) {
 	for _, dir := range []string{
-		"chat", "context", "conversation", "harness", "interactive",
+		"chat", "context", "conversation", "execution", "interactive",
 		"modelio", "modeltask", "prompts", "run", "skills", "toolresult", "toolruntime",
 	} {
 		assertGoFilesDoNotImport(t, dir, false, "denova/internal/agents")
 	}
 }
 
-func TestChatDoesNotDependOnDurableHarness(t *testing.T) {
-	assertGoFilesDoNotImport(t, "chat", false, "denova/internal/agents/harness")
+func TestChatDoesNotDependOnProductExecution(t *testing.T) {
+	assertGoFilesDoNotImport(t, "chat", false, "denova/internal/agents/execution")
 }
 
 func TestAgentsRootContainsOnlyCompositionResponsibilities(t *testing.T) {

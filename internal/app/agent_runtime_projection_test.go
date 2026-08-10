@@ -2,7 +2,7 @@ package app
 
 import (
 	"context"
-	agentharness "denova/internal/agents/harness"
+	agentexecution "denova/internal/agents/execution"
 	"testing"
 
 	agentrun "denova/internal/agents/run"
@@ -10,13 +10,13 @@ import (
 	"denova/internal/interactive"
 )
 
-func TestDefaultChatServiceProvidesDurableRuntimeProjection(t *testing.T) {
-	service := agentharness.NewEphemeralService()
+func TestDefaultExecutionRuntimeProvidesDurableProjection(t *testing.T) {
+	service := agentexecution.NewEphemeralRuntime()
 	t.Cleanup(func() { _ = service.Close(context.Background()) })
 	application := &App{
-		workspace:   "/book",
-		session:     &session.Session{ID: "session-1"},
-		chatService: service,
+		workspace:        "/book",
+		session:          &session.Session{ID: "session-1"},
+		executionRuntime: service,
 	}
 	projection, ok := application.WritingAgentRuntimeProjection(context.Background())
 	if !ok || projection.Binding.AgentKind != agentrun.AgentKindIDE {
@@ -26,7 +26,7 @@ func TestDefaultChatServiceProvidesDurableRuntimeProjection(t *testing.T) {
 
 func TestAgentRuntimeProjectionUsesExplicitWritingAndGameIdentities(t *testing.T) {
 	workspace := t.TempDir()
-	service, err := agentharness.NewDurableService(context.Background(), t.TempDir())
+	service, err := agentexecution.NewDurableRuntime(context.Background(), t.TempDir())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -41,10 +41,10 @@ func TestAgentRuntimeProjectionUsesExplicitWritingAndGameIdentities(t *testing.T
 		t.Fatal(err)
 	}
 	application := &App{
-		workspace:   workspace,
-		session:     &session.Session{ID: "session-1"},
-		chatService: service,
-		interactive: store,
+		workspace:        workspace,
+		session:          &session.Session{ID: "session-1"},
+		executionRuntime: service,
+		interactive:      store,
 	}
 
 	writing, ok := application.WritingAgentRuntimeProjection(context.Background())

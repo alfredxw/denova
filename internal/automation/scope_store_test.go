@@ -11,7 +11,7 @@ import (
 func TestStoreScopedUpdateAndDeleteShareAtomicRevisionCheck(t *testing.T) {
 	root := t.TempDir()
 	store := NewStore(filepath.Join(root, "user"), filepath.Join(root, "workspace"))
-	created, err := store.Create(Task{
+	created, err := store.Create(TaskDefinition{
 		Scope: ScopeWorkspace, Target: ExecutionTarget{Kind: TargetKindWorkspace},
 		Name: "Concurrent definition", Template: TemplateCustomPrompt, Prompt: "before",
 	})

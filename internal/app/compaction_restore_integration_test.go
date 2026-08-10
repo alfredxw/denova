@@ -3,7 +3,7 @@ package app
 import (
 	"context"
 	agentstructural "denova/internal/agents/context/structural"
-	agentharness "denova/internal/agents/harness"
+	agentexecution "denova/internal/agents/execution"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -58,7 +58,7 @@ func TestAppRestoresFrozenSessionCompactionForInactiveBinding(t *testing.T) {
 		t.Fatal(err)
 	}
 	application := &App{}
-	spec, err := application.restoreContextStructuralOperation(context.Background(), agentharness.StructuralRestoreRequest{
+	spec, err := application.restoreContextStructuralOperation(context.Background(), agentexecution.StructuralRestoreRequest{
 		Binding: binding,
 		Snapshot: agentrun.StructuralOperation{
 			Binding: binding, CommandID: commandID, OperationID: "inactive-session-operation",
@@ -142,7 +142,7 @@ func TestAppRestoresFrozenGeneralProjectCompactionInUserState(t *testing.T) {
 		t.Fatal(err)
 	}
 	application := &App{projectRegistry: registry}
-	spec, err := application.restoreContextStructuralOperation(context.Background(), agentharness.StructuralRestoreRequest{
+	spec, err := application.restoreContextStructuralOperation(context.Background(), agentexecution.StructuralRestoreRequest{
 		Binding: binding,
 		Snapshot: agentrun.StructuralOperation{
 			Binding: binding, CommandID: commandID, OperationID: "general-project-operation",
@@ -208,7 +208,7 @@ func TestAppRestoresFrozenStoryCompactionForInactiveBinding(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	spec, err := (&App{}).restoreContextStructuralOperation(context.Background(), agentharness.StructuralRestoreRequest{
+	spec, err := (&App{}).restoreContextStructuralOperation(context.Background(), agentexecution.StructuralRestoreRequest{
 		Binding: binding,
 		Snapshot: agentrun.StructuralOperation{
 			Binding: binding, CommandID: commandID, OperationID: "inactive-story-operation",

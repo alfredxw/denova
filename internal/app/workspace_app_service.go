@@ -2,7 +2,7 @@ package app
 
 import (
 	"context"
-	agentharness "denova/internal/agents/harness"
+	agentexecution "denova/internal/agents/execution"
 	"errors"
 	"fmt"
 	"log/slog"
@@ -86,13 +86,13 @@ func (s *workspaceService) Session() *session.Session {
 	return a.session
 }
 
-// ChatService 返回聊天服务。
-func (a *App) ChatService() *agentharness.Service {
-	return a.workspaceService().ChatService()
+// ExecutionRuntime 返回聊天服务。
+func (a *App) ExecutionRuntime() *agentexecution.Runtime {
+	return a.workspaceService().ExecutionRuntime()
 }
 
-func (s *workspaceService) ChatService() *agentharness.Service {
-	return s.app.chatService
+func (s *workspaceService) ExecutionRuntime() *agentexecution.Runtime {
+	return s.app.executionRuntime
 }
 
 // SwitchWorkspace 切换工作区，并重建状态、会话和 Agent Runner。

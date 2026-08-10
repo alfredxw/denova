@@ -55,7 +55,7 @@ func TestAppReconcilesExactSessionDomainReceiptsAcrossProfiles(t *testing.T) {
 	for _, binding := range bindings {
 		binding := binding
 		t.Run(binding.AgentKind, func(t *testing.T) {
-			result, err := application.reconcileHarnessDomainCommit(context.Background(), domainRecoveryRequest(binding, identity.CommandID, identity.OperationID, identity.Cycle, agentrun.DomainCommitOutput, intent.Hash))
+			result, err := reconcileProfileDomainCommitForTest(application, context.Background(), domainRecoveryRequest(binding, identity.CommandID, identity.OperationID, identity.Cycle, agentrun.DomainCommitOutput, intent.Hash))
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -66,11 +66,11 @@ func TestAppReconcilesExactSessionDomainReceiptsAcrossProfiles(t *testing.T) {
 	}
 
 	wrongIdentity := domainRecoveryRequest(bindings[0], identity.CommandID, "other-operation", identity.Cycle, agentrun.DomainCommitOutput, intent.Hash)
-	if _, err := application.reconcileHarnessDomainCommit(context.Background(), wrongIdentity); !errors.Is(err, session.ErrDomainCommitIdentityConflict) {
+	if _, err := reconcileProfileDomainCommitForTest(application, context.Background(), wrongIdentity); !errors.Is(err, session.ErrDomainCommitIdentityConflict) {
 		t.Fatalf("identity mismatch error = %v, want Session conflict", err)
 	}
 	wrongHash := domainRecoveryRequest(bindings[0], identity.CommandID, identity.OperationID, identity.Cycle, agentrun.DomainCommitOutput, "sha256:other")
-	if _, err := application.reconcileHarnessDomainCommit(context.Background(), wrongHash); !errors.Is(err, session.ErrDomainCommitIdentityConflict) {
+	if _, err := reconcileProfileDomainCommitForTest(application, context.Background(), wrongHash); !errors.Is(err, session.ErrDomainCommitIdentityConflict) {
 		t.Fatalf("hash mismatch error = %v, want Session conflict", err)
 	}
 }
@@ -96,8 +96,8 @@ func TestAppReconcilesGlobalAutomationSessionReceipt(t *testing.T) {
 		t.Fatal(err)
 	}
 	binding := agentrun.RuntimeBinding{AgentKind: agentrun.AgentKindAutomation, SessionID: sess.ID, TaskID: "task"}
-	result, err := (&App{cfg: &config.Config{NovaDir: root}}).reconcileHarnessDomainCommit(
-		context.Background(),
+	result, err := reconcileProfileDomainCommitForTest(
+		&App{cfg: &config.Config{NovaDir: root}}, context.Background(),
 		domainRecoveryRequest(binding, identity.CommandID, identity.OperationID, identity.Cycle, agentrun.DomainCommitInput, intent.Hash),
 	)
 	if err != nil || !result.Found || result.Revision == "" {
@@ -134,15 +134,15 @@ func TestAppReconcilesExactGameAndDirectorReceipts(t *testing.T) {
 		t.Fatal(err)
 	}
 	gameBinding := agentrun.RuntimeBinding{AgentKind: agentrun.AgentKindInteractiveStory, Workspace: workspace, StoryID: story.ID, BranchID: "main"}
-	gameResult, err := (&App{}).reconcileHarnessDomainCommit(
-		context.Background(),
+	gameResult, err := reconcileProfileDomainCommitForTest(
+		&App{}, context.Background(),
 		domainRecoveryRequest(gameBinding, gameRequest.AgentCommandID, gameRequest.AgentOperationID, gameRequest.AgentCycle, agentrun.DomainCommitOutput, gameIntent.Hash),
 	)
 	if err != nil || !gameResult.Found || gameResult.Revision != gameReceipt.Revision {
 		t.Fatalf("game reconciliation = %#v err=%v", gameResult, err)
 	}
 	conflict := domainRecoveryRequest(gameBinding, gameRequest.AgentCommandID, gameRequest.AgentOperationID, gameRequest.AgentCycle, agentrun.DomainCommitOutput, "sha256:other")
-	if _, err := (&App{}).reconcileHarnessDomainCommit(context.Background(), conflict); !errors.Is(err, interactive.ErrAgentTurnIdentityConflict) {
+	if _, err := reconcileProfileDomainCommitForTest(&App{}, context.Background(), conflict); !errors.Is(err, interactive.ErrAgentTurnIdentityConflict) {
 		t.Fatalf("game mismatch error = %v", err)
 	}
 
@@ -167,8 +167,8 @@ func TestAppReconcilesExactGameAndDirectorReceipts(t *testing.T) {
 		t.Fatal(err)
 	}
 	directorBinding := agentrun.RuntimeBinding{AgentKind: config.AgentKindInteractiveDirector, Workspace: workspace, StoryID: story.ID, BranchID: "main"}
-	directorResult, err := (&App{}).reconcileHarnessDomainCommit(
-		context.Background(),
+	directorResult, err := reconcileProfileDomainCommitForTest(
+		&App{}, context.Background(),
 		domainRecoveryRequest(directorBinding, directorIdentity.CommandID, directorIdentity.OperationID, directorIdentity.Cycle, agentrun.DomainCommitOutput, directorIntent.Hash),
 	)
 	if err != nil || !directorResult.Found || directorResult.Revision != directorReceipt.Revision {
@@ -220,7 +220,7 @@ func TestAppReconcilesStableSessionAndStoryCompactions(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	sessionResult, err := (&App{cfg: &config.Config{NovaDir: root}}).reconcileHarnessDomainCommit(context.Background(), sessionRequest)
+	sessionResult, err := reconcileProfileDomainCommitForTest(&App{cfg: &config.Config{NovaDir: root}}, context.Background(), sessionRequest)
 	if err != nil || !sessionResult.Found || sessionResult.Revision != fmt.Sprintf("session-context:%d", committedSession.ContextRevision) {
 		t.Fatalf("Session structural reconciliation = %#v err=%v", sessionResult, err)
 	}
@@ -244,7 +244,7 @@ func TestAppReconcilesStableSessionAndStoryCompactions(t *testing.T) {
 	if err != nil || !removed {
 		t.Fatalf("commit Session removal: removed=%v err=%v", removed, err)
 	}
-	sessionRemoveResult, err := (&App{cfg: &config.Config{NovaDir: root}}).reconcileHarnessDomainCommit(context.Background(), sessionRemoveRequest)
+	sessionRemoveResult, err := reconcileProfileDomainCommitForTest(&App{cfg: &config.Config{NovaDir: root}}, context.Background(), sessionRemoveRequest)
 	if err != nil || !sessionRemoveResult.Found || sessionRemoveResult.Revision != fmt.Sprintf("session-context:%d", committedRemoval.ContextRevision) {
 		t.Fatalf("Session removal reconciliation = %#v err=%v", sessionRemoveResult, err)
 	}
@@ -280,12 +280,12 @@ func TestAppReconcilesStableSessionAndStoryCompactions(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	storyResult, err := (&App{}).reconcileHarnessDomainCommit(context.Background(), storyRequest)
+	storyResult, err := reconcileProfileDomainCommitForTest(&App{}, context.Background(), storyRequest)
 	if err != nil || !storyResult.Found || storyResult.Revision != "story-head:"+committedStory.ID {
 		t.Fatalf("Story structural reconciliation = %#v err=%v", storyResult, err)
 	}
 	storyRequest.Commit.Hash = "sha256:other"
-	if _, err := (&App{}).reconcileHarnessDomainCommit(context.Background(), storyRequest); err == nil {
+	if _, err := reconcileProfileDomainCommitForTest(&App{}, context.Background(), storyRequest); err == nil {
 		t.Fatal("Story structural hash mismatch was accepted")
 	}
 	storyRemoveCommand := agentrun.CommandID("story-remove-command")
@@ -308,7 +308,7 @@ func TestAppReconcilesStableSessionAndStoryCompactions(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	storyRemoveResult, err := (&App{}).reconcileHarnessDomainCommit(context.Background(), storyRemoveRequest)
+	storyRemoveResult, err := reconcileProfileDomainCommitForTest(&App{}, context.Background(), storyRemoveRequest)
 	if err != nil || !storyRemoveResult.Found || storyRemoveResult.Revision != "story-head:"+committedStoryRemoval.ID {
 		t.Fatalf("Story removal reconciliation = %#v err=%v", storyRemoveResult, err)
 	}

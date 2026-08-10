@@ -177,7 +177,7 @@ func TestDurableScheduleTriggerResumesEffectBeforeCompletion(t *testing.T) {
 	novaDir := filepath.Join(root, "nova")
 	store := automation.NewStore(novaDir, workspace)
 	now := time.Date(2026, 7, 22, 12, 0, 0, 0, time.UTC)
-	task, err := store.Create(automation.Task{
+	task, err := store.Create(automation.TaskDefinition{
 		Scope: automation.ScopeWorkspace, Enabled: true, Name: "Durable schedule", Template: automation.TemplateReview,
 		Triggers: []automation.TriggerDefinition{{
 			ID: "schedule", Type: automation.TriggerTypeSchedule, Enabled: true,
@@ -252,7 +252,7 @@ func newDurableSemanticTriggerTest(t *testing.T, notifyPolicy string) (*App, *Au
 	}
 	application.ensureServices()
 	t.Cleanup(application.Close)
-	task, err := application.CreateAutomation(automation.Task{
+	task, err := application.CreateAutomation(automation.TaskDefinition{
 		Scope:    automation.ScopeWorkspace,
 		Enabled:  true,
 		Name:     "Durable semantic",

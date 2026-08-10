@@ -4,7 +4,7 @@ import (
 	"context"
 	agentchat "denova/internal/agents/chat"
 	agentconversation "denova/internal/agents/conversation"
-	agentharness "denova/internal/agents/harness"
+	agentexecution "denova/internal/agents/execution"
 	apptask "denova/internal/app/task"
 	"fmt"
 	"log/slog"
@@ -66,7 +66,7 @@ func (s *ChatAppService) startTaskWithError(ctx context.Context, expectedSession
 		return nil, err
 	}
 	req = agentchat.CaptureChatRequestCallerInput(req)
-	requestFingerprint := agentharness.RequestSemanticFingerprint(req)
+	requestFingerprint := agentexecution.RequestSemanticFingerprint(req)
 	a := s.app
 	a.mu.RLock()
 	workspace := a.workspace
@@ -159,7 +159,7 @@ func (s *ChatAppService) startTaskWithError(ctx context.Context, expectedSession
 		runtime.versionService,
 		versionAutoSettingsForConfig(&runtime.cfg),
 	)
-	var accepted *agentharness.AcceptedRun
+	var accepted *agentexecution.Operation
 	runAccepted := func(ctx context.Context, task *apptask.Task, emit func(agentrun.Event)) {
 		defer a.unregisterWorkspaceTask(task)
 		slog.InfoContext(ctx, fmt.Sprintf("[agent-task] run begin id=%s session_id=%s message_len=%d references=%d lore_references=%d style_scenes=%d style_rules=%d selections=%d plan_mode=%v teller_id=%s writing_skill=%s", task.ID(), runtime.sess.ID, len(req.Message), len(req.References), len(req.LoreReferences), len(req.StyleScenes), len(req.StyleRules), len(req.Selections), req.PlanMode, req.TellerID, req.WritingSkill))
@@ -222,10 +222,17 @@ func (s *ChatAppService) startTaskWithError(ctx context.Context, expectedSession
 			postRunVerification = verification
 		},
 	}, runtime, req)
-	accepted, err = runtime.chatService.StartWithOptionsAndSuccessor(
-		acceptCtx, runner, conversation, runtime.bookService, req, startOptions, task.Emit,
-		s.writingGoalSuccessor(runtime, task, req.Locale),
-	)
+	accepted, err = runtime.executionRuntime.Start(acceptCtx, agentexecution.StartRequest{
+		Cycle: agentexecution.Cycle{
+			Runner:       runner,
+			Conversation: conversation,
+			BookService:  runtime.bookService,
+			Request:      req,
+			Options:      startOptions,
+			Successor:    s.writingGoalSuccessor(runtime, task, req.Locale),
+		},
+		Emit: task.Emit,
+	})
 	releaseAcceptance()
 	if err != nil {
 		task.RejectStart(err)

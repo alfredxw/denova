@@ -53,7 +53,7 @@ func (c *SessionConversation) WithInputVisibility(visibility agentrun.InputVisib
 	return c
 }
 
-func (c *SessionConversation) BindHarnessAgentKind(agentKind string) {
+func (c *SessionConversation) BindAgentKind(agentKind string) {
 	if c == nil {
 		return
 	}

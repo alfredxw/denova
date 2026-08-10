@@ -2,7 +2,7 @@ package app
 
 import (
 	agentchat "denova/internal/agents/chat"
-	agentharness "denova/internal/agents/harness"
+	agentexecution "denova/internal/agents/execution"
 	"strings"
 
 	agentcontext "denova/internal/agents/context"
@@ -21,13 +21,13 @@ type (
 	AgentEvent       = agentrun.Event
 	AgentChatRequest = agentchat.ChatRequest
 
-	CommandKind      = agentharness.CommandKind
+	CommandKind      = agentexecution.CommandKind
 	AgentOperationID = agentrun.OperationID
 	AgentCommandID   = agentrun.CommandID
 
 	AgentRuntimeStatus             = agentrun.RuntimeStatus
-	AgentRuntimeRecoveryActionKind = agentharness.RuntimeRecoveryActionKind
-	AgentRuntimeRecoveryAction     = agentharness.RuntimeRecoveryAction
+	AgentRuntimeRecoveryActionKind = agentexecution.RuntimeRecoveryActionKind
+	AgentRuntimeRecoveryAction     = agentexecution.RuntimeRecoveryAction
 
 	AgentSessionHistoryEntry         = session.HistoryEntry
 	AgentSessionUserMessageReference = agentcontext.UserReference
@@ -44,31 +44,31 @@ type (
 const (
 	AgentKindIDE = agentrun.AgentKindIDE
 
-	CommandSteer        = agentharness.CommandSteer
-	CommandFollowUp     = agentharness.CommandFollowUp
-	CommandNextTurn     = agentharness.CommandNextTurn
-	CommandSteerQueued  = agentharness.CommandSteerQueued
-	CommandCancelQueued = agentharness.CommandCancelQueued
-	CommandAbort        = agentharness.CommandAbort
+	CommandSteer        = agentexecution.CommandSteer
+	CommandFollowUp     = agentexecution.CommandFollowUp
+	CommandNextTurn     = agentexecution.CommandNextTurn
+	CommandSteerQueued  = agentexecution.CommandSteerQueued
+	CommandCancelQueued = agentexecution.CommandCancelQueued
+	CommandAbort        = agentexecution.CommandAbort
 
 	AgentRuntimePhaseIdle = agentrun.RunPhaseIdle
 
-	AgentRuntimeRecoveryAttach           = agentharness.RuntimeRecoveryAttach
-	AgentRuntimeRecoveryAbort            = agentharness.RuntimeRecoveryAbort
-	AgentRuntimeRecoverySteer            = agentharness.RuntimeRecoverySteer
-	AgentRuntimeRecoveryFollowUp         = agentharness.RuntimeRecoveryFollowUp
-	AgentRuntimeRecoveryNextTurn         = agentharness.RuntimeRecoveryNextTurn
-	AgentRuntimeRecoveryCompactContext   = agentharness.RuntimeRecoveryCompactContext
-	AgentRuntimeRecoveryRemoveCompaction = agentharness.RuntimeRecoveryRemoveCompaction
+	AgentRuntimeRecoveryAttach           = agentexecution.RuntimeRecoveryAttach
+	AgentRuntimeRecoveryAbort            = agentexecution.RuntimeRecoveryAbort
+	AgentRuntimeRecoverySteer            = agentexecution.RuntimeRecoverySteer
+	AgentRuntimeRecoveryFollowUp         = agentexecution.RuntimeRecoveryFollowUp
+	AgentRuntimeRecoveryNextTurn         = agentexecution.RuntimeRecoveryNextTurn
+	AgentRuntimeRecoveryCompactContext   = agentexecution.RuntimeRecoveryCompactContext
+	AgentRuntimeRecoveryRemoveCompaction = agentexecution.RuntimeRecoveryRemoveCompaction
 
 	SkillScopeUser              = skills.ScopeUser
 	MaxSkillInstallArchiveBytes = skills.MaxInstallArchiveBytes
 )
 
 var (
-	ErrAgentRecoveryRequired             = agentharness.ErrRecoveryRequired
-	ErrAgentRecoveryActionChanged        = agentharness.ErrRecoveryActionChanged
-	ErrAgentRuntimeRecoveryActionChanged = agentharness.ErrRecoveryActionChanged
+	ErrAgentRecoveryRequired             = agentexecution.ErrRecoveryRequired
+	ErrAgentRecoveryActionChanged        = agentexecution.ErrRecoveryActionChanged
+	ErrAgentRuntimeRecoveryActionChanged = agentexecution.ErrRecoveryActionChanged
 	ErrInvalidAgentCommand               = agentrun.ErrInvalidCommand
 	ErrInvalidAgentBinding               = agentrun.ErrInvalidBinding
 	ErrStaleAgentOperation               = agentrun.ErrStaleOperation
@@ -94,7 +94,7 @@ func ValidateAgentRecoveryIdentity(commandID, operationID string) error {
 // AgentRuntimeRecoveryActions projects only the recovery operations that are
 // safe for an external caller to retry against the current durable status.
 func AgentRuntimeRecoveryActions(status AgentRuntimeStatus) []AgentRuntimeRecoveryAction {
-	return agentharness.RuntimeRecoveryActions(status)
+	return agentexecution.RuntimeRecoveryActions(status)
 }
 
 func firstNonEmpty(values ...string) string {

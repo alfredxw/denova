@@ -1057,44 +1057,6 @@ describe('MessageItem', () => {
     )
   })
 
-  it('旧版 Plan 问题卡只读展示，不再创建第二套交互状态', () => {
-    render(
-      <MessageItem
-        message={{
-          role: 'plan_question',
-          content: JSON.stringify({
-            questions: [{
-              id: 'scope',
-              type: 'single',
-              question: '这次要先确认什么？',
-              options: [
-                { id: 'recommended', label: '采用推荐方案', recommended: true },
-                { id: 'manual', label: '手动确认' },
-              ],
-            }],
-          }),
-        }}
-      />,
-    )
-
-    expect(screen.getByText('历史记录')).toBeInTheDocument()
-    expect(screen.getByText(/旧版 Plan Mode 留下的问题卡/)).toBeInTheDocument()
-    expect(screen.getByText('采用推荐方案')).toBeInTheDocument()
-    expect(screen.getByText('手动确认')).toBeInTheDocument()
-    expect(screen.getByText('推荐')).toBeInTheDocument()
-    expect(screen.queryByRole('button')).not.toBeInTheDocument()
-    expect(screen.queryByRole('textbox')).not.toBeInTheDocument()
-  })
-
-  it('无法解析的旧版 Plan 问题卡仍保留只读说明', () => {
-    render(<MessageItem message={{ role: 'plan_question', status: 'running', streaming: true, content: '', thinking_preview: '准备输出问题卡' }} />)
-
-    expect(screen.getByText('规划问题')).toBeInTheDocument()
-    expect(screen.getByText('历史记录')).toBeInTheDocument()
-    expect(screen.getByText(/新的规划澄清会通过可恢复的 Ask 卡片完成/)).toBeInTheDocument()
-    expect(screen.queryByText('准备输出问题卡')).not.toBeInTheDocument()
-  })
-
   it('Plan 生成中预览长时间不变化时自动隐藏', () => {
     vi.useFakeTimers()
     try {

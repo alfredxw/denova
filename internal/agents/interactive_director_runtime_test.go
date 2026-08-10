@@ -2,7 +2,7 @@ package agents
 
 import (
 	"context"
-	agentharness "denova/internal/agents/harness"
+	agentexecution "denova/internal/agents/execution"
 	agentinteractive "denova/internal/agents/interactive"
 	"errors"
 	"strings"
@@ -30,7 +30,7 @@ func TestGenerateInteractiveDirectorWithToolsRequiresOwnedRuntime(t *testing.T) 
 }
 
 func TestGenerateInteractiveDirectorWithToolsRejectsMissingStoryState(t *testing.T) {
-	service := agentharness.NewEphemeralService()
+	service := agentexecution.NewEphemeralRuntime()
 	t.Cleanup(func() { _ = service.Close(context.Background()) })
 	_, err := GenerateInteractiveDirectorWithTools(
 		context.Background(),
@@ -47,7 +47,7 @@ func TestGenerateInteractiveDirectorWithToolsRejectsMissingStoryState(t *testing
 
 func TestGenerateInteractiveDirectorWithToolsRequiresCommandIDBeforeBuildingAgent(t *testing.T) {
 	workspace := t.TempDir()
-	service := agentharness.NewEphemeralService()
+	service := agentexecution.NewEphemeralRuntime()
 	t.Cleanup(func() { _ = service.Close(context.Background()) })
 	_, err := GenerateInteractiveDirectorWithTools(
 		context.Background(),

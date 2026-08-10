@@ -69,7 +69,6 @@ describe('agent-message-view', () => {
           { type: 'text', id: 'text-1', text: '正文', state: 'done' },
           { type: 'dynamic-tool', toolName: 'read', toolCallId: 'tool-1', state: 'output-available', input: { path: 'a.md' }, output: 'ok' },
           { type: 'data-agent-context-compaction', id: 'compact-1', data: { content: '压缩上下文', status: 'running', tokens_before: 100 } },
-          { type: 'data-agent-plan-question', id: 'question-1', data: { content: '选择方向', status: 'running' } },
           { type: 'data-agent-proposed-plan', id: 'plan-1', data: { content: '# Plan', status: 'success' } },
           { type: 'data-agent-token-usage', id: 'usage-1', data: { run_id: 'run-1', model_calls: 1, total_tokens: 42, usage_calls: [{ index: 1, total_tokens: 42 }] } },
           { type: 'data-agent-rule-roll', id: 'roll-1', data: { rule_roll: { label: '检定', total: 18 } } },
@@ -96,7 +95,6 @@ describe('agent-message-view', () => {
       'assistant',
       'tool',
       'context-compaction',
-      'plan-question',
       'proposed-plan',
       'token-usage',
       'rule-roll',
@@ -108,7 +106,7 @@ describe('agent-message-view', () => {
     expect(views[1]).toMatchObject({ partId: 'reason-1', streaming: true, metadata: { run_id: 'run-1' } })
     expect(views[2]).toMatchObject({ partId: 'text-1', metadata: { run_id: 'run-1', display_phase: 'final' } })
     expect(views[3]).toMatchObject({ partId: 'tool-1', toolName: 'read', status: 'success' })
-    expect(views[5].ref).toEqual({ messageId: 'assistant-1', partId: 'question-1', partIndex: 4, type: 'data-agent-plan-question' })
+    expect(views[5].ref).toEqual({ messageId: 'assistant-1', partId: 'plan-1', partIndex: 4, type: 'data-agent-proposed-plan' })
   })
 
   it('todo 在同一 run 内替换旧计划，空计划会清除当前卡片', () => {

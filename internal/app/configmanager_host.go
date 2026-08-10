@@ -45,7 +45,7 @@ func (host configManagerHost) ProjectRuntime(ctx context.Context, projectID stri
 	return configmanagerapp.Runtime{
 		ProjectID: projectID, Config: runtime.Config, Workspace: runtime.Workspace, State: runtime.State,
 		SessionStore: projectRuntime.SessionStore, BookService: runtime.BookService,
-		VersionService: runtime.VersionService, ChatService: runtime.ChatService,
+		VersionService: runtime.VersionService, ExecutionRuntime: runtime.ExecutionRuntime,
 		ProjectRegistry: registry,
 	}, nil
 }

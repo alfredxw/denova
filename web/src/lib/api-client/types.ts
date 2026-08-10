@@ -1,41 +1,19 @@
 // MessageItem render model. Agent API/history/stream payloads use AgentUIMessage;
-// this shape remains private to the presentation adapter.
-export interface ChatMessage {
+// this shape remains private to the presentation adapter. Role-specific payloads
+// are kept on a discriminated union so invalid message combinations fail during
+// development instead of silently reaching a renderer.
+export type ChatMessageStatus = 'running' | 'success' | 'error'
+export type ChatPlanAction = 'approved' | 'continue' | 'exited'
+export type InteractiveImageStatus = ChatMessageStatus
+
+interface ChatMessageBase {
   type?: 'message' | 'clear'
-  role?: 'user' | 'assistant' | 'thinking' | 'tool_call' | 'tool_result' | 'ask' | 'rule_roll' | 'context_compaction' | 'token_usage' | 'plan_question' | 'proposed_plan' | 'system' | 'error'
   content?: string
   id?: string
   render_key?: string
   streaming_target_content?: string
   turn_id?: string
   navigation_turn_id?: string
-  name?: string
-  args?: string
-  status?: 'running' | 'success' | 'error'
-  result?: string
-  ask?: AgentAskInteraction
-  illustration?: ChapterIllustration
-  interactive_image?: InteractiveImage
-  interactive_images?: InteractiveImage[]
-  interactive_image_error?: InteractiveImageError
-  interactive_image_status?: 'running' | 'success' | 'error'
-  rule_roll?: PublicRuleRoll
-  phase?: string
-  attempt?: number
-  tokens_before?: number
-  tokens_after?: number
-	projected_tokens_before?: number
-	projected_tokens_after?: number
-	reserved_completion_tokens?: number
-	reserved_tool_result_tokens?: number
-  context_window_tokens?: number
-  threshold?: number
-  target_ratio?: number
-  epoch?: number
-  source_message_count?: number
-  message_count_before?: number
-  message_count_after?: number
-  skipped_reason?: string
   run_id?: string
   display_segment_id?: string
   display_phase?: 'candidate' | 'progress' | 'final' | 'partial'
@@ -50,6 +28,84 @@ export interface ChatMessage {
   sse_hidden_reason?: string
   sse_display_notice?: string
   sse_generated_chars?: number
+  streaming?: boolean
+  created_at?: string
+  turn_versions?: { turn_id: string; ts: string; current?: boolean }[]
+  turn_version_index?: number
+}
+
+export interface UserChatMessage extends ChatMessageBase {
+  role: 'user'
+  user_references?: UserMessageReference[]
+}
+
+export interface AssistantChatMessage extends ChatMessageBase {
+  role: 'assistant'
+  interactive_image?: InteractiveImage
+  interactive_images?: InteractiveImage[]
+  interactive_image_error?: InteractiveImageError
+  interactive_image_status?: InteractiveImageStatus
+}
+
+export interface ThinkingChatMessage extends ChatMessageBase {
+  role: 'thinking'
+}
+
+interface ToolChatMessageBase extends ChatMessageBase {
+  name?: string
+  result?: string
+  status?: ChatMessageStatus
+  illustration?: ChapterIllustration
+  interactive_image?: InteractiveImage
+  interactive_images?: InteractiveImage[]
+  interactive_image_error?: InteractiveImageError
+  interactive_image_status?: InteractiveImageStatus
+}
+
+export interface ToolCallChatMessage extends ToolChatMessageBase {
+  role: 'tool_call'
+  args?: string
+  ask?: AgentAskInteraction
+}
+
+export interface ToolResultChatMessage extends ToolChatMessageBase {
+  role: 'tool_result'
+}
+
+export interface AskChatMessage extends ChatMessageBase {
+  role: 'ask'
+  ask?: AgentAskInteraction
+  status?: ChatMessageStatus
+}
+
+export interface RuleRollChatMessage extends ChatMessageBase {
+  role: 'rule_roll'
+  rule_roll?: PublicRuleRoll
+}
+
+export interface ContextCompactionChatMessage extends ChatMessageBase {
+  role: 'context_compaction'
+  status?: ChatMessageStatus
+  phase?: string
+  attempt?: number
+  tokens_before?: number
+  tokens_after?: number
+  projected_tokens_before?: number
+  projected_tokens_after?: number
+  reserved_completion_tokens?: number
+  reserved_tool_result_tokens?: number
+  context_window_tokens?: number
+  threshold?: number
+  target_ratio?: number
+  epoch?: number
+  source_message_count?: number
+  message_count_before?: number
+  message_count_after?: number
+  skipped_reason?: string
+}
+
+export interface TokenUsageChatMessage extends ChatMessageBase {
+  role: 'token_usage'
   prompt_tokens?: number
   cached_prompt_tokens?: number
   uncached_prompt_tokens?: number
@@ -60,14 +116,36 @@ export interface ChatMessage {
   model_calls?: number
   generated_bytes?: number
   usage_calls?: TokenUsageCall[]
-  streaming?: boolean
-  thinking_preview?: string
-  plan_action?: 'answered' | 'approved' | 'continue' | 'exited'
-  created_at?: string
-  turn_versions?: { turn_id: string; ts: string; current?: boolean }[]
-  turn_version_index?: number
-  user_references?: UserMessageReference[]
 }
+
+export interface ProposedPlanChatMessage extends ChatMessageBase {
+  role: 'proposed_plan'
+  status?: ChatMessageStatus
+  thinking_preview?: string
+  plan_action?: ChatPlanAction
+}
+
+export interface SystemChatMessage extends ChatMessageBase {
+  role: 'system'
+}
+
+export interface ErrorChatMessage extends ChatMessageBase {
+  role: 'error'
+}
+
+export type ChatMessage =
+  | UserChatMessage
+  | AssistantChatMessage
+  | ThinkingChatMessage
+  | ToolCallChatMessage
+  | ToolResultChatMessage
+  | AskChatMessage
+  | RuleRollChatMessage
+  | ContextCompactionChatMessage
+  | TokenUsageChatMessage
+  | ProposedPlanChatMessage
+  | SystemChatMessage
+  | ErrorChatMessage
 
 export interface AgentAskOption {
   id: string
@@ -898,6 +976,9 @@ export type AutomationTaskUpdate = Pick<AutomationTask,
   | 'default_action_policy'
   | 'session_strategy'
 >
+
+/** Complete caller-owned creation input; scheduler/runtime fields cannot cross this seam. */
+export type AutomationTaskDefinition = AutomationTaskUpdate & Pick<AutomationTask, 'scope' | 'target'>
 
 export type AutomationTaskTemplateDefaults = Pick<AutomationTask,
   | 'enabled'

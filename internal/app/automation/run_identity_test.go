@@ -44,7 +44,7 @@ func TestAutomationDeterministicRunIDReplaysExactPersistedRun(t *testing.T) {
 	application.ensureServices()
 	service := application.automation()
 	store := automation.NewStore(novaDir, workspace)
-	taskDef, err := store.Create(automation.Task{Scope: automation.ScopeWorkspace, Name: "director action", Template: automation.TemplateReview})
+	taskDef, err := store.Create(automation.TaskDefinition{Scope: automation.ScopeWorkspace, Name: "director action", Template: automation.TemplateReview})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -76,7 +76,7 @@ func TestAutomationDeterministicRunIDRejectsSemanticConflict(t *testing.T) {
 	application.ensureServices()
 	service := application.automation()
 	store := automation.NewStore(novaDir, workspace)
-	taskDef, err := store.Create(automation.Task{Scope: automation.ScopeWorkspace, Name: "director action", Template: automation.TemplateReview})
+	taskDef, err := store.Create(automation.TaskDefinition{Scope: automation.ScopeWorkspace, Name: "director action", Template: automation.TemplateReview})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -110,7 +110,7 @@ func TestAutomationWriteConfirmationStartsFromCleanRunRecord(t *testing.T) {
 	application.ensureServices()
 	service := application.automation()
 	store := automation.NewStore(novaDir, workspace)
-	taskDef, err := store.Create(automation.Task{
+	taskDef, err := store.Create(automation.TaskDefinition{
 		Scope: automation.ScopeWorkspace, Name: "confirm cleanly", Template: automation.TemplateReview,
 	})
 	if err != nil {
@@ -168,7 +168,7 @@ func TestAutomationPreAcceptanceRetryPreservesOriginalAdmissionTime(t *testing.T
 	t.Cleanup(application.Close)
 	service := application.automation()
 	store := automation.NewStore(novaDir, workspace)
-	taskDef, err := store.Create(automation.Task{Scope: automation.ScopeWorkspace, Name: "retry admission", Template: automation.TemplateReview})
+	taskDef, err := store.Create(automation.TaskDefinition{Scope: automation.ScopeWorkspace, Name: "retry admission", Template: automation.TemplateReview})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -208,7 +208,7 @@ func TestAutomationDeterministicRunIDNeverAttachesDifferentActiveIdentity(t *tes
 	t.Cleanup(application.Close)
 	service := application.automation()
 	store := automation.NewStore(novaDir, workspace)
-	taskDef, err := store.Create(automation.Task{Scope: automation.ScopeWorkspace, Name: "director action", Template: automation.TemplateReview})
+	taskDef, err := store.Create(automation.TaskDefinition{Scope: automation.ScopeWorkspace, Name: "director action", Template: automation.TemplateReview})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -248,7 +248,7 @@ func TestAutomationDeterministicRunRecoversAcceptedRuntimeBeforeRunRecord(t *tes
 	application.ensureServices()
 	service := application.automation()
 	store := automation.NewStore(novaDir, workspace)
-	taskDef, err := store.Create(automation.Task{Scope: automation.ScopeWorkspace, Name: "recover admission", Template: automation.TemplateReview})
+	taskDef, err := store.Create(automation.TaskDefinition{Scope: automation.ScopeWorkspace, Name: "recover admission", Template: automation.TemplateReview})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -291,7 +291,7 @@ func TestAutomationAdmissionIntentRecoversAcceptedRuntimeAfterReceiptWriteGap(t 
 	workspace := filepath.Join(root, "workspace")
 	novaDir := filepath.Join(root, "nova")
 	store := automation.NewStore(novaDir, workspace)
-	taskDef, err := store.Create(automation.Task{Scope: automation.ScopeWorkspace, Name: "receipt gap", Template: automation.TemplateReview})
+	taskDef, err := store.Create(automation.TaskDefinition{Scope: automation.ScopeWorkspace, Name: "receipt gap", Template: automation.TemplateReview})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -335,7 +335,7 @@ func TestAutomationAdmissionIntentSettlesWhenRuntimeProvesNoAcceptance(t *testin
 	workspace := filepath.Join(root, "workspace")
 	novaDir := filepath.Join(root, "nova")
 	store := automation.NewStore(novaDir, workspace)
-	taskDef, err := store.Create(automation.Task{Scope: automation.ScopeWorkspace, Name: "unaccepted intent", Template: automation.TemplateReview})
+	taskDef, err := store.Create(automation.TaskDefinition{Scope: automation.ScopeWorkspace, Name: "unaccepted intent", Template: automation.TemplateReview})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -381,7 +381,7 @@ func TestAutomationDeterministicRunReconcilesPersistedRunningFromJournal(t *test
 	application.ensureServices()
 	service := application.automation()
 	store := automation.NewStore(novaDir, workspace)
-	taskDef, err := store.Create(automation.Task{Scope: automation.ScopeWorkspace, Name: "reconcile terminal", Template: automation.TemplateReview})
+	taskDef, err := store.Create(automation.TaskDefinition{Scope: automation.ScopeWorkspace, Name: "reconcile terminal", Template: automation.TemplateReview})
 	if err != nil {
 		t.Fatal(err)
 	}

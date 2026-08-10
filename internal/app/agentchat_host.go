@@ -5,7 +5,7 @@ import (
 
 	"denova/config"
 	agentconversation "denova/internal/agents/conversation"
-	agentharness "denova/internal/agents/harness"
+	agentexecution "denova/internal/agents/execution"
 	"denova/internal/agents/session"
 	agenttool "denova/internal/agents/tool"
 	"denova/internal/book"
@@ -17,7 +17,7 @@ type agentChatHost struct {
 	app *App
 }
 
-func (host agentChatHost) BaseRuntime() (config.Config, *agentharness.Service) {
+func (host agentChatHost) BaseRuntime() (config.Config, *agentexecution.Runtime) {
 	if host.app == nil {
 		return config.Config{}, nil
 	}
@@ -27,7 +27,7 @@ func (host agentChatHost) BaseRuntime() (config.Config, *agentharness.Service) {
 	if host.app.cfg != nil {
 		cfg = *host.app.cfg
 	}
-	return cfg, host.app.chatService
+	return cfg, host.app.executionRuntime
 }
 
 func (host agentChatHost) ProjectVersionService(projectID string) (*book.VersionService, error) {

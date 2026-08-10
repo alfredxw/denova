@@ -4,7 +4,7 @@ import (
 	"context"
 	agentchat "denova/internal/agents/chat"
 	agentcontext "denova/internal/agents/context"
-	agentharness "denova/internal/agents/harness"
+	agentexecution "denova/internal/agents/execution"
 	apptask "denova/internal/app/task"
 	"path/filepath"
 	"testing"
@@ -24,7 +24,7 @@ func TestWritingOlderSettledStartColdReplayThroughApp(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	chatService, err := agentharness.NewDurableService(context.Background(), root)
+	executionRuntime, err := agentexecution.NewDurableRuntime(context.Background(), root)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -41,7 +41,7 @@ func TestWritingOlderSettledStartColdReplayThroughApp(t *testing.T) {
 		Mode:      "ide",
 	}
 	for index := range requests {
-		outcome := chatService.RunWithOptions(
+		outcome := runExecutionCycle(executionRuntime,
 			context.Background(),
 			newWritingColdReplayRunner(t, answers[index]),
 			writingColdReplayConversation{},
@@ -51,11 +51,11 @@ func TestWritingOlderSettledStartColdReplayThroughApp(t *testing.T) {
 			nil,
 		)
 		if outcome.Status != agentrun.OutcomeCompleted || outcome.Content != answers[index] {
-			_ = chatService.Close(context.Background())
+			_ = executionRuntime.Close(context.Background())
 			t.Fatalf("seed run %d outcome = %#v", index, outcome)
 		}
 	}
-	if err := chatService.Close(context.Background()); err != nil {
+	if err := executionRuntime.Close(context.Background()); err != nil {
 		t.Fatal(err)
 	}
 

@@ -1,29 +1,18 @@
-import { PanelLeftClose, PanelLeftOpen, PanelRightClose, PanelRightOpen, Sparkles } from 'lucide-react'
-import { lazy, memo, Suspense, useCallback, useDeferredValue, useEffect, useMemo, useRef, useState } from 'react'
-import type { ReactNode } from 'react'
-import { createPortal } from 'react-dom'
+import { lazy, memo, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { toast } from 'sonner'
-import { SearchPanel } from '@/components/Sidebar/SearchPanel'
-import { AgentPanel, WRITING_COMPOSER_SETTING_DEFAULTS } from '@/components/Chat/AgentPanel'
-import { FilePreview } from '@/components/workbench/FilePreview'
-import { MarkdownEditor, type EditorFlushHandler } from '@/components/Editor/MarkdownEditor'
-import { ChapterOutline, type OutlineRevealRequest } from '@/components/workbench/outline/ChapterOutline'
+import { WRITING_COMPOSER_SETTING_DEFAULTS } from '@/components/Chat/AgentPanel'
+import type { EditorFlushHandler } from '@/components/Editor/MarkdownEditor'
+import type { OutlineRevealRequest } from '@/components/workbench/outline/ChapterOutline'
 import { getImagePresets, getInteractiveTellers } from '@/features/interactive/api'
-import { WritingProjectExplorer } from '@/features/project-explorer/WritingProjectExplorer'
 import { useInteractiveStore } from '@/features/interactive/stores/interactive-store'
 import type { ImagePreset, Teller } from '@/features/interactive/types'
-import type { FileNode } from '@/hooks/useWorkspace'
-import type { ActiveChatTask, AgentRuntimeQueuedCommand, BookRecord, BookSortMode, ChapterIllustration, ChapterSummary, ContextAnalysis, DocumentPreview, LoreItem, SessionSummary, TextSelection, WorkspaceSearchResult, WorkspaceSummary } from '@/lib/api'
+import type { ChapterIllustration, ChapterSummary, DocumentPreview, WorkspaceSearchResult } from '@/lib/api'
 import { GLOBAL_RESOURCE_TARGET, projectResourceTarget } from '@/lib/api'
-import type { AgentUIMessage } from '@/lib/agent-ui'
-import type { ChatSendOptions } from '@/hooks/useAgentChat'
 import { usePersistedUserSettings } from '@/hooks/usePersistedUserSettings'
 import { useLayeredSettingsDraft } from '@/features/settings/use-layered-settings-draft'
 import { GLOBAL_SETTINGS_TARGET } from '@/features/settings/api'
 import { applyReadingTypographySettings } from '@/features/settings/font-variables'
-import type { AgentPartRef } from '@/lib/agent-message-view'
-import type { RightPanel, WorkspaceMode } from '@/stores/workspace-store'
 import { workspaceFileKind } from '@/lib/workspace-file-kind'
 import { isLoreItemsPath } from '@/lib/workspace-path'
 import { useWritingChangeReview } from '@/features/changes/use-writing-change-review'
@@ -31,169 +20,31 @@ import type { ReviewFeedbackBatch, ReviewFeedbackSelection } from '@/features/ch
 import type { WorkspaceChangeMetadata } from '@/features/changes/types'
 import { useDocumentReview } from '@/features/document-review/use-document-review'
 import { loreImportanceLabel, loreLoadModeLabel, loreTypeLabel } from '@/features/lore/options'
-import { ChangeReviewWorkspace } from '@/features/changes/review/ChangeReviewWorkspace'
-import type { WorkbenchNotice } from '@/features/notices/use-workbench-notice'
 import type { AgentChatProjectNavigationState } from '@/features/agent-chat/AgentChatProjectSwitcher'
-import { createStablePortalHost, StablePortalSlot } from '@/components/layout/stable-portal-slot'
-import type { Tab } from './TabController'
-import { TabController, tabKey } from './TabController'
-import { WorkbenchShell, type WorkbenchPresentedLayout } from './WorkbenchShell'
+import { tabKey } from './TabController'
+import { WorkbenchShell } from './WorkbenchShell'
+import { useWorkbenchRouteHost, WorkbenchRouteLayer } from './WorkbenchRouteHost'
 import { flattenFileTree } from './workbench-utils'
 import { useReviewFeedbackNavigation } from './use-review-feedback-navigation'
-import { LoadingState } from '@/components/common/LoadingState'
+import { WritingSidebar } from './WritingSidebar'
+import { IdeWritingInfoActions, WritingMainRoute } from './WritingMainRoute'
+import { useWritingAgentPanel } from './use-writing-agent-panel'
+import type { ModeRouterProps } from './ModeRouter.types'
+import { SharedWorkbenchRoutes } from './SharedWorkbenchRoutes'
+import { AgentChatWorkbenchRoute } from './AgentChatWorkbenchRoute'
 
 const WRITING_AGENT_INIT_EVENT = 'nova:writing-agent-init'
 const InteractiveLayout = memo(lazy(() => import('@/features/interactive/components/InteractiveLayout').then((module) => ({ default: module.InteractiveLayout }))))
 const SettingPanel = memo(lazy(() => import('@/features/interactive/components/SettingPanel').then((module) => ({ default: module.SettingPanel }))))
 const VersionPanel = memo(lazy(() => import('@/components/Versions/VersionPanel').then((module) => ({ default: module.VersionPanel }))))
-const HomeView = memo(lazy(() => import('@/components/Home/HomeView').then((module) => ({ default: module.HomeView }))))
-const AgentsView = memo(lazy(() => import('@/features/agents/AgentsView').then((module) => ({ default: module.AgentsView }))))
-const AutomationsView = memo(lazy(() => import('@/features/automations/AutomationsView').then((module) => ({ default: module.AutomationsView }))))
-const SkillsView = memo(lazy(() => import('@/features/skills/SkillsView').then((module) => ({ default: module.SkillsView }))))
-const SettingsView = memo(lazy(() => import('@/features/settings/SettingsView').then((module) => ({ default: module.SettingsView }))))
-const AgentChatRoute = memo(lazy(() => import('@/features/agent-chat/AgentChatRoute').then((module) => ({ default: module.AgentChatRoute }))))
-const LoreWorkspaceTab = memo(lazy(() => import('@/features/lore/LoreWorkspaceTab').then((module) => ({ default: module.LoreWorkspaceTab }))))
-const StableWritingProjectExplorer = memo(WritingProjectExplorer)
-const StableSearchPanel = memo(SearchPanel)
-const StableChapterOutline = memo(ChapterOutline)
-const StableFilePreview = memo(FilePreview)
-const StableMarkdownEditor = memo(MarkdownEditor)
-const StableChangeReviewWorkspace = memo(ChangeReviewWorkspace)
-const StableTabController = memo(TabController)
 const EMPTY_CHAPTERS: ChapterSummary[] = []
 const EMPTY_CHAPTER_PLANS: DocumentPreview[] = []
 const EXTERNAL_CONTENT_CHANGE = { impact: 'content', origin: 'external' } satisfies WorkspaceChangeMetadata
 const EXTERNAL_STRUCTURE_CHANGE = { impact: 'structure', origin: 'external' } satisfies WorkspaceChangeMetadata
-type MainRouteId = 'settings' | 'skills' | 'agents' | 'automations' | 'agentchat' | 'books' | 'interactive' | 'versions' | 'ide-lore' | 'ide-teller' | 'ide-writing'
-const PRESENTED_LAYOUT_BY_ROUTE = {
-  settings: 'full',
-  skills: 'full',
-  agents: 'full',
-  automations: 'full',
-  agentchat: 'full',
-  books: 'full',
-  interactive: 'interactive',
-  versions: 'full',
-  'ide-lore': 'full',
-  'ide-teller': 'full',
-  'ide-writing': 'writing',
-} satisfies Record<MainRouteId, WorkbenchPresentedLayout>
-
 function normalizeReadingFontSize(value: unknown) {
   const parsed = typeof value === 'number' ? value : Number(value)
   if (!Number.isFinite(parsed)) return 18
   return Math.min(28, Math.max(14, Math.round(parsed)))
-}
-
-interface ModeRouterProps {
-  mode: WorkspaceMode
-  booksReturnMode: 'ide' | 'interactive'
-  currentBookName: string
-  workspace: string
-  projectId: string
-  appVersion: string
-  summary: WorkspaceSummary | null
-  currentChapter?: ChapterSummary
-  chapterStats: Record<string, ChapterSummary>
-  isStreaming: boolean
-  sessionTransitionPending?: boolean
-  isExecutionActive: boolean
-  runtimeProjection?: ActiveChatTask | null
-  abortPending?: boolean
-  commandSubmitting?: boolean
-  queueActionPendingCommandID?: string
-  projectVisible: boolean
-  activityBarExpanded: boolean
-  rightPanel: RightPanel
-  settingsOpen: boolean
-  interactiveRightVisible: boolean
-  novaDir: string
-  books: BookRecord[]
-  bookSortMode: BookSortMode
-  tree: FileNode[]
-  loading: boolean
-  selectedFile: string | null
-  fileContent: string
-  fileRevision: string
-  openTabs: Tab[]
-  activeTabKey: string | null
-  sidebarView: 'outline' | 'files' | 'search'
-  editorSearchIntent: { path: string; query: string; line: number; nonce: number } | null
-  saveSignal: number
-  editorAutoSaveEnabled: boolean
-  editorAutoSaveDelayMs: number
-  projectExplorerRefreshSignal: number
-  versionRefreshSignal: number
-  messages: AgentUIMessage[]
-  sessions: SessionSummary[]
-  activeSessionId: string
-  activityContent: string
-  references: string[]
-  loreReferences: string[]
-  loreItems: LoreItem[]
-  styleScenes: string[]
-  textSelections: TextSelection[]
-  chatPlanMode: boolean
-  hasEarlierMessages: boolean
-  isLoadingEarlierHistory: boolean
-  notice?: WorkbenchNotice | null
-  onSetMode: (mode: WorkspaceMode) => void
-  onToggleActivityBarExpanded: () => void
-  onToggleProjectVisible: () => void
-  onSetRightPanel: (panel: RightPanel) => void
-  onToggleSettings: () => void
-  onCloseSettings: () => void
-  onToggleInteractiveRightPanel: () => void
-  onSwitchBook: (path: string) => void
-  onQuickSwitchBook: (path: string) => Promise<boolean>
-  onBeforeWorkspaceSwitch: EditorFlushHandler
-  onBooksChange: () => void | Promise<void>
-  /** Synchronizes a Book created inside Agent Chat without leaving the shared Agent Chat route. */
-  onAgentChatBookCreated: (workspace: string) => void | Promise<void>
-  onOpenCharacterCardImport: () => void
-  onSetSidebarView: (view: 'outline' | 'files' | 'search') => void
-  onSelectSearchResult: (result: WorkspaceSearchResult, query: string) => void | Promise<void>
-  onSelectFile: (path: string) => boolean | void | Promise<boolean | void>
-  onSetChapterConfirmed: (path: string, confirmed: boolean) => void | Promise<void>
-  onReferenceFile: (path: string) => void
-  onCreateItem: (path: string, type: 'file' | 'dir') => Promise<void>
-  onDeleteItem: (path: string) => Promise<void>
-  onRenameItem: (path: string, newName: string) => Promise<void>
-  onCopyItem: (from: string, to: string) => Promise<void>
-  onMoveItem: (from: string, to: string) => Promise<void>
-  onRefreshWorkspace: () => void | Promise<void>
-  onActivateTab: (tab: Tab) => void
-  onCloseTab: (tab: Tab) => void
-  onToggleTabPin: (tab: Tab) => void
-  onMoveTab: (sourceKey: string, targetKey: string) => void
-  onOpenLoreTab: () => Promise<boolean>
-  onSaveCurrentFile: (path: string, content: string, baseRevision: string) => Promise<{ revision?: string }>
-  onEditorFlushHandlerChange: (handler: EditorFlushHandler | null) => void
-  onWorkspaceChanged: (paths: string[], metadata: WorkspaceChangeMetadata) => void | Promise<void>
-  onQuoteSelection: (selection: TextSelection) => void
-  onCreateChatSession: (title?: string) => void | Promise<void>
-  onSwitchChatSession: (id: string) => void | Promise<void>
-  onRenameChatSession: (id: string, title: string) => void | Promise<void>
-  onDeleteChatSession: (id: string) => void | Promise<void>
-  onLoadEarlierHistory: () => void | Promise<void>
-  onRefreshChatHistory: (sessionId?: string) => void | Promise<void>
-  onSend: (message: string, options?: ChatSendOptions) => boolean | Promise<boolean>
-  onAnalyzeContext: (message: string, options?: { writingSkill?: string; ideContext?: { currentFile?: string; openFiles?: string[] }; imagePresetId?: string; tellerId?: string }) => Promise<ContextAnalysis>
-  onStop: () => void
-  onSteerQueuedCommand?: (item: AgentRuntimeQueuedCommand) => boolean | Promise<boolean>
-  onDeleteQueuedCommand?: (item: AgentRuntimeQueuedCommand) => boolean | Promise<boolean>
-  onEditQueuedCommand?: (item: AgentRuntimeQueuedCommand) => string | null | Promise<string | null>
-  onReferenceRemove: (path: string) => void
-  onLoreReferenceAdd: (id: string) => void
-  onLoreReferenceRemove: (id: string) => void
-  onStyleSceneAdd: (scene: string) => void
-  onStyleSceneRemove: (scene: string) => void
-  onTextSelectionRemove: (index: number) => void
-  onChatPlanModeChange: (value: boolean) => void
-  onChatPlanModeToggle: () => void
-  onApproveProposedPlan: (ref: AgentPartRef) => void
-  onExitChatPlanMode: () => void
-  onDismissNotice?: () => void
 }
 
 export function ModeRouter(props: ModeRouterProps) {
@@ -349,10 +200,6 @@ export function ModeRouter(props: ModeRouterProps) {
     openFiles: openTabs.flatMap((tab) => tab.kind === 'file' ? [tab.path] : []),
   }), [openTabs, selectedFile])
   const versionsVisible = rightPanel === 'versions'
-  const agentsVisible = mode === 'agents'
-  const automationsVisible = mode === 'automations'
-  const skillsVisible = mode === 'skills'
-  const agentChatVisible = mode === 'agentchat'
   const ideWorkspacePanel = mode === 'ide' && (rightPanel === 'lore' || rightPanel === 'teller') ? rightPanel : null
   const interactiveSubmode = useInteractiveStore((state) => state.submode)
   const setInteractiveSubmode = useInteractiveStore((state) => state.setSubmode)
@@ -360,7 +207,6 @@ export function ModeRouter(props: ModeRouterProps) {
   const [imagePresets, setImagePresets] = useState<ImagePreset[]>([])
   const [agentSubAgentDetailsOpen, setAgentSubAgentDetailsOpen] = useState(false)
   const [agentChatProjectNavigation, setAgentChatProjectNavigation] = useState<AgentChatProjectNavigationState | null>(null)
-  const [agentPanelHost] = useState(() => createStablePortalHost('h-full min-h-0 w-full min-w-0 overflow-hidden'))
   const [illustrationInsertSignal, setIllustrationInsertSignal] = useState<{ illustration: ChapterIllustration; nonce: number } | null>(null)
   const [outlineRevealRequest, setOutlineRevealRequest] = useState<OutlineRevealRequest | null>(null)
   const loreLibraryFlushHandlerRef = useRef<EditorFlushHandler | null>(null)
@@ -461,12 +307,6 @@ export function ModeRouter(props: ModeRouterProps) {
     }),
   })), [i18n.language, loreItems, t])
   const loreEmpty = Boolean(workspace) && loreItems.length === 0
-  const showSidebarLoading = Boolean(workspace) && (
-    sidebarView === 'files'
-      ? !projectId
-      : sidebarView === 'outline' && loading && tree.length === 0 && !summary
-  )
-
   const selectWorkspacePath = useCallback((path: string) => {
     if (isLoreItemsPath(path)) return onOpenLoreTab()
     return onSelectFile(path)
@@ -673,302 +513,170 @@ export function ModeRouter(props: ModeRouterProps) {
     updateReadingFontFamily,
     updateReadingFontSize,
   ])
-  const visibleMainRoute: MainRouteId = settingsOpen
-    ? 'settings'
-    : skillsVisible
-      ? 'skills'
-      : agentsVisible
-        ? 'agents'
-        : automationsVisible
-          ? 'automations'
-          : agentChatVisible
-            ? 'agentchat'
-            : mode === 'books'
-              ? 'books'
-              : versionsVisible
-                ? 'versions'
-                : mode === 'interactive'
-                  ? 'interactive'
-                  : ideWorkspacePanel
-                    ? `ide-${ideWorkspacePanel}`
-                    : 'ide-writing'
-  // Navigation chrome updates immediately; route work follows at transition priority so a
-  // complex editor or Markdown page cannot hold the selected-menu feedback hostage.
-  const presentedMainRoute = useDeferredValue(visibleMainRoute)
-  const presentedRightPanel = useDeferredValue(rightPanel)
-  const presentedLayout = PRESENTED_LAYOUT_BY_ROUTE[presentedMainRoute]
-  const [mountedRoutes, setMountedRoutes] = useState<ReadonlySet<MainRouteId>>(() => new Set(['ide-writing', visibleMainRoute]))
-  const renderedRoutes = useMemo(() => {
-    if (mountedRoutes.has(presentedMainRoute)) return mountedRoutes
-    return new Set([...mountedRoutes, presentedMainRoute])
-  }, [mountedRoutes, presentedMainRoute])
+  const routeHost = useWorkbenchRouteHost({ mode, rightPanel, settingsOpen })
+  const presentedMainRoute = routeHost.route
+  const presentedRightPanel = routeHost.rightPanel
+  const presentedLayout = routeHost.layout
 
-  useEffect(() => {
-    setMountedRoutes((current) => {
-      if (current.has(visibleMainRoute)) return current
-      const next = new Set(current)
-      next.add(visibleMainRoute)
-      return next
-    })
-  }, [visibleMainRoute])
-
-  // Foreground Writing keeps one stable AgentPanel instance. AgentChat deliberately owns
-  // separate project/session-bound panels, so its tabs can run concurrently without moving
-  // or re-pointing this foreground instance.
-  const agentPanel = (
-    <AgentPanel
-      projectId={projectId}
-      workspace={workspace}
-      active={presentedRightPanel === 'ai' && presentedMainRoute !== 'agentchat'}
-      chrome="panel"
-      composerSettings={composerSettings}
-      currentChapter={currentChapter}
-      selectedFile={selectedFile}
-      tellers={tellers}
-      imagePresets={imagePresets}
-      messages={messages}
-      sessions={sessions}
-      activeSessionId={activeSessionId}
-      isStreaming={isStreaming}
-      sessionTransitionPending={sessionTransitionPending}
-      isExecutionActive={isExecutionActive}
-      runtimeProjection={runtimeProjection}
-      abortPending={abortPending}
-      commandSubmitting={commandSubmitting}
-      queueActionPendingCommandID={queueActionPendingCommandID}
-      activityContent={activityContent}
-      references={references}
-      loreReferences={loreReferences}
-      loreReferenceLabels={loreReferenceLabels}
-      loreSuggestions={loreSuggestions}
-      styleScenes={styleScenes}
-      textSelections={textSelections}
-      planMode={chatPlanMode}
-      hasEarlierMessages={hasEarlierMessages}
-      isLoadingEarlierHistory={isLoadingEarlierHistory}
-      fileSuggestions={fileSuggestions}
-      onCreateSession={onCreateChatSession}
-      onSwitchSession={onSwitchChatSession}
-      onRenameSession={onRenameChatSession}
-      onDeleteSession={onDeleteChatSession}
-      onLoadEarlierHistory={onLoadEarlierHistory}
-      onRefreshHistory={onRefreshChatHistory}
-      onSend={onSend}
-      onAnalyzeContext={onAnalyzeContext}
-      ideContext={ideContext}
-      onStop={onStop}
-      onSteerQueuedCommand={onSteerQueuedCommand}
-      onDeleteQueuedCommand={onDeleteQueuedCommand}
-      onEditQueuedCommand={onEditQueuedCommand}
-      onReferenceRemove={onReferenceRemove}
-      onLoreReferenceAdd={onLoreReferenceAdd}
-      onLoreReferenceRemove={onLoreReferenceRemove}
-      onStyleSceneAdd={onStyleSceneAdd}
-      onStyleSceneRemove={onStyleSceneRemove}
-      onTextSelectionRemove={onTextSelectionRemove}
-      onInsertIllustration={insertIllustrationIntoEditor}
-      onPlanModeChange={onChatPlanModeChange}
-      onPlanModeToggle={onChatPlanModeToggle}
-      onApproveProposedPlan={onApproveProposedPlan}
-      onExitPlanMode={onExitChatPlanMode}
-      reviewFeedback={reviewFeedback}
-      onReviewFeedbackOpen={openActiveReviewFeedback}
-      onReviewFeedbackRemove={removeActiveReviewFeedback}
-      onReviewFeedbackSubmitted={submitActiveReviewFeedback}
-      onReviewFeedbackSubmissionFailed={restoreActiveReviewFeedback}
-      onOpenChangeReview={openAgentChangeReview}
-      onWorkspaceChanged={notifyExternalStructureChange}
-      onClose={closeIdeWorkspacePanel}
-      onSubAgentDetailsChange={setAgentSubAgentDetailsOpen}
-    />
-  )
-  const agentPanelSlot = useMemo(() => (
-    <StablePortalSlot
-      host={agentPanelHost}
-      fallback={null}
-      className="h-full min-h-0 w-full min-w-0 overflow-hidden"
-    />
-  ), [agentPanelHost])
-  const hostedAgentPanel = agentPanelHost ? agentPanelSlot : agentPanel
-  const agentPanelPortal = agentPanelHost ? createPortal(agentPanel, agentPanelHost, 'workbench-agent-panel') : null
-  const rightPanelContent = presentedRightPanel === 'ai' && presentedMainRoute !== 'agentchat' ? hostedAgentPanel : null
+  const writingAgent = useWritingAgentPanel({
+    projectId,
+    workspace,
+    active: presentedRightPanel === 'ai' && presentedMainRoute !== 'agentchat',
+    chrome: 'panel',
+    composerSettings,
+    currentChapter,
+    selectedFile,
+    tellers,
+    imagePresets,
+    messages,
+    sessions,
+    activeSessionId,
+    isStreaming,
+    sessionTransitionPending,
+    isExecutionActive,
+    runtimeProjection,
+    abortPending,
+    commandSubmitting,
+    queueActionPendingCommandID,
+    activityContent,
+    references,
+    loreReferences,
+    loreReferenceLabels,
+    loreSuggestions,
+    styleScenes,
+    textSelections,
+    planMode: chatPlanMode,
+    hasEarlierMessages,
+    isLoadingEarlierHistory,
+    fileSuggestions,
+    onCreateSession: onCreateChatSession,
+    onSwitchSession: onSwitchChatSession,
+    onRenameSession: onRenameChatSession,
+    onDeleteSession: onDeleteChatSession,
+    onLoadEarlierHistory,
+    onRefreshHistory: onRefreshChatHistory,
+    onSend,
+    onAnalyzeContext,
+    ideContext,
+    onStop,
+    onSteerQueuedCommand,
+    onDeleteQueuedCommand,
+    onEditQueuedCommand,
+    onReferenceRemove,
+    onLoreReferenceAdd,
+    onLoreReferenceRemove,
+    onStyleSceneAdd,
+    onStyleSceneRemove,
+    onTextSelectionRemove,
+    onInsertIllustration: insertIllustrationIntoEditor,
+    onPlanModeChange: onChatPlanModeChange,
+    onPlanModeToggle: onChatPlanModeToggle,
+    onApproveProposedPlan,
+    onExitPlanMode: onExitChatPlanMode,
+    reviewFeedback,
+    onReviewFeedbackOpen: openActiveReviewFeedback,
+    onReviewFeedbackRemove: removeActiveReviewFeedback,
+    onReviewFeedbackSubmitted: submitActiveReviewFeedback,
+    onReviewFeedbackSubmissionFailed: restoreActiveReviewFeedback,
+    onOpenChangeReview: openAgentChangeReview,
+    onWorkspaceChanged: notifyExternalStructureChange,
+    onClose: closeIdeWorkspacePanel,
+    onSubAgentDetailsChange: setAgentSubAgentDetailsOpen,
+  })
 
   const sidebar = (
-    <section className="nova-sidebar flex h-full flex-col border-r">
-      <div className="border-b border-[var(--nova-border)] px-3 py-2">
-        <div className="grid grid-cols-3 gap-1">
-          <button
-            type="button"
-            onClick={() => onSetSidebarView('outline')}
-            className={`nova-nav-item h-7 min-w-0 truncate whitespace-nowrap px-1 text-[11px] ${sidebarView === 'outline' ? 'is-active' : 'bg-[var(--nova-surface-2)]'}`}
-          >
-            {t('router.outline')}
-          </button>
-          <button
-            type="button"
-            onClick={() => onSetSidebarView('files')}
-            className={`nova-nav-item h-7 min-w-0 truncate whitespace-nowrap px-1 text-[11px] ${sidebarView === 'files' ? 'is-active' : 'bg-[var(--nova-surface-2)]'}`}
-          >
-            {t('router.files')}
-          </button>
-          <button
-            type="button"
-            onClick={() => onSetSidebarView('search')}
-            className={`nova-nav-item h-7 min-w-0 truncate whitespace-nowrap px-1 text-[11px] ${sidebarView === 'search' ? 'is-active' : 'bg-[var(--nova-surface-2)]'}`}
-          >
-            {t('router.search')}
-          </button>
-        </div>
-      </div>
-      <div className="min-h-0 flex-1 text-xs">
-        {showSidebarLoading ? (
-          <LoadingState label={t('router.loading')} variant="panel" className="h-full min-h-0" />
-        ) : sidebarView === 'outline' ? (
-          <StableChapterOutline
-            projectId={projectId}
-            tree={tree}
-            chapters={chapters}
-            ideas={summary?.ideas}
-            outline={summary?.outline}
-            chapterPlans={summary?.chapter_plans ?? EMPTY_CHAPTER_PLANS}
-            selectedFile={selectedFile}
-            loreTabActive={activeTab?.kind === 'lore'}
-            revealRequest={outlineRevealRequest}
-            onSelectFile={selectOutlineFile}
-            onOpenLoreTab={onOpenLoreTab}
-            onReferenceFile={onReferenceFile}
-            onRevealFile={revealFileInProject}
-            onRenameItem={onRenameItem}
-            onDeleteItem={onDeleteItem}
-            onRequestBookSettingCreate={requestBookSettingCreate}
-            onSetChapterConfirmed={onSetChapterConfirmed}
-          />
-        ) : (
-          <div className="h-full min-h-0">
-            {sidebarView === 'search' ? (
-              <div className="h-full overflow-y-auto p-2">
-                <StableSearchPanel
-                  projectId={projectId}
-                  onSelectResult={selectWorkspaceSearchResult}
-                  onBeforeReplace={flushBeforeWorkspaceSwitch}
-                  onWorkspaceChanged={notifyExternalContentChange}
-                />
-              </div>
-            ) : !projectId ? (
-              <LoadingState label={t('router.loading')} variant="panel" className="h-full min-h-0" />
-            ) : (
-              <StableWritingProjectExplorer
-                key={projectId}
-                projectId={projectId}
-                workspace={workspace}
-                selectedPath={selectedFile}
-                chapterStats={chapterStats}
-                structureRefreshSignal={projectExplorerRefreshSignal}
-                onSelectFile={selectWorkspacePath}
-                onReferenceFile={onReferenceFile}
-                onCreateItem={onCreateItem}
-                onDeleteItem={onDeleteItem}
-                onRenameItem={onRenameItem}
-                onCopyItem={onCopyItem}
-                onMoveItem={onMoveItem}
-                onRefreshWorkspace={onRefreshWorkspace}
-              />
-            )}
-          </div>
-        )}
-      </div>
-    </section>
+    <WritingSidebar
+      sidebarView={sidebarView}
+      loading={loading}
+      projectId={projectId}
+      workspace={workspace}
+      tree={tree}
+      chapters={chapters}
+      summaryAvailable={Boolean(summary)}
+      ideas={summary?.ideas}
+      outline={summary?.outline}
+      chapterPlans={summary?.chapter_plans ?? EMPTY_CHAPTER_PLANS}
+      selectedFile={selectedFile}
+      loreTabActive={activeTab?.kind === 'lore'}
+      revealRequest={outlineRevealRequest}
+      chapterStats={chapterStats}
+      projectExplorerRefreshSignal={projectExplorerRefreshSignal}
+      onSetSidebarView={onSetSidebarView}
+      onSelectOutlineFile={selectOutlineFile}
+      onOpenLoreTab={onOpenLoreTab}
+      onReferenceFile={onReferenceFile}
+      onRevealFile={revealFileInProject}
+      onRenameItem={onRenameItem}
+      onDeleteItem={onDeleteItem}
+      onRequestBookSettingCreate={requestBookSettingCreate}
+      onSetChapterConfirmed={onSetChapterConfirmed}
+      onSelectSearchResult={selectWorkspaceSearchResult}
+      onBeforeReplace={flushBeforeWorkspaceSwitch}
+      onExternalContentChange={notifyExternalContentChange}
+      onSelectFile={selectWorkspacePath}
+      onCreateItem={onCreateItem}
+      onCopyItem={onCopyItem}
+      onMoveItem={onMoveItem}
+      onRefreshWorkspace={onRefreshWorkspace}
+    />
   )
 
   const main = (
     <main className="relative h-full min-w-0 overflow-hidden bg-[var(--nova-bg)]">
-      <MainRouteLayer visible={presentedMainRoute === 'ide-writing'} loadingLabel={t('router.loading')}>
-        {activeReviewThreadID ? (
-          <StableChangeReviewWorkspace
-            projectId={projectId}
-            threadID={activeReviewThreadID}
-            scopeRequest={activeReviewRequest}
-            disabled={isStreaming}
-            selectedPath={selectedFile}
-            agentVisible={aiVisible}
-            onToggleAgent={toggleAgent}
-            onClose={closeChangeReview}
-            onOpenFile={openReviewFile}
-            onWorkspaceChanged={notifyExternalStructureChange}
-            onFeedbackCommentsChange={selectReviewFeedback}
-            hiddenCommentIDs={submittedReviewCommentIDs}
-          />
-        ) : (
-          <>
-            <StableTabController
-              tabs={openTabs}
-              activeTabKey={activeTabKey}
-              summary={summary}
-              actions={writingInfoActions}
-              onActivateTab={onActivateTab}
-              onCloseTab={onCloseTab}
-              onTogglePin={onToggleTabPin}
-              onMoveTab={onMoveTab}
-            />
-            <div className="flex min-h-0 flex-1 flex-col">
-              {activeTab ? (
-                activeTab.kind === 'lore' ? (
-                  <LoreWorkspaceTab
-                    projectId={projectId}
-                    documentReview={documentReviewController}
-                    navigationIntent={documentReviewNavigationTarget?.target.kind === 'lore_item' ? documentReviewNavigationTarget : null}
-                    onEditorFlushHandlerChange={onEditorFlushHandlerChange}
-                    onOpenLibrary={openLoreLibrary}
-                    onReferenceItem={referenceLoreFromWorkspace}
-                  />
-                ) : activeFileKind === 'image' || activeFileKind === 'json' || activeFileKind === 'jsonl' ? (
-                  <StableFilePreview projectId={projectId} path={selectedFile || activeTab.path} content={fileContent} revision={fileRevision} />
-                ) : (
-                  <StableMarkdownEditor
-                    projectId={projectId}
-                    fileName={selectedFile}
-                    content={fileContent}
-                    revision={fileRevision}
-                    onSave={onSaveCurrentFile}
-                    onQuoteSelection={onQuoteSelection}
-                    saveSignal={saveSignal}
-                    autoSaveEnabled={editorAutoSaveEnabled}
-                    autoSaveDelayMs={editorAutoSaveDelayMs}
-                    chapterSummary={currentChapter}
-                    onRevealChapter={revealCurrentChapterInOutline}
-                    searchIntent={editorSearchIntent?.path === selectedFile ? editorSearchIntent : null}
-                    onGenerateIllustration={requestChapterIllustration}
-                    generateIllustrationDisabled={isStreaming || !currentChapter}
-                    illustrationInsertSignal={illustrationInsertSignal}
-                    onLineChange={setEditorLine}
-                    onFlushHandlerChange={onEditorFlushHandlerChange}
-                    documentReview={documentReviewController}
-                    documentReviewNavigationIntent={documentReviewNavigationTarget?.target.kind === 'workspace_file' && documentReviewNavigationTarget.target.id === selectedFile ? documentReviewNavigationTarget : null}
-                    readingTypography={readingTypography}
-                  />
-                )
-              ) : (
-                loreEmpty ? (
-                  <EmptyLoreGuide
-                    emptyText={t('router.chooseFile')}
-                    title={t('loreInit.ideTitle')}
-                    description={t('loreInit.ideDescription')}
-                    action={t('loreInit.ideAction')}
-                    onClick={requestWritingInit}
-                  />
-                ) : (
-                  <div className="flex h-full items-center justify-center text-xs text-[var(--nova-text-muted)]">
-                    {t('router.chooseFile')}
-                  </div>
-                )
-              )}
-            </div>
-          </>
-        )}
-      </MainRouteLayer>
+      <WritingMainRoute
+        visible={presentedMainRoute === 'ide-writing'}
+        loadingLabel={t('router.loading')}
+        projectId={projectId}
+        activeReviewThreadID={activeReviewThreadID}
+        activeReviewRequest={activeReviewRequest}
+        submittedReviewCommentIDs={submittedReviewCommentIDs}
+        isStreaming={isStreaming}
+        selectedFile={selectedFile}
+        agentVisible={aiVisible}
+        tabs={openTabs}
+        activeTabKey={activeTabKey}
+        activeTab={activeTab}
+        summary={summary}
+        tabActions={writingInfoActions}
+        activeFileKind={activeFileKind}
+        fileContent={fileContent}
+        fileRevision={fileRevision}
+        saveSignal={saveSignal}
+        editorAutoSaveEnabled={editorAutoSaveEnabled}
+        editorAutoSaveDelayMs={editorAutoSaveDelayMs}
+        currentChapter={currentChapter}
+        editorSearchIntent={editorSearchIntent?.path === selectedFile ? editorSearchIntent : null}
+        illustrationInsertSignal={illustrationInsertSignal}
+        documentReview={documentReviewController}
+        documentReviewNavigationTarget={documentReviewNavigationTarget}
+        readingTypography={readingTypography}
+        loreEmpty={loreEmpty}
+        onToggleAgent={toggleAgent}
+        onCloseReview={closeChangeReview}
+        onOpenReviewFile={openReviewFile}
+        onWorkspaceChanged={notifyExternalStructureChange}
+        onFeedbackCommentsChange={selectReviewFeedback}
+        onActivateTab={onActivateTab}
+        onCloseTab={onCloseTab}
+        onToggleTabPin={onToggleTabPin}
+        onMoveTab={onMoveTab}
+        onEditorFlushHandlerChange={onEditorFlushHandlerChange}
+        onOpenLoreLibrary={openLoreLibrary}
+        onReferenceLoreItem={referenceLoreFromWorkspace}
+        onSaveCurrentFile={onSaveCurrentFile}
+        onQuoteSelection={onQuoteSelection}
+        onRevealChapter={revealCurrentChapterInOutline}
+        onGenerateIllustration={requestChapterIllustration}
+        onEditorLineChange={setEditorLine}
+        emptyText={t('router.chooseFile')}
+        emptyLoreTitle={t('loreInit.ideTitle')}
+        emptyLoreDescription={t('loreInit.ideDescription')}
+        emptyLoreAction={t('loreInit.ideAction')}
+        onRequestWritingInit={requestWritingInit}
+      />
 
-      {renderedRoutes.has('interactive') && (
-        <MainRouteLayer visible={presentedMainRoute === 'interactive'} loadingLabel={t('router.loading')}>
+      {routeHost.isMounted('interactive') && (
+        <WorkbenchRouteLayer visible={presentedMainRoute === 'interactive'} loadingLabel={t('router.loading')}>
           <InteractiveLayout
             projectId={projectId}
             workspace={workspace}
@@ -983,11 +691,11 @@ export function ModeRouter(props: ModeRouterProps) {
             rightPanelVisible={interactiveRightVisible}
             onToggleRightPanel={onToggleInteractiveRightPanel}
           />
-        </MainRouteLayer>
+        </WorkbenchRouteLayer>
       )}
 
-      {renderedRoutes.has('versions') && (
-        <MainRouteLayer visible={presentedMainRoute === 'versions'} loadingLabel={t('router.loading')}>
+      {routeHost.isMounted('versions') && (
+        <WorkbenchRouteLayer visible={presentedMainRoute === 'versions'} loadingLabel={t('router.loading')}>
           <VersionPanel
             projectId={projectId}
             workspace={workspace}
@@ -995,10 +703,10 @@ export function ModeRouter(props: ModeRouterProps) {
             visible={versionsVisible}
             onClose={closeIdeWorkspacePanel}
           />
-        </MainRouteLayer>
+        </WorkbenchRouteLayer>
       )}
-      {renderedRoutes.has('ide-lore') && (
-        <MainRouteLayer visible={presentedMainRoute === 'ide-lore'} loadingLabel={t('router.loading')}>
+      {routeHost.isMounted('ide-lore') && (
+        <WorkbenchRouteLayer visible={presentedMainRoute === 'ide-lore'} loadingLabel={t('router.loading')}>
           <SettingPanel
             mode="lore"
             projectId={projectId}
@@ -1007,79 +715,46 @@ export function ModeRouter(props: ModeRouterProps) {
             onClose={closeIdeWorkspacePanel}
             onFlushHandlerChange={handleLoreLibraryFlushHandlerChange}
           />
-        </MainRouteLayer>
+        </WorkbenchRouteLayer>
       )}
-      {renderedRoutes.has('ide-teller') && (
-        <MainRouteLayer visible={presentedMainRoute === 'ide-teller'} loadingLabel={t('router.loading')}>
+      {routeHost.isMounted('ide-teller') && (
+        <WorkbenchRouteLayer visible={presentedMainRoute === 'ide-teller'} loadingLabel={t('router.loading')}>
           <SettingPanel projectId={projectId} mode="teller" presetUsageMode="writing" tellers={tellers} imagePresets={imagePresets} onTellersChange={setTellers} onImagePresetsChange={setImagePresets} onClose={closeIdeWorkspacePanel} />
-        </MainRouteLayer>
+        </WorkbenchRouteLayer>
       )}
 
-      {renderedRoutes.has('books') && (
-        <MainRouteLayer visible={presentedMainRoute === 'books'} loadingLabel={t('router.loading')}>
-          <HomeView
-            workspace={workspace}
-            novaDir={novaDir}
-            books={books}
-            bookSortMode={bookSortMode}
-            onSwitch={onSwitchBook}
-            onBeforeSwitch={flushBeforeWorkspaceSwitch}
-            onBooksChange={onBooksChange}
-            onOpenCharacterCardImport={onOpenCharacterCardImport}
-            onClose={closeBooks}
-          />
-        </MainRouteLayer>
-      )}
-      {renderedRoutes.has('skills') && (
-        <MainRouteLayer visible={presentedMainRoute === 'skills'} loadingLabel={t('router.loading')}>
-          <SkillsView target={resourceTarget} onClose={returnToContentMode} />
-        </MainRouteLayer>
-      )}
-      {renderedRoutes.has('agents') && (
-        <MainRouteLayer visible={presentedMainRoute === 'agents'} loadingLabel={t('router.loading')}>
-          <AgentsView target={resourceTarget} onClose={returnToContentMode} />
-        </MainRouteLayer>
-      )}
-      {renderedRoutes.has('automations') && (
-        <MainRouteLayer visible={presentedMainRoute === 'automations'} loadingLabel={t('router.loading')}>
-          <AutomationsView
-            projectId={projectId}
-            workspace={workspace}
-            onOpenAgentChat={openAgentChatRoute}
-            onClose={returnToContentMode}
-          />
-        </MainRouteLayer>
-      )}
-      {renderedRoutes.has('agentchat') && (
-        <RetainedMainRouteLayer
-          visible={presentedMainRoute === 'agentchat'}
-          loadingLabel={t('router.loading')}
-          retentionKey={workspace}
-        >
-          <AgentChatRoute
-            projectId={projectId}
-            novaDir={novaDir}
-            composerSettings={composerSettings}
-            tellers={tellers}
-            imagePresets={imagePresets}
-            autoSaveEnabled={editorAutoSaveEnabled}
-            autoSaveDelayMs={editorAutoSaveDelayMs}
-            onTellersChange={setTellers}
-            onImagePresetsChange={setImagePresets}
-            onBeforeCreateBook={flushBeforeWorkspaceSwitch}
-            onBookCreated={onAgentChatBookCreated}
-            onBooksChange={onBooksChange}
-            onFlushHandlerChange={handleAgentChatFlushHandlerChange}
-            onProjectNavigationChange={setAgentChatProjectNavigation}
-            onWorkspaceChanged={onWorkspaceChanged}
-          />
-        </RetainedMainRouteLayer>
-      )}
-      {renderedRoutes.has('settings') && (
-        <MainRouteLayer visible={presentedMainRoute === 'settings'} loadingLabel={t('router.loading')}>
-          <SettingsView onClose={onCloseSettings} />
-        </MainRouteLayer>
-      )}
+      <SharedWorkbenchRoutes
+        route={presentedMainRoute}
+        isMounted={routeHost.isMounted}
+        loadingLabel={t('router.loading')}
+        home={{ workspace, novaDir, books, bookSortMode, onSwitch: onSwitchBook,
+          onBeforeSwitch: flushBeforeWorkspaceSwitch, onBooksChange, onOpenCharacterCardImport, onClose: closeBooks }}
+        automations={{ projectId, workspace, onOpenAgentChat: openAgentChatRoute, onClose: returnToContentMode }}
+        resourceTarget={resourceTarget}
+        onReturnToContentMode={returnToContentMode}
+        onCloseSettings={onCloseSettings}
+      />
+      <AgentChatWorkbenchRoute
+        mounted={routeHost.isMounted('agentchat')}
+        visible={presentedMainRoute === 'agentchat'}
+        loadingLabel={t('router.loading')}
+        retentionKey={workspace}
+        projectId={projectId}
+        novaDir={novaDir}
+        composerSettings={composerSettings}
+        tellers={tellers}
+        imagePresets={imagePresets}
+        autoSaveEnabled={editorAutoSaveEnabled}
+        autoSaveDelayMs={editorAutoSaveDelayMs}
+        onTellersChange={setTellers}
+        onImagePresetsChange={setImagePresets}
+        onBeforeCreateBook={flushBeforeWorkspaceSwitch}
+        onBookCreated={onAgentChatBookCreated}
+        onBooksChange={onBooksChange}
+        onFlushHandlerChange={handleAgentChatFlushHandlerChange}
+        onProjectNavigationChange={setAgentChatProjectNavigation}
+        onWorkspaceChanged={onWorkspaceChanged}
+      />
     </main>
   )
 
@@ -1107,7 +782,7 @@ export function ModeRouter(props: ModeRouterProps) {
       interactiveSubmode={interactiveSubmode}
       sidebar={sidebar}
       main={main}
-      rightPanelContent={rightPanelContent}
+      rightPanelContent={writingAgent.content}
       agentChatProjectNavigation={agentChatProjectNavigation}
       notice={notice}
       onSetMode={onSetMode}
@@ -1119,111 +794,7 @@ export function ModeRouter(props: ModeRouterProps) {
       onQuickSwitchBook={quickSwitchBook}
       onDismissNotice={onDismissNotice}
     />
-    {agentPanelPortal}
+    {writingAgent.portal}
     </>
-  )
-}
-
-interface MainRouteLayerProps {
-  visible: boolean
-  loadingLabel: string
-  children: ReactNode
-  /** Hidden retained routes must refresh immediately when their resource owner changes. */
-  retentionKey?: string
-}
-
-function MainRouteLayer({ visible, loadingLabel, children }: MainRouteLayerProps) {
-  return (
-    <section hidden={!visible} aria-hidden={!visible} className="absolute inset-0 flex min-h-0 flex-col">
-      <Suspense fallback={<LoadingState label={loadingLabel} className="h-full min-h-0" />}>
-        {children}
-      </Suspense>
-    </section>
-  )
-}
-
-/**
- * Keeps route state and effects alive while preventing unrelated foreground renders from
- * reconciling a large hidden subtree. The latest children are applied as soon as it is shown.
- */
-const RetainedMainRouteLayer = memo(MainRouteLayer, (previous, next) => (
-  !previous.visible
-  && !next.visible
-  && previous.retentionKey === next.retentionKey
-  && previous.loadingLabel === next.loadingLabel
-))
-
-function IdeWritingInfoActions({
-  projectVisible,
-  aiVisible,
-  onToggleProjectVisible,
-  onToggleAgent,
-}: {
-  projectVisible: boolean
-  aiVisible: boolean
-  onToggleProjectVisible: () => void
-  onToggleAgent: () => void
-}) {
-  const { t } = useTranslation()
-  const ProjectIcon = projectVisible ? PanelLeftClose : PanelLeftOpen
-  const AgentIcon = aiVisible ? PanelRightClose : PanelRightOpen
-  const projectLabel = projectVisible ? t('router.hideOutline') : t('router.showOutline')
-  const agentLabel = aiVisible ? t('router.hideAgent') : t('router.showAgent')
-
-  return (
-    <>
-      <button
-        type="button"
-        onClick={onToggleProjectVisible}
-        aria-label={projectLabel}
-        aria-pressed={projectVisible}
-        className={`nova-nav-item flex h-7 w-7 items-center justify-center ${projectVisible ? 'is-active' : ''}`}
-      >
-        <ProjectIcon className="h-3.5 w-3.5" />
-      </button>
-      <button
-        type="button"
-        onClick={onToggleAgent}
-        aria-label={agentLabel}
-        aria-pressed={aiVisible}
-        className={`nova-nav-item flex h-7 w-7 items-center justify-center ${aiVisible ? 'is-active' : ''}`}
-      >
-        <AgentIcon className="h-3.5 w-3.5" />
-      </button>
-    </>
-  )
-}
-
-function EmptyLoreGuide({
-  emptyText,
-  title,
-  description,
-  action,
-  onClick,
-}: {
-  emptyText: string
-  title: string
-  description: string
-  action: string
-  onClick: () => void
-}) {
-  return (
-    <div className="flex h-full items-center justify-center px-6 text-center">
-      <div className="flex max-w-md flex-col items-center gap-3 rounded-[var(--nova-radius)] border border-dashed border-[var(--nova-border)] bg-[var(--nova-surface)] px-6 py-5 shadow-[inset_0_1px_0_rgba(255,255,255,0.03)]">
-        <Sparkles className="h-4 w-4 text-[var(--nova-text-muted)]" />
-        <div className="space-y-1">
-          <div className="text-xs text-[var(--nova-text-faint)]">{emptyText}</div>
-          <div className="text-sm font-medium text-[var(--nova-text)]">{title}</div>
-          <div className="text-xs leading-5 text-[var(--nova-text-faint)]">{description}</div>
-        </div>
-        <button
-          type="button"
-          className="nova-nav-item rounded-[var(--nova-radius)] border border-[var(--nova-border)] bg-[var(--nova-surface-2)] px-3 py-1.5 text-xs text-[var(--nova-text-muted)] hover:text-[var(--nova-text)]"
-          onClick={onClick}
-        >
-          {action}
-        </button>
-      </div>
-    </div>
   )
 }

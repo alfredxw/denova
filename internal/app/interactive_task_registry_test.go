@@ -3,7 +3,7 @@ package app
 import (
 	"context"
 	agentcontext "denova/internal/agents/context"
-	agentharness "denova/internal/agents/harness"
+	agentexecution "denova/internal/agents/execution"
 	apptask "denova/internal/app/task"
 	"errors"
 	"os"
@@ -122,7 +122,7 @@ func TestInteractiveInitialStartColdReplayBuildsBoundedTaskWithoutGameCycle(t *t
 		t.Fatal(err)
 	}
 	chatModel := &interactiveReplayModel{message: agents.AssistantMessage("持久化回答", nil)}
-	accepted, err := first.chatService.StartWithOptions(
+	accepted, err := startExecutionCycle(first.executionRuntime,
 		context.Background(), newInteractiveReplayRunner(t, chatModel), &interactiveReplayConversation{},
 		first.bookService, identity.chatRequest, identity.options("seed-display-task"), nil,
 	)
@@ -143,7 +143,7 @@ func TestInteractiveInitialStartColdReplayBuildsBoundedTaskWithoutGameCycle(t *t
 		first.Close()
 		t.Fatal(err)
 	}
-	newer, err := first.chatService.StartWithOptions(
+	newer, err := startExecutionCycle(first.executionRuntime,
 		context.Background(), newInteractiveReplayRunner(t, chatModel), &interactiveReplayConversation{},
 		first.bookService, newerIdentity.chatRequest, newerIdentity.options("newer-display-task"), nil,
 	)
@@ -259,10 +259,10 @@ func TestInteractiveInitialStartColdInterruptedReplayDoesNotRunGameCycle(t *test
 	if !projected {
 		t.Fatal("cold Game runtime projection unavailable")
 	}
-	actions := agentharness.RuntimeRecoveryActions(status)
+	actions := agentexecution.RuntimeRecoveryActions(status)
 	if status.Phase != agentrun.RunPhaseRunning || !status.RecoveryPaused || len(actions) != 2 ||
-		actions[0].Kind != agentharness.RuntimeRecoveryAttach || actions[0].CommandID != "game-cold-interrupted" ||
-		actions[1].Kind != agentharness.RuntimeRecoveryAbort {
+		actions[0].Kind != agentexecution.RuntimeRecoveryAttach || actions[0].CommandID != "game-cold-interrupted" ||
+		actions[1].Kind != agentexecution.RuntimeRecoveryAbort {
 		t.Fatalf("cold Game recovery actions = %#v status=%#v", actions, status)
 	}
 	result, err := reopened.RecoverInteractiveAgent(context.Background(), AgentRuntimeRecoveryRequest{
@@ -305,7 +305,7 @@ func TestInteractiveInitialStartColdInterruptedReplayDoesNotRunGameCycle(t *test
 		t.Fatalf("accepted player input was not independently durable: %#v", snapshot.PendingPlayerInputs)
 	}
 	status, projected = reopened.InteractiveAgentRuntimeProjection(context.Background(), story.ID, "main")
-	if !projected || status.Phase != agentrun.RunPhaseIdle || status.LastOperation == nil || status.LastOperation.Status != agentrun.OperationAborted || len(agentharness.RuntimeRecoveryActions(status)) != 0 {
+	if !projected || status.Phase != agentrun.RunPhaseIdle || status.LastOperation == nil || status.LastOperation.Status != agentrun.OperationAborted || len(agentexecution.RuntimeRecoveryActions(status)) != 0 {
 		t.Fatalf("cold Game abort terminal projection = %#v projected=%t", status, projected)
 	}
 }
@@ -330,7 +330,7 @@ func runInteractiveCrashSeed(t *testing.T) {
 	}
 	vanished := make(chan struct{})
 	conversation := &interactiveCrashConversation{vanished: vanished}
-	if _, err := application.chatService.StartWithOptions(
+	if _, err := startExecutionCycle(application.executionRuntime,
 		context.Background(), newInteractiveReplayRunner(t, &interactiveReplayModel{message: agents.AssistantMessage("must not run", nil)}),
 		conversation, application.bookService, identity.chatRequest, identity.options("crashed-display-task"), nil,
 	); err != nil {

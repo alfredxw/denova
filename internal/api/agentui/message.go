@@ -16,7 +16,6 @@ const (
 	DataTypeContextCompaction = "data-agent-context-compaction"
 	DataTypeError             = "data-agent-error"
 	DataTypeInteractiveImage  = "data-agent-interactive-image"
-	DataTypePlanQuestion      = "data-agent-plan-question"
 	DataTypeProposedPlan      = "data-agent-proposed-plan"
 	DataTypeRuleRoll          = "data-agent-rule-roll"
 	DataTypeSystem            = "data-agent-system"
@@ -109,8 +108,6 @@ func messageFromHistoryEntry(entry appsvc.AgentSessionHistoryEntry, index int) (
 		return assistantDataMessage(entry, index, DataTypeContextCompaction, entryPayload(entry)), true
 	case "token_usage":
 		return assistantDataMessage(entry, index, DataTypeTokenUsage, entryPayload(entry)), true
-	case "plan_question":
-		return assistantDataMessage(entry, index, DataTypePlanQuestion, entryPayload(entry)), true
 	case "proposed_plan":
 		return assistantDataMessage(entry, index, DataTypeProposedPlan, entryPayload(entry)), true
 	case "system":

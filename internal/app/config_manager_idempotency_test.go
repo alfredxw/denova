@@ -4,7 +4,7 @@ import (
 	"context"
 	agentchat "denova/internal/agents/chat"
 	agentcontext "denova/internal/agents/context"
-	agentharness "denova/internal/agents/harness"
+	agentexecution "denova/internal/agents/execution"
 	apptask "denova/internal/app/task"
 	"errors"
 	"path/filepath"
@@ -114,9 +114,9 @@ func TestConfigManagerReplayCapacityRejectsBeforeRuntimeAdmission(t *testing.T) 
 	}
 	application.mu.RLock()
 	workspace := application.workspace
-	chatService := application.chatService
+	executionRuntime := application.executionRuntime
 	application.mu.RUnlock()
-	status, err := chatService.RuntimeStatusProjection(context.Background(), agentrun.Options{
+	status, err := executionRuntime.RuntimeStatusProjection(context.Background(), agentrun.Options{
 		AgentKind: agentrun.AgentKindConfigManager, SessionID: sessionID,
 		Workspace: workspace, Mode: "config_manager",
 	})
@@ -134,7 +134,7 @@ func TestConfigManagerOlderSettledStartColdReplayWithoutModel(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	service, err := agentharness.NewDurableService(context.Background(), root)
+	service, err := agentexecution.NewDurableRuntime(context.Background(), root)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -161,7 +161,7 @@ func TestConfigManagerOlderSettledStartColdReplayWithoutModel(t *testing.T) {
 			CommandID: requests[index].CommandID,
 			Message:   configmanagerapp.BuildMessage(requests[index]),
 		}
-		outcome := service.RunWithOptions(
+		outcome := runExecutionCycle(service,
 			context.Background(), newConfigManagerColdReplayRunner(t, answers[index]),
 			configManagerColdReplayConversation{}, nil, chatRequest, options, nil,
 		)

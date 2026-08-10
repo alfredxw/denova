@@ -28,7 +28,7 @@ func TestAutomationAbortReplaysPersistedReceiptAfterRestart(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	taskDef, err := application.CreateAutomation(automation.Task{
+	taskDef, err := application.CreateAutomation(automation.TaskDefinition{
 		Scope: automation.ScopeWorkspace, Name: "abort replay", Template: automation.TemplateReview,
 	})
 	if err != nil {

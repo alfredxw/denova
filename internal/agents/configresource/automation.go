@@ -62,7 +62,7 @@ func newAutomationResource(novaDir, projectID, workspace, projectStateDir string
 				if strings.TrimSpace(value.Target.Kind) != target.Kind {
 					return nil, fmt.Errorf("automation target kind %q does not match %s scope", value.Target.Kind, scope)
 				}
-				input := value.newTask()
+				input := value.newDefinition()
 				// Scope and workspace identity are host-owned. A model-supplied
 				// target.workspace is display input only and never selects a path.
 				input.Scope = scope

@@ -1,63 +1,10 @@
 import { describe, expect, it } from 'vitest'
 import {
   formatApprovedPlanExecutionMessage,
-  parsePlanQuestionSet,
   planDisplayContent,
 } from './plan-mode'
 
 describe('plan-mode helpers', () => {
-  it('解析旧版问题卡 JSON 供历史记录展示', () => {
-    const parsed = parsePlanQuestionSet(JSON.stringify({
-      questions: [{
-        id: 'scope',
-        type: 'multi',
-        question: '实现范围？',
-        options: [
-          { id: 'chat', label: 'IDE Chat', recommended: true },
-          { id: 'interactive', label: '互动模式', recommended: true },
-        ],
-      }],
-    }))
-
-    expect(parsed?.questions[0]).toMatchObject({ id: 'scope', type: 'multi', question: '实现范围？' })
-    expect(parsed?.questions[0].options).toEqual([
-      expect.objectContaining({ id: 'chat', label: 'IDE Chat', recommended: true }),
-      expect.objectContaining({ id: 'interactive', label: '互动模式', recommended: true }),
-    ])
-  })
-
-  it('非法问题 JSON 返回 null', () => {
-    expect(parsePlanQuestionSet('{broken')).toBeNull()
-    expect(parsePlanQuestionSet('{"questions":[]}')).toBeNull()
-  })
-
-  it('保留旧版卡片中的多个问题', () => {
-    const parsed = parsePlanQuestionSet(JSON.stringify({
-      questions: [
-        {
-          id: 'scope',
-          question: '先确认范围？',
-          options: [
-            { id: 'chat', label: '仅写作 Chat', recommended: true },
-            { id: 'all', label: '全部模式' },
-          ],
-        },
-        {
-          id: 'style',
-          question: '再确认交互样式？',
-          options: [
-            { id: 'one', label: '逐题' },
-            { id: 'batch', label: '批量' },
-          ],
-        },
-      ],
-    }))
-
-    expect(parsed?.questions).toHaveLength(2)
-    expect(parsed?.questions[0].id).toBe('scope')
-    expect(parsed?.questions[1].id).toBe('style')
-  })
-
   it('完整展示计划卡但限制确认执行上下文长度', () => {
     const longPlan = '计划'.repeat(9000)
     const display = planDisplayContent(longPlan)

@@ -3,7 +3,7 @@ package configmanager
 import (
 	"context"
 	agentconversation "denova/internal/agents/conversation"
-	agentharness "denova/internal/agents/harness"
+	agentexecution "denova/internal/agents/execution"
 	apptask "denova/internal/app/task"
 	"errors"
 	"fmt"
@@ -53,7 +53,7 @@ func (service *Service) ActiveView(ctx context.Context, request Request) ActiveV
 	}
 	projectID := runtime.ProjectID
 	workspace := strings.TrimSpace(runtime.Workspace)
-	if workspace == "" || runtime.ChatService == nil {
+	if workspace == "" || runtime.ExecutionRuntime == nil {
 		return ActiveView{}
 	}
 	operation, err := service.host.AcquireProjectOperation(ctx, projectID)
@@ -63,7 +63,7 @@ func (service *Service) ActiveView(ctx context.Context, request Request) ActiveV
 	defer operation.Release()
 
 	runtimeSnapshot, projected := projectRuntime(
-		operation.Context(), runtime.ChatService, runOptions(projectID, workspace, runtime.Config.ProjectStateDir, sessionID),
+		operation.Context(), runtime.ExecutionRuntime, runOptions(projectID, workspace, runtime.Config.ProjectStateDir, sessionID),
 	)
 	record, recoverySelected := selectDisplayRecord(
 		latestStartTask(&service.starts, projectID, sessionID),
@@ -123,7 +123,7 @@ func (service *Service) DisplayTask(ctx context.Context, request Request, taskID
 	}
 	projectID := runtime.ProjectID
 	workspace := strings.TrimSpace(runtime.Workspace)
-	if workspace == "" || runtime.ChatService == nil {
+	if workspace == "" || runtime.ExecutionRuntime == nil {
 		return nil
 	}
 	operation, err := service.host.AcquireProjectOperation(ctx, projectID)
@@ -132,7 +132,7 @@ func (service *Service) DisplayTask(ctx context.Context, request Request, taskID
 	}
 	defer operation.Release()
 	runtimeSnapshot, projected := projectRuntime(
-		operation.Context(), runtime.ChatService, runOptions(projectID, workspace, runtime.Config.ProjectStateDir, sessionID),
+		operation.Context(), runtime.ExecutionRuntime, runOptions(projectID, workspace, runtime.Config.ProjectStateDir, sessionID),
 	)
 	if !projected {
 		return nil
@@ -185,7 +185,7 @@ func projectRuntime(
 }
 
 func logProjectionError(options agentrun.Options, err error) {
-	if errors.Is(err, agentharness.ErrRuntimeProjectionUnavailable) {
+	if errors.Is(err, agentexecution.ErrRuntimeProjectionUnavailable) {
 		return
 	}
 	slog.WarnContext(context.Background(), fmt.Sprintf("[config-manager-runtime] projection unavailable workspace=%s session_id=%s err=%v", options.Workspace, options.SessionID, err))
@@ -290,7 +290,7 @@ func (service *Service) ClearContext(ctx context.Context, request Request) error
 			return err
 		}
 	}
-	if err := appagentruntime.CloseBindings(runtime.ChatService, func(chat *agentharness.Service) error {
+	if err := appagentruntime.CloseBindings(runtime.ExecutionRuntime, func(chat *agentexecution.Runtime) error {
 		return chat.CloseSessionBindings(operation.Context(), agentrun.AgentKindConfigManager, workspace, sessionID)
 	}); err != nil {
 		return err
@@ -327,7 +327,7 @@ func (service *Service) Recover(
 	}
 	projectID := runtime.ProjectID
 	workspace := strings.TrimSpace(runtime.Workspace)
-	if workspace == "" || runtime.ChatService == nil || runtime.SessionStore == nil {
+	if workspace == "" || runtime.ExecutionRuntime == nil || runtime.SessionStore == nil {
 		return appagentruntime.RecoveryResult{}, appagentruntime.ErrNoWorkspace
 	}
 	operation, err := service.host.AcquireProjectOperation(ctx, projectID)
@@ -360,7 +360,7 @@ func (service *Service) Recover(
 	}
 
 	options := runOptions(projectID, workspace, runtime.Config.ProjectStateDir, sessionID)
-	recovery, err := runtime.ChatService.OpenRecoveryObservation(operation.Context(), options)
+	recovery, err := runtime.ExecutionRuntime.OpenRecoveryObservation(operation.Context(), options)
 	if err != nil {
 		return appagentruntime.RecoveryResult{}, err
 	}
@@ -411,7 +411,7 @@ func (service *Service) Recover(
 		defer service.host.UnregisterTask(task)
 		defer recovery.Close()
 		if isStructural {
-			if _, resumed, resumeErr := runtime.ChatService.ResumeRecoveredStructuralOperation(taskCtx, options, structural); resumeErr != nil {
+			if _, resumed, resumeErr := runtime.ExecutionRuntime.ResumeRecoveredStructuralOperation(taskCtx, options, structural); resumeErr != nil {
 				emit(agentrun.Event{Type: "error", Data: map[string]string{"message": resumeErr.Error()}})
 				return
 			} else if !resumed {
@@ -436,17 +436,17 @@ func (service *Service) Recover(
 func resumeExistingRecovery(
 	ctx context.Context,
 	run *recoveryRun,
-	action agentharness.RuntimeRecoveryAction,
+	action agentexecution.RuntimeRecoveryAction,
 ) (appagentruntime.RecoveryResult, error) {
 	key := appagentruntime.RecoveryActionKey(action)
 	if receipt, ok := run.recoveryActions[key]; ok {
 		return appagentruntime.RecoveryResult{Task: run.task, Action: action, Receipt: receipt}, nil
 	}
 	if run.task.Finished() {
-		return appagentruntime.RecoveryResult{}, fmt.Errorf("%w: recovery display task is already settled", agentharness.ErrRecoveryActionChanged)
+		return appagentruntime.RecoveryResult{}, fmt.Errorf("%w: recovery display task is already settled", agentexecution.ErrRecoveryActionChanged)
 	}
 	if _, structural := appagentruntime.StructuralRecoveryAction(action.Kind); structural {
-		return appagentruntime.RecoveryResult{}, fmt.Errorf("%w: a structural recovery action cannot join an existing display task", agentharness.ErrRecoveryActionChanged)
+		return appagentruntime.RecoveryResult{}, fmt.Errorf("%w: a structural recovery action cannot join an existing display task", agentexecution.ErrRecoveryActionChanged)
 	}
 	receipt, err := run.recovery.Resume(ctx, action, run.task.ID(), run.task.Emit)
 	if err != nil {

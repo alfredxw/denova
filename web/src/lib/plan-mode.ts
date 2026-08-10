@@ -1,40 +1,4 @@
-type PlanQuestionType = 'single' | 'multi'
-
-interface PlanQuestionOption {
-  id: string
-  label: string
-  description?: string
-  recommended?: boolean
-}
-
-interface PlanQuestion {
-  id: string
-  type: PlanQuestionType
-  question: string
-  description?: string
-  options: PlanQuestionOption[]
-  allow_custom?: boolean
-}
-
-export interface PlanQuestionSet {
-  questions: PlanQuestion[]
-}
-
 const MAX_APPROVED_PLAN_CHARS = 16_000
-
-export function parsePlanQuestionSet(content: string): PlanQuestionSet | null {
-  const raw = content.trim()
-  if (!raw) return null
-  try {
-    const parsed = JSON.parse(raw)
-    const source = Array.isArray(parsed) ? parsed : parsed?.questions
-    if (!Array.isArray(source)) return null
-    const questions = source.map(normalizeQuestion).filter((item): item is PlanQuestion => Boolean(item))
-    return questions.length > 0 ? { questions } : null
-  } catch {
-    return null
-  }
-}
 
 export function formatApprovedPlanExecutionMessage(planContent: string, originalRequest?: string) {
   const plan = truncatePlanContext(planContent)
@@ -53,44 +17,6 @@ export function formatPlanDiscussionMessage(planContent: string) {
 
 export function planDisplayContent(content: string) {
   return content.trim()
-}
-
-function normalizeQuestion(value: unknown, index: number): PlanQuestion | null {
-  if (!value || typeof value !== 'object') return null
-  const item = value as Record<string, unknown>
-  const question = readString(item.question)
-  if (!question) return null
-  const id = readString(item.id) || `question_${index + 1}`
-  const type = item.type === 'multi' ? 'multi' : 'single'
-  const options = Array.isArray(item.options)
-    ? item.options.map((option, optionIndex) => normalizeOption(option, optionIndex)).filter((option): option is PlanQuestionOption => Boolean(option))
-    : []
-  if (options.length === 0) return null
-  return {
-    id,
-    type,
-    question,
-    description: readString(item.description),
-    options,
-    allow_custom: item.allow_custom !== false,
-  }
-}
-
-function normalizeOption(value: unknown, index: number): PlanQuestionOption | null {
-  if (!value || typeof value !== 'object') return null
-  const item = value as Record<string, unknown>
-  const label = readString(item.label)
-  if (!label) return null
-  return {
-    id: readString(item.id) || `option_${index + 1}`,
-    label,
-    description: readString(item.description),
-    recommended: item.recommended === true,
-  }
-}
-
-function readString(value: unknown) {
-  return typeof value === 'string' ? value.trim() : ''
 }
 
 function truncatePlanContext(content: string) {

@@ -27,7 +27,7 @@ func TestAutomationHostEffectBridgeSurvivesRunMaterializationGap(t *testing.T) {
 	}
 	application.ensureServices()
 	store := automation.NewStore(dataDir, workspace)
-	taskDef, err := store.Create(automation.Task{
+	taskDef, err := store.Create(automation.TaskDefinition{
 		Scope: automation.ScopeWorkspace, Enabled: true, Name: "host effect owner", Template: automation.TemplateReview,
 	})
 	if err != nil {
@@ -45,7 +45,7 @@ func TestAutomationHostEffectBridgeSurvivesRunMaterializationGap(t *testing.T) {
 			ToolName: "write", ToolCallID: "tool-call-1", Workspace: workspace, Target: "chapters/late.md",
 		},
 	}
-	if err := application.reconcileHarnessHostEffect(context.Background(), committed); err != nil {
+	if err := application.reconcileExecutionHostEffect(context.Background(), committed); err != nil {
 		t.Fatal(err)
 	}
 	globalStore := automation.NewStore(dataDir, "")
@@ -56,7 +56,7 @@ func TestAutomationHostEffectBridgeSurvivesRunMaterializationGap(t *testing.T) {
 
 	conflict := committed
 	conflict.Mutation.Target = "chapters/conflict.md"
-	if err := application.reconcileHarnessHostEffect(context.Background(), conflict); !errors.Is(err, automation.ErrHostEffectConflict) {
+	if err := application.reconcileExecutionHostEffect(context.Background(), conflict); !errors.Is(err, automation.ErrHostEffectConflict) {
 		t.Fatalf("same effect identity with different mutation error = %v, want ErrHostEffectConflict", err)
 	}
 
@@ -89,7 +89,7 @@ func TestAutomationHostEffectBridgeSurvivesRunMaterializationGap(t *testing.T) {
 	// Crash after the application outbox transfers/acks but before Runtime
 	// records its own ack: redelivery reuses the exact run receipt and clears the
 	// generic obligation without duplicating the completion plan.
-	if err := application.reconcileHarnessHostEffect(context.Background(), committed); err != nil {
+	if err := application.reconcileExecutionHostEffect(context.Background(), committed); err != nil {
 		t.Fatal(err)
 	}
 	if obligations, err = globalStore.ListHostEffects(); err != nil || len(obligations) != 0 {
@@ -119,7 +119,7 @@ func TestAutomationEffectDrainRejectsTransferFailureAndRecoversWithoutChangingOp
 	t.Cleanup(application.Close)
 	service := application.automation()
 	store := automation.NewStore(dataDir, workspace)
-	taskDef, err := store.Create(automation.Task{
+	taskDef, err := store.Create(automation.TaskDefinition{
 		Scope: automation.ScopeWorkspace, Enabled: true, Name: "failed run effect fence", Template: automation.TemplateReview,
 	})
 	if err != nil {
@@ -152,7 +152,7 @@ func TestAutomationEffectDrainRejectsTransferFailureAndRecoversWithoutChangingOp
 			Workspace: workspace, Target: "notes/not-a-chapter.md",
 		},
 	}
-	if err := application.reconcileHarnessHostEffect(context.Background(), committed); err != nil {
+	if err := application.reconcileExecutionHostEffect(context.Background(), committed); err != nil {
 		t.Fatal(err)
 	}
 	snap := &automationWorkspaceSnapshot{workspace: workspace, novaDir: dataDir}
@@ -206,7 +206,7 @@ func TestCommittedAutomationHostEffectEnablesOneTriggerPassAcrossRedelivery(t *t
 	t.Cleanup(application.Close)
 	service := application.automation()
 	store := automation.NewStore(dataDir, workspace)
-	taskDef, err := store.Create(automation.Task{
+	taskDef, err := store.Create(automation.TaskDefinition{
 		Scope: automation.ScopeWorkspace, Enabled: true, Name: "exact receipt trigger owner", Template: automation.TemplateReview,
 	})
 	if err != nil {
@@ -235,7 +235,7 @@ func TestCommittedAutomationHostEffectEnablesOneTriggerPassAcrossRedelivery(t *t
 			Workspace: workspace, Target: "chapters/one.md",
 		},
 	}
-	if err := application.reconcileHarnessHostEffect(context.Background(), committed); err != nil {
+	if err := application.reconcileExecutionHostEffect(context.Background(), committed); err != nil {
 		t.Fatal(err)
 	}
 	_, admittedRun, err := store.GetRunByID(run.ID)
@@ -269,7 +269,7 @@ func TestCommittedAutomationHostEffectEnablesOneTriggerPassAcrossRedelivery(t *t
 	// Runtime may redeliver after the host admission succeeded but before its
 	// own acknowledgement was durable. The exact EffectID must not reopen or
 	// execute the already-receipted trigger plan.
-	if err := application.reconcileHarnessHostEffect(context.Background(), committed); err != nil {
+	if err := application.reconcileExecutionHostEffect(context.Background(), committed); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := service.completeAutomationRunEffects(context.Background(), snap, taskDef, completed); err != nil {

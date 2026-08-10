@@ -2,7 +2,7 @@ package interactiveapp
 
 import (
 	"context"
-	agentharness "denova/internal/agents/harness"
+	agentexecution "denova/internal/agents/execution"
 	agentinteractive "denova/internal/agents/interactive"
 	"fmt"
 	"log/slog"
@@ -50,7 +50,7 @@ type Conversation struct {
 	pinParentAtExecution     bool
 	directorTasks            *DirectorTaskGroup
 	directorGenerator        DirectorGenerator
-	directorChatService      *agentharness.Service
+	directorExecutionRuntime *agentexecution.Runtime
 	customDirectorGenerator  bool
 	agentCycleCommit         func(context.Context, agentrun.Outcome) error
 	agentCyclePrepare        func(context.Context) error
@@ -233,17 +233,17 @@ func NewConversation(store *interactive.Store, novaDir, workspace, storyID, bran
 	return &Conversation{store: store, novaDir: novaDir, workspace: workspace, cfg: cfg, storyID: storyID, branchID: branchID, user: user, replyTargetChars: replyTargetChars}
 }
 
-func (c *Conversation) BindDirectorRuntime(tasks *DirectorTaskGroup, generator DirectorGenerator, chatServices ...*agentharness.Service) *Conversation {
+func (c *Conversation) BindDirectorRuntime(tasks *DirectorTaskGroup, generator DirectorGenerator, executionRuntimes ...*agentexecution.Runtime) *Conversation {
 	if c != nil {
 		c.directorTasks = tasks
-		if len(chatServices) > 0 {
-			c.directorChatService = chatServices[0]
+		if len(executionRuntimes) > 0 {
+			c.directorExecutionRuntime = executionRuntimes[0]
 		}
 		if generator != nil {
 			c.directorGenerator = generator
 			c.customDirectorGenerator = true
-		} else if c.directorChatService != nil {
-			service := c.directorChatService
+		} else if c.directorExecutionRuntime != nil {
+			service := c.directorExecutionRuntime
 			c.directorGenerator = func(ctx context.Context, cfg *config.Config, state *book.State, toolContext agentinteractive.InteractiveStoryToolContext, instruction string) (string, error) {
 				return agents.GenerateInteractiveDirectorWithTools(ctx, service, cfg, state, toolContext, instruction)
 			}
@@ -268,7 +268,7 @@ func (c *Conversation) InheritDirectorRuntime(source *Conversation) *Conversatio
 	}
 	c.directorTasks = source.directorTasks
 	c.directorGenerator = source.directorGenerator
-	c.directorChatService = source.directorChatService
+	c.directorExecutionRuntime = source.directorExecutionRuntime
 	c.customDirectorGenerator = source.customDirectorGenerator
 	return c
 }

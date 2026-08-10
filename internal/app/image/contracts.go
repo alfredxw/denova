@@ -9,7 +9,7 @@ import (
 	"fmt"
 
 	"denova/config"
-	agentharness "denova/internal/agents/harness"
+	agentexecution "denova/internal/agents/execution"
 	"denova/internal/agents/session"
 	"denova/internal/book"
 	"denova/internal/interactive"
@@ -31,15 +31,15 @@ type Operation interface {
 // Runtime is an immutable image-operation snapshot captured atomically by the
 // Host. Services must not re-resolve any of these adapters while it is leased.
 type Runtime struct {
-	Operation    Operation
-	ProjectID    string
-	Workspace    string
-	Config       config.Config
-	BookState    *book.State
-	BookService  *book.Service
-	Interactive  *interactive.Store
-	SessionStore *session.Store
-	ChatService  *agentharness.Service
+	Operation        Operation
+	ProjectID        string
+	Workspace        string
+	Config           config.Config
+	BookState        *book.State
+	BookService      *book.Service
+	Interactive      *interactive.Store
+	SessionStore     *session.Store
+	ExecutionRuntime *agentexecution.Runtime
 }
 
 func (runtime *Runtime) Context() context.Context {
@@ -56,7 +56,7 @@ func (runtime *Runtime) Release() {
 }
 
 func (runtime *Runtime) requireAgentAdapters() error {
-	if runtime == nil || runtime.BookState == nil || runtime.BookService == nil || runtime.ChatService == nil {
+	if runtime == nil || runtime.BookState == nil || runtime.BookService == nil || runtime.ExecutionRuntime == nil {
 		return fmt.Errorf("image Agent workspace runtime is incomplete")
 	}
 	return nil

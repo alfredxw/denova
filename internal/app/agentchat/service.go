@@ -10,7 +10,7 @@ import (
 
 	"denova/config"
 	agentconversation "denova/internal/agents/conversation"
-	agentharness "denova/internal/agents/harness"
+	agentexecution "denova/internal/agents/execution"
 	agentrun "denova/internal/agents/run"
 	"denova/internal/agents/session"
 	appagentruntime "denova/internal/app/agentruntime"
@@ -23,19 +23,19 @@ import (
 )
 
 type projectRuntime struct {
-	projectID      string
-	projectType    projectdomain.Type
-	agentKind      string
-	stateRoot      string
-	workspace      string
-	state          *book.State
-	store          *session.Store
-	bookService    *book.Service
-	versionService *book.VersionService
-	chatService    *agentharness.Service
-	cfg            config.Config
-	used           uint64
-	closeOnce      sync.Once
+	projectID        string
+	projectType      projectdomain.Type
+	agentKind        string
+	stateRoot        string
+	workspace        string
+	state            *book.State
+	store            *session.Store
+	bookService      *book.Service
+	versionService   *book.VersionService
+	executionRuntime *agentexecution.Runtime
+	cfg              config.Config
+	used             uint64
+	closeOnce        sync.Once
 }
 
 func (runtime *projectRuntime) conversation(sess *session.Session) conversationapp.Runtime {
@@ -45,7 +45,7 @@ func (runtime *projectRuntime) conversation(sess *session.Session) conversationa
 	return conversationapp.Runtime{
 		ProjectID: runtime.projectID, ProjectType: runtime.projectType, ProjectState: runtime.stateRoot,
 		AgentKind: runtime.agentKind, Session: sess, State: runtime.state,
-		BookService: runtime.bookService, ChatService: runtime.chatService, Workspace: runtime.workspace,
+		BookService: runtime.bookService, ExecutionRuntime: runtime.executionRuntime, Workspace: runtime.workspace,
 		VersionService: runtime.versionService, Config: runtime.cfg,
 	}
 }
@@ -70,7 +70,7 @@ type run struct {
 	runtime         conversationapp.Runtime
 	request         ChatRequest
 	policy          TurnPolicy
-	recovery        *agentharness.RecoveryObservation
+	recovery        *agentexecution.RecoveryObservation
 	recoveryActions map[string]agentrun.CommandReceipt
 }
 
@@ -244,8 +244,8 @@ func (service *Service) projectRuntime(ctx context.Context, projectID string) (*
 	if service.host == nil || service.registry == nil {
 		return nil, appagentruntime.ErrNoWorkspace
 	}
-	runtimeCfg, chatService := service.host.BaseRuntime()
-	if chatService == nil || strings.TrimSpace(runtimeCfg.DataDir()) == "" {
+	runtimeCfg, executionRuntime := service.host.BaseRuntime()
+	if executionRuntime == nil || strings.TrimSpace(runtimeCfg.DataDir()) == "" {
 		return nil, appagentruntime.ErrNoWorkspace
 	}
 	record, layout, err := service.registry.Resolve(projectID, true)
@@ -288,7 +288,7 @@ func (service *Service) projectRuntime(ctx context.Context, projectID string) (*
 	project = &projectRuntime{
 		projectID: record.ID, projectType: record.Type, agentKind: agentKind, stateRoot: layout.StateRoot,
 		workspace: workspace, state: state, store: store, bookService: book.NewService(workspace),
-		versionService: versionService, chatService: chatService, cfg: runtimeCfg,
+		versionService: versionService, executionRuntime: executionRuntime, cfg: runtimeCfg,
 	}
 	service.mu.Lock()
 	if service.closed {
@@ -440,9 +440,9 @@ func (service *Service) CloseProject(ctx context.Context, projectID string) erro
 		}()
 	}
 	if service.host != nil {
-		_, chatService := service.host.BaseRuntime()
-		if chatService != nil {
-			return chatService.CloseProjectBindings(ctx, projectID)
+		_, executionRuntime := service.host.BaseRuntime()
+		if executionRuntime != nil {
+			return executionRuntime.CloseProjectBindings(ctx, projectID)
 		}
 	}
 	return nil

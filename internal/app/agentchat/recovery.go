@@ -7,7 +7,7 @@ import (
 	"strings"
 
 	agentconversation "denova/internal/agents/conversation"
-	agentharness "denova/internal/agents/harness"
+	agentexecution "denova/internal/agents/execution"
 	agentrun "denova/internal/agents/run"
 	appagentruntime "denova/internal/app/agentruntime"
 	apptask "denova/internal/app/task"
@@ -31,7 +31,7 @@ func (service *Service) Recover(ctx context.Context, binding Binding, request ap
 		}
 	}
 	if _, structural := appagentruntime.StructuralRecoveryAction(request.Action.Kind); structural {
-		return appagentruntime.RecoveryResult{}, fmt.Errorf("%w: AgentChat has no project structural recovery action", agentharness.ErrRecoveryActionChanged)
+		return appagentruntime.RecoveryResult{}, fmt.Errorf("%w: AgentChat has no project structural recovery action", agentexecution.ErrRecoveryActionChanged)
 	}
 
 	project, err := service.projectRuntime(ctx, binding.ProjectID)
@@ -43,7 +43,7 @@ func (service *Service) Recover(ctx context.Context, binding Binding, request ap
 		return appagentruntime.RecoveryResult{}, err
 	}
 	options := runtimeOptions(binding, "")
-	recovery, err := project.chatService.OpenRecoveryObservation(ctx, options)
+	recovery, err := project.executionRuntime.OpenRecoveryObservation(ctx, options)
 	if err != nil {
 		return appagentruntime.RecoveryResult{}, err
 	}
@@ -93,7 +93,7 @@ func (service *Service) Recover(ctx context.Context, binding Binding, request ap
 	return appagentruntime.RecoveryResult{Task: task, Action: request.Action, Receipt: receipt}, nil
 }
 
-func (service *Service) resumeExistingRecovery(ctx context.Context, active *run, action agentharness.RuntimeRecoveryAction) (appagentruntime.RecoveryResult, error) {
+func (service *Service) resumeExistingRecovery(ctx context.Context, active *run, action agentexecution.RuntimeRecoveryAction) (appagentruntime.RecoveryResult, error) {
 	if active == nil || active.task == nil || active.recovery == nil {
 		return appagentruntime.RecoveryResult{}, appagentruntime.ErrNoActiveOperation
 	}
@@ -102,10 +102,10 @@ func (service *Service) resumeExistingRecovery(ctx context.Context, active *run,
 		return appagentruntime.RecoveryResult{Task: active.task, Action: action, Receipt: receipt}, nil
 	}
 	if active.task.Finished() {
-		return appagentruntime.RecoveryResult{}, fmt.Errorf("%w: AgentChat recovery display task is settled", agentharness.ErrRecoveryActionChanged)
+		return appagentruntime.RecoveryResult{}, fmt.Errorf("%w: AgentChat recovery display task is settled", agentexecution.ErrRecoveryActionChanged)
 	}
 	if _, structural := appagentruntime.StructuralRecoveryAction(action.Kind); structural {
-		return appagentruntime.RecoveryResult{}, fmt.Errorf("%w: structural action cannot join AgentChat recovery", agentharness.ErrRecoveryActionChanged)
+		return appagentruntime.RecoveryResult{}, fmt.Errorf("%w: structural action cannot join AgentChat recovery", agentexecution.ErrRecoveryActionChanged)
 	}
 	receipt, err := active.recovery.Resume(ctx, action, active.task.ID(), active.task.Emit)
 	if err != nil {
@@ -125,50 +125,44 @@ func runtimeCommandID(runtime agentrun.RuntimeStatus) string {
 	return ""
 }
 
-// RestoreTurn reconstructs process-local execution dependencies for a durable
-// queued AgentChat command. The descriptor remains authoritative for input and
-// binding identity.
-func (service *Service) RestoreTurn(request agentharness.TurnRestoreRequest, binding agentrun.RuntimeBinding) agentharness.TurnSpec {
-	spec := agentharness.TurnSpec{
-		Request: request.Request,
-		Options: request.Options,
-		Prepare: func(ctx context.Context) (agentharness.TurnExecution, error) {
-			scope := Binding{
-				ProjectID: strings.TrimSpace(binding.ProjectID),
-				Workspace: strings.TrimSpace(binding.Workspace),
-				SessionID: strings.TrimSpace(binding.SessionID),
-			}
-			var err error
-			scope, err = service.ResolveBinding(scope)
-			if err != nil {
-				return agentharness.TurnExecution{}, err
-			}
-			active := service.activeRun(scope)
-			if active == nil || active.task == nil || active.task.Finished() {
-				return agentharness.TurnExecution{}, agentharness.ErrTurnRestoreUnavailable
-			}
-			execution, err := service.prepareCommandExecution(ctx, active, request.Request)
-			if err != nil {
-				return agentharness.TurnExecution{}, err
-			}
-			if execution.Options.Mode != RuntimeMode || execution.Options.ProjectID != scope.ProjectID || execution.Options.Workspace != scope.Workspace || execution.Options.SessionID != scope.SessionID {
-				return agentharness.TurnExecution{}, fmt.Errorf("%w: restored AgentChat runtime does not match durable binding", agentharness.ErrTurnRestoreUnavailable)
-			}
-			return execution, nil
-		},
+// PrepareCycle rebuilds one queued or recovered AgentChat cycle from the
+// latest canonical Project state. The durable descriptor remains authoritative
+// for caller input and binding identity.
+func (service *Service) PrepareCycle(
+	ctx context.Context,
+	request agentexecution.CycleRestoreRequest,
+	binding agentrun.RuntimeBinding,
+) (agentexecution.Cycle, error) {
+	scope := Binding{
+		ProjectID: strings.TrimSpace(binding.ProjectID),
+		Workspace: strings.TrimSpace(binding.Workspace),
+		SessionID: strings.TrimSpace(binding.SessionID),
 	}
-	spec.Successor = func(ctx context.Context, parent agentrun.OperationID, outcome agentrun.Outcome) error {
-		scope, err := service.ResolveBinding(Binding{
-			ProjectID: strings.TrimSpace(binding.ProjectID), Workspace: strings.TrimSpace(binding.Workspace), SessionID: strings.TrimSpace(binding.SessionID),
-		})
-		if err != nil {
-			return err
-		}
+	var err error
+	scope, err = service.ResolveBinding(scope)
+	if err != nil {
+		return agentexecution.Cycle{}, err
+	}
+	active := service.activeRun(scope)
+	if active == nil || active.task == nil || active.task.Finished() {
+		return agentexecution.Cycle{}, agentexecution.ErrCyclePreparationUnavailable
+	}
+	cycle, err := service.prepareCommandExecution(ctx, active, request.Request)
+	if err != nil {
+		return agentexecution.Cycle{}, err
+	}
+	if service.activeRun(scope) != active || active.task.Finished() {
+		return agentexecution.Cycle{}, appagentruntime.ErrContextChanged
+	}
+	if cycle.Options.Mode != RuntimeMode || cycle.Options.ProjectID != scope.ProjectID || cycle.Options.Workspace != scope.Workspace || cycle.Options.SessionID != scope.SessionID {
+		return agentexecution.Cycle{}, fmt.Errorf("%w: prepared AgentChat runtime does not match durable binding", agentexecution.ErrCyclePreparationUnavailable)
+	}
+	cycle.Successor = func(ctx context.Context, parent agentrun.OperationID, outcome agentrun.Outcome) error {
 		active := service.activeRun(scope)
 		if active == nil {
 			return appagentruntime.ErrContextChanged
 		}
 		return service.goalSuccessor(active)(ctx, parent, outcome)
 	}
-	return spec
+	return cycle, nil
 }

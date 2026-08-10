@@ -29,7 +29,7 @@ func TestAutomationMutationEvaluatorIgnoresRequestCancelAndAppCloseDrains(t *tes
 	}
 	registerAutomationProjectForTest(t, application, workspace)
 	application.ensureServices()
-	if _, err := application.CreateAutomation(automation.Task{
+	if _, err := application.CreateAutomation(automation.TaskDefinition{
 		Scope:    automation.ScopeWorkspace,
 		Enabled:  true,
 		Name:     "Lifecycle semantic review",
@@ -114,7 +114,7 @@ func TestWorkspaceChangeMutationAutomationUsesCapturedWorkspaceAfterSwitch(t *te
 	app.ensureServices()
 	t.Cleanup(app.Close)
 
-	if _, err := app.CreateAutomation(automation.Task{
+	if _, err := app.CreateAutomation(automation.TaskDefinition{
 		Scope:    automation.ScopeWorkspace,
 		Enabled:  true,
 		Name:     "Captured semantic review",
@@ -226,7 +226,7 @@ func TestAutomationSemanticTriggerChecksOnlyCompletedChapterBatches(t *testing.T
 	}
 	defer func() { automationService.semanticEvaluator = previousEvaluator }()
 
-	task, err := app.CreateAutomation(automation.Task{
+	task, err := app.CreateAutomation(automation.TaskDefinition{
 		Scope:    automation.ScopeWorkspace,
 		Enabled:  true,
 		Name:     "Semantic batch",

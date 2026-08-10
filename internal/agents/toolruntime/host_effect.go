@@ -44,9 +44,9 @@ type CommittedToolMutation struct {
 	Mutation         agenttool.Mutation
 }
 
-// HarnessHostEffectReconciler durably admits one Runtime-owned host effect.
+// HostEffectReconciler durably admits one Runtime-owned host effect.
 // Implementations must be idempotent by EffectID and reject conflicting reuse.
-type HarnessHostEffectReconciler func(context.Context, CommittedToolMutation) error
+type HostEffectReconciler func(context.Context, CommittedToolMutation) error
 
 type toolMutationHostEffectPayload struct {
 	Version  int                `json:"version"`

@@ -13,7 +13,7 @@ func TestProjectStoreKeepsAutomationStateOutsideContentDirectory(t *testing.T) {
 	workspace := t.TempDir()
 	stateRoot := filepath.Join(userDir, "project-state", "project-one")
 	store := NewProjectStore(userDir, "project-one", workspace, stateRoot)
-	task, err := store.Create(Task{
+	task, err := store.Create(TaskDefinition{
 		Scope: ScopeWorkspace, Name: "Project task", Template: TemplateCustomPrompt,
 	})
 	if err != nil {
@@ -49,7 +49,7 @@ func TestProjectStoreFollowsRelinkWithoutChangingTaskIdentity(t *testing.T) {
 	firstWorkspace := t.TempDir()
 	secondWorkspace := t.TempDir()
 	stateRoot := filepath.Join(userDir, "project-state", "project-relinked")
-	created, err := NewProjectStore(userDir, "project-relinked", firstWorkspace, stateRoot).Create(Task{
+	created, err := NewProjectStore(userDir, "project-relinked", firstWorkspace, stateRoot).Create(TaskDefinition{
 		Scope: ScopeWorkspace, Name: "Relinked task", Template: TemplateCustomPrompt,
 	})
 	if err != nil {

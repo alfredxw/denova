@@ -140,7 +140,7 @@ func forWorkspaceAt(workspace, stateRoot string) (*Service, error) {
 	}
 	var service *Service
 	if stateRoot == "" {
-		service, err = newService(abs)
+		service, err = newRuntime(abs)
 	} else {
 		service, err = newServiceAt(abs, stateRoot)
 	}
@@ -157,7 +157,7 @@ func NewService(workspace string) (*Service, error) {
 	if err != nil {
 		return nil, err
 	}
-	return newService(abs)
+	return newRuntime(abs)
 }
 
 func normalizeWorkspace(workspace string) (string, error) {
@@ -183,7 +183,7 @@ func normalizeWorkspace(workspace string) (string, error) {
 	return filepath.Clean(canonical), nil
 }
 
-func newService(workspace string) (*Service, error) {
+func newRuntime(workspace string) (*Service, error) {
 	return newServiceWithDurability(workspace, defaultDurabilityOps())
 }
 

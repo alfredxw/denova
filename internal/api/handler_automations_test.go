@@ -12,7 +12,7 @@ import (
 func TestAutomationCatalogIsScopedToOwningProject(t *testing.T) {
 	application := newTestApplication(t)
 	server := NewServer(application, "0")
-	created, err := application.Automation().Create(automation.Task{
+	created, err := application.Automation().Create(automation.TaskDefinition{
 		Scope: automation.ScopeWorkspace, Name: "Project review", Template: automation.TemplateReview,
 	})
 	if err != nil {
@@ -45,10 +45,47 @@ func TestAutomationCatalogIsScopedToOwningProject(t *testing.T) {
 	}
 }
 
+func TestAutomationCreateAcceptsOnlyDefinitionFields(t *testing.T) {
+	application := newTestApplication(t)
+	server := NewServer(application, "0")
+	resp := performJSONRequest(t, server, http.MethodPost, "/api/automations", map[string]any{
+		"id":         "caller-owned-id",
+		"catalog_id": "caller-owned-catalog",
+		"revision":   "caller-owned-revision",
+		"scope":      automation.ScopeWorkspace,
+		"enabled":    true,
+		"name":       "Definition only",
+		"template":   automation.TemplateReview,
+		"prompt":     "review the project",
+		"trigger_state": map[string]any{
+			"schedule": map[string]any{"last_evidence_fingerprint": "caller-state"},
+		},
+		"last_run":    map[string]any{"id": "caller-run", "status": automation.RunStatusSuccess},
+		"recent_runs": []map[string]any{{"id": "caller-run", "status": automation.RunStatusSuccess}},
+		"created_at":  "2000-01-01T00:00:00Z",
+		"updated_at":  "2000-01-01T00:00:00Z",
+		"archived_at": "2000-01-01T00:00:00Z",
+	})
+	if resp.Code != http.StatusOK {
+		t.Fatalf("create status=%d body=%s", resp.Code, resp.Body.String())
+	}
+	var created automation.Task
+	decodeResponse(t, resp.Body.Bytes(), &created)
+	if created.ID == "" || created.ID == "caller-owned-id" || created.CatalogID == "caller-owned-catalog" || created.Revision == "caller-owned-revision" {
+		t.Fatalf("caller controlled runtime identity: %#v", created)
+	}
+	if len(created.TriggerState) != 0 || created.LastRun != nil || len(created.RecentRuns) != 0 || created.ArchivedAt != nil {
+		t.Fatalf("caller controlled runtime state: %#v", created)
+	}
+	if created.CreatedAt.IsZero() || created.UpdatedAt.IsZero() || created.CreatedAt.Year() == 2000 || created.UpdatedAt.Year() == 2000 {
+		t.Fatalf("caller controlled timestamps: created=%s updated=%s", created.CreatedAt, created.UpdatedAt)
+	}
+}
+
 func TestAutomationRunUsesDurableJSONAdmissionAndRemovesPrivateChatRoutes(t *testing.T) {
 	application := newTestApplication(t)
 	server := NewServer(application, "0")
-	created, err := application.Automation().Create(automation.Task{
+	created, err := application.Automation().Create(automation.TaskDefinition{
 		Scope: automation.ScopeWorkspace, Name: "Review", Template: automation.TemplateReview, Prompt: "review",
 	})
 	if err != nil {
@@ -75,7 +112,7 @@ func TestAutomationRunUsesDurableJSONAdmissionAndRemovesPrivateChatRoutes(t *tes
 func TestAutomationUpdateRejectsStaleRevisionAPI(t *testing.T) {
 	application := newTestApplication(t)
 	server := NewServer(application, "0")
-	created, err := application.Automation().Create(automation.Task{
+	created, err := application.Automation().Create(automation.TaskDefinition{
 		Scope:    automation.ScopeWorkspace,
 		Name:     "Review",
 		Template: automation.TemplateReview,
@@ -120,7 +157,7 @@ func TestAutomationUpdateRejectsStaleRevisionAPI(t *testing.T) {
 func TestAutomationUpdateRequiresBaseRevisionAPI(t *testing.T) {
 	application := newTestApplication(t)
 	server := NewServer(application, "0")
-	created, err := application.Automation().Create(automation.Task{
+	created, err := application.Automation().Create(automation.TaskDefinition{
 		Scope:    automation.ScopeWorkspace,
 		Name:     "Review",
 		Template: automation.TemplateReview,

@@ -1,5 +1,5 @@
 import { jsonHeaders, requestJSON } from './client'
-import type { AutomationExecutionTarget, AutomationInboxActionResult, AutomationInboxItem, AutomationRunRecord, AutomationTask, AutomationTaskTemplate, AutomationTaskUpdate, AutomationTriggerEvidence } from './types'
+import type { AutomationExecutionTarget, AutomationInboxActionResult, AutomationInboxItem, AutomationRunRecord, AutomationTask, AutomationTaskDefinition, AutomationTaskTemplate, AutomationTaskUpdate, AutomationTriggerEvidence } from './types'
 
 export async function getAutomations(target: AutomationExecutionTarget): Promise<AutomationTask[]> {
   const data = await requestJSON<{ tasks: AutomationTask[] }>(`/api/automations?${automationProjectQuery(target)}`)
@@ -11,11 +11,23 @@ export async function getAutomationTemplates(locale: string): Promise<Automation
   return data.templates || []
 }
 
-export async function createAutomation(task: AutomationTask): Promise<AutomationTask> {
+export async function createAutomation(definition: AutomationTaskDefinition): Promise<AutomationTask> {
   return requestJSON('/api/automations', {
     method: 'POST',
     headers: jsonHeaders,
-    body: JSON.stringify(task),
+    body: JSON.stringify({
+      scope: definition.scope,
+      target: definition.target,
+      enabled: definition.enabled,
+      name: definition.name,
+      template: definition.template,
+      prompt: definition.prompt,
+      model_profile_id: definition.model_profile_id,
+      schedule: definition.schedule,
+      triggers: definition.triggers,
+      default_action_policy: definition.default_action_policy,
+      session_strategy: definition.session_strategy,
+    } satisfies AutomationTaskDefinition),
   })
 }
 

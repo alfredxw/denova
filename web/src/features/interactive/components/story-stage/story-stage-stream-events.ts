@@ -37,7 +37,15 @@ export const INTERACTIVE_STREAM_EVENT_CONTRACT = {
 } as const satisfies Record<string, InteractiveStreamEventHandling>
 
 export type InteractiveStreamEventType = keyof typeof INTERACTIVE_STREAM_EVENT_CONTRACT
+export type HandledInteractiveStreamEventType = {
+  [Type in InteractiveStreamEventType]: typeof INTERACTIVE_STREAM_EVENT_CONTRACT[Type] extends 'handled' ? Type : never
+}[InteractiveStreamEventType]
+export type IgnoredInteractiveStreamEventType = Exclude<InteractiveStreamEventType, HandledInteractiveStreamEventType>
 
 export function isInteractiveStreamEventType(value: string): value is InteractiveStreamEventType {
   return Object.prototype.hasOwnProperty.call(INTERACTIVE_STREAM_EVENT_CONTRACT, value)
+}
+
+export function isHandledInteractiveStreamEventType(value: InteractiveStreamEventType): value is HandledInteractiveStreamEventType {
+  return INTERACTIVE_STREAM_EVENT_CONTRACT[value] === 'handled'
 }

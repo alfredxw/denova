@@ -2,7 +2,7 @@ package app
 
 import (
 	"context"
-	agentharness "denova/internal/agents/harness"
+	agentexecution "denova/internal/agents/execution"
 	agentrun "denova/internal/agents/run"
 	"fmt"
 	"strings"
@@ -12,14 +12,14 @@ import (
 
 func emitWritingRecoveryRefreshRequired(
 	emit func(agentrun.Event),
-	action agentharness.RuntimeRecoveryAction,
+	action agentexecution.RuntimeRecoveryAction,
 	cursor agentrun.Cursor,
 ) {
 	if emit == nil {
 		return
 	}
-	emit(agentrun.Event{Type: agentharness.RuntimeRecoveryRequiredEventType, Data: map[string]any{
-		"code":         agentharness.RuntimeRecoveryRequiredEventCode,
+	emit(agentrun.Event{Type: agentexecution.RuntimeRecoveryRequiredEventType, Data: map[string]any{
+		"code":         agentexecution.RuntimeRecoveryRequiredEventCode,
 		"message":      "会话状态刷新失败，请重试恢复 / Session state refresh failed; retry recovery",
 		"operation_id": string(action.OperationID),
 		"cursor":       uint64(cursor),
@@ -36,14 +36,14 @@ func writingRecoveryRefreshKey(workspace, sessionID string) string {
 // a finished recovery Task must fence the exact same long-lived Session.
 func (s *ChatAppService) markRecoveryRefreshPending(
 	workspace, sessionID string,
-	action agentharness.RuntimeRecoveryAction,
+	action agentexecution.RuntimeRecoveryAction,
 ) {
 	if s == nil || strings.TrimSpace(workspace) == "" || strings.TrimSpace(sessionID) == "" {
 		return
 	}
 	s.recoveryRefreshMu.Lock()
 	if s.recoveryRefreshPending == nil {
-		s.recoveryRefreshPending = make(map[string]agentharness.RuntimeRecoveryAction)
+		s.recoveryRefreshPending = make(map[string]agentexecution.RuntimeRecoveryAction)
 	}
 	key := writingRecoveryRefreshKey(workspace, sessionID)
 	current, exists := s.recoveryRefreshPending[key]
@@ -76,15 +76,15 @@ func (s *ChatAppService) hasActiveWritingStructuralRecovery() bool {
 // than advertised as an invalid Agent recovery action.
 func (s *ChatAppService) pendingRecoveryRefreshAction(
 	workspace, sessionID string,
-) (agentharness.RuntimeRecoveryAction, bool) {
+) (agentexecution.RuntimeRecoveryAction, bool) {
 	if s == nil {
-		return agentharness.RuntimeRecoveryAction{}, false
+		return agentexecution.RuntimeRecoveryAction{}, false
 	}
 	s.recoveryRefreshMu.Lock()
 	defer s.recoveryRefreshMu.Unlock()
 	action, ok := s.recoveryRefreshPending[writingRecoveryRefreshKey(workspace, sessionID)]
 	if !ok || strings.TrimSpace(string(action.CommandID)) == "" || strings.TrimSpace(string(action.OperationID)) == "" {
-		return agentharness.RuntimeRecoveryAction{}, false
+		return agentexecution.RuntimeRecoveryAction{}, false
 	}
 	return action, true
 }
@@ -136,7 +136,7 @@ func (s *ChatAppService) retryPendingWritingRecoveryRefresh(
 func (s *ChatAppService) retryRecoveryRefresh(
 	ctx context.Context,
 	workspace, sessionID string,
-	action agentharness.RuntimeRecoveryAction,
+	action agentexecution.RuntimeRecoveryAction,
 	refresh func(context.Context) error,
 ) (bool, error) {
 	if s == nil || refresh == nil {

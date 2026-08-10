@@ -5,7 +5,7 @@ import (
 	"errors"
 
 	"denova/config"
-	agentharness "denova/internal/agents/harness"
+	agentexecution "denova/internal/agents/execution"
 	agentrun "denova/internal/agents/run"
 	"denova/internal/agents/session"
 	appagentruntime "denova/internal/app/agentruntime"
@@ -38,16 +38,16 @@ type Operation interface {
 // Runtime is an immutable view of the resources required by one automation
 // execution. A Host captures all fields atomically before returning it.
 type Runtime struct {
-	ProjectID    string
-	ProjectType  projectdomain.Type
-	StateRoot    string
-	Workspace    string
-	DataDir      string
-	Config       config.Config
-	BookState    *book.State
-	BookService  *book.Service
-	SessionStore *session.Store
-	ChatService  *agentharness.Service
+	ProjectID        string
+	ProjectType      projectdomain.Type
+	StateRoot        string
+	Workspace        string
+	DataDir          string
+	Config           config.Config
+	BookState        *book.State
+	BookService      *book.Service
+	SessionStore     *session.Store
+	ExecutionRuntime *agentexecution.Runtime
 }
 
 // Catalog describes every project-backed automation store visible to the
@@ -99,15 +99,15 @@ type Host interface {
 
 func snapshotFromRuntime(runtime Runtime) *automationWorkspaceSnapshot {
 	return &automationWorkspaceSnapshot{
-		projectID:    runtime.ProjectID,
-		projectType:  runtime.ProjectType,
-		stateRoot:    runtime.StateRoot,
-		workspace:    runtime.Workspace,
-		novaDir:      runtime.DataDir,
-		cfg:          runtime.Config,
-		bookState:    runtime.BookState,
-		bookService:  runtime.BookService,
-		sessionStore: runtime.SessionStore,
-		chatService:  runtime.ChatService,
+		projectID:        runtime.ProjectID,
+		projectType:      runtime.ProjectType,
+		stateRoot:        runtime.StateRoot,
+		workspace:        runtime.Workspace,
+		novaDir:          runtime.DataDir,
+		cfg:              runtime.Config,
+		bookState:        runtime.BookState,
+		bookService:      runtime.BookService,
+		sessionStore:     runtime.SessionStore,
+		executionRuntime: runtime.ExecutionRuntime,
 	}
 }

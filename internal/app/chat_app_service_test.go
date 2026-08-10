@@ -138,7 +138,7 @@ func TestRootAgentStartFailureRollsBackDisplayTaskRegistration(t *testing.T) {
 				t.Fatal(err)
 			}
 			t.Cleanup(application.Close)
-			if err := application.chatService.Close(context.Background()); err != nil {
+			if err := application.executionRuntime.Close(context.Background()); err != nil {
 				t.Fatal(err)
 			}
 
@@ -197,13 +197,13 @@ func TestConfigAndAutomationStartFailureRollBackTaskRegistration(t *testing.T) {
 		t.Fatal(err)
 	}
 	t.Cleanup(application.Close)
-	automationTask, err := application.Automation().Create(automation.Task{
+	automationTask, err := application.Automation().Create(automation.TaskDefinition{
 		Scope: automation.ScopeWorkspace, Name: "acceptance", Template: automation.TemplateReview,
 	})
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := application.chatService.Close(context.Background()); err != nil {
+	if err := application.executionRuntime.Close(context.Background()); err != nil {
 		t.Fatal(err)
 	}
 

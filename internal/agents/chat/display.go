@@ -311,9 +311,7 @@ func (r *displayEventRecorder) Record(ev agentrun.Event) {
 		}); err != nil {
 			slog.ErrorContext(context.Background(), fmt.Sprintf("[agent-run] persist token_usage failed run_id=%s err=%v", stats.RunID, err))
 		}
-	// plan_question remains replay-compatible for persisted beta sessions. The
-	// active runtime emits proposed_plan only; clarification now uses Ask.
-	case "plan_question", "proposed_plan":
+	case "proposed_plan":
 		r.flushThinking()
 		r.flushAssistant()
 		content := eventDataString(ev.Data, "content")
