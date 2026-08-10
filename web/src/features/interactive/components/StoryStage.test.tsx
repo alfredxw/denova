@@ -117,6 +117,29 @@ describe('StoryStage store subscriptions', () => {
   })
 })
 
+describe('StoryStage loading presentation', () => {
+  it('keeps the loading placeholder at the conversation tail without visible copy', () => {
+    render(
+      <StoryStage
+        workspace="/tmp/book"
+        stories={[story()]}
+        story={story()}
+        tellers={[]}
+        storyId="story-1"
+        branchId="main"
+        snapshot={null}
+        snapshotLoading
+        onDone={() => undefined}
+      />,
+    )
+
+    const status = screen.getByRole('status', { name: '加载中...' })
+    expect(status).toHaveAttribute('data-layout', 'conversation')
+    expect(screen.getByText('加载中...')).toHaveClass('sr-only')
+    expect(document.querySelector('[data-slot="loading-state-conversation"]')).toBeInTheDocument()
+  })
+})
+
 describe('StoryStage TurnResult choices', () => {
 	it('places the model selector before the choice control and send action', async () => {
 		render(
@@ -747,8 +770,13 @@ describe('StoryStage interactive image settings', () => {
 
     fireEvent.pointerDown(screen.getByRole('button', { name: '输入动作' }))
     await waitFor(() => expect(screen.getByText('互动图像')).toBeInTheDocument())
-    expect(screen.getByRole('menuitem', { name: 'Image Agent 语言模型' })).toBeInTheDocument()
-    expect(screen.getByRole('menuitem', { name: 'Image Agent 图像模型' })).toBeInTheDocument()
+    expect(within(screen.getByRole('menu', { name: '输入动作' })).queryByRole('separator')).not.toBeInTheDocument()
+    const imageGenerationOptions = screen.getByRole('menuitem', { name: '图像生成选项' })
+    expect(screen.queryByText('Image Agent')).not.toBeInTheDocument()
+    await user.hover(imageGenerationOptions)
+    expect(await screen.findByRole('menuitem', { name: '语言模型' })).toBeInTheDocument()
+    expect(screen.getByRole('menuitem', { name: '图像模型' })).toBeInTheDocument()
+    expect(screen.getByRole('menuitem', { name: '图像方案' })).toBeInTheDocument()
     await user.hover(screen.getByRole('menuitem', { name: /互动图像/ }))
     await waitFor(() => expect(screen.getByRole('menuitem', { name: /每 3 轮生成/ })).toBeInTheDocument())
     fireEvent.click(screen.getByRole('menuitem', { name: /每 3 轮生成/ }))

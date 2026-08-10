@@ -1117,7 +1117,7 @@ describe('MessageItem', () => {
   it.each([
     ['确认并执行', '已确认并开始执行。', 'approve'],
     ['继续讨论', '已选择继续讨论。', 'continue'],
-    ['退出 Plan Mode', '已退出 Plan Mode。', 'exit'],
+    ['退出计划模式', '已退出计划模式。', 'exit'],
   ])('最终计划卡点击“%s”后隐藏按钮并展示完成态', async (buttonName, statusText, action) => {
     const user = userEvent.setup()
     const handleApprove = vi.fn()
@@ -1145,7 +1145,7 @@ describe('MessageItem', () => {
     expect(screen.getByText(statusText)).toBeInTheDocument()
     expect(screen.queryByRole('button', { name: '确认并执行' })).not.toBeInTheDocument()
     expect(screen.queryByRole('button', { name: '继续讨论' })).not.toBeInTheDocument()
-    expect(screen.queryByRole('button', { name: '退出 Plan Mode' })).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: '退出计划模式' })).not.toBeInTheDocument()
     if (action === 'approve') expect(handleApprove).toHaveBeenCalledTimes(1)
     if (action === 'continue') expect(handleContinue).toHaveBeenCalledTimes(1)
     if (action === 'exit') expect(handleExit).toHaveBeenCalledTimes(1)

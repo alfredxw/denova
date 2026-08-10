@@ -231,7 +231,7 @@ describe('InputArea command menu', () => {
     await waitFor(() => expect(handleRemove).toHaveBeenCalledWith('chapters/ch01.md'))
   })
 
-  it('moves Plan Mode into input actions instead of rendering a standalone button', async () => {
+  it('keeps the Plan toggle in input actions and labels it as 计划', async () => {
     const user = userEvent.setup()
     const handleTogglePlanMode = vi.fn()
     render(
@@ -245,29 +245,36 @@ describe('InputArea command menu', () => {
 
     expect(screen.getByRole('textbox')).toHaveAttribute('rows', '1')
     expect(screen.queryByRole('button', { name: 'Chat' })).not.toBeInTheDocument()
-    expect(screen.queryByText('Plan')).not.toBeInTheDocument()
+    expect(screen.queryByText('计划')).not.toBeInTheDocument()
 
     await user.click(screen.getByRole('button', { name: '输入动作' }))
-    const planAction = screen.getByRole('menuitemcheckbox', { name: /Plan/ })
+    expect(within(screen.getByRole('menu', { name: '输入动作' })).queryByRole('separator')).not.toBeInTheDocument()
+    const planAction = screen.getByRole('menuitemcheckbox', { name: /计划/ })
     expect(within(planAction).getByText('Shift+Tab')).toHaveClass('order-3', 'ml-auto', 'shrink-0')
     await user.click(planAction)
 
     expect(handleTogglePlanMode).toHaveBeenCalledTimes(1)
   })
 
-  it('shows a read-only Plan indicator only while Plan Mode is active', () => {
+  it('shows the shared removable mode chip to the right of permission while Plan is active', async () => {
+    const user = userEvent.setup()
+    const handleTogglePlanMode = vi.fn()
     const { rerender } = render(
       <InputArea
         onSend={vi.fn()}
         disabled={false}
         planMode
-        onTogglePlanMode={vi.fn()}
+        onTogglePlanMode={handleTogglePlanMode}
       />,
     )
 
-    const indicator = screen.getByLabelText('Plan Mode 已开启')
-    expect(indicator).toHaveTextContent('Plan')
-    expect(indicator.closest('button')).toBeNull()
+    const permission = screen.getByRole('button', { name: 'Agent 安全模式: Write' })
+    const indicator = screen.getByRole('button', { name: '退出计划模式' })
+    expect(indicator).toHaveTextContent('计划')
+    expect(indicator).toHaveAttribute('aria-pressed', 'true')
+    expect(permission.compareDocumentPosition(indicator) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
+    await user.click(indicator)
+    expect(handleTogglePlanMode).toHaveBeenCalledTimes(1)
 
     rerender(
       <InputArea
@@ -278,7 +285,7 @@ describe('InputArea command menu', () => {
       />,
     )
 
-    expect(screen.queryByLabelText('Plan Mode 已开启')).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: '退出计划模式' })).not.toBeInTheDocument()
   })
 
   it('switches safety mode from its visible composer control instead of input actions', async () => {
@@ -488,7 +495,10 @@ describe('InputArea goal mode', () => {
       />,
     )
 
-    const goalToggle = screen.getByRole('button', { name: '设置目标' })
+    expect(screen.queryByRole('button', { name: '设置目标' })).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: '退出目标模式' })).not.toBeInTheDocument()
+    await user.click(screen.getByRole('button', { name: '输入动作' }))
+    const goalToggle = screen.getByRole('menuitemcheckbox', { name: '目标' })
     await user.click(goalToggle)
     expect(screen.getByRole('button', { name: '退出目标模式' })).toHaveAttribute('aria-pressed', 'true')
     expect(screen.getByRole('textbox').closest('[data-placeholder]')).toHaveAttribute('data-placeholder', '描述目标，并定义可衡量的完成结果')
@@ -505,10 +515,41 @@ describe('InputArea goal mode', () => {
     await user.click(screen.getByRole('button', { name: '发送' }))
     await waitFor(() => expect(handleGoalSubmit).toHaveBeenCalledWith('Finish and verify the complete feature'))
     expect(handleSend).not.toHaveBeenCalled()
-    await waitFor(() => expect(screen.getByRole('button', { name: '设置目标' })).toHaveAttribute('aria-pressed', 'false'))
+    await waitFor(() => expect(screen.queryByRole('button', { name: '退出目标模式' })).not.toBeInTheDocument())
 
     rerender(<InputArea onSend={handleSend} disabled={false} />)
-    expect(screen.queryByRole('button', { name: '设置目标' })).not.toBeInTheDocument()
+    await user.click(screen.getByRole('button', { name: '输入动作' }))
+    expect(screen.queryByRole('menuitemcheckbox', { name: '目标' })).not.toBeInTheDocument()
+  })
+
+  it('keeps Goal and Plan mutually exclusive across both input-action toggles', async () => {
+    const user = userEvent.setup()
+
+    function Wrapper() {
+      const [planMode, setPlanMode] = useState(true)
+      return (
+        <InputArea
+          onSend={vi.fn()}
+          onGoalSubmit={vi.fn()}
+          planMode={planMode}
+          onTogglePlanMode={() => setPlanMode(value => !value)}
+          disabled={false}
+        />
+      )
+    }
+
+    render(<Wrapper />)
+    expect(screen.getByRole('button', { name: '退出计划模式' })).toBeInTheDocument()
+
+    await user.click(screen.getByRole('button', { name: '输入动作' }))
+    await user.click(screen.getByRole('menuitemcheckbox', { name: '目标' }))
+    expect(screen.queryByRole('button', { name: '退出计划模式' })).not.toBeInTheDocument()
+    expect(screen.getByRole('button', { name: '退出目标模式' })).toBeInTheDocument()
+
+    await user.click(screen.getByRole('button', { name: '输入动作' }))
+    await user.click(screen.getByRole('menuitemcheckbox', { name: /计划/ }))
+    expect(screen.queryByRole('button', { name: '退出目标模式' })).not.toBeInTheDocument()
+    expect(screen.getByRole('button', { name: '退出计划模式' })).toBeInTheDocument()
   })
 
   it('renders the durable goal above the composer and returns it to edit mode', async () => {

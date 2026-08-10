@@ -46,6 +46,19 @@ vi.mock('@/features/agent-approval/AgentApprovalProvider', () => ({
   }),
 }))
 
+vi.mock('@/features/agent-goal/use-conversation-goal', () => ({
+  useConversationGoal: () => ({
+    goal: null,
+    loading: false,
+    saving: false,
+    set: vi.fn().mockResolvedValue(null),
+    pause: vi.fn().mockResolvedValue(null),
+    resume: vi.fn().mockResolvedValue(null),
+    clear: vi.fn().mockResolvedValue(null),
+    reload: vi.fn().mockResolvedValue(null),
+  }),
+}))
+
 vi.mock('@/hooks/useSkillCommands', () => ({
   useSkillCommands: () => [],
 }))
@@ -141,8 +154,12 @@ describe('AgentPanel', () => {
     expect(screen.getByText('稳健叙事')).toBeInTheDocument()
     expect(screen.getByText('写作 Skill')).toBeInTheDocument()
     expect(screen.getByText(/Lite/)).toBeInTheDocument()
-    expect(await screen.findByRole('menuitem', { name: 'Image Agent 语言模型' })).toBeInTheDocument()
-    expect(screen.getByRole('menuitem', { name: 'Image Agent 图像模型' })).toBeInTheDocument()
+    const imageGenerationOptions = screen.getByRole('menuitem', { name: '图像生成选项' })
+    expect(screen.queryByText('Image Agent')).not.toBeInTheDocument()
+    await user.hover(imageGenerationOptions)
+    expect(await screen.findByRole('menuitem', { name: '语言模型' })).toBeInTheDocument()
+    expect(screen.getByRole('menuitem', { name: '图像模型' })).toBeInTheDocument()
+    expect(screen.getByRole('menuitem', { name: '图像方案' })).toBeInTheDocument()
     expect(screen.queryByRole('button', { name: 'Review' })).not.toBeInTheDocument()
   })
 

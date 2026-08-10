@@ -4,7 +4,6 @@ import { useTranslation } from 'react-i18next'
 import { Input } from '@/components/ui/input'
 import {
   DropdownMenuItem,
-  DropdownMenuSeparator,
   DropdownMenuSub,
   DropdownMenuSubContent,
   DropdownMenuSubTrigger,
@@ -47,7 +46,6 @@ export function InteractiveImageSettingsMenu({ story, disabled, onChange }: { st
 
   return (
     <>
-      <DropdownMenuSeparator className="bg-[var(--nova-border-soft)]" />
       <DropdownMenuSub>
         <DropdownMenuSubTrigger
           disabled={disabled}
@@ -149,6 +147,7 @@ export function StoryImagePresetMenu({ story, presets, disabled, onChange }: { s
       <DropdownMenuSubTrigger
         disabled={disabled || saving}
         className="flex cursor-pointer items-center gap-2 text-xs focus:bg-[var(--nova-active)] focus:text-[var(--nova-text)]"
+        aria-label={t('storyStage.imagePreset.menuTitle')}
       >
         <span className="flex h-3.5 w-3.5 items-center justify-center">
           {saving ? <Loader2 className="h-3.5 w-3.5 animate-spin text-[var(--nova-text-faint)]" /> : <Sparkles className="h-3.5 w-3.5" />}
@@ -156,7 +155,7 @@ export function StoryImagePresetMenu({ story, presets, disabled, onChange }: { s
         <span className="min-w-0 flex-1 truncate">{t('storyStage.imagePreset.menuTitle')}</span>
         <span className="max-w-36 shrink-0 truncate text-right text-[10px] text-[var(--nova-text-faint)]">{selected?.name || current.preset_id}</span>
       </DropdownMenuSubTrigger>
-      <DropdownMenuSubContent className="w-72 border-[var(--nova-border)] bg-[var(--nova-surface-2)] p-2 text-[var(--nova-text)]">
+      <DropdownMenuSubContent className="w-72 max-w-[calc(100vw-1rem)] border-[var(--nova-border)] bg-[var(--nova-surface-2)] p-2 text-[var(--nova-text)] max-[700px]:[translate:calc(-100%+0.5rem)_0]">
         {normalizedPresets.map((preset) => {
           const selectedPreset = preset.id === selected?.id
           return (

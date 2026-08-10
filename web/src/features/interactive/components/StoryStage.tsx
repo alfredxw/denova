@@ -1,7 +1,8 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import type { CSSProperties } from 'react'
-import { PanelRight, RefreshCw } from 'lucide-react'
+import { PanelRight } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
+import { LoadingState } from '@/components/common/LoadingState'
 import { Button } from '@/components/ui/button'
 import { CONTEXT_ANALYSIS_SIMULATED_MESSAGE } from '@/components/Chat/ContextAnalysisDialog'
 import { MessageList, type TurnScrollRequest } from '@/components/Chat/MessageList'
@@ -680,12 +681,11 @@ export function StoryStage({ projectId, workspace, styleSceneSuggestions = [], s
                 }}
               />
             ) : snapshotLoading && agentMessages.length === 0 && !streaming ? (
-              <div className="m-5 flex min-h-0 flex-1 items-center justify-center rounded-[var(--nova-radius)] border border-dashed border-[var(--nova-border)] bg-[var(--nova-surface)] px-6 text-center text-sm text-[var(--nova-text-faint)] shadow-[inset_0_1px_0_rgba(255,255,255,0.03)]">
-                <div className="flex max-w-md flex-col items-center gap-3">
-                  <RefreshCw className="h-4 w-4 animate-spin text-[var(--nova-text-muted)]" />
-                  <div className="text-xs leading-5 text-[var(--nova-text-faint)]">{t('common.loading')}</div>
-                </div>
-              </div>
+              <LoadingState
+                label={t('common.loading')}
+                layout="conversation"
+                className="h-full min-h-0 flex-1 bg-[var(--nova-surface-2)]"
+              />
             ) : agentMessages.length === 0 && !streaming ? (
               <StoryOpeningPanel
                 story={story}

@@ -3,6 +3,7 @@ import { useTranslation } from 'react-i18next'
 import { MessageSquareText } from 'lucide-react'
 import { toast } from 'sonner'
 import { EmptyState } from '@/components/common/EmptyState'
+import { LoadingState } from '@/components/common/LoadingState'
 import { ConfirmDialog } from '@/components/common/ConfirmDialog'
 import type { WritingComposerSettingsController } from '@/components/Chat/AgentPanel'
 import type { EditorFlushHandler } from '@/components/Editor/useEditorDraftPersistence'
@@ -849,7 +850,9 @@ export function AgentChatView({
             })
 
             const workbenchContent =
-              activeProject?.status === 'missing' ? (
+              projectsLoading ? (
+                <LoadingState label={t('router.loading')} layout="conversation" className="h-full min-h-0" />
+              ) : activeProject?.status === 'missing' ? (
                 <EmptyState
                   variant="page"
                   icon={MessageSquareText}

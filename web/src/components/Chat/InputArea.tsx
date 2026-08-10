@@ -1,6 +1,6 @@
 import { useState, useRef, useEffect, useLayoutEffect, useMemo, useCallback, type ReactNode } from 'react'
 import type { LucideIcon } from 'lucide-react'
-import { Archive, BadgeHelp, BarChart3, ClipboardList, Eraser, List, ScrollText, Sparkles, Target, X } from 'lucide-react'
+import { Archive, BadgeHelp, BarChart3, ClipboardList, Eraser, List, ScrollText, Sparkles, Target } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import { FileReferencePicker, type FileReferencePickerHandle, type ReferencePickerItem } from './FileReferencePicker'
 import { TokenUsageDialog, type TokenUsageRecord } from './TokenUsagePanel'
@@ -11,7 +11,7 @@ import { AgentComposerShell } from './AgentComposerShell'
 import { ModelProfileSwitcher } from './ModelProfileSwitcher'
 import { ComposerTokenInput, type ComposerTokenInputHandle, type ComposerTokenSpec, type ComposerTrigger } from './composer-token-input'
 import { workspaceFileName } from '@/lib/workspace-path'
-import { DropdownMenu, DropdownMenuCheckboxItem, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from '@/components/ui/dropdown-menu'
+import { DropdownMenu, DropdownMenuCheckboxItem, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu'
 import { useKeyboardInset } from '@/hooks/useKeyboardInset'
 import { useIsMobile } from '@/hooks/useIsMobile'
 import { ReviewFeedbackTray, reviewFeedbackCommentCount, type ReviewFeedbackBatch, type ReviewFeedbackComment, type ReviewFeedbackSelection } from '@/features/changes/agent/ReviewFeedbackTray'
@@ -25,6 +25,7 @@ import { useConversationConfig } from '@/features/conversation-config/use-conver
 import type { ConversationConfigBinding } from '@/features/conversation-config/types'
 import { cn } from '@/lib/utils'
 import type { ConversationGoal } from '@/features/agent-goal/types'
+import { ComposerModeChip } from './ComposerModeChip'
 
 /** 可用命令列表 */
 const COMMANDS: Array<{ cmd: string; descKey: string; hintKey: string; icon: LucideIcon }> = [
@@ -276,6 +277,10 @@ export function InputArea({
   }, [draftKey])
 
   useEffect(() => {
+    if (planMode) setGoalMode(false)
+  }, [planMode])
+
+  useEffect(() => {
     if (!draftKey) return
     if (value) inputDrafts.set(draftKey, value)
     else inputDrafts.delete(draftKey)
@@ -353,6 +358,16 @@ export function InputArea({
     setStyleSceneQuery(trigger?.kind === 'style' ? trigger.query : null)
   }
 
+  const setGoalModeExclusive = (next: boolean) => {
+    setGoalMode(next)
+    if (next && planMode) onTogglePlanMode?.()
+  }
+
+  const togglePlanModeExclusive = () => {
+    if (!planMode) setGoalMode(false)
+    onTogglePlanMode?.()
+  }
+
   /** 处理键盘事件 */
   const handleKeyDown = (e: KeyboardEvent) => {
     const isMod = e.metaKey || e.ctrlKey
@@ -360,8 +375,7 @@ export function InputArea({
 
     if (e.key === 'Tab' && e.shiftKey && onTogglePlanMode && !disabled) {
       e.preventDefault()
-      if (!planMode) setGoalMode(false)
-      onTogglePlanMode()
+      togglePlanModeExclusive()
       return true
     }
 
@@ -500,8 +514,7 @@ export function InputArea({
     const command = allCommands.find((item) => item.cmd === cmd)
     if (cmd === '/goal' && onGoalSubmit) {
       inputRef.current?.replaceActiveTriggerText('')
-      setGoalMode(true)
-      if (planMode) onTogglePlanMode?.()
+      setGoalModeExclusive(true)
     } else if (command?.source === 'skill') {
       const name = cmd.replace(/^\//, '')
       inputRef.current?.replaceActiveTriggerWithToken({ kind: 'skill', value: name, label: name })
@@ -517,8 +530,7 @@ export function InputArea({
   const editGoal = () => {
     if (!goal) return
     setValue(goal.objective)
-    setGoalMode(true)
-    if (planMode) onTogglePlanMode?.()
+    setGoalModeExclusive(true)
     window.requestAnimationFrame(() => inputRef.current?.focus())
   }
 
@@ -678,29 +690,38 @@ export function InputArea({
                     type="button"
                     size="icon-sm"
                     className="nova-agent-composer-icon h-8 w-8 shrink-0 rounded-[10px] border border-[var(--nova-border)] bg-[var(--nova-surface)] text-[var(--nova-text-muted)] hover:bg-[var(--nova-hover)] hover:text-[var(--nova-text)] disabled:opacity-45"
-                    disabled={!onTogglePlanMode && !composerSettingsControl && !onContextAnalyze && tokenUsageMessages.length === 0}
+                    disabled={!onGoalSubmit && !onTogglePlanMode && !composerSettingsControl && !onContextAnalyze && tokenUsageMessages.length === 0}
                     aria-label={t('chat.input.actions')}
                   >
                     <List className="h-3.5 w-3.5" />
                   </Button>
                 </DropdownMenuTrigger>
                 <DropdownMenuContent align="start" side="top" className="w-80 border-[var(--nova-border)] bg-[var(--nova-surface-2)] p-2 text-[var(--nova-text)]">
-                  {onTogglePlanMode ? (
+                  {onGoalSubmit || onTogglePlanMode ? (
                     <>
-                      <DropdownMenuCheckboxItem
-                        checked={planMode}
-                        disabled={disabled || generationActive}
-                        onCheckedChange={() => {
-                          if (!planMode) setGoalMode(false)
-                          onTogglePlanMode()
-                        }}
-                        className="cursor-pointer pr-1.5 text-xs focus:bg-[var(--nova-active)] focus:text-[var(--nova-text)] [&_[data-slot=dropdown-menu-checkbox-item-indicator]]:static [&_[data-slot=dropdown-menu-checkbox-item-indicator]]:order-2 [&_[data-slot=dropdown-menu-checkbox-item-indicator]]:size-4"
-                      >
-                        <ClipboardList className="h-3.5 w-3.5" />
-                        <span className="min-w-0 flex-1">{t('chat.plan.short')}</span>
-                        <span className="order-3 ml-auto shrink-0 text-[10px] text-[var(--nova-text-faint)]">Shift+Tab</span>
-                      </DropdownMenuCheckboxItem>
-                      <DropdownMenuSeparator className="bg-[var(--nova-border-soft)]" />
+                      {onGoalSubmit ? (
+                        <DropdownMenuCheckboxItem
+                          checked={goalMode}
+                          disabled={disabled}
+                          onCheckedChange={(checked) => setGoalModeExclusive(checked === true)}
+                          className="cursor-pointer pr-1.5 text-xs focus:bg-[var(--nova-active)] focus:text-[var(--nova-text)] [&_[data-slot=dropdown-menu-checkbox-item-indicator]]:static [&_[data-slot=dropdown-menu-checkbox-item-indicator]]:order-2 [&_[data-slot=dropdown-menu-checkbox-item-indicator]]:size-4"
+                        >
+                          <Target className="h-3.5 w-3.5" />
+                          <span className="min-w-0 flex-1">{t('chat.goal.short')}</span>
+                        </DropdownMenuCheckboxItem>
+                      ) : null}
+                      {onTogglePlanMode ? (
+                        <DropdownMenuCheckboxItem
+                          checked={planMode}
+                          disabled={disabled || generationActive}
+                          onCheckedChange={togglePlanModeExclusive}
+                          className="cursor-pointer pr-1.5 text-xs focus:bg-[var(--nova-active)] focus:text-[var(--nova-text)] [&_[data-slot=dropdown-menu-checkbox-item-indicator]]:static [&_[data-slot=dropdown-menu-checkbox-item-indicator]]:order-2 [&_[data-slot=dropdown-menu-checkbox-item-indicator]]:size-4"
+                        >
+                          <ClipboardList className="h-3.5 w-3.5" />
+                          <span className="min-w-0 flex-1">{t('chat.plan.short')}</span>
+                          <span className="order-3 ml-auto shrink-0 text-[10px] text-[var(--nova-text-faint)]">Shift+Tab</span>
+                        </DropdownMenuCheckboxItem>
+                      ) : null}
                     </>
                   ) : null}
                   {composerSettingsControl}
@@ -712,7 +733,6 @@ export function InputArea({
                     <span className="min-w-0 flex-1">{t('chat.tokenUsage.action')}</span>
                     <span className="text-[10px] text-[var(--nova-text-faint)]">{t('chat.tokenUsage.subtitle', { count: tokenUsageCount })}</span>
                   </DropdownMenuItem>
-                  <DropdownMenuSeparator className="bg-[var(--nova-border-soft)]" />
                   <DropdownMenuItem
                     disabled={disabled || generationActive}
                     onSelect={handleContextAnalyze}
@@ -723,40 +743,27 @@ export function InputArea({
                   </DropdownMenuItem>
                 </DropdownMenuContent>
               </DropdownMenu>
-              {planMode ? (
-                <span
-                  className="inline-flex h-8 shrink-0 items-center gap-1.5 border-l border-[var(--nova-border-soft)] pl-2 text-sm text-[var(--nova-text-muted)]"
-                  aria-label={t('chat.plan.modeOn')}
-                >
-                  <ClipboardList className="h-3.5 w-3.5" />
-                  {t('chat.plan.short')}
-                </span>
-              ) : null}
               <AgentApprovalModeMenu runActive={generationActive} conversationConfig={conversationBinding ? conversationConfig : undefined} />
-              {onGoalSubmit ? (
-                <button
-                  type="button"
-                  disabled={disabled}
-                  onClick={() => {
-                    setGoalMode((selected) => {
-                      const next = !selected
-                      if (next && planMode) onTogglePlanMode?.()
-                      return next
-                    })
+              {planMode && onTogglePlanMode ? (
+                <ComposerModeChip
+                  label={t('chat.plan.short')}
+                  ariaLabel={t('chat.plan.exit')}
+                  disabled={disabled || generationActive}
+                  onClose={() => {
+                    togglePlanModeExclusive()
                     window.requestAnimationFrame(() => inputRef.current?.focus())
                   }}
-                  className={cn(
-                    'inline-flex h-8 shrink-0 items-center gap-1.5 rounded-full px-2 text-sm transition-colors disabled:opacity-45',
-                    goalMode
-                      ? 'bg-[var(--nova-active)] text-[var(--nova-text)]'
-                      : 'text-[var(--nova-text-muted)] hover:bg-[var(--nova-hover)] hover:text-[var(--nova-text)]',
-                  )}
-                  aria-pressed={goalMode}
-                  aria-label={goalMode ? t('chat.goal.exitMode') : t('chat.goal.enterMode')}
-                >
-                  {goalMode ? <X className="h-3.5 w-3.5" /> : <Target className="h-3.5 w-3.5" />}
-                  {t('chat.goal.short')}
-                </button>
+                />
+              ) : goalMode && onGoalSubmit ? (
+                <ComposerModeChip
+                  label={t('chat.goal.short')}
+                  ariaLabel={t('chat.goal.exitMode')}
+                  disabled={disabled}
+                  onClose={() => {
+                    setGoalMode(false)
+                    window.requestAnimationFrame(() => inputRef.current?.focus())
+                  }}
+                />
               ) : null}
               <TokenUsageDialog open={tokenUsageOpen} messages={tokenUsageMessages} onOpenChange={setTokenUsageOpen} onOpenTrace={onOpenTrace} />
             </>

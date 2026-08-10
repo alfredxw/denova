@@ -373,6 +373,7 @@ export function MessageList({ projectId, messages, isStreaming, visible = true, 
         <LoadingState
           label={t('common.loading')}
           variant="panel"
+          layout="conversation"
           className="pointer-events-none absolute inset-0 min-h-0 bg-[var(--nova-bg)]"
         />
       ) : null}

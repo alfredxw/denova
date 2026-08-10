@@ -5,6 +5,7 @@ import { useTranslation } from 'react-i18next'
 import { ArrowDownUp, Check, Clock3, Loader2, PanelLeft, Plus } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu'
+import { LoadingState } from '@/components/common/LoadingState'
 import { InlineErrorNotice } from '@/components/common/inline-error-notice'
 import type { AgentChatProject, AgentChatSession } from './api'
 import { AgentChatSidebarProject, projectSortableID, type AgentChatSidebarProjectDragData } from './AgentChatSidebarProject'
@@ -154,7 +155,7 @@ export function AgentChatActivitySidebar({
         <div className="min-h-0 flex-1 overflow-y-auto p-1.5 pt-0">
           {error ? <InlineErrorNotice className="mb-2" message={error} title={t('agentChat.sidebar.loadFailed')} /> : null}
           {loading && projects.length === 0 ? (
-            <p className="px-2 py-3 text-[11px] text-[var(--nova-text-faint)]">{t('router.loading')}</p>
+            <LoadingState label={t('router.loading')} variant="panel" className="min-h-0 px-0 py-1" />
           ) : projects.length === 0 ? (
             <p className="px-2 py-3 text-[11px] leading-5 text-[var(--nova-text-faint)]">{t('agentChat.sidebar.noProjects')}</p>
           ) : (

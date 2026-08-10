@@ -14,7 +14,8 @@ import {
 import type { LayeredSettings, Settings } from '@/features/settings/types'
 import { setConfiguredLocale } from '@/i18n'
 import { APIError } from '@/lib/api-client'
-import { ImageAgentModelSettingsMenu } from './ImageAgentModelSettingsMenu'
+import { ImageGenerationSettingsMenu } from './ImageGenerationSettingsMenu'
+import { WritingImagePresetMenu } from './WritingComposerSettingsMenu'
 
 vi.mock('@/features/settings/api', async (importOriginal) => {
   const actual = await importOriginal<typeof import('@/features/settings/api')>()
@@ -83,14 +84,19 @@ describe('ImageAgentModelSettingsMenu', () => {
 
   afterEach(() => setConfiguredLocale('zh-CN'))
 
-  it('shows the Image Agent language and output image models in the composer actions menu', async () => {
+  it('groups the language model, image model, and image preset under image generation options', async () => {
     const user = userEvent.setup()
     renderMenu()
 
     await user.click(screen.getByRole('button', { name: 'open actions' }))
+    expect(screen.getByRole('menuitem', { name: '图像生成选项' })).toBeInTheDocument()
+    expect(screen.queryByRole('separator')).not.toBeInTheDocument()
+    expect(screen.queryByText('Image Agent')).not.toBeInTheDocument()
+    await user.hover(screen.getByRole('menuitem', { name: '图像生成选项' }))
 
-    expect(await screen.findByRole('menuitem', { name: 'Image Agent 语言模型' })).toHaveTextContent('Reasoning')
-    expect(screen.getByRole('menuitem', { name: 'Image Agent 图像模型' })).toHaveTextContent('Illustrator')
+    expect(await screen.findByRole('menuitem', { name: '语言模型' })).toHaveTextContent('Reasoning')
+    expect(screen.getByRole('menuitem', { name: '图像模型' })).toHaveTextContent('Illustrator')
+    expect(screen.getByRole('menuitem', { name: '图像方案' })).toHaveTextContent('游戏 CG')
   })
 
   it('persists the language model to the same user settings used by the Agents page', async () => {
@@ -98,7 +104,8 @@ describe('ImageAgentModelSettingsMenu', () => {
     renderMenu()
 
     await user.click(screen.getByRole('button', { name: 'open actions' }))
-    await user.hover(await screen.findByRole('menuitem', { name: 'Image Agent 语言模型' }))
+    await user.hover(screen.getByRole('menuitem', { name: '图像生成选项' }))
+    fireEvent.keyDown(await screen.findByRole('menuitem', { name: '语言模型' }), { key: 'ArrowRight' })
     fireEvent.click(await screen.findByRole('menuitem', { name: /DS Flash/ }))
 
     await waitFor(() => expect(patchSettings).toHaveBeenCalledWith(
@@ -113,7 +120,8 @@ describe('ImageAgentModelSettingsMenu', () => {
     renderMenu()
 
     await user.click(screen.getByRole('button', { name: 'open actions' }))
-    await user.hover(await screen.findByRole('menuitem', { name: 'Image Agent 图像模型' }))
+    await user.hover(screen.getByRole('menuitem', { name: '图像生成选项' }))
+    fireEvent.keyDown(await screen.findByRole('menuitem', { name: '图像模型' }), { key: 'ArrowRight' })
     fireEvent.click(await screen.findByRole('menuitem', { name: /Flux/ }))
 
     await waitFor(() => expect(patchSettings).toHaveBeenCalledWith(
@@ -134,7 +142,8 @@ describe('ImageAgentModelSettingsMenu', () => {
     renderMenu('project-book')
 
     await user.click(screen.getByRole('button', { name: 'open actions' }))
-    await user.hover(await screen.findByRole('menuitem', { name: 'Image Agent 图像模型' }))
+    await user.hover(screen.getByRole('menuitem', { name: '图像生成选项' }))
+    fireEvent.keyDown(await screen.findByRole('menuitem', { name: '图像模型' }), { key: 'ArrowRight' })
     fireEvent.click(await screen.findByRole('menuitem', { name: /Flux/ }))
 
     await waitFor(() => expect(patchProjectSettings).toHaveBeenCalledWith(
@@ -174,7 +183,8 @@ describe('ImageAgentModelSettingsMenu', () => {
     renderMenu()
 
     await user.click(screen.getByRole('button', { name: 'open actions' }))
-    await user.hover(await screen.findByRole('menuitem', { name: 'Image Agent 语言模型' }))
+    await user.hover(screen.getByRole('menuitem', { name: '图像生成选项' }))
+    fireEvent.keyDown(await screen.findByRole('menuitem', { name: '语言模型' }), { key: 'ArrowRight' })
     fireEvent.click(await screen.findByRole('menuitem', { name: /DS Flash/ }))
 
     await waitFor(() => expect(patchSettings).toHaveBeenNthCalledWith(
@@ -186,15 +196,18 @@ describe('ImageAgentModelSettingsMenu', () => {
     expect(savedSettings.user.theme).toBe('light')
   })
 
-  it('renders the same two shortcuts in English', async () => {
+  it('renders the same image generation hierarchy in English', async () => {
     setConfiguredLocale('en-US')
     const user = userEvent.setup()
     renderMenu()
 
     await user.click(screen.getByRole('button', { name: 'open actions' }))
+    expect(screen.getByRole('menuitem', { name: 'Image Generation Options' })).toBeInTheDocument()
+    await user.hover(screen.getByRole('menuitem', { name: 'Image Generation Options' }))
 
-    expect(await screen.findByRole('menuitem', { name: 'Image Agent Language Model' })).toBeInTheDocument()
-    expect(screen.getByRole('menuitem', { name: 'Image Agent Image Model' })).toBeInTheDocument()
+    expect(await screen.findByRole('menuitem', { name: 'Language Model' })).toBeInTheDocument()
+    expect(screen.getByRole('menuitem', { name: 'Image Model' })).toBeInTheDocument()
+    expect(screen.getByRole('menuitem', { name: 'Image Preset' })).toBeInTheDocument()
   })
 })
 
@@ -203,7 +216,14 @@ function renderMenu(projectId = '') {
     <DropdownMenu>
       <DropdownMenuTrigger>open actions</DropdownMenuTrigger>
       <DropdownMenuContent>
-        <ImageAgentModelSettingsMenu projectId={projectId} />
+        <ImageGenerationSettingsMenu projectId={projectId}>
+          <WritingImagePresetMenu
+            enabled
+            imagePresets={[{ id: 'game-cg', name: '游戏 CG', description: '', prompt: '', custom: false, version: 1 }]}
+            imagePresetID="game-cg"
+            onChange={() => {}}
+          />
+        </ImageGenerationSettingsMenu>
       </DropdownMenuContent>
     </DropdownMenu>,
   )

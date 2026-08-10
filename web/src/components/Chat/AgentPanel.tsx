@@ -39,8 +39,8 @@ import { AgentTracePanel } from './AgentTracePanel'
 import { AgentSubAgentSessionPanel } from './AgentSubAgentSessionPanel'
 import { CONTEXT_ANALYSIS_SIMULATED_MESSAGE, ContextAnalysisDialog } from './ContextAnalysisDialog'
 import type { ReferencePickerItem } from './FileReferencePicker'
-import { WritingComposerSettingsMenu } from './WritingComposerSettingsMenu'
-import { ImageAgentModelSettingsMenu } from './ImageAgentModelSettingsMenu'
+import { WritingComposerSettingsMenu, WritingImagePresetMenu } from './WritingComposerSettingsMenu'
+import { ImageGenerationSettingsMenu } from './ImageGenerationSettingsMenu'
 import { formatPlanDiscussionMessage } from '@/lib/plan-mode'
 import { useProjectChangeGroups } from '@/features/changes/use-change-review'
 import { AgentChangeSummaryCard } from '@/features/changes/agent/AgentChangeSummaryCard'
@@ -617,20 +617,24 @@ function AgentPanelComponent({
     conversationBinding: effectiveConversationBinding,
     composerSettingsControl: generalAgent ? undefined : (
       <>
-        <ImageAgentModelSettingsMenu projectId={projectId} disabled={!workspace || persistedSettings.loading || isStreaming} />
+        <ImageGenerationSettingsMenu projectId={projectId} disabled={!workspace || persistedSettings.loading || isStreaming}>
+          <WritingImagePresetMenu
+            enabled={Boolean(workspace) && !persistedSettings.loading && !isStreaming}
+            imagePresets={imagePresets}
+            imagePresetID={imagePresetId}
+            saving={persistedSettings.isSaving('ide_image_preset_id')}
+            onChange={(value) => persistedSettings.persist('ide_image_preset_id', value)}
+          />
+        </ImageGenerationSettingsMenu>
         <WritingComposerSettingsMenu
           enabled={Boolean(workspace) && !persistedSettings.loading && !isStreaming}
           tellers={tellers}
           tellerID={ideTellerId}
-          imagePresets={imagePresets}
-          imagePresetID={imagePresetId}
           writingSkills={writingSkillOptions}
           writingSkill={writingSkill}
           savingTeller={persistedSettings.isSaving('ide_story_teller_id')}
-          savingImagePreset={persistedSettings.isSaving('ide_image_preset_id')}
           savingWritingSkill={persistedSettings.isSaving('writing_skill_default')}
           onTellerChange={(value) => persistedSettings.persist('ide_story_teller_id', value)}
-          onImagePresetChange={(value) => persistedSettings.persist('ide_image_preset_id', value)}
           onWritingSkillChange={(value) => persistedSettings.persist('writing_skill_default', value)}
         />
       </>
@@ -640,7 +644,7 @@ function AgentPanelComponent({
     onHeightChange: setInputAreaHeight,
   }
   const chatPane = initializing ? (
-    <LoadingState label={t('router.loading')} className="h-full min-h-0" />
+    <LoadingState label={t('router.loading')} layout="conversation" className="h-full min-h-0" />
   ) : (
     <AgentChatPane
       className="min-w-0 flex-1"

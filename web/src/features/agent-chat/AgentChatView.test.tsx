@@ -70,6 +70,22 @@ describe('AgentChatView project workbenches', () => {
       })
   })
 
+  it('shows structural placeholders instead of an empty Project state during initial loading', async () => {
+    let resolveProjects!: (projects: Awaited<ReturnType<typeof getAgentChatProjects>>) => void
+    vi.mocked(getAgentChatProjects).mockReset().mockImplementation(() => new Promise((resolve) => {
+      resolveProjects = resolve
+    }))
+
+    renderView(<AgentChatView composerSettings={{} as never} tellers={[]} imagePresets={[]} renderPage={() => null} renderReview={() => null} />)
+
+    expect(screen.queryByText('还没有可管理的项目，请先添加一个目录。')).not.toBeInTheDocument()
+    expect(document.querySelector('[data-slot="loading-state-conversation"]')).toBeInTheDocument()
+    expect(document.querySelector('[data-slot="loading-state-list"]')).toBeInTheDocument()
+
+    resolveProjects([])
+    await waitFor(() => expect(screen.getByText('还没有可管理的项目，请先添加一个目录。')).toBeInTheDocument())
+  })
+
   it('opens a queued durable conversation after its Project snapshot is reconciled', async () => {
     requestAgentChatSessionNavigation({ projectId: 'project-a', sessionId: 'session-a' })
 

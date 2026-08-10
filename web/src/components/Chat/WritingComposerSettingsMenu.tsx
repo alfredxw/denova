@@ -10,43 +10,69 @@ interface WritingComposerSettingsMenuProps {
   enabled: boolean
   tellers: Teller[]
   tellerID: string
-  imagePresets: ImagePreset[]
-  imagePresetID: string
   writingSkills: WritingSkillOption[]
   writingSkill: string
   savingTeller?: boolean
-  savingImagePreset?: boolean
   savingWritingSkill?: boolean
   onTellerChange: (value: string) => void | Promise<unknown>
-  onImagePresetChange: (value: string) => void | Promise<unknown>
   onWritingSkillChange: (value: string) => void | Promise<unknown>
 }
 
-/** Writing-specific menu composed from the generic persisted-setting submenu. */
-export function WritingComposerSettingsMenu({
+interface WritingImagePresetMenuProps {
+  enabled: boolean
+  imagePresets: ImagePreset[]
+  imagePresetID: string
+  saving?: boolean
+  onChange: (value: string) => void | Promise<unknown>
+}
+
+/** Writing-mode image preset control, nested with the shared image generation options. */
+export function WritingImagePresetMenu({
   enabled,
-  tellers,
-  tellerID,
   imagePresets,
   imagePresetID,
-  writingSkills,
-  writingSkill,
-  savingTeller,
-  savingImagePreset,
-  savingWritingSkill,
-  onTellerChange,
-  onImagePresetChange,
-  onWritingSkillChange,
-}: WritingComposerSettingsMenuProps) {
+  saving,
+  onChange,
+}: WritingImagePresetMenuProps) {
   const { t } = useTranslation()
-  const writingTellers = useMemo(() => narrativeStylesForMode(tellers, 'writing'), [tellers])
-  const selectedTeller = resolveNarrativeStyle(writingTellers, tellerID, 'writing')
   const normalizedPresets = useMemo(() => (
     imagePresets.some((preset) => preset.id === imagePresetID)
       ? imagePresets
       : [{ id: imagePresetID || 'game-cg', name: imagePresetID || 'game-cg', description: '', prompt: '', custom: true, version: 1 }, ...imagePresets]
   ), [imagePresetID, imagePresets])
-  const selectedPreset = normalizedPresets.find((item) => item.id === imagePresetID) ?? normalizedPresets.find((item) => item.id === 'game-cg') ?? normalizedPresets[0]
+  const selectedPreset = normalizedPresets.find((item) => item.id === imagePresetID)
+    ?? normalizedPresets.find((item) => item.id === 'game-cg')
+    ?? normalizedPresets[0]
+
+  return (
+    <PersistedSettingsMenuSub
+      icon={Sparkles}
+      label={t('chat.imagePreset')}
+      currentLabel={selectedPreset?.name || imagePresetID}
+      value={selectedPreset?.id || imagePresetID}
+      options={normalizedPresets.map((item) => ({ id: item.id, label: item.name || item.id }))}
+      saving={saving}
+      disabled={!enabled}
+      onValueChange={onChange}
+    />
+  )
+}
+
+/** Non-image Writing options composed from the generic persisted-setting submenu. */
+export function WritingComposerSettingsMenu({
+  enabled,
+  tellers,
+  tellerID,
+  writingSkills,
+  writingSkill,
+  savingTeller,
+  savingWritingSkill,
+  onTellerChange,
+  onWritingSkillChange,
+}: WritingComposerSettingsMenuProps) {
+  const { t } = useTranslation()
+  const writingTellers = useMemo(() => narrativeStylesForMode(tellers, 'writing'), [tellers])
+  const selectedTeller = resolveNarrativeStyle(writingTellers, tellerID, 'writing')
   const normalizedSkills = useMemo(() => (
     writingSkills.some((option) => option.name === writingSkill)
       ? writingSkills
@@ -71,16 +97,6 @@ export function WritingComposerSettingsMenu({
           onValueChange={onTellerChange}
         />
       ) : null}
-      <PersistedSettingsMenuSub
-        icon={Sparkles}
-        label={t('chat.imagePreset')}
-        currentLabel={selectedPreset?.name || imagePresetID}
-        value={selectedPreset?.id || imagePresetID}
-        options={normalizedPresets.map((item) => ({ id: item.id, label: item.name || item.id }))}
-        saving={savingImagePreset}
-        disabled={!enabled}
-        onValueChange={onImagePresetChange}
-      />
       <PersistedSettingsMenuSub
         icon={Sparkles}
         label={t('chat.writingSkill')}
