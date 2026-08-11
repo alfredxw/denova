@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { toast } from 'sonner'
 import { setConfiguredLocale } from '@/i18n'
-import { APIError, clearRemoteAccessCredentials, fetchAPI, parseSSEStream, requestJSON, setRemoteAccessCredentials } from './client'
+import { APIError, clearRemoteAccessCredentials, fetchAPI, isOfflineAPIError, parseSSEStream, requestJSON, setRemoteAccessCredentials } from './client'
 
 vi.mock('sonner', () => ({
   toast: {
@@ -109,6 +109,17 @@ describe('api client backend availability toast', () => {
       code: 'revision_conflict',
       details: { path: 'chapters/ch01.md', expected: 'sha256:old', actual: 'sha256:new' },
     })
+  })
+})
+
+describe('isOfflineAPIError', () => {
+  it('detects transport failures while excluding HTTP API errors', () => {
+    expect(isOfflineAPIError(new TypeError('Failed to fetch'))).toBe(true)
+    expect(isOfflineAPIError(new Error('networkerror'))).toBe(true)
+    expect(isOfflineAPIError(new Error('Network request failed'))).toBe(true)
+    expect(isOfflineAPIError(new APIError('HTTP 409', { status: 409 }))).toBe(false)
+    expect(isOfflineAPIError(null)).toBe(false)
+    expect(isOfflineAPIError('offline')).toBe(false)
   })
 })
 

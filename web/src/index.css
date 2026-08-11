@@ -1987,6 +1987,33 @@ html[data-nova-motion="off"] *::after {
   color: var(--nova-text) !important;
 }
 
+/* 粗指针（触屏）设备统一保留可触达的最小热区。 */
+@media (pointer: coarse), (max-width: 639px) {
+  [data-sonner-toast][data-styled='true'] [data-close-button] {
+    width: 2.75rem !important;
+    height: 2.75rem !important;
+  }
+
+  .nova-settings-view :where(
+    button,
+    a[href],
+    input:not([type='hidden']),
+    select,
+    [role='button'],
+    [role='combobox']
+  ) {
+    min-height: 2.75rem;
+  }
+
+  .nova-settings-view :where(button, a[href], [role='button']) {
+    min-width: 2.75rem;
+  }
+
+  [data-slot='select-content'] [data-slot='select-item'] {
+    min-height: 2.75rem;
+  }
+}
+
 @theme inline {
   --font-heading: var(--font-sans);
   --font-sans: 'Inter Variable', sans-serif;

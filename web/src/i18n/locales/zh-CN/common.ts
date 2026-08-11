@@ -38,6 +38,7 @@ const common = {
   'common.search': '搜索',
   'common.searchNoResults': '无匹配结果',
   'common.searching': '正在搜索...',
+  'common.offlineActionBlocked': '离线时不能执行此操作，恢复连接后重试',
   'common.expand': '展开',
   'common.expandAll': '展开全部',
   'common.collapseAll': '收起全部',

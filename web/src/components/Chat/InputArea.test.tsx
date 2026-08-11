@@ -1,4 +1,4 @@
-import { fireEvent, render, screen, waitFor, within } from '@testing-library/react'
+import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { useState } from 'react'
 import { describe, expect, it, vi } from 'vitest'
@@ -155,6 +155,35 @@ describe('InputArea command menu', () => {
     expect(handleRemove).toHaveBeenCalledWith(expect.objectContaining({ reviewThreadId: 'review-1' }), 'comment-1')
   })
 
+  it('shows explicit handoff metadata and exposes an accessible remove action', async () => {
+	const user = userEvent.setup()
+	const handleRemove = vi.fn()
+	render(
+	  <InputArea
+		onSend={vi.fn()}
+		disabled={false}
+		textSelections={[{
+		  fileName: 'chapters/ch01.md',
+		  startLine: 2,
+		  endLine: 3,
+		  content: '你好',
+		  source: 'editor_selection',
+		  purpose: 'ask_agent',
+		  version: 'revision-7',
+		}]}
+		onTextSelectionRemove={handleRemove}
+	  />,
+	)
+
+	expect(screen.getByText('编辑器选区')).toBeInTheDocument()
+	expect(screen.getByText('询问 Agent')).toBeInTheDocument()
+	expect(screen.getByText('revision-7')).toBeInTheDocument()
+	expect(screen.getByText('6 bytes')).toBeInTheDocument()
+
+	await user.click(screen.getByRole('button', { name: '移除上下文交接：chapters/ch01.md' }))
+	expect(handleRemove).toHaveBeenCalledWith(0)
+  })
+
   it('restores supplemental instructions when a review-feedback request is rejected', async () => {
     const user = userEvent.setup()
     const handleSend = vi.fn().mockResolvedValue(false)
@@ -163,10 +192,27 @@ describe('InputArea command menu', () => {
     await user.type(screen.getByRole('textbox'), 'keep pace')
     const submittedText = screen.getByRole('textbox').textContent || ''
     expect(submittedText).not.toBe('')
+    await waitFor(() => expect(screen.getByRole('textbox')).toHaveTextContent(submittedText))
     await user.click(screen.getByRole('button', { name: '发送' }))
 
     expect(handleSend).toHaveBeenCalledWith(submittedText)
-    await waitFor(() => expect(screen.getByRole('textbox')).toHaveTextContent(submittedText))
+    expect(screen.getByRole('textbox')).toHaveTextContent(submittedText)
+  })
+
+  it('disables sending while offline and re-enables it after reconnecting', async () => {
+    Object.defineProperty(navigator, 'onLine', { configurable: true, value: false })
+    const user = userEvent.setup()
+    const handleSend = vi.fn()
+    render(<InputArea onSend={handleSend} disabled={false} />)
+
+    await user.type(screen.getByRole('textbox'), '草稿')
+    const send = screen.getByRole('button', { name: '离线时不能发送，恢复连接后重试' })
+    expect(send).toBeDisabled()
+
+    Object.defineProperty(navigator, 'onLine', { configurable: true, value: true })
+    act(() => window.dispatchEvent(new Event('online')))
+
+    expect(screen.getByRole('button', { name: '发送' })).toBeEnabled()
   })
 
   it('submits selected review feedback only once while the request is being accepted', async () => {

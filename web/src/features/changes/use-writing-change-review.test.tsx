@@ -86,6 +86,25 @@ describe('useWritingChangeReview', () => {
     expect(result.current.reviewFeedback).toBeNull()
   })
 
+  it('closes the review and returns to the previous surface state', async () => {
+    const { result } = renderHook(() => useWritingChangeReview({
+      workspace: '/book',
+      contextKey: 'session-1',
+      ideActive: true,
+      selectedFile: null,
+      agentVisible: true,
+      onBeforeOpen: () => true,
+      onShowAgent: vi.fn(),
+    }))
+    await act(async () => { await result.current.openChangeReview('thread-1') })
+    expect(result.current.activeReviewThreadID).toBe('thread-1')
+
+    act(() => result.current.closeChangeReview())
+
+    expect(result.current.activeReviewThreadID).toBe('')
+    expect(result.current.activeReviewRequest).toBeNull()
+  })
+
   it('keeps submitted comments suppressed independently across review threads', () => {
     const { result } = renderHook(() => useWritingChangeReview({
       workspace: '/book',

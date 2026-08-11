@@ -38,6 +38,7 @@ const common = {
   'common.search': 'Search',
   'common.searchNoResults': 'No matching results',
   'common.searching': 'Searching...',
+  'common.offlineActionBlocked': 'This action is unavailable while offline. Retry after reconnecting.',
   'common.expand': 'Expand',
   'common.expandAll': 'Expand all',
   'common.collapseAll': 'Collapse all',

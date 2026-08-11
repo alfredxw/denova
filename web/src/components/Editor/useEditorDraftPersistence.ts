@@ -6,6 +6,8 @@ import { useTranslation } from 'react-i18next'
 import type { PreservedAutosaveConflict } from '@/lib/api-client/autosave-conflicts'
 import { rebaseTextWithConflicts } from '@/lib/three-way-rebase'
 import { WorkspaceFileRevisionConflictError } from '@/lib/autosave/workspace-file-revision-conflict'
+import { pendingDraftsForWorkspace, queuePendingDraft, removePendingDraftsForFile } from '@/lib/autosave/pending-drafts'
+import { isOfflineAPIError } from '@/lib/api-client/client'
 import { useSaveLane } from '@/hooks/use-save-lane'
 import type { SaveStatus } from './EditorToolbar'
 import { preserveEditorConflict } from './editorConflictRecovery'
@@ -159,7 +161,8 @@ export function useEditorDraftPersistence({
   // SaveLane remains latest-only; the editor adapter's value is a keyed batch
   // so coalescing one document never discards a different document.
   const queuedRequestsRef = useRef(new Map<string, PendingSave>())
-  const filePositionsRef = useRef(new Map<string, { scrollTop: number }>())
+  const pendingRestoreKeyRef = useRef<string | null>(null)
+  const filePositionsRef = useRef(new Map<string, { scrollTop: number; selectionFrom?: number; selectionTo?: number }>())
   const lastSaveSignalRef = useRef(saveSignal)
   const tRef = useRef(t)
 
@@ -232,6 +235,7 @@ export function useEditorDraftPersistence({
 
   const applySavedResults = (results: SavedEditorRequest[]) => {
     for (const { request, revision: savedRevision } of results) {
+      removePendingDraftsForFile(request.workspace, request.fileName)
       if (workspaceRef.current !== request.workspace || fileNameRef.current !== request.fileName) continue
       lastSyncedContentRef.current = request.text
       lastSyncedRevisionRef.current = savedRevision
@@ -464,6 +468,16 @@ export function useEditorDraftPersistence({
       if (!request) return
       for (const failure of failures) {
         if (!failure.request) continue
+        if (isOfflineAPIError(failure.error)) {
+          queuePendingDraft({
+            workspace: failure.request.workspace,
+            path: failure.request.fileName,
+            content: failure.request.text,
+            baseContent: failure.request.baseContent,
+            baseRevision: failure.request.baseRevision,
+            mode: failure.request.mode,
+          })
+        }
         console.error('[useEditorDraftPersistence.ts] editor save lane failed', {
           workspace: failure.request.workspace,
           path: failure.request.fileName,
@@ -625,7 +639,12 @@ export function useEditorDraftPersistence({
 
     const scrollEl = editorContainerRef.current
     if (fileChanged && previousFile) {
-      filePositionsRef.current.set(documentSaveKey(previousWorkspace, previousFile), { scrollTop: scrollEl?.scrollTop ?? 0 })
+      const selection = editor?.state?.selection
+      filePositionsRef.current.set(documentSaveKey(previousWorkspace, previousFile), {
+        scrollTop: scrollEl?.scrollTop ?? 0,
+        selectionFrom: selection ? selection.from : undefined,
+        selectionTo: selection ? selection.to : undefined,
+      })
     }
     if (fileChanged && scrollEl) scrollEl.style.visibility = 'hidden'
 
@@ -649,9 +668,35 @@ export function useEditorDraftPersistence({
       requestAnimationFrame(() => {
         scrollEl.scrollTop = saved?.scrollTop ?? 0
         scrollEl.style.visibility = ''
+        if (editor && !editor.isDestroyed && saved?.selectionFrom != null && saved.selectionTo != null) {
+          editor.commands.setTextSelection({ from: saved.selectionFrom, to: saved.selectionTo })
+        }
       })
     }
   }, [applyExternalContent, archiveConflict, cancelDocumentSave, content, editor, editorContainerRef, fileName, flush, onExternalConflict, pendingSave, queueSave, resetQueuedSaves, revision, updateExternalConflict, workspace])
+
+  // Restore a locally persisted offline draft once per document mount. The draft
+  // keeps its original base revision so the next save re-validates against the
+  // server and enters the existing conflict flow when the remote moved on.
+  useEffect(() => {
+    if (!editor || editor.isDestroyed || !fileName) return
+    const key = documentSaveKey(workspace, fileName)
+    if (pendingRestoreKeyRef.current === key) return
+    pendingRestoreKeyRef.current = key
+    const draft = pendingDraftsForWorkspace(workspace).find((item) => item.path === fileName)
+    if (!draft) return
+    lastSyncedContentRef.current = draft.baseContent
+    lastSyncedRevisionRef.current = draft.baseRevision
+    confirmedSnapshotsRef.current.set(key, { content: draft.baseContent, revision: draft.baseRevision })
+    if (readEditorText(editor, fileName) !== draft.content) {
+      applyExternalContent(fileName, draft.content, { resetHistory: false, preserveSelection: true })
+    }
+    dirtyRef.current = true
+    clearSaveStatusTimer()
+    setSaveStatus('dirty')
+    queueSave(pendingSave(workspace, fileName, draft.content, 'auto'), true)
+    void flush()
+  }, [applyExternalContent, clearSaveStatusTimer, editor, fileName, flush, pendingSave, queueSave, workspace])
 
   useEffect(() => clearSaveStatusTimer, [clearSaveStatusTimer])
 
@@ -730,6 +775,22 @@ export function useEditorDraftPersistence({
       editor.off('update', handleUpdate)
     }
   }, [clearSaveStatusTimer, editor, pendingSave, queueSave])
+
+  // A reconnect is the natural retry point for locally persisted offline
+  // drafts: flush the current document or any queued work immediately.
+  useEffect(() => {
+    const handleOnline = () => {
+      const targetFile = fileNameRef.current
+      if (!targetFile) return
+      if (dirtyRef.current) {
+        void saveEditorContent('auto')
+      } else if (hasWork()) {
+        void flush()
+      }
+    }
+    window.addEventListener('online', handleOnline)
+    return () => window.removeEventListener('online', handleOnline)
+  }, [flush, hasWork, saveEditorContent])
 
   const loadExternalVersion = useCallback(() => {
     const conflict = externalConflictRef.current

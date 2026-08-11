@@ -6,6 +6,123 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### Added
+
+- 移动端输入行控件统一为 40px 并保持中心对齐：写作 Agent 与游戏故事的“输入动作/模型切换/发送”按钮不再出现 32px 与 36px 混排导致的错位和大小不一；目录树“更多操作”按钮在手机和平板上放大到 44px 触控目标，平板侧栏不再因 hover 才显示而不可点。
+- Mobile composer rows now use a uniform 40px control height with aligned centers: the action, model-switch, and send buttons in both the writing Agent and game story input rows no longer mix 32px and 36px sizes; the FileTree overflow menu button grows to a 44px touch target on phones and tablets, so the tablet sidebar is no longer hover-only.
+- 移动端文本溢出策略落地（ADR 0030）：剧情线页标题、开场方式标签、空状态提示等固定短词在窄屏不再被省略号截断，同排次要控件在窄屏自动收起文字；目录树文件名、章节标题、工作区路径、预设标题等长内容保留省略号并补齐完整内容提示（title）。
+- Mobile text overflow policy implemented (ADR 0030): fixed short labels such as the storylines header, opening-mode tabs, and empty-state hints are no longer clipped on narrow screens, while secondary controls collapse to icons; long user content (file names, chapter titles, workspace paths, preset titles) keeps ellipsis but now exposes the full value via title hints.
+- 项目工作面恢复补全（故事 24）：目录树展开状态与侧栏滚动位置按创作项目记忆，切到正文再返回“项目”后目录展开与滚动位置保持一致；搜索词恢复同时强化为可重渲染的受控记忆。
+- Project surface restoration completed (story 24): FileTree expansion and the project sidebar scroll position are remembered per project and restored after leaving and returning; the search query memory is also refreshed on each change.
+- 游戏模式设置面接入未保存草稿守卫（故事 85 完成）：叙事风格等预设存在未保存修改时，移动端底部导航、桌面活动栏以及布局内部跳转都会先弹出“继续编辑/放弃修改”，桌面 IDE 方案预设面板关闭也受同一守卫保护。
+- Game-mode setting surface now joins the unsaved draft guard (story 85 complete): with pending preset edits, mobile bottom navigation, the desktop activity bar, and in-layout transitions all show the keep-editing/discard dialog first, and closing the IDE preset panel is guarded the same way.
+- 项目工作面恢复增强（故事 24 部分）：全局搜索词按创作项目记忆，切走再返回后搜索框恢复；视图与选中文件保持原有保留行为。
+- Project surface restoration extended (story 24, partial): the global search query is remembered per project and restored after leaving and returning; view and selected file keep their existing persistence.
+- 可访问性语义审计完成（故事 101）：自动化覆盖移动外壳、更多菜单与任务中心，所有可见按钮/图片有可读名称，导航与区域有命名；真机读屏通过列为设备级后续项。
+- Screen-reader semantics audit completed (story 101): automated coverage includes the mobile shell, More menu, and task center, with readable names for all visible buttons/images and named navigation/regions; a real-device SR pass remains a device-level follow-up.
+- 可执行配置返回保护（故事 85 第一阶段）：新增共享草稿守卫注册表与“继续编辑/放弃修改”对话框，Automations、Skills、Agents 在返回或切换时会拦截未保存草稿；游戏模式 SettingPanel 待接入。
+- Executable config return guard (story 85, phase 1): a shared draft-guard registry and a keep-editing/discard dialog now intercept unsaved drafts when leaving Automations, Skills, or Agents; the game-mode SettingPanel wiring remains.
+- 移动工作台可访问名称冒烟测试：所有可见按钮与图片必须有可读名称；完整读屏器审计仍待进行。
+- Mobile workbench accessible-name smoke test added: every visible button and image must have a readable name; a full screen-reader audit is still pending.
+- Agent 会话滚动位置按会话保留：切换会话后消息列表恢复各自滚动位置；结合会话草稿与运行状态恢复，故事 33 全部覆盖。
+- Agent message scroll is now preserved per session: switching sessions restores each session's scroll position; with per-session drafts and run-state resume, story 33 is fully covered.
+- 覆盖矩阵剩余缺口整理完成：明确故事 24/85 待设计确认、故事 101 待读屏审计，以及设备级验证范围。
+- Coverage matrix remaining gaps consolidated: stories 24/85 await design confirmation, story 101 awaits a screen-reader audit, and device-level verification scope is documented.
+- 故事舞台提交增加离线门禁：离线时发送按钮禁用并提示，恢复连接后自动可用；故事 91 的提交/切换/迁移门禁全部覆盖。
+- The story stage submit control is now gated while offline: the send button is disabled with a clear message and recovers automatically; story 91 gates for submit, switch, and migration are fully covered.
+- 编辑器按文档光标位置恢复已实现并验证：切换文件后各自光标位置保留；结合草稿持久化、undo 隔离与滚动恢复，故事 18 全部覆盖。
+- Editor per-document cursor restoration implemented and verified: each file keeps its own cursor position across switches; with draft persistence, undo isolation, and scroll restoration, story 18 is fully covered.
+- 断线门禁扩展：离线时 Agent 输入发送按钮禁用并提示，结构迁移（新建/重命名/移动/删除）被阻止并显示明确错误；恢复连接后自动恢复可用。
+- Offline gates extended: the Agent composer send control is disabled with a clear message, and structure migration (create/rename/move/delete) is blocked with an explicit error while offline; both recover when back online.
+- 编辑器按文档滚动位置恢复已验证：切换文件后各自滚动位置保留；光标恢复仍待实现。
+- Editor per-document scroll restoration verified: each file keeps its own scroll position across switches; cursor restoration remains pending.
+- 新增两份设计文档：移动工作台状态恢复（故事 24/33）与可执行配置返回保护（故事 85），实现前待确认。
+- Added two design docs: mobile workbench state restoration (stories 24/33) and executable config return guard (story 85), pending confirmation before implementation.
+- 全局搜索跨正文、规划与资料验证：一次关键词查询可同时返回并展示三类结果，点击结果把结果与查询词交给打开动作。
+- Global search across manuscript, plans, and lore verified: one query returns and renders all three kinds of results, and selecting one hands the result and query to the open action.
+- Agent 输入草稿改为按会话隔离：切换会话后各自保留并恢复，不再跨会话共享；按会话保留滚动位置仍待实现。
+- Agent composer drafts are now isolated per session: switching sessions keeps and restores each session's own draft instead of sharing one; per-session scroll retention is still pending.
+- Agent 会话管理全屏流程验证：移动端“会话”视图替换对话界面，支持切换会话并通过“进入会话”返回对话。
+- Agent session management full-screen flow verified: the mobile Sessions view replaces the chat surface, supports session switching, and returns to chat.
+- 书架排序行为验证：普通浏览模式不显示拖拽手柄且排序被禁用，切换到手动排序后显示拖拽手柄。
+- Bookshelf sorting behavior verified: drag handles stay hidden and sorting stays disabled during normal browsing, and handles appear after switching to manual sort.
+- 移动抽屉改为常驻挂载：关闭列表抽屉不再卸载内容，Skills 等管理页的搜索、筛选与滚动状态在返回后保留。
+- Mobile drawers now stay mounted: closing the list drawer no longer unmounts its content, so search, filter, and scroll state survive return on Skills and other management pages.
+- 平板/宽屏双栏验证：Agents 管理页在空间足够时同时显示 Agent 列表与详情，窄屏自动收进抽屉并可打开。
+- Tablet/wide two-pane verified: the Agents management page shows the agent list and detail side by side when space allows, and collapses the list into an openable drawer on narrow screens.
+- 剧情线分支支持重命名：移动端详情可打开重命名对话框，保存后分支列表与关系图立即显示新名称；新增 `PATCH /api/interactive/stories/:id/branches/:branch` 接口。
+- Storyline branches now support renaming: the mobile detail view opens a rename dialog, and the branch list plus relation graph show the new name immediately; added the `PATCH /api/interactive/stories/:id/branches/:branch` endpoint.
+- 移动端“剧情线”改为列表优先界面：当前分支置顶，展示名称、分歧回合、父分支、最新摘要、回合数与更新时间；点击进入纵向时间线详情，可继续游玩、切换或删除；关系总览作为次级入口保留，宽屏仍直接使用图形视图。
+- Mobile Storylines now default to a list-first interface: the current branch stays on top with name, divergence turn, parent branch, latest summary, turn count, and update time; tapping opens a vertical timeline detail with continue, switch, and delete actions; the relation overview remains a secondary entry and desktop keeps the graph as the timeline view.
+- 应用级集成测试覆盖断线时的项目切换保护：无未保存草稿时切换请求失败并显示“切换书籍失败”，有未保存草稿时先保存失败并阻止切换请求。
+- Added app-level integration tests for the offline project-switch gate: with no dirty draft, the switch request fails with the localized switch error; with a dirty draft, the save fails first and the switch request is never sent.
+- 项目切换前保存保护补全应用级集成测试：编辑器草稿保存失败时会停留在当前创作项目并显示明确错误，移动端项目切换器与书架管理两条路径均覆盖。
+- Added app-level integration coverage for the save-before-project-switch guard: when the editor draft fails to save, the app stays in the current project and shows a clear error, covering both the mobile project switcher and the bookshelf management path.
+- Mobile Workbench v2 替换旧移动布局：写作模式使用“正文、项目、Agent、更多”，游戏模式使用“故事、剧情线、资料、更多”；任意时刻只有一个一级入口高亮，模式切换只出现在“更多”中，写作与游戏分别恢复自己的工作状态。
+- Mobile Workbench v2 replaces the legacy mobile layout: Writing uses Manuscript / Project / Agent / More, and Game uses Story / Timeline / Lore / More; exactly one primary destination stays highlighted, mode switching lives only under More, and each mode restores its own workspace state.
+- Agent 上下文交接：发送前在输入区显示来源、用途、版本和 UTF-8 大小，并支持移除；后端按实际内容重新计算字节数，不信任客户端上报，并拒绝超过上限的交接。
+- Agent context handoffs are now explicit: the composer shows source, purpose, version, and UTF-8 size before sending, with a remove action; the backend recomputes bytes from the content and rejects handoffs above the configured limit.
+- 新增用户级设置 `agent_context_handoff_limit_kb`，默认 256 KB，可在设置中调整；工作区配置不会覆盖该上限。
+- Added the user-level `agent_context_handoff_limit_kb` setting (default 256 KB, editable in Settings); workspace config cannot override this safety limit.
+- Agent、互动故事与配置 Agent 运行接入统一的可持续后台任务：切换或移除项目时旧版本服务改为退役而不是立即关闭，任务完成前保留可恢复运行状态。
+- Agent, Interactive Story, and Config Agent runs now use the durable background task registry: leaving or switching a project retires the old Version Service instead of closing it immediately, keeping recoverable run state until the task finishes.
+- 互动故事支持状态修订、撤销/恢复与分支；故事回合提交时携带上下文快照，历史修改通过修订或创建分支完成。
+- Interactive stories now support state revisions, undo/restore, and branches; each turn commits a context snapshot, and history changes go through revisions or new branches.
+- 状态修订界面本地化：非法值提示随应用语言显示，修订历史日期跟随所选语言，布尔字段改用“是/否”选择控件而不是手输文本。
+- The state revision editor is now localized: invalid-value messages follow the app language, history dates use the selected locale, and boolean fields use Yes/No selects instead of raw text input.
+- 批量资料图片生成等长时间图片任务现在会出现在任务中心：运行期间显示来源项目与状态，点击任务可切回源项目；任务中心类型标签已支持图片生成。
+- Long-running image work such as batch lore image generation now appears in the Task Center: the source project and status are visible while running, and tapping the task switches back to the source project; the Task Center already renders the image generation type label.
+- 移动端统一返回增加键盘路径：任务中心打开时按 Esc 与顶部返回键效果一致；状态修订等全屏子工作面按 Esc 走同一返回流程，存在未保存变更时仍先弹出确认。
+- The mobile unified back stack now handles the keyboard: Esc closes the Task Center exactly like the header back control, and full-screen sub-workbenches such as the state revision editor use the same Esc flow with unsaved-change confirmation intact.
+- 移动端触控目标补齐至 44px 以上：首次引导卡片动作、顶部书籍切换、任务中心返回、写作/游戏模式切换和设置页交互控件不再小于建议尺寸；粗指针设备上的 toast 关闭按钮也扩大热区。
+- Mobile touch targets now meet the 44px minimum: first-run card actions, the top-bar book switcher, Task Center back, writing/game mode switching, and Settings controls are no longer undersized; the toast close hit area also grows on coarse pointers.
+- 任务中心打开时焦点移入返回按钮，Esc 或顶部返回关闭后焦点回到“更多”按钮，键盘与读屏用户不会丢失当前位置。
+- Opening the Task Center moves focus to its back control, and Esc or the header back control returns focus to More, so keyboard and screen-reader users keep their place.
+- 新增用户级设置“系统通知”，默认关闭；应用不会在首次启动时请求通知权限，工作区配置也不能覆盖该偏好，应用内任务中心始终可用。
+- Added a user-level System Notifications preference, off by default; the app never requests notification permission on first launch, workspace config cannot override it, and the in-app Task Center always remains available.
+- 全屏变更审阅工作面支持 Esc 关闭，与审阅区关闭按钮走同一返回路径，便于手机键盘与系统返回习惯保持一致。
+- The full-screen change review surface now closes with Esc, sharing the same return path as its close control so keyboard and system back habits stay consistent on mobile.
+- 编辑器断线保存草稿开始本机持久化：网络失败时，未保存内容会按创作项目、文件与基础版本存入浏览器本地存储（单条上限 256 KB、最多 20 条、同文件只保留最新），供重连后校验与恢复；HTTP 域错误（如 409 冲突）不会被误判为离线草稿。
+- Editor drafts that fail to save while offline are now persisted locally: the unsaved content is bound to the project, file, and base revision in browser storage (256 KB per draft, 20 drafts max, one latest draft per file), ready for reconnect validation and recovery; HTTP domain errors such as 409 conflicts are never treated as offline drafts.
+- 编辑器重新打开有本地待同步草稿的文档时会自动恢复草稿，并继续使用草稿记录的基础版本发起保存：若服务端已前移，现有冲突校验与审阅流程会接管；保存成功后清除该文件的待同步草稿。
+- Reopening a document with a locally pending offline draft restores that draft and saves it against the recorded base revision: if the server has moved on, the existing conflict validation and review flow takes over, and the pending draft is cleared after a successful save.
+- 浏览器恢复在线时，编辑器的待同步草稿会自动立即重试，无需用户重新输入或手动保存。
+- When the browser comes back online, pending editor drafts retry immediately without requiring the user to retype or save manually.
+- 待同步草稿现在同时记录编辑所基于的服务端内容，重连后若服务端版本已前移，会按三方合并进入既有冲突审阅流程而不是静默覆盖离线修改。
+- Pending offline drafts now also record the server content the edit was based on; when the server revision has moved on after reconnecting, the draft goes through the existing three-way merge conflict review instead of silently overwriting the offline edit.
+- 小说导入结果现在会登记为任务中心里的导入导出任务：完成后可点击切回新建书籍工作区，失败任务也会保留错误信息。
+- Novel import results now appear in the Task Center as import/export tasks: completed imports can be reopened by switching to the new book workspace, and failed imports retain their error message.
+- 小说导入改为后台任务并通过 SSE 流式返回：运行中会出现在任务中心，进度以事件流下发，完成后返回结果；`POST /api/books/import-novel` 的响应从 JSON 改为 SSE。
+- Novel import now runs as a background task streamed over SSE: it appears in the Task Center while running, progress is delivered as events, and the result is returned when done; `POST /api/books/import-novel` now responds with SSE instead of JSON.
+- 系统通知发送能力上线：开启“系统通知”偏好后，等待用户或失败的任务会请求权限并显示只含任务类型与来源项目的通知（不含正文、提示词或工具内容）；同一任务只提醒一次。
+- System notifications are now sent when the preference is enabled: waiting-user or failed tasks request permission and show a notification containing only the task type and source project (never body, prompt, or tool content), with one reminder per task.
+- 修复系统通知在启动后加载设置或切换语言时仍使用初始关闭状态和旧语言的问题；关闭通知时不会提前消费任务提醒，开启后会立即按最新语言处理待办任务。
+- Fixed system notifications retaining the initial disabled preference and stale locale after settings load or language changes; disabled notifications no longer consume task reminders, and enabling them immediately processes actionable tasks in the current locale.
+- 故事舞台行动建议默认直接显示最多三项，点击只填入输入框不直接发送；超过三项时提供“更多选择”入口展开其余建议。
+- Story stage action suggestions now show up to three directly by default and only fill the composer when tapped; a “More choices” entry reveals the rest when there are more than three.
+- 完成移动工作台浏览器验收：320–1280px 七档宽度在中文/英文、深色/浅色下均无横向溢出，四入口导航正确，任务中心 Esc 返回路径与 200% 缩放通过。
+- Mobile Workbench browser acceptance completed: 320–1280px in zh/en and dark/light show no horizontal overflow, the four-destination navigation is correct, and the Task Center Escape back path plus 200% zoom pass.
+
+### Fixed
+
+- 配置管理 Agent 的后台运行现在会注册进统一任务中心并参与应用关闭时的任务停止：从 Agents/Skills/自动化等配置面启动任务后离开页面，任务中心仍能看到并恢复该项；点击任务会切回来源项目并打开对应管理面。
+- Config-manager background runs are now registered with the unified Task Center and stopped on app shutdown: starting a task from Agents/Skills/automations and leaving the page no longer hides it, and tapping the entry switches back to the source project and opens the owning management surface.
+- 小说导入后台任务改用任务上下文执行章节正则推断：页面或 SSE 连接断开后，推断不再随 HTTP 请求取消而失败并回退内置分章。
+- Background novel imports now run split-regex inference under the task context: losing the page or SSE connection no longer cancels inference and silently falls back to the built-in splitter.
+- 移动端任务中心打开任务后立即关闭任务中心与“更多”高亮，恢复的 Agent/故事工作流直接呈现；切换项目后全局搜索面板重置为该项目保存的搜索词，不再沿用上一项目的查询。
+- Mobile reviewer fixes: opening a task from the Task Center closes the Task Center and the More highlight so the recovered Agent/story workflow is shown; switching projects resets the global search panel to the new project's saved query instead of reusing the previous project's term.
+- 修复 InputArea 集成测试在负载下因异步重渲染导致的文本竞争：发送前先等待输入框内容稳定，避免偶发把旧快照与最新文本混在一起断言。
+- Fixed an InputArea integration test race where async re-renders could change the composer text between snapshot and send; the test now waits for the input to stabilize before submitting.
+- 任务中心现在为每次小说导入保留稳定且独立的任务记录：完成前后复用同一执行 ID 和恢复 ID，连续导入不再覆盖较早任务，失败导入保留来源项目，应用关闭时会停止仍在运行的导入。
+- The Task Center now keeps a stable, independent record for every novel import: running and completed states share the same execution and recovery IDs, consecutive imports no longer replace earlier tasks, failed imports retain their source project, and app shutdown stops imports still in progress.
+
+### Changed
+
+- 移动端统一任务中心：Agent 运行、互动故事与自动化等长时间操作集中为可恢复任务，任务中心可从“更多”打开，顶部返回键与浏览器返回走同一路径。
+- The mobile Task Center unifies long-running work: Agent runs, interactive stories, and automations are recoverable tasks opened from More, and the header back control and browser back share the same return path.
+- 统一返回栈覆盖移动工作台表层导航；任务中心等子工作面使用具名历史层，避免一级入口切换污染浏览器历史。
+- The unified back stack now covers mobile shell navigation; sub-workbenches such as the Task Center push named history entries, and primary destination switches no longer pollute browser history.
+
 ## [v0.3.3] - 2026-07-25
 
 ### Fixed

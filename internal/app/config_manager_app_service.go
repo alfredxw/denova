@@ -76,7 +76,13 @@ func (s *ConfigManagerAppService) StartTask(ctx context.Context, req ConfigManag
 		log.Printf("[config-manager] build runner failed workspace=%s err=%v", workspace, err)
 		return nil
 	}
-	return NewTask(func(ctx context.Context, task *Task, emit func(agent.Event)) {
+	releaseVersionLease, acquired := versionService.Acquire()
+	if !acquired {
+		log.Printf("[config-manager] source version runtime retired workspace=%s session_id=%s", workspace, sess.ID)
+		return nil
+	}
+	task := NewTask(func(ctx context.Context, task *Task, emit func(agent.Event)) {
+		defer releaseVersionLease()
 		message := buildConfigManagerMessage(req)
 		log.Printf("[config-manager] run begin id=%s session_id=%s origin=%s resource_id=%s story_id=%s branch_id=%s message_len=%d", task.ID(), sess.ID, req.Origin, req.ResourceID, req.StoryID, req.BranchID, len(message))
 		chatService.RunWithOptions(ctx, runner, agent.NewSessionConversationForAgent(sess, &runtimeCfg, config.AgentKindConfigManager), bookService, agent.ChatRequest{
@@ -99,6 +105,8 @@ func (s *ConfigManagerAppService) StartTask(ctx context.Context, req ConfigManag
 		}, emit)
 		log.Printf("[config-manager] run end id=%s status=%s", task.ID(), task.Status())
 	})
+	s.bindConfigManagerTask(task, workspace, sess.ID, req)
+	return task
 }
 
 func (a *App) ConfigManagerMessages(req ConfigManagerRequest) ([]session.HistoryEntry, error) {

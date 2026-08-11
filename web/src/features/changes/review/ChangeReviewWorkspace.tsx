@@ -177,6 +177,16 @@ export function ChangeReviewWorkspace({ workspace, threadID, scopeRequest, disab
   }, [threadQuery.error, threadQuery.isError])
 
   useEffect(() => {
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key !== 'Escape') return
+      event.preventDefault()
+      onClose()
+    }
+    window.addEventListener('keydown', handleKeyDown)
+    return () => window.removeEventListener('keydown', handleKeyDown)
+  })
+
+  useEffect(() => {
     if (historicalGroupQuery.isError) logWorkspaceChangeError('历史变更审阅加载失败', historicalGroupQuery.error)
   }, [historicalGroupQuery.error, historicalGroupQuery.isError])
 

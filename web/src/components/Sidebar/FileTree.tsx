@@ -1,4 +1,4 @@
-import { useMemo, useState, type DragEvent, type MouseEvent, type ReactNode } from 'react'
+import { useEffect, useMemo, useRef, useState, type DragEvent, type MouseEvent, type ReactNode } from 'react'
 import { useTranslation } from 'react-i18next'
 import {
   ChevronDown,
@@ -42,6 +42,7 @@ interface FileTreeProps {
   onSelectFile: (path: string) => void
   onReferenceFile?: (path: string) => void
   defaultExpandedPaths?: readonly string[]
+  onExpandedPathsChange?: (paths: string[]) => void
   onCreateItem?: (path: string, type: 'file' | 'dir') => Promise<void>
   onDeleteItem?: (path: string) => Promise<void>
   onRenameItem?: (path: string, newName: string) => Promise<void>
@@ -80,6 +81,7 @@ export function FileTree({
   onSelectFile,
   onReferenceFile,
   defaultExpandedPaths = [],
+  onExpandedPathsChange,
   onCreateItem,
   onDeleteItem,
   onRenameItem,
@@ -93,7 +95,40 @@ export function FileTree({
   const [lastSelectedPath, setLastSelectedPath] = useState('')
   const [dragPaths, setDragPaths] = useState<string[]>([])
   const [dragOverPath, setDragOverPath] = useState('')
+  const [expandedPaths, setExpandedPaths] = useState<Set<string>>(() => {
+    const next = collectDefaultExpandedPaths(nodes, '')
+    for (const path of defaultExpandedPaths) next.add(path)
+    return next
+  })
   const orderedPaths = useMemo(() => collectFileNodePaths(nodes, basePath), [nodes, basePath])
+  const defaultNamePathsSeenRef = useRef(false)
+
+  // 目录数据异步到达时补一次默认展开；用户手动折叠后不再自动展开。
+  useEffect(() => {
+    if (defaultNamePathsSeenRef.current) return
+    defaultNamePathsSeenRef.current = true
+    const defaultPaths = collectDefaultExpandedPaths(nodes, '')
+    setExpandedPaths((current) => {
+      const next = new Set(current)
+      let changed = false
+      for (const path of defaultPaths) {
+        if (!next.has(path)) {
+          next.add(path)
+          changed = true
+        }
+      }
+      return changed ? next : current
+    })
+  }, [nodes])
+
+  const toggleExpanded = (path: string, force?: boolean) => {
+    const next = new Set(expandedPaths)
+    const shouldExpand = force ?? !next.has(path)
+    if (shouldExpand) next.add(path)
+    else next.delete(path)
+    setExpandedPaths(next)
+    onExpandedPathsChange?.(Array.from(next))
+  }
 
   // 弹窗操作（仅复制 / 移动）
   const [operation, setOperation] = useState<{
@@ -107,7 +142,6 @@ export function FileTree({
   const [deleteTarget, setDeleteTarget] = useState<string | string[] | null>(null)
 
   const selectedPathList = useMemo(() => Array.from(selectedPaths), [selectedPaths])
-  const defaultExpandedPathSet = useMemo(() => new Set(defaultExpandedPaths), [defaultExpandedPaths])
   const capabilities = useMemo(() => ({
     canReferenceFile: Boolean(onReferenceFile),
     canCreateItem: Boolean(onCreateItem),
@@ -239,7 +273,8 @@ export function FileTree({
         selectedPaths={selectedPaths}
         dragPaths={dragPaths}
         dragOverPath={dragOverPath}
-        defaultExpandedPaths={defaultExpandedPathSet}
+        expandedPaths={expandedPaths}
+        onToggleExpanded={toggleExpanded}
         {...capabilities}
         onSelectFile={onSelectFile}
         onSelectPath={updateSelection}
@@ -301,7 +336,8 @@ interface FileTreeListProps {
   selectedPaths: Set<string>
   dragPaths: string[]
   dragOverPath: string
-  defaultExpandedPaths: Set<string>
+  expandedPaths: Set<string>
+  onToggleExpanded: (path: string, force?: boolean) => void
   canReferenceFile: boolean
   canCreateItem: boolean
   canDeleteItem: boolean
@@ -369,7 +405,8 @@ interface FileTreeNodeProps {
   selectedPaths: Set<string>
   dragPaths: string[]
   dragOverPath: string
-  defaultExpandedPaths: Set<string>
+  expandedPaths: Set<string>
+  onToggleExpanded: (path: string, force?: boolean) => void
   canReferenceFile: boolean
   canCreateItem: boolean
   canDeleteItem: boolean
@@ -410,7 +447,8 @@ function FileTreeNode({
   selectedPaths,
   dragPaths,
   dragOverPath,
-  defaultExpandedPaths,
+  expandedPaths,
+  onToggleExpanded,
   canReferenceFile,
   canCreateItem,
   canDeleteItem,
@@ -435,7 +473,7 @@ function FileTreeNode({
   chapterStats,
 }: FileTreeNodeProps) {
   const { t } = useTranslation()
-  const [expanded, setExpanded] = useState(DEFAULT_EXPANDED.has(node.name) || defaultExpandedPaths.has(path))
+  const expanded = expandedPaths.has(path)
   const isDir = node.type === 'dir'
   const isSelected = selectedFile === path
   const isMultiSelected = selectedPaths.has(path)
@@ -475,7 +513,7 @@ function FileTreeNode({
             label: t('sidebar.createFile'),
             icon: <FilePlus className="h-3.5 w-3.5" />,
             onSelect: () => {
-              if (isDir) setExpanded(true)
+              if (isDir) onToggleExpanded(path, true)
               onStartInlineEdit('create-file', createTargetDir, '')
             },
           },
@@ -483,7 +521,7 @@ function FileTreeNode({
             label: t('sidebar.createDir'),
             icon: <FolderPlus className="h-3.5 w-3.5" />,
             onSelect: () => {
-              if (isDir) setExpanded(true)
+              if (isDir) onToggleExpanded(path, true)
               onStartInlineEdit('create-dir', createTargetDir, '')
             },
           },
@@ -568,7 +606,7 @@ function FileTreeNode({
                     return
                   }
                   onSelectPath(path)
-                  setExpanded(!expanded)
+                  onToggleExpanded(path)
                 }}
               >
                 {expanded ? (
@@ -589,7 +627,7 @@ function FileTreeNode({
                     onCancel={onInlineCancel}
                   />
                 ) : (
-                  <span className="truncate">{node.name}</span>
+                  <span className="truncate" title={path}>{node.name}</span>
                 )}
               </button>
               {!isRenaming && actions.length > 0 && <NodeDropdown actions={actions} />}
@@ -610,7 +648,8 @@ function FileTreeNode({
               selectedPaths={selectedPaths}
               dragPaths={dragPaths}
               dragOverPath={dragOverPath}
-              defaultExpandedPaths={defaultExpandedPaths}
+              expandedPaths={expandedPaths}
+              onToggleExpanded={onToggleExpanded}
               canReferenceFile={canReferenceFile}
               canCreateItem={canCreateItem}
               canDeleteItem={canDeleteItem}
@@ -679,7 +718,7 @@ function FileTreeNode({
                 />
               ) : (
                 <span className="flex min-w-0 flex-1 items-center justify-between gap-2">
-                  <span className="truncate">{node.name}</span>
+                  <span className="truncate" title={path}>{node.name}</span>
                   {chapter && (
                     <span className="flex shrink-0 items-center gap-1 text-[10px] text-[var(--nova-text-faint)]">
                       <span>{formatCompactWords(chapter.words)}</span>
@@ -713,7 +752,7 @@ function NodeDropdown({ actions }: { actions: TreeAction[] }) {
           type="button"
           aria-label={label}
           title={label}
-          className="pointer-events-none mr-1 flex shrink-0 items-center justify-center rounded p-0.5 text-[var(--nova-tree-icon)] opacity-0 transition-opacity hover:bg-[var(--nova-hover)] hover:text-[var(--nova-text)] focus-visible:pointer-events-auto focus-visible:opacity-100 group-hover:pointer-events-auto group-hover:opacity-100 data-[state=open]:pointer-events-auto data-[state=open]:opacity-100 max-md:pointer-events-auto max-md:opacity-100 max-md:p-1.5"
+          className="pointer-events-none mr-1 flex shrink-0 items-center justify-center rounded p-0.5 text-[var(--nova-tree-icon)] opacity-0 transition-opacity hover:bg-[var(--nova-hover)] hover:text-[var(--nova-text)] focus-visible:pointer-events-auto focus-visible:opacity-100 group-hover:pointer-events-auto group-hover:opacity-100 data-[state=open]:pointer-events-auto data-[state=open]:opacity-100 max-lg:pointer-events-auto max-lg:opacity-100 max-lg:size-11 max-lg:p-0"
           onPointerDown={(e) => {
             e.stopPropagation()
           }}
@@ -792,6 +831,18 @@ function collectFileNodePaths(nodes: FileNode[], basePath = ''): string[] {
     paths.push(path)
     if (node.type === 'dir' && node.children?.length) {
       paths.push(...collectFileNodePaths(node.children, path))
+    }
+  }
+  return paths
+}
+
+function collectDefaultExpandedPaths(nodes: FileNode[], basePath = ''): Set<string> {
+  const paths = new Set<string>()
+  for (const node of sortFileNodesForDisplay(nodes)) {
+    const path = basePath ? `${basePath}/${node.name}` : node.name
+    if (node.type === 'dir' && DEFAULT_EXPANDED.has(node.name)) paths.add(path)
+    if (node.children?.length) {
+      for (const childPath of collectDefaultExpandedPaths(node.children, path)) paths.add(childPath)
     }
   }
   return paths

@@ -64,6 +64,11 @@ func (h *Handlers) HandleChatContextAnalysis(ctx context.Context, c *app.Request
 }
 
 func (h *Handlers) writeChatPreparationError(c *app.RequestContext, err error) {
+	var handoffLimitErr *agent.ContextHandoffLimitError
+	if errors.As(err, &handoffLimitErr) {
+		writeErrorKey(c, consts.StatusRequestEntityTooLarge, "api.chat.contextHandoffTooLarge", "bytes", handoffLimitErr.Bytes, "limit", handoffLimitErr.Limit)
+		return
+	}
 	if errors.Is(err, novaApp.ErrNoWorkspace) {
 		writeErrorKey(c, consts.StatusConflict, "api.workspace.noWorkspace")
 		return
@@ -106,18 +111,22 @@ func (h *Handlers) HandleChatContextCompactionRemove(ctx context.Context, c *app
 
 // handleChatStream 重连到当前活跃任务的 UIMessage 事件流（回放已有事件 + 继续接收新事件）。
 func (h *Handlers) HandleChatStream(ctx context.Context, c *app.RequestContext) {
-	task := h.app.ActiveTask()
+	task, info := h.app.ActiveTaskFor(strings.TrimSpace(c.Query("session_id")))
 	if task == nil {
 		writeErrorKey(c, consts.StatusNotFound, "api.chat.noActiveTask")
 		return
 	}
-	log.Printf("[agent-ui-sse] attach active chat task_id=%s status=%s", task.ID(), task.Status())
+	if requestedTaskID := strings.TrimSpace(c.Query("task_id")); requestedTaskID != "" && requestedTaskID != task.ID() {
+		writeErrorKey(c, consts.StatusNotFound, "api.chat.noActiveTask")
+		return
+	}
+	log.Printf("[agent-ui-sse] attach active chat task_id=%s workspace=%s session_id=%s status=%s", task.ID(), info.Workspace, info.SessionID, task.Status())
 	sse.StreamTaskUI(c, task, h.chatSSEStreamOptions()...)
 }
 
 // handleChatActive 查询当前是否有活跃任务。
 func (h *Handlers) HandleChatActive(ctx context.Context, c *app.RequestContext) {
-	task := h.app.ActiveTask()
+	task, info := h.app.ActiveTaskFor(strings.TrimSpace(c.Query("session_id")))
 	if task == nil {
 		c.JSON(consts.StatusOK, map[string]interface{}{
 			"active": false,
@@ -126,17 +135,21 @@ func (h *Handlers) HandleChatActive(ctx context.Context, c *app.RequestContext) 
 	}
 	status := task.Status()
 	c.JSON(consts.StatusOK, map[string]interface{}{
-		"active": status == novaApp.TaskRunning,
-		"status": status,
+		"active":     status == novaApp.TaskRunning,
+		"status":     status,
+		"task_id":    task.ID(),
+		"workspace":  info.Workspace,
+		"session_id": info.SessionID,
 	})
 }
 
 // handleChatAbort 终止当前活跃任务。
 func (h *Handlers) HandleChatAbort(ctx context.Context, c *app.RequestContext) {
-	if task := h.app.ActiveTask(); task != nil {
+	task, _ := h.app.ActiveTaskFor(strings.TrimSpace(c.Query("session_id")))
+	if task != nil {
 		log.Printf("[agent-sse] abort requested task_id=%s status=%s", task.ID(), task.Status())
+		task.Abort()
 	}
-	h.app.AbortTask()
 	c.JSON(consts.StatusOK, map[string]string{"status": "ok"})
 }
 

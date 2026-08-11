@@ -28,7 +28,9 @@ import {
 } from '@/components/ui/dropdown-menu'
 import { useKeyboardInset } from '@/hooks/useKeyboardInset'
 import { useIsMobile } from '@/hooks/useIsMobile'
+import { useOnlineStatus } from '@/hooks/use-online-status'
 import { ReviewFeedbackTray, reviewFeedbackCommentCount, type ReviewFeedbackBatch, type ReviewFeedbackComment, type ReviewFeedbackSelection } from '@/features/changes/agent/ReviewFeedbackTray'
+import { ContextHandoffTray } from './ContextHandoffTray'
 
 /** 可用命令列表 */
 const COMMANDS: Array<{ cmd: string; descKey: string; hintKey: string; icon: LucideIcon }> = [
@@ -150,6 +152,7 @@ export function InputArea({
   const { t } = useTranslation()
   const keyboardInset = useKeyboardInset()
   const isMobile = useIsMobile()
+  const online = useOnlineStatus()
   const [value, setValue] = useState(() => draftKey ? inputDrafts.get(draftKey) || '' : '')
   const [tokenUsageOpen, setTokenUsageOpen] = useState(false)
   const [showCommands, setShowCommands] = useState(false)
@@ -392,7 +395,7 @@ export function InputArea({
   /** 发送消息 */
   const handleSend = () => {
     const trimmed = value.trim()
-    if ((!trimmed && !hasReviewFeedback) || disabled || submittingRef.current) return
+    if ((!trimmed && !hasReviewFeedback) || disabled || !online || submittingRef.current) return
     const submittedValue = value
     submittingRef.current = true
     setSubmitting(true)
@@ -554,32 +557,7 @@ export function InputArea({
               <ReviewFeedbackTray feedback={reviewFeedback} onOpen={onReviewFeedbackOpen} onRemove={onReviewFeedbackRemove} />
             ) : null}
             {textSelections.length > 0 && (
-              <div className="mb-2 flex flex-wrap gap-1.5">
-                {textSelections.map((sel, idx) => (
-                  <span
-                    key={idx}
-                    className="inline-flex max-w-full items-center gap-1 rounded-md bg-[var(--nova-success-bg)] px-2 py-0.5 text-xs text-[var(--nova-success)]"
-                  >
-                    <span className="truncate">
-                      {sel.fileName}:L{sel.startLine}
-                      {sel.endLine !== sel.startLine && `-L${sel.endLine}`}
-                      {' '}
-                      <span className="text-[var(--nova-success-muted)]">
-                        {sel.content.length > 30 ? sel.content.slice(0, 30) + '…' : sel.content}
-                      </span>
-                    </span>
-                    {onTextSelectionRemove && (
-                      <button
-                        type="button"
-                        className="rounded text-[var(--nova-success-muted)] hover:text-[var(--nova-text)]"
-                        onClick={() => onTextSelectionRemove(idx)}
-                      >
-                        ×
-                      </button>
-                    )}
-                  </span>
-                ))}
-              </div>
+              <ContextHandoffTray selections={textSelections} onRemove={onTextSelectionRemove} />
             )}
           </>
         ) : undefined}
@@ -613,7 +591,7 @@ export function InputArea({
                 <Button
                   type="button"
                   size="icon-sm"
-                  className="nova-agent-composer-icon h-8 w-8 shrink-0 rounded-[10px] border border-[var(--nova-border)] bg-[var(--nova-surface)] text-[var(--nova-text-muted)] hover:bg-[var(--nova-hover)] hover:text-[var(--nova-text)] disabled:opacity-45"
+                  className="nova-agent-composer-icon h-10 w-10 shrink-0 rounded-[10px] border border-[var(--nova-border)] bg-[var(--nova-surface)] text-[var(--nova-text-muted)] hover:bg-[var(--nova-hover)] hover:text-[var(--nova-text)] disabled:opacity-45"
                   disabled={!onTogglePlanMode && !writingSkillControl && !onContextAnalyze && tokenUsageMessages.length === 0}
                   aria-label={t('chat.input.actions')}
                   title={t('chat.input.actions')}
@@ -676,12 +654,13 @@ export function InputArea({
           <Button
             type="button"
             onClick={disabled ? onStop : handleSend}
-            disabled={disabled ? !onStop : submitting || (!value.trim() && !hasReviewFeedback)}
+            disabled={disabled ? !onStop : submitting || !online || (!value.trim() && !hasReviewFeedback)}
             size="icon-sm"
-            className={`nova-agent-composer-submit h-9 w-9 shrink-0 rounded-[10px] text-[var(--nova-text)] shadow-[inset_0_1px_0_rgba(255,255,255,0.12)] ${
+            title={!online ? t('chat.input.offlineDisabled') : undefined}
+            className={`nova-agent-composer-submit h-10 w-10 shrink-0 rounded-[10px] text-[var(--nova-text)] shadow-[inset_0_1px_0_rgba(255,255,255,0.12)] ${
               disabled ? 'bg-[var(--nova-danger-bg)] hover:bg-[var(--nova-danger-bg)]' : 'bg-[var(--nova-active)] hover:bg-[var(--nova-hover)] disabled:bg-[var(--nova-active)]'
             }`}
-            aria-label={disabled ? t('chat.input.stop') : t('chat.input.send')}
+            aria-label={disabled ? t('chat.input.stop') : !online ? t('chat.input.offlineDisabled') : t('chat.input.send')}
           >
             {disabled ? <Square className="h-3.5 w-3.5 fill-current" /> : <Send className="h-4 w-4" />}
           </Button>

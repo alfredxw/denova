@@ -10,6 +10,7 @@ const (
 	StoryEventTypeMeta              = "meta"
 	StoryEventTypeTurn              = "turn"
 	StoryEventTypeStateDelta        = "state_delta"
+	StoryEventTypeStateRevision     = "state_revision"
 	StoryEventTypeBranch            = "branch"
 	StoryEventTypeHotChoices        = "hot_choices"
 	StoryEventTypeCompaction        = "context_compaction"
@@ -74,6 +75,15 @@ func mapToStoryEventRecord(raw map[string]any) (StoryEventRecord, error) {
 			return StoryEventRecord{}, fmt.Errorf("校验状态变化事件失败: %w", err)
 		}
 	}
+	if envelope.Type == StoryEventTypeStateRevision {
+		var revision StateRevisionEvent
+		if err := mapToStruct(raw, &revision); err != nil {
+			return StoryEventRecord{}, err
+		}
+		if err := validateStateRevision(revision, false); err != nil {
+			return StoryEventRecord{}, fmt.Errorf("validate state revision event: %w", err)
+		}
+	}
 	return StoryEventRecord{Envelope: envelope, Raw: raw}, nil
 }
 
@@ -104,6 +114,15 @@ func storyEventRecordForWrite(event any) (StoryEventRecord, error) {
 		}
 		if err := validateStateDeltaForWrite(StateDelta{SchemaVersion: delta.SchemaVersion, Ops: delta.Ops, ActorOps: delta.ActorOps}); err != nil {
 			return StoryEventRecord{}, fmt.Errorf("校验待写入状态变化事件失败: %w", err)
+		}
+	}
+	if record.Envelope.Type == StoryEventTypeStateRevision {
+		var revision StateRevisionEvent
+		if err := mapToStruct(record.Raw, &revision); err != nil {
+			return StoryEventRecord{}, err
+		}
+		if err := validateStateRevision(revision, true); err != nil {
+			return StoryEventRecord{}, fmt.Errorf("validate state revision for write: %w", err)
 		}
 	}
 	return record, nil
@@ -169,7 +188,7 @@ func validateStoryEventEnvelope(envelope StoryEventEnvelope) error {
 		return fmt.Errorf("故事事件 schema 版本不支持: %d", envelope.V)
 	}
 	switch envelope.Type {
-	case StoryEventTypeTurn, StoryEventTypeStateDelta, StoryEventTypeBranch, StoryEventTypeHotChoices, StoryEventTypeCompaction, StoryEventTypeCompactionRemoved:
+	case StoryEventTypeTurn, StoryEventTypeStateDelta, StoryEventTypeStateRevision, StoryEventTypeBranch, StoryEventTypeHotChoices, StoryEventTypeCompaction, StoryEventTypeCompactionRemoved:
 	default:
 		return fmt.Errorf("未知故事事件类型: %q", envelope.Type)
 	}

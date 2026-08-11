@@ -81,8 +81,6 @@ func (s *ChatAppService) CreateSession(title string) (*session.Session, error) {
 	if a.sessionStore == nil {
 		return nil, ErrNoWorkspace
 	}
-	s.abortActiveTaskLocked()
-
 	sess, err := a.sessionStore.Create(title)
 	if err != nil {
 		return nil, err
@@ -91,7 +89,6 @@ func (s *ChatAppService) CreateSession(title string) (*session.Session, error) {
 		return nil, err
 	}
 	a.session = sess
-	a.activeTask = nil
 	return sess, nil
 }
 
@@ -110,8 +107,6 @@ func (s *ChatAppService) SwitchSession(id string) (*session.Session, error) {
 	if isAgentSessionID(id) {
 		return nil, fmt.Errorf("不能切换到固定 Agent 会话: %s", id)
 	}
-	s.abortActiveTaskLocked()
-
 	sess, err := a.sessionStore.Get(id)
 	if err != nil {
 		return nil, err
@@ -120,7 +115,6 @@ func (s *ChatAppService) SwitchSession(id string) (*session.Session, error) {
 		return nil, err
 	}
 	a.session = sess
-	a.activeTask = nil
 	return sess, nil
 }
 
@@ -168,8 +162,8 @@ func (s *ChatAppService) DeleteSession(id string) (*session.Session, error) {
 	}
 
 	wasActive := a.session != nil && a.session.ID == id
-	if wasActive {
-		s.abortActiveTaskLocked()
+	if run := a.agentTaskRuns[agentTaskKey(a.workspace, id)]; run != nil && run.task != nil && run.task.Status() == TaskRunning {
+		return nil, ErrAgentTaskRunning
 	}
 	if err := a.sessionStore.Delete(id); err != nil {
 		return nil, err
@@ -202,9 +196,7 @@ func (s *ChatAppService) DeleteSession(id string) (*session.Session, error) {
 		return nil, err
 	}
 	a.session = sess
-	if wasActive {
-		a.activeTask = nil
-	}
+	delete(a.agentTaskRuns, agentTaskKey(a.workspace, id))
 	return sess, nil
 }
 
@@ -238,7 +230,8 @@ func (s *ChatAppService) SessionMessages(id string) ([]session.HistoryEntry, err
 	return sess.History(), nil
 }
 
-// StartTask 启动后台 Agent 任务。如果有正在运行的任务，先终止它。
+// StartTask starts a background Agent run bound to the current project and
+// conversation. Runs in other conversations continue independently.
 func (a *App) StartTask(ctx context.Context, req agent.ChatRequest) *Task {
 	return a.chat().StartTask(ctx, req)
 }
@@ -276,7 +269,12 @@ func (s *ChatAppService) StartTaskWithError(ctx context.Context, req agent.ChatR
 	}
 	a.mu.Unlock()
 
+	releaseVersionLease, acquired := runtime.versionService.Acquire()
+	if !acquired {
+		return nil, fmt.Errorf("%w: source version runtime retired for workspace=%q", ErrWorkspaceChanged, runtime.workspace)
+	}
 	task := NewTask(func(ctx context.Context, task *Task, emit func(agent.Event)) {
+		defer releaseVersionLease()
 		log.Printf("[agent-task] run begin id=%s message_len=%d references=%d lore_references=%d style_scenes=%d style_rules=%d selections=%d plan_mode=%v teller_id=%s writing_skill=%s", task.ID(), len(req.Message), len(req.References), len(req.LoreReferences), len(req.StyleScenes), len(req.StyleRules), len(req.Selections), req.PlanMode, req.TellerID, req.WritingSkill)
 		runtimeContexts := agent.IDEWorkspaceRuntimeContextsForRequest(runtime.state, req)
 		conversation := agent.NewSessionConversationForAgentWithRuntimeContexts(
@@ -314,9 +312,14 @@ func (s *ChatAppService) StartTaskWithError(ctx context.Context, req agent.ChatR
 		log.Printf("[agent-task] run end id=%s status=%s", task.ID(), task.Status())
 	})
 
-	a.mu.Lock()
-	a.activeTask = task
-	a.mu.Unlock()
+	if err := s.bindAgentTask(task, AgentTaskInfo{
+		Workspace:    runtime.workspace,
+		SessionID:    runtime.sess.ID,
+		SessionTitle: runtime.sess.Title(),
+	}); err != nil {
+		task.Abort()
+		return nil, err
+	}
 
 	return task, nil
 }
@@ -440,6 +443,9 @@ func (s *ChatAppService) prepareIDEChatRuntime(ctx context.Context, req agent.Ch
 	if err := applyWritingSkillRuntimePolicy(&runtime, &req); err != nil {
 		return ideChatRuntime{}, req, err
 	}
+	if err := agent.ValidateContextHandoffs(req.Selections, agentContextHandoffMaxBytes(runtime.cfg)); err != nil {
+		return ideChatRuntime{}, req, err
+	}
 	if err := s.resolveReviewFeedback(ctx, runtime, &req); err != nil {
 		return ideChatRuntime{}, req, err
 	}
@@ -456,10 +462,6 @@ func (s *ChatAppService) prepareIDEChatRuntime(ctx context.Context, req agent.Ch
 			actualWorkspace := a.workspace
 			a.mu.Unlock()
 			return ideChatRuntime{}, req, fmt.Errorf("%w: expected=%q actual=%q", ErrWorkspaceChanged, runtime.workspace, actualWorkspace)
-		}
-		if a.activeTask != nil && a.activeTask.Status() == TaskRunning {
-			log.Printf("[agent-task] replace running task id=%s", a.activeTask.ID())
-			a.activeTask.Abort()
 		}
 		a.mu.Unlock()
 	}
@@ -517,10 +519,8 @@ func (a *App) ActiveTask() *Task {
 }
 
 func (s *ChatAppService) ActiveTask() *Task {
-	a := s.app
-	a.mu.RLock()
-	defer a.mu.RUnlock()
-	return a.activeTask
+	task, _ := s.ActiveTaskFor("")
+	return task
 }
 
 // AbortTask 终止当前活跃任务。
@@ -529,10 +529,7 @@ func (a *App) AbortTask() {
 }
 
 func (s *ChatAppService) AbortTask() {
-	a := s.app
-	a.mu.RLock()
-	task := a.activeTask
-	a.mu.RUnlock()
+	task, _ := s.ActiveTaskFor("")
 	if task != nil {
 		task.Abort()
 	}
@@ -617,11 +614,4 @@ func styleSceneSet(scenes []string) map[string]bool {
 		}
 	}
 	return set
-}
-
-func (s *ChatAppService) abortActiveTaskLocked() {
-	if s.app.activeTask != nil && s.app.activeTask.Status() == TaskRunning {
-		log.Printf("[agent-task] abort due to session switch/delete id=%s", s.app.activeTask.ID())
-		s.app.activeTask.Abort()
-	}
 }

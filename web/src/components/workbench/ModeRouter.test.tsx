@@ -7,11 +7,16 @@ import { ModeRouter } from './ModeRouter'
 
 const toastMock = vi.hoisted(() => ({ warning: vi.fn() }))
 const useDocumentReviewMock = vi.hoisted(() => vi.fn())
+const responsiveState = vi.hoisted(() => ({ mobile: false }))
 
 vi.mock('sonner', () => ({ toast: toastMock }))
 
 vi.mock('@/hooks/usePersistedUserSettings', () => ({
   usePersistedUserSettings: vi.fn(),
+}))
+
+vi.mock('@/hooks/useIsMobile', () => ({
+  useIsMobile: () => responsiveState.mobile,
 }))
 
 vi.mock('@/components/Chat/AgentPanel', () => ({
@@ -94,6 +99,7 @@ vi.mock('./WorkbenchShell', () => ({
 
 describe('ModeRouter autosave navigation policy', () => {
   beforeEach(() => {
+    responsiveState.mobile = false
     toastMock.warning.mockReset()
     useDocumentReviewMock.mockReset()
     useDocumentReviewMock.mockReturnValue({
@@ -219,6 +225,23 @@ describe('ModeRouter autosave navigation policy', () => {
       `${comment.path}|${comment.id}|2`,
     ))
     expect(handleSelectFile).toHaveBeenCalledTimes(1)
+  })
+
+  it('keeps the current document mounted without desktop tabs on mobile', () => {
+    responsiveState.mobile = true
+
+    render(
+      <ModeRouter
+        {...modeRouterProps({
+          selectedFile: 'chapters/ch22.md',
+          openTabs: [{ kind: 'file', path: 'chapters/ch22.md' }],
+          activeTabKey: 'file:chapters/ch22.md',
+        })}
+      />,
+    )
+
+    expect(screen.getByTestId('markdown-editor-navigation')).toHaveTextContent('chapters/ch22.md')
+    expect(screen.queryByRole('tab')).not.toBeInTheDocument()
   })
 })
 

@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { Bot, Compass, Database, Dice5, RotateCcw, ScrollText, SlidersHorizontal, Sparkles, Trash2 } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import { toast } from 'sonner'
@@ -19,6 +19,7 @@ import { buildPresetDirectorySections, presetDirectoryEntryId } from './preset-d
 import { usePresetDraftSync, usePresetResources } from './use-preset-resources'
 import { usePresetSelection } from './use-preset-selection'
 import { createPresetConflictResolver, usePresetResourceAutosave } from './usePresetResourceAutosave'
+import { useExecutableDraftEntry } from '@/features/config-guard/executable-draft-guard'
 import { currentPresetBuiltinOverridden, EMPTY_IMAGE_PRESETS, EMPTY_STORY_DIRECTORS, EMPTY_TELLERS, isPresetConfigResourceKind, makeActorStatePayload, makeEventPackagePayload, makeImagePresetPayload, makeRuleSystemPayload, makeStoryDirectorPayload, makeTellerPayload, newActorStateDraft, newEventPackageDraft, newImagePresetDraft, newRuleSystemDraft, newStoryDirectorDraft, newTellerDraft, presetEditorSubtitle, presetEditorTitle, presetResourceDraftSignature, PRESET_DELETE_COPY, TELLER_CONFIG_AGENT_ENTRY_ID, type PresetDeleteTarget } from './presetResources'
 
 interface PresetSettingsPanelProps {
@@ -124,6 +125,47 @@ export function PresetSettingsPanel({
     refreshRuleSystems,
     refreshActorStates,
   } = resources
+
+  const presetDirty = useMemo(() => {
+    const savedFor = (kind: PresetResourceKind, draft: object | null): object | null => {
+      if (!draft || !('id' in draft) || typeof draft.id !== 'string' || !draft.id) return null
+      switch (kind) {
+        case 'teller': return tellers.find((item) => item.id === draft.id) ?? null
+        case 'director': return storyDirectors.find((item) => item.id === draft.id) ?? null
+        case 'image': return imagePresets.find((item) => item.id === draft.id) ?? null
+        case 'event': return eventPackages.find((item) => item.id === draft.id) ?? null
+        case 'rule': return ruleSystems.find((item) => item.id === draft.id) ?? null
+        case 'actor-state': return actorStates.find((item) => item.id === draft.id) ?? null
+      }
+    }
+    const pairs: Array<[PresetResourceKind, object | null]> = [
+      ['teller', tellerDraft],
+      ['director', storyDirectorDraft],
+      ['image', imagePresetDraft],
+      ['event', eventPackageDraft],
+      ['rule', ruleSystemDraft],
+      ['actor-state', actorStateDraft],
+    ]
+    return pairs.some(([kind, draft]) => {
+      if (!draft) return false
+      const saved = savedFor(kind, draft)
+      return !saved || presetResourceDraftSignature(draft) !== presetResourceDraftSignature(saved)
+    })
+  }, [actorStateDraft, actorStates, eventPackageDraft, eventPackages, imagePresetDraft, imagePresets, ruleSystemDraft, ruleSystems, storyDirectorDraft, storyDirectors, tellerDraft, tellers])
+
+  const discardPresetDraft = useCallback(() => {
+    const savedById = <T extends { id: string }>(items: T[], id?: string): T | null => (
+      id ? items.find((item) => item.id === id) ?? null : null
+    )
+    setTellerDraft(tellerDraft ? savedById(tellers, tellerDraft.id) : null)
+    setStoryDirectorDraft(storyDirectorDraft ? savedById(storyDirectors, storyDirectorDraft.id) : null)
+    setImagePresetDraft(imagePresetDraft ? savedById(imagePresets, imagePresetDraft.id) : null)
+    setEventPackageDraft(eventPackageDraft ? savedById(eventPackages, eventPackageDraft.id) : null)
+    setRuleSystemDraft(ruleSystemDraft ? savedById(ruleSystems, ruleSystemDraft.id) : null)
+    setActorStateDraft(actorStateDraft ? savedById(actorStates, actorStateDraft.id) : null)
+  }, [actorStateDraft, actorStates, eventPackageDraft, eventPackages, imagePresetDraft, imagePresets, ruleSystemDraft, ruleSystems, setActorStateDraft, setEventPackageDraft, setImagePresetDraft, setRuleSystemDraft, setStoryDirectorDraft, setTellerDraft, storyDirectorDraft, storyDirectors, tellerDraft, tellers])
+
+  useExecutableDraftEntry('setting-panel', presetDirty, discardPresetDraft)
 
   useEffect(() => {
     presetConfigValidRef.current = presetConfigValid

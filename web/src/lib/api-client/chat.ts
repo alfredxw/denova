@@ -34,6 +34,10 @@ export async function sendMessage(
         start_line: s.startLine,
         end_line: s.endLine,
         content: s.content,
+        source: s.source || 'editor_selection',
+        purpose: s.purpose || 'ask_agent',
+        version: s.version || 'unversioned',
+        size_bytes: new TextEncoder().encode(s.content).byteLength,
       })),
       ide_context: normalizeIDEContext(ideContext),
       plan_mode: planMode || false,
@@ -75,6 +79,10 @@ export async function analyzeChatContext(
         start_line: s.startLine,
         end_line: s.endLine,
         content: s.content,
+        source: s.source || 'editor_selection',
+        purpose: s.purpose || 'ask_agent',
+        version: s.version || 'unversioned',
+        size_bytes: new TextEncoder().encode(s.content).byteLength,
       })),
       ide_context: normalizeIDEContext(ideContext),
       plan_mode: planMode || false,
@@ -98,19 +106,22 @@ export async function removeChatContextCompaction(): Promise<boolean> {
   return Boolean(data.removed)
 }
 
-export async function getActiveChatTask(): Promise<{ active: boolean; status?: string }> {
-  return requestJSON('/api/chat/active')
+export async function getActiveChatTask(sessionId?: string): Promise<{ active: boolean; status?: string; task_id?: string; session_id?: string }> {
+	const query = sessionId ? `?session_id=${encodeURIComponent(sessionId)}` : ''
+	return requestJSON(`/api/chat/active${query}`)
 }
 
-export async function streamActiveChat(signal?: AbortSignal): Promise<ReadableStream<UIMessageChunk>> {
-  const res = await fetchAPI('/api/chat/stream', { signal })
+export async function streamActiveChat(signal?: AbortSignal, sessionId?: string): Promise<ReadableStream<UIMessageChunk>> {
+	const query = sessionId ? `?session_id=${encodeURIComponent(sessionId)}` : ''
+	const res = await fetchAPI(`/api/chat/stream${query}`, { signal })
   if (!res.ok) throw new Error(`HTTP ${res.status}`)
   if (!res.body) throw new Error('No response body')
   return parseUIMessageStream(res.body)
 }
 
-export async function abortChat(): Promise<void> {
-  await requestJSON('/api/chat/abort', { method: 'POST' })
+export async function abortChat(sessionId?: string): Promise<void> {
+	const query = sessionId ? `?session_id=${encodeURIComponent(sessionId)}` : ''
+	await requestJSON(`/api/chat/abort${query}`, { method: 'POST' })
 }
 
 export async function executeCommand(command: string): Promise<string> {

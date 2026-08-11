@@ -29,22 +29,28 @@ var taskSeq atomic.Uint64
 type Task struct {
 	id        string
 	startedAt time.Time
+	updatedAt time.Time
 	mu        sync.Mutex
 	status    TaskStatus
+	lastError string
 	finished  bool
 	events    []agent.Event
 	subs      []chan agent.Event
 	cancel    context.CancelFunc
+	done      chan struct{}
 }
 
 // NewTask 创建并启动后台任务。run 函数在独立 goroutine 中执行。
 func NewTask(run func(ctx context.Context, task *Task, emit func(agent.Event))) *Task {
 	ctx, cancel := context.WithCancel(context.Background())
+	now := time.Now()
 	t := &Task{
 		id:        strconv.FormatUint(taskSeq.Add(1), 10),
-		startedAt: time.Now(),
+		startedAt: now,
+		updatedAt: now,
 		status:    TaskRunning,
 		cancel:    cancel,
+		done:      make(chan struct{}),
 	}
 	observability.Info("agent-task", "task_start", slog.String("task_id", t.id))
 	go func() {
@@ -64,8 +70,12 @@ func NewTask(run func(ctx context.Context, task *Task, emit func(agent.Event))) 
 func (t *Task) emit(ev agent.Event) {
 	t.mu.Lock()
 	t.events = append(t.events, ev)
-	if ev.Type == "error" {
+	t.updatedAt = time.Now()
+	if ev.Type == "error" && t.status != TaskAborted {
 		t.status = TaskError
+		if data, ok := ev.Data.(map[string]string); ok {
+			t.lastError = data["message"]
+		}
 	}
 	if ev.Type == "aborted" {
 		t.status = TaskAborted
@@ -94,7 +104,9 @@ func (t *Task) finish() {
 	if t.status == TaskRunning {
 		t.status = TaskDone
 	}
+	t.updatedAt = time.Now()
 	t.finished = true
+	close(t.done)
 	for _, ch := range t.subs {
 		close(ch)
 	}
@@ -140,7 +152,12 @@ func (t *Task) Unsubscribe(ch <-chan agent.Event) {
 // Abort 取消任务执行。
 func (t *Task) Abort() {
 	t.mu.Lock()
+	if t.status != TaskRunning {
+		t.mu.Unlock()
+		return
+	}
 	t.status = TaskAborted
+	t.updatedAt = time.Now()
 	t.mu.Unlock()
 	observability.Warn("agent-task", "task_abort", slog.String("task_id", t.id))
 	t.cancel()
@@ -160,9 +177,44 @@ func (t *Task) Finished() bool {
 	return t.finished
 }
 
+// Wait blocks until the task goroutine has fully exited.
+func (t *Task) Wait() {
+	if t == nil {
+		return
+	}
+	t.mu.Lock()
+	done := t.done
+	finished := t.finished
+	t.mu.Unlock()
+	if finished || done == nil {
+		return
+	}
+	<-done
+}
+
 // ID 返回任务编号，用于关联后端日志。
 func (t *Task) ID() string {
 	return t.id
+}
+
+type TaskSnapshot struct {
+	ID        string
+	Status    TaskStatus
+	StartedAt time.Time
+	UpdatedAt time.Time
+	Error     string
+}
+
+func (t *Task) Snapshot() TaskSnapshot {
+	t.mu.Lock()
+	defer t.mu.Unlock()
+	return TaskSnapshot{
+		ID:        t.id,
+		Status:    t.status,
+		StartedAt: t.startedAt,
+		UpdatedAt: t.updatedAt,
+		Error:     t.lastError,
+	}
 }
 
 func shouldLogEvent(eventType string, eventCount int) bool {

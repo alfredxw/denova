@@ -20,7 +20,7 @@ export function VersionHeader({ workspace, status, changesCount }: VersionHeader
     <div className="min-w-0 rounded-[var(--nova-radius)] border border-[var(--nova-border)] bg-[var(--nova-surface)] p-2">
       <div className="flex min-w-0 flex-wrap items-center gap-2">
         <Icon className={`h-3.5 w-3.5 ${!hasVersions || !clean ? 'text-[var(--nova-accent)]' : 'text-[var(--nova-accent-green)]'}`} />
-        <span className="min-w-0 flex-1 truncate font-medium text-[var(--nova-text)]">{workspaceName(workspace) || t('workbench.noBook')}</span>
+        <span className="min-w-0 flex-1 truncate font-medium text-[var(--nova-text)]" title={workspace}>{workspaceName(workspace) || t('workbench.noBook')}</span>
         <span className="max-w-full shrink-0 truncate rounded-full bg-[var(--nova-active)] px-2 py-0.5 text-[11px] text-[var(--nova-text)]">{label}</span>
       </div>
       <div className="mt-2 flex min-w-0 items-center gap-2 text-[11px] text-[var(--nova-text-faint)]">

@@ -6,6 +6,9 @@ import type { DirectorPlan, RuleResolution } from '../../types'
 import { DirectorBackstage } from './DirectorBackstage'
 
 const getDirectorMock = vi.fn()
+const createStateRevisionMock = vi.fn()
+const undoStateRevisionMock = vi.fn()
+const restoreStateRevisionMock = vi.fn()
 
 vi.mock('../../api', () => ({
   getInteractiveDirector: (...args: unknown[]) => getDirectorMock(...args),
@@ -14,6 +17,9 @@ vi.mock('../../api', () => ({
   updateInteractiveDirector: vi.fn(),
   analyzeInteractiveDirectorContext: vi.fn(),
   rerollInteractiveRuleResolution: vi.fn(),
+  createInteractiveStateRevision: (...args: unknown[]) => createStateRevisionMock(...args),
+  undoInteractiveStateRevision: (...args: unknown[]) => undoStateRevisionMock(...args),
+  restoreInteractiveStateRevision: (...args: unknown[]) => restoreStateRevisionMock(...args),
 }))
 
 function samplePlan(): DirectorPlan {
@@ -46,6 +52,142 @@ describe('DirectorBackstage', () => {
   beforeEach(() => {
     window.localStorage.clear()
     getDirectorMock.mockReset().mockResolvedValue(samplePlan())
+    createStateRevisionMock.mockReset().mockResolvedValue({
+      id: 'revision-1',
+      type: 'state_revision',
+      parent_id: 'turn-1',
+      branch_id: 'main',
+      base_turn_id: 'turn-1',
+      source: 'manual_state_editor',
+      action: 'apply',
+      ts: '2026-08-03T12:00:00Z',
+      ops: [{ op: 'set', path: 'scene.weather', value: 'storm' }],
+    })
+    undoStateRevisionMock.mockReset().mockResolvedValue({ id: 'undo-1', action: 'undo' })
+    restoreStateRevisionMock.mockReset().mockResolvedValue({ id: 'restore-1', action: 'restore' })
+  })
+
+  it('creates an audited state revision only after reviewing the change summary', async () => {
+    const onSnapshotRefresh = vi.fn()
+    render(
+      <VirtuosoMockContext.Provider value={{ viewportHeight: 320, itemHeight: 48 }}>
+        <DirectorBackstage
+          storyId="story"
+          branchId="main"
+          snapshot={{
+            story_id: 'story',
+            branch_id: 'main',
+            head_id: 'turn-1',
+            turns: [],
+            current_turn: { id: 'turn-1' },
+            state: { scene: { weather: 'rain' } },
+          } as never}
+          onSnapshotRefresh={onSnapshotRefresh}
+        />
+      </VirtuosoMockContext.Provider>,
+    )
+
+    await userEvent.click(screen.getByRole('button', { name: '修订当前状态' }))
+    const weather = screen.getByRole('textbox', { name: 'Scene / Weather' })
+    await userEvent.clear(weather)
+    await userEvent.type(weather, 'storm')
+
+    expect(createStateRevisionMock).not.toHaveBeenCalled()
+    await userEvent.click(screen.getByRole('button', { name: '检查变更' }))
+    expect(screen.getByText('rain')).toBeInTheDocument()
+    expect(screen.getByText('storm')).toBeInTheDocument()
+
+    await userEvent.click(screen.getByRole('button', { name: '保存修订' }))
+    expect(createStateRevisionMock).toHaveBeenCalledWith('story', {
+      branch_id: 'main',
+      expected_head_id: 'turn-1',
+      base_turn_id: 'turn-1',
+      source: 'manual_state_editor',
+      ops: [{ op: 'set', path: 'scene.weather', value: 'storm', reason: 'Manual state revision' }],
+      actor_ops: [],
+    })
+    expect(onSnapshotRefresh).toHaveBeenCalled()
+  })
+
+  it('undoes an applied state revision from the append-only history', async () => {
+    const onSnapshotRefresh = vi.fn()
+    render(
+      <VirtuosoMockContext.Provider value={{ viewportHeight: 320, itemHeight: 48 }}>
+        <DirectorBackstage
+          storyId="story"
+          branchId="main"
+          snapshot={{
+            story_id: 'story',
+            branch_id: 'main',
+            head_id: 'revision-1',
+            turns: [],
+            current_turn: { id: 'turn-1' },
+            state: { scene: { weather: 'storm' } },
+            state_revisions: [{
+              id: 'revision-1',
+              type: 'state_revision',
+              parent_id: 'turn-1',
+              branch_id: 'main',
+              base_turn_id: 'turn-1',
+              source: 'manual_state_editor',
+              action: 'apply',
+              ts: '2026-08-03T12:00:00Z',
+              ops: [{ op: 'set', path: 'scene.weather', value: 'storm' }],
+            }],
+          } as never}
+          onSnapshotRefresh={onSnapshotRefresh}
+        />
+      </VirtuosoMockContext.Provider>,
+    )
+
+    await userEvent.click(screen.getByRole('button', { name: '修订当前状态' }))
+    await userEvent.click(screen.getByRole('tab', { name: '修订历史' }))
+    expect(screen.getByText('Scene / Weather')).toBeInTheDocument()
+
+    await userEvent.click(screen.getByRole('button', { name: '撤销修订' }))
+    expect(undoStateRevisionMock).toHaveBeenCalledWith('story', 'revision-1', {
+      branch_id: 'main',
+      expected_head_id: 'revision-1',
+      source: 'manual_state_editor',
+    })
+    expect(onSnapshotRefresh).toHaveBeenCalled()
+  })
+
+  it('restores a state revision whose latest inverse action is undo', async () => {
+    const onSnapshotRefresh = vi.fn()
+    const appliedRevision = {
+      id: 'revision-1', type: 'state_revision', parent_id: 'turn-1', branch_id: 'main', base_turn_id: 'turn-1',
+      source: 'manual_state_editor', action: 'apply', ts: '2026-08-03T12:00:00Z',
+      ops: [{ op: 'set', path: 'scene.weather', value: 'storm' }],
+    }
+    render(
+      <VirtuosoMockContext.Provider value={{ viewportHeight: 320, itemHeight: 48 }}>
+        <DirectorBackstage
+          storyId="story"
+          branchId="main"
+          snapshot={{
+            story_id: 'story', branch_id: 'main', head_id: 'undo-1', turns: [], current_turn: { id: 'turn-1' },
+            state: { scene: { weather: 'rain' } },
+            state_revisions: [
+              appliedRevision,
+              { id: 'undo-1', type: 'state_revision', parent_id: 'revision-1', branch_id: 'main', base_turn_id: 'turn-1', source: 'manual_state_editor', action: 'undo', source_revision_id: 'revision-1', ts: '2026-08-03T12:05:00Z' },
+            ],
+          } as never}
+          onSnapshotRefresh={onSnapshotRefresh}
+        />
+      </VirtuosoMockContext.Provider>,
+    )
+
+    await userEvent.click(screen.getByRole('button', { name: '修订当前状态' }))
+    await userEvent.click(screen.getByRole('tab', { name: '修订历史' }))
+    await userEvent.click(screen.getByRole('button', { name: '恢复修订' }))
+
+    expect(restoreStateRevisionMock).toHaveBeenCalledWith('story', 'revision-1', {
+      branch_id: 'main',
+      expected_head_id: 'undo-1',
+      source: 'manual_state_editor',
+    })
+    expect(onSnapshotRefresh).toHaveBeenCalled()
   })
 
   it('没有任何导演运行记录时不设置防剧透门，直接展示空态', () => {

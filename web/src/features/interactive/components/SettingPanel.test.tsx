@@ -9,6 +9,7 @@ import { createActorState, createImagePreset, createInteractiveTeller, createSto
 import type { EventPackageModule, ImagePreset, RuleSystemModule, StoryDirector, Teller } from '../types'
 import { defaultRuleTemplates } from './preset-config/ruleTemplates'
 import { newRuleSystemDraft } from './setting-panel/presetResources'
+import { discardExecutableDraft, hasPendingExecutableDraft, useExecutableDraftGuard } from '@/features/config-guard/executable-draft-guard'
 import { SettingPanel } from './SettingPanel'
 
 const { configManagerChatProps, monacoEditorActions } = vi.hoisted(() => ({
@@ -165,6 +166,7 @@ vi.mock('../api', () => ({
 
 describe('SettingPanel', () => {
   beforeEach(() => {
+    useExecutableDraftGuard.setState({ entries: {} })
     window.localStorage.clear()
     configManagerChatProps.length = 0
     monacoEditorActions.length = 0
@@ -342,6 +344,22 @@ describe('SettingPanel', () => {
 
     await user.click(screen.getByRole('button', { name: '关闭' }))
     expect(onClose).toHaveBeenCalledOnce()
+  })
+
+  it('registers the preset draft guard while a preset is edited and discards on demand', async () => {
+    render(<PresetPanelHarness />)
+
+    fireEvent.click(screen.getByRole('button', { name: /经典叙事/ }))
+    const name = await screen.findByDisplayValue('经典叙事')
+    expect(hasPendingExecutableDraft('setting-panel')).toBe(false)
+
+    fireEvent.change(name, { target: { value: '未保存的叙事风格' } })
+    await waitFor(() => expect(hasPendingExecutableDraft('setting-panel')).toBe(true))
+
+    discardExecutableDraft('setting-panel')
+
+    await waitFor(() => expect(hasPendingExecutableDraft('setting-panel')).toBe(false))
+    expect(name).toHaveValue('经典叙事')
   })
 
   it('loads a legacy opening preset without writing and saves it after an edit with the missing revision', async () => {

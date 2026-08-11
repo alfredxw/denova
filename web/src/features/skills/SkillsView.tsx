@@ -10,6 +10,7 @@ import { FeaturePageShell } from '@/components/layout/feature-page-shell'
 import { MobilePaneTrigger } from '@/components/layout/mobile-pane-trigger'
 import { Button } from '@/components/ui/button'
 import { useResourceAutosave } from '@/hooks/use-resource-autosave'
+import { useExecutableDraftEntry } from '@/features/config-guard/executable-draft-guard'
 import { deleteSkillDocument, getSkillDocument, getSkillFileDocument, getSkills, saveSkillDocument, saveSkillFileDocument } from '@/lib/api'
 import { isRevisionConflict, saveWithRevisionRecovery } from '@/lib/revision-conflict'
 import { rebaseTextWithRecovery } from '@/lib/autosave/rebase-with-recovery'
@@ -230,6 +231,19 @@ export function SkillsView({ workspace, onClose }: SkillsViewProps) {
     if (mode === 'config') return configPanelRef.current?.flush() ?? true
     return flushContentAutosave(force)
   }, [flushContentAutosave, mode])
+
+  const discardSkillDraft = useCallback(() => {
+    if (document) setDraft(document.content)
+    if (fileDocument) setFileDraft('')
+  }, [document, fileDocument])
+
+  useExecutableDraftEntry(
+    'skills',
+    contentAutosave.status === 'pending'
+      || contentAutosave.status === 'saving'
+      || contentAutosave.status === 'error',
+    discardSkillDraft,
+  )
 
   const load = useCallback(async (): Promise<SkillSnapshot | null> => {
     setLoading(true)

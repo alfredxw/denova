@@ -14,6 +14,7 @@ nova-windows-test/
 nova-test.exe
 data/
 web/node_modules/
+node_modules/
 web/dist/
 internal/webfs/dist/
 plan.md
@@ -22,9 +23,13 @@ docs/*
 !docs/architecture/
 docs/architecture/*
 !docs/architecture/frontend-long-session-performance-hardening-plan.md
+!docs/architecture/mobile-workbench-v2-design.md
+!docs/adr/
+!docs/adr/*.md
 !docs/status/
 docs/status/*
 !docs/status/actor-state-presets-v2-design.md
+.scratch-*/
 .worktrees/
 .pnpm-store/
 .DS_Store

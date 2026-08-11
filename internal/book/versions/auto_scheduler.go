@@ -57,6 +57,7 @@ func (s *Service) ConfigureAutoVersion(settings VersionAutoSettings) {
 func (s *Service) Close() {
 	s.autoMu.Lock()
 	defer s.autoMu.Unlock()
+	s.autoRetired = true
 	s.autoClosed = true
 	s.autoGeneration++
 	s.stopAutoTimerLocked()
@@ -128,5 +129,7 @@ func (s *Service) finishScheduledAutoVersion(generation uint64, retryAfter time.
 	}
 	if retryAfter > 0 && s.autoSettings.TimedEnabled {
 		s.resetAutoTimerLocked(retryAfter, generation)
+		return
 	}
+	s.closeRetiredIfIdleLocked()
 }

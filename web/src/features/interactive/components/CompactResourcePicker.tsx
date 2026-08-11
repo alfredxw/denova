@@ -64,6 +64,7 @@ export function CompactResourcePicker<T>({
           variant="outline"
           size="sm"
           disabled={disabled}
+          title={selectedItem ? getLabel(selectedItem) : placeholder}
           className={cn(
             'nova-field w-full min-w-0 justify-between px-3 py-0.5 text-xs font-normal text-[var(--nova-text)] focus:ring-0',
             triggerClassName,
@@ -152,7 +153,7 @@ export function CompactResourcePicker<T>({
   return (
     <div data-layout="inline" className="flex w-full min-w-0 flex-wrap items-center gap-1.5 sm:w-auto sm:flex-nowrap">
       <span className="shrink-0 text-[11px] font-medium text-[var(--nova-text-faint)]">{label}</span>
-      <div className="min-w-0 flex-1 basis-40 sm:w-[190px] sm:flex-none">{selector}</div>
+      <div className="min-w-0 flex-1 basis-28 sm:w-[190px] sm:flex-none">{selector}</div>
       {trailingAction}
     </div>
   )

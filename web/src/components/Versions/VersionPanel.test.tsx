@@ -72,6 +72,12 @@ describe('VersionPanel', () => {
     })
     expect(screen.getByText('chapters/second.md')).toBeInTheDocument()
   })
+
+  it('exposes the full workspace path as a title when the header name is truncated', async () => {
+    renderVersionPanel()
+
+    expect(await screen.findByText('workspace')).toHaveAttribute('title', '/workspace')
+  })
 })
 
 function renderVersionPanel() {

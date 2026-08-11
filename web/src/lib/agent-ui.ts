@@ -67,7 +67,7 @@ interface AgentChatRequestBody {
 export class AgentChatTransport implements ChatTransport<AgentUIMessage> {
   private readonly transport: DefaultChatTransport<AgentUIMessage>
 
-  constructor() {
+	constructor(activeSessionId: () => string = () => '') {
     this.transport = new DefaultChatTransport<AgentUIMessage>({
       api: '/api/chat',
       fetch: fetchAPI,
@@ -77,9 +77,10 @@ export class AgentChatTransport implements ChatTransport<AgentUIMessage> {
           message: bodyMessage(body) || latestUserText(messages),
         },
       }),
-      prepareReconnectToStreamRequest: () => ({
-        api: '/api/chat/stream',
-      }),
+		prepareReconnectToStreamRequest: () => {
+			const sessionId = activeSessionId()
+			return { api: sessionId ? `/api/chat/stream?session_id=${encodeURIComponent(sessionId)}` : '/api/chat/stream' }
+		},
     })
   }
 

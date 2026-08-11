@@ -56,6 +56,8 @@ type Config struct {
 	ModelMaxRetries             int                          `toml:"model_max_retries"`
 	AgentIdleTimeoutSeconds     int                          `toml:"agent_idle_timeout_seconds"`
 	AgentToolResultLimitKB      int                          `toml:"agent_tool_result_limit_kb"`
+	AgentContextHandoffLimitKB  int                          `toml:"agent_context_handoff_limit_kb"`
+	SystemNotificationsEnabled  bool                         `toml:"system_notifications_enabled"`
 	ChapterFilenameFormat       string                       `toml:"-"`
 	VolumeDirFormat             string                       `toml:"-"`
 	HideChapterBodyLiveOutput   bool                         `toml:"-"`
@@ -112,6 +114,7 @@ func LoadWithWorkspace(workspace string) (*Config, LayeredSettings, error) {
 		ModelMaxRetries:             settingsInt(s.ModelMaxRetries, 5),
 		AgentIdleTimeoutSeconds:     settingsAgentIdleTimeoutSeconds(s.AgentIdleTimeoutSeconds),
 		AgentToolResultLimitKB:      settingsAgentToolResultLimitKB(s.AgentToolResultLimitKB),
+		AgentContextHandoffLimitKB:  settingsAgentContextHandoffLimitKB(s.AgentContextHandoffLimitKB),
 		LLMInputLogEnabled:          settingsBool(s.LLMInputLogEnabled, false),
 		TraceCaptureLevel:           settingsString(s.TraceCaptureLevel, DefaultTraceCaptureLevel),
 		TraceExporter:               settingsString(s.TraceExporter, DefaultTraceExporter),
@@ -173,7 +176,7 @@ func startupNovaDir() string {
 }
 
 func loadGlobalConfig() *Config {
-	cfg := &Config{AgentIdleTimeoutSeconds: -1, AgentToolResultLimitKB: -1}
+	cfg := &Config{AgentIdleTimeoutSeconds: -1, AgentToolResultLimitKB: -1, AgentContextHandoffLimitKB: -1}
 	for _, path := range globalConfigCandidates() {
 		data, err := os.ReadFile(path)
 		if err != nil {
@@ -241,6 +244,12 @@ func settingsFromConfig(cfg *Config) Settings {
 	if cfg.AgentToolResultLimitKB >= 0 {
 		settings.AgentToolResultLimitKB = &cfg.AgentToolResultLimitKB
 	}
+	if cfg.AgentContextHandoffLimitKB >= 0 {
+		settings.AgentContextHandoffLimitKB = &cfg.AgentContextHandoffLimitKB
+	}
+	if cfg.SystemNotificationsEnabled {
+		settings.SystemNotificationsEnabled = &cfg.SystemNotificationsEnabled
+	}
 	if cfg.LLMInputLogEnabled {
 		settings.LLMInputLogEnabled = &cfg.LLMInputLogEnabled
 	}
@@ -307,6 +316,8 @@ func Load() *Config {
 			ModelMaxRetries:             settingsInt(d.ModelMaxRetries, 5),
 			AgentIdleTimeoutSeconds:     settingsAgentIdleTimeoutSeconds(d.AgentIdleTimeoutSeconds),
 			AgentToolResultLimitKB:      settingsAgentToolResultLimitKB(d.AgentToolResultLimitKB),
+			AgentContextHandoffLimitKB:  settingsAgentContextHandoffLimitKB(d.AgentContextHandoffLimitKB),
+			SystemNotificationsEnabled:  settingsBool(d.SystemNotificationsEnabled, false),
 			LLMInputLogEnabled:          settingsBool(d.LLMInputLogEnabled, false),
 			TraceCaptureLevel:           settingsString(d.TraceCaptureLevel, DefaultTraceCaptureLevel),
 			TraceExporter:               settingsString(d.TraceExporter, DefaultTraceExporter),
@@ -353,6 +364,13 @@ func settingsAgentIdleTimeoutSeconds(v *int) int {
 func settingsAgentToolResultLimitKB(v *int) int {
 	if v == nil || *v <= 0 {
 		return DefaultAgentToolResultLimitKB
+	}
+	return *v
+}
+
+func settingsAgentContextHandoffLimitKB(v *int) int {
+	if v == nil || *v <= 0 {
+		return DefaultAgentContextHandoffLimitKB
 	}
 	return *v
 }

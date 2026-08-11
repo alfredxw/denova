@@ -2,6 +2,7 @@ import { act, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { WorkspaceFileRevisionConflictError } from '@/lib/autosave/workspace-file-revision-conflict'
+import { APIError } from '@/lib/api-client/client'
 import { MarkdownEditor } from './MarkdownEditor'
 
 const toastMock = vi.hoisted(() => ({
@@ -24,13 +25,20 @@ const tiptapMock = vi.hoisted(() => {
   const chainApi = {
     focus: vi.fn(() => chainApi),
     setMeta: vi.fn(() => chainApi),
-    setContent: vi.fn(() => chainApi),
+    setContent: vi.fn((content: unknown) => {
+      tiptapMock.markdown = String(content)
+      tiptapMock.text = String(content)
+      return chainApi
+    }),
     insertContentAt: vi.fn(() => chainApi),
     run: vi.fn(() => true),
   }
   const editor = {
     commands: {
-      setContent: vi.fn(),
+      setContent: vi.fn((content: unknown) => {
+        tiptapMock.markdown = String(content)
+        tiptapMock.text = String(content)
+      }),
       focus: vi.fn(),
       setTextSelection: vi.fn(),
     },
@@ -382,6 +390,184 @@ describe('MarkdownEditor', () => {
     expect(onSave).toHaveBeenCalledTimes(2)
     expect(onSave).toHaveBeenLastCalledWith('chapters/ch01.md', '第二版\n', 'r2')
     expect(conflictArchiveMock.preserve).not.toHaveBeenCalled()
+  })
+
+  it('persists an offline save failure as a pending draft bound to workspace and base revision', async () => {
+    vi.useFakeTimers()
+    const onSave = vi.fn(() => Promise.reject(new TypeError('Failed to fetch')))
+
+    render(
+      <MarkdownEditor
+        workspace="/books/a"
+        fileName="chapters/ch01.md"
+        content="初始"
+        revision="sha256:r1"
+        onSave={onSave}
+        autoSaveDelayMs={100}
+      />,
+    )
+    act(() => {
+      tiptapMock.markdown = '离线内容'
+      tiptapMock.emit('update')
+      vi.advanceTimersByTime(100)
+    })
+
+    await act(async () => {
+      await Promise.resolve()
+      await Promise.resolve()
+    })
+    const drafts = JSON.parse(window.localStorage.getItem('nova:pending-drafts:v1') || '[]')
+    expect(drafts).toHaveLength(1)
+      expect(drafts[0]).toMatchObject({
+        workspace: '/books/a',
+        path: 'chapters/ch01.md',
+        content: '离线内容\n',
+        baseContent: '初始',
+        baseRevision: 'sha256:r1',
+        mode: 'auto',
+      })
+  })
+
+  it('restores a pending offline draft and saves it against its base revision', async () => {
+    window.localStorage.setItem('nova:pending-drafts:v1', JSON.stringify([{
+      id: 'draft-1',
+      workspace: '/books/a',
+      path: 'chapters/ch01.md',
+      content: '离线内容\n',
+      baseContent: '基线内容\n',
+      baseRevision: 'sha256:r-old',
+      mode: 'auto',
+      queuedAt: '2026-08-04T00:00:00Z',
+    }]))
+    const onSave = vi.fn().mockResolvedValue({ revision: 'sha256:r-saved' })
+
+    render(
+      <MarkdownEditor
+        workspace="/books/a"
+        fileName="chapters/ch01.md"
+        content="服务端最新\n"
+        revision="sha256:r-new"
+        onSave={onSave}
+      />,
+    )
+
+    await waitFor(() => {
+      expect(onSave).toHaveBeenCalledWith('chapters/ch01.md', '离线内容\n', 'sha256:r-old')
+    })
+    await waitFor(() => {
+      expect(JSON.parse(window.localStorage.getItem('nova:pending-drafts:v1') || '[]')).toEqual([])
+    })
+  })
+
+  it('retries a pending offline draft when the browser comes back online', async () => {
+    vi.useFakeTimers()
+    const onSave = vi.fn()
+      .mockRejectedValueOnce(new TypeError('Failed to fetch'))
+      .mockResolvedValue({ revision: 'sha256:r-saved' })
+
+    render(
+      <MarkdownEditor
+        workspace="/books/a"
+        fileName="chapters/ch01.md"
+        content="初始"
+        revision="sha256:r1"
+        onSave={onSave}
+        autoSaveDelayMs={100}
+      />,
+    )
+    act(() => {
+      tiptapMock.markdown = '离线内容'
+      tiptapMock.emit('update')
+      vi.advanceTimersByTime(100)
+    })
+    await act(async () => {
+      await Promise.resolve()
+      await Promise.resolve()
+    })
+    expect(JSON.parse(window.localStorage.getItem('nova:pending-drafts:v1') || '[]')).toHaveLength(1)
+
+    act(() => {
+      window.dispatchEvent(new Event('online'))
+    })
+    await act(async () => {
+      await Promise.resolve()
+      await Promise.resolve()
+      await Promise.resolve()
+    })
+
+    expect(onSave).toHaveBeenCalledTimes(2)
+    expect(onSave).toHaveBeenLastCalledWith('chapters/ch01.md', '离线内容\n', 'sha256:r1')
+    expect(JSON.parse(window.localStorage.getItem('nova:pending-drafts:v1') || '[]')).toEqual([])
+  })
+
+  it('enters conflict review when a restored offline draft hits a moved server revision', async () => {
+    window.localStorage.setItem('nova:pending-drafts:v1', JSON.stringify([{
+      id: 'draft-1',
+      workspace: '/books/a',
+      path: 'chapters/ch01.md',
+      content: '离线内容\n',
+      baseContent: '基线内容\n',
+      baseRevision: 'sha256:r-old',
+      mode: 'auto',
+      queuedAt: '2026-08-04T00:00:00Z',
+    }]))
+    const onSave = vi.fn().mockRejectedValue(new WorkspaceFileRevisionConflictError(
+      new Error('revision conflict'),
+      {
+        workspace: '/books/a',
+        content: '服务端最新\n',
+        revision: 'sha256:r-new',
+      },
+    ))
+    const onExternalConflict = vi.fn()
+
+    render(
+      <MarkdownEditor
+        workspace="/books/a"
+        fileName="chapters/ch01.md"
+        content="服务端最新\n"
+        revision="sha256:r-new"
+        onSave={onSave}
+        onExternalConflict={onExternalConflict}
+      />,
+    )
+
+    await waitFor(() => {
+      expect(onExternalConflict).toHaveBeenCalledWith({
+        fileName: 'chapters/ch01.md',
+        localContent: '离线内容\n',
+        externalContent: '服务端最新\n',
+      })
+    })
+    expect(JSON.parse(window.localStorage.getItem('nova:pending-drafts:v1') || '[]')).toHaveLength(1)
+    expect(conflictArchiveMock.preserve).toHaveBeenCalled()
+  })
+
+  it('does not persist HTTP domain failures as pending drafts', async () => {
+    vi.useFakeTimers()
+    const onSave = vi.fn(() => Promise.reject(new APIError('HTTP 409', { status: 409 })))
+
+    render(
+      <MarkdownEditor
+        workspace="/books/a"
+        fileName="chapters/ch01.md"
+        content="初始"
+        revision="sha256:r1"
+        onSave={onSave}
+        autoSaveDelayMs={100}
+      />,
+    )
+    act(() => {
+      tiptapMock.markdown = '冲突内容'
+      tiptapMock.emit('update')
+      vi.advanceTimersByTime(100)
+    })
+
+    await act(async () => {
+      await Promise.resolve()
+      await Promise.resolve()
+    })
+    expect(JSON.parse(window.localStorage.getItem('nova:pending-drafts:v1') || '[]')).toEqual([])
   })
 
   it('保存中的旧快照先回灌时仍保留手动保存的新草稿，且不误报并发修改', async () => {
@@ -1282,6 +1468,56 @@ describe('MarkdownEditor', () => {
     rerender(<MarkdownEditor fileName="chapters/ch02.md" content="第二章" onSave={vi.fn()} />)
     expect(editorStateMock.create).toHaveBeenCalledTimes(2)
     expect(tiptapMock.editor.view.updateState).toHaveBeenCalled()
+  })
+
+  it('切换文件时保存并恢复各自的滚动位置', async () => {
+    const { rerender } = render(
+      <MarkdownEditor workspace="/books/demo" fileName="chapters/ch01.md" content="第一章" onSave={vi.fn()} />,
+    )
+    const container = screen.getByTestId('editor-content').parentElement as HTMLElement
+    container.scrollTop = 320
+
+    rerender(
+      <MarkdownEditor workspace="/books/demo" fileName="chapters/ch02.md" content="第二章" onSave={vi.fn()} />,
+    )
+    await act(async () => {
+      await new Promise((resolve) => window.requestAnimationFrame(resolve))
+    })
+    expect(container.scrollTop).toBe(0)
+
+    container.scrollTop = 180
+    rerender(
+      <MarkdownEditor workspace="/books/demo" fileName="chapters/ch01.md" content="第一章" onSave={vi.fn()} />,
+    )
+    await act(async () => {
+      await new Promise((resolve) => window.requestAnimationFrame(resolve))
+    })
+    expect(container.scrollTop).toBe(320)
+  })
+
+  it('切换文件时保存并恢复各自的光标位置', async () => {
+    const { rerender } = render(
+      <MarkdownEditor workspace="/books/demo" fileName="chapters/ch01.md" content="第一章" onSave={vi.fn()} />,
+    )
+    tiptapMock.editor.state.selection = { from: 5, to: 5, head: 5, empty: true }
+
+    rerender(
+      <MarkdownEditor workspace="/books/demo" fileName="chapters/ch02.md" content="第二章" onSave={vi.fn()} />,
+    )
+    await act(async () => {
+      await new Promise((resolve) => window.requestAnimationFrame(resolve))
+    })
+    expect(tiptapMock.editor.commands.setTextSelection).not.toHaveBeenCalled()
+
+    tiptapMock.editor.state.selection = { from: 8, to: 8, head: 8, empty: true }
+    tiptapMock.editor.commands.setTextSelection.mockClear()
+    rerender(
+      <MarkdownEditor workspace="/books/demo" fileName="chapters/ch01.md" content="第一章" onSave={vi.fn()} />,
+    )
+    await act(async () => {
+      await new Promise((resolve) => window.requestAnimationFrame(resolve))
+    })
+    expect(tiptapMock.editor.commands.setTextSelection).toHaveBeenCalledWith({ from: 5, to: 5 })
   })
 
   it('点击生成本章插画按钮时提交当前章节路径', async () => {

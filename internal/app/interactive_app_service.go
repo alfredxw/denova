@@ -317,6 +317,30 @@ func (s *InteractiveAppService) InteractiveSnapshot(storyID, branchID string) (i
 	return store.Snapshot(storyID, branchID)
 }
 
+func (a *App) CreateInteractiveStateRevision(storyID string, req interactive.CreateStateRevisionRequest) (interactive.StateRevisionEvent, error) {
+	return a.interactiveService().CreateInteractiveStateRevision(storyID, req)
+}
+
+func (s *InteractiveAppService) CreateInteractiveStateRevision(storyID string, req interactive.CreateStateRevisionRequest) (interactive.StateRevisionEvent, error) {
+	store := s.store()
+	if store == nil {
+		return interactive.StateRevisionEvent{}, ErrNoWorkspace
+	}
+	return store.CreateStateRevision(storyID, req)
+}
+
+func (a *App) ApplyInteractiveStateRevisionAction(storyID string, req interactive.StateRevisionActionRequest) (interactive.StateRevisionEvent, error) {
+	return a.interactiveService().ApplyInteractiveStateRevisionAction(storyID, req)
+}
+
+func (s *InteractiveAppService) ApplyInteractiveStateRevisionAction(storyID string, req interactive.StateRevisionActionRequest) (interactive.StateRevisionEvent, error) {
+	store := s.store()
+	if store == nil {
+		return interactive.StateRevisionEvent{}, ErrNoWorkspace
+	}
+	return store.ApplyStateRevisionAction(storyID, req)
+}
+
 func (a *App) RerollInteractiveRuleResolution(storyID, resolutionID string, req interactive.RuleResolutionRerollRequest) (interactive.RuleResolution, error) {
 	return a.interactiveService().RerollInteractiveRuleResolution(storyID, resolutionID, req)
 }
@@ -513,6 +537,18 @@ func (s *InteractiveAppService) DeleteInteractiveBranch(storyID, branchID string
 		return ErrNoWorkspace
 	}
 	return store.DeleteBranch(storyID, branchID)
+}
+
+func (a *App) RenameInteractiveBranch(storyID, branchID, title string) (interactive.BranchSummary, error) {
+	return a.interactiveService().RenameInteractiveBranch(storyID, branchID, title)
+}
+
+func (s *InteractiveAppService) RenameInteractiveBranch(storyID, branchID, title string) (interactive.BranchSummary, error) {
+	store := s.store()
+	if store == nil {
+		return interactive.BranchSummary{}, ErrNoWorkspace
+	}
+	return store.RenameBranch(storyID, branchID, title)
 }
 
 func (a *App) InteractiveBranches(storyID string) ([]interactive.BranchSummary, error) {
@@ -754,11 +790,6 @@ func (s *InteractiveAppService) startInteractiveTask(ctx context.Context, storyI
 		log.Printf("[interactive-agent-task] 未选择 workspace，无法启动任务")
 		return nil
 	}
-	if a.activeInteractiveRun != nil && a.activeInteractiveRun.task != nil && a.activeInteractiveRun.task.Status() == TaskRunning {
-		log.Printf("[interactive-agent-task] replace running task id=%s", a.activeInteractiveRun.task.ID())
-		a.activeInteractiveRun.task.Abort()
-	}
-
 	store := a.interactive
 	state := a.bookState
 	bookService := a.bookService
@@ -782,6 +813,10 @@ func (s *InteractiveAppService) startInteractiveTask(ctx context.Context, storyI
 	storyCtx, err := store.StoryContext(storyID, branchID)
 	if err != nil {
 		log.Printf("[interactive-agent-task] 读取互动故事上下文失败 story_id=%s branch_id=%s err=%v", storyID, branchID, err)
+		return nil
+	}
+	if s.interactiveTaskRunning(workspace, storyID, storyCtx.Snapshot.BranchID) {
+		log.Printf("[interactive-agent-task] reject duplicate running task workspace=%s story_id=%s branch_id=%s", workspace, storyID, storyCtx.Snapshot.BranchID)
 		return nil
 	}
 	teller := loadInteractiveTeller(novaDir, storyCtx.Meta.StoryTellerID)
@@ -824,7 +859,13 @@ func (s *InteractiveAppService) startInteractiveTask(ctx context.Context, storyI
 		StyleRules:  styleRules,
 		Locale:      locale,
 	}
+	releaseVersionLease, acquired := versionService.Acquire()
+	if !acquired {
+		log.Printf("[interactive-agent-task] source version runtime retired workspace=%s story_id=%s branch_id=%s", workspace, storyID, storyCtx.Snapshot.BranchID)
+		return nil
+	}
 	task := NewTask(func(ctx context.Context, task *Task, emit func(agent.Event)) {
+		defer releaseVersionLease()
 		log.Printf("[interactive-agent-task] run begin id=%s story_id=%s branch_id=%s rewind_turn_id=%s message_len=%d style_scenes=%d", task.ID(), storyID, branchID, rewindTurnID, len(message), len(styleScenes))
 		if strings.TrimSpace(rewindTurnID) != "" {
 			if err := store.RewindToTurnParent(storyID, interactive.RewindTurnRequest{BranchID: branchID, TurnID: rewindTurnID}); err != nil {
@@ -910,11 +951,14 @@ func (s *InteractiveAppService) startInteractiveTask(ctx context.Context, storyI
 	if !s.bindActiveInteractiveTask(task, InteractiveTaskInfo{
 		Workspace:            workspace,
 		StoryID:              storyID,
+		StoryTitle:           storyCtx.Meta.Title,
 		BranchID:             storyCtx.Snapshot.BranchID,
 		Message:              message,
 		RegenerateFromTurnID: rewindTurnID,
 	}) {
-		log.Printf("[interactive-agent-task] skip active task binding after workspace changed id=%s workspace=%s story_id=%s branch_id=%s", task.ID(), workspace, storyID, storyCtx.Snapshot.BranchID)
+		log.Printf("[interactive-agent-task] reject task binding id=%s workspace=%s story_id=%s branch_id=%s", task.ID(), workspace, storyID, storyCtx.Snapshot.BranchID)
+		task.Abort()
+		return nil
 	}
 
 	return task
@@ -1333,6 +1377,17 @@ func (a *App) AbortInteractiveTask() {
 
 func (s *InteractiveAppService) AbortInteractiveTask() {
 	task, _ := s.ActiveInteractiveTaskFor("", "")
+	if task != nil {
+		task.Abort()
+	}
+}
+
+func (a *App) AbortInteractiveTaskFor(storyID, branchID string) {
+	a.interactiveService().AbortInteractiveTaskFor(storyID, branchID)
+}
+
+func (s *InteractiveAppService) AbortInteractiveTaskFor(storyID, branchID string) {
+	task, _ := s.ActiveInteractiveTaskFor(storyID, branchID)
 	if task != nil {
 		task.Abort()
 	}

@@ -228,7 +228,12 @@ function encodeBasicAuth(username: string, password: string): string {
 
 function shouldNotifyBackendUnavailable(input: RequestInfo | URL, error: unknown): boolean {
   if (!isLocalAPIRequest(input) || isAbortError(error)) return false
-  if (!(error instanceof Error)) return true
+  return isOfflineAPIError(error)
+}
+
+/** True when the failure is a transport-level network failure rather than an HTTP/API domain error. */
+export function isOfflineAPIError(error: unknown): boolean {
+  if (error instanceof APIError || !(error instanceof Error)) return false
   const message = error.message.toLowerCase()
   return message.includes('failed to fetch') ||
     message.includes('networkerror') ||

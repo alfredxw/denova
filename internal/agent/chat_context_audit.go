@@ -58,7 +58,22 @@ func (l *contextBuildLog) addSelections(selections []TextSelectionRef) {
 		if sel.StartLine > 0 || sel.EndLine > 0 {
 			title = fmt.Sprintf("%s:L%d-L%d", title, sel.StartLine, sel.EndLine)
 		}
-		l.add("编辑器选区", title, sel.Content, "")
+		source := strings.TrimSpace(sel.Source)
+		if source == "" {
+			source = "editor_selection"
+		}
+		purpose := strings.TrimSpace(sel.Purpose)
+		version := strings.TrimSpace(sel.Version)
+		note := fmt.Sprintf("version=%q; size_bytes=%d", version, len(sel.Content))
+		l.ledger.AddPart(source, title, purpose, sel.Content, note, true, false, 0)
+		l.parts = append(l.parts, NewContextAnalysisPart(ContextAnalysisPartInput{
+			Source:  source,
+			Title:   title,
+			Purpose: purpose,
+			Version: version,
+			Content: sel.Content,
+			Note:    note,
+		}))
 	}
 }
 

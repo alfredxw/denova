@@ -1,15 +1,13 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import type { ReactNode } from 'react'
 import { createPortal } from 'react-dom'
 import { useTranslation } from 'react-i18next'
 import { DndContext, KeyboardSensor, PointerSensor, closestCenter, useSensor, useSensors, type DragEndEvent } from '@dnd-kit/core'
 import { SortableContext, arrayMove, sortableKeyboardCoordinates, useSortable, verticalListSortingStrategy } from '@dnd-kit/sortable'
 import { CSS } from '@dnd-kit/utilities'
-import { Group, Panel, Separator } from 'react-resizable-panels'
-import { BookOpen, Bot, Clock3, Database, History, MessageSquareText, PanelLeft, PenLine, Search, Settings, SlidersHorizontal, Sparkles } from 'lucide-react'
+import { BookOpen, Bot, Clock3, Database, FileText, History, MessageSquareText, MoreHorizontal, PanelLeft, PenLine, Settings, SlidersHorizontal, Sparkles } from 'lucide-react'
 import { AnimatePresence, LayoutGroup, motion } from 'motion/react'
 import { WorkspaceLayout } from '@/components/layout/workspace-layout'
-import { WorkspaceMobileLayout, type MobileNavItem } from '@/components/layout/workspace-mobile-layout'
 import { createStablePortalHost, StablePortalSlot } from '@/components/layout/stable-portal-slot'
 import { TooltipIconButton } from '@/components/common/tooltip-icon-button'
 import { novaSpring } from '@/features/motion/motion-tokens'
@@ -17,14 +15,21 @@ import { MessageCenterButton } from '@/features/messages/MessageCenter'
 import type { AutomationMessageNavigation } from '@/features/messages/types'
 import { requestAutomationNavigation } from '@/features/automations/automation-navigation'
 import { useIsMobile } from '@/hooks/useIsMobile'
-import { getActiveAutomationRuns, getAutomationInbox, type BookRecord, type ChapterSummary, type WorkspaceSummary } from '@/lib/api'
-import { useWorkspaceStore, type RightPanel, type WorkspaceMode } from '@/stores/workspace-store'
+import { getTasks, type BookRecord, type ChapterSummary, type TaskCenterResult, type TaskCenterTask, type WorkspaceSummary } from '@/lib/api'
+import type { RightPanel, WorkspaceMode } from '@/stores/workspace-store'
 import type { InteractiveSubmode } from '@/features/interactive/types'
 import { formatNumber } from './workbench-utils'
 import { formatDateTime } from '@/i18n'
+import { maybeNotifyActionableTask } from '@/lib/task-notifications'
 import { BookSwitcher } from './BookSwitcher'
 import { WorkbenchNoticePill } from './WorkbenchNoticePill'
 import type { WorkbenchNotice } from '@/features/notices/use-workbench-notice'
+import { MobileWorkbenchShell, type MobileWorkbenchDestination } from '@/features/mobile-workbench/MobileWorkbenchShell'
+import { UnsavedConfigGuardDialog } from '@/features/config-guard/UnsavedConfigGuardDialog'
+import { discardExecutableDraft, hasPendingExecutableDraft } from '@/features/config-guard/executable-draft-guard'
+import { MobileMoreMenu, type MobileMoreMenuItem } from '@/features/mobile-workbench/MobileMoreMenu'
+import { requestAgentSessionRecovery, requestInteractiveStoryRecovery } from '@/features/mobile-workbench/task-recovery-navigation'
+import { requestMobileWorkbenchDestination } from '@/features/mobile-workbench/navigation'
 
 interface WorkbenchShellProps {
   mode: WorkspaceMode
@@ -56,6 +61,7 @@ interface WorkbenchShellProps {
   onCloseSettings: () => void
   onQuickSwitchBook: (path: string) => Promise<boolean>
   onDismissNotice?: () => void
+  systemNotificationsEnabled?: boolean
 }
 
 type ActivityItemId = 'writing' | 'story' | 'timeline' | 'lore' | 'teller' | 'versions' | 'books' | 'skills' | 'agents' | 'automations'
@@ -88,7 +94,8 @@ const ACTIVITY_BAR_LEGACY_DEFAULT_WIDTH = 152
 const ACTIVITY_BAR_DEFAULT_WIDTH = 180
 const ACTIVITY_BAR_MAX_WIDTH = 280
 const ACTIVITY_BAR_WIDTH_KEYBOARD_STEP = 8
-const AUTOMATION_ACTIVITY_REFRESH_INTERVAL_MS = 30000
+const TASK_ACTIVITY_REFRESH_INTERVAL_MS = 30000
+const EMPTY_TASK_CENTER: TaskCenterResult = { tasks: [], action_required_count: 0 }
 
 function NovaBrandIcon() {
   return (
@@ -131,14 +138,18 @@ export function WorkbenchShell({
   onCloseSettings,
   onQuickSwitchBook,
   onDismissNotice,
+  systemNotificationsEnabled = false,
 }: WorkbenchShellProps) {
   const { t } = useTranslation()
   const isMobile = useIsMobile()
-  const setCommandOpen = useWorkspaceStore((state) => state.setCommandOpen)
   const [activityOrders, setActivityOrders] = useState<Record<ActivityOrderScope, ActivityItemId[]>>(readStoredActivityOrders)
   const [activityBarWidth, setActivityBarWidth] = useState(readStoredActivityBarWidth)
-  const [automationInboxUnread, setAutomationInboxUnread] = useState(0)
-  const [automationRunning, setAutomationRunning] = useState(0)
+  const [taskActivity, setTaskActivity] = useState<{ result: TaskCenterResult; loadState: 'loading' | 'ready' | 'error' }>({
+    result: EMPTY_TASK_CENTER,
+    loadState: 'loading',
+  })
+  const [pendingLeave, setPendingLeave] = useState<{ key: string; proceed: () => void } | null>(null)
+  const notifiedTaskIDsRef = useRef(new Set<string>())
   const [mainContentHost] = useState(() => {
     const host = createStablePortalHost('h-full min-h-0 w-full min-w-0 overflow-hidden')
     if (host) host.dataset.novaWorkbenchMainHost = 'true'
@@ -172,17 +183,31 @@ export function WorkbenchShell({
       if (cancelled || document.visibilityState !== 'visible') return
       timer = window.setTimeout(() => {
         timer = null
-        void loadAutomationActivity()
-      }, AUTOMATION_ACTIVITY_REFRESH_INTERVAL_MS)
+        void loadTaskActivity()
+      }, TASK_ACTIVITY_REFRESH_INTERVAL_MS)
     }
-    async function loadAutomationActivity() {
+    async function loadTaskActivity() {
       if (cancelled || running || document.visibilityState !== 'visible') return
       running = true
       try {
-        const [inboxResult, runsResult] = await Promise.allSettled([getAutomationInbox(), getActiveAutomationRuns()])
+        const result = await getTasks()
         if (cancelled) return
-        setAutomationInboxUnread(inboxResult.status === 'fulfilled' ? inboxResult.value.filter((item) => item.status === 'pending' && !item.read_at).length : 0)
-        setAutomationRunning(runsResult.status === 'fulfilled' ? runsResult.value.length : 0)
+        setTaskActivity({ result, loadState: 'ready' })
+        for (const task of result.tasks) {
+          if (task.status !== 'waiting_user' && task.status !== 'failed') continue
+          if (!systemNotificationsEnabled) continue
+          if (notifiedTaskIDsRef.current.has(task.id)) continue
+          notifiedTaskIDsRef.current.add(task.id)
+          void maybeNotifyActionableTask({
+            enabled: systemNotificationsEnabled,
+            typeLabel: t(`workbench.mobile.taskCenter.type.${task.type}`),
+            projectName: task.project.name,
+          })
+        }
+      } catch {
+        if (!cancelled) {
+          setTaskActivity((current) => ({ ...current, loadState: 'error' }))
+        }
       } finally {
         running = false
         scheduleNext()
@@ -190,16 +215,19 @@ export function WorkbenchShell({
     }
     const handleVisibilityChange = () => {
       clearTimer()
-      if (document.visibilityState === 'visible') void loadAutomationActivity()
+      if (document.visibilityState === 'visible') void loadTaskActivity()
     }
-    void loadAutomationActivity()
+    void loadTaskActivity()
     document.addEventListener('visibilitychange', handleVisibilityChange)
     return () => {
       cancelled = true
       clearTimer()
       document.removeEventListener('visibilitychange', handleVisibilityChange)
     }
-  }, [])
+  }, [systemNotificationsEnabled, t])
+
+  const automationInboxUnread = taskActivity.result.tasks.filter((task) => task.type === 'automation' && task.status === 'waiting_user').length
+  const automationRunning = taskActivity.result.tasks.filter((task) => task.type === 'automation' && task.status === 'running').length
 
   const loreVisible = rightPanel === 'lore'
   const tellerVisible = rightPanel === 'teller'
@@ -220,37 +248,85 @@ export function WorkbenchShell({
     if (settingsOpen) onCloseSettings()
   }
 
+  const leaveConfigSurface = (action: () => void) => {
+    const key = mode === 'skills'
+      ? 'skills'
+      : mode === 'agents'
+        ? 'agents'
+        : mode === 'automations'
+          ? 'automations'
+          : mode === 'interactive' && interactiveSubmode === 'teller'
+            ? 'setting-panel'
+            : mode === 'ide' && (loreVisible || tellerVisible)
+              ? 'setting-panel'
+              : null
+    if (key && !settingsOpen && hasPendingExecutableDraft(key)) {
+      setPendingLeave({ key, proceed: action })
+      return
+    }
+    action()
+  }
+
   const openWriting = () => {
-    closeSettingsIfOpen()
-    onSetMode('ide')
-    if (loreVisible || tellerVisible || versionsVisible) onSetRightPanel(null)
+    leaveConfigSurface(() => {
+      closeSettingsIfOpen()
+      onSetMode('ide')
+      if (loreVisible || tellerVisible || versionsVisible) onSetRightPanel(null)
+    })
   }
 
   const switchNavigationMode = (nextMode: 'ide' | 'interactive') => {
-    closeSettingsIfOpen()
-    if (versionsVisible) onSetRightPanel(null)
-    onSetMode(nextMode)
+    leaveConfigSurface(() => {
+      closeSettingsIfOpen()
+      if (versionsVisible) onSetRightPanel(null)
+      onSetMode(nextMode)
+    })
   }
 
   const toggleIdePanel = (panel: NonNullable<RightPanel>) => {
+    if (rightPanel === 'teller' && panel === 'teller') {
+      leaveConfigSurface(() => {
+        closeSettingsIfOpen()
+        onSetMode('ide')
+        onSetRightPanel(null)
+      })
+      return
+    }
     closeSettingsIfOpen()
     onSetMode('ide')
     onSetRightPanel(rightPanel === panel ? null : panel)
   }
 
   const openVersions = () => {
-    closeSettingsIfOpen()
-    if (mode === 'books' || mode === 'skills' || mode === 'agents' || mode === 'automations') {
-      onSetMode(booksReturnMode)
-    }
-    onSetRightPanel(versionsVisible ? null : 'versions')
+    leaveConfigSurface(() => {
+      closeSettingsIfOpen()
+      if (mode === 'books' || mode === 'skills' || mode === 'agents' || mode === 'automations') {
+        onSetMode(booksReturnMode)
+      }
+      onSetRightPanel(versionsVisible ? null : 'versions')
+    })
   }
 
   const openInteractiveSubmode = (nextMode: InteractiveSubmode) => {
-    closeSettingsIfOpen()
-    if (versionsVisible) onSetRightPanel(null)
-    onSetMode('interactive')
-    onSetInteractiveSubmode(nextMode)
+    if (mode === 'interactive' && interactiveSubmode === nextMode) {
+      closeSettingsIfOpen()
+      if (versionsVisible) onSetRightPanel(null)
+      return
+    }
+    leaveConfigSurface(() => {
+      closeSettingsIfOpen()
+      if (versionsVisible) onSetRightPanel(null)
+      onSetMode('interactive')
+      onSetInteractiveSubmode(nextMode)
+    })
+  }
+
+  const openMobileAgent = () => {
+    leaveConfigSurface(() => {
+      closeSettingsIfOpen()
+      onSetMode('ide')
+      onSetRightPanel('ai')
+    })
   }
 
   const returnFromBooks = () => {
@@ -267,52 +343,112 @@ export function WorkbenchShell({
       returnFromBooks()
       return
     }
-    closeSettingsIfOpen()
-    if (versionsVisible) onSetRightPanel(null)
-    onSetMode('books')
+    leaveConfigSurface(() => {
+      closeSettingsIfOpen()
+      if (versionsVisible) onSetRightPanel(null)
+      onSetMode('books')
+    })
   }
 
   const manageBooks = () => {
-    closeSettingsIfOpen()
-    if (versionsVisible) onSetRightPanel(null)
-    onSetMode('books')
+    leaveConfigSurface(() => {
+      closeSettingsIfOpen()
+      if (versionsVisible) onSetRightPanel(null)
+      onSetMode('books')
+    })
   }
 
   const openAgents = () => {
     if (mode === 'agents' && !settingsOpen) {
-      returnFromBooks()
+      leaveConfigSurface(returnFromBooks)
       return
     }
-    closeSettingsIfOpen()
-    if (versionsVisible) onSetRightPanel(null)
-    onSetMode('agents')
+    leaveConfigSurface(() => {
+      closeSettingsIfOpen()
+      if (versionsVisible) onSetRightPanel(null)
+      onSetMode('agents')
+    })
   }
 
   const openSkills = () => {
     if (mode === 'skills' && !settingsOpen) {
-      returnFromBooks()
+      leaveConfigSurface(returnFromBooks)
       return
     }
-    closeSettingsIfOpen()
-    if (versionsVisible) onSetRightPanel(null)
-    onSetMode('skills')
+    leaveConfigSurface(() => {
+      closeSettingsIfOpen()
+      if (versionsVisible) onSetRightPanel(null)
+      onSetMode('skills')
+    })
   }
 
   const openAutomations = () => {
     if (mode === 'automations' && !settingsOpen) {
-      returnFromBooks()
+      leaveConfigSurface(returnFromBooks)
       return
     }
-    closeSettingsIfOpen()
-    if (versionsVisible) onSetRightPanel(null)
-    onSetMode('automations')
+    leaveConfigSurface(() => {
+      closeSettingsIfOpen()
+      if (versionsVisible) onSetRightPanel(null)
+      onSetMode('automations')
+    })
   }
 
   const openAutomationNotification = (target: AutomationMessageNavigation) => {
-    closeSettingsIfOpen()
-    if (versionsVisible) onSetRightPanel(null)
-    requestAutomationNavigation(target)
-    onSetMode('automations')
+    leaveConfigSurface(() => {
+      closeSettingsIfOpen()
+      if (versionsVisible) onSetRightPanel(null)
+      requestAutomationNavigation(target)
+      onSetMode('automations')
+    })
+  }
+
+  const openMobileTask = (task: TaskCenterTask) => {
+    switch (task.recovery.kind) {
+      case 'automation_run':
+      case 'automation_inbox':
+        if (!task.recovery.task_id) return
+        openAutomationNotification({
+          taskId: task.recovery.task_id,
+          runId: task.recovery.run_id,
+          inboxId: task.recovery.inbox_id,
+          workspace: task.recovery.workspace,
+        })
+        return
+      case 'agent_session':
+        if (!task.recovery.session_id) return
+        void onQuickSwitchBook(task.recovery.workspace).then((switched) => {
+          if (!switched) return
+          requestAgentSessionRecovery({ sessionId: task.recovery.session_id!, taskId: task.recovery.task_id })
+          openMobileAgent()
+          requestMobileWorkbenchDestination('agent', 'ide')
+        })
+        return
+      case 'config_manager':
+        if (!task.recovery.task_id) return
+        void onQuickSwitchBook(task.recovery.workspace).then((switched) => {
+          if (!switched) return
+          if (task.recovery.origin === 'skills') onSetMode('skills')
+          else if (task.recovery.origin === 'automation') onSetMode('automations')
+          else onSetMode('agents')
+        })
+        return
+      case 'interactive_story':
+        if (!task.recovery.story_id || !task.recovery.branch_id) return
+        void onQuickSwitchBook(task.recovery.workspace).then((switched) => {
+          if (!switched) return
+          requestInteractiveStoryRecovery({ storyId: task.recovery.story_id!, branchId: task.recovery.branch_id!, taskId: task.recovery.task_id })
+          onSetMode('interactive')
+          onSetInteractiveSubmode('story')
+          requestMobileWorkbenchDestination('story', 'interactive')
+        })
+        return
+      case 'image_generation':
+        void onQuickSwitchBook(task.recovery.workspace)
+        return
+      case 'import_export':
+        void onQuickSwitchBook(task.recovery.workspace)
+    }
   }
 
   const ideActivityItems: ActivityItem[] = [
@@ -619,12 +755,101 @@ export function WorkbenchShell({
   )
 
   if (isMobile) {
-    const compactMobileNavigation = mode === 'interactive' && interactiveSubmode === 'story' && !sharedMenuActive
-    const mobileTopBar = (
-      <header className="nova-mobile-topbar nova-topbar shrink-0 border-b border-[var(--nova-border)] py-2 pl-3 pr-3">
-        <div className="flex min-w-0 items-center justify-between gap-2">
-          <div className="flex min-w-0 flex-1 items-center gap-2">
-            <NovaBrandIcon />
+    const writingDestinations: MobileWorkbenchDestination[] = [
+      {
+        id: 'manuscript',
+        label: t('workbench.mobile.manuscript'),
+        title: currentChapter?.display_title || t('workbench.mobile.manuscript'),
+        icon: <FileText className="size-4" />,
+        content: mainContentSlot,
+        onSelect: openWriting,
+      },
+      {
+        id: 'project',
+        label: t('workbench.mobile.project'),
+        title: t('workbench.mobile.project'),
+        icon: <PanelLeft className="size-4" />,
+        content: sidebar,
+        onSelect: openWriting,
+      },
+      {
+        id: 'agent',
+        label: t('workbench.mobile.agent'),
+        title: t('workbench.mobile.agent'),
+        icon: <Bot className="size-4" />,
+        content: rightPanelContent,
+        onSelect: openMobileAgent,
+      },
+    ]
+    const interactiveDestinations: MobileWorkbenchDestination[] = [
+      {
+        id: 'story',
+        label: t('workbench.mobile.story'),
+        title: t('workbench.mobile.story'),
+        icon: <MessageSquareText className="size-4" />,
+        content: mainContentSlot,
+        onSelect: () => openInteractiveSubmode('story'),
+      },
+      {
+        id: 'storylines',
+        label: t('workbench.mobile.storylines'),
+        title: t('workbench.mobile.storylines'),
+        icon: <History className="size-4" />,
+        content: mainContentSlot,
+        onSelect: () => openInteractiveSubmode('timeline'),
+      },
+      {
+        id: 'reference',
+        label: t('workbench.mobile.reference'),
+        title: t('workbench.mobile.reference'),
+        icon: <Database className="size-4" />,
+        content: mainContentSlot,
+        onSelect: () => openInteractiveSubmode('lore'),
+      },
+    ]
+    const mobileMode = navigationMode === 'interactive' ? 'interactive' : 'ide'
+    const destinations = mobileMode === 'interactive' ? interactiveDestinations : writingDestinations
+    const defaultDestinationId = mobileMode === 'interactive'
+      ? interactiveSubmode === 'timeline' ? 'storylines' : interactiveSubmode === 'lore' ? 'reference' : 'story'
+      : 'manuscript'
+    const mobileMoreItems: MobileMoreMenuItem[] = [
+      { id: 'versions', label: t('workbench.activity.versions'), icon: <History className="size-4" />, onSelect: openVersions },
+      { id: 'skills', label: t('workbench.activity.skills'), icon: <Sparkles className="size-4" />, onSelect: openSkills },
+      { id: 'agents', label: t('workbench.activity.agents'), icon: <Bot className="size-4" />, onSelect: openAgents },
+      { id: 'automations', label: t('workbench.activity.automations'), icon: <Clock3 className="size-4" />, onSelect: openAutomations },
+      { id: 'settings', label: t('workbench.activity.settings'), icon: <Settings className="size-4" />, onSelect: onToggleSettings },
+    ]
+    const mobileMoreMenu = (
+      <MobileMoreMenu
+        mode={mobileMode}
+        modeSwitchLabel={t('workbench.modeSwitch')}
+        writingModeLabel={t('workbench.mode.ideButton')}
+        gameModeLabel={t('workbench.mode.interactiveButton')}
+        items={mobileMoreItems}
+        taskCenter={taskActivity.result}
+        taskCenterLoadState={taskActivity.loadState}
+        notice={notice ? <WorkbenchNoticePill expanded notice={notice} starSecondaryText="description" onOpenSettings={onToggleSettings} onDismiss={onDismissNotice} /> : undefined}
+        onSelectMode={switchNavigationMode}
+        onOpenTask={openMobileTask}
+      />
+    )
+
+    return (
+      <>
+        <MobileWorkbenchShell
+          persistenceKey={workspace}
+          modeKey={mobileMode}
+          defaultDestinationId={defaultDestinationId}
+          destinations={destinations}
+          moreLabel={t('workbench.mobile.more')}
+          moreIcon={<MoreHorizontal className="size-4" />}
+          moreMenu={mobileMoreMenu}
+          moreBadgeCount={taskActivity.result.action_required_count}
+          moreBadgeLabel={t('workbench.mobile.taskCenter.badge', { count: taskActivity.result.action_required_count })}
+          sharedContent={mainContentSlot}
+          sharedMenuActive={sharedMenuActive}
+          navigationLabel={t('workbench.mobile.navigation')}
+          projectSwitcher={(
             <BookSwitcher
               books={books}
               currentBookName={currentBookName}
@@ -634,131 +859,22 @@ export function WorkbenchShell({
               onSwitchBook={onQuickSwitchBook}
               onManageBooks={manageBooks}
             />
-          </div>
-          <div className="flex shrink-0 items-center gap-1.5">
-            <MessageCenterButton className="h-8 w-8" onOpenAutomation={openAutomationNotification} />
-            <button
-              type="button"
-              onClick={() => setCommandOpen(true)}
-              className="nova-icon-button flex h-8 w-8 items-center justify-center rounded-[var(--nova-radius)] text-[var(--nova-text-muted)] hover:bg-[var(--nova-hover)] hover:text-[var(--nova-text)]"
-              aria-label={t('command.openButton')}
-              title={t('command.openButton')}
-            >
-              <Search className="h-4 w-4" />
-            </button>
-            <LayoutGroup id="workbench-mobile-mode-switch">
-            <div role="group" className="flex h-8 shrink-0 items-center rounded-[var(--nova-radius)] border border-[var(--nova-border)] bg-[var(--nova-surface-2)] p-0.5" aria-label={t('workbench.modeSwitch')}>
-              <button
-                type="button"
-                aria-pressed={navigationMode === 'ide'}
-                onClick={() => switchNavigationMode('ide')}
-                data-onboarding-anchor="mode-ide"
-                className={`relative min-w-0 overflow-hidden rounded-[6px] px-2 py-1 text-[11px] transition-colors ${navigationMode === 'ide' ? 'bg-[var(--nova-active)] text-[var(--nova-text)]' : 'text-[var(--nova-text-faint)] hover:text-[var(--nova-text-muted)]'}`}
-              >
-                {navigationMode === 'ide' && <motion.span layoutId="workbench-mobile-mode-active" className="absolute inset-0 rounded-[6px] bg-[var(--nova-active)]" transition={novaSpring} />}
-                <span className="relative z-10">{t('workbench.mode.ideButton')}</span>
-              </button>
-              <button
-                type="button"
-                aria-pressed={navigationMode === 'interactive'}
-                onClick={() => switchNavigationMode('interactive')}
-                data-onboarding-anchor="mode-interactive"
-                className={`relative min-w-0 overflow-hidden rounded-[6px] px-2 py-1 text-[11px] transition-colors ${navigationMode === 'interactive' ? 'bg-[var(--nova-active)] text-[var(--nova-text)]' : 'text-[var(--nova-text-faint)] hover:text-[var(--nova-text-muted)]'}`}
-              >
-                {navigationMode === 'interactive' && <motion.span layoutId="workbench-mobile-mode-active" className="absolute inset-0 rounded-[6px] bg-[var(--nova-active)]" transition={novaSpring} />}
-                <span className="relative z-10">{t('workbench.mode.interactiveButton')}</span>
-              </button>
-            </div>
-          </LayoutGroup>
-          </div>
-        </div>
-        {notice && (
-          <div className="mt-2 flex justify-end">
-            <WorkbenchNoticePill
-              expanded
-              notice={notice}
-              starSecondaryText="description"
-              onOpenSettings={onToggleSettings}
-              onDismiss={onDismissNotice}
-            />
-          </div>
-        )}
-      </header>
-    )
-    const mobileActivityItems: MobileNavItem[] = [
-      ...(navigationMode === 'interactive' ? interactiveActivityItems : ideActivityItems),
-      ...sharedActivityItems,
-    ]
-      .filter((item) => item.id !== 'writing')
-      .map((item) => ({
-        id: item.id,
-        label: item.label,
-        icon: item.icon,
-        active: item.active,
-        onClick: item.onClick,
-      }))
-    const mobileProjectDrawer = sidebar ? {
-      id: 'project' as const,
-      title: t('workbench.mobile.project'),
-      icon: <PanelLeft className="h-4 w-4" />,
-      side: 'left' as const,
-      content: sidebar,
-    } : undefined
-    // Direction B: editor + Agent in a vertical split (Agent docked at bottom,
-    // always visible) instead of Agent hidden in a right drawer. Only when the
-    // Agent panel is active and no full-workspace panel covers the screen.
-    const mobileAgentDocked = mode === 'ide' && !fullWorkspacePanelVisible && Boolean(rightPanelContent)
-    const mobileMain = (
-      <div className="relative flex h-full min-h-0 flex-col">
-        {mobileAgentDocked ? (
-          <Group
-            orientation="vertical"
-            resizeTargetMinimumSize={{ coarse: 16, fine: 1 }}
-            className="flex min-h-0 flex-1 flex-col"
-          >
-            <Panel id="nova-mobile-editor" minSize="30%" className="min-h-0">
-              {mainContentSlot}
-            </Panel>
-            <Separator aria-label={t('layout.resize.bottom')} className="nova-resize-handle h-2.5 shrink-0 cursor-row-resize border-y border-[var(--nova-border)] bg-[var(--nova-surface-2)] transition-colors" />
-            <Panel id="nova-mobile-agent" defaultSize="38%" minSize="20%" className="min-h-0">
-              {rightPanelContent}
-            </Panel>
-          </Group>
-        ) : mainContentSlot}
-        {/* Floating button to reopen the Agent dock when it's hidden */}
-        {mode === 'ide' && !fullWorkspacePanelVisible && !mobileAgentDocked && (
-          <button
-            type="button"
-            className="absolute bottom-3 right-3 z-30 flex h-12 w-12 items-center justify-center rounded-full border border-[var(--nova-border)] bg-[var(--nova-active)] text-[var(--nova-text)] shadow-lg hover:bg-[var(--nova-hover)]"
-            onClick={() => onSetRightPanel('ai')}
-            aria-label={t('chat.agent')}
-          >
-            <Bot className="h-5 w-5" />
-          </button>
-        )}
-      </div>
-    )
-
-    return (
-      <>
-        <WorkspaceMobileLayout
-          topBar={mobileTopBar}
-          main={mobileMain}
-          activityItems={mobileActivityItems}
-          projectDrawer={mobileProjectDrawer}
-          settingsItem={{
-            id: 'settings',
-            label: t('workbench.activity.settings'),
-            icon: <Settings className="h-4 w-4" />,
-            active: settingsOpen,
-            onClick: onToggleSettings,
-          }}
-          closeLabel={t('common.close')}
-          navigationLabel={t('workbench.mobile.navigation')}
-          compactNavigation={compactMobileNavigation}
-          compactNavigationLabel={t('workbench.mobile.navigationMenu')}
+          )}
         />
         {mainContentPortal}
+        <UnsavedConfigGuardDialog
+          open={Boolean(pendingLeave)}
+          onOpenChange={(open) => {
+            if (!open) setPendingLeave(null)
+          }}
+          onDiscard={() => {
+            const target = pendingLeave
+            if (!target) return
+            setPendingLeave(null)
+            void discardExecutableDraft(target.key)
+            target.proceed()
+          }}
+        />
       </>
     )
   }
@@ -778,6 +894,19 @@ export function WorkbenchShell({
         statusBar={statusBar}
       />
       {mainContentPortal}
+      <UnsavedConfigGuardDialog
+        open={Boolean(pendingLeave)}
+        onOpenChange={(open) => {
+          if (!open) setPendingLeave(null)
+        }}
+        onDiscard={() => {
+          const target = pendingLeave
+          if (!target) return
+          setPendingLeave(null)
+          void discardExecutableDraft(target.key)
+          target.proceed()
+        }}
+      />
     </>
   )
 }

@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { Activity, Bot, FileText, PenLine, Plus, SearchCheck, Sparkles, WandSparkles, X } from 'lucide-react'
 import { Group, Panel, Separator } from 'react-resizable-panels'
 import { createPortal } from 'react-dom'
@@ -157,6 +157,7 @@ export function AgentPanel({
   const [selectedTraceRunId, setSelectedTraceRunId] = useState('')
   const [inputAreaHeight, setInputAreaHeight] = useState(0)
   const [chatPaneHost] = useState(() => createStablePortalHost('relative flex h-full min-h-0 w-full min-w-0 flex-col'))
+  const sessionScrollRef = useRef(new Map<string, number>())
   const ideTellerId = persistedSettings.values.ide_story_teller_id
   const imagePresetId = persistedSettings.values.ide_image_preset_id
   const writingSkill = persistedSettings.values.writing_skill_default
@@ -324,6 +325,8 @@ export function AgentPanel({
     isStreaming,
     activityContent,
     scrollResetKey: `${workspace || 'none'}:${activeSessionId || 'current'}`,
+    onScrollPosition: (scrollTop: number) => sessionScrollRef.current.set(activeSessionId || 'current', scrollTop),
+    restoreScrollTop: sessionScrollRef.current.get(activeSessionId || 'current') ?? 0,
     bottomPaddingClassName: 'pb-36',
     bottomPaddingPx: messageListBottomPadding,
     collapseTraceGroups: true,
@@ -347,7 +350,7 @@ export function AgentPanel({
     disabled: isStreaming,
     planMode,
     onTogglePlanMode: onPlanModeToggle,
-    draftKey: `ide-agent:${workspace || 'global'}`,
+    draftKey: `ide-agent:${workspace || 'global'}:${activeSessionId || 'current'}`,
     inputPrefill,
     onInputPrefillConsumed: () => setInputPrefill(null),
     referencedFiles: references,

@@ -601,6 +601,7 @@ func (s *Store) AppendTurn(storyID string, req AppendTurnRequest) (TurnEvent, er
 		Thinking:             strings.TrimSpace(req.Thinking),
 		DisplayEvents:        sanitizeDisplayEvents(req.DisplayEvents),
 		ModelContextMessages: sanitizeModelContextMessages(req.ModelContextMessages),
+		ContextSnapshot:      sanitizeTurnContextSnapshot(req.ContextSnapshot),
 		Flags:                map[string]bool{"pinned": false, "locked": false},
 	}
 	branch.Head = event.ID
@@ -666,6 +667,7 @@ func (s *Store) AppendTurnWithState(storyID string, req AppendTurnWithStateReque
 		AgentKind:            strings.TrimSpace(req.AgentKind),
 		DisplayEvents:        sanitizeDisplayEvents(req.DisplayEvents),
 		ModelContextMessages: sanitizeModelContextMessages(req.ModelContextMessages),
+		ContextSnapshot:      sanitizeTurnContextSnapshot(req.ContextSnapshot),
 		RuleResolution:       normalizeRuleResolutionPointer(req.RuleResolution),
 		TurnResult:           turnResult,
 		TerminalOutcome:      normalizeTerminalOutcomePointer(req.TerminalOutcome),
@@ -1228,6 +1230,43 @@ func (s *Store) SwitchBranch(storyID, branchID string) error {
 	return s.rewriteStoryLocked(storyID, meta, lines)
 }
 
+func (s *Store) RenameBranch(storyID, branchID, title string) (BranchSummary, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	branchID = strings.TrimSpace(branchID)
+	title = strings.TrimSpace(title)
+	if branchID == "" {
+		return BranchSummary{}, fmt.Errorf("分支不能为空")
+	}
+	if title == "" {
+		return BranchSummary{}, fmt.Errorf("分支名称不能为空")
+	}
+	meta, lines, err := s.readStoryLocked(storyID)
+	if err != nil {
+		return BranchSummary{}, err
+	}
+	branch, ok := meta.Branches[branchID]
+	if !ok {
+		return BranchSummary{}, fmt.Errorf("分支不存在: %s", branchID)
+	}
+	branch.Title = title
+	meta.Branches[branchID] = branch
+	meta.UpdatedAt = time.Now().UTC().Format(time.RFC3339Nano)
+	if err := s.rewriteStoryLocked(storyID, meta, lines); err != nil {
+		return BranchSummary{}, err
+	}
+	return BranchSummary{
+		ID:        branchID,
+		Head:      branch.Head,
+		From:      branch.From,
+		FromEvent: branch.FromEvent,
+		Title:     title,
+		CreatedAt: branch.CreatedAt,
+		Current:   meta.CurrentBranch == branchID,
+	}, nil
+}
+
 func (s *Store) DeleteBranch(storyID, branchID string) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -1359,6 +1398,16 @@ func stateFromPath(path []StoryEventRecord) map[string]any {
 					applyActorStateOp(state, op)
 				}
 			}
+		case StoryEventTypeStateRevision:
+			var revision StateRevisionEvent
+			if err := mapToStruct(record.Raw, &revision); err == nil {
+				for _, op := range revision.Ops {
+					applyStateOp(state, op)
+				}
+				for _, op := range revision.ActorOps {
+					applyActorStateOp(state, op)
+				}
+			}
 		}
 	}
 	return state
@@ -1388,6 +1437,16 @@ func stateBeforeTurn(path []StoryEventRecord, turnID string) map[string]any {
 					applyStateOp(state, op)
 				}
 				for _, op := range turn.StateDelta.ActorOps {
+					applyActorStateOp(state, op)
+				}
+			}
+		case StoryEventTypeStateRevision:
+			var revision StateRevisionEvent
+			if err := mapToStruct(record.Raw, &revision); err == nil {
+				for _, op := range revision.Ops {
+					applyStateOp(state, op)
+				}
+				for _, op := range revision.ActorOps {
 					applyActorStateOp(state, op)
 				}
 			}

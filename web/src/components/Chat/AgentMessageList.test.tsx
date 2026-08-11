@@ -14,6 +14,34 @@ function renderMessageList(ui: ReactElement) {
 }
 
 describe('Agent MessageList', () => {
+  it('records scroll positions and restores them after a session reset', async () => {
+    const onScrollPosition = vi.fn()
+    const list = (session: string, restore: number) => (
+      <VirtuosoMockContext.Provider value={{ viewportHeight: 180, itemHeight: 52 }}>
+        <MessageList
+          isStreaming={false}
+          activityContent=""
+          messages={agentTurnMessages()}
+          scrollResetKey={session}
+          onScrollPosition={onScrollPosition}
+          restoreScrollTop={restore}
+        />
+      </VirtuosoMockContext.Provider>
+    )
+    const { rerender } = render(list('session-a', 120))
+    const scroller = document.querySelector('.nova-chat-canvas') as HTMLElement
+    await waitFor(() => expect(scroller.scrollTop).toBe(120))
+
+    scroller.scrollTop = 80
+    fireEvent.scroll(scroller)
+    expect(onScrollPosition).toHaveBeenCalledWith(80)
+
+    rerender(list('session-b', 0))
+
+    rerender(list('session-a', 80))
+    await waitFor(() => expect(scroller.scrollTop).toBe(80))
+  })
+
   it('在历史窗口顶部按需加载更早消息', () => {
     const loadEarlier = vi.fn()
     renderMessageList(

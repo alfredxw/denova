@@ -13,6 +13,10 @@ interface SearchPanelProps {
   onSelectResult: (result: WorkspaceSearchResult, query: string) => void | Promise<void>
   /** 全局替换成功后通知外层刷新受影响的打开文件与版本信息 */
   onWorkspaceChanged?: (paths: string[]) => void | Promise<void>
+  /** 项目面重新挂载时恢复的搜索词 */
+  initialQuery?: string
+  /** 搜索词变化时回传，便于外层按工作区记忆 */
+  onQueryChange?: (query: string) => void
 }
 
 interface SearchResultGroup {
@@ -24,9 +28,9 @@ const SEARCH_LIMIT = 100
 const SEARCH_DEBOUNCE_MS = 260
 
 /** 当前书籍 workspace 的扫描式全局搜索面板，支持正则匹配与全局替换。 */
-export function SearchPanel({ workspace, onSelectResult, onWorkspaceChanged }: SearchPanelProps) {
+export function SearchPanel({ workspace, onSelectResult, onWorkspaceChanged, initialQuery = '', onQueryChange }: SearchPanelProps) {
   const { t } = useTranslation()
-  const [query, setQuery] = useState('')
+  const [query, setQuery] = useState(initialQuery)
   const [results, setResults] = useState<WorkspaceSearchResult[]>([])
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
@@ -40,6 +44,14 @@ export function SearchPanel({ workspace, onSelectResult, onWorkspaceChanged }: S
   const trimmedQuery = query.trim()
   const groups = useMemo(() => groupSearchResults(results), [results])
   const canReplace = Boolean(workspace && trimmedQuery && results.length > 0)
+
+  useEffect(() => {
+    onQueryChange?.(query)
+  }, [onQueryChange, query])
+
+  useEffect(() => {
+    setQuery(initialQuery)
+  }, [initialQuery, workspace])
 
   useEffect(() => {
     requestSeq.current += 1

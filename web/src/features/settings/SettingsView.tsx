@@ -28,7 +28,7 @@ import { DEFAULT_MODEL_PROFILE_ID, modelProfileID, modelProfileLabel, modelProfi
 import { DEFAULT_IMAGE_API_BASE_URL, DEFAULT_IMAGE_API_MODEL, DEFAULT_IMAGE_API_PROFILE_ID, DEFAULT_IMAGE_API_PROVIDER, imageAPIProfileID, imageAPIProfileLabel, imageAPIProfilesWithDefault } from './image-profiles'
 import { ONBOARDING_OPEN_EVENT, SETTINGS_SECTION_EVENT, type SettingsSectionRequest } from '@/features/onboarding/events'
 
-type SettingsSectionId = 'model' | 'image' | 'paths' | 'access' | 'appearance' | 'updates' | 'agent' | 'debug' | 'ide-editor' | 'ide-output' | 'versions' | 'interactive'
+type SettingsSectionId = 'model' | 'image' | 'paths' | 'access' | 'appearance' | 'updates' | 'notifications' | 'agent' | 'debug' | 'ide-editor' | 'ide-output' | 'versions' | 'interactive'
 
 const SETTINGS_SECTION_IDS: SettingsSectionId[] = ['model', 'image', 'paths', 'access', 'appearance', 'updates', 'agent', 'debug', 'ide-editor', 'ide-output', 'versions', 'interactive']
 
@@ -80,6 +80,7 @@ export function SettingsView({ onClose }: { onClose?: () => void }) {
     access: true,
     appearance: true,
     updates: true,
+    notifications: true,
     agent: true,
     debug: true,
     'ide-editor': true,
@@ -272,6 +273,21 @@ export function SettingsView({ onClose }: { onClose?: () => void }) {
       ),
     },
     {
+      id: 'notifications',
+      group: t('settings.group.common'),
+      title: t('settings.section.notifications'),
+      children: (
+        <>
+          <BoolTri label={t('settings.notifications.systemEnabled')} value={draft.system_notifications_enabled ?? null}
+                   effective={effective.system_notifications_enabled}
+                   onChange={(v) => setField('system_notifications_enabled', v)} />
+          <div className="rounded-[var(--nova-radius)] border border-[var(--nova-border)] bg-[var(--nova-surface-2)] px-3 py-2 text-xs leading-5 text-[var(--nova-text-faint)]">
+            {t('settings.notifications.systemHint')}
+          </div>
+        </>
+      ),
+    },
+    {
       id: 'model',
       group: t('settings.group.common'),
       title: t('settings.section.model'),
@@ -359,6 +375,10 @@ export function SettingsView({ onClose }: { onClose?: () => void }) {
 			   placeholder={placeholderFor('agent_tool_result_limit_kb')}
 			   min={1}
                onChange={(v) => setField('agent_tool_result_limit_kb', v)} />
+          <Num label={t('settings.agent.contextHandoffLimitKB')} value={draft.agent_context_handoff_limit_kb ?? null}
+               placeholder={placeholderFor('agent_context_handoff_limit_kb')}
+               min={1}
+               onChange={(v) => setField('agent_context_handoff_limit_kb', v)} />
           <BoolTri label={t('settings.agent.planModeDefault')} value={draft.plan_mode_default ?? null}
                    effective={effective.plan_mode_default}
                    onChange={(v) => setField('plan_mode_default', v)} />

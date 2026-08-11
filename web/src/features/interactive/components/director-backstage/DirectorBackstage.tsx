@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { AlertCircle, ArrowLeft, CheckCircle2, Clapperboard, Loader2 } from 'lucide-react'
+import { AlertCircle, ArrowLeft, CheckCircle2, Clapperboard, Loader2, PencilLine } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import { ContextAnalysisDialog } from '@/components/Chat/ContextAnalysisDialog'
 import { Button } from '@/components/ui/button'
@@ -15,6 +15,7 @@ import { RuleAuditCard } from '../director-console/RuleAuditCard'
 import { StateSchemaCard } from '../director-console/StateSchemaCard'
 import { directorStatusLabel } from '../director-console/utils'
 import { useDirectorBackstage } from './useDirectorBackstage'
+import { CurrentStateRevisionWorkspace } from './CurrentStateRevisionWorkspace'
 
 // 导演台：主区全屏子模式，承载所有幕后内容（节拍表、事件编排、执行过程、
 // 规则审计、状态结构），让重内容摆脱窄侧栏。防剧透揭示一次、按故事持久化。
@@ -28,6 +29,7 @@ export function DirectorBackstage({ storyId, branchId, snapshot, loading = false
   const { t } = useTranslation()
   const setSubmode = useInteractiveStore((state) => state.setSubmode)
   const [revealed, setRevealed] = useState(() => readStoredDirectorRevealed(storyId))
+  const [stateRevisionOpen, setStateRevisionOpen] = useState(false)
 
   useEffect(() => {
     setRevealed(readStoredDirectorRevealed(storyId))
@@ -51,6 +53,10 @@ export function DirectorBackstage({ storyId, branchId, snapshot, loading = false
   const busy = loading || planLoading || retryingDirector
   const gated = !revealed && hasDirectorRun
   const turnCount = (snapshot?.turns || []).length || (snapshot?.current_turn ? 1 : 0)
+
+  if (stateRevisionOpen && storyId && snapshot) {
+    return <CurrentStateRevisionWorkspace storyId={storyId} branchId={branchId} snapshot={snapshot} onBack={() => setStateRevisionOpen(false)} onSaved={onSnapshotRefresh} />
+  }
 
   return (
     <section data-testid="director-backstage" className="director-console flex h-full min-h-0 flex-col bg-[var(--director-canvas)] text-[var(--nova-text)]">
@@ -117,6 +123,18 @@ export function DirectorBackstage({ storyId, branchId, snapshot, loading = false
               onRebuild={() => void rebuildDirector()}
             />
             <div className="space-y-4">
+              <section className="border-y border-[var(--nova-border)] bg-[var(--director-panel)] px-3 py-3" aria-labelledby="director-current-state-title">
+                <div className="flex min-w-0 items-center gap-3">
+                  <div className="min-w-0 flex-1">
+                    <h3 id="director-current-state-title" className="text-sm font-semibold">{t('directorPanel.stateRevision.currentTitle')}</h3>
+                    <p className="mt-1 text-xs leading-5 text-[var(--nova-text-faint)]">{t('directorPanel.stateRevision.currentHint')}</p>
+                  </div>
+                  <Button type="button" variant="outline" className="shrink-0 gap-1.5" disabled={!snapshot?.current_turn?.id || !snapshot?.head_id} onClick={() => setStateRevisionOpen(true)}>
+                    <PencilLine className="size-4" />
+                    {t('directorPanel.stateRevision.open')}
+                  </Button>
+                </div>
+              </section>
               <DirectorStatusCard
                 storyId={storyId}
                 hasDirectorRun={hasDirectorRun}

@@ -279,7 +279,7 @@ export function OnboardingGuide({
           <button
             type="button"
             onClick={skip}
-            className="nova-nav-item -mr-1 -mt-1 flex h-6 w-6 shrink-0 items-center justify-center rounded-[8px] text-[var(--nova-text-faint)] hover:text-[var(--nova-text)]"
+            className="nova-nav-item -mr-2 -mt-2 flex size-11 shrink-0 items-center justify-center rounded-[8px] text-[var(--nova-text-faint)] hover:text-[var(--nova-text)]"
             aria-label={t('onboarding.skip')}
             title={t('onboarding.skip')}
           >
@@ -287,11 +287,11 @@ export function OnboardingGuide({
           </button>
         </div>
         <div className="flex items-center justify-between gap-2 border-t border-[var(--nova-border-soft)] pt-2">
-          <Button type="button" variant="ghost" size="xs" className="text-[var(--nova-text-muted)]" onClick={skip}>
+          <Button type="button" variant="ghost" size="xs" className="min-h-11 text-[var(--nova-text-muted)]" onClick={skip}>
             {t(phase === 'tour' ? 'onboarding.skipTour' : 'onboarding.skip')}
           </Button>
           <div className="flex items-center gap-2">
-            <Button type="button" size="xs" className="border border-[var(--nova-border)] bg-[var(--nova-active)] text-[var(--nova-text)] hover:bg-[var(--nova-hover)]" onClick={handleAction}>
+            <Button type="button" size="xs" className="min-h-11 border border-[var(--nova-border)] bg-[var(--nova-active)] text-[var(--nova-text)] hover:bg-[var(--nova-hover)]" onClick={handleAction}>
               {phase === 'tour' ? t('onboarding.action.openModule') : currentStep.actionLabel}
             </Button>
             {phase === 'tour' && (

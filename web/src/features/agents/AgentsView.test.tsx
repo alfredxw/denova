@@ -55,6 +55,7 @@ describe('AgentsView', () => {
 
   afterEach(() => {
     vi.useRealTimers()
+    vi.unstubAllGlobals()
   })
 
   it('reloads model profiles when settings are updated elsewhere', async () => {
@@ -129,6 +130,42 @@ describe('AgentsView', () => {
     expect(screen.queryByText('Windows 暂不支持 execute')).not.toBeInTheDocument()
     expect(toggle).toBeTruthy()
     expect(toggle).not.toBeDisabled()
+  })
+
+  it('shows the agent list and detail side by side when space allows', async () => {
+    vi.mocked(fetchSettings).mockResolvedValue(settingsSnapshot({}))
+
+    render(<AgentsView />)
+
+    expect(await screen.findByText('模型与思考')).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: /上下文压缩 Agent/ })).toBeVisible()
+  })
+
+  it('collapses the agent list into a drawer on narrow screens and opens it on demand', async () => {
+    vi.stubGlobal('matchMedia', vi.fn().mockImplementation((query: string) => ({
+      matches: true,
+      media: query,
+      onchange: null,
+      addEventListener: vi.fn(),
+      removeEventListener: vi.fn(),
+      addListener: vi.fn(),
+      removeListener: vi.fn(),
+      dispatchEvent: vi.fn(),
+    })))
+    Object.defineProperty(window, 'innerWidth', { configurable: true, value: 390 })
+    Object.defineProperty(window, 'innerHeight', { configurable: true, value: 844 })
+    const user = userEvent.setup()
+    vi.mocked(fetchSettings).mockResolvedValue(settingsSnapshot({}))
+
+    render(<AgentsView />)
+
+    expect(await screen.findByText('模型与思考')).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: /上下文压缩 Agent/ })).not.toBeInTheDocument()
+    expect(screen.getByRole('button', { name: '打开Agents面板' })).toBeVisible()
+
+    await user.click(screen.getByRole('button', { name: '打开Agents面板' }))
+
+    expect(screen.getByRole('button', { name: /上下文压缩 Agent/ })).toBeVisible()
   })
 
   it('shows inherited empty thinking as the default state', async () => {

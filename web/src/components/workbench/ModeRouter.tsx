@@ -17,6 +17,7 @@ import type { BookRecord, BookSortMode, ChapterIllustration, ChapterSummary, Con
 import type { AgentUIMessage } from '@/lib/agent-ui'
 import type { ChatSendOptions } from '@/hooks/useAgentChat'
 import { usePersistedUserSettings } from '@/hooks/usePersistedUserSettings'
+import { useIsMobile } from '@/hooks/useIsMobile'
 import type { AgentPartRef } from '@/lib/agent-message-view'
 import type { RightPanel, WorkspaceMode } from '@/stores/workspace-store'
 import { workspaceFileKind } from '@/lib/workspace-file-kind'
@@ -28,6 +29,7 @@ import type { WorkbenchNotice } from '@/features/notices/use-workbench-notice'
 import type { Tab } from './TabController'
 import { TabController, tabKey } from './TabController'
 import { WorkbenchShell } from './WorkbenchShell'
+import { requestMobileWorkbenchDestination } from '@/features/mobile-workbench/navigation'
 import { flattenFileTree, formatNumber } from './workbench-utils'
 
 const WRITING_AGENT_INIT_EVENT = 'nova:writing-agent-init'
@@ -134,10 +136,12 @@ interface ModeRouterProps {
   onApproveProposedPlan: (ref: AgentPartRef) => void
   onExitChatPlanMode: () => void
   onDismissNotice?: () => void
+  systemNotificationsEnabled?: boolean
 }
 
 export function ModeRouter(props: ModeRouterProps) {
   const { t, i18n } = useTranslation()
+  const isMobile = useIsMobile()
   const {
     mode,
     booksReturnMode,
@@ -230,6 +234,7 @@ export function ModeRouter(props: ModeRouterProps) {
     onApproveProposedPlan,
     onExitChatPlanMode,
     onDismissNotice,
+    systemNotificationsEnabled = false,
   } = props
 
   const activeTab = openTabs.find((tab) => tabKey(tab) === activeTabKey) ?? null
@@ -253,9 +258,21 @@ export function ModeRouter(props: ModeRouterProps) {
   const documentReviewNavigationRequestRef = useRef(0)
   const documentReviewNavigationNonceRef = useRef(0)
   const [editorLine, setEditorLine] = useState(1)
+  const sidebarSearchByWorkspaceRef = useRef(new Map<string, string>())
+  const sidebarMemoryByWorkspaceRef = useRef(new Map<string, { expandedPaths: string[]; scrollTop: number }>())
+  const [, setSidebarMemoryVersion] = useState(0)
+  const refreshSidebarMemory = useCallback(() => {
+    setSidebarMemoryVersion((version) => version + 1)
+  }, [])
   // The router is the lifecycle owner: the settings lane survives AgentPanel close/unmount.
   const composerSettings = usePersistedUserSettings({ workspace, defaults: WRITING_COMPOSER_SETTING_DEFAULTS })
   const flushComposerSettings = composerSettings.flushPending
+
+  let sidebarMemory = sidebarMemoryByWorkspaceRef.current.get(workspace)
+  if (!sidebarMemory) {
+    sidebarMemory = { expandedPaths: [], scrollTop: 0 }
+    sidebarMemoryByWorkspaceRef.current.set(workspace, sidebarMemory)
+  }
 
   const flushComposerSettingsBestEffort = useCallback(() => {
     void flushComposerSettings().then((saved) => {
@@ -498,6 +515,12 @@ export function ModeRouter(props: ModeRouterProps) {
                   : 'ide-writing'
   const [mountedRoutes, setMountedRoutes] = useState<ReadonlySet<MainRouteId>>(() => new Set(['ide-writing', visibleMainRoute]))
 
+  const selectProjectFile = useCallback(async (path: string) => {
+    const navigated = await onSelectFile(path)
+    if (navigated !== false) requestMobileWorkbenchDestination('manuscript')
+    return navigated
+  }, [onSelectFile])
+
   useEffect(() => {
     setMountedRoutes((current) => {
       if (current.has(visibleMainRoute)) return current
@@ -534,7 +557,20 @@ export function ModeRouter(props: ModeRouterProps) {
           </button>
         </div>
       </div>
-      <div className="flex-1 overflow-y-auto p-2 text-xs">
+      <div
+        className="flex-1 overflow-y-auto p-2 text-xs"
+        data-project-sidebar-scroll="true"
+        data-testid="project-sidebar-scroll"
+        onScroll={(event) => {
+          sidebarMemory.scrollTop = event.currentTarget.scrollTop
+        }}
+        ref={(element) => {
+          if (element && !element.dataset.projectSidebarScrollRestored) {
+            element.dataset.projectSidebarScrollRestored = 'true'
+            element.scrollTop = sidebarMemory.scrollTop
+          }
+        }}
+      >
         {showSidebarLoading ? (
           <div className="py-4 text-center text-[var(--nova-text-muted)]">{t('router.loading')}</div>
         ) : sidebarView === 'outline' ? (
@@ -546,23 +582,37 @@ export function ModeRouter(props: ModeRouterProps) {
             outline={summary?.outline}
             chapterPlans={summary?.chapter_plans || []}
             selectedFile={selectedFile}
-            onSelectFile={(path) => { void onSelectFile(path) }}
+            onSelectFile={(path) => { void selectProjectFile(path) }}
             onRequestBookSettingCreate={(item) => requestSkillsAgent(t('planning.bookSettingCreatePrompt', item))}
             onSetChapterConfirmed={onSetChapterConfirmed}
           />
         ) : sidebarView === 'search' ? (
           <SearchPanel
             workspace={workspace}
-            onSelectResult={onSelectSearchResult}
+            onSelectResult={async (result, query) => {
+              await onSelectSearchResult(result, query)
+              requestMobileWorkbenchDestination('manuscript')
+            }}
             onWorkspaceChanged={onWorkspaceChanged}
+            initialQuery={sidebarSearchByWorkspaceRef.current.get(workspace) ?? ''}
+            onQueryChange={(query) => {
+              sidebarSearchByWorkspaceRef.current.set(workspace, query)
+              refreshSidebarMemory()
+            }}
           />
         ) : tree.length === 0 ? (
           <div className="py-4 text-center text-[var(--nova-text-muted)]">{t('router.noFiles')}</div>
         ) : (
           <FileTree
+            key={workspace}
             nodes={tree}
             selectedFile={selectedFile}
-            onSelectFile={onSelectFile}
+            onSelectFile={(path) => { void selectProjectFile(path) }}
+            defaultExpandedPaths={sidebarMemory.expandedPaths}
+            onExpandedPathsChange={(paths) => {
+              sidebarMemory.expandedPaths = paths
+              refreshSidebarMemory()
+            }}
             onReferenceFile={onReferenceFile}
             chapterStats={chapterStats}
             onCreateItem={onCreateItem}
@@ -600,21 +650,23 @@ export function ModeRouter(props: ModeRouterProps) {
           />
         ) : (
           <>
-            <TabController
-              tabs={openTabs}
-              activeTabKey={activeTabKey}
-              summary={summary}
-              actions={(
-                <IdeWritingInfoActions
-                  projectVisible={projectVisible}
-                  aiVisible={aiVisible}
-                  onToggleProjectVisible={onToggleProjectVisible}
-                  onToggleAgent={() => onSetRightPanel(aiVisible ? null : 'ai')}
-                />
-              )}
-              onActivateTab={onActivateTab}
-              onCloseTab={onCloseTab}
-            />
+            {!isMobile && (
+              <TabController
+                tabs={openTabs}
+                activeTabKey={activeTabKey}
+                summary={summary}
+                actions={(
+                  <IdeWritingInfoActions
+                    projectVisible={projectVisible}
+                    aiVisible={aiVisible}
+                    onToggleProjectVisible={onToggleProjectVisible}
+                    onToggleAgent={() => onSetRightPanel(aiVisible ? null : 'ai')}
+                  />
+                )}
+                onActivateTab={onActivateTab}
+                onCloseTab={onCloseTab}
+              />
+            )}
             <div className="flex min-h-0 flex-1 flex-col">
               {activeTab ? (
                 activeFileKind === 'image' || activeFileKind === 'json' || activeFileKind === 'jsonl' ? (
@@ -824,6 +876,7 @@ export function ModeRouter(props: ModeRouterProps) {
       onCloseSettings={onCloseSettings}
       onQuickSwitchBook={quickSwitchBook}
       onDismissNotice={onDismissNotice}
+      systemNotificationsEnabled={systemNotificationsEnabled}
     />
   )
 }
@@ -1060,7 +1113,7 @@ function PlanningListItem({
     >
       <div className={`flex min-w-0 items-center ${compact ? 'gap-1.5' : 'gap-2'}`}>
         <Icon className={`${compact ? 'h-3 w-3' : 'h-3.5 w-3.5'} shrink-0 ${selected ? 'text-[var(--nova-text)]' : 'text-[var(--nova-text-muted)]'}`} />
-        <span className={`min-w-0 flex-1 truncate font-medium ${compact ? 'text-[11px]' : 'text-xs'}`}>{document.title}</span>
+        <span className={`min-w-0 flex-1 truncate font-medium ${compact ? 'text-[11px]' : 'text-xs'}`} title={document.title}>{document.title}</span>
       </div>
     </button>
   )
@@ -1113,7 +1166,7 @@ function EmptyLoreGuide({
         </div>
         <button
           type="button"
-          className="nova-nav-item rounded-[var(--nova-radius)] border border-[var(--nova-border)] bg-[var(--nova-surface-2)] px-3 py-1.5 text-xs text-[var(--nova-text-muted)] hover:text-[var(--nova-text)]"
+          className="nova-nav-item min-h-11 rounded-[var(--nova-radius)] border border-[var(--nova-border)] bg-[var(--nova-surface-2)] px-3 text-xs text-[var(--nova-text-muted)] hover:text-[var(--nova-text)]"
           onClick={onClick}
         >
           {action}
@@ -1171,7 +1224,7 @@ function ChapterOutlineItem({
     >
       <div className="flex w-full min-w-0 items-center gap-2 text-left">
         <BookOpen className={`h-3.5 w-3.5 shrink-0 ${active ? 'text-[var(--nova-text)]' : 'text-[var(--nova-text-muted)]'}`} />
-        <span className="min-w-0 flex-1 truncate text-xs font-medium">{chapter.display_title}</span>
+        <span className="min-w-0 flex-1 truncate text-xs font-medium" title={chapter.display_title}>{chapter.display_title}</span>
       </div>
       <div className="mt-1 flex items-center justify-between text-[11px] text-[var(--nova-text-faint)]">
         <span>{t('common.words', { count: formatNumber(chapter.words) })}</span>

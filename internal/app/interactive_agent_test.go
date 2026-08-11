@@ -167,6 +167,20 @@ func TestInteractiveConversationBuildsHistoryAndPersistsAssistantToStory(t *test
 	if last.Thinking != "先判断现场风险。" {
 		t.Fatalf("last thinking = %q, want persisted thinking", last.Thinking)
 	}
+	if len(last.ContextSnapshot) == 0 {
+		t.Fatalf("submitted turn should persist its model context snapshot: %#v", last)
+	}
+	var snapshotHasResidentLore, snapshotHasCurrentAction bool
+	for _, part := range last.ContextSnapshot {
+		if strings.TrimSpace(part.Source) == "" || strings.TrimSpace(part.Purpose) == "" || strings.TrimSpace(part.Version) == "" || part.Bytes <= 0 {
+			t.Fatalf("context snapshot part is missing source, purpose, version, or size: %#v", part)
+		}
+		snapshotHasResidentLore = snapshotHasResidentLore || part.Source == "ResidentLore"
+		snapshotHasCurrentAction = snapshotHasCurrentAction || part.Source == "本轮行动"
+	}
+	if !snapshotHasResidentLore || !snapshotHasCurrentAction {
+		t.Fatalf("context snapshot should identify resident lore and the submitted action: %#v", last.ContextSnapshot)
+	}
 	storyEventCommitted := false
 	if last.StateDelta != nil {
 		for _, op := range last.StateDelta.ActorOps {

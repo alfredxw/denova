@@ -3,11 +3,11 @@ import { act, fireEvent, render, screen } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { formatDateTime, setConfiguredLocale } from '@/i18n'
 import { WorkbenchShell } from './WorkbenchShell'
+import { registerExecutableDraft, unregisterExecutableDraft, useExecutableDraftGuard } from '@/features/config-guard/executable-draft-guard'
 
 const responsiveState = vi.hoisted(() => ({ mobile: false }))
 const automationActivityApi = vi.hoisted(() => ({
-  getAutomationInbox: vi.fn(),
-  getActiveAutomationRuns: vi.fn(),
+  getTasks: vi.fn(),
 }))
 
 vi.mock('@/hooks/useIsMobile', () => ({
@@ -18,31 +18,21 @@ vi.mock('@/components/layout/workspace-layout', () => ({
   WorkspaceLayout: ({ topBar, activityBar, main, statusBar }: { topBar: ReactNode; activityBar: ReactNode; main: ReactNode; statusBar: ReactNode }) => <section data-testid="desktop-shell">{topBar}{activityBar}{main}{statusBar}</section>,
 }))
 
-vi.mock('@/components/layout/workspace-mobile-layout', () => ({
-  WorkspaceMobileLayout: ({ topBar, main, activityItems }: { topBar: ReactNode; main: ReactNode; activityItems: Array<{ id: string; label: string; active: boolean; onClick: () => void }> }) => (
-    <section data-testid="mobile-shell">
-      {topBar}
-      <nav>{activityItems.map((item) => <button key={item.id} type="button" aria-pressed={item.active} onClick={item.onClick}>{item.label}</button>)}</nav>
-      {main}
-    </section>
-  ),
-}))
-
 vi.mock('@/features/messages/MessageCenter', () => ({
   MessageCenterButton: () => null,
 }))
 
 vi.mock('@/lib/api', () => ({
-  getAutomationInbox: automationActivityApi.getAutomationInbox,
-  getActiveAutomationRuns: automationActivityApi.getActiveAutomationRuns,
+  getTasks: automationActivityApi.getTasks,
 }))
 
 describe('WorkbenchShell responsive main content', () => {
   beforeEach(() => {
+    useExecutableDraftGuard.setState({ entries: {} })
     responsiveState.mobile = false
+    localStorage.clear()
     setConfiguredLocale('zh-CN')
-    automationActivityApi.getAutomationInbox.mockReset().mockResolvedValue([])
-    automationActivityApi.getActiveAutomationRuns.mockReset().mockResolvedValue([])
+    automationActivityApi.getTasks.mockReset().mockResolvedValue({ tasks: [], action_required_count: 0 })
     Object.defineProperty(document, 'visibilityState', { configurable: true, value: 'visible' })
   })
 
@@ -57,34 +47,31 @@ describe('WorkbenchShell responsive main content', () => {
       await Promise.resolve()
       await Promise.resolve()
     })
-    expect(automationActivityApi.getAutomationInbox).toHaveBeenCalledTimes(1)
+    expect(automationActivityApi.getTasks).toHaveBeenCalledTimes(1)
 
-    const inbox = deferred<unknown[]>()
-    const runs = deferred<unknown[]>()
-    automationActivityApi.getAutomationInbox.mockReturnValue(inbox.promise)
-    automationActivityApi.getActiveAutomationRuns.mockReturnValue(runs.promise)
+    const inbox = deferred<{ tasks: unknown[]; action_required_count: number }>()
+    automationActivityApi.getTasks.mockReturnValue(inbox.promise)
 
     act(() => {
       vi.advanceTimersByTime(30000)
     })
     await act(async () => { await Promise.resolve() })
-    expect(automationActivityApi.getAutomationInbox).toHaveBeenCalledTimes(2)
+    expect(automationActivityApi.getTasks).toHaveBeenCalledTimes(2)
 
     act(() => {
       vi.advanceTimersByTime(90000)
     })
     await act(async () => { await Promise.resolve() })
-    expect(automationActivityApi.getAutomationInbox).toHaveBeenCalledTimes(2)
+    expect(automationActivityApi.getTasks).toHaveBeenCalledTimes(2)
 
     await act(async () => {
       Object.defineProperty(document, 'visibilityState', { configurable: true, value: 'hidden' })
       document.dispatchEvent(new Event('visibilitychange'))
-      inbox.resolve([])
-      runs.resolve([])
-      await Promise.all([inbox.promise, runs.promise])
+      inbox.resolve({ tasks: [], action_required_count: 0 })
+      await inbox.promise
       vi.advanceTimersByTime(30000)
     })
-    expect(automationActivityApi.getAutomationInbox).toHaveBeenCalledTimes(2)
+    expect(automationActivityApi.getTasks).toHaveBeenCalledTimes(2)
   })
 
   it('keeps the main subtree mounted and preserves local state across the mobile breakpoint', () => {
@@ -112,7 +99,7 @@ describe('WorkbenchShell responsive main content', () => {
     responsiveState.mobile = true
     rerender(<WorkbenchShell {...workbenchProps(<StatefulMain />)} />)
 
-    expect(screen.getByTestId('mobile-shell')).toBeInTheDocument()
+    expect(document.querySelector('[data-nova-mobile-shell="true"]')).toBeInTheDocument()
     expect(screen.getByRole('button', { name: 'default-state' })).toBeInTheDocument()
     expect(unmountCount).toBe(0)
   })
@@ -127,6 +114,9 @@ describe('WorkbenchShell responsive main content', () => {
 
     responsiveState.mobile = true
     rerender(<WorkbenchShell {...props} />)
+
+    expect(screen.queryByRole('group', { name: /模式切换|Mode Switch/ })).not.toBeInTheDocument()
+    fireEvent.click(screen.getByRole('button', { name: /更多|More/ }))
     expect(screen.getByRole('button', { name: /写作模式|Writing Mode/ })).toHaveAttribute('aria-pressed', 'false')
     expect(screen.getByRole('button', { name: /游戏模式|Game Mode/ })).toHaveAttribute('aria-pressed', 'true')
   })
@@ -144,6 +134,32 @@ describe('WorkbenchShell responsive main content', () => {
     />)
 
     expect(screen.getByText(`更新：${formatDateTime(updatedAt)} · 行 54`)).toBeInTheDocument()
+  })
+
+  it('guards closing the IDE teller panel while a preset draft is pending', async () => {
+    const discard = vi.fn()
+    const onSetRightPanel = vi.fn()
+    registerExecutableDraft('setting-panel', { hasPending: true, discard })
+
+    render(
+      <WorkbenchShell
+        {...workbenchProps(<div />)}
+        mode="ide"
+        rightPanel="teller"
+        onSetRightPanel={onSetRightPanel}
+      />,
+    )
+
+    fireEvent.click(screen.getByRole('button', { name: '方案预设' }))
+
+    expect(await screen.findByRole('alertdialog', { name: '放弃未保存的配置？' })).toBeInTheDocument()
+    expect(onSetRightPanel).not.toHaveBeenCalled()
+
+    fireEvent.click(screen.getByRole('button', { name: '放弃修改' }))
+
+    expect(discard).toHaveBeenCalled()
+    expect(onSetRightPanel).toHaveBeenCalledWith(null)
+    unregisterExecutableDraft('setting-panel')
   })
 })
 

@@ -1,4 +1,5 @@
 import common from './en-US/common'
+import configGuard from './en-US/configGuard'
 import remoteAccess from './en-US/remoteAccess'
 import configManager from './en-US/configManager'
 import chat from './en-US/chat'
@@ -24,6 +25,7 @@ import writingAgent from './en-US/writingAgent'
 import tellerPicker from './en-US/tellerPicker'
 import storyPicker from './en-US/storyPicker'
 import branchTimeline from './en-US/branchTimeline'
+import storylines from './en-US/storylines'
 import storyStage from './en-US/storyStage'
 import snapshot from './en-US/snapshot'
 import directorPanel from './en-US/directorPanel'
@@ -40,6 +42,7 @@ import changes from './en-US/changes'
 
 const enUS = {
   ...common,
+  ...configGuard,
   ...remoteAccess,
   ...configManager,
   ...chat,
@@ -65,6 +68,7 @@ const enUS = {
   ...tellerPicker,
   ...storyPicker,
   ...branchTimeline,
+  ...storylines,
   ...storyStage,
   ...snapshot,
   ...directorPanel,

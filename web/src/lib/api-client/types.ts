@@ -228,6 +228,8 @@ export interface ContextAnalysisPart {
   id?: string
   source: string
   title: string
+  purpose?: string
+  version?: string
   role?: string
   kind?: string
   tool_name?: string
@@ -904,4 +906,7 @@ export interface TextSelection {
   startLine: number
   endLine: number
   content: string
+  source?: 'editor_selection'
+  purpose?: 'ask_agent'
+  version?: string
 }

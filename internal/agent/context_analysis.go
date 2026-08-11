@@ -52,6 +52,8 @@ type ContextAnalysisPart struct {
 	ID         string `json:"id,omitempty"`
 	Source     string `json:"source"`
 	Title      string `json:"title"`
+	Purpose    string `json:"purpose,omitempty"`
+	Version    string `json:"version,omitempty"`
 	Role       string `json:"role,omitempty"`
 	Kind       string `json:"kind,omitempty"`
 	ToolName   string `json:"tool_name,omitempty"`
@@ -68,6 +70,8 @@ type ContextAnalysisPartInput struct {
 	ID         string
 	Source     string
 	Title      string
+	Purpose    string
+	Version    string
 	Role       string
 	Kind       string
 	ToolName   string
@@ -82,6 +86,8 @@ func NewContextAnalysisPart(in ContextAnalysisPartInput) ContextAnalysisPart {
 		ID:         strings.TrimSpace(in.ID),
 		Source:     strings.TrimSpace(in.Source),
 		Title:      strings.TrimSpace(in.Title),
+		Purpose:    strings.TrimSpace(in.Purpose),
+		Version:    strings.TrimSpace(in.Version),
 		Role:       strings.TrimSpace(in.Role),
 		Kind:       strings.TrimSpace(in.Kind),
 		ToolName:   strings.TrimSpace(in.ToolName),

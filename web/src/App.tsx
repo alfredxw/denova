@@ -12,6 +12,7 @@ import { useAgentChat } from '@/hooks/useAgentChat'
 import { useWorkspaceHotkeys } from '@/hooks/use-workspace-hotkeys'
 import { useWorkspaceStore, type RightPanel, type WorkspaceMode } from '@/stores/workspace-store'
 import { useInteractiveStore } from '@/features/interactive/stores/interactive-store'
+import { useOnlineStatus } from '@/hooks/use-online-status'
 import type { ChapterSummary } from '@/lib/api'
 import { toast } from 'sonner'
 import { setConfiguredLocale } from '@/i18n'
@@ -58,6 +59,7 @@ type BooksReturnMode = 'ide' | 'interactive'
 function App() {
   const { t } = useTranslation()
   const { setTheme } = useTheme()
+  const online = useOnlineStatus()
   const [projectVisible, setProjectVisible] = useState(() => readLayoutBoolean(PROJECT_VISIBLE_KEY, true))
   const [activityBarExpanded, setActivityBarExpanded] = useState(() => readLayoutBoolean(ACTIVITY_BAR_EXPANDED_KEY, true))
   const [interactiveRightVisible, setInteractiveRightVisible] = useState(() => readLayoutBoolean(INTERACTIVE_RIGHT_VISIBLE_KEY, true))
@@ -71,6 +73,7 @@ function App() {
   const [editorAutoSaveDelayMs, setEditorAutoSaveDelayMs] = useState(AUTO_SAVE_DELAY_FALLBACK_MS)
   const [updateCheckEnabled, setUpdateCheckEnabled] = useState<boolean | null>(null)
   const [motionIntensity, setMotionIntensity] = useState('system')
+  const [systemNotificationsEnabled, setSystemNotificationsEnabled] = useState(false)
   const [novaDir, setNovaDir] = useState('')
   const [sidebarView, setSidebarView] = useState<SidebarView>('outline')
   const [editorSearchIntent, setEditorSearchIntent] = useState<{ path: string; query: string; line: number; nonce: number } | null>(null)
@@ -261,6 +264,7 @@ function App() {
           setConfiguredLocale(effective?.language)
           setTheme(normalizeAppTheme(effective?.theme))
           setMotionIntensity(normalizeMotionIntensity(effective?.motion_intensity))
+          setSystemNotificationsEnabled(effective?.system_notifications_enabled === true)
           applyFontSettings(fontSettingsFromEffective(effective))
         })
         .catch((e) => console.warn('加载界面配置失败', e))
@@ -413,18 +417,30 @@ function App() {
   }, [notifyVersionChange, saveFileDraft])
 
   const handleCreateItem = useCallback(async (path: string, type: 'file' | 'dir') => {
+    if (!online) {
+      toast.error(t('common.offlineActionBlocked'))
+      return
+    }
     await createItem(path, type)
     notifyVersionChange()
-  }, [createItem, notifyVersionChange])
+  }, [createItem, notifyVersionChange, online, t])
 
   const handleDeleteItem = useCallback(async (path: string) => {
+    if (!online) {
+      toast.error(t('common.offlineActionBlocked'))
+      return
+    }
     if ((selectedFile === path || selectedFile?.startsWith(`${path}/`)) && !(await flushEditorDraft())) return
     await deleteItem(path)
     setOpenTabs((prev) => prev.filter((tab) => tab.path !== path && !tab.path.startsWith(`${path}/`)))
     notifyVersionChange()
-  }, [deleteItem, flushEditorDraft, notifyVersionChange, selectedFile])
+  }, [deleteItem, flushEditorDraft, notifyVersionChange, online, selectedFile, t])
 
   const handleRenameItem = useCallback(async (path: string, newName: string) => {
+    if (!online) {
+      toast.error(t('common.offlineActionBlocked'))
+      return
+    }
     if ((selectedFile === path || selectedFile?.startsWith(`${path}/`)) && !(await flushEditorDraft())) return
     await renameItem(path, newName)
     const parent = path.replace(/\/[^/]*$/, '')
@@ -435,7 +451,7 @@ function App() {
       return tab
     })))
     notifyVersionChange()
-  }, [flushEditorDraft, notifyVersionChange, renameItem, selectedFile])
+  }, [flushEditorDraft, notifyVersionChange, online, renameItem, selectedFile, t])
 
   const handleCopyItem = useCallback(async (from: string, to: string) => {
     await copyItem(from, to)
@@ -443,6 +459,10 @@ function App() {
   }, [copyItem, notifyVersionChange])
 
   const handleMoveItem = useCallback(async (from: string, to: string) => {
+    if (!online) {
+      toast.error(t('common.offlineActionBlocked'))
+      return
+    }
     if ((selectedFile === from || selectedFile?.startsWith(`${from}/`)) && !(await flushEditorDraft())) return
     await moveItem(from, to)
     setOpenTabs((prev) => dedupeTabs(prev.map((tab) => {
@@ -451,7 +471,7 @@ function App() {
       return tab
     })))
     notifyVersionChange()
-  }, [flushEditorDraft, moveItem, notifyVersionChange, selectedFile])
+  }, [flushEditorDraft, moveItem, notifyVersionChange, online, selectedFile, t])
 
   const handleSelectFile = useCallback(async (path: string) => {
     if (selectedFile !== path && !(await flushEditorDraft())) return false
@@ -783,6 +803,7 @@ function App() {
         onToggleProjectVisible={() => setProjectVisible((value) => !value)}
         onSetRightPanel={handleSetRightPanel}
         onToggleSettings={() => setSettingsOpen((open) => !open)}
+        systemNotificationsEnabled={systemNotificationsEnabled}
         onCloseSettings={() => setSettingsOpen(false)}
         notice={notice}
         onDismissNotice={dismissNotice}

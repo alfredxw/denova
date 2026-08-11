@@ -845,6 +845,7 @@ export interface RuleResolutionRerollInput {
 export interface Snapshot {
   story_id: string
   branch_id: string
+  head_id?: string
   turns: TurnEvent[]
   current_turn?: TurnEvent
   token_usage_events?: TokenUsageEvent[]
@@ -852,10 +853,27 @@ export interface Snapshot {
   context_compaction_removal?: ContextCompactionRemovalEvent | null
   director_plan?: DirectorPlan
   director_plan_status?: DirectorPlanStatus
+  state_revisions?: StateRevisionEvent[]
   state: Record<string, unknown>
   actor_state_schema?: ActorStateSchemaSnapshot
 	state_schema_initialization?: StateSchemaInitializationStatus
   graph?: StoryGraph
+}
+
+export type StateRevisionAction = 'apply' | 'undo' | 'restore'
+
+export interface StateRevisionEvent {
+  id: string
+  type: 'state_revision'
+  parent_id: string
+  branch_id: string
+  ts: string
+  base_turn_id: string
+  source: string
+  action: StateRevisionAction
+  source_revision_id?: string
+  ops?: StateOp[]
+  actor_ops?: ActorStateOp[]
 }
 
 export interface ActorStateSchemaSnapshot {

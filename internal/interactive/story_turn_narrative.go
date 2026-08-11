@@ -75,19 +75,44 @@ func (s *Store) UpdateTurnNarrative(storyID string, req UpdateTurnNarrativeReque
 	if turn.Narrative == narrative {
 		return UpdateTurnNarrativeResult{Turn: turn}, nil
 	}
-
-	turn.Narrative = narrative
-	turnRaw["narrative"] = narrative
-	if turn.TerminalOutcome != nil && turn.TerminalOutcome.Terminal && turn.TerminalOutcome.CausedByTurnID == turn.ID {
-		outcome := *turn.TerminalOutcome
-		outcome.FinalNarrativeSummary = trimBytes(narrative, maxInteractiveTextBytes)
-		turn.TerminalOutcome = &outcome
-		turnRaw["terminal_outcome"] = outcome
+	if turnIndex != len(snapshot.Turns)-1 {
+		return UpdateTurnNarrativeResult{}, fmt.Errorf("历史回合已有后续依赖，请先从该回合创建分支 / This historical turn has later dependencies; create a branch from this turn before editing")
 	}
 
 	now := time.Now().UTC().Format(time.RFC3339Nano)
-	result := UpdateTurnNarrativeResult{Turn: turn}
-	newEvents := []any(nil)
+	revision := turn
+	revision.ID = newID("ev")
+	revision.Ts = now
+	revision.Narrative = narrative
+	revision.Versions = nil
+	revision.VersionIdx = 0
+	if revision.TerminalOutcome != nil && revision.TerminalOutcome.Terminal && revision.TerminalOutcome.CausedByTurnID == turn.ID {
+		outcome := *revision.TerminalOutcome
+		outcome.CausedByTurnID = revision.ID
+		outcome.FinalNarrativeSummary = trimBytes(narrative, maxInteractiveTextBytes)
+		revision.TerminalOutcome = &outcome
+	}
+
+	path, _ := eventPath(branch.Head, eventsByID(lines))
+	pathTurnIndex := -1
+	for index := range path {
+		if path[index].Envelope.Type == StoryEventTypeTurn && path[index].Envelope.ID == turnID {
+			pathTurnIndex = index
+			break
+		}
+	}
+	if pathTurnIndex < 0 {
+		return UpdateTurnNarrativeResult{}, fmt.Errorf("回合不存在 / Turn does not exist: %s", turnID)
+	}
+	if pathTurnIndex == len(path)-1 {
+		branch.Head = revision.ID
+	} else if err := reparentStoryEvent(lines, path[pathTurnIndex+1], turnID, revision.ID); err != nil {
+		return UpdateTurnNarrativeResult{}, err
+	}
+	meta.Branches[branchID] = branch
+
+	result := UpdateTurnNarrativeResult{Turn: revision}
+	newEvents := []any{revision}
 	if compaction := snapshot.ContextCompaction; compaction != nil && turnIndex < compaction.SourceTurnCount {
 		removal := ContextCompactionRemovalEvent{
 			V:               schemaVersion,

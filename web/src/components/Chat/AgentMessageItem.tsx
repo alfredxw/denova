@@ -16,6 +16,7 @@ interface AgentMessageItemProps {
   subAgentPresentation?: 'card' | 'content'
   onEditMessage?: (view: AgentMessageView) => void
   onEditAssistantReply?: (view: AgentMessageView) => void
+  assistantReplyAction?: 'edit' | 'branch'
   onRegenerateMessage?: (view: AgentMessageView) => void
   onSwitchMessageVersion?: (view: AgentMessageView, direction: -1 | 1) => void
   onSubmitPlanQuestion?: (ref: AgentPartRef, content: string, preview: string) => void
@@ -38,6 +39,7 @@ export const AgentMessageItem = memo(function AgentMessageItem({
   subAgentPresentation = 'card',
   onEditMessage,
   onEditAssistantReply,
+  assistantReplyAction,
   onRegenerateMessage,
   onSwitchMessageVersion,
   onSubmitPlanQuestion,
@@ -56,6 +58,7 @@ export const AgentMessageItem = memo(function AgentMessageItem({
       messageStyle={messageStyle}
       onEdit={onEditMessage ? () => onEditMessage(view) : undefined}
       onEditAssistantReply={onEditAssistantReply ? () => onEditAssistantReply(view) : undefined}
+      assistantReplyAction={assistantReplyAction}
       onRegenerate={onRegenerateMessage ? () => onRegenerateMessage(view) : undefined}
       onSwitchVersion={onSwitchMessageVersion ? (_message, direction) => onSwitchMessageVersion(view, direction) : undefined}
       onOpenSubAgentSession={onOpenSubAgentSession ? () => onOpenSubAgentSession(view) : undefined}

@@ -106,7 +106,7 @@ func (s *WorkspaceRuntimeManager) SwitchWorkspace(ctx context.Context, path stri
 	a.cfg.Workspace = runtime.workspace
 	a.mu.Unlock()
 	if previousVersionService != nil && previousVersionService != runtime.versionService {
-		previousVersionService.Close()
+		previousVersionService.Retire()
 	}
 
 	_ = a.bookRegistry.Touch(runtime.workspace)
@@ -238,7 +238,7 @@ func (s *WorkspaceRuntimeManager) activateFallbackWorkspace(ctx context.Context)
 	a.clearRuntime()
 	a.mu.Unlock()
 	if previousVersionService != nil {
-		previousVersionService.Close()
+		previousVersionService.Retire()
 	}
 	return "", nil
 }
@@ -500,6 +500,12 @@ func applyLayeredSettingsToConfig(cfg *config.Config, layered config.LayeredSett
 	if effective.AgentToolResultLimitKB != nil {
 		cfg.AgentToolResultLimitKB = appAgentToolResultLimitKB(effective.AgentToolResultLimitKB)
 	}
+	if effective.AgentContextHandoffLimitKB != nil {
+		cfg.AgentContextHandoffLimitKB = appAgentContextHandoffLimitKB(effective.AgentContextHandoffLimitKB)
+	}
+	if effective.SystemNotificationsEnabled != nil {
+		cfg.SystemNotificationsEnabled = *effective.SystemNotificationsEnabled
+	}
 	if effective.LLMInputLogEnabled != nil {
 		cfg.LLMInputLogEnabled = *effective.LLMInputLogEnabled
 	}
@@ -606,6 +612,12 @@ func applySettingsLayerToConfig(cfg *config.Config, settings config.Settings) {
 	if settings.AgentToolResultLimitKB != nil {
 		cfg.AgentToolResultLimitKB = appAgentToolResultLimitKB(settings.AgentToolResultLimitKB)
 	}
+	if settings.AgentContextHandoffLimitKB != nil {
+		cfg.AgentContextHandoffLimitKB = appAgentContextHandoffLimitKB(settings.AgentContextHandoffLimitKB)
+	}
+	if settings.SystemNotificationsEnabled != nil {
+		cfg.SystemNotificationsEnabled = *settings.SystemNotificationsEnabled
+	}
 	if settings.LLMInputLogEnabled != nil {
 		cfg.LLMInputLogEnabled = *settings.LLMInputLogEnabled
 	}
@@ -669,6 +681,20 @@ func appAgentToolResultLimitKB(v *int) int {
 		return config.DefaultAgentToolResultLimitKB
 	}
 	return *v
+}
+
+func appAgentContextHandoffLimitKB(v *int) int {
+	if v == nil || *v <= 0 {
+		return config.DefaultAgentContextHandoffLimitKB
+	}
+	return *v
+}
+
+func agentContextHandoffMaxBytes(cfg config.Config) int {
+	if cfg.AgentContextHandoffLimitKB <= 0 {
+		return config.DefaultAgentContextHandoffLimitKB * 1024
+	}
+	return cfg.AgentContextHandoffLimitKB * 1024
 }
 
 func agentToolResultMaxBytes(cfg config.Config) int {

@@ -1,4 +1,5 @@
 import common from './zh-CN/common'
+import configGuard from './zh-CN/configGuard'
 import remoteAccess from './zh-CN/remoteAccess'
 import configManager from './zh-CN/configManager'
 import chat from './zh-CN/chat'
@@ -24,6 +25,7 @@ import writingAgent from './zh-CN/writingAgent'
 import tellerPicker from './zh-CN/tellerPicker'
 import storyPicker from './zh-CN/storyPicker'
 import branchTimeline from './zh-CN/branchTimeline'
+import storylines from './zh-CN/storylines'
 import storyStage from './zh-CN/storyStage'
 import snapshot from './zh-CN/snapshot'
 import directorPanel from './zh-CN/directorPanel'
@@ -40,6 +42,7 @@ import changes from './zh-CN/changes'
 
 const zhCN = {
   ...common,
+  ...configGuard,
   ...remoteAccess,
   ...configManager,
   ...chat,
@@ -65,6 +68,7 @@ const zhCN = {
   ...tellerPicker,
   ...storyPicker,
   ...branchTimeline,
+  ...storylines,
   ...storyStage,
   ...snapshot,
   ...directorPanel,

@@ -1,10 +1,15 @@
 import { act, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { http, HttpResponse } from 'msw'
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
 import i18n from '@/i18n'
 import { server } from '@/test/msw/server'
 import { AutomationsView } from './AutomationsView'
+import { hasPendingExecutableDraft, useExecutableDraftGuard } from '@/features/config-guard/executable-draft-guard'
+
+// This suite uses deferred MSW gates and real user-event timing; under the full
+// parallel run it needs more than the default 5s per test.
+vi.setConfig({ testTimeout: 20_000 })
 
 const taskBase = {
   enabled: true,
@@ -36,6 +41,10 @@ const reviewTemplate = {
 }
 
 describe('AutomationsView', () => {
+  beforeEach(() => {
+    useExecutableDraftGuard.setState({ entries: {} })
+  })
+
   it('shows one user catalog grouped by global and every workspace', async () => {
     const user = userEvent.setup()
     server.use(
@@ -73,6 +82,34 @@ describe('AutomationsView', () => {
     await user.click(bookBGroup)
     expect(bookBGroup).toHaveAttribute('aria-expanded', 'true')
     expect(screen.getByText('Review B')).toBeInTheDocument()
+  })
+
+  it('registers an unsaved task draft in the executable config guard', async () => {
+    const user = userEvent.setup()
+    server.use(
+      http.get('/api/books', () => HttpResponse.json({ books: [
+        { name: 'Book A', path: '/books/a', author: '', last_opened_at: '' },
+      ] })),
+      http.get('/api/automations', () => HttpResponse.json({ tasks: [{
+        ...taskBase,
+        id: 'review',
+        catalog_id: 'workspace-a:review',
+        scope: 'workspace',
+        name: 'Review',
+        target: { kind: 'workspace', workspace: '/books/a', workspace_id: 'workspace-a' },
+      }] })),
+      http.get('/api/automations/templates', () => HttpResponse.json({ templates: [] })),
+      http.get('/api/automations/inbox', () => HttpResponse.json({ items: [] })),
+      http.get('/api/automations/runs/active', () => HttpResponse.json({ runs: [] })),
+    )
+
+    render(<AutomationsView workspace="/books/a" />)
+
+    const name = await screen.findByDisplayValue('Review')
+    await user.clear(name)
+    await user.type(name, 'Unsaved review')
+
+    expect(hasPendingExecutableDraft('automations')).toBe(true)
   })
 
   it('creates no task until a chosen template draft is saved', async () => {
@@ -517,7 +554,7 @@ describe('AutomationsView', () => {
       archiveGate.resolve()
       await act(async () => { await i18n.changeLanguage(previousLanguage) })
     }
-  })
+  }, 15_000)
 })
 
 function deferred<T>() {

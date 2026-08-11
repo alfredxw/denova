@@ -1,6 +1,6 @@
 import { fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
-import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { createSkill, deleteSkillDocument, getSkillDocument, getSkillFileDocument, getSkills, installSkillRemote, installSkillZip, previewSkillRemoteInstall, previewSkillZipInstall, saveSkillDocument, saveSkillFileDocument } from '@/lib/api'
 import { APIError } from '@/lib/api-client'
 import type { SkillDocument, SkillFileDocument, SkillSnapshot } from '@/lib/api'
@@ -46,6 +46,10 @@ describe('SkillsView', () => {
     }))
   })
 
+  afterEach(() => {
+    vi.unstubAllGlobals()
+  })
+
   it('opens the Config Agent in a resizable desktop pane', async () => {
     const user = userEvent.setup()
     render(<SkillsView workspace="/books/demo" />)
@@ -54,6 +58,36 @@ describe('SkillsView', () => {
 
     expect(screen.getByTestId('config-manager-chat')).toBeInTheDocument()
     expect(screen.getByRole('separator', { name: '调整右侧面板宽度' })).toBeVisible()
+  })
+
+  it('restores the list search after closing and reopening the mobile drawer', async () => {
+    vi.stubGlobal('matchMedia', vi.fn().mockImplementation((query: string) => ({
+      matches: true,
+      media: query,
+      onchange: null,
+      addEventListener: vi.fn(),
+      removeEventListener: vi.fn(),
+      addListener: vi.fn(),
+      removeListener: vi.fn(),
+      dispatchEvent: vi.fn(),
+    })))
+    Object.defineProperty(window, 'innerWidth', { configurable: true, value: 390 })
+    Object.defineProperty(window, 'innerHeight', { configurable: true, value: 844 })
+    const user = userEvent.setup()
+
+    render(<SkillsView workspace="/books/demo" />)
+
+    const trigger = await screen.findByRole('button', { name: '打开Skills面板' })
+    await user.click(trigger)
+    const search = screen.getByRole('textbox', { name: '搜索 Skills' })
+    await user.type(search, 'draft')
+    await user.click(screen.getByRole('button', { name: /关闭|Close/ }))
+
+    expect(screen.queryByRole('textbox', { name: '搜索 Skills' })).not.toBeInTheDocument()
+
+    await user.click(trigger)
+
+    expect(screen.getByRole('textbox', { name: '搜索 Skills' })).toHaveValue('draft')
   })
 
   it('creates new Skills in user scope by default', async () => {

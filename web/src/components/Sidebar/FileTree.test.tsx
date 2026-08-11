@@ -1,4 +1,4 @@
-import { render, screen } from '@testing-library/react'
+import { fireEvent, render, screen } from '@testing-library/react'
 import { describe, expect, it, vi } from 'vitest'
 import { FileTree } from './FileTree'
 import type { FileNode } from '@/hooks/useWorkspace'
@@ -122,5 +122,71 @@ describe('FileTree', () => {
     for (let i = 0; i < elements.length - 1; i += 1) {
       expect(elements[i].compareDocumentPosition(elements[i + 1]) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
     }
+  })
+
+  it('reports expanded paths when directories are toggled', () => {
+    const nodes: FileNode[] = [
+      { name: 'manuscripts', type: 'dir', children: [{ name: 'ch01.md', type: 'file' }] },
+    ]
+    const onExpandedPathsChange = vi.fn()
+
+    render(
+      <FileTree
+        nodes={nodes}
+        selectedFile={null}
+        onSelectFile={vi.fn()}
+        onExpandedPathsChange={onExpandedPathsChange}
+      />,
+    )
+
+    expect(screen.queryByText('ch01.md')).not.toBeInTheDocument()
+    fireEvent.click(screen.getByRole('button', { name: 'manuscripts' }))
+    expect(screen.getByText('ch01.md')).toBeInTheDocument()
+    expect(onExpandedPathsChange).toHaveBeenLastCalledWith(expect.arrayContaining(['manuscripts']))
+
+    fireEvent.click(screen.getByRole('button', { name: 'manuscripts' }))
+    expect(screen.queryByText('ch01.md')).not.toBeInTheDocument()
+    expect(onExpandedPathsChange).toHaveBeenLastCalledWith(expect.not.arrayContaining(['manuscripts']))
+  })
+
+  it('starts expanded from defaultExpandedPaths and reports collapse', () => {
+    const nodes: FileNode[] = [
+      { name: 'manuscripts', type: 'dir', children: [{ name: 'ch01.md', type: 'file' }] },
+    ]
+    const onExpandedPathsChange = vi.fn()
+
+    render(
+      <FileTree
+        nodes={nodes}
+        selectedFile={null}
+        onSelectFile={vi.fn()}
+        defaultExpandedPaths={['manuscripts']}
+        onExpandedPathsChange={onExpandedPathsChange}
+      />,
+    )
+
+    expect(screen.getByText('ch01.md')).toBeInTheDocument()
+    fireEvent.click(screen.getByRole('button', { name: 'manuscripts' }))
+    expect(screen.queryByText('ch01.md')).not.toBeInTheDocument()
+    expect(onExpandedPathsChange).toHaveBeenLastCalledWith(expect.not.arrayContaining(['manuscripts']))
+  })
+
+  it('exposes the full path as a title on truncated directory and file names', () => {
+    const nodes: FileNode[] = [
+      { name: 'manuscripts', type: 'dir', children: [{ name: 'chapters', type: 'dir', children: [{ name: 'ch01.md', type: 'file' }] }] },
+    ]
+
+    render(
+      <FileTree
+        nodes={nodes}
+        selectedFile={null}
+        onSelectFile={vi.fn()}
+        defaultExpandedPaths={['manuscripts', 'manuscripts/chapters']}
+      />,
+    )
+
+    expect(screen.getByText('manuscripts')).toHaveAttribute('title', 'manuscripts')
+    expect(screen.getByText('chapters')).toHaveAttribute('title', 'manuscripts/chapters')
+    expect(screen.getByText('ch01.md')).toHaveAttribute('title', 'manuscripts/chapters/ch01.md')
   })
 })

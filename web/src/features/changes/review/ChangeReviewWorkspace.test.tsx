@@ -339,6 +339,16 @@ describe('ChangeReviewWorkspace', () => {
     fireEvent.click(screen.getByRole('button', { name: '取消评论草稿' }))
     await waitFor(() => expect(screen.getByTestId('review-diff-editor')).toHaveAttribute('data-revision', 'refreshed-revision'))
   })
+
+  it('closes the full-screen review with Escape like the close control', async () => {
+    const onClose = vi.fn()
+    renderWorkspace({ onClose })
+    await screen.findByTestId('review-diff-editor')
+
+    fireEvent.keyDown(window, { key: 'Escape' })
+
+    expect(onClose).toHaveBeenCalledTimes(1)
+  })
 })
 
 describe('deriveFeedbackComments', () => {

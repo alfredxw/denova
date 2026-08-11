@@ -32,9 +32,11 @@ type App struct {
 	bookRegistry           *BookRegistry
 	bookMetaStore          *BookMetaStore
 	versionService         *book.VersionService
-	activeTask             *Task
-	activeInteractiveRun   *interactiveTaskRun
+	agentTaskRuns          map[string]*agentTaskRun
+	interactiveTaskRuns    map[string]*interactiveTaskRun
 	activeLoreImageTask    *Task
+	novelImportTasks       map[string]*novelImportTaskState
+	configManagerTaskRuns  map[string]*configManagerTaskRun
 	activeAutomationTasks  map[string]*Task
 	activeAutomationRuns   map[string]automationRunState
 	activeAutomationClaims map[string]*automationRunClaim
@@ -228,13 +230,54 @@ func (a *App) Close() {
 	if a.automationTriggers != nil {
 		a.automationTriggers.Close()
 	}
+	a.stopBackgroundTasks()
+	a.stopWorkspaceDirectorTasks()
 	a.mu.RLock()
 	versionService := a.versionService
 	a.mu.RUnlock()
 	if versionService != nil {
 		versionService.Close()
 	}
-	a.stopWorkspaceDirectorTasks()
+}
+
+func (a *App) stopBackgroundTasks() {
+	a.mu.RLock()
+	tasks := make(map[*Task]struct{}, len(a.agentTaskRuns)+len(a.interactiveTaskRuns)+len(a.novelImportTasks)+len(a.configManagerTaskRuns)+len(a.activeAutomationTasks)+1)
+	for _, run := range a.agentTaskRuns {
+		if run != nil && run.task != nil {
+			tasks[run.task] = struct{}{}
+		}
+	}
+	for _, run := range a.interactiveTaskRuns {
+		if run != nil && run.task != nil {
+			tasks[run.task] = struct{}{}
+		}
+	}
+	for _, task := range a.activeAutomationTasks {
+		if task != nil {
+			tasks[task] = struct{}{}
+		}
+	}
+	for _, run := range a.novelImportTasks {
+		if run != nil && run.task != nil {
+			tasks[run.task] = struct{}{}
+		}
+	}
+	for _, run := range a.configManagerTaskRuns {
+		if run != nil && run.task != nil {
+			tasks[run.task] = struct{}{}
+		}
+	}
+	if a.activeLoreImageTask != nil {
+		tasks[a.activeLoreImageTask] = struct{}{}
+	}
+	a.mu.RUnlock()
+	for task := range tasks {
+		task.Abort()
+	}
+	for task := range tasks {
+		task.Wait()
+	}
 }
 
 // RemoteAccessConfig returns the current process-level access policy used by

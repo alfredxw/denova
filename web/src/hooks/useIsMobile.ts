@@ -3,7 +3,7 @@ import { useEffect, useState } from 'react'
 // The desktop workbench combines a resizable activity bar, project tree, editor,
 // and review/agent panel. Tablet widths cannot satisfy those minimum sizes, so
 // they use the existing compact shell instead of clipping interactive controls.
-const DEFAULT_MOBILE_QUERY = '(max-width: 1023px)'
+const DEFAULT_MOBILE_QUERY = '(max-width: 1099px)'
 
 export function useIsMobile(query = DEFAULT_MOBILE_QUERY) {
   const [matches, setMatches] = useState(() => {

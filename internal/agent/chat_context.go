@@ -1,6 +1,7 @@
 package agent
 
 import (
+	"encoding/json"
 	"errors"
 	"fmt"
 	"strings"
@@ -235,9 +236,23 @@ func appendSelectionContext(message string, selections []TextSelectionRef) strin
 	sb.WriteString(prompts.SelectionHeader)
 
 	for _, sel := range selections {
+		metadata, _ := json.Marshal(struct {
+			Source    string `json:"source"`
+			Purpose   string `json:"purpose"`
+			Version   string `json:"version"`
+			SizeBytes int    `json:"size_bytes"`
+		}{
+			Source:    strings.TrimSpace(sel.Source),
+			Purpose:   strings.TrimSpace(sel.Purpose),
+			Version:   strings.TrimSpace(sel.Version),
+			SizeBytes: len(sel.Content),
+		})
 		sb.WriteString("\n## 选中内容来自 ")
 		sb.WriteString(sel.FileName)
 		sb.WriteString(fmt.Sprintf(":L%d-L%d\n", sel.StartLine, sel.EndLine))
+		sb.WriteString("handoff_meta=")
+		sb.Write(metadata)
+		sb.WriteString("\n")
 		sb.WriteString("```\n")
 		sb.WriteString(sel.Content)
 		sb.WriteString("\n```\n")

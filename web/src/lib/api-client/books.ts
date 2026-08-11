@@ -77,10 +77,33 @@ export async function importNovel(
   if (options.sampleChars !== undefined) form.append('sample_chars', String(options.sampleChars))
   if (options.splitRegex !== undefined) form.append('split_regex', options.splitRegex)
   if (options.splitStrategy) form.append('split_strategy', options.splitStrategy)
-  return requestJSON('/api/books/import-novel', {
+  const res = await fetchAPI('/api/books/import-novel', {
     method: 'POST',
     body: form,
   })
+  if (!res.ok) {
+    const data = await res.json().catch(() => ({}))
+    throw new Error(data.error || `HTTP ${res.status}`)
+  }
+  if (!res.body) throw new Error('No response body')
+  const reader = parseSSEStream(res.body).getReader()
+  try {
+    for (;;) {
+      const { value, done } = await reader.read()
+      if (done) break
+      if (!value) continue
+      if (value.event === 'done') {
+        return JSON.parse(value.data) as NovelImportResult
+      }
+      if (value.event === 'error') {
+        const payload = JSON.parse(value.data) as { error?: string }
+        throw new Error(payload.error || 'import failed')
+      }
+    }
+  } finally {
+    reader.releaseLock()
+  }
+  throw new Error('import failed')
 }
 
 export async function createBook(title: string, author?: string, description?: string): Promise<{ workspace: string; book_meta: BookMeta }> {

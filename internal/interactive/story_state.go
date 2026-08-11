@@ -116,6 +116,31 @@ func sanitizeModelContextMessages(messages []ModelContextMessage) []ModelContext
 	return result
 }
 
+func sanitizeTurnContextSnapshot(parts []TurnContextPart) []TurnContextPart {
+	if len(parts) == 0 {
+		return nil
+	}
+	result := make([]TurnContextPart, 0, len(parts))
+	for _, part := range parts {
+		part.Source = strings.TrimSpace(part.Source)
+		part.Title = strings.TrimSpace(part.Title)
+		part.Purpose = strings.TrimSpace(part.Purpose)
+		part.Version = strings.TrimSpace(part.Version)
+		part.Bytes = nonNegativeInt(part.Bytes)
+		part.Chars = nonNegativeInt(part.Chars)
+		part.Limit = nonNegativeInt(part.Limit)
+		part.LimitUnit = strings.TrimSpace(part.LimitUnit)
+		if part.Source == "" || part.Purpose == "" || part.Version == "" || part.Bytes == 0 {
+			continue
+		}
+		result = append(result, part)
+	}
+	if len(result) == 0 {
+		return nil
+	}
+	return result
+}
+
 func sanitizeModelContextToolCalls(calls []ModelContextToolCall) []ModelContextToolCall {
 	if len(calls) == 0 {
 		return nil

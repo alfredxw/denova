@@ -40,6 +40,12 @@ func TestDefaultSettingsValues(t *testing.T) {
 	if s.AgentToolResultLimitKB == nil || *s.AgentToolResultLimitKB != DefaultAgentToolResultLimitKB {
 		t.Fatalf("AgentToolResultLimitKB default")
 	}
+	if s.SystemNotificationsEnabled == nil || *s.SystemNotificationsEnabled {
+		t.Fatalf("SystemNotificationsEnabled should default off")
+	}
+	if s.AgentContextHandoffLimitKB == nil || *s.AgentContextHandoffLimitKB != DefaultAgentContextHandoffLimitKB {
+		t.Fatalf("AgentContextHandoffLimitKB default")
+	}
 	if s.TraceCaptureLevel != DefaultTraceCaptureLevel || s.TraceExporter != DefaultTraceExporter {
 		t.Fatalf("trace defaults: capture=%q exporter=%q", s.TraceCaptureLevel, s.TraceExporter)
 	}

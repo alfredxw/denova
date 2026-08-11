@@ -32,6 +32,7 @@ import {
   type BookRecord,
 } from '@/lib/api'
 import { useSkillCommands } from '@/hooks/useSkillCommands'
+import { useExecutableDraftEntry } from '@/features/config-guard/executable-draft-guard'
 import { fetchSettings } from '@/features/settings/api'
 import { rebaseJSONWithRecovery } from '@/lib/autosave/rebase-with-recovery'
 import { rebaseJSONValue } from '@/lib/three-way-rebase'
@@ -271,6 +272,20 @@ export function AutomationsView({ workspace, onClose }: { workspace: string; onC
     setError(null)
     return automationAutosave.flush()
   }, [automationAutosave.flush])
+
+  const discardAutomationDraft = useCallback(() => {
+    draftDirtyRef.current = false
+    void load()
+  }, [load])
+
+  useExecutableDraftEntry(
+    'automations',
+    draftDirtyRef.current
+      || automationAutosave.status === 'pending'
+      || automationAutosave.status === 'saving'
+      || automationAutosave.status === 'error',
+    discardAutomationDraft,
+  )
 
   const selectTask = async (task: AutomationTask) => {
     if (!(await flushAutomationAutosave())) return

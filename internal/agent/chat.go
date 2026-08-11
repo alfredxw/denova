@@ -82,6 +82,9 @@ type TextSelectionRef struct {
 	StartLine int    `json:"start_line"`
 	EndLine   int    `json:"end_line"`
 	Content   string `json:"content"`
+	Source    string `json:"source,omitempty"`
+	Purpose   string `json:"purpose,omitempty"`
+	Version   string `json:"version,omitempty"`
 }
 
 // ChatService 编排会话历史、文件引用和 Agent 流式响应。

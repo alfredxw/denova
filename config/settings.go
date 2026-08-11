@@ -74,18 +74,20 @@ type Settings struct {
 	UpdateCheckEnabled *bool  `toml:"update_check_enabled,omitempty" json:"update_check_enabled,omitempty"`
 
 	// Agent
-	MaxIteration            *int   `toml:"max_iteration,omitempty" json:"max_iteration,omitempty"`
-	ModelMaxRetries         *int   `toml:"model_max_retries,omitempty" json:"model_max_retries,omitempty"`
-	AgentIdleTimeoutSeconds *int   `toml:"agent_idle_timeout_seconds,omitempty" json:"agent_idle_timeout_seconds,omitempty"`
-	AgentToolResultLimitKB  *int   `toml:"agent_tool_result_limit_kb,omitempty" json:"agent_tool_result_limit_kb,omitempty"`
-	LLMInputLogEnabled      *bool  `toml:"llm_input_log_enabled,omitempty" json:"llm_input_log_enabled,omitempty"`
-	TraceCaptureLevel       string `toml:"trace_capture_level,omitempty" json:"trace_capture_level,omitempty"`
-	TraceExporter           string `toml:"trace_exporter,omitempty" json:"trace_exporter,omitempty"`
-	TraceRetentionRuns      *int   `toml:"trace_retention_runs,omitempty" json:"trace_retention_runs,omitempty"`
-	PlanModeDefault         *bool  `toml:"plan_mode_default,omitempty" json:"plan_mode_default,omitempty"`
-	IDEStoryTellerID        string `toml:"ide_story_teller_id,omitempty" json:"ide_story_teller_id,omitempty"`
-	IDEImagePresetID        string `toml:"ide_image_preset_id,omitempty" json:"ide_image_preset_id,omitempty"`
-	WritingSkillDefault     string `toml:"writing_skill_default,omitempty" json:"writing_skill_default,omitempty"`
+	MaxIteration               *int   `toml:"max_iteration,omitempty" json:"max_iteration,omitempty"`
+	ModelMaxRetries            *int   `toml:"model_max_retries,omitempty" json:"model_max_retries,omitempty"`
+	AgentIdleTimeoutSeconds    *int   `toml:"agent_idle_timeout_seconds,omitempty" json:"agent_idle_timeout_seconds,omitempty"`
+	AgentToolResultLimitKB     *int   `toml:"agent_tool_result_limit_kb,omitempty" json:"agent_tool_result_limit_kb,omitempty"`
+	AgentContextHandoffLimitKB *int   `toml:"agent_context_handoff_limit_kb,omitempty" json:"agent_context_handoff_limit_kb,omitempty"`
+	SystemNotificationsEnabled *bool  `toml:"system_notifications_enabled,omitempty" json:"system_notifications_enabled,omitempty"`
+	LLMInputLogEnabled         *bool  `toml:"llm_input_log_enabled,omitempty" json:"llm_input_log_enabled,omitempty"`
+	TraceCaptureLevel          string `toml:"trace_capture_level,omitempty" json:"trace_capture_level,omitempty"`
+	TraceExporter              string `toml:"trace_exporter,omitempty" json:"trace_exporter,omitempty"`
+	TraceRetentionRuns         *int   `toml:"trace_retention_runs,omitempty" json:"trace_retention_runs,omitempty"`
+	PlanModeDefault            *bool  `toml:"plan_mode_default,omitempty" json:"plan_mode_default,omitempty"`
+	IDEStoryTellerID           string `toml:"ide_story_teller_id,omitempty" json:"ide_story_teller_id,omitempty"`
+	IDEImagePresetID           string `toml:"ide_image_preset_id,omitempty" json:"ide_image_preset_id,omitempty"`
+	WritingSkillDefault        string `toml:"writing_skill_default,omitempty" json:"writing_skill_default,omitempty"`
 
 	// 游戏模式
 	InteractiveStageFontSize   *int     `toml:"interactive_stage_font_size,omitempty" json:"interactive_stage_font_size,omitempty"`
@@ -98,12 +100,13 @@ func floatPtr(v float64) *float64 { return &v }
 func stringPtr(v string) *string  { return &v }
 
 const (
-	DefaultWritingSkillName        = "novel-lite"
-	DefaultAgentIdleTimeoutSeconds = 0
-	DefaultAgentToolResultLimitKB  = 1024
-	DefaultTraceCaptureLevel       = "summary"
-	DefaultTraceExporter           = "local"
-	DefaultTraceRetentionRuns      = 100
+	DefaultWritingSkillName           = "novel-lite"
+	DefaultAgentIdleTimeoutSeconds    = 0
+	DefaultAgentToolResultLimitKB     = 1024
+	DefaultAgentContextHandoffLimitKB = 256
+	DefaultTraceCaptureLevel          = "summary"
+	DefaultTraceExporter              = "local"
+	DefaultTraceRetentionRuns         = 100
 )
 
 // DefaultSettings 返回内置默认配置（最低优先级）。
@@ -142,6 +145,8 @@ func DefaultSettings() Settings {
 		ModelMaxRetries:             intPtr(5),
 		AgentIdleTimeoutSeconds:     intPtr(DefaultAgentIdleTimeoutSeconds),
 		AgentToolResultLimitKB:      intPtr(DefaultAgentToolResultLimitKB),
+		AgentContextHandoffLimitKB:  intPtr(DefaultAgentContextHandoffLimitKB),
+		SystemNotificationsEnabled:  boolPtr(false),
 		LLMInputLogEnabled:          boolPtr(false),
 		TraceCaptureLevel:           DefaultTraceCaptureLevel,
 		TraceExporter:               DefaultTraceExporter,
@@ -296,6 +301,12 @@ func Merge(parent, child Settings) Settings {
 	}
 	if child.AgentToolResultLimitKB != nil {
 		out.AgentToolResultLimitKB = child.AgentToolResultLimitKB
+	}
+	if child.AgentContextHandoffLimitKB != nil {
+		out.AgentContextHandoffLimitKB = child.AgentContextHandoffLimitKB
+	}
+	if child.SystemNotificationsEnabled != nil {
+		out.SystemNotificationsEnabled = child.SystemNotificationsEnabled
 	}
 	if child.LLMInputLogEnabled != nil {
 		out.LLMInputLogEnabled = child.LLMInputLogEnabled
@@ -512,6 +523,7 @@ func LoadLayeredWithGlobal(novaDir, workspace string, global Settings) (LayeredS
 		novaDir = normalizePath(novaDir)
 	}
 	global.AgentToolResultLimitKB = normalizeAgentToolResultLimitKB(global.AgentToolResultLimitKB)
+	global.AgentContextHandoffLimitKB = normalizeAgentContextHandoffLimitKB(global.AgentContextHandoffLimitKB)
 	user, err := ReadSettingsFile(UserConfigPath(novaDir))
 	if err != nil {
 		return LayeredSettings{}, err
@@ -621,6 +633,7 @@ func sanitizeEditableSettings(s Settings) Settings {
 	s.DefaultImageAPIProfileID = strings.TrimSpace(s.DefaultImageAPIProfileID)
 	s.AgentIdleTimeoutSeconds = normalizeAgentIdleTimeoutSeconds(s.AgentIdleTimeoutSeconds)
 	s.AgentToolResultLimitKB = normalizeAgentToolResultLimitKB(s.AgentToolResultLimitKB)
+	s.AgentContextHandoffLimitKB = normalizeAgentContextHandoffLimitKB(s.AgentContextHandoffLimitKB)
 	s.ModelProfiles = sanitizeModelProfiles(s.ModelProfiles)
 	s.ImageAPIProfiles = sanitizeImageAPIProfiles(s.ImageAPIProfiles)
 	if defaultProfile, ok := defaultModelProfile(s.ModelProfiles); ok {
@@ -662,6 +675,19 @@ func normalizeAgentToolResultLimitKB(limit *int) *int {
 	}
 	if *limit == 0 {
 		return intPtr(DefaultAgentToolResultLimitKB)
+	}
+	return limit
+}
+
+func normalizeAgentContextHandoffLimitKB(limit *int) *int {
+	if limit == nil {
+		return nil
+	}
+	if *limit < 0 {
+		return nil
+	}
+	if *limit == 0 {
+		return intPtr(DefaultAgentContextHandoffLimitKB)
 	}
 	return limit
 }

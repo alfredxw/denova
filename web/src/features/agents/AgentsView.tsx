@@ -4,6 +4,7 @@ import type { LucideIcon } from 'lucide-react'
 import { Bot, Brain, Check, ChevronDown, ChevronRight, Edit3, FolderOpen, Plus, ScrollText, Trash2, Wrench } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import { ConfigManagerChat } from '@/components/Chat/ConfigManagerChat'
+import { useExecutableDraftEntry } from '@/features/config-guard/executable-draft-guard'
 import { AutosaveStatusIndicator } from '@/components/forms/autosave-status'
 import { FormField } from '@/components/forms/form-field'
 import { FormSectionHeader } from '@/components/forms/form-section-header'
@@ -35,6 +36,17 @@ export function AgentsView({ onClose }: { onClose?: () => void }) {
     layer: activeLayer,
     sourcePrefix: 'agents-view',
   })
+
+  const discardAgentDraft = useCallback(() => {
+    void reload()
+  }, [reload])
+
+  useExecutableDraftEntry(
+    'agents',
+    autosaveStatus === 'pending' || autosaveStatus === 'saving' || Boolean(error),
+    discardAgentDraft,
+  )
+
   const [activeAgent, setActiveAgent] = useState<VisibleAgentKey>('ide')
   const [skills, setSkills] = useState<SkillSummary[]>([])
   const [agentChatOpen, setAgentChatOpen] = useState(false)

@@ -8,18 +8,17 @@ import (
 	"log"
 	"strconv"
 	"strings"
-	"time"
 
 	"github.com/cloudwego/hertz/pkg/app"
 	"github.com/cloudwego/hertz/pkg/protocol/consts"
 
+	"denova/internal/api/sse"
+	novaApp "denova/internal/app"
 	"denova/internal/book"
 )
 
 // MaxNovelImportUploadBytes limits txt/md novel imports.
 const MaxNovelImportUploadBytes int64 = 64 * 1024 * 1024
-
-const novelImportToolAgentTimeout = 90 * time.Second
 
 type novelImportProgressEvent struct {
 	Step string `json:"step"`
@@ -82,7 +81,7 @@ func (h *Handlers) HandlePreviewNovelImportStream(ctx context.Context, c *app.Re
 				if err := writeNovelImportPreviewProgress(pw, "agent_start"); err != nil {
 					return "", err
 				}
-				inferCtx, cancel := context.WithTimeout(ctx, novelImportToolAgentTimeout)
+				inferCtx, cancel := context.WithTimeout(ctx, novaApp.NovelImportToolAgentTimeout)
 				defer cancel()
 				regex, err := h.app.InferNovelSplitRegex(inferCtx, sample)
 				if err != nil {
@@ -119,58 +118,24 @@ func (h *Handlers) HandleNovelImport(ctx context.Context, c *app.RequestContext)
 		return
 	}
 	opts := h.novelImportOptions(ctx, c)
-	log.Printf("[api] 小说导入确认 begin filename=%q size=%d sample_chars=%d split_strategy=%q has_split_regex=%t", filename, len(data), opts.SampleChars, opts.SplitStrategy, opts.SplitRegex != "")
-	preview, err := book.PreviewNovelImport(filename, data, opts)
-	if err != nil {
-		log.Printf("[api] 小说导入确认 preview failed filename=%q err=%v", filename, err)
-		writeErrorKey(c, consts.StatusBadRequest, "api.novelImport.parseFailed", "detail", err.Error())
-		return
-	}
-
 	title := strings.TrimSpace(string(c.FormValue("book_title")))
-	if title == "" {
-		title = preview.Title
-	}
 	author := strings.TrimSpace(string(c.FormValue("author")))
 	description := strings.TrimSpace(string(c.FormValue("description")))
 
-	layered, err := h.app.Settings()
+	log.Printf("[api] 小说导入任务开始 filename=%q size=%d title=%q split_strategy=%q has_split_regex=%t", filename, len(data), title, opts.SplitStrategy, opts.SplitRegex != "")
+	task, err := h.app.StartNovelImportTask(ctx, novaApp.NovelImportTaskRequest{
+		Filename:    filename,
+		Data:        data,
+		Title:       title,
+		Author:      author,
+		Description: description,
+		Options:     opts,
+	})
 	if err != nil {
 		writeError(c, consts.StatusInternalServerError, err.Error())
 		return
 	}
-	if layered.Paths.DenovaDir == "" {
-		writeErrorKey(c, consts.StatusInternalServerError, "api.books.novaDirMissing")
-		return
-	}
-
-	log.Printf("[api] 导入小说 filename=%q size=%d title=%q strategy=%s regex=%q chapters=%d", filename, len(data), title, preview.SplitStrategy, preview.SplitRegex, preview.ChapterCount)
-	workspace, meta, err := h.app.CreateBook(ctx, layered.Paths.DenovaDir, title, author, description)
-	if err != nil {
-		status := consts.StatusInternalServerError
-		if strings.Contains(err.Error(), "已存在") {
-			status = consts.StatusConflict
-		}
-		writeErrorKey(c, status, "api.novelImport.importFailed", "detail", err.Error())
-		return
-	}
-	importPreview, paths, err := book.ImportNovelToWorkspace(workspace, filename, data, opts)
-	if err != nil {
-		log.Printf("[api] 小说导入确认 import failed filename=%q workspace=%q err=%v", filename, workspace, err)
-		writeErrorKey(c, consts.StatusInternalServerError, "api.novelImport.importFailed", "detail", err.Error())
-		return
-	}
-
-	log.Printf("[api] 导入小说完成 workspace=%q strategy=%s regex=%q chapters=%d paths=%d warnings=%v", workspace, importPreview.SplitStrategy, importPreview.SplitRegex, importPreview.ChapterCount, len(paths), importPreview.Warnings)
-	writeJSON(c, consts.StatusOK, book.NovelImportResult{
-		Workspace:    workspace,
-		BookMeta:     &meta,
-		Title:        importPreview.Title,
-		ChapterCount: importPreview.ChapterCount,
-		TotalChars:   importPreview.TotalChars,
-		ChapterPaths: paths,
-		Message:      messageKey(c, "api.novelImport.imported"),
-	})
+	sse.StreamTask(c, task)
 }
 
 func (h *Handlers) novelImportOptions(ctx context.Context, c *app.RequestContext) book.NovelImportOptions {
@@ -185,7 +150,7 @@ func (h *Handlers) novelImportOptions(ctx context.Context, c *app.RequestContext
 	}
 	if opts.SplitRegex == "" && opts.SplitStrategy != book.NovelImportSplitStrategyBuiltin {
 		opts.InferSplitRegex = func(sample string) (string, error) {
-			inferCtx, cancel := context.WithTimeout(ctx, novelImportToolAgentTimeout)
+			inferCtx, cancel := context.WithTimeout(ctx, novaApp.NovelImportToolAgentTimeout)
 			defer cancel()
 			return h.app.InferNovelSplitRegex(inferCtx, sample)
 		}

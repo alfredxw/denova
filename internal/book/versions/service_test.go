@@ -76,6 +76,39 @@ func TestScheduleAutoVersionCanBeDisabled(t *testing.T) {
 	}
 }
 
+func TestRetiredServiceCompletesAutoVersionScheduledByExistingLease(t *testing.T) {
+	dir := t.TempDir()
+	service := NewService(dir)
+	service.autoVersionIdleDelay = 20 * time.Millisecond
+	t.Cleanup(service.Close)
+	release, ok := service.Acquire()
+	if !ok {
+		t.Fatal("active version service should grant a runtime lease")
+	}
+
+	service.Retire()
+	writeFile(t, dir, "chapters/ch0001.md", "completed by a background Agent run")
+	service.ScheduleAutoVersion(DefaultAutoSettings())
+	release()
+
+	deadline := time.Now().Add(300 * time.Millisecond)
+	var history []VersionEntry
+	var err error
+	for len(history) == 0 && time.Now().Before(deadline) {
+		time.Sleep(10 * time.Millisecond)
+		history, err = service.History(10)
+		if err != nil {
+			t.Fatalf("History after retirement failed: %v", err)
+		}
+	}
+	if len(history) != 1 || history[0].Source != VersionSourceTimer {
+		t.Fatalf("retired service dropped the leased run's automatic version: %#v", history)
+	}
+	if _, acquired := service.Acquire(); acquired {
+		t.Fatal("retired version service must reject new runtime leases")
+	}
+}
+
 func TestMaybeCreateTimedHonorsConfiguredMinimumInterval(t *testing.T) {
 	dir := t.TempDir()
 	service := NewService(dir)

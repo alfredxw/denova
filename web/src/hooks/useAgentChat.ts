@@ -25,6 +25,7 @@ import {
 } from '@/lib/agent-ui'
 import { agentViewContent, buildAgentMessageViews, isPlanProtocolToolName, type AgentMessageView, type AgentPartRef } from '@/lib/agent-message-view'
 import { isWorkspaceChangeForWorkspace, type WorkspaceChangeEvent } from '@/features/changes/types'
+import { AGENT_SESSION_RECOVERY_EVENT, consumeAgentSessionRecovery, type AgentSessionRecoveryTarget } from '@/features/mobile-workbench/task-recovery-navigation'
 
 interface ChatOptions {
   workspace?: string
@@ -54,9 +55,10 @@ export interface ChatSendOptions {
 }
 
 export function useAgentChat(options: ChatOptions = {}) {
-  const { t } = useTranslation()
-  const { workspace = '', onAgentFileChange, onWorkspaceChange } = options
-  const transport = useMemo(() => new AgentChatTransport(), [])
+	const { t } = useTranslation()
+	const { workspace = '', onAgentFileChange, onWorkspaceChange } = options
+	const activeSessionIdRef = useRef('')
+	const transport = useMemo(() => new AgentChatTransport(() => activeSessionIdRef.current), [])
   const {
     messages: uiMessages,
     setMessages: setUIMessages,
@@ -127,9 +129,11 @@ export function useAgentChat(options: ChatOptions = {}) {
 
   const loadSessions = useCallback(async () => {
     try {
-      const list = await getSessions()
-      setSessions(list)
-      setActiveSessionId(list.find(item => item.active)?.id || list[0]?.id || '')
+		const list = await getSessions()
+		setSessions(list)
+		const nextActiveSessionId = list.find(item => item.active)?.id || list[0]?.id || ''
+		activeSessionIdRef.current = nextActiveSessionId
+		setActiveSessionId(nextActiveSessionId)
       return list
     } catch (e) {
       console.error('加载会话列表失败', e)
@@ -288,6 +292,10 @@ export function useAgentChat(options: ChatOptions = {}) {
         start_line: s.startLine,
         end_line: s.endLine,
         content: s.content,
+        source: s.source || 'editor_selection',
+        purpose: s.purpose || 'ask_agent',
+        version: s.version || 'unversioned',
+        size_bytes: new TextEncoder().encode(s.content).byteLength,
       })),
       ide_context: normalizeIDEContext(sendOptions.ideContext),
       plan_mode: prepared.planMode,
@@ -361,46 +369,51 @@ export function useAgentChat(options: ChatOptions = {}) {
     setActivePlanMode(false)
   }, [setActivePlanMode])
 
-  const resumeActiveChat = useCallback(async () => {
-    if (isStreaming) return
-    try {
-      const activeTask = await getActiveChatTask()
-      if (!activeTask.active) return
-      await resumeStream()
+	const resumeActiveChat = useCallback(async (sessionId = activeSessionIdRef.current) => {
+		if (isStreaming) return
+		try {
+			const activeTask = await getActiveChatTask(sessionId)
+			if (!activeTask.active) return
+			activeSessionIdRef.current = sessionId
+			await resumeStream()
     } catch (e) {
       if (!isAbortError(e)) console.error('恢复聊天流失败', e)
     }
   }, [isStreaming, resumeStream])
 
-  const stop = useCallback(() => {
-    void abortChat()
+	const stop = useCallback(() => {
+		void abortChat(activeSessionIdRef.current)
     stopAIStream()
   }, [stopAIStream])
 
-  const createChatSession = useCallback(async (title?: string) => {
-    const session = await createSession(title)
-    setActiveSessionId(session.id)
-    await Promise.all([loadSessions(), loadHistory(session.id)])
-    await resumeActiveChat()
+	const createChatSession = useCallback(async (title?: string) => {
+		const session = await createSession(title)
+		activeSessionIdRef.current = session.id
+		setActiveSessionId(session.id)
+		await Promise.all([loadSessions(), loadHistory(session.id)])
+		await resumeActiveChat(session.id)
   }, [loadHistory, loadSessions, resumeActiveChat])
 
   const switchChatSession = useCallback(async (id: string) => {
     if (!id || id === activeSessionId) return
     const previousSessionId = activeSessionId
-    if (isStreaming) stopAIStream()
-    setActiveSessionId(id)
+		if (isStreaming) stopAIStream()
+		activeSessionIdRef.current = id
+		setActiveSessionId(id)
 
     let session: SessionSummary
     try {
       session = await switchSession(id)
-    } catch (error) {
+		} catch (error) {
+			activeSessionIdRef.current = previousSessionId
       setActiveSessionId((current) => current === id ? previousSessionId : current)
       throw error
     }
 
-    setActiveSessionId(session.id)
-    await Promise.all([loadSessions(), loadHistory(session.id)])
-    await resumeActiveChat()
+		setActiveSessionId(session.id)
+		await Promise.all([loadSessions(), loadHistory(session.id)])
+		activeSessionIdRef.current = session.id
+		await resumeActiveChat(session.id)
   }, [activeSessionId, isStreaming, loadHistory, loadSessions, resumeActiveChat, stopAIStream])
 
   const renameChatSession = useCallback(async (id: string, title: string) => {
@@ -408,13 +421,27 @@ export function useAgentChat(options: ChatOptions = {}) {
     await loadSessions()
   }, [loadSessions])
 
-  const deleteChatSession = useCallback(async (id: string) => {
+	const deleteChatSession = useCallback(async (id: string) => {
     stopAIStream()
-    const session = await deleteSession(id)
+		const session = await deleteSession(id)
+		activeSessionIdRef.current = session.id
     setActiveSessionId(session.id)
     await Promise.all([loadSessions(), loadHistory(session.id)])
-    await resumeActiveChat()
-  }, [loadHistory, loadSessions, resumeActiveChat, stopAIStream])
+		await resumeActiveChat(session.id)
+	}, [loadHistory, loadSessions, resumeActiveChat, stopAIStream])
+
+	useEffect(() => {
+		const recover = (event: Event) => {
+			const queued = consumeAgentSessionRecovery()
+			const detail = (event as CustomEvent<AgentSessionRecoveryTarget>).detail
+			const target = queued || detail
+			if (target?.sessionId) void switchChatSession(target.sessionId)
+		}
+		window.addEventListener(AGENT_SESSION_RECOVERY_EVENT, recover)
+		const queued = consumeAgentSessionRecovery()
+		if (queued?.sessionId) void switchChatSession(queued.sessionId)
+		return () => window.removeEventListener(AGENT_SESSION_RECOVERY_EVENT, recover)
+	}, [switchChatSession])
 
   return {
     messages,

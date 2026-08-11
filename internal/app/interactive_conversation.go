@@ -705,6 +705,7 @@ func (c *interactiveConversation) AppendAssistantWithMetadata(content, thinking 
 		AgentKind:            assistantMetadata.AgentKind,
 		DisplayEvents:        withInteractiveNarrativeAnchor(c.displayEventsSnapshot()),
 		ModelContextMessages: c.modelContextMessagesSnapshot(),
+		ContextSnapshot:      interactiveTurnContextSnapshot(c.ContextLedgerParts()),
 		RuleResolution:       c.ruleResolutionSnapshot(),
 		TurnResult:           turnResult,
 		TerminalOutcome:      c.terminalOutcomeSnapshot(narrative),

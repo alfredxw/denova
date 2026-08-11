@@ -375,8 +375,16 @@ export function MarkdownEditor({
     // 计算行号
     const startLine = getLineNumber(editor.state.doc, from)
     const endLine = getLineNumber(editor.state.doc, to)
-    onQuoteSelection({ fileName, startLine, endLine, content: text })
-  }, [editor, fileName, onQuoteSelection])
+    onQuoteSelection({
+      fileName,
+      startLine,
+      endLine,
+      content: text,
+      source: 'editor_selection',
+      purpose: 'ask_agent',
+      version: revision || 'unversioned',
+    })
+  }, [editor, fileName, onQuoteSelection, revision])
 
   const commentCurrentSelection = useCallback(() => {
     reviewAnnotationsRef.current?.startSelectionComment()

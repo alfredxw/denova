@@ -28,6 +28,7 @@ type AppendTurnRequest struct {
 	Thinking             string                `json:"thinking,omitempty"`
 	DisplayEvents        []DisplayEvent        `json:"display_events,omitempty"`
 	ModelContextMessages []ModelContextMessage `json:"model_context_messages,omitempty"`
+	ContextSnapshot      []TurnContextPart     `json:"context_snapshot,omitempty"`
 }
 
 type AppendTurnWithStateRequest struct {
@@ -40,6 +41,7 @@ type AppendTurnWithStateRequest struct {
 	AgentKind            string                    `json:"agent_kind,omitempty"`
 	DisplayEvents        []DisplayEvent            `json:"display_events,omitempty"`
 	ModelContextMessages []ModelContextMessage     `json:"model_context_messages,omitempty"`
+	ContextSnapshot      []TurnContextPart         `json:"context_snapshot,omitempty"`
 	Ops                  []StateOp                 `json:"ops,omitempty"`
 	ActorOps             []ActorStateOp            `json:"actor_ops,omitempty"`
 	RuleResolution       *RuleResolution           `json:"rule_resolution,omitempty"`
@@ -95,6 +97,31 @@ type AppendStateDeltaRequest struct {
 	ActorOps []ActorStateOp `json:"actor_ops,omitempty"`
 }
 
+type StateRevisionAction string
+
+const (
+	StateRevisionActionApply   StateRevisionAction = "apply"
+	StateRevisionActionUndo    StateRevisionAction = "undo"
+	StateRevisionActionRestore StateRevisionAction = "restore"
+)
+
+type CreateStateRevisionRequest struct {
+	BranchID     string         `json:"branch_id"`
+	ExpectedHead string         `json:"expected_head_id"`
+	BaseTurnID   string         `json:"base_turn_id"`
+	Source       string         `json:"source"`
+	Ops          []StateOp      `json:"ops,omitempty"`
+	ActorOps     []ActorStateOp `json:"actor_ops,omitempty"`
+}
+
+type StateRevisionActionRequest struct {
+	BranchID     string              `json:"branch_id"`
+	ExpectedHead string              `json:"expected_head_id"`
+	Source       string              `json:"source"`
+	RevisionID   string              `json:"-"`
+	Action       StateRevisionAction `json:"-"`
+}
+
 type MarkStateFailedRequest struct {
 	ParentID string `json:"parent_id"`
 	BranchID string `json:"branch_id"`
@@ -121,6 +148,10 @@ type UpdateStoryRequest struct {
 type CreateBranchRequest struct {
 	ParentEventID string `json:"parent_event_id"`
 	Title         string `json:"title"`
+}
+
+type RenameBranchRequest struct {
+	Title string `json:"title"`
 }
 
 type Index struct {
@@ -216,6 +247,7 @@ type TurnEvent struct {
 	AgentKind            string                `json:"agent_kind,omitempty"`
 	DisplayEvents        []DisplayEvent        `json:"display_events,omitempty"`
 	ModelContextMessages []ModelContextMessage `json:"model_context_messages,omitempty"`
+	ContextSnapshot      []TurnContextPart     `json:"context_snapshot,omitempty"`
 	StateDelta           *StateDelta           `json:"state_delta,omitempty"`
 	HotState             *HotState             `json:"hot_state,omitempty"`
 	RuleResolution       *RuleResolution       `json:"rule_resolution,omitempty"`
@@ -228,6 +260,20 @@ type TurnEvent struct {
 	Versions             []TurnVersion         `json:"versions,omitempty"`
 	VersionIdx           int                   `json:"version_idx,omitempty"`
 	Flags                map[string]bool       `json:"flags,omitempty"`
+}
+
+// TurnContextPart identifies one bounded model-visible input locked when a
+// story turn is submitted. Version is a content hash, not mutable source text.
+type TurnContextPart struct {
+	Source    string `json:"source"`
+	Title     string `json:"title,omitempty"`
+	Purpose   string `json:"purpose"`
+	Version   string `json:"version"`
+	Bytes     int    `json:"bytes"`
+	Chars     int    `json:"chars"`
+	Truncated bool   `json:"truncated,omitempty"`
+	Limit     int    `json:"limit,omitempty"`
+	LimitUnit string `json:"limit_unit,omitempty"`
 }
 
 const TokenUsageEventType = "token_usage"
@@ -368,6 +414,24 @@ type StateDeltaEvent struct {
 	ActorOps      []ActorStateOp `json:"actor_ops,omitempty"`
 }
 
+type StateRevisionEvent struct {
+	V                int                 `json:"v"`
+	Type             string              `json:"type"`
+	ID               string              `json:"id"`
+	ParentID         string              `json:"parent_id"`
+	BranchID         string              `json:"branch_id"`
+	Ts               string              `json:"ts"`
+	SchemaVersion    int                 `json:"schema_version,omitempty"`
+	BaseTurnID       string              `json:"base_turn_id"`
+	Source           string              `json:"source"`
+	Action           StateRevisionAction `json:"action"`
+	SourceRevisionID string              `json:"source_revision_id,omitempty"`
+	Ops              []StateOp           `json:"ops,omitempty"`
+	ActorOps         []ActorStateOp      `json:"actor_ops,omitempty"`
+	InverseOps       []StateOp           `json:"inverse_ops,omitempty"`
+	InverseActorOps  []ActorStateOp      `json:"inverse_actor_ops,omitempty"`
+}
+
 type ContextCompactionEvent struct {
 	V                   int     `json:"v"`
 	Type                string  `json:"type"`
@@ -427,9 +491,11 @@ type StateOp struct {
 type Snapshot struct {
 	StoryID                   string                           `json:"story_id"`
 	BranchID                  string                           `json:"branch_id"`
+	HeadID                    string                           `json:"head_id"`
 	Turns                     []TurnEvent                      `json:"turns"`
 	CurrentTurn               *TurnEvent                       `json:"current_turn,omitempty"`
 	TokenUsageEvents          []TokenUsageEvent                `json:"token_usage_events,omitempty"`
+	StateRevisions            []StateRevisionEvent             `json:"state_revisions,omitempty"`
 	ContextCompaction         *ContextCompactionEvent          `json:"context_compaction,omitempty"`
 	ContextCompactionRemoval  *ContextCompactionRemovalEvent   `json:"context_compaction_removal,omitempty"`
 	DirectorPlan              *DirectorPlan                    `json:"-"`

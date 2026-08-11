@@ -128,7 +128,7 @@ export function StoryOpeningPanel({
                           onClick={() => onSelectPreset(preset.id)}
                         >
                           <div className="flex min-w-0 items-center gap-2">
-                            <span className="min-w-0 flex-1 truncate text-xs font-medium text-[var(--nova-text)]">{title}</span>
+                            <span className="min-w-0 flex-1 truncate text-xs font-medium text-[var(--nova-text)]" title={title}>{title}</span>
                             {selected ? <Check className="h-3.5 w-3.5 shrink-0 text-[var(--nova-accent)]" /> : null}
                           </div>
                           <p className="mt-1.5 line-clamp-2 text-[11px] leading-4 text-[var(--nova-text-faint)]">{preset.content}</p>
@@ -142,7 +142,7 @@ export function StoryOpeningPanel({
                   <header className="flex items-center justify-between gap-3 border-b border-[var(--nova-border)] px-4 py-3">
                     <div className="min-w-0">
                       <div className="text-[10px] font-medium tracking-[0.1em] text-[var(--nova-text-faint)]">{t('storyStage.opening.presetPreview')}</div>
-                      <h3 className="mt-0.5 truncate text-sm font-semibold text-[var(--nova-text)]">{selectedPreset?.title || t('storyStage.opening.bookPresetUntitled')}</h3>
+                      <h3 className="mt-0.5 truncate text-sm font-semibold text-[var(--nova-text)]" title={selectedPreset?.title || t('storyStage.opening.bookPresetUntitled')}>{selectedPreset?.title || t('storyStage.opening.bookPresetUntitled')}</h3>
                     </div>
                     <BookOpen className="h-4 w-4 shrink-0 text-[var(--nova-text-faint)]" />
                   </header>
@@ -206,10 +206,10 @@ export function StoryOpeningPanel({
 
 function OpeningTab({ value, icon, label, count }: { value: string; icon: ReactNode; label: string; count?: number }) {
   return (
-    <TabsTrigger value={value} className="h-11 min-w-0 rounded-none border-0 border-b-2 border-b-transparent px-2 text-xs shadow-none after:hidden data-active:border-b-[var(--nova-accent)] data-active:bg-[var(--nova-active)] data-active:shadow-none sm:px-4">
-      <span className="flex min-w-0 items-center justify-center gap-1.5">
-        <span className="flex h-4 w-4 items-center justify-center [&_svg]:h-4 [&_svg]:w-4">{icon}</span>
-        <span className="truncate text-center">{label}</span>
+    <TabsTrigger value={value} className="h-11 min-w-0 rounded-none border-0 border-b-2 border-b-transparent px-1.5 text-xs shadow-none after:hidden data-active:border-b-[var(--nova-accent)] data-active:bg-[var(--nova-active)] data-active:shadow-none sm:px-4">
+      <span className="flex min-w-0 items-center justify-center gap-1">
+        <span className="flex h-3.5 w-3.5 shrink-0 items-center justify-center [&_svg]:h-3.5 [&_svg]:w-3.5">{icon}</span>
+        <span className="truncate text-center" title={label}>{label}</span>
         {typeof count === 'number' ? <span className="font-mono text-[10px] tabular-nums text-[var(--nova-text-faint)]">{count}</span> : null}
       </span>
     </TabsTrigger>

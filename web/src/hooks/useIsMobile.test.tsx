@@ -13,7 +13,9 @@ describe('useIsMobile', () => {
     [800, true],
     [900, true],
     [1023, true],
-    [1024, false],
+    [1024, true],
+    [1099, true],
+    [1100, false],
     [1488, false],
   ])('uses the compact workspace at a %ipx viewport: %s', (width, expected) => {
     const matchMedia = vi.fn((query: string) => createMediaQueryList(query, width))
@@ -22,13 +24,13 @@ describe('useIsMobile', () => {
     const { result } = renderHook(() => useIsMobile())
 
     expect(result.current).toBe(expected)
-    expect(matchMedia).toHaveBeenCalledWith('(max-width: 1023px)')
+    expect(matchMedia).toHaveBeenCalledWith('(max-width: 1099px)')
   })
 })
 
 function createMediaQueryList(query: string, width: number): MediaQueryList {
   return {
-    matches: query === '(max-width: 1023px)' && width <= 1023,
+    matches: query === '(max-width: 1099px)' && width <= 1099,
     media: query,
     onchange: null,
     addListener: vi.fn(),

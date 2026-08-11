@@ -180,6 +180,31 @@ func interactiveContextLedgerParts(parts []interactiveContextSource, messages []
 	return ledger.Parts()
 }
 
+func interactiveTurnContextSnapshot(parts []agent.ContextLedgerPart) []interactive.TurnContextPart {
+	result := make([]interactive.TurnContextPart, 0, len(parts))
+	for _, part := range parts {
+		if !part.Included || part.Bytes <= 0 || strings.TrimSpace(part.Hash) == "" {
+			continue
+		}
+		purpose := strings.TrimSpace(part.Purpose)
+		if purpose == "" {
+			purpose = "model input"
+		}
+		result = append(result, interactive.TurnContextPart{
+			Source:    strings.TrimSpace(part.Source),
+			Title:     strings.TrimSpace(part.Title),
+			Purpose:   purpose,
+			Version:   strings.TrimSpace(part.Hash),
+			Bytes:     part.Bytes,
+			Chars:     part.Chars,
+			Truncated: part.Truncated,
+			Limit:     part.Limit,
+			LimitUnit: strings.TrimSpace(part.LimitUnit),
+		})
+	}
+	return result
+}
+
 func cloneInteractiveContextSources(parts []interactiveContextSource) []interactiveContextSource {
 	if len(parts) == 0 {
 		return nil
