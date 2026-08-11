@@ -2,6 +2,7 @@ package app
 
 import (
 	"context"
+	agentrun "denova/internal/agents/run"
 	apptask "denova/internal/app/task"
 	interactivestate "denova/internal/interactive/state"
 	"encoding/json"
@@ -36,8 +37,8 @@ type InteractiveTurnPersistedEvent struct {
 	State                    map[string]any                             `json:"state"`
 	Graph                    interactive.StoryGraph                     `json:"graph"`
 	Branches                 []interactive.BranchSummary                `json:"branches"`
-	ContextCompaction        *interactive.ContextCompactionEvent        `json:"context_compaction,omitempty"`
-	ContextCompactionRemoval *interactive.ContextCompactionRemovalEvent `json:"context_compaction_removal,omitempty"`
+	ContextCompaction        *interactive.ContextCompactionEvent        `json:"context_compaction"`
+	ContextCompactionRemoval *interactive.ContextCompactionRemovalEvent `json:"context_compaction_removal"`
 }
 
 func (a *App) InteractiveStories() (interactive.Index, error) {
@@ -374,7 +375,36 @@ func (s *InteractiveAppService) InteractiveSnapshot(storyID, branchID string) (i
 	if store == nil {
 		return interactive.Snapshot{}, ErrNoWorkspace
 	}
-	return store.Snapshot(storyID, branchID)
+	snapshot, err := store.Snapshot(storyID, branchID)
+	if err != nil {
+		return interactive.Snapshot{}, err
+	}
+	s.app.mu.RLock()
+	workspace := s.app.workspace
+	executionRuntime := s.app.executionRuntime
+	s.app.mu.RUnlock()
+	// Agent Session is the only checkpoint authority. Story Store continues to
+	// own turns and state, while this API projects the current checkpoint into
+	// the established game response shape.
+	snapshot.ContextCompaction = nil
+	snapshot.ContextCompactionRemoval = nil
+	if executionRuntime == nil {
+		return snapshot, nil
+	}
+	status, err := executionRuntime.RuntimeStatusProjection(context.Background(), agentrun.Options{
+		AgentKind: agentrun.AgentKindInteractiveStory, Workspace: workspace,
+		StoryID: storyID, BranchID: snapshot.BranchID, Mode: "interactive",
+	})
+	if err != nil {
+		return interactive.Snapshot{}, err
+	}
+	snapshot.ContextCompaction, err = interactiveapp.ProjectAgentCompaction(
+		status.Compaction, storyID, snapshot.BranchID,
+	)
+	if err != nil {
+		return interactive.Snapshot{}, err
+	}
+	return snapshot, nil
 }
 
 func (a *App) InteractiveHistoryPage(storyID, branchID, beforeCursor string, limit int) (interactive.StoryHistoryPage, error) {

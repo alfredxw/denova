@@ -440,6 +440,7 @@ type ToolResult struct {
 	ContextHints     *ToolResultContextHints     `json:"context_hints,omitempty"`
 	ProtectedReceipt *ToolResultProtectedReceipt `json:"protected_receipt,omitempty"`
 	Artifacts        []ToolArtifactRef           `json:"artifacts,omitempty"`
+	Effects          []Effect                    `json:"effects,omitempty"`
 }
 
 // TextToolResult constructs the common successful text result.
@@ -549,6 +550,17 @@ func NormalizeToolResult(result ToolResult, descriptor ToolDescriptor) (ToolResu
 		return ToolResult{}, fmt.Errorf("tool artifact metadata exceeds %d bytes", artifactMetadataLimit)
 	}
 	result.Artifacts = append([]ToolArtifactRef(nil), result.Artifacts...)
+	if len(result.Effects) > 64 {
+		return ToolResult{}, fmt.Errorf("tool result has %d effects; maximum is 64", len(result.Effects))
+	}
+	for index := range result.Effects {
+		result.Effects[index].Kind = strings.TrimSpace(result.Effects[index].Kind)
+		result.Effects[index].Data = append(json.RawMessage(nil), result.Effects[index].Data...)
+		if result.Effects[index].Kind == "" || len(result.Effects[index].Kind) > 4096 || !json.Valid(result.Effects[index].Data) {
+			return ToolResult{}, fmt.Errorf("tool result effect %d is invalid", index)
+		}
+	}
+	result.Effects = append([]Effect(nil), result.Effects...)
 	if result.Metadata.ArtifactPersistence != nil {
 		persistence := *result.Metadata.ArtifactPersistence
 		if err := validateToolArtifactPersistence(persistence); err != nil {

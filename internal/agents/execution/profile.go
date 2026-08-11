@@ -5,9 +5,6 @@ import (
 	"errors"
 	"fmt"
 	"strings"
-
-	agentstructural "denova/internal/agents/context/structural"
-	agentrun "denova/internal/agents/run"
 )
 
 // ProfileID is the stable product execution profile persisted in a durable
@@ -19,55 +16,27 @@ const (
 	ProfileWriting       ProfileID = "writing"
 	ProfileAgentChat     ProfileID = "agent_chat"
 	ProfileGame          ProfileID = "game"
-	ProfileAutomation    ProfileID = "automation"
 	ProfileConfigManager ProfileID = "config_manager"
 	ProfileImage         ProfileID = "image"
-	ProfileDirector      ProfileID = "director"
 )
 
 var (
-	ErrProfileInvalid                  = errors.New("agent execution profile is invalid")
-	ErrProfileDuplicate                = errors.New("agent execution profile is already registered")
-	ErrProfileNotFound                 = errors.New("agent execution profile is not registered")
-	ErrInputMaterializationUnavailable = errors.New("agent execution input materialization capability is unavailable")
-	ErrDomainCommitUnavailable         = errors.New("agent execution domain commit capability is unavailable")
+	ErrProfileInvalid   = errors.New("agent execution profile is invalid")
+	ErrProfileDuplicate = errors.New("agent execution profile is already registered")
+	ErrProfileNotFound  = errors.New("agent execution profile is not registered")
 )
 
-// Profile is the stable identity for one product execution adapter. Optional
-// runtime behavior is expressed only through the capability interfaces below;
-// profiles never publish nil callbacks or methods that are designed to fail.
+// Profile identifies one Denova product adapter that can rebuild a public
+// Agent Definition from durable host data.
 type Profile interface {
 	ID() ProfileID
 }
 
-// QueuedCycleProfile rebuilds process-local dependencies for an accepted
-// queued or cold-recovered cycle. Start-only profiles do not implement it.
+// QueuedCycleProfile rebuilds process-local dependencies for any accepted or
+// cold-recovered cycle. Every registered Denova profile must implement it.
 type QueuedCycleProfile interface {
 	Profile
 	PrepareCycle(context.Context, CycleRestoreRequest) (Cycle, error)
-}
-
-// InputProfile owns canonical user-input planning and idempotent append.
-// Profiles without canonical user input do not implement it.
-type InputProfile interface {
-	Profile
-	PlanInput(context.Context, InputMaterializationRequest) (agentrun.InputMaterializationPlan, error)
-	MaterializeInput(context.Context, InputMaterializationRequest, agentrun.InputMaterializationPlan) (agentrun.InputMaterializationReceipt, error)
-}
-
-// DomainCommitProfile reconciles an exact durable commit identity against the
-// owning canonical store. It is required by InputProfile and StructuralProfile.
-type DomainCommitProfile interface {
-	Profile
-	ReconcileDomainCommit(context.Context, agentrun.DomainCommitReconcileRequest) (agentrun.DomainCommitReconcileResult, error)
-}
-
-// StructuralProfile is implemented only by profiles that support durable
-// context compaction or removal. The capability is explicit at registration;
-// recovery never guesses support from Agent kind.
-type StructuralProfile interface {
-	Profile
-	RestoreStructural(context.Context, StructuralRestoreRequest) (agentstructural.Spec, error)
 }
 
 type profileRegistry struct {
@@ -87,34 +56,17 @@ func newProfileRegistry(profiles []Profile) (*profileRegistry, error) {
 		if _, exists := registry.profiles[id]; exists {
 			return nil, fmt.Errorf("%w: %q", ErrProfileDuplicate, id)
 		}
-		if err := validateProfileCapabilities(profile); err != nil {
-			return nil, fmt.Errorf("%w: profile %q: %v", ErrProfileInvalid, id, err)
+		if _, ok := profile.(QueuedCycleProfile); !ok {
+			return nil, fmt.Errorf("%w: profile %q cannot prepare a cycle", ErrProfileInvalid, id)
 		}
 		registry.profiles[id] = profile
 	}
 	return registry, nil
 }
 
-func validateProfileCapabilities(profile Profile) error {
-	_, queued := profile.(QueuedCycleProfile)
-	_, input := profile.(InputProfile)
-	_, domain := profile.(DomainCommitProfile)
-	_, structural := profile.(StructuralProfile)
-	if !queued && !input && !domain && !structural {
-		return errors.New("no execution capability is registered")
-	}
-	if input && !domain {
-		return errors.New("input materialization requires domain commit reconciliation")
-	}
-	if structural && !domain {
-		return errors.New("structural recovery requires domain commit reconciliation")
-	}
-	return nil
-}
-
 func validProfileID(id ProfileID) bool {
 	switch id {
-	case ProfileWriting, ProfileAgentChat, ProfileGame, ProfileAutomation, ProfileConfigManager, ProfileImage, ProfileDirector:
+	case ProfileWriting, ProfileAgentChat, ProfileGame, ProfileConfigManager, ProfileImage:
 		return true
 	default:
 		return false
@@ -131,8 +83,4 @@ func (registry *profileRegistry) profile(id string) (Profile, error) {
 		return nil, fmt.Errorf("%w: %q", ErrProfileNotFound, resolved)
 	}
 	return profile, nil
-}
-
-func (registry *profileRegistry) empty() bool {
-	return registry == nil || len(registry.profiles) == 0
 }

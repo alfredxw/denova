@@ -6,6 +6,11 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### Changed
+
+- Agent 核心迁移为可组合、可持久恢复的 `Agent -> Session -> Run` 公共生命周期：Session Store、Tools、Context、Goal、Compaction、Permission、Interaction、Canonical Adapter 与 Middleware 均可按 Interface 选择内置实现或自由替换；read/glob/grep/write/edit、bash/pwsh、ask、todo、skill、task 作为通用工具集提供，web search、web fetch、browser 作为可选插件提供。Denova 的 Writing、Game、General、Config、Image、Director 与 Automation 主执行链统一使用公共 Agent Session/Run，同时继续由产品层定义 lore、book、story、interactive 以及现有 Goal/Ask/approval UI 契约。控制命令现在返回可跨重启重放的 durable receipt；公共 Agent Session 统一拥有 transcript、compaction、canonical commit、host effect 与 recovery，Denova 自定义交互仍作为 product capability 接入；本开发周期内旧 execution coordinator、旧 runtime journal 恢复和双重 compaction middleware 已删除，不提供兼容层。
+- The Agent core now uses a composable, durably recoverable `Agent -> Session -> Run` public lifecycle. Session Store, Tools, Context, Goal, Compaction, Permission, Interaction, Canonical Adapter, and Middleware can each use built-ins or custom Interface implementations. Common read/glob/grep/write/edit, bash/pwsh, ask, todo, skill, and task toolsets are included, while web search, web fetch, and browser remain optional plugins. Denova Writing, Game, General, Config, Image, Director, and Automation root execution now share public Agent Sessions/Runs while lore, book, story, interactive, and the existing Goal/Ask/approval UI contracts remain product-owned capabilities. Control commands return restart-replayable durable receipts. Public Agent Session owns transcript, compaction, canonical commit, host effects, and recovery, while Denova custom interactions plug in as product capabilities. The obsolete execution coordinator, legacy runtime-journal recovery, and dual compaction middleware from this unreleased cycle were removed without compatibility layers.
+
 ### Removed
 
 - 清理本开发周期内未发布的过渡兼容层：Agent 工具结果与 runtime journal 只保留最终契约，项目 registry / migration receipt 与自动化 runtime receipt 只接受最终版本，游戏故事只写共享 Conversation Journal 格式，玩家输入 checkpoint 只接受最终字段，AgentChat 工作台与终端只恢复最终状态结构。同步移除旧字段、双写、回填、推断、一次性修复及其专用测试；master 已发布的配置、项目、会话、故事和自动化数据读取能力保持不变。

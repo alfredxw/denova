@@ -10,9 +10,9 @@ import (
 )
 
 func TestAskRegistrationRequiresInteractiveTopLevelHost(t *testing.T) {
-	var captured agent.AgentConfig
+	var captured agent.LoopConfig
 	previous := newNativeAgent
-	newNativeAgent = func(_ context.Context, cfg agent.AgentConfig) (agent.Runnable, error) {
+	newNativeAgent = func(_ context.Context, cfg agent.LoopConfig) (agent.Runnable, error) {
 		captured = cfg
 		return fakeAgent{name: cfg.Name, description: cfg.Description}, nil
 	}
@@ -20,7 +20,7 @@ func TestAskRegistrationRequiresInteractiveTopLevelHost(t *testing.T) {
 
 	build := func(kind string, interactive bool) map[string]bool {
 		t.Helper()
-		captured = agent.AgentConfig{}
+		captured = agent.LoopConfig{}
 		cfg := askOnlyAgentConfig(t, kind)
 		if _, err := buildAgent(context.Background(), cfg, agentBuildSpec{
 			Kind: kind, Name: "ask-registration-test", Description: "test",

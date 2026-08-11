@@ -60,6 +60,7 @@ type Conversation struct {
 	pendingCompaction        *preparedInteractiveContextCompaction
 	pendingCompactionHealth  *preparedInteractiveContextCompactionHealth
 	pendingCleanup           *preparedInteractiveToolResultCleanup
+	agentCompaction          *interactive.ContextCompactionEvent
 	modelHistoryKey          string
 	modelHistory             *interactive.StoryModelHistory
 	openingStateSchemaDraft  *interactive.ActorStateSchemaBatchDraft
@@ -680,6 +681,56 @@ func (c *Conversation) CommitModelInput(ctx context.Context, _ string, assembled
 	c.stableLeadingMessage = state.stableLeadingMessage
 	c.mu.Unlock()
 	return nil
+}
+
+// MaterializeAgentCanonicalInput records the accepted player input before
+// model-context assembly. The matching live cycle is excluded from interrupted
+// input projection when its context is assembled immediately afterwards.
+func (c *Conversation) MaterializeAgentCanonicalInput(
+	ctx context.Context,
+	agentCanonicalHash string,
+) (interactive.PlayerInputReceipt, error) {
+	if c == nil || c.store == nil {
+		return interactive.PlayerInputReceipt{}, fmt.Errorf("互动故事不存在")
+	}
+	if err := ctx.Err(); err != nil {
+		return interactive.PlayerInputReceipt{}, err
+	}
+	identity := c.AgentCycleIdentitySnapshot()
+	if !agentrun.ValidCycleIdentity(identity) {
+		return interactive.PlayerInputReceipt{}, fmt.Errorf("canonical game input requires an exact Agent cycle identity")
+	}
+	intent, err := interactive.NewPlayerInputIntent(interactive.DomainCommitIdentity{
+		CommandID: string(identity.CommandID), OperationID: string(identity.OperationID), Cycle: identity.Cycle,
+	}, c.branchID, c.user)
+	if err != nil {
+		return interactive.PlayerInputReceipt{}, err
+	}
+	intent, err = intent.WithAgentCanonicalHash(agentCanonicalHash)
+	if err != nil {
+		return interactive.PlayerInputReceipt{}, err
+	}
+	return c.store.CommitPlayerInput(c.storyID, intent)
+}
+
+func (c *Conversation) FindRecentAgentCanonicalInput(
+	identity interactive.DomainCommitIdentity,
+	hash string,
+) (interactive.PlayerInputReceipt, bool, error) {
+	if c == nil || c.store == nil {
+		return interactive.PlayerInputReceipt{}, false, fmt.Errorf("互动故事不存在")
+	}
+	return c.store.FindRecentAgentCanonicalPlayerInputCommit(c.storyID, c.branchID, identity, hash)
+}
+
+func (c *Conversation) FindRecentAgentCanonicalOutput(
+	identity interactive.DomainCommitIdentity,
+	hash string,
+) (interactive.DomainCommitReceipt, bool, error) {
+	if c == nil || c.store == nil {
+		return interactive.DomainCommitReceipt{}, false, fmt.Errorf("互动故事不存在")
+	}
+	return c.store.FindRecentAgentCanonicalDomainTurnCommit(c.storyID, c.branchID, identity, hash)
 }
 
 func (c *Conversation) ContextSourceSummary() string {

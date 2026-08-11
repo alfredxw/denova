@@ -2,6 +2,7 @@ package runtime
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"log/slog"
@@ -9,7 +10,7 @@ import (
 )
 
 func (h *Harness) startEngine(state *harnessState, snapshot TurnSnapshot) {
-	controls := make(chan EngineControl, 8)
+	controls := make(chan EngineControl, state.memoryLimits.normalized().MaxPendingInteractions+4)
 	state.engineControls = controls
 	request := EngineRequest{Binding: h.binding.Clone(), Snapshot: snapshot, Controls: controls}
 	go func() {
@@ -85,6 +86,17 @@ func (h *Harness) handleEngineEvent(state *harnessState, request engineEventRequ
 		}
 		_, err := h.commit(context.Background(), state, []EventPayload{HostEffectAcknowledgedEvent{ID: event.ID}})
 		return err
+	case EngineCapabilityState:
+		payload := CapabilityStateCommittedEvent{
+			Capability: event.Capability, Expected: event.Expected,
+			State: cloneRawMessage(event.State), Deleted: event.Delete,
+			OperationID: request.operation, Cycle: request.cycle,
+		}
+		if err := state.validateCapabilityStateEvent(payload); err != nil {
+			return err
+		}
+		_, err := h.commit(context.Background(), state, []EventPayload{payload})
+		return err
 	}
 	if state.phase == PhaseCompacting {
 		return fmt.Errorf("unsupported structural engine event %T", request.event)
@@ -93,35 +105,109 @@ func (h *Harness) handleEngineEvent(state *harnessState, request engineEventRequ
 		// A known completion for a tool that was already running still improves
 		// recovery accuracy. Every other late event is rejected so accepted abort
 		// cannot commit new assistant output or begin another side effect.
-		if _, toolFinished := request.event.(EngineToolFinished); !toolFinished {
+		_, toolFinished := request.event.(EngineToolFinished)
+		_, stateCheckpoint := request.event.(EngineStateCheckpoint)
+		if !toolFinished && !stateCheckpoint {
 			return fmt.Errorf("engine event %T rejected after operation abort", request.event)
 		}
 	}
 	switch event := request.event.(type) {
 	case EngineAssistantDelta:
-		if err := state.admitActiveBytes(ByteBudgetActiveOutput, len(event.Delta)); err != nil {
-			h.publishByteBudgetExceeded(state, err)
+		if err := validateEventSource(event.Source); err != nil {
 			return err
 		}
-		state.activeContent.WriteString(event.Delta)
+		if !event.DisplayOnly {
+			if err := state.admitActiveBytes(ByteBudgetActiveOutput, len(event.Delta)); err != nil {
+				h.publishByteBudgetExceeded(state, err)
+				return err
+			}
+			state.activeContent.WriteString(event.Delta)
+		} else if int64(len(event.Delta)) > state.memoryLimits.normalized().MaxActiveOutputBytes {
+			return &ByteBudgetError{Scope: ByteBudgetActiveOutput, Incoming: int64(len(event.Delta)), Limit: state.memoryLimits.normalized().MaxActiveOutputBytes}
+		}
 		state.publish(Event{
 			Cursor: state.cursor, Durability: EventEphemeral,
-			Payload: AssistantDeltaEvent{OperationID: state.activeOperation, Delta: event.Delta},
+			Payload: AssistantDeltaEvent{
+				OperationID: state.activeOperation, Source: cloneEventSource(event.Source),
+				Delta: event.Delta, DisplayOnly: event.DisplayOnly,
+			},
 		})
 		return nil
 	case EngineThinkingDelta:
-		if err := state.admitActiveBytes(ByteBudgetActiveOutput, len(event.Delta)); err != nil {
+		if err := validateEventSource(event.Source); err != nil {
+			return err
+		}
+		if !event.DisplayOnly {
+			if err := state.admitActiveBytes(ByteBudgetActiveOutput, len(event.Delta)); err != nil {
+				h.publishByteBudgetExceeded(state, err)
+				return err
+			}
+			state.activeThinking.WriteString(event.Delta)
+		} else if int64(len(event.Delta)) > state.memoryLimits.normalized().MaxActiveOutputBytes {
+			return &ByteBudgetError{Scope: ByteBudgetActiveOutput, Incoming: int64(len(event.Delta)), Limit: state.memoryLimits.normalized().MaxActiveOutputBytes}
+		}
+		state.publish(Event{
+			Cursor: state.cursor, Durability: EventEphemeral,
+			Payload: ThinkingDeltaEvent{
+				OperationID: state.activeOperation, Source: cloneEventSource(event.Source),
+				Delta: event.Delta, DisplayOnly: event.DisplayOnly,
+			},
+		})
+		return nil
+	case EngineModelCompleted:
+		if err := validateEventSource(event.Source); err != nil {
+			return err
+		}
+		if event.Usage.PromptTokens < 0 || event.Usage.CachedPromptTokens < 0 ||
+			event.Usage.CompletionTokens < 0 || event.Usage.ReasoningTokens < 0 || event.Usage.TotalTokens < 0 {
+			return fmt.Errorf("model usage cannot contain negative token counts")
+		}
+		if event.Usage.CachedPromptTokens > event.Usage.PromptTokens ||
+			event.Usage.ReasoningTokens > event.Usage.CompletionTokens {
+			return fmt.Errorf("model usage token details exceed their totals")
+		}
+		requested := append([]string(nil), event.RequestedTools...)
+		state.publish(Event{Cursor: state.cursor, Durability: EventEphemeral, Payload: ModelCompletedEvent{
+			OperationID: state.activeOperation, Cycle: state.activeCycle, Usage: event.Usage,
+			FinishReason: event.FinishReason, RequestedTools: requested, Source: cloneEventSource(event.Source),
+		}})
+		return nil
+	case EngineStateCheckpoint:
+		if err := state.validateEngineState(event.State); err != nil {
 			h.publishByteBudgetExceeded(state, err)
 			return err
 		}
-		state.activeThinking.WriteString(event.Delta)
-		state.publish(Event{
-			Cursor: state.cursor, Durability: EventEphemeral,
-			Payload: ThinkingDeltaEvent{OperationID: state.activeOperation, Delta: event.Delta},
-		})
-		return nil
+		if event.State == nil {
+			return fmt.Errorf("engine state checkpoint cannot be nil")
+		}
+		_, err := h.commit(context.Background(), state, []EventPayload{EngineStateCommittedEvent{
+			State: cloneRawMessage(event.State), Descriptor: describePayload(event.State),
+		}})
+		return err
+	case EngineInteractionRequested:
+		payload := InteractionRequestedEvent{
+			ID: event.ID, OperationID: request.operation, Cycle: request.cycle,
+			ToolCallID: event.ToolCallID, Request: cloneRawMessage(event.Request),
+			Descriptor: describePayload(event.Request),
+		}
+		if existing, exists := state.interactions[event.ID]; exists {
+			if existing.OperationID == request.operation && existing.Cycle == request.cycle &&
+				existing.ToolCallID == event.ToolCallID && string(existing.Request) == string(event.Request) {
+				return nil
+			}
+			return fmt.Errorf("%w: interaction id belongs to another request", ErrInvalidCommand)
+		}
+		if err := state.validateInteractionRequest(payload); err != nil {
+			return err
+		}
+		_, err := h.commit(context.Background(), state, []EventPayload{payload})
+		return err
 	case EngineAssistantFinal:
 		if err := state.admitFinalOutput(event.Content, event.Thinking); err != nil {
+			h.publishByteBudgetExceeded(state, err)
+			return err
+		}
+		if err := state.validateEngineState(event.State); err != nil {
 			h.publishByteBudgetExceeded(state, err)
 			return err
 		}
@@ -133,32 +219,103 @@ func (h *Harness) handleEngineEvent(state *harnessState, request engineEventRequ
 		state.activeThinking.Reset()
 		state.activeThinking.WriteString(event.Thinking)
 		state.activeOutputRehydrated = false
-		_, err := h.commit(context.Background(), state, []EventPayload{
-			AssistantMessageCommittedEvent{Message: Message{
-				ID: newID("message"), Role: RoleAssistant,
-				Content: event.Content, Thinking: event.Thinking,
-				Operation: state.activeOperation,
-			}},
-		})
+		payloads := make([]EventPayload, 0, 4)
+		if event.State != nil {
+			payloads = append(payloads, EngineStateCommittedEvent{
+				State: cloneRawMessage(event.State), Descriptor: describePayload(event.State),
+			})
+		}
+		payloads = append(payloads, AssistantMessageCommittedEvent{Message: Message{
+			ID: newID("message"), Role: RoleAssistant,
+			Content: event.Content, Thinking: event.Thinking,
+			Operation: state.activeOperation,
+		}})
+		if event.Continuation != nil && !state.hasQueued(DeliverySteer) && !state.hasQueued(DeliveryFollowUp) {
+			continuation := *event.Continuation
+			if !continuation.Autonomous {
+				return fmt.Errorf("engine continuation must be autonomous")
+			}
+			if err := ValidateCommandID(string(continuation.CommandID), h.inputLimits); err != nil {
+				return fmt.Errorf("invalid engine continuation command: %w", err)
+			}
+			if err := validateUserInput(continuation.Input, h.inputLimits); err != nil {
+				return fmt.Errorf("invalid engine continuation input: %w", err)
+			}
+			command := FollowUp{
+				ID: continuation.CommandID, OperationID: state.activeOperation,
+				Input: cloneUserInput(continuation.Input),
+			}
+			fingerprint, err := CommandFingerprint(command)
+			if err != nil {
+				return fmt.Errorf("fingerprint engine continuation: %w", err)
+			}
+			if existing, ok := state.receipts[continuation.CommandID]; ok {
+				if existing.OperationID != state.activeOperation || state.fingerprints[continuation.CommandID] != fingerprint {
+					return fmt.Errorf("%w: engine continuation command id was already used", ErrInvalidCommand)
+				}
+			} else {
+				if err := state.admitPendingInput(continuation.Input); err != nil {
+					return err
+				}
+				payloads = append(payloads,
+					CommandAcceptedEvent{
+						CommandID: continuation.CommandID, CommandKind: "engine_continuation",
+						OperationID: state.activeOperation, Fingerprint: fingerprint,
+					},
+					QueueEnqueuedEvent{Item: QueuedInput{
+						CommandID: continuation.CommandID, OperationID: state.activeOperation,
+						Delivery: DeliveryFollowUp, Input: cloneUserInput(continuation.Input), Autonomous: true,
+					}},
+				)
+			}
+		}
+		_, err := h.commit(context.Background(), state, payloads)
 		return err
 	case EngineToolStarted:
 		if strings.TrimSpace(event.CallID) == "" || strings.TrimSpace(event.Name) == "" {
 			return fmt.Errorf("tool start requires call id and name")
 		}
-		if _, exists := state.openToolCalls[event.CallID]; exists {
-			return fmt.Errorf("tool call %q already started", event.CallID)
+		if err := validateEventSource(event.Source); err != nil {
+			return err
+		}
+		if existing, exists := state.openToolCalls[event.CallID]; exists {
+			if existing.OperationID == state.activeOperation && existing.Cycle == state.activeCycle && existing.Name == event.Name &&
+				existing.ArgumentsDescriptor == describePayload(event.Arguments) && eventSourcesEqual(existing.Source, event.Source) {
+				state.publish(Event{Cursor: state.cursor, Durability: EventEphemeral, Payload: ToolInputEvent{
+					OperationID: state.activeOperation, Cycle: state.activeCycle,
+					CallID: event.CallID, Name: event.Name, Arguments: cloneRawMessage(event.Arguments),
+					Source: cloneEventSource(event.Source),
+				}})
+				return nil
+			}
+			return fmt.Errorf("tool call %q already started with a different identity", event.CallID)
 		}
 		_, err := h.commit(context.Background(), state, []EventPayload{
 			ToolCallStartedEvent{Call: ToolCallState{
 				CallID: event.CallID, Name: event.Name,
 				ArgumentsDescriptor: describePayload(event.Arguments),
 				OperationID:         state.activeOperation, Cycle: state.activeCycle,
+				Source: cloneEventSource(event.Source),
 			}},
 		})
+		if err == nil {
+			state.publish(Event{Cursor: state.cursor, Durability: EventEphemeral, Payload: ToolInputEvent{
+				OperationID: state.activeOperation, Cycle: state.activeCycle,
+				CallID: event.CallID, Name: event.Name, Arguments: cloneRawMessage(event.Arguments),
+				Source: cloneEventSource(event.Source),
+			}})
+		}
 		return err
 	case EngineToolProgress:
-		if _, exists := state.openToolCalls[event.CallID]; !exists {
+		call, exists := state.openToolCalls[event.CallID]
+		if !exists {
 			return fmt.Errorf("progress for unknown tool call %q", event.CallID)
+		}
+		if err := validateEventSource(event.Source); err != nil {
+			return err
+		}
+		if !eventSourcesEqual(call.Source, event.Source) {
+			return fmt.Errorf("tool progress source does not match call %q", event.CallID)
 		}
 		if int64(len(event.Delta)) > state.memoryLimits.normalized().MaxActiveOutputBytes {
 			err := &ByteBudgetError{
@@ -171,13 +328,32 @@ func (h *Harness) handleEngineEvent(state *harnessState, request engineEventRequ
 		}
 		state.publish(Event{
 			Cursor: state.cursor, Durability: EventEphemeral,
-			Payload: ToolProgressEvent{CallID: event.CallID, Delta: event.Delta},
+			Payload: ToolProgressEvent{CallID: event.CallID, Delta: event.Delta, Source: cloneEventSource(event.Source)},
 		})
 		return nil
+	case EngineArtifactProduced:
+		call, exists := state.openToolCalls[event.CallID]
+		if !exists || call.OperationID != state.activeOperation || call.Cycle != state.activeCycle {
+			return fmt.Errorf("artifact for unknown tool call %q", event.CallID)
+		}
+		if len(event.Artifact) == 0 || len(event.Artifact) > 256<<10 || !json.Valid(event.Artifact) {
+			return fmt.Errorf("tool artifact metadata must contain valid JSON of at most %d bytes", 256<<10)
+		}
+		_, err := h.commit(context.Background(), state, []EventPayload{ArtifactProducedEvent{
+			OperationID: state.activeOperation, Cycle: state.activeCycle,
+			CallID: event.CallID, Artifact: cloneRawMessage(event.Artifact),
+		}})
+		return err
 	case EngineToolFinished:
 		call, exists := state.openToolCalls[event.CallID]
 		if !exists {
 			return fmt.Errorf("finish unknown tool call %q", event.CallID)
+		}
+		if err := validateEventSource(event.Source); err != nil {
+			return err
+		}
+		if !eventSourcesEqual(call.Source, event.Source) {
+			return fmt.Errorf("tool finish source does not match call %q", event.CallID)
 		}
 		name := event.Name
 		if name == "" {
@@ -210,6 +386,13 @@ func (h *Harness) handleEngineEvent(state *harnessState, request engineEventRequ
 				IsError: event.IsError, RetrySafety: retrySafety, HostEffects: effects,
 			},
 		})
+		if err == nil {
+			state.publish(Event{Cursor: state.cursor, Durability: EventEphemeral, Payload: ToolOutputEvent{
+				OperationID: state.activeOperation, Cycle: state.activeCycle,
+				CallID: event.CallID, Name: name, Result: event.Result, IsError: event.IsError,
+				Source: cloneEventSource(event.Source), Projection: cloneRawMessage(event.Projection),
+			}})
+		}
 		return err
 	default:
 		return fmt.Errorf("unsupported engine event %T", request.event)
@@ -436,16 +619,28 @@ func (h *Harness) startQueuedCycle(state *harnessState, item QueuedInput) {
 	// later command that only its own exact replay can reconstruct.
 	nextCycle := state.activeCycle + 1
 	snapshotID := SnapshotID(newID("snapshot"))
-	_, err := h.commit(context.Background(), state, []EventPayload{
+	capabilities, err := h.prepareAdmission(context.Background(), state, item.CommandID, state.activeOperation, nextCycle, item.Input)
+	if err != nil {
+		h.failActiveOperation(state, engineDoneRequest{
+			operation: state.activeOperation, cycle: state.activeCycle,
+			err: fmt.Errorf("prepare queued cycle admission: %w", err),
+		})
+		return
+	}
+	payloads := []EventPayload{
 		SavePointCommittedEvent{OperationID: state.activeOperation, Cycle: state.activeCycle},
 		QueueConsumedEvent{CommandID: item.CommandID, Delivery: item.Delivery},
+	}
+	payloads = append(payloads, capabilities...)
+	payloads = append(payloads,
 		UserMessageCommittedEvent{Message: newUserMessage(state.activeOperation, item.Input)},
 		CycleStartedEvent{OperationID: state.activeOperation, Cycle: nextCycle, SnapshotID: snapshotID},
 		InputMaterializationRecoveryPendingEvent{
 			OperationID: state.activeOperation, Cycle: nextCycle,
-			CommandID: item.CommandID, Delivery: item.Delivery,
+			CommandID: item.CommandID, Delivery: item.Delivery, Autonomous: item.Autonomous,
 		},
-	})
+	)
+	_, err = h.commit(context.Background(), state, payloads)
 	if err != nil {
 		// The actor must not remain "running" without an engine. Closing the
 		// harness leaves the unfinished durable operation for conservative
@@ -500,172 +695,4 @@ func (h *Harness) failActiveOperation(state *harnessState, request engineDoneReq
 		panic(fmt.Sprintf("operation %s failed to record terminal state: %v", operationID, err))
 	}
 	_ = h.startPlannedNextTurn(state, plan)
-}
-
-func (h *Harness) uncertainToolResults(state *harnessState) []EventPayload {
-	calls := state.activeToolCalls()
-	payloads := make([]EventPayload, 0, len(calls))
-	for _, call := range calls {
-		payloads = append(payloads, ToolCallFinishedEvent{
-			CallID: call.CallID, Name: call.Name,
-			ResultDescriptor: describePayload([]byte(UnknownToolEffectResult)),
-			IsError:          true, RetrySafety: RetryUnknown,
-		})
-	}
-	return payloads
-}
-
-func (h *Harness) recoverUnfinished(ctx context.Context, state *harnessState) error {
-	if state.phase == PhaseIdle {
-		if err := h.abandonUncommittedHostEffects(ctx, state, "idle runtime has no active cycle output receipt"); err != nil {
-			return err
-		}
-		// Opening a binding is a reconciliation boundary, not permission to run
-		// user work. Keep durable NextTurn input queued until the caller replays
-		// that exact command; only transient inputs need deterministic cleanup.
-		payloads := transientQueueCancellations(state, "runtime_recovered")
-		if len(payloads) == 0 {
-			return nil
-		}
-		if _, err := h.commit(ctx, state, payloads); err != nil {
-			return fmt.Errorf("recover idle input queue: %w", err)
-		}
-		return nil
-	}
-	if state.inputRecovery != nil && !state.abortRequested {
-		// The selected queued cycle has not crossed its canonical-input outbox.
-		// Opening is attach-only; its exact safe action retries materialization.
-		return nil
-	}
-	if err := h.ensureInputMaterialized(ctx, state); err != nil {
-		return fmt.Errorf("recover accepted input: %w", err)
-	}
-	if err := h.reconcilePendingDomainCommits(ctx, state); err != nil {
-		return err
-	}
-	if err := h.reconcileRecoveredHostEffects(ctx, state); err != nil {
-		return err
-	}
-	operationID := state.activeOperation
-	// Recovery may reconcile canonical state, but it must never restore and
-	// execute a queued turn implicitly. Exact command replay resumes it later.
-	plan := h.planNextTurn(ctx, state, false)
-	// A reconciled output receipt is terminal evidence, not an uncertain engine
-	// attempt. Preserve its precedence before the general recovery-pause rule.
-	if state.pendingDomainCommit() == nil && state.acknowledgedOutputCommit() != nil {
-		payloads := []EventPayload{SavePointCommittedEvent{OperationID: operationID, Cycle: state.activeCycle}}
-		payloads = append(payloads, OperationSettledEvent{
-			OperationID: operationID,
-			Status:      OperationSucceeded,
-			Reason:      appendOperationReason("recovered acknowledged domain commit", plan.pendingReason()),
-		})
-		payloads = plan.appendStart(payloads)
-		if _, err := h.commit(ctx, state, payloads); err != nil {
-			return fmt.Errorf("recover acknowledged domain commit %s: %w", operationID, err)
-		}
-		return nil
-	}
-	if state.abortRequested {
-		payloads := h.uncertainToolResults(state)
-		payloads = append(payloads, transientQueueCancellations(state, "runtime_recovered")...)
-		reason := strings.TrimSpace(state.abortReason)
-		if reason == "" {
-			reason = "agent operation aborted"
-		}
-		payloads = append(payloads, OperationSettledEvent{
-			OperationID: operationID,
-			Status:      OperationAborted,
-			Reason:      appendOperationReason(reason, plan.pendingReason()),
-		})
-		payloads = plan.appendStart(payloads)
-		if _, err := h.commit(ctx, state, payloads); err != nil {
-			return fmt.Errorf("recover aborted operation %s: %w", operationID, err)
-		}
-		return nil
-	}
-	// A crashed Running operation remains an explicit recovery boundary even when
-	// no follow-up was accepted before the process disappeared. Opening the
-	// binding must not rerun its StartTurn or disguise it as idle: after a display
-	// task reattaches, a fresh Steer/FollowUp/Abort/NextTurn can deterministically
-	// resume, terminate, or supersede the uncertain parent.
-	if state.phase == PhaseCompacting || state.phase == PhaseRunning {
-		return h.pauseRecoveredOperation(ctx, state)
-	}
-	payloads := h.uncertainToolResults(state)
-	payloads = append(payloads, transientQueueCancellations(state, "runtime_recovered")...)
-	reason := "runtime recovered an unfinished operation; no engine or tool effect was retried"
-	if pending := state.pendingDomainCommit(); pending != nil {
-		reason = fmt.Sprintf("runtime recovered an authorized %s domain commit without a receipt; canonical state requires reconciliation", pending.Identity.Stage)
-	}
-	reason = appendOperationReason(reason, plan.pendingReason())
-	payloads = append(payloads, OperationInterruptedEvent{
-		OperationID: operationID,
-		Reason:      reason,
-	})
-	payloads = plan.appendStart(payloads)
-	if _, err := h.commit(ctx, state, payloads); err != nil {
-		return fmt.Errorf("recover unfinished operation %s: %w", operationID, err)
-	}
-	return nil
-}
-
-type acceptedNextTurnSettlement uint8
-
-const (
-	resumeAcceptedNextTurn acceptedNextTurnSettlement = iota
-	preserveAcceptedNextTurn
-)
-
-func (h *Harness) settleSuccessfulOperation(
-	state *harnessState,
-	warning string,
-	nextTurn acceptedNextTurnSettlement,
-	transientCancellationReason string,
-) {
-	operationID := state.activeOperation
-	plan := h.planNextTurn(h.lifecycle, state, nextTurn == resumeAcceptedNextTurn && !state.closing)
-	payloads := []EventPayload{SavePointCommittedEvent{OperationID: operationID, Cycle: state.activeCycle}}
-	if transientCancellationReason != "" {
-		payloads = append(payloads, transientQueueCancellations(state, transientCancellationReason)...)
-	}
-	payloads = append(payloads, OperationSettledEvent{
-		OperationID: operationID,
-		Status:      OperationSucceeded,
-		Reason:      appendOperationReason(warning, plan.pendingReason()),
-	})
-	payloads = plan.appendStart(payloads)
-	if _, err := h.commit(context.Background(), state, payloads); err != nil {
-		panic(fmt.Sprintf("operation %s failed to settle successfully: %v", operationID, err))
-	}
-	_ = h.startPlannedNextTurn(state, plan)
-}
-
-func (h *Harness) settleAcknowledgedOutput(state *harnessState, warning string) {
-	nextTurn := resumeAcceptedNextTurn
-	if state.closing {
-		nextTurn = preserveAcceptedNextTurn
-	}
-	h.settleSuccessfulOperation(state, warning, nextTurn, "late_error_after_acknowledged_output")
-}
-
-func acknowledgedOutputCompletionWarning(state *harnessState, request engineDoneRequest) (string, bool) {
-	if state.acknowledgedOutputCommit() == nil {
-		return "", false
-	}
-	var detail string
-	switch {
-	case request.err != nil:
-		detail = request.err.Error()
-	case state.abortRequested:
-		detail = "abort arrived after canonical output acknowledgement"
-	case request.result.Status == EngineAborted:
-		detail = "engine reported aborted after canonical output acknowledgement"
-	case len(state.activeToolCalls()) > 0:
-		detail = "engine returned with open tool effects after canonical output acknowledgement"
-	case request.result.Status != EngineCompleted && request.result.Status != EnginePreempted:
-		detail = fmt.Sprintf("engine returned unsupported status %q after canonical output acknowledgement", request.result.Status)
-	default:
-		return "", false
-	}
-	return "canonical output was acknowledged; late engine warning: " + strings.TrimSpace(detail), true
 }

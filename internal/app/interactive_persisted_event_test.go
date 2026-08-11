@@ -1,14 +1,18 @@
 package app
 
 import (
-	agentrun "denova/internal/agents/run"
-	interactivestate "denova/internal/interactive/state"
+	"context"
 	"encoding/json"
 	"testing"
+
+	agentrun "denova/internal/agents/run"
+	interactivestate "denova/internal/interactive/state"
 
 	interactiveapp "denova/internal/app/interactive"
 	"denova/internal/interactive"
 	"denova/internal/interactive/director"
+
+	agent "github.com/alfredxw/denova/agent"
 )
 
 func TestEmitInteractiveTurnPersistedUsesCurrentSnapshot(t *testing.T) {
@@ -36,6 +40,15 @@ func TestEmitInteractiveTurnPersistedUsesCurrentSnapshot(t *testing.T) {
 		Ops: []interactivestate.Op{
 			{Op: "merge", Path: "scene", Value: map[string]any{"location": "旧门外"}},
 		},
+	}); err != nil {
+		t.Fatal(err)
+	}
+	contextData, err := conversation.AgentCompactionContext(context.Background(), agent.CompactionCompactRequest{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := conversation.BindAgentCompaction(&agent.CompactionState{
+		ID: "agent-checkpoint", Revision: 2, Summary: "bounded current story", ContextData: contextData,
 	}); err != nil {
 		t.Fatal(err)
 	}
@@ -69,6 +82,10 @@ func TestEmitInteractiveTurnPersistedUsesCurrentSnapshot(t *testing.T) {
 	}
 	if payload.DirectorPlanStatus.Status != director.PlanStatusWaitingOpening {
 		t.Fatalf("payload director status mismatch: %#v", payload.DirectorPlanStatus)
+	}
+	if payload.ContextCompaction == nil || payload.ContextCompaction.ID != "agent-checkpoint" ||
+		payload.ContextCompaction.Summary != "bounded current story" {
+		t.Fatalf("payload Compaction must come from Agent Session projection: %#v", payload.ContextCompaction)
 	}
 	encoded, err := json.Marshal(payload)
 	if err != nil {

@@ -3,14 +3,14 @@ package automationapp
 import (
 	"context"
 	agentrun "denova/internal/agents/run"
-	"encoding/json"
 	"errors"
 	"os"
 	"path/filepath"
 	"testing"
 	"time"
 
-	filejournal "github.com/alfredxw/denova/agent/runtime/filejournal"
+	agentsession "github.com/alfredxw/denova/agent/session"
+	sessionfile "github.com/alfredxw/denova/agent/session/file"
 
 	"denova/config"
 	"denova/internal/automation"
@@ -417,25 +417,87 @@ func seedAutomationRuntimeJournal(t *testing.T, dataDir string, taskDef automati
 		projectID = taskDef.Target.ProjectID
 	}
 	ref := automationRuntimeBindingForTest(run.Workspace, run.SessionID, run.ID, projectID)
-	key, err := json.Marshal(ref)
+	seedAutomationAgentSession(t, dataDir, ref, events)
+}
+
+// seedAutomationAgentSession writes the current public Agent Session format.
+// Recovery tests intentionally construct post-crash state without teaching
+// production code to recognize the removed pre-package runtime journal.
+func seedAutomationAgentSession(t *testing.T, dataDir string, ref runstate.BindingRef, payloads []runstate.EventPayload) {
+	t.Helper()
+	binding, err := agentrun.ParseRuntimeBinding(ref)
 	if err != nil {
 		t.Fatal(err)
 	}
-	journalStore, err := filejournal.NewStore(filepath.Join(dataDir, "agent-runtime"))
+	key, err := binding.AgentSessionKey()
 	if err != nil {
 		t.Fatal(err)
 	}
-	journal, err := journalStore.OpenJournal(context.Background(), string(key))
+	store, err := sessionfile.New(filepath.Join(dataDir, "agent-sessions"))
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err := journal.Append(context.Background(), 0, events); err != nil {
-		_ = journal.Close()
+	log, err := store.Open(context.Background(), key)
+	if err != nil {
 		t.Fatal(err)
 	}
-	if err := journal.Close(); err != nil {
+	records := make([]agentsession.Record, len(payloads))
+	for index, payload := range payloads {
+		encoded, encodeErr := runstate.MarshalJournalEvent(runstate.Event{
+			Cursor: runstate.Cursor(index + 1), Durability: runstate.EventDurable, Payload: payload,
+		})
+		if encodeErr != nil {
+			_ = log.Close()
+			t.Fatal(encodeErr)
+		}
+		records[index] = agentsession.Record{Kind: "agent.runtime.event", Version: 1, Data: encoded}
+	}
+	if _, err := log.Append(context.Background(), 0, records...); err != nil {
+		_ = log.Close()
 		t.Fatal(err)
 	}
+	if err := log.Close(); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func readAutomationAgentSessionEvents(t *testing.T, dataDir string, ref runstate.BindingRef) []runstate.Event {
+	t.Helper()
+	binding, err := agentrun.ParseRuntimeBinding(ref)
+	if err != nil {
+		t.Fatal(err)
+	}
+	key, err := binding.AgentSessionKey()
+	if err != nil {
+		t.Fatal(err)
+	}
+	store, err := sessionfile.New(filepath.Join(dataDir, "agent-sessions"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	log, err := store.Open(context.Background(), key)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var events []runstate.Event
+	_, err = log.Replay(context.Background(), func(record agentsession.Record) error {
+		if record.Kind != "agent.runtime.event" || record.Version != 1 {
+			return errors.New("unexpected Agent Session test record")
+		}
+		event, decodeErr := runstate.UnmarshalJournalEvent(record.Data)
+		if decodeErr != nil {
+			return decodeErr
+		}
+		events = append(events, event)
+		return nil
+	})
+	if closeErr := log.Close(); err == nil {
+		err = closeErr
+	}
+	if err != nil {
+		t.Fatal(err)
+	}
+	return events
 }
 
 func waitForAutomationActiveRun(t *testing.T, application *App, runID string) automation.ActiveRun {

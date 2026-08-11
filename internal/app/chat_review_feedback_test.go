@@ -411,43 +411,10 @@ func TestCommittedReviewFeedbackPersistsWithUserMessageAndDisappearsAfterReload(
 			CommentIDs:     []string{comment.ID},
 		}},
 	}
-	acceptedRequest := agentchat.CaptureChatRequestCallerInput(req)
 	if err := chat.resolveReviewFeedback(context.Background(), runtime, &req); err != nil {
 		t.Fatal(err)
 	}
-	identity := agentrun.CycleIdentity{CommandID: "review-feedback-commit", OperationID: "review-feedback-operation", Cycle: 1}
-	plan, err := planProfileInputForTest(application, context.Background(), agentexecution.InputMaterializationRequest{
-		Binding:  agentrun.RuntimeBinding{AgentKind: agentrun.AgentKindIDE, Workspace: workspace, SessionID: sess.ID},
-		Identity: identity, AgentKind: agentrun.AgentKindIDE,
-		Message: req.Message, Request: acceptedRequest,
-	})
-	if err != nil {
-		t.Fatal(err)
-	}
-	normalIntent, err := session.NewDomainCommitIntent(session.DomainCommitIdentity{
-		CommandID: string(identity.CommandID), OperationID: string(identity.OperationID), Cycle: identity.Cycle,
-	}, agents.UserMessage(req.Message), session.MessageMetadata{
-		AgentKind: agentrun.AgentKindIDE, UserReferences: agentchat.UserMessageReferencesForRequest(req),
-	})
-	if err != nil {
-		t.Fatal(err)
-	}
-	if !plan.Required || plan.Hash != normalIntent.Hash {
-		t.Fatalf("provider-free review input hash = %#v, normal hash = %q", plan, normalIntent.Hash)
-	}
-
 	ctx := context.Background()
-	builtAgent, err := agent.NewAgent(ctx, agent.AgentConfig{
-		Name:          "review-feedback-commit-test",
-		Description:   "test",
-		Instruction:   "test",
-		Model:         &reviewFeedbackCommitChatModel{},
-		MaxIterations: 1,
-	})
-	if err != nil {
-		t.Fatal(err)
-	}
-	runner := agent.NewRunner(agent.RunnerConfig{Agent: builtAgent, EnableStreaming: true})
 	var callbackSawDurableReference bool
 	var emittedEventTypes []string
 	options := chat.bindReviewFeedbackInputCommit(agentrun.Options{
@@ -464,17 +431,19 @@ func TestCommittedReviewFeedbackPersistsWithUserMessageAndDisappearsAfterReload(
 		callbackSawDurableReference = history[0].UserReferences[0].ID == comment.ID
 		return consumeFeedback(ctx)
 	}
-	runExecutionCycle(agentexecution.NewEphemeralRuntime(),
-		ctx,
-		runner,
-		agentconversation.NewSessionConversation(sess),
-		nil,
-		req,
-		options,
-		func(event agentrun.Event) {
-			emittedEventTypes = append(emittedEventTypes, event.Type)
-		},
+	executionRuntime := agentexecution.NewEphemeralRuntime()
+	t.Cleanup(func() { _ = executionRuntime.Close(context.Background()) })
+	operation, err := startPublicExecutionCycle(
+		executionRuntime, ctx, &reviewFeedbackCommitChatModel{},
+		agentconversation.NewSessionConversation(sess), nil, req, options,
+		func(event agentrun.Event) { emittedEventTypes = append(emittedEventTypes, event.Type) },
 	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if outcome := operation.Wait(ctx); outcome.Status != agentrun.OutcomeCompleted {
+		t.Fatalf("review feedback execution outcome = %#v", outcome)
+	}
 	if !callbackSawDurableReference {
 		t.Fatal("comment consumption ran before the durable user-message reference was visible")
 	}

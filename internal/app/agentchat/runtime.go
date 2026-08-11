@@ -93,10 +93,11 @@ func (service *Service) AnalyzeContext(ctx context.Context, binding Binding, req
 	if strings.TrimSpace(request.Message) != "" {
 		pending = runtime.Session.PendingInterruption()
 	}
-	var compaction *session.ContextCompaction
-	if record, ok := runtime.Session.LatestContextCompaction(runtime.AgentKind); ok {
-		compaction = &record
+	status, err := project.executionRuntime.RuntimeStatusProjection(ctx, runtimeOptions(binding, ""))
+	if err != nil {
+		return chatagent.ContextAnalysis{}, err
 	}
+	compaction := appagentruntime.ProjectSessionCompaction(status.Compaction, runtime.AgentKind)
 	conversation := conversationapp.ProjectConversation(runtime, request)
 	if runtime.AgentKind == agentrun.AgentKindGeneral {
 		return chatagent.BuildGeneralContextAnalysis(&runtime.Config, runtime.BookService, compaction, pending, request, conversation)

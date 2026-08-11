@@ -28,7 +28,7 @@ func TestAgentBuildFailsClosedBeforeModelConstructionOnPromptAdmission(t *testin
 func TestBuildWithCompositionReturnsExactRunnerInstructionArtifact(t *testing.T) {
 	var captured string
 	previous := newNativeAgent
-	newNativeAgent = func(_ context.Context, cfg agent.AgentConfig) (agent.Runnable, error) {
+	newNativeAgent = func(_ context.Context, cfg agent.LoopConfig) (agent.Runnable, error) {
 		if cfg.Name == "DenovaAgent" {
 			captured = cfg.Instruction
 		}

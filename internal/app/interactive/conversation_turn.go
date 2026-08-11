@@ -3,6 +3,7 @@ package interactiveapp
 import (
 	"context"
 	agentcontext "denova/internal/agents/context"
+	agentrun "denova/internal/agents/run"
 	"denova/internal/agents/toolresult"
 	"fmt"
 	"log/slog"
@@ -13,6 +14,8 @@ import (
 	agentcompaction "denova/internal/agents/context/compaction"
 	"denova/internal/agents/session"
 	"denova/internal/interactive"
+
+	agent "github.com/alfredxw/denova/agent"
 )
 
 func (c *Conversation) PrepareInteractiveTurn(ctx context.Context, request interactive.TurnCheckRequest) (interactive.RuleResolution, error) {
@@ -448,6 +451,10 @@ func (c *Conversation) AppendAssistantWithThinking(content, thinking string) err
 }
 
 func (c *Conversation) AppendAssistantWithMetadata(content, thinking string, metadata session.MessageMetadata) error {
+	return c.stageAssistantOutput(content, thinking, metadata, "")
+}
+
+func (c *Conversation) stageAssistantOutput(content, thinking string, metadata session.MessageMetadata, agentCanonicalHash string) error {
 	if c == nil || c.store == nil {
 		return fmt.Errorf("互动故事不存在")
 	}
@@ -484,6 +491,7 @@ func (c *Conversation) AppendAssistantWithMetadata(content, thinking string, met
 		AgentCommandID:       string(cycleIdentity.CommandID),
 		AgentOperationID:     string(cycleIdentity.OperationID),
 		AgentCycle:           cycleIdentity.Cycle,
+		AgentCanonicalHash:   strings.TrimSpace(agentCanonicalHash),
 		DisplayEvents:        withInteractiveNarrativeAnchor(c.DisplayEventsSnapshot()),
 		ModelContextMessages: c.modelContextMessagesSnapshot(),
 		RuleResolution:       c.ruleResolutionSnapshot(),
@@ -505,6 +513,32 @@ func (c *Conversation) AppendAssistantWithMetadata(content, thinking string, met
 	// advance until the durable actor authorizes the output stage.
 	c.turnProtocol.markCommitted()
 	return nil
+}
+
+// CommitAgentCanonicalOutput publishes the exact public Agent output through
+// the existing atomic game-turn transaction and preserves Denova's post-commit
+// Director/version callbacks.
+func (c *Conversation) CommitAgentCanonicalOutput(
+	ctx context.Context,
+	message *agents.Message,
+	metadata session.MessageMetadata,
+	agentCanonicalHash string,
+) (interactive.DomainCommitReceipt, error) {
+	if message == nil || message.Role != agent.Assistant || len(message.ToolCalls) != 0 {
+		return interactive.DomainCommitReceipt{}, fmt.Errorf("canonical game output requires a final assistant message")
+	}
+	if err := c.stageAssistantOutput(message.Content, message.ReasoningContent, metadata, agentCanonicalHash); err != nil {
+		return interactive.DomainCommitReceipt{}, err
+	}
+	if err := c.CommitAgentCycleStage(ctx, agentrun.DomainCommitOutput, agentrun.Outcome{Status: agentrun.OutcomeCompleted}); err != nil {
+		return interactive.DomainCommitReceipt{}, err
+	}
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	if c.lastDomainReceipt == nil {
+		return interactive.DomainCommitReceipt{}, fmt.Errorf("canonical game output returned no domain receipt")
+	}
+	return *c.lastDomainReceipt, nil
 }
 
 func (c *Conversation) assistantMetadataSnapshot() session.MessageMetadata {

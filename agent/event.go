@@ -2,6 +2,7 @@ package agent
 
 import (
 	"context"
+	"encoding/json"
 	"sync"
 )
 
@@ -148,6 +149,7 @@ type ToolExecutionEvent struct {
 	ExecutionID    string
 	ProviderCallID string
 	ToolName       string
+	Arguments      json.RawMessage
 	Definition     ToolDefinitionSnapshot
 	Delta          string
 	Result         *ToolResult
@@ -193,6 +195,9 @@ type AgentEvent struct {
 type AgentInput struct {
 	Messages        []*Message
 	EnableStreaming bool
+	// ResumeToolCalls executes the final assistant tool-call batch before the
+	// next model request. It is reserved for durable Interaction recovery.
+	ResumeToolCalls bool
 }
 
 // AgentEventSink lets a tool forward nested Agent events without depending on
@@ -239,7 +244,7 @@ func EventFromMessage(message *Message, stream *StreamReader[*Message], role Rol
 	}}}
 }
 
-// Runnable is the small execution seam accepted by Runner. Agent is its native implementation.
+// Runnable is the small execution seam accepted by Runner. Loop is its native implementation.
 type Runnable interface {
 	Name(context.Context) string
 	Description(context.Context) string

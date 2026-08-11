@@ -2,9 +2,7 @@ package chat
 
 import (
 	"context"
-	"denova/internal/agents/run"
 	"fmt"
-	"reflect"
 
 	agent "github.com/alfredxw/denova/agent"
 
@@ -15,15 +13,10 @@ type contextNormalizerMiddleware struct {
 	*agent.BaseMiddleware
 }
 
-// NewModelContextMiddlewares returns the ordered provider-neutral context
-// boundaries. Normalization must remain immediately before maintenance so a
-// compaction decision always sees a valid tool protocol.
-func NewModelContextMiddlewares(agentKind string, includeMaintenance bool) []agent.Middleware {
-	middlewares := []agent.Middleware{NewContextNormalizerMiddleware()}
-	if includeMaintenance {
-		middlewares = append(middlewares, NewContextMaintenanceMiddleware(agentKind))
-	}
-	return middlewares
+// NewModelContextMiddlewares returns the provider-neutral context boundaries.
+// Agent.Definition.Compaction is the sole root checkpoint authority.
+func NewModelContextMiddlewares() []agent.Middleware {
+	return []agent.Middleware{NewContextNormalizerMiddleware()}
 }
 
 // NewContextNormalizerMiddleware creates the provider-neutral repair boundary
@@ -46,13 +39,5 @@ func (m *contextNormalizerMiddleware) BeforeModelCall(
 	}
 	next := *call
 	next.Messages = normalized
-	if !reflect.DeepEqual(call.Messages, normalized) {
-		if controller := compactionControllerFromContext(ctx); controller != nil && controller.emit != nil {
-			controller.emit(agentrun.Event{Type: "context_normalizer", Data: map[string]any{
-				"status": "repaired", "context_normalizer_repair_count": 1,
-				"messages_before": len(call.Messages), "messages_after": len(normalized),
-			}})
-		}
-	}
 	return ctx, &next, nil
 }

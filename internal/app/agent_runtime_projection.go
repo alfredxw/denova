@@ -40,7 +40,6 @@ func (a *App) WritingAgentActiveView(ctx context.Context) WritingAgentActiveView
 	if a == nil {
 		return WritingAgentActiveView{}
 	}
-	chatApp := a.chat()
 	a.mu.RLock()
 	workspace := strings.TrimSpace(a.workspace)
 	a.mu.RUnlock()
@@ -76,15 +75,7 @@ func (a *App) WritingAgentActiveView(ctx context.Context) WritingAgentActiveView
 			SessionID: sessionID,
 		})
 	}
-	var recoveryActions []agentexecution.RuntimeRecoveryAction
-	if action, pending := chatApp.pendingRecoveryRefreshAction(workspace, sessionID); pending {
-		recoveryActions = []agentexecution.RuntimeRecoveryAction{action}
-		// The selected projection remains paused at the application boundary even
-		// though the durable actor is already Idle: clients must exact-retry the
-		// refresh before this Session can be used again.
-		runtimeSnapshot.RecoveryPaused = true
-		projected = true
-	}
+	recoveryActions := agentexecution.RuntimeRecoveryActions(runtimeSnapshot)
 	var pendingAsk *session.AskInteraction
 	if selectedSession != nil {
 		if projected {

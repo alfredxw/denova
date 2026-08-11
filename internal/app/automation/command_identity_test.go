@@ -2,14 +2,11 @@ package automationapp
 
 import (
 	"context"
-	"encoding/json"
 	"errors"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
-
-	filejournal "github.com/alfredxw/denova/agent/runtime/filejournal"
 
 	"denova/config"
 	"denova/internal/automation"
@@ -124,29 +121,7 @@ func TestAutomationManualCommandCanonicalizesTaskAliasBeforeAdmission(t *testing
 	application.Close()
 
 	ref := automationRuntimeBindingForTest(workspace, run.SessionID, run.ID, run.ProjectID)
-	key, err := json.Marshal(ref)
-	if err != nil {
-		t.Fatal(err)
-	}
-	journalStore, err := filejournal.NewStore(filepath.Join(dataDir, "agent-runtime"))
-	if err != nil {
-		t.Fatal(err)
-	}
-	journal, err := journalStore.OpenJournal(context.Background(), string(key))
-	if err != nil {
-		t.Fatal(err)
-	}
-	var events []runstate.Event
-	_, err = journal.Replay(context.Background(), func(event runstate.Event) error {
-		events = append(events, event)
-		return nil
-	})
-	if closeErr := journal.Close(); err == nil {
-		err = closeErr
-	}
-	if err != nil {
-		t.Fatal(err)
-	}
+	events := readAutomationAgentSessionEvents(t, dataDir, ref)
 	accepted := 0
 	for _, event := range events {
 		if payload, ok := event.Payload.(runstate.CommandAcceptedEvent); ok && payload.CommandKind == "start_turn" {

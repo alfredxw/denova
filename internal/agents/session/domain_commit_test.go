@@ -108,6 +108,49 @@ func TestCommitDomainMessageRejectsSameContentWithDifferentSemanticMetadata(t *t
 	}
 }
 
+func TestAgentCanonicalHashPersistsAtomicallyAndReconcilesExactly(t *testing.T) {
+	store, err := NewStore(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	sess, err := store.GetOrCreate("agent-canonical-hash")
+	if err != nil {
+		t.Fatal(err)
+	}
+	identity := DomainCommitIdentity{CommandID: "command-1", OperationID: "operation-1", Cycle: 1}
+	intent, err := NewDomainCommitIntent(identity, agent.AssistantMessage("answer", nil), MessageMetadata{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	intent, err = intent.WithAgentCanonicalHash("agent-output-hash")
+	if err != nil {
+		t.Fatal(err)
+	}
+	receipt, err := sess.CommitDomainMessage(intent)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if receipt.AgentCanonicalHash != "agent-output-hash" {
+		t.Fatalf("receipt canonical hash=%q", receipt.AgentCanonicalHash)
+	}
+	reopened, err := loadSession(sess.filePath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	found, ok, err := reopened.FindAgentCanonicalCommit(identity, agent.Assistant, "agent-output-hash")
+	if err != nil || !ok || found.MessageID != receipt.MessageID {
+		t.Fatalf("canonical lookup receipt=%#v found=%t error=%v", found, ok, err)
+	}
+	if _, _, err := reopened.FindAgentCanonicalCommit(identity, agent.Assistant, "different-hash"); !errors.Is(err, ErrDomainCommitIdentityConflict) {
+		t.Fatalf("mismatched canonical lookup error=%v", err)
+	}
+	conflict := intent
+	conflict.Metadata.AgentCanonicalHash = "different-hash"
+	if _, err := reopened.CommitDomainMessage(conflict); !errors.Is(err, ErrDomainCommitIdentityConflict) {
+		t.Fatalf("mismatched canonical retry error=%v", err)
+	}
+}
+
 func TestContextCursorRejectsStaleStructuralMutation(t *testing.T) {
 	store, err := NewStore(t.TempDir())
 	if err != nil {

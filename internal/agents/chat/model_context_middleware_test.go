@@ -2,47 +2,33 @@ package chat
 
 import (
 	"context"
-	"denova/internal/agents/run"
 	"testing"
 
 	agent "github.com/alfredxw/denova/agent"
 )
 
-func TestContextNormalizerRunsImmediatelyBeforeContextMaintenance(t *testing.T) {
-	middlewares := NewModelContextMiddlewares("ide", true)
-	normalizerIndex := -1
-	maintenanceIndex := -1
-	for index, middleware := range middlewares {
-		switch middleware.(type) {
-		case *contextNormalizerMiddleware:
-			normalizerIndex = index
-		case *contextMaintenanceMiddleware:
-			maintenanceIndex = index
-		}
+func TestModelContextMiddlewaresContainOnlyNormalizer(t *testing.T) {
+	middlewares := NewModelContextMiddlewares()
+	if len(middlewares) != 1 {
+		t.Fatalf("model context middleware count = %d, want 1", len(middlewares))
 	}
-	if normalizerIndex < 0 || maintenanceIndex != normalizerIndex+1 {
-		t.Fatalf("middleware order normalizer=%d maintenance=%d: %#v", normalizerIndex, maintenanceIndex, middlewares)
+	if _, ok := middlewares[0].(*contextNormalizerMiddleware); !ok {
+		t.Fatalf("model context middleware = %T, want normalizer", middlewares[0])
 	}
 }
 
-func TestContextNormalizerEmitsBoundedRepairMetric(t *testing.T) {
+func TestContextNormalizerRepairsToolProtocol(t *testing.T) {
 	missing := agent.ToolCall{ID: "missing", Type: "function", Function: agent.FunctionCall{Name: "read", Arguments: `{}`}}
 	call := &agent.ModelCall{Messages: []*agent.Message{
 		agent.SystemMessage("stable"),
 		agent.AssistantMessage("", []agent.ToolCall{missing}),
 	}}
-	var events []agentrun.Event
-	ctx := context.WithValue(context.Background(), contextCompactionContextKey{}, &contextCompactionController{
-		emit: func(event agentrun.Event) { events = append(events, event) },
-	})
 	middleware := &contextNormalizerMiddleware{BaseMiddleware: &agent.BaseMiddleware{}}
-	_, normalized, err := middleware.BeforeModelCall(ctx, call, &agent.ModelContext{})
+	_, normalized, err := middleware.BeforeModelCall(context.Background(), call, &agent.ModelContext{})
 	if err != nil {
 		t.Fatal(err)
 	}
-	data, _ := events[0].Data.(map[string]any)
-	if len(normalized.Messages) != 3 || len(events) != 1 || events[0].Type != "context_normalizer" ||
-		data["context_normalizer_repair_count"] != 1 {
-		t.Fatalf("normalizer repair metric/result = events:%#v messages:%#v", events, normalized.Messages)
+	if len(normalized.Messages) != 3 {
+		t.Fatalf("normalized messages = %#v", normalized.Messages)
 	}
 }

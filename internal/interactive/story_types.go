@@ -52,6 +52,7 @@ type AppendTurnWithStateRequest struct {
 	AgentCommandID       string                    `json:"agent_command_id,omitempty"`
 	AgentOperationID     string                    `json:"agent_operation_id,omitempty"`
 	AgentCycle           int                       `json:"agent_cycle,omitempty"`
+	AgentCanonicalHash   string                    `json:"agent_canonical_hash,omitempty"`
 	DisplayEvents        []DisplayEvent            `json:"display_events,omitempty"`
 	ModelContextMessages []ModelContextMessage     `json:"model_context_messages,omitempty"`
 	Ops                  []interactivestate.Op     `json:"ops,omitempty"`
@@ -224,23 +225,24 @@ type StoryMeta struct {
 }
 
 type TurnEvent struct {
-	V                int    `json:"v"`
-	Type             string `json:"type"`
-	ID               string `json:"id"`
-	ParentID         any    `json:"parent_id"`
-	BranchID         string `json:"branch_id"`
-	Ts               string `json:"ts"`
-	User             string `json:"user"`
-	Narrative        string `json:"narrative"`
-	Thinking         string `json:"thinking,omitempty"`
-	RunID            string `json:"run_id,omitempty"`
-	AgentKind        string `json:"agent_kind,omitempty"`
-	AgentCommandID   string `json:"agent_command_id,omitempty"`
-	AgentOperationID string `json:"agent_operation_id,omitempty"`
-	AgentCycle       int    `json:"agent_cycle,omitempty"`
-	AgentCommitHash  string `json:"agent_commit_hash,omitempty"`
-	PlayerInputID    string `json:"player_input_id,omitempty"`
-	PlayerInputHash  string `json:"player_input_hash,omitempty"`
+	V                  int    `json:"v"`
+	Type               string `json:"type"`
+	ID                 string `json:"id"`
+	ParentID           any    `json:"parent_id"`
+	BranchID           string `json:"branch_id"`
+	Ts                 string `json:"ts"`
+	User               string `json:"user"`
+	Narrative          string `json:"narrative"`
+	Thinking           string `json:"thinking,omitempty"`
+	RunID              string `json:"run_id,omitempty"`
+	AgentKind          string `json:"agent_kind,omitempty"`
+	AgentCommandID     string `json:"agent_command_id,omitempty"`
+	AgentOperationID   string `json:"agent_operation_id,omitempty"`
+	AgentCycle         int    `json:"agent_cycle,omitempty"`
+	AgentCommitHash    string `json:"agent_commit_hash,omitempty"`
+	AgentCanonicalHash string `json:"agent_canonical_hash,omitempty"`
+	PlayerInputID      string `json:"player_input_id,omitempty"`
+	PlayerInputHash    string `json:"player_input_hash,omitempty"`
 	// ConsumedPlayerInputIDs closes every reachable accepted input whose intent
 	// was visible to this successful cycle. PlayerInputID remains the exact
 	// current command identity; older interrupted inputs are resolved without

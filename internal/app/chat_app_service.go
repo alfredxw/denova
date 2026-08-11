@@ -44,12 +44,6 @@ type ChatAppService struct {
 	app       *App
 	admission sync.RWMutex
 	starts    apptask.StartRegistry
-
-	// recoveryRefreshPending is process-local because a restarted process loads
-	// a fresh canonical Session projection. Within one process it must outlive
-	// the display Task that discovered the durable structural recovery commit.
-	recoveryRefreshMu      sync.Mutex
-	recoveryRefreshPending map[string]agentexecution.RuntimeRecoveryAction
 }
 
 type ideChatRuntime struct {

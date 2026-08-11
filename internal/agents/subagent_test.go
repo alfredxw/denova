@@ -2,7 +2,6 @@ package agents
 
 import (
 	"context"
-	agentchat "denova/internal/agents/chat"
 	agenttoolruntime "denova/internal/agents/toolruntime"
 	"strings"
 	"sync"
@@ -29,7 +28,7 @@ func TestTaskAndChildWriteWithSameProviderIDHaveDistinctExecutionIDs(t *testing.
 	if err != nil {
 		t.Fatal(err)
 	}
-	root, err := agent.NewAgent(context.Background(), agent.AgentConfig{
+	root, err := agent.NewLoop(context.Background(), agent.LoopConfig{
 		Name: "root", Model: &taskExecutionIdentityModel{}, Tools: []agent.ToolDefinition{task},
 	})
 	if err != nil {
@@ -115,9 +114,9 @@ func (executionIdentityChild) Run(ctx context.Context, _ *agent.AgentInput, _ ..
 }
 
 func TestBuildAgentExposesGeneralAndConfiguredSubAgentsThroughTask(t *testing.T) {
-	var captured []agent.AgentConfig
+	var captured []agent.LoopConfig
 	previous := newNativeAgent
-	newNativeAgent = func(_ context.Context, cfg agent.AgentConfig) (agent.Runnable, error) {
+	newNativeAgent = func(_ context.Context, cfg agent.LoopConfig) (agent.Runnable, error) {
 		captured = append(captured, cfg)
 		return fakeAgent{name: cfg.Name, description: cfg.Description}, nil
 	}
@@ -163,9 +162,6 @@ func TestBuildAgentExposesGeneralAndConfiguredSubAgentsThroughTask(t *testing.T)
 	}
 	var generalOrchestrator, rootOrchestrator *agenttoolruntime.OrchestratorMiddleware
 	for _, middleware := range captured[1].Middlewares {
-		if agentchat.IsContextMaintenanceMiddleware(middleware) {
-			t.Fatal("general subagent must not inherit root context compaction middleware")
-		}
 		if current, ok := middleware.(*agenttoolruntime.OrchestratorMiddleware); ok {
 			generalOrchestrator = current
 		}
@@ -242,9 +238,9 @@ func TestBuildSubAgentInstructionInheritsInteractiveStoryBoundary(t *testing.T) 
 
 func TestBuildAgentCanDisableGeneralSubAgent(t *testing.T) {
 	off := false
-	var captured []agent.AgentConfig
+	var captured []agent.LoopConfig
 	previous := newNativeAgent
-	newNativeAgent = func(_ context.Context, cfg agent.AgentConfig) (agent.Runnable, error) {
+	newNativeAgent = func(_ context.Context, cfg agent.LoopConfig) (agent.Runnable, error) {
 		captured = append(captured, cfg)
 		return fakeAgent{name: cfg.Name, description: cfg.Description}, nil
 	}
@@ -289,10 +285,9 @@ func TestBuildAgentCanDisableGeneralSubAgent(t *testing.T) {
 
 func TestSubAgentAssemblyUsesParentToolPolicyKind(t *testing.T) {
 	assembly, err := buildChatModelAgentAssembly(context.Background(), &config.Config{}, chatModelAgentAssemblySpec{
-		Kind:              "researcher",
-		ToolPolicyKind:    config.AgentKindInteractiveStory,
-		ToolSettings:      config.ResolvedAgentToolSettings{},
-		IncludeCompaction: false,
+		Kind:           "researcher",
+		ToolPolicyKind: config.AgentKindInteractiveStory,
+		ToolSettings:   config.ResolvedAgentToolSettings{},
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -314,9 +309,8 @@ func TestSubAgentAssemblyUsesParentToolPolicyKind(t *testing.T) {
 
 func TestBuildChatModelAgentAssemblyPassesToolResultLimit(t *testing.T) {
 	assembly, err := buildChatModelAgentAssembly(context.Background(), &config.Config{AgentToolResultLimitKB: 64}, chatModelAgentAssemblySpec{
-		Kind:              config.AgentKindIDE,
-		ToolSettings:      config.ResolvedAgentToolSettings{},
-		IncludeCompaction: false,
+		Kind:         config.AgentKindIDE,
+		ToolSettings: config.ResolvedAgentToolSettings{},
 	})
 	if err != nil {
 		t.Fatal(err)

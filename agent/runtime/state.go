@@ -1,6 +1,9 @@
 package runtime
 
-import "strings"
+import (
+	"encoding/json"
+	"strings"
+)
 
 type subscriber struct {
 	id     uint64
@@ -21,6 +24,9 @@ type harnessState struct {
 	activeInput            UserInput
 	activeContent          strings.Builder
 	activeThinking         strings.Builder
+	engineState            json.RawMessage
+	capabilityStates       map[string]json.RawMessage
+	interactions           map[string]InteractionSnapshot
 	activeOutputError      *ByteBudgetError
 	activeOutputRehydrated bool
 	messages               []Message
@@ -69,6 +75,8 @@ func newHarnessState(binding BindingRef) harnessState {
 		phase:                PhaseIdle,
 		openToolCalls:        make(map[string]ToolCallState),
 		pendingHostEffects:   make(map[HostEffectID]HostEffect),
+		capabilityStates:     make(map[string]json.RawMessage),
+		interactions:         make(map[string]InteractionSnapshot),
 		receipts:             make(map[CommandID]Receipt),
 		fingerprints:         make(map[CommandID]string),
 		operationCommands:    make(map[OperationID]CommandID),

@@ -12,10 +12,17 @@ func (s *harnessState) snapshot() StateSnapshot {
 		tools = append(tools, call)
 	}
 	sort.Slice(tools, func(i, j int) bool { return tools[i].CallID < tools[j].CallID })
+	activeFingerprint := ""
+	activeReceiptCursor := Cursor(0)
+	if accepted, ok := s.operationAcceptances[s.activeOperation]; ok {
+		activeFingerprint = accepted.Fingerprint
+		activeReceiptCursor = accepted.Receipt.Cursor
+	}
 	return StateSnapshot{
 		Binding: s.binding.Clone(), Cursor: s.cursor, Phase: s.phase,
-		ActiveOperation:  s.activeOperation,
-		ActiveCycle:      s.activeCycle,
+		ActiveCommandID: s.activeCommandID, ActiveCommandFingerprint: activeFingerprint,
+		ActiveReceiptCursor: activeReceiptCursor,
+		ActiveOperation:     s.activeOperation, ActiveCycle: s.activeCycle,
 		RecoveryPaused:   s.recoveryPaused,
 		InputRecovery:    cloneInputMaterializationRecovery(s.inputRecovery),
 		ActiveStructural: cloneStructuralOperationSnapshot(s.activeStructural),
@@ -27,7 +34,7 @@ func (s *harnessState) snapshot() StateSnapshot {
 			RehydrateRequired: s.activeOutputRehydrated,
 		},
 		Messages:               displayMessages(s.messages),
-		Queue:                  displayQueue(s.queue),
+		Queue:                  s.displayQueueWithReceipts(),
 		PreemptQueuedCommandID: s.preemptQueuedCommandID,
 		OpenToolCalls:          tools,
 		PendingHostEffects:     s.pendingHostEffectSnapshots(),
@@ -35,6 +42,8 @@ func (s *harnessState) snapshot() StateSnapshot {
 		RecentOperations:       cloneOperationSummaries(s.recentOperations),
 		LastDomainCommit:       cloneDomainCommitState(s.lastDomainCommit),
 		DomainCommits:          cloneDomainCommitStates(s.lastDomainCommits),
+		CapabilityStates:       cloneCapabilityStates(s.capabilityStates),
+		Interactions:           s.interactionSnapshots(),
 		TimelineStartCursor:    s.timelineStartCursor(),
 		MessagesTruncated:      s.messagesTruncated,
 		Memory:                 s.memorySnapshot(),
@@ -90,7 +99,7 @@ func (s *harnessState) statusSnapshot(maxTextBytes int) StatusSnapshot {
 		tools = append(tools, normalizeToolCallState(call))
 	}
 	sort.Slice(tools, func(i, j int) bool { return tools[i].CallID < tools[j].CallID })
-	queue := cloneQueue(s.queue)
+	queue := s.queueWithReceipts()
 	for index := range queue {
 		queue[index].Input.Text, queue[index].InputTextTruncated = boundUTF8WithTruncation(queue[index].Input.Text, maxTextBytes)
 		queue[index].Input.ContextRefs = nil
@@ -120,12 +129,32 @@ func (s *harnessState) statusSnapshot(maxTextBytes int) StatusSnapshot {
 		},
 		Queue: queue, PreemptQueuedCommandID: s.preemptQueuedCommandID, OpenToolCalls: tools,
 		PendingHostEffects: s.pendingHostEffectSnapshots(),
+		Interactions:       s.interactionSnapshots(),
 		LastOperation:      cloneOperationSummary(s.lastOperation),
 		RecentOperations:   cloneOperationSummaries(s.recentOperations),
 		LastDomainCommit:   cloneDomainCommitState(s.lastDomainCommit),
 		DomainCommits:      cloneDomainCommitStates(s.lastDomainCommits),
 		Memory:             s.memorySnapshot(),
 	}
+}
+
+func (s *harnessState) queueWithReceipts() []QueuedInput {
+	queue := cloneQueue(s.queue)
+	for index := range queue {
+		if receipt, ok := s.receipts[queue[index].CommandID]; ok && receipt.OperationID == queue[index].OperationID {
+			queue[index].ReceiptCursor = receipt.Cursor
+		}
+	}
+	return queue
+}
+
+func (s *harnessState) displayQueueWithReceipts() []QueuedInput {
+	queue := s.queueWithReceipts()
+	for index := range queue {
+		queue[index].Input.RestoreDescriptor = nil
+		queue[index].Input.TurnSpecRef = ""
+	}
+	return queue
 }
 
 func (s *harnessState) pendingHostEffectSnapshots() []HostEffectSnapshot {
@@ -181,5 +210,7 @@ func (s *harnessState) conservativeStoredStatus(maxTextBytes int) StatusSnapshot
 		status.LastOperation.Reason += "; accepted NextTurn remains durable and retryable after recovery"
 	}
 	status.OpenToolCalls = nil
+	// Pending interaction data remains visible so a caller can open the exact
+	// binding and resolve the recovery-paused waiter.
 	return status
 }

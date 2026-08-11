@@ -34,7 +34,7 @@ func TestAppRestoresWritingAndGameQueuedTurnDependencies(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if writing.Runner == nil || writing.Conversation == nil || writing.Options.Workspace != workspace || writing.Options.SessionID != sessionID {
+	if writing.Definition.Model == nil || writing.Conversation == nil || writing.Options.Workspace != workspace || writing.Options.SessionID != sessionID {
 		t.Fatalf("restored writing execution = %#v", writing)
 	}
 
@@ -58,35 +58,30 @@ func TestAppRestoresWritingAndGameQueuedTurnDependencies(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if game.Runner == nil || game.Conversation == nil || game.Options.Workspace != workspace || game.Options.StoryID != story.ID || game.Options.BranchID != "main" {
+	if game.Definition.Model == nil || game.Conversation == nil || game.Options.Workspace != workspace || game.Options.StoryID != story.ID || game.Options.BranchID != "main" {
 		t.Fatalf("restored game execution = %#v", game)
 	}
 }
 
 func TestExecutionProfilesExposeOnlySupportedCapabilities(t *testing.T) {
 	application := newExecutionProfileTestApp(t)
-	want := map[agentexecution.ProfileID][4]bool{
-		agentexecution.ProfileWriting:       {true, true, true, true},
-		agentexecution.ProfileAgentChat:     {true, true, true, true},
-		agentexecution.ProfileGame:          {true, true, true, true},
-		agentexecution.ProfileConfigManager: {false, true, true, true},
-		agentexecution.ProfileImage:         {false, true, true, true},
-		agentexecution.ProfileDirector:      {false, false, true, true},
-		agentexecution.ProfileAutomation:    {false, true, true, false},
+	want := map[agentexecution.ProfileID]bool{
+		agentexecution.ProfileWriting:       true,
+		agentexecution.ProfileAgentChat:     true,
+		agentexecution.ProfileGame:          true,
+		agentexecution.ProfileConfigManager: true,
+		agentexecution.ProfileImage:         true,
 	}
 	profiles := application.executionProfiles()
 	if len(profiles) != len(want) {
 		t.Fatalf("profile count = %d, want %d", len(profiles), len(want))
 	}
 	for _, profile := range profiles {
-		expected, ok := want[profile.ID()]
-		if !ok {
+		if !want[profile.ID()] {
 			t.Fatalf("unexpected profile %q", profile.ID())
 		}
-		queued, input, domain, structural := assertExecutionProfileCapabilitiesForTest(profile)
-		got := [4]bool{queued, input, domain, structural}
-		if got != expected {
-			t.Fatalf("profile %q capabilities = %v, want %v", profile.ID(), got, expected)
+		if _, ok := profile.(agentexecution.QueuedCycleProfile); !ok {
+			t.Fatalf("profile %q cannot restore a public Agent cycle", profile.ID())
 		}
 	}
 }

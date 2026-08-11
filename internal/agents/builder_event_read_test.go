@@ -40,9 +40,9 @@ func TestInteractiveDirectorAssemblyRegistersOneEventReadAndIgnoresWorkspaceOver
 		t.Fatalf("event-card scope = %#v error=%v", cards, err)
 	}
 
-	var captured agent.AgentConfig
+	var captured agent.LoopConfig
 	previous := newNativeAgent
-	newNativeAgent = func(_ context.Context, cfg agent.AgentConfig) (agent.Runnable, error) {
+	newNativeAgent = func(_ context.Context, cfg agent.LoopConfig) (agent.Runnable, error) {
 		captured = cfg
 		return fakeAgent{name: cfg.Name, description: cfg.Description}, nil
 	}
@@ -57,7 +57,7 @@ func TestInteractiveDirectorAssemblyRegistersOneEventReadAndIgnoresWorkspaceOver
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
-			captured = agent.AgentConfig{}
+			captured = agent.LoopConfig{}
 			cfg := &config.Config{
 				OpenAIBaseURL: "https://example.invalid", OpenAIModel: "test-model", Workspace: workspace,
 			}

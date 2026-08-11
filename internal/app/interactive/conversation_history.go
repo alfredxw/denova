@@ -158,7 +158,12 @@ func (c *Conversation) modelHistoryForCycle(storyCtx interactive.StoryContext) (
 		return interactive.StoryModelHistory{}, nil, fmt.Errorf("互动故事不存在")
 	}
 	branchID := storyCtx.Snapshot.BranchID
-	startTurn, turnCount, compaction := ModelHistoryRange(storyCtx.Snapshot)
+	turnCount := SnapshotTurnCount(storyCtx.Snapshot)
+	compaction := c.boundAgentCompaction(storyCtx.Snapshot)
+	startTurn := 0
+	if compaction != nil {
+		startTurn = max(0, compaction.SourceTurnCount-retainedTurnsForInteractiveCompaction(compaction))
+	}
 	compactionID := ""
 	if compaction != nil {
 		compactionID = compaction.ID

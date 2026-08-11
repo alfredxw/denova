@@ -4,7 +4,6 @@ import (
 	"context"
 	"denova/internal/agents/run"
 	"errors"
-	"fmt"
 
 	runstate "github.com/alfredxw/denova/agent/runtime"
 )
@@ -16,32 +15,17 @@ var ErrRuntimeProjectionUnavailable = errors.New("durable agent runtime projecti
 // RuntimeStatusProjection returns a bounded point-in-time display projection.
 // It cannot carry durable messages and is never used as model context.
 func (s *Runtime) RuntimeStatusProjection(ctx context.Context, options agentrun.Options) (agentrun.RuntimeStatus, error) {
-	if s == nil || s.coordinator == nil || s.coordinator.runtime == nil {
+	if s == nil || s.public == nil {
 		return agentrun.RuntimeStatus{}, ErrRuntimeProjectionUnavailable
 	}
-	if ctx == nil {
-		ctx = context.Background()
-	}
-	binding, err := agentrun.BindingForOptions(options)
-	if err != nil {
-		return agentrun.RuntimeStatus{}, fmt.Errorf("derive agent runtime projection binding: %w", err)
-	}
-	status, err := s.coordinator.runtime.Project(ctx, binding)
-	if err != nil {
-		return agentrun.RuntimeStatus{}, fmt.Errorf("project agent runtime status: %w", err)
-	}
-	projected, err := agentrun.RuntimeStatusFromSnapshot(status)
-	if err != nil {
-		return agentrun.RuntimeStatus{}, err
-	}
-	return projected, nil
+	return s.public.status(ctx, options)
 }
 
 func (s *Runtime) closeRuntimeBindings(ctx context.Context, selector runstate.BindingSelector) error {
-	if s == nil || s.coordinator == nil || s.coordinator.runtime == nil {
+	if s == nil || s.public == nil {
 		return ErrRuntimeProjectionUnavailable
 	}
-	return s.coordinator.runtime.CloseBindings(ctx, selector)
+	return s.public.closeSessions(ctx, selector)
 }
 
 // CloseWorkspaceBindings evicts every durable Agent binding rooted in one
@@ -114,5 +98,6 @@ func (s *Runtime) CloseStoryBindings(ctx context.Context, workspace, storyID, br
 	if err != nil {
 		return err
 	}
+	selector.Profile = string(ProfileGame)
 	return s.closeRuntimeBindings(ctx, selector)
 }

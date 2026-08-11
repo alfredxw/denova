@@ -222,17 +222,34 @@ func completedToolKey(meta agentEventMetadata, toolName, callID string) string {
 }
 
 func populateToolResultDomainData(run *chatRun, toolName, payload string, eventMeta agentEventMetadata, data map[string]interface{}) {
+	warnings := populateToolResultDomainProjection(run.options, toolName, payload, eventMeta, data, run.emit)
+	for _, warning := range warnings {
+		run.logger.WarnContext(run.ctx, "project_tool_result_domain_data_failed", slog.String("tool", toolName), slog.String("error_class", agentrun.ErrorClass(warning.Error())))
+	}
+}
+
+// populateToolResultDomainProjection is shared by the legacy chat adapter and
+// the public Agent event projector. It derives product display details only
+// from the bounded ToolResult; none of these fields enter model context.
+func populateToolResultDomainProjection(
+	options agentrun.Options,
+	toolName, payload string,
+	eventMeta agentEventMetadata,
+	data map[string]interface{},
+	emit func(agentrun.Event),
+) []error {
+	var warnings []error
 	if itemIDs, deletedIDs := parseWriteLoreItemsToolResult(toolName, payload); len(itemIDs) > 0 || len(deletedIDs) > 0 {
 		data["item_ids"] = itemIDs
 		data["deleted_ids"] = deletedIDs
 	}
 	if illustrationResult, parseErr := producttools.ParseChapterIllustrationResult(toolName, payload); parseErr != nil {
-		run.logger.WarnContext(run.ctx, "parse_chapter_illustration_result_failed", slog.String("tool", toolName), slog.String("error_class", agentrun.ErrorClass(parseErr.Error())))
+		warnings = append(warnings, parseErr)
 	} else if illustrationResult != nil {
 		data["illustration"] = illustrationResult
 		data["target"] = illustrationResult.MetaPath
 	} else if interactiveImageResult, parseErr := producttools.ParseInteractiveImageResult(toolName, payload); parseErr != nil {
-		run.logger.WarnContext(run.ctx, "parse_interactive_image_result_failed", slog.String("tool", toolName), slog.String("error_class", agentrun.ErrorClass(parseErr.Error())))
+		warnings = append(warnings, parseErr)
 	} else if interactiveImageResult != nil {
 		data["interactive_image"] = interactiveImageResult
 		data["target"] = interactiveImageResult.MetaPath
@@ -242,15 +259,18 @@ func populateToolResultDomainData(run *chatRun, toolName, payload string, eventM
 	if receipt, ok := workspacechange.ParseToolReceipt(toolName, payload); ok {
 		data["workspace_change"] = receipt
 		workspaceChangeData := eventMeta.appendTo(map[string]interface{}{
-			"id": receipt.ChangeSetID, "project_id": run.options.ProjectID, "workspace": receipt.Workspace,
+			"id": receipt.ChangeSetID, "project_id": options.ProjectID, "workspace": receipt.Workspace,
 			"change_group_id": receipt.ChangeGroupID, "review_thread_id": receipt.ReviewThreadID,
 			"change_set_id": receipt.ChangeSetID, "path": receipt.Path,
 			"affected_paths": []string{receipt.Path}, "base_revision": receipt.BaseRevision,
 			"revision": receipt.Revision, "review_status": receipt.ReviewStatus,
 			"apply_state": receipt.ApplyState, "workspace_change": receipt,
 		})
-		run.emit(agentrun.Event{Type: "workspace_change", Data: workspaceChangeData})
+		if emit != nil {
+			emit(agentrun.Event{Type: "workspace_change", Data: workspaceChangeData})
+		}
 	}
+	return warnings
 }
 
 func (l *chatAgentLoop) toolDrainFailed(drainErr error) chatLoopResult {

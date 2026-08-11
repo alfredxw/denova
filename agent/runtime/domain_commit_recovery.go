@@ -20,9 +20,11 @@ func (h *Harness) reconcilePendingDomainCommits(ctx context.Context, state *harn
 			continue
 		}
 		request := DomainCommitReconcileRequest{
-			Binding:    state.binding.Clone(),
-			Commit:     *cloneDomainCommitState(commit),
-			Structural: cloneStructuralOperationSnapshot(state.activeStructural),
+			Binding:      state.binding.Clone(),
+			Commit:       *cloneDomainCommitState(commit),
+			Structural:   cloneStructuralOperationSnapshot(state.activeStructural),
+			State:        cloneRawMessage(state.engineState),
+			Capabilities: cloneCapabilityStates(state.capabilityStates),
 		}
 		result, err := queryDomainCommit(ctx, reconciler, request)
 		if err != nil {

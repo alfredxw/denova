@@ -213,13 +213,14 @@ func (service *Service) AcceptTurn(ctx context.Context, input TurnRequest) (*Acc
 	if err != nil {
 		return nil, fmt.Errorf("build AgentChat goal tool: %w", err)
 	}
-	runner, systemPrompt, err := appagentruntime.BuildConversation(
+	builtAgent, err := appagentruntime.BuildConversationAgent(
 		ctx, &runtime.Config, runtime.State, runtime.IDETeller, runtime.AgentKind,
 		goalTools...,
 	)
 	if err != nil {
 		return nil, fmt.Errorf("build AgentChat Project Agent: %w", err)
 	}
+	systemPrompt := builtAgent.Composition
 	conversation := conversationapp.ProjectConversation(runtime, request)
 
 	task := input.Task
@@ -264,7 +265,7 @@ func (service *Service) AcceptTurn(ctx context.Context, input TurnRequest) (*Acc
 	options = conversationapp.BindReviewFeedback(options, runtime, request)
 	accepted, err := runtime.ExecutionRuntime.Start(acceptCtx, agentexecution.StartRequest{
 		Cycle: agentexecution.Cycle{
-			Runner:       runner,
+			Definition:   builtAgent.Definition,
 			Conversation: conversation,
 			BookService:  runtime.BookService,
 			Request:      request,
@@ -414,13 +415,14 @@ func (service *Service) prepareCommandExecution(ctx context.Context, active *run
 	if err != nil {
 		return agentexecution.Cycle{}, err
 	}
-	runner, systemPrompt, err := appagentruntime.BuildConversation(
+	builtAgent, err := appagentruntime.BuildConversationAgent(
 		ctx, &runtime.Config, runtime.State, runtime.IDETeller, runtime.AgentKind,
 		goalTools...,
 	)
 	if err != nil {
 		return agentexecution.Cycle{}, err
 	}
+	systemPrompt := builtAgent.Composition
 	conversation := conversationapp.ProjectConversation(runtime, resolved)
 	options := startOptions(active, resolved.ResolvedReviewFeedback.PrimaryReviewThreadID(), systemPrompt, func(mutations []agenttool.Mutation, verification agenttool.Verification) {
 		if service.host != nil {
@@ -429,7 +431,7 @@ func (service *Service) prepareCommandExecution(ctx context.Context, active *run
 	})
 	options = conversationapp.BindReviewFeedback(options, runtime, resolved)
 	return agentexecution.Cycle{
-		Runner: runner, Conversation: conversation, BookService: runtime.BookService,
+		Definition: builtAgent.Definition, Conversation: conversation, BookService: runtime.BookService,
 		Request: resolved, Options: options,
 	}, nil
 }

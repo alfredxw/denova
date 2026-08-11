@@ -67,7 +67,7 @@ type interactiveAgentCycle struct {
 	branchID         string
 	storyContext     interactive.StoryContext
 	tellerInput      prompts.InteractiveStorySystemInstructionInput
-	runner           *agents.Runner
+	definition       agents.Definition
 	systemPrompt     prompts.SystemPromptComposition
 	conversation     *interactiveapp.Conversation
 	request          agentchat.ChatRequest
@@ -160,7 +160,7 @@ func (s *InteractiveAppService) prepareInteractiveAgentCycle(ctx context.Context
 		interactiveapp.SnapshotTurnCount(storyContext.Snapshot) == 0 {
 		submitOpeningStateSchema = cycle.conversation.SubmitOpeningStateSchemaBatch
 	}
-	cycle.runner, cycle.systemPrompt, err = appagentruntime.BuildInteractive(ctx, &cycle.runtimeCfg, cycle.state, cycle.tellerInput, agentinteractive.InteractiveStoryToolContext{
+	builtAgent, err := appagentruntime.BuildInteractiveAgent(ctx, &cycle.runtimeCfg, cycle.state, cycle.tellerInput, agentinteractive.InteractiveStoryToolContext{
 		Store:                  cycle.store,
 		StoryID:                cycle.storyID,
 		BranchID:               cycle.branchID,
@@ -172,6 +172,7 @@ func (s *InteractiveAppService) prepareInteractiveAgentCycle(ctx context.Context
 	if err != nil {
 		return nil, fmt.Errorf("build interactive story runner: %w", err)
 	}
+	cycle.definition, cycle.systemPrompt = builtAgent.Definition, builtAgent.Composition
 	slog.InfoContext(ctx, fmt.Sprintf("[interactive-agent-cycle] prepared workspace=%s story_id=%s branch_id=%s message_bytes=%d style_rules=%d", cycle.workspace, cycle.storyID, cycle.branchID, len(cycle.request.Message), len(styleRules)))
 	return cycle, nil
 }

@@ -142,6 +142,8 @@ func (h *Harness) handleSubmit(state *harnessState, ctx context.Context, command
 			})
 		}
 		return receipt, nil
+	case ResolveInteraction:
+		return h.resolveInteraction(ctx, state, command, fingerprint)
 	case CompactIfNeeded:
 		if state.phase != PhaseIdle {
 			return Receipt{}, ErrBusy
@@ -270,12 +272,20 @@ func (h *Harness) beginOperation(
 	}
 	snapshotID := SnapshotID(newID("snapshot"))
 	message := newUserMessage(operationID, input)
-	committed, err := h.commit(ctx, state, []EventPayload{
+	capabilities, err := h.prepareAdmission(ctx, state, commandID, operationID, 1, input)
+	if err != nil {
+		return Receipt{}, err
+	}
+	payloads := []EventPayload{
 		CommandAcceptedEvent{CommandID: commandID, CommandKind: commandKind, OperationID: operationID, Fingerprint: fingerprint},
 		OperationStartedEvent{OperationID: operationID},
+	}
+	payloads = append(payloads, capabilities...)
+	payloads = append(payloads,
 		UserMessageCommittedEvent{Message: message},
 		CycleStartedEvent{OperationID: operationID, Cycle: 1, SnapshotID: snapshotID},
-	})
+	)
+	committed, err := h.commit(ctx, state, payloads)
 	if err != nil {
 		return Receipt{}, err
 	}
@@ -285,6 +295,56 @@ func (h *Harness) beginOperation(
 	}
 	h.startEngine(state, state.turnSnapshot(snapshotID))
 	return receipt, nil
+}
+
+func (h *Harness) prepareAdmission(
+	ctx context.Context,
+	state *harnessState,
+	commandID CommandID,
+	operationID OperationID,
+	cycle int,
+	input UserInput,
+) (payloads []EventPayload, resultErr error) {
+	preparer, ok := h.engine.(EngineAdmissionPreparer)
+	if !ok {
+		return nil, nil
+	}
+	defer func() {
+		if recovered := recover(); recovered != nil {
+			payloads = nil
+			resultErr = fmt.Errorf("engine admission preparer panic: %v", recovered)
+		}
+	}()
+	snapshot := state.turnSnapshot("")
+	snapshot.CommandID, snapshot.OperationID, snapshot.Cycle = commandID, operationID, cycle
+	snapshot.Input = cloneUserInput(input)
+	changes, err := preparer.PrepareAdmission(ctx, TurnAdmissionRequest{Snapshot: snapshot})
+	if err != nil {
+		return nil, err
+	}
+	if len(changes) > 64 {
+		return nil, fmt.Errorf("%w: admission produced too many capability mutations", ErrInvalidCommand)
+	}
+	validation := *state
+	validation.capabilityStates = cloneCapabilityStates(state.capabilityStates)
+	payloads = make([]EventPayload, 0, len(changes))
+	for _, change := range changes {
+		payload := CapabilityStateCommittedEvent{
+			Capability: change.Capability, Expected: change.Expected,
+			State: cloneRawMessage(change.State), Deleted: change.Delete,
+			OperationID: operationID, Cycle: cycle,
+		}
+		if err := validation.validateCapabilityStateEvent(payload); err != nil {
+			return nil, err
+		}
+		if payload.Deleted {
+			delete(validation.capabilityStates, payload.Capability)
+		} else {
+			validation.capabilityStates[payload.Capability] = cloneRawMessage(payload.State)
+		}
+		payloads = append(payloads, payload)
+	}
+	return payloads, nil
 }
 
 func (h *Harness) enqueueCurrent(
@@ -311,17 +371,29 @@ func (h *Harness) enqueueCurrent(
 	if delivery == DeliverySteer && state.hasQueued(DeliverySteer) {
 		return Receipt{}, ErrQueueConflict
 	}
-	if err := state.admitPendingInput(input); err != nil {
+	validation := *state
+	validation.queue = cloneQueue(state.queue)
+	cancellations := make([]EventPayload, 0, 1)
+	for _, queued := range state.queue {
+		if queued.Autonomous && queued.Delivery == DeliveryFollowUp {
+			validation.removeQueued(queued.CommandID)
+			cancellations = append(cancellations, QueueCancelledEvent{
+				CommandID: queued.CommandID, Reason: "superseded_by_host_input",
+			})
+		}
+	}
+	if err := validation.admitPendingInput(input); err != nil {
 		return Receipt{}, err
 	}
 	item := QueuedInput{
 		CommandID: commandID, OperationID: state.activeOperation,
 		Delivery: delivery, Input: cloneUserInput(input),
 	}
-	committed, err := h.commit(ctx, state, []EventPayload{
+	payloads := append(cancellations,
 		CommandAcceptedEvent{CommandID: commandID, CommandKind: string(delivery), OperationID: state.activeOperation, Fingerprint: fingerprint},
 		QueueEnqueuedEvent{Item: item},
-	})
+	)
+	committed, err := h.commit(ctx, state, payloads)
 	if err != nil {
 		return Receipt{}, err
 	}

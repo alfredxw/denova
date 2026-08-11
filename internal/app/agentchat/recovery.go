@@ -30,10 +30,6 @@ func (service *Service) Recover(ctx context.Context, binding Binding, request ap
 			return service.resumeExistingRecovery(ctx, existing, request.Action)
 		}
 	}
-	if _, structural := appagentruntime.StructuralRecoveryAction(request.Action.Kind); structural {
-		return appagentruntime.RecoveryResult{}, fmt.Errorf("%w: AgentChat has no project structural recovery action", agentexecution.ErrRecoveryActionChanged)
-	}
-
 	project, err := service.projectRuntime(ctx, binding.ProjectID)
 	if err != nil {
 		return appagentruntime.RecoveryResult{}, err
@@ -103,9 +99,6 @@ func (service *Service) resumeExistingRecovery(ctx context.Context, active *run,
 	}
 	if active.task.Finished() {
 		return appagentruntime.RecoveryResult{}, fmt.Errorf("%w: AgentChat recovery display task is settled", agentexecution.ErrRecoveryActionChanged)
-	}
-	if _, structural := appagentruntime.StructuralRecoveryAction(action.Kind); structural {
-		return appagentruntime.RecoveryResult{}, fmt.Errorf("%w: structural action cannot join AgentChat recovery", agentexecution.ErrRecoveryActionChanged)
 	}
 	receipt, err := active.recovery.Resume(ctx, action, active.task.ID(), active.task.Emit)
 	if err != nil {

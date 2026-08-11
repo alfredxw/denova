@@ -46,7 +46,7 @@ var fallbackToolResultDescriptor = ToolDescriptor{
 
 // executeToolBatch schedules calls in descriptor-defined stages. Parallel reads
 // share one bounded stage; exclusive and child calls are source-order barriers.
-func (agent *Agent) executeToolBatch(
+func (agent *Loop) executeToolBatch(
 	ctx context.Context,
 	registry *Registry,
 	calls []ToolCall,
@@ -115,7 +115,7 @@ func (agent *Agent) executeToolBatch(
 	return results, nil
 }
 
-func (agent *Agent) prepareToolCalls(ctx context.Context, registry *Registry, calls []ToolCall, modelResponseOrdinal int) []preparedToolCall {
+func (agent *Loop) prepareToolCalls(ctx context.Context, registry *Registry, calls []ToolCall, modelResponseOrdinal int) []preparedToolCall {
 	prepared := make([]preparedToolCall, len(calls))
 	for index, call := range calls {
 		call = cloneToolCalls([]ToolCall{call})[0]
@@ -163,7 +163,7 @@ func (agent *Agent) prepareToolCalls(ctx context.Context, registry *Registry, ca
 	return prepared
 }
 
-func (agent *Agent) runOneToolCall(
+func (agent *Loop) runOneToolCall(
 	ctx context.Context,
 	call preparedToolCall,
 	events *AsyncGenerator[*AgentEvent],
@@ -179,7 +179,7 @@ func (agent *Agent) runOneToolCall(
 	}
 }
 
-func (agent *Agent) runParallelToolStage(
+func (agent *Loop) runParallelToolStage(
 	ctx context.Context,
 	calls []preparedToolCall,
 	events *AsyncGenerator[*AgentEvent],
@@ -229,7 +229,7 @@ func (agent *Agent) runParallelToolStage(
 	return results, started, terminalErr
 }
 
-func (agent *Agent) launchToolCall(
+func (agent *Loop) launchToolCall(
 	ctx context.Context,
 	call preparedToolCall,
 	events *AsyncGenerator[*AgentEvent],
@@ -246,7 +246,7 @@ func (agent *Agent) launchToolCall(
 	})
 }
 
-func (agent *Agent) executePreparedTool(
+func (agent *Loop) executePreparedTool(
 	ctx context.Context,
 	prepared preparedToolCall,
 	events *AsyncGenerator[*AgentEvent],
@@ -437,7 +437,7 @@ func runToolSafely(tool Tool, ctx context.Context, arguments string, options ...
 	return tool.Run(ctx, arguments, options...)
 }
 
-func (agent *Agent) fillSteeringSkipped(
+func (agent *Loop) fillSteeringSkipped(
 	calls []preparedToolCall,
 	results []toolExecutionResult,
 	events *AsyncGenerator[*AgentEvent],
@@ -460,7 +460,7 @@ func (agent *Agent) fillSteeringSkipped(
 	}
 }
 
-func (agent *Agent) fillPolicySkipped(
+func (agent *Loop) fillPolicySkipped(
 	calls []preparedToolCall,
 	results []toolExecutionResult,
 	events *AsyncGenerator[*AgentEvent],
@@ -484,11 +484,11 @@ func (agent *Agent) fillPolicySkipped(
 	}
 }
 
-func (agent *Agent) emitToolFinished(events *AsyncGenerator[*AgentEvent], prepared preparedToolCall, result ToolResult) {
+func (agent *Loop) emitToolFinished(events *AsyncGenerator[*AgentEvent], prepared preparedToolCall, result ToolResult) {
 	events.Send(agent.toolExecutionEvent(prepared, ToolExecutionFinished, "", &result))
 }
 
-func (agent *Agent) toolExecutionEvent(
+func (agent *Loop) toolExecutionEvent(
 	prepared preparedToolCall,
 	phase ToolExecutionPhase,
 	delta string,
@@ -498,6 +498,8 @@ func (agent *Agent) toolExecutionEvent(
 	if result != nil {
 		value := *result
 		value.Details = append(json.RawMessage(nil), result.Details...)
+		value.Artifacts = append([]ToolArtifactRef(nil), result.Artifacts...)
+		value.Effects = cloneEffects(result.Effects)
 		cloned = &value
 	}
 	return &AgentEvent{
@@ -506,10 +508,19 @@ func (agent *Agent) toolExecutionEvent(
 		Output: &AgentOutput{ToolExecution: &ToolExecutionEvent{
 			Phase: phase, Index: prepared.index, ExecutionID: prepared.executionID,
 			ProviderCallID: prepared.call.ID,
-			ToolName:       prepared.call.Function.Name, Definition: prepared.snapshot,
+			ToolName:       prepared.call.Function.Name, Arguments: json.RawMessage(prepared.call.Function.Arguments), Definition: prepared.snapshot,
 			Delta: delta, Result: cloned,
 		}},
 	}
+}
+
+func cloneEffects(effects []Effect) []Effect {
+	cloned := make([]Effect, len(effects))
+	for index, effect := range effects {
+		cloned[index] = effect
+		cloned[index].Data = append(json.RawMessage(nil), effect.Data...)
+	}
+	return cloned
 }
 
 func syntheticCallResult(call ToolCall, status ToolResultStatus, reason ToolSyntheticReason, message string) toolExecutionResult {
@@ -617,7 +628,7 @@ func toolErrorContent(call ToolCall, err error) string {
 	return string(payload)
 }
 
-func (agent *Agent) lengthToolResults(ctx context.Context, calls []ToolCall, registry *Registry, modelResponseOrdinal int, events *AsyncGenerator[*AgentEvent]) []toolExecutionResult {
+func (agent *Loop) lengthToolResults(ctx context.Context, calls []ToolCall, registry *Registry, modelResponseOrdinal int, events *AsyncGenerator[*AgentEvent]) []toolExecutionResult {
 	results := make([]toolExecutionResult, len(calls))
 	for index, call := range calls {
 		prepared := preparedToolCall{index: index, call: call, executionID: ToolExecutionIDForOrdinal(ctx, modelResponseOrdinal, index)}

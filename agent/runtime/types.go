@@ -172,6 +172,21 @@ func (Abort) command() {}
 
 func (c Abort) commandID() CommandID { return c.ID }
 
+// ResolveInteraction supplies one typed response to the exact durable
+// interaction owned by OperationID. Response is opaque to Runtime; the
+// selected Engine validates and normalizes it before the resolution is
+// committed and delivered to the waiting tool.
+type ResolveInteraction struct {
+	ID            CommandID       `json:"id"`
+	OperationID   OperationID     `json:"operation_id"`
+	InteractionID string          `json:"interaction_id"`
+	Response      json.RawMessage `json:"response"`
+}
+
+func (ResolveInteraction) command() {}
+
+func (c ResolveInteraction) commandID() CommandID { return c.ID }
+
 // ContextCompactionRef is the bounded durable envelope for a structural
 // context operation. SpecRef resolves process-local preparation/commit code;
 // Source and Purpose make every model-visible input accountable; Resource and
@@ -275,11 +290,17 @@ const (
 )
 
 type QueuedInput struct {
-	CommandID          CommandID    `json:"command_id"`
-	OperationID        OperationID  `json:"operation_id"`
-	Delivery           DeliveryKind `json:"delivery"`
-	Input              UserInput    `json:"input"`
-	InputTextTruncated bool         `json:"-"`
+	CommandID   CommandID    `json:"command_id"`
+	OperationID OperationID  `json:"operation_id"`
+	Delivery    DeliveryKind `json:"delivery"`
+	Input       UserInput    `json:"input"`
+	// Autonomous entries are admitted only by EngineAssistantFinal. They are
+	// already authorized Agent work and may cross the completed-cycle recovery
+	// boundary without an external command replay.
+	Autonomous         bool `json:"autonomous,omitempty"`
+	InputTextTruncated bool `json:"-"`
+	// ReceiptCursor is display-only replay metadata populated in snapshots.
+	ReceiptCursor Cursor `json:"-"`
 }
 
 // InputMaterializationRecovery is the safe identity of a selected queued
@@ -290,6 +311,7 @@ type InputMaterializationRecovery struct {
 	OperationID OperationID
 	Cycle       int
 	Delivery    DeliveryKind
+	Autonomous  bool
 }
 
 type ToolCallState struct {
@@ -298,6 +320,7 @@ type ToolCallState struct {
 	ArgumentsDescriptor PayloadDescriptor `json:"arguments_descriptor,omitempty"`
 	OperationID         OperationID       `json:"operation_id"`
 	Cycle               int               `json:"cycle"`
+	Source              EventSource       `json:"source,omitempty"`
 }
 
 type HostEffectID string
@@ -340,15 +363,19 @@ type PayloadDescriptor struct {
 }
 
 type StateSnapshot struct {
-	Binding          BindingRef
-	Cursor           Cursor
-	Phase            Phase
-	ActiveOperation  OperationID
-	ActiveCycle      int
-	RecoveryPaused   bool
-	InputRecovery    *InputMaterializationRecovery
-	ActiveStructural *StructuralOperationSnapshot
-	ActiveOutput     ActiveOutputSnapshot
+	Binding                  BindingRef
+	Cursor                   Cursor
+	Phase                    Phase
+	ActiveCommandID          CommandID
+	ActiveCommandFingerprint string
+	ActiveReceiptCursor      Cursor
+	ActiveOperation          OperationID
+	ActiveCycle              int
+	RecoveryPending          bool
+	RecoveryPaused           bool
+	InputRecovery            *InputMaterializationRecovery
+	ActiveStructural         *StructuralOperationSnapshot
+	ActiveOutput             ActiveOutputSnapshot
 	// Messages reconstructs the durable display timeline. It is deliberately
 	// absent from TurnSnapshot so UI recovery never becomes implicit model input.
 	Messages               []Message
@@ -363,6 +390,8 @@ type StateSnapshot struct {
 	RecentOperations    []OperationSummary
 	LastDomainCommit    *DomainCommitState
 	DomainCommits       []DomainCommitState
+	CapabilityStates    map[string]json.RawMessage
+	Interactions        []InteractionSnapshot
 	TimelineStartCursor Cursor
 	MessagesTruncated   bool
 	Memory              BindingMemorySnapshot
@@ -394,6 +423,7 @@ type StatusSnapshot struct {
 	PreemptQueuedCommandID CommandID
 	OpenToolCalls          []ToolCallState
 	PendingHostEffects     []HostEffectSnapshot
+	Interactions           []InteractionSnapshot
 	LastOperation          *OperationSummary
 	RecentOperations       []OperationSummary
 	LastDomainCommit       *DomainCommitState
@@ -410,6 +440,8 @@ type BindingMemorySnapshot struct {
 	ActiveOutputBytes      int64
 	PendingHostEffectBytes int64
 	PendingHostEffects     int
+	InteractionBytes       int64
+	PendingInteractions    int
 	Limits                 BindingMemoryLimits
 }
 

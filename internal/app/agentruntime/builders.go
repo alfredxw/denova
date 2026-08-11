@@ -8,7 +8,6 @@ import (
 
 	"denova/config"
 	agents "denova/internal/agents"
-	agentchat "denova/internal/agents/chat"
 	agentinteractive "denova/internal/agents/interactive"
 	"denova/internal/agents/prompts"
 	agentrun "denova/internal/agents/run"
@@ -16,6 +15,11 @@ import (
 	agenttools "denova/internal/agents/tools"
 	"denova/internal/book"
 )
+
+type BuiltAgent struct {
+	Definition  agents.Definition
+	Composition prompts.SystemPromptComposition
+}
 
 // GoalTools returns the root-only tool surface for one conversation. The tool
 // remains registered while no goal is active so model tool schemas stay stable
@@ -35,89 +39,112 @@ func GoalTools(ctx context.Context, sess *session.Session) ([]agents.ToolDefinit
 	return []agents.ToolDefinition{definition}, nil
 }
 
-// BuildConversation creates either a writing or a general-purpose project
-// runner. Agent kind is explicit because it determines the prompt and tools.
-func BuildConversation(
+func BuildConversationAgent(
 	ctx context.Context,
 	cfg *config.Config,
 	state *book.State,
 	teller prompts.IDEStoryTeller,
 	agentKind string,
 	rootTools ...agents.ToolDefinition,
-) (*agents.Runner, prompts.SystemPromptComposition, error) {
+) (BuiltAgent, error) {
+	definition, composition, err := BuildConversationDefinition(ctx, cfg, state, teller, agentKind, rootTools...)
+	if err != nil {
+		return BuiltAgent{}, err
+	}
+	return BuiltAgent{Definition: definition, Composition: composition}, nil
+}
+
+// BuildConversationDefinition creates the writing/general Definition and its
+// exact prompt composition for the public Agent lifecycle.
+func BuildConversationDefinition(
+	ctx context.Context,
+	cfg *config.Config,
+	state *book.State,
+	teller prompts.IDEStoryTeller,
+	agentKind string,
+	rootTools ...agents.ToolDefinition,
+) (agents.Definition, prompts.SystemPromptComposition, error) {
+	host := agents.AgentHostCapabilities{Interactive: true, RootTools: rootTools}
 	switch agentKind {
 	case agentrun.AgentKindGeneral:
-		built, composition, err := agents.BuildGeneralAgentWithCompositionForHost(
-			ctx, cfg, agents.AgentHostCapabilities{Interactive: true, RootTools: rootTools},
-		)
+		definition, composition, err := agents.BuildGeneralDefinitionWithCompositionForHost(ctx, cfg, host)
 		if err != nil {
-			return nil, prompts.SystemPromptComposition{}, fmt.Errorf("build General Agent: %w", err)
+			return agents.Definition{}, prompts.SystemPromptComposition{}, fmt.Errorf("build General Agent Definition: %w", err)
 		}
-		return agentchat.NewRunnerWithOptions(ctx, built, runnerOptions(cfg, agentKind)), composition, nil
+		return definition, composition, nil
 	case agentrun.AgentKindIDE:
-		built, composition, err := agents.BuildWithCompositionForHost(
-			ctx, cfg, state, teller, agents.AgentHostCapabilities{Interactive: true, RootTools: rootTools},
-		)
+		definition, composition, err := agents.BuildDefinitionWithCompositionForHost(ctx, cfg, state, teller, host)
 		if err != nil {
-			return nil, prompts.SystemPromptComposition{}, fmt.Errorf("build Writing Agent: %w", err)
+			return agents.Definition{}, prompts.SystemPromptComposition{}, fmt.Errorf("build Writing Agent Definition: %w", err)
 		}
-		return agentchat.NewRunnerWithOptions(ctx, built, runnerOptions(cfg, agentKind)), composition, nil
+		return definition, composition, nil
 	default:
-		return nil, prompts.SystemPromptComposition{}, fmt.Errorf("unsupported conversation Agent kind %q", agentKind)
+		return agents.Definition{}, prompts.SystemPromptComposition{}, fmt.Errorf("unsupported conversation Agent kind %q", agentKind)
 	}
 }
 
-// BuildInteractive creates the game-story runner and exact prompt composition.
-func BuildInteractive(
+func BuildInteractiveAgent(ctx context.Context, cfg *config.Config, state *book.State, teller prompts.InteractiveStorySystemInstructionInput, toolContexts ...agentinteractive.InteractiveStoryToolContext) (BuiltAgent, error) {
+	definition, composition, err := BuildInteractiveDefinition(ctx, cfg, state, teller, toolContexts...)
+	if err != nil {
+		return BuiltAgent{}, err
+	}
+	return BuiltAgent{Definition: definition, Composition: composition}, nil
+}
+
+func BuildInteractiveDefinition(
 	ctx context.Context,
 	cfg *config.Config,
 	state *book.State,
 	teller prompts.InteractiveStorySystemInstructionInput,
 	toolContexts ...agentinteractive.InteractiveStoryToolContext,
-) (*agents.Runner, prompts.SystemPromptComposition, error) {
-	built, composition, err := agents.BuildInteractiveStoryWithComposition(ctx, cfg, state, teller, toolContexts...)
+) (agents.Definition, prompts.SystemPromptComposition, error) {
+	definition, composition, err := agents.BuildInteractiveStoryDefinitionWithComposition(ctx, cfg, state, teller, toolContexts...)
 	if err != nil {
-		return nil, prompts.SystemPromptComposition{}, fmt.Errorf("build Interactive Story Agent: %w", err)
+		return agents.Definition{}, prompts.SystemPromptComposition{}, fmt.Errorf("build Interactive Story Agent Definition: %w", err)
 	}
-	return agentchat.NewRunnerWithOptions(ctx, built, runnerOptions(cfg, agentrun.AgentKindInteractiveStory)), composition, nil
+	return definition, composition, nil
 }
 
-// BuildConfigManager creates the resource-configuration runner and exact
-// prompt composition.
-func BuildConfigManager(
+func BuildConfigManagerAgent(ctx context.Context, cfg *config.Config, state *book.State, resourceSkills ...prompts.ConfigManagerResourceSkill) (BuiltAgent, error) {
+	definition, composition, err := BuildConfigManagerDefinition(ctx, cfg, state, resourceSkills...)
+	if err != nil {
+		return BuiltAgent{}, err
+	}
+	return BuiltAgent{Definition: definition, Composition: composition}, nil
+}
+
+func BuildConfigManagerDefinition(
 	ctx context.Context,
 	cfg *config.Config,
 	state *book.State,
 	resourceSkills ...prompts.ConfigManagerResourceSkill,
-) (*agents.Runner, prompts.SystemPromptComposition, error) {
-	built, composition, err := agents.BuildConfigManagerAgentWithCompositionForHost(
+) (agents.Definition, prompts.SystemPromptComposition, error) {
+	definition, composition, err := agents.BuildConfigManagerDefinitionWithCompositionForHost(
 		ctx, cfg, state, agents.AgentHostCapabilities{Interactive: true}, resourceSkills...,
 	)
 	if err != nil {
-		return nil, prompts.SystemPromptComposition{}, fmt.Errorf("build Config Manager Agent: %w", err)
+		return agents.Definition{}, prompts.SystemPromptComposition{}, fmt.Errorf("build Config Manager Agent Definition: %w", err)
 	}
-	return agentchat.NewRunnerWithOptions(ctx, built, runnerOptions(cfg, agentrun.AgentKindConfigManager)), composition, nil
+	return definition, composition, nil
 }
 
-// BuildImage creates the image-generation runner and exact prompt composition.
-func BuildImage(
+func BuildImageAgent(ctx context.Context, cfg *config.Config, state *book.State, systemPrompt string) (BuiltAgent, error) {
+	definition, composition, err := BuildImageDefinition(ctx, cfg, state, systemPrompt)
+	if err != nil {
+		return BuiltAgent{}, err
+	}
+	return BuiltAgent{Definition: definition, Composition: composition}, nil
+}
+
+func BuildImageDefinition(
 	ctx context.Context,
 	cfg *config.Config,
 	state *book.State,
 	systemPrompt string,
-) (*agents.Runner, prompts.SystemPromptComposition, error) {
-	built, composition, err := agents.BuildImageAgentWithComposition(ctx, cfg, state, systemPrompt)
+) (agents.Definition, prompts.SystemPromptComposition, error) {
+	definition, composition, err := agents.BuildImageDefinitionWithComposition(ctx, cfg, state, systemPrompt)
 	if err != nil {
-		return nil, prompts.SystemPromptComposition{}, fmt.Errorf("build Image Agent: %w", err)
+		return agents.Definition{}, prompts.SystemPromptComposition{}, fmt.Errorf("build Image Agent Definition: %w", err)
 	}
-	return agentchat.NewRunnerWithOptions(ctx, built, runnerOptions(cfg, agentrun.AgentKindImage)), composition, nil
-}
-
-func runnerOptions(cfg *config.Config, agentKind string) agentrun.Options {
-	return agentrun.Options{
-		AgentKind: agentKind,
-		ProjectID: cfg.ProjectID,
-		StateRoot: cfg.ProjectStateDir,
-		Workspace: cfg.Workspace,
-	}
+	return definition, composition, nil
 }

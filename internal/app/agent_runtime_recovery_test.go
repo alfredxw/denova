@@ -14,7 +14,6 @@ import (
 	"time"
 
 	"denova/config"
-	agents "denova/internal/agents"
 )
 
 func TestConcurrentColdWritingRecoveryCreatesOneDisplayTask(t *testing.T) {
@@ -135,15 +134,15 @@ func runWritingRecoveryCrashSeed(t *testing.T) {
 	workspace := application.workspace
 	application.mu.RUnlock()
 	vanished := make(chan struct{})
-	if _, err := startExecutionCycle(application.executionRuntime,
-		context.Background(),
-		newInteractiveReplayRunner(t, &interactiveReplayModel{message: agents.AssistantMessage("must not run", nil)}),
-		&interactiveCrashConversation{vanished: vanished},
-		application.bookService,
-		agentchat.ChatRequest{CommandID: "writing-recovery-start", Message: "persist before crash"},
-		agentrun.Options{AgentKind: agentrun.AgentKindIDE, Workspace: workspace, SessionID: sessionID, Mode: "ide"},
-		nil,
-	); err != nil {
+	request := agentchat.ChatRequest{CommandID: "writing-recovery-start", Message: "persist before crash"}
+	cycle, _, err := application.chat().prepareWritingCycle(context.Background(), request, "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	cycle.Conversation = &interactiveCrashConversation{vanished: vanished}
+	cycle.Options = agentrun.Options{AgentKind: agentrun.AgentKindIDE, Workspace: workspace, SessionID: sessionID, Mode: "ide"}
+	cycle.Request = request
+	if _, err := application.executionRuntime.Start(context.Background(), agentexecution.StartRequest{Cycle: cycle}); err != nil {
 		t.Fatal(err)
 	}
 	select {

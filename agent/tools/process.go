@@ -65,6 +65,11 @@ type CommandRunner interface {
 	Run(context.Context, CommandRequest, func(string)) (CommandResult, error)
 }
 
+type IdentifiedCommandRunner interface {
+	CommandRunner
+	Identity() agent.CapabilityIdentity
+}
+
 // CommandRunGuard coordinates a process with other workspace mutation paths.
 // Denova injects workspacechange.WithExclusiveWorkspace here.
 type CommandRunGuard func(context.Context, func() error) error

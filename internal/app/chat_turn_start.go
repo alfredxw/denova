@@ -71,7 +71,6 @@ func (s *ChatAppService) startTaskWithError(ctx context.Context, expectedSession
 	a.mu.RLock()
 	workspace := a.workspace
 	sessionID := ""
-	selected := a.session
 	if a.session != nil {
 		sessionID = a.session.ID
 	}
@@ -87,14 +86,10 @@ func (s *ChatAppService) startTaskWithError(ctx context.Context, expectedSession
 	} else if ok {
 		return replay, nil
 	}
-	// Recovery Task lifetime and this admission mutex together linearize the
-	// stale-Session fence. A structural recovery marks its refresh obligation
-	// before it can stop running and remains alive while that obligation is
-	// unresolved, so Start must reject it before checking/clearing pending state.
 	a.mu.RLock()
-	activeBeforeRefresh := activeWritingTaskLocked(a)
+	activeBeforeStart := activeWritingTaskLocked(a)
 	a.mu.RUnlock()
-	if activeBeforeRefresh != nil && !activeBeforeRefresh.Finished() {
+	if activeBeforeStart != nil && !activeBeforeStart.Finished() {
 		return nil, ErrAgentOperationActive
 	}
 	operation, err := a.acquireWorkspaceOperation(ctx, workspace, true)
@@ -103,9 +98,6 @@ func (s *ChatAppService) startTaskWithError(ctx context.Context, expectedSession
 	}
 	defer operation.Release()
 	ctx = operation.Context()
-	if refreshErr := s.retryPendingWritingRecoveryRefresh(ctx, workspace, selected); refreshErr != nil {
-		return nil, refreshErr
-	}
 	if replay, matched, err := s.replayDurableWritingStart(ctx, req, workspace, sessionID, requestFingerprint); err != nil {
 		return nil, err
 	} else if matched {
@@ -134,7 +126,7 @@ func (s *ChatAppService) startTaskWithError(ctx context.Context, expectedSession
 	if err != nil {
 		return nil, err
 	}
-	runner, systemPrompt, err := appagentruntime.BuildConversation(
+	builtAgent, err := appagentruntime.BuildConversationAgent(
 		ctx, &runtime.cfg, runtime.state, runtime.ideTeller, agentrun.AgentKindIDE,
 		goalTools...,
 	)
@@ -142,6 +134,7 @@ func (s *ChatAppService) startTaskWithError(ctx context.Context, expectedSession
 		slog.ErrorContext(ctx, fmt.Sprintf("[agent-task] 刷新 Agent Runner 失败 workspace=%s err=%v", runtime.workspace, err))
 		return nil, err
 	}
+	systemPrompt := builtAgent.Composition
 	runtimeContexts := prompts.IDEWorkspaceRuntimeContextsForContext(runtime.state, req.IDEContext)
 	conversation := agentconversation.NewSessionConversationForAgentWithRuntimeContexts(
 		runtime.sess,
@@ -198,7 +191,6 @@ func (s *ChatAppService) startTaskWithError(ctx context.Context, expectedSession
 		if err := a.registerWorkspaceTaskLocked(task, runtime.workspace, true); err != nil {
 			return err
 		}
-		a.agentRunner = runner
 		a.activeTask = task
 		a.activeWritingRun = &writingTaskRun{task: task, runtime: runtime}
 		return nil
@@ -224,7 +216,7 @@ func (s *ChatAppService) startTaskWithError(ctx context.Context, expectedSession
 	}, runtime, req)
 	accepted, err = runtime.executionRuntime.Start(acceptCtx, agentexecution.StartRequest{
 		Cycle: agentexecution.Cycle{
-			Runner:       runner,
+			Definition:   builtAgent.Definition,
 			Conversation: conversation,
 			BookService:  runtime.bookService,
 			Request:      req,

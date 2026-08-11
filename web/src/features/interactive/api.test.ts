@@ -119,6 +119,7 @@ describe('interactive agent command API', () => {
       cursor: 9,
       replayed: true,
       recovery_action: {
+        action_id: 'recover-next-action',
         kind: 'next_turn',
         command_id: 'next-1',
         operation_id: 'operation-1',
@@ -128,6 +129,7 @@ describe('interactive agent command API', () => {
       storyId: 'story-1',
       branchId: 'main',
       action: {
+        action_id: 'recover-next-action',
         kind: 'next_turn',
         command_id: 'next-1',
         operation_id: 'operation-1',
@@ -139,6 +141,7 @@ describe('interactive agent command API', () => {
     expect(vi.mocked(requestJSON).mock.calls[0]?.[0]).toBe('/api/interactive/chat/recovery')
     expect(body).toEqual({
       action: {
+        action_id: 'recover-next-action',
         kind: 'next_turn',
         command_id: 'next-1',
         operation_id: 'operation-1',

@@ -507,7 +507,7 @@ function recoveryActionsToSubmit(projection: ActiveChatTask) {
 }
 
 function sameRecoveryAction(left: AgentRuntimeRecoveryAction, right: AgentRuntimeRecoveryAction) {
-  return left.kind === right.kind && left.command_id === right.command_id && left.operation_id === right.operation_id
+  return left.action_id === right.action_id && left.kind === right.kind && left.command_id === right.command_id && left.operation_id === right.operation_id
 }
 
 function writingRecoveryProjectionFingerprint(projection: ActiveChatTask | null) {

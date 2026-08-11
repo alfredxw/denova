@@ -1,160 +1,196 @@
-# Denova Agent Development Kit
+# Denova Agent Package
 
-`agent` 是可独立复用的 Go module，提供 provider-neutral 的原生 Agent loop、消息与事件协议、单一工具注册边界、上下文装配、会话抽象和可选 durable runtime。它不依赖 Denova 应用代码；具体模型 SDK 只允许出现在 `providers/*` adapter 子 package 中。
-
-## 依赖边界
+`agent` 是 provider-neutral、可组合、可持久恢复的 Go Agent module。公开使用心智模型只有三层：
 
 ```text
-业务 Agent / application host
-        │
-        ├── providers.Registry（provider 身份/默认值与 protocol adapter 分离）
-        │    ├── builtin       OpenAI、DeepSeek 与兼容 endpoint 定义
-        │    └── protocols     Chat Completions / Responses wire adapter
-        │
-        └── agent
-             ├── context   有来源、有用途、有硬上限的上下文装配
-             ├── session   append-only 模型 transcript 与 CAS store
-             ├── tools     标准工具实现、workspace adapter 与 definition factory
-             └── runtime   可选 durable command / recovery / host-effect 协调
+Agent -> Session -> Run
 ```
 
-模型 adapter、具体工具、system prompt、产品 session、UI event 和领域存储由使用方组合；公共 module 不反向引用它们。
+`Agent` 固定拥有 durable admission、model/tool loop、permission fence、canonical commit、interaction、compaction、recovery 和事件发布。使用者通过 `Definition` 选择或替换 model、tools、context、goal、compaction、permission、interaction 与 canonical adapter，不需要编排内部阶段。
 
-## 包职责
-
-| Package | 职责 |
-| --- | --- |
-| `agent` | `Message`、`BaseChatModel`、`Tool`、`ToolDefinition`、唯一 `Registry`、native loop、middleware、typed event、runner 与 Agent/Host registry |
-| `agent/providers` | provider-neutral `ModelConfig`、provider/protocol catalog、显式 `Registry`、稳定 `APIError` 与版本化 continuation 信封；不依赖模型 SDK |
-| `agent/providers/builtin` | 组合内置 provider 定义与 protocol adapter，不使用全局注册 |
-| `agent/providers/protocols/openaichatcompletions` | OpenAI-compatible Chat Completions 请求、流式响应及 endpoint 兼容修复 |
-| `agent/providers/protocols/openairesponses` | OpenAI Responses 请求、流式事件、工具调用及无状态 reasoning output 回放 |
-| `agent/context` | 将带 `source`、`purpose` 和 byte limit 的片段增量装配为模型输入 |
-| `agent/session` | append-only transcript、`/clear` marker、revision/CAS store；不保存 UI 日志或领域状态 |
-| `agent/tools` | 基础 `read` / `glob` / `grep` / `write` / `edit` / `bash` / `pwsh`、可扩展读取 adapter 和 definition factory；不维护第二份 registry |
-| `agent/runtime` | durable command journal、binding、恢复、input materialization、domain commit barrier 和 host-effect reconciliation |
-
-`agent/tools.OpenWorkspace` 默认从 PATH 查找 ripgrep。需要可重复分发的宿主可用 `OpenWorkspaceWithOptions` 注入固定 `RipgrepExecutable`；Denova Release 用该 seam 指向安装目录中的内置版本。
-
-`Agent` 和 `Runner` 不会隐式启用 `runtime`。普通嵌入只需要核心 loop；需要崩溃恢复、幂等命令或跨领域提交时，由宿主在应用 Agent 边界接入 `runtime`。
-
-Responses 的 `store=false` 连续性通过 `providers.Continuation` 保存在 `Message.Extra`。信封只含标准 JSON，并绑定 provider、protocol、model 和 endpoint；切换任一身份后 adapter 会忽略旧状态并退回普通消息转换。宿主持久化时只应保留 `providers.ExtraKeyContinuation`，不应把 request ID、usage 或其他 transport telemetry 当作下一轮模型输入。
-
-## 工具契约
-
-工具只有一个执行接口和一个注册单元：
+## 最小示例
 
 ```go
-type Tool interface {
-    Info(context.Context) (*ToolInfo, error)
-    Run(context.Context, string, ...ToolOption) (ToolResult, error)
+assistant, err := agent.New(ctx, agent.Definition{
+    Name:         "assistant",
+    Model:        model,
+    Instructions: "Use tools only when they materially help.",
+    Tools: agent.StaticTools(
+        lookupTool,
+    ),
+})
+if err != nil {
+    return err
 }
+defer assistant.Close(context.Background())
 
-type ToolDefinition struct {
-    Tool       Tool
-    Descriptor ToolDescriptor
+run, err := assistant.Run(ctx, agent.Text("Explain this repository."))
+if err != nil {
+    return err
 }
+for event := range run.Events() {
+    render(event)
+}
+_, err = run.Wait(ctx)
+return err
 ```
 
-每次 run 在所有 `BeforeAgent` middleware 完成后创建不可变 registry snapshot，并一次性校验名称、重复项、JSON Schema、descriptor 枚举和跨字段约束。provider 只接收 snapshot 中的 `ToolInfo`；调度、middleware 和 lifecycle event 使用同一 snapshot。
-
-`ToolResult` 将三个用途明确隔离：
-
-- `ModelContent` 是唯一进入下一轮模型上下文的内容；
-- `DisplayContent` 只用于 UI 工具卡片、日志和展示恢复；
-- `Details` 是有界合法 JSON，只供 lifecycle receipt、host effect 和领域处理，不会默认写入 transcript。
-
-模型与展示内容分别按 descriptor 的 `MaxResultBytes` 做 UTF-8 安全截断。tool message 只持久化 `ModelContent`、状态、synthetic reason 和截断摘要；旧历史只有 `Content` 时仍按成功文本结果读取。流式工具通过 `agent.EmitToolProgress(ctx, delta)` 发进度，最后仍返回普通 `ToolResult`。
-
-## 调度与 steering
-
-native loop 按 descriptor 在每个模型工具批次中建立阶段：
-
-- 连续 `parallel_read` 有界并发，默认并发数为 8，可通过 `AgentConfig.ToolParallelism` 配置为 1–64；
-- `workspace_exclusive` 与 `child` 各自形成严格前后屏障；
-- typed `finished` event 按真实完成顺序发出，tool transcript 始终按模型调用顺序追加；
-- unknown、无效调用、无效参数、policy block、模型长度截断和 steering skip 都生成唯一 paired synthetic result。
-
-安全 steering 不消费宿主 runtime 的用户队列。`finish_current` 调用会完成并留下 receipt，`interruptible_wait` 可通过 per-call context 中断；尚未启动的调用会收到 `steering_before_start`。立即 Abort 仍会停止调度且不等待不协作工具，durable runtime 将不确定副作用恢复为不可自动重试的 `effect_unknown`。
-
-## 最小组合
+`Agent.Run` 使用一次性内存 Session。需要连续对话或崩溃恢复时，显式打开具名 Session 并注入持久 Store：
 
 ```go
-ctx := context.Background()
-
-lookup, err := agent.InferTool(
-    "lookup",
-    "Retrieve one value by key.",
-    func(ctx context.Context, input struct {
-        Key string `json:"key"`
-    }) (map[string]string, error) {
-        return map[string]string{"value": input.Key}, nil
-    },
+store, err := sessionfile.New(".agent-state")
+if err != nil {
+    return err
+}
+assistant, err := agent.New(
+    appCtx,
+    source,
+    agent.WithSessionStore(store),
 )
 if err != nil {
     return err
 }
 
-definition := agent.ToolDefinition{
-    Tool: lookup,
-    Descriptor: agent.ToolDescriptor{
-        Source:           agent.ToolSourceRead,
-        Execution:        agent.ToolExecutionParallelRead,
-        Recovery:         agent.ToolRecoveryReadOnly,
-        ResultProjection: agent.ToolResultBoundedModelContext,
-        Steering:         agent.SteeringFinishCurrent,
-        MaxResultBytes:   128 * 1024,
-    },
+session, err := assistant.Session(ctx, agent.NamedSession("main"))
+if err != nil {
+    return err
 }
+run, err := session.Run(ctx, agent.Input{
+    Text:           "Fix the failing tests.",
+    IdempotencyKey: requestID,
+})
+```
 
-native, err := agent.NewAgent(ctx, agent.AgentConfig{
-    Name:            "assistant",
-    Instruction:     "Use tools when they materially help.",
-    Model:           model, // 任意实现 agent.BaseChatModel 的 adapter
-    Tools:           []agent.ToolDefinition{definition},
-    ToolParallelism: 8,
+## 可组合能力
+
+一个 `Definition` 是单次 cycle 的完整、不可变组合根：
+
+```go
+type Definition struct {
+    Key           string
+    Name          string
+    Description   string
+    Model         BaseChatModel
+    ModelIdentity CapabilityIdentity
+    Instructions  string
+
+    Tools       Toolset
+    Context     ContextSource
+    Goal        GoalManager
+    Compaction  CompactionManager
+    Permission  PermissionPolicy
+    Interaction InteractionPolicy
+    Canonical   CanonicalAdapter
+
+    Middlewares []Middleware
+    Execution   ExecutionPolicy
+}
+```
+
+静态 `Definition` 自身实现 `Source`。动态宿主可以实现 `Source.Prepare`，按 Session、产品模式或每个 cycle 重建 Definition。持久 Session 会校验完整 capability identity、restore key 与 model-visible prefix fingerprint；不能用变化后的组合猜测性恢复旧 Run。
+
+空 Capability 的语义是显式的：
+
+- `Tools`、`Context`、`Goal`、`Compaction` 和 `Canonical` 为空时禁用相应扩展；
+- `Permission` 为空时使用安全默认策略，写操作或受保护访问会请求许可；
+- `Interaction` 为空时使用标准双语交互校验；
+- `Execution` 零值不设置总运行超时或最大迭代次数。
+
+自动 compaction 不会被偷偷启用；需要时应明确选择 `compaction.Standard` 或自定义 `CompactionManager`。
+
+## 内置通用工具
+
+`agent/tools` 提供可单独选择或自由组合的通用 Toolset：
+
+- `Workspace`：read、glob、grep，以及可选的 write、edit；
+- `Shell`：bash 和/或 pwsh；
+- `Ask`：durable 双语用户交互；
+- `Todo`：Session 内置状态或自定义 Store；
+- `Skills`：自定义 SkillSource，批量读取逐项返回结果；
+- `Tasks`：自定义 TaskExecutor，批量操作支持部分成功。
+
+```go
+workspace, err := tools.Workspace(tools.WorkspaceConfig{
+    Root:     ".",
+    Access:   tools.WorkspaceReadWrite,
+    Mutation: mutationAdapter,
 })
 if err != nil {
     return err
 }
+shell, err := tools.Shell(tools.ShellConfig{Runner: commandRunner})
+if err != nil {
+    return err
+}
 
-events := agent.NewRunner(agent.RunnerConfig{
-    Agent:           native,
-    EnableStreaming: true,
-}).Query(ctx, "Find the answer")
+definition.Tools = tools.Combine(
+    workspace,
+    shell,
+    must(tools.Ask()),
+    must(tools.Todo()),
+    must(tools.Skills(skillSource)),
+    must(tools.Tasks(taskExecutor)),
+)
+```
 
-for {
-    event, ok := events.Next()
-    if !ok {
-        break
-    }
-    if event.Err != nil {
-        return event.Err
-    }
-    // 将 typed event 投影到 API、日志或 UI。
+write/edit 和 shell 都依赖宿主注入的稳定 Adapter identity；公共 module 不绕过宿主的审计、并发、权限或持久化语义。
+
+复杂网络工具位于可选 plugin package：
+
+- `agent/plugins/websearch`
+- `agent/plugins/webfetch`
+- `agent/plugins/browser`
+
+它们通过普通 Toolset 接入，同样经过 permission、result limits、artifact 与 recovery，不拥有特殊生命周期。
+
+## Run 控制与重连
+
+所有可能跨 transport 重试的命令都返回真实 durable receipt：
+
+```go
+receipt, err := run.Steer(ctx, agent.Input{
+    Text:           "Keep the public syntax unchanged.",
+    IdempotencyKey: steerRequestID,
+})
+
+abortReceipt, err := run.Abort(ctx, agent.AbortRequest{
+    Reason:         "user cancelled",
+    IdempotencyKey: abortRequestID,
+})
+```
+
+`CommandReceipt` 包含 `CommandID`、`RunID`、`Cursor` 和 `Replayed`。同一个幂等 ID 在进程重启、甚至目标 Run 已终结后，仍可重放原 receipt；不同语义复用同一 ID 会失败。
+
+`Session.Observe` 原子返回 bounded Snapshot 与 replay/live Event：
+
+```go
+observation, err := session.Observe(ctx, lastCursor)
+if err != nil {
+    return err
+}
+sendSnapshot(observation.Snapshot)
+for event := range observation.Events {
+    sendEvent(event)
 }
 ```
 
-## Session 与上下文
+missed ephemeral delta 可从 Snapshot 的 active output 恢复。超出 retention 时返回 `ErrCursorExpired`，调用者应重新获取 Snapshot。
 
-- `session.Store` 是持久化 seam；内置 `MemoryStore` 适合测试，生产环境实现自己的 CAS store。
-- `Snapshot.EffectiveMessages()` 通过 clear marker 过滤旧历史，不物理删除 transcript。
-- `context.Assembler` 只接收显式片段；每个片段必须说明来源、用途、placement 和上限。
-- thinking、工具卡片、`DisplayContent`、`Details` 和调试日志不应默认写入模型 transcript。
+## 存储、恢复与产品数据
 
-## 外部 Agent Host
+`session.Store` 是 Agent durable state 的唯一公共存储 seam。内置实现包括：
 
-Codex、Claude Code 或其他完整 Agent 应实现 `agent.Host`，由 root Agent 通过 `HostRegistry` 调度。`HostContext` 将有界模型摘要与仅供恢复/诊断的 host details 分离，避免把外部 Agent 的内部状态直接注入主模型。
+- `session.Memory()`：测试和一次性进程；
+- `session/file.New(root)`：带 lease、校验和及原子 append batch 的本地持久 Store；
+- `session/sessiontest.RunStoreContract`：外部 Store 的复用 contract suite。
 
-## Durable runtime 的接入原则
+Agent Store 保存命令、Run、queue、transcript、goal、compaction、interaction、canonical receipt、host-effect outbox 和恢复证据；它不保存 Denova book、story、workspace 或 automation 领域数据。产品数据由自定义 `CanonicalAdapter` 幂等提交，并通过 query/reconcile 处理不确定 crash window。
 
-`agent/runtime` 只负责通用协调，不拥有产品数据：
+## Provider 与上下文边界
 
-- runtime journal 保存命令、状态转换和有界恢复证据，不持久化完整展示结果或 `Details`；
-- application/domain store 仍是用户内容的事实真源；
-- 不确定的工具副作用必须通过 host-effect reconciliation 确认，不能自动重试；
-- domain commit 必须跨越显式 prepare/commit/ack barrier；
-- API 和业务 service 应依赖宿主定义的 DTO/接口，由应用 Agent 层完成 runtime 类型转换。
+`providers` 保存 provider-neutral 配置和 identity；具体 wire protocol 位于 `providers/protocols/*`。上下文片段必须声明 source、purpose、resource、placement 与 hard limit，超限会失败而不是静默截断。
+
+稳定 system instruction、tool schema/order 与长期 context revision 参与 prefix fingerprint。Run ID、cursor、trace ID、时间戳和展示 Task ID 不得污染稳定前缀。
 
 ## 验证
 
@@ -163,4 +199,4 @@ cd agent
 go test ./...
 ```
 
-`providers` 与 core 属于同一个 module，因此上面的命令会同时验证公共 core、registry、内置 provider catalog、Chat Completions 和 Responses adapter。新增供应商时优先只在 `providers/builtin` 注册身份、默认 URL 与支持协议；只有出现新的 wire protocol 时才新增 `providers/protocols/<protocol>`。产品 Agent 只能依赖 `providers.Registry`，不能直接构造 protocol adapter 或 OpenAI SDK 类型。
+公共 Store、Goal、Compaction、Permission 和 Canonical Adapter 均提供可复用 contract suite。Denova application 通过动态 Source、ContextSource、CanonicalAdapter、CompactionManager 和 product Toolset 使用同一 Agent lifecycle。

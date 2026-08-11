@@ -12,7 +12,6 @@ import (
 	"time"
 
 	"denova/config"
-	agents "denova/internal/agents"
 	configmanagerapp "denova/internal/app/configmanager"
 )
 
@@ -149,18 +148,29 @@ func runConfigManagerRecoveryCrashSeed(t *testing.T) {
 		if _, err := application.sessionStore.GetOrCreate(sessionID); err != nil {
 			t.Fatal(err)
 		}
+		restoreData, err := configmanagerapp.RestoreDataForRequest(seed.scope)
+		if err != nil {
+			t.Fatal(err)
+		}
 		reachedContext := make(chan struct{})
 		vanished = append(vanished, reachedContext)
-		if _, err := startExecutionCycle(application.executionRuntime,
-			context.Background(),
-			newInteractiveReplayRunner(t, &interactiveReplayModel{message: agents.AssistantMessage("must not run", nil)}),
-			&interactiveCrashConversation{vanished: reachedContext}, application.bookService,
-			agentchat.ChatRequest{CommandID: seed.commandID, Message: "persist Config Manager work before crash"},
-			agentrun.Options{
-				AgentKind: agentrun.AgentKindConfigManager, ProjectID: projectID, StateRoot: stateRoot, Workspace: workspace,
-				SessionID: sessionID, Mode: configmanagerapp.RuntimeMode,
-			}, nil,
-		); err != nil {
+		chatRequest := agentchat.ChatRequest{CommandID: seed.commandID, Message: "persist Config Manager work before crash"}
+		options := agentrun.Options{
+			AgentKind: agentrun.AgentKindConfigManager, ProjectID: projectID, StateRoot: stateRoot, Workspace: workspace,
+			SessionID: sessionID, Mode: configmanagerapp.RuntimeMode, RestoreData: restoreData,
+		}
+		binding := agentrun.RuntimeBinding{
+			AgentKind: agentrun.AgentKindConfigManager, ProjectID: projectID, Workspace: workspace,
+			SessionID: sessionID, Mode: configmanagerapp.RuntimeMode,
+		}
+		cycle, err := application.ConfigManager().PrepareCycle(context.Background(), agentexecution.CycleRestoreRequest{
+			Request: chatRequest, Options: options,
+		}, binding)
+		if err != nil {
+			t.Fatal(err)
+		}
+		cycle.Conversation = &interactiveCrashConversation{vanished: reachedContext}
+		if _, err := application.executionRuntime.Start(context.Background(), agentexecution.StartRequest{Cycle: cycle}); err != nil {
 			t.Fatal(err)
 		}
 	}

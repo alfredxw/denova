@@ -42,6 +42,7 @@ func TestAgentsRootContainsOnlyCompositionResponsibilities(t *testing.T) {
 		"director.go": true,
 		"doc.go":      true,
 		"message.go":  true,
+		"source.go":   true,
 	}
 	entries, err := os.ReadDir(".")
 	if err != nil {

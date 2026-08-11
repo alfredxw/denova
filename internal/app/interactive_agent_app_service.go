@@ -52,13 +52,14 @@ func (s *InteractiveAppService) AnalyzeInteractiveContext(storyID, branchID, mes
 	}
 	defer operation.Release()
 	a.mu.RLock()
-	if a.interactive == nil || a.bookState == nil || a.cfg == nil {
+	if a.interactive == nil || a.bookState == nil || a.cfg == nil || a.executionRuntime == nil {
 		a.mu.RUnlock()
 		return agentchat.ContextAnalysis{}, ErrNoWorkspace
 	}
 	store := a.interactive
 	state := a.bookState
 	bookService := a.bookService
+	executionRuntime := a.executionRuntime
 	runtimeCfg := *a.cfg
 	runtimeCfg.Workspace = workspace
 	novaDir := runtimeCfg.DataDir()
@@ -87,7 +88,21 @@ func (s *InteractiveAppService) AnalyzeInteractiveContext(storyID, branchID, mes
 		Locale:      locale,
 	}
 	conversation := interactiveapp.NewConversation(store, novaDir, workspace, storyID, branchID, message, runtimeCfg.InteractiveReplyTargetChars, &runtimeCfg)
-	return agentchat.BuildInteractiveStoryContextAnalysis(&runtimeCfg, state, interactiveapp.StoryTellerSystemInput(teller, styleRules), bookService, req, storyCtx.Snapshot.ContextCompaction, conversation)
+	status, err := executionRuntime.RuntimeStatusProjection(context.Background(), agentrun.Options{
+		AgentKind: agentrun.AgentKindInteractiveStory, Workspace: workspace,
+		StoryID: storyID, BranchID: storyCtx.Snapshot.BranchID, Mode: "interactive",
+	})
+	if err != nil {
+		return agentchat.ContextAnalysis{}, err
+	}
+	if err := conversation.BindRuntimeCompaction(status.Compaction); err != nil {
+		return agentchat.ContextAnalysis{}, err
+	}
+	compaction, err := interactiveapp.ProjectAgentCompaction(status.Compaction, storyID, storyCtx.Snapshot.BranchID)
+	if err != nil {
+		return agentchat.ContextAnalysis{}, err
+	}
+	return agentchat.BuildInteractiveStoryContextAnalysis(&runtimeCfg, state, interactiveapp.StoryTellerSystemInput(teller, styleRules), bookService, req, compaction, conversation)
 }
 
 func (a *App) AnalyzeInteractiveDirectorContext(storyID, branchID, turnID string, locale string) (agentchat.ContextAnalysis, error) {
@@ -275,7 +290,6 @@ func (s *InteractiveAppService) startInteractiveTask(ctx context.Context, reques
 		if err := a.registerWorkspaceTaskLocked(task, cycle.workspace, true); err != nil {
 			return err
 		}
-		a.interactiveStoryRunner = cycle.runner
 		a.activeInteractiveRun = &interactiveTaskRun{task: task, info: identity.taskInfo(task.ID())}
 		return nil
 	})
@@ -288,7 +302,7 @@ func (s *InteractiveAppService) startInteractiveTask(ctx context.Context, reques
 	acceptCtx, releaseAcceptance := apptask.AcceptanceContext(ctx, task)
 	accepted, err = cycle.executionRuntime.Start(acceptCtx, agentexecution.StartRequest{
 		Cycle: agentexecution.Cycle{
-			Runner:       cycle.runner,
+			Definition:   cycle.definition,
 			Conversation: cycle.conversation,
 			BookService:  cycle.bookService,
 			Request:      cycle.request,
@@ -363,8 +377,8 @@ func emitInteractiveTurnPersistedResult(store *interactive.Store, storyID string
 		State:                    snapshot.State,
 		Graph:                    snapshot.Graph,
 		Branches:                 snapshot.Graph.Branches,
-		ContextCompaction:        snapshot.ContextCompaction,
-		ContextCompactionRemoval: snapshot.ContextCompactionRemoval,
+		ContextCompaction:        conversation.AgentCompactionProjection(snapshot),
+		ContextCompactionRemoval: nil,
 	}
 	emit(agentrun.Event{Type: "interactive_turn_persisted", Data: event})
 	slog.InfoContext(context.Background(), fmt.Sprintf("[interactive-agent-task] emitted persisted turn story_id=%s branch_id=%s turn_id=%s", storyID, snapshot.BranchID, persistedTurn.ID))

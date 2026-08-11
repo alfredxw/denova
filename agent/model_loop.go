@@ -8,7 +8,7 @@ import (
 	"time"
 )
 
-func (agent *Agent) modelForCall(ctx context.Context, modelContext *ModelContext) (BaseChatModel, error) {
+func (agent *Loop) modelForCall(ctx context.Context, modelContext *ModelContext) (BaseChatModel, error) {
 	model := agent.model
 	if toolCalling, ok := model.(ToolCallingChatModel); ok {
 		bound, err := toolCalling.WithTools(modelContext.Tools)
@@ -30,7 +30,7 @@ func (agent *Agent) modelForCall(ctx context.Context, modelContext *ModelContext
 	return model, nil
 }
 
-func (agent *Agent) callModelWithRetry(
+func (agent *Loop) callModelWithRetry(
 	ctx context.Context,
 	model BaseChatModel,
 	registry *Registry,
@@ -113,7 +113,7 @@ func (agent *Agent) callModelWithRetry(
 }
 
 type modelStreamOutput struct {
-	agent                  *Agent
+	agent                  *Loop
 	events                 *AsyncGenerator[*AgentEvent]
 	writer                 *StreamWriter[*Message]
 	registry               *Registry
@@ -179,7 +179,7 @@ func publicStreamError(err error, cancel *cancelControl) error {
 	return err
 }
 
-func (agent *Agent) retryDecision(
+func (agent *Loop) retryDecision(
 	ctx context.Context,
 	attempt int,
 	messages []*Message,
@@ -209,7 +209,7 @@ func (agent *Agent) retryDecision(
 	return &RetryDecision{Retry: true}
 }
 
-func (agent *Agent) callModel(
+func (agent *Loop) callModel(
 	ctx context.Context,
 	model BaseChatModel,
 	registry *Registry,

@@ -138,7 +138,7 @@ func TestInvocationWebAccessClientClosesOneRuntimePerAgentRun(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	native, err := agent.NewAgent(context.Background(), agent.AgentConfig{
+	native, err := agent.NewLoop(context.Background(), agent.LoopConfig{
 		Name: "web-access-lifecycle", Model: &webAccessLifecycleModel{}, Tools: []agent.ToolDefinition{fetch},
 	})
 	if err != nil {

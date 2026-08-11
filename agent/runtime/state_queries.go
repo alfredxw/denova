@@ -51,8 +51,27 @@ func (s *harnessState) turnSnapshot(id SnapshotID) TurnSnapshot {
 		ID: id, Binding: s.binding.Clone(), OperationID: s.activeOperation,
 		CommandID: s.activeCycleCommandID,
 		Cycle:     s.activeCycle, Input: cloneUserInput(s.activeInput),
-		ContextCursor: s.cursor,
+		ContextCursor: s.cursor, State: cloneRawMessage(s.engineState), Capabilities: cloneCapabilityStates(s.capabilityStates),
+		Interactions: s.interactionSnapshots(),
 	}
+}
+
+func (s *harnessState) interactionSnapshots() []InteractionSnapshot {
+	if len(s.interactions) == 0 {
+		return nil
+	}
+	result := make([]InteractionSnapshot, 0, len(s.interactions))
+	for _, interaction := range s.interactions {
+		result = append(result, cloneInteractionSnapshot(interaction))
+	}
+	sort.Slice(result, func(i, j int) bool { return result[i].ID < result[j].ID })
+	return result
+}
+
+func cloneInteractionSnapshot(value InteractionSnapshot) InteractionSnapshot {
+	value.Request = cloneRawMessage(value.Request)
+	value.Response = cloneRawMessage(value.Response)
+	return value
 }
 
 func (s *harnessState) hasQueued(delivery DeliveryKind) bool {
@@ -70,6 +89,15 @@ func (s *harnessState) firstQueued(deliveries ...DeliveryKind) (QueuedInput, boo
 			if item.Delivery == delivery {
 				return cloneQueuedInput(item), true
 			}
+		}
+	}
+	return QueuedInput{}, false
+}
+
+func (s *harnessState) firstAutonomousContinuation() (QueuedInput, bool) {
+	for _, item := range s.queue {
+		if item.Autonomous && item.Delivery == DeliveryFollowUp && item.OperationID == s.activeOperation {
+			return cloneQueuedInput(item), true
 		}
 	}
 	return QueuedInput{}, false

@@ -11,7 +11,6 @@ import (
 	"sync"
 
 	"denova/config"
-	agents "denova/internal/agents"
 	"denova/internal/agents/session"
 	activityapp "denova/internal/app/activity"
 	agentchatapp "denova/internal/app/agentchat"
@@ -45,8 +44,6 @@ type App struct {
 	interactive                     *interactive.Store
 	sessionStore                    *session.Store
 	session                         *session.Session
-	agentRunner                     *agents.Runner
-	interactiveStoryRunner          *agents.Runner
 	executionRuntime                *agentexecution.Runtime
 	projectRegistry                 *projectdomain.Registry
 	bookMetaStore                   *book.MetaStore
@@ -121,14 +118,14 @@ func New(ctx context.Context, cfg *config.Config) (*App, error) {
 		terminals:       terminal.NewManager(terminalConfigFromAppConfig(cfg)),
 	}
 	app.automationApp = automationapp.NewService(automationHost{app: app})
-	executionRuntime, err := agentexecution.NewDurableRuntime(
+	executionRuntime, err := agentexecution.NewAgentRuntime(
 		ctx,
 		dataDir,
 		agentexecution.WithProfiles(app.executionProfiles()...),
 		agentexecution.WithHostEffectReconciler(app.automationApp.ReconcileHostEffect),
 	)
 	if err != nil {
-		return nil, fmt.Errorf("initialize durable agent runtime: %w", err)
+		return nil, fmt.Errorf("initialize Agent runtime: %w", err)
 	}
 	app.executionRuntime = executionRuntime
 	workspace := cfg.Workspace
@@ -342,8 +339,6 @@ func (a *App) applyRuntime(runtime *runtimeState) {
 	a.interactive = runtime.interactive
 	a.sessionStore = runtime.sessionStore
 	a.session = runtime.session
-	a.agentRunner = runtime.agentRunner
-	a.interactiveStoryRunner = runtime.interactiveStoryRunner
 	a.versionService = runtime.versionService
 	if a.cfg != nil {
 		a.cfg.ProjectID = runtime.projectID
@@ -365,8 +360,6 @@ func (a *App) clearRuntime() {
 	a.interactive = nil
 	a.sessionStore = nil
 	a.session = nil
-	a.agentRunner = nil
-	a.interactiveStoryRunner = nil
 	a.versionService = nil
 	a.activeTask = nil
 	a.activeWritingRun = nil

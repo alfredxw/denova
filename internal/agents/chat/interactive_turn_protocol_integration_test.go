@@ -30,7 +30,7 @@ func TestInteractiveProtocolRetryRevalidatesCompleteProviderInput(t *testing.T) 
 		agent.AssistantMessage(strings.Repeat("候选正文。", 2_000), nil),
 	}}
 	const providerInputMaxBytes = 12 * 1024
-	nativeAgent, err := agent.NewAgent(ctx, agent.AgentConfig{
+	nativeAgent, err := agent.NewLoop(ctx, agent.LoopConfig{
 		Name: "interactive-provider-boundary-test", Description: "test", Instruction: "test", Model: chatModel, MaxIterations: 2,
 		Middlewares: []agent.Middleware{
 			agentinteractive.NewTurnProtocolMiddleware(ready.Load),
@@ -82,7 +82,7 @@ func TestInteractiveTurnProtocolRecoversMissingSubmissionInsideAgentLoop(t *test
 		t.Fatal(err)
 	}
 	chatModel := &interactiveTurnProtocolChatModel{}
-	nativeAgent, err := agent.NewAgent(ctx, agent.AgentConfig{
+	nativeAgent, err := agent.NewLoop(ctx, agent.LoopConfig{
 		Name:          "interactive-protocol-test",
 		Description:   "test",
 		Instruction:   "test",
@@ -157,7 +157,7 @@ func TestInteractiveTurnProtocolAccountsRejectedModelCallUsage(t *testing.T) {
 		t.Fatal(err)
 	}
 	chatModel := &interactiveTurnProtocolChatModel{}
-	nativeAgent, err := agent.NewAgent(ctx, agent.AgentConfig{
+	nativeAgent, err := agent.NewLoop(ctx, agent.LoopConfig{
 		Name:          "interactive-protocol-usage-test",
 		Description:   "test",
 		Instruction:   "test",
@@ -263,7 +263,7 @@ func TestInteractiveTurnProtocolRetriesRejectedModulesBeforeReusingCandidate(t *
 		}}),
 		agent.AssistantMessage("不应再次生成正文。", nil),
 	}}
-	nativeAgent, err := agent.NewAgent(ctx, agent.AgentConfig{
+	nativeAgent, err := agent.NewLoop(ctx, agent.LoopConfig{
 		Name:          "interactive-protocol-module-retry-test",
 		Description:   "test",
 		Instruction:   "test",
@@ -358,7 +358,7 @@ func TestInteractiveTurnProtocolLocksFirstCandidateAcrossRejectedModuleAndLaterP
 			ID: "good-state", Function: agent.FunctionCall{Name: agentinteractive.TurnSubmissionToolName, Arguments: `{"state_changes":[{"op":"replace","actor_id":"story","field_id":"当前事件","value":"主角在乱石坡观察敌情"}]}`},
 		}}),
 	}}
-	nativeAgent, err := agent.NewAgent(ctx, agent.AgentConfig{
+	nativeAgent, err := agent.NewLoop(ctx, agent.LoopConfig{
 		Name: "interactive-protocol-first-candidate-test", Description: "test", Instruction: "test", Model: chatModel, MaxIterations: 6,
 		Middlewares: []agent.Middleware{agentinteractive.NewTurnProtocolMiddleware(ready.Load)},
 		Tools:       tools,

@@ -7,6 +7,21 @@ import (
 
 func normalizeRuntimeEventPayload(payload EventPayload) EventPayload {
 	switch payload := payload.(type) {
+	case EngineStateCommittedEvent:
+		payload.State = cloneRawMessage(payload.State)
+		return payload
+	case CapabilityStateCommittedEvent:
+		payload.State = cloneRawMessage(payload.State)
+		return payload
+	case InteractionRequestedEvent:
+		payload.Request = cloneRawMessage(payload.Request)
+		return payload
+	case InteractionResolvedEvent:
+		payload.Response = cloneRawMessage(payload.Response)
+		return payload
+	case ArtifactProducedEvent:
+		payload.Artifact = cloneRawMessage(payload.Artifact)
+		return payload
 	case ToolCallStartedEvent:
 		payload.Call = normalizeToolCallState(payload.Call)
 		return payload
@@ -15,6 +30,32 @@ func normalizeRuntimeEventPayload(payload EventPayload) EventPayload {
 	default:
 		return payload
 	}
+}
+
+func cloneCapabilityStates(states map[string]json.RawMessage) map[string]json.RawMessage {
+	if len(states) == 0 {
+		return nil
+	}
+	cloned := make(map[string]json.RawMessage, len(states))
+	for name, state := range states {
+		cloned[name] = cloneRawMessage(state)
+	}
+	return cloned
+}
+
+func cloneCapabilityStateBytes(states map[string]json.RawMessage) map[string][]byte {
+	if len(states) == 0 {
+		return nil
+	}
+	cloned := make(map[string][]byte, len(states))
+	for name, state := range states {
+		cloned[name] = append([]byte(nil), state...)
+	}
+	return cloned
+}
+
+func cloneRawMessage(value json.RawMessage) json.RawMessage {
+	return append(json.RawMessage(nil), value...)
 }
 
 func cloneOperationSummary(summary *OperationSummary) *OperationSummary {
@@ -58,6 +99,9 @@ func cloneStatusSnapshot(snapshot StatusSnapshot) StatusSnapshot {
 	snapshot.Binding = snapshot.Binding.Clone()
 	snapshot.Queue = cloneQueue(snapshot.Queue)
 	snapshot.OpenToolCalls = append([]ToolCallState(nil), snapshot.OpenToolCalls...)
+	for index := range snapshot.OpenToolCalls {
+		snapshot.OpenToolCalls[index] = normalizeToolCallState(snapshot.OpenToolCalls[index])
+	}
 	snapshot.LastOperation = cloneOperationSummary(snapshot.LastOperation)
 	snapshot.RecentOperations = cloneOperationSummaries(snapshot.RecentOperations)
 	snapshot.LastDomainCommit = cloneDomainCommitState(snapshot.LastDomainCommit)

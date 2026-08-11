@@ -41,7 +41,7 @@ func TestInteractiveDirectorPlanSubmissionTerminatesAgentRun(t *testing.T) {
 		}}),
 		agent.AssistantMessage("不应在结构化提交后再次调用模型。", nil),
 	}}
-	builtAgent, err := agent.NewAgent(ctx, agent.AgentConfig{
+	builtAgent, err := agent.NewLoop(ctx, agent.LoopConfig{
 		Name:          "interactive-director-terminal-submission-test",
 		Description:   "test",
 		Instruction:   "test",

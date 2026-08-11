@@ -64,9 +64,6 @@ func (s *ChatAppService) drainWritingBinding(ctx context.Context, sessionID stri
 	if err := abortAndWaitTask(ctx, fence.task); err != nil {
 		return writingStructuralFence{}, err
 	}
-	if err := s.retryPendingWritingRecoveryRefresh(ctx, fence.workspace, fence.selected); err != nil {
-		return writingStructuralFence{}, err
-	}
 	if err := closeAgentBindings(fence.chat, func(chat *agentexecution.Runtime) error {
 		return chat.CloseSessionBindings(ctx, agentrun.AgentKindIDE, fence.workspace, sessionID)
 	}); err != nil {

@@ -37,6 +37,11 @@ type MutationAdapter interface {
 	Edit(context.Context, EditRequest) (agent.ToolResult, error)
 }
 
+type IdentifiedMutationAdapter interface {
+	MutationAdapter
+	Identity() agent.CapabilityIdentity
+}
+
 type writeInput struct {
 	Path    string `json:"path" jsonschema:"maxLength=4096" jsonschema_description:"Absolute or workspace-relative path of the file to create or completely replace."`
 	Content string `json:"content" jsonschema:"maxLength=16777216" jsonschema_description:"Complete new file content, up to the mutation safety limit."`

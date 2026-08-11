@@ -64,7 +64,7 @@ func TestToolExecutionIDsAreUniqueAcrossProviderCallIDReuse(t *testing.T) {
 		{message: AssistantMessage("done", nil)},
 	}}
 	tool := testToolDefinition(&functionTool{name: "echo", run: func(context.Context, string) (string, error) { return "ok", nil }})
-	native, err := NewAgent(context.Background(), AgentConfig{Name: "root", Model: model, Tools: []ToolDefinition{tool}})
+	native, err := NewLoop(context.Background(), LoopConfig{Name: "root", Model: model, Tools: []ToolDefinition{tool}})
 	if err != nil {
 		t.Fatal(err)
 	}

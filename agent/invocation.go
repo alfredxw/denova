@@ -237,6 +237,21 @@ func nextModelResponseOrdinal(ctx context.Context) int {
 	return int(value.state.responses)
 }
 
+func restoreModelResponseOrdinal(ctx context.Context, ordinal int) {
+	if ordinal <= 0 {
+		return
+	}
+	value, ok := invocationValueFromContext(ctx)
+	if !ok || value.state == nil {
+		return
+	}
+	value.state.mu.Lock()
+	if value.state.responses < uint64(ordinal) {
+		value.state.responses = uint64(ordinal)
+	}
+	value.state.mu.Unlock()
+}
+
 // InvocationResource returns one resource per invocation and key. Creation is
 // serialized so stateful tools cannot accidentally publish two owners during
 // concurrent calls. cleanup runs once when the invocation finishes.

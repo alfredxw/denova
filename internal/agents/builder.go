@@ -2,15 +2,19 @@ package agents
 
 import (
 	"context"
+	"crypto/sha256"
 	agentchat "denova/internal/agents/chat"
 	agentinteractive "denova/internal/agents/interactive"
 	agenttoolruntime "denova/internal/agents/toolruntime"
+	"encoding/hex"
+	"encoding/json"
 	"fmt"
 
 	agent "github.com/alfredxw/denova/agent"
 	"github.com/alfredxw/denova/agent/providers"
 
 	"denova/config"
+	agentcompaction "denova/internal/agents/context/compaction"
 	"denova/internal/agents/modelio"
 	"denova/internal/agents/prompts"
 	agentrun "denova/internal/agents/run"
@@ -20,13 +24,14 @@ import (
 	"denova/internal/book"
 )
 
-var newNativeAgent = func(ctx context.Context, cfg agent.AgentConfig) (agent.Runnable, error) {
-	return agent.NewAgent(ctx, cfg)
+var newNativeAgent = func(ctx context.Context, cfg agent.LoopConfig) (agent.Runnable, error) {
+	return agent.NewLoop(ctx, cfg)
 }
 
 // ToolDefinition keeps application packages on Denova's Agent boundary rather
 // than importing the provider runtime directly.
 type ToolDefinition = agent.ToolDefinition
+type Definition = agent.Definition
 
 // Build 构建小说创作 Agent（native loop + 文件系统工具 + Skills）。
 func Build(ctx context.Context, cfg *config.Config, state *book.State, teller prompts.IDEStoryTeller) (agent.Runnable, error) {
@@ -55,6 +60,26 @@ func BuildWithCompositionForHost(ctx context.Context, cfg *config.Config, state 
 	return buildWithCompositionForHost(ctx, cfg, state, teller, host)
 }
 
+// BuildDefinitionWithCompositionForHost returns the complete public Agent
+// composition for a writing/IDE Project Session.
+func BuildDefinitionWithCompositionForHost(ctx context.Context, cfg *config.Config, state *book.State, teller prompts.IDEStoryTeller, host AgentHostCapabilities) (agent.Definition, prompts.SystemPromptComposition, error) {
+	composition, err := prompts.ComposeInstruction(cfg, state, teller)
+	if err != nil {
+		return agent.Definition{}, prompts.SystemPromptComposition{}, err
+	}
+	definition, err := buildAgentDefinition(ctx, cfg, agentBuildSpec{
+		Kind:              config.AgentKindIDE,
+		Name:              "DenovaAgent",
+		Description:       "AI 小说创作助手",
+		Composition:       composition,
+		EnableSkills:      true,
+		InteractiveHost:   host.Interactive,
+		ExtraTools:        host.RootTools,
+		ExtraToolsFactory: agenttoolruntime.NewCatalog(cfg).IDE(),
+	})
+	return definition, composition, err
+}
+
 // BuildGeneralAgentWithCompositionForHost builds a general-purpose Agent for
 // a user-added Project. It intentionally assembles only generic workspace,
 // web, browser, Skill, planning, ask, delegation and context tools.
@@ -73,6 +98,25 @@ func BuildGeneralAgentWithCompositionForHost(ctx context.Context, cfg *config.Co
 		ExtraTools:      host.RootTools,
 	})
 	return built, composition, err
+}
+
+// BuildGeneralDefinitionWithCompositionForHost returns the complete public
+// Agent composition for a general Project Session.
+func BuildGeneralDefinitionWithCompositionForHost(ctx context.Context, cfg *config.Config, host AgentHostCapabilities) (agent.Definition, prompts.SystemPromptComposition, error) {
+	composition, err := prompts.ComposeGeneralInstruction(cfg)
+	if err != nil {
+		return agent.Definition{}, prompts.SystemPromptComposition{}, err
+	}
+	definition, err := buildAgentDefinition(ctx, cfg, agentBuildSpec{
+		Kind:            config.AgentKindGeneral,
+		Name:            "DenovaGeneralAgent",
+		Description:     "General-purpose project Agent",
+		Composition:     composition,
+		EnableSkills:    true,
+		InteractiveHost: host.Interactive,
+		ExtraTools:      host.RootTools,
+	})
+	return definition, composition, err
 }
 
 func buildWithCompositionForHost(ctx context.Context, cfg *config.Config, state *book.State, teller prompts.IDEStoryTeller, host AgentHostCapabilities) (agent.Runnable, prompts.SystemPromptComposition, error) {
@@ -123,6 +167,31 @@ func BuildInteractiveStoryWithComposition(ctx context.Context, cfg *config.Confi
 	return built, composition, err
 }
 
+func BuildInteractiveStoryDefinitionWithComposition(ctx context.Context, cfg *config.Config, state *book.State, teller prompts.InteractiveStorySystemInstructionInput, toolContexts ...agentinteractive.InteractiveStoryToolContext) (agent.Definition, prompts.SystemPromptComposition, error) {
+	handlers := []agent.Middleware{agenttoolruntime.NewInteractiveStoryMiddleware()}
+	var outputGuard func(context.Context, *agent.RetryContext) *agent.RetryDecision
+	if len(toolContexts) > 0 && toolContexts[0].TurnResultReady != nil {
+		handlers = append(handlers, agentinteractive.NewTurnProtocolMiddleware(toolContexts[0].TurnResultReady))
+		outputGuard = agentinteractive.NewCompletionGuard(toolContexts[0].TurnResultReady)
+	}
+	composition, err := prompts.ComposeInteractiveStoryInstruction(cfg, state, teller)
+	if err != nil {
+		return agent.Definition{}, prompts.SystemPromptComposition{}, err
+	}
+	definition, err := buildAgentDefinition(ctx, cfg, agentBuildSpec{
+		Kind:              config.AgentKindInteractiveStory,
+		Name:              "DenovaInteractiveStoryAgent",
+		Description:       "AI 互动故事叙事助手",
+		Composition:       composition,
+		EnableSkills:      true,
+		DisableWriteTodos: true,
+		ExtraMiddlewares:  handlers,
+		ExtraToolsFactory: agenttoolruntime.NewCatalog(cfg).InteractiveStory(agenttoolruntime.ProjectInteractiveContext(toolContexts...)),
+		ModelOutputGuard:  outputGuard,
+	})
+	return definition, composition, err
+}
+
 func BuildInteractiveDirector(ctx context.Context, cfg *config.Config, state *book.State, toolContexts ...agentinteractive.InteractiveStoryToolContext) (agent.Runnable, error) {
 	built, _, err := BuildInteractiveDirectorWithComposition(ctx, cfg, state, toolContexts...)
 	return built, err
@@ -148,6 +217,26 @@ func BuildInteractiveDirectorWithComposition(ctx context.Context, cfg *config.Co
 	return built, composition, err
 }
 
+func BuildInteractiveDirectorDefinitionWithComposition(ctx context.Context, cfg *config.Config, state *book.State, toolContexts ...agentinteractive.InteractiveStoryToolContext) (agent.Definition, prompts.SystemPromptComposition, error) {
+	composition, err := prompts.ComposeInteractiveDirectorInstruction(cfg, state)
+	if err != nil {
+		return agent.Definition{}, prompts.SystemPromptComposition{}, err
+	}
+	toolContext := agenttoolruntime.ProjectInteractiveContext(toolContexts...)
+	definition, err := buildAgentDefinition(ctx, cfg, agentBuildSpec{
+		Kind:                config.AgentKindInteractiveDirector,
+		Name:                "DenovaInteractiveDirectorAgent",
+		Description:         "AI 互动故事后台导演",
+		Composition:         composition,
+		EnableSkills:        false,
+		DisableWriteTodos:   true,
+		ExtraMiddlewares:    []agent.Middleware{agenttoolruntime.NewInteractiveDirectorPlanFileMiddleware()},
+		ReadAdaptersFactory: agenttoolruntime.NewCatalog(cfg).InteractiveDirectorRead(toolContext),
+		ExtraToolsFactory:   agenttoolruntime.NewCatalog(cfg).InteractiveDirector(toolContext),
+	})
+	return definition, composition, err
+}
+
 // BuildConfigManagerAgent 构建统一配置管理 Agent（native loop + 通用工具 + Skills + 模块资源工具）。
 func BuildConfigManagerAgent(ctx context.Context, cfg *config.Config, state *book.State, resourceSkills ...prompts.ConfigManagerResourceSkill) (agent.Runnable, error) {
 	built, _, err := BuildConfigManagerAgentWithComposition(ctx, cfg, state, resourceSkills...)
@@ -160,6 +249,23 @@ func BuildConfigManagerAgentWithComposition(ctx context.Context, cfg *config.Con
 
 func BuildConfigManagerAgentWithCompositionForHost(ctx context.Context, cfg *config.Config, state *book.State, host AgentHostCapabilities, resourceSkills ...prompts.ConfigManagerResourceSkill) (agent.Runnable, prompts.SystemPromptComposition, error) {
 	return buildConfigManagerAgentWithCompositionForHost(ctx, cfg, state, host, resourceSkills...)
+}
+
+func BuildConfigManagerDefinitionWithCompositionForHost(ctx context.Context, cfg *config.Config, state *book.State, host AgentHostCapabilities, resourceSkills ...prompts.ConfigManagerResourceSkill) (agent.Definition, prompts.SystemPromptComposition, error) {
+	composition, err := prompts.ComposeConfigManagerInstruction(cfg, state, resourceSkills...)
+	if err != nil {
+		return agent.Definition{}, prompts.SystemPromptComposition{}, err
+	}
+	definition, err := buildAgentDefinition(ctx, cfg, agentBuildSpec{
+		Kind:              config.AgentKindConfigManager,
+		Name:              "DenovaConfigManagerAgent",
+		Description:       "AI 配置与资源管理助手",
+		Composition:       composition,
+		EnableSkills:      true,
+		InteractiveHost:   host.Interactive,
+		ExtraToolsFactory: agenttoolruntime.NewCatalog(cfg).ConfigManager(),
+	})
+	return definition, composition, err
 }
 
 func buildConfigManagerAgentWithCompositionForHost(ctx context.Context, cfg *config.Config, state *book.State, host AgentHostCapabilities, resourceSkills ...prompts.ConfigManagerResourceSkill) (agent.Runnable, prompts.SystemPromptComposition, error) {
@@ -202,6 +308,23 @@ func BuildImageAgentWithComposition(ctx context.Context, cfg *config.Config, sta
 	return built, composition, err
 }
 
+func BuildImageDefinitionWithComposition(ctx context.Context, cfg *config.Config, state *book.State, systemPrompt string) (agent.Definition, prompts.SystemPromptComposition, error) {
+	composition, err := prompts.ComposeImageInstruction(cfg, state, systemPrompt)
+	if err != nil {
+		return agent.Definition{}, prompts.SystemPromptComposition{}, err
+	}
+	definition, err := buildAgentDefinition(ctx, cfg, agentBuildSpec{
+		Kind:              config.AgentKindImage,
+		Name:              "DenovaImageAgent",
+		Description:       "AI 图像生成助手",
+		Composition:       composition,
+		EnableSkills:      true,
+		DisableWriteTodos: true,
+		ExtraToolsFactory: agenttoolruntime.NewCatalog(cfg).Image(),
+	})
+	return definition, composition, err
+}
+
 type agentBuildSpec struct {
 	Kind                string
 	Name                string
@@ -218,42 +341,87 @@ type agentBuildSpec struct {
 }
 
 func buildAgent(ctx context.Context, cfg *config.Config, spec agentBuildSpec) (agent.Runnable, error) {
-	toolCatalog := agenttoolruntime.NewCatalogWithContext(ctx, cfg)
-	composition, err := resolveAgentSystemPrompt(cfg, spec)
+	definition, err := buildAgentDefinition(ctx, cfg, spec)
 	if err != nil {
 		return nil, err
 	}
+	return RunnableFromDefinition(ctx, definition)
+}
+
+// RunnableFromDefinition adapts an exact Definition for bounded child model
+// tasks that deliberately have no durable user Session. Conversational roots
+// use Agent Sessions; this helper never creates a second root execution path.
+func RunnableFromDefinition(ctx context.Context, definition agent.Definition) (agent.Runnable, error) {
+	if definition.Tools == nil {
+		definition.Tools = agent.StaticTools()
+	}
+	tools, err := definition.Tools.PrepareTools(ctx, agent.ToolRequest{})
+	if err != nil {
+		return nil, err
+	}
+	middlewares := make([]agent.Middleware, len(definition.Middlewares))
+	for index, middleware := range definition.Middlewares {
+		middlewares[index] = agent.MiddlewareImplementation(middleware)
+	}
+	return newNativeAgent(ctx, agent.LoopConfig{
+		Name:            definition.Name,
+		Description:     definition.Description,
+		Instruction:     definition.Instructions,
+		Model:           definition.Model,
+		Tools:           tools,
+		Middlewares:     middlewares,
+		MaxIterations:   definition.Execution.MaxIterations,
+		ToolParallelism: definition.Execution.ToolParallelism,
+		Retry:           definition.Execution.Retry,
+	})
+}
+
+// buildAgentDefinition is Denova's composition root. Durable Agent Sources and
+// bounded child tasks consume this exact Definition so prompts, tools,
+// middleware, and execution policy cannot drift between execution scopes.
+func buildAgentDefinition(ctx context.Context, cfg *config.Config, spec agentBuildSpec) (agent.Definition, error) {
+	toolCatalog := agenttoolruntime.NewCatalogWithContext(ctx, cfg)
+	composition, err := resolveAgentSystemPrompt(cfg, spec)
+	if err != nil {
+		return agent.Definition{}, err
+	}
 	modelCfg, err := modelio.ConfigForAgent(cfg, spec.Kind)
 	if err != nil {
-		return nil, fmt.Errorf("resolve model configuration: %w", err)
+		return agent.Definition{}, fmt.Errorf("resolve model configuration: %w", err)
 	}
 	toolSettings := config.ResolveAgentTools(cfg, spec.Kind)
 	chatModel, err := modelio.NewChatModel(ctx, modelCfg)
 	if err != nil {
-		return nil, fmt.Errorf("创建模型失败: %w", err)
+		return agent.Definition{}, fmt.Errorf("创建模型失败: %w", err)
+	}
+	modelIdentity, err := providers.ModelIdentity(modelCfg)
+	if err != nil {
+		return agent.Definition{}, fmt.Errorf("resolve model capability identity: %w", err)
 	}
 
 	assembly, err := buildChatModelAgentAssembly(ctx, cfg, chatModelAgentAssemblySpec{
-		Kind:                  spec.Kind,
-		ModelCfg:              modelCfg,
-		ToolSettings:          toolSettings,
-		EnableSkills:          spec.EnableSkills,
-		ExtraMiddlewares:      spec.ExtraMiddlewares,
-		ExtraTools:            spec.ExtraTools,
-		ReadAdaptersFactory:   spec.ReadAdaptersFactory,
-		ExtraToolsFactory:     spec.ExtraToolsFactory,
-		IncludeCompaction:     true,
+		Kind:                spec.Kind,
+		ModelCfg:            modelCfg,
+		ToolSettings:        toolSettings,
+		EnableSkills:        spec.EnableSkills,
+		ExtraMiddlewares:    spec.ExtraMiddlewares,
+		ExtraTools:          spec.ExtraTools,
+		ReadAdaptersFactory: spec.ReadAdaptersFactory,
+		ExtraToolsFactory:   spec.ExtraToolsFactory,
+		// Agent.Definition.Compaction is the only root checkpoint authority.
+		// The older model middleware writes product-session checkpoints and must
+		// never be assembled into a public Agent Definition.
 		ContextWindowTokens:   config.ResolveAgentModel(cfg, spec.Kind).ContextWindowTokens,
 		ProviderInputMaxBytes: config.ResolveAgentContext(cfg, spec.Kind).MaxProviderInputBytes,
 	})
 	if err != nil {
-		return nil, err
+		return agent.Definition{}, err
 	}
 	var taskAgents []agent.Runnable
 	if toolSettings.Allows(config.AgentToolDelegation) {
 		configuredSubAgents, err := buildConfiguredSubAgents(ctx, cfg, spec, toolSettings)
 		if err != nil {
-			return nil, err
+			return agent.Definition{}, err
 		}
 		taskAgents = append(taskAgents, configuredSubAgents...)
 		if config.GeneralSubAgentEnabled(cfg, spec.Kind) {
@@ -264,14 +432,13 @@ func buildAgent(ctx context.Context, cfg *config.Config, spec agentBuildSpec) (a
 				ToolSettings:          toolSettings,
 				EnableSkills:          spec.EnableSkills,
 				ExtraToolsFactory:     spec.ExtraToolsFactory,
-				IncludeCompaction:     false,
 				ContextWindowTokens:   config.ResolveAgentModel(cfg, spec.Kind).ContextWindowTokens,
 				ProviderInputMaxBytes: config.ResolveAgentContext(cfg, spec.Kind).MaxProviderInputBytes,
 			})
 			if err != nil {
-				return nil, fmt.Errorf("创建通用子 Agent 工具装配失败: %w", err)
+				return agent.Definition{}, fmt.Errorf("创建通用子 Agent 工具装配失败: %w", err)
 			}
-			general, err := newNativeAgent(ctx, agent.AgentConfig{
+			general, err := newNativeAgent(ctx, agent.LoopConfig{
 				Name:            producttools.GeneralSubAgentName,
 				Description:     "通用子 Agent，用于研究复杂问题、搜索代码和执行独立的多步骤任务。",
 				Instruction:     composition.Instruction(),
@@ -283,7 +450,7 @@ func buildAgent(ctx context.Context, cfg *config.Config, spec agentBuildSpec) (a
 				Retry:           modelRetryConfig(cfg, nil),
 			})
 			if err != nil {
-				return nil, fmt.Errorf("创建通用子 Agent 失败: %w", err)
+				return agent.Definition{}, fmt.Errorf("创建通用子 Agent 失败: %w", err)
 			}
 			taskAgents = append([]agent.Runnable{general}, taskAgents...)
 		}
@@ -293,39 +460,92 @@ func buildAgent(ctx context.Context, cfg *config.Config, spec agentBuildSpec) (a
 	if !spec.DisableWriteTodos && toolSettings.Allows(config.AgentToolTodo) {
 		todoTool, err := toolCatalog.Todo()
 		if err != nil {
-			return nil, fmt.Errorf("创建 todo 工具失败: %w", err)
+			return agent.Definition{}, fmt.Errorf("创建 todo 工具失败: %w", err)
 		}
 		tools = append(tools, todoTool)
 	}
 	if spec.InteractiveHost && toolSettings.Allows(config.AgentToolAsk) && (spec.Kind == config.AgentKindGeneral || spec.Kind == config.AgentKindIDE || spec.Kind == config.AgentKindConfigManager) {
 		askTool, err := toolCatalog.Ask()
 		if err != nil {
-			return nil, fmt.Errorf("创建 ask 工具失败: %w", err)
+			return agent.Definition{}, fmt.Errorf("创建 ask 工具失败: %w", err)
 		}
 		tools = append(tools, askTool)
 	}
 	if toolSettings.Allows(config.AgentToolDelegation) {
 		if taskTool, err := toolCatalog.Task(ctx, taskAgents); err != nil {
-			return nil, fmt.Errorf("创建 task 工具失败: %w", err)
+			return agent.Definition{}, fmt.Errorf("创建 task 工具失败: %w", err)
 		} else if taskTool.Tool != nil {
 			tools = append(tools, taskTool)
 		}
 	}
 	if err := producttools.Validate(ctx, tools); err != nil {
-		return nil, err
+		return agent.Definition{}, err
 	}
 
-	return newNativeAgent(ctx, agent.AgentConfig{
-		Name:            spec.Name,
-		Description:     spec.Description,
-		Instruction:     composition.Instruction(),
-		Model:           chatModel,
-		Tools:           tools,
-		Middlewares:     assembly.Middlewares,
-		MaxIterations:   configMaxIteration(cfg),
-		ToolParallelism: configToolParallelism(cfg),
-		Retry:           modelRetryConfig(cfg, spec.ModelOutputGuard),
-	})
+	middlewares := identifyDenovaMiddlewares(spec.Kind, cfg, assembly.Middlewares)
+	retry := modelRetryConfig(cfg, spec.ModelOutputGuard)
+	compaction, err := agentcompaction.NewAgentManager(cfg, spec.Kind, chatModel, modelIdentity)
+	if err != nil {
+		return agent.Definition{}, fmt.Errorf("create Agent Compaction manager kind=%s: %w", spec.Kind, err)
+	}
+	return agent.Definition{
+		Key:           "denova." + spec.Kind,
+		Name:          spec.Name,
+		Description:   spec.Description,
+		Model:         chatModel,
+		ModelIdentity: modelIdentity,
+		Instructions:  composition.Instruction(),
+		Tools: agent.StaticToolsIdentified(denovaCapabilityIdentity("denova.tools", struct {
+			Kind      string
+			ProjectID string
+			Workspace string
+			Settings  config.ResolvedAgentToolSettings
+		}{spec.Kind, configProjectID(cfg), configWorkspace(cfg), toolSettings}), tools...),
+		Middlewares: middlewares,
+		Compaction:  compaction,
+		Execution: agent.ExecutionPolicy{
+			Retry: retry,
+			RetryIdentity: denovaCapabilityIdentity("denova.retry", struct {
+				MaxRetries  int
+				OutputGuard bool
+			}{configModelMaxRetries(cfg), spec.ModelOutputGuard != nil}),
+			MaxIterations: configMaxIteration(cfg), ToolParallelism: configToolParallelism(cfg),
+		},
+	}, nil
+}
+
+func identifyDenovaMiddlewares(kind string, cfg *config.Config, middlewares []agent.Middleware) []agent.Middleware {
+	identified := make([]agent.Middleware, len(middlewares))
+	for index, middleware := range middlewares {
+		identified[index] = agent.IdentifyMiddleware(middleware, denovaCapabilityIdentity("denova.middleware", struct {
+			Kind      string
+			Index     int
+			Type      string
+			ProjectID string
+			Workspace string
+		}{kind, index, fmt.Sprintf("%T", middleware), configProjectID(cfg), configWorkspace(cfg)}))
+	}
+	return identified
+}
+
+func denovaCapabilityIdentity(kind string, configuration any) agent.CapabilityIdentity {
+	encoded, _ := json.Marshal(configuration)
+	digest := sha256.Sum256(encoded)
+	return agent.CapabilityIdentity{Kind: kind, Version: 1, ConfigHash: hex.EncodeToString(digest[:])}
+}
+
+func configProjectID(cfg *config.Config) string {
+	if cfg == nil {
+		return ""
+	}
+	return cfg.ProjectID
+}
+
+func configWorkspace(cfg *config.Config) string {
+	if cfg == nil {
+		return ""
+	}
+	return cfg.Workspace
 }
 
 func resolveAgentSystemPrompt(_ *config.Config, spec agentBuildSpec) (prompts.SystemPromptComposition, error) {
@@ -346,7 +566,6 @@ type chatModelAgentAssemblySpec struct {
 	ExtraTools            []agent.ToolDefinition
 	ReadAdaptersFactory   producttools.ReadAdapterFactory
 	ExtraToolsFactory     func(config.ResolvedAgentToolSettings) ([]agent.ToolDefinition, error)
-	IncludeCompaction     bool
 	ContextWindowTokens   int
 	ProviderInputMaxBytes int
 }
@@ -388,7 +607,7 @@ func buildChatModelAgentAssembly(ctx context.Context, cfg *config.Config, spec c
 	)
 	// Context maintenance must observe the final model call after every
 	// mode-specific option and tool decision has been applied.
-	middlewares = append(middlewares, agentchat.NewModelContextMiddlewares(spec.Kind, spec.IncludeCompaction)...)
+	middlewares = append(middlewares, agentchat.NewModelContextMiddlewares()...)
 	tools := append([]agent.ToolDefinition(nil), spec.ExtraTools...)
 	skillTools, readAdapters, err := buildSkillTools(ctx, cfg, spec.Kind, spec.EnableSkills, settings)
 	if err != nil {
@@ -497,14 +716,13 @@ func buildConfiguredSubAgent(ctx context.Context, cfg *config.Config, parent age
 		ToolSettings:          toolSettings,
 		EnableSkills:          parent.EnableSkills,
 		ExtraToolsFactory:     parent.ExtraToolsFactory,
-		IncludeCompaction:     false,
 		ContextWindowTokens:   resolvedModel.ContextWindowTokens,
 		ProviderInputMaxBytes: config.ResolveAgentContext(cfg, parent.Kind).MaxProviderInputBytes,
 	})
 	if err != nil {
 		return nil, err
 	}
-	return newNativeAgent(ctx, agent.AgentConfig{
+	return newNativeAgent(ctx, agent.LoopConfig{
 		Name:            sub.ID,
 		Description:     sub.Description,
 		Instruction:     composition.Instruction(),

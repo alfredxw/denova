@@ -4,12 +4,21 @@ package agentrun
 
 import (
 	"context"
+	"encoding/json"
 	"strings"
 	"time"
 
 	"denova/internal/agents/prompts"
 	"denova/internal/agents/tool"
 )
+
+// RestoreData is bounded product-owned input required to rebuild a dynamic
+// Definition after process restart. It never enters model context implicitly.
+type RestoreData struct {
+	Type    string
+	Version uint16
+	Data    json.RawMessage
+}
 
 const (
 	AgentKindUnknown          = "unknown"
@@ -50,6 +59,7 @@ type Options struct {
 	SystemPromptLog        prompts.SystemPromptComposition
 	OnMutationsVerified    func(context.Context, []agenttool.Mutation, agenttool.Verification)
 	OnUserMessageCommitted func(context.Context) error
+	RestoreData            *RestoreData
 }
 
 // Normalize applies defaults and canonical string forms without changing the
@@ -85,6 +95,12 @@ func (o Options) Normalize(defaultWorkspace string) Options {
 	}
 	if o.ToolResultMaxBytes < 0 {
 		o.ToolResultMaxBytes = 0
+	}
+	if o.RestoreData != nil {
+		cloned := *o.RestoreData
+		cloned.Type = strings.TrimSpace(cloned.Type)
+		cloned.Data = append(json.RawMessage(nil), cloned.Data...)
+		o.RestoreData = &cloned
 	}
 	return o
 }

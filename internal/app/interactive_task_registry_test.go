@@ -4,6 +4,7 @@ import (
 	"context"
 	agentcontext "denova/internal/agents/context"
 	agentexecution "denova/internal/agents/execution"
+	agentlifecycle "denova/internal/agents/lifecycle"
 	apptask "denova/internal/app/task"
 	"errors"
 	"os"
@@ -122,8 +123,10 @@ func TestInteractiveInitialStartColdReplayBuildsBoundedTaskWithoutGameCycle(t *t
 		t.Fatal(err)
 	}
 	chatModel := &interactiveReplayModel{message: agents.AssistantMessage("持久化回答", nil)}
-	accepted, err := startExecutionCycle(first.executionRuntime,
-		context.Background(), newInteractiveReplayRunner(t, chatModel), &interactiveReplayConversation{},
+	accepted, err := startPublicExecutionCycle(first.executionRuntime,
+		context.Background(), chatModel, &interactiveReplayConversation{
+			store: first.interactive, storyID: story.ID, branchID: "main", message: identity.chatRequest.Message,
+		},
 		first.bookService, identity.chatRequest, identity.options("seed-display-task"), nil,
 	)
 	if err != nil {
@@ -143,8 +146,10 @@ func TestInteractiveInitialStartColdReplayBuildsBoundedTaskWithoutGameCycle(t *t
 		first.Close()
 		t.Fatal(err)
 	}
-	newer, err := startExecutionCycle(first.executionRuntime,
-		context.Background(), newInteractiveReplayRunner(t, chatModel), &interactiveReplayConversation{},
+	newer, err := startPublicExecutionCycle(first.executionRuntime,
+		context.Background(), chatModel, &interactiveReplayConversation{
+			store: first.interactive, storyID: story.ID, branchID: "main", message: newerIdentity.chatRequest.Message,
+		},
 		first.bookService, newerIdentity.chatRequest, newerIdentity.options("newer-display-task"), nil,
 	)
 	if err != nil {
@@ -167,15 +172,11 @@ func TestInteractiveInitialStartColdReplayBuildsBoundedTaskWithoutGameCycle(t *t
 		t.Fatal(err)
 	}
 	defer second.Close()
-	runnerBefore := second.interactiveStoryRunner
 	task, err := second.StartInteractiveTaskWithError(context.Background(), request)
 	if err != nil {
 		t.Fatal(err)
 	}
 	waitInteractiveTask(t, task)
-	if second.interactiveStoryRunner != runnerBefore {
-		t.Fatal("durable replay prepared a new Game cycle")
-	}
 	if got := chatModel.calls.Load(); got != 2 {
 		t.Fatalf("cold replay invoked the seed provider: calls=%d", got)
 	}
@@ -254,7 +255,6 @@ func TestInteractiveInitialStartColdInterruptedReplayDoesNotRunGameCycle(t *test
 		t.Fatal(err)
 	}
 	defer reopened.Close()
-	runnerBefore := reopened.interactiveStoryRunner
 	status, projected := reopened.InteractiveAgentRuntimeProjection(context.Background(), story.ID, "main")
 	if !projected {
 		t.Fatal("cold Game runtime projection unavailable")
@@ -286,9 +286,6 @@ func TestInteractiveInitialStartColdInterruptedReplayDoesNotRunGameCycle(t *test
 		t.Fatalf("server-derived cold Game display identity task=%p info=%#v", activeTask, info)
 	}
 	waitInteractiveTask(t, result.Task)
-	if reopened.interactiveStoryRunner != runnerBefore {
-		t.Fatal("cold recovery abort prepared a new Game cycle")
-	}
 	events, subscription := result.Task.Subscribe()
 	defer result.Task.Unsubscribe(subscription)
 	if countInteractiveTaskEvents(events, "aborted") != 1 {
@@ -329,11 +326,17 @@ func runInteractiveCrashSeed(t *testing.T) {
 		t.Fatal(err)
 	}
 	vanished := make(chan struct{})
-	conversation := &interactiveCrashConversation{vanished: vanished}
-	if _, err := startExecutionCycle(application.executionRuntime,
-		context.Background(), newInteractiveReplayRunner(t, &interactiveReplayModel{message: agents.AssistantMessage("must not run", nil)}),
-		conversation, application.bookService, identity.chatRequest, identity.options("crashed-display-task"), nil,
-	); err != nil {
+	prepared, err := application.interactiveService().prepareInteractiveAgentCycle(context.Background(), interactiveAgentCycleRequest{
+		StoryID: request.StoryID, BranchID: request.BranchID, Message: request.Message, Locale: request.Locale,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	conversation := &interactiveCrashConversation{vanished: vanished, delegate: prepared.conversation}
+	if _, err := application.executionRuntime.Start(context.Background(), agentexecution.StartRequest{Cycle: agentexecution.Cycle{
+		Definition: prepared.definition, Conversation: conversation, BookService: application.bookService,
+		Request: identity.chatRequest, Options: identity.options("crashed-display-task"),
+	}}); err != nil {
 		t.Fatal(err)
 	}
 	select {
@@ -379,7 +382,12 @@ func countInteractiveTaskEvents(events []apptask.Event, eventType string) int {
 	return count
 }
 
-type interactiveReplayConversation struct{}
+type interactiveReplayConversation struct {
+	store    *interactive.Store
+	storyID  string
+	branchID string
+	message  string
+}
 
 func (*interactiveReplayConversation) AssembleModelContext(ctx context.Context, _ string, input agentcontext.ModelContextInput) (agentcontext.ModelContextResult, error) {
 	return agentcontext.AssembleSingleUserModelContext(ctx, input)
@@ -395,6 +403,21 @@ func (*interactiveReplayConversation) ResolveInterruption(string) error { return
 
 type interactiveCrashConversation struct {
 	vanished chan struct{}
+	delegate agentlifecycle.ConversationCommitterProvider
+}
+
+func (conversation *interactiveCrashConversation) BindAgentCycleIdentity(identity agentrun.CycleIdentity) {
+	if binder, ok := conversation.delegate.(interface {
+		BindAgentCycleIdentity(agentrun.CycleIdentity)
+	}); ok {
+		binder.BindAgentCycleIdentity(identity)
+	}
+}
+
+func (conversation *interactiveCrashConversation) BindAgentKind(kind string) {
+	if binder, ok := conversation.delegate.(interface{ BindAgentKind(string) }); ok {
+		binder.BindAgentKind(kind)
+	}
 }
 
 func (c *interactiveCrashConversation) AssembleModelContext(context.Context, string, agentcontext.ModelContextInput) (agentcontext.ModelContextResult, error) {
@@ -424,17 +447,6 @@ func (m *interactiveReplayModel) Generate(context.Context, []*agents.Message, ..
 func (m *interactiveReplayModel) Stream(context.Context, []*agents.Message, ...agent.ModelOption) (*agents.StreamReader[*agents.Message], error) {
 	m.calls.Add(1)
 	return agents.StreamReaderFromArray([]*agents.Message{m.message}), nil
-}
-
-func newInteractiveReplayRunner(t *testing.T, chatModel agent.BaseChatModel) *agent.Runner {
-	t.Helper()
-	built, err := agent.NewAgent(context.Background(), agent.AgentConfig{
-		Name: "DenovaInteractiveStoryAgent", Description: "game replay test", Instruction: "test", Model: chatModel,
-	})
-	if err != nil {
-		t.Fatal(err)
-	}
-	return agent.NewRunner(agent.RunnerConfig{Agent: built, EnableStreaming: true})
 }
 
 var _ agent.BaseChatModel = (*interactiveReplayModel)(nil)

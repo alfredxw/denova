@@ -23,7 +23,7 @@ func (*cancelAwareGenerateModel) Stream(context.Context, []*Message, ...ModelOpt
 
 func TestCancelTimeoutEscalatesOnlyWhenExplicitlyConfigured(t *testing.T) {
 	model := &cancelAwareGenerateModel{started: make(chan struct{})}
-	agent, err := NewAgent(context.Background(), AgentConfig{Name: "timeout", Model: model})
+	agent, err := NewLoop(context.Background(), LoopConfig{Name: "timeout", Model: model})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -55,7 +55,7 @@ func TestCancelTimeoutEscalatesOnlyWhenExplicitlyConfigured(t *testing.T) {
 
 func TestCancelAfterCompletedRunDoesNotContribute(t *testing.T) {
 	model := &scriptedModel{responses: []scriptedModelResponse{{message: AssistantMessage("done", nil)}}}
-	agent, err := NewAgent(context.Background(), AgentConfig{Name: "done", Model: model})
+	agent, err := NewLoop(context.Background(), LoopConfig{Name: "done", Model: model})
 	if err != nil {
 		t.Fatal(err)
 	}

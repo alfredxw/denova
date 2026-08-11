@@ -112,7 +112,7 @@ func (*panicBeforeAgentMiddleware) BeforeAgent(context.Context, *RunContext) (co
 
 func TestNativeLoopReportsRecoveredRunPanicBeforeClosingIterator(t *testing.T) {
 	model := &scriptedModel{responses: []scriptedModelResponse{{message: AssistantMessage("unused", nil)}}}
-	agent, err := NewAgent(context.Background(), AgentConfig{
+	agent, err := NewLoop(context.Background(), LoopConfig{
 		Name:        "panic",
 		Model:       model,
 		Middlewares: []Middleware{&panicBeforeAgentMiddleware{}},
@@ -141,7 +141,7 @@ func TestNativeLoopSingleStreamingTurn(t *testing.T) {
 		{Content: "lo", ReasoningContent: "son"},
 		{ResponseMeta: &ResponseMeta{FinishReason: "stop", Usage: &TokenUsage{TotalTokens: 9}}},
 	}}}}
-	agent, err := NewAgent(context.Background(), AgentConfig{Name: "writer", Instruction: "be useful", Model: model})
+	agent, err := NewLoop(context.Background(), LoopConfig{Name: "writer", Instruction: "be useful", Model: model})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -187,7 +187,7 @@ func TestNativeLoopConcurrentToolsKeepResultAndTranscriptSourceOrder(t *testing.
 			return "result-" + name, nil
 		}})
 	}
-	agent, err := NewAgent(context.Background(), AgentConfig{Name: "parallel", Model: model, Tools: []ToolDefinition{makeTool("slow"), makeTool("fast")}})
+	agent, err := NewLoop(context.Background(), LoopConfig{Name: "parallel", Model: model, Tools: []ToolDefinition{makeTool("slow"), makeTool("fast")}})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -270,7 +270,7 @@ func TestNativeLoopMergesStreamingToolCalls(t *testing.T) {
 			return name, nil
 		}})
 	}
-	agent, err := NewAgent(context.Background(), AgentConfig{Name: "stream-tools", Model: model, Tools: []ToolDefinition{makeTool("alpha"), makeTool("beta")}})
+	agent, err := NewLoop(context.Background(), LoopConfig{Name: "stream-tools", Model: model, Tools: []ToolDefinition{makeTool("alpha"), makeTool("beta")}})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -371,7 +371,7 @@ func TestNativeLoopToolFailuresBecomeToolMessages(t *testing.T) {
 				{message: first},
 				{message: AssistantMessage("recovered", nil)},
 			}}
-			agent, err := NewAgent(context.Background(), AgentConfig{Name: test.name, Model: model, Tools: test.tools(&calls)})
+			agent, err := NewLoop(context.Background(), LoopConfig{Name: test.name, Model: model, Tools: test.tools(&calls)})
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -424,7 +424,7 @@ func (model *blockingStreamModel) Stream(ctx context.Context, _ []*Message, _ ..
 
 func TestNativeLoopImmediateCancelClosesPublicStream(t *testing.T) {
 	model := &blockingStreamModel{started: make(chan struct{})}
-	agent, err := NewAgent(context.Background(), AgentConfig{Name: "cancel", Model: model})
+	agent, err := NewLoop(context.Background(), LoopConfig{Name: "cancel", Model: model})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -487,7 +487,7 @@ func (model *blockingModelStart) Stream(context.Context, []*Message, ...ModelOpt
 func TestNativeLoopImmediateCancelDoesNotWaitForBlockingModelCall(t *testing.T) {
 	model := &blockingModelStart{started: make(chan struct{}), release: make(chan struct{})}
 	defer close(model.release)
-	agent, err := NewAgent(context.Background(), AgentConfig{Name: "blocking-model", Model: model})
+	agent, err := NewLoop(context.Background(), LoopConfig{Name: "blocking-model", Model: model})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -531,7 +531,7 @@ func TestNativeLoopImmediateCancelDoesNotWaitForBlockingModelCall(t *testing.T) 
 func TestNativeLoopImmediateCancelEscalatesPendingSafePoint(t *testing.T) {
 	model := &blockingModelStart{started: make(chan struct{}), release: make(chan struct{})}
 	defer close(model.release)
-	agent, err := NewAgent(context.Background(), AgentConfig{Name: "escalated-model", Model: model})
+	agent, err := NewLoop(context.Background(), LoopConfig{Name: "escalated-model", Model: model})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -572,7 +572,7 @@ func TestNativeLoopImmediateCancelDoesNotWaitForBlockingToolCall(t *testing.T) {
 		<-release
 		return "late", nil
 	}}
-	agent, err := NewAgent(context.Background(), AgentConfig{Name: "blocking-tool", Model: model, Tools: []ToolDefinition{testToolDefinition(tool)}})
+	agent, err := NewLoop(context.Background(), LoopConfig{Name: "blocking-tool", Model: model, Tools: []ToolDefinition{testToolDefinition(tool)}})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -660,7 +660,7 @@ func TestNativeLoopCancelAfterModelSkipsTools(t *testing.T) {
 		calls.Add(1)
 		return "unexpected", nil
 	}}
-	agent, err := NewAgent(context.Background(), AgentConfig{Name: "safe-cancel", Model: model, Tools: []ToolDefinition{testToolDefinition(current)}})
+	agent, err := NewLoop(context.Background(), LoopConfig{Name: "safe-cancel", Model: model, Tools: []ToolDefinition{testToolDefinition(current)}})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -710,7 +710,7 @@ func TestNativeLoopRetryAndNestedEventSink(t *testing.T) {
 		}
 		return "child-result", nil
 	}}
-	agent, err := NewAgent(context.Background(), AgentConfig{
+	agent, err := NewLoop(context.Background(), LoopConfig{
 		Name: "retry", Model: model, Tools: []ToolDefinition{testToolDefinition(child)},
 		Retry: &RetryConfig{MaxRetries: 1},
 	})
@@ -742,7 +742,7 @@ func TestNativeLoopRetryAndNestedEventSink(t *testing.T) {
 
 func TestExternalContextCancelTerminatesLoop(t *testing.T) {
 	model := &blockingStreamModel{started: make(chan struct{})}
-	agent, err := NewAgent(context.Background(), AgentConfig{Name: "context-cancel", Model: model})
+	agent, err := NewLoop(context.Background(), LoopConfig{Name: "context-cancel", Model: model})
 	if err != nil {
 		t.Fatal(err)
 	}

@@ -160,6 +160,50 @@ func TestAppendTurnWithStateIsIdempotentByDurableAgentIdentity(t *testing.T) {
 	}
 }
 
+func TestGameAgentCanonicalHashesPersistAndReconcileExactly(t *testing.T) {
+	store := NewStore(t.TempDir())
+	story, err := store.CreateStory(CreateStoryRequest{Title: "Agent canonical hashes", StoryTellerID: "classic"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	identity := DomainCommitIdentity{CommandID: "canonical-command", OperationID: "canonical-operation", Cycle: 1}
+	input, err := NewPlayerInputIntent(identity, "main", "推门")
+	if err != nil {
+		t.Fatal(err)
+	}
+	input, err = input.WithAgentCanonicalHash("agent-input-hash")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := store.CommitPlayerInput(story.ID, input); err != nil {
+		t.Fatal(err)
+	}
+	request := AppendTurnWithStateRequest{
+		BranchID: "main", User: input.Text, Narrative: "门后是一条长廊。",
+		AgentCommandID: identity.CommandID, AgentOperationID: identity.OperationID, AgentCycle: identity.Cycle,
+		AgentCanonicalHash: "agent-output-hash",
+	}
+	turn, _, err := store.AppendTurnWithState(story.ID, request)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if turn.AgentCanonicalHash != "agent-output-hash" {
+		t.Fatalf("turn canonical hash=%q", turn.AgentCanonicalHash)
+	}
+	reopened := NewStore(store.root)
+	inputReceipt, found, err := reopened.FindRecentAgentCanonicalPlayerInputCommit(story.ID, "main", identity, "agent-input-hash")
+	if err != nil || !found || inputReceipt.AgentCanonicalHash != "agent-input-hash" {
+		t.Fatalf("input receipt=%#v found=%t error=%v", inputReceipt, found, err)
+	}
+	turnReceipt, found, err := reopened.FindRecentAgentCanonicalDomainTurnCommit(story.ID, "main", identity, "agent-output-hash")
+	if err != nil || !found || turnReceipt.Revision != turn.ID {
+		t.Fatalf("turn receipt=%#v found=%t error=%v", turnReceipt, found, err)
+	}
+	if _, _, err := reopened.FindRecentAgentCanonicalDomainTurnCommit(story.ID, "main", identity, "different-hash"); !errors.Is(err, ErrAgentTurnIdentityConflict) {
+		t.Fatalf("mismatched output hash error=%v", err)
+	}
+}
+
 func TestRecentRuntimeCommitLookupReadsOnlyLocatedTransaction(t *testing.T) {
 	root := t.TempDir()
 	store := NewStore(root)

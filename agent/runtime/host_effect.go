@@ -100,14 +100,17 @@ func validateHostEffect(binding BindingRef, effect HostEffect, limits BindingMem
 	return nil
 }
 
-func reconcileHostEffect(ctx context.Context, reconciler EngineHostEffectReconciler, effect HostEffect) (resultErr error) {
+func reconcileHostEffect(ctx context.Context, reconciler EngineHostEffectReconciler, request HostEffectReconcileRequest) (resultErr error) {
 	if ctx == nil {
 		ctx = context.Background()
 	}
 	defer func() {
 		if recovered := recover(); recovered != nil {
-			resultErr = fmt.Errorf("reconcile host effect %q panic: %v", effect.ID, recovered)
+			resultErr = fmt.Errorf("reconcile host effect %q panic: %v", request.Effect.ID, recovered)
 		}
 	}()
-	return reconciler.ReconcileHostEffect(ctx, cloneHostEffect(effect))
+	request.Effect = cloneHostEffect(request.Effect)
+	request.State = cloneRawMessage(request.State)
+	request.Capabilities = cloneCapabilityStates(request.Capabilities)
+	return reconciler.ReconcileHostEffect(ctx, request)
 }

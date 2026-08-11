@@ -9,7 +9,9 @@ import (
 	"denova/config"
 	agentcompaction "denova/internal/agents/context/compaction"
 	"denova/internal/agents/prompts"
+	agentrun "denova/internal/agents/run"
 	"denova/internal/agents/session"
+	appagentruntime "denova/internal/app/agentruntime"
 )
 
 func (a *App) AnalyzeContext(ctx context.Context, req agentchat.ChatRequest) (agentchat.ContextAnalysis, error) {
@@ -35,10 +37,14 @@ func (s *ChatAppService) AnalyzeContext(ctx context.Context, req agentchat.ChatR
 	if shouldResume := strings.TrimSpace(req.Message); shouldResume != "" {
 		pending = runtime.sess.PendingInterruption()
 	}
-	var compaction *session.ContextCompaction
-	if record, ok := runtime.sess.LatestContextCompaction(config.AgentKindIDE); ok {
-		compaction = &record
+	status, err := runtime.executionRuntime.RuntimeStatusProjection(ctx, agentrun.Options{
+		AgentKind: agentrun.AgentKindIDE, StateRoot: runtime.projectState,
+		Workspace: runtime.workspace, SessionID: runtime.sess.ID, Mode: "ide",
+	})
+	if err != nil {
+		return agentchat.ContextAnalysis{}, err
 	}
+	compaction := appagentruntime.ProjectSessionCompaction(status.Compaction, config.AgentKindIDE)
 	runtimeContexts := prompts.IDEWorkspaceRuntimeContextsForContext(runtime.state, req.IDEContext)
 	conversation := agentconversation.NewSessionConversationForAgentWithRuntimeContexts(
 		runtime.sess, &runtime.cfg, config.AgentKindIDE,

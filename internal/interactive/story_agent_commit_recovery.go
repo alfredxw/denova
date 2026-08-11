@@ -56,11 +56,12 @@ func (s *Store) FindDomainTurnCommit(
 			)
 		}
 		return DomainCommitReceipt{
-			Identity: identity,
-			Hash:     hash,
-			Revision: turn.ID,
-			Turn:     turn,
-			Delta:    stateDeltaEventForCommittedTurn(turn),
+			Identity:           identity,
+			Hash:               hash,
+			AgentCanonicalHash: turn.AgentCanonicalHash,
+			Revision:           turn.ID,
+			Turn:               turn,
+			Delta:              stateDeltaEventForCommittedTurn(turn),
 		}, true, nil
 	}
 	return DomainCommitReceipt{}, false, nil
@@ -111,7 +112,46 @@ func (s *Store) FindRecentDomainTurnCommit(
 		)
 	}
 	return DomainCommitReceipt{
-		Identity: identity, Hash: hash, Revision: turn.ID, Turn: turn,
+		Identity: identity, Hash: hash, AgentCanonicalHash: turn.AgentCanonicalHash, Revision: turn.ID, Turn: turn,
 		Delta: stateDeltaEventForCommittedTurn(turn),
+	}, true, nil
+}
+
+// FindRecentAgentCanonicalDomainTurnCommit proves the exact public Agent
+// output hash from the bounded active-operation projection.
+func (s *Store) FindRecentAgentCanonicalDomainTurnCommit(
+	storyID, branchID string,
+	identity DomainCommitIdentity,
+	hash string,
+) (DomainCommitReceipt, bool, error) {
+	if s == nil {
+		return DomainCommitReceipt{}, false, fmt.Errorf("interactive store is nil")
+	}
+	branchID = strings.TrimSpace(branchID)
+	hash = strings.TrimSpace(hash)
+	if branchID == "" || hash == "" {
+		return DomainCommitReceipt{}, false, fmt.Errorf("%w: branch and Agent canonical hash are required", ErrAgentTurnIdentityConflict)
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	record, locator, found, err := s.recentStoryCommitLocked(storyID, StoryEventTypeTurn, identity)
+	if err != nil || !found {
+		if locator.CommandID == strings.TrimSpace(identity.CommandID) &&
+			(locator.OperationID != strings.TrimSpace(identity.OperationID) || locator.Cycle != identity.Cycle) {
+			return DomainCommitReceipt{}, false, fmt.Errorf("%w: command_id=%q operation_id=%q cycle=%d", ErrAgentTurnIdentityConflict, identity.CommandID, identity.OperationID, identity.Cycle)
+		}
+		return DomainCommitReceipt{}, false, err
+	}
+	var turn TurnEvent
+	if err := mapToStruct(record.Raw, &turn); err != nil {
+		return DomainCommitReceipt{}, false, fmt.Errorf("decode committed Agent turn: %w", err)
+	}
+	if turn.BranchID != branchID || strings.TrimSpace(turn.AgentOperationID) != strings.TrimSpace(identity.OperationID) ||
+		turn.AgentCycle != identity.Cycle || strings.TrimSpace(turn.AgentCanonicalHash) != hash {
+		return DomainCommitReceipt{}, false, fmt.Errorf("%w: Agent canonical turn does not match branch, identity, and hash", ErrAgentTurnIdentityConflict)
+	}
+	return DomainCommitReceipt{
+		Identity: identity, Hash: turn.AgentCommitHash, AgentCanonicalHash: hash,
+		Revision: turn.ID, Turn: turn, Delta: stateDeltaEventForCommittedTurn(turn),
 	}, true, nil
 }

@@ -120,7 +120,7 @@ func TestToolBatchSchedulerBoundsParallelReads(t *testing.T) {
 				active.Add(-1)
 				return TextToolResult("ok"), nil
 			})
-			native, err := NewAgent(context.Background(), AgentConfig{
+			native, err := NewLoop(context.Background(), LoopConfig{
 				Name: "parallel-limit", Model: model, Tools: []ToolDefinition{definition}, ToolParallelism: test.parallelism,
 			})
 			if err != nil {
@@ -161,7 +161,7 @@ func TestToolParallelismConfigurationNormalization(t *testing.T) {
 		configured int
 		want       int
 	}{{configured: 0, want: 8}, {configured: -1, want: 8}, {configured: 1, want: 1}, {configured: 65, want: 64}} {
-		native, err := NewAgent(context.Background(), AgentConfig{Name: "normalization", Model: model, ToolParallelism: test.configured})
+		native, err := NewLoop(context.Background(), LoopConfig{Name: "normalization", Model: model, ToolParallelism: test.configured})
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -219,7 +219,7 @@ func TestToolBatchSchedulerEnforcesReadExclusiveAndChildBarriers(t *testing.T) {
 			return TextToolResult("four"), nil
 		}),
 	}
-	native, err := NewAgent(context.Background(), AgentConfig{Name: "barriers", Model: model, Tools: definitions})
+	native, err := NewLoop(context.Background(), LoopConfig{Name: "barriers", Model: model, Tools: definitions})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -284,7 +284,7 @@ func TestToolCompletionEventsUseCompletionOrderWhileTranscriptUsesSourceOrder(t 
 			return ToolResult{ModelContent: "model-fast", DisplayContent: "display-fast", Status: ToolResultSuccess}, nil
 		}),
 	}
-	native, err := NewAgent(context.Background(), AgentConfig{Name: "completion-order", Model: model, Tools: definitions})
+	native, err := NewLoop(context.Background(), LoopConfig{Name: "completion-order", Model: model, Tools: definitions})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -365,7 +365,7 @@ func TestSteeringFillsCurrentStageTailAndAllLaterStages(t *testing.T) {
 			return TextToolResult("unexpected"), nil
 		}),
 	}
-	native, err := NewAgent(context.Background(), AgentConfig{Name: "steer-tail", Model: model, Tools: definitions, ToolParallelism: 1})
+	native, err := NewLoop(context.Background(), LoopConfig{Name: "steer-tail", Model: model, Tools: definitions, ToolParallelism: 1})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -438,7 +438,7 @@ func TestSteeringInterruptsOnlyInterruptibleWaits(t *testing.T) {
 			return TextToolResult("unexpected"), nil
 		}),
 	}
-	native, err := NewAgent(context.Background(), AgentConfig{Name: "steering-policy", Model: model, Tools: definitions})
+	native, err := NewLoop(context.Background(), LoopConfig{Name: "steering-policy", Model: model, Tools: definitions})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -523,7 +523,7 @@ func TestDurabilityFailureWaitsStartedStageAndPairsUnstartedCalls(t *testing.T) 
 			return TextToolResult("unexpected"), nil
 		}),
 	}
-	native, err := NewAgent(context.Background(), AgentConfig{Name: "durability", Model: model, Tools: definitions})
+	native, err := NewLoop(context.Background(), LoopConfig{Name: "durability", Model: model, Tools: definitions})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -612,7 +612,7 @@ func TestPolicyBlockedToolProducesOnePairedStructuredResult(t *testing.T) {
 		calls.Add(1)
 		return TextToolResult("unexpected"), nil
 	})
-	native, err := NewAgent(context.Background(), AgentConfig{
+	native, err := NewLoop(context.Background(), LoopConfig{
 		Name: "policy", Model: model, Tools: []ToolDefinition{definition}, Middlewares: []Middleware{&blockingToolMiddleware{}},
 	})
 	if err != nil {

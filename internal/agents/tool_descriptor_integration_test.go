@@ -26,7 +26,7 @@ func TestNativeAgentBuiltInToolsPassDescriptorGuard(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	builtAgent, err := agent.NewAgent(ctx, agent.AgentConfig{
+	builtAgent, err := agent.NewLoop(ctx, agent.LoopConfig{
 		Name:          "tool-descriptor-native-agent-test",
 		Description:   "verify the final model-visible tool surface",
 		Instruction:   "Reply without calling tools.",
@@ -90,7 +90,6 @@ func TestWritingAgentFinalRuntimeToolSurfacePassesDescriptorGuard(t *testing.T) 
 		ToolSettings:      settings,
 		EnableSkills:      true,
 		ExtraToolsFactory: agenttoolruntime.NewCatalog(cfg).IDE(),
-		IncludeCompaction: true,
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -107,7 +106,7 @@ func TestWritingAgentFinalRuntimeToolSurfacePassesDescriptorGuard(t *testing.T) 
 	tools = append(tools, todoTool, taskTool)
 
 	chatModel := &descriptorGuardProbeModel{}
-	builtAgent, err := agent.NewAgent(ctx, agent.AgentConfig{
+	builtAgent, err := agent.NewLoop(ctx, agent.LoopConfig{
 		Name:          "writing-tool-surface-test",
 		Description:   "verify the writing Agent's final model-visible tool surface",
 		Instruction:   "Reply without calling tools.",

@@ -160,6 +160,60 @@ func (c *SessionConversation) CommitModelInput(ctx context.Context, _ string, as
 	return nil
 }
 
+// MaterializeAgentCanonicalInput publishes the accepted user input before any
+// model-context assembly. The public Agent stage hash and product payload hash
+// form the exact idempotency boundary across process recovery.
+func (c *SessionConversation) MaterializeAgentCanonicalInput(
+	ctx context.Context,
+	message string,
+	references []agentcontext.UserReference,
+	agentCanonicalHash string,
+) (session.DomainCommitReceipt, error) {
+	if c == nil || c.session == nil {
+		return session.DomainCommitReceipt{}, fmt.Errorf("会话不存在")
+	}
+	if err := ctx.Err(); err != nil {
+		return session.DomainCommitReceipt{}, err
+	}
+	intent, err := c.acceptedInputDomainCommitIntent(message, references)
+	if err != nil {
+		return session.DomainCommitReceipt{}, err
+	}
+	intent, err = intent.WithAgentCanonicalHash(agentCanonicalHash)
+	if err != nil {
+		return session.DomainCommitReceipt{}, err
+	}
+	receipt, err := c.session.CommitDomainMessageContext(ctx, intent)
+	if err != nil {
+		return session.DomainCommitReceipt{}, err
+	}
+	c.cycleMu.Lock()
+	c.cycleCursor = c.session.ContextCursor()
+	c.cycleMu.Unlock()
+	return receipt, nil
+}
+
+// ApplyAgentPreparedContext records the exact context projection used by the
+// current public Agent cycle without appending the already-durable user input.
+func (c *SessionConversation) ApplyAgentPreparedContext(assembled agentcontext.ModelContextResult) error {
+	if c == nil || c.session == nil {
+		return fmt.Errorf("会话不存在")
+	}
+	state, ok := assembled.CommitState.(sessionModelContextCommitState)
+	if !ok {
+		return fmt.Errorf("session model context is missing commit state")
+	}
+	if !state.durable {
+		return ErrMissingAgentCycleIdentity
+	}
+	c.cycleMu.Lock()
+	c.cycleCursor = state.cursor
+	c.cycleMu.Unlock()
+	c.rememberCompactionModelBase(state.canonicalMessages, state.effectiveMessages)
+	c.rememberContextAssembly(assembled.Context)
+	return nil
+}
+
 func (c *SessionConversation) acceptedInputDomainCommitIntent(message string, references []agentcontext.UserReference) (session.DomainCommitIntent, error) {
 	identity := c.agentCycleIdentitySnapshot()
 	if !agentrun.ValidCycleIdentity(identity) {

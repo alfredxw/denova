@@ -17,42 +17,13 @@ import (
 // runtime snapshot admitted for its root operation. Typed commands never
 // reconstruct a binding from whichever session happens to be selected later.
 type writingTaskRun struct {
-	task               *apptask.Task
-	runtime            ideChatRuntime
-	recovery           *agentexecution.RecoveryObservation
-	recoveryActions    map[string]agentrun.CommandReceipt
-	recoveryStructural bool
+	task            *apptask.Task
+	runtime         ideChatRuntime
+	recovery        *agentexecution.RecoveryObservation
+	recoveryActions map[string]agentrun.CommandReceipt
 
 	recoveryMutationMu sync.Mutex
 	recoveryMutations  []writingRecoveryMutationBatch
-
-	// A recovered structural commit can settle before the long-lived selected
-	// Session successfully reloads canonical state. Keep its display Task alive
-	// until the exact recovery POST closes this latch.
-	recoveryRefreshReady chan struct{}
-	recoveryRefreshOnce  sync.Once
-}
-
-func (run *writingTaskRun) resolveRecoveryRefresh() {
-	if run == nil || run.recoveryRefreshReady == nil {
-		return
-	}
-	run.recoveryRefreshOnce.Do(func() { close(run.recoveryRefreshReady) })
-}
-
-func (run *writingTaskRun) waitForRecoveryRefresh(ctx context.Context) bool {
-	if run == nil || run.recoveryRefreshReady == nil {
-		return true
-	}
-	if ctx == nil {
-		ctx = context.Background()
-	}
-	select {
-	case <-run.recoveryRefreshReady:
-		return true
-	case <-ctx.Done():
-		return false
-	}
 }
 
 func (s *ChatAppService) replayDurableWritingStart(

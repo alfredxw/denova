@@ -160,7 +160,6 @@ func (s *workspaceService) SwitchWorkspace(ctx context.Context, path string) (st
 		return "", err
 	}
 
-	chatApp := a.chat()
 	a.mu.Lock()
 	if err := a.replaceWorkspaceScopeLocked(runtime.workspace); err != nil {
 		a.mu.Unlock()
@@ -176,7 +175,6 @@ func (s *workspaceService) SwitchWorkspace(ctx context.Context, path string) (st
 	previousSessionStore := a.sessionStore
 	a.applyRuntime(runtime)
 	a.cfg.Workspace = runtime.workspace
-	chatApp.clearRecoveryRefreshObligations(runtime.workspace)
 	a.mu.Unlock()
 	if previousInteractiveStore != nil && previousInteractiveStore != runtime.interactive {
 		if closeErr := previousInteractiveStore.Close(); closeErr != nil {

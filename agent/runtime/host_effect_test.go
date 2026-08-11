@@ -174,7 +174,8 @@ func (e *liveHostEffectEngine) Run(_ context.Context, request EngineRequest, emi
 	return EngineResult{Status: EngineCompleted}, nil
 }
 
-func (e *liveHostEffectEngine) ReconcileHostEffect(_ context.Context, effect HostEffect) error {
+func (e *liveHostEffectEngine) ReconcileHostEffect(_ context.Context, request HostEffectReconcileRequest) error {
+	effect := request.Effect
 	e.mu.Lock()
 	e.reconciliations = append(e.reconciliations, effect.ID)
 	e.mu.Unlock()
@@ -272,7 +273,8 @@ func (*retryingHostEffectEngine) Run(context.Context, EngineRequest, EngineEvent
 	return EngineResult{}, fmt.Errorf("recovered engine must not run implicitly")
 }
 
-func (e *retryingHostEffectEngine) ReconcileHostEffect(_ context.Context, effect HostEffect) error {
+func (e *retryingHostEffectEngine) ReconcileHostEffect(_ context.Context, request HostEffectReconcileRequest) error {
+	effect := request.Effect
 	e.mu.Lock()
 	defer e.mu.Unlock()
 	e.attempts++

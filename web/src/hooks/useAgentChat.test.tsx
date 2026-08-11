@@ -1054,11 +1054,13 @@ describe('useAgentChat', () => {
 
   it('retries cold recovery with the same server-projected identity and never resends cached input', async () => {
     const action = {
+      action_id: 'follow-up-action',
       kind: 'follow_up' as const,
       command_id: 'accepted-follow-up',
       operation_id: 'operation-recovery',
     }
     const laterAction = {
+      action_id: 'next-turn-action',
       kind: 'next_turn' as const,
       command_id: 'accepted-next-turn',
       operation_id: 'operation-next',

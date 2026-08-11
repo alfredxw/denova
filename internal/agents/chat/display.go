@@ -59,6 +59,21 @@ func appendAssistantIfAny(conversation Conversation, content, thinking *strings.
 	return generated, nil
 }
 
+// PersistAgentAssistant publishes one public Agent output through the existing
+// product conversation boundary. It deliberately does not own the surrounding
+// Agent canonical intent/receipt; callers invoke it only from CanonicalAdapter.
+func PersistAgentAssistant(conversation Conversation, content, thinking string, metadata session.MessageMetadata) error {
+	if conversation == nil {
+		return fmt.Errorf("persist Agent assistant: conversation is required")
+	}
+	var output strings.Builder
+	output.WriteString(content)
+	var reasoning strings.Builder
+	reasoning.WriteString(thinking)
+	_, err := appendAssistantIfAny(conversation, &output, &reasoning, metadata)
+	return err
+}
+
 func discardPlanAssistantContentIfNeeded(planMode bool, planParser *agentplan.Parser, content, thinking *strings.Builder) {
 	if !planMode || planParser == nil || !planParser.HasSuccessfulBlock() {
 		return

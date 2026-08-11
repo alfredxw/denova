@@ -569,6 +569,27 @@ func (h *Harness) run(state harnessState) {
 			request.response <- observeResponse{observation: observation, err: err}
 		case statusRequest:
 			request.response <- statusResponse{snapshot: state.statusSnapshot(h.projectionTextMaxBytes)}
+		case engineCheckpointRequest:
+			request.response <- EngineCheckpointSnapshot{
+				Cursor: state.cursor, State: cloneRawMessage(state.engineState), Capabilities: cloneCapabilityStates(state.capabilityStates),
+			}
+		case capabilityStateRequest:
+			request.response <- capabilityStateResponse{snapshot: state.capabilityState(request.name)}
+		case setCapabilityStateRequest:
+			var err error
+			if state.closing {
+				err = ErrHarnessClosed
+			} else if state.phase != PhaseIdle {
+				err = ErrBusy
+			} else if err = state.validateCapabilityStateEvent(request.event); err == nil {
+				_, err = h.commit(request.ctx, &state, []EventPayload{request.event})
+			}
+			if terminal, fatal := terminalJournalAppendError(err); fatal {
+				h.setFailure(terminal)
+				request.response <- terminal
+				return
+			}
+			request.response <- err
 		case unsubscribeRequest:
 			state.removeSubscriber(request.id, nil)
 		case closeRequest:

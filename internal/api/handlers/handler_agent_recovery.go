@@ -12,6 +12,7 @@ import (
 )
 
 type agentRecoveryActionRequest struct {
+	ActionID    string `json:"action_id,omitempty"`
 	Kind        string `json:"kind"`
 	CommandID   string `json:"command_id"`
 	OperationID string `json:"operation_id"`
@@ -81,6 +82,7 @@ func bindAgentRecoveryRequest(c *app.RequestContext, binding agentRecoveryBindin
 		return novaApp.AgentRuntimeRecoveryRequest{}, "", false
 	}
 	action := novaApp.AgentRuntimeRecoveryAction{
+		ActionID:    strings.TrimSpace(body.Action.ActionID),
 		Kind:        novaApp.AgentRuntimeRecoveryActionKind(strings.TrimSpace(body.Action.Kind)),
 		CommandID:   novaApp.AgentCommandID(strings.TrimSpace(body.Action.CommandID)),
 		OperationID: novaApp.AgentOperationID(strings.TrimSpace(body.Action.OperationID)),
@@ -136,14 +138,14 @@ func writeAgentRecoveryResponse(c *app.RequestContext, result novaApp.AgentRunti
 		TaskID: snapshot.ID, Status: string(snapshot.Status), StreamCursor: snapshot.Cursor,
 		Cursor: uint64(result.Receipt.Cursor), Replayed: result.Receipt.Replayed,
 		RecoveryAction: agentRuntimeRecoveryActionDTO{
-			Kind: string(result.Action.Kind), CommandID: string(result.Action.CommandID), OperationID: string(result.Action.OperationID),
+			ActionID: result.Action.ActionID, Kind: string(result.Action.Kind), CommandID: string(result.Action.CommandID), OperationID: string(result.Action.OperationID),
 		},
 	})
 }
 
 func (h *Handlers) writeAgentRecoveryError(c *app.RequestContext, err error, action novaApp.AgentRuntimeRecoveryAction) {
 	details := map[string]any{
-		"kind": string(action.Kind), "command_id": string(action.CommandID), "operation_id": string(action.OperationID),
+		"action_id": action.ActionID, "kind": string(action.Kind), "command_id": string(action.CommandID), "operation_id": string(action.OperationID),
 	}
 	switch {
 	case errors.Is(err, novaApp.ErrAgentRecoveryActionChanged), errors.Is(err, novaApp.ErrAgentRuntimeRecoveryActionChanged):

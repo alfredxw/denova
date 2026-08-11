@@ -4,7 +4,6 @@ import (
 	"context"
 	agentchat "denova/internal/agents/chat"
 	agentcontext "denova/internal/agents/context"
-	agentexecution "denova/internal/agents/execution"
 	apptask "denova/internal/app/task"
 	"path/filepath"
 	"testing"
@@ -24,7 +23,7 @@ func TestWritingOlderSettledStartColdReplayThroughApp(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	executionRuntime, err := agentexecution.NewDurableRuntime(context.Background(), root)
+	seed, err := New(context.Background(), writingColdReplayConfig(root))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -41,23 +40,21 @@ func TestWritingOlderSettledStartColdReplayThroughApp(t *testing.T) {
 		Mode:      "ide",
 	}
 	for index := range requests {
-		outcome := runExecutionCycle(executionRuntime,
-			context.Background(),
-			newWritingColdReplayRunner(t, answers[index]),
-			writingColdReplayConversation{},
-			nil,
-			requests[index],
-			options,
-			nil,
+		operation, startErr := startPublicExecutionCycle(
+			seed.executionRuntime, context.Background(), writingColdReplayModel{answer: answers[index]},
+			&interactiveReplayConversation{}, seed.bookService, requests[index], options, nil,
 		)
+		if startErr != nil {
+			seed.Close()
+			t.Fatal(startErr)
+		}
+		outcome := operation.Wait(context.Background())
 		if outcome.Status != agentrun.OutcomeCompleted || outcome.Content != answers[index] {
-			_ = executionRuntime.Close(context.Background())
+			seed.Close()
 			t.Fatalf("seed run %d outcome = %#v", index, outcome)
 		}
 	}
-	if err := executionRuntime.Close(context.Background()); err != nil {
-		t.Fatal(err)
-	}
+	seed.Close()
 
 	reopened, err := New(context.Background(), writingColdReplayConfig(root))
 	if err != nil {
@@ -69,7 +66,6 @@ func TestWritingOlderSettledStartColdReplayThroughApp(t *testing.T) {
 	// reconstruct a Runner or Conversation instead of using the durable result.
 	reopened.mu.Lock()
 	reopened.bookState = nil
-	reopened.agentRunner = nil
 	reopened.mu.Unlock()
 
 	task, err := reopened.StartTaskWithError(context.Background(), requests[0])
@@ -92,8 +88,12 @@ func TestWritingOlderSettledStartColdReplayThroughApp(t *testing.T) {
 	for _, event := range events {
 		switch event.Event.Type {
 		case "chunk":
-			if data, ok := event.Event.Data.(map[string]string); ok {
+			switch data := event.Event.Data.(type) {
+			case map[string]string:
 				replayedContent += data["content"]
+			case map[string]any:
+				content, _ := data["content"].(string)
+				replayedContent += content
 			}
 		case "done":
 			doneEvents++
@@ -113,26 +113,12 @@ func writingColdReplayConfig(root string) *config.Config {
 	}
 }
 
-func newWritingColdReplayRunner(t *testing.T, answer string) *agent.Runner {
-	t.Helper()
-	built, err := agent.NewAgent(context.Background(), agent.AgentConfig{
-		Name:        "DenovaAgent",
-		Description: "Writing cold replay test",
-		Instruction: "Return the fixed test answer.",
-		Model:       writingColdReplayModel{answer: answer},
-	})
-	if err != nil {
-		t.Fatal(err)
-	}
-	return agent.NewRunner(agent.RunnerConfig{Agent: built, EnableStreaming: true})
-}
-
 type writingColdReplayModel struct {
 	answer string
 }
 
 // writingColdReplayConversation is the producer-side adapter only. The App
-// replay deliberately receives neither this Conversation nor the test Runner.
+// replay deliberately receives neither this Conversation nor the test model.
 type writingColdReplayConversation struct{}
 
 func (writingColdReplayConversation) AssembleModelContext(

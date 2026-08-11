@@ -62,7 +62,7 @@ func TestPlanModeUsesDurableAskAndResumesSameRun(t *testing.T) {
 		EnforceToolSettings: true,
 		Workspace:           workspace,
 	})
-	builtAgent, err := agent.NewAgent(context.Background(), agent.AgentConfig{
+	builtAgent, err := agent.NewLoop(context.Background(), agent.LoopConfig{
 		Name: "plan-ask-integration", Description: "test", Instruction: "test",
 		Model: model, Tools: tools, Middlewares: []agent.Middleware{middleware},
 	})

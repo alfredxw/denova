@@ -1,6 +1,9 @@
 package runtime
 
-import "fmt"
+import (
+	"encoding/json"
+	"fmt"
+)
 
 // The accounting in this file deliberately counts logical payload bytes plus
 // conservative fixed overhead. It does not attempt to mirror a particular Go
@@ -70,6 +73,16 @@ func durableEventPayloadBytes(event Event) int64 {
 		bytes += messagePayloadBytes(payload.Message)
 	case AssistantMessageCommittedEvent:
 		bytes += messagePayloadBytes(payload.Message)
+	case EngineStateCommittedEvent:
+		bytes += int64(len(payload.State) + len(payload.Descriptor.SHA256))
+	case CapabilityStateCommittedEvent:
+		bytes += int64(len(payload.Capability) + len(payload.Expected.SHA256) + len(payload.State) + len(payload.OperationID))
+	case InteractionRequestedEvent:
+		bytes += int64(len(payload.ID) + len(payload.OperationID) + len(payload.ToolCallID) + len(payload.Request) + len(payload.Descriptor.SHA256))
+	case InteractionResolvedEvent:
+		bytes += int64(len(payload.ID) + len(payload.OperationID) + len(payload.Response) + len(payload.ResponseDescriptor.SHA256))
+	case InteractionRecoveryResumedEvent:
+		bytes += int64(len(payload.ID) + len(payload.OperationID))
 	case CycleStartedEvent:
 		bytes += int64(len(payload.OperationID) + len(payload.SnapshotID))
 	case OperationRecoveryPausedEvent:
@@ -85,6 +98,8 @@ func durableEventPayloadBytes(event Event) int64 {
 		for _, effect := range payload.HostEffects {
 			bytes += hostEffectPayloadBytes(effect)
 		}
+	case ArtifactProducedEvent:
+		bytes += int64(len(payload.OperationID) + len(payload.CallID) + len(payload.Artifact))
 	case HostEffectAcknowledgedEvent:
 		bytes += int64(len(payload.ID))
 	case HostEffectAbandonedEvent:
@@ -140,6 +155,9 @@ func displayEventForRetention(event Event) Event {
 	case AssistantMessageCommittedEvent:
 		payload.Message = displayMessageForRetention(payload.Message)
 		event.Payload = payload
+	case EngineStateCommittedEvent:
+		payload.State = nil
+		event.Payload = payload
 	case ToolCallFinishedEvent:
 		payload = normalizeToolFinished(payload)
 		for index := range payload.HostEffects {
@@ -185,6 +203,7 @@ func (s *harnessState) memorySnapshot() BindingMemorySnapshot {
 		RetainedBytes: s.retainedBytes(), PendingInputBytes: s.pendingInputBytes(),
 		ActiveOutputBytes: s.activeOutputBytes(), Limits: s.memoryLimits.normalized(),
 		PendingHostEffectBytes: s.pendingHostEffectBytes(), PendingHostEffects: len(s.pendingHostEffects),
+		InteractionBytes: s.interactionBytes(), PendingInteractions: len(s.interactions),
 	}
 }
 
@@ -282,6 +301,20 @@ func (s *harnessState) admitFinalOutput(content, thinking string) error {
 	err := &ByteBudgetError{Scope: ByteBudgetActiveOutput, Incoming: incoming, Limit: limits.MaxActiveOutputBytes}
 	s.activeOutputError = err
 	return err
+}
+
+func (s *harnessState) validateEngineState(state json.RawMessage) error {
+	if state == nil {
+		return nil
+	}
+	if !json.Valid(state) {
+		return fmt.Errorf("%w: engine state is not valid JSON", ErrInvalidCommand)
+	}
+	limit := s.memoryLimits.normalized().MaxEngineStateBytes
+	if int64(len(state)) > limit {
+		return &ByteBudgetError{Scope: ByteBudgetEngineState, Incoming: int64(len(state)), Limit: limit}
+	}
+	return nil
 }
 
 func (s *harnessState) retainEvent(event Event) {

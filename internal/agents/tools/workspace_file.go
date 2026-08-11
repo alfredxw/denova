@@ -2,6 +2,8 @@ package tools
 
 import (
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -27,6 +29,16 @@ type workspaceMutationAdapter struct {
 	changes   workspaceChangeService
 	workspace string
 	metadata  WorkspaceMetadataProvider
+}
+
+func (adapter *workspaceMutationAdapter) Identity() agent.CapabilityIdentity {
+	if adapter == nil {
+		return agent.CapabilityIdentity{}
+	}
+	digest := sha256.Sum256([]byte(adapter.workspace))
+	return agent.CapabilityIdentity{
+		Kind: "denova.workspace.mutation", Version: 1, ConfigHash: hex.EncodeToString(digest[:]),
+	}
 }
 
 // newWorkspaceMutationAdapter bridges the reusable write/edit Interface to

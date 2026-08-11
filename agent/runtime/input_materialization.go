@@ -125,6 +125,7 @@ func (h *Harness) queryInputMaterialization(
 	result, err := queryDomainCommit(ctx, reconciler, DomainCommitReconcileRequest{
 		Binding: state.binding.Clone(),
 		Commit:  commit,
+		State:   cloneRawMessage(state.engineState), Capabilities: cloneCapabilityStates(state.capabilityStates),
 	})
 	if err != nil {
 		return false, "", fmt.Errorf("reconcile accepted input materialization: %w", err)

@@ -17,7 +17,11 @@ func (h *Harness) startStructuralEngine(state *harnessState, snapshot Structural
 	operationCtx, cancel := context.WithCancel(h.lifecycle)
 	forwarded := make(chan EngineControl, 8)
 	go forwardStructuralControls(operationCtx, controls, forwarded, cancel, h.binding, snapshot.OperationID)
-	request := StructuralEngineRequest{Binding: h.binding.Clone(), Snapshot: *cloneStructuralOperationSnapshot(&snapshot), Controls: forwarded}
+	request := StructuralEngineRequest{
+		Binding: h.binding.Clone(), Snapshot: *cloneStructuralOperationSnapshot(&snapshot),
+		State: cloneRawMessage(state.engineState), Capabilities: cloneCapabilityStates(state.capabilityStates),
+		Controls: forwarded,
+	}
 	go func() {
 		returned := false
 		defer func() {

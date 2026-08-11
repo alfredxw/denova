@@ -113,6 +113,22 @@ type App struct {
 	closeOnce                   sync.Once
 }
 
+type testAgentChatExecutionProfile struct{ application *App }
+
+func (profile testAgentChatExecutionProfile) ID() agentexecution.ProfileID {
+	return agentexecution.ProfileAgentChat
+}
+
+func (profile testAgentChatExecutionProfile) PrepareCycle(
+	ctx context.Context,
+	request agentexecution.CycleRestoreRequest,
+) (agentexecution.Cycle, error) {
+	if profile.application == nil || profile.application.agentChatApp == nil {
+		return agentexecution.Cycle{}, agentexecution.ErrCyclePreparationUnavailable
+	}
+	return profile.application.agentChatApp.PrepareCycle(ctx, request, request.Binding)
+}
+
 func New(ctx context.Context, cfg *config.Config) (*App, error) {
 	if cfg == nil || strings.TrimSpace(cfg.DataDir()) == "" {
 		return nil, errors.New("agent runtime data directory is required")
@@ -150,9 +166,10 @@ func New(ctx context.Context, cfg *config.Config) (*App, error) {
 		application.sessionStore = store
 	}
 	application.ensureServices()
-	executionRuntime, err := agentexecution.NewDurableRuntime(
+	executionRuntime, err := agentexecution.NewAgentRuntime(
 		ctx,
 		dataDir,
+		agentexecution.WithProfiles(testAgentChatExecutionProfile{application: application}),
 		agentexecution.WithHostEffectReconciler(application.automationApp.ReconcileHostEffect),
 	)
 	if err != nil {

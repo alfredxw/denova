@@ -11,6 +11,7 @@ func describePayload(payload []byte) PayloadDescriptor {
 }
 
 func normalizeToolCallState(call ToolCallState) ToolCallState {
+	call.Source = cloneEventSource(call.Source)
 	return call
 }
 

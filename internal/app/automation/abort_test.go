@@ -2,13 +2,10 @@ package automationapp
 
 import (
 	"context"
-	"encoding/json"
 	"os"
 	"path/filepath"
 	"testing"
 	"time"
-
-	filejournal "github.com/alfredxw/denova/agent/runtime/filejournal"
 
 	"denova/config"
 	agentrun "denova/internal/agents/run"
@@ -56,38 +53,19 @@ func TestAutomationAbortReplaysPersistedReceiptAfterRestart(t *testing.T) {
 	}
 
 	ref := automationRuntimeBindingForTest(run.Workspace, run.SessionID, run.ID, run.ProjectID)
-	key, err := json.Marshal(ref)
-	if err != nil {
-		application.Close()
-		t.Fatal(err)
-	}
-	journalStore, err := filejournal.NewStore(filepath.Join(root, "agent-runtime"))
-	if err != nil {
-		application.Close()
-		t.Fatal(err)
-	}
-	journal, err := journalStore.OpenJournal(context.Background(), string(key))
-	if err != nil {
-		application.Close()
-		t.Fatal(err)
-	}
 	abort := runstate.Abort{ID: commandID, OperationID: operationID, Reason: "user_requested"}
 	abortFingerprint, err := runstate.CommandFingerprint(abort)
 	if err != nil {
 		application.Close()
 		t.Fatal(err)
 	}
-	_, err = journal.Append(context.Background(), 0, []runstate.EventPayload{
+	seedAutomationAgentSession(t, root, ref, []runstate.EventPayload{
 		runstate.CommandAcceptedEvent{CommandID: runstate.CommandID(automationRunAgentCommandID(runID)), CommandKind: "start_turn", OperationID: operationID, Fingerprint: "seed-start"},
 		runstate.OperationStartedEvent{OperationID: operationID},
 		runstate.CommandAcceptedEvent{CommandID: commandID, CommandKind: "abort", OperationID: operationID, Fingerprint: abortFingerprint},
 		runstate.AbortRequestedEvent{OperationID: operationID, Reason: abort.Reason},
 		runstate.OperationSettledEvent{OperationID: operationID, Status: runstate.OperationAborted, Reason: abort.Reason},
 	})
-	if closeErr := journal.Close(); err != nil || closeErr != nil {
-		application.Close()
-		t.Fatalf("seed abort journal: append=%v close=%v", err, closeErr)
-	}
 	application.Close()
 
 	reopened, err := New(context.Background(), &config.Config{NovaDir: root, Workspace: workspace, OpenAIModel: "test-model"})

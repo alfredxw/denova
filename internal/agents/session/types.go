@@ -91,27 +91,33 @@ type HistoryEntry struct {
 	AgentOperationID     string                       `json:"agent_operation_id,omitempty"`
 	AgentCycle           int                          `json:"agent_cycle,omitempty"`
 	DomainCommitHash     string                       `json:"domain_commit_hash,omitempty"`
+	AgentCanonicalHash   string                       `json:"agent_canonical_hash,omitempty"`
 	ContextRevision      uint64                       `json:"context_revision,omitempty"`
 }
 
 type MessageMetadata struct {
 	// MessageID and the coordinator identity form the stable cross-domain key
 	// for one Agent cycle. They are model-invisible but survive journal replay.
-	MessageID         string                       `json:"message_id,omitempty"`
-	AgentCommandID    string                       `json:"agent_command_id,omitempty"`
-	AgentOperationID  string                       `json:"agent_operation_id,omitempty"`
-	AgentCycle        int                          `json:"agent_cycle,omitempty"`
-	DomainCommitHash  string                       `json:"domain_commit_hash,omitempty"`
-	ContextRevision   uint64                       `json:"context_revision,omitempty"`
-	RunID             string                       `json:"run_id,omitempty"`
-	AgentKind         string                       `json:"agent_kind,omitempty"`
-	AgentName         string                       `json:"agent_name,omitempty"`
-	RootAgentName     string                       `json:"root_agent_name,omitempty"`
-	RunPath           []string                     `json:"run_path,omitempty"`
-	SubAgent          bool                         `json:"subagent,omitempty"`
-	SubAgentSessionID string                       `json:"subagent_session_id,omitempty"`
-	SubAgentType      string                       `json:"subagent_type,omitempty"`
-	UserReferences    []agentcontext.UserReference `json:"user_references,omitempty"`
+	MessageID        string `json:"message_id,omitempty"`
+	AgentCommandID   string `json:"agent_command_id,omitempty"`
+	AgentOperationID string `json:"agent_operation_id,omitempty"`
+	AgentCycle       int    `json:"agent_cycle,omitempty"`
+	DomainCommitHash string `json:"domain_commit_hash,omitempty"`
+	// AgentCanonicalHash is the public Agent package's exact stage hash. It is
+	// stored atomically with the product message, while DomainCommitHash guards
+	// the richer Denova payload. Recovery must query this value, never infer a
+	// successful Agent commit from cycle identity alone.
+	AgentCanonicalHash string                       `json:"agent_canonical_hash,omitempty"`
+	ContextRevision    uint64                       `json:"context_revision,omitempty"`
+	RunID              string                       `json:"run_id,omitempty"`
+	AgentKind          string                       `json:"agent_kind,omitempty"`
+	AgentName          string                       `json:"agent_name,omitempty"`
+	RootAgentName      string                       `json:"root_agent_name,omitempty"`
+	RunPath            []string                     `json:"run_path,omitempty"`
+	SubAgent           bool                         `json:"subagent,omitempty"`
+	SubAgentSessionID  string                       `json:"subagent_session_id,omitempty"`
+	SubAgentType       string                       `json:"subagent_type,omitempty"`
+	UserReferences     []agentcontext.UserReference `json:"user_references,omitempty"`
 	// ContextOnly keeps host-owned continuation instructions in model history
 	// without projecting them as user-authored chat messages.
 	ContextOnly bool `json:"context_only,omitempty"`

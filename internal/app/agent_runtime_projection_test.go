@@ -3,6 +3,7 @@ package app
 import (
 	"context"
 	agentexecution "denova/internal/agents/execution"
+	agenttoolruntime "denova/internal/agents/toolruntime"
 	"testing"
 
 	agentrun "denova/internal/agents/run"
@@ -26,7 +27,10 @@ func TestDefaultExecutionRuntimeProvidesDurableProjection(t *testing.T) {
 
 func TestAgentRuntimeProjectionUsesExplicitWritingAndGameIdentities(t *testing.T) {
 	workspace := t.TempDir()
-	service, err := agentexecution.NewDurableRuntime(context.Background(), t.TempDir())
+	service, err := agentexecution.NewAgentRuntime(
+		context.Background(), t.TempDir(),
+		agentexecution.WithHostEffectReconciler(func(context.Context, agenttoolruntime.CommittedToolMutation) error { return nil }),
+	)
 	if err != nil {
 		t.Fatal(err)
 	}

@@ -19,7 +19,7 @@ func TestNativeLoopToolInterruptPairsResultAndStops(t *testing.T) {
 	definition := testToolDefinition(&functionTool{name: "approval", run: func(context.Context, string) (string, error) {
 		return "", fmt.Errorf("request approval: %w", interrupt)
 	}})
-	native, err := NewAgent(context.Background(), AgentConfig{Name: "interrupt", Model: model, Tools: []ToolDefinition{definition}})
+	native, err := NewLoop(context.Background(), LoopConfig{Name: "interrupt", Model: model, Tools: []ToolDefinition{definition}})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -91,7 +91,7 @@ func TestConcreteToolPanicCrossesLifecycleWrapperAsPairedError(t *testing.T) {
 		panic("effect panic")
 	}}
 	receipts := &receiptProbeMiddleware{}
-	native, err := NewAgent(context.Background(), AgentConfig{
+	native, err := NewLoop(context.Background(), LoopConfig{
 		Name: "panic-receipt", Model: model, Tools: []ToolDefinition{testToolDefinition(tool)},
 		Middlewares: []Middleware{receipts},
 	})
@@ -147,7 +147,7 @@ func TestNativeLoopChecksContextImmediatelyBeforeToolExecution(t *testing.T) {
 		calls.Add(1)
 		return "unexpected", nil
 	}})
-	native, err := NewAgent(context.Background(), AgentConfig{
+	native, err := NewLoop(context.Background(), LoopConfig{
 		Name: "cancel-before-tool", Model: model, Tools: []ToolDefinition{definition},
 		Middlewares: []Middleware{&cancelBeforeToolExecutionMiddleware{cancel: cancel}},
 	})
@@ -192,7 +192,7 @@ func TestToolStartedEventIsEmittedOnlyAfterMiddlewarePreflight(t *testing.T) {
 		calls.Add(1)
 		return "unexpected", nil
 	}})
-	native, err := NewAgent(context.Background(), AgentConfig{
+	native, err := NewLoop(context.Background(), LoopConfig{
 		Name: "preflight-before-start", Model: model, Tools: []ToolDefinition{definition},
 		Middlewares: []Middleware{&blockBeforeConcreteExecutionMiddleware{}},
 	})
@@ -247,7 +247,7 @@ func TestMiddlewareArgumentRewriteCannotBypassSchema(t *testing.T) {
 		{message: AssistantMessage("", []ToolCall{{ID: "typed", Type: "function", Function: FunctionCall{Name: "typed", Arguments: `{"value":1}`}}})},
 		{message: AssistantMessage("done", nil)},
 	}}
-	native, err := NewAgent(context.Background(), AgentConfig{
+	native, err := NewLoop(context.Background(), LoopConfig{
 		Name: "schema-rewrite", Model: model, Tools: []ToolDefinition{testToolDefinition(tool)},
 		Middlewares: []Middleware{&rewriteArgumentsMiddleware{}},
 	})
@@ -286,7 +286,7 @@ func TestInvalidArgumentsRemainModelVisibleAndCanBeRetried(t *testing.T) {
 		{message: AssistantMessage("", []ToolCall{{ID: "fixed", Type: "function", Function: FunctionCall{Name: "typed_retry", Arguments: `{"value":"7"}`}}})},
 		{message: AssistantMessage("done", nil)},
 	}}
-	native, err := NewAgent(context.Background(), AgentConfig{
+	native, err := NewLoop(context.Background(), LoopConfig{
 		Name: "argument-retry", Model: model, Tools: []ToolDefinition{testToolDefinition(tool)},
 	})
 	if err != nil {
@@ -339,7 +339,7 @@ func TestProgressCollectorBuildsMissingFinalContent(t *testing.T) {
 		{message: AssistantMessage("", []ToolCall{{ID: "p", Type: "function", Function: FunctionCall{Name: "progress", Arguments: `{}`}}})},
 		{message: AssistantMessage("done", nil)},
 	}}
-	native, err := NewAgent(context.Background(), AgentConfig{Name: "progress", Model: model, Tools: []ToolDefinition{testToolDefinition(&progressOnlyTool{})}})
+	native, err := NewLoop(context.Background(), LoopConfig{Name: "progress", Model: model, Tools: []ToolDefinition{testToolDefinition(&progressOnlyTool{})}})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -383,7 +383,7 @@ func TestProgressCollectorEmitsOneBoundedTruncationAndStops(t *testing.T) {
 	}}
 	definition := testToolDefinition(&overflowingProgressTool{})
 	definition.Descriptor.MaxResultBytes = 64
-	native, err := NewAgent(context.Background(), AgentConfig{Name: "progress", Model: model, Tools: []ToolDefinition{definition}})
+	native, err := NewLoop(context.Background(), LoopConfig{Name: "progress", Model: model, Tools: []ToolDefinition{definition}})
 	if err != nil {
 		t.Fatal(err)
 	}

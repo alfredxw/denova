@@ -105,6 +105,7 @@ func (e *ScriptedEngine) Requests() []EngineRequest {
 
 func cloneEngineRequest(request EngineRequest) EngineRequest {
 	request.Snapshot.Input = cloneUserInput(request.Snapshot.Input)
+	request.Snapshot.State = cloneRawMessage(request.Snapshot.State)
 	request.Controls = nil
 	return request
 }

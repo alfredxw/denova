@@ -1,54 +1,6 @@
 package session
 
-import (
-	"context"
-	"fmt"
-	"log/slog"
-
-	agent "github.com/alfredxw/denova/agent"
-	agentsession "github.com/alfredxw/denova/agent/session"
-)
-
-// TranscriptSnapshot projects Denova's mixed product journal onto the stable
-// Agent transcript contract. Display cards, interruptions, illustrations,
-// compaction policy, and domain metadata intentionally remain product state.
-func (s *Session) TranscriptSnapshot() (agentsession.Snapshot, error) {
-	if s == nil {
-		return agentsession.Snapshot{}, fmt.Errorf("session is nil")
-	}
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	return s.transcriptSnapshotLocked()
-}
-
-func (s *Session) transcriptSnapshotLocked() (agentsession.Snapshot, error) {
-	entries := make([]agentsession.Entry, 0, len(s.messages)+1)
-	for _, record := range s.records {
-		switch record.kind {
-		case historyTypeMessage, historyTypeContextMessage:
-			if record.message == nil {
-				continue
-			}
-			entries = append(entries, agentsession.Entry{
-				Revision: agentsession.Revision(len(entries) + 1),
-				Type:     agentsession.EntryMessage,
-				Message:  record.message,
-			})
-		case historyTypeClear:
-			entries = append(entries, agentsession.Entry{
-				Revision: agentsession.Revision(len(entries) + 1),
-				Type:     agentsession.EntryClear,
-			})
-		}
-	}
-	revision := agentsession.Revision(s.contextRevision)
-	if minimum := agentsession.Revision(len(entries)); revision < minimum {
-		// Legacy journals did not persist context revisions. Restore still uses
-		// one monotonic revision per projected transcript entry.
-		revision = minimum
-	}
-	return agentsession.Restore(s.ID, revision, entries)
-}
+import agent "github.com/alfredxw/denova/agent"
 
 func (s *Session) effectiveTranscriptMessagesLocked() []*agent.Message {
 	start := s.clearAfterIndex - s.messageBaseIndex
@@ -58,22 +10,6 @@ func (s *Session) effectiveTranscriptMessagesLocked() []*agent.Message {
 	if start > len(s.messages) {
 		start = len(s.messages)
 	}
-	// Large journals intentionally materialize only the bounded effective
-	// window. Context compaction supplies the durable prefix summary.
-	if s.messageBaseIndex > 0 {
-		result := make([]*agent.Message, len(s.messages)-start)
-		for index, message := range s.messages[start:] {
-			result[index] = agent.CloneMessage(message)
-		}
-		return result
-	}
-	snapshot, err := s.transcriptSnapshotLocked()
-	if err == nil {
-		return snapshot.EffectiveMessages()
-	}
-	// The mixed journal predates the public contract, so corrupt legacy data
-	// must remain readable. New writes are validated before reaching this path.
-	slog.ErrorContext(context.Background(), fmt.Sprintf("internal/agents/session/transcript_adapter.go: projected transcript fallback session=%q error=%v", s.ID, err))
 	result := make([]*agent.Message, len(s.messages)-start)
 	for index, message := range s.messages[start:] {
 		result[index] = agent.CloneMessage(message)

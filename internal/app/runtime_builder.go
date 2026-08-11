@@ -8,13 +8,9 @@ import (
 	"path/filepath"
 
 	"denova/config"
-	agents "denova/internal/agents"
 	agentchat "denova/internal/agents/chat"
 	agentconversation "denova/internal/agents/conversation"
-	"denova/internal/agents/prompts"
-	agentrun "denova/internal/agents/run"
 	"denova/internal/agents/session"
-	appagentruntime "denova/internal/app/agentruntime"
 	appconversation "denova/internal/app/conversation"
 	appsettings "denova/internal/app/settings"
 	"denova/internal/book"
@@ -29,17 +25,15 @@ type ProjectLayout = projectdomain.Layout
 const ProjectTypeBook = projectdomain.TypeBook
 
 type runtimeState struct {
-	projectID              string
-	projectStateRoot       string
-	workspace              string
-	bookState              *book.State
-	bookService            *book.Service
-	interactive            *interactive.Store
-	sessionStore           *session.Store
-	session                *session.Session
-	agentRunner            *agents.Runner
-	interactiveStoryRunner *agents.Runner
-	versionService         *book.VersionService
+	projectID        string
+	projectStateRoot string
+	workspace        string
+	bookState        *book.State
+	bookService      *book.Service
+	interactive      *interactive.Store
+	sessionStore     *session.Store
+	session          *session.Session
+	versionService   *book.VersionService
 }
 
 // buildRuntimeExclusively initializes a runtime while holding the same
@@ -104,18 +98,6 @@ func buildRuntime(ctx context.Context, cfg *config.Config, layout ProjectLayout)
 	if err != nil {
 		return nil, fmt.Errorf("create conversation session: %w", err)
 	}
-	agentRunner, _, err := appagentruntime.BuildConversation(
-		ctx, &runtimeCfg, state, appagentruntime.WritingTellerForConfig(&runtimeCfg), agentrun.AgentKindIDE,
-	)
-	if err != nil {
-		return nil, err
-	}
-	interactiveStoryRunner, _, err := appagentruntime.BuildInteractive(
-		ctx, &runtimeCfg, state, prompts.InteractiveStorySystemInstructionInput{},
-	)
-	if err != nil {
-		return nil, err
-	}
 	interactiveStore := interactive.NewStoreWithNovaDir(absWorkspace, runtimeCfg.DataDir())
 	interruptedDirectorRuns, directorRecoveryErr := interactiveStore.RecoverInterruptedDirectorRuns()
 	if directorRecoveryErr != nil {
@@ -126,17 +108,15 @@ func buildRuntime(ctx context.Context, cfg *config.Config, layout ProjectLayout)
 		slog.InfoContext(ctx, fmt.Sprintf("[interactive-director] recovered interrupted runs workspace=%s runs=%d", absWorkspace, interruptedDirectorRuns))
 	}
 	runtime := &runtimeState{
-		projectID:              layout.ProjectID,
-		projectStateRoot:       layout.StateRoot,
-		workspace:              absWorkspace,
-		bookState:              state,
-		bookService:            book.NewService(absWorkspace),
-		interactive:            interactiveStore,
-		sessionStore:           store,
-		session:                sess,
-		agentRunner:            agentRunner,
-		interactiveStoryRunner: interactiveStoryRunner,
-		versionService:         book.NewVersionService(absWorkspace, layout.VersionRepositoryDir()),
+		projectID:        layout.ProjectID,
+		projectStateRoot: layout.StateRoot,
+		workspace:        absWorkspace,
+		bookState:        state,
+		bookService:      book.NewService(absWorkspace),
+		interactive:      interactiveStore,
+		sessionStore:     store,
+		session:          sess,
+		versionService:   book.NewVersionService(absWorkspace, layout.VersionRepositoryDir()),
 	}
 	keepStore = true
 	return runtime, nil

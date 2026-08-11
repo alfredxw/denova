@@ -26,7 +26,6 @@ func TestAgentPackageDependencyDirection(t *testing.T) {
 	)
 	assertNoProductionImports(t, filepath.Join(repository, "internal", "app"), nil,
 		importSubtree("denova/internal/api"),
-		importExact("github.com/alfredxw/denova/agent"),
 		importSubtree("github.com/alfredxw/denova/agent/context"),
 		importSubtree("github.com/alfredxw/denova/agent/providers"),
 		importSubtree("github.com/alfredxw/denova/agent/session"),

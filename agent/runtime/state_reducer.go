@@ -1,6 +1,7 @@
 package runtime
 
 import (
+	"encoding/json"
 	"fmt"
 	"strings"
 )
@@ -108,6 +109,47 @@ func (s *harnessState) reduce(event Event) error {
 			s.activeThinking.Reset()
 			s.activeOutputRehydrated = false
 		}
+	case EngineStateCommittedEvent:
+		if err := s.validateEngineState(payload.State); err != nil {
+			return err
+		}
+		if payload.Descriptor != describePayload(payload.State) {
+			return fmt.Errorf("engine state descriptor does not match payload")
+		}
+		s.engineState = cloneRawMessage(payload.State)
+	case CapabilityStateCommittedEvent:
+		if err := s.validateCapabilityStateEvent(payload); err != nil {
+			return err
+		}
+		if payload.Deleted {
+			delete(s.capabilityStates, payload.Capability)
+		} else {
+			s.capabilityStates[payload.Capability] = cloneRawMessage(payload.State)
+		}
+	case InteractionRequestedEvent:
+		if err := s.validateInteractionRequest(payload); err != nil {
+			return err
+		}
+		if _, exists := s.interactions[payload.ID]; !exists {
+			s.interactions[payload.ID] = InteractionSnapshot{
+				ID: payload.ID, OperationID: payload.OperationID, Cycle: payload.Cycle,
+				ToolCallID: payload.ToolCallID, Request: cloneRawMessage(payload.Request),
+			}
+		}
+	case InteractionResolvedEvent:
+		if err := s.validateInteractionResolution(payload); err != nil {
+			return err
+		}
+		interaction := s.interactions[payload.ID]
+		interaction.Response = cloneRawMessage(payload.Response)
+		interaction.Resolved = true
+		s.interactions[payload.ID] = interaction
+	case InteractionRecoveryResumedEvent:
+		interaction, exists := s.interactions[payload.ID]
+		if !exists || !interaction.Resolved || payload.OperationID != s.activeOperation || payload.Cycle != s.activeCycle || !s.recoveryPaused {
+			return fmt.Errorf("interaction recovery resume does not match the active cycle")
+		}
+		s.recoveryPaused = false
 	case CycleStartedEvent:
 		if payload.OperationID != s.activeOperation {
 			return fmt.Errorf("cycle operation %q does not match active operation %q", payload.OperationID, s.activeOperation)
@@ -142,7 +184,7 @@ func (s *harnessState) reduce(event Event) error {
 		}
 		s.inputRecovery = &InputMaterializationRecovery{
 			CommandID: payload.CommandID, OperationID: payload.OperationID,
-			Cycle: payload.Cycle, Delivery: payload.Delivery,
+			Cycle: payload.Cycle, Delivery: payload.Delivery, Autonomous: payload.Autonomous,
 		}
 		s.recoveryPaused = true
 	case InputMaterializationRecoveryResumedEvent:
@@ -157,6 +199,10 @@ func (s *harnessState) reduce(event Event) error {
 		}
 		call := normalizeToolCallState(payload.Call)
 		s.openToolCalls[call.CallID] = call
+		// A permission interaction occurs before concrete execution. Once the
+		// start receipt is durable, its response is consumed and must not make an
+		// uncertain side-effecting tool look safely resumable after a crash.
+		s.removeInteractionsForTool(call.CallID)
 	case ToolCallFinishedEvent:
 		call, exists := s.openToolCalls[payload.CallID]
 		if !exists {
@@ -174,6 +220,13 @@ func (s *harnessState) reduce(event Event) error {
 			s.pendingHostEffectOrder = append(s.pendingHostEffectOrder, cloned.ID)
 		}
 		delete(s.openToolCalls, payload.CallID)
+		s.removeInteractionsForTool(payload.CallID)
+	case ArtifactProducedEvent:
+		call, exists := s.openToolCalls[payload.CallID]
+		if !exists || call.OperationID != payload.OperationID || call.Cycle != payload.Cycle ||
+			len(payload.Artifact) == 0 || len(payload.Artifact) > 256<<10 || !json.Valid(payload.Artifact) {
+			return fmt.Errorf("artifact does not match an open tool call")
+		}
 	case HostEffectAcknowledgedEvent:
 		if err := s.removePendingHostEffect(payload.ID, "acknowledge"); err != nil {
 			return err
@@ -226,6 +279,7 @@ func (s *harnessState) reduce(event Event) error {
 			return fmt.Errorf("settled operation %q does not match active operation %q", payload.OperationID, s.activeOperation)
 		}
 		s.recordTerminalOperation(s.terminalOperationSummary(payload.OperationID, payload.Status, payload.Reason))
+		clear(s.interactions)
 		delete(s.operationCommands, payload.OperationID)
 		delete(s.operationAcceptances, payload.OperationID)
 		s.clearActiveOperation()
@@ -234,6 +288,7 @@ func (s *harnessState) reduce(event Event) error {
 			return fmt.Errorf("interrupted operation %q does not match active operation %q", payload.OperationID, s.activeOperation)
 		}
 		s.recordTerminalOperation(s.terminalOperationSummary(payload.OperationID, OperationInterrupted, payload.Reason))
+		clear(s.interactions)
 		delete(s.operationCommands, payload.OperationID)
 		delete(s.operationAcceptances, payload.OperationID)
 		s.clearActiveOperation()

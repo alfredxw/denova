@@ -46,12 +46,20 @@ type BindingMemoryLimits struct {
 	// MaxActiveOutputBytes covers combined assistant content/thinking builders
 	// and also caps one foreground tool-progress payload.
 	MaxActiveOutputBytes int64
+	// MaxEngineStateBytes bounds the private cross-cycle Engine checkpoint.
+	// It is deliberately high because a complete model transcript may contain
+	// large, still-recoverable tool results.
+	MaxEngineStateBytes int64
 	// MaxHostEffectBytes bounds one durable host-effect outbox payload.
 	MaxHostEffectBytes int64
 	// MaxPendingHostEffectBytes and MaxPendingHostEffects bound all unacked
 	// effects retained by one binding. Acknowledgement releases both budgets.
 	MaxPendingHostEffectBytes int64
 	MaxPendingHostEffects     int
+	// MaxInteractionBytes bounds one request or normalized response;
+	// MaxPendingInteractions bounds unresolved/resumable waiters in one cycle.
+	MaxInteractionBytes    int64
+	MaxPendingInteractions int
 }
 
 // DefaultBindingMemoryLimits returns the normalized production budgets.
@@ -69,6 +77,9 @@ func (limits BindingMemoryLimits) normalized() BindingMemoryLimits {
 	if limits.MaxActiveOutputBytes <= 0 {
 		limits.MaxActiveOutputBytes = 64 << 20
 	}
+	if limits.MaxEngineStateBytes <= 0 {
+		limits.MaxEngineStateBytes = 64 << 20
+	}
 	if limits.MaxHostEffectBytes <= 0 {
 		limits.MaxHostEffectBytes = 8 << 20
 	}
@@ -77,6 +88,12 @@ func (limits BindingMemoryLimits) normalized() BindingMemoryLimits {
 	}
 	if limits.MaxPendingHostEffects <= 0 {
 		limits.MaxPendingHostEffects = 1024
+	}
+	if limits.MaxInteractionBytes <= 0 {
+		limits.MaxInteractionBytes = 4 << 20
+	}
+	if limits.MaxPendingInteractions <= 0 {
+		limits.MaxPendingInteractions = 64
 	}
 	return limits
 }
@@ -152,6 +169,7 @@ var (
 	ErrDomainCommitRejected = errors.New("agent domain commit authorization rejected")
 	ErrByteBudgetExceeded   = errors.New("agent runtime byte budget exceeded")
 	ErrHostEffectRequired   = errors.New("agent runtime host effect requires reconciliation")
+	ErrInteractionStale     = errors.New("agent runtime interaction is stale")
 )
 
 // ByteBudgetScope identifies the actor-owned payload class that rejected new
@@ -163,6 +181,8 @@ const (
 	ByteBudgetActiveOutput ByteBudgetScope = "active_output"
 	ByteBudgetToolProgress ByteBudgetScope = "tool_progress"
 	ByteBudgetHostEffect   ByteBudgetScope = "host_effect"
+	ByteBudgetEngineState  ByteBudgetScope = "engine_state"
+	ByteBudgetInteraction  ByteBudgetScope = "interaction"
 )
 
 // ByteBudgetError is returned before input acceptance or when a provider/tool

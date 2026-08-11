@@ -6,7 +6,6 @@ import (
 	agentrun "denova/internal/agents/run"
 	agenttool "denova/internal/agents/tool"
 	agenttoolruntime "denova/internal/agents/toolruntime"
-	"errors"
 	"fmt"
 	"log/slog"
 
@@ -40,7 +39,7 @@ type chatAgentLoop struct {
 }
 
 func newChatAgentLoop(run *chatRun, history []*agent.Message, agentMessage string) *chatAgentLoop {
-	runCtx, cancelRun := context.WithCancel(contextWithCompactionController(agentrun.ContextWithObserver(run.traceCtx, run.observer), run.conversation, run.emit))
+	runCtx, cancelRun := context.WithCancel(agentrun.ContextWithObserver(run.traceCtx, run.observer))
 	if _, bound := agent.InvocationIdentityFromContext(runCtx); !bound {
 		runCtx = agent.ContextWithInvocationIdentity(runCtx, agent.InvocationIdentity{RunID: run.runID})
 	}
@@ -167,13 +166,6 @@ func (l *chatAgentLoop) waitFailed(waitErr error) chatLoopResult {
 
 func (l *chatAgentLoop) runnerFailed(runErr error) chatLoopResult {
 	run := l.run
-	if errors.Is(runErr, errAutomaticContextCompactionDeferred) {
-		run.logger.InfoContext(run.ctx, "automatic_context_compaction_deferred_primary_model")
-		run.finish("success", "context_maintenance", run.fullContent.Len())
-		outcome := agentrun.NewOutcome(agentrun.OutcomeCompleted, nil, "context_maintenance", "", "")
-		outcome.MaintenanceOnly = true
-		return chatLoopResult{action: chatLoopTerminal, outcome: outcome}
-	}
 	if run.control.protocolTriggered() && interactiveTurnCompletedByCancel(runErr, run.options.AgentKind, run.conversation, run.fullContent.Len()) {
 		run.logger.InfoContext(run.ctx, "interactive_turn_completed_after_submission", slog.Int("generated_bytes", run.fullContent.Len()))
 		return chatLoopResult{action: chatLoopStop}

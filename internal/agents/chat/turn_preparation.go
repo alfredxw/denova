@@ -31,6 +31,40 @@ type preparedTurnContext struct {
 	ModelContext       agentcontext.ModelContextResult
 }
 
+// AgentContextPreparation is the product-owned, pure context assembly consumed
+// by the public Agent ContextSource and CanonicalAdapter. ModelContext may
+// contain product history for audit/commit purposes; the adapter selects only
+// accountable turn fragments because the public Agent owns the transcript.
+type AgentContextPreparation struct {
+	OriginalMessage    string
+	ResumeInterruption *session.Interruption
+	ExplicitSkills     []novaskills.Invocation
+	ModelContext       agentcontext.ModelContextResult
+}
+
+// PrepareAgentContext preserves Denova's exact context projection and localized
+// rendering while leaving publication to the public Agent canonical fence.
+func PrepareAgentContext(
+	ctx context.Context,
+	conversation Conversation,
+	request ChatRequest,
+	bookService *book.Service,
+	workspace string,
+) (AgentContextPreparation, error) {
+	prepared, err := prepareTurnContext(ctx, turnContextPreparationInput{
+		Conversation: conversation, Request: request, BookService: bookService,
+		Environment: newTurnRuntimeEnvironment(workspace),
+	})
+	if err != nil {
+		return AgentContextPreparation{}, err
+	}
+	return AgentContextPreparation{
+		OriginalMessage: prepared.OriginalMessage, ResumeInterruption: prepared.ResumeInterruption,
+		ExplicitSkills: append([]novaskills.Invocation(nil), prepared.ExplicitSkills...),
+		ModelContext:   prepared.ModelContext,
+	}, nil
+}
+
 func prepareTurnContext(ctx context.Context, input turnContextPreparationInput) (preparedTurnContext, error) {
 	if input.Conversation == nil {
 		return preparedTurnContext{}, fmt.Errorf("conversation is required")

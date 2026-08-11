@@ -235,7 +235,7 @@ func TestLossyShellArtifactFailureStopsNativeAgentAfterDurableFinish(t *testing.
 	middleware := &OrchestratorMiddleware{
 		BaseMiddleware: &agent.BaseMiddleware{}, agentKind: agentrun.AgentKindIDE, toolResultMaxBytes: 256,
 	}
-	built, err := agent.NewAgent(context.Background(), agent.AgentConfig{
+	built, err := agent.NewLoop(context.Background(), agent.LoopConfig{
 		Name: "lossy-shell-control", Description: "lossy shell control regression",
 		Instruction: "run requested tools", Model: model, MaxIterations: 3,
 		Middlewares: []agent.Middleware{middleware},

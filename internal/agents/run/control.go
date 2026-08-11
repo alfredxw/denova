@@ -202,6 +202,32 @@ type RuntimeStatus struct {
 	RecentOperations         []OperationSummary
 	LastDomainCommit         *DomainCommitState
 	DomainCommits            []DomainCommitState
+	AgentRecoveryActions     []AgentRecoveryAction
+	Compaction               *AgentCompactionState
+}
+
+// AgentCompactionState is the bounded public Session checkpoint projection.
+// Product stores may render it but must not persist a competing checkpoint.
+type AgentCompactionState struct {
+	ID              string
+	Revision        uint64
+	Summary         string
+	TokenEstimate   int
+	ReplacementFrom int
+	ReplacementTo   int
+	ContextData     *RestoreData
+}
+
+// AgentRecoveryAction is the opaque public Agent recovery authority projected
+// through Denova's app-facing status. Runtime command identities remain
+// unavailable to callers; ID is the only value accepted by recovery.
+type AgentRecoveryAction struct {
+	ID         string
+	Kind       string
+	RunID      string
+	CommandID  string
+	Delivery   string
+	Compaction string
 }
 
 type StatusSnapshot = RuntimeStatus

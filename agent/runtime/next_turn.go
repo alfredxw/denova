@@ -8,10 +8,12 @@ import (
 )
 
 type nextTurnPlan struct {
-	item       QueuedInput
-	snapshotID SnapshotID
-	has        bool
-	start      bool
+	item         QueuedInput
+	snapshotID   SnapshotID
+	capabilities []EventPayload
+	failure      error
+	has          bool
+	start        bool
 }
 
 func (h *Harness) planNextTurn(ctx context.Context, state *harnessState, allowStart bool) nextTurnPlan {
@@ -25,6 +27,7 @@ func (h *Harness) planNextTurn(ctx context.Context, state *harnessState, allowSt
 	}
 	plan.start = true
 	plan.snapshotID = SnapshotID(newID("snapshot"))
+	plan.capabilities, plan.failure = h.prepareAdmission(ctx, state, item.CommandID, item.OperationID, 1, item.Input)
 	return plan
 }
 
@@ -48,9 +51,18 @@ func (plan nextTurnPlan) appendStart(payloads []EventPayload) []EventPayload {
 	if !plan.start {
 		return payloads
 	}
-	return append(payloads,
+	payloads = append(payloads,
 		QueueConsumedEvent{CommandID: plan.item.CommandID, Delivery: DeliveryNextTurn},
 		OperationStartedEvent{OperationID: plan.item.OperationID},
+	)
+	if plan.failure != nil {
+		return append(payloads,
+			UserMessageCommittedEvent{Message: newUserMessage(plan.item.OperationID, plan.item.Input)},
+			OperationSettledEvent{OperationID: plan.item.OperationID, Status: OperationFailed, Reason: "prepare Run admission: " + plan.failure.Error()},
+		)
+	}
+	payloads = append(payloads, plan.capabilities...)
+	return append(payloads,
 		UserMessageCommittedEvent{Message: newUserMessage(plan.item.OperationID, plan.item.Input)},
 		CycleStartedEvent{OperationID: plan.item.OperationID, Cycle: 1, SnapshotID: plan.snapshotID},
 		InputMaterializationRecoveryPendingEvent{
@@ -61,7 +73,7 @@ func (plan nextTurnPlan) appendStart(payloads []EventPayload) []EventPayload {
 }
 
 func (h *Harness) startPlannedNextTurn(state *harnessState, plan nextTurnPlan) error {
-	if !plan.start {
+	if !plan.start || plan.failure != nil {
 		return nil
 	}
 	if err := h.resumePendingInputMaterialization(h.lifecycle, state); err != nil {

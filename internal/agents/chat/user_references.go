@@ -56,6 +56,13 @@ func userMessageReferencesForRequest(req ChatRequest) []agentcontext.UserReferen
 	return result
 }
 
+// UserMessageReferences returns the durable, product-neutral references
+// attached to the accepted user message. Canonical input adapters use it
+// before model-context assembly begins.
+func UserMessageReferences(req ChatRequest) []agentcontext.UserReference {
+	return userMessageReferencesForRequest(req)
+}
+
 // UserMessageReferencesForRequest returns the Session metadata source shared
 // by normal model-input commit and provider-free accepted-input materialization.
 // Hosts call it only after resolving canonical review IDs.

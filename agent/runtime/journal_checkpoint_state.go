@@ -2,7 +2,7 @@ package runtime
 
 import "fmt"
 
-const harnessCheckpointVersion = 1
+const harnessCheckpointVersion = 4
 
 // harnessCheckpoint is the reducer state needed to continue from Cursor. It
 // intentionally excludes subscribers, control channels, and process-local
@@ -24,6 +24,9 @@ type harnessCheckpoint struct {
 	ActiveInput            UserInput                     `json:"active_input,omitempty"`
 	ActiveContent          string                        `json:"active_content,omitempty"`
 	ActiveThinking         string                        `json:"active_thinking,omitempty"`
+	EngineState            []byte                        `json:"engine_state,omitempty"`
+	CapabilityStates       map[string][]byte             `json:"capability_states,omitempty"`
+	Interactions           []InteractionSnapshot         `json:"interactions,omitempty"`
 	Messages               []Message                     `json:"messages,omitempty"`
 	Queue                  []QueuedInput                 `json:"queue,omitempty"`
 	PreemptQueuedCommandID CommandID                     `json:"preempt_queued_command_id,omitempty"`
@@ -67,7 +70,10 @@ func (s *harnessState) checkpoint() (harnessCheckpoint, error) {
 		ActiveStructural: cloneStructuralOperationSnapshot(s.activeStructural),
 		RecoveryPaused:   s.recoveryPaused, InputRecovery: cloneInputMaterializationRecovery(s.inputRecovery),
 		ActiveInput: cloneUserInput(s.activeInput), ActiveContent: s.activeContent.String(), ActiveThinking: s.activeThinking.String(),
-		Messages: cloneMessages(s.messages), Queue: cloneQueue(s.queue),
+		EngineState:      cloneRawMessage(s.engineState),
+		CapabilityStates: cloneCapabilityStateBytes(s.capabilityStates),
+		Interactions:     s.interactionSnapshots(),
+		Messages:         cloneMessages(s.messages), Queue: cloneQueue(s.queue),
 		PreemptQueuedCommandID: s.preemptQueuedCommandID,
 		ActiveCommandID:        s.activeCommandID, ActiveCycleCommandID: s.activeCycleCommandID,
 		PendingCycleCommandID: s.pendingCycleCommandID,
@@ -142,6 +148,45 @@ func restoreHarnessCheckpoint(target *harnessState, checkpoint harnessCheckpoint
 	restored.activeContent.WriteString(checkpoint.ActiveContent)
 	restored.activeThinking.WriteString(checkpoint.ActiveThinking)
 	restored.activeOutputRehydrated = checkpoint.ActiveContent != "" || checkpoint.ActiveThinking != ""
+	if err := restored.validateEngineState(checkpoint.EngineState); err != nil {
+		return fmt.Errorf("checkpoint engine state: %w", err)
+	}
+	restored.engineState = cloneRawMessage(checkpoint.EngineState)
+	for name, state := range checkpoint.CapabilityStates {
+		event := CapabilityStateCommittedEvent{
+			Capability: name, Expected: describePayload(nil), State: cloneRawMessage(state),
+		}
+		if err := restored.validateCapabilityStateEvent(event); err != nil {
+			return fmt.Errorf("checkpoint capability state %q: %w", name, err)
+		}
+		restored.capabilityStates[name] = cloneRawMessage(state)
+	}
+	for _, interaction := range checkpoint.Interactions {
+		event := InteractionRequestedEvent{
+			ID: interaction.ID, OperationID: interaction.OperationID, Cycle: interaction.Cycle,
+			ToolCallID: interaction.ToolCallID, Request: cloneRawMessage(interaction.Request),
+			Descriptor: describePayload(interaction.Request),
+		}
+		if err := restored.validateInteractionRequest(event); err != nil {
+			return fmt.Errorf("checkpoint interaction %q: %w", interaction.ID, err)
+		}
+		restored.interactions[interaction.ID] = InteractionSnapshot{
+			ID: interaction.ID, OperationID: interaction.OperationID, Cycle: interaction.Cycle,
+			ToolCallID: interaction.ToolCallID, Request: cloneRawMessage(interaction.Request),
+		}
+		if interaction.Resolved {
+			resolved := InteractionResolvedEvent{
+				ID: interaction.ID, OperationID: interaction.OperationID, Cycle: interaction.Cycle,
+				Response: cloneRawMessage(interaction.Response), ResponseDescriptor: describePayload(interaction.Response),
+			}
+			if err := restored.validateInteractionResolution(resolved); err != nil {
+				return fmt.Errorf("checkpoint resolved interaction %q: %w", interaction.ID, err)
+			}
+			value := restored.interactions[interaction.ID]
+			value.Response, value.Resolved = cloneRawMessage(interaction.Response), true
+			restored.interactions[interaction.ID] = value
+		}
+	}
 	restored.queue = cloneQueue(checkpoint.Queue)
 	restored.preemptQueuedCommandID = checkpoint.PreemptQueuedCommandID
 	if restored.preemptQueuedCommandID != "" {

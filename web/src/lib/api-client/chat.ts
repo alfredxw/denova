@@ -127,6 +127,8 @@ export type AgentRuntimeRecoveryActionKind =
 
 /** Public, payload-free identity selected from the server recovery projection. */
 export interface AgentRuntimeRecoveryAction {
+  /** Opaque authority for one current public Agent recovery action. Attach-only actions omit it. */
+  action_id?: string
   kind: AgentRuntimeRecoveryActionKind
   command_id: string
   operation_id: string

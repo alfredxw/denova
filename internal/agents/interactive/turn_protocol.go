@@ -76,7 +76,7 @@ func RequestTurnCompletion(ctx context.Context) bool {
 	}
 	cancel, _ := ctx.Value(interactiveTurnCancelKey{}).(agent.AgentCancelFunc)
 	if cancel == nil {
-		return false
+		return agent.RequestCompletionAfterTools(ctx)
 	}
 	_, contributed := cancel(agent.WithAgentCancelMode(agent.CancelAfterToolCalls))
 	return contributed

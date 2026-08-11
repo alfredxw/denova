@@ -236,12 +236,27 @@ func cloneEventPayload(payload EventPayload) EventPayload {
 	case AssistantMessageCommittedEvent:
 		payload.Message = cloneMessage(payload.Message)
 		return payload
+	case EngineStateCommittedEvent:
+		payload.State = cloneRawMessage(payload.State)
+		return payload
+	case CapabilityStateCommittedEvent:
+		payload.State = cloneRawMessage(payload.State)
+		return payload
+	case InteractionRequestedEvent:
+		payload.Request = cloneRawMessage(payload.Request)
+		return payload
+	case InteractionResolvedEvent:
+		payload.Response = cloneRawMessage(payload.Response)
+		return payload
+	case ArtifactProducedEvent:
+		payload.Artifact = cloneRawMessage(payload.Artifact)
+		return payload
 	case ToolCallStartedEvent:
 		payload.Call = normalizeToolCallState(payload.Call)
 		return payload
 	case CommandAcceptedEvent, QueueConsumedEvent, QueueSteerRequestedEvent,
 		QueueCancelledEvent, CycleStartedEvent, OperationRecoveryPausedEvent,
-		InputMaterializationRecoveryPendingEvent, InputMaterializationRecoveryResumedEvent, ToolCallFinishedEvent,
+		InputMaterializationRecoveryPendingEvent, InputMaterializationRecoveryResumedEvent, InteractionRecoveryResumedEvent, ToolCallFinishedEvent,
 		HostEffectAcknowledgedEvent, HostEffectAbandonedEvent,
 		AbortRequestedEvent, SavePointCommittedEvent, OperationSettledEvent,
 		OperationInterruptedEvent, AssistantDeltaEvent, ThinkingDeltaEvent,

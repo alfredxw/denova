@@ -3,7 +3,6 @@ package imageapp
 import (
 	"context"
 	"crypto/sha256"
-	agentchat "denova/internal/agents/chat"
 	"errors"
 	"fmt"
 	"log/slog"
@@ -17,8 +16,6 @@ import (
 	agentrun "denova/internal/agents/run"
 	"denova/internal/agents/session"
 	novaskills "denova/internal/agents/skills"
-	appagentruntime "denova/internal/app/agentruntime"
-	appsettings "denova/internal/app/settings"
 	apptask "denova/internal/app/task"
 	imageasset "denova/internal/image/asset"
 )
@@ -79,36 +76,9 @@ func (service *Service) generateWithAgentUsingHooks(runtime *Runtime, req AgentG
 	if err := runtime.requireAgentAdapters(); err != nil {
 		return AgentGenerateResult{}, err
 	}
-	cfg := runtime.Config
-	novaDir := cfg.DataDir()
-	if layered, loadErr := config.LoadLayeredWithStartupConfigAt(
-		novaDir, runtime.Workspace, config.ProjectConfigPath(cfg.ProjectStateDir),
-	); loadErr == nil {
-		appsettings.ApplyLayered(&cfg, layered)
-	} else {
-		slog.ErrorContext(context.Background(), fmt.Sprintf("[image-agent] load layered settings failed workspace=%s err=%v", runtime.Workspace, loadErr))
-	}
-	cfg.ImagePresetToolPrompt = strings.TrimSpace(req.ToolPrompt)
-	modelSelection := config.ResolveAgentModel(&cfg, config.AgentKindImage)
-	slog.InfoContext(runtime.Context(), fmt.Sprintf(
-		"[image-agent] preparing run workspace=%s profile_id=%s thinking_level=%s",
-		runtime.Workspace, strings.TrimSpace(modelSelection.ProfileID), strings.TrimSpace(modelSelection.ThinkingLevel),
-	))
-	sess, err := prepareImageAgentSession(runtime.SessionStore)
+	cycle, conversation, err := service.prepareAgentCycle(runtime, req)
 	if err != nil {
 		return AgentGenerateResult{}, err
-	}
-	runner, systemPrompt, err := appagentruntime.BuildImage(runtime.Context(), &cfg, runtime.BookState, req.SystemPrompt)
-	if err != nil {
-		return AgentGenerateResult{}, err
-	}
-	conversation := &imageAgentConversation{
-		journal:       agentconversation.NewSessionConversationForAgent(sess, &cfg, config.AgentKindImage),
-		message:       imageAgentMessage(req),
-		sourceContext: strings.TrimSpace(req.SourceContext),
-		sourceSummary: imageAgentSourceSummary(req),
-		contextBudget: agentcontext.ContextBudgetForAgent(&cfg, config.AgentKindImage),
-		skillConfig:   cfg,
 	}
 	var result AgentGenerateResult
 	var runErr error
@@ -116,28 +86,7 @@ func (service *Service) generateWithAgentUsingHooks(runtime *Runtime, req AgentG
 	runCtx, cancelRun := context.WithCancel(runtime.Context())
 	defer cancelRun()
 	accepted, err := runtime.ExecutionRuntime.Start(runCtx, agentexecution.StartRequest{
-		Cycle: agentexecution.Cycle{
-			Runner:       runner,
-			Conversation: conversation,
-			BookService:  runtime.BookService,
-			Request: agentchat.ChatRequest{
-				CommandID: req.CommandID,
-				Message:   conversation.message,
-			},
-			Options: agentrun.Options{
-				AgentKind:          config.AgentKindImage,
-				StateRoot:          cfg.ProjectStateDir,
-				SessionID:          sess.ID,
-				Workspace:          runtime.Workspace,
-				StoryID:            req.StoryID,
-				BranchID:           req.BranchID,
-				TurnID:             req.TurnID,
-				Mode:               "image",
-				IdleTimeout:        appagentruntime.IdleTimeout(cfg),
-				ToolResultMaxBytes: appagentruntime.ToolResultMaxBytes(cfg),
-				SystemPromptLog:    systemPrompt,
-			},
-		},
+		Cycle: cycle,
 		Emit: func(ev agentrun.Event) {
 			switch ev.Type {
 			case "tool_result":

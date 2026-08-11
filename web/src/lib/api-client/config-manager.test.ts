@@ -73,7 +73,7 @@ describe('Config Manager durable runtime API', () => {
   })
 
   it('posts only the server-projected recovery identity', async () => {
-    const action = { kind: 'follow_up' as const, command_id: 'accepted-follow-up', operation_id: 'operation-1' }
+    const action = { action_id: 'follow-up-action', kind: 'follow_up' as const, command_id: 'accepted-follow-up', operation_id: 'operation-1' }
     const fetchMock = vi.fn(async () => new Response(JSON.stringify({
       task_id: 'recovery-task',
       recovery_action: action,

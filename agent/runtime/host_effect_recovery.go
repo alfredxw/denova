@@ -60,7 +60,9 @@ func (h *Harness) reconcilePendingHostEffects(ctx context.Context, state *harnes
 				effect.Cycle,
 			)
 		}
-		if err := reconcileHostEffect(ctx, reconciler, effect); err != nil {
+		if err := reconcileHostEffect(ctx, reconciler, HostEffectReconcileRequest{
+			Effect: effect, State: state.engineState, Capabilities: state.capabilityStates,
+		}); err != nil {
 			return fmt.Errorf("%w: reconcile %q: %v", ErrHostEffectRequired, id, err)
 		}
 		if _, err := h.commit(context.WithoutCancel(ctx), state, []EventPayload{

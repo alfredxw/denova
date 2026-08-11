@@ -6,8 +6,8 @@ import (
 	"fmt"
 )
 
-// AgentConfig configures the native model/tool loop.
-type AgentConfig struct {
+// LoopConfig configures the provider-neutral model/tool loop.
+type LoopConfig struct {
 	Name        string
 	Description string
 	Instruction string
@@ -31,8 +31,9 @@ const (
 	MaxToolParallelism     = 64
 )
 
-// Agent owns the provider-neutral model/tool loop.
-type Agent struct {
+// Loop owns one provider-neutral model/tool loop. Durable Session and Run
+// lifecycle are intentionally owned by the higher-level Agent module.
+type Loop struct {
 	name            string
 	description     string
 	instruction     string
@@ -47,8 +48,8 @@ type Agent struct {
 // ErrMaxIterations is returned only when the caller explicitly configures a limit.
 var ErrMaxIterations = errors.New("agent reached configured maximum iterations")
 
-// NewAgent validates the model, tool registry, and middleware surface.
-func NewAgent(ctx context.Context, config AgentConfig) (*Agent, error) {
+// NewLoop validates the model, tool registry, and middleware surface.
+func NewLoop(ctx context.Context, config LoopConfig) (*Loop, error) {
 	if ctx == nil {
 		ctx = context.Background()
 	}
@@ -78,7 +79,7 @@ func NewAgent(ctx context.Context, config AgentConfig) (*Agent, error) {
 	} else if parallelism > MaxToolParallelism {
 		parallelism = MaxToolParallelism
 	}
-	return &Agent{
+	return &Loop{
 		name:            config.Name,
 		description:     config.Description,
 		instruction:     config.Instruction,
@@ -92,7 +93,7 @@ func NewAgent(ctx context.Context, config AgentConfig) (*Agent, error) {
 }
 
 // Name returns the configured stable agent name.
-func (agent *Agent) Name(context.Context) string {
+func (agent *Loop) Name(context.Context) string {
 	if agent == nil {
 		return ""
 	}
@@ -100,7 +101,7 @@ func (agent *Agent) Name(context.Context) string {
 }
 
 // Description returns the configured host-facing description.
-func (agent *Agent) Description(context.Context) string {
+func (agent *Loop) Description(context.Context) string {
 	if agent == nil {
 		return ""
 	}
@@ -108,7 +109,7 @@ func (agent *Agent) Description(context.Context) string {
 }
 
 // Run starts the native model/tool loop and returns immediately.
-func (agent *Agent) Run(ctx context.Context, input *AgentInput, opts ...AgentRunOption) *AsyncIterator[*AgentEvent] {
+func (agent *Loop) Run(ctx context.Context, input *AgentInput, opts ...AgentRunOption) *AsyncIterator[*AgentEvent] {
 	iterator, generator := NewAsyncIteratorPair[*AgentEvent]()
 	options := collectAgentRunOptions(opts)
 	safeGo(func() {
@@ -124,7 +125,7 @@ func (agent *Agent) Run(ctx context.Context, input *AgentInput, opts ...AgentRun
 	return iterator
 }
 
-func (agent *Agent) run(parent context.Context, input *AgentInput, options *agentRunOptions, events *AsyncGenerator[*AgentEvent]) {
+func (agent *Loop) run(parent context.Context, input *AgentInput, options *agentRunOptions, events *AsyncGenerator[*AgentEvent]) {
 	if parent == nil {
 		parent = context.Background()
 	}
@@ -135,7 +136,7 @@ func (agent *Agent) run(parent context.Context, input *AgentInput, options *agen
 		defer options.cancel.finish()
 	}
 	if agent == nil {
-		events.Send((&Agent{}).errorEvent(errors.New("run agent: nil agent")))
+		events.Send((&Loop{}).errorEvent(errors.New("run agent: nil agent")))
 		return
 	}
 	var invocationErr error
@@ -189,6 +190,16 @@ func (agent *Agent) run(parent context.Context, input *AgentInput, options *agen
 		state.Messages = append(state.Messages, SystemMessage(runContext.Instruction))
 	}
 	state.Messages = append(state.Messages, cloneMessages(input.Messages)...)
+	if input.ResumeToolCalls {
+		if err := agent.resumeToolCallBoundary(ctx, state, registry, events, options.cancel); err != nil {
+			if IsInterruptError(err) {
+				events.Send(agent.interruptEvent(err))
+			} else {
+				events.Send(agent.errorEvent(err))
+			}
+			return
+		}
+	}
 
 	for iteration := 0; ; iteration++ {
 		if agent.maxIterations > 0 && iteration >= agent.maxIterations {
@@ -284,6 +295,7 @@ func (agent *Agent) run(parent context.Context, input *AgentInput, options *agen
 			events.Send(agent.errorEvent(fmt.Errorf("model returned role %q, want assistant", assistant.Role)))
 			return
 		}
+		assistant.AgentMeta = &AgentMessageMeta{ModelResponseOrdinal: modelResponseOrdinal}
 		state.Messages = append(state.Messages, assistant.Clone())
 
 		for _, middleware := range agent.middlewares {
@@ -366,7 +378,55 @@ func (agent *Agent) run(parent context.Context, input *AgentInput, options *agen
 	}
 }
 
-func (agent *Agent) contextError(ctx context.Context, cancel *cancelControl) error {
+func (agent *Loop) resumeToolCallBoundary(
+	ctx context.Context,
+	state *RunState,
+	registry *Registry,
+	events *AsyncGenerator[*AgentEvent],
+	cancel *cancelControl,
+) error {
+	if state == nil || len(state.Messages) == 0 {
+		return errors.New("resume Agent tools requires a persisted assistant tool-call boundary")
+	}
+	assistant := state.Messages[len(state.Messages)-1]
+	if assistant == nil || assistant.Role != Assistant || len(assistant.ToolCalls) == 0 ||
+		assistant.AgentMeta == nil || assistant.AgentMeta.ModelResponseOrdinal <= 0 {
+		return errors.New("resume Agent tools found no recoverable assistant tool-call boundary")
+	}
+	ordinal := assistant.AgentMeta.ModelResponseOrdinal
+	restoreModelResponseOrdinal(ctx, ordinal)
+	var (
+		results []toolExecutionResult
+		err     error
+	)
+	if assistant.ResponseMeta != nil && assistant.ResponseMeta.FinishReason == "length" {
+		results = agent.lengthToolResults(ctx, assistant.ToolCalls, registry, ordinal, events)
+	} else {
+		results, err = agent.executeToolBatch(ctx, registry, assistant.ToolCalls, ordinal, events, cancel)
+	}
+	for _, result := range results {
+		if result.message == nil {
+			continue
+		}
+		state.Messages = append(state.Messages, result.message.Clone())
+		toolEvent := agent.messageEvent(result.message.Clone(), nil, ToolRole, result.message.ToolName)
+		toolEvent.Output.MessageOutput.ExecutionID = result.executionID
+		toolEvent.Output.MessageOutput.ProviderCallID = result.providerCallID
+		events.Send(toolEvent)
+	}
+	if err != nil {
+		if contextErr := agent.contextError(ctx, cancel); contextErr != nil {
+			return contextErr
+		}
+		return err
+	}
+	if cancelErr := cancel.safePoint(CancelAfterToolCalls | CancelAfterChatModel); cancelErr != nil {
+		return cancelErr
+	}
+	return agent.contextError(ctx, cancel)
+}
+
+func (agent *Loop) contextError(ctx context.Context, cancel *cancelControl) error {
 	if ctx == nil || ctx.Err() == nil {
 		return nil
 	}
@@ -378,14 +438,14 @@ func (agent *Agent) contextError(ctx context.Context, cancel *cancelControl) err
 	return ctx.Err()
 }
 
-func (agent *Agent) messageEvent(message *Message, stream *StreamReader[*Message], role RoleType, toolName string) *AgentEvent {
+func (agent *Loop) messageEvent(message *Message, stream *StreamReader[*Message], role RoleType, toolName string) *AgentEvent {
 	event := EventFromMessage(message, stream, role, toolName)
 	event.AgentName = agent.name
 	event.RunPath = []RunStep{NewRunStep(agent.name)}
 	return event
 }
 
-func (agent *Agent) customEvent(value any) *AgentEvent {
+func (agent *Loop) customEvent(value any) *AgentEvent {
 	return &AgentEvent{
 		AgentName: agent.name,
 		RunPath:   []RunStep{NewRunStep(agent.name)},
@@ -393,11 +453,11 @@ func (agent *Agent) customEvent(value any) *AgentEvent {
 	}
 }
 
-func (agent *Agent) errorEvent(err error) *AgentEvent {
+func (agent *Loop) errorEvent(err error) *AgentEvent {
 	return &AgentEvent{AgentName: agent.name, RunPath: []RunStep{NewRunStep(agent.name)}, Err: err}
 }
 
-func (agent *Agent) interruptEvent(err error) *AgentEvent {
+func (agent *Loop) interruptEvent(err error) *AgentEvent {
 	var interrupt *InterruptError
 	if !errors.As(err, &interrupt) {
 		return agent.errorEvent(err)

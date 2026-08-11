@@ -41,6 +41,22 @@ type LocalCommandRunner struct {
 	guard           CommandRunGuard
 }
 
+func (runner *LocalCommandRunner) Identity() agent.CapabilityIdentity {
+	if runner == nil {
+		return agent.CapabilityIdentity{}
+	}
+	root := ""
+	if runner.workspace != nil {
+		root = runner.workspace.Root()
+	}
+	return toolsetIdentity("tools.process.local", struct {
+		Root       string
+		Shell      ShellKind
+		Executable string
+		Engine     string
+	}{root, runner.shell, runner.executable, runner.engine})
+}
+
 // NewLocalCommandRunner resolves the requested shell and binds it to a
 // canonical workspace. It never substitutes /bin/sh for Bash.
 func NewLocalCommandRunner(options CommandRunnerOptions) (*LocalCommandRunner, error) {

@@ -15,6 +15,8 @@ import (
 	"denova/internal/agents/session"
 	"denova/internal/book/lore"
 	"denova/internal/interactive"
+
+	agent "github.com/alfredxw/denova/agent"
 )
 
 func TestInteractiveConversationBuildsHistoryAndPersistsAssistantToStory(t *testing.T) {
@@ -775,17 +777,18 @@ func TestInteractiveConversationUsesDefaultCompactionRetainedTurns(t *testing.T)
 			t.Fatal(err)
 		}
 	}
-	if _, err := store.AppendContextCompaction(story.ID, "main", interactive.ContextCompactionEvent{
-		CompactionCheckpoint: agentcompaction.NewCheckpoint(config.AgentKindInteractiveStory, agentcompaction.Result{
-			Summary: "压缩摘要：主角已进入旧城。",
-		}),
-		SourceTurnCount: 10,
+	cfg := &config.Config{}
+	conversation := NewConversation(store, novaDir, workspace, story.ID, "", "我继续探索", story.ReplyTargetChars, cfg)
+	contextData, err := conversation.AgentCompactionContext(context.Background(), agent.CompactionCompactRequest{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := conversation.BindAgentCompaction(&agent.CompactionState{
+		ID: "agent-compaction-default-tail", Revision: 1,
+		Summary: "压缩摘要：主角已进入旧城。", ContextData: contextData,
 	}); err != nil {
 		t.Fatal(err)
 	}
-
-	cfg := &config.Config{}
-	conversation := NewConversation(store, novaDir, workspace, story.ID, "", "我继续探索", story.ReplyTargetChars, cfg)
 	history, err := assembleAndCommitInteractiveContextForTest(conversation, "我继续探索", "我继续探索")
 	if err != nil {
 		t.Fatal(err)
@@ -819,16 +822,17 @@ func TestInteractiveDirectorInstructionUsesModelVisibleCompactedHistory(t *testi
 			t.Fatal(err)
 		}
 	}
-	if _, err := store.AppendContextCompaction(story.ID, "main", interactive.ContextCompactionEvent{
-		CompactionCheckpoint: agentcompaction.NewCheckpoint(config.AgentKindInteractiveStory, agentcompaction.Result{
-			Summary: "压缩摘要：主角已进入旧城。",
-		}),
-		SourceTurnCount: 10,
+	conversation := NewConversation(store, novaDir, workspace, story.ID, "", "我继续探索", story.ReplyTargetChars, &config.Config{})
+	contextData, err := conversation.AgentCompactionContext(context.Background(), agent.CompactionCompactRequest{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := conversation.BindAgentCompaction(&agent.CompactionState{
+		ID: "agent-compaction-director", Revision: 1,
+		Summary: "压缩摘要：主角已进入旧城。", ContextData: contextData,
 	}); err != nil {
 		t.Fatal(err)
 	}
-
-	conversation := NewConversation(store, novaDir, workspace, story.ID, "", "我继续探索", story.ReplyTargetChars, &config.Config{})
 	instruction, err := conversation.BuildDirectorInstruction(interactive.TurnEvent{User: "我继续探索", Narrative: "我发现新的石门"})
 	if err != nil {
 		t.Fatal(err)

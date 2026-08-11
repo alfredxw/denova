@@ -85,7 +85,7 @@ func (*appendBeforeModelCallMiddleware) BeforeModelCall(ctx context.Context, cal
 
 func TestBeforeModelCallRewritesTheRequestUsedByTheNativeLoop(t *testing.T) {
 	model := &scriptedModel{responses: []scriptedModelResponse{{message: AssistantMessage("done", nil)}}}
-	built, err := NewAgent(context.Background(), AgentConfig{
+	built, err := NewLoop(context.Background(), LoopConfig{
 		Name: "model-call-seam", Model: model,
 		Middlewares: []Middleware{&appendBeforeModelCallMiddleware{}},
 	})
@@ -114,7 +114,7 @@ func TestBeforeModelCallRewritesTheRequestUsedByTheNativeLoop(t *testing.T) {
 
 func TestRunnerPrepareModelRequestUsesFinalAssemblyWithoutCallingProvider(t *testing.T) {
 	model := &optionCapturingModel{}
-	built, err := NewAgent(context.Background(), AgentConfig{
+	built, err := NewLoop(context.Background(), LoopConfig{
 		Name: "request-preparation", Instruction: "stable system", Model: model,
 		Middlewares: []Middleware{&appendBeforeModelCallMiddleware{}},
 	})

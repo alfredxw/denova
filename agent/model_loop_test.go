@@ -43,7 +43,7 @@ func (model *retryBeforeFirstChunkModel) Stream(context.Context, []*Message, ...
 func TestNativeLoopRetriesStreamErrorBeforeFirstChunk(t *testing.T) {
 	streamErr := errors.New("stream failed before first chunk")
 	model := &retryBeforeFirstChunkModel{err: streamErr}
-	agent, err := NewAgent(context.Background(), AgentConfig{
+	agent, err := NewLoop(context.Background(), LoopConfig{
 		Name: "stream-retry-before-first-chunk", Model: model,
 		Retry: &RetryConfig{MaxRetries: 1, IsRetryable: func(context.Context, error) bool { return true }},
 	})
@@ -77,7 +77,7 @@ func TestNativeLoopRetryBeforeFirstChunkKeepsToolExecutionIdentityAligned(t *tes
 	echo := testToolDefinition(&functionTool{name: "echo", run: func(context.Context, string) (string, error) {
 		return "ok", nil
 	}})
-	native, err := NewAgent(context.Background(), AgentConfig{
+	native, err := NewLoop(context.Background(), LoopConfig{
 		Name: "stream-retry-tool-identity", Model: model, Tools: []ToolDefinition{echo},
 		Retry: &RetryConfig{MaxRetries: 1, IsRetryable: func(context.Context, error) bool { return true }},
 	})
@@ -151,7 +151,7 @@ func (model *emptyStreamModel) Stream(context.Context, []*Message, ...ModelOptio
 
 func TestNativeLoopRejectsStreamThatEndsBeforeFirstChunk(t *testing.T) {
 	model := &emptyStreamModel{}
-	agent, err := NewAgent(context.Background(), AgentConfig{Name: "empty-stream", Model: model})
+	agent, err := NewLoop(context.Background(), LoopConfig{Name: "empty-stream", Model: model})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -193,7 +193,7 @@ func (model *failingPublicStreamModel) Stream(context.Context, []*Message, ...Mo
 func TestNativeLoopDoesNotRetryErrorPublishedOnAssistantStream(t *testing.T) {
 	streamErr := errors.New("stream failed after publication")
 	model := &failingPublicStreamModel{err: streamErr}
-	agent, err := NewAgent(context.Background(), AgentConfig{
+	agent, err := NewLoop(context.Background(), LoopConfig{
 		Name: "stream-retry", Model: model,
 		Retry: &RetryConfig{MaxRetries: 2, IsRetryable: func(context.Context, error) bool { return true }},
 	})

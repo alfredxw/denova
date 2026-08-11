@@ -83,6 +83,16 @@ func decodeDurableEvent(encoded encodedEvent) (Event, error) {
 		payload = &UserMessageCommittedEvent{}
 	case "message.assistant_committed":
 		payload = &AssistantMessageCommittedEvent{}
+	case "engine.state_committed":
+		payload = &EngineStateCommittedEvent{}
+	case "capability.state_committed":
+		payload = &CapabilityStateCommittedEvent{}
+	case "interaction.requested":
+		payload = &InteractionRequestedEvent{}
+	case "interaction.resolved":
+		payload = &InteractionResolvedEvent{}
+	case "interaction.recovery_resumed":
+		payload = &InteractionRecoveryResumedEvent{}
 	case "cycle.started":
 		payload = &CycleStartedEvent{}
 	case "operation.recovery_paused":
@@ -95,6 +105,8 @@ func decodeDurableEvent(encoded encodedEvent) (Event, error) {
 		payload = &ToolCallStartedEvent{}
 	case "tool.finished":
 		payload = &ToolCallFinishedEvent{}
+	case "artifact.produced":
+		payload = &ArtifactProducedEvent{}
 	case "host_effect.acknowledged":
 		payload = &HostEffectAcknowledgedEvent{}
 	case "host_effect.abandoned":
@@ -140,6 +152,16 @@ func durableEventType(payload EventPayload) (string, error) {
 		return "message.user_committed", nil
 	case AssistantMessageCommittedEvent:
 		return "message.assistant_committed", nil
+	case EngineStateCommittedEvent:
+		return "engine.state_committed", nil
+	case CapabilityStateCommittedEvent:
+		return "capability.state_committed", nil
+	case InteractionRequestedEvent:
+		return "interaction.requested", nil
+	case InteractionResolvedEvent:
+		return "interaction.resolved", nil
+	case InteractionRecoveryResumedEvent:
+		return "interaction.recovery_resumed", nil
 	case CycleStartedEvent:
 		return "cycle.started", nil
 	case OperationRecoveryPausedEvent:
@@ -152,6 +174,8 @@ func durableEventType(payload EventPayload) (string, error) {
 		return "tool.started", nil
 	case ToolCallFinishedEvent:
 		return "tool.finished", nil
+	case ArtifactProducedEvent:
+		return "artifact.produced", nil
 	case HostEffectAcknowledgedEvent:
 		return "host_effect.acknowledged", nil
 	case HostEffectAbandonedEvent:
@@ -193,6 +217,16 @@ func dereferencePayload(payload EventPayload) EventPayload {
 		return *payload
 	case *AssistantMessageCommittedEvent:
 		return *payload
+	case *EngineStateCommittedEvent:
+		return *payload
+	case *CapabilityStateCommittedEvent:
+		return *payload
+	case *InteractionRequestedEvent:
+		return *payload
+	case *InteractionResolvedEvent:
+		return *payload
+	case *InteractionRecoveryResumedEvent:
+		return *payload
 	case *CycleStartedEvent:
 		return *payload
 	case *OperationRecoveryPausedEvent:
@@ -204,6 +238,8 @@ func dereferencePayload(payload EventPayload) EventPayload {
 	case *ToolCallStartedEvent:
 		return *payload
 	case *ToolCallFinishedEvent:
+		return *payload
+	case *ArtifactProducedEvent:
 		return *payload
 	case *HostEffectAcknowledgedEvent:
 		return *payload

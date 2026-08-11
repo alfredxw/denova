@@ -127,6 +127,10 @@ func TestRecoveryProjectionIsOrderedBoundedAndDoesNotLeakDurablePayload(t *testi
 				Message: "another secret",
 			},
 		},
+		AgentRecoveryActions: []agentrun.AgentRecoveryAction{
+			{ID: "abort-action", Kind: "abort_run", RunID: "operation-1", CommandID: "start-command"},
+			{ID: "steer-action", Kind: "resume_input", RunID: "operation-1", CommandID: "steer-command", Delivery: "steer"},
+		},
 	}
 	dto := newAgentRuntimeProjectionDTO(snapshot)
 	if !dto.RuntimeRecoverable || dto.StreamAttached || len(dto.RecoveryActions) != 3 {
@@ -164,9 +168,12 @@ func TestRecoveryProjectionExposesOnlyFirstIdleNextTurn(t *testing.T) {
 			Delivery:    agentrun.DeliveryNextTurn,
 		})
 	}
+	snapshot.AgentRecoveryActions = []agentrun.AgentRecoveryAction{
+		{ID: "next-action", Kind: "resume_input", RunID: "operation-0", CommandID: "next-0", Delivery: "next_turn"},
+	}
 	dto := newAgentRuntimeProjectionDTO(snapshot)
 	if len(dto.RecoveryActions) != 1 || dto.RecoveryActions[0] != (agentRuntimeRecoveryActionDTO{
-		Kind: "next_turn", CommandID: "next-0", OperationID: "operation-0",
+		ActionID: "next-action", Kind: "next_turn", CommandID: "next-0", OperationID: "operation-0",
 	}) {
 		t.Fatalf("recovery actions = %#v", dto.RecoveryActions)
 	}
@@ -186,11 +193,12 @@ func TestRecoveryProjectionStrictStateBoundaries(t *testing.T) {
 				RecoveryPaused:  true,
 				ActiveCommandID: "start",
 				ActiveOperation: "parent",
-				InputRecovery: &agentrun.InputRecovery{
-					CommandID: "recover-next", OperationID: "next-operation", Delivery: agentrun.DeliveryNextTurn,
-				},
 				Queue: []agentrun.QueuedCommand{
 					{CommandID: "later-steer", OperationID: "parent", Delivery: agentrun.DeliverySteer},
+				},
+				AgentRecoveryActions: []agentrun.AgentRecoveryAction{
+					{ID: "abort-action", Kind: "abort_run", RunID: "parent", CommandID: "start"},
+					{ID: "next-action", Kind: "resume_input", RunID: "next-operation", CommandID: "recover-next", Delivery: "next_turn"},
 				},
 			},
 			wantKinds:    []string{"start_turn", "abort", "next_turn"},
@@ -202,11 +210,12 @@ func TestRecoveryProjectionStrictStateBoundaries(t *testing.T) {
 				Phase:           agentrun.RunPhaseCompacting,
 				RecoveryPaused:  true,
 				ActiveOperation: "compact-operation",
-				ActiveStructural: &agentrun.StructuralOperation{
-					CommandID: "compact", OperationID: "compact-operation", Kind: agentrun.StructuralCompactContext,
-				},
 				Queue: []agentrun.QueuedCommand{
 					{CommandID: "later-next", OperationID: "next-operation", Delivery: agentrun.DeliveryNextTurn},
+				},
+				AgentRecoveryActions: []agentrun.AgentRecoveryAction{
+					{ID: "compact-action", Kind: "resume_compaction", RunID: "compact-operation", CommandID: "compact", Compaction: "compact"},
+					{ID: "abort-action", Kind: "abort_run", RunID: "compact-operation", CommandID: "compact"},
 				},
 			},
 			wantKinds:    []string{"compact_context", "abort"},

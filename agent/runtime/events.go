@@ -1,5 +1,7 @@
 package runtime
 
+import "encoding/json"
+
 type EventDurability string
 
 const (
@@ -68,6 +70,63 @@ type AssistantMessageCommittedEvent struct{ Message Message }
 
 func (AssistantMessageCommittedEvent) eventPayload() {}
 
+// EngineStateCommittedEvent carries private, opaque continuation state. It is
+// durable Engine input, not a display event and never appears in StateSnapshot.
+type EngineStateCommittedEvent struct {
+	State      json.RawMessage   `json:"state"`
+	Descriptor PayloadDescriptor `json:"descriptor"`
+}
+
+func (EngineStateCommittedEvent) eventPayload() {}
+
+// CapabilityStateCommittedEvent is a generic durable slot. Capability
+// packages own the JSON schema; Runtime enforces identity, CAS, and bounds.
+type CapabilityStateCommittedEvent struct {
+	Capability  string            `json:"capability"`
+	Expected    PayloadDescriptor `json:"expected"`
+	State       json.RawMessage   `json:"state,omitempty"`
+	Deleted     bool              `json:"deleted,omitempty"`
+	OperationID OperationID       `json:"operation_id,omitempty"`
+	Cycle       int               `json:"cycle,omitempty"`
+}
+
+func (CapabilityStateCommittedEvent) eventPayload() {}
+
+// InteractionRequestedEvent is committed before publication or response
+// admission. Request is Engine-owned typed JSON and is retained for recovery.
+type InteractionRequestedEvent struct {
+	ID          string            `json:"id"`
+	OperationID OperationID       `json:"operation_id"`
+	Cycle       int               `json:"cycle"`
+	ToolCallID  string            `json:"tool_call_id"`
+	Request     json.RawMessage   `json:"request"`
+	Descriptor  PayloadDescriptor `json:"descriptor"`
+}
+
+func (InteractionRequestedEvent) eventPayload() {}
+
+// InteractionResolvedEvent contains the Engine-normalized response. Any
+// remembered permission rule has already been committed by the Engine hook.
+type InteractionResolvedEvent struct {
+	ID                 string            `json:"id"`
+	OperationID        OperationID       `json:"operation_id"`
+	Cycle              int               `json:"cycle"`
+	Response           json.RawMessage   `json:"response"`
+	ResponseDescriptor PayloadDescriptor `json:"response_descriptor"`
+}
+
+func (InteractionResolvedEvent) eventPayload() {}
+
+// InteractionRecoveryResumedEvent makes an explicit same-cycle engine resume
+// visible after a response resolves a recovery-paused interaction.
+type InteractionRecoveryResumedEvent struct {
+	ID          string      `json:"id"`
+	OperationID OperationID `json:"operation_id"`
+	Cycle       int         `json:"cycle"`
+}
+
+func (InteractionRecoveryResumedEvent) eventPayload() {}
+
 type CycleStartedEvent struct {
 	OperationID OperationID
 	Cycle       int
@@ -97,6 +156,7 @@ type InputMaterializationRecoveryPendingEvent struct {
 	Cycle       int          `json:"cycle"`
 	CommandID   CommandID    `json:"command_id"`
 	Delivery    DeliveryKind `json:"delivery"`
+	Autonomous  bool         `json:"autonomous,omitempty"`
 }
 
 func (InputMaterializationRecoveryPendingEvent) eventPayload() {}
@@ -131,6 +191,15 @@ type ToolCallFinishedEvent struct {
 
 func (ToolCallFinishedEvent) eventPayload() {}
 
+type ArtifactProducedEvent struct {
+	OperationID OperationID     `json:"operation_id"`
+	Cycle       int             `json:"cycle"`
+	CallID      string          `json:"call_id"`
+	Artifact    json.RawMessage `json:"artifact"`
+}
+
+func (ArtifactProducedEvent) eventPayload() {}
+
 // HostEffectAcknowledgedEvent is the durable deletion marker for one host
 // outbox item. Unknown acknowledgements are rejected by the reducer.
 type HostEffectAcknowledgedEvent struct {
@@ -153,6 +222,7 @@ func (HostEffectAbandonedEvent) eventPayload() {}
 type ToolProgressEvent struct {
 	CallID string
 	Delta  string
+	Source EventSource
 }
 
 func (ToolProgressEvent) eventPayload() {}
@@ -240,17 +310,64 @@ func (OperationInterruptedEvent) eventPayload() {}
 
 type AssistantDeltaEvent struct {
 	OperationID OperationID
+	Source      EventSource
 	Delta       string
+	DisplayOnly bool
 }
 
 func (AssistantDeltaEvent) eventPayload() {}
 
 type ThinkingDeltaEvent struct {
 	OperationID OperationID
+	Source      EventSource
 	Delta       string
+	DisplayOnly bool
 }
 
 func (ThinkingDeltaEvent) eventPayload() {}
+
+// ModelCompletedEvent is ephemeral per-response accounting. The provider
+// transcript already carries the same usage for canonical persistence.
+type ModelCompletedEvent struct {
+	OperationID    OperationID
+	Cycle          int
+	Usage          ModelUsage
+	FinishReason   string
+	RequestedTools []string
+	Source         EventSource
+}
+
+func (ModelCompletedEvent) eventPayload() {}
+
+// ToolInputEvent is the live, bounded parameter projection published only
+// after the matching durable ToolCallStartedEvent commits. Arguments stay out
+// of journals and restart snapshots by design.
+type ToolInputEvent struct {
+	OperationID OperationID
+	Cycle       int
+	CallID      string
+	Name        string
+	Arguments   json.RawMessage
+	Source      EventSource
+}
+
+func (ToolInputEvent) eventPayload() {}
+
+// ToolOutputEvent is the live display projection paired with a durable tool
+// completion. Rich result bytes stay ephemeral; the journal retains their
+// descriptor and the Agent transcript retains bounded model context.
+type ToolOutputEvent struct {
+	OperationID OperationID
+	Cycle       int
+	CallID      string
+	Name        string
+	Result      string
+	IsError     bool
+	Source      EventSource
+	Projection  json.RawMessage
+}
+
+func (ToolOutputEvent) eventPayload() {}
 
 type Observation struct {
 	Snapshot StateSnapshot

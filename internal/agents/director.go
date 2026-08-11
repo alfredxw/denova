@@ -34,7 +34,7 @@ func GenerateInteractiveDirectorWithTools(ctx context.Context, executionRuntime 
 	if err := runstate.ValidateCommandID(toolContext.CommandID, runstate.DefaultInputLimits()); err != nil {
 		return "", fmt.Errorf("互动导演 command_id 无效: %w", err)
 	}
-	builtAgent, systemPrompt, err := BuildInteractiveDirectorWithComposition(ctx, cfg, state, toolContext)
+	definition, systemPrompt, err := BuildInteractiveDirectorDefinitionWithComposition(ctx, cfg, state, toolContext)
 	if err != nil {
 		return "", fmt.Errorf("构建互动导演 Agent 失败: %w", err)
 	}
@@ -47,7 +47,6 @@ func GenerateInteractiveDirectorWithTools(ctx context.Context, executionRuntime 
 		Workspace:       cfg.Workspace,
 		SystemPromptLog: systemPrompt,
 	}
-	runner := agentchat.NewRunnerWithOptions(ctx, builtAgent, runOptions)
 	conversation := agentinteractive.NewDirectorConversation(agentinteractive.DirectorConversationOptions{
 		Instruction: agentconversation.InstructionOptions{
 			Instruction: instruction, StableContextTitle: toolContext.StableContextTitle,
@@ -60,7 +59,7 @@ func GenerateInteractiveDirectorWithTools(ctx context.Context, executionRuntime 
 	var runErr error
 	runOptions.ToolResultMaxBytes = interactiveDirectorToolResultMaxBytes
 	outcome := executionRuntime.Run(ctx, agentexecution.StartRequest{Cycle: agentexecution.Cycle{
-		Runner: runner, Conversation: conversation, BookService: bookService,
+		Definition: definition, Conversation: conversation, BookService: bookService,
 		Request: agentchat.ChatRequest{CommandID: toolContext.CommandID, Message: instruction}, Options: runOptions,
 	}, Emit: func(event agentrun.Event) {
 		if event.Type != "error" {

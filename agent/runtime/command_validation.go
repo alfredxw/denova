@@ -48,6 +48,14 @@ func validateCommandEnvelope(command Command, limits InputLimits) error {
 		if len(typed.Reason) > limits.MaxAbortReasonBytes {
 			return fmt.Errorf("%w: abort reason exceeds %d bytes", ErrInvalidCommand, limits.MaxAbortReasonBytes)
 		}
+	case ResolveInteraction:
+		operationID = typed.OperationID
+		if err := validateInteractionID(typed.InteractionID); err != nil {
+			return err
+		}
+		if len(typed.Response) == 0 || !json.Valid(typed.Response) {
+			return fmt.Errorf("%w: interaction response must be valid non-empty JSON", ErrInvalidCommand)
+		}
 	}
 	if len(operationID) > limits.MaxOperationIDBytes {
 		return fmt.Errorf("%w: operation id exceeds %d bytes", ErrInvalidCommand, limits.MaxOperationIDBytes)
@@ -219,6 +227,14 @@ func CommandFingerprint(command Command) (string, error) {
 			OperationID OperationID `json:"operation_id"`
 			Reason      string      `json:"reason"`
 		}{Kind: "abort", ID: command.ID, OperationID: command.OperationID, Reason: command.Reason}
+	case ResolveInteraction:
+		envelope = struct {
+			Kind          string          `json:"kind"`
+			ID            CommandID       `json:"id"`
+			OperationID   OperationID     `json:"operation_id"`
+			InteractionID string          `json:"interaction_id"`
+			Response      json.RawMessage `json:"response"`
+		}{Kind: "resolve_interaction", ID: command.ID, OperationID: command.OperationID, InteractionID: command.InteractionID, Response: command.Response}
 	case CompactIfNeeded:
 		envelope = struct {
 			Kind string               `json:"kind"`

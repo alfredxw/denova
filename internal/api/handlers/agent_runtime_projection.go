@@ -21,6 +21,7 @@ type agentRuntimeProjectionDTO struct {
 }
 
 type agentRuntimeRecoveryActionDTO struct {
+	ActionID    string `json:"action_id,omitempty"`
 	Kind        string `json:"kind"`
 	CommandID   string `json:"command_id"`
 	OperationID string `json:"operation_id"`
@@ -90,7 +91,7 @@ func addAgentRuntimeProjection(
 		dto.RecoveryActions = make([]agentRuntimeRecoveryActionDTO, 0, len(options.RecoveryActions))
 		for _, action := range options.RecoveryActions {
 			dto.RecoveryActions = append(dto.RecoveryActions, agentRuntimeRecoveryActionDTO{
-				Kind: string(action.Kind), CommandID: string(action.CommandID), OperationID: string(action.OperationID),
+				ActionID: action.ActionID, Kind: string(action.Kind), CommandID: string(action.CommandID), OperationID: string(action.OperationID),
 			})
 		}
 	}
@@ -149,7 +150,7 @@ func newAgentRuntimeProjectionDTO(snapshot appsvc.AgentRuntimeStatus) agentRunti
 	recoveryActions := make([]agentRuntimeRecoveryActionDTO, 0, len(recoveryPlan))
 	for _, action := range recoveryPlan {
 		recoveryActions = append(recoveryActions, agentRuntimeRecoveryActionDTO{
-			Kind: string(action.Kind), CommandID: string(action.CommandID), OperationID: string(action.OperationID),
+			ActionID: action.ActionID, Kind: string(action.Kind), CommandID: string(action.CommandID), OperationID: string(action.OperationID),
 		})
 	}
 	return agentRuntimeProjectionDTO{

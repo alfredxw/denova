@@ -9,11 +9,9 @@ import (
 )
 
 const (
-	// Version 8 rebuilds sidecars with page-sized physical anchors and also
-	// checkpoints the small set of currently unconsumed player input IDs. This
-	// avoids overlapping 1024-transaction reads and keeps bounded recent pages
-	// from mistaking an old settled input for new work.
-	storyProjectionVersion      = 8
+	// Version 9 rebuilds sidecars with public Agent canonical hashes beside the
+	// existing product-domain hashes, preserving bounded exact reconciliation.
+	storyProjectionVersion      = 9
 	storyRecentTransactionLimit = 200
 	storyRecentCommitLimit      = 200
 	storyTurnAnchorEvery        = 256
@@ -25,14 +23,15 @@ type storyTurnAnchor struct {
 }
 
 type storyCommitLocator struct {
-	CommandID   string                     `json:"command_id"`
-	OperationID string                     `json:"operation_id"`
-	Cycle       int                        `json:"cycle"`
-	BranchID    string                     `json:"branch_id"`
-	Hash        string                     `json:"hash"`
-	EventID     string                     `json:"event_id"`
-	EventType   string                     `json:"event_type"`
-	Cursor      conversationjournal.Cursor `json:"cursor"`
+	CommandID          string                     `json:"command_id"`
+	OperationID        string                     `json:"operation_id"`
+	Cycle              int                        `json:"cycle"`
+	BranchID           string                     `json:"branch_id"`
+	Hash               string                     `json:"hash"`
+	AgentCanonicalHash string                     `json:"agent_canonical_hash,omitempty"`
+	EventID            string                     `json:"event_id"`
+	EventType          string                     `json:"event_type"`
+	Cursor             conversationjournal.Cursor `json:"cursor"`
 }
 
 type storyBranchProjection struct {
@@ -216,7 +215,7 @@ func (projection *storyJournalProjection) applyEvent(cursor conversationjournal.
 			branch.Head = turn.ID
 			branch.LatestTurnID = turn.ID
 		}
-		projection.rememberCommit(cursor, StoryEventTypeTurn, turn.ID, turn.BranchID, turn.AgentCommandID, turn.AgentOperationID, turn.AgentCycle, turn.AgentCommitHash)
+		projection.rememberCommit(cursor, StoryEventTypeTurn, turn.ID, turn.BranchID, turn.AgentCommandID, turn.AgentOperationID, turn.AgentCycle, turn.AgentCommitHash, turn.AgentCanonicalHash)
 	case StoryEventTypeStateDelta:
 		var delta StateDeltaEvent
 		if err := mapToStruct(record.Raw, &delta); err != nil {
@@ -280,7 +279,7 @@ func (projection *storyJournalProjection) applyEvent(cursor conversationjournal.
 			return err
 		}
 		branch.rememberPendingPlayerInput(event.ID)
-		projection.rememberCommit(cursor, StoryEventTypePlayerInput, event.ID, event.BranchID, event.AgentCommandID, event.AgentOperationID, event.AgentCycle, event.AgentCommitHash)
+		projection.rememberCommit(cursor, StoryEventTypePlayerInput, event.ID, event.BranchID, event.AgentCommandID, event.AgentOperationID, event.AgentCycle, event.AgentCommitHash, event.AgentCanonicalHash)
 	case StoryEventTypeModelContextBatch:
 		var event ModelContextBatchEvent
 		if err := mapToStruct(record.Raw, &event); err != nil {
@@ -290,7 +289,7 @@ func (projection *storyJournalProjection) applyEvent(cursor conversationjournal.
 		if err != nil {
 			return err
 		}
-		projection.rememberCommit(cursor, StoryEventTypeModelContextBatch, normalized.ID, normalized.BranchID, normalized.AgentCommandID, normalized.AgentOperationID, normalized.AgentCycle, normalized.BatchHash)
+		projection.rememberCommit(cursor, StoryEventTypeModelContextBatch, normalized.ID, normalized.BranchID, normalized.AgentCommandID, normalized.AgentOperationID, normalized.AgentCycle, normalized.BatchHash, "")
 	case StoryEventTypeTurnStateRevised:
 		var revision TurnStateRevisedEvent
 		if err := mapToStruct(record.Raw, &revision); err != nil {
@@ -422,13 +421,14 @@ func (projection *storyJournalProjection) rememberCursor(cursor conversationjour
 	}
 }
 
-func (projection *storyJournalProjection) rememberCommit(cursor conversationjournal.Cursor, eventType, eventID, branchID, commandID, operationID string, cycle int, hash string) {
+func (projection *storyJournalProjection) rememberCommit(cursor conversationjournal.Cursor, eventType, eventID, branchID, commandID, operationID string, cycle int, hash, agentCanonicalHash string) {
 	if strings.TrimSpace(commandID) == "" {
 		return
 	}
 	projection.RecentCommits = append(projection.RecentCommits, storyCommitLocator{
 		CommandID: strings.TrimSpace(commandID), OperationID: strings.TrimSpace(operationID), Cycle: cycle,
-		BranchID: branchID, Hash: strings.TrimSpace(hash), EventID: eventID, EventType: eventType, Cursor: cursor,
+		BranchID: branchID, Hash: strings.TrimSpace(hash), AgentCanonicalHash: strings.TrimSpace(agentCanonicalHash),
+		EventID: eventID, EventType: eventType, Cursor: cursor,
 	})
 	if overflow := len(projection.RecentCommits) - storyRecentCommitLimit; overflow > 0 {
 		projection.RecentCommits = append([]storyCommitLocator(nil), projection.RecentCommits[overflow:]...)

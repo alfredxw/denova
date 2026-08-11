@@ -8,7 +8,6 @@ import (
 	"strings"
 
 	agentchat "denova/internal/agents/chat"
-	agentstructural "denova/internal/agents/context/structural"
 	agentexecution "denova/internal/agents/execution"
 	agentrun "denova/internal/agents/run"
 	apptask "denova/internal/app/task"
@@ -48,7 +47,7 @@ type RecoveryResult struct {
 }
 
 func RecoveryActionKey(action agentexecution.RuntimeRecoveryAction) string {
-	return strings.Join([]string{string(action.Kind), string(action.CommandID), string(action.OperationID)}, "\x00")
+	return strings.Join([]string{action.ActionID, string(action.Kind), string(action.CommandID), string(action.OperationID)}, "\x00")
 }
 
 func ValidateRecoveryAction(status agentrun.RuntimeStatus, selected agentexecution.RuntimeRecoveryAction) error {
@@ -58,23 +57,13 @@ func ValidateRecoveryAction(status agentrun.RuntimeStatus, selected agentexecuti
 		}
 	}
 	return fmt.Errorf(
-		"%w: kind=%q command_id=%q operation_id=%q",
+		"%w: action_id=%q kind=%q command_id=%q operation_id=%q",
 		agentexecution.ErrRecoveryActionChanged,
+		selected.ActionID,
 		selected.Kind,
 		selected.CommandID,
 		selected.OperationID,
 	)
-}
-
-func StructuralRecoveryAction(kind agentexecution.RuntimeRecoveryActionKind) (agentstructural.Action, bool) {
-	switch kind {
-	case agentexecution.RuntimeRecoveryCompactContext:
-		return agentstructural.Compact, true
-	case agentexecution.RuntimeRecoveryRemoveCompaction:
-		return agentstructural.Remove, true
-	default:
-		return "", false
-	}
 }
 
 // RuntimeProjection reads the durable runtime without turning an unavailable

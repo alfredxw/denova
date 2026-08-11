@@ -3,6 +3,7 @@ package configmanager
 import (
 	"context"
 	"crypto/sha1"
+	"encoding/json"
 	"fmt"
 	"log/slog"
 	"sort"
@@ -21,6 +22,13 @@ import (
 	appsettings "denova/internal/app/settings"
 	apptask "denova/internal/app/task"
 )
+
+const configManagerRestoreDataType = "denova.config_manager.request"
+
+type configManagerRestoreEnvelope struct {
+	Request   Request `json:"request"`
+	ProjectID string  `json:"project_id"`
+}
 
 type Service struct {
 	host       Host
@@ -118,31 +126,10 @@ func (service *Service) StartTaskWithError(ctx context.Context, request Request)
 		return nil, appagentruntime.ErrNoWorkspace
 	}
 
-	runtimeConfig, err := appsettings.RefreshProject(
-		runtime.Config, runtime.Workspace, runtime.Config.ProjectStateDir,
-	)
-	if err != nil {
-		return nil, fmt.Errorf("load Config Manager project settings: %w", err)
-	}
-	appsettings.ApplyLocale(&runtimeConfig, request.Locale)
-	resourceSkills, err := loadResourceSkills(ctx, &runtimeConfig, request)
-	if err != nil {
-		return nil, fmt.Errorf("load Config Manager resource Skills / 加载配置管理资源 Skills 失败: %w", err)
-	}
-	sess, _, err := agentconversation.GetOrCreateSession(
-		runtime.SessionStore, sessionID, &runtimeConfig, config.AgentKindConfigManager,
-	)
+	cycle, err := service.buildCycle(ctx, runtime, request, chatRequest, sessionID)
 	if err != nil {
 		return nil, err
 	}
-	if _, err := agentconversation.ApplySession(sess, &runtimeConfig, config.AgentKindConfigManager); err != nil {
-		return nil, err
-	}
-	runner, systemPrompt, err := appagentruntime.BuildConfigManager(ctx, &runtimeConfig, runtime.State, resourceSkills...)
-	if err != nil {
-		return nil, err
-	}
-	conversation := agentconversation.NewSessionConversationForAgent(sess, &runtimeConfig, config.AgentKindConfigManager)
 	task, err := apptask.NewDeferredWithContext(ctx, func(task *apptask.Task) error {
 		return service.host.RegisterTask(task, runtime)
 	})
@@ -156,24 +143,10 @@ func (service *Service) StartTaskWithError(ctx context.Context, request Request)
 		return nil, err
 	}
 	acceptCtx, releaseAcceptance := apptask.AcceptanceContext(ctx, task)
+	cycle.Options.TaskID = task.ID()
 	accepted, err := runtime.ExecutionRuntime.Start(acceptCtx, agentexecution.StartRequest{
-		Cycle: agentexecution.Cycle{
-			Runner:       runner,
-			Conversation: conversation,
-			BookService:  runtime.BookService,
-			Request:      chatRequest,
-			Options: agentrun.Options{
-				AgentKind: agentrun.AgentKindConfigManager, StateRoot: runtimeConfig.ProjectStateDir,
-				ProjectID: runtime.ProjectID,
-				TaskID:    task.ID(), SessionID: sess.ID, Workspace: runtime.Workspace,
-				Mode: RuntimeMode, IdleTimeout: appagentruntime.IdleTimeout(runtimeConfig),
-				ToolResultMaxBytes: appagentruntime.ToolResultMaxBytes(runtimeConfig), SystemPromptLog: systemPrompt,
-				OnMutationsVerified: func(callbackCtx context.Context, mutations []agenttool.Mutation, verification agenttool.Verification) {
-					service.host.OnVerifiedMutations(callbackCtx, "config_manager_post_run", runtime.VersionService, runtimeConfig, mutations, verification)
-				},
-			},
-		},
-		Emit: task.Emit,
+		Cycle: cycle,
+		Emit:  task.Emit,
 	})
 	releaseAcceptance()
 	if err != nil {
@@ -186,7 +159,7 @@ func (service *Service) StartTaskWithError(ctx context.Context, request Request)
 		defer service.host.UnregisterTask(task)
 		slog.InfoContext(runCtx, fmt.Sprintf(
 			"[app/configmanager] run begin task_id=%s session_id=%s origin=%s resource_id=%s story_id=%s branch_id=%s message_len=%d",
-			task.ID(), sess.ID, request.Origin, request.ResourceID, request.StoryID, request.BranchID, len(message),
+			task.ID(), cycle.Options.SessionID, request.Origin, request.ResourceID, request.StoryID, request.BranchID, len(message),
 		))
 		accepted.Wait(runCtx)
 		slog.InfoContext(runCtx, fmt.Sprintf("[app/configmanager] run end task_id=%s status=%s", task.ID(), task.Status()))
@@ -200,6 +173,112 @@ func (service *Service) StartTaskWithError(ctx context.Context, request Request)
 	}
 	reservation.Commit()
 	return task, nil
+}
+
+func (service *Service) buildCycle(
+	ctx context.Context,
+	runtime Runtime,
+	request Request,
+	chatRequest chatagent.ChatRequest,
+	sessionID string,
+) (agentexecution.Cycle, error) {
+	runtimeConfig, err := appsettings.RefreshProject(
+		runtime.Config, runtime.Workspace, runtime.Config.ProjectStateDir,
+	)
+	if err != nil {
+		return agentexecution.Cycle{}, fmt.Errorf("load Config Manager project settings: %w", err)
+	}
+	appsettings.ApplyLocale(&runtimeConfig, request.Locale)
+	resourceSkills, err := loadResourceSkills(ctx, &runtimeConfig, request)
+	if err != nil {
+		return agentexecution.Cycle{}, fmt.Errorf("load Config Manager resource Skills / 加载配置管理资源 Skills 失败: %w", err)
+	}
+	sess, _, err := agentconversation.GetOrCreateSession(
+		runtime.SessionStore, sessionID, &runtimeConfig, config.AgentKindConfigManager,
+	)
+	if err != nil {
+		return agentexecution.Cycle{}, err
+	}
+	if _, err := agentconversation.ApplySession(sess, &runtimeConfig, config.AgentKindConfigManager); err != nil {
+		return agentexecution.Cycle{}, err
+	}
+	builtAgent, err := appagentruntime.BuildConfigManagerAgent(ctx, &runtimeConfig, runtime.State, resourceSkills...)
+	if err != nil {
+		return agentexecution.Cycle{}, err
+	}
+	restoreData, err := encodeConfigManagerRestoreData(request)
+	if err != nil {
+		return agentexecution.Cycle{}, err
+	}
+	return agentexecution.Cycle{
+		Definition:   builtAgent.Definition,
+		Conversation: agentconversation.NewSessionConversationForAgent(sess, &runtimeConfig, config.AgentKindConfigManager),
+		BookService:  runtime.BookService, Request: chatRequest,
+		Options: agentrun.Options{
+			AgentKind: agentrun.AgentKindConfigManager, StateRoot: runtimeConfig.ProjectStateDir,
+			ProjectID: runtime.ProjectID, SessionID: sess.ID, Workspace: runtime.Workspace,
+			Mode: RuntimeMode, IdleTimeout: appagentruntime.IdleTimeout(runtimeConfig),
+			ToolResultMaxBytes: appagentruntime.ToolResultMaxBytes(runtimeConfig), SystemPromptLog: builtAgent.Composition,
+			RestoreData: restoreData,
+			OnMutationsVerified: func(callbackCtx context.Context, mutations []agenttool.Mutation, verification agenttool.Verification) {
+				service.host.OnVerifiedMutations(callbackCtx, "config_manager_post_run", runtime.VersionService, runtimeConfig, mutations, verification)
+			},
+		},
+	}, nil
+}
+
+func encodeConfigManagerRestoreData(request Request) (*agentrun.RestoreData, error) {
+	encoded, err := json.Marshal(configManagerRestoreEnvelope{
+		Request: request, ProjectID: strings.TrimSpace(request.ProjectID),
+	})
+	if err != nil {
+		return nil, fmt.Errorf("encode Config Manager restore data: %w", err)
+	}
+	return &agentrun.RestoreData{Type: configManagerRestoreDataType, Version: 1, Data: encoded}, nil
+}
+
+// RestoreDataForRequest freezes the resource-selection inputs needed by the
+// public Agent Source after a process restart.
+func RestoreDataForRequest(request Request) (*agentrun.RestoreData, error) {
+	return encodeConfigManagerRestoreData(request)
+}
+
+// PrepareCycle rebuilds the exact Config Manager Definition selected by the
+// durable product request. Transport-only command and locale fields come from
+// the canonical ChatRequest; resource selection comes from RestoreData.
+func (service *Service) PrepareCycle(
+	ctx context.Context,
+	recovery agentexecution.CycleRestoreRequest,
+	binding agentrun.RuntimeBinding,
+) (agentexecution.Cycle, error) {
+	data := recovery.Options.RestoreData
+	if data == nil || data.Type != configManagerRestoreDataType || data.Version != 1 {
+		return agentexecution.Cycle{}, fmt.Errorf("%w: Config Manager restore data is unavailable", agentexecution.ErrCyclePreparationUnavailable)
+	}
+	var envelope configManagerRestoreEnvelope
+	if err := json.Unmarshal(data.Data, &envelope); err != nil {
+		return agentexecution.Cycle{}, fmt.Errorf("decode Config Manager restore data: %w", err)
+	}
+	request := envelope.Request
+	request.ProjectID = strings.TrimSpace(envelope.ProjectID)
+	if request.ProjectID == "" {
+		request.ProjectID = binding.ProjectID
+	}
+	request.CommandID = recovery.Request.CommandID
+	request.Locale = recovery.Request.Locale
+	runtime, err := service.runtime(ctx, request)
+	if err != nil {
+		return agentexecution.Cycle{}, err
+	}
+	if runtime.ProjectID != binding.ProjectID || runtime.Workspace != binding.Workspace {
+		return agentexecution.Cycle{}, fmt.Errorf("%w: Config Manager runtime changed", agentexecution.ErrCyclePreparationUnavailable)
+	}
+	cycle, err := service.buildCycle(ctx, runtime, request, recovery.Request, binding.SessionID)
+	if err != nil {
+		return agentexecution.Cycle{}, err
+	}
+	cycle.Options.TaskID = recovery.Options.TaskID
+	return cycle, nil
 }
 
 func (runtime Runtime) available() bool {

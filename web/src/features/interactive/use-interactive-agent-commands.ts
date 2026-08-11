@@ -58,7 +58,8 @@ export function useInteractiveAgentCommands({ storyId, branchId, readRuntime, on
     let taskId = active.task_id?.trim() || ''
     for (const action of actions) {
       const receipt = await recoverInteractiveAgentRuntime({ storyId, branchId, action })
-      if (receipt.recovery_action.kind !== action.kind ||
+      if (receipt.recovery_action.action_id !== action.action_id ||
+        receipt.recovery_action.kind !== action.kind ||
         receipt.recovery_action.command_id !== action.command_id ||
         receipt.recovery_action.operation_id !== action.operation_id) {
         throw new Error(t('chat.runtime.operationChanged'))
@@ -87,7 +88,8 @@ export function useInteractiveAgentCommands({ storyId, branchId, readRuntime, on
     if (recoveryAction) {
       try {
         const receipt = await recoverInteractiveAgentRuntime({ storyId, branchId, action: recoveryAction })
-        if (receipt.recovery_action.kind !== recoveryAction.kind ||
+        if (receipt.recovery_action.action_id !== recoveryAction.action_id ||
+          receipt.recovery_action.kind !== recoveryAction.kind ||
           receipt.recovery_action.command_id !== recoveryAction.command_id ||
           receipt.recovery_action.operation_id !== recoveryAction.operation_id) {
           throw new Error(t('chat.runtime.operationChanged'))

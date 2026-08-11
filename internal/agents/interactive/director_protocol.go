@@ -32,7 +32,7 @@ func WithDirectorPlanCancel(ctx context.Context, cancel agent.AgentCancelFunc) c
 func RequestDirectorPlanCompletion(ctx context.Context) bool {
 	cancel, _ := ctx.Value(interactiveDirectorPlanCancelKey{}).(agent.AgentCancelFunc)
 	if cancel == nil {
-		return false
+		return agent.RequestCompletionAfterTools(ctx)
 	}
 	_, contributed := cancel(agent.WithAgentCancelMode(agent.CancelAfterToolCalls))
 	return contributed

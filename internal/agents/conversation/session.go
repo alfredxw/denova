@@ -82,6 +82,16 @@ func NewSessionConversation(sess *session.Session, options ...SessionConversatio
 	return c
 }
 
+// CanonicalSession returns the product Session owned by this conversation.
+// The execution host uses it only to construct the public canonical adapter;
+// model/tool orchestration must remain on Conversation interfaces.
+func (c *SessionConversation) CanonicalSession() *session.Session {
+	if c == nil {
+		return nil
+	}
+	return c.session
+}
+
 func NewSessionConversationForAgent(sess *session.Session, cfg *config.Config, agentKind string) *SessionConversation {
 	return NewSessionConversation(
 		sess,
@@ -429,6 +439,48 @@ func (c *SessionConversation) AppendAssistantWithMetadata(content, _ string, met
 	}
 	c.pendingCommits[agentrun.DomainCommitOutput] = &intent
 	return nil
+}
+
+// CommitAgentCanonicalOutput writes the final provider-neutral assistant
+// message and public Agent hash atomically. Product projections may choose a
+// different transcript view, but recovery always proves this exact raw output.
+func (c *SessionConversation) CommitAgentCanonicalOutput(
+	ctx context.Context,
+	message *agent.Message,
+	metadata session.MessageMetadata,
+	agentCanonicalHash string,
+) (session.DomainCommitReceipt, error) {
+	if c == nil || c.session == nil {
+		return session.DomainCommitReceipt{}, fmt.Errorf("会话不存在")
+	}
+	if message == nil || message.Role != agent.Assistant || len(message.ToolCalls) != 0 {
+		return session.DomainCommitReceipt{}, fmt.Errorf("canonical session output requires a final assistant message")
+	}
+	identity := c.agentCycleIdentitySnapshot()
+	if !agentrun.ValidCycleIdentity(identity) {
+		return session.DomainCommitReceipt{}, ErrMissingAgentCycleIdentity
+	}
+	intent, err := session.NewDomainCommitIntent(session.DomainCommitIdentity{
+		CommandID: string(identity.CommandID), OperationID: string(identity.OperationID), Cycle: identity.Cycle,
+	}, message, metadata)
+	if err != nil {
+		return session.DomainCommitReceipt{}, err
+	}
+	intent, err = intent.WithAgentCanonicalHash(agentCanonicalHash)
+	if err != nil {
+		return session.DomainCommitReceipt{}, err
+	}
+	c.cycleMu.Lock()
+	intent = intent.WithExpectedContextCursor(c.cycleCursor)
+	c.cycleMu.Unlock()
+	receipt, err := c.session.CommitDomainMessageContext(ctx, intent)
+	if err != nil {
+		return session.DomainCommitReceipt{}, err
+	}
+	c.cycleMu.Lock()
+	c.cycleCursor = c.session.ContextCursor()
+	c.cycleMu.Unlock()
+	return receipt, nil
 }
 
 // BindAgentCycleIdentity resets process-local staging for the exact durable

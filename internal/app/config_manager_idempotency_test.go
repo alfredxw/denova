@@ -4,7 +4,6 @@ import (
 	"context"
 	agentchat "denova/internal/agents/chat"
 	agentcontext "denova/internal/agents/context"
-	agentexecution "denova/internal/agents/execution"
 	apptask "denova/internal/app/task"
 	"errors"
 	"path/filepath"
@@ -134,12 +133,14 @@ func TestConfigManagerOlderSettledStartColdReplayWithoutModel(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	service, err := agentexecution.NewDurableRuntime(context.Background(), root)
+	registry := projectdomain.NewRegistry(root)
+	record, err := registry.EnsureBook(workspace)
 	if err != nil {
 		t.Fatal(err)
 	}
-	registry := projectdomain.NewRegistry(root)
-	record, err := registry.EnsureBook(workspace)
+	seed, err := New(context.Background(), &config.Config{
+		OpenAIModel: "test-model", NovaDir: root, Workspace: workspace,
+	})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -161,18 +162,21 @@ func TestConfigManagerOlderSettledStartColdReplayWithoutModel(t *testing.T) {
 			CommandID: requests[index].CommandID,
 			Message:   configmanagerapp.BuildMessage(requests[index]),
 		}
-		outcome := runExecutionCycle(service,
-			context.Background(), newConfigManagerColdReplayRunner(t, answers[index]),
-			configManagerColdReplayConversation{}, nil, chatRequest, options, nil,
+		operation, startErr := startPublicExecutionCycle(
+			seed.executionRuntime, context.Background(), configManagerColdReplayModel{answer: answers[index]},
+			&interactiveReplayConversation{}, seed.bookService, chatRequest, options, nil,
 		)
+		if startErr != nil {
+			seed.Close()
+			t.Fatal(startErr)
+		}
+		outcome := operation.Wait(context.Background())
 		if outcome.Status != agentrun.OutcomeCompleted || outcome.Content != answers[index] {
-			_ = service.Close(context.Background())
+			seed.Close()
 			t.Fatalf("seed run %d outcome = %#v", index, outcome)
 		}
 	}
-	if err := service.Close(context.Background()); err != nil {
-		t.Fatal(err)
-	}
+	seed.Close()
 
 	application, err := New(context.Background(), &config.Config{
 		OpenAIModel: "test-model", NovaDir: root, Workspace: root,
@@ -184,7 +188,6 @@ func TestConfigManagerOlderSettledStartColdReplayWithoutModel(t *testing.T) {
 	application.mu.Lock()
 	application.bookState = nil
 	application.sessionStore = nil
-	application.agentRunner = nil
 	application.mu.Unlock()
 
 	task, err := application.ConfigManager().StartTaskWithError(context.Background(), requests[0])
@@ -201,26 +204,18 @@ func TestConfigManagerOlderSettledStartColdReplayWithoutModel(t *testing.T) {
 	var content string
 	for _, event := range events {
 		if event.Event.Type == "chunk" {
-			if data, ok := event.Event.Data.(map[string]string); ok {
+			switch data := event.Event.Data.(type) {
+			case map[string]string:
 				content += data["content"]
+			case map[string]any:
+				chunk, _ := data["content"].(string)
+				content += chunk
 			}
 		}
 	}
 	if task.Status() != apptask.Done || content != answers[0] {
 		t.Fatalf("cold replay status=%s content=%q events=%#v", task.Status(), content, events)
 	}
-}
-
-func newConfigManagerColdReplayRunner(t *testing.T, answer string) *agent.Runner {
-	t.Helper()
-	built, err := agent.NewAgent(context.Background(), agent.AgentConfig{
-		Name: "DenovaConfigManagerAgent", Description: "Config replay test",
-		Instruction: "Return the fixed answer.", Model: configManagerColdReplayModel{answer: answer},
-	})
-	if err != nil {
-		t.Fatal(err)
-	}
-	return agent.NewRunner(agent.RunnerConfig{Agent: built, EnableStreaming: true})
 }
 
 type configManagerColdReplayModel struct{ answer string }

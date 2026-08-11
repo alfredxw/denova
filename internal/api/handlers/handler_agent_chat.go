@@ -352,6 +352,7 @@ func (h *Handlers) HandleAgentChatRecovery(ctx context.Context, c *app.RequestCo
 		return
 	}
 	action := appsvc.AgentRuntimeRecoveryAction{
+		ActionID:    strings.TrimSpace(body.Action.ActionID),
 		Kind:        appsvc.AgentRuntimeRecoveryActionKind(strings.TrimSpace(body.Action.Kind)),
 		CommandID:   appsvc.AgentCommandID(strings.TrimSpace(body.Action.CommandID)),
 		OperationID: appsvc.AgentOperationID(strings.TrimSpace(body.Action.OperationID)),

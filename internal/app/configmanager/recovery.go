@@ -372,7 +372,6 @@ func (service *Service) Recover(
 		recovery.Close()
 		return appagentruntime.RecoveryResult{}, fmt.Errorf("reconcile orphaned Ask before Config Manager recovery: %w", err)
 	}
-	structural, isStructural := appagentruntime.StructuralRecoveryAction(request.Action.Kind)
 	run := &recoveryRun{
 		projectID: projectID, sessionID: sessionID, recovery: recovery,
 		recoveryActions: make(map[string]agentrun.CommandReceipt),
@@ -392,37 +391,16 @@ func (service *Service) Recover(
 	}
 
 	key := appagentruntime.RecoveryActionKey(request.Action)
-	var receipt agentrun.CommandReceipt
-	if !isStructural {
-		receipt, err = recovery.Resume(operation.Context(), request.Action, task.ID(), task.Emit)
-		if err != nil {
-			recovery.Close()
-			service.rollbackRecoveryTask(run, err)
-			return appagentruntime.RecoveryResult{}, err
-		}
-	} else {
-		receipt = agentrun.CommandReceipt{
-			CommandID: request.Action.CommandID, OperationID: request.Action.OperationID,
-			Cursor: recovery.InitialStatus().Cursor, Replayed: true,
-		}
+	receipt, err := recovery.Resume(operation.Context(), request.Action, task.ID(), task.Emit)
+	if err != nil {
+		recovery.Close()
+		service.rollbackRecoveryTask(run, err)
+		return appagentruntime.RecoveryResult{}, err
 	}
 	run.recoveryActions[key] = receipt
 	if err := task.Start(func(taskCtx context.Context, task *apptask.Task, emit func(agentrun.Event)) {
 		defer service.host.UnregisterTask(task)
 		defer recovery.Close()
-		if isStructural {
-			if _, resumed, resumeErr := runtime.ExecutionRuntime.ResumeRecoveredStructuralOperation(taskCtx, options, structural); resumeErr != nil {
-				emit(agentrun.Event{Type: "error", Data: map[string]string{"message": resumeErr.Error()}})
-				return
-			} else if !resumed {
-				emit(agentrun.Event{Type: "error", Data: map[string]string{"message": "Agent 恢复操作已变化 / Agent recovery action changed"}})
-				return
-			}
-			if refreshErr := sess.RefreshCanonical(taskCtx); refreshErr != nil {
-				emit(agentrun.Event{Type: "error", Data: map[string]string{"message": fmt.Sprintf("配置会话刷新失败 / Failed to refresh Config Manager session: %v", refreshErr)}})
-				return
-			}
-		}
 		outcome := recovery.Wait(taskCtx, emit)
 		slog.InfoContext(taskCtx, fmt.Sprintf("[config-manager-recovery] task settled task_id=%s session_id=%s action=%s command_id=%s operation_id=%s outcome=%s", task.ID(), sessionID, request.Action.Kind, request.Action.CommandID, request.Action.OperationID, outcome.Status))
 	}); err != nil {
@@ -444,9 +422,6 @@ func resumeExistingRecovery(
 	}
 	if run.task.Finished() {
 		return appagentruntime.RecoveryResult{}, fmt.Errorf("%w: recovery display task is already settled", agentexecution.ErrRecoveryActionChanged)
-	}
-	if _, structural := appagentruntime.StructuralRecoveryAction(action.Kind); structural {
-		return appagentruntime.RecoveryResult{}, fmt.Errorf("%w: a structural recovery action cannot join an existing display task", agentexecution.ErrRecoveryActionChanged)
 	}
 	receipt, err := run.recovery.Resume(ctx, action, run.task.ID(), run.task.Emit)
 	if err != nil {

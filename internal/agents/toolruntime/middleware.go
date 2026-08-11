@@ -243,6 +243,7 @@ func (m *OrchestratorMiddleware) WrapToolCall(
 
 		result, err := endpoint(ctx, args, opts...)
 		if err != nil {
+			toolErr := err
 			if decision.Descriptor.Steering == agent.SteeringInterruptibleWait && agent.ToolSteeringPending(ctx) {
 				result = agent.SyntheticToolResult(agent.ToolResultSkipped, agent.ToolSyntheticSteeringInterrupted,
 					fmt.Sprintf("tool %q was interrupted to apply pending user steering", decision.ToolName))
@@ -251,12 +252,16 @@ func (m *OrchestratorMiddleware) WrapToolCall(
 				// materialize effect_unknown and never auto-retry the side effect.
 				return agent.ToolResult{}, err
 			} else {
-				result, record := projectToolError(decision, args, result, err, m.toolResultLimitBytes())
+				result, record := projectToolError(decision, args, result, toolErr, m.toolResultLimitBytes())
+				result, effectErr := appendAgentMutationEffect(result, record)
+				if effectErr != nil {
+					return result, effectErr
+				}
 				if recordErr := recordToolFinish(ctx, record); recordErr != nil {
 					return result, recordErr
 				}
-				if agent.IsToolControlError(err) {
-					return result, err
+				if agent.IsToolControlError(toolErr) {
+					return result, toolErr
 				}
 				return result, nil
 			}
@@ -268,6 +273,10 @@ func (m *OrchestratorMiddleware) WrapToolCall(
 		})
 		if processErr != nil {
 			projected, record := projectToolError(decision, args, processed, processErr, m.toolResultLimitBytes())
+			projected, effectErr := appendAgentMutationEffect(projected, record)
+			if effectErr != nil {
+				return projected, effectErr
+			}
 			if recordErr := recordToolFinish(ctx, record); recordErr != nil {
 				return projected, recordErr
 			}
@@ -283,11 +292,24 @@ func (m *OrchestratorMiddleware) WrapToolCall(
 		record := toolExecutionRecordFromFiltered(decision, filtered, string(filtered.Result.Status))
 		applyToolMutationReceiptToExecutionRecord(&record, result)
 		applyInteractiveTurnReceiptToExecutionRecord(&record, filtered.Result)
+		filtered.Result, err = appendAgentMutationEffect(filtered.Result, record)
+		if err != nil {
+			return filtered.Result, err
+		}
 		if err := recordToolFinish(ctx, record); err != nil {
 			return filtered.Result, err
 		}
 		return filtered.Result, nil
 	}, nil
+}
+
+func appendAgentMutationEffect(result agent.ToolResult, record agenttool.ExecutionRecord) (agent.ToolResult, error) {
+	effect, present, err := AgentToolMutationEffect(record)
+	if err != nil || !present {
+		return result, err
+	}
+	result.Effects = append(result.Effects, effect)
+	return result, nil
 }
 
 func (m *OrchestratorMiddleware) applyApprovalPolicy(

@@ -12,7 +12,7 @@ import (
 // command replay. Open tool effects are closed as unknown before the pause
 // becomes visible.
 func (h *Harness) pauseRecoveredOperation(ctx context.Context, state *harnessState) error {
-	payloads := h.uncertainToolResults(state)
+	payloads := h.uncertainNonInteractiveToolResults(state)
 	if !state.recoveryPaused {
 		reason := "runtime recovered an unfinished cycle; no model or tool effect was retried"
 		if state.phase == PhaseCompacting {
@@ -35,6 +35,26 @@ func (h *Harness) pauseRecoveredOperation(ctx context.Context, state *harnessSta
 		return fmt.Errorf("pause recovered operation %s: %w", state.activeOperation, err)
 	}
 	return nil
+}
+
+func (h *Harness) uncertainNonInteractiveToolResults(state *harnessState) []EventPayload {
+	calls := state.activeToolCalls()
+	payloads := make([]EventPayload, 0, len(calls))
+	for _, call := range calls {
+		// Interaction waits are the one tool boundary with a complete durable
+		// request and a deterministic response/resume protocol. Keeping their
+		// start receipt lets an exact recovered execution finish the same call;
+		// every other open call remains conservatively unknown.
+		if state.hasInteractionForTool(call.CallID) {
+			continue
+		}
+		payloads = append(payloads, ToolCallFinishedEvent{
+			CallID: call.CallID, Name: call.Name,
+			ResultDescriptor: describePayload([]byte(UnknownToolEffectResult)),
+			IsError:          true, RetrySafety: RetryUnknown,
+		})
+	}
+	return payloads
 }
 
 func (h *Harness) resumeRecoveryPausedCommand(state *harnessState, command Command) error {
@@ -111,6 +131,8 @@ func (h *Harness) resumeRecoveryPausedCommand(state *harnessState, command Comma
 			result:    EngineResult{Status: EngineAborted},
 		})
 		return nil
+	case ResolveInteraction:
+		return h.resumeResolvedInteraction(state, command.InteractionID)
 	default:
 		// Replaying the original StartTurn must never rerun the interrupted
 		// cycle merely because a later accepted command is waiting in its queue.
@@ -150,16 +172,53 @@ func (h *Harness) resumeRecoveryPausedInput(ctx context.Context, state *harnessS
 	}
 	nextCycle := state.activeCycle + 1
 	snapshotID := SnapshotID(newID("snapshot"))
-	if _, err := h.commit(context.Background(), state, []EventPayload{
+	capabilities, err := h.prepareAdmission(ctx, state, item.CommandID, state.activeOperation, nextCycle, item.Input)
+	if err != nil {
+		return fmt.Errorf("prepare recovered input admission: %w", err)
+	}
+	payloads := []EventPayload{
 		SavePointCommittedEvent{OperationID: state.activeOperation, Cycle: state.activeCycle},
 		QueueConsumedEvent{CommandID: item.CommandID, Delivery: item.Delivery},
+	}
+	payloads = append(payloads, capabilities...)
+	payloads = append(payloads,
 		UserMessageCommittedEvent{Message: newUserMessage(state.activeOperation, item.Input)},
 		CycleStartedEvent{OperationID: state.activeOperation, Cycle: nextCycle, SnapshotID: snapshotID},
 		InputMaterializationRecoveryPendingEvent{
 			OperationID: state.activeOperation, Cycle: nextCycle,
-			CommandID: item.CommandID, Delivery: item.Delivery,
+			CommandID: item.CommandID, Delivery: item.Delivery, Autonomous: item.Autonomous,
 		},
-	}); err != nil {
+	)
+	if _, err := h.commit(context.Background(), state, payloads); err != nil {
+		return err
+	}
+	return h.resumePendingInputMaterialization(ctx, state)
+}
+
+func (h *Harness) resumeAutonomousContinuation(ctx context.Context, state *harnessState, item QueuedInput) error {
+	if state == nil || state.phase != PhaseRunning || !item.Autonomous || item.OperationID != state.activeOperation {
+		return fmt.Errorf("%w: autonomous continuation no longer matches the active operation", ErrRecoveryActionChanged)
+	}
+	nextCycle := state.activeCycle + 1
+	snapshotID := SnapshotID(newID("snapshot"))
+	capabilities, err := h.prepareAdmission(ctx, state, item.CommandID, state.activeOperation, nextCycle, item.Input)
+	if err != nil {
+		return fmt.Errorf("prepare autonomous continuation admission: %w", err)
+	}
+	payloads := []EventPayload{
+		SavePointCommittedEvent{OperationID: state.activeOperation, Cycle: state.activeCycle},
+		QueueConsumedEvent{CommandID: item.CommandID, Delivery: item.Delivery},
+	}
+	payloads = append(payloads, capabilities...)
+	payloads = append(payloads,
+		UserMessageCommittedEvent{Message: newUserMessage(state.activeOperation, item.Input)},
+		CycleStartedEvent{OperationID: state.activeOperation, Cycle: nextCycle, SnapshotID: snapshotID},
+		InputMaterializationRecoveryPendingEvent{
+			OperationID: state.activeOperation, Cycle: nextCycle,
+			CommandID: item.CommandID, Delivery: item.Delivery, Autonomous: true,
+		},
+	)
+	if _, err := h.commit(context.Background(), state, payloads); err != nil {
 		return err
 	}
 	return h.resumePendingInputMaterialization(ctx, state)
@@ -172,7 +231,7 @@ func (h *Harness) resumePendingInputMaterialization(ctx context.Context, state *
 	recovery := *state.inputRecovery
 	item := QueuedInput{
 		CommandID: recovery.CommandID, OperationID: recovery.OperationID,
-		Delivery: recovery.Delivery, Input: cloneUserInput(state.activeInput),
+		Delivery: recovery.Delivery, Input: cloneUserInput(state.activeInput), Autonomous: recovery.Autonomous,
 	}
 	if err := h.restorePendingInput(ctx, item); err != nil {
 		return err
